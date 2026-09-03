@@ -22,6 +22,9 @@
       <p class="hint">Markera objekt i modellen och tryck på knappen för att sätta/ändra planeringsdata.</p>
       <button id="btnLinkSelection" class="primary">Koppla markerade objekt (<span id="selCount">0</span>)</button>
       <div id="linkForm" class="hidden">
+        <label>Namn <span class="hint">(t.ex. M10, M12 – valfritt om du kopplar flera samtidigt)</span>
+          <input type="text" id="fName" placeholder="t.ex. M10" />
+        </label>
         <label>Område
           <input list="areaList" id="fArea" placeholder="t.ex. Hus A, Plan 2" />
           <datalist id="areaList"></datalist>
@@ -98,6 +101,7 @@
         <button id="btnApplyFilter" class="primary">Visa filtrerat</button>
         <button id="btnClearFilter">Rensa filter</button>
       </div>
+      <div id="filterMsg" class="hint"></div>
     </section>
 
     <!-- ===== Excel-import ===== -->
@@ -115,6 +119,7 @@
     <!-- ===== Objektlista ===== -->
     <section class="panel">
       <h2>Planerade objekt (<span id="itemCount">0</span>)</h2>
+      <input type="text" id="itemSearch" placeholder="Sök på namn, område, aktivitet..." />
       <div id="itemList" class="item-list"></div>
     </section>
 

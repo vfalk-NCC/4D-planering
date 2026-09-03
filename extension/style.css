@@ -96,22 +96,37 @@ button:hover { filter: brightness(0.97); }
   vertical-align: middle;
 }
 
+#itemSearch { margin-bottom: 6px; }
+
 .item-list { max-height: 220px; overflow-y: auto; }
 .item-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 6px;
   padding: 5px 4px;
   border-bottom: 1px solid var(--border);
   font-size: 11px;
-  cursor: pointer;
 }
 .item-row:hover { background: #eef1f5; }
+.item-row .item-main {
+  flex: 1;
+  cursor: pointer;
+}
+.item-row .item-name { font-weight: 600; }
 .item-row .badge {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 10px;
   color: white;
+  white-space: nowrap;
+}
+.item-row .edit-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
 }
 
 .dialog {

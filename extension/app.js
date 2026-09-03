@@ -12,10 +12,11 @@ let settings = {
   colorNotStarted: "#c9ccd1", // grå
   colorInProgress: "#f5a623", // orange
   colorDone: "#3fb950",       // grön
-  apiBaseUrl: "https://name-4d-planering-api.onrender.com/api"
+  apiBaseUrl: "https://din-server.se/api"
 };
 let lastSelection = [];      // [{modelId, objectId (externalId), objectRuntimeId, name}]
 let playTimer = null;
+let searchTerm = "";
 
 /* ---------------------------------------------------------------------
    Init
@@ -60,6 +61,8 @@ function bindUI() {
   document.getElementById("btnClearFilter").onclick = clearFilter;
 
   document.getElementById("btnImportExcel").onclick = onImportExcel;
+
+  document.getElementById("itemSearch").oninput = () => renderItemList();
 
   document.getElementById("btnSettings").onclick = () => toggle("settingsDialog", true);
   document.getElementById("btnCloseSettings").onclick = () => toggle("settingsDialog", false);
@@ -136,18 +139,35 @@ async function onOpenLinkForm() {
 
   // Om exakt ett av de markerade objekten redan har data, förifyll formuläret.
   const existing = items.find(it => lastSelection.some(s => s.objectId === it.objectId && s.modelId === it.modelId));
+  fillLinkForm(existing);
+  toggle("linkForm", true);
+}
+
+/**
+ * Öppnas via "Redigera"-knappen i objektlistan. Kräver ingen ny markering
+ * i modellen eftersom vi redan vet vilket objekt (modelId + objectId)
+ * posten gäller.
+ */
+function editItemFromList(item) {
+  lastSelection = [{ modelId: item.modelId, objectId: item.objectId }];
+  document.getElementById("selCount").innerText = 1;
+  fillLinkForm(item);
+  toggle("linkForm", true);
+}
+
+function fillLinkForm(existing) {
+  document.getElementById("fName").value = existing ? existing.objectName || "" : "";
   document.getElementById("fArea").value = existing ? existing.area || "" : "";
   document.getElementById("fActivity").value = existing ? existing.activity || "" : "";
   document.getElementById("fContractor").value = existing ? existing.contractor || "" : "";
   document.getElementById("fStatus").value = existing ? existing.status || "planerad" : "planerad";
   document.getElementById("fStart").value = existing ? existing.startDate || "" : "";
   document.getElementById("fEnd").value = existing ? existing.endDate || "" : "";
-
-  toggle("linkForm", true);
 }
 
 async function onSaveLink() {
   const payload = {
+    objectName: document.getElementById("fName").value.trim(),
     area: document.getElementById("fArea").value.trim(),
     activity: document.getElementById("fActivity").value.trim(),
     contractor: document.getElementById("fContractor").value.trim(),
@@ -160,7 +180,12 @@ async function onSaveLink() {
     projectId, modelId: s.modelId, objectId: s.objectId, ...payload
   }));
 
-  await postJson(`${settings.apiBaseUrl}/projects/${projectId}/items/bulk`, { items: records });
+  try {
+    await postJson(`${settings.apiBaseUrl}/projects/${projectId}/items/bulk`, { items: records });
+  } catch (e) {
+    alert("Kunde inte spara: " + e.message);
+    return;
+  }
 
   toggle("linkForm", false);
   await refreshItems();
@@ -296,7 +321,13 @@ function buildFilterOptions() {
   fillMultiSelect("filterArea", unique(items.map(i => i.area)));
   fillMultiSelect("filterActivity", unique(items.map(i => i.activity)));
   fillMultiSelect("filterContractor", unique(items.map(i => i.contractor)));
-  fillMultiSelect("filterStatus", unique(items.map(i => i.status)));
+
+  // Status är en fast lista i appen, så den fylls alltid i - oavsett
+  // vilka statusar som redan finns bland sparade objekt.
+  const statusEl = document.getElementById("filterStatus");
+  const statusLabels = { planerad: "Planerad", pagaende: "Pågående", forsenad: "Försenad", klar: "Klar", pausad: "Pausad" };
+  statusEl.innerHTML = Object.entries(statusLabels)
+    .map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
 }
 
 function unique(arr) {
@@ -318,6 +349,9 @@ function getSelectedValues(id) {
 }
 
 async function applyFilterToModel() {
+  const statusEl = document.getElementById("filterMsg");
+  statusEl.innerText = "Filtrerar...";
+
   const areas = getSelectedValues("filterArea");
   const activities = getSelectedValues("filterActivity");
   const contractors = getSelectedValues("filterContractor");
@@ -337,17 +371,29 @@ async function applyFilterToModel() {
     return true;
   });
 
+  if (matched.length === 0) {
+    statusEl.innerText = "Inga sparade objekt matchar filtret.";
+    return;
+  }
+
   const byModel = {};
   matched.forEach(it => {
+    if (!it.modelId) return; // objekt utan känd modell (t.ex. felaktig Excel-rad) kan inte isoleras
     byModel[it.modelId] = byModel[it.modelId] || [];
     byModel[it.modelId].push(it.objectId);
   });
 
-  // Visa endast matchande objekt, dölj resten.
-  for (const modelId of Object.keys(byModel)) {
-    const runtimeIds = await API.viewer.convertToObjectRuntimeIds(modelId, byModel[modelId]);
-    const valid = runtimeIds.filter(Boolean);
-    await API.viewer.isolateEntities([{ modelId, objectRuntimeIds: valid }]);
+  try {
+    for (const modelId of Object.keys(byModel)) {
+      const runtimeIds = await API.viewer.convertToObjectRuntimeIds(modelId, byModel[modelId]);
+      const valid = runtimeIds.filter(id => id !== undefined && id !== null);
+      if (valid.length === 0) continue;
+      await API.viewer.isolateEntities([{ modelId, objectRuntimeIds: valid }]);
+    }
+    statusEl.innerText = `Visar ${matched.length} matchande objekt.`;
+  } catch (e) {
+    console.error(e);
+    statusEl.innerText = "Kunde inte filtrera modellen: " + e.message;
   }
 }
 
@@ -356,6 +402,7 @@ async function clearFilter() {
     Array.from(document.getElementById(id).options).forEach(o => o.selected = false);
   });
   document.getElementById("filterWeeks").value = "";
+  document.getElementById("filterMsg").innerText = "";
   await API.viewer.reset();
   applyTimelineColors();
 }
@@ -376,6 +423,7 @@ async function onImportExcel() {
     projectId,
     modelId: r["ModellID"] || items[0]?.modelId || null, // se README om flera modeller
     objectId: String(r["ObjektID"] || r["ObjectId"] || "").trim(),
+    objectName: r["Namn"] || r["Name"] || "",
     area: r["Område"] || r["Area"] || "",
     activity: r["Aktivitet"] || r["Activity"] || "",
     contractor: r["Entreprenör"] || r["Contractor"] || "",
@@ -425,26 +473,49 @@ function normalizeStatus(value) {
    Objektlista
    ------------------------------------------------------------------- */
 function renderItemList() {
-  document.getElementById("itemCount").innerText = items.length;
+  searchTerm = (document.getElementById("itemSearch").value || "").toLowerCase().trim();
+
+  const visible = items.filter(it => {
+    if (!searchTerm) return true;
+    const haystack = [it.objectName, it.area, it.activity, it.contractor, it.objectId]
+      .filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(searchTerm);
+  });
+
+  document.getElementById("itemCount").innerText = `${visible.length}/${items.length}`;
   const el = document.getElementById("itemList");
   const statusColor = { planerad: "#94a3b8", pagaende: "#f5a623", forsenad: "#e5484d", klar: "#3fb950", pausad: "#a1a1aa" };
   const statusLabel = { planerad: "Planerad", pagaende: "Pågående", forsenad: "Försenad", klar: "Klar", pausad: "Pausad" };
 
-  el.innerHTML = items.map(it => `
-    <div class="item-row" data-model="${escapeHtml(it.modelId || "")}" data-object="${escapeHtml(it.objectId)}">
-      <span>${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span>
+  if (visible.length === 0) {
+    el.innerHTML = `<div class="hint">Inga objekt ${searchTerm ? "matchar sökningen" : "sparade ännu"}.</div>`;
+    return;
+  }
+
+  el.innerHTML = visible.map((it, i) => `
+    <div class="item-row" data-index="${i}">
+      <span class="item-main" data-action="select">
+        <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span><br/>
+        <span>${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span>
+      </span>
       <span class="badge" style="background:${statusColor[it.status] || "#999"}">${statusLabel[it.status] || it.status}</span>
+      <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
     </div>
   `).join("");
 
   Array.from(el.querySelectorAll(".item-row")).forEach(row => {
-    row.onclick = async () => {
-      const modelId = row.dataset.model;
-      const objectId = row.dataset.object;
-      const runtimeIds = await API.viewer.convertToObjectRuntimeIds(modelId, [objectId]);
-      await API.viewer.setSelection({ modelObjectIds: [{ modelId, objectRuntimeIds: runtimeIds.filter(Boolean) }] }, "set");
-      await API.viewer.setCamera({ modelObjectIds: [{ modelId, objectRuntimeIds: runtimeIds.filter(Boolean) }] });
+    const it = visible[Number(row.dataset.index)];
+
+    row.querySelector('[data-action="select"]').onclick = async () => {
+      if (!it.modelId) { alert("Objektet saknar modell-koppling (troligen från Excel utan ModellID)."); return; }
+      const runtimeIds = await API.viewer.convertToObjectRuntimeIds(it.modelId, [it.objectId]);
+      const valid = runtimeIds.filter(id => id !== undefined && id !== null);
+      if (valid.length === 0) { alert("Hittade inte objektet i den just nu inlästa modellen."); return; }
+      await API.viewer.setSelection({ modelObjectIds: [{ modelId: it.modelId, objectRuntimeIds: valid }] }, "set");
+      await API.viewer.setCamera({ modelObjectIds: [{ modelId: it.modelId, objectRuntimeIds: valid }] });
     };
+
+    row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it);
   });
 }
 
