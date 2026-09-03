@@ -32,6 +32,7 @@ app.post("/api/projects/:projectId/items/bulk", (req, res) => {
       projectId: req.params.projectId,
       modelId: it.modelId || null,
       objectId: String(it.objectId),
+      objectName: it.objectName || null,
       area: it.area || null,
       activity: it.activity || null,
       contractor: it.contractor || null,

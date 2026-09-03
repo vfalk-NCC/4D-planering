@@ -9,6 +9,7 @@ db.exec(`
     project_id TEXT NOT NULL,
     model_id TEXT,
     object_id TEXT NOT NULL,
+    object_name TEXT,
     area TEXT,
     activity TEXT,
     contractor TEXT,
@@ -22,12 +23,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_plan_items_project ON plan_items(project_id);
 `);
 
+// Lägger till object_name-kolumnen även för databaser skapade innan detta fält fanns.
+try { db.exec(`ALTER TABLE plan_items ADD COLUMN object_name TEXT`); } catch (e) { /* finns redan */ }
+
 function upsertItem(item) {
   const stmt = db.prepare(`
-    INSERT INTO plan_items (project_id, model_id, object_id, area, activity, contractor, status, start_date, end_date, updated_at)
-    VALUES (@projectId, @modelId, @objectId, @area, @activity, @contractor, @status, @startDate, @endDate, datetime('now'))
+    INSERT INTO plan_items (project_id, model_id, object_id, object_name, area, activity, contractor, status, start_date, end_date, updated_at)
+    VALUES (@projectId, @modelId, @objectId, @objectName, @area, @activity, @contractor, @status, @startDate, @endDate, datetime('now'))
     ON CONFLICT(project_id, object_id) DO UPDATE SET
       model_id = excluded.model_id,
+      object_name = excluded.object_name,
       area = excluded.area,
       activity = excluded.activity,
       contractor = excluded.contractor,
@@ -51,6 +56,7 @@ function getItemsForProject(projectId) {
       projectId: row.project_id,
       modelId: row.model_id,
       objectId: row.object_id,
+      objectName: row.object_name,
       area: row.area,
       activity: row.activity,
       contractor: row.contractor,
