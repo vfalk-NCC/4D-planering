@@ -1,9 +1,5 @@
 {
   "title": "4D-planering",
-  "description": "Enkel visuell produktionsplanering: koppla objekt till start-/slutdatum, område, aktivitet, entreprenör och status. Tidslinje visar hur projektet byggs upp över tid. Stödjer Excel-import.",
-  "icon": "https://4d-planning.netlify.app/icon.png",
-  "url": "https://4d-planning.netlify.app/index.html",
-  "infoUrl": "https://4d-planning.netlify.app/help.html",
-  "configCommand": "configure",
-  "enabled": true
+  "description": "Enkel visuell produktionsplanering",
+  "url": "https://4d-planning.netlify.app/index.html"
 }
