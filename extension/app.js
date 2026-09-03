@@ -384,11 +384,20 @@ async function applyFilterToModel() {
   });
 
   try {
+    // Dölj samtliga objekt i alla inlästa modeller (selector = undefined
+    // gäller alla objekt enligt Workspace API:t).
+    await API.viewer.setObjectState(undefined, { visible: false });
+
+    let firstGroup = true;
     for (const modelId of Object.keys(byModel)) {
       const runtimeIds = await API.viewer.convertToObjectRuntimeIds(modelId, byModel[modelId]);
       const valid = runtimeIds.filter(id => id !== undefined && id !== null);
       if (valid.length === 0) continue;
-      await API.viewer.isolateEntities([{ modelId, objectRuntimeIds: valid }]);
+
+      const selector = { modelObjectIds: [{ modelId, objectRuntimeIds: valid }] };
+      await API.viewer.setObjectState(selector, { visible: true });
+      await API.viewer.setSelection(selector, firstGroup ? "set" : "add");
+      firstGroup = false;
     }
     statusEl.innerText = `Visar ${matched.length} matchande objekt.`;
   } catch (e) {
@@ -403,7 +412,7 @@ async function clearFilter() {
   });
   document.getElementById("filterWeeks").value = "";
   document.getElementById("filterMsg").innerText = "";
-  await API.viewer.reset();
+  await API.viewer.setObjectState(undefined, { visible: "reset" });
   applyTimelineColors();
 }
 
