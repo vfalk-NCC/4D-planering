@@ -1,0 +1,9 @@
+{
+  "title": "4D-planering",
+  "description": "Enkel visuell produktionsplanering: koppla objekt till start-/slutdatum, område, aktivitet, entreprenör och status. Tidslinje visar hur projektet byggs upp över tid. Stödjer Excel-import.",
+  "icon": "https://DIN-DOMÄN.se/4d-planering/icon.png",
+  "url": "https://DIN-DOMÄN.se/4d-planering/index.html",
+  "infoUrl": "https://DIN-DOMÄN.se/4d-planering/help.html",
+  "configCommand": "configure",
+  "enabled": true
+}
