@@ -12,7 +12,7 @@ let settings = {
   colorNotStarted: "#c9ccd1", // grå
   colorInProgress: "#f5a623", // orange
   colorDone: "#3fb950",       // grön
-  apiBaseUrl: "https://din-server.se/api"
+  apiBaseUrl: "https://name-4d-planering-api.onrender.com/api"
 };
 let lastSelection = [];      // [{modelId, objectId (externalId), objectRuntimeId, name}]
 let playTimer = null;
