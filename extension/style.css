@@ -38,6 +38,7 @@ header button { background: none; border: none; font-size: 16px; cursor: pointer
 .panel h2 { font-size: 13px; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
 
 .hint { color: var(--muted); font-size: 11px; margin: 4px 0; }
+.hint.warning { color: #e5484d; font-weight: 600; padding: 6px 8px; background: #fdeceb; border: 1px solid #f3c4c1; border-radius: 4px; }
 
 label {
   display: block;
@@ -138,7 +139,7 @@ button:hover { filter: brightness(0.97); }
   background: white;
   padding: 16px;
   border-radius: 8px;
-  width: 260px;
+  width: 300px;
 }
 
 .switch { display: flex; align-items: center; gap: 4px; font-size: 11px; }

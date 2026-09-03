@@ -12,7 +12,8 @@ let settings = {
   colorNotStarted: "#c9ccd1", // grå
   colorInProgress: "#f5a623", // orange
   colorDone: "#3fb950",       // grön
-  apiBaseUrl: "https://din-server.se/api"
+  supabaseUrl: "",
+  supabaseKey: ""
 };
 let lastSelection = [];      // [{modelId, objectId (externalId), objectRuntimeId, name}]
 let playTimer = null;
@@ -71,8 +72,10 @@ function bindUI() {
   document.getElementById("colorNotStarted").value = settings.colorNotStarted;
   document.getElementById("colorInProgress").value = settings.colorInProgress;
   document.getElementById("colorDone").value = settings.colorDone;
-  document.getElementById("apiBaseUrl").value = settings.apiBaseUrl;
+  document.getElementById("supabaseUrl").value = settings.supabaseUrl;
+  document.getElementById("supabaseKey").value = settings.supabaseKey;
   paintLegendDots();
+  updateConnectionWarning();
 }
 
 function toggle(id, show) {
@@ -99,11 +102,17 @@ function onSaveSettings() {
   settings.colorNotStarted = document.getElementById("colorNotStarted").value;
   settings.colorInProgress = document.getElementById("colorInProgress").value;
   settings.colorDone = document.getElementById("colorDone").value;
-  settings.apiBaseUrl = document.getElementById("apiBaseUrl").value.replace(/\/$/, "");
+  settings.supabaseUrl = document.getElementById("supabaseUrl").value.trim().replace(/\/$/, "");
+  settings.supabaseKey = document.getElementById("supabaseKey").value.trim();
   window.localStorage.setItem("4dplan-settings", JSON.stringify(settings));
   paintLegendDots();
+  updateConnectionWarning();
   toggle("settingsDialog", false);
-  applyTimelineColors(); // måla om med nya färger
+  refreshItems().then(() => {
+    buildFilterOptions();
+    renderItemList();
+    applyTimelineColors();
+  });
 }
 
 /* ---------------------------------------------------------------------
@@ -181,7 +190,7 @@ async function onSaveLink() {
   }));
 
   try {
-    await postJson(`${settings.apiBaseUrl}/projects/${projectId}/items/bulk`, { items: records });
+    await saveItems(records);
   } catch (e) {
     alert("Kunde inte spara: " + e.message);
     return;
@@ -442,7 +451,12 @@ async function onImportExcel() {
   })).filter(r => r.objectId);
 
   status.innerText = `Importerar ${records.length} rader...`;
-  await postJson(`${settings.apiBaseUrl}/projects/${projectId}/items/bulk`, { items: records });
+  try {
+    await saveItems(records);
+  } catch (e) {
+    status.innerText = "Kunde inte importera: " + e.message;
+    return;
+  }
 
   await refreshItems();
   buildFilterOptions();
@@ -529,26 +543,105 @@ function renderItemList() {
 }
 
 /* ---------------------------------------------------------------------
-   Backend-kommunikation
+   Supabase-kommunikation
+   ---------------------------------------------------------------------
+   All planeringsdata lagras i en gratis Supabase-databas (Postgres) via
+   dess inbyggda REST-API (PostgREST). Ingen egen server behövs längre –
+   extensionen pratar direkt med
+   https://<ditt-projekt>.supabase.co/rest/v1/plan_items.
+   Se supabase/schema.sql för tabellen som skapas en gång, och README.md
+   för hela uppsättningsguiden.
    ------------------------------------------------------------------- */
+function isSupabaseConfigured() {
+  return Boolean(settings.supabaseUrl && settings.supabaseKey);
+}
+
+function updateConnectionWarning() {
+  const el = document.getElementById("connectionWarning");
+  if (!el) return;
+  if (isSupabaseConfigured()) {
+    el.classList.add("hidden");
+    el.innerText = "";
+  } else {
+    el.classList.remove("hidden");
+    el.innerText = "⚠️ Ingen databas ansluten – öppna inställningarna (kugghjulet) och ange Supabase-URL och nyckel. Se README.md.";
+  }
+}
+
+function supabaseHeaders(isJson) {
+  const headers = {
+    apikey: settings.supabaseKey,
+    Authorization: `Bearer ${settings.supabaseKey}`
+  };
+  if (isJson) headers["Content-Type"] = "application/json";
+  return headers;
+}
+
+function toRow(it) {
+  return {
+    project_id: it.projectId,
+    model_id: it.modelId || null,
+    object_id: String(it.objectId),
+    object_name: it.objectName || null,
+    area: it.area || null,
+    activity: it.activity || null,
+    contractor: it.contractor || null,
+    status: it.status || "planerad",
+    start_date: it.startDate || null,
+    end_date: it.endDate || null
+  };
+}
+
+function fromRow(row) {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    modelId: row.model_id,
+    objectId: row.object_id,
+    objectName: row.object_name,
+    area: row.area,
+    activity: row.activity,
+    contractor: row.contractor,
+    status: row.status,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    updatedAt: row.updated_at
+  };
+}
+
 async function refreshItems() {
+  if (!isSupabaseConfigured()) {
+    items = [];
+    return;
+  }
   try {
-    const res = await fetch(`${settings.apiBaseUrl}/projects/${projectId}/items`);
-    items = res.ok ? await res.json() : [];
+    const url = `${settings.supabaseUrl}/rest/v1/plan_items?project_id=eq.${encodeURIComponent(projectId)}&select=*`;
+    const res = await fetch(url, { headers: supabaseHeaders(false) });
+    items = res.ok ? (await res.json()).map(fromRow) : [];
   } catch (e) {
     console.error("Kunde inte hämta planeringsdata", e);
     items = [];
   }
 }
 
-async function postJson(url, body) {
+/** Skapar/uppdaterar flera poster i Supabase i ett anrop (upsert på project_id+object_id). */
+async function saveItems(records) {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Ingen databas ansluten. Ange Supabase-URL och nyckel i inställningarna.");
+  }
+  const url = `${settings.supabaseUrl}/rest/v1/plan_items?on_conflict=project_id,object_id`;
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
+    headers: {
+      ...supabaseHeaders(true),
+      Prefer: "resolution=merge-duplicates,return=minimal"
+    },
+    body: JSON.stringify(records.map(toRow))
   });
-  if (!res.ok) throw new Error(`Serverfel: ${res.status}`);
-  return res.json();
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Databasfel (${res.status}): ${text || res.statusText}`);
+  }
 }
 
 function escapeHtml(str) {

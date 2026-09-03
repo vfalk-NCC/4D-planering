@@ -13,8 +13,9 @@
     <!-- ===== Header ===== -->
     <header>
       <h1>4D-planering</h1>
-      <button id="btnSettings" title="Inställningar (färger m.m.)">⚙</button>
+      <button id="btnSettings" title="Inställningar (databas, färger m.m.)">⚙</button>
     </header>
+    <div id="connectionWarning" class="hint warning hidden"></div>
 
     <!-- ===== Koppla markerade objekt ===== -->
     <section class="panel">
@@ -132,7 +133,9 @@
       <label>Färg – ej påbörjad <input type="color" id="colorNotStarted" /></label>
       <label>Färg – pågående <input type="color" id="colorInProgress" /></label>
       <label>Färg – färdigställd <input type="color" id="colorDone" /></label>
-      <label>Backend-URL <input type="text" id="apiBaseUrl" placeholder="https://din-server.se/api" /></label>
+      <label>Supabase-URL <input type="text" id="supabaseUrl" placeholder="https://xxxxx.supabase.co" /></label>
+      <label>Supabase anon key (public) <input type="text" id="supabaseKey" placeholder="eyJhbGciOi..." /></label>
+      <p class="hint">Skapas gratis på <strong>supabase.com</strong> – se README.md för hela guiden (tar ca 5 minuter).</p>
       <div class="row">
         <button id="btnSaveSettings" class="primary">Spara</button>
         <button id="btnCloseSettings">Stäng</button>

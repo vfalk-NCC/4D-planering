@@ -1,6 +1,6 @@
 # 4D-planering – insticksprogram för Trimble Connect
 
-Ett enkelt insticksprogram (Extension) för visuell produktionsplanering i
+Ett insticksprogram (Extension) för visuell produktionsplanering i
 Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
 (https://developer.trimble.com/docs/connect/workspace-api/).
 
@@ -21,17 +21,27 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
 ## Arkitektur
 
 ```
-extension/   -> Frontend som körs inuti Trimble Connect (sidopanel)
-               index.html + app.js + style.css
-server/      -> Liten REST-backend (Node/Express + SQLite) som lagrar
-               planeringsposter per objekt-ID
+extension/        -> Frontend som körs inuti Trimble Connect (sidopanel)
+                     index.html + app.js + style.css
+                     Hostas gratis som statiska filer (t.ex. Netlify).
+supabase/
+  schema.sql       -> SQL-skript som skapar databastabellen, körs en gång.
 ```
 
-Varför en backend? Workspace API kan färglägga och filtrera objekt i
-visaren, men har inget inbyggt sätt att lagra egna, godtyckliga
-planeringsfält per objekt så att de finns kvar mellan sessioner och delas
-av hela teamet. Därför sparas datan i en liten egen databas som
-extensionen pratar med via HTTP.
+Det finns **ingen egen server längre**. Tidigare version använde en egen
+Node/Express-server med SQLite, men den gick aldrig att hosta gratis på
+ett tillförlitligt sätt (gratis-nivåer för servrar med beständig disk är
+antingen tidsbegränsade eller kräver betalkort). Extensionen pratar nu
+direkt med **Supabase** – en gratis Postgres-databas som har ett
+färdigbyggt REST-API (PostgREST) inbyggt, så ingen egen backend-kod
+behöver driftas eller hållas vid liv.
+
+```
+Trimble Connect (3D-visare)
+   -> extension/ (statiska filer på Netlify, gratis)
+        -> REST-anrop direkt till https://<ditt-projekt>.supabase.co
+             -> Supabase (Postgres-databas, gratis nivå)
+```
 
 ## Datamodell (per objekt)
 
@@ -52,53 +62,69 @@ till för filtrering/rapportering (t.ex. att markera förseningar).
 
 ## Komma igång
 
-### 1. Starta backend
+### 1. Skapa ett gratis Supabase-projekt
 
-```bash
-cd server
-npm install
-npm start
-```
+1. Gå till [supabase.com](https://supabase.com) och skapa ett konto
+   (inget betalkort krävs för gratisnivån).
+2. Klicka **New project**. Välj namn, ett databaslösenord (spara det
+   någonstans säkert – det behövs sällan men gå inte förlorat) och en
+   region nära er, t.ex. Frankfurt eller Stockholm om det finns.
+3. Vänta tills projektet är klart (tar ca en minut).
 
-Servern lyssnar på port 3000. Driftsätt den på valfri HTTPS-värd (t.ex.
-Azure App Service, Render, eget VM) – Trimble Connect kräver HTTPS för
-extensions.
+### 2. Skapa databastabellen
 
-### 2. Publicera frontend
+1. Öppna **SQL Editor** i vänstermenyn -> **New query**.
+2. Öppna filen [`supabase/schema.sql`](supabase/schema.sql) i det här
+   repot, kopiera hela innehållet och klistra in i SQL Editor.
+3. Klicka **Run**. Det skapar tabellen `plan_items` samt de
+   behörighetsregler (RLS-policy) som extensionen behöver.
 
-Lägg `extension/`-mappen på valfri webbserver/CDN (samma domän som i
-manifestet). Uppdatera `manifest.json` med rätt URL:er, och sätt
-backend-URL:en i insticksprogrammets inställningsdialog (kugghjulet)
-alternativt hårdkoda den i `app.js` (`settings.apiBaseUrl`).
+### 3. Hämta URL och nyckel
 
-### 3. Registrera extensionen i Trimble Connect
+1. Öppna **Project Settings** (kugghjulet) -> **API**.
+2. Kopiera **Project URL** (ser ut som `https://xxxxx.supabase.co`).
+3. Kopiera nyckeln under **Project API keys** som heter **anon** /
+   **public** (inte `service_role` – den ska aldrig användas i en
+   webbextension).
+
+### 4. Publicera frontend
+
+Lägg `extension/`-mappen på valfri gratis statisk webbhotell/CDN, t.ex.
+[Netlify](https://netlify.com) (dra-och-släpp mappen, eller koppla mot
+GitHub-repot för automatisk publicering vid varje push). Uppdatera
+`extension/manifest.json` med rätt URL om domänen ändras.
+
+### 5. Koppla extensionen till databasen
+
+1. Öppna projektet i Trimble Connect for Browser och aktivera
+   extensionen (se nästa steg om den inte redan är tillagd).
+2. Klicka på kugghjulet (⚙) uppe till höger i panelen.
+3. Klistra in **Supabase-URL** och **anon key** från steg 3.
+4. Klicka **Spara**. Varningen "Ingen databas ansluten" ska försvinna.
+
+Uppgifterna sparas lokalt i webbläsaren (`localStorage`) hos varje
+användare, precis som färginställningarna gjorde tidigare – själva
+planeringsdatan delas dock av alla via Supabase.
+
+### 6. Registrera extensionen i Trimble Connect (om det inte redan är gjort)
 
 1. Öppna projektet i Trimble Connect for Browser.
 2. Inställningar → Extensions.
-3. Ange manifest-URL:en (t.ex. `https://din-domän.se/4d-planering/manifest.json`)
-   och lägg till.
+3. Ange manifest-URL:en (t.ex. `https://<din-domän>/manifest.json`) och
+   lägg till.
 4. Aktivera extensionen under "Custom Extensions".
 
 ## Excel-import – automatisk uppdatering
 
 I den här grundversionen läser användaren in filen manuellt via
 "Importera"-knappen, vilket uppdaterar planeringen direkt i modellen.
-Detta uppfyller kravet att planeringen ska gå att uppdatera från Excel
-utan manuellt återskapande av kopplingar.
 
 **Verklig automatik** (filen uppdateras och modellen följer med utan
-manuellt klick) kräver en av:
-
-- **Molnmapp-bevakning**: lägg Excel-filen i en delad mapp (t.ex.
-  SharePoint/OneDrive) och låt backend polla filen med jämna mellanrum
-  (t.ex. `node-cron` + Microsoft Graph API) och skriva om databasen vid
-  ändring.
-- **Trimble Connect-filbevakning**: lägg Excel-filen i själva Trimble
-  Connect-projektet och låt backend polla projektets filer via Trimble
-  Connect REST-API (`GET /files`) och jämföra `modifiedDate`.
-
-Kryssrutan "Bevaka fil för automatisk uppdatering" i gränssnittet är en
-platshållare för detta – koppla den till valfri lösning ovan.
+manuellt klick) skulle kräva att något pollar filen med jämna mellanrum
+och skriver till Supabase, t.ex. en schemalagd Supabase Edge Function
+som läser filen från en delad mapp (SharePoint/OneDrive) eller från
+Trimble Connects egna filer via dess REST-API. Kryssrutan "Bevaka fil
+för automatisk uppdatering" i gränssnittet är en platshållare för detta.
 
 ## Viktiga begränsningar att känna till
 
@@ -107,19 +133,23 @@ platshållare för detta – koppla den till valfri lösning ovan.
   tillhöra samma modell som redan importerats.
 - **Färgläggning är sessionsbaserad**: `viewer.setObjectState` färgar
   objekt i den aktuella visningen. Planeringsdatan i sig är permanent
-  (lagras i backend); färgerna räknas om varje gång tidslinjen flyttas
+  (lagras i Supabase); färgerna räknas om varje gång tidslinjen flyttas
   eller extensionen laddas om.
 - **Selection-händelser**: exakt eventnamn för "objekt markerat i
   modellen" kan skilja mellan versioner av Trimble Connect. Just nu
   hämtas markeringen explicit när användaren trycker på "Koppla
-  markerade objekt", vilket är robust oavsett eventnamn. Vill du ha en
-  livesynkad räknare, verifiera aktuellt eventnamn mot
-  `TrimbleConnectWorkspace`-dokumentationen och koppla in det i
-  `onWorkspaceEvent`.
+  markerade objekt", vilket är robust oavsett eventnamn.
+- **Säkerhet**: anon-nyckeln ger läs- och skrivåtkomst till alla som har
+  den (se kommentaren i `supabase/schema.sql`). Det motsvarar samma
+  öppenhetsnivå som den gamla backend-lösningen hade, men dela inte
+  nyckeln i publika kanaler.
+- Du kan när som helst öppna databasen direkt i Supabase (**Table
+  editor** -> `plan_items`) för att granska eller manuellt rätta data.
 
 ## Nästa steg (utbyggnad)
 
-- Behörighetsstyrning (endast vissa roller får ändra planeringen).
+- Behörighetsstyrning (Supabase Auth, endast vissa roller får ändra
+  planeringen).
 - Historik/logg per objekt (vem ändrade vad och när).
 - Exportera lägesbild till PDF/bild för veckomöten.
 - Koppling mot riktiga tidplaneverktyg (t.ex. MS Project) i stället för
