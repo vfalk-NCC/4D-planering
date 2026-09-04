@@ -23,6 +23,13 @@ let lastSelection = [];      // [{modelId, objectId (externalId), objectRuntimeI
 let playTimer = null;
 let searchTerm = "";
 let labelMarkupIds = [];     // aktiva 3D-textetiketter skapade av "Visa namn i 3D"
+let collapsedGroups = new Set(); // vilka grupper (nyckel: "<fält>::<värde>") som är minimerade i listan
+
+// Tidslinjen ska alltid gå att dra minst fram till/bakåt till de här
+// datumen, oavsett vilka start-/slutdatum som faktiskt är inplanerade
+// på objekten.
+const TIMELINE_MIN_START = "2025-01-01";
+const TIMELINE_MIN_END = "2030-12-31";
 
 /* ---------------------------------------------------------------------
    Init
@@ -142,7 +149,7 @@ function onSaveSettings() {
   refreshItems().then(() => {
     buildFilterOptions();
     renderItemList();
-    applyTimelineColors();
+    initTimelineRange();
   });
 }
 
@@ -231,24 +238,54 @@ async function onSaveLink() {
   await refreshItems();
   buildFilterOptions();
   renderItemList();
-  applyTimelineColors();
+  initTimelineRange();
 }
 
 /* ---------------------------------------------------------------------
    Tidslinje – räkna ut och sätta färg per objekt
    ------------------------------------------------------------------- */
+/**
+ * Tidigaste datum tidslinjen ska gå att dra till: det tidigaste av
+ * TIMELINE_MIN_START och eventuellt ännu tidigare inplanerat startdatum
+ * (så att riktigt gamla projekt inte kapas).
+ */
+function getTimelineStart() {
+  const startDates = items.map(it => it.startDate).filter(Boolean).sort();
+  const earliestPlanned = startDates.length ? startDates[0] : null;
+  return earliestPlanned && earliestPlanned < TIMELINE_MIN_START ? earliestPlanned : TIMELINE_MIN_START;
+}
+
+/**
+ * Senaste datum tidslinjen ska gå att dra till: det senaste av
+ * TIMELINE_MIN_END och eventuellt ännu senare inplanerat slutdatum.
+ */
+function getTimelineEnd() {
+  const endDates = items.map(it => it.endDate).filter(Boolean).sort();
+  const latestPlanned = endDates.length ? endDates[endDates.length - 1] : null;
+  return latestPlanned && latestPlanned > TIMELINE_MIN_END ? latestPlanned : TIMELINE_MIN_END;
+}
+
 function initTimelineRange() {
-  const dates = items.flatMap(it => [it.startDate, it.endDate]).filter(Boolean).sort();
   const dateInput = document.getElementById("timelineDate");
   const today = new Date().toISOString().slice(0, 10);
-  dateInput.value = dates.length ? dates[0] : today;
+  const startDates = items.map(it => it.startDate).filter(Boolean).sort();
+  const defaultDate = startDates.length ? startDates[0] : today;
+
+  // Intervallet (start/end) går alltid minst TIMELINE_MIN_START–TIMELINE_MIN_END,
+  // oavsett vad som faktiskt är inplanerat – men kapas aldrig om projektet
+  // sträcker sig längre åt något håll än så.
+  const start = getTimelineStart();
+  const end = getTimelineEnd();
+
+  if (!dateInput.value) dateInput.value = defaultDate;
+  dateInput.min = start;
+  dateInput.max = end;
 
   const slider = document.getElementById("timelineSlider");
-  if (dates.length >= 2) {
-    slider.min = 0;
-    slider.max = daysBetween(dates[0], dates[dates.length - 1]);
-    slider.value = 0;
-  }
+  slider.min = 0;
+  slider.max = daysBetween(start, end);
+  slider.value = Math.max(0, daysBetween(start, dateInput.value));
+
   applyTimelineColors();
 }
 
@@ -276,8 +313,9 @@ function onDateInputChange() {
 }
 
 function getEarliestDate() {
-  const dates = items.map(it => it.startDate).filter(Boolean).sort();
-  return dates[0] || null;
+  // Referenspunkt för sliderns position 0 – måste vara samma datum som
+  // initTimelineRange räknar fram som intervallets start.
+  return getTimelineStart();
 }
 
 function onTogglePlay() {
@@ -494,7 +532,7 @@ async function onImportExcel() {
   await refreshItems();
   buildFilterOptions();
   renderItemList();
-  applyTimelineColors();
+  initTimelineRange();
   status.innerText = `Klart – ${records.length} objekt uppdaterade.`;
 }
 
@@ -528,6 +566,42 @@ function normalizeStatus(value) {
 /* ---------------------------------------------------------------------
    Objektlista
    ------------------------------------------------------------------- */
+
+/**
+ * Markerar (och zoomar till) en eller flera planeringsposter i 3D-vyn.
+ * Poster utan modell-koppling (t.ex. felaktiga Excel-rader) hoppas över.
+ * Används både för enskild radklick och för "Välj alla" per grupp.
+ */
+async function selectItemsInModel(itemsToSelect) {
+  const withModel = itemsToSelect.filter(it => it.modelId && it.objectId);
+  if (withModel.length === 0) {
+    alert("Inga av objekten har en känd modell-koppling (troligen från Excel utan ModellID).");
+    return;
+  }
+
+  const byModel = {};
+  withModel.forEach(it => {
+    byModel[it.modelId] = byModel[it.modelId] || [];
+    byModel[it.modelId].push(it.objectId);
+  });
+
+  const modelObjectIds = [];
+  for (const modelId of Object.keys(byModel)) {
+    const runtimeIds = await API.viewer.convertToObjectRuntimeIds(modelId, byModel[modelId]);
+    const valid = runtimeIds.filter(id => id !== undefined && id !== null);
+    if (valid.length > 0) modelObjectIds.push({ modelId, objectRuntimeIds: valid });
+  }
+
+  if (modelObjectIds.length === 0) {
+    alert("Hittade inga av objekten i den just nu inlästa modellen.");
+    return;
+  }
+
+  const selector = { modelObjectIds };
+  await API.viewer.setSelection(selector, "set");
+  await API.viewer.setCamera(selector);
+}
+
 function renderItemList() {
   searchTerm = (document.getElementById("itemSearch").value || "").toLowerCase().trim();
   const groupBy = document.getElementById("groupBy").value;
@@ -560,56 +634,78 @@ function renderItemList() {
     status: it => statusLabel[it.status] || it.status || "Okänd status"
   };
 
-  let orderedItems = [];
-  const groupHeaders = {}; // index i orderedItems -> rubriktext
-
+  // groups: [{ key: <unikt, t.ex. "area::Hus A"> | null, title, items }]
+  let groups;
   if (groupBy && groupKeyFns[groupBy]) {
     const keyFn = groupKeyFns[groupBy];
-    const groups = new Map();
+    const map = new Map();
     visible.forEach(it => {
-      const key = keyFn(it);
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(it);
+      const title = keyFn(it);
+      if (!map.has(title)) map.set(title, []);
+      map.get(title).push(it);
     });
-    const groupKeys = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b, "sv"));
-    groupKeys.forEach(key => {
-      const groupItems = groups.get(key);
+    const titles = Array.from(map.keys()).sort((a, b) => a.localeCompare(b, "sv"));
+    groups = titles.map(title => {
+      const groupItems = map.get(title);
       if (sortAlpha) groupItems.sort(sortFn);
-      groupHeaders[orderedItems.length] = `${key} (${groupItems.length})`;
-      orderedItems = orderedItems.concat(groupItems);
+      return { key: `${groupBy}::${title}`, title, items: groupItems };
     });
   } else {
-    orderedItems = sortAlpha ? [...visible].sort(sortFn) : visible;
+    groups = [{ key: null, title: null, items: sortAlpha ? [...visible].sort(sortFn) : visible }];
   }
 
-  el.innerHTML = orderedItems.map((it, i) => {
-    const header = groupHeaders[i] !== undefined
-      ? `<div class="group-header">${escapeHtml(groupHeaders[i])}</div>`
-      : "";
-    return `${header}
-    <div class="item-row" data-index="${i}">
-      <span class="item-main" data-action="select">
-        <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span><br/>
-        <span>${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span>
-      </span>
-      <span class="badge" style="background:${statusColor[it.status] || "#999"}">${statusLabel[it.status] || it.status}</span>
-      <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
-    </div>`;
-  }).join("");
+  let html = "";
+  const indexToItem = [];
+
+  groups.forEach(group => {
+    if (group.key) {
+      const collapsed = collapsedGroups.has(group.key);
+      html += `
+        <div class="group-header" data-group-key="${escapeHtml(group.key)}">
+          <span class="group-toggle" data-action="toggle-group" title="${collapsed ? "Expandera gruppen" : "Minimera gruppen"}">${collapsed ? "▶" : "▼"}</span>
+          <span class="group-title" data-action="toggle-group">${escapeHtml(group.title)} (${group.items.length})</span>
+          <button class="group-select-all" data-action="select-group" title="Markera alla objekt i gruppen i 3D-vyn">Välj alla</button>
+        </div>`;
+      if (collapsed) return;
+    }
+    group.items.forEach(it => {
+      const idx = indexToItem.length;
+      indexToItem.push(it);
+      html += `
+        <div class="item-row" data-index="${idx}">
+          <span class="item-main" data-action="select">
+            <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span><br/>
+            <span>${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span>
+          </span>
+          <span class="badge" style="background:${statusColor[it.status] || "#999"}">${statusLabel[it.status] || it.status}</span>
+          <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
+        </div>`;
+    });
+  });
+
+  el.innerHTML = html;
 
   Array.from(el.querySelectorAll(".item-row")).forEach(row => {
-    const it = orderedItems[Number(row.dataset.index)];
+    const it = indexToItem[Number(row.dataset.index)];
 
-    row.querySelector('[data-action="select"]').onclick = async () => {
-      if (!it.modelId) { alert("Objektet saknar modell-koppling (troligen från Excel utan ModellID)."); return; }
-      const runtimeIds = await API.viewer.convertToObjectRuntimeIds(it.modelId, [it.objectId]);
-      const valid = runtimeIds.filter(id => id !== undefined && id !== null);
-      if (valid.length === 0) { alert("Hittade inte objektet i den just nu inlästa modellen."); return; }
-      await API.viewer.setSelection({ modelObjectIds: [{ modelId: it.modelId, objectRuntimeIds: valid }] }, "set");
-      await API.viewer.setCamera({ modelObjectIds: [{ modelId: it.modelId, objectRuntimeIds: valid }] });
-    };
-
+    row.querySelector('[data-action="select"]').onclick = () => selectItemsInModel([it]);
     row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it);
+  });
+
+  Array.from(el.querySelectorAll(".group-header")).forEach(headerEl => {
+    const key = headerEl.dataset.groupKey;
+    const group = groups.find(g => g.key === key);
+    if (!group) return;
+
+    const toggleFn = () => {
+      if (collapsedGroups.has(key)) collapsedGroups.delete(key);
+      else collapsedGroups.add(key);
+      renderItemList();
+    };
+    headerEl.querySelectorAll('[data-action="toggle-group"]').forEach(elToggle => {
+      elToggle.onclick = toggleFn;
+    });
+    headerEl.querySelector('[data-action="select-group"]').onclick = () => selectItemsInModel(group.items);
   });
 }
 

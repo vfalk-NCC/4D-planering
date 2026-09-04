@@ -101,15 +101,33 @@ button:hover { filter: brightness(0.97); }
 
 .item-list { max-height: 220px; overflow-y: auto; }
 .group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 10px;
   font-weight: 700;
-  text-transform: uppercase;
   letter-spacing: .03em;
   color: var(--muted);
-  padding: 8px 4px 3px;
+  padding: 7px 4px 6px;
   border-bottom: 1px solid var(--border);
 }
 .group-header:first-child { padding-top: 2px; }
+.group-toggle {
+  cursor: pointer;
+  width: 12px;
+  flex: 0 0 auto;
+  user-select: none;
+}
+.group-title {
+  cursor: pointer;
+  text-transform: uppercase;
+  flex: 1;
+}
+.group-select-all {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  font-size: 10px;
+}
 .item-row {
   display: flex;
   justify-content: space-between;

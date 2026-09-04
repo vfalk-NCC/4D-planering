@@ -24,7 +24,10 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   tabellen.
 - **Gruppering och sortering av objektlistan**: listan "Planerade objekt"
   kan grupperas på område, aktivitet, entreprenör eller status, med eller
-  utan alfabetisk sortering inom varje grupp.
+  utan alfabetisk sortering inom varje grupp. Varje grupp går att minimera
+  (klicka på pilen eller rubriken) för att få bättre överblick i långa
+  listor, och knappen "Välj alla" i gruppens rubrikrad markerar samtliga
+  objekt i gruppen i 3D-vyn med ett klick.
 - **Genomskinlighet per tidslinjefärg**: varje tidslinjefärg (ej påbörjad /
   pågående / färdigställd) har ett eget opacitetsreglage i inställningarna,
   så att t.ex. ej påbörjade objekt kan tonas ner utan att döljas helt.
