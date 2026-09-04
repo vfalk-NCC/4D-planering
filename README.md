@@ -13,10 +13,17 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   objekt får var sin färg (valbara i inställningarna).
 - Filtrering på område/aktivitet/entreprenör/status samt "kommande veckor"
   ger en snabb lägesbild i modellen (isolerar matchande objekt).
-- Excel-import: en fil med kolumnerna `ObjektID, Område, Aktivitet,
+- Excel-import: en fil med kolumnerna `ObjektID, Namn, Område, Aktivitet,
   Entreprenör, Status, Startdatum, Slutdatum` läses in och skriver/uppdaterar
   planeringen. Data sparas i en databas (inte i webbläsaren) så att den
   finns kvar mellan sessioner och delas mellan alla i projektet.
+- **Excel-export**: knappen "Exportera till Excel" i samma panel skriver ut
+  en `.xlsx`-fil med exakt samma kolumner som importen (`ObjektID, Namn,
+  Område, Aktivitet, Entreprenör, Status, Startdatum, Slutdatum`), så filen
+  går att redigera och importera tillbaka rakt av. Exporten respekterar det
+  som just nu visas i "Planerade objekt" – dvs. sökningen och ev. "Dölj
+  klarmarkerade" – men inte grupperingen, som bara organiserar listan.
+  Filen namnges `4D-planering-ÅÅÅÅ-MM-DD.xlsx`.
 - **Hitta objekt via koordinat**: markera en grupp kandidatobjekt i 3D-vyn
   (t.ex. alla fundament på en yta) och ange en X/Y-koordinat (i meter) – 
   extensionen hittar och markerar det objekt i markeringen som ligger

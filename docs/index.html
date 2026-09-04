@@ -147,14 +147,17 @@
       </div>
     </section>
 
-    <!-- ===== Excel-import ===== -->
+    <!-- ===== Excel-import/export ===== -->
     <section class="panel" data-panel-id="excel">
-      <h2>Excel-import</h2>
-      <p class="hint">Kolumner: ObjektID, Område, Aktivitet, Entreprenör, Status, Startdatum, Slutdatum</p>
+      <h2>Excel-import/export</h2>
+      <p class="hint">Kolumner: ObjektID, Namn, Område, Aktivitet, Entreprenör, Status, Startdatum, Slutdatum</p>
       <input type="file" id="excelFile" accept=".xlsx,.xls" />
       <div class="row">
         <button id="btnImportExcel" class="primary">Importera</button>
         <label class="switch"><input type="checkbox" id="autoSync" /> Bevaka fil för automatisk uppdatering</label>
+      </div>
+      <div class="row">
+        <button id="btnExportExcel" title="Exporterar de objekt som just nu visas i &quot;Planerade objekt&quot; (efter sökning och ev. &quot;Dölj klarmarkerade&quot;) till en .xlsx-fil med samma kolumner som importen">Exportera till Excel</button>
       </div>
       <div id="importStatus" class="hint"></div>
     </section>

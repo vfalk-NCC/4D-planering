@@ -39,6 +39,17 @@ let commentCounts = new Map();  // plan_item_id -> antal kommentarer (för 💬-
 const TIMELINE_MIN_START = "2025-01-01";
 const TIMELINE_MIN_END = "2030-12-31";
 
+// Svenska visningsnamn per statusvärde - används i objektlistan,
+// filterrutan och Excel-exporten så de alltid visar samma text.
+const STATUS_LABELS = {
+  ej_planerad: "Ej planerad",
+  planerad: "Planerad",
+  pagaende: "Pågående",
+  forsenad: "Försenad",
+  klar: "Klar",
+  pausad: "Pausad"
+};
+
 // Max antal rader att hämta från Supabase per anrop. OBS: Supabase-projektets
 // egen inställning "Max Rows" (Project Settings -> API, standard 1000)
 // sätter också ett tak – höj den där också om du planerar in fler än 1000
@@ -103,6 +114,7 @@ function bindUI() {
   document.getElementById("btnClearFilter").onclick = clearFilter;
 
   document.getElementById("btnImportExcel").onclick = onImportExcel;
+  document.getElementById("btnExportExcel").onclick = onExportExcel;
 
   document.getElementById("itemSearch").oninput = () => renderItemList();
   document.getElementById("groupBy").onchange = () => renderItemList();
@@ -482,8 +494,7 @@ function buildFilterOptions() {
   // Status är en fast lista i appen, så den fylls alltid i - oavsett
   // vilka statusar som redan finns bland sparade objekt.
   const statusEl = document.getElementById("filterStatus");
-  const statusLabels = { ej_planerad: "Ej planerad", planerad: "Planerad", pagaende: "Pågående", forsenad: "Försenad", klar: "Klar", pausad: "Pausad" };
-  statusEl.innerHTML = Object.entries(statusLabels)
+  statusEl.innerHTML = Object.entries(STATUS_LABELS)
     .map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
 }
 
@@ -611,6 +622,43 @@ async function onImportExcel() {
   renderItemList();
   initTimelineRange();
   status.innerText = `Klart – ${records.length} objekt uppdaterade.`;
+}
+
+/**
+ * Exporterar objekten som just nu visas i "Planerade objekt" (dvs. efter
+ * sökning och ev. "Dölj klarmarkerade" - men oavsett gruppering, som bara
+ * organiserar listan) till en .xlsx-fil, med samma kolumner som
+ * Excel-importen förväntar sig - så filen går att redigera och importera
+ * tillbaka rakt av.
+ */
+function onExportExcel() {
+  const status = document.getElementById("importStatus");
+  const rows = getVisibleItems();
+
+  if (rows.length === 0) {
+    status.innerText = "Inget att exportera - listan är tom eller helt bortfiltrerad.";
+    return;
+  }
+
+  const data = rows.map(it => ({
+    "ObjektID": it.objectId,
+    "Namn": it.objectName || "",
+    "Område": it.area || "",
+    "Aktivitet": it.activity || "",
+    "Entreprenör": it.contractor || "",
+    "Status": STATUS_LABELS[it.status] || it.status || "",
+    "Startdatum": it.startDate || "",
+    "Slutdatum": it.endDate || ""
+  }));
+
+  const sheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Planering");
+
+  const today = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(workbook, `4D-planering-${today}.xlsx`);
+
+  status.innerText = `Exporterade ${rows.length} objekt till Excel.`;
 }
 
 function parseExcelFile(file) {
@@ -767,19 +815,30 @@ function updateItemsTruncatedWarning() {
   }
 }
 
+/**
+ * Rader som matchar sökningen och (om ikryssat) "Dölj klarmarkerade" - dvs.
+ * exakt det som "Planerade objekt"-listan visar just nu, oavsett ev.
+ * gruppering (som bara organiserar, inte filtrerar bort rader). Delas
+ * mellan renderItemList() och Excel-exporten så de alltid är i synk.
+ */
+function getVisibleItems() {
+  const term = (document.getElementById("itemSearch").value || "").toLowerCase().trim();
+  const hideCompleted = document.getElementById("hideCompleted").checked;
+  return items.filter(it => {
+    if (hideCompleted && it.status === "klar") return false;
+    if (!term) return true;
+    const haystack = [it.objectName, it.area, it.activity, it.contractor, it.objectId]
+      .filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(term);
+  });
+}
+
 function renderItemList() {
   searchTerm = (document.getElementById("itemSearch").value || "").toLowerCase().trim();
   const groupBy = document.getElementById("groupBy").value;
   const sortAlpha = document.getElementById("sortAlpha").checked;
-  const hideCompleted = document.getElementById("hideCompleted").checked;
 
-  const visible = items.filter(it => {
-    if (hideCompleted && it.status === "klar") return false;
-    if (!searchTerm) return true;
-    const haystack = [it.objectName, it.area, it.activity, it.contractor, it.objectId]
-      .filter(Boolean).join(" ").toLowerCase();
-    return haystack.includes(searchTerm);
-  });
+  const visible = getVisibleItems();
 
   document.getElementById("itemCount").innerText = `${visible.length}/${items.length}`;
   updateItemsTruncatedWarning();
@@ -799,7 +858,7 @@ function renderItemList() {
   const el = document.getElementById("itemList");
   const statusColor = { ej_planerad: "#cbd5e1", planerad: "#94a3b8", pagaende: "#f5a623", forsenad: "#e5484d", klar: "#3fb950", pausad: "#a1a1aa" };
   const statusTextColor = { ej_planerad: "#334155" };
-  const statusLabel = { ej_planerad: "Ej planerad", planerad: "Planerad", pagaende: "Pågående", forsenad: "Försenad", klar: "Klar", pausad: "Pausad" };
+  const statusLabel = STATUS_LABELS;
 
   if (visible.length === 0) {
     el.innerHTML = `<div class="hint">Inga objekt ${searchTerm ? "matchar sökningen" : "sparade ännu"}.</div>`;
