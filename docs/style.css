@@ -210,6 +210,23 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
   font-size: 12px;
   padding: 2px 4px;
 }
+.item-row .comment-btn { position: relative; }
+.comment-count {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+}
 .progress-track {
   position: relative;
   height: 5px;

@@ -134,12 +134,15 @@
           <input type="checkbox" id="sortAlpha" /> Sortera A-Ö
         </label>
       </div>
+      <label class="switch" style="margin-bottom:6px;">
+        <input type="checkbox" id="hideCompleted" /> Dölj klarmarkerade
+      </label>
       <div id="itemList" class="item-list"></div>
       <div class="row">
         <button id="btnDeleteSelected" title="Radera planeringskopplingen för alla markerade rader" disabled>Radera markerade (<span id="selectedCount">0</span>)</button>
       </div>
       <div class="row">
-        <button id="btnShowLabels" title="Visa varje kopplat objekts namn som textetikett i 3D-vyn">Visa namn i 3D</button>
+        <button id="btnShowLabels" title="Visa namn + start-/slutdatum som textetiketter i 3D-vyn för de markerade raderna i listan" disabled>Visa namn i 3D</button>
         <button id="btnClearLabels" title="Ta bort etiketterna igen">Rensa etiketter</button>
       </div>
     </section>

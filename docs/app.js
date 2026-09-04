@@ -31,6 +31,7 @@ let selectedItemKeys = new Set(); // markerade rader i "Planerade objekt" (Ctrl/
 let selectionAnchorKey = null; // ankarraden för Shift-klick (intervallmarkering) i objektlistan
 let currentCommentsItem = null; // vilket objekt kommentarsdialogen just nu visar
 let currentComments = [];       // kommentarer (platt lista, inkl. svar) för currentCommentsItem
+let commentCounts = new Map();  // plan_item_id -> antal kommentarer (för 💬-badgen i listan)
 
 // Tidslinjen ska alltid gå att dra minst fram till/bakåt till de här
 // datumen, oavsett vilka start-/slutdatum som faktiskt är inplanerade
@@ -50,6 +51,10 @@ const ITEMS_FETCH_LIMIT = 50000;
 // större markeringar delas därför upp i flera anrop i sekvens.
 const DELETE_CHUNK_SIZE = 100;
 
+// Max antal kommentarsrader (över alla objekt) att hämta när vi bara vill
+// räkna antal kommentarer per objekt (för 💬-badgen i "Planerade objekt").
+const COMMENTS_FETCH_LIMIT = 50000;
+
 /* ---------------------------------------------------------------------
    Init
    ------------------------------------------------------------------- */
@@ -66,6 +71,7 @@ async function init() {
   projectId = project.id;
 
   await refreshItems();
+  await refreshCommentCounts();
   buildFilterOptions();
   renderItemList();
   initTimelineRange();
@@ -101,6 +107,7 @@ function bindUI() {
   document.getElementById("itemSearch").oninput = () => renderItemList();
   document.getElementById("groupBy").onchange = () => renderItemList();
   document.getElementById("sortAlpha").onchange = () => renderItemList();
+  document.getElementById("hideCompleted").onchange = () => renderItemList();
 
   document.getElementById("btnDeleteSelected").onclick = onDeleteSelectedItems;
 
@@ -211,7 +218,8 @@ function onSaveSettings() {
   paintLegendDots();
   updateConnectionWarning();
   toggle("settingsDialog", false);
-  refreshItems().then(() => {
+  refreshItems().then(async () => {
+    await refreshCommentCounts();
     buildFilterOptions();
     renderItemList();
     initTimelineRange();
@@ -763,8 +771,10 @@ function renderItemList() {
   searchTerm = (document.getElementById("itemSearch").value || "").toLowerCase().trim();
   const groupBy = document.getElementById("groupBy").value;
   const sortAlpha = document.getElementById("sortAlpha").checked;
+  const hideCompleted = document.getElementById("hideCompleted").checked;
 
   const visible = items.filter(it => {
+    if (hideCompleted && it.status === "klar") return false;
     if (!searchTerm) return true;
     const haystack = [it.objectName, it.area, it.activity, it.contractor, it.objectId]
       .filter(Boolean).join(" ").toLowerCase();
@@ -783,6 +793,8 @@ function renderItemList() {
   if (selectedCountEl) selectedCountEl.innerText = selectedItemKeys.size;
   const btnDeleteSelected = document.getElementById("btnDeleteSelected");
   if (btnDeleteSelected) btnDeleteSelected.disabled = selectedItemKeys.size === 0;
+  const btnShowLabels = document.getElementById("btnShowLabels");
+  if (btnShowLabels) btnShowLabels.disabled = selectedItemKeys.size === 0;
 
   const el = document.getElementById("itemList");
   const statusColor = { ej_planerad: "#cbd5e1", planerad: "#94a3b8", pagaende: "#f5a623", forsenad: "#e5484d", klar: "#3fb950", pausad: "#a1a1aa" };
@@ -843,6 +855,9 @@ function renderItemList() {
       indexToItem.push(it);
       const isSelected = selectedItemKeys.has(it.objectId);
       const progress = Number.isFinite(it.progress) ? it.progress : 0;
+      const commentCount = commentCounts.get(it.id) || 0;
+      const commentBadge = commentCount > 0 ? `<span class="comment-count">${commentCount}</span>` : "";
+      const commentTitle = commentCount > 0 ? `Kommentarer (${commentCount})` : "Kommentarer";
       html += `
         <div class="item-row${isSelected ? " selected" : ""}" data-index="${idx}">
           <div class="item-row-top">
@@ -852,7 +867,7 @@ function renderItemList() {
               <span class="item-dates">${escapeHtml(formatDateRange(it))} · Framdrift ${progress}%</span>
             </span>
             <span class="badge" style="background:${statusColor[it.status] || "#999"};color:${statusTextColor[it.status] || "#fff"}">${statusLabel[it.status] || it.status}</span>
-            <button class="comment-btn" data-action="comments" title="Kommentarer">💬</button>
+            <button class="comment-btn" data-action="comments" title="${commentTitle}">💬${commentBadge}</button>
             <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
             <button class="delete-btn" data-action="delete" title="Radera kopplingen">🗑️</button>
           </div>
@@ -1065,6 +1080,8 @@ async function onSubmitComment(body, parentCommentId) {
   statusEl.innerText = "";
   document.getElementById("commentText").value = "";
   await loadComments(currentCommentsItem);
+  await refreshCommentCounts();
+  renderItemList();
 }
 
 function formatDateTime(iso) {
@@ -1164,10 +1181,32 @@ async function onFindNearest() {
 /* ---------------------------------------------------------------------
    3D-etiketter med kopplade objekts namn (rutnätsbeteckning m.m.)
    ------------------------------------------------------------------- */
+/** Kort datumformat för 3D-etiketter, t.ex. "2026-09-12" -> "260912". */
+function formatDateShort(dateStr) {
+  if (!dateStr) return "";
+  return dateStr.slice(2).replace(/-/g, "");
+}
+
+/** "260912 - 260921", eller bara ena datumet om det andra saknas, eller "" om inga finns. */
+function formatDateRangeShort(it) {
+  const s = formatDateShort(it.startDate);
+  const e = formatDateShort(it.endDate);
+  if (s && e) return `${s} - ${e}`;
+  return s || e || "";
+}
+
+/** Etikettext för ett objekt: namn, plus start-/slutdatum på en egen rad om satta. */
+function labelTextFor(it) {
+  const name = it.objectName || it.objectId;
+  const range = formatDateRangeShort(it);
+  return range ? `${name}\n${range}` : name;
+}
+
 async function onShowLabels() {
-  const linked = items.filter(it => it.modelId && it.objectId);
+  const selectedItems = items.filter(it => selectedItemKeys.has(it.objectId));
+  const linked = selectedItems.filter(it => it.modelId && it.objectId);
   if (linked.length === 0) {
-    alert("Inga kopplade objekt att visa etiketter för ännu.");
+    alert("Inga rader är markerade. Håll in Ctrl (⌘ på Mac) eller Shift och klicka på flera rader i \"Planerade objekt\" för att välja vilka som ska få etiketter i 3D-vyn.");
     return;
   }
 
@@ -1214,7 +1253,7 @@ async function onShowLabels() {
           modelId,
           objectId: runtimeId
         };
-        newMarkups.push({ text: it.objectName || it.objectId, start: point, end: point });
+        newMarkups.push({ text: labelTextFor(it), start: point, end: point });
       });
     }
 
@@ -1429,6 +1468,29 @@ async function fetchComments(planItemId) {
     throw new Error(`Databasfel (${res.status}): ${text || res.statusText}`);
   }
   return res.json();
+}
+
+/**
+ * Räknar antal kommentarer per objekt (för 💬-badgen i "Planerade objekt").
+ * Hämtar bara plan_item_id-kolumnen (inte hela kommentartexten) för att
+ * hålla anropet litet, och bygger om hela commentCounts-kartan varje gång.
+ */
+async function refreshCommentCounts() {
+  commentCounts = new Map();
+  if (!isSupabaseConfigured()) return;
+  try {
+    const url = `${settings.supabaseUrl}/rest/v1/plan_item_comments?select=plan_item_id`;
+    const res = await fetch(url, {
+      headers: { ...supabaseHeaders(false), Range: `0-${COMMENTS_FETCH_LIMIT - 1}` }
+    });
+    if (!res.ok) return;
+    const rows = await res.json();
+    rows.forEach(row => {
+      commentCounts.set(row.plan_item_id, (commentCounts.get(row.plan_item_id) || 0) + 1);
+    });
+  } catch (e) {
+    console.error("Kunde inte hämta antal kommentarer", e);
+  }
 }
 
 /** Skapar en ny kommentar (eller ett svar, om parent_comment_id är satt). */

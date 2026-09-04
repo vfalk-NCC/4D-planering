@@ -34,13 +34,16 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
 - **Justerbar uppspelningshastighet**: hur många sekunder realtid varje
   simulerad dag ska visas när man trycker på "spela upp" (▶) på
   tidslinjen går att ställa in i inställningarna.
-- **Visa kopplade objekts namn som 3D-etiketter**: knappen "Visa namn i 3D"
-  i objektlistan ritar ut varje kopplat objekts namn (t.ex. rutnätsbeteckningar
-  som K16, J18) som textetiketter i 3D-vyn, så att man visuellt kan
-  kontrollera att rätt objekt är kopplade utan att öppna sidopanelens lista.
-  "Rensa etiketter" tar bort dem igen. (Etiketterna använder Trimble Connects
-  inbyggda textmarkup-funktion, som har fast utseende – font och
-  bakgrundsfärg går inte att anpassa.)
+- **Visa markerade objekts namn och datum som 3D-etiketter**: knappen "Visa
+  namn i 3D" i objektlistan ritar ut namn samt planerat start-/slutdatum
+  (t.ex. "K16" och "260101 - 260105" på en egen rad, i det korta
+  formatet ÅÅMMDD för att inte bli för mycket text) som textetiketter i
+  3D-vyn – men bara för de rader som just då är markerade i "Planerade
+  objekt" (samma Ctrl/Cmd- och Shift-markering som används för "Radera
+  markerade"), inte alla kopplade objekt. Knappen är inaktiv tills minst en
+  rad är markerad. "Rensa etiketter" tar bort dem igen. (Etiketterna
+  använder Trimble Connects inbyggda textmarkup-funktion, som har fast
+  utseende – font och bakgrundsfärg går inte att anpassa.)
 - **Ihopfällbara paneler**: klicka på en panelrubrik (t.ex. "Koppla
   markering", "Tidslinje", "Filter") för att minimera den och få mer
   utrymme i sidopanelen. Vilka paneler som är minimerade sparas lokalt i
@@ -82,8 +85,15 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   kommentarstråd för det objektet – ungefär som cellkommentarer i Excel.
   Varje kommentar loggas med namn och datum/tid, och går att svara på
   (svaren visas indragna under sin kommentar). Namnet du senast skrev in
-  sparas lokalt och förifylls nästa gång. Kräver att migreringen nedan
-  körts i Supabase.
+  sparas lokalt och förifylls nästa gång. Så fort ett objekt har minst en
+  kommentar syns en liten siffra ovanpå 💬-knappen på dess rad (antal
+  kommentarer, inkl. svar), så att man ser vilka objekt som diskuterats utan
+  att behöva öppna varje kommentarstråd. Kräver att migreringen nedan körts
+  i Supabase.
+- **Dölj klarmarkerade objekt**: kryssrutan "Dölj klarmarkerade" ovanför
+  listan filtrerar bort alla objekt med status "Klar", oavsett om listan
+  samtidigt är grupperad (område/aktivitet/entreprenör/status) eller
+  sorterad – de två går att kombinera fritt.
 
 ## Arkitektur
 
