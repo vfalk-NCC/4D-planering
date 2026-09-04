@@ -46,6 +46,7 @@
         </label>
         <label>Status
           <select id="fStatus">
+            <option value="ej_planerad">Ej planerad</option>
             <option value="planerad">Planerad</option>
             <option value="pagaende">Pågående</option>
             <option value="forsenad">Försenad</option>
@@ -130,7 +131,11 @@
           <input type="checkbox" id="sortAlpha" /> Sortera A-Ö
         </label>
       </div>
+      <p class="hint">Håll in Ctrl (⌘ på Mac) och klicka för att markera flera objekt i listan – de markeras då även i 3D-vyn.</p>
       <div id="itemList" class="item-list"></div>
+      <div class="row">
+        <button id="btnDeleteSelected" title="Radera planeringskopplingen för alla markerade rader" disabled>Radera markerade (<span id="selectedCount">0</span>)</button>
+      </div>
       <div class="row">
         <button id="btnShowLabels" title="Visa varje kopplat objekts namn som textetikett i 3D-vyn">Visa namn i 3D</button>
         <button id="btnClearLabels" title="Ta bort etiketterna igen">Rensa etiketter</button>

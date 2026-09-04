@@ -26,6 +26,7 @@ let labelMarkupIds = [];     // aktiva 3D-textetiketter skapade av "Visa namn i 
 let collapsedGroups = new Set(); // vilka grupper (nyckel: "<fält>::<värde>") som är minimerade i listan
 let collapsedPanels = new Set(); // vilka paneler (data-panel-id) som är minimerade
 let itemsTotalCount = null;  // totalt antal rader enligt Supabase (Content-Range), eller null om okänt
+let selectedItemKeys = new Set(); // markerade rader i "Planerade objekt" (Ctrl/Cmd-klick), nyckel = objectId
 
 // Tidslinjen ska alltid gå att dra minst fram till/bakåt till de här
 // datumen, oavsett vilka start-/slutdatum som faktiskt är inplanerade
@@ -87,6 +88,8 @@ function bindUI() {
   document.getElementById("itemSearch").oninput = () => renderItemList();
   document.getElementById("groupBy").onchange = () => renderItemList();
   document.getElementById("sortAlpha").onchange = () => renderItemList();
+
+  document.getElementById("btnDeleteSelected").onclick = onDeleteSelectedItems;
 
   document.getElementById("btnFindNearest").onclick = onFindNearest;
 
@@ -446,7 +449,7 @@ function buildFilterOptions() {
   // Status är en fast lista i appen, så den fylls alltid i - oavsett
   // vilka statusar som redan finns bland sparade objekt.
   const statusEl = document.getElementById("filterStatus");
-  const statusLabels = { planerad: "Planerad", pagaende: "Pågående", forsenad: "Försenad", klar: "Klar", pausad: "Pausad" };
+  const statusLabels = { ej_planerad: "Ej planerad", planerad: "Planerad", pagaende: "Pågående", forsenad: "Försenad", klar: "Klar", pausad: "Pausad" };
   statusEl.innerHTML = Object.entries(statusLabels)
     .map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
 }
@@ -600,7 +603,10 @@ function excelDateToIso(value) {
 }
 
 function normalizeStatus(value) {
-  const map = { "planerad": "planerad", "pågående": "pagaende", "försenad": "forsenad", "klar": "klar", "pausad": "pausad" };
+  const map = {
+    "ej planerad": "ej_planerad", "ej_planerad": "ej_planerad",
+    "planerad": "planerad", "pågående": "pagaende", "försenad": "forsenad", "klar": "klar", "pausad": "pausad"
+  };
   return map[String(value || "").toLowerCase()] || "planerad";
 }
 
@@ -662,6 +668,34 @@ async function deleteItemFromList(item) {
     return;
   }
 
+  selectedItemKeys.delete(item.objectId);
+  await refreshItems();
+  buildFilterOptions();
+  renderItemList();
+  initTimelineRange();
+}
+
+/**
+ * Raderar alla rader som är markerade i listan (Ctrl/Cmd-klick), efter en
+ * gemensam bekräftelsefråga. Tar bara bort kopplingen/planeringsdatan i
+ * Supabase – själva 3D-objekten i modellen påverkas inte.
+ */
+async function onDeleteSelectedItems() {
+  const selectedItems = items.filter(it => selectedItemKeys.has(it.objectId));
+  if (selectedItems.length === 0) {
+    alert("Inga rader är markerade. Håll in Ctrl (⌘ på Mac) och klicka på flera rader i listan för att markera dem.");
+    return;
+  }
+  if (!confirm(`Är du säker på att du vill radera kopplingen för ${selectedItems.length} markerade objekt?`)) return;
+
+  try {
+    await deleteItems(selectedItems);
+  } catch (e) {
+    alert("Kunde inte radera: " + e.message);
+    return;
+  }
+
+  selectedItemKeys.clear();
   await refreshItems();
   buildFilterOptions();
   renderItemList();
@@ -694,9 +728,20 @@ function renderItemList() {
 
   document.getElementById("itemCount").innerText = `${visible.length}/${items.length}`;
   updateItemsTruncatedWarning();
+
+  // Rader vars objekt inte längre finns i listan (t.ex. efter radering) kan
+  // inte längre vara markerade.
+  const existingIds = new Set(items.map(it => it.objectId));
+  Array.from(selectedItemKeys).forEach(key => { if (!existingIds.has(key)) selectedItemKeys.delete(key); });
+  const selectedCountEl = document.getElementById("selectedCount");
+  if (selectedCountEl) selectedCountEl.innerText = selectedItemKeys.size;
+  const btnDeleteSelected = document.getElementById("btnDeleteSelected");
+  if (btnDeleteSelected) btnDeleteSelected.disabled = selectedItemKeys.size === 0;
+
   const el = document.getElementById("itemList");
-  const statusColor = { planerad: "#94a3b8", pagaende: "#f5a623", forsenad: "#e5484d", klar: "#3fb950", pausad: "#a1a1aa" };
-  const statusLabel = { planerad: "Planerad", pagaende: "Pågående", forsenad: "Försenad", klar: "Klar", pausad: "Pausad" };
+  const statusColor = { ej_planerad: "#cbd5e1", planerad: "#94a3b8", pagaende: "#f5a623", forsenad: "#e5484d", klar: "#3fb950", pausad: "#a1a1aa" };
+  const statusTextColor = { ej_planerad: "#334155" };
+  const statusLabel = { ej_planerad: "Ej planerad", planerad: "Planerad", pagaende: "Pågående", forsenad: "Försenad", klar: "Klar", pausad: "Pausad" };
 
   if (visible.length === 0) {
     el.innerHTML = `<div class="hint">Inga objekt ${searchTerm ? "matchar sökningen" : "sparade ännu"}.</div>`;
@@ -750,13 +795,14 @@ function renderItemList() {
     group.items.forEach(it => {
       const idx = indexToItem.length;
       indexToItem.push(it);
+      const isSelected = selectedItemKeys.has(it.objectId);
       html += `
-        <div class="item-row" data-index="${idx}">
-          <span class="item-main" data-action="select">
+        <div class="item-row${isSelected ? " selected" : ""}" data-index="${idx}">
+          <span class="item-main" data-action="select" title="Klicka för att markera. Håll in Ctrl/Cmd för att markera flera samtidigt.">
             <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span><br/>
             <span>${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span>
           </span>
-          <span class="badge" style="background:${statusColor[it.status] || "#999"}">${statusLabel[it.status] || it.status}</span>
+          <span class="badge" style="background:${statusColor[it.status] || "#999"};color:${statusTextColor[it.status] || "#fff"}">${statusLabel[it.status] || it.status}</span>
           <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
           <button class="delete-btn" data-action="delete" title="Radera kopplingen">🗑️</button>
         </div>`;
@@ -768,7 +814,7 @@ function renderItemList() {
   Array.from(el.querySelectorAll(".item-row")).forEach(row => {
     const it = indexToItem[Number(row.dataset.index)];
 
-    row.querySelector('[data-action="select"]').onclick = () => selectItemsInModel([it]);
+    row.querySelector('[data-action="select"]').onclick = (ev) => onItemRowClicked(it, ev);
     row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it);
     row.querySelector('[data-action="delete"]').onclick = () => deleteItemFromList(it);
   });
@@ -786,8 +832,32 @@ function renderItemList() {
     headerEl.querySelectorAll('[data-action="toggle-group"]').forEach(elToggle => {
       elToggle.onclick = toggleFn;
     });
-    headerEl.querySelector('[data-action="select-group"]').onclick = () => selectItemsInModel(group.items);
+    headerEl.querySelector('[data-action="select-group"]').onclick = () => {
+      selectedItemKeys = new Set(group.items.map(x => x.objectId));
+      renderItemList();
+      selectItemsInModel(group.items);
+    };
   });
+}
+
+/**
+ * Klick på en rad i "Planerade objekt". Vanligt klick markerar bara det
+ * objektet (ersätter ev. tidigare markering); Ctrl/Cmd-klick lägger till
+ * eller tar bort objektet ur den aktuella markeringen, så att flera objekt
+ * kan väljas samtidigt – i listan och i 3D-vyn.
+ */
+function onItemRowClicked(it, ev) {
+  const multi = Boolean(ev && (ev.ctrlKey || ev.metaKey));
+  if (multi) {
+    if (selectedItemKeys.has(it.objectId)) selectedItemKeys.delete(it.objectId);
+    else selectedItemKeys.add(it.objectId);
+  } else {
+    selectedItemKeys = new Set([it.objectId]);
+  }
+  renderItemList();
+
+  const selectedItems = items.filter(x => selectedItemKeys.has(x.objectId));
+  if (selectedItems.length > 0) selectItemsInModel(selectedItems);
 }
 
 /* ---------------------------------------------------------------------
@@ -1087,6 +1157,26 @@ async function deleteItem(item) {
     ? `${settings.supabaseUrl}/rest/v1/plan_items?id=eq.${encodeURIComponent(item.id)}`
     : `${settings.supabaseUrl}/rest/v1/plan_items?project_id=eq.${encodeURIComponent(item.projectId)}&object_id=eq.${encodeURIComponent(item.objectId)}`;
 
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: supabaseHeaders(false)
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Databasfel (${res.status}): ${text || res.statusText}`);
+  }
+}
+
+/** Raderar flera poster i Supabase i ett anrop (t.ex. "Radera markerade"). */
+async function deleteItems(itemsToDelete) {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Ingen databas ansluten. Ange Supabase-URL och nyckel i inställningarna.");
+  }
+  const ids = itemsToDelete.map(it => it.objectId).filter(Boolean);
+  if (ids.length === 0) return;
+
+  const inList = ids.map(id => encodeURIComponent(id)).join(",");
+  const url = `${settings.supabaseUrl}/rest/v1/plan_items?project_id=eq.${encodeURIComponent(projectId)}&object_id=in.(${inList})`;
   const res = await fetch(url, {
     method: "DELETE",
     headers: supabaseHeaders(false)

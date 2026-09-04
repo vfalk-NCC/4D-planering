@@ -50,6 +50,19 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   bekräftelsefråga ("Är du säker på att du vill radera kopplingen?").
   Själva 3D-objektet i modellen påverkas inte – bara planeringsdatan i
   databasen.
+- **Markera flera objekt samtidigt i listan**: håll in Ctrl (⌘ på Mac) och
+  klicka på flera rader i "Planerade objekt" för att markera dem – samma
+  objekt markeras då automatiskt även i 3D-vyn, så att t.ex. 8 objekt kan
+  väljas på en gång utan att behöva klicka blint i modellen. Ett vanligt
+  klick (utan Ctrl) ersätter markeringen med bara den raden.
+- **Radera flera kopplingar på en gång**: knappen "Radera markerade" under
+  listan tar bort planeringskopplingen för alla Ctrl-markerade rader i ett
+  svep, efter en bekräftelsefråga. Precis som vid enskild radering
+  påverkas bara planeringsdatan – 3D-objekten i modellen ligger kvar.
+- **Status "Ej planerad"**: ett extra statusalternativ (utöver Planerad,
+  Pågående, Försenad, Klar, Pausad) för objekt som är kopplade men ännu
+  inte har någon verklig plan – går att välja i formuläret, filtrera på
+  och skriva i Excel-importen.
 
 ## Arkitektur
 
@@ -92,7 +105,7 @@ Trimble Connect (3D-visare)
 | area        | Område                                           |
 | activity    | Aktivitet                                        |
 | contractor  | Entreprenör                                      |
-| status      | planerad / pagaende / forsenad / klar / pausad   |
+| status      | ej_planerad / planerad / pagaende / forsenad / klar / pausad |
 | startDate   | Planerat startdatum (ÅÅÅÅ-MM-DD)                 |
 | endDate     | Planerat slutdatum (ÅÅÅÅ-MM-DD)                  |
 
