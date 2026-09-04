@@ -75,6 +75,22 @@
       </div>
     </section>
 
+    <!-- ===== Hitta objekt (koordinat) ===== -->
+    <section class="panel">
+      <h2>Hitta objekt</h2>
+      <p class="hint">Markera en grupp kandidatobjekt i 3D-vyn (t.ex. alla fundament på en yta) och sök fram det som ligger närmast en viss koordinat, i stället för att klicka blint.</p>
+      <div class="row">
+        <label style="flex:1">X (m)
+          <input type="number" id="findX" step="any" placeholder="t.ex. 169034.4" />
+        </label>
+        <label style="flex:1">Y (m)
+          <input type="number" id="findY" step="any" placeholder="t.ex. 7456727.6" />
+        </label>
+      </div>
+      <button id="btnFindNearest" class="primary">Hitta närmaste i markeringen</button>
+      <div id="findResult" class="hint"></div>
+    </section>
+
     <!-- ===== Filter ===== -->
     <section class="panel">
       <h2>Filter</h2>
@@ -121,7 +137,25 @@
     <section class="panel">
       <h2>Planerade objekt (<span id="itemCount">0</span>)</h2>
       <input type="text" id="itemSearch" placeholder="Sök på namn, område, aktivitet..." />
+      <div class="row">
+        <label style="flex:1">Gruppera enligt
+          <select id="groupBy">
+            <option value="">Ingen gruppering</option>
+            <option value="area">Område</option>
+            <option value="activity">Aktivitet</option>
+            <option value="contractor">Entreprenör</option>
+            <option value="status">Status</option>
+          </select>
+        </label>
+        <label class="switch" style="align-self:flex-end; margin-bottom:6px;">
+          <input type="checkbox" id="sortAlpha" /> Sortera A-Ö
+        </label>
+      </div>
       <div id="itemList" class="item-list"></div>
+      <div class="row">
+        <button id="btnShowLabels" title="Visa varje kopplat objekts namn som textetikett i 3D-vyn">Visa namn i 3D</button>
+        <button id="btnClearLabels" title="Ta bort etiketterna igen">Rensa etiketter</button>
+      </div>
     </section>
 
   </div>
@@ -130,9 +164,30 @@
   <div id="settingsDialog" class="dialog hidden">
     <div class="dialog-box">
       <h2>Inställningar</h2>
-      <label>Färg – ej påbörjad <input type="color" id="colorNotStarted" /></label>
-      <label>Färg – pågående <input type="color" id="colorInProgress" /></label>
-      <label>Färg – färdigställd <input type="color" id="colorDone" /></label>
+      <label>Färg – ej påbörjad
+        <div class="row">
+          <input type="color" id="colorNotStarted" style="flex:0 0 40px" />
+          <input type="range" id="opacityNotStarted" min="0" max="100" step="1" style="flex:1" />
+          <span class="hint" id="opacityNotStartedLabel" style="align-self:center; width:34px;"></span>
+        </div>
+      </label>
+      <label>Färg – pågående
+        <div class="row">
+          <input type="color" id="colorInProgress" style="flex:0 0 40px" />
+          <input type="range" id="opacityInProgress" min="0" max="100" step="1" style="flex:1" />
+          <span class="hint" id="opacityInProgressLabel" style="align-self:center; width:34px;"></span>
+        </div>
+      </label>
+      <label>Färg – färdigställd
+        <div class="row">
+          <input type="color" id="colorDone" style="flex:0 0 40px" />
+          <input type="range" id="opacityDone" min="0" max="100" step="1" style="flex:1" />
+          <span class="hint" id="opacityDoneLabel" style="align-self:center; width:34px;"></span>
+        </div>
+      </label>
+      <label>Uppspelningshastighet (sekunder per dag)
+        <input type="number" id="playSecondsPerDay" min="0.1" step="0.1" placeholder="0.4" />
+      </label>
       <label>Supabase-URL <input type="text" id="supabaseUrl" placeholder="https://xxxxx.supabase.co" /></label>
       <label>Supabase anon key (public) <input type="text" id="supabaseKey" placeholder="eyJhbGciOi..." /></label>
       <p class="hint">Skapas gratis på <strong>supabase.com</strong> – se README.md för hela guiden (tar ca 5 minuter).</p>

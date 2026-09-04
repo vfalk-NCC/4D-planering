@@ -100,6 +100,16 @@ button:hover { filter: brightness(0.97); }
 #itemSearch { margin-bottom: 6px; }
 
 .item-list { max-height: 220px; overflow-y: auto; }
+.group-header {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--muted);
+  padding: 8px 4px 3px;
+  border-bottom: 1px solid var(--border);
+}
+.group-header:first-child { padding-top: 2px; }
 .item-row {
   display: flex;
   justify-content: space-between;
@@ -139,7 +149,9 @@ button:hover { filter: brightness(0.97); }
   background: white;
   padding: 16px;
   border-radius: 8px;
-  width: 300px;
+  width: 320px;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .switch { display: flex; align-items: center; gap: 4px; font-size: 11px; }

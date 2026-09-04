@@ -17,6 +17,27 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   Entreprenör, Status, Startdatum, Slutdatum` läses in och skriver/uppdaterar
   planeringen. Data sparas i en databas (inte i webbläsaren) så att den
   finns kvar mellan sessioner och delas mellan alla i projektet.
+- **Hitta objekt via koordinat**: markera en grupp kandidatobjekt i 3D-vyn
+  (t.ex. alla fundament på en yta) och ange en X/Y-koordinat (i meter) – 
+  extensionen hittar och markerar det objekt i markeringen som ligger
+  närmast, i stället för att behöva klicka blint eller leta i Organizer-
+  tabellen.
+- **Gruppering och sortering av objektlistan**: listan "Planerade objekt"
+  kan grupperas på område, aktivitet, entreprenör eller status, med eller
+  utan alfabetisk sortering inom varje grupp.
+- **Genomskinlighet per tidslinjefärg**: varje tidslinjefärg (ej påbörjad /
+  pågående / färdigställd) har ett eget opacitetsreglage i inställningarna,
+  så att t.ex. ej påbörjade objekt kan tonas ner utan att döljas helt.
+- **Justerbar uppspelningshastighet**: hur många sekunder realtid varje
+  simulerad dag ska visas när man trycker på "spela upp" (▶) på
+  tidslinjen går att ställa in i inställningarna.
+- **Visa kopplade objekts namn som 3D-etiketter**: knappen "Visa namn i 3D"
+  i objektlistan ritar ut varje kopplat objekts namn (t.ex. rutnätsbeteckningar
+  som K16, J18) som textetiketter i 3D-vyn, så att man visuellt kan
+  kontrollera att rätt objekt är kopplade utan att öppna sidopanelens lista.
+  "Rensa etiketter" tar bort dem igen. (Etiketterna använder Trimble Connects
+  inbyggda textmarkup-funktion, som har fast utseende – font och
+  bakgrundsfärg går inte att anpassa.)
 
 ## Arkitektur
 

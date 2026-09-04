@@ -12,12 +12,17 @@ let settings = {
   colorNotStarted: "#c9ccd1", // grå
   colorInProgress: "#f5a623", // orange
   colorDone: "#3fb950",       // grön
+  opacityNotStarted: 1,       // 0-1, genomskinlighet per färg
+  opacityInProgress: 1,
+  opacityDone: 1,
+  playSecondsPerDay: 0.4,     // sekunder realtid per simulerad dag vid "spela upp"
   supabaseUrl: "",
   supabaseKey: ""
 };
 let lastSelection = [];      // [{modelId, objectId (externalId), objectRuntimeId, name}]
 let playTimer = null;
 let searchTerm = "";
+let labelMarkupIds = [];     // aktiva 3D-textetiketter skapade av "Visa namn i 3D"
 
 /* ---------------------------------------------------------------------
    Init
@@ -64,6 +69,13 @@ function bindUI() {
   document.getElementById("btnImportExcel").onclick = onImportExcel;
 
   document.getElementById("itemSearch").oninput = () => renderItemList();
+  document.getElementById("groupBy").onchange = () => renderItemList();
+  document.getElementById("sortAlpha").onchange = () => renderItemList();
+
+  document.getElementById("btnFindNearest").onclick = onFindNearest;
+
+  document.getElementById("btnShowLabels").onclick = onShowLabels;
+  document.getElementById("btnClearLabels").onclick = onClearLabels;
 
   document.getElementById("btnSettings").onclick = () => toggle("settingsDialog", true);
   document.getElementById("btnCloseSettings").onclick = () => toggle("settingsDialog", false);
@@ -72,10 +84,25 @@ function bindUI() {
   document.getElementById("colorNotStarted").value = settings.colorNotStarted;
   document.getElementById("colorInProgress").value = settings.colorInProgress;
   document.getElementById("colorDone").value = settings.colorDone;
+  document.getElementById("opacityNotStarted").value = Math.round(settings.opacityNotStarted * 100);
+  document.getElementById("opacityInProgress").value = Math.round(settings.opacityInProgress * 100);
+  document.getElementById("opacityDone").value = Math.round(settings.opacityDone * 100);
+  document.getElementById("opacityNotStarted").oninput = updateOpacityLabels;
+  document.getElementById("opacityInProgress").oninput = updateOpacityLabels;
+  document.getElementById("opacityDone").oninput = updateOpacityLabels;
+  document.getElementById("playSecondsPerDay").value = settings.playSecondsPerDay;
   document.getElementById("supabaseUrl").value = settings.supabaseUrl;
   document.getElementById("supabaseKey").value = settings.supabaseKey;
+  updateOpacityLabels();
   paintLegendDots();
   updateConnectionWarning();
+}
+
+function updateOpacityLabels() {
+  ["NotStarted", "InProgress", "Done"].forEach(key => {
+    const val = document.getElementById(`opacity${key}`).value;
+    document.getElementById(`opacity${key}Label`).innerText = `${val}%`;
+  });
 }
 
 function toggle(id, show) {
@@ -102,6 +129,10 @@ function onSaveSettings() {
   settings.colorNotStarted = document.getElementById("colorNotStarted").value;
   settings.colorInProgress = document.getElementById("colorInProgress").value;
   settings.colorDone = document.getElementById("colorDone").value;
+  settings.opacityNotStarted = Number(document.getElementById("opacityNotStarted").value) / 100;
+  settings.opacityInProgress = Number(document.getElementById("opacityInProgress").value) / 100;
+  settings.opacityDone = Number(document.getElementById("opacityDone").value) / 100;
+  settings.playSecondsPerDay = Number(document.getElementById("playSecondsPerDay").value) || 0.4;
   settings.supabaseUrl = document.getElementById("supabaseUrl").value.trim().replace(/\/$/, "");
   settings.supabaseKey = document.getElementById("supabaseKey").value.trim();
   window.localStorage.setItem("4dplan-settings", JSON.stringify(settings));
@@ -258,13 +289,14 @@ function onTogglePlay() {
     return;
   }
   btn.innerText = "⏸";
+  const delayMs = Math.max(50, (settings.playSecondsPerDay || 0.4) * 1000);
   playTimer = setInterval(() => {
     const slider = document.getElementById("timelineSlider");
     const next = Number(slider.value) + 1;
     if (next > Number(slider.max)) { onTogglePlay(); return; }
     slider.value = next;
     onSliderMove();
-  }, 400);
+  }, delayMs);
 }
 
 /**
@@ -286,9 +318,9 @@ async function applyTimelineColors() {
 
   for (const modelId of Object.keys(byModel)) {
     const group = byModel[modelId];
-    await colorGroup(modelId, group.notStarted, settings.colorNotStarted);
-    await colorGroup(modelId, group.inProgress, settings.colorInProgress);
-    await colorGroup(modelId, group.done, settings.colorDone);
+    await colorGroup(modelId, group.notStarted, settings.colorNotStarted, settings.opacityNotStarted);
+    await colorGroup(modelId, group.inProgress, settings.colorInProgress, settings.opacityInProgress);
+    await colorGroup(modelId, group.done, settings.colorDone, settings.opacityDone);
   }
 }
 
@@ -301,22 +333,23 @@ function getPhase(item, selectedDateStr) {
   return "done";
 }
 
-async function colorGroup(modelId, externalIds, colorHex) {
+async function colorGroup(modelId, externalIds, colorHex, opacity) {
   if (externalIds.length === 0) return;
   const runtimeIds = await API.viewer.convertToObjectRuntimeIds(modelId, externalIds);
   const valid = runtimeIds.filter(id => id !== undefined && id !== null);
   if (valid.length === 0) return;
   await API.viewer.setObjectState(
     { modelObjectIds: [{ modelId, objectRuntimeIds: valid }] },
-    { color: hexToRgba(colorHex) }
+    { color: hexToRgba(colorHex, opacity) }
   );
 }
 
-function hexToRgba(hex) {
+function hexToRgba(hex, opacity) {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);
   const b = parseInt(hex.slice(5, 7), 16);
-  return { r, g, b, a: 255 };
+  const a = opacity === undefined ? 255 : Math.round(Math.max(0, Math.min(1, opacity)) * 255);
+  return { r, g, b, a };
 }
 
 /* ---------------------------------------------------------------------
@@ -497,6 +530,8 @@ function normalizeStatus(value) {
    ------------------------------------------------------------------- */
 function renderItemList() {
   searchTerm = (document.getElementById("itemSearch").value || "").toLowerCase().trim();
+  const groupBy = document.getElementById("groupBy").value;
+  const sortAlpha = document.getElementById("sortAlpha").checked;
 
   const visible = items.filter(it => {
     if (!searchTerm) return true;
@@ -515,7 +550,43 @@ function renderItemList() {
     return;
   }
 
-  el.innerHTML = visible.map((it, i) => `
+  const sortFn = (a, b) =>
+    (a.objectName || a.objectId || "").localeCompare(b.objectName || b.objectId || "", "sv");
+
+  const groupKeyFns = {
+    area: it => it.area || "Utan område",
+    activity: it => it.activity || "Utan aktivitet",
+    contractor: it => it.contractor || "Utan entreprenör",
+    status: it => statusLabel[it.status] || it.status || "Okänd status"
+  };
+
+  let orderedItems = [];
+  const groupHeaders = {}; // index i orderedItems -> rubriktext
+
+  if (groupBy && groupKeyFns[groupBy]) {
+    const keyFn = groupKeyFns[groupBy];
+    const groups = new Map();
+    visible.forEach(it => {
+      const key = keyFn(it);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(it);
+    });
+    const groupKeys = Array.from(groups.keys()).sort((a, b) => a.localeCompare(b, "sv"));
+    groupKeys.forEach(key => {
+      const groupItems = groups.get(key);
+      if (sortAlpha) groupItems.sort(sortFn);
+      groupHeaders[orderedItems.length] = `${key} (${groupItems.length})`;
+      orderedItems = orderedItems.concat(groupItems);
+    });
+  } else {
+    orderedItems = sortAlpha ? [...visible].sort(sortFn) : visible;
+  }
+
+  el.innerHTML = orderedItems.map((it, i) => {
+    const header = groupHeaders[i] !== undefined
+      ? `<div class="group-header">${escapeHtml(groupHeaders[i])}</div>`
+      : "";
+    return `${header}
     <div class="item-row" data-index="${i}">
       <span class="item-main" data-action="select">
         <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span><br/>
@@ -523,11 +594,11 @@ function renderItemList() {
       </span>
       <span class="badge" style="background:${statusColor[it.status] || "#999"}">${statusLabel[it.status] || it.status}</span>
       <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
-    </div>
-  `).join("");
+    </div>`;
+  }).join("");
 
   Array.from(el.querySelectorAll(".item-row")).forEach(row => {
-    const it = visible[Number(row.dataset.index)];
+    const it = orderedItems[Number(row.dataset.index)];
 
     row.querySelector('[data-action="select"]').onclick = async () => {
       if (!it.modelId) { alert("Objektet saknar modell-koppling (troligen från Excel utan ModellID)."); return; }
@@ -540,6 +611,172 @@ function renderItemList() {
 
     row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it);
   });
+}
+
+/* ---------------------------------------------------------------------
+   Hitta objekt via koordinat
+   ---------------------------------------------------------------------
+   Sökningen sker bland de objekt som redan är markerade i 3D-vyn (t.ex.
+   alla fundament på en yta), inte i hela modellen – det finns inget
+   verifierat API-anrop för "hämta alla objekt", och att skrapa
+   Organizer-tabellen har tidigare orsakat att webbläsarfliken frusit.
+   ------------------------------------------------------------------- */
+function findPropertyValue(obj, psetName, propName) {
+  const pset = (obj.properties || []).find(p => (p.name || "Övrigt") === psetName);
+  if (!pset || !pset.properties) return undefined;
+  const prop = pset.properties.find(p => p.name === propName);
+  return prop === undefined ? undefined : prop.value;
+}
+
+async function onFindNearest() {
+  const resultEl = document.getElementById("findResult");
+  const targetX = Number(document.getElementById("findX").value);
+  const targetY = Number(document.getElementById("findY").value);
+
+  if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+    resultEl.innerText = "Ange både X och Y (i meter) innan du söker.";
+    return;
+  }
+
+  resultEl.innerText = "Söker i markeringen...";
+
+  try {
+    const selection = await API.viewer.getSelection();
+    const groups = (selection || []).filter(s => s.objectRuntimeIds && s.objectRuntimeIds.length > 0);
+
+    if (groups.length === 0) {
+      resultEl.innerText = "Markera minst ett kandidatobjekt i 3D-vyn först.";
+      return;
+    }
+
+    let best = null; // {modelId, objectRuntimeId, name, distance}
+
+    for (const group of groups) {
+      const [objectProps, boxes] = await Promise.all([
+        API.viewer.getObjectProperties(group.modelId, group.objectRuntimeIds),
+        API.viewer.getObjectBoundingBoxes(group.modelId, group.objectRuntimeIds)
+      ]);
+      const boxById = new Map(boxes.map(b => [b.id, b]));
+
+      objectProps.forEach(obj => {
+        let x = findPropertyValue(obj, "CalculatedGeometryValues", "CenterOfGravityX");
+        let y = findPropertyValue(obj, "CalculatedGeometryValues", "CenterOfGravityY");
+
+        if (x !== undefined && y !== undefined) {
+          // Rådata från getObjectProperties är i millimeter, medan
+          // koordinaterna användaren anger (och Organizer-tabellen visar) är i meter.
+          x = Number(x) / 1000;
+          y = Number(y) / 1000;
+        } else {
+          const box = boxById.get(obj.id);
+          if (!box) return;
+          x = (box.boundingBox.min.x + box.boundingBox.max.x) / 2;
+          y = (box.boundingBox.min.y + box.boundingBox.max.y) / 2;
+        }
+
+        const distance = Math.hypot(x - targetX, y - targetY);
+        const name = findPropertyValue(obj, "Item", "Name");
+
+        if (!best || distance < best.distance) {
+          best = { modelId: group.modelId, objectRuntimeId: obj.id, name, distance };
+        }
+      });
+    }
+
+    if (!best) {
+      resultEl.innerText = "Hittade inga jämförbara koordinater i markeringen.";
+      return;
+    }
+
+    const selector = { modelObjectIds: [{ modelId: best.modelId, objectRuntimeIds: [best.objectRuntimeId] }] };
+    await API.viewer.setSelection(selector, "set");
+    await API.viewer.setCamera(selector);
+
+    resultEl.innerText = `Närmast: ${best.name || "(namnlöst objekt)"} – avstånd ${best.distance.toFixed(2)} m. Objektet är nu markerat i 3D-vyn.`;
+  } catch (err) {
+    console.error(err);
+    resultEl.innerText = "Kunde inte söka i markeringen: " + err.message;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   3D-etiketter med kopplade objekts namn (rutnätsbeteckning m.m.)
+   ------------------------------------------------------------------- */
+async function onShowLabels() {
+  const linked = items.filter(it => it.modelId && it.objectId);
+  if (linked.length === 0) {
+    alert("Inga kopplade objekt att visa etiketter för ännu.");
+    return;
+  }
+
+  if (labelMarkupIds.length > 0) {
+    await API.markup.removeMarkups(labelMarkupIds);
+    labelMarkupIds = [];
+  }
+
+  const byModel = {};
+  linked.forEach(it => {
+    byModel[it.modelId] = byModel[it.modelId] || [];
+    byModel[it.modelId].push(it);
+  });
+
+  const newMarkups = [];
+
+  try {
+    for (const modelId of Object.keys(byModel)) {
+      const groupItems = byModel[modelId];
+      const externalIds = groupItems.map(it => it.objectId);
+      const runtimeIds = await API.viewer.convertToObjectRuntimeIds(modelId, externalIds);
+
+      const validPairs = groupItems
+        .map((it, i) => ({ it, runtimeId: runtimeIds[i] }))
+        .filter(p => p.runtimeId !== undefined && p.runtimeId !== null);
+
+      if (validPairs.length === 0) continue;
+
+      const boxes = await API.viewer.getObjectBoundingBoxes(modelId, validPairs.map(p => p.runtimeId));
+      const boxById = new Map(boxes.map(b => [b.id, b]));
+
+      validPairs.forEach(({ it, runtimeId }) => {
+        const box = boxById.get(runtimeId);
+        if (!box) return;
+        const mid = {
+          x: (box.boundingBox.min.x + box.boundingBox.max.x) / 2,
+          y: (box.boundingBox.min.y + box.boundingBox.max.y) / 2,
+          z: (box.boundingBox.min.z + box.boundingBox.max.z) / 2
+        };
+        const point = {
+          positionX: mid.x * 1000,
+          positionY: mid.y * 1000,
+          positionZ: mid.z * 1000,
+          modelId,
+          objectId: runtimeId
+        };
+        newMarkups.push({ text: it.objectName || it.objectId, start: point, end: point });
+      });
+    }
+
+    if (newMarkups.length === 0) {
+      alert("Hittade inga av de kopplade objekten i de just nu inlästa modellerna.");
+      return;
+    }
+
+    const created = await API.markup.addTextMarkup(newMarkups);
+    labelMarkupIds = created.map(m => m.id).filter(id => id !== undefined);
+  } catch (err) {
+    console.error(err);
+    alert("Kunde inte skapa etiketter: " + err.message);
+  }
+}
+
+async function onClearLabels() {
+  if (labelMarkupIds.length === 0) return;
+  try {
+    await API.markup.removeMarkups(labelMarkupIds);
+  } catch (err) {
+    console.error(err);
+  }
+  labelMarkupIds = [];
 }
 
 /* ---------------------------------------------------------------------
