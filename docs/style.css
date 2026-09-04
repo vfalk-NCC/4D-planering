@@ -35,7 +35,7 @@ header button { background: none; border: none; font-size: 16px; cursor: pointer
   font-size: 12px;
   letter-spacing: .02em;
   color: #fff;
-  background: #e2001a;
+  background: var(--accent);
   padding: 3px 6px;
   border-radius: 3px;
   line-height: 1;
@@ -135,7 +135,13 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
 
 #itemSearch { margin-bottom: 6px; }
 
-.item-list { max-height: 220px; overflow-y: auto; }
+.item-list {
+  height: 220px;
+  min-height: 90px;
+  max-height: 70vh;
+  overflow: auto;
+  resize: vertical;
+}
 .group-header {
   display: flex;
   align-items: center;

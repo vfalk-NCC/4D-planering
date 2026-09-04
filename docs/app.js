@@ -26,7 +26,8 @@ let labelMarkupIds = [];     // aktiva 3D-textetiketter skapade av "Visa namn i 
 let collapsedGroups = new Set(); // vilka grupper (nyckel: "<fält>::<värde>") som är minimerade i listan
 let collapsedPanels = new Set(); // vilka paneler (data-panel-id) som är minimerade
 let itemsTotalCount = null;  // totalt antal rader enligt Supabase (Content-Range), eller null om okänt
-let selectedItemKeys = new Set(); // markerade rader i "Planerade objekt" (Ctrl/Cmd-klick), nyckel = objectId
+let selectedItemKeys = new Set(); // markerade rader i "Planerade objekt" (Ctrl/Cmd- och Shift-klick), nyckel = objectId
+let selectionAnchorKey = null; // ankarraden för Shift-klick (intervallmarkering) i objektlistan
 
 // Tidslinjen ska alltid gå att dra minst fram till/bakåt till de här
 // datumen, oavsett vilka start-/slutdatum som faktiskt är inplanerade
@@ -39,6 +40,12 @@ const TIMELINE_MIN_END = "2030-12-31";
 // sätter också ett tak – höj den där också om du planerar in fler än 1000
 // objekt, annars klipps listan ändå av på 1000 oavsett den här konstanten.
 const ITEMS_FETCH_LIMIT = 50000;
+
+// Max antal object_id:n per DELETE-anrop vid massradering ("Radera
+// markerade"). En enda "in.(...)"-lista med tusentals ID:n ger en URL som
+// är för lång för webbläsare/servrar (vanlig gräns är några tusen tecken) –
+// större markeringar delas därför upp i flera anrop i sekvens.
+const DELETE_CHUNK_SIZE = 100;
 
 /* ---------------------------------------------------------------------
    Init
@@ -683,18 +690,30 @@ async function deleteItemFromList(item) {
 async function onDeleteSelectedItems() {
   const selectedItems = items.filter(it => selectedItemKeys.has(it.objectId));
   if (selectedItems.length === 0) {
-    alert("Inga rader är markerade. Håll in Ctrl (⌘ på Mac) och klicka på flera rader i listan för att markera dem.");
+    alert("Inga rader är markerade. Håll in Ctrl (⌘ på Mac) eller Shift och klicka på flera rader i listan för att markera dem.");
     return;
   }
   if (!confirm(`Är du säker på att du vill radera kopplingen för ${selectedItems.length} markerade objekt?`)) return;
 
+  const btn = document.getElementById("btnDeleteSelected");
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+
   try {
-    await deleteItems(selectedItems);
+    await deleteItems(selectedItems, (done, total) => {
+      // Radering sker i omgångar (se DELETE_CHUNK_SIZE) vid stora
+      // markeringar – visa förlopp så det inte ser ut som att knappen
+      // hängt sig vid t.ex. ett par tusen objekt.
+      if (total > DELETE_CHUNK_SIZE) btn.innerText = `Raderar ${done}/${total}...`;
+    });
   } catch (e) {
+    btn.innerHTML = originalHtml;
+    btn.disabled = false;
     alert("Kunde inte radera: " + e.message);
     return;
   }
 
+  btn.innerHTML = originalHtml;
   selectedItemKeys.clear();
   await refreshItems();
   buildFilterOptions();
@@ -733,6 +752,7 @@ function renderItemList() {
   // inte längre vara markerade.
   const existingIds = new Set(items.map(it => it.objectId));
   Array.from(selectedItemKeys).forEach(key => { if (!existingIds.has(key)) selectedItemKeys.delete(key); });
+  if (selectionAnchorKey && !existingIds.has(selectionAnchorKey)) selectionAnchorKey = null;
   const selectedCountEl = document.getElementById("selectedCount");
   if (selectedCountEl) selectedCountEl.innerText = selectedItemKeys.size;
   const btnDeleteSelected = document.getElementById("btnDeleteSelected");
@@ -798,7 +818,7 @@ function renderItemList() {
       const isSelected = selectedItemKeys.has(it.objectId);
       html += `
         <div class="item-row${isSelected ? " selected" : ""}" data-index="${idx}">
-          <span class="item-main" data-action="select" title="Klicka för att markera. Håll in Ctrl/Cmd för att markera flera samtidigt.">
+          <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
             <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span><br/>
             <span>${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span>
           </span>
@@ -814,7 +834,7 @@ function renderItemList() {
   Array.from(el.querySelectorAll(".item-row")).forEach(row => {
     const it = indexToItem[Number(row.dataset.index)];
 
-    row.querySelector('[data-action="select"]').onclick = (ev) => onItemRowClicked(it, ev);
+    row.querySelector('[data-action="select"]').onclick = (ev) => onItemRowClicked(it, ev, indexToItem);
     row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it);
     row.querySelector('[data-action="delete"]').onclick = () => deleteItemFromList(it);
   });
@@ -834,6 +854,7 @@ function renderItemList() {
     });
     headerEl.querySelector('[data-action="select-group"]').onclick = () => {
       selectedItemKeys = new Set(group.items.map(x => x.objectId));
+      selectionAnchorKey = group.items.length ? group.items[group.items.length - 1].objectId : null;
       renderItemList();
       selectItemsInModel(group.items);
     };
@@ -842,18 +863,49 @@ function renderItemList() {
 
 /**
  * Klick på en rad i "Planerade objekt". Vanligt klick markerar bara det
- * objektet (ersätter ev. tidigare markering); Ctrl/Cmd-klick lägger till
- * eller tar bort objektet ur den aktuella markeringen, så att flera objekt
- * kan väljas samtidigt – i listan och i 3D-vyn.
+ * objektet (ersätter ev. tidigare markering) och sätter det som ankare;
+ * Ctrl/Cmd-klick lägger till eller tar bort objektet ur den aktuella
+ * markeringen; Shift-klick markerar hela intervallet mellan ankarraden och
+ * den klickade raden (som i Utforskaren/Finder) – i den ordning raderna
+ * just nu visas i listan (dvs. efter ev. gruppering/sortering/filtrering).
+ * I samtliga fall markeras samma objekt även i 3D-vyn.
+ *
+ * `renderedItems` är listan (i visningsordning) över de rader som faktisk
+ * finns i DOM:en just nu – dvs. `indexToItem` från renderItemList().
  */
-function onItemRowClicked(it, ev) {
+function onItemRowClicked(it, ev, renderedItems) {
   const multi = Boolean(ev && (ev.ctrlKey || ev.metaKey));
-  if (multi) {
+  const range = Boolean(ev && ev.shiftKey) && selectionAnchorKey && renderedItems;
+
+  if (range) {
+    const anchorIdx = renderedItems.findIndex(x => x.objectId === selectionAnchorKey);
+    const clickedIdx = renderedItems.findIndex(x => x.objectId === it.objectId);
+    if (anchorIdx === -1 || clickedIdx === -1) {
+      // Ankarraden syns inte längre (t.ex. dold i en ihopfälld grupp) – falla
+      // tillbaka till ett vanligt klick.
+      selectedItemKeys = new Set([it.objectId]);
+      selectionAnchorKey = it.objectId;
+    } else {
+      const from = Math.min(anchorIdx, clickedIdx);
+      const to = Math.max(anchorIdx, clickedIdx);
+      const rangeKeys = renderedItems.slice(from, to + 1).map(x => x.objectId);
+      if (multi) {
+        rangeKeys.forEach(key => selectedItemKeys.add(key));
+      } else {
+        selectedItemKeys = new Set(rangeKeys);
+      }
+      // Ankaret flyttas medvetet inte – ytterligare Shift-klick räknar om
+      // intervallet från samma startpunkt, precis som i t.ex. Utforskaren.
+    }
+  } else if (multi) {
     if (selectedItemKeys.has(it.objectId)) selectedItemKeys.delete(it.objectId);
     else selectedItemKeys.add(it.objectId);
+    selectionAnchorKey = it.objectId;
   } else {
     selectedItemKeys = new Set([it.objectId]);
+    selectionAnchorKey = it.objectId;
   }
+
   renderItemList();
 
   const selectedItems = items.filter(x => selectedItemKeys.has(x.objectId));
@@ -1167,23 +1219,36 @@ async function deleteItem(item) {
   }
 }
 
-/** Raderar flera poster i Supabase i ett anrop (t.ex. "Radera markerade"). */
-async function deleteItems(itemsToDelete) {
+/**
+ * Raderar flera poster i Supabase (t.ex. "Radera markerade"). Delas upp i
+ * omgångar om DELETE_CHUNK_SIZE åt gången eftersom en enda "in.(...)"-lista
+ * med t.ex. 2200 ID:n annars ger en alldeles för lång URL och misslyckas
+ * (413/414 eller att anropet bara tystnar).
+ * `onProgress(antalKlara, totaltAntal)` anropas efter varje omgång.
+ */
+async function deleteItems(itemsToDelete, onProgress) {
   if (!isSupabaseConfigured()) {
     throw new Error("Ingen databas ansluten. Ange Supabase-URL och nyckel i inställningarna.");
   }
   const ids = itemsToDelete.map(it => it.objectId).filter(Boolean);
   if (ids.length === 0) return;
 
-  const inList = ids.map(id => encodeURIComponent(id)).join(",");
-  const url = `${settings.supabaseUrl}/rest/v1/plan_items?project_id=eq.${encodeURIComponent(projectId)}&object_id=in.(${inList})`;
-  const res = await fetch(url, {
-    method: "DELETE",
-    headers: supabaseHeaders(false)
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Databasfel (${res.status}): ${text || res.statusText}`);
+  for (let i = 0; i < ids.length; i += DELETE_CHUNK_SIZE) {
+    const chunk = ids.slice(i, i + DELETE_CHUNK_SIZE);
+    const inList = chunk.map(id => encodeURIComponent(id)).join(",");
+    const url = `${settings.supabaseUrl}/rest/v1/plan_items?project_id=eq.${encodeURIComponent(projectId)}&object_id=in.(${inList})`;
+    const res = await fetch(url, {
+      method: "DELETE",
+      headers: supabaseHeaders(false)
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      const doneSoFar = i;
+      throw new Error(
+        `Databasfel (${res.status}) efter att ${doneSoFar} av ${ids.length} objekt raderats: ${text || res.statusText}`
+      );
+    }
+    if (onProgress) onProgress(Math.min(i + chunk.length, ids.length), ids.length);
   }
 }
 

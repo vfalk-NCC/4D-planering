@@ -51,14 +51,22 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   Själva 3D-objektet i modellen påverkas inte – bara planeringsdatan i
   databasen.
 - **Markera flera objekt samtidigt i listan**: håll in Ctrl (⌘ på Mac) och
-  klicka på flera rader i "Planerade objekt" för att markera dem – samma
-  objekt markeras då automatiskt även i 3D-vyn, så att t.ex. 8 objekt kan
-  väljas på en gång utan att behöva klicka blint i modellen. Ett vanligt
-  klick (utan Ctrl) ersätter markeringen med bara den raden.
+  klicka på flera rader i "Planerade objekt" för att lägga till/ta bort dem
+  ur markeringen, eller håll in Shift och klicka för att markera hela
+  intervallet mellan senast klickade rad och den nya (som i Utforskaren) –
+  samma objekt markeras då automatiskt även i 3D-vyn, så att t.ex. 8 objekt
+  kan väljas på en gång utan att behöva klicka blint i modellen. Ett
+  vanligt klick (utan Ctrl/Shift) ersätter markeringen med bara den raden.
 - **Radera flera kopplingar på en gång**: knappen "Radera markerade" under
-  listan tar bort planeringskopplingen för alla Ctrl-markerade rader i ett
-  svep, efter en bekräftelsefråga. Precis som vid enskild radering
-  påverkas bara planeringsdatan – 3D-objekten i modellen ligger kvar.
+  listan tar bort planeringskopplingen för alla markerade rader i ett svep,
+  efter en bekräftelsefråga. Precis som vid enskild radering påverkas bara
+  planeringsdatan – 3D-objekten i modellen ligger kvar. Stora markeringar
+  (t.ex. tusentals objekt) delas automatiskt upp i flera mindre
+  databasanrop i bakgrunden, så det finns ingen praktisk gräns för hur
+  många man kan radera på en gång.
+- **Ändra höjden på objektlistan**: dra i det lilla handtaget längst ner i
+  högra hörnet av listan "Planerade objekt" för att göra den högre eller
+  lägre, så att fler (eller färre) rader syns samtidigt.
 - **Status "Ej planerad"**: ett extra statusalternativ (utöver Planerad,
   Pågående, Försenad, Klar, Pausad) för objekt som är kopplade men ännu
   inte har någon verklig plan – går att välja i formuläret, filtrera på
