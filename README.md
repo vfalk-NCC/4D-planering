@@ -45,9 +45,9 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
 ## Arkitektur
 
 ```
-extension/        -> Frontend som körs inuti Trimble Connect (sidopanel)
-                     index.html + app.js + style.css
-                     Hostas gratis som statiska filer (t.ex. Netlify).
+docs/              -> Frontend som körs inuti Trimble Connect (sidopanel)
+                     index.html + app.js + style.css + manifest.json
+                     Hostas gratis via GitHub Pages direkt från repot.
 supabase/
   schema.sql       -> SQL-skript som skapar databastabellen, körs en gång.
 ```
@@ -62,10 +62,17 @@ behöver driftas eller hållas vid liv.
 
 ```
 Trimble Connect (3D-visare)
-   -> extension/ (statiska filer på Netlify, gratis)
+   -> docs/ (statiska filer på GitHub Pages, gratis, direkt från repot)
         -> REST-anrop direkt till https://<ditt-projekt>.supabase.co
              -> Supabase (Postgres-databas, gratis nivå)
 ```
+
+> **Varför GitHub Pages och inte t.ex. Netlify?** GitHub Pages hostar
+> statiska filer direkt från repot utan några kredit- eller
+> byggminuts-gränser att råka slå i. Netlify användes tidigare men pausar
+> nya deploys när gratiskontots byggkrediter tar slut för perioden – då
+> slutar ändringar synas i Trimble Connect trots att de ligger pushade på
+> GitHub. GitHub Pages har ingen sådan gräns för statiska filer.
 
 ## Datamodell (per objekt)
 
@@ -111,12 +118,23 @@ till för filtrering/rapportering (t.ex. att markera förseningar).
    **public** (inte `service_role` – den ska aldrig användas i en
    webbextension).
 
-### 4. Publicera frontend
+### 4. Publicera frontend (GitHub Pages)
 
-Lägg `extension/`-mappen på valfri gratis statisk webbhotell/CDN, t.ex.
-[Netlify](https://netlify.com) (dra-och-släpp mappen, eller koppla mot
-GitHub-repot för automatisk publicering vid varje push). Uppdatera
-`extension/manifest.json` med rätt URL om domänen ändras.
+Extensionen är en helt statisk webbsida (`docs/index.html` + `docs/app.js`
++ `docs/style.css`), så den hostas gratis direkt från repot via GitHub
+Pages – ingen extern tjänst, inget kontokrav och inga kredit-/
+byggminutsgränser att slå i:
+
+1. Gå till repots **Settings → Pages**.
+2. Under **Build and deployment**, välj **Deploy from a branch**.
+3. Välj branch `main` och mapp `/docs`, spara.
+4. Efter någon minut är sidan live på
+   `https://<ditt-github-användarnamn>.github.io/4D-planering/`.
+5. Uppdatera `url` i `docs/manifest.json` om adressen skiljer sig från
+   den som redan står där (t.ex. om användarnamnet ändras).
+
+Varje ny `git push` till `main` publiceras automatiskt igen inom någon
+minut – helt utan kredit- eller byggkvoter att ta slut.
 
 ### 5. Koppla extensionen till databasen
 
@@ -134,8 +152,11 @@ planeringsdatan delas dock av alla via Supabase.
 
 1. Öppna projektet i Trimble Connect for Browser.
 2. Inställningar → Extensions.
-3. Ange manifest-URL:en (t.ex. `https://<din-domän>/manifest.json`) och
-   lägg till.
+3. Ange manifest-URL:en, t.ex.
+   `https://<ditt-github-användarnamn>.github.io/4D-planering/manifest.json`,
+   och lägg till. (Om du tidigare registrerat den gamla Netlify-URL:en
+   behöver du ta bort den och lägga till den nya GitHub Pages-URL:en i
+   stället – Trimble Connect byter inte URL automatiskt.)
 4. Aktivera extensionen under "Custom Extensions".
 
 ## Excel-import – automatisk uppdatering
