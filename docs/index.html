@@ -60,6 +60,9 @@
         <label>Slutdatum
           <input type="date" id="fEnd" />
         </label>
+        <label>Framdrift (<span id="fProgressLabel">0</span>%)
+          <input type="range" id="fProgress" min="0" max="100" step="1" value="0" />
+        </label>
         <div class="row">
           <button id="btnSaveLink" class="primary">Spara</button>
           <button id="btnCancelLink">Avbryt</button>
@@ -205,6 +208,25 @@
       <div class="row">
         <button id="btnSaveSettings" class="primary">Spara</button>
         <button id="btnCloseSettings">Stäng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kommentarsdialog -->
+  <div id="commentsDialog" class="dialog hidden">
+    <div class="dialog-box">
+      <h2>Kommentarer – <span id="commentsItemName"></span></h2>
+      <div id="commentsList" class="comments-list"></div>
+      <label>Ditt namn
+        <input type="text" id="commentAuthor" placeholder="t.ex. Victor" />
+      </label>
+      <label>Ny kommentar
+        <textarea id="commentText" rows="3" placeholder="Skriv en kommentar..."></textarea>
+      </label>
+      <div id="commentsStatus" class="hint"></div>
+      <div class="row">
+        <button id="btnAddComment" class="primary">Skicka kommentar</button>
+        <button id="btnCloseComments">Stäng</button>
       </div>
     </div>
   </div>

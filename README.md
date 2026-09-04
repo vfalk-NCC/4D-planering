@@ -71,6 +71,19 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   Pågående, Försenad, Klar, Pausad) för objekt som är kopplade men ännu
   inte har någon verklig plan – går att välja i formuläret, filtrera på
   och skriva i Excel-importen.
+- **Framdriftsprocent**: varje objekt har ett eget reglage (0–100 %) i
+  "Koppla markering"/redigeringsformuläret för att ange hur långt kommet
+  det är. Procenten visas i objektlistan tillsammans med en liten
+  förloppsstapel under varje rad.
+- **Planerat start-/slutdatum i listan**: "Planerade objekt" visar nu
+  datumintervallet (t.ex. "2026-02-01 → 2026-02-10") direkt i listan, inte
+  bara i redigeringsformuläret.
+- **Kommentarer på objekt**: 💬-knappen på varje rad öppnar en
+  kommentarstråd för det objektet – ungefär som cellkommentarer i Excel.
+  Varje kommentar loggas med namn och datum/tid, och går att svara på
+  (svaren visas indragna under sin kommentar). Namnet du senast skrev in
+  sparas lokalt och förifylls nästa gång. Kräver att migreringen nedan
+  körts i Supabase.
 
 ## Arkitektur
 
@@ -79,8 +92,17 @@ docs/              -> Frontend som körs inuti Trimble Connect (sidopanel)
                      index.html + app.js + style.css + manifest.json
                      Hostas gratis via GitHub Pages direkt från repot.
 supabase/
-  schema.sql       -> SQL-skript som skapar databastabellen, körs en gång.
+  schema.sql                        -> Skapar allt från grunden (nya installationer).
+  migration_2_comments_progress.sql -> Lägger till kommentarer + framdriftsprocent
+                                        på en databas som redan finns sedan tidigare.
 ```
+
+> **Har du redan en databas sedan tidigare?** Kör
+> [`supabase/migration_2_comments_progress.sql`](supabase/migration_2_comments_progress.sql)
+> en gång i Supabase SQL Editor för att få kommentarer och
+> framdriftsprocent – annars visas "Databasfel" när du försöker använda
+> dem. Nya installationer (som kör hela `schema.sql`) får allt direkt och
+> ska INTE köra migreringsfilen också.
 
 Det finns **ingen egen server längre**. Tidigare version använde en egen
 Node/Express-server med SQLite, men den gick aldrig att hosta gratis på

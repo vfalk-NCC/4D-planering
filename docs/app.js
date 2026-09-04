@@ -17,7 +17,8 @@ let settings = {
   opacityDone: 1,
   playSecondsPerDay: 0.4,     // sekunder realtid per simulerad dag vid "spela upp"
   supabaseUrl: "",
-  supabaseKey: ""
+  supabaseKey: "",
+  userName: ""                // namn som förifylls vid nya kommentarer
 };
 let lastSelection = [];      // [{modelId, objectId (externalId), objectRuntimeId, name}]
 let playTimer = null;
@@ -28,6 +29,8 @@ let collapsedPanels = new Set(); // vilka paneler (data-panel-id) som är minime
 let itemsTotalCount = null;  // totalt antal rader enligt Supabase (Content-Range), eller null om okänt
 let selectedItemKeys = new Set(); // markerade rader i "Planerade objekt" (Ctrl/Cmd- och Shift-klick), nyckel = objectId
 let selectionAnchorKey = null; // ankarraden för Shift-klick (intervallmarkering) i objektlistan
+let currentCommentsItem = null; // vilket objekt kommentarsdialogen just nu visar
+let currentComments = [];       // kommentarer (platt lista, inkl. svar) för currentCommentsItem
 
 // Tidslinjen ska alltid gå att dra minst fram till/bakåt till de här
 // datumen, oavsett vilka start-/slutdatum som faktiskt är inplanerade
@@ -82,6 +85,9 @@ function bindUI() {
   document.getElementById("btnLinkSelection").onclick = onOpenLinkForm;
   document.getElementById("btnCancelLink").onclick = () => toggle("linkForm", false);
   document.getElementById("btnSaveLink").onclick = onSaveLink;
+  document.getElementById("fProgress").oninput = () => {
+    document.getElementById("fProgressLabel").innerText = document.getElementById("fProgress").value;
+  };
 
   document.getElementById("timelineSlider").oninput = onSliderMove;
   document.getElementById("timelineDate").onchange = onDateInputChange;
@@ -106,6 +112,14 @@ function bindUI() {
   document.getElementById("btnSettings").onclick = () => toggle("settingsDialog", true);
   document.getElementById("btnCloseSettings").onclick = () => toggle("settingsDialog", false);
   document.getElementById("btnSaveSettings").onclick = onSaveSettings;
+
+  document.getElementById("btnCloseComments").onclick = () => toggle("commentsDialog", false);
+  document.getElementById("btnAddComment").onclick = () => {
+    const text = document.getElementById("commentText").value.trim();
+    if (!text) return;
+    onSubmitComment(text, null);
+  };
+  document.getElementById("commentsList").onclick = onCommentsListClick;
 
   document.getElementById("colorNotStarted").value = settings.colorNotStarted;
   document.getElementById("colorInProgress").value = settings.colorInProgress;
@@ -261,6 +275,9 @@ function fillLinkForm(existing) {
   document.getElementById("fStatus").value = existing ? existing.status || "planerad" : "planerad";
   document.getElementById("fStart").value = existing ? existing.startDate || "" : "";
   document.getElementById("fEnd").value = existing ? existing.endDate || "" : "";
+  const progress = existing && Number.isFinite(existing.progress) ? existing.progress : 0;
+  document.getElementById("fProgress").value = progress;
+  document.getElementById("fProgressLabel").innerText = progress;
 }
 
 async function onSaveLink() {
@@ -271,7 +288,8 @@ async function onSaveLink() {
     contractor: document.getElementById("fContractor").value.trim(),
     status: document.getElementById("fStatus").value,
     startDate: document.getElementById("fStart").value || null,
-    endDate: document.getElementById("fEnd").value || null
+    endDate: document.getElementById("fEnd").value || null,
+    progress: Number(document.getElementById("fProgress").value) || 0
   };
 
   const records = lastSelection.map(s => ({
@@ -621,6 +639,14 @@ function normalizeStatus(value) {
    Objektlista
    ------------------------------------------------------------------- */
 
+/** Formaterar planerat start-/slutdatum för en rad i "Planerade objekt". */
+function formatDateRange(it) {
+  if (it.startDate && it.endDate) return `${it.startDate} → ${it.endDate}`;
+  if (it.startDate) return `Start ${it.startDate}`;
+  if (it.endDate) return `Slut ${it.endDate}`;
+  return "Inga datum satta";
+}
+
 /**
  * Markerar (och zoomar till) en eller flera planeringsposter i 3D-vyn.
  * Poster utan modell-koppling (t.ex. felaktiga Excel-rader) hoppas över.
@@ -816,15 +842,21 @@ function renderItemList() {
       const idx = indexToItem.length;
       indexToItem.push(it);
       const isSelected = selectedItemKeys.has(it.objectId);
+      const progress = Number.isFinite(it.progress) ? it.progress : 0;
       html += `
         <div class="item-row${isSelected ? " selected" : ""}" data-index="${idx}">
-          <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
-            <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span><br/>
-            <span>${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span>
-          </span>
-          <span class="badge" style="background:${statusColor[it.status] || "#999"};color:${statusTextColor[it.status] || "#fff"}">${statusLabel[it.status] || it.status}</span>
-          <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
-          <button class="delete-btn" data-action="delete" title="Radera kopplingen">🗑️</button>
+          <div class="item-row-top">
+            <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
+              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span><br/>
+              <span class="item-sub">${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span><br/>
+              <span class="item-dates">${escapeHtml(formatDateRange(it))} · Framdrift ${progress}%</span>
+            </span>
+            <span class="badge" style="background:${statusColor[it.status] || "#999"};color:${statusTextColor[it.status] || "#fff"}">${statusLabel[it.status] || it.status}</span>
+            <button class="comment-btn" data-action="comments" title="Kommentarer">💬</button>
+            <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
+            <button class="delete-btn" data-action="delete" title="Radera kopplingen">🗑️</button>
+          </div>
+          <div class="progress-track" title="Framdrift: ${progress}%"><div class="progress-fill" style="width:${progress}%"></div></div>
         </div>`;
     });
   });
@@ -835,6 +867,7 @@ function renderItemList() {
     const it = indexToItem[Number(row.dataset.index)];
 
     row.querySelector('[data-action="select"]').onclick = (ev) => onItemRowClicked(it, ev, indexToItem);
+    row.querySelector('[data-action="comments"]').onclick = () => openCommentsDialog(it);
     row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it);
     row.querySelector('[data-action="delete"]').onclick = () => deleteItemFromList(it);
   });
@@ -910,6 +943,136 @@ function onItemRowClicked(it, ev, renderedItems) {
 
   const selectedItems = items.filter(x => selectedItemKeys.has(x.objectId));
   if (selectedItems.length > 0) selectItemsInModel(selectedItems);
+}
+
+/* ---------------------------------------------------------------------
+   Kommentarer på ett planerat objekt (med svar, ungefär som i Excel)
+   ------------------------------------------------------------------- */
+
+/** Öppnas via 💬-knappen på en rad i "Planerade objekt". */
+function openCommentsDialog(item) {
+  currentCommentsItem = item;
+  document.getElementById("commentsItemName").innerText = item.objectName || item.objectId;
+  document.getElementById("commentAuthor").value = settings.userName || "";
+  document.getElementById("commentText").value = "";
+  document.getElementById("commentsStatus").innerText = "";
+  toggle("commentsDialog", true);
+  loadComments(item);
+}
+
+async function loadComments(item) {
+  const listEl = document.getElementById("commentsList");
+  listEl.innerHTML = `<div class="hint">Laddar kommentarer...</div>`;
+  if (!isSupabaseConfigured()) {
+    listEl.innerHTML = `<div class="hint">Ingen databas ansluten.</div>`;
+    return;
+  }
+  try {
+    currentComments = await fetchComments(item.id);
+  } catch (e) {
+    listEl.innerHTML = `<div class="hint">Kunde inte hämta kommentarer: ${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  renderComments();
+}
+
+function renderComments() {
+  const listEl = document.getElementById("commentsList");
+  if (currentComments.length === 0) {
+    listEl.innerHTML = `<div class="hint">Inga kommentarer ännu.</div>`;
+    return;
+  }
+
+  const childrenByParent = new Map();
+  const roots = [];
+  currentComments.forEach(c => {
+    if (c.parent_comment_id) {
+      if (!childrenByParent.has(c.parent_comment_id)) childrenByParent.set(c.parent_comment_id, []);
+      childrenByParent.get(c.parent_comment_id).push(c);
+    } else {
+      roots.push(c);
+    }
+  });
+
+  listEl.innerHTML = roots.map(c => renderCommentNode(c, childrenByParent)).join("");
+}
+
+function renderCommentNode(c, childrenByParent) {
+  const replies = childrenByParent.get(c.id) || [];
+  return `
+    <div class="comment" data-comment-id="${c.id}">
+      <div class="comment-meta"><strong>${escapeHtml(c.author || "Anonym")}</strong> <span class="comment-time">${formatDateTime(c.created_at)}</span></div>
+      <div class="comment-body">${escapeHtml(c.body)}</div>
+      <button class="comment-reply-btn" data-action="reply" data-id="${c.id}">Svara</button>
+      <div class="comment-reply-form hidden" data-reply-form="${c.id}">
+        <textarea rows="2" placeholder="Skriv ett svar..."></textarea>
+        <div class="row">
+          <button data-action="send-reply" data-id="${c.id}">Skicka svar</button>
+          <button data-action="cancel-reply" data-id="${c.id}">Avbryt</button>
+        </div>
+      </div>
+      <div class="comment-replies">
+        ${replies.map(r => renderCommentNode(r, childrenByParent)).join("")}
+      </div>
+    </div>`;
+}
+
+function onCommentsListClick(ev) {
+  const btn = ev.target.closest("[data-action]");
+  if (!btn) return;
+  const action = btn.dataset.action;
+  const id = Number(btn.dataset.id);
+
+  if (action === "reply") {
+    document.querySelectorAll(".comment-reply-form").forEach(f => f.classList.add("hidden"));
+    const form = document.querySelector(`[data-reply-form="${id}"]`);
+    if (form) {
+      form.classList.remove("hidden");
+      form.querySelector("textarea").focus();
+    }
+  } else if (action === "cancel-reply") {
+    const form = document.querySelector(`[data-reply-form="${id}"]`);
+    if (form) form.classList.add("hidden");
+  } else if (action === "send-reply") {
+    const form = document.querySelector(`[data-reply-form="${id}"]`);
+    const text = form ? form.querySelector("textarea").value.trim() : "";
+    if (!text) return;
+    onSubmitComment(text, id);
+  }
+}
+
+async function onSubmitComment(body, parentCommentId) {
+  if (!currentCommentsItem) return;
+  const author = document.getElementById("commentAuthor").value.trim() || "Anonym";
+  settings.userName = author;
+  try {
+    window.localStorage.setItem("4dplan-settings", JSON.stringify(settings));
+  } catch (e) { /* ignorera */ }
+
+  const statusEl = document.getElementById("commentsStatus");
+  statusEl.innerText = "Skickar...";
+  try {
+    await postComment({
+      plan_item_id: currentCommentsItem.id,
+      parent_comment_id: parentCommentId || null,
+      author,
+      body
+    });
+  } catch (e) {
+    statusEl.innerText = "Kunde inte skicka kommentaren: " + e.message;
+    return;
+  }
+  statusEl.innerText = "";
+  document.getElementById("commentText").value = "";
+  await loadComments(currentCommentsItem);
+}
+
+function formatDateTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  const pad = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /* ---------------------------------------------------------------------
@@ -1124,7 +1287,8 @@ function toRow(it) {
     contractor: it.contractor || null,
     status: it.status || "planerad",
     start_date: it.startDate || null,
-    end_date: it.endDate || null
+    end_date: it.endDate || null,
+    progress: Number.isFinite(it.progress) ? Math.max(0, Math.min(100, Math.round(it.progress))) : 0
   };
 }
 
@@ -1141,6 +1305,7 @@ function fromRow(row) {
     status: row.status,
     startDate: row.start_date,
     endDate: row.end_date,
+    progress: Number.isFinite(row.progress) ? row.progress : 0,
     updatedAt: row.updated_at
   };
 }
@@ -1249,6 +1414,40 @@ async function deleteItems(itemsToDelete, onProgress) {
       );
     }
     if (onProgress) onProgress(Math.min(i + chunk.length, ids.length), ids.length);
+  }
+}
+
+/** Hämtar alla kommentarer (inkl. svar) för ett objekt, äldst först. */
+async function fetchComments(planItemId) {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Ingen databas ansluten. Ange Supabase-URL och nyckel i inställningarna.");
+  }
+  const url = `${settings.supabaseUrl}/rest/v1/plan_item_comments?plan_item_id=eq.${encodeURIComponent(planItemId)}&select=*&order=created_at.asc`;
+  const res = await fetch(url, { headers: supabaseHeaders(false) });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Databasfel (${res.status}): ${text || res.statusText}`);
+  }
+  return res.json();
+}
+
+/** Skapar en ny kommentar (eller ett svar, om parent_comment_id är satt). */
+async function postComment(record) {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Ingen databas ansluten. Ange Supabase-URL och nyckel i inställningarna.");
+  }
+  const url = `${settings.supabaseUrl}/rest/v1/plan_item_comments`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      ...supabaseHeaders(true),
+      Prefer: "return=minimal"
+    },
+    body: JSON.stringify([record])
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Databasfel (${res.status}): ${text || res.statusText}`);
   }
 }
 
