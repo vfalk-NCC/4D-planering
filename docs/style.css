@@ -28,6 +28,22 @@ header {
 header h1 { font-size: 16px; margin: 0; }
 header button { background: none; border: none; font-size: 16px; cursor: pointer; }
 
+.header-brand { display: flex; align-items: center; gap: 8px; }
+.ncc-mark {
+  flex: 0 0 auto;
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: .02em;
+  color: #fff;
+  background: #e2001a;
+  padding: 3px 6px;
+  border-radius: 3px;
+  line-height: 1;
+}
+.header-titles { display: flex; flex-direction: column; line-height: 1.15; }
+.header-titles h1 { font-size: 16px; margin: 0; }
+.made-by { font-size: 9px; color: var(--muted); }
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
@@ -35,7 +51,26 @@ header button { background: none; border: none; font-size: 16px; cursor: pointer
   padding: 10px;
   margin-bottom: 10px;
 }
-.panel h2 { font-size: 13px; margin: 0 0 8px 0; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); }
+.panel h2 {
+  font-size: 13px;
+  margin: 0 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.panel h2::before {
+  content: "▼";
+  font-size: 8px;
+  flex: 0 0 auto;
+}
+.panel.collapsed h2 { margin-bottom: 0; }
+.panel.collapsed h2::before { content: "▶"; }
+.panel.collapsed > *:not(h2) { display: none; }
 
 .hint { color: var(--muted); font-size: 11px; margin: 4px 0; }
 .hint.warning { color: #e5484d; font-weight: 600; padding: 6px 8px; background: #fdeceb; border: 1px solid #f3c4c1; border-radius: 4px; }
@@ -150,7 +185,8 @@ button:hover { filter: brightness(0.97); }
   color: white;
   white-space: nowrap;
 }
-.item-row .edit-btn {
+.item-row .edit-btn,
+.item-row .delete-btn {
   border: none;
   background: none;
   cursor: pointer;

@@ -41,6 +41,15 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   "Rensa etiketter" tar bort dem igen. (Etiketterna använder Trimble Connects
   inbyggda textmarkup-funktion, som har fast utseende – font och
   bakgrundsfärg går inte att anpassa.)
+- **Ihopfällbara paneler**: klicka på en panelrubrik (t.ex. "Koppla
+  markering", "Tidslinje", "Filter") för att minimera den och få mer
+  utrymme i sidopanelen. Vilka paneler som är minimerade sparas lokalt i
+  webbläsaren och finns kvar nästa gång du öppnar extensionen.
+- **Radera en koppling**: soptunneknappen (🗑️) på varje rad i "Planerade
+  objekt" tar bort planeringskopplingen för det objektet, efter en
+  bekräftelsefråga ("Är du säker på att du vill radera kopplingen?").
+  Själva 3D-objektet i modellen påverkas inte – bara planeringsdatan i
+  databasen.
 
 ## Arkitektur
 
@@ -173,6 +182,15 @@ för automatisk uppdatering" i gränssnittet är en platshållare för detta.
 
 ## Viktiga begränsningar att känna till
 
+- **Max antal planerade objekt (1000-gränsen)**: extensionen hämtar nu upp
+  till 50 000 rader per anrop (styrs av `ITEMS_FETCH_LIMIT` i `app.js`).
+  Men Supabase/PostgREST har även en egen serverinställning, **Max Rows**
+  (Project Settings → API, standard **1000**), som klipper av svaret
+  oavsett vad klienten begär. Om du planerar in fler än 1000 objekt: höj
+  Max Rows i Supabase-projektet till t.ex. 50000 också, annars visar
+  extensionen fortfarande bara de första 1000 – och en varningstext dyker
+  upp ovanför objektlistan ("Visar bara de första X av totalt Y...") om
+  det händer, så du märker det direkt i stället för att gissa.
 - **Flera modeller**: om projektet har flera modeller behöver
   Excel-filen även innehålla en `ModellID`-kolumn, annars antas objekten
   tillhöra samma modell som redan importerats.

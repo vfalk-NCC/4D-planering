@@ -24,12 +24,20 @@ let playTimer = null;
 let searchTerm = "";
 let labelMarkupIds = [];     // aktiva 3D-textetiketter skapade av "Visa namn i 3D"
 let collapsedGroups = new Set(); // vilka grupper (nyckel: "<fält>::<värde>") som är minimerade i listan
+let collapsedPanels = new Set(); // vilka paneler (data-panel-id) som är minimerade
+let itemsTotalCount = null;  // totalt antal rader enligt Supabase (Content-Range), eller null om okänt
 
 // Tidslinjen ska alltid gå att dra minst fram till/bakåt till de här
 // datumen, oavsett vilka start-/slutdatum som faktiskt är inplanerade
 // på objekten.
 const TIMELINE_MIN_START = "2025-01-01";
 const TIMELINE_MIN_END = "2030-12-31";
+
+// Max antal rader att hämta från Supabase per anrop. OBS: Supabase-projektets
+// egen inställning "Max Rows" (Project Settings -> API, standard 1000)
+// sätter också ett tak – höj den där också om du planerar in fler än 1000
+// objekt, annars klipps listan ändå av på 1000 oavsett den här konstanten.
+const ITEMS_FETCH_LIMIT = 50000;
 
 /* ---------------------------------------------------------------------
    Init
@@ -39,6 +47,7 @@ window.addEventListener("DOMContentLoaded", init);
 async function init() {
   loadLocalSettings();
   bindUI();
+  initCollapsiblePanels();
 
   API = await TrimbleConnectWorkspace.connect(window.parent, onWorkspaceEvent, 30000);
 
@@ -114,6 +123,38 @@ function updateOpacityLabels() {
 
 function toggle(id, show) {
   document.getElementById(id).classList.toggle("hidden", !show);
+}
+
+/* ---------------------------------------------------------------------
+   Ihopfällbara paneler ("Koppla markering", "Tidslinje", "Filter" m.fl.)
+   ------------------------------------------------------------------- */
+function loadCollapsedPanels() {
+  try {
+    const raw = window.localStorage.getItem("4dplan-collapsed-panels");
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch (e) { return new Set(); }
+}
+
+function saveCollapsedPanels() {
+  try {
+    window.localStorage.setItem("4dplan-collapsed-panels", JSON.stringify(Array.from(collapsedPanels)));
+  } catch (e) { /* ignorera */ }
+}
+
+function initCollapsiblePanels() {
+  collapsedPanels = loadCollapsedPanels();
+  document.querySelectorAll("section.panel[data-panel-id]").forEach(panel => {
+    const id = panel.dataset.panelId;
+    const h2 = panel.querySelector(":scope > h2");
+    if (!h2) return;
+    panel.classList.toggle("collapsed", collapsedPanels.has(id));
+    h2.onclick = () => {
+      panel.classList.toggle("collapsed");
+      if (panel.classList.contains("collapsed")) collapsedPanels.add(id);
+      else collapsedPanels.delete(id);
+      saveCollapsedPanels();
+    };
+  });
 }
 
 function paintLegendDots() {
@@ -602,6 +643,43 @@ async function selectItemsInModel(itemsToSelect) {
   await API.viewer.setCamera(selector);
 }
 
+/**
+ * Raderar en enskild kopplad planeringspost, efter bekräftelse från
+ * användaren. Tar bara bort kopplingen/planeringsdatan i Supabase –
+ * själva 3D-objektet i modellen påverkas inte.
+ */
+async function deleteItemFromList(item) {
+  if (!isSupabaseConfigured()) {
+    alert("Ingen databas ansluten.");
+    return;
+  }
+  if (!confirm("Är du säker på att du vill radera kopplingen?")) return;
+
+  try {
+    await deleteItem(item);
+  } catch (e) {
+    alert("Kunde inte radera: " + e.message);
+    return;
+  }
+
+  await refreshItems();
+  buildFilterOptions();
+  renderItemList();
+  initTimelineRange();
+}
+
+function updateItemsTruncatedWarning() {
+  const el = document.getElementById("itemsTruncatedWarning");
+  if (!el) return;
+  if (itemsTotalCount !== null && itemsTotalCount > items.length) {
+    el.classList.remove("hidden");
+    el.innerText = `⚠️ Visar bara de första ${items.length} av totalt ${itemsTotalCount} objekt i databasen. Höj Supabase-projektets "Max Rows"-inställning (Project Settings → API) om du behöver se fler.`;
+  } else {
+    el.classList.add("hidden");
+    el.innerText = "";
+  }
+}
+
 function renderItemList() {
   searchTerm = (document.getElementById("itemSearch").value || "").toLowerCase().trim();
   const groupBy = document.getElementById("groupBy").value;
@@ -615,6 +693,7 @@ function renderItemList() {
   });
 
   document.getElementById("itemCount").innerText = `${visible.length}/${items.length}`;
+  updateItemsTruncatedWarning();
   const el = document.getElementById("itemList");
   const statusColor = { planerad: "#94a3b8", pagaende: "#f5a623", forsenad: "#e5484d", klar: "#3fb950", pausad: "#a1a1aa" };
   const statusLabel = { planerad: "Planerad", pagaende: "Pågående", forsenad: "Försenad", klar: "Klar", pausad: "Pausad" };
@@ -679,6 +758,7 @@ function renderItemList() {
           </span>
           <span class="badge" style="background:${statusColor[it.status] || "#999"}">${statusLabel[it.status] || it.status}</span>
           <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
+          <button class="delete-btn" data-action="delete" title="Radera kopplingen">🗑️</button>
         </div>`;
     });
   });
@@ -690,6 +770,7 @@ function renderItemList() {
 
     row.querySelector('[data-action="select"]').onclick = () => selectItemsInModel([it]);
     row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it);
+    row.querySelector('[data-action="delete"]').onclick = () => deleteItemFromList(it);
   });
 
   Array.from(el.querySelectorAll(".group-header")).forEach(headerEl => {
@@ -945,15 +1026,35 @@ function fromRow(row) {
 async function refreshItems() {
   if (!isSupabaseConfigured()) {
     items = [];
+    itemsTotalCount = null;
     return;
   }
   try {
     const url = `${settings.supabaseUrl}/rest/v1/plan_items?project_id=eq.${encodeURIComponent(projectId)}&select=*`;
-    const res = await fetch(url, { headers: supabaseHeaders(false) });
-    items = res.ok ? (await res.json()).map(fromRow) : [];
+    // Range + Prefer: count=exact höjer taket förbi PostgRESTs standard på
+    // 1000 rader per anrop (upp till ITEMS_FETCH_LIMIT) och låter oss läsa
+    // ut totalantalet via Content-Range, så vi kan varna om listan ändå
+    // klipps av (t.ex. av Supabase-projektets egen "Max Rows"-inställning).
+    const res = await fetch(url, {
+      headers: {
+        ...supabaseHeaders(false),
+        Range: `0-${ITEMS_FETCH_LIMIT - 1}`,
+        Prefer: "count=exact"
+      }
+    });
+    if (res.ok) {
+      items = (await res.json()).map(fromRow);
+      const contentRange = res.headers.get("content-range"); // t.ex. "0-999/1234"
+      const total = contentRange ? Number(contentRange.split("/")[1]) : NaN;
+      itemsTotalCount = Number.isFinite(total) ? total : null;
+    } else {
+      items = [];
+      itemsTotalCount = null;
+    }
   } catch (e) {
     console.error("Kunde inte hämta planeringsdata", e);
     items = [];
+    itemsTotalCount = null;
   }
 }
 
@@ -970,6 +1071,25 @@ async function saveItems(records) {
       Prefer: "resolution=merge-duplicates,return=minimal"
     },
     body: JSON.stringify(records.map(toRow))
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Databasfel (${res.status}): ${text || res.statusText}`);
+  }
+}
+
+/** Raderar en enskild post i Supabase (via id om känt, annars project_id+object_id). */
+async function deleteItem(item) {
+  if (!isSupabaseConfigured()) {
+    throw new Error("Ingen databas ansluten. Ange Supabase-URL och nyckel i inställningarna.");
+  }
+  const url = item.id !== undefined && item.id !== null
+    ? `${settings.supabaseUrl}/rest/v1/plan_items?id=eq.${encodeURIComponent(item.id)}`
+    : `${settings.supabaseUrl}/rest/v1/plan_items?project_id=eq.${encodeURIComponent(item.projectId)}&object_id=eq.${encodeURIComponent(item.objectId)}`;
+
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: supabaseHeaders(false)
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");

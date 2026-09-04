@@ -12,13 +12,19 @@
 
     <!-- ===== Header ===== -->
     <header>
-      <h1>4D-planering</h1>
+      <div class="header-brand">
+        <span class="ncc-mark" title="NCC">NCC</span>
+        <div class="header-titles">
+          <h1>4D-planering</h1>
+          <span class="made-by">Made by: VFA</span>
+        </div>
+      </div>
       <button id="btnSettings" title="Inställningar (databas, färger m.m.)">⚙</button>
     </header>
     <div id="connectionWarning" class="hint warning hidden"></div>
 
     <!-- ===== Koppla markerade objekt ===== -->
-    <section class="panel">
+    <section class="panel" data-panel-id="link">
       <h2>Koppla markering</h2>
       <p class="hint">Markera objekt i modellen och tryck på knappen för att sätta/ändra planeringsdata.</p>
       <button id="btnLinkSelection" class="primary">Koppla markerade objekt (<span id="selCount">0</span>)</button>
@@ -61,7 +67,7 @@
     </section>
 
     <!-- ===== Tidslinje ===== -->
-    <section class="panel">
+    <section class="panel" data-panel-id="timeline">
       <h2>Tidslinje</h2>
       <div class="timeline-controls">
         <button id="btnPlay" title="Spela upp">▶</button>
@@ -76,7 +82,7 @@
     </section>
 
     <!-- ===== Filter ===== -->
-    <section class="panel">
+    <section class="panel" data-panel-id="filter">
       <h2>Filter</h2>
       <label>Område
         <select id="filterArea" multiple></select>
@@ -106,8 +112,9 @@
     </section>
 
     <!-- ===== Objektlista ===== -->
-    <section class="panel">
+    <section class="panel" data-panel-id="items">
       <h2>Planerade objekt (<span id="itemCount">0</span>)</h2>
+      <div id="itemsTruncatedWarning" class="hint warning hidden"></div>
       <input type="text" id="itemSearch" placeholder="Sök på namn, område, aktivitet..." />
       <div class="row">
         <label style="flex:1">Gruppera enligt
@@ -131,7 +138,7 @@
     </section>
 
     <!-- ===== Excel-import ===== -->
-    <section class="panel">
+    <section class="panel" data-panel-id="excel">
       <h2>Excel-import</h2>
       <p class="hint">Kolumner: ObjektID, Område, Aktivitet, Entreprenör, Status, Startdatum, Slutdatum</p>
       <input type="file" id="excelFile" accept=".xlsx,.xls" />
@@ -143,7 +150,7 @@
     </section>
 
     <!-- ===== Hitta objekt (koordinat) ===== -->
-    <section class="panel">
+    <section class="panel" data-panel-id="find">
       <h2>Hitta objekt</h2>
       <p class="hint">Markera en grupp kandidatobjekt i 3D-vyn (t.ex. alla fundament på en yta) och sök fram det som ligger närmast en viss koordinat, i stället för att klicka blint.</p>
       <div class="row">
