@@ -95,8 +95,10 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   sparas lokalt och förifylls nästa gång. Så fort ett objekt har minst en
   kommentar syns en liten siffra ovanpå 💬-knappen på dess rad (antal
   kommentarer, inkl. svar), så att man ser vilka objekt som diskuterats utan
-  att behöva öppna varje kommentarstråd. Kräver att migreringen nedan körts
-  i Supabase.
+  att behöva öppna varje kommentarstråd.
+- **Lösenordsgrind**: extensionen visar "Du har ej åtkomst" tills rätt
+  lösenord anges (se avsnittet nedan). Enbart en enkel klientsidesspärr,
+  inte riktig säkerhet.
 - **Dölj klarmarkerade objekt**: kryssrutan "Dölj klarmarkerade" ovanför
   listan filtrerar bort alla objekt med status "Klar", oavsett om listan
   samtidigt är grupperad (område/aktivitet/entreprenör/status) eller
@@ -106,35 +108,37 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
 
 ```
 docs/              -> Frontend som körs inuti Trimble Connect (sidopanel)
-                     index.html + app.js + style.css + manifest.json
-                     Hostas gratis via GitHub Pages direkt från repot.
-supabase/
-  schema.sql                        -> Skapar allt från grunden (nya installationer).
-  migration_2_comments_progress.sql -> Lägger till kommentarer + framdriftsprocent
-                                        på en databas som redan finns sedan tidigare.
+                     index.html + app.js + github-storage.js + style.css + manifest.json
+                     Hostas gratis via GitHub Pages direkt från det här (publika) repot.
 ```
 
-> **Har du redan en databas sedan tidigare?** Kör
-> [`supabase/migration_2_comments_progress.sql`](supabase/migration_2_comments_progress.sql)
-> en gång i Supabase SQL Editor för att få kommentarer och
-> framdriftsprocent – annars visas "Databasfel" när du försöker använda
-> dem. Nya installationer (som kör hela `schema.sql`) får allt direkt och
-> ska INTE köra migreringsfilen också.
-
-Det finns **ingen egen server längre**. Tidigare version använde en egen
-Node/Express-server med SQLite, men den gick aldrig att hosta gratis på
-ett tillförlitligt sätt (gratis-nivåer för servrar med beständig disk är
-antingen tidsbegränsade eller kräver betalkort). Extensionen pratar nu
-direkt med **Supabase** – en gratis Postgres-databas som har ett
-färdigbyggt REST-API (PostgREST) inbyggt, så ingen egen backend-kod
-behöver driftas eller hållas vid liv.
+Det finns **ingen egen server och ingen extern databastjänst längre**.
+Tidigare versioner använde först en egen Node/Express-server med SQLite,
+sedan Supabase (Postgres). Båda är borta nu – all lagring ligger i stället
+i ett separat, **privat** GitHub-repo (`vfalk-NCC/4D-data`), som nås
+direkt från klienten via GitHub Contents API, precis som Supabase nåddes
+direkt via PostgREST tidigare:
 
 ```
 Trimble Connect (3D-visare)
-   -> docs/ (statiska filer på GitHub Pages, gratis, direkt från repot)
-        -> REST-anrop direkt till https://<ditt-projekt>.supabase.co
-             -> Supabase (Postgres-databas, gratis nivå)
+   -> docs/ (statiska filer på GitHub Pages, gratis, direkt från DETTA repot)
+        -> GitHub Contents API mot det PRIVATA repot vfalk-NCC/4D-data
+             -> projects/<projekt-id>/<tabell>.json (en fil per "tabell" och Trimble-projekt)
 ```
+
+Varför två repon? GitHub Pages kräver ett publikt repo för att hosta gratis
+– men publik data hade gjort all planeringsdata (namn, kommentarer,
+bemanning m.m.) sökbar för vem som helst på internet. Lösningen är att
+hålla dem isär: det här repot (`4D-planering`) är publikt och innehåller
+bara själva appkoden (ingen känslig data), medan `4D-data` är privat och
+innehåller all faktisk data. Se `GITHUB_TOKEN_SETUP.md` (skickat separat)
+för hur åtkomsten till `4D-data` sätts upp.
+
+> **Viktigt att känna till**: token:en som ger åtkomst till `4D-data`
+> blir lika synlig i klientkoden/`localStorage` som den gamla Supabase
+> anon-nyckeln var – samma förtroendemodell, bara en annan leverantör.
+> Den är scopead till enbart detta ena repo för att begränsa skadan om
+> den läcker.
 
 > **Varför GitHub Pages och inte t.ex. Netlify?** GitHub Pages hostar
 > statiska filer direkt från repot utan några kredit- eller
@@ -162,32 +166,15 @@ till för filtrering/rapportering (t.ex. att markera förseningar).
 
 ## Komma igång
 
-### 1. Skapa ett gratis Supabase-projekt
+### 1. Skapa en GitHub-token för datalagret
 
-1. Gå till [supabase.com](https://supabase.com) och skapa ett konto
-   (inget betalkort krävs för gratisnivån).
-2. Klicka **New project**. Välj namn, ett databaslösenord (spara det
-   någonstans säkert – det behövs sällan men gå inte förlorat) och en
-   region nära er, t.ex. Frankfurt eller Stockholm om det finns.
-3. Vänta tills projektet är klart (tar ca en minut).
+All data lagras i det privata repot `vfalk-NCC/4D-data`. Se
+`GITHUB_TOKEN_SETUP.md` (skickad separat) för hur du skapar en
+fine-grained personal access token scopead till enbart det repot – tar
+under en minut och behöver bara göras en gång (samma token används i
+både 4D-planering och 4D-dashboard).
 
-### 2. Skapa databastabellen
-
-1. Öppna **SQL Editor** i vänstermenyn -> **New query**.
-2. Öppna filen [`supabase/schema.sql`](supabase/schema.sql) i det här
-   repot, kopiera hela innehållet och klistra in i SQL Editor.
-3. Klicka **Run**. Det skapar tabellen `plan_items` samt de
-   behörighetsregler (RLS-policy) som extensionen behöver.
-
-### 3. Hämta URL och nyckel
-
-1. Öppna **Project Settings** (kugghjulet) -> **API**.
-2. Kopiera **Project URL** (ser ut som `https://xxxxx.supabase.co`).
-3. Kopiera nyckeln under **Project API keys** som heter **anon** /
-   **public** (inte `service_role` – den ska aldrig användas i en
-   webbextension).
-
-### 4. Publicera frontend (GitHub Pages)
+### 2. Publicera frontend (GitHub Pages)
 
 Extensionen är en helt statisk webbsida (`docs/index.html` + `docs/app.js`
 + `docs/style.css`), så den hostas gratis direkt från repot via GitHub
@@ -205,19 +192,20 @@ byggminutsgränser att slå i:
 Varje ny `git push` till `main` publiceras automatiskt igen inom någon
 minut – helt utan kredit- eller byggkvoter att ta slut.
 
-### 5. Koppla extensionen till databasen
+### 3. Koppla extensionen till datalagret
 
 1. Öppna projektet i Trimble Connect for Browser och aktivera
    extensionen (se nästa steg om den inte redan är tillagd).
-2. Klicka på kugghjulet (⚙) uppe till höger i panelen.
-3. Klistra in **Supabase-URL** och **anon key** från steg 3.
-4. Klicka **Spara**. Varningen "Ingen databas ansluten" ska försvinna.
+2. Om lösenordsgrinden visas ("Du har ej åtkomst"): ange lösenordet.
+3. Klicka på kugghjulet (⚙) uppe till höger i panelen.
+4. Klistra in **GitHub-token** från steg 1.
+5. Klicka **Spara**. Varningen om saknad token ska försvinna.
 
-Uppgifterna sparas lokalt i webbläsaren (`localStorage`) hos varje
-användare, precis som färginställningarna gjorde tidigare – själva
-planeringsdatan delas dock av alla via Supabase.
+Token:en sparas lokalt i webbläsaren (`localStorage`) hos varje
+användare, precis som Supabase-uppgifterna gjorde tidigare – själva
+planeringsdatan delas dock av alla via det privata `4D-data`-repot.
 
-### 6. Registrera extensionen i Trimble Connect (om det inte redan är gjort)
+### 4. Registrera extensionen i Trimble Connect (om det inte redan är gjort)
 
 1. Öppna projektet i Trimble Connect for Browser.
 2. Inställningar → Extensions.
@@ -235,44 +223,45 @@ I den här grundversionen läser användaren in filen manuellt via
 
 **Verklig automatik** (filen uppdateras och modellen följer med utan
 manuellt klick) skulle kräva att något pollar filen med jämna mellanrum
-och skriver till Supabase, t.ex. en schemalagd Supabase Edge Function
-som läser filen från en delad mapp (SharePoint/OneDrive) eller från
-Trimble Connects egna filer via dess REST-API. Kryssrutan "Bevaka fil
-för automatisk uppdatering" i gränssnittet är en platshållare för detta.
+och skriver till `4D-data`-repot, t.ex. ett schemalagt skript som läser
+filen från en delad mapp (SharePoint/OneDrive) eller från Trimble
+Connects egna filer via dess REST-API. Kryssrutan "Bevaka fil för
+automatisk uppdatering" i gränssnittet är en platshållare för detta.
 
 ## Viktiga begränsningar att känna till
 
-- **Max antal planerade objekt (1000-gränsen)**: extensionen hämtar nu upp
-  till 50 000 rader per anrop (styrs av `ITEMS_FETCH_LIMIT` i `app.js`).
-  Men Supabase/PostgREST har även en egen serverinställning, **Max Rows**
-  (Project Settings → API, standard **1000**), som klipper av svaret
-  oavsett vad klienten begär. Om du planerar in fler än 1000 objekt: höj
-  Max Rows i Supabase-projektet till t.ex. 50000 också, annars visar
-  extensionen fortfarande bara de första 1000 – och en varningstext dyker
-  upp ovanför objektlistan ("Visar bara de första X av totalt Y...") om
-  det händer, så du märker det direkt i stället för att gissa.
+- **Lösenordsgrinden är ingen riktig säkerhet**: "Du har ej åtkomst" /
+  lösenordet är enbart en klientsidesspärr för att hålla utomstående ute
+  av misstag. Koden och all data är fortsatt fullt synlig för den som
+  öppnar webbläsarens utvecklarverktyg.
+- **GitHub-gränser**: GitHub Contents API tillåter 5000 anrop/timme
+  generellt och 500/timme + 80/minut för skrivande anrop – gott om
+  marginal för en handfull användare med manuell uppdatering, men gör
+  extensionen inte om till ett högfrekvent integrationsverktyg (t.ex.
+  automatisk polling var några sekunder).
 - **Flera modeller**: om projektet har flera modeller behöver
   Excel-filen även innehålla en `ModellID`-kolumn, annars antas objekten
   tillhöra samma modell som redan importerats.
 - **Färgläggning är sessionsbaserad**: `viewer.setObjectState` färgar
   objekt i den aktuella visningen. Planeringsdatan i sig är permanent
-  (lagras i Supabase); färgerna räknas om varje gång tidslinjen flyttas
-  eller extensionen laddas om.
+  (lagras i `4D-data`-repot); färgerna räknas om varje gång tidslinjen
+  flyttas eller extensionen laddas om.
 - **Selection-händelser**: exakt eventnamn för "objekt markerat i
   modellen" kan skilja mellan versioner av Trimble Connect. Just nu
   hämtas markeringen explicit när användaren trycker på "Koppla
   markerade objekt", vilket är robust oavsett eventnamn.
-- **Säkerhet**: anon-nyckeln ger läs- och skrivåtkomst till alla som har
-  den (se kommentaren i `supabase/schema.sql`). Det motsvarar samma
-  öppenhetsnivå som den gamla backend-lösningen hade, men dela inte
-  nyckeln i publika kanaler.
-- Du kan när som helst öppna databasen direkt i Supabase (**Table
-  editor** -> `plan_items`) för att granska eller manuellt rätta data.
+- **Säkerhet**: GitHub-token:en ger läs- och skrivåtkomst till alla som
+  har den, precis som anon-nyckeln gjorde tidigare – skillnaden är att
+  den är scopead till enbart det privata `4D-data`-repot. Dela den inte
+  i publika kanaler.
+- Du kan när som helst öppna `projects/<projekt-id>/plan_items.json`
+  direkt i `vfalk-NCC/4D-data` på GitHub för att granska eller manuellt
+  rätta data.
 
 ## Nästa steg (utbyggnad)
 
-- Behörighetsstyrning (Supabase Auth, endast vissa roller får ändra
-  planeringen).
+- Behörighetsstyrning (t.ex. olika token/roller för läs- kontra
+  skrivåtkomst).
 - Historik/logg per objekt (vem ändrade vad och när).
 - Exportera lägesbild till PDF/bild för veckomöten.
 - Koppling mot riktiga tidplaneverktyg (t.ex. MS Project) i stället för
