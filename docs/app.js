@@ -16,8 +16,7 @@ let settings = {
   opacityInProgress: 1,
   opacityDone: 1,
   playSecondsPerDay: 0.4,     // sekunder realtid per simulerad dag vid "spela upp"
-  supabaseUrl: "",
-  supabaseKey: "",
+  githubToken: "",             // fine-grained PAT scopead till vfalk-NCC/4D-data, se GITHUB_TOKEN_SETUP.md
   userName: ""                // namn som förifylls vid nya kommentarer
 };
 let lastSelection = [];      // [{modelId, objectId (externalId), objectRuntimeId, name}]
@@ -26,7 +25,7 @@ let searchTerm = "";
 let labelMarkupIds = [];     // aktiva 3D-textetiketter skapade av "Visa namn i 3D"
 let collapsedGroups = new Set(); // vilka grupper (nyckel: "<fält>::<värde>") som är minimerade i listan
 let collapsedPanels = new Set(); // vilka paneler (data-panel-id) som är minimerade
-let itemsTotalCount = null;  // totalt antal rader enligt Supabase (Content-Range), eller null om okänt
+let itemsTotalCount = null;  // totalt antal rader i plan_items.json, eller null om okänt
 let selectedItemKeys = new Set(); // markerade rader i "Planerade objekt" (Ctrl/Cmd- och Shift-klick), nyckel = objectId
 let selectionAnchorKey = null; // ankarraden för Shift-klick (intervallmarkering) i objektlistan
 let currentCommentsItem = null; // vilket objekt kommentarsdialogen just nu visar
@@ -50,16 +49,16 @@ const STATUS_LABELS = {
   pausad: "Pausad"
 };
 
-// Max antal rader att hämta från Supabase per anrop. OBS: Supabase-projektets
-// egen inställning "Max Rows" (Project Settings -> API, standard 1000)
-// sätter också ett tak – höj den där också om du planerar in fler än 1000
-// objekt, annars klipps listan ändå av på 1000 oavsett den här konstanten.
+// Historisk kvarleva från Supabase-tiden (PostgRESTs radgräns per anrop).
+// plan_items.json läses numera in i sin helhet i ett svep, så den här
+// konstanten styr inget längre - lämnas kvar oanvänd för att undvika att
+// röra kod som inte behöver ändras.
 const ITEMS_FETCH_LIMIT = 50000;
 
-// Max antal object_id:n per DELETE-anrop vid massradering ("Radera
-// markerade"). En enda "in.(...)"-lista med tusentals ID:n ger en URL som
-// är för lång för webbläsare/servrar (vanlig gräns är några tusen tecken) –
-// större markeringar delas därför upp i flera anrop i sekvens.
+// Tröskel för att visa "Raderar X/Y..."-förlopp i knappen vid massradering
+// ("Radera markerade") - hela raderingen sker numera i ett enda GitHub-
+// anrop istället för i omgångar, men vi vill ändå bara visa förloppstexten
+// vid riktigt stora markeringar.
 const DELETE_CHUNK_SIZE = 100;
 
 // Max antal kommentarsrader (över alla objekt) att hämta när vi bara vill
@@ -67,11 +66,56 @@ const DELETE_CHUNK_SIZE = 100;
 const COMMENTS_FETCH_LIMIT = 50000;
 
 /* ---------------------------------------------------------------------
+   Lösenordsgrind - enbart en klientsidesspärr (koden och all data är
+   fortsatt fullt synlig för den som öppnar utvecklarverktygen), inte
+   riktig säkerhet. Rätt lösenord låser upp och kommer ihåg valet i
+   localStorage så man inte behöver skriva om det varje gång.
+   ------------------------------------------------------------------- */
+const ACCESS_PASSWORD = "ändra-mig";
+const ACCESS_STORAGE_KEY = "4dplan-unlocked";
+
+function isUnlocked() {
+  try {
+    return window.localStorage.getItem(ACCESS_STORAGE_KEY) === "1";
+  } catch (e) {
+    return false;
+  }
+}
+
+function bindAccessGate() {
+  const input = document.getElementById("accessPassword");
+  const errorEl = document.getElementById("accessError");
+  const submit = () => {
+    if (input.value === ACCESS_PASSWORD) {
+      try { window.localStorage.setItem(ACCESS_STORAGE_KEY, "1"); } catch (e) {}
+      document.getElementById("accessGate").classList.add("hidden");
+      initApp();
+    } else {
+      errorEl.classList.remove("hidden");
+      input.value = "";
+      input.focus();
+    }
+  };
+  document.getElementById("btnAccessSubmit").onclick = submit;
+  input.onkeydown = (e) => { if (e.key === "Enter") submit(); };
+  input.focus();
+}
+
+/* ---------------------------------------------------------------------
    Init
    ------------------------------------------------------------------- */
-window.addEventListener("DOMContentLoaded", init);
+window.addEventListener("DOMContentLoaded", boot);
 
-async function init() {
+function boot() {
+  if (isUnlocked()) {
+    document.getElementById("accessGate").classList.add("hidden");
+    initApp();
+  } else {
+    bindAccessGate();
+  }
+}
+
+async function initApp() {
   loadLocalSettings();
   bindUI();
   initCollapsiblePanels();
@@ -150,8 +194,7 @@ function bindUI() {
   document.getElementById("opacityInProgress").oninput = updateOpacityLabels;
   document.getElementById("opacityDone").oninput = updateOpacityLabels;
   document.getElementById("playSecondsPerDay").value = settings.playSecondsPerDay;
-  document.getElementById("supabaseUrl").value = settings.supabaseUrl;
-  document.getElementById("supabaseKey").value = settings.supabaseKey;
+  document.getElementById("githubToken").value = settings.githubToken;
   updateOpacityLabels();
   paintLegendDots();
   updateConnectionWarning();
@@ -224,8 +267,7 @@ function onSaveSettings() {
   settings.opacityInProgress = Number(document.getElementById("opacityInProgress").value) / 100;
   settings.opacityDone = Number(document.getElementById("opacityDone").value) / 100;
   settings.playSecondsPerDay = Number(document.getElementById("playSecondsPerDay").value) || 0.4;
-  settings.supabaseUrl = document.getElementById("supabaseUrl").value.trim().replace(/\/$/, "");
-  settings.supabaseKey = document.getElementById("supabaseKey").value.trim();
+  settings.githubToken = document.getElementById("githubToken").value.trim();
   window.localStorage.setItem("4dplan-settings", JSON.stringify(settings));
   paintLegendDots();
   updateConnectionWarning();
@@ -740,11 +782,11 @@ async function selectItemsInModel(itemsToSelect) {
 
 /**
  * Raderar en enskild kopplad planeringspost, efter bekräftelse från
- * användaren. Tar bara bort kopplingen/planeringsdatan i Supabase –
+ * användaren. Tar bara bort kopplingen/planeringsdatan i datalagret –
  * själva 3D-objektet i modellen påverkas inte.
  */
 async function deleteItemFromList(item) {
-  if (!isSupabaseConfigured()) {
+  if (!isBackendConfigured()) {
     alert("Ingen databas ansluten.");
     return;
   }
@@ -767,7 +809,7 @@ async function deleteItemFromList(item) {
 /**
  * Raderar alla rader som är markerade i listan (Ctrl/Cmd-klick), efter en
  * gemensam bekräftelsefråga. Tar bara bort kopplingen/planeringsdatan i
- * Supabase – själva 3D-objekten i modellen påverkas inte.
+ * datalagret – själva 3D-objekten i modellen påverkas inte.
  */
 async function onDeleteSelectedItems() {
   const selectedItems = items.filter(it => selectedItemKeys.has(it.objectId));
@@ -808,7 +850,7 @@ function updateItemsTruncatedWarning() {
   if (!el) return;
   if (itemsTotalCount !== null && itemsTotalCount > items.length) {
     el.classList.remove("hidden");
-    el.innerText = `⚠️ Visar bara de första ${items.length} av totalt ${itemsTotalCount} objekt i databasen. Höj Supabase-projektets "Max Rows"-inställning (Project Settings → API) om du behöver se fler.`;
+    el.innerText = `⚠️ Visar bara de första ${items.length} av totalt ${itemsTotalCount} objekt i databasen.`;
   } else {
     el.classList.add("hidden");
     el.innerText = "";
@@ -1037,7 +1079,7 @@ function openCommentsDialog(item) {
 async function loadComments(item) {
   const listEl = document.getElementById("commentsList");
   listEl.innerHTML = `<div class="hint">Laddar kommentarer...</div>`;
-  if (!isSupabaseConfigured()) {
+  if (!isBackendConfigured()) {
     listEl.innerHTML = `<div class="hint">Ingen databas ansluten.</div>`;
     return;
   }
@@ -1095,7 +1137,7 @@ function onCommentsListClick(ev) {
   const btn = ev.target.closest("[data-action]");
   if (!btn) return;
   const action = btn.dataset.action;
-  const id = Number(btn.dataset.id);
+  const id = btn.dataset.id; // UUID-sträng (github-storage.js), inte längre ett numeriskt Postgres-ID
 
   if (action === "reply") {
     document.querySelectorAll(".comment-reply-form").forEach(f => f.classList.add("hidden"));
@@ -1340,42 +1382,43 @@ async function onClearLabels() {
 }
 
 /* ---------------------------------------------------------------------
-   Supabase-kommunikation
+   GitHub-lagring (ersätter Supabase)
    ---------------------------------------------------------------------
-   All planeringsdata lagras i en gratis Supabase-databas (Postgres) via
-   dess inbyggda REST-API (PostgREST). Ingen egen server behövs längre –
-   extensionen pratar direkt med
-   https://<ditt-projekt>.supabase.co/rest/v1/plan_items.
-   Se supabase/schema.sql för tabellen som skapas en gång, och README.md
-   för hela uppsättningsguiden.
+   All planeringsdata lagras som JSON-filer i det privata repot
+   vfalk-NCC/4D-data (en mapp per Trimble-projekt), via GitHub Contents
+   API. Se docs/github-storage.js för de generella hjälpfunktionerna
+   (ghReadJSON/ghWriteJSON/ghUpsertOne/ghNewId) och
+   GITHUB_TOKEN_SETUP.md för hur token:en skapas.
    ------------------------------------------------------------------- */
-function isSupabaseConfigured() {
-  return Boolean(settings.supabaseUrl && settings.supabaseKey);
+function isBackendConfigured() {
+  return Boolean(settings.githubToken);
 }
 
 function updateConnectionWarning() {
   const el = document.getElementById("connectionWarning");
   if (!el) return;
-  if (isSupabaseConfigured()) {
+  if (isBackendConfigured()) {
     el.classList.add("hidden");
     el.innerText = "";
   } else {
     el.classList.remove("hidden");
-    el.innerText = "⚠️ Ingen databas ansluten – öppna inställningarna (kugghjulet) och ange Supabase-URL och nyckel. Se README.md.";
+    el.innerText = "⚠️ Ingen databas ansluten – öppna inställningarna (kugghjulet) och ange GitHub-token. Se GITHUB_TOKEN_SETUP.md.";
   }
 }
 
-function supabaseHeaders(isJson) {
-  const headers = {
-    apikey: settings.supabaseKey,
-    Authorization: `Bearer ${settings.supabaseKey}`
-  };
-  if (isJson) headers["Content-Type"] = "application/json";
-  return headers;
+function itemsPath() {
+  return `projects/${encodeURIComponent(projectId)}/plan_items.json`;
+}
+function commentsPath() {
+  return `projects/${encodeURIComponent(projectId)}/plan_item_comments.json`;
+}
+function progressHistoryPath() {
+  return `projects/${encodeURIComponent(projectId)}/plan_item_progress_history.json`;
 }
 
 function toRow(it) {
   return {
+    id: it.id || ghNewId(),
     project_id: it.projectId,
     model_id: it.modelId || null,
     object_id: String(it.objectId),
@@ -1386,7 +1429,8 @@ function toRow(it) {
     status: it.status || "planerad",
     start_date: it.startDate || null,
     end_date: it.endDate || null,
-    progress: Number.isFinite(it.progress) ? Math.max(0, Math.min(100, Math.round(it.progress))) : 0
+    progress: Number.isFinite(it.progress) ? Math.max(0, Math.min(100, Math.round(it.progress))) : 0,
+    updated_at: new Date().toISOString()
   };
 }
 
@@ -1409,33 +1453,15 @@ function fromRow(row) {
 }
 
 async function refreshItems() {
-  if (!isSupabaseConfigured()) {
+  if (!isBackendConfigured()) {
     items = [];
     itemsTotalCount = null;
     return;
   }
   try {
-    const url = `${settings.supabaseUrl}/rest/v1/plan_items?project_id=eq.${encodeURIComponent(projectId)}&select=*`;
-    // Range + Prefer: count=exact höjer taket förbi PostgRESTs standard på
-    // 1000 rader per anrop (upp till ITEMS_FETCH_LIMIT) och låter oss läsa
-    // ut totalantalet via Content-Range, så vi kan varna om listan ändå
-    // klipps av (t.ex. av Supabase-projektets egen "Max Rows"-inställning).
-    const res = await fetch(url, {
-      headers: {
-        ...supabaseHeaders(false),
-        Range: `0-${ITEMS_FETCH_LIMIT - 1}`,
-        Prefer: "count=exact"
-      }
-    });
-    if (res.ok) {
-      items = (await res.json()).map(fromRow);
-      const contentRange = res.headers.get("content-range"); // t.ex. "0-999/1234"
-      const total = contentRange ? Number(contentRange.split("/")[1]) : NaN;
-      itemsTotalCount = Number.isFinite(total) ? total : null;
-    } else {
-      items = [];
-      itemsTotalCount = null;
-    }
+    const rows = await ghReadJSON(settings.githubToken, itemsPath());
+    items = rows.map(fromRow);
+    itemsTotalCount = items.length;
   } catch (e) {
     console.error("Kunde inte hämta planeringsdata", e);
     items = [];
@@ -1443,107 +1469,143 @@ async function refreshItems() {
   }
 }
 
-/** Skapar/uppdaterar flera poster i Supabase i ett anrop (upsert på project_id+object_id). */
-async function saveItems(records) {
-  if (!isSupabaseConfigured()) {
-    throw new Error("Ingen databas ansluten. Ange Supabase-URL och nyckel i inställningarna.");
-  }
-  const url = `${settings.supabaseUrl}/rest/v1/plan_items?on_conflict=project_id,object_id`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      ...supabaseHeaders(true),
-      Prefer: "resolution=merge-duplicates,return=minimal"
-    },
-    body: JSON.stringify(records.map(toRow))
+/**
+ * Lägger till en historikrad i plan_item_progress_history om posten är ny
+ * eller om progress/status ändrats - ersätter Postgres-triggern
+ * log_plan_item_progress() som gjorde detta automatiskt i den gamla
+ * gamla lösningen. Körs som en del av saveItems, mot samma
+ * "före"-lista som upsert-passet läser.
+ */
+async function logProgressHistory(beforeRows, afterRows) {
+  const beforeById = new Map(beforeRows.map(r => [r.id, r]));
+  const toLog = [];
+  afterRows.forEach(row => {
+    const prev = beforeById.get(row.id);
+    if (!prev || prev.progress !== row.progress || prev.status !== row.status) {
+      toLog.push({
+        id: ghNewId(),
+        plan_item_id: row.id,
+        project_id: row.project_id,
+        progress: row.progress,
+        status: row.status,
+        recorded_at: new Date().toISOString()
+      });
+    }
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Databasfel (${res.status}): ${text || res.statusText}`);
-  }
+  if (toLog.length === 0) return;
+  await ghWriteJSON(
+    settings.githubToken,
+    progressHistoryPath(),
+    (arr) => [...arr, ...toLog],
+    "Logga framdriftshistorik"
+  );
 }
 
-/** Raderar en enskild post i Supabase (via id om känt, annars project_id+object_id). */
-async function deleteItem(item) {
-  if (!isSupabaseConfigured()) {
-    throw new Error("Ingen databas ansluten. Ange Supabase-URL och nyckel i inställningarna.");
+/** Skapar/uppdaterar flera poster i ett svep (upsert på project_id+object_id), och loggar historik. */
+async function saveItems(records) {
+  if (!isBackendConfigured()) {
+    throw new Error("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
   }
-  const url = item.id !== undefined && item.id !== null
-    ? `${settings.supabaseUrl}/rest/v1/plan_items?id=eq.${encodeURIComponent(item.id)}`
-    : `${settings.supabaseUrl}/rest/v1/plan_items?project_id=eq.${encodeURIComponent(item.projectId)}&object_id=eq.${encodeURIComponent(item.objectId)}`;
-
-  const res = await fetch(url, {
-    method: "DELETE",
-    headers: supabaseHeaders(false)
+  const path = itemsPath();
+  const before = await ghReadJSON(settings.githubToken, path);
+  const beforeByKey = new Map(before.map(r => [`${r.project_id}::${r.object_id}`, r]));
+  const incoming = records.map(toRow).map(row => {
+    const existing = beforeByKey.get(`${row.project_id}::${row.object_id}`);
+    return existing ? { ...existing, ...row, id: existing.id } : row;
   });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Databasfel (${res.status}): ${text || res.statusText}`);
+
+  const after = await ghWriteJSON(
+    settings.githubToken,
+    path,
+    (arr) => {
+      let next = arr.slice();
+      incoming.forEach(row => {
+        const idx = next.findIndex(r => r.project_id === row.project_id && r.object_id === row.object_id);
+        if (idx >= 0) next[idx] = row; else next.push(row);
+      });
+      return next;
+    },
+    "Spara planeringsposter"
+  );
+
+  await logProgressHistory(before, incoming);
+  return after;
+}
+
+/** Raderar en enskild post (via id om känt, annars project_id+object_id), samt dess kommentarer. */
+async function deleteItem(item) {
+  if (!isBackendConfigured()) {
+    throw new Error("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
   }
+  await ghWriteJSON(
+    settings.githubToken,
+    itemsPath(),
+    (arr) => arr.filter(r => (item.id ? r.id !== item.id : !(r.project_id === item.projectId && r.object_id === String(item.objectId)))),
+    "Radera planeringspost"
+  );
+  if (item.id) await deleteCommentsForItems([item.id]);
 }
 
 /**
- * Raderar flera poster i Supabase (t.ex. "Radera markerade"). Delas upp i
- * omgångar om DELETE_CHUNK_SIZE åt gången eftersom en enda "in.(...)"-lista
- * med t.ex. 2200 ID:n annars ger en alldeles för lång URL och misslyckas
- * (413/414 eller att anropet bara tystnar).
- * `onProgress(antalKlara, totaltAntal)` anropas efter varje omgång.
+ * Raderar flera poster (t.ex. "Radera markerade") och deras kommentarer i
+ * ett svep. `onProgress` behålls för kompatibilitet med anroparen men
+ * anropas bara en gång i slutet, eftersom hela listan nu skrivs i ett enda
+ * GitHub-anrop istället för i omgångar (den gamla chunkningen fanns bara
+ * för att undvika för långa URL:er mot PostgREST).
  */
 async function deleteItems(itemsToDelete, onProgress) {
-  if (!isSupabaseConfigured()) {
-    throw new Error("Ingen databas ansluten. Ange Supabase-URL och nyckel i inställningarna.");
+  if (!isBackendConfigured()) {
+    throw new Error("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
   }
-  const ids = itemsToDelete.map(it => it.objectId).filter(Boolean);
-  if (ids.length === 0) return;
+  const keysToDelete = new Set(itemsToDelete.map(it => `${it.projectId}::${String(it.objectId)}`));
+  if (keysToDelete.size === 0) return;
 
-  for (let i = 0; i < ids.length; i += DELETE_CHUNK_SIZE) {
-    const chunk = ids.slice(i, i + DELETE_CHUNK_SIZE);
-    const inList = chunk.map(id => encodeURIComponent(id)).join(",");
-    const url = `${settings.supabaseUrl}/rest/v1/plan_items?project_id=eq.${encodeURIComponent(projectId)}&object_id=in.(${inList})`;
-    const res = await fetch(url, {
-      method: "DELETE",
-      headers: supabaseHeaders(false)
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      const doneSoFar = i;
-      throw new Error(
-        `Databasfel (${res.status}) efter att ${doneSoFar} av ${ids.length} objekt raderats: ${text || res.statusText}`
-      );
-    }
-    if (onProgress) onProgress(Math.min(i + chunk.length, ids.length), ids.length);
-  }
+  const before = await ghReadJSON(settings.githubToken, itemsPath());
+  const removedIds = before
+    .filter(r => keysToDelete.has(`${r.project_id}::${r.object_id}`))
+    .map(r => r.id);
+
+  await ghWriteJSON(
+    settings.githubToken,
+    itemsPath(),
+    (arr) => arr.filter(r => !keysToDelete.has(`${r.project_id}::${r.object_id}`)),
+    "Radera flera planeringsposter"
+  );
+  await deleteCommentsForItems(removedIds);
+  if (onProgress) onProgress(itemsToDelete.length, itemsToDelete.length);
+}
+
+/** Tar bort alla kommentarer knutna till given lista av plan_item-ID:n (cascade-delete, ersätter FK on delete cascade). */
+async function deleteCommentsForItems(planItemIds) {
+  if (!planItemIds || planItemIds.length === 0) return;
+  const idSet = new Set(planItemIds);
+  await ghWriteJSON(
+    settings.githubToken,
+    commentsPath(),
+    (arr) => arr.filter(c => !idSet.has(c.plan_item_id)),
+    "Ta bort kommentarer för raderade objekt"
+  );
 }
 
 /** Hämtar alla kommentarer (inkl. svar) för ett objekt, äldst först. */
 async function fetchComments(planItemId) {
-  if (!isSupabaseConfigured()) {
-    throw new Error("Ingen databas ansluten. Ange Supabase-URL och nyckel i inställningarna.");
+  if (!isBackendConfigured()) {
+    throw new Error("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
   }
-  const url = `${settings.supabaseUrl}/rest/v1/plan_item_comments?plan_item_id=eq.${encodeURIComponent(planItemId)}&select=*&order=created_at.asc`;
-  const res = await fetch(url, { headers: supabaseHeaders(false) });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Databasfel (${res.status}): ${text || res.statusText}`);
-  }
-  return res.json();
+  const all = await ghReadJSON(settings.githubToken, commentsPath());
+  return all
+    .filter(c => c.plan_item_id === planItemId)
+    .sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
 }
 
 /**
  * Räknar antal kommentarer per objekt (för 💬-badgen i "Planerade objekt").
- * Hämtar bara plan_item_id-kolumnen (inte hela kommentartexten) för att
- * hålla anropet litet, och bygger om hela commentCounts-kartan varje gång.
  */
 async function refreshCommentCounts() {
   commentCounts = new Map();
-  if (!isSupabaseConfigured()) return;
+  if (!isBackendConfigured()) return;
   try {
-    const url = `${settings.supabaseUrl}/rest/v1/plan_item_comments?select=plan_item_id`;
-    const res = await fetch(url, {
-      headers: { ...supabaseHeaders(false), Range: `0-${COMMENTS_FETCH_LIMIT - 1}` }
-    });
-    if (!res.ok) return;
-    const rows = await res.json();
+    const rows = await ghReadJSON(settings.githubToken, commentsPath());
     rows.forEach(row => {
       commentCounts.set(row.plan_item_id, (commentCounts.get(row.plan_item_id) || 0) + 1);
     });
@@ -1554,22 +1616,16 @@ async function refreshCommentCounts() {
 
 /** Skapar en ny kommentar (eller ett svar, om parent_comment_id är satt). */
 async function postComment(record) {
-  if (!isSupabaseConfigured()) {
-    throw new Error("Ingen databas ansluten. Ange Supabase-URL och nyckel i inställningarna.");
+  if (!isBackendConfigured()) {
+    throw new Error("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
   }
-  const url = `${settings.supabaseUrl}/rest/v1/plan_item_comments`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      ...supabaseHeaders(true),
-      Prefer: "return=minimal"
-    },
-    body: JSON.stringify([record])
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Databasfel (${res.status}): ${text || res.statusText}`);
-  }
+  const row = { id: ghNewId(), created_at: new Date().toISOString(), ...record };
+  await ghWriteJSON(
+    settings.githubToken,
+    commentsPath(),
+    (arr) => [...arr, row],
+    "Ny kommentar"
+  );
 }
 
 function escapeHtml(str) {

@@ -8,6 +8,17 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
+
+  <!-- Lösenordsgrind - visas tills rätt lösenord angetts, se app.js -->
+  <div id="accessGate" class="access-gate">
+    <div class="access-box">
+      <h2>Du har ej åtkomst</h2>
+      <input type="password" id="accessPassword" autocomplete="off" placeholder="Lösenord" />
+      <div id="accessError" class="warning hidden">Fel lösenord.</div>
+      <button id="btnAccessSubmit" class="primary">Fortsätt</button>
+    </div>
+  </div>
+
   <div id="app">
 
     <!-- ===== Header ===== -->
@@ -208,9 +219,8 @@
       <label>Uppspelningshastighet (sekunder per dag)
         <input type="number" id="playSecondsPerDay" min="0.1" step="0.1" placeholder="0.4" />
       </label>
-      <label>Supabase-URL <input type="text" id="supabaseUrl" placeholder="https://xxxxx.supabase.co" /></label>
-      <label>Supabase anon key (public) <input type="text" id="supabaseKey" placeholder="eyJhbGciOi..." /></label>
-      <p class="hint">Skapas gratis på <strong>supabase.com</strong> – se README.md för hela guiden (tar ca 5 minuter).</p>
+      <label>GitHub-token <input type="password" id="githubToken" placeholder="github_pat_..." /></label>
+      <p class="hint">En fine-grained token scopead till repot <strong>vfalk-NCC/4D-data</strong> – se GITHUB_TOKEN_SETUP.md för hur du skapar en (tar under en minut).</p>
       <div class="row">
         <button id="btnSaveSettings" class="primary">Spara</button>
         <button id="btnCloseSettings">Stäng</button>
@@ -237,6 +247,7 @@
     </div>
   </div>
 
+  <script src="github-storage.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
