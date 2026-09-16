@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-16 14:05";
+const APP_VERSION = "2026-09-16 14:35";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -2293,6 +2293,8 @@ function labelTextFor(it) {
 async function onShowLabels() {
   const selectedItems = items.filter(it => selectedItemKeys.has(it.objectId));
   const linked = selectedItems.filter(it => it.modelId && it.objectId);
+  const labelsStatusEl = document.getElementById("labelsStatus");
+  if (labelsStatusEl) labelsStatusEl.textContent = "";
   if (linked.length === 0) {
     alert("Inga rader är markerade. Håll in Ctrl (⌘ på Mac) eller Shift och klicka på flera rader i \"Planerade objekt\" för att välja vilka som ska få etiketter i 3D-vyn.");
     return;
@@ -2312,18 +2314,38 @@ async function onShowLabels() {
   const newMarkups = [];
 
   try {
+    // Varje modell hanteras för sig, med convertToRuntimeIdsSafe (samma
+    // hjälpfunktion som markering/3D-färgsättning använder) istället för
+    // ett direkt anrop till convertToObjectRuntimeIds - annars kastar
+    // Trimble Connect ett fel för HELA anropet så fort en enda modell i
+    // markeringen inte är inläst just nu, och inga etiketter alls skapas
+    // (även för objekt i modeller som faktiskt ÄR öppna). Se Victors
+    // rapport 2026-09-16: markerar man objekt i flera modeller där bara
+    // en är aktiv i TC ska den aktiva ändå få sina etiketter.
     for (const modelId of Object.keys(byModel)) {
       const groupItems = byModel[modelId];
       const externalIds = groupItems.map(it => it.objectId);
-      const runtimeIds = await API.viewer.convertToObjectRuntimeIds(modelId, externalIds);
+      let results;
+      try {
+        results = await convertToRuntimeIdsSafe(modelId, externalIds);
+      } catch (e) {
+        console.error(`Kunde inte konvertera objekt-ID:n för modell ${modelId} (troligen inte inläst just nu):`, e);
+        continue;
+      }
 
       const validPairs = groupItems
-        .map((it, i) => ({ it, runtimeId: runtimeIds[i] }))
+        .map((it, i) => ({ it, runtimeId: results[i] && results[i].runtimeId }))
         .filter(p => p.runtimeId !== undefined && p.runtimeId !== null);
 
       if (validPairs.length === 0) continue;
 
-      const boxes = await API.viewer.getObjectBoundingBoxes(modelId, validPairs.map(p => p.runtimeId));
+      let boxes;
+      try {
+        boxes = await API.viewer.getObjectBoundingBoxes(modelId, validPairs.map(p => p.runtimeId));
+      } catch (e) {
+        console.error(`Kunde inte hämta bounding boxes för modell ${modelId}:`, e);
+        continue;
+      }
       const boxById = new Map(boxes.map(b => [b.id, b]));
 
       validPairs.forEach(({ it, runtimeId }) => {
@@ -2352,6 +2374,16 @@ async function onShowLabels() {
 
     const created = await API.markup.addTextMarkup(newMarkups);
     labelMarkupIds = created.map(m => m.id).filter(id => id !== undefined);
+
+    // Icke-blockerande statusrad istället för en avbrytande alert när bara
+    // en DEL av markeringen fick etiketter (t.ex. för att vissa objekt hör
+    // till en modell som inte är öppen i TC just nu) - resten skapades ju
+    // ändå.
+    if (labelsStatusEl) {
+      labelsStatusEl.textContent = newMarkups.length < linked.length
+        ? `${newMarkups.length} av ${linked.length} etiketter skapade – resten hörde till en modell som inte är inläst i Trimble Connect just nu.`
+        : "";
+    }
   } catch (err) {
     console.error(err);
     alert("Kunde inte skapa etiketter: " + err.message);
