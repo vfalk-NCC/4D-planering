@@ -351,6 +351,13 @@ function fillLinkForm(existing) {
 }
 
 async function onSaveLink() {
+  const btn = document.getElementById("btnSaveLink");
+  // Skydd mot dubbelklick/dubbla tryck: utan detta kan två samtidiga
+  // sparningar racea mot samma plan_items.json och ge en skrivkrock (409)
+  // som tar slut på omförsök - även om båda egentligen skulle lyckats var
+  // för sig. Se även backoff:en i ghWriteJSON (github-storage.js).
+  if (btn.disabled) return;
+
   const payload = {
     objectName: document.getElementById("fName").value.trim(),
     area: document.getElementById("fArea").value.trim(),
@@ -366,11 +373,17 @@ async function onSaveLink() {
     projectId, modelId: s.modelId, objectId: s.objectId, ...payload
   }));
 
+  btn.disabled = true;
+  const originalText = btn.innerText;
+  btn.innerText = "Sparar...";
   try {
     await saveItems(records);
   } catch (e) {
     alert("Kunde inte spara: " + e.message);
     return;
+  } finally {
+    btn.disabled = false;
+    btn.innerText = originalText;
   }
 
   toggle("linkForm", false);
