@@ -156,6 +156,12 @@ function bindUI() {
 
   document.getElementById("btnApplyFilter").onclick = applyFilterToModel;
   document.getElementById("btnClearFilter").onclick = clearFilter;
+  // Markera (utan att isolera/dölja) matchande objekt direkt när ett
+  // filteralternativ ändras, så man ser dem i 3D-vyn innan man ev. klickar
+  // "Visa filtrerat" eller isolerar/döljer manuellt i Trimble Connect.
+  ["filterArea", "filterActivity", "filterContractor", "filterStatus"].forEach(id => {
+    document.getElementById(id).onchange = selectFilteredInModelOnChange;
+  });
 
   document.getElementById("btnImportExcel").onclick = onImportExcel;
   document.getElementById("btnExportExcel").onclick = onExportExcel;
@@ -166,6 +172,8 @@ function bindUI() {
   document.getElementById("hideCompleted").onchange = () => renderItemList();
 
   document.getElementById("btnDeleteSelected").onclick = onDeleteSelectedItems;
+  document.getElementById("btnCollapseAllGroups").onclick = collapseAllGroups;
+  document.getElementById("btnSelectAllCoupled").onclick = selectAllCoupledObjects;
 
   document.getElementById("btnFindNearest").onclick = onFindNearest;
 
@@ -616,6 +624,54 @@ async function applyFilterToModel() {
   }
 }
 
+/**
+ * Markerar (men isolerar/döljer inte) alla sparade objekt som matchar de
+ * just nu valda filteralternativen i rullistorna Område/Aktivitet/
+ * Entreprenör/Status. Körs direkt vid varje ändring av ett filteralternativ,
+ * så man ser markeringen i 3D-vyn innan man ev. klickar "Visa filtrerat"
+ * eller själv väljer att isolera/dölja resten manuellt i Trimble Connect.
+ * Rör inte kameran (till skillnad från selectItemsInModel) eftersom det
+ * annars hoppar i vyn vid varje enskilt filterval.
+ */
+async function selectFilteredInModelOnChange() {
+  const areas = getSelectedValues("filterArea");
+  const activities = getSelectedValues("filterActivity");
+  const contractors = getSelectedValues("filterContractor");
+  const statuses = getSelectedValues("filterStatus");
+
+  if (!areas.length && !activities.length && !contractors.length && !statuses.length) return;
+
+  const matched = items.filter(it => {
+    if (areas.length && !areas.includes(it.area)) return false;
+    if (activities.length && !activities.includes(it.activity)) return false;
+    if (contractors.length && !contractors.includes(it.contractor)) return false;
+    if (statuses.length && !statuses.includes(it.status)) return false;
+    return true;
+  });
+
+  const withModel = matched.filter(it => it.modelId && it.objectId);
+  if (withModel.length === 0) return;
+
+  const byModel = {};
+  withModel.forEach(it => {
+    byModel[it.modelId] = byModel[it.modelId] || [];
+    byModel[it.modelId].push(it.objectId);
+  });
+
+  try {
+    const modelObjectIds = [];
+    for (const modelId of Object.keys(byModel)) {
+      const runtimeIds = await API.viewer.convertToObjectRuntimeIds(modelId, byModel[modelId]);
+      const valid = runtimeIds.filter(id => id !== undefined && id !== null);
+      if (valid.length > 0) modelObjectIds.push({ modelId, objectRuntimeIds: valid });
+    }
+    if (modelObjectIds.length === 0) return;
+    await API.viewer.setSelection({ modelObjectIds }, "set");
+  } catch (e) {
+    console.error("Kunde inte markera filtrerade objekt:", e);
+  }
+}
+
 async function clearFilter() {
   ["filterArea", "filterActivity", "filterContractor", "filterStatus"].forEach(id => {
     Array.from(document.getElementById(id).options).forEach(o => o.selected = false);
@@ -778,6 +834,58 @@ async function selectItemsInModel(itemsToSelect) {
   const selector = { modelObjectIds };
   await API.viewer.setSelection(selector, "set");
   await API.viewer.setCamera(selector);
+
+  // Trimble zoomar automatiskt in på markeringen med en fast, inbyggd
+  // marginal som inte går att styra via Workspace-API:t (setCamera tar
+  // ingen distans-/marginalparameter för ObjectSelector). Victor vill se
+  // dubbelt så mycket omgivning som standardzoomen ger - vi läser därför av
+  // var kameran hamnade och markeringens mittpunkt, och flyttar sedan
+  // kameran till dubbla avståndet från mittpunkten längs exakt samma
+  // siktlinje (bevarar vinkeln, dubblerar bara avståndet).
+  try {
+    await doubleCameraZoomOut(modelObjectIds);
+  } catch (e) {
+    console.error("Kunde inte dubbla zoomavståndet:", e);
+  }
+}
+
+/**
+ * Flyttar kameran till dubbla avståndet från markeringens mittpunkt, längs
+ * samma siktlinje som den kamera Trimbles automatiska "zooma till markering"
+ * (setCamera(selector)) precis satte. Se kommentaren i selectItemsInModel().
+ */
+async function doubleCameraZoomOut(modelObjectIds) {
+  let min = null, max = null;
+  for (const { modelId, objectRuntimeIds } of modelObjectIds) {
+    const boxes = await API.viewer.getObjectBoundingBoxes(modelId, objectRuntimeIds);
+    (boxes || []).forEach(b => {
+      if (!b || !b.boundingBox) return;
+      const { min: bMin, max: bMax } = b.boundingBox;
+      if (!bMin || !bMax) return;
+      if (!min) {
+        min = { x: bMin.x, y: bMin.y, z: bMin.z };
+        max = { x: bMax.x, y: bMax.y, z: bMax.z };
+      } else {
+        min.x = Math.min(min.x, bMin.x); min.y = Math.min(min.y, bMin.y); min.z = Math.min(min.z, bMin.z);
+        max.x = Math.max(max.x, bMax.x); max.y = Math.max(max.y, bMax.y); max.z = Math.max(max.z, bMax.z);
+      }
+    });
+  }
+  if (!min || !max) return; // hittade ingen bounding box - lämna Trimbles zoom orörd
+
+  const center = { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2, z: (min.z + max.z) / 2 };
+
+  const cam = await API.viewer.getCamera();
+  if (!cam || !cam.position) return;
+  const p = cam.position;
+
+  const newPosition = {
+    x: center.x + 2 * (p.x - center.x),
+    y: center.y + 2 * (p.y - center.y),
+    z: center.z + 2 * (p.z - center.z)
+  };
+
+  await API.viewer.setCamera({ ...cam, position: newPosition });
 }
 
 /**
@@ -1008,6 +1116,35 @@ function renderItemList() {
       selectItemsInModel(group.items);
     };
   });
+}
+
+/**
+ * Minimerar alla grupper i "Planerade objekt"-listan (motsvarande att klicka
+ * ▼ på varje gruppheader manuellt). Gör inget om listan inte är grupperad.
+ */
+function collapseAllGroups() {
+  const groupBy = document.getElementById("groupBy").value;
+  if (!groupBy) return;
+  document.querySelectorAll("#itemList .group-header[data-group-key]").forEach(h => {
+    collapsedGroups.add(h.dataset.groupKey);
+  });
+  renderItemList();
+}
+
+/**
+ * Markerar (och zoomar till, se selectItemsInModel) samtliga kopplade
+ * objekt i listan - dvs. alla objekt som har planeringsdata, oavsett
+ * ev. sökning/gruppering/"Dölj klarmarkerade" just nu.
+ */
+function selectAllCoupledObjects() {
+  if (items.length === 0) {
+    alert("Inga kopplade objekt att markera.");
+    return;
+  }
+  selectedItemKeys = new Set(items.map(it => it.objectId));
+  selectionAnchorKey = items.length ? items[items.length - 1].objectId : null;
+  renderItemList();
+  selectItemsInModel(items);
 }
 
 /**

@@ -89,7 +89,7 @@ input, select, textarea {
   margin-top: 2px;
   font-family: inherit;
 }
-select[multiple] { height: 70px; }
+select[multiple] { height: 70px; resize: vertical; overflow: auto; min-height: 44px; }
 textarea { resize: vertical; }
 
 .row { display: flex; gap: 6px; margin-top: 6px; }
