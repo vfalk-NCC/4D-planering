@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-16 13:28";
+const APP_VERSION = "2026-09-16 14:05";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -19,6 +19,7 @@ let settings = {
   githubToken: "",             // fine-grained PAT scopead till vfalk-NCC/4D-data, se GITHUB_TOKEN_SETUP.md
   userName: "",                // namn som förifylls vid nya kommentarer
   statusColors: null,          // sätts till DEFAULT_STATUS_COLORS av loadLocalSettings() - färger per status/fas, används både för badgen i listan OCH för objektens färg i 3D-vyn (se computeItemPhase/applyTimelineColors)
+  statusOpacities: null,       // sätts till DEFAULT_PHASE_OPACITIES av loadLocalSettings() - opacitet i 3D-vyn per beräknad fas (påverkar INTE badgen i listan, precis som tidigare "Tidslinje-färger"-reglagen)
   warningDaysBeforeEnd: 7      // "snart aktuell"-tröskel (dagar innan planerat slutdatum) - styrs via slidern i Filter-panelen, se bindUI()
 };
 let lastSelection = [];      // [{modelId, objectId (externalId), objectRuntimeId, name}]
@@ -91,6 +92,18 @@ const PHASE_ONLY_LABELS = {
   klar_forsenad: "Klar, men försenad (3D-vy/lista)"
 };
 const COLOR_PANEL_LABELS = { ...STATUS_LABELS, ...PHASE_ONLY_LABELS };
+
+// De sex beräknade faserna som computeItemPhase() faktiskt kan returnera
+// (till skillnad från t.ex. "ej_planerad"/"pausad", som bara är manuella
+// statusvärden och aldrig används för 3D-färgsättningen). Bara dessa sex
+// får ett opacitetsreglage i inställningarna - motsvarar Victors gamla
+// "Tidslinje-färger"-opacitet (colorNotStarted/InProgress/Done), som han
+// bad om att få tillbaka efter att den försvann när färgpanelerna slogs
+// ihop 2026-09-16.
+const PHASE_OPACITY_KEYS = ["planerad", "pagaende", "snart", "forsenad", "klar", "klar_forsenad"];
+const DEFAULT_PHASE_OPACITIES = {
+  planerad: 1, pagaende: 1, snart: 1, forsenad: 1, klar: 1, klar_forsenad: 1
+};
 
 /**
  * Väljer svart eller vit text baserat på bakgrundsfärgens ljushet, så att
@@ -358,15 +371,33 @@ function bindUI() {
 function renderStatusColorInputs() {
   const wrap = document.getElementById("statusColorInputs");
   if (!wrap) return;
-  wrap.innerHTML = Object.entries(COLOR_PANEL_LABELS).map(([key, label]) => `
+  wrap.innerHTML = Object.entries(COLOR_PANEL_LABELS).map(([key, label]) => {
+    const hasOpacity = PHASE_OPACITY_KEYS.includes(key);
+    return `
     <label>${escapeHtml(label)}
       <div class="row">
         <input type="color" id="statusColor_${key}" style="flex:0 0 40px" />
+        ${hasOpacity ? `
+        <input type="range" id="statusOpacity_${key}" min="0" max="100" step="1" style="flex:1" title="Opacitet i 3D-vyn" />
+        <span class="hint" id="statusOpacityLabel_${key}" style="align-self:center; width:38px; text-align:right;"></span>` : ""}
       </div>
-    </label>`).join("");
+    </label>`;
+  }).join("");
   Object.keys(COLOR_PANEL_LABELS).forEach(key => {
     const el = document.getElementById(`statusColor_${key}`);
     if (el) el.value = (settings.statusColors && settings.statusColors[key]) || DEFAULT_STATUS_COLORS[key] || "#999999";
+    if (PHASE_OPACITY_KEYS.includes(key)) {
+      const opacityFraction = (settings.statusOpacities && settings.statusOpacities[key] !== undefined)
+        ? settings.statusOpacities[key] : DEFAULT_PHASE_OPACITIES[key];
+      const pct = Math.round(Math.max(0, Math.min(1, opacityFraction)) * 100);
+      const rangeEl = document.getElementById(`statusOpacity_${key}`);
+      const labelEl = document.getElementById(`statusOpacityLabel_${key}`);
+      if (rangeEl) {
+        rangeEl.value = String(pct);
+        rangeEl.oninput = () => { if (labelEl) labelEl.textContent = `${rangeEl.value}%`; };
+      }
+      if (labelEl) labelEl.textContent = `${pct}%`;
+    }
   });
 }
 
@@ -439,6 +470,10 @@ function loadLocalSettings() {
   // ofullständig uppsättning) tysta bort standardfärgen för de statusar som
   // saknas i det sparade objektet.
   settings.statusColors = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
+  // Samma resonemang för statusOpacities (opacitet i 3D-vyn per beräknad
+  // fas) - saknade/nya nycklar ska falla tillbaka till 100% opacitet
+  // (DEFAULT_PHASE_OPACITIES), inte försvinna helt.
+  settings.statusOpacities = { ...DEFAULT_PHASE_OPACITIES, ...(settings.statusOpacities || {}) };
   // "Snart aktuell"-tröskeln sparas i samma settings-objekt (så den följer
   // med i 4dplan-settings i localStorage), men styrs live via slidern i
   // Filter-panelen (se bindUI()) - inte via den här dialogen. Faller
@@ -458,6 +493,12 @@ function onSaveSettings() {
     newStatusColors[key] = el ? el.value : (settings.statusColors && settings.statusColors[key]) || DEFAULT_STATUS_COLORS[key];
   });
   settings.statusColors = newStatusColors;
+  const newStatusOpacities = {};
+  PHASE_OPACITY_KEYS.forEach(key => {
+    const el = document.getElementById(`statusOpacity_${key}`);
+    newStatusOpacities[key] = el ? Number(el.value) / 100 : (settings.statusOpacities && settings.statusOpacities[key]) ?? DEFAULT_PHASE_OPACITIES[key];
+  });
+  settings.statusOpacities = newStatusOpacities;
   window.localStorage.setItem("4dplan-settings", JSON.stringify(settings));
   paintLegendDots();
   updateConnectionWarning();
@@ -1007,10 +1048,11 @@ async function applyTimelineColors() {
   }
 
   const colors = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
+  const opacities = { ...DEFAULT_PHASE_OPACITIES, ...(settings.statusOpacities || {}) };
   for (const modelId of Object.keys(byModel)) {
     const group = byModel[modelId];
     for (const phase of Object.keys(group)) {
-      await colorGroup(modelId, group[phase], colors[phase]);
+      await colorGroup(modelId, group[phase], colors[phase], opacities[phase]);
     }
   }
 }
@@ -1022,14 +1064,14 @@ async function applyTimelineColors() {
  * HELA gruppens färgsättning hoppas över - samma bugg som tidigare löstes
  * för markering i 3D-vyn (se selectItemsInModel).
  */
-async function colorGroup(modelId, externalIds, colorHex) {
+async function colorGroup(modelId, externalIds, colorHex, opacity) {
   if (externalIds.length === 0 || !colorHex) return;
   const results = await convertToRuntimeIdsSafe(modelId, externalIds);
   const valid = results.map(r => r.runtimeId).filter(id => id !== undefined && id !== null);
   if (valid.length === 0) return;
   await API.viewer.setObjectState(
     { modelObjectIds: [{ modelId, objectRuntimeIds: valid }] },
-    { color: hexToRgba(colorHex, 1) }
+    { color: hexToRgba(colorHex, opacity === undefined ? 1 : opacity) }
   );
 }
 
