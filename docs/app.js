@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-16 09:44";
+const APP_VERSION = "2026-09-16 10:38";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -206,6 +206,12 @@ function onWorkspaceEvent(event, data) {
   // Uppdatera markeringsräknaren och synka markeringen mot "Planerade
   // objekt"-listan när användaren markerar objekt i modellen.
   if (event === "viewer.onSelectionChanged" || event === "extension.onSelectionChanged") {
+    // Hoppa över reaktioner på markeringar SOM APPEN SJÄLV precis gjorde
+    // (t.ex. "Markera alla"/"Välj alla") - se ignoreModelSelectionEvents i
+    // selectItemsInModel(). De hanterar redan sin egen listmarkering och
+    // markeringsräknare, och en extra synk här skulle bara riskera att t.ex.
+    // fälla ut en grupp man aktivt valde att hålla hopfälld.
+    if (ignoreModelSelectionEvents > 0) return;
     syncSelectionFromModel();
   }
 }
@@ -229,6 +235,7 @@ function bindUI() {
 
   document.getElementById("btnApplyFilter").onclick = applyFilterToModel;
   document.getElementById("btnClearFilter").onclick = clearFilter;
+  document.getElementById("btnShowAllCoupled").onclick = showAllModelObjects;
   // Markera (utan att isolera/dölja) matchande objekt direkt när ett
   // filteralternativ ändras, så man ser dem i 3D-vyn innan man ev. klickar
   // "Visa filtrerat" eller isolerar/döljer manuellt i Trimble Connect.
@@ -261,6 +268,11 @@ function bindUI() {
   setupAutocomplete("fArea", "fAreaList", () => formOptions.area);
   setupAutocomplete("fActivity", "fActivityList", () => formOptions.activity);
   setupAutocomplete("fContractor", "fContractorList", () => formOptions.contractor);
+  // "Nytt/befintligt namn" i Byt namn-dialogen - föreslår befintliga värden
+  // för det FÄLT som just nu är valt (Område/Aktivitet/Entreprenör), så man
+  // t.ex. kan slå ihop "Sikthall" in i ett redan befintligt "741 - Sikthall"
+  // istället för att bara skriva helt fritt.
+  setupAutocomplete("renameNewValue", "renameNewValueList", () => formOptions[document.getElementById("renameField").value] || []);
 
   document.getElementById("saveStatus").onclick = onSaveStatusClick;
 
@@ -965,6 +977,17 @@ function setupAutocomplete(inputId, listId, getOptionsFn) {
   const input = document.getElementById(inputId);
   const list = document.getElementById(listId);
   if (!input || !list) return;
+
+  // Chrome respekterar i praktiken inte autocomplete="off" för sin egen
+  // "Sparade data"-ruta (webbläsarens ifyllnadshistorik) - den nycklas på
+  // fältets name (id som reserv), och vårt fält hade inget name alls, så
+  // Chrome byggde tyst upp en egen historik nyckla på id:t över tid. Genom
+  // att ge fältet ett SLUMPAT name vid varje sidladdning hittar Chrome
+  // aldrig en tidigare sparad post som matchar, och kan därför inte visa
+  // sin egen ruta ovanpå vår - autocomplete="off" i HTML:en får stå kvar
+  // som ett andra lager.
+  input.name = `${inputId}-${Math.random().toString(36).slice(2, 10)}`;
+
   let activeIndex = -1;
 
   function currentItems() {
@@ -1077,25 +1100,51 @@ async function applyFilterToModel() {
   });
 
   try {
-    // Dölj samtliga objekt i alla inlästa modeller (selector = undefined
-    // gäller alla objekt enligt Workspace API:t).
-    await API.viewer.setObjectState(undefined, { visible: false });
-
-    let firstGroup = true;
+    const modelEntities = [];
+    const modelObjectIds = [];
     for (const modelId of Object.keys(byModel)) {
       const runtimeIds = await API.viewer.convertToObjectRuntimeIds(modelId, byModel[modelId]);
       const valid = runtimeIds.filter(id => id !== undefined && id !== null);
       if (valid.length === 0) continue;
-
-      const selector = { modelObjectIds: [{ modelId, objectRuntimeIds: valid }] };
-      await API.viewer.setObjectState(selector, { visible: true });
-      await API.viewer.setSelection(selector, firstGroup ? "set" : "add");
-      firstGroup = false;
+      modelEntities.push({ modelId, entityIds: valid });
+      modelObjectIds.push({ modelId, objectRuntimeIds: valid });
     }
+
+    if (modelEntities.length === 0) {
+      statusEl.innerText = "Inget av de matchande objekten hittades i den just nu inlästa modellen.";
+      return;
+    }
+
+    // "Visa endast valda objekt" - Trimble Connects egen inbyggda
+    // isolerings-funktion (isolateEntities), istället för att vi själva
+    // döljer/visar objekt via setObjectState. Beter sig precis som när man
+    // väljer samma funktion i Trimble Connects egen meny.
+    await API.viewer.isolateEntities(modelEntities);
+    await API.viewer.setSelection({ modelObjectIds }, "set");
     statusEl.innerText = `Visar ${matched.length} matchande objekt.`;
   } catch (e) {
     console.error(e);
     statusEl.innerText = "Kunde inte filtrera modellen: " + e.message;
+  }
+}
+
+/**
+ * "Visa alla kopplade objekt" (knappen i Filter-panelens header) - ångrar en
+ * isolering gjord av "Visa filtrerat" genom att återställa synligheten för
+ * samtliga objekt i de inlästa modellerna till sitt normalläge. Rör
+ * medvetet inte kameran (till skillnad från viewer.reset(), som även
+ * nollställer kameraposition och aktiva verktyg - mer än vad man vill ha
+ * bara för att visa dolda objekt igen).
+ */
+async function showAllModelObjects(ev) {
+  if (ev) ev.stopPropagation(); // knappen sitter i panelens <h2> - stoppa så klicket inte även fäller ihop panelen
+  const statusEl = document.getElementById("filterMsg");
+  try {
+    await API.viewer.setObjectState(undefined, { visible: "reset" });
+    statusEl.innerText = "Visar alla objekt igen.";
+  } catch (e) {
+    console.error("Kunde inte återställa synligheten:", e);
+    statusEl.innerText = "Kunde inte visa alla objekt igen: " + e.message;
   }
 }
 
@@ -1291,10 +1340,20 @@ function formatDateRange(it) {
  * grupp man Ctrl-klickar till - man vill bara bygga upp markeringen, inte
  * navigera om i modellen för varje klick.
  *
- * Kastar ett fel (istället för att bara larma med alert()) om inget av
- * objekten kunde hittas i den inlästa modellen, så att anropande kod (t.ex.
- * "Markera alla"-knappen) kan visa/logga detta tydligt istället för att
- * misslyckas tyst.
+ * Zoom: bara Trimbles egen inbyggda "zooma till markering"
+ * (setCamera(selector)) används - EN enda kamerarörelse som zoomar in och
+ * stannar, inget eget efterjusterande steg (det fanns tidigare, men gav
+ * en synlig "zoomar in, zoomar ut igen"-känsla och togs bort).
+ *
+ * Kastar ett fel (istället för att bara larma med alert()) bara om INGET av
+ * objekten kunde hittas i den inlästa modellen. Om bara VISSA av objekten
+ * saknas i modellen (t.ex. en äldre modellversion) markeras ändå de som
+ * faktiskt finns - de saknade rapporteras tillbaka via returvärdets
+ * `missing`-lista, så anropande kod kan uppmärksamma dem i listan istället
+ * för att hela markeringen misslyckas.
+ *
+ * Returnerar `{ missing }`, där `missing` är en lista `{modelId, objectId}`
+ * för objekt som inte gick att hitta i den just nu inlästa modellen.
  */
 async function selectItemsInModel(itemsToSelect, opts = {}) {
   const mode = opts.mode || "set";
@@ -1312,9 +1371,15 @@ async function selectItemsInModel(itemsToSelect, opts = {}) {
   });
 
   const modelObjectIds = [];
+  const missing = [];
   for (const modelId of Object.keys(byModel)) {
-    const runtimeIds = await API.viewer.convertToObjectRuntimeIds(modelId, byModel[modelId]);
-    const valid = runtimeIds.filter(id => id !== undefined && id !== null);
+    const objectIds = byModel[modelId];
+    const results = await convertToRuntimeIdsSafe(modelId, objectIds);
+    const valid = [];
+    results.forEach(({ objectId, runtimeId }) => {
+      if (runtimeId !== undefined && runtimeId !== null) valid.push(runtimeId);
+      else missing.push({ modelId, objectId });
+    });
     if (valid.length > 0) modelObjectIds.push({ modelId, objectRuntimeIds: valid });
   }
 
@@ -1323,94 +1388,77 @@ async function selectItemsInModel(itemsToSelect, opts = {}) {
   }
 
   const selector = { modelObjectIds };
-  await API.viewer.setSelection(selector, mode);
 
-  if (!moveCamera) return;
-
-  // Trimble zoomar automatiskt in på markeringen med en fast, inbyggd
-  // marginal som inte går att styra via Workspace-API:t (setCamera tar
-  // ingen distans-/marginalparameter för ObjectSelector). Victor vill se
-  // dubbelt så mycket omgivning som standardzoomen ger - vi läser därför av
-  // var kameran HADE hamnat och markeringens mittpunkt, och flyttar sedan
-  // kameran till dubbla avståndet från mittpunkten längs exakt samma
-  // siktlinje (bevarar vinkeln, dubblerar bara avståndet).
-  //
-  // Det här går i två steg: (1) Trimbles egna, inbyggda "zooma till
-  // markering" (bara detta anrop vet hur man beräknar rätt vinkel/avstånd
-  // för att få objekten i bild, det finns inget sätt att fråga om detta
-  // utan att kameran faktiskt flyttas dit), och (2) vår egen korrigering
-  // som flyttar ut kameran till dubbla avståndet. Två separata synliga
-  // kamerarörelser (in, sen ut) är precis det vi vill undvika, så vi
-  // försöker minimera tiden mellan dem på två sätt:
-  //  - Bounding-boxen för markeringen beror inte på Trimbles auto-zoom och
-  //    hämtas därför i FÖRVÄG/parallellt med auto-zoom-anropet, istället
-  //    för efteråt - annars förlängs tiden som fel zoomnivå hinner synas.
-  //  - animationTime sätts till 1 (inte 0) på Trimbles auto-zoom-anrop. 0
-  //    må verka mest logiskt för "ingen animation", men vissa SDK:er
-  //    tolkar 0 som falsy/"inget värde angivet" och faller då tillbaka på
-  //    sin normala animationstid - vilket gör att just den här "dolda"
-  //    mellanzoomningen ändå syns fullt animerad. 1 ms är i praktiken lika
-  //    osynligt men undviker den fällan.
-  const boundingBoxCenterPromise = computeSelectionCenter(modelObjectIds);
-  await API.viewer.setCamera(selector, { animationTime: 1 });
-
+  // Den här markeringen är gjord av APPEN, inte av ett klick i 3D-vyn - så
+  // vi vill INTE att syncSelectionFromModel() (3D -> listmarkering) reagerar
+  // på händelsen Trimble skickar ut som en följd av vårt eget setSelection-
+  // anrop. Annars kan t.ex. "Välj alla" på en hopfälld grupp oavsiktligt
+  // fälla ut den grupp man precis valde (se onWorkspaceEvent).
+  ignoreModelSelectionEvents++;
   try {
-    const center = await boundingBoxCenterPromise;
-    await applyDoubleZoom(center);
+    await API.viewer.setSelection(selector, mode);
+  } finally {
+    // Liten fördröjning innan vi slutar ignorera - Trimbles händelse för
+    // just den här markeringen kan komma någon millisekund efter att
+    // setSelection() löst sig, inte nödvändigtvis i exakt samma tick.
+    setTimeout(() => { ignoreModelSelectionEvents = Math.max(0, ignoreModelSelectionEvents - 1); }, 300);
+  }
+
+  // Uppdatera markeringsräknaren själva (istället för att förlita oss på
+  // syncSelectionFromModel, som vi just valde att ignorera händelsen för).
+  const selCountEl = document.getElementById("selCount");
+  if (selCountEl) selCountEl.innerText = modelObjectIds.reduce((n, m) => n + m.objectRuntimeIds.length, 0);
+
+  if (moveCamera) {
+    await API.viewer.setCamera(selector);
+  }
+
+  return { missing };
+}
+
+/**
+ * Som API.viewer.convertToObjectRuntimeIds(modelId, objectIds), men tål att
+ * ETT ENSKILT objekt i batchen saknas i den inlästa modellen - Trimbles API
+ * avvisar annars HELA anropet (inte bara det saknade objektet) om något av
+ * de efterfrågade external-id:na inte hittas, vilket annars gjorde att
+ * ingenting alls gick att markera bara för att ETT objekt råkade tillhöra
+ * en äldre modellversion. Faller tillbaka till att pröva ett objekt i taget
+ * bara om batch-anropet faktiskt kastar - annars (normalfallet) görs bara
+ * det vanliga, snabba batch-anropet.
+ */
+async function convertToRuntimeIdsSafe(modelId, objectIds) {
+  try {
+    const runtimeIds = await API.viewer.convertToObjectRuntimeIds(modelId, objectIds);
+    return objectIds.map((objectId, i) => ({ objectId, runtimeId: runtimeIds[i] }));
   } catch (e) {
-    console.error("Kunde inte dubbla zoomavståndet:", e);
+    const results = [];
+    for (const objectId of objectIds) {
+      try {
+        const [runtimeId] = await API.viewer.convertToObjectRuntimeIds(modelId, [objectId]);
+        results.push({ objectId, runtimeId });
+      } catch (e2) {
+        results.push({ objectId, runtimeId: undefined });
+      }
+    }
+    return results;
   }
 }
 
+// Räknare (inte bara en boolean) så överlappande markeringsanrop hanteras
+// rimligt - se selectItemsInModel() och onWorkspaceEvent().
+let ignoreModelSelectionEvents = 0;
+
 /**
- * Hämtar bounding-boxarna för de angivna objekten (parallellt, en fråga per
- * modell) och slår ihop dem till markeringens gemensamma mittpunkt. Beror
- * inte på var kameran råkar stå, så kan hämtas oberoende av (och innan)
- * Trimbles egen "zooma till markering". Returnerar null om ingen
- * bounding box kunde hittas.
+ * Märker items med `_notInModel = true` för de som är med i `missing`
+ * (från selectItemsInModel), och rensar flaggan på övriga - så listan alltid
+ * speglar resultatet av det SENASTE markeringsförsöket, inte ett tidigare.
+ * Ansvarar inte för att rendera om - anropande kod gör det.
  */
-async function computeSelectionCenter(modelObjectIds) {
-  let min = null, max = null;
-  const results = await Promise.all(
-    modelObjectIds.map(({ modelId, objectRuntimeIds }) => API.viewer.getObjectBoundingBoxes(modelId, objectRuntimeIds))
-  );
-  results.forEach(boxes => {
-    (boxes || []).forEach(b => {
-      if (!b || !b.boundingBox) return;
-      const { min: bMin, max: bMax } = b.boundingBox;
-      if (!bMin || !bMax) return;
-      if (!min) {
-        min = { x: bMin.x, y: bMin.y, z: bMin.z };
-        max = { x: bMax.x, y: bMax.y, z: bMax.z };
-      } else {
-        min.x = Math.min(min.x, bMin.x); min.y = Math.min(min.y, bMin.y); min.z = Math.min(min.z, bMin.z);
-        max.x = Math.max(max.x, bMax.x); max.y = Math.max(max.y, bMax.y); max.z = Math.max(max.z, bMax.z);
-      }
-    });
+function markMissingInModel(missing) {
+  const missingKeys = new Set((missing || []).map(m => `${m.modelId}::${m.objectId}`));
+  items.forEach(it => {
+    it._notInModel = missingKeys.has(`${it.modelId}::${it.objectId}`);
   });
-  if (!min || !max) return null;
-  return { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2, z: (min.z + max.z) / 2 };
-}
-
-/**
- * Flyttar kameran till dubbla avståndet från markeringens mittpunkt, längs
- * samma siktlinje som den kamera Trimbles automatiska "zooma till markering"
- * (setCamera(selector)) precis satte. Se kommentaren i selectItemsInModel().
- */
-async function applyDoubleZoom(center) {
-  if (!center) return; // hittade ingen bounding box - lämna Trimbles zoom orörd
-
-  const cam = await API.viewer.getCamera();
-  if (!cam || !cam.position) return;
-  const p = cam.position;
-
-  const newPosition = {
-    x: center.x + 2 * (p.x - center.x),
-    y: center.y + 2 * (p.y - center.y),
-    z: center.z + 2 * (p.z - center.z)
-  };
-
-  await API.viewer.setCamera({ ...cam, position: newPosition });
 }
 
 /**
@@ -1590,7 +1638,7 @@ function renderItemList() {
         <div class="item-row${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}" data-index="${idx}">
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
-              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}<br/>
+              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}<br/>
               <span class="item-sub">${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span><br/>
               <span class="item-dates">${escapeHtml(formatDateRange(it))} · Framdrift ${progress}%</span>
             </span>
@@ -1645,6 +1693,7 @@ function renderItemList() {
       }
       renderItemList();
       selectItemsInModel(group.items, additive ? { mode: "add", moveCamera: false } : {})
+        .then(({ missing }) => { markMissingInModel(missing); renderItemList(); })
         .catch(e => alert("Kunde inte markera gruppen i 3D-vyn: " + e.message));
     };
   });
@@ -1691,7 +1740,9 @@ async function selectAllCoupledObjects() {
   const originalText = btn.innerText;
   btn.innerText = "Markerar...";
   try {
-    await selectItemsInModel(items);
+    const { missing } = await selectItemsInModel(items);
+    markMissingInModel(missing);
+    renderItemList();
   } catch (e) {
     console.error("Kunde inte markera alla kopplade objekt i 3D-vyn:", e);
     alert("Kunde inte markera alla kopplade objekt i 3D-vyn: " + e.message);
@@ -1750,7 +1801,9 @@ function onItemRowClicked(it, ev, renderedItems) {
 
   const selectedItems = items.filter(x => selectedItemKeys.has(x.objectId));
   if (selectedItems.length > 0) {
-    selectItemsInModel(selectedItems).catch(e => alert("Kunde inte markera objektet/objekten i 3D-vyn: " + e.message));
+    selectItemsInModel(selectedItems)
+      .then(({ missing }) => { markMissingInModel(missing); renderItemList(); })
+      .catch(e => alert("Kunde inte markera objektet/objekten i 3D-vyn: " + e.message));
   }
 }
 

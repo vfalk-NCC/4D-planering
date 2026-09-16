@@ -103,14 +103,14 @@
         <label style="flex:1">Gruppera enligt
           <select id="groupBy">
             <option value="">Ingen gruppering</option>
-            <option value="area">Område</option>
+            <option value="area" selected>Område</option>
             <option value="activity">Aktivitet</option>
             <option value="contractor">Entreprenör</option>
             <option value="status">Status</option>
           </select>
         </label>
         <label class="switch" style="align-self:flex-end; margin-bottom:6px;">
-          <input type="checkbox" id="sortAlpha" /> Sortera A-Ö
+          <input type="checkbox" id="sortAlpha" checked /> Sortera A-Ö
         </label>
       </div>
       <label class="switch" style="margin-bottom:6px;">
@@ -148,7 +148,7 @@
 
     <!-- ===== Filter ===== -->
     <section class="panel" data-panel-id="filter">
-      <h2>Filter</h2>
+      <h2>Filter<button id="btnShowAllCoupled" class="panel-header-btn" title="Återställ synligheten i 3D-vyn - visar alla objekt igen (ångrar isoleringen från &quot;Visa filtrerat&quot;)">Visa alla kopplade objekt</button></h2>
       <label>Område
         <select id="filterArea" multiple></select>
       </label>
@@ -259,8 +259,11 @@
       <label>Nuvarande namn
         <select id="renameOldValue"></select>
       </label>
-      <label>Nytt namn
-        <input type="text" id="renameNewValue" placeholder="t.ex. 741 - Sikthall" />
+      <label>Nytt/befintligt namn
+        <div class="autocomplete-wrap">
+          <input type="text" id="renameNewValue" placeholder="t.ex. 741 - Sikthall" autocomplete="off" />
+          <div class="autocomplete-list hidden" id="renameNewValueList"></div>
+        </div>
       </label>
       <div id="renameStatus" class="hint"></div>
       <div class="row">

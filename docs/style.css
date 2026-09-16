@@ -89,6 +89,18 @@ header button { background: none; border: none; font-size: 16px; cursor: pointer
 .panel.collapsed h2::before { content: "▶"; }
 .panel.collapsed > *:not(h2) { display: none; }
 
+/* Knapp inne i en panels <h2> (t.ex. "Visa alla kopplade objekt" i
+   Filter-headern) - måste stoppa klickets bubbling (se showAllModelObjects
+   i app.js) så den inte även fäller ihop/ut panelen. */
+.panel-header-btn {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
 .hint { color: var(--muted); font-size: 11px; margin: 4px 0; }
 .hint.warning { color: #e5484d; font-weight: 600; padding: 6px 8px; background: #fdeceb; border: 1px solid #f3c4c1; border-radius: 4px; }
 
@@ -268,6 +280,13 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
 .save-error-tag {
   font-size: 9px;
   color: #e5484d;
+  margin-left: 6px;
+  font-weight: 700;
+  cursor: help;
+}
+.not-in-model-tag {
+  font-size: 9px;
+  color: #b06a00;
   margin-left: 6px;
   font-weight: 700;
   cursor: help;
