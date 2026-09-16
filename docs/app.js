@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-16 10:38";
+const APP_VERSION = "2026-09-16 11:30";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -249,7 +249,17 @@ function bindUI() {
   document.getElementById("itemSearch").oninput = () => renderItemList();
   document.getElementById("groupBy").onchange = () => renderItemList();
   document.getElementById("sortAlpha").onchange = () => renderItemList();
-  document.getElementById("hideCompleted").onchange = () => renderItemList();
+  // "Dölj klarmarkerade" och "Visa endast klarmarkerade" är motsatser - håll
+  // dem ömsesidigt uteslutande så man inte kan kryssa i båda och få en
+  // tom/motsägelsefull lista.
+  document.getElementById("hideCompleted").onchange = (ev) => {
+    if (ev.target.checked) document.getElementById("showOnlyCompleted").checked = false;
+    renderItemList();
+  };
+  document.getElementById("showOnlyCompleted").onchange = (ev) => {
+    if (ev.target.checked) document.getElementById("hideCompleted").checked = false;
+    renderItemList();
+  };
 
   document.getElementById("btnDeleteSelected").onclick = onDeleteSelectedItems;
   document.getElementById("btnCollapseAllGroups").onclick = collapseAllGroups;
@@ -1129,22 +1139,46 @@ async function applyFilterToModel() {
 }
 
 /**
- * "Visa alla kopplade objekt" (knappen i Filter-panelens header) - ångrar en
- * isolering gjord av "Visa filtrerat" genom att återställa synligheten för
- * samtliga objekt i de inlästa modellerna till sitt normalläge. Rör
- * medvetet inte kameran (till skillnad från viewer.reset(), som även
- * nollställer kameraposition och aktiva verktyg - mer än vad man vill ha
- * bara för att visa dolda objekt igen).
+ * "Visa alla kopplade objekt" (knappen i Filter-panelens header) - isolerar
+ * 3D-vyn till ALLA objekt som har en planeringskoppling i appen (dvs.
+ * samtliga rader i "Planerade objekt", oavsett vilket filter som råkar vara
+ * valt just nu) - INTE bokstavligen allt i hela 3D-modellen. Ångrar på så
+ * vis en snävare isolering gjord av "Visa filtrerat" genom att vidga den
+ * till samtliga kopplade objekt, istället för att visa/dölja allt
+ * urskillningslöst.
  */
 async function showAllModelObjects(ev) {
   if (ev) ev.stopPropagation(); // knappen sitter i panelens <h2> - stoppa så klicket inte även fäller ihop panelen
   const statusEl = document.getElementById("filterMsg");
+
+  if (items.length === 0) {
+    statusEl.innerText = "Inga kopplade objekt att visa.";
+    return;
+  }
+
+  const byModel = {};
+  items.forEach(it => {
+    if (!it.modelId || !it.objectId) return;
+    byModel[it.modelId] = byModel[it.modelId] || [];
+    byModel[it.modelId].push(it.objectId);
+  });
+
   try {
-    await API.viewer.setObjectState(undefined, { visible: "reset" });
-    statusEl.innerText = "Visar alla objekt igen.";
+    const modelEntities = [];
+    for (const modelId of Object.keys(byModel)) {
+      const results = await convertToRuntimeIdsSafe(modelId, byModel[modelId]);
+      const valid = results.map(r => r.runtimeId).filter(id => id !== undefined && id !== null);
+      if (valid.length > 0) modelEntities.push({ modelId, entityIds: valid });
+    }
+    if (modelEntities.length === 0) {
+      statusEl.innerText = "Inget av de kopplade objekten hittades i den just nu inlästa modellen.";
+      return;
+    }
+    await API.viewer.isolateEntities(modelEntities);
+    statusEl.innerText = `Visar alla ${items.length} kopplade objekt.`;
   } catch (e) {
-    console.error("Kunde inte återställa synligheten:", e);
-    statusEl.innerText = "Kunde inte visa alla objekt igen: " + e.message;
+    console.error("Kunde inte visa alla kopplade objekt:", e);
+    statusEl.innerText = "Kunde inte visa alla kopplade objekt: " + e.message;
   }
 }
 
@@ -1547,8 +1581,10 @@ function updateItemsTruncatedWarning() {
 function getVisibleItems() {
   const term = (document.getElementById("itemSearch").value || "").toLowerCase().trim();
   const hideCompleted = document.getElementById("hideCompleted").checked;
+  const showOnlyCompleted = document.getElementById("showOnlyCompleted").checked;
   return items.filter(it => {
     if (hideCompleted && it.status === "klar") return false;
+    if (showOnlyCompleted && it.status !== "klar") return false;
     if (!term) return true;
     const haystack = [it.objectName, it.area, it.activity, it.contractor, it.objectId]
       .filter(Boolean).join(" ").toLowerCase();

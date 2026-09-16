@@ -367,6 +367,15 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
   overflow-y: auto;
 }
 
+/* "Byt namn"-dialogen - 2,5x bredare än standarddialogerna från start
+   (320px -> 800px), och dragbar (resize) om man vill ha den ännu större. */
+#renameDialog .dialog-box {
+  width: 800px;
+  max-width: 95vw;
+  overflow: auto;
+  resize: both;
+}
+
 /* Lösenordsgrind - visas innan appen laddas, se ACCESS_PASSWORD i app.js.
    Enbart en klientsidesspärr, ingen riktig säkerhet - koden och all data
    är fortsatt synlig för den som öppnar utvecklarverktygen. */
