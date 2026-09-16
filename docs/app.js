@@ -237,6 +237,8 @@ function bindUI() {
   setupAutocomplete("fActivity", "fActivityList", () => formOptions.activity);
   setupAutocomplete("fContractor", "fContractorList", () => formOptions.contractor);
 
+  document.getElementById("saveStatus").onclick = onSaveStatusClick;
+
   document.getElementById("btnRefresh").onclick = refreshAllData;
   document.getElementById("btnSettings").onclick = () => toggle("settingsDialog", true);
   document.getElementById("btnCloseSettings").onclick = () => toggle("settingsDialog", false);
@@ -443,15 +445,32 @@ function fillLinkForm(existing) {
   document.getElementById("fProgressLabel").innerText = progress;
 }
 
-async function onSaveLink() {
-  const btn = document.getElementById("btnSaveLink");
-  // Skydd mot dubbelklick/dubbla tryck: utan detta kan två samtidiga
-  // sparningar racea mot samma plan_items.json och ge en skrivkrock (409)
-  // som tar slut på omförsök - även om båda egentligen skulle lyckats var
-  // för sig. Se även backoff:en i ghWriteJSON (github-storage.js).
-  if (btn.disabled) return;
+/* ---------------------------------------------------------------------
+   Optimistisk sparning - "Spara" ska kännas momentant istället för att
+   användaren ska behöva vänta in en GitHub-rondtripp.
+   ---------------------------------------------------------------------
+   Listan uppdateras och formuläret stängs DIREKT när man trycker Spara,
+   medan själva skrivningen till GitHub sker i bakgrunden (kö:ad per fil,
+   se ghWriteQueues i github-storage.js, så flera snabba sparningar i rad
+   inte racear mot varandra i onödan). Det här är alltså rent en UX-fix
+   för hur sparningen KÄNNS - den faktiska nätverkstiden är oförändrad.
+   Två saker garanterar att en sparning aldrig "bara försvinner" tyst om
+   den faktiska skrivningen skulle misslyckas trots omförsöken i
+   ghWriteJSON:
+     1) Raden i listan märks "Sparar..." tills bakgrundsskrivningen
+        bekräftats, och "⚠ Kunde inte spara" om den till slut misslyckas
+        (se _pending/_saveError i renderItemList()).
+     2) En liten statusrad (#saveStatus, överst i appen) samlar alla
+        pågående/misslyckade bakgrundssparningar, med en "Försök igen"-
+        och "Överge ändringen"-knapp per misslyckad sparning - den
+        försvinner aldrig av sig själv vid ett fel, till skillnad från en
+        alert() som klickas bort och glöms.
+   ------------------------------------------------------------------- */
+let saveJobs = new Map(); // jobId -> { id, records, label, status: "pending"|"error", error }
+let saveJobCounter = 0;
 
-  const payload = {
+function buildLinkPayloadFromForm() {
+  return {
     objectName: document.getElementById("fName").value.trim(),
     area: document.getElementById("fArea").value.trim(),
     activity: document.getElementById("fActivity").value.trim(),
@@ -461,35 +480,142 @@ async function onSaveLink() {
     endDate: document.getElementById("fEnd").value || null,
     progress: Number(document.getElementById("fProgress").value) || 0
   };
+}
 
-  const records = lastSelection.map(s => ({
-    projectId, modelId: s.modelId, objectId: s.objectId, ...payload
-  }));
+function onSaveLink() {
+  if (lastSelection.length === 0) return;
+  const payload = buildLinkPayloadFromForm();
 
-  btn.disabled = true;
-  const originalText = btn.innerText;
-  btn.innerText = "Sparar...";
-  let after;
-  try {
-    after = await saveItems(records);
-  } catch (e) {
-    alert("Kunde inte spara: " + e.message);
-    return;
-  } finally {
-    btn.disabled = false;
-    btn.innerText = originalText;
-  }
+  // Samma id som en redan sparad rad (om vi redigerar en befintlig
+  // koppling) återanvänds så att den optimistiska raden och den faktiska
+  // bakgrundsskrivningen syftar på exakt samma post - annars skulle
+  // toRow() annars generera TVÅ olika nya id:n (ett här, ett till inne i
+  // saveItems()) för samma nya objekt.
+  const records = lastSelection.map(s => {
+    const existing = items.find(it => it.modelId === s.modelId && it.objectId === s.objectId);
+    return { id: existing ? existing.id : ghNewId(), projectId, modelId: s.modelId, objectId: s.objectId, ...payload };
+  });
 
+  applyOptimisticRecords(records);
   toggle("linkForm", false);
-  // Uppdatera listan direkt från det saveItems() redan skrev och fick
-  // tillbaka, istället för att hämta om hela plan_items.json en gång till
-  // från GitHub - sparar en hel läs-rondtripp (märkbart för prestandan när
-  // filen är stor, se kommentaren i saveItems()).
-  items = after.map(fromRow);
-  itemsTotalCount = items.length;
   buildFilterOptions();
   renderItemList();
   initTimelineRange();
+
+  const jobId = ++saveJobCounter;
+  const label = records.length === 1 ? (records[0].objectName || records[0].objectId) : `${records.length} objekt`;
+  saveJobs.set(jobId, { id: jobId, records, label, status: "pending", error: null });
+  runSaveJob(jobId);
+}
+
+/** Lägger till/uppdaterar de sparade raderna lokalt direkt (innan bakgrundsskrivningen ens startat), märkta som "Sparar...". */
+function applyOptimisticRecords(records) {
+  records.forEach(rec => {
+    const row = toRow(rec);
+    const optimisticItem = { ...fromRow(row), _pending: true, _saveError: null };
+    const idx = items.findIndex(it => it.id === row.id);
+    if (idx >= 0) items[idx] = optimisticItem; else items.push(optimisticItem);
+  });
+  itemsTotalCount = items.length;
+}
+
+/** Skriver in det bekräftat sparade resultatet för just DE HÄR raderna (inte hela listan - andra rader kan ha egna, fortfarande pågående bakgrundssparningar). */
+function reconcileSavedRecords(records, after) {
+  const afterById = new Map(after.map(r => [r.id, r]));
+  records.forEach(rec => {
+    const freshRow = afterById.get(rec.id);
+    if (!freshRow) return;
+    const freshItem = { ...fromRow(freshRow), _pending: false, _saveError: null };
+    const idx = items.findIndex(it => it.id === rec.id);
+    if (idx >= 0) items[idx] = freshItem; else items.push(freshItem);
+  });
+  itemsTotalCount = items.length;
+}
+
+/** Märker raderna i en misslyckad sparning med ett felmeddelande, så de syns tydligt i listan (inte bara i statusraden överst). */
+function markSaveJobError(records, message) {
+  const ids = new Set(records.map(r => r.id));
+  items.forEach(it => { if (ids.has(it.id)) { it._pending = false; it._saveError = message; } });
+}
+
+function runSaveJob(jobId) {
+  const job = saveJobs.get(jobId);
+  if (!job) return;
+  job.status = "pending";
+  job.error = null;
+  renderSaveStatus();
+
+  saveItems(job.records).then(after => {
+    saveJobs.delete(jobId);
+    reconcileSavedRecords(job.records, after);
+    buildFilterOptions();
+    renderItemList();
+    initTimelineRange();
+    renderSaveStatus();
+  }).catch(e => {
+    console.error("Bakgrundssparning misslyckades:", e);
+    job.status = "error";
+    job.error = e.message;
+    markSaveJobError(job.records, e.message);
+    renderSaveStatus();
+    renderItemList();
+  });
+}
+
+/** Klick på "Försök igen"/"Överge ändringen" i statusraden (#saveStatus), se renderSaveStatus(). */
+function onSaveStatusClick(ev) {
+  const btn = ev.target.closest("[data-action]");
+  if (!btn) return;
+  const jobId = Number(btn.dataset.jobId);
+  const job = saveJobs.get(jobId);
+  if (!job) return;
+
+  if (btn.dataset.action === "retry-save") {
+    job.records.forEach(rec => {
+      const it = items.find(i => i.id === rec.id);
+      if (it) { it._pending = true; it._saveError = null; }
+    });
+    renderItemList();
+    runSaveJob(jobId);
+  } else if (btn.dataset.action === "discard-save") {
+    // Enklaste säkra sätt att "ångra" en misslyckad optimistisk ändring:
+    // hämta om hela listan från GitHub så allt återgår till det senast
+    // faktiskt bekräftat sparade tillståndet, istället för att försöka
+    // räkna ut och återställa exakt vad raden såg ut som innan för hand.
+    saveJobs.delete(jobId);
+    renderSaveStatus();
+    refreshAllData();
+  }
+}
+
+function renderSaveStatus() {
+  const el = document.getElementById("saveStatus");
+  if (!el) return;
+  const jobs = Array.from(saveJobs.values());
+  const pending = jobs.filter(j => j.status === "pending");
+  const failed = jobs.filter(j => j.status === "error");
+
+  if (pending.length === 0 && failed.length === 0) {
+    el.classList.add("hidden");
+    el.innerHTML = "";
+    return;
+  }
+
+  let html = "";
+  if (pending.length > 0) {
+    const text = pending.length === 1 ? `Sparar ${escapeHtml(pending[0].label)}...` : `Sparar ${pending.length} ändringar...`;
+    html += `<div class="save-status-pending">${text}</div>`;
+  }
+  failed.forEach(job => {
+    html += `
+      <div class="save-status-error">
+        ⚠️ Kunde inte spara <strong>${escapeHtml(job.label)}</strong>: ${escapeHtml(job.error || "")}
+        <button data-action="retry-save" data-job-id="${job.id}">Försök igen</button>
+        <button data-action="discard-save" data-job-id="${job.id}">Överge ändringen</button>
+      </div>`;
+  });
+  el.innerHTML = html;
+  el.classList.remove("hidden");
 }
 
 /* ---------------------------------------------------------------------
@@ -1310,10 +1436,10 @@ function renderItemList() {
       const commentBadge = commentCount > 0 ? `<span class="comment-count">${commentCount}</span>` : "";
       const commentTitle = commentCount > 0 ? `Kommentarer (${commentCount})` : "Kommentarer";
       html += `
-        <div class="item-row${isSelected ? " selected" : ""}" data-index="${idx}">
+        <div class="item-row${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}" data-index="${idx}">
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
-              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span><br/>
+              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}<br/>
               <span class="item-sub">${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span><br/>
               <span class="item-dates">${escapeHtml(formatDateRange(it))} · Framdrift ${progress}%</span>
             </span>

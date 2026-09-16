@@ -78,6 +78,29 @@ header button { background: none; border: none; font-size: 16px; cursor: pointer
 .hint { color: var(--muted); font-size: 11px; margin: 4px 0; }
 .hint.warning { color: #e5484d; font-weight: 600; padding: 6px 8px; background: #fdeceb; border: 1px solid #f3c4c1; border-radius: 4px; }
 
+/* Statusrad för optimistisk sparning (bakgrundsskrivningar mot GitHub som
+   pågår eller misslyckats), se renderSaveStatus() i app.js. */
+#saveStatus { margin-bottom: 8px; }
+.save-status-pending {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 6px 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+.save-status-error {
+  font-size: 11px;
+  color: #7a1f22;
+  padding: 8px;
+  background: #fdeceb;
+  border: 1px solid #f3c4c1;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+.save-status-error button { margin-left: 6px; font-size: 10px; padding: 3px 6px; }
+
 label {
   display: block;
   margin-bottom: 6px;
@@ -221,6 +244,20 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
 .item-row:hover { background: #eef1f5; }
 .item-row.selected { background: #dbeafe; box-shadow: inset 3px 0 0 var(--accent); }
 .item-row.selected:hover { background: #cfe4fd; }
+.item-row.save-error { box-shadow: inset 3px 0 0 #e5484d; }
+.save-pending-tag {
+  font-size: 9px;
+  color: var(--muted);
+  margin-left: 6px;
+  font-weight: 600;
+}
+.save-error-tag {
+  font-size: 9px;
+  color: #e5484d;
+  margin-left: 6px;
+  font-weight: 700;
+  cursor: help;
+}
 .item-row-top {
   display: flex;
   justify-content: space-between;
