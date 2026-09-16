@@ -291,6 +291,18 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
   font-weight: 700;
   cursor: help;
 }
+.phase-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.phase-tag .dot {
+  width: 7px;
+  height: 7px;
+  margin-right: 4px;
+}
 .item-row-top {
   display: flex;
   justify-content: space-between;

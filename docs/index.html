@@ -84,6 +84,9 @@
         <label>Slutdatum
           <input type="date" id="fEnd" />
         </label>
+        <label>Verkligt avslut <span class="hint">(fylls i automatiskt med dagens datum när status sätts till Klar - går att ändra)</span>
+          <input type="date" id="fActualEnd" />
+        </label>
         <label>Framdrift (<span id="fProgressLabel">0</span>%)
           <input type="range" id="fProgress" min="0" max="100" step="1" value="0" />
         </label>
@@ -145,9 +148,12 @@
         <input type="range" id="timelineSlider" min="0" max="100" value="0" />
       </div>
       <div class="legend">
-        <span><i class="dot" id="dotNotStarted"></i> Ej påbörjad</span>
-        <span><i class="dot" id="dotInProgress"></i> Pågående</span>
-        <span><i class="dot" id="dotDone"></i> Färdigställd</span>
+        <span><i class="dot" id="dotPlanerad"></i> Planerad</span>
+        <span><i class="dot" id="dotPagaende"></i> Pågående</span>
+        <span><i class="dot" id="dotSnart"></i> Snart aktuell</span>
+        <span><i class="dot" id="dotForsenad"></i> Försenad</span>
+        <span><i class="dot" id="dotKlar"></i> Klar</span>
+        <span><i class="dot" id="dotKlarForsenad"></i> Klar (försenad)</span>
       </div>
     </section>
 
@@ -173,6 +179,12 @@
           <option value="2">Nästa 2 veckor</option>
           <option value="4">Nästa 4 veckor</option>
         </select>
+      </label>
+      <label>Varna "Snart aktuell" (dagar innan slutdatum)
+        <div class="row">
+          <input type="range" id="warningDaysSlider" min="1" max="30" step="1" style="flex:1" />
+          <span class="hint" id="warningDaysLabel" style="align-self:center; width:60px;"></span>
+        </div>
       </label>
       <div class="row">
         <button id="btnApplyFilter" class="primary">Visa filtrerat</button>
@@ -218,31 +230,11 @@
   <div id="settingsDialog" class="dialog hidden">
     <div class="dialog-box">
       <h2>Inställningar</h2>
-      <label>Färg – ej påbörjad
-        <div class="row">
-          <input type="color" id="colorNotStarted" style="flex:0 0 40px" />
-          <input type="range" id="opacityNotStarted" min="0" max="100" step="1" style="flex:1" />
-          <span class="hint" id="opacityNotStartedLabel" style="align-self:center; width:34px;"></span>
-        </div>
-      </label>
-      <label>Färg – pågående
-        <div class="row">
-          <input type="color" id="colorInProgress" style="flex:0 0 40px" />
-          <input type="range" id="opacityInProgress" min="0" max="100" step="1" style="flex:1" />
-          <span class="hint" id="opacityInProgressLabel" style="align-self:center; width:34px;"></span>
-        </div>
-      </label>
-      <label>Färg – färdigställd
-        <div class="row">
-          <input type="color" id="colorDone" style="flex:0 0 40px" />
-          <input type="range" id="opacityDone" min="0" max="100" step="1" style="flex:1" />
-          <span class="hint" id="opacityDoneLabel" style="align-self:center; width:34px;"></span>
-        </div>
-      </label>
       <label>Uppspelningshastighet (sekunder per dag)
         <input type="number" id="playSecondsPerDay" min="0.1" step="0.1" placeholder="0.4" />
       </label>
-      <h3 class="settings-subheading">Färger – status i listan</h3>
+      <h3 class="settings-subheading">Färger – status/fas (används i listan och 3D-modellen)</h3>
+      <p class="hint">"Snart aktuell" och "Klar, men försenad" är inte riktiga statusar du väljer själv - de räknas fram automatiskt utifrån planerat slutdatum och verkligt avslut, men går att färgsätta här precis som de andra.</p>
       <div id="statusColorInputs"></div>
       <label>GitHub-token <input type="password" id="githubToken" placeholder="github_pat_..." /></label>
       <p class="hint">En fine-grained token scopead till repot <strong>vfalk-NCC/4D-data</strong> – se GITHUB_TOKEN_SETUP.md för hur du skapar en (tar under en minut).</p>

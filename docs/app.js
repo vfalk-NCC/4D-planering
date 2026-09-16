@@ -9,22 +9,17 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-16 11:30";
+const APP_VERSION = "2026-09-16 13:28";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
 let items = [];              // Cache av planeringsposter (från backend)
 let settings = {
-  colorNotStarted: "#c9ccd1", // grå
-  colorInProgress: "#f5a623", // orange
-  colorDone: "#3fb950",       // grön
-  opacityNotStarted: 1,       // 0-1, genomskinlighet per färg
-  opacityInProgress: 1,
-  opacityDone: 1,
   playSecondsPerDay: 0.4,     // sekunder realtid per simulerad dag vid "spela upp"
   githubToken: "",             // fine-grained PAT scopead till vfalk-NCC/4D-data, se GITHUB_TOKEN_SETUP.md
   userName: "",                // namn som förifylls vid nya kommentarer
-  statusColors: null           // sätts till DEFAULT_STATUS_COLORS av loadLocalSettings() - badge-färger per "Status" i objektlistan
+  statusColors: null,          // sätts till DEFAULT_STATUS_COLORS av loadLocalSettings() - färger per status/fas, används både för badgen i listan OCH för objektens färg i 3D-vyn (se computeItemPhase/applyTimelineColors)
+  warningDaysBeforeEnd: 7      // "snart aktuell"-tröskel (dagar innan planerat slutdatum) - styrs via slidern i Filter-panelen, se bindUI()
 };
 let lastSelection = [];      // [{modelId, objectId (externalId), objectRuntimeId, name}]
 let playTimer = null;
@@ -69,14 +64,33 @@ const GROUP_KEY_FNS = {
 
 // Standardfärger för statusmärkena i "Planerade objekt" - används tills
 // Victor eventuellt justerar dem själv via kugghjulet (settings.statusColors).
+// "snart" och "klar_forsenad" är inte riktiga värden på it.status (ingen rad
+// har någonsin status === "snart") - de är två extra beräknade FASER som
+// computeItemPhase() kan returnera, och delar samma färgpanel/inställning
+// eftersom Victor bad om det (istället för en egen sektion) när vi pratade
+// igenom hur färgsättningen av framdriften borde fungera.
 const DEFAULT_STATUS_COLORS = {
   ej_planerad: "#cbd5e1",
   planerad: "#94a3b8",
   pagaende: "#f5a623",
   forsenad: "#e5484d",
   klar: "#3fb950",
-  pausad: "#a1a1aa"
+  pausad: "#a1a1aa",
+  snart: "#eab308",          // ny: närmar sig planerat slutdatum men inte klar
+  klar_forsenad: "#3b82f6"   // ny: klarmarkerad, men efter planerat slutdatum
 };
+
+// De två extra fasfärgerna ovan (snart/klar_forsenad) hör inte hemma i
+// STATUS_LABELS - de är aldrig ett riktigt värde på it.status, och skulle
+// annars dyka upp som falska (alltid tomma) val i t.ex. statusfiltret eller
+// "Byt namn"-dropdownen om de låg där. COLOR_PANEL_LABELS används enbart för
+// att rendera färginställningspanelen (renderStatusColorInputs/onSaveSettings),
+// som därmed visar alla åtta färger på samma ställe.
+const PHASE_ONLY_LABELS = {
+  snart: "Snart aktuell (3D-vy/lista)",
+  klar_forsenad: "Klar, men försenad (3D-vy/lista)"
+};
+const COLOR_PANEL_LABELS = { ...STATUS_LABELS, ...PHASE_ONLY_LABELS };
 
 /**
  * Väljer svart eller vit text baserat på bakgrundsfärgens ljushet, så att
@@ -228,6 +242,17 @@ function bindUI() {
   document.getElementById("fProgress").oninput = () => {
     document.getElementById("fProgressLabel").innerText = document.getElementById("fProgress").value;
   };
+  // Fyll i "Verkligt avslut" automatiskt med dagens datum när status sätts
+  // till Klar (bara om fältet är tomt - skriver aldrig över ett datum
+  // Victor redan justerat manuellt). Går att ändra i efterhand precis som
+  // vilket annat fält som helst.
+  document.getElementById("fStatus").onchange = () => {
+    const statusEl = document.getElementById("fStatus");
+    const actualEndEl = document.getElementById("fActualEnd");
+    if (statusEl.value === "klar" && !actualEndEl.value) {
+      actualEndEl.value = new Date().toISOString().slice(0, 10);
+    }
+  };
 
   document.getElementById("timelineSlider").oninput = onSliderMove;
   document.getElementById("timelineDate").onchange = onDateInputChange;
@@ -236,6 +261,23 @@ function bindUI() {
   document.getElementById("btnApplyFilter").onclick = applyFilterToModel;
   document.getElementById("btnClearFilter").onclick = clearFilter;
   document.getElementById("btnShowAllCoupled").onclick = showAllModelObjects;
+
+  // "Snart aktuell"-tröskeln (dagar innan planerat slutdatum) - en slider
+  // direkt i Filter-panelen istället för i Inställningar, så den går att
+  // justera snabbt medan man tittar på listan/3D-vyn. Sparas direkt vid
+  // varje ändring (inte bara vid "Spara inställningar").
+  const warningDaysSlider = document.getElementById("warningDaysSlider");
+  const warningDaysLabel = document.getElementById("warningDaysLabel");
+  warningDaysSlider.value = settings.warningDaysBeforeEnd;
+  warningDaysLabel.innerText = `${settings.warningDaysBeforeEnd} dagar`;
+  warningDaysSlider.oninput = () => {
+    const days = Number(warningDaysSlider.value);
+    settings.warningDaysBeforeEnd = days;
+    warningDaysLabel.innerText = `${days} dagar`;
+    try { window.localStorage.setItem("4dplan-settings", JSON.stringify(settings)); } catch (e) { /* ignorera */ }
+    applyTimelineColors();
+    renderItemList();
+  };
   // Markera (utan att isolera/dölja) matchande objekt direkt när ett
   // filteralternativ ändras, så man ser dem i 3D-vyn innan man ev. klickar
   // "Visa filtrerat" eller isolerar/döljer manuellt i Trimble Connect.
@@ -299,48 +341,32 @@ function bindUI() {
   };
   document.getElementById("commentsList").onclick = onCommentsListClick;
 
-  document.getElementById("colorNotStarted").value = settings.colorNotStarted;
-  document.getElementById("colorInProgress").value = settings.colorInProgress;
-  document.getElementById("colorDone").value = settings.colorDone;
-  document.getElementById("opacityNotStarted").value = Math.round(settings.opacityNotStarted * 100);
-  document.getElementById("opacityInProgress").value = Math.round(settings.opacityInProgress * 100);
-  document.getElementById("opacityDone").value = Math.round(settings.opacityDone * 100);
-  document.getElementById("opacityNotStarted").oninput = updateOpacityLabels;
-  document.getElementById("opacityInProgress").oninput = updateOpacityLabels;
-  document.getElementById("opacityDone").oninput = updateOpacityLabels;
   document.getElementById("playSecondsPerDay").value = settings.playSecondsPerDay;
   document.getElementById("githubToken").value = settings.githubToken;
-  updateOpacityLabels();
   paintLegendDots();
   renderStatusColorInputs();
   updateConnectionWarning();
 }
 
 /**
- * Bygger en färgväljare per statusvärde (ej_planerad, planerad, ...) i
- * inställningsdialogen, utifrån STATUS_LABELS - så listan alltid matchar
- * statusarna som faktiskt finns i appen (fStatus-selecten, badges m.m.)
- * utan att behöva underhållas på två ställen.
+ * Bygger en färgväljare per statusvärde/fas (ej_planerad, planerad, ...,
+ * plus de två beräknade faserna snart/klar_forsenad) i inställningsdialogen,
+ * utifrån COLOR_PANEL_LABELS - så listan alltid matchar det som faktiskt
+ * finns i appen (fStatus-selecten, badges, 3D-färgsättningen m.m.) utan att
+ * behöva underhållas på två ställen.
  */
 function renderStatusColorInputs() {
   const wrap = document.getElementById("statusColorInputs");
   if (!wrap) return;
-  wrap.innerHTML = Object.entries(STATUS_LABELS).map(([key, label]) => `
+  wrap.innerHTML = Object.entries(COLOR_PANEL_LABELS).map(([key, label]) => `
     <label>${escapeHtml(label)}
       <div class="row">
         <input type="color" id="statusColor_${key}" style="flex:0 0 40px" />
       </div>
     </label>`).join("");
-  Object.keys(STATUS_LABELS).forEach(key => {
+  Object.keys(COLOR_PANEL_LABELS).forEach(key => {
     const el = document.getElementById(`statusColor_${key}`);
     if (el) el.value = (settings.statusColors && settings.statusColors[key]) || DEFAULT_STATUS_COLORS[key] || "#999999";
-  });
-}
-
-function updateOpacityLabels() {
-  ["NotStarted", "InProgress", "Done"].forEach(key => {
-    const val = document.getElementById(`opacity${key}`).value;
-    document.getElementById(`opacity${key}Label`).innerText = `${val}%`;
   });
 }
 
@@ -380,10 +406,23 @@ function initCollapsiblePanels() {
   });
 }
 
+// Vilken legend-prick (i Tidslinje-panelen) som hör till vilken beräknad
+// fas - se computeItemPhase().
+const PHASE_DOT_IDS = {
+  planerad: "dotPlanerad",
+  pagaende: "dotPagaende",
+  snart: "dotSnart",
+  forsenad: "dotForsenad",
+  klar: "dotKlar",
+  klar_forsenad: "dotKlarForsenad"
+};
+
 function paintLegendDots() {
-  document.getElementById("dotNotStarted").style.background = settings.colorNotStarted;
-  document.getElementById("dotInProgress").style.background = settings.colorInProgress;
-  document.getElementById("dotDone").style.background = settings.colorDone;
+  const colors = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
+  Object.entries(PHASE_DOT_IDS).forEach(([phase, id]) => {
+    const el = document.getElementById(id);
+    if (el) el.style.background = colors[phase];
+  });
 }
 
 /* ---------------------------------------------------------------------
@@ -400,19 +439,21 @@ function loadLocalSettings() {
   // ofullständig uppsättning) tysta bort standardfärgen för de statusar som
   // saknas i det sparade objektet.
   settings.statusColors = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
+  // "Snart aktuell"-tröskeln sparas i samma settings-objekt (så den följer
+  // med i 4dplan-settings i localStorage), men styrs live via slidern i
+  // Filter-panelen (se bindUI()) - inte via den här dialogen. Faller
+  // tillbaka till 7 dagar om värdet saknas eller är ogiltigt (t.ex. äldre
+  // sparade inställningar från innan fältet fanns).
+  if (!Number.isFinite(settings.warningDaysBeforeEnd) || settings.warningDaysBeforeEnd < 0) {
+    settings.warningDaysBeforeEnd = 7;
+  }
 }
 
 function onSaveSettings() {
-  settings.colorNotStarted = document.getElementById("colorNotStarted").value;
-  settings.colorInProgress = document.getElementById("colorInProgress").value;
-  settings.colorDone = document.getElementById("colorDone").value;
-  settings.opacityNotStarted = Number(document.getElementById("opacityNotStarted").value) / 100;
-  settings.opacityInProgress = Number(document.getElementById("opacityInProgress").value) / 100;
-  settings.opacityDone = Number(document.getElementById("opacityDone").value) / 100;
   settings.playSecondsPerDay = Number(document.getElementById("playSecondsPerDay").value) || 0.4;
   settings.githubToken = document.getElementById("githubToken").value.trim();
   const newStatusColors = {};
-  Object.keys(STATUS_LABELS).forEach(key => {
+  Object.keys(COLOR_PANEL_LABELS).forEach(key => {
     const el = document.getElementById(`statusColor_${key}`);
     newStatusColors[key] = el ? el.value : (settings.statusColors && settings.statusColors[key]) || DEFAULT_STATUS_COLORS[key];
   });
@@ -537,6 +578,7 @@ function fillLinkForm(existing) {
   document.getElementById("fStatus").value = existing ? existing.status || "planerad" : "planerad";
   document.getElementById("fStart").value = existing ? existing.startDate || "" : "";
   document.getElementById("fEnd").value = existing ? existing.endDate || "" : "";
+  document.getElementById("fActualEnd").value = existing ? existing.actualEndDate || "" : "";
   const progress = existing && Number.isFinite(existing.progress) ? existing.progress : 0;
   document.getElementById("fProgress").value = progress;
   document.getElementById("fProgressLabel").innerText = progress;
@@ -575,6 +617,7 @@ function buildLinkPayloadFromForm() {
     status: document.getElementById("fStatus").value,
     startDate: document.getElementById("fStart").value || null,
     endDate: document.getElementById("fEnd").value || null,
+    actualEndDate: document.getElementById("fActualEnd").value || null,
     progress: Number(document.getElementById("fProgress").value) || 0
   };
 }
@@ -893,48 +936,134 @@ function onTogglePlay() {
 }
 
 /**
- * Går igenom alla planerade objekt, jämför med valt datum och sätter
- * respektive färg i 3D-modellen via viewer.setObjectState.
+ * Räknar ut vilken "fas" (och därmed färg) ett objekt ska visas med vid ett
+ * givet datum - antingen tidslinjens valda datum (för 3D-färgsättningen,
+ * se applyTimelineColors) eller dagens datum (för listans avvikelseetikett,
+ * se renderItemList). Väger in både planerat slutdatum OCH verkligt avslut,
+ * istället för att som tidigare bara jämföra dagens/valt datum mot planerat
+ * slutdatum - annars visades avklarade objekt som "försenade" bara för att
+ * kalendern hunnit förbi slutdatumet (se konversationen med Victor
+ * 2026-09-16 om hur framdriften borde visualiseras).
+ *
+ * Möjliga returvärden (nycklar i DEFAULT_STATUS_COLORS/settings.statusColors):
+ *   "planerad"      - inte påbörjat än (datumet är före startdatum)
+ *   "pagaende"      - påbörjat, inte klart, gott om tid kvar
+ *   "snart"         - påbörjat, inte klart, inom `warningDays` dagar från
+ *                      planerat slutdatum
+ *   "forsenad"      - inte klart och planerat slutdatum har redan passerat
+ *   "klar"          - klart (verkligt avslut senast på planerat slutdatum)
+ *   "klar_forsenad" - klart, men efter planerat slutdatum
+ * Returnerar null om objektet saknar startdatum (kan då inte fasberäknas -
+ * hoppas över, precis som innan).
+ */
+function computeItemPhase(item, atDateStr, warningDays) {
+  if (!item.startDate) return null;
+  const at = new Date(atDateStr);
+  const start = new Date(item.startDate);
+  const plannedEnd = item.endDate ? new Date(item.endDate) : null;
+
+  // Verkligt avslut: det Victor faktiskt matat in om det finns, annars (för
+  // objekt som klarmarkerats innan det här fältet infördes) planerat
+  // slutdatum eller startdatum som en rimlig uppskattning - så gammal data
+  // inte plötsligt ser "inte klar" ut bara för att fältet är tomt.
+  let actualEnd = item.actualEndDate ? new Date(item.actualEndDate) : null;
+  if (!actualEnd && item.status === "klar") {
+    actualEnd = plannedEnd || start;
+  }
+
+  if (at < start) return "planerad";
+
+  const isDoneAtDate = actualEnd && actualEnd <= at;
+  if (isDoneAtDate) {
+    return (plannedEnd && actualEnd > plannedEnd) ? "klar_forsenad" : "klar";
+  }
+
+  if (plannedEnd) {
+    if (at > plannedEnd) return "forsenad";
+    const daysLeft = Math.round((plannedEnd - at) / 86400000);
+    if (warningDays > 0 && daysLeft <= warningDays) return "snart";
+  }
+  return "pagaende";
+}
+
+/**
+ * Går igenom alla planerade objekt, räknar ut varje objekts fas vid det
+ * valda tidslinjedatumet och sätter respektive färg i 3D-modellen via
+ * viewer.setObjectState. Färgerna hämtas från settings.statusColors -
+ * samma färger som badgen i listan använder, se computeItemPhase().
  */
 async function applyTimelineColors() {
   const selectedDate = document.getElementById("timelineDate").value;
   if (!selectedDate || items.length === 0) return;
 
-  const byModel = {}; // modelId -> {notStarted:[], inProgress:[], done:[]}
+  const warningDays = settings.warningDaysBeforeEnd || 0;
+  const byModel = {}; // modelId -> { planerad:[], pagaende:[], snart:[], forsenad:[], klar:[], klar_forsenad:[] }
 
   for (const it of items) {
-    if (!it.startDate) continue;
-    const phase = getPhase(it, selectedDate);
-    byModel[it.modelId] = byModel[it.modelId] || { notStarted: [], inProgress: [], done: [] };
+    const phase = computeItemPhase(it, selectedDate, warningDays);
+    if (!phase) continue;
+    byModel[it.modelId] = byModel[it.modelId] || { planerad: [], pagaende: [], snart: [], forsenad: [], klar: [], klar_forsenad: [] };
     byModel[it.modelId][phase].push(it.objectId);
   }
 
+  const colors = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
   for (const modelId of Object.keys(byModel)) {
     const group = byModel[modelId];
-    await colorGroup(modelId, group.notStarted, settings.colorNotStarted, settings.opacityNotStarted);
-    await colorGroup(modelId, group.inProgress, settings.colorInProgress, settings.opacityInProgress);
-    await colorGroup(modelId, group.done, settings.colorDone, settings.opacityDone);
+    for (const phase of Object.keys(group)) {
+      await colorGroup(modelId, group[phase], colors[phase]);
+    }
   }
 }
 
-function getPhase(item, selectedDateStr) {
-  const d = new Date(selectedDateStr);
-  const start = new Date(item.startDate);
-  const end = item.endDate ? new Date(item.endDate) : start;
-  if (d < start) return "notStarted";
-  if (d >= start && d <= end) return "inProgress";
-  return "done";
-}
-
-async function colorGroup(modelId, externalIds, colorHex, opacity) {
-  if (externalIds.length === 0) return;
-  const runtimeIds = await API.viewer.convertToObjectRuntimeIds(modelId, externalIds);
-  const valid = runtimeIds.filter(id => id !== undefined && id !== null);
+/**
+ * Färgsätter en grupp objekt i en modell. Använder convertToRuntimeIdsSafe
+ * (istället för att anropa convertToObjectRuntimeIds direkt) så att ett
+ * enda objekt som saknas i den just nu inlästa modellversionen inte gör att
+ * HELA gruppens färgsättning hoppas över - samma bugg som tidigare löstes
+ * för markering i 3D-vyn (se selectItemsInModel).
+ */
+async function colorGroup(modelId, externalIds, colorHex) {
+  if (externalIds.length === 0 || !colorHex) return;
+  const results = await convertToRuntimeIdsSafe(modelId, externalIds);
+  const valid = results.map(r => r.runtimeId).filter(id => id !== undefined && id !== null);
   if (valid.length === 0) return;
   await API.viewer.setObjectState(
     { modelObjectIds: [{ modelId, objectRuntimeIds: valid }] },
-    { color: hexToRgba(colorHex, opacity) }
+    { color: hexToRgba(colorHex, 1) }
   );
+}
+
+/**
+ * Kort etikett för avvikelsen mellan planerat och verkligt/aktuellt datum,
+ * visad i "Planerade objekt"-listan bredvid statusbadgen. Beräknas mot
+ * DAGENS datum (inte tidslinjens valda datum) - listan ska alltid visa
+ * "läget nu", oavsett var man råkar ha dragit tidslinjeslidern.
+ */
+function computeDeviationLabel(item, phase, todayStr) {
+  const today = new Date(todayStr);
+  const plannedEnd = item.endDate ? new Date(item.endDate) : null;
+
+  if (phase === "klar") {
+    if (item.actualEndDate && plannedEnd) {
+      const diff = Math.round((new Date(item.actualEndDate) - plannedEnd) / 86400000);
+      if (diff < 0) return `Klar, ${Math.abs(diff)} dagar tidigt`;
+    }
+    return "Klar i tid";
+  }
+  if (phase === "klar_forsenad") {
+    const actualEnd = item.actualEndDate ? new Date(item.actualEndDate) : plannedEnd;
+    const diff = (plannedEnd && actualEnd) ? Math.round((actualEnd - plannedEnd) / 86400000) : null;
+    return diff ? `Klar, ${diff} dagar sent` : "Klar, försenad";
+  }
+  if (phase === "forsenad" && plannedEnd) {
+    const diff = Math.round((today - plannedEnd) / 86400000);
+    return `${diff} dagar försenad`;
+  }
+  if (phase === "snart" && plannedEnd) {
+    const diff = Math.round((plannedEnd - today) / 86400000);
+    return `${diff} dagar kvar`;
+  }
+  return null;
 }
 
 function hexToRgba(hex, opacity) {
@@ -1262,7 +1391,8 @@ async function onImportExcel() {
     contractor: r["Entreprenör"] || r["Contractor"] || "",
     status: normalizeStatus(r["Status"]),
     startDate: excelDateToIso(r["Startdatum"] || r["StartDate"]),
-    endDate: excelDateToIso(r["Slutdatum"] || r["EndDate"])
+    endDate: excelDateToIso(r["Slutdatum"] || r["EndDate"]),
+    actualEndDate: excelDateToIso(r["Verkligt avslut"] || r["ActualEndDate"])
   })).filter(r => r.objectId);
 
   status.innerText = `Importerar ${records.length} rader...`;
@@ -1304,7 +1434,8 @@ function onExportExcel() {
     "Entreprenör": it.contractor || "",
     "Status": STATUS_LABELS[it.status] || it.status || "",
     "Startdatum": it.startDate || "",
-    "Slutdatum": it.endDate || ""
+    "Slutdatum": it.endDate || "",
+    "Verkligt avslut": it.actualEndDate || ""
   }));
 
   const sheet = XLSX.utils.json_to_sheet(data);
@@ -1617,6 +1748,8 @@ function renderItemList() {
   const el = document.getElementById("itemList");
   const statusColor = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
   const statusLabel = STATUS_LABELS;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const warningDays = settings.warningDaysBeforeEnd || 0;
 
   if (visible.length === 0) {
     el.innerHTML = `<div class="hint">Inga objekt ${searchTerm ? "matchar sökningen" : "sparade ännu"}.</div>`;
@@ -1670,13 +1803,21 @@ function renderItemList() {
       const commentCount = commentCounts.get(it.id) || 0;
       const commentBadge = commentCount > 0 ? `<span class="comment-count">${commentCount}</span>` : "";
       const commentTitle = commentCount > 0 ? `Kommentarer (${commentCount})` : "Kommentarer";
+      // Beräknad fas/avvikelse (skiljer sig från den manuella statusbadgen
+      // till höger) - visar t.ex. "3 dagar kvar" eller "2 dagar försenad",
+      // baserat på dagens datum, inte tidslinjeslidern. Se computeItemPhase().
+      const phase = computeItemPhase(it, todayStr, warningDays);
+      const deviationLabel = phase ? computeDeviationLabel(it, phase, todayStr) : null;
+      const phaseTagHtml = deviationLabel
+        ? `<br/><span class="phase-tag" style="color:${statusColor[phase] || "#999"}"><i class="dot" style="background:${statusColor[phase] || "#999"}"></i>${escapeHtml(deviationLabel)}</span>`
+        : "";
       html += `
         <div class="item-row${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}" data-index="${idx}">
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
               <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}<br/>
               <span class="item-sub">${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span><br/>
-              <span class="item-dates">${escapeHtml(formatDateRange(it))} · Framdrift ${progress}%</span>
+              <span class="item-dates">${escapeHtml(formatDateRange(it))} · Framdrift ${progress}%</span>${phaseTagHtml}
             </span>
             <span class="badge" style="background:${statusColor[it.status] || "#999"};color:${contrastTextColor(statusColor[it.status] || "#999999")}">${statusLabel[it.status] || it.status}</span>
             <button class="comment-btn" data-action="comments" title="${commentTitle}">💬${commentBadge}</button>
@@ -2233,6 +2374,7 @@ function toRow(it) {
     status: it.status || "planerad",
     start_date: it.startDate || null,
     end_date: it.endDate || null,
+    actual_end_date: it.actualEndDate || null,
     progress: Number.isFinite(it.progress) ? Math.max(0, Math.min(100, Math.round(it.progress))) : 0,
     updated_at: new Date().toISOString()
   };
@@ -2251,6 +2393,7 @@ function fromRow(row) {
     status: row.status,
     startDate: row.start_date,
     endDate: row.end_date,
+    actualEndDate: row.actual_end_date || null,
     progress: Number.isFinite(row.progress) ? row.progress : 0,
     updatedAt: row.updated_at
   };
