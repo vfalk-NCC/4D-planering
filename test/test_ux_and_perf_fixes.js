@@ -1,19 +1,19 @@
-// Funktionstest för de fem sakerna Victor efterfrågade efter migreringen:
-//  1) Sparning ska inte göra en onödig dubbel-läsning av plan_items.json
+// Funktionstest för fyra av sakerna Victor efterfrågade efter migreringen
+// (ett femte, den gamla "dubbla zoomavståndet"-kameraeffekten, togs senare
+// bort igen - se test_select_all_filter_zoom.js för dagens enkla,
+// odubblerade zoom):
+//  1) Ctrl/Cmd-klick på en grupps "Välj alla" ska LÄGGA TILL gruppen till
+//     den befintliga markeringen (både i listan och i 3D-vyn, mode "add"),
+//     istället för att ersätta den, och utan att flytta kameran - och ett
+//     vanligt (icke-Ctrl) klick ska bara göra EN kamerarörelse.
+//  2) "Markera alla" ska visa ett tydligt felmeddelande (inte bara markera
+//     tyst i appens lista) om inget av objekten kunde markeras i 3D-vyn,
+//     och knappen ska återgå till sitt normala läge efteråt.
+//  3) Sparning ska inte göra en onödig dubbel-läsning av plan_items.json
 //     (prestanda/"lång delay"-klagomålet) - plan_items.json och
 //     plan_item_progress_history.json ska skrivas PARALLELLT, och
 //     plan_items.json ska bara LÄSAS en gång per sparning, inte två.
-//  2) Kameran ska bara göra EN synlig rörelse vid markering (inte
-//     zooma-in-och-sen-zooma-ut) - det första setCamera-anropet (Trimbles
-//     auto-fit, som bara används för att räkna ut var kameran SKULLE
-//     hamnat) ska ha animationTime:0.
-//  3) Ctrl/Cmd-klick på en grupps "Välj alla" ska LÄGGA TILL gruppen till
-//     den befintliga markeringen (både i listan och i 3D-vyn, mode "add"),
-//     istället för att ersätta den, och utan att flytta kameran.
-//  4) "Markera alla" ska visa ett tydligt felmeddelande (inte bara markera
-//     tyst i appens lista) om inget av objekten kunde markeras i 3D-vyn,
-//     och knappen ska återgå till sitt normala läge efteråt.
-//  5) Den nya ↻-knappen i headern ska hämta senaste data och rita om
+//  4) Den nya ↻-knappen i headern ska hämta senaste data och rita om
 //     listan.
 const { chromium } = require('playwright');
 const path = require('path');
@@ -146,7 +146,10 @@ async function run() {
 
   // ============================================================
   // 1) Ctrl/Cmd-klick på "Välj alla" i en andra grupp lägger till,
-  //    ersätter inte, och flyttar inte kameran.
+  //    ersätter inte, och flyttar inte kameran. Ett vanligt klick gör EN
+  //    enda kamerarörelse (bara Trimbles egen zoom till markeringen - ingen
+  //    egen efterjustering/dubblering, som tidigare gav en synlig
+  //    "zoomar in, zoomar ut igen"-känsla och togs bort på Victors begäran).
   // ============================================================
   const groupButtons = page.locator('.group-select-all');
   const count = await groupButtons.count();
@@ -160,7 +163,7 @@ async function run() {
   let selCalls = calls.filter(c => c[0] === 'setSelection');
   if (selCalls.length !== 1 || selCalls[0][2] !== 'set') throw new Error('Första gruppklicket skulle vara mode "set": ' + JSON.stringify(selCalls));
   let camCallsAfterFirst = calls.filter(c => c[0] === 'setCamera').length;
-  if (camCallsAfterFirst !== 2) throw new Error('Förväntade 2 setCamera-anrop (auto-fit + dubblering) vid vanligt gruppklick, fick ' + camCallsAfterFirst);
+  if (camCallsAfterFirst !== 1) throw new Error('Förväntade EXAKT 1 setCamera-anrop (ingen dubblering) vid vanligt gruppklick, fick ' + camCallsAfterFirst);
 
   await page.evaluate(() => { window.__calls.length = 0; });
   await groupButtons.nth(1).click({ modifiers: ['Control'] }); // Hus B, Ctrl-klick
@@ -174,25 +177,10 @@ async function run() {
 
   const selectedRows = await page.locator('.item-row.selected').count();
   if (selectedRows !== 4) throw new Error('Förväntade 4 markerade rader (Hus A + Hus B) efter Ctrl-klick, fick ' + selectedRows);
-  console.log('OK: Ctrl/Cmd-klick på "Välj alla" lägger till en till grupp i markeringen (mode "add"), utan att flytta kameran');
+  console.log('OK: Ctrl/Cmd-klick på "Välj alla" lägger till en till grupp i markeringen (mode "add"), utan att flytta kameran, och ett vanligt klick ger EN kamerarörelse (ingen dubblering)');
 
   // ============================================================
-  // 2) Kameran gör bara EN synlig rörelse (första anropet instant).
-  // ============================================================
-  const camCallsFirstClick = calls; // reuse from ctrl click doesn't have camera calls; check the FIRST (non-ctrl) click's calls instead
-  await page.evaluate(() => { window.__calls.length = 0; });
-  await groupButtons.nth(0).click();
-  await page.waitForTimeout(200);
-  const camCalls = (await page.evaluate(() => window.__calls)).filter(c => c[0] === 'setCamera');
-  if (camCalls.length !== 2) throw new Error('Förväntade 2 setCamera-anrop, fick ' + camCalls.length);
-  // animationTime:1 (inte 0) - se kommentaren i selectItemsInModel() i app.js:
-  // 0 riskerar att tolkas som falsy/"inget värde" av Trimbles SDK och falla
-  // tillbaka på normal animationstid, vilket gör mellansteget synligt igen.
-  if (!camCalls[0][2] || camCalls[0][2].animationTime !== 1) throw new Error('Första setCamera-anropet (auto-fit) ska ha animationTime:1 (i praktiken osynligt), fick options: ' + JSON.stringify(camCalls[0][2]));
-  console.log('OK: bara EN synlig kamerarörelse (auto-fit-anropet är instant/osynligt, bara det slutgiltiga är animerat)');
-
-  // ============================================================
-  // 3) "Markera alla" visar fel om inget objekt hittas i modellen.
+  // 2) "Markera alla" visar fel om inget objekt hittas i modellen.
   // ============================================================
   await page.evaluate(() => { window.__forceNoMatch = true; });
   await page.locator('#btnSelectAllCoupled').click();
@@ -211,7 +199,7 @@ async function run() {
   console.log('OK: "Markera alla" visar ett tydligt felmeddelande när inget kunde markeras i 3D-vyn, och knappen återställs');
 
   // ============================================================
-  // 4) Sparning: EN läsning av plan_items.json (inte två), och
+  // 3) Sparning: EN läsning av plan_items.json (inte två), och
   //    plan_items.json + progress_history.json skrivs parallellt.
   //
   //    För att robust kunna mäta parallellitet (utan att förlita sig på
@@ -251,7 +239,7 @@ async function run() {
   console.log(`OK: sparning gör bara EN läsning av plan_items.json, och skriver plan_items.json + historik parallellt (tidsstämpelskillnad ${gap}ms)`);
 
   // ============================================================
-  // 5) ↻-knappen hämtar senaste data.
+  // 4) ↻-knappen hämtar senaste data.
   // ============================================================
   const extraItem = { id: 'row-5', project_id: PROJECT_ID, model_id: 'model-1', object_id: '50', object_name: 'C1', area: 'Hus C', activity: 'Gjutning', contractor: 'NCC', status: 'planerad', start_date: null, end_date: null, progress: 0, updated_at: '2026-01-01T00:00:00Z' };
   const current = store.get(`projects/${PROJECT_ID}/plan_items.json`).content;

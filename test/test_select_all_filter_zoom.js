@@ -144,13 +144,15 @@ async function run() {
     throw new Error('setSelection markerade fel objekt: ' + JSON.stringify(sel));
   }
 
+  // Zoomen ska nu vara EN enda kamerarörelse - bara Trimbles egen "zooma
+  // till markering", ingen egen efterjustering (den gav tidigare en synlig
+  // "zoomar in, zoomar ut igen"-känsla och togs bort på Victors begäran).
   const cameraCalls = calls.filter(c => c[0] === 'setCamera');
-  if (cameraCalls.length !== 2) throw new Error('Förväntade 2 setCamera-anrop (Trimbles auto-fit + dubblering), fick ' + cameraCalls.length);
-  const finalCameraPos = cameraCalls[1][1].position;
-  if (finalCameraPos.x !== 5 || finalCameraPos.y !== 5 || finalCameraPos.z !== 45) {
-    throw new Error('Kameran hamnade inte på dubbla avståndet (5,5,45): ' + JSON.stringify(finalCameraPos));
+  if (cameraCalls.length !== 1) throw new Error('Förväntade exakt 1 setCamera-anrop (bara Trimbles egen zoom, ingen dubblering), fick ' + cameraCalls.length);
+  if (JSON.stringify(cameraCalls[0][1]) !== JSON.stringify(sel)) {
+    throw new Error('setCamera skulle anropas med exakt samma selector som setSelection: ' + JSON.stringify(cameraCalls[0][1]));
   }
-  console.log('OK: "Markera alla" markerar alla kopplade objekt och dubblerar zoomavståndet (20 -> 40 enheter)');
+  console.log('OK: "Markera alla" markerar alla kopplade objekt och zoomar in i en enda kamerarörelse (ingen dubblering/utzoomning)');
 
   // ---- 3) Gruppera på status, sedan "Minimera alla" (#btnCollapseAllGroups).
   await page.selectOption('#groupBy', 'status');
