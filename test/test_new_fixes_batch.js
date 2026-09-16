@@ -13,7 +13,9 @@
 //     befintliga värden för det valda fältet.
 //  6) "Visa filtrerat" ska isolera via viewer.isolateEntities (inte dölja
 //     allt via setObjectState), och "Visa alla kopplade objekt" i Filter-
-//     headern ska återställa synligheten utan att fälla ihop panelen.
+//     headern ska isolera till SAMTLIGA kopplade objekt i appen (oavsett
+//     filter) - inte bokstavligen allt i hela 3D-modellen - utan att fälla
+//     ihop panelen.
 const { chromium } = require('playwright');
 const path = require('path');
 const http = require('http');
@@ -212,8 +214,8 @@ async function run() {
   await page.waitForTimeout(100);
 
   // ---- 6) "Visa filtrerat" isolerar via isolateEntities (inte döljer allt
-  //         själv), och "Visa alla kopplade objekt" återställer synligheten
-  //         utan att fälla ihop Filter-panelen.
+  //         själv), och "Visa alla kopplade objekt" isolerar till SAMTLIGA
+  //         kopplade objekt (oavsett filter) utan att fälla ihop panelen.
   // Filtrerar på "Alby" (inget saknat objekt där) - det här testet gäller
   // isolateEntities-bytet, inte det delvis-saknade-objekt-scenariot ovan.
   await page.evaluate(() => { window.__calls.length = 0; });
@@ -235,13 +237,21 @@ async function run() {
 
   await page.evaluate(() => { window.__calls.length = 0; });
   await page.locator('#btnShowAllCoupled').click();
-  await page.waitForTimeout(150);
+  await page.waitForTimeout(250);
 
-  const resetCalls = (await page.evaluate(() => window.__calls)).filter(c => c[0] === 'setObjectState' && c[1] === undefined && c[2] && c[2].visible === 'reset');
-  if (resetCalls.length !== 1) throw new Error('"Visa alla kopplade objekt" skulle återställa synligheten via setObjectState(undefined, {visible:"reset"}), fick ' + resetCalls.length + ' sådana anrop');
+  const showAllCalls = (await page.evaluate(() => window.__calls)).filter(c => c[0] === 'isolateEntities');
+  if (showAllCalls.length !== 1) throw new Error('"Visa alla kopplade objekt" skulle anropa isolateEntities exakt 1 gång, fick ' + showAllCalls.length);
+  const showAllEntityIds = showAllCalls[0][1][0].entityIds.slice().sort((a, b) => a - b);
+  // Alla FYRA kopplade objekt utom det som saknas i modellen (30) - dvs
+  // oavsett vilket filter som råkar vara valt (bara "Alby" var filtrerat).
+  if (JSON.stringify(showAllEntityIds) !== JSON.stringify([10, 20, 40])) {
+    throw new Error('"Visa alla kopplade objekt" skulle isolera till ALLA kopplade objekt (utom det saknade), fick: ' + JSON.stringify(showAllEntityIds));
+  }
+  const filterMsgAfterShowAll = await page.locator('#filterMsg').innerText();
+  if (!filterMsgAfterShowAll.includes('4')) throw new Error('Oväntat filterMsg efter "Visa alla kopplade objekt": ' + filterMsgAfterShowAll);
   const filterPanelCollapsedAfter = await page.locator('.panel[data-panel-id="filter"]').evaluate(el => el.classList.contains('collapsed'));
   if (filterPanelCollapsedAfter) throw new Error('"Visa alla kopplade objekt" fällde felaktigt ihop Filter-panelen (klicket bubblade till panelens header)');
-  console.log('OK: "Visa alla kopplade objekt" återställer synligheten utan att fälla ihop Filter-panelen');
+  console.log('OK: "Visa alla kopplade objekt" isolerar till SAMTLIGA kopplade objekt (oavsett filter) utan att fälla ihop Filter-panelen');
 
   await browser.close();
   server.close();
