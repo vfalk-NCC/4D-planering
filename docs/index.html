@@ -47,16 +47,22 @@
           <input type="text" id="fName" placeholder="t.ex. M10" />
         </label>
         <label>Område
-          <input list="areaList" id="fArea" placeholder="t.ex. Hus A, Plan 2" />
-          <datalist id="areaList"></datalist>
+          <div class="autocomplete-wrap">
+            <input type="text" id="fArea" placeholder="t.ex. Hus A, Plan 2" autocomplete="off" />
+            <div class="autocomplete-list hidden" id="fAreaList"></div>
+          </div>
         </label>
         <label>Aktivitet
-          <input list="activityList" id="fActivity" placeholder="t.ex. Gjutning" />
-          <datalist id="activityList"></datalist>
+          <div class="autocomplete-wrap">
+            <input type="text" id="fActivity" placeholder="t.ex. Gjutning" autocomplete="off" />
+            <div class="autocomplete-list hidden" id="fActivityList"></div>
+          </div>
         </label>
         <label>Entreprenör
-          <input list="contractorList" id="fContractor" placeholder="t.ex. NCC" />
-          <datalist id="contractorList"></datalist>
+          <div class="autocomplete-wrap">
+            <input type="text" id="fContractor" placeholder="t.ex. NCC" autocomplete="off" />
+            <div class="autocomplete-list hidden" id="fContractorList"></div>
+          </div>
         </label>
         <label>Status
           <select id="fStatus">
@@ -81,6 +87,42 @@
           <button id="btnSaveLink" class="primary">Spara</button>
           <button id="btnCancelLink">Avbryt</button>
         </div>
+      </div>
+    </section>
+
+    <!-- ===== Objektlista ===== -->
+    <section class="panel" data-panel-id="items">
+      <h2>Planerade objekt (<span id="itemCount">0</span>)</h2>
+      <div id="itemsTruncatedWarning" class="hint warning hidden"></div>
+      <input type="text" id="itemSearch" placeholder="Sök på namn, område, aktivitet..." />
+      <div class="row">
+        <label style="flex:1">Gruppera enligt
+          <select id="groupBy">
+            <option value="">Ingen gruppering</option>
+            <option value="area">Område</option>
+            <option value="activity">Aktivitet</option>
+            <option value="contractor">Entreprenör</option>
+            <option value="status">Status</option>
+          </select>
+        </label>
+        <label class="switch" style="align-self:flex-end; margin-bottom:6px;">
+          <input type="checkbox" id="sortAlpha" /> Sortera A-Ö
+        </label>
+      </div>
+      <label class="switch" style="margin-bottom:6px;">
+        <input type="checkbox" id="hideCompleted" /> Dölj klarmarkerade
+      </label>
+      <div class="row">
+        <button id="btnCollapseAllGroups" title="Minimera alla grupper i listan">Minimera alla</button>
+        <button id="btnSelectAllCoupled" title="Markera alla kopplade objekt i 3D-vyn">Markera alla</button>
+      </div>
+      <div id="itemList" class="item-list"></div>
+      <div class="row">
+        <button id="btnDeleteSelected" title="Radera planeringskopplingen för alla markerade rader" disabled>Radera markerade (<span id="selectedCount">0</span>)</button>
+      </div>
+      <div class="row">
+        <button id="btnShowLabels" title="Visa namn + start-/slutdatum som textetiketter i 3D-vyn för de markerade raderna i listan" disabled>Visa namn i 3D</button>
+        <button id="btnClearLabels" title="Ta bort etiketterna igen">Rensa etiketter</button>
       </div>
     </section>
 
@@ -127,42 +169,6 @@
         <button id="btnClearFilter">Rensa filter</button>
       </div>
       <div id="filterMsg" class="hint"></div>
-    </section>
-
-    <!-- ===== Objektlista ===== -->
-    <section class="panel" data-panel-id="items">
-      <h2>Planerade objekt (<span id="itemCount">0</span>)</h2>
-      <div id="itemsTruncatedWarning" class="hint warning hidden"></div>
-      <input type="text" id="itemSearch" placeholder="Sök på namn, område, aktivitet..." />
-      <div class="row">
-        <label style="flex:1">Gruppera enligt
-          <select id="groupBy">
-            <option value="">Ingen gruppering</option>
-            <option value="area">Område</option>
-            <option value="activity">Aktivitet</option>
-            <option value="contractor">Entreprenör</option>
-            <option value="status">Status</option>
-          </select>
-        </label>
-        <label class="switch" style="align-self:flex-end; margin-bottom:6px;">
-          <input type="checkbox" id="sortAlpha" /> Sortera A-Ö
-        </label>
-      </div>
-      <label class="switch" style="margin-bottom:6px;">
-        <input type="checkbox" id="hideCompleted" /> Dölj klarmarkerade
-      </label>
-      <div class="row">
-        <button id="btnCollapseAllGroups" title="Minimera alla grupper i listan">Minimera alla</button>
-        <button id="btnSelectAllCoupled" title="Markera alla kopplade objekt i 3D-vyn">Markera alla</button>
-      </div>
-      <div id="itemList" class="item-list"></div>
-      <div class="row">
-        <button id="btnDeleteSelected" title="Radera planeringskopplingen för alla markerade rader" disabled>Radera markerade (<span id="selectedCount">0</span>)</button>
-      </div>
-      <div class="row">
-        <button id="btnShowLabels" title="Visa namn + start-/slutdatum som textetiketter i 3D-vyn för de markerade raderna i listan" disabled>Visa namn i 3D</button>
-        <button id="btnClearLabels" title="Ta bort etiketterna igen">Rensa etiketter</button>
-      </div>
     </section>
 
     <!-- ===== Excel-import/export ===== -->
@@ -226,6 +232,8 @@
       <label>Uppspelningshastighet (sekunder per dag)
         <input type="number" id="playSecondsPerDay" min="0.1" step="0.1" placeholder="0.4" />
       </label>
+      <h3 class="settings-subheading">Färger – status i listan</h3>
+      <div id="statusColorInputs"></div>
       <label>GitHub-token <input type="password" id="githubToken" placeholder="github_pat_..." /></label>
       <p class="hint">En fine-grained token scopead till repot <strong>vfalk-NCC/4D-data</strong> – se GITHUB_TOKEN_SETUP.md för hur du skapar en (tar under en minut).</p>
       <div class="row">

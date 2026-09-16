@@ -156,7 +156,18 @@ async function ghWriteJSON(token, path, mutateFn, message, maxRetries = 6, preFe
     const current = Array.isArray(data) ? data : [];
     const next = mutateFn(current.slice());
     try {
-      await ghPutFile(token, path, ghUtf8ToB64(JSON.stringify(next, null, 2)), sha, message);
+      // Kompakt JSON (ingen indentering) istället för JSON.stringify(next, null, 2)
+      // - filerna (särskilt plan_items.json, som nu innehåller hundratals
+      // poster) skrivs om i sin HELHET vid varje sparning (GitHub Contents
+      // API har ingen "ändra bara denna rad"-variant), så själva
+      // datamängden som ska laddas upp är den största kvarvarande
+      // förklaringen till upplevd sparningstid. Indentering drar annars med
+      // sig en hel del rena mellanslagstecken i onödan (grovt sett +25-35%
+      // av filstorleken för den här typen av data) utan att fylla något
+      // syfte - filen är inte tänkt att läsas för hand. Bonus: eftersom
+      // filen sedan LAGRAS kompakt blir även nästa sparnings inledande
+      // läsning av filen mindre, så vinsten byggs på sig själv över tid.
+      await ghPutFile(token, path, ghUtf8ToB64(JSON.stringify(next)), sha, message);
       return next;
     } catch (e) {
       lastErr = e;

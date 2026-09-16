@@ -95,6 +95,44 @@ input, select, textarea {
 select[multiple] { height: 70px; resize: vertical; overflow: auto; min-height: 44px; }
 textarea { resize: vertical; }
 
+/* Egen "Sparade data"-dropdown för Område/Aktivitet/Entreprenör, se
+   setupAutocomplete() i app.js - ersätter webbläsarens inbyggda
+   <datalist>-popup som även blandar in dess egen, appen-ovetande
+   ifyllnadshistorik. */
+.autocomplete-wrap { position: relative; }
+.autocomplete-list {
+  position: absolute;
+  left: 0; right: 0;
+  top: calc(100% + 2px);
+  z-index: 20;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.14);
+  max-height: 160px;
+  overflow-y: auto;
+}
+.autocomplete-item {
+  padding: 6px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #eef0f3;
+}
+.autocomplete-item:last-child { border-bottom: none; }
+.autocomplete-item:hover,
+.autocomplete-item.active { background: #eef4ff; }
+
+.settings-subheading {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--muted);
+  margin: 14px 0 6px;
+}
+#statusColorInputs { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+#statusColorInputs label { flex: 1 1 120px; margin-bottom: 4px; }
+#statusColorInputs input[type="color"] { width: 100%; padding: 2px; height: 26px; }
+
 .row { display: flex; gap: 6px; margin-top: 6px; }
 
 button {
@@ -312,6 +350,11 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
 .comment-meta strong { font-size: 11px; }
 .comment-time { color: var(--muted); font-size: 10px; margin-left: 4px; }
 .comment-body { white-space: pre-wrap; word-break: break-word; }
+.comment-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 2px;
+}
 .comment-reply-btn {
   border: none;
   background: none;
@@ -319,8 +362,17 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
   cursor: pointer;
   font-size: 10px;
   padding: 2px 0;
-  margin-top: 2px;
 }
+.comment-delete-btn {
+  border: none;
+  background: none;
+  color: #e5484d;
+  cursor: pointer;
+  font-size: 10px;
+  padding: 2px 0;
+}
+.comment-reply-btn:hover,
+.comment-delete-btn:hover { text-decoration: underline; }
 .comment-reply-form {
   margin: 4px 0 4px 10px;
   padding-left: 8px;

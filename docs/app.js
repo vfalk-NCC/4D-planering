@@ -17,7 +17,8 @@ let settings = {
   opacityDone: 1,
   playSecondsPerDay: 0.4,     // sekunder realtid per simulerad dag vid "spela upp"
   githubToken: "",             // fine-grained PAT scopead till vfalk-NCC/4D-data, se GITHUB_TOKEN_SETUP.md
-  userName: ""                // namn som förifylls vid nya kommentarer
+  userName: "",                // namn som förifylls vid nya kommentarer
+  statusColors: null           // sätts till DEFAULT_STATUS_COLORS av loadLocalSettings() - badge-färger per "Status" i objektlistan
 };
 let lastSelection = [];      // [{modelId, objectId (externalId), objectRuntimeId, name}]
 let playTimer = null;
@@ -48,6 +49,32 @@ const STATUS_LABELS = {
   klar: "Klar",
   pausad: "Pausad"
 };
+
+// Standardfärger för statusmärkena i "Planerade objekt" - används tills
+// Victor eventuellt justerar dem själv via kugghjulet (settings.statusColors).
+const DEFAULT_STATUS_COLORS = {
+  ej_planerad: "#cbd5e1",
+  planerad: "#94a3b8",
+  pagaende: "#f5a623",
+  forsenad: "#e5484d",
+  klar: "#3fb950",
+  pausad: "#a1a1aa"
+};
+
+/**
+ * Väljer svart eller vit text baserat på bakgrundsfärgens ljushet, så att
+ * statusmärket alltid går att läsa oavsett vilken färg Victor väljer i
+ * inställningarna (annars kan t.ex. en ljus, självvald färg med vit text bli
+ * i princip oläslig).
+ */
+function contrastTextColor(hex) {
+  if (typeof hex !== "string" || !/^#[0-9a-fA-F]{6}$/.test(hex)) return "#ffffff";
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? "#1f2328" : "#ffffff";
+}
 
 // Historisk kvarleva från Supabase-tiden (PostgRESTs radgräns per anrop).
 // plan_items.json läses numera in i sin helhet i ett svep, så den här
@@ -206,6 +233,10 @@ function bindUI() {
   document.getElementById("btnShowLabels").onclick = onShowLabels;
   document.getElementById("btnClearLabels").onclick = onClearLabels;
 
+  setupAutocomplete("fArea", "fAreaList", () => formOptions.area);
+  setupAutocomplete("fActivity", "fActivityList", () => formOptions.activity);
+  setupAutocomplete("fContractor", "fContractorList", () => formOptions.contractor);
+
   document.getElementById("btnRefresh").onclick = refreshAllData;
   document.getElementById("btnSettings").onclick = () => toggle("settingsDialog", true);
   document.getElementById("btnCloseSettings").onclick = () => toggle("settingsDialog", false);
@@ -232,7 +263,29 @@ function bindUI() {
   document.getElementById("githubToken").value = settings.githubToken;
   updateOpacityLabels();
   paintLegendDots();
+  renderStatusColorInputs();
   updateConnectionWarning();
+}
+
+/**
+ * Bygger en färgväljare per statusvärde (ej_planerad, planerad, ...) i
+ * inställningsdialogen, utifrån STATUS_LABELS - så listan alltid matchar
+ * statusarna som faktiskt finns i appen (fStatus-selecten, badges m.m.)
+ * utan att behöva underhållas på två ställen.
+ */
+function renderStatusColorInputs() {
+  const wrap = document.getElementById("statusColorInputs");
+  if (!wrap) return;
+  wrap.innerHTML = Object.entries(STATUS_LABELS).map(([key, label]) => `
+    <label>${escapeHtml(label)}
+      <div class="row">
+        <input type="color" id="statusColor_${key}" style="flex:0 0 40px" />
+      </div>
+    </label>`).join("");
+  Object.keys(STATUS_LABELS).forEach(key => {
+    const el = document.getElementById(`statusColor_${key}`);
+    if (el) el.value = (settings.statusColors && settings.statusColors[key]) || DEFAULT_STATUS_COLORS[key] || "#999999";
+  });
 }
 
 function updateOpacityLabels() {
@@ -292,6 +345,12 @@ function loadLocalSettings() {
     const raw = window.localStorage.getItem("4dplan-settings");
     if (raw) settings = { ...settings, ...JSON.parse(raw) };
   } catch (e) { /* ignorera */ }
+  // statusColors är ett nästlat objekt, så den vanliga ytliga
+  // {...settings, ...sparat}-sammanslagningen ovan räcker inte - annars
+  // skulle en sparning gjord innan en ny statusfärg fanns (eller en
+  // ofullständig uppsättning) tysta bort standardfärgen för de statusar som
+  // saknas i det sparade objektet.
+  settings.statusColors = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
 }
 
 function onSaveSettings() {
@@ -303,10 +362,17 @@ function onSaveSettings() {
   settings.opacityDone = Number(document.getElementById("opacityDone").value) / 100;
   settings.playSecondsPerDay = Number(document.getElementById("playSecondsPerDay").value) || 0.4;
   settings.githubToken = document.getElementById("githubToken").value.trim();
+  const newStatusColors = {};
+  Object.keys(STATUS_LABELS).forEach(key => {
+    const el = document.getElementById(`statusColor_${key}`);
+    newStatusColors[key] = el ? el.value : (settings.statusColors && settings.statusColors[key]) || DEFAULT_STATUS_COLORS[key];
+  });
+  settings.statusColors = newStatusColors;
   window.localStorage.setItem("4dplan-settings", JSON.stringify(settings));
   paintLegendDots();
   updateConnectionWarning();
   toggle("settingsDialog", false);
+  renderItemList();
   refreshItems().then(async () => {
     await refreshCommentCounts();
     buildFilterOptions();
@@ -578,14 +644,21 @@ function hexToRgba(hex, opacity) {
 /* ---------------------------------------------------------------------
    Filter
    ------------------------------------------------------------------- */
-function buildFilterOptions() {
-  fillDatalist("areaList", unique(items.map(i => i.area)));
-  fillDatalist("activityList", unique(items.map(i => i.activity)));
-  fillDatalist("contractorList", unique(items.map(i => i.contractor)));
+// Cache av vilka område/aktivitet/entreprenör-värden som faktiskt
+// förekommer bland de sparade planeringsposterna - källan för den egna
+// "Sparade data"-dropdownen på Koppla markering-formuläret (se
+// setupAutocomplete()), så den bara föreslår sådant Victor verkligen skrivit
+// in i planeringen någon gång, inte webbläsarens egen ifyllnadshistorik.
+let formOptions = { area: [], activity: [], contractor: [] };
 
-  fillMultiSelect("filterArea", unique(items.map(i => i.area)));
-  fillMultiSelect("filterActivity", unique(items.map(i => i.activity)));
-  fillMultiSelect("filterContractor", unique(items.map(i => i.contractor)));
+function buildFilterOptions() {
+  formOptions.area = unique(items.map(i => i.area));
+  formOptions.activity = unique(items.map(i => i.activity));
+  formOptions.contractor = unique(items.map(i => i.contractor));
+
+  fillMultiSelect("filterArea", formOptions.area);
+  fillMultiSelect("filterActivity", formOptions.activity);
+  fillMultiSelect("filterContractor", formOptions.contractor);
 
   // Status är en fast lista i appen, så den fylls alltid i - oavsett
   // vilka statusar som redan finns bland sparade objekt.
@@ -595,12 +668,86 @@ function buildFilterOptions() {
 }
 
 function unique(arr) {
-  return [...new Set(arr.filter(Boolean))].sort();
+  return [...new Set(arr.filter(Boolean))].sort((a, b) => a.localeCompare(b, "sv"));
 }
 
-function fillDatalist(id, values) {
-  const el = document.getElementById(id);
-  el.innerHTML = values.map(v => `<option value="${escapeHtml(v)}">`).join("");
+/**
+ * Egen, snyggare "Sparade data"-dropdown för Område/Aktivitet/Entreprenör i
+ * Koppla markering-formuläret - ersätter det inbyggda <input list="..."> +
+ * <datalist>, som förutom datalistans värden även blandar in webbläsarens
+ * egen (ostädade, appen-ovetande) ifyllnadshistorik för fältet. Visar bara
+ * värden som faktiskt finns bland sparade planeringsposter (getOptionsFn),
+ * filtrerat live mot vad som skrivits, med enkel tangentbordsnavigering.
+ */
+function setupAutocomplete(inputId, listId, getOptionsFn) {
+  const input = document.getElementById(inputId);
+  const list = document.getElementById(listId);
+  if (!input || !list) return;
+  let activeIndex = -1;
+
+  function currentItems() {
+    return Array.from(list.querySelectorAll(".autocomplete-item"));
+  }
+
+  function highlight(idx) {
+    const els = currentItems();
+    els.forEach(el => el.classList.remove("active"));
+    if (idx >= 0 && idx < els.length) {
+      els[idx].classList.add("active");
+      els[idx].scrollIntoView({ block: "nearest" });
+    }
+    activeIndex = idx;
+  }
+
+  function render() {
+    const q = input.value.trim().toLowerCase();
+    const opts = getOptionsFn().filter(v => !q || v.toLowerCase().includes(q));
+    activeIndex = -1;
+    if (opts.length === 0) {
+      list.classList.add("hidden");
+      list.innerHTML = "";
+      return;
+    }
+    list.innerHTML = opts.slice(0, 30).map(v => `<div class="autocomplete-item" data-value="${escapeHtml(v)}">${escapeHtml(v)}</div>`).join("");
+    list.classList.remove("hidden");
+  }
+
+  function choose(value) {
+    input.value = value;
+    list.classList.add("hidden");
+  }
+
+  input.addEventListener("focus", render);
+  input.addEventListener("input", render);
+  input.addEventListener("blur", () => {
+    // Liten fördröjning så ett klick på ett förslag (mousedown -> blur ->
+    // click) hinner registreras innan listan hinner döljas.
+    setTimeout(() => list.classList.add("hidden"), 150);
+  });
+  input.addEventListener("keydown", (ev) => {
+    if (list.classList.contains("hidden")) return;
+    const els = currentItems();
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      highlight(Math.min(activeIndex + 1, els.length - 1));
+    } else if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      highlight(Math.max(activeIndex - 1, 0));
+    } else if (ev.key === "Enter") {
+      if (activeIndex >= 0 && els[activeIndex]) {
+        ev.preventDefault();
+        choose(els[activeIndex].dataset.value);
+      }
+    } else if (ev.key === "Escape") {
+      list.classList.add("hidden");
+    }
+  });
+  list.addEventListener("mousedown", (ev) => {
+    const item = ev.target.closest(".autocomplete-item");
+    if (!item) return;
+    ev.preventDefault(); // förhindra att input tappar fokus innan klicket hinner räknas
+    choose(item.dataset.value);
+  });
 }
 
 function fillMultiSelect(id, values) {
@@ -906,31 +1053,46 @@ async function selectItemsInModel(itemsToSelect, opts = {}) {
   // kameran till dubbla avståndet från mittpunkten längs exakt samma
   // siktlinje (bevarar vinkeln, dubblerar bara avståndet).
   //
-  // Det här första setCamera-anropet görs med animationTime:0 (ingen
-  // synlig animation) - det används bara för att räkna ut var Trimbles
-  // auto-zoom SKULLE landat. Annars ser användaren en störande
-  // zooma-in-och-sen-zooma-ut-rörelse: först Trimbles närmre auto-zoom,
-  // sedan vår utzoomning till dubbla avståndet. Med animationTime:0 här
-  // ser man bara EN rörelse - direkt till den slutgiltiga, mer utzoomade
-  // nivån.
-  await API.viewer.setCamera(selector, { animationTime: 0 });
+  // Det här går i två steg: (1) Trimbles egna, inbyggda "zooma till
+  // markering" (bara detta anrop vet hur man beräknar rätt vinkel/avstånd
+  // för att få objekten i bild, det finns inget sätt att fråga om detta
+  // utan att kameran faktiskt flyttas dit), och (2) vår egen korrigering
+  // som flyttar ut kameran till dubbla avståndet. Två separata synliga
+  // kamerarörelser (in, sen ut) är precis det vi vill undvika, så vi
+  // försöker minimera tiden mellan dem på två sätt:
+  //  - Bounding-boxen för markeringen beror inte på Trimbles auto-zoom och
+  //    hämtas därför i FÖRVÄG/parallellt med auto-zoom-anropet, istället
+  //    för efteråt - annars förlängs tiden som fel zoomnivå hinner synas.
+  //  - animationTime sätts till 1 (inte 0) på Trimbles auto-zoom-anrop. 0
+  //    må verka mest logiskt för "ingen animation", men vissa SDK:er
+  //    tolkar 0 som falsy/"inget värde angivet" och faller då tillbaka på
+  //    sin normala animationstid - vilket gör att just den här "dolda"
+  //    mellanzoomningen ändå syns fullt animerad. 1 ms är i praktiken lika
+  //    osynligt men undviker den fällan.
+  const boundingBoxCenterPromise = computeSelectionCenter(modelObjectIds);
+  await API.viewer.setCamera(selector, { animationTime: 1 });
 
   try {
-    await doubleCameraZoomOut(modelObjectIds);
+    const center = await boundingBoxCenterPromise;
+    await applyDoubleZoom(center);
   } catch (e) {
     console.error("Kunde inte dubbla zoomavståndet:", e);
   }
 }
 
 /**
- * Flyttar kameran till dubbla avståndet från markeringens mittpunkt, längs
- * samma siktlinje som den kamera Trimbles automatiska "zooma till markering"
- * (setCamera(selector)) precis satte. Se kommentaren i selectItemsInModel().
+ * Hämtar bounding-boxarna för de angivna objekten (parallellt, en fråga per
+ * modell) och slår ihop dem till markeringens gemensamma mittpunkt. Beror
+ * inte på var kameran råkar stå, så kan hämtas oberoende av (och innan)
+ * Trimbles egen "zooma till markering". Returnerar null om ingen
+ * bounding box kunde hittas.
  */
-async function doubleCameraZoomOut(modelObjectIds) {
+async function computeSelectionCenter(modelObjectIds) {
   let min = null, max = null;
-  for (const { modelId, objectRuntimeIds } of modelObjectIds) {
-    const boxes = await API.viewer.getObjectBoundingBoxes(modelId, objectRuntimeIds);
+  const results = await Promise.all(
+    modelObjectIds.map(({ modelId, objectRuntimeIds }) => API.viewer.getObjectBoundingBoxes(modelId, objectRuntimeIds))
+  );
+  results.forEach(boxes => {
     (boxes || []).forEach(b => {
       if (!b || !b.boundingBox) return;
       const { min: bMin, max: bMax } = b.boundingBox;
@@ -943,10 +1105,18 @@ async function doubleCameraZoomOut(modelObjectIds) {
         max.x = Math.max(max.x, bMax.x); max.y = Math.max(max.y, bMax.y); max.z = Math.max(max.z, bMax.z);
       }
     });
-  }
-  if (!min || !max) return; // hittade ingen bounding box - lämna Trimbles zoom orörd
+  });
+  if (!min || !max) return null;
+  return { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2, z: (min.z + max.z) / 2 };
+}
 
-  const center = { x: (min.x + max.x) / 2, y: (min.y + max.y) / 2, z: (min.z + max.z) / 2 };
+/**
+ * Flyttar kameran till dubbla avståndet från markeringens mittpunkt, längs
+ * samma siktlinje som den kamera Trimbles automatiska "zooma till markering"
+ * (setCamera(selector)) precis satte. Se kommentaren i selectItemsInModel().
+ */
+async function applyDoubleZoom(center) {
+  if (!center) return; // hittade ingen bounding box - lämna Trimbles zoom orörd
 
   const cam = await API.viewer.getCamera();
   if (!cam || !cam.position) return;
@@ -1079,8 +1249,7 @@ function renderItemList() {
   if (btnShowLabels) btnShowLabels.disabled = selectedItemKeys.size === 0;
 
   const el = document.getElementById("itemList");
-  const statusColor = { ej_planerad: "#cbd5e1", planerad: "#94a3b8", pagaende: "#f5a623", forsenad: "#e5484d", klar: "#3fb950", pausad: "#a1a1aa" };
-  const statusTextColor = { ej_planerad: "#334155" };
+  const statusColor = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
   const statusLabel = STATUS_LABELS;
 
   if (visible.length === 0) {
@@ -1148,7 +1317,7 @@ function renderItemList() {
               <span class="item-sub">${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span><br/>
               <span class="item-dates">${escapeHtml(formatDateRange(it))} · Framdrift ${progress}%</span>
             </span>
-            <span class="badge" style="background:${statusColor[it.status] || "#999"};color:${statusTextColor[it.status] || "#fff"}">${statusLabel[it.status] || it.status}</span>
+            <span class="badge" style="background:${statusColor[it.status] || "#999"};color:${contrastTextColor(statusColor[it.status] || "#999999")}">${statusLabel[it.status] || it.status}</span>
             <button class="comment-btn" data-action="comments" title="${commentTitle}">💬${commentBadge}</button>
             <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
             <button class="delete-btn" data-action="delete" title="Radera kopplingen">🗑️</button>
@@ -1366,7 +1535,10 @@ function renderCommentNode(c, childrenByParent) {
     <div class="comment" data-comment-id="${c.id}">
       <div class="comment-meta"><strong>${escapeHtml(c.author || "Anonym")}</strong> <span class="comment-time">${formatDateTime(c.created_at)}</span></div>
       <div class="comment-body">${escapeHtml(c.body)}</div>
-      <button class="comment-reply-btn" data-action="reply" data-id="${c.id}">Svara</button>
+      <div class="comment-actions">
+        <button class="comment-reply-btn" data-action="reply" data-id="${c.id}">Svara</button>
+        <button class="comment-delete-btn" data-action="delete" data-id="${c.id}" title="Ta bort kommentaren">🗑️ Ta bort</button>
+      </div>
       <div class="comment-reply-form hidden" data-reply-form="${c.id}">
         <textarea rows="2" placeholder="Skriv ett svar..."></textarea>
         <div class="row">
@@ -1401,7 +1573,26 @@ function onCommentsListClick(ev) {
     const text = form ? form.querySelector("textarea").value.trim() : "";
     if (!text) return;
     onSubmitComment(text, id);
+  } else if (action === "delete") {
+    if (!confirm("Är du säker på att du vill ta bort kommentaren? Eventuella svar på den tas bort samtidigt.")) return;
+    onDeleteComment(id);
   }
+}
+
+/** Tar bort en kommentar (och ev. svar på den) efter bekräftelse, se onCommentsListClick(). */
+async function onDeleteComment(commentId) {
+  const statusEl = document.getElementById("commentsStatus");
+  statusEl.innerText = "Tar bort...";
+  try {
+    await deleteComment(commentId);
+  } catch (e) {
+    statusEl.innerText = "Kunde inte ta bort kommentaren: " + e.message;
+    return;
+  }
+  statusEl.innerText = "";
+  await loadComments(currentCommentsItem);
+  await refreshCommentCounts();
+  renderItemList();
 }
 
 async function onSubmitComment(body, parentCommentId) {
@@ -1892,6 +2083,36 @@ async function postComment(record) {
     commentsPath(),
     (arr) => [...arr, row],
     "Ny kommentar"
+  );
+}
+
+/**
+ * Tar bort en enskild kommentar. Tar även bort ev. svar (och svar-på-svar)
+ * till den - annars blir de kvar som föräldralösa poster i datalagret som
+ * aldrig visas någonstans i appen.
+ */
+async function deleteComment(commentId) {
+  if (!isBackendConfigured()) {
+    throw new Error("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
+  }
+  await ghWriteJSON(
+    settings.githubToken,
+    commentsPath(),
+    (arr) => {
+      const toRemove = new Set([commentId]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        arr.forEach(c => {
+          if (c.parent_comment_id && toRemove.has(c.parent_comment_id) && !toRemove.has(c.id)) {
+            toRemove.add(c.id);
+            changed = true;
+          }
+        });
+      }
+      return arr.filter(c => !toRemove.has(c.id));
+    },
+    "Ta bort kommentar"
   );
 }
 
