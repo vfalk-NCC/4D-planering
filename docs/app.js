@@ -5,6 +5,12 @@
    https://developer.trimble.com/docs/connect/workspace-api/
    ========================================================================= */
 
+// Visas som en liten "Version ..."-etikett i headern, bredvid "4D-planering".
+// Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
+// gång en ny version pushas till GitHub, så man kan se i appen när den
+// senast uppdaterades.
+const APP_VERSION = "2026-09-16 09:44";
+
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
 let items = [];              // Cache av planeringsposter (från backend)
@@ -48,6 +54,17 @@ const STATUS_LABELS = {
   forsenad: "Försenad",
   klar: "Klar",
   pausad: "Pausad"
+};
+
+// Hur en post grupperas i "Planerade objekt" (samma nycklar som #groupBy).
+// Delad mellan renderItemList() och syncSelectionFromModel() (för att slå
+// upp/expandera rätt grupp när ett objekt markeras i 3D-vyn) så de aldrig
+// kan komma ur synk med varandra.
+const GROUP_KEY_FNS = {
+  area: it => it.area || "Utan område",
+  activity: it => it.activity || "Utan aktivitet",
+  contractor: it => it.contractor || "Utan entreprenör",
+  status: it => STATUS_LABELS[it.status] || it.status || "Okänd status"
 };
 
 // Standardfärger för statusmärkena i "Planerade objekt" - används tills
@@ -186,9 +203,10 @@ async function refreshAllData() {
 }
 
 function onWorkspaceEvent(event, data) {
-  // Uppdatera markeringsräknaren när användaren markerar objekt i modellen.
+  // Uppdatera markeringsräknaren och synka markeringen mot "Planerade
+  // objekt"-listan när användaren markerar objekt i modellen.
   if (event === "viewer.onSelectionChanged" || event === "extension.onSelectionChanged") {
-    refreshSelectionCount();
+    syncSelectionFromModel();
   }
 }
 
@@ -196,6 +214,8 @@ function onWorkspaceEvent(event, data) {
    UI-koppling
    ------------------------------------------------------------------- */
 function bindUI() {
+  document.getElementById("versionBadge").innerText = `Version ${APP_VERSION}`;
+
   document.getElementById("btnLinkSelection").onclick = onOpenLinkForm;
   document.getElementById("btnCancelLink").onclick = () => toggle("linkForm", false);
   document.getElementById("btnSaveLink").onclick = onSaveLink;
@@ -227,6 +247,11 @@ function bindUI() {
   document.getElementById("btnDeleteSelected").onclick = onDeleteSelectedItems;
   document.getElementById("btnCollapseAllGroups").onclick = collapseAllGroups;
   document.getElementById("btnSelectAllCoupled").onclick = selectAllCoupledObjects;
+  document.getElementById("btnRenameValue").onclick = onOpenRenameDialog;
+  document.getElementById("renameField").onchange = populateRenameOldValues;
+  document.getElementById("renameOldValue").onchange = updateRenameCount;
+  document.getElementById("btnDoRename").onclick = onDoRename;
+  document.getElementById("btnCloseRename").onclick = () => toggle("renameDialog", false);
 
   document.getElementById("btnFindNearest").onclick = onFindNearest;
 
@@ -386,10 +411,60 @@ function onSaveSettings() {
 /* ---------------------------------------------------------------------
    Koppla markerade objekt till planeringsdata
    ------------------------------------------------------------------- */
-async function refreshSelectionCount() {
+/**
+ * Synkar 3D-markering -> "Planerade objekt"-listan. Körs varje gång
+ * användaren markerar/avmarkerar objekt i modellen (se onWorkspaceEvent).
+ *
+ * Uppdaterar alltid markeringsräknaren (motsvarande selCount-uppdateringen
+ * som tidigare gjordes i en separat refreshSelectionCount), men markerar
+ * dessutom motsvarande rader i listan om något av de
+ * markerade 3D-objekten är kopplat till en planeringspost. Om inget av de
+ * markerade objekten är kopplat lämnas en ev. befintlig manuell
+ * listmarkering orörd - annars skulle t.ex. ett klick på ett helt
+ * okopplat objekt i modellen tyst rensa vad man just markerat i listan.
+ */
+async function syncSelectionFromModel() {
   const sel = await API.viewer.getSelection();
   const count = (sel || []).reduce((n, m) => n + (m.objectRuntimeIds ? m.objectRuntimeIds.length : 0), 0);
   document.getElementById("selCount").innerText = count;
+
+  const matchedKeys = new Set();
+  for (const modelSel of sel || []) {
+    if (!modelSel.objectRuntimeIds || modelSel.objectRuntimeIds.length === 0) continue;
+    const externalIds = await API.viewer.convertToObjectIds(modelSel.modelId, modelSel.objectRuntimeIds);
+    externalIds.forEach(extId => {
+      const match = items.find(it => it.modelId === modelSel.modelId && it.objectId === extId);
+      if (match) matchedKeys.add(match.objectId);
+    });
+  }
+
+  if (matchedKeys.size > 0) {
+    selectedItemKeys = matchedKeys;
+    selectionAnchorKey = null;
+    expandGroupsForKeys(matchedKeys);
+    renderItemList();
+    scrollSelectedRowIntoView();
+  }
+}
+
+/** Expanderar (fäller ut) de grupper i "Planerade objekt" som innehåller
+ * någon av de angivna objectId-nycklarna, så att en rad som just markerats
+ * via 3D-synken faktiskt syns i listan istället för att döljas i en
+ * hopfälld grupp. Ingen effekt om gruppering är avstängd. */
+function expandGroupsForKeys(keys) {
+  const groupBy = document.getElementById("groupBy").value;
+  const keyFn = groupBy && GROUP_KEY_FNS[groupBy];
+  if (!keyFn) return;
+  items.forEach(it => {
+    if (!keys.has(it.objectId)) return;
+    collapsedGroups.delete(`${groupBy}::${keyFn(it)}`);
+  });
+}
+
+/** Scrollar första markerade raden i listan in i vy (om den inte redan syns). */
+function scrollSelectedRowIntoView() {
+  const row = document.querySelector("#itemList .item-row.selected");
+  if (row) row.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
 async function onOpenLinkForm() {
@@ -616,6 +691,87 @@ function renderSaveStatus() {
   });
   el.innerHTML = html;
   el.classList.remove("hidden");
+}
+
+/* ---------------------------------------------------------------------
+   Byt namn – ändra Område/Aktivitet/Entreprenör på alla kopplade objekt
+   som just nu har ett visst värde, i ett svep (t.ex. "Sikthall" ->
+   "741 - Sikthall" på samtliga objekt). Återanvänder samma optimistiska
+   sparflöde (applyOptimisticRecords/saveJobs/runSaveJob) som
+   "Koppla markering", så det känns momentant och läker/kö:as på samma
+   sätt om skrivningen krockar eller misslyckas.
+   ------------------------------------------------------------------- */
+const RENAME_FIELD_LABELS = { area: "Område", activity: "Aktivitet", contractor: "Entreprenör" };
+
+function onOpenRenameDialog() {
+  const fieldSel = document.getElementById("renameField");
+  if (fieldSel.options.length === 0) {
+    fieldSel.innerHTML = Object.entries(RENAME_FIELD_LABELS)
+      .map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+  }
+  populateRenameOldValues();
+  document.getElementById("renameNewValue").value = "";
+  document.getElementById("renameStatus").innerText = "";
+  toggle("renameDialog", true);
+}
+
+function populateRenameOldValues() {
+  const field = document.getElementById("renameField").value;
+  const sel = document.getElementById("renameOldValue");
+  const opts = formOptions[field] || [];
+  sel.innerHTML = opts.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+  updateRenameCount();
+}
+
+function updateRenameCount() {
+  const field = document.getElementById("renameField").value;
+  const oldValue = document.getElementById("renameOldValue").value;
+  const count = items.filter(it => (it[field] || "") === oldValue).length;
+  document.getElementById("renameCount").innerText = count;
+}
+
+function onDoRename() {
+  const field = document.getElementById("renameField").value;
+  const oldValue = document.getElementById("renameOldValue").value;
+  const newValue = document.getElementById("renameNewValue").value.trim();
+  const statusEl = document.getElementById("renameStatus");
+
+  if (!oldValue) { statusEl.innerText = "Inget namn valt."; return; }
+  if (!newValue) { statusEl.innerText = "Ange ett nytt namn."; return; }
+  if (newValue === oldValue) { statusEl.innerText = "Nya namnet är samma som det gamla."; return; }
+
+  const matching = items.filter(it => (it[field] || "") === oldValue);
+  if (matching.length === 0) { statusEl.innerText = "Inga objekt matchar det valda namnet längre."; return; }
+
+  // Bygg fullständiga poster (samma mönster som onSaveLink) med bara det
+  // valda fältet ändrat - saveItems() upsertar hela raden per id, så övriga
+  // fält måste skickas med oförändrade, annars skulle de nollställas.
+  const records = matching.map(it => ({
+    id: it.id,
+    projectId: it.projectId,
+    modelId: it.modelId,
+    objectId: it.objectId,
+    objectName: it.objectName,
+    area: it.area,
+    activity: it.activity,
+    contractor: it.contractor,
+    status: it.status,
+    startDate: it.startDate,
+    endDate: it.endDate,
+    progress: it.progress,
+    [field]: newValue
+  }));
+
+  applyOptimisticRecords(records);
+  toggle("renameDialog", false);
+  buildFilterOptions();
+  renderItemList();
+  initTimelineRange();
+
+  const jobId = ++saveJobCounter;
+  const label = `Byt namn "${oldValue}" → "${newValue}" (${records.length} objekt)`;
+  saveJobs.set(jobId, { id: jobId, records, label, status: "pending", error: null });
+  runSaveJob(jobId);
 }
 
 /* ---------------------------------------------------------------------
@@ -1386,12 +1542,7 @@ function renderItemList() {
   const sortFn = (a, b) =>
     (a.objectName || a.objectId || "").localeCompare(b.objectName || b.objectId || "", "sv");
 
-  const groupKeyFns = {
-    area: it => it.area || "Utan område",
-    activity: it => it.activity || "Utan aktivitet",
-    contractor: it => it.contractor || "Utan entreprenör",
-    status: it => statusLabel[it.status] || it.status || "Okänd status"
-  };
+  const groupKeyFns = GROUP_KEY_FNS;
 
   // groups: [{ key: <unikt, t.ex. "area::Hus A"> | null, title, items }]
   let groups;

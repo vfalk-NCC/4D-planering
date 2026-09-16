@@ -26,7 +26,10 @@
       <div class="header-brand">
         <span class="ncc-mark" title="NCC">NCC</span>
         <div class="header-titles">
-          <h1>4D-planering</h1>
+          <div class="title-row">
+            <h1>4D-planering</h1>
+            <span class="version-badge" id="versionBadge" title="Senast uppdaterad (pushad till GitHub)"></span>
+          </div>
           <span class="made-by">Made by: VFA</span>
         </div>
       </div>
@@ -116,6 +119,7 @@
       <div class="row">
         <button id="btnCollapseAllGroups" title="Minimera alla grupper i listan">Minimera alla</button>
         <button id="btnSelectAllCoupled" title="Markera alla kopplade objekt i 3D-vyn">Markera alla</button>
+        <button id="btnRenameValue" title="Byt namn på Område/Aktivitet/Entreprenör för alla objekt som har det, i ett svep">✏️ Byt namn</button>
       </div>
       <div id="itemList" class="item-list"></div>
       <div class="row">
@@ -240,6 +244,28 @@
       <div class="row">
         <button id="btnSaveSettings" class="primary">Spara</button>
         <button id="btnCloseSettings">Stäng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Byt namn-dialog -->
+  <div id="renameDialog" class="dialog hidden">
+    <div class="dialog-box">
+      <h2>Byt namn</h2>
+      <p class="hint">Byter namn på ALLA objekt som just nu har det valda värdet, i ett svep - t.ex. "Sikthall" → "741 - Sikthall".</p>
+      <label>Fält
+        <select id="renameField"></select>
+      </label>
+      <label>Nuvarande namn
+        <select id="renameOldValue"></select>
+      </label>
+      <label>Nytt namn
+        <input type="text" id="renameNewValue" placeholder="t.ex. 741 - Sikthall" />
+      </label>
+      <div id="renameStatus" class="hint"></div>
+      <div class="row">
+        <button id="btnDoRename" class="primary">Byt namn (<span id="renameCount">0</span> objekt)</button>
+        <button id="btnCloseRename">Avbryt</button>
       </div>
     </div>
   </div>

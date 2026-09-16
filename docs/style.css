@@ -47,6 +47,20 @@ header button { background: none; border: none; font-size: 16px; cursor: pointer
 .header-titles h1 { font-size: 16px; margin: 0; }
 .made-by { font-size: 9px; color: var(--muted); }
 
+.title-row { display: flex; align-items: center; gap: 6px; }
+/* Liten "Version ..."-etikett bredvid rubriken, se APP_VERSION i app.js -
+   uppdateras för hand vid varje push till GitHub. */
+.version-badge {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
