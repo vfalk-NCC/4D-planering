@@ -27,6 +27,9 @@ header {
 }
 header h1 { font-size: 16px; margin: 0; }
 header button { background: none; border: none; font-size: 16px; cursor: pointer; }
+.header-actions { display: flex; align-items: center; gap: 6px; }
+.header-actions #btnRefresh.spinning { animation: header-refresh-spin 0.8s linear infinite; }
+@keyframes header-refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
 .header-brand { display: flex; align-items: center; gap: 8px; }
 .ncc-mark {

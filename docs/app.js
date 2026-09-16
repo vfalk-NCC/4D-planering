@@ -132,6 +132,32 @@ async function initApp() {
   initTimelineRange();
 }
 
+/**
+ * Hämtar senaste data från GitHub-lagret på begäran (↻-knappen i headern)
+ * och ritar om listan - samma steg som körs vid första inläsningen, men
+ * utan att koppla om mot Trimble Connect. Snurrar ikonen och inaktiverar
+ * knappen medan hämtningen pågår, så man ser att något händer.
+ */
+async function refreshAllData() {
+  const btn = document.getElementById("btnRefresh");
+  if (btn.disabled) return;
+  btn.disabled = true;
+  btn.classList.add("spinning");
+  try {
+    await refreshItems();
+    await refreshCommentCounts();
+    buildFilterOptions();
+    renderItemList();
+    initTimelineRange();
+  } catch (e) {
+    console.error("Kunde inte hämta senaste data:", e);
+    alert("Kunde inte hämta senaste data: " + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove("spinning");
+  }
+}
+
 function onWorkspaceEvent(event, data) {
   // Uppdatera markeringsräknaren när användaren markerar objekt i modellen.
   if (event === "viewer.onSelectionChanged" || event === "extension.onSelectionChanged") {
@@ -180,6 +206,7 @@ function bindUI() {
   document.getElementById("btnShowLabels").onclick = onShowLabels;
   document.getElementById("btnClearLabels").onclick = onClearLabels;
 
+  document.getElementById("btnRefresh").onclick = refreshAllData;
   document.getElementById("btnSettings").onclick = () => toggle("settingsDialog", true);
   document.getElementById("btnCloseSettings").onclick = () => toggle("settingsDialog", false);
   document.getElementById("btnSaveSettings").onclick = onSaveSettings;
@@ -376,8 +403,9 @@ async function onSaveLink() {
   btn.disabled = true;
   const originalText = btn.innerText;
   btn.innerText = "Sparar...";
+  let after;
   try {
-    await saveItems(records);
+    after = await saveItems(records);
   } catch (e) {
     alert("Kunde inte spara: " + e.message);
     return;
@@ -387,7 +415,12 @@ async function onSaveLink() {
   }
 
   toggle("linkForm", false);
-  await refreshItems();
+  // Uppdatera listan direkt från det saveItems() redan skrev och fick
+  // tillbaka, istället för att hämta om hela plan_items.json en gång till
+  // från GitHub - sparar en hel läs-rondtripp (märkbart för prestandan när
+  // filen är stor, se kommentaren i saveItems()).
+  items = after.map(fromRow);
+  itemsTotalCount = items.length;
   buildFilterOptions();
   renderItemList();
   initTimelineRange();
@@ -815,15 +848,32 @@ function formatDateRange(it) {
 }
 
 /**
- * Markerar (och zoomar till) en eller flera planeringsposter i 3D-vyn.
- * Poster utan modell-koppling (t.ex. felaktiga Excel-rader) hoppas över.
- * Används både för enskild radklick och för "Välj alla" per grupp.
+ * Markerar (och, om moveCamera inte är false, zoomar till) en eller flera
+ * planeringsposter i 3D-vyn. Poster utan modell-koppling (t.ex. felaktiga
+ * Excel-rader) hoppas över. Används för enskild radklick, "Välj alla" per
+ * grupp, "Markera alla" (alla kopplade objekt) samt filtermarkeringen.
+ *
+ * `opts.mode`: "set" (default, ersätter ev. tidigare markering i 3D-vyn)
+ * eller "add" (lägger till markeringen till det som redan är markerat -
+ * används vid Ctrl/Cmd-klick på "Välj alla" för att kunna bygga upp en
+ * markering över flera grupper samtidigt).
+ * `opts.moveCamera`: default true. Sätts till false vid tillägg (mode
+ * "add") så att kameran inte hoppar runt och centrerar om sig för varje
+ * grupp man Ctrl-klickar till - man vill bara bygga upp markeringen, inte
+ * navigera om i modellen för varje klick.
+ *
+ * Kastar ett fel (istället för att bara larma med alert()) om inget av
+ * objekten kunde hittas i den inlästa modellen, så att anropande kod (t.ex.
+ * "Markera alla"-knappen) kan visa/logga detta tydligt istället för att
+ * misslyckas tyst.
  */
-async function selectItemsInModel(itemsToSelect) {
+async function selectItemsInModel(itemsToSelect, opts = {}) {
+  const mode = opts.mode || "set";
+  const moveCamera = opts.moveCamera !== false;
+
   const withModel = itemsToSelect.filter(it => it.modelId && it.objectId);
   if (withModel.length === 0) {
-    alert("Inga av objekten har en känd modell-koppling (troligen från Excel utan ModellID).");
-    return;
+    throw new Error("Inga av objekten har en känd modell-koppling (troligen från Excel utan ModellID, eller så tillhör de en äldre modellversion som inte är inläst just nu).");
   }
 
   const byModel = {};
@@ -840,21 +890,31 @@ async function selectItemsInModel(itemsToSelect) {
   }
 
   if (modelObjectIds.length === 0) {
-    alert("Hittade inga av objekten i den just nu inlästa modellen.");
-    return;
+    throw new Error(`Hittade inga av de ${withModel.length} objekten i den just nu inlästa modellen (troligen en äldre modellversion - öppna/uppdatera rätt modell i 3D-vyn och försök igen).`);
   }
 
   const selector = { modelObjectIds };
-  await API.viewer.setSelection(selector, "set");
-  await API.viewer.setCamera(selector);
+  await API.viewer.setSelection(selector, mode);
+
+  if (!moveCamera) return;
 
   // Trimble zoomar automatiskt in på markeringen med en fast, inbyggd
   // marginal som inte går att styra via Workspace-API:t (setCamera tar
   // ingen distans-/marginalparameter för ObjectSelector). Victor vill se
   // dubbelt så mycket omgivning som standardzoomen ger - vi läser därför av
-  // var kameran hamnade och markeringens mittpunkt, och flyttar sedan
+  // var kameran HADE hamnat och markeringens mittpunkt, och flyttar sedan
   // kameran till dubbla avståndet från mittpunkten längs exakt samma
   // siktlinje (bevarar vinkeln, dubblerar bara avståndet).
+  //
+  // Det här första setCamera-anropet görs med animationTime:0 (ingen
+  // synlig animation) - det används bara för att räkna ut var Trimbles
+  // auto-zoom SKULLE landat. Annars ser användaren en störande
+  // zooma-in-och-sen-zooma-ut-rörelse: först Trimbles närmre auto-zoom,
+  // sedan vår utzoomning till dubbla avståndet. Med animationTime:0 här
+  // ser man bara EN rörelse - direkt till den slutgiltiga, mer utzoomade
+  // nivån.
+  await API.viewer.setCamera(selector, { animationTime: 0 });
+
   try {
     await doubleCameraZoomOut(modelObjectIds);
   } catch (e) {
@@ -1068,7 +1128,7 @@ function renderItemList() {
         <div class="group-header" data-group-key="${escapeHtml(group.key)}">
           <span class="group-toggle" data-action="toggle-group" title="${collapsed ? "Expandera gruppen" : "Minimera gruppen"}">${collapsed ? "▶" : "▼"}</span>
           <span class="group-title" data-action="toggle-group">${escapeHtml(group.title)} (${group.items.length})</span>
-          <button class="group-select-all" data-action="select-group" title="Markera alla objekt i gruppen i 3D-vyn">Välj alla</button>
+          <button class="group-select-all" data-action="select-group" title="Markera alla objekt i gruppen i 3D-vyn. Ctrl/Cmd-klick = lägg till flera grupper i samma markering.">Välj alla</button>
         </div>`;
       if (collapsed) return;
     }
@@ -1122,11 +1182,24 @@ function renderItemList() {
     headerEl.querySelectorAll('[data-action="toggle-group"]').forEach(elToggle => {
       elToggle.onclick = toggleFn;
     });
-    headerEl.querySelector('[data-action="select-group"]').onclick = () => {
-      selectedItemKeys = new Set(group.items.map(x => x.objectId));
-      selectionAnchorKey = group.items.length ? group.items[group.items.length - 1].objectId : null;
+    headerEl.querySelector('[data-action="select-group"]').onclick = (ev) => {
+      // Ctrl/Cmd-klick lägger till gruppen till den befintliga markeringen
+      // (både i listan och i 3D-vyn) istället för att ersätta den - så man
+      // kan bygga upp en markering över flera grupper (t.ex. flera områden)
+      // genom att Ctrl-klicka "Välj alla" på var och en av dem. Kameran
+      // flyttas medvetet inte vid ett sådant tillägg, annars hoppar vyn runt
+      // för varje extra grupp man klickar till.
+      const additive = Boolean(ev && (ev.ctrlKey || ev.metaKey));
+      if (additive) {
+        group.items.forEach(it => selectedItemKeys.add(it.objectId));
+        if (group.items.length) selectionAnchorKey = group.items[group.items.length - 1].objectId;
+      } else {
+        selectedItemKeys = new Set(group.items.map(x => x.objectId));
+        selectionAnchorKey = group.items.length ? group.items[group.items.length - 1].objectId : null;
+      }
       renderItemList();
-      selectItemsInModel(group.items);
+      selectItemsInModel(group.items, additive ? { mode: "add", moveCamera: false } : {})
+        .catch(e => alert("Kunde inte markera gruppen i 3D-vyn: " + e.message));
     };
   });
 }
@@ -1148,16 +1221,38 @@ function collapseAllGroups() {
  * Markerar (och zoomar till, se selectItemsInModel) samtliga kopplade
  * objekt i listan - dvs. alla objekt som har planeringsdata, oavsett
  * ev. sökning/gruppering/"Dölj klarmarkerade" just nu.
+ *
+ * Inaktiverar knappen och visar "Markerar..." medan det pågår (det kan ta
+ * en stund om listan är stor och spänner över flera modeller), och visar
+ * ett tydligt felmeddelande om inget kunde markeras i 3D-vyn - t.ex. om
+ * objekten tillhör en äldre modellversion än den som är inläst just nu
+ * (vanligt för äldre, migrerad historik) - istället för att bara markera
+ * raderna i listan och misslyckas tyst i 3D-vyn.
  */
-function selectAllCoupledObjects() {
+async function selectAllCoupledObjects() {
   if (items.length === 0) {
     alert("Inga kopplade objekt att markera.");
     return;
   }
+  const btn = document.getElementById("btnSelectAllCoupled");
+  if (btn.disabled) return;
+
   selectedItemKeys = new Set(items.map(it => it.objectId));
   selectionAnchorKey = items.length ? items[items.length - 1].objectId : null;
   renderItemList();
-  selectItemsInModel(items);
+
+  btn.disabled = true;
+  const originalText = btn.innerText;
+  btn.innerText = "Markerar...";
+  try {
+    await selectItemsInModel(items);
+  } catch (e) {
+    console.error("Kunde inte markera alla kopplade objekt i 3D-vyn:", e);
+    alert("Kunde inte markera alla kopplade objekt i 3D-vyn: " + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerText = originalText;
+  }
 }
 
 /**
@@ -1208,7 +1303,9 @@ function onItemRowClicked(it, ev, renderedItems) {
   renderItemList();
 
   const selectedItems = items.filter(x => selectedItemKeys.has(x.objectId));
-  if (selectedItems.length > 0) selectItemsInModel(selectedItems);
+  if (selectedItems.length > 0) {
+    selectItemsInModel(selectedItems).catch(e => alert("Kunde inte markera objektet/objekten i 3D-vyn: " + e.message));
+  }
 }
 
 /* ---------------------------------------------------------------------
@@ -1651,34 +1748,54 @@ async function logProgressHistory(beforeRows, afterRows) {
   );
 }
 
-/** Skapar/uppdaterar flera poster i ett svep (upsert på project_id+object_id), och loggar historik. */
+/**
+ * Skapar/uppdaterar flera poster i ett svep (upsert på project_id+object_id),
+ * och loggar historik.
+ *
+ * Prestanda: gör bara EN läsning av plan_items.json (inte två - en här och
+ * en till inuti ghWriteJSON, som annars dubblerar väntetiden för varje
+ * sparning), och skriver plan_items.json och progressHistoryPath() PARALLELLT
+ * istället för i tur och ordning, eftersom historikloggningen bara beror på
+ * "före"/"efter"-listorna (som redan är kända innan skrivningen till
+ * plan_items.json ens börjar) - inte på resultatet av den skrivningen. Det
+ * här är den huvudsakliga fixen för den upplevda "långa delayen" vid
+ * sparning jämfört med gamla Supabase-lösningen: GitHub Contents API kräver
+ * en läs-ändra-skriv-rond per fil (och plan_items.json växer med tiden), så
+ * att göra de två filernas rondtrippar samtidigt istället för seriellt
+ * halverar ungefär väntetiden.
+ */
 async function saveItems(records) {
   if (!isBackendConfigured()) {
     throw new Error("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
   }
   const path = itemsPath();
-  const before = await ghReadJSON(settings.githubToken, path);
+  const { data, sha } = await ghGetFile(settings.githubToken, path);
+  const before = Array.isArray(data) ? data : [];
   const beforeByKey = new Map(before.map(r => [`${r.project_id}::${r.object_id}`, r]));
   const incoming = records.map(toRow).map(row => {
     const existing = beforeByKey.get(`${row.project_id}::${row.object_id}`);
     return existing ? { ...existing, ...row, id: existing.id } : row;
   });
 
-  const after = await ghWriteJSON(
-    settings.githubToken,
-    path,
-    (arr) => {
-      let next = arr.slice();
-      incoming.forEach(row => {
-        const idx = next.findIndex(r => r.project_id === row.project_id && r.object_id === row.object_id);
-        if (idx >= 0) next[idx] = row; else next.push(row);
-      });
-      return next;
-    },
-    "Spara planeringsposter"
-  );
+  const [after] = await Promise.all([
+    ghWriteJSON(
+      settings.githubToken,
+      path,
+      (arr) => {
+        let next = arr.slice();
+        incoming.forEach(row => {
+          const idx = next.findIndex(r => r.project_id === row.project_id && r.object_id === row.object_id);
+          if (idx >= 0) next[idx] = row; else next.push(row);
+        });
+        return next;
+      },
+      "Spara planeringsposter",
+      6,
+      { data: before, sha }
+    ),
+    logProgressHistory(before, incoming)
+  ]);
 
-  await logProgressHistory(before, incoming);
   return after;
 }
 

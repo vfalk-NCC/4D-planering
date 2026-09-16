@@ -128,8 +128,17 @@ async function ghReadJSON(token, path) {
  * tillbaka den. Vid skrivkrock (någon annan hann skriva emellan) läses filen
  * om och mutateFn körs igen, upp till maxRetries gånger - motsvarar Postgres
  * radlåsning fast optimistiskt via filens sha.
+ *
+ * `preFetched` (valfri) är ett redan inläst {data, sha} för samma path - t.ex.
+ * från en ghGetFile()/ghReadJSON()-läsning appen ändå precis gjorde för att
+ * visa/jämföra "före"-läget. Då slipper FÖRSTA försöket göra en egen,
+ * onödig extra GET (annars läses filen två gånger i rad för varje sparning -
+ * en i uppringande kod för att få "före"-listan, en till här - vilket
+ * dubblerar väntetiden i onödan, extra märkbart nu när plan_items.json är
+ * stort). Vid en skrivkrock (409) läses filen alltid om på riktigt inför
+ * omförsöket, oavsett preFetched.
  */
-async function ghWriteJSON(token, path, mutateFn, message, maxRetries = 6) {
+async function ghWriteJSON(token, path, mutateFn, message, maxRetries = 6, preFetched = null) {
   let lastErr;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (attempt > 0) {
@@ -143,7 +152,7 @@ async function ghWriteJSON(token, path, mutateFn, message, maxRetries = 6) {
       const delay = Math.min(250 * 2 ** (attempt - 1), 3000) + Math.random() * 200;
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
-    const { data, sha } = await ghGetFile(token, path);
+    const { data, sha } = (attempt === 0 && preFetched) ? preFetched : await ghGetFile(token, path);
     const current = Array.isArray(data) ? data : [];
     const next = mutateFn(current.slice());
     try {
