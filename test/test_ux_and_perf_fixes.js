@@ -185,7 +185,10 @@ async function run() {
   await page.waitForTimeout(200);
   const camCalls = (await page.evaluate(() => window.__calls)).filter(c => c[0] === 'setCamera');
   if (camCalls.length !== 2) throw new Error('Förväntade 2 setCamera-anrop, fick ' + camCalls.length);
-  if (!camCalls[0][2] || camCalls[0][2].animationTime !== 0) throw new Error('Första setCamera-anropet (auto-fit) ska ha animationTime:0 (osynligt), fick options: ' + JSON.stringify(camCalls[0][2]));
+  // animationTime:1 (inte 0) - se kommentaren i selectItemsInModel() i app.js:
+  // 0 riskerar att tolkas som falsy/"inget värde" av Trimbles SDK och falla
+  // tillbaka på normal animationstid, vilket gör mellansteget synligt igen.
+  if (!camCalls[0][2] || camCalls[0][2].animationTime !== 1) throw new Error('Första setCamera-anropet (auto-fit) ska ha animationTime:1 (i praktiken osynligt), fick options: ' + JSON.stringify(camCalls[0][2]));
   console.log('OK: bara EN synlig kamerarörelse (auto-fit-anropet är instant/osynligt, bara det slutgiltiga är animerat)');
 
   // ============================================================
