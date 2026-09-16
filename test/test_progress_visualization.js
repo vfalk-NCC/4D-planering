@@ -226,8 +226,58 @@ async function run() {
   if (snartColorValue.toLowerCase() !== DEFAULT_COLORS.snart) throw new Error('Förväntade standardfärgen för "snart", fick: ' + snartColorValue);
   if (klarForsenadColorValue.toLowerCase() !== DEFAULT_COLORS.klar_forsenad) throw new Error('Förväntade standardfärgen för "klar_forsenad", fick: ' + klarForsenadColorValue);
   console.log('OK: färginställningspanelen innehåller åtta färgval (sex statusar + snart + klar_forsenad) med rätt standardfärger');
+
+  // ---- 4b) Opacitetsreglage: bara för de sex BERÄKNADE faserna (inte de
+  //          två rent manuella statusarna ej_planerad/pausad, som aldrig
+  //          styr 3D-färgsättningen) - detta är regleraget Victor bad om
+  //          att få tillbaka efter att det försvann när färgpanelerna
+  //          slogs ihop.
+  const opacityKeysExpectedPresent = ['planerad', 'pagaende', 'snart', 'forsenad', 'klar', 'klar_forsenad'];
+  const opacityKeysExpectedAbsent = ['ej_planerad', 'pausad'];
+  const opacityPresence = await page.evaluate((keys) => keys.map(k => !!document.getElementById(`statusOpacity_${k}`)), opacityKeysExpectedPresent);
+  if (!opacityPresence.every(Boolean)) throw new Error('Förväntade ett opacitetsreglage för samtliga sex beräknade faser, fick: ' + JSON.stringify(opacityPresence));
+  const opacityAbsence = await page.evaluate((keys) => keys.map(k => !!document.getElementById(`statusOpacity_${k}`)), opacityKeysExpectedAbsent);
+  if (opacityAbsence.some(Boolean)) throw new Error('"ej_planerad"/"pausad" ska INTE ha något opacitetsreglage (styr aldrig 3D-färgsättningen), fick: ' + JSON.stringify(opacityAbsence));
+  const defaultOpacityForsenad = await page.locator('#statusOpacity_forsenad').inputValue();
+  if (defaultOpacityForsenad !== '100') throw new Error('Förväntade default 100% opacitet för "forsenad", fick: ' + defaultOpacityForsenad);
+
+  // Sänk opaciteten för "forsenad" till 50% och spara.
+  await page.locator('#statusOpacity_forsenad').fill('50');
+  await page.locator('#btnSaveSettings').click();
+  await page.waitForTimeout(200);
+
+  const persistedOpacity = await page.evaluate(() => JSON.parse(window.localStorage.getItem('4dplan-settings')).statusOpacities.forsenad);
+  if (persistedOpacity !== 0.5) throw new Error('Förväntade att opaciteten 0.5 för "forsenad" sparats i localStorage, fick: ' + persistedOpacity);
+
+  // Öppna inställningarna igen och verifiera att reglaget kommer ihåg 50%.
+  await page.locator('#btnSettings').click();
+  await page.waitForTimeout(150);
+  const reloadedOpacity = await page.locator('#statusOpacity_forsenad').inputValue();
+  if (reloadedOpacity !== '50') throw new Error('Förväntade att opacitetsreglaget för "forsenad" visar 50% efter omöppning, fick: ' + reloadedOpacity);
   await page.locator('#btnCloseSettings').click();
   await page.waitForTimeout(100);
+
+  // Tvinga fram en ny 3D-färgsättning och kolla att den sänkta opaciteten
+  // faktiskt används i setObjectState-anropet (alpha ~127-128 av 255).
+  await page.evaluate(() => { window.__calls.length = 0; });
+  await page.locator('#timelineDate').fill(TODAY);
+  await page.locator('#timelineDate').dispatchEvent('change');
+  await page.waitForTimeout(200);
+  const forsenadCallAfterOpacity = await page.evaluate(() =>
+    window.__calls.find(c => c[0] === 'setObjectState' &&
+      JSON.stringify((c[1]?.modelObjectIds?.[0]?.objectRuntimeIds || []).slice().sort((a, b) => a - b)) === JSON.stringify([4])));
+  if (!forsenadCallAfterOpacity) throw new Error('Hittade inget setObjectState-anrop för "forsenad"-objektet efter att opaciteten sänkts');
+  const alpha = forsenadCallAfterOpacity[2]?.color?.a;
+  if (alpha !== 128 && alpha !== 127) throw new Error('Förväntade alpha ~127/128 (50% av 255) för "forsenad" efter sänkt opacitet, fick: ' + alpha);
+  console.log('OK: opacitetsreglaget för de sex beräknade faserna (inte de två manuella statusarna) sparas och påverkar 3D-färgsättningens alfa-värde');
+
+  // Sätt tillbaka opaciteten till 100% igen så resten av testet (steg 6-7,
+  // som förutsätter full opacitet) inte påverkas.
+  await page.locator('#btnSettings').click();
+  await page.waitForTimeout(150);
+  await page.locator('#statusOpacity_forsenad').fill('100');
+  await page.locator('#btnSaveSettings').click();
+  await page.waitForTimeout(200);
 
   // ---- 5) "Snart aktuell"-slidern i Filter-panelen: default 7 dagar,
   //         justerar tröskeln direkt och sparas i localStorage.
