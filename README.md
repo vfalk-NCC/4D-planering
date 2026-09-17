@@ -103,6 +103,28 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   listan filtrerar bort alla objekt med status "Klar", oavsett om listan
   samtidigt är grupperad (område/aktivitet/entreprenör/status) eller
   sorterad – de två går att kombinera fritt.
+- **Endast idag**: kryssrutan "Endast idag" ovanför listan visar bara
+  objekt som pågår just idag (dagens datum ligger mellan start- och
+  slutdatum, eller startdatum har passerat utan att slutdatum är satt) –
+  bra snabböverblick t.ex. inför ett morgonmöte. Går att kombinera fritt
+  med "Dölj klarmarkerade"/"Visa endast klarmarkerade".
+- **Redigera markerade**: knappen "✏️ Redigera markerade" under listan
+  ändrar status, entreprenör, område och/eller aktivitet på alla markerade
+  rader i ett svep (lämna ett fält tomt för att inte ändra det), och kan
+  även förskjuta start-/slutdatum ett valfritt antal dagar framåt eller
+  bakåt – t.ex. för att flytta hela nästa veckas objekt en vecka framåt.
+- **Automatisk status "Klar" vid ifyllt verkligt avslut**: fyller man i
+  "Verkligt avslut" för hand i "Koppla markering" sätts statusen
+  automatiskt till "Klar" (om den inte redan är det) – speglar den
+  omvända auto-ifyllningen (Klar → dagens datum i Verkligt avslut).
+- **Underaktiviteter (datumhjälp) i "Koppla markering"**: knappen "+ Lägg
+  till delaktivitet" låter dig lägga till flera aktivitet+datum-rader
+  (t.ex. Formning, Gjutning) för samma koppling. Så länge minst en rad
+  finns räknas Aktivitet (ihopslagna namn), Startdatum (tidigaste) och
+  Slutdatum (senaste) automatiskt fram och går inte att skriva för hand –
+  ta bort alla delaktivitetsrader igen för att skriva dem manuellt som
+  förut. Delaktiviteterna sparas inte som egna poster, bara det
+  sammanslagna resultatet.
 
 ## Arkitektur
 
