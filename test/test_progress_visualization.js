@@ -331,6 +331,11 @@ async function run() {
   //         status sätts till Klar (bara om fältet var tomt), och sparas.
   await page.locator('#btnLinkSelection').click();
   await page.waitForTimeout(150);
+  // "Verklig start/avslut" är numera en hopfälld "extra"-sektion (se
+  // Victors förfrågan 2026-09-17) - fäll ut den för att kunna interagera
+  // med "Verkligt avslut"-fältet nedan.
+  await page.locator('#btnToggleActualDates').click();
+  await page.waitForTimeout(50);
   const actualEndBefore = await page.locator('#fActualEnd').inputValue();
   if (actualEndBefore !== '') throw new Error('Förväntade tomt "Verkligt avslut"-fält för EjBorjad (ingen tidigare klarmarkering), fick: ' + actualEndBefore);
 

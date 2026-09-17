@@ -203,6 +203,11 @@ async function run() {
   // ---- 3) Auto-status "klar" vid ifyllt verkligt avslut.
   await page.locator('.item-row', { hasText: 'Pelare C' }).first().locator('[data-action="edit"]').click();
   await page.waitForTimeout(150);
+  // "Verklig start/avslut" är numera en hopfälld "extra"-sektion (se
+  // Victors förfrågan 2026-09-17) - fäll ut den för att kunna interagera
+  // med "Verkligt avslut"-fältet nedan.
+  await page.locator('#btnToggleActualDates').click();
+  await page.waitForTimeout(50);
   const statusBeforeActualEnd = await page.locator('#fStatus').inputValue();
   if (statusBeforeActualEnd === 'klar') throw new Error('Pelare C skulle inte redan ha status "klar" innan testet fyller i verkligt avslut');
   await page.locator('#fActualEnd').fill(isoOffset(0));
