@@ -117,14 +117,27 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   "Verkligt avslut" för hand i "Koppla markering" sätts statusen
   automatiskt till "Klar" (om den inte redan är det) – speglar den
   omvända auto-ifyllningen (Klar → dagens datum i Verkligt avslut).
-- **Underaktiviteter (datumhjälp) i "Koppla markering"**: knappen "+ Lägg
-  till delaktivitet" låter dig lägga till flera aktivitet+datum-rader
-  (t.ex. Formning, Gjutning) för samma koppling. Så länge minst en rad
-  finns räknas Aktivitet (ihopslagna namn), Startdatum (tidigaste) och
+- **Underaktiviteter i "Koppla markering"**: knappen "+ Lägg till
+  delaktivitet" låter dig lägga till flera aktivitet+datum-rader (t.ex.
+  Formning, Gjutning) för samma koppling. Så länge minst en rad finns
+  räknas Aktivitet (ihopslagna namn), Startdatum (tidigaste) och
   Slutdatum (senaste) automatiskt fram och går inte att skriva för hand –
   ta bort alla delaktivitetsrader igen för att skriva dem manuellt som
-  förut. Delaktiviteterna sparas inte som egna poster, bara det
-  sammanslagna resultatet.
+  förut. Delaktiviteterna sparas som egna poster (i
+  `plan_item_activities.json`, en fil per projekt) och laddas tillbaka in
+  automatiskt nästa gång du öppnar samma objekt för redigering.
+- **Collapsa alla**: knappen (⊟/⊞) längst till höger i headern minimerar
+  eller expanderar samtliga block i ett klick – samma knapp och beteende
+  som i 4D-dashboard. Går även fortsatt att fälla in/ut varje block för
+  sig genom att klicka på dess rubrik.
+- **Verklig start**: ett nytt, valfritt fält bredvid "Verkligt avslut" i
+  "Koppla markering". Tillsammans utgör de en hopfälld "extra"-sektion
+  ("+ Verklig start/avslut (valfritt)") som fälls ut automatiskt om
+  objektet redan har någon av datumen ifyllda, annars börjar den hopfälld
+  så formuläret känns kompakt i vanliga fallet. Varje fält har en egen
+  nollställ-knapp (✕) bredvid datumväljaren. Fyller man i båda blir
+  cykeltidsanalysen i 4D-dashboard betydligt mer träffsäker – se dess
+  README för hur det används.
 
 ## Arkitektur
 
