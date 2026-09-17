@@ -327,7 +327,8 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
 .item-row .comment-btn,
 .item-row .edit-btn,
 .item-row .delete-btn,
-.sub-activity-remove {
+.sub-activity-remove,
+.clear-date-btn {
   border: none;
   background: none;
   cursor: pointer;
@@ -335,6 +336,15 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
   padding: 2px 4px;
 }
 .sub-activity-row { align-items: center; }
+#btnToggleActualDates {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--accent);
+  margin-top: 6px;
+}
+#actualDatesFields { margin-top: 4px; }
 .item-row .comment-btn { position: relative; }
 .comment-count {
   position: absolute;

@@ -31,6 +31,7 @@ let collapsedPanels = new Set(); // vilka paneler (data-panel-id) som är minime
 let itemsTotalCount = null;  // totalt antal rader i plan_items.json, eller null om okänt
 let selectedItemKeys = new Set(); // markerade rader i "Planerade objekt" (Ctrl/Cmd- och Shift-klick), nyckel = objectId
 let subActivityRows = []; // { name, start, end } - se onAddSubActivity/recomputeAggregatesFromSubActivities
+let activitiesByItemId = new Map(); // plan_item_id -> [{ name, start, end }] - sparade delaktiviteter, se refreshActivities/saveActivitiesForItem
 let selectionAnchorKey = null; // ankarraden för Shift-klick (intervallmarkering) i objektlistan
 let currentCommentsItem = null; // vilket objekt kommentarsdialogen just nu visar
 let currentComments = [];       // kommentarer (platt lista, inkl. svar) för currentCommentsItem
@@ -199,6 +200,7 @@ async function initApp() {
 
   await refreshItems();
   await refreshCommentCounts();
+  await refreshActivities();
   buildFilterOptions();
   renderItemList();
   initTimelineRange();
@@ -218,6 +220,7 @@ async function refreshAllData() {
   try {
     await refreshItems();
     await refreshCommentCounts();
+    await refreshActivities();
     buildFilterOptions();
     renderItemList();
     initTimelineRange();
@@ -281,6 +284,22 @@ function bindUI() {
     if (actualEndEl.value && statusEl.value !== "klar") {
       statusEl.value = "klar";
     }
+  };
+  // Nollställ-knappar bredvid Verklig start/Verkligt avslut - sätter bara
+  // .value = "" programmatiskt (triggar inte onchange ovan, så det rensar
+  // inte av misstag om statusen till "klar"). Se Victors förfrågan
+  // 2026-09-17.
+  document.getElementById("btnClearActualStart").onclick = () => {
+    document.getElementById("fActualStart").value = "";
+  };
+  document.getElementById("btnClearActualEnd").onclick = () => {
+    document.getElementById("fActualEnd").value = "";
+  };
+  // Verklig start/avslut är en valfri, hopfälld "extra"-sektion i
+  // formuläret - klick på rubrikknappen fäller ut/in den manuellt.
+  document.getElementById("btnToggleActualDates").onclick = () => {
+    const fields = document.getElementById("actualDatesFields");
+    setActualDatesSectionExpanded(fields.classList.contains("hidden"));
   };
 
   document.getElementById("timelineSlider").oninput = onSliderMove;
@@ -444,7 +463,18 @@ function saveCollapsedPanels() {
 
 function initCollapsiblePanels() {
   collapsedPanels = loadCollapsedPanels();
-  document.querySelectorAll("section.panel[data-panel-id]").forEach(panel => {
+  const panels = document.querySelectorAll("section.panel[data-panel-id]");
+
+  const updateCollapseAllButton = () => {
+    const btnAll = document.getElementById("btnCollapseAll");
+    if (!btnAll) return;
+    const panelIds = [...panels].map(p => p.dataset.panelId);
+    const allCollapsed = panelIds.length > 0 && panelIds.every(id => collapsedPanels.has(id));
+    btnAll.title = allCollapsed ? "Expandera alla block" : "Minimera alla block";
+    btnAll.textContent = allCollapsed ? "⊞" : "⊟";
+  };
+
+  panels.forEach(panel => {
     const id = panel.dataset.panelId;
     const h2 = panel.querySelector(":scope > h2");
     if (!h2) return;
@@ -454,8 +484,27 @@ function initCollapsiblePanels() {
       if (panel.classList.contains("collapsed")) collapsedPanels.add(id);
       else collapsedPanels.delete(id);
       saveCollapsedPanels();
+      updateCollapseAllButton();
     };
   });
+
+  // "Collapsa alla" i headern (⊟/⊞) - samma mönster som 4D-dashboard: minimerar
+  // ALLA paneler om någon är expanderad, annars expanderar den alla igen. Se
+  // Victors förfrågan 2026-09-17.
+  const btnCollapseAll = document.getElementById("btnCollapseAll");
+  if (btnCollapseAll) {
+    btnCollapseAll.onclick = () => {
+      const panelIds = [...panels].map(p => p.dataset.panelId);
+      const allCollapsed = panelIds.every(id => collapsedPanels.has(id));
+      panelIds.forEach(id => {
+        if (allCollapsed) collapsedPanels.delete(id); else collapsedPanels.add(id);
+      });
+      saveCollapsedPanels();
+      panels.forEach(panel => panel.classList.toggle("collapsed", collapsedPanels.has(panel.dataset.panelId)));
+      updateCollapseAllButton();
+    };
+  }
+  updateCollapseAllButton();
 }
 
 // Vilken legend-prick (i Tidslinje-panelen) som hör till vilken beräknad
@@ -527,6 +576,7 @@ function onSaveSettings() {
   renderItemList();
   refreshItems().then(async () => {
     await refreshCommentCounts();
+    await refreshActivities();
     buildFilterOptions();
     renderItemList();
     initTimelineRange();
@@ -640,15 +690,31 @@ function fillLinkForm(existing) {
   document.getElementById("fStatus").value = existing ? existing.status || "planerad" : "planerad";
   document.getElementById("fStart").value = existing ? existing.startDate || "" : "";
   document.getElementById("fEnd").value = existing ? existing.endDate || "" : "";
+  document.getElementById("fActualStart").value = existing ? existing.actualStartDate || "" : "";
   document.getElementById("fActualEnd").value = existing ? existing.actualEndDate || "" : "";
+  // Fäll ut "Verklig start/avslut"-sektionen automatiskt om det redan finns
+  // data där (annars skulle man tro fälten var tomma när de bara är dolda),
+  // annars börjar den hopfälld så formuläret känns kompakt i vanliga fallet.
+  setActualDatesSectionExpanded(!!(existing && (existing.actualStartDate || existing.actualEndDate)));
   const progress = existing && Number.isFinite(existing.progress) ? existing.progress : 0;
   document.getElementById("fProgress").value = progress;
   document.getElementById("fProgressLabel").innerText = progress;
-  // Delaktiviteterna är bara en datumräknehjälp i formuläret (sparas inte
-  // som egna poster, se onAddSubActivity) - börjar alltid tomma, oavsett om
-  // vi redigerar en befintlig koppling eller inte.
-  subActivityRows = [];
+  // Delaktiviteterna sparas numera på riktigt (plan_item_activities, se
+  // saveActivitiesForItem) - ladda in tidigare sparade rader för objektet om
+  // det finns några, annars börja tomt precis som vid en ny koppling.
+  subActivityRows = (existing && activitiesByItemId.has(existing.id))
+    ? activitiesByItemId.get(existing.id).map(r => ({ ...r }))
+    : [];
   renderSubActivities();
+  recomputeAggregatesFromSubActivities();
+}
+
+/** Fäller ut/in den valfria "Verklig start/avslut"-sektionen i formuläret. */
+function setActualDatesSectionExpanded(expand) {
+  const fields = document.getElementById("actualDatesFields");
+  const btn = document.getElementById("btnToggleActualDates");
+  fields.classList.toggle("hidden", !expand);
+  btn.textContent = expand ? "− Verklig start/avslut (valfritt)" : "+ Verklig start/avslut (valfritt)";
 }
 
 /* ---------------------------------------------------------------------
@@ -753,6 +819,7 @@ function buildLinkPayloadFromForm() {
     status: document.getElementById("fStatus").value,
     startDate: document.getElementById("fStart").value || null,
     endDate: document.getElementById("fEnd").value || null,
+    actualStartDate: document.getElementById("fActualStart").value || null,
     actualEndDate: document.getElementById("fActualEnd").value || null,
     progress: Number(document.getElementById("fProgress").value) || 0
   };
@@ -761,6 +828,12 @@ function buildLinkPayloadFromForm() {
 function onSaveLink() {
   if (lastSelection.length === 0) return;
   const payload = buildLinkPayloadFromForm();
+
+  // Ögonblicksbild av delaktivitetsraderna TAS HÄR (inte längre fram i en
+  // bakgrundsfunktion) eftersom subActivityRows nollställs/laddas om nästa
+  // gång fillLinkForm() körs - t.ex. om man hinner öppna "Koppla markering"
+  // för ett annat objekt innan den här bakgrundssparningen är klar.
+  const subActivitySnapshot = subActivityRows.map(r => ({ ...r }));
 
   // Samma id som en redan sparad rad (om vi redigerar en befintlig
   // koppling) återanvänds så att den optimistiska raden och den faktiska
@@ -782,6 +855,23 @@ function onSaveLink() {
   const label = records.length === 1 ? (records[0].objectName || records[0].objectId) : `${records.length} objekt`;
   saveJobs.set(jobId, { id: jobId, records, label, status: "pending", error: null });
   runSaveJob(jobId);
+
+  // Delaktiviteterna sparas i en egen fil (plan_item_activities.json) och
+  // körs parallellt med huvudsparningen ovan istället för att blockera den -
+  // de är en valfri "extra", så ett fel här ska inte hindra själva
+  // objektkopplingen från att sparas. Varje markerat objekt (vid koppling av
+  // flera samtidigt) får samma uppsättning delaktiviteter, precis som de
+  // redan delar Aktivitet/Start/Slut i formuläret. Skrivs bara om det finns
+  // något att spara ELLER om objektet hade delaktiviteter sedan tidigare som
+  // nu ska rensas bort (alla rader borttagna i formuläret och sparat).
+  records.forEach(rec => {
+    const hadExisting = (activitiesByItemId.get(rec.id) || []).length > 0;
+    if (subActivitySnapshot.length === 0 && !hadExisting) return;
+    saveActivitiesForItem(rec.id, projectId, subActivitySnapshot).catch(e => {
+      console.error("Kunde inte spara delaktiviteter:", e);
+      alert(`Kunde inte spara delaktiviteterna för "${rec.objectName || rec.objectId}": ${e.message}`);
+    });
+  });
 }
 
 /** Lägger till/uppdaterar de sparade raderna lokalt direkt (innan bakgrundsskrivningen ens startat), märkta som "Sparar...". */
@@ -959,6 +1049,7 @@ function onDoRename() {
     status: it.status,
     startDate: it.startDate,
     endDate: it.endDate,
+    actualStartDate: it.actualStartDate,
     actualEndDate: it.actualEndDate,
     progress: it.progress,
     [field]: newValue
@@ -1058,6 +1149,7 @@ function onDoBulkEdit() {
     status: newStatus || it.status,
     startDate: shiftDateBy(it.startDate, shiftDays),
     endDate: shiftDateBy(it.endDate, shiftDays),
+    actualStartDate: it.actualStartDate,
     actualEndDate: it.actualEndDate,
     progress: it.progress
   }));
@@ -2649,6 +2741,9 @@ function commentsPath() {
 function progressHistoryPath() {
   return `projects/${encodeURIComponent(projectId)}/plan_item_progress_history.json`;
 }
+function activitiesPath() {
+  return `projects/${encodeURIComponent(projectId)}/plan_item_activities.json`;
+}
 
 function toRow(it) {
   return {
@@ -2663,6 +2758,7 @@ function toRow(it) {
     status: it.status || "planerad",
     start_date: it.startDate || null,
     end_date: it.endDate || null,
+    actual_start_date: it.actualStartDate || null,
     actual_end_date: it.actualEndDate || null,
     progress: Number.isFinite(it.progress) ? Math.max(0, Math.min(100, Math.round(it.progress))) : 0,
     updated_at: new Date().toISOString()
@@ -2682,6 +2778,7 @@ function fromRow(row) {
     status: row.status,
     startDate: row.start_date,
     endDate: row.end_date,
+    actualStartDate: row.actual_start_date || null,
     actualEndDate: row.actual_end_date || null,
     progress: Number.isFinite(row.progress) ? row.progress : 0,
     updatedAt: row.updated_at
@@ -2799,7 +2896,10 @@ async function deleteItem(item) {
     (arr) => arr.filter(r => (item.id ? r.id !== item.id : !(r.project_id === item.projectId && r.object_id === String(item.objectId)))),
     "Radera planeringspost"
   );
-  if (item.id) await deleteCommentsForItems([item.id]);
+  if (item.id) {
+    await deleteCommentsForItems([item.id]);
+    await deleteActivitiesForItems([item.id]);
+  }
 }
 
 /**
@@ -2828,6 +2928,7 @@ async function deleteItems(itemsToDelete, onProgress) {
     "Radera flera planeringsposter"
   );
   await deleteCommentsForItems(removedIds);
+  await deleteActivitiesForItems(removedIds);
   if (onProgress) onProgress(itemsToDelete.length, itemsToDelete.length);
 }
 
@@ -2841,6 +2942,78 @@ async function deleteCommentsForItems(planItemIds) {
     (arr) => arr.filter(c => !idSet.has(c.plan_item_id)),
     "Ta bort kommentarer för raderade objekt"
   );
+}
+
+/* ---------------------------------------------------------------------
+   Delaktiviteter (plan_item_activities) – från och med 2026-09-17 sparas
+   raderna man bygger upp i "Koppla markering" (se onAddSubActivity m.fl.)
+   på riktigt, inte bara som en tillfällig datumräknehjälp i formuläret.
+   Varje sparning ersätter ALLA delaktiviteter för det objektet i ett svep
+   (radera-och-lägg-till-alla) istället för att försöka matcha ihop enskilda
+   rader mot tidigare sparade poster - enklare och robust nog eftersom
+   formuläret alltid visar/redigerar HELA uppsättningen på en gång (det
+   finns aldrig en delvis synlig lista att synka mot). Se Victors förfrågan
+   2026-09-17: "Testa att göra så att jag har alla delaktiviteterna
+   sparade vilket innebär en hel del extrajobb."
+   ------------------------------------------------------------------- */
+
+/** Hämtar alla delaktiviteter för projektet och grupperar dem per plan_item_id. */
+async function refreshActivities() {
+  activitiesByItemId = new Map();
+  if (!isBackendConfigured()) return;
+  try {
+    const rows = await ghReadJSON(settings.githubToken, activitiesPath());
+    rows.forEach(row => {
+      const list = activitiesByItemId.get(row.plan_item_id) || [];
+      list.push({ name: row.name || "", start: row.start_date || "", end: row.end_date || "" });
+      activitiesByItemId.set(row.plan_item_id, list);
+    });
+  } catch (e) {
+    console.error("Kunde inte hämta delaktiviteter", e);
+  }
+}
+
+/**
+ * Ersätter ALLA delaktiviteter för ett givet objekt (planItemId) med `rows`
+ * ({name, start, end}). Tomma rader (varken namn, start eller slut ifyllt)
+ * hoppas över. En tom `rows`-lista rensar alltså bort ev. tidigare sparade
+ * delaktiviteter för objektet - det är avsiktligt (motsvarar att man tagit
+ * bort alla rader i formuläret och sparat).
+ */
+async function saveActivitiesForItem(planItemId, projectIdVal, rows) {
+  if (!isBackendConfigured()) {
+    throw new Error("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
+  }
+  const newRows = rows
+    .filter(r => (r.name && r.name.trim()) || r.start || r.end)
+    .map(r => ({
+      id: ghNewId(),
+      plan_item_id: planItemId,
+      project_id: projectIdVal,
+      name: (r.name || "").trim(),
+      start_date: r.start || null,
+      end_date: r.end || null
+    }));
+  await ghWriteJSON(
+    settings.githubToken,
+    activitiesPath(),
+    (arr) => [...arr.filter(a => a.plan_item_id !== planItemId), ...newRows],
+    "Spara delaktiviteter"
+  );
+  activitiesByItemId.set(planItemId, newRows.map(r => ({ name: r.name, start: r.start_date || "", end: r.end_date || "" })));
+}
+
+/** Tar bort alla delaktiviteter knutna till given lista av plan_item-ID:n (cascade-delete, precis som deleteCommentsForItems). */
+async function deleteActivitiesForItems(planItemIds) {
+  if (!planItemIds || planItemIds.length === 0) return;
+  const idSet = new Set(planItemIds);
+  await ghWriteJSON(
+    settings.githubToken,
+    activitiesPath(),
+    (arr) => arr.filter(a => !idSet.has(a.plan_item_id)),
+    "Ta bort delaktiviteter för raderade objekt"
+  );
+  planItemIds.forEach(id => activitiesByItemId.delete(id));
 }
 
 /** Hämtar alla kommentarer (inkl. svar) för ett objekt, äldst först. */

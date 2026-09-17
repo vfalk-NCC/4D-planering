@@ -34,6 +34,7 @@
         </div>
       </div>
       <div class="header-actions">
+        <button id="btnCollapseAll" title="Minimera alla block">⊟</button>
         <button id="btnRefresh" title="Hämta senaste data">↻</button>
         <button id="btnSettings" title="Inställningar (databas, färger m.m.)">⚙</button>
       </div>
@@ -92,9 +93,23 @@
         <label>Slutdatum
           <input type="date" id="fEnd" />
         </label>
-        <label>Verkligt avslut <span class="hint">(fylls i automatiskt med dagens datum när status sätts till Klar - går att ändra)</span>
-          <input type="date" id="fActualEnd" />
-        </label>
+        <div id="actualDatesSection">
+          <button type="button" id="btnToggleActualDates">+ Verklig start/avslut (valfritt)</button>
+          <div id="actualDatesFields" class="hidden">
+            <label>Verklig start <span class="hint">(valfritt - fyll i för att följa upp verklig starttid mot planerad)</span>
+              <div class="row">
+                <input type="date" id="fActualStart" style="flex:1" />
+                <button type="button" id="btnClearActualStart" class="clear-date-btn" title="Nollställ verklig start">✕</button>
+              </div>
+            </label>
+            <label>Verkligt avslut <span class="hint">(fylls i automatiskt med dagens datum när status sätts till Klar - går att ändra)</span>
+              <div class="row">
+                <input type="date" id="fActualEnd" style="flex:1" />
+                <button type="button" id="btnClearActualEnd" class="clear-date-btn" title="Nollställ verkligt avslut">✕</button>
+              </div>
+            </label>
+          </div>
+        </div>
         <label>Framdrift (<span id="fProgressLabel">0</span>%)
           <input type="range" id="fProgress" min="0" max="100" step="1" value="0" />
         </label>
