@@ -20,7 +20,9 @@ let settings = {
   userName: "",                // namn som förifylls vid nya kommentarer
   statusColors: null,          // sätts till DEFAULT_STATUS_COLORS av loadLocalSettings() - färger per status/fas, används både för badgen i listan OCH för objektens färg i 3D-vyn (se computeItemPhase/applyTimelineColors)
   statusOpacities: null,       // sätts till DEFAULT_PHASE_OPACITIES av loadLocalSettings() - opacitet i 3D-vyn per beräknad fas (påverkar INTE badgen i listan, precis som tidigare "Tidslinje-färger"-reglagen)
-  warningDaysBeforeEnd: 7      // "snart aktuell"-tröskel (dagar innan planerat slutdatum) - styrs via slidern i Filter-panelen, se bindUI()
+  warningDaysBeforeEnd: 7,     // "snart aktuell"-tröskel (dagar innan planerat slutdatum) - styrs via slidern i Filter-panelen, se bindUI()
+  timelineRangeStart: null,    // valfritt eget start-/slutdatum för tidslinjens slider (annars auto, se getTimelineStart/getTimelineEnd)
+  timelineRangeEnd: null
 };
 let lastSelection = [];      // [{modelId, objectId (externalId), objectRuntimeId, name}]
 let playTimer = null;
@@ -192,6 +194,7 @@ async function initApp() {
   loadLocalSettings();
   bindUI();
   initCollapsiblePanels();
+  initPanelVisibility();
 
   API = await TrimbleConnectWorkspace.connect(window.parent, onWorkspaceEvent, 30000);
 
@@ -305,6 +308,8 @@ function bindUI() {
   document.getElementById("timelineSlider").oninput = onSliderMove;
   document.getElementById("timelineDate").onchange = onDateInputChange;
   document.getElementById("btnPlay").onclick = onTogglePlay;
+  document.getElementById("btnApplyTimelineRange").onclick = onApplyTimelineRange;
+  document.getElementById("btnResetTimelineRange").onclick = onResetTimelineRange;
 
   document.getElementById("btnApplyFilter").onclick = applyFilterToModel;
   document.getElementById("btnClearFilter").onclick = clearFilter;
@@ -507,6 +512,63 @@ function initCollapsiblePanels() {
   updateCollapseAllButton();
 }
 
+/* ---------------------------------------------------------------------
+   Synliga block – till skillnad från minimering (ovan) döljer detta ett
+   block helt (inklusive rubriken). Kryssrutorna byggs dynamiskt utifrån
+   samtliga [data-panel-id] och läget sparas direkt i localStorage - se
+   motsvarande i 4D-dashboard (Victors förfrågan 2026-09-17: "Man ska
+   kunna välja från en lista vilka block man vill ha synliga").
+   ------------------------------------------------------------------- */
+const PANEL_VISIBILITY_KEY = "4dplan-hidden-panels";
+let hiddenPanels = new Set();
+
+function loadHiddenPanels() {
+  try {
+    const raw = window.localStorage.getItem(PANEL_VISIBILITY_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function saveHiddenPanels() {
+  try {
+    window.localStorage.setItem(PANEL_VISIBILITY_KEY, JSON.stringify([...hiddenPanels]));
+  } catch (e) { /* ignorera */ }
+}
+
+function initPanelVisibility() {
+  hiddenPanels = loadHiddenPanels();
+  const panels = document.querySelectorAll("section.panel[data-panel-id]");
+  const listEl = document.getElementById("panelVisibilityList");
+
+  const applyPanel = (panel) => {
+    panel.classList.toggle("panel-hidden", hiddenPanels.has(panel.dataset.panelId));
+  };
+  panels.forEach(applyPanel);
+
+  if (listEl) {
+    listEl.innerHTML = [...panels].map(panel => {
+      const id = panel.dataset.panelId;
+      const h2 = panel.querySelector(":scope > h2");
+      const title = h2 ? h2.textContent.trim() : id;
+      const checked = hiddenPanels.has(id) ? "" : "checked";
+      return `<label><input type="checkbox" class="panel-visibility-check" data-panel-id="${escapeHtml(id)}" ${checked} /> ${escapeHtml(title)}</label>`;
+    }).join("");
+
+    listEl.querySelectorAll(".panel-visibility-check").forEach(cb => {
+      cb.onchange = () => {
+        const id = cb.dataset.panelId;
+        if (cb.checked) hiddenPanels.delete(id); else hiddenPanels.add(id);
+        saveHiddenPanels();
+        const panel = document.querySelector(`section.panel[data-panel-id="${id}"]`);
+        if (panel) applyPanel(panel);
+      };
+    });
+  }
+}
+
 // Vilken legend-prick (i Tidslinje-panelen) som hör till vilken beräknad
 // fas - se computeItemPhase().
 const PHASE_DOT_IDS = {
@@ -699,6 +761,7 @@ function fillLinkForm(existing) {
   const progress = existing && Number.isFinite(existing.progress) ? existing.progress : 0;
   document.getElementById("fProgress").value = progress;
   document.getElementById("fProgressLabel").innerText = progress;
+  document.getElementById("fEstimatedHours").value = (existing && Number.isFinite(existing.estimatedHours)) ? existing.estimatedHours : "";
   // Delaktiviteterna sparas numera på riktigt (plan_item_activities, se
   // saveActivitiesForItem) - ladda in tidigare sparade rader för objektet om
   // det finns några, annars börja tomt precis som vid en ny koppling.
@@ -718,16 +781,16 @@ function setActualDatesSectionExpanded(expand) {
 }
 
 /* ---------------------------------------------------------------------
-   Delaktiviteter i "Koppla markering" - en ren datumräknehjälp: så länge
-   minst en rad finns räknas Aktivitet/Startdatum/Slutdatum i huvud-
-   formuläret automatiskt fram från raderna (ihopslagna namn, tidigaste
-   start, senaste slut) istället för att skrivas för hand. Sparas INTE som
-   egna databasposter - bara det sammanslagna resultatet hamnar i
-   plan_items, precis som om man skrivit det för hand. Se Victors förfrågan
-   2026-09-17 (enkel variant, utan att bryta ut riktiga delrader överallt).
+   Delaktiviteter i "Koppla markering": så länge minst en rad finns räknas
+   Aktivitet/Startdatum/Slutdatum/Uppskattade timmar i huvudformuläret
+   automatiskt fram från raderna (ihopslagna namn, tidigaste start, senaste
+   slut, summerade timmar) istället för att skrivas för hand. Sparas som
+   egna poster i plan_item_activities.json (se saveActivitiesForItem) OCH
+   det sammanslagna resultatet hamnar i plan_items, precis som om man
+   skrivit det för hand. Se Victors förfrågan 2026-09-17.
    ------------------------------------------------------------------- */
 function onAddSubActivity() {
-  subActivityRows.push({ name: "", start: "", end: "" });
+  subActivityRows.push({ name: "", start: "", end: "", hours: "" });
   renderSubActivities();
   recomputeAggregatesFromSubActivities();
 }
@@ -739,6 +802,7 @@ function renderSubActivities() {
       <input type="text" class="sub-activity-name" style="flex:2" placeholder="Namn, t.ex. Formning" value="${escapeHtml(row.name)}" />
       <input type="date" class="sub-activity-start" style="flex:1" value="${row.start || ""}" />
       <input type="date" class="sub-activity-end" style="flex:1" value="${row.end || ""}" />
+      <input type="number" class="sub-activity-hours" style="flex:0 0 4.5em" min="0" step="0.5" placeholder="tim" value="${row.hours || ""}" />
       <button type="button" class="delete-btn sub-activity-remove" title="Ta bort delaktiviteten">🗑️</button>
     </div>`).join("");
 
@@ -747,6 +811,7 @@ function renderSubActivities() {
     rowEl.querySelector(".sub-activity-name").oninput = (ev) => { subActivityRows[i].name = ev.target.value; recomputeAggregatesFromSubActivities(); };
     rowEl.querySelector(".sub-activity-start").onchange = (ev) => { subActivityRows[i].start = ev.target.value; recomputeAggregatesFromSubActivities(); };
     rowEl.querySelector(".sub-activity-end").onchange = (ev) => { subActivityRows[i].end = ev.target.value; recomputeAggregatesFromSubActivities(); };
+    rowEl.querySelector(".sub-activity-hours").oninput = (ev) => { subActivityRows[i].hours = ev.target.value; recomputeAggregatesFromSubActivities(); };
     rowEl.querySelector(".sub-activity-remove").onclick = () => {
       subActivityRows.splice(i, 1);
       renderSubActivities();
@@ -756,27 +821,30 @@ function renderSubActivities() {
 }
 
 /**
- * Räknar om Aktivitet/Startdatum/Slutdatum i huvudformuläret utifrån
- * delaktiviteterna, och låser (readonly) de tre fälten så länge minst en
- * delaktivitet finns - annars skulle en efterföljande manuell ändring i
- * huvudfälten tyst skrivas över nästa gång en delaktivitetsrad ändras,
- * utan att det syns varför.
+ * Räknar om Aktivitet/Startdatum/Slutdatum/Uppskattade timmar i
+ * huvudformuläret utifrån delaktiviteterna, och låser (readonly) fälten så
+ * länge minst en delaktivitet finns - annars skulle en efterföljande
+ * manuell ändring i huvudfälten tyst skrivas över nästa gång en
+ * delaktivitetsrad ändras, utan att det syns varför.
  */
 function recomputeAggregatesFromSubActivities() {
   const fActivity = document.getElementById("fActivity");
   const fStart = document.getElementById("fStart");
   const fEnd = document.getElementById("fEnd");
+  const fEstimatedHours = document.getElementById("fEstimatedHours");
 
   if (subActivityRows.length === 0) {
     fActivity.readOnly = false;
     fStart.readOnly = false;
     fEnd.readOnly = false;
+    fEstimatedHours.readOnly = false;
     return;
   }
 
   fActivity.readOnly = true;
   fStart.readOnly = true;
   fEnd.readOnly = true;
+  fEstimatedHours.readOnly = true;
 
   const names = subActivityRows.map(r => r.name.trim()).filter(Boolean);
   fActivity.value = names.join(" + ");
@@ -784,6 +852,9 @@ function recomputeAggregatesFromSubActivities() {
   const dates = subActivityRows.flatMap(r => [r.start, r.end]).filter(Boolean).sort();
   fStart.value = dates.length ? dates[0] : "";
   fEnd.value = dates.length ? dates[dates.length - 1] : "";
+
+  const hoursSum = subActivityRows.reduce((sum, r) => sum + (Number(r.hours) || 0), 0);
+  fEstimatedHours.value = hoursSum > 0 ? hoursSum : "";
 }
 
 /* ---------------------------------------------------------------------
@@ -821,7 +892,8 @@ function buildLinkPayloadFromForm() {
     endDate: document.getElementById("fEnd").value || null,
     actualStartDate: document.getElementById("fActualStart").value || null,
     actualEndDate: document.getElementById("fActualEnd").value || null,
-    progress: Number(document.getElementById("fProgress").value) || 0
+    progress: Number(document.getElementById("fProgress").value) || 0,
+    estimatedHours: document.getElementById("fEstimatedHours").value !== "" ? Number(document.getElementById("fEstimatedHours").value) : null
   };
 }
 
@@ -1052,6 +1124,7 @@ function onDoRename() {
     actualStartDate: it.actualStartDate,
     actualEndDate: it.actualEndDate,
     progress: it.progress,
+    estimatedHours: it.estimatedHours,
     [field]: newValue
   }));
 
@@ -1151,7 +1224,8 @@ function onDoBulkEdit() {
     endDate: shiftDateBy(it.endDate, shiftDays),
     actualStartDate: it.actualStartDate,
     actualEndDate: it.actualEndDate,
-    progress: it.progress
+    progress: it.progress,
+    estimatedHours: it.estimatedHours
   }));
 
   applyOptimisticRecords(records);
@@ -1190,6 +1264,21 @@ function getTimelineEnd() {
   return latestPlanned && latestPlanned > TIMELINE_MIN_END ? latestPlanned : TIMELINE_MIN_END;
 }
 
+/**
+ * Tidslinjens FAKTISKA intervall: Victors eget Från/Till
+ * (settings.timelineRangeStart/End, satt via "Anpassat intervall på
+ * slidern") om han satt något, annars det automatiskt uträknade
+ * (getTimelineStart/getTimelineEnd). Se Victors förfrågan 2026-09-17 (kunna
+ * ställa in egna intervallet på tidslinjen, "ställa start och slutdatum på
+ * slidern").
+ */
+function getEffectiveTimelineStart() {
+  return settings.timelineRangeStart || getTimelineStart();
+}
+function getEffectiveTimelineEnd() {
+  return settings.timelineRangeEnd || getTimelineEnd();
+}
+
 function initTimelineRange() {
   const dateInput = document.getElementById("timelineDate");
   const today = new Date().toISOString().slice(0, 10);
@@ -1198,11 +1287,17 @@ function initTimelineRange() {
 
   // Intervallet (start/end) går alltid minst TIMELINE_MIN_START–TIMELINE_MIN_END,
   // oavsett vad som faktiskt är inplanerat – men kapas aldrig om projektet
-  // sträcker sig längre åt något håll än så.
-  const start = getTimelineStart();
-  const end = getTimelineEnd();
+  // sträcker sig längre åt något håll än så. Om Victor satt ett eget
+  // intervall används det istället (getEffectiveTimelineStart/End).
+  const start = getEffectiveTimelineStart();
+  const end = getEffectiveTimelineEnd();
 
   if (!dateInput.value) dateInput.value = defaultDate;
+  // Klipp in aktuellt valt datum i intervallet - annars kan sliderns värde
+  // hamna utanför min/max, t.ex. om Victor precis snävat in ett eget
+  // intervall som inte täcker det datum som var valt sedan innan.
+  if (dateInput.value < start) dateInput.value = start;
+  if (dateInput.value > end) dateInput.value = end;
   dateInput.min = start;
   dateInput.max = end;
 
@@ -1211,7 +1306,49 @@ function initTimelineRange() {
   slider.max = daysBetween(start, end);
   slider.value = Math.max(0, daysBetween(start, dateInput.value));
 
+  // Speglar Victors eget intervall (om satt) i "Anpassat intervall"-fälten,
+  // annars visas det automatiskt uträknade intervallet som platshållartext.
+  const rangeStartInput = document.getElementById("timelineRangeStart");
+  const rangeEndInput = document.getElementById("timelineRangeEnd");
+  if (rangeStartInput && rangeEndInput) {
+    rangeStartInput.value = settings.timelineRangeStart || "";
+    rangeEndInput.value = settings.timelineRangeEnd || "";
+    rangeStartInput.placeholder = getTimelineStart();
+    rangeEndInput.placeholder = getTimelineEnd();
+  }
+
   applyTimelineColors();
+}
+
+/** Sparar Victors eget Från/Till för tidslinjens slider och bygger om den utifrån det. */
+function onApplyTimelineRange() {
+  const statusEl = document.getElementById("timelineRangeStatus");
+  const startVal = document.getElementById("timelineRangeStart").value;
+  const endVal = document.getElementById("timelineRangeEnd").value;
+
+  if (!startVal || !endVal) {
+    statusEl.innerText = "Ange både Från och Till.";
+    return;
+  }
+  if (startVal >= endVal) {
+    statusEl.innerText = "Från måste vara tidigare än Till.";
+    return;
+  }
+
+  settings.timelineRangeStart = startVal;
+  settings.timelineRangeEnd = endVal;
+  try { window.localStorage.setItem("4dplan-settings", JSON.stringify(settings)); } catch (e) { /* ignorera */ }
+  statusEl.innerText = `Slidern täcker nu ${startVal} – ${endVal}.`;
+  initTimelineRange();
+}
+
+/** Återställer tidslinjens slider till det automatiskt uträknade intervallet. */
+function onResetTimelineRange() {
+  settings.timelineRangeStart = null;
+  settings.timelineRangeEnd = null;
+  try { window.localStorage.setItem("4dplan-settings", JSON.stringify(settings)); } catch (e) { /* ignorera */ }
+  document.getElementById("timelineRangeStatus").innerText = "Återställt till automatiskt intervall.";
+  initTimelineRange();
 }
 
 function daysBetween(a, b) {
@@ -1239,8 +1376,9 @@ function onDateInputChange() {
 
 function getEarliestDate() {
   // Referenspunkt för sliderns position 0 – måste vara samma datum som
-  // initTimelineRange räknar fram som intervallets start.
-  return getTimelineStart();
+  // initTimelineRange räknar fram som intervallets start (auto ELLER
+  // Victors eget "Anpassat intervall").
+  return getEffectiveTimelineStart();
 }
 
 function onTogglePlay() {
@@ -1720,7 +1858,13 @@ async function onImportExcel() {
     status: normalizeStatus(r["Status"]),
     startDate: excelDateToIso(r["Startdatum"] || r["StartDate"]),
     endDate: excelDateToIso(r["Slutdatum"] || r["EndDate"]),
-    actualEndDate: excelDateToIso(r["Verkligt avslut"] || r["ActualEndDate"])
+    actualStartDate: excelDateToIso(r["Verklig start"] || r["ActualStartDate"]),
+    actualEndDate: excelDateToIso(r["Verkligt avslut"] || r["ActualEndDate"]),
+    estimatedHours: (() => {
+      const v = r["Uppskattade timmar"] ?? r["EstimatedHours"];
+      const n = Number(v);
+      return v !== undefined && v !== "" && Number.isFinite(n) ? n : null;
+    })()
   })).filter(r => r.objectId);
 
   status.innerText = `Importerar ${records.length} rader...`;
@@ -1763,7 +1907,9 @@ function onExportExcel() {
     "Status": STATUS_LABELS[it.status] || it.status || "",
     "Startdatum": it.startDate || "",
     "Slutdatum": it.endDate || "",
-    "Verkligt avslut": it.actualEndDate || ""
+    "Verklig start": it.actualStartDate || "",
+    "Verkligt avslut": it.actualEndDate || "",
+    "Uppskattade timmar": Number.isFinite(it.estimatedHours) ? it.estimatedHours : ""
   }));
 
   const sheet = XLSX.utils.json_to_sheet(data);
@@ -2761,6 +2907,7 @@ function toRow(it) {
     actual_start_date: it.actualStartDate || null,
     actual_end_date: it.actualEndDate || null,
     progress: Number.isFinite(it.progress) ? Math.max(0, Math.min(100, Math.round(it.progress))) : 0,
+    estimated_hours: Number.isFinite(it.estimatedHours) ? it.estimatedHours : null,
     updated_at: new Date().toISOString()
   };
 }
@@ -2781,6 +2928,7 @@ function fromRow(row) {
     actualStartDate: row.actual_start_date || null,
     actualEndDate: row.actual_end_date || null,
     progress: Number.isFinite(row.progress) ? row.progress : 0,
+    estimatedHours: Number.isFinite(row.estimated_hours) ? row.estimated_hours : null,
     updatedAt: row.updated_at
   };
 }
@@ -2965,7 +3113,7 @@ async function refreshActivities() {
     const rows = await ghReadJSON(settings.githubToken, activitiesPath());
     rows.forEach(row => {
       const list = activitiesByItemId.get(row.plan_item_id) || [];
-      list.push({ name: row.name || "", start: row.start_date || "", end: row.end_date || "" });
+      list.push({ name: row.name || "", start: row.start_date || "", end: row.end_date || "", hours: Number.isFinite(row.estimated_hours) ? row.estimated_hours : "" });
       activitiesByItemId.set(row.plan_item_id, list);
     });
   } catch (e) {
@@ -2985,14 +3133,15 @@ async function saveActivitiesForItem(planItemId, projectIdVal, rows) {
     throw new Error("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
   }
   const newRows = rows
-    .filter(r => (r.name && r.name.trim()) || r.start || r.end)
+    .filter(r => (r.name && r.name.trim()) || r.start || r.end || r.hours)
     .map(r => ({
       id: ghNewId(),
       plan_item_id: planItemId,
       project_id: projectIdVal,
       name: (r.name || "").trim(),
       start_date: r.start || null,
-      end_date: r.end || null
+      end_date: r.end || null,
+      estimated_hours: Number.isFinite(Number(r.hours)) && r.hours !== "" ? Number(r.hours) : null
     }));
   await ghWriteJSON(
     settings.githubToken,
@@ -3000,7 +3149,7 @@ async function saveActivitiesForItem(planItemId, projectIdVal, rows) {
     (arr) => [...arr.filter(a => a.plan_item_id !== planItemId), ...newRows],
     "Spara delaktiviteter"
   );
-  activitiesByItemId.set(planItemId, newRows.map(r => ({ name: r.name, start: r.start_date || "", end: r.end_date || "" })));
+  activitiesByItemId.set(planItemId, newRows.map(r => ({ name: r.name, start: r.start_date || "", end: r.end_date || "", hours: Number.isFinite(r.estimated_hours) ? r.estimated_hours : "" })));
 }
 
 /** Tar bort alla delaktiviteter knutna till given lista av plan_item-ID:n (cascade-delete, precis som deleteCommentsForItems). */

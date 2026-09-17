@@ -88,6 +88,28 @@ header button { background: none; border: none; font-size: 16px; cursor: pointer
 .panel.collapsed h2 { margin-bottom: 0; }
 .panel.collapsed h2::before { content: "▶"; }
 .panel.collapsed > *:not(h2) { display: none; }
+/* Dolt via "Synliga block" i Inställningar - till skillnad från
+   minimering (.collapsed) är blocket helt borta, inklusive rubriken. */
+.panel.panel-hidden { display: none !important; }
+
+.panel-visibility-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 6px 0 10px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.panel-visibility-list label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 400;
+}
 
 /* Knapp inne i en panels <h2> (t.ex. "Visa alla kopplade objekt" i
    Filter-headern) - måste stoppa klickets bubbling (se showAllModelObjects
@@ -209,6 +231,14 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
 }
 .timeline-controls input[type="date"] { flex: 0 0 130px; }
 .timeline-controls input[type="range"] { flex: 1; }
+
+.timeline-range { margin-top: 8px; }
+.timeline-range summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--accent);
+}
+.timeline-range .row { margin-top: 6px; }
 
 .legend {
   display: flex;

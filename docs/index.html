@@ -66,10 +66,10 @@
         <div id="subActivitiesSection">
           <div id="subActivitiesList"></div>
           <button type="button" id="btnAddSubActivity">+ Lägg till delaktivitet</button>
-          <p class="hint">Valfritt: dela upp i flera delaktiviteter (t.ex. Formning, Gjutning) med egna datum. Så
-            länge minst en delaktivitet finns räknas Aktivitet, Startdatum och Slutdatum ovan automatiskt fram
-            (ihopslagna namn, tidigaste start, senaste slut) och går inte att ändra för hand - ta bort alla
-            delaktiviteter igen för att skriva dem manuellt.</p>
+          <p class="hint">Valfritt: dela upp i flera delaktiviteter (t.ex. Formning, Gjutning) med egna datum och
+            uppskattade timmar. Så länge minst en delaktivitet finns räknas Aktivitet, Startdatum, Slutdatum och
+            Uppskattade timmar automatiskt fram (ihopslagna namn, tidigaste start, senaste slut, summerade timmar)
+            och går inte att ändra för hand - ta bort alla delaktiviteter igen för att skriva dem manuellt.</p>
         </div>
         <label>Entreprenör
           <div class="autocomplete-wrap">
@@ -112,6 +112,9 @@
         </div>
         <label>Framdrift (<span id="fProgressLabel">0</span>%)
           <input type="range" id="fProgress" min="0" max="100" step="1" value="0" />
+        </label>
+        <label>Uppskattade timmar <span class="hint">(valfritt - hur lång tid hela objektet beräknas ta. Fylls i för hand, eller summeras automatiskt från delaktiviteternas timmar om sådana används)</span>
+          <input type="number" id="fEstimatedHours" min="0" step="0.5" placeholder="t.ex. 16" />
         </label>
         <div class="row">
           <button id="btnSaveLink" class="primary">Spara</button>
@@ -177,6 +180,24 @@
         <input type="date" id="timelineDate" />
         <input type="range" id="timelineSlider" min="0" max="100" value="0" />
       </div>
+      <details id="timelineRangeDetails" class="timeline-range">
+        <summary>Anpassat intervall på slidern</summary>
+        <p class="hint">Styr själv vilket datumintervall slidern ska täcka, t.ex. bara ett kvartal - annars
+          täcker den automatiskt hela det inplanerade intervallet (minst 2025-01-01–2030-12-31).</p>
+        <div class="row">
+          <label style="flex:1">Från
+            <input type="date" id="timelineRangeStart" />
+          </label>
+          <label style="flex:1">Till
+            <input type="date" id="timelineRangeEnd" />
+          </label>
+        </div>
+        <div class="row">
+          <button id="btnApplyTimelineRange">Använd intervall</button>
+          <button id="btnResetTimelineRange">Återställ (automatiskt)</button>
+        </div>
+        <div id="timelineRangeStatus" class="hint"></div>
+      </details>
       <div class="legend">
         <span><i class="dot" id="dotPlanerad"></i> Planerad</span>
         <span><i class="dot" id="dotPagaende"></i> Pågående</span>
@@ -268,6 +289,12 @@
       <div id="statusColorInputs"></div>
       <label>GitHub-token <input type="password" id="githubToken" placeholder="github_pat_..." /></label>
       <p class="hint">En fine-grained token scopead till repot <strong>vfalk-NCC/4D-data</strong> – se GITHUB_TOKEN_SETUP.md för hur du skapar en (tar under en minut).</p>
+
+      <h3 class="settings-subheading">Synliga block</h3>
+      <p class="hint">Bocka ur ett block för att dölja det. Sparas direkt i webbläsaren, ingen "Spara"-knapp behövs
+        för detta val.</p>
+      <div id="panelVisibilityList" class="panel-visibility-list"></div>
+
       <div class="row">
         <button id="btnSaveSettings" class="primary">Spara</button>
         <button id="btnCloseSettings">Stäng</button>
