@@ -14,14 +14,17 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
 - Filtrering på område/aktivitet/entreprenör/status samt "kommande veckor"
   ger en snabb lägesbild i modellen (isolerar matchande objekt).
 - Excel-import: en fil med kolumnerna `ObjektID, Namn, Område, Aktivitet,
-  Entreprenör, Status, Startdatum, Slutdatum` läses in och skriver/uppdaterar
-  planeringen. Data sparas i en databas (inte i webbläsaren) så att den
-  finns kvar mellan sessioner och delas mellan alla i projektet.
+  Entreprenör, Status, Startdatum, Slutdatum` (samt valfria `Verklig
+  start`, `Verkligt avslut` och `Uppskattade timmar`) läses in och
+  skriver/uppdaterar planeringen. Data sparas i en databas (inte i
+  webbläsaren) så att den finns kvar mellan sessioner och delas mellan
+  alla i projektet.
 - **Excel-export**: knappen "Exportera till Excel" i samma panel skriver ut
-  en `.xlsx`-fil med exakt samma kolumner som importen (`ObjektID, Namn,
-  Område, Aktivitet, Entreprenör, Status, Startdatum, Slutdatum`), så filen
-  går att redigera och importera tillbaka rakt av. Exporten respekterar det
-  som just nu visas i "Planerade objekt" – dvs. sökningen och ev. "Dölj
+  en `.xlsx`-fil med samma kolumner som importen (`ObjektID, Namn,
+  Område, Aktivitet, Entreprenör, Status, Startdatum, Slutdatum, Verklig
+  start, Verkligt avslut, Uppskattade timmar`), så filen går att redigera
+  och importera tillbaka rakt av. Exporten respekterar det som just nu
+  visas i "Planerade objekt" – dvs. sökningen och ev. "Dölj
   klarmarkerade" – men inte grupperingen, som bara organiserar listan.
   Filen namnges `4D-planering-ÅÅÅÅ-MM-DD.xlsx`.
 - **Hitta objekt via koordinat**: markera en grupp kandidatobjekt i 3D-vyn
@@ -138,6 +141,24 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   nollställ-knapp (✕) bredvid datumväljaren. Fyller man i båda blir
   cykeltidsanalysen i 4D-dashboard betydligt mer träffsäker – se dess
   README för hur det används.
+- **Anpassat intervall på tidslinjens slider**: under Tidslinje-panelen
+  finns "Anpassat intervall på slidern" (hopfällt som standard) där du
+  kan ange ett eget Från-/Till-datum för slidern, t.ex. bara ett kvartal
+  – annars täcker den automatiskt hela det inplanerade intervallet (minst
+  2025-01-01–2030-12-31). "Återställ (automatiskt)" ger tillbaka det
+  breda auto-intervallet. Valet sparas lokalt i webbläsaren.
+- **Uppskattade timmar**: ett nytt, valfritt fält i "Koppla markering" för
+  hur lång tid hela objektet beräknas ta. Fylls i för hand, eller – om du
+  använder underaktiviteter – summeras automatiskt från delaktiviteternas
+  egna timmar-fält och låses (samma mönster som Aktivitet/Start/Slut).
+  Driver panelen "Resurstimmar (planerat)" i 4D-dashboard, se dess README.
+- **Synliga block**: i inställningarna (kugghjulet) kan du bocka ur vilka
+  block ("Koppla markering", "Planerade objekt", "Tidslinje", "Filter",
+  "Excel import/export", "Hitta objekt via koordinat") som ska visas.
+  Ett urbockat block försvinner direkt – valet sparas lokalt i
+  webbläsaren. Till skillnad från 4D-dashboard finns ingen separat
+  export per block här (all data exporteras alltid i samma Excel-fil),
+  så det här styr bara vad som visas i sidopanelen.
 
 ## Arkitektur
 
