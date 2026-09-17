@@ -326,13 +326,15 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
 }
 .item-row .comment-btn,
 .item-row .edit-btn,
-.item-row .delete-btn {
+.item-row .delete-btn,
+.sub-activity-remove {
   border: none;
   background: none;
   cursor: pointer;
   font-size: 12px;
   padding: 2px 4px;
 }
+.sub-activity-row { align-items: center; }
 .item-row .comment-btn { position: relative; }
 .comment-count {
   position: absolute;

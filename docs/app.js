@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-16 14:35";
+const APP_VERSION = "2026-09-17 10:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -30,6 +30,7 @@ let collapsedGroups = new Set(); // vilka grupper (nyckel: "<fält>::<värde>") 
 let collapsedPanels = new Set(); // vilka paneler (data-panel-id) som är minimerade
 let itemsTotalCount = null;  // totalt antal rader i plan_items.json, eller null om okänt
 let selectedItemKeys = new Set(); // markerade rader i "Planerade objekt" (Ctrl/Cmd- och Shift-klick), nyckel = objectId
+let subActivityRows = []; // { name, start, end } - se onAddSubActivity/recomputeAggregatesFromSubActivities
 let selectionAnchorKey = null; // ankarraden för Shift-klick (intervallmarkering) i objektlistan
 let currentCommentsItem = null; // vilket objekt kommentarsdialogen just nu visar
 let currentComments = [];       // kommentarer (platt lista, inkl. svar) för currentCommentsItem
@@ -251,6 +252,7 @@ function bindUI() {
 
   document.getElementById("btnLinkSelection").onclick = onOpenLinkForm;
   document.getElementById("btnCancelLink").onclick = () => toggle("linkForm", false);
+  document.getElementById("btnAddSubActivity").onclick = onAddSubActivity;
   document.getElementById("btnSaveLink").onclick = onSaveLink;
   document.getElementById("fProgress").oninput = () => {
     document.getElementById("fProgressLabel").innerText = document.getElementById("fProgress").value;
@@ -264,6 +266,20 @@ function bindUI() {
     const actualEndEl = document.getElementById("fActualEnd");
     if (statusEl.value === "klar" && !actualEndEl.value) {
       actualEndEl.value = new Date().toISOString().slice(0, 10);
+    }
+  };
+  // Omvänt håll: fyller man i ett verkligt avslut manuellt (utan att också
+  // klicka om Status) sätts statusen automatiskt till Klar - annars skulle
+  // objektet visa ett verkligt avslutsdatum men ändå räknas som t.ex.
+  // "Pågående" i status-fältet, vilket är motsägelsefullt. Se Victors
+  // förfrågan 2026-09-17. Rör bara statusen framåt (till "klar") - att
+  // rensa fältet igen ändrar inte status tillbaka automatiskt, det görs
+  // manuellt precis som idag.
+  document.getElementById("fActualEnd").onchange = () => {
+    const actualEndEl = document.getElementById("fActualEnd");
+    const statusEl = document.getElementById("fStatus");
+    if (actualEndEl.value && statusEl.value !== "klar") {
+      statusEl.value = "klar";
     }
   };
 
@@ -315,6 +331,7 @@ function bindUI() {
     if (ev.target.checked) document.getElementById("hideCompleted").checked = false;
     renderItemList();
   };
+  document.getElementById("todayOnly").onchange = () => renderItemList();
 
   document.getElementById("btnDeleteSelected").onclick = onDeleteSelectedItems;
   document.getElementById("btnCollapseAllGroups").onclick = collapseAllGroups;
@@ -324,6 +341,10 @@ function bindUI() {
   document.getElementById("renameOldValue").onchange = updateRenameCount;
   document.getElementById("btnDoRename").onclick = onDoRename;
   document.getElementById("btnCloseRename").onclick = () => toggle("renameDialog", false);
+
+  document.getElementById("btnEditSelected").onclick = onOpenBulkEditDialog;
+  document.getElementById("btnDoBulkEdit").onclick = onDoBulkEdit;
+  document.getElementById("btnCloseBulkEdit").onclick = () => toggle("bulkEditDialog", false);
 
   document.getElementById("btnFindNearest").onclick = onFindNearest;
 
@@ -623,6 +644,80 @@ function fillLinkForm(existing) {
   const progress = existing && Number.isFinite(existing.progress) ? existing.progress : 0;
   document.getElementById("fProgress").value = progress;
   document.getElementById("fProgressLabel").innerText = progress;
+  // Delaktiviteterna är bara en datumräknehjälp i formuläret (sparas inte
+  // som egna poster, se onAddSubActivity) - börjar alltid tomma, oavsett om
+  // vi redigerar en befintlig koppling eller inte.
+  subActivityRows = [];
+  renderSubActivities();
+}
+
+/* ---------------------------------------------------------------------
+   Delaktiviteter i "Koppla markering" - en ren datumräknehjälp: så länge
+   minst en rad finns räknas Aktivitet/Startdatum/Slutdatum i huvud-
+   formuläret automatiskt fram från raderna (ihopslagna namn, tidigaste
+   start, senaste slut) istället för att skrivas för hand. Sparas INTE som
+   egna databasposter - bara det sammanslagna resultatet hamnar i
+   plan_items, precis som om man skrivit det för hand. Se Victors förfrågan
+   2026-09-17 (enkel variant, utan att bryta ut riktiga delrader överallt).
+   ------------------------------------------------------------------- */
+function onAddSubActivity() {
+  subActivityRows.push({ name: "", start: "", end: "" });
+  renderSubActivities();
+  recomputeAggregatesFromSubActivities();
+}
+
+function renderSubActivities() {
+  const el = document.getElementById("subActivitiesList");
+  el.innerHTML = subActivityRows.map((row, i) => `
+    <div class="row sub-activity-row" data-index="${i}">
+      <input type="text" class="sub-activity-name" style="flex:2" placeholder="Namn, t.ex. Formning" value="${escapeHtml(row.name)}" />
+      <input type="date" class="sub-activity-start" style="flex:1" value="${row.start || ""}" />
+      <input type="date" class="sub-activity-end" style="flex:1" value="${row.end || ""}" />
+      <button type="button" class="delete-btn sub-activity-remove" title="Ta bort delaktiviteten">🗑️</button>
+    </div>`).join("");
+
+  el.querySelectorAll(".sub-activity-row").forEach(rowEl => {
+    const i = Number(rowEl.dataset.index);
+    rowEl.querySelector(".sub-activity-name").oninput = (ev) => { subActivityRows[i].name = ev.target.value; recomputeAggregatesFromSubActivities(); };
+    rowEl.querySelector(".sub-activity-start").onchange = (ev) => { subActivityRows[i].start = ev.target.value; recomputeAggregatesFromSubActivities(); };
+    rowEl.querySelector(".sub-activity-end").onchange = (ev) => { subActivityRows[i].end = ev.target.value; recomputeAggregatesFromSubActivities(); };
+    rowEl.querySelector(".sub-activity-remove").onclick = () => {
+      subActivityRows.splice(i, 1);
+      renderSubActivities();
+      recomputeAggregatesFromSubActivities();
+    };
+  });
+}
+
+/**
+ * Räknar om Aktivitet/Startdatum/Slutdatum i huvudformuläret utifrån
+ * delaktiviteterna, och låser (readonly) de tre fälten så länge minst en
+ * delaktivitet finns - annars skulle en efterföljande manuell ändring i
+ * huvudfälten tyst skrivas över nästa gång en delaktivitetsrad ändras,
+ * utan att det syns varför.
+ */
+function recomputeAggregatesFromSubActivities() {
+  const fActivity = document.getElementById("fActivity");
+  const fStart = document.getElementById("fStart");
+  const fEnd = document.getElementById("fEnd");
+
+  if (subActivityRows.length === 0) {
+    fActivity.readOnly = false;
+    fStart.readOnly = false;
+    fEnd.readOnly = false;
+    return;
+  }
+
+  fActivity.readOnly = true;
+  fStart.readOnly = true;
+  fEnd.readOnly = true;
+
+  const names = subActivityRows.map(r => r.name.trim()).filter(Boolean);
+  fActivity.value = names.join(" + ");
+
+  const dates = subActivityRows.flatMap(r => [r.start, r.end]).filter(Boolean).sort();
+  fStart.value = dates.length ? dates[0] : "";
+  fEnd.value = dates.length ? dates[dates.length - 1] : "";
 }
 
 /* ---------------------------------------------------------------------
@@ -864,6 +959,7 @@ function onDoRename() {
     status: it.status,
     startDate: it.startDate,
     endDate: it.endDate,
+    actualEndDate: it.actualEndDate,
     progress: it.progress,
     [field]: newValue
   }));
@@ -876,6 +972,104 @@ function onDoRename() {
 
   const jobId = ++saveJobCounter;
   const label = `Byt namn "${oldValue}" → "${newValue}" (${records.length} objekt)`;
+  saveJobs.set(jobId, { id: jobId, records, label, status: "pending", error: null });
+  runSaveJob(jobId);
+}
+
+/* ---------------------------------------------------------------------
+   Redigera markerade – ändra status/område/aktivitet/entreprenör och/eller
+   förskjut start-/slutdatum med N dagar på alla just nu markerade rader
+   (selectedItemKeys) i "Planerade objekt", i ett svep. Kompletterar
+   "Radera markerade" (som bara kan ta bort) - se Victors förfrågan
+   2026-09-17 om att kunna redigera flera markerade rader samtidigt, t.ex.
+   flytta nästa veckas objekt en vecka framåt. Återanvänder samma
+   optimistiska sparflöde (applyOptimisticRecords/saveJobs/runSaveJob) som
+   "Byt namn" ovan.
+   ------------------------------------------------------------------- */
+function onOpenBulkEditDialog() {
+  if (selectedItemKeys.size === 0) {
+    alert("Inga rader är markerade. Håll in Ctrl (⌘ på Mac) eller Shift och klicka på flera rader i listan för att markera dem.");
+    return;
+  }
+  document.getElementById("bulkEditStatus").value = "";
+  document.getElementById("bulkEditArea").value = "";
+  document.getElementById("bulkEditActivity").value = "";
+  document.getElementById("bulkEditContractor").value = "";
+  document.getElementById("bulkEditShiftDays").value = "";
+  document.getElementById("bulkEditMsg").innerText = "";
+  document.getElementById("bulkEditCount").innerText = selectedItemKeys.size;
+  toggle("bulkEditDialog", true);
+}
+
+/** Lägger till/drar ifrån ett antal dagar från ett ÅÅÅÅ-MM-DD-datum. Rör inte tomma datum. */
+function shiftDateBy(dateStr, days) {
+  if (!dateStr || !days) return dateStr;
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function onDoBulkEdit() {
+  const selectedItems = items.filter(it => selectedItemKeys.has(it.objectId));
+  const statusEl = document.getElementById("bulkEditMsg");
+  if (selectedItems.length === 0) {
+    statusEl.innerText = "Inga markerade rader kvar - stäng och markera på nytt.";
+    return;
+  }
+
+  const newStatus = document.getElementById("bulkEditStatus").value;
+  const newArea = document.getElementById("bulkEditArea").value.trim();
+  const newActivity = document.getElementById("bulkEditActivity").value.trim();
+  const newContractor = document.getElementById("bulkEditContractor").value.trim();
+  const shiftDaysRaw = document.getElementById("bulkEditShiftDays").value.trim();
+  const shiftDays = shiftDaysRaw ? Number(shiftDaysRaw) : 0;
+
+  if (shiftDaysRaw && !Number.isFinite(shiftDays)) {
+    statusEl.innerText = "Ogiltigt antal dagar.";
+    return;
+  }
+  if (!newStatus && !newArea && !newActivity && !newContractor && !shiftDays) {
+    statusEl.innerText = "Inget att ändra - fyll i minst ett fält.";
+    return;
+  }
+
+  const summary = [];
+  if (newStatus) summary.push(`status → "${STATUS_LABELS[newStatus] || newStatus}"`);
+  if (newArea) summary.push(`område → "${newArea}"`);
+  if (newActivity) summary.push(`aktivitet → "${newActivity}"`);
+  if (newContractor) summary.push(`entreprenör → "${newContractor}"`);
+  if (shiftDays) summary.push(`datum flyttas ${shiftDays > 0 ? "+" : ""}${shiftDays} dagar`);
+
+  if (!confirm(`Ändra ${summary.join(", ")} på ${selectedItems.length} markerade objekt?`)) return;
+
+  // Samma mönster som "Byt namn" (onDoRename): bygg fullständiga poster med
+  // bara de ifyllda fälten ändrade - saveItems() upsertar hela raden per
+  // id, så ofyllda fält måste skickas med oförändrade, annars skulle de
+  // nollställas.
+  const records = selectedItems.map(it => ({
+    id: it.id,
+    projectId: it.projectId,
+    modelId: it.modelId,
+    objectId: it.objectId,
+    objectName: it.objectName,
+    area: newArea || it.area,
+    activity: newActivity || it.activity,
+    contractor: newContractor || it.contractor,
+    status: newStatus || it.status,
+    startDate: shiftDateBy(it.startDate, shiftDays),
+    endDate: shiftDateBy(it.endDate, shiftDays),
+    actualEndDate: it.actualEndDate,
+    progress: it.progress
+  }));
+
+  applyOptimisticRecords(records);
+  toggle("bulkEditDialog", false);
+  buildFilterOptions();
+  renderItemList();
+  initTimelineRange();
+
+  const jobId = ++saveJobCounter;
+  const label = `Redigera markerade (${records.length} objekt)`;
   saveJobs.set(jobId, { id: jobId, records, label, status: "pending", error: null });
   runSaveJob(jobId);
 }
@@ -1751,13 +1945,30 @@ function updateItemsTruncatedWarning() {
  * gruppering (som bara organiserar, inte filtrerar bort rader). Delas
  * mellan renderItemList() och Excel-exporten så de alltid är i synk.
  */
+/**
+ * Sant om objektet "pågår idag" - dagens datum ligger mellan start- och
+ * slutdatum (inklusive), eller startdatum har passerat och inget slutdatum
+ * är satt (då räknas objektet som fortsatt pågående, samma synsätt som
+ * computeItemPhase() använder för fasen "pagaende" utan slutdatum). Objekt
+ * utan startdatum kan inte avgöras och räknas inte som "idag".
+ */
+function isActiveToday(it, todayStr) {
+  if (!it.startDate) return false;
+  if (it.startDate > todayStr) return false;
+  if (it.endDate) return it.endDate >= todayStr;
+  return true;
+}
+
 function getVisibleItems() {
   const term = (document.getElementById("itemSearch").value || "").toLowerCase().trim();
   const hideCompleted = document.getElementById("hideCompleted").checked;
   const showOnlyCompleted = document.getElementById("showOnlyCompleted").checked;
+  const todayOnly = document.getElementById("todayOnly").checked;
+  const todayStr = new Date().toISOString().slice(0, 10);
   return items.filter(it => {
     if (hideCompleted && it.status === "klar") return false;
     if (showOnlyCompleted && it.status !== "klar") return false;
+    if (todayOnly && !isActiveToday(it, todayStr)) return false;
     if (!term) return true;
     const haystack = [it.objectName, it.area, it.activity, it.contractor, it.objectId]
       .filter(Boolean).join(" ").toLowerCase();
@@ -1784,6 +1995,10 @@ function renderItemList() {
   if (selectedCountEl) selectedCountEl.innerText = selectedItemKeys.size;
   const btnDeleteSelected = document.getElementById("btnDeleteSelected");
   if (btnDeleteSelected) btnDeleteSelected.disabled = selectedItemKeys.size === 0;
+  const editSelectedCountEl = document.getElementById("editSelectedCount");
+  if (editSelectedCountEl) editSelectedCountEl.innerText = selectedItemKeys.size;
+  const btnEditSelected = document.getElementById("btnEditSelected");
+  if (btnEditSelected) btnEditSelected.disabled = selectedItemKeys.size === 0;
   const btnShowLabels = document.getElementById("btnShowLabels");
   if (btnShowLabels) btnShowLabels.disabled = selectedItemKeys.size === 0;
 

@@ -62,6 +62,14 @@
             <div class="autocomplete-list hidden" id="fActivityList"></div>
           </div>
         </label>
+        <div id="subActivitiesSection">
+          <div id="subActivitiesList"></div>
+          <button type="button" id="btnAddSubActivity">+ Lägg till delaktivitet</button>
+          <p class="hint">Valfritt: dela upp i flera delaktiviteter (t.ex. Formning, Gjutning) med egna datum. Så
+            länge minst en delaktivitet finns räknas Aktivitet, Startdatum och Slutdatum ovan automatiskt fram
+            (ihopslagna namn, tidigaste start, senaste slut) och går inte att ändra för hand - ta bort alla
+            delaktiviteter igen för att skriva dem manuellt.</p>
+        </div>
         <label>Entreprenör
           <div class="autocomplete-wrap">
             <input type="text" id="fContractor" placeholder="t.ex. NCC" autocomplete="off" />
@@ -125,12 +133,18 @@
         </label>
       </div>
       <div class="row">
+        <label class="switch" style="margin-bottom:6px;" title="Visar bara objekt som pågår idag (dagens datum ligger mellan start- och slutdatum, eller startdatum har passerat utan att slutdatum är satt) - går att kombinera med Dölj/Visa endast klarmarkerade.">
+          <input type="checkbox" id="todayOnly" /> Endast idag
+        </label>
+      </div>
+      <div class="row">
         <button id="btnCollapseAllGroups" title="Minimera alla grupper i listan">Minimera alla</button>
         <button id="btnSelectAllCoupled" title="Markera alla kopplade objekt i 3D-vyn">Markera alla</button>
         <button id="btnRenameValue" title="Byt namn på Område/Aktivitet/Entreprenör för alla objekt som har det, i ett svep">✏️ Byt namn</button>
       </div>
       <div id="itemList" class="item-list"></div>
       <div class="row">
+        <button id="btnEditSelected" title="Ändra status, entreprenör, område, aktivitet och/eller förskjut datum för alla markerade rader i ett svep" disabled>✏️ Redigera markerade (<span id="editSelectedCount">0</span>)</button>
         <button id="btnDeleteSelected" title="Radera planeringskopplingen för alla markerade rader" disabled>Radera markerade (<span id="selectedCount">0</span>)</button>
       </div>
       <div class="row">
@@ -267,6 +281,42 @@
       <div class="row">
         <button id="btnDoRename" class="primary">Byt namn (<span id="renameCount">0</span> objekt)</button>
         <button id="btnCloseRename">Avbryt</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Redigera markerade-dialog -->
+  <div id="bulkEditDialog" class="dialog hidden">
+    <div class="dialog-box">
+      <h2>Redigera markerade</h2>
+      <p class="hint">Ändrar de fält du fyller i på samtliga markerade rader i ett svep. Lämna ett fält tomt (eller "Behåll nuvarande" för status) för att inte ändra det.</p>
+      <label>Status
+        <select id="bulkEditStatus">
+          <option value="">Behåll nuvarande</option>
+          <option value="ej_planerad">Ej planerad</option>
+          <option value="planerad">Planerad</option>
+          <option value="pagaende">Pågående</option>
+          <option value="forsenad">Försenad</option>
+          <option value="klar">Klar</option>
+          <option value="pausad">Pausad</option>
+        </select>
+      </label>
+      <label>Område <span class="hint">(tomt = oförändrat)</span>
+        <input type="text" id="bulkEditArea" placeholder="Oförändrat" />
+      </label>
+      <label>Aktivitet <span class="hint">(tomt = oförändrat)</span>
+        <input type="text" id="bulkEditActivity" placeholder="Oförändrat" />
+      </label>
+      <label>Entreprenör <span class="hint">(tomt = oförändrat)</span>
+        <input type="text" id="bulkEditContractor" placeholder="Oförändrat" />
+      </label>
+      <label>Förskjut start-/slutdatum (dagar) <span class="hint">(negativt = tidigare, tomt/0 = oförändrat)</span>
+        <input type="number" id="bulkEditShiftDays" placeholder="0" step="1" />
+      </label>
+      <div id="bulkEditMsg" class="hint"></div>
+      <div class="row">
+        <button id="btnDoBulkEdit" class="primary">Spara (<span id="bulkEditCount">0</span> objekt)</button>
+        <button id="btnCloseBulkEdit">Avbryt</button>
       </div>
     </div>
   </div>
