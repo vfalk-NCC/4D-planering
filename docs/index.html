@@ -93,6 +93,15 @@
         <label>Slutdatum
           <input type="date" id="fEnd" />
         </label>
+        <div id="dependsOnSection">
+          <label>Beroenden <span class="hint">(objekt som måste vara klarmarkerade innan detta kan starta)</span>
+            <div class="autocomplete-wrap">
+              <input type="text" id="fDependsOnSearch" placeholder="Sök objekt att bero på..." autocomplete="off" />
+              <div class="autocomplete-list hidden" id="fDependsOnList"></div>
+            </div>
+          </label>
+          <div id="dependsOnChips" class="dependency-chips"></div>
+        </div>
         <div id="actualDatesSection">
           <button type="button" id="btnToggleActualDates">+ Verklig start/avslut (valfritt)</button>
           <div id="actualDatesFields" class="hidden">

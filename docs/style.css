@@ -333,6 +333,37 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
   height: 7px;
   margin-right: 4px;
 }
+.dependency-tag {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.dependency-tag.blocked { color: #e5484d; }
+.dependency-tag.ok { color: var(--muted); font-weight: 500; }
+
+/* Beroenden ("Koppla markering") - se renderDependencyPicker i app.js. */
+.dependency-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+.dependency-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #eef1f5;
+  border-radius: 12px;
+  padding: 3px 6px 3px 10px;
+  font-size: 12px;
+}
+.dependency-chip.blocked { background: #fdecea; color: #b3261e; }
+.dependency-chip button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px;
+}
 .item-row-top {
   display: flex;
   justify-content: space-between;

@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-17 10:00";
+const APP_VERSION = "2026-09-21 19:30";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -33,6 +33,7 @@ let collapsedPanels = new Set(); // vilka paneler (data-panel-id) som är minime
 let itemsTotalCount = null;  // totalt antal rader i plan_items.json, eller null om okänt
 let selectedItemKeys = new Set(); // markerade rader i "Planerade objekt" (Ctrl/Cmd- och Shift-klick), nyckel = objectId
 let subActivityRows = []; // { name, start, end } - se onAddSubActivity/recomputeAggregatesFromSubActivities
+let linkFormDependsOn = []; // [planItemId, ...] - objekt som måste vara klara innan detta kan starta, se onAddDependency
 let activitiesByItemId = new Map(); // plan_item_id -> [{ name, start, end }] - sparade delaktiviteter, se refreshActivities/saveActivitiesForItem
 let selectionAnchorKey = null; // ankarraden för Shift-klick (intervallmarkering) i objektlistan
 let currentCommentsItem = null; // vilket objekt kommentarsdialogen just nu visar
@@ -770,6 +771,9 @@ function fillLinkForm(existing) {
     : [];
   renderSubActivities();
   recomputeAggregatesFromSubActivities();
+
+  linkFormDependsOn = (existing && Array.isArray(existing.dependsOn)) ? [...existing.dependsOn] : [];
+  renderDependencyPicker(existing ? existing.id : null);
 }
 
 /** Fäller ut/in den valfria "Verklig start/avslut"-sektionen i formuläret. */
@@ -893,8 +897,128 @@ function buildLinkPayloadFromForm() {
     actualStartDate: document.getElementById("fActualStart").value || null,
     actualEndDate: document.getElementById("fActualEnd").value || null,
     progress: Number(document.getElementById("fProgress").value) || 0,
-    estimatedHours: document.getElementById("fEstimatedHours").value !== "" ? Number(document.getElementById("fEstimatedHours").value) : null
+    estimatedHours: document.getElementById("fEstimatedHours").value !== "" ? Number(document.getElementById("fEstimatedHours").value) : null,
+    dependsOn: [...linkFormDependsOn]
   };
+}
+
+/* ---------------------------------------------------------------------
+   Beroenden i "Koppla markering" - Victors förfrågan 2026-09-21: "det går
+   inte att säga 'gjutning av Pelare B kan inte börja förrän formning av
+   Pelare A är klar'". linkFormDependsOn håller de valda plan_item-id:na;
+   sökrutan filtrerar bland BEFINTLIGA sparade objekt (namn/område/
+   aktivitet), och en vald post visas som ett borttagningsbart "chip" under
+   sökrutan - samma UX-idé som delaktiviteterna (onAddSubActivity) fast för
+   en lista av redan existerande poster istället för fritextrader.
+   Cykelskydd: ett objekt kan aldrig (direkt eller indirekt) bero på sig
+   själv - se dependencyWouldCreateCycle, körs både i sökresultatets filter
+   (kan inte ens väljas) och en sista gång i onSaveLink som skyddsnät.
+   ------------------------------------------------------------------- */
+
+/** Bygger en Map<id, item> över samtliga inlästa objekt, för snabb uppslagning. */
+function itemsById() {
+  return new Map(items.map(it => [it.id, it]));
+}
+
+/**
+ * Liten "🔗 väntar på: ..."-tagg i objektlistan när minst ett av objektets
+ * beroenden ännu inte är klarmarkerat - gör det synligt direkt i listan
+ * (inte bara i formuläret) vad som blockerar ett objekt från att starta.
+ * Returnerar tom sträng om objektet inte har några ofärdiga beroenden.
+ */
+function dependencyStatusHtml(it) {
+  if (!Array.isArray(it.dependsOn) || it.dependsOn.length === 0) return "";
+  const byId = itemsById();
+  const unfinished = it.dependsOn
+    .map(id => byId.get(id))
+    .filter(dep => dep && dep.status !== "klar");
+  if (unfinished.length === 0) {
+    return `<br/><span class="dependency-tag ok" title="Alla beroenden är klarmarkerade">🔗 ${it.dependsOn.length} beroende${it.dependsOn.length === 1 ? "" : "n"}, alla klara</span>`;
+  }
+  const names = unfinished.map(d => d.objectName || d.objectId).join(", ");
+  return `<br/><span class="dependency-tag blocked" title="Väntar på: ${escapeHtml(names)}">⛔ Väntar på: ${escapeHtml(names)}</span>`;
+}
+
+/**
+ * Sant om `candidateId` (direkt eller indirekt via kedjan av beroenden)
+ * redan beror på `forItemId` - att då LÅTA forItemId bero på candidateId
+ * skulle skapa en cykel (t.ex. A beror på B, B beror på A). `forItemId` kan
+ * vara null för ett ännu osparat objekt (då kan ingen cykel uppstå från dess
+ * sida, men vi validerar ändå att candidateId inte beror på sig själv).
+ */
+function dependencyWouldCreateCycle(forItemId, candidateId, byId) {
+  if (!candidateId) return false;
+  if (forItemId && candidateId === forItemId) return true;
+  const seen = new Set();
+  const stack = [candidateId];
+  while (stack.length) {
+    const id = stack.pop();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const node = byId.get(id);
+    if (!node || !Array.isArray(node.dependsOn)) continue;
+    for (const depId of node.dependsOn) {
+      if (forItemId && depId === forItemId) return true;
+      if (!seen.has(depId)) stack.push(depId);
+    }
+  }
+  return false;
+}
+
+function renderDependencyPicker(forItemId) {
+  const chipsEl = document.getElementById("dependsOnChips");
+  const searchEl = document.getElementById("fDependsOnSearch");
+  const listEl = document.getElementById("fDependsOnList");
+  if (!chipsEl || !searchEl || !listEl) return;
+
+  const byId = itemsById();
+  chipsEl.innerHTML = linkFormDependsOn.length === 0
+    ? `<span class="hint">Inga beroenden valda.</span>`
+    : linkFormDependsOn.map(id => {
+        const dep = byId.get(id);
+        const label = dep ? (dep.objectName || dep.objectId) : "(borttaget objekt)";
+        const blocked = dep && dep.status !== "klar";
+        return `<span class="dependency-chip${blocked ? " blocked" : ""}" title="${blocked ? "Inte klarmarkerad ännu" : "Klar"}">
+          ${escapeHtml(label)}
+          <button type="button" data-action="remove-dependency" data-dep-id="${escapeHtml(id)}" title="Ta bort beroendet">✕</button>
+        </span>`;
+      }).join("");
+
+  chipsEl.querySelectorAll('[data-action="remove-dependency"]').forEach(btn => {
+    btn.onclick = () => {
+      linkFormDependsOn = linkFormDependsOn.filter(id => id !== btn.dataset.depId);
+      renderDependencyPicker(forItemId);
+    };
+  });
+
+  searchEl.oninput = () => {
+    const term = searchEl.value.toLowerCase().trim();
+    listEl.classList.toggle("hidden", term.length === 0);
+    if (term.length === 0) { listEl.innerHTML = ""; return; }
+    const matches = items.filter(it => {
+      if (it.id === forItemId) return false;
+      if (linkFormDependsOn.includes(it.id)) return false;
+      if (dependencyWouldCreateCycle(forItemId, it.id, byId)) return false;
+      const hay = `${it.objectName || ""} ${it.area || ""} ${it.activity || ""}`.toLowerCase();
+      return hay.includes(term);
+    }).slice(0, 20);
+    listEl.innerHTML = matches.length === 0
+      ? `<div class="autocomplete-item hint">Inga matchande objekt.</div>`
+      : matches.map(it => `
+          <div class="autocomplete-item" data-action="add-dependency" data-dep-id="${escapeHtml(it.id)}">
+            ${escapeHtml(it.objectName || it.objectId)} <span class="hint">${escapeHtml([it.area, it.activity].filter(Boolean).join(" · "))}</span>
+          </div>`).join("");
+    listEl.querySelectorAll('[data-action="add-dependency"]').forEach(row => {
+      row.onclick = () => {
+        linkFormDependsOn.push(row.dataset.depId);
+        searchEl.value = "";
+        listEl.classList.add("hidden");
+        listEl.innerHTML = "";
+        renderDependencyPicker(forItemId);
+      };
+    });
+  };
+  searchEl.onblur = () => { setTimeout(() => listEl.classList.add("hidden"), 150); };
 }
 
 function onSaveLink() {
@@ -915,6 +1039,18 @@ function onSaveLink() {
   const records = lastSelection.map(s => {
     const existing = items.find(it => it.modelId === s.modelId && it.objectId === s.objectId);
     return { id: existing ? existing.id : ghNewId(), projectId, modelId: s.modelId, objectId: s.objectId, ...payload };
+  });
+
+  // Skyddsnät (utöver filtreringen i renderDependencyPicker): om flera
+  // objekt kopplas samtidigt och samma beroendelista appliceras på alla,
+  // kan ett av dem råka få sig SJÄLV som beroende (dess eget nya id fanns
+  // förstås inte i listan när man valde beroenden). Plockas bort per post
+  // istället för att blockera hela sparningen.
+  const recordIds = new Set(records.map(r => r.id));
+  records.forEach(rec => {
+    if (Array.isArray(rec.dependsOn) && rec.dependsOn.includes(rec.id)) {
+      rec.dependsOn = rec.dependsOn.filter(id => id !== rec.id);
+    }
   });
 
   applyOptimisticRecords(records);
@@ -2306,13 +2442,14 @@ function renderItemList() {
       const phaseTagHtml = deviationLabel
         ? `<br/><span class="phase-tag" style="color:${statusColor[phase] || "#999"}"><i class="dot" style="background:${statusColor[phase] || "#999"}"></i>${escapeHtml(deviationLabel)}</span>`
         : "";
+      const dependencyTagHtml = dependencyStatusHtml(it);
       html += `
         <div class="item-row${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}" data-index="${idx}">
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
               <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}<br/>
               <span class="item-sub">${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span><br/>
-              <span class="item-dates">${escapeHtml(formatDateRange(it))} · Framdrift ${progress}%</span>${phaseTagHtml}
+              <span class="item-dates">${escapeHtml(formatDateRange(it))} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
             </span>
             <span class="badge" style="background:${statusColor[it.status] || "#999"};color:${contrastTextColor(statusColor[it.status] || "#999999")}">${statusLabel[it.status] || it.status}</span>
             <button class="comment-btn" data-action="comments" title="${commentTitle}">💬${commentBadge}</button>
@@ -2887,6 +3024,9 @@ function commentsPath() {
 function progressHistoryPath() {
   return `projects/${encodeURIComponent(projectId)}/plan_item_progress_history.json`;
 }
+function baselineHistoryPath() {
+  return `projects/${encodeURIComponent(projectId)}/plan_item_baseline_history.json`;
+}
 function activitiesPath() {
   return `projects/${encodeURIComponent(projectId)}/plan_item_activities.json`;
 }
@@ -2908,6 +3048,11 @@ function toRow(it) {
     actual_end_date: it.actualEndDate || null,
     progress: Number.isFinite(it.progress) ? Math.max(0, Math.min(100, Math.round(it.progress))) : 0,
     estimated_hours: Number.isFinite(it.estimatedHours) ? it.estimatedHours : null,
+    // Beroenden: id:n för andra plan_items-poster som måste vara klara
+    // innan detta objekt kan starta (Victors förfrågan 2026-09-21). Rena
+    // strängar (ghNewId()-UUID:er), aldrig objekt - se dependencyPickerRows
+    // /buildLinkPayloadFromForm.
+    depends_on: Array.isArray(it.dependsOn) ? [...new Set(it.dependsOn.filter(Boolean).map(String))] : [],
     updated_at: new Date().toISOString()
   };
 }
@@ -2929,6 +3074,7 @@ function fromRow(row) {
     actualEndDate: row.actual_end_date || null,
     progress: Number.isFinite(row.progress) ? row.progress : 0,
     estimatedHours: Number.isFinite(row.estimated_hours) ? row.estimated_hours : null,
+    dependsOn: Array.isArray(row.depends_on) ? row.depends_on.map(String) : [],
     updatedAt: row.updated_at
   };
 }
@@ -2983,6 +3129,44 @@ async function logProgressHistory(beforeRows, afterRows) {
 }
 
 /**
+ * Lägger till en historikrad i plan_item_baseline_history varje gång ett
+ * objekts start- eller slutdatum ändras (inklusive första gången det sätts,
+ * på en ny post) - Victors förfrågan 2026-09-21: "Ingen baseline - du ser
+ * 'planerat vs verkligt' per objekt, men inte hur PLANEN själv har ändrats
+ * över tid". Till skillnad från logProgressHistory (som bara loggar
+ * NUVARANDE progress/status) loggar den här hela tidsserien av
+ * start_date/end_date-par, så dashboarden kan visa "ursprungligen vecka 12,
+ * flyttat till vecka 15 i mars" genom att jämföra första och sista raden per
+ * plan_item_id. Körs som en del av saveItems, mot samma "före"-lista som
+ * upsert-passet och logProgressHistory läser - se samma kommentar där om
+ * varför det görs mot `before`/`afterRows` snarare än en egen extra läsning.
+ */
+async function logBaselineHistory(beforeRows, afterRows) {
+  const beforeById = new Map(beforeRows.map(r => [r.id, r]));
+  const toLog = [];
+  afterRows.forEach(row => {
+    const prev = beforeById.get(row.id);
+    if (!prev || prev.start_date !== row.start_date || prev.end_date !== row.end_date) {
+      toLog.push({
+        id: ghNewId(),
+        plan_item_id: row.id,
+        project_id: row.project_id,
+        start_date: row.start_date,
+        end_date: row.end_date,
+        recorded_at: new Date().toISOString()
+      });
+    }
+  });
+  if (toLog.length === 0) return;
+  await ghWriteJSON(
+    settings.githubToken,
+    baselineHistoryPath(),
+    (arr) => [...arr, ...toLog],
+    "Logga baseline-historik"
+  );
+}
+
+/**
  * Skapar/uppdaterar flera poster i ett svep (upsert på project_id+object_id),
  * och loggar historik.
  *
@@ -3027,7 +3211,8 @@ async function saveItems(records) {
       6,
       { data: before, sha }
     ),
-    logProgressHistory(before, incoming)
+    logProgressHistory(before, incoming),
+    logBaselineHistory(before, incoming)
   ]);
 
   return after;
@@ -3041,13 +3226,28 @@ async function deleteItem(item) {
   await ghWriteJSON(
     settings.githubToken,
     itemsPath(),
-    (arr) => arr.filter(r => (item.id ? r.id !== item.id : !(r.project_id === item.projectId && r.object_id === String(item.objectId)))),
+    (arr) => arr
+      .filter(r => (item.id ? r.id !== item.id : !(r.project_id === item.projectId && r.object_id === String(item.objectId))))
+      .map(r => stripDependencyRef(r, item.id)),
     "Radera planeringspost"
   );
   if (item.id) {
     await deleteCommentsForItems([item.id]);
     await deleteActivitiesForItems([item.id]);
   }
+}
+
+/**
+ * Städar bort en raderad posts id ur andra posters depends_on - motsvarar
+ * FK on delete-hanteringen för kommentarer/delaktiviteter ovan, fast för
+ * beroenden (annars skulle en kvarvarande post kunna peka på ett id som
+ * inte längre finns, och aldrig gå att markera som "klar att starta").
+ * Ingen effekt (returnerar `row` oförändrad) om raden inte har något
+ * beroende till `deletedId`.
+ */
+function stripDependencyRef(row, deletedId) {
+  if (!deletedId || !Array.isArray(row.depends_on) || !row.depends_on.includes(deletedId)) return row;
+  return { ...row, depends_on: row.depends_on.filter(id => id !== deletedId) };
 }
 
 /**
@@ -3069,10 +3269,15 @@ async function deleteItems(itemsToDelete, onProgress) {
     .filter(r => keysToDelete.has(`${r.project_id}::${r.object_id}`))
     .map(r => r.id);
 
+  const removedIdSet = new Set(removedIds);
   await ghWriteJSON(
     settings.githubToken,
     itemsPath(),
-    (arr) => arr.filter(r => !keysToDelete.has(`${r.project_id}::${r.object_id}`)),
+    (arr) => arr
+      .filter(r => !keysToDelete.has(`${r.project_id}::${r.object_id}`))
+      .map(r => (Array.isArray(r.depends_on) && r.depends_on.some(id => removedIdSet.has(id)))
+        ? { ...r, depends_on: r.depends_on.filter(id => !removedIdSet.has(id)) }
+        : r),
     "Radera flera planeringsposter"
   );
   await deleteCommentsForItems(removedIds);
