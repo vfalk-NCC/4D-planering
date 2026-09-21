@@ -258,9 +258,9 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
 #itemSearch { margin-bottom: 6px; }
 
 .item-list {
-  height: 220px;
+  height: 660px;
   min-height: 90px;
-  max-height: 70vh;
+  max-height: 85vh;
   overflow: auto;
   resize: vertical;
 }
