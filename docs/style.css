@@ -461,6 +461,24 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
   resize: both;
 }
 
+/* Föreslå beroenden-dialogen - lite bredare än standard så förslagsraderna
+   (objektnamn + aktivitet på båda sidor av pilen) får plats utan att
+   radbryta för mycket. */
+#suggestDepsDialog .dialog-box { width: 480px; max-width: 95vw; }
+.suggest-dep-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.suggest-dep-row:last-child { border-bottom: none; }
+.suggest-dep-text { flex: 1; line-height: 1.4; }
+.suggest-dep-text .arrow { color: var(--muted); margin: 0 4px; }
+.suggest-dep-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+.suggest-dep-actions button { font-size: 11px; padding: 3px 7px; }
+
 /* Lösenordsgrind - visas innan appen laddas, se ACCESS_PASSWORD i app.js.
    Enbart en klientsidesspärr, ingen riktig säkerhet - koden och all data
    är fortsatt synlig för den som öppnar utvecklarverktygen. */

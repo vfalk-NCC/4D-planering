@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-21 19:30";
+const APP_VERSION = "2026-09-21 20:30";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -366,6 +366,10 @@ function bindUI() {
   document.getElementById("renameOldValue").onchange = updateRenameCount;
   document.getElementById("btnDoRename").onclick = onDoRename;
   document.getElementById("btnCloseRename").onclick = () => toggle("renameDialog", false);
+
+  document.getElementById("btnSuggestDeps").onclick = onOpenSuggestDepsDialog;
+  document.getElementById("btnAcceptAllSuggestedDeps").onclick = onAcceptAllSuggestedDeps;
+  document.getElementById("btnCloseSuggestDeps").onclick = () => toggle("suggestDepsDialog", false);
 
   document.getElementById("btnEditSelected").onclick = onOpenBulkEditDialog;
   document.getElementById("btnDoBulkEdit").onclick = onDoBulkEdit;
@@ -1019,6 +1023,194 @@ function renderDependencyPicker(forItemId) {
     });
   };
   searchEl.onblur = () => { setTimeout(() => listEl.classList.add("hidden"), 150); };
+}
+
+/* ---------------------------------------------------------------------
+   Föreslå beroenden - Victors förfrågan 2026-09-21 (uppföljning till
+   beroende-funktionen ovan): "kan vi göra något av AI-alternativen gratis,
+   utan att behöva skapa konto någonstans?". Ingen riktig AI/språkmodell
+   behövs för det här - en ren regelmotor räcker: leta upp objekt i samma
+   OMRÅDE med samma NAMN (dvs. sannolikt samma fysiska plats/element,
+   bara planerat i flera separata rader/aktiviteter) och föreslå ett
+   beroende mellan dem om båda aktiviteterna känns igen i en vanlig
+   byggordning (ACTIVITY_SEQUENCE_KEYWORDS nedan). Helt lokalt, gratis,
+   inget nytt konto eller extern tjänst - bara mönstermatchning mot
+   redan inskriven data.
+
+   Medvetet konservativt: föreslår BARA par där båda aktiviteterna känns
+   igen i listan (annars för många falska/oklara förslag) och där det
+   ännu inte finns någon beroenderelation mellan dem. Victor granskar och
+   godkänner varje förslag för hand (eller "Lägg till alla") - inget
+   sparas automatiskt utan ett klick.
+   ------------------------------------------------------------------- */
+
+// Ordnad efter typisk byggordning - lägg gärna till fler synonymer vid
+// behov. Ju tidigare i listan, desto lägre `rank` (= sker tidigare).
+const ACTIVITY_SEQUENCE_KEYWORDS = [
+  { rank: 1, keywords: ["formsättning", "formsattning", "formning", "form"] },
+  { rank: 2, keywords: ["armering", "armer"] },
+  { rank: 3, keywords: ["gjutning", "gjut"] },
+  { rank: 4, keywords: ["formrivning", "rivning av form", "riv"] },
+  { rank: 5, keywords: ["efterbehandling", "efterarbete", "justering", "lagning"] },
+  { rank: 6, keywords: ["montage", "montering", "resning"] },
+  { rank: 7, keywords: ["isolering"] },
+  { rank: 8, keywords: ["tätskikt", "tatskikt", "ytskikt", "beläggning", "belaggning", "målning", "malning"] },
+  { rank: 9, keywords: ["besiktning", "kontroll", "provning", "injustering"] }
+];
+
+/** Returnerar den kända byggordnings-"rank" för en aktivitetstext, eller null om inget kändes igen. */
+function activityRank(activityText) {
+  const text = (activityText || "").toLowerCase();
+  if (!text) return null;
+  for (const group of ACTIVITY_SEQUENCE_KEYWORDS) {
+    if (group.keywords.some(kw => text.includes(kw))) return group.rank;
+  }
+  return null;
+}
+
+function normalizeGroupKey(str) {
+  return (str || "").trim().toLowerCase();
+}
+
+/**
+ * Många objekt namnges enligt mönstret "<Aktivitet> <Namn>" (t.ex.
+ * "Formning Pelare A", "Gjutning Pelare A" - se test_dependencies.js) -
+ * dvs. namnet på den FYSISKA platsen/elementet är detsamma, bara med
+ * aktiviteten som prefix/suffix. Grupperingen nedan ska känna igen dessa
+ * som SAMMA plats, annars matchar den bara identiska namn (och missar
+ * praktiskt taget alla verkliga fall). Strippar bort ett exakt
+ * förekommande aktivitetsnamn (om det finns i kanten av namnet) innan
+ * gruppering - rör inte namnet om aktiviteten inte hittas där.
+ */
+function baseNameForGrouping(it) {
+  let name = (it.objectName || "").trim();
+  const act = (it.activity || "").trim();
+  if (act) {
+    const lowerName = name.toLowerCase();
+    const lowerAct = act.toLowerCase();
+    if (lowerName.startsWith(lowerAct)) name = name.slice(act.length);
+    else if (lowerName.endsWith(lowerAct)) name = name.slice(0, name.length - act.length);
+  }
+  return name.replace(/^[\s\-:–—]+|[\s\-:–—]+$/g, "");
+}
+
+/**
+ * Scannar `itemsList` (samma form som globala `items`) och returnerar en
+ * lista med föreslagna beroenden: [{ fromId, toId, fromLabel, toLabel,
+ * groupLabel }, ...]. `toId` (efterföljaren) skulle enligt förslaget bero
+ * på `fromId` (föregångaren). Rena objekt utan område/namn ingår aldrig -
+ * grupperingen bygger just på att flera rader delar (område, namn).
+ */
+function computeDependencySuggestions(itemsList) {
+  const byId = buildIdIndex(itemsList);
+  const groups = new Map(); // "område::basnamn" -> [items]
+  itemsList.forEach(it => {
+    const baseName = normalizeGroupKey(baseNameForGrouping(it));
+    if (!baseName) return; // inget namn - inget att gruppera på
+    const key = `${normalizeGroupKey(it.area)}::${baseName}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(it);
+  });
+
+  const suggestions = [];
+  groups.forEach(groupItems => {
+    if (groupItems.length < 2) return;
+    const ranked = groupItems
+      .map(it => ({ it, rank: activityRank(it.activity) }))
+      .filter(x => x.rank !== null)
+      .sort((a, b) => a.rank - b.rank);
+    for (let i = 0; i < ranked.length - 1; i++) {
+      const from = ranked[i].it;
+      // Hoppa över andra objekt med SAMMA rank som `from` (oklar ordning
+      // sinsemellan) - leta upp nästa objekt med en HÖGRE rank istället.
+      let j = i + 1;
+      while (j < ranked.length && ranked[j].rank === ranked[i].rank) j++;
+      if (j >= ranked.length) continue;
+      const to = ranked[j].it;
+      if (Array.isArray(to.dependsOn) && to.dependsOn.includes(from.id)) continue; // redan kopplat
+      if (dependencyWouldCreateCycle(to.id, from.id, byId)) continue;
+      suggestions.push({
+        fromId: from.id,
+        toId: to.id,
+        fromLabel: `${from.objectName || from.objectId}${from.activity ? " (" + from.activity + ")" : ""}`,
+        toLabel: `${to.objectName || to.objectId}${to.activity ? " (" + to.activity + ")" : ""}`,
+        groupLabel: from.area || "(inget område)"
+      });
+    }
+  });
+  return suggestions;
+}
+
+function buildIdIndex(itemsList) {
+  return new Map(itemsList.map(it => [it.id, it]));
+}
+
+let dependencySuggestions = [];
+
+function onOpenSuggestDepsDialog() {
+  dependencySuggestions = computeDependencySuggestions(items);
+  renderDependencySuggestions();
+  toggle("suggestDepsDialog", true);
+}
+
+function renderDependencySuggestions() {
+  const el = document.getElementById("suggestDepsList");
+  const btnAll = document.getElementById("btnAcceptAllSuggestedDeps");
+  if (!el) return;
+  if (dependencySuggestions.length === 0) {
+    el.innerHTML = `<p class="hint">Inga nya förslag hittades just nu - antingen är alla igenkända objekt redan kopplade, eller så saknas objekt i samma område med samma namn och igenkända aktiviteter (${ACTIVITY_SEQUENCE_KEYWORDS.map(g => g.keywords[0]).join(", ")}).</p>`;
+    if (btnAll) btnAll.disabled = true;
+    return;
+  }
+  if (btnAll) btnAll.disabled = false;
+  el.innerHTML = dependencySuggestions.map((s, i) => `
+    <div class="suggest-dep-row" data-index="${i}">
+      <span class="suggest-dep-text">
+        <span class="hint">${escapeHtml(s.groupLabel)}</span><br/>
+        ${escapeHtml(s.fromLabel)} <span class="arrow">→ måste vara klar innan →</span> ${escapeHtml(s.toLabel)}
+      </span>
+      <span class="suggest-dep-actions">
+        <button type="button" data-action="accept-suggestion" title="Lägg till beroendet">✓ Lägg till</button>
+        <button type="button" data-action="dismiss-suggestion" title="Ignorera det här förslaget">✕ Ignorera</button>
+      </span>
+    </div>`).join("");
+
+  el.querySelectorAll('[data-action="accept-suggestion"]').forEach(btn => {
+    btn.onclick = () => {
+      const i = Number(btn.closest(".suggest-dep-row").dataset.index);
+      acceptDependencySuggestion(dependencySuggestions[i]);
+      dependencySuggestions.splice(i, 1);
+      renderDependencySuggestions();
+    };
+  });
+  el.querySelectorAll('[data-action="dismiss-suggestion"]').forEach(btn => {
+    btn.onclick = () => {
+      const i = Number(btn.closest(".suggest-dep-row").dataset.index);
+      dependencySuggestions.splice(i, 1);
+      renderDependencySuggestions();
+    };
+  });
+}
+
+/** Sparar ETT föreslaget beroende, via samma optimistiska sparflöde som "Koppla markering"/"Byt namn". */
+function acceptDependencySuggestion(s) {
+  const toItem = items.find(it => it.id === s.toId);
+  if (!toItem) return;
+  const dependsOn = Array.from(new Set([...(toItem.dependsOn || []), s.fromId]));
+  const record = { ...toItem, dependsOn };
+  applyOptimisticRecords([record]);
+  renderItemList();
+
+  const jobId = ++saveJobCounter;
+  saveJobs.set(jobId, { id: jobId, records: [record], label: toItem.objectName || toItem.objectId, status: "pending", error: null });
+  runSaveJob(jobId);
+}
+
+function onAcceptAllSuggestedDeps() {
+  const toSave = dependencySuggestions.slice();
+  dependencySuggestions = [];
+  renderDependencySuggestions();
+  toSave.forEach(s => acceptDependencySuggestion(s));
 }
 
 function onSaveLink() {

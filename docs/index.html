@@ -168,6 +168,7 @@
         <button id="btnCollapseAllGroups" title="Minimera alla grupper i listan">Minimera alla</button>
         <button id="btnSelectAllCoupled" title="Markera alla kopplade objekt i 3D-vyn">Markera alla</button>
         <button id="btnRenameValue" title="Byt namn på Område/Aktivitet/Entreprenör för alla objekt som har det, i ett svep">✏️ Byt namn</button>
+        <button id="btnSuggestDeps" title="Föreslår beroenden mellan objekt i samma område med samma namn, baserat på en vanlig byggordning (t.ex. Formning → Armering → Gjutning) - helt regelbaserat, ingen AI/extern tjänst.">🔗 Föreslå beroenden</button>
       </div>
       <div id="itemList" class="item-list"></div>
       <div class="row">
@@ -332,6 +333,23 @@
       <div class="row">
         <button id="btnDoRename" class="primary">Byt namn (<span id="renameCount">0</span> objekt)</button>
         <button id="btnCloseRename">Avbryt</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Föreslå beroenden-dialog - Victors förfrågan 2026-09-21 om ett gratis,
+       regelbaserat alternativ (ingen AI/inget nytt konto): scannar objekt i
+       samma område med samma namn och föreslår beroenden mellan dem baserat
+       på en vanlig byggordning (Formning -> Armering -> Gjutning -> ...),
+       se ACTIVITY_SEQUENCE_KEYWORDS/computeDependencySuggestions i app.js. -->
+  <div id="suggestDepsDialog" class="dialog hidden">
+    <div class="dialog-box">
+      <h2>Föreslå beroenden</h2>
+      <p class="hint">Hittar objekt i samma område med samma namn men olika aktiviteter, och föreslår ett beroende mellan dem om aktiviteterna känns igen i en vanlig byggordning (t.ex. Formning → Armering → Gjutning → Rivning av form → Efterbehandling). Helt regelbaserat - ingen AI, inget nytt konto. Granska varje förslag innan du lägger till det.</p>
+      <div id="suggestDepsList"></div>
+      <div class="row">
+        <button id="btnAcceptAllSuggestedDeps" class="primary">Lägg till alla</button>
+        <button id="btnCloseSuggestDeps">Stäng</button>
       </div>
     </div>
   </div>
