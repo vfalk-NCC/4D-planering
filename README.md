@@ -152,6 +152,19 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   använder underaktiviteter – summeras automatiskt från delaktiviteternas
   egna timmar-fält och låses (samma mönster som Aktivitet/Start/Slut).
   Driver panelen "Resurstimmar (planerat)" i 4D-dashboard, se dess README.
+- **Beroenden** (Victors förfrågan 2026-09-21): i "Koppla markering" finns
+  nu ett fält "Beroenden" – sök upp och klicka ett eller flera andra
+  sparade objekt som måste vara klarmarkerade innan det här kan starta
+  (t.ex. "Gjutning Pelare B" beror på "Formning Pelare A"), valda
+  beroenden visas som borttagningsbara chips. Ett objekt kan inte väljas
+  som beroende åt sig själv eller åt något som (direkt eller indirekt)
+  redan beror på det – cykelskyddet filtrerar bort sådana förslag redan i
+  sökrutan. Objektlistan visar direkt "⛔ Väntar på: ..." när ett beroende
+  inte är klarmarkerat. Att radera ett objekt städar automatiskt bort det
+  ur andra objekts beroendelistor. Sparas som `depends_on` (en array av
+  id:n) på objektet – 4D-dashboard visar konsekvenserna (risk-flagga,
+  beroendekedja, "vad blockerar det här") i sitt Gantt-schema, se dess
+  README.
 - **Synliga block**: i inställningarna (kugghjulet) kan du bocka ur vilka
   block ("Koppla markering", "Planerade objekt", "Tidslinje", "Filter",
   "Excel import/export", "Hitta objekt via koordinat") som ska visas.
@@ -215,6 +228,7 @@ för hur åtkomsten till `4D-data` sätts upp.
 | status      | ej_planerad / planerad / pagaende / forsenad / klar / pausad |
 | startDate   | Planerat startdatum (ÅÅÅÅ-MM-DD)                 |
 | endDate     | Planerat slutdatum (ÅÅÅÅ-MM-DD)                  |
+| dependsOn   | Id:n för andra objekt som måste vara klarmarkerade innan detta kan starta (`depends_on` i lagringen) |
 
 Tidslinjens tre färger räknas fram automatiskt utifrån valt datum jämfört
 med start-/slutdatum – de är alltså skilda från fältet "status", som är
