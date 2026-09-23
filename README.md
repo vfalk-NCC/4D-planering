@@ -27,6 +27,11 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   visas i "Planerade objekt" – dvs. sökningen och ev. "Dölj
   klarmarkerade" – men inte grupperingen, som bara organiserar listan.
   Filen namnges `4D-planering-ÅÅÅÅ-MM-DD.xlsx`.
+- **4-veckorsplanering (Excel)**: en andra, egen import längre ner i samma
+  panel, för att synka in en redan befintlig, detaljerad Excel-planering
+  (en flik per WBS-område, rubriker, elementkoder med faser) rakt av –
+  utan att den behöver skrivas om till den enkla ObjektID-tabellen ovan
+  först. Se eget avsnitt nedan.
 - **Hitta objekt via koordinat**: markera en grupp kandidatobjekt i 3D-vyn
   (t.ex. alla fundament på en yta) och ange en X/Y-koordinat (i meter) – 
   extensionen hittar och markerar det objekt i markeringen som ligger
@@ -297,6 +302,44 @@ och skriver till `4D-data`-repot, t.ex. ett schemalagt skript som läser
 filen från en delad mapp (SharePoint/OneDrive) eller från Trimble
 Connects egna filer via dess REST-API. Kryssrutan "Bevaka fil för
 automatisk uppdatering" i gränssnittet är en platshållare för detta.
+
+## 4-veckorsplanering (Excel) – detaljerad import
+
+En egen import (skild från "Excel-import/export" ovan) för att läsa in en
+redan befintlig, detaljerad flerveckorsplanering rakt av – tolkningen
+(`docs/plan-excel-parser.js`) förväntar sig samma struktur som Victors
+egen produktionsfil: en flik per WBS-område (t.ex. `742 - SIKTHALL`),
+rubrikgrupper (t.ex. "Linje J") och därunder antingen en elementkod med
+flera faser (t.ex. "M30 - Fundament", "M30 - Formning", ...) eller en
+fristående aktivitetsrad. Kolumnerna Start-/slutdatum, Verklig
+start/slut och Framdrift (%) läses; Typ/DP/BLOCK/ÄTA/Helgarbete och
+filtertaggen importeras medvetet inte (Victors beslut 2026-09-22).
+
+- **Elementkoder blir ETT objekt**: en elementkod (t.ex. "M30") blir en
+  enda planeringspost du kopplar en gång till 3D-modellen, med faserna
+  sparade som delaktiviteter under den. Rader utan igenkänd elementkod
+  blir egna, fristående objekt.
+- **Status räknas ut automatiskt** ur framdrift/datum (100 % → Klar,
+  dagens datum inom intervallet → Pågående, slutdatum passerat utan att
+  vara klar → Försenad, annars → Planerad) – filen har ingen egen
+  statuskolumn.
+- **Koppling i efterhand**: nyimporterade objekt har ingen 3D-koppling än
+  (taggen "◇ Ej kopplad" i listan). Klicka 🔗-knappen på en sådan rad och
+  klicka sedan objektet i 3D-modellen – kopplingen sparas direkt, utan
+  att röra något annat på posten (motsatt ordning mot "Koppla markering"
+  ovan, som utgår från en 3D-markering).
+- **Säker omimport**: varje importerad post får en dold, radnummer-
+  oberoende nyckel (flik + rubrik + elementkod/aktivitetstext). En ny
+  import av en uppdaterad Excel-fil matchas mot den nyckeln – datum,
+  framdrift och faser uppdateras, men en redan gjord 3D-koppling och
+  eventuella kommentarer rörs inte. En förhandsgranskning (nya/
+  uppdaterade objekt, samt en varning om tidigare importerade objekt
+  saknas i den nya filen) visas alltid innan något sparas skarpt.
+  **Begränsning**: byts en rubrik eller elementkod till ett nytt namn i
+  Excel mellan två importer tolkas den som ett helt nytt objekt – den
+  gamla postens koppling/kommentarer "ärvs" inte automatiskt.
+- Källfilen (`.xlsx`/`.xlsm`) ändras aldrig – importen är skrivskyddad
+  mot den och läser bara ut data.
 
 ## Viktiga begränsningar att känna till
 
