@@ -91,6 +91,12 @@ header button { background: none; border: none; font-size: 16px; cursor: pointer
 /* Dolt via "Synliga block" i Inställningar - till skillnad från
    minimering (.collapsed) är blocket helt borta, inklusive rubriken. */
 .panel.panel-hidden { display: none !important; }
+.panel-divider { border: none; border-top: 1px solid var(--border); margin: 14px 0 10px; }
+.panel h3 {
+  font-size: 12px;
+  margin: 0 0 6px 0;
+  color: var(--text);
+}
 
 .panel-visibility-list {
   display: flex;
@@ -257,6 +263,27 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
 
 #itemSearch { margin-bottom: 6px; }
 
+/* "Koppla till markering" - se armCoupleMode i app.js. */
+.couple-mode-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #ede9fe;
+  border: 1px solid #c4b5fd;
+  color: #5b21b6;
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.couple-mode-banner button {
+  flex: 0 0 auto;
+  font-size: 10px;
+  padding: 2px 8px;
+}
+
 .item-list {
   height: 660px;
   min-height: 90px;
@@ -320,6 +347,20 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
   margin-left: 6px;
   font-weight: 700;
   cursor: help;
+}
+.uncoupled-tag {
+  font-size: 9px;
+  color: #6d28d9;
+  margin-left: 6px;
+  font-weight: 700;
+  cursor: help;
+}
+.item-row .couple-btn {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
 }
 .phase-tag {
   display: inline-flex;
@@ -465,6 +506,26 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
    (objektnamn + aktivitet på båda sidor av pilen) får plats utan att
    radbryta för mycket. */
 #suggestDepsDialog .dialog-box { width: 480px; max-width: 95vw; }
+
+/* Förhandsgranskning av 4-veckorsplanering-import - se
+   renderPlanImportPreview i app.js. */
+#planImportPreviewDialog .dialog-box { width: 520px; max-width: 95vw; }
+.plan-import-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  background: #f4f6f9;
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin: 8px 0;
+}
+.plan-import-sample {
+  font-size: 11px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.plan-import-sample:last-child { border-bottom: none; }
 .suggest-dep-row {
   display: flex;
   align-items: center;

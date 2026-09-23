@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-21 20:30";
+const APP_VERSION = "2026-09-23 22:45";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -39,6 +39,17 @@ let selectionAnchorKey = null; // ankarraden för Shift-klick (intervallmarkerin
 let currentCommentsItem = null; // vilket objekt kommentarsdialogen just nu visar
 let currentComments = [];       // kommentarer (platt lista, inkl. svar) för currentCommentsItem
 let commentCounts = new Map();  // plan_item_id -> antal kommentarer (för 💬-badgen i listan)
+
+// "Koppla till markering" (omvänd koppling) för objekt importerade från
+// 4-veckorsplaneringen utan 3D-koppling ännu - se armCoupleMode/
+// onWorkspaceEvent/coupleItemToModelObject. Objektet (inte bara dess id) hålls
+// kvar direkt här så att skrivningen inte kan hamna fel om items hunnit laddas
+// om (t.ex. via en bakgrundssparning) medan man väntar på 3D-markeringen.
+let pendingCoupleItem = null;
+
+// Senaste inlästa (men ännu inte skarpt sparade) 4-veckorsplanering-importen
+// - se onImportPlanExcel/buildPlanImportDiff/onConfirmPlanImport.
+let planImportDiff = null;
 
 // Tidslinjen ska alltid gå att dra minst fram till/bakåt till de här
 // datumen, oavsett vilka start-/slutdatum som faktiskt är inplanerade
@@ -247,6 +258,14 @@ function onWorkspaceEvent(event, data) {
     // markeringsräknare, och en extra synk här skulle bara riskera att t.ex.
     // fälla ut en grupp man aktivt valde att hålla hopfälld.
     if (ignoreModelSelectionEvents > 0) return;
+    // "Koppla till markering" väntar på NÄSTA 3D-markering för att koppla
+    // ihop den med ett specifikt, redan valt objekt (se armCoupleMode) -
+    // hanteras helt separat från den vanliga list-synken nedan, som annars
+    // bara skulle försöka matcha markeringen mot BEFINTLIGA kopplingar.
+    if (pendingCoupleItem) {
+      handleCoupleModeSelection();
+      return;
+    }
     syncSelectionFromModel();
   }
 }
@@ -341,6 +360,10 @@ function bindUI() {
 
   document.getElementById("btnImportExcel").onclick = onImportExcel;
   document.getElementById("btnExportExcel").onclick = onExportExcel;
+  document.getElementById("btnImportPlanExcel").onclick = onImportPlanExcel;
+  document.getElementById("btnConfirmPlanImport").onclick = onConfirmPlanImport;
+  document.getElementById("btnCancelPlanImport").onclick = () => { planImportDiff = null; toggle("planImportPreviewDialog", false); };
+  document.getElementById("btnCancelCoupleMode").onclick = cancelCoupleMode;
 
   document.getElementById("itemSearch").oninput = () => renderItemList();
   document.getElementById("groupBy").onchange = () => renderItemList();
@@ -707,6 +730,116 @@ function expandGroupsForKeys(keys) {
 function scrollSelectedRowIntoView() {
   const row = document.querySelector("#itemList .item-row.selected");
   if (row) row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+/* ---------------------------------------------------------------------
+   "Koppla till markering" - omvänd koppling för objekt importerade från
+   4-veckorsplaneringen (se plan-excel-parser.js/onImportPlanExcel) som
+   ännu inte har någon 3D-koppling (modelId null, "◇ Ej kopplad"-taggen i
+   listan). Till skillnad från "Koppla markering" (som utgår från en 3D-
+   markering och skapar/uppdaterar en post) utgår den HÄR från en redan
+   vald post i listan och väntar på NÄSTA 3D-markering - Victors egen
+   beskrivning: "få in aktiviteterna som de är upplagda i Excel för att
+   sedan koppla dem manuellt i Trimble Connect".
+   ------------------------------------------------------------------- */
+
+/** Klick på 🔗-knappen på en ej kopplad rad. */
+function armCoupleMode(item) {
+  pendingCoupleItem = item;
+  setCoupleModeBanner(`Markera objektet i 3D-modellen som ska kopplas till "${item.objectName || item.id}"...`);
+}
+
+function cancelCoupleMode() {
+  pendingCoupleItem = null;
+  setCoupleModeBanner(null);
+}
+
+function setCoupleModeBanner(text) {
+  const el = document.getElementById("coupleModeBanner");
+  if (!el) return;
+  if (!text) {
+    el.classList.add("hidden");
+    return;
+  }
+  document.getElementById("coupleModeText").innerText = text;
+  el.classList.remove("hidden");
+}
+
+/**
+ * Körs istället för syncSelectionFromModel() när en post väntar på att
+ * kopplas (pendingCoupleItem). Tar det FÖRSTA markerade 3D-objektet (om
+ * flera råkar markeras samtidigt) och skriver dess modell-/objekt-ID på
+ * just den väntande posten via coupleItemToModelObject - rör inget annat
+ * på posten. En tom markering (t.ex. en avmarkering) lämnar kopplingsläget
+ * aktivt istället för att avbryta det, så ett klick i tomma luften innan
+ * man hunnit klicka rätt objekt inte tvingar en börja om.
+ */
+async function handleCoupleModeSelection() {
+  const item = pendingCoupleItem;
+  if (!item) return;
+  try {
+    const sel = await API.viewer.getSelection();
+    let modelId = null, objectId = null;
+    for (const modelSel of sel || []) {
+      if (!modelSel.objectRuntimeIds || modelSel.objectRuntimeIds.length === 0) continue;
+      const externalIds = await API.viewer.convertToObjectIds(modelSel.modelId, modelSel.objectRuntimeIds);
+      if (externalIds.length > 0) {
+        modelId = modelSel.modelId;
+        objectId = externalIds[0];
+        break;
+      }
+    }
+    if (!modelId || !objectId) return;
+
+    pendingCoupleItem = null;
+    setCoupleModeBanner(null);
+    document.getElementById("selCount").innerText = 1;
+    await coupleItemToModelObject(item, modelId, objectId);
+  } catch (e) {
+    console.error("Kunde inte koppla till det markerade objektet:", e);
+    alert("Kunde inte koppla till det markerade objektet: " + e.message);
+  }
+}
+
+/**
+ * Skriver 3D-kopplingen (model_id/object_id) på EN befintlig post, utan att
+ * röra något annat fält på den. Matchar uttryckligen på id (via
+ * ghUpsertOne, se github-storage.js) - INTE via saveItems()/project_id+
+ * object_id som resten av appen annars använder, eftersom object_id här
+ * medvetet ÄNDRAS (från den syntetiska platshållare som sattes vid import
+ * till det riktiga externa 3D-objekt-ID:t). saveItems() skulle med sin
+ * project_id+object_id-matchning misslyckas hitta den befintliga raden
+ * under det NYA object_id:t och av misstag skapa en DUBBLETTRAD med samma
+ * id istället för att uppdatera den befintliga - ghUpsertOnes id-baserade
+ * matchning har inte det problemet.
+ */
+async function coupleItemToModelObject(item, modelId, objectId) {
+  if (!isBackendConfigured()) {
+    alert("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
+    return;
+  }
+  const row = { ...toRow(item), model_id: modelId, object_id: String(objectId) };
+
+  const optimisticItem = { ...fromRow(row), _pending: true, _saveError: null };
+  const idx = items.findIndex(it => it.id === item.id);
+  if (idx >= 0) items[idx] = optimisticItem; else items.push(optimisticItem);
+  renderItemList();
+
+  try {
+    await ghUpsertOne(settings.githubToken, itemsPath(), row, r => r.id, "Koppla planeringspost till 3D-objekt");
+    const freshItem = { ...fromRow(row), _pending: false, _saveError: null };
+    const idx2 = items.findIndex(it => it.id === item.id);
+    if (idx2 >= 0) items[idx2] = freshItem;
+    buildFilterOptions();
+    renderItemList();
+    initTimelineRange();
+  } catch (e) {
+    console.error("Kunde inte spara 3D-kopplingen:", e);
+    const idx3 = items.findIndex(it => it.id === item.id);
+    if (idx3 >= 0) { items[idx3]._pending = false; items[idx3]._saveError = e.message; }
+    renderItemList();
+    alert(`Kunde inte koppla "${item.objectName || item.id}" till 3D-objektet: ${e.message}`);
+  }
 }
 
 async function onOpenLinkForm() {
@@ -2281,6 +2414,289 @@ function normalizeStatus(value) {
 }
 
 /* ---------------------------------------------------------------------
+   Import av 4-veckorsplaneringen (Victors befintliga, detaljerade Excel-
+   planering - se plan-excel-parser.js för själva tolkningen av flikarnas
+   struktur). Skild från den generiska Excel-importen ovan (onImportExcel),
+   som förväntar sig en enkel tabell med en ObjektID-kolumn - den här filen
+   har ingen sådan kolumn alls, utan en helt annan, hierarkisk struktur
+   (en flik per WBS-område, rubriker, elementkoder med faser).
+
+   Elementkoder (t.ex. "M30") blir ETT plan_item Victor kopplar en gång i
+   3D-vyn, med faserna som delaktiviteter under det (plan_item_activities) -
+   se Victors beslut 2026-09-22 ("Elementet, faser som delaktiviteter").
+   Nya, okopplade objekt får en SYNTETISK object_id (t.ex. "excel-<uuid>")
+   och model_id=null tills de kopplas manuellt via "Koppla till markering"
+   (se armCoupleMode ovan) - det håller dem kompatibla med resten av appens
+   objectId-baserade nycklar (markering, gruppering, sökning m.m.) utan att
+   kräva någon större omskrivning där.
+
+   Reimport: varje objekt får en radnummer-oberoende source_key (flik +
+   rubrik + elementkod/aktivitetstext, se buildSourceKey i
+   plan-excel-parser.js) som sparas på posten (toRow/fromRow). En ny import
+   matchar Excel-raderna mot BEFINTLIGA poster via den nyckeln istället för
+   via object_id - så datum/framdrift/faser uppdateras från Excel, men
+   3D-kopplingen och kommentarerna (som hänger på id, inte source_key) rörs
+   inte. Se buildPlanImportDiff/commitPlanImport.
+   ------------------------------------------------------------------- */
+
+/**
+ * Victors beslut 2026-09-22 ("Räkna ut automatiskt"): Excel-filen har ingen
+ * egen statuskolumn (bara en färglegend på arbetsbladet), så status räknas
+ * fram ur framdrift/datum istället för att läsas från en kolumn. Skild från
+ * computeItemPhase() (som räknar ut listans avvikelsetagg/3D-färg och kan
+ * returnera extra visningsfaser som "snart"/"klar_forsenad") - den här
+ * sätter bara det faktiska it.status-värdet en importerad rad ska få.
+ */
+function computeImportStatus(parsed, todayStr) {
+  if (Number.isFinite(parsed.progress) && parsed.progress >= 100) return "klar";
+  const today = new Date(todayStr);
+  if (parsed.endDate && today > new Date(parsed.endDate)) return "forsenad";
+  if (parsed.startDate && today >= new Date(parsed.startDate)) return "pagaende";
+  return "planerad";
+}
+
+/** Klick på "Läs in och förhandsgranska" - tolkar filen lokalt (skriver ingenting) och öppnar förhandsgranskningsdialogen. */
+async function onImportPlanExcel() {
+  const fileInput = document.getElementById("planExcelFile");
+  const status = document.getElementById("planImportStatus");
+  if (!fileInput.files.length) {
+    status.innerText = "Välj en Excel-fil först.";
+    return;
+  }
+  status.innerText = "Läser och tolkar filen...";
+  try {
+    const buf = await fileInput.files[0].arrayBuffer();
+    const wb = XLSX.read(buf, { type: "array", cellDates: true });
+    const sheetsData = buildPlanSheetsData(wb);
+    if (Object.keys(sheetsData).length === 0) {
+      status.innerText = `Hittade inga kända WBS-områdesflikar i filen (förväntade t.ex. "742 - SIKTHALL"). Har du valt rätt fil?`;
+      return;
+    }
+    const parsedItems = parsePlanWorkbookRows(sheetsData);
+    if (parsedItems.length === 0) {
+      status.innerText = "Hittade inga aktivitetsrader att importera i filen.";
+      return;
+    }
+    planImportDiff = buildPlanImportDiff(parsedItems);
+    renderPlanImportPreview(planImportDiff);
+    toggle("planImportPreviewDialog", true);
+    status.innerText = "";
+  } catch (e) {
+    console.error("Kunde inte läsa/tolka planeringsfilen:", e);
+    status.innerText = "Kunde inte läsa filen: " + e.message;
+  }
+}
+
+/**
+ * Jämför de nytolkade raderna mot BEFINTLIGA importerade objekt (via
+ * source_key, se toRow/fromRow) - inte mot hela `items`, bara de som redan
+ * har en source_key (dvs. kommer från ett tidigare planimport). Objekt som
+ * kopplats via vanliga "Koppla markering" har ingen source_key och berörs
+ * aldrig av den här importen.
+ */
+function buildPlanImportDiff(parsedItems) {
+  const bySourceKey = new Map();
+  items.forEach(it => { if (it.sourceKey) bySourceKey.set(it.sourceKey, it); });
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const seenKeys = new Set();
+  const matched = parsedItems.map(p => {
+    seenKeys.add(p.sourceKey);
+    const existing = bySourceKey.get(p.sourceKey) || null;
+    return { parsed: p, existing, status: computeImportStatus(p, todayStr) };
+  });
+
+  const toCreate = matched.filter(m => !m.existing);
+  const toUpdate = matched.filter(m => m.existing);
+  // Fanns i en TIDIGARE import (har source_key) men inte i den nya filen -
+  // t.ex. en borttagen eller omdöpt rubrik/elementkod. Rörs INTE av importen
+  // (varken uppdateras eller tas bort) - bara ett observandum i förhands-
+  // granskningen, se renderPlanImportPreview.
+  const removedExisting = Array.from(bySourceKey.values()).filter(it => !seenKeys.has(it.sourceKey));
+
+  return { parsedItems, matched, toCreate, toUpdate, removedExisting, todayStr };
+}
+
+function renderPlanImportPreview(diff) {
+  const summaryEl = document.getElementById("planImportSummary");
+  const removedEl = document.getElementById("planImportRemovedWarning");
+  const samplesEl = document.getElementById("planImportSamples");
+  const confirmMsgEl = document.getElementById("planImportConfirmMsg");
+
+  const withPhases = diff.parsedItems.filter(p => p.subActivities.length > 0).length;
+  summaryEl.innerHTML = `
+    <div><strong>${diff.toCreate.length}</strong> nya objekt</div>
+    <div><strong>${diff.toUpdate.length}</strong> uppdateras (datum/framdrift/faser - 3D-koppling &amp; kommentarer rörs inte)</div>
+    <div>${diff.parsedItems.length} objekt totalt i filen (${withPhases} med faser/delaktiviteter)</div>
+  `;
+
+  if (diff.removedExisting.length > 0) {
+    const coupled = diff.removedExisting.filter(it => it.modelId).length;
+    const names = diff.removedExisting.slice(0, 8).map(it => it.objectName || it.id).join(", ");
+    removedEl.classList.remove("hidden");
+    removedEl.innerHTML = `⚠️ ${diff.removedExisting.length} tidigare importerade objekt finns INTE kvar i den här filen (borttagen eller omdöpt rubrik/elementkod) - de rörs inte av den här importen${coupled > 0 ? `, ${coupled} av dem har en 3D-koppling` : ""}: ${escapeHtml(names)}${diff.removedExisting.length > 8 ? " m.fl." : ""}`;
+  } else {
+    removedEl.classList.add("hidden");
+    removedEl.innerHTML = "";
+  }
+
+  const samples = diff.toCreate.slice(0, 3).map(m => m.parsed);
+  samplesEl.innerHTML = samples.length === 0 ? "" : `<p class="hint">Exempel på nya objekt:</p>` + samples.map(p => `
+    <div class="plan-import-sample">
+      <strong>${escapeHtml(p.objectName)}</strong> <span class="hint">${escapeHtml(p.area)}</span><br/>
+      ${escapeHtml(p.activity || "–")}<br/>
+      <span class="hint">${escapeHtml(formatDateRange(p))} · Framdrift ${p.progress}%${p.subActivities.length ? ` · ${p.subActivities.length} ${p.subActivities.length === 1 ? "fas" : "faser"}` : ""}</span>
+    </div>`).join("");
+
+  confirmMsgEl.innerText = "";
+}
+
+/** Klick på "Importera skarpt" i förhandsgranskningen. */
+async function onConfirmPlanImport() {
+  if (!planImportDiff) return;
+  if (!isBackendConfigured()) {
+    alert("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
+    return;
+  }
+  const btn = document.getElementById("btnConfirmPlanImport");
+  const confirmMsgEl = document.getElementById("planImportConfirmMsg");
+  btn.disabled = true;
+  confirmMsgEl.innerText = "Importerar...";
+  try {
+    await commitPlanImport(planImportDiff);
+    const count = planImportDiff.parsedItems.length;
+    planImportDiff = null;
+    toggle("planImportPreviewDialog", false);
+    document.getElementById("planImportStatus").innerText = `Import klar – ${count} objekt.`;
+    document.getElementById("planExcelFile").value = "";
+    await refreshItems();
+    await refreshActivities();
+    buildFilterOptions();
+    renderItemList();
+    initTimelineRange();
+  } catch (e) {
+    console.error("Import misslyckades:", e);
+    confirmMsgEl.innerText = "Kunde inte importera: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/**
+ * Skriver den skarpa importen: EN läsning + EN skrivning av plan_items.json
+ * (samma "läs, bygg hela nästa array, skriv" -mönster som saveItems(), se
+ * dess kommentar om varför - filen växer med tiden och skrivs om i sin
+ * helhet varje gång) plus EN skrivning av plan_item_activities.json för
+ * samtliga berörda objekts faser, parallellt. Matchar uppdaterade rader på
+ * id (via diff.matched[].existing.id) - INTE via source_key eller
+ * project_id+object_id - eftersom det är id:t som är den stabila nyckeln
+ * genom hela appen (kommentarer, delaktiviteter, beroenden hänger alla på
+ * id). Nya rader får en syntetisk object_id (se filhuvudkommentaren ovan)
+ * tills de kopplas via "Koppla till markering".
+ */
+async function commitPlanImport(diff) {
+  const path = itemsPath();
+  const { data, sha } = await ghGetFile(settings.githubToken, path);
+  const before = Array.isArray(data) ? data : [];
+
+  const activityBatches = [];
+  const incomingRows = diff.matched.map(({ parsed: p, existing, status }) => {
+    const id = existing ? existing.id : ghNewId();
+    const modelId = existing ? existing.modelId : null;
+    const objectId = existing ? existing.objectId : `excel-${id}`;
+    const row = toRow({
+      id, projectId, modelId, objectId,
+      objectName: p.objectName,
+      area: p.area,
+      activity: p.activity,
+      contractor: existing ? existing.contractor : null,
+      status,
+      startDate: p.startDate,
+      endDate: p.endDate,
+      actualStartDate: p.actualStartDate,
+      actualEndDate: p.actualEndDate,
+      progress: p.progress,
+      estimatedHours: existing ? existing.estimatedHours : null,
+      dependsOn: existing ? existing.dependsOn : [],
+      sourceKey: p.sourceKey,
+    });
+    if (p.subActivities.length > 0) {
+      activityBatches.push({
+        planItemId: id,
+        rows: p.subActivities.map(s => ({ name: s.name, start: s.start, end: s.end, hours: "" })),
+      });
+    }
+    return row;
+  });
+
+  const [after] = await Promise.all([
+    ghWriteJSON(
+      settings.githubToken,
+      path,
+      (arr) => {
+        const byId = new Map(incomingRows.map(r => [r.id, r]));
+        const next = arr.map(r => (byId.has(r.id) ? byId.get(r.id) : r));
+        const existingIds = new Set(arr.map(r => r.id));
+        incomingRows.forEach(r => { if (!existingIds.has(r.id)) next.push(r); });
+        return next;
+      },
+      `Importera 4-veckorsplanering (${incomingRows.length} objekt)`,
+      6,
+      { data: before, sha }
+    ),
+    saveActivitiesForItemsBulk(activityBatches),
+  ]);
+
+  return after;
+}
+
+/**
+ * Som saveActivitiesForItem, men skriver ALLA angivna objekts delaktiviteter
+ * i EN enda GitHub-skrivning istället för en skrivning per objekt - annars
+ * skulle en import med många objekt med faser (79 st i Victors verkliga fil)
+ * göra lika många separata skrivningar mot samma fil i rad och lätt träffa
+ * GitHubs gräns för skrivande anrop (se ghPutFile).
+ */
+async function saveActivitiesForItemsBulk(batches) {
+  if (!batches || batches.length === 0) return;
+  const touchedIds = new Set(batches.map(b => b.planItemId));
+  const newRowsByItem = new Map();
+  batches.forEach(b => {
+    const rows = b.rows
+      .filter(r => (r.name && r.name.trim()) || r.start || r.end || r.hours)
+      .map(r => ({
+        id: ghNewId(),
+        plan_item_id: b.planItemId,
+        project_id: projectId,
+        name: (r.name || "").trim(),
+        start_date: r.start || null,
+        end_date: r.end || null,
+        estimated_hours: Number.isFinite(Number(r.hours)) && r.hours !== "" ? Number(r.hours) : null,
+      }));
+    newRowsByItem.set(b.planItemId, rows);
+  });
+
+  await ghWriteJSON(
+    settings.githubToken,
+    activitiesPath(),
+    (arr) => {
+      const kept = arr.filter(a => !touchedIds.has(a.plan_item_id));
+      const added = [];
+      newRowsByItem.forEach(rows => added.push(...rows));
+      return [...kept, ...added];
+    },
+    "Importera delaktiviteter (4-veckorsplanering)"
+  );
+
+  newRowsByItem.forEach((rows, planItemId) => {
+    activitiesByItemId.set(planItemId, rows.map(r => ({
+      name: r.name, start: r.start_date || "", end: r.end_date || "",
+      hours: Number.isFinite(r.estimated_hours) ? r.estimated_hours : ""
+    })));
+  });
+}
+
+/* ---------------------------------------------------------------------
    Objektlista
    ------------------------------------------------------------------- */
 
@@ -2639,11 +3055,12 @@ function renderItemList() {
         <div class="item-row${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}" data-index="${idx}">
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
-              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}<br/>
+              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}${!it.modelId ? '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>' : ""}<br/>
               <span class="item-sub">${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span><br/>
               <span class="item-dates">${escapeHtml(formatDateRange(it))} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
             </span>
             <span class="badge" style="background:${statusColor[it.status] || "#999"};color:${contrastTextColor(statusColor[it.status] || "#999999")}">${statusLabel[it.status] || it.status}</span>
+            ${!it.modelId ? '<button class="couple-btn" data-action="couple" title="Väntar på att du klickar objektet i 3D-modellen, kopplar sedan ihop det med den här posten - rör inga andra fält">🔗</button>' : ""}
             <button class="comment-btn" data-action="comments" title="${commentTitle}">💬${commentBadge}</button>
             <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
             <button class="delete-btn" data-action="delete" title="Radera kopplingen">🗑️</button>
@@ -2662,6 +3079,8 @@ function renderItemList() {
     row.querySelector('[data-action="comments"]').onclick = () => openCommentsDialog(it);
     row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it);
     row.querySelector('[data-action="delete"]').onclick = () => deleteItemFromList(it);
+    const coupleBtn = row.querySelector('[data-action="couple"]');
+    if (coupleBtn) coupleBtn.onclick = (ev) => { ev.stopPropagation(); armCoupleMode(it); };
   });
 
   Array.from(el.querySelectorAll(".group-header")).forEach(headerEl => {
@@ -3245,6 +3664,15 @@ function toRow(it) {
     // strängar (ghNewId()-UUID:er), aldrig objekt - se dependencyPickerRows
     // /buildLinkPayloadFromForm.
     depends_on: Array.isArray(it.dependsOn) ? [...new Set(it.dependsOn.filter(Boolean).map(String))] : [],
+    // Sätts bara på objekt som kommer från "4-veckorsplanering"-importen
+    // (se plan-excel-parser.js/commitPlanImport) - en radnummer-oberoende
+    // nyckel (flik+rubrik+elementkod/aktivitetstext) som gör att en ny
+    // import av samma Excel-fil känner igen samma objekt igen (och därmed
+    // kan uppdatera datum/framdrift utan att röra 3D-kopplingen), även om
+    // rader lagts till/tagits bort på andra ställen i filen. null för objekt
+    // som kopplats på vanligt sätt (via "Koppla markering") eller importerats
+    // via den äldre, generiska Excel-importen.
+    source_key: it.sourceKey || null,
     updated_at: new Date().toISOString()
   };
 }
@@ -3267,6 +3695,7 @@ function fromRow(row) {
     progress: Number.isFinite(row.progress) ? row.progress : 0,
     estimatedHours: Number.isFinite(row.estimated_hours) ? row.estimated_hours : null,
     dependsOn: Array.isArray(row.depends_on) ? row.depends_on.map(String) : [],
+    sourceKey: row.source_key || null,
     updatedAt: row.updated_at
   };
 }

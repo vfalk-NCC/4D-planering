@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="style.css" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="plan-excel-parser.js"></script>
 </head>
 <body>
 
@@ -170,6 +171,14 @@
         <button id="btnRenameValue" title="Byt namn på Område/Aktivitet/Entreprenör för alla objekt som har det, i ett svep">✏️ Byt namn</button>
         <button id="btnSuggestDeps" title="Föreslår beroenden mellan objekt i samma område med samma namn, baserat på en vanlig byggordning (t.ex. Formning → Armering → Gjutning) - helt regelbaserat, ingen AI/extern tjänst.">🔗 Föreslå beroenden</button>
       </div>
+      <!-- Visas när "Koppla till markering" klickats på en ej kopplad rad (se
+           armCoupleMode/onWorkspaceEvent i app.js) - väntar på nästa 3D-
+           markering och skriver då modell-/objekt-ID på just den posten,
+           utan att röra något annat på den (datum, faser, kommentarer m.m.). -->
+      <div id="coupleModeBanner" class="couple-mode-banner hidden">
+        <span id="coupleModeText"></span>
+        <button id="btnCancelCoupleMode">Avbryt</button>
+      </div>
       <div id="itemList" class="item-list"></div>
       <div class="row">
         <button id="btnEditSelected" title="Ändra status, entreprenör, område, aktivitet och/eller förskjut datum för alla markerade rader i ett svep" disabled>✏️ Redigera markerade (<span id="editSelectedCount">0</span>)</button>
@@ -267,6 +276,16 @@
         <button id="btnExportExcel" title="Exporterar de objekt som just nu visas i &quot;Planerade objekt&quot; (efter sökning och ev. &quot;Dölj klarmarkerade&quot;) till en .xlsx-fil med samma kolumner som importen">Exportera till Excel</button>
       </div>
       <div id="importStatus" class="hint"></div>
+
+      <hr class="panel-divider" />
+
+      <h3>4-veckorsplanering (Excel)</h3>
+      <p class="hint">Importerar din befintliga, detaljerade 4-veckorsplanering rakt av - en flik per WBS-område, med rubriker och elementkoder/faser precis som i din Excel-fil. Elementkoder (t.ex. "M30") blir ETT objekt du kopplar en gång i 3D-vyn, med faserna som delaktiviteter under det; övriga rader blir egna, fristående objekt. Din Excel-fil ändras aldrig. Går bra att importera om och om igen när du uppdaterar filen - redan gjorda 3D-kopplingar och kommentarer rörs inte, bara datum/framdrift/faser uppdateras (se förhandsgranskningen innan något sparas skarpt).</p>
+      <input type="file" id="planExcelFile" accept=".xlsx,.xlsm,.xls" />
+      <div class="row">
+        <button id="btnImportPlanExcel" class="primary">Läs in och förhandsgranska</button>
+      </div>
+      <div id="planImportStatus" class="hint"></div>
     </section>
 
     <!-- ===== Hitta objekt (koordinat) ===== -->
@@ -350,6 +369,26 @@
       <div class="row">
         <button id="btnAcceptAllSuggestedDeps" class="primary">Lägg till alla</button>
         <button id="btnCloseSuggestDeps">Stäng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Förhandsgranskning av 4-veckorsplanering-import - se onImportPlanExcel/
+       buildPlanImportDiff/onConfirmPlanImport i app.js. Visas ALLTID innan
+       något skrivs skarpt, så en omdöpt rubrik/elementkod (som tolkas som ett
+       nytt objekt, inte en uppdatering av det gamla - se hint-texten) upptäcks
+       innan den skarpa produktionsdatan/3D-kopplingarna påverkas. -->
+  <div id="planImportPreviewDialog" class="dialog hidden">
+    <div class="dialog-box">
+      <h2>Förhandsgranska import</h2>
+      <p class="hint">Kontrollera att detta ser rimligt ut innan du importerar skarpt. "Uppdateras" behåller objektets 3D-koppling, kommentarer och ID - bara datum/framdrift/faser hämtas på nytt från Excel-filen.</p>
+      <div id="planImportSummary" class="plan-import-summary"></div>
+      <div id="planImportRemovedWarning" class="hint warning hidden"></div>
+      <div id="planImportSamples"></div>
+      <div id="planImportConfirmMsg" class="hint"></div>
+      <div class="row">
+        <button id="btnConfirmPlanImport" class="primary">Importera skarpt</button>
+        <button id="btnCancelPlanImport">Avbryt</button>
       </div>
     </div>
   </div>
