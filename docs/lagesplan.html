@@ -250,12 +250,19 @@
           <label class="check"><input type="checkbox" id="textFixed" /> Samma textstorlek på skärmen oavsett zoom</label>
         </details>
 
-        <details class="sec" data-sec="ortho">
+        <details class="sec" data-sec="ortho" open>
           <summary><span class="si">🛰</span>Ortofoto</summary>
           <button id="btnAddOrtho" class="block" title="Välj bildfilen (PNG/JPG) och dess världsfil (.pgw/.jgw) samtidigt">🛰 Ladda upp ortofoto…</button>
           <label class="check"><input type="checkbox" id="orthoToTc" checked /> <span class="grow">Spara originalfilerna i Trimble Connect (mappen Lägesplan)</span></label>
           <input type="file" id="orthoInput" accept=".png,.jpg,.jpeg,.pgw,.jgw,.pngw,.jpgw,.wld" multiple class="hidden" />
-          <div class="hint">Markera både bilden och .pgw-filen. Fotot placeras automatiskt via modellens koordinater (kräver att planen är kalibrerad).</div>
+          <div class="hint">Markera både bilden och .pgw-filen. Fotot placeras automatiskt via modellens koordinater (kräver att planen är kalibrerad). Varje uppladdning blir en egen version med fotodatum – tidigare foton ligger kvar som lager, samma filnamn går bra.</div>
+          <div id="orthoNav" class="row hidden" style="margin-top:10px;flex-wrap:nowrap;">
+            <button id="btnOrthoPrev" class="icon" title="Föregående (äldre) ortofoto">◀</button>
+            <span id="orthoNavLabel" class="grow muted" style="text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
+            <button id="btnOrthoNext" class="icon" title="Nästa (nyare) ortofoto">▶</button>
+          </div>
+          <label class="check"><input type="checkbox" id="orthoExclusive" checked /> Ett ortofoto i taget (tänd ett för att växla)</label>
+          <label class="check"><input type="checkbox" id="orthoFollowDate" /> Visa ortofotot som gäller valt datum</label>
         </details>
       </section>
 

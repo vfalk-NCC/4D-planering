@@ -110,6 +110,71 @@ function applyLayerCss() {
 // Data
 // ---------------------------------------------------------------------
 const orthos = () => siteItems.filter(x => x.type === "ortho");
+/* Ortofoton i versioner (Victors önskemål 2026-09-28): varje uppladdning blir
+   ett eget lager med fotodatum, även om filnamnet är detsamma. Äldst först,
+   så att det nyaste ritas överst om flera är tända. */
+const orthoDate = o => o.date || (o.created_at || "").slice(0, 10);
+const orthosByDate = () => orthos().slice().sort((a, b) => orthoDate(a).localeCompare(orthoDate(b)) || (a.created_at || "").localeCompare(b.created_at || ""));
+const orthoExclusive = () => layerState.orthoExclusive !== false;
+const orthoFollowDate = () => layerState.orthoFollowDate === true;
+function showOnlyOrtho(id) {
+  orthos().forEach(o => { ls("ortho:" + o.id).visible = o.id === id; });
+  saveLayerState();
+}
+function orthoChanged() { renderLayerPanel(); applyLayerCss(); renderOrtho(); renderOrthoNav(); }
+/* "Följ datumet": visa det senaste fotot som är taget på eller före valt datum. */
+function syncOrthoToDate() {
+  if (!orthoFollowDate() || !orthos().length) return;
+  const at = $("dateInput").value || todayIso();
+  const list = orthosByDate();
+  const pick = list.filter(o => orthoDate(o) <= at).pop() || list[0];
+  if (orthos().some(o => ls("ortho:" + o.id).visible !== (o.id === pick.id))) { showOnlyOrtho(pick.id); orthoChanged(); }
+  else renderOrthoNav();
+}
+/* Bläddra till föregående/nästa ortofoto (dir = -1/+1). */
+function stepOrtho(dir) {
+  const list = orthosByDate();
+  if (!list.length) return;
+  const cur = list.map(o => ls("ortho:" + o.id).visible).lastIndexOf(true);
+  const i = cur < 0 ? (dir > 0 ? 0 : list.length - 1) : Math.max(0, Math.min(list.length - 1, cur + dir));
+  setOrthoFollowDate(false);
+  showOnlyOrtho(list[i].id); orthoChanged();
+}
+function setOrthoFollowDate(on) {
+  layerState.orthoFollowDate = on; saveLayerState();
+  if ($("orthoFollowDate")) $("orthoFollowDate").checked = on;
+  if (on) syncOrthoToDate();
+}
+function renderOrthoNav() {
+  const el = $("orthoNav");
+  if (!el) return;
+  const list = orthosByDate();
+  el.classList.toggle("hidden", list.length < 2);
+  const vis = list.filter(o => ls("ortho:" + o.id).visible);
+  const cur = vis[vis.length - 1];
+  const i = cur ? list.indexOf(cur) : -1;
+  $("orthoNavLabel").textContent = !vis.length ? "Inget ortofoto visas" : vis.length > 1 ? `${vis.length} ortofoton tända` : `${cur.name} · ${orthoDate(cur)} (${i + 1}/${list.length})`;
+  $("btnOrthoPrev").disabled = i === 0; $("btnOrthoNext").disabled = i === list.length - 1;
+}
+async function editOrtho(o) {
+  const name = prompt("Namn på ortofotot:", o.name);
+  if (name === null) return;
+  const date = askOrthoDate(orthoDate(o));
+  if (date === null) return;
+  await saveSiteItem({ ...o, name: name.trim() || o.name, date });
+  syncOrthoToDate(); renderOrthoNav();
+}
+/* Frågar efter fotodatum (ÅÅÅÅ-MM-DD). null = avbrutet. */
+function askOrthoDate(def) {
+  for (;;) {
+    const v = prompt("Fotodatum – när togs bilden (flygningen)? ÅÅÅÅ-MM-DD", def);
+    if (v === null) return null;
+    const t = v.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(t) && !isNaN(Date.parse(t))) return t;
+    alert("Skriv datumet som ÅÅÅÅ-MM-DD, t.ex. 2026-09-28.");
+    def = t;
+  }
+}
 /* Egna lager (Victors önskemål 2026-09-28): varje notering/etableringsobjekt
    ligger på ett namngivet lager. "Allmänt" och "Etablering" finns alltid;
    egna lager sparas som { type: "layer", name } i site_layers.json. */
@@ -170,9 +235,11 @@ async function loadSiteLayers() {
   try { siteItems = await ghReadJSON(token, sitePath()); } catch (e) { siteItems = []; console.warn("Kunde inte läsa site_layers.json", e); }
   siteLoaded = true;
   renderActiveLayerSelect();
+  syncOrthoToDate();
   renderLayerPanel();
   applyLayerCss();
   renderOrtho();
+  renderOrthoNav();
   renderZones();
 }
 async function saveSiteItem(rec, remove = false, opts = {}) {
@@ -420,6 +487,8 @@ async function addOrthoFiles(files) {
   if (!plan || !plan.calib) { alert("Kalibrera planen mot 3D (📐) först – ortofotot placeras via modellens koordinater."); return; }
   let world;
   try { world = parseWorldFile(await wf.text()); } catch (e) { alert(e.message); return; }
+  const date = askOrthoDate(img.lastModified ? isoOf(new Date(img.lastModified)) : todayIso());
+  if (date === null) return;
   const toTc = $("orthoToTc").checked;
   const id = ghNewId();
   const name = img.name.replace(/\.[^.]+$/, "");
@@ -451,12 +520,18 @@ async function addOrthoFiles(files) {
     if (dist > ext * 3 && !confirm(`Ortofotot ligger ${Math.round(dist / 1000)} km från planens kalibreringspunkter. Ligger modellen verkligen i samma koordinatsystem som fotot? Spara ändå?`)) return;
     setBusy(`Laddar upp (${(blob.size / 1048576).toFixed(1)} MB)…`);
     await ghUploadBinary(token, path, blob, `Lägesplan: ortofoto ${name}`);
-    const rec = { id, type: "ortho", name, path, width: canvas.width, height: canvas.height, world: sw, tiles,
+    const rec = { id, type: "ortho", name, date, path, width: canvas.width, height: canvas.height, world: sw, tiles,
       orig: { name: img.name, width: origW, height: origH, pixel_m: Math.abs(world.A) }, created_at: new Date().toISOString(), by: settings.userName || null };
     orthoImages.set(id, await blobToImage(blob));
+    // Tidigare ortofoton ligger kvar som egna lager men släcks, så att det
+    // nya syns direkt (med "ett i taget").
+    if (orthoExclusive()) orthos().forEach(o => { ls("ortho:" + o.id).visible = false; });
     ls("ortho:" + id).visible = true; saveLayerState();
     await saveSiteItem(rec);
-    applyLayerCss(); renderOrtho();
+    if (orthoFollowDate()) setDate(date);
+    orthoChanged();
+    const older = orthos().length - 1;
+    if (older) setSaveStatus(`🛰 ${name} (${date}) tillagt. ${older} tidigare ortofoto${older > 1 ? "n" : ""} ligger kvar i lagerlistan.`);
     console.log(`Ortofoto: ${origW}×${origH} → ${canvas.width}×${canvas.height} (k=${k}) på ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   } catch (e) {
     alert("Kunde inte läsa ortofotot: " + e.message);
@@ -513,7 +588,7 @@ function scheduleOrthoRender() { clearTimeout(orthoTimer); orthoTimer = setTimeo
 async function renderOrtho() {
   const c = $("orthoCanvas");
   const seq = ++orthoRenderSeq;
-  const list = (plan && plan.calib && viewport) ? orthos().filter(o => ls("ortho:" + o.id).visible) : [];
+  const list = (plan && plan.calib && viewport) ? orthosByDate().filter(o => ls("ortho:" + o.id).visible) : [];
   const pc = $("pdfCanvas");
   if (!list.length || !pc.width) { c.width = 0; c.height = 0; applyLayerCss(); return; }
   const imgs = [];
@@ -568,7 +643,7 @@ async function renderOrtho() {
 /* För export (PNG/PDF/video): hela fotot från översiktsbilden. */
 function drawOrthoForExport(ctx, ox, oy, scale) {
   if (!plan || !plan.calib) return;
-  orthos().filter(o => ls("ortho:" + o.id).visible && orthoImages.has(o.id)).forEach(o => {
+  orthosByDate().filter(o => ls("ortho:" + o.id).visible && orthoImages.has(o.id)).forEach(o => {
     ctx.save();
     ctx.globalAlpha = layerOpacity("ortho:" + o.id);
     ctx.setTransform(...mulAffine([scale, 0, 0, scale, ox, oy], imageToStage(o.world)));
@@ -705,7 +780,17 @@ function drawSiteLayers(ctx, fontPx) {
   if (snapMark && (siteTool || siteDrag || (typeof measure !== "undefined" && measure))) {
     const [sx, sy] = toPx(snapMark.pt), r = fontPx * 0.45;
     ctx.save(); ctx.strokeStyle = "#db2777"; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.moveTo(sx - r * 1.6, sy); ctx.lineTo(sx + r * 1.6, sy); ctx.moveTo(sx, sy - r * 1.6); ctx.lineTo(sx, sy + r * 1.6); ctx.stroke();
+    if (snapMark.angle) {
+      // Vinkellås: streckad hjälplinje och vinkeln i grader.
+      const [fx, fy] = toPx(snapMark.from);
+      ctx.setLineDash([6, 4]); ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(sx, sy); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(sx, sy, r * 0.6, 0, Math.PI * 2); ctx.stroke();
+      ctx.font = `600 ${fontPx * 0.6}px "Segoe UI", Arial, sans-serif`; ctx.fillStyle = "#db2777";
+      ctx.fillText(snapMark.kind, sx + r, sy - r);
+    } else {
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.moveTo(sx - r * 1.6, sy); ctx.lineTo(sx + r * 1.6, sy); ctx.moveTo(sx, sy - r * 1.6); ctx.lineTo(sx, sy + r * 1.6); ctx.stroke();
+    }
     ctx.restore();
   }
 }
@@ -1015,6 +1100,23 @@ function snapPdf(pdfPt, e, excludeId) {
   if (best) snapMark = { pt: best, kind: "linje" };
   return best || pdfPt;
 }
+/* Shift nedtryckt: låser riktningen från föregående punkt till jämna 5°-steg
+   (0°, 5°, 10° … räknat mot ritningens horisontella linjer). Längden tas från
+   musen – eller från en fästpunkt, projicerad på den låsta riktningen. */
+const ANGLE_STEP = 5;
+function constrainPdf(pdfPt, e, prev, excludeId) {
+  const snapped = snapPdf(pdfPt, e, excludeId);
+  if (!e || !e.shiftKey || !prev) return snapped;
+  const src = snapMark ? snapped : pdfPt;
+  const dx = src[0] - prev[0], dy = src[1] - prev[1];
+  if (!dx && !dy) return prev;
+  const deg = Math.round(Math.atan2(-dy, dx) * 180 / Math.PI / ANGLE_STEP) * ANGLE_STEP;
+  const a = deg * Math.PI / 180, ux = Math.cos(a), uy = -Math.sin(a);
+  const len = dx * ux + dy * uy;
+  const pt = [prev[0] + ux * len, prev[1] + uy * len];
+  snapMark = { pt, kind: `${((deg % 360) + 360) % 360}°`, angle: true, from: prev };
+  return pt;
+}
 
 /* Anropas från lagesplan.js vid mousedown: börjar dra ett objekt/handtag. */
 function layersPointerDown(e) {
@@ -1123,7 +1225,7 @@ function updateSiteUi() {
     symbol: ["Klicka var symbolen ska stå (rotera den sedan med ↻)."],
     barrier: ["Klicka hörnen, dubbelklicka (eller Enter) för att avsluta."]
   };
-  $("siteHint").textContent = k ? `${k.icon} ${(hints[siteTool.kind][Math.min(siteTool.pts.length, hints[siteTool.kind].length - 1)])} Esc avbryter.`
+  $("siteHint").textContent = k ? `${k.icon} ${(hints[siteTool.kind][Math.min(siteTool.pts.length, hints[siteTool.kind].length - 1)])}${siteTool.pts.length ? " Håll Shift för rak linje (5°-steg)." : ""} Esc avbryter.`
     : "Klicka på ett objekt för att ändra det. Dra i det för att flytta, i de vita handtagen för att ändra form och i ↻ för att rotera (Shift = fritt).";
   $("viewport").classList.toggle("drawing", !!siteTool || !!measure || photoPlacing || drawMode);
 }
@@ -1152,10 +1254,14 @@ function finishSiteTool() {
 }
 /* Klick på planen när ett verktyg är aktivt: placera. (Val/drag av befintliga
    objekt sköts av layersPointerDown.) */
+function siteToolPrevPdf() {
+  const p = siteTool && siteTool.pts[siteTool.pts.length - 1];
+  return p ? modelToPdf(p[0], p[1]) : null;
+}
 function layersClick(pdfPt) {
   if (!plan || !plan.calib) return false;
   if (siteTool) {
-    siteTool.pts.push(pdfToModel(snapPdf(pdfPt, window.event)));
+    siteTool.pts.push(pdfToModel(constrainPdf(pdfPt, window.event, siteToolPrevPdf())));
     const need = SITE_KINDS[siteTool.kind].clicks;
     if (need && siteTool.pts.length >= need) finishSiteTool();
     else { updateSiteUi(); renderZones(); }
@@ -1309,7 +1415,7 @@ function renderLayerPanel() {
   const el = $("layerList");
   if (!el) return;
   const rows = [];
-  orthos().slice().reverse().forEach(o => rows.push(layerRow("ortho:" + o.id, `🛰 ${escHtml(o.name)} <small>${o.orig && o.orig.pixel_m ? `${Math.round(o.orig.pixel_m * 100)} cm/px` : ""}</small>`, { del: true })));
+  orthosByDate().reverse().forEach(o => rows.push(layerRow("ortho:" + o.id, `<span class="or-name" title="Dubbelklicka för att ändra namn och fotodatum">🛰 ${escHtml(o.name)}</span> <small>${escHtml(orthoDate(o))}${o.orig && o.orig.pixel_m ? ` · ${Math.round(o.orig.pixel_m * 100)} cm/px` : ""}</small>`, { del: true })));
   rows.push(layerRow("pdf", "📄 Ritningen (PDF)", {
     extra: orthos().length ? `<label class="blend"><input type="checkbox" class="lr-mult"${layerState.pdfMultiply !== false ? " checked" : ""} /> Genomskinlig vit bakgrund över fotot</label>` : ""
   }));
@@ -1324,6 +1430,14 @@ function renderLayerPanel() {
   el.querySelectorAll(".layer-row").forEach(row => {
     const key = row.dataset.layer;
     row.querySelector(".lr-vis").onchange = e => {
+      if (key.startsWith("ortho:")) {
+        // Manuellt val av foto: sluta följa datumet; "ett i taget" släcker de andra.
+        if (orthoFollowDate()) setOrthoFollowDate(false);
+        if (e.target.checked && orthoExclusive()) showOnlyOrtho(key.slice(6));
+        else { ls(key).visible = e.target.checked; saveLayerState(); }
+        orthoChanged();
+        return;
+      }
       ls(key).visible = e.target.checked; saveLayerState();
       if (key === "objects") $("showObjects").checked = e.target.checked;
       if (key === "photos") $("showPhotos").checked = e.target.checked;
@@ -1338,6 +1452,8 @@ function renderLayerPanel() {
     };
     const mult = row.querySelector(".lr-mult");
     if (mult) mult.onchange = e => { layerState.pdfMultiply = e.target.checked; saveLayerState(); applyLayerCss(); };
+    const orName = row.querySelector(".or-name");
+    if (orName) orName.ondblclick = () => { const o = siteItems.find(x => "ortho:" + x.id === key); if (o) editOrtho(o); };
     const nameEl = row.querySelector(".ul-name");
     if (nameEl) nameEl.ondblclick = () => renameLayer(key.slice(3));
     const del = row.querySelector(".lr-del");
@@ -1346,7 +1462,7 @@ function renderLayerPanel() {
       const o = siteItems.find(x => "ortho:" + x.id === key);
       if (!o || !confirm(`Ta bort ortofotot "${o.name}" från lägesplanen? (Originalet i Trimble Connect ligger kvar.)`)) return;
       orthoImages.delete(o.id);
-      saveSiteItem(o, true).then(() => { applyLayerCss(); renderOrtho(); });
+      saveSiteItem(o, true).then(() => { syncOrthoToDate(); orthoChanged(); });
       ghDeleteBinary(token, o.path, "Lägesplan: ta bort ortofoto");
     };
   });
@@ -1452,6 +1568,16 @@ function bindLayers() {
   $("btnAddOrtho").onclick = () => $("orthoInput").click();
   $("orthoInput").onchange = e => { const f = [...e.target.files]; e.target.value = ""; if (f.length) addOrthoFiles(f); };
   $("layersFollowDate").onchange = () => renderZones();
+  $("orthoExclusive").checked = orthoExclusive();
+  $("orthoExclusive").onchange = e => {
+    layerState.orthoExclusive = e.target.checked; saveLayerState();
+    const vis = orthosByDate().filter(o => ls("ortho:" + o.id).visible);
+    if (e.target.checked && vis.length > 1) { showOnlyOrtho(vis[vis.length - 1].id); orthoChanged(); }
+  };
+  $("orthoFollowDate").checked = orthoFollowDate();
+  $("orthoFollowDate").onchange = e => setOrthoFollowDate(e.target.checked);
+  $("btnOrthoPrev").onclick = () => stepOrtho(-1);
+  $("btnOrthoNext").onclick = () => stepOrtho(1);
   document.querySelectorAll("[data-site]").forEach(b => { b.onclick = () => startSiteTool(b.dataset.site); });
   const symSel = $("symbolSelect");
   symSel.innerHTML += Object.entries(SYMBOLS).map(([k, v]) => `<option value="${k}">${v.icon} ${escHtml(v.label)} (${fmtM(v.w)} × ${fmtM(v.h)} m)</option>`).join("");
@@ -1485,7 +1611,7 @@ function bindLayers() {
   let raf = 0;
   window.addEventListener("mousemove", e => {
     if (!siteTool || !siteTool.pts.length || !viewport || !e.target.closest || !e.target.closest("#viewport")) return;
-    siteTool.cursor = pdfToModel(snapPdf(toPdf(stagePoint(e)), e));
+    siteTool.cursor = pdfToModel(constrainPdf(toPdf(stagePoint(e)), e, siteToolPrevPdf()));
     if (!raf) raf = requestAnimationFrame(() => { raf = 0; renderZones(); });
   });
   window.addEventListener("keydown", e => {

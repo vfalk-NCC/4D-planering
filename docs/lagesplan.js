@@ -1179,7 +1179,7 @@ function syncSliderFromDate() {
   const t = Date.parse($("dateInput").value || todayIso());
   $("dateSlider").value = dateMax > dateMin ? Math.round((t - dateMin) / (dateMax - dateMin) * 100) : 100;
 }
-function onDateChanged() { renderZones(); }
+function onDateChanged() { if (typeof syncOrthoToDate === "function") syncOrthoToDate(); renderZones(); }
 
 // ---------------------------------------------------------------------
 // Export

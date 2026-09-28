@@ -475,7 +475,7 @@ function toolClick(pdfPt) {
   if (photoPlacing) { pendingPhotoPt = pdfPt; const f = pendingPhotoFile; photoPlacing = false; addPhotoFile(f); return true; }
   if (measure) {
     if (measure.done) measure = { mode: measure.mode, pts: [], cursor: null, done: false };
-    measure.pts.push(typeof snapPdf === "function" ? snapPdf(pdfPt, window.event) : pdfPt);
+    measure.pts.push(typeof constrainPdf === "function" ? constrainPdf(pdfPt, window.event, measure.pts[measure.pts.length - 1]) : pdfPt);
     updateToolUi(); renderZones();
     return true;
   }
@@ -491,13 +491,13 @@ function toolMouseMove(e) {
   if (!measure || measure.done || !viewport) return;
   if (!e.target.closest || !e.target.closest("#viewport")) return;
   // Fästmarkeringen syns redan innan första klicket.
-  measure.cursor = typeof snapPdf === "function" ? snapPdf(toPdf(stagePoint(e)), e) : toPdf(stagePoint(e));
+  measure.cursor = typeof constrainPdf === "function" ? constrainPdf(toPdf(stagePoint(e)), e, measure.pts[measure.pts.length - 1]) : toPdf(stagePoint(e));
   if (!moveRaf) moveRaf = requestAnimationFrame(() => { moveRaf = 0; renderZones(); });
 }
 function toolTipHtml(pdfPt) {
   if (measure && !measure.done && measure.pts.length) {
     const r = measureResult(measure.pts.concat([pdfPt]));
-    return r.text ? `${escHtml(r.text)}<br><span style="opacity:.7">Dubbelklicka för att avsluta, Esc för att rensa</span>` : null;
+    return r.text ? `${escHtml(r.text)}<br><span style="opacity:.7">Dubbelklicka för att avsluta, Shift = rak linje (5°-steg), Esc för att rensa</span>` : null;
   }
   if (photoPlacing) return "Klicka där fotot är taget";
   const lt = layersTipHtml(pdfPt);
