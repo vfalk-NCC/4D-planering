@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-28 22:00";
+const APP_VERSION = "2026-09-29 08:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -4647,6 +4647,10 @@ async function refreshItems() {
     const rows = await ghReadJSON(settings.githubToken, itemsPath());
     items = rows.map(fromRow);
     itemsTotalCount = items.length;
+    // Lyckad hämtning: ta bort en ev. kvarliggande varning från ett tidigare
+    // (tillfälligt) fel, annars står den kvar fast allt fungerar.
+    const warn = document.getElementById("connectionWarning");
+    if (warn && /Kunde inte hämta planeringen|godkänner inte token/.test(warn.innerText)) { warn.classList.add("hidden"); warn.innerText = ""; }
   } catch (e) {
     console.error("Kunde inte hämta planeringsdata", e);
     items = [];
