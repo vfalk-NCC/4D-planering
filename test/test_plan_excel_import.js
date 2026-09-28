@@ -418,6 +418,21 @@ async function run() {
   if (savedItems.find(r => r.object_name === 'Ställningsmontage').object_id !== 'ext-55') throw new Error('Ställningsmontage ska fortfarande vara kopplad till ext-55');
   console.log('OK: kopplingsläget samlar flera objekt, ✕ tar bort, redan kopplade hoppas över och allt sparas med Spara');
 
+  if (!compoundRows[0].group_id || compoundRows[0].group_id !== compoundRows[1].group_id) throw new Error('Raderna för A1-A2 ska dela group_id, fick ' + JSON.stringify(compoundRows.map(r => r.group_id)));
+  const groupTags = await page.locator('#itemList .item-row', { hasText: 'Extra arbete' }).locator('.group-tag').count();
+  if (groupTags !== 2) throw new Error('Förväntade "⛓ 2 objekt i aktiviteten" på båda raderna, fick ' + groupTags);
+  await page.locator('#itemList .item-row', { hasText: 'Extra arbete' }).first().locator('[data-action="edit"]').click();
+  await page.waitForTimeout(200);
+  if (!(await page.locator('#fApplyGroupRow').isVisible())) throw new Error('Förväntade kryssrutan "Gäller alla objekt i aktiviteten" vid redigering');
+  await page.$eval('#fProgress', el => { el.value = 70; el.dispatchEvent(new Event('input')); });
+  await page.locator('#btnSaveLink').click();
+  await page.waitForTimeout(700);
+  savedItems = store.get(`projects/${PROJECT_ID}/plan_items.json`).content;
+  const progs = savedItems.filter(r => r.object_name === 'A1-A2').map(r => r.progress);
+  if (JSON.stringify(progs) !== '[70,70]') throw new Error('Redigering ska uppdatera alla objekt i aktiviteten, fick ' + JSON.stringify(progs));
+  if (!savedItems.filter(r => r.object_name === 'A1-A2').every(r => r.source_key && r.object_id.startsWith('ext-'))) throw new Error('Redigeringen ska behålla source_key och 3D-kopplingarna');
+  console.log('OK: raderna delar group_id, visas som en aktivitet och redigeras tillsammans');
+
   /* ======== DEL 5: omimport uppdaterar ALLA rader för en aktivitet med flera objekt ======== */
   await page.setInputFiles('#planExcelFile', { name: 'plan-v1.xlsm', mimeType: 'application/octet-stream', buffer: fakeWorkbookFile(sheetV1()) });
   await page.locator('#btnImportPlanExcel').click();

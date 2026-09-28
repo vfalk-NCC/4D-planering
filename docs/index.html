@@ -127,6 +127,10 @@
         <label>Uppskattade timmar <span class="hint">(valfritt - hur lång tid hela objektet beräknas ta. Fylls i för hand, eller summeras automatiskt från delaktiviteternas timmar om sådana används)</span>
           <input type="number" id="fEstimatedHours" min="0" step="0.5" placeholder="t.ex. 16" />
         </label>
+        <label id="fApplyGroupRow" class="hidden" style="display:flex;gap:6px;align-items:center;">
+          <input type="checkbox" id="fApplyGroup" checked style="width:auto;" />
+          <span>Gäller alla <strong id="fApplyGroupCount">0</strong> objekt i aktiviteten (datum, status, framdrift m.m. hålls lika)</span>
+        </label>
         <div class="row">
           <button id="btnSaveLink" class="primary">Spara</button>
           <button id="btnCancelLink">Avbryt</button>

@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-28 13:00";
+const APP_VERSION = "2026-09-28 15:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -1071,10 +1071,12 @@ async function coupleItemToModelObjects(item, objs) {
     alert("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
     return;
   }
-  const base = toRow(item);
+  const base = { ...toRow(item), group_id: item.groupId || ghNewId() };
   const rows = objs.map((o, i) => (i === 0 && !item.modelId)
     ? { ...base, model_id: o.modelId, object_id: String(o.objectId) }
     : { ...base, id: ghNewId(), model_id: o.modelId, object_id: String(o.objectId) });
+  // Posten själv hamnar i samma grupp som sina nya kopior.
+  if (!rows.some(r => r.id === item.id)) rows.push(base);
   const ids = new Set(rows.map(r => r.id));
 
   rows.forEach(row => {
@@ -1182,6 +1184,11 @@ function fillLinkForm(existing) {
 
   linkFormDependsOn = (existing && Array.isArray(existing.dependsOn)) ? [...existing.dependsOn] : [];
   renderDependencyPicker(existing ? existing.id : null);
+
+  const sibs = (existing && lastSelection.length === 1) ? siblingsOf(existing) : [];
+  document.getElementById("fApplyGroupRow").classList.toggle("hidden", sibs.length === 0);
+  document.getElementById("fApplyGroupCount").innerText = sibs.length + 1;
+  document.getElementById("fApplyGroup").checked = true;
 }
 
 /** Fäller ut/in den valfria "Verklig start/avslut"-sektionen i formuläret. */
@@ -1322,6 +1329,17 @@ function buildLinkPayloadFromForm() {
    själv - se dependencyWouldCreateCycle, körs både i sökresultatets filter
    (kan inte ens väljas) och en sista gång i onSaveLink som skyddsnät.
    ------------------------------------------------------------------- */
+
+/**
+ * Övriga rader för samma aktivitet (samma aktivitet kopplad till flera
+ * 3D-objekt = en rad per objekt): samma group_id, eller samma source_key
+ * från 4-veckorsplaneringen.
+ */
+function siblingsOf(it) {
+  if (!it) return [];
+  return items.filter(x => x.id !== it.id &&
+    ((it.groupId && x.groupId === it.groupId) || (it.sourceKey && x.sourceKey === it.sourceKey)));
+}
 
 /** Bygger en Map<id, item> över samtliga inlästa objekt, för snabb uppslagning. */
 function itemsById() {
@@ -1632,10 +1650,23 @@ function onSaveLink() {
   // bakgrundsskrivningen syftar på exakt samma post - annars skulle
   // toRow() annars generera TVÅ olika nya id:n (ett här, ett till inne i
   // saveItems()) för samma nya objekt.
-  const records = lastSelection.map(s => {
-    const existing = items.find(it => it.modelId === s.modelId && it.objectId === s.objectId);
-    return { id: existing ? existing.id : ghNewId(), projectId, modelId: s.modelId, objectId: s.objectId, ...payload };
-  });
+  const targets = lastSelection.map(s => ({ ...s, existing: items.find(it => it.modelId === s.modelId && it.objectId === s.objectId) || null }));
+  // Redigering av en rad vars aktivitet har fler objekt: uppdatera alla.
+  if (targets.length === 1 && targets[0].existing && document.getElementById("fApplyGroup").checked &&
+      !document.getElementById("fApplyGroupRow").classList.contains("hidden")) {
+    siblingsOf(targets[0].existing).forEach(sib => targets.push({ modelId: sib.modelId, objectId: sib.objectId, existing: sib }));
+  }
+  // Flera objekt i samma sparning = en aktivitet: gemensamt group_id.
+  const groupId = targets.length > 1
+    ? ((targets.find(t => t.existing && t.existing.groupId) || {}).existing || {}).groupId || ghNewId()
+    : (targets[0].existing ? targets[0].existing.groupId : null);
+  const records = targets.map(t => ({
+    id: t.existing ? t.existing.id : ghNewId(), projectId, modelId: t.modelId, objectId: t.objectId,
+    ...payload,
+    // Behåll kopplingen till 4-veckorsplaneringen vid redigering.
+    sourceKey: t.existing ? t.existing.sourceKey : null,
+    groupId: groupId || null
+  }));
 
   // Skyddsnät (utöver filtreringen i renderDependencyPicker): om flera
   // objekt kopplas samtidigt och samma beroendelista appliceras på alla,
@@ -2899,6 +2930,7 @@ async function commitPlanImport(diff) {
       estimatedHours: existing ? existing.estimatedHours : null,
       dependsOn: existing ? existing.dependsOn : [],
       sourceKey: p.sourceKey,
+      groupId: existing ? existing.groupId : null,
     });
     if (p.subActivities.length > 0) {
       activityBatches.push({
@@ -3330,7 +3362,10 @@ function renderItemList() {
       const phaseTagHtml = deviationLabel
         ? `<br/><span class="phase-tag" style="color:${statusColor[phase] || "#999"}"><i class="dot" style="background:${statusColor[phase] || "#999"}"></i>${escapeHtml(deviationLabel)}</span>`
         : "";
-      const dependencyTagHtml = dependencyStatusHtml(it);
+      const sibCount = siblingsOf(it).length;
+      const dependencyTagHtml = dependencyStatusHtml(it) + (sibCount
+        ? `<br/><span class="group-tag" title="Aktiviteten är kopplad till ${sibCount + 1} objekt i 3D - redigering uppdaterar alla">⛓ ${sibCount + 1} objekt i aktiviteten</span>`
+        : "");
       html += `
         <div class="item-row${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}" data-index="${idx}">
           <div class="item-row-top">
@@ -3953,6 +3988,9 @@ function toRow(it) {
     // som kopplats på vanligt sätt (via "Koppla markering") eller importerats
     // via den äldre, generiska Excel-importen.
     source_key: it.sourceKey || null,
+    // Samma group_id = samma aktivitet kopplad till flera 3D-objekt (en rad
+    // per objekt). Rader i samma grupp redigeras tillsammans, se siblingsOf.
+    group_id: it.groupId || null,
     updated_at: new Date().toISOString()
   };
 }
@@ -3976,6 +4014,7 @@ function fromRow(row) {
     estimatedHours: Number.isFinite(row.estimated_hours) ? row.estimated_hours : null,
     dependsOn: Array.isArray(row.depends_on) ? row.depends_on.map(String) : [],
     sourceKey: row.source_key || null,
+    groupId: row.group_id || null,
     updatedAt: row.updated_at
   };
 }
@@ -4102,7 +4141,11 @@ async function saveItems(records) {
   const beforeByKey = new Map(before.map(r => [`${r.project_id}::${r.object_id}`, r]));
   const incoming = records.map(toRow).map(row => {
     const existing = beforeByKey.get(`${row.project_id}::${row.object_id}`);
-    return existing ? { ...existing, ...row, id: existing.id } : row;
+    // source_key/group_id följer inte med från t.ex. den generiska Excel-
+    // importen - behåll radens befintliga istället för att nollställa dem.
+    return existing
+      ? { ...existing, ...row, id: existing.id, source_key: row.source_key || existing.source_key || null, group_id: row.group_id || existing.group_id || null }
+      : row;
   });
 
   const [after] = await Promise.all([
