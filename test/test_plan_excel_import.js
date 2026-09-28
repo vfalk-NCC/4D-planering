@@ -419,8 +419,17 @@ async function run() {
   console.log('OK: kopplingsläget samlar flera objekt, ✕ tar bort, redan kopplade hoppas över och allt sparas med Spara');
 
   if (!compoundRows[0].group_id || compoundRows[0].group_id !== compoundRows[1].group_id) throw new Error('Raderna för A1-A2 ska dela group_id, fick ' + JSON.stringify(compoundRows.map(r => r.group_id)));
-  const groupTags = await page.locator('#itemList .item-row', { hasText: 'Extra arbete' }).locator('.group-tag').count();
-  if (groupTags !== 2) throw new Error('Förväntade "⛓ 2 objekt i aktiviteten" på båda raderna, fick ' + groupTags);
+  // En rad per aktivitet (inte en per objekt), utfällbar till objekten.
+  const extraRows = page.locator('#itemList .item-row', { hasText: 'Extra arbete' });
+  if (await extraRows.count() !== 1) throw new Error('Förväntade EN rad för aktiviteten A1-A2 (två objekt), fick ' + await extraRows.count());
+  const toggleText = await extraRows.locator('[data-action="toggle-members"]').innerText();
+  if (!/2 objekt/.test(toggleText)) throw new Error('Förväntade "⛓ 2 objekt ▸" på aktivitetsraden, fick: ' + toggleText);
+  await extraRows.locator('[data-action="toggle-members"]').click();
+  await page.waitForTimeout(150);
+  const memberRows = await page.locator('#itemList .item-row.group-member').count();
+  if (memberRows !== 2) throw new Error('Utfälld aktivitet ska visa 2 objektrader, fick ' + memberRows);
+  await page.locator('#itemList .item-row.group-rep', { hasText: 'Extra arbete' }).locator('[data-action="toggle-members"]').click();
+  console.log('OK: en aktivitet med flera objekt visas som en rad med "⛓ 2 objekt", utfällbar till objekten');
   await page.locator('#itemList .item-row', { hasText: 'Extra arbete' }).first().locator('[data-action="edit"]').click();
   await page.waitForTimeout(200);
   if (!(await page.locator('#fApplyGroupRow').isVisible())) throw new Error('Förväntade kryssrutan "Gäller alla objekt i aktiviteten" vid redigering');
@@ -433,6 +442,48 @@ async function run() {
   if (!savedItems.filter(r => r.object_name === 'A1-A2').every(r => r.source_key && r.object_id.startsWith('ext-'))) throw new Error('Redigeringen ska behålla source_key och 3D-kopplingarna');
   console.log('OK: raderna delar group_id, visas som en aktivitet och redigeras tillsammans');
 
+  /* ======== DEL 4b: delaktiviteter per objekt ======== */
+  // M30 (kopplad till ext-777, faser Fundament + Formning) får ett objekt till.
+  await page.locator('#itemList .item-row', { hasText: 'M30' }).first().locator('.couple-btn').click();
+  await page.waitForTimeout(150);
+  await page.evaluate(() => { window.__selection = [{ modelId: 'model-1', objectRuntimeIds: [81] }]; window.__triggerSelectionChanged(); });
+  await page.waitForTimeout(400);
+  await page.locator('#btnSaveCoupleMode').click();
+  await page.waitForTimeout(800);
+  let acts = store.get(`projects/${PROJECT_ID}/plan_item_activities.json`).content;
+  savedItems = store.get(`projects/${PROJECT_ID}/plan_items.json`).content;
+  const m30Rows = savedItems.filter(r => r.object_name === 'M30');
+  if (m30Rows.length !== 2) throw new Error('M30 ska ha 2 objekt, fick ' + m30Rows.length);
+  const m30Copy = m30Rows.find(r => r.object_id === 'ext-81');
+  const copyPhases = acts.filter(a => a.plan_item_id === m30Copy.id).map(a => a.name).sort();
+  if (JSON.stringify(copyPhases) !== '["Formning","Fundament"]') throw new Error('Nytt objekt ska få aktivitetens gemensamma faser, fick ' + JSON.stringify(copyPhases));
+
+  // Formning ska bara gälla det första objektet (ext-777).
+  await page.locator('#itemList .item-row', { hasText: 'M30' }).first().locator('[data-action="edit"]').click();
+  await page.waitForTimeout(300);
+  const subRows = await page.locator('#subActivitiesList .sub-activity-row').count();
+  if (subRows !== 2) throw new Error('Formuläret ska visa de 2 faserna en gång (inte en per objekt), fick ' + subRows);
+  const formIdx = await page.$$eval('#subActivitiesList .sub-activity-name', els => els.findIndex(e => e.value === 'Formning'));
+  const membersBox = page.locator(`#subActivitiesList .sub-activity-members[data-index="${formIdx}"]`);
+  await membersBox.locator('[data-action="toggle-sub-members"]').click();
+  await page.waitForTimeout(100);
+  await page.locator(`#subActivitiesList .sub-activity-members[data-index="${formIdx}"] label`, { hasText: 'Objekt 2' }).locator('input').uncheck();
+  await page.waitForTimeout(100);
+  const summary = await page.locator(`#subActivitiesList .sub-activity-members[data-index="${formIdx}"] [data-action="toggle-sub-members"]`).innerText();
+  if (!/1 av 2/.test(summary)) throw new Error('Förväntade "Gäller: 1 av 2 objekt", fick: ' + summary);
+  await page.locator('#btnSaveLink').click();
+  await page.waitForTimeout(900);
+  acts = store.get(`projects/${PROJECT_ID}/plan_item_activities.json`).content;
+  savedItems = store.get(`projects/${PROJECT_ID}/plan_items.json`).content;
+  const repRow = savedItems.find(r => r.object_name === 'M30' && r.object_id === 'ext-777');
+  const copyRow = savedItems.find(r => r.object_name === 'M30' && r.object_id === 'ext-81');
+  const repPh = acts.filter(a => a.plan_item_id === repRow.id).map(a => a.name).sort();
+  const copyPh = acts.filter(a => a.plan_item_id === copyRow.id).map(a => a.name).sort();
+  if (JSON.stringify(repPh) !== '["Formning","Fundament"]' || JSON.stringify(copyPh) !== '["Fundament"]') throw new Error('Fel faser per objekt: ' + JSON.stringify({ repPh, copyPh }));
+  if (copyRow.start_date !== '2026-01-05' || copyRow.end_date !== '2026-01-10') throw new Error('Objekt 2 ska få Fundamentets datum, fick ' + copyRow.start_date + ' – ' + copyRow.end_date);
+  if (repRow.end_date !== '2026-01-20') throw new Error('Objekt 1 ska följa båda faserna (slut 2026-01-20), fick ' + repRow.end_date);
+  console.log('OK: en delaktivitet kan gälla bara vissa objekt, och varje objekt får datum från sina delaktiviteter');
+
   /* ======== DEL 5: omimport uppdaterar ALLA rader för en aktivitet med flera objekt ======== */
   await page.setInputFiles('#planExcelFile', { name: 'plan-v1.xlsm', mimeType: 'application/octet-stream', buffer: fakeWorkbookFile(sheetV1()) });
   await page.locator('#btnImportPlanExcel').click();
@@ -440,8 +491,15 @@ async function run() {
   await page.locator('#btnConfirmPlanImport').click();
   await page.waitForTimeout(600);
   savedItems = store.get(`projects/${PROJECT_ID}/plan_items.json`).content;
-  if (savedItems.length !== 4) throw new Error('Förväntade 4 rader efter omimport (inga nya dubbletter), fick ' + savedItems.length);
-  const m30v1 = savedItems.find(r => r.object_name === 'M30');
+  if (savedItems.length !== 5) throw new Error('Förväntade 5 rader efter omimport (inga nya dubbletter), fick ' + savedItems.length);
+  {
+    const acts2 = store.get(`projects/${PROJECT_ID}/plan_item_activities.json`).content;
+    const cp = savedItems.find(r => r.object_id === 'ext-81');
+    const cpPh = acts2.filter(a => a.plan_item_id === cp.id).map(a => a.name);
+    if (JSON.stringify(cpPh) !== '["Fundament"]' || cp.end_date !== '2026-01-10') throw new Error('Omimport ska behålla att objekt 2 bara har Fundament, fick ' + JSON.stringify(cpPh) + ' ' + cp.end_date);
+    console.log('OK: omimport behåller vilka objekt som hör till vilken delaktivitet');
+  }
+  const m30v1 = savedItems.find(r => r.object_name === 'M30' && r.object_id === 'ext-777');
   if (m30v1.end_date !== '2026-01-15') throw new Error('Förväntade M30 tillbaka till 2026-01-15, fick ' + m30v1.end_date);
   const compoundAfter = savedItems.filter(r => r.object_name === 'A1-A2').map(r => r.object_id).sort();
   if (JSON.stringify(compoundAfter) !== JSON.stringify(['ext-61', 'ext-63'])) throw new Error('Omimport ska behålla båda kopplingarna för A1-A2, fick ' + JSON.stringify(compoundAfter));

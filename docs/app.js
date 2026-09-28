@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-28 15:00";
+const APP_VERSION = "2026-09-28 18:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -32,7 +32,12 @@ let collapsedGroups = new Set(); // vilka grupper (nyckel: "<fält>::<värde>") 
 let collapsedPanels = new Set(); // vilka paneler (data-panel-id) som är minimerade
 let itemsTotalCount = null;  // totalt antal rader i plan_items.json, eller null om okänt
 let selectedItemKeys = new Set(); // markerade rader i "Planerade objekt" (Ctrl/Cmd- och Shift-klick), nyckel = objectId
-let subActivityRows = []; // { name, start, end } - se onAddSubActivity/recomputeAggregatesFromSubActivities
+let subActivityRows = []; // { name, start, end, hours, members } - se onAddSubActivity/recomputeAggregatesFromSubActivities
+// Vid redigering av en aktivitet med flera 3D-objekt: alla objekt (rader) i
+// aktiviteten. Varje delaktivitet kan då gälla alla (members = null) eller
+// bara vissa av objekten (members = [id, ...]), se renderSubActivities.
+let linkFormGroupMembers = [];
+const modelObjectNameCache = new Map(); // "modelId::objectId" -> namn i 3D-modellen (för att skilja objekten åt)
 let linkFormDependsOn = []; // [planItemId, ...] - objekt som måste vara klara innan detta kan starta, se onAddDependency
 let activitiesByItemId = new Map(); // plan_item_id -> [{ name, start, end }] - sparade delaktiviteter, se refreshActivities/saveActivitiesForItem
 let selectionAnchorKey = null; // ankarraden för Shift-klick (intervallmarkering) i objektlistan
@@ -1094,7 +1099,10 @@ async function coupleItemToModelObjects(item, objs) {
   renderItemList();
 
   // Kopiorna får samma delaktiviteter som posten (egen fil, egen skrivning).
-  const subs = activitiesByItemId.get(item.id) || [];
+  // Nya objekt får de delaktiviteter som gäller ALLA objekt i aktiviteten.
+  // (Räknas på de objekt som fanns före den här kopplingen.)
+  const before = [item, ...siblingsOf(item).filter(x => !ids.has(x.id))];
+  const subs = groupSubActivityRows(before).filter(r => !r.members).map(({ members, ...r }) => r);
   const copies = rows.filter(r => r.id !== item.id);
   if (subs.length > 0 && copies.length > 0) {
     saveActivitiesForItemsBulk(copies.map(r => ({ planItemId: r.id, rows: subs.map(x => ({ ...x })) })))
@@ -1154,11 +1162,90 @@ async function onOpenLinkForm() {
  * i modellen eftersom vi redan vet vilket objekt (modelId + objectId)
  * posten gäller.
  */
-function editItemFromList(item) {
+function editItemFromList(item, opts = {}) {
   lastSelection = [{ modelId: item.modelId, objectId: item.objectId }];
   document.getElementById("selCount").innerText = 1;
   fillLinkForm(item);
+  if (opts.single && !document.getElementById("fApplyGroupRow").classList.contains("hidden")) {
+    // Redigera bara det här objektet i aktiviteten (från den utfällda listan).
+    document.getElementById("fApplyGroup").checked = false;
+    linkFormGroupMembers = [];
+    subActivityRows = (activitiesByItemId.get(item.id) || []).map(r => ({ ...r, members: null }));
+    renderSubActivities();
+    recomputeAggregatesFromSubActivities();
+  }
   toggle("linkForm", true);
+}
+
+/* ---------------------------------------------------------------------
+   En rad per aktivitet i listan (Victors rapport 2026-09-28: en aktivitet
+   med fem objekt syntes som fem likadana rader). Raderna för samma
+   aktivitet (siblingsOf) slås ihop till en rad med "⛓ N objekt ▸", som
+   fälls ut till en rad per objekt med dess delaktiviteter och datum.
+   ------------------------------------------------------------------- */
+const expandedActivities = new Set(); // activityKeyOf() för utfällda aktiviteter
+
+function activityKeyOf(it) {
+  return it.groupId ? `g:${it.groupId}` : (it.sourceKey ? `s:${it.sourceKey}` : null);
+}
+
+/** Radordningen i listan: en sammanfattningsrad per aktivitet, plus objekten om den är utfälld. */
+function activityListSequence(list) {
+  const byKey = new Map();
+  list.forEach(it => {
+    const k = activityKeyOf(it);
+    if (!k) return;
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(it);
+  });
+  const seen = new Set();
+  const seq = [];
+  list.forEach(it => {
+    const k = activityKeyOf(it);
+    const members = k ? byKey.get(k) : null;
+    if (!members || members.length < 2) { seq.push({ it }); return; }
+    if (seen.has(k)) return;
+    seen.add(k);
+    const expanded = expandedActivities.has(k);
+    seq.push({ it: members[0], rep: true, members, expanded });
+    if (expanded) members.forEach(m => seq.push({ it: m, member: true, members }));
+  });
+  return seq;
+}
+
+/** Tidigaste start och senaste slut bland objekten i en aktivitet. */
+function groupSpan(members) {
+  const starts = members.map(m => m.startDate).filter(Boolean).sort();
+  const ends = members.map(m => m.endDate).filter(Boolean).sort();
+  return { ...members[0], startDate: starts[0] || null, endDate: ends[ends.length - 1] || null };
+}
+
+/** Klick på en hopfälld aktivitetsrad: markera alla dess objekt. */
+function onActivityRowClicked(members, ev) {
+  const additive = Boolean(ev && (ev.ctrlKey || ev.metaKey));
+  if (!additive) selectedItemKeys = new Set();
+  members.forEach(m => selectedItemKeys.add(m.objectId));
+  selectionAnchorKey = members[members.length - 1].objectId;
+  renderItemList();
+  selectItemsInModel(members, additive ? { mode: "add", moveCamera: false } : {})
+    .then(({ missing }) => { markMissingInModel(missing); renderItemList(); })
+    .catch(e => alert("Kunde inte markera aktiviteten i 3D-vyn: " + e.message));
+}
+
+/** Radera en hel aktivitet (alla dess objekt). */
+async function deleteActivityFromList(members) {
+  if (!isBackendConfigured()) { alert("Ingen databas ansluten."); return; }
+  if (!confirm(`Radera aktiviteten "${members[0].objectName || members[0].activity || ""}" med alla ${members.length} objektkopplingar?`)) return;
+  try {
+    for (const m of members) await deleteItem(m);
+  } catch (e) {
+    alert("Kunde inte radera: " + e.message);
+  }
+  members.forEach(m => selectedItemKeys.delete(m.objectId));
+  await refreshItems();
+  buildFilterOptions();
+  renderItemList();
+  initTimelineRange();
 }
 
 function fillLinkForm(existing) {
@@ -1182,9 +1269,14 @@ function fillLinkForm(existing) {
   // Delaktiviteterna sparas numera på riktigt (plan_item_activities, se
   // saveActivitiesForItem) - ladda in tidigare sparade rader för objektet om
   // det finns några, annars börja tomt precis som vid en ny koppling.
-  subActivityRows = (existing && activitiesByItemId.has(existing.id))
-    ? activitiesByItemId.get(existing.id).map(r => ({ ...r }))
-    : [];
+  const groupSibs = (existing && lastSelection.length === 1) ? siblingsOf(existing) : [];
+  linkFormGroupMembers = groupSibs.length ? [existing, ...groupSibs] : [];
+  subActivityRows = linkFormGroupMembers.length
+    ? groupSubActivityRows(linkFormGroupMembers)
+    : (existing && activitiesByItemId.has(existing.id))
+      ? activitiesByItemId.get(existing.id).map(r => ({ ...r, members: null }))
+      : [];
+  if (linkFormGroupMembers.length) fetchModelObjectNames(linkFormGroupMembers).then(renderSubActivities);
   renderSubActivities();
   recomputeAggregatesFromSubActivities();
 
@@ -1195,6 +1287,8 @@ function fillLinkForm(existing) {
   document.getElementById("fApplyGroupRow").classList.toggle("hidden", sibs.length === 0);
   document.getElementById("fApplyGroupCount").innerText = sibs.length + 1;
   document.getElementById("fApplyGroup").checked = true;
+  document.getElementById("fApplyGroup").onchange = renderSubActivities;
+  renderSubActivities();
 }
 
 /** Fäller ut/in den valfria "Verklig start/avslut"-sektionen i formuläret. */
@@ -1214,14 +1308,143 @@ function setActualDatesSectionExpanded(expand) {
    det sammanslagna resultatet hamnar i plan_items, precis som om man
    skrivit det för hand. Se Victors förfrågan 2026-09-17.
    ------------------------------------------------------------------- */
+/* ---------------------------------------------------------------------
+   Delaktiviteter per objekt (Victors förfrågan 2026-09-28): när en
+   aktivitet är kopplad till flera 3D-objekt kan varje delaktivitet gälla
+   alla objekten eller bara några av dem. Lagringen är oförändrad - varje
+   objekt (rad) har sina egna delaktiviteter i plan_item_activities.json,
+   och sina egna datum (tidigaste start/senaste slut bland SINA
+   delaktiviteter), så 3D-färgningen, Lägesplanen och dashboarden följer
+   rätt delaktivitet per objekt utan att behöva ändras. I formuläret slås
+   medlemmarnas delaktiviteter ihop till en lista (samma namn + datum = samma
+   delaktivitet) med vilka objekt var och en gäller.
+   ------------------------------------------------------------------- */
+function groupEditActive() {
+  return linkFormGroupMembers.length > 1 &&
+    document.getElementById("fApplyGroup").checked &&
+    !document.getElementById("fApplyGroupRow").classList.contains("hidden");
+}
+
+function subActivityKey(r) {
+  return `${(r.name || "").trim().toLowerCase()}|${r.start || ""}|${r.end || ""}`;
+}
+
+/** Sammanslagen lista över gruppens delaktiviteter, med vilka objekt de gäller. */
+function groupSubActivityRows(members) {
+  const byKey = new Map();
+  members.forEach(m => (activitiesByItemId.get(m.id) || []).forEach(r => {
+    const k = subActivityKey(r);
+    if (!byKey.has(k)) byKey.set(k, { ...r, members: [] });
+    byKey.get(k).members.push(m.id);
+  }));
+  const rows = [...byKey.values()].sort((a, b) => (a.start || "").localeCompare(b.start || ""));
+  rows.forEach(r => { if (r.members.length === members.length) r.members = null; });
+  return rows;
+}
+
+/** Namn att visa för ett objekt i en aktivitet med flera objekt. */
+function memberLabel(m, members) {
+  const n = members ? members.findIndex(x => x.id === m.id) + 1 : 0;
+  const name = modelObjectNameCache.get(`${m.modelId}::${m.objectId}`);
+  if (!m.modelId) return `${n ? `Objekt ${n}` : "Objekt"} (ej kopplat i 3D)`;
+  return `${n ? `Objekt ${n}` : "Objekt"}${name ? `: ${name}` : ""}`;
+}
+
+/** Hämtar objektens namn i 3D-modellen (för att kunna skilja dem åt), cachat. */
+async function fetchModelObjectNames(members) {
+  const missing = members.filter(m => m.modelId && m.objectId && !modelObjectNameCache.has(`${m.modelId}::${m.objectId}`));
+  if (!missing.length || !API || !API.viewer || typeof API.viewer.getObjectProperties !== "function") return;
+  const byModel = {};
+  missing.forEach(m => { (byModel[m.modelId] = byModel[m.modelId] || []).push(m); });
+  for (const modelId of Object.keys(byModel)) {
+    try {
+      const group = byModel[modelId];
+      const res = await convertToRuntimeIdsSafe(modelId, group.map(m => m.objectId));
+      const pairs = group.map((m, i) => ({ m, rid: res[i] && res[i].runtimeId })).filter(p => p.rid !== undefined && p.rid !== null);
+      if (!pairs.length) continue;
+      const props = await API.viewer.getObjectProperties(modelId, pairs.map(p => p.rid));
+      const byRid = new Map((props || []).map(p => [p.id, p]));
+      pairs.forEach(({ m, rid }) => {
+        const p = byRid.get(rid);
+        const name = p && ((p.product && p.product.name) || p.class);
+        modelObjectNameCache.set(`${m.modelId}::${m.objectId}`, name || "");
+      });
+    } catch (e) { /* namnen är bara för visning */ }
+  }
+}
+
+function subActivityMembersHtml(row, i) {
+  const members = linkFormGroupMembers;
+  const chosen = row.members ? new Set(row.members) : null;
+  const summary = chosen ? `${chosen.size} av ${members.length} objekt` : `Alla ${members.length} objekt`;
+  const open = row._open;
+  return `<div class="sub-activity-members" data-index="${i}">
+      <button type="button" class="sub-members-toggle${chosen ? " partial" : ""}" data-action="toggle-sub-members">⛓ Gäller: ${escapeHtml(summary)} ${open ? "▾" : "▸"}</button>
+      ${open ? `<div class="sub-members-panel">
+        <div class="sub-members-actions">
+          <button type="button" data-action="sub-members-all">Alla</button>
+          <button type="button" data-action="sub-members-from-3d" title="Markera objekten i 3D-modellen (Ctrl-klick för flera) och tryck här">Använd markering i 3D</button>
+          <button type="button" data-action="sub-members-show-3d" title="Markera delaktivitetens objekt i 3D-modellen">Visa i 3D</button>
+        </div>
+        ${members.map(m => `<label class="sub-member"><input type="checkbox" data-member-id="${escapeHtml(m.id)}"${!chosen || chosen.has(m.id) ? " checked" : ""} /> ${escapeHtml(memberLabel(m, members))}</label>`).join("")}
+      </div>` : ""}
+    </div>`;
+}
+
+function setSubActivityMembers(i, ids) {
+  const all = linkFormGroupMembers.map(m => m.id);
+  const uniq = [...new Set(ids)].filter(id => all.includes(id));
+  subActivityRows[i].members = (uniq.length === 0 || uniq.length === all.length) ? null : uniq;
+  if (uniq.length === 0) alert("En delaktivitet måste gälla minst ett objekt - den gäller nu alla objekt igen.");
+  renderSubActivities();
+  recomputeAggregatesFromSubActivities();
+}
+
+function bindSubActivityMembers(el) {
+  el.querySelectorAll(".sub-activity-members").forEach(box => {
+    const i = Number(box.dataset.index);
+    const row = subActivityRows[i];
+    box.querySelector('[data-action="toggle-sub-members"]').onclick = () => { row._open = !row._open; renderSubActivities(); };
+    if (!row._open) return;
+    box.querySelector('[data-action="sub-members-all"]').onclick = () => setSubActivityMembers(i, linkFormGroupMembers.map(m => m.id));
+    box.querySelector('[data-action="sub-members-from-3d"]').onclick = async () => {
+      try {
+        const sel = await API.viewer.getSelection();
+        const keys = new Set();
+        for (const ms of sel || []) {
+          if (!ms.objectRuntimeIds || !ms.objectRuntimeIds.length) continue;
+          const ext = await API.viewer.convertToObjectIds(ms.modelId, ms.objectRuntimeIds);
+          ext.forEach(x => keys.add(`${ms.modelId}::${x}`));
+        }
+        const ids = linkFormGroupMembers.filter(m => keys.has(`${m.modelId}::${m.objectId}`)).map(m => m.id);
+        if (!ids.length) { alert("Inget av de markerade objekten i 3D hör till den här aktiviteten. Markera objekten (Ctrl-klick för flera) och försök igen."); return; }
+        setSubActivityMembers(i, ids);
+      } catch (e) { alert("Kunde inte läsa markeringen i 3D: " + e.message); }
+    };
+    box.querySelector('[data-action="sub-members-show-3d"]').onclick = () => {
+      const ids = new Set(row.members || linkFormGroupMembers.map(m => m.id));
+      selectItemsInModel(linkFormGroupMembers.filter(m => ids.has(m.id))).catch(e => alert("Kunde inte markera i 3D: " + e.message));
+    };
+    box.querySelectorAll("input[data-member-id]").forEach(cb => {
+      cb.onchange = () => setSubActivityMembers(i, [...box.querySelectorAll("input[data-member-id]:checked")].map(x => x.dataset.memberId));
+    });
+  });
+}
+
+/** Delaktiviteterna som gäller ett visst objekt i gruppen. */
+function subActivitiesForMember(rows, memberId) {
+  return rows.filter(r => !r.members || r.members.includes(memberId));
+}
+
 function onAddSubActivity() {
-  subActivityRows.push({ name: "", start: "", end: "", hours: "" });
+  subActivityRows.push({ name: "", start: "", end: "", hours: "", members: null });
   renderSubActivities();
   recomputeAggregatesFromSubActivities();
 }
 
 function renderSubActivities() {
   const el = document.getElementById("subActivitiesList");
+  const grouped = groupEditActive();
   el.innerHTML = subActivityRows.map((row, i) => `
     <div class="row sub-activity-row" data-index="${i}">
       <input type="text" class="sub-activity-name" style="flex:2" placeholder="Namn, t.ex. Formning" value="${escapeHtml(row.name)}" />
@@ -1229,7 +1452,8 @@ function renderSubActivities() {
       <input type="date" class="sub-activity-end" style="flex:1" value="${row.end || ""}" />
       <input type="number" class="sub-activity-hours" style="flex:0 0 4.5em" min="0" step="0.5" placeholder="tim" value="${row.hours || ""}" />
       <button type="button" class="delete-btn sub-activity-remove" title="Ta bort delaktiviteten">🗑️</button>
-    </div>`).join("");
+    </div>${grouped ? subActivityMembersHtml(row, i) : ""}`).join("");
+  if (grouped) bindSubActivityMembers(el);
 
   el.querySelectorAll(".sub-activity-row").forEach(rowEl => {
     const i = Number(rowEl.dataset.index);
@@ -1649,7 +1873,8 @@ function onSaveLink() {
   // bakgrundsfunktion) eftersom subActivityRows nollställs/laddas om nästa
   // gång fillLinkForm() körs - t.ex. om man hinner öppna "Koppla markering"
   // för ett annat objekt innan den här bakgrundssparningen är klar.
-  const subActivitySnapshot = subActivityRows.map(r => ({ ...r }));
+  const subActivitySnapshot = subActivityRows.map(r => ({ ...r, members: r.members ? [...r.members] : null }));
+  const perMemberSubs = groupEditActive();
 
   // Samma id som en redan sparad rad (om vi redigerar en befintlig
   // koppling) återanvänds så att den optimistiska raden och den faktiska
@@ -1685,6 +1910,21 @@ function onSaveLink() {
       rec.dependsOn = rec.dependsOn.filter(id => id !== rec.id);
     }
   });
+  // Delaktiviteter per objekt: varje objekt får datum (och timmar) från SINA
+  // delaktiviteter. Objekt utan egna delaktiviteter följer hela aktiviteten.
+  const subsByRecord = new Map(records.map(rec => [rec.id,
+    (perMemberSubs ? subActivitiesForMember(subActivitySnapshot, rec.id) : subActivitySnapshot).map(({ members, _open, ...r }) => r)]));
+  if (perMemberSubs) {
+    records.forEach(rec => {
+      const own = subsByRecord.get(rec.id);
+      const dates = own.flatMap(r => [r.start, r.end]).filter(Boolean).sort();
+      if (!own.length || !dates.length) return;
+      rec.startDate = dates[0];
+      rec.endDate = dates[dates.length - 1];
+      const hours = own.reduce((sum, r) => sum + (Number(r.hours) || 0), 0);
+      rec.estimatedHours = hours > 0 ? hours : rec.estimatedHours;
+    });
+  }
 
   applyOptimisticRecords(records);
   toggle("linkForm", false);
@@ -1705,14 +1945,16 @@ function onSaveLink() {
   // redan delar Aktivitet/Start/Slut i formuläret. Skrivs bara om det finns
   // något att spara ELLER om objektet hade delaktiviteter sedan tidigare som
   // nu ska rensas bort (alla rader borttagna i formuläret och sparat).
-  records.forEach(rec => {
-    const hadExisting = (activitiesByItemId.get(rec.id) || []).length > 0;
-    if (subActivitySnapshot.length === 0 && !hadExisting) return;
-    saveActivitiesForItem(rec.id, projectId, subActivitySnapshot).catch(e => {
+  // EN skrivning för alla objektens delaktiviteter (inte en per objekt).
+  const batches = records
+    .filter(rec => subsByRecord.get(rec.id).length > 0 || (activitiesByItemId.get(rec.id) || []).length > 0)
+    .map(rec => ({ planItemId: rec.id, rows: subsByRecord.get(rec.id) }));
+  if (batches.length) {
+    saveActivitiesForItemsBulk(batches, "Spara delaktiviteter").catch(e => {
       console.error("Kunde inte spara delaktiviteter:", e);
-      alert(`Kunde inte spara delaktiviteterna för "${rec.objectName || rec.objectId}": ${e.message}`);
+      alert(`Kunde inte spara delaktiviteterna: ${e.message}`);
     });
-  });
+  }
 }
 
 /** Lägger till/uppdaterar de sparade raderna lokalt direkt (innan bakgrundsskrivningen ens startat), märkta som "Sparar...". */
@@ -2914,10 +3156,31 @@ async function commitPlanImport(diff) {
   const before = Array.isArray(data) ? data : [];
 
   const activityBatches = [];
-  const incomingRows = diff.matched.flatMap(({ parsed: p, existing, extras, status }) =>
-    [existing, ...(extras || [])].map(ex => importRow(p, ex, status)));
+  const incomingRows = diff.matched.flatMap(({ parsed: p, existing, extras, status }) => {
+    const members = [existing, ...(extras || [])];
+    // Aktivitet med flera objekt där vissa objekt bara hör till vissa
+    // delaktiviteter: behåll den kopplingen (matchat på delaktivitetens
+    // namn) - varje objekt får bara sina faser, och datum från dem.
+    const nameSet = m => new Set((m ? activitiesByItemId.get(m.id) || [] : []).map(r => (r.name || "").trim().toLowerCase()).filter(Boolean));
+    const allNames = new Set(members.flatMap(m => [...nameSet(m)]));
+    return members.map(ex => {
+      const own = nameSet(ex);
+      const partial = members.length > 1 && own.size > 0 && own.size < allNames.size;
+      return importRow(p, ex, status, partial ? own : null);
+    });
+  });
 
-  function importRow(p, existing, status) {
+  function importRow(p, existing, status, onlyPhases) {
+    let phases = p.subActivities;
+    let dates = { startDate: p.startDate, endDate: p.endDate };
+    if (onlyPhases) {
+      const mine = p.subActivities.filter(sa => onlyPhases.has((sa.name || "").trim().toLowerCase()));
+      if (mine.length) {
+        phases = mine;
+        const ds = mine.flatMap(sa => [sa.start, sa.end]).filter(Boolean).sort();
+        if (ds.length) dates = { startDate: ds[0], endDate: ds[ds.length - 1] };
+      }
+    }
     const id = existing ? existing.id : ghNewId();
     const modelId = existing ? existing.modelId : null;
     const objectId = existing ? existing.objectId : `excel-${id}`;
@@ -2928,8 +3191,8 @@ async function commitPlanImport(diff) {
       activity: p.activity,
       contractor: existing ? existing.contractor : null,
       status,
-      startDate: p.startDate,
-      endDate: p.endDate,
+      startDate: dates.startDate,
+      endDate: dates.endDate,
       actualStartDate: p.actualStartDate,
       actualEndDate: p.actualEndDate,
       progress: p.progress,
@@ -2938,10 +3201,10 @@ async function commitPlanImport(diff) {
       sourceKey: p.sourceKey,
       groupId: existing ? existing.groupId : null,
     });
-    if (p.subActivities.length > 0) {
+    if (phases.length > 0) {
       activityBatches.push({
         planItemId: id,
-        rows: p.subActivities.map(s => ({ name: s.name, start: s.start, end: s.end, hours: "" })),
+        rows: phases.map(s => ({ name: s.name, start: s.start, end: s.end, hours: "" })),
       });
     }
     return row;
@@ -2975,7 +3238,7 @@ async function commitPlanImport(diff) {
  * göra lika många separata skrivningar mot samma fil i rad och lätt träffa
  * GitHubs gräns för skrivande anrop (se ghPutFile).
  */
-async function saveActivitiesForItemsBulk(batches) {
+async function saveActivitiesForItemsBulk(batches, message) {
   if (!batches || batches.length === 0) return;
   const touchedIds = new Set(batches.map(b => b.planItemId));
   const newRowsByItem = new Map();
@@ -3003,7 +3266,7 @@ async function saveActivitiesForItemsBulk(batches) {
       newRowsByItem.forEach(rows => added.push(...rows));
       return [...kept, ...added];
     },
-    "Importera delaktiviteter (4-veckorsplanering)"
+    message || "Importera delaktiviteter (4-veckorsplanering)"
   );
 
   newRowsByItem.forEach((rows, planItemId) => {
@@ -3340,6 +3603,7 @@ function renderItemList() {
 
   let html = "";
   const indexToItem = [];
+  const rowMeta = []; // per rad: { rep, member, members, expanded } - se activityListSequence
 
   groups.forEach(group => {
     if (group.key) {
@@ -3347,15 +3611,19 @@ function renderItemList() {
       html += `
         <div class="group-header" data-group-key="${escapeHtml(group.key)}">
           <span class="group-toggle" data-action="toggle-group" title="${collapsed ? "Expandera gruppen" : "Minimera gruppen"}">${collapsed ? "▶" : "▼"}</span>
-          <span class="group-title" data-action="toggle-group">${escapeHtml(group.title)} (${group.items.length})</span>
+          <span class="group-title" data-action="toggle-group">${escapeHtml(group.title)} (${activityListSequence(group.items).filter(e => !e.member).length})</span>
           <button class="group-select-all" data-action="select-group" title="Markera alla objekt i gruppen i 3D-vyn. Ctrl/Cmd-klick = lägg till flera grupper i samma markering.">Välj alla</button>
         </div>`;
       if (collapsed) return;
     }
-    group.items.forEach(it => {
+    activityListSequence(group.items).forEach(entry => {
+      const it = entry.it;
       const idx = indexToItem.length;
       indexToItem.push(it);
-      const isSelected = selectedItemKeys.has(it.objectId);
+      rowMeta.push(entry);
+      const isSelected = entry.rep && !entry.expanded
+        ? entry.members.some(m => selectedItemKeys.has(m.objectId))
+        : selectedItemKeys.has(it.objectId);
       const progress = Number.isFinite(it.progress) ? it.progress : 0;
       const commentCount = commentCounts.get(it.id) || 0;
       const commentBadge = commentCount > 0 ? `<span class="comment-count">${commentCount}</span>` : "";
@@ -3369,22 +3637,43 @@ function renderItemList() {
         ? `<br/><span class="phase-tag" style="color:${statusColor[phase] || "#999"}"><i class="dot" style="background:${statusColor[phase] || "#999"}"></i>${escapeHtml(deviationLabel)}</span>`
         : "";
       const sibCount = siblingsOf(it).length;
-      const dependencyTagHtml = dependencyStatusHtml(it) + (sibCount
-        ? `<br/><span class="group-tag" title="Aktiviteten är kopplad till ${sibCount + 1} objekt i 3D - redigering uppdaterar alla">⛓ ${sibCount + 1} objekt i aktiviteten</span>`
-        : "");
+      let dependencyTagHtml = entry.member ? "" : dependencyStatusHtml(it);
+      if (entry.rep) {
+        dependencyTagHtml += `<br/><button type="button" class="group-tag group-toggle-btn" data-action="toggle-members" title="${entry.expanded ? "Dölj objekten" : "Visa objekten och deras delaktiviteter"}">⛓ ${entry.members.length} objekt ${entry.expanded ? "▾" : "▸"}</button>`;
+      } else if (sibCount && !entry.member) {
+        dependencyTagHtml += `<br/><span class="group-tag" title="Aktiviteten är kopplad till ${sibCount + 1} objekt i 3D">⛓ ${sibCount + 1} objekt i aktiviteten</span>`;
+      }
+      if (entry.member) {
+        const subs = activitiesByItemId.get(it.id) || [];
+        html += `
+        <div class="item-row group-member${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}" data-index="${idx}">
+          <div class="item-row-top">
+            <span class="item-main" data-action="select" title="Klicka för att markera objektet i 3D">
+              <span class="item-name">↳ ${escapeHtml(memberLabel(it, entry.members))}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}<br/>
+              <span class="item-sub">${subs.length ? escapeHtml(subs.map(r => r.name).filter(Boolean).join(", ")) : "Hela aktiviteten"}</span><br/>
+              <span class="item-dates">${escapeHtml(formatDateRange(it))}</span>
+            </span>
+            <button class="comment-btn" data-action="comments" title="${commentTitle}">💬${commentBadge}</button>
+            <button class="edit-btn" data-action="edit" title="Redigera bara det här objektet">✏️</button>
+            <button class="delete-btn" data-action="delete" title="Ta bort det här objektet från aktiviteten">🗑️</button>
+          </div>
+        </div>`;
+        return;
+      }
+      const shownDates = entry.rep ? formatDateRange(groupSpan(entry.members)) : formatDateRange(it);
       html += `
-        <div class="item-row${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}" data-index="${idx}">
+        <div class="item-row${entry.rep ? " group-rep" : ""}${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}" data-index="${idx}">
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
               <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}${!it.modelId ? '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>' : ""}<br/>
               <span class="item-sub">${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span><br/>
-              <span class="item-dates">${escapeHtml(formatDateRange(it))} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
+              <span class="item-dates">${escapeHtml(shownDates)} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
             </span>
             <span class="badge" style="background:${statusColor[it.status] || "#999"};color:${contrastTextColor(statusColor[it.status] || "#999999")}">${statusLabel[it.status] || it.status}</span>
             <button class="couple-btn" data-action="couple" title="${it.modelId ? "Koppla fler 3D-objekt till samma aktivitet" : "Koppla ett eller flera 3D-objekt till den här posten"} - klicka objekten i 3D och tryck Spara">🔗</button>
             <button class="comment-btn" data-action="comments" title="${commentTitle}">💬${commentBadge}</button>
             <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
-            <button class="delete-btn" data-action="delete" title="Radera kopplingen">🗑️</button>
+            <button class="delete-btn" data-action="delete" title="${entry.rep ? "Radera aktiviteten med alla dess objekt" : "Radera kopplingen"}">🗑️</button>
           </div>
           <div class="progress-track" title="Framdrift: ${progress}%"><div class="progress-fill" style="width:${progress}%"></div></div>
         </div>`;
@@ -3395,11 +3684,22 @@ function renderItemList() {
 
   Array.from(el.querySelectorAll(".item-row")).forEach(row => {
     const it = indexToItem[Number(row.dataset.index)];
+    const meta = rowMeta[Number(row.dataset.index)] || {};
 
-    row.querySelector('[data-action="select"]').onclick = (ev) => onItemRowClicked(it, ev, indexToItem);
+    row.querySelector('[data-action="select"]').onclick = (ev) => (meta.rep && !meta.expanded)
+      ? onActivityRowClicked(meta.members, ev)
+      : onItemRowClicked(it, ev, indexToItem);
     row.querySelector('[data-action="comments"]').onclick = () => openCommentsDialog(it);
-    row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it);
-    row.querySelector('[data-action="delete"]').onclick = () => deleteItemFromList(it);
+    row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it, { single: Boolean(meta.member) });
+    row.querySelector('[data-action="delete"]').onclick = () => meta.rep ? deleteActivityFromList(meta.members) : deleteItemFromList(it);
+    const membersBtn = row.querySelector('[data-action="toggle-members"]');
+    if (membersBtn) membersBtn.onclick = (ev) => {
+      ev.stopPropagation();
+      const k = activityKeyOf(it);
+      if (expandedActivities.has(k)) expandedActivities.delete(k);
+      else { expandedActivities.add(k); fetchModelObjectNames(meta.members).then(renderItemList); }
+      renderItemList();
+    };
     const coupleBtn = row.querySelector('[data-action="couple"]');
     if (coupleBtn) coupleBtn.onclick = (ev) => { ev.stopPropagation(); armCoupleMode(it); };
   });

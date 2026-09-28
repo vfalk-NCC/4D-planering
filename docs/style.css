@@ -662,3 +662,47 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
   border-left: 2px solid var(--border);
 }
 .comment-replies:empty { display: none; }
+
+/* En rad per aktivitet med flera objekt, utfällbar till objekten. */
+.group-toggle-btn {
+  border: 1px solid #bfdbfe;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
+}
+.group-toggle-btn:hover { background: #bfdbfe; }
+.item-row.group-member {
+  margin-left: 14px;
+  border-left: 3px solid #93c5fd;
+  background: #f8fbff;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.item-row.group-member .item-name { font-weight: 500; font-size: 11px; }
+
+/* Vilka objekt en delaktivitet gäller (aktivitet med flera objekt). */
+.sub-activity-members { margin: -2px 0 6px 2px; font-size: 11px; }
+.sub-members-toggle {
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1e40af;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.sub-members-toggle.partial { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+.sub-members-panel {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: 1px solid #dbeafe;
+  border-radius: 4px;
+  background: #f8fbff;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sub-members-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+.sub-members-actions button { font-size: 10px; padding: 2px 6px; }
+.sub-member { display: flex; align-items: center; gap: 6px; font-size: 11px; margin: 0; }
+.sub-member input { width: auto; margin: 0; }
