@@ -389,7 +389,7 @@ function updateCalibInfo() {
     : "Hämta positioner (📍) för att koppla objekten.");
 }
 
-function setCalibMsg(t) { const m = $("calibMsg"); m.textContent = t || ""; m.classList.toggle("hidden", !t); }
+function setCalibMsg(t) { const m = $("calibMsg"); m.textContent = t || ""; m.classList.toggle("hidden", !t); if (t) openSec("calib"); }
 function startCalib() {
   if (!plan || !viewport) return;
   if (!window.opener) { alert("Kalibreringen behöver 4D-planering öppen i Trimble Connect. Öppna lägesplanen via 🗺️-knappen där."); return; }
@@ -1050,6 +1050,7 @@ function openEditor(id) {
   const z = plan.zones.find(x => x.id === id);
   if (!z) return closeEditor();
   $("zoneEditor").classList.remove("hidden");
+  openSec("zones");
   $("zeTitle").textContent = `Zon ${z.code}`;
   $("zeCode").value = z.code;
   $("zeField").value = (z.rule && z.rule.field) || "auto";
@@ -1233,5 +1234,44 @@ function bindUI() {
   $("btnFit").onclick = fitView;
   $("btnExport").onclick = exportPng;
   window.addEventListener("resize", () => { if (viewport) fitView(); });
+  bindSections();
   window.addEventListener("keydown", e => { if (e.key === "Escape" && drawMode) { setDrawMode(false); renderZones(); } });
+}
+
+// ---------------------------------------------------------------------
+// Infällbar meny: avsnitten (<details class="sec">) och hela sidomenyn.
+// Läget sparas per webbläsare.
+// ---------------------------------------------------------------------
+const SEC_KEY = "lagesplan-sections";
+function loadSecState() { try { return JSON.parse(localStorage.getItem(SEC_KEY) || "{}") || {}; } catch (e) { return {}; } }
+function saveSecState() {
+  const st = { hidden: $("layout").classList.contains("side-hidden") };
+  document.querySelectorAll("details.sec").forEach(d => { st[d.dataset.sec] = d.open; });
+  try { localStorage.setItem(SEC_KEY, JSON.stringify(st)); } catch (e) {}
+}
+function openSec(key) {
+  const d = document.querySelector(`details.sec[data-sec="${key}"]`);
+  if (d && !d.open) d.open = true;
+  if ($("layout").classList.contains("side-hidden")) setSideHidden(false);
+}
+function setSideHidden(hidden) {
+  $("layout").classList.toggle("side-hidden", hidden);
+  $("btnShowSide").classList.toggle("hidden", !hidden);
+  saveSecState();
+}
+function bindSections() {
+  const st = loadSecState();
+  const secs = [...document.querySelectorAll("details.sec")];
+  secs.forEach(d => {
+    if (typeof st[d.dataset.sec] === "boolean") d.open = st[d.dataset.sec];
+    d.addEventListener("toggle", saveSecState);
+  });
+  if (st.hidden) setSideHidden(true);
+  $("btnSecAll").onclick = () => {
+    const open = !secs.some(d => d.open);
+    secs.forEach(d => { d.open = open; });
+    saveSecState();
+  };
+  $("btnHideSide").onclick = () => setSideHidden(true);
+  $("btnShowSide").onclick = () => setSideHidden(false);
 }

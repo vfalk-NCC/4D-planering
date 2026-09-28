@@ -19,6 +19,14 @@
   main { flex: 1; position: relative; overflow: hidden; background: #e9ebee; }
   h1 { font-size: 16px; margin: 0 0 2px; }
   h2 { font-size: 13px; margin: 14px 0 6px; }
+  details.sec { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 2px; }
+  details.sec > summary { font-weight: 600; font-size: 13px; padding: 6px 0; cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; user-select: none; }
+  details.sec > summary::-webkit-details-marker { display: none; }
+  details.sec > summary::before { content: ""; width: 0; height: 0; border-style: solid; border-width: 4px 0 4px 6px; border-color: transparent transparent transparent var(--muted); }
+  details.sec[open] > summary::before { transform: rotate(90deg); }
+  details.sec[open] > summary { margin-bottom: 4px; }
+  #layout.side-hidden aside { display: none; }
+  #btnShowSide { position: absolute; left: 8px; top: 8px; z-index: 6; }
   .muted { color: var(--muted); font-size: 12px; }
   .hidden { display: none !important; }
   button { font: inherit; padding: 5px 10px; border: 1px solid var(--border); border-radius: 5px; background: #fff; cursor: pointer; }
@@ -53,7 +61,7 @@
 <body>
 <div id="layout">
   <aside>
-    <h1>🗺️ Lägesplan</h1>
+    <div class="row"><h1 class="grow">🗺️ Lägesplan</h1><button id="btnSecAll" title="Fäll ihop/ut alla avsnitt">⇕</button><button id="btnHideSide" title="Dölj menyn (mer plats för planen)">◀</button></div>
     <div class="muted" id="projectInfo">Laddar…</div>
     <div id="warnBox" class="warn hidden"></div>
     <div id="tokenBox" class="hidden" style="margin:6px 0;">
@@ -62,86 +70,99 @@
       <button id="btnTokenSave" class="primary" style="margin-top:6px;">Fortsätt</button>
     </div>
 
-    <h2>Plan</h2>
-    <div class="row">
-      <select id="planSelect" class="grow"></select>
-    </div>
-    <div class="row" style="margin-top:6px;">
-      <button id="btnNewPlan" class="primary">+ Ny plan från PDF</button>
-      <button id="btnRenamePlan" title="Byt namn på planen">✏️</button>
-      <button id="btnDeletePlan" title="Ta bort planen">🗑️</button>
-      <input type="file" id="pdfInput" accept="application/pdf" class="hidden" />
-    </div>
-
-    <h2>Koppling via position i 3D</h2>
-    <div class="muted">Kalibrera planen mot modellen med två punkter. Varje planerat objekt hamnar då i den zon det ligger i på ritningen, även om zonkoden inte finns i planeringen.</div>
-    <div class="row" style="margin-top:6px;">
-      <button id="btnCalib" title="Klicka två punkter i PDF:en och samma punkter i 3D-modellen">📐 Kalibrera mot 3D</button>
-      <button id="btnPositions" title="Läs objektens positioner från de modeller som är öppna i Trimble Connect">📍 Hämta positioner</button>
-    </div>
-    <div id="calibMsg" class="warn hidden"></div>
-    <div class="row" style="margin-top:6px;">
-      <span class="muted">Nivå (Z, m) från</span>
-      <input type="text" id="levelZ0" style="width:62px;" placeholder="alla" />
-      <span class="muted">till</span>
-      <input type="text" id="levelZ1" style="width:62px;" placeholder="alla" />
-    </div>
-    <div class="muted" id="calibInfo" style="margin-top:4px;"></div>
-    <label class="row" style="color:var(--text);margin-top:4px;"><input type="checkbox" id="showObjects" checked /> Visa objekten på ritningen (i sin fasfärg)</label>
-
-    <h2>Datum</h2>
-    <div class="row">
-      <input type="date" id="dateInput" class="grow" />
-      <button id="btnToday">Idag</button>
-    </div>
-    <input type="range" id="dateSlider" min="0" max="100" value="100" style="width:100%;margin-top:6px;" />
-    <div class="muted">Färgerna följer samma fasberäkning och statusfärger som 3D-modellen i 4D-planering.</div>
-
-    <h2>Förklaring</h2>
-    <div class="legend" id="legend"></div>
-
-    <h2>Zoner <span class="muted" id="zoneCount"></span></h2>
-    <div class="row">
-      <button id="btnDetect" title="Hitta färgade rutor/markeringar och koder (t.ex. PM06) i PDF:en">🔍 Hitta zoner i PDF:en</button>
-      <button id="btnDraw" title="Rita en rektangel för en ny zon">▭ Rita zon</button>
-    </div>
-    <label>Kodmönster för zoner</label>
-    <input type="text" id="codePattern" placeholder="PM\d+[A-Z]?" />
-    <div class="muted">Text i PDF:en som matchar mönstret blir zonens kod (t.ex. PM06, PM09A).</div>
-    <label class="row" style="color:var(--text);"><input type="checkbox" id="grayPdf" checked /> Ritningen i gråskala (tydligare zonfärger)</label>
-    <label class="row" style="color:var(--text);"><input type="checkbox" id="showOriginal" /> Visa originalmarkeringar i PDF:en</label>
-    <div class="zone-list" id="zoneList"></div>
-
-    <div id="zoneEditor" class="hidden">
-      <div class="row"><b id="zeTitle">Zon</b><button id="zeClose" style="margin-left:auto;">✕</button></div>
-      <label>Kod</label>
-      <input type="text" id="zeCode" />
-      <label>Koppling till planeringen</label>
-      <select id="zeField">
-        <option value="auto">Automatiskt (position i 3D och/eller koden i område/aktivitet/namn)</option>
-        <option value="area">Område är/innehåller …</option>
-        <option value="activity">Aktivitet är/innehåller …</option>
-        <option value="object_name">Namn är/innehåller …</option>
-        <option value="contractor">Entreprenör är/innehåller …</option>
-      </select>
-      <input type="text" id="zeValue" list="zeValues" placeholder="Värde" style="margin-top:4px;" />
-      <datalist id="zeValues"></datalist>
-      <div class="muted" id="zeMatchInfo" style="margin-top:4px;"></div>
-      <div class="row" style="margin-top:8px;">
-        <button id="zeSave" class="primary">Spara</button>
-        <button id="zeSelect3d" title="Markera zonens objekt i 3D-modellen">🎯 Markera i 3D</button>
-        <button id="zeDelete">🗑️ Ta bort zon</button>
+    <details class="sec" data-sec="plan" open>
+      <summary>Plan</summary>
+      <div class="row">
+        <select id="planSelect" class="grow"></select>
       </div>
-    </div>
+      <div class="row" style="margin-top:6px;">
+        <button id="btnNewPlan" class="primary">+ Ny plan från PDF</button>
+        <button id="btnRenamePlan" title="Byt namn på planen">✏️</button>
+        <button id="btnDeletePlan" title="Ta bort planen">🗑️</button>
+        <input type="file" id="pdfInput" accept="application/pdf" class="hidden" />
+      </div>
+    </details>
 
-    <h2>Exportera</h2>
-    <div class="row">
-      <button id="btnExport">📷 Spara som bild (PNG)</button>
-    </div>
+    <details class="sec" data-sec="calib" open>
+      <summary>Koppling via position i 3D</summary>
+      <div class="muted">Kalibrera planen mot modellen med två punkter. Varje planerat objekt hamnar då i den zon det ligger i på ritningen, även om zonkoden inte finns i planeringen.</div>
+      <div class="row" style="margin-top:6px;">
+        <button id="btnCalib" title="Klicka två punkter i PDF:en och samma punkter i 3D-modellen">📐 Kalibrera mot 3D</button>
+        <button id="btnPositions" title="Läs objektens positioner från de modeller som är öppna i Trimble Connect">📍 Hämta positioner</button>
+      </div>
+      <div id="calibMsg" class="warn hidden"></div>
+      <div class="row" style="margin-top:6px;">
+        <span class="muted">Nivå (Z, m) från</span>
+        <input type="text" id="levelZ0" style="width:62px;" placeholder="alla" />
+        <span class="muted">till</span>
+        <input type="text" id="levelZ1" style="width:62px;" placeholder="alla" />
+      </div>
+      <div class="muted" id="calibInfo" style="margin-top:4px;"></div>
+      <label class="row" style="color:var(--text);margin-top:4px;"><input type="checkbox" id="showObjects" checked /> Visa objekten på ritningen (i sin fasfärg)</label>
+    </details>
+
+    <details class="sec" data-sec="date" open>
+      <summary>Datum</summary>
+      <div class="row">
+        <input type="date" id="dateInput" class="grow" />
+        <button id="btnToday">Idag</button>
+      </div>
+      <input type="range" id="dateSlider" min="0" max="100" value="100" style="width:100%;margin-top:6px;" />
+      <div class="muted">Färgerna följer samma fasberäkning och statusfärger som 3D-modellen i 4D-planering.</div>
+    </details>
+
+    <details class="sec" data-sec="legend" open>
+      <summary>Förklaring</summary>
+      <div class="legend" id="legend"></div>
+    </details>
+
+    <details class="sec" data-sec="zones" open>
+      <summary>Zoner <span class="muted" id="zoneCount"></span></summary>
+      <div class="row">
+        <button id="btnDetect" title="Hitta färgade rutor/markeringar och koder (t.ex. PM06) i PDF:en">🔍 Hitta zoner i PDF:en</button>
+        <button id="btnDraw" title="Rita en rektangel för en ny zon">▭ Rita zon</button>
+      </div>
+      <label>Kodmönster för zoner</label>
+      <input type="text" id="codePattern" placeholder="PM\d+[A-Z]?" />
+      <div class="muted">Text i PDF:en som matchar mönstret blir zonens kod (t.ex. PM06, PM09A).</div>
+      <label class="row" style="color:var(--text);"><input type="checkbox" id="grayPdf" checked /> Ritningen i gråskala (tydligare zonfärger)</label>
+      <label class="row" style="color:var(--text);"><input type="checkbox" id="showOriginal" /> Visa originalmarkeringar i PDF:en</label>
+      <div class="zone-list" id="zoneList"></div>
+
+      <div id="zoneEditor" class="hidden">
+        <div class="row"><b id="zeTitle">Zon</b><button id="zeClose" style="margin-left:auto;">✕</button></div>
+        <label>Kod</label>
+        <input type="text" id="zeCode" />
+        <label>Koppling till planeringen</label>
+        <select id="zeField">
+          <option value="auto">Automatiskt (position i 3D och/eller koden i område/aktivitet/namn)</option>
+          <option value="area">Område är/innehåller …</option>
+          <option value="activity">Aktivitet är/innehåller …</option>
+          <option value="object_name">Namn är/innehåller …</option>
+          <option value="contractor">Entreprenör är/innehåller …</option>
+        </select>
+        <input type="text" id="zeValue" list="zeValues" placeholder="Värde" style="margin-top:4px;" />
+        <datalist id="zeValues"></datalist>
+        <div class="muted" id="zeMatchInfo" style="margin-top:4px;"></div>
+        <div class="row" style="margin-top:8px;">
+          <button id="zeSave" class="primary">Spara</button>
+          <button id="zeSelect3d" title="Markera zonens objekt i 3D-modellen">🎯 Markera i 3D</button>
+          <button id="zeDelete">🗑️ Ta bort zon</button>
+        </div>
+      </div>
+    </details>
+
+    <details class="sec" data-sec="export" open>
+      <summary>Exportera</summary>
+      <div class="row">
+        <button id="btnExport">📷 Spara som bild (PNG)</button>
+      </div>
+    </details>
     <div class="muted" id="saveStatus" style="margin-top:8px;"></div>
   </aside>
 
   <main>
+    <button id="btnShowSide" class="hidden" title="Visa menyn">▶ Meny</button>
     <div id="viewport">
       <div id="stage"><canvas id="pdfCanvas"></canvas><canvas id="zoneCanvas"></canvas></div>
     </div>
