@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-28 20:00";
+const APP_VERSION = "2026-09-28 22:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -466,7 +466,7 @@ function bindUI() {
   document.getElementById("versionBadge").innerText = `Version ${APP_VERSION}`;
 
   document.getElementById("btnLinkSelection").onclick = onOpenLinkForm;
-  document.getElementById("btnCancelLink").onclick = () => toggle("linkForm", false);
+  document.getElementById("btnCancelLink").onclick = () => { toggle("linkForm", false); scrollBackToEditedItem(); };
   document.getElementById("btnAddSubActivity").onclick = onAddSubActivity;
   document.getElementById("btnSaveLink").onclick = onSaveLink;
   document.getElementById("fProgress").oninput = () => {
@@ -616,7 +616,16 @@ function bindUI() {
       `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
     if (win) win.focus();
   };
-  document.getElementById("btnSettings").onclick = () => toggle("settingsDialog", true);
+  document.getElementById("btnSettings").onclick = () => { toggle("settingsDialog", true); renderBackupList(); };
+  document.getElementById("btnBackupNow").onclick = async () => {
+    const btn = document.getElementById("btnBackupNow");
+    btn.disabled = true;
+    try { await createBackup("Manuell säkerhetskopia"); await renderBackupList(); }
+    catch (e) { alert("Kunde inte skapa säkerhetskopian: " + e.message); }
+    finally { btn.disabled = false; }
+  };
+  document.getElementById("btnResetPlanning").onclick = onResetPlanning;
+  document.getElementById("btnLoadCoupledModels").onclick = loadCoupledModels;
   document.getElementById("btnCloseSettings").onclick = () => toggle("settingsDialog", false);
   document.getElementById("btnSaveSettings").onclick = onSaveSettings;
 
@@ -1200,6 +1209,7 @@ async function coupleItemToModelObjects(item, objs) {
 }
 
 async function onOpenLinkForm() {
+  lastEditedItemId = null;
   const selection = await API.viewer.getSelection(); // [{modelId, objectRuntimeIds}]
   lastSelection = [];
 
@@ -1232,7 +1242,11 @@ async function onOpenLinkForm() {
  * i modellen eftersom vi redan vet vilket objekt (modelId + objectId)
  * posten gäller.
  */
+let lastEditedItemId = null; // raden man redigerar - listan hoppar tillbaka dit efter Spara/Avbryt
+let flashEditId = null, flashEditUntil = 0; // raden blinkar till även om listan hinner ritas om
+
 function editItemFromList(item, opts = {}) {
+  lastEditedItemId = item.id;
   lastSelection = [{ modelId: item.modelId, objectId: item.objectId }];
   document.getElementById("selCount").innerText = 1;
   fillLinkForm(item);
@@ -1245,6 +1259,31 @@ function editItemFromList(item, opts = {}) {
     recomputeAggregatesFromSubActivities();
   }
   toggle("linkForm", true);
+  // Hoppa upp till formuläret ("Koppla markering").
+  const panel = document.querySelector('section.panel[data-panel-id="link"]');
+  if (panel) {
+    if (panel.classList.contains("collapsed")) { panel.classList.remove("collapsed"); collapsedPanels.delete("link"); saveCollapsedPanels(); }
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+}
+
+/** Efter Spara/Avbryt i formuläret: tillbaka till raden man redigerade. */
+function scrollBackToEditedItem() {
+  const id = lastEditedItemId;
+  lastEditedItemId = null;
+  if (!id) return;
+  const it = items.find(x => x.id === id);
+  if (it) expandGroupsForKeys(new Set([it.objectId]));
+  renderItemList();
+  requestAnimationFrame(() => {
+    const key = it && activityKeyOf(it);
+    const row = document.querySelector(`#itemList .item-row[data-item-id="${CSS.escape(id)}"]`) ||
+      (key && document.querySelector(`#itemList .item-row[data-activity-key="${CSS.escape(key)}"]`));
+    if (!row) return;
+    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    flashEditId = row.dataset.itemId; flashEditUntil = Date.now() + 1600;
+    row.classList.remove("flash-edit"); void row.offsetWidth; row.classList.add("flash-edit");
+  });
 }
 
 /* ---------------------------------------------------------------------
@@ -2001,6 +2040,7 @@ function onSaveLink() {
   buildFilterOptions();
   renderItemList();
   initTimelineRange();
+  scrollBackToEditedItem();
 
   const jobId = ++saveJobCounter;
   const label = records.length === 1 ? (records[0].objectName || records[0].objectId) : `${records.length} objekt`;
@@ -2292,6 +2332,7 @@ function onDoBulkEdit() {
   // id, så ofyllda fält måste skickas med oförändrade, annars skulle de
   // nollställas.
   const records = selectedItems.map(it => ({
+    ...it, // beroenden, grupp, källnyckel m.m. följer med oförändrade
     id: it.id,
     projectId: it.projectId,
     modelId: it.modelId,
@@ -3086,7 +3127,8 @@ async function onImportPlanExcel() {
   status.innerText = "Läser och tolkar filen...";
   try {
     const buf = await fileInput.files[0].arrayBuffer();
-    const wb = XLSX.read(buf, { type: "array", cellDates: true });
+    // cellStyles behövs för att få med Excels radgruppering (underaktiviteter).
+    const wb = XLSX.read(buf, { type: "array", cellDates: true, cellStyles: true });
     const sheetsData = buildPlanSheetsData(wb);
     if (Object.keys(sheetsData).length === 0) {
       status.innerText = `Hittade inga kända WBS-områdesflikar i filen (förväntade t.ex. "742 - SIKTHALL"). Har du valt rätt fil?`;
@@ -3221,6 +3263,8 @@ async function onConfirmPlanImport() {
  * tills de kopplas via "Koppla till markering".
  */
 async function commitPlanImport(diff) {
+  const fileName = (document.getElementById("planExcelFile").files[0] || {}).name || "Excel";
+  await createBackup(`Före import av ${fileName} (${diff.toCreate.length} nya, ${diff.toUpdate.length} uppdateras)`);
   const path = itemsPath();
   const { data, sha } = await ghGetFile(settings.githubToken, path);
   const before = Array.isArray(data) ? data : [];
@@ -3270,6 +3314,8 @@ async function commitPlanImport(diff) {
       dependsOn: existing ? existing.dependsOn : [],
       sourceKey: p.sourceKey,
       groupId: existing ? existing.groupId : null,
+      baselineStartDate: p.baselineStartDate || null,
+      baselineEndDate: p.baselineEndDate || null,
     });
     if (phases.length > 0) {
       activityBatches.push({
@@ -3716,7 +3762,7 @@ function renderItemList() {
       if (entry.member) {
         const subs = activitiesByItemId.get(it.id) || [];
         html += `
-        <div class="item-row group-member${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}" data-index="${idx}">
+        <div class="item-row group-member${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}" data-index="${idx}" data-item-id="${escapeHtml(it.id)}">
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera objektet i 3D">
               <span class="item-name">↳ ${escapeHtml(memberLabel(it, entry.members))}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}<br/>
@@ -3732,14 +3778,14 @@ function renderItemList() {
       }
       const shownDates = entry.rep ? formatDateRange(groupSpan(entry.members)) : formatDateRange(it);
       html += `
-        <div class="item-row${entry.rep ? " group-rep" : ""}${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}" data-index="${idx}">
+        <div class="item-row${entry.rep ? " group-rep" : ""}${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}${it.id === flashEditId && Date.now() < flashEditUntil ? " flash-edit" : ""}" data-index="${idx}" data-item-id="${escapeHtml(it.id)}"${activityKeyOf(it) ? ` data-activity-key="${escapeHtml(activityKeyOf(it))}"` : ""}>
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
               <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}${!it.modelId ? '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>' : ""}<br/>
               <span class="item-sub">${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span><br/>
               <span class="item-dates">${escapeHtml(shownDates)} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
             </span>
-            <span class="badge" style="background:${statusColor[it.status] || "#999"};color:${contrastTextColor(statusColor[it.status] || "#999999")}">${statusLabel[it.status] || it.status}</span>
+            <span class="badge badge-clickable" data-action="status" title="Klicka för att ändra status" style="background:${statusColor[it.status] || "#999"};color:${contrastTextColor(statusColor[it.status] || "#999999")}">${statusLabel[it.status] || it.status} ▾</span>
             <button class="couple-btn" data-action="couple" title="${it.modelId ? "Koppla fler 3D-objekt till samma aktivitet" : "Koppla ett eller flera 3D-objekt till den här posten"} - klicka objekten i 3D och tryck Spara">🔗</button>
             <button class="comment-btn" data-action="comments" title="${commentTitle}">💬${commentBadge}</button>
             <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
@@ -3762,6 +3808,8 @@ function renderItemList() {
     row.querySelector('[data-action="comments"]').onclick = () => openCommentsDialog(it);
     row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it, { single: Boolean(meta.member) });
     row.querySelector('[data-action="delete"]').onclick = () => meta.rep ? deleteActivityFromList(meta.members) : deleteItemFromList(it);
+    const statusBadge = row.querySelector('[data-action="status"]');
+    if (statusBadge) statusBadge.onclick = (ev) => { ev.stopPropagation(); openStatusMenu(statusBadge, meta.rep ? meta.members : [it]); };
     const membersBtn = row.querySelector('[data-action="toggle-members"]');
     if (membersBtn) membersBtn.onclick = (ev) => {
       ev.stopPropagation();
@@ -4317,6 +4365,194 @@ function updateConnectionWarning() {
   }
 }
 
+/* ---------------------------------------------------------------------
+   Säkerhetskopior, revisionshistorik och nollställning (Victors förfrågan
+   2026-09-28). En säkerhetskopia är EN fil med innehållet i alla
+   projektets datafiler vid ett visst tillfälle:
+     projects/<id>/backups/<tidsstämpel>-<id>.json
+   och en förteckning i projects/<id>/backups/index.json. Tas automatiskt
+   före varje import av 4-veckorsplaneringen och före nollställning/
+   återställning, och manuellt via Inställningar.
+   ------------------------------------------------------------------- */
+const BACKUP_FILES = [
+  "plan_items", "plan_item_activities", "plan_item_comments", "plan_item_progress_history",
+  "plan_item_baseline_history", "plan_item_positions", "status_plans", "site_layers",
+  "plan_blockers", "plan_blocker_comments", "plan_milestones", "plan_deliveries",
+  "plan_document_deliveries", "plan_inspections", "plan_safety_events", "plan_staffing"
+];
+// Det som nollställs (planeringen och allt som hänger på planeringsposternas id).
+const RESET_FILES = ["plan_items", "plan_item_activities", "plan_item_comments", "plan_item_progress_history", "plan_item_baseline_history", "plan_item_positions"];
+const projectFilePath = name => `projects/${encodeURIComponent(projectId)}/${name}.json`;
+const backupIndexPath = () => `projects/${encodeURIComponent(projectId)}/backups/index.json`;
+
+async function createBackup(reason) {
+  if (!isBackendConfigured()) throw new Error("Ingen databas ansluten.");
+  const files = {};
+  for (const name of BACKUP_FILES) {
+    const { data } = await ghGetFile(settings.githubToken, projectFilePath(name));
+    if (data !== null) files[name] = data;
+  }
+  const now = new Date();
+  const id = ghNewId();
+  const stamp = now.toISOString().replace(/[:.]/g, "-");
+  const path = `projects/${encodeURIComponent(projectId)}/backups/${stamp}-${id.slice(0, 8)}.json`;
+  const counts = {
+    items: Array.isArray(files.plan_items) ? files.plan_items.length : 0,
+    coupled: Array.isArray(files.plan_items) ? files.plan_items.filter(r => r.model_id).length : 0,
+    activities: Array.isArray(files.plan_item_activities) ? files.plan_item_activities.length : 0,
+    comments: Array.isArray(files.plan_item_comments) ? files.plan_item_comments.length : 0
+  };
+  const record = { id, created_at: now.toISOString(), reason, by: settings.userName || null, counts, files };
+  await ghPutFile(settings.githubToken, path, ghUtf8ToB64(JSON.stringify(record)), null, `Säkerhetskopia: ${reason}`);
+  await ghWriteJSON(settings.githubToken, backupIndexPath(),
+    arr => [...arr, { id, path, created_at: record.created_at, reason, by: record.by, counts }],
+    `Säkerhetskopia: ${reason}`);
+  return record;
+}
+
+async function renderBackupList() {
+  const el = document.getElementById("backupList");
+  if (!el) return;
+  if (!isBackendConfigured()) { el.innerHTML = `<div class="hint" style="padding:6px">Ingen databas ansluten.</div>`; return; }
+  let list = [];
+  try { list = await ghReadJSON(settings.githubToken, backupIndexPath()); }
+  catch (e) { el.innerHTML = `<div class="hint" style="padding:6px">Kunde inte läsa historiken: ${escapeHtml(e.message)}</div>`; return; }
+  if (!list.length) { el.innerHTML = `<div class="hint" style="padding:6px">Inga säkerhetskopior ännu – en tas automatiskt vid nästa import.</div>`; return; }
+  list = list.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  el.innerHTML = list.map(b => {
+    const d = new Date(b.created_at);
+    const when = `${d.toLocaleDateString("sv-SE")} ${d.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}`;
+    const c = b.counts || {};
+    return `<div class="backup-row">
+      <div class="b-main"><b title="${escapeHtml(b.reason || "")}">${escapeHtml(b.reason || "Säkerhetskopia")}</b>
+        <span class="b-meta">${escapeHtml(when)}${b.by ? " · " + escapeHtml(b.by) : ""} · ${c.items || 0} objekt (${c.coupled || 0} kopplade), ${c.activities || 0} delakt.</span></div>
+      <button data-action="download-backup" data-path="${escapeHtml(b.path)}" title="Ladda ner som JSON">⤓</button>
+      <button data-action="restore-backup" data-path="${escapeHtml(b.path)}" data-when="${escapeHtml(when)}" title="Återställ till det här läget">↩ Återställ</button>
+    </div>`;
+  }).join("");
+  el.querySelectorAll('[data-action="download-backup"]').forEach(btn => {
+    btn.onclick = async () => {
+      try {
+        const { data } = await ghGetFile(settings.githubToken, btn.dataset.path);
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
+        a.download = btn.dataset.path.split("/").pop();
+        document.body.appendChild(a); a.click(); a.remove();
+      } catch (e) { alert("Kunde inte hämta säkerhetskopian: " + e.message); }
+    };
+  });
+  el.querySelectorAll('[data-action="restore-backup"]').forEach(btn => {
+    btn.onclick = () => restoreBackup(btn.dataset.path, btn.dataset.when);
+  });
+}
+
+async function restoreBackup(path, when) {
+  if (!confirm(`Återställa projektets data till läget ${when}?\n\nAllt som gjorts efter det (kopplingar, ändringar, kommentarer) ersätts. En säkerhetskopia av nuvarande läge tas först, så det går att ångra.`)) return;
+  if (!confirm("Är du helt säker? Klicka OK för att återställa.")) return;
+  try {
+    const { data } = await ghGetFile(settings.githubToken, path);
+    if (!data || !data.files) throw new Error("Säkerhetskopian saknar data.");
+    await createBackup(`Före återställning till ${when}`);
+    for (const [name, content] of Object.entries(data.files)) {
+      await ghWriteJSON(settings.githubToken, projectFilePath(name), () => content, `Återställ ${name} till ${when}`);
+    }
+    alert(`Återställt till ${when}.`);
+    await refreshAllData();
+    renderBackupList();
+  } catch (e) {
+    alert("Kunde inte återställa: " + e.message);
+  }
+}
+
+async function onResetPlanning() {
+  if (!isBackendConfigured()) { alert("Ingen databas ansluten."); return; }
+  if (!confirm(`Nollställa HELA planeringen i det här projektet?\n\n${items.length} planerade objekt med alla 3D-kopplingar, delaktiviteter, kommentarer, beroenden och historik tas bort. Lägesplanens planer och lager rörs inte.\n\nEn säkerhetskopia tas först.`)) return;
+  const typed = prompt('Bekräfta genom att skriva NOLLSTÄLL (versaler):');
+  if ((typed || "").trim() !== "NOLLSTÄLL") { alert("Inget nollställdes."); return; }
+  const btn = document.getElementById("btnResetPlanning");
+  btn.disabled = true;
+  try {
+    await createBackup("Före nollställning av planeringen");
+    for (const name of RESET_FILES) {
+      await ghWriteJSON(settings.githubToken, projectFilePath(name), () => [], `Nollställ ${name}`);
+    }
+    selectedItemKeys = new Set();
+    await refreshAllData();
+    renderBackupList();
+    alert("Planeringen är nollställd. Säkerhetskopian finns under Säkerhetskopior och historik.");
+  } catch (e) {
+    alert("Kunde inte nollställa: " + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Statusgenväg: klick på statusbadgen i listan -> välj ny status.
+   ------------------------------------------------------------------- */
+function openStatusMenu(anchor, targets) {
+  document.querySelectorAll(".status-menu").forEach(m => m.remove());
+  const statusColor = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
+  const cur = targets[0].status;
+  const menu = document.createElement("div");
+  menu.className = "status-menu";
+  menu.innerHTML = Object.entries(STATUS_LABELS).map(([k, label]) =>
+    `<button type="button" data-status="${k}" class="${k === cur ? "current" : ""}"><i style="background:${statusColor[k] || "#999"}"></i>${escapeHtml(label)}${k === cur ? " ✓" : ""}</button>`).join("") +
+    (targets.length > 1 ? `<div class="hint" style="padding:3px 8px">Gäller alla ${targets.length} objekt</div>` : "");
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.left = `${Math.min(window.innerWidth - menu.offsetWidth - 6, Math.max(6, r.right - menu.offsetWidth))}px`;
+  menu.style.top = `${r.bottom + 4 + menu.offsetHeight > window.innerHeight ? Math.max(6, r.top - menu.offsetHeight - 4) : r.bottom + 4}px`;
+  const close = () => { menu.remove(); document.removeEventListener("mousedown", outside, true); };
+  const outside = e => { if (!menu.contains(e.target)) close(); };
+  setTimeout(() => document.addEventListener("mousedown", outside, true));
+  menu.querySelectorAll("[data-status]").forEach(btn => {
+    btn.onclick = () => { close(); setStatusQuick(targets, btn.dataset.status); };
+  });
+}
+
+function setStatusQuick(targets, status) {
+  if (targets.every(t => t.status === status)) return;
+  const records = targets.map(t => ({ ...t, status }));
+  applyOptimisticRecords(records);
+  renderItemList();
+  const jobId = ++saveJobCounter;
+  const label = `Status → ${STATUS_LABELS[status] || status} (${records.length === 1 ? (records[0].objectName || records[0].objectId) : records.length + " objekt"})`;
+  saveJobs.set(jobId, { id: jobId, records, label, status: "pending", error: null });
+  runSaveJob(jobId);
+  if (typeof applyStatusColors === "function") applyStatusColors();
+}
+
+/* ---------------------------------------------------------------------
+   Tänd (läs in) alla modeller som har objekt kopplade i planeringen.
+   ------------------------------------------------------------------- */
+async function loadCoupledModels() {
+  const btn = document.getElementById("btnLoadCoupledModels");
+  const modelIds = [...new Set(items.map(it => it.modelId).filter(Boolean))];
+  if (!modelIds.length) { alert("Inga objekt är kopplade till någon modell ännu."); return; }
+  btn.disabled = true;
+  const old = btn.innerText;
+  btn.innerText = "Tänder…";
+  try {
+    let specs = [];
+    try { specs = await API.viewer.getModels(); } catch (e) { /* okänd lista - försök ändå */ }
+    const byId = new Map();
+    (specs || []).forEach(m => { byId.set(m.id, m); if (m.versionId) byId.set(m.versionId, m); });
+    let loaded = 0, already = 0;
+    const failed = [];
+    for (const id of modelIds) {
+      const spec = byId.get(id);
+      if (spec && spec.state === "loaded") { already++; continue; }
+      try { await API.viewer.toggleModel(spec ? spec.id : id, true, false); loaded++; }
+      catch (e) { failed.push(spec ? spec.name : id); }
+    }
+    showLagesplanBanner(`💡 ${loaded} modeller tända${already ? `, ${already} var redan tända` : ""}${failed.length ? ` – ${failed.length} hittades inte (öppna mappen i Trimble Connect och försök igen)` : ""}.`, 7000);
+  } finally {
+    btn.disabled = false;
+    btn.innerText = old;
+  }
+}
+
 function itemsPath() {
   return `projects/${encodeURIComponent(projectId)}/plan_items.json`;
 }
@@ -4367,6 +4603,10 @@ function toRow(it) {
     // Samma group_id = samma aktivitet kopplad till flera 3D-objekt (en rad
     // per objekt). Rader i samma grupp redigeras tillsammans, se siblingsOf.
     group_id: it.groupId || null,
+    // Ursprungsplanen ("Plan. start/slut" i 4-veckorsplaneringen) - start_date/
+    // end_date är de aktuella datumen man planerar efter.
+    baseline_start_date: it.baselineStartDate || null,
+    baseline_end_date: it.baselineEndDate || null,
     updated_at: new Date().toISOString()
   };
 }
@@ -4391,6 +4631,8 @@ function fromRow(row) {
     dependsOn: Array.isArray(row.depends_on) ? row.depends_on.map(String) : [],
     sourceKey: row.source_key || null,
     groupId: row.group_id || null,
+    baselineStartDate: row.baseline_start_date || null,
+    baselineEndDate: row.baseline_end_date || null,
     updatedAt: row.updated_at
   };
 }

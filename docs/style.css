@@ -706,3 +706,34 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
 .sub-members-actions button { font-size: 10px; padding: 2px 6px; }
 .sub-member { display: flex; align-items: center; gap: 6px; font-size: 11px; margin: 0; }
 .sub-member input { width: auto; margin: 0; }
+
+
+/* Knapparna under "Planerade objekt" - luft mellan dem och radbrytning i
+   smala paneler (Victors synpunkt 2026-09-28). */
+.row.list-actions { flex-wrap: wrap; gap: 6px 8px; }
+.row.list-actions button { flex: 1 1 auto; white-space: nowrap; }
+
+/* Statusgenväg: klick på statusbadgen i listan */
+.badge.badge-clickable { cursor: pointer; }
+.badge.badge-clickable:hover { filter: brightness(0.93); box-shadow: 0 0 0 2px rgba(0,0,0,.12); }
+.status-menu {
+  position: fixed; z-index: 2000; background: white; border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.18); padding: 4px; display: flex; flex-direction: column; min-width: 150px;
+}
+.status-menu button { display: flex; align-items: center; gap: 8px; border: none; background: none; text-align: left; padding: 5px 8px; font-size: 12px; border-radius: 4px; cursor: pointer; }
+.status-menu button:hover { background: #f1f5f9; }
+.status-menu button.current { font-weight: 700; }
+.status-menu i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+/* Säkerhetskopior/historik i inställningarna */
+.backup-list { max-height: 240px; overflow-y: auto; border: 1px solid var(--border); border-radius: 4px; margin-top: 6px; }
+.backup-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 11px; }
+.backup-row:last-child { border-bottom: none; }
+.backup-row .b-main { flex: 1 1 auto; min-width: 0; }
+.backup-row .b-main b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.backup-row .b-meta { color: #6b7280; }
+.backup-row button { font-size: 10px; padding: 2px 6px; flex: 0 0 auto; }
+.danger-zone { margin-top: 10px; border: 1px solid #fecaca; border-radius: 4px; padding: 6px 8px; background: #fff5f5; }
+.danger-zone summary { cursor: pointer; color: #b91c1c; font-weight: 600; font-size: 12px; }
+button.danger { background: #dc2626; color: white; border-color: #dc2626; }
+.item-row.flash-edit { animation: item-row-flash 1.6s ease-out; }
