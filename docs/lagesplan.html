@@ -147,6 +147,23 @@
   .float-group button + button { border-left: 1px solid var(--border); }
   #zoomCtl { right: 14px; bottom: 14px; }
   #btnShowSide { position: absolute; left: 10px; top: 10px; z-index: 6; box-shadow: 0 4px 14px rgba(15,23,42,.14); }
+  .date-marks { position: relative; height: 11px; margin-top: 1px; }
+  .date-marks .dmark { position: absolute; top: 0; width: 10px; height: 10px; min-width: 0; padding: 0; border: none; border-radius: 0; transform: translateX(-50%); background: #f59e0b; clip-path: polygon(50% 0, 100% 100%, 0 100%); cursor: pointer; }
+  .date-marks .dmark:hover { background: #d97706; }
+  .date-marks .dmark.on { background: var(--accent); }
+  #orthoCanvasB { pointer-events: none; }
+  #cmpBar { position: absolute; top: 0; bottom: 0; width: 16px; margin-left: -8px; z-index: 5; cursor: ew-resize; touch-action: none; }
+  #cmpBar::before { content: ""; position: absolute; left: 7px; top: 0; bottom: 0; width: 2px; background: #fff; box-shadow: 0 0 0 1px rgba(15,23,42,.35), 0 0 12px rgba(0,0,0,.35); }
+  #cmpBar .cmp-knob { position: absolute; top: 50%; left: 8px; transform: translate(-50%, -50%); width: 34px; height: 34px; border-radius: 50%; background: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; font-size: 16px; color: var(--accent); }
+  #cmpBar .cmp-label { position: absolute; top: 10px; white-space: nowrap; background: rgba(17,24,39,.8); color: #fff; font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 12px; pointer-events: none; }
+  #cmpBar .cmp-label.a { right: 16px; }
+  #cmpBar .cmp-label.b { left: 16px; }
+  #filmModal { position: absolute; inset: 0; background: rgba(15,23,42,.6); z-index: 20; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  #filmModal .film-box { background: #fff; border-radius: 12px; padding: 14px 16px; width: min(980px, 100%); max-height: 100%; overflow-y: auto; box-shadow: 0 16px 40px rgba(0,0,0,.3); display: flex; flex-direction: column; gap: 8px; }
+  #filmCanvas { width: 100%; aspect-ratio: 16 / 9; height: auto; border-radius: 8px; background: #d1d5db; }
+  .film-grid { display: grid; grid-template-columns: 120px 150px 1fr 1.3fr; gap: 10px; }
+  .film-grid label { margin-top: 0; }
+  @media (max-width: 720px) { .film-grid { grid-template-columns: 1fr 1fr; } }
   #busy { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; z-index: 6; font-size: 12px; box-shadow: 0 4px 14px rgba(15,23,42,.14); }
 </style>
 </head>
@@ -185,6 +202,7 @@
         <button id="btnToday">Idag</button>
       </div>
       <input type="range" id="dateSlider" min="0" max="100" value="100" title="Dra för att bläddra i tiden" />
+      <div id="dateMarks" class="date-marks hidden" title="Ortofotonas datum – klicka för att visa fotot"></div>
     </div>
 
     <nav class="tabs" role="tablist">
@@ -263,6 +281,17 @@
           </div>
           <label class="check"><input type="checkbox" id="orthoExclusive" checked /> Ett ortofoto i taget (tänd ett för att växla)</label>
           <label class="check"><input type="checkbox" id="orthoFollowDate" /> Visa ortofotot som gäller valt datum</label>
+          <div class="row split" style="margin-top:10px;">
+            <button id="btnCompare" class="hidden" title="Två foton bredvid varandra med ett dragbart snitt över planen">⇆ Jämför före/efter</button>
+            <button id="btnOrthoFilm2" title="Film där ortofotona tonas över i varandra medan datumet räknas fram">🎬 Framdriftsfilm</button>
+          </div>
+          <div id="cmpBox" class="hidden" style="margin-top:6px;">
+            <div class="kv" style="grid-template-columns:auto 1fr;">
+              <span>◀ Vänster</span><select id="cmpA"></select>
+              <span>Höger ▶</span><select id="cmpB"></select>
+            </div>
+            <div class="row" style="margin-top:6px;"><button id="cmpSwap" title="Byt plats på fotona">⇄ Byt sida</button><span class="hint grow" style="margin:0;">Dra i snittet på planen.</span></div>
+          </div>
         </details>
       </section>
 
@@ -282,6 +311,7 @@
             <button id="btnRecVideo" title="Spelar upp hela tidslinjen och sparar den som video">🎬 Spara video</button>
             <button id="btnRecZip" title="En bild per steg, samlade i en ZIP-fil">🖼 Bildserie (ZIP)</button>
           </div>
+          <button id="btnOrthoFilm" class="block" style="margin-top:6px;" title="Film där ortofotona tonas över i varandra medan datumet räknas fram">🛰 Framdriftsfilm med ortofoton…</button>
           <div class="hint">Färgerna följer samma fasberäkning och statusfärger som 3D-modellen i 4D-planering.</div>
         </details>
 
@@ -384,7 +414,7 @@
   <main>
     <button id="btnShowSide" class="hidden" title="Visa menyn">▶ Meny</button>
     <div id="viewport">
-      <div id="stage"><canvas id="orthoCanvas"></canvas><canvas id="pdfCanvas"></canvas><canvas id="pdfHiCanvas"></canvas><canvas id="zoneCanvas"></canvas><canvas id="objCanvas"></canvas><canvas id="topCanvas"></canvas></div>
+      <div id="stage"><canvas id="orthoCanvas"></canvas><canvas id="orthoCanvasB"></canvas><canvas id="pdfCanvas"></canvas><canvas id="pdfHiCanvas"></canvas><canvas id="zoneCanvas"></canvas><canvas id="objCanvas"></canvas><canvas id="topCanvas"></canvas></div>
     </div>
     <div id="empty">Välj en plan, eller klicka <b>&nbsp;＋ Ny plan&nbsp;</b> och välj en PDF (t.ex. en planritning med PM-zoner).</div>
     <div id="zoomCtl" class="float-group">
@@ -403,10 +433,38 @@
       </div>
     </div>
     <div id="busy" class="hidden"></div>
+    <div id="cmpBar" class="hidden" title="Dra för att jämföra">
+      <span id="cmpLabelA" class="cmp-label a"></span><span id="cmpLabelB" class="cmp-label b"></span>
+      <span class="cmp-knob">⇆</span>
+    </div>
+    <div id="filmModal" class="hidden" tabindex="-1">
+      <div class="film-box">
+        <div class="row"><b style="font-size:15px;">🛰 Framdriftsfilm</b><span class="muted grow" id="filmInfo"></span><button id="btnFilmClose" class="icon ghost" title="Stäng">✕</button></div>
+        <canvas id="filmCanvas" width="1920" height="1080"></canvas>
+        <div class="film-grid">
+          <div><label>Längd (sekunder)</label><input type="text" id="filmSec" value="20" inputmode="numeric" /></div>
+          <div><label>Övergång</label><select id="filmMode"><option value="hold" selected>Håll och tona</option><option value="linear">Jämn toning</option></select></div>
+          <div><label>Utsnitt</label><select id="filmRegion"><option value="view" selected>Det som syns på skärmen</option><option value="all">Hela planen</option></select></div>
+          <div><label>Rubrik</label><input type="text" id="filmTitle" placeholder="t.ex. Kv. Björken – framdrift" /></div>
+        </div>
+        <div class="row" style="gap:14px;margin-top:2px;">
+          <label class="check"><input type="checkbox" id="filmPdf" checked /> Ritningen</label>
+          <label class="check"><input type="checkbox" id="filmZones" /> Zoner och objekt</label>
+          <label class="check"><input type="checkbox" id="filmSite" checked /> Etablering och noteringar</label>
+          <label class="check"><input type="checkbox" id="filmCaptions" checked /> Bildtexter</label>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <span class="muted grow" id="filmStatus"></span>
+          <button id="btnFilmPreview">▶ Förhandsvisa</button>
+          <button id="btnFilmSave" class="primary">🎬 Spara film</button>
+        </div>
+      </div>
+    </div>
   </main>
 </div>
 <script src="lagesplan.js"></script>
 <script src="lagesplan-tools.js"></script>
 <script src="lagesplan-layers.js"></script>
+<script src="lagesplan-film.js"></script>
 </body>
 </html>

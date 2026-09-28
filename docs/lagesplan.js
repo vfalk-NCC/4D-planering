@@ -979,6 +979,7 @@ async function detectZones() {
 // ---------------------------------------------------------------------
 function applyView() {
   $("stage").style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+  if (typeof updateCompareClip === "function") updateCompareClip();
   if (typeof scheduleOrthoRender === "function") scheduleOrthoRender();
   scheduleHiRender();
   rerenderTextIfFixed();
@@ -1169,11 +1170,13 @@ function updateEditorHints() {
 // ---------------------------------------------------------------------
 let dateMin = null, dateMax = null;
 function setupDateRange() {
-  const ds = items.flatMap(it => [it.start_date, it.end_date, it.actual_end_date]).filter(Boolean).map(d => Date.parse(d)).filter(Number.isFinite);
+  const photoDates = typeof orthos === "function" ? orthos().map(orthoDate) : [];
+  const ds = items.flatMap(it => [it.start_date, it.end_date, it.actual_end_date]).concat(photoDates).filter(Boolean).map(d => Date.parse(d)).filter(Number.isFinite);
   const today = Date.parse(todayIso());
   dateMin = ds.length ? Math.min(...ds, today) : today - 180 * 86400000;
   dateMax = ds.length ? Math.max(...ds, today) : today + 180 * 86400000;
   syncSliderFromDate();
+  if (typeof renderDateMarks === "function") renderDateMarks();
 }
 function syncSliderFromDate() {
   const t = Date.parse($("dateInput").value || todayIso());

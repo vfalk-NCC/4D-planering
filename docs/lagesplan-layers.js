@@ -92,12 +92,14 @@ function ls(key, def = {}) {
 function layerVisible(key) { return ls(key).visible; }
 function layerOpacity(key) { return ls(key).opacity / 100; }
 function applyLayerCss() {
-  const hasOrtho = orthos().some(o => ls("ortho:" + o.id).visible);
+  const cmp = typeof compareActive === "function" && compareActive();
+  const hasOrtho = cmp || orthos().some(o => ls("ortho:" + o.id).visible);
   const set = (id, key) => { const c = $(id); c.style.display = layerVisible(key) ? "" : "none"; c.style.opacity = layerOpacity(key); };
   set("pdfCanvas", "pdf");
   set("zoneCanvas", "zones");
   set("objCanvas", "objects");
   $("orthoCanvas").style.display = hasOrtho ? "" : "none";
+  if ($("orthoCanvasB")) $("orthoCanvasB").style.display = cmp ? "" : "none";
   // Över ett ortofoto blir ritningens vita bakgrund genomskinlig (multiplicera).
   const multiply = hasOrtho && layerState.pdfMultiply !== false;
   $("pdfCanvas").style.mixBlendMode = multiply ? "multiply" : "";
@@ -154,14 +156,19 @@ function renderOrthoNav() {
   const cur = vis[vis.length - 1];
   const i = cur ? list.indexOf(cur) : -1;
   $("orthoNavLabel").textContent = !vis.length ? "Inget ortofoto visas" : vis.length > 1 ? `${vis.length} ortofoton tända` : `${cur.name} · ${orthoDate(cur)} (${i + 1}/${list.length})`;
+  $("orthoNavLabel").title = cur && cur.caption ? cur.caption : "";
   $("btnOrthoPrev").disabled = i === 0; $("btnOrthoNext").disabled = i === list.length - 1;
+  if (typeof renderDateMarks === "function") renderDateMarks();
+  if (typeof renderCompareUi === "function") renderCompareUi();
 }
 async function editOrtho(o) {
   const name = prompt("Namn på ortofotot:", o.name);
   if (name === null) return;
   const date = askOrthoDate(orthoDate(o));
   if (date === null) return;
-  await saveSiteItem({ ...o, name: name.trim() || o.name, date });
+  const caption = prompt("Bildtext (visas i framdriftsfilmen), t.ex. \"Stomme hus A klar\" – lämna tomt för ingen:", o.caption || "");
+  if (caption === null) return;
+  await saveSiteItem({ ...o, name: name.trim() || o.name, date, caption: caption.trim() || null });
   syncOrthoToDate(); renderOrthoNav();
 }
 /* Frågar efter fotodatum (ÅÅÅÅ-MM-DD). null = avbrutet. */
@@ -235,6 +242,7 @@ async function loadSiteLayers() {
   try { siteItems = await ghReadJSON(token, sitePath()); } catch (e) { siteItems = []; console.warn("Kunde inte läsa site_layers.json", e); }
   siteLoaded = true;
   renderActiveLayerSelect();
+  if (typeof setupDateRange === "function" && dateMin != null) setupDateRange();
   syncOrthoToDate();
   renderLayerPanel();
   applyLayerCss();
@@ -586,20 +594,34 @@ async function loadTile(path) {
 let orthoRenderSeq = 0, orthoTimer = 0;
 function scheduleOrthoRender() { clearTimeout(orthoTimer); orthoTimer = setTimeout(renderOrtho, 90); }
 async function renderOrtho() {
-  const c = $("orthoCanvas");
   const seq = ++orthoRenderSeq;
-  const list = (plan && plan.calib && viewport) ? orthosByDate().filter(o => ls("ortho:" + o.id).visible) : [];
+  const ok = plan && plan.calib && viewport;
+  // Före/efter-läget: vänster foto i orthoCanvas, höger i orthoCanvasB (klipps vid snittet).
+  const cmp = ok && typeof compareActive === "function" && compareActive() ? comparePair() : null;
+  const list = !ok ? [] : cmp ? [cmp[0]] : orthosByDate().filter(o => ls("ortho:" + o.id).visible);
+  if (!(await paintOrtho($("orthoCanvas"), list, seq, !!cmp))) return;
+  const cb = $("orthoCanvasB");
+  if (cb) {
+    if (cmp) { if (!(await paintOrtho(cb, [cmp[1]], seq, true))) return; }
+    else { cb.width = 0; cb.height = 0; }
+  }
+  if (typeof updateCompareClip === "function") updateCompareClip();
+  applyLayerCss();
+}
+/* Ritar ortofotona i listan på canvasen c för den synliga delen av planen.
+   false = en nyare rendering har tagit över. */
+async function paintOrtho(c, list, seq, full) {
   const pc = $("pdfCanvas");
-  if (!list.length || !pc.width) { c.width = 0; c.height = 0; applyLayerCss(); return; }
+  if (!list.length || !pc.width) { c.width = 0; c.height = 0; return seq === orthoRenderSeq; }
   const imgs = [];
   for (const o of list) {
     try { imgs.push([o, await ensureOrthoImage(o)]); } catch (e) { console.warn("Kunde inte hämta ortofoto", o.name, e); }
   }
-  if (seq !== orthoRenderSeq) return;
+  if (seq !== orthoRenderSeq) return false;
   const vr = $("viewport").getBoundingClientRect();
   const x0 = Math.max(0, -view.tx / view.scale), y0 = Math.max(0, -view.ty / view.scale);
   const x1 = Math.min(pc.width, (vr.width - view.tx) / view.scale), y1 = Math.min(pc.height, (vr.height - view.ty) / view.scale);
-  if (x1 <= x0 || y1 <= y0) { c.width = 0; return; }
+  if (x1 <= x0 || y1 <= y0) { c.width = 0; return true; }
   let s = view.scale * (window.devicePixelRatio || 1);
   const maxPx = 36e6;
   if ((x1 - x0) * (y1 - y0) * s * s > maxPx) s = Math.sqrt(maxPx / ((x1 - x0) * (y1 - y0)));
@@ -612,7 +634,7 @@ async function renderOrtho() {
   ctx.imageSmoothingQuality = "high";
   for (const [o, im] of imgs) {
     ctx.save();
-    ctx.globalAlpha = layerOpacity("ortho:" + o.id);
+    ctx.globalAlpha = full ? 1 : layerOpacity("ortho:" + o.id);
     const m = mulAffine(stageToCanvas, imageToStage(o.world));
     ctx.setTransform(...m);
     ctx.drawImage(im, 0, 0);
@@ -628,7 +650,7 @@ async function renderOrtho() {
       for (let ty = Math.floor(v0 / t.size); ty <= Math.min(t.rows - 1, Math.floor(v1 / t.size)); ty++) {
         for (let tx = Math.floor(u0 / t.size); tx <= Math.min(t.cols - 1, Math.floor(u1 / t.size)); tx++) {
           const img = await loadTile(`${t.prefix}t_${tx}_${ty}.webp`);
-          if (seq !== orthoRenderSeq) { ctx.restore(); return; }
+          if (seq !== orthoRenderSeq) { ctx.restore(); return false; }
           if (!img) continue; // laddas - ritas när den kommer (scheduleOrthoRender)
           ctx.setTransform(...mulAffine(mf, [1, 0, 0, 1, tx * t.size, ty * t.size]));
           ctx.drawImage(img, 0, 0);
@@ -637,15 +659,17 @@ async function renderOrtho() {
     }
     ctx.restore();
   }
-  applyLayerCss();
+  return true;
 }
 
 /* För export (PNG/PDF/video): hela fotot från översiktsbilden. */
-function drawOrthoForExport(ctx, ox, oy, scale) {
+function drawOrthoForExport(ctx, ox, oy, scale, blend) {
   if (!plan || !plan.calib) return;
-  orthosByDate().filter(o => ls("ortho:" + o.id).visible && orthoImages.has(o.id)).forEach(o => {
+  // blend = [{ o, a }] (framdriftsfilmen) – annars de tända lagren.
+  const list = blend || orthosByDate().filter(o => ls("ortho:" + o.id).visible).map(o => ({ o, a: layerOpacity("ortho:" + o.id) }));
+  list.filter(({ o, a }) => a > 0 && orthoImages.has(o.id)).forEach(({ o, a }) => {
     ctx.save();
-    ctx.globalAlpha = layerOpacity("ortho:" + o.id);
+    ctx.globalAlpha = a;
     ctx.setTransform(...mulAffine([scale, 0, 0, scale, ox, oy], imageToStage(o.world)));
     ctx.drawImage(orthoImages.get(o.id), 0, 0);
     ctx.restore();
@@ -1522,7 +1546,7 @@ function renderLayerPanel() {
   const el = $("layerList");
   if (!el) return;
   const rows = [];
-  orthosByDate().reverse().forEach(o => rows.push(layerRow("ortho:" + o.id, `<span class="or-name" title="Dubbelklicka för att ändra namn och fotodatum">🛰 ${escHtml(o.name)}</span> <small>${escHtml(orthoDate(o))}${o.orig && o.orig.pixel_m ? ` · ${Math.round(o.orig.pixel_m * 100)} cm/px` : ""}</small>`, { del: true })));
+  orthosByDate().reverse().forEach(o => rows.push(layerRow("ortho:" + o.id, `<span class="or-name" title="${escHtml(o.caption ? o.caption + " – " : "")}Dubbelklicka för att ändra namn, fotodatum och bildtext">🛰 ${escHtml(o.name)}</span> <small>${escHtml(orthoDate(o))}${o.caption ? " · 💬" : ""}${o.orig && o.orig.pixel_m ? ` · ${Math.round(o.orig.pixel_m * 100)} cm/px` : ""}</small>`, { del: true })));
   rows.push(layerRow("pdf", "📄 Ritningen (PDF)", {
     extra: orthos().length ? `<label class="blend"><input type="checkbox" class="lr-mult"${layerState.pdfMultiply !== false ? " checked" : ""} /> Genomskinlig vit bakgrund över fotot</label>` : ""
   }));
