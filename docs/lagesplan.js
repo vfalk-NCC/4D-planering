@@ -307,33 +307,39 @@ function startCalib() {
   calibNext();
 }
 function cancelCalib() {
-  if (calib && calib.pdf.length > calib.model.length) askOpener("cancelPick", {}, 3000).catch(() => {});
+  if (calib && calib.pdf.length === 2 && calib.model.length < 2) askOpener("cancelPick", {}, 3000).catch(() => {});
   calib = null;
   $("btnCalib").textContent = "📐 Kalibrera mot 3D";
   $("viewport").classList.remove("drawing");
   setCalibMsg("");
   renderZones();
 }
+/* Ordning: båda punkterna i PDF:en först, sedan båda i 3D i ett svep - så
+   man bara behöver byta till Trimble Connect en gång. */
 async function calibNext() {
   if (!calib) return;
-  const n = calib.model.length + 1;
-  if (calib.pdf.length === 2 && calib.model.length === 2) return finishCalib();
-  if (calib.pdf.length === calib.model.length) {
+  if (calib.pdf.length < 2) {
+    const n = calib.pdf.length + 1;
     calib.waitPdf = true;
     $("viewport").classList.add("drawing");
-    setCalibMsg(`Punkt ${n} av 2: klicka på en tydlig punkt i PDF:en, t.ex. ett rutnätskryss eller ett byggnadshörn.${n === 2 ? " Välj en punkt långt från den första." : ""}`);
+    setCalibMsg(`Steg ${n} av 4: klicka på punkt ${n} i PDF:en, t.ex. ett rutnätskryss eller ett byggnadshörn.${n === 2 ? " Välj en punkt långt från den första." : ""}`);
     return;
   }
-  $("viewport").classList.remove("drawing");
-  setCalibMsg(`Punkt ${n} av 2: klicka på SAMMA punkt i 3D-modellen i Trimble Connect.`);
-  try {
-    const r = await askOpener("pick", {}, 0);
-    if (!calib) return;
-    calib.model.push([r.point.x, r.point.y, r.point.z]);
-    calibNext();
-  } catch (e) {
-    if (calib) { alert("Kalibreringen avbröts: " + e.message); cancelCalib(); }
+  if (calib.model.length < 2) {
+    const n = calib.model.length + 1;
+    $("viewport").classList.remove("drawing");
+    setCalibMsg(`Steg ${n + 2} av 4: gå till Trimble Connect och klicka på punkt ${n} (samma ställe som krysset ${n} i PDF:en) i 3D-modellen.${n === 1 ? " Klicka sedan direkt punkt 2 – 4D-planering visar vilken punkt som väntas." : ""}`);
+    try {
+      const r = await askOpener("pick", { n }, 0);
+      if (!calib) return;
+      calib.model.push([r.point.x, r.point.y, r.point.z]);
+      calibNext();
+    } catch (e) {
+      if (calib) { alert("Kalibreringen avbröts: " + e.message); cancelCalib(); }
+    }
+    return;
   }
+  finishCalib();
 }
 function finishCalib() {
   const { pdf, model } = calib;

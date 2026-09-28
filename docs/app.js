@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-28 09:00";
+const APP_VERSION = "2026-09-28 09:20";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -255,8 +255,12 @@ function onWorkspaceEvent(event, data) {
     const p = d && (d.position || d.point || d.hitPoint);
     if (p && p.x !== undefined) {
       const reply = lagesplanPick;
+      const n = lagesplanPickN;
       lagesplanPick = null;
       reply({ point: { x: p.x, y: p.y, z: p.z } });
+      showLagesplanBanner(n >= 2
+        ? "✓ Punkt 2 registrerad – kalibreringen är klar. Gå tillbaka till lägesplanen."
+        : `✓ Punkt ${n} registrerad.`, n >= 2 ? 8000 : 0);
     }
     return;
   }
@@ -292,6 +296,24 @@ function onWorkspaceEvent(event, data) {
    boxes, meter) och att markera objekt i modellen.
    ------------------------------------------------------------------- */
 let lagesplanPick = null; // svarsfunktion medan lägesplanen väntar på ett klick i 3D
+let lagesplanPickN = 1;    // vilken kalibreringspunkt (1 eller 2) som väntas
+let lagesplanBannerTimer = null;
+
+/** Tydlig banderoll överst i panelen medan lägesplanen väntar på klick i 3D. */
+function showLagesplanBanner(text, hideAfterMs) {
+  let el = document.getElementById("lagesplanBanner");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "lagesplanBanner";
+    el.style.cssText = "position:sticky;top:0;z-index:50;background:#0b5fff;color:#fff;padding:10px 12px;font-weight:600;border-radius:6px;margin:6px 0;box-shadow:0 2px 8px rgba(0,0,0,.25);";
+    const host = document.getElementById("app") || document.body;
+    host.insertBefore(el, host.firstChild);
+  }
+  clearTimeout(lagesplanBannerTimer);
+  el.textContent = text || "";
+  el.style.display = text ? "block" : "none";
+  if (text && hideAfterMs) lagesplanBannerTimer = setTimeout(() => { el.style.display = "none"; }, hideAfterMs);
+}
 
 window.addEventListener("message", async e => {
   if (e.origin !== location.origin || !e.data || !e.data.lagesplan || !e.source) return;
@@ -303,9 +325,12 @@ window.addEventListener("message", async e => {
     } else if (msg.type === "pick") {
       if (lagesplanPick) lagesplanPick({ error: "Avbruten" });
       lagesplanPick = reply;
+      lagesplanPickN = msg.n || 1;
+      showLagesplanBanner(`📐 Lägesplan: klicka på punkt ${lagesplanPickN} av 2 i 3D-modellen (samma ställe som krysset ${lagesplanPickN} i PDF:en).`);
     } else if (msg.type === "cancelPick") {
       if (lagesplanPick) lagesplanPick({ error: "Avbruten" });
       lagesplanPick = null;
+      showLagesplanBanner("");
       reply({});
     } else if (msg.type === "positions") {
       reply(await lagesplanPositions());
@@ -500,7 +525,13 @@ function bindUI() {
   // Lägesplan öppnas som egen sida (samma origin -> delar token/inställningar).
   document.getElementById("btnStatusPlan").onclick = () => {
     if (!projectId) { alert("Projektet är inte laddat än."); return; }
-    window.open("lagesplan.html?project=" + encodeURIComponent(projectId), "_blank");
+    // Eget fönster (inte flik) på högra halvan av skärmen, så det kan ligga
+    // bredvid Trimble Connect - kalibreringen kräver klick i båda.
+    const w = Math.round(screen.availWidth / 2), h = screen.availHeight;
+    const left = (screen.availLeft || 0) + screen.availWidth - w, top = screen.availTop || 0;
+    const win = window.open("lagesplan.html?project=" + encodeURIComponent(projectId), "lagesplan-" + projectId,
+      `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
+    if (win) win.focus();
   };
   document.getElementById("btnSettings").onclick = () => toggle("settingsDialog", true);
   document.getElementById("btnCloseSettings").onclick = () => toggle("settingsDialog", false);
