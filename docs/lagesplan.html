@@ -56,6 +56,11 @@
     <h1>🗺️ Lägesplan</h1>
     <div class="muted" id="projectInfo">Laddar…</div>
     <div id="warnBox" class="warn hidden"></div>
+    <div id="tokenBox" class="hidden" style="margin:6px 0;">
+      <label>GitHub-token (samma som i 4D-planeringens ⚙)</label>
+      <input type="text" id="tokenInput" autocomplete="off" />
+      <button id="btnTokenSave" class="primary" style="margin-top:6px;">Fortsätt</button>
+    </div>
 
     <h2>Plan</h2>
     <div class="row">
@@ -67,6 +72,21 @@
       <button id="btnDeletePlan" title="Ta bort planen">🗑️</button>
       <input type="file" id="pdfInput" accept="application/pdf" class="hidden" />
     </div>
+
+    <h2>Koppling via position i 3D</h2>
+    <div class="muted">Kalibrera planen mot modellen med två punkter. Varje planerat objekt hamnar då i den zon det ligger i på ritningen, även om zonkoden inte finns i planeringen.</div>
+    <div class="row" style="margin-top:6px;">
+      <button id="btnCalib" title="Klicka två punkter i PDF:en och samma punkter i 3D-modellen">📐 Kalibrera mot 3D</button>
+      <button id="btnPositions" title="Läs objektens positioner från de modeller som är öppna i Trimble Connect">📍 Hämta positioner</button>
+    </div>
+    <div id="calibMsg" class="warn hidden"></div>
+    <div class="row" style="margin-top:6px;">
+      <span class="muted">Nivå (Z, m) från</span>
+      <input type="text" id="levelZ0" style="width:62px;" placeholder="alla" />
+      <span class="muted">till</span>
+      <input type="text" id="levelZ1" style="width:62px;" placeholder="alla" />
+    </div>
+    <div class="muted" id="calibInfo" style="margin-top:4px;"></div>
 
     <h2>Datum</h2>
     <div class="row">
@@ -97,7 +117,7 @@
       <input type="text" id="zeCode" />
       <label>Koppling till planeringen</label>
       <select id="zeField">
-        <option value="auto">Automatiskt (koden finns i område/aktivitet/namn)</option>
+        <option value="auto">Automatiskt (position i 3D och/eller koden i område/aktivitet/namn)</option>
         <option value="area">Område är/innehåller …</option>
         <option value="activity">Aktivitet är/innehåller …</option>
         <option value="object_name">Namn är/innehåller …</option>
@@ -108,6 +128,7 @@
       <div class="muted" id="zeMatchInfo" style="margin-top:4px;"></div>
       <div class="row" style="margin-top:8px;">
         <button id="zeSave" class="primary">Spara</button>
+        <button id="zeSelect3d" title="Markera zonens objekt i 3D-modellen">🎯 Markera i 3D</button>
         <button id="zeDelete">🗑️ Ta bort zon</button>
       </div>
     </div>

@@ -190,7 +190,19 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
     ytor i själva ritningen, och kopplar dem till kodtexten i eller intill
     rutan. Koden matchar kodmönstret, som standard `PM\s*\d+\s*[A-Z]?`.
     Zoner kan också ritas för hand med **▭ Rita zon**.
-  - **Koppling**: automatiskt kopplas en zon till de planerade objekt där
+  - **📐 Kalibrera mot 3D**: klicka två punkter i PDF:en (t.ex.
+    rutnätskryss) och samma två punkter i 3D-modellen. **📍 Hämta
+    positioner** läser sedan objektens läge (bounding box) från de modeller
+    som är öppna i Trimble Connect och sparar det i
+    `plan_item_positions.json`. Varje objekt kopplas till den zon dess
+    mittpunkt ligger i på ritningen, så PM-koderna behöver inte finnas i
+    planeringen. Nivå (Z från–till, meter) begränsar vilka våningar som
+    räknas, och **🎯 Markera i 3D** markerar en zons objekt i modellen.
+    Lägesplanen är en egen flik som pratar med 4D-planering via
+    `postMessage`: token och inställningar hämtas därifrån, eftersom
+    webbläsaren inte delar extensionens localStorage med en vanlig flik.
+    Låt därför 4D-planering vara öppen i Trimble Connect.
+  - **Koppling via kod**: automatiskt kopplas en zon också till de planerade objekt där
     koden finns i område, aktivitet, namn eller entreprenör. "PM010" och
     "PM10" räknas som samma kod. Klicka på en zon om du vill koppla den
     till ett valfritt fält och värde i stället, t.ex. Område = "Zon Nord".

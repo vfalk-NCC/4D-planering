@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-28 07:40";
+const APP_VERSION = "2026-09-28 08:10";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -249,6 +249,17 @@ async function refreshAllData() {
 }
 
 function onWorkspaceEvent(event, data) {
+  // Lägesplanen (egen flik) väntar på en klickpunkt i 3D för kalibrering.
+  if (event === "viewer.onPicked" && lagesplanPick) {
+    const d = data && data.data ? data.data : data;
+    const p = d && (d.position || d.point || d.hitPoint);
+    if (p && p.x !== undefined) {
+      const reply = lagesplanPick;
+      lagesplanPick = null;
+      reply({ point: { x: p.x, y: p.y, z: p.z } });
+    }
+    return;
+  }
   // Uppdatera markeringsräknaren och synka markeringen mot "Planerade
   // objekt"-listan när användaren markerar objekt i modellen.
   if (event === "viewer.onSelectionChanged" || event === "extension.onSelectionChanged") {
@@ -268,6 +279,77 @@ function onWorkspaceEvent(event, data) {
     }
     syncSelectionFromModel();
   }
+}
+
+
+/* ---------------------------------------------------------------------
+   Brygga till Lägesplanen (lagesplan.html, öppnas i egen flik via 🗺️)
+   ---------------------------------------------------------------------
+   Fliken är ett toppfönster och får därför INTE samma localStorage som
+   extensionen (webbläsarna delar upp lagringen för inbäddade iframes), så
+   token/inställningar skickas hit via postMessage. Lägesplanen kan också
+   be om en klickpunkt i 3D (kalibrering), objektens positioner (bounding
+   boxes, meter) och att markera objekt i modellen.
+   ------------------------------------------------------------------- */
+let lagesplanPick = null; // svarsfunktion medan lägesplanen väntar på ett klick i 3D
+
+window.addEventListener("message", async e => {
+  if (e.origin !== location.origin || !e.data || !e.data.lagesplan || !e.source) return;
+  const msg = e.data;
+  const reply = payload => e.source.postMessage({ lagesplanReply: true, reqId: msg.reqId, ...payload }, location.origin);
+  try {
+    if (msg.type === "hello") {
+      reply({ settings, projectId });
+    } else if (msg.type === "pick") {
+      if (lagesplanPick) lagesplanPick({ error: "Avbruten" });
+      lagesplanPick = reply;
+    } else if (msg.type === "cancelPick") {
+      if (lagesplanPick) lagesplanPick({ error: "Avbruten" });
+      lagesplanPick = null;
+      reply({});
+    } else if (msg.type === "positions") {
+      reply(await lagesplanPositions());
+    } else if (msg.type === "select") {
+      const ids = new Set(msg.ids || []);
+      const sel = items.filter(it => ids.has(it.id));
+      await selectItemsInModel(sel);
+      reply({ count: sel.length });
+    }
+  } catch (err) {
+    reply({ error: err.message || String(err) });
+  }
+});
+
+/** Mittpunkt och höjdintervall (meter) för alla planerade objekt i inlästa modeller. */
+async function lagesplanPositions() {
+  const byModel = {};
+  items.filter(it => it.modelId && it.objectId).forEach(it => { (byModel[it.modelId] = byModel[it.modelId] || []).push(it); });
+  const positions = [];
+  let missing = 0;
+  for (const modelId of Object.keys(byModel)) {
+    const group = byModel[modelId];
+    let pairs;
+    try {
+      const res = await convertToRuntimeIdsSafe(modelId, group.map(it => it.objectId));
+      pairs = group.map((it, i) => ({ it, runtimeId: res[i] && res[i].runtimeId })).filter(p => p.runtimeId !== undefined && p.runtimeId !== null);
+    } catch (e) {
+      missing += group.length;
+      continue;
+    }
+    missing += group.length - pairs.length;
+    for (let i = 0; i < pairs.length; i += 1000) {
+      const chunk = pairs.slice(i, i + 1000);
+      let boxes = [];
+      try { boxes = await API.viewer.getObjectBoundingBoxes(modelId, chunk.map(p => p.runtimeId)); } catch (e) { missing += chunk.length; continue; }
+      const boxById = new Map(boxes.map(b => [b.id, b.boundingBox]));
+      chunk.forEach(({ it, runtimeId }) => {
+        const b = boxById.get(runtimeId);
+        if (!b) { missing++; return; }
+        positions.push({ id: it.id, x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2, z0: b.min.z, z1: b.max.z });
+      });
+    }
+  }
+  return { positions, missing };
 }
 
 /* ---------------------------------------------------------------------

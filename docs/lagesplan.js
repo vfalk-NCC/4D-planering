@@ -50,6 +50,31 @@ let renderScale = 1;
 let selectedZoneId = null;
 const view = { scale: 1, tx: 0, ty: 0 };
 let drawMode = false;
+let positions = [];        // plan_item_positions.json: [{id, x, y, z0, z1}] (meter, modellens koordinater)
+let calib = null;          // pågående kalibrering {pdf: [[x,y]...], model: [[x,y,z]...], waitPdf}
+let posPdfCache = null;    // item-id -> [x, y] i PDF-koordinater (för aktiv plan, kalibrering och nivå)
+
+// ---------------------------------------------------------------------
+// Brygga till 4D-planering (fönstret som öppnade lägesplanen)
+// ---------------------------------------------------------------------
+let bridgeSeq = 0;
+const bridgeWait = new Map();
+window.addEventListener("message", e => {
+  if (e.origin !== location.origin || !e.data || !e.data.lagesplanReply) return;
+  const done = bridgeWait.get(e.data.reqId);
+  if (done) { bridgeWait.delete(e.data.reqId); done(e.data); }
+});
+function askOpener(type, extra = {}, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    const op = window.opener;
+    if (!op || op.closed) return reject(new Error("4D-planering är inte öppen. Öppna lägesplanen via 🗺️-knappen i 4D-planering (i Trimble Connect) och låt den vara öppen."));
+    const reqId = ++bridgeSeq;
+    const timer = timeoutMs ? setTimeout(() => { bridgeWait.delete(reqId); reject(new Error("Inget svar från 4D-planering. Är den fortfarande öppen i Trimble Connect?")); }, timeoutMs) : null;
+    bridgeWait.set(reqId, d => { clearTimeout(timer); d.error ? reject(new Error(d.error)) : resolve(d); });
+    try { op.postMessage({ lagesplan: true, type, reqId, ...extra }, location.origin); }
+    catch (err) { clearTimeout(timer); bridgeWait.delete(reqId); reject(err); }
+  });
+}
 
 // ---------------------------------------------------------------------
 // Start
@@ -63,17 +88,35 @@ async function init() {
   try { unlocked = localStorage.getItem("4dplan-unlocked") === "1"; } catch (e) {}
 
   bindUI();
+
+  // Öppnad från extensionen: fliken har inte extensionens localStorage
+  // (webbläsaren delar upp lagringen för inbäddade iframes), så token och
+  // inställningar hämtas från 4D-planering via postMessage.
+  if (window.opener) {
+    try {
+      const r = await askOpener("hello", {}, 4000);
+      if (r.settings) {
+        settings = { ...settings, ...r.settings };
+        token = settings.githubToken || token;
+        unlocked = true;
+      }
+      if (!projectId && r.projectId) projectId = r.projectId;
+    } catch (e) { /* ingen extension - använd lokal lagring */ }
+  }
   renderLegend();
 
-  if (!unlocked) return fatal("Öppna lägesplanen via 4D-planering (knappen 🗺️ Lägesplan) – den delar inloggning och inställningar med den.");
   if (!projectId) return fatal("Saknar projekt. Öppna lägesplanen via knappen 🗺️ Lägesplan i 4D-planering.");
-  if (!token) return fatal("Ingen GitHub-token. Ange den i 4D-planeringens inställningar (⚙) och öppna lägesplanen igen.");
+  if (!token || !unlocked) {
+    $("tokenBox").classList.remove("hidden");
+    return fatal("Öppna lägesplanen via knappen 🗺️ i 4D-planering (inne i Trimble Connect), eller ange GitHub-token här.");
+  }
 
   $("projectInfo").textContent = `Projekt ${projectId}`;
   $("dateInput").value = todayIso();
   setBusy("Hämtar planering…");
   try {
-    [items, plans] = await Promise.all([ghReadJSON(token, dataPath("plan_items.json")), ghReadJSON(token, dataPath("status_plans.json"))]);
+    [items, plans, positions] = await Promise.all([ghReadJSON(token, dataPath("plan_items.json")), ghReadJSON(token, dataPath("status_plans.json")),
+      ghReadJSON(token, dataPath("plan_item_positions.json")).catch(() => [])]);
   } catch (e) {
     setBusy("");
     return fatal("Kunde inte hämta data: " + e.message);
@@ -195,8 +238,143 @@ function itemsForZone(zone) {
     return items.filter(it => String(it[rule.field] || "").toLowerCase().includes(v));
   }
   const code = normCode(zone.code);
-  if (!code) return [];
-  return items.filter(it => itemCodes(it).has(code));
+  const pos = positionsInPdf();
+  const polys = zone.polys || [];
+  return items.filter(it => (code && itemCodes(it).has(code)) ||
+    (pos && polys.length && pos.has(it.id) && polys.some(poly => pointInPoly(pos.get(it.id), poly))));
+}
+
+// ---------------------------------------------------------------------
+// Position i 3D -> PDF (kalibrering med två punktpar)
+// ---------------------------------------------------------------------
+/* Likformighetstransform (skala + rotation + förflyttning) från modellens
+   XY (meter) till PDF-punkter, bestämd av två punktpar. */
+function modelToPdf(x, y) {
+  const [m1, m2] = plan.calib.model, [p1, p2] = plan.calib.pdf;
+  const mx = m2[0] - m1[0], my = m2[1] - m1[1], px = p2[0] - p1[0], py = p2[1] - p1[1];
+  const d = mx * mx + my * my;
+  const ar = (px * mx + py * my) / d, ai = (py * mx - px * my) / d;
+  const dx = x - m1[0], dy = y - m1[1];
+  return [p1[0] + ar * dx - ai * dy, p1[1] + ai * dx + ar * dy];
+}
+function levelRange() {
+  const n = v => (v === "" || v == null || !Number.isFinite(Number(v))) ? null : Number(v);
+  const l = (plan && plan.level) || {};
+  return [n(l.z0), n(l.z1)];
+}
+/* item-id -> PDF-punkt för objekt inom vald nivå, eller null om planen inte är kalibrerad. */
+function positionsInPdf() {
+  if (!plan || !plan.calib || !positions.length) return null;
+  if (posPdfCache) return posPdfCache;
+  const [z0, z1] = levelRange();
+  posPdfCache = new Map();
+  positions.forEach(p => {
+    const zc = (p.z0 + p.z1) / 2;
+    if (z0 !== null && zc < z0) return;
+    if (z1 !== null && zc > z1) return;
+    posPdfCache.set(p.id, modelToPdf(p.x, p.y));
+  });
+  return posPdfCache;
+}
+function invalidatePositions() { posPdfCache = null; }
+
+function updateCalibInfo() {
+  const el = $("calibInfo");
+  if (!plan) { el.textContent = ""; return; }
+  const [z0, z1] = levelRange();
+  $("levelZ0").value = z0 ?? ""; $("levelZ1").value = z1 ?? "";
+  if (!plan.calib) { el.textContent = "Inte kalibrerad ännu."; return; }
+  const [m1, m2] = plan.calib.model, [p1, p2] = plan.calib.pdf;
+  const scale = Math.hypot(m2[0] - m1[0], m2[1] - m1[1]) * 1000 / (Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * 25.4 / 72);
+  const pos = positionsInPdf();
+  const inZone = pos ? [...pos.values()].filter(pt => (plan.zones || []).some(z => (z.polys || []).some(poly => pointInPoly(pt, poly)))).length : 0;
+  el.textContent = `✓ Kalibrerad (skala ≈ 1:${Math.round(scale)}). ` + (positions.length
+    ? `${positions.length} objekt har position, ${pos ? pos.size : 0} på vald nivå, ${inZone} ligger i en zon.`
+    : "Hämta positioner (📍) för att koppla objekten.");
+}
+
+function setCalibMsg(t) { const m = $("calibMsg"); m.textContent = t || ""; m.classList.toggle("hidden", !t); }
+function startCalib() {
+  if (!plan || !viewport) return;
+  if (!window.opener) { alert("Kalibreringen behöver 4D-planering öppen i Trimble Connect. Öppna lägesplanen via 🗺️-knappen där."); return; }
+  if (drawMode) setDrawMode(false);
+  calib = { pdf: [], model: [] };
+  $("btnCalib").textContent = "✕ Avbryt kalibrering";
+  calibNext();
+}
+function cancelCalib() {
+  if (calib && calib.pdf.length > calib.model.length) askOpener("cancelPick", {}, 3000).catch(() => {});
+  calib = null;
+  $("btnCalib").textContent = "📐 Kalibrera mot 3D";
+  $("viewport").classList.remove("drawing");
+  setCalibMsg("");
+  renderZones();
+}
+async function calibNext() {
+  if (!calib) return;
+  const n = calib.model.length + 1;
+  if (calib.pdf.length === 2 && calib.model.length === 2) return finishCalib();
+  if (calib.pdf.length === calib.model.length) {
+    calib.waitPdf = true;
+    $("viewport").classList.add("drawing");
+    setCalibMsg(`Punkt ${n} av 2: klicka på en tydlig punkt i PDF:en, t.ex. ett rutnätskryss eller ett byggnadshörn.${n === 2 ? " Välj en punkt långt från den första." : ""}`);
+    return;
+  }
+  $("viewport").classList.remove("drawing");
+  setCalibMsg(`Punkt ${n} av 2: klicka på SAMMA punkt i 3D-modellen i Trimble Connect.`);
+  try {
+    const r = await askOpener("pick", {}, 0);
+    if (!calib) return;
+    calib.model.push([r.point.x, r.point.y, r.point.z]);
+    calibNext();
+  } catch (e) {
+    if (calib) { alert("Kalibreringen avbröts: " + e.message); cancelCalib(); }
+  }
+}
+function finishCalib() {
+  const { pdf, model } = calib;
+  cancelCalib();
+  const dm = Math.hypot(model[1][0] - model[0][0], model[1][1] - model[0][1]);
+  const dp = Math.hypot(pdf[1][0] - pdf[0][0], pdf[1][1] - pdf[0][1]);
+  if (dm < 0.5 || dp < 5) { alert("Punkterna ligger för nära varandra. Välj två punkter långt ifrån varandra och försök igen."); return; }
+  plan.calib = { pdf, model };
+  const z = (model[0][2] + model[1][2]) / 2;
+  if (!plan.level) plan.level = { z0: Math.round((z - 0.5) * 10) / 10, z1: Math.round((z + 3.5) * 10) / 10 };
+  invalidatePositions();
+  renderZones();
+  schedulePlanSave();
+  if (!positions.length) fetchPositions();
+}
+async function fetchPositions() {
+  setBusy("Hämtar objektens positioner från 3D…");
+  try {
+    const r = await askOpener("positions", {}, 120000);
+    const fresh = new Map((r.positions || []).map(p => [p.id, p]));
+    const round = v => Math.round(v * 1000) / 1000;
+    const rows = [...fresh.values()].map(p => ({ id: p.id, x: round(p.x), y: round(p.y), z0: round(p.z0), z1: round(p.z1) }));
+    positions = [...positions.filter(p => !fresh.has(p.id)), ...rows];
+    invalidatePositions();
+    renderZones();
+    setSaveStatus(`📍 ${rows.length} objekts positioner hämtade${r.missing ? ` (${r.missing} finns inte i de öppna modellerna)` : ""}.`);
+    ghWriteJSON(token, dataPath("plan_item_positions.json"),
+      arr => [...arr.filter(p => !fresh.has(p.id)), ...rows], "Lägesplan: objektpositioner")
+      .catch(e => setSaveStatus("⚠ Kunde inte spara positionerna: " + e.message));
+  } catch (e) {
+    alert("Kunde inte hämta positioner: " + e.message);
+  } finally {
+    setBusy("");
+  }
+}
+function drawCalibMarks(ctx, fontPx) {
+  if (!calib) return;
+  ctx.save();
+  calib.pdf.forEach((p, i) => {
+    const [x, y] = toPx(p);
+    ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(2, fontPx / 6);
+    ctx.beginPath(); ctx.moveTo(x - fontPx, y); ctx.lineTo(x + fontPx, y); ctx.moveTo(x, y - fontPx); ctx.lineTo(x, y + fontPx); ctx.stroke();
+    ctx.fillStyle = "#0b5fff"; ctx.font = `700 ${fontPx}px Arial`; ctx.fillText(String(i + 1), x + fontPx * 0.4, y - fontPx * 0.4);
+  });
+  ctx.restore();
 }
 
 // ---------------------------------------------------------------------
@@ -267,6 +445,8 @@ async function openPlan(id) {
   try { localStorage.setItem("lagesplan-last-" + projectId, id); } catch (e) {}
   $("codePattern").value = plan.code_pattern || DEFAULT_CODE_PATTERN;
   itemCodeCache.clear();
+  invalidatePositions();
+  if (calib) cancelCalib();
   setBusy("Hämtar PDF…");
   try {
     if (!pdfCache.has(id)) {
@@ -345,7 +525,9 @@ function renderZones() {
     anchors.filter(Boolean).forEach(a => drawBadge(ctx, toPx(a), `${zone.code}${st.progress != null ? " · " + st.progress + " %" : ""}`, color, fontPx, st.phase === "ingen"));
     ctx.restore();
   }
+  drawCalibMarks(ctx, fontPx);
   renderZoneList();
+  updateCalibInfo();
 }
 
 function drawBadge(ctx, [x, y], text, color, fontPx, hollow) {
@@ -659,6 +841,13 @@ function bindViewport() {
     if (!drag) return;
     const d = drag; drag = null;
     if (d.draw) { finishDraw(d.start, stagePoint(e)); return; }
+    if (!d.moved && calib && calib.waitPdf && e.target.closest && e.target.closest("#viewport")) {
+      calib.waitPdf = false;
+      calib.pdf.push(toPdf(stagePoint(e)));
+      renderZones();
+      calibNext();
+      return;
+    }
     if (!d.moved && e.target.closest && e.target.closest("#viewport")) {
       const z = zoneAt(toPdf(stagePoint(e)));
       selectZone(z ? z.id : null, false);
@@ -755,7 +944,7 @@ function updateEditorHints() {
   const tmp = { code: $("zeCode").value, rule: { field, value: $("zeValue").value } };
   const n = itemsForZone(tmp).length;
   $("zeMatchInfo").textContent = n ? `Kopplar ${n} planerade objekt.` : (field === "auto"
-    ? "Inga planerade objekt har koden i område/aktivitet/namn – välj ett fält och värde i stället."
+    ? (plan && plan.calib ? "Inga planerade objekt ligger i zonen på vald nivå, eller har koden i område/aktivitet/namn." : "Inga planerade objekt har koden i område/aktivitet/namn – kalibrera mot 3D (📐) eller välj ett fält och värde.")
     : "Inga planerade objekt matchar.");
 }
 
@@ -877,6 +1066,32 @@ function bindUI() {
     z.code = $("zeCode").value.trim() || z.code;
     z.rule = { field: $("zeField").value, value: $("zeValue").value.trim() };
     renderZones(); openEditor(z.id); schedulePlanSave();
+  };
+  $("btnCalib").onclick = () => (calib ? cancelCalib() : startCalib());
+  $("btnPositions").onclick = () => { if (!window.opener) { alert("Positionerna läses från 3D-modellen, så 4D-planering måste vara öppen i Trimble Connect. Öppna lägesplanen via 🗺️-knappen där."); return; } fetchPositions(); };
+  const onLevel = () => {
+    if (!plan) return;
+    plan.level = { z0: $("levelZ0").value.trim().replace(",", "."), z1: $("levelZ1").value.trim().replace(",", ".") };
+    invalidatePositions(); renderZones(); schedulePlanSave();
+  };
+  $("levelZ0").onchange = onLevel;
+  $("levelZ1").onchange = onLevel;
+  $("zeSelect3d").onclick = async () => {
+    const z = plan && plan.zones.find(x => x.id === selectedZoneId);
+    if (!z) return;
+    const ids = itemsForZone(z).map(it => it.id);
+    if (!ids.length) { alert("Zonen har inga kopplade objekt."); return; }
+    try { await askOpener("select", { ids }, 30000); } catch (e) { alert("Kunde inte markera i 3D: " + e.message); }
+  };
+  $("btnTokenSave").onclick = () => {
+    const t = $("tokenInput").value.trim();
+    if (!t) return;
+    try {
+      const cur = JSON.parse(localStorage.getItem("4dplan-settings") || "{}") || {};
+      localStorage.setItem("4dplan-settings", JSON.stringify({ ...cur, githubToken: t }));
+      localStorage.setItem("4dplan-unlocked", "1");
+    } catch (e) {}
+    location.reload();
   };
   $("zeDelete").onclick = () => {
     const z = plan.zones.find(x => x.id === selectedZoneId);
