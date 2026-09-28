@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lägesplan – 4D-planering</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="github-storage.js"></script>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #ffffff; --border: #dcdfe4; --text: #1f2328; --muted: #6b7280;
+    --accent: #0b5fff; --danger: #c62828;
+    font-family: "Segoe UI", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-size: 13px; }
+  #layout { display: flex; height: 100vh; }
+  aside { width: 330px; flex: 0 0 330px; background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 10px 12px; }
+  main { flex: 1; position: relative; overflow: hidden; background: #e9ebee; }
+  h1 { font-size: 16px; margin: 0 0 2px; }
+  h2 { font-size: 13px; margin: 14px 0 6px; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .hidden { display: none !important; }
+  button { font: inherit; padding: 5px 10px; border: 1px solid var(--border); border-radius: 5px; background: #fff; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.active { outline: 2px solid var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  select, input[type=text], input[type=date] { font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 4px; width: 100%; }
+  label { display: block; margin: 6px 0 2px; color: var(--muted); font-size: 12px; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .row > * { flex: 0 0 auto; }
+  .grow { flex: 1 1 auto !important; min-width: 0; }
+  .warn { background: #fff4e5; color: #8a4b00; border-radius: 5px; padding: 6px 8px; margin: 6px 0; font-size: 12px; }
+  .legend { display: grid; grid-template-columns: auto 1fr auto; gap: 3px 8px; align-items: center; font-size: 12px; }
+  .sw { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(0,0,0,.25); }
+  .zone-list { max-height: 40vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 5px; }
+  .zone-item { display: flex; gap: 6px; align-items: center; padding: 4px 6px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12px; }
+  .zone-item:last-child { border-bottom: none; }
+  .zone-item.sel { background: #e8eefc; }
+  .zone-item .code { font-weight: 600; min-width: 58px; }
+  .zone-item .pct { margin-left: auto; color: var(--muted); }
+  #zoneEditor { border: 1px solid var(--accent); border-radius: 6px; padding: 8px; margin-top: 8px; background: #f5f8ff; }
+  #viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
+  #viewport.drawing { cursor: crosshair; }
+  #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; box-shadow: 0 2px 12px rgba(0,0,0,.2); background: #fff; }
+  #stage canvas { position: absolute; left: 0; top: 0; }
+  #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 14px; text-align: center; padding: 20px; }
+  #tip { position: absolute; pointer-events: none; background: rgba(20,20,20,.92); color: #fff; padding: 6px 8px; border-radius: 5px; font-size: 12px; max-width: 360px; z-index: 5; white-space: pre-line; }
+  #zoomCtl { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 4px; z-index: 4; }
+  #busy { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: #fff; border: 1px solid var(--border); border-radius: 5px; padding: 5px 10px; z-index: 6; font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="layout">
+  <aside>
+    <h1>🗺️ Lägesplan</h1>
+    <div class="muted" id="projectInfo">Laddar…</div>
+    <div id="warnBox" class="warn hidden"></div>
+
+    <h2>Plan</h2>
+    <div class="row">
+      <select id="planSelect" class="grow"></select>
+    </div>
+    <div class="row" style="margin-top:6px;">
+      <button id="btnNewPlan" class="primary">+ Ny plan från PDF</button>
+      <button id="btnRenamePlan" title="Byt namn på planen">✏️</button>
+      <button id="btnDeletePlan" title="Ta bort planen">🗑️</button>
+      <input type="file" id="pdfInput" accept="application/pdf" class="hidden" />
+    </div>
+
+    <h2>Datum</h2>
+    <div class="row">
+      <input type="date" id="dateInput" class="grow" />
+      <button id="btnToday">Idag</button>
+    </div>
+    <input type="range" id="dateSlider" min="0" max="100" value="100" style="width:100%;margin-top:6px;" />
+    <div class="muted">Färgerna följer samma fasberäkning och statusfärger som 3D-modellen i 4D-planering.</div>
+
+    <h2>Förklaring</h2>
+    <div class="legend" id="legend"></div>
+
+    <h2>Zoner <span class="muted" id="zoneCount"></span></h2>
+    <div class="row">
+      <button id="btnDetect" title="Hitta färgade rutor/markeringar och koder (t.ex. PM06) i PDF:en">🔍 Hitta zoner i PDF:en</button>
+      <button id="btnDraw" title="Rita en rektangel för en ny zon">▭ Rita zon</button>
+    </div>
+    <label>Kodmönster för zoner</label>
+    <input type="text" id="codePattern" placeholder="PM\d+[A-Z]?" />
+    <div class="muted">Text i PDF:en som matchar mönstret blir zonens kod (t.ex. PM06, PM09A).</div>
+    <label class="row" style="color:var(--text);"><input type="checkbox" id="grayPdf" checked /> Ritningen i gråskala (tydligare zonfärger)</label>
+    <label class="row" style="color:var(--text);"><input type="checkbox" id="showOriginal" /> Visa originalmarkeringar i PDF:en</label>
+    <div class="zone-list" id="zoneList"></div>
+
+    <div id="zoneEditor" class="hidden">
+      <div class="row"><b id="zeTitle">Zon</b><button id="zeClose" style="margin-left:auto;">✕</button></div>
+      <label>Kod</label>
+      <input type="text" id="zeCode" />
+      <label>Koppling till planeringen</label>
+      <select id="zeField">
+        <option value="auto">Automatiskt (koden finns i område/aktivitet/namn)</option>
+        <option value="area">Område är/innehåller …</option>
+        <option value="activity">Aktivitet är/innehåller …</option>
+        <option value="object_name">Namn är/innehåller …</option>
+        <option value="contractor">Entreprenör är/innehåller …</option>
+      </select>
+      <input type="text" id="zeValue" list="zeValues" placeholder="Värde" style="margin-top:4px;" />
+      <datalist id="zeValues"></datalist>
+      <div class="muted" id="zeMatchInfo" style="margin-top:4px;"></div>
+      <div class="row" style="margin-top:8px;">
+        <button id="zeSave" class="primary">Spara</button>
+        <button id="zeDelete">🗑️ Ta bort zon</button>
+      </div>
+    </div>
+
+    <h2>Exportera</h2>
+    <div class="row">
+      <button id="btnExport">📷 Spara som bild (PNG)</button>
+    </div>
+    <div class="muted" id="saveStatus" style="margin-top:8px;"></div>
+  </aside>
+
+  <main>
+    <div id="viewport">
+      <div id="stage"><canvas id="pdfCanvas"></canvas><canvas id="zoneCanvas"></canvas></div>
+    </div>
+    <div id="empty">Välj en plan, eller klicka <b>&nbsp;+ Ny plan från PDF&nbsp;</b> och välj en PDF (t.ex. en planritning med PM-zoner).</div>
+    <div id="zoomCtl">
+      <button id="btnZoomIn">+</button><button id="btnZoomOut">−</button><button id="btnFit">⤢ Anpassa</button>
+    </div>
+    <div id="tip" class="hidden"></div>
+    <div id="busy" class="hidden"></div>
+  </main>
+</div>
+<script src="lagesplan.js"></script>
+</body>
+</html>

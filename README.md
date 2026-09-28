@@ -178,6 +178,28 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
   export per block här (all data exporteras alltid i samma Excel-fil),
   så det här styr bara vad som visas i sidopanelen.
 
+- **🗺️ Lägesplan**: knappen i headern öppnar en egen sida
+  (`lagesplan.html`) där en PDF-plan, t.ex. en planritning med PM-zoner,
+  färgas efter framdriften. Samma fasberäkning och statusfärger som i
+  3D-modellen används.
+  - **Ny plan från PDF**: PDF:en sparas i
+    `projects/<id>/status_plans/<planId>.pdf`. Planerna och zonerna sparas
+    i `status_plans.json`, så alla i projektet ser samma lägesplan.
+  - **🔍 Hitta zoner i PDF:en**: letar upp färgade rutor och polygoner,
+    både som markeringar (annotations, t.ex. Bluebeam) och som färgade
+    ytor i själva ritningen, och kopplar dem till kodtexten i eller intill
+    rutan. Koden matchar kodmönstret, som standard `PM\s*\d+\s*[A-Z]?`.
+    Zoner kan också ritas för hand med **▭ Rita zon**.
+  - **Koppling**: automatiskt kopplas en zon till de planerade objekt där
+    koden finns i område, aktivitet, namn eller entreprenör. "PM010" och
+    "PM10" räknas som samma kod. Klicka på en zon om du vill koppla den
+    till ett valfritt fält och värde i stället, t.ex. Område = "Zon Nord".
+  - **Status och framdrift**: zonens färg är *försenad* om något kopplat
+    objekt är försenat, *klar* om allt är klart och *pågående* om något
+    har påbörjats. Procenten är framdriften viktad på uppskattade timmar.
+  - **Datum**: datum och slider visar läget vid valfri tidpunkt.
+  - **📷 Spara som bild**: exporterar en PNG med datum och förklaring.
+
 ## Arkitektur
 
 ```

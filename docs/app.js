@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-23 22:45";
+const APP_VERSION = "2026-09-28 07:40";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -415,6 +415,11 @@ function bindUI() {
   document.getElementById("saveStatus").onclick = onSaveStatusClick;
 
   document.getElementById("btnRefresh").onclick = refreshAllData;
+  // Lägesplan öppnas som egen sida (samma origin -> delar token/inställningar).
+  document.getElementById("btnStatusPlan").onclick = () => {
+    if (!projectId) { alert("Projektet är inte laddat än."); return; }
+    window.open("lagesplan.html?project=" + encodeURIComponent(projectId), "_blank");
+  };
   document.getElementById("btnSettings").onclick = () => toggle("settingsDialog", true);
   document.getElementById("btnCloseSettings").onclick = () => toggle("settingsDialog", false);
   document.getElementById("btnSaveSettings").onclick = onSaveSettings;
