@@ -1050,7 +1050,7 @@ function bindViewport() {
     if (!d.moved && e.target.closest && e.target.closest("#viewport")) {
       if (toolClick(toPdf(stagePoint(e)), e)) return;
       const z = zoneAt(toPdf(stagePoint(e)));
-      selectZone(z ? z.id : null, false);
+      selectZone(z ? z.id : null, false, true);
     }
   });
   vpEl.addEventListener("mouseleave", () => $("tip").classList.add("hidden"));
@@ -1122,10 +1122,10 @@ function setDrawMode(on) {
 // ---------------------------------------------------------------------
 // Zonredigering
 // ---------------------------------------------------------------------
-function selectZone(id, center) {
+function selectZone(id, center, soft = false) {
   selectedZoneId = id;
   renderZones();
-  if (id) openEditor(id); else closeEditor();
+  if (id) openEditor(id, soft); else closeEditor();
   if (id && center) {
     const z = plan.zones.find(x => x.id === id);
     const pts = (z.polys || []).flat().concat(z.labels || []);
@@ -1137,11 +1137,11 @@ function selectZone(id, center) {
     }
   }
 }
-function openEditor(id) {
+function openEditor(id, soft = false) {
   const z = plan.zones.find(x => x.id === id);
   if (!z) return closeEditor();
   $("zoneEditor").classList.remove("hidden");
-  openSec("zones");
+  openSec("zones", soft);
   $("zeTitle").textContent = `Zon ${z.code}`;
   $("zeCode").value = z.code;
   $("zeField").value = (z.rule && z.rule.field) || "auto";
@@ -1356,19 +1356,36 @@ function bindUI() {
 }
 
 // ---------------------------------------------------------------------
-// Infällbar meny: avsnitten (<details class="sec">) och hela sidomenyn.
+// Sidomenyn: flikar (Planering, Tid & filter, Zoner & 3D, Export) med
+// infällbara kort (<details class="sec">), och hela menyn kan döljas.
 // Läget sparas per webbläsare.
 // ---------------------------------------------------------------------
 const SEC_KEY = "lagesplan-sections";
 function loadSecState() { try { return JSON.parse(localStorage.getItem(SEC_KEY) || "{}") || {}; } catch (e) { return {}; } }
 function saveSecState() {
-  const st = { hidden: $("layout").classList.contains("side-hidden") };
+  const st = { hidden: $("layout").classList.contains("side-hidden"), tab: activeTab() };
   document.querySelectorAll("details.sec").forEach(d => { st[d.dataset.sec] = d.open; });
   try { localStorage.setItem(SEC_KEY, JSON.stringify(st)); } catch (e) {}
 }
-function openSec(key) {
+function activeTab() {
+  const t = document.querySelector(".tabs button.on");
+  return t ? t.dataset.tab : "work";
+}
+function showTab(tab, save = true) {
+  if (!document.querySelector(`.tab[data-tab="${tab}"]`)) tab = "work";
+  document.querySelectorAll(".tabs button").forEach(b => { b.classList.toggle("on", b.dataset.tab === tab); b.setAttribute("aria-selected", b.dataset.tab === tab); });
+  document.querySelectorAll(".tab-body .tab").forEach(s => s.classList.toggle("on", s.dataset.tab === tab));
+  if (save) saveSecState();
+}
+// Öppnar kortet och byter till dess flik. Med soft=true byts fliken bara om
+// kortet redan ligger på den aktiva fliken (t.ex. klick på en zon i planen).
+function openSec(key, soft = false) {
   const d = document.querySelector(`details.sec[data-sec="${key}"]`);
-  if (d && !d.open) d.open = true;
+  if (!d) return;
+  const tab = d.closest(".tab");
+  if (soft && tab && tab.dataset.tab !== activeTab()) return;
+  if (tab && tab.dataset.tab !== activeTab()) showTab(tab.dataset.tab);
+  if (!d.open) d.open = true;
   if ($("layout").classList.contains("side-hidden")) setSideHidden(false);
 }
 function setSideHidden(hidden) {
@@ -1383,10 +1400,13 @@ function bindSections() {
     if (typeof st[d.dataset.sec] === "boolean") d.open = st[d.dataset.sec];
     d.addEventListener("toggle", saveSecState);
   });
+  document.querySelectorAll(".tabs button").forEach(b => { b.onclick = () => showTab(b.dataset.tab); });
+  showTab(st.tab || "work", false);
   if (st.hidden) setSideHidden(true);
   $("btnSecAll").onclick = () => {
-    const open = !secs.some(d => d.open);
-    secs.forEach(d => { d.open = open; });
+    const own = secs.filter(d => d.closest(".tab").dataset.tab === activeTab());
+    const open = !own.some(d => d.open);
+    own.forEach(d => { d.open = open; });
     saveSecState();
   };
   $("btnHideSide").onclick = () => setSideHidden(true);
