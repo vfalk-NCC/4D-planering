@@ -472,7 +472,7 @@ function toolClick(pdfPt) {
   if (photoPlacing) { pendingPhotoPt = pdfPt; const f = pendingPhotoFile; photoPlacing = false; addPhotoFile(f); return true; }
   if (measure) {
     if (measure.done) measure = { mode: measure.mode, pts: [], cursor: null, done: false };
-    measure.pts.push(pdfPt);
+    measure.pts.push(typeof snapPdf === "function" ? snapPdf(pdfPt, window.event) : pdfPt);
     updateToolUi(); renderZones();
     return true;
   }
@@ -487,7 +487,7 @@ let moveRaf = 0;
 function toolMouseMove(e) {
   if (!measure || measure.done || !measure.pts.length || !viewport) return;
   if (!e.target.closest || !e.target.closest("#viewport")) return;
-  measure.cursor = toPdf(stagePoint(e));
+  measure.cursor = typeof snapPdf === "function" ? snapPdf(toPdf(stagePoint(e)), e) : toPdf(stagePoint(e));
   if (!moveRaf) moveRaf = requestAnimationFrame(() => { moveRaf = 0; renderZones(); });
 }
 function toolTipHtml(pdfPt) {

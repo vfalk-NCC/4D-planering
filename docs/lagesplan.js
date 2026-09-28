@@ -574,8 +574,10 @@ async function openPlan(id) {
     }
     pdfDoc = await pdfjsLib.getDocument({ data: pdfCache.get(id).slice(0) }).promise;
     page = await pdfDoc.getPage(Math.min(plan.page || 1, pdfDoc.numPages));
+    $("pdfHiCanvas").width = 0;
     await renderPdf();
     renderOrtho();
+    buildSnapIndex();
     $("empty").classList.add("hidden");
     fitView();
   } catch (e) {
@@ -604,6 +606,47 @@ async function renderPdf() {
     // Originalmarkeringarna (t.ex. röda rutor) döljs som standard - zonerna ersätter dem.
     annotationMode: $("showOriginal").checked ? pdfjsLib.AnnotationMode.ENABLE : pdfjsLib.AnnotationMode.DISABLE
   }).promise;
+}
+
+/* Skarp ritning vid inzoomning (Victors önskemål 2026-09-28): pdfCanvas är
+   låst till ~5000 px. När man zoomar in ritas den synliga delen om i
+   skärmens upplösning på pdfHiCanvas (ligger ovanpå, samma stil). Under
+   panorering syns den vanliga ritningen där den skarpa inte räcker till. */
+let hiTask = null, hiSeq = 0, hiTimer = 0;
+function scheduleHiRender() {
+  clearTimeout(hiTimer);
+  $("pdfCanvas").style.visibility = "";
+  hiTimer = setTimeout(renderPdfHi, 140);
+}
+async function renderPdfHi() {
+  const hc = $("pdfHiCanvas"), pc = $("pdfCanvas");
+  const seq = ++hiSeq;
+  if (!page || !viewport || !pc.width) { hc.width = 0; return; }
+  let s = view.scale * (window.devicePixelRatio || 1);
+  if (s <= 1.05) { hc.width = 0; pc.style.visibility = ""; return; }
+  const vr = $("viewport").getBoundingClientRect();
+  const x0 = Math.max(0, -view.tx / view.scale), y0 = Math.max(0, -view.ty / view.scale);
+  const x1 = Math.min(pc.width, (vr.width - view.tx) / view.scale), y1 = Math.min(pc.height, (vr.height - view.ty) / view.scale);
+  if (x1 <= x0 || y1 <= y0) { hc.width = 0; return; }
+  const maxPx = 30e6;
+  if ((x1 - x0) * (y1 - y0) * s * s > maxPx) s = Math.sqrt(maxPx / ((x1 - x0) * (y1 - y0)));
+  const cw = Math.ceil((x1 - x0) * s), ch = Math.ceil((y1 - y0) * s);
+  const tmp = document.createElement("canvas");
+  tmp.width = cw; tmp.height = ch;
+  const tctx = tmp.getContext("2d");
+  tctx.fillStyle = "#fff"; tctx.fillRect(0, 0, cw, ch);
+  if (hiTask) { try { hiTask.cancel(); } catch (e) {} }
+  const vp = page.getViewport({ scale: renderScale * s, offsetX: -x0 * s, offsetY: -y0 * s });
+  hiTask = page.render({ canvasContext: tctx, viewport: vp,
+    annotationMode: $("showOriginal").checked ? pdfjsLib.AnnotationMode.ENABLE : pdfjsLib.AnnotationMode.DISABLE });
+  try { await hiTask.promise; } catch (e) { return; } // avbruten av en nyare
+  if (seq !== hiSeq) return;
+  hc.width = cw; hc.height = ch;
+  hc.getContext("2d").drawImage(tmp, 0, 0);
+  Object.assign(hc.style, { left: `${x0}px`, top: `${y0}px`, width: `${x1 - x0}px`, height: `${y1 - y0}px`,
+    filter: pc.style.filter, opacity: pc.style.opacity, mixBlendMode: pc.style.mixBlendMode, display: pc.style.display });
+  // Täcker hela det synliga området - dölj den grövre ritningen under.
+  pc.style.visibility = "hidden";
 }
 
 const toPx = ([x, y]) => viewport.convertToViewportPoint(x, y);
@@ -921,6 +964,7 @@ async function detectZones() {
 function applyView() {
   $("stage").style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
   if (typeof scheduleOrthoRender === "function") scheduleOrthoRender();
+  scheduleHiRender();
 }
 function fitView() {
   const vp = $("viewport").getBoundingClientRect(), pc = $("pdfCanvas");
@@ -1226,10 +1270,10 @@ function bindUI() {
     renderZones(); schedulePlanSave();
   };
   try { $("grayPdf").checked = localStorage.getItem("lagesplan-gray") !== "0"; } catch (e) {}
-  const applyGray = () => { $("pdfCanvas").style.filter = $("grayPdf").checked ? "grayscale(1)" : ""; };
+  const applyGray = () => { $("pdfCanvas").style.filter = $("pdfHiCanvas").style.filter = $("grayPdf").checked ? "grayscale(1)" : ""; };
   applyGray();
   $("grayPdf").onchange = () => { applyGray(); try { localStorage.setItem("lagesplan-gray", $("grayPdf").checked ? "1" : "0"); } catch (e) {} };
-  $("showOriginal").onchange = async () => { if (page) { await renderPdf(); renderOrtho(); renderZones(); } };
+  $("showOriginal").onchange = async () => { if (page) { await renderPdf(); renderOrtho(); renderZones(); scheduleHiRender(); } };
   $("zeClose").onclick = () => selectZone(null);
   $("zeField").onchange = updateEditorHints;
   $("zeValue").oninput = updateEditorHints;

@@ -30,7 +30,20 @@ const SITE_KINDS = {
   storage: { label: "Upplag",      icon: "📦", clicks: 2 },
   gate:    { label: "Grind",       icon: "🚪", clicks: 1 },
   fence:   { label: "Stängsel",    icon: "〰", clicks: 0 },  // 0 = valfritt antal, dubbelklick avslutar
-  barrier: { label: "Avspärrning", icon: "⛔", clicks: 0 }
+  barrier: { label: "Avspärrning", icon: "⛔", clicks: 0 },
+  route:   { label: "Transportväg", icon: "➡", clicks: 0 },
+  symbol:  { label: "Symbol",      icon: "🧩", clicks: 1 }
+};
+/* Symbolbibliotek - färdiga mått (meter, bredd × längd). */
+const SYMBOLS = {
+  bodvagn:      { label: "Bodvagn",         icon: "🏠", w: 3, h: 8.5, color: "#1d4ed8" },
+  cont20:       { label: "Container 20'",   icon: "📦", w: 2.44, h: 6.06, color: "#0f766e" },
+  cont40:       { label: "Container 40'",   icon: "📦", w: 2.44, h: 12.19, color: "#0f766e" },
+  toalett:      { label: "Toalett",         icon: "🚻", w: 1.2, h: 1.2, color: "#7c3aed" },
+  miljostation: { label: "Miljöstation",    icon: "♻", w: 2.5, h: 6, color: "#15803d" },
+  betongbil:    { label: "Betongbil",       icon: "🚚", w: 2.55, h: 10, color: "#b45309" },
+  pumpbil:      { label: "Betongpump",      icon: "🚚", w: 2.55, h: 12, color: "#b45309", outrigger: 9 },
+  mobilkran:    { label: "Mobilkran",       icon: "🏗", w: 2.75, h: 13, color: "#d97706", outrigger: 7.5 }
 };
 
 let siteItems = [];          // site_layers.json
@@ -38,6 +51,9 @@ let siteLoaded = false;
 let layerState = {};         // per webbläsare: { key: { visible, opacity } , pdfMultiply }
 let siteTool = null;         // { kind, pts: [[x,y] modell], cursor }
 let selectedSiteId = null;
+let siteUndo = [], siteRedo = [];   // [{ label, before: rec|null, after: rec|null }]
+let siteDateOverride = null;        // [start, end] vid export per månad
+let snapMark = null;                // senaste fästpunkten (PDF-koordinater) för markering
 const orthoImages = new Map(); // ortho-id -> HTMLImageElement (laddad)
 
 const sitePath = () => dataPath("site_layers.json");
@@ -85,6 +101,8 @@ function applyLayerCss() {
   // Över ett ortofoto blir ritningens vita bakgrund genomskinlig (multiplicera).
   const multiply = hasOrtho && layerState.pdfMultiply !== false;
   $("pdfCanvas").style.mixBlendMode = multiply ? "multiply" : "";
+  const hi = $("pdfHiCanvas");
+  if (hi) Object.assign(hi.style, { mixBlendMode: $("pdfCanvas").style.mixBlendMode, opacity: $("pdfCanvas").style.opacity, display: $("pdfCanvas").style.display });
   $("stage").style.background = hasOrtho ? "#e5e7eb" : "#fff";
 }
 
@@ -92,20 +110,81 @@ function applyLayerCss() {
 // Data
 // ---------------------------------------------------------------------
 const orthos = () => siteItems.filter(x => x.type === "ortho");
-const noteLayers = () => [...new Set(siteItems.filter(x => x.type === "note").map(x => x.layer || "Allmänt"))].sort((a, b) => a.localeCompare(b, "sv"));
+/* Egna lager (Victors önskemål 2026-09-28): varje notering/etableringsobjekt
+   ligger på ett namngivet lager. "Allmänt" och "Etablering" finns alltid;
+   egna lager sparas som { type: "layer", name } i site_layers.json. */
+const defaultLayerOf = x => x.type === "note" ? "Allmänt" : "Etablering";
+const layerOf = x => x.layer || defaultLayerOf(x);
+function userLayers() {
+  const names = new Set(["Allmänt", "Etablering"]);
+  siteItems.filter(x => x.type === "layer").sort((a, b) => (a.order || 0) - (b.order || 0)).forEach(x => names.add(x.name));
+  siteItems.filter(x => x.type !== "ortho" && x.type !== "layer").forEach(x => names.add(layerOf(x)));
+  return [...names];
+}
+const noteLayers = userLayers;
+async function createLayer(name) {
+  name = String(name || "").trim();
+  if (!name) return null;
+  if (userLayers().includes(name)) return name;
+  await saveSiteItem({ id: ghNewId(), type: "layer", name, order: Date.now() }, false, { record: false });
+  ls("ul:" + name).visible = true; saveLayerState();
+  return name;
+}
+function renderActiveLayerSelect() {
+  const sel = $("activeLayer");
+  if (!sel) return;
+  const cur = sel.value || (() => { try { return localStorage.getItem("lagesplan-activelayer-" + projectId); } catch (e) { return null; } })() || "Etablering";
+  sel.innerHTML = userLayers().map(l => `<option${l === cur ? " selected" : ""}>${escHtml(l)}</option>`).join("");
+  if (!userLayers().includes(cur)) sel.value = "Etablering";
+}
+
+/* Flera poster i en skrivning (byt namn på/ta bort lager). */
+async function saveSiteItemsBatch(recs, removeIds = []) {
+  const ids = new Set(recs.map(r => r.id));
+  const rm = new Set(removeIds);
+  siteItems = [...siteItems.filter(x => !ids.has(x.id) && !rm.has(x.id)), ...recs];
+  renderLayerPanel(); renderZones();
+  await ghWriteJSON(token, sitePath(), arr => [...arr.filter(x => !ids.has(x.id) && !rm.has(x.id)), ...recs], "Lägesplan: lager");
+}
+function updateUndoButtons() {
+  const u = $("siteUndo"), r = $("siteRedo");
+  if (u) { u.disabled = !siteUndo.length; u.title = siteUndo.length ? `Ångra: ${siteUndo[siteUndo.length - 1].label} (Ctrl+Z)` : "Inget att ångra"; }
+  if (r) { r.disabled = !siteRedo.length; r.title = siteRedo.length ? `Gör om: ${siteRedo[siteRedo.length - 1].label} (Ctrl+Y)` : "Inget att göra om"; }
+}
+async function undoSite() {
+  const e = siteUndo.pop(); if (!e) return;
+  siteRedo.push(e);
+  if (e.before) await saveSiteItem(e.before, false, { record: false });
+  else await saveSiteItem({ id: e.id, type: (e.after || {}).type }, true, { record: false });
+  selectedSiteId = null; closeSitePop(); updateUndoButtons(); setSaveStatus(`↶ Ångrade: ${e.label}`);
+}
+async function redoSite() {
+  const e = siteRedo.pop(); if (!e) return;
+  siteUndo.push(e);
+  if (e.after) await saveSiteItem(e.after, false, { record: false });
+  else await saveSiteItem({ id: e.id, type: (e.before || {}).type }, true, { record: false });
+  selectedSiteId = null; closeSitePop(); updateUndoButtons(); setSaveStatus(`↷ Gjorde om: ${e.label}`);
+}
 
 async function loadSiteLayers() {
   try { siteItems = await ghReadJSON(token, sitePath()); } catch (e) { siteItems = []; console.warn("Kunde inte läsa site_layers.json", e); }
   siteLoaded = true;
+  renderActiveLayerSelect();
   renderLayerPanel();
   applyLayerCss();
   renderOrtho();
   renderZones();
 }
-async function saveSiteItem(rec, remove = false) {
+async function saveSiteItem(rec, remove = false, opts = {}) {
+  const prev = "prev" in opts ? opts.prev : (siteItems.find(x => x.id === rec.id) || null);
+  if (opts.record !== false && rec.type !== "ortho" && rec.type !== "layer") {
+    siteUndo.push({ label: `${remove ? "Ta bort" : prev ? "Ändra" : "Lägg till"} ${(SITE_KINDS[rec.type] || {}).label || ""}`.trim(), before: prev ? JSON.parse(JSON.stringify(prev)) : null, after: remove ? null : JSON.parse(JSON.stringify(rec)), id: rec.id });
+    if (siteUndo.length > 100) siteUndo.shift();
+    siteRedo = [];
+  }
   if (remove) siteItems = siteItems.filter(x => x.id !== rec.id);
   else { const i = siteItems.findIndex(x => x.id === rec.id); if (i >= 0) siteItems[i] = rec; else siteItems.push(rec); }
-  renderLayerPanel(); renderZones();
+  renderLayerPanel(); renderZones(); updateUndoButtons();
   setSaveStatus("Sparar…");
   try {
     await ghWriteJSON(token, sitePath(), arr => {
@@ -283,7 +362,9 @@ async function imageToScaledCanvas(file, onProgress, sink) {
 const ORTHO_TILE = 2048;
 function createTileSink(id, report) {
   let W = 0, H = 0, cols = 0, rowsN = 0, band = null, bandRows = 0, done = 0;
-  const pending = [];
+  // Banden laddas upp EN i taget (samtidiga skrivningar till repot ger skrivkrockar).
+  let chain = Promise.resolve(), queued = 0;
+  const pending = { push(fn) { queued++; chain = chain.then(fn).finally(() => { queued--; }); } };
   const upload = async (canvas, tx, ty) => {
     const blob = await new Promise(res => canvas.toBlob(res, "image/webp", 0.9));
     await ghUploadBinary(token, dataPath(`site_layers/${id}/t_${tx}_${ty}.webp`), blob, `Lägesplan: ortofoto ruta ${tx},${ty}`);
@@ -307,13 +388,14 @@ function createTileSink(id, report) {
         band.set(row, bandRows * W * 4);
         bandRows++;
         if (bandRows === ORTHO_TILE || y === H - 1) {
-          pending.push(flushBand(band, Math.floor(y / ORTHO_TILE), bandRows));
+          const data = band, ty = Math.floor(y / ORTHO_TILE), h = bandRows;
+          pending.push(() => flushBand(data, ty, h));
           band = y === H - 1 ? null : new Uint8ClampedArray(W * ORTHO_TILE * 4);
           bandRows = 0;
         }
       },
       // Högst ett färdigt band väntar på uppladdning medan nästa avkodas.
-      async drain() { while (pending.length > 1) await pending.shift(); }
+      async drain() { while (queued > 1) await new Promise(r => setTimeout(r, 100)); }
     },
     async fromBitmap(bmp) {
       header(bmp.width, bmp.height);
@@ -325,7 +407,7 @@ function createTileSink(id, report) {
       }
     },
     async finish() {
-      await Promise.all(pending);
+      await chain;
       return { size: ORTHO_TILE, cols, rows: rowsN, width: W, height: H, prefix: dataPath(`site_layers/${id}/`) };
     }
   };
@@ -506,21 +588,22 @@ function drawOrthoForExport(ctx, ox, oy, scale) {
 //   fence:   pts [...] (linje), barrier: pts [...] (yta)
 // Stil (valfri, per objekt): color (#rrggbb), dash ("solid"|"dashed"|"dotted"),
 // weight (0.6 tunn | 1 normal | 1.8 tjock), textSize (0.8 | 1 | 1.35).
-const SITE_DEFAULT_COLOR = { note: "#b45309", crane: "#d97706", shed: "#1d4ed8", storage: "#57534e", gate: "#16a34a", fence: "#374151", barrier: "#dc2626" };
-const SITE_DEFAULT_DASH = { note: "solid", crane: "dashed", shed: "solid", storage: "solid", gate: "solid", fence: "dashed", barrier: "dashed" };
+const SITE_DEFAULT_COLOR = { note: "#b45309", crane: "#d97706", shed: "#1d4ed8", storage: "#57534e", gate: "#16a34a", fence: "#374151", barrier: "#dc2626", route: "#2563eb", symbol: "#1d4ed8" };
+const SITE_DEFAULT_DASH = { note: "solid", crane: "dashed", shed: "solid", storage: "solid", gate: "solid", fence: "dashed", barrier: "dashed", route: "solid", symbol: "solid" };
+const defaultColorOf = x => (x.type === "symbol" && SYMBOLS[x.sym] && SYMBOLS[x.sym].color) || SITE_DEFAULT_COLOR[x.type];
 const MONTHS_SV = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
 
 function siteVisibleAtDate(x) {
+  if (siteDateOverride) { const [a, b] = siteDateOverride; return (!x.from || x.from <= b) && (!x.to || x.to >= a); }
   if (!$("layersFollowDate").checked) return true;
   const d = $("dateInput").value || todayIso();
   return (!x.from || x.from <= d) && (!x.to || x.to >= d);
 }
 function siteShown(x) {
-  if (x.type === "note") return layerVisible("notes") && ls("note:" + (x.layer || "Allmänt")).visible && siteVisibleAtDate(x);
-  if (x.type === "ortho") return false;
-  return layerVisible("site") && siteVisibleAtDate(x);
+  if (x.type === "ortho" || x.type === "layer") return false;
+  return ls("ul:" + layerOf(x)).visible && siteVisibleAtDate(x);
 }
-const isRect = x => x.type === "shed" || x.type === "storage";
+const isRect = x => x.type === "shed" || x.type === "storage" || x.type === "symbol";
 /* Rektangelns mitt/mått/vinkel (äldre poster sparades som två hörn). */
 function rectGeom(x) {
   if (Number.isFinite(x.w)) return { cx: x.cx, cy: x.cy, w: x.w, h: x.h, rot: x.rot || 0 };
@@ -551,8 +634,38 @@ function polyLength(pts, closed) {
   if (closed && pts.length > 2) l += Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]);
   return l;
 }
+/* Lyftkurva: "20:5, 40:2" -> [{ r: 20, t: 5 }, { r: 40, t: 2 }] (sorterad på radie). */
+function parseChart(txt) {
+  return String(txt || "").split(/[,;\n]+/).map(p => p.trim().replace(",", ".")).filter(Boolean).map(p => {
+    const m = /^([\d.]+)\s*(?:m)?\s*[:=\/]\s*([\d.]+)/.exec(p.replace(/\s+/g, " "));
+    return m ? { r: Number(m[1]), t: Number(m[2]) } : null;
+  }).filter(x => x && x.r > 0).sort((a, b) => a.r - b.r);
+}
+const craneRadius = x => { const ch = parseChart(x.chart); return ch.length ? ch[ch.length - 1].r : (Number(x.radius) || 40); };
+/* Skärningspunkter mellan två sträckor (modellkoordinater), eller null. */
+function segIntersect(a, b, c, d) {
+  const r = [b[0] - a[0], b[1] - a[1]], q = [d[0] - c[0], d[1] - c[1]];
+  const den = r[0] * q[1] - r[1] * q[0];
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((c[0] - a[0]) * q[1] - (c[1] - a[1]) * q[0]) / den, u = ((c[0] - a[0]) * r[1] - (c[1] - a[1]) * r[0]) / den;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? [a[0] + t * r[0], a[1] + t * r[1]] : null;
+}
+/* Var korsar en transportväg en avspärrning? */
+function routeConflicts(route, barriers) {
+  const hits = [];
+  barriers.forEach(b => {
+    const P = b.pts;
+    for (let i = 1; i < route.pts.length; i++) for (let j = 0; j < P.length; j++) {
+      const h = segIntersect(route.pts[i - 1], route.pts[i], P[j], P[(j + 1) % P.length]);
+      if (h) hits.push({ pt: h, barrier: b });
+    }
+    route.pts.forEach(v => { if (pointInPoly(v, P)) hits.push({ pt: v, barrier: b }); });
+  });
+  return hits;
+}
 function polyAreaM(pts) { let a = 0; pts.forEach((p, i) => { const q = pts[(i + 1) % pts.length]; a += p[0] * q[1] - q[0] * p[1]; }); return Math.abs(a / 2); }
 const fmtM = v => v.toLocaleString("sv-SE", { maximumFractionDigits: v < 10 ? 1 : 0 });
+const fmtIn = v => String(Math.round(v * 100) / 100).replace(".", ","); // redigeringsfält: två decimaler
 function shortDate(iso) { const [y, m, d] = String(iso).split("-").map(Number); return m ? `${d} ${MONTHS_SV[m - 1]}` : iso; }
 function datesText(x) {
   if (x.from && x.to) return `${shortDate(x.from)} – ${shortDate(x.to)}`;
@@ -567,7 +680,7 @@ function hexToRgba(hex, a) {
   return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
 }
 function siteStyle(x, fontPx) {
-  const color = x.color || SITE_DEFAULT_COLOR[x.type] || "#111827";
+  const color = x.color || defaultColorOf(x) || "#111827";
   const weight = Number(x.weight) || 1;
   const lw = Math.max(1.5, fontPx / 7) * weight;
   const dashKind = x.dash || SITE_DEFAULT_DASH[x.type] || "solid";
@@ -579,14 +692,22 @@ function drawSiteLayers(ctx, fontPx) {
   if (!plan || !plan.calib) return;
   const ppm = pxPerMeter();
   ctx.save();
-  siteItems.filter(siteShown).forEach(x => {
-    ctx.globalAlpha = x.type === "note" ? layerOpacity("notes") : layerOpacity("site");
-    drawSiteItem(ctx, x, fontPx, ppm, x.id === selectedSiteId);
+  const shown = siteItems.filter(siteShown);
+  const barriers = shown.filter(x => x.type === "barrier");
+  shown.forEach(x => {
+    ctx.globalAlpha = layerOpacity("ul:" + layerOf(x));
+    drawSiteItem(ctx, x, fontPx, ppm, x.id === selectedSiteId, barriers);
   });
   ctx.restore();
   const sel = selectedSiteId && siteItems.find(x => x.id === selectedSiteId && siteShown(x));
-  if (sel) drawHandles(ctx, sel, fontPx, ppm);
+  if (sel && !sel.locked) drawHandles(ctx, sel, fontPx, ppm);
   if (siteTool && siteTool.pts.length) drawSitePreview(ctx, fontPx, ppm);
+  if (snapMark && (siteTool || siteDrag || (typeof measure !== "undefined" && measure))) {
+    const [sx, sy] = toPx(snapMark.pt), r = fontPx * 0.45;
+    ctx.save(); ctx.strokeStyle = "#db2777"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.moveTo(sx - r * 1.6, sy); ctx.lineTo(sx + r * 1.6, sy); ctx.moveTo(sx, sy - r * 1.6); ctx.lineTo(sx, sy + r * 1.6); ctx.stroke();
+    ctx.restore();
+  }
 }
 
 /* Etikett (vit ruta) med valfri grå datumrad under. */
@@ -616,10 +737,11 @@ function strokePath(ctx, P, closed, st) {
   ctx.strokeStyle = st.color; ctx.lineWidth = st.lw; ctx.lineCap = st.cap; ctx.setLineDash(st.dash); ctx.stroke(); ctx.setLineDash([]);
 }
 
-function drawSiteItem(ctx, x, fontPx, ppm, selected) {
+function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
   const st = siteStyle(x, fontPx);
   const dates = datesText(x);
   const k = SITE_KINDS[x.type];
+  const lock = x.locked ? " 🔒" : "";
   ctx.setLineDash([]);
   if (x.type === "note") {
     const [a, t] = x.pts.map(mToPx);
@@ -629,16 +751,31 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected) {
     ctx.beginPath(); ctx.moveTo(a[0], a[1]);
     ctx.lineTo(a[0] - hs * Math.cos(ang - 0.4), a[1] - hs * Math.sin(ang - 0.4));
     ctx.lineTo(a[0] - hs * Math.cos(ang + 0.4), a[1] - hs * Math.sin(ang + 0.4)); ctx.closePath(); ctx.fill();
-    labelBox(ctx, t[0], t[1], wrapText(x.text || "", 32), st.fs, "#fffbe6", "#111827", st.color, dates);
+    labelBox(ctx, t[0], t[1], wrapText(x.text || "", 32) + lock, st.fs, "#fffbe6", "#111827", st.color, dates);
   } else if (x.type === "crane") {
-    const [c] = x.pts.map(mToPx), r = (Number(x.radius) || 40) * ppm;
-    ctx.beginPath(); ctx.arc(c[0], c[1], r, 0, Math.PI * 2);
-    ctx.fillStyle = hexToRgba(st.color, 0.1); ctx.fill();
-    ctx.strokeStyle = st.color; ctx.lineWidth = st.lw; ctx.setLineDash(st.dash); ctx.stroke(); ctx.setLineDash([]);
+    const [c] = x.pts.map(mToPx), r = craneRadius(x) * ppm;
+    const chart = parseChart(x.chart);
+    if (chart.length) {
+      // Lyftkurva: zoner från yttersta (lägst kapacitet) till innersta.
+      const zc = ["#16a34a", "#65a30d", "#ca8a04", "#ea580c", "#dc2626"];
+      for (let i = chart.length - 1; i >= 0; i--) {
+        const col = zc[Math.round((chart.length - 1 - i) * (zc.length - 1) / Math.max(1, chart.length - 1))] || st.color;
+        ctx.beginPath(); ctx.arc(c[0], c[1], chart[i].r * ppm, 0, Math.PI * 2);
+        ctx.fillStyle = hexToRgba(col, 0.13); ctx.fill();
+        ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, st.lw * 0.7); ctx.setLineDash(st.dash); ctx.stroke(); ctx.setLineDash([]);
+        ctx.font = `700 ${st.fs * 0.75}px "Segoe UI", Arial`; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+        ctx.lineWidth = 3; ctx.strokeStyle = "#fff"; ctx.strokeText(`${chart[i].t} t · ${fmtM(chart[i].r)} m`, c[0], c[1] - chart[i].r * ppm - 2);
+        ctx.fillStyle = col; ctx.fillText(`${chart[i].t} t · ${fmtM(chart[i].r)} m`, c[0], c[1] - chart[i].r * ppm - 2);
+      }
+    } else {
+      ctx.beginPath(); ctx.arc(c[0], c[1], r, 0, Math.PI * 2);
+      ctx.fillStyle = hexToRgba(st.color, 0.1); ctx.fill();
+      ctx.strokeStyle = st.color; ctx.lineWidth = st.lw; ctx.setLineDash(st.dash); ctx.stroke(); ctx.setLineDash([]);
+    }
     const s = st.fs * 0.9;
     ctx.fillStyle = st.color; ctx.fillRect(c[0] - s / 2, c[1] - s / 2, s, s);
     ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(c[0] - s / 2, c[1] - s / 2); ctx.lineTo(c[0] + s / 2, c[1] + s / 2); ctx.moveTo(c[0] + s / 2, c[1] - s / 2); ctx.lineTo(c[0] - s / 2, c[1] + s / 2); ctx.stroke();
-    labelBox(ctx, c[0], c[1] + s * 1.6, `${x.name || "Kran"} · ${fmtM(Number(x.radius) || 40)} m${x.capacity ? ` · ${x.capacity} t` : ""}`, st.fs, "#fff", "#111827", st.color, dates);
+    labelBox(ctx, c[0], c[1] + s * 1.6, `${x.name || "Kran"} · ${fmtM(craneRadius(x))} m${x.capacity ? ` · ${x.capacity} t` : ""}${lock}`, st.fs, "#fff", "#111827", st.color, dates);
   } else if (isRect(x)) {
     const g = rectGeom(x), P = rectCorners(g).map(mToPx);
     ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
@@ -650,8 +787,16 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected) {
       ctx.restore();
     }
     strokePath(ctx, P, true, st);
+    const sym = x.type === "symbol" ? SYMBOLS[x.sym] || {} : null;
+    if (sym && sym.outrigger) { // stödben: fotavtryck runt fordonet
+      const og = { cx: g.cx, cy: g.cy, w: sym.outrigger, h: Math.min(g.h, sym.outrigger), rot: g.rot };
+      const O = rectCorners(og).map(mToPx);
+      strokePath(ctx, O, true, { ...st, dash: [st.fs * 0.5, st.fs * 0.35], lw: Math.max(1, st.lw * 0.7) });
+      O.forEach(p => { ctx.fillStyle = st.color; ctx.fillRect(p[0] - st.lw * 1.6, p[1] - st.lw * 1.6, st.lw * 3.2, st.lw * 3.2); });
+    }
     const c = mToPx([g.cx, g.cy]);
-    labelBox(ctx, c[0], c[1], `${k.icon} ${x.name || k.label}\n${fmtM(g.w)} × ${fmtM(g.h)} m`, st.fs, "rgba(255,255,255,.9)", "#111827", null, dates);
+    const icon = sym ? sym.icon || "🧩" : k.icon;
+    labelBox(ctx, c[0], c[1], `${icon} ${x.name || (sym ? sym.label : k.label)}${lock}\n${fmtM(g.w)} × ${fmtM(g.h)} m`, st.fs, "rgba(255,255,255,.9)", "#111827", null, dates);
   } else if (x.type === "gate") {
     const [e1, e2] = gateEnds(x).map(mToPx), c = mToPx(x.pts[0]);
     strokePath(ctx, [e1, e2], false, { ...st, lw: st.lw * 2 });
@@ -659,25 +804,54 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected) {
     // öppningsbåge
     const ang = Math.atan2(e2[1] - e1[1], e2[0] - e1[0]), len = Math.hypot(e2[0] - e1[0], e2[1] - e1[1]);
     ctx.beginPath(); ctx.arc(e1[0], e1[1], len, ang - Math.PI / 2, ang); ctx.strokeStyle = hexToRgba(st.color, 0.5); ctx.lineWidth = Math.max(1, st.lw / 2); ctx.setLineDash([st.fs * 0.3, st.fs * 0.3]); ctx.stroke(); ctx.setLineDash([]);
-    labelBox(ctx, c[0], c[1] + st.fs * 1.4, `${k.icon} ${x.name || "Grind"} · ${fmtM(Number(x.w) || 5)} m`, st.fs, "#fff", "#111827", st.color, dates);
+    labelBox(ctx, c[0], c[1] + st.fs * 1.4, `${k.icon} ${x.name || "Grind"} · ${fmtM(Number(x.w) || 5)} m${lock}`, st.fs, "#fff", "#111827", st.color, dates);
   } else if (x.type === "fence") {
     const P = x.pts.map(mToPx);
     strokePath(ctx, P, false, st);
     P.forEach(p => { ctx.fillStyle = st.color; ctx.fillRect(p[0] - st.lw, p[1] - st.lw, st.lw * 2, st.lw * 2); });
     const m = P[Math.floor((P.length - 1) / 2)], n = P[Math.floor((P.length - 1) / 2) + 1] || m;
-    labelBox(ctx, (m[0] + n[0]) / 2, (m[1] + n[1]) / 2 - st.fs, `${x.name || "Stängsel"} · ${fmtM(polyLength(x.pts))} m`, st.fs, "#fff", "#111827", st.color, dates);
+    labelBox(ctx, (m[0] + n[0]) / 2, (m[1] + n[1]) / 2 - st.fs, `${x.name || "Stängsel"} · ${fmtM(polyLength(x.pts))} m${lock}`, st.fs, "#fff", "#111827", st.color, dates);
+  } else if (x.type === "route") {
+    const P = x.pts.map(mToPx);
+    const bw = Math.max(st.lw * 2, (Number(x.w) || 4) * ppm);
+    ctx.save();
+    ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+    ctx.lineJoin = "round"; ctx.lineCap = "round"; ctx.strokeStyle = hexToRgba(st.color, 0.22); ctx.lineWidth = bw; ctx.stroke();
+    ctx.restore();
+    strokePath(ctx, P, false, { ...st, dash: st.dash.length ? st.dash : [st.fs * 0.6, st.fs * 0.4] });
+    // Pilar i körriktningen (båda hållen om dubbelriktad).
+    const step = Math.max(st.fs * 5, 60);
+    const arrow = (p, ang) => { const a = st.fs * 0.55; ctx.beginPath(); ctx.moveTo(p[0] + Math.cos(ang) * a, p[1] + Math.sin(ang) * a); ctx.lineTo(p[0] + Math.cos(ang + 2.5) * a, p[1] + Math.sin(ang + 2.5) * a); ctx.lineTo(p[0] + Math.cos(ang - 2.5) * a, p[1] + Math.sin(ang - 2.5) * a); ctx.closePath(); ctx.fillStyle = st.color; ctx.fill(); };
+    let carry = step / 2;
+    for (let i = 1; i < P.length; i++) {
+      const a = P[i - 1], b = P[i], len = Math.hypot(b[0] - a[0], b[1] - a[1]), ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+      for (let d = carry; d < len; d += step) {
+        const q = [a[0] + (b[0] - a[0]) * d / len, a[1] + (b[1] - a[1]) * d / len];
+        arrow(q, ang);
+        if (x.twoWay) arrow([q[0] - Math.cos(ang) * st.fs * 1.4, q[1] - Math.sin(ang) * st.fs * 1.4], ang + Math.PI);
+      }
+      carry = ((carry - len) % step + step) % step;
+    }
+    const conflicts = routeConflicts(x, barriers.filter(b => b.id !== x.id));
+    conflicts.forEach(h => {
+      const q = mToPx(h.pt), r = st.fs * 0.8;
+      ctx.beginPath(); ctx.moveTo(q[0], q[1] - r); ctx.lineTo(q[0] + r, q[1] + r * 0.8); ctx.lineTo(q[0] - r, q[1] + r * 0.8); ctx.closePath();
+      ctx.fillStyle = "#dc2626"; ctx.fill(); ctx.fillStyle = "#fff"; ctx.font = `800 ${r}px Arial`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("!", q[0], q[1] + r * 0.15);
+    });
+    const mi = Math.floor((P.length - 1) / 2), m = P[mi], n = P[mi + 1] || m;
+    labelBox(ctx, (m[0] + n[0]) / 2, (m[1] + n[1]) / 2 - st.fs * 1.4, `➡ ${x.name || "Transportväg"} · ${fmtM(polyLength(x.pts))} m${x.twoWay ? " · dubbelriktad" : ""}${lock}${conflicts.length ? "\n⚠ korsar avspärrning" : ""}`, st.fs, conflicts.length ? "#fef2f2" : "#fff", conflicts.length ? "#b91c1c" : "#111827", conflicts.length ? "#dc2626" : st.color, dates);
   } else if (x.type === "barrier") {
     const P = x.pts.map(mToPx);
     ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
     ctx.fillStyle = hexToRgba(st.color, 0.16); ctx.fill();
     strokePath(ctx, P, true, st);
     const c = centroidOf(P);
-    labelBox(ctx, c[0], c[1], `${k.icon} ${x.name || "Avspärrning"}\n${fmtM(polyAreaM(x.pts))} m²`, st.fs, "rgba(255,255,255,.9)", "#111827", st.color, dates);
+    labelBox(ctx, c[0], c[1], `${k.icon} ${x.name || "Avspärrning"}${lock}\n${fmtM(polyAreaM(x.pts))} m²`, st.fs, "rgba(255,255,255,.9)", "#111827", st.color, dates);
   }
   if (selected && x.type !== "note") {
     const P = sitePoints(x).map(mToPx);
-    if (x.type === "crane") { const c = P[0], r = (Number(x.radius) || 40) * ppm; ctx.beginPath(); ctx.arc(c[0], c[1], r, 0, Math.PI * 2); }
-    else { ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); if (x.type !== "fence" && x.type !== "gate") ctx.closePath(); }
+    if (x.type === "crane") { const c = P[0], r = craneRadius(x) * ppm; ctx.beginPath(); ctx.arc(c[0], c[1], r, 0, Math.PI * 2); }
+    else { ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); if (x.type !== "fence" && x.type !== "gate" && x.type !== "route") ctx.closePath(); }
     ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(1.5, fontPx / 10); ctx.setLineDash([fontPx / 2, fontPx / 3]); ctx.stroke(); ctx.setLineDash([]);
   }
 }
@@ -691,7 +865,13 @@ function wrapText(t, n) {
 }
 function drawSitePreview(ctx, fontPx, ppm) {
   const pts = siteTool.pts.concat(siteTool.cursor ? [siteTool.cursor] : []);
-  let tmp = { id: "_preview", type: siteTool.kind, pts, name: "", text: "…", radius: 40 };
+  let tmp = { id: "_preview", type: siteTool.kind, pts, name: "", text: "…", radius: 40, sym: siteTool.sym, w: 4 };
+  if (tmp.type === "symbol") {
+    const sy = SYMBOLS[siteTool.sym] || { w: 3, h: 6 };
+    tmp = { ...tmp, cx: pts[pts.length - 1][0], cy: pts[pts.length - 1][1], w: sy.w, h: sy.h, rot: 0 };
+    ctx.save(); ctx.globalAlpha = 0.7; drawSiteItem(ctx, tmp, fontPx, ppm, false); ctx.restore();
+    return;
+  }
   if (isRect(tmp)) {
     if (pts.length < 2) return;
     const [a, b] = pts; tmp = { ...tmp, cx: (a[0] + b[0]) / 2, cy: (a[1] + b[1]) / 2, w: Math.abs(b[0] - a[0]), h: Math.abs(b[1] - a[1]), rot: 0 };
@@ -707,13 +887,14 @@ function drawSitePreview(ctx, fontPx, ppm) {
 function siteHandles(x, fontPx, ppm) {
   const off = (fontPx * 2.2) / ppm; // rotationshandtagets avstånd i meter
   if (x.type === "note") return [{ kind: "vertex", i: 0, m: x.pts[0] }, { kind: "vertex", i: 1, m: x.pts[1] }];
-  if (x.type === "crane") { const [c] = x.pts; return [{ kind: "radius", m: [c[0] + (Number(x.radius) || 40), c[1]] }]; }
+  if (x.type === "crane") { const [c] = x.pts; return [{ kind: "radius", m: [c[0] + craneRadius(x), c[1]] }]; }
   if (isRect(x)) {
     const g = rectGeom(x), C = rectCorners(g);
     const top = [g.cx - Math.sin(g.rot) * (g.h / 2 + off), g.cy + Math.cos(g.rot) * (g.h / 2 + off)];
     return [...C.map((m, i) => ({ kind: "corner", i, m })), { kind: "rotate", m: top }];
   }
   if (x.type === "gate") return gateEnds(x).map((m, i) => ({ kind: "gateEnd", i, m }));
+  if (x.type === "route" || x.type === "fence") { const c = centroidOf(x.pts), ys = x.pts.map(p => p[1]); return [...x.pts.map((m, i) => ({ kind: "vertex", i, m })), { kind: "rotate", m: [c[0], Math.max(...ys) + off] }]; }
   const ys = x.pts.map(p => p[1]), c = centroidOf(x.pts);
   return [...x.pts.map((m, i) => ({ kind: "vertex", i, m })), { kind: "rotate", m: [c[0], Math.max(...ys) + off] }];
 }
@@ -745,6 +926,96 @@ function handleAt(x, pdfPt) {
   hs.forEach(h => { const q = mToPx(h.m), d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < tol && d < bd) { best = h; bd = d; } });
   return best;
 }
+// ---------------------------------------------------------------------
+// Fäst mot linjer och hörn (Victors önskemål 2026-09-28): ritningens egna
+// linjer (vektorer ur PDF:en), zonernas kanter och andra objekts hörn/kanter.
+// ---------------------------------------------------------------------
+let snapIndex = null, snapIndexFor = null; // { cell, grid: Map("ix,iy" -> [seg]) } i PDF-punkter
+async function buildSnapIndex() {
+  if (!page || snapIndexFor === page) return;
+  snapIndexFor = page;
+  snapIndex = null;
+  try {
+    const ops = await page.getOperatorList();
+    const O = pdfjsLib.OPS;
+    let ctm = [1, 0, 0, 1, 0, 0];
+    const stack = [], segs = [];
+    const T = (x, y) => [ctm[0] * x + ctm[2] * y + ctm[4], ctm[1] * x + ctm[3] * y + ctm[5]];
+    for (let i = 0; i < ops.fnArray.length && segs.length < 400000; i++) {
+      const fn = ops.fnArray[i], a = ops.argsArray[i];
+      if (fn === O.save) stack.push(ctm.slice());
+      else if (fn === O.restore) ctm = stack.pop() || ctm;
+      else if (fn === O.transform) ctm = mulAffine(ctm, a);
+      else if (fn === O.constructPath) {
+        const [pops, coords] = a;
+        let j = 0, cur = null, start = null;
+        for (const op of pops) {
+          if (op === O.moveTo) { cur = T(coords[j], coords[j + 1]); start = cur; j += 2; }
+          else if (op === O.lineTo) { const n = T(coords[j], coords[j + 1]); j += 2; if (cur) segs.push([cur, n]); cur = n; }
+          else if (op === O.curveTo) { const n = T(coords[j + 4], coords[j + 5]); j += 6; cur = n; }
+          else if (op === O.curveTo2 || op === O.curveTo3) { const n = T(coords[j + 2], coords[j + 3]); j += 4; cur = n; }
+          else if (op === O.closePath) { if (cur && start) segs.push([cur, start]); cur = start; }
+          else if (op === O.rectangle) {
+            const [x, y, w, h] = coords.slice(j, j + 4); j += 4;
+            const p = [T(x, y), T(x + w, y), T(x + w, y + h), T(x, y + h)];
+            for (let q = 0; q < 4; q++) segs.push([p[q], p[(q + 1) % 4]]);
+            cur = p[0]; start = p[0];
+          }
+        }
+      }
+    }
+    const cell = 25, grid = new Map();
+    segs.forEach(sg => {
+      const [a, b] = sg;
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 2) return;
+      const x0 = Math.floor(Math.min(a[0], b[0]) / cell), x1 = Math.floor(Math.max(a[0], b[0]) / cell);
+      const y0 = Math.floor(Math.min(a[1], b[1]) / cell), y1 = Math.floor(Math.max(a[1], b[1]) / cell);
+      if ((x1 - x0 + 1) * (y1 - y0 + 1) > 400) return; // mycket långa linjer: bara ändpunkterna räknas via cellerna nedan
+      for (let ix = x0; ix <= x1; ix++) for (let iy = y0; iy <= y1; iy++) {
+        const k = ix + "," + iy; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(sg);
+      }
+    });
+    snapIndex = { cell, grid };
+  } catch (e) { console.warn("Kunde inte läsa ritningens linjer för fästning", e); }
+}
+function snapActive(e) { return $("snapOn") && $("snapOn").checked && !(e && e.altKey); }
+/* Fäster en PDF-punkt: hörn/ändpunkter först, annars närmaste linje. */
+function snapPdf(pdfPt, e, excludeId) {
+  snapMark = null;
+  if (!snapActive(e) || !viewport) return pdfPt;
+  const tol = 12 / (renderScale * view.scale);
+  const pts = [], segs = [];
+  siteItems.filter(x => x.id !== excludeId && siteShown(x)).forEach(x => {
+    const P = sitePoints(x).map(p => modelToPdf(p[0], p[1]));
+    P.forEach(p => pts.push(p));
+    for (let i = 1; i < P.length; i++) segs.push([P[i - 1], P[i]]);
+    if (x.type !== "fence" && x.type !== "route" && x.type !== "note" && P.length > 2) segs.push([P[P.length - 1], P[0]]);
+  });
+  ((plan && plan.zones) || []).forEach(z => (z.polys || []).forEach(poly => poly.forEach((p, i) => { pts.push(p); segs.push([p, poly[(i + 1) % poly.length]]); })));
+  if (snapIndex) {
+    const c = snapIndex.cell, ix = Math.floor(pdfPt[0] / c), iy = Math.floor(pdfPt[1] / c);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) (snapIndex.grid.get((ix + dx) + "," + (iy + dy)) || []).forEach(sg => { segs.push(sg); pts.push(sg[0], sg[1]); });
+  }
+  let best = null, bd = tol;
+  pts.forEach(p => { const d = Math.hypot(p[0] - pdfPt[0], p[1] - pdfPt[1]); if (d < bd) { bd = d; best = p; } });
+  if (best) { snapMark = { pt: best, kind: "punkt" }; return best; }
+  // Skärningspunkt mellan två närliggande linjer (t.ex. rutnätskryss).
+  const near = segs.filter(([a, b]) => distToSeg(pdfPt, a, b) < tol).slice(0, 40);
+  for (let i = 0; i < near.length; i++) for (let j = i + 1; j < near.length; j++) {
+    const h = segIntersect(near[i][0], near[i][1], near[j][0], near[j][1]);
+    if (h) { const d = Math.hypot(h[0] - pdfPt[0], h[1] - pdfPt[1]); if (d < bd) { bd = d; best = h; } }
+  }
+  if (best) { snapMark = { pt: best, kind: "kryss" }; return best; }
+  near.forEach(([a, b]) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1], l = dx * dx + dy * dy;
+    const t = l ? Math.max(0, Math.min(1, ((pdfPt[0] - a[0]) * dx + (pdfPt[1] - a[1]) * dy) / l)) : 0;
+    const q = [a[0] + t * dx, a[1] + t * dy], d = Math.hypot(q[0] - pdfPt[0], q[1] - pdfPt[1]);
+    if (d < bd) { bd = d; best = q; }
+  });
+  if (best) snapMark = { pt: best, kind: "linje" };
+  return best || pdfPt;
+}
+
 /* Anropas från lagesplan.js vid mousedown: börjar dra ett objekt/handtag. */
 function layersPointerDown(e) {
   if (!plan || !plan.calib || !viewport || siteTool || (typeof measure !== "undefined" && measure) || photoPlacing || (calib && calib.waitPdf)) return false;
@@ -756,7 +1027,7 @@ function layersPointerDown(e) {
     if (!target) return false;
     handle = { kind: "move" };
   }
-  siteDrag = { orig: JSON.parse(JSON.stringify(target)), work: null, handle, startM: pdfToModel(pdfPt), startPx: [e.clientX, e.clientY], moved: false };
+  siteDrag = { orig: JSON.parse(JSON.stringify(target)), work: null, handle, startM: pdfToModel(pdfPt), startPx: [e.clientX, e.clientY], moved: false, locked: !!target.locked };
   closeSitePop();
   return true;
 }
@@ -771,7 +1042,10 @@ function applySiteDrag(d, m) {
   } else if (h.kind === "vertex") {
     w.pts[h.i] = m;
   } else if (h.kind === "radius") {
-    w.radius = Math.max(1, Math.round(Math.hypot(m[0] - o.pts[0][0], m[1] - o.pts[0][1]) * 2) / 2);
+    const nr = Math.max(1, Math.round(Math.hypot(m[0] - o.pts[0][0], m[1] - o.pts[0][1]) * 2) / 2);
+    const ch = parseChart(o.chart);
+    if (ch.length) { ch[ch.length - 1].r = Math.max(nr, ch.length > 1 ? ch[ch.length - 2].r + 0.5 : 1); w.chart = ch.map(c => `${c.r}:${c.t}`).join(", "); }
+    else w.radius = nr;
   } else if (h.kind === "corner") {
     // Motstående hörn står still; rektangeln behåller sin vinkel.
     const g = rectGeom(o), C = rectCorners(g), opp = C[(h.i + 2) % 4];
@@ -800,8 +1074,11 @@ function onSiteDragMove(e) {
   if (!d) return;
   if (!d.moved && Math.hypot(e.clientX - d.startPx[0], e.clientY - d.startPx[1]) < 4) return;
   d.moved = true;
+  if (d.locked) { setSaveStatus("🔒 Objektet är låst – lås upp det i redigeringsrutan för att flytta det."); return; }
   d.free = e.shiftKey;
-  const m = pdfToModel(toPdf(stagePoint(e)));
+  // Fäst handtag (inte hela objektet) mot linjer och hörn.
+  const raw = toPdf(stagePoint(e));
+  const m = pdfToModel(d.handle.kind === "move" || d.handle.kind === "rotate" ? raw : snapPdf(raw, e, d.orig.id));
   d.work = applySiteDrag(d, m);
   const i = siteItems.findIndex(x => x.id === d.orig.id);
   if (i >= 0) siteItems[i] = d.work;
@@ -816,19 +1093,21 @@ function onSiteDragUp() {
     selectedSiteId = d.orig.id; renderZones(); openSitePop(d.orig, false);
     return;
   }
-  if (d.work) saveSiteItem({ ...d.work, updated_at: new Date().toISOString() });
+  snapMark = null;
+  if (d.locked) { renderZones(); return; }
+  if (d.work) saveSiteItem({ ...d.work, updated_at: new Date().toISOString() }, false, { prev: d.orig });
 }
 
 // ---------------------------------------------------------------------
 // Placera, välj och redigera
 // ---------------------------------------------------------------------
-function startSiteTool(kind) {
+function startSiteTool(kind, sym) {
   if (!plan || !plan.calib) { alert("Kalibrera planen mot 3D (📐) först – noteringar och etablering placeras i modellens koordinater."); return; }
   if (siteTool && siteTool.kind === kind) { stopSiteTool(); return; }
   if (typeof stopMeasure === "function" && measure) stopMeasure();
   if (typeof cancelPhotoPlacing === "function") cancelPhotoPlacing();
   selectedSiteId = null; closeSitePop();
-  siteTool = { kind, pts: [], cursor: null };
+  siteTool = { kind, sym, pts: [], cursor: null };
   updateSiteUi();
 }
 function stopSiteTool() { siteTool = null; updateSiteUi(); renderZones(); }
@@ -840,6 +1119,8 @@ function updateSiteUi() {
     crane: ["Klicka kranens placering."], gate: ["Klicka grindens mitt."],
     shed: ["Klicka första hörnet.", "Klicka motstående hörn."], storage: ["Klicka första hörnet.", "Klicka motstående hörn."],
     fence: ["Klicka punkter längs stängslet, dubbelklicka (eller Enter) för att avsluta."],
+    route: ["Klicka punkter längs vägen i körriktningen, dubbelklicka (eller Enter) för att avsluta."],
+    symbol: ["Klicka var symbolen ska stå (rotera den sedan med ↻)."],
     barrier: ["Klicka hörnen, dubbelklicka (eller Enter) för att avsluta."]
   };
   $("siteHint").textContent = k ? `${k.icon} ${(hints[siteTool.kind][Math.min(siteTool.pts.length, hints[siteTool.kind].length - 1)])} Esc avbryter.`
@@ -849,18 +1130,24 @@ function updateSiteUi() {
 function finishSiteTool() {
   if (!siteTool) return;
   const { kind, pts } = siteTool;
-  const min = { fence: 2, barrier: 3 }[kind];
+  finishSiteTool.sym = siteTool.sym;
+  const min = { fence: 2, barrier: 3, route: 2 }[kind];
   if (min && pts.length < min) { alert(`${SITE_KINDS[kind].label} behöver minst ${min} punkter.`); return; }
   stopSiteTool();
   const r3 = v => Math.round(v * 1000) / 1000;
-  const rec = { id: ghNewId(), type: kind, name: "", created_at: new Date().toISOString(), by: settings.userName || null };
-  if (isRect(rec)) {
+  const rec = { id: ghNewId(), type: kind, name: "", layer: $("activeLayer").value || undefined, created_at: new Date().toISOString(), by: settings.userName || null };
+  if (kind === "symbol") {
+    const sy = SYMBOLS[siteTool && siteTool.sym || pts.sym] || SYMBOLS[finishSiteTool.sym] || { w: 3, h: 6, label: "Symbol" };
+    const c = pts[0];
+    Object.assign(rec, { sym: finishSiteTool.sym, cx: r3(c[0]), cy: r3(c[1]), w: sy.w, h: sy.h, rot: 0, name: sy.label });
+  } else if (isRect(rec)) {
     const [a, b] = pts;
     Object.assign(rec, { cx: r3((a[0] + b[0]) / 2), cy: r3((a[1] + b[1]) / 2), w: r3(Math.abs(b[0] - a[0])), h: r3(Math.abs(b[1] - a[1])), rot: 0 });
   } else rec.pts = pts.map(p => [r3(p[0]), r3(p[1])]);
-  if (kind === "note") { rec.text = ""; rec.layer = noteLayers()[0] || "Allmänt"; }
+  if (kind === "note") rec.text = "";
   if (kind === "crane") { rec.radius = 40; rec.capacity = ""; rec.name = `Kran ${siteItems.filter(x => x.type === "crane").length + 1}`; }
   if (kind === "gate") { rec.w = 5; rec.rot = 0; }
+  if (kind === "route") { rec.w = 4; rec.twoWay = false; }
   openSitePop(rec, true);
 }
 /* Klick på planen när ett verktyg är aktivt: placera. (Val/drag av befintliga
@@ -868,7 +1155,7 @@ function finishSiteTool() {
 function layersClick(pdfPt) {
   if (!plan || !plan.calib) return false;
   if (siteTool) {
-    siteTool.pts.push(pdfToModel(pdfPt));
+    siteTool.pts.push(pdfToModel(snapPdf(pdfPt, window.event)));
     const need = SITE_KINDS[siteTool.kind].clicks;
     if (need && siteTool.pts.length >= need) finishSiteTool();
     else { updateSiteUi(); renderZones(); }
@@ -900,7 +1187,7 @@ function siteAt(pdfPt) {
       if (distToSeg(p, e1, e2) < tol + fontPx * 0.5) return x;
     } else if (isRect(x) || x.type === "barrier") {
       if (pointInPoly(m, sitePoints(x))) return x;
-    } else if (x.type === "fence") {
+    } else if (x.type === "fence" || x.type === "route") {
       const P = x.pts.map(mToPx);
       for (let i = 1; i < P.length; i++) if (distToSeg(p, P[i - 1], P[i]) < tol) return x;
     }
@@ -922,19 +1209,23 @@ function openSitePop(rec, isNew) {
   const k = SITE_KINDS[rec.type];
   const layers = noteLayers();
   const g = isRect(rec) ? rectGeom(rec) : null;
-  const color = rec.color || SITE_DEFAULT_COLOR[rec.type];
+  const color = rec.color || defaultColorOf(rec);
+  const symDef = rec.type === "symbol" ? SYMBOLS[rec.sym] || { label: "Symbol", icon: "🧩" } : null;
   const dash = rec.dash || SITE_DEFAULT_DASH[rec.type];
   const opt = (v, cur, label) => `<option value="${v}"${String(cur) === String(v) ? " selected" : ""}>${label}</option>`;
   pop.innerHTML = `
-    <b>${k.icon} ${isNew ? "Ny" : ""} ${k.label.toLowerCase()}</b>
+    <b>${symDef ? symDef.icon + " " + escHtml(symDef.label) : `${k.icon} ${isNew ? "Ny" : ""} ${k.label.toLowerCase()}`}</b>
     ${rec.type === "note" ? `
-      <label>Text</label><textarea class="sp-text">${escHtml(rec.text || "")}</textarea>
-      <label>Lager</label><input type="text" class="sp-layer" list="spLayers" value="${escHtml(rec.layer || "Allmänt")}" />
-      <datalist id="spLayers">${["Allmänt", "Arbetsmiljö", "Avvikelser", "Att göra", ...layers].filter((v, i, a) => a.indexOf(v) === i).map(l => `<option value="${escHtml(l)}">`).join("")}</datalist>`
-    : `<label>Namn</label><input type="text" class="sp-name" value="${escHtml(rec.name || "")}" placeholder="${escHtml(k.label)}" />`}
-    ${rec.type === "crane" ? `<div class="row2"><div><label>Räckvidd (m)</label><input type="text" class="sp-radius" value="${escHtml(String(rec.radius ?? 40))}" /></div><div><label>Kapacitet (t)</label><input type="text" class="sp-cap" value="${escHtml(String(rec.capacity ?? ""))}" /></div></div>` : ""}
-    ${g ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-w" value="${fmtM(g.w)}" /></div><div><label>Längd (m)</label><input type="text" class="sp-h" value="${fmtM(g.h)}" /></div><div><label>Vinkel (°)</label><input type="text" class="sp-rot" value="${Math.round(g.rot * 180 / Math.PI)}" /></div></div>` : ""}
-    ${rec.type === "gate" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-gw" value="${fmtM(Number(rec.w) || 5)}" /></div><div><label>Vinkel (°)</label><input type="text" class="sp-grot" value="${Math.round((rec.rot || 0) * 180 / Math.PI)}" /></div></div>` : ""}
+      <label>Text</label><textarea class="sp-text">${escHtml(rec.text || "")}</textarea>`
+    : `<label>Namn</label><input type="text" class="sp-name" value="${escHtml(rec.name || "")}" placeholder="${escHtml(symDef ? symDef.label : k.label)}" />`}
+    <label>Lager</label>
+    <select class="sp-layer">${layers.map(l => `<option${l === layerOf(rec) ? " selected" : ""}>${escHtml(l)}</option>`).join("")}<option value="__new">＋ Nytt lager…</option></select>
+    ${rec.type === "crane" ? `<div class="row2"><div><label>Räckvidd (m)</label><input type="text" class="sp-radius" value="${escHtml(String(rec.radius ?? 40))}" /></div><div><label>Kapacitet (t)</label><input type="text" class="sp-cap" value="${escHtml(String(rec.capacity ?? ""))}" /></div></div>
+      <label>Lyftkurva <span class="muted">(radie:ton, t.ex. 20:5, 30:3.5, 40:2)</span></label><input type="text" class="sp-chart" value="${escHtml(rec.chart || "")}" placeholder="20:5, 40:2" />` : ""}
+    ${rec.type === "route" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-rw" value="${fmtIn(Number(rec.w) || 4)}" /></div><div><label>&nbsp;</label><label style="display:flex;gap:4px;align-items:center;margin:0;"><input type="checkbox" class="sp-two"${rec.twoWay ? " checked" : ""} style="width:auto;" /> Dubbelriktad</label></div></div>
+      <button type="button" class="sp-reverse" style="margin-top:4px;">⇄ Vänd körriktning</button>` : ""}
+    ${g ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-w" value="${fmtIn(g.w)}" /></div><div><label>Längd (m)</label><input type="text" class="sp-h" value="${fmtIn(g.h)}" /></div><div><label>Vinkel (°)</label><input type="text" class="sp-rot" value="${Math.round(g.rot * 180 / Math.PI)}" /></div></div>` : ""}
+    ${rec.type === "gate" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-gw" value="${fmtIn(Number(rec.w) || 5)}" /></div><div><label>Vinkel (°)</label><input type="text" class="sp-grot" value="${Math.round((rec.rot || 0) * 180 / Math.PI)}" /></div></div>` : ""}
     <div class="row2">
       <div><label>Färg</label><input type="color" class="sp-color" value="${escHtml(color)}" /></div>
       <div><label>Linje</label><select class="sp-dash">${opt("solid", dash, "Heldragen")}${opt("dashed", dash, "Streckad")}${opt("dotted", dash, "Prickad")}</select></div>
@@ -943,6 +1234,7 @@ function openSitePop(rec, isNew) {
     <div class="row2"><div><label>Textstorlek</label><select class="sp-ts">${opt(0.8, rec.textSize || 1, "Liten")}${opt(1, rec.textSize || 1, "Normal")}${opt(1.35, rec.textSize || 1, "Stor")}</select></div><div></div></div>
     <div class="row2"><div><label>Från</label><input type="date" class="sp-from" value="${escHtml(rec.from || "")}" /></div><div><label>Till</label><input type="date" class="sp-to" value="${escHtml(rec.to || "")}" /></div></div>
     <div class="muted" style="margin-top:2px;">Tomt = alltid synlig. Datumen visas i grått vid objektet.</div>
+    <label style="display:flex;gap:6px;align-items:center;margin-top:6px;color:var(--text);"><input type="checkbox" class="sp-lock"${rec.locked ? " checked" : ""} style="width:auto;" /> 🔒 Lås (kan inte flyttas av misstag)</label>
     <div class="acts">${isNew ? "<span></span>" : `<span><button class="sp-del" title="Ta bort">🗑️</button> <button class="sp-dup" title="Kopiera objektet">⧉ Kopiera</button></span>`}<span><button class="sp-cancel">Avbryt</button> <button class="sp-save primary">Spara</button></span></div>`;
   pop.classList.remove("hidden");
   const anchor = mToPx(isRect(rec) ? [rectGeom(rec).cx, rectGeom(rec).cy] : rec.pts[rec.pts.length - 1]);
@@ -957,21 +1249,32 @@ function openSitePop(rec, isNew) {
     const v = c => { const el = pop.querySelector(c); return el ? el.value.trim() : undefined; };
     const next = { ...rec, from: v(".sp-from") || null, to: v(".sp-to") || null, updated_at: new Date().toISOString() };
     if (next.from && next.to && next.from > next.to) { alert("Från-datumet måste vara före till-datumet."); return; }
-    next.color = v(".sp-color") === SITE_DEFAULT_COLOR[rec.type] ? null : v(".sp-color");
+    next.color = v(".sp-color") === defaultColorOf(rec) ? null : v(".sp-color");
     next.dash = v(".sp-dash"); next.weight = Number(v(".sp-weight")); next.textSize = Number(v(".sp-ts"));
+    let layer = v(".sp-layer");
+    if (layer === "__new") { layer = (prompt("Namn på det nya lagret:", "") || "").trim(); if (!layer) return; createLayer(layer); }
+    next.layer = layer || defaultLayerOf(rec);
+    ls("ul:" + next.layer).visible = true; saveLayerState();
+    next.locked = pop.querySelector(".sp-lock").checked;
     if (rec.type === "note") {
       next.text = pop.querySelector(".sp-text").value.trim();
-      next.layer = v(".sp-layer") || "Allmänt";
       if (!next.text) { alert("Skriv en text för noteringen."); return; }
-      ls("note:" + next.layer).visible = true; saveLayerState();
     } else next.name = v(".sp-name") || "";
-    if (rec.type === "crane") { const rad = num(".sp-radius", 40); next.radius = rad > 0 ? rad : 40; next.capacity = v(".sp-cap") || ""; }
+    if (rec.type === "crane") {
+      const rad = num(".sp-radius", 40); next.radius = rad > 0 ? rad : 40; next.capacity = v(".sp-cap") || "";
+      const ch = parseChart(v(".sp-chart"));
+      if (v(".sp-chart") && !ch.length) { alert("Lyftkurvan förstås inte. Skriv t.ex. 20:5, 40:2 (radie i meter : ton)."); return; }
+      next.chart = ch.length ? ch.map(c => `${c.r}:${c.t}`).join(", ") : "";
+    }
+    if (rec.type === "route") { next.w = Math.max(0.5, num(".sp-rw", 4)); next.twoWay = pop.querySelector(".sp-two").checked; }
     if (g) { Object.assign(next, { cx: g.cx, cy: g.cy, w: Math.max(0.1, num(".sp-w", g.w)), h: Math.max(0.1, num(".sp-h", g.h)), rot: num(".sp-rot", 0) * Math.PI / 180 }); delete next.pts; }
     if (rec.type === "gate") { next.w = Math.max(0.1, num(".sp-gw", 5)); next.rot = num(".sp-grot", 0) * Math.PI / 180; }
     closeSitePop();
     selectedSiteId = next.id;
-    saveSiteItem(next);
+    saveSiteItem(next, false, { prev: isNew ? null : rec });
   };
+  const rev = pop.querySelector(".sp-reverse");
+  if (rev) rev.onclick = () => { rec.pts = rec.pts.slice().reverse(); renderZones(); rev.textContent = "⇄ Vänd körriktning ✓"; };
   const del = pop.querySelector(".sp-del");
   if (del) del.onclick = () => { if (!confirm(`Ta bort ${k.label.toLowerCase()}?`)) return; closeSitePop(); selectedSiteId = null; saveSiteItem(rec, true); };
   const dup = pop.querySelector(".sp-dup");
@@ -992,6 +1295,7 @@ function closeSitePop() { $("sitePop").classList.add("hidden"); $("sitePop").inn
 // Lagerpanelen
 // ---------------------------------------------------------------------
 function layerRow(key, label, opts = {}) {
+  if (opts.ul) label = label; // egna lager: namn + antal objekt
   const st = ls(key, opts);
   return `<div class="layer-row${opts.sub ? " sub" : ""}" data-layer="${escHtml(key)}">
       <input type="checkbox" class="lr-vis"${st.visible ? " checked" : ""} title="Visa/dölj" />
@@ -1011,9 +1315,10 @@ function renderLayerPanel() {
   }));
   rows.push(layerRow("zones", "🟧 Zoner"));
   rows.push(layerRow("objects", "🔷 Objekt"));
-  rows.push(layerRow("notes", "💬 Noteringar"));
-  noteLayers().forEach(l => rows.push(layerRow("note:" + l, escHtml(l), { sub: true, noOpacity: true })));
-  rows.push(layerRow("site", "🏗 Etablering"));
+  userLayers().forEach(l => {
+    const n = siteItems.filter(x => x.type !== "ortho" && x.type !== "layer" && layerOf(x) === l).length;
+    rows.push(layerRow("ul:" + l, `<span class="ul-name" title="Dubbelklicka för att byta namn">🗂 ${escHtml(l)}</span> <small>${n}</small>`, { del: l !== "Allmänt" && l !== "Etablering", ul: l }));
+  });
   rows.push(layerRow("photos", "📷 Foton", { noOpacity: true }));
   el.innerHTML = rows.join("");
   el.querySelectorAll(".layer-row").forEach(row => {
@@ -1029,11 +1334,14 @@ function renderLayerPanel() {
     if (op) op.oninput = e => {
       ls(key).opacity = Number(e.target.value); op.title = `Genomskinlighet ${e.target.value} %`; saveLayerState();
       applyLayerCss();
-      if (key.startsWith("ortho:")) renderOrtho(); else if (key === "notes" || key === "site") renderZones();
+      if (key.startsWith("ortho:")) renderOrtho(); else if (key.startsWith("ul:")) renderZones();
     };
     const mult = row.querySelector(".lr-mult");
     if (mult) mult.onchange = e => { layerState.pdfMultiply = e.target.checked; saveLayerState(); applyLayerCss(); };
+    const nameEl = row.querySelector(".ul-name");
+    if (nameEl) nameEl.ondblclick = () => renameLayer(key.slice(3));
     const del = row.querySelector(".lr-del");
+    if (del && key.startsWith("ul:")) { del.onclick = () => deleteLayer(key.slice(3)); return; }
     if (del) del.onclick = () => {
       const o = siteItems.find(x => "ortho:" + x.id === key);
       if (!o || !confirm(`Ta bort ortofotot "${o.name}" från lägesplanen? (Originalet i Trimble Connect ligger kvar.)`)) return;
@@ -1042,6 +1350,96 @@ function renderLayerPanel() {
       ghDeleteBinary(token, o.path, "Lägesplan: ta bort ortofoto");
     };
   });
+}
+
+async function renameLayer(oldName) {
+  if (oldName === "Allmänt" || oldName === "Etablering") { alert(`"${oldName}" är ett standardlager och kan inte byta namn.`); return; }
+  const name = (prompt("Nytt namn på lagret:", oldName) || "").trim();
+  if (!name || name === oldName) return;
+  const recs = siteItems.filter(x => (x.type === "layer" && x.name === oldName) || (x.type !== "ortho" && x.type !== "layer" && layerOf(x) === oldName))
+    .map(x => x.type === "layer" ? { ...x, name } : { ...x, layer: name });
+  ls("ul:" + name).visible = ls("ul:" + oldName).visible; ls("ul:" + name).opacity = ls("ul:" + oldName).opacity; saveLayerState();
+  await saveSiteItemsBatch(recs);
+  renderActiveLayerSelect();
+}
+async function deleteLayer(name) {
+  const items = siteItems.filter(x => x.type !== "ortho" && x.type !== "layer" && layerOf(x) === name);
+  if (!confirm(items.length ? `Ta bort lagret "${name}"? Dess ${items.length} objekt flyttas till "Allmänt".` : `Ta bort lagret "${name}"?`)) return;
+  const layerRecs = siteItems.filter(x => x.type === "layer" && x.name === name).map(x => x.id);
+  await saveSiteItemsBatch(items.map(x => ({ ...x, layer: "Allmänt" })), layerRecs);
+  renderActiveLayerSelect();
+}
+
+/* Etableringsplan över tid: en A3-sida per månad med det som gäller den månaden. */
+async function exportSitePlanPdf() {
+  if (!viewport) return;
+  const dated = siteItems.filter(x => x.type !== "ortho" && x.type !== "layer" && (x.from || x.to));
+  const all = dated.flatMap(x => [x.from, x.to]).filter(Boolean).sort();
+  let start = all[0] || isoOf(new Date(dateMin)), end = all[all.length - 1] || isoOf(new Date(dateMax));
+  const months = [];
+  for (let d = new Date(start.slice(0, 7) + "-01T12:00:00"); isoOf(d) <= end && months.length < 36; d.setMonth(d.getMonth() + 1)) {
+    const a = isoOf(d), e = new Date(d); e.setMonth(e.getMonth() + 1); e.setDate(0);
+    months.push([a, isoOf(e)]);
+  }
+  if (!months.length) { alert("Inga datum att göra en plan över."); return; }
+  if (months.length > 12 && !confirm(`Etableringsplanen blir ${months.length} sidor. Fortsätt?`)) return;
+  const MON = ["januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december"];
+  const origDate = $("dateInput").value;
+  setBusy("Skapar etableringsplan…");
+  try {
+    await loadScript(JSPDF_URL);
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
+    const W = 420, H = 297, M = 12;
+    for (let i = 0; i < months.length; i++) {
+      const [a, b] = months[i];
+      setBusy(`Skapar etableringsplan… sida ${i + 1} av ${months.length}`);
+      siteDateOverride = [a, b];
+      $("dateInput").value = b; syncSliderFromDate(); renderZones();
+      await new Promise(r => setTimeout(r, 30));
+      if (i) doc.addPage("a3", "landscape");
+      const [y, mo] = a.split("-").map(Number);
+      doc.setFont("helvetica", "bold"); doc.setFontSize(20);
+      doc.text(`Etableringsplan – ${MON[mo - 1]} ${y}`, M, M + 6);
+      doc.setFont("helvetica", "normal"); doc.setFontSize(11);
+      doc.text(`${plan.name}   ·   ${a} – ${b}   ·   sida ${i + 1} av ${months.length}`, M, M + 13);
+      const img = composeImage(null, true);
+      const listW = 95, top = M + 18, bottom = H - M;
+      const boxW = W - 2 * M - listW - 6, boxH = bottom - top;
+      const k = Math.min(boxW / img.width, boxH / img.height);
+      doc.addImage(img.toDataURL("image/jpeg", 0.88), "JPEG", M, top, img.width * k, img.height * k);
+      doc.setDrawColor(200); doc.rect(M, top, img.width * k, img.height * k);
+      // Förteckning över det som gäller månaden
+      const active = siteItems.filter(x => x.type !== "ortho" && x.type !== "layer" && siteShown(x))
+        .sort((p, q) => layerOf(p).localeCompare(layerOf(q), "sv") || (p.from || "").localeCompare(q.from || ""));
+      let ly = top + 4; const lx = W - M - listW;
+      doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Gäller denna månad", lx, ly); ly += 7;
+      doc.setFontSize(9);
+      let lastLayer = null;
+      for (const x of active) {
+        if (ly > bottom - 6) { doc.setFont("helvetica", "italic"); doc.text("… fler", lx, ly); break; }
+        if (layerOf(x) !== lastLayer) { lastLayer = layerOf(x); doc.setFont("helvetica", "bold"); doc.text(lastLayer, lx, ly); ly += 5; }
+        const col = (x.color || defaultColorOf(x) || "#111827");
+        const n = parseInt(col.slice(1), 16); doc.setFillColor(n >> 16, (n >> 8) & 255, n & 255); doc.rect(lx, ly - 3, 3, 3, "F");
+        doc.setFont("helvetica", "normal");
+        const kind = x.type === "symbol" ? (SYMBOLS[x.sym] || {}).label || "Symbol" : (SITE_KINDS[x.type] || {}).label || x.type;
+        const title = x.type === "note" ? (x.text || "").split("\n")[0] : (x.name || kind);
+        const line = doc.splitTextToSize(`${title}${title !== kind ? ` (${kind})` : ""}`, listW - 6)[0];
+        doc.text(line, lx + 5, ly);
+        const dt = datesText(x);
+        if (dt) { doc.setTextColor(120); doc.text(dt, lx + 5, ly + 4); doc.setTextColor(0); ly += 4; }
+        ly += 5.5;
+      }
+      if (!active.length) { doc.setFont("helvetica", "italic"); doc.text("Inget med datum den här månaden.", lx, ly); }
+    }
+    doc.save(`Etableringsplan ${plan.name} ${months[0][0].slice(0, 7)}–${months[months.length - 1][0].slice(0, 7)}.pdf`);
+  } catch (e) {
+    alert("Kunde inte skapa etableringsplanen: " + e.message);
+  } finally {
+    siteDateOverride = null;
+    $("dateInput").value = origDate; syncSliderFromDate(); renderZones();
+    setBusy("");
+  }
 }
 
 function bindLayers() {
@@ -1055,6 +1453,25 @@ function bindLayers() {
   $("orthoInput").onchange = e => { const f = [...e.target.files]; e.target.value = ""; if (f.length) addOrthoFiles(f); };
   $("layersFollowDate").onchange = () => renderZones();
   document.querySelectorAll("[data-site]").forEach(b => { b.onclick = () => startSiteTool(b.dataset.site); });
+  const symSel = $("symbolSelect");
+  symSel.innerHTML += Object.entries(SYMBOLS).map(([k, v]) => `<option value="${k}">${v.icon} ${escHtml(v.label)} (${fmtM(v.w)} × ${fmtM(v.h)} m)</option>`).join("");
+  symSel.onchange = () => { const k = symSel.value; symSel.value = ""; if (k) startSiteTool("symbol", k); };
+  $("activeLayer").onchange = () => { try { localStorage.setItem("lagesplan-activelayer-" + projectId, $("activeLayer").value); } catch (e) {} };
+  $("btnNewLayer").onclick = async () => {
+    const name = (prompt("Namn på det nya lagret (t.ex. Arbetsmiljö, Logistik v.42):", "") || "").trim();
+    if (!name) return;
+    await createLayer(name);
+    renderActiveLayerSelect(); $("activeLayer").value = name; $("activeLayer").onchange();
+  };
+  $("siteUndo").onclick = undoSite;
+  $("siteRedo").onclick = redoSite;
+  $("btnSitePlanPdf").onclick = exportSitePlanPdf;
+  window.addEventListener("keydown", e => {
+    if (!(e.ctrlKey || e.metaKey) || (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName))) return;
+    const k = e.key.toLowerCase();
+    if (k === "z" && !e.shiftKey && siteUndo.length) { e.preventDefault(); undoSite(); }
+    else if ((k === "y" || (k === "z" && e.shiftKey)) && siteRedo.length) { e.preventDefault(); redoSite(); }
+  });
   $("viewport").addEventListener("dblclick", () => {
     if (!siteTool || SITE_KINDS[siteTool.kind].clicks) return;
     const p = siteTool.pts; // dubbelklicket har lagt till samma punkt två gånger
@@ -1068,7 +1485,7 @@ function bindLayers() {
   let raf = 0;
   window.addEventListener("mousemove", e => {
     if (!siteTool || !siteTool.pts.length || !viewport || !e.target.closest || !e.target.closest("#viewport")) return;
-    siteTool.cursor = pdfToModel(toPdf(stagePoint(e)));
+    siteTool.cursor = pdfToModel(snapPdf(toPdf(stagePoint(e)), e));
     if (!raf) raf = requestAnimationFrame(() => { raf = 0; renderZones(); });
   });
   window.addEventListener("keydown", e => {

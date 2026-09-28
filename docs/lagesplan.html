@@ -118,7 +118,17 @@
       <label class="row" style="color:var(--text);margin-top:4px;"><input type="checkbox" id="orthoToTc" checked /> Spara originalfilerna i Trimble Connect (mappen Lägesplan)</label>
       <input type="file" id="orthoInput" accept=".png,.jpg,.jpeg,.pgw,.jgw,.pngw,.jpgw,.wld" multiple class="hidden" />
       <div class="muted">Markera både bilden och .pgw-filen. Fotot placeras automatiskt via modellens koordinater (kräver att planen är kalibrerad).</div>
-      <div style="margin-top:10px;"><b style="font-size:12px;">Lägg till på planen</b></div>
+      <div class="row" style="margin-top:10px;">
+        <b style="font-size:12px;">Lägg till på planen</b>
+        <span class="grow"></span>
+        <button id="siteUndo" title="Ångra (Ctrl+Z)" disabled>↶</button>
+        <button id="siteRedo" title="Gör om (Ctrl+Y)" disabled>↷</button>
+      </div>
+      <div class="row" style="margin-top:4px;">
+        <span class="muted">Lager</span>
+        <select id="activeLayer" class="grow" title="Nya objekt hamnar på det här lagret"></select>
+        <button id="btnNewLayer" title="Skapa ett nytt lager">＋ Nytt lager</button>
+      </div>
       <div class="row site-add" style="margin-top:4px;">
         <button data-site="note" title="Klicka först där pilen ska peka, sedan där texten ska stå">💬 Notering</button>
         <button data-site="crane" title="Klicka kranens placering">🏗 Kran</button>
@@ -127,7 +137,12 @@
         <button data-site="gate" title="Klicka grindens placering">🚪 Grind</button>
         <button data-site="fence" title="Klicka punkter längs stängslet, dubbelklicka för att avsluta">〰 Stängsel</button>
         <button data-site="barrier" title="Klicka hörnen, dubbelklicka för att avsluta">⛔ Avspärrning</button>
+        <button data-site="route" title="Klicka punkter längs vägen i körriktningen, dubbelklicka för att avsluta">➡ Transportväg</button>
+        <select id="symbolSelect" title="Färdiga symboler med rätt mått - välj och klicka på planen">
+          <option value="">🧩 Symbol…</option>
+        </select>
       </div>
+      <label class="row" style="color:var(--text);margin-top:6px;"><input type="checkbox" id="snapOn" checked /> 🧲 Fäst mot linjer och hörn (håll Alt för att släppa)</label>
       <div class="muted" id="siteHint" style="margin-top:4px;"></div>
     </details>
 
@@ -248,6 +263,9 @@
         <button id="btnExport">📷 Spara som bild (PNG)</button>
         <button id="btnPdfA3" title="A3 liggande med rubrik, datum och teckenförklaring">🖨 PDF (A3)</button>
       </div>
+      <div class="row" style="margin-top:6px;">
+        <button id="btnSitePlanPdf" title="En A3-sida per månad med det som gäller den månaden (noteringar och etablering med datum)">🗓 Etableringsplan per månad (PDF)</button>
+      </div>
     </details>
     <div class="muted" id="saveStatus" style="margin-top:8px;"></div>
   </aside>
@@ -255,7 +273,7 @@
   <main>
     <button id="btnShowSide" class="hidden" title="Visa menyn">▶ Meny</button>
     <div id="viewport">
-      <div id="stage"><canvas id="orthoCanvas"></canvas><canvas id="pdfCanvas"></canvas><canvas id="zoneCanvas"></canvas><canvas id="objCanvas"></canvas><canvas id="topCanvas"></canvas></div>
+      <div id="stage"><canvas id="orthoCanvas"></canvas><canvas id="pdfCanvas"></canvas><canvas id="pdfHiCanvas"></canvas><canvas id="zoneCanvas"></canvas><canvas id="objCanvas"></canvas><canvas id="topCanvas"></canvas></div>
     </div>
     <div id="empty">Välj en plan, eller klicka <b>&nbsp;+ Ny plan från PDF&nbsp;</b> och välj en PDF (t.ex. en planritning med PM-zoner).</div>
     <div id="zoomCtl">
