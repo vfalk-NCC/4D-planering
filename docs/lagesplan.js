@@ -596,7 +596,7 @@ async function renderPdf() {
   viewport = page.getViewport({ scale: renderScale });
   const pc = $("pdfCanvas"), zc = $("zoneCanvas"), stage = $("stage");
   // Alla lager (ortofoto, ritning, zoner, objekt, översta) har samma storlek.
-  STAGE_CANVASES.forEach(id => { $(id).width = Math.round(viewport.width); $(id).height = Math.round(viewport.height); });
+  STAGE_CANVASES.forEach(id => { if (id === "orthoCanvas") return; $(id).width = Math.round(viewport.width); $(id).height = Math.round(viewport.height); });
   stage.style.width = pc.width + "px";
   stage.style.height = pc.height + "px";
   await page.render({
@@ -918,7 +918,10 @@ async function detectZones() {
 // ---------------------------------------------------------------------
 // Zoom, panorering, val, ritning
 // ---------------------------------------------------------------------
-function applyView() { $("stage").style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`; }
+function applyView() {
+  $("stage").style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+  if (typeof scheduleOrthoRender === "function") scheduleOrthoRender();
+}
 function fitView() {
   const vp = $("viewport").getBoundingClientRect(), pc = $("pdfCanvas");
   if (!pc.width) return;
@@ -957,6 +960,8 @@ function bindViewport() {
   vpEl.addEventListener("mousedown", e => {
     if (!viewport) return;
     if (drawMode) { drag = { draw: true, start: stagePoint(e) }; return; }
+    // Noteringar/etablering: flytta, ändra form och rotera (lagesplan-layers.js).
+    if (e.target.closest && e.target.closest("#viewport") && !e.target.closest("#sitePop") && layersPointerDown(e)) return;
     drag = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, moved: false };
   });
   window.addEventListener("mousemove", e => {
@@ -1132,6 +1137,7 @@ function composeImage(maxW, noHeader) {
   // Samma lager, synlighet, genomskinlighet och blandning som på skärmen.
   STAGE_CANVASES.forEach(id => {
     const c = $(id);
+    if (id === "orthoCanvas") { if (getComputedStyle(c).display !== "none") drawOrthoForExport(ctx, 0, head, W / pc.width); return; }
     if (!c.width || getComputedStyle(c).display === "none") return;
     ctx.save();
     ctx.globalAlpha = Number(getComputedStyle(c).opacity) || 0;
