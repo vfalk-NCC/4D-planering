@@ -764,6 +764,7 @@ function siteStyle(x, fontPx) {
 }
 
 function drawSiteLayers(ctx, fontPx) {
+  if (ctx.canvas && ctx.canvas.id === "topCanvas") labelBoxes = new Map();
   if (!plan || !plan.calib) return;
   const ppm = pxPerMeter();
   ctx.save();
@@ -817,6 +818,38 @@ function labelBox(ctx, x, y, text, fs, bg, fg, border, dates) {
   return { w, h };
 }
 
+/* Objektens etiketter kan dras fritt (Victors önskemål 2026-09-28). Läget
+   sparas som förskjutning i meter (x.lbl = [dx, dy]) från standardläget, så
+   att etiketten följer med när objektet flyttas. En streckad stödlinje visar
+   vilket objekt etiketten hör till. Rutorna sparas för träffytan vid klick. */
+let labelBoxes = new Map(); // id -> { x, y, w, h } i canvas-px (bara skärmen)
+function siteLabel(ctx, x, def, text, fs, bg, fg, border, dates) {
+  let p = def;
+  if (x.lbl && (x.lbl[0] || x.lbl[1])) {
+    const o = mToPx([0, 0]), q = mToPx(x.lbl);
+    p = [def[0] + q[0] - o[0], def[1] + q[1] - o[1]];
+    if (Math.hypot(p[0] - def[0], p[1] - def[1]) > fs * 1.2) {
+      ctx.save();
+      ctx.strokeStyle = border || "#6b7280"; ctx.fillStyle = border || "#6b7280";
+      ctx.lineWidth = Math.max(1, fs / 14); ctx.setLineDash([fs * 0.3, fs * 0.2]);
+      ctx.beginPath(); ctx.moveTo(def[0], def[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(def[0], def[1], Math.max(2, fs * 0.15), 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
+  const r = labelBox(ctx, p[0], p[1], text, fs, bg, fg, border, dates);
+  if (x.id && ctx.canvas && ctx.canvas.id === "topCanvas") labelBoxes.set(x.id, { x: p[0], y: p[1], w: r.w, h: r.h });
+  return r;
+}
+function labelAt(px) {
+  const vis = siteItems.filter(siteShown).slice().reverse();
+  for (const x of vis) {
+    const b = labelBoxes.get(x.id);
+    if (b && Math.abs(px[0] - b.x) <= b.w / 2 && Math.abs(px[1] - b.y) <= b.h / 2) return x;
+  }
+  return null;
+}
+
 function strokePath(ctx, P, closed, st) {
   ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); if (closed) ctx.closePath();
   ctx.strokeStyle = st.color; ctx.lineWidth = st.lw; ctx.lineCap = st.cap; ctx.setLineDash(st.dash); ctx.stroke(); ctx.setLineDash([]);
@@ -836,7 +869,7 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
     ctx.beginPath(); ctx.moveTo(a[0], a[1]);
     ctx.lineTo(a[0] - hs * Math.cos(ang - 0.4), a[1] - hs * Math.sin(ang - 0.4));
     ctx.lineTo(a[0] - hs * Math.cos(ang + 0.4), a[1] - hs * Math.sin(ang + 0.4)); ctx.closePath(); ctx.fill();
-    labelBox(ctx, t[0], t[1], wrapText(x.text || "", 32) + lock, st.fs, "#fffbe6", "#111827", st.color, dates);
+    siteLabel(ctx, { ...x, lbl: null }, [t[0], t[1]], wrapText(x.text || "", 32) + lock, st.fs, "#fffbe6", "#111827", st.color, dates);
   } else if (x.type === "crane") {
     const [c] = x.pts.map(mToPx), r = craneRadius(x) * ppm;
     const chart = parseChart(x.chart);
@@ -860,7 +893,7 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
     const s = st.fs * 0.9;
     ctx.fillStyle = st.color; ctx.fillRect(c[0] - s / 2, c[1] - s / 2, s, s);
     ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(c[0] - s / 2, c[1] - s / 2); ctx.lineTo(c[0] + s / 2, c[1] + s / 2); ctx.moveTo(c[0] + s / 2, c[1] - s / 2); ctx.lineTo(c[0] - s / 2, c[1] + s / 2); ctx.stroke();
-    labelBox(ctx, c[0], c[1] + s * 1.6, `${x.name || "Kran"} · ${fmtM(craneRadius(x))} m${x.capacity ? ` · ${x.capacity} t` : ""}${lock}`, st.fs, "#fff", "#111827", st.color, dates);
+    siteLabel(ctx, x, [c[0], c[1] + s * 1.6], `${x.name || "Kran"} · ${fmtM(craneRadius(x))} m${x.capacity ? ` · ${x.capacity} t` : ""}${lock}`, st.fs, "#fff", "#111827", st.color, dates);
   } else if (isRect(x)) {
     const g = rectGeom(x), P = rectCorners(g).map(mToPx);
     ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
@@ -881,7 +914,7 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
     }
     const c = mToPx([g.cx, g.cy]);
     const icon = sym ? sym.icon || "🧩" : k.icon;
-    labelBox(ctx, c[0], c[1], `${icon} ${x.name || (sym ? sym.label : k.label)}${lock}\n${fmtM(g.w)} × ${fmtM(g.h)} m`, st.fs, "rgba(255,255,255,.9)", "#111827", null, dates);
+    siteLabel(ctx, x, [c[0], c[1]], `${icon} ${x.name || (sym ? sym.label : k.label)}${lock}\n${fmtM(g.w)} × ${fmtM(g.h)} m`, st.fs, "rgba(255,255,255,.9)", "#111827", null, dates);
   } else if (x.type === "gate") {
     const [e1, e2] = gateEnds(x).map(mToPx), c = mToPx(x.pts[0]);
     strokePath(ctx, [e1, e2], false, { ...st, lw: st.lw * 2 });
@@ -889,13 +922,13 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
     // öppningsbåge
     const ang = Math.atan2(e2[1] - e1[1], e2[0] - e1[0]), len = Math.hypot(e2[0] - e1[0], e2[1] - e1[1]);
     ctx.beginPath(); ctx.arc(e1[0], e1[1], len, ang - Math.PI / 2, ang); ctx.strokeStyle = hexToRgba(st.color, 0.5); ctx.lineWidth = Math.max(1, st.lw / 2); ctx.setLineDash([st.fs * 0.3, st.fs * 0.3]); ctx.stroke(); ctx.setLineDash([]);
-    labelBox(ctx, c[0], c[1] + st.fs * 1.4, `${k.icon} ${x.name || "Grind"} · ${fmtM(Number(x.w) || 5)} m${lock}`, st.fs, "#fff", "#111827", st.color, dates);
+    siteLabel(ctx, x, [c[0], c[1] + st.fs * 1.4], `${k.icon} ${x.name || "Grind"} · ${fmtM(Number(x.w) || 5)} m${lock}`, st.fs, "#fff", "#111827", st.color, dates);
   } else if (x.type === "fence") {
     const P = x.pts.map(mToPx);
     strokePath(ctx, P, false, st);
     P.forEach(p => { ctx.fillStyle = st.color; ctx.fillRect(p[0] - st.lw, p[1] - st.lw, st.lw * 2, st.lw * 2); });
     const m = P[Math.floor((P.length - 1) / 2)], n = P[Math.floor((P.length - 1) / 2) + 1] || m;
-    labelBox(ctx, (m[0] + n[0]) / 2, (m[1] + n[1]) / 2 - st.fs, `${x.name || "Stängsel"} · ${fmtM(polyLength(x.pts))} m${lock}`, st.fs, "#fff", "#111827", st.color, dates);
+    siteLabel(ctx, x, [(m[0] + n[0]) / 2, (m[1] + n[1]) / 2 - st.fs], `${x.name || "Stängsel"} · ${fmtM(polyLength(x.pts))} m${lock}`, st.fs, "#fff", "#111827", st.color, dates);
   } else if (x.type === "route") {
     const P = x.pts.map(mToPx);
     const bw = Math.max(st.lw * 2, (Number(x.w) || 4) * ppm);
@@ -924,14 +957,14 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
       ctx.fillStyle = "#dc2626"; ctx.fill(); ctx.fillStyle = "#fff"; ctx.font = `800 ${r}px Arial`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("!", q[0], q[1] + r * 0.15);
     });
     const mi = Math.floor((P.length - 1) / 2), m = P[mi], n = P[mi + 1] || m;
-    labelBox(ctx, (m[0] + n[0]) / 2, (m[1] + n[1]) / 2 - st.fs * 1.4, `➡ ${x.name || "Transportväg"} · ${fmtM(polyLength(x.pts))} m${x.twoWay ? " · dubbelriktad" : ""}${lock}${conflicts.length ? "\n⚠ korsar avspärrning" : ""}`, st.fs, conflicts.length ? "#fef2f2" : "#fff", conflicts.length ? "#b91c1c" : "#111827", conflicts.length ? "#dc2626" : st.color, dates);
+    siteLabel(ctx, x, [(m[0] + n[0]) / 2, (m[1] + n[1]) / 2 - st.fs * 1.4], `➡ ${x.name || "Transportväg"} · ${fmtM(polyLength(x.pts))} m${x.twoWay ? " · dubbelriktad" : ""}${lock}${conflicts.length ? "\n⚠ korsar avspärrning" : ""}`, st.fs, conflicts.length ? "#fef2f2" : "#fff", conflicts.length ? "#b91c1c" : "#111827", conflicts.length ? "#dc2626" : st.color, dates);
   } else if (x.type === "barrier") {
     const P = x.pts.map(mToPx);
     ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
     ctx.fillStyle = hexToRgba(st.color, 0.16); ctx.fill();
     strokePath(ctx, P, true, st);
     const c = centroidOf(P);
-    labelBox(ctx, c[0], c[1], `${k.icon} ${x.name || "Avspärrning"}${lock}\n${fmtM(polyAreaM(x.pts))} m²`, st.fs, "rgba(255,255,255,.9)", "#111827", st.color, dates);
+    siteLabel(ctx, x, [c[0], c[1]], `${k.icon} ${x.name || "Avspärrning"}${lock}\n${fmtM(polyAreaM(x.pts))} m²`, st.fs, "rgba(255,255,255,.9)", "#111827", st.color, dates);
   }
   if (selected && x.type !== "note") {
     const P = sitePoints(x).map(mToPx);
@@ -979,9 +1012,17 @@ function siteHandles(x, fontPx, ppm) {
     return [...C.map((m, i) => ({ kind: "corner", i, m })), { kind: "rotate", m: top }];
   }
   if (x.type === "gate") return gateEnds(x).map((m, i) => ({ kind: "gateEnd", i, m }));
-  if (x.type === "route" || x.type === "fence") { const c = centroidOf(x.pts), ys = x.pts.map(p => p[1]); return [...x.pts.map((m, i) => ({ kind: "vertex", i, m })), { kind: "rotate", m: [c[0], Math.max(...ys) + off] }]; }
+  // Linjer och ytor: punkter, "+" mitt på varje sträcka (dra för att lägga
+  // till en punkt) och rotation. Rotationen ligger under objektet eftersom
+  // texten sitter ovanför linjen.
+  const closed = x.type === "barrier";
+  const mids = [];
+  for (let i = 0; i < x.pts.length - (closed ? 0 : 1); i++) {
+    const a = x.pts[i], b = x.pts[(i + 1) % x.pts.length];
+    mids.push({ kind: "insert", i, m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] });
+  }
   const ys = x.pts.map(p => p[1]), c = centroidOf(x.pts);
-  return [...x.pts.map((m, i) => ({ kind: "vertex", i, m })), { kind: "rotate", m: [c[0], Math.max(...ys) + off] }];
+  return [...x.pts.map((m, i) => ({ kind: "vertex", i, m })), ...mids, { kind: "rotate", m: [c[0], Math.min(...ys) - off] }];
 }
 function drawHandles(ctx, x, fontPx, ppm) {
   const hs = Math.max(5, fontPx * 0.32);
@@ -994,6 +1035,11 @@ function drawHandles(ctx, x, fontPx, ppm) {
       ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(c[0], c[1]); ctx.lineTo(px, py); ctx.stroke();
       ctx.beginPath(); ctx.arc(px, py, hs * 1.1, 0, Math.PI * 2); ctx.fillStyle = "#0b5fff"; ctx.fill();
       ctx.fillStyle = "#fff"; ctx.font = `700 ${hs * 1.6}px Arial`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("↻", px, py + 1);
+    } else if (h.kind === "insert") {
+      const r = hs * 0.8;
+      ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fill();
+      ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px - r * 0.55, py); ctx.lineTo(px + r * 0.55, py); ctx.moveTo(px, py - r * 0.55); ctx.lineTo(px, py + r * 0.55); ctx.stroke();
     } else {
       ctx.fillStyle = "#fff"; ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 2;
       ctx.fillRect(px - hs, py - hs, hs * 2, hs * 2); ctx.strokeRect(px - hs, py - hs, hs * 2, hs * 2);
@@ -1002,6 +1048,7 @@ function drawHandles(ctx, x, fontPx, ppm) {
   ctx.restore();
 }
 
+let siteClickedId = null; // senast klickade objekt: i ytor kan texten dras först efter ett klick
 let siteDrag = null; // { orig, work, handle, startM, startPx, moved }
 function currentFontPx() { return planFontPx(); }
 function handleAt(x, pdfPt) {
@@ -1125,9 +1172,17 @@ function layersPointerDown(e) {
   const sel = selectedSiteId && siteItems.find(x => x.id === selectedSiteId && siteShown(x));
   let target = sel, handle = sel ? handleAt(sel, pdfPt) : null;
   if (!handle) {
-    target = siteAt(pdfPt);
-    if (!target) return false;
-    handle = { kind: "move" };
+    // Etiketten ligger överst: dra den fritt (för noteringar = textens läge).
+    let lt = labelAt(toPx(pdfPt));
+    // Bodar, upplag och avspärrningar har texten mitt i ytan: där flyttar ett
+    // drag hela objektet tills det är markerat (klicka först, dra sedan texten).
+    if (lt && lt.id !== siteClickedId && (isRect(lt) || lt.type === "barrier") && pointInPoly(pdfToModel(pdfPt), sitePoints(lt))) lt = null;
+    if (lt) { target = lt; handle = lt.type === "note" ? { kind: "vertex", i: 1 } : { kind: "label" }; }
+    else {
+      target = siteAt(pdfPt);
+      if (!target) return false;
+      handle = { kind: "move" };
+    }
   }
   siteDrag = { orig: JSON.parse(JSON.stringify(target)), work: null, handle, startM: pdfToModel(pdfPt), startPx: [e.clientX, e.clientY], moved: false, locked: !!target.locked };
   closeSitePop();
@@ -1141,8 +1196,13 @@ function applySiteDrag(d, m) {
   if (h.kind === "move") {
     if (isRect(o)) { const g = rectGeom(o); Object.assign(w, { cx: g.cx + dx, cy: g.cy + dy, w: g.w, h: g.h, rot: g.rot }); delete w.pts; }
     else w.pts = o.pts.map(p => [p[0] + dx, p[1] + dy]);
+  } else if (h.kind === "label") {
+    const l = o.lbl || [0, 0];
+    w.lbl = [Math.round((l[0] + dx) * 100) / 100, Math.round((l[1] + dy) * 100) / 100];
   } else if (h.kind === "vertex") {
     w.pts[h.i] = m;
+  } else if (h.kind === "insert") {
+    w.pts.splice(h.i + 1, 0, m);
   } else if (h.kind === "radius") {
     const nr = Math.max(1, Math.round(Math.hypot(m[0] - o.pts[0][0], m[1] - o.pts[0][1]) * 2) / 2);
     const ch = parseChart(o.chart);
@@ -1171,6 +1231,19 @@ function applySiteDrag(d, m) {
   }
   return w;
 }
+const MIN_PTS = { route: 2, fence: 2, barrier: 3 };
+/* Dubbelklick på en punkt i en markerad väg/stängsel/avspärrning tar bort den. */
+function removeVertexAt(pdfPt) {
+  const sel = selectedSiteId && siteItems.find(x => x.id === selectedSiteId && siteShown(x));
+  if (!sel || sel.locked || !MIN_PTS[sel.type]) return false;
+  const h = handleAt(sel, pdfPt);
+  if (!h || h.kind !== "vertex") return false;
+  if (sel.pts.length <= MIN_PTS[sel.type]) { setSaveStatus(`Minst ${MIN_PTS[sel.type]} punkter behövs.`); return true; }
+  const next = { ...sel, pts: sel.pts.filter((_, i) => i !== h.i), updated_at: new Date().toISOString() };
+  closeSitePop();
+  saveSiteItem(next, false, { prev: sel });
+  return true;
+}
 function onSiteDragMove(e) {
   const d = siteDrag;
   if (!d) return;
@@ -1180,7 +1253,7 @@ function onSiteDragMove(e) {
   d.free = e.shiftKey;
   // Fäst handtag (inte hela objektet) mot linjer och hörn.
   const raw = toPdf(stagePoint(e));
-  const m = pdfToModel(d.handle.kind === "move" || d.handle.kind === "rotate" ? raw : snapPdf(raw, e, d.orig.id));
+  const m = pdfToModel(d.handle.kind === "move" || d.handle.kind === "rotate" || d.handle.kind === "label" ? raw : snapPdf(raw, e, d.orig.id));
   d.work = applySiteDrag(d, m);
   const i = siteItems.findIndex(x => x.id === d.orig.id);
   if (i >= 0) siteItems[i] = d.work;
@@ -1192,7 +1265,7 @@ function onSiteDragUp() {
   if (!d) return;
   siteDrag = null;
   if (!d.moved) { // ett klick: välj och visa redigering
-    selectedSiteId = d.orig.id; renderZones(); openSitePop(d.orig, false);
+    selectedSiteId = d.orig.id; siteClickedId = d.orig.id; renderZones(); openSitePop(d.orig, false);
     return;
   }
   snapMark = null;
@@ -1226,7 +1299,7 @@ function updateSiteUi() {
     barrier: ["Klicka hörnen, dubbelklicka (eller Enter) för att avsluta."]
   };
   $("siteHint").textContent = k ? `${k.icon} ${(hints[siteTool.kind][Math.min(siteTool.pts.length, hints[siteTool.kind].length - 1)])}${siteTool.pts.length ? " Håll Shift för rak linje (5°-steg)." : ""} Esc avbryter.`
-    : "Klicka på ett objekt för att ändra det. Dra i det för att flytta, i de vita handtagen för att ändra form och i ↻ för att rotera (Shift = fritt).";
+    : "Klicka på ett objekt för att ändra det. Dra i det för att flytta, i de vita handtagen för att ändra form, i ⊕ för att lägga till en punkt (dubbelklicka på en punkt för att ta bort den) och i ↻ för att rotera (Shift = fritt). Texten kan dras fritt.";
   $("viewport").classList.toggle("drawing", !!siteTool || !!measure || photoPlacing || drawMode);
 }
 function finishSiteTool() {
@@ -1280,6 +1353,8 @@ function siteAt(pdfPt) {
   const p = toPx(pdfPt), tol = Math.max(10, 8 / view.scale);
   const fontPx = currentFontPx();
   const m = pdfToModel(pdfPt);
+  const lt = labelAt(p);
+  if (lt) return lt;
   const vis = siteItems.filter(siteShown).slice().reverse();
   for (const x of vis) {
     if (x.type === "note") {
@@ -1307,7 +1382,7 @@ function layersTipHtml(pdfPt) {
   const k = SITE_KINDS[x.type];
   const when = datesText(x);
   const body = x.type === "note" ? escHtml(x.text || "") : x.type === "crane" ? `Räckvidd ${x.radius} m${x.capacity ? `, ${escHtml(x.capacity)} t` : ""}` : "";
-  return `${k.icon} <b>${escHtml(x.name || (x.type === "note" ? (x.layer || "Notering") : k.label))}</b>${body ? "<br>" + body : ""}${when ? `<br>${escHtml(when)}` : ""}<br><span style="opacity:.7">Klicka för att ändra · dra för att flytta</span>`;
+  return `${k.icon} <b>${escHtml(x.name || (x.type === "note" ? (x.layer || "Notering") : k.label))}</b>${body ? "<br>" + body : ""}${when ? `<br>${escHtml(when)}` : ""}<br><span style="opacity:.7">Klicka för att ändra · dra för att flytta · dra i texten för att flytta bara texten (i en yta: klicka först)</span>`;
 }
 
 function openSitePop(rec, isNew) {
@@ -1319,6 +1394,7 @@ function openSitePop(rec, isNew) {
   const symDef = rec.type === "symbol" ? SYMBOLS[rec.sym] || { label: "Symbol", icon: "🧩" } : null;
   const dash = rec.dash || SITE_DEFAULT_DASH[rec.type];
   const opt = (v, cur, label) => `<option value="${v}"${String(cur) === String(v) ? " selected" : ""}>${label}</option>`;
+  const tsPct = Math.round((Number(rec.textSize) || 1) * 100);
   pop.innerHTML = `
     <b>${symDef ? symDef.icon + " " + escHtml(symDef.label) : `${k.icon} ${isNew ? "Ny" : ""} ${k.label.toLowerCase()}`}</b>
     ${rec.type === "note" ? `
@@ -1337,7 +1413,12 @@ function openSitePop(rec, isNew) {
       <div><label>Linje</label><select class="sp-dash">${opt("solid", dash, "Heldragen")}${opt("dashed", dash, "Streckad")}${opt("dotted", dash, "Prickad")}</select></div>
       <div><label>Tjocklek</label><select class="sp-weight">${opt(0.6, rec.weight || 1, "Tunn")}${opt(1, rec.weight || 1, "Normal")}${opt(1.8, rec.weight || 1, "Tjock")}</select></div>
     </div>
-    <div class="row2"><div><label>Textstorlek</label><select class="sp-ts">${opt(0.8, rec.textSize || 1, "Liten")}${opt(1, rec.textSize || 1, "Normal")}${opt(1.35, rec.textSize || 1, "Stor")}</select></div><div></div></div>
+    <label>Textstorlek</label>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <input type="range" class="sp-tsr" min="40" max="400" step="5" value="${tsPct}" style="flex:1;min-width:0;" />
+      <input type="text" class="sp-ts" value="${tsPct}" inputmode="numeric" style="width:52px;text-align:right;" /><span class="muted">%</span>
+    </div>
+    ${rec.lbl && rec.type !== "note" ? `<button type="button" class="sp-lblreset" style="margin-top:6px;" title="Flytta tillbaka texten till objektet">↺ Återställ textens läge</button>` : ""}
     <div class="row2"><div><label>Från</label><input type="date" class="sp-from" value="${escHtml(rec.from || "")}" /></div><div><label>Till</label><input type="date" class="sp-to" value="${escHtml(rec.to || "")}" /></div></div>
     <div class="muted" style="margin-top:2px;">Tomt = alltid synlig. Datumen visas i grått vid objektet.</div>
     <label style="display:flex;gap:6px;align-items:center;margin-top:6px;color:var(--text);"><input type="checkbox" class="sp-lock"${rec.locked ? " checked" : ""} style="width:auto;" /> 🔒 Lås (kan inte flyttas av misstag)</label>
@@ -1351,12 +1432,27 @@ function openSitePop(rec, isNew) {
   const first = pop.querySelector(".sp-text, .sp-name"); if (first) first.focus();
   pop.querySelector(".sp-cancel").onclick = () => { closeSitePop(); if (isNew) renderZones(); };
   const num = (c, def) => { const el = pop.querySelector(c); const v = el ? Number(String(el.value).replace(",", ".")) : NaN; return Number.isFinite(v) ? v : def; };
+  // Textstorlek: reglage och siffror hänger ihop, och planen visar ändringen direkt.
+  const tsR = pop.querySelector(".sp-tsr"), tsT = pop.querySelector(".sp-ts");
+  const tsValue = () => { const v = num(".sp-ts", tsPct); return Math.max(0.2, Math.min(6, Math.round(v) / 100)); };
+  const live = siteItems.findIndex(x => x.id === rec.id);
+  popPreview = live >= 0 ? { id: rec.id, orig: siteItems[live] } : null;
+  const preview = patch => {
+    if (!popPreview) return;
+    const i = siteItems.findIndex(x => x.id === rec.id);
+    if (i >= 0) { siteItems[i] = { ...siteItems[i], ...patch }; renderZones(); }
+  };
+  tsR.oninput = () => { tsT.value = tsR.value; preview({ textSize: tsValue() }); };
+  tsT.oninput = () => { const v = num(".sp-ts", NaN); if (Number.isFinite(v)) { tsR.value = Math.max(40, Math.min(400, v)); preview({ textSize: tsValue() }); } };
+  const lblReset = pop.querySelector(".sp-lblreset");
+  if (lblReset) lblReset.onclick = () => { if (popPreview) popPreview.lblReset = true; preview({ lbl: null }); lblReset.disabled = true; lblReset.textContent = "↺ Texten återställd"; };
   pop.querySelector(".sp-save").onclick = () => {
     const v = c => { const el = pop.querySelector(c); return el ? el.value.trim() : undefined; };
     const next = { ...rec, from: v(".sp-from") || null, to: v(".sp-to") || null, updated_at: new Date().toISOString() };
     if (next.from && next.to && next.from > next.to) { alert("Från-datumet måste vara före till-datumet."); return; }
     next.color = v(".sp-color") === defaultColorOf(rec) ? null : v(".sp-color");
-    next.dash = v(".sp-dash"); next.weight = Number(v(".sp-weight")); next.textSize = Number(v(".sp-ts"));
+    next.dash = v(".sp-dash"); next.weight = Number(v(".sp-weight")); next.textSize = tsValue();
+    if (popPreview && popPreview.lblReset) next.lbl = null;
     let layer = v(".sp-layer");
     if (layer === "__new") { layer = (prompt("Namn på det nya lagret:", "") || "").trim(); if (!layer) return; createLayer(layer); }
     next.layer = layer || defaultLayerOf(rec);
@@ -1375,6 +1471,8 @@ function openSitePop(rec, isNew) {
     if (rec.type === "route") { next.w = Math.max(0.5, num(".sp-rw", 4)); next.twoWay = pop.querySelector(".sp-two").checked; }
     if (g) { Object.assign(next, { cx: g.cx, cy: g.cy, w: Math.max(0.1, num(".sp-w", g.w)), h: Math.max(0.1, num(".sp-h", g.h)), rot: num(".sp-rot", 0) * Math.PI / 180 }); delete next.pts; }
     if (rec.type === "gate") { next.w = Math.max(0.1, num(".sp-gw", 5)); next.rot = num(".sp-grot", 0) * Math.PI / 180; }
+    if (popPreview) siteItems[siteItems.findIndex(x => x.id === rec.id)] = popPreview.orig; // prev för ångra = originalet
+    popPreview = null;
     closeSitePop();
     selectedSiteId = next.id;
     saveSiteItem(next, false, { prev: isNew ? null : rec });
@@ -1395,7 +1493,16 @@ function openSitePop(rec, isNew) {
     saveSiteItem(copy);
   };
 }
-function closeSitePop() { $("sitePop").classList.add("hidden"); $("sitePop").innerHTML = ""; }
+let popPreview = null; // { id, orig } – förhandsvisning i redigeringsrutan som ångras om den stängs utan att sparas
+function closeSitePop() {
+  if (popPreview) {
+    const i = siteItems.findIndex(x => x.id === popPreview.id);
+    if (i >= 0) siteItems[i] = popPreview.orig;
+    popPreview = null;
+    renderZones();
+  }
+  $("sitePop").classList.add("hidden"); $("sitePop").innerHTML = "";
+}
 
 // ---------------------------------------------------------------------
 // Lagerpanelen
@@ -1598,7 +1705,8 @@ function bindLayers() {
     if (k === "z" && !e.shiftKey && siteUndo.length) { e.preventDefault(); undoSite(); }
     else if ((k === "y" || (k === "z" && e.shiftKey)) && siteRedo.length) { e.preventDefault(); redoSite(); }
   });
-  $("viewport").addEventListener("dblclick", () => {
+  $("viewport").addEventListener("dblclick", e => {
+    if (!siteTool && !(typeof measure !== "undefined" && measure) && plan && plan.calib) { removeVertexAt(toPdf(stagePoint(e))); return; }
     if (!siteTool || SITE_KINDS[siteTool.kind].clicks) return;
     const p = siteTool.pts; // dubbelklicket har lagt till samma punkt två gånger
     const same = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-6;
