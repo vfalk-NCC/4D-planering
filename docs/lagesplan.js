@@ -657,6 +657,22 @@ function zoneStatus(zone) {
   return { items: zi, phase: zonePhase(zi, $("dateInput").value || todayIso()), progress: zoneProgress(zi) };
 }
 
+/* Textstorlek på planen (Victors önskemål 2026-09-29): ett reglage för
+   storleken och ett val att hålla samma storlek på skärmen oavsett zoom
+   (då ritas etiketterna om när man zoomar). Sparas per webbläsare. */
+function textScale() { try { return (Number(localStorage.getItem("lagesplan-textscale")) || 100) / 100; } catch (e) { return 1; } }
+function textFixed() { try { return localStorage.getItem("lagesplan-textfixed") === "1"; } catch (e) { return false; } }
+function planFontPx() {
+  const zc = $("zoneCanvas");
+  if (textFixed()) return Math.max(2, 13 * textScale() / Math.max(0.01, view.scale));
+  return Math.max(14, Math.round(zc.width / 110)) * textScale();
+}
+let textRaf = 0;
+function rerenderTextIfFixed() {
+  if (!textFixed() || textRaf) return;
+  textRaf = requestAnimationFrame(() => { textRaf = 0; renderZones(); });
+}
+
 /* Canvaslagren i #stage, nedifrån och upp - se lagesplan-layers.js. */
 const STAGE_CANVASES = ["orthoCanvas", "pdfCanvas", "zoneCanvas", "objCanvas", "topCanvas"];
 
@@ -667,7 +683,7 @@ function renderZones() {
   const octx = $("objCanvas").getContext("2d");
   const tctx = $("topCanvas").getContext("2d");
   if (!plan || !viewport) { renderZoneList(); return; }
-  const fontPx = Math.max(14, Math.round(zc.width / 110));
+  const fontPx = planFontPx();
   const objects = $("showObjects").checked ? objectShapesInPdf() : null;
   const badges = [];
   for (const zone of plan.zones || []) {
@@ -965,6 +981,7 @@ function applyView() {
   $("stage").style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
   if (typeof scheduleOrthoRender === "function") scheduleOrthoRender();
   scheduleHiRender();
+  rerenderTextIfFixed();
 }
 function fitView() {
   const vp = $("viewport").getBoundingClientRect(), pc = $("pdfCanvas");
@@ -1327,6 +1344,11 @@ function bindUI() {
   $("btnFit").onclick = fitView;
   $("btnExport").onclick = exportPng;
   bindTools();
+  const ts = $("textScale"), tf = $("textFixed");
+  ts.value = Math.round(textScale() * 100); tf.checked = textFixed();
+  $("textScaleLabel").textContent = ts.value + " %";
+  ts.oninput = () => { try { localStorage.setItem("lagesplan-textscale", ts.value); } catch (e) {} $("textScaleLabel").textContent = ts.value + " %"; renderZones(); };
+  tf.onchange = () => { try { localStorage.setItem("lagesplan-textfixed", tf.checked ? "1" : "0"); } catch (e) {} renderZones(); };
   bindLayers();
   window.addEventListener("resize", () => { if (viewport) fitView(); });
   bindSections();

@@ -193,13 +193,16 @@ function drawMeasure(ctx, fontPx) {
     if (measure.mode === "area" && px.length > 2) ctx.closePath();
   };
   if (measure.mode === "area" && px.length > 2) { path(); ctx.globalAlpha = 0.18; ctx.fillStyle = "#0b5fff"; ctx.fill(); ctx.globalAlpha = 1; }
-  path(); ctx.strokeStyle = "#fff"; ctx.lineWidth = Math.max(5, fontPx / 3); ctx.stroke();
-  path(); ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(2, fontPx / 7); ctx.stroke();
-  px.forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x, y, Math.max(3, fontPx / 4), 0, Math.PI * 2); ctx.fillStyle = "#fff"; ctx.fill(); ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 2; ctx.stroke(); });
+  // Tunnare linjer och mindre etikett än övriga objekt - mätningen ska inte skymma ritningen.
+  path(); ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = Math.max(2.5, fontPx / 7); ctx.stroke();
+  path(); ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(1, fontPx / 16); ctx.stroke();
+  px.forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x, y, Math.max(2, fontPx / 7), 0, Math.PI * 2); ctx.fillStyle = "#fff"; ctx.fill(); ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(1, fontPx / 16); ctx.stroke(); });
   const res = measureResult(pts);
   if (res.text) {
     const [lx, ly] = px[px.length - 1];
-    drawBadge(ctx, [lx + fontPx * 3, ly - fontPx * 1.3], res.text, "#0b5fff", fontPx, false);
+    const fs = fontPx * 0.7;
+    ctx.font = `600 ${fs}px "Segoe UI", Arial, sans-serif`;
+    drawBadge(ctx, [lx + ctx.measureText(res.text).width / 2 + fs, ly - fs * 1.3], res.text, "#0b5fff", fs, false);
   }
   ctx.restore();
 }
@@ -211,7 +214,7 @@ let photoPlacing = false, pendingPhotoPt = null, pendingPhotoFile = null, openPh
 const photoUrlCache = new Map();
 function photos() { return (plan && plan.photos) || []; }
 function cancelPhotoPlacing() { photoPlacing = false; pendingPhotoPt = null; pendingPhotoFile = null; updateToolUi(); }
-function photoMarkerPx() { return Math.max(18, Math.round($("zoneCanvas").width / 110) * 1.5); }
+function photoMarkerPx() { return planFontPx() * 1.5; }
 function photoAt(pdfPt) {
   if (!$("showPhotos").checked) return null;
   const tol = Math.max(photoMarkerPx() / 2, 8 / view.scale) / renderScale;
@@ -485,8 +488,9 @@ function toolClick(pdfPt) {
 }
 let moveRaf = 0;
 function toolMouseMove(e) {
-  if (!measure || measure.done || !measure.pts.length || !viewport) return;
+  if (!measure || measure.done || !viewport) return;
   if (!e.target.closest || !e.target.closest("#viewport")) return;
+  // Fästmarkeringen syns redan innan första klicket.
   measure.cursor = typeof snapPdf === "function" ? snapPdf(toPdf(stagePoint(e)), e) : toPdf(stagePoint(e));
   if (!moveRaf) moveRaf = requestAnimationFrame(() => { moveRaf = 0; renderZones(); });
 }

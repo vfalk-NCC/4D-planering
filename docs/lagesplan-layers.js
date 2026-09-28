@@ -918,7 +918,7 @@ function drawHandles(ctx, x, fontPx, ppm) {
 }
 
 let siteDrag = null; // { orig, work, handle, startM, startPx, moved }
-function currentFontPx() { return Math.max(14, Math.round($("zoneCanvas").width / 110)); }
+function currentFontPx() { return planFontPx(); }
 function handleAt(x, pdfPt) {
   const p = toPx(pdfPt), tol = Math.max(10, 9 / view.scale) + currentFontPx() * 0.2;
   const hs = siteHandles(x, currentFontPx(), pxPerMeter());

@@ -109,13 +109,13 @@
     </details>
 
     <details class="sec" data-sec="layers" open>
-      <summary>Lager</summary>
+      <summary>Planering</summary>
       <div id="layerList" class="layer-list"></div>
       <label class="row" style="color:var(--text);margin-top:4px;"><input type="checkbox" id="layersFollowDate" checked /> Noteringar och etablering följer datumet</label>
       <div class="row" style="margin-top:8px;">
         <button id="btnAddOrtho" title="Välj bildfilen (PNG/JPG) och dess världsfil (.pgw/.jgw) samtidigt">🛰 Ladda upp ortofoto</button>
       </div>
-      <label class="row" style="color:var(--text);margin-top:4px;"><input type="checkbox" id="orthoToTc" checked /> Spara originalfilerna i Trimble Connect (mappen Lägesplan)</label>
+      <label class="row" style="color:var(--text);margin-top:4px;"><input type="checkbox" id="orthoToTc" checked /> <span class="grow">Spara originalfilerna i Trimble Connect (mappen Lägesplan)</span></label>
       <input type="file" id="orthoInput" accept=".png,.jpg,.jpeg,.pgw,.jgw,.pngw,.jpgw,.wld" multiple class="hidden" />
       <div class="muted">Markera både bilden och .pgw-filen. Fotot placeras automatiskt via modellens koordinater (kräver att planen är kalibrerad).</div>
       <div class="row" style="margin-top:10px;">
@@ -144,6 +144,24 @@
       </div>
       <label class="row" style="color:var(--text);margin-top:6px;"><input type="checkbox" id="snapOn" checked /> 🧲 Fäst mot linjer och hörn (håll Alt för att släppa)</label>
       <div class="muted" id="siteHint" style="margin-top:4px;"></div>
+      <div style="margin-top:12px;"><b style="font-size:12px;">Mät och foton</b></div>
+      <div class="row">
+        <button id="btnMeasureLen" title="Klicka punkter på planen, dubbelklicka för att avsluta">📏 Mät avstånd</button>
+        <button id="btnMeasureArea" title="Klicka hörnen, dubbelklicka för att avsluta">⬠ Mät yta</button>
+      </div>
+      <div class="muted" id="measureInfo" style="margin-top:4px;"></div>
+      <div class="row" style="margin-top:8px;">
+        <button id="btnAddPhoto" title="Välj bilden och klicka sedan på planen där den är tagen">📷 Lägg till foto</button>
+        <label class="row" style="color:var(--text);margin:0;"><input type="checkbox" id="showPhotos" checked /> Visa foton</label>
+      </div>
+      <input type="file" id="photoInput" accept="image/*" class="hidden" />
+      <div class="muted" id="photoInfo" style="margin-top:4px;"></div>
+      <div style="margin-top:12px;"><b style="font-size:12px;">Textstorlek på planen</b></div>
+      <div class="row" style="margin-top:4px;">
+        <input type="range" id="textScale" min="40" max="250" step="10" value="100" class="grow" title="Storlek på etiketter, noteringar, mått och zonkoder" />
+        <span class="muted" id="textScaleLabel" style="min-width:40px;text-align:right;">100 %</span>
+      </div>
+      <label class="row" style="color:var(--text);margin-top:2px;"><input type="checkbox" id="textFixed" /> Samma textstorlek på skärmen oavsett zoom</label>
     </details>
 
     <details class="sec" data-sec="calib" open>
@@ -201,20 +219,6 @@
       <div id="focusList" class="focus-list hidden"></div>
     </details>
 
-    <details class="sec" data-sec="tools" open>
-      <summary>Mät och foton</summary>
-      <div class="row">
-        <button id="btnMeasureLen" title="Klicka punkter på planen, dubbelklicka för att avsluta">📏 Mät avstånd</button>
-        <button id="btnMeasureArea" title="Klicka hörnen, dubbelklicka för att avsluta">⬠ Mät yta</button>
-      </div>
-      <div class="muted" id="measureInfo" style="margin-top:4px;"></div>
-      <div class="row" style="margin-top:8px;">
-        <button id="btnAddPhoto" title="Välj bilden och klicka sedan på planen där den är tagen">📷 Lägg till foto</button>
-        <label class="row" style="color:var(--text);margin:0;"><input type="checkbox" id="showPhotos" checked /> Visa foton</label>
-      </div>
-      <input type="file" id="photoInput" accept="image/*" class="hidden" />
-      <div class="muted" id="photoInfo" style="margin-top:4px;"></div>
-    </details>
 
     <details class="sec" data-sec="legend" open>
       <summary>Förklaring</summary>
