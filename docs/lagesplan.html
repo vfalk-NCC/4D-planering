@@ -26,6 +26,14 @@
   details.sec[open] > summary::before { transform: rotate(90deg); }
   details.sec[open] > summary { margin-bottom: 4px; }
   #layout.side-hidden aside { display: none; }
+  .focus-list { margin-top: 6px; max-height: 32vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 5px; font-size: 12px; }
+  .focus-list .fi { display: flex; gap: 6px; padding: 3px 6px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .focus-list .fi:last-child { border-bottom: none; }
+  .focus-list .fi:hover { background: #f1f5ff; }
+  .focus-list .fd { color: var(--muted); white-space: nowrap; }
+  #photoModal { position: absolute; inset: 0; background: rgba(0,0,0,.55); z-index: 20; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  #photoModal .pm-box { background: #fff; border-radius: 8px; padding: 10px; max-width: 92%; max-height: 92%; display: flex; flex-direction: column; gap: 8px; }
+  #photoModal img { max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 4px; background: #eee; min-width: 200px; min-height: 120px; }
   #btnShowSide { position: absolute; left: 8px; top: 8px; z-index: 6; }
   .muted { color: var(--muted); font-size: 12px; }
   .hidden { display: none !important; }
@@ -109,6 +117,48 @@
       </div>
       <input type="range" id="dateSlider" min="0" max="100" value="100" style="width:100%;margin-top:6px;" />
       <div class="muted">Färgerna följer samma fasberäkning och statusfärger som 3D-modellen i 4D-planering.</div>
+      <div class="row" style="margin-top:8px;">
+        <button id="btnPlay" title="Spela upp tidslinjen från valt datum">▶ Spela upp</button>
+        <select id="playStep" style="width:auto;">
+          <option value="1">1 dag/steg</option>
+          <option value="7" selected>1 vecka/steg</option>
+          <option value="30">1 månad/steg</option>
+        </select>
+      </div>
+      <div class="row" style="margin-top:6px;">
+        <button id="btnRecVideo" title="Spelar upp hela tidslinjen och sparar den som video">🎬 Spara som video</button>
+        <button id="btnRecZip" title="En bild per steg, samlade i en ZIP-fil">🖼 Bildserie (ZIP)</button>
+      </div>
+    </details>
+
+    <details class="sec" data-sec="filter" open>
+      <summary>Filter och fokus</summary>
+      <label>Entreprenör</label>
+      <select id="fltContractor"><option value="">Alla</option></select>
+      <label>Aktivitet, namn eller område innehåller</label>
+      <input type="text" id="fltText" list="fltTextList" placeholder="t.ex. Armering" />
+      <datalist id="fltTextList"></datalist>
+      <div class="muted" id="fltInfo"></div>
+      <label class="row" style="color:var(--text);margin-top:8px;">
+        <input type="checkbox" id="focusOn" /> Veckans fokus: det som startar inom
+        <input type="text" id="focusDays" value="14" style="width:42px;" /> dagar
+      </label>
+      <div id="focusList" class="focus-list hidden"></div>
+    </details>
+
+    <details class="sec" data-sec="tools" open>
+      <summary>Mät och foton</summary>
+      <div class="row">
+        <button id="btnMeasureLen" title="Klicka punkter på planen, dubbelklicka för att avsluta">📏 Mät avstånd</button>
+        <button id="btnMeasureArea" title="Klicka hörnen, dubbelklicka för att avsluta">⬠ Mät yta</button>
+      </div>
+      <div class="muted" id="measureInfo" style="margin-top:4px;"></div>
+      <div class="row" style="margin-top:8px;">
+        <button id="btnAddPhoto" title="Klicka på planen där bilden är tagen och välj bilden">📷 Lägg till foto</button>
+        <label class="row" style="color:var(--text);margin:0;"><input type="checkbox" id="showPhotos" checked /> Visa foton</label>
+      </div>
+      <input type="file" id="photoInput" accept="image/*" class="hidden" />
+      <div class="muted" id="photoInfo" style="margin-top:4px;"></div>
     </details>
 
     <details class="sec" data-sec="legend" open>
@@ -156,6 +206,7 @@
       <summary>Exportera</summary>
       <div class="row">
         <button id="btnExport">📷 Spara som bild (PNG)</button>
+        <button id="btnPdfA3" title="A3 liggande med rubrik, datum och teckenförklaring">🖨 PDF (A3)</button>
       </div>
     </details>
     <div class="muted" id="saveStatus" style="margin-top:8px;"></div>
@@ -171,9 +222,20 @@
       <button id="btnZoomIn">+</button><button id="btnZoomOut">−</button><button id="btnFit">⤢ Anpassa</button>
     </div>
     <div id="tip" class="hidden"></div>
+    <div id="photoModal" class="hidden">
+      <div class="pm-box">
+        <img id="pmImg" alt="" />
+        <div id="pmMeta" class="muted"></div>
+        <div class="row" style="justify-content:flex-end;">
+          <button id="pmDelete">🗑️ Ta bort foto</button>
+          <button id="pmClose" class="primary">Stäng</button>
+        </div>
+      </div>
+    </div>
     <div id="busy" class="hidden"></div>
   </main>
 </div>
 <script src="lagesplan.js"></script>
+<script src="lagesplan-tools.js"></script>
 </body>
 </html>

@@ -338,6 +338,12 @@ window.addEventListener("message", async e => {
       const ids = new Set(msg.ids || []);
       const sel = items.filter(it => ids.has(it.id));
       await selectItemsInModel(sel);
+      // Klick på ett objekt i lägesplanen: hoppa också till raden i listan.
+      if (msg.jump && sel.length) {
+        selectedItemKeys = new Set(sel.map(it => it.objectId));
+        selectionAnchorKey = null;
+        jumpToItemsInList(selectedItemKeys);
+      }
       reply({ count: sel.length });
     }
   } catch (err) {

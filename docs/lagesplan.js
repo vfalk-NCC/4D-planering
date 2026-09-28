@@ -239,12 +239,12 @@ function itemsForZone(zone) {
   if (rule.field && rule.field !== "auto") {
     const v = String(rule.value || "").trim().toLowerCase();
     if (!v) return [];
-    return items.filter(it => String(it[rule.field] || "").toLowerCase().includes(v));
+    return visibleItems().filter(it => String(it[rule.field] || "").toLowerCase().includes(v));
   }
   const code = normCode(zone.code);
   const pos = positionsInPdf();
   const polys = zone.polys || [];
-  return items.filter(it => (code && itemCodes(it).has(code)) ||
+  return visibleItems().filter(it => (code && itemCodes(it).has(code)) ||
     (pos && polys.length && pos.has(it.id) && polys.some(poly => pointInPoly(pos.get(it.id), poly))));
 }
 
@@ -288,7 +288,7 @@ function objectShapesInPdf() {
   if (!pos) return null;
   if (shapeCache) return shapeCache;
   const byId = new Map(positions.map(p => [p.id, p]));
-  shapeCache = items.filter(it => pos.has(it.id)).map(it => {
+  shapeCache = visibleItems().filter(it => pos.has(it.id)).map(it => {
     const p = byId.get(it.id);
     const poly = Number.isFinite(p.x0)
       ? [[p.x0, p.y0], [p.x1, p.y0], [p.x1, p.y1], [p.x0, p.y1]].map(([x, y]) => modelToPdf(x, y))
@@ -354,9 +354,12 @@ function drawObjects(ctx, objects, fontPx) {
   ctx.lineWidth = 1;
   for (const o of objects) {
     const color = phaseColor(computeItemPhase(o.it, at, warn) || fallbackPhase(o.it));
+    // Veckans fokus: objekten som startar snart framhävs, resten tonas ned.
+    const focus = focusState(o.it);
     ctx.fillStyle = color;
-    ctx.strokeStyle = shade(color, -0.45);
-    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = focus === true ? "#111827" : shade(color, -0.45);
+    ctx.lineWidth = focus === true ? Math.max(2, minPx / 2) : 1;
+    ctx.globalAlpha = focus === false ? 0.15 : 0.85;
     const pts = o.poly ? o.poly.map(toPx) : null;
     const big = pts && Math.max(...pts.map(q => Math.hypot(q[0] - pts[0][0], q[1] - pts[0][1]))) >= minPx;
     ctx.beginPath();
@@ -365,10 +368,17 @@ function drawObjects(ctx, objects, fontPx) {
       ctx.closePath();
     } else {
       const [x, y] = toPx(o.center);
-      ctx.arc(x, y, minPx, 0, Math.PI * 2);
+      ctx.arc(x, y, focus === true ? minPx * 2.2 : minPx, 0, Math.PI * 2);
+    }
+    if (focus === true) {
+      // Gul gloria runt det som startar snart, så det syns även på avstånd.
+      ctx.save();
+      ctx.globalAlpha = 0.9; ctx.strokeStyle = "#facc15"; ctx.lineWidth = minPx * 1.6;
+      ctx.stroke();
+      ctx.restore();
     }
     ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = focus === false ? 0.25 : 1;
     ctx.stroke();
   }
   ctx.restore();
@@ -621,7 +631,7 @@ function renderZones() {
       poly.forEach((p, i) => { const [x, y] = toPx(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
       ctx.closePath();
       // Med objekten utritade blir zonfärgen svagare så objekten syns.
-      if (st.phase !== "ingen") { ctx.globalAlpha = objects && objects.length ? ZONE_ALPHA / 3 : ZONE_ALPHA; ctx.fillStyle = color; ctx.fill(); }
+      if (st.phase !== "ingen") { ctx.globalAlpha = (objects && objects.length ? ZONE_ALPHA / 3 : ZONE_ALPHA) * (focusActive() ? 0.4 : 1); ctx.fillStyle = color; ctx.fill(); }
       ctx.globalAlpha = 1;
       ctx.lineWidth = selected ? Math.max(4, fontPx / 3) : Math.max(1.5, fontPx / 8);
       ctx.strokeStyle = selected ? "#0b5fff" : shade(color, -0.35);
@@ -636,7 +646,9 @@ function renderZones() {
   }
   if (objects) drawObjects(ctx, objects, fontPx);
   badges.forEach(([pt, text, color, hollow]) => drawBadge(ctx, pt, text, color, fontPx, hollow));
+  drawToolOverlays(ctx, fontPx);
   drawCalibMarks(ctx, fontPx);
+  afterRenderTools();
   renderZoneList();
   updateCalibInfo();
 }
@@ -946,6 +958,7 @@ function bindViewport() {
       view.tx = drag.tx + dx; view.ty = drag.ty + dy; applyView();
       return;
     }
+    toolMouseMove(e);
     showTip(e);
   });
   window.addEventListener("mouseup", e => {
@@ -960,6 +973,7 @@ function bindViewport() {
       return;
     }
     if (!d.moved && e.target.closest && e.target.closest("#viewport")) {
+      if (toolClick(toPdf(stagePoint(e)), e)) return;
       const z = zoneAt(toPdf(stagePoint(e)));
       selectZone(z ? z.id : null, false);
     }
@@ -977,6 +991,8 @@ function showTip(e) {
     tip.style.top = (e.clientY - r.top + 14) + "px";
     tip.classList.remove("hidden");
   };
+  const toolTip = toolTipHtml(pdfPt);
+  if (toolTip) { tip.innerHTML = toolTip; place(); return; }
   // Ett enskilt objekt under pekaren går före zonen det ligger i.
   const objs = objectsAt(pdfPt);
   if (objs.length) {
@@ -1093,22 +1109,26 @@ function onDateChanged() { renderZones(); }
 // ---------------------------------------------------------------------
 // Export
 // ---------------------------------------------------------------------
-function exportPng() {
-  if (!viewport) return;
+/* Ritningen + zoner/objekt/foton med rubrik och förklaring, i en canvas.
+   maxW skalar ned (video, bildserie). Används av PNG, PDF och uppspelning. */
+function composeImage(maxW, noHeader) {
   const pc = $("pdfCanvas"), zc = $("zoneCanvas");
-  const head = Math.round(pc.width / 25);
+  const k = maxW ? Math.min(1, maxW / pc.width) : 1;
+  const W = Math.round(pc.width * k), H = Math.round(pc.height * k);
+  const head = noHeader ? 0 : Math.round(Math.max(W / 25, 28));
   const out = document.createElement("canvas");
-  out.width = pc.width; out.height = pc.height + head;
+  out.width = W; out.height = H + head;
   const ctx = out.getContext("2d");
   ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, out.width, out.height);
   if ($("grayPdf").checked) ctx.filter = "grayscale(1)";
-  ctx.drawImage(pc, 0, head);
+  ctx.drawImage(pc, 0, head, W, H);
   ctx.filter = "none";
-  ctx.drawImage(zc, 0, head);
-  // Rubrik + förklaring
+  ctx.drawImage(zc, 0, head, W, H);
+  if (noHeader) return out;
   const f = Math.round(head * 0.38);
   ctx.fillStyle = "#111827"; ctx.font = `700 ${f}px "Segoe UI", Arial, sans-serif`; ctx.textBaseline = "middle";
-  ctx.fillText(`Lägesplan ${plan.name} – ${$("dateInput").value}`, f * 0.6, head / 2);
+  const extra = viewDescription();
+  ctx.fillText(`Lägesplan ${plan.name} – ${$("dateInput").value}${extra ? "  ·  " + extra : ""}`, f * 0.6, head / 2);
   let x = out.width - f * 0.6;
   ctx.font = `500 ${Math.round(f * 0.75)}px "Segoe UI", Arial, sans-serif`;
   PHASE_ORDER.slice().reverse().forEach(ph => {
@@ -1120,13 +1140,18 @@ function exportPng() {
     ctx.strokeStyle = "#6b7280"; ctx.strokeRect(x, head / 2 - f * 0.4, f * 0.8, f * 0.8);
     x -= f * 0.9;
   });
-  out.toBlob(blob => {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `Lägesplan ${plan.name} ${$("dateInput").value}.png`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-  }, "image/png");
+  return out;
+}
+function downloadBlob(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function exportPng() {
+  if (!viewport) return;
+  composeImage().toBlob(blob => downloadBlob(blob, `Lägesplan ${plan.name} ${$("dateInput").value}.png`), "image/png");
 }
 
 // ---------------------------------------------------------------------
@@ -1233,6 +1258,7 @@ function bindUI() {
   $("btnZoomOut").onclick = () => { const r = $("viewport").getBoundingClientRect(); zoomAt(1 / 1.3, r.width / 2, r.height / 2); };
   $("btnFit").onclick = fitView;
   $("btnExport").onclick = exportPng;
+  bindTools();
   window.addEventListener("resize", () => { if (viewport) fitView(); });
   bindSections();
   window.addEventListener("keydown", e => { if (e.key === "Escape" && drawMode) { setDrawMode(false); renderZones(); } });
