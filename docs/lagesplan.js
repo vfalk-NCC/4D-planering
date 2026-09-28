@@ -299,11 +299,57 @@ function objectShapesInPdf() {
 }
 function invalidatePositions() { posPdfCache = null; shapeCache = null; }
 
+let objMinPx = 4; // prickradie (canvas-px) vid senaste ritningen, för hovring
+
+/* Objekten under muspekaren (PDF-punkt): fotavtryck som innehåller punkten,
+   eller en prick inom sin radie. Minsta träffen (en prick, ett litet objekt)
+   först - det är oftast den man siktar på. */
+function objectsAt(pdfPt) {
+  if (!$("showObjects").checked) return [];
+  const objects = objectShapesInPdf();
+  if (!objects || !objects.length) return [];
+  // Minst ~6 skärmpixlar att träffa, även utzoomat.
+  const tol = Math.max(objMinPx, 6 / view.scale) / renderScale;
+  const hits = [];
+  for (const o of objects) {
+    const area = o.poly ? Math.abs(polyArea(o.poly)) : 0;
+    const big = o.poly && Math.sqrt(area) >= tol;
+    if (big ? pointInPoly(pdfPt, o.poly) : Math.hypot(o.center[0] - pdfPt[0], o.center[1] - pdfPt[1]) <= tol) hits.push({ o, area: big ? area : 0 });
+  }
+  return hits.sort((a, b) => a.area - b.area).map(h => h.o);
+}
+function polyArea(poly) {
+  let a = 0;
+  poly.forEach((p, i) => { const q = poly[(i + 1) % poly.length]; a += p[0] * q[1] - q[0] * p[1]; });
+  return a / 2;
+}
+const escHtml = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function objectTipHtml(o) {
+  const it = o.it;
+  const at = $("dateInput").value || todayIso();
+  const warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
+  const ph = computeItemPhase(it, at, warn) || fallbackPhase(it);
+  const zone = ((plan && plan.zones) || []).find(z => (z.polys || []).some(poly => pointInPoly(o.center, poly)));
+  const progress = it.status === "klar" ? 100 : (Number(it.progress) || 0);
+  const rows = [
+    `<b>${escHtml(it.object_name || it.activity || it.object_id)}</b>`,
+    [it.area, it.activity].filter(Boolean).map(escHtml).join(" · "),
+    `<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${phaseColor(ph)};margin-right:5px;"></span>${escHtml(PHASE_LABELS[ph] || ph)} · ${progress} % klart`,
+    it.start_date ? `Plan: ${escHtml(it.start_date)} → ${escHtml(it.end_date || "?")}` : "Inga planerade datum",
+    (it.actual_start_date || it.actual_end_date) ? `Verkligt: ${escHtml(it.actual_start_date || "?")} → ${escHtml(it.actual_end_date || "pågår")}` : "",
+    it.contractor ? `Entreprenör: ${escHtml(it.contractor)}` : "",
+    zone ? `Zon: ${escHtml(zone.code)}` : ""
+  ];
+  return rows.filter(Boolean).join("<br>");
+}
+
 /* Varje planerat objekt i sin egen fasfärg (samma som i 3D-modellen) vid valt datum. */
 function drawObjects(ctx, objects, fontPx) {
   const at = $("dateInput").value || todayIso();
   const warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
   const minPx = Math.max(3, fontPx / 4);
+  objMinPx = minPx;
   ctx.save();
   ctx.lineWidth = 1;
   for (const o of objects) {
@@ -924,7 +970,23 @@ function bindViewport() {
 function showTip(e) {
   const tip = $("tip");
   if (!viewport || !e.target.closest || !e.target.closest("#viewport")) { tip.classList.add("hidden"); return; }
-  const z = zoneAt(toPdf(stagePoint(e)));
+  const pdfPt = toPdf(stagePoint(e));
+  const r = $("viewport").getBoundingClientRect();
+  const place = () => {
+    tip.style.left = (e.clientX - r.left + 14) + "px";
+    tip.style.top = (e.clientY - r.top + 14) + "px";
+    tip.classList.remove("hidden");
+  };
+  // Ett enskilt objekt under pekaren går före zonen det ligger i.
+  const objs = objectsAt(pdfPt);
+  if (objs.length) {
+    tip.innerHTML = objectTipHtml(objs[0]) + (objs.length > 1
+      ? `<div style="margin-top:6px;opacity:.75;">+ ${objs.length - 1} till här: ${objs.slice(1, 4).map(o => escHtml(o.it.object_name || o.it.activity || "")).join(", ")}${objs.length > 4 ? " …" : ""}</div>`
+      : "");
+    place();
+    return;
+  }
+  const z = zoneAt(pdfPt);
   if (!z) { tip.classList.add("hidden"); return; }
   const st = z._status || zoneStatus(z);
   const lines = [`${z.code} – ${PHASE_LABELS[st.phase]}${st.progress != null ? ` · ${st.progress} % klart` : ""}`];
@@ -932,10 +994,7 @@ function showTip(e) {
   st.items.slice(0, 8).forEach(it => lines.push(`• ${it.object_name || it.activity || it.object_id} – ${it.status || ""}${it.start_date ? ` (${it.start_date} → ${it.end_date || "?"})` : ""}`));
   if (st.items.length > 8) lines.push(`… och ${st.items.length - 8} till`);
   tip.textContent = lines.join("\n");
-  const r = $("viewport").getBoundingClientRect();
-  tip.style.left = (e.clientX - r.left + 14) + "px";
-  tip.style.top = (e.clientY - r.top + 14) + "px";
-  tip.classList.remove("hidden");
+  place();
 }
 
 function drawRubber(a, b) {
