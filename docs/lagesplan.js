@@ -119,6 +119,10 @@ async function init() {
       ghReadJSON(token, dataPath("plan_item_positions.json")).catch(() => [])]);
   } catch (e) {
     setBusy("");
+    if (/\b401\b/.test(e.message)) {
+      $("tokenBox").classList.remove("hidden");
+      return fatal("GitHub godkänner inte token:en (401) – den har troligen gått ut. Ange en ny token under ⚙ i 4D-planering (eller här nedan).");
+    }
     return fatal("Kunde inte hämta data: " + e.message);
   }
   setBusy("");

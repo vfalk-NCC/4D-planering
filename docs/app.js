@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-28 08:10";
+const APP_VERSION = "2026-09-28 09:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -3801,6 +3801,15 @@ async function refreshItems() {
     console.error("Kunde inte hämta planeringsdata", e);
     items = [];
     itemsTotalCount = null;
+    // Visa felet tydligt - annars ser en tom lista ut som att planeringen
+    // försvunnit, fast datan ligger kvar orörd i 4D-data.
+    const el = document.getElementById("connectionWarning");
+    if (el) {
+      el.classList.remove("hidden");
+      el.innerText = /\b401\b/.test(e.message)
+        ? "⚠️ GitHub godkänner inte token:en (401) – den har troligen gått ut eller återkallats. Planeringen ligger kvar i databasen men kan inte läsas. Skapa en ny token (se GITHUB_TOKEN_SETUP.md) och ange den under ⚙."
+        : "⚠️ Kunde inte hämta planeringen: " + e.message + " – datan ligger kvar i databasen. Försök igen med ↻.";
+    }
   }
 }
 
