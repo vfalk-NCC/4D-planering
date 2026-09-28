@@ -168,6 +168,21 @@ async function run() {
   }
   console.log('OK: markering i listan lämnas orörd när ett okopplat 3D-objekt markeras');
 
+  // Objektet döljs av sökningen -> en rad med "Visa det" istället för att inget händer.
+  await page.fill('#itemSearch', 'Hus B');
+  await page.dispatchEvent('#itemSearch', 'input');
+  await page.waitForTimeout(150);
+  await page.evaluate(() => { window.__mockSelection = [{ modelId: 'model-1', objectRuntimeIds: [10] }]; });
+  await page.evaluate(() => window.__onWorkspaceEvent('viewer.onSelectionChanged', {}));
+  await page.waitForTimeout(250);
+  if (!(await page.locator('#hiddenMatchNotice').isVisible())) throw new Error('Förväntade en notis om att Pelare A1 döljs av sökningen');
+  await page.locator('#btnShowHiddenMatch').click();
+  await page.waitForTimeout(250);
+  const shown = await page.locator('#itemList .item-row.selected').innerText();
+  if (!shown.includes('Pelare A1')) throw new Error('"Visa det" ska rensa sökningen och visa/markera Pelare A1, fick: ' + shown);
+  if (await page.locator('#hiddenMatchNotice').isVisible()) throw new Error('Notisen ska försvinna när objektet syns');
+  console.log('OK: ett 3D-klick på ett objekt som döljs av sökningen visar en notis med "Visa det"');
+
   await browser.close();
   server.close();
 

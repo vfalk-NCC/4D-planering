@@ -365,6 +365,12 @@ async function run() {
     window.__selection = [{ modelId: 'model-2', objectRuntimeIds: [55] }];
     window.__triggerSelectionChanged();
   });
+  await page.waitForTimeout(300);
+  const listed = await page.locator('#coupleModeList li').count();
+  if (listed !== 1) throw new Error('Förväntade 1 objekt i kopplingslistan efter ett klick i 3D, fick ' + listed);
+  savedItems = store.get(`projects/${PROJECT_ID}/plan_items.json`).content;
+  if (savedItems.find(r => r.object_name === 'Ställningsmontage').model_id) throw new Error('Inget ska sparas förrän man trycker Spara');
+  await page.locator('#btnSaveCoupleMode').click();
   await page.waitForTimeout(500);
 
   const bannerGone = await page.locator('#coupleModeBanner').isVisible();
@@ -383,6 +389,48 @@ async function run() {
   const uncoupledFinal = await page.locator('#itemList .uncoupled-tag').count();
   if (uncoupledFinal !== 1) throw new Error('Förväntade exakt 1 kvarvarande okopplat objekt (A1-A2) efter att Ställningsmontage kopplats, fick ' + uncoupledFinal);
   console.log('OK: listan uppdateras direkt - Ställningsmontage tappar sin "Ej kopplad"-tagg');
+
+  /* ======== DEL 4: koppla flera objekt, ta bort ett ur listan, spara ======== */
+  const compoundRow = page.locator('#itemList .item-row', { hasText: 'Extra arbete' });
+  await compoundRow.locator('.couple-btn').click();
+  await page.waitForTimeout(150);
+  await page.evaluate(() => { window.__selection = [{ modelId: 'model-2', objectRuntimeIds: [61] }]; window.__triggerSelectionChanged(); });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { window.__selection = [{ modelId: 'model-2', objectRuntimeIds: [61, 62, 63] }]; window.__triggerSelectionChanged(); });
+  await page.waitForTimeout(300);
+  // Ett objekt som redan är kopplat till en annan aktivitet ska synas men hoppas över.
+  await page.evaluate(() => { window.__selection = [{ modelId: 'model-2', objectRuntimeIds: [55] }]; window.__triggerSelectionChanged(); });
+  await page.waitForTimeout(700);
+  let listCount = await page.locator('#coupleModeList li').count();
+  if (listCount !== 4) throw new Error('Förväntade 4 objekt i listan (61, 62, 63, 55), fick ' + listCount);
+  await page.locator('#coupleModeList li', { hasText: 'ext-62' }).locator('button').click();
+  await page.waitForTimeout(150);
+  const saveLabel = await page.locator('#btnSaveCoupleMode').innerText();
+  if (!/Spara \(2\)/.test(saveLabel)) throw new Error('Förväntade "Spara (2)" (ext-62 borttagen, ext-55 redan kopplad), fick: ' + saveLabel);
+  await page.locator('#btnSaveCoupleMode').click();
+  await page.waitForTimeout(600);
+
+  savedItems = store.get(`projects/${PROJECT_ID}/plan_items.json`).content;
+  const compoundRows = savedItems.filter(r => r.object_name === 'A1-A2');
+  const coupledTo = compoundRows.map(r => r.object_id).sort();
+  if (JSON.stringify(coupledTo) !== JSON.stringify(['ext-61', 'ext-63'])) throw new Error('Förväntade A1-A2 kopplad till ext-61 och ext-63, fick: ' + JSON.stringify(coupledTo));
+  if (!compoundRows.every(r => r.source_key === compoundRows[0].source_key && r.activity === 'Extra arbete')) throw new Error('Kopiorna ska ha samma aktivitet och source_key');
+  if (savedItems.find(r => r.object_name === 'Ställningsmontage').object_id !== 'ext-55') throw new Error('Ställningsmontage ska fortfarande vara kopplad till ext-55');
+  console.log('OK: kopplingsläget samlar flera objekt, ✕ tar bort, redan kopplade hoppas över och allt sparas med Spara');
+
+  /* ======== DEL 5: omimport uppdaterar ALLA rader för en aktivitet med flera objekt ======== */
+  await page.setInputFiles('#planExcelFile', { name: 'plan-v1.xlsm', mimeType: 'application/octet-stream', buffer: fakeWorkbookFile(sheetV1()) });
+  await page.locator('#btnImportPlanExcel').click();
+  await page.waitForTimeout(200);
+  await page.locator('#btnConfirmPlanImport').click();
+  await page.waitForTimeout(600);
+  savedItems = store.get(`projects/${PROJECT_ID}/plan_items.json`).content;
+  if (savedItems.length !== 4) throw new Error('Förväntade 4 rader efter omimport (inga nya dubbletter), fick ' + savedItems.length);
+  const m30v1 = savedItems.find(r => r.object_name === 'M30');
+  if (m30v1.end_date !== '2026-01-15') throw new Error('Förväntade M30 tillbaka till 2026-01-15, fick ' + m30v1.end_date);
+  const compoundAfter = savedItems.filter(r => r.object_name === 'A1-A2').map(r => r.object_id).sort();
+  if (JSON.stringify(compoundAfter) !== JSON.stringify(['ext-61', 'ext-63'])) throw new Error('Omimport ska behålla båda kopplingarna för A1-A2, fick ' + JSON.stringify(compoundAfter));
+  console.log('OK: omimport uppdaterar alla kopplade rader för en aktivitet och behåller kopplingarna');
 
   await browser.close();
   server.close();

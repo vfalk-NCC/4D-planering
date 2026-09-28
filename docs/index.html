@@ -178,8 +178,13 @@
            utan att röra något annat på den (datum, faser, kommentarer m.m.). -->
       <div id="coupleModeBanner" class="couple-mode-banner hidden">
         <span id="coupleModeText"></span>
-        <button id="btnCancelCoupleMode">Avbryt</button>
+        <ul id="coupleModeList" class="couple-mode-list"></ul>
+        <div class="couple-mode-actions">
+          <button id="btnSaveCoupleMode" class="primary" disabled>Spara (0)</button>
+          <button id="btnCancelCoupleMode">Avbryt</button>
+        </div>
       </div>
+      <div id="hiddenMatchNotice" class="hint warning hidden"></div>
       <div id="itemList" class="item-list"></div>
       <div class="row">
         <button id="btnEditSelected" title="Ändra status, entreprenör, område, aktivitet och/eller förskjut datum för alla markerade rader i ett svep" disabled>✏️ Redigera markerade (<span id="editSelectedCount">0</span>)</button>

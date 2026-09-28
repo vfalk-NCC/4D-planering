@@ -266,9 +266,9 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
 /* "Koppla till markering" - se armCoupleMode i app.js. */
 .couple-mode-banner {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   background: #ede9fe;
   border: 1px solid #c4b5fd;
   color: #5b21b6;
@@ -283,6 +283,26 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
   font-size: 10px;
   padding: 2px 8px;
 }
+.couple-mode-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  font-weight: 400;
+  color: #1f2937;
+}
+.couple-mode-list:empty { display: none; }
+.couple-mode-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  border-bottom: 1px solid #ddd6fe;
+}
+.couple-mode-list li.skipped .couple-obj-name { text-decoration: line-through; color: #6b7280; }
+.couple-mode-list .couple-obj-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.couple-mode-actions { display: flex; gap: 6px; justify-content: flex-end; }
 
 .item-list {
   height: 660px;
@@ -327,6 +347,12 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
 .item-row:hover { background: #eef1f5; }
 .item-row.selected { background: #dbeafe; box-shadow: inset 3px 0 0 var(--accent); }
 .item-row.selected:hover { background: #cfe4fd; }
+/* Blinkar till när man klickat objektet i 3D och listan hoppat dit. */
+.item-row.flash { animation: item-row-flash 1.4s ease-out; }
+@keyframes item-row-flash {
+  0%, 30% { background: #fde68a; }
+  100% { background: #dbeafe; }
+}
 .item-row.save-error { box-shadow: inset 3px 0 0 #e5484d; }
 .save-pending-tag {
   font-size: 9px;

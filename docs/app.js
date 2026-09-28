@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-28 11:00";
+const APP_VERSION = "2026-09-28 13:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -42,7 +42,7 @@ let commentCounts = new Map();  // plan_item_id -> antal kommentarer (för 💬-
 
 // "Koppla till markering" (omvänd koppling) för objekt importerade från
 // 4-veckorsplaneringen utan 3D-koppling ännu - se armCoupleMode/
-// onWorkspaceEvent/coupleItemToModelObject. Objektet (inte bara dess id) hålls
+// onWorkspaceEvent/coupleItemToModelObjects. Objektet (inte bara dess id) hålls
 // kvar direkt här så att skrivningen inte kan hamna fel om items hunnit laddas
 // om (t.ex. via en bakgrundssparning) medan man väntar på 3D-markeringen.
 let pendingCoupleItem = null;
@@ -472,6 +472,7 @@ function bindUI() {
   document.getElementById("btnConfirmPlanImport").onclick = onConfirmPlanImport;
   document.getElementById("btnCancelPlanImport").onclick = () => { planImportDiff = null; toggle("planImportPreviewDialog", false); };
   document.getElementById("btnCancelCoupleMode").onclick = cancelCoupleMode;
+  document.getElementById("btnSaveCoupleMode").onclick = onSaveCoupleMode;
 
   document.getElementById("itemSearch").oninput = () => renderItemList();
   document.getElementById("groupBy").onchange = () => renderItemList();
@@ -817,7 +818,7 @@ async function syncSelectionFromModel() {
     if (!modelSel.objectRuntimeIds || modelSel.objectRuntimeIds.length === 0) continue;
     const externalIds = await API.viewer.convertToObjectIds(modelSel.modelId, modelSel.objectRuntimeIds);
     externalIds.forEach(extId => {
-      const match = items.find(it => it.modelId === modelSel.modelId && it.objectId === extId);
+      const match = items.find(it => it.modelId === modelSel.modelId && String(it.objectId) === String(extId));
       if (match) matchedKeys.add(match.objectId);
     });
   }
@@ -825,10 +826,53 @@ async function syncSelectionFromModel() {
   if (matchedKeys.size > 0) {
     selectedItemKeys = matchedKeys;
     selectionAnchorKey = null;
-    expandGroupsForKeys(matchedKeys);
-    renderItemList();
-    scrollSelectedRowIntoView();
+    jumpToItemsInList(matchedKeys);
+  } else {
+    showHiddenMatchNotice(null);
   }
+}
+
+/**
+ * Hoppar till raderna i "Planerade objekt" (Victors önskemål 2026-09-28:
+ * klick på ett kopplat objekt i 3D ska visa det i listan): fäller ut
+ * panelen och gruppen, scrollar raden till mitten och blinkar till den.
+ * Döljs raden av sökning/filter visas en rad med en knapp som tar bort
+ * filtren, istället för att tyst inte hända något.
+ */
+function jumpToItemsInList(keys) {
+  const panel = document.querySelector('section.panel[data-panel-id="items"]');
+  if (panel && panel.classList.contains("collapsed")) {
+    panel.classList.remove("collapsed");
+    collapsedPanels.delete("items");
+    saveCollapsedPanels();
+  }
+  expandGroupsForKeys(keys);
+  renderItemList();
+  const visibleKeys = new Set(getVisibleItems().map(it => it.objectId));
+  const hidden = items.filter(it => keys.has(it.objectId) && !visibleKeys.has(it.objectId));
+  showHiddenMatchNotice(hidden.length && hidden.length === keys.size ? hidden : null);
+  const row = document.querySelector("#itemList .item-row.selected");
+  if (!row) return;
+  row.scrollIntoView({ block: "center", behavior: "smooth" });
+  row.classList.remove("flash");
+  void row.offsetWidth; // starta om animationen
+  row.classList.add("flash");
+}
+
+function showHiddenMatchNotice(hiddenItems) {
+  const el = document.getElementById("hiddenMatchNotice");
+  if (!el) return;
+  if (!hiddenItems) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+  const names = hiddenItems.slice(0, 3).map(it => it.objectName || it.objectId).join(", ");
+  el.innerHTML = `Det markerade objektet (${escapeHtml(names)}${hiddenItems.length > 3 ? " m.fl." : ""}) döljs av sökningen/filtret. <button type="button" id="btnShowHiddenMatch">Visa det</button>`;
+  el.classList.remove("hidden");
+  document.getElementById("btnShowHiddenMatch").onclick = () => {
+    document.getElementById("itemSearch").value = "";
+    document.getElementById("hideCompleted").checked = false;
+    document.getElementById("showOnlyCompleted").checked = false;
+    document.getElementById("todayOnly").checked = false;
+    jumpToItemsInList(new Set(selectedItemKeys));
+  };
 }
 
 /** Expanderar (fäller ut) de grupper i "Planerade objekt" som innehåller
@@ -845,11 +889,6 @@ function expandGroupsForKeys(keys) {
   });
 }
 
-/** Scrollar första markerade raden i listan in i vy (om den inte redan syns). */
-function scrollSelectedRowIntoView() {
-  const row = document.querySelector("#itemList .item-row.selected");
-  if (row) row.scrollIntoView({ block: "nearest", behavior: "smooth" });
-}
 
 /* ---------------------------------------------------------------------
    "Koppla till markering" - omvänd koppling för objekt importerade från
@@ -862,14 +901,28 @@ function scrollSelectedRowIntoView() {
    sedan koppla dem manuellt i Trimble Connect".
    ------------------------------------------------------------------- */
 
-/** Klick på 🔗-knappen på en ej kopplad rad. */
+/* Kopplingsläget samlar ihop objekt (Victors önskemål 2026-09-28): varje
+   objekt man klickar i 3D (med eller utan Ctrl) läggs till i en lista i
+   bannern, ✕ tar bort ett objekt, och inget sparas förrän man trycker
+   "Spara". Hela urvalet hålls markerat i 3D så man ser vad som är valt.
+   Första objektet kopplas till själva posten (om den inte redan har en
+   koppling); övriga blir kopior av posten (samma namn, område, aktivitet,
+   datum, framdrift, beroenden, delaktiviteter och source_key) med var sitt
+   3D-objekt - samma datamodell som när man kopplar flera markerade objekt
+   via "Koppla markering". Allt skrivs i EN skrivning av plan_items.json. */
+let coupleCollected = [];      // [{ modelId, objectId, runtimeId, name }]
+let coupleSyncingSelection = false;
+
+/** Klick på 🔗-knappen på en rad. */
 function armCoupleMode(item) {
   pendingCoupleItem = item;
-  setCoupleModeBanner(`Markera objektet i 3D-modellen som ska kopplas till "${item.objectName || item.id}"...`);
+  coupleCollected = [];
+  renderCoupleMode();
 }
 
 function cancelCoupleMode() {
   pendingCoupleItem = null;
+  coupleCollected = [];
   setCoupleModeBanner(null);
 }
 
@@ -884,80 +937,179 @@ function setCoupleModeBanner(text) {
   el.classList.remove("hidden");
 }
 
-/**
- * Körs istället för syncSelectionFromModel() när en post väntar på att
- * kopplas (pendingCoupleItem). Tar det FÖRSTA markerade 3D-objektet (om
- * flera råkar markeras samtidigt) och skriver dess modell-/objekt-ID på
- * just den väntande posten via coupleItemToModelObject - rör inget annat
- * på posten. En tom markering (t.ex. en avmarkering) lämnar kopplingsläget
- * aktivt istället för att avbryta det, så ett klick i tomma luften innan
- * man hunnit klicka rätt objekt inte tvingar en börja om.
- */
-async function handleCoupleModeSelection() {
-  const item = pendingCoupleItem;
-  if (!item) return;
-  try {
-    const sel = await API.viewer.getSelection();
-    let modelId = null, objectId = null;
-    for (const modelSel of sel || []) {
-      if (!modelSel.objectRuntimeIds || modelSel.objectRuntimeIds.length === 0) continue;
-      const externalIds = await API.viewer.convertToObjectIds(modelSel.modelId, modelSel.objectRuntimeIds);
-      if (externalIds.length > 0) {
-        modelId = modelSel.modelId;
-        objectId = externalIds[0];
-        break;
-      }
-    }
-    if (!modelId || !objectId) return;
+/** Vilken annan post ett 3D-objekt redan är kopplat till (null om inget). */
+function coupledElsewhere(obj) {
+  return items.find(it => it.modelId === obj.modelId && String(it.objectId) === String(obj.objectId)) || null;
+}
 
-    pendingCoupleItem = null;
-    setCoupleModeBanner(null);
-    document.getElementById("selCount").innerText = 1;
-    await coupleItemToModelObject(item, modelId, objectId);
+function renderCoupleMode() {
+  const item = pendingCoupleItem;
+  if (!item) { setCoupleModeBanner(null); return; }
+  const name = item.objectName || item.id;
+  setCoupleModeBanner(coupleCollected.length === 0
+    ? `Klicka objekten i 3D-modellen som ska kopplas till "${name}" (ett eller flera, Ctrl går också bra). Tryck Spara när du är klar.`
+    : `Objekt som kopplas till "${name}":`);
+  const listEl = document.getElementById("coupleModeList");
+  const usable = coupleCollected.filter(o => !coupledElsewhere(o));
+  listEl.innerHTML = coupleCollected.map((o, i) => {
+    const other = coupledElsewhere(o);
+    const note = other
+      ? (other.id === item.id || (other.objectName === item.objectName && other.activity === item.activity && other.area === item.area)
+          ? "redan kopplad till den här aktiviteten" : `redan kopplad till "${other.objectName || other.id}" – hoppas över`)
+      : "";
+    return `<li class="${other ? "skipped" : ""}">
+      <span class="couple-obj-name">${escapeHtml(o.name || o.objectId)}</span>${note ? ` <span class="hint">${escapeHtml(note)}</span>` : ""}
+      <button type="button" data-couple-remove="${i}" title="Ta bort från listan">✕</button>
+    </li>`;
+  }).join("");
+  listEl.querySelectorAll("[data-couple-remove]").forEach(btn => {
+    btn.onclick = () => removeCoupleObject(Number(btn.dataset.coupleRemove));
+  });
+  const saveBtn = document.getElementById("btnSaveCoupleMode");
+  saveBtn.disabled = usable.length === 0;
+  saveBtn.innerText = `Spara (${usable.length})`;
+}
+
+async function removeCoupleObject(index) {
+  const [o] = coupleCollected.splice(index, 1);
+  renderCoupleMode();
+  if (!o || o.runtimeId === undefined) return;
+  try {
+    coupleSyncingSelection = true;
+    await API.viewer.setSelection({ modelObjectIds: [{ modelId: o.modelId, objectRuntimeIds: [o.runtimeId] }] }, "remove");
   } catch (e) {
-    console.error("Kunde inte koppla till det markerade objektet:", e);
-    alert("Kunde inte koppla till det markerade objektet: " + e.message);
+    console.warn("Kunde inte avmarkera objektet i 3D:", e);
+  } finally {
+    coupleSyncingSelection = false;
   }
 }
 
 /**
- * Skriver 3D-kopplingen (model_id/object_id) på EN befintlig post, utan att
- * röra något annat fält på den. Matchar uttryckligen på id (via
- * ghUpsertOne, se github-storage.js) - INTE via saveItems()/project_id+
- * object_id som resten av appen annars använder, eftersom object_id här
- * medvetet ÄNDRAS (från den syntetiska platshållare som sattes vid import
- * till det riktiga externa 3D-objekt-ID:t). saveItems() skulle med sin
- * project_id+object_id-matchning misslyckas hitta den befintliga raden
- * under det NYA object_id:t och av misstag skapa en DUBBLETTRAD med samma
- * id istället för att uppdatera den befintliga - ghUpsertOnes id-baserade
- * matchning har inte det problemet.
+ * Körs istället för syncSelectionFromModel() medan kopplingsläget är aktivt.
+ * Lägger till alla nyss markerade 3D-objekt i listan (dubbletter hoppas
+ * över). En tom markering (klick i tomma luften) ändrar ingenting. Om
+ * markeringen i 3D inte längre omfattar hela listan (vanligt klick utan
+ * Ctrl ersätter ju markeringen) markeras hela listan igen, så att allt
+ * valt syns i modellen.
  */
-async function coupleItemToModelObject(item, modelId, objectId) {
+async function handleCoupleModeSelection() {
+  if (!pendingCoupleItem || coupleSyncingSelection) return;
+  try {
+    const sel = await API.viewer.getSelection();
+    const selectedKeys = new Set();
+    for (const modelSel of sel || []) {
+      const rids = modelSel.objectRuntimeIds || [];
+      if (rids.length === 0) continue;
+      const externalIds = await API.viewer.convertToObjectIds(modelSel.modelId, rids);
+      const fresh = [];
+      rids.forEach((rid, i) => {
+        const objectId = externalIds[i];
+        if (!objectId) return;
+        const key = `${modelSel.modelId}::${objectId}`;
+        selectedKeys.add(key);
+        if (!coupleCollected.some(o => `${o.modelId}::${o.objectId}` === key)) {
+          fresh.push({ modelId: modelSel.modelId, objectId: String(objectId), runtimeId: rid, name: null });
+        }
+      });
+      if (fresh.length === 0) continue;
+      try {
+        const props = await API.viewer.getObjectProperties(modelSel.modelId, fresh.map(o => o.runtimeId));
+        const byRid = new Map((props || []).map(p => [p.id, p]));
+        fresh.forEach(o => {
+          const p = byRid.get(o.runtimeId);
+          o.name = p && ((p.product && p.product.name) || p.class) || null;
+        });
+      } catch (e) { /* namnen är bara för visning */ }
+      if (!pendingCoupleItem) return;
+      coupleCollected.push(...fresh);
+    }
+    renderCoupleMode();
+
+    const missing = coupleCollected.filter(o => !selectedKeys.has(`${o.modelId}::${o.objectId}`) && o.runtimeId !== undefined);
+    if (missing.length > 0 && selectedKeys.size > 0) {
+      const byModel = {};
+      coupleCollected.forEach(o => { (byModel[o.modelId] = byModel[o.modelId] || []).push(o.runtimeId); });
+      coupleSyncingSelection = true;
+      try {
+        await API.viewer.setSelection({ modelObjectIds: Object.keys(byModel).map(modelId => ({ modelId, objectRuntimeIds: byModel[modelId] })) }, "set");
+      } finally {
+        // Händelsen från vår egen setSelection ska inte räknas som ett nytt klick.
+        setTimeout(() => { coupleSyncingSelection = false; }, 300);
+      }
+    }
+  } catch (e) {
+    console.error("Kunde inte läsa markeringen i 3D:", e);
+    alert("Kunde inte läsa markeringen i 3D-modellen: " + e.message);
+  }
+}
+
+/** "Spara" i kopplingsbannern. */
+async function onSaveCoupleMode() {
+  const item = pendingCoupleItem;
+  if (!item) return;
+  const objs = coupleCollected.filter(o => !coupledElsewhere(o));
+  if (objs.length === 0) return;
+  pendingCoupleItem = null;
+  coupleCollected = [];
+  setCoupleModeBanner(null);
+  document.getElementById("selCount").innerText = objs.length;
+  await coupleItemToModelObjects(item, objs);
+}
+
+/**
+ * Skriver 3D-kopplingen (model_id/object_id) för en befintlig post - och
+ * skapar kopior av posten för ytterligare objekt - i en enda skrivning.
+ * Matchar uttryckligen på id, INTE via saveItems()/project_id+object_id som
+ * resten av appen annars använder, eftersom object_id här medvetet ÄNDRAS
+ * (från den syntetiska platshållare som sattes vid import till det riktiga
+ * externa 3D-objekt-ID:t). saveItems() skulle med sin project_id+object_id-
+ * matchning inte hitta den befintliga raden under det NYA object_id:t och av
+ * misstag skapa en dubblett med samma id.
+ */
+async function coupleItemToModelObjects(item, objs) {
   if (!isBackendConfigured()) {
     alert("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
     return;
   }
-  const row = { ...toRow(item), model_id: modelId, object_id: String(objectId) };
+  const base = toRow(item);
+  const rows = objs.map((o, i) => (i === 0 && !item.modelId)
+    ? { ...base, model_id: o.modelId, object_id: String(o.objectId) }
+    : { ...base, id: ghNewId(), model_id: o.modelId, object_id: String(o.objectId) });
+  const ids = new Set(rows.map(r => r.id));
 
-  const optimisticItem = { ...fromRow(row), _pending: true, _saveError: null };
-  const idx = items.findIndex(it => it.id === item.id);
-  if (idx >= 0) items[idx] = optimisticItem; else items.push(optimisticItem);
+  rows.forEach(row => {
+    const optimisticItem = { ...fromRow(row), _pending: true, _saveError: null };
+    const idx = items.findIndex(it => it.id === row.id);
+    if (idx >= 0) items[idx] = optimisticItem; else items.push(optimisticItem);
+  });
+  itemsTotalCount = items.length;
   renderItemList();
 
+  // Kopiorna får samma delaktiviteter som posten (egen fil, egen skrivning).
+  const subs = activitiesByItemId.get(item.id) || [];
+  const copies = rows.filter(r => r.id !== item.id);
+  if (subs.length > 0 && copies.length > 0) {
+    saveActivitiesForItemsBulk(copies.map(r => ({ planItemId: r.id, rows: subs.map(x => ({ ...x })) })))
+      .catch(e => console.error("Kunde inte kopiera delaktiviteterna:", e));
+  }
+
   try {
-    await ghUpsertOne(settings.githubToken, itemsPath(), row, r => r.id, "Koppla planeringspost till 3D-objekt");
-    const freshItem = { ...fromRow(row), _pending: false, _saveError: null };
-    const idx2 = items.findIndex(it => it.id === item.id);
-    if (idx2 >= 0) items[idx2] = freshItem;
+    await ghWriteJSON(settings.githubToken, itemsPath(), arr => {
+      const byId = new Map(rows.map(r => [r.id, r]));
+      const next = arr.map(r => byId.has(r.id) ? byId.get(r.id) : r);
+      const existing = new Set(arr.map(r => r.id));
+      rows.forEach(r => { if (!existing.has(r.id)) next.push(r); });
+      return next;
+    }, rows.length === 1 ? "Koppla planeringspost till 3D-objekt" : `Koppla planeringspost till ${rows.length} 3D-objekt`);
+    items.forEach(it => { if (ids.has(it.id)) { it._pending = false; it._saveError = null; } });
     buildFilterOptions();
     renderItemList();
     initTimelineRange();
   } catch (e) {
     console.error("Kunde inte spara 3D-kopplingen:", e);
-    const idx3 = items.findIndex(it => it.id === item.id);
-    if (idx3 >= 0) { items[idx3]._pending = false; items[idx3]._saveError = e.message; }
+    items.forEach(it => { if (ids.has(it.id)) { it._pending = false; it._saveError = e.message; } });
     renderItemList();
-    alert(`Kunde inte koppla "${item.objectName || item.id}" till 3D-objektet: ${e.message}`);
+    alert(`Kunde inte koppla "${item.objectName || item.id}" till 3D-objekten: ${e.message}`);
   }
 }
 
@@ -2614,15 +2766,21 @@ async function onImportPlanExcel() {
  * aldrig av den här importen.
  */
 function buildPlanImportDiff(parsedItems) {
-  const bySourceKey = new Map();
-  items.forEach(it => { if (it.sourceKey) bySourceKey.set(it.sourceKey, it); });
+  // En aktivitet kan vara kopplad till flera 3D-objekt (en rad per objekt
+  // med samma source_key, se coupleItemToModelObjects) - alla uppdateras.
+  const bySourceKey = new Map(); // source_key -> [item, ...]
+  items.forEach(it => {
+    if (!it.sourceKey) return;
+    if (!bySourceKey.has(it.sourceKey)) bySourceKey.set(it.sourceKey, []);
+    bySourceKey.get(it.sourceKey).push(it);
+  });
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const seenKeys = new Set();
   const matched = parsedItems.map(p => {
     seenKeys.add(p.sourceKey);
-    const existing = bySourceKey.get(p.sourceKey) || null;
-    return { parsed: p, existing, status: computeImportStatus(p, todayStr) };
+    const all = bySourceKey.get(p.sourceKey) || [];
+    return { parsed: p, existing: all[0] || null, extras: all.slice(1), status: computeImportStatus(p, todayStr) };
   });
 
   const toCreate = matched.filter(m => !m.existing);
@@ -2631,7 +2789,7 @@ function buildPlanImportDiff(parsedItems) {
   // t.ex. en borttagen eller omdöpt rubrik/elementkod. Rörs INTE av importen
   // (varken uppdateras eller tas bort) - bara ett observandum i förhands-
   // granskningen, se renderPlanImportPreview.
-  const removedExisting = Array.from(bySourceKey.values()).filter(it => !seenKeys.has(it.sourceKey));
+  const removedExisting = Array.from(bySourceKey.values()).flat().filter(it => !seenKeys.has(it.sourceKey));
 
   return { parsedItems, matched, toCreate, toUpdate, removedExisting, todayStr };
 }
@@ -2719,7 +2877,10 @@ async function commitPlanImport(diff) {
   const before = Array.isArray(data) ? data : [];
 
   const activityBatches = [];
-  const incomingRows = diff.matched.map(({ parsed: p, existing, status }) => {
+  const incomingRows = diff.matched.flatMap(({ parsed: p, existing, extras, status }) =>
+    [existing, ...(extras || [])].map(ex => importRow(p, ex, status)));
+
+  function importRow(p, existing, status) {
     const id = existing ? existing.id : ghNewId();
     const modelId = existing ? existing.modelId : null;
     const objectId = existing ? existing.objectId : `excel-${id}`;
@@ -2746,7 +2907,7 @@ async function commitPlanImport(diff) {
       });
     }
     return row;
-  });
+  }
 
   const [after] = await Promise.all([
     ghWriteJSON(
@@ -3179,7 +3340,7 @@ function renderItemList() {
               <span class="item-dates">${escapeHtml(formatDateRange(it))} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
             </span>
             <span class="badge" style="background:${statusColor[it.status] || "#999"};color:${contrastTextColor(statusColor[it.status] || "#999999")}">${statusLabel[it.status] || it.status}</span>
-            ${!it.modelId ? '<button class="couple-btn" data-action="couple" title="Väntar på att du klickar objektet i 3D-modellen, kopplar sedan ihop det med den här posten - rör inga andra fält">🔗</button>' : ""}
+            <button class="couple-btn" data-action="couple" title="${it.modelId ? "Koppla fler 3D-objekt till samma aktivitet" : "Koppla ett eller flera 3D-objekt till den här posten"} - klicka objekten i 3D och tryck Spara">🔗</button>
             <button class="comment-btn" data-action="comments" title="${commentTitle}">💬${commentBadge}</button>
             <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
             <button class="delete-btn" data-action="delete" title="Radera kopplingen">🗑️</button>
