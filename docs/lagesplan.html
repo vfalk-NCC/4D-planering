@@ -26,6 +26,23 @@
   details.sec[open] > summary::before { transform: rotate(90deg); }
   details.sec[open] > summary { margin-bottom: 4px; }
   #layout.side-hidden aside { display: none; }
+  #stage { background: #fff; }
+  .layer-list { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .layer-row { display: grid; grid-template-columns: 20px 1fr 84px 22px; align-items: center; gap: 6px; padding: 4px 6px; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .layer-row:last-child { border-bottom: none; }
+  .layer-row.sub { padding-left: 22px; background: #fafbfc; }
+  .layer-row input[type=range] { width: 84px; margin: 0; }
+  .layer-row .ln { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .layer-row .ln small { color: var(--muted); }
+  .layer-row button { padding: 0 4px; border: none; background: none; cursor: pointer; font-size: 12px; }
+  .layer-row .blend { grid-column: 2 / 5; font-size: 11px; color: var(--muted); display: flex; gap: 4px; align-items: center; margin: 0; }
+  .site-add button { padding: 4px 7px; font-size: 12px; }
+  #sitePop { position: absolute; z-index: 15; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); padding: 10px 12px; width: 270px; font-size: 12px; }
+  #sitePop label { margin: 6px 0 2px; }
+  #sitePop textarea { width: 100%; font: inherit; border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; min-height: 54px; }
+  #sitePop .row2 { display: flex; gap: 6px; }
+  #sitePop .row2 > * { flex: 1; min-width: 0; }
+  #sitePop .acts { display: flex; justify-content: space-between; margin-top: 8px; }
   .focus-list { margin-top: 6px; max-height: 32vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 5px; font-size: 12px; }
   .focus-list .fi { display: flex; gap: 6px; padding: 3px 6px; border-bottom: 1px solid var(--border); cursor: pointer; }
   .focus-list .fi:last-child { border-bottom: none; }
@@ -91,6 +108,29 @@
       </div>
     </details>
 
+    <details class="sec" data-sec="layers" open>
+      <summary>Lager</summary>
+      <div id="layerList" class="layer-list"></div>
+      <label class="row" style="color:var(--text);margin-top:4px;"><input type="checkbox" id="layersFollowDate" checked /> Noteringar och etablering följer datumet</label>
+      <div class="row" style="margin-top:8px;">
+        <button id="btnAddOrtho" title="Välj bildfilen (PNG/JPG) och dess världsfil (.pgw/.jgw) samtidigt">🛰 Ladda upp ortofoto</button>
+      </div>
+      <label class="row" style="color:var(--text);margin-top:4px;"><input type="checkbox" id="orthoToTc" checked /> Spara originalfilerna i Trimble Connect (mappen Lägesplan)</label>
+      <input type="file" id="orthoInput" accept=".png,.jpg,.jpeg,.pgw,.jgw,.pngw,.jpgw,.wld" multiple class="hidden" />
+      <div class="muted">Markera både bilden och .pgw-filen. Fotot placeras automatiskt via modellens koordinater (kräver att planen är kalibrerad).</div>
+      <div style="margin-top:10px;"><b style="font-size:12px;">Lägg till på planen</b></div>
+      <div class="row site-add" style="margin-top:4px;">
+        <button data-site="note" title="Klicka först där pilen ska peka, sedan där texten ska stå">💬 Notering</button>
+        <button data-site="crane" title="Klicka kranens placering">🏗 Kran</button>
+        <button data-site="shed" title="Klicka två motstående hörn">🏠 Bod</button>
+        <button data-site="storage" title="Klicka två motstående hörn">📦 Upplag</button>
+        <button data-site="gate" title="Klicka grindens placering">🚪 Grind</button>
+        <button data-site="fence" title="Klicka punkter längs stängslet, dubbelklicka för att avsluta">〰 Stängsel</button>
+        <button data-site="barrier" title="Klicka hörnen, dubbelklicka för att avsluta">⛔ Avspärrning</button>
+      </div>
+      <div class="muted" id="siteHint" style="margin-top:4px;"></div>
+    </details>
+
     <details class="sec" data-sec="calib" open>
       <summary>Koppling via position i 3D</summary>
       <div class="muted">Kalibrera planen mot modellen med två punkter. Varje planerat objekt hamnar då i den zon det ligger i på ritningen, även om zonkoden inte finns i planeringen.</div>
@@ -154,7 +194,7 @@
       </div>
       <div class="muted" id="measureInfo" style="margin-top:4px;"></div>
       <div class="row" style="margin-top:8px;">
-        <button id="btnAddPhoto" title="Klicka på planen där bilden är tagen och välj bilden">📷 Lägg till foto</button>
+        <button id="btnAddPhoto" title="Välj bilden och klicka sedan på planen där den är tagen">📷 Lägg till foto</button>
         <label class="row" style="color:var(--text);margin:0;"><input type="checkbox" id="showPhotos" checked /> Visa foton</label>
       </div>
       <input type="file" id="photoInput" accept="image/*" class="hidden" />
@@ -215,13 +255,14 @@
   <main>
     <button id="btnShowSide" class="hidden" title="Visa menyn">▶ Meny</button>
     <div id="viewport">
-      <div id="stage"><canvas id="pdfCanvas"></canvas><canvas id="zoneCanvas"></canvas></div>
+      <div id="stage"><canvas id="orthoCanvas"></canvas><canvas id="pdfCanvas"></canvas><canvas id="zoneCanvas"></canvas><canvas id="objCanvas"></canvas><canvas id="topCanvas"></canvas></div>
     </div>
     <div id="empty">Välj en plan, eller klicka <b>&nbsp;+ Ny plan från PDF&nbsp;</b> och välj en PDF (t.ex. en planritning med PM-zoner).</div>
     <div id="zoomCtl">
       <button id="btnZoomIn">+</button><button id="btnZoomOut">−</button><button id="btnFit">⤢ Anpassa</button>
     </div>
     <div id="tip" class="hidden"></div>
+    <div id="sitePop" class="hidden"></div>
     <div id="photoModal" class="hidden">
       <div class="pm-box">
         <img id="pmImg" alt="" />
@@ -237,5 +278,6 @@
 </div>
 <script src="lagesplan.js"></script>
 <script src="lagesplan-tools.js"></script>
+<script src="lagesplan-layers.js"></script>
 </body>
 </html>

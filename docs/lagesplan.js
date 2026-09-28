@@ -126,6 +126,7 @@ async function init() {
     return fatal("Kunde inte hämta data: " + e.message);
   }
   setBusy("");
+  loadSiteLayers();
   $("projectInfo").textContent = `Projekt ${projectId} · ${items.length} planerade objekt`;
   setupDateRange();
   renderPlanSelect();
@@ -450,6 +451,7 @@ function finishCalib() {
   const dp = Math.hypot(pdf[1][0] - pdf[0][0], pdf[1][1] - pdf[0][1]);
   if (dm < 0.5 || dp < 5) { alert("Punkterna ligger för nära varandra. Välj två punkter långt ifrån varandra och försök igen."); return; }
   plan.calib = { pdf, model };
+  renderOrtho();
   const z = (model[0][2] + model[1][2]) / 2;
   if (!plan.level) plan.level = { z0: Math.round((z - 0.5) * 10) / 10, z1: Math.round((z + 3.5) * 10) / 10 };
   invalidatePositions();
@@ -573,6 +575,7 @@ async function openPlan(id) {
     pdfDoc = await pdfjsLib.getDocument({ data: pdfCache.get(id).slice(0) }).promise;
     page = await pdfDoc.getPage(Math.min(plan.page || 1, pdfDoc.numPages));
     await renderPdf();
+    renderOrtho();
     $("empty").classList.add("hidden");
     fitView();
   } catch (e) {
@@ -592,8 +595,8 @@ async function renderPdf() {
   renderScale = Math.min(4, 5000 / Math.max(base.width, base.height));
   viewport = page.getViewport({ scale: renderScale });
   const pc = $("pdfCanvas"), zc = $("zoneCanvas"), stage = $("stage");
-  pc.width = zc.width = Math.round(viewport.width);
-  pc.height = zc.height = Math.round(viewport.height);
+  // Alla lager (ortofoto, ritning, zoner, objekt, översta) har samma storlek.
+  STAGE_CANVASES.forEach(id => { $(id).width = Math.round(viewport.width); $(id).height = Math.round(viewport.height); });
   stage.style.width = pc.width + "px";
   stage.style.height = pc.height + "px";
   await page.render({
@@ -611,10 +614,15 @@ function zoneStatus(zone) {
   return { items: zi, phase: zonePhase(zi, $("dateInput").value || todayIso()), progress: zoneProgress(zi) };
 }
 
+/* Canvaslagren i #stage, nedifrån och upp - se lagesplan-layers.js. */
+const STAGE_CANVASES = ["orthoCanvas", "pdfCanvas", "zoneCanvas", "objCanvas", "topCanvas"];
+
 function renderZones() {
   const zc = $("zoneCanvas");
   const ctx = zc.getContext("2d");
-  ctx.clearRect(0, 0, zc.width, zc.height);
+  ["zoneCanvas", "objCanvas", "topCanvas"].forEach(id => { const c = $(id); c.getContext("2d").clearRect(0, 0, c.width, c.height); });
+  const octx = $("objCanvas").getContext("2d");
+  const tctx = $("topCanvas").getContext("2d");
   if (!plan || !viewport) { renderZoneList(); return; }
   const fontPx = Math.max(14, Math.round(zc.width / 110));
   const objects = $("showObjects").checked ? objectShapesInPdf() : null;
@@ -644,10 +652,11 @@ function renderZones() {
     anchors.filter(Boolean).forEach(a => badges.push([toPx(a), `${zone.code}${st.progress != null ? " · " + st.progress + " %" : ""}`, color, st.phase === "ingen"]));
     ctx.restore();
   }
-  if (objects) drawObjects(ctx, objects, fontPx);
-  badges.forEach(([pt, text, color, hollow]) => drawBadge(ctx, pt, text, color, fontPx, hollow));
-  drawToolOverlays(ctx, fontPx);
-  drawCalibMarks(ctx, fontPx);
+  if (objects) drawObjects(octx, objects, fontPx);
+  drawSiteLayers(tctx, fontPx);
+  if (layerVisible("zones")) badges.forEach(([pt, text, color, hollow]) => drawBadge(tctx, pt, text, color, fontPx, hollow));
+  drawToolOverlays(tctx, fontPx);
+  drawCalibMarks(tctx, fontPx);
   afterRenderTools();
   renderZoneList();
   updateCalibInfo();
@@ -1120,10 +1129,19 @@ function composeImage(maxW, noHeader) {
   out.width = W; out.height = H + head;
   const ctx = out.getContext("2d");
   ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, out.width, out.height);
-  if ($("grayPdf").checked) ctx.filter = "grayscale(1)";
-  ctx.drawImage(pc, 0, head, W, H);
-  ctx.filter = "none";
-  ctx.drawImage(zc, 0, head, W, H);
+  // Samma lager, synlighet, genomskinlighet och blandning som på skärmen.
+  STAGE_CANVASES.forEach(id => {
+    const c = $(id);
+    if (!c.width || getComputedStyle(c).display === "none") return;
+    ctx.save();
+    ctx.globalAlpha = Number(getComputedStyle(c).opacity) || 0;
+    if (id === "pdfCanvas") {
+      if ($("grayPdf").checked) ctx.filter = "grayscale(1)";
+      if (getComputedStyle(c).mixBlendMode === "multiply") ctx.globalCompositeOperation = "multiply";
+    }
+    ctx.drawImage(c, 0, head, W, H);
+    ctx.restore();
+  });
   if (noHeader) return out;
   const f = Math.round(head * 0.38);
   ctx.fillStyle = "#111827"; ctx.font = `700 ${f}px "Segoe UI", Arial, sans-serif`; ctx.textBaseline = "middle";
@@ -1175,7 +1193,7 @@ function bindUI() {
       ghDeleteBinary(token, gone.file_path, `Lägesplan: ta bort ${gone.name}`);
       plan = null; viewport = null;
       renderPlanSelect();
-      const pc = $("pdfCanvas"); pc.width = pc.height = 0; $("zoneCanvas").width = 0;
+      STAGE_CANVASES.forEach(id => { $(id).width = $(id).height = 0; });
       $("empty").classList.remove("hidden");
       if (plans[0]) openPlan(plans[0].id); else renderZoneList();
     } catch (e) { alert("Kunde inte ta bort: " + e.message); }
@@ -1205,7 +1223,7 @@ function bindUI() {
   const applyGray = () => { $("pdfCanvas").style.filter = $("grayPdf").checked ? "grayscale(1)" : ""; };
   applyGray();
   $("grayPdf").onchange = () => { applyGray(); try { localStorage.setItem("lagesplan-gray", $("grayPdf").checked ? "1" : "0"); } catch (e) {} };
-  $("showOriginal").onchange = async () => { if (page) { await renderPdf(); renderZones(); } };
+  $("showOriginal").onchange = async () => { if (page) { await renderPdf(); renderOrtho(); renderZones(); } };
   $("zeClose").onclick = () => selectZone(null);
   $("zeField").onchange = updateEditorHints;
   $("zeValue").oninput = updateEditorHints;
@@ -1259,6 +1277,7 @@ function bindUI() {
   $("btnFit").onclick = fitView;
   $("btnExport").onclick = exportPng;
   bindTools();
+  bindLayers();
   window.addEventListener("resize", () => { if (viewport) fitView(); });
   bindSections();
   window.addEventListener("keydown", e => { if (e.key === "Escape" && drawMode) { setDrawMode(false); renderZones(); } });

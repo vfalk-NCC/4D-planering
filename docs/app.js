@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-28 18:00";
+const APP_VERSION = "2026-09-28 20:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -254,6 +254,12 @@ async function refreshAllData() {
 }
 
 function onWorkspaceEvent(event, data) {
+  // Trimble Connect-token (för uppladdning till projektets mappar), se tcAccessToken.
+  if (event === "extension.accessToken") {
+    const t = data && data.data !== undefined ? data.data : data;
+    if (typeof t === "string" && t.split(".").length === 3) { tcToken = t; tcTokenAt = Date.now(); tcTokenWaiters.splice(0).forEach(fn => fn(t)); }
+    return;
+  }
   // Lägesplanen (egen flik) väntar på en klickpunkt i 3D för kalibrering.
   if (event === "viewer.onPicked" && lagesplanPick) {
     const d = data && data.data ? data.data : data;
@@ -337,6 +343,8 @@ window.addEventListener("message", async e => {
       lagesplanPick = null;
       showLagesplanBanner("");
       reply({});
+    } else if (msg.type === "tcUpload") {
+      reply(await tcUploadFiles(msg.files || [], msg.folder || "Lägesplan"));
     } else if (msg.type === "positions") {
       reply(await lagesplanPositions());
     } else if (msg.type === "select") {
@@ -355,6 +363,68 @@ window.addEventListener("message", async e => {
     reply({ error: err.message || String(err) });
   }
 });
+
+/* ---------------------------------------------------------------------
+   Uppladdning till Trimble Connect (Lägesplanens ortofoto-original).
+   Kräver att användaren godkänner att tillägget får en access-token
+   (API.extension.requestPermission). Använder Trimble Connects REST-API
+   (Core API 2.0) i projektets region: hittar/skapar mappen under
+   projektets rotmapp och laddar upp filerna dit.
+   ------------------------------------------------------------------- */
+let tcToken = null, tcTokenAt = 0;
+const tcTokenWaiters = [];
+async function tcAccessToken() {
+  if (tcToken && Date.now() - tcTokenAt < 50 * 60 * 1000) return tcToken;
+  const r = await API.extension.requestPermission("accesstoken");
+  if (typeof r === "string" && r.split(".").length === 3) { tcToken = r; tcTokenAt = Date.now(); return r; }
+  if (r === "denied") throw new Error("Tillägget fick inte behörighet till Trimble Connect (nekad).");
+  // Väntar på att användaren godkänner i Trimble Connect ("extension.accessToken").
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Inget godkännande från Trimble Connect inom 2 minuter.")), 120000);
+    tcTokenWaiters.push(t => { clearTimeout(timer); resolve(t); });
+  });
+}
+async function tcApiBase(tokenVal, project) {
+  const byLocation = { europe: "https://app21.connect.trimble.com/tc/api/2.0", asia: "https://app31.connect.trimble.com/tc/api/2.0", australia: "https://app32.connect.trimble.com/tc/api/2.0" };
+  try {
+    const res = await fetch("https://app.connect.trimble.com/tc/api/2.0/regions", { headers: { Authorization: `Bearer ${tokenVal}` } });
+    if (res.ok) {
+      const regions = await res.json();
+      const loc = String(project.location || "").toLowerCase();
+      const hit = (regions || []).find(r => String(r.location || r.region || "").toLowerCase() === loc);
+      const uri = hit && (hit["tc-api"] || hit.tcApi || hit.serviceUri);
+      if (uri) return uri.replace(/\/$/, "");
+    }
+  } catch (e) { /* faller tillbaka på kända adresser */ }
+  return byLocation[String(project.location || "").toLowerCase()] || "https://app.connect.trimble.com/tc/api/2.0";
+}
+async function tcUploadFiles(files, folderName) {
+  try { return await tcUploadFilesInner(files, folderName); }
+  catch (e) { showLagesplanBanner(`⚠ Kunde inte spara i Trimble Connect: ${e.message}`, 10000); throw e; }
+}
+async function tcUploadFilesInner(files, folderName) {
+  if (!files.length) return { uploaded: 0 };
+  const tokenVal = await tcAccessToken();
+  const project = await API.project.getProject();
+  const base = await tcApiBase(tokenVal, project);
+  const H = { Authorization: `Bearer ${tokenVal}` };
+  const j = async (res, what) => { if (!res.ok) throw new Error(`${what} misslyckades (${res.status}) ${await res.text().catch(() => "")}`.trim()); return res.json(); };
+  const proj = await j(await fetch(`${base}/projects/${encodeURIComponent(project.id)}`, { headers: H }), "Läsa projektet");
+  const rootId = proj.rootId || proj.rootFolderId;
+  const children = await j(await fetch(`${base}/folders/${encodeURIComponent(rootId)}/items`, { headers: H }), "Läsa rotmappen");
+  let folder = (children || []).find(x => (x.type || "").toUpperCase() === "FOLDER" && x.name === folderName);
+  if (!folder) {
+    folder = await j(await fetch(`${base}/folders`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ name: folderName, parentId: rootId }) }), "Skapa mappen");
+  }
+  for (const f of files) {
+    showLagesplanBanner(`☁ Laddar upp ${f.name} (${(f.size / 1048576).toFixed(0)} MB) till Trimble Connect…`);
+    const fd = new FormData();
+    fd.append("file", f, f.name);
+    await j(await fetch(`${base}/files?parentId=${encodeURIComponent(folder.id)}&parentType=FOLDER`, { method: "POST", headers: H, body: fd }), `Ladda upp ${f.name}`);
+  }
+  showLagesplanBanner(`✓ ${files.length} filer sparade i Trimble Connect (${folderName}).`, 6000);
+  return { uploaded: files.length, folder: folderName };
+}
 
 /** Mittpunkt och höjdintervall (meter) för alla planerade objekt i inlästa modeller. */
 async function lagesplanPositions() {

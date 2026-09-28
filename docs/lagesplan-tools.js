@@ -207,10 +207,10 @@ function drawMeasure(ctx, fontPx) {
 // ---------------------------------------------------------------------
 // Foton
 // ---------------------------------------------------------------------
-let photoPlacing = false, pendingPhotoPt = null, openPhotoId = null;
+let photoPlacing = false, pendingPhotoPt = null, pendingPhotoFile = null, openPhotoId = null;
 const photoUrlCache = new Map();
 function photos() { return (plan && plan.photos) || []; }
-function cancelPhotoPlacing() { photoPlacing = false; pendingPhotoPt = null; updateToolUi(); }
+function cancelPhotoPlacing() { photoPlacing = false; pendingPhotoPt = null; pendingPhotoFile = null; updateToolUi(); }
 function photoMarkerPx() { return Math.max(18, Math.round($("zoneCanvas").width / 110) * 1.5); }
 function photoAt(pdfPt) {
   if (!$("showPhotos").checked) return null;
@@ -241,8 +241,9 @@ function startPhotoPlacing() {
   if (photoPlacing) { cancelPhotoPlacing(); return; }
   if (measure) stopMeasure();
   if (drawMode) setDrawMode(false);
-  photoPlacing = true;
-  updateToolUi();
+  // Först bilden (fildialogen måste öppnas direkt från knappklicket, annars
+  // kan webbläsaren blockera den), sedan klick där fotot är taget.
+  $("photoInput").click();
 }
 /* Skalar ned bilden (max 1600 px, JPEG) så repot inte växer i onödan. */
 async function shrinkImage(file) {
@@ -255,6 +256,7 @@ async function shrinkImage(file) {
 }
 async function addPhotoFile(file) {
   const pt = pendingPhotoPt;
+  pendingPhotoFile = null;
   cancelPhotoPlacing();
   if (!pt || !file) return;
   const caption = prompt("Beskrivning av fotot (valfritt):", "");
@@ -466,7 +468,8 @@ function afterRenderTools() {
 }
 /* Klick på planen: true om ett verktyg tog hand om klicket. */
 function toolClick(pdfPt) {
-  if (photoPlacing) { pendingPhotoPt = pdfPt; $("photoInput").click(); return true; }
+  if (!photoPlacing && !measure && layersClick(pdfPt)) return true;
+  if (photoPlacing) { pendingPhotoPt = pdfPt; const f = pendingPhotoFile; photoPlacing = false; addPhotoFile(f); return true; }
   if (measure) {
     if (measure.done) measure = { mode: measure.mode, pts: [], cursor: null, done: false };
     measure.pts.push(pdfPt);
@@ -493,6 +496,8 @@ function toolTipHtml(pdfPt) {
     return r.text ? `${escHtml(r.text)}<br><span style="opacity:.7">Dubbelklicka för att avsluta, Esc för att rensa</span>` : null;
   }
   if (photoPlacing) return "Klicka där fotot är taget";
+  const lt = layersTipHtml(pdfPt);
+  if (lt) return lt;
   const ph = photoAt(pdfPt);
   if (ph) return `📷 <b>${escHtml(ph.caption || "Foto")}</b><br>${escHtml(ph.date || "")}${ph.by ? " · " + escHtml(ph.by) : ""}<br><span style="opacity:.7">Klicka för att visa</span>`;
   return null;
@@ -506,7 +511,7 @@ function updateToolUi() {
   $("btnMeasureLen").classList.toggle("active", !!measure && measure.mode === "len");
   $("btnMeasureArea").classList.toggle("active", !!measure && measure.mode === "area");
   $("btnAddPhoto").classList.toggle("active", photoPlacing);
-  $("viewport").classList.toggle("drawing", !!measure || photoPlacing || drawMode || !!(calib && calib.waitPdf));
+  $("viewport").classList.toggle("drawing", !!measure || photoPlacing || drawMode || !!(calib && calib.waitPdf) || !!siteTool);
   let info = "";
   if (measure) {
     const r = measure.pts.length ? measureResult(measure.pts) : null;
@@ -530,7 +535,12 @@ function bindTools() {
   $("btnMeasureLen").onclick = () => startMeasure("len");
   $("btnMeasureArea").onclick = () => startMeasure("area");
   $("btnAddPhoto").onclick = startPhotoPlacing;
-  $("photoInput").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) addPhotoFile(f); else cancelPhotoPlacing(); };
+  $("photoInput").onchange = e => {
+    const f = e.target.files[0]; e.target.value = "";
+    if (!f) { cancelPhotoPlacing(); return; }
+    pendingPhotoFile = f; photoPlacing = true; updateToolUi();
+    setSaveStatus(`📷 Klicka på planen där "${f.name}" är taget (Esc avbryter).`);
+  };
   $("showPhotos").onchange = () => renderZones();
   $("pmClose").onclick = closePhoto;
   $("pmDelete").onclick = deleteOpenPhoto;
@@ -539,7 +549,7 @@ function bindTools() {
     if (!measure || measure.done) return;
     // Dubbelklicket har redan lagt till samma punkt två gånger.
     const p = measure.pts;
-    if (p.length > 1 && Math.hypot(p[p.length - 1][0] - p[p.length - 2][0], p[p.length - 1][1] - p[p.length - 2][1]) < 1e-6) p.pop();
+    while (p.length > 1 && Math.hypot(p[p.length - 1][0] - p[p.length - 2][0], p[p.length - 1][1] - p[p.length - 2][1]) < 1e-6) p.pop();
     finishMeasure();
   });
   window.addEventListener("keydown", e => {
