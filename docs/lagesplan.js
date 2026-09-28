@@ -50,7 +50,7 @@ let renderScale = 1;
 let selectedZoneId = null;
 const view = { scale: 1, tx: 0, ty: 0 };
 let drawMode = false;
-let positions = [];        // plan_item_positions.json: [{id, x, y, z0, z1}] (meter, modellens koordinater)
+let positions = [];        // plan_item_positions.json: [{id, x, y, z0, z1, x0, x1, y0, y1}] (meter, modellens koordinater)
 let calib = null;          // pågående kalibrering {pdf: [[x,y]...], model: [[x,y,z]...], waitPdf}
 let posPdfCache = null;    // item-id -> [x, y] i PDF-koordinater (för aktiv plan, kalibrering och nivå)
 
@@ -280,7 +280,53 @@ function positionsInPdf() {
   });
   return posPdfCache;
 }
-function invalidatePositions() { posPdfCache = null; }
+/* Objektens fotavtryck i PDF:en (bounding boxens hörn, eller bara mittpunkten
+   för positioner hämtade innan hörnen sparades) för objekt inom vald nivå. */
+let shapeCache = null;
+function objectShapesInPdf() {
+  const pos = positionsInPdf();
+  if (!pos) return null;
+  if (shapeCache) return shapeCache;
+  const byId = new Map(positions.map(p => [p.id, p]));
+  shapeCache = items.filter(it => pos.has(it.id)).map(it => {
+    const p = byId.get(it.id);
+    const poly = Number.isFinite(p.x0)
+      ? [[p.x0, p.y0], [p.x1, p.y0], [p.x1, p.y1], [p.x0, p.y1]].map(([x, y]) => modelToPdf(x, y))
+      : null;
+    return { it, center: pos.get(it.id), poly, zc: (p.z0 + p.z1) / 2 };
+  }).sort((a, b) => a.zc - b.zc); // lägre objekt först, högre ritas ovanpå
+  return shapeCache;
+}
+function invalidatePositions() { posPdfCache = null; shapeCache = null; }
+
+/* Varje planerat objekt i sin egen fasfärg (samma som i 3D-modellen) vid valt datum. */
+function drawObjects(ctx, objects, fontPx) {
+  const at = $("dateInput").value || todayIso();
+  const warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
+  const minPx = Math.max(3, fontPx / 4);
+  ctx.save();
+  ctx.lineWidth = 1;
+  for (const o of objects) {
+    const color = phaseColor(computeItemPhase(o.it, at, warn) || fallbackPhase(o.it));
+    ctx.fillStyle = color;
+    ctx.strokeStyle = shade(color, -0.45);
+    ctx.globalAlpha = 0.85;
+    const pts = o.poly ? o.poly.map(toPx) : null;
+    const big = pts && Math.max(...pts.map(q => Math.hypot(q[0] - pts[0][0], q[1] - pts[0][1]))) >= minPx;
+    ctx.beginPath();
+    if (big) {
+      pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+      ctx.closePath();
+    } else {
+      const [x, y] = toPx(o.center);
+      ctx.arc(x, y, minPx, 0, Math.PI * 2);
+    }
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 
 function updateCalibInfo() {
   const el = $("calibInfo");
@@ -361,7 +407,11 @@ async function fetchPositions() {
     const r = await askOpener("positions", {}, 120000);
     const fresh = new Map((r.positions || []).map(p => [p.id, p]));
     const round = v => Math.round(v * 1000) / 1000;
-    const rows = [...fresh.values()].map(p => ({ id: p.id, x: round(p.x), y: round(p.y), z0: round(p.z0), z1: round(p.z1) }));
+    const rows = [...fresh.values()].map(p => {
+      const r = { id: p.id, x: round(p.x), y: round(p.y), z0: round(p.z0), z1: round(p.z1) };
+      if (Number.isFinite(p.x0)) Object.assign(r, { x0: round(p.x0), x1: round(p.x1), y0: round(p.y0), y1: round(p.y1) });
+      return r;
+    });
     positions = [...positions.filter(p => !fresh.has(p.id)), ...rows];
     invalidatePositions();
     renderZones();
@@ -511,6 +561,8 @@ function renderZones() {
   ctx.clearRect(0, 0, zc.width, zc.height);
   if (!plan || !viewport) { renderZoneList(); return; }
   const fontPx = Math.max(14, Math.round(zc.width / 110));
+  const objects = $("showObjects").checked ? objectShapesInPdf() : null;
+  const badges = [];
   for (const zone of plan.zones || []) {
     const st = zoneStatus(zone);
     zone._status = st;
@@ -522,7 +574,8 @@ function renderZones() {
       ctx.beginPath();
       poly.forEach((p, i) => { const [x, y] = toPx(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
       ctx.closePath();
-      if (st.phase !== "ingen") { ctx.globalAlpha = ZONE_ALPHA; ctx.fillStyle = color; ctx.fill(); }
+      // Med objekten utritade blir zonfärgen svagare så objekten syns.
+      if (st.phase !== "ingen") { ctx.globalAlpha = objects && objects.length ? ZONE_ALPHA / 3 : ZONE_ALPHA; ctx.fillStyle = color; ctx.fill(); }
       ctx.globalAlpha = 1;
       ctx.lineWidth = selected ? Math.max(4, fontPx / 3) : Math.max(1.5, fontPx / 8);
       ctx.strokeStyle = selected ? "#0b5fff" : shade(color, -0.35);
@@ -532,9 +585,11 @@ function renderZones() {
     }
     // Etikett: kod + framdrift, vid kodtexten (eller mitt i zonen)
     const anchors = (zone.labels && zone.labels.length) ? zone.labels : [centroid(zone)];
-    anchors.filter(Boolean).forEach(a => drawBadge(ctx, toPx(a), `${zone.code}${st.progress != null ? " · " + st.progress + " %" : ""}`, color, fontPx, st.phase === "ingen"));
+    anchors.filter(Boolean).forEach(a => badges.push([toPx(a), `${zone.code}${st.progress != null ? " · " + st.progress + " %" : ""}`, color, st.phase === "ingen"]));
     ctx.restore();
   }
+  if (objects) drawObjects(ctx, objects, fontPx);
+  badges.forEach(([pt, text, color, hollow]) => drawBadge(ctx, pt, text, color, fontPx, hollow));
   drawCalibMarks(ctx, fontPx);
   renderZoneList();
   updateCalibInfo();
@@ -1085,6 +1140,11 @@ function bindUI() {
     invalidatePositions(); renderZones(); schedulePlanSave();
   };
   $("levelZ0").onchange = onLevel;
+  try { $("showObjects").checked = localStorage.getItem("lagesplan-objects") !== "0"; } catch (e) {}
+  $("showObjects").onchange = () => {
+    try { localStorage.setItem("lagesplan-objects", $("showObjects").checked ? "1" : "0"); } catch (e) {}
+    renderZones();
+  };
   $("levelZ1").onchange = onLevel;
   $("zeSelect3d").onclick = async () => {
     const z = plan && plan.zones.find(x => x.id === selectedZoneId);

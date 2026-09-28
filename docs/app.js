@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-28 09:20";
+const APP_VERSION = "2026-09-28 11:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -370,7 +370,8 @@ async function lagesplanPositions() {
       chunk.forEach(({ it, runtimeId }) => {
         const b = boxById.get(runtimeId);
         if (!b) { missing++; return; }
-        positions.push({ id: it.id, x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2, z0: b.min.z, z1: b.max.z });
+        positions.push({ id: it.id, x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2, z0: b.min.z, z1: b.max.z,
+          x0: b.min.x, x1: b.max.x, y0: b.min.y, y1: b.max.y });
       });
     }
   }
