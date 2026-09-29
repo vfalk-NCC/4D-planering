@@ -39,12 +39,14 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   });
   await page.route('https://components.connect.trimble.com/**', r => r.fulfill({ contentType: 'application/javascript', body: `
     window.__markups = new Map(); window.__nextId = 1; window.__camera = null; window.__toggled = [];
-    const addLines = arr => Promise.resolve(arr.map(m => { const id = window.__nextId++; window.__markups.set(id, { type: 'line', ...m, id }); return { ...m, id }; }));
+    window.__noIds = false;
+    const addLines = arr => Promise.resolve(arr.map(m => { const id = window.__nextId++; window.__markups.set(id, { type: 'line', ...m, id }); return window.__noIds ? { ...m } : { ...m, id }; }));
     window.TrimbleConnectWorkspace = { connect: function(t, cb) { window.__cb = cb; return Promise.resolve({
       project: { getProject: () => Promise.resolve({ id: '${PID}' }) },
       extension: { requestPermission: () => Promise.resolve('x') },
       markup: {
         addLineMarkups: addLines,
+        getLineMarkups: () => Promise.resolve([...window.__markups.values()]),
         removeMarkups: ids => { (ids || []).forEach(id => window.__markups.delete(id)); return Promise.resolve(); },
       },
       viewer: {
@@ -128,6 +130,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   if (!(await row('f').locator('.manual-tag').innerText()).includes('(2)')) fail('taggen ska visa antalet markeringar');
   console.log('OK: frihand fångas från Trimble Connects frihandsverktyg och linje sparas efter två klick');
 
+  await page.waitForTimeout(2500); // blinkningen efter kamerahoppet försvinner
   // 4) Visa markeringar av/på
   const before = (await shown()).length;
   await page.uncheck('#showManualMarks'); await page.waitForTimeout(200);
@@ -155,6 +158,22 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   await row('f').locator('[data-action="progress-cancel"]').click();
   if (await row('f').locator('.progress-save').isVisible()) fail('✕ ska ångra ändringen');
   console.log('OK: framdriften ändras direkt i listan med reglaget och Spara');
+
+  // 5b) Klick på aktivitetsraden flyttar kameran (kvaternion mot markeringen)
+  await page.evaluate(() => { window.__camera = null; });
+  await row('f').locator('[data-action="select"]').click(); await page.waitForTimeout(2500);
+  const cam2 = await page.evaluate(() => window.__camera);
+  if (!cam2 || !cam2.quaternion || !cam2.position) fail('klick på raden ska sätta kameran med position och rotation, fick ' + JSON.stringify(cam2));
+  console.log('OK: klick på aktiviteten flyttar kameran till markeringen');
+  // 5c) Trimble Connect utan id i svaret: linjerna ska ändå kunna tas bort/ritas om
+  await page.evaluate(() => { window.__noIds = true; });
+  await page.uncheck('#showManualMarks'); await page.check('#showManualMarks'); await page.waitForTimeout(300);
+  const n1 = (await shown()).length;
+  await page.evaluate(() => renderManualMarks()); await page.waitForTimeout(300);
+  await page.evaluate(() => renderManualMarks()); await page.waitForTimeout(300);
+  if ((await shown()).length !== n1) fail('omritning utan id får inte lämna kvar gamla linjer: ' + n1 + ' -> ' + (await shown()).length);
+  await page.evaluate(() => { window.__noIds = false; });
+  console.log('OK: linjerna ritas om utan dubbletter även när Trimble Connect inte returnerar id');
 
   // 6) Ta bort (högerklick)
   await row('a').locator('.manual-tag').click({ button: 'right' }); await page.waitForTimeout(800);

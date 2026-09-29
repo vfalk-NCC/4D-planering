@@ -79,6 +79,19 @@ function markColor(m) {
   const phase = computeItemPhase(it, at, settings.warningDaysBeforeEnd || 0) || "planerad";
   return colors[phase] || "#888888";
 }
+/* Id:n för linjer vi just lagt till. Om Trimble Connect inte returnerar
+   id:n letas de upp bland markeringarna i vyn (via koordinaterna). */
+async function addedLineIds(lines, added) {
+  let ids = (added || []).map(x => x && x.id).filter(x => x !== undefined && x !== null);
+  if (ids.length >= lines.length || !API.markup.getLineMarkups) return ids;
+  try {
+    const all = await API.markup.getLineMarkups();
+    const key = l => [l.start.positionX, l.start.positionY, l.start.positionZ, l.end.positionX, l.end.positionY, l.end.positionZ].map(v => Math.round(v)).join(",");
+    const want = new Set(lines.map(key));
+    ids = (all || []).filter(m => m.id !== undefined && want.has(key(m))).map(m => m.id);
+  } catch (e) { /* ingen lista – då går de inte att ta bort */ }
+  return ids;
+}
 async function clearMarkupIds(ids) {
   if (!ids.length || !API || !API.markup) return;
   try { await API.markup.removeMarkups(ids); } catch (e) { console.warn("Kunde inte ta bort markeringar", e); }
@@ -96,23 +109,62 @@ async function renderManualMarks() {
   });
   try {
     const added = await API.markup.addLineMarkups(lines);
-    const ids = (added || []).map(x => x.id).filter(x => x !== undefined);
+    const ids = await addedLineIds(lines, added);
     if (seq !== markRenderSeq) { await clearMarkupIds(ids); return; }
     markShownIds = ids;
   } catch (e) { console.warn("Kunde inte rita markeringarna i 3D", e); }
 }
-/* Kameran till en aktivitets markeringar. */
+/* Kamerans rotation (kvaternion) för att titta från pos mot target.
+   Trimble Connect: identitet = tittar längs -Z med +Y uppåt; modellen har Z uppåt. */
+function lookAtQuaternion(pos, target) {
+  const norm = v => { const l = Math.hypot(...v) || 1; return v.map(x => x / l); };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const f = norm([target[0] - pos[0], target[1] - pos[1], target[2] - pos[2]]);
+  let r = cross(f, [0, 0, 1]);
+  r = Math.hypot(...r) < 1e-6 ? [1, 0, 0] : norm(r);
+  const u = cross(r, f), b = [-f[0], -f[1], -f[2]];
+  // Rotationsmatris med kolumnerna höger, upp, bakåt -> kvaternion
+  const m00 = r[0], m01 = u[0], m02 = b[0], m10 = r[1], m11 = u[1], m12 = b[1], m20 = r[2], m21 = u[2], m22 = b[2];
+  const tr = m00 + m11 + m22;
+  let x, y, z, w;
+  if (tr > 0) { const S = Math.sqrt(tr + 1) * 2; w = 0.25 * S; x = (m21 - m12) / S; y = (m02 - m20) / S; z = (m10 - m01) / S; }
+  else if (m00 > m11 && m00 > m22) { const S = Math.sqrt(1 + m00 - m11 - m22) * 2; w = (m21 - m12) / S; x = 0.25 * S; y = (m01 + m10) / S; z = (m02 + m20) / S; }
+  else if (m11 > m22) { const S = Math.sqrt(1 + m11 - m00 - m22) * 2; w = (m02 - m20) / S; x = (m01 + m10) / S; y = 0.25 * S; z = (m12 + m21) / S; }
+  else { const S = Math.sqrt(1 + m22 - m00 - m11) * 2; w = (m10 - m01) / S; x = (m02 + m20) / S; y = (m12 + m21) / S; z = 0.25 * S; }
+  return { x, y, z, w, up: u };
+}
+/* Kameran till en aktivitets markeringar, som blinkar till så att de syns. */
 async function jumpToMarks(it) {
   const ms = marksForItem(it);
   const pts = ms.flatMap(m => markSegments(m).flat());
-  if (!pts.length) return;
+  if (!pts.length) return false;
   if (!marksShown()) setMarksShown(true);
   const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), zs = pts.map(p => p[2] || 0);
   const c = [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, (Math.min(...zs) + Math.max(...zs)) / 2];
-  const r = Math.max(8, Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), Math.max(...zs) - Math.min(...zs)));
+  const r = Math.max(10, Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), Math.max(...zs) - Math.min(...zs)) * 1.2);
+  const pos = [c[0] + r * 0.7, c[1] - r * 0.7, c[2] + r * 0.9];
+  const q = lookAtQuaternion(pos, c);
   try {
-    await API.viewer.setCamera({ position: { x: c[0] + r * 0.9, y: c[1] - r * 0.9, z: c[2] + r * 0.8 }, lookAt: { x: c[0], y: c[1], z: c[2] } }, { animationTime: 600 });
+    await API.viewer.setCamera({
+      position: { x: pos[0], y: pos[1], z: pos[2] },
+      quaternion: { x: q.x, y: q.y, z: q.z, w: q.w },
+      lookAt: { x: c[0], y: c[1], z: c[2] },
+      upDirection: { x: q.up[0], y: q.up[1], z: q.up[2] },
+    }, { animationTime: 600 });
   } catch (e) { console.warn("Kunde inte flytta kameran", e); }
+  flashMarks(ms);
+  return true;
+}
+/* Ritar markeringarna i klarblått en kort stund. */
+async function flashMarks(ms) {
+  if (!API || !API.markup) return;
+  const color = { r: 11, g: 95, b: 255, a: 255 };
+  const lines = ms.flatMap(m => markSegments(m).map(([p, q]) => ({ start: toPick(p), end: toPick(q), color })));
+  try {
+    const added = await API.markup.addLineMarkups(lines);
+    const ids = await addedLineIds(lines, added);
+    setTimeout(() => clearMarkupIds(ids), 2200);
+  } catch (e) { /* bara visuell återkoppling */ }
 }
 async function deleteMarksFor(it) {
   const ms = marksForItem(it);
@@ -151,7 +203,7 @@ async function showPreview() {
   // Punkterna som små kryss så att en enda punkt också syns.
   markDraw.pts.forEach(p => { const d = 0.25; lines.push({ start: toPick([p[0] - d, p[1], p[2]]), end: toPick([p[0] + d, p[1], p[2]]), color }, { start: toPick([p[0], p[1] - d, p[2]]), end: toPick([p[0], p[1] + d, p[2]]), color }); });
   if (!lines.length) return;
-  try { const added = await API.markup.addLineMarkups(lines); markPreviewIds = (added || []).map(x => x.id).filter(x => x !== undefined); }
+  try { const added = await API.markup.addLineMarkups(lines); markPreviewIds = await addedLineIds(lines, added); }
   catch (e) { console.warn("Förhandsvisning", e); }
 }
 function renderDrawBar() {

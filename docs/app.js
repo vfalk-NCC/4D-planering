@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-29 17:00";
+const APP_VERSION = "2026-09-29 18:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -3813,9 +3813,13 @@ function renderItemList() {
     const it = indexToItem[Number(row.dataset.index)];
     const meta = rowMeta[Number(row.dataset.index)] || {};
 
-    row.querySelector('[data-action="select"]').onclick = (ev) => (meta.rep && !meta.expanded)
-      ? onActivityRowClicked(meta.members, ev)
-      : onItemRowClicked(it, ev, indexToItem);
+    row.querySelector('[data-action="select"]').onclick = (ev) => {
+      // Manuella markeringar: kameran till markeringen (även för ej kopplade aktiviteter).
+      if (typeof marksForItem === "function" && marksForItem(it).length && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey) jumpToMarks(it);
+      return (meta.rep && !meta.expanded)
+        ? onActivityRowClicked(meta.members, ev)
+        : onItemRowClicked(it, ev, indexToItem);
+    };
     row.querySelector('[data-action="comments"]').onclick = () => openCommentsDialog(it);
     row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it, { single: Boolean(meta.member) });
     row.querySelector('[data-action="delete"]').onclick = () => meta.rep ? deleteActivityFromList(meta.members) : deleteItemFromList(it);
