@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-29 08:00";
+const APP_VERSION = "2026-09-29 17:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -221,9 +221,11 @@ async function initApp() {
   await refreshItems();
   await refreshCommentCounts();
   await refreshActivities();
+  if (typeof loadManualMarks === "function") await loadManualMarks();
   buildFilterOptions();
   renderItemList();
   initTimelineRange();
+  if (typeof renderManualMarks === "function") renderManualMarks();
 }
 
 /**
@@ -241,9 +243,11 @@ async function refreshAllData() {
     await refreshItems();
     await refreshCommentCounts();
     await refreshActivities();
+    if (typeof loadManualMarks === "function") await loadManualMarks();
     buildFilterOptions();
     renderItemList();
     initTimelineRange();
+    if (typeof renderManualMarks === "function") renderManualMarks();
   } catch (e) {
     console.error("Kunde inte hämta senaste data:", e);
     alert("Kunde inte hämta senaste data: " + e.message);
@@ -275,6 +279,8 @@ function onWorkspaceEvent(event, data) {
     }
     return;
   }
+  // Manuella markeringar: medan man ritar tas klick/frihand om hand där.
+  if (typeof manualMarksEvent === "function" && manualMarksEvent(event, data)) return;
   // Uppdatera markeringsräknaren och synka markeringen mot "Planerade
   // objekt"-listan när användaren markerar objekt i modellen.
   if (event === "viewer.onSelectionChanged" || event === "extension.onSelectionChanged") {
@@ -1011,9 +1017,11 @@ function armCoupleMode(item) {
 }
 
 function cancelCoupleMode() {
+  if (typeof markDraw !== "undefined" && markDraw) stopMarkDraw();
   pendingCoupleItem = null;
   coupleCollected = [];
   setCoupleModeBanner(null);
+  if (typeof renderDrawBar === "function") renderDrawBar();
 }
 
 function setCoupleModeBanner(text) {
@@ -1058,6 +1066,7 @@ function renderCoupleMode() {
   const saveBtn = document.getElementById("btnSaveCoupleMode");
   saveBtn.disabled = usable.length === 0;
   saveBtn.innerText = `Spara (${usable.length})`;
+  if (typeof renderDrawBar === "function") renderDrawBar();
 }
 
 async function removeCoupleObject(index) {
@@ -2596,11 +2605,13 @@ async function applyTimelineColors() {
   const colors = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
   const opacities = { ...DEFAULT_PHASE_OPACITIES, ...(settings.statusOpacities || {}) };
   for (const modelId of Object.keys(byModel)) {
+    if (modelId === "null" || modelId === "undefined") continue; // ej kopplade (t.ex. bara manuell markering)
     const group = byModel[modelId];
     for (const phase of Object.keys(group)) {
       await colorGroup(modelId, group[phase], colors[phase], opacities[phase]);
     }
   }
+  if (typeof renderManualMarks === "function") renderManualMarks();
 }
 
 /**
@@ -3781,7 +3792,7 @@ function renderItemList() {
         <div class="item-row${entry.rep ? " group-rep" : ""}${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}${it.id === flashEditId && Date.now() < flashEditUntil ? " flash-edit" : ""}" data-index="${idx}" data-item-id="${escapeHtml(it.id)}"${activityKeyOf(it) ? ` data-activity-key="${escapeHtml(activityKeyOf(it))}"` : ""}>
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
-              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}${!it.modelId ? '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>' : ""}<br/>
+              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}${typeof manualMarkTagHtml === "function" && manualMarkTagHtml(it) ? manualMarkTagHtml(it) : !it.modelId ? '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>' : ""}<br/>
               <span class="item-sub">${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span><br/>
               <span class="item-dates">${escapeHtml(shownDates)} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
             </span>
@@ -3791,7 +3802,7 @@ function renderItemList() {
             <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
             <button class="delete-btn" data-action="delete" title="${entry.rep ? "Radera aktiviteten med alla dess objekt" : "Radera kopplingen"}">🗑️</button>
           </div>
-          <div class="progress-track" title="Framdrift: ${progress}%"><div class="progress-fill" style="width:${progress}%"></div></div>
+          ${typeof progressSliderHtml === "function" ? progressSliderHtml(progress) : `<div class="progress-track" title="Framdrift: ${progress}%"><div class="progress-fill" style="width:${progress}%"></div></div>`}
         </div>`;
     });
   });
@@ -3820,6 +3831,12 @@ function renderItemList() {
     };
     const coupleBtn = row.querySelector('[data-action="couple"]');
     if (coupleBtn) coupleBtn.onclick = (ev) => { ev.stopPropagation(); armCoupleMode(it); };
+    const marksTag = row.querySelector('[data-action="marks"]');
+    if (marksTag) {
+      marksTag.onclick = (ev) => { ev.stopPropagation(); jumpToMarks(it); };
+      marksTag.oncontextmenu = (ev) => { ev.preventDefault(); ev.stopPropagation(); deleteMarksFor(it); };
+    }
+    if (typeof bindProgressSlider === "function" && !meta.member) bindProgressSlider(row, meta.rep ? meta.members : [it], Number.isFinite(it.progress) ? it.progress : 0);
   });
 
   Array.from(el.querySelectorAll(".group-header")).forEach(headerEl => {
@@ -4529,7 +4546,7 @@ function setStatusQuick(targets, status) {
 async function loadCoupledModels() {
   const btn = document.getElementById("btnLoadCoupledModels");
   const modelIds = [...new Set(items.map(it => it.modelId).filter(Boolean))];
-  if (!modelIds.length) { alert("Inga objekt är kopplade till någon modell ännu."); return; }
+  if (!modelIds.length && !(typeof manualMarks !== "undefined" && manualMarks.length)) { alert("Inga objekt är kopplade till någon modell ännu."); return; }
   btn.disabled = true;
   const old = btn.innerText;
   btn.innerText = "Tänder…";
@@ -4546,7 +4563,9 @@ async function loadCoupledModels() {
       try { await API.viewer.toggleModel(spec ? spec.id : id, true, false); loaded++; }
       catch (e) { failed.push(spec ? spec.name : id); }
     }
-    showLagesplanBanner(`💡 ${loaded} modeller tända${already ? `, ${already} var redan tända` : ""}${failed.length ? ` – ${failed.length} hittades inte (öppna mappen i Trimble Connect och försök igen)` : ""}.`, 7000);
+    const nMarks = typeof manualMarks !== "undefined" ? manualMarks.length : 0;
+    if (nMarks && typeof setMarksShown === "function") setMarksShown(true);
+    showLagesplanBanner(`💡 ${loaded} modeller tända${already ? `, ${already} var redan tända` : ""}${nMarks ? `, ${nMarks} manuella markeringar visas` : ""}${failed.length ? ` – ${failed.length} hittades inte (öppna mappen i Trimble Connect och försök igen)` : ""}.`, 7000);
   } finally {
     btn.disabled = false;
     btn.innerText = old;

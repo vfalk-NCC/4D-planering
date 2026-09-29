@@ -169,9 +169,12 @@
         <label class="switch" style="margin-bottom:6px;" title="Visar bara objekt som pågår idag (dagens datum ligger mellan start- och slutdatum, eller startdatum har passerat utan att slutdatum är satt) - går att kombinera med Dölj/Visa endast klarmarkerade.">
           <input type="checkbox" id="todayOnly" /> Endast idag
         </label>
+        <label class="switch" style="margin-bottom:6px;" title="Visar de manuella markeringarna (linjer, ytor, volymer och frihand) i 3D, i aktivitetens statusfärg">
+          <input type="checkbox" id="showManualMarks" checked /> Visa markeringar
+        </label>
       </div>
       <div class="row list-actions">
-        <button id="btnLoadCoupledModels" title="Tänder (läser in) alla modeller i Trimble Connect som har objekt kopplade i planeringen">💡 Tänd kopplade modeller</button>
+        <button id="btnLoadCoupledModels" title="Tänder (läser in) alla modeller i Trimble Connect som har objekt kopplade i planeringen och visar de manuella markeringarna">💡 Kopplade modeller/markeringar</button>
         <button id="btnCollapseAllGroups" title="Minimera alla grupper i listan">Minimera alla</button>
         <button id="btnSelectAllCoupled" title="Markera alla kopplade objekt i 3D-vyn">Markera alla</button>
         <button id="btnRenameValue" title="Byt namn på Område/Aktivitet/Entreprenör för alla objekt som har det, i ett svep">✏️ Byt namn</button>
@@ -184,6 +187,7 @@
       <div id="coupleModeBanner" class="couple-mode-banner hidden">
         <span id="coupleModeText"></span>
         <ul id="coupleModeList" class="couple-mode-list"></ul>
+        <div id="markDrawBar" class="mark-draw-bar hidden"></div>
         <div class="couple-mode-actions">
           <button id="btnSaveCoupleMode" class="primary" disabled>Spara (0)</button>
           <button id="btnCancelCoupleMode">Avbryt</button>
@@ -473,5 +477,6 @@
 
   <script src="github-storage.js"></script>
   <script src="app.js"></script>
+  <script src="manual-markings.js"></script>
 </body>
 </html>

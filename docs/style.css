@@ -737,3 +737,36 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
 .danger-zone summary { cursor: pointer; color: #b91c1c; font-weight: 600; font-size: 12px; }
 button.danger { background: #dc2626; color: white; border-color: #dc2626; }
 .item-row.flash-edit { animation: item-row-flash 1.6s ease-out; }
+
+/* Manuella markeringar och framdrift direkt i listan (2026-09-29) */
+.manual-tag {
+  font-size: 9px;
+  color: #7c3aed;
+  margin-left: 6px;
+  font-weight: 700;
+  cursor: pointer;
+  background: #f3e8ff;
+  border-radius: 8px;
+  padding: 0 5px;
+}
+.manual-tag:hover { background: #e9d5ff; }
+.mark-draw-bar { border-top: 1px dashed #c4b5fd; padding-top: 6px; display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
+.mark-draw-bar .draw-lead { color: #5b21b6; font-weight: 600; }
+.mark-draw-bar .draw-shapes { display: flex; flex-wrap: wrap; gap: 4px; }
+.mark-draw-bar .draw-shapes button { background: #fff; border: 1px solid #c4b5fd; border-radius: 12px; color: #5b21b6; }
+.mark-draw-bar .draw-shapes button:hover { background: #f5f3ff; }
+.mark-draw-bar .draw-active { color: #3b0764; }
+.mark-draw-bar .draw-height { display: flex; gap: 6px; align-items: center; }
+.mark-draw-bar .draw-height input { width: 60px; }
+.progress-edit { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.progress-slider {
+  -webkit-appearance: none; appearance: none;
+  flex: 1; height: 5px; margin: 0; border-radius: 3px; cursor: pointer;
+  background: linear-gradient(to right, var(--accent) var(--p, 0%), #e2e5ea var(--p, 0%));
+}
+.progress-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); opacity: 0; transition: opacity .15s; }
+.progress-slider::-moz-range-thumb { width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); opacity: 0; }
+.item-row:hover .progress-slider::-webkit-slider-thumb, .progress-slider:focus::-webkit-slider-thumb { opacity: 1; }
+.item-row:hover .progress-slider::-moz-range-thumb, .progress-slider:focus::-moz-range-thumb { opacity: 1; }
+.progress-save { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; }
+.progress-save button { font-size: 10px; padding: 1px 7px; }
