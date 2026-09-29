@@ -185,12 +185,13 @@ function askOrthoDate(def) {
 /* Egna lager (Victors önskemål 2026-09-28): varje notering/etableringsobjekt
    ligger på ett namngivet lager. "Allmänt" och "Etablering" finns alltid;
    egna lager sparas som { type: "layer", name } i site_layers.json. */
+const isSiteObj = x => x.type !== "ortho" && x.type !== "layer" && x.type !== "layermeta";
 const defaultLayerOf = x => x.type === "note" ? "Allmänt" : "Etablering";
 const layerOf = x => x.layer || defaultLayerOf(x);
 function userLayers() {
   const names = new Set(["Allmänt", "Etablering"]);
   siteItems.filter(x => x.type === "layer").sort((a, b) => (a.order || 0) - (b.order || 0)).forEach(x => names.add(x.name));
-  siteItems.filter(x => x.type !== "ortho" && x.type !== "layer").forEach(x => names.add(layerOf(x)));
+  siteItems.filter(x => isSiteObj(x)).forEach(x => names.add(layerOf(x)));
   return [...names];
 }
 const noteLayers = userLayers;
@@ -202,11 +203,85 @@ async function createLayer(name) {
   ls("ul:" + name).visible = true; saveLayerState();
   return name;
 }
+/* Mappar och visningsnamn i lagerlistan (Victors önskemål 2026-09-29).
+   Sparas för hela projektet som en post { type: "layermeta" } i
+   site_layers.json: names = nytt visningsnamn per lager (även de fasta
+   lagren), folders = [{ id, name }], folderOf = lager -> mapp. */
+const META_ID = "layermeta";
+function layerMeta() {
+  const m = siteItems.find(x => x.id === META_ID) || {};
+  return { id: META_ID, type: "layermeta", names: { ...(m.names || {}) }, folders: (m.folders || []).map(f => ({ ...f })), folderOf: { ...(m.folderOf || {}) } };
+}
+function saveLayerMeta(m) { return saveSiteItem(m, false, { record: false }); }
+const LAYER_DEFAULT_NAMES = { pdf: "Ritningen (PDF)", zones: "Zoner", objects: "Objekt", photos: "Foton" };
+function layerDisplayName(key) {
+  const n = (siteItems.find(x => x.id === META_ID) || {}).names || {};
+  return n[key] || LAYER_DEFAULT_NAMES[key] || (key.startsWith("ul:") ? key.slice(3) : key);
+}
+const ulName = l => layerDisplayName("ul:" + l);
+async function renameFixedLayer(key) {
+  const def = LAYER_DEFAULT_NAMES[key] || key.slice(3);
+  const v = prompt(`Nytt namn på lagret (tomt = "${def}"):`, layerDisplayName(key));
+  if (v === null) return;
+  const m = layerMeta();
+  if (v.trim() && v.trim() !== def) m.names[key] = v.trim(); else delete m.names[key];
+  await saveLayerMeta(m);
+  renderActiveLayerSelect();
+}
+async function createFolder() {
+  const name = (prompt("Namn på mappen:", "Ny mapp") || "").trim();
+  if (!name) return;
+  const m = layerMeta();
+  m.folders.push({ id: ghNewId(), name });
+  await saveLayerMeta(m);
+  setSaveStatus(`📁 Mappen "${name}" skapad – dra lager till den.`);
+}
+async function renameFolder(id) {
+  const m = layerMeta(), f = m.folders.find(x => x.id === id);
+  if (!f) return;
+  const name = (prompt("Nytt namn på mappen:", f.name) || "").trim();
+  if (!name || name === f.name) return;
+  f.name = name;
+  await saveLayerMeta(m);
+}
+async function deleteFolder(id) {
+  const m = layerMeta(), f = m.folders.find(x => x.id === id);
+  if (!f || !confirm(`Ta bort mappen "${f.name}"? Lagren i den ligger kvar utanför mappen.`)) return;
+  m.folders = m.folders.filter(x => x.id !== id);
+  Object.keys(m.folderOf).forEach(k => { if (m.folderOf[k] === id) delete m.folderOf[k]; });
+  await saveLayerMeta(m);
+}
+async function moveLayerToFolder(key, folderId) {
+  const m = layerMeta();
+  if ((m.folderOf[key] || null) === (folderId || null)) return;
+  if (folderId) m.folderOf[key] = folderId; else delete m.folderOf[key];
+  await saveLayerMeta(m);
+}
+/* Tänd/släck alla lager i en mapp. */
+function setFolderVisible(id, on) {
+  const keys = layerRowKeys().filter(k => layerMeta().folderOf[k] === id);
+  const ortho = keys.filter(k => k.startsWith("ortho:"));
+  keys.filter(k => !k.startsWith("ortho:")).forEach(k => { ls(k).visible = on; });
+  if (ortho.length) {
+    if (orthoFollowDate()) setOrthoFollowDate(false);
+    // "Ett i taget": en tänd mapp visar dess nyaste foto.
+    if (on && orthoExclusive()) showOnlyOrtho(orthosByDate().filter(o => ortho.includes("ortho:" + o.id)).pop().id);
+    else ortho.forEach(k => { ls(k).visible = on; });
+  }
+  saveLayerState();
+  if (keys.includes("objects")) $("showObjects").checked = ls("objects").visible;
+  if (keys.includes("photos")) $("showPhotos").checked = ls("photos").visible;
+  orthoChanged(); renderZones();
+}
+function layerRowKeys() {
+  return [...orthosByDate().reverse().map(o => "ortho:" + o.id), "pdf", "zones", "objects", ...userLayers().map(l => "ul:" + l), "photos"];
+}
+
 function renderActiveLayerSelect() {
   const sel = $("activeLayer");
   if (!sel) return;
   const cur = sel.value || (() => { try { return localStorage.getItem("lagesplan-activelayer-" + projectId); } catch (e) { return null; } })() || "Etablering";
-  sel.innerHTML = userLayers().map(l => `<option${l === cur ? " selected" : ""}>${escHtml(l)}</option>`).join("");
+  sel.innerHTML = userLayers().map(l => `<option value="${escHtml(l)}"${l === cur ? " selected" : ""}>${escHtml(ulName(l))}</option>`).join("");
   if (!userLayers().includes(cur)) sel.value = "Etablering";
 }
 
@@ -699,7 +774,7 @@ function siteVisibleAtDate(x) {
   return (!x.from || x.from <= d) && (!x.to || x.to >= d);
 }
 function siteShown(x) {
-  if (x.type === "ortho" || x.type === "layer") return false;
+  if (!isSiteObj(x)) return false;
   return ls("ul:" + layerOf(x)).visible && siteVisibleAtDate(x);
 }
 const isRect = x => x.type === "shed" || x.type === "storage" || x.type === "symbol";
@@ -1425,7 +1500,7 @@ function openSitePop(rec, isNew) {
       <label>Text</label><textarea class="sp-text">${escHtml(rec.text || "")}</textarea>`
     : `<label>Namn</label><input type="text" class="sp-name" value="${escHtml(rec.name || "")}" placeholder="${escHtml(symDef ? symDef.label : k.label)}" />`}
     <label>Lager</label>
-    <select class="sp-layer">${layers.map(l => `<option${l === layerOf(rec) ? " selected" : ""}>${escHtml(l)}</option>`).join("")}<option value="__new">＋ Nytt lager…</option></select>
+    <select class="sp-layer">${layers.map(l => `<option value="${escHtml(l)}"${l === layerOf(rec) ? " selected" : ""}>${escHtml(ulName(l))}</option>`).join("")}<option value="__new">＋ Nytt lager…</option></select>
     ${rec.type === "crane" ? `<div class="row2"><div><label>Räckvidd (m)</label><input type="text" class="sp-radius" value="${escHtml(String(rec.radius ?? 40))}" /></div><div><label>Kapacitet (t)</label><input type="text" class="sp-cap" value="${escHtml(String(rec.capacity ?? ""))}" /></div></div>
       <label>Lyftkurva <span class="muted">(radie:ton, t.ex. 20:5, 30:3.5, 40:2)</span></label><input type="text" class="sp-chart" value="${escHtml(rec.chart || "")}" placeholder="20:5, 40:2" />` : ""}
     ${rec.type === "route" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-rw" value="${fmtIn(Number(rec.w) || 4)}" /></div><div><label>&nbsp;</label><label style="display:flex;gap:4px;align-items:center;margin:0;"><input type="checkbox" class="sp-two"${rec.twoWay ? " checked" : ""} style="width:auto;" /> Dubbelriktad</label></div></div>
@@ -1532,9 +1607,8 @@ function closeSitePop() {
 // Lagerpanelen
 // ---------------------------------------------------------------------
 function layerRow(key, label, opts = {}) {
-  if (opts.ul) label = label; // egna lager: namn + antal objekt
   const st = ls(key, opts);
-  return `<div class="layer-row${opts.sub ? " sub" : ""}" data-layer="${escHtml(key)}">
+  return `<div class="layer-row${opts.sub ? " sub" : ""}${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}" data-layer="${escHtml(key)}">
       <input type="checkbox" class="lr-vis"${st.visible ? " checked" : ""} title="Visa/dölj" />
       <span class="ln" title="${escHtml(label)}">${label}</span>
       ${opts.noOpacity ? "<span></span>" : `<input type="range" class="lr-op" min="0" max="100" value="${st.opacity}" title="Genomskinlighet ${st.opacity} %" />`}
@@ -1545,20 +1619,75 @@ function layerRow(key, label, opts = {}) {
 function renderLayerPanel() {
   const el = $("layerList");
   if (!el) return;
-  const rows = [];
-  orthosByDate().reverse().forEach(o => rows.push(layerRow("ortho:" + o.id, `<span class="or-name" title="${escHtml(o.caption ? o.caption + " – " : "")}Dubbelklicka för att ändra namn, fotodatum och bildtext">🛰 ${escHtml(o.name)}</span> <small>${escHtml(orthoDate(o))}${o.caption ? " · 💬" : ""}${o.orig && o.orig.pixel_m ? ` · ${Math.round(o.orig.pixel_m * 100)} cm/px` : ""}</small>`, { del: true })));
-  rows.push(layerRow("pdf", "📄 Ritningen (PDF)", {
-    extra: orthos().length ? `<label class="blend"><input type="checkbox" class="lr-mult"${layerState.pdfMultiply !== false ? " checked" : ""} /> Genomskinlig vit bakgrund över fotot</label>` : ""
-  }));
-  rows.push(layerRow("zones", "🟧 Zoner"));
-  rows.push(layerRow("objects", "🔷 Objekt"));
-  userLayers().forEach(l => {
-    const n = siteItems.filter(x => x.type !== "ortho" && x.type !== "layer" && layerOf(x) === l).length;
-    rows.push(layerRow("ul:" + l, `<span class="ul-name" title="Dubbelklicka för att byta namn">🗂 ${escHtml(l)}</span> <small>${n}</small>`, { del: l !== "Allmänt" && l !== "Etablering", ul: l }));
+  const meta = layerMeta();
+  const folderIds = new Set(meta.folders.map(f => f.id));
+  const inFolder = k => folderIds.has(meta.folderOf[k]) ? meta.folderOf[k] : null;
+  const rowHtml = {};
+  const name = (key, cls, icon) => `<span class="${cls}" title="Dubbelklicka för att byta namn">${icon} ${escHtml(layerDisplayName(key))}</span>`;
+  orthosByDate().forEach(o => { rowHtml["ortho:" + o.id] = opts => layerRow("ortho:" + o.id, `<span class="or-name" title="${escHtml(o.caption ? o.caption + " – " : "")}Dubbelklicka för att ändra namn, fotodatum och bildtext">🛰 ${escHtml(o.name)}</span> <small>${escHtml(orthoDate(o))}${o.caption ? " · 💬" : ""}${o.orig && o.orig.pixel_m ? ` · ${Math.round(o.orig.pixel_m * 100)} cm/px` : ""}</small>`, { del: true, ...opts }); });
+  rowHtml.pdf = opts => layerRow("pdf", name("pdf", "fx-name", "📄"), {
+    extra: orthos().length ? `<label class="blend"><input type="checkbox" class="lr-mult"${layerState.pdfMultiply !== false ? " checked" : ""} /> Genomskinlig vit bakgrund över fotot</label>` : "", ...opts
   });
-  rows.push(layerRow("photos", "📷 Foton", { noOpacity: true }));
+  rowHtml.zones = opts => layerRow("zones", name("zones", "fx-name", "🟧"), opts);
+  rowHtml.objects = opts => layerRow("objects", name("objects", "fx-name", "🔷"), opts);
+  userLayers().forEach(l => {
+    const n = siteItems.filter(x => isSiteObj(x) && layerOf(x) === l).length;
+    const fixed = l === "Allmänt" || l === "Etablering";
+    rowHtml["ul:" + l] = opts => layerRow("ul:" + l, `${name("ul:" + l, fixed ? "fx-name" : "ul-name", "🗂")} <small>${n}</small>`, { del: !fixed, ul: l, ...opts });
+  });
+  rowHtml.photos = opts => layerRow("photos", name("photos", "fx-name", "📷"), { noOpacity: true, ...opts });
+  const keys = layerRowKeys();
+  const rows = [];
+  // Mappar först (i den ordning de skapades), med sina lager; sedan resten.
+  meta.folders.forEach(f => {
+    const kids = keys.filter(k => inFolder(k) === f.id);
+    const open = layerState["folder:" + f.id] ? layerState["folder:" + f.id].open !== false : true;
+    const nOn = kids.filter(k => ls(k).visible).length;
+    rows.push(`<div class="layer-row folder-row" data-folder="${escHtml(f.id)}">
+        <input type="checkbox" class="fr-vis"${nOn ? " checked" : ""} data-mixed="${nOn > 0 && nOn < kids.length ? 1 : 0}" title="Visa/dölj allt i mappen"${kids.length ? "" : " disabled"} />
+        <span class="ln"><button class="fr-toggle" title="Fäll ut/ihop">${open ? "▾" : "▸"}</button><span class="fr-name" title="Dubbelklicka för att byta namn">📁 ${escHtml(f.name)}</span> <small>${kids.length}</small></span>
+        <span></span>
+        <button class="fr-del" title="Ta bort mappen (lagren ligger kvar)">🗑️</button>
+      </div>`);
+    kids.forEach(k => rows.push(rowHtml[k]({ inFolder: true, hidden: !open })));
+  });
+  keys.filter(k => !inFolder(k)).forEach(k => rows.push(rowHtml[k]({})));
   el.innerHTML = rows.join("");
+  el.querySelectorAll(".folder-row").forEach(row => {
+    const id = row.dataset.folder;
+    const vis = row.querySelector(".fr-vis");
+    vis.indeterminate = vis.dataset.mixed === "1";
+    vis.onchange = e => setFolderVisible(id, e.target.checked);
+    row.querySelector(".fr-toggle").onclick = () => {
+      const st = layerState["folder:" + id] || (layerState["folder:" + id] = {});
+      st.open = st.open === false; saveLayerState(); renderLayerPanel();
+    };
+    row.querySelector(".fr-name").ondblclick = () => renameFolder(id);
+    row.querySelector(".fr-del").onclick = () => deleteFolder(id);
+  });
+  // Dra ett lager till en mapp – eller ut ur mappen (släpp på ett lager utanför mappar).
+  el.querySelectorAll(".layer-row[data-layer]").forEach(row => {
+    // Bara namnet startar ett drag (annars skulle reglagen dras med).
+    const ln = row.querySelector(".ln");
+    ln.title = ln.title || "Dra till en mapp";
+    ln.addEventListener("mousedown", () => { row.draggable = true; });
+    row.addEventListener("mouseup", () => { row.draggable = false; });
+    row.addEventListener("dragstart", e => { e.dataTransfer.setData("text/x-layer", row.dataset.layer); e.dataTransfer.effectAllowed = "move"; row.classList.add("dragging"); });
+    row.addEventListener("dragend", () => { row.classList.remove("dragging"); row.draggable = false; });
+  });
   el.querySelectorAll(".layer-row").forEach(row => {
+    const target = () => row.dataset.folder || (row.classList.contains("in-folder") ? layerMeta().folderOf[row.dataset.layer] : null);
+    row.addEventListener("dragover", e => { if (![...e.dataTransfer.types].includes("text/x-layer")) return; e.preventDefault(); row.classList.add("drop"); });
+    row.addEventListener("dragleave", () => row.classList.remove("drop"));
+    row.addEventListener("drop", e => {
+      row.classList.remove("drop");
+      const key = e.dataTransfer.getData("text/x-layer");
+      if (!key) return;
+      e.preventDefault();
+      moveLayerToFolder(key, target());
+    });
+  });
+  el.querySelectorAll(".layer-row[data-layer]").forEach(row => {
     const key = row.dataset.layer;
     row.querySelector(".lr-vis").onchange = e => {
       if (key.startsWith("ortho:")) {
@@ -1587,6 +1716,8 @@ function renderLayerPanel() {
     if (orName) orName.ondblclick = () => { const o = siteItems.find(x => "ortho:" + x.id === key); if (o) editOrtho(o); };
     const nameEl = row.querySelector(".ul-name");
     if (nameEl) nameEl.ondblclick = () => renameLayer(key.slice(3));
+    const fxName = row.querySelector(".fx-name");
+    if (fxName) fxName.ondblclick = () => renameFixedLayer(key);
     const del = row.querySelector(".lr-del");
     if (del && key.startsWith("ul:")) { del.onclick = () => deleteLayer(key.slice(3)); return; }
     if (del) del.onclick = () => {
@@ -1600,17 +1731,19 @@ function renderLayerPanel() {
 }
 
 async function renameLayer(oldName) {
-  if (oldName === "Allmänt" || oldName === "Etablering") { alert(`"${oldName}" är ett standardlager och kan inte byta namn.`); return; }
+  if (oldName === "Allmänt" || oldName === "Etablering") return renameFixedLayer("ul:" + oldName);
   const name = (prompt("Nytt namn på lagret:", oldName) || "").trim();
   if (!name || name === oldName) return;
-  const recs = siteItems.filter(x => (x.type === "layer" && x.name === oldName) || (x.type !== "ortho" && x.type !== "layer" && layerOf(x) === oldName))
+  const meta = layerMeta();
+  if (meta.folderOf["ul:" + oldName]) { meta.folderOf["ul:" + name] = meta.folderOf["ul:" + oldName]; delete meta.folderOf["ul:" + oldName]; }
+  const recs = siteItems.filter(x => (x.type === "layer" && x.name === oldName) || (isSiteObj(x) && layerOf(x) === oldName))
     .map(x => x.type === "layer" ? { ...x, name } : { ...x, layer: name });
   ls("ul:" + name).visible = ls("ul:" + oldName).visible; ls("ul:" + name).opacity = ls("ul:" + oldName).opacity; saveLayerState();
-  await saveSiteItemsBatch(recs);
+  await saveSiteItemsBatch(siteItems.some(x => x.id === META_ID) ? [...recs, meta] : recs);
   renderActiveLayerSelect();
 }
 async function deleteLayer(name) {
-  const items = siteItems.filter(x => x.type !== "ortho" && x.type !== "layer" && layerOf(x) === name);
+  const items = siteItems.filter(x => isSiteObj(x) && layerOf(x) === name);
   if (!confirm(items.length ? `Ta bort lagret "${name}"? Dess ${items.length} objekt flyttas till "Allmänt".` : `Ta bort lagret "${name}"?`)) return;
   const layerRecs = siteItems.filter(x => x.type === "layer" && x.name === name).map(x => x.id);
   await saveSiteItemsBatch(items.map(x => ({ ...x, layer: "Allmänt" })), layerRecs);
@@ -1620,7 +1753,7 @@ async function deleteLayer(name) {
 /* Etableringsplan över tid: en A3-sida per månad med det som gäller den månaden. */
 async function exportSitePlanPdf() {
   if (!viewport) return;
-  const dated = siteItems.filter(x => x.type !== "ortho" && x.type !== "layer" && (x.from || x.to));
+  const dated = siteItems.filter(x => isSiteObj(x) && (x.from || x.to));
   const all = dated.flatMap(x => [x.from, x.to]).filter(Boolean).sort();
   let start = all[0] || isoOf(new Date(dateMin)), end = all[all.length - 1] || isoOf(new Date(dateMax));
   const months = [];
@@ -1657,7 +1790,7 @@ async function exportSitePlanPdf() {
       doc.addImage(img.toDataURL("image/jpeg", 0.88), "JPEG", M, top, img.width * k, img.height * k);
       doc.setDrawColor(200); doc.rect(M, top, img.width * k, img.height * k);
       // Förteckning över det som gäller månaden
-      const active = siteItems.filter(x => x.type !== "ortho" && x.type !== "layer" && siteShown(x))
+      const active = siteItems.filter(x => isSiteObj(x) && siteShown(x))
         .sort((p, q) => layerOf(p).localeCompare(layerOf(q), "sv") || (p.from || "").localeCompare(q.from || ""));
       let ly = top + 4; const lx = W - M - listW;
       doc.setFont("helvetica", "bold"); doc.setFontSize(12); doc.text("Gäller denna månad", lx, ly); ly += 7;
@@ -1699,6 +1832,7 @@ function bindLayers() {
   $("btnAddOrtho").onclick = () => $("orthoInput").click();
   $("orthoInput").onchange = e => { const f = [...e.target.files]; e.target.value = ""; if (f.length) addOrthoFiles(f); };
   $("layersFollowDate").onchange = () => renderZones();
+  $("btnNewFolder").onclick = createFolder;
   $("orthoExclusive").checked = orthoExclusive();
   $("orthoExclusive").onchange = e => {
     layerState.orthoExclusive = e.target.checked; saveLayerState();

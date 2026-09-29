@@ -104,6 +104,14 @@
   .layer-row .ln { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .layer-row .ln small { color: var(--muted); }
   .layer-row button { height: auto; padding: 0 4px; border: none; background: none; cursor: pointer; font-size: 12px; }
+  .layer-row.in-folder { padding-left: 26px; background: #fbfcfe; }
+  .layer-row.folder-row { background: var(--panel-2); font-weight: 600; }
+  .layer-row.folder-row .ln { display: flex; align-items: center; gap: 2px; }
+  .layer-row.folder-row .fr-toggle { width: 16px; padding: 0; color: var(--muted); }
+  .layer-row.folder-row small { font-weight: 400; margin-left: 4px; }
+  .layer-row.drop { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-weak); }
+  .layer-row.dragging { opacity: .45; }
+  .layer-row[data-layer] .ln { cursor: grab; }
   .layer-row .blend { grid-column: 2 / 5; font-size: 11px; color: var(--muted); display: flex; gap: 4px; align-items: center; margin: 0; }
   #sitePop { position: absolute; z-index: 15; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(15,23,42,.2); padding: 12px 14px; width: 280px; font-size: 12px; }
   #sitePop button { height: 28px; padding: 0 9px; }
@@ -218,6 +226,7 @@
         <details class="sec" data-sec="layers" open>
           <summary><span class="si">🗂</span>Lager</summary>
           <div id="layerList" class="layer-list"></div>
+          <div class="row" style="margin-top:6px;"><button id="btnNewFolder" title="Skapa en mapp och dra lager till den">📁 ＋ Mapp</button><span class="hint grow" style="margin:0;">Dra lager till en mapp. Dubbelklicka på ett namn för att byta det.</span></div>
           <label class="check"><input type="checkbox" id="layersFollowDate" checked /> Noteringar och etablering följer datumet</label>
         </details>
 
