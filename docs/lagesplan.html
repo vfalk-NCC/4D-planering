@@ -197,6 +197,15 @@
   #printModal .pr-color { width: 100%; height: 30px; padding: 2px; border: 1px solid var(--border-strong); border-radius: 6px; }
   #printModal .pr-foot { margin-top: auto; padding-top: 12px; display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); }
   #prProps { padding-bottom: 12px; }
+  #prProps .pr-layers { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px 6px; margin-top: 4px; }
+  #prProps .pr-layers.off { opacity: .55; }
+  #prProps .pr-lay { margin: 4px 0 0; font-size: 12px; }
+  #prProps .pr-lay.sub { padding-left: 20px; font-size: 11.5px; color: var(--muted); }
+  #prProps .pr-lay span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #prProps .pr-north { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  #prProps .pr-north button { height: auto; flex-direction: column; padding: 6px 2px; font-size: 10.5px; gap: 2px; white-space: normal; line-height: 1.1; }
+  #prProps .pr-north button.on { background: var(--accent-weak); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  #prProps .pr-north img { width: 40px; height: 40px; }
   .seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; }
   .seg button { border: none; border-radius: 0; height: 28px; }
   .seg button + button { border-left: 1px solid var(--border-strong); }
@@ -518,9 +527,10 @@
         <div class="row split" style="margin-top:6px;"><button id="prNew" title="Ny mall utifrån standardlayouten">＋ Ny</button><button id="prCopy" title="Kopiera mallen">⧉ Kopiera</button><button id="prSave">💾 Spara mall</button></div>
         <span class="field-label">Blad</span>
         <div class="row" style="flex-wrap:nowrap;"><div id="prFormat" class="seg"><button data-f="A3">A3</button><button data-f="A1">A1</button></div><span class="muted">liggande</span><span class="grow"></span><label class="check" style="margin:0;"><input type="checkbox" id="prFrame" /> Ram</label></div>
+        <div id="prFmtAsk" class="hidden" style="margin-top:8px;padding:8px;border:1px solid var(--accent);border-radius:8px;background:var(--accent-weak);"></div>
         <span class="field-label">Lägg till</span>
         <div id="prAdd" class="tool-grid" style="grid-template-columns:repeat(5,1fr);">
-          <button data-add="text"><i>🔤</i>Text</button><button data-add="image"><i>🖼</i>Bild</button><button data-add="map"><i>🗺</i>Karta</button><button data-add="legend"><i>📋</i>Förklaring</button><button data-add="title"><i>🗂</i>Huvud</button>
+          <button data-add="text"><i>🔤</i>Text</button><button data-add="image"><i>🖼</i>Bild</button><button data-add="map"><i>🗺</i>Ritning</button><button data-add="legend"><i>📋</i>Förklaring</button><button data-add="title"><i>🗂</i>Huvud</button>
           <button data-add="scalebar"><i>📏</i>Skala</button><button data-add="north"><i>🧭</i>Norrpil</button><button data-add="qr"><i>▦</i>QR</button><button data-add="rect"><i>▭</i>Ruta</button><button data-add="line"><i>╱</i>Linje</button>
         </div>
         <span class="field-label">Egenskaper</span>

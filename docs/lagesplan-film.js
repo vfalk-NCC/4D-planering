@@ -261,7 +261,7 @@ function renderFilmOverlay(P, o) {
   const fontPx = planFontPx();
   if (o.cad && typeof drawCad === "function") { drawCad(ctx, [P.S, 0, 0, P.S, -P.x0 * P.S, -P.y0 * P.S], P.W / FILM_W); ctx.setTransform(P.S, 0, 0, P.S, -P.x0 * P.S, -P.y0 * P.S); }
   if (o.zones) {
-    const objects = $("showObjects").checked && layerVisible("objects") ? objectShapesInPdf() : null;
+    const objects = layerVisible("objects") ? objectShapesInPdf() : null;
     let badges = [];
     if (layerVisible("zones")) { ctx.save(); ctx.globalAlpha = layerOpacity("zones"); badges = drawZoneShapes(ctx, fontPx, objects, true); ctx.restore(); }
     if (objects) { ctx.save(); ctx.globalAlpha = layerOpacity("objects"); drawObjects(ctx, objects, fontPx); ctx.restore(); }
