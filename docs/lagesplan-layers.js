@@ -198,7 +198,7 @@ function askOrthoDate(def) {
 /* Egna lager (Victors önskemål 2026-09-28): varje notering/etableringsobjekt
    ligger på ett namngivet lager. "Allmänt" och "Etablering" finns alltid;
    egna lager sparas som { type: "layer", name } i site_layers.json. */
-const isSiteObj = x => x.type !== "ortho" && x.type !== "layer" && x.type !== "layermeta" && x.type !== "cad";
+const isSiteObj = x => x.type !== "ortho" && x.type !== "layer" && x.type !== "layermeta" && x.type !== "cad" && x.type !== "printtpl";
 const defaultLayerOf = x => x.type === "note" ? "Allmänt" : "Etablering";
 const layerOf = x => x.layer || defaultLayerOf(x);
 function userLayers() {
@@ -1753,6 +1753,59 @@ function renderLayerPanel() {
     };
   });
   if (typeof bindCadRows === "function") { bindCadRows(el); renderCadSettings(); }
+  applyLayerSearch();
+}
+/* Sök i lagren: visar lager (även CAD-lager och lager i mappar) vars namn
+   innehåller texten, med sina mappar/ritningar som sammanhang. */
+function applyLayerSearch() {
+  const el = $("layerList"), inp = $("layerSearch");
+  if (!el || !inp) return;
+  const q = inp.value.trim().toLowerCase();
+  $("layerSearchClear").classList.toggle("hidden", !q);
+  const rows = [...el.querySelectorAll(".layer-row")];
+  rows.forEach(r => {
+    r.classList.remove("filtered");
+    const ln = r.querySelector(".ln");
+    ln.querySelectorAll("mark").forEach(m => { const p = m.parentNode; p.replaceChild(document.createTextNode(m.textContent), m); p.normalize(); });
+  });
+  if (!q) { $("layerSearchInfo").classList.add("hidden"); return; }
+  const text = r => (r.querySelector(".ln").textContent || "").toLowerCase();
+  const match = new Set(rows.filter(r => text(r).includes(q)));
+  // Sammanhang: en träffad CAD-rad/mapp visar sina barn, ett träffat barn visar sin förälder.
+  let parent = null, folder = null;
+  const show = new Set(match);
+  rows.forEach(r => {
+    if (r.classList.contains("folder-row")) { folder = r; parent = null; return; }
+    if (!r.classList.contains("in-folder")) folder = null;
+    if (r.classList.contains("cad-sub")) {
+      if (parent && match.has(parent)) show.add(r);
+      if (match.has(r)) { show.add(parent); if (folder) show.add(folder); }
+      return;
+    }
+    parent = r.dataset.layer && r.dataset.layer.startsWith("cad:") ? r : null;
+    if (folder && match.has(folder)) show.add(r);
+    if (folder && match.has(r)) show.add(folder);
+  });
+  let n = 0;
+  rows.forEach(r => {
+    if (!show.has(r)) { r.classList.add("filtered"); return; }
+    r.classList.remove("hidden");
+    if (match.has(r)) {
+      n++;
+      const ln = r.querySelector(".ln");
+      const walker = document.createTreeWalker(ln, NodeFilter.SHOW_TEXT);
+      const nodes = []; while (walker.nextNode()) nodes.push(walker.currentNode);
+      nodes.forEach(t => {
+        const i = t.data.toLowerCase().indexOf(q);
+        if (i < 0) return;
+        const m = document.createElement("mark"); m.textContent = t.data.slice(i, i + q.length);
+        const after = t.splitText(i); after.data = after.data.slice(q.length);
+        t.parentNode.insertBefore(m, after);
+      });
+    }
+  });
+  $("layerSearchInfo").textContent = n ? `${n} lager matchar "${inp.value.trim()}".` : `Inga lager matchar "${inp.value.trim()}".`;
+  $("layerSearchInfo").classList.remove("hidden");
 }
 
 async function renameLayer(oldName) {
@@ -1858,6 +1911,11 @@ function bindLayers() {
   $("orthoInput").onchange = e => { const f = [...e.target.files]; e.target.value = ""; if (f.length) addOrthoFiles(f); };
   $("layersFollowDate").onchange = () => renderZones();
   $("btnNewFolder").onclick = createFolder;
+  // Tom sökning ritar om listan så att hopfällda mappar/CAD-lager döljs igen.
+  const research = () => { if ($("layerSearch").value.trim()) applyLayerSearch(); else renderLayerPanel(); };
+  $("layerSearch").addEventListener("input", research);
+  $("layerSearch").addEventListener("keydown", e => { if (e.key === "Escape") { e.target.value = ""; research(); e.target.blur(); } });
+  $("layerSearchClear").onclick = () => { $("layerSearch").value = ""; research(); $("layerSearch").focus(); };
   $("orthoExclusive").checked = orthoExclusive();
   $("orthoExclusive").onchange = e => {
     layerState.orthoExclusive = e.target.checked; saveLayerState();

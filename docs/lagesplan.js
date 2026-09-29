@@ -1404,6 +1404,34 @@ function setSideHidden(hidden) {
   $("btnShowSide").classList.toggle("hidden", !hidden);
   saveSecState();
 }
+/* Menyns bredd går att dra (Victors önskemål 2026-09-29); sparas per webbläsare. */
+const SIDE_W_KEY = "lagesplan-sidewidth", SIDE_W_DEF = 344;
+function setSideWidth(w, save) {
+  w = Math.max(280, Math.min(Math.round(window.innerWidth * 0.6), Math.round(w)));
+  const a = document.querySelector("aside");
+  a.style.width = w + "px"; a.style.flexBasis = w + "px";
+  if (save) try { localStorage.setItem(SIDE_W_KEY, String(w)); } catch (e) {}
+}
+function bindSideResizer() {
+  const r = $("sideResizer");
+  try { const w = Number(localStorage.getItem(SIDE_W_KEY)); if (w) setSideWidth(w, false); } catch (e) {}
+  let drag = null;
+  r.addEventListener("pointerdown", e => {
+    e.preventDefault(); r.setPointerCapture(e.pointerId);
+    drag = { x: e.clientX, w: document.querySelector("aside").getBoundingClientRect().width };
+    r.classList.add("drag"); document.body.classList.add("resizing");
+  });
+  r.addEventListener("pointermove", e => { if (drag) setSideWidth(drag.w + e.clientX - drag.x, false); });
+  const end = () => {
+    if (!drag) return;
+    drag = null; r.classList.remove("drag"); document.body.classList.remove("resizing");
+    setSideWidth(document.querySelector("aside").getBoundingClientRect().width, true);
+    window.dispatchEvent(new Event("resize"));
+    if (typeof scheduleOrthoRender === "function") scheduleOrthoRender();
+  };
+  r.addEventListener("pointerup", end); r.addEventListener("pointercancel", end);
+  r.addEventListener("dblclick", () => { setSideWidth(SIDE_W_DEF, true); window.dispatchEvent(new Event("resize")); if (typeof scheduleOrthoRender === "function") scheduleOrthoRender(); });
+}
 function bindSections() {
   const st = loadSecState();
   const secs = [...document.querySelectorAll("details.sec")];
@@ -1421,5 +1449,6 @@ function bindSections() {
     saveSecState();
   };
   $("btnHideSide").onclick = () => setSideHidden(true);
+  bindSideResizer();
   $("btnShowSide").onclick = () => setSideHidden(false);
 }

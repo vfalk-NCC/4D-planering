@@ -192,7 +192,7 @@ async function buildOrthoPlate(o, P, status) {
   const m = mulAffine(stageToCanvas, imageToStage(o.world));
   ctx.setTransform(...m);
   ctx.drawImage(await ensureOrthoImage(o), 0, 0);
-  if (o.tiles && Math.hypot(m[0], m[1]) > 1.05) {
+  if (o.tiles && !P.noTiles && Math.hypot(m[0], m[1]) > 1.05) {
     const t = o.tiles;
     const mf = mulAffine(stageToCanvas, imageToStage(t.world));
     const inv = invAffine(mf);

@@ -272,16 +272,30 @@ const cads = () => siteItems.filter(x => x.type === "cad");
 const cadGeom = new Map(); // id -> { origin, groups: [{ l, c, path: Path2D, segs, texts }] }
 const INSUNITS_M = { 1: 0.0254, 2: 0.3048, 4: 0.001, 5: 0.01, 6: 1, 14: 0.1 };
 
-async function addDxfFile(file) {
+/* Flera filer i taget: läses och laddas upp en i taget. */
+async function addDxfFiles(files) {
+  const list = files.filter(f => /\.dxf$/i.test(f.name));
+  const skipped = files.length - list.length;
+  if (!list.length) { alert("Välj en eller flera DXF-filer. En DWG sparas som DXF i AutoCAD (Spara som → DXF) eller med ODA File Converter."); return; }
   if (!plan || !plan.calib) { alert("Kalibrera planen mot 3D (📐) först – CAD-ritningen placeras via modellens koordinater."); return; }
-  if (!/\.dxf$/i.test(file.name)) { alert("Välj en DXF-fil. En DWG sparas som DXF i AutoCAD (Spara som → DXF) eller med ODA File Converter."); return; }
-  setBusy(`Läser ${file.name}…`);
+  const done = [];
+  for (let i = 0; i < list.length; i++) {
+    cadBatch = list.length > 1 ? `${i + 1}/${list.length} ` : "";
+    if (await addDxfFile(list[i])) done.push(list[i].name);
+  }
+  cadBatch = "";
+  if (list.length > 1 || skipped) setSaveStatus(`📐 ${done.length} av ${list.length} DXF-filer inlagda${skipped ? ` (${skipped} filer var inte DXF och hoppades över)` : ""}.`);
+}
+let cadBatch = "";
+async function addDxfFile(file) {
+  if (!plan || !plan.calib) { alert("Kalibrera planen mot 3D (📐) först – CAD-ritningen placeras via modellens koordinater."); return false; }
+  setBusy(`${cadBatch}Läser ${file.name}…`);
   try {
     const buf = await file.arrayBuffer();
     if (new TextDecoder().decode(buf.slice(0, 22)).startsWith("AutoCAD Binary DXF")) throw new Error("Binär DXF stöds inte – spara som ASCII-DXF.");
     await new Promise(r => setTimeout(r, 20));
     const dxf = parseDxf(decodeDxfText(buf));
-    setBusy("Tolkar ritningen…");
+    setBusy(`${cadBatch}Tolkar ${file.name}…`);
     await new Promise(r => setTimeout(r, 20));
     const geo = dxfToGeometry(dxf);
     if (!geo.length) throw new Error("Hittade inga linjer eller texter i filen.");
@@ -292,7 +306,7 @@ async function addDxfFile(file) {
     let factor = INSUNITS_M[dxf.header.insunits];
     if (!factor) factor = [1, 0.001, 0.01, 0.1].sort((a, b) => Math.hypot(cx * a - m1[0], cy * a - m1[1]) - Math.hypot(cx * b - m1[0], cy * b - m1[1]))[0];
     const dist = Math.hypot(cx * factor - m1[0], cy * factor - m1[1]);
-    if (dist > 20000 && !confirm(`CAD-ritningen ligger ${Math.round(dist / 1000)} km från planens kalibreringspunkter. Ligger den verkligen i samma koordinatsystem som modellen? Lägg till ändå?`)) return;
+    if (dist > 20000 && !confirm(`${file.name}: CAD-ritningen ligger ${Math.round(dist / 1000)} km från planens kalibreringspunkter. Ligger den verkligen i samma koordinatsystem som modellen? Lägg till ändå?`)) return false;
     // Kompakt lagring: mm-heltal relativt ett origo.
     const origin = [Math.round(cx * factor), Math.round(cy * factor)];
     const q = v => Math.round(v * factor * 1000);
@@ -311,7 +325,7 @@ async function addDxfFile(file) {
       } else grp.t.push([q(g.x) - ox, q(g.y) - oy, Math.round(g.h * factor * 1000), Math.round(g.rot * 10) / 10, g.text, g.align[0] + g.valign[0]]);
     });
     const data = { v: 1, origin, groups: [...byKey.values()] };
-    setBusy("Komprimerar och laddar upp…");
+    setBusy(`${cadBatch}Laddar upp ${file.name}…`);
     await loadScript(PAKO_URL);
     const gz = pako.gzip(JSON.stringify(data));
     const id = ghNewId();
@@ -335,8 +349,10 @@ async function addDxfFile(file) {
         .then(r => setSaveStatus(`☁ ${file.name} sparad i Trimble Connect (${r.folder || "Lägesplan"}).`))
         .catch(e => setSaveStatus("⚠ Kunde inte spara i Trimble Connect: " + e.message));
     }
+    return true;
   } catch (e) {
-    alert("Kunde inte läsa DXF-filen: " + e.message);
+    alert(`Kunde inte läsa ${file.name}: ` + e.message);
+    return false;
   } finally {
     setBusy("");
   }
@@ -529,7 +545,7 @@ async function updateCadSetting(patch) {
 }
 function bindCad() {
   $("btnAddDxf").onclick = () => $("dxfInput").click();
-  $("dxfInput").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) addDxfFile(f); };
+  $("dxfInput").onchange = e => { const f = [...e.target.files]; e.target.value = ""; if (f.length) addDxfFiles(f); };
   $("cadSel").onchange = renderCadSettings;
   $("cadColorMode").onchange = e => updateCadSetting({ colorMode: e.target.value });
   $("cadColor").onchange = e => updateCadSetting({ color: e.target.value });

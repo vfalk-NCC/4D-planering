@@ -89,7 +89,7 @@ let keyCapture = null; // id som väntar på en ny tangent i dialogen
 function onShortcutKey(e) {
   if (keyCapture) return;
   if (e.defaultPrevented || typingIn(e) || e.repeat) return;
-  if (!$("filmModal").classList.contains("hidden") || !$("photoModal").classList.contains("hidden")) return;
+  if (!$("filmModal").classList.contains("hidden") || !$("photoModal").classList.contains("hidden") || ($("printModal") && !$("printModal").classList.contains("hidden"))) return;
   if (!$("keysModal").classList.contains("hidden")) { if (e.key === "Escape") closeKeys(); return; }
   const combo = comboOf(e);
   if (!combo || /^ctrl\+[zy]$/.test(combo)) return;
