@@ -52,7 +52,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
       viewer: {
         getSelection: () => Promise.resolve([]), convertToObjectIds: (m, r) => Promise.resolve(r.map(String)),
         convertToObjectRuntimeIds: (m, ids) => Promise.resolve(ids.map(Number)), setSelection: () => Promise.resolve(),
-        setCamera: c => { window.__camera = c; return Promise.resolve(); }, getCamera: () => Promise.resolve({ position: { x: 0, y: 0, z: 10 } }),
+        setCamera: c => { window.__camera = c; return Promise.resolve(); }, getCamera: () => Promise.resolve(window.__camera || { position: { x: 0, y: -40, z: 30 }, lookAt: { x: 0, y: 0, z: 0 }, quaternion: { x: 0.3, y: 0, z: 0, w: 0.95 }, fieldOfView: 60 }),
         getObjectBoundingBoxes: (m, ids) => Promise.resolve(ids.map(id => ({ id, boundingBox: { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } } }))),
         getObjectProperties: () => Promise.resolve([]),
         setObjectState: () => Promise.resolve(),
@@ -111,6 +111,11 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   await row('f').locator('.manual-tag').click(); await page.waitForTimeout(100);
   const cam = await page.evaluate(() => window.__camera);
   if (!cam || Math.abs(cam.lookAt.x - 15) > 0.01 || Math.abs(cam.lookAt.y - 12.5) > 0.01) fail('kameran ska riktas mot markeringens mitt, fick ' + JSON.stringify(cam));
+  // Samma vinkel som förut: riktningen (0,40,-30)/50 och kvaternionen oförändrade
+  const dx = cam.lookAt.x - cam.position.x, dy = cam.lookAt.y - cam.position.y, dz = cam.lookAt.z - cam.position.z, dl = Math.hypot(dx, dy, dz);
+  if (Math.abs(dx / dl) > 0.001 || Math.abs(dy / dl - 0.8) > 0.001 || Math.abs(dz / dl + 0.6) > 0.001) fail('kamerans vinkel ska behållas, fick riktning ' + [dx / dl, dy / dl, dz / dl]);
+  if (cam.quaternion.x !== 0.3 || cam.quaternion.w !== 0.95) fail('rotationen ska inte ändras');
+  if (dl < 8 || dl > 60) fail('avståndet ska ge en inzoomning på området, fick ' + dl);
   console.log('OK: raden visar "✏️ Manuell markering" och ett klick flyttar kameran till markeringen');
 
   // 3) Frihand via Trimble Connects frihandsverktyg + linje
@@ -163,7 +168,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   await page.evaluate(() => { window.__camera = null; });
   await row('f').locator('[data-action="select"]').click(); await page.waitForTimeout(2500);
   const cam2 = await page.evaluate(() => window.__camera);
-  if (!cam2 || !cam2.quaternion || !cam2.position) fail('klick på raden ska sätta kameran med position och rotation, fick ' + JSON.stringify(cam2));
+  if (!cam2 || Math.abs(cam2.lookAt.x - 10) > 0.01 || Math.abs(cam2.lookAt.y - 7.5) > 0.01) fail('klick på raden ska rikta kameran mot markeringen, fick ' + JSON.stringify(cam2));
   console.log('OK: klick på aktiviteten flyttar kameran till markeringen');
   // 5c) Trimble Connect utan id i svaret: linjerna ska ändå kunna tas bort/ritas om
   await page.evaluate(() => { window.__noIds = true; });

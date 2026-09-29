@@ -114,26 +114,11 @@ async function renderManualMarks() {
     markShownIds = ids;
   } catch (e) { console.warn("Kunde inte rita markeringarna i 3D", e); }
 }
-/* Kamerans rotation (kvaternion) för att titta från pos mot target.
-   Trimble Connect: identitet = tittar längs -Z med +Y uppåt; modellen har Z uppåt. */
-function lookAtQuaternion(pos, target) {
-  const norm = v => { const l = Math.hypot(...v) || 1; return v.map(x => x / l); };
-  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
-  const f = norm([target[0] - pos[0], target[1] - pos[1], target[2] - pos[2]]);
-  let r = cross(f, [0, 0, 1]);
-  r = Math.hypot(...r) < 1e-6 ? [1, 0, 0] : norm(r);
-  const u = cross(r, f), b = [-f[0], -f[1], -f[2]];
-  // Rotationsmatris med kolumnerna höger, upp, bakåt -> kvaternion
-  const m00 = r[0], m01 = u[0], m02 = b[0], m10 = r[1], m11 = u[1], m12 = b[1], m20 = r[2], m21 = u[2], m22 = b[2];
-  const tr = m00 + m11 + m22;
-  let x, y, z, w;
-  if (tr > 0) { const S = Math.sqrt(tr + 1) * 2; w = 0.25 * S; x = (m21 - m12) / S; y = (m02 - m20) / S; z = (m10 - m01) / S; }
-  else if (m00 > m11 && m00 > m22) { const S = Math.sqrt(1 + m00 - m11 - m22) * 2; w = (m21 - m12) / S; x = 0.25 * S; y = (m01 + m10) / S; z = (m02 + m20) / S; }
-  else if (m11 > m22) { const S = Math.sqrt(1 + m11 - m00 - m22) * 2; w = (m02 - m20) / S; x = (m01 + m10) / S; y = 0.25 * S; z = (m12 + m21) / S; }
-  else { const S = Math.sqrt(1 + m22 - m00 - m11) * 2; w = (m10 - m01) / S; x = (m02 + m20) / S; y = (m12 + m21) / S; z = 0.25 * S; }
-  return { x, y, z, w, up: u };
-}
-/* Kameran till en aktivitets markeringar, som blinkar till så att de syns. */
+/* Zooma in på en aktivitets markeringar – som "zooma till objekt":
+   kameran behåller sin nuvarande vinkel och flyttas bara, så att det
+   ritade området hamnar mitt i bild och fyller vyn. (Att räkna ut en egen
+   rotation gav konstiga vinklar.) Saknas kamerans riktning zoomas i stället
+   till de modellobjekt som klickades när markeringen ritades. */
 async function jumpToMarks(it) {
   const ms = marksForItem(it);
   const pts = ms.flatMap(m => markSegments(m).flat());
@@ -141,19 +126,43 @@ async function jumpToMarks(it) {
   if (!marksShown()) setMarksShown(true);
   const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]), zs = pts.map(p => p[2] || 0);
   const c = [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2, (Math.min(...zs) + Math.max(...zs)) / 2];
-  const r = Math.max(10, Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), Math.max(...zs) - Math.min(...zs)) * 1.2);
-  const pos = [c[0] + r * 0.7, c[1] - r * 0.7, c[2] + r * 0.9];
-  const q = lookAtQuaternion(pos, c);
+  const radius = Math.max(4, Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), Math.max(...zs) - Math.min(...zs)) / 2);
+  let cam = null;
+  try { cam = await API.viewer.getCamera(); } catch (e) { /* okänd kamera */ }
+  const P = cam && cam.position, L = cam && cam.lookAt;
+  let dir = P && L ? [L.x - P.x, L.y - P.y, L.z - P.z] : null;
+  const len = dir ? Math.hypot(...dir) : 0;
   try {
-    await API.viewer.setCamera({
-      position: { x: pos[0], y: pos[1], z: pos[2] },
-      quaternion: { x: q.x, y: q.y, z: q.z, w: q.w },
-      lookAt: { x: c[0], y: c[1], z: c[2] },
-      upDirection: { x: q.up[0], y: q.up[1], z: q.up[2] },
-    }, { animationTime: 600 });
+    if (len > 1e-6) {
+      dir = dir.map(v => v / len);
+      const fov = (Number(cam.fieldOfView) || 60) * Math.PI / 180;
+      const dist = Math.max(8, radius / Math.tan(fov / 2) * 1.35);
+      const next = { ...cam,
+        position: { x: c[0] - dir[0] * dist, y: c[1] - dir[1] * dist, z: c[2] - dir[2] * dist },
+        lookAt: { x: c[0], y: c[1], z: c[2] } };
+      if (cam.projectionType === "ortho") next.orthoSize = Math.max(10, radius * 2.7);
+      await API.viewer.setCamera(next, { animationTime: 600 });
+    } else {
+      const sel = await markRefsSelector(ms);
+      if (sel) await API.viewer.setCamera(sel, { animationTime: 600 });
+    }
   } catch (e) { console.warn("Kunde inte flytta kameran", e); }
   flashMarks(ms);
   return true;
+}
+/* Modellobjekten som klickades vid ritningen, som selektor för setCamera. */
+async function markRefsSelector(ms) {
+  const byModel = {};
+  ms.forEach(m => (m.refs || []).forEach(r => { (byModel[r.modelId] = byModel[r.modelId] || new Set()).add(String(r.objectId)); }));
+  const out = [];
+  for (const [modelId, ids] of Object.entries(byModel)) {
+    try {
+      const rids = await API.viewer.convertToObjectRuntimeIds(modelId, [...ids]);
+      const ok = (rids || []).filter(x => x !== undefined && x !== null);
+      if (ok.length) out.push({ modelId, objectRuntimeIds: ok });
+    } catch (e) { /* modellen är inte inläst */ }
+  }
+  return out.length ? { modelObjectIds: out } : null;
 }
 /* Ritar markeringarna i klarblått en kort stund. */
 async function flashMarks(ms) {
@@ -182,7 +191,7 @@ function startMarkDraw(shape) {
   const item = pendingCoupleItem;
   if (!item) return;
   if (!API || !API.markup) { alert("Trimble Connect stöder inte markeringar i den här vyn."); return; }
-  markDraw = { item, shape, pts: [], lines: [], height: 1 };
+  markDraw = { item, shape, pts: [], lines: [], height: 1, refs: [] };
   renderDrawBar();
   showPreview();
 }
@@ -244,6 +253,17 @@ async function saveMarkDraw() {
   if (d.shape === "freehand") rec.lines = d.lines.map(l => l.map(p => p.map(v => Math.round(v * 1000) / 1000)));
   else rec.pts = d.pts.map(p => p.map(v => Math.round(v * 1000) / 1000));
   if (d.shape === "volume") rec.height = Number(d.height) || 0;
+  // Klickade modellobjekt (för zoom om kamerans riktning är okänd).
+  try {
+    const refs = [];
+    const byModel = {};
+    (d.refs || []).forEach(r => { (byModel[r.modelId] = byModel[r.modelId] || []).push(r.rid); });
+    for (const [modelId, rids] of Object.entries(byModel)) {
+      const ext = await API.viewer.convertToObjectIds(modelId, rids.slice(0, 20));
+      (ext || []).forEach(id => { if (id) refs.push({ modelId, objectId: String(id) }); });
+    }
+    if (refs.length) rec.refs = refs;
+  } catch (e) { /* bara en reserv för zoomen */ }
   stopMarkDraw();
   cancelCoupleMode();
   manualMarks.push(rec);
@@ -265,6 +285,7 @@ function manualMarksEvent(event, data) {
     const p = d && (d.position || d.point || d.hitPoint);
     if (!p || p.x === undefined) return true;
     markDraw.pts.push([p.x, p.y, p.z || 0]);
+    if (d.modelId && d.objectRuntimeId !== undefined && !markDraw.refs.some(r => r.modelId === d.modelId && r.rid === d.objectRuntimeId)) markDraw.refs.push({ modelId: d.modelId, rid: d.objectRuntimeId });
     if (markDraw.shape === "line" && markDraw.pts.length >= 2) { markDraw.pts = markDraw.pts.slice(0, 2); saveMarkDraw(); return true; }
     renderDrawBar(); showPreview();
     return true;
