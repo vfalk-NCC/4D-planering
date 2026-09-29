@@ -172,6 +172,16 @@
   .film-grid { display: grid; grid-template-columns: 110px 140px 140px 1fr 1.2fr; gap: 10px; }
   .film-grid label { margin-top: 0; }
   @media (max-width: 720px) { .film-grid { grid-template-columns: 1fr 1fr; } }
+  #keysModal { position: absolute; inset: 0; background: rgba(15,23,42,.6); z-index: 21; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  #keysModal .keys-box { background: #fff; border-radius: 12px; padding: 14px 16px; width: min(560px, 100%); max-height: 100%; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.3); }
+  #keysList { overflow-y: auto; max-height: 62vh; border: 1px solid var(--border); border-radius: 8px; }
+  #keysList .kg { font-size: 10.5px; font-weight: 650; letter-spacing: .6px; text-transform: uppercase; color: var(--faint); padding: 10px 12px 4px; background: var(--panel-2); border-bottom: 1px solid var(--border); }
+  #keysList .kr { display: grid; grid-template-columns: 1fr 150px 28px; gap: 8px; align-items: center; padding: 4px 8px 4px 12px; border-bottom: 1px solid var(--border); }
+  #keysList .kr:last-child { border-bottom: none; }
+  #keysList .kb { height: 28px; font-family: ui-monospace, Consolas, monospace; font-weight: 600; background: var(--panel-2); }
+  #keysList .kb.none { color: var(--faint); font-weight: 400; }
+  #keysList .kb.wait { background: var(--accent-weak); border-color: var(--accent); color: var(--accent-strong); font-family: inherit; }
+  #keysList .kx { height: 26px; width: 26px; }
   #busy { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; z-index: 6; font-size: 12px; box-shadow: 0 4px 14px rgba(15,23,42,.14); }
 </style>
 </head>
@@ -185,6 +195,7 @@
           <h1>Lägesplan</h1>
           <div id="projectInfo">Laddar…</div>
         </div>
+        <button id="btnKeys" class="icon ghost" title="Kortkommandon (?)">⌨</button>
         <button id="btnSecAll" class="icon ghost" title="Fäll ihop/ut alla kort på fliken">⇕</button>
         <button id="btnHideSide" class="icon ghost" title="Dölj menyn (mer plats för planen)">◀</button>
       </div>
@@ -447,6 +458,14 @@
       <span id="cmpLabelA" class="cmp-label a"></span><span id="cmpLabelB" class="cmp-label b"></span>
       <span class="cmp-knob">⇆</span>
     </div>
+    <div id="keysModal" class="hidden">
+      <div class="keys-box">
+        <div class="row"><b style="font-size:15px;">⌨ Kortkommandon</b><span class="muted grow">Klicka på en tangent för att byta den</span><button id="btnKeysClose" class="icon ghost" title="Stäng">✕</button></div>
+        <div id="keysList"></div>
+        <div class="muted">Fasta: Esc avbryter, Enter avslutar linjer, Ctrl+Z / Ctrl+Y ångrar och gör om, Shift låser vinkeln, Alt släpper fästningen. Tangenterna sparas i den här webbläsaren.</div>
+        <div class="row"><span class="grow muted" id="keysMsg" style="color:var(--accent);"></span><button id="btnKeysReset">↺ Återställ standard</button></div>
+      </div>
+    </div>
     <div id="filmModal" class="hidden" tabindex="-1">
       <div class="film-box">
         <div class="row"><b style="font-size:15px;">🛰 Framdriftsfilm</b><span class="muted grow" id="filmInfo"></span><button id="btnFilmClose" class="icon ghost" title="Stäng">✕</button></div>
@@ -478,5 +497,6 @@
 <script src="lagesplan-tools.js"></script>
 <script src="lagesplan-layers.js"></script>
 <script src="lagesplan-film.js"></script>
+<script src="lagesplan-keys.js"></script>
 </body>
 </html>
