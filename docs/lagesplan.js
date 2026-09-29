@@ -685,9 +685,23 @@ function renderZones() {
   if (!plan || !viewport) { renderZoneList(); return; }
   const fontPx = planFontPx();
   const objects = $("showObjects").checked ? objectShapesInPdf() : null;
+  const badges = drawZoneShapes(ctx, fontPx, objects);
+  if (objects) drawObjects(octx, objects, fontPx);
+  drawSiteLayers(tctx, fontPx);
+  if (layerVisible("zones")) badges.forEach(([pt, text, color, hollow]) => drawBadge(tctx, pt, text, color, fontPx, hollow));
+  drawToolOverlays(tctx, fontPx);
+  drawCalibMarks(tctx, fontPx);
+  afterRenderTools();
+  renderZoneList();
+  updateCalibInfo();
+}
+
+/* Zonernas ytor på ctx (stage-px). Returnerar etiketterna (ritas ovanpå
+   allt annat). cached = använd statusen från senaste renderZones (filmen). */
+function drawZoneShapes(ctx, fontPx, objects, cached) {
   const badges = [];
   for (const zone of plan.zones || []) {
-    const st = zoneStatus(zone);
+    const st = cached && zone._status ? zone._status : zoneStatus(zone);
     zone._status = st;
     const color = phaseColor(st.phase);
     const selected = zone.id === selectedZoneId;
@@ -711,14 +725,7 @@ function renderZones() {
     anchors.filter(Boolean).forEach(a => badges.push([toPx(a), `${zone.code}${st.progress != null ? " · " + st.progress + " %" : ""}`, color, st.phase === "ingen"]));
     ctx.restore();
   }
-  if (objects) drawObjects(octx, objects, fontPx);
-  drawSiteLayers(tctx, fontPx);
-  if (layerVisible("zones")) badges.forEach(([pt, text, color, hollow]) => drawBadge(tctx, pt, text, color, fontPx, hollow));
-  drawToolOverlays(tctx, fontPx);
-  drawCalibMarks(tctx, fontPx);
-  afterRenderTools();
-  renderZoneList();
-  updateCalibInfo();
+  return badges;
 }
 
 function drawBadge(ctx, [x, y], text, color, fontPx, hollow) {

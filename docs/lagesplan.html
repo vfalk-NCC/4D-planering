@@ -161,7 +161,7 @@
   #filmModal { position: absolute; inset: 0; background: rgba(15,23,42,.6); z-index: 20; display: flex; align-items: center; justify-content: center; padding: 20px; }
   #filmModal .film-box { background: #fff; border-radius: 12px; padding: 14px 16px; width: min(980px, 100%); max-height: 100%; overflow-y: auto; box-shadow: 0 16px 40px rgba(0,0,0,.3); display: flex; flex-direction: column; gap: 8px; }
   #filmCanvas { width: 100%; aspect-ratio: 16 / 9; height: auto; border-radius: 8px; background: #d1d5db; }
-  .film-grid { display: grid; grid-template-columns: 120px 150px 1fr 1.3fr; gap: 10px; }
+  .film-grid { display: grid; grid-template-columns: 110px 140px 140px 1fr 1.2fr; gap: 10px; }
   .film-grid label { margin-top: 0; }
   @media (max-width: 720px) { .film-grid { grid-template-columns: 1fr 1fr; } }
   #busy { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; z-index: 6; font-size: 12px; box-shadow: 0 4px 14px rgba(15,23,42,.14); }
@@ -440,9 +440,10 @@
     <div id="filmModal" class="hidden" tabindex="-1">
       <div class="film-box">
         <div class="row"><b style="font-size:15px;">🛰 Framdriftsfilm</b><span class="muted grow" id="filmInfo"></span><button id="btnFilmClose" class="icon ghost" title="Stäng">✕</button></div>
-        <canvas id="filmCanvas" width="1920" height="1080"></canvas>
+        <canvas id="filmCanvas" width="2560" height="1440"></canvas>
         <div class="film-grid">
           <div><label>Längd (sekunder)</label><input type="text" id="filmSec" value="20" inputmode="numeric" /></div>
+          <div><label>Upplösning</label><select id="filmRes"><option value="1080">Full HD (1080p)</option><option value="1440" selected>1440p</option><option value="2160">4K (2160p)</option></select></div>
           <div><label>Övergång</label><select id="filmMode"><option value="hold" selected>Håll och tona</option><option value="linear">Jämn toning</option></select></div>
           <div><label>Utsnitt</label><select id="filmRegion"><option value="view" selected>Det som syns på skärmen</option><option value="all">Hela planen</option></select></div>
           <div><label>Rubrik</label><input type="text" id="filmTitle" placeholder="t.ex. Kv. Björken – framdrift" /></div>
