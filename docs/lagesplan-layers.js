@@ -119,6 +119,19 @@ const orthoDate = o => o.date || (o.created_at || "").slice(0, 10);
 const orthosByDate = () => orthos().slice().sort((a, b) => orthoDate(a).localeCompare(orthoDate(b)) || (a.created_at || "").localeCompare(b.created_at || ""));
 const orthoExclusive = () => layerState.orthoExclusive !== false;
 const orthoFollowDate = () => layerState.orthoFollowDate === true;
+const orthoOutside = () => layerState.orthoOutside === true;
+/* Ortofotonas yta i stage-px (för film/utsnitt utanför ritningen). */
+function orthoBounds(list = orthos()) {
+  let b = null;
+  list.forEach(o => {
+    const m = imageToStage(o.world);
+    [[0, 0], [o.width, 0], [0, o.height], [o.width, o.height]].forEach(p => {
+      const [x, y] = applyAffine(m, p);
+      b = b ? [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)] : [x, y, x, y];
+    });
+  });
+  return b;
+}
 function showOnlyOrtho(id) {
   orthos().forEach(o => { ls("ortho:" + o.id).visible = o.id === id; });
   saveLayerState();
@@ -694,8 +707,11 @@ async function paintOrtho(c, list, seq, full) {
   }
   if (seq !== orthoRenderSeq) return false;
   const vr = $("viewport").getBoundingClientRect();
-  const x0 = Math.max(0, -view.tx / view.scale), y0 = Math.max(0, -view.ty / view.scale);
-  const x1 = Math.min(pc.width, (vr.width - view.tx) / view.scale), y1 = Math.min(pc.height, (vr.height - view.ty) / view.scale);
+  // "Visa fotot utanför ritningen": hela det synliga området, annars bara ritningens blad.
+  const out = orthoOutside();
+  const x0 = out ? -view.tx / view.scale : Math.max(0, -view.tx / view.scale), y0 = out ? -view.ty / view.scale : Math.max(0, -view.ty / view.scale);
+  const x1 = out ? (vr.width - view.tx) / view.scale : Math.min(pc.width, (vr.width - view.tx) / view.scale);
+  const y1 = out ? (vr.height - view.ty) / view.scale : Math.min(pc.height, (vr.height - view.ty) / view.scale);
   if (x1 <= x0 || y1 <= y0) { c.width = 0; return true; }
   let s = view.scale * (window.devicePixelRatio || 1);
   const maxPx = 36e6;
@@ -1840,6 +1856,8 @@ function bindLayers() {
     if (e.target.checked && vis.length > 1) { showOnlyOrtho(vis[vis.length - 1].id); orthoChanged(); }
   };
   $("orthoFollowDate").checked = orthoFollowDate();
+  $("orthoOutside").checked = orthoOutside();
+  $("orthoOutside").onchange = e => { layerState.orthoOutside = e.target.checked; saveLayerState(); renderOrtho(); };
   $("orthoFollowDate").onchange = e => setOrthoFollowDate(e.target.checked);
   $("btnOrthoPrev").onclick = () => stepOrtho(-1);
   $("btnOrthoNext").onclick = () => stepOrtho(1);

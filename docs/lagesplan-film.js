@@ -127,6 +127,7 @@ function filmOpts() {
     res: FILM_RES[$("filmRes").value] ? $("filmRes").value : "1440",
     pdf: $("filmPdf").checked, zones: $("filmZones").checked, site: $("filmSite").checked,
     captions: $("filmCaptions").checked,
+    outside: $("filmOutside").checked,
     title: $("filmTitle").value.trim(),
   };
 }
@@ -145,9 +146,14 @@ function filmBlend(list, t, mode) {
   return { a: list[list.length - 1], b: null, k: 0 };
 }
 /* Planytan (stage-px) som filmen visar, utvidgad till 16:9. s = logiska px per stage-px. */
-function filmRegion(mode) {
+function filmRegion(mode, outside) {
   const pc = $("pdfCanvas");
   let x0 = 0, y0 = 0, x1 = pc.width, y1 = pc.height;
+  if (mode === "all" && outside) {
+    // Hela planen = ritningen och alla ortofoton.
+    const b = orthoBounds();
+    if (b) { x0 = Math.min(x0, b[0]); y0 = Math.min(y0, b[1]); x1 = Math.max(x1, b[2]); y1 = Math.max(y1, b[3]); }
+  }
   if (mode === "view") {
     const vr = $("viewport").getBoundingClientRect();
     x0 = -view.tx / view.scale; y0 = -view.ty / view.scale;
@@ -177,6 +183,11 @@ async function buildOrthoPlate(o, P, status) {
   const c = newCanvas(P.W, P.H), ctx = c.getContext("2d");
   ctx.imageSmoothingQuality = "high";
   const stageToCanvas = [P.S, 0, 0, P.S, -P.x0 * P.S, -P.y0 * P.S];
+  if (!P.outside) {
+    // Bara innanför ritningens blad.
+    const pc = $("pdfCanvas");
+    ctx.beginPath(); ctx.rect(-P.x0 * P.S, -P.y0 * P.S, pc.width * P.S, pc.height * P.S); ctx.clip();
+  }
   const m = mulAffine(stageToCanvas, imageToStage(o.world));
   ctx.setTransform(...m);
   ctx.drawImage(await ensureOrthoImage(o), 0, 0);
@@ -218,11 +229,11 @@ async function filmPrepare(o) {
   if (list.length < 2) { alert("Framdriftsfilmen behöver minst två ortofoton med olika fotodatum."); return null; }
   if (!plan || !plan.calib || !viewport) { alert("Öppna en kalibrerad plan först."); return null; }
   const [W, H] = FILM_RES[o.res];
-  const reg = filmRegion(o.region);
-  const key = JSON.stringify([W, reg, list.map(x => x.id + orthoDate(x)), $("grayPdf").checked, $("showOriginal").checked, plan.id]);
+  const reg = filmRegion(o.region, o.outside);
+  const key = JSON.stringify([W, reg, o.outside, list.map(x => x.id + orthoDate(x)), $("grayPdf").checked, $("showOriginal").checked, plan.id]);
   if (filmPlates && filmPlates.key === key) return list;
   filmPlates = null;
-  const P = { key, W, H, S: reg.s * W / FILM_W, x0: reg.x0, y0: reg.y0, ortho: new Map(), pdf: null, overlay: newCanvas(W, H), overlayDay: null };
+  const P = { key, outside: o.outside, W, H, S: reg.s * W / FILM_W, x0: reg.x0, y0: reg.y0, ortho: new Map(), pdf: null, overlay: newCanvas(W, H), overlayDay: null };
   const canvas = $("filmCanvas");
   if (canvas.width !== W) { canvas.width = W; canvas.height = H; }
   try {
@@ -426,6 +437,7 @@ async function filmRecord() {
 async function openFilm() {
   if (orthos().length < 2) { alert("Ladda upp minst två ortofoton (med olika fotodatum) för att göra en framdriftsfilm."); return; }
   if (!$("filmTitle").value) $("filmTitle").value = plan ? plan.name : "";
+  $("filmOutside").checked = orthoOutside(); // samma som på skärmen – går att ändra för filmen
   $("filmModal").classList.remove("hidden");
   filmPlates = null; // utsnittet kan ha ändrats sedan sist
   const o = filmOpts();
