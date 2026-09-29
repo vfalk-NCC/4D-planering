@@ -270,6 +270,9 @@ function dxfToGeometry(dxf) {
 // ---------------------------------------------------------------------
 const cads = () => siteItems.filter(x => x.type === "cad");
 const cadGeom = new Map(); // id -> { origin, groups: [{ l, c, path: Path2D, segs, texts }] }
+/* Enheter att pröva/välja: meter per ritningsenhet. */
+const CAD_UNITS = [{ f: 1, n: "meter" }, { f: 0.1, n: "decimeter" }, { f: 0.01, n: "centimeter" }, { f: 0.001, n: "millimeter" }, { f: 0.0254, n: "tum" }, { f: 0.3048, n: "fot" }];
+const unitName = f => (CAD_UNITS.find(u => Math.abs(u.f - f) < 1e-12) || { n: f + " m" }).n;
 const INSUNITS_M = { 1: 0.0254, 2: 0.3048, 4: 0.001, 5: 0.01, 6: 1, 14: 0.1 };
 
 /* Flera filer i taget: läses och laddas upp en i taget. */
@@ -303,9 +306,18 @@ async function addDxfFile(file) {
     const pts = geo.filter(g => g.pts).slice(0, 5000).flatMap(g => [[g.pts[0], g.pts[1]]]);
     const cx = pts.reduce((s, p) => s + p[0], 0) / pts.length, cy = pts.reduce((s, p) => s + p[1], 0) / pts.length;
     const m1 = plan.calib.model[0];
-    let factor = INSUNITS_M[dxf.header.insunits];
-    if (!factor) factor = [1, 0.001, 0.01, 0.1].sort((a, b) => Math.hypot(cx * a - m1[0], cy * a - m1[1]) - Math.hypot(cx * b - m1[0], cy * b - m1[1]))[0];
-    const dist = Math.hypot(cx * factor - m1[0], cy * factor - m1[1]);
+    // Extra test: filhuvudet anger ofta meter fast koordinaterna är i mm.
+    // Om filens enhet lägger ritningen långt från planen men en annan skala
+    // (mm/cm/dm) lägger den på plats används den i stället.
+    const distOf = f => Math.hypot(cx * f - m1[0], cy * f - m1[1]);
+    const best = CAD_UNITS.map(u => u.f).sort((a, b) => distOf(a) - distOf(b))[0];
+    const declared = INSUNITS_M[dxf.header.insunits];
+    let factor = declared || best, unitNote = "";
+    if (declared && best !== declared && distOf(declared) > 2000 && distOf(best) < distOf(declared) / 20) {
+      factor = best;
+      unitNote = `Filen anger ${unitName(declared)} men hamnade ${Math.round(distOf(declared) / 1000)} km bort – tolkas som ${unitName(best)}.`;
+    } else if (!declared) unitNote = `Ingen enhet i filen – tolkas som ${unitName(best)}.`;
+    const dist = distOf(factor);
     if (dist > 20000 && !confirm(`${file.name}: CAD-ritningen ligger ${Math.round(dist / 1000)} km från planens kalibreringspunkter. Ligger den verkligen i samma koordinatsystem som modellen? Lägg till ändå?`)) return false;
     // Kompakt lagring: mm-heltal relativt ett origo.
     const origin = [Math.round(cx * factor), Math.round(cy * factor)];
@@ -333,7 +345,7 @@ async function addDxfFile(file) {
     await ghUploadBinary(token, path, new Blob([gz], { type: "application/gzip" }), `Lägesplan: CAD ${file.name}`);
     const counts = {};
     geo.forEach(g => { counts[g.layer] = (counts[g.layer] || 0) + 1; });
-    const rec = { id, type: "cad", name: file.name.replace(/\.dxf$/i, ""), path, factor, origin,
+    const rec = { id, type: "cad", name: file.name.replace(/\.dxf$/i, ""), path, factor, origin, unitNote: unitNote || null,
       layers: layerNames.map(n => ({ name: n, color: (dxf.layers[n] || {}).color || "#000000", n: counts[n], off: !!(dxf.layers[n] || {}).off })),
       stats: { lines: geo.filter(g => g.pts).length, texts: geo.filter(g => g.text).length, kb: Math.round(gz.length / 1024) },
       colorMode: "orig", color: "#1d4ed8", weight: 1, created_at: new Date().toISOString(), by: settings.userName || null };
@@ -342,7 +354,7 @@ async function addDxfFile(file) {
     cadGeom.set(id, buildCadGeom(data));
     await saveSiteItem(rec, false, { record: false });
     buildCadSnap(); renderCad();
-    setSaveStatus(`📐 ${rec.name}: ${rec.stats.lines} linjer, ${rec.stats.texts} texter i ${rec.layers.length} lager.`);
+    setSaveStatus(`📐 ${rec.name}: ${rec.stats.lines} linjer, ${rec.stats.texts} texter i ${rec.layers.length} lager.${unitNote ? " " + unitNote : ""}`);
     if ($("cadToTc").checked) {
       if (!window.opener || window.opener.closed) setSaveStatus("⚠ Originalet kunde inte sparas i Trimble Connect – öppna lägesplanen via 🗺️ i 4D-planering.");
       else askOpener("tcUpload", { folder: "Lägesplan", files: [file] }, 10 * 60 * 1000)
@@ -381,6 +393,37 @@ async function ensureCadGeom(rec) {
     return g;
   })().finally(() => cadLoading.delete(rec.id)));
   return cadLoading.get(rec.id);
+}
+/* Skala om en inlagd ritning till en annan enhet (t.ex. om den hamnat fel
+   för att filen var i mm). Geometrin räknas om och sparas på nytt. */
+async function rescaleCad(rec, newFactor) {
+  const k = newFactor / (rec.factor || 1);
+  if (!Number.isFinite(k) || Math.abs(k - 1) < 1e-9) return;
+  setBusy(`Skalar om ${rec.name} till ${unitName(newFactor)}…`);
+  try {
+    const g = await ensureCadGeom(rec);
+    const o = g.origin, no = [Math.round(o[0] * k), Math.round(o[1] * k)];
+    // mm-heltal relativt origo: ny = (origo·1000 + gammal)·k − nytt origo·1000
+    const tx = v => Math.round((o[0] * 1000 + v) * k - no[0] * 1000), ty = v => Math.round((o[1] * 1000 + v) * k - no[1] * 1000);
+    const data = { v: 1, origin: no, groups: g.groups.map(gr => ({
+      l: gr.l, c: gr.c,
+      p: gr.raw.map(a => a.map((v, i) => i % 2 ? ty(v) : tx(v))),
+      t: gr.texts.map(([x, y, h, rot, str, al]) => [tx(x), ty(y), Math.round(h * k), rot, str, al]),
+    })) };
+    const m1 = plan && plan.calib ? plan.calib.model[0] : null;
+    const dist = m1 ? Math.hypot(no[0] - m1[0], no[1] - m1[1]) : 0;
+    if (dist > 20000 && !confirm(`Med ${unitName(newFactor)} hamnar ritningen ${Math.round(dist / 1000)} km från planen. Skala om ändå?`)) { renderCadSettings(); return; }
+    await loadScript(PAKO_URL);
+    const gz = pako.gzip(JSON.stringify(data));
+    await ghUploadBinary(token, rec.path, new Blob([gz], { type: "application/gzip" }), `Lägesplan: CAD ${rec.name} i ${unitName(newFactor)}`);
+    cadGeom.set(rec.id, buildCadGeom(data));
+    await saveSiteItem({ ...rec, factor: newFactor, origin: no, unitNote: `Omskalad till ${unitName(newFactor)}.`, stats: { ...rec.stats, kb: Math.round(gz.length / 1024) } }, false, { record: false });
+    buildCadSnap(); renderCad();
+    setSaveStatus(`📐 ${rec.name} är omskalad till ${unitName(newFactor)}.`);
+  } catch (e) {
+    alert("Kunde inte skala om ritningen: " + e.message);
+    renderCadSettings();
+  } finally { setBusy(""); }
 }
 async function deleteCad(rec) {
   if (!confirm(`Ta bort CAD-ritningen "${rec.name}" från lägesplanen?`)) return;
@@ -535,7 +578,9 @@ function renderCadSettings() {
   $("cadColor").value = r.color || "#1d4ed8";
   $("cadColor").disabled = r.colorMode !== "mono";
   $("cadWeight").value = r.weight || 1;
-  $("cadInfo").textContent = `${r.stats.lines} linjer · ${r.stats.texts} texter · ${r.layers.length} lager · ${r.stats.kb} kB`;
+  const us = $("cadUnit");
+  us.innerHTML = CAD_UNITS.map(u => `<option value="${u.f}"${Math.abs(u.f - (r.factor || 1)) < 1e-12 ? " selected" : ""}>${u.n}</option>`).join("");
+  $("cadInfo").textContent = `${r.stats.lines} linjer · ${r.stats.texts} texter · ${r.layers.length} lager · ${r.stats.kb} kB${r.unitNote ? " · " + r.unitNote : ""}`;
 }
 async function updateCadSetting(patch) {
   const r = cads().find(x => x.id === $("cadSel").value);
@@ -550,5 +595,6 @@ function bindCad() {
   $("cadColorMode").onchange = e => updateCadSetting({ colorMode: e.target.value });
   $("cadColor").onchange = e => updateCadSetting({ color: e.target.value });
   $("cadWeight").onchange = e => updateCadSetting({ weight: Number(e.target.value) || 1 });
+  $("cadUnit").onchange = e => { const r = cads().find(x => x.id === $("cadSel").value); if (r) rescaleCad(r, Number(e.target.value)); };
 }
 bindCad();
