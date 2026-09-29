@@ -198,7 +198,7 @@ function askOrthoDate(def) {
 /* Egna lager (Victors önskemål 2026-09-28): varje notering/etableringsobjekt
    ligger på ett namngivet lager. "Allmänt" och "Etablering" finns alltid;
    egna lager sparas som { type: "layer", name } i site_layers.json. */
-const isSiteObj = x => x.type !== "ortho" && x.type !== "layer" && x.type !== "layermeta";
+const isSiteObj = x => x.type !== "ortho" && x.type !== "layer" && x.type !== "layermeta" && x.type !== "cad";
 const defaultLayerOf = x => x.type === "note" ? "Allmänt" : "Etablering";
 const layerOf = x => x.layer || defaultLayerOf(x);
 function userLayers() {
@@ -285,9 +285,11 @@ function setFolderVisible(id, on) {
   if (keys.includes("objects")) $("showObjects").checked = ls("objects").visible;
   if (keys.includes("photos")) $("showPhotos").checked = ls("photos").visible;
   orthoChanged(); renderZones();
+  if (typeof renderCad === "function") { buildCadSnap(); renderCad(); }
 }
 function layerRowKeys() {
-  return [...orthosByDate().reverse().map(o => "ortho:" + o.id), "pdf", "zones", "objects", ...userLayers().map(l => "ul:" + l), "photos"];
+  const cadKeys = typeof cads === "function" ? cads().map(r => "cad:" + r.id) : [];
+  return [...orthosByDate().reverse().map(o => "ortho:" + o.id), ...cadKeys, "pdf", "zones", "objects", ...userLayers().map(l => "ul:" + l), "photos"];
 }
 
 function renderActiveLayerSelect() {
@@ -336,6 +338,7 @@ async function loadSiteLayers() {
   applyLayerCss();
   renderOrtho();
   renderOrthoNav();
+  if (typeof renderCad === "function") renderCad();
   renderZones();
 }
 async function saveSiteItem(rec, remove = false, opts = {}) {
@@ -680,7 +683,7 @@ async function loadTile(path) {
    att ritningens "multiplicera" blandas mot fotot, men täcker bara det
    synliga området. */
 let orthoRenderSeq = 0, orthoTimer = 0;
-function scheduleOrthoRender() { clearTimeout(orthoTimer); orthoTimer = setTimeout(renderOrtho, 90); }
+function scheduleOrthoRender() { clearTimeout(orthoTimer); orthoTimer = setTimeout(renderOrtho, 90); if (typeof scheduleCadRender === "function") scheduleCadRender(); }
 async function renderOrtho() {
   const seq = ++orthoRenderSeq;
   const ok = plan && plan.calib && viewport;
@@ -1239,9 +1242,10 @@ function snapPdf(pdfPt, e, excludeId) {
     if (x.type !== "fence" && x.type !== "route" && x.type !== "note" && P.length > 2) segs.push([P[P.length - 1], P[0]]);
   });
   ((plan && plan.zones) || []).forEach(z => (z.polys || []).forEach(poly => poly.forEach((p, i) => { pts.push(p); segs.push([p, poly[(i + 1) % poly.length]]); })));
-  if (snapIndex) {
-    const c = snapIndex.cell, ix = Math.floor(pdfPt[0] / c), iy = Math.floor(pdfPt[1] / c);
-    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) (snapIndex.grid.get((ix + dx) + "," + (iy + dy)) || []).forEach(sg => { segs.push(sg); pts.push(sg[0], sg[1]); });
+  for (const idx of [snapIndex, typeof cadSnapIndex !== "undefined" ? cadSnapIndex : null]) {
+    if (!idx) continue;
+    const c = idx.cell, ix = Math.floor(pdfPt[0] / c), iy = Math.floor(pdfPt[1] / c);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) (idx.grid.get((ix + dx) + "," + (iy + dy)) || []).forEach(sg => { segs.push(sg); pts.push(sg[0], sg[1]); });
   }
   let best = null, bd = tol;
   pts.forEach(p => { const d = Math.hypot(p[0] - pdfPt[0], p[1] - pdfPt[1]); if (d < bd) { bd = d; best = p; } });
@@ -1624,7 +1628,7 @@ function closeSitePop() {
 // ---------------------------------------------------------------------
 function layerRow(key, label, opts = {}) {
   const st = ls(key, opts);
-  return `<div class="layer-row${opts.sub ? " sub" : ""}${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}" data-layer="${escHtml(key)}">
+  return `<div class="layer-row${opts.sub ? " sub" : ""}${opts.cadSub ? " cad-sub" : ""}${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}" data-layer="${escHtml(key)}">
       <input type="checkbox" class="lr-vis"${st.visible ? " checked" : ""} title="Visa/dölj" />
       <span class="ln" title="${escHtml(label)}">${label}</span>
       ${opts.noOpacity ? "<span></span>" : `<input type="range" class="lr-op" min="0" max="100" value="${st.opacity}" title="Genomskinlighet ${st.opacity} %" />`}
@@ -1652,6 +1656,7 @@ function renderLayerPanel() {
     rowHtml["ul:" + l] = opts => layerRow("ul:" + l, `${name("ul:" + l, fixed ? "fx-name" : "ul-name", "🗂")} <small>${n}</small>`, { del: !fixed, ul: l, ...opts });
   });
   rowHtml.photos = opts => layerRow("photos", name("photos", "fx-name", "📷"), { noOpacity: true, ...opts });
+  if (typeof cads === "function") cads().forEach(r => { rowHtml["cad:" + r.id] = opts => cadRowsHtml(r, opts); });
   const keys = layerRowKeys();
   const rows = [];
   // Mappar först (i den ordning de skapades), med sina lager; sedan resten.
@@ -1685,6 +1690,7 @@ function renderLayerPanel() {
   el.querySelectorAll(".layer-row[data-layer]").forEach(row => {
     // Bara namnet startar ett drag (annars skulle reglagen dras med).
     const ln = row.querySelector(".ln");
+    if (row.classList.contains("cad-sub")) return; // CAD-lager följer sin ritning
     ln.title = ln.title || "Dra till en mapp";
     ln.addEventListener("mousedown", () => { row.draggable = true; });
     row.addEventListener("mouseup", () => { row.draggable = false; });
@@ -1706,6 +1712,7 @@ function renderLayerPanel() {
   el.querySelectorAll(".layer-row[data-layer]").forEach(row => {
     const key = row.dataset.layer;
     row.querySelector(".lr-vis").onchange = e => {
+      if (key.startsWith("cad")) { ls(key).visible = e.target.checked; saveLayerState(); buildCadSnap(); renderCad(); if (key.startsWith("cad:")) renderLayerPanel(); return; }
       if (key.startsWith("ortho:")) {
         // Manuellt val av foto: sluta följa datumet; "ett i taget" släcker de andra.
         if (orthoFollowDate()) setOrthoFollowDate(false);
@@ -1724,7 +1731,7 @@ function renderLayerPanel() {
     if (op) op.oninput = e => {
       ls(key).opacity = Number(e.target.value); op.title = `Genomskinlighet ${e.target.value} %`; saveLayerState();
       applyLayerCss();
-      if (key.startsWith("ortho:")) renderOrtho(); else if (key.startsWith("ul:")) renderZones();
+      if (key.startsWith("ortho:")) renderOrtho(); else if (key.startsWith("cad:")) renderCad(); else if (key.startsWith("ul:")) renderZones();
     };
     const mult = row.querySelector(".lr-mult");
     if (mult) mult.onchange = e => { layerState.pdfMultiply = e.target.checked; saveLayerState(); applyLayerCss(); };
@@ -1735,6 +1742,7 @@ function renderLayerPanel() {
     const fxName = row.querySelector(".fx-name");
     if (fxName) fxName.ondblclick = () => renameFixedLayer(key);
     const del = row.querySelector(".lr-del");
+    if (key.startsWith("cad:")) return; // knapparna kopplas i bindCadRows
     if (del && key.startsWith("ul:")) { del.onclick = () => deleteLayer(key.slice(3)); return; }
     if (del) del.onclick = () => {
       const o = siteItems.find(x => "ortho:" + x.id === key);
@@ -1744,6 +1752,7 @@ function renderLayerPanel() {
       ghDeleteBinary(token, o.path, "Lägesplan: ta bort ortofoto");
     };
   });
+  if (typeof bindCadRows === "function") { bindCadRows(el); renderCadSettings(); }
 }
 
 async function renameLayer(oldName) {

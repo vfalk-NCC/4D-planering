@@ -128,6 +128,7 @@ function filmOpts() {
     pdf: $("filmPdf").checked, zones: $("filmZones").checked, site: $("filmSite").checked,
     captions: $("filmCaptions").checked,
     outside: $("filmOutside").checked,
+    cad: $("filmCad").checked,
     title: $("filmTitle").value.trim(),
   };
 }
@@ -258,6 +259,7 @@ function renderFilmOverlay(P, o) {
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, P.W, P.H);
   ctx.setTransform(P.S, 0, 0, P.S, -P.x0 * P.S, -P.y0 * P.S);
   const fontPx = planFontPx();
+  if (o.cad && typeof drawCad === "function") { drawCad(ctx, [P.S, 0, 0, P.S, -P.x0 * P.S, -P.y0 * P.S], P.W / FILM_W); ctx.setTransform(P.S, 0, 0, P.S, -P.x0 * P.S, -P.y0 * P.S); }
   if (o.zones) {
     const objects = $("showObjects").checked && layerVisible("objects") ? objectShapesInPdf() : null;
     let badges = [];

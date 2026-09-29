@@ -1209,6 +1209,7 @@ function composeImage(maxW, noHeader) {
   STAGE_CANVASES.forEach(id => {
     const c = $(id);
     if (id === "orthoCanvas") { if (getComputedStyle(c).display !== "none") drawOrthoForExport(ctx, 0, head, W / pc.width); return; }
+    if (id === "zoneCanvas" && typeof drawCadForExport === "function") drawCadForExport(ctx, 0, head, W / pc.width);
     if (!c.width || getComputedStyle(c).display === "none") return;
     ctx.save();
     ctx.globalAlpha = Number(getComputedStyle(c).opacity) || 0;

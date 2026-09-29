@@ -112,6 +112,10 @@
   .layer-row.drop { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-weak); }
   .layer-row.dragging { opacity: .45; }
   .layer-row[data-layer] .ln { cursor: grab; }
+  .layer-row .cad-toggle { width: 16px; padding: 0; color: var(--muted); }
+  .layer-row .cad-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.2); }
+  .layer-row.cad-sub { padding-left: 34px; }
+  .layer-row.cad-sub.in-folder { padding-left: 48px; }
   .layer-row .blend { grid-column: 2 / 5; font-size: 11px; color: var(--muted); display: flex; gap: 4px; align-items: center; margin: 0; }
   #sitePop { position: absolute; z-index: 15; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(15,23,42,.2); padding: 12px 14px; width: 280px; font-size: 12px; }
   #sitePop button { height: 28px; padding: 0 9px; }
@@ -314,6 +318,22 @@
             <div class="row" style="margin-top:6px;"><button id="cmpSwap" title="Byt plats på fotona">⇄ Byt sida</button><span class="hint grow" style="margin:0;">Dra i snittet på planen.</span></div>
           </div>
         </details>
+
+        <details class="sec" data-sec="cad">
+          <summary><span class="si">📐</span>CAD-underlag (DXF)</summary>
+          <button id="btnAddDxf" class="block" title="DXF-fil i samma koordinatsystem som modellen (spara DWG som DXF)">📐 Lägg till DXF…</button>
+          <input type="file" id="dxfInput" accept=".dxf" class="hidden" />
+          <label class="check"><input type="checkbox" id="cadToTc" checked /> <span class="grow">Spara originalfilen i Trimble Connect (mappen Lägesplan)</span></label>
+          <div class="hint">Spara DWG som DXF i AutoCAD (Spara som → AutoCAD 2018 DXF) eller med den kostnadsfria ODA File Converter. Ritningen placeras via koordinaterna och varje CAD-lager kan tändas och släckas i lagerlistan.</div>
+          <div id="cadSettings" class="hidden" style="margin-top:10px;">
+            <div class="kv" style="grid-template-columns:auto 1fr;">
+              <span>Ritning</span><select id="cadSel"></select>
+              <span>Färger</span><div class="row" style="flex-wrap:nowrap;"><select id="cadColorMode" class="grow"><option value="orig">Originalfärger</option><option value="mono">En färg</option></select><input type="color" id="cadColor" style="width:40px;height:30px;padding:2px;border:1px solid var(--border-strong);border-radius:6px;" /></div>
+              <span>Linjer</span><select id="cadWeight"><option value="0.6">Tunna</option><option value="1" selected>Normala</option><option value="1.8">Tjocka</option><option value="3">Mycket tjocka</option></select>
+            </div>
+            <div class="hint" id="cadInfo"></div>
+          </div>
+        </details>
       </section>
 
       <!-- ============ Tid & filter ============ -->
@@ -435,7 +455,7 @@
   <main>
     <button id="btnShowSide" class="hidden" title="Visa menyn">▶ Meny</button>
     <div id="viewport">
-      <div id="stage"><canvas id="orthoCanvas"></canvas><canvas id="orthoCanvasB"></canvas><canvas id="pdfCanvas"></canvas><canvas id="pdfHiCanvas"></canvas><canvas id="zoneCanvas"></canvas><canvas id="objCanvas"></canvas><canvas id="topCanvas"></canvas></div>
+      <div id="stage"><canvas id="orthoCanvas"></canvas><canvas id="orthoCanvasB"></canvas><canvas id="pdfCanvas"></canvas><canvas id="pdfHiCanvas"></canvas><canvas id="cadCanvas" style="display:none"></canvas><canvas id="zoneCanvas"></canvas><canvas id="objCanvas"></canvas><canvas id="topCanvas"></canvas></div>
     </div>
     <div id="empty">Välj en plan, eller klicka <b>&nbsp;＋ Ny plan&nbsp;</b> och välj en PDF (t.ex. en planritning med PM-zoner).</div>
     <div id="zoomCtl" class="float-group">
@@ -483,6 +503,7 @@
           <label class="check"><input type="checkbox" id="filmSite" checked /> Etablering och noteringar</label>
           <label class="check"><input type="checkbox" id="filmCaptions" checked /> Bildtexter</label>
           <label class="check" title="Med 'Hela planen' tas både ritningen och hela fotona med"><input type="checkbox" id="filmOutside" /> Fotot utanför ritningen</label>
+          <label class="check"><input type="checkbox" id="filmCad" checked /> CAD-ritningar</label>
         </div>
         <div class="row" style="margin-top:10px;">
           <span class="muted grow" id="filmStatus"></span>
@@ -497,6 +518,7 @@
 <script src="lagesplan-tools.js"></script>
 <script src="lagesplan-layers.js"></script>
 <script src="lagesplan-film.js"></script>
+<script src="lagesplan-cad.js"></script>
 <script src="lagesplan-keys.js"></script>
 </body>
 </html>
