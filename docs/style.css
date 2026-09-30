@@ -781,3 +781,13 @@ button.danger { background: #dc2626; color: white; border-color: #dc2626; }
 .sub-row .sub-name { font-weight: 600; }
 .sub-row .sub-count { font-size: 9px; color: #334155; margin-left: 6px; }
 .sub-row .couple-btn { border: none; background: none; cursor: pointer; font-size: 12px; padding: 2px 4px; }
+
+/* Ta bort objekt ur aktivitet (2026-09-30) */
+.item-row .remove-btn { border: none; background: none; cursor: pointer; font-size: 12px; padding: 2px 4px; color: #b45309; }
+#removeObjDialog .dialog-box { width: 460px; max-width: 95vw; }
+.remove-obj-list { max-height: 50vh; overflow-y: auto; border: 1px solid #e2e5ea; border-radius: 6px; }
+.remove-obj-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid #eef0f3; font-size: 12px; cursor: pointer; }
+.remove-obj-row:last-child { border-bottom: none; }
+.remove-obj-row:hover { background: #fff7ed; }
+.remove-obj-row .grow { flex: 1; min-width: 0; }
+.remove-obj-row button { border: none; background: none; cursor: pointer; }

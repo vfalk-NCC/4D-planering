@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-30 10:00";
+const APP_VERSION = "2026-09-30 12:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -3606,6 +3606,19 @@ async function onDeleteSelectedItems() {
     return;
   }
   if (!confirm(`Är du säker på att du vill radera kopplingen för ${selectedItems.length} markerade objekt?`)) return;
+  // Omfattar markeringen hela aktiviteter? Då en extra fråga och en säkerhetskopia.
+  const selIds = new Set(selectedItems.map(it => it.id));
+  const whole = new Map();
+  selectedItems.forEach(it => {
+    const fam = typeof activityFamily === "function" ? activityFamily(it) : [it];
+    if (fam.every(m => selIds.has(m.id))) whole.set(fam.map(m => m.id).sort().join(","), it);
+  });
+  if (whole.size) {
+    const names = [...whole.values()].slice(0, 5).map(it => `• ${it.objectName || it.activity || it.id}`).join("\n");
+    if (!confirm(`Markeringen omfattar ${whole.size} hel${whole.size === 1 ? "" : "a"} aktivitet${whole.size === 1 ? "" : "er"} som då försvinner helt:\n${names}${whole.size > 5 ? "\n…" : ""}\n\nEn säkerhetskopia tas först. Radera ändå?`)) return;
+    try { await createBackup(`Före radering av ${selectedItems.length} markerade objekt`); }
+    catch (e) { if (!confirm(`Säkerhetskopian kunde inte tas (${e.message}). Radera ändå?`)) return; }
+  }
 
   const btn = document.getElementById("btnDeleteSelected");
   const originalHtml = btn.innerHTML;
@@ -3799,7 +3812,7 @@ function renderItemList() {
             </span>
             <button class="comment-btn" data-action="comments" title="${commentTitle}">💬${commentBadge}</button>
             <button class="edit-btn" data-action="edit" title="Redigera bara det här objektet">✏️</button>
-            <button class="delete-btn" data-action="delete" title="Ta bort det här objektet från aktiviteten">🗑️</button>
+            <button class="delete-btn" data-action="delete" title="Ta bort det här objektet ur aktiviteten (aktiviteten finns kvar)">✂</button>
           </div>
         </div>`;
         return;
@@ -3817,7 +3830,8 @@ function renderItemList() {
             <button class="couple-btn" data-action="couple" title="${it.modelId ? "Koppla fler 3D-objekt till samma aktivitet" : "Koppla ett eller flera 3D-objekt till den här posten"} - klicka objekten i 3D och tryck Spara">🔗</button>
             <button class="comment-btn" data-action="comments" title="${commentTitle}">💬${commentBadge}</button>
             <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
-            <button class="delete-btn" data-action="delete" title="${entry.rep ? "Radera aktiviteten med alla dess objekt" : "Radera kopplingen"}">🗑️</button>
+            ${(entry.rep ? entry.members : [it, ...siblingsOf(it)]).some(m => m.modelId) ? `<button class="remove-btn" data-action="remove-objs" title="Ta bort objekt ur aktiviteten – aktiviteten finns kvar">✂</button>` : ""}
+            <button class="delete-btn" data-action="delete" title="Radera hela aktiviteten (frågar två gånger, säkerhetskopia tas först)">🗑️</button>
           </div>
           ${typeof progressSliderHtml === "function" ? progressSliderHtml(progress) : `<div class="progress-track" title="Framdrift: ${progress}%"><div class="progress-fill" style="width:${progress}%"></div></div>`}
         </div>`;
@@ -3840,7 +3854,11 @@ function renderItemList() {
     };
     row.querySelector('[data-action="comments"]').onclick = () => openCommentsDialog(it);
     row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it, { single: Boolean(meta.member) });
-    row.querySelector('[data-action="delete"]').onclick = () => meta.rep ? deleteActivityFromList(meta.members) : deleteItemFromList(it);
+    row.querySelector('[data-action="delete"]').onclick = () => meta.member
+      ? removeObjectsFromActivity(it, [it])
+      : deleteActivityConfirmed(it);
+    const removeBtn = row.querySelector('[data-action="remove-objs"]');
+    if (removeBtn) removeBtn.onclick = (ev) => { ev.stopPropagation(); openRemoveObjectsDialog(it); };
     const statusBadge = row.querySelector('[data-action="status"]');
     if (statusBadge) statusBadge.onclick = (ev) => { ev.stopPropagation(); openStatusMenu(statusBadge, meta.rep ? meta.members : [it]); };
     const membersBtn = row.querySelector('[data-action="toggle-members"]');

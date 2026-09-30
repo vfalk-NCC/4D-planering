@@ -359,6 +359,18 @@
   </div>
 
   <!-- Byt namn-dialog -->
+  <div id="removeObjDialog" class="dialog hidden">
+    <div class="dialog-box">
+      <h2 id="removeObjTitle">Ta bort objekt ur aktiviteten</h2>
+      <p class="hint">Kryssa i objekten som ska tas bort, eller markera dem i 3D och tryck "Från markeringen i 3D". Aktiviteten finns kvar – tas alla objekt bort blir den "Ej kopplad" med sina datum och delaktiviteter.</p>
+      <div class="row" style="gap:6px;margin-bottom:6px;"><button type="button" id="btnRemoveObjFromSel">🎯 Från markeringen i 3D</button><button type="button" id="btnRemoveObjAll">Markera alla</button></div>
+      <div id="removeObjList" class="remove-obj-list"></div>
+      <div class="row" style="margin-top:10px;">
+        <button type="button" id="btnRemoveObjOk" class="primary" disabled>Ta bort (0)</button>
+        <button type="button" id="btnRemoveObjCancel">Avbryt</button>
+      </div>
+    </div>
+  </div>
   <div id="renameDialog" class="dialog hidden">
     <div class="dialog-box">
       <h2>Byt namn</h2>
@@ -479,5 +491,6 @@
   <script src="app.js"></script>
   <script src="manual-markings.js"></script>
   <script src="sub-activity-list.js"></script>
+  <script src="activity-remove.js"></script>
 </body>
 </html>
