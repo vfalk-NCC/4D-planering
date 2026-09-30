@@ -44,7 +44,7 @@
     </header>
     <nav id="mainTabs" class="main-tabs">
       <button type="button" data-tab="plan" class="active">Planera</button>
-      <button type="button" data-tab="time">Tidslinje</button>
+      <button type="button" data-tab="time">Filter &amp; Tidslinje</button>
       <button type="button" data-tab="tools">Import & verktyg</button>
     </nav>
     <div id="connectionWarning" class="hint warning hidden"></div>
@@ -66,7 +66,7 @@
       <div id="itemsTruncatedWarning" class="hint warning hidden"></div>
       <div class="list-toolbar">
         <input type="text" id="itemSearch" placeholder="Sök namn, område, aktivitet…" />
-        <button type="button" id="btnListFilter" class="toolbar-btn" title="Filtrera, gruppera och sortera listan (och 3D-vyn)">Filter ▾<span id="filterCountBadge" class="count-badge hidden"></span></button>
+        <button type="button" id="btnListFilter" class="toolbar-btn" title="Filtrera, gruppera och sortera – öppnar fliken Filter &amp; Tidslinje">Filter<span id="filterCountBadge" class="count-badge hidden"></span></button>
         <div class="menu-wrap">
           <button type="button" id="btnListMenu" class="toolbar-btn" title="Fler åtgärder">⋯</button>
           <div id="listMenu" class="dropdown-menu hidden">
@@ -83,7 +83,37 @@
           </div>
         </div>
       </div>
-      <div id="listFilterBox" class="filter-box hidden">
+      <div id="activeFilterChips" class="active-chips"></div>
+      <!-- Visas när "Koppla till markering" klickats på en ej kopplad rad (se
+           armCoupleMode/onWorkspaceEvent i app.js) - väntar på nästa 3D-
+           markering och skriver då modell-/objekt-ID på just den posten,
+           utan att röra något annat på den (datum, faser, kommentarer m.m.). -->
+      <div id="coupleModeBanner" class="couple-mode-banner hidden">
+        <span id="coupleModeText"></span>
+        <ul id="coupleModeList" class="couple-mode-list"></ul>
+        <div id="markDrawBar" class="mark-draw-bar hidden"></div>
+        <div class="couple-mode-actions">
+          <button id="btnSaveCoupleMode" class="primary" disabled>Spara (0)</button>
+          <button id="btnCancelCoupleMode">Avbryt</button>
+        </div>
+      </div>
+      <div id="hiddenMatchNotice" class="hint warning hidden"></div>
+      <div id="itemList" class="item-list"></div>
+      <div id="selectionBar" class="selection-bar hidden">
+        <span class="sel-count"><b id="selectedCount">0</b> valda</span>
+        <button id="btnEditSelected" title="Ändra status, entreprenör, område, aktivitet och/eller förskjut datum för alla markerade rader i ett svep" disabled>Redigera<span id="editSelectedCount" class="hidden">0</span></button>
+        <button id="btnShowLabels" title="Visa namn + start-/slutdatum som textetiketter i 3D-vyn för de markerade raderna" disabled>Namn i 3D</button>
+        <button id="btnDeleteSelected" title="Radera planeringskopplingen för alla markerade rader" disabled>Radera</button>
+        <button id="btnClearSelection" class="sel-close" title="Avmarkera alla">✕</button>
+      </div>
+      <div id="labelsStatus" class="hint"></div>
+    </section>
+
+    <!-- ===== Tidslinje ===== -->
+    <!-- ===== Filter (flik 2: Filter & Tidslinje) ===== -->
+    <section class="panel" data-panel-id="filter" data-tab="time">
+      <h2>Filter</h2>
+      <div id="listFilterBox" class="filter-box">
         <div class="filter-grid">
           <div class="filter-cell">
             <span class="filter-label">Område</span>
@@ -146,33 +176,8 @@
         </div>
         <div id="filterMsg" class="hint"></div>
       </div>
-      <div id="activeFilterChips" class="active-chips"></div>
-      <!-- Visas när "Koppla till markering" klickats på en ej kopplad rad (se
-           armCoupleMode/onWorkspaceEvent i app.js) - väntar på nästa 3D-
-           markering och skriver då modell-/objekt-ID på just den posten,
-           utan att röra något annat på den (datum, faser, kommentarer m.m.). -->
-      <div id="coupleModeBanner" class="couple-mode-banner hidden">
-        <span id="coupleModeText"></span>
-        <ul id="coupleModeList" class="couple-mode-list"></ul>
-        <div id="markDrawBar" class="mark-draw-bar hidden"></div>
-        <div class="couple-mode-actions">
-          <button id="btnSaveCoupleMode" class="primary" disabled>Spara (0)</button>
-          <button id="btnCancelCoupleMode">Avbryt</button>
-        </div>
-      </div>
-      <div id="hiddenMatchNotice" class="hint warning hidden"></div>
-      <div id="itemList" class="item-list"></div>
-      <div id="selectionBar" class="selection-bar hidden">
-        <span class="sel-count"><b id="selectedCount">0</b> valda</span>
-        <button id="btnEditSelected" title="Ändra status, entreprenör, område, aktivitet och/eller förskjut datum för alla markerade rader i ett svep" disabled>Redigera<span id="editSelectedCount" class="hidden">0</span></button>
-        <button id="btnShowLabels" title="Visa namn + start-/slutdatum som textetiketter i 3D-vyn för de markerade raderna" disabled>Namn i 3D</button>
-        <button id="btnDeleteSelected" title="Radera planeringskopplingen för alla markerade rader" disabled>Radera</button>
-        <button id="btnClearSelection" class="sel-close" title="Avmarkera alla">✕</button>
-      </div>
-      <div id="labelsStatus" class="hint"></div>
     </section>
 
-    <!-- ===== Tidslinje ===== -->
     <section class="panel" data-panel-id="timeline" data-tab="time">
       <h2>Tidslinje</h2>
       <p class="hint">Datum och uppspelning finns alltid längst ner. Här ställer du in intervall och färger.</p>

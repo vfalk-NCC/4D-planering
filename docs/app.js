@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-30 23:30";
+const APP_VERSION = "2026-10-01 00:45";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -1428,6 +1428,11 @@ function groupSpan(members) {
   return { ...members[0], startDate: starts[0] || null, endDate: ends[ends.length - 1] || null };
 }
 
+/** Kort besked (i stället för en felruta) när en okopplad aktivitet klickas. */
+function notCoupledHint() {
+  if (typeof showUndoToast === "function") showUndoToast("Aktiviteten är inte kopplad till något i 3D ännu.", false);
+}
+
 /** Klick på en hopfälld aktivitetsrad: markera alla dess objekt. */
 function onActivityRowClicked(members, ev) {
   const additive = Boolean(ev && (ev.ctrlKey || ev.metaKey));
@@ -1435,6 +1440,10 @@ function onActivityRowClicked(members, ev) {
   members.forEach(m => selectedItemKeys.add(m.objectId));
   selectionAnchorKey = members[members.length - 1].objectId;
   renderItemList();
+  if (!members.some(m => m.modelId && m.objectId)) {
+    if (!(typeof marksForItem === "function" && marksForItem(members[0]).length)) notCoupledHint();
+    return;
+  }
   selectItemsInModel(members, additive ? { mode: "add", moveCamera: false } : {})
     .then(({ missing }) => { markMissingInModel(missing); renderItemList(); })
     .catch(e => alert("Kunde inte markera aktiviteten i 3D-vyn: " + e.message));
@@ -4040,7 +4049,14 @@ function renderItemList() {
 
     row.querySelector('[data-action="select"]').onclick = (ev) => {
       // Manuella markeringar: kameran till markeringen (även för ej kopplade aktiviteter).
-      if (typeof marksForItem === "function" && marksForItem(it).length && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey) jumpToMarks(it);
+      // Manuella markeringar: zooma dit som till ett kopplat objekt. Har
+      // aktiviteten även 3D-objekt zoomas det som vanligt till objekten (två
+      // kameraflyttar samtidigt gav ryckig kamera) och markeringen blinkar.
+      if (typeof marksForItem === "function" && marksForItem(it).length && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey) {
+        const fam = meta.rep ? meta.members : [it, ...siblingsOf(it)];
+        if (fam.some(m => m.modelId && m.objectId)) { if (typeof flashMarks === "function") { if (!marksShown()) setMarksShown(true); flashMarks(marksForItem(it)); } }
+        else jumpToMarks(it);
+      }
       return (meta.rep && !meta.expanded)
         ? onActivityRowClicked(meta.members, ev)
         : onItemRowClicked(it, ev, indexToItem);
@@ -4217,6 +4233,13 @@ function onItemRowClicked(it, ev, renderedItems) {
   renderItemList();
 
   const selectedItems = items.filter(x => selectedItemKeys.has(x.objectId));
+  // Aktiviteter utan 3D-objekt (t.ex. bara en manuell markering): radens
+  // klick zoomar redan till markeringen – försök inte markera objekt som
+  // inte finns (det gav en felruta som avbröt zoomen).
+  if (selectedItems.length > 0 && !selectedItems.some(x => x.modelId && x.objectId)) {
+    if (!(typeof marksForItem === "function" && selectedItems.some(x => marksForItem(x).length))) notCoupledHint();
+    return;
+  }
   if (selectedItems.length > 0) {
     selectItemsInModel(selectedItems)
       .then(({ missing }) => { markMissingInModel(missing); renderItemList(); })

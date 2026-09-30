@@ -15,16 +15,23 @@ const TAB_KEY = "4dplan-tab";
 function currentTab() {
   try { return localStorage.getItem(TAB_KEY) || "plan"; } catch (e) { return "plan"; }
 }
+/* Varje flik minns var man var (scrollpositionen) när man lämnade den, och
+   man kommer tillbaka exakt dit (Victors önskemål 2026-09-30). */
+const tabScroll = {};
+let activeTab = null;
 function showTab(tab) {
+  if (activeTab && activeTab !== tab) tabScroll[activeTab] = window.scrollY;
+  const changed = activeTab !== tab;
+  activeTab = tab;
   document.querySelectorAll("#mainTabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   document.querySelectorAll("section.panel[data-tab]").forEach(p => p.classList.toggle("tab-hidden", p.dataset.tab !== tab));
   try { localStorage.setItem(TAB_KEY, tab); } catch (e) {}
+  if (changed) window.scrollTo(0, tabScroll[tab] || 0);
 }
 
 /* ---------- menyer och filterrutan ---------- */
 function closeMenus(except) {
-  ["listMenu", "listFilterBox"].forEach(id => { if (id !== except) document.getElementById(id)?.classList.add("hidden"); });
-  document.getElementById("btnListFilter")?.classList.toggle("active", !document.getElementById("listFilterBox").classList.contains("hidden"));
+  ["listMenu"].forEach(id => { if (id !== except) document.getElementById(id)?.classList.add("hidden"); });
 }
 function closeRowMenus(except) {
   document.querySelectorAll("#itemList .row-menu:not(.hidden)").forEach(m => { if (m !== except) m.classList.add("hidden"); });
@@ -125,7 +132,7 @@ function revealElement(el) {
     panel.classList.remove("collapsed");
     if (typeof collapsedPanels !== "undefined") { collapsedPanels.delete(panel.dataset.panelId); saveCollapsedPanels(); }
   }
-  const menu = el.closest("#listMenu, #listFilterBox");
+  const menu = el.closest("#listMenu");
   if (menu && menu.classList.contains("hidden")) { closeMenus(menu.id); menu.classList.remove("hidden"); closeMenus(menu.id); }
   const rowMenu = el.closest(".row-menu");
   if (rowMenu && rowMenu.classList.contains("hidden")) { closeRowMenus(rowMenu); rowMenu.classList.remove("hidden"); }
@@ -155,15 +162,8 @@ function initUiShell() {
   document.querySelectorAll("#mainTabs button").forEach(b => { b.onclick = () => showTab(b.dataset.tab); });
   showTab(currentTab());
 
-  // Filter ▾ och ⋯
-  const filterBox = document.getElementById("listFilterBox");
-  document.getElementById("btnListFilter").onclick = (ev) => {
-    ev.stopPropagation();
-    const open = filterBox.classList.contains("hidden");
-    closeMenus("listFilterBox");
-    filterBox.classList.toggle("hidden", !open);
-    closeMenus("listFilterBox");
-  };
+  // Filter-knappen i listan tar en till fliken Filter & Tidslinje.
+  document.getElementById("btnListFilter").onclick = (ev) => { ev.stopPropagation(); showTab("time"); };
   const menu = document.getElementById("listMenu");
   document.getElementById("btnListMenu").onclick = (ev) => {
     ev.stopPropagation();

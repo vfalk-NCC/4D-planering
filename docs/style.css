@@ -965,3 +965,4 @@ header h1, .header-titles h1 { white-space: nowrap; }
 /* Kopplingsrutan ligger kvar överst (under flikarna) medan man scrollar,
    tills man sparat eller avbrutit (Victors önskemål 2026-09-30). */
 .couple-mode-banner { position: sticky; top: 44px; z-index: 28; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.panel .filter-box { border: none; padding: 0; background: transparent; margin: 0; }

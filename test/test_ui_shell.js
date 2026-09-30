@@ -84,6 +84,23 @@ put('plan_markups.json', []);
   await page.reload({ waitUntil: 'networkidle' }); await page.waitForTimeout(400);
   if (!(await page.isVisible('section[data-panel-id="excel"]'))) fail('fliken ska kommas ihåg');
   await page.click('#mainTabs [data-tab="plan"]');
+  // Filtret ligger på flik 2 och Filter-knappen tar en dit
+  await page.click('#btnListFilter'); await page.waitForTimeout(100);
+  if (!(await page.isVisible('#listFilterBox')) || !(await page.isVisible('section[data-panel-id="timeline"]')) || await page.isVisible('#itemList')) fail('Filter ska öppna fliken Filter & Tidslinje');
+  if (!(await page.innerText('#mainTabs [data-tab="time"]')).includes('Filter & Tidslinje')) fail('flik 2 ska heta Filter & Tidslinje');
+  // Varje flik minns sin scrollposition
+  await page.setViewportSize({ width: 420, height: 400 });
+  await page.click('#mainTabs [data-tab="plan"]');
+  await page.evaluate(() => { for (let i = 0; i < 25; i++) items.push({ ...items[0], id: 'q' + i, objectId: 'q' + i, objectName: 'Q' + i, groupId: null, sourceKey: null }); renderItemList(); window.scrollTo(0, 600); });
+  await page.waitForTimeout(100);
+  const y1 = await page.evaluate(() => window.scrollY);
+  await page.click('#mainTabs [data-tab="time"]'); await page.waitForTimeout(100);
+  const y2 = await page.evaluate(() => window.scrollY);
+  await page.click('#mainTabs [data-tab="plan"]'); await page.waitForTimeout(100);
+  const y3 = await page.evaluate(() => window.scrollY);
+  if (y1 < 300 || y2 !== 0 || y3 !== y1) fail(`fliken ska komma tillbaka till samma ställe (${y1} → ${y2} → ${y3})`);
+  await page.evaluate(() => { items = items.filter(x => !String(x.id).startsWith('q')); renderItemList(); window.scrollTo(0, 0); });
+  await page.setViewportSize({ width: 420, height: 900 });
   console.log('OK: flikarna växlar block, kommer ihåg valet och tidslinjen syns alltid');
 
   // 2) Filter ▾ med etiketter styr listan, aktiva filter med ✕
@@ -102,7 +119,6 @@ put('plan_markups.json', []);
   if (!(await names()).includes('Annan')) fail('✕ på etiketten ska ta bort filtret');
   await page.click('#btnClearFilter'); await page.waitForTimeout(150);
   if (await page.isChecked('#hideCompleted') || (await page.innerText('#activeFilterChips')).trim()) fail('Rensa filter ska rensa allt');
-  await page.click('#btnListFilter');
   console.log('OK: Filter ▾ styr listan, aktiva filter visas med ✕ och Rensa filter rensar allt');
 
   // 3) ⋯-menyn stängs vid klick utanför
