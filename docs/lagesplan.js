@@ -42,6 +42,11 @@ const $ = id => document.getElementById(id);
 let projectId = new URLSearchParams(location.search).get("project");
 let settings = {};
 let token = null;
+// Manuell token (anges under nyckelknappen) – sparas separat och går före
+// den som 4D-planering skickar, så en gammal token där inte skriver över den.
+const LS_TOKEN_KEY = "lagesplan-github-token";
+let tokenSource = "";  // "manuell" | "4D-planering" | "sparad" | ""
+const manualToken = () => { try { return localStorage.getItem(LS_TOKEN_KEY) || ""; } catch (e) { return ""; } };
 let items = [];            // planerade objekt (radformat från plan_items.json)
 let plans = [];            // status_plans.json
 let plan = null;           // aktiv plan
@@ -84,6 +89,7 @@ window.addEventListener("DOMContentLoaded", init);
 async function init() {
   try { settings = JSON.parse(localStorage.getItem("4dplan-settings") || "{}") || {}; } catch (e) { settings = {}; }
   token = settings.githubToken || null;
+  if (token) tokenSource = "sparad";
   let unlocked = false;
   try { unlocked = localStorage.getItem("4dplan-unlocked") === "1"; } catch (e) {}
 
@@ -97,18 +103,20 @@ async function init() {
       const r = await askOpener("hello", {}, 4000);
       if (r.settings) {
         settings = { ...settings, ...r.settings };
-        token = settings.githubToken || token;
+        if (settings.githubToken) { token = settings.githubToken; tokenSource = "4D-planering"; }
         unlocked = true;
       }
       if (!projectId && r.projectId) projectId = r.projectId;
     } catch (e) { /* ingen extension - använd lokal lagring */ }
   }
+  if (manualToken()) { token = manualToken(); tokenSource = "manuell"; unlocked = true; }
   renderLegend();
 
   if (!projectId) return fatal("Saknar projekt. Öppna lägesplanen via knappen 🗺️ Lägesplan i 4D-planering.");
   if (!token || !unlocked) {
-    $("tokenBox").classList.remove("hidden");
-    return fatal("Öppna lägesplanen via knappen 🗺️ i 4D-planering (inne i Trimble Connect), eller ange GitHub-token här.");
+    $("btnTokenOpen").classList.remove("hidden");
+    openTokenModal();
+    return fatal("Öppna lägesplanen via kartknappen i 4D-planering (inne i Trimble Connect), eller ange GitHub-token (nyckelknappen).");
   }
 
   $("projectInfo").textContent = `Projekt ${projectId}`;
@@ -120,8 +128,9 @@ async function init() {
   } catch (e) {
     setBusy("");
     if (/\b401\b/.test(e.message)) {
-      $("tokenBox").classList.remove("hidden");
-      return fatal("GitHub godkänner inte token:en (401) – den har troligen gått ut. Ange en ny token under ⚙ i 4D-planering (eller här nedan).");
+      $("btnTokenOpen").classList.remove("hidden");
+      openTokenModal("GitHub godkänner inte token:en (401) – den har troligen gått ut. Ange en ny här.");
+      return fatal(`GitHub godkänner inte token:en från ${tokenSource || "inställningarna"} (401) – den har troligen gått ut. Ange en ny med nyckelknappen.`);
     }
     return fatal("Kunde inte hämta data: " + e.message);
   }
@@ -1334,16 +1343,7 @@ function bindUI() {
     if (!ids.length) { alert("Zonen har inga kopplade objekt."); return; }
     try { await askOpener("select", { ids }, 30000); } catch (e) { alert("Kunde inte markera i 3D: " + e.message); }
   };
-  $("btnTokenSave").onclick = () => {
-    const t = $("tokenInput").value.trim();
-    if (!t) return;
-    try {
-      const cur = JSON.parse(localStorage.getItem("4dplan-settings") || "{}") || {};
-      localStorage.setItem("4dplan-settings", JSON.stringify({ ...cur, githubToken: t }));
-      localStorage.setItem("4dplan-unlocked", "1");
-    } catch (e) {}
-    location.reload();
-  };
+  bindTokenModal();
   $("zeDelete").onclick = () => {
     const z = plan.zones.find(x => x.id === selectedZoneId);
     if (!z || !confirm(`Ta bort zon ${z.code}?`)) return;
@@ -1451,4 +1451,63 @@ function bindSections() {
   $("btnHideSide").onclick = () => setSideHidden(true);
   bindSideResizer();
   $("btnShowSide").onclick = () => setSideHidden(false);
+}
+
+// ---------------------------------------------------------------------
+// Anslutning: GitHub-token (Victors önskemål 2026-10-01)
+// ---------------------------------------------------------------------
+const maskToken = t => t ? `${t.slice(0, 6)}…${t.slice(-4)}` : "";
+function renderTokenStatus() {
+  const m = manualToken();
+  const src = m ? "manuell (angiven här)" : tokenSource === "4D-planering" ? "från 4D-planering" : tokenSource === "sparad" ? "sparad i webbläsaren" : "";
+  $("tokenStatus").innerHTML = token
+    ? `Används nu: <b>${escHtml(maskToken(m || token))}</b> – ${escHtml(src)}`
+    : "Ingen token angiven.";
+  $("btnTokenClear").disabled = !m;
+}
+function openTokenModal(msg) {
+  renderTokenStatus();
+  $("tokenInput").value = "";
+  $("tokenMsg").textContent = msg || "";
+  $("tokenMsg").className = msg ? "bad" : "muted";
+  $("tokenModal").classList.remove("hidden");
+  setTimeout(() => $("tokenInput").focus(), 30);
+}
+function closeTokenModal() { $("tokenModal").classList.add("hidden"); }
+async function testToken(t) {
+  const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}`, { headers: { Authorization: `Bearer ${t}`, Accept: "application/vnd.github+json" } });
+  if (r.status === 200) return { ok: true, text: "Token:en fungerar – har åtkomst till 4D-data." };
+  if (r.status === 401) return { ok: false, text: "GitHub godkänner inte token:en (401) – fel eller utgången." };
+  if (r.status === 404 || r.status === 403) return { ok: false, text: `Token:en saknar behörighet till ${GH_OWNER}/${GH_REPO} (${r.status}).` };
+  return { ok: false, text: `Oväntat svar från GitHub (${r.status}).` };
+}
+function bindTokenModal() {
+  const msg = (t, ok) => { $("tokenMsg").textContent = t; $("tokenMsg").className = ok ? "ok" : ok === false ? "bad" : "muted"; };
+  $("btnToken").onclick = () => openTokenModal();
+  $("btnTokenOpen").onclick = () => openTokenModal();
+  $("btnTokenClose").onclick = closeTokenModal;
+  $("tokenModal").addEventListener("mousedown", e => { if (e.target === $("tokenModal")) closeTokenModal(); });
+  $("tokenModal").addEventListener("keydown", e => { if (e.key === "Escape") closeTokenModal(); if (e.key === "Enter") $("btnTokenSave").click(); });
+  $("btnTokenShow").onclick = () => { const i = $("tokenInput"); i.type = i.type === "password" ? "text" : "password"; $("btnTokenShow").textContent = i.type === "password" ? "Visa" : "Dölj"; };
+  $("btnTokenTest").onclick = async () => {
+    const t = $("tokenInput").value.trim() || token;
+    if (!t) return msg("Skriv in en token först.", false);
+    msg("Testar…");
+    try { const r = await testToken(t); msg(r.text, r.ok); } catch (e) { msg("Kunde inte nå GitHub: " + e.message, false); }
+  };
+  $("btnTokenSave").onclick = async () => {
+    const t = $("tokenInput").value.trim();
+    if (!t) return msg("Skriv in en token först.", false);
+    msg("Testar…");
+    let r = null;
+    try { r = await testToken(t); } catch (e) { /* nätverksfel – spara ändå */ }
+    if (r && !r.ok && !confirm(`${r.text}\n\nSpara ändå?`)) return msg(r.text, false);
+    try { localStorage.setItem(LS_TOKEN_KEY, t); localStorage.setItem("4dplan-unlocked", "1"); } catch (e) {}
+    location.reload();
+  };
+  $("btnTokenClear").onclick = () => {
+    if (!confirm("Ta bort den manuella token:en? Lägesplan använder då token:en från 4D-planering igen.")) return;
+    try { localStorage.removeItem(LS_TOKEN_KEY); } catch (e) {}
+    location.reload();
+  };
 }
