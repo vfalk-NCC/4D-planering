@@ -383,15 +383,91 @@ function objectTipHtml(o) {
   return rows.filter(Boolean).join("<br>");
 }
 
+/* Canvas-px per skärm-px för objektlagret på skärmen (1 i film/utskrift). */
+function canvasPerScreenPx(ctx) {
+  const oc = ctx.canvas, ow = oc && oc.getBoundingClientRect ? oc.getBoundingClientRect().width : 0;
+  return oc && ow > 0 && oc.id === "objCanvas" ? oc.width / ow : 0;
+}
+function objDotRadius(ctx, fontPx) {
+  const k = canvasPerScreenPx(ctx);
+  return Math.max(4, fontPx / 3, k ? 7 * k : 4) * objSize() / 100;
+}
+
+/* ---------------------------------------------------------------------
+   Namn på objekten som små etiketter (Victors önskemål 2026-10-01).
+   Av från början. Bara det korta namnet, vit etikett med kant i status-
+   färgen. Etiketter som skulle krocka hoppas över (fler får plats ju mer
+   man zoomar in); är det trångt flyttas etiketten ut med en tunn linje.
+   ------------------------------------------------------------------- */
+const OBJ_LABELS_KEY = "lagesplan-objlabels";     // "1" = visa namn
+const OBJ_LABELS_WHICH_KEY = "lagesplan-objlabels-which";
+function objLabelsOn() { try { return localStorage.getItem(OBJ_LABELS_KEY) === "1"; } catch (e) { return false; } }
+function objLabelsWhich() { try { return localStorage.getItem(OBJ_LABELS_WHICH_KEY) || "all"; } catch (e) { return "all"; } }
+function objLabelText(it) {
+  const t = String(it.object_name || it.activity || "").trim();
+  return t.length > 18 ? t.slice(0, 17) + "…" : t;
+}
+function drawObjectLabels(ctx, objects, fontPx) {
+  if (!objLabelsOn() || !objects || !objects.length) return;
+  const at = $("dateInput").value || todayIso();
+  const warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
+  const which = objLabelsWhich();
+  const k = canvasPerScreenPx(ctx);
+  const fs = (k ? 11 * k : Math.max(8, fontPx * 0.55)) * Math.max(0.6, Math.min(2, objSize() / 100));
+  const r = objDotRadius(ctx, fontPx);
+  const pad = fs * 0.3, gap = r + fs * 0.25;
+  // Viktigast först: fokus, försenade, pågående, resten.
+  const rank = ph => ({ forsenad: 0, pagaende: 1, snart: 2 }[ph] ?? 3);
+  const list = objects.map(o => ({ o, ph: computeItemPhase(o.it, at, warn) || fallbackPhase(o.it), f: focusState(o.it) }))
+    .filter(x => objLabelText(x.o.it))
+    .filter(x => which === "all" || (which === "active" && ["pagaende", "forsenad", "snart"].includes(x.ph)) || (which === "late" && x.ph === "forsenad") || (which === "focus" && x.f === true))
+    .sort((a, b) => (b.f === true) - (a.f === true) || rank(a.ph) - rank(b.ph));
+  const placed = [];
+  // Prickarna är också hinder – en etikett får inte täcka en annan prick.
+  const dotsBox = objects.map(o => { const [x, y] = toPx(o.center); return { x: x - r, y: y - r, w: 2 * r, h: 2 * r, id: o.it.id }; });
+  const over = (b, q) => b.x < q.x + q.w && b.x + b.w > q.x && b.y < q.y + q.h && b.y + b.h > q.y;
+  let ownId = null;
+  const hit = b => placed.some(q => over(b, q)) || dotsBox.some(q => q.id !== ownId && over(b, q));
+  ctx.save();
+  ctx.font = `600 ${fs}px "Segoe UI", Arial, sans-serif`;
+  ctx.textBaseline = "middle";
+  for (const { o, ph } of list) {
+    const text = objLabelText(o.it);
+    ownId = o.it.id;
+    const [cx, cy] = toPx(o.center);
+    const w = ctx.measureText(text).width + pad * 2, h = fs + pad * 1.4;
+    // Kandidater: höger, vänster, ovan, under – nära pricken, sedan längre ut med linje.
+    const near = [[cx + gap, cy - h / 2], [cx - gap - w, cy - h / 2], [cx - w / 2, cy - gap - h], [cx - w / 2, cy + gap]];
+    const far = [[cx + gap * 3, cy - h * 1.6], [cx - gap * 3 - w, cy - h * 1.6], [cx + gap * 3, cy + h * 0.6], [cx - gap * 3 - w, cy + h * 0.6]];
+    let box = null, leader = false;
+    for (const [x, y] of near) { const b = { x, y, w, h }; if (!hit(b)) { box = b; break; } }
+    if (!box) for (const [x, y] of far) { const b = { x, y, w, h }; if (!hit(b)) { box = b; leader = true; break; } }
+    if (!box) continue;
+    placed.push(box);
+    const color = phaseColor(ph);
+    if (leader) {
+      const tx = Math.max(box.x, Math.min(cx, box.x + box.w)), ty = Math.max(box.y, Math.min(cy, box.y + box.h));
+      ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, fs / 12);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(tx, ty); ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.93)";
+    ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, fs / 10);
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(box.x, box.y, box.w, box.h, h / 3); else ctx.rect(box.x, box.y, box.w, box.h);
+    ctx.fill(); ctx.stroke();
+    ctx.fillStyle = "#111827";
+    ctx.fillText(text, box.x + pad, box.y + box.h / 2);
+  }
+  ctx.restore();
+}
+
 /* Varje planerat objekt i sin egen fasfärg (samma som i 3D-modellen) vid valt datum. */
 function drawObjects(ctx, objects, fontPx) {
   const at = $("dateInput").value || todayIso();
   const warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
   const dots = objStyle() !== "footprint";
   // Prickar: minst ~7 skärmpixlar i radie oavsett zoom (canvas-px = skärm-px · renderScale / view.scale).
-  const oc = ctx.canvas, ow = oc && oc.getBoundingClientRect ? oc.getBoundingClientRect().width : 0;
-  const screenPx = oc && ow > 0 && oc.id === "objCanvas" ? 7 * oc.width / ow : 4;
-  const minPx = dots ? Math.max(4, fontPx / 3, screenPx) * objSize() / 100 : Math.max(3, fontPx / 4);
+  const minPx = dots ? objDotRadius(ctx, fontPx) : Math.max(3, fontPx / 4);
   objMinPx = minPx;
   ctx.save();
   ctx.lineWidth = 1;
@@ -751,7 +827,8 @@ function renderZones() {
   const fontPx = planFontPx();
   const objects = $("showObjects").checked ? objectShapesInPdf() : null;
   const badges = drawZoneShapes(ctx, fontPx, objects);
-  if (objects) drawObjects(octx, objects, fontPx);
+  if (objects) { drawObjects(octx, objects, fontPx); drawObjectLabels(octx, objects, fontPx); }
+  objRenderedScale = view.scale;
   renderObjHint(objects);
   drawSiteLayers(tctx, fontPx);
   if (layerVisible("zones")) badges.forEach(([pt, text, color, hollow]) => drawBadge(tctx, pt, text, color, fontPx, hollow));
@@ -1050,8 +1127,19 @@ async function detectZones() {
 // ---------------------------------------------------------------------
 // Zoom, panorering, val, ritning
 // ---------------------------------------------------------------------
+/* Prickar och namnetiketter har en storlek i skärmpixlar – rita om objekt-
+   lagret när zoomen har stannat (annars växer/krymper de med planen). */
+let objRerenderTimer = 0, objRenderedScale = null;
+function scheduleObjRerender() {
+  clearTimeout(objRerenderTimer);
+  objRerenderTimer = setTimeout(() => {
+    if (objRenderedScale === view.scale) return;
+    if (typeof objStyle === "function" && (objStyle() !== "footprint" || objLabelsOn())) renderZones();
+  }, 180);
+}
 function applyView() {
   $("stage").style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+  scheduleObjRerender();
   if (typeof updateCompareClip === "function") updateCompareClip();
   if (typeof scheduleOrthoRender === "function") scheduleOrthoRender();
   scheduleHiRender();
@@ -1390,6 +1478,12 @@ function bindUI() {
     const upd = () => { $("objSizeVal").textContent = $("objSize").value + " %"; };
     $("objSize").value = objSize(); upd();
     $("objSize").oninput = () => { upd(); try { localStorage.setItem(OBJ_SIZE_KEY, $("objSize").value); } catch (e) {} renderZones(); };
+  }
+  if ($("objLabels")) {
+    const sync = () => { $("objLabelsWhich").disabled = !$("objLabels").checked; };
+    $("objLabels").checked = objLabelsOn(); $("objLabelsWhich").value = objLabelsWhich(); sync();
+    $("objLabels").onchange = () => { try { localStorage.setItem(OBJ_LABELS_KEY, $("objLabels").checked ? "1" : "0"); } catch (e) {} sync(); renderZones(); };
+    $("objLabelsWhich").onchange = () => { try { localStorage.setItem(OBJ_LABELS_WHICH_KEY, $("objLabelsWhich").value); } catch (e) {} renderZones(); };
   }
   if ($("objSubs")) {
     $("objSubs").checked = showSubObjects();

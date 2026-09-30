@@ -296,6 +296,9 @@
             <div class="row" id="objSizeRow" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Prickstorlek</span>
               <input type="range" id="objSize" class="grow" min="25" max="400" step="5" value="100" /><span id="objSizeVal" class="muted" style="font-size:12px;width:44px;text-align:right;">100 %</span></div>
             <label class="check" title="Objekt som i 4D-planering är kopplade till en delaktivitet (t.ex. bara Formning) – inte hela aktiviteten"><input type="checkbox" id="objSubs" checked /> Visa objekt kopplade till delaktiviteter</label>
+            <label class="check" title="Visar objektens korta namn (t.ex. J22) som små etiketter. Etiketter som skulle krocka hoppas över – fler får plats när du zoomar in."><input type="checkbox" id="objLabels" /> Visa namn</label>
+            <div class="row" style="align-items:center;gap:8px;"><span class="muted" style="font-size:12px;">Namn på</span>
+              <select id="objLabelsWhich" class="grow"><option value="all">Alla som syns</option><option value="active">Pågående, snart och försenade</option><option value="late">Bara försenade</option><option value="focus">Veckans fokus</option></select></div>
           </div>
         </details>
 
