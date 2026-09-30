@@ -910,3 +910,27 @@ header h1, .header-titles h1 { white-space: nowrap; }
 .header-actions { gap: 2px; }
 .header-actions button { padding: 2px 5px; font-size: 15px; }
 .selection-bar .sel-count { white-space: nowrap; }
+
+/* Ångra/gör om och kortkommandon (2026-09-30) */
+.header-actions button:disabled { opacity: .35; }
+.made-by .version-badge { margin-left: 2px; }
+.group-rename { border: none; background: none; cursor: pointer; font-size: 11px; padding: 0 3px; margin-left: auto; opacity: .7; }
+.group-rename + .group-select-all { margin-left: 4px; }
+.undo-toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 58px; z-index: 70;
+  display: flex; align-items: center; gap: 8px; max-width: calc(100% - 20px);
+  padding: 7px 10px; border-radius: 6px; background: #1f2328; color: #fff; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.25);
+}
+.undo-toast span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.undo-toast button { background: rgba(255,255,255,.14); border: none; color: #fff; padding: 4px 8px; white-space: nowrap; }
+.undo-toast .toast-x { background: none; padding: 2px 4px; }
+.keys-box { width: 440px; max-width: 95vw; max-height: 90vh; display: flex; flex-direction: column; }
+.keys-list { overflow-y: auto; flex: 1; }
+.keys-list .kg { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); margin: 10px 0 4px; }
+.keys-list .kr { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12px; }
+.keys-list .kr > span:first-child { flex: 1; }
+.keys-list .kb { min-width: 90px; text-align: center; font-family: Consolas, monospace; font-size: 11px; padding: 3px 8px; }
+.keys-list .kb.none { color: var(--muted); }
+.keys-list .kb.wait { border-color: var(--accent); color: var(--accent); }
+.keys-list .kb.fixed { border: 1px solid var(--border); border-radius: 4px; color: var(--muted); }
+.keys-list .kx { border: none; background: none; color: var(--muted); padding: 2px 4px; }

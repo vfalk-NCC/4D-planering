@@ -29,12 +29,13 @@
         <div class="header-titles">
           <div class="title-row">
             <h1>4D-planering</h1>
-            <span class="version-badge" id="versionBadge" title="Senast uppdaterad (pushad till GitHub)"></span>
           </div>
-          <span class="made-by">Made by: VFA</span>
+          <span class="made-by">Made by: VFA · <span class="version-badge" id="versionBadge" title="Senast uppdaterad (pushad till GitHub)"></span></span>
         </div>
       </div>
       <div class="header-actions">
+        <button id="btnUndo" title="Inget att ångra" disabled>↶</button>
+        <button id="btnRedo" title="Inget att göra om" disabled>↷</button>
         <button id="btnCollapseAll" title="Minimera alla block">⊟</button>
         <button id="btnStatusPlan" title="Lägesplan: en PDF-plan (t.ex. med PM-zoner) färgad efter framdriften">🗺️</button>
         <button id="btnRefresh" title="Hämta senaste data">↻</button>
@@ -77,6 +78,7 @@
             <button id="btnSuggestDeps" title="Föreslår beroenden mellan objekt i samma område med samma namn, baserat på en vanlig byggordning (t.ex. Formning → Armering → Gjutning) - helt regelbaserat, ingen AI/extern tjänst.">🔗 Föreslå beroenden…</button>
             <hr />
             <button id="btnClearLabels" title="Ta bort namnetiketterna i 3D-vyn">🏷 Rensa namnetiketter i 3D</button>
+            <button id="btnPlanKeys" title="Visa och ändra kortkommandona (?)">⌨ Kortkommandon</button>
             <label class="menu-check" title="Visar de manuella markeringarna (linjer, ytor, volymer och frihand) i 3D, i aktivitetens statusfärg"><input type="checkbox" id="showManualMarks" checked /> Visa manuella markeringar i 3D</label>
           </div>
         </div>
@@ -364,6 +366,21 @@
       </div>
   </div>
 
+  <!-- Kortkommandon -->
+  <div id="planKeysDialog" class="dialog hidden">
+    <div class="dialog-box keys-box">
+      <h2>⌨ Kortkommandon</h2>
+      <p class="hint">Klicka på en tangent och tryck den nya. Gäller inte medan du skriver i ett fält. Sparas i den här webbläsaren.</p>
+      <div id="planKeysList" class="keys-list"></div>
+      <div class="row" style="margin-top:8px;"><span class="hint" id="planKeysMsg" style="flex:1;color:var(--accent);"></span></div>
+      <div class="row">
+        <button id="btnPlanKeysReset" type="button">↺ Återställ standard</button>
+        <button id="btnPlanKeysClose" type="button" class="primary" style="margin-left:auto;">Stäng</button>
+      </div>
+    </div>
+  </div>
+  <div id="undoToast" class="undo-toast hidden"></div>
+
   <!-- Inställningsdialog -->
   <div id="settingsDialog" class="dialog hidden">
     <div class="dialog-box">
@@ -395,6 +412,7 @@
       <div id="panelVisibilityList" class="panel-visibility-list"></div>
 
       <div class="row">
+        <button id="btnPlanKeysSettings" type="button">⌨ Kortkommandon</button>
         <button id="btnSaveSettings" class="primary">Spara</button>
         <button id="btnCloseSettings">Stäng</button>
       </div>
@@ -536,5 +554,7 @@
   <script src="sub-activity-list.js"></script>
   <script src="activity-remove.js"></script>
   <script src="ui-shell.js"></script>
+  <script src="undo.js"></script>
+  <script src="planning-keys.js"></script>
 </body>
 </html>

@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-30 21:00";
+const APP_VERSION = "2026-09-30 22:30";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -2333,6 +2333,18 @@ function onOpenRenameDialog() {
   toggle("renameDialog", true);
 }
 
+/* ✏️ på en grupprubrik: Byt namn-dialogen med fältet och det gamla värdet ifyllda. */
+function openRenameFor(field, oldValue) {
+  onOpenRenameDialog();
+  document.getElementById("renameField").value = field;
+  populateRenameOldValues();
+  document.getElementById("renameOldValue").value = oldValue;
+  updateRenameCount();
+  const nv = document.getElementById("renameNewValue");
+  nv.value = oldValue;
+  nv.focus(); nv.select();
+}
+
 function populateRenameOldValues() {
   const field = document.getElementById("renameField").value;
   const sel = document.getElementById("renameOldValue");
@@ -3911,6 +3923,7 @@ function renderItemList() {
         <div class="group-header" data-group-key="${escapeHtml(group.key)}">
           <span class="group-toggle" data-action="toggle-group" title="${collapsed ? "Expandera gruppen" : "Minimera gruppen"}">${collapsed ? "▶" : "▼"}</span>
           <span class="group-title" data-action="toggle-group">${escapeHtml(group.title)} (${activityListSequence(group.items).filter(e => !e.member).length})</span>
+          ${RENAME_FIELD_LABELS[groupBy] && group.items.some(it => (it[groupBy] || "") === group.title) ? `<button class="group-rename" data-action="rename-group" title="Byt namn på ${RENAME_FIELD_LABELS[groupBy].toLowerCase()}t &quot;${escapeHtml(group.title)}&quot; – alla aktiviteter i gruppen får det nya namnet">✏️</button>` : ""}
           <button class="group-select-all" data-action="select-group" title="Markera alla objekt i gruppen i 3D-vyn. Ctrl/Cmd-klick = lägg till flera grupper i samma markering.">Markera gruppen</button>
         </div>`;
       if (collapsed) return;
@@ -4047,6 +4060,8 @@ function renderItemList() {
     headerEl.querySelectorAll('[data-action="toggle-group"]').forEach(elToggle => {
       elToggle.onclick = toggleFn;
     });
+    const renameBtn = headerEl.querySelector('[data-action="rename-group"]');
+    if (renameBtn) renameBtn.onclick = (ev) => { ev.stopPropagation(); openRenameFor(document.getElementById("groupBy").value, group.title); };
     headerEl.querySelector('[data-action="select-group"]').onclick = (ev) => {
       // Ctrl/Cmd-klick lägger till gruppen till den befintliga markeringen
       // (både i listan och i 3D-vyn) istället för att ersätta den - så man
