@@ -798,3 +798,6 @@ button.danger { background: #dc2626; color: white; border-color: #dc2626; }
 
 /* Lång aktivitetstext (utan delaktiviteter) kortas till två rader – hela texten i tooltip. */
 .item-sub-clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Ny aktivitet utan koppling / Duplicera (2026-09-30) */
+.new-activity-note { background: #eef4ff; border: 1px solid #c9dafc; border-radius: 4px; padding: 6px 8px; color: var(--text); }

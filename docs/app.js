@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-30 17:30";
+const APP_VERSION = "2026-09-30 18:30";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -472,7 +472,12 @@ function bindUI() {
   document.getElementById("versionBadge").innerText = `Version ${APP_VERSION}`;
 
   document.getElementById("btnLinkSelection").onclick = onOpenLinkForm;
-  document.getElementById("btnCancelLink").onclick = () => { toggle("linkForm", false); scrollBackToEditedItem(); };
+  document.getElementById("btnCancelLink").onclick = () => { newActivityMode = false; toggle("linkForm", false); scrollBackToEditedItem(); };
+  document.getElementById("btnNewActivity").onclick = () => openNewActivityForm();
+  document.getElementById("btnDuplicateActivity").onclick = () => {
+    const it = items.find(x => x.id === lastEditedItemId);
+    if (it) { toggle("linkForm", false); openNewActivityForm(it); }
+  };
   document.getElementById("btnAddSubActivity").onclick = onAddSubActivity;
   document.getElementById("btnSaveLink").onclick = onSaveLink;
   document.getElementById("fProgress").oninput = () => {
@@ -1239,6 +1244,7 @@ async function coupleItemToModelObjects(item, objs) {
 
 async function onOpenLinkForm() {
   lastEditedItemId = null;
+  newActivityMode = false;
   const selection = await API.viewer.getSelection(); // [{modelId, objectRuntimeIds}]
   lastSelection = [];
 
@@ -1276,6 +1282,7 @@ let flashEditId = null, flashEditUntil = 0; // raden blinkar till även om lista
 
 function editItemFromList(item, opts = {}) {
   lastEditedItemId = item.id;
+  newActivityMode = false;
   lastSelection = [{ modelId: item.modelId, objectId: item.objectId }];
   document.getElementById("selCount").innerText = 1;
   fillLinkForm(item);
@@ -1294,6 +1301,45 @@ function editItemFromList(item, opts = {}) {
     if (panel.classList.contains("collapsed")) { panel.classList.remove("collapsed"); collapsedPanels.delete("link"); saveCollapsedPanels(); }
     panel.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+}
+
+/* ---------------------------------------------------------------------
+   Ny aktivitet utan koppling / Duplicera (Victors önskemål 2026-09-30):
+   bygg tidplanen först och koppla senare (🔗 på aktiviteten eller en
+   delaktivitet, eller en manuell markering) – eller låt den vara okopplad.
+   Sparas som en okopplad post (model_id null, object_id "manuell-<id>",
+   origin "manuell") via samma formulär och sparflöde som "Koppla markering".
+   ------------------------------------------------------------------- */
+let newActivityMode = false;
+function openNewActivityForm(template) {
+  newActivityMode = true;
+  lastEditedItemId = null;
+  lastSelection = [{ modelId: null, objectId: `manuell-${ghNewId()}` }];
+  document.getElementById("selCount").innerText = 0;
+  fillLinkForm(null);
+  if (template) {
+    // Duplicera: samma uppgifter och delaktiviteter, nytt namn, nollställd framdrift.
+    const family = [template, ...siblingsOf(template)];
+    const span = groupSpan(family);
+    const set = (id, v) => { document.getElementById(id).value = v ?? ""; };
+    set("fName", `${template.objectName || template.activity || "Aktivitet"} (kopia)`);
+    set("fArea", template.area); set("fActivity", template.activity); set("fContractor", template.contractor);
+    set("fStart", span.startDate); set("fEnd", span.endDate);
+    set("fEstimatedHours", Number.isFinite(template.estimatedHours) ? template.estimatedHours : "");
+    subActivityRows = groupSubActivityRows(family).map(r => ({ ...r, members: null }));
+    renderSubActivities();
+    recomputeAggregatesFromSubActivities();
+    const note = document.getElementById("newActivityNote");
+    if (note) note.innerHTML = `<b>⧉ Kopia av ${escapeHtml(template.objectName || template.activity || "aktiviteten")}</b> – ändra namn och datum och tryck Spara. Kopian är okopplad; koppla den med 🔗 när du vill.`;
+  }
+  toggle("linkForm", true);
+  const panel = document.querySelector('section.panel[data-panel-id="link"]');
+  if (panel) {
+    if (panel.classList.contains("collapsed")) { panel.classList.remove("collapsed"); collapsedPanels.delete("link"); saveCollapsedPanels(); }
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  const name = document.getElementById("fName");
+  name.focus(); if (template) name.select();
 }
 
 /** Efter Spara/Avbryt i formuläret: tillbaka till raden man redigerade. */
@@ -1387,6 +1433,15 @@ async function deleteActivityFromList(members) {
 }
 
 function fillLinkForm(existing) {
+  const dup = document.getElementById("btnDuplicateActivity");
+  if (dup) dup.classList.toggle("hidden", !(existing && lastEditedItemId === existing.id));
+  const note = document.getElementById("newActivityNote");
+  if (note) {
+    note.classList.toggle("hidden", !newActivityMode && !(existing && !existing.modelId && existing.origin === "manuell"));
+    note.innerHTML = newActivityMode
+      ? "<b>＋ Ny aktivitet</b> – kopplas inte till något nu. Koppla senare med 🔗 på aktiviteten eller en delaktivitet, eller låt den vara okopplad."
+      : "<b>✍ Egen aktivitet</b> (skapad i appen) – påverkas inte av Excel-importen.";
+  }
   document.getElementById("fName").value = existing ? existing.objectName || "" : "";
   document.getElementById("fArea").value = existing ? existing.area || "" : "";
   document.getElementById("fActivity").value = existing ? existing.activity || "" : "";
@@ -2006,6 +2061,9 @@ function onAcceptAllSuggestedDeps() {
 function onSaveLink() {
   if (lastSelection.length === 0) return;
   const payload = buildLinkPayloadFromForm();
+  if (newActivityMode && !payload.objectName && !payload.activity) { alert("Ge aktiviteten ett namn (eller en aktivitet) först."); return; }
+  const creatingNew = newActivityMode;
+  newActivityMode = false;
 
   // Ögonblicksbild av delaktivitetsraderna TAS HÄR (inte längre fram i en
   // bakgrundsfunktion) eftersom subActivityRows nollställs/laddas om nästa
@@ -2034,8 +2092,10 @@ function onSaveLink() {
     ...payload,
     // Behåll kopplingen till 4-veckorsplaneringen vid redigering.
     sourceKey: t.existing ? t.existing.sourceKey : null,
+    origin: t.existing ? t.existing.origin || null : (creatingNew ? "manuell" : null),
     groupId: groupId || null
   }));
+  if (creatingNew) lastEditedItemId = records[0].id;
 
   // Skyddsnät (utöver filtreringen i renderDependencyPicker): om flera
   // objekt kopplas samtidigt och samma beroendelista appliceras på alla,
@@ -3238,7 +3298,8 @@ function buildPlanImportDiff(parsedItems) {
   // med samma source_key, se coupleItemToModelObjects) - alla uppdateras.
   const bySourceKey = new Map(); // source_key -> [item, ...]
   items.forEach(it => {
-    if (!it.sourceKey) return;
+    // Egna aktiviteter (origin "manuell") matchas aldrig mot importen.
+    if (!it.sourceKey || it.origin === "manuell") return;
     if (!bySourceKey.has(it.sourceKey)) bySourceKey.set(it.sourceKey, []);
     bySourceKey.get(it.sourceKey).push(it);
   });
@@ -3895,7 +3956,7 @@ function renderItemList() {
         <div class="item-row${entry.rep ? " group-rep" : ""}${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}${it.id === flashEditId && Date.now() < flashEditUntil ? " flash-edit" : ""}" data-index="${idx}" data-item-id="${escapeHtml(it.id)}"${activityKeyOf(it) ? ` data-activity-key="${escapeHtml(activityKeyOf(it))}"` : ""}>
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
-              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}${typeof manualMarkTagHtml === "function" && manualMarkTagHtml(it) ? manualMarkTagHtml(it) : (entry.rep ? !entry.members.some(m => m.modelId) : !it.modelId) ? '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>' : ""}<br/>
+              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}${typeof manualMarkTagHtml === "function" && manualMarkTagHtml(it) ? manualMarkTagHtml(it) : (entry.rep ? !entry.members.some(m => m.modelId) : !it.modelId) ? (it.origin === "manuell" ? '<span class="uncoupled-tag" title="Egen aktivitet (skapad i appen), ännu inte kopplad – koppla med 🔗 eller låt den vara okopplad">◇ Ej kopplad</span>' : '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>') : ""}<br/>
               ${activitySubLineHtml(entry)}
               <span class="item-dates">${escapeHtml(shownDates)} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
             </span>
@@ -3932,6 +3993,7 @@ function renderItemList() {
       : deleteActivityConfirmed(it);
     const removeBtn = row.querySelector('[data-action="remove-objs"]');
     if (removeBtn) removeBtn.onclick = (ev) => { ev.stopPropagation(); openRemoveObjectsDialog(it); };
+
     const statusBadge = row.querySelector('[data-action="status"]');
     if (statusBadge) statusBadge.onclick = (ev) => { ev.stopPropagation(); openStatusMenu(statusBadge, meta.rep ? meta.members : [it]); };
     const membersBtn = row.querySelector('[data-action="toggle-members"]');
@@ -4733,6 +4795,9 @@ function toRow(it) {
     // som kopplats på vanligt sätt (via "Koppla markering") eller importerats
     // via den äldre, generiska Excel-importen.
     source_key: it.sourceKey || null,
+    // "manuell" = skapad i appen med "＋ Ny aktivitet"/"⧉ Duplicera" (inte
+    // importerad). Sådana poster rörs aldrig av 4-veckorsimporten.
+    origin: it.origin || null,
     // Samma group_id = samma aktivitet kopplad till flera 3D-objekt (en rad
     // per objekt). Rader i samma grupp redigeras tillsammans, se siblingsOf.
     group_id: it.groupId || null,
@@ -4763,6 +4828,7 @@ function fromRow(row) {
     estimatedHours: Number.isFinite(row.estimated_hours) ? row.estimated_hours : null,
     dependsOn: Array.isArray(row.depends_on) ? row.depends_on.map(String) : [],
     sourceKey: row.source_key || null,
+    origin: row.origin || null,
     groupId: row.group_id || null,
     baselineStartDate: row.baseline_start_date || null,
     baselineEndDate: row.baseline_end_date || null,
