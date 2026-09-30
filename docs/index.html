@@ -41,113 +41,47 @@
         <button id="btnSettings" title="Inställningar (databas, färger m.m.)">⚙</button>
       </div>
     </header>
+    <nav id="mainTabs" class="main-tabs">
+      <button type="button" data-tab="plan" class="active">📋 Planera</button>
+      <button type="button" data-tab="time">⏱ Tidslinje</button>
+      <button type="button" data-tab="tools">🧰 Import & verktyg</button>
+    </nav>
     <div id="connectionWarning" class="hint warning hidden"></div>
     <div id="saveStatus" class="hidden"></div>
 
     <!-- ===== Koppla markerade objekt ===== -->
-    <section class="panel" data-panel-id="link">
-      <h2>Koppla markering</h2>
-      <p class="hint">Markera objekt i modellen och tryck på knappen för att sätta/ändra planeringsdata – eller skapa en aktivitet utan koppling och koppla den senare med 🔗.</p>
+    <section class="panel" data-panel-id="link" data-tab="plan">
+      <h2>Ny aktivitet / koppla</h2>
+      <p class="hint">Markera objekt i 3D och koppla dem – eller skapa en aktivitet och koppla den senare med 🔗.</p>
       <div class="row" style="gap:6px;">
         <button id="btnLinkSelection" class="primary">Koppla markerade objekt (<span id="selCount">0</span>)</button>
         <button id="btnNewActivity" title="Skapa en aktivitet i tidplanen utan att koppla den till något. Koppla senare med 🔗 (objekt eller manuell markering) – eller låt den vara okopplad.">＋ Ny aktivitet</button>
       </div>
-      <div id="linkForm" class="hidden">
-        <div id="newActivityNote" class="hint new-activity-note hidden"></div>
-        <label>Namn <span class="hint">(t.ex. M10, M12 – valfritt om du kopplar flera samtidigt)</span>
-          <input type="text" id="fName" placeholder="t.ex. M10" />
-        </label>
-        <label>Område
-          <div class="autocomplete-wrap">
-            <input type="text" id="fArea" placeholder="t.ex. Hus A, Plan 2" autocomplete="off" />
-            <div class="autocomplete-list hidden" id="fAreaList"></div>
-          </div>
-        </label>
-        <label>Aktivitet
-          <div class="autocomplete-wrap">
-            <input type="text" id="fActivity" placeholder="t.ex. Gjutning" autocomplete="off" />
-            <div class="autocomplete-list hidden" id="fActivityList"></div>
-          </div>
-        </label>
-        <div id="subActivitiesSection">
-          <div id="subActivitiesList"></div>
-          <button type="button" id="btnAddSubActivity">+ Lägg till delaktivitet</button>
-          <p class="hint">Valfritt: dela upp i flera delaktiviteter (t.ex. Formning, Gjutning) med egna datum och
-            uppskattade timmar. Så länge minst en delaktivitet finns räknas Aktivitet, Startdatum, Slutdatum och
-            Uppskattade timmar automatiskt fram (ihopslagna namn, tidigaste start, senaste slut, summerade timmar)
-            och går inte att ändra för hand - ta bort alla delaktiviteter igen för att skriva dem manuellt.</p>
-        </div>
-        <label>Entreprenör
-          <div class="autocomplete-wrap">
-            <input type="text" id="fContractor" placeholder="t.ex. NCC" autocomplete="off" />
-            <div class="autocomplete-list hidden" id="fContractorList"></div>
-          </div>
-        </label>
-        <label>Status
-          <select id="fStatus">
-            <option value="ej_planerad">Ej planerad</option>
-            <option value="planerad">Planerad</option>
-            <option value="pagaende">Pågående</option>
-            <option value="forsenad">Försenad</option>
-            <option value="klar">Klar</option>
-            <option value="pausad">Pausad</option>
-          </select>
-        </label>
-        <label>Startdatum
-          <input type="date" id="fStart" />
-        </label>
-        <label>Slutdatum
-          <input type="date" id="fEnd" />
-        </label>
-        <div id="dependsOnSection">
-          <label>Beroenden <span class="hint">(objekt som måste vara klarmarkerade innan detta kan starta)</span>
-            <div class="autocomplete-wrap">
-              <input type="text" id="fDependsOnSearch" placeholder="Sök objekt att bero på..." autocomplete="off" />
-              <div class="autocomplete-list hidden" id="fDependsOnList"></div>
-            </div>
-          </label>
-          <div id="dependsOnChips" class="dependency-chips"></div>
-        </div>
-        <div id="actualDatesSection">
-          <button type="button" id="btnToggleActualDates">+ Verklig start/avslut (valfritt)</button>
-          <div id="actualDatesFields" class="hidden">
-            <label>Verklig start <span class="hint">(valfritt - fyll i för att följa upp verklig starttid mot planerad)</span>
-              <div class="row">
-                <input type="date" id="fActualStart" style="flex:1" />
-                <button type="button" id="btnClearActualStart" class="clear-date-btn" title="Nollställ verklig start">✕</button>
-              </div>
-            </label>
-            <label>Verkligt avslut <span class="hint">(fylls i automatiskt med dagens datum när status sätts till Klar - går att ändra)</span>
-              <div class="row">
-                <input type="date" id="fActualEnd" style="flex:1" />
-                <button type="button" id="btnClearActualEnd" class="clear-date-btn" title="Nollställ verkligt avslut">✕</button>
-              </div>
-            </label>
-          </div>
-        </div>
-        <label>Framdrift (<span id="fProgressLabel">0</span>%)
-          <input type="range" id="fProgress" min="0" max="100" step="1" value="0" />
-        </label>
-        <label>Uppskattade timmar <span class="hint">(valfritt - hur lång tid hela objektet beräknas ta. Fylls i för hand, eller summeras automatiskt från delaktiviteternas timmar om sådana används)</span>
-          <input type="number" id="fEstimatedHours" min="0" step="0.5" placeholder="t.ex. 16" />
-        </label>
-        <label id="fApplyGroupRow" class="hidden" style="display:flex;gap:6px;align-items:center;">
-          <input type="checkbox" id="fApplyGroup" checked style="width:auto;" />
-          <span>Gäller alla <strong id="fApplyGroupCount">0</strong> objekt i aktiviteten (datum, status, framdrift m.m. hålls lika)</span>
-        </label>
-        <div class="row">
-          <button id="btnSaveLink" class="primary">Spara</button>
-          <button id="btnCancelLink">Avbryt</button>
-          <button id="btnDuplicateActivity" class="hidden" style="margin-left:auto;" title="Ny, okopplad aktivitet med samma uppgifter och delaktiviteter – ändra namn och datum och tryck Spara">⧉ Duplicera</button>
-        </div>
-      </div>
     </section>
 
     <!-- ===== Objektlista ===== -->
-    <section class="panel" data-panel-id="items">
+    <section class="panel" data-panel-id="items" data-tab="plan">
       <h2>Planerade objekt (<span id="itemCount">0</span>)</h2>
       <div id="itemsTruncatedWarning" class="hint warning hidden"></div>
-      <input type="text" id="itemSearch" placeholder="Sök på namn, område, aktivitet..." />
+      <div class="list-toolbar">
+        <input type="text" id="itemSearch" placeholder="Sök namn, område, aktivitet…" />
+        <button type="button" id="btnListFilter" class="toolbar-btn" title="Filtrera, gruppera och sortera listan (och 3D-vyn)">Filter ▾<span id="filterCountBadge" class="count-badge hidden"></span></button>
+        <div class="menu-wrap">
+          <button type="button" id="btnListMenu" class="toolbar-btn" title="Fler åtgärder">⋯</button>
+          <div id="listMenu" class="dropdown-menu hidden">
+            <button id="btnLoadCoupledModels" title="Tänder (läser in) alla modeller i Trimble Connect som har objekt kopplade i planeringen och visar de manuella markeringarna">💡 Tänd kopplade modeller/markeringar</button>
+            <button id="btnSelectAllCoupled" title="Markera alla kopplade objekt i 3D-vyn">🎯 Markera alla kopplade i 3D</button>
+            <button id="btnCollapseAllGroups" title="Fäll ihop alla grupper i listan">⊟ Fäll ihop alla grupper</button>
+            <hr />
+            <button id="btnRenameValue" title="Byt namn på Område/Aktivitet/Entreprenör för alla objekt som har det, i ett svep">✏️ Byt namn på område/aktivitet…</button>
+            <button id="btnSuggestDeps" title="Föreslår beroenden mellan objekt i samma område med samma namn, baserat på en vanlig byggordning (t.ex. Formning → Armering → Gjutning) - helt regelbaserat, ingen AI/extern tjänst.">🔗 Föreslå beroenden…</button>
+            <hr />
+            <button id="btnClearLabels" title="Ta bort namnetiketterna i 3D-vyn">🏷 Rensa namnetiketter i 3D</button>
+            <label class="menu-check" title="Visar de manuella markeringarna (linjer, ytor, volymer och frihand) i 3D, i aktivitetens statusfärg"><input type="checkbox" id="showManualMarks" checked /> Visa manuella markeringar i 3D</label>
+          </div>
+        </div>
+      </div>
+      <div id="listFilterBox" class="filter-box hidden">
       <div class="row">
         <label style="flex:1">Gruppera enligt
           <select id="groupBy">
@@ -166,32 +100,51 @@
           </select>
         </label>
       </div>
-      <div class="row">
-        <label class="switch" style="margin-bottom:6px;">
-          <input type="checkbox" id="hideCompleted" /> Dölj klarmarkerade
-        </label>
-        <label class="switch" style="margin-bottom:6px;">
-          <input type="checkbox" id="showOnlyCompleted" /> Visa endast klarmarkerade
-        </label>
+        <div class="filter-field">
+          <div class="filter-title">Visa</div>
+          <div class="check-row">
+            <label class="switch"><input type="checkbox" id="hideCompleted" /> Dölj klara</label>
+            <label class="switch"><input type="checkbox" id="showOnlyCompleted" /> Endast klara</label>
+            <label class="switch" title="Visar bara det som pågår idag"><input type="checkbox" id="todayOnly" /> Endast idag</label>
+            <label class="switch" title="Visar bara aktiviteter utan 3D-objekt och utan manuell markering (◇ Ej kopplad)"><input type="checkbox" id="uncoupledOnly" /> Endast ej kopplade</label>
+          </div>
+        </div>
+        <div class="filter-field">
+          <div class="filter-title">Område</div>
+          <select id="filterArea" multiple class="chip-source"></select>
+          <div id="filterAreaChips" class="chip-select" data-for="filterArea"></div>
+        </div>
+        <div class="filter-field">
+          <div class="filter-title">Aktivitet</div>
+          <select id="filterActivity" multiple class="chip-source"></select>
+          <div id="filterActivityChips" class="chip-select" data-for="filterActivity"></div>
+        </div>
+        <div class="filter-field">
+          <div class="filter-title">Entreprenör</div>
+          <select id="filterContractor" multiple class="chip-source"></select>
+          <div id="filterContractorChips" class="chip-select" data-for="filterContractor"></div>
+        </div>
+        <div class="filter-field">
+          <div class="filter-title">Status</div>
+          <select id="filterStatus" multiple class="chip-source"></select>
+          <div id="filterStatusChips" class="chip-select" data-for="filterStatus"></div>
+        </div>
+      <label class="filter-field">Startar inom
+        <select id="filterWeeks">
+          <option value="">Visa allt</option>
+          <option value="1">Nästa vecka</option>
+          <option value="2">Nästa 2 veckor</option>
+          <option value="4">Nästa 4 veckor</option>
+        </select>
+      </label>
+        <div class="row filter-actions">
+          <button id="btnApplyFilter" class="primary" title="Visar bara de filtrerade objekten i 3D-vyn">🎯 Visa filtrerat i 3D</button>
+          <button id="btnShowAllCoupled" title="Visa ALLA objekt som har en planeringskoppling i 3D-vyn, oavsett filter">Visa alla kopplade</button>
+          <button id="btnClearFilter">Rensa filter</button>
+        </div>
+        <div id="filterMsg" class="hint"></div>
       </div>
-      <div class="row">
-        <label class="switch" style="margin-bottom:6px;" title="Visar bara objekt som pågår idag (dagens datum ligger mellan start- och slutdatum, eller startdatum har passerat utan att slutdatum är satt) - går att kombinera med Dölj/Visa endast klarmarkerade.">
-          <input type="checkbox" id="todayOnly" /> Endast idag
-        </label>
-        <label class="switch" style="margin-bottom:6px;" title="Visar bara aktiviteter som inte har något 3D-objekt eller någon manuell markering kopplad (◇ Ej kopplad).">
-          <input type="checkbox" id="uncoupledOnly" /> Visa endast ej kopplade
-        </label>
-        <label class="switch" style="margin-bottom:6px;" title="Visar de manuella markeringarna (linjer, ytor, volymer och frihand) i 3D, i aktivitetens statusfärg">
-          <input type="checkbox" id="showManualMarks" checked /> Visa markeringar
-        </label>
-      </div>
-      <div class="row list-actions">
-        <button id="btnLoadCoupledModels" title="Tänder (läser in) alla modeller i Trimble Connect som har objekt kopplade i planeringen och visar de manuella markeringarna">💡 Kopplade modeller/markeringar</button>
-        <button id="btnCollapseAllGroups" title="Minimera alla grupper i listan">Minimera alla</button>
-        <button id="btnSelectAllCoupled" title="Markera alla kopplade objekt i 3D-vyn">Markera alla</button>
-        <button id="btnRenameValue" title="Byt namn på Område/Aktivitet/Entreprenör för alla objekt som har det, i ett svep">✏️ Byt namn</button>
-        <button id="btnSuggestDeps" title="Föreslår beroenden mellan objekt i samma område med samma namn, baserat på en vanlig byggordning (t.ex. Formning → Armering → Gjutning) - helt regelbaserat, ingen AI/extern tjänst.">🔗 Föreslå beroenden</button>
-      </div>
+      <div id="activeFilterChips" class="active-chips"></div>
       <!-- Visas när "Koppla till markering" klickats på en ej kopplad rad (se
            armCoupleMode/onWorkspaceEvent i app.js) - väntar på nästa 3D-
            markering och skriver då modell-/objekt-ID på just den posten,
@@ -207,25 +160,20 @@
       </div>
       <div id="hiddenMatchNotice" class="hint warning hidden"></div>
       <div id="itemList" class="item-list"></div>
-      <div class="row">
-        <button id="btnEditSelected" title="Ändra status, entreprenör, område, aktivitet och/eller förskjut datum för alla markerade rader i ett svep" disabled>✏️ Redigera markerade (<span id="editSelectedCount">0</span>)</button>
-        <button id="btnDeleteSelected" title="Radera planeringskopplingen för alla markerade rader" disabled>Radera markerade (<span id="selectedCount">0</span>)</button>
-      </div>
-      <div class="row">
-        <button id="btnShowLabels" title="Visa namn + start-/slutdatum som textetiketter i 3D-vyn för de markerade raderna i listan" disabled>Visa namn i 3D</button>
-        <button id="btnClearLabels" title="Ta bort etiketterna igen">Rensa etiketter</button>
+      <div id="selectionBar" class="selection-bar hidden">
+        <span class="sel-count"><b id="selectedCount">0</b> valda</span>
+        <button id="btnEditSelected" title="Ändra status, entreprenör, område, aktivitet och/eller förskjut datum för alla markerade rader i ett svep" disabled>✏️ Redigera<span id="editSelectedCount" class="hidden">0</span></button>
+        <button id="btnShowLabels" title="Visa namn + start-/slutdatum som textetiketter i 3D-vyn för de markerade raderna" disabled>🏷 Namn i 3D</button>
+        <button id="btnDeleteSelected" title="Radera planeringskopplingen för alla markerade rader" disabled>🗑 Radera</button>
+        <button id="btnClearSelection" class="sel-close" title="Avmarkera alla">✕</button>
       </div>
       <div id="labelsStatus" class="hint"></div>
     </section>
 
     <!-- ===== Tidslinje ===== -->
-    <section class="panel" data-panel-id="timeline">
+    <section class="panel" data-panel-id="timeline" data-tab="time">
       <h2>Tidslinje</h2>
-      <div class="timeline-controls">
-        <button id="btnPlay" title="Spela upp">▶</button>
-        <input type="date" id="timelineDate" />
-        <input type="range" id="timelineSlider" min="0" max="100" value="0" />
-      </div>
+      <p class="hint">Datum och uppspelning finns alltid längst ner. Här ställer du in intervall och färger.</p>
       <details id="timelineRangeDetails" class="timeline-range">
         <summary>Anpassat intervall på slidern</summary>
         <p class="hint">Styr själv vilket datumintervall slidern ska täcka, t.ex. bara ett kvartal - annars
@@ -244,6 +192,12 @@
         </div>
         <div id="timelineRangeStatus" class="hint"></div>
       </details>
+      <label class="warn-days">Varna "Snart aktuell" (dagar före slutdatum)
+        <div class="row">
+          <input type="range" id="warningDaysSlider" min="1" max="30" step="1" style="flex:1" />
+          <span class="hint" id="warningDaysLabel" style="align-self:center; width:60px;"></span>
+        </div>
+      </label>
       <div class="legend">
         <span><i class="dot" id="dotPlanerad"></i> Planerad</span>
         <span><i class="dot" id="dotPagaende"></i> Pågående</span>
@@ -254,45 +208,18 @@
       </div>
     </section>
 
-    <!-- ===== Filter ===== -->
-    <section class="panel" data-panel-id="filter">
-      <h2>Filter<button id="btnShowAllCoupled" class="panel-header-btn" title="Visa ALLA objekt som har en planeringskoppling i appen i 3D-vyn, oavsett filter (ångrar en snävare isolering från &quot;Visa filtrerat&quot;)">Visa alla kopplade objekt</button></h2>
-      <label>Område
-        <select id="filterArea" multiple></select>
-      </label>
-      <label>Aktivitet
-        <select id="filterActivity" multiple></select>
-      </label>
-      <label>Entreprenör
-        <select id="filterContractor" multiple></select>
-      </label>
-      <label>Status
-        <select id="filterStatus" multiple></select>
-      </label>
-      <label>Kommande veckor
-        <select id="filterWeeks">
-          <option value="">Visa allt</option>
-          <option value="1">Nästa vecka</option>
-          <option value="2">Nästa 2 veckor</option>
-          <option value="4">Nästa 4 veckor</option>
-        </select>
-      </label>
-      <label>Varna "Snart aktuell" (dagar innan slutdatum)
-        <div class="row">
-          <input type="range" id="warningDaysSlider" min="1" max="30" step="1" style="flex:1" />
-          <span class="hint" id="warningDaysLabel" style="align-self:center; width:60px;"></span>
-        </div>
-      </label>
-      <div class="row">
-        <button id="btnApplyFilter" class="primary">Visa filtrerat</button>
-        <button id="btnClearFilter">Rensa filter</button>
-      </div>
-      <div id="filterMsg" class="hint"></div>
-    </section>
-
     <!-- ===== Excel-import/export ===== -->
-    <section class="panel" data-panel-id="excel">
+    <section class="panel" data-panel-id="excel" data-tab="tools">
       <h2>Excel-import/export</h2>
+      <h3>4-veckorsplanering (Excel)</h3>
+      <p class="hint">Läser in din 4-veckorsplanering (en flik per WBS-område). Kan köras om när filen uppdateras – kopplingar, kommentarer och egna aktiviteter rörs inte. Du ser en förhandsgranskning innan något sparas.</p>
+      <input type="file" id="planExcelFile" accept=".xlsx,.xlsm,.xls" />
+      <div class="row">
+        <button id="btnImportPlanExcel" class="primary">Läs in och förhandsgranska</button>
+      </div>
+      <div id="planImportStatus" class="hint"></div>
+      <details class="excel-simple">
+        <summary>Enkel import/export (kolumnlista med ObjektID)</summary>
       <p class="hint">Kolumner: ObjektID, Namn, Område, Aktivitet, Entreprenör, Status, Startdatum, Slutdatum</p>
       <input type="file" id="excelFile" accept=".xlsx,.xls" />
       <div class="row">
@@ -304,19 +231,11 @@
       </div>
       <div id="importStatus" class="hint"></div>
 
-      <hr class="panel-divider" />
-
-      <h3>4-veckorsplanering (Excel)</h3>
-      <p class="hint">Importerar din befintliga, detaljerade 4-veckorsplanering rakt av - en flik per WBS-område, med rubriker och elementkoder/faser precis som i din Excel-fil. Elementkoder (t.ex. "M30") blir ETT objekt du kopplar en gång i 3D-vyn, med faserna som delaktiviteter under det; övriga rader blir egna, fristående objekt. Din Excel-fil ändras aldrig. Går bra att importera om och om igen när du uppdaterar filen - redan gjorda 3D-kopplingar och kommentarer rörs inte, bara datum/framdrift/faser uppdateras (se förhandsgranskningen innan något sparas skarpt).</p>
-      <input type="file" id="planExcelFile" accept=".xlsx,.xlsm,.xls" />
-      <div class="row">
-        <button id="btnImportPlanExcel" class="primary">Läs in och förhandsgranska</button>
-      </div>
-      <div id="planImportStatus" class="hint"></div>
+      </details>
     </section>
 
     <!-- ===== Hitta objekt (koordinat) ===== -->
-    <section class="panel" data-panel-id="find">
+    <section class="panel" data-panel-id="find" data-tab="tools">
       <h2>Hitta objekt</h2>
       <p class="hint">Markera en grupp kandidatobjekt i 3D-vyn (t.ex. alla fundament på en yta) och sök fram det som ligger närmast en viss koordinat, i stället för att klicka blint.</p>
       <div class="row">
@@ -331,6 +250,118 @@
       <div id="findResult" class="hint"></div>
     </section>
 
+  </div>
+
+  <!-- ===== Formuläret: ny aktivitet / koppla / redigera – öppnas ovanpå listan ===== -->
+  <div id="linkForm" class="form-sheet hidden">
+    <div class="form-sheet-box">
+      <div class="form-sheet-head">
+        <h2 id="linkFormTitle">Aktivitet</h2>
+        <button type="button" id="btnCloseLinkForm" title="Stäng utan att spara (Esc)">✕</button>
+      </div>
+      <div class="form-sheet-body">
+        <div id="newActivityNote" class="hint new-activity-note hidden"></div>
+        <label>Namn <span class="hint">(valfritt om du kopplar flera objekt samtidigt)</span>
+          <input type="text" id="fName" placeholder="t.ex. M10" />
+        </label>
+        <label>Område
+          <div class="autocomplete-wrap">
+            <input type="text" id="fArea" placeholder="t.ex. Hus A, Plan 2" autocomplete="off" />
+            <div class="autocomplete-list hidden" id="fAreaList"></div>
+          </div>
+        </label>
+        <label>Aktivitet
+          <div class="autocomplete-wrap">
+            <input type="text" id="fActivity" placeholder="t.ex. Gjutning" autocomplete="off" />
+            <div class="autocomplete-list hidden" id="fActivityList"></div>
+          </div>
+        </label>
+        <div id="subActivitiesSection">
+          <div id="subActivitiesList"></div>
+          <button type="button" id="btnAddSubActivity">+ Lägg till delaktivitet</button>
+          <p class="hint">Med delaktiviteter räknas aktivitetens namn, datum och timmar fram automatiskt.</p>
+        </div>
+        <div class="row">
+          <label style="flex:1">Startdatum
+            <input type="date" id="fStart" />
+          </label>
+          <label style="flex:1">Slutdatum
+            <input type="date" id="fEnd" />
+          </label>
+        </div>
+        <label>Status
+          <select id="fStatus">
+            <option value="ej_planerad">Ej planerad</option>
+            <option value="planerad">Planerad</option>
+            <option value="pagaende">Pågående</option>
+            <option value="forsenad">Försenad</option>
+            <option value="klar">Klar</option>
+            <option value="pausad">Pausad</option>
+          </select>
+        </label>
+        <label>Framdrift (<span id="fProgressLabel">0</span>%)
+          <input type="range" id="fProgress" min="0" max="100" step="1" value="0" />
+        </label>
+        <details id="formMore" class="form-more">
+          <summary>Mer: entreprenör, beroenden, verkliga datum, timmar</summary>
+        <label>Entreprenör
+          <div class="autocomplete-wrap">
+            <input type="text" id="fContractor" placeholder="t.ex. NCC" autocomplete="off" />
+            <div class="autocomplete-list hidden" id="fContractorList"></div>
+          </div>
+        </label>
+        <div id="dependsOnSection">
+          <label>Beroenden <span class="hint">(måste vara klara innan start)</span>
+            <div class="autocomplete-wrap">
+              <input type="text" id="fDependsOnSearch" placeholder="Sök objekt att bero på..." autocomplete="off" />
+              <div class="autocomplete-list hidden" id="fDependsOnList"></div>
+            </div>
+          </label>
+          <div id="dependsOnChips" class="dependency-chips"></div>
+        </div>
+        <div id="actualDatesSection">
+          <button type="button" id="btnToggleActualDates">+ Verklig start/avslut (valfritt)</button>
+          <div id="actualDatesFields" class="hidden">
+            <label>Verklig start 
+              <div class="row">
+                <input type="date" id="fActualStart" style="flex:1" />
+                <button type="button" id="btnClearActualStart" class="clear-date-btn" title="Nollställ verklig start">✕</button>
+              </div>
+            </label>
+            <label>Verkligt avslut <span class="hint">(sätts till idag när status blir Klar)</span>
+              <div class="row">
+                <input type="date" id="fActualEnd" style="flex:1" />
+                <button type="button" id="btnClearActualEnd" class="clear-date-btn" title="Nollställ verkligt avslut">✕</button>
+              </div>
+            </label>
+          </div>
+        </div>
+        <label>Uppskattade timmar
+          <input type="number" id="fEstimatedHours" min="0" step="0.5" placeholder="t.ex. 16" />
+        </label>
+        </details>
+        <label id="fApplyGroupRow" class="hidden" style="display:flex;gap:6px;align-items:center;">
+          <input type="checkbox" id="fApplyGroup" checked style="width:auto;" />
+          <span>Gäller alla <strong id="fApplyGroupCount">0</strong> objekt i aktiviteten (datum, status, framdrift m.m. hålls lika)</span>
+        </label>
+      </div>
+      <div class="form-sheet-foot">
+        <div class="row">
+          <button id="btnSaveLink" class="primary">Spara</button>
+          <button id="btnCancelLink">Avbryt</button>
+          <button id="btnDuplicateActivity" class="hidden" style="margin-left:auto;" title="Ny, okopplad aktivitet med samma uppgifter och delaktiviteter – ändra namn och datum och tryck Spara">⧉ Duplicera</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Tidslinjen – alltid synlig längst ner ===== -->
+  <div id="timelineBar" class="timeline-bar">
+      <div class="timeline-controls">
+        <button id="btnPlay" title="Spela upp">▶</button>
+        <input type="date" id="timelineDate" />
+        <input type="range" id="timelineSlider" min="0" max="100" value="0" />
+      </div>
   </div>
 
   <!-- Inställningsdialog -->
@@ -504,5 +535,6 @@
   <script src="manual-markings.js"></script>
   <script src="sub-activity-list.js"></script>
   <script src="activity-remove.js"></script>
+  <script src="ui-shell.js"></script>
 </body>
 </html>

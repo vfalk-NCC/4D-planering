@@ -1,13 +1,13 @@
-// Funktionstest: framdrift, status och verkliga datum hör till huvudaktiviteten –
-// ändras de på ett objekt (t.ex. ett som bara är kopplat till en delaktivitet)
-// följer resten av aktiviteten med, medan datumen stannar per objekt.
+// Funktionstest: UI-skalet efter översynen 2026-09-30 – flikar, Filter ▾ med
+// etiketter som styr listan, aktiva filter med ✕, ⋯-menyn, radmenyn,
+// åtgärdsraden för markerade rader, formuläret som panel och fast tidslinje.
 const { chromium } = require('playwright');
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
 
 const DOCS_DIR = path.join(__dirname, '..', 'docs');
-const PORT = 8957;
+const PORT = 8971;
 const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css' };
 const PID = 'test-project';
 
@@ -72,47 +72,71 @@ put('plan_markups.json', []);
     r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha } }) });
   });
   const fail = m => { throw new Error(m); };
-  const row = id => get('plan_items.json').find(r => r.id === id);
   await page.goto(`http://localhost:${PORT}/index.html`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(500);
+  const names = () => page.evaluate(() => [...document.querySelectorAll('#itemList .item-row:not(.group-member) .item-name')].map(e => e.textContent.trim()).join('|'));
 
-  // 1) Status på ett objekt som bara hör till en delaktivitet → hela aktiviteten
-  await page.evaluate(() => setStatusQuick([items.find(x => x.id === 'a2')], 'pagaende'));
-  await page.waitForTimeout(1200);
-  const st = ['h', 'a1', 'a2'].map(id => row(id).status).join(',');
-  if (st !== 'pagaende,pagaende,pagaende') fail('status ska spridas till hela aktiviteten, fick ' + st);
-  if (row('c').status !== 'planerad') fail('andra aktiviteter ska inte påverkas');
-  console.log('OK: status på ett delaktivitetsobjekt gäller hela aktiviteten');
+  // 1) Flikar
+  if (!(await page.isVisible('section[data-panel-id="items"]')) || await page.isVisible('section[data-panel-id="excel"]')) fail('Planera ska visas först');
+  await page.click('#mainTabs [data-tab="tools"]');
+  if (!(await page.isVisible('section[data-panel-id="excel"]')) || await page.isVisible('section[data-panel-id="items"]')) fail('Import & verktyg-fliken');
+  if (!(await page.isVisible('#timelineSlider'))) fail('tidslinjen ska alltid synas');
+  await page.reload({ waitUntil: 'networkidle' }); await page.waitForTimeout(400);
+  if (!(await page.isVisible('section[data-panel-id="excel"]'))) fail('fliken ska kommas ihåg');
+  await page.click('#mainTabs [data-tab="plan"]');
+  console.log('OK: flikarna växlar block, kommer ihåg valet och tidslinjen syns alltid');
 
-  // 2) Framdrift + verkligt avslut via ett enskilt objekt (som "Redigera markerade")
-  await page.evaluate(() => {
-    const it = items.find(x => x.id === 'a1');
-    const records = [{ ...it, progress: 100, status: 'klar', actualEndDate: '2026-10-09' }];
-    applyOptimisticRecords(records);
-    const jobId = ++saveJobCounter;
-    saveJobs.set(jobId, { id: jobId, records, label: 't', status: 'pending', error: null });
-    runSaveJob(jobId);
-  });
-  await page.waitForTimeout(1500);
-  for (const id of ['h', 'a1', 'a2']) {
-    const r = row(id);
-    if (r.progress !== 100 || r.status !== 'klar' || r.actual_end_date !== '2026-10-09') fail(`${id} ska följa huvudaktiviteten, fick ` + JSON.stringify(r));
-  }
-  if (row('a1').start_date !== '2026-10-01' || row('a2').start_date !== '2026-10-08') fail('datumen ska stanna per objekt/delaktivitet');
-  console.log('OK: framdrift, status och verkligt avslut följer huvudaktiviteten, datumen stannar per delaktivitet');
+  // 2) Filter ▾ med etiketter styr listan, aktiva filter med ✕
+  await page.click('#btnListFilter');
+  await page.click('#filterAreaChips .chip[data-value="Hus A"]');
+  await page.waitForTimeout(150);
+  await page.check('#hideCompleted'); await page.waitForTimeout(150);
+  if ((await page.innerText('#filterCountBadge')).trim() !== '2') fail('räknaren på Filter ska visa 2');
+  const chips = await page.innerText('#activeFilterChips');
+  if (!chips.includes('Dölj klara') || !chips.includes('Hus A')) fail('aktiva filter ska visas som etiketter, fick ' + chips);
+  await page.evaluate(() => { items.find(x => x.id === 'c').area = 'Hus B'; buildFilterOptions(); renderItemList(); });
+  if ((await names()).includes('Annan')) fail('områdesfiltret ska styra listan, fick ' + await names());
+  await page.click('#activeFilterChips .active-chip:has-text("Hus A") button'); await page.waitForTimeout(150);
+  if (!(await names()).includes('Annan')) fail('✕ på etiketten ska ta bort filtret');
+  await page.click('#btnClearFilter'); await page.waitForTimeout(150);
+  if (await page.isChecked('#hideCompleted') || (await page.innerText('#activeFilterChips')).trim()) fail('Rensa filter ska rensa allt');
+  await page.click('#btnListFilter');
+  console.log('OK: Filter ▾ styr listan, aktiva filter visas med ✕ och Rensa filter rensar allt');
 
-  // 3) Äldre data där objekten skiljer sig: listan visar aktivitetens (högsta) framdrift
-  const txt = await page.locator('#itemList .item-row:not(.group-member)', { hasText: 'Gammal data' }).first().innerText();
-  if (!txt.includes('Framdrift 80%')) fail('aktivitetsraden ska visa huvudaktivitetens framdrift, fick ' + txt);
-  console.log('OK: aktivitetsraden visar huvudaktivitetens framdrift');
+  // 3) ⋯-menyn stängs vid klick utanför
+  await page.click('#btnListMenu');
+  if (!(await page.isVisible('#btnRenameValue'))) fail('⋯-menyn ska öppnas');
+  await page.mouse.click(5, 5); await page.waitForTimeout(100);
+  if (await page.isVisible('#btnRenameValue')) fail('⋯-menyn ska stängas vid klick utanför');
+  console.log('OK: ⋯-menyn öppnas och stängs');
 
-  const sub = await page.locator('#itemList .item-row:not(.group-member)', { hasText: 'Gjutning plan 2' }).first().locator('.item-sub').innerText();
-  if (sub.trim() !== 'Hus A') fail('med delaktiviteter ska bara området visas (resten syns under ☰), fick ' + sub);
-  const sub2 = await page.locator('#itemList .item-row:not(.group-member)', { hasText: 'Annan' }).first().locator('.item-sub').innerText();
-  if (!sub2.includes('Hus A ·')) fail('utan delaktiviteter ska område · aktivitet visas, fick ' + sub2);
-  console.log('OK: den långa aktivitetstexten döljs när delaktiviteterna finns under ☰');
+  // 4) Åtgärdsrad + radmeny
+  if (await page.isVisible('#selectionBar')) fail('åtgärdsraden ska vara dold utan markering');
+  await page.locator('#itemList .item-row:not(.group-member)', { hasText: 'Annan' }).first().locator('.item-main').click();
+  await page.waitForTimeout(200);
+  if (!(await page.isVisible('#selectionBar')) || (await page.innerText('#selectedCount')).trim() !== '1') fail('åtgärdsraden ska visas med 1 vald');
+  await page.click('#btnClearSelection'); await page.waitForTimeout(150);
+  if (await page.isVisible('#selectionBar')) fail('✕ ska avmarkera');
+  const row = page.locator('#itemList .item-row:not(.group-member)', { hasText: 'Annan' }).first();
+  if (await row.locator('[data-action="delete"]').isVisible()) fail('radera ska ligga i radmenyn');
+  await row.locator('[data-action="row-menu"]').click();
+  if (!(await row.locator('[data-action="delete"]').isVisible())) fail('radmenyn ska visa Radera');
+  console.log('OK: åtgärdsraden och radmenyn fungerar');
+
+  // 5) Formuläret som panel, Esc stänger, Mer öppnas när det finns data
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => { items.find(x => x.id === 'c').contractor = null; });
+  await row.locator('[data-action="edit"]').click(); await page.waitForTimeout(200);
+  if ((await page.innerText('#linkFormTitle')).trim() !== 'Redigera Annan') fail('rubriken ska visa vad som redigeras');
+  if (await page.evaluate(() => document.getElementById('formMore').open)) fail('Mer ska vara stängt när fälten är tomma');
+  await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+  if (await page.isVisible('#linkForm')) fail('Esc ska stänga formuläret');
+  await page.evaluate(() => { items.find(x => x.id === 'c').contractor = 'NCC'; });
+  await row.locator('[data-action="edit"]').click(); await page.waitForTimeout(200);
+  if (!(await page.evaluate(() => document.getElementById('formMore').open))) fail('Mer ska öppnas när det finns en entreprenör');
+  console.log('OK: formuläret öppnas som panel med rubrik, Esc stänger och Mer öppnas vid behov');
 
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
-  console.log('OK: framdriften baseras på huvudaktiviteten');
+  console.log('OK: UI-skalet fungerar');
   await browser.close(); server.close();
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });

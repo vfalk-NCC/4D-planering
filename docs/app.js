@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-30 18:30";
+const APP_VERSION = "2026-09-30 21:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -555,8 +555,9 @@ function bindUI() {
   // filteralternativ ändras, så man ser dem i 3D-vyn innan man ev. klickar
   // "Visa filtrerat" eller isolerar/döljer manuellt i Trimble Connect.
   ["filterArea", "filterActivity", "filterContractor", "filterStatus"].forEach(id => {
-    document.getElementById(id).onchange = selectFilteredInModelOnChange;
+    document.getElementById(id).onchange = () => { renderItemList(); selectFilteredInModelOnChange(); };
   });
+  document.getElementById("filterWeeks").onchange = () => renderItemList();
 
   document.getElementById("btnImportExcel").onclick = onImportExcel;
   document.getElementById("btnExportExcel").onclick = onExportExcel;
@@ -976,6 +977,9 @@ function showHiddenMatchNotice(hiddenItems) {
     document.getElementById("showOnlyCompleted").checked = false;
     document.getElementById("todayOnly").checked = false;
     document.getElementById("uncoupledOnly").checked = false;
+    ["filterArea", "filterActivity", "filterContractor", "filterStatus"].forEach(id => [...document.getElementById(id).options].forEach(o => { o.selected = false; }));
+    document.getElementById("filterWeeks").value = "";
+    if (typeof renderChipSelects === "function") renderChipSelects();
     jumpToItemsInList(new Set(selectedItemKeys));
   };
 }
@@ -1295,12 +1299,6 @@ function editItemFromList(item, opts = {}) {
     recomputeAggregatesFromSubActivities();
   }
   toggle("linkForm", true);
-  // Hoppa upp till formuläret ("Koppla markering").
-  const panel = document.querySelector('section.panel[data-panel-id="link"]');
-  if (panel) {
-    if (panel.classList.contains("collapsed")) { panel.classList.remove("collapsed"); collapsedPanels.delete("link"); saveCollapsedPanels(); }
-    panel.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
 }
 
 /* ---------------------------------------------------------------------
@@ -1333,11 +1331,6 @@ function openNewActivityForm(template) {
     if (note) note.innerHTML = `<b>⧉ Kopia av ${escapeHtml(template.objectName || template.activity || "aktiviteten")}</b> – ändra namn och datum och tryck Spara. Kopian är okopplad; koppla den med 🔗 när du vill.`;
   }
   toggle("linkForm", true);
-  const panel = document.querySelector('section.panel[data-panel-id="link"]');
-  if (panel) {
-    if (panel.classList.contains("collapsed")) { panel.classList.remove("collapsed"); collapsedPanels.delete("link"); saveCollapsedPanels(); }
-    panel.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
   const name = document.getElementById("fName");
   name.focus(); if (template) name.select();
 }
@@ -1433,6 +1426,12 @@ async function deleteActivityFromList(members) {
 }
 
 function fillLinkForm(existing) {
+  const title = document.getElementById("linkFormTitle");
+  if (title) title.innerText = newActivityMode ? "Ny aktivitet"
+    : existing ? `Redigera ${existing.objectName || existing.activity || "aktivitet"}`
+    : `Koppla ${lastSelection.length} objekt`;
+  const more = document.getElementById("formMore");
+  if (more) more.open = !!(existing && (existing.contractor || (existing.dependsOn || []).length || existing.actualStartDate || existing.actualEndDate || Number.isFinite(existing.estimatedHours)));
   const dup = document.getElementById("btnDuplicateActivity");
   if (dup) dup.classList.toggle("hidden", !(existing && lastEditedItemId === existing.id));
   const note = document.getElementById("newActivityNote");
@@ -2821,8 +2820,9 @@ function buildFilterOptions() {
   // Status är en fast lista i appen, så den fylls alltid i - oavsett
   // vilka statusar som redan finns bland sparade objekt.
   const statusEl = document.getElementById("filterStatus");
+  const keepStatus = new Set(getSelectedValues("filterStatus"));
   statusEl.innerHTML = Object.entries(STATUS_LABELS)
-    .map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+    .map(([value, label]) => `<option value="${value}"${keepStatus.has(value) ? " selected" : ""}>${label}</option>`).join("");
 }
 
 function unique(arr) {
@@ -2921,7 +2921,9 @@ function setupAutocomplete(inputId, listId, getOptionsFn) {
 
 function fillMultiSelect(id, values) {
   const el = document.getElementById(id);
-  el.innerHTML = values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+  // Behåll valda filter när listan byggs om (t.ex. efter en sparning).
+  const keep = new Set(getSelectedValues(id));
+  el.innerHTML = values.map(v => `<option value="${escapeHtml(v)}"${keep.has(v) ? " selected" : ""}>${escapeHtml(v)}</option>`).join("");
 }
 
 function getSelectedValues(id) {
@@ -2932,24 +2934,8 @@ async function applyFilterToModel() {
   const statusEl = document.getElementById("filterMsg");
   statusEl.innerText = "Filtrerar...";
 
-  const areas = getSelectedValues("filterArea");
-  const activities = getSelectedValues("filterActivity");
-  const contractors = getSelectedValues("filterContractor");
-  const statuses = getSelectedValues("filterStatus");
-  const weeks = document.getElementById("filterWeeks").value;
-
-  let matched = items.filter(it => {
-    if (areas.length && !areas.includes(it.area)) return false;
-    if (activities.length && !activities.includes(it.activity)) return false;
-    if (contractors.length && !contractors.includes(it.contractor)) return false;
-    if (statuses.length && !statuses.includes(it.status)) return false;
-    if (weeks && it.startDate) {
-      const limit = new Date();
-      limit.setDate(limit.getDate() + Number(weeks) * 7);
-      if (new Date(it.startDate) > limit) return false;
-    }
-    return true;
-  });
+  // Samma urval som listan visar (sökning och alla filter).
+  let matched = getVisibleItems();
 
   if (matched.length === 0) {
     statusEl.innerText = "Inga sparade objekt matchar filtret.";
@@ -3089,7 +3075,9 @@ async function clearFilter() {
     Array.from(document.getElementById(id).options).forEach(o => o.selected = false);
   });
   document.getElementById("filterWeeks").value = "";
+  ["hideCompleted", "showOnlyCompleted", "todayOnly", "uncoupledOnly"].forEach(id => { document.getElementById(id).checked = false; });
   document.getElementById("filterMsg").innerText = "";
+  renderItemList();
   await API.viewer.setObjectState(undefined, { visible: "reset" });
   applyTimelineColors();
 }
@@ -3800,6 +3788,23 @@ function coupledActivityKeys() {
   return out;
 }
 
+function currentListFilters() {
+  const weeks = document.getElementById("filterWeeks").value;
+  return {
+    areas: getSelectedValues("filterArea"), activities: getSelectedValues("filterActivity"),
+    contractors: getSelectedValues("filterContractor"), statuses: getSelectedValues("filterStatus"),
+    weekLimit: weeks ? new Date(Date.now() + Number(weeks) * 7 * 86400000) : null
+  };
+}
+function matchesListFilters(it, f) {
+  if (f.areas.length && !f.areas.includes(it.area)) return false;
+  if (f.activities.length && !f.activities.includes(it.activity)) return false;
+  if (f.contractors.length && !f.contractors.includes(it.contractor)) return false;
+  if (f.statuses.length && !f.statuses.includes(it.status)) return false;
+  if (f.weekLimit && it.startDate && new Date(it.startDate) > f.weekLimit) return false;
+  return true;
+}
+
 function getVisibleItems() {
   const term = (document.getElementById("itemSearch").value || "").toLowerCase().trim();
   const hideCompleted = document.getElementById("hideCompleted").checked;
@@ -3808,7 +3813,11 @@ function getVisibleItems() {
   const uncoupledOnly = document.getElementById("uncoupledOnly").checked;
   const todayStr = new Date().toISOString().slice(0, 10);
   const coupled = uncoupledOnly ? coupledActivityKeys() : null;
+  // Samma filter (Område/Aktivitet/Entreprenör/Status/Startar inom) styr
+  // både listan och "Visa filtrerat i 3D" (UI-översynen 2026-09-30).
+  const f = currentListFilters();
   return items.filter(it => {
+    if (!matchesListFilters(it, f)) return false;
     if (hideCompleted && it.status === "klar") return false;
     if (showOnlyCompleted && it.status !== "klar") return false;
     if (todayOnly && !isActiveToday(it, todayStr)) return false;
@@ -3902,7 +3911,7 @@ function renderItemList() {
         <div class="group-header" data-group-key="${escapeHtml(group.key)}">
           <span class="group-toggle" data-action="toggle-group" title="${collapsed ? "Expandera gruppen" : "Minimera gruppen"}">${collapsed ? "▶" : "▼"}</span>
           <span class="group-title" data-action="toggle-group">${escapeHtml(group.title)} (${activityListSequence(group.items).filter(e => !e.member).length})</span>
-          <button class="group-select-all" data-action="select-group" title="Markera alla objekt i gruppen i 3D-vyn. Ctrl/Cmd-klick = lägg till flera grupper i samma markering.">Välj alla</button>
+          <button class="group-select-all" data-action="select-group" title="Markera alla objekt i gruppen i 3D-vyn. Ctrl/Cmd-klick = lägg till flera grupper i samma markering.">Markera gruppen</button>
         </div>`;
       if (collapsed) return;
     }
@@ -3961,11 +3970,17 @@ function renderItemList() {
               <span class="item-dates">${escapeHtml(shownDates)} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
             </span>
             <span class="badge badge-clickable" data-action="status" title="Klicka för att ändra status" style="background:${statusColor[it.status] || "#999"};color:${contrastTextColor(statusColor[it.status] || "#999999")}">${statusLabel[it.status] || it.status} ▾</span>
+            ${commentCount > 0 ? `<button class="comment-btn" data-action="comments-badge" title="${commentTitle}">💬${commentBadge}</button>` : ""}
             <button class="couple-btn" data-action="couple" title="${it.modelId ? "Koppla fler 3D-objekt till samma aktivitet" : "Koppla ett eller flera 3D-objekt till den här posten"} - klicka objekten i 3D och tryck Spara">🔗</button>
-            <button class="comment-btn" data-action="comments" title="${commentTitle}">💬${commentBadge}</button>
             <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
-            ${(entry.rep ? entry.members : [it, ...siblingsOf(it)]).some(m => m.modelId) ? `<button class="remove-btn" data-action="remove-objs" title="Ta bort objekt ur aktiviteten – aktiviteten finns kvar">✂</button>` : ""}
-            <button class="delete-btn" data-action="delete" title="Radera hela aktiviteten (frågar två gånger, säkerhetskopia tas först)">🗑️</button>
+            <span class="row-menu-wrap">
+              <button class="row-menu-btn" data-action="row-menu" title="Fler åtgärder">⋯</button>
+              <span class="row-menu hidden">
+                <button class="comment-btn" data-action="comments">💬 Kommentarer${commentCount ? ` (${commentCount})` : ""}</button>
+                ${(entry.rep ? entry.members : [it, ...siblingsOf(it)]).some(m => m.modelId) ? `<button class="remove-btn" data-action="remove-objs" title="Aktiviteten finns kvar">✂ Ta bort objekt ur aktiviteten…</button>` : ""}
+                <button class="delete-btn" data-action="delete" title="Frågar två gånger, säkerhetskopia tas först">🗑️ Radera aktiviteten…</button>
+              </span>
+            </span>
           </div>
           ${typeof progressSliderHtml === "function" ? progressSliderHtml(progress) : `<div class="progress-track" title="Framdrift: ${progress}%"><div class="progress-fill" style="width:${progress}%"></div></div>`}
         </div>`;
@@ -3986,13 +4001,17 @@ function renderItemList() {
         ? onActivityRowClicked(meta.members, ev)
         : onItemRowClicked(it, ev, indexToItem);
     };
-    row.querySelector('[data-action="comments"]').onclick = () => openCommentsDialog(it);
+    row.querySelector('[data-action="comments"]').onclick = () => { closeRowMenus(); openCommentsDialog(it); };
+    const cBadge = row.querySelector('[data-action="comments-badge"]');
+    if (cBadge) cBadge.onclick = (ev) => { ev.stopPropagation(); openCommentsDialog(it); };
+    const menuBtn = row.querySelector('[data-action="row-menu"]');
+    if (menuBtn) menuBtn.onclick = (ev) => { ev.stopPropagation(); toggleRowMenu(row); };
     row.querySelector('[data-action="edit"]').onclick = () => editItemFromList(it, { single: Boolean(meta.member) });
-    row.querySelector('[data-action="delete"]').onclick = () => meta.member
+    row.querySelector('[data-action="delete"]').onclick = () => (closeRowMenus(), meta.member)
       ? removeObjectsFromActivity(it, [it])
       : deleteActivityConfirmed(it);
     const removeBtn = row.querySelector('[data-action="remove-objs"]');
-    if (removeBtn) removeBtn.onclick = (ev) => { ev.stopPropagation(); openRemoveObjectsDialog(it); };
+    if (removeBtn) removeBtn.onclick = (ev) => { ev.stopPropagation(); closeRowMenus(); openRemoveObjectsDialog(it); };
 
     const statusBadge = row.querySelector('[data-action="status"]');
     if (statusBadge) statusBadge.onclick = (ev) => { ev.stopPropagation(); openStatusMenu(statusBadge, meta.rep ? meta.members : [it]); };

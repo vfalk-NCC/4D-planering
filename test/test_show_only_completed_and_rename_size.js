@@ -37,6 +37,7 @@ async function run() {
   const server = await startServer();
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const page = await browser.newPage({ viewport: { width: 480, height: 1200 } });
+  require('./_reveal').autoReveal(page);
 
   const consoleErrors = [];
   page.on('console', msg => {

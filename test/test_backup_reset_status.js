@@ -28,6 +28,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', [{ id: 'c1'
   })).listen(PORT);
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const page = await browser.newPage({ viewport: { width: 480, height: 1400 } });
+  require('./_reveal').autoReveal(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   const dialogs = [];
@@ -81,8 +82,9 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', [{ id: 'c1'
   // 3) Redigera hoppar till formuläret och tillbaka efter Spara
   await page.locator('#itemList .item-row[data-item-id="b"] [data-action="edit"]').click();
   await page.waitForTimeout(600);
-  const formTop = await page.evaluate(() => document.querySelector('[data-panel-id="link"]').getBoundingClientRect().top);
-  if (Math.abs(formTop) > 40) fail('formuläret ska scrollas upp i vy, top=' + formTop);
+  // Formuläret öppnas nu som en panel ovanpå listan (UI-översynen 2026-09-30).
+  const formTop = await page.evaluate(() => document.querySelector('#linkForm .form-sheet-box').getBoundingClientRect().top);
+  if (!(await page.isVisible('#linkForm')) || Math.abs(formTop) > 40) fail('formuläret ska synas som panel överst, top=' + formTop);
   await page.click('#btnSaveLink'); await page.waitForTimeout(700);
   const flashed = await page.evaluate(() => { const r = document.querySelector('#itemList .item-row[data-item-id="b"]'); const b = r.getBoundingClientRect(); return { flash: r.classList.contains('flash-edit'), visible: b.top >= 0 && b.bottom <= innerHeight }; });
   if (!flashed.flash || !flashed.visible) fail('efter Spara ska listan hoppa tillbaka till raden: ' + JSON.stringify(flashed));

@@ -29,6 +29,7 @@ global.abortItems = 1;
   })).listen(PORT);
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const page = await browser.newPage({ viewport: { width: 480, height: 1400 } });
+  require('./_reveal').autoReveal(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   const dialogs = [];

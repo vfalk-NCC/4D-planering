@@ -37,6 +37,7 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   })).listen(PORT);
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const page = await browser.newPage({ viewport: { width: 520, height: 1600 } });
+  require('./_reveal').autoReveal(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   let answers = [];                 // svar på kommande confirm-dialoger (true/false)

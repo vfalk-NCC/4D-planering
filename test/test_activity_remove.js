@@ -38,6 +38,7 @@ put('plan_markups.json', [{ id: 'mk', itemId: 'a2', shape: 'line', pts: [[0, 0, 
   })).listen(PORT);
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const page = await browser.newPage({ viewport: { width: 520, height: 1600 } });
+  require('./_reveal').autoReveal(page);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   let answers = [];                 // svar på kommande confirm-dialoger (true/false)
@@ -125,8 +126,7 @@ put('plan_markups.json', [{ id: 'mk', itemId: 'a2', shape: 'line', pts: [[0, 0, 
 
   // 5) Radera markerade som omfattar en hel aktivitet: extra fråga
   const left = idList().includes('c2') ? 'c2' : 'c';
-  await page.evaluate(id => { const it = items.find(x => x.id === id); selectedItemKeys.add(it.objectId); updateSelectionCount && updateSelectionCount(); }, left).catch(() => {});
-  await page.evaluate(() => document.getElementById('btnDeleteSelected').disabled = false);
+  await page.evaluate(id => { const it = items.find(x => x.id === id); selectedItemKeys.add(it.objectId); renderItemList(); }, left);
   answers = [true, false]; asked.length = 0;
   await page.click('#btnDeleteSelected'); await page.waitForTimeout(500);
   if (asked.length !== 2 || !asked[1].includes('hel aktivitet')) fail('Radera markerade ska fråga extra när en hel aktivitet omfattas, fick ' + JSON.stringify(asked));

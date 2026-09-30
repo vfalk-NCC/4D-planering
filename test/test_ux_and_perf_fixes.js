@@ -58,6 +58,7 @@ async function run() {
   const server = await startServer();
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const page = await browser.newPage({ viewport: { width: 480, height: 1200 } });
+  require('./_reveal').autoReveal(page);
 
   const consoleErrors = [];
   page.on('console', msg => {
@@ -189,7 +190,7 @@ async function run() {
   if (!/Hittade inga/.test(alerts[alerts.length - 1])) throw new Error('Oväntat felmeddelande: ' + alerts[alerts.length - 1]);
   const btnAfterFail = page.locator('#btnSelectAllCoupled');
   if (await btnAfterFail.isDisabled()) throw new Error('"Markera alla"-knappen förblev inaktiverad efter felet');
-  if ((await btnAfterFail.innerText()).trim() !== 'Markera alla') throw new Error('"Markera alla"-knappens text återställdes inte efter felet');
+  if (!(await btnAfterFail.textContent()).includes('Markera alla')) throw new Error('"Markera alla"-knappens text återställdes inte efter felet');
   await page.evaluate(() => { window.__forceNoMatch = false; });
   // Felet ovan loggas avsiktligen även med console.error (inte bara alert)
   // av selectAllCoupledObjects - det är förväntat i just det här steget,

@@ -56,6 +56,7 @@ async function run() {
   const server = await startServer();
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const page = await browser.newPage();
+  require('./_reveal').autoReveal(page);
 
   // OBS: 429/403-svar är FÖRVÄNTADE, korrekt hanterade responser i det här
   // testet (det är precis vad vi simulerar och verifierar att koden hanterar

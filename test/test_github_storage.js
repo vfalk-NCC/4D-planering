@@ -37,6 +37,7 @@ async function run() {
   const server = await startServer();
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const page = await browser.newPage({ viewport: { width: 480, height: 2000 } });
+  require('./_reveal').autoReveal(page);
 
   // OBS: en 404 från GitHub Contents API är en FÖRVÄNTAD, korrekt hanterad
   // respons när en projektfil (t.ex. plan_items.json) inte skapats än -
