@@ -441,6 +441,9 @@
           <label class="check"><input type="checkbox" id="showObjects" checked /> Visa objekten på ritningen (i sin fasfärg)</label>
           <div class="row" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Visa objekten som</span>
             <select id="objStyle" class="grow"><option value="dots">Prick i mitten (statusfärg)</option><option value="footprint">Fotavtryck (objektets yta)</option></select></div>
+          <div class="row" id="objSizeRow" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Prickstorlek</span>
+            <input type="range" id="objSize" class="grow" min="25" max="400" step="5" value="100" /><span id="objSizeVal" class="muted" style="font-size:12px;width:44px;text-align:right;">100 %</span></div>
+          <label class="check" title="Objekt som i 4D-planering är kopplade till en delaktivitet (t.ex. bara Formning) – inte hela aktiviteten"><input type="checkbox" id="objSubs" checked /> Visa objekt kopplade till delaktiviteter</label>
         </details>
 
         <details class="sec" data-sec="zones" open>

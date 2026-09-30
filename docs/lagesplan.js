@@ -55,6 +55,7 @@ let renderScale = 1;
 let selectedZoneId = null;
 const view = { scale: 1, tx: 0, ty: 0 };
 let drawMode = false;
+let subActs = [];          // plan_item_activities.json (för "objekt kopplade till delaktiviteter")
 let positions = [];        // plan_item_positions.json: [{id, x, y, z0, z1, x0, x1, y0, y1}] (meter, modellens koordinater)
 let calib = null;          // pågående kalibrering {pdf: [[x,y]...], model: [[x,y,z]...], waitPdf}
 let posPdfCache = null;    // item-id -> [x, y] i PDF-koordinater (för aktiv plan, kalibrering och nivå)
@@ -123,8 +124,9 @@ async function init() {
   $("dateInput").value = todayIso();
   setBusy("Hämtar planering…");
   try {
-    [items, plans, positions] = await Promise.all([ghReadJSON(token, dataPath("plan_items.json")), ghReadJSON(token, dataPath("status_plans.json")),
-      ghReadJSON(token, dataPath("plan_item_positions.json")).catch(() => [])]);
+    [items, plans, positions, subActs] = await Promise.all([ghReadJSON(token, dataPath("plan_items.json")), ghReadJSON(token, dataPath("status_plans.json")),
+      ghReadJSON(token, dataPath("plan_item_positions.json")).catch(() => []), ghReadJSON(token, dataPath("plan_item_activities.json")).catch(() => [])]);
+    subCoupledCache = null;
   } catch (e) {
     setBusy("");
     if (/\b401\b/.test(e.message)) {
@@ -298,7 +300,8 @@ function objectShapesInPdf() {
   if (!pos) return null;
   if (shapeCache) return shapeCache;
   const byId = new Map(positions.map(p => [p.id, p]));
-  shapeCache = visibleItems().filter(it => pos.has(it.id)).map(it => {
+  const hideSubs = !showSubObjects() ? subCoupledIds() : null;
+  shapeCache = visibleItems().filter(it => pos.has(it.id) && !(hideSubs && hideSubs.has(it.id))).map(it => {
     const p = byId.get(it.id);
     const poly = Number.isFinite(p.x0)
       ? [[p.x0, p.y0], [p.x1, p.y0], [p.x1, p.y1], [p.x0, p.y1]].map(([x, y]) => modelToPdf(x, y))
@@ -314,6 +317,27 @@ let objMinPx = 4; // prickradie (canvas-px) vid senaste ritningen, för hovring
    (standard – tydligast på ortofoto), "footprint" = objektets fotavtryck
    (bounding box, blir snett och för stort för roterade/stora objekt). */
 const OBJ_STYLE_KEY = "lagesplan-objstyle";
+const OBJ_SIZE_KEY = "lagesplan-objsize";     // prickstorlek i procent (100 = standard)
+const OBJ_SUBS_KEY = "lagesplan-objsubs";     // "0" = dölj objekt kopplade till delaktiviteter
+function objSize() { try { const v = parseInt(localStorage.getItem(OBJ_SIZE_KEY), 10); return Number.isFinite(v) && v >= 25 && v <= 400 ? v : 100; } catch (e) { return 100; } }
+function showSubObjects() { try { return localStorage.getItem(OBJ_SUBS_KEY) !== "0"; } catch (e) { return true; } }
+/* Objekt som bara hör till en del av aktivitetens delaktiviteter (kopplade
+   till en delaktivitet i 4D-planering): aktiviteten har fler delaktiviteter
+   än just det här objektet. */
+let subCoupledCache = null;
+function subCoupledIds() {
+  if (subCoupledCache) return subCoupledCache;
+  const namesById = new Map();
+  (subActs || []).forEach(a => { if (!namesById.has(a.plan_item_id)) namesById.set(a.plan_item_id, new Set()); namesById.get(a.plan_item_id).add((a.name || "").trim().toLowerCase()); });
+  const famKey = it => it.group_id ? "g:" + it.group_id : it.source_key ? "s:" + it.source_key : null;
+  const famNames = new Map();
+  items.forEach(it => { const k = famKey(it); if (!k) return; if (!famNames.has(k)) famNames.set(k, new Set()); (namesById.get(it.id) || []).forEach(n => famNames.get(k).add(n)); });
+  subCoupledCache = new Set(items.filter(it => {
+    const own = namesById.get(it.id), k = famKey(it);
+    return own && own.size && k && famNames.get(k).size > own.size;
+  }).map(it => it.id));
+  return subCoupledCache;
+}
 function objStyle() { try { return localStorage.getItem(OBJ_STYLE_KEY) || "dots"; } catch (e) { return "dots"; } }
 
 /* Objekten under muspekaren (PDF-punkt): fotavtryck som innehåller punkten,
@@ -367,7 +391,7 @@ function drawObjects(ctx, objects, fontPx) {
   // Prickar: minst ~7 skärmpixlar i radie oavsett zoom (canvas-px = skärm-px · renderScale / view.scale).
   const oc = ctx.canvas, ow = oc && oc.getBoundingClientRect ? oc.getBoundingClientRect().width : 0;
   const screenPx = oc && ow > 0 && oc.id === "objCanvas" ? 7 * oc.width / ow : 4;
-  const minPx = dots ? Math.max(4, fontPx / 3, screenPx) : Math.max(3, fontPx / 4);
+  const minPx = dots ? Math.max(4, fontPx / 3, screenPx) * objSize() / 100 : Math.max(3, fontPx / 4);
   objMinPx = minPx;
   ctx.save();
   ctx.lineWidth = 1;
@@ -485,8 +509,8 @@ async function refreshCoupled() {
   if (btn) btn.classList.add("spinning");
   try {
     setBusy("Hämtar planeringen…");
-    const [its, pos] = await Promise.all([ghReadJSON(token, dataPath("plan_items.json")), ghReadJSON(token, dataPath("plan_item_positions.json")).catch(() => positions)]);
-    items = its; positions = pos;
+    const [its, pos, acts] = await Promise.all([ghReadJSON(token, dataPath("plan_items.json")), ghReadJSON(token, dataPath("plan_item_positions.json")).catch(() => positions), ghReadJSON(token, dataPath("plan_item_activities.json")).catch(() => subActs)]);
+    items = its; positions = pos; subActs = acts; subCoupledCache = null;
     if (typeof invalidateVisible === "function") invalidateVisible(); else invalidatePositions();
     if (typeof populateFilterOptions === "function") populateFilterOptions();
     $("projectInfo").textContent = `Projekt ${projectId} · ${items.length} planerade objekt`;
@@ -1359,7 +1383,17 @@ function bindUI() {
   if ($("btnRefreshData")) $("btnRefreshData").onclick = refreshCoupled;
   if ($("objStyle")) {
     $("objStyle").value = objStyle();
-    $("objStyle").onchange = () => { try { localStorage.setItem(OBJ_STYLE_KEY, $("objStyle").value); } catch (e) {} renderZones(); };
+    $("objStyle").onchange = () => { try { localStorage.setItem(OBJ_STYLE_KEY, $("objStyle").value); } catch (e) {} $("objSizeRow").classList.toggle("hidden", $("objStyle").value === "footprint"); renderZones(); };
+    $("objSizeRow").classList.toggle("hidden", objStyle() === "footprint");
+  }
+  if ($("objSize")) {
+    const upd = () => { $("objSizeVal").textContent = $("objSize").value + " %"; };
+    $("objSize").value = objSize(); upd();
+    $("objSize").oninput = () => { upd(); try { localStorage.setItem(OBJ_SIZE_KEY, $("objSize").value); } catch (e) {} renderZones(); };
+  }
+  if ($("objSubs")) {
+    $("objSubs").checked = showSubObjects();
+    $("objSubs").onchange = () => { try { localStorage.setItem(OBJ_SUBS_KEY, $("objSubs").checked ? "1" : "0"); } catch (e) {} invalidatePositions(); renderZones(); };
   }
   $("btnPositions").onclick = () => { if (!window.opener) { alert("Positionerna läses från 3D-modellen, så 4D-planering måste vara öppen i Trimble Connect. Öppna lägesplanen via 🗺️-knappen där."); return; } fetchPositions(); };
   const onLevel = () => {
