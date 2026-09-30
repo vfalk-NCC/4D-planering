@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-30 22:30";
+const APP_VERSION = "2026-09-30 23:30";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -43,7 +43,22 @@ let activitiesByItemId = new Map(); // plan_item_id -> [{ name, start, end }] - 
 let selectionAnchorKey = null; // ankarraden för Shift-klick (intervallmarkering) i objektlistan
 let currentCommentsItem = null; // vilket objekt kommentarsdialogen just nu visar
 let currentComments = [];       // kommentarer (platt lista, inkl. svar) för currentCommentsItem
-let commentCounts = new Map();  // plan_item_id -> antal kommentarer (för 💬-badgen i listan)
+/* Enkla linjeikoner (SVG i textfärgen) i stället för emojis – UI-översynen 2026-09-30. */
+const ICON_PATHS = {
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  edit: '<path d="M4 20h4l10-10-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/>',
+  trash: '<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>',
+  comment: '<path d="M4 5h16v11H9l-5 4V5z"/>',
+  cut: '<circle cx="6" cy="18" r="2.5"/><circle cx="6" cy="6" r="2.5"/><path d="M8 7.5L20 18"/><path d="M8 16.5L20 6"/>',
+  map: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/><path d="M9 4v14"/><path d="M15 6v14"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
+  target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+  pause: '<path d="M8 5v14M16 5v14"/>'
+};
+function icon(name) {
+  return `<svg class="ico" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON_PATHS[name] || ""}</svg>`;
+}
+let commentCounts = new Map();  // plan_item_id -> antal kommentarer (för -badgen i listan)
 
 // "Koppla till markering" (omvänd koppling) för objekt importerade från
 // 4-veckorsplaneringen utan 3D-koppling ännu - se armCoupleMode/
@@ -154,7 +169,7 @@ const ITEMS_FETCH_LIMIT = 50000;
 const DELETE_CHUNK_SIZE = 100;
 
 // Max antal kommentarsrader (över alla objekt) att hämta när vi bara vill
-// räkna antal kommentarer per objekt (för 💬-badgen i "Planerade objekt").
+// räkna antal kommentarer per objekt (för -badgen i "Planerade objekt").
 const COMMENTS_FETCH_LIMIT = 50000;
 
 /* ---------------------------------------------------------------------
@@ -304,7 +319,7 @@ function onWorkspaceEvent(event, data) {
 
 
 /* ---------------------------------------------------------------------
-   Brygga till Lägesplanen (lagesplan.html, öppnas i egen flik via 🗺️)
+   Brygga till Lägesplanen (lagesplan.html, öppnas i egen flik via )
    ---------------------------------------------------------------------
    Fliken är ett toppfönster och får därför INTE samma localStorage som
    extensionen (webbläsarna delar upp lagringen för inbäddade iframes), så
@@ -343,7 +358,7 @@ window.addEventListener("message", async e => {
       if (lagesplanPick) lagesplanPick({ error: "Avbruten" });
       lagesplanPick = reply;
       lagesplanPickN = msg.n || 1;
-      showLagesplanBanner(`📐 Lägesplan: klicka på punkt ${lagesplanPickN} av 2 i 3D-modellen (samma ställe som krysset ${lagesplanPickN} i PDF:en).`);
+      showLagesplanBanner(`Lägesplan: klicka på punkt ${lagesplanPickN} av 2 i 3D-modellen (samma ställe som krysset ${lagesplanPickN} i PDF:en).`);
     } else if (msg.type === "cancelPick") {
       if (lagesplanPick) lagesplanPick({ error: "Avbruten" });
       lagesplanPick = null;
@@ -406,7 +421,7 @@ async function tcApiBase(tokenVal, project) {
 }
 async function tcUploadFiles(files, folderName) {
   try { return await tcUploadFilesInner(files, folderName); }
-  catch (e) { showLagesplanBanner(`⚠ Kunde inte spara i Trimble Connect: ${e.message}`, 10000); throw e; }
+  catch (e) { showLagesplanBanner(`Kunde inte spara i Trimble Connect: ${e.message}`, 10000); throw e; }
 }
 async function tcUploadFilesInner(files, folderName) {
   if (!files.length) return { uploaded: 0 };
@@ -423,7 +438,7 @@ async function tcUploadFilesInner(files, folderName) {
     folder = await j(await fetch(`${base}/folders`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ name: folderName, parentId: rootId }) }), "Skapa mappen");
   }
   for (const f of files) {
-    showLagesplanBanner(`☁ Laddar upp ${f.name} (${(f.size / 1048576).toFixed(0)} MB) till Trimble Connect…`);
+    showLagesplanBanner(`Laddar upp ${f.name} (${(f.size / 1048576).toFixed(0)} MB) till Trimble Connect…`);
     const fd = new FormData();
     fd.append("file", f, f.name);
     await j(await fetch(`${base}/files?parentId=${encodeURIComponent(folder.id)}&parentType=FOLDER`, { method: "POST", headers: H, body: fd }), `Ladda upp ${f.name}`);
@@ -928,6 +943,9 @@ async function syncSelectionFromModel() {
     });
   }
 
+  // Samma markering som listan redan visar (t.ex. ett eko av appens egen
+  // markering i 3D): gör ingenting – annars ritas listan om och hoppar.
+  if (matchedKeys.size > 0 && matchedKeys.size === selectedItemKeys.size && [...matchedKeys].every(k => selectedItemKeys.has(k))) return;
   if (matchedKeys.size > 0) {
     selectedItemKeys = matchedKeys;
     selectionAnchorKey = null;
@@ -935,6 +953,18 @@ async function syncSelectionFromModel() {
   } else {
     showHiddenMatchNotice(null);
   }
+}
+
+/* Scrolla inte listan åt användaren om raden redan syns, eller om man själv
+   precis har scrollat (då hoppade listan tillbaka mitt i scrollningen). */
+let lastUserScrollAt = 0;
+["wheel", "touchmove"].forEach(ev => window.addEventListener(ev, () => { lastUserScrollAt = Date.now(); }, { passive: true, capture: true }));
+window.addEventListener("keydown", e => { if (/^(Arrow|Page|Home|End| )/.test(e.key)) lastUserScrollAt = Date.now(); }, true);
+function userScrolledRecently() { return Date.now() - lastUserScrollAt < 2500; }
+function rowOutOfView(row) {
+  const r = row.getBoundingClientRect();
+  const bottom = window.innerHeight - 60; // tidslinjen längst ner
+  return r.top < 90 || r.bottom > bottom;
 }
 
 /**
@@ -958,6 +988,7 @@ function jumpToItemsInList(keys) {
   showHiddenMatchNotice(hidden.length && hidden.length === keys.size ? hidden : null);
   const row = document.querySelector("#itemList .item-row.selected");
   if (!row) return;
+  if (!rowOutOfView(row) || userScrolledRecently()) { row.classList.remove("flash"); void row.offsetWidth; row.classList.add("flash"); return; }
   row.scrollIntoView({ block: "center", behavior: "smooth" });
   row.classList.remove("flash");
   void row.offsetWidth; // starta om animationen
@@ -1022,7 +1053,7 @@ function expandGroupsForKeys(keys) {
 let coupleCollected = [];      // [{ modelId, objectId, runtimeId, name }]
 let coupleSyncingSelection = false;
 
-/** Klick på 🔗-knappen på en rad. */
+/** Klick på -knappen på en rad. */
 function armCoupleMode(item) {
   pendingCoupleItem = item;
   coupleCollected = [];
@@ -1303,7 +1334,7 @@ function editItemFromList(item, opts = {}) {
 
 /* ---------------------------------------------------------------------
    Ny aktivitet utan koppling / Duplicera (Victors önskemål 2026-09-30):
-   bygg tidplanen först och koppla senare (🔗 på aktiviteten eller en
+   bygg tidplanen först och koppla senare (på aktiviteten eller en
    delaktivitet, eller en manuell markering) – eller låt den vara okopplad.
    Sparas som en okopplad post (model_id null, object_id "manuell-<id>",
    origin "manuell") via samma formulär och sparflöde som "Koppla markering".
@@ -1328,7 +1359,7 @@ function openNewActivityForm(template) {
     renderSubActivities();
     recomputeAggregatesFromSubActivities();
     const note = document.getElementById("newActivityNote");
-    if (note) note.innerHTML = `<b>⧉ Kopia av ${escapeHtml(template.objectName || template.activity || "aktiviteten")}</b> – ändra namn och datum och tryck Spara. Kopian är okopplad; koppla den med 🔗 när du vill.`;
+    if (note) note.innerHTML = `<b>⧉ Kopia av ${escapeHtml(template.objectName || template.activity || "aktiviteten")}</b> – ändra namn och datum och tryck Spara. Kopian är okopplad; koppla den med när du vill.`;
   }
   toggle("linkForm", true);
   const name = document.getElementById("fName");
@@ -1348,7 +1379,7 @@ function scrollBackToEditedItem() {
     const row = document.querySelector(`#itemList .item-row[data-item-id="${CSS.escape(id)}"]`) ||
       (key && document.querySelector(`#itemList .item-row[data-activity-key="${CSS.escape(key)}"]`));
     if (!row) return;
-    row.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (rowOutOfView(row) && !userScrolledRecently()) row.scrollIntoView({ behavior: "smooth", block: "center" });
     flashEditId = row.dataset.itemId; flashEditUntil = Date.now() + 1600;
     row.classList.remove("flash-edit"); void row.offsetWidth; row.classList.add("flash-edit");
   });
@@ -1357,7 +1388,7 @@ function scrollBackToEditedItem() {
 /* ---------------------------------------------------------------------
    En rad per aktivitet i listan (Victors rapport 2026-09-28: en aktivitet
    med fem objekt syntes som fem likadana rader). Raderna för samma
-   aktivitet (siblingsOf) slås ihop till en rad med "⛓ N objekt ▸", som
+   aktivitet (siblingsOf) slås ihop till en rad med "N objekt ▸", som
    fälls ut till en rad per objekt med dess delaktiviteter och datum.
    ------------------------------------------------------------------- */
 const expandedActivities = new Set(); // activityKeyOf() för utfällda aktiviteter
@@ -1438,8 +1469,8 @@ function fillLinkForm(existing) {
   if (note) {
     note.classList.toggle("hidden", !newActivityMode && !(existing && !existing.modelId && existing.origin === "manuell"));
     note.innerHTML = newActivityMode
-      ? "<b>＋ Ny aktivitet</b> – kopplas inte till något nu. Koppla senare med 🔗 på aktiviteten eller en delaktivitet, eller låt den vara okopplad."
-      : "<b>✍ Egen aktivitet</b> (skapad i appen) – påverkas inte av Excel-importen.";
+      ? "<b>＋ Ny aktivitet</b> – kopplas inte till något nu. Koppla senare med på aktiviteten eller en delaktivitet, eller låt den vara okopplad."
+      : "<b>Egen aktivitet</b> (skapad i appen) – påverkas inte av Excel-importen.";
   }
   document.getElementById("fName").value = existing ? existing.objectName || "" : "";
   document.getElementById("fArea").value = existing ? existing.area || "" : "";
@@ -1571,7 +1602,7 @@ function subActivityMembersHtml(row, i) {
   const summary = chosen ? `${chosen.size} av ${members.length} objekt` : `Alla ${members.length} objekt`;
   const open = row._open;
   return `<div class="sub-activity-members" data-index="${i}">
-      <button type="button" class="sub-members-toggle${chosen ? " partial" : ""}" data-action="toggle-sub-members">⛓ Gäller: ${escapeHtml(summary)} ${open ? "▾" : "▸"}</button>
+      <button type="button" class="sub-members-toggle${chosen ? " partial" : ""}" data-action="toggle-sub-members">Gäller: ${escapeHtml(summary)} ${open ? "▾" : "▸"}</button>
       ${open ? `<div class="sub-members-panel">
         <div class="sub-members-actions">
           <button type="button" data-action="sub-members-all">Alla</button>
@@ -1643,7 +1674,7 @@ function renderSubActivities() {
       <input type="date" class="sub-activity-start" style="flex:1" value="${row.start || ""}" />
       <input type="date" class="sub-activity-end" style="flex:1" value="${row.end || ""}" />
       <input type="number" class="sub-activity-hours" style="flex:0 0 4.5em" min="0" step="0.5" placeholder="tim" value="${row.hours || ""}" />
-      <button type="button" class="delete-btn sub-activity-remove" title="Ta bort delaktiviteten">🗑️</button>
+      <button type="button" class="delete-btn sub-activity-remove" title="Ta bort delaktiviteten">${icon("trash")}</button>
     </div>${grouped ? subActivityMembersHtml(row, i) : ""}`).join("");
   if (grouped) bindSubActivityMembers(el);
 
@@ -1711,7 +1742,7 @@ function recomputeAggregatesFromSubActivities() {
    den faktiska skrivningen skulle misslyckas trots omförsöken i
    ghWriteJSON:
      1) Raden i listan märks "Sparar..." tills bakgrundsskrivningen
-        bekräftats, och "⚠ Kunde inte spara" om den till slut misslyckas
+        bekräftats, och "Kunde inte spara" om den till slut misslyckas
         (se _pending/_saveError i renderItemList()).
      2) En liten statusrad (#saveStatus, överst i appen) samlar alla
         pågående/misslyckade bakgrundssparningar, med en "Försök igen"-
@@ -1769,7 +1800,7 @@ function itemsById() {
 }
 
 /**
- * Liten "🔗 väntar på: ..."-tagg i objektlistan när minst ett av objektets
+ * Liten "väntar på: ..."-tagg i objektlistan när minst ett av objektets
  * beroenden ännu inte är klarmarkerat - gör det synligt direkt i listan
  * (inte bara i formuläret) vad som blockerar ett objekt från att starta.
  * Returnerar tom sträng om objektet inte har några ofärdiga beroenden.
@@ -1781,10 +1812,10 @@ function dependencyStatusHtml(it) {
     .map(id => byId.get(id))
     .filter(dep => dep && dep.status !== "klar");
   if (unfinished.length === 0) {
-    return `<br/><span class="dependency-tag ok" title="Alla beroenden är klarmarkerade">🔗 ${it.dependsOn.length} beroende${it.dependsOn.length === 1 ? "" : "n"}, alla klara</span>`;
+    return `<br/><span class="dependency-tag ok" title="Alla beroenden är klarmarkerade">${it.dependsOn.length} beroende${it.dependsOn.length === 1 ? "" : "n"}, alla klara</span>`;
   }
   const names = unfinished.map(d => d.objectName || d.objectId).join(", ");
-  return `<br/><span class="dependency-tag blocked" title="Väntar på: ${escapeHtml(names)}">⛔ Väntar på: ${escapeHtml(names)}</span>`;
+  return `<br/><span class="dependency-tag blocked" title="Väntar på: ${escapeHtml(names)}">Väntar på: ${escapeHtml(names)}</span>`;
 }
 
 /**
@@ -2189,7 +2220,7 @@ function activityProgressOf(it) {
 
 /* Raden under aktivitetsnamnet: område · aktivitet. Har aktiviteten
    delaktiviteter (t.ex. importerad "Grovbetong + Bergförankring + …") syns
-   de redan under "☰ N delaktiviteter", så då visas bara området – hela
+   de redan under "N delaktiviteter", så då visas bara området – hela
    texten finns kvar som tooltip och i sökningen. */
 function activitySubLineHtml(entry) {
   const it = entry.it;
@@ -2302,7 +2333,7 @@ function renderSaveStatus() {
   failed.forEach(job => {
     html += `
       <div class="save-status-error">
-        ⚠️ Kunde inte spara <strong>${escapeHtml(job.label)}</strong>: ${escapeHtml(job.error || "")}
+        Kunde inte spara <strong>${escapeHtml(job.label)}</strong>: ${escapeHtml(job.error || "")}
         <button data-action="retry-save" data-job-id="${job.id}">Försök igen</button>
         <button data-action="discard-save" data-job-id="${job.id}">Överge ändringen</button>
       </div>`;
@@ -2333,7 +2364,7 @@ function onOpenRenameDialog() {
   toggle("renameDialog", true);
 }
 
-/* ✏️ på en grupprubrik: Byt namn-dialogen med fältet och det gamla värdet ifyllda. */
+/* på en grupprubrik: Byt namn-dialogen med fältet och det gamla värdet ifyllda. */
 function openRenameFor(field, oldValue) {
   onOpenRenameDialog();
   document.getElementById("renameField").value = field;
@@ -2419,7 +2450,7 @@ function onDoRename() {
    ------------------------------------------------------------------- */
 function onOpenBulkEditDialog() {
   if (selectedItemKeys.size === 0) {
-    alert("Inga rader är markerade. Håll in Ctrl (⌘ på Mac) eller Shift och klicka på flera rader i listan för att markera dem.");
+    alert("Inga rader är markerade. Håll in Ctrl (Cmd på Mac) eller Shift och klicka på flera rader i listan för att markera dem.");
     return;
   }
   document.getElementById("bulkEditStatus").value = "";
@@ -2657,7 +2688,7 @@ function onTogglePlay() {
     btn.innerText = "▶";
     return;
   }
-  btn.innerText = "⏸";
+  btn.innerHTML = icon("pause");
   const delayMs = Math.max(50, (settings.playSecondsPerDay || 0.4) * 1000);
   playTimer = setInterval(() => {
     const slider = document.getElementById("timelineSlider");
@@ -3340,7 +3371,7 @@ function renderPlanImportPreview(diff) {
     const coupled = diff.removedExisting.filter(it => it.modelId).length;
     const names = diff.removedExisting.slice(0, 8).map(it => it.objectName || it.id).join(", ");
     removedEl.classList.remove("hidden");
-    removedEl.innerHTML = `⚠️ ${diff.removedExisting.length} tidigare importerade objekt finns INTE kvar i den här filen (borttagen eller omdöpt rubrik/elementkod) - de rörs inte av den här importen${coupled > 0 ? `, ${coupled} av dem har en 3D-koppling` : ""}: ${escapeHtml(names)}${diff.removedExisting.length > 8 ? " m.fl." : ""}`;
+    removedEl.innerHTML = `${diff.removedExisting.length} tidigare importerade objekt finns INTE kvar i den här filen (borttagen eller omdöpt rubrik/elementkod) - de rörs inte av den här importen${coupled > 0 ? `, ${coupled} av dem har en 3D-koppling` : ""}: ${escapeHtml(names)}${diff.removedExisting.length > 8 ? " m.fl." : ""}`;
   } else {
     removedEl.classList.add("hidden");
     removedEl.innerHTML = "";
@@ -3713,7 +3744,7 @@ async function deleteItemFromList(item) {
 async function onDeleteSelectedItems() {
   const selectedItems = items.filter(it => selectedItemKeys.has(it.objectId));
   if (selectedItems.length === 0) {
-    alert("Inga rader är markerade. Håll in Ctrl (⌘ på Mac) eller Shift och klicka på flera rader i listan för att markera dem.");
+    alert("Inga rader är markerade. Håll in Ctrl (Cmd på Mac) eller Shift och klicka på flera rader i listan för att markera dem.");
     return;
   }
   if (!confirm(`Är du säker på att du vill radera kopplingen för ${selectedItems.length} markerade objekt?`)) return;
@@ -3762,7 +3793,7 @@ function updateItemsTruncatedWarning() {
   if (!el) return;
   if (itemsTotalCount !== null && itemsTotalCount > items.length) {
     el.classList.remove("hidden");
-    el.innerText = `⚠️ Visar bara de första ${items.length} av totalt ${itemsTotalCount} objekt i databasen.`;
+    el.innerText = `Visar bara de första ${items.length} av totalt ${itemsTotalCount} objekt i databasen.`;
   } else {
     el.classList.add("hidden");
     el.innerText = "";
@@ -3923,7 +3954,7 @@ function renderItemList() {
         <div class="group-header" data-group-key="${escapeHtml(group.key)}">
           <span class="group-toggle" data-action="toggle-group" title="${collapsed ? "Expandera gruppen" : "Minimera gruppen"}">${collapsed ? "▶" : "▼"}</span>
           <span class="group-title" data-action="toggle-group">${escapeHtml(group.title)} (${activityListSequence(group.items).filter(e => !e.member).length})</span>
-          ${RENAME_FIELD_LABELS[groupBy] && group.items.some(it => (it[groupBy] || "") === group.title) ? `<button class="group-rename" data-action="rename-group" title="Byt namn på ${RENAME_FIELD_LABELS[groupBy].toLowerCase()}t &quot;${escapeHtml(group.title)}&quot; – alla aktiviteter i gruppen får det nya namnet">✏️</button>` : ""}
+          ${RENAME_FIELD_LABELS[groupBy] && group.items.some(it => (it[groupBy] || "") === group.title) ? `<button class="group-rename" data-action="rename-group" title="Byt namn på ${RENAME_FIELD_LABELS[groupBy].toLowerCase()}t &quot;${escapeHtml(group.title)}&quot; – alla aktiviteter i gruppen får det nya namnet">${icon("edit")}</button>` : ""}
           <button class="group-select-all" data-action="select-group" title="Markera alla objekt i gruppen i 3D-vyn. Ctrl/Cmd-klick = lägg till flera grupper i samma markering.">Markera gruppen</button>
         </div>`;
       if (collapsed) return;
@@ -3951,9 +3982,9 @@ function renderItemList() {
       const sibCount = siblingsOf(it).length;
       let dependencyTagHtml = entry.member ? "" : dependencyStatusHtml(it);
       if (entry.rep) {
-        dependencyTagHtml += `<br/><button type="button" class="group-tag group-toggle-btn" data-action="toggle-members" title="${entry.expanded ? "Dölj objekten" : "Visa objekten och deras delaktiviteter"}">⛓ ${entry.members.length} objekt ${entry.expanded ? "▾" : "▸"}</button>`;
+        dependencyTagHtml += `<br/><button type="button" class="group-tag group-toggle-btn" data-action="toggle-members" title="${entry.expanded ? "Dölj objekten" : "Visa objekten och deras delaktiviteter"}">${entry.members.length} objekt ${entry.expanded ? "▾" : "▸"}</button>`;
       } else if (sibCount && !entry.member) {
-        dependencyTagHtml += `<br/><span class="group-tag" title="Aktiviteten är kopplad till ${sibCount + 1} objekt i 3D">⛓ ${sibCount + 1} objekt i aktiviteten</span>`;
+        dependencyTagHtml += `<br/><span class="group-tag" title="Aktiviteten är kopplad till ${sibCount + 1} objekt i 3D">${sibCount + 1} objekt i aktiviteten</span>`;
       }
       if (!entry.member && typeof subToggleHtml === "function") dependencyTagHtml += subToggleHtml(entry);
       if (entry.member) {
@@ -3962,13 +3993,13 @@ function renderItemList() {
         <div class="item-row group-member${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}" data-index="${idx}" data-item-id="${escapeHtml(it.id)}">
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera objektet i 3D">
-              <span class="item-name">↳ ${escapeHtml(memberLabel(it, entry.members))}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}<br/>
+              <span class="item-name">↳ ${escapeHtml(memberLabel(it, entry.members))}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">Kunde inte spara</span>` : ""}<br/>
               <span class="item-sub">${subs.length ? escapeHtml(subs.map(r => r.name).filter(Boolean).join(", ")) : "Hela aktiviteten"}</span><br/>
               <span class="item-dates">${escapeHtml(formatDateRange(it))}</span>
             </span>
-            <button class="comment-btn" data-action="comments" title="${commentTitle}">💬${commentBadge}</button>
-            <button class="edit-btn" data-action="edit" title="Redigera bara det här objektet">✏️</button>
-            <button class="delete-btn" data-action="delete" title="Ta bort det här objektet ur aktiviteten (aktiviteten finns kvar)">✂</button>
+            <button class="comment-btn" data-action="comments" title="${commentTitle}">${icon("comment")}${commentBadge}</button>
+            <button class="edit-btn" data-action="edit" title="Redigera bara det här objektet">${icon("edit")}</button>
+            <button class="delete-btn" data-action="delete" title="Ta bort det här objektet ur aktiviteten (aktiviteten finns kvar)">${icon("cut")}</button>
           </div>
         </div>`;
         return;
@@ -3978,20 +4009,20 @@ function renderItemList() {
         <div class="item-row${entry.rep ? " group-rep" : ""}${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}${it.id === flashEditId && Date.now() < flashEditUntil ? " flash-edit" : ""}" data-index="${idx}" data-item-id="${escapeHtml(it.id)}"${activityKeyOf(it) ? ` data-activity-key="${escapeHtml(activityKeyOf(it))}"` : ""}>
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
-              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}${typeof manualMarkTagHtml === "function" && manualMarkTagHtml(it) ? manualMarkTagHtml(it) : (entry.rep ? !entry.members.some(m => m.modelId) : !it.modelId) ? (it.origin === "manuell" ? '<span class="uncoupled-tag" title="Egen aktivitet (skapad i appen), ännu inte kopplad – koppla med 🔗 eller låt den vara okopplad">◇ Ej kopplad</span>' : '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>') : ""}<br/>
+              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">Ej i modellen</span>' : ""}${typeof manualMarkTagHtml === "function" && manualMarkTagHtml(it) ? manualMarkTagHtml(it) : (entry.rep ? !entry.members.some(m => m.modelId) : !it.modelId) ? (it.origin === "manuell" ? '<span class="uncoupled-tag" title="Egen aktivitet (skapad i appen), ännu inte kopplad – koppla med eller låt den vara okopplad">◇ Ej kopplad</span>' : '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>') : ""}<br/>
               ${activitySubLineHtml(entry)}
               <span class="item-dates">${escapeHtml(shownDates)} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
             </span>
             <span class="badge badge-clickable" data-action="status" title="Klicka för att ändra status" style="background:${statusColor[it.status] || "#999"};color:${contrastTextColor(statusColor[it.status] || "#999999")}">${statusLabel[it.status] || it.status} ▾</span>
-            ${commentCount > 0 ? `<button class="comment-btn" data-action="comments-badge" title="${commentTitle}">💬${commentBadge}</button>` : ""}
-            <button class="couple-btn" data-action="couple" title="${it.modelId ? "Koppla fler 3D-objekt till samma aktivitet" : "Koppla ett eller flera 3D-objekt till den här posten"} - klicka objekten i 3D och tryck Spara">🔗</button>
-            <button class="edit-btn" data-action="edit" title="Redigera">✏️</button>
+            ${commentCount > 0 ? `<button class="comment-btn" data-action="comments-badge" title="${commentTitle}">${icon("comment")}${commentBadge}</button>` : ""}
+            <button class="couple-btn" data-action="couple" title="${it.modelId ? "Koppla fler 3D-objekt till samma aktivitet" : "Koppla ett eller flera 3D-objekt till den här posten"} - klicka objekten i 3D och tryck Spara">${icon("link")}</button>
+            <button class="edit-btn" data-action="edit" title="Redigera">${icon("edit")}</button>
             <span class="row-menu-wrap">
               <button class="row-menu-btn" data-action="row-menu" title="Fler åtgärder">⋯</button>
               <span class="row-menu hidden">
-                <button class="comment-btn" data-action="comments">💬 Kommentarer${commentCount ? ` (${commentCount})` : ""}</button>
-                ${(entry.rep ? entry.members : [it, ...siblingsOf(it)]).some(m => m.modelId) ? `<button class="remove-btn" data-action="remove-objs" title="Aktiviteten finns kvar">✂ Ta bort objekt ur aktiviteten…</button>` : ""}
-                <button class="delete-btn" data-action="delete" title="Frågar två gånger, säkerhetskopia tas först">🗑️ Radera aktiviteten…</button>
+                <button class="comment-btn" data-action="comments">Kommentarer${commentCount ? ` (${commentCount})` : ""}</button>
+                ${(entry.rep ? entry.members : [it, ...siblingsOf(it)]).some(m => m.modelId) ? `<button class="remove-btn" data-action="remove-objs" title="Aktiviteten finns kvar">Ta bort objekt ur aktiviteten…</button>` : ""}
+                <button class="delete-btn" data-action="delete" title="Frågar två gånger, säkerhetskopia tas först">Radera aktiviteten…</button>
               </span>
             </span>
           </div>
@@ -4197,7 +4228,7 @@ function onItemRowClicked(it, ev, renderedItems) {
    Kommentarer på ett planerat objekt (med svar, ungefär som i Excel)
    ------------------------------------------------------------------- */
 
-/** Öppnas via 💬-knappen på en rad i "Planerade objekt". */
+/** Öppnas via -knappen på en rad i "Planerade objekt". */
 function openCommentsDialog(item) {
   currentCommentsItem = item;
   document.getElementById("commentsItemName").innerText = item.objectName || item.objectId;
@@ -4253,7 +4284,7 @@ function renderCommentNode(c, childrenByParent) {
       <div class="comment-body">${escapeHtml(c.body)}</div>
       <div class="comment-actions">
         <button class="comment-reply-btn" data-action="reply" data-id="${c.id}">Svara</button>
-        <button class="comment-delete-btn" data-action="delete" data-id="${c.id}" title="Ta bort kommentaren">🗑️ Ta bort</button>
+        <button class="comment-delete-btn" data-action="delete" data-id="${c.id}" title="Ta bort kommentaren">Ta bort</button>
       </div>
       <div class="comment-reply-form hidden" data-reply-form="${c.id}">
         <textarea rows="2" placeholder="Skriv ett svar..."></textarea>
@@ -4463,7 +4494,7 @@ async function onShowLabels() {
   const labelsStatusEl = document.getElementById("labelsStatus");
   if (labelsStatusEl) labelsStatusEl.textContent = "";
   if (linked.length === 0) {
-    alert("Inga rader är markerade. Håll in Ctrl (⌘ på Mac) eller Shift och klicka på flera rader i \"Planerade objekt\" för att välja vilka som ska få etiketter i 3D-vyn.");
+    alert("Inga rader är markerade. Håll in Ctrl (Cmd på Mac) eller Shift och klicka på flera rader i \"Planerade objekt\" för att välja vilka som ska få etiketter i 3D-vyn.");
     return;
   }
 
@@ -4588,7 +4619,7 @@ function updateConnectionWarning() {
     el.innerText = "";
   } else {
     el.classList.remove("hidden");
-    el.innerText = "⚠️ Ingen databas ansluten – öppna inställningarna (kugghjulet) och ange GitHub-token. Se GITHUB_TOKEN_SETUP.md.";
+    el.innerText = "Ingen databas ansluten – öppna inställningarna (kugghjulet) och ange GitHub-token. Se GITHUB_TOKEN_SETUP.md.";
   }
 }
 
@@ -4775,7 +4806,7 @@ async function loadCoupledModels() {
     }
     const nMarks = typeof manualMarks !== "undefined" ? manualMarks.length : 0;
     if (nMarks && typeof setMarksShown === "function") setMarksShown(true);
-    showLagesplanBanner(`💡 ${loaded} modeller tända${already ? `, ${already} var redan tända` : ""}${nMarks ? `, ${nMarks} manuella markeringar visas` : ""}${failed.length ? ` – ${failed.length} hittades inte (öppna mappen i Trimble Connect och försök igen)` : ""}.`, 7000);
+    showLagesplanBanner(`${loaded} modeller tända${already ? `, ${already} var redan tända` : ""}${nMarks ? `, ${nMarks} manuella markeringar visas` : ""}${failed.length ? ` – ${failed.length} hittades inte (öppna mappen i Trimble Connect och försök igen)` : ""}.`, 7000);
   } finally {
     btn.disabled = false;
     btn.innerText = old;
@@ -4894,8 +4925,8 @@ async function refreshItems() {
     if (el) {
       el.classList.remove("hidden");
       el.innerText = /\b401\b/.test(e.message)
-        ? "⚠️ GitHub godkänner inte token:en (401) – den har troligen gått ut eller återkallats. Planeringen ligger kvar i databasen men kan inte läsas. Skapa en ny token (se GITHUB_TOKEN_SETUP.md) och ange den under ⚙."
-        : "⚠️ Kunde inte hämta planeringen: " + e.message + " – datan ligger kvar i databasen. Försök igen med ↻.";
+        ? "GitHub godkänner inte token:en (401) – den har troligen gått ut eller återkallats. Planeringen ligger kvar i databasen men kan inte läsas. Skapa en ny token (se GITHUB_TOKEN_SETUP.md) och ange den under ."
+        : "Kunde inte hämta planeringen: " + e.message + " – datan ligger kvar i databasen. Försök igen med ↻.";
     }
   }
 }
@@ -5190,7 +5221,7 @@ async function fetchComments(planItemId) {
 }
 
 /**
- * Räknar antal kommentarer per objekt (för 💬-badgen i "Planerade objekt").
+ * Räknar antal kommentarer per objekt (för -badgen i "Planerade objekt").
  */
 async function refreshCommentCounts() {
   commentCounts = new Map();

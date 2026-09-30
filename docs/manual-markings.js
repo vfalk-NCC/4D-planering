@@ -11,9 +11,9 @@
 const MARK_SHAPES = {
   line: { label: "Linje", icon: "╱", hint: "Klicka två punkter i modellen." },
   polyline: { label: "Polylinje", icon: "〰", hint: "Klicka punkter längs linjen och tryck Klar." },
-  area: { label: "Yta", icon: "⬠", hint: "Klicka ytans hörn och tryck Klar – ytan sluts automatiskt." },
-  volume: { label: "Volym", icon: "⬛", hint: "Klicka bottenytans hörn, ange höjden och tryck Klar." },
-  freehand: { label: "Frihand", icon: "✍", hint: "Rita med Trimble Connects frihandsverktyg (Markering → Frihand). Du kan rita flera drag. Tryck Klar när du är färdig." },
+  area: { label: "Yta", icon: "", hint: "Klicka ytans hörn och tryck Klar – ytan sluts automatiskt." },
+  volume: { label: "Volym", icon: "", hint: "Klicka bottenytans hörn, ange höjden och tryck Klar." },
+  freehand: { label: "Frihand", icon: "", hint: "Rita med Trimble Connects frihandsverktyg (Markering → Frihand). Du kan rita flera drag. Tryck Klar när du är färdig." },
 };
 let manualMarks = [];           // [{ id, itemId, shape, pts, height, lines, created_at, by }]
 let manualMarksLoaded = false;
@@ -43,7 +43,7 @@ function marksForItem(it) {
 function manualMarkTagHtml(it) {
   const n = marksForItem(it).length;
   if (!n) return "";
-  return `<span class="manual-tag" data-action="marks" title="Visa i 3D${n > 1 ? ` (${n} markeringar)` : ""} – högerklicka för att ta bort">✏️ Manuell markering${n > 1 ? ` (${n})` : ""}</span>`;
+  return `<span class="manual-tag" data-action="marks" title="Visa i 3D${n > 1 ? ` (${n} markeringar)` : ""} – högerklicka för att ta bort">Manuell markering${n > 1 ? ` (${n})` : ""}</span>`;
 }
 
 // ---------------------------------------------------------------------
@@ -228,8 +228,8 @@ function renderDrawBar() {
   bar.classList.toggle("hidden", !inCouple);
   if (!inCouple) return;
   if (!markDraw) {
-    bar.innerHTML = `<span class="draw-lead">✏️ Eller rita en manuell markering:</span>
-      <span class="draw-shapes">${Object.entries(MARK_SHAPES).map(([k, s]) => `<button type="button" data-shape="${k}" title="${escapeHtml(s.hint)}">${s.icon} ${s.label}</button>`).join("")}</span>`;
+    bar.innerHTML = `<span class="draw-lead">Eller rita en manuell markering:</span>
+      <span class="draw-shapes">${Object.entries(MARK_SHAPES).map(([k, s]) => `<button type="button" data-shape="${k}" title="${escapeHtml(s.hint)}">${s.label}</button>`).join("")}</span>`;
     bar.querySelectorAll("[data-shape]").forEach(b => { b.onclick = () => startMarkDraw(b.dataset.shape); });
     return;
   }
@@ -237,7 +237,7 @@ function renderDrawBar() {
   const n = markDraw.shape === "freehand" ? `${markDraw.lines.length ? "Ritat: " + countStrokes() + " drag" : "Inget ritat än"}` : `${markDraw.pts.length} punkt${markDraw.pts.length === 1 ? "" : "er"}`;
   const minPts = { line: 2, polyline: 2, area: 3, volume: 3 }[markDraw.shape] || 0;
   const ready = markDraw.shape === "freehand" ? markDraw.lines.length > 0 : markDraw.pts.length >= minPts;
-  bar.innerHTML = `<div class="draw-active"><b>${s.icon} ${s.label}</b> – ${escapeHtml(s.hint)} <span class="hint">(${n})</span></div>
+  bar.innerHTML = `<div class="draw-active"><b>${s.label}</b> – ${escapeHtml(s.hint)} <span class="hint">(${n})</span></div>
     ${markDraw.shape === "volume" ? `<label class="draw-height">Höjd (m) <input type="text" id="markHeight" value="${markDraw.height}" inputmode="decimal" /></label>` : ""}
     <div class="couple-mode-actions">
       ${markDraw.shape !== "freehand" ? `<button type="button" id="markUndoPt" ${markDraw.pts.length ? "" : "disabled"}>↶ Ångra punkt</button>` : ""}

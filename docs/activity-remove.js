@@ -16,7 +16,7 @@ function activityLabel(item) { return `"${item.objectName || item.activity || "a
 /* Två frågor innan en hel aktivitet raderas. */
 function confirmDeleteActivity(label, nObjects) {
   if (!confirm(`Radera aktiviteten ${label}${nObjects > 1 ? ` med alla ${nObjects} objektkopplingar` : ""}?`)) return false;
-  return confirm(`Är du helt säker?\n\nAktiviteten ${label} försvinner ur planeringen med datum, delaktiviteter, kommentarer och kopplingar. En säkerhetskopia tas först, så det går att återställa via Historik.\n\nVill du bara ta bort objekt ur aktiviteten? Välj Avbryt och använd ✂ på aktiviteten i stället.`);
+  return confirm(`Är du helt säker?\n\nAktiviteten ${label} försvinner ur planeringen med datum, delaktiviteter, kommentarer och kopplingar. En säkerhetskopia tas först, så det går att återställa via Historik.\n\nVill du bara ta bort objekt ur aktiviteten? Välj Avbryt och använd på aktiviteten i stället.`);
 }
 async function backupBefore(reason) {
   try { await createBackup(reason); return true; }
@@ -90,12 +90,12 @@ async function removeObjectsFromActivity(anchor, toRemove, opts = {}) {
   }
   removed.forEach(m => selectedItemKeys.delete(m.objectId));
   await afterRemoval();
-  showLagesplanBanner(`✂ ${removed.length} objekt borttagna ur ${activityLabel(anchor)}${!remaining.length ? " – aktiviteten finns kvar som ej kopplad" : ""}.`, 6000);
+  showLagesplanBanner(`${removed.length} objekt borttagna ur ${activityLabel(anchor)}${!remaining.length ? " – aktiviteten finns kvar som ej kopplad" : ""}.`, 6000);
   return true;
 }
 
 /* ---------------------------------------------------------------------
-   ✂-dialogen: välj objekt att ta bort (lista eller markering i 3D)
+   -dialogen: välj objekt att ta bort (lista eller markering i 3D)
    ------------------------------------------------------------------- */
 let removeDialogAnchor = null;
 async function openRemoveObjectsDialog(anchor) {
@@ -113,7 +113,7 @@ function renderRemoveList(members, checked) {
     const subs = (activitiesByItemId.get(m.id) || []).map(r => r.name).filter(Boolean);
     return `<label class="remove-obj-row"><input type="checkbox" data-id="${escapeHtml(m.id)}"${checked.has(m.id) ? " checked" : ""} />
       <span class="grow">${escapeHtml(memberLabel(m, members))}<br/><span class="hint">${escapeHtml(subs.length ? subs.join(", ") : "Hela aktiviteten")} · ${escapeHtml(formatDateRange(m))}</span></span>
-      <button type="button" data-show="${escapeHtml(m.id)}" title="Visa i 3D">🎯</button></label>`;
+      <button type="button" data-show="${escapeHtml(m.id)}" title="Visa i 3D">${icon("target")}</button></label>`;
   }).join("");
   el.querySelectorAll("[data-show]").forEach(b => { b.onclick = ev => { ev.preventDefault(); const m = members.find(x => x.id === b.dataset.show); if (m) selectItemsInModel([m]); }; });
   el.querySelectorAll("input[type=checkbox]").forEach(c => { c.onchange = updateRemoveCount; });

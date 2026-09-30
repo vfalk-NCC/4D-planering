@@ -24,7 +24,7 @@ function subToggleHtml(entry) {
   const subs = subsForEntry(entry);
   if (!subs.length) return "";
   const open = expandedSubs.has(subOwnerKey(entry));
-  return `<br/><button type="button" class="group-tag sub-toggle-btn" data-action="toggle-subs" title="${open ? "Dölj delaktiviteterna" : "Visa delaktiviteterna och koppla objekt direkt till dem"}">☰ ${subs.length} delaktivitet${subs.length === 1 ? "" : "er"} ${open ? "▾" : "▸"}</button>`;
+  return `<br/><button type="button" class="group-tag sub-toggle-btn" data-action="toggle-subs" title="${open ? "Dölj delaktiviteterna" : "Visa delaktiviteterna och koppla objekt direkt till dem"}">${subs.length} delaktivitet${subs.length === 1 ? "" : "er"} ${open ? "▾" : "▸"}</button>`;
 }
 function subMarks(entry, sub) {
   if (typeof manualMarks === "undefined") return [];
@@ -42,10 +42,10 @@ function subRowsHtml(entry, idx) {
         <span class="sub-main" data-action="sub-select" title="Klicka för att markera delaktivitetens objekt i 3D">
           <span class="sub-name">↳ ${escapeHtml(s.name || "(namnlös)")}</span><br/>
           <span class="item-dates">${escapeHtml(dates)}</span>
-          ${s.coupled.length ? `<span class="sub-count" title="${s.coupled.length} objekt kopplade till delaktiviteten">⛓ ${s.coupled.length} objekt</span>` : '<span class="uncoupled-tag">◇ Ej kopplad</span>'}
-          ${nm ? `<span class="manual-tag" data-action="sub-marks" title="Visa i 3D – högerklick tar bort">✏️ Manuell markering${nm > 1 ? ` (${nm})` : ""}</span>` : ""}
+          ${s.coupled.length ? `<span class="sub-count" title="${s.coupled.length} objekt kopplade till delaktiviteten">${s.coupled.length} objekt</span>` : '<span class="uncoupled-tag">◇ Ej kopplad</span>'}
+          ${nm ? `<span class="manual-tag" data-action="sub-marks" title="Visa i 3D – högerklick tar bort">Manuell markering${nm > 1 ? ` (${nm})` : ""}</span>` : ""}
         </span>
-        <button class="couple-btn" data-action="sub-couple" title="Koppla 3D-objekt (eller rita en markering) till &quot;${escapeHtml(s.name || "")}&quot; – klicka objekten i 3D och tryck Spara">🔗</button>
+        <button class="couple-btn" data-action="sub-couple" title="Koppla 3D-objekt (eller rita en markering) till &quot;${escapeHtml(s.name || "")}&quot; – klicka objekten i 3D och tryck Spara">${icon("link")}</button>
       </div>`;
   }).join("")}</div>`;
 }

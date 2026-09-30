@@ -37,15 +37,15 @@
         <button id="btnUndo" title="Inget att ångra" disabled>↶</button>
         <button id="btnRedo" title="Inget att göra om" disabled>↷</button>
         <button id="btnCollapseAll" title="Minimera alla block">⊟</button>
-        <button id="btnStatusPlan" title="Lägesplan: en PDF-plan (t.ex. med PM-zoner) färgad efter framdriften">🗺️</button>
+        <button id="btnStatusPlan" title="Lägesplan: en PDF-plan (t.ex. med PM-zoner) färgad efter framdriften"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/><path d="M9 4v14"/><path d="M15 6v14"/></svg></button>
         <button id="btnRefresh" title="Hämta senaste data">↻</button>
-        <button id="btnSettings" title="Inställningar (databas, färger m.m.)">⚙</button>
+        <button id="btnSettings" title="Inställningar (databas, färger m.m.)"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
       </div>
     </header>
     <nav id="mainTabs" class="main-tabs">
-      <button type="button" data-tab="plan" class="active">📋 Planera</button>
-      <button type="button" data-tab="time">⏱ Tidslinje</button>
-      <button type="button" data-tab="tools">🧰 Import & verktyg</button>
+      <button type="button" data-tab="plan" class="active">Planera</button>
+      <button type="button" data-tab="time">Tidslinje</button>
+      <button type="button" data-tab="tools">Import & verktyg</button>
     </nav>
     <div id="connectionWarning" class="hint warning hidden"></div>
     <div id="saveStatus" class="hidden"></div>
@@ -53,10 +53,10 @@
     <!-- ===== Koppla markerade objekt ===== -->
     <section class="panel" data-panel-id="link" data-tab="plan">
       <h2>Ny aktivitet / koppla</h2>
-      <p class="hint">Markera objekt i 3D och koppla dem – eller skapa en aktivitet och koppla den senare med 🔗.</p>
+      <p class="hint">Markera objekt i 3D och koppla dem – eller skapa en aktivitet och koppla den senare via kopplingsknappen på raden.</p>
       <div class="row" style="gap:6px;">
         <button id="btnLinkSelection" class="primary">Koppla markerade objekt (<span id="selCount">0</span>)</button>
-        <button id="btnNewActivity" title="Skapa en aktivitet i tidplanen utan att koppla den till något. Koppla senare med 🔗 (objekt eller manuell markering) – eller låt den vara okopplad.">＋ Ny aktivitet</button>
+        <button id="btnNewActivity" title="Skapa en aktivitet i tidplanen utan att koppla den till något. Koppla senare (objekt eller manuell markering) – eller låt den vara okopplad.">＋ Ny aktivitet</button>
       </div>
     </section>
 
@@ -70,77 +70,77 @@
         <div class="menu-wrap">
           <button type="button" id="btnListMenu" class="toolbar-btn" title="Fler åtgärder">⋯</button>
           <div id="listMenu" class="dropdown-menu hidden">
-            <button id="btnLoadCoupledModels" title="Tänder (läser in) alla modeller i Trimble Connect som har objekt kopplade i planeringen och visar de manuella markeringarna">💡 Tänd kopplade modeller/markeringar</button>
-            <button id="btnSelectAllCoupled" title="Markera alla kopplade objekt i 3D-vyn">🎯 Markera alla kopplade i 3D</button>
-            <button id="btnCollapseAllGroups" title="Fäll ihop alla grupper i listan">⊟ Fäll ihop alla grupper</button>
+            <button id="btnLoadCoupledModels" title="Tänder (läser in) alla modeller i Trimble Connect som har objekt kopplade i planeringen och visar de manuella markeringarna">Tänd kopplade modeller/markeringar</button>
+            <button id="btnSelectAllCoupled" title="Markera alla kopplade objekt i 3D-vyn">Markera alla kopplade i 3D</button>
+            <button id="btnCollapseAllGroups" title="Fäll ihop alla grupper i listan">Fäll ihop alla grupper</button>
             <hr />
-            <button id="btnRenameValue" title="Byt namn på Område/Aktivitet/Entreprenör för alla objekt som har det, i ett svep">✏️ Byt namn på område/aktivitet…</button>
-            <button id="btnSuggestDeps" title="Föreslår beroenden mellan objekt i samma område med samma namn, baserat på en vanlig byggordning (t.ex. Formning → Armering → Gjutning) - helt regelbaserat, ingen AI/extern tjänst.">🔗 Föreslå beroenden…</button>
+            <button id="btnRenameValue" title="Byt namn på Område/Aktivitet/Entreprenör för alla objekt som har det, i ett svep">Byt namn på område/aktivitet…</button>
+            <button id="btnSuggestDeps" title="Föreslår beroenden mellan objekt i samma område med samma namn, baserat på en vanlig byggordning (t.ex. Formning → Armering → Gjutning) - helt regelbaserat, ingen AI/extern tjänst.">Föreslå beroenden…</button>
             <hr />
-            <button id="btnClearLabels" title="Ta bort namnetiketterna i 3D-vyn">🏷 Rensa namnetiketter i 3D</button>
-            <button id="btnPlanKeys" title="Visa och ändra kortkommandona (?)">⌨ Kortkommandon</button>
+            <button id="btnClearLabels" title="Ta bort namnetiketterna i 3D-vyn">Rensa namnetiketter i 3D</button>
+            <button id="btnPlanKeys" title="Visa och ändra kortkommandona (?)">Kortkommandon</button>
             <label class="menu-check" title="Visar de manuella markeringarna (linjer, ytor, volymer och frihand) i 3D, i aktivitetens statusfärg"><input type="checkbox" id="showManualMarks" checked /> Visa manuella markeringar i 3D</label>
           </div>
         </div>
       </div>
       <div id="listFilterBox" class="filter-box hidden">
-      <div class="row">
-        <label style="flex:1">Gruppera enligt
-          <select id="groupBy">
+        <div class="filter-grid">
+          <div class="filter-cell">
+            <span class="filter-label">Område</span>
+            <select id="filterArea" multiple class="chip-source"></select>
+            <div id="filterAreaChips" class="ms" data-for="filterArea" data-label="Område"></div>
+          </div>
+          <div class="filter-cell">
+            <span class="filter-label">Aktivitet</span>
+            <select id="filterActivity" multiple class="chip-source"></select>
+            <div id="filterActivityChips" class="ms" data-for="filterActivity" data-label="Aktivitet"></div>
+          </div>
+          <div class="filter-cell">
+            <span class="filter-label">Entreprenör</span>
+            <select id="filterContractor" multiple class="chip-source"></select>
+            <div id="filterContractorChips" class="ms" data-for="filterContractor" data-label="Entreprenör"></div>
+          </div>
+          <div class="filter-cell">
+            <span class="filter-label">Status</span>
+            <select id="filterStatus" multiple class="chip-source"></select>
+            <div id="filterStatusChips" class="ms" data-for="filterStatus" data-label="Status"></div>
+          </div>
+          <div class="filter-cell">
+            <span class="filter-label">Startar inom</span>
+            <select id="filterWeeks">
+          <option value="">Visa allt</option>
+          <option value="1">Nästa vecka</option>
+          <option value="2">Nästa 2 veckor</option>
+          <option value="4">Nästa 4 veckor</option>
+        </select>
+          </div>
+          <div class="filter-cell">
+            <span class="filter-label">Gruppera</span>
+            <select id="groupBy">
             <option value="">Ingen gruppering</option>
             <option value="area" selected>Område</option>
             <option value="activity">Aktivitet</option>
             <option value="contractor">Entreprenör</option>
             <option value="status">Status</option>
           </select>
-        </label>
-        <label style="flex:1" title="Sorteringen sker inom varje grupp (t.ex. inom varje område). Aktiviteter med flera objekt placeras efter sitt tidigaste startdatum.">Sortera
-          <select id="sortBy">
+          </div>
+          <div class="filter-cell" title="Sorteringen sker inom varje grupp. Aktiviteter med flera objekt placeras efter sitt tidigaste startdatum.">
+            <span class="filter-label">Sortera</span>
+            <select id="sortBy">
             <option value="alpha" selected>A-Ö</option>
             <option value="start">Startdatum</option>
             <option value="">Ingen sortering</option>
           </select>
-        </label>
-      </div>
-        <div class="filter-field">
-          <div class="filter-title">Visa</div>
-          <div class="check-row">
-            <label class="switch"><input type="checkbox" id="hideCompleted" /> Dölj klara</label>
-            <label class="switch"><input type="checkbox" id="showOnlyCompleted" /> Endast klara</label>
-            <label class="switch" title="Visar bara det som pågår idag"><input type="checkbox" id="todayOnly" /> Endast idag</label>
-            <label class="switch" title="Visar bara aktiviteter utan 3D-objekt och utan manuell markering (◇ Ej kopplad)"><input type="checkbox" id="uncoupledOnly" /> Endast ej kopplade</label>
           </div>
         </div>
-        <div class="filter-field">
-          <div class="filter-title">Område</div>
-          <select id="filterArea" multiple class="chip-source"></select>
-          <div id="filterAreaChips" class="chip-select" data-for="filterArea"></div>
+        <div class="check-row">
+          <label class="switch"><input type="checkbox" id="hideCompleted" /> Dölj klara</label>
+          <label class="switch"><input type="checkbox" id="showOnlyCompleted" /> Endast klara</label>
+          <label class="switch" title="Visar bara det som pågår idag"><input type="checkbox" id="todayOnly" /> Endast idag</label>
+          <label class="switch" title="Visar bara aktiviteter utan 3D-objekt och utan manuell markering"><input type="checkbox" id="uncoupledOnly" /> Endast ej kopplade</label>
         </div>
-        <div class="filter-field">
-          <div class="filter-title">Aktivitet</div>
-          <select id="filterActivity" multiple class="chip-source"></select>
-          <div id="filterActivityChips" class="chip-select" data-for="filterActivity"></div>
-        </div>
-        <div class="filter-field">
-          <div class="filter-title">Entreprenör</div>
-          <select id="filterContractor" multiple class="chip-source"></select>
-          <div id="filterContractorChips" class="chip-select" data-for="filterContractor"></div>
-        </div>
-        <div class="filter-field">
-          <div class="filter-title">Status</div>
-          <select id="filterStatus" multiple class="chip-source"></select>
-          <div id="filterStatusChips" class="chip-select" data-for="filterStatus"></div>
-        </div>
-      <label class="filter-field">Startar inom
-        <select id="filterWeeks">
-          <option value="">Visa allt</option>
-          <option value="1">Nästa vecka</option>
-          <option value="2">Nästa 2 veckor</option>
-          <option value="4">Nästa 4 veckor</option>
-        </select>
-      </label>
         <div class="row filter-actions">
-          <button id="btnApplyFilter" class="primary" title="Visar bara de filtrerade objekten i 3D-vyn">🎯 Visa filtrerat i 3D</button>
+          <button id="btnApplyFilter" class="primary" title="Visar bara de filtrerade objekten i 3D-vyn">Visa filtrerat i 3D</button>
           <button id="btnShowAllCoupled" title="Visa ALLA objekt som har en planeringskoppling i 3D-vyn, oavsett filter">Visa alla kopplade</button>
           <button id="btnClearFilter">Rensa filter</button>
         </div>
@@ -164,9 +164,9 @@
       <div id="itemList" class="item-list"></div>
       <div id="selectionBar" class="selection-bar hidden">
         <span class="sel-count"><b id="selectedCount">0</b> valda</span>
-        <button id="btnEditSelected" title="Ändra status, entreprenör, område, aktivitet och/eller förskjut datum för alla markerade rader i ett svep" disabled>✏️ Redigera<span id="editSelectedCount" class="hidden">0</span></button>
-        <button id="btnShowLabels" title="Visa namn + start-/slutdatum som textetiketter i 3D-vyn för de markerade raderna" disabled>🏷 Namn i 3D</button>
-        <button id="btnDeleteSelected" title="Radera planeringskopplingen för alla markerade rader" disabled>🗑 Radera</button>
+        <button id="btnEditSelected" title="Ändra status, entreprenör, område, aktivitet och/eller förskjut datum för alla markerade rader i ett svep" disabled>Redigera<span id="editSelectedCount" class="hidden">0</span></button>
+        <button id="btnShowLabels" title="Visa namn + start-/slutdatum som textetiketter i 3D-vyn för de markerade raderna" disabled>Namn i 3D</button>
+        <button id="btnDeleteSelected" title="Radera planeringskopplingen för alla markerade rader" disabled>Radera</button>
         <button id="btnClearSelection" class="sel-close" title="Avmarkera alla">✕</button>
       </div>
       <div id="labelsStatus" class="hint"></div>
@@ -369,7 +369,7 @@
   <!-- Kortkommandon -->
   <div id="planKeysDialog" class="dialog hidden">
     <div class="dialog-box keys-box">
-      <h2>⌨ Kortkommandon</h2>
+      <h2>Kortkommandon</h2>
       <p class="hint">Klicka på en tangent och tryck den nya. Gäller inte medan du skriver i ett fält. Sparas i den här webbläsaren.</p>
       <div id="planKeysList" class="keys-list"></div>
       <div class="row" style="margin-top:8px;"><span class="hint" id="planKeysMsg" style="flex:1;color:var(--accent);"></span></div>
@@ -397,13 +397,13 @@
       <h3 class="settings-subheading">Säkerhetskopior och historik</h3>
       <p class="hint">En säkerhetskopia av hela projektets data tas automatiskt innan varje import av 4-veckorsplaneringen och innan nollställning/återställning. Återställ går tillbaka till just det läget (en ny kopia tas först, så det går att ångra).</p>
       <div class="row">
-        <button id="btnBackupNow">💾 Skapa säkerhetskopia nu</button>
+        <button id="btnBackupNow">Skapa säkerhetskopia nu</button>
       </div>
       <div id="backupList" class="backup-list"><div class="hint">Laddar…</div></div>
       <details class="danger-zone">
         <summary>Nollställ planeringen…</summary>
         <p class="hint">Tar bort ALLA planerade objekt, delaktiviteter, 3D-kopplingar, kommentarer, beroenden och historik i det här projektet – t.ex. inför en helt ny import av 4-veckorsplaneringen. Lägesplanens planer, zoner och lager rörs inte. En säkerhetskopia tas först.</p>
-        <button id="btnResetPlanning" class="danger">🗑 Nollställ planeringen</button>
+        <button id="btnResetPlanning" class="danger">Nollställ planeringen</button>
       </details>
 
       <h3 class="settings-subheading">Synliga block</h3>
@@ -412,7 +412,7 @@
       <div id="panelVisibilityList" class="panel-visibility-list"></div>
 
       <div class="row">
-        <button id="btnPlanKeysSettings" type="button">⌨ Kortkommandon</button>
+        <button id="btnPlanKeysSettings" type="button">Kortkommandon</button>
         <button id="btnSaveSettings" class="primary">Spara</button>
         <button id="btnCloseSettings">Stäng</button>
       </div>
@@ -424,7 +424,7 @@
     <div class="dialog-box">
       <h2 id="removeObjTitle">Ta bort objekt ur aktiviteten</h2>
       <p class="hint">Kryssa i objekten som ska tas bort, eller markera dem i 3D och tryck "Från markeringen i 3D". Aktiviteten finns kvar – tas alla objekt bort blir den "Ej kopplad" med sina datum och delaktiviteter.</p>
-      <div class="row" style="gap:6px;margin-bottom:6px;"><button type="button" id="btnRemoveObjFromSel">🎯 Från markeringen i 3D</button><button type="button" id="btnRemoveObjAll">Markera alla</button></div>
+      <div class="row" style="gap:6px;margin-bottom:6px;"><button type="button" id="btnRemoveObjFromSel">Från markeringen i 3D</button><button type="button" id="btnRemoveObjAll">Markera alla</button></div>
       <div id="removeObjList" class="remove-obj-list"></div>
       <div class="row" style="margin-top:10px;">
         <button type="button" id="btnRemoveObjOk" class="primary" disabled>Ta bort (0)</button>

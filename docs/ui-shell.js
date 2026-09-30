@@ -36,25 +36,51 @@ function toggleRowMenu(row) {
   m.classList.toggle("hidden");
 }
 
-/* ---------- filteretiketter (område/aktivitet/entreprenör/status) ---------- */
+/* ---------- flervals-rullgardiner (område/aktivitet/entreprenör/status) ----------
+   Knappen visar "Alla" / valt värde / "3 valda"; listan har sökfält och
+   kryssrutor och rullar själv, så långa listor inte gör filterrutan lång. */
+let openMs = null; // data-for för den rullgardin som är öppen
+function msSummary(sel) {
+  const on = [...sel.selectedOptions];
+  return !on.length ? "Alla" : on.length === 1 ? on[0].text : `${on.length} valda`;
+}
 function renderChipSelects() {
-  document.querySelectorAll(".chip-select").forEach(box => {
+  document.querySelectorAll(".ms").forEach(box => {
     const sel = document.getElementById(box.dataset.for);
     if (!sel) return;
-    const opts = [...sel.options];
-    box.innerHTML = opts.length
-      ? opts.map((o, i) => `<button type="button" class="chip${o.selected ? " on" : ""}" data-i="${i}" data-value="${escapeHtml(o.value)}">${escapeHtml(o.text)}</button>`).join("")
-      : '<span class="hint">–</span>';
-    box.querySelectorAll(".chip").forEach(c => {
-      c.onclick = () => {
-        const o = sel.options[Number(c.dataset.i)];
-        o.selected = !o.selected;
+    const isOpen = openMs === box.dataset.for;
+    const q = isOpen ? (box.querySelector(".ms-search") || {}).value || "" : "";
+    const nOn = sel.selectedOptions.length;
+    box.innerHTML = `<button type="button" class="ms-btn${nOn ? " on" : ""}" title="${escapeHtml([...sel.selectedOptions].map(o => o.text).join(", "))}"><span>${escapeHtml(msSummary(sel))}</span><span class="ms-caret">▾</span></button>` +
+      (isOpen ? `<div class="ms-pop">
+        ${sel.options.length > 8 ? `<input type="text" class="ms-search" placeholder="Sök ${escapeHtml(box.dataset.label.toLowerCase())}…" value="${escapeHtml(q)}" />` : ""}
+        <div class="ms-list">${[...sel.options].map((o, i) => `<label class="ms-option" data-text="${escapeHtml(o.text.toLowerCase())}"><input type="checkbox" data-i="${i}" data-value="${escapeHtml(o.value)}"${o.selected ? " checked" : ""} /> <span>${escapeHtml(o.text)}</span></label>`).join("") || '<span class="hint">Inga värden</span>'}</div>
+        ${nOn ? '<button type="button" class="ms-clear">Rensa val</button>' : ""}
+      </div>` : "");
+    box.querySelector(".ms-btn").onclick = (ev) => { ev.stopPropagation(); openMs = isOpen ? null : box.dataset.for; renderChipSelects(); const s = document.querySelector(`.ms[data-for="${openMs}"] .ms-search`); if (s) s.focus(); };
+    if (!isOpen) return;
+    const pop = box.querySelector(".ms-pop");
+    pop.onclick = ev => ev.stopPropagation();
+    const filterList = () => {
+      const t = (box.querySelector(".ms-search") || {}).value?.toLowerCase().trim() || "";
+      box.querySelectorAll(".ms-option").forEach(o => { o.style.display = !t || o.dataset.text.includes(t) ? "" : "none"; });
+    };
+    const search = box.querySelector(".ms-search");
+    if (search) { search.oninput = filterList; filterList(); }
+    box.querySelectorAll(".ms-option input").forEach(c => {
+      c.onchange = () => {
+        sel.options[Number(c.dataset.i)].selected = c.checked;
         sel.dispatchEvent(new Event("change"));
-        renderChipSelects();
+        const btn = box.querySelector(".ms-btn span");
+        if (btn) btn.textContent = msSummary(sel);
+        box.querySelector(".ms-btn").classList.toggle("on", sel.selectedOptions.length > 0);
       };
     });
+    const clear = box.querySelector(".ms-clear");
+    if (clear) clear.onclick = () => { [...sel.options].forEach(o => { o.selected = false; }); sel.dispatchEvent(new Event("change")); renderChipSelects(); };
   });
 }
+document.addEventListener("click", () => { if (openMs) { openMs = null; renderChipSelects(); } });
 
 /* ---------- aktiva filter som etiketter + räknare på "Filter ▾" ---------- */
 function activeFilterList() {

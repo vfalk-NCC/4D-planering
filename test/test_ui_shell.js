@@ -88,7 +88,9 @@ put('plan_markups.json', []);
 
   // 2) Filter ▾ med etiketter styr listan, aktiva filter med ✕
   await page.click('#btnListFilter');
-  await page.click('#filterAreaChips .chip[data-value="Hus A"]');
+  await page.click('#filterAreaChips .ms-btn');
+  await page.check('#filterAreaChips input[data-value="Hus A"]');
+  if ((await page.innerText('#filterAreaChips .ms-btn')).trim().replace(/\s*▾$/, '') !== 'Hus A') fail('rullgardinen ska visa valt område');
   await page.waitForTimeout(150);
   await page.check('#hideCompleted'); await page.waitForTimeout(150);
   if ((await page.innerText('#filterCountBadge')).trim() !== '2') fail('räknaren på Filter ska visa 2');
@@ -135,6 +137,18 @@ put('plan_markups.json', []);
   await row.locator('[data-action="edit"]').click(); await page.waitForTimeout(200);
   if (!(await page.evaluate(() => document.getElementById('formMore').open))) fail('Mer ska öppnas när det finns en entreprenör');
   console.log('OK: formuläret öppnas som panel med rubrik, Esc stänger och Mer öppnas vid behov');
+
+  // 6) Kopplingsrutan ligger kvar överst när man scrollar
+  await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+  await page.setViewportSize({ width: 420, height: 500 });
+  await page.evaluate(() => { for (let i = 0; i < 30; i++) items.push({ ...items[0], id: 'z' + i, objectId: 'z' + i, objectName: 'Rad ' + i, groupId: null, sourceKey: null }); renderItemList(); });
+  await page.locator('#itemList .item-row:not(.group-member)', { hasText: 'Rad 20' }).first().locator('[data-action="couple"]').click();
+  await page.waitForTimeout(200);
+  await page.evaluate(() => window.scrollBy(0, 800)); await page.waitForTimeout(200);
+  const top = await page.evaluate(() => document.getElementById('coupleModeBanner').getBoundingClientRect().top);
+  if (!(await page.isVisible('#coupleModeBanner')) || top < 0 || top > 80) fail('kopplingsrutan ska ligga kvar överst vid scroll, top=' + top);
+  await page.click('#btnCancelCoupleMode');
+  console.log('OK: kopplingsrutan ligger kvar överst när man scrollar');
 
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK: UI-skalet fungerar');
