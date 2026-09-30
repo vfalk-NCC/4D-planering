@@ -299,6 +299,8 @@
             <label class="check" title="Visar objektens korta namn (t.ex. J22) som små etiketter. Etiketter som skulle krocka hoppas över – fler får plats när du zoomar in."><input type="checkbox" id="objLabels" /> Visa namn</label>
             <div class="row" style="align-items:center;gap:8px;"><span class="muted" style="font-size:12px;">Namn på</span>
               <select id="objLabelsWhich" class="grow"><option value="all">Alla som syns</option><option value="active">Pågående, snart och försenade</option><option value="late">Bara försenade</option><option value="focus">Veckans fokus</option></select></div>
+            <div class="row" id="objLabelSizeRow" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Namnstorlek</span>
+              <input type="range" id="objLabelSize" class="grow" min="40" max="400" step="5" value="100" /><span id="objLabelSizeVal" class="muted" style="font-size:12px;width:44px;text-align:right;">100 %</span></div>
           </div>
         </details>
 

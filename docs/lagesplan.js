@@ -402,6 +402,8 @@ function objDotRadius(ctx, fontPx) {
 const OBJ_LABELS_KEY = "lagesplan-objlabels";     // "1" = visa namn
 const OBJ_LABELS_WHICH_KEY = "lagesplan-objlabels-which";
 function objLabelsOn() { try { return localStorage.getItem(OBJ_LABELS_KEY) === "1"; } catch (e) { return false; } }
+const OBJ_LABEL_SIZE_KEY = "lagesplan-objlabel-size";  // namnens storlek i procent
+function objLabelSize() { try { const v = parseInt(localStorage.getItem(OBJ_LABEL_SIZE_KEY), 10); return Number.isFinite(v) && v >= 40 && v <= 400 ? v : 100; } catch (e) { return 100; } }
 function objLabelsWhich() { try { return localStorage.getItem(OBJ_LABELS_WHICH_KEY) || "all"; } catch (e) { return "all"; } }
 function objLabelText(it) {
   const t = String(it.object_name || it.activity || "").trim();
@@ -413,7 +415,7 @@ function drawObjectLabels(ctx, objects, fontPx) {
   const warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
   const which = objLabelsWhich();
   const k = canvasPerScreenPx(ctx);
-  const fs = (k ? 11 * k : Math.max(8, fontPx * 0.55)) * Math.max(0.6, Math.min(2, objSize() / 100));
+  const fs = (k ? 11 * k : Math.max(8, fontPx * 0.55)) * objLabelSize() / 100;
   const r = objDotRadius(ctx, fontPx);
   const pad = fs * 0.3, gap = r + fs * 0.25;
   // Viktigast först: fokus, försenade, pågående, resten.
@@ -422,19 +424,40 @@ function drawObjectLabels(ctx, objects, fontPx) {
     .filter(x => objLabelText(x.o.it))
     .filter(x => which === "all" || (which === "active" && ["pagaende", "forsenad", "snart"].includes(x.ph)) || (which === "late" && x.ph === "forsenad") || (which === "focus" && x.f === true))
     .sort((a, b) => (b.f === true) - (a.f === true) || rank(a.ph) - rank(b.ph));
+  // Prickar som ligger (nästan) på samma ställe – t.ex. form, armering och
+  // betong i samma fundament – blir EN etikett, annars blockerar de varandra.
+  const clusters = [];
+  const cell = Math.max(1, r * 1.5), grid = new Map();
+  objects.forEach(o => {
+    const [x, y] = toPx(o.center);
+    const gx = Math.floor(x / cell), gy = Math.floor(y / cell);
+    let c = null;
+    for (let dx = -1; dx <= 1 && !c; dx++) for (let dy = -1; dy <= 1 && !c; dy++) {
+      (grid.get(`${gx + dx},${gy + dy}`) || []).some(q => { if (Math.hypot(q.x - x, q.y - y) <= r * 1.5) { c = q; return true; } return false; });
+    }
+    if (!c) { c = { x, y, objs: [] }; clusters.push(c); const k = `${gx},${gy}`; if (!grid.has(k)) grid.set(k, []); grid.get(k).push(c); }
+    c.objs.push(o);
+  });
+  const clusterOf = new Map();
+  clusters.forEach((c, i) => c.objs.forEach(o => clusterOf.set(o.it.id, i)));
   const placed = [];
-  // Prickarna är också hinder – en etikett får inte täcka en annan prick.
-  const dotsBox = objects.map(o => { const [x, y] = toPx(o.center); return { x: x - r, y: y - r, w: 2 * r, h: 2 * r, id: o.it.id }; });
+  const dotsBox = clusters.map((c, i) => ({ x: c.x - r, y: c.y - r, w: 2 * r, h: 2 * r, id: i }));
   const over = (b, q) => b.x < q.x + q.w && b.x + b.w > q.x && b.y < q.y + q.h && b.y + b.h > q.y;
   let ownId = null;
   const hit = b => placed.some(q => over(b, q)) || dotsBox.some(q => q.id !== ownId && over(b, q));
+  const done = new Set();
   ctx.save();
   ctx.font = `600 ${fs}px "Segoe UI", Arial, sans-serif`;
   ctx.textBaseline = "middle";
   for (const { o, ph } of list) {
-    const text = objLabelText(o.it);
-    ownId = o.it.id;
-    const [cx, cy] = toPx(o.center);
+    const ci = clusterOf.get(o.it.id);
+    if (done.has(ci)) continue;
+    done.add(ci);
+    const cl = clusters[ci];
+    const names = [...new Set(cl.objs.map(x => objLabelText(x.it)).filter(Boolean))];
+    const text = names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0];
+    ownId = ci;
+    const [cx, cy] = [cl.x, cl.y];
     const w = ctx.measureText(text).width + pad * 2, h = fs + pad * 1.4;
     // Kandidater: höger, vänster, ovan, under – nära pricken, sedan längre ut med linje.
     const near = [[cx + gap, cy - h / 2], [cx - gap - w, cy - h / 2], [cx - w / 2, cy - gap - h], [cx - w / 2, cy + gap]];
@@ -1480,7 +1503,10 @@ function bindUI() {
     $("objSize").oninput = () => { upd(); try { localStorage.setItem(OBJ_SIZE_KEY, $("objSize").value); } catch (e) {} renderZones(); };
   }
   if ($("objLabels")) {
-    const sync = () => { $("objLabelsWhich").disabled = !$("objLabels").checked; };
+    const sync = () => { $("objLabelsWhich").disabled = !$("objLabels").checked; $("objLabelSizeRow").classList.toggle("hidden", !$("objLabels").checked); };
+    const updL = () => { $("objLabelSizeVal").textContent = $("objLabelSize").value + " %"; };
+    $("objLabelSize").value = objLabelSize(); updL();
+    $("objLabelSize").oninput = () => { updL(); try { localStorage.setItem(OBJ_LABEL_SIZE_KEY, $("objLabelSize").value); } catch (e) {} renderZones(); };
     $("objLabels").checked = objLabelsOn(); $("objLabelsWhich").value = objLabelsWhich(); sync();
     $("objLabels").onchange = () => { try { localStorage.setItem(OBJ_LABELS_KEY, $("objLabels").checked ? "1" : "0"); } catch (e) {} sync(); renderZones(); };
     $("objLabelsWhich").onchange = () => { try { localStorage.setItem(OBJ_LABELS_WHICH_KEY, $("objLabelsWhich").value); } catch (e) {} renderZones(); };
