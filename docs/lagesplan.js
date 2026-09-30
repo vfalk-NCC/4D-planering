@@ -310,6 +310,11 @@ function objectShapesInPdf() {
 function invalidatePositions() { posPdfCache = null; shapeCache = null; }
 
 let objMinPx = 4; // prickradie (canvas-px) vid senaste ritningen, för hovring
+/* Hur objekten ritas: "dots" = en rund prick i objektets mitt i statusfärgen
+   (standard – tydligast på ortofoto), "footprint" = objektets fotavtryck
+   (bounding box, blir snett och för stort för roterade/stora objekt). */
+const OBJ_STYLE_KEY = "lagesplan-objstyle";
+function objStyle() { try { return localStorage.getItem(OBJ_STYLE_KEY) || "dots"; } catch (e) { return "dots"; } }
 
 /* Objekten under muspekaren (PDF-punkt): fotavtryck som innehåller punkten,
    eller en prick inom sin radie. Minsta träffen (en prick, ett litet objekt)
@@ -323,7 +328,7 @@ function objectsAt(pdfPt) {
   const hits = [];
   for (const o of objects) {
     const area = o.poly ? Math.abs(polyArea(o.poly)) : 0;
-    const big = o.poly && Math.sqrt(area) >= tol;
+    const big = objStyle() === "footprint" && o.poly && Math.sqrt(area) >= tol;
     if (big ? pointInPoly(pdfPt, o.poly) : Math.hypot(o.center[0] - pdfPt[0], o.center[1] - pdfPt[1]) <= tol) hits.push({ o, area: big ? area : 0 });
   }
   return hits.sort((a, b) => a.area - b.area).map(h => h.o);
@@ -358,7 +363,11 @@ function objectTipHtml(o) {
 function drawObjects(ctx, objects, fontPx) {
   const at = $("dateInput").value || todayIso();
   const warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
-  const minPx = Math.max(3, fontPx / 4);
+  const dots = objStyle() !== "footprint";
+  // Prickar: minst ~7 skärmpixlar i radie oavsett zoom (canvas-px = skärm-px · renderScale / view.scale).
+  const oc = ctx.canvas, ow = oc && oc.getBoundingClientRect ? oc.getBoundingClientRect().width : 0;
+  const screenPx = oc && ow > 0 && oc.id === "objCanvas" ? 7 * oc.width / ow : 4;
+  const minPx = dots ? Math.max(4, fontPx / 3, screenPx) : Math.max(3, fontPx / 4);
   objMinPx = minPx;
   ctx.save();
   ctx.lineWidth = 1;
@@ -369,9 +378,10 @@ function drawObjects(ctx, objects, fontPx) {
     ctx.fillStyle = color;
     ctx.strokeStyle = focus === true ? "#111827" : shade(color, -0.45);
     ctx.lineWidth = focus === true ? Math.max(2, minPx / 2) : 1;
-    ctx.globalAlpha = focus === false ? 0.15 : 0.85;
+    ctx.globalAlpha = focus === false ? 0.15 : dots ? 1 : 0.85;
+    if (dots && focus !== true) { ctx.strokeStyle = "#ffffff"; ctx.lineWidth = Math.max(1, minPx / 4); }
     const pts = o.poly ? o.poly.map(toPx) : null;
-    const big = pts && Math.max(...pts.map(q => Math.hypot(q[0] - pts[0][0], q[1] - pts[0][1]))) >= minPx;
+    const big = !dots && pts && Math.max(...pts.map(q => Math.hypot(q[0] - pts[0][0], q[1] - pts[0][1]))) >= minPx;
     ctx.beginPath();
     if (big) {
       pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
@@ -468,6 +478,28 @@ function finishCalib() {
   schedulePlanSave();
   if (!positions.length) fetchPositions();
 }
+/* Uppdatera-knappen (bredvid nyckeln): läser om planeringen och, när
+   4D-planering är öppen, objektens positioner från 3D – så nya kopplingar syns. */
+async function refreshCoupled() {
+  const btn = $("btnRefreshData");
+  if (btn) btn.classList.add("spinning");
+  try {
+    setBusy("Hämtar planeringen…");
+    const [its, pos] = await Promise.all([ghReadJSON(token, dataPath("plan_items.json")), ghReadJSON(token, dataPath("plan_item_positions.json")).catch(() => positions)]);
+    items = its; positions = pos;
+    if (typeof invalidateVisible === "function") invalidateVisible(); else invalidatePositions();
+    if (typeof populateFilterOptions === "function") populateFilterOptions();
+    $("projectInfo").textContent = `Projekt ${projectId} · ${items.length} planerade objekt`;
+    renderZones();
+    setBusy("");
+    if (window.opener && !window.opener.closed && plan && plan.calib) await fetchPositions();
+    else setSaveStatus(`Planeringen uppdaterad (${items.length} objekt). Nya positioner kan bara hämtas när 4D-planering är öppen i Trimble Connect.`);
+  } catch (e) {
+    setBusy("");
+    alert("Kunde inte uppdatera: " + e.message);
+  } finally { if (btn) btn.classList.remove("spinning"); }
+}
+
 async function fetchPositions() {
   setBusy("Hämtar objektens positioner från 3D…");
   try {
@@ -1324,6 +1356,11 @@ function bindUI() {
     renderZones(); openEditor(z.id); schedulePlanSave();
   };
   $("btnCalib").onclick = () => (calib ? cancelCalib() : startCalib());
+  if ($("btnRefreshData")) $("btnRefreshData").onclick = refreshCoupled;
+  if ($("objStyle")) {
+    $("objStyle").value = objStyle();
+    $("objStyle").onchange = () => { try { localStorage.setItem(OBJ_STYLE_KEY, $("objStyle").value); } catch (e) {} renderZones(); };
+  }
   $("btnPositions").onclick = () => { if (!window.opener) { alert("Positionerna läses från 3D-modellen, så 4D-planering måste vara öppen i Trimble Connect. Öppna lägesplanen via 🗺️-knappen där."); return; } fetchPositions(); };
   const onLevel = () => {
     if (!plan) return;
@@ -1522,7 +1559,7 @@ function objHintReason(objects) {
   if (!layerVisible("objects")) return { text: "Lagret Objekt är släckt.", btn: "Tänd", fix: () => { ls("objects").visible = true; $("showObjects").checked = true; saveLayerState(); renderLayerPanel(); applyLayerCss(); renderZones(); } };
   if (layerOpacity("objects") < 0.15) return { text: "Lagret Objekt är nästan helt genomskinligt.", btn: "Återställ", fix: () => { ls("objects").opacity = 100; saveLayerState(); renderLayerPanel(); applyLayerCss(); renderZones(); } };
   if (!plan.calib) return { text: "Planen är inte kalibrerad – objekten kan inte placeras.", btn: "Kalibrera", fix: () => { showTab("zones"); openSec("calib"); } };
-  if (!positions.length) return { text: "Objekten saknar position. Hämta positioner (📍) under Zoner & 3D.", btn: "Gå dit", fix: () => { showTab("zones"); openSec("calib"); } };
+  if (!positions.length) return { text: "Objekten saknar position – hämta dem med uppdatera-knappen bredvid nyckeln (4D-planering behöver vara öppen).", btn: "Hämta nu", fix: () => refreshCoupled() };
   const pos = positionsInPdf();
   if (!pos || !pos.size) {
     const [z0, z1] = levelRange();

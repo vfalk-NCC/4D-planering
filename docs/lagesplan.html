@@ -158,6 +158,8 @@
 
   /* Planytan */
   #viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
+  #btnRefreshData.spinning svg { animation: lp-spin .8s linear infinite; }
+  @keyframes lp-spin { to { transform: rotate(360deg); } }
   .obj-hint { position: absolute; left: 12px; bottom: 12px; z-index: 6; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 24px); padding: 7px 10px; border-radius: 8px; background: #fff8e1; border: 1px solid #f3d27a; color: #7a4d00; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
   .obj-hint.hidden { display: none; }
   .obj-hint button { height: 26px; padding: 0 10px; font-size: 12px; }
@@ -243,6 +245,7 @@
           <div id="projectInfo">Laddar…</div>
         </div>
         <button id="btnToken" class="icon ghost" title="Anslutning: GitHub-token"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9"/><path d="M17 6l3 3"/><path d="M15 8l2 2"/></svg></button>
+        <button id="btnRefreshData" class="icon ghost" title="Uppdatera: läs om planeringen och hämta positioner för det du kopplat (4D-planering behöver vara öppen)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg></button>
         <button id="btnKeys" class="icon ghost" title="Kortkommandon (?)">⌨</button>
         <button id="btnSecAll" class="icon ghost" title="Fäll ihop/ut alla kort på fliken">⇕</button>
         <button id="btnHideSide" class="icon ghost" title="Dölj menyn (mer plats för planen)">◀</button>
@@ -436,6 +439,8 @@
           </div>
           <div class="hint" id="calibInfo"></div>
           <label class="check"><input type="checkbox" id="showObjects" checked /> Visa objekten på ritningen (i sin fasfärg)</label>
+          <div class="row" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Visa objekten som</span>
+            <select id="objStyle" class="grow"><option value="dots">Prick i mitten (statusfärg)</option><option value="footprint">Fotavtryck (objektets yta)</option></select></div>
         </details>
 
         <details class="sec" data-sec="zones" open>
