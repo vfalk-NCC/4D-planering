@@ -770,3 +770,14 @@ button.danger { background: #dc2626; color: white; border-color: #dc2626; }
 .item-row:hover .progress-slider::-moz-range-thumb, .progress-slider:focus::-moz-range-thumb { opacity: 1; }
 .progress-save { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; }
 .progress-save button { font-size: 10px; padding: 1px 7px; }
+
+/* Delaktiviteter i listan (2026-09-30) */
+.sub-toggle-btn { cursor: pointer; }
+.sub-rows { border-left: 3px solid #c7d2fe; margin: -2px 0 4px 14px; background: #f8faff; }
+.sub-row { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 8px; border-bottom: 1px solid #e5e9f5; font-size: 11px; }
+.sub-row:last-child { border-bottom: none; }
+.sub-row:hover { background: #eef2ff; }
+.sub-row .sub-main { flex: 1; min-width: 0; cursor: pointer; }
+.sub-row .sub-name { font-weight: 600; }
+.sub-row .sub-count { font-size: 9px; color: #334155; margin-left: 6px; }
+.sub-row .couple-btn { border: none; background: none; cursor: pointer; font-size: 12px; padding: 2px 4px; }

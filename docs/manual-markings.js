@@ -72,7 +72,13 @@ function markSegments(m) {
   return segs;
 }
 function markColor(m) {
-  const it = items.find(x => x.id === m.itemId);
+  let it = items.find(x => x.id === m.itemId);
+  // Markering för en delaktivitet: färgen följer delaktivitetens datum.
+  if (it && m.subName) {
+    const all = [it, ...siblingsOf(it)].flatMap(x => activitiesByItemId.get(x.id) || []);
+    const r = all.find(x => x.name === m.subName) || { start: m.subStart, end: m.subEnd };
+    it = { ...it, startDate: r.start || it.startDate, endDate: r.end || it.endDate };
+  }
   const colors = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
   if (!it) return colors.planerad || "#888888";
   const at = (document.getElementById("timelineDate") || {}).value || new Date().toISOString().slice(0, 10);
@@ -119,8 +125,8 @@ async function renderManualMarks() {
    ritade området hamnar mitt i bild och fyller vyn. (Att räkna ut en egen
    rotation gav konstiga vinklar.) Saknas kamerans riktning zoomas i stället
    till de modellobjekt som klickades när markeringen ritades. */
-async function jumpToMarks(it) {
-  const ms = marksForItem(it);
+async function jumpToMarks(it) { return jumpToMarkList(marksForItem(it)); }
+async function jumpToMarkList(ms) {
   const pts = ms.flatMap(m => markSegments(m).flat());
   if (!pts.length) return false;
   if (!marksShown()) setMarksShown(true);
@@ -175,9 +181,9 @@ async function flashMarks(ms) {
     setTimeout(() => clearMarkupIds(ids), 2200);
   } catch (e) { /* bara visuell återkoppling */ }
 }
-async function deleteMarksFor(it) {
-  const ms = marksForItem(it);
-  if (!ms.length || !confirm(`Ta bort ${ms.length === 1 ? "den manuella markeringen" : `alla ${ms.length} manuella markeringar`} för "${it.objectName || it.activity || "aktiviteten"}"?`)) return;
+async function deleteMarksFor(it) { return deleteMarkList(marksForItem(it), `"${it.objectName || it.activity || "aktiviteten"}"`); }
+async function deleteMarkList(ms, label) {
+  if (!ms.length || !confirm(`Ta bort ${ms.length === 1 ? "den manuella markeringen" : `alla ${ms.length} manuella markeringar`} för ${label}?`)) return;
   const ids = new Set(ms.map(m => m.id));
   manualMarks = manualMarks.filter(m => !ids.has(m.id));
   renderItemList(); renderManualMarks();
@@ -191,7 +197,7 @@ function startMarkDraw(shape) {
   const item = pendingCoupleItem;
   if (!item) return;
   if (!API || !API.markup) { alert("Trimble Connect stöder inte markeringar i den här vyn."); return; }
-  markDraw = { item, shape, pts: [], lines: [], height: 1, refs: [] };
+  markDraw = { item, shape, pts: [], lines: [], height: 1, refs: [], sub: typeof pendingCoupleSub !== "undefined" && pendingCoupleSub ? { ...pendingCoupleSub } : null };
   renderDrawBar();
   showPreview();
 }
@@ -250,6 +256,7 @@ async function saveMarkDraw() {
   const d = markDraw;
   if (!d) return;
   const rec = { id: ghNewId(), itemId: d.item.id, shape: d.shape, created_at: new Date().toISOString(), by: settings.userName || null };
+  if (d.sub) Object.assign(rec, { subName: d.sub.name, subKey: d.sub.key, subStart: d.sub.start || null, subEnd: d.sub.end || null });
   if (d.shape === "freehand") rec.lines = d.lines.map(l => l.map(p => p.map(v => Math.round(v * 1000) / 1000)));
   else rec.pts = d.pts.map(p => p.map(v => Math.round(v * 1000) / 1000));
   if (d.shape === "volume") rec.height = Number(d.height) || 0;

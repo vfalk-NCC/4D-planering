@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-29 19:00";
+const APP_VERSION = "2026-09-30 10:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -1020,6 +1020,7 @@ function cancelCoupleMode() {
   if (typeof markDraw !== "undefined" && markDraw) stopMarkDraw();
   pendingCoupleItem = null;
   coupleCollected = [];
+  if (typeof pendingCoupleSub !== "undefined") pendingCoupleSub = null;
   setCoupleModeBanner(null);
   if (typeof renderDrawBar === "function") renderDrawBar();
 }
@@ -1039,23 +1040,34 @@ function setCoupleModeBanner(text) {
 function coupledElsewhere(obj) {
   return items.find(it => it.modelId === obj.modelId && String(it.objectId) === String(obj.objectId)) || null;
 }
+/** Hoppas objektet över? Vid koppling till en delaktivitet får objekt som
+ * redan hör till samma aktivitet vara med (delaktiviteten läggs till på dem). */
+function coupleBlocked(obj) {
+  const other = coupledElsewhere(obj);
+  if (!other) return false;
+  if (typeof pendingCoupleSub !== "undefined" && pendingCoupleSub && pendingCoupleItem && inSameActivity(pendingCoupleItem, other)) return false;
+  return true;
+}
 
 function renderCoupleMode() {
   const item = pendingCoupleItem;
   if (!item) { setCoupleModeBanner(null); return; }
-  const name = item.objectName || item.id;
+  const sub = typeof pendingCoupleSub !== "undefined" ? pendingCoupleSub : null;
+  const name = sub ? `${sub.name}" i "${item.objectName || item.id}` : (item.objectName || item.id);
   setCoupleModeBanner(coupleCollected.length === 0
-    ? `Klicka objekten i 3D-modellen som ska kopplas till "${name}" (ett eller flera, Ctrl går också bra). Tryck Spara när du är klar.`
-    : `Objekt som kopplas till "${name}":`);
+    ? `Klicka objekten i 3D-modellen som ska kopplas till ${sub ? "delaktiviteten " : ""}"${name}" (ett eller flera, Ctrl går också bra). Tryck Spara när du är klar.`
+    : `Objekt som kopplas till ${sub ? "delaktiviteten " : ""}"${name}":`);
   const listEl = document.getElementById("coupleModeList");
-  const usable = coupleCollected.filter(o => !coupledElsewhere(o));
+  const usable = coupleCollected.filter(o => !coupleBlocked(o));
   listEl.innerHTML = coupleCollected.map((o, i) => {
     const other = coupledElsewhere(o);
+    const blocked = coupleBlocked(o);
     const note = other
-      ? (other.id === item.id || (other.objectName === item.objectName && other.activity === item.activity && other.area === item.area)
+      ? (!blocked ? "hör redan till aktiviteten – delaktiviteten läggs till"
+        : other.id === item.id || (other.objectName === item.objectName && other.activity === item.activity && other.area === item.area)
           ? "redan kopplad till den här aktiviteten" : `redan kopplad till "${other.objectName || other.id}" – hoppas över`)
       : "";
-    return `<li class="${other ? "skipped" : ""}">
+    return `<li class="${blocked ? "skipped" : ""}">
       <span class="couple-obj-name">${escapeHtml(o.name || o.objectId)}</span>${note ? ` <span class="hint">${escapeHtml(note)}</span>` : ""}
       <button type="button" data-couple-remove="${i}" title="Ta bort från listan">✕</button>
     </li>`;
@@ -1146,13 +1158,17 @@ async function handleCoupleModeSelection() {
 async function onSaveCoupleMode() {
   const item = pendingCoupleItem;
   if (!item) return;
-  const objs = coupleCollected.filter(o => !coupledElsewhere(o));
+  const objs = coupleCollected.filter(o => !coupleBlocked(o));
   if (objs.length === 0) return;
+  const sub = typeof pendingCoupleSub !== "undefined" ? pendingCoupleSub : null;
   pendingCoupleItem = null;
   coupleCollected = [];
+  if (sub) pendingCoupleSub = null;
   setCoupleModeBanner(null);
+  if (typeof renderDrawBar === "function") renderDrawBar();
   document.getElementById("selCount").innerText = objs.length;
-  await coupleItemToModelObjects(item, objs);
+  if (sub) await coupleObjectsToSub(item, sub, objs);
+  else await coupleItemToModelObjects(item, objs);
 }
 
 /**
@@ -3770,6 +3786,7 @@ function renderItemList() {
       } else if (sibCount && !entry.member) {
         dependencyTagHtml += `<br/><span class="group-tag" title="Aktiviteten är kopplad till ${sibCount + 1} objekt i 3D">⛓ ${sibCount + 1} objekt i aktiviteten</span>`;
       }
+      if (!entry.member && typeof subToggleHtml === "function") dependencyTagHtml += subToggleHtml(entry);
       if (entry.member) {
         const subs = activitiesByItemId.get(it.id) || [];
         html += `
@@ -3792,7 +3809,7 @@ function renderItemList() {
         <div class="item-row${entry.rep ? " group-rep" : ""}${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}${it.id === flashEditId && Date.now() < flashEditUntil ? " flash-edit" : ""}" data-index="${idx}" data-item-id="${escapeHtml(it.id)}"${activityKeyOf(it) ? ` data-activity-key="${escapeHtml(activityKeyOf(it))}"` : ""}>
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
-              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}${typeof manualMarkTagHtml === "function" && manualMarkTagHtml(it) ? manualMarkTagHtml(it) : !it.modelId ? '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>' : ""}<br/>
+              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}${typeof manualMarkTagHtml === "function" && manualMarkTagHtml(it) ? manualMarkTagHtml(it) : (entry.rep ? !entry.members.some(m => m.modelId) : !it.modelId) ? '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>' : ""}<br/>
               <span class="item-sub">${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span><br/>
               <span class="item-dates">${escapeHtml(shownDates)} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
             </span>
@@ -3804,6 +3821,7 @@ function renderItemList() {
           </div>
           ${typeof progressSliderHtml === "function" ? progressSliderHtml(progress) : `<div class="progress-track" title="Framdrift: ${progress}%"><div class="progress-fill" style="width:${progress}%"></div></div>`}
         </div>`;
+      if (typeof subRowsHtml === "function") html += subRowsHtml(entry, idx);
     });
   });
 
@@ -3834,7 +3852,8 @@ function renderItemList() {
       renderItemList();
     };
     const coupleBtn = row.querySelector('[data-action="couple"]');
-    if (coupleBtn) coupleBtn.onclick = (ev) => { ev.stopPropagation(); armCoupleMode(it); };
+    if (coupleBtn) coupleBtn.onclick = (ev) => { ev.stopPropagation(); if (typeof pendingCoupleSub !== "undefined") pendingCoupleSub = null; armCoupleMode(it); };
+    if (typeof bindSubRows === "function" && !meta.member) bindSubRows(el, row, meta);
     const marksTag = row.querySelector('[data-action="marks"]');
     if (marksTag) {
       marksTag.onclick = (ev) => { ev.stopPropagation(); jumpToMarks(it); };
