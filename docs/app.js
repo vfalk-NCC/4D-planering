@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-30 12:00";
+const APP_VERSION = "2026-09-30 13:30";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -563,7 +563,9 @@ function bindUI() {
 
   document.getElementById("itemSearch").oninput = () => renderItemList();
   document.getElementById("groupBy").onchange = () => renderItemList();
-  document.getElementById("sortAlpha").onchange = () => renderItemList();
+  const sortBySel = document.getElementById("sortBy");
+  try { const v = localStorage.getItem("4dplan-sort-by"); if (v !== null && [...sortBySel.options].some(o => o.value === v)) sortBySel.value = v; } catch (e) {}
+  sortBySel.onchange = () => { try { localStorage.setItem("4dplan-sort-by", sortBySel.value); } catch (e) {} renderItemList(); };
   // "Dölj klarmarkerade" och "Visa endast klarmarkerade" är motsatser - håll
   // dem ömsesidigt uteslutande så man inte kan kryssa i båda och få en
   // tom/motsägelsefull lista.
@@ -576,6 +578,7 @@ function bindUI() {
     renderItemList();
   };
   document.getElementById("todayOnly").onchange = () => renderItemList();
+  document.getElementById("uncoupledOnly").onchange = () => renderItemList();
 
   document.getElementById("btnDeleteSelected").onclick = onDeleteSelectedItems;
   document.getElementById("btnCollapseAllGroups").onclick = collapseAllGroups;
@@ -967,6 +970,7 @@ function showHiddenMatchNotice(hiddenItems) {
     document.getElementById("hideCompleted").checked = false;
     document.getElementById("showOnlyCompleted").checked = false;
     document.getElementById("todayOnly").checked = false;
+    document.getElementById("uncoupledOnly").checked = false;
     jumpToItemsInList(new Set(selectedItemKeys));
   };
 }
@@ -3678,16 +3682,30 @@ function isActiveToday(it, todayStr) {
   return true;
 }
 
+/* Aktiviteter som har minst ett 3D-objekt eller en manuell markering kopplad
+   ("Visa endast ej kopplade" visar resten – samma som "◇ Ej kopplad" i listan). */
+function coupledActivityKeys() {
+  const keyOf = it => activityKeyOf(it) || `i:${it.id}`;
+  const out = new Set();
+  const byId = new Map(items.map(it => [it.id, it]));
+  items.forEach(it => { if (it.modelId) out.add(keyOf(it)); });
+  if (typeof manualMarks !== "undefined") manualMarks.forEach(m => { const it = byId.get(m.itemId); if (it) out.add(keyOf(it)); });
+  return out;
+}
+
 function getVisibleItems() {
   const term = (document.getElementById("itemSearch").value || "").toLowerCase().trim();
   const hideCompleted = document.getElementById("hideCompleted").checked;
   const showOnlyCompleted = document.getElementById("showOnlyCompleted").checked;
   const todayOnly = document.getElementById("todayOnly").checked;
+  const uncoupledOnly = document.getElementById("uncoupledOnly").checked;
   const todayStr = new Date().toISOString().slice(0, 10);
+  const coupled = uncoupledOnly ? coupledActivityKeys() : null;
   return items.filter(it => {
     if (hideCompleted && it.status === "klar") return false;
     if (showOnlyCompleted && it.status !== "klar") return false;
     if (todayOnly && !isActiveToday(it, todayStr)) return false;
+    if (coupled && coupled.has(activityKeyOf(it) || `i:${it.id}`)) return false;
     if (!term) return true;
     const haystack = [it.objectName, it.area, it.activity, it.contractor, it.objectId]
       .filter(Boolean).join(" ").toLowerCase();
@@ -3698,7 +3716,7 @@ function getVisibleItems() {
 function renderItemList() {
   searchTerm = (document.getElementById("itemSearch").value || "").toLowerCase().trim();
   const groupBy = document.getElementById("groupBy").value;
-  const sortAlpha = document.getElementById("sortAlpha").checked;
+  const sortBy = document.getElementById("sortBy").value;
 
   const visible = getVisibleItems();
 
@@ -3732,8 +3750,17 @@ function renderItemList() {
     return;
   }
 
-  const sortFn = (a, b) =>
+  const byName = (a, b) =>
     (a.objectName || a.objectId || "").localeCompare(b.objectName || b.objectId || "", "sv");
+  // Startdatum: tidigast först, poster utan startdatum sist, lika datum i A-Ö-ordning.
+  // En aktivitet med flera objekt hamnar där dess tidigaste objekt ligger
+  // (activityListSequence placerar aktiviteten vid första förekomsten).
+  const byStart = (a, b) => {
+    const sa = a.startDate || "", sb = b.startDate || "";
+    if (sa !== sb) return !sa ? 1 : !sb ? -1 : sa < sb ? -1 : 1;
+    return byName(a, b);
+  };
+  const sortFn = sortBy === "start" ? byStart : sortBy === "alpha" ? byName : null;
 
   const groupKeyFns = GROUP_KEY_FNS;
 
@@ -3750,11 +3777,11 @@ function renderItemList() {
     const titles = Array.from(map.keys()).sort((a, b) => a.localeCompare(b, "sv"));
     groups = titles.map(title => {
       const groupItems = map.get(title);
-      if (sortAlpha) groupItems.sort(sortFn);
+      if (sortFn) groupItems.sort(sortFn);
       return { key: `${groupBy}::${title}`, title, items: groupItems };
     });
   } else {
-    groups = [{ key: null, title: null, items: sortAlpha ? [...visible].sort(sortFn) : visible }];
+    groups = [{ key: null, title: null, items: sortFn ? [...visible].sort(sortFn) : visible }];
   }
 
   let html = "";

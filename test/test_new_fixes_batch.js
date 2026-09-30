@@ -135,8 +135,8 @@ async function run() {
   //         och grupperna visas i bokstavsordning (Alby FÖRE Hus A) direkt.
   const groupByValue = await page.locator('#groupBy').inputValue();
   if (groupByValue !== 'area') throw new Error('Förväntade #groupBy="area" som standard, fick: ' + groupByValue);
-  const sortAlphaChecked = await page.locator('#sortAlpha').isChecked();
-  if (!sortAlphaChecked) throw new Error('Förväntade #sortAlpha ikryssad som standard');
+  const sortByValue = await page.locator('#sortBy').inputValue();
+  if (sortByValue !== 'alpha') throw new Error('Förväntade #sortBy = A-Ö som standard');
   const groupTitles = await page.locator('#itemList .group-title').allTextContents();
   if (!groupTitles[0].toLowerCase().startsWith('alby')) {
     throw new Error('Förväntade Alby som FÖRSTA grupp (bokstavsordning), fick: ' + JSON.stringify(groupTitles));

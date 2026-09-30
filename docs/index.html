@@ -153,8 +153,12 @@
             <option value="status">Status</option>
           </select>
         </label>
-        <label class="switch" style="align-self:flex-end; margin-bottom:6px;">
-          <input type="checkbox" id="sortAlpha" checked /> Sortera A-Ö
+        <label style="flex:1" title="Sorteringen sker inom varje grupp (t.ex. inom varje område). Aktiviteter med flera objekt placeras efter sitt tidigaste startdatum.">Sortera
+          <select id="sortBy">
+            <option value="alpha" selected>A-Ö</option>
+            <option value="start">Startdatum</option>
+            <option value="">Ingen sortering</option>
+          </select>
         </label>
       </div>
       <div class="row">
@@ -168,6 +172,9 @@
       <div class="row">
         <label class="switch" style="margin-bottom:6px;" title="Visar bara objekt som pågår idag (dagens datum ligger mellan start- och slutdatum, eller startdatum har passerat utan att slutdatum är satt) - går att kombinera med Dölj/Visa endast klarmarkerade.">
           <input type="checkbox" id="todayOnly" /> Endast idag
+        </label>
+        <label class="switch" style="margin-bottom:6px;" title="Visar bara aktiviteter som inte har något 3D-objekt eller någon manuell markering kopplad (◇ Ej kopplad).">
+          <input type="checkbox" id="uncoupledOnly" /> Visa endast ej kopplade
         </label>
         <label class="switch" style="margin-bottom:6px;" title="Visar de manuella markeringarna (linjer, ytor, volymer och frihand) i 3D, i aktivitetens statusfärg">
           <input type="checkbox" id="showManualMarks" checked /> Visa markeringar
