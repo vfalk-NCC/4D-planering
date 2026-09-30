@@ -16,7 +16,7 @@ const put = (f, c) => store.set(`projects/${PID}/${f}`, { content: JSON.stringif
 const get = f => { const e = store.get(`projects/${PID}/${f}`); return e ? JSON.parse(e.content) : null; };
 const base = { project_id: PID, area: 'Hus A', contractor: 'NCC', status: 'planerad', progress: 0, depends_on: [], start_date: '2026-10-01', end_date: '2026-10-10' };
 put('plan_items.json', [
-  { ...base, id: 'h', group_id: 'g1', model_id: null, object_id: 'excel-h', object_name: 'Gjutning plan 2', progress: 30 },
+  { ...base, id: 'h', group_id: 'g1', model_id: null, object_id: 'excel-h', object_name: 'Gjutning plan 2', progress: 30, activity: 'Formning + Gjutning' },
   { ...base, id: 'a1', group_id: 'g1', model_id: 'm1', object_id: '10', object_name: 'Gjutning plan 2', progress: 30, start_date: '2026-10-01', end_date: '2026-10-04' },
   { ...base, id: 'a2', group_id: 'g1', model_id: 'm1', object_id: '11', object_name: 'Gjutning plan 2', progress: 30, start_date: '2026-10-08', end_date: '2026-10-10' },
   { ...base, id: 'b1', group_id: 'g2', model_id: 'm1', object_id: '20', object_name: 'Gammal data', progress: 20 },
@@ -104,6 +104,12 @@ put('plan_markups.json', []);
   const txt = await page.locator('#itemList .item-row:not(.group-member)', { hasText: 'Gammal data' }).first().innerText();
   if (!txt.includes('Framdrift 80%')) fail('aktivitetsraden ska visa huvudaktivitetens framdrift, fick ' + txt);
   console.log('OK: aktivitetsraden visar huvudaktivitetens framdrift');
+
+  const sub = await page.locator('#itemList .item-row:not(.group-member)', { hasText: 'Gjutning plan 2' }).first().locator('.item-sub').innerText();
+  if (sub.trim() !== 'Hus A') fail('med delaktiviteter ska bara området visas (resten syns under ☰), fick ' + sub);
+  const sub2 = await page.locator('#itemList .item-row:not(.group-member)', { hasText: 'Annan' }).first().locator('.item-sub').innerText();
+  if (!sub2.includes('Hus A ·')) fail('utan delaktiviteter ska område · aktivitet visas, fick ' + sub2);
+  console.log('OK: den långa aktivitetstexten döljs när delaktiviteterna finns under ☰');
 
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK: framdriften baseras på huvudaktiviteten');

@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-30 14:30";
+const APP_VERSION = "2026-09-30 15:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -2128,6 +2128,18 @@ function activityProgressOf(it) {
   return head ? val(head) : Math.max(...fam.map(val));
 }
 
+/* Raden under aktivitetsnamnet: område · aktivitet. Har aktiviteten
+   delaktiviteter (t.ex. importerad "Grovbetong + Bergförankring + …") syns
+   de redan under "☰ N delaktiviteter", så då visas bara området – hela
+   texten finns kvar som tooltip och i sökningen. */
+function activitySubLineHtml(entry) {
+  const it = entry.it;
+  const hasSubs = typeof subsForEntry === "function" && subsForEntry(entry).length > 0;
+  const full = `${it.area || "–"} · ${it.activity || "–"}`;
+  if (hasSubs) return `<span class="item-sub" title="${escapeHtml(full)}">${escapeHtml(it.area || "–")}</span>`;
+  return `<span class="item-sub item-sub-clamp" title="${escapeHtml(full)}">${escapeHtml(full)}</span>`;
+}
+
 /** Lägger till/uppdaterar de sparade raderna lokalt direkt (innan bakgrundsskrivningen ens startat), märkta som "Sparar...". Framdrift/status sprids till hela aktiviteten (records utökas på plats). */
 function applyOptimisticRecords(records) {
   spreadActivityWideFields(records);
@@ -3883,7 +3895,7 @@ function renderItemList() {
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
               <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">⚠ Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">⚠ Ej i modellen</span>' : ""}${typeof manualMarkTagHtml === "function" && manualMarkTagHtml(it) ? manualMarkTagHtml(it) : (entry.rep ? !entry.members.some(m => m.modelId) : !it.modelId) ? '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>' : ""}<br/>
-              <span class="item-sub">${escapeHtml(it.area || "–")} · ${escapeHtml(it.activity || "–")}</span><br/>
+              ${activitySubLineHtml(entry)}<br/>
               <span class="item-dates">${escapeHtml(shownDates)} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
             </span>
             <span class="badge badge-clickable" data-action="status" title="Klicka för att ändra status" style="background:${statusColor[it.status] || "#999"};color:${contrastTextColor(statusColor[it.status] || "#999999")}">${statusLabel[it.status] || it.status} ▾</span>

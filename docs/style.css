@@ -791,3 +791,6 @@ button.danger { background: #dc2626; color: white; border-color: #dc2626; }
 .remove-obj-row:hover { background: #fff7ed; }
 .remove-obj-row .grow { flex: 1; min-width: 0; }
 .remove-obj-row button { border: none; background: none; cursor: pointer; }
+
+/* Lång aktivitetstext (utan delaktiviteter) kortas till två rader – hela texten i tooltip. */
+.item-sub-clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
