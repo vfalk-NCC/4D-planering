@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-09-30 13:30";
+const APP_VERSION = "2026-09-30 14:30";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -1400,7 +1400,7 @@ function fillLinkForm(existing) {
   // data där (annars skulle man tro fälten var tomma när de bara är dolda),
   // annars börjar den hopfälld så formuläret känns kompakt i vanliga fallet.
   setActualDatesSectionExpanded(!!(existing && (existing.actualStartDate || existing.actualEndDate)));
-  const progress = existing && Number.isFinite(existing.progress) ? existing.progress : 0;
+  const progress = existing ? activityProgressOf(existing) : 0;
   document.getElementById("fProgress").value = progress;
   document.getElementById("fProgressLabel").innerText = progress;
   document.getElementById("fEstimatedHours").value = (existing && Number.isFinite(existing.estimatedHours)) ? existing.estimatedHours : "";
@@ -2096,8 +2096,41 @@ function onSaveLink() {
   }
 }
 
-/** Lägger till/uppdaterar de sparade raderna lokalt direkt (innan bakgrundsskrivningen ens startat), märkta som "Sparar...". */
+/* Framdrift hör till huvudaktiviteten (Victors önskemål 2026-09-30): oavsett
+   vilka delaktiviteter ett objekt är kopplat till har alla objekt i samma
+   aktivitet samma framdrift, status och verkliga start/avslut. Ändras något
+   av dem på ett objekt följer resten av aktiviteten med. Datumen (start/slut)
+   är däremot fortfarande per objekt, så 3D-färgerna följer delaktiviteterna. */
+const ACTIVITY_WIDE_FIELDS = ["progress", "status", "actualStartDate", "actualEndDate"];
+function spreadActivityWideFields(records) {
+  const inBatch = new Map(records.map(r => [r.id, r]));
+  const extra = new Map();
+  records.slice().forEach(rec => {
+    const old = items.find(it => it.id === rec.id);
+    if (!old) return;
+    const changed = ACTIVITY_WIDE_FIELDS.filter(f => f in rec && (rec[f] ?? null) !== (old[f] ?? null));
+    if (!changed.length) return;
+    siblingsOf({ ...old, groupId: rec.groupId ?? old.groupId, sourceKey: rec.sourceKey ?? old.sourceKey }).forEach(sib => {
+      if (inBatch.has(sib.id)) return;
+      const cur = extra.get(sib.id) || { ...sib };
+      changed.forEach(f => { cur[f] = rec[f]; });
+      if (ACTIVITY_WIDE_FIELDS.some(f => (cur[f] ?? null) !== (sib[f] ?? null))) extra.set(sib.id, cur);
+    });
+  });
+  extra.forEach(r => { delete r._pending; delete r._saveError; delete r._notInModel; records.push(r); });
+  return records;
+}
+/** Huvudaktivitetens framdrift: den okopplade huvudposten om den finns, annars högsta värdet i aktiviteten (för äldre data där objekten skiljer sig åt). */
+function activityProgressOf(it) {
+  const fam = [it, ...siblingsOf(it)];
+  const head = fam.find(m => !m.modelId);
+  const val = m => Number.isFinite(m.progress) ? m.progress : 0;
+  return head ? val(head) : Math.max(...fam.map(val));
+}
+
+/** Lägger till/uppdaterar de sparade raderna lokalt direkt (innan bakgrundsskrivningen ens startat), märkta som "Sparar...". Framdrift/status sprids till hela aktiviteten (records utökas på plats). */
 function applyOptimisticRecords(records) {
+  spreadActivityWideFields(records);
   records.forEach(rec => {
     const row = toRow(rec);
     const optimisticItem = { ...fromRow(row), _pending: true, _saveError: null };
@@ -3807,7 +3840,7 @@ function renderItemList() {
       const isSelected = entry.rep && !entry.expanded
         ? entry.members.some(m => selectedItemKeys.has(m.objectId))
         : selectedItemKeys.has(it.objectId);
-      const progress = Number.isFinite(it.progress) ? it.progress : 0;
+      const progress = activityProgressOf(it);
       const commentCount = commentCounts.get(it.id) || 0;
       const commentBadge = commentCount > 0 ? `<span class="comment-count">${commentCount}</span>` : "";
       const commentTitle = commentCount > 0 ? `Kommentarer (${commentCount})` : "Kommentarer";
@@ -3904,7 +3937,7 @@ function renderItemList() {
       marksTag.onclick = (ev) => { ev.stopPropagation(); jumpToMarks(it); };
       marksTag.oncontextmenu = (ev) => { ev.preventDefault(); ev.stopPropagation(); deleteMarksFor(it); };
     }
-    if (typeof bindProgressSlider === "function" && !meta.member) bindProgressSlider(row, meta.rep ? meta.members : [it], Number.isFinite(it.progress) ? it.progress : 0);
+    if (typeof bindProgressSlider === "function" && !meta.member) bindProgressSlider(row, meta.rep ? meta.members : [it], activityProgressOf(it));
   });
 
   Array.from(el.querySelectorAll(".group-header")).forEach(headerEl => {
