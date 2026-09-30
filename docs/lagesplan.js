@@ -405,6 +405,21 @@ function objLabelsOn() { try { return localStorage.getItem(OBJ_LABELS_KEY) === "
 const OBJ_LABEL_SIZE_KEY = "lagesplan-objlabel-size";  // namnens storlek i procent
 function objLabelSize() { try { const v = parseInt(localStorage.getItem(OBJ_LABEL_SIZE_KEY), 10); return Number.isFinite(v) && v >= 40 && v <= 400 ? v : 100; } catch (e) { return 100; } }
 function objLabelsWhich() { try { return localStorage.getItem(OBJ_LABELS_WHICH_KEY) || "all"; } catch (e) { return "all"; } }
+/* Namn man själv tryckt bort (högerklick på namnet): per projekt i webbläsaren. */
+const hiddenLabelsKey = () => "lagesplan-hidden-labels-" + projectId;
+function hiddenLabels() {
+  try { const v = JSON.parse(localStorage.getItem(hiddenLabelsKey()) || "{}") || {}; return { ids: v.ids || [], acts: v.acts || [], names: v.names || [] }; }
+  catch (e) { return { ids: [], acts: [], names: [] }; }
+}
+function saveHiddenLabels(h) { try { localStorage.setItem(hiddenLabelsKey(), JSON.stringify(h)); } catch (e) {} updateHiddenLabelsBtn(); renderZones(); }
+function updateHiddenLabelsBtn() {
+  const b = $("btnShowHiddenLabels");
+  if (!b) return;
+  const h = hiddenLabels(), n = (h.names.length || (h.ids.length ? 1 : 0)) + h.acts.length;
+  b.classList.toggle("hidden", !n);
+  b.textContent = `Visa dolda namn (${n})`;
+}
+let objLabelBoxes = []; // senast ritade namnetiketter på skärmen: { box, ids, text, act }
 function objLabelText(it) {
   const t = String(it.object_name || it.activity || "").trim();
   return t.length > 18 ? t.slice(0, 17) + "…" : t;
@@ -420,8 +435,11 @@ function drawObjectLabels(ctx, objects, fontPx) {
   const pad = fs * 0.3, gap = r + fs * 0.25;
   // Viktigast först: fokus, försenade, pågående, resten.
   const rank = ph => ({ forsenad: 0, pagaende: 1, snart: 2 }[ph] ?? 3);
+  const hid = hiddenLabels(), hidIds = new Set(hid.ids), hidActs = new Set(hid.acts);
+  const onScreen = ctx.canvas && ctx.canvas.id === "objCanvas";
+  if (onScreen) objLabelBoxes = [];
   const list = objects.map(o => ({ o, ph: computeItemPhase(o.it, at, warn) || fallbackPhase(o.it), f: focusState(o.it) }))
-    .filter(x => objLabelText(x.o.it))
+    .filter(x => objLabelText(x.o.it) && !hidIds.has(x.o.it.id) && !hidActs.has(String(x.o.it.activity || "").trim()))
     .filter(x => which === "all" || (which === "active" && ["pagaende", "forsenad", "snart"].includes(x.ph)) || (which === "late" && x.ph === "forsenad") || (which === "focus" && x.f === true))
     .sort((a, b) => (b.f === true) - (a.f === true) || rank(a.ph) - rank(b.ph));
   // Prickar som ligger (nästan) på samma ställe – t.ex. form, armering och
@@ -454,7 +472,8 @@ function drawObjectLabels(ctx, objects, fontPx) {
     if (done.has(ci)) continue;
     done.add(ci);
     const cl = clusters[ci];
-    const names = [...new Set(cl.objs.map(x => objLabelText(x.it)).filter(Boolean))];
+    const shown = cl.objs.filter(x => !hidIds.has(x.it.id) && !hidActs.has(String(x.it.activity || "").trim()));
+    const names = [...new Set(shown.map(x => objLabelText(x.it)).filter(Boolean))];
     const text = names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0];
     ownId = ci;
     const [cx, cy] = [cl.x, cl.y];
@@ -467,6 +486,7 @@ function drawObjectLabels(ctx, objects, fontPx) {
     if (!box) for (const [x, y] of far) { const b = { x, y, w, h }; if (!hit(b)) { box = b; leader = true; break; } }
     if (!box) continue;
     placed.push(box);
+    if (onScreen) objLabelBoxes.push({ box, ids: shown.map(x => x.it.id), text, act: String(o.it.activity || "").trim() });
     const color = phaseColor(ph);
     if (leader) {
       const tx = Math.max(box.x, Math.min(cx, box.x + box.w)), ty = Math.max(box.y, Math.min(cy, box.y + box.h));
@@ -1160,6 +1180,9 @@ function scheduleObjRerender() {
     if (typeof objStyle === "function" && (objStyle() !== "footprint" || objLabelsOn())) renderZones();
   }, 180);
 }
+/* Rita om högst en gång per bildruta (reglage som skickar många händelser). */
+let zonesRaf = 0;
+function renderZonesSoon() { if (!zonesRaf) zonesRaf = requestAnimationFrame(() => { zonesRaf = 0; renderZones(); }); }
 function applyView() {
   $("stage").style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
   scheduleObjRerender();
@@ -1239,6 +1262,15 @@ function bindViewport() {
     }
   });
   vpEl.addEventListener("mouseleave", () => $("tip").classList.add("hidden"));
+  // Högerklick på ett namn: dölj det (eller alla namn för samma aktivitet).
+  vpEl.addEventListener("contextmenu", e => {
+    if (!viewport || !objLabelBoxes.length) return;
+    const [x, y] = stagePoint(e);
+    const hit = objLabelBoxes.find(l => x >= l.box.x && x <= l.box.x + l.box.w && y >= l.box.y && y <= l.box.y + l.box.h);
+    if (!hit) return;
+    e.preventDefault();
+    openLabelMenu(hit, e);
+  });
 }
 
 function showTip(e) {
@@ -1500,13 +1532,17 @@ function bindUI() {
   if ($("objSize")) {
     const upd = () => { $("objSizeVal").textContent = $("objSize").value + " %"; };
     $("objSize").value = objSize(); upd();
-    $("objSize").oninput = () => { upd(); try { localStorage.setItem(OBJ_SIZE_KEY, $("objSize").value); } catch (e) {} renderZones(); };
+    $("objSize").oninput = () => { upd(); try { localStorage.setItem(OBJ_SIZE_KEY, $("objSize").value); } catch (e) {} renderZonesSoon(); };
+  }
+  if ($("btnShowHiddenLabels")) {
+    $("btnShowHiddenLabels").onclick = () => saveHiddenLabels({ ids: [], acts: [], names: [] });
+    updateHiddenLabelsBtn();
   }
   if ($("objLabels")) {
     const sync = () => { $("objLabelsWhich").disabled = !$("objLabels").checked; $("objLabelSizeRow").classList.toggle("hidden", !$("objLabels").checked); };
     const updL = () => { $("objLabelSizeVal").textContent = $("objLabelSize").value + " %"; };
     $("objLabelSize").value = objLabelSize(); updL();
-    $("objLabelSize").oninput = () => { updL(); try { localStorage.setItem(OBJ_LABEL_SIZE_KEY, $("objLabelSize").value); } catch (e) {} renderZones(); };
+    $("objLabelSize").oninput = () => { updL(); try { localStorage.setItem(OBJ_LABEL_SIZE_KEY, $("objLabelSize").value); } catch (e) {} renderZonesSoon(); };
     $("objLabels").checked = objLabelsOn(); $("objLabelsWhich").value = objLabelsWhich(); sync();
     $("objLabels").onchange = () => { try { localStorage.setItem(OBJ_LABELS_KEY, $("objLabels").checked ? "1" : "0"); } catch (e) {} sync(); renderZones(); };
     $("objLabelsWhich").onchange = () => { try { localStorage.setItem(OBJ_LABELS_WHICH_KEY, $("objLabelsWhich").value); } catch (e) {} renderZones(); };
@@ -1739,4 +1775,22 @@ function renderObjHint(objects) {
   const b = el.querySelector("button:not(.x)");
   if (b) b.onclick = () => r.fix();
   el.querySelector(".x").onclick = () => el.classList.add("hidden");
+}
+
+function openLabelMenu(l, e) {
+  let m = $("labelMenu");
+  if (!m) {
+    m = document.createElement("div");
+    m.id = "labelMenu"; m.className = "label-menu";
+    document.body.appendChild(m);
+    document.addEventListener("mousedown", ev => { if (!ev.target.closest("#labelMenu")) m.classList.add("hidden"); });
+  }
+  m.innerHTML = `<button type="button" data-a="one">Dölj namnet ${escHtml(l.text)}</button>` +
+    (l.act ? `<button type="button" data-a="act">Dölj alla namn för aktiviteten ${escHtml(l.act.length > 30 ? l.act.slice(0, 29) + "…" : l.act)}</button>` : "");
+  m.style.left = Math.min(e.clientX, window.innerWidth - 280) + "px";
+  m.style.top = Math.min(e.clientY, window.innerHeight - 90) + "px";
+  m.classList.remove("hidden");
+  m.querySelector('[data-a="one"]').onclick = () => { const h = hiddenLabels(); h.ids = [...new Set([...h.ids, ...l.ids])]; h.names = [...new Set([...h.names, l.text])]; m.classList.add("hidden"); saveHiddenLabels(h); setSaveStatus(`Namnet ${l.text} är dolt – "Visa dolda namn" i Lager-kortet tar tillbaka det.`); };
+  const a = m.querySelector('[data-a="act"]');
+  if (a) a.onclick = () => { const h = hiddenLabels(); h.acts = [...new Set([...h.acts, l.act])]; m.classList.add("hidden"); saveHiddenLabels(h); setSaveStatus(`Namnen för ${l.act} är dolda.`); };
 }

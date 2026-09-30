@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js"></script>
+<script src="github-storage.js?v=20260930220521"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -160,6 +160,10 @@
   #viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
   #btnRefreshData.spinning svg { animation: lp-spin .8s linear infinite; }
   @keyframes lp-spin { to { transform: rotate(360deg); } }
+  .label-menu { position: fixed; z-index: 50; display: flex; flex-direction: column; min-width: 220px; padding: 4px; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+  .label-menu.hidden { display: none; }
+  .label-menu button { border: none; background: none; text-align: left; padding: 7px 10px; border-radius: 6px; font-size: 12.5px; height: auto; }
+  .label-menu button:hover { background: var(--panel-2); }
   .obj-settings { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
   .obj-hint { position: absolute; left: 12px; bottom: 12px; z-index: 6; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 24px); padding: 7px 10px; border-radius: 8px; background: #fff8e1; border: 1px solid #f3d27a; color: #7a4d00; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
   .obj-hint.hidden { display: none; }
@@ -301,6 +305,8 @@
               <select id="objLabelsWhich" class="grow"><option value="all">Alla som syns</option><option value="active">Pågående, snart och försenade</option><option value="late">Bara försenade</option><option value="focus">Veckans fokus</option></select></div>
             <div class="row" id="objLabelSizeRow" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Namnstorlek</span>
               <input type="range" id="objLabelSize" class="grow" min="40" max="400" step="5" value="100" /><span id="objLabelSizeVal" class="muted" style="font-size:12px;width:44px;text-align:right;">100 %</span></div>
+            <div class="muted" style="font-size:11.5px;margin-top:4px;">Högerklicka på ett namn för att dölja det.</div>
+            <button type="button" id="btnShowHiddenLabels" class="hidden" style="margin-top:4px;">Visa dolda namn (0)</button>
           </div>
         </details>
 
@@ -619,12 +625,12 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js"></script>
-<script src="lagesplan-tools.js"></script>
-<script src="lagesplan-layers.js"></script>
-<script src="lagesplan-film.js"></script>
-<script src="lagesplan-cad.js"></script>
-<script src="lagesplan-print.js"></script>
-<script src="lagesplan-keys.js"></script>
+<script src="lagesplan.js?v=20260930220521"></script>
+<script src="lagesplan-tools.js?v=20260930220521"></script>
+<script src="lagesplan-layers.js?v=20260930220521"></script>
+<script src="lagesplan-film.js?v=20260930220521"></script>
+<script src="lagesplan-cad.js?v=20260930220521"></script>
+<script src="lagesplan-print.js?v=20260930220521"></script>
+<script src="lagesplan-keys.js?v=20260930220521"></script>
 </body>
 </html>
