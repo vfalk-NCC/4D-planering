@@ -789,7 +789,11 @@ button.danger { background: #dc2626; color: white; border-color: #dc2626; }
 .remove-obj-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid #eef0f3; font-size: 12px; cursor: pointer; }
 .remove-obj-row:last-child { border-bottom: none; }
 .remove-obj-row:hover { background: #fff7ed; }
-.remove-obj-row .grow { flex: 1; min-width: 0; }
+.remove-obj-row .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; line-height: 1.35; }
+.remove-obj-row input[type=checkbox] { width: auto; flex: 0 0 auto; margin: 0; }
+.remove-obj-row .hint { margin: 0; }
+.remove-obj-list { overflow-x: hidden; }
+#removeObjDialog .row { display: flex; gap: 6px; flex-wrap: wrap; }
 .remove-obj-row button { border: none; background: none; cursor: pointer; }
 
 /* Lång aktivitetstext (utan delaktiviteter) kortas till två rader – hela texten i tooltip. */
