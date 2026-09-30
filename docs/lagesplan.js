@@ -696,6 +696,7 @@ function renderZones() {
   const objects = $("showObjects").checked ? objectShapesInPdf() : null;
   const badges = drawZoneShapes(ctx, fontPx, objects);
   if (objects) drawObjects(octx, objects, fontPx);
+  renderObjHint(objects);
   drawSiteLayers(tctx, fontPx);
   if (layerVisible("zones")) badges.forEach(([pt, text, color, hollow]) => drawBadge(tctx, pt, text, color, fontPx, hollow));
   drawToolOverlays(tctx, fontPx);
@@ -1510,4 +1511,41 @@ function bindTokenModal() {
     try { localStorage.removeItem(LS_TOKEN_KEY); } catch (e) {}
     location.reload();
   };
+}
+
+// ---------------------------------------------------------------------
+// Varför syns inga objekt? (Victors fråga 2026-10-01) – en liten ruta på
+// planen som säger orsaken och har en knapp som rättar den.
+// ---------------------------------------------------------------------
+function objHintReason(objects) {
+  if (!plan || !items.length) return null;
+  if (!layerVisible("objects")) return { text: "Lagret Objekt är släckt.", btn: "Tänd", fix: () => { ls("objects").visible = true; $("showObjects").checked = true; saveLayerState(); renderLayerPanel(); applyLayerCss(); renderZones(); } };
+  if (layerOpacity("objects") < 0.15) return { text: "Lagret Objekt är nästan helt genomskinligt.", btn: "Återställ", fix: () => { ls("objects").opacity = 100; saveLayerState(); renderLayerPanel(); applyLayerCss(); renderZones(); } };
+  if (!plan.calib) return { text: "Planen är inte kalibrerad – objekten kan inte placeras.", btn: "Kalibrera", fix: () => { showTab("zones"); openSec("calib"); } };
+  if (!positions.length) return { text: "Objekten saknar position. Hämta positioner (📍) under Zoner & 3D.", btn: "Gå dit", fix: () => { showTab("zones"); openSec("calib"); } };
+  const pos = positionsInPdf();
+  if (!pos || !pos.size) {
+    const [z0, z1] = levelRange();
+    return { text: `Inget objekt ligger inom vald nivå (Z ${z0 ?? "–"} till ${z1 ?? "–"} m).`, btn: "Ändra nivå", fix: () => { showTab("zones"); openSec("calib"); } };
+  }
+  if (objects && !objects.length && visibleItems().length < items.length) return { text: "Filtret (entreprenör/sök) döljer alla objekt.", btn: "Rensa filter", fix: () => { $("fltContractor").value = ""; $("fltText").value = ""; onFilterChanged(); } };
+  if (objects && objects.length && focusActive() && !objects.some(o => focusState(o.it))) return { text: "Veckans fokus är på och inget startar i fönstret – objekten är nedtonade.", btn: "Stäng av fokus", fix: () => { $("focusOn").checked = false; $("focusOn").dispatchEvent(new Event("change")); } };
+  if (objects && !objects.length) return { text: "Inga av objekten med position hör till den här planen.", btn: "", fix: null };
+  return null;
+}
+function renderObjHint(objects) {
+  let el = $("objHint");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "objHint";
+    el.className = "obj-hint hidden";
+    $("viewport").parentElement.appendChild(el);
+  }
+  const r = objHintReason(objects);
+  if (!r) { el.classList.add("hidden"); return; }
+  el.innerHTML = `<span>Inga objekt syns: ${escHtml(r.text)}</span>${r.btn ? `<button type="button">${escHtml(r.btn)}</button>` : ""}<button type="button" class="x" title="Dölj">✕</button>`;
+  el.classList.remove("hidden");
+  const b = el.querySelector("button:not(.x)");
+  if (b) b.onclick = () => r.fix();
+  el.querySelector(".x").onclick = () => el.classList.add("hidden");
 }

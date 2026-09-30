@@ -98,6 +98,7 @@ function applyLayerCss() {
   set("pdfCanvas", "pdf");
   set("zoneCanvas", "zones");
   set("objCanvas", "objects");
+  if (typeof renderObjHint === "function" && typeof plan !== "undefined" && plan) renderObjHint(layerVisible("objects") ? objectShapesInPdf() : null);
   $("orthoCanvas").style.display = hasOrtho ? "" : "none";
   if ($("orthoCanvasB")) $("orthoCanvasB").style.display = cmp ? "" : "none";
   // Över ett ortofoto blir ritningens vita bakgrund genomskinlig (multiplicera).
