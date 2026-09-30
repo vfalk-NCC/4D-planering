@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-01 00:45";
+const APP_VERSION = "2026-10-01 10:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -3498,7 +3498,7 @@ async function commitPlanImport(diff) {
     if (phases.length > 0) {
       activityBatches.push({
         planItemId: id,
-        rows: phases.map(s => ({ name: s.name, start: s.start, end: s.end, hours: "" })),
+        rows: phases.map(s => ({ name: s.name, start: s.start, end: s.end, hours: "", progress: Number.isFinite(s.progress) ? s.progress : null })),
       });
     }
     return row;
@@ -3547,6 +3547,7 @@ async function saveActivitiesForItemsBulk(batches, message) {
         start_date: r.start || null,
         end_date: r.end || null,
         estimated_hours: Number.isFinite(Number(r.hours)) && r.hours !== "" ? Number(r.hours) : null,
+        progress: r.progress !== "" && r.progress != null && Number.isFinite(Number(r.progress)) ? Math.max(0, Math.min(100, Math.round(Number(r.progress)))) : null,
       }));
     newRowsByItem.set(b.planItemId, rows);
   });
@@ -3566,7 +3567,8 @@ async function saveActivitiesForItemsBulk(batches, message) {
   newRowsByItem.forEach((rows, planItemId) => {
     activitiesByItemId.set(planItemId, rows.map(r => ({
       name: r.name, start: r.start_date || "", end: r.end_date || "",
-      hours: Number.isFinite(r.estimated_hours) ? r.estimated_hours : ""
+      hours: Number.isFinite(r.estimated_hours) ? r.estimated_hours : "",
+      progress: Number.isFinite(r.progress) ? r.progress : null
     })));
   });
 }
@@ -5180,7 +5182,7 @@ async function refreshActivities() {
     const rows = await ghReadJSON(settings.githubToken, activitiesPath());
     rows.forEach(row => {
       const list = activitiesByItemId.get(row.plan_item_id) || [];
-      list.push({ name: row.name || "", start: row.start_date || "", end: row.end_date || "", hours: Number.isFinite(row.estimated_hours) ? row.estimated_hours : "" });
+      list.push({ name: row.name || "", start: row.start_date || "", end: row.end_date || "", hours: Number.isFinite(row.estimated_hours) ? row.estimated_hours : "", progress: Number.isFinite(row.progress) ? row.progress : null });
       activitiesByItemId.set(row.plan_item_id, list);
     });
   } catch (e) {
@@ -5208,7 +5210,8 @@ async function saveActivitiesForItem(planItemId, projectIdVal, rows) {
       name: (r.name || "").trim(),
       start_date: r.start || null,
       end_date: r.end || null,
-      estimated_hours: Number.isFinite(Number(r.hours)) && r.hours !== "" ? Number(r.hours) : null
+      estimated_hours: Number.isFinite(Number(r.hours)) && r.hours !== "" ? Number(r.hours) : null,
+        progress: r.progress !== "" && r.progress != null && Number.isFinite(Number(r.progress)) ? Math.max(0, Math.min(100, Math.round(Number(r.progress)))) : null
     }));
   await ghWriteJSON(
     settings.githubToken,
@@ -5216,7 +5219,7 @@ async function saveActivitiesForItem(planItemId, projectIdVal, rows) {
     (arr) => [...arr.filter(a => a.plan_item_id !== planItemId), ...newRows],
     "Spara delaktiviteter"
   );
-  activitiesByItemId.set(planItemId, newRows.map(r => ({ name: r.name, start: r.start_date || "", end: r.end_date || "", hours: Number.isFinite(r.estimated_hours) ? r.estimated_hours : "" })));
+  activitiesByItemId.set(planItemId, newRows.map(r => ({ name: r.name, start: r.start_date || "", end: r.end_date || "", hours: Number.isFinite(r.estimated_hours) ? r.estimated_hours : "", progress: Number.isFinite(r.progress) ? r.progress : null })));
 }
 
 /** Tar bort alla delaktiviteter knutna till given lista av plan_item-ID:n (cascade-delete, precis som deleteCommentsForItems). */

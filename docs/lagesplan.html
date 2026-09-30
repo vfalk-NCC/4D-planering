@@ -160,6 +160,7 @@
   #viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; }
   #btnRefreshData.spinning svg { animation: lp-spin .8s linear infinite; }
   @keyframes lp-spin { to { transform: rotate(360deg); } }
+  .obj-settings { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
   .obj-hint { position: absolute; left: 12px; bottom: 12px; z-index: 6; display: flex; align-items: center; gap: 8px; max-width: calc(100% - 24px); padding: 7px 10px; border-radius: 8px; background: #fff8e1; border: 1px solid #f3d27a; color: #7a4d00; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
   .obj-hint.hidden { display: none; }
   .obj-hint button { height: 26px; padding: 0 10px; font-size: 12px; }
@@ -288,6 +289,14 @@
           <div class="hint hidden" id="layerSearchInfo"></div>
           <div class="row" style="margin-top:6px;"><button id="btnNewFolder" title="Skapa en mapp och dra lager till den">📁 ＋ Mapp</button><span class="hint grow" style="margin:0;">Dra lager till en mapp. Dubbelklicka på ett namn för att byta det.</span></div>
           <label class="check"><input type="checkbox" id="layersFollowDate" checked /> Noteringar och etablering följer datumet</label>
+          <div class="obj-settings">
+            <span class="field-label">Objekten på ritningen</span>
+            <div class="row" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Visa objekten som</span>
+              <select id="objStyle" class="grow"><option value="dots">Prick i mitten (statusfärg)</option><option value="footprint">Fotavtryck (objektets yta)</option></select></div>
+            <div class="row" id="objSizeRow" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Prickstorlek</span>
+              <input type="range" id="objSize" class="grow" min="25" max="400" step="5" value="100" /><span id="objSizeVal" class="muted" style="font-size:12px;width:44px;text-align:right;">100 %</span></div>
+            <label class="check" title="Objekt som i 4D-planering är kopplade till en delaktivitet (t.ex. bara Formning) – inte hela aktiviteten"><input type="checkbox" id="objSubs" checked /> Visa objekt kopplade till delaktiviteter</label>
+          </div>
         </details>
 
         <details class="sec" data-sec="draw" open>
@@ -439,11 +448,6 @@
           </div>
           <div class="hint" id="calibInfo"></div>
           <label class="check"><input type="checkbox" id="showObjects" checked /> Visa objekten på ritningen (i sin fasfärg)</label>
-          <div class="row" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Visa objekten som</span>
-            <select id="objStyle" class="grow"><option value="dots">Prick i mitten (statusfärg)</option><option value="footprint">Fotavtryck (objektets yta)</option></select></div>
-          <div class="row" id="objSizeRow" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Prickstorlek</span>
-            <input type="range" id="objSize" class="grow" min="25" max="400" step="5" value="100" /><span id="objSizeVal" class="muted" style="font-size:12px;width:44px;text-align:right;">100 %</span></div>
-          <label class="check" title="Objekt som i 4D-planering är kopplade till en delaktivitet (t.ex. bara Formning) – inte hela aktiviteten"><input type="checkbox" id="objSubs" checked /> Visa objekt kopplade till delaktiviteter</label>
         </details>
 
         <details class="sec" data-sec="zones" open>

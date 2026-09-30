@@ -345,6 +345,9 @@ async function run() {
   const activitiesAfter = store.get(`projects/${PROJECT_ID}/plan_item_activities.json`).content;
   const m30PhasesAfter = activitiesAfter.filter(a => a.plan_item_id === m30.id);
   if (m30PhasesAfter.length !== 2) throw new Error('Förväntade att M30 fortfarande har exakt 2 delaktiviteter efter omimport, fick ' + m30PhasesAfter.length);
+  const phaseProg = m30PhasesAfter.map(a => a.progress).sort((a, b) => a - b).join(',');
+  if (phaseProg !== '40,60') throw new Error('Förväntade att fasernas framdrift från Excel (40 % och 60 %) följer med till delaktiviteterna, fick ' + phaseProg);
+  console.log('OK: fasernas framdrift från Excel följer med till delaktiviteterna');
 
   await page.waitForSelector('#itemList .item-row');
   const uncoupledAfterReimport = await page.locator('#itemList .uncoupled-tag').count();

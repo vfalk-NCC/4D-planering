@@ -38,14 +38,16 @@ function subRowsHtml(entry, idx) {
   return `<div class="sub-rows" data-parent-index="${idx}">${subs.map((s, i) => {
     const nm = subMarks(entry, s).length;
     const dates = s.start || s.end ? `${s.start || "?"} → ${s.end || "?"}` : "Inga datum";
-    return `<div class="sub-row" data-sub="${i}">
+    const sp = Number.isFinite(s.progress) ? s.progress : 0;
+    return `<div class="sub-row" data-sub="${i}"><div class="sub-row-top">
         <span class="sub-main" data-action="sub-select" title="Klicka för att markera delaktivitetens objekt i 3D">
           <span class="sub-name">↳ ${escapeHtml(s.name || "(namnlös)")}</span><br/>
-          <span class="item-dates">${escapeHtml(dates)}</span>
+          <span class="item-dates">${escapeHtml(dates)} · ${sp}%</span>
           ${s.coupled.length ? `<span class="sub-count" title="${s.coupled.length} objekt kopplade till delaktiviteten">${s.coupled.length} objekt</span>` : '<span class="uncoupled-tag">◇ Ej kopplad</span>'}
           ${nm ? `<span class="manual-tag" data-action="sub-marks" title="Visa i 3D – högerklick tar bort">Manuell markering${nm > 1 ? ` (${nm})` : ""}</span>` : ""}
         </span>
-        <button class="couple-btn" data-action="sub-couple" title="Koppla 3D-objekt (eller rita en markering) till &quot;${escapeHtml(s.name || "")}&quot; – klicka objekten i 3D och tryck Spara">${icon("link")}</button>
+        <button class="couple-btn" data-action="sub-couple" title="Koppla 3D-objekt (eller rita en markering) till &quot;${escapeHtml(s.name || "")}&quot; – klicka objekten i 3D och tryck Spara">${icon("link")}</button></div>
+        ${typeof progressSliderHtml === "function" ? progressSliderHtml(sp) : ""}
       </div>`;
   }).join("")}</div>`;
 }
@@ -69,6 +71,7 @@ function bindSubRows(el, row, entry) {
       if (ms.length && typeof jumpToMarkList === "function" && !ev.ctrlKey && !ev.metaKey) jumpToMarkList(ms);
       if (s.coupled.length) onActivityRowClicked(s.coupled, ev);
     };
+    if (typeof bindProgressSlider === "function") bindProgressSlider(sr, [], Number.isFinite(s.progress) ? s.progress : 0, v => setSubProgress(entry, s, v));
     const mt = sr.querySelector('[data-action="sub-marks"]');
     if (mt) {
       mt.onclick = ev => { ev.stopPropagation(); jumpToMarkList(subMarks(entry, s)); };
@@ -155,4 +158,43 @@ async function coupleObjectsToSub(item, sub, objs) {
     renderItemList();
     alert(`Kunde inte koppla till "${sub.name}": ${e.message}`);
   }
+}
+
+/* ---------------------------------------------------------------------
+   Framdrift per delaktivitet (Victors önskemål 2026-10-01). Sparas på
+   delaktivitetens rader (plan_item_activities.progress) för alla objekt i
+   aktiviteten som har den, och huvudaktivitetens framdrift räknas om som
+   ett medel av delaktiviteterna viktat på antal dagar.
+   ------------------------------------------------------------------- */
+function subDays(r) {
+  if (!r.start || !r.end) return 1;
+  return Math.max(1, Math.round((new Date(r.end) - new Date(r.start)) / 86400000) + 1);
+}
+function weightedSubProgress(rows) {
+  let w = 0, sum = 0;
+  rows.forEach(r => { const d = subDays(r); w += d; sum += d * (Number.isFinite(r.progress) ? r.progress : 0); });
+  return w ? Math.round(sum / w) : 0;
+}
+async function setSubProgress(entry, sub, v) {
+  const members = entryMembers(entry);
+  const key = sub.key || subActivityKey(sub);
+  const batches = [];
+  members.forEach(m => {
+    const rows = activitiesByItemId.get(m.id) || [];
+    if (!rows.some(r => subActivityKey(r) === key)) return;
+    const next = rows.map(r => subActivityKey(r) === key ? { ...r, progress: v } : { ...r });
+    activitiesByItemId.set(m.id, next);
+    batches.push({ planItemId: m.id, rows: next });
+  });
+  if (!batches.length) return;
+  const main = weightedSubProgress(groupSubActivityRows(members));
+  // Huvudaktivitetens framdrift följer delaktiviteterna (sprids till hela aktiviteten).
+  const records = members.map(m => ({ ...m, progress: main }));
+  applyOptimisticRecords(records);
+  renderItemList();
+  const jobId = ++saveJobCounter;
+  saveJobs.set(jobId, { id: jobId, records, label: `Framdrift ${sub.name} → ${v}% (aktiviteten ${main}%)`, status: "pending", error: null });
+  runSaveJob(jobId);
+  try { await saveActivitiesForItemsBulk(batches, `Framdrift delaktivitet ${sub.name}`); }
+  catch (e) { alert(`Kunde inte spara framdriften för "${sub.name}": ${e.message}`); }
 }

@@ -220,7 +220,7 @@ async function run() {
   // Filtrerar på "Alby" (inget saknat objekt där) - det här testet gäller
   // isolateEntities-bytet, inte det delvis-saknade-objekt-scenariot ovan.
   await page.evaluate(() => { window.__calls.length = 0; });
-  await page.selectOption('#filterArea', ['Alby']);
+  await page.click('#filterAreaChips .ms-btn'); await page.check('#filterAreaChips input[data-value="Alby"]'); await page.mouse.click(2, 2);
   await page.locator('#btnApplyFilter').click();
   await page.waitForTimeout(250);
 

@@ -127,9 +127,12 @@ async function run() {
   const itemCountText = await page.locator('#itemCount').innerText();
   if (itemCountText.trim() !== '2/2') throw new Error('Förväntade 2/2 laddade objekt, fick: ' + itemCountText);
 
-  // ---- 1) Filtrets rullistor ska vara vertikalt drabara.
-  const resizeValue = await page.locator('#filterArea').evaluate(el => getComputedStyle(el).resize);
-  if (resizeValue !== 'vertical') throw new Error('filterArea saknar CSS resize:vertical, fick: ' + resizeValue);
+  // ---- 1) Filtrets områdeslista (UI-översynen 2026-09-30: rullgardin med
+  //         egen rullning i stället för en dragbar rullista) rullar själv.
+  await page.click('#filterAreaChips .ms-btn');
+  const overflow = await page.locator('#filterAreaChips .ms-list').evaluate(el => getComputedStyle(el).overflowY);
+  if (overflow !== 'auto') throw new Error('områdeslistan ska rulla själv (overflow-y:auto), fick: ' + overflow);
+  await page.mouse.click(2, 2);
 
   // ---- 2) "Markera alla kopplade objekt" (#btnSelectAllCoupled).
   await page.evaluate(() => { window.__calls.length = 0; });
@@ -177,7 +180,7 @@ async function run() {
 
   // ---- 4) Filterval ska markera matchande objekt direkt, UTAN att flytta kameran.
   await page.evaluate(() => { window.__calls.length = 0; });
-  await page.selectOption('#filterArea', ['Hus A']);
+  await page.click('#filterAreaChips .ms-btn'); await page.check('#filterAreaChips input[data-value="Hus A"]'); await page.mouse.click(2, 2);
   await page.waitForTimeout(200);
   calls = await page.evaluate(() => window.__calls);
 

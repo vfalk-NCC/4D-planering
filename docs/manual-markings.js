@@ -324,7 +324,8 @@ function progressSliderHtml(progress) {
       <span class="progress-save hidden"><b class="pv">${progress}%</b><button type="button" class="primary" data-action="progress-save">Spara</button><button type="button" data-action="progress-cancel" title="Ångra">✕</button></span>
     </div>`;
 }
-function bindProgressSlider(row, targets, current) {
+/* onSave(v): egen sparning (t.ex. delaktivitetens framdrift) i stället för aktivitetens. */
+function bindProgressSlider(row, targets, current, onSave) {
   const sl = row.querySelector('[data-action="progress"]');
   if (!sl) return;
   const box = row.querySelector(".progress-save"), pv = row.querySelector(".pv");
@@ -335,6 +336,7 @@ function bindProgressSlider(row, targets, current) {
   row.querySelector('[data-action="progress-save"]').onclick = e => {
     e.stopPropagation();
     const v = Number(sl.value);
+    if (onSave) { onSave(v); return; }
     const records = targets.map(t => ({ ...t, progress: v }));
     applyOptimisticRecords(records);
     renderItemList();

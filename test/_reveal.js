@@ -18,6 +18,9 @@ function wrapLocator(loc) {
 function autoReveal(page) {
   const origLocator = page.locator.bind(page);
   page.locator = (...a) => wrapLocator(origLocator(...a));
+  // waitForSelector: byt först flik/öppna menyn så att elementet kan bli synligt.
+  const origWait = page.waitForSelector.bind(page);
+  page.waitForSelector = async (sel, ...a) => { await page.$eval(sel, reveal).catch(() => {}); return origWait(sel, ...a); };
   for (const m of ACTIONS) {
     if (typeof page[m] !== 'function') continue;
     const orig = page[m].bind(page);
