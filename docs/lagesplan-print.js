@@ -203,10 +203,13 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
       ctx.drawImage(pdfPlate, 0, 0); ctx.restore();
     }
     P.overlay = newCanvas(pxW, pxH);
-    renderFilmOverlay(P, { cad: true, zones: true, site: true });
-    ctx.drawImage(P.overlay, 0, 0);
+    // PDF-export: CAD ritas som vektorer i PDF:en (skarpa linjer), så här
+    // bara zoner/etablering i ett eget genomskinligt lager ovanpå.
+    renderFilmOverlay(P, { cad: !opts.vectorCad, zones: true, site: true });
+    if (opts.vectorCad) P.cadPlan = typeof cadVectorPlan === "function" ? cadVectorPlan() : [];
+    else ctx.drawImage(P.overlay, 0, 0);
   });
-  return out;
+  return opts.vectorCad ? { base: out, overlay: P.overlay, cad: P.cadPlan || [], P } : out;
 }
 const mapPreviews = new Map(); // el.id -> { key, canvas }
 const mapPending = new Map();
@@ -1048,8 +1051,15 @@ async function exportPrintPdf() {
         const nr = maps.indexOf(el) + 1;
         setPrintStatus(`Ritar ritning ${nr} av ${maps.length} i hög upplösning…`);
         const u = fmt.dpi / 25.4;
-        const mc = await renderMapCanvas(el, w, h, Math.round(w * u), Math.round(h * u), { status: s => setPrintStatus(`Ritning ${nr}/${maps.length}: ${s}…`) });
-        doc.addImage(mc.toDataURL("image/jpeg", 0.9), "JPEG", x, y, w, h, undefined, "FAST");
+        const mc = await renderMapCanvas(el, w, h, Math.round(w * u), Math.round(h * u), { vectorCad: true, status: s => setPrintStatus(`Ritning ${nr}/${maps.length}: ${s}…`) });
+        doc.addImage(mc.base.toDataURL("image/jpeg", 0.9), "JPEG", x, y, w, h, undefined, "FAST");
+        if (mc.cad.length) {
+          // DXF som vektorer: stage-px -> mm på sidan.
+          setPrintStatus(`Ritning ${nr}/${maps.length}: DXF som vektorer…`);
+          const f = w / mc.P.W, S = mc.P.S * f;
+          drawCadVectorsToPdf(doc, mc.cad, [S, 0, 0, S, x - mc.P.x0 * S, y - mc.P.y0 * S], [x, y, w, h], w / FILM_W, PT_MM);
+        }
+        if (mc.overlay) doc.addImage(mc.overlay.toDataURL("image/png"), "PNG", x, y, w, h, undefined, "FAST");
         if (el.border !== false) { doc.setDrawColor(0); doc.setLineWidth(0.35 * k); doc.rect(x, y, w, h); }
         if (el.label && el.label.show) {
           const s = (el.label.size || 9) * k, al = el.label.align || "left";

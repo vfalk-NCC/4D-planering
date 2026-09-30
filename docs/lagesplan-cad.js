@@ -483,6 +483,77 @@ function drawCad(ctx, stageToCanvas, pxScale = 1) {
     ctx.restore();
   });
 }
+/* Vad som ska ritas som vektorer i PDF-utskriften: de tända CAD-ritningarna
+   och lagren just nu (anropas medan ritningsytans lagerval är aktivt). */
+function cadVectorPlan() {
+  if (!plan || !plan.calib) return [];
+  return cads().filter(r => ls("cad:" + r.id).visible && cadGeom.has(r.id)).map(r => {
+    const g = cadGeom.get(r.id), names = r.layers.map(l => l.name);
+    const mono = r.colorMode === "mono" ? r.color : null;
+    return { rec: r, g, opacity: layerOpacity("cad:" + r.id), weight: Number(r.weight) || 1,
+      groups: g.groups.filter(gr => cadLayerOn(r, names[gr.l])).map(gr => ({ gr, color: mono || (gr.c === "#000000" || gr.c === "#ffffff" ? "#111827" : gr.c) })) };
+  });
+}
+/* Ritar CAD-planen som vektorer i en jsPDF-sida. stageToPage: stage-px -> mm
+   på sidan; clip = [x, y, w, h] (ritningsramen); lwPerWeight = linjebredd i
+   mm per viktenhet (samma tjocklek som i bilden). */
+function drawCadVectorsToPdf(doc, list, stageToPage, clip, lwPerWeight, ptMm) {
+  if (!list.length) return;
+  const o0 = mToPx([0, 0]), ex = mToPx([1, 0]), ey = mToPx([0, 1]);
+  const M = [ex[0] - o0[0], ex[1] - o0[1], ey[0] - o0[0], ey[1] - o0[1], o0[0], o0[1]];
+  const [cx, cy, cw, ch] = clip;
+  doc.saveGraphicsState();
+  doc.rect(cx, cy, cw, ch, null); doc.clip(); doc.discardPath();
+  list.forEach(({ g, opacity, weight, groups }) => {
+    const G = mulAffine(stageToPage, mulAffine(M, [0.001, 0, 0, 0.001, g.origin[0], g.origin[1]]));
+    const s = Math.hypot(G[0], G[1]);
+    doc.saveGraphicsState();
+    if (opacity < 1 && doc.GState) doc.setGState(new doc.GState({ opacity, "stroke-opacity": opacity }));
+    doc.setLineWidth(Math.max(0.6, weight) * lwPerWeight);
+    doc.setLineCap("round"); doc.setLineJoin("round");
+    groups.forEach(({ gr, color }) => {
+      doc.setDrawColor(color);
+      (gr.raw || []).forEach(a => {
+        if (a.length < 4) return;
+        const pts = [];
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (let i = 0; i + 1 < a.length; i += 2) {
+          const p = applyAffine(G, [a[i], a[i + 1]]);
+          pts.push(p);
+          if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1];
+        }
+        if (x1 < cx || x0 > cx + cw || y1 < cy || y0 > cy + ch) return; // utanför ramen
+        const d = [];
+        for (let i = 1; i < pts.length; i++) d.push([pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]]);
+        doc.lines(d, pts[0][0], pts[0][1], [1, 1], "S", false);
+      });
+    });
+    // Texter som riktig text (skarp och sökbar)
+    groups.forEach(({ gr, color }) => {
+      if (!gr.texts || !gr.texts.length) return;
+      doc.setTextColor(color);
+      gr.texts.forEach(([x, y, h, rot, str, al]) => {
+        const hp = h * s;
+        if (hp < 0.6) return;
+        const [px, py] = applyAffine(G, [x, y]);
+        if (px < cx - 50 || px > cx + cw + 50 || py < cy - 50 || py > cy + ch + 50) return;
+        const a = rot * Math.PI / 180;
+        const dv = [G[0] * Math.cos(a) + G[2] * Math.sin(a), G[1] * Math.cos(a) + G[3] * Math.sin(a)];
+        const angle = -Math.atan2(dv[1], dv[0]) * 180 / Math.PI;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(hp / ptMm);
+        const align = al[0] === "c" ? "center" : al[0] === "r" ? "right" : "left";
+        const baseline = { t: "top", m: "middle", b: "bottom" }[al[1]] || "alphabetic";
+        String(str).split("\n").forEach((ln, k) => {
+          const off = k * hp * 1.25, ox = -Math.sin(-angle * Math.PI / 180) * off, oy = Math.cos(-angle * Math.PI / 180) * off;
+          doc.text(ln, px + ox, py + oy, { angle, align, baseline });
+        });
+      });
+    });
+    doc.restoreGraphicsState();
+  });
+  doc.restoreGraphicsState();
+}
 let cadTimer = 0, cadSeq = 0;
 function scheduleCadRender() { clearTimeout(cadTimer); cadTimer = setTimeout(renderCad, 60); }
 async function renderCad() {
