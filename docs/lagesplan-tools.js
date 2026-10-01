@@ -213,31 +213,47 @@ function drawMeasure(ctx, fontPx) {
 let photoPlacing = false, pendingPhotoPt = null, pendingPhotoFile = null, openPhotoId = null;
 const photoUrlCache = new Map();
 function photos() { return (plan && plan.photos) || []; }
-function cancelPhotoPlacing() { photoPlacing = false; pendingPhotoPt = null; pendingPhotoFile = null; if (typeof gpsSuggest !== "undefined") gpsSuggest = null; updateToolUi(); }
+function cancelPhotoPlacing(skip) { photoPlacing = false; pendingPhotoPt = null; pendingPhotoFile = null; if (typeof gpsSuggest !== "undefined") gpsSuggest = null; updateToolUi(); if (skip) setTimeout(nextQueuedPhoto, 0); }
 function photoMarkerPx() { return planFontPx() * 1.5; }
+/* Foton visas som kartnålar: spetsen där fotot är taget, huvudet ovanför
+   (Victors önskemål 2026-10-01). Foton med GPS-position får en blå nål. */
+function photoPinHead(ph) { const [x, y] = toPx([ph.x, ph.y]), s = photoMarkerPx(); return [x, y - s * 0.95, s * 0.5]; }
 function photoAt(pdfPt) {
   if (!$("showPhotos").checked) return null;
-  const tol = Math.max(photoMarkerPx() / 2, 8 / view.scale) / renderScale;
+  const p = toPx(pdfPt), pad = 6 / view.scale;
   let best = null, bd = Infinity;
-  photos().forEach(ph => { const d = Math.hypot(ph.x - pdfPt[0], ph.y - pdfPt[1]); if (d <= tol && d < bd) { best = ph; bd = d; } });
+  photos().forEach(ph => {
+    const [hx, hy, r] = photoPinHead(ph), [tx, ty] = toPx([ph.x, ph.y]);
+    const d = Math.min(Math.hypot(p[0] - hx, p[1] - hy) - r, Math.hypot(p[0] - tx, p[1] - ty) - r * 0.5);
+    if (d <= pad && d < bd) { best = ph; bd = d; }
+  });
   return best;
+}
+function drawPhotoPin(ctx, x, y, s, color, faded) {
+  const r = s * 0.5, cy = y - s * 0.95;
+  ctx.save();
+  ctx.globalAlpha = faded ? 0.45 : 1;
+  ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = s * 0.25; ctx.shadowOffsetY = s * 0.06;
+  ctx.beginPath();
+  // Droppform: cirkel som smalnar av till en spets i (x, y).
+  const a = Math.asin(r / (s * 0.95));
+  ctx.arc(x, cy, r, Math.PI / 2 + a, Math.PI / 2 - a + Math.PI * 2);
+  ctx.lineTo(x, y); ctx.closePath();
+  ctx.fillStyle = color; ctx.fill();
+  ctx.shadowColor = "transparent";
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = Math.max(1.5, s * 0.08); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, cy, r * 0.38, 0, Math.PI * 2); ctx.fillStyle = "#fff"; ctx.fill();
+  ctx.restore();
 }
 function drawPhotos(ctx) {
   if (!$("showPhotos").checked) return;
   const s = photoMarkerPx();
   const at = $("dateInput").value || todayIso();
-  ctx.save();
-  photos().forEach(ph => {
+  // Söderut först, så nålar som ligger nära varandra överlappar snyggt.
+  photos().slice().sort((a, b) => a.y - b.y).forEach(ph => {
     const [x, y] = toPx([ph.x, ph.y]);
-    ctx.globalAlpha = ph.date && ph.date > at ? 0.45 : 1; // tagna efter valt datum: nedtonade
-    ctx.fillStyle = "#0f172a";
-    roundRect(ctx, x - s / 2, y - s / 2, s, s, s / 4); ctx.fill();
-    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
-    ctx.font = `${Math.round(s * 0.6)}px "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText("📷", x, y + 1);
+    drawPhotoPin(ctx, x, y, s, ph.gps ? "#2563eb" : "#dc2626", ph.date && ph.date > at); // tagna efter valt datum: nedtonade
   });
-  ctx.restore();
 }
 function startPhotoPlacing() {
   if (!plan || !viewport) return;
@@ -257,19 +273,25 @@ async function shrinkImage(file) {
   c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
   return new Promise(res => c.toBlob(res, "image/jpeg", 0.85));
 }
-async function addPhotoFile(file) {
-  const pt = pendingPhotoPt;
+async function addPhotoFile(file, opts = {}) {
+  const pt = opts.pt || pendingPhotoPt;
   // GPS-positionen (om den fanns) sparas med fotot, även om det flyttats på planen.
-  const gps = typeof gpsSuggest !== "undefined" && gpsSuggest ? { ...gpsSuggest.gps, moved: pt !== gpsSuggest.pt } : null;
+  const gps = opts.gps !== undefined ? opts.gps : (typeof gpsSuggest !== "undefined" && gpsSuggest ? { ...gpsSuggest.gps, moved: pt !== gpsSuggest.pt } : null);
   pendingPhotoFile = null;
   cancelPhotoPlacing();
   if (!pt || !file) return;
-  const caption = prompt("Beskrivning av fotot (valfritt):", "");
-  if (caption === null) return;
   const defDate = file.__exifDate || (file.lastModified ? isoOf(new Date(file.lastModified)) : todayIso());
-  let date = (prompt("Datum då fotot togs (ÅÅÅÅ-MM-DD):", defDate) || defDate).trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = defDate;
-  setBusy("Laddar upp fotot…");
+  let caption, date;
+  if (opts.quiet) {
+    // Flera foton på en gång: filnamnet som beskrivning, datumet från fotot (ändras i listan/fotot vid behov).
+    caption = file.name.replace(/\.[^.]+$/, ""); date = defDate;
+  } else {
+    caption = prompt("Beskrivning av fotot (valfritt):", "");
+    if (caption === null) return;
+    date = (prompt("Datum då fotot togs (ÅÅÅÅ-MM-DD):", defDate) || defDate).trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = defDate;
+  }
+  setBusy(opts.progress || "Laddar upp fotot…");
   try {
     const blob = await shrinkImage(file);
     const id = ghNewId();
@@ -277,11 +299,37 @@ async function addPhotoFile(file) {
     await ghUploadBinary(token, path, blob, `Lägesplan: foto ${caption || date}`);
     plan.photos = [...photos(), { id, x: pt[0], y: pt[1], path, date, caption: caption.trim(), ...(gps ? { gps } : {}), by: settings.userName || null, created_at: new Date().toISOString() }];
     renderZones(); schedulePlanSave();
+    if (typeof renderLayerPanel === "function") renderLayerPanel();
   } catch (e) {
     alert("Kunde inte ladda upp fotot: " + e.message);
   } finally {
     setBusy("");
   }
+  nextQueuedPhoto();
+}
+/* Flera foton på en gång (t.ex. från datorn): de med GPS placeras direkt,
+   de utan placeras ett i taget genom att klicka på planen (Esc hoppar över). */
+let photoQueue = [];
+async function importPhotoBatch(files) {
+  const manual = [];
+  let placed = 0;
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    setBusy(`Läser foto ${i + 1} av ${files.length}…`);
+    const sug = typeof suggestPhotoPosition === "function" ? await suggestPhotoPosition(f) : null;
+    setBusy("");
+    if (sug && sug.pt) { await addPhotoFile(f, { pt: sug.pt, gps: sug.gps, quiet: true, progress: `Laddar upp foto ${i + 1} av ${files.length}…` }); placed++; }
+    else manual.push(f);
+  }
+  photoQueue = manual.map((f, i) => ({ f, n: i + 1, of: manual.length }));
+  setSaveStatus(`📷 ${placed} foto${placed === 1 ? "" : "n"} placerade enligt GPS.${manual.length ? ` ${manual.length} saknar GPS – klicka på planen där de är tagna.` : ""}`);
+  nextQueuedPhoto();
+}
+function nextQueuedPhoto() {
+  if (!photoQueue.length || photoPlacing) return;
+  const q = photoQueue.shift();
+  pendingPhotoFile = q.f; pendingPhotoFile.__quiet = true; photoPlacing = true; updateToolUi();
+  setSaveStatus(`📷 Klicka på planen där "${q.f.name}" är taget (${q.n} av ${q.of}) – Esc hoppar över.`);
 }
 async function openPhoto(ph) {
   openPhotoId = ph.id;
@@ -477,7 +525,7 @@ function afterRenderTools() {
 /* Klick på planen: true om ett verktyg tog hand om klicket. */
 function toolClick(pdfPt) {
   if (!photoPlacing && !measure && layersClick(pdfPt)) return true;
-  if (photoPlacing) { pendingPhotoPt = pdfPt; const f = pendingPhotoFile; photoPlacing = false; addPhotoFile(f); return true; }
+  if (photoPlacing) { pendingPhotoPt = pdfPt; const f = pendingPhotoFile; photoPlacing = false; addPhotoFile(f, { quiet: !!(f && f.__quiet) }); return true; }
   if (measure) {
     if (measure.done) measure = { mode: measure.mode, pts: [], cursor: null, done: false };
     measure.pts.push(typeof constrainPdf === "function" ? constrainPdf(pdfPt, window.event, measure.pts[measure.pts.length - 1]) : pdfPt);
@@ -549,7 +597,9 @@ function bindTools() {
   $("btnMeasureArea").onclick = () => startMeasure("area");
   $("btnAddPhoto").onclick = startPhotoPlacing;
   $("photoInput").onchange = async e => {
-    const f = e.target.files[0]; e.target.value = "";
+    const files = [...e.target.files]; e.target.value = "";
+    if (files.length > 1) { cancelPhotoPlacing(); photoQueue = []; importPhotoBatch(files); return; }
+    const f = files[0];
     if (!f) { cancelPhotoPlacing(); return; }
     pendingPhotoFile = f; photoPlacing = true; if (typeof gpsSuggest !== "undefined") gpsSuggest = null; updateToolUi();
     setSaveStatus(`📷 Klicka på planen där "${f.name}" är taget (Esc avbryter).`);
@@ -581,7 +631,7 @@ function bindTools() {
     if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
     if (e.key === "Escape") {
       if (!$("photoModal").classList.contains("hidden")) closePhoto();
-      else if (photoPlacing) cancelPhotoPlacing();
+      else if (photoPlacing) cancelPhotoPlacing(true); // Esc: hoppa över (nästa foto i kön)
       else if (measure) stopMeasure();
       else if (playTimer) stopPlay();
     } else if (e.key === "Enter" && measure) finishMeasure();

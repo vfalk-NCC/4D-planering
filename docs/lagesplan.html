@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261001123230"></script>
+<script src="github-storage.js?v=20261001131649"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -465,7 +465,7 @@
           <div class="tool-grid cols-3">
             <button id="btnMeasureLen" title="Klicka punkter på planen, dubbelklicka för att avsluta"><i>📏</i>Avstånd</button>
             <button id="btnMeasureArea" title="Klicka hörnen, dubbelklicka för att avsluta"><i>⬠</i>Yta</button>
-            <button id="btnAddPhoto" title="Välj bilden och klicka sedan på planen där den är tagen"><i>📷</i>Foto</button>
+            <button id="btnAddPhoto" title="Välj ett eller flera foton – de med GPS placeras automatiskt, övriga klickar du ut på planen"><i>📍</i>Foto</button>
           </div>
           <div class="hint" id="measureInfo"></div>
           <label class="check"><input type="checkbox" id="showPhotos" checked /> Visa foton på planen</label>
@@ -673,7 +673,7 @@
       <div id="fieldSheetBody"></div>
     </div>
     <!-- Utanför menyn (som är dold i fältläge): iPadens Safari öppnar inte filväljaren för dolda element. -->
-    <input type="file" id="photoInput" accept="image/*" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:0;top:0;" tabindex="-1" aria-hidden="true" />
+    <input type="file" id="photoInput" accept="image/*" multiple style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:0;top:0;" tabindex="-1" aria-hidden="true" />
     <div id="tip" class="hidden"></div>
     <div id="sitePop" class="hidden"></div>
     <div id="photoModal" class="hidden">
@@ -770,16 +770,16 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261001123230"></script>
-<script src="lagesplan-tools.js?v=20261001123230"></script>
-<script src="lagesplan-layers.js?v=20261001123230"></script>
-<script src="lagesplan-views.js?v=20261001123230"></script>
-<script src="lagesplan-film.js?v=20261001123230"></script>
-<script src="lagesplan-cad.js?v=20261001123230"></script>
-<script src="lagesplan-vecpdf.js?v=20261001123230"></script>
-<script src="lagesplan-print.js?v=20261001123230"></script>
-<script src="lagesplan-gps.js?v=20261001123230"></script>
-<script src="lagesplan-touch.js?v=20261001123230"></script>
-<script src="lagesplan-keys.js?v=20261001123230"></script>
+<script src="lagesplan.js?v=20261001131649"></script>
+<script src="lagesplan-tools.js?v=20261001131649"></script>
+<script src="lagesplan-layers.js?v=20261001131649"></script>
+<script src="lagesplan-views.js?v=20261001131649"></script>
+<script src="lagesplan-film.js?v=20261001131649"></script>
+<script src="lagesplan-cad.js?v=20261001131649"></script>
+<script src="lagesplan-vecpdf.js?v=20261001131649"></script>
+<script src="lagesplan-print.js?v=20261001131649"></script>
+<script src="lagesplan-gps.js?v=20261001131649"></script>
+<script src="lagesplan-touch.js?v=20261001131649"></script>
+<script src="lagesplan-keys.js?v=20261001131649"></script>
 </body>
 </html>

@@ -1711,7 +1711,10 @@ function renderLayerPanel() {
     rowHtml["ul:" + l] = opts => layerRow("ul:" + l, `${n ? `<button class="cad-toggle ul-toggle" data-ul="${escHtml(l)}" title="Visa objekten i lagret">${open ? "▾" : "▸"}</button>` : ""}${name("ul:" + l, fixed ? "fx-name" : "ul-name", "🗂")} <small>${n}</small>`, { del: !fixed, ul: l, ...opts })
       + siteItemRowsHtml(l, { hidden: opts.hidden || !open, inFolder: opts.inFolder });
   });
-  rowHtml.photos = opts => layerRow("photos", name("photos", "fx-name", "📷"), { noOpacity: true, ...opts });
+  // Foton: fäll ut för att se, visa och ta bort fotona på planen (som Etablering).
+  const nPh = typeof photos === "function" ? photos().length : 0, phOpen = nPh > 0 && layerState["ulopen:__photos"] === true;
+  rowHtml.photos = opts => layerRow("photos", `${nPh ? `<button class="cad-toggle ul-toggle" data-ul="__photos" title="Visa fotona">${phOpen ? "▾" : "▸"}</button>` : ""}${name("photos", "fx-name", "📷")} <small>${nPh}</small>`, { noOpacity: true, ...opts })
+      + photoRowsHtml({ hidden: opts.hidden || !phOpen, inFolder: opts.inFolder });
   if (typeof cads === "function") cads().forEach(r => { rowHtml["cad:" + r.id] = opts => cadRowsHtml(r, opts); });
   const keys = layerRowKeys();
   const rows = [];
@@ -1830,6 +1833,7 @@ function renderLayerPanel() {
   if (typeof bindCadRows === "function") { bindCadRows(el); renderCadSettings(); }
   if (typeof bindCadAllRows === "function" && $("cadAllBox")) bindCadAllRows($("cadAllBox"));
   bindLayerSelection(el, keys);
+  if (itemSel.size) updateItemSelection();
   applyLayerSearch();
 }
 
@@ -1852,6 +1856,7 @@ function bindLayerSelection(el, keys) {
       // Kryssrutor, reglage och knappar sköter sig själva.
       if (e.target.closest("input, button, select, label")) return;
       layerListActive = true;
+      if (itemSel.size) itemSel.clear();
       const key = row.dataset.layer;
       if (e.shiftKey && layerSelAnchor) {
         const order = [...el.querySelectorAll(".layer-row[data-layer]")]
@@ -1965,7 +1970,7 @@ function siteItemRowsHtml(layer, opts = {}) {
   return list.map(x => {
     const icon = x.type === "symbol" ? (SYMBOLS[x.sym] || {}).icon || "🧩" : (SITE_KINDS[x.type] || {}).icon || "•";
     const when = typeof datesText === "function" ? datesText(x) : "";
-    return `<div class="layer-row sub site-item-row${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}${x.id === selectedSiteId ? " sel" : ""}" data-site-id="${escHtml(x.id)}">
+    return `<div class="layer-row sub site-item-row${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}${itemSel.has("s:" + x.id) ? " sel" : ""}" data-site-id="${escHtml(x.id)}" data-item="s:${escHtml(x.id)}">
       <span class="si-ico">${icon}</span>
       <span class="ln" title="${escHtml(siteItemLabel(x))} – klicka för att visa på planen">${escHtml(siteItemLabel(x))}${x.locked ? " 🔒" : ""}${when ? ` <small>${escHtml(when)}</small>` : ""}</span>
       <button class="si-del" title="Ta bort (Ctrl+Z ångrar)">🗑️</button>
@@ -1978,10 +1983,35 @@ function bindSiteItemRows(el) {
     const k = "ulopen:" + b.dataset.ul;
     layerState[k] = layerState[k] !== true; saveLayerState(); renderLayerPanel();
   });
+  // Objekt och foton: klick visar, Ctrl-klick lägger till/tar bort, Shift-klick markerar ett intervall.
+  const all = new Set([...el.querySelectorAll("[data-item]")].map(r => r.dataset.item));
+  [...itemSel].forEach(k => { if (!all.has(k)) itemSel.delete(k); });
+  el.querySelectorAll("[data-item]").forEach(row => row.addEventListener("click", e => {
+    if (e.target.closest("button, input")) return;
+    layerListActive = true;
+    const key = row.dataset.item;
+    if (layerSel.size) { layerSel.clear(); updateLayerSelection(); }
+    if (e.shiftKey && itemSelAnchor) {
+      const order = [...el.querySelectorAll("[data-item]")].filter(r => !r.classList.contains("hidden") && !r.classList.contains("filtered")).map(r => r.dataset.item);
+      let a = order.indexOf(itemSelAnchor), b = order.indexOf(key); if (a < 0) a = b;
+      if (!(e.ctrlKey || e.metaKey)) itemSel.clear();
+      order.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(k => itemSel.add(k));
+      e.preventDefault(); updateItemSelection(); return;
+    }
+    if (e.ctrlKey || e.metaKey) { if (itemSel.has(key)) itemSel.delete(key); else itemSel.add(key); itemSelAnchor = key; e.preventDefault(); updateItemSelection(); return; }
+    itemSel.clear(); itemSel.add(key); itemSelAnchor = key; updateItemSelection();
+    const id = key.slice(2);
+    if (key.startsWith("s:")) { const x = siteItems.find(i => i.id === id); if (x) showSiteItem(x); }
+    else { const ph = photos().find(p => p.id === id); if (ph) showPhotoItem(ph); }
+  }));
+  el.querySelectorAll("[data-item]").forEach(row => row.addEventListener("mousedown", e => { if (e.shiftKey) e.preventDefault(); }));
+  el.querySelectorAll(".photo-item-row .si-del").forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    deleteSelectedItems([b.closest("[data-item]").dataset.item]);
+  });
   el.querySelectorAll(".site-item-row").forEach(row => {
     const x = siteItems.find(i => i.id === row.dataset.siteId);
     if (!x) return;
-    row.querySelector(".ln").onclick = () => showSiteItem(x);
     row.querySelector(".si-del").onclick = async e => {
       e.stopPropagation();
       if (x.locked && !confirm(`"${siteItemLabel(x)}" är låst. Ta bort ändå?`)) return;
@@ -1991,6 +2021,73 @@ function bindSiteItemRows(el) {
     };
   });
 }
+function photoRowsHtml(opts = {}) {
+  const list = (typeof photos === "function" ? photos() : []).slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(a.caption || "").localeCompare(String(b.caption || ""), "sv"));
+  return list.map(ph => `<div class="layer-row sub site-item-row photo-item-row${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}${itemSel.has("p:" + ph.id) ? " sel" : ""}" data-item="p:${escHtml(ph.id)}">
+      <span class="si-ico">${ph.gps ? "📍" : "📷"}</span>
+      <span class="ln" title="Klicka för att visa fotot på planen">${escHtml(ph.caption || "Foto")} <small>${escHtml(ph.date || "")}${ph.by ? " · " + escHtml(ph.by) : ""}</small></span>
+      <button class="si-del" title="Ta bort fotot">🗑️</button>
+    </div>`).join("");
+}
+function showPhotoItem(ph) {
+  if (!viewport) return;
+  const [px, py] = toPx([ph.x, ph.y]), r = $("viewport").getBoundingClientRect();
+  view.tx = r.width / 2 - px * view.scale; view.ty = r.height / 2 - py * view.scale; applyView();
+  if (!$("showPhotos").checked) { $("showPhotos").checked = true; ls("photos").visible = true; saveLayerState(); renderZones(); }
+  if (typeof openPhoto === "function") openPhoto(ph);
+}
+
+/* Markerade objekt/foton i listan: raden högst upp (flytta till lager, ta bort). */
+const itemSel = new Set(); // "s:<id>" (objekt) / "p:<id>" (foto)
+let itemSelAnchor = null;
+function updateItemSelection() {
+  const el = $("layerList"), bar = $("layerSelBar");
+  if (!el || !bar) return;
+  el.querySelectorAll("[data-item]").forEach(r => r.classList.toggle("sel", itemSel.has(r.dataset.item)));
+  if (!itemSel.size) { if (!layerSel.size) { bar.classList.add("hidden"); bar.innerHTML = ""; } return; }
+  const keys = [...itemSel], nSite = keys.filter(k => k.startsWith("s:")).length;
+  bar.innerHTML = `<b>${keys.length} markerade</b>
+    ${nSite ? `<select data-a="layer" title="Flytta markerade objekt till ett annat lager"><option value="">Till lager…</option>${noteLayers().map(l => `<option value="${escHtml(l)}">🗂 ${escHtml(ulName(l))}</option>`).join("")}</select>` : ""}
+    <button type="button" data-a="del" class="danger" title="Ta bort markerade (Delete)">🗑️ Ta bort</button>
+    <button type="button" data-a="clear" class="ghost" title="Avmarkera (Esc)">✕</button>`;
+  bar.classList.remove("hidden");
+  bar.querySelector('[data-a="del"]').onclick = () => deleteSelectedItems(keys);
+  bar.querySelector('[data-a="clear"]').onclick = () => { itemSel.clear(); updateItemSelection(); };
+  const ls_ = bar.querySelector('[data-a="layer"]');
+  if (ls_) ls_.onchange = async () => {
+    if (!ls_.value) return;
+    const ids = new Set(keys.filter(k => k.startsWith("s:")).map(k => k.slice(2)));
+    const recs = siteItems.filter(x => ids.has(x.id)).map(x => ({ ...x, layer: ls_.value, updated_at: new Date().toISOString() }));
+    itemSel.clear();
+    await saveSiteItemsBatch(recs);
+    setSaveStatus(`${recs.length} objekt flyttade till "${ulName(ls_.value)}".`);
+  };
+}
+/* Ta bort objekt och/eller foton (keys "s:<id>"/"p:<id>"). Objekten kan
+   ångras med Ctrl+Z (ett i taget); fler än ett frågar först. */
+async function deleteSelectedItems(keys) {
+  const sIds = new Set(keys.filter(k => k.startsWith("s:")).map(k => k.slice(2)));
+  const pIds = new Set(keys.filter(k => k.startsWith("p:")).map(k => k.slice(2)));
+  const recs = siteItems.filter(x => sIds.has(x.id)), phs = (typeof photos === "function" ? photos() : []).filter(p => pIds.has(p.id));
+  const n = recs.length + phs.length;
+  if (!n) return;
+  const locked = recs.filter(x => x.locked).length;
+  if ((n > 1 || phs.length || locked) && !confirm(`Ta bort ${recs.length ? `${recs.length} objekt` : ""}${recs.length && phs.length ? " och " : ""}${phs.length ? `${phs.length} foto${phs.length > 1 ? "n" : ""}` : ""}?${locked ? ` (${locked} är låsta)` : ""}${phs.length ? "\nFotona går inte att ångra." : "\nObjekten kan ångras med Ctrl+Z."}`)) return;
+  itemSel.clear();
+  if (recs.length) {
+    if (recs.some(x => x.id === selectedSiteId)) { selectedSiteId = null; closeSitePop(); }
+    recs.forEach(x => siteUndo.push({ label: `Ta bort ${(SITE_KINDS[x.type] || {}).label || ""}`.trim(), before: JSON.parse(JSON.stringify(x)), after: null, id: x.id }));
+    siteRedo = []; lastUndoTarget = "site"; updateUndoButtons();
+    await saveSiteItemsBatch([], [...sIds]);
+  }
+  if (phs.length) {
+    plan.photos = photos().filter(p => !pIds.has(p.id));
+    renderZones(); schedulePlanSave(); renderLayerPanel();
+    phs.forEach(ph => ghDeleteBinary(token, ph.path, "Lägesplan: ta bort foto"));
+  }
+  setSaveStatus(`🗑️ ${n} borttagna${recs.length && !phs.length ? " – Ctrl+Z ångrar" : ""}.`);
+}
+
 /* Markera objektet och centrera planen på det (utan att ändra zoomen). */
 function showSiteItem(x) {
   if (!plan || !plan.calib || !viewport) return;
@@ -2225,9 +2322,9 @@ function bindLayers() {
   // Klick utanför lagerlistan: Delete/Esc gäller inte längre lagren.
   document.addEventListener("mousedown", e => { if (!e.target.closest || !e.target.closest("#layerList, #layerSelBar")) layerListActive = false; }, true);
   window.addEventListener("keydown", e => {
-    if (!layerListActive || !layerSel.size || (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) && e.target.type !== "checkbox" && e.target.type !== "range")) return;
-    if (e.key === "Delete") { e.preventDefault(); e.stopImmediatePropagation(); deleteSelectedLayers(); }
-    else if (e.key === "Escape") { e.stopImmediatePropagation(); layerSel.clear(); updateLayerSelection(); }
+    if (!layerListActive || !(layerSel.size || itemSel.size) || (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) && e.target.type !== "checkbox" && e.target.type !== "range")) return;
+    if (e.key === "Delete") { e.preventDefault(); e.stopImmediatePropagation(); if (itemSel.size) deleteSelectedItems([...itemSel]); else deleteSelectedLayers(); }
+    else if (e.key === "Escape") { e.stopImmediatePropagation(); layerSel.clear(); itemSel.clear(); updateLayerSelection(); updateItemSelection(); }
   }, true);
   window.addEventListener("keydown", e => {
     if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;

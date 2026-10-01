@@ -212,7 +212,7 @@ function renderFieldTools() {
       : `<span class="ft-hint">📷 Tryck på planen där fotot är taget.</span><button type="button" class="fl-btn" id="btnFieldToolDone">Avbryt</button>`;
     bar.classList.remove("hidden"); layoutField();
     const here = $("btnFieldPhotoHere"); if (here) here.onclick = () => savePhotoAtGps();
-    $("btnFieldToolDone").onclick = () => cancelPhotoPlacing();
+    $("btnFieldToolDone").onclick = () => { if (typeof photoQueue !== "undefined") photoQueue = []; cancelPhotoPlacing(); };
     return;
   }
   const hint = ($("siteHint") && $("siteHint").textContent || "").replace(/ Håll Shift.*$/, "").replace(/ Esc avbryter\.?/, "");

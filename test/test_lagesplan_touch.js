@@ -85,7 +85,20 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   await d.page.click('.site-item-row:has-text("Notering A") .si-del'); await d.page.waitForTimeout(400);
   if (await d.page.evaluate(() => siteItems.some(x => x.id === 'n1'))) fail('🗑 ska ta bort objektet');
   if (!(await d.page.isVisible('.site-item-row:has-text("Bod 1")'))) fail('Listan ska ligga kvar utfälld');
-  console.log('OK: Etablering fälls ut, objekten listas och tas bort direkt i listan');
+  // Flerval med Ctrl/Shift i lagret, Delete tar bort alla markerade (frågar först).
+  d.page.on('dialog', dl => dl.accept());
+  await d.page.evaluate(() => { siteItems.push({ id: 'b2', type: 'shed', layer: 'Etablering', cx: 9, cy: 5, w: 3, h: 6, rot: 0, name: 'Bod 2' }, { id: 'k1', type: 'crane', layer: 'Etablering', pts: [[3, 3]], radius: 20, name: 'Kran 1' }); renderLayerPanel(); });
+  await d.page.locator('.site-item-row', { hasText: 'Bod 1' }).locator('.ln').click(); await d.page.evaluate(() => closeSitePop());
+  await d.page.locator('.site-item-row', { hasText: 'Kran 1' }).locator('.ln').click({ modifiers: ['Shift'] });
+  // (Frihandsstrecket från tidigare i testet ligger mellan Bod och Kran i listan.)
+  const shiftSel = await d.page.evaluate(() => [...itemSel].map(k => siteItems.find(x => 's:' + x.id === k)).map(x => x.type === 'sketch' ? 'frihand' : x.id).sort().join(','));
+  if (shiftSel !== 'b1,b2,frihand,k1') fail('Shift-klick ska markera intervallet, fick ' + shiftSel);
+  await d.page.locator('.site-item-row', { hasText: 'Bod 2' }).locator('.ln').click({ modifiers: ['Control'] });
+  if (!(await d.page.innerText('#layerSelBar')).includes('3 markerade')) fail('Raden ska visa 3 markerade');
+  await d.page.keyboard.press('Delete'); await d.page.waitForTimeout(300);
+  const left = await d.page.evaluate(() => siteItems.filter(x => x.layer === 'Etablering' && x.type !== 'sketch').map(x => x.id).sort().join(','));
+  if (left !== 'b2' || (await d.page.evaluate(() => siteItems.some(x => x.type === 'sketch')))) fail('Delete ska ta bort de markerade (Bod 1, frihand, Kran 1), kvar: ' + left);
+  console.log('OK: Etablering fälls ut, flerval med Ctrl/Shift, ta bort direkt i listan');
   await desk.close();
 
   // 2) iPad: fältläge från början.
