@@ -1211,6 +1211,8 @@ function stagePoint(e) {
   return [(e.clientX - r.left - view.tx) / view.scale, (e.clientY - r.top - view.ty) / view.scale];
 }
 function zoneAt(pdfPt) {
+  // Släckt zonlager: zonerna reagerar inte på hovring eller klick.
+  if (typeof layerVisible === "function" && !layerVisible("zones")) return null;
   const zones = (plan && plan.zones) || [];
   for (let i = zones.length - 1; i >= 0; i--) if ((zones[i].polys || []).some(p => pointInPoly(pdfPt, p))) return zones[i];
   // Etikett-zoner utan yta: nära etiketten
