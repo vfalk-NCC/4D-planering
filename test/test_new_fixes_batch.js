@@ -233,8 +233,9 @@ async function run() {
   if (!filterMsgAfterApply.includes('Visar')) throw new Error('Oväntat filterMsg efter "Visa filtrerat": ' + filterMsgAfterApply);
   console.log('OK: "Visa filtrerat" använder Trimbles isolateEntities ("Visa endast valda objekt") istället för att själv dölja allt');
 
-  const filterPanelCollapsedBefore = await page.locator('.panel[data-panel-id="filter"]').evaluate(el => el.classList.contains('collapsed'));
-  if (filterPanelCollapsedBefore) throw new Error('Filter-panelen var oväntat redan hopfälld innan testet av "Visa alla kopplade objekt"');
+  // Filtren ligger hopfällbara ovanför listan (2026-10-01) – de ska vara utfällda nu.
+  const filterBoxHiddenBefore = await page.locator('#listFilterBox').evaluate(el => el.classList.contains('hidden'));
+  if (filterBoxHiddenBefore) throw new Error('Filtren var oväntat hopfällda innan testet av "Visa alla kopplade objekt"');
 
   await page.evaluate(() => { window.__calls.length = 0; });
   await page.locator('#btnShowAllCoupled').click();
@@ -250,8 +251,8 @@ async function run() {
   }
   const filterMsgAfterShowAll = await page.locator('#filterMsg').innerText();
   if (!filterMsgAfterShowAll.includes('4')) throw new Error('Oväntat filterMsg efter "Visa alla kopplade objekt": ' + filterMsgAfterShowAll);
-  const filterPanelCollapsedAfter = await page.locator('.panel[data-panel-id="filter"]').evaluate(el => el.classList.contains('collapsed'));
-  if (filterPanelCollapsedAfter) throw new Error('"Visa alla kopplade objekt" fällde felaktigt ihop Filter-panelen (klicket bubblade till panelens header)');
+  const filterBoxHiddenAfter = await page.locator('#listFilterBox').evaluate(el => el.classList.contains('hidden'));
+  if (filterBoxHiddenAfter) throw new Error('"Visa alla kopplade objekt" fällde felaktigt ihop filtren');
   console.log('OK: "Visa alla kopplade objekt" isolerar till SAMTLIGA kopplade objekt (oavsett filter) utan att fälla ihop Filter-panelen');
 
   await browser.close();

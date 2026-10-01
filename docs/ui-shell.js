@@ -1,5 +1,8 @@
 /* 4D-planering – UI-skal (UI-översynen 2026-09-30).
    - Flikar: Planera / Tidslinje / Import & verktyg (panelernas data-tab).
+   - Filtren ligger hopfällda ovanför listan ("Filter ▾"), Gruppera/Sortera
+     alltid synliga (Victors önskemål 2026-10-01: filtret i en egen flik
+     gjorde att man inte såg resultatet medan man filtrerade).
    - Tidslinjen (▶, datum, reglage) ligger alltid synlig längst ner.
    - Listans verktygsrad: sök + "Filter ▾" (gruppera, sortera, visa, område/
      aktivitet/entreprenör/status som klickbara etiketter) + "⋯"-meny.
@@ -95,7 +98,7 @@ function activeFilterList() {
   const chk = (id, label) => { const el = document.getElementById(id); if (el && el.checked) out.push({ label, clear: () => { el.checked = false; } }); };
   chk("hideCompleted", "Dölj klara"); chk("showOnlyCompleted", "Endast klara");
   chk("todayOnly", "Endast idag"); chk("uncoupledOnly", "Endast ej kopplade");
-  ["filterArea", "filterActivity", "filterContractor", "filterStatus"].forEach(id => {
+  ["filterArea", "filterActivity", "filterType", "filterContractor", "filterStatus"].forEach(id => {
     const sel = document.getElementById(id);
     [...sel.selectedOptions].forEach(o => out.push({ label: o.text, clear: () => { o.selected = false; renderChipSelects(); } }));
   });
@@ -117,6 +120,17 @@ function renderActiveFilterChips() {
   if (all) all.onclick = () => document.getElementById("btnClearFilter").click();
 }
 
+/* ---------- filtren ovanför listan ---------- */
+const FILTER_OPEN_KEY = "4dplan-filter-open";
+function setFilterBoxOpen(open) {
+  const box = document.getElementById("listFilterBox"), btn = document.getElementById("btnListFilter");
+  if (!box) return;
+  box.classList.toggle("hidden", !open);
+  btn.classList.toggle("active", open);
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+  try { localStorage.setItem(FILTER_OPEN_KEY, open ? "1" : "0"); } catch (e) {}
+}
+
 /* ---------- åtgärdsrad för markerade rader ---------- */
 function updateSelectionBar() {
   const bar = document.getElementById("selectionBar");
@@ -132,6 +146,8 @@ function revealElement(el) {
     panel.classList.remove("collapsed");
     if (typeof collapsedPanels !== "undefined") { collapsedPanels.delete(panel.dataset.panelId); saveCollapsedPanels(); }
   }
+  const fbox = el.closest("#listFilterBox");
+  if (fbox && fbox.classList.contains("hidden")) setFilterBoxOpen(true);
   const menu = el.closest("#listMenu");
   if (menu && menu.classList.contains("hidden")) { closeMenus(menu.id); menu.classList.remove("hidden"); closeMenus(menu.id); }
   const rowMenu = el.closest(".row-menu");
@@ -162,8 +178,10 @@ function initUiShell() {
   document.querySelectorAll("#mainTabs button").forEach(b => { b.onclick = () => showTab(b.dataset.tab); });
   showTab(currentTab());
 
-  // Filter-knappen i listan tar en till fliken Filter & Tidslinje.
-  document.getElementById("btnListFilter").onclick = (ev) => { ev.stopPropagation(); showTab("time"); };
+  // Filter-knappen fäller ut/ihop filtren ovanför listan (valet sparas).
+  document.getElementById("btnListFilter").onclick = (ev) => { ev.stopPropagation(); setFilterBoxOpen(document.getElementById("listFilterBox").classList.contains("hidden")); };
+  let fOpen = false; try { fOpen = localStorage.getItem(FILTER_OPEN_KEY) === "1"; } catch (e) {}
+  setFilterBoxOpen(fOpen);
   const menu = document.getElementById("listMenu");
   document.getElementById("btnListMenu").onclick = (ev) => {
     ev.stopPropagation();

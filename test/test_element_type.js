@@ -100,6 +100,20 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   await page.fill('#itemSearch', ''); await page.waitForTimeout(200);
   console.log('OK: sökning hittar typen');
 
+  // Filter på Typ (filtren ovanför listan).
+  await page.selectOption('#groupBy', '');
+  await page.click('#btnListFilter');
+  await page.click('#filterTypeChips .ms-btn');
+  await page.check('#filterTypeChips input[data-value="Kontrefor"]'); await page.waitForTimeout(200);
+  o = await order();
+  if (o !== 'E14') fail('Filter på Typ Kontrefor, fick ' + o);
+  if (!(await page.innerText('#activeFilterChips')).includes('Kontrefor')) fail('Typ-filtret ska synas som aktiv etikett');
+  await page.mouse.click(5, 5);
+  await page.screenshot({ path: process.env.SHOT || '/tmp/typfilter.png', clip: { x: 0, y: 0, width: 520, height: 700 } });
+  await page.click('#activeFilterChips .active-chip button'); await page.waitForTimeout(200);
+  if ((await order()).split('|').length !== 4) fail('✕ på etiketten ska ta bort Typ-filtret');
+  console.log('OK: filter på Typ');
+
   // Redigera: Typ finns under Namn och sparas.
   await page.evaluate(() => editItemFromList(items.find(i => i.id === 'd')));
   await page.waitForTimeout(300);

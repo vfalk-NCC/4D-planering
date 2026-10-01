@@ -570,7 +570,7 @@ function bindUI() {
   // Markera (utan att isolera/dölja) matchande objekt direkt när ett
   // filteralternativ ändras, så man ser dem i 3D-vyn innan man ev. klickar
   // "Visa filtrerat" eller isolerar/döljer manuellt i Trimble Connect.
-  ["filterArea", "filterActivity", "filterContractor", "filterStatus"].forEach(id => {
+  ["filterArea", "filterActivity", "filterType", "filterContractor", "filterStatus"].forEach(id => {
     document.getElementById(id).onchange = () => { renderItemList(); selectFilteredInModelOnChange(); };
   });
   document.getElementById("filterWeeks").onchange = () => renderItemList();
@@ -1010,7 +1010,7 @@ function showHiddenMatchNotice(hiddenItems) {
     document.getElementById("showOnlyCompleted").checked = false;
     document.getElementById("todayOnly").checked = false;
     document.getElementById("uncoupledOnly").checked = false;
-    ["filterArea", "filterActivity", "filterContractor", "filterStatus"].forEach(id => [...document.getElementById(id).options].forEach(o => { o.selected = false; }));
+    ["filterArea", "filterActivity", "filterType", "filterContractor", "filterStatus"].forEach(id => [...document.getElementById(id).options].forEach(o => { o.selected = false; }));
     document.getElementById("filterWeeks").value = "";
     if (typeof renderChipSelects === "function") renderChipSelects();
     jumpToItemsInList(new Set(selectedItemKeys));
@@ -1060,6 +1060,13 @@ function armCoupleMode(item) {
   pendingCoupleItem = item;
   coupleCollected = [];
   renderCoupleMode();
+  // Börja med en tom markering: det som var markerat innan (t.ex. objektet
+  // man nyss sparade på en annan aktivitet) ska inte följa med in i listan
+  // (Victors rapport 2026-10-01: "kopplar man raskt vidare hoppar och
+  // buggar det" – samma redan kopplade objekt hamnade många gånger i listan).
+  // Ingen spärr behövs: en tom markering ändrar ingenting i listan, och ett
+  // snabbt klick direkt efteråt ska räknas.
+  if (API && API.viewer) API.viewer.setSelection({ modelObjectIds: [] }, "set").catch(() => {});
 }
 
 function cancelCoupleMode() {
@@ -1149,8 +1156,22 @@ async function removeCoupleObject(index) {
  * Ctrl ersätter ju markeringen) markeras hela listan igen, så att allt
  * valt syns i modellen.
  */
+/* Markeringshändelser hanteras EN i taget: kom flera tätt (klick, appens
+   egen ommarkering) hann alla konstatera "inte i listan" innan någon lagt
+   till objektet, och samma objekt hamnade i listan många gånger. Kommer en
+   händelse medan en annan hanteras görs EN omkörning efteråt (den läser
+   ändå den senaste markeringen). */
+let coupleSelBusy = false, coupleSelAgain = false;
 async function handleCoupleModeSelection() {
   if (!pendingCoupleItem || coupleSyncingSelection) return;
+  if (coupleSelBusy) { coupleSelAgain = true; return; }
+  coupleSelBusy = true;
+  try {
+    do { coupleSelAgain = false; await handleCoupleModeSelectionNow(); } while (coupleSelAgain && pendingCoupleItem);
+  } finally { coupleSelBusy = false; }
+}
+async function handleCoupleModeSelectionNow() {
+  if (!pendingCoupleItem) return;
   try {
     const sel = await API.viewer.getSelection();
     const selectedKeys = new Set();
@@ -1178,14 +1199,17 @@ async function handleCoupleModeSelection() {
         });
       } catch (e) { /* namnen är bara för visning */ }
       if (!pendingCoupleItem) return;
-      coupleCollected.push(...fresh);
+      // Kontrollera dubbletter igen precis innan (listan kan ha ändrats under väntan).
+      coupleCollected.push(...fresh.filter(o => !coupleCollected.some(c => c.modelId === o.modelId && String(c.objectId) === String(o.objectId))));
     }
     renderCoupleMode();
 
-    const missing = coupleCollected.filter(o => !selectedKeys.has(`${o.modelId}::${o.objectId}`) && o.runtimeId !== undefined);
+    // Objekt som ändå hoppas över (kopplade till en annan aktivitet) markeras inte om.
+    const keep = coupleCollected.filter(o => !coupleBlocked(o) && o.runtimeId !== undefined);
+    const missing = keep.filter(o => !selectedKeys.has(`${o.modelId}::${o.objectId}`));
     if (missing.length > 0 && selectedKeys.size > 0) {
       const byModel = {};
-      coupleCollected.forEach(o => { (byModel[o.modelId] = byModel[o.modelId] || []).push(o.runtimeId); });
+      keep.forEach(o => { (byModel[o.modelId] = byModel[o.modelId] || []).push(o.runtimeId); });
       coupleSyncingSelection = true;
       try {
         await API.viewer.setSelection({ modelObjectIds: Object.keys(byModel).map(modelId => ({ modelId, objectRuntimeIds: byModel[modelId] })) }, "set");
@@ -2872,6 +2896,7 @@ function buildFilterOptions() {
 
   fillMultiSelect("filterArea", formOptions.area);
   fillMultiSelect("filterActivity", formOptions.activity);
+  fillMultiSelect("filterType", formOptions.elementType);
   fillMultiSelect("filterContractor", formOptions.contractor);
 
   // Status är en fast lista i appen, så den fylls alltid i - oavsett
@@ -3093,14 +3118,16 @@ async function selectFilteredInModelOnChange() {
   const activities = getSelectedValues("filterActivity");
   const contractors = getSelectedValues("filterContractor");
   const statuses = getSelectedValues("filterStatus");
+  const types = getSelectedValues("filterType");
 
-  if (!areas.length && !activities.length && !contractors.length && !statuses.length) return;
+  if (!areas.length && !activities.length && !contractors.length && !statuses.length && !types.length) return;
 
   const matched = items.filter(it => {
     if (areas.length && !areas.includes(it.area)) return false;
     if (activities.length && !activities.includes(it.activity)) return false;
     if (contractors.length && !contractors.includes(it.contractor)) return false;
     if (statuses.length && !statuses.includes(it.status)) return false;
+    if (types.length && !types.includes(it.elementType)) return false;
     return true;
   });
 
@@ -3128,7 +3155,7 @@ async function selectFilteredInModelOnChange() {
 }
 
 async function clearFilter() {
-  ["filterArea", "filterActivity", "filterContractor", "filterStatus"].forEach(id => {
+  ["filterArea", "filterActivity", "filterType", "filterContractor", "filterStatus"].forEach(id => {
     Array.from(document.getElementById(id).options).forEach(o => o.selected = false);
   });
   document.getElementById("filterWeeks").value = "";
@@ -3852,7 +3879,7 @@ function coupledActivityKeys() {
 function currentListFilters() {
   const weeks = document.getElementById("filterWeeks").value;
   return {
-    areas: getSelectedValues("filterArea"), activities: getSelectedValues("filterActivity"),
+    areas: getSelectedValues("filterArea"), activities: getSelectedValues("filterActivity"), types: getSelectedValues("filterType"),
     contractors: getSelectedValues("filterContractor"), statuses: getSelectedValues("filterStatus"),
     weekLimit: weeks ? new Date(Date.now() + Number(weeks) * 7 * 86400000) : null
   };
@@ -3860,6 +3887,7 @@ function currentListFilters() {
 function matchesListFilters(it, f) {
   if (f.areas.length && !f.areas.includes(it.area)) return false;
   if (f.activities.length && !f.activities.includes(it.activity)) return false;
+  if (f.types && f.types.length && !f.types.includes(it.elementType)) return false;
   if (f.contractors.length && !f.contractors.includes(it.contractor)) return false;
   if (f.statuses.length && !f.statuses.includes(it.status)) return false;
   if (f.weekLimit && it.startDate && new Date(it.startDate) > f.weekLimit) return false;

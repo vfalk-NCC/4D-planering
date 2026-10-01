@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261001094426" />
+<link rel="stylesheet" href="style.css?v=20261001101515" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261001094426"></script>
+<script src="plan-excel-parser.js?v=20261001101515"></script>
 </head>
 <body>
 
@@ -44,7 +44,7 @@
     </header>
     <nav id="mainTabs" class="main-tabs">
       <button type="button" data-tab="plan" class="active">Planera</button>
-      <button type="button" data-tab="time">Filter &amp; Tidslinje</button>
+      <button type="button" data-tab="time">Tidslinje</button>
       <button type="button" data-tab="tools">Import & verktyg</button>
     </nav>
     <div id="connectionWarning" class="hint warning hidden"></div>
@@ -66,7 +66,7 @@
       <div id="itemsTruncatedWarning" class="hint warning hidden"></div>
       <div class="list-toolbar">
         <input type="text" id="itemSearch" placeholder="Sök namn, område, aktivitet…" />
-        <button type="button" id="btnListFilter" class="toolbar-btn" title="Filtrera, gruppera och sortera – öppnar fliken Filter &amp; Tidslinje">Filter<span id="filterCountBadge" class="count-badge hidden"></span></button>
+        <button type="button" id="btnListFilter" class="toolbar-btn" title="Visa/dölj filtren (område, aktivitet, typ, entreprenör, status …)">Filter ▾<span id="filterCountBadge" class="count-badge hidden"></span></button>
         <div class="menu-wrap">
           <button type="button" id="btnListMenu" class="toolbar-btn" title="Fler åtgärder">⋯</button>
           <div id="listMenu" class="dropdown-menu hidden">
@@ -82,6 +82,72 @@
             <label class="menu-check" title="Visar de manuella markeringarna (linjer, ytor, volymer och frihand) i 3D, i aktivitetens statusfärg"><input type="checkbox" id="showManualMarks" checked /> Visa manuella markeringar i 3D</label>
           </div>
         </div>
+      </div>
+      <div class="list-sortbar">
+        <label title="Gruppera listan">Gruppera <select id="groupBy">
+            <option value="">Ingen gruppering</option>
+            <option value="area" selected>Område</option>
+            <option value="elementType">Typ</option>
+            <option value="activity">Aktivitet</option>
+            <option value="contractor">Entreprenör</option>
+            <option value="status">Status</option>
+          </select></label>
+        <label title="Sorteringen sker inom varje grupp. Aktiviteter med flera objekt placeras efter sitt tidigaste startdatum.">Sortera <select id="sortBy">
+            <option value="alpha" selected>A-Ö</option>
+            <option value="start">Startdatum</option>
+            <option value="type">Typ</option>
+            <option value="">Ingen sortering</option>
+          </select></label>
+      </div>
+      <div id="listFilterBox" class="filter-box hidden">
+        <div class="filter-grid">
+          <div class="filter-cell">
+            <span class="filter-label">Område</span>
+            <select id="filterArea" multiple class="chip-source"></select>
+            <div id="filterAreaChips" class="ms" data-for="filterArea" data-label="Område"></div>
+          </div>
+          <div class="filter-cell">
+            <span class="filter-label">Aktivitet</span>
+            <select id="filterActivity" multiple class="chip-source"></select>
+            <div id="filterActivityChips" class="ms" data-for="filterActivity" data-label="Aktivitet"></div>
+          </div>
+          <div class="filter-cell">
+            <span class="filter-label">Typ</span>
+            <select id="filterType" multiple class="chip-source"></select>
+            <div id="filterTypeChips" class="ms" data-for="filterType" data-label="Typ"></div>
+          </div>
+          <div class="filter-cell">
+            <span class="filter-label">Entreprenör</span>
+            <select id="filterContractor" multiple class="chip-source"></select>
+            <div id="filterContractorChips" class="ms" data-for="filterContractor" data-label="Entreprenör"></div>
+          </div>
+          <div class="filter-cell">
+            <span class="filter-label">Status</span>
+            <select id="filterStatus" multiple class="chip-source"></select>
+            <div id="filterStatusChips" class="ms" data-for="filterStatus" data-label="Status"></div>
+          </div>
+          <div class="filter-cell">
+            <span class="filter-label">Startar inom</span>
+            <select id="filterWeeks">
+          <option value="">Visa allt</option>
+          <option value="1">Nästa vecka</option>
+          <option value="2">Nästa 2 veckor</option>
+          <option value="4">Nästa 4 veckor</option>
+        </select>
+          </div>
+        </div>
+        <div class="check-row">
+          <label class="switch"><input type="checkbox" id="hideCompleted" /> Dölj klara</label>
+          <label class="switch"><input type="checkbox" id="showOnlyCompleted" /> Endast klara</label>
+          <label class="switch" title="Visar bara det som pågår idag"><input type="checkbox" id="todayOnly" /> Endast idag</label>
+          <label class="switch" title="Visar bara aktiviteter utan 3D-objekt och utan manuell markering"><input type="checkbox" id="uncoupledOnly" /> Endast ej kopplade</label>
+        </div>
+        <div class="row filter-actions">
+          <button id="btnApplyFilter" class="primary" title="Visar bara de filtrerade objekten i 3D-vyn">Visa filtrerat i 3D</button>
+          <button id="btnShowAllCoupled" title="Visa ALLA objekt som har en planeringskoppling i 3D-vyn, oavsett filter">Visa alla kopplade</button>
+          <button id="btnClearFilter">Rensa filter</button>
+        </div>
+        <div id="filterMsg" class="hint"></div>
       </div>
       <div id="activeFilterChips" class="active-chips"></div>
       <!-- Visas när "Koppla till markering" klickats på en ej kopplad rad (se
@@ -110,76 +176,6 @@
     </section>
 
     <!-- ===== Tidslinje ===== -->
-    <!-- ===== Filter (flik 2: Filter & Tidslinje) ===== -->
-    <section class="panel" data-panel-id="filter" data-tab="time">
-      <h2>Filter</h2>
-      <div id="listFilterBox" class="filter-box">
-        <div class="filter-grid">
-          <div class="filter-cell">
-            <span class="filter-label">Område</span>
-            <select id="filterArea" multiple class="chip-source"></select>
-            <div id="filterAreaChips" class="ms" data-for="filterArea" data-label="Område"></div>
-          </div>
-          <div class="filter-cell">
-            <span class="filter-label">Aktivitet</span>
-            <select id="filterActivity" multiple class="chip-source"></select>
-            <div id="filterActivityChips" class="ms" data-for="filterActivity" data-label="Aktivitet"></div>
-          </div>
-          <div class="filter-cell">
-            <span class="filter-label">Entreprenör</span>
-            <select id="filterContractor" multiple class="chip-source"></select>
-            <div id="filterContractorChips" class="ms" data-for="filterContractor" data-label="Entreprenör"></div>
-          </div>
-          <div class="filter-cell">
-            <span class="filter-label">Status</span>
-            <select id="filterStatus" multiple class="chip-source"></select>
-            <div id="filterStatusChips" class="ms" data-for="filterStatus" data-label="Status"></div>
-          </div>
-          <div class="filter-cell">
-            <span class="filter-label">Startar inom</span>
-            <select id="filterWeeks">
-          <option value="">Visa allt</option>
-          <option value="1">Nästa vecka</option>
-          <option value="2">Nästa 2 veckor</option>
-          <option value="4">Nästa 4 veckor</option>
-        </select>
-          </div>
-          <div class="filter-cell">
-            <span class="filter-label">Gruppera</span>
-            <select id="groupBy">
-            <option value="">Ingen gruppering</option>
-            <option value="area" selected>Område</option>
-            <option value="elementType">Typ</option>
-            <option value="activity">Aktivitet</option>
-            <option value="contractor">Entreprenör</option>
-            <option value="status">Status</option>
-          </select>
-          </div>
-          <div class="filter-cell" title="Sorteringen sker inom varje grupp. Aktiviteter med flera objekt placeras efter sitt tidigaste startdatum.">
-            <span class="filter-label">Sortera</span>
-            <select id="sortBy">
-            <option value="alpha" selected>A-Ö</option>
-            <option value="start">Startdatum</option>
-            <option value="type">Typ</option>
-            <option value="">Ingen sortering</option>
-          </select>
-          </div>
-        </div>
-        <div class="check-row">
-          <label class="switch"><input type="checkbox" id="hideCompleted" /> Dölj klara</label>
-          <label class="switch"><input type="checkbox" id="showOnlyCompleted" /> Endast klara</label>
-          <label class="switch" title="Visar bara det som pågår idag"><input type="checkbox" id="todayOnly" /> Endast idag</label>
-          <label class="switch" title="Visar bara aktiviteter utan 3D-objekt och utan manuell markering"><input type="checkbox" id="uncoupledOnly" /> Endast ej kopplade</label>
-        </div>
-        <div class="row filter-actions">
-          <button id="btnApplyFilter" class="primary" title="Visar bara de filtrerade objekten i 3D-vyn">Visa filtrerat i 3D</button>
-          <button id="btnShowAllCoupled" title="Visa ALLA objekt som har en planeringskoppling i 3D-vyn, oavsett filter">Visa alla kopplade</button>
-          <button id="btnClearFilter">Rensa filter</button>
-        </div>
-        <div id="filterMsg" class="hint"></div>
-      </div>
-    </section>
-
     <section class="panel" data-panel-id="timeline" data-tab="time">
       <h2>Tidslinje</h2>
       <p class="hint">Datum och uppspelning finns alltid längst ner. Här ställer du in intervall och färger.</p>
@@ -561,13 +557,13 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261001094426"></script>
-  <script src="app.js?v=20261001094426"></script>
-  <script src="manual-markings.js?v=20261001094426"></script>
-  <script src="sub-activity-list.js?v=20261001094426"></script>
-  <script src="activity-remove.js?v=20261001094426"></script>
-  <script src="ui-shell.js?v=20261001094426"></script>
-  <script src="undo.js?v=20261001094426"></script>
-  <script src="planning-keys.js?v=20261001094426"></script>
+  <script src="github-storage.js?v=20261001101515"></script>
+  <script src="app.js?v=20261001101515"></script>
+  <script src="manual-markings.js?v=20261001101515"></script>
+  <script src="sub-activity-list.js?v=20261001101515"></script>
+  <script src="activity-remove.js?v=20261001101515"></script>
+  <script src="ui-shell.js?v=20261001101515"></script>
+  <script src="undo.js?v=20261001101515"></script>
+  <script src="planning-keys.js?v=20261001101515"></script>
 </body>
 </html>

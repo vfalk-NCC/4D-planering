@@ -84,10 +84,14 @@ put('plan_markups.json', []);
   await page.reload({ waitUntil: 'networkidle' }); await page.waitForTimeout(400);
   if (!(await page.isVisible('section[data-panel-id="excel"]'))) fail('fliken ska kommas ihåg');
   await page.click('#mainTabs [data-tab="plan"]');
-  // Filtret ligger på flik 2 och Filter-knappen tar en dit
+  // Filtren ligger hopfällda ovanför listan på Planera; Gruppera/Sortera alltid synliga
+  if (await page.isVisible('#listFilterBox')) fail('filtren ska vara hopfällda från början');
+  if (!(await page.isVisible('#groupBy')) || !(await page.isVisible('#sortBy'))) fail('Gruppera/Sortera ska alltid synas ovanför listan');
   await page.click('#btnListFilter'); await page.waitForTimeout(100);
-  if (!(await page.isVisible('#listFilterBox')) || !(await page.isVisible('section[data-panel-id="timeline"]')) || await page.isVisible('#itemList')) fail('Filter ska öppna fliken Filter & Tidslinje');
-  if (!(await page.innerText('#mainTabs [data-tab="time"]')).includes('Filter & Tidslinje')) fail('flik 2 ska heta Filter & Tidslinje');
+  if (!(await page.isVisible('#listFilterBox')) || !(await page.isVisible('#itemList')) || !(await page.isVisible('#filterTypeChips'))) fail('Filter ▾ ska fälla ut filtren (med Typ) ovanför listan, på samma flik');
+  await page.click('#btnListFilter'); await page.waitForTimeout(100);
+  if (await page.isVisible('#listFilterBox')) fail('Filter ▾ igen ska fälla ihop filtren');
+  if ((await page.innerText('#mainTabs [data-tab="time"]')).trim() !== 'Tidslinje') fail('flik 2 ska heta Tidslinje');
   // Varje flik minns sin scrollposition
   await page.setViewportSize({ width: 420, height: 400 });
   await page.click('#mainTabs [data-tab="plan"]');
