@@ -255,7 +255,7 @@ async function refreshAllData() {
   btn.disabled = true;
   btn.classList.add("spinning");
   try {
-    await refreshItems();
+    await refreshItems({ fresh: true }); // ↻: alltid från GitHub (kollegors ändringar)
     await refreshCommentCounts();
     await refreshActivities();
     if (typeof loadManualMarks === "function") await loadManualMarks();
@@ -4926,14 +4926,14 @@ function fromRow(row) {
   };
 }
 
-async function refreshItems() {
+async function refreshItems(opts = {}) {
   if (!isBackendConfigured()) {
     items = [];
     itemsTotalCount = null;
     return;
   }
   try {
-    const rows = await ghReadJSON(settings.githubToken, itemsPath());
+    const rows = await ghReadJSON(settings.githubToken, itemsPath(), opts);
     items = rows.map(fromRow);
     itemsTotalCount = items.length;
     // Lyckad hämtning: ta bort en ev. kvarliggande varning från ett tidigare
@@ -5047,7 +5047,10 @@ async function saveItems(records) {
     throw new Error("Ingen databas ansluten. Ange GitHub-token i inställningarna.");
   }
   const path = itemsPath();
-  const { data, sha } = await ghGetFile(settings.githubToken, path);
+  // Senast kända version (vår egen senaste sparning) – ingen extra nedladdning
+  // av hela filen per sparning. Har någon annan sparat emellan läses filen om
+  // vid skrivkrocken (409) och ändringen läggs ovanpå.
+  const { data, sha } = await ghGetFileKnown(settings.githubToken, path);
   const before = Array.isArray(data) ? data : [];
   const beforeByKey = new Map(before.map(r => [`${r.project_id}::${r.object_id}`, r]));
   const incoming = records.map(toRow).map(row => {
@@ -5067,7 +5070,9 @@ async function saveItems(records) {
         let next = arr.slice();
         incoming.forEach(row => {
           const idx = next.findIndex(r => r.project_id === row.project_id && r.object_id === row.object_id);
-          if (idx >= 0) next[idx] = row; else next.push(row);
+          // Mot filens aktuella rad (kan ha ändrats av någon annan sedan "before").
+          if (idx >= 0) { const cur = next[idx]; next[idx] = { ...cur, ...row, id: cur.id, source_key: row.source_key || cur.source_key || null, group_id: row.group_id || cur.group_id || null }; }
+          else next.push(row);
         });
         return next;
       },

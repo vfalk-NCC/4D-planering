@@ -68,7 +68,16 @@ function ghContentsUrl(path) {
 // att först läsa om filen från GitHub (halverar antalet anrop per sparning).
 // Har någon annan skrivit emellan svarar GitHub 409 och filen läses om på
 // riktigt, precis som vid en vanlig skrivkrock.
-const ghFileCache = new Map(); // path -> { data, sha }
+const ghFileCache = new Map(); // path -> { data, sha, own?, at? }
+// Läs-efter-skrivning (Victors rapport 2026-10-01: "måste vänta ~10 s efter
+// en sparning innan nästa koppling fungerar"): GitHubs Contents API kan i
+// några sekunder efter en skrivning fortfarande lämna ut den GAMLA versionen.
+// En sådan läsning fick ersätta vår egen nyss skrivna version i cachen, och
+// nästa sparning krockade (409) om och om igen tills omförsöken (~10 s) tog
+// slut. Närmast efter en egen skrivning litar vi därför på vår egen version.
+// Har någon annan skrivit emellan blir det en vanlig skrivkrock (409), och
+// då läses filen om på riktigt (fresh).
+const GH_OWN_WRITE_TRUST_MS = 30000;
 
 /** Hämtar en fils metadata + innehåll (avkodat som text). null om filen inte finns. */
 /* fetch med två nya försök vid rena nätverksfel ("Failed to fetch" - t.ex.
@@ -84,7 +93,9 @@ async function ghFetchRetry(url, opts) {
   }
 }
 
-async function ghGetFile(token, path) {
+async function ghGetFile(token, path, opts = {}) {
+  const own = ghFileCache.get(path);
+  if (!opts.fresh && own && own.own && Date.now() - own.at < GH_OWN_WRITE_TRUST_MS) return { data: own.data, sha: own.sha };
   // cache: "no-store" - GitHub svarar med Cache-Control: max-age=60, så
   // utan den här flaggan kan webbläsaren ge tillbaka en upp till en minut
   // GAMMAL version av filen (med gammal sha) direkt efter en egen
@@ -118,8 +129,16 @@ async function ghGetFile(token, path) {
     text = await raw.text();
   }
   const result = { data: text.trim() ? JSON.parse(text) : null, sha: json.sha };
-  ghFileCache.set(path, result);
+  // En läsning som kan vara inaktuell får inte ersätta vår egen färska skrivning.
+  const cur = ghFileCache.get(path);
+  if (opts.fresh || !(cur && cur.own && Date.now() - cur.at < GH_OWN_WRITE_TRUST_MS)) ghFileCache.set(path, result);
   return result;
+}
+/* Senast kända version (vår egen senaste skrivning/läsning) utan nätverk om
+   den finns – för sparningar som ändå läser om vid skrivkrock. */
+async function ghGetFileKnown(token, path) {
+  const c = ghFileCache.get(path);
+  return c ? { data: c.data, sha: c.sha } : ghGetFile(token, path);
 }
 
 /** Bara metadata (sha) - används för bilagor där vi inte vill JSON-avkoda innehållet. */
@@ -204,8 +223,8 @@ async function ghPutFile(token, path, contentB64, sha, message) {
 }
 
 /** Läser en JSON-array-fil. Returnerar tom array om filen inte finns än (nytt projekt). */
-async function ghReadJSON(token, path) {
-  const { data } = await ghGetFile(token, path);
+async function ghReadJSON(token, path, opts) {
+  const { data } = await ghGetFile(token, path, opts);
   return Array.isArray(data) ? data : [];
 }
 
@@ -346,7 +365,7 @@ async function ghWriteJSONAttempt(token, path, mutateFn, message, maxRetries, pr
     // skrivning/läsning, se ghFileCache) eller anroparens preFetched, utan
     // en extra läsning. Vid krock (409) läses filen alltid om på riktigt.
     const known = attempt === 0 ? (ghFileCache.get(path) || preFetched) : null;
-    const { data, sha } = known || await ghGetFile(token, path);
+    const { data, sha } = known || await ghGetFile(token, path, { fresh: true });
     const current = Array.isArray(data) ? data : [];
     const next = mutateFn(current.slice());
     try {
@@ -362,7 +381,7 @@ async function ghWriteJSONAttempt(token, path, mutateFn, message, maxRetries, pr
       // filen sedan LAGRAS kompakt blir även nästa sparnings inledande
       // läsning av filen mindre, så vinsten byggs på sig själv över tid.
       const put = await ghPutFile(token, path, ghUtf8ToB64(JSON.stringify(next)), sha, message);
-      if (put && put.content && put.content.sha) ghFileCache.set(path, { data: next, sha: put.content.sha });
+      if (put && put.content && put.content.sha) ghFileCache.set(path, { data: next, sha: put.content.sha, own: true, at: Date.now() });
       else ghFileCache.delete(path);
       return next;
     } catch (e) {

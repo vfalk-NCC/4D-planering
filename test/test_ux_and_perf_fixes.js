@@ -228,7 +228,9 @@ async function run() {
   artificialDelayMs = 0;
 
   const itemsGets = netLog.filter(e => e.method === 'GET' && e.path === `projects/${PROJECT_ID}/plan_items.json`);
-  if (itemsGets.length !== 1) throw new Error(`Förväntade exakt 1 GET mot plan_items.json per sparning (inte en dubbel läsning), fick ${itemsGets.length}`);
+  // Sparningen utgår från senast kända version (ingen ny nedladdning av hela
+  // filen per sparning, högst en läsning om versionen inte är känd).
+  if (itemsGets.length > 1) throw new Error(`Förväntade högst 1 GET mot plan_items.json per sparning (inte en dubbel läsning), fick ${itemsGets.length}`);
 
   const itemsPut = netLog.find(e => e.method === 'PUT' && e.path === `projects/${PROJECT_ID}/plan_items.json`);
   const historyGet = netLog.find(e => e.method === 'GET' && e.path === `projects/${PROJECT_ID}/plan_item_progress_history.json`);
@@ -237,7 +239,7 @@ async function run() {
   if (gap > 120) {
     throw new Error(`Historik-läsningen (t=${historyGet.t}) och plan_items-skrivningen (t=${itemsPut.t}) ligger ${gap}ms isär (tröskel 120ms vid en konstgjord fördröjning på ${200}ms) - ser ut att köras i tur och ordning, inte parallellt`);
   }
-  console.log(`OK: sparning gör bara EN läsning av plan_items.json, och skriver plan_items.json + historik parallellt (tidsstämpelskillnad ${gap}ms)`);
+  console.log(`OK: sparning gör högst EN läsning av plan_items.json (${itemsGets.length}), och skriver plan_items.json + historik parallellt (tidsstämpelskillnad ${gap}ms)`);
 
   // ============================================================
   // 4) ↻-knappen hämtar senaste data.
