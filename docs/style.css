@@ -973,3 +973,6 @@ header h1, .header-titles h1 { white-space: nowrap; }
 .sub-row .progress-edit { margin: 3px 0 1px; }
 .sub-row:hover .progress-slider::-webkit-slider-thumb { opacity: 1; }
 .sub-row:hover .progress-slider::-moz-range-thumb { opacity: 1; }
+
+/* Typ (t.ex. Fundament) bredvid namnet i listan. */
+.item-row .type-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 9px; background: #eef2f7; color: #475569; font-size: 10.5px; font-weight: 500; line-height: 16px; vertical-align: 1px; }

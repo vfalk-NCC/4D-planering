@@ -166,6 +166,8 @@ function parsePlanSheet(rows, sheetName) {
         area,
         objectName: code || e.activityText,
         activity: title,
+        // Typ = texten efter koden på huvudraden ("E14 - Fundament" -> "Fundament").
+        elementType: code ? title : null,
         startDate: e.start || minDate(subs.map(x => x.start)),
         endDate: e.end || maxDate(subs.map(x => x.end)),
         baselineStartDate: e.baselineStart,
@@ -223,7 +225,10 @@ function parsePlanSheet(rows, sheetName) {
     if (it.subActivities.length === 1 && rs.length === 1) {
       it.activity = it.subActivities[0].name;
       it.subActivities = [];
+      // Typ = texten efter koden ("E10 - Fundament" -> "Fundament").
+      it.elementType = it.activity || null;
     }
+    if (it.elementType === undefined) it.elementType = null;
     it.progress = weighted(rs, rs.length ? Math.round(rs.reduce((s, x) => s + x.progress, 0) / rs.length) : 0);
   });
   return result;

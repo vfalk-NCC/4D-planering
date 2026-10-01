@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261001093142" />
+<link rel="stylesheet" href="style.css?v=20261001094426" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261001093142"></script>
+<script src="plan-excel-parser.js?v=20261001094426"></script>
 </head>
 <body>
 
@@ -149,6 +149,7 @@
             <select id="groupBy">
             <option value="">Ingen gruppering</option>
             <option value="area" selected>Område</option>
+            <option value="elementType">Typ</option>
             <option value="activity">Aktivitet</option>
             <option value="contractor">Entreprenör</option>
             <option value="status">Status</option>
@@ -159,6 +160,7 @@
             <select id="sortBy">
             <option value="alpha" selected>A-Ö</option>
             <option value="start">Startdatum</option>
+            <option value="type">Typ</option>
             <option value="">Ingen sortering</option>
           </select>
           </div>
@@ -270,6 +272,12 @@
         <div id="newActivityNote" class="hint new-activity-note hidden"></div>
         <label>Namn <span class="hint">(valfritt om du kopplar flera objekt samtidigt)</span>
           <input type="text" id="fName" placeholder="t.ex. M10" />
+        </label>
+        <label>Typ <span class="hint">(t.ex. Fundament, Kontrefor – går att sortera och gruppera på)</span>
+          <div class="autocomplete-wrap">
+            <input type="text" id="fType" placeholder="t.ex. Fundament" autocomplete="off" />
+            <div class="autocomplete-list hidden" id="fTypeList"></div>
+          </div>
         </label>
         <label>Område
           <div class="autocomplete-wrap">
@@ -553,13 +561,13 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261001093142"></script>
-  <script src="app.js?v=20261001093142"></script>
-  <script src="manual-markings.js?v=20261001093142"></script>
-  <script src="sub-activity-list.js?v=20261001093142"></script>
-  <script src="activity-remove.js?v=20261001093142"></script>
-  <script src="ui-shell.js?v=20261001093142"></script>
-  <script src="undo.js?v=20261001093142"></script>
-  <script src="planning-keys.js?v=20261001093142"></script>
+  <script src="github-storage.js?v=20261001094426"></script>
+  <script src="app.js?v=20261001094426"></script>
+  <script src="manual-markings.js?v=20261001094426"></script>
+  <script src="sub-activity-list.js?v=20261001094426"></script>
+  <script src="activity-remove.js?v=20261001094426"></script>
+  <script src="ui-shell.js?v=20261001094426"></script>
+  <script src="undo.js?v=20261001094426"></script>
+  <script src="planning-keys.js?v=20261001094426"></script>
 </body>
 </html>

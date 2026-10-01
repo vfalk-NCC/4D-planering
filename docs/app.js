@@ -94,6 +94,7 @@ const STATUS_LABELS = {
 // kan komma ur synk med varandra.
 const GROUP_KEY_FNS = {
   area: it => it.area || "Utan område",
+  elementType: it => it.elementType || "Utan typ",
   activity: it => it.activity || "Utan aktivitet",
   contractor: it => it.contractor || "Utan entreprenör",
   status: it => STATUS_LABELS[it.status] || it.status || "Okänd status"
@@ -624,6 +625,7 @@ function bindUI() {
   document.getElementById("btnClearLabels").onclick = onClearLabels;
 
   setupAutocomplete("fArea", "fAreaList", () => formOptions.area);
+  setupAutocomplete("fType", "fTypeList", () => formOptions.elementType);
   setupAutocomplete("fActivity", "fActivityList", () => formOptions.activity);
   setupAutocomplete("fContractor", "fContractorList", () => formOptions.contractor);
   // "Nytt/befintligt namn" i Byt namn-dialogen - föreslår befintliga värden
@@ -1352,7 +1354,7 @@ function openNewActivityForm(template) {
     const span = groupSpan(family);
     const set = (id, v) => { document.getElementById(id).value = v ?? ""; };
     set("fName", `${template.objectName || template.activity || "Aktivitet"} (kopia)`);
-    set("fArea", template.area); set("fActivity", template.activity); set("fContractor", template.contractor);
+    set("fType", template.elementType); set("fArea", template.area); set("fActivity", template.activity); set("fContractor", template.contractor);
     set("fStart", span.startDate); set("fEnd", span.endDate);
     set("fEstimatedHours", Number.isFinite(template.estimatedHours) ? template.estimatedHours : "");
     subActivityRows = groupSubActivityRows(family).map(r => ({ ...r, members: null }));
@@ -1482,6 +1484,7 @@ function fillLinkForm(existing) {
       : "<b>Egen aktivitet</b> (skapad i appen) – påverkas inte av Excel-importen.";
   }
   document.getElementById("fName").value = existing ? existing.objectName || "" : "";
+  document.getElementById("fType").value = existing ? existing.elementType || "" : "";
   document.getElementById("fArea").value = existing ? existing.area || "" : "";
   document.getElementById("fActivity").value = existing ? existing.activity || "" : "";
   document.getElementById("fContractor").value = existing ? existing.contractor || "" : "";
@@ -1765,6 +1768,7 @@ let saveJobCounter = 0;
 function buildLinkPayloadFromForm() {
   return {
     objectName: document.getElementById("fName").value.trim(),
+    elementType: document.getElementById("fType").value.trim(),
     area: document.getElementById("fArea").value.trim(),
     activity: document.getElementById("fActivity").value.trim(),
     contractor: document.getElementById("fContractor").value.trim(),
@@ -2858,10 +2862,11 @@ function hexToRgba(hex, opacity) {
 // "Sparade data"-dropdownen på Koppla markering-formuläret (se
 // setupAutocomplete()), så den bara föreslår sådant Victor verkligen skrivit
 // in i planeringen någon gång, inte webbläsarens egen ifyllnadshistorik.
-let formOptions = { area: [], activity: [], contractor: [] };
+let formOptions = { area: [], activity: [], contractor: [], elementType: [] };
 
 function buildFilterOptions() {
   formOptions.area = unique(items.map(i => i.area));
+  formOptions.elementType = unique(items.map(i => i.elementType));
   formOptions.activity = unique(items.map(i => i.activity));
   formOptions.contractor = unique(items.map(i => i.contractor));
 
@@ -3479,6 +3484,8 @@ async function commitPlanImport(diff) {
     const row = toRow({
       id, projectId, modelId, objectId,
       objectName: p.objectName,
+      // Typ från Excel; saknas den där behålls en egen ifylld typ.
+      elementType: p.elementType || (existing ? existing.elementType : null) || null,
       area: p.area,
       activity: p.activity,
       contractor: existing ? existing.contractor : null,
@@ -3877,7 +3884,7 @@ function getVisibleItems() {
     if (todayOnly && !isActiveToday(it, todayStr)) return false;
     if (coupled && coupled.has(activityKeyOf(it) || `i:${it.id}`)) return false;
     if (!term) return true;
-    const haystack = [it.objectName, it.area, it.activity, it.contractor, it.objectId]
+    const haystack = [it.objectName, it.elementType, it.area, it.activity, it.contractor, it.objectId]
       .filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(term);
   });
@@ -3930,7 +3937,13 @@ function renderItemList() {
     if (sa !== sb) return !sa ? 1 : !sb ? -1 : sa < sb ? -1 : 1;
     return byName(a, b);
   };
-  const sortFn = sortBy === "start" ? byStart : sortBy === "alpha" ? byName : null;
+  // Typ: t.ex. alla Fundament, sedan Kontrefor … – inom samma typ A-Ö. Utan typ sist.
+  const byType = (a, b) => {
+    const ta = a.elementType || "", tb = b.elementType || "";
+    if (ta !== tb) return !ta ? 1 : !tb ? -1 : ta.localeCompare(tb, "sv");
+    return byName(a, b);
+  };
+  const sortFn = sortBy === "start" ? byStart : sortBy === "alpha" ? byName : sortBy === "type" ? byType : null;
 
   const groupKeyFns = GROUP_KEY_FNS;
 
@@ -4020,7 +4033,7 @@ function renderItemList() {
         <div class="item-row${entry.rep ? " group-rep" : ""}${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}${it.id === flashEditId && Date.now() < flashEditUntil ? " flash-edit" : ""}" data-index="${idx}" data-item-id="${escapeHtml(it.id)}"${activityKeyOf(it) ? ` data-activity-key="${escapeHtml(activityKeyOf(it))}"` : ""}>
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
-              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">Ej i modellen</span>' : ""}${typeof manualMarkTagHtml === "function" && manualMarkTagHtml(it) ? manualMarkTagHtml(it) : (entry.rep ? !entry.members.some(m => m.modelId) : !it.modelId) ? (it.origin === "manuell" ? '<span class="uncoupled-tag" title="Egen aktivitet (skapad i appen), ännu inte kopplad – koppla med eller låt den vara okopplad">◇ Ej kopplad</span>' : '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>') : ""}<br/>
+              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it.elementType ? `<span class="type-tag" title="Typ">${escapeHtml(it.elementType)}</span>` : ""}${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">Ej i modellen</span>' : ""}${typeof manualMarkTagHtml === "function" && manualMarkTagHtml(it) ? manualMarkTagHtml(it) : (entry.rep ? !entry.members.some(m => m.modelId) : !it.modelId) ? (it.origin === "manuell" ? '<span class="uncoupled-tag" title="Egen aktivitet (skapad i appen), ännu inte kopplad – koppla med eller låt den vara okopplad">◇ Ej kopplad</span>' : '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>') : ""}<br/>
               ${activitySubLineHtml(entry)}
               <span class="item-dates">${escapeHtml(shownDates)} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
             </span>
@@ -4861,6 +4874,9 @@ function toRow(it) {
     model_id: it.modelId || null,
     object_id: String(it.objectId),
     object_name: it.objectName || null,
+    // Typ (t.ex. "Fundament", "Kontrefor") – från 4-veckorsplaneringens huvudrad
+    // ("E14 - Fundament") eller ifylld i formuläret. Går att sortera/gruppera på.
+    element_type: it.elementType || null,
     area: it.area || null,
     activity: it.activity || null,
     contractor: it.contractor || null,
@@ -4906,6 +4922,7 @@ function fromRow(row) {
     modelId: row.model_id,
     objectId: row.object_id,
     objectName: row.object_name,
+    elementType: row.element_type || null,
     area: row.area,
     activity: row.activity,
     contractor: row.contractor,
