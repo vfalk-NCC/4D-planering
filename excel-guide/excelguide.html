@@ -1,0 +1,153 @@
+<title>Excelmall för 4D-planering</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: en smal läskolumn med regler som kort; varje regel visar ett utsnitt av kalkylbladet med rätt/fel. */
+:root{
+  --bg:#f5f7f8; --paper:#ffffff; --ink:#14212b; --muted:#5a6b78; --line:#d5dee5;
+  --head:#1f5f7f; --head-ink:#ffffff; --band:#e3f0f6; --hid:#fff3c4; --hid-ink:#6f5300;
+  --ok:#15803d; --ok-bg:#e7f6ec; --bad:#c2183f; --bad-bg:#fdebef; --accent:#1f5f7f;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f171d; --paper:#16222b; --ink:#e4edf2; --muted:#9db0bd; --line:#2b3b47;
+  --head:#2a7aa2; --head-ink:#ffffff; --band:#1b2f3b; --hid:#3a3110; --hid-ink:#f4d777;
+  --ok:#4ade80; --ok-bg:#14301f; --bad:#fb7193; --bad-bg:#3a1520; --accent:#6cc3ea; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f171d; --paper:#16222b; --ink:#e4edf2; --muted:#9db0bd; --line:#2b3b47;
+  --head:#2a7aa2; --head-ink:#ffffff; --band:#1b2f3b; --hid:#3a3110; --hid-ink:#f4d777;
+  --ok:#4ade80; --ok-bg:#14301f; --bad:#fb7193; --bad-bg:#3a1520; --accent:#6cc3ea; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--sans);padding-inline:16px;padding-block:28px 48px}
+main{max-width:860px;margin:0 auto;display:grid;gap:22px}
+h1{font-size:clamp(24px,4vw,32px);line-height:1.2;margin:0;text-wrap:balance;letter-spacing:-.01em}
+h2{font-size:18px;margin:0;text-wrap:balance}
+p{margin:0}
+.lead{color:var(--muted);max-width:62ch}
+.eyebrow{font:600 12px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+header{display:grid;gap:8px}
+code,.m{font-family:var(--mono);font-size:.92em}
+code{background:var(--band);padding:1px 5px;border-radius:4px}
+.check{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:16px 18px;display:grid;gap:10px}
+.check ol{margin:0;padding-left:22px;display:grid;gap:6px}
+.check li::marker{font-family:var(--mono);color:var(--accent);font-weight:600}
+section.rule{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:18px;display:grid;gap:12px;min-width:0}
+.rule .tag{font:600 12px var(--mono);color:var(--muted)}
+.rule p{max-width:66ch}
+.sheet{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;font:13px var(--sans);font-variant-numeric:tabular-nums;width:100%}
+th,td{padding:5px 8px;border:1px solid var(--line);white-space:nowrap;text-align:left}
+th{background:var(--head);color:var(--head-ink);font-weight:600}
+td.c{background:var(--bg);color:var(--muted);font:11px var(--mono);text-align:center}
+tr.rub td:not(.c){background:var(--head);color:var(--head-ink);font-weight:600}
+tr.band td:not(.c){background:var(--band)}
+td.hid{background:var(--hid)!important;color:var(--hid-ink)!important;font-style:italic}
+td.ok{box-shadow:inset 0 0 0 2px var(--ok)}
+td.bad{box-shadow:inset 0 0 0 2px var(--bad)}
+td.sub{padding-left:22px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pair>div{border-radius:8px;padding:10px 12px;display:grid;gap:4px;min-width:0}
+.yes{background:var(--ok-bg)} .no{background:var(--bad-bg)}
+.yes b{color:var(--ok)} .no b{color:var(--bad)}
+.pair .m{overflow-wrap:anywhere}
+.note{font-size:13.5px;color:var(--muted)}
+.sheets{display:flex;flex-wrap:wrap;gap:6px}
+.sheets span{font:13px var(--mono);border:1px solid var(--line);border-radius:5px;padding:2px 7px;background:var(--bg)}
+@media print{body{padding:0;background:#fff}section.rule,.check{break-inside:avoid}}
+@media (max-width:560px){.pair{grid-template-columns:1fr}}
+</style>
+
+<main>
+<header>
+  <div class="eyebrow">4D-planering · Excelimport</div>
+  <h1>Så fyller du i Excel så att importen blir rätt</h1>
+  <p class="lead">Gäller 4-veckorsplaneringen med en flik per WBS-område, till exempel <code>744 - FLÄKTHUS</code>. Appen läser kolumnerna på fasta platser, så strukturen är viktigare än utseendet.</p>
+</header>
+
+<div class="check">
+  <h2>Snabbkoll innan du importerar</h2>
+  <ol>
+    <li>Rubrikraden har etappnamnet i den dolda <b>kolumn B</b> och <b>tom DP (K)</b>.</li>
+    <li>Varje aktivitetsrad har <b>DP (K) ifyllt</b>, även underrader.</li>
+    <li>Aktiviteten skrivs <code>KOD - Namn</code>, med mellanslag runt bindestrecket.</li>
+    <li>Datum är riktiga Excel-datum. Antal dagar och Framdrift är tal.</li>
+    <li>Kolumnerna står kvar på sina platser och rubrikraden ligger på rad 4.</li>
+    <li>Rubrik och kod har inte bytt namn sedan förra importen.</li>
+  </ol>
+</div>
+
+<section class="rule" id="rubrik">
+  <div class="tag">Regel 1 · Rubrikrader</div>
+  <h2>Etappen står i kolumn B och DP är tom</h2>
+  <p>En rad med tom DP (K) är en rubrik. Appen tar etappnamnet från den dolda kolumnen B, inte från C. Allt under rubriken hamnar i området <code>744 - FLÄKTHUS / Linje H</code> tills nästa rubrikrad.</p>
+  <div class="sheet"><table>
+    <tr><td class="c">rad</td><td class="c">A</td><td class="c">B (dold)</td><td class="c">C</td><td class="c">F</td><td class="c">I</td><td class="c">K</td></tr>
+    <tr><td class="c">4</td><th>Vecka</th><th>Rubrik</th><th>Aktivitet</th><th>Datum start</th><th>Datum slut</th><th>DP</th></tr>
+    <tr class="rub"><td class="c">53</td><td>2026 v.36–43</td><td class="hid ok">Linje H</td><td>Linje H</td><td>2026-09-02</td><td>2026-10-22</td><td class="ok"></td></tr>
+    <tr><td class="c">54</td><td>2026 v.42–43</td><td class="hid"></td><td>H10 - Fundament</td><td>2026-10-12</td><td>2026-10-22</td><td>DP2</td></tr>
+  </table></div>
+</section>
+
+<section class="rule" id="dp">
+  <div class="tag">Regel 2 · DP på varje aktivitet</div>
+  <h2>En aktivitet utan DP försvinner</h2>
+  <p>Glömmer du DP på en aktivitetsrad tolkas den som en rubrik. Den kommer då inte med i importen, och raderna under den hamnar under fel etapp.</p>
+  <div class="pair">
+    <div class="yes"><b>Rätt</b><span class="m">H12 - Fundament · DP2</span></div>
+    <div class="no"><b>Fel</b><span class="m">H12 - Fundament · (tom DP)</span></div>
+  </div>
+</section>
+
+<section class="rule" id="kod">
+  <div class="tag">Regel 3 · Aktivitetstexten</div>
+  <h2>Skriv <code>KOD - Namn</code></h2>
+  <p>Koden är det som kopplas mot 3D-objekten. Den kan ha 0–3 bokstäver, 1–4 siffror och upp till 2 bokstäver efter, till exempel <code>H10</code>, <code>J14b</code> eller <code>K102</code>. Mellanslag på båda sidor om bindestrecket skiljer koden från namnet.</p>
+  <div class="pair">
+    <div class="yes"><b>Rätt</b><span class="m">H10 - Fundament</span><span class="m">H20-H28 - Fundament</span><span class="m">H20 - H22 - Fundament</span></div>
+    <div class="no"><b>Fel, ingen kod hittas</b><span class="m">H30-Fundament</span><span class="m">H30 -Fundament</span><span class="m">Fundament H30</span></div>
+  </div>
+  <p class="note">Rader utan kod, som "Maskinfundament (ska delas upp i mindre akt.)", blir fristående aktiviteter som du kopplar för hand i 4D.</p>
+</section>
+
+<section class="rule" id="under">
+  <div class="tag">Regel 4 · Underaktiviteter</div>
+  <h2>Gruppera underraderna i Excel</h2>
+  <p>Markera underraderna och välj <b>Data → Gruppera</b>. Huvudraden ligger på nivå 0 och underraderna på nivå 1. Underraderna blir delaktiviteter, och koden tas bort ur namnet, så "H16 - Formning" blir "Formning". Huvudradens framdrift räknas ut viktad på antal dagar.</p>
+  <div class="sheet"><table>
+    <tr><td class="c">rad</td><td class="c">C</td><td class="c">F</td><td class="c">H</td><td class="c">I</td><td class="c">K</td><td class="c">N</td></tr>
+    <tr><td class="c">4</td><th>Aktivitet</th><th>Datum start</th><th>Antal dagar</th><th>Datum slut</th><th>DP</th><th>Framdrift %</th></tr>
+    <tr class="band"><td class="c">55</td><td class="ok"><b>H16 - Fundament</b></td><td>2026-09-02</td><td>28</td><td>2026-09-29</td><td>DP2</td><td>(räknas ut)</td></tr>
+    <tr><td class="c">56</td><td class="sub">└ H16 - Formning</td><td>2026-09-02</td><td>8</td><td>2026-09-11</td><td>DP2</td><td>100%</td></tr>
+    <tr><td class="c">57</td><td class="sub">└ H16 - Armering</td><td>2026-09-12</td><td>10</td><td>2026-09-21</td><td>DP2</td><td>0%</td></tr>
+    <tr><td class="c">58</td><td class="sub">└ H16 - Gjutning</td><td>2026-09-22</td><td>8</td><td>2026-09-29</td><td>DP2</td><td>0%</td></tr>
+  </table></div>
+  <p class="note">Utan gruppering slås rader med samma kod under samma rubrik ihop till ett element med faser, till exempel <code>H18 - Formning</code> och <code>H18 - Gjutning</code>.</p>
+</section>
+
+<section class="rule" id="datum">
+  <div class="tag">Regel 5 · Datum, dagar och framdrift</div>
+  <h2>Riktiga datum och tal</h2>
+  <div class="sheet"><table>
+    <tr><th>Kolumn</th><th>Används till</th><th>Skriv så här</th></tr>
+    <tr><td><b>F, I</b> Datum start/slut</td><td>Datumen 4D planerar efter</td><td>Excel-datum, inte text</td></tr>
+    <tr><td><b>G, J</b> Plan. start/slut</td><td>Ursprungsplanen (baslinje). Används om F/I är tomma.</td><td>Excel-datum</td></tr>
+    <tr><td><b>H</b> Antal dagar</td><td>Viktar framdriften för underaktiviteter</td><td>Tal, till exempel 11</td></tr>
+    <tr><td><b>N</b> Framdrift %</td><td>Över 0 % sätter verklig start, 100 % sätter verkligt slut</td><td>Procent, 0–100 %</td></tr>
+  </table></div>
+</section>
+
+<section class="rule" id="namn">
+  <div class="tag">Regel 6 · Byt inte namn i efterhand</div>
+  <h2>En aktivitet känns igen på flik, rubrik och kod</h2>
+  <p>Vid nästa import matchas varje rad mot det som redan finns via <b>flik + rubrik + kod</b>. Byter du namn på etappen i kolumn B eller ändrar koden blir det en ny aktivitet, och den gamla visas som borttagen. Delar du upp en rad utan kod i flera blir det nya aktiviteter.</p>
+</section>
+
+<section class="rule" id="flikar">
+  <div class="tag">Regel 7 · Flikar och kolumner</div>
+  <h2>Kända flikar och fasta kolumner</h2>
+  <p>Bara flikar med de här namnen läses in. Säg till om du behöver en ny flik, så läggs den in i appen.</p>
+  <div class="sheets"><span>741 - SEKTIONSFICKOR</span><span>742 - SIKTHALL</span><span>742B &amp; 742C - Stödmurar</span><span>743 - KROSSHALL</span><span>744 - FLÄKTHUS</span><span>745 - FÖRTJOCKARHUS</span><span>746 - STÄLLVERK</span><span>751 - RÅGODSINFRAKT</span><span>761 - PRODUKTUTFRAKT</span><span>775 - VATTENRESERVOAR</span></div>
+  <p class="note">Flytta inte kolumner och lägg inte in nya kolumner före Q, eftersom appen läser A–Q på fasta platser. Rubrikraden ska ligga på rad 4 och data börja på rad 5. Vecka (A), S, Typ, BLOCK, ÄTA och cellfärger läses inte in.</p>
+</section>
+</main>
