@@ -199,21 +199,64 @@ function fieldShiftDays(n) {
 const SKETCH_COLORS = ["#e11d48", "#2563eb", "#16a34a", "#f59e0b", "#111827"];
 function renderFieldTools() {
   if (!$("fieldTools")) return;
-  const kind = typeof siteTool !== "undefined" && siteTool ? siteTool.kind : null;
+  const kind = typeof siteTool !== "undefined" && siteTool ? siteTool.kind : (typeof photoPlacing !== "undefined" && photoPlacing ? "photo" : null);
   $("btnFieldNote").classList.toggle("on", kind === "note");
   $("btnFieldSketch").classList.toggle("on", kind === "sketch");
+  $("btnFieldPhoto").classList.toggle("on", kind === "photo");
   const bar = $("fieldTools");
   if (!kind || !fieldIsOn()) { bar.classList.add("hidden"); return; }
+  if (kind === "photo") {
+    const g = typeof gpsSuggest !== "undefined" ? gpsSuggest : null;
+    bar.innerHTML = g
+      ? `<span class="ft-hint">📍 Enligt GPS (${fesc(g.src)}, ±${Math.round(g.acc || 0)} m). Tryck på planen för att flytta.</span><button type="button" class="fl-btn fl-primary" id="btnFieldPhotoHere">Spara här</button><button type="button" class="fl-btn" id="btnFieldToolDone">Avbryt</button>`
+      : `<span class="ft-hint">📷 Tryck på planen där fotot är taget.</span><button type="button" class="fl-btn" id="btnFieldToolDone">Avbryt</button>`;
+    bar.classList.remove("hidden"); layoutField();
+    const here = $("btnFieldPhotoHere"); if (here) here.onclick = () => savePhotoAtGps();
+    $("btnFieldToolDone").onclick = () => cancelPhotoPlacing();
+    return;
+  }
   const hint = ($("siteHint") && $("siteHint").textContent || "").replace(/ Håll Shift.*$/, "").replace(/ Esc avbryter\.?/, "");
   bar.innerHTML = `<span class="ft-hint">${fesc(hint)}</span>
     ${kind === "sketch" ? `<span class="ft-colors">${SKETCH_COLORS.map(c => `<button type="button" class="ft-color${c === sketchColor ? " on" : ""}" data-c="${c}" style="background:${c}" title="Färg"></button>`).join("")}</span>
       <button type="button" class="fl-btn ft-w" data-w="${sketchWeight >= 1.8 ? 1 : 1.8}" title="Tjocklek">${sketchWeight >= 1.8 ? "Tunn" : "Tjock"}</button>` : ""}
+    ${kind === "sketch" ? `<button type="button" class="fl-btn" id="btnFieldSketchView" title="Spara det som visas nu (med det du ritat) som en vy">💾 Spara vy</button>` : ""}
     <button type="button" class="fl-btn fl-primary" id="btnFieldToolDone">${kind === "sketch" ? "Klar" : "Avbryt"}</button>`;
   bar.classList.remove("hidden");
   layoutField();
   bar.querySelectorAll(".ft-color").forEach(b => b.onclick = () => { sketchColor = b.dataset.c; renderFieldTools(); });
   const w = bar.querySelector(".ft-w"); if (w) w.onclick = () => { sketchWeight = Number(w.dataset.w); renderFieldTools(); };
   $("btnFieldToolDone").onclick = () => stopSiteTool();
+  const sv = $("btnFieldSketchView"); if (sv) sv.onclick = () => openFieldSaveView();
+}
+
+/* 💾 Spara vy i fältläget: namn + (förvalt) datum och utsnitt. Samma vyer
+   som i Lager på datorn – och det man ritat/noterat är redan sparat i
+   projektet, så vyn tar en tillbaka till exakt det läget. */
+function openFieldSaveView() {
+  openFieldSheet();
+  const box = $("fieldSheetBody");
+  const cur = (typeof lsViews === "function" ? lsViews() : []).find(v => typeof lsViewCurrent !== "undefined" && v.id === lsViewCurrent);
+  const def = cur ? cur.name : `Fält ${new Date().toLocaleDateString("sv-SE")}`;
+  const form = document.createElement("div");
+  form.className = "fs-save";
+  form.innerHTML = `<div class="fs-h">Spara vy</div>
+    <input type="text" id="fsViewName" value="${fesc(def)}" />
+    <label class="fs-chk"><input type="checkbox" id="fsViewDate" checked /> Med datumet (${fesc($("dateInput").value || "")})</label>
+    <label class="fs-chk"><input type="checkbox" id="fsViewCam" checked /> Med utsnittet (zoom och läge)</label>
+    <button type="button" class="fl-btn fl-primary" id="fsViewSave">💾 Spara vy</button>
+    <div class="fs-msg" id="fsViewMsg">Samma namn skriver över. Vyn syns också i Lager på datorn.</div>`;
+  box.prepend(form);
+  $("fsViewSave").onclick = async () => {
+    const n = $("fsViewName").value.trim();
+    if (!n) { $("fsViewName").focus(); return; }
+    $("fsViewSave").disabled = true;
+    try {
+      await saveLsView(n, { date: $("fsViewDate").checked, camera: $("fsViewCam").checked });
+      renderField(); renderFieldSheet();
+      const m = document.createElement("div"); m.className = "fs-msg fs-ok"; m.textContent = `✓ Vyn "${n}" är sparad.`;
+      $("fieldSheetBody").prepend(m);
+    } catch (e) { $("fsViewMsg").textContent = "Kunde inte spara: " + e.message; $("fsViewSave").disabled = false; }
+  };
 }
 
 /* Lagerpanelen i fältläge: stora av/på-knappar som styr de vanliga raderna. */
@@ -289,6 +332,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btnFieldFull").onclick = () => setFieldMode(false);
   $("btnFieldNote").onclick = () => { closeFieldSheet(); startSiteTool("note"); };
   $("btnFieldSketch").onclick = () => { closeFieldSheet(); startSiteTool("sketch"); };
+  $("btnFieldPhoto").onclick = () => { closeFieldSheet(); if (typeof stopSiteTool === "function" && siteTool) stopSiteTool(); startGpsPhoto(); };
+  $("btnFieldView").onclick = () => openFieldSaveView();
+  const origToolUi = updateToolUi;
+  updateToolUi = function () { const r = origToolUi.apply(this, arguments); renderFieldTools(); return r; };
   const origUi = updateSiteUi;
   updateSiteUi = function () { const r = origUi.apply(this, arguments); renderFieldTools(); return r; };
   // Dölj alla knappar (bara planen syns); 👁 i hörnet tar tillbaka dem.

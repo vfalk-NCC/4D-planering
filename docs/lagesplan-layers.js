@@ -1706,7 +1706,10 @@ function renderLayerPanel() {
   userLayers().forEach(l => {
     const n = siteItems.filter(x => isSiteObj(x) && layerOf(x) === l).length;
     const fixed = l === "Allmänt" || l === "Etablering";
-    rowHtml["ul:" + l] = opts => layerRow("ul:" + l, `${name("ul:" + l, fixed ? "fx-name" : "ul-name", "🗂")} <small>${n}</small>`, { del: !fixed, ul: l, ...opts });
+    // Fäll ut ett lager (t.ex. Etablering) och se/ta bort dess objekt direkt i listan.
+    const open = n > 0 && layerState["ulopen:" + l] === true;
+    rowHtml["ul:" + l] = opts => layerRow("ul:" + l, `${n ? `<button class="cad-toggle ul-toggle" data-ul="${escHtml(l)}" title="Visa objekten i lagret">${open ? "▾" : "▸"}</button>` : ""}${name("ul:" + l, fixed ? "fx-name" : "ul-name", "🗂")} <small>${n}</small>`, { del: !fixed, ul: l, ...opts })
+      + siteItemRowsHtml(l, { hidden: opts.hidden || !open, inFolder: opts.inFolder });
   });
   rowHtml.photos = opts => layerRow("photos", name("photos", "fx-name", "📷"), { noOpacity: true, ...opts });
   if (typeof cads === "function") cads().forEach(r => { rowHtml["cad:" + r.id] = opts => cadRowsHtml(r, opts); });
@@ -1823,6 +1826,7 @@ function renderLayerPanel() {
       ghDeleteBinary(token, o.path, "Lägesplan: ta bort ortofoto");
     };
   });
+  bindSiteItemRows(el);
   if (typeof bindCadRows === "function") { bindCadRows(el); renderCadSettings(); }
   if (typeof bindCadAllRows === "function" && $("cadAllBox")) bindCadAllRows($("cadAllBox"));
   bindLayerSelection(el, keys);
@@ -1948,6 +1952,56 @@ async function deleteSelectedLayers() {
   if (cadRecs.length && typeof renderCad === "function") { buildCadSnap(); renderCad(); }
   renderActiveLayerSelect();
 }
+/* Objekten i ett lager (noteringar, etablering, frihand …) som rader under
+   lagret: klicka för att visa/markera på planen, 🗑 tar bort (Ctrl+Z ångrar). */
+function siteItemLabel(x) {
+  if (x.type === "note") return (x.text || "").split("\n")[0] || "Notering";
+  if (x.type === "symbol") return x.name || (SYMBOLS[x.sym] || {}).label || "Symbol";
+  return x.name || (SITE_KINDS[x.type] || {}).label || x.type;
+}
+function siteItemRowsHtml(layer, opts = {}) {
+  const list = siteItems.filter(x => isSiteObj(x) && layerOf(x) === layer)
+    .sort((a, b) => String((SITE_KINDS[a.type] || {}).label).localeCompare(String((SITE_KINDS[b.type] || {}).label), "sv") || siteItemLabel(a).localeCompare(siteItemLabel(b), "sv", { numeric: true }));
+  return list.map(x => {
+    const icon = x.type === "symbol" ? (SYMBOLS[x.sym] || {}).icon || "🧩" : (SITE_KINDS[x.type] || {}).icon || "•";
+    const when = typeof datesText === "function" ? datesText(x) : "";
+    return `<div class="layer-row sub site-item-row${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}${x.id === selectedSiteId ? " sel" : ""}" data-site-id="${escHtml(x.id)}">
+      <span class="si-ico">${icon}</span>
+      <span class="ln" title="${escHtml(siteItemLabel(x))} – klicka för att visa på planen">${escHtml(siteItemLabel(x))}${x.locked ? " 🔒" : ""}${when ? ` <small>${escHtml(when)}</small>` : ""}</span>
+      <button class="si-del" title="Ta bort (Ctrl+Z ångrar)">🗑️</button>
+    </div>`;
+  }).join("");
+}
+function bindSiteItemRows(el) {
+  el.querySelectorAll(".ul-toggle").forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const k = "ulopen:" + b.dataset.ul;
+    layerState[k] = layerState[k] !== true; saveLayerState(); renderLayerPanel();
+  });
+  el.querySelectorAll(".site-item-row").forEach(row => {
+    const x = siteItems.find(i => i.id === row.dataset.siteId);
+    if (!x) return;
+    row.querySelector(".ln").onclick = () => showSiteItem(x);
+    row.querySelector(".si-del").onclick = async e => {
+      e.stopPropagation();
+      if (x.locked && !confirm(`"${siteItemLabel(x)}" är låst. Ta bort ändå?`)) return;
+      if (selectedSiteId === x.id) { selectedSiteId = null; closeSitePop(); }
+      await saveSiteItem(x, true);
+      setSaveStatus(`🗑️ "${siteItemLabel(x)}" borttagen – Ctrl+Z ångrar.`);
+    };
+  });
+}
+/* Markera objektet och centrera planen på det (utan att ändra zoomen). */
+function showSiteItem(x) {
+  if (!plan || !plan.calib || !viewport) return;
+  const c = isRect(x) ? [rectGeom(x).cx, rectGeom(x).cy] : centroidOf(x.pts);
+  const [px, py] = mToPx(c), r = $("viewport").getBoundingClientRect();
+  view.tx = r.width / 2 - px * view.scale; view.ty = r.height / 2 - py * view.scale; applyView();
+  selectedSiteId = x.id; siteClickedId = x.id;
+  renderZones(); renderLayerPanel();
+  openSitePop(x, false);
+}
+
 /* Sök i lagren: visar lager (även CAD-lager och lager i mappar) vars namn
    innehåller texten, med sina mappar/ritningar som sammanhang. */
 function applyLayerSearch() {

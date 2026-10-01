@@ -94,21 +94,28 @@ function openLsViewForm() {
     if (!n) { name.focus(); return; }
     const existing = lsViews().find(v => (v.name || "").toLowerCase() === n.toLowerCase());
     if (existing && existing.id !== lsViewCurrent && !confirm(`Det finns redan en vy som heter "${existing.name}". Skriva över den?`)) return;
-    const h = typeof objHidden === "function" ? objHidden() : null;
-    const rec = {
-      id: existing ? existing.id : ghNewId(), type: "lsview", name: n,
-      state: lsViewSnapshot(),
-      objHidden: h ? { ids: h.ids, fams: h.fams, acts: h.acts, view: h.view } : null,
-      date: $("lsViewDate").checked ? date : null,
-      camera: $("lsViewCam").checked ? lsViewCamera() : null,
-      updated_by: settings.userName || null, updated_at: new Date().toISOString(),
-    };
     box.classList.add("hidden");
-    lsViewCurrent = rec.id;
-    await saveSiteItem(rec, false, { record: false });
-    renderLsViewUi();
-    setSaveStatus(`Vyn "${n}" är sparad i projektet.`);
+    await saveLsView(n, { date: $("lsViewDate").checked, camera: $("lsViewCam").checked });
   };
+}
+/* Sparar det som visas nu som vyn `name` (samma namn skriver över). Används
+   av formuläret i Lager och av fältläget (💾 Vy). */
+async function saveLsView(name, opts = {}) {
+  const existing = lsViews().find(v => (v.name || "").toLowerCase() === name.toLowerCase());
+  const h = typeof objHidden === "function" ? objHidden() : null;
+  const rec = {
+    id: existing ? existing.id : ghNewId(), type: "lsview", name,
+    state: lsViewSnapshot(),
+    objHidden: h ? { ids: h.ids, fams: h.fams, acts: h.acts, view: h.view } : null,
+    date: opts.date ? ($("dateInput").value || todayIso()) : null,
+    camera: opts.camera ? lsViewCamera() : null,
+    updated_by: settings.userName || null, updated_at: new Date().toISOString(),
+  };
+  lsViewCurrent = rec.id;
+  await saveSiteItem(rec, false, { record: false });
+  renderLsViewUi();
+  setSaveStatus(`Vyn "${name}" är sparad i projektet.`);
+  return rec;
 }
 
 function bindLsViews() {

@@ -50,6 +50,42 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   if ((await d.page.evaluate(() => siteItems.filter(x => x.type === 'sketch').length)) !== 1) fail('Frihand ska gå att rita med mus också');
   if (!(await d.page.locator('[data-site="sketch"]').count())) fail('Frihand ska finnas bland verktygen i den vanliga vyn');
   console.log('OK: med mus är allt som förut (och Frihand finns bland verktygen)');
+
+  // GPS: WGS84 -> SWEREF 99 20 15 (zonen väljs efter planens kalibrering) och EXIF-GPS ur en JPEG.
+  const gps = await d.page.evaluate(async () => {
+    const z = SWEREF_ZONES.find(z => z.name === 'SWEREF 99 20 15');
+    const [N, E] = geodeticToGrid(67.0, 20.25, z);
+    plan = { id: 'pl', name: 'P', zones: [], calib: { model: [[E, N, 0], [E + 100, N, 0]], pdf: [[0, 0], [1000, 0]] } };
+    const hit = gpsToModel(67.0001, 20.2504);
+    // JPEG med EXIF-GPS (67°0'1.08"N 20°15'1.44"E)
+    const le16 = n => [n & 255, n >> 8], le32 = n => [n & 255, (n >> 8) & 255, (n >> 16) & 255, n >>> 24];
+    const gOff = 26, dOff = gOff + 2 + 4 * 12 + 4;
+    const ent = (t, ty, c, v) => [...le16(t), ...le16(ty), ...le32(c), ...v];
+    const tiff = [0x49, 0x49, ...le16(42), ...le32(8), ...le16(1), ...ent(0x8825, 4, 1, le32(gOff)), ...le32(0),
+      ...le16(4), ...ent(1, 2, 2, [78, 0, 0, 0]), ...ent(2, 5, 3, le32(dOff)), ...ent(3, 2, 2, [69, 0, 0, 0]), ...ent(4, 5, 3, le32(dOff + 24)), ...le32(0),
+      ...[67, 1, 0, 1, 108, 100, 20, 1, 15, 1, 144, 100].flatMap(le32)];
+    const app1 = [0xFF, 0xE1, (tiff.length + 8) >> 8, (tiff.length + 8) & 255, 0x45, 0x78, 0x69, 0x66, 0, 0, ...tiff];
+    const ex = await readExifGps(new Blob([new Uint8Array([0xFF, 0xD8, ...app1, 0xFF, 0xD9])]));
+    return { zone: hit && hit.zone, dE: hit && hit.m[0] - E, dN: hit && hit.m[1] - N, lat: ex && ex.lat, lon: ex && ex.lon };
+  });
+  if (gps.zone !== 'SWEREF 99 20 15') fail('GPS ska räknas om i projektets zon SWEREF 99 20 15, fick ' + JSON.stringify(gps));
+  if (Math.abs(gps.dN - 11.1) > 0.5 || Math.abs(gps.dE - 17.4) > 0.5) fail('GPS-förflyttningen ska bli ca 17 m öst / 11 m norr, fick ' + JSON.stringify(gps));
+  if (Math.abs(gps.lat - 67.0003) > 1e-6 || Math.abs(gps.lon - 20.2504) > 1e-6) fail('EXIF-GPS ska läsas ur fotot, fick ' + JSON.stringify(gps));
+  console.log('OK: GPS räknas om till SWEREF 99 20 15 och läses ur fotots EXIF');
+
+  // Etablering kan fällas ut: objekten listas, klick visar, 🗑 tar bort.
+  await d.page.evaluate(() => {
+    siteItems.push({ id: 'n1', type: 'note', layer: 'Etablering', pts: [[1, 1], [2, 2]], text: 'Notering A' }, { id: 'b1', type: 'shed', layer: 'Etablering', cx: 5, cy: 5, w: 3, h: 6, rot: 0, name: 'Bod 1' });
+    renderLayerPanel();
+  });
+  if (await d.page.isVisible('.site-item-row')) fail('Objekten ska vara hopfällda från början');
+  await d.page.click('.ul-toggle[data-ul="Etablering"]'); await d.page.waitForTimeout(100);
+  const rowsTxt = await d.page.evaluate(() => [...document.querySelectorAll('.site-item-row:not(.hidden) .ln')].map(e => e.textContent.trim()).join('|'));
+  if (rowsTxt !== 'Bod 1|Frihand|Notering A') fail('Etablering ska lista sina objekt, fick ' + rowsTxt);
+  await d.page.click('.site-item-row:has-text("Notering A") .si-del'); await d.page.waitForTimeout(400);
+  if (await d.page.evaluate(() => siteItems.some(x => x.id === 'n1'))) fail('🗑 ska ta bort objektet');
+  if (!(await d.page.isVisible('.site-item-row:has-text("Bod 1")'))) fail('Listan ska ligga kvar utfälld');
+  console.log('OK: Etablering fälls ut, objekten listas och tas bort direkt i listan');
   await desk.close();
 
   // 2) iPad: fältläge från början.

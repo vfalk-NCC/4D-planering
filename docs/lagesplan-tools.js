@@ -213,7 +213,7 @@ function drawMeasure(ctx, fontPx) {
 let photoPlacing = false, pendingPhotoPt = null, pendingPhotoFile = null, openPhotoId = null;
 const photoUrlCache = new Map();
 function photos() { return (plan && plan.photos) || []; }
-function cancelPhotoPlacing() { photoPlacing = false; pendingPhotoPt = null; pendingPhotoFile = null; updateToolUi(); }
+function cancelPhotoPlacing() { photoPlacing = false; pendingPhotoPt = null; pendingPhotoFile = null; if (typeof gpsSuggest !== "undefined") gpsSuggest = null; updateToolUi(); }
 function photoMarkerPx() { return planFontPx() * 1.5; }
 function photoAt(pdfPt) {
   if (!$("showPhotos").checked) return null;
@@ -259,12 +259,14 @@ async function shrinkImage(file) {
 }
 async function addPhotoFile(file) {
   const pt = pendingPhotoPt;
+  // GPS-positionen (om den fanns) sparas med fotot, även om det flyttats på planen.
+  const gps = typeof gpsSuggest !== "undefined" && gpsSuggest ? { ...gpsSuggest.gps, moved: pt !== gpsSuggest.pt } : null;
   pendingPhotoFile = null;
   cancelPhotoPlacing();
   if (!pt || !file) return;
   const caption = prompt("Beskrivning av fotot (valfritt):", "");
   if (caption === null) return;
-  const defDate = file.lastModified ? isoOf(new Date(file.lastModified)) : todayIso();
+  const defDate = file.__exifDate || (file.lastModified ? isoOf(new Date(file.lastModified)) : todayIso());
   let date = (prompt("Datum då fotot togs (ÅÅÅÅ-MM-DD):", defDate) || defDate).trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = defDate;
   setBusy("Laddar upp fotot…");
@@ -273,7 +275,7 @@ async function addPhotoFile(file) {
     const id = ghNewId();
     const path = dataPath(`status_plans/photos/${id}.jpg`);
     await ghUploadBinary(token, path, blob, `Lägesplan: foto ${caption || date}`);
-    plan.photos = [...photos(), { id, x: pt[0], y: pt[1], path, date, caption: caption.trim(), by: settings.userName || null, created_at: new Date().toISOString() }];
+    plan.photos = [...photos(), { id, x: pt[0], y: pt[1], path, date, caption: caption.trim(), ...(gps ? { gps } : {}), by: settings.userName || null, created_at: new Date().toISOString() }];
     renderZones(); schedulePlanSave();
   } catch (e) {
     alert("Kunde inte ladda upp fotot: " + e.message);
@@ -462,6 +464,7 @@ function drawToolOverlays(ctx, fontPx) {
     }
   }
   drawPhotos(ctx);
+  if (typeof drawGpsSuggest === "function") drawGpsSuggest(ctx);
   drawMeasure(ctx, fontPx);
 }
 function afterRenderTools() {
@@ -501,7 +504,7 @@ function toolTipHtml(pdfPt) {
     const r = measureResult(measure.pts.concat([pdfPt]));
     return r.text ? `${escHtml(r.text)}<br><span style="opacity:.7">Dubbelklicka för att avsluta, Shift = rak linje (5°-steg), Esc för att rensa</span>` : null;
   }
-  if (photoPlacing) return "Klicka där fotot är taget";
+  if (photoPlacing) return typeof gpsSuggest !== "undefined" && gpsSuggest ? "📍 GPS-förslag – klicka för att placera fotot här i stället" : "Klicka där fotot är taget";
   const lt = layersTipHtml(pdfPt);
   if (lt) return lt;
   const ph = photoAt(pdfPt);
@@ -512,6 +515,10 @@ function finishMeasure() {
   if (!measure || measure.done) return;
   measure.done = true; measure.cursor = null;
   updateToolUi(); renderZones();
+}
+function savePhotoAtGps() {
+  if (!photoPlacing || typeof gpsSuggest === "undefined" || !gpsSuggest || !pendingPhotoFile) return;
+  pendingPhotoPt = gpsSuggest.pt; const f = pendingPhotoFile; photoPlacing = false; addPhotoFile(f);
 }
 function updateToolUi() {
   $("btnMeasureLen").classList.toggle("active", !!measure && measure.mode === "len");
@@ -541,11 +548,23 @@ function bindTools() {
   $("btnMeasureLen").onclick = () => startMeasure("len");
   $("btnMeasureArea").onclick = () => startMeasure("area");
   $("btnAddPhoto").onclick = startPhotoPlacing;
-  $("photoInput").onchange = e => {
+  $("photoInput").onchange = async e => {
     const f = e.target.files[0]; e.target.value = "";
     if (!f) { cancelPhotoPlacing(); return; }
-    pendingPhotoFile = f; photoPlacing = true; updateToolUi();
+    pendingPhotoFile = f; photoPlacing = true; if (typeof gpsSuggest !== "undefined") gpsSuggest = null; updateToolUi();
     setSaveStatus(`📷 Klicka på planen där "${f.name}" är taget (Esc avbryter).`);
+    // GPS (fotots EXIF, eller iPadens position för en nytagen bild): förslag på planen.
+    if (typeof suggestPhotoPosition !== "function") return;
+    const sug = await suggestPhotoPosition(f);
+    if (!photoPlacing || pendingPhotoFile !== f) return;
+    if (sug && sug.pt) {
+      gpsSuggest = sug;
+      const [x, y] = toPx(sug.pt), r = $("viewport").getBoundingClientRect();
+      view.tx = r.width / 2 - x * view.scale; view.ty = r.height / 2 - y * view.scale; applyView();
+      setSaveStatus(`📍 Fotot placeras enligt GPS (${sug.src}, ±${Math.round(sug.acc || 0)} m, ${sug.zone}). Spara här, eller klicka på planen för att flytta.`);
+    } else if (sug && sug.far) setSaveStatus("📍 GPS-positionen ligger inte på den här planen (eller modellen är inte i SWEREF 99) – klicka på planen där fotot är taget.");
+    else setSaveStatus(`📷 Fotot saknar GPS – klicka på planen där "${f.name}" är taget.`);
+    updateToolUi(); renderZones();
   };
   $("showPhotos").onchange = () => renderZones();
   $("pmClose").onclick = closePhoto;
