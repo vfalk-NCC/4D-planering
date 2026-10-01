@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261001054221"></script>
+<script src="github-storage.js?v=20261001054609"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -294,29 +294,36 @@
           <div class="hint hidden" id="layerSearchInfo"></div>
           <div class="row" style="margin-top:6px;"><button id="btnNewFolder" title="Skapa en mapp och dra lager till den">📁 ＋ Mapp</button><span class="hint grow" style="margin:0;">Dra lager till en mapp. Dubbelklicka på ett namn för att byta det.</span></div>
           <label class="check"><input type="checkbox" id="layersFollowDate" checked /> Noteringar och etablering följer datumet</label>
-          <div class="obj-settings">
-            <span class="field-label">Objekten på ritningen</span>
-            <div class="row" style="align-items:center;gap:6px;margin-top:4px;"><span id="objHiddenCount" class="grow" style="font-size:12px;">Inga objekt släckta</span>
-              <button type="button" id="btnObjHideUndo" title="Ångra senaste släckningen" disabled>Ångra</button>
-              <button type="button" id="btnObjShowAll" disabled>Tänd alla</button></div>
-            <div class="row" style="align-items:center;gap:6px;margin-top:4px;flex-wrap:nowrap;"><span class="muted" style="font-size:12px;">Vy</span>
-              <select id="objViewSel" class="grow"></select>
-              <button type="button" id="btnObjViewSave" title="Spara det du har släckt som en vy (delas i projektet)">Spara vy</button>
-              <button type="button" id="btnObjViewDelete" class="ghost" title="Ta bort vyn" disabled>✕</button></div>
-            <div class="muted" style="font-size:11.5px;margin:3px 0 6px;">Högerklicka på en prick för att släcka den (eller hela aktiviteten). Alt + dra en ruta släcker allt inuti.</div>
-            <div class="row" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Visa objekten som</span>
-              <select id="objStyle" class="grow"><option value="dots">Prick i mitten (statusfärg)</option><option value="footprint">Fotavtryck (objektets yta)</option></select></div>
-            <div class="row" id="objSizeRow" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Prickstorlek</span>
-              <input type="range" id="objSize" class="grow" min="25" max="400" step="5" value="100" /><span id="objSizeVal" class="muted" style="font-size:12px;width:44px;text-align:right;">100 %</span></div>
-            <label class="check" title="Objekt som i 4D-planering är kopplade till en delaktivitet (t.ex. bara Formning) – inte hela aktiviteten"><input type="checkbox" id="objSubs" checked /> Visa objekt kopplade till delaktiviteter</label>
-            <label class="check" title="Visar objektens korta namn (t.ex. J22) som små etiketter. Etiketter som skulle krocka hoppas över – fler får plats när du zoomar in."><input type="checkbox" id="objLabels" /> Visa namn</label>
-            <div class="row" style="align-items:center;gap:8px;"><span class="muted" style="font-size:12px;">Namn på</span>
-              <select id="objLabelsWhich" class="grow"><option value="all">Alla som syns</option><option value="active">Pågående, snart och försenade</option><option value="late">Bara försenade</option><option value="focus">Veckans fokus</option></select></div>
-            <div class="row" id="objLabelSizeRow" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Namnstorlek</span>
-              <input type="range" id="objLabelSize" class="grow" min="40" max="400" step="5" value="100" /><span id="objLabelSizeVal" class="muted" style="font-size:12px;width:44px;text-align:right;">100 %</span></div>
-            <div class="muted" style="font-size:11.5px;margin-top:4px;">Högerklicka på ett namn för att dölja det.</div>
-            <button type="button" id="btnShowHiddenLabels" class="hidden" style="margin-top:4px;">Visa dolda namn (0)</button>
+        </details>
+
+        <details class="sec" data-sec="objects3d" open>
+          <summary><span class="si">🔷</span>3D Objekt</summary>
+          <div class="row" style="align-items:center;gap:6px;margin-top:4px;"><span id="objHiddenCount" class="grow" style="font-size:12px;">Inga objekt släckta</span>
+            <button type="button" id="btnObjHideUndo" title="Ångra senaste släckningen" disabled>Ångra</button>
+            <button type="button" id="btnObjShowAll" disabled>Tänd alla</button></div>
+          <div class="row" style="align-items:center;gap:6px;margin-top:4px;flex-wrap:nowrap;"><span class="muted" style="font-size:12px;">Vy</span>
+            <select id="objViewSel" class="grow"></select>
+            <button type="button" id="btnObjViewSave" title="Spara det du har släckt som en vy (delas i projektet)">Spara vy</button>
+            <button type="button" id="btnObjViewDelete" class="ghost" title="Ta bort vyn" disabled>✕</button></div>
+          <div class="muted" style="font-size:11.5px;margin:3px 0 6px;">Högerklicka på en prick för att släcka den (eller hela aktiviteten). Alt + dra en ruta släcker allt inuti.</div>
+          <div class="row" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Visa objekten som</span>
+            <select id="objStyle" class="grow"><option value="dots">Prick i mitten (statusfärg)</option><option value="footprint">Fotavtryck (objektets yta)</option></select></div>
+          <div class="row" id="objSizeRow" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Prickstorlek</span>
+            <input type="range" id="objSize" class="grow" min="25" max="400" step="5" value="100" /><span id="objSizeVal" class="muted" style="font-size:12px;width:44px;text-align:right;">100 %</span></div>
+          <label class="check" title="Objekt som i 4D-planering är kopplade till en delaktivitet (t.ex. bara Formning) – inte hela aktiviteten"><input type="checkbox" id="objSubs" checked /> Visa objekt kopplade till delaktiviteter</label>
+          <label class="check" title="Visar objektens korta namn (t.ex. J22) som små etiketter. Etiketter som skulle krocka hoppas över – fler får plats när du zoomar in."><input type="checkbox" id="objLabels" /> Visa namn</label>
+          <div class="row" style="align-items:center;gap:8px;"><span class="muted" style="font-size:12px;">Namn på</span>
+            <select id="objLabelsWhich" class="grow"><option value="all">Alla som syns</option><option value="active">Pågående, snart och försenade</option><option value="late">Bara försenade</option><option value="focus">Veckans fokus</option></select></div>
+          <div class="row" id="objLabelSizeRow" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Namnstorlek</span>
+            <input type="range" id="objLabelSize" class="grow" min="40" max="400" step="5" value="100" /><span id="objLabelSizeVal" class="muted" style="font-size:12px;width:44px;text-align:right;">100 %</span></div>
+          <div class="muted" style="font-size:11.5px;margin-top:4px;">Högerklicka på ett namn för att dölja det.</div>
+          <button type="button" id="btnShowHiddenLabels" class="hidden" style="margin-top:4px;">Visa dolda namn (0)</button>
+          <span class="field-label" style="margin-top:12px;display:block;">Text på planen</span>
+          <div class="row" style="flex-wrap:nowrap;">
+            <input type="range" id="textScale" min="40" max="250" step="10" value="100" class="grow" title="Storlek på etiketter, noteringar, mått och zonkoder" />
+            <span class="muted" id="textScaleLabel" style="min-width:42px;text-align:right;">100 %</span>
           </div>
+          <label class="check"><input type="checkbox" id="textFixed" /> Samma textstorlek på skärmen oavsett zoom</label>
         </details>
 
         <details class="sec" data-sec="draw" open>
@@ -355,15 +362,6 @@
           <label class="check"><input type="checkbox" id="showPhotos" checked /> Visa foton på planen</label>
           <input type="file" id="photoInput" accept="image/*" class="hidden" />
           <div class="hint" id="photoInfo"></div>
-        </details>
-
-        <details class="sec" data-sec="text" open>
-          <summary><span class="si">🔤</span>Text på planen</summary>
-          <div class="row" style="flex-wrap:nowrap;">
-            <input type="range" id="textScale" min="40" max="250" step="10" value="100" class="grow" title="Storlek på etiketter, noteringar, mått och zonkoder" />
-            <span class="muted" id="textScaleLabel" style="min-width:42px;text-align:right;">100 %</span>
-          </div>
-          <label class="check"><input type="checkbox" id="textFixed" /> Samma textstorlek på skärmen oavsett zoom</label>
         </details>
 
         <details class="sec" data-sec="ortho" open>
@@ -634,12 +632,12 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261001054221"></script>
-<script src="lagesplan-tools.js?v=20261001054221"></script>
-<script src="lagesplan-layers.js?v=20261001054221"></script>
-<script src="lagesplan-film.js?v=20261001054221"></script>
-<script src="lagesplan-cad.js?v=20261001054221"></script>
-<script src="lagesplan-print.js?v=20261001054221"></script>
-<script src="lagesplan-keys.js?v=20261001054221"></script>
+<script src="lagesplan.js?v=20261001054609"></script>
+<script src="lagesplan-tools.js?v=20261001054609"></script>
+<script src="lagesplan-layers.js?v=20261001054609"></script>
+<script src="lagesplan-film.js?v=20261001054609"></script>
+<script src="lagesplan-cad.js?v=20261001054609"></script>
+<script src="lagesplan-print.js?v=20261001054609"></script>
+<script src="lagesplan-keys.js?v=20261001054609"></script>
 </body>
 </html>
