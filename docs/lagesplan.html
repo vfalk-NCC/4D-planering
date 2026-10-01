@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261001074528"></script>
+<script src="github-storage.js?v=20261001082148"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -124,6 +124,10 @@
   .layer-row button { height: auto; padding: 0 4px; border: none; background: none; cursor: pointer; font-size: 12px; }
   .layer-row.in-folder { padding-left: 26px; background: #fbfcfe; }
   .layer-row.folder-row { background: var(--panel-2); font-weight: 600; }
+  .ls-views { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .ls-views select { min-width: 0; }
+  .ls-view-form { display: grid; gap: 6px; padding: 8px; margin-bottom: 8px; border: 1px solid var(--accent); border-radius: var(--radius); background: var(--accent-weak); }
+  .ls-view-form .check { margin: 0; }
   .cadall-box { border: 1px solid var(--border); border-radius: var(--radius); background: #fff; margin-bottom: 6px; overflow: hidden; }
   .cadall-box .layer-row { grid-template-columns: 20px 1fr; }
   .cadall-box .cadall-row { background: var(--panel-2); font-weight: 600; border-bottom: none; }
@@ -314,6 +318,8 @@
         <div id="layerSelBar" class="layer-selbar hidden"></div>
         <details class="sec" data-sec="layers" open>
           <summary><span class="si">🗂</span>Lager</summary>
+          <div class="ls-views"><select id="lsViewSel" class="grow" title="Sparade vyer: tända lager, ortofoto, DXF, släckta objekt och ev. datum och utsnitt"></select><button id="btnLsViewSave" title="Spara det som visas nu som en vy">💾 Spara</button><button id="btnLsViewDelete" class="icon" title="Ta bort vyn">🗑️</button></div>
+          <div id="lsViewForm" class="ls-view-form hidden"></div>
           <div class="layer-search"><input type="text" id="layerSearch" placeholder="🔎 Sök lager…" autocomplete="off" /><button id="layerSearchClear" class="icon ghost hidden" title="Rensa">✕</button><button id="btnLayerSort" class="layer-sort" title="Sortera mapparna och lagren i dem A–Ö">A–Ö</button></div>
           <div id="cadAllBox" class="cadall-box hidden"></div>
           <div id="layerList" class="layer-list"></div>
@@ -659,13 +665,14 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261001074528"></script>
-<script src="lagesplan-tools.js?v=20261001074528"></script>
-<script src="lagesplan-layers.js?v=20261001074528"></script>
-<script src="lagesplan-film.js?v=20261001074528"></script>
-<script src="lagesplan-cad.js?v=20261001074528"></script>
-<script src="lagesplan-vecpdf.js?v=20261001074528"></script>
-<script src="lagesplan-print.js?v=20261001074528"></script>
-<script src="lagesplan-keys.js?v=20261001074528"></script>
+<script src="lagesplan.js?v=20261001082148"></script>
+<script src="lagesplan-tools.js?v=20261001082148"></script>
+<script src="lagesplan-layers.js?v=20261001082148"></script>
+<script src="lagesplan-views.js?v=20261001082148"></script>
+<script src="lagesplan-film.js?v=20261001082148"></script>
+<script src="lagesplan-cad.js?v=20261001082148"></script>
+<script src="lagesplan-vecpdf.js?v=20261001082148"></script>
+<script src="lagesplan-print.js?v=20261001082148"></script>
+<script src="lagesplan-keys.js?v=20261001082148"></script>
 </body>
 </html>
