@@ -91,10 +91,31 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   console.log('OK: namnbytet känns igen, två kandidater med samma kod gissas inte ihop');
 
   // Förhandsgranskningen visar namnbytet
-  await page.evaluate(() => { renderPlanImportPreview(window.__diff); toggle('planImportPreviewDialog', true); });
+  await page.evaluate(() => { planImportDiff = window.__diff; renderPlanImportPreview(window.__diff); toggle('planImportPreviewDialog', true); });
   const summary = await page.innerText('#planImportSummary');
   if (!summary.includes('namnbyte') || !summary.includes('Fundament DP2 - Betongarbeten → Fundament')) fail('Förhandsgranskningen ska visa namnbytet, fick ' + summary);
   console.log('OK: förhandsgranskningen visar namnbytet');
+
+  // Rapporten som Excel-fil: en flik per kategori, uppdateringar med före → efter.
+  const rep = await page.evaluate(() => {
+    const book = { sheets: {} }; let file = null;
+    window.XLSX = { utils: {
+      json_to_sheet: rows => ({ rows }), aoa_to_sheet: a => ({ rows: a }), book_new: () => book,
+      book_append_sheet: (b, ws, name) => { b.sheets[name] = ws.rows; },
+      encode_range: () => 'A1:B2' }, writeFile: (b, f) => { file = f; } };
+    document.getElementById('btnPlanImportReport').click();
+    return { file, names: Object.keys(book.sheets), sheets: book.sheets };
+  });
+  if (rep.names.join(',') !== 'Sammanfattning,Namnbyten,Uppdateras,Nya,Finns inte kvar') fail('Flikarna i rapporten: ' + rep.names);
+  if (!/^Importgranskning .*\.xlsx$/.test(rep.file || '')) fail('Filnamn: ' + rep.file);
+  const ren = rep.sheets['Namnbyten'];
+  if (ren.length !== 1 || ren[0]['Gammalt namn'] !== 'Fundament DP2 - Betongarbeten' || ren[0]['Nytt namn'] !== 'Fundament' || ren[0]['Kopplade 3D-objekt'] !== 2) fail('Namnbyten-fliken: ' + JSON.stringify(ren));
+  const upd = rep.sheets['Uppdateras'];
+  if (upd.length !== 1 || !upd[0]['Ändrat'].includes('Aktivitet') || upd[0]['Aktivitet före'] !== 'Fundament DP2 - Betongarbeten' || upd[0]['Aktivitet efter'] !== 'Fundament' || upd[0]['Namnbyte'] !== 'Ja') fail('Uppdateras-fliken ska visa före → efter: ' + JSON.stringify(upd));
+  if (rep.sheets['Nya'].length !== 2 || rep.sheets['Finns inte kvar'].length !== 2) fail('Nya/Finns inte kvar: ' + JSON.stringify([rep.sheets['Nya'], rep.sheets['Finns inte kvar']]));
+  const sum = Object.fromEntries(rep.sheets['Sammanfattning'].map(r => [r['Vad'], r['Antal']]));
+  if (sum['Namnbyten (kopplingen behålls)'] !== 1 || sum['Nya objekt'] !== 2) fail('Sammanfattning: ' + JSON.stringify(sum));
+  console.log('OK: förhandsgranskningen kan exporteras till Excel med alla ändringar (före → efter)');
 
   await page.evaluate(() => commitPlanImport(window.__diff));
   await page.waitForTimeout(800);

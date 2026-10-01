@@ -580,6 +580,7 @@ function bindUI() {
   document.getElementById("btnImportPlanExcel").onclick = onImportPlanExcel;
   document.getElementById("btnConfirmPlanImport").onclick = onConfirmPlanImport;
   document.getElementById("btnCancelPlanImport").onclick = () => { planImportDiff = null; toggle("planImportPreviewDialog", false); };
+  document.getElementById("btnPlanImportReport").onclick = () => { if (planImportDiff) exportPlanImportReport(planImportDiff); };
   document.getElementById("btnCancelCoupleMode").onclick = cancelCoupleMode;
   document.getElementById("btnSaveCoupleMode").onclick = onSaveCoupleMode;
 
@@ -3456,6 +3457,81 @@ function renderPlanImportPreview(diff) {
     </div>`).join("");
 
   confirmMsgEl.innerText = "";
+}
+
+/* Hela förhandsgranskningen som Excel-fil (Victors önskemål 2026-10-01):
+   en flik per kategori, och för det som uppdateras exakt vad som ändras
+   (före → efter), så man kan filtrera/sortera och gå igenom allt innan man
+   importerar skarpt. Påverkar inget – det är bara en rapport. */
+function exportPlanImportReport(diff) {
+  const fileName = (document.getElementById("planExcelFile").files[0] || {}).name || "Excel";
+  const subNames = it => (activitiesByItemId.get(it.id) || []).map(r => r.name).filter(Boolean).join(", ");
+  const coupledCount = list => list.filter(it => it && it.modelId).length;
+  const yes = b => (b ? "Ja" : "");
+  // Uppdateras: jämför den befintliga posten med det som kommer från Excel.
+  const fields = [
+    ["Namn", ex => ex.objectName, p => p.objectName],
+    ["Aktivitet", ex => ex.activity, p => p.activity],
+    ["Typ", ex => ex.elementType, p => p.elementType || ex_keepType],
+    ["Område", ex => ex.area, p => p.area],
+    ["Start", ex => ex.startDate, p => p.startDate],
+    ["Slut", ex => ex.endDate, p => p.endDate],
+    ["Plan. start", ex => ex.baselineStartDate, p => p.baselineStartDate],
+    ["Plan. slut", ex => ex.baselineEndDate, p => p.baselineEndDate],
+    ["Framdrift %", ex => ex.progress, p => p.progress],
+  ];
+  let ex_keepType = null;
+  const norm = v => (v === undefined || v === null || v === "" ? "" : v);
+  const updRows = diff.toUpdate.map(m => {
+    const ex = m.existing, p = m.parsed;
+    ex_keepType = ex.elementType || null;
+    const row = { "Kod/namn": p.objectName, "Område": p.area };
+    const changed = [];
+    fields.forEach(([label, a, b]) => {
+      const before = norm(a(ex)), after = norm(b(p));
+      if (String(before) !== String(after)) changed.push(label);
+      row[`${label} före`] = before; row[`${label} efter`] = after;
+    });
+    const subsBefore = subNames(ex), subsAfter = (p.subActivities || []).map(sa => sa.name).join(", ");
+    if (subsBefore !== subsAfter) changed.push("Delaktiviteter");
+    row["Delaktiviteter före"] = subsBefore; row["Delaktiviteter efter"] = subsAfter;
+    const statusAfter = m.status || "";
+    if ((ex.status || "") !== statusAfter) changed.push("Status");
+    row["Status före"] = STATUS_LABELS[ex.status] || ex.status || ""; row["Status efter"] = STATUS_LABELS[statusAfter] || statusAfter;
+    row["Kopplade 3D-objekt"] = coupledCount([ex, ...(m.extras || [])]);
+    row["Namnbyte"] = yes(m.renamedFrom);
+    return { "Ändrat": changed.length ? changed.join(", ") : "Ingen ändring", ...row };
+  });
+  const sheets = [
+    ["Sammanfattning", [
+      { "Vad": "Fil", "Antal": fileName },
+      { "Vad": "Förhandsgranskad", "Antal": new Date().toLocaleString("sv-SE") },
+      { "Vad": "Nya objekt", "Antal": diff.toCreate.length },
+      { "Vad": "Uppdateras", "Antal": diff.toUpdate.length },
+      { "Vad": "– varav med ändringar", "Antal": updRows.filter(r => r["Ändrat"] !== "Ingen ändring").length },
+      { "Vad": "– varav oförändrade", "Antal": updRows.filter(r => r["Ändrat"] === "Ingen ändring").length },
+      { "Vad": "Namnbyten (kopplingen behålls)", "Antal": (diff.renames || []).length },
+      { "Vad": "Finns inte kvar i filen (rörs inte)", "Antal": diff.removedExisting.length },
+      { "Vad": "– varav med 3D-koppling", "Antal": coupledCount(diff.removedExisting) },
+      { "Vad": "Objekt totalt i filen", "Antal": diff.parsedItems.length },
+    ]],
+    ["Namnbyten", (diff.renames || []).map(r => ({ "Kod": r.code, "Område": r.area, "Gammalt namn": r.from, "Nytt namn": r.to, "Kopplade 3D-objekt": r.coupled }))],
+    ["Uppdateras", updRows.sort((a, b) => (a["Ändrat"] === "Ingen ändring") - (b["Ändrat"] === "Ingen ändring") || String(a["Område"]).localeCompare(String(b["Område"]), "sv") || String(a["Kod/namn"]).localeCompare(String(b["Kod/namn"]), "sv", { numeric: true }))],
+    ["Nya", diff.toCreate.map(m => { const p = m.parsed; return { "Kod/namn": p.objectName, "Område": p.area, "Aktivitet": p.activity || "", "Typ": p.elementType || "", "Start": p.startDate || "", "Slut": p.endDate || "", "Framdrift %": p.progress, "Delaktiviteter": (p.subActivities || []).map(sa => sa.name).join(", ") }; })],
+    ["Finns inte kvar", diff.removedExisting.map(it => ({ "Namn": it.objectName || "", "Område": it.area || "", "Aktivitet": it.activity || "", "Typ": it.elementType || "", "3D-kopplad": yes(it.modelId), "Kommentarer": commentCounts.get(it.id) || 0, "Källnyckel": it.sourceKey || "" }))],
+  ];
+  const wb = XLSX.utils.book_new();
+  sheets.forEach(([name, rows]) => {
+    const ws = rows.length ? XLSX.utils.json_to_sheet(rows) : XLSX.utils.aoa_to_sheet([["(inga)"]]);
+    if (rows.length) {
+      const keys = Object.keys(rows[0]);
+      ws["!cols"] = keys.map(k => ({ wch: Math.min(48, Math.max(k.length, ...rows.slice(0, 300).map(r => String(r[k] ?? "").length)) + 2) }));
+      ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length, c: keys.length - 1 } }) };
+    }
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  });
+  const stamp = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `Importgranskning ${fileName.replace(/\.[^.]+$/, "")} ${stamp}.xlsx`);
 }
 
 /** Klick på "Importera skarpt" i förhandsgranskningen. */
