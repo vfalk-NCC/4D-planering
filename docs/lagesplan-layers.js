@@ -1817,7 +1817,7 @@ function updateLayerSelection() {
   bar.innerHTML = `<b>${sel.length} markerade</b>
     <button type="button" data-a="on" title="Tänd alla markerade">Tänd</button>
     <button type="button" data-a="off" title="Släck alla markerade">Släck</button>
-    ${folders.length ? `<select data-a="folder" title="Flytta markerade till mapp"><option value="">Flytta till mapp…</option>${folders.map(f => `<option value="${escHtml(f.id)}">📁 ${escHtml(f.name)}</option>`).join("")}<option value="-">Utanför mappar</option></select>` : ""}
+    ${folders.length ? `<select data-a="folder" title="Flytta markerade till mapp"><option value="">Till mapp…</option>${folders.map(f => `<option value="${escHtml(f.id)}">📁 ${escHtml(f.name)}</option>`).join("")}<option value="-">Utanför mappar</option></select>` : ""}
     <button type="button" data-a="del" class="danger"${nDel ? "" : " disabled"} title="${nDel ? "Ta bort markerade (Delete)" : "Inget av de markerade lagren kan tas bort"}">🗑️ Ta bort${nDel && nDel !== sel.length ? ` (${nDel})` : ""}</button>
     <button type="button" data-a="clear" class="ghost" title="Avmarkera (Esc)">✕</button>`;
   bar.classList.remove("hidden");
