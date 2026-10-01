@@ -52,19 +52,34 @@ function snapshotLayers() {
   printLayerList().forEach(l => { keys[l.key] = !!ls(l.key).visible; });
   return keys;
 }
-/* Kör fn med ritningens lagerurval tänt/släckt (återställs efteråt). */
-async function withViewportLayers(el, fn) {
+/* En sparad vy (lagesplan-views.js) som ritningen använder, om någon. */
+const vpView = el => el.layers && el.layers.view && typeof lsViews === "function" ? lsViews().find(v => v.id === el.layers.view) || null : null;
+/* Ritningens lagerurval: { key: tänd } – null = följ skärmen. */
+function vpKeys(el) {
   const cfg = el.layers;
-  if (!cfg || cfg.follow) return fn();
-  const saved = {};
-  printLayerList().forEach(l => {
-    saved[l.key] = ls(l.key).visible;
-    ls(l.key).visible = l.key in (cfg.keys || {}) ? !!cfg.keys[l.key] : false;
-  });
-  try { return await fn(); }
-  finally { Object.entries(saved).forEach(([k, v]) => { ls(k).visible = v; }); }
+  if (!cfg) return null;
+  const v = vpView(el);
+  if (v) { const L = (v.state && v.state.layers) || {}, keys = {}; printLayerList().forEach(l => { keys[l.key] = !!(L[l.key] && L[l.key].visible); }); return keys; }
+  return cfg.follow ? null : cfg.keys || {};
 }
-const vpLayersKey = el => el.layers && !el.layers.follow ? JSON.stringify(el.layers.keys) : "follow:" + JSON.stringify(snapshotLayers());
+/* Kör fn med ritningens lagerurval tänt/släckt (återställs efteråt). En vy
+   tar också med genomskinligheten och "genomskinlig vit bakgrund". */
+async function withViewportLayers(el, fn) {
+  const keys = vpKeys(el);
+  if (!keys) return fn();
+  const v = vpView(el), L = v ? (v.state && v.state.layers) || {} : null;
+  const saved = {}, savedMult = layerState.pdfMultiply;
+  printLayerList().forEach(l => {
+    const s = ls(l.key);
+    saved[l.key] = { visible: s.visible, opacity: s.opacity };
+    s.visible = l.key in keys ? !!keys[l.key] : false;
+    if (L && L[l.key] && L[l.key].opacity != null) s.opacity = L[l.key].opacity;
+  });
+  if (v && v.state) layerState.pdfMultiply = v.state.pdfMultiply !== false;
+  try { return await fn(); }
+  finally { Object.entries(saved).forEach(([k, st]) => { const s = ls(k); s.visible = st.visible; s.opacity = st.opacity; }); layerState.pdfMultiply = savedMult; }
+}
+const vpLayersKey = el => { const v = vpView(el); if (v) return "view:" + JSON.stringify(v.state); const k = vpKeys(el); return k ? JSON.stringify(k) : "follow:" + JSON.stringify(snapshotLayers()); };
 
 // ---------------------------------------------------------------------
 // Standardmall (i stil med en APD-plan)
@@ -185,7 +200,8 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
   ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, pxW, pxH);
   if (!plan || !plan.calib || !viewport) return out;
   // Geometri och bilder hämtas innan lagren tillfälligt byts.
-  if (typeof cads === "function") for (const r of cads()) { if (!el.layers || el.layers.follow || (el.layers.keys || {})["cad:" + r.id]) { try { await ensureCadGeom(r); } catch (e) {} } }
+  const vk = vpKeys(el);
+  if (typeof cads === "function") for (const r of cads()) { if (!vk || vk["cad:" + r.id]) { try { await ensureCadGeom(r); } catch (e) {} } }
   const P = mapPlate(el, wMm, hMm, pxW, pxH);
   P.noTiles = !!opts.preview;
   await withViewportLayers(el, async () => {
@@ -915,10 +931,13 @@ function renderPrintProps(onlyPos) {
   if (el.type === "image") html += `<button id="prPickImg" class="block" style="margin-top:8px;">🖼 ${el.path ? "Byt bild…" : "Välj bild…"}</button><div class="hint">PNG, JPG eller SVG – t.ex. företagets logga eller skyltar. Bilden sparas i projektet. Proportionerna behålls (Shift = fritt).</div>`;
   if (el.type === "map") {
     const lb = el.label || {}, cfg = el.layers || { follow: true, keys: {} };
+    const vw = vpView(el), views = typeof lsViews === "function" ? lsViews() : [];
+    const locked = cfg.follow || !!vw, vkeys = vpKeys(el);
     const layerRows = printLayerList().map(l => {
-      const on = cfg.follow ? !!ls(l.key).visible : !!(cfg.keys || {})[l.key];
-      return `<label class="check pr-lay${l.sub ? " sub" : ""}"><input type="checkbox" data-lay="${escHtml(l.key)}"${on ? " checked" : ""}${cfg.follow ? " disabled" : ""} /> <span>${escHtml(l.label)}</span></label>`;
+      const on = vkeys ? !!vkeys[l.key] : !!ls(l.key).visible;
+      return `<label class="check pr-lay${l.sub ? " sub" : ""}"><input type="checkbox" data-lay="${escHtml(l.key)}"${on ? " checked" : ""}${locked ? " disabled" : ""} /> <span>${escHtml(l.label)}</span></label>`;
     }).join("");
+    const viewSel = views.length ? `<div class="row" style="flex-wrap:nowrap;margin-top:4px;"><select id="prView" class="grow" title="Använd en sparad vy från Lager: dess tända lager, ortofoton och DXF-lager"><option value="">Ingen sparad vy</option>${views.map(v => `<option value="${escHtml(v.id)}"${vw && vw.id === v.id ? " selected" : ""}>📑 ${escHtml(v.name)}</option>`).join("")}</select>${vw && vw.camera ? `<button id="prViewCam" title="Samma utsnitt som vyn (mitt och skala)">🔍 Vyns utsnitt</button>` : ""}</div>` : "";
     html += `<div class="pr-grid4"><div style="grid-column:span 2;"><label>Skala</label><select data-f="scale" data-num="1">${[...new Set([...PRINT_SCALES, el.scale])].sort((a, b) => a - b).map(s => `<option value="${s}"${el.scale === s ? " selected" : ""}>1:${s}</option>`).join("")}</select></div></div>
       <div class="row split" style="margin-top:8px;"><button id="prPan" class="${pr.panMode ? "active" : ""}" title="Dra i ritningen för att flytta utsnittet, scrolla för att byta skala">✋ Panorera</button><button id="prFromView" title="Samma utsnitt som på skärmen">⤢ Skärmens utsnitt</button></div>
       ${chk("border", "Ram runt ritningen")}
@@ -927,9 +946,10 @@ function renderPrintProps(onlyPos) {
         <div><label>Storlek (pt)</label><input type="number" step="0.5" id="prLblSize" value="${lb.size || 9}" /></div>
         <div style="grid-column:span 2;"><label>Justering</label><select id="prLblAlign">${["left", "center", "right"].map(a => `<option value="${a}"${(lb.align || "left") === a ? " selected" : ""}>${{ left: "Vänster", center: "Mitten", right: "Höger" }[a]}</option>`).join("")}</select></div></div>
       <label style="margin-top:10px;"><b>Visa i ritningen</b></label>
-      <label class="check"><input type="checkbox" id="prFollow"${cfg.follow ? " checked" : ""} /> Följ skärmen (lagren som är tända där)</label>
-      <div class="pr-layers${cfg.follow ? " off" : ""}">${layerRows}</div>
-      <div class="row" style="margin-top:4px;"><button id="prLayAll" ${cfg.follow ? "disabled" : ""}>Alla</button><button id="prLayNone" ${cfg.follow ? "disabled" : ""}>Inga</button><button id="prLayScreen" ${cfg.follow ? "disabled" : ""} title="Samma som är tänt på skärmen just nu">Som skärmen</button></div>
+      ${viewSel}
+      ${vw ? `<div class="hint" style="margin:2px 0 4px;">Ritningen visar vyn "${escHtml(vw.name)}". Ändras vyn följer utskriften med.</div>` : `<label class="check"><input type="checkbox" id="prFollow"${cfg.follow ? " checked" : ""} /> Följ skärmen (lagren som är tända där)</label>`}
+      <div class="pr-layers${locked ? " off" : ""}">${layerRows}</div>
+      <div class="row" style="margin-top:4px;"><button id="prLayAll" ${locked ? "disabled" : ""}>Alla</button><button id="prLayNone" ${locked ? "disabled" : ""}>Inga</button><button id="prLayScreen" ${locked ? "disabled" : ""} title="Samma som är tänt på skärmen just nu">Som skärmen</button></div>
       <div class="hint">Skalan gäller på ${pr.tpl.format}. Skriv ut i verklig storlek (100 %).</div>`;
   }
   if (el.type === "legend") html += inp("title", "Rubrik") + `<div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}${num("cols", "Kolumner", "1")}</div>
@@ -973,7 +993,24 @@ function renderPrintProps(onlyPos) {
     $("prLblSize").oninput = e => { el.label = { ...(el.label || {}), size: Number(e.target.value) || 9 }; pr.dirty = true; drawPrintPage(); };
     $("prLblAlign").onchange = e => lbl({ align: e.target.value });
     const setLayers = keys => { pushUndo(); el.layers = { follow: false, keys }; renderPrintProps(); drawPrintPage(); };
-    $("prFollow").onchange = e => { pushUndo(); el.layers = { follow: e.target.checked, keys: (el.layers && el.layers.keys) || snapshotLayers() }; renderPrintProps(); drawPrintPage(); };
+    if ($("prFollow")) $("prFollow").onchange = e => { pushUndo(); el.layers = { follow: e.target.checked, keys: (el.layers && el.layers.keys) || snapshotLayers() }; renderPrintProps(); drawPrintPage(); };
+    if ($("prView")) $("prView").onchange = e => {
+      pushUndo();
+      // Ingen vy: behåll vyns lager som eget urval, så inget ändras i ritningen.
+      el.layers = e.target.value ? { follow: false, view: e.target.value, keys: vpKeys(el) || snapshotLayers() } : { follow: false, keys: vpKeys(el) || snapshotLayers() };
+      pr.dirty = true; renderPrintProps(); drawPrintPage();
+    };
+    on("prViewCam", () => {
+      const v = vpView(el), c = v && v.camera;
+      if (!c || !viewport || !plan || !plan.calib) return;
+      if (c.plan && c.plan !== plan.id) { setPrintStatus("Vyns utsnitt hör till en annan plan."); return; }
+      const pc = $("pdfCanvas"), m = pdfToModel(toPdf([c.fx * pc.width, c.fy * pc.height]));
+      const { k } = pageDims(), need = c.span * renderScale / pxPerMeter() * 1000 / (el.w * k);
+      pushUndo();
+      el.center = [Math.round(m[0] * 100) / 100, Math.round(m[1] * 100) / 100];
+      el.scale = PRINT_SCALES.find(s => s >= need) || PRINT_SCALES[PRINT_SCALES.length - 1];
+      pr.dirty = true; renderPrintPanel(); drawPrintPage();
+    });
     box.querySelectorAll("[data-lay]").forEach(c => {
       c.onchange = () => {
         const keys = { ...((el.layers && el.layers.keys) || {}) };
