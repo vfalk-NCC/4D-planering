@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261001103353"></script>
+<script src="github-storage.js?v=20261001112257"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -266,6 +266,52 @@
   #keysList .kb.wait { background: var(--accent-weak); border-color: var(--accent); color: var(--accent-strong); font-family: inherit; }
   #keysList .kx { height: 26px; width: 26px; }
   #busy { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: #fff; border: 1px solid var(--border); border-radius: 20px; padding: 6px 14px; z-index: 6; font-size: 12px; box-shadow: 0 4px 14px rgba(15,23,42,.14); }
+
+  /* ---------- Pekstöd + fältläge (iPad, 2026-10-01) ---------- */
+  #viewport { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  .field-ui { display: none; }
+  body.field aside, body.field #sideResizer, body.field #btnShowSide { display: none !important; }
+  body.field .field-ui { display: flex; }
+  body.field #fieldSheet.hidden { display: none; }
+  body.field .fv-wrap.hidden { display: none; }
+  body.field button, body.field select, body.field input { touch-action: manipulation; }
+  #fieldTop { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 7; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #fieldTop .fv-wrap { display: flex; flex: 1 1 200px; min-width: 0; }
+  .fl-sel { height: 46px; font-size: 16px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border); background: #fff; box-shadow: 0 4px 14px rgba(15,23,42,.14); min-width: 0; flex: 1 1 200px; }
+  .fl-btn { height: 46px; min-width: 46px; padding: 0 16px; font-size: 16px; font-weight: 600; border-radius: 10px; background: #fff; border: 1px solid var(--border); box-shadow: 0 4px 14px rgba(15,23,42,.14); white-space: nowrap; }
+  body.field .fl-btn.on, body.field .fl-btn.on:hover, body.field .fl-primary, body.field .fl-primary:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .fl-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .fl-ghost { background: rgba(255,255,255,.92); }
+  #fieldBottom { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 7; flex-direction: column; gap: 8px; padding: 10px; background: rgba(255,255,255,.95); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 6px 20px rgba(15,23,42,.18); }
+  #fieldBottom .fb-row { display: flex; gap: 8px; align-items: center; }
+  .fl-date { flex: 1; height: 46px; font-size: 17px; font-weight: 650; border-radius: 10px; border: 1px solid var(--border); background: var(--panel-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .fl-hidden-date { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+  #fieldSlider { width: 100%; height: 34px; margin: 0; }
+  #fieldSlider::-webkit-slider-thumb { width: 30px; height: 30px; }
+  body.field #zoomCtl { right: 10px; bottom: auto; top: 50%; transform: translateY(-50%); flex-direction: column; border-radius: 12px; }
+  body.field #zoomCtl button { height: 52px; min-width: 52px; font-size: 22px; }
+  body.field #zoomCtl button + button { border-left: none; border-top: 1px solid var(--border); }
+  body.field #btnFit { font-size: 14px !important; }
+  body.field #tip { position: absolute; left: 50% !important; top: auto !important; bottom: 132px; transform: translateX(-50%); font-size: 15px; line-height: 1.45; padding: 12px 14px; max-width: min(520px, 92%); border-radius: 12px; z-index: 8; }
+  #fieldSheet { position: absolute; top: 66px; right: 10px; bottom: 132px; width: min(400px, calc(100% - 20px)); z-index: 9; flex-direction: column; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 10px 30px rgba(15,23,42,.25); overflow: hidden; }
+  #fieldSheet .fs-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 17px; }
+  #fieldSheetBody { overflow-y: auto; padding: 4px 12px 14px; -webkit-overflow-scrolling: touch; }
+  .fs-h { font-size: 12px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+  .fs-h-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+  .fs-grid { display: grid; grid-template-columns: 1fr; gap: 6px; }
+  .fs-tog, .fs-view { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 50px; padding: 6px 12px; font-size: 16px; text-align: left; border-radius: 10px; border: 1px solid var(--border); background: #fff; height: auto; white-space: normal; justify-content: flex-start; }
+  .fs-tog .fs-dot { flex: 0 0 22px; height: 22px; border-radius: 6px; border: 2px solid #94a3b8; background: #fff; }
+  .fs-tog.on { border-color: var(--accent); background: var(--accent-weak); }
+  .fs-tog.on .fs-dot { background: var(--accent); border-color: var(--accent); box-shadow: inset 0 0 0 3px #fff; }
+  .fs-tog .fs-lbl { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .fs-view.on { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600; }
+  .fs-ortho { display: grid; grid-template-columns: 1fr 50px 50px; gap: 6px; align-items: center; }
+  .fs-ortho .fs-tog { grid-column: 1 / -1; }
+  .fs-ortho .fs-oname { grid-column: 1; grid-row: 2; font-size: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fs-ortho [data-ortho="prev"] { grid-column: 2; grid-row: 2; }
+  .fs-ortho [data-ortho="next"] { grid-column: 3; grid-row: 2; }
+  .fs-big { height: 50px; font-size: 20px; border-radius: 10px; }
+  .fs-mini { height: 34px; font-size: 13px; padding: 0 10px; margin-left: 4px; border-radius: 8px; }
 </style>
 </head>
 <body>
@@ -282,6 +328,7 @@
         <button id="btnRefreshData" class="icon ghost" title="Uppdatera: läs om planeringen och hämta positioner för det du kopplat (4D-planering behöver vara öppen)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg></button>
         <button id="btnKeys" class="icon ghost" title="Kortkommandon (?)">⌨</button>
         <button id="btnSecAll" class="icon ghost" title="Fäll ihop/ut alla kort på fliken">⇕</button>
+        <button id="btnFieldMode" class="icon ghost" title="Fältläge: förenklad vy med stora knappar (iPad)">📱</button>
         <button id="btnHideSide" class="icon ghost" title="Dölj menyn (mer plats för planen)">◀</button>
       </div>
       <div id="warnBox" class="warn hidden"></div>
@@ -569,6 +616,26 @@
     <div id="zoomCtl" class="float-group">
       <button id="btnZoomIn" title="Zooma in">+</button><button id="btnZoomOut" title="Zooma ut">−</button><button id="btnFit" title="Anpassa planen till fönstret">⤢ Anpassa</button>
     </div>
+    <div id="fieldTop" class="field-ui">
+      <select id="fieldPlan" class="fl-sel" title="Plan"></select>
+      <div class="fv-wrap"><select id="fieldView" class="fl-sel" title="Sparad vy"></select></div>
+      <button type="button" id="btnFieldLayers" class="fl-btn" title="Lager, ortofoto och DXF">🗂 Lager</button>
+      <button type="button" id="btnFieldFull" class="fl-btn fl-ghost" title="Tillbaka till den fullständiga vyn med alla verktyg">☰ Fullständig</button>
+    </div>
+    <div id="fieldBottom" class="field-ui">
+      <div class="fb-row">
+        <button type="button" id="btnFieldPrevW" class="fl-btn" title="En vecka bakåt">◀ v</button>
+        <button type="button" id="fieldDateLabel" class="fl-date" title="Välj datum">–</button>
+        <input type="date" id="fieldDate" class="fl-hidden-date" tabindex="-1" aria-hidden="true" />
+        <button type="button" id="btnFieldNextW" class="fl-btn" title="En vecka framåt">v ▶</button>
+        <button type="button" id="btnFieldToday" class="fl-btn fl-primary">Idag</button>
+      </div>
+      <input type="range" id="fieldSlider" min="0" max="100" value="100" title="Dra för att bläddra i tiden" />
+    </div>
+    <div id="fieldSheet" class="field-ui hidden">
+      <div class="fs-head"><b>Lager</b><button type="button" id="btnFieldSheetClose" class="fl-btn fl-ghost">Klar</button></div>
+      <div id="fieldSheetBody"></div>
+    </div>
     <div id="tip" class="hidden"></div>
     <div id="sitePop" class="hidden"></div>
     <div id="photoModal" class="hidden">
@@ -665,14 +732,15 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261001103353"></script>
-<script src="lagesplan-tools.js?v=20261001103353"></script>
-<script src="lagesplan-layers.js?v=20261001103353"></script>
-<script src="lagesplan-views.js?v=20261001103353"></script>
-<script src="lagesplan-film.js?v=20261001103353"></script>
-<script src="lagesplan-cad.js?v=20261001103353"></script>
-<script src="lagesplan-vecpdf.js?v=20261001103353"></script>
-<script src="lagesplan-print.js?v=20261001103353"></script>
-<script src="lagesplan-keys.js?v=20261001103353"></script>
+<script src="lagesplan.js?v=20261001112257"></script>
+<script src="lagesplan-tools.js?v=20261001112257"></script>
+<script src="lagesplan-layers.js?v=20261001112257"></script>
+<script src="lagesplan-views.js?v=20261001112257"></script>
+<script src="lagesplan-film.js?v=20261001112257"></script>
+<script src="lagesplan-cad.js?v=20261001112257"></script>
+<script src="lagesplan-vecpdf.js?v=20261001112257"></script>
+<script src="lagesplan-print.js?v=20261001112257"></script>
+<script src="lagesplan-touch.js?v=20261001112257"></script>
+<script src="lagesplan-keys.js?v=20261001112257"></script>
 </body>
 </html>
