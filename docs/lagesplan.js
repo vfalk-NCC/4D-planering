@@ -1420,12 +1420,20 @@ function onDateChanged() { if (typeof syncOrthoToDate === "function") syncOrthoT
 /* PDF-export: underlag (ortofoto + PDF) som bild, tända DXF:er som vektorer
    och zoner/objekt/etablering som genomskinlig bild ovanpå. Ritar planen i
    rutan [bx, by, bw, bh] (mm) på sidan och returnerar var den hamnade. */
-function addPlanToPdf(doc, bx, by, bw, bh, quality = 0.9) {
+function addPlanToPdf(doc, bx, by, bw, bh, quality = 0.9, vec = null) {
   const pc = $("pdfCanvas");
-  const base = composeImage(null, true, "base"), over = composeImage(null, true, "over");
+  const base = composeImage(null, true, vec ? "ortho" : "base"), over = composeImage(null, true, "over");
   const k = Math.min(bw / base.width, bh / base.height);
   const iw = base.width * k, ih = base.height * k, x = bx + (bw - iw) / 2, y = by + (bh - ih) / 2;
+  if (vec) vecUnder(vec);
   doc.addImage(base.toDataURL("image/jpeg", quality), "JPEG", x, y, iw, ih);
+  if (vec) {
+    vecOver(vec);
+    // Ritnings-PDF:en som vektorer mellan ortofotot och resten.
+    const sc0 = base.width / pc.width;
+    const multiply = getComputedStyle(pc).mixBlendMode === "multiply";
+    if (layerVisible("pdf")) vecAddPlan(vec, [x, y, iw, ih], [sc0 * k, 0, 0, sc0 * k, x, y], layerOpacity("pdf"), multiply);
+  }
   const list = typeof cadVectorPlan === "function" && cads().some(r => ls("cad:" + r.id).visible) ? cadVectorPlan() : [];
   if (list.length && typeof drawCadVectorsToPdf === "function") {
     const sc = base.width / pc.width; // bild-px per stage-px
@@ -1444,7 +1452,7 @@ function composeImage(maxW, noHeader, part) {
   out.width = W; out.height = H + head;
   const ctx = out.getContext("2d");
   if (part !== "over") { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, out.width, out.height); }
-  const inPart = id => !part || (part === "base" ? (id === "orthoCanvas" || id === "pdfCanvas") : (id !== "orthoCanvas" && id !== "pdfCanvas"));
+  const inPart = id => !part || (part === "base" ? (id === "orthoCanvas" || id === "pdfCanvas") : part === "ortho" ? id === "orthoCanvas" : (id !== "orthoCanvas" && id !== "pdfCanvas"));
   // Samma lager, synlighet, genomskinlighet och blandning som på skärmen.
   STAGE_CANVASES.forEach(id => {
     const c = $(id);

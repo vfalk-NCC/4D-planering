@@ -195,11 +195,14 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
         ctx.globalAlpha = layerOpacity("ortho:" + o.id); ctx.drawImage(plate, 0, 0); ctx.globalAlpha = 1;
       } catch (e) { console.warn("Ortofoto i utskriften", e); }
     }
-    if (layerVisible("pdf")) {
+    const multiplyPdf = orthos().some(o => ls("ortho:" + o.id).visible) && layerState.pdfMultiply !== false;
+    P.pdfInfo = { visible: layerVisible("pdf"), opacity: layerOpacity("pdf"), multiply: multiplyPdf };
+    // Vektor-PDF: ritningen bäddas in som vektorer efteråt (lagesplan-vecpdf.js).
+    if (layerVisible("pdf") && !opts.vectorPdf) {
       opts.status && opts.status("PDF-ritningen");
       const pdfPlate = await buildPdfPlate(P);
       ctx.save(); ctx.globalAlpha = layerOpacity("pdf");
-      if (orthos().some(o => ls("ortho:" + o.id).visible) && layerState.pdfMultiply !== false) ctx.globalCompositeOperation = "multiply";
+      if (multiplyPdf) ctx.globalCompositeOperation = "multiply";
       ctx.drawImage(pdfPlate, 0, 0); ctx.restore();
     }
     P.overlay = newCanvas(pxW, pxH);
@@ -1045,14 +1048,27 @@ async function exportPrintPdf() {
       return c;
     };
     const maps = tpl.elements.filter(e => e.type === "map");
+    // Ritnings-PDF:en som vektorer: UNDER/ÖVER-sidor som sätts ihop med pdf-lib.
+    let vec = null;
+    if (maps.length && typeof vecBegin === "function") {
+      setPrintStatus("Laddar ritningen som vektorer…");
+      try { vec = await vecBegin(doc); } catch (e) { console.warn("Vektor-PDF", e); vec = null; }
+    }
     for (const el of tpl.elements) {
       const x = el.x * k, y = el.y * k, w = el.w * k, h = el.h * k;
       if (el.type === "map") {
         const nr = maps.indexOf(el) + 1;
         setPrintStatus(`Ritar ritning ${nr} av ${maps.length} i hög upplösning…`);
         const u = fmt.dpi / 25.4;
-        const mc = await renderMapCanvas(el, w, h, Math.round(w * u), Math.round(h * u), { vectorCad: true, status: s => setPrintStatus(`Ritning ${nr}/${maps.length}: ${s}…`) });
+        const mc = await renderMapCanvas(el, w, h, Math.round(w * u), Math.round(h * u), { vectorCad: true, vectorPdf: !!vec, status: s => setPrintStatus(`Ritning ${nr}/${maps.length}: ${s}…`) });
+        // Egen lagergrupp per ritningsyta: staplingen blir som i mallen.
+        if (vec) { vecNewGroup(vec); vecUnder(vec); }
         doc.addImage(mc.base.toDataURL("image/jpeg", 0.9), "JPEG", x, y, w, h, undefined, "FAST");
+        if (vec) {
+          vecOver(vec);
+          const f0 = w / mc.P.W, S0 = mc.P.S * f0;
+          if (mc.P.pdfInfo && mc.P.pdfInfo.visible) vecAddPlan(vec, [x, y, w, h], [S0, 0, 0, S0, x - mc.P.x0 * S0, y - mc.P.y0 * S0], mc.P.pdfInfo.opacity, mc.P.pdfInfo.multiply);
+        }
         if (mc.cad.length) {
           // DXF som vektorer: stage-px -> mm på sidan.
           setPrintStatus(`Ritning ${nr}/${maps.length}: DXF som vektorer…`);
@@ -1131,7 +1147,8 @@ async function exportPrintPdf() {
       }
     }
     const name = `${fillText("Lägesplan {plan} {datum}", tpl)} ${tpl.format}.pdf`;
-    doc.save(name);
+    if (vec) { setPrintStatus("Sätter ihop PDF:en med ritningen som vektorer…"); savePdfBytes(await vecFinish(vec), name); }
+    else doc.save(name);
     setPrintStatus(`✓ ${name}`);
   } catch (e) {
     console.error(e);

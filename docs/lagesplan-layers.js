@@ -1851,13 +1851,15 @@ async function exportSitePlanPdf() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
     const W = 420, H = 297, M = 12;
+    let vec = null;
+    if (typeof vecBegin === "function" && pdfVectorWanted()) { try { vec = await vecBegin(doc); } catch (e) { vec = null; } }
     for (let i = 0; i < months.length; i++) {
       const [a, b] = months[i];
       setBusy(`Skapar etableringsplan… sida ${i + 1} av ${months.length}`);
       siteDateOverride = [a, b];
       $("dateInput").value = b; syncSliderFromDate(); renderZones();
       await new Promise(r => setTimeout(r, 30));
-      if (i) doc.addPage("a3", "landscape");
+      if (i) { if (vec) vecNextPage(vec); else doc.addPage("a3", "landscape"); }
       const [y, mo] = a.split("-").map(Number);
       doc.setFont("helvetica", "bold"); doc.setFontSize(20);
       doc.text(`Etableringsplan – ${MON[mo - 1]} ${y}`, M, M + 6);
@@ -1866,7 +1868,7 @@ async function exportSitePlanPdf() {
       const listW = 95, top = M + 18, bottom = H - M;
       const boxW = W - 2 * M - listW - 6, boxH = bottom - top;
       // Underlaget som bild, DXF som vektorer, etablering/zoner ovanpå.
-      const r = addPlanToPdf(doc, M, top, boxW, boxH, 0.88);
+      const r = addPlanToPdf(doc, M, top, boxW, boxH, 0.88, vec);
       doc.setDrawColor(200); doc.rect(r.x, r.y, r.w, r.h);
       // Förteckning över det som gäller månaden
       const active = siteItems.filter(x => isSiteObj(x) && siteShown(x))
@@ -1891,7 +1893,9 @@ async function exportSitePlanPdf() {
       }
       if (!active.length) { doc.setFont("helvetica", "italic"); doc.text("Inget med datum den här månaden.", lx, ly); }
     }
-    doc.save(`Etableringsplan ${plan.name} ${months[0][0].slice(0, 7)}–${months[months.length - 1][0].slice(0, 7)}.pdf`);
+    const spName = `Etableringsplan ${plan.name} ${months[0][0].slice(0, 7)}–${months[months.length - 1][0].slice(0, 7)}.pdf`;
+    if (vec) { setBusy("Sätter ihop PDF:en med ritningen som vektorer…"); savePdfBytes(await vecFinish(vec), spName); }
+    else doc.save(spName);
   } catch (e) {
     alert("Kunde inte skapa etableringsplanen: " + e.message);
   } finally {

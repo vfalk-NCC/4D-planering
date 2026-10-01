@@ -407,6 +407,8 @@ async function exportPdfA3() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a3" });
     const W = 420, H = 297, M = 12;
+    let vec = null;
+    if (typeof vecBegin === "function" && pdfVectorWanted()) { try { vec = await vecBegin(doc); } catch (e) { vec = null; } }
     doc.setFont("helvetica", "bold"); doc.setFontSize(20);
     doc.text(`Lägesplan – ${plan.name}`, M, M + 6);
     doc.setFont("helvetica", "normal"); doc.setFontSize(11);
@@ -421,7 +423,7 @@ async function exportPdfA3() {
     const top = M + 18, bottom = H - M - 12;
     const boxW = W - 2 * M, boxH = bottom - top;
     // Underlaget som bild, DXF som vektorer (skarpa linjer), zoner/objekt ovanpå.
-    const r = addPlanToPdf(doc, M, top, boxW, boxH, 0.9);
+    const r = addPlanToPdf(doc, M, top, boxW, boxH, 0.9, vec);
     doc.setDrawColor(200); doc.rect(r.x, r.y, r.w, r.h);
 
     // Teckenförklaring
@@ -437,7 +439,9 @@ async function exportPdfA3() {
       x += 7; doc.text(PHASE_LABELS[ph], x, y); x += doc.getTextWidth(PHASE_LABELS[ph]) + 8;
     });
     if ($("showObjects").checked) { doc.setTextColor(110); doc.text("Zoner och objekt färgas efter fasen vid valt datum.", x + 4, y); doc.setTextColor(0); }
-    doc.save(`Lägesplan ${plan.name} ${$("dateInput").value} A3.pdf`);
+    const a3name = `Lägesplan ${plan.name} ${$("dateInput").value} A3.pdf`;
+    if (vec) { setBusy("Sätter ihop PDF:en med ritningen som vektorer…"); savePdfBytes(await vecFinish(vec), a3name); }
+    else doc.save(a3name);
   } catch (e) {
     alert("Kunde inte skapa PDF: " + e.message);
   } finally {
