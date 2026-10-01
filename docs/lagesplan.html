@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261001071839"></script>
+<script src="github-storage.js?v=20261001072257"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -124,8 +124,14 @@
   .layer-row button { height: auto; padding: 0 4px; border: none; background: none; cursor: pointer; font-size: 12px; }
   .layer-row.in-folder { padding-left: 26px; background: #fbfcfe; }
   .layer-row.folder-row { background: var(--panel-2); font-weight: 600; }
-  .layer-row.cadall-row { background: var(--panel-2); font-weight: 600; }
-  .layer-row.cadall-row, .layer-row.cadall-sub { grid-template-columns: 20px 1fr; }
+  .cadall-box { border: 1px solid var(--border); border-radius: var(--radius); background: #fff; margin-bottom: 6px; overflow: hidden; }
+  .cadall-box .layer-row { grid-template-columns: 20px 1fr; }
+  .cadall-box .cadall-row { background: var(--panel-2); font-weight: 600; border-bottom: none; }
+  .cadall-box .cadall-row .ln { display: flex; align-items: center; gap: 4px; }
+  .cadall-box .cadall-row small { font-weight: 400; margin-left: auto; }
+  .cadall-box .cadall-list { max-height: 260px; overflow-y: auto; border-top: 1px solid var(--border); }
+  .cadall-box .cadall-sub { padding-left: 30px; }
+  .cadall-box .layer-row.filtered { display: none; }
   .layer-row.folder-row .ln { display: flex; align-items: center; gap: 2px; }
   .layer-row.folder-row .fr-toggle { width: 16px; padding: 0; color: var(--muted); }
   .layer-row.folder-row small { font-weight: 400; margin-left: 4px; }
@@ -304,6 +310,7 @@
         <details class="sec" data-sec="layers" open>
           <summary><span class="si">🗂</span>Lager</summary>
           <div class="layer-search"><input type="text" id="layerSearch" placeholder="🔎 Sök lager…" autocomplete="off" /><button id="layerSearchClear" class="icon ghost hidden" title="Rensa">✕</button><button id="btnLayerSort" class="layer-sort" title="Sortera mapparna och lagren i dem A–Ö">A–Ö</button></div>
+          <div id="cadAllBox" class="cadall-box hidden"></div>
           <div id="layerList" class="layer-list"></div>
           <div class="hint hidden" id="layerSearchInfo"></div>
           <div class="row" style="margin-top:6px;"><button id="btnNewFolder" title="Skapa en mapp och dra lager till den">📁 ＋ Mapp</button><span class="hint grow" style="margin:0;">Klicka för att markera, Ctrl-klick för flera, Shift-klick för ett intervall. Dra lager till en mapp. Dubbelklicka på ett namn för att byta det.</span></div>
@@ -647,13 +654,13 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261001071839"></script>
-<script src="lagesplan-tools.js?v=20261001071839"></script>
-<script src="lagesplan-layers.js?v=20261001071839"></script>
-<script src="lagesplan-film.js?v=20261001071839"></script>
-<script src="lagesplan-cad.js?v=20261001071839"></script>
-<script src="lagesplan-vecpdf.js?v=20261001071839"></script>
-<script src="lagesplan-print.js?v=20261001071839"></script>
-<script src="lagesplan-keys.js?v=20261001071839"></script>
+<script src="lagesplan.js?v=20261001072257"></script>
+<script src="lagesplan-tools.js?v=20261001072257"></script>
+<script src="lagesplan-layers.js?v=20261001072257"></script>
+<script src="lagesplan-film.js?v=20261001072257"></script>
+<script src="lagesplan-cad.js?v=20261001072257"></script>
+<script src="lagesplan-vecpdf.js?v=20261001072257"></script>
+<script src="lagesplan-print.js?v=20261001072257"></script>
+<script src="lagesplan-keys.js?v=20261001072257"></script>
 </body>
 </html>

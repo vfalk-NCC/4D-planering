@@ -1687,13 +1687,17 @@ function renderLayerPanel() {
     kids.forEach(k => rows.push(rowHtml[k]({ inFolder: true, hidden: !open })));
   });
   keys.filter(k => !inFolder(k)).forEach(k => rows.push(rowHtml[k]({})));
-  // "Alla DXF-lager" före första DXF-ritningen (eller överst).
-  const allCad = typeof cadAllRowsHtml === "function" ? cadAllRowsHtml() : "";
-  if (allCad) {
-    const i = rows.findIndex(r => /data-layer="cad:/.test(r));
-    rows.splice(i < 0 ? 0 : i, 0, allCad);
-  }
   el.innerHTML = rows.join("");
+  // "Alla DXF-lager" i en egen ruta under sökfältet.
+  const allBox = $("cadAllBox");
+  if (allBox) {
+    const allCad = typeof cadAllRowsHtml === "function" ? cadAllRowsHtml() : "";
+    const prevList = allBox.querySelector(".cadall-list"), keep = prevList ? prevList.scrollTop : 0;
+    allBox.innerHTML = allCad;
+    const list = allBox.querySelector(".cadall-list");
+    if (list) list.scrollTop = keep;
+    allBox.classList.toggle("hidden", !allCad);
+  }
   el.querySelectorAll(".folder-row").forEach(row => {
     const id = row.dataset.folder;
     const vis = row.querySelector(".fr-vis");
@@ -1776,7 +1780,7 @@ function renderLayerPanel() {
     };
   });
   if (typeof bindCadRows === "function") { bindCadRows(el); renderCadSettings(); }
-  if (typeof bindCadAllRows === "function") bindCadAllRows(el);
+  if (typeof bindCadAllRows === "function" && $("cadAllBox")) bindCadAllRows($("cadAllBox"));
   bindLayerSelection(el, keys);
   applyLayerSearch();
 }
@@ -1913,6 +1917,9 @@ function applyLayerSearch() {
     const ln = r.querySelector(".ln");
     ln.querySelectorAll("mark").forEach(m => { const p = m.parentNode; p.replaceChild(document.createTextNode(m.textContent), m); p.normalize(); });
   });
+  // Rutan "Alla DXF-lager": filtrera dess lager (fälls inte ut av sökningen).
+  const allBox = $("cadAllBox");
+  if (allBox) allBox.querySelectorAll(".cadall-sub").forEach(r => r.classList.toggle("filtered", !!q && !(r.querySelector(".ln").textContent || "").toLowerCase().includes(q)));
   if (!q) { $("layerSearchInfo").classList.add("hidden"); return; }
   const text = r => (r.querySelector(".ln").textContent || "").toLowerCase();
   const match = new Set(rows.filter(r => text(r).includes(q)));
@@ -1928,7 +1935,7 @@ function applyLayerSearch() {
       if (match.has(r)) { show.add(parent); if (folder) show.add(folder); }
       return;
     }
-    parent = (r.dataset.layer && r.dataset.layer.startsWith("cad:")) || r.dataset.cadall ? r : null;
+    parent = r.dataset.layer && r.dataset.layer.startsWith("cad:") ? r : null;
     if (folder && match.has(folder)) show.add(r);
     if (folder && match.has(r)) show.add(folder);
   });

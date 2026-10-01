@@ -662,12 +662,12 @@ function cadAllRowsHtml() {
   const kids = merged.map((m, i) => {
     const on = m.keys.filter(k => ls(k).visible).length;
     const sw = `<span class="cad-sw" style="background:${escHtml(m.color === "#000000" || m.color === "#ffffff" ? "#111827" : m.color || "#111827")}"></span>`;
-    return `<div class="layer-row sub cad-sub cadall-sub${open ? "" : " hidden"}" data-cadall-i="${i}">
+    return `<div class="layer-row cadall-sub" data-cadall-i="${i}">
       <input type="checkbox" class="ca-l"${on ? " checked" : ""} data-mixed="${on > 0 && on < m.keys.length ? 1 : 0}" title="Tänd/släck lagret i alla DXF-ritningar" />
       <span class="ln" title="${escHtml(m.name)}">${sw}${escHtml(m.name)} <small>${m.keys.length > 1 ? `i ${m.keys.length} ritningar` : "1 ritning"}</small></span>
     </div>`;
   });
-  return head + kids.join("");
+  return head + (open ? `<div class="cadall-list">${kids.join("")}</div>` : "");
 }
 function bindCadAllRows(el) {
   const head = el.querySelector(".cadall-row");
