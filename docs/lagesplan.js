@@ -1316,7 +1316,8 @@ function showTip(e) {
 
 function drawRubber(a, b) {
   renderZones();
-  const ctx = $("zoneCanvas").getContext("2d");
+  // Översta lagret – zonlagret kan vara släckt (då syntes inte rutan).
+  const ctx = $("topCanvas").getContext("2d");
   ctx.save();
   ctx.setLineDash([8, 6]); ctx.lineWidth = 3; ctx.strokeStyle = "#0b5fff";
   ctx.strokeRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]));
