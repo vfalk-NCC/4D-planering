@@ -170,8 +170,13 @@ function computeItemPhase(row, atDateStr, warningDays) {
   const plannedEnd = row.end_date ? new Date(row.end_date) : null;
   let actualEnd = row.actual_end_date ? new Date(row.actual_end_date) : null;
   if (!actualEnd && row.status === "klar") actualEnd = plannedEnd || start;
-  if (at < start) return "planerad";
+  // Klar kan inte ha avslutats i framtiden: avslut efter i dag räknas som i dag (samma som 4D-planering).
+  if (actualEnd && (row.status === "klar" || (Number(row.progress) || 0) >= 100)) {
+    const today = new Date(new Date().toISOString().slice(0, 10));
+    if (actualEnd > today) actualEnd = today;
+  }
   if (actualEnd && actualEnd <= at) return (plannedEnd && actualEnd > plannedEnd) ? "klar_forsenad" : "klar";
+  if (at < start) return "planerad";
   if (plannedEnd) {
     if (at > plannedEnd) return "forsenad";
     const daysLeft = Math.round((plannedEnd - at) / 86400000);

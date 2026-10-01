@@ -2772,13 +2772,21 @@ function computeItemPhase(item, atDateStr, warningDays) {
   if (!actualEnd && item.status === "klar") {
     actualEnd = plannedEnd || start;
   }
+  // Klar kan inte ha avslutats i framtiden (Victors rapport 2026-10-01, F28:
+  // klar 100 % men slutdatum 17/10 i Excel blev gul i 3D till dess). Ligger
+  // avslutet efter i dag räknas det som i dag.
+  if (actualEnd && (item.status === "klar" || (Number(item.progress) || 0) >= 100)) {
+    const today = new Date(new Date().toISOString().slice(0, 10));
+    if (actualEnd > today) actualEnd = today;
+  }
 
-  if (at < start) return "planerad";
-
+  // Klar går före "ej påbörjad" (kan bli klar före planerad start).
   const isDoneAtDate = actualEnd && actualEnd <= at;
   if (isDoneAtDate) {
     return (plannedEnd && actualEnd > plannedEnd) ? "klar_forsenad" : "klar";
   }
+
+  if (at < start) return "planerad";
 
   if (plannedEnd) {
     if (at > plannedEnd) return "forsenad";

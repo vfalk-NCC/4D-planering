@@ -75,6 +75,10 @@ function matchPlanElementCode(text) {
  * element/aktivitet igen även om rader lagts till/tagits bort någon
  * annanstans i fliken).
  */
+function minDateToday(d) {
+  const today = new Date().toISOString().slice(0, 10);
+  return d && d > today ? today : d;
+}
 function parsePlanSheet(rows, sheetName) {
   const levels = rows.levels || [];
   const duplicateCounts = new Map(); // nyckel -> antal hittills (radnummer-oberoende dedupe)
@@ -100,8 +104,10 @@ function parsePlanSheet(rows, sheetName) {
     return {
       row, rubric, activityText, matched: matchPlanElementCode(activityText),
       start, end, baselineStart: planStart, baselineEnd: planEnd,
-      actualStart: progress > 0 ? start : null,
-      actualEnd: progress >= 100 ? end : null,
+      // Verklig start/avslut uppskattas från planen, men kan inte ligga i
+      // framtiden (100 % klar med slutdatum 17/10 är klar senast i dag).
+      actualStart: progress > 0 ? minDateToday(start) : null,
+      actualEnd: progress >= 100 ? minDateToday(end) : null,
       progress, days, children: [],
     };
   }

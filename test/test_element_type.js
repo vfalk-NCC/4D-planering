@@ -129,6 +129,22 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   if (saved.element_type !== 'Pelarfundament') fail('Typen sparades inte: ' + JSON.stringify(saved));
   console.log('OK: Typ visas under Namn i formuläret och sparas');
 
+  // Klar med slutdatum i framtiden (F28) ska vara grön i dag, inte gul/pågående.
+  const ph = await page.evaluate(() => {
+    const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    const f28 = { startDate: d(-11), endDate: d(16), status: 'klar', progress: 100, actualStartDate: d(-11), actualEndDate: d(16) };
+    const early = { startDate: d(5), endDate: d(10), status: 'klar', progress: 100, actualEndDate: d(10) };
+    const going = { startDate: d(-5), endDate: d(16), status: 'pagaende', progress: 40 };
+    return [computeItemPhase(f28, d(0), 7), computeItemPhase(f28, d(-3), 7), computeItemPhase(early, d(0), 7), computeItemPhase(going, d(0), 30)].join(',');
+  });
+  if (ph !== 'klar,pagaende,klar,snart') fail('Klar med framtida slutdatum ska vara klar i dag (och pågående bakåt i tiden), fick ' + ph);
+  const parsedEnd = (() => { const { parsePlanSheet } = require('../docs/plan-excel-parser.js'); const fut = new Date(Date.now() + 16 * 864e5).toISOString().slice(0, 10);
+    const r = []; r[1] = null; r[2] = 'F28 - Fundament'; r[5] = '2026-09-20'; r[8] = fut; r[7] = 28; r[10] = 'DP2'; r[13] = 1;
+    const rows = [[], [], [], [], (() => { const h = []; h[1] = 'Linje F'; h[2] = 'Linje F'; return h; })(), r];
+    return parsePlanSheet(rows, '744 - FLÄKTHUS')[0].actualEndDate; })();
+  if (parsedEnd !== new Date().toISOString().slice(0, 10)) fail('Importen ska sätta verkligt avslut till senast i dag, fick ' + parsedEnd);
+  console.log('OK: klar med slutdatum i framtiden räknas som klar i dag (3D grön)');
+
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK: Typ fungerar (sortera, gruppera, söka, redigera)');
   await browser.close(); server.close();
