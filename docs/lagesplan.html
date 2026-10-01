@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261001061754"></script>
+<script src="github-storage.js?v=20261001063526"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -107,6 +107,12 @@
   .layer-list { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: #fff; }
   .layer-row { display: grid; grid-template-columns: 20px 1fr 84px 22px; align-items: center; gap: 6px; padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 12px; }
   .layer-row:hover { background: var(--panel-2); }
+  .layer-row[data-layer] { cursor: default; user-select: none; }
+  .layer-list .layer-row.sel, .layer-list .layer-row.sel:hover { background: #dbeafe; box-shadow: inset 3px 0 0 #2563eb; }
+  .layer-selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; margin-bottom: 6px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: 12px; }
+  .layer-selbar b { margin-right: auto; }
+  .layer-selbar button, .layer-selbar select { font-size: 12px; padding: 2px 8px; height: auto; }
+  .layer-selbar button.danger { color: #b91c1c; }
   .layer-row:last-child { border-bottom: none; }
   .layer-row.sub { padding-left: 24px; background: #fafbfc; }
   .layer-row input[type=range] { width: 84px; margin: 0; }
@@ -292,9 +298,10 @@
         <details class="sec" data-sec="layers" open>
           <summary><span class="si">🗂</span>Lager</summary>
           <div class="layer-search"><input type="text" id="layerSearch" placeholder="🔎 Sök lager…" autocomplete="off" /><button id="layerSearchClear" class="icon ghost hidden" title="Rensa">✕</button></div>
+          <div id="layerSelBar" class="layer-selbar hidden"></div>
           <div id="layerList" class="layer-list"></div>
           <div class="hint hidden" id="layerSearchInfo"></div>
-          <div class="row" style="margin-top:6px;"><button id="btnNewFolder" title="Skapa en mapp och dra lager till den">📁 ＋ Mapp</button><span class="hint grow" style="margin:0;">Dra lager till en mapp. Dubbelklicka på ett namn för att byta det.</span></div>
+          <div class="row" style="margin-top:6px;"><button id="btnNewFolder" title="Skapa en mapp och dra lager till den">📁 ＋ Mapp</button><span class="hint grow" style="margin:0;">Klicka för att markera, Ctrl-klick för flera, Shift-klick för ett intervall. Dra lager till en mapp. Dubbelklicka på ett namn för att byta det.</span></div>
           <label class="check"><input type="checkbox" id="layersFollowDate" checked /> Noteringar och etablering följer datumet</label>
         </details>
 
@@ -634,13 +641,13 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261001061754"></script>
-<script src="lagesplan-tools.js?v=20261001061754"></script>
-<script src="lagesplan-layers.js?v=20261001061754"></script>
-<script src="lagesplan-film.js?v=20261001061754"></script>
-<script src="lagesplan-cad.js?v=20261001061754"></script>
-<script src="lagesplan-vecpdf.js?v=20261001061754"></script>
-<script src="lagesplan-print.js?v=20261001061754"></script>
-<script src="lagesplan-keys.js?v=20261001061754"></script>
+<script src="lagesplan.js?v=20261001063526"></script>
+<script src="lagesplan-tools.js?v=20261001063526"></script>
+<script src="lagesplan-layers.js?v=20261001063526"></script>
+<script src="lagesplan-film.js?v=20261001063526"></script>
+<script src="lagesplan-cad.js?v=20261001063526"></script>
+<script src="lagesplan-vecpdf.js?v=20261001063526"></script>
+<script src="lagesplan-print.js?v=20261001063526"></script>
+<script src="lagesplan-keys.js?v=20261001063526"></script>
 </body>
 </html>

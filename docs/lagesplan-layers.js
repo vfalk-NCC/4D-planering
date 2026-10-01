@@ -1631,7 +1631,7 @@ function closeSitePop() {
 // ---------------------------------------------------------------------
 function layerRow(key, label, opts = {}) {
   const st = ls(key, opts);
-  return `<div class="layer-row${opts.sub ? " sub" : ""}${opts.cadSub ? " cad-sub" : ""}${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}" data-layer="${escHtml(key)}">
+  return `<div class="layer-row${layerSel.has(key) ? " sel" : ""}${opts.sub ? " sub" : ""}${opts.cadSub ? " cad-sub" : ""}${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}" data-layer="${escHtml(key)}">
       <input type="checkbox" class="lr-vis"${st.visible ? " checked" : ""} title="Visa/dölj" />
       <span class="ln" title="${escHtml(label)}">${label}</span>
       ${opts.noOpacity ? "<span></span>" : `<input type="range" class="lr-op" min="0" max="100" value="${st.opacity}" title="Genomskinlighet ${st.opacity} %" />`}
@@ -1709,7 +1709,9 @@ function renderLayerPanel() {
       const key = e.dataTransfer.getData("text/x-layer");
       if (!key) return;
       e.preventDefault();
-      moveLayerToFolder(key, target());
+      // Drar man ett markerat lager följer alla markerade med.
+      if (layerSel.has(key) && layerSel.size > 1) moveLayersToFolder([...layerSel], target());
+      else moveLayerToFolder(key, target());
     });
   });
   el.querySelectorAll(".layer-row[data-layer]").forEach(row => {
@@ -1756,7 +1758,128 @@ function renderLayerPanel() {
     };
   });
   if (typeof bindCadRows === "function") { bindCadRows(el); renderCadSettings(); }
+  bindLayerSelection(el, keys);
   applyLayerSearch();
+}
+
+/* ---------------------------------------------------------------------
+   Flerval i lagerlistan (Victors önskemål 2026-10-01): klick markerar ett
+   lager, Ctrl-klick lägger till/tar bort, Shift-klick markerar ett intervall.
+   Åtgärdsraden: tänd, släck, flytta till mapp och ta bort alla markerade.
+   Delete tar bort, Esc avmarkerar (när man senast klickade i listan).
+   ------------------------------------------------------------------- */
+const layerSel = new Set();
+let layerSelAnchor = null, layerListActive = false;
+const layerDeletable = key => key.startsWith("ortho:") || key.startsWith("cad:") ||
+  (key.startsWith("ul:") && key !== "ul:Allmänt" && key !== "ul:Etablering");
+function bindLayerSelection(el, keys) {
+  // Lager som inte finns längre (t.ex. borttagna) avmarkeras.
+  const all = new Set([...el.querySelectorAll(".layer-row[data-layer]")].map(r => r.dataset.layer));
+  [...layerSel].forEach(k => { if (!all.has(k)) layerSel.delete(k); });
+  el.querySelectorAll(".layer-row[data-layer]").forEach(row => {
+    row.addEventListener("click", e => {
+      // Kryssrutor, reglage och knappar sköter sig själva.
+      if (e.target.closest("input, button, select, label")) return;
+      layerListActive = true;
+      const key = row.dataset.layer;
+      if (e.shiftKey && layerSelAnchor) {
+        const order = [...el.querySelectorAll(".layer-row[data-layer]")]
+          .filter(r => !r.classList.contains("filtered") && !r.classList.contains("hidden")).map(r => r.dataset.layer);
+        let a = order.indexOf(layerSelAnchor), b = order.indexOf(key);
+        if (a < 0) a = b;
+        if (!(e.ctrlKey || e.metaKey)) layerSel.clear();
+        order.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(k => layerSel.add(k));
+      } else if (e.ctrlKey || e.metaKey) {
+        if (layerSel.has(key)) layerSel.delete(key); else layerSel.add(key);
+        layerSelAnchor = key;
+      } else {
+        layerSel.clear();
+        layerSel.add(key);
+        layerSelAnchor = key;
+      }
+      e.preventDefault();
+      updateLayerSelection();
+    });
+    // Shift-klick ska inte markera text i listan.
+    row.addEventListener("mousedown", e => { if (e.shiftKey && !e.target.closest("input, button")) e.preventDefault(); });
+  });
+  updateLayerSelection();
+}
+function updateLayerSelection() {
+  const el = $("layerList");
+  if (!el) return;
+  el.querySelectorAll(".layer-row[data-layer]").forEach(r => r.classList.toggle("sel", layerSel.has(r.dataset.layer)));
+  const bar = $("layerSelBar");
+  if (!bar) return;
+  if (!layerSel.size) { bar.classList.add("hidden"); bar.innerHTML = ""; return; }
+  const sel = [...layerSel], nDel = sel.filter(layerDeletable).length;
+  const folders = layerMeta().folders;
+  bar.innerHTML = `<b>${sel.length} markerade</b>
+    <button type="button" data-a="on" title="Tänd alla markerade">Tänd</button>
+    <button type="button" data-a="off" title="Släck alla markerade">Släck</button>
+    ${folders.length ? `<select data-a="folder" title="Flytta markerade till mapp"><option value="">Flytta till mapp…</option>${folders.map(f => `<option value="${escHtml(f.id)}">📁 ${escHtml(f.name)}</option>`).join("")}<option value="-">Utanför mappar</option></select>` : ""}
+    <button type="button" data-a="del" class="danger"${nDel ? "" : " disabled"} title="${nDel ? "Ta bort markerade (Delete)" : "Inget av de markerade lagren kan tas bort"}">🗑️ Ta bort${nDel && nDel !== sel.length ? ` (${nDel})` : ""}</button>
+    <button type="button" data-a="clear" class="ghost" title="Avmarkera (Esc)">✕</button>`;
+  bar.classList.remove("hidden");
+  bar.querySelector('[data-a="on"]').onclick = () => setLayersVisible(sel, true);
+  bar.querySelector('[data-a="off"]').onclick = () => setLayersVisible(sel, false);
+  bar.querySelector('[data-a="del"]').onclick = () => deleteSelectedLayers();
+  bar.querySelector('[data-a="clear"]').onclick = () => { layerSel.clear(); updateLayerSelection(); };
+  const fsel = bar.querySelector('[data-a="folder"]');
+  if (fsel) fsel.onchange = () => { if (fsel.value) moveLayersToFolder(sel, fsel.value === "-" ? null : fsel.value); };
+}
+function setLayersVisible(keys, on) {
+  let ortho = false, cad = false;
+  keys.forEach(k => {
+    ls(k).visible = on;
+    if (k.startsWith("ortho:")) ortho = true;
+    if (k.startsWith("cad")) cad = true;
+    if (k === "objects") $("showObjects").checked = on;
+    if (k === "photos") $("showPhotos").checked = on;
+  });
+  if (ortho && orthoFollowDate()) setOrthoFollowDate(false);
+  saveLayerState();
+  applyLayerCss();
+  if (ortho) orthoChanged();
+  if (cad && typeof renderCad === "function") { buildCadSnap(); renderCad(); }
+  renderZones(); renderLayerPanel();
+}
+async function moveLayersToFolder(keys, folderId) {
+  const m = layerMeta();
+  keys.filter(k => !k.startsWith("cadl:")).forEach(k => { if (folderId) m.folderOf[k] = folderId; else delete m.folderOf[k]; });
+  await saveLayerMeta(m);
+}
+async function deleteSelectedLayers() {
+  const keys = [...layerSel].filter(layerDeletable);
+  if (!keys.length) return;
+  const orthoRecs = keys.filter(k => k.startsWith("ortho:")).map(k => siteItems.find(x => "ortho:" + x.id === k)).filter(Boolean);
+  const cadRecs = keys.filter(k => k.startsWith("cad:")).map(k => (typeof cads === "function" ? cads() : []).find(x => "cad:" + x.id === k)).filter(Boolean);
+  const layerNames = keys.filter(k => k.startsWith("ul:")).map(k => k.slice(3));
+  const moved = siteItems.filter(x => isSiteObj(x) && layerNames.includes(layerOf(x)));
+  const parts = [];
+  if (orthoRecs.length) parts.push(`${orthoRecs.length} ortofoto`);
+  if (cadRecs.length) parts.push(`${cadRecs.length} CAD-ritning${cadRecs.length > 1 ? "ar" : ""}`);
+  if (layerNames.length) parts.push(`${layerNames.length} lager${moved.length ? ` (deras ${moved.length} objekt flyttas till "Allmänt")` : ""}`);
+  const names = [...orthoRecs.map(o => o.name), ...cadRecs.map(r => r.name), ...layerNames];
+  const list = names.slice(0, 12).map(n => "• " + n).join("\n") + (names.length > 12 ? `\n… och ${names.length - 12} till` : "");
+  if (!confirm(`Ta bort ${parts.join(", ")} från lägesplanen?\n\n${list}${orthoRecs.length || cadRecs.length ? "\n\nOriginalen i Trimble Connect ligger kvar." : ""}`)) return;
+  // Allt i en sparning, sedan filerna.
+  const removeIds = [...orthoRecs.map(o => o.id), ...cadRecs.map(r => r.id), ...siteItems.filter(x => x.type === "layer" && layerNames.includes(x.name)).map(x => x.id)];
+  const m = layerMeta();
+  keys.forEach(k => { delete m.folderOf[k]; });
+  orthoRecs.forEach(o => orthoImages.delete(o.id));
+  if (typeof cadGeom !== "undefined") cadRecs.forEach(r => cadGeom.delete(r.id));
+  layerSel.clear();
+  setSaveStatus("Tar bort…");
+  try {
+    const recs = moved.map(x => ({ ...x, layer: "Allmänt" }));
+    await saveSiteItemsBatch(siteItems.some(x => x.id === META_ID) ? [...recs, m] : recs, removeIds);
+    setSaveStatus(`✓ Tog bort ${names.length} st`);
+  } catch (e) { setSaveStatus("⚠ Kunde inte ta bort: " + e.message); return; }
+  [...orthoRecs, ...cadRecs].forEach(r => { if (r.path) ghDeleteBinary(token, r.path, `Lägesplan: ta bort ${r.type === "cad" ? "CAD" : "ortofoto"}`); });
+  if (orthoRecs.length) { syncOrthoToDate(); orthoChanged(); }
+  if (cadRecs.length && typeof renderCad === "function") { buildCadSnap(); renderCad(); }
+  renderActiveLayerSelect();
 }
 /* Sök i lagren: visar lager (även CAD-lager och lager i mappar) vars namn
    innehåller texten, med sina mappar/ritningar som sammanhang. */
@@ -1973,6 +2096,13 @@ function bindLayers() {
     siteTool.cursor = pdfToModel(constrainPdf(toPdf(stagePoint(e)), e, siteToolPrevPdf()));
     if (!raf) raf = requestAnimationFrame(() => { raf = 0; renderZones(); });
   });
+  // Klick utanför lagerlistan: Delete/Esc gäller inte längre lagren.
+  document.addEventListener("mousedown", e => { if (!e.target.closest || !e.target.closest("#layerList, #layerSelBar")) layerListActive = false; }, true);
+  window.addEventListener("keydown", e => {
+    if (!layerListActive || !layerSel.size || (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName) && e.target.type !== "checkbox" && e.target.type !== "range")) return;
+    if (e.key === "Delete") { e.preventDefault(); e.stopImmediatePropagation(); deleteSelectedLayers(); }
+    else if (e.key === "Escape") { e.stopImmediatePropagation(); layerSel.clear(); updateLayerSelection(); }
+  }, true);
   window.addEventListener("keydown", e => {
     if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
     if (e.key === "Escape") { if (siteTool) stopSiteTool(); else if (!$("sitePop").classList.contains("hidden")) { closeSitePop(); selectedSiteId = null; renderZones(); } }
