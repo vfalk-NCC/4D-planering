@@ -866,6 +866,7 @@ function planFontPx() {
    ritas om vid varje zoom/panorering. */
 let labelObjects = null, labelRaf = 0;
 function renderScreenLabels() {
+  if (typeof renderScreenPins === "function") renderScreenPins();
   const c = $("labelCanvas");
   if (!c) return;
   const vp = $("viewport"), w = vp.clientWidth, h = vp.clientHeight, dpr = window.devicePixelRatio || 1;

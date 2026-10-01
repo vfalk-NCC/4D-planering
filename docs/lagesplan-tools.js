@@ -215,46 +215,67 @@ const photoUrlCache = new Map();
 function photos() { return (plan && plan.photos) || []; }
 function cancelPhotoPlacing(skip) { photoPlacing = false; pendingPhotoPt = null; pendingPhotoFile = null; if (typeof gpsSuggest !== "undefined") gpsSuggest = null; updateToolUi(); if (skip) setTimeout(nextQueuedPhoto, 0); }
 function photoMarkerPx() { return planFontPx() * 1.5; }
-/* Foton visas som kartnålar: spetsen där fotot är taget, huvudet ovanför
-   (Victors önskemål 2026-10-01). Foton med GPS-position får en blå nål. */
-function photoPinHead(ph) { const [x, y] = toPx([ph.x, ph.y]), s = photoMarkerPx(); return [x, y - s * 0.95, s * 0.5]; }
+/* Foton visas som kartnålar (Victors önskemål 2026-10-01): spetsen där
+   fotot är taget. Nålen har samma storlek på skärmen oavsett zoom (som på
+   en karta i telefonen) och ritas på ett eget lager (#pinCanvas) i skärmens
+   koordinater, som ritas om vid varje zoom/panorering. Blå = GPS, röd =
+   utklickad på planen. */
+const PIN_H = 30, PIN_R = 8.5;
+function photoScreenPt(ph) {
+  const [x, y] = toPx([ph.x, ph.y]);
+  return [view.tx + x * view.scale, view.ty + y * view.scale];
+}
 function photoAt(pdfPt) {
-  if (!$("showPhotos").checked) return null;
-  const p = toPx(pdfPt), pad = 6 / view.scale;
+  if (!$("showPhotos").checked || !viewport) return null;
+  const [sx, sy] = toPx(pdfPt), px = view.tx + sx * view.scale, py = view.ty + sy * view.scale;
   let best = null, bd = Infinity;
   photos().forEach(ph => {
-    const [hx, hy, r] = photoPinHead(ph), [tx, ty] = toPx([ph.x, ph.y]);
-    const d = Math.min(Math.hypot(p[0] - hx, p[1] - hy) - r, Math.hypot(p[0] - tx, p[1] - ty) - r * 0.5);
-    if (d <= pad && d < bd) { best = ph; bd = d; }
+    const [tx, ty] = photoScreenPt(ph), hx = tx, hy = ty - (PIN_H - PIN_R);
+    // Träffyta: huvudet (lite generöst för fingrar) och spetsen.
+    const d = Math.min(Math.hypot(px - hx, py - hy) - PIN_R - 6, Math.hypot(px - tx, py - (ty - PIN_H / 3)) - 8);
+    if (d <= 0 && d < bd) { best = ph; bd = d; }
   });
   return best;
 }
-function drawPhotoPin(ctx, x, y, s, color, faded) {
-  const r = s * 0.5, cy = y - s * 0.95;
+function drawPhotoPin(ctx, x, y, color, faded) {
+  const r = PIN_R, cy = y - (PIN_H - r);
   ctx.save();
   ctx.globalAlpha = faded ? 0.45 : 1;
-  ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = s * 0.25; ctx.shadowOffsetY = s * 0.06;
-  ctx.beginPath();
+  // Skugga på marken under spetsen.
+  ctx.fillStyle = "rgba(0,0,0,.28)";
+  ctx.beginPath(); ctx.ellipse(x, y, 4.5, 1.8, 0, 0, Math.PI * 2); ctx.fill();
   // Droppform: cirkel som smalnar av till en spets i (x, y).
-  const a = Math.asin(r / (s * 0.95));
+  ctx.shadowColor = "rgba(0,0,0,.35)"; ctx.shadowBlur = 4; ctx.shadowOffsetY = 1;
+  const a = Math.asin(r / (PIN_H - r));
+  ctx.beginPath();
   ctx.arc(x, cy, r, Math.PI / 2 + a, Math.PI / 2 - a + Math.PI * 2);
-  ctx.lineTo(x, y); ctx.closePath();
+  ctx.lineTo(x, y - 1); ctx.closePath();
   ctx.fillStyle = color; ctx.fill();
   ctx.shadowColor = "transparent";
-  ctx.strokeStyle = "#fff"; ctx.lineWidth = Math.max(1.5, s * 0.08); ctx.stroke();
-  ctx.beginPath(); ctx.arc(x, cy, r * 0.38, 0, Math.PI * 2); ctx.fillStyle = "#fff"; ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.beginPath(); ctx.arc(x, cy, r * 0.36, 0, Math.PI * 2); ctx.fillStyle = "#fff"; ctx.fill();
   ctx.restore();
 }
-function drawPhotos(ctx) {
-  if (!$("showPhotos").checked) return;
-  const s = photoMarkerPx();
+function renderScreenPins() {
+  const c = $("pinCanvas");
+  if (!c) return;
+  const vp = $("viewport"), w = vp.clientWidth, h = vp.clientHeight, dpr = window.devicePixelRatio || 1;
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+    c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+    c.style.width = w + "px"; c.style.height = h + "px";
+  }
+  const ctx = c.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height);
+  if (!plan || !viewport || !$("showPhotos").checked) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const at = $("dateInput").value || todayIso();
-  // Söderut först, så nålar som ligger nära varandra överlappar snyggt.
-  photos().slice().sort((a, b) => a.y - b.y).forEach(ph => {
-    const [x, y] = toPx([ph.x, ph.y]);
-    drawPhotoPin(ctx, x, y, s, ph.gps ? "#2563eb" : "#dc2626", ph.date && ph.date > at); // tagna efter valt datum: nedtonade
-  });
+  // Söderut sist, så nålar som ligger nära varandra överlappar snyggt.
+  photos().map(ph => ({ ph, p: photoScreenPt(ph) })).filter(o => o.p[0] > -40 && o.p[1] > -10 && o.p[0] < w + 40 && o.p[1] < h + 40)
+    .sort((a, b) => a.p[1] - b.p[1])
+    .forEach(({ ph, p }) => drawPhotoPin(ctx, p[0], p[1], ph.gps ? "#2563eb" : "#e11d48", ph.date && ph.date > at)); // tagna efter valt datum: nedtonade
 }
+/* Nålarna ritas på #pinCanvas (renderScreenPins); här bara en uppdatering. */
+function drawPhotos() { renderScreenPins(); }
 function startPhotoPlacing() {
   if (!plan || !viewport) return;
   if (photoPlacing) { cancelPhotoPlacing(); return; }

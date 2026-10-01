@@ -98,7 +98,7 @@ let gpsSuggest = null; // { pt: [pdf], acc (m), src, zone, gps: {lat, lon, acc, 
 function drawGpsSuggest(ctx) {
   if (!gpsSuggest || !photoPlacing) return;
   const [x, y] = toPx(gpsSuggest.pt), ppm = pxPerMeter();
-  const r = Math.max(10, (gpsSuggest.acc || 5) * ppm), s = photoMarkerPx();
+  const r = Math.max(10, (gpsSuggest.acc || 5) * ppm), s = 16 / view.scale; // pricken: ~16 px på skärmen
   ctx.save();
   ctx.fillStyle = "rgba(37,99,235,.12)"; ctx.strokeStyle = "rgba(37,99,235,.7)"; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
