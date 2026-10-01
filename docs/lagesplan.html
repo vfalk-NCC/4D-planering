@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261001131649"></script>
+<script src="github-storage.js?v=20261001133623"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -172,6 +172,9 @@
   .focus-list .fi:hover { background: var(--accent-weak); }
   .focus-list .fd { color: var(--muted); white-space: nowrap; }
   #photoModal { position: absolute; inset: 0; background: rgba(15,23,42,.6); z-index: 20; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  #pmMeta .pm-edit { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #pmMeta .pm-edit input[type=text] { flex: 1 1 220px; min-width: 0; }
+  #pmMeta .pm-edit input[type=date] { width: 150px; }
   #photoModal .pm-box { background: #fff; border-radius: 10px; padding: 12px; max-width: 92%; max-height: 92%; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 16px 40px rgba(0,0,0,.3); }
   #photoModal img { max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 6px; background: #eee; min-width: 200px; min-height: 120px; }
   .legend { display: grid; grid-template-columns: auto 1fr auto; gap: 5px 10px; align-items: center; font-size: 12px; }
@@ -681,6 +684,7 @@
         <img id="pmImg" alt="" />
         <div id="pmMeta" class="muted"></div>
         <div class="row" style="justify-content:flex-end;">
+          <button id="pmEdit" title="Byt namn (beskrivning) och datum på fotot">✏️ Ändra</button>
           <button id="pmDelete">🗑️ Ta bort foto</button>
           <button id="pmClose" class="primary">Stäng</button>
         </div>
@@ -770,16 +774,16 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261001131649"></script>
-<script src="lagesplan-tools.js?v=20261001131649"></script>
-<script src="lagesplan-layers.js?v=20261001131649"></script>
-<script src="lagesplan-views.js?v=20261001131649"></script>
-<script src="lagesplan-film.js?v=20261001131649"></script>
-<script src="lagesplan-cad.js?v=20261001131649"></script>
-<script src="lagesplan-vecpdf.js?v=20261001131649"></script>
-<script src="lagesplan-print.js?v=20261001131649"></script>
-<script src="lagesplan-gps.js?v=20261001131649"></script>
-<script src="lagesplan-touch.js?v=20261001131649"></script>
-<script src="lagesplan-keys.js?v=20261001131649"></script>
+<script src="lagesplan.js?v=20261001133623"></script>
+<script src="lagesplan-tools.js?v=20261001133623"></script>
+<script src="lagesplan-layers.js?v=20261001133623"></script>
+<script src="lagesplan-views.js?v=20261001133623"></script>
+<script src="lagesplan-film.js?v=20261001133623"></script>
+<script src="lagesplan-cad.js?v=20261001133623"></script>
+<script src="lagesplan-vecpdf.js?v=20261001133623"></script>
+<script src="lagesplan-print.js?v=20261001133623"></script>
+<script src="lagesplan-gps.js?v=20261001133623"></script>
+<script src="lagesplan-touch.js?v=20261001133623"></script>
+<script src="lagesplan-keys.js?v=20261001133623"></script>
 </body>
 </html>

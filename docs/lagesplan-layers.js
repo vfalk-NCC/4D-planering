@@ -2005,6 +2005,14 @@ function bindSiteItemRows(el) {
     else { const ph = photos().find(p => p.id === id); if (ph) showPhotoItem(ph); }
   }));
   el.querySelectorAll("[data-item]").forEach(row => row.addEventListener("mousedown", e => { if (e.shiftKey) e.preventDefault(); }));
+  // Dubbelklick på ett foto i listan: byt namn (som för lager).
+  el.querySelectorAll(".photo-item-row .ln").forEach(n => n.ondblclick = e => {
+    e.stopPropagation();
+    const ph = photos().find(p => "p:" + p.id === n.closest("[data-item]").dataset.item);
+    if (!ph) return;
+    const v = prompt("Nytt namn på fotot:", ph.caption || "");
+    if (v !== null && v.trim() !== (ph.caption || "")) { updatePhoto(ph.id, { caption: v.trim() }); if (typeof closePhoto === "function") closePhoto(); }
+  });
   el.querySelectorAll(".photo-item-row .si-del").forEach(b => b.onclick = e => {
     e.stopPropagation();
     deleteSelectedItems([b.closest("[data-item]").dataset.item]);
@@ -2025,7 +2033,7 @@ function photoRowsHtml(opts = {}) {
   const list = (typeof photos === "function" ? photos() : []).slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(a.caption || "").localeCompare(String(b.caption || ""), "sv"));
   return list.map(ph => `<div class="layer-row sub site-item-row photo-item-row${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}${itemSel.has("p:" + ph.id) ? " sel" : ""}" data-item="p:${escHtml(ph.id)}">
       <span class="si-ico">${ph.gps ? "📍" : "📷"}</span>
-      <span class="ln" title="Klicka för att visa fotot på planen">${escHtml(ph.caption || "Foto")} <small>${escHtml(ph.date || "")}${ph.by ? " · " + escHtml(ph.by) : ""}</small></span>
+      <span class="ln" title="Klicka för att visa fotot på planen, dubbelklicka för att byta namn">${escHtml(ph.caption || "Foto")} <small>${escHtml(ph.date || "")}${ph.by ? " · " + escHtml(ph.by) : ""}</small></span>
       <button class="si-del" title="Ta bort fotot">🗑️</button>
     </div>`).join("");
 }

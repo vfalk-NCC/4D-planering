@@ -334,7 +334,7 @@ function nextQueuedPhoto() {
 async function openPhoto(ph) {
   openPhotoId = ph.id;
   $("pmImg").removeAttribute("src");
-  $("pmMeta").innerHTML = `<b>${escHtml(ph.caption || "Foto")}</b> · ${escHtml(ph.date || "")}${ph.by ? ` · ${escHtml(ph.by)}` : ""}`;
+  showPhotoMeta(ph);
   $("photoModal").classList.remove("hidden");
   try {
     if (!photoUrlCache.has(ph.id)) photoUrlCache.set(ph.id, await ghReadBinaryUrl(token, ph.path));
@@ -342,6 +342,37 @@ async function openPhoto(ph) {
   } catch (e) {
     $("pmMeta").innerHTML += `<br>⚠ Kunde inte hämta bilden: ${escHtml(e.message)}`;
   }
+}
+/* Byt namn (beskrivning) och datum på ett foto i efterhand. */
+function updatePhoto(id, patch) {
+  const i = photos().findIndex(p => p.id === id);
+  if (i < 0) return null;
+  const next = { ...photos()[i], ...patch, updated_at: new Date().toISOString() };
+  plan.photos = photos().map(p => (p.id === id ? next : p));
+  renderZones(); schedulePlanSave();
+  if (typeof renderLayerPanel === "function") renderLayerPanel();
+  return next;
+}
+function editOpenPhoto() {
+  const ph = photos().find(p => p.id === openPhotoId);
+  if (!ph) return;
+  $("pmMeta").innerHTML = `<div class="pm-edit">
+    <input type="text" id="pmCaption" value="${escHtml(ph.caption || "")}" placeholder="Beskrivning, t.ex. J15 byggställning" />
+    <input type="date" id="pmDate" value="${escHtml(ph.date || "")}" />
+    <button id="pmEditSave" class="primary">Spara</button><button id="pmEditCancel">Avbryt</button></div>`;
+  const cap = $("pmCaption"); cap.focus(); cap.select();
+  const save = () => {
+    const date = $("pmDate").value;
+    const next = updatePhoto(ph.id, { caption: cap.value.trim(), date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : ph.date });
+    if (next) showPhotoMeta(next);
+    setSaveStatus(`📷 Fotot heter nu "${next.caption || "Foto"}".`);
+  };
+  $("pmEditSave").onclick = save;
+  $("pmEditCancel").onclick = () => showPhotoMeta(ph);
+  cap.onkeydown = $("pmDate").onkeydown = e => { if (e.key === "Enter") save(); if (e.key === "Escape") { e.stopPropagation(); showPhotoMeta(ph); } };
+}
+function showPhotoMeta(ph) {
+  $("pmMeta").innerHTML = `<b>${escHtml(ph.caption || "Foto")}</b> · ${escHtml(ph.date || "")}${ph.by ? ` · ${escHtml(ph.by)}` : ""}${ph.gps ? ` · 📍 GPS${ph.gps.acc ? ` ±${ph.gps.acc} m` : ""}` : ""}`;
 }
 function closePhoto() { openPhotoId = null; $("photoModal").classList.add("hidden"); }
 async function deleteOpenPhoto() {
@@ -619,6 +650,7 @@ function bindTools() {
   $("showPhotos").onchange = () => renderZones();
   $("pmClose").onclick = closePhoto;
   $("pmDelete").onclick = deleteOpenPhoto;
+  $("pmEdit").onclick = editOpenPhoto;
   $("photoModal").onclick = e => { if (e.target.id === "photoModal") closePhoto(); };
   $("viewport").addEventListener("dblclick", () => {
     if (!measure || measure.done) return;
