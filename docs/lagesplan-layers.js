@@ -225,7 +225,7 @@ async function createLayer(name) {
 const META_ID = "layermeta";
 function layerMeta() {
   const m = siteItems.find(x => x.id === META_ID) || {};
-  return { id: META_ID, type: "layermeta", names: { ...(m.names || {}) }, folders: (m.folders || []).map(f => ({ ...f })), folderOf: { ...(m.folderOf || {}) }, sortAz: !!m.sortAz };
+  return { id: META_ID, type: "layermeta", names: { ...(m.names || {}) }, folders: (m.folders || []).map(f => ({ ...f })), folderOf: { ...(m.folderOf || {}) }, sortAz: !!m.sortAz, cadColors: { ...(m.cadColors || {}) } };
 }
 function saveLayerMeta(m) { return saveSiteItem(m, false, { record: false }); }
 const LAYER_DEFAULT_NAMES = { pdf: "Ritningen (PDF)", zones: "Zoner", objects: "Objekt", photos: "Foton" };

@@ -437,6 +437,28 @@ async function deleteCad(rec) {
 // Rita
 // ---------------------------------------------------------------------
 const cadLayerOn = (rec, name) => ls(`cadl:${rec.id}:${name}`).visible;
+/* Egna färger per lagernamn (Victors önskemål 2026-10-01): gäller alla DXF-
+   ritningar med lagret, sparas för projektet i lagermetan. Går före både
+   originalfärgen och "en färg för hela ritningen". cadColorPreview = medan
+   man drar i färgväljaren (sparas när man släpper). */
+const cadColorKey = name => String(name).trim().toUpperCase();
+let cadColorPreview = null;
+function cadColorOverride(name) {
+  const k = cadColorKey(name);
+  if (cadColorPreview && cadColorPreview.k === k) return cadColorPreview.c;
+  const m = siteItems.find(x => x.id === "layermeta");
+  return (m && m.cadColors && m.cadColors[k]) || null;
+}
+const cadShown = c => (c === "#000000" || c === "#ffffff" ? "#111827" : c);
+function cadLayerColor(rec, name, orig) { return cadColorOverride(name) || (rec.colorMode === "mono" ? rec.color : cadShown(orig || "#000000")); }
+async function setCadColor(name, color) {
+  const m = layerMeta();
+  m.cadColors = { ...(m.cadColors || {}) };
+  if (color) m.cadColors[cadColorKey(name)] = color; else delete m.cadColors[cadColorKey(name)];
+  cadColorPreview = null;
+  await saveLayerMeta(m);
+  renderCad();
+}
 /* Ritar alla tända CAD-ritningar. stageToCanvas = [a,b,c,d,e,f] från stage-px till ctx. */
 function drawCad(ctx, stageToCanvas, pxScale = 1) {
   if (!plan || !plan.calib) return;
@@ -451,18 +473,17 @@ function drawCad(ctx, stageToCanvas, pxScale = 1) {
     ctx.setTransform(...G);
     ctx.lineWidth = Math.max(0.6, (Number(r.weight) || 1)) * pxScale / s;
     ctx.lineJoin = "round"; ctx.lineCap = "round";
-    const mono = r.colorMode === "mono" ? r.color : null;
     const names = r.layers.map(l => l.name);
     g.groups.forEach(gr => {
       if (!cadLayerOn(r, names[gr.l])) return;
-      ctx.strokeStyle = mono || (gr.c === "#000000" || gr.c === "#ffffff" ? "#111827" : gr.c);
+      ctx.strokeStyle = cadLayerColor(r, names[gr.l], gr.c);
       ctx.stroke(gr.path);
     });
     // Texter (hoppar över de som blir oläsligt små)
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     g.groups.forEach(gr => {
       if (!gr.texts.length || !cadLayerOn(r, names[gr.l])) return;
-      ctx.fillStyle = mono || (gr.c === "#000000" || gr.c === "#ffffff" ? "#111827" : gr.c);
+      ctx.fillStyle = cadLayerColor(r, names[gr.l], gr.c);
       gr.texts.forEach(([x, y, h, rot, str, al]) => {
         const hp = h * s;
         if (hp < 3 * pxScale) return;
@@ -489,9 +510,8 @@ function cadVectorPlan() {
   if (!plan || !plan.calib) return [];
   return cads().filter(r => ls("cad:" + r.id).visible && cadGeom.has(r.id)).map(r => {
     const g = cadGeom.get(r.id), names = r.layers.map(l => l.name);
-    const mono = r.colorMode === "mono" ? r.color : null;
     return { rec: r, g, opacity: layerOpacity("cad:" + r.id), weight: Number(r.weight) || 1,
-      groups: g.groups.filter(gr => cadLayerOn(r, names[gr.l])).map(gr => ({ gr, color: mono || (gr.c === "#000000" || gr.c === "#ffffff" ? "#111827" : gr.c) })) };
+      groups: g.groups.filter(gr => cadLayerOn(r, names[gr.l])).map(gr => ({ gr, color: cadLayerColor(r, names[gr.l], gr.c) })) };
   });
 }
 /* Ritar CAD-planen som vektorer i en jsPDF-sida. stageToPage: stage-px -> mm
@@ -618,7 +638,7 @@ function cadRowsHtml(r, opts) {
   const open = layerState["cadopen:" + r.id] === true;
   const parent = layerRow(key, `<button class="cad-toggle" title="Visa CAD-lagren">${open ? "▾" : "▸"}</button><span class="cad-name" title="Dubbelklicka för att byta namn">📐 ${escHtml(r.name)}</span> <small>${r.layers.length} lager</small>`, { del: true, ...opts });
   const kids = r.layers.map(l => {
-    const sw = `<span class="cad-sw" style="background:${escHtml(r.colorMode === "mono" ? r.color : l.color === "#000000" || l.color === "#ffffff" ? "#111827" : l.color)}"></span>`;
+    const sw = `<span class="cad-sw" style="background:${escHtml(cadLayerColor(r, l.name, l.color))}"></span>`;
     return layerRow(`cadl:${r.id}:${l.name}`, `${sw}${escHtml(l.name)} <small>${l.n}</small>`, { noOpacity: true, sub: true, inFolder: opts.inFolder, hidden: opts.hidden || !open, cadSub: true });
   });
   return parent + kids.join("");
@@ -661,10 +681,12 @@ function cadAllRowsHtml() {
     </div>`;
   const kids = merged.map((m, i) => {
     const on = m.keys.filter(k => ls(k).visible).length;
-    const sw = `<span class="cad-sw" style="background:${escHtml(m.color === "#000000" || m.color === "#ffffff" ? "#111827" : m.color || "#111827")}"></span>`;
+    const ov = cadColorOverride(m.name), col = ov || cadShown(m.color || "#000000");
+    const sw = `<label class="cad-sw ca-sw${ov ? " own" : ""}" style="background:${escHtml(col)}" title="Klicka för att välja färg för lagret i alla DXF-ritningar"><input type="color" class="ca-color" value="${escHtml(/^#[0-9a-f]{6}$/i.test(col) ? col.toLowerCase() : "#111827")}" /></label>`;
+    const reset = ov ? `<button type="button" class="ca-reset" title="Återställ originalfärgen från DXF:en">↺</button>` : "";
     return `<div class="layer-row cadall-sub" data-cadall-i="${i}">
       <input type="checkbox" class="ca-l"${on ? " checked" : ""} data-mixed="${on > 0 && on < m.keys.length ? 1 : 0}" title="Tänd/släck lagret i alla DXF-ritningar" />
-      <span class="ln" title="${escHtml(m.name)}">${sw}${escHtml(m.name)} <small>${m.keys.length > 1 ? `i ${m.keys.length} ritningar` : "1 ritning"}</small></span>
+      <span class="ln" title="${escHtml(m.name)}">${sw}${escHtml(m.name)} <small>${m.keys.length > 1 ? `i ${m.keys.length} ritningar` : "1 ritning"}</small>${reset}</span>
     </div>`;
   });
   return head + (open ? `<div class="cadall-list">${kids.join("")}</div>` : "");
@@ -682,6 +704,12 @@ function bindCadAllRows(el) {
     const m = merged[Number(row.dataset.cadallI)], c = row.querySelector(".ca-l");
     c.indeterminate = c.dataset.mixed === "1";
     c.onchange = () => { m.keys.forEach(k => { ls(k).visible = c.checked; }); redraw(); };
+    const pick = row.querySelector(".ca-color"), sw = row.querySelector(".ca-sw");
+    // Visa direkt medan man väljer, spara när färgväljaren stängs.
+    pick.oninput = () => { cadColorPreview = { k: cadColorKey(m.name), c: pick.value }; sw.style.background = pick.value; renderCad(); };
+    pick.onchange = () => setCadColor(m.name, pick.value);
+    const rs = row.querySelector(".ca-reset");
+    if (rs) rs.onclick = e => { e.stopPropagation(); setCadColor(m.name, null); };
   });
 }
 function renderCadSettings() {
