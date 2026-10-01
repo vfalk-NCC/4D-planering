@@ -301,7 +301,7 @@ function objectShapesInPdf() {
   if (shapeCache) return shapeCache;
   const byId = new Map(positions.map(p => [p.id, p]));
   const hideSubs = !showSubObjects() ? subCoupledIds() : null;
-  shapeCache = visibleItems().filter(it => pos.has(it.id) && !(hideSubs && hideSubs.has(it.id))).map(it => {
+  shapeCache = visibleItems().filter(it => pos.has(it.id) && !(hideSubs && hideSubs.has(it.id)) && !isObjHidden(it)).map(it => {
     const p = byId.get(it.id);
     const poly = Number.isFinite(p.x0)
       ? [[p.x0, p.y0], [p.x1, p.y0], [p.x1, p.y1], [p.x0, p.y1]].map(([x, y]) => modelToPdf(x, y))
@@ -1229,12 +1229,14 @@ function bindViewport() {
   vpEl.addEventListener("mousedown", e => {
     if (!viewport) return;
     if (drawMode) { drag = { draw: true, start: stagePoint(e) }; return; }
+    // Alt + dra: släck alla objekt inom rutan.
+    if (e.altKey && e.button === 0 && plan && plan.calib) { e.preventDefault(); drag = { hideBox: true, start: stagePoint(e) }; return; }
     // Noteringar/etablering: flytta, ändra form och rotera (lagesplan-layers.js).
     if (e.target.closest && e.target.closest("#viewport") && !e.target.closest("#sitePop") && layersPointerDown(e)) return;
     drag = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, moved: false };
   });
   window.addEventListener("mousemove", e => {
-    if (drag && drag.draw) { drawRubber(drag.start, stagePoint(e)); return; }
+    if (drag && (drag.draw || drag.hideBox)) { drawRubber(drag.start, stagePoint(e)); return; }
     if (drag) {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
@@ -1248,6 +1250,7 @@ function bindViewport() {
     if (!drag) return;
     const d = drag; drag = null;
     if (d.draw) { finishDraw(d.start, stagePoint(e)); return; }
+    if (d.hideBox) { hideObjectsInBox(d.start, stagePoint(e)); return; }
     if (!d.moved && calib && calib.waitPdf && e.target.closest && e.target.closest("#viewport")) {
       calib.waitPdf = false;
       calib.pdf.push(toPdf(stagePoint(e)));
@@ -1264,7 +1267,11 @@ function bindViewport() {
   vpEl.addEventListener("mouseleave", () => $("tip").classList.add("hidden"));
   // Högerklick på ett namn: dölj det (eller alla namn för samma aktivitet).
   vpEl.addEventListener("contextmenu", e => {
-    if (!viewport || !objLabelBoxes.length) return;
+    if (!viewport) return;
+    // Högerklick på en prick: släck objektet/aktiviteten.
+    const ptObjs = objectsAt(toPdf(stagePoint(e)));
+    if (ptObjs.length) { e.preventDefault(); openObjMenu(ptObjs.map(o => o.it), e); return; }
+    if (!objLabelBoxes.length) return;
     const [x, y] = stagePoint(e);
     const hit = objLabelBoxes.find(l => x >= l.box.x && x <= l.box.x + l.box.w && y >= l.box.y && y <= l.box.y + l.box.h);
     if (!hit) return;
@@ -1534,6 +1541,7 @@ function bindUI() {
     $("objSize").value = objSize(); upd();
     $("objSize").oninput = () => { upd(); try { localStorage.setItem(OBJ_SIZE_KEY, $("objSize").value); } catch (e) {} renderZonesSoon(); };
   }
+  bindObjViewUi();
   if ($("btnShowHiddenLabels")) {
     $("btnShowHiddenLabels").onclick = () => saveHiddenLabels({ ids: [], acts: [], names: [] });
     updateHiddenLabelsBtn();
@@ -1785,12 +1793,135 @@ function openLabelMenu(l, e) {
     document.body.appendChild(m);
     document.addEventListener("mousedown", ev => { if (!ev.target.closest("#labelMenu")) m.classList.add("hidden"); });
   }
-  m.innerHTML = `<button type="button" data-a="one">Dölj namnet ${escHtml(l.text)}</button>` +
+  m.innerHTML = objMenuHtml(l.ids.map(id => items.find(it => it.id === id)).filter(Boolean)) + `<hr/><button type="button" data-a="one">Dölj namnet ${escHtml(l.text)}</button>` +
     (l.act ? `<button type="button" data-a="act">Dölj alla namn för aktiviteten ${escHtml(l.act.length > 30 ? l.act.slice(0, 29) + "…" : l.act)}</button>` : "");
   m.style.left = Math.min(e.clientX, window.innerWidth - 280) + "px";
   m.style.top = Math.min(e.clientY, window.innerHeight - 90) + "px";
   m.classList.remove("hidden");
+  bindObjMenu(m, l.ids.map(id => items.find(it => it.id === id)).filter(Boolean));
   m.querySelector('[data-a="one"]').onclick = () => { const h = hiddenLabels(); h.ids = [...new Set([...h.ids, ...l.ids])]; h.names = [...new Set([...h.names, l.text])]; m.classList.add("hidden"); saveHiddenLabels(h); setSaveStatus(`Namnet ${l.text} är dolt – "Visa dolda namn" i Lager-kortet tar tillbaka det.`); };
   const a = m.querySelector('[data-a="act"]');
   if (a) a.onclick = () => { const h = hiddenLabels(); h.acts = [...new Set([...h.acts, l.act])]; m.classList.add("hidden"); saveHiddenLabels(h); setSaveStatus(`Namnen för ${l.act} är dolda.`); };
+}
+
+// ---------------------------------------------------------------------
+// Släcka objekt på planen + sparade vyer (Victors önskemål 2026-10-01).
+// Högerklick på en prick: släck objektet, hela aktiviteten, alla med samma
+// aktivitetsnamn – eller visa bara den aktiviteten. Alt + dra en ruta
+// släcker allt inuti. Det släckta kan sparas som en namngiven vy (delas i
+// projektet via site_layers.json, { type: "objview" }).
+// ---------------------------------------------------------------------
+const objHideKey = () => "lagesplan-objhide-" + projectId;
+const objFamKey = it => it.group_id ? "g:" + it.group_id : it.source_key ? "s:" + it.source_key : "i:" + it.id;
+let objHideUndo = [];
+function objHidden() {
+  try { const v = JSON.parse(localStorage.getItem(objHideKey()) || "{}") || {}; return { ids: v.ids || [], fams: v.fams || [], acts: v.acts || [], view: v.view || "" }; }
+  catch (e) { return { ids: [], fams: [], acts: [], view: "" }; }
+}
+let objHiddenSets = null;
+function isObjHidden(it) {
+  if (!objHiddenSets) { const h = objHidden(); objHiddenSets = { ids: new Set(h.ids), fams: new Set(h.fams), acts: new Set(h.acts) }; }
+  return objHiddenSets.ids.has(it.id) || objHiddenSets.fams.has(objFamKey(it)) || objHiddenSets.acts.has(String(it.activity || "").trim());
+}
+function setObjHidden(h, opts = {}) {
+  if (opts.undo !== false) { objHideUndo.push(objHidden()); if (objHideUndo.length > 30) objHideUndo.shift(); }
+  try { localStorage.setItem(objHideKey(), JSON.stringify(h)); } catch (e) {}
+  objHiddenSets = null;
+  if (typeof invalidateVisible === "function") invalidateVisible(); else invalidatePositions();
+  renderZones();
+  renderObjViewUi();
+}
+function hiddenObjCount() { return items.filter(isObjHidden).length; }
+function famName(it) { return String(it.object_name || it.activity || "aktiviteten").trim(); }
+function objMenuHtml(its) {
+  if (!its.length) return "";
+  const it = its[0];
+  const names = [...new Set(its.map(x => objLabelText(x)).filter(Boolean))];
+  const fams = new Set(its.map(objFamKey));
+  const act = String(it.activity || "").trim();
+  const famCount = items.filter(x => fams.has(objFamKey(x))).length;
+  return `<button type="button" data-o="obj">Släck ${escHtml(names.slice(0, 2).join(", ") || "objektet")}${its.length > 1 ? ` (${its.length} objekt här)` : ""}</button>` +
+    (famCount > its.length ? `<button type="button" data-o="fam">Släck hela aktiviteten ${escHtml(famName(it))} (${famCount} objekt)</button>` : "") +
+    (act ? `<button type="button" data-o="act">Släck alla med aktiviteten ${escHtml(act.length > 28 ? act.slice(0, 27) + "…" : act)}</button>` : "") +
+    `<button type="button" data-o="only">Visa bara ${escHtml(famName(it))}</button>`;
+}
+function bindObjMenu(m, its) {
+  const close = () => m.classList.add("hidden");
+  const h = () => objHidden();
+  const on = (k, fn) => { const b = m.querySelector(`[data-o="${k}"]`); if (b) b.onclick = () => { close(); fn(); }; };
+  on("obj", () => { const x = h(); x.ids = [...new Set([...x.ids, ...its.map(i => i.id)])]; setObjHidden(x); setSaveStatus(`Släckt: ${its.map(objLabelText).join(", ")}. "Tänd alla" i Lager-kortet tar tillbaka.`); });
+  on("fam", () => { const x = h(); x.fams = [...new Set([...x.fams, ...its.map(objFamKey)])]; setObjHidden(x); setSaveStatus(`Släckt hela aktiviteten ${famName(its[0])}.`); });
+  on("act", () => { const x = h(); x.acts = [...new Set([...x.acts, String(its[0].activity || "").trim()])]; setObjHidden(x); setSaveStatus(`Släckt alla med aktiviteten ${its[0].activity}.`); });
+  on("only", () => {
+    const keep = new Set(its.map(objFamKey));
+    const x = h(); x.ids = []; x.acts = []; x.fams = [...new Set(items.map(objFamKey).filter(k => !keep.has(k)))];
+    setObjHidden(x); setSaveStatus(`Visar bara ${famName(its[0])}. "Tänd alla" visar allt igen.`);
+  });
+}
+function openObjMenu(its, e) {
+  let m = $("labelMenu");
+  if (!m) { openLabelMenu({ ids: [], text: "", act: "", box: {} }, e); m = $("labelMenu"); }
+  m.innerHTML = objMenuHtml(its);
+  m.style.left = Math.min(e.clientX, window.innerWidth - 300) + "px";
+  m.style.top = Math.min(e.clientY, window.innerHeight - 160) + "px";
+  m.classList.remove("hidden");
+  bindObjMenu(m, its);
+}
+function hideObjectsInBox(a, b) {
+  const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]);
+  if (x1 - x0 < 4 || y1 - y0 < 4) { renderZones(); return; }
+  const inside = (objectShapesInPdf() || []).filter(o => { const [x, y] = toPx(o.center); return x >= x0 && x <= x1 && y >= y0 && y <= y1; }).map(o => o.it.id);
+  if (!inside.length) { renderZones(); setSaveStatus("Inga objekt i rutan."); return; }
+  const x = objHidden(); x.ids = [...new Set([...x.ids, ...inside])];
+  setObjHidden(x);
+  setSaveStatus(`Släckte ${inside.length} objekt i rutan.`);
+}
+
+/* ---------- sparade vyer ---------- */
+const objViews = () => (typeof siteItems !== "undefined" ? siteItems : []).filter(x => x.type === "objview").sort((a, b) => (a.name || "").localeCompare(b.name || "", "sv"));
+function renderObjViewUi() {
+  const cnt = $("objHiddenCount");
+  if (!cnt) return;
+  const n = hiddenObjCount(), h = objHidden();
+  cnt.textContent = n ? `${n} objekt släckta` : "Inga objekt släckta";
+  $("btnObjShowAll").disabled = !n;
+  $("btnObjHideUndo").disabled = !objHideUndo.length;
+  const sel = $("objViewSel"), views = objViews();
+  const cur = views.find(v => v.id === h.view);
+  const same = cur && JSON.stringify([...(cur.hidden.ids || [])].sort()) === JSON.stringify([...h.ids].sort()) && JSON.stringify([...(cur.hidden.fams || [])].sort()) === JSON.stringify([...h.fams].sort()) && JSON.stringify([...(cur.hidden.acts || [])].sort()) === JSON.stringify([...h.acts].sort());
+  sel.innerHTML = `<option value="">${n ? "(osparad filtrering)" : "Alla objekt"}</option>` + views.map(v => `<option value="${escHtml(v.id)}">${escHtml(v.name)}${v.id === h.view && !same ? " (ändrad)" : ""}</option>`).join("");
+  sel.value = cur ? cur.id : "";
+  $("btnObjViewDelete").disabled = !cur;
+}
+function bindObjViewUi() {
+  if (!$("objViewSel")) return;
+  // Vyerna ligger bland lägesplanens sparade poster – uppdatera listan när de laddas/ändras.
+  if (typeof renderLayerPanel === "function" && !renderLayerPanel.__objViews) {
+    const orig = renderLayerPanel;
+    renderLayerPanel = function () { const r = orig.apply(this, arguments); renderObjViewUi(); return r; };
+    renderLayerPanel.__objViews = true;
+  }
+  $("btnObjShowAll").onclick = () => { const h = objHidden(); setObjHidden({ ids: [], fams: [], acts: [], view: h.view && objViews().some(v => v.id === h.view) ? "" : "" }); setSaveStatus("Alla objekt tända."); };
+  $("btnObjHideUndo").onclick = () => { const prev = objHideUndo.pop(); if (prev) setObjHidden(prev, { undo: false }); };
+  $("objViewSel").onchange = () => {
+    const v = objViews().find(x => x.id === $("objViewSel").value);
+    setObjHidden(v ? { ids: [...(v.hidden.ids || [])], fams: [...(v.hidden.fams || [])], acts: [...(v.hidden.acts || [])], view: v.id } : { ids: [], fams: [], acts: [], view: "" });
+  };
+  $("btnObjViewSave").onclick = async () => {
+    const h = objHidden(), cur = objViews().find(v => v.id === h.view);
+    const name = (prompt("Namn på vyn (t.ex. \"Utan grundsula\"). Samma namn skriver över.", cur ? cur.name : "") || "").trim();
+    if (!name) return;
+    const existing = objViews().find(v => v.name.toLowerCase() === name.toLowerCase());
+    const rec = { id: existing ? existing.id : ghNewId(), type: "objview", name, hidden: { ids: h.ids, fams: h.fams, acts: h.acts }, updated_by: settings.userName || null, updated_at: new Date().toISOString() };
+    await saveSiteItem(rec, false, { record: false });
+    setObjHidden({ ...h, view: rec.id }, { undo: false });
+    setSaveStatus(`Vyn "${name}" är sparad i projektet.`);
+  };
+  $("btnObjViewDelete").onclick = async () => {
+    const v = objViews().find(x => x.id === objHidden().view);
+    if (!v || !confirm(`Ta bort vyn "${v.name}"? Det du har släckt just nu ligger kvar.`)) return;
+    await saveSiteItem(v, true, { record: false });
+    const h = objHidden(); h.view = ""; setObjHidden(h, { undo: false });
+  };
+  renderObjViewUi();
 }
