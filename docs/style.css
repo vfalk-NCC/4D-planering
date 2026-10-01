@@ -982,3 +982,19 @@ header h1, .header-titles h1 { white-space: nowrap; }
 .list-sortbar label { display: flex; align-items: center; gap: 5px; margin: 0; min-width: 0; flex: 1; }
 .list-sortbar select { flex: 1; min-width: 0; margin: 0; height: 26px; font-size: 12px; font-weight: 400; }
 #listFilterBox { border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin-bottom: 8px; background: #fafbfc; }
+
+/* Dubblettkontroll (2026-10-01). */
+.dup-banner { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 6px 8px; margin-bottom: 6px; border: 1px solid #f59e0b; background: #fffbeb; border-radius: 6px; font-size: 12px; }
+.dup-banner button { white-space: nowrap; }
+#dupDialog .dialog-box { width: 520px; max-width: 95vw; }
+.dup-list { max-height: 55vh; overflow-y: auto; display: grid; gap: 8px; margin: 6px 0; }
+.dup-group { border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: #fff; }
+.dup-group.off { opacity: .55; }
+.dup-head { display: flex; gap: 6px; align-items: center; }
+.dup-head .dup-inc input { width: auto; margin: 0; }
+.dup-head .dup-show { flex: 1; text-align: left; background: none; border: none; padding: 2px 4px; cursor: pointer; height: auto; display: block; white-space: normal; font-size: 12px; }
+.dup-head .dup-show:hover { background: #eef4ff; border-radius: 4px; }
+.dup-row { display: flex; gap: 6px; align-items: baseline; padding: 3px 4px 3px 26px; font-size: 12px; cursor: pointer; border-radius: 4px; }
+.dup-row input { width: auto; margin: 0; }
+.dup-row.keep { background: #ecfdf5; }
+.dup-row:not(.keep) b { color: #b91c1c; }

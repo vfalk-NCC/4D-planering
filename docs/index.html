@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261001101515" />
+<link rel="stylesheet" href="style.css?v=20261001102604" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261001101515"></script>
+<script src="plan-excel-parser.js?v=20261001102604"></script>
 </head>
 <body>
 
@@ -163,6 +163,7 @@
           <button id="btnCancelCoupleMode">Avbryt</button>
         </div>
       </div>
+      <div id="dupBanner" class="dup-banner hidden"></div>
       <div id="hiddenMatchNotice" class="hint warning hidden"></div>
       <div id="itemList" class="item-list"></div>
       <div id="selectionBar" class="selection-bar hidden">
@@ -376,6 +377,18 @@
   </div>
 
   <!-- Kortkommandon -->
+  <div id="dupDialog" class="dialog hidden">
+    <div class="dialog-box dup-box">
+      <h2>Dubblettkopplingar</h2>
+      <p class="hint">Samma 3D-objekt kopplat flera gånger till samma aktivitet. Klicka på ett objekt för att se det i 3D och i listan. Välj vilken koppling som behålls – de andra tas bort (med sina ev. delaktiviteter och kommentarer). En säkerhetskopia tas först.</p>
+      <div id="dupList" class="dup-list"></div>
+      <div class="hint" id="dupMsg" style="color:var(--accent);min-height:1.2em;"></div>
+      <div class="row">
+        <button id="btnDupClose" type="button">Stäng</button>
+        <button id="btnDupClean" type="button" class="primary" style="margin-left:auto;">Rensa</button>
+      </div>
+    </div>
+  </div>
   <div id="planKeysDialog" class="dialog hidden">
     <div class="dialog-box keys-box">
       <h2>Kortkommandon</h2>
@@ -557,13 +570,14 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261001101515"></script>
-  <script src="app.js?v=20261001101515"></script>
-  <script src="manual-markings.js?v=20261001101515"></script>
-  <script src="sub-activity-list.js?v=20261001101515"></script>
-  <script src="activity-remove.js?v=20261001101515"></script>
-  <script src="ui-shell.js?v=20261001101515"></script>
-  <script src="undo.js?v=20261001101515"></script>
-  <script src="planning-keys.js?v=20261001101515"></script>
+  <script src="github-storage.js?v=20261001102604"></script>
+  <script src="app.js?v=20261001102604"></script>
+  <script src="manual-markings.js?v=20261001102604"></script>
+  <script src="sub-activity-list.js?v=20261001102604"></script>
+  <script src="activity-remove.js?v=20261001102604"></script>
+  <script src="dup-check.js?v=20261001102604"></script>
+  <script src="ui-shell.js?v=20261001102604"></script>
+  <script src="undo.js?v=20261001102604"></script>
+  <script src="planning-keys.js?v=20261001102604"></script>
 </body>
 </html>
