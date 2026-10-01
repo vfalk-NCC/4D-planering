@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261001184650"></script>
+<script src="github-storage.js?v=20261001201521"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -310,6 +310,7 @@
   #fieldTop { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 7; gap: 8px; align-items: center; flex-wrap: wrap; }
   #fieldTop .fv-wrap { display: flex; flex: 1 1 200px; min-width: 0; }
   .fl-sel { height: 46px; font-size: 16px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border); background: #fff; box-shadow: 0 4px 14px rgba(15,23,42,.14); min-width: 0; flex: 1 1 200px; }
+  .fl-btn:disabled { opacity: .4; box-shadow: none; }
   .fl-btn { height: 46px; min-width: 46px; padding: 0 16px; font-size: 16px; font-weight: 600; border-radius: 10px; background: #fff; border: 1px solid var(--border); box-shadow: 0 4px 14px rgba(15,23,42,.14); white-space: nowrap; }
   body.field .fl-btn.on, body.field .fl-btn.on:hover, body.field .fl-primary, body.field .fl-primary:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
   .fl-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
@@ -773,6 +774,8 @@
       <button type="button" id="btnFieldNote" class="fl-btn" title="Ny notering: tryck där pilen ska peka, sedan där texten ska stå">💬</button>
       <button type="button" id="btnFieldSketch" class="fl-btn" title="Rita på frihand på ritningen">✏️</button>
       <button type="button" id="btnFieldPhoto" class="fl-btn" title="Lägg till foto – placeras enligt GPS (fotots eller iPadens)">📷</button>
+      <button type="button" id="btnFieldUndo" class="fl-btn" title="Ångra" disabled>↶</button>
+      <button type="button" id="btnFieldRedo" class="fl-btn" title="Gör om" disabled>↷</button>
       <button type="button" id="btnFieldView" class="fl-btn" title="Spara det som visas nu som en vy">💾</button>
       <button type="button" id="btnFieldDay" class="fl-btn" title="Dagsplanering: lag, leveranser, lyft och krockar">👷 Dag</button>
       <button type="button" id="btnFieldLayers" class="fl-btn" title="Lager, ortofoto och DXF">🗂 Lager</button>
@@ -898,17 +901,17 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261001184650"></script>
-<script src="lagesplan-tools.js?v=20261001184650"></script>
-<script src="lagesplan-layers.js?v=20261001184650"></script>
-<script src="lagesplan-views.js?v=20261001184650"></script>
-<script src="lagesplan-film.js?v=20261001184650"></script>
-<script src="lagesplan-cad.js?v=20261001184650"></script>
-<script src="lagesplan-vecpdf.js?v=20261001184650"></script>
-<script src="lagesplan-print.js?v=20261001184650"></script>
-<script src="lagesplan-daily.js?v=20261001184650"></script>
-<script src="lagesplan-gps.js?v=20261001184650"></script>
-<script src="lagesplan-touch.js?v=20261001184650"></script>
-<script src="lagesplan-keys.js?v=20261001184650"></script>
+<script src="lagesplan.js?v=20261001201521"></script>
+<script src="lagesplan-tools.js?v=20261001201521"></script>
+<script src="lagesplan-layers.js?v=20261001201521"></script>
+<script src="lagesplan-views.js?v=20261001201521"></script>
+<script src="lagesplan-film.js?v=20261001201521"></script>
+<script src="lagesplan-cad.js?v=20261001201521"></script>
+<script src="lagesplan-vecpdf.js?v=20261001201521"></script>
+<script src="lagesplan-print.js?v=20261001201521"></script>
+<script src="lagesplan-daily.js?v=20261001201521"></script>
+<script src="lagesplan-gps.js?v=20261001201521"></script>
+<script src="lagesplan-touch.js?v=20261001201521"></script>
+<script src="lagesplan-keys.js?v=20261001201521"></script>
 </body>
 </html>

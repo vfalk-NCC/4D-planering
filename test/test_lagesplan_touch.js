@@ -149,6 +149,16 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   if (!(store.get(`projects/${PID}/site_layers.json`) || '').includes('"sketch"')) fail('Frihandsritningen ska sparas i projektet (syns på datorn)');
   if (!(await page.evaluate(() => document.querySelector('meta[name="viewport"]').content)).includes('maximum-scale=1')) fail('Fältläge ska låsa sidzoomen');
   console.log('OK: ✏️ rita på frihand sparas i projektet, nyp zoomar utan att rita');
+  // ↶ / ↷ i fältläget.
+  if (await page.isDisabled('#btnFieldUndo')) fail('↶ ska gå att trycka på efter en ritning');
+  await page.tap('#btnFieldUndo'); await page.waitForTimeout(300);
+  if ((await page.evaluate(() => siteItems.filter(x => x.type === 'sketch').length)) !== n0) fail('↶ ska ångra senaste strecket');
+  if ((JSON.parse(store.get(`projects/${PID}/site_layers.json`)).filter(x => x.type === 'sketch').length) !== n0) fail('Ångringen ska sparas');
+  if (await page.isDisabled('#btnFieldRedo')) fail('↷ ska gå att trycka på efter en ångring');
+  await page.tap('#btnFieldRedo'); await page.waitForTimeout(300);
+  if ((await page.evaluate(() => siteItems.filter(x => x.type === 'sketch').length)) !== n0 + 1) fail('↷ ska göra om strecket');
+  if (!(await page.isDisabled('#btnFieldRedo'))) fail('↷ ska vara avstängd när det inte finns något att göra om');
+  console.log('OK: ↶ ångra och ↷ gör om i fältläget');
 
   // 4) Datum och lager via de stora knapparna.
   await page.evaluate(() => { $('dateInput').value = '2026-10-01'; $('dateInput').dispatchEvent(new Event('change')); });

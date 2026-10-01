@@ -184,6 +184,26 @@ function renderField() {
   const sl = $("dateSlider"), fsl = $("fieldSlider");
   fsl.min = sl.min; fsl.max = sl.max; fsl.value = sl.value;
   if (!$("fieldSheet").classList.contains("hidden")) renderFieldSheet();
+  updateFieldUndo();
+}
+
+/* ↶ / ↷ i fältläget (Victors önskemål 2026-10-01): samma som Ctrl+Z / Ctrl+Y –
+   ångrar det senaste (en släckning av 3D-objekt eller en ändring i
+   etablering, noteringar, frihand, lag m.m.). */
+function fieldCanUndo() { return (typeof lastUndoTarget !== "undefined" && lastUndoTarget === "obj" && objHideUndo.length) || siteUndo.length; }
+function fieldUndo() {
+  if (typeof lastUndoTarget !== "undefined" && lastUndoTarget === "obj" && typeof undoObjHide === "function" && undoObjHide()) { updateFieldUndo(); return; }
+  if (siteUndo.length) undoSite().then(updateFieldUndo);
+}
+function fieldRedo() { if (siteRedo.length) redoSite().then(updateFieldUndo); }
+function updateFieldUndo() {
+  const u = $("btnFieldUndo"), r = $("btnFieldRedo");
+  if (!u) return;
+  u.disabled = !fieldCanUndo();
+  const obj = typeof lastUndoTarget !== "undefined" && lastUndoTarget === "obj" && objHideUndo.length;
+  u.title = obj ? "Ångra: släckning av 3D-objekt" : siteUndo.length ? `Ångra: ${siteUndo[siteUndo.length - 1].label}` : "Inget att ångra";
+  r.disabled = !siteRedo.length;
+  r.title = siteRedo.length ? `Gör om: ${siteRedo[siteRedo.length - 1].label}` : "Inget att göra om";
 }
 
 function fieldShiftDays(n) {
@@ -334,6 +354,14 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btnFieldSketch").onclick = () => { closeFieldSheet(); startSiteTool("sketch"); };
   $("btnFieldPhoto").onclick = () => { closeFieldSheet(); if (typeof stopSiteTool === "function" && siteTool) stopSiteTool(); startGpsPhoto(); };
   $("btnFieldView").onclick = () => openFieldSaveView();
+  $("btnFieldUndo").onclick = fieldUndo;
+  $("btnFieldRedo").onclick = fieldRedo;
+  const origUndoBtns = updateUndoButtons;
+  updateUndoButtons = function () { const r = origUndoBtns.apply(this, arguments); updateFieldUndo(); return r; };
+  const origObjUndo = undoObjHide;
+  undoObjHide = function () { const r = origObjUndo.apply(this, arguments); updateFieldUndo(); return r; };
+  const origSetHidden = setObjHidden;
+  setObjHidden = function () { const r = origSetHidden.apply(this, arguments); updateFieldUndo(); return r; };
   const origToolUi = updateToolUi;
   updateToolUi = function () { const r = origToolUi.apply(this, arguments); renderFieldTools(); return r; };
   const origUi = updateSiteUi;
