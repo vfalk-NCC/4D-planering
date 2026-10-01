@@ -1923,7 +1923,8 @@ function applyLayerSearch() {
     if (r.classList.contains("folder-row")) { folder = r; parent = null; return; }
     if (!r.classList.contains("in-folder")) folder = null;
     if (r.classList.contains("cad-sub")) {
-      if (parent && match.has(parent)) show.add(r);
+      // En träffad DXF visas ihopfälld: lagren syns bara om den redan är utfälld.
+      if (parent && match.has(parent) && !r.classList.contains("hidden")) show.add(r);
       if (match.has(r)) { show.add(parent); if (folder) show.add(folder); }
       return;
     }
