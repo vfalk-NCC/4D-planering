@@ -1676,6 +1676,12 @@ function renderLayerPanel() {
     kids.forEach(k => rows.push(rowHtml[k]({ inFolder: true, hidden: !open })));
   });
   keys.filter(k => !inFolder(k)).forEach(k => rows.push(rowHtml[k]({})));
+  // "Alla DXF-lager" före första DXF-ritningen (eller överst).
+  const allCad = typeof cadAllRowsHtml === "function" ? cadAllRowsHtml() : "";
+  if (allCad) {
+    const i = rows.findIndex(r => /data-layer="cad:/.test(r));
+    rows.splice(i < 0 ? 0 : i, 0, allCad);
+  }
   el.innerHTML = rows.join("");
   el.querySelectorAll(".folder-row").forEach(row => {
     const id = row.dataset.folder;
@@ -1717,7 +1723,7 @@ function renderLayerPanel() {
   el.querySelectorAll(".layer-row[data-layer]").forEach(row => {
     const key = row.dataset.layer;
     row.querySelector(".lr-vis").onchange = e => {
-      if (key.startsWith("cad")) { ls(key).visible = e.target.checked; saveLayerState(); buildCadSnap(); renderCad(); if (key.startsWith("cad:")) renderLayerPanel(); return; }
+      if (key.startsWith("cad")) { ls(key).visible = e.target.checked; saveLayerState(); buildCadSnap(); renderCad(); if (key.startsWith("cad:") || document.querySelector(".cadall-row")) renderLayerPanel(); return; }
       if (key.startsWith("ortho:")) {
         // Manuellt val av foto: sluta följa datumet; "ett i taget" släcker de andra.
         if (orthoFollowDate()) setOrthoFollowDate(false);
@@ -1758,6 +1764,7 @@ function renderLayerPanel() {
     };
   });
   if (typeof bindCadRows === "function") { bindCadRows(el); renderCadSettings(); }
+  if (typeof bindCadAllRows === "function") bindCadAllRows(el);
   bindLayerSelection(el, keys);
   applyLayerSearch();
 }
@@ -1908,7 +1915,7 @@ function applyLayerSearch() {
       if (match.has(r)) { show.add(parent); if (folder) show.add(folder); }
       return;
     }
-    parent = r.dataset.layer && r.dataset.layer.startsWith("cad:") ? r : null;
+    parent = (r.dataset.layer && r.dataset.layer.startsWith("cad:")) || r.dataset.cadall ? r : null;
     if (folder && match.has(folder)) show.add(r);
     if (folder && match.has(r)) show.add(folder);
   });

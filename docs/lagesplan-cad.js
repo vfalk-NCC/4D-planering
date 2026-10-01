@@ -635,6 +635,55 @@ function bindCadRows(el) {
     row.querySelector(".lr-del").onclick = () => deleteCad(r);
   });
 }
+/* "Alla DXF-lager" (Victors önskemål 2026-10-01): lager med samma namn i
+   flera DXF-filer slås ihop till en rad, så man kan tända/släcka t.ex. "TEXT"
+   i alla ritningar på en gång. Namnen jämförs utan skillnad på stora/små
+   bokstäver (som i AutoCAD). Visas när det finns minst två DXF-filer. */
+function cadMergedLayers() {
+  const map = new Map();
+  cads().forEach(r => r.layers.forEach(l => {
+    const k = String(l.name).trim().toUpperCase();
+    if (!map.has(k)) map.set(k, { name: l.name, color: l.color, n: 0, keys: [] });
+    const m = map.get(k);
+    m.n += l.n || 0;
+    m.keys.push(`cadl:${r.id}:${l.name}`);
+  }));
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, "sv"));
+}
+function cadAllRowsHtml() {
+  if (typeof cads !== "function" || cads().length < 2) return "";
+  const merged = cadMergedLayers();
+  const open = layerState["cadall-open"] === true;
+  const files = cads(), nOn = files.filter(r => ls("cad:" + r.id).visible).length;
+  const head = `<div class="layer-row cadall-row" data-cadall="1">
+      <input type="checkbox" class="ca-vis"${nOn ? " checked" : ""} data-mixed="${nOn > 0 && nOn < files.length ? 1 : 0}" title="Tänd/släck alla DXF-ritningar" />
+      <span class="ln"><button class="cad-toggle ca-toggle" title="Visa lagren">${open ? "▾" : "▸"}</button>📐 Alla DXF-lager <small>${merged.length} lager i ${files.length} ritningar</small></span>
+    </div>`;
+  const kids = merged.map((m, i) => {
+    const on = m.keys.filter(k => ls(k).visible).length;
+    const sw = `<span class="cad-sw" style="background:${escHtml(m.color === "#000000" || m.color === "#ffffff" ? "#111827" : m.color || "#111827")}"></span>`;
+    return `<div class="layer-row sub cad-sub cadall-sub${open ? "" : " hidden"}" data-cadall-i="${i}">
+      <input type="checkbox" class="ca-l"${on ? " checked" : ""} data-mixed="${on > 0 && on < m.keys.length ? 1 : 0}" title="Tänd/släck lagret i alla DXF-ritningar" />
+      <span class="ln" title="${escHtml(m.name)}">${sw}${escHtml(m.name)} <small>${m.keys.length > 1 ? `i ${m.keys.length} ritningar` : "1 ritning"}</small></span>
+    </div>`;
+  });
+  return head + kids.join("");
+}
+function bindCadAllRows(el) {
+  const head = el.querySelector(".cadall-row");
+  if (!head) return;
+  const merged = cadMergedLayers();
+  const redraw = () => { saveLayerState(); buildCadSnap(); renderCad(); renderLayerPanel(); };
+  const vis = head.querySelector(".ca-vis");
+  vis.indeterminate = vis.dataset.mixed === "1";
+  vis.onchange = () => { cads().forEach(r => { ls("cad:" + r.id).visible = vis.checked; }); redraw(); };
+  head.querySelector(".ca-toggle").onclick = e => { e.stopPropagation(); layerState["cadall-open"] = layerState["cadall-open"] !== true; saveLayerState(); renderLayerPanel(); };
+  el.querySelectorAll(".cadall-sub").forEach(row => {
+    const m = merged[Number(row.dataset.cadallI)], c = row.querySelector(".ca-l");
+    c.indeterminate = c.dataset.mixed === "1";
+    c.onchange = () => { m.keys.forEach(k => { ls(k).visible = c.checked; }); redraw(); };
+  });
+}
 function renderCadSettings() {
   const box = $("cadSettings");
   if (!box) return;

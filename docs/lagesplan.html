@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261001064630"></script>
+<script src="github-storage.js?v=20261001065419"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -122,6 +122,8 @@
   .layer-row button { height: auto; padding: 0 4px; border: none; background: none; cursor: pointer; font-size: 12px; }
   .layer-row.in-folder { padding-left: 26px; background: #fbfcfe; }
   .layer-row.folder-row { background: var(--panel-2); font-weight: 600; }
+  .layer-row.cadall-row { background: var(--panel-2); font-weight: 600; }
+  .layer-row.cadall-row, .layer-row.cadall-sub { grid-template-columns: 20px 1fr; }
   .layer-row.folder-row .ln { display: flex; align-items: center; gap: 2px; }
   .layer-row.folder-row .fr-toggle { width: 16px; padding: 0; color: var(--muted); }
   .layer-row.folder-row small { font-weight: 400; margin-left: 4px; }
@@ -643,13 +645,13 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261001064630"></script>
-<script src="lagesplan-tools.js?v=20261001064630"></script>
-<script src="lagesplan-layers.js?v=20261001064630"></script>
-<script src="lagesplan-film.js?v=20261001064630"></script>
-<script src="lagesplan-cad.js?v=20261001064630"></script>
-<script src="lagesplan-vecpdf.js?v=20261001064630"></script>
-<script src="lagesplan-print.js?v=20261001064630"></script>
-<script src="lagesplan-keys.js?v=20261001064630"></script>
+<script src="lagesplan.js?v=20261001065419"></script>
+<script src="lagesplan-tools.js?v=20261001065419"></script>
+<script src="lagesplan-layers.js?v=20261001065419"></script>
+<script src="lagesplan-film.js?v=20261001065419"></script>
+<script src="lagesplan-cad.js?v=20261001065419"></script>
+<script src="lagesplan-vecpdf.js?v=20261001065419"></script>
+<script src="lagesplan-print.js?v=20261001065419"></script>
+<script src="lagesplan-keys.js?v=20261001065419"></script>
 </body>
 </html>
