@@ -168,6 +168,7 @@ function parsePlanSheet(rows, sheetName) {
         activity: title,
         // Typ = texten efter koden på huvudraden ("E14 - Fundament" -> "Fundament").
         elementType: code ? title : null,
+        code,
         startDate: e.start || minDate(subs.map(x => x.start)),
         endDate: e.end || maxDate(subs.map(x => x.end)),
         baselineStartDate: e.baselineStart,
@@ -193,6 +194,7 @@ function parsePlanSheet(rows, sheetName) {
       const it = {
         sourceKey, area,
         objectName: e.matched ? e.matched.code : e.activityText,
+        code: e.matched ? e.matched.code : null,
         activity: e.matched ? null : e.activityText,
         startDate: e.start, endDate: e.end,
         baselineStartDate: e.baselineStart, baselineEndDate: e.baselineEnd,

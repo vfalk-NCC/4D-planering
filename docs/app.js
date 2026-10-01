@@ -3384,6 +3384,32 @@ function buildPlanImportDiff(parsedItems) {
     return { parsed: p, existing: all[0] || null, extras: all.slice(1), status: computeImportStatus(p, todayStr) };
   });
 
+  // Namnbyte (Victors önskemål 2026-10-01): "M30 - Fundament DP2 - Betongarbeten"
+  // omdöpt till "M30 - Fundament" ger en ny nyckel för en rad med underrader.
+  // Finns det under samma flik och rubrik EXAKT EN ny, omatchad aktivitet med
+  // koden och EXAKT EN tidigare aktivitet med koden som inte längre finns i
+  // filen, är det samma aktivitet: den behåller sina 3D-kopplingar,
+  // kommentarer och markeringar och får det nya namnet. Fler kandidater (t.ex.
+  // J14 Fundament + J14 Kontrefor) matchas inte gissningsvis.
+  const codeKeyOf = key => String(key || "").split("||").slice(0, 3).join("||");
+  const orphanKeys = [...bySourceKey.keys()].filter(k => !seenKeys.has(k));
+  const unmatchedByCode = new Map();
+  matched.forEach(m => {
+    if (m.existing || !m.parsed.code) return;
+    const ck = `${String(m.parsed.sourceKey).split("||").slice(0, 2).join("||")}||${m.parsed.code}`;
+    if (!unmatchedByCode.has(ck)) unmatchedByCode.set(ck, []);
+    unmatchedByCode.get(ck).push(m);
+  });
+  const renames = [];
+  unmatchedByCode.forEach((list, ck) => {
+    const olds = orphanKeys.filter(k => codeKeyOf(k) === ck);
+    if (list.length !== 1 || olds.length !== 1) return;
+    const m = list[0], all = bySourceKey.get(olds[0]);
+    m.existing = all[0]; m.extras = all.slice(1); m.renamedFrom = olds[0];
+    seenKeys.add(olds[0]);
+    renames.push({ code: m.parsed.code, from: all[0].activity || all[0].objectName || "", to: m.parsed.activity || m.parsed.objectName || "", area: m.parsed.area, coupled: all.filter(it => it.modelId).length });
+  });
+
   const toCreate = matched.filter(m => !m.existing);
   const toUpdate = matched.filter(m => m.existing);
   // Fanns i en TIDIGARE import (har source_key) men inte i den nya filen -
@@ -3392,7 +3418,7 @@ function buildPlanImportDiff(parsedItems) {
   // granskningen, se renderPlanImportPreview.
   const removedExisting = Array.from(bySourceKey.values()).flat().filter(it => !seenKeys.has(it.sourceKey));
 
-  return { parsedItems, matched, toCreate, toUpdate, removedExisting, todayStr };
+  return { parsedItems, matched, toCreate, toUpdate, removedExisting, renames, todayStr };
 }
 
 function renderPlanImportPreview(diff) {
@@ -3408,6 +3434,9 @@ function renderPlanImportPreview(diff) {
     <div>${diff.parsedItems.length} objekt totalt i filen (${withPhases} med faser/delaktiviteter)</div>
   `;
 
+  if (diff.renames && diff.renames.length) {
+    summaryEl.innerHTML += `<div class="plan-import-renames"><strong>${diff.renames.length}</strong> namnbyte${diff.renames.length > 1 ? "n" : ""} – samma aktivitet, kopplingen behålls:<ul>${diff.renames.slice(0, 12).map(r => `<li><b>${escapeHtml(r.code)}</b>: ${escapeHtml(r.from || "–")} → ${escapeHtml(r.to || "–")}${r.coupled ? ` <span class="hint">(${r.coupled} kopplade objekt)</span>` : ""}</li>`).join("")}${diff.renames.length > 12 ? `<li>… och ${diff.renames.length - 12} till</li>` : ""}</ul></div>`;
+  }
   if (diff.removedExisting.length > 0) {
     const coupled = diff.removedExisting.filter(it => it.modelId).length;
     const names = diff.removedExisting.slice(0, 8).map(it => it.objectName || it.id).join(", ");

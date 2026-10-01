@@ -998,3 +998,6 @@ header h1, .header-titles h1 { white-space: nowrap; }
 .dup-row input { width: auto; margin: 0; }
 .dup-row.keep { background: #ecfdf5; }
 .dup-row:not(.keep) b { color: #b91c1c; }
+
+.plan-import-renames { margin-top: 6px; padding: 6px 8px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; }
+.plan-import-renames ul { margin: 4px 0 0 18px; padding: 0; }
