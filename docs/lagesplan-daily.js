@@ -251,6 +251,7 @@ function computeDailyIssues(day) {
     if (inf.done) add("info", [c.id], `${nm(c)}: ${inf.title} är redan klarmarkerad`, c.pts[0]);
     else if (inf.start && inf.start > day) add("info", [c.id], `${nm(c)}: ${inf.title} är planerad att starta ${shortDate(inf.start)}`, c.pts[0]);
   });
+  if (typeof weatherIssues === "function") weatherIssues(day, { lifts, dels }).forEach(i => list.push(i));
   const byId = new Map();
   list.forEach(i => i.ids.forEach(id => {
     const cur = byId.get(id) || { sev: "info", texts: [] };
@@ -964,6 +965,7 @@ function renderDayCore(box, field) {
   const shownIss = iss.list.filter(i => i.sev !== "info" || showInfo);
   box.innerHTML = `
     <div class="dp-nav"><button type="button" data-dnav="-1" title="Föregående arbetsdag">◀</button><span class="dp-date">${escHtml(dayLong(day))}<br><span class="muted">vecka ${wk}${isWeekend(day) ? " · helg" : ""}</span></span><button type="button" data-dnav="1" title="Nästa arbetsdag">▶</button><button type="button" data-dnav="0">Idag</button></div>
+    ${typeof dayWeatherHtml === "function" ? dayWeatherHtml(day) : ""}
     <div class="dp-sum">${crews.length} lag · ${persons} pers. · ${dels} lev. · ${lifts} lyft</div>
     ${iss.krock || iss.varning || iss.info ? `<button type="button" class="dp-issbtn${iss.krock ? " krock" : iss.varning ? " varning" : ""}" data-isstoggle="1">${iss.krock ? `⚠ ${iss.krock} krock${iss.krock > 1 ? "ar" : ""}` : ""}${iss.krock && iss.varning ? " · " : ""}${iss.varning ? `${iss.varning} varning${iss.varning > 1 ? "ar" : ""}` : ""}${!iss.krock && !iss.varning ? "Inga krockar" : ""}${iss.info ? ` <span class="muted">· ${iss.info} info ${showInfo ? "▴" : "▾"}</span>` : ""}</button>
       <div class="dp-isslist">${shownIss.map((i, n) => `<button type="button" class="dp-iss ${i.sev}" data-iss="${n}">${i.sev === "krock" ? "⛔" : i.sev === "varning" ? "⚠" : "ℹ"} ${escHtml(i.text)}</button>`).join("")}</div>` : `<div class="dp-ok">✓ Inga krockar</div>`}
@@ -1088,6 +1090,7 @@ function renderWeek() {
     }).join("")}<td class="wk-sum">${days.reduce((a, d) => a + ((r.cells[d] || {}).plan || 0), 0) || ""}</td></tr>`).join("") || `<tr><td colspan="${days.length + 2}" class="muted">Inga lag planerade den här veckan.</td></tr>`}
     </tbody><tfoot>
       <tr><th>Pers.</th>${days.map(d => `<td class="${d === day ? "cur" : ""}" data-day="${d}"><b>${tot(d) || ""}</b>${totA(d) != null ? `<span class="muted">(${totA(d)})</span>` : ""}</td>`).join("")}<td class="wk-sum">${days.reduce((a, d) => a + tot(d), 0) || ""}</td></tr>
+      ${typeof weekWeatherCell === "function" && days.some(d => weatherFor(d)) ? `<tr class="wk-wx"><th>Väder</th>${days.map(d => `<td class="${d === day ? "cur" : ""}" data-day="${d}">${weekWeatherCell(d)}</td>`).join("")}<td></td></tr>` : ""}
       <tr><th>🚚</th>${days.map(d => `<td class="${d === day ? "cur" : ""}" data-day="${d}">${cnt(d, "delivery") || ""}</td>`).join("")}<td></td></tr>
       <tr><th>🪝</th>${days.map(d => `<td class="${d === day ? "cur" : ""}" data-day="${d}">${cnt(d, "lift") || ""}</td>`).join("")}<td></td></tr>
       <tr><th>⚠</th>${days.map(d => `<td class="${d === day ? "cur" : ""}" data-day="${d}">${iss(d)}</td>`).join("")}<td></td></tr>
@@ -1205,6 +1208,8 @@ async function exportDaySheet(day, ueId) {
     };
     const footer = () => { doc.setFontSize(7.5); doc.setTextColor(107, 114, 128); doc.text(pdfTxt(`Lägesplan · 4D-planering · utskriven ${printed}${settings.userName ? " av " + settings.userName : ""}`), M, H - 4); doc.text(`Sida ${doc.getNumberOfPages()}`, W - M, H - 4, { align: "right" }); doc.setTextColor(17, 24, 39); };
     header(false);
+    const wxLine = typeof weatherPdfLine === "function" ? weatherPdfLine(day) : "";
+    if (wxLine) { doc.setFontSize(9); doc.setTextColor(30, 64, 175); doc.text(pdfTxt(wxLine), W - M, 20.3, { align: "right" }); doc.setTextColor(17, 24, 39); }
     // Kartan.
     const mb = { x: M, y: 21, w: 262, h: 168 };
     const el = dayMapEl(day, mb.w, mb.h);
