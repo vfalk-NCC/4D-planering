@@ -225,7 +225,7 @@ async function createLayer(name) {
 const META_ID = "layermeta";
 function layerMeta() {
   const m = siteItems.find(x => x.id === META_ID) || {};
-  return { id: META_ID, type: "layermeta", names: { ...(m.names || {}) }, folders: (m.folders || []).map(f => ({ ...f })), folderOf: { ...(m.folderOf || {}) } };
+  return { id: META_ID, type: "layermeta", names: { ...(m.names || {}) }, folders: (m.folders || []).map(f => ({ ...f })), folderOf: { ...(m.folderOf || {}) }, sortAz: !!m.sortAz };
 }
 function saveLayerMeta(m) { return saveSiteItem(m, false, { record: false }); }
 const LAYER_DEFAULT_NAMES = { pdf: "Ritningen (PDF)", zones: "Zoner", objects: "Objekt", photos: "Foton" };
@@ -1669,16 +1669,19 @@ function renderLayerPanel() {
   const keys = layerRowKeys();
   const rows = [];
   // Mappar först (i den ordning de skapades), med sina lager; sedan resten.
-  meta.folders.forEach(f => {
+  const sortBtn = $("btnLayerSort");
+  if (sortBtn) { sortBtn.classList.toggle("active", !!meta.sortAz); sortBtn.title = meta.sortAz ? "Lagren i mapparna är sorterade A–Ö. Klicka för vanlig ordning." : "Sortera mapparna och lagren i dem A–Ö"; }
+  const folders = meta.sortAz ? meta.folders.slice().sort((a, b) => a.name.localeCompare(b.name, "sv", { numeric: true, sensitivity: "base" })) : meta.folders;
+  folders.forEach(f => {
     const kids = keys.filter(k => inFolder(k) === f.id);
-    // Sortera A–Ö (valt per mapp, sparas med mappen).
-    if (f.sort === "az") kids.sort((a, b) => layerSortName(a).localeCompare(layerSortName(b), "sv", { numeric: true, sensitivity: "base" }));
+    // Sortera A–Ö (knappen ovanför listan, gäller alla mappar).
+    if (meta.sortAz) kids.sort((a, b) => layerSortName(a).localeCompare(layerSortName(b), "sv", { numeric: true, sensitivity: "base" }));
     const open = layerState["folder:" + f.id] ? layerState["folder:" + f.id].open !== false : true;
     const nOn = kids.filter(k => ls(k).visible).length;
     rows.push(`<div class="layer-row folder-row" data-folder="${escHtml(f.id)}">
         <input type="checkbox" class="fr-vis"${nOn ? " checked" : ""} data-mixed="${nOn > 0 && nOn < kids.length ? 1 : 0}" title="Visa/dölj allt i mappen"${kids.length ? "" : " disabled"} />
         <span class="ln"><button class="fr-toggle" title="Fäll ut/ihop">${open ? "▾" : "▸"}</button><span class="fr-name" title="Dubbelklicka för att byta namn">📁 ${escHtml(f.name)}</span> <small>${kids.length}</small></span>
-        <button class="fr-sort${f.sort === "az" ? " on" : ""}" title="${f.sort === "az" ? "Sorterad A–Ö. Klicka för att visa i vanlig ordning." : "Sortera lagren i mappen A–Ö"}">A–Ö</button>
+        <span></span>
         <button class="fr-del" title="Ta bort mappen (lagren ligger kvar)">🗑️</button>
       </div>`);
     kids.forEach(k => rows.push(rowHtml[k]({ inFolder: true, hidden: !open })));
@@ -1702,12 +1705,7 @@ function renderLayerPanel() {
     };
     row.querySelector(".fr-name").ondblclick = () => renameFolder(id);
     row.querySelector(".fr-del").onclick = () => deleteFolder(id);
-    row.querySelector(".fr-sort").onclick = async () => {
-      const m = layerMeta(), f = m.folders.find(x => x.id === id);
-      if (!f) return;
-      f.sort = f.sort === "az" ? "" : "az";
-      await saveLayerMeta(m);
-    };
+
   });
   // Dra ett lager till en mapp – eller ut ur mappen (släpp på ett lager utanför mappar).
   el.querySelectorAll(".layer-row[data-layer]").forEach(row => {
@@ -2061,6 +2059,7 @@ function bindLayers() {
   $("orthoInput").onchange = e => { const f = [...e.target.files]; e.target.value = ""; if (f.length) addOrthoFiles(f); };
   $("layersFollowDate").onchange = () => renderZones();
   $("btnNewFolder").onclick = createFolder;
+  $("btnLayerSort").onclick = async () => { const m = layerMeta(); m.sortAz = !m.sortAz; await saveLayerMeta(m); };
   // Tom sökning ritar om listan så att hopfällda mappar/CAD-lager döljs igen.
   const research = () => { if ($("layerSearch").value.trim()) applyLayerSearch(); else renderLayerPanel(); };
   $("layerSearch").addEventListener("input", research);
