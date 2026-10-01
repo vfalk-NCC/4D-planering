@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261001114050"></script>
+<script src="github-storage.js?v=20261001115933"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -276,7 +276,19 @@
   body.field.field-clean #btnFieldShow { display: flex; position: absolute; right: 12px; bottom: 12px; z-index: 9; width: 52px; height: 52px; padding: 0; font-size: 22px; align-items: center; justify-content: center; opacity: .85; }
   body.field aside, body.field #sideResizer, body.field #btnShowSide { display: none !important; }
   body.field .field-ui { display: flex; }
-  body.field #fieldSheet.hidden { display: none; }
+  body.field #fieldSheet.hidden, body.field #fieldTools.hidden { display: none; }
+  #fieldTools { position: absolute; top: 66px; left: 50%; transform: translateX(-50%); z-index: 8; max-width: calc(100% - 20px); gap: 10px; align-items: center; padding: 8px 10px; background: rgba(255,255,255,.96); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 6px 20px rgba(15,23,42,.18); }
+  #fieldTools .ft-hint { font-size: 14px; color: var(--muted); max-width: 360px; }
+  #fieldTools .ft-colors { display: flex; gap: 8px; }
+  #fieldTools .ft-color { width: 38px; height: 38px; min-width: 0; padding: 0; border-radius: 50%; border: 3px solid #fff; box-shadow: 0 0 0 1px var(--border); }
+  #fieldTools .ft-color.on { box-shadow: 0 0 0 3px var(--accent); }
+  /* Fältläge: hela sidan står still (ingen sidzoom/rullning), 16 px i textfält så Safari inte zoomar. */
+  html, body { overscroll-behavior: none; }
+  #layout { height: 100dvh; }
+  body.field { position: fixed; inset: 0; overflow: hidden; }
+  body.field #sitePop { font-size: 15px; width: min(340px, calc(100% - 20px)); max-height: calc(100% - 150px); overflow-y: auto; }
+  body.field #sitePop input, body.field #sitePop textarea, body.field #sitePop select, body.field #fieldTop select { font-size: 16px; }
+  body.field #sitePop button { min-height: 40px; }
   body.field .fv-wrap.hidden { display: none; }
   body.field button, body.field select, body.field input { touch-action: manipulation; }
   #fieldTop { position: absolute; top: 10px; left: 10px; right: 10px; z-index: 7; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -426,6 +438,7 @@
             <button data-site="fence" title="Klicka punkter längs stängslet, dubbelklicka för att avsluta"><i>〰</i>Stängsel</button>
             <button data-site="barrier" title="Klicka hörnen, dubbelklicka för att avsluta"><i>⛔</i>Avspärrning</button>
             <button data-site="route" title="Klicka punkter längs vägen i körriktningen, dubbelklicka för att avsluta"><i>➡</i>Transport&shy;väg</button>
+            <button data-site="sketch" title="Rita på frihand – varje drag sparas direkt"><i>✏️</i>Frihand</button>
           </div>
           <select id="symbolSelect" style="margin-top:6px;" title="Färdiga symboler med rätt mått - välj och klicka på planen">
             <option value="">🧩 Infoga symbol med rätt mått…</option>
@@ -623,11 +636,14 @@
     <div id="fieldTop" class="field-ui">
       <select id="fieldPlan" class="fl-sel" title="Plan"></select>
       <div class="fv-wrap"><select id="fieldView" class="fl-sel" title="Sparad vy"></select></div>
+      <button type="button" id="btnFieldNote" class="fl-btn" title="Ny notering: tryck där pilen ska peka, sedan där texten ska stå">💬</button>
+      <button type="button" id="btnFieldSketch" class="fl-btn" title="Rita på frihand på ritningen">✏️</button>
       <button type="button" id="btnFieldLayers" class="fl-btn" title="Lager, ortofoto och DXF">🗂 Lager</button>
       <button type="button" id="btnFieldHide" class="fl-btn fl-ghost" title="Dölj alla knappar – bara planen syns">🙈 Dölj</button>
       <button type="button" id="btnFieldFull" class="fl-btn fl-ghost" title="Tillbaka till den fullständiga vyn med alla verktyg">☰ Fullständig</button>
     </div>
     <button type="button" id="btnFieldShow" class="fl-btn" title="Visa knapparna igen">👁</button>
+    <div id="fieldTools" class="field-ui hidden"></div>
     <div id="fieldBottom" class="field-ui">
       <div class="fb-row">
         <button type="button" id="btnFieldPrevW" class="fl-btn" title="En vecka bakåt">◀ v</button>
@@ -738,15 +754,15 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261001114050"></script>
-<script src="lagesplan-tools.js?v=20261001114050"></script>
-<script src="lagesplan-layers.js?v=20261001114050"></script>
-<script src="lagesplan-views.js?v=20261001114050"></script>
-<script src="lagesplan-film.js?v=20261001114050"></script>
-<script src="lagesplan-cad.js?v=20261001114050"></script>
-<script src="lagesplan-vecpdf.js?v=20261001114050"></script>
-<script src="lagesplan-print.js?v=20261001114050"></script>
-<script src="lagesplan-touch.js?v=20261001114050"></script>
-<script src="lagesplan-keys.js?v=20261001114050"></script>
+<script src="lagesplan.js?v=20261001115933"></script>
+<script src="lagesplan-tools.js?v=20261001115933"></script>
+<script src="lagesplan-layers.js?v=20261001115933"></script>
+<script src="lagesplan-views.js?v=20261001115933"></script>
+<script src="lagesplan-film.js?v=20261001115933"></script>
+<script src="lagesplan-cad.js?v=20261001115933"></script>
+<script src="lagesplan-vecpdf.js?v=20261001115933"></script>
+<script src="lagesplan-print.js?v=20261001115933"></script>
+<script src="lagesplan-touch.js?v=20261001115933"></script>
+<script src="lagesplan-keys.js?v=20261001115933"></script>
 </body>
 </html>

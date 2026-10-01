@@ -32,7 +32,8 @@ const SITE_KINDS = {
   fence:   { label: "Stängsel",    icon: "〰", clicks: 0 },  // 0 = valfritt antal, dubbelklick avslutar
   barrier: { label: "Avspärrning", icon: "⛔", clicks: 0 },
   route:   { label: "Transportväg", icon: "➡", clicks: 0 },
-  symbol:  { label: "Symbol",      icon: "🧩", clicks: 1 }
+  symbol:  { label: "Symbol",      icon: "🧩", clicks: 1 },
+  sketch:  { label: "Frihand",     icon: "✏️", clicks: -1 }  // ritas med drag (fingret/musen), sparas per drag
 };
 /* Symbolbibliotek - färdiga mått (meter, bredd × längd). */
 const SYMBOLS = {
@@ -790,8 +791,8 @@ function drawOrthoForExport(ctx, ox, oy, scale, blend) {
 //   fence:   pts [...] (linje), barrier: pts [...] (yta)
 // Stil (valfri, per objekt): color (#rrggbb), dash ("solid"|"dashed"|"dotted"),
 // weight (0.6 tunn | 1 normal | 1.8 tjock), textSize (0.8 | 1 | 1.35).
-const SITE_DEFAULT_COLOR = { note: "#b45309", crane: "#d97706", shed: "#1d4ed8", storage: "#57534e", gate: "#16a34a", fence: "#374151", barrier: "#dc2626", route: "#2563eb", symbol: "#1d4ed8" };
-const SITE_DEFAULT_DASH = { note: "solid", crane: "dashed", shed: "solid", storage: "solid", gate: "solid", fence: "dashed", barrier: "dashed", route: "solid", symbol: "solid" };
+const SITE_DEFAULT_COLOR = { sketch: "#e11d48", note: "#b45309", crane: "#d97706", shed: "#1d4ed8", storage: "#57534e", gate: "#16a34a", fence: "#374151", barrier: "#dc2626", route: "#2563eb", symbol: "#1d4ed8" };
+const SITE_DEFAULT_DASH = { sketch: "solid", note: "solid", crane: "dashed", shed: "solid", storage: "solid", gate: "solid", fence: "dashed", barrier: "dashed", route: "solid", symbol: "solid" };
 const defaultColorOf = x => (x.type === "symbol" && SYMBOLS[x.sym] && SYMBOLS[x.sym].color) || SITE_DEFAULT_COLOR[x.type];
 const MONTHS_SV = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
 
@@ -905,6 +906,7 @@ function drawSiteLayers(ctx, fontPx) {
   const sel = selectedSiteId && siteItems.find(x => x.id === selectedSiteId && siteShown(x));
   if (sel && !sel.locked) drawHandles(ctx, sel, fontPx, ppm);
   if (siteTool && siteTool.pts.length) drawSitePreview(ctx, fontPx, ppm);
+  if (sketchStroke && sketchStroke.pts.length > 1) drawSiteItem(ctx, { type: "sketch", pts: sketchStroke.pts, color: sketchColor, weight: sketchWeight }, fontPx, ppm, false);
   if (snapMark && (siteTool || siteDrag || (typeof measure !== "undefined" && measure))) {
     const [sx, sy] = toPx(snapMark.pt), r = fontPx * 0.45;
     ctx.save(); ctx.strokeStyle = "#db2777"; ctx.lineWidth = 2;
@@ -997,6 +999,15 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
     ctx.lineTo(a[0] - hs * Math.cos(ang - 0.4), a[1] - hs * Math.sin(ang - 0.4));
     ctx.lineTo(a[0] - hs * Math.cos(ang + 0.4), a[1] - hs * Math.sin(ang + 0.4)); ctx.closePath(); ctx.fill();
     siteLabel(ctx, { ...x, lbl: null }, [t[0], t[1]], wrapText(x.text || "", 32) + lock, st.fs, "#fffbe6", "#111827", st.color, dates);
+  } else if (x.type === "sketch") {
+    // Frihand: mjuk linje, lite tjockare än vanliga linjer så den syns ute på bygget.
+    const P = x.pts.map(mToPx);
+    ctx.save();
+    ctx.strokeStyle = st.color; ctx.lineWidth = st.lw * 1.6; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.setLineDash(st.dash);
+    ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke();
+    if (selected) { ctx.strokeStyle = "rgba(11,95,255,.35)"; ctx.lineWidth = st.lw * 4; ctx.setLineDash([]); ctx.stroke(); }
+    ctx.restore();
+    if (x.name) siteLabel(ctx, x, P[P.length - 1], x.name + lock, st.fs, "#fff", "#111827", st.color, dates);
   } else if (x.type === "crane") {
     const [c] = x.pts.map(mToPx), r = craneRadius(x) * ppm;
     const chart = parseChart(x.chart);
@@ -1132,6 +1143,7 @@ function drawSitePreview(ctx, fontPx, ppm) {
 function siteHandles(x, fontPx, ppm) {
   const off = (fontPx * 2.2) / ppm; // rotationshandtagets avstånd i meter
   if (x.type === "note") return [{ kind: "vertex", i: 0, m: x.pts[0] }, { kind: "vertex", i: 1, m: x.pts[1] }];
+  if (x.type === "sketch") return []; // frihand: dra i strecket för att flytta det
   if (x.type === "crane") { const [c] = x.pts; return [{ kind: "radius", m: [c[0] + craneRadius(x), c[1]] }]; }
   if (isRect(x)) {
     const g = rectGeom(x), C = rectCorners(g);
@@ -1424,7 +1436,8 @@ function updateSiteUi() {
     fence: ["Klicka punkter längs stängslet, dubbelklicka (eller Enter) för att avsluta."],
     route: ["Klicka punkter längs vägen i körriktningen, dubbelklicka (eller Enter) för att avsluta."],
     symbol: ["Klicka var symbolen ska stå (rotera den sedan med ↻)."],
-    barrier: ["Klicka hörnen, dubbelklicka (eller Enter) för att avsluta."]
+    barrier: ["Klicka hörnen, dubbelklicka (eller Enter) för att avsluta."],
+    sketch: ["Rita med fingret (eller musen). Varje drag sparas direkt – två fingrar zoomar/panorerar. Tryck på ✏️ igen när du är klar."]
   };
   $("siteHint").textContent = k ? `${k.icon} ${(hints[siteTool.kind][Math.min(siteTool.pts.length, hints[siteTool.kind].length - 1)])}${siteTool.pts.length ? " Håll Shift för rak linje (5°-steg)." : ""} Esc avbryter.`
     : "Klicka på ett objekt för att ändra det. Dra i det för att flytta, i de vita handtagen för att ändra form, i ⊕ för att lägga till en punkt (dubbelklicka på en punkt för att ta bort den) och i ↻ för att rotera (Shift = fritt). Texten kan dras fritt.";
@@ -1453,6 +1466,36 @@ function finishSiteTool() {
   if (kind === "route") { rec.w = 4; rec.twoWay = false; }
   openSitePop(rec, true);
 }
+/* Frihand (Victors önskemål 2026-10-01, fältläge på iPad): med verktyget
+   aktivt ritar ett drag (ett finger eller musen) ett streck i stället för att
+   panorera. Varje drag sparas direkt som en egen post (kan ångras med Ctrl+Z,
+   ändras/tas bort genom att klicka på det). Lyssnar i fångstfasen så att
+   planens vanliga panorering inte får händelserna. */
+let sketchStroke = null, sketchColor = "#e11d48", sketchWeight = 1;
+function sketchActive() { return !!(siteTool && siteTool.kind === "sketch"); }
+window.addEventListener("mousedown", e => {
+  if (!sketchActive() || e.button !== 0 || !e.target.closest || !e.target.closest("#viewport") || !plan || !plan.calib) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  sketchStroke = { pts: [pdfToModel(toPdf(stagePoint(e)))], last: [e.clientX, e.clientY] };
+}, true);
+window.addEventListener("mousemove", e => {
+  if (!sketchStroke) return;
+  e.stopImmediatePropagation();
+  if (Math.hypot(e.clientX - sketchStroke.last[0], e.clientY - sketchStroke.last[1]) < 3) return;
+  sketchStroke.last = [e.clientX, e.clientY];
+  sketchStroke.pts.push(pdfToModel(toPdf(stagePoint(e))));
+  if (!sketchStroke.raf) sketchStroke.raf = requestAnimationFrame(() => { if (sketchStroke) sketchStroke.raf = 0; renderZones(); });
+}, true);
+window.addEventListener("mouseup", e => {
+  if (!sketchStroke) return;
+  e.stopImmediatePropagation();
+  const pts = sketchStroke.pts; sketchStroke = null;
+  if (pts.length < 2) { renderZones(); return; }
+  const r3 = v => Math.round(v * 1000) / 1000;
+  saveSiteItem({ id: ghNewId(), type: "sketch", name: "", color: sketchColor, weight: sketchWeight, pts: pts.map(p => [r3(p[0]), r3(p[1])]),
+    layer: ($("activeLayer") && $("activeLayer").value) || undefined, created_at: new Date().toISOString(), by: settings.userName || null });
+}, true);
+
 /* Klick på planen när ett verktyg är aktivt: placera. (Val/drag av befintliga
    objekt sköts av layersPointerDown.) */
 function siteToolPrevPdf() {
@@ -1461,6 +1504,7 @@ function siteToolPrevPdf() {
 }
 function layersClick(pdfPt) {
   if (!plan || !plan.calib) return false;
+  if (siteTool && siteTool.kind === "sketch") return true; // frihand ritas med drag, inte klick
   if (siteTool) {
     siteTool.pts.push(pdfToModel(constrainPdf(pdfPt, window.event, siteToolPrevPdf())));
     const need = SITE_KINDS[siteTool.kind].clicks;
@@ -1496,7 +1540,7 @@ function siteAt(pdfPt) {
       if (distToSeg(p, e1, e2) < tol + fontPx * 0.5) return x;
     } else if (isRect(x) || x.type === "barrier") {
       if (pointInPoly(m, sitePoints(x))) return x;
-    } else if (x.type === "fence" || x.type === "route") {
+    } else if (x.type === "fence" || x.type === "route" || x.type === "sketch") {
       const P = x.pts.map(mToPx);
       for (let i = 1; i < P.length; i++) if (distToSeg(p, P[i - 1], P[i]) < tol) return x;
     }

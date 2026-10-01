@@ -31,6 +31,8 @@
     if (!one || one.ended) return;
     one.ended = true;
     clearTimeout(one.timer);
+    // Frihand: ett andra finger (zoom) avbryter strecket i stället för att spara en skvätt.
+    if (typeof sketchStroke !== "undefined" && sketchStroke) { sketchStroke = null; renderZones(); return; }
     if (!one.moved) {
       // >3 px rörelse gör att mouseup inte räknas som klick; flytta tillbaka direkt.
       const tx = view.tx, ty = view.ty;
@@ -48,7 +50,8 @@
       const t = e.touches[0];
       one = { id: t.identifier, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, moved: false, ended: false };
       fire("mousedown", t.clientX, t.clientY, t.target);
-      one.timer = setTimeout(() => {
+      // Långt tryck = högerklick, men inte medan man ritar på frihand.
+      if (!(typeof sketchActive === "function" && sketchActive())) one.timer = setTimeout(() => {
         if (!one || one.moved || one.ended) return;
         const { x, y } = one;
         endOneAsDrag();
@@ -126,7 +129,24 @@ function fieldWanted() {
   // Pekskärm utan mus (iPad/telefon): fältläge från början.
   return !!(window.matchMedia && matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches);
 }
+/* Knapparna som "försvann" på iPad: Safari zoomar in hela sidan när man
+   trycker i ett litet textfält (t.ex. en noterings text) eller nyper utanför
+   planen, och då hamnar knapparna utanför skärmen – och nypa tillbaka gick
+   inte, eftersom planen tar hand om nypen. I fältläge: ingen sidzoom, inga
+   små textfält (16 px), och sidan rullas tillbaka när tangentbordet stängs. */
+const VIEWPORT_META = "width=device-width, initial-scale=1";
+function setViewportLock(on) {
+  const m = document.querySelector('meta[name="viewport"]');
+  if (m) m.setAttribute("content", on ? VIEWPORT_META + ", maximum-scale=1, viewport-fit=cover" : VIEWPORT_META);
+}
+["gesturestart", "gesturechange", "gestureend"].forEach(t => document.addEventListener(t, e => { if (document.body.classList.contains("field")) e.preventDefault(); }, { passive: false }));
+const fieldResetScroll = () => { if (document.body.classList.contains("field") && (window.scrollX || window.scrollY)) window.scrollTo(0, 0); };
+document.addEventListener("focusout", () => setTimeout(fieldResetScroll, 60));
+window.addEventListener("orientationchange", () => setTimeout(fieldResetScroll, 300));
+if (window.visualViewport) window.visualViewport.addEventListener("resize", () => setTimeout(fieldResetScroll, 60));
+
 function setFieldMode(on, save = true) {
+  setViewportLock(on);
   document.body.classList.toggle("field", on);
   if (!on) document.body.classList.remove("field-clean");
   if (save) { try { localStorage.setItem(FIELD_KEY, on ? "1" : "0"); } catch (e) {} }
@@ -138,8 +158,18 @@ const fieldIsOn = () => document.body.classList.contains("field");
 const fesc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const setVal = (id, v) => { const el = $(id); if (!el) return; el.value = v; el.dispatchEvent(new Event("change")); };
 
+/* Verktygsraden och lagerpanelen hamnar under den översta raden (som kan
+   bli två rader på en smal/stående skärm). */
+function layoutField() {
+  const top = $("fieldTop"); if (!top || !fieldIsOn()) return;
+  const y = top.offsetTop + top.offsetHeight + 8;
+  $("fieldTools").style.top = y + "px";
+  $("fieldSheet").style.top = y + "px";
+}
+window.addEventListener("resize", () => setTimeout(layoutField, 60));
 function renderField() {
   if (!fieldIsOn()) return;
+  layoutField();
   // Plan
   const ps = $("fieldPlan"), src = $("planSelect");
   ps.innerHTML = src.innerHTML; ps.value = src.value;
@@ -161,6 +191,29 @@ function fieldShiftDays(n) {
   d.setDate(d.getDate() + n);
   setVal("dateInput", d.toISOString().slice(0, 10));
   renderField();
+}
+
+/* Snabbknappar i fältläge: 💬 notering och ✏️ rita på frihand (Victors
+   önskemål 2026-10-01). Använder Lägesplanens vanliga verktyg, så det sparas
+   i projektet och syns på datorn (och i utskrifter). */
+const SKETCH_COLORS = ["#e11d48", "#2563eb", "#16a34a", "#f59e0b", "#111827"];
+function renderFieldTools() {
+  if (!$("fieldTools")) return;
+  const kind = typeof siteTool !== "undefined" && siteTool ? siteTool.kind : null;
+  $("btnFieldNote").classList.toggle("on", kind === "note");
+  $("btnFieldSketch").classList.toggle("on", kind === "sketch");
+  const bar = $("fieldTools");
+  if (!kind || !fieldIsOn()) { bar.classList.add("hidden"); return; }
+  const hint = ($("siteHint") && $("siteHint").textContent || "").replace(/ Håll Shift.*$/, "").replace(/ Esc avbryter\.?/, "");
+  bar.innerHTML = `<span class="ft-hint">${fesc(hint)}</span>
+    ${kind === "sketch" ? `<span class="ft-colors">${SKETCH_COLORS.map(c => `<button type="button" class="ft-color${c === sketchColor ? " on" : ""}" data-c="${c}" style="background:${c}" title="Färg"></button>`).join("")}</span>
+      <button type="button" class="fl-btn ft-w" data-w="${sketchWeight >= 1.8 ? 1 : 1.8}" title="Tjocklek">${sketchWeight >= 1.8 ? "Tunn" : "Tjock"}</button>` : ""}
+    <button type="button" class="fl-btn fl-primary" id="btnFieldToolDone">${kind === "sketch" ? "Klar" : "Avbryt"}</button>`;
+  bar.classList.remove("hidden");
+  layoutField();
+  bar.querySelectorAll(".ft-color").forEach(b => b.onclick = () => { sketchColor = b.dataset.c; renderFieldTools(); });
+  const w = bar.querySelector(".ft-w"); if (w) w.onclick = () => { sketchWeight = Number(w.dataset.w); renderFieldTools(); };
+  $("btnFieldToolDone").onclick = () => stopSiteTool();
 }
 
 /* Lagerpanelen i fältläge: stora av/på-knappar som styr de vanliga raderna. */
@@ -234,6 +287,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btnFieldLayers").onclick = () => ($("fieldSheet").classList.contains("hidden") ? openFieldSheet() : closeFieldSheet());
   $("btnFieldSheetClose").onclick = closeFieldSheet;
   $("btnFieldFull").onclick = () => setFieldMode(false);
+  $("btnFieldNote").onclick = () => { closeFieldSheet(); startSiteTool("note"); };
+  $("btnFieldSketch").onclick = () => { closeFieldSheet(); startSiteTool("sketch"); };
+  const origUi = updateSiteUi;
+  updateSiteUi = function () { const r = origUi.apply(this, arguments); renderFieldTools(); return r; };
   // Dölj alla knappar (bara planen syns); 👁 i hörnet tar tillbaka dem.
   $("btnFieldHide").onclick = () => { closeFieldSheet(); document.body.classList.add("field-clean"); };
   $("btnFieldShow").onclick = () => { document.body.classList.remove("field-clean"); renderField(); };

@@ -27,6 +27,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
       const u = new URL(r.request().url());
       if (u.pathname === '/repos/vfalk-NCC/4D-data') return r.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
       const f = decodeURIComponent(u.pathname.replace('/repos/vfalk-NCC/4D-data/contents/', ''));
+      if (r.request().method() === 'PUT') { const b = JSON.parse(r.request().postData()); store.set(f, Buffer.from(b.content, 'base64').toString()); return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha: 's' + Date.now() } }) }); }
       if (!store.has(f)) return r.fulfill({ status: 404, body: '{}' });
       r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: Buffer.from(store.get(f)).toString('base64'), sha: 's' }) });
     });
@@ -40,7 +41,15 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   if (await d.page.evaluate(() => document.body.classList.contains('field'))) fail('Med mus ska den vanliga vyn visas');
   if (!(await d.page.isVisible('aside'))) fail('Menyn ska synas med mus');
   if (await d.page.isVisible('#fieldTop')) fail('Fältlägets knappar ska inte synas med mus');
-  console.log('OK: med mus är allt som förut');
+  // Frihand med mus i den vanliga vyn.
+  await d.page.evaluate(() => { viewport = { transform: [1, 0, 0, 1, 0, 0], width: 1000, height: 800, convertToPdfPoint: (x, y) => [x, y], convertToViewportPoint: (x, y) => [x, y] }; $('empty').classList.add('hidden'); plan = { id: 'pl', name: 'P', zones: [], calib: { model: [[0, 0, 0], [100, 0, 0]], pdf: [[0, 0], [1000, 0]] } }; startSiteTool('sketch'); });
+  const vb = await d.page.locator('#viewport').boundingBox();
+  await d.page.mouse.move(vb.x + 300, vb.y + 300); await d.page.mouse.down();
+  for (let k = 1; k <= 6; k++) await d.page.mouse.move(vb.x + 300 + k * 20, vb.y + 300 + k * 5);
+  await d.page.mouse.up(); await d.page.waitForTimeout(200);
+  if ((await d.page.evaluate(() => siteItems.filter(x => x.type === 'sketch').length)) !== 1) fail('Frihand ska gå att rita med mus också');
+  if (!(await d.page.locator('[data-site="sketch"]').count())) fail('Frihand ska finnas bland verktygen i den vanliga vyn');
+  console.log('OK: med mus är allt som förut (och Frihand finns bland verktygen)');
   await desk.close();
 
   // 2) iPad: fältläge från början.
@@ -57,7 +66,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   const cdp = await pad.newCDPSession(page);
   const touch = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(([x, y], id) => ({ x, y, id })) });
   // Utan PDF i testet: låtsas att en plan är inläst (annars ignoreras musdrag i planen).
-  await page.evaluate(() => { viewport = { transform: [1, 0, 0, 1, 0, 0], width: 1000, height: 800 }; $('empty').classList.add('hidden'); });
+  await page.evaluate(() => { viewport = { transform: [1, 0, 0, 1, 0, 0], width: 1000, height: 800, convertToPdfPoint: (x, y) => [x, y], convertToViewportPoint: (x, y) => [x, y] }; $('empty').classList.add('hidden'); });
   const v0 = await page.evaluate(() => ({ ...view }));
   await touch('touchStart', [[500, 400]]); for (let k = 1; k <= 5; k++) await touch('touchMove', [[500 + k * 20, 400 + k * 10]]); await touch('touchEnd', []);
   await page.waitForTimeout(100);
@@ -68,6 +77,29 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   const v2 = await page.evaluate(() => ({ ...view }));
   if (!(v2.scale > v1.scale * 1.8)) fail(`Nyp isär ska zooma in ~2x, fick ${v1.scale} -> ${v2.scale}`);
   console.log('OK: ett finger panorerar, två fingrar nyper för att zooma');
+
+  // 3b) ✏️ Rita på frihand (kalibrerad plan): ett drag sparas, nyp avbryter inte zoomen och sparar inget.
+  await page.evaluate(() => { plan = { id: 'pl', name: 'P', zones: [], calib: { model: [[0, 0, 0], [100, 0, 0]], pdf: [[0, 0], [1000, 0]] } }; view.scale = 1; view.tx = 0; view.ty = 0; applyView(); });
+  const n0 = await page.evaluate(() => siteItems.filter(x => x.type === 'sketch').length);
+  await page.tap('#btnFieldSketch'); await page.waitForTimeout(100);
+  if (!(await page.isVisible('#fieldTools'))) fail('Ritverktyget ska visa sin rad (färger, Klar)');
+  await page.tap('.ft-color[data-c="#16a34a"]');
+  await touch('touchStart', [[300, 300]]); for (let k = 1; k <= 8; k++) await touch('touchMove', [[300 + k * 20, 300 + k * 8]]); await touch('touchEnd', []);
+  await page.waitForTimeout(400);
+  let sk = await page.evaluate(() => siteItems.filter(x => x.type === 'sketch').map(x => ({ n: x.pts.length, c: x.color })));
+  if (sk.length !== n0 + 1 || sk[sk.length - 1].n < 8 || sk[sk.length - 1].c !== '#16a34a') fail('Ett drag ska sparas som frihand i vald färg, fick ' + JSON.stringify(sk));
+  const sc = await page.evaluate(() => view.scale);
+  await touch('touchStart', [[500, 400]]); await touch('touchStart', [[500, 400], [600, 400]]);
+  for (let k = 1; k <= 5; k++) await touch('touchMove', [[500 - k * 10, 400], [600 + k * 10, 400]]); await touch('touchEnd', []);
+  await page.waitForTimeout(300);
+  if ((await page.evaluate(() => siteItems.filter(x => x.type === 'sketch').length)) !== n0 + 1) fail('Nyp under ritning ska inte spara ett streck');
+  if (!((await page.evaluate(() => view.scale)) > sc * 1.5)) fail('Nyp ska zooma även med ritverktyget aktivt');
+  await page.tap('#btnFieldToolDone'); await page.waitForTimeout(100);
+  if (await page.evaluate(() => siteTool !== null)) fail('Klar ska stänga ritverktyget');
+  await page.waitForTimeout(600);
+  if (!(store.get(`projects/${PID}/site_layers.json`) || '').includes('"sketch"')) fail('Frihandsritningen ska sparas i projektet (syns på datorn)');
+  if (!(await page.evaluate(() => document.querySelector('meta[name="viewport"]').content)).includes('maximum-scale=1')) fail('Fältläge ska låsa sidzoomen');
+  console.log('OK: ✏️ rita på frihand sparas i projektet, nyp zoomar utan att rita');
 
   // 4) Datum och lager via de stora knapparna.
   await page.evaluate(() => { $('dateInput').value = '2026-10-01'; $('dateInput').dispatchEvent(new Event('change')); });

@@ -461,7 +461,7 @@ function legendItems(el) {
       if (seen.has(key)) return; seen.add(key);
       const st = siteStyle(x, 10);
       const label = x.type === "symbol" ? (SYMBOLS[x.sym] || {}).label || "Symbol" : SITE_KINDS[x.type].label;
-      const kind = { fence: "line", route: "route", barrier: "area", shed: "area", storage: "area", symbol: "area", crane: "circle", gate: "line", note: "note" }[x.type];
+      const kind = { fence: "line", route: "route", barrier: "area", shed: "area", storage: "area", symbol: "area", crane: "circle", gate: "line", note: "note", sketch: "line" }[x.type];
       items.push({ kind, color: st.color, dash: x.dash || SITE_DEFAULT_DASH[x.type], label });
     });
   }
