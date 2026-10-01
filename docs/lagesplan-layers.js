@@ -33,7 +33,11 @@ const SITE_KINDS = {
   barrier: { label: "Avspärrning", icon: "⛔", clicks: 0 },
   route:   { label: "Transportväg", icon: "➡", clicks: 0 },
   symbol:  { label: "Symbol",      icon: "🧩", clicks: 1 },
-  sketch:  { label: "Frihand",     icon: "✏️", clicks: -1 }  // ritas med drag (fingret/musen), sparas per drag
+  sketch:  { label: "Frihand",     icon: "✏️", clicks: -1 }, // ritas med drag (fingret/musen), sparas per drag
+  // Dagsplanering (lagesplan-daily.js): gäller per dag (från–till), ett klick placerar.
+  crew:     { label: "Arbetslag",   icon: "👷", clicks: 1 },
+  delivery: { label: "Leverans",    icon: "🚚", clicks: 1 },
+  lift:     { label: "Lyft",        icon: "🪝", clicks: 1 }
 };
 /* Symbolbibliotek - färdiga mått (meter, bredd × längd). */
 const SYMBOLS = {
@@ -44,7 +48,10 @@ const SYMBOLS = {
   miljostation: { label: "Miljöstation",    icon: "♻", w: 2.5, h: 6, color: "#15803d" },
   betongbil:    { label: "Betongbil",       icon: "🚚", w: 2.55, h: 10, color: "#b45309" },
   pumpbil:      { label: "Betongpump",      icon: "🚚", w: 2.55, h: 12, color: "#b45309", outrigger: 9 },
-  mobilkran:    { label: "Mobilkran",       icon: "🏗", w: 2.75, h: 13, color: "#d97706", outrigger: 7.5 }
+  mobilkran:    { label: "Mobilkran",       icon: "🏗", w: 2.75, h: 13, color: "#d97706", outrigger: 7.5 },
+  lastbil:      { label: "Lastbil (flak)",  icon: "🚛", w: 2.55, h: 12, color: "#475569" },
+  semi:         { label: "Semitrailer",     icon: "🚛", w: 2.6, h: 16.5, color: "#475569" },
+  kranbil:      { label: "Kranbil",         icon: "🚛", w: 2.55, h: 10, color: "#0369a1" }
 };
 
 let siteItems = [];          // site_layers.json
@@ -201,8 +208,8 @@ function askOrthoDate(def) {
 /* Egna lager (Victors önskemål 2026-09-28): varje notering/etableringsobjekt
    ligger på ett namngivet lager. "Allmänt" och "Etablering" finns alltid;
    egna lager sparas som { type: "layer", name } i site_layers.json. */
-const isSiteObj = x => x.type !== "ortho" && x.type !== "layer" && x.type !== "layermeta" && x.type !== "cad" && x.type !== "printtpl" && x.type !== "objview" && x.type !== "lsview";
-const defaultLayerOf = x => x.type === "note" ? "Allmänt" : "Etablering";
+const isSiteObj = x => x.type !== "ortho" && x.type !== "layer" && x.type !== "layermeta" && x.type !== "cad" && x.type !== "printtpl" && x.type !== "objview" && x.type !== "lsview" && x.type !== "ue";
+const defaultLayerOf = x => x.type === "note" ? "Allmänt" : (x.type === "crew" || x.type === "delivery" || x.type === "lift") ? "Dagsplanering" : "Etablering";
 const layerOf = x => x.layer || defaultLayerOf(x);
 function userLayers() {
   const names = new Set(["Allmänt", "Etablering"]);
@@ -310,12 +317,12 @@ function renderActiveLayerSelect() {
 }
 
 /* Flera poster i en skrivning (byt namn på/ta bort lager). */
-async function saveSiteItemsBatch(recs, removeIds = []) {
+async function saveSiteItemsBatch(recs, removeIds = [], message = "Lägesplan: lager") {
   const ids = new Set(recs.map(r => r.id));
   const rm = new Set(removeIds);
   siteItems = [...siteItems.filter(x => !ids.has(x.id) && !rm.has(x.id)), ...recs];
   renderLayerPanel(); renderZones();
-  await ghWriteJSON(token, sitePath(), arr => [...arr.filter(x => !ids.has(x.id) && !rm.has(x.id)), ...recs], "Lägesplan: lager");
+  await ghWriteJSON(token, sitePath(), arr => [...arr.filter(x => !ids.has(x.id) && !rm.has(x.id)), ...recs], message);
 }
 function updateUndoButtons() {
   const u = $("siteUndo"), r = $("siteRedo");
@@ -325,14 +332,16 @@ function updateUndoButtons() {
 async function undoSite() {
   const e = siteUndo.pop(); if (!e) return;
   siteRedo.push(e);
-  if (e.before) await saveSiteItem(e.before, false, { record: false });
+  if (e.batch) await saveSiteItemsBatch(e.batch.filter(b => b.before).map(b => b.before), e.batch.filter(b => !b.before).map(b => b.id), `Lägesplan: ångra ${e.label}`);
+  else if (e.before) await saveSiteItem(e.before, false, { record: false });
   else await saveSiteItem({ id: e.id, type: (e.after || {}).type }, true, { record: false });
   selectedSiteId = null; closeSitePop(); updateUndoButtons(); setSaveStatus(`↶ Ångrade: ${e.label}`);
 }
 async function redoSite() {
   const e = siteRedo.pop(); if (!e) return;
   siteUndo.push(e);
-  if (e.after) await saveSiteItem(e.after, false, { record: false });
+  if (e.batch) await saveSiteItemsBatch(e.batch.filter(b => b.after).map(b => b.after), e.batch.filter(b => !b.after).map(b => b.id), `Lägesplan: gör om ${e.label}`);
+  else if (e.after) await saveSiteItem(e.after, false, { record: false });
   else await saveSiteItem({ id: e.id, type: (e.before || {}).type }, true, { record: false });
   selectedSiteId = null; closeSitePop(); updateUndoButtons(); setSaveStatus(`↷ Gjorde om: ${e.label}`);
 }
@@ -791,14 +800,20 @@ function drawOrthoForExport(ctx, ox, oy, scale, blend) {
 //   fence:   pts [...] (linje), barrier: pts [...] (yta)
 // Stil (valfri, per objekt): color (#rrggbb), dash ("solid"|"dashed"|"dotted"),
 // weight (0.6 tunn | 1 normal | 1.8 tjock), textSize (0.8 | 1 | 1.35).
-const SITE_DEFAULT_COLOR = { sketch: "#e11d48", note: "#b45309", crane: "#d97706", shed: "#1d4ed8", storage: "#57534e", gate: "#16a34a", fence: "#374151", barrier: "#dc2626", route: "#2563eb", symbol: "#1d4ed8" };
-const SITE_DEFAULT_DASH = { sketch: "solid", note: "solid", crane: "dashed", shed: "solid", storage: "solid", gate: "solid", fence: "dashed", barrier: "dashed", route: "solid", symbol: "solid" };
+const SITE_DEFAULT_COLOR = { crew: "#0f766e", delivery: "#475569", lift: "#d97706", sketch: "#e11d48", note: "#b45309", crane: "#d97706", shed: "#1d4ed8", storage: "#57534e", gate: "#16a34a", fence: "#374151", barrier: "#dc2626", route: "#2563eb", symbol: "#1d4ed8" };
+const SITE_DEFAULT_DASH = { crew: "solid", delivery: "solid", lift: "dashed", sketch: "solid", note: "solid", crane: "dashed", shed: "solid", storage: "solid", gate: "solid", fence: "dashed", barrier: "dashed", route: "solid", symbol: "solid" };
 const defaultColorOf = x => (x.type === "symbol" && SYMBOLS[x.sym] && SYMBOLS[x.sym].color) || SITE_DEFAULT_COLOR[x.type];
 const MONTHS_SV = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
 
 function siteVisibleAtDate(x) {
-  if (siteDateOverride) { const [a, b] = siteDateOverride; return (!x.from || x.from <= b) && (!x.to || x.to >= a); }
-  if (!$("layersFollowDate").checked) return true;
+  const daily = x.type === "crew" || x.type === "delivery" || x.type === "lift";
+  if (siteDateOverride) {
+    const [a, b] = siteDateOverride;
+    if (daily && a !== b) return false; // etableringsplan per månad: inte en hel månads lag ovanpå varandra
+    return (!x.from || x.from <= b) && (!x.to || x.to >= a);
+  }
+  // Dagsplaneringen följer alltid datumet (annars hamnar alla dagars lag på varandra).
+  if (!$("layersFollowDate").checked && !daily) return true;
   const d = $("dateInput").value || todayIso();
   return (!x.from || x.from <= d) && (!x.to || x.to >= d);
 }
@@ -806,7 +821,7 @@ function siteShown(x) {
   if (!isSiteObj(x)) return false;
   return ls("ul:" + layerOf(x)).visible && siteVisibleAtDate(x);
 }
-const isRect = x => x.type === "shed" || x.type === "storage" || x.type === "symbol";
+const isRect = x => x.type === "shed" || x.type === "storage" || x.type === "symbol" || x.type === "delivery";
 /* Rektangelns mitt/mått/vinkel (äldre poster sparades som två hörn). */
 function rectGeom(x) {
   if (Number.isFinite(x.w)) return { cx: x.cx, cy: x.cy, w: x.w, h: x.h, rot: x.rot || 0 };
@@ -896,7 +911,9 @@ function drawSiteLayers(ctx, fontPx) {
   if (!plan || !plan.calib) return;
   const ppm = pxPerMeter();
   ctx.save();
-  const shown = siteItems.filter(siteShown);
+  // Dagsplaneringen överst: leveranser, lyft och sist lagen (annars kan en avspärrnings text dölja ett lag).
+  const ORDER = { delivery: 1, lift: 2, crew: 3 };
+  const shown = siteItems.filter(siteShown).map((x, i) => [x, i]).sort((a, b) => ((ORDER[a[0].type] || 0) - (ORDER[b[0].type] || 0)) || a[1] - b[1]).map(a => a[0]);
   const barriers = shown.filter(x => x.type === "barrier");
   shown.forEach(x => {
     ctx.globalAlpha = layerOpacity("ul:" + layerOf(x));
@@ -990,6 +1007,8 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
   const k = SITE_KINDS[x.type];
   const lock = x.locked ? " 🔒" : "";
   ctx.setLineDash([]);
+  if ((x.type === "crew" || x.type === "delivery" || x.type === "lift") && typeof drawDailyItem === "function") { drawDailyItem(ctx, x, fontPx, ppm, selected); return; }
+  if (x.type === "symbol" && typeof drawVehicleSymbol === "function" && drawVehicleSymbol(ctx, x, fontPx, ppm, selected)) return;
   if (x.type === "note") {
     const [a, t] = x.pts.map(mToPx);
     ctx.strokeStyle = st.color; ctx.fillStyle = st.color; ctx.lineWidth = st.lw; ctx.setLineDash(st.dash);
@@ -1121,6 +1140,7 @@ function wrapText(t, n) {
 }
 function drawSitePreview(ctx, fontPx, ppm) {
   const pts = siteTool.pts.concat(siteTool.cursor ? [siteTool.cursor] : []);
+  if (SITE_KINDS[siteTool.kind] && ["crew", "delivery", "lift"].includes(siteTool.kind)) return;
   let tmp = { id: "_preview", type: siteTool.kind, pts, name: "", text: "…", radius: 40, sym: siteTool.sym, w: 4 };
   if (tmp.type === "symbol") {
     const sy = SYMBOLS[siteTool.sym] || { w: 3, h: 6 };
@@ -1143,7 +1163,11 @@ function drawSitePreview(ctx, fontPx, ppm) {
 function siteHandles(x, fontPx, ppm) {
   const off = (fontPx * 2.2) / ppm; // rotationshandtagets avstånd i meter
   if (x.type === "note") return [{ kind: "vertex", i: 0, m: x.pts[0] }, { kind: "vertex", i: 1, m: x.pts[1] }];
-  if (x.type === "sketch") return []; // frihand: dra i strecket för att flytta det
+  if (x.type === "sketch" || x.type === "crew" || x.type === "lift") return []; // frihand/lag/lyft: dra i dem för att flytta
+  if (x.type === "delivery") { // fordon har fasta mått: bara vrid
+    const g = rectGeom(x), off2 = (fontPx * 2.2) / ppm;
+    return [{ kind: "rotate", m: [g.cx - Math.sin(g.rot) * (g.h / 2 + off2), g.cy + Math.cos(g.rot) * (g.h / 2 + off2)] }];
+  }
   if (x.type === "crane") { const [c] = x.pts; return [{ kind: "radius", m: [c[0] + craneRadius(x), c[1]] }]; }
   if (isRect(x)) {
     const g = rectGeom(x), C = rectCorners(g);
@@ -1311,6 +1335,8 @@ function layersPointerDown(e) {
   const pdfPt = toPdf(stagePoint(e));
   const sel = selectedSiteId && siteItems.find(x => x.id === selectedSiteId && siteShown(x));
   let target = sel, handle = sel ? handleAt(sel, pdfPt) : null;
+  const dt = !handle && typeof dailyAt === "function" ? dailyAt(toPx(pdfPt)) : null; // lag och lyft ritas överst
+  if (dt) { target = dt; handle = { kind: "move" }; }
   if (!handle) {
     // Etiketten ligger överst: dra den fritt (för noteringar = textens läge).
     let lt = labelAt(toPx(pdfPt));
@@ -1437,6 +1463,8 @@ function updateSiteUi() {
     route: ["Klicka punkter längs vägen i körriktningen, dubbelklicka (eller Enter) för att avsluta."],
     symbol: ["Klicka var symbolen ska stå (rotera den sedan med ↻)."],
     barrier: ["Klicka hörnen, dubbelklicka (eller Enter) för att avsluta."],
+    crew: ["Klicka (tryck) där laget ska jobba."], delivery: ["Klicka där fordonet ska stå – vrid det sedan med ↻."],
+    lift: ["Klicka där lasten ska lyftas (lyftpunkten)."],
     sketch: ["Rita med fingret (eller musen). Varje drag sparas direkt – två fingrar zoomar/panorerar. Tryck på ✏️ igen när du är klar."]
   };
   $("siteHint").textContent = k ? `${k.icon} ${(hints[siteTool.kind][Math.min(siteTool.pts.length, hints[siteTool.kind].length - 1)])}${siteTool.pts.length ? " Håll Shift för rak linje (5°-steg)." : ""} Esc avbryter.`
@@ -1445,6 +1473,7 @@ function updateSiteUi() {
 }
 function finishSiteTool() {
   if (!siteTool) return;
+  if (["crew", "delivery", "lift"].includes(siteTool.kind) && typeof finishDailyTool === "function") { finishDailyTool(); return; }
   const { kind, pts } = siteTool;
   finishSiteTool.sym = siteTool.sym;
   const min = { fence: 2, barrier: 3, route: 2 }[kind];
@@ -1525,6 +1554,7 @@ function siteAt(pdfPt) {
   const p = toPx(pdfPt), tol = Math.max(10, 8 / view.scale);
   const fontPx = currentFontPx();
   const m = pdfToModel(pdfPt);
+  if (typeof dailyAt === "function") { const d = dailyAt(p); if (d) return d; }
   const lt = labelAt(p);
   if (lt) return lt;
   const vis = siteItems.filter(siteShown).slice().reverse();
@@ -1551,6 +1581,7 @@ function layersTipHtml(pdfPt) {
   if (siteTool || siteDrag) return null;
   const x = siteAt(pdfPt);
   if (!x) return null;
+  if (typeof dailyTipHtml === "function" && ["crew", "delivery", "lift"].includes(x.type)) return dailyTipHtml(x);
   const k = SITE_KINDS[x.type];
   const when = datesText(x);
   const body = x.type === "note" ? escHtml(x.text || "") : x.type === "crane" ? `Räckvidd ${x.radius} m${x.capacity ? `, ${escHtml(x.capacity)} t` : ""}` : "";
@@ -1558,6 +1589,7 @@ function layersTipHtml(pdfPt) {
 }
 
 function openSitePop(rec, isNew) {
+  if (["crew", "delivery", "lift"].includes(rec.type) && typeof openDailyPop === "function") return openDailyPop(rec, isNew);
   const pop = $("sitePop");
   const k = SITE_KINDS[rec.type];
   const layers = noteLayers();

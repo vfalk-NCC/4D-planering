@@ -457,12 +457,15 @@ function legendItems(el) {
   if (el.site) {
     const seen = new Set();
     siteItems.filter(siteShown).forEach(x => {
-      const key = x.type === "symbol" ? "sym:" + x.sym : x.type + "|" + (x.color || "") + "|" + (x.dash || "");
+      // Arbetslag: en rad per UE i UE:ns färg. Leveranser: per fordonstyp.
+      const ue = x.type === "crew" && typeof ueById === "function" ? ueById(x.ue) : null;
+      const veh = x.type === "delivery" && typeof VEHICLES !== "undefined" ? VEHICLES[x.veh] : null;
+      const key = x.type === "symbol" ? "sym:" + x.sym : x.type === "crew" ? "crew:" + (x.ue || "") : x.type === "delivery" ? "veh:" + x.veh : x.type + "|" + (x.color || "") + "|" + (x.dash || "");
       if (seen.has(key)) return; seen.add(key);
       const st = siteStyle(x, 10);
-      const label = x.type === "symbol" ? (SYMBOLS[x.sym] || {}).label || "Symbol" : SITE_KINDS[x.type].label;
-      const kind = { fence: "line", route: "route", barrier: "area", shed: "area", storage: "area", symbol: "area", crane: "circle", gate: "line", note: "note", sketch: "line" }[x.type];
-      items.push({ kind, color: st.color, dash: x.dash || SITE_DEFAULT_DASH[x.type], label });
+      const label = x.type === "symbol" ? (SYMBOLS[x.sym] || {}).label || "Symbol" : ue ? `${ue.short || ""} ${ue.name || ""}`.trim() : veh ? veh.label : SITE_KINDS[x.type].label;
+      const kind = { fence: "line", route: "route", barrier: "area", shed: "area", storage: "area", symbol: "area", crane: "circle", gate: "line", note: "note", sketch: "line", crew: "box", delivery: "area", lift: "circle" }[x.type];
+      items.push({ kind, color: ue ? ue.color || st.color : veh ? veh.color : st.color, dash: x.dash || SITE_DEFAULT_DASH[x.type], label });
     });
   }
   if (el.cad && typeof cads === "function") cads().filter(r => ls("cad:" + r.id).visible).forEach(r => items.push({ kind: "line", color: r.colorMode === "mono" ? r.color : "#111827", dash: "solid", label: r.name }));

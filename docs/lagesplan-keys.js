@@ -28,6 +28,7 @@ const SHORTCUTS = [
   { id: "tabTime", label: "Fliken Tid & filter", key: "2", run: () => showTab("time") },
   { id: "tabZones", label: "Fliken Zoner & 3D", key: "3", run: () => showTab("zones") },
   { id: "tabExport", label: "Fliken Export", key: "4", run: () => showTab("export") },
+  { id: "tabDay", label: "Fliken Dag (dagsplanering)", key: "5", run: () => showTab("day") },
   { group: "Tid och ortofoton" },
   { id: "play", label: "▶ Spela upp/pausa", key: " ", run: clickEl("btnPlay"), btn: "btnPlay" },
   { id: "dayBack", label: "Ett steg bakåt i tiden", key: ",", run: () => { if (plan) setDate(addDays($("dateInput").value || todayIso(), -stepDays())); } },
