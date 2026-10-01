@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261001063526"></script>
+<script src="github-storage.js?v=20261001064124"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -215,7 +215,7 @@
   #printModal .pr-grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   #printModal .pr-grid4 label { margin-top: 6px; }
   #printModal .pr-color { width: 100%; height: 30px; padding: 2px; border: 1px solid var(--border-strong); border-radius: 6px; }
-  #printModal .pr-foot { margin-top: auto; padding-top: 12px; display: flex; gap: 8px; align-items: center; border-top: 1px solid var(--border); }
+  #printModal .pr-foot { margin-top: auto; padding-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; border-top: 1px solid var(--border); }
   #prProps { padding-bottom: 12px; }
   #prProps .pr-layers { max-height: 220px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px 6px; margin-top: 4px; }
   #prProps .pr-layers.off { opacity: .55; }
@@ -523,6 +523,7 @@
             <button id="btnExport">📷 Bild (PNG)</button>
             <button id="btnPdfA3" title="A3 liggande med rubrik, datum och teckenförklaring">🖨 PDF (A3)</button>
           </div>
+          <label class="check" title="Vektor: ritningen blir skarp i alla zoomnivåer men filen kan bli stor om ritnings-PDF:en är tung. Bild: mindre fil, ritningen blir en bild."><input type="checkbox" class="pdf-vec-chk" checked /> Ritningen som vektor (skarp, större fil)</label>
           <div class="hint">Exporten tar med det som syns: valt datum, filter, lager och teckenförklaring.</div>
         </details>
         <details class="sec" data-sec="exportSite" open>
@@ -582,7 +583,7 @@
         <span class="field-label">Egenskaper</span>
         <div id="prProps"></div>
         <input type="file" id="prImgInput" accept="image/png,image/jpeg,image/webp,image/svg+xml" class="hidden" />
-        <div class="pr-foot"><span class="muted grow" id="prStatus"></span><button id="prExport" class="primary">📄 Skapa PDF</button></div>
+        <div class="pr-foot"><label class="check" style="margin:0;flex-basis:100%;" title="Vektor: ritningen blir skarp i alla zoomnivåer men filen kan bli stor om ritnings-PDF:en är tung. Bild: mindre fil, ritningen blir en bild."><input type="checkbox" class="pdf-vec-chk" checked /> Ritningen som vektor (skarp, större fil)</label><span class="muted grow" id="prStatus"></span><button id="prExport" class="primary">📄 Skapa PDF</button></div>
       </div>
     </div>
     <div id="tokenModal" class="hidden">
@@ -641,13 +642,13 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261001063526"></script>
-<script src="lagesplan-tools.js?v=20261001063526"></script>
-<script src="lagesplan-layers.js?v=20261001063526"></script>
-<script src="lagesplan-film.js?v=20261001063526"></script>
-<script src="lagesplan-cad.js?v=20261001063526"></script>
-<script src="lagesplan-vecpdf.js?v=20261001063526"></script>
-<script src="lagesplan-print.js?v=20261001063526"></script>
-<script src="lagesplan-keys.js?v=20261001063526"></script>
+<script src="lagesplan.js?v=20261001064124"></script>
+<script src="lagesplan-tools.js?v=20261001064124"></script>
+<script src="lagesplan-layers.js?v=20261001064124"></script>
+<script src="lagesplan-film.js?v=20261001064124"></script>
+<script src="lagesplan-cad.js?v=20261001064124"></script>
+<script src="lagesplan-vecpdf.js?v=20261001064124"></script>
+<script src="lagesplan-print.js?v=20261001064124"></script>
+<script src="lagesplan-keys.js?v=20261001064124"></script>
 </body>
 </html>

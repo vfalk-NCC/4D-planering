@@ -25,8 +25,20 @@ async function planPdfBytes() {
   planPdfBytesCache = { path: plan.file_path, bytes };
   return bytes;
 }
-/* Används vektor-PDF för ritningen? (ritningslagret tänt) */
-function pdfVectorWanted() { return typeof layerVisible === "function" && layerVisible("pdf"); }
+/* Ritningen som vektor eller bild (Victors val 2026-10-01): vektor är skarp
+   men kan ge stora filer om ritnings-PDF:en är tung; bild håller nere
+   storleken. Ett val per webbläsare, samma kryssruta i utskrift och export. */
+const PDF_VECTOR_KEY = "lagesplan-pdf-vector";
+function pdfVectorPref() { try { return localStorage.getItem(PDF_VECTOR_KEY) !== "0"; } catch (e) { return true; } }
+function setPdfVectorPref(on) {
+  try { localStorage.setItem(PDF_VECTOR_KEY, on ? "1" : "0"); } catch (e) {}
+  document.querySelectorAll(".pdf-vec-chk").forEach(c => { c.checked = on; });
+}
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll(".pdf-vec-chk").forEach(c => { c.checked = pdfVectorPref(); c.onchange = () => setPdfVectorPref(c.checked); });
+});
+/* Används vektor-PDF för ritningen? (ritningslagret tänt och vektor vald) */
+function pdfVectorWanted() { return typeof layerVisible === "function" && layerVisible("pdf") && pdfVectorPref(); }
 
 /* "Ritningen i gråskala": färgkommandona i ritningens innehåll räknas om
    till samma ljushet utan färg (rg/RG, k/K, sc/scn med 3 eller 4 värden).
@@ -134,10 +146,16 @@ async function vecFinish(v) {
   const K = 72 / 25.4;
   // PDF-användarkoordinater -> stage-px (pdf.js-vyn: samma som toPx)
   const V = viewport.transform;
+  // Alla jsPDF-sidor i ETT anrop: jsPDF lägger alla bilder i en gemensam
+  // resurslista, och pdf-lib kopierar dem bara en gång per anrop. Ett anrop
+  // per grupp gav en kopia av varje bild per ritningsyta (32 MB-filer).
+  const nums = [...new Set(v.pages.flatMap(pg => pg.groups.flatMap(g => [g.under, g.over])))];
+  const embedded = await out.embedPages(nums.map(n => src.getPage(n - 1)));
+  const emb = new Map(nums.map((n, i) => [n, embedded[i]]));
   for (const pg of v.pages) {
     let page = null, Wpt = 0, Hpt = 0;
     for (const grp of pg.groups) {
-      const [eu, eo] = await out.embedPages([src.getPage(grp.under - 1), src.getPage(grp.over - 1)]);
+      const eu = emb.get(grp.under), eo = emb.get(grp.over);
       if (!page) { Wpt = eu.width; Hpt = eu.height; page = out.addPage([Wpt, Hpt]); }
       page.drawPage(eu, { x: 0, y: 0, width: Wpt, height: Hpt });
       for (const ins of grp.inserts) {

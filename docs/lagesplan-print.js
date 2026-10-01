@@ -1050,7 +1050,7 @@ async function exportPrintPdf() {
     const maps = tpl.elements.filter(e => e.type === "map");
     // Ritnings-PDF:en som vektorer: UNDER/ÖVER-sidor som sätts ihop med pdf-lib.
     let vec = null;
-    if (maps.length && typeof vecBegin === "function") {
+    if (maps.length && typeof vecBegin === "function" && pdfVectorPref()) {
       setPrintStatus("Laddar ritningen som vektorer…");
       try { vec = await vecBegin(doc); } catch (e) { console.warn("Vektor-PDF", e); vec = null; }
     }
