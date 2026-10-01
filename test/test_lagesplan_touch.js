@@ -84,6 +84,14 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   await page.tap('#btnFieldSheetClose');
   console.log('OK: datum och lager i fältläget styr samma sak som den vanliga vyn');
 
+  // 4b) Dölj alla knappar – bara 👁 kvar, som tar tillbaka dem.
+  await page.tap('#btnFieldHide'); await page.waitForTimeout(100);
+  for (const id of ['#fieldTop', '#fieldBottom', '#zoomCtl']) if (await page.isVisible(id)) fail(id + ' ska döljas');
+  if (!(await page.isVisible('#btnFieldShow'))) fail('👁 ska synas när knapparna är dolda');
+  await page.tap('#btnFieldShow'); await page.waitForTimeout(100);
+  if (!(await page.isVisible('#fieldTop')) || !(await page.isVisible('#zoomCtl')) || await page.isVisible('#btnFieldShow')) fail('👁 ska ta tillbaka knapparna');
+  console.log('OK: Dölj gömmer alla knappar, 👁 tar tillbaka dem');
+
   // 5) Fullständig vy, och valet kommer ihåg.
   await page.tap('#btnFieldFull'); await page.waitForTimeout(150);
   if (!(await page.isVisible('aside')) || await page.isVisible('#fieldTop')) fail('Fullständig ska visa den vanliga vyn');

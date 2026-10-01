@@ -128,6 +128,7 @@ function fieldWanted() {
 }
 function setFieldMode(on, save = true) {
   document.body.classList.toggle("field", on);
+  if (!on) document.body.classList.remove("field-clean");
   if (save) { try { localStorage.setItem(FIELD_KEY, on ? "1" : "0"); } catch (e) {} }
   if (on) renderField(); else closeFieldSheet();
   // Planen ska fylla den nya ytan.
@@ -233,6 +234,9 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btnFieldLayers").onclick = () => ($("fieldSheet").classList.contains("hidden") ? openFieldSheet() : closeFieldSheet());
   $("btnFieldSheetClose").onclick = closeFieldSheet;
   $("btnFieldFull").onclick = () => setFieldMode(false);
+  // Dölj alla knappar (bara planen syns); 👁 i hörnet tar tillbaka dem.
+  $("btnFieldHide").onclick = () => { closeFieldSheet(); document.body.classList.add("field-clean"); };
+  $("btnFieldShow").onclick = () => { document.body.classList.remove("field-clean"); renderField(); };
   $("btnFieldMode").onclick = () => setFieldMode(true);
   // Håll fältläget i takt med allt som ändras (data laddas, plan byts, datum …).
   const orig = renderLayerPanel;
