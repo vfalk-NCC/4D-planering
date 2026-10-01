@@ -2786,7 +2786,17 @@ function computeItemPhase(item, atDateStr, warningDays) {
     return (plannedEnd && actualEnd > plannedEnd) ? "klar_forsenad" : "klar";
   }
 
-  if (at < start) return "planerad";
+  // Påbörjad före planerad start (Victors rapport 2026-10-01, H30: 17 % men
+  // grå "ej påbörjad" eftersom planerad start var 11/10): framdrift över 0 %
+  // betyder att arbetet är igång – senast i dag, även om verklig start saknas
+  // eller ligger i framtiden.
+  let actualStart = item.actualStartDate ? new Date(item.actualStartDate) : null;
+  if ((Number(item.progress) || 0) > 0 || item.status === "pagaende") {
+    const today = new Date(new Date().toISOString().slice(0, 10));
+    if (!actualStart || actualStart > today) actualStart = actualStart && actualStart < today ? actualStart : (start < today ? start : today);
+  }
+  const startedAtDate = actualStart && actualStart <= at;
+  if (at < start && !startedAtDate) return "planerad";
 
   if (plannedEnd) {
     if (at > plannedEnd) return "forsenad";

@@ -135,9 +135,13 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
     const f28 = { startDate: d(-11), endDate: d(16), status: 'klar', progress: 100, actualStartDate: d(-11), actualEndDate: d(16) };
     const early = { startDate: d(5), endDate: d(10), status: 'klar', progress: 100, actualEndDate: d(10) };
     const going = { startDate: d(-5), endDate: d(16), status: 'pagaende', progress: 40 };
-    return [computeItemPhase(f28, d(0), 7), computeItemPhase(f28, d(-3), 7), computeItemPhase(early, d(0), 7), computeItemPhase(going, d(0), 30)].join(',');
+    // H30: 17 % men planerad (och importerad verklig) start om 10 dagar -> pågående i dag, ej påbörjad bakåt i tiden.
+    const h30 = { startDate: d(10), endDate: d(36), status: 'planerad', progress: 17, actualStartDate: d(10) };
+    const notStarted = { startDate: d(10), endDate: d(36), status: 'planerad', progress: 0 };
+    return [computeItemPhase(f28, d(0), 7), computeItemPhase(f28, d(-3), 7), computeItemPhase(early, d(0), 7), computeItemPhase(going, d(0), 30),
+      computeItemPhase(h30, d(0), 7), computeItemPhase(h30, d(-3), 7), computeItemPhase(notStarted, d(0), 7)].join(',');
   });
-  if (ph !== 'klar,pagaende,klar,snart') fail('Klar med framtida slutdatum ska vara klar i dag (och pågående bakåt i tiden), fick ' + ph);
+  if (ph !== 'klar,pagaende,klar,snart,pagaende,planerad,planerad') fail('Klar med framtida slutdatum ska vara klar i dag (och pågående bakåt i tiden), fick ' + ph);
   const parsedEnd = (() => { const { parsePlanSheet } = require('../docs/plan-excel-parser.js'); const fut = new Date(Date.now() + 16 * 864e5).toISOString().slice(0, 10);
     const r = []; r[1] = null; r[2] = 'F28 - Fundament'; r[5] = '2026-09-20'; r[8] = fut; r[7] = 28; r[10] = 'DP2'; r[13] = 1;
     const rows = [[], [], [], [], (() => { const h = []; h[1] = 'Linje F'; h[2] = 'Linje F'; return h; })(), r];

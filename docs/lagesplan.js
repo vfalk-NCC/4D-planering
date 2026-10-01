@@ -176,7 +176,13 @@ function computeItemPhase(row, atDateStr, warningDays) {
     if (actualEnd > today) actualEnd = today;
   }
   if (actualEnd && actualEnd <= at) return (plannedEnd && actualEnd > plannedEnd) ? "klar_forsenad" : "klar";
-  if (at < start) return "planerad";
+  // Framdrift över 0 % = påbörjad (senast i dag), även före planerad start – samma som 4D-planering.
+  let actualStart = row.actual_start_date ? new Date(row.actual_start_date) : null;
+  if ((Number(row.progress) || 0) > 0 || row.status === "pagaende") {
+    const today = new Date(new Date().toISOString().slice(0, 10));
+    if (!actualStart || actualStart > today) actualStart = actualStart && actualStart < today ? actualStart : (start < today ? start : today);
+  }
+  if (at < start && !(actualStart && actualStart <= at)) return "planerad";
   if (plannedEnd) {
     if (at > plannedEnd) return "forsenad";
     const daysLeft = Math.round((plannedEnd - at) / 86400000);
@@ -381,7 +387,7 @@ function objectTipHtml(o) {
     [it.area, it.activity].filter(Boolean).map(escHtml).join(" · "),
     `<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${phaseColor(ph)};margin-right:5px;"></span>${escHtml(PHASE_LABELS[ph] || ph)} · ${progress} % klart`,
     it.start_date ? `Plan: ${escHtml(it.start_date)} → ${escHtml(it.end_date || "?")}` : "Inga planerade datum",
-    (it.actual_start_date || it.actual_end_date) ? `Verkligt: ${escHtml(it.actual_start_date || "?")} → ${escHtml(it.actual_end_date || "pågår")}` : "",
+    (it.actual_start_date || it.actual_end_date) ? (() => { const t = todayIso(), cap = d => (d && d > t ? t : d); return `Verkligt: ${escHtml(cap(it.actual_start_date) || "?")} → ${escHtml(cap(it.actual_end_date) || "pågår")}`; })() : "",
     it.contractor ? `Entreprenör: ${escHtml(it.contractor)}` : "",
     zone ? `Zon: ${escHtml(zone.code)}` : ""
   ];
