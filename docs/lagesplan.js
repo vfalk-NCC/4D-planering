@@ -426,19 +426,22 @@ function objLabelText(it) {
   const t = String(it.object_name || it.activity || "").trim();
   return t.length > 18 ? t.slice(0, 17) + "…" : t;
 }
-function drawObjectLabels(ctx, objects, fontPx) {
+/* scr (skärmen): { map: pdf-punkt -> skärm-px, fs, r } – namnen ritas då på
+   #labelCanvas i skärmens koordinater, så textstorleken är konstant vid zoom
+   och styrs bara av reglaget (Victors önskemål 2026-10-01). */
+function drawObjectLabels(ctx, objects, fontPx, scr) {
   if (!objLabelsOn() || !objects || !objects.length) return;
+  const toXY = scr ? scr.map : toPx;
   const at = $("dateInput").value || todayIso();
   const warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
   const which = objLabelsWhich();
-  const k = canvasPerScreenPx(ctx);
-  const fs = (k ? 11 * k : Math.max(8, fontPx * 0.55)) * objLabelSize() / 100;
-  const r = objDotRadius(ctx, fontPx);
+  const fs = scr ? scr.fs : Math.max(8, fontPx * 0.55) * objLabelSize() / 100;
+  const r = scr ? scr.r : objDotRadius(ctx, fontPx);
   const pad = fs * 0.3, gap = r + fs * 0.25;
   // Viktigast först: fokus, försenade, pågående, resten.
   const rank = ph => ({ forsenad: 0, pagaende: 1, snart: 2 }[ph] ?? 3);
   const hid = hiddenLabels(), hidIds = new Set(hid.ids), hidActs = new Set(hid.acts);
-  const onScreen = ctx.canvas && ctx.canvas.id === "objCanvas";
+  const onScreen = !!scr;
   if (onScreen) objLabelBoxes = [];
   const list = objects.map(o => ({ o, ph: computeItemPhase(o.it, at, warn) || fallbackPhase(o.it), f: focusState(o.it) }))
     .filter(x => objLabelText(x.o.it) && !hidIds.has(x.o.it.id) && !hidActs.has(String(x.o.it.activity || "").trim()))
@@ -449,7 +452,8 @@ function drawObjectLabels(ctx, objects, fontPx) {
   const clusters = [];
   const cell = Math.max(1, r * 1.5), grid = new Map();
   objects.forEach(o => {
-    const [x, y] = toPx(o.center);
+    const [x, y] = toXY(o.center);
+    if (scr && (x < -200 || y < -200 || x > scr.w + 200 || y > scr.h + 200)) return;
     const gx = Math.floor(x / cell), gy = Math.floor(y / cell);
     let c = null;
     for (let dx = -1; dx <= 1 && !c; dx++) for (let dy = -1; dy <= 1 && !c; dy++) {
@@ -471,7 +475,7 @@ function drawObjectLabels(ctx, objects, fontPx) {
   ctx.textBaseline = "middle";
   for (const { o, ph } of list) {
     const ci = clusterOf.get(o.it.id);
-    if (done.has(ci)) continue;
+    if (ci === undefined || done.has(ci)) continue;
     done.add(ci);
     const cl = clusters[ci];
     const shown = cl.objs.filter(x => !hidIds.has(x.it.id) && !hidActs.has(String(x.it.activity || "").trim()));
@@ -853,6 +857,29 @@ function planFontPx() {
   if (textFixed()) return Math.max(2, 13 * textScale() / Math.max(0.01, view.scale));
   return Math.max(14, Math.round(zc.width / 110)) * textScale();
 }
+/* Namnen på skärmen: eget canvas ovanpå ritningen i skärmens koordinater,
+   ritas om vid varje zoom/panorering. */
+let labelObjects = null, labelRaf = 0;
+function renderScreenLabels() {
+  const c = $("labelCanvas");
+  if (!c) return;
+  const vp = $("viewport"), w = vp.clientWidth, h = vp.clientHeight, dpr = window.devicePixelRatio || 1;
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+    c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+    c.style.width = w + "px"; c.style.height = h + "px";
+  }
+  const ctx = c.getContext("2d");
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, c.width, c.height);
+  objLabelBoxes = [];
+  if (!plan || !viewport || !labelObjects || !labelObjects.length || !objLabelsOn()) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const map = p => { const [x, y] = toPx(p); return [view.tx + x * view.scale, view.ty + y * view.scale]; };
+  // Prickens radie på skärmen just nu (prickarna ritas om först när zoomen stannat).
+  const r = Math.max(3, objMinPx * view.scale);
+  drawObjectLabels(ctx, labelObjects, planFontPx(), { map, fs: 11 * objLabelSize() / 100, r, w, h });
+}
+function renderScreenLabelsSoon() { if (!labelRaf) labelRaf = requestAnimationFrame(() => { labelRaf = 0; renderScreenLabels(); }); }
 let textRaf = 0;
 function rerenderTextIfFixed() {
   if (!textFixed() || textRaf) return;
@@ -872,7 +899,9 @@ function renderZones() {
   const fontPx = planFontPx();
   const objects = $("showObjects").checked ? objectShapesInPdf() : null;
   const badges = drawZoneShapes(ctx, fontPx, objects);
-  if (objects) { drawObjects(octx, objects, fontPx); drawObjectLabels(octx, objects, fontPx); }
+  if (objects) drawObjects(octx, objects, fontPx);
+  labelObjects = objects;
+  renderScreenLabels();
   objRenderedScale = view.scale;
   renderObjHint(objects);
   drawSiteLayers(tctx, fontPx);
@@ -1179,7 +1208,7 @@ function scheduleObjRerender() {
   clearTimeout(objRerenderTimer);
   objRerenderTimer = setTimeout(() => {
     if (objRenderedScale === view.scale) return;
-    if (typeof objStyle === "function" && (objStyle() !== "footprint" || objLabelsOn())) renderZones();
+    if (typeof objStyle === "function" && objStyle() !== "footprint") renderZones();
   }, 180);
 }
 /* Rita om högst en gång per bildruta (reglage som skickar många händelser). */
@@ -1188,6 +1217,7 @@ function renderZonesSoon() { if (!zonesRaf) zonesRaf = requestAnimationFrame(() 
 function applyView() {
   $("stage").style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
   scheduleObjRerender();
+  renderScreenLabelsSoon();
   if (typeof updateCompareClip === "function") updateCompareClip();
   if (typeof scheduleOrthoRender === "function") scheduleOrthoRender();
   scheduleHiRender();
@@ -1276,7 +1306,7 @@ function bindViewport() {
     const ptObjs = objectsAt(toPdf(stagePoint(e)));
     if (ptObjs.length) { e.preventDefault(); openObjMenu(ptObjs.map(o => o.it), e); return; }
     if (!objLabelBoxes.length) return;
-    const [x, y] = stagePoint(e);
+    const vr = vpEl.getBoundingClientRect(), x = e.clientX - vr.left, y = e.clientY - vr.top;
     const hit = objLabelBoxes.find(l => x >= l.box.x && x <= l.box.x + l.box.w && y >= l.box.y && y <= l.box.y + l.box.h);
     if (!hit) return;
     e.preventDefault();
@@ -1583,7 +1613,7 @@ function bindUI() {
     const sync = () => { $("objLabelsWhich").disabled = !$("objLabels").checked; $("objLabelSizeRow").classList.toggle("hidden", !$("objLabels").checked); };
     const updL = () => { $("objLabelSizeVal").textContent = $("objLabelSize").value + " %"; };
     $("objLabelSize").value = objLabelSize(); updL();
-    $("objLabelSize").oninput = () => { updL(); try { localStorage.setItem(OBJ_LABEL_SIZE_KEY, $("objLabelSize").value); } catch (e) {} renderZonesSoon(); };
+    $("objLabelSize").oninput = () => { updL(); try { localStorage.setItem(OBJ_LABEL_SIZE_KEY, $("objLabelSize").value); } catch (e) {} renderScreenLabelsSoon(); };
     $("objLabels").checked = objLabelsOn(); $("objLabelsWhich").value = objLabelsWhich(); sync();
     $("objLabels").onchange = () => { try { localStorage.setItem(OBJ_LABELS_KEY, $("objLabels").checked ? "1" : "0"); } catch (e) {} sync(); renderZones(); };
     $("objLabelsWhich").onchange = () => { try { localStorage.setItem(OBJ_LABELS_WHICH_KEY, $("objLabelsWhich").value); } catch (e) {} renderZones(); };

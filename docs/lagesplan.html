@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261001061147"></script>
+<script src="github-storage.js?v=20261001061754"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -174,6 +174,7 @@
   #viewport.drawing { cursor: crosshair; }
   #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; box-shadow: 0 2px 16px rgba(15,23,42,.18); background: #fff; }
   #stage canvas { position: absolute; left: 0; top: 0; }
+  #labelCanvas { position: absolute; left: 0; top: 0; pointer-events: none; }
   #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 14px; text-align: center; padding: 20px; }
   #tip { position: absolute; pointer-events: none; background: rgba(17,24,39,.94); color: #fff; padding: 7px 9px; border-radius: 6px; font-size: 12px; max-width: 360px; z-index: 5; white-space: pre-line; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
   .float-group { position: absolute; display: flex; background: #fff; border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 14px rgba(15,23,42,.14); overflow: hidden; z-index: 4; }
@@ -531,7 +532,7 @@
   <main>
     <button id="btnShowSide" class="hidden" title="Visa menyn">▶ Meny</button>
     <div id="viewport">
-      <div id="stage"><canvas id="orthoCanvas"></canvas><canvas id="orthoCanvasB"></canvas><canvas id="pdfCanvas"></canvas><canvas id="pdfHiCanvas"></canvas><canvas id="cadCanvas" style="display:none"></canvas><canvas id="zoneCanvas"></canvas><canvas id="objCanvas"></canvas><canvas id="topCanvas"></canvas></div>
+      <div id="stage"><canvas id="orthoCanvas"></canvas><canvas id="orthoCanvasB"></canvas><canvas id="pdfCanvas"></canvas><canvas id="pdfHiCanvas"></canvas><canvas id="cadCanvas" style="display:none"></canvas><canvas id="zoneCanvas"></canvas><canvas id="objCanvas"></canvas><canvas id="topCanvas"></canvas></div><canvas id="labelCanvas"></canvas>
     </div>
     <div id="empty">Välj en plan, eller klicka <b>&nbsp;＋ Ny plan&nbsp;</b> och välj en PDF (t.ex. en planritning med PM-zoner).</div>
     <div id="zoomCtl" class="float-group">
@@ -633,13 +634,13 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261001061147"></script>
-<script src="lagesplan-tools.js?v=20261001061147"></script>
-<script src="lagesplan-layers.js?v=20261001061147"></script>
-<script src="lagesplan-film.js?v=20261001061147"></script>
-<script src="lagesplan-cad.js?v=20261001061147"></script>
-<script src="lagesplan-vecpdf.js?v=20261001061147"></script>
-<script src="lagesplan-print.js?v=20261001061147"></script>
-<script src="lagesplan-keys.js?v=20261001061147"></script>
+<script src="lagesplan.js?v=20261001061754"></script>
+<script src="lagesplan-tools.js?v=20261001061754"></script>
+<script src="lagesplan-layers.js?v=20261001061754"></script>
+<script src="lagesplan-film.js?v=20261001061754"></script>
+<script src="lagesplan-cad.js?v=20261001061754"></script>
+<script src="lagesplan-vecpdf.js?v=20261001061754"></script>
+<script src="lagesplan-print.js?v=20261001061754"></script>
+<script src="lagesplan-keys.js?v=20261001061754"></script>
 </body>
 </html>
