@@ -411,7 +411,9 @@ function hiddenLabels() {
   try { const v = JSON.parse(localStorage.getItem(hiddenLabelsKey()) || "{}") || {}; return { ids: v.ids || [], acts: v.acts || [], names: v.names || [] }; }
   catch (e) { return { ids: [], acts: [], names: [] }; }
 }
-function saveHiddenLabels(h) { try { localStorage.setItem(hiddenLabelsKey(), JSON.stringify(h)); } catch (e) {} updateHiddenLabelsBtn(); renderZones(); }
+function saveHiddenLabels(h, opts = {}) {
+  if (opts.undo !== false) { objHideUndo.push({ kind: "labels", state: hiddenLabels() }); if (objHideUndo.length > 30) objHideUndo.shift(); lastUndoTarget = "obj"; }
+  try { localStorage.setItem(hiddenLabelsKey(), JSON.stringify(h)); } catch (e) {} updateHiddenLabelsBtn(); renderZones(); }
 function updateHiddenLabelsBtn() {
   const b = $("btnShowHiddenLabels");
   if (!b) return;
@@ -1802,9 +1804,9 @@ function openLabelMenu(l, e) {
   m.style.top = Math.min(e.clientY, window.innerHeight - 90) + "px";
   m.classList.remove("hidden");
   bindObjMenu(m, l.ids.map(id => items.find(it => it.id === id)).filter(Boolean));
-  m.querySelector('[data-a="one"]').onclick = () => { const h = hiddenLabels(); h.ids = [...new Set([...h.ids, ...l.ids])]; h.names = [...new Set([...h.names, l.text])]; m.classList.add("hidden"); saveHiddenLabels(h); setSaveStatus(`Namnet ${l.text} är dolt – "Visa dolda namn" i Lager-kortet tar tillbaka det.`); };
+  m.querySelector('[data-a="one"]').onclick = () => { const h = hiddenLabels(); h.ids = [...new Set([...h.ids, ...l.ids])]; h.names = [...new Set([...h.names, l.text])]; m.classList.add("hidden"); saveHiddenLabels(h); statusWithUndo(`Namnet ${l.text} är dolt.`); };
   const a = m.querySelector('[data-a="act"]');
-  if (a) a.onclick = () => { const h = hiddenLabels(); h.acts = [...new Set([...h.acts, l.act])]; m.classList.add("hidden"); saveHiddenLabels(h); setSaveStatus(`Namnen för ${l.act} är dolda.`); };
+  if (a) a.onclick = () => { const h = hiddenLabels(); h.acts = [...new Set([...h.acts, l.act])]; m.classList.add("hidden"); saveHiddenLabels(h); statusWithUndo(`Namnen för ${l.act} är dolda.`); };
 }
 
 // ---------------------------------------------------------------------
@@ -1816,7 +1818,28 @@ function openLabelMenu(l, e) {
 // ---------------------------------------------------------------------
 const objHideKey = () => "lagesplan-objhide-" + projectId;
 const objFamKey = it => it.group_id ? "g:" + it.group_id : it.source_key ? "s:" + it.source_key : "i:" + it.id;
-let objHideUndo = [];
+let objHideUndo = [];      // [{ kind: "obj"|"labels", state }] – Ctrl+Z ångrar släckningar och dolda namn
+let lastUndoTarget = "";   // "obj" när senaste ångringsbara steget var en släckning (annars etableringen)
+/* Ångra senaste släckning eller dolda namn. */
+function undoObjHide() {
+  const e = objHideUndo.pop();
+  if (!e) return false;
+  if (e.kind === "labels") saveHiddenLabels(e.state, { undo: false });
+  else setObjHidden(e.state, { undo: false });
+  if (!objHideUndo.length) lastUndoTarget = "";
+  renderObjViewUi();
+  setSaveStatus("Ångrat.");
+  return true;
+}
+/* Statusraden med en Ångra-knapp. */
+function statusWithUndo(text) {
+  const el = $("saveStatus");
+  el.textContent = text + " ";
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "status-undo"; b.textContent = "Ångra (Ctrl+Z)";
+  b.onclick = () => undoObjHide();
+  el.appendChild(b);
+}
 function objHidden() {
   try { const v = JSON.parse(localStorage.getItem(objHideKey()) || "{}") || {}; return { ids: v.ids || [], fams: v.fams || [], acts: v.acts || [], view: v.view || "" }; }
   catch (e) { return { ids: [], fams: [], acts: [], view: "" }; }
@@ -1827,7 +1850,7 @@ function isObjHidden(it) {
   return objHiddenSets.ids.has(it.id) || objHiddenSets.fams.has(objFamKey(it)) || objHiddenSets.acts.has(String(it.activity || "").trim());
 }
 function setObjHidden(h, opts = {}) {
-  if (opts.undo !== false) { objHideUndo.push(objHidden()); if (objHideUndo.length > 30) objHideUndo.shift(); }
+  if (opts.undo !== false) { objHideUndo.push({ kind: "obj", state: objHidden() }); if (objHideUndo.length > 30) objHideUndo.shift(); lastUndoTarget = "obj"; }
   try { localStorage.setItem(objHideKey(), JSON.stringify(h)); } catch (e) {}
   objHiddenSets = null;
   if (typeof invalidateVisible === "function") invalidateVisible(); else invalidatePositions();
@@ -1852,13 +1875,13 @@ function bindObjMenu(m, its) {
   const close = () => m.classList.add("hidden");
   const h = () => objHidden();
   const on = (k, fn) => { const b = m.querySelector(`[data-o="${k}"]`); if (b) b.onclick = () => { close(); fn(); }; };
-  on("obj", () => { const x = h(); x.ids = [...new Set([...x.ids, ...its.map(i => i.id)])]; setObjHidden(x); setSaveStatus(`Släckt: ${its.map(objLabelText).join(", ")}. "Tänd alla" i Lager-kortet tar tillbaka.`); });
-  on("fam", () => { const x = h(); x.fams = [...new Set([...x.fams, ...its.map(objFamKey)])]; setObjHidden(x); setSaveStatus(`Släckt hela aktiviteten ${famName(its[0])}.`); });
-  on("act", () => { const x = h(); x.acts = [...new Set([...x.acts, String(its[0].activity || "").trim()])]; setObjHidden(x); setSaveStatus(`Släckt alla med aktiviteten ${its[0].activity}.`); });
+  on("obj", () => { const x = h(); x.ids = [...new Set([...x.ids, ...its.map(i => i.id)])]; setObjHidden(x); statusWithUndo(`Släckt: ${[...new Set(its.map(objLabelText))].join(", ")}${its.length > 1 ? ` (${its.length} objekt)` : ""}.`); });
+  on("fam", () => { const x = h(); x.fams = [...new Set([...x.fams, ...its.map(objFamKey)])]; setObjHidden(x); statusWithUndo(`Släckt hela aktiviteten ${famName(its[0])}.`); });
+  on("act", () => { const x = h(); x.acts = [...new Set([...x.acts, String(its[0].activity || "").trim()])]; setObjHidden(x); statusWithUndo(`Släckt alla med aktiviteten ${its[0].activity}.`); });
   on("only", () => {
     const keep = new Set(its.map(objFamKey));
     const x = h(); x.ids = []; x.acts = []; x.fams = [...new Set(items.map(objFamKey).filter(k => !keep.has(k)))];
-    setObjHidden(x); setSaveStatus(`Visar bara ${famName(its[0])}. "Tänd alla" visar allt igen.`);
+    setObjHidden(x); statusWithUndo(`Visar bara ${famName(its[0])}.`);
   });
 }
 function openObjMenu(its, e) {
@@ -1877,7 +1900,7 @@ function hideObjectsInBox(a, b) {
   if (!inside.length) { renderZones(); setSaveStatus("Inga objekt i rutan."); return; }
   const x = objHidden(); x.ids = [...new Set([...x.ids, ...inside])];
   setObjHidden(x);
-  setSaveStatus(`Släckte ${inside.length} objekt i rutan.`);
+  statusWithUndo(`Släckte ${inside.length} objekt i rutan.`);
 }
 
 /* ---------- sparade vyer ---------- */
@@ -1904,8 +1927,8 @@ function bindObjViewUi() {
     renderLayerPanel = function () { const r = orig.apply(this, arguments); renderObjViewUi(); return r; };
     renderLayerPanel.__objViews = true;
   }
-  $("btnObjShowAll").onclick = () => { const h = objHidden(); setObjHidden({ ids: [], fams: [], acts: [], view: h.view && objViews().some(v => v.id === h.view) ? "" : "" }); setSaveStatus("Alla objekt tända."); };
-  $("btnObjHideUndo").onclick = () => { const prev = objHideUndo.pop(); if (prev) setObjHidden(prev, { undo: false }); };
+  $("btnObjShowAll").onclick = () => { setObjHidden({ ids: [], fams: [], acts: [], view: "" }); statusWithUndo("Alla objekt tända."); };
+  $("btnObjHideUndo").onclick = () => undoObjHide();
   $("objViewSel").onchange = () => {
     const v = objViews().find(x => x.id === $("objViewSel").value);
     setObjHidden(v ? { ids: [...(v.hidden.ids || [])], fams: [...(v.hidden.fams || [])], acts: [...(v.hidden.acts || [])], view: v.id } : { ids: [], fams: [], acts: [], view: "" });

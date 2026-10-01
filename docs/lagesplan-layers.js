@@ -345,6 +345,7 @@ async function loadSiteLayers() {
 async function saveSiteItem(rec, remove = false, opts = {}) {
   const prev = "prev" in opts ? opts.prev : (siteItems.find(x => x.id === rec.id) || null);
   if (opts.record !== false && rec.type !== "ortho" && rec.type !== "layer") {
+    if (typeof lastUndoTarget !== "undefined") lastUndoTarget = "site";
     siteUndo.push({ label: `${remove ? "Ta bort" : prev ? "Ändra" : "Lägg till"} ${(SITE_KINDS[rec.type] || {}).label || ""}`.trim(), before: prev ? JSON.parse(JSON.stringify(prev)) : null, after: remove ? null : JSON.parse(JSON.stringify(rec)), id: rec.id });
     if (siteUndo.length > 100) siteUndo.shift();
     siteRedo = [];
@@ -1946,6 +1947,8 @@ function bindLayers() {
   window.addEventListener("keydown", e => {
     if (!(e.ctrlKey || e.metaKey) || (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName))) return;
     const k = e.key.toLowerCase();
+    // Senaste steget var en släckning/dolt namn i 3D Objekt: ångra det först.
+    if (k === "z" && !e.shiftKey && typeof lastUndoTarget !== "undefined" && lastUndoTarget === "obj" && typeof undoObjHide === "function" && undoObjHide()) { e.preventDefault(); return; }
     if (k === "z" && !e.shiftKey && siteUndo.length) { e.preventDefault(); undoSite(); }
     else if ((k === "y" || (k === "z" && e.shiftKey)) && siteRedo.length) { e.preventDefault(); redoSite(); }
   });
