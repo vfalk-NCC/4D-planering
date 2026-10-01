@@ -1417,7 +1417,25 @@ function onDateChanged() { if (typeof syncOrthoToDate === "function") syncOrthoT
 // ---------------------------------------------------------------------
 /* Ritningen + zoner/objekt/foton med rubrik och förklaring, i en canvas.
    maxW skalar ned (video, bildserie). Används av PNG, PDF och uppspelning. */
-function composeImage(maxW, noHeader) {
+/* PDF-export: underlag (ortofoto + PDF) som bild, tända DXF:er som vektorer
+   och zoner/objekt/etablering som genomskinlig bild ovanpå. Ritar planen i
+   rutan [bx, by, bw, bh] (mm) på sidan och returnerar var den hamnade. */
+function addPlanToPdf(doc, bx, by, bw, bh, quality = 0.9) {
+  const pc = $("pdfCanvas");
+  const base = composeImage(null, true, "base"), over = composeImage(null, true, "over");
+  const k = Math.min(bw / base.width, bh / base.height);
+  const iw = base.width * k, ih = base.height * k, x = bx + (bw - iw) / 2, y = by + (bh - ih) / 2;
+  doc.addImage(base.toDataURL("image/jpeg", quality), "JPEG", x, y, iw, ih);
+  const list = typeof cadVectorPlan === "function" && cads().some(r => ls("cad:" + r.id).visible) ? cadVectorPlan() : [];
+  if (list.length && typeof drawCadVectorsToPdf === "function") {
+    const sc = base.width / pc.width; // bild-px per stage-px
+    drawCadVectorsToPdf(doc, list, [sc * k, 0, 0, sc * k, x, y], [x, y, iw, ih], Math.max(1, sc) * k, 0.3528);
+  }
+  doc.addImage(over.toDataURL("image/png"), "PNG", x, y, iw, ih, undefined, "FAST");
+  return { x, y, w: iw, h: ih };
+}
+/* part: undefined = allt, "base" = bara ortofoto + PDF, "over" = bara zoner/objekt/etablering (genomskinlig). */
+function composeImage(maxW, noHeader, part) {
   const pc = $("pdfCanvas"), zc = $("zoneCanvas");
   const k = maxW ? Math.min(1, maxW / pc.width) : 1;
   const W = Math.round(pc.width * k), H = Math.round(pc.height * k);
@@ -1425,12 +1443,14 @@ function composeImage(maxW, noHeader) {
   const out = document.createElement("canvas");
   out.width = W; out.height = H + head;
   const ctx = out.getContext("2d");
-  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, out.width, out.height);
+  if (part !== "over") { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, out.width, out.height); }
+  const inPart = id => !part || (part === "base" ? (id === "orthoCanvas" || id === "pdfCanvas") : (id !== "orthoCanvas" && id !== "pdfCanvas"));
   // Samma lager, synlighet, genomskinlighet och blandning som på skärmen.
   STAGE_CANVASES.forEach(id => {
     const c = $(id);
+    if (!inPart(id)) return;
     if (id === "orthoCanvas") { if (getComputedStyle(c).display !== "none") drawOrthoForExport(ctx, 0, head, W / pc.width); return; }
-    if (id === "zoneCanvas" && typeof drawCadForExport === "function") drawCadForExport(ctx, 0, head, W / pc.width);
+    if (id === "zoneCanvas" && !part && typeof drawCadForExport === "function") drawCadForExport(ctx, 0, head, W / pc.width);
     if (!c.width || getComputedStyle(c).display === "none") return;
     ctx.save();
     ctx.globalAlpha = Number(getComputedStyle(c).opacity) || 0;

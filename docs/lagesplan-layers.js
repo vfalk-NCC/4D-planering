@@ -1863,12 +1863,11 @@ async function exportSitePlanPdf() {
       doc.text(`Etableringsplan – ${MON[mo - 1]} ${y}`, M, M + 6);
       doc.setFont("helvetica", "normal"); doc.setFontSize(11);
       doc.text(`${plan.name}   ·   ${a} – ${b}   ·   sida ${i + 1} av ${months.length}`, M, M + 13);
-      const img = composeImage(null, true);
       const listW = 95, top = M + 18, bottom = H - M;
       const boxW = W - 2 * M - listW - 6, boxH = bottom - top;
-      const k = Math.min(boxW / img.width, boxH / img.height);
-      doc.addImage(img.toDataURL("image/jpeg", 0.88), "JPEG", M, top, img.width * k, img.height * k);
-      doc.setDrawColor(200); doc.rect(M, top, img.width * k, img.height * k);
+      // Underlaget som bild, DXF som vektorer, etablering/zoner ovanpå.
+      const r = addPlanToPdf(doc, M, top, boxW, boxH, 0.88);
+      doc.setDrawColor(200); doc.rect(r.x, r.y, r.w, r.h);
       // Förteckning över det som gäller månaden
       const active = siteItems.filter(x => isSiteObj(x) && siteShown(x))
         .sort((p, q) => layerOf(p).localeCompare(layerOf(q), "sv") || (p.from || "").localeCompare(q.from || ""));

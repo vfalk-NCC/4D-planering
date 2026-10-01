@@ -418,13 +418,11 @@ async function exportPdfA3() {
     doc.setTextColor(0);
 
     // Planen (utan rubrikrad - rubriken står i PDF:en)
-    const img = composeImage(null, true);
     const top = M + 18, bottom = H - M - 12;
     const boxW = W - 2 * M, boxH = bottom - top;
-    const k = Math.min(boxW / img.width, boxH / img.height);
-    const iw = img.width * k, ih = img.height * k;
-    doc.addImage(img.toDataURL("image/jpeg", 0.9), "JPEG", M + (boxW - iw) / 2, top + (boxH - ih) / 2, iw, ih);
-    doc.setDrawColor(200); doc.rect(M + (boxW - iw) / 2, top + (boxH - ih) / 2, iw, ih);
+    // Underlaget som bild, DXF som vektorer (skarpa linjer), zoner/objekt ovanpå.
+    const r = addPlanToPdf(doc, M, top, boxW, boxH, 0.9);
+    doc.setDrawColor(200); doc.rect(r.x, r.y, r.w, r.h);
 
     // Teckenförklaring
     let x = M; const y = H - M - 3;
