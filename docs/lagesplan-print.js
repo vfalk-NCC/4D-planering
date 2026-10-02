@@ -155,6 +155,39 @@ function printImage(path) {
     .catch(e => { printImgs.delete(path); console.warn("Kunde inte hämta bilden", path, e); }));
   return null;
 }
+/* Bildelement (Victors önskemål 2026-10-02): beskär (cropL/R/T/B, % av
+   bilden) och gör vit bakgrund genomskinlig (knockout, knockTol = hur nära
+   vitt, med mjuk kant). Resultatet cachas per bild och inställning. */
+const printImgSrcCache = new Map();
+function printImageSource(el, im) {
+  const pct = v => Math.max(0, Math.min(95, Number(v) || 0)) / 100;
+  const l = pct(el.cropL), r = pct(el.cropR), t = pct(el.cropT), b = pct(el.cropB);
+  const nw = im.naturalWidth || im.width, nh = im.naturalHeight || im.height;
+  const sx = nw * l, sy = nh * t, sw = Math.max(1, nw * (1 - l - r)), sh = Math.max(1, nh * (1 - t - b));
+  el.ar = sw / sh;
+  if (!el.knockout && !l && !r && !t && !b) return { src: im, sx: 0, sy: 0, sw: nw, sh: nh };
+  if (!el.knockout) return { src: im, sx, sy, sw, sh };
+  const tol = Math.max(1, Math.min(120, Number(el.knockTol) || 30));
+  const key = `${el.path}|${l}|${r}|${t}|${b}|${tol}`;
+  let c = printImgSrcCache.get(key);
+  if (!c) {
+    const k = Math.min(1, 2400 / Math.max(sw, sh));
+    c = newCanvas(Math.max(1, Math.round(sw * k)), Math.max(1, Math.round(sh * k)));
+    const ctx = c.getContext("2d");
+    ctx.drawImage(im, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    try {
+      const d = ctx.getImageData(0, 0, c.width, c.height), px = d.data;
+      for (let i = 0; i < px.length; i += 4) {
+        const dist = 255 - Math.min(px[i], px[i + 1], px[i + 2]); // 0 = helt vit
+        if (dist <= tol) px[i + 3] = 0;
+        else if (dist <= tol * 2) px[i + 3] = Math.round(px[i + 3] * (dist - tol) / tol); // mjuk kant
+      }
+      ctx.putImageData(d, 0, 0);
+    } catch (e) { console.warn("Kunde inte göra bakgrunden genomskinlig", e); }
+    printImgSrcCache.set(key, c);
+  }
+  return { src: c, sx: 0, sy: 0, sw: c.width, sh: c.height };
+}
 async function uploadPrintImage(file) {
   const ext = (file.name.match(/\.(png|jpe?g|webp|svg)$/i) || [0, "png"])[1].toLowerCase();
   const path = dataPath(`print/${ghNewId()}.${ext}`);
@@ -396,9 +429,9 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
     case "image": {
       const im = el.path ? printImage(el.path) : null;
       if (im) {
-        const ar = im.naturalWidth / im.naturalHeight || 1;
+        const S = printImageSource(el, im), ar = S.sw / S.sh || 1;
         let w = W, h = W / ar; if (h > H) { h = H; w = H * ar; }
-        ctx.drawImage(im, X + (W - w) / 2, Y + (H - h) / 2, w, h);
+        ctx.drawImage(S.src, S.sx, S.sy, S.sw, S.sh, X + (W - w) / 2, Y + (H - h) / 2, w, h);
       } else if (opts.editor) { ctx.fillStyle = "#f1f5f9"; ctx.fillRect(X, Y, W, H); ctx.fillStyle = "#64748b"; ctx.font = `${pt(9)}px Helvetica, Arial`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(el.path ? "Laddar bild…" : "Välj bild i panelen", X + W / 2, Y + H / 2); }
       break;
     }
@@ -451,9 +484,24 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
   ctx.restore();
 }
 /* Förklaringens rader: faser, etablering som finns på planen, CAD, egna. */
-function legendItems(el) {
+/* Förklaringens rader. Varje rad har en nyckel så att den kan justeras i
+   panelen (Victors önskemål 2026-10-02): legHide (dölj), legText (egen text),
+   legColor (egen färg) och legOrder (ordning). all = även dolda (för panelen). */
+function legendItems(el, all) {
+  const raw = legendItemsRaw(el);
+  const hide = el.legHide || {}, txt = el.legText || {}, col = el.legColor || {}, order = el.legOrder || [];
+  raw.forEach((it, i) => {
+    it.hidden = !!hide[it.key]; it.origLabel = it.label; it.origColor = it.color; it.i = i;
+    if (txt[it.key]) it.label = txt[it.key];
+    if (col[it.key]) it.color = col[it.key];
+  });
+  const pos = k => { const j = order.indexOf(k); return j < 0 ? 1e6 : j; };
+  raw.sort((a, b) => pos(a.key) - pos(b.key) || a.i - b.i);
+  return all ? raw : raw.filter(it => !it.hidden);
+}
+function legendItemsRaw(el) {
   const items = [];
-  if (el.phases) PHASE_ORDER.forEach(ph => items.push({ kind: "box", color: ph === "ingen" ? "#ffffff" : phaseColor(ph), dashed: ph === "ingen", label: PHASE_LABELS[ph] }));
+  if (el.phases) PHASE_ORDER.forEach(ph => items.push({ key: "phase:" + ph, kind: "box", color: ph === "ingen" ? "#ffffff" : phaseColor(ph), dashed: ph === "ingen", label: PHASE_LABELS[ph] }));
   if (el.site) {
     const seen = new Set();
     siteItems.filter(siteShown).forEach(x => {
@@ -466,18 +514,18 @@ function legendItems(el) {
       const st = siteStyle(x, 10);
       const label = x.type === "symbol" ? (SYMBOLS[x.sym] || {}).label || "Symbol" : ue ? `${ue.short || ""} ${ue.name || ""}`.trim() : veh ? veh.label : SITE_KINDS[x.type].label;
       const kind = { fence: "line", route: "route", barrier: "area", shed: "area", storage: "area", symbol: "area", crane: "circle", gate: "line", note: "note", sketch: "line", crew: "box", delivery: "area", lift: "circle" }[x.type];
-      items.push({ kind, color: ue ? ue.color || st.color : veh ? veh.color : st.color, dash: x.dash || SITE_DEFAULT_DASH[x.type], label });
+      items.push({ key: "site:" + key, kind, color: ue ? ue.color || st.color : veh ? veh.color : st.color, dash: x.dash || SITE_DEFAULT_DASH[x.type], label });
     });
   }
-  if (el.cad && typeof cads === "function") cads().filter(r => ls("cad:" + r.id).visible).forEach(r => items.push({ kind: "line", color: r.colorMode === "mono" ? r.color : "#111827", dash: "solid", label: r.name }));
-  String(el.extra || "").split("\n").map(s => s.trim()).filter(Boolean).forEach(s => {
+  if (el.cad && typeof cads === "function") cads().filter(r => ls("cad:" + r.id).visible).forEach(r => items.push({ key: "cad:" + r.id, kind: "line", color: r.colorMode === "mono" ? r.color : "#111827", dash: "solid", label: r.name }));
+  String(el.extra || "").split("\n").map(s => s.trim()).filter(Boolean).forEach((s, i) => {
     const m = s.match(/^(#[0-9a-f]{6})\s+(.*)$/i);
-    items.push(m ? { kind: "box", color: m[1], label: m[2] } : { kind: "text", label: s });
+    items.push(m ? { key: "extra:" + i, kind: "box", color: m[1], label: m[2] } : { key: "extra:" + i, kind: "text", label: s });
   });
   return items;
 }
 function drawLegend(ctx, el, X, Y, W, H, pt) {
-  const fs = pt(el.size || 7), lh = fs * 1.7;
+  const fs = pt(el.size || 7), lh = fs * 1.7 * (Number(el.legSpacing) || 1);
   ctx.fillStyle = "#000"; ctx.textBaseline = "middle"; ctx.textAlign = "left";
   let top = Y;
   if (el.title) { ctx.font = `bold ${fs * 1.15}px Helvetica, Arial`; ctx.fillText(el.title, X, top + fs * 0.7); ctx.fillRect(X, top + fs * 1.45, ctx.measureText(el.title).width, Math.max(0.5, fs * 0.06)); top += lh * 1.2; }
@@ -497,7 +545,7 @@ function drawLegend(ctx, el, X, Y, W, H, pt) {
     else if (it.kind === "note") { ctx.fillStyle = "#fffbe6"; ctx.fillRect(x, y - sh / 2, sw, sh); ctx.strokeRect(x, y - sh / 2, sw, sh); }
     ctx.restore();
     ctx.fillStyle = "#000";
-    ctx.fillText(it.kind === "text" ? it.label : "= " + it.label, it.kind === "text" ? x : x + sw + fs * 0.5, y, colW - sw - fs);
+    ctx.fillText(it.kind === "text" || el.legNoEq ? it.label : "= " + it.label, it.kind === "text" ? x : x + sw + fs * 0.5, y, colW - sw - fs);
   });
 }
 function titleRows(el, tpl) {
@@ -932,7 +980,11 @@ function renderPrintProps(onlyPos) {
   if (el.type === "text") html += `<label>Text <span class="muted">– {plan} {datum} {idag} {skala} {format} {användare} {utskriven}</span></label><textarea data-f="text" rows="4">${escHtml(el.text || "")}</textarea>
       <div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}<div><label>Justering</label><select data-f="align">${["left", "center", "right"].map(a => `<option value="${a}"${el.align === a ? " selected" : ""}>${{ left: "Vänster", center: "Mitten", right: "Höger" }[a]}</option>`).join("")}</select></div>${color("color", "Färg")}${color("fill", "Bakgrund")}</div>
       ${chk("bold", "Fetstil")} <div class="pr-grid4">${color("border", "Ram")}</div>`;
-  if (el.type === "image") html += `<button id="prPickImg" class="block" style="margin-top:8px;">🖼 ${el.path ? "Byt bild…" : "Välj bild…"}</button><div class="hint">PNG, JPG eller SVG – t.ex. företagets logga eller skyltar. Bilden sparas i projektet. Proportionerna behålls (Shift = fritt).</div>`;
+  if (el.type === "image") html += `<button id="prPickImg" class="block" style="margin-top:8px;">🖼 ${el.path ? "Byt bild…" : "Välj bild…"}</button><div class="hint">PNG, JPG eller SVG – t.ex. företagets logga eller skyltar. Bilden sparas i projektet. Proportionerna behålls (Shift = fritt).</div>
+      ${el.path ? `<label style="margin-top:8px;">Beskär (% av bilden)</label><div class="pr-grid4">${num("cropL", "Vänster", "1")}${num("cropR", "Höger", "1")}${num("cropT", "Över", "1")}${num("cropB", "Under", "1")}</div>
+      ${chk("knockout", "Gör vit bakgrund genomskinlig")}
+      ${el.knockout ? `<div class="pr-grid4">${num("knockTol", "Hur nära vitt", "5")}</div><div class="hint">Högre värde tar bort mer av ljusa färger (standard 30).</div>` : ""}
+      ${el.cropL || el.cropR || el.cropT || el.cropB || el.knockout ? `<button type="button" id="prImgReset" style="margin-top:6px;">↺ Original (ingen beskärning)</button>` : ""}` : ""}`;
   if (el.type === "map") {
     const lb = el.label || {}, cfg = el.layers || { follow: true, keys: {} };
     const vw = vpView(el), views = typeof lsViews === "function" ? lsViews() : [];
@@ -958,7 +1010,16 @@ function renderPrintProps(onlyPos) {
   }
   if (el.type === "legend") html += inp("title", "Rubrik") + `<div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}${num("cols", "Kolumner", "1")}</div>
       ${chk("phases", "Statusfärger (faser)")}${chk("site", "Etablering som finns på planen")}${chk("cad", "CAD-ritningar")}
-      <label>Egna rader <span class="muted">(t.ex. "#e11d48 Betongbarriär")</span></label><textarea data-f="extra" rows="3">${escHtml(el.extra || "")}</textarea>`;
+      <label>Egna rader <span class="muted">(t.ex. "#e11d48 Betongbarriär")</span></label><textarea data-f="extra" rows="3">${escHtml(el.extra || "")}</textarea>
+      <div class="pr-grid4">${num("legSpacing", "Radavstånd (×)", "0.1")}</div>${chk("legNoEq", "Utan =-tecken")}
+      <label>Rader <span class="muted">– bock = visa, färg, egen text, ↑↓ ordning</span></label>
+      <div class="pr-leg">${legendItems(el, true).map((it, i, arr) => `<div class="pr-leg-row${it.hidden ? " off" : ""}" data-lk="${escHtml(it.key)}">
+        <input type="checkbox" class="pl-vis"${it.hidden ? "" : " checked"} title="Visa raden" />
+        ${it.kind === "text" ? "<span></span>" : `<input type="color" class="pl-col" value="${escHtml(/^#[0-9a-f]{6}$/i.test(it.color || "") ? it.color.toLowerCase() : "#000000")}" title="Färg" />`}
+        <input type="text" class="pl-txt" value="${escHtml(it.label)}" placeholder="${escHtml(it.origLabel)}" />
+        <button type="button" class="pl-up icon ghost" title="Flytta upp"${i ? "" : " disabled"}>↑</button><button type="button" class="pl-dn icon ghost" title="Flytta ner"${i < arr.length - 1 ? "" : " disabled"}>↓</button>
+      </div>`).join("") || `<div class="hint">Inga rader – bocka i vad förklaringen ska visa ovan.</div>`}</div>
+      ${el.legHide || el.legText || el.legColor || el.legOrder ? `<button type="button" id="prLegReset" style="margin-top:4px;">↺ Återställ raderna</button>` : ""}`;
   if (el.type === "title") html += `<label>Rader <span class="muted">– "ETIKETT: värde", celler med |</span></label><textarea data-f="rows" rows="9" style="font-family:ui-monospace,Consolas,monospace;font-size:11px;">${escHtml(el.rows || "")}</textarea>
       <div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}</div><div class="hint">Platshållare: {plan} {datum} {idag} {skala} {format} {användare} {utskriven}</div>`;
   if (el.type === "qr") html += inp("text", "Länk eller text");
@@ -978,6 +1039,9 @@ function renderPrintProps(onlyPos) {
       pr.dirty = true;
       $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara mall *";
       if (f === "color" && el.type === "north") { renderPrintProps(); }
+      // Beskärning ändrar bildens proportioner: rutan följer med (bredden behålls).
+      if (el.type === "image" && /^crop/.test(f)) { const im = printImage(el.path); if (im) { printImageSource(el, im); el.h = Math.round(el.w / el.ar * 10) / 10; } }
+      if (el.type === "image" && f === "knockout") renderPrintProps();
       drawPrintPage();
     });
   });
@@ -987,6 +1051,18 @@ function renderPrintProps(onlyPos) {
   on("prDown", () => orderSel("bottom"));
   on("prDel", deleteSel);
   on("prPickImg", () => $("prImgInput").click());
+  // Förklaringens rader.
+  box.querySelectorAll(".pr-leg-row").forEach(row => {
+    const key = row.dataset.lk, q = c => row.querySelector(c);
+    const edit = (fn, rerender) => { pushUndo(); fn(); pr.dirty = true; $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara mall *"; if (rerender) renderPrintProps(); drawPrintPage(); };
+    q(".pl-vis").onchange = () => edit(() => { el.legHide = { ...(el.legHide || {}) }; if (q(".pl-vis").checked) delete el.legHide[key]; else el.legHide[key] = true; row.classList.toggle("off", !q(".pl-vis").checked); });
+    const c = q(".pl-col"); if (c) c.onchange = () => edit(() => { el.legColor = { ...(el.legColor || {}), [key]: c.value }; });
+    q(".pl-txt").onchange = () => edit(() => { const v = q(".pl-txt").value.trim(); el.legText = { ...(el.legText || {}) }; if (v && v !== q(".pl-txt").placeholder) el.legText[key] = v; else delete el.legText[key]; });
+    const move = d => edit(() => { const keys = legendItems(el, true).map(it => it.key), i = keys.indexOf(key), j = i + d; if (j < 0 || j >= keys.length) return; [keys[i], keys[j]] = [keys[j], keys[i]]; el.legOrder = keys; }, true);
+    q(".pl-up").onclick = () => move(-1); q(".pl-dn").onclick = () => move(1);
+  });
+  on("prLegReset", () => { pushUndo(); delete el.legHide; delete el.legText; delete el.legColor; delete el.legOrder; renderPrintProps(); drawPrintPage(); });
+  on("prImgReset", () => { pushUndo(); ["cropL", "cropR", "cropT", "cropB"].forEach(k => delete el[k]); el.knockout = false; const im = printImage(el.path); if (im) { printImageSource(el, im); el.h = Math.round(el.w / el.ar * 10) / 10; } renderPrintProps(); drawPrintPage(); });
   on("prPan", () => { pr.panMode = !pr.panMode; renderPrintProps(); drawPrintPage(); });
   on("prFromView", () => { pushUndo(); el.center = viewCenterModel(); el.scale = fitScale(el.w, el.h, pr.tpl.format); renderPrintPanel(); drawPrintPage(); });
   box.querySelectorAll("[data-north]").forEach(b => { b.onclick = () => { pushUndo(); el.style = b.dataset.north; renderPrintProps(); drawPrintPage(); }; });
@@ -1129,10 +1205,10 @@ async function exportPrintPdf() {
       } else if (el.type === "image") {
         const im = el.path ? printImage(el.path) || await printImgs.get(el.path) : null;
         if (!im) continue;
-        const ar = im.naturalWidth / im.naturalHeight || 1;
+        const S = printImageSource(el, im), ar = S.sw / S.sh || 1;
         let iw = w, ih = w / ar; if (ih > h) { ih = h; iw = h * ar; }
         const c = newCanvas(Math.min(4000, Math.round(iw / 25.4 * 300)), Math.min(4000, Math.round(ih / 25.4 * 300)));
-        c.getContext("2d").drawImage(im, 0, 0, c.width, c.height);
+        c.getContext("2d").drawImage(S.src, S.sx, S.sy, S.sw, S.sh, 0, 0, c.width, c.height);
         doc.addImage(c.toDataURL("image/png"), "PNG", x + (w - iw) / 2, y + (h - ih) / 2, iw, ih, undefined, "FAST");
       } else if (el.type === "text") {
         if (el.fill) { doc.setFillColor(...hexRgb(el.fill)); doc.rect(x, y, w, h, "F"); }

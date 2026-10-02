@@ -47,6 +47,54 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   await page.locator('.layer-row[data-layer="cadl:c1:WBS - 3D-TEXT"] .cl-reset').click(); await page.waitForTimeout(300);
   if (await page.evaluate(() => cadColorOverride('WBS - 3D-TEXT'))) fail('↺ ska återställa originalfärgen');
   console.log('OK: färg på DXF-lager i lagerlistan – gäller alla ritningar, sparas och kan återställas');
+  // Bild i utskriftslayouten: beskär och gör vit bakgrund genomskinlig.
+  const img = await page.evaluate(async () => {
+    const src = document.createElement('canvas'); src.width = 200; src.height = 100;
+    const g = src.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 200, 100); g.fillStyle = '#0b3d91'; g.fillRect(60, 30, 80, 40);
+    const im = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = src.toDataURL('image/png'); });
+    const el = { path: 'x.png' };
+    const plain = printImageSource(el, im), ar0 = el.ar;
+    el.knockout = true; const S = printImageSource(el, im);
+    const px = (c, x, y) => c.getContext('2d').getImageData(x, y, 1, 1).data[3];
+    const corner = px(S.src, 2, 2), logo = px(S.src, 100, 50);
+    el.cropL = 25; el.cropR = 25; const C = printImageSource(el, im);
+    return { same: plain.src === im, ar0, corner, logo, cropAr: el.ar, cropW: C.src.width };
+  });
+  if (!img.same || img.ar0 !== 2) fail('Utan val ska bilden vara orörd: ' + JSON.stringify(img));
+  if (img.corner !== 0 || img.logo !== 255) fail('Vit bakgrund ska bli genomskinlig, loggan ska vara kvar: ' + JSON.stringify(img));
+  if (img.cropAr !== 1 || img.cropW !== 100) fail('Beskärning 25 % vänster och höger ska ge en kvadrat: ' + JSON.stringify(img));
+  console.log('OK: bild i utskriften – vit bakgrund genomskinlig och beskärning');
+  const leg = await page.evaluate(() => {
+    const el = { phases: true, extra: '#e11d48 Betongbarriär' };
+    const before = legendItems(el).map(i => i.label);
+    el.legHide = { 'phase:ingen': true }; el.legText = { 'phase:pagaende': 'Pågår' }; el.legColor = { 'phase:klar': '#000000' };
+    el.legOrder = ['extra:0', 'phase:klar'];
+    const after = legendItems(el), all = legendItems(el, true);
+    return { before: before.length, labels: after.map(i => i.label), klar: after.find(i => i.key === 'phase:klar').color, all: all.length };
+  });
+  if (leg.before !== 8 || leg.all !== 8 || leg.labels.length !== 7) fail('Dolda rader ska bara försvinna ur förklaringen: ' + JSON.stringify(leg));
+  if (leg.labels[0] !== 'Betongbarriär' || leg.labels[1] !== 'Klar' || !leg.labels.includes('Pågår') || leg.labels.includes('Ingen koppling') || leg.klar !== '#000000') fail('Egen text, färg och ordning ska gälla: ' + JSON.stringify(leg));
+  console.log('OK: förklaringens rader kan döljas, döpas om, färgas och flyttas');
+  // Panelen i utskriftslayouten: förklaringens rader och bildens val.
+  const ui = await page.evaluate(async () => {
+    viewport = { transform: [1, 0, 0, 1, 0, 0], width: 1000, height: 800, convertToPdfPoint: (x, y) => [x, y], convertToViewportPoint: (x, y) => [x, y] };
+    plan = { id: 'pl', name: 'P', zones: [], photos: [], calib: { model: [[0, 0, 0], [100, 0, 0]], pdf: [[0, 0], [1000, 0]] } };
+    await openPrint();
+    const lg = pr.tpl.elements.find(e => e.type === 'legend');
+    setSel([lg.id]); renderPrintProps();
+    const rows = document.querySelectorAll('#prProps .pr-leg-row').length;
+    const cb = document.querySelector('#prProps .pr-leg-row .pl-vis'); cb.checked = false; cb.dispatchEvent(new Event('change'));
+    const hidden = Object.keys(lg.legHide || {}).length;
+    const im = { id: 'im', type: 'image', x: 10, y: 10, w: 40, h: 20, path: 'x.png' }; pr.tpl.elements.push(im);
+    printImgs.set('x.png', await new Promise(r => { const c = document.createElement('canvas'); c.width = 200; c.height = 100; const i = new Image(); i.onload = () => r(i); i.src = c.toDataURL(); }));
+    setSel(['im']); renderPrintProps();
+    const crop = document.querySelector('#prProps [data-f="cropL"]'); crop.value = 25; crop.dispatchEvent(new Event('input'));
+    const ko = !!document.querySelector('#prProps [data-f="knockout"]');
+    return { rows, hidden, ko, h: im.h, ar: im.ar };
+  });
+  if (ui.rows < 7 || ui.hidden !== 1) fail('Panelen ska lista förklaringens rader och kunna dölja en: ' + JSON.stringify(ui));
+  if (!ui.ko || Math.abs(ui.ar - 1.5) > 0.01 || Math.abs(ui.h - 26.7) > 0.1) fail('Bildens val (beskär, genomskinlig) ska finnas och rutan följa beskärningen: ' + JSON.stringify(ui));
+  console.log('OK: utskriftspanelen visar förklaringens rader och bildens beskärning/genomskinlighet');
   if (errors.length) fail('Fel i sidan: ' + errors.join(' | '));
   await browser.close(); server.close();
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });
