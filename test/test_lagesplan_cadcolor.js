@@ -122,6 +122,20 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (!(Math.abs(pl.zoomed - 1.25) < 1e-6) || pl.lbl !== '125 %' || !pl.back) fail('Zoom i layouten: ' + JSON.stringify(pl));
   if (!pl.txt.some(t => /^SKALA 1:\d+ \(A1\)$/.test(t))) fail('Skalstocken ska visa bladformatet: ' + JSON.stringify(pl.txt));
   console.log('OK: lås ritningen i utskriftslayouten, zoom i layouten, skalstocken visar (A1)');
+  // Text i en låg ruta (t.ex. rubriken TIDPLAN) ska komma med i PDF:en, som i layouten.
+  const pdfTexts = await page.evaluate(async () => {
+    const texts = [];
+    window.jspdf = { jsPDF: function () { return new Proxy({}, { get: (t, k) => k === 'text' ? (s => texts.push(String(s))) : k === 'splitTextToSize' ? (s => String(s).split('\n')) : (() => {}) }); } };
+    const k0 = pageDims().k;
+    pr.tpl.elements = [{ id: 't1', type: 'text', x: 10, y: 10, w: 40, h: 1.2 + 10 * PT_MM, size: 10, bold: true, align: 'center', text: 'TIDPLAN\nFÖR LÅG' }];
+    pr.tpl.frame = { on: false };
+    window.alert = m => texts.push('ALERT ' + m);
+    await exportPrintPdf();
+    return { texts, k0 };
+  });
+  if (!pdfTexts.texts.includes('TIDPLAN')) fail('Rubriken i en låg textruta ska skrivas i PDF:en: ' + JSON.stringify(pdfTexts));
+  if (pdfTexts.texts.includes('FÖR LÅG')) fail('En rad som inte ryms i rutan ska inte skrivas: ' + JSON.stringify(pdfTexts));
+  console.log('OK: text i låga rutor kommer med i PDF:en');
   if (errors.length) fail('Fel i sidan: ' + errors.join(' | '));
   await browser.close(); server.close();
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });

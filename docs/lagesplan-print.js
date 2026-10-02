@@ -1253,7 +1253,10 @@ async function exportPrintPdf() {
         const lines = doc.splitTextToSize(fillText(el.text, tpl), w - 2 * pad);
         const tx = el.align === "center" ? x + w / 2 : el.align === "right" ? x + w - pad : x + pad;
         const lh = size * PT_MM * 1.2;
-        lines.forEach((ln, i) => { const ly = y + pad + i * lh; if (ly + lh <= y + h + 0.5) doc.text(ln, tx, ly, { baseline: "top", align: el.align || "left" }); });
+        // Som i layouten (som klipper vid rutan): en rad skrivs så länge bokstäverna
+        // ryms, radavståndet under får sticka ut. Första raden skrivs alltid.
+        const glyph = size * PT_MM * 0.8;
+        lines.forEach((ln, i) => { const ly = y + pad + i * lh; if (!i || ly + glyph <= y + h + 0.5) doc.text(ln, tx, ly, { baseline: "top", align: el.align || "left" }); });
         doc.setTextColor(0);
       } else if (el.type === "rect") {
         const st = el.stroke ? "D" : "", fl = el.fill ? "F" : "";
