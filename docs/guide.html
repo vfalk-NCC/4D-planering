@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Guide – 4D-planering</title>
+<style>
+  :root { --ncc: #1f3b73; --accent: #0b5fff; --text: #1f2937; --muted: #6b7280; --border: #e5e7eb; --bg: #f6f7f9; --tip: #ecfdf5; --tipb: #a7f3d0; --warn: #fff7ed; --warnb: #fed7aa; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 "Segoe UI", system-ui, -apple-system, Arial, sans-serif; color: var(--text); background: var(--bg); }
+  header { background: var(--ncc); color: #fff; padding: 18px 20px 0; }
+  header .top { max-width: 860px; margin: 0 auto; display: flex; align-items: center; gap: 12px; }
+  .mark { font-weight: 800; letter-spacing: .02em; background: #fff; color: var(--ncc); border-radius: 4px; padding: 2px 7px; font-size: 13px; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 2px 0 0; opacity: .85; font-size: 13px; }
+  nav { max-width: 860px; margin: 14px auto 0; display: flex; gap: 4px; overflow-x: auto; }
+  nav a { color: #dbe4f5; text-decoration: none; padding: 9px 14px; border-radius: 8px 8px 0 0; white-space: nowrap; font-weight: 600; font-size: 14px; }
+  nav a:hover { color: #fff; background: rgba(255,255,255,.08); }
+  nav a.on { background: var(--bg); color: var(--ncc); }
+  main { max-width: 860px; margin: 0 auto; padding: 22px 20px 60px; }
+  section { display: none; }
+  section.on { display: block; }
+  h2 { margin: 0 0 4px; font-size: 22px; color: var(--ncc); }
+  .lead { margin: 0 0 18px; color: var(--muted); }
+  h3 { margin: 22px 0 8px; font-size: 16px; }
+  ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 0; }
+  ol.steps > li { counter-increment: s; position: relative; padding: 10px 14px 10px 50px; margin-bottom: 8px; background: #fff; border: 1px solid var(--border); border-radius: 10px; }
+  ol.steps > li::before { content: counter(s); position: absolute; left: 14px; top: 10px; width: 24px; height: 24px; border-radius: 50%; background: var(--ncc); color: #fff; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+  ol.steps > li b:first-child { display: block; }
+  ul { margin: 6px 0; padding-left: 20px; }
+  .tip, .warn { border-radius: 10px; padding: 10px 14px; margin: 14px 0; border: 1px solid; }
+  .tip { background: var(--tip); border-color: var(--tipb); }
+  .warn { background: var(--warn); border-color: var(--warnb); }
+  .tip::before { content: "💡 Tips "; font-weight: 700; }
+  .warn::before { content: "⚠ Bra att veta "; font-weight: 700; }
+  kbd, .btn { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; font: 600 12.5px/1.3 "Segoe UI", system-ui, sans-serif; padding: 1px 7px; border: 1px solid #cbd5e1; border-bottom-width: 2px; border-radius: 5px; background: #fff; color: #111827; white-space: nowrap; }
+  .btn { border-color: #c7d2fe; background: #eef2ff; color: #1e3a8a; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; font-size: 14px; }
+  td, th { padding: 7px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+  th { background: #f8fafc; font-weight: 600; width: 34%; }
+  tr:last-child td, tr:last-child th { border-bottom: none; }
+  .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px #9ca3af; vertical-align: -1px; margin-right: 4px; }
+  .pager { display: flex; justify-content: space-between; margin-top: 26px; gap: 10px; }
+  .pager a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  .home-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+  .card { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 14px; text-decoration: none; color: inherit; display: block; }
+  .card:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(11,95,255,.08); }
+  .card b { display: block; font-size: 15px; color: var(--ncc); margin-bottom: 2px; }
+  .card span { color: var(--muted); font-size: 13.5px; }
+  @media (max-width: 560px) { body { font-size: 14px; } th { width: 42%; } ol.steps > li { padding-left: 44px; } }
+  @media print {
+    body { background: #fff; } header nav, .pager { display: none; } header { background: none; color: var(--text); padding: 0; }
+    .mark { border: 1px solid var(--ncc); }
+    section { display: block !important; page-break-after: always; } section#s-start { display: none !important; }
+    main { padding: 10px 0; } ol.steps > li { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="top"><span class="mark">NCC</span><div><h1>4D-planering – guide</h1><p>Kort och praktiskt: en sida per arbetsflöde.</p></div></div>
+  <nav id="nav">
+    <a href="#start">Start</a>
+    <a href="#importera">1. Importera</a>
+    <a href="#koppla">2. Koppla 3D</a>
+    <a href="#lagesplan">3. Lägesplan</a>
+    <a href="#dag">4. Dagsplanering</a>
+    <a href="#utskrift">5. Utskrift</a>
+  </nav>
+</header>
+<main>
+
+<!-- ======================= START ======================= -->
+<section id="s-start">
+  <h2>Kom igång</h2>
+  <p class="lead">4D-planering är en tilläggsapp i Trimble Connect. Den hämtar 4-veckorsplaneringen från Excel, kopplar aktiviteterna till 3D-modellen och visar läget på en lägesplan.</p>
+  <div class="home-grid">
+    <a class="card" href="#importera"><b>1. Importera planeringen</b><span>Läs in 4-veckorsplaneringen från Excel – eller skicka den direkt från Excel.</span></a>
+    <a class="card" href="#koppla"><b>2. Koppla till 3D</b><span>Koppla aktiviteterna till objekt i modellen och följ framdriften i färg.</span></a>
+    <a class="card" href="#lagesplan"><b>3. Lägesplan</b><span>Ritning med zoner, 3D-objekt, etablering och DXF – status per zon.</span></a>
+    <a class="card" href="#dag"><b>4. Dagsplanering</b><span>Lag, leveranser och lyft per dag. Krockar, väder och dagblad.</span></a>
+    <a class="card" href="#utskrift"><b>5. Utskrift</b><span>A1/A3-ritningsblad med ritningshuvud, förklaring, QR och symboler.</span></a>
+  </div>
+  <h3>Första gången</h3>
+  <ol class="steps">
+    <li><b>Öppna 4D-planering i Trimble Connect</b>Projektet → Tillägg → 4D-planering.</li>
+    <li><b>Ange din GitHub-token</b>Klicka <span class="btn">⚙</span> (Inställningar) → <i>Lagring (GitHub)</i> → klistra in token → <span class="btn">Spara</span>. Token får du av den som administrerar 4D-data.</li>
+    <li><b>Klart</b>Flikarna <i>Planera</i>, <i>Tidslinje</i> och <i>Import &amp; verktyg</i> finns överst. Lägesplanen öppnar du med kartikonen i sidhuvudet.</li>
+  </ol>
+  <h3>Status och färger</h3>
+  <table>
+    <tr><th><span class="dot" style="background:#94a3b8"></span>Planerad men ej startad</th><td>Startdatum har inte passerat och ingen framdrift.</td></tr>
+    <tr><th><span class="dot" style="background:#f5a623"></span>Pågående</th><td>Minst 1 % framdrift och slutdatum har inte passerat.</td></tr>
+    <tr><th><span class="dot" style="background:#e5484d"></span>Försenad</th><td>Startdatum passerat utan framdrift – eller slutdatum passerat utan att vara klar.</td></tr>
+    <tr><th><span class="dot" style="background:#3fb950"></span>Klar</th><td>100 % eller klarmarkerad.</td></tr>
+    <tr><th><span class="dot" style="background:#a1a1aa"></span>Pausad</th><td>Väljs manuellt.</td></tr>
+  </table>
+  <div class="tip">Ångra finns nästan överallt: <kbd>Ctrl</kbd>+<kbd>Z</kbd> eller <span class="btn">↶</span>. Före varje import tas en säkerhetskopia automatiskt (⚙ → Säkerhetskopior).</div>
+</section>
+
+<!-- ======================= 1. IMPORTERA ======================= -->
+<section id="s-importera">
+  <h2>1. Importera planeringen</h2>
+  <p class="lead">Läs in 4-veckorsplaneringen. Kan köras om varje gång Excel-filen ändras – 3D-kopplingar, kommentarer och egna aktiviteter behålls.</p>
+  <h3>Från fil</h3>
+  <ol class="steps">
+    <li><b>Gå till Import &amp; verktyg</b>Blocket <i>Excel-import/export</i>.</li>
+    <li><b>Välj Excel-filen</b>Klicka på filväljaren och välj 4-veckorsplaneringen (.xlsm/.xlsx).</li>
+    <li><b>Läs in och förhandsgranska</b>Du ser hur många aktiviteter som är nya, uppdateras, byter namn – och vad som inte längre finns i Excel.</li>
+    <li><b>Kontrollera borttagna</b>Aktiviteter som tagits bort i Excel visas i en egen lista. Bocka i de som ska tas bort (kopplade objekt varnas särskilt).</li>
+    <li><b>Kommentarer från Excel</b>Trådade kommentarer och anteckningar läggs på rätt aktivitet. Lösta trådar hoppas över. Kryssa ur om du inte vill ha dem.</li>
+    <li><b>Importera skarpt</b>Klart. En säkerhetskopia togs innan.</li>
+  </ol>
+  <h3>Direkt från Excel (makro – test)</h3>
+  <ol class="steps">
+    <li><b>Installera makrot en gång</b>Import &amp; verktyg → <i>Koppla Excel direkt</i> → ladda ner <i>Koppling4D.bas</i>. I Excel: <kbd>Alt</kbd>+<kbd>F11</kbd> → Arkiv → Importera fil. Kör sedan <kbd>Alt</kbd>+<kbd>F8</kbd> → <i>Installera4DKnappar</i> och spara som .xlsm.</li>
+    <li><b>Skicka till 4D</b>Knappen i Excel skickar planeringen. I 4D-planering visas <i>Ny planering från Excel</i> → <span class="btn">Granska och importera</span>.</li>
+    <li><b>Hämta framdrift från 4D</b>Knappen i Excel skriver in framdriften från 4D i kolumnen Framdrift. Formler skrivs aldrig över, och du väljer om alla rader eller bara de där 4D kommit längre ska uppdateras.</li>
+  </ol>
+  <div class="warn">Första gången frågar Excel efter projekt-id (kopiera det i 4D-planering) och GitHub-token. Token sparas bara på din dator.</div>
+  <h3>Hitta i listan</h3>
+  <ul>
+    <li><b>Källfilter</b>: visa bara aktiviteter skapade i Trimble Connect, importerade från Excel – eller de som inte längre finns i senaste Excel-filen.</li>
+    <li>Gruppera, sortera och filtrera på område, typ, entreprenör och status.</li>
+  </ul>
+  <div class="pager"><a href="#start">← Start</a><a href="#koppla">2. Koppla 3D →</a></div>
+</section>
+
+<!-- ======================= 2. KOPPLA 3D ======================= -->
+<section id="s-koppla">
+  <h2>2. Koppla till 3D</h2>
+  <p class="lead">När en aktivitet är kopplad till objekt i modellen färgas de efter status och kan spelas upp över tid.</p>
+  <ol class="steps">
+    <li><b>Markera objekten i 3D</b>Klicka i modellen (<kbd>Ctrl</kbd>-klick för flera).</li>
+    <li><b>Välj aktiviteten</b>På fliken <i>Planera</i>: klicka <span class="btn">🔗</span> på aktivitetens rad i <i>Planerade objekt</i>.</li>
+    <li><b>Spara</b>Objekten kopplas. Raden får inte längre taggen <i>◇ Ej kopplad</i>.</li>
+    <li><b>Följ framdriften</b>Fliken <i>Tidslinje</i>: dra i reglaget eller tryck ▶ för att spela upp. Modellen färgas efter status på valt datum.</li>
+  </ol>
+  <h3>Bra att kunna</h3>
+  <ul>
+    <li><b>Ny aktivitet</b>: <span class="btn">＋ Ny aktivitet</span> skapar en egen aktivitet utan Excel – koppla nu eller senare.</li>
+    <li><b>Markera i 3D</b>: klick på en rad markerar och zoomar till objekten.</li>
+    <li><b>Framdrift och status</b>: klicka på statusmärket på raden, eller redigera aktiviteten (<span class="btn">✏</span>). Faser (delaktiviteter) har egen framdrift.</li>
+    <li><b>Kommentarer</b>: <span class="btn">⋯</span> → <i>Kommentarer</i> på raden (eller <span class="btn">💬</span> när det redan finns kommentarer) – med svar, som i Excel.</li>
+    <li><b>Redigera flera</b>: markera rader med <kbd>Ctrl</kbd>/<kbd>Shift</kbd> → <i>Redigera markerade</i>.</li>
+    <li><b>Namn i 3D</b>: visar namn och datum som etiketter i modellen.</li>
+  </ul>
+  <div class="tip">Har du objekt som saknas i modellen (t.ex. äldre modellversion) visas <i>Ej i modellen</i> på raden. Kopplingen finns kvar och fungerar igen när objektet finns.</div>
+  <div class="pager"><a href="#importera">← 1. Importera</a><a href="#lagesplan">3. Lägesplan →</a></div>
+</section>
+
+<!-- ======================= 3. LÄGESPLAN ======================= -->
+<section id="s-lagesplan">
+  <h2>3. Lägesplan</h2>
+  <p class="lead">En ritning (PDF) med zoner, 3D-objekt, etablering och DXF-lager, färgad efter framdriften på valt datum.</p>
+  <h3>Sätt upp en plan</h3>
+  <ol class="steps">
+    <li><b>Öppna lägesplanen</b>Kartikonen i 4D-planeringens sidhuvud (öppnas i eget fönster – kopplingen till 3D följer med).</li>
+    <li><b>＋ Ny plan</b>Välj PDF-ritningen.</li>
+    <li><b>Kalibrera mot 3D</b>Fliken <i>Zoner &amp; 3D</i> → <span class="btn">📐 Kalibrera mot 3D</span>: klicka två punkter på ritningen och samma två i modellen. Då hamnar 3D-objekten rätt på planen.</li>
+    <li><b>Zoner</b>Rita med <span class="btn">▭ Rektangel</span> eller <span class="btn">⬠ Polygon</span> (<kbd>Shift</kbd> = raka linjer). Zoner fäster mot varandra och går aldrig i varandra. Dra i hörn eller sidor för att justera.</li>
+    <li><b>Lager</b>Fliken <i>Planering</i>: lagerhanteraren med ortofoton, DXF, zoner, 3D-objekt, etablering och noteringar. Tänd/släck, ändra genomskinlighet och färg, lägg i mappar.</li>
+  </ol>
+  <h3>Vardag</h3>
+  <ul>
+    <li><b>Datum</b>: välj datum överst – zoner och prickar färgas efter läget den dagen. Fliken <i>Tid &amp; filter</i> spelar upp över tid.</li>
+    <li><b>3D-objekt</b>: klick på en prick markerar och zoomar i 3D. Flytta prickar som ligger tätt: lås upp och dra (återställ finns).</li>
+    <li><b>Etablering</b>: bodar, upplag, avspärrningar, vägar, noteringar och foton – med datum de gäller.</li>
+    <li><b>Norr uppåt</b>: knappen under <i>Planens riktning</i> vrider hela planen.</li>
+    <li><b>WBS-nivåer</b> (avancerat): Zoner → Fler zonfunktioner. Zoner med samma överzon ritas ihop till en överzon med samlad status.</li>
+  </ul>
+  <div class="tip">På iPad: <span class="btn">📱</span> fältläge med stora knappar, rapportera framdrift och placera lag direkt på plats.</div>
+  <div class="pager"><a href="#koppla">← 2. Koppla 3D</a><a href="#dag">4. Dagsplanering →</a></div>
+</section>
+
+<!-- ======================= 4. DAGSPLANERING ======================= -->
+<section id="s-dag">
+  <h2>4. Dagsplanering</h2>
+  <p class="lead">Vem jobbar var i dag? Lag, leveranser och lyft på lägesplanen – med varningar för krockar.</p>
+  <ol class="steps">
+    <li><b>Öppna fliken 👷 Dag</b>I lägesplanen. Välj dag (◀ ▶ eller <i>Idag</i>).</li>
+    <li><b>Underentreprenörer en gång</b><i>🏢 Underentreprenörer</i>: namn, förkortning, färg och kontakt. Sparas i projektet.</li>
+    <li><b>Placera lag</b>Klicka på UE:n och sedan på planen. Fyll i personer och arbetsuppgift – och koppla gärna aktiviteten i 4D.</li>
+    <li><b>Leveranser och lyft</b>Välj fordon eller 🪝 Lyft och klicka på planen. Kranens räckvidd och kapacitet kontrolleras.</li>
+    <li><b>Se varningar</b>Krockar visas överst: samma zon, avspärrning, kranens räckvidd, lag nära lyft och dåligt väder.</li>
+    <li><b>Rapportera framdrift</b>I lagets ruta: dra reglaget → <span class="btn">Rapportera</span>, eller <span class="btn">✓ Klar</span>. Sparas direkt i 4D-planeringen.</li>
+  </ol>
+  <h3>Spara tid</h3>
+  <ul>
+    <li><span class="btn">⧉ Kopiera → nästa dag</span> tar med lag, leveranser och lyft (ångras i ett steg).</li>
+    <li><b>💡 Förslag</b> från 4D: aktiviteter som startar eller pågår – placera med ett klick.</li>
+    <li><b>📅 Vecka och bemanning</b>: hela veckan med personer per UE, och Excel-export.</li>
+    <li><b>Väder</b> från SMHI (Koskullskulle, Gällivare – kan ändras i väderinställningarna): dra in dag- eller veckoprognos på planen.</li>
+  </ul>
+  <div class="tip"><span class="btn">🖨 Dagblad (A3)</span> skriver ut dagens karta med lag, leveranser, lyft och risker – för alla eller en UE.</div>
+  <div class="pager"><a href="#lagesplan">← 3. Lägesplan</a><a href="#utskrift">5. Utskrift →</a></div>
+</section>
+
+<!-- ======================= 5. UTSKRIFT ======================= -->
+<section id="s-utskrift">
+  <h2>5. Utskrift</h2>
+  <p class="lead">Ritningsblad i A1 eller A3 med din egen mall. Skalan stämmer när du skriver ut i 100 %.</p>
+  <ol class="steps">
+    <li><b>Öppna utskriftslayouten</b>Lägesplanen → fliken <i>Export</i> → <span class="btn">🖨 Utskriftslayout (A1/A3)…</span></li>
+    <li><b>Välj format och mall</b>A1 eller A3. Spara egna mallar med <span class="btn">💾 Spara mall</span>.</li>
+    <li><b>Ritningen</b>Markera ritningsytan: välj skala, <span class="btn">✋ Panorera</span> eller <span class="btn">⤢ Skärmens utsnitt</span>, och vilka lager som ska synas. Lås den med 🔒 så den inte flyttas av misstag.</li>
+    <li><b>Lägg till element</b>Text, bild, förklaring, ritningshuvud, skalstock, norrpil, QR, ruta och linje. Dra, ändra storlek, kanterna snäpper.</li>
+    <li><b>Fyll i ritningshuvudet</b>Markera det → skriv i fälten i sidomenyn, välj logga (<i>Gör loggan vit</i> för mörk fot).</li>
+    <li><b>📄 Skapa PDF</b><i>Ritningen som vektor</i> ger skarpa linjer (större fil).</li>
+  </ol>
+  <h3>Bra att kunna</h3>
+  <ul>
+    <li><b>Förklaringen</b>: dölj, döp om, färga och flytta rader. Faserna visas som samma prickar som på kartan.</li>
+    <li><b>QR-kod i ram</b>: bocka i <i>Ram med egen text</i> för ett färdigt kort med rubrik och mobilikon.</li>
+    <li><b>📚 Bibliotek</b>: ladda upp AED, WC, stoppskyltar m.m. en gång – lägg in med ett klick i alla projekt.</li>
+    <li><b>Bilder</b>: beskär och gör vit bakgrund genomskinlig.</li>
+    <li><b>Zoom</b> i layouten med zoomknapparna eller scrollhjulet, panorera med mellanknappen eller <kbd>Space</kbd>+dra.</li>
+    <li><b>PDF-lager</b> (avancerat): lägg zoner, DXF och element i lager som tänds/släcks i Acrobat, Bluebeam m.fl.</li>
+  </ul>
+  <div class="warn">Skriv ut i <b>verklig storlek (100 %)</b> – inte "anpassa till sida" – annars stämmer inte skalan. Skalstocken visar bladformatet, t.ex. <i>SKALA 1:500 (A1)</i>.</div>
+  <div class="pager"><a href="#dag">← 4. Dagsplanering</a><a href="#start">Start ↑</a></div>
+</section>
+
+</main>
+<script>
+  const ids = ["start", "importera", "koppla", "lagesplan", "dag", "utskrift"];
+  function show() {
+    const id = ids.includes(location.hash.slice(1)) ? location.hash.slice(1) : "start";
+    ids.forEach(s => document.getElementById("s-" + s).classList.toggle("on", s === id));
+    document.querySelectorAll("#nav a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + id));
+    window.scrollTo(0, 0);
+    const on = document.querySelector("#nav a.on"), nav = document.getElementById("nav");
+    if (on) nav.scrollLeft = on.offsetLeft - (nav.clientWidth - on.offsetWidth) / 2;
+  }
+  window.addEventListener("hashchange", show);
+  show();
+</script>
+</body>
+</html>
