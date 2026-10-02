@@ -638,8 +638,11 @@ function cadRowsHtml(r, opts) {
   const open = layerState["cadopen:" + r.id] === true;
   const parent = layerRow(key, `<button class="cad-toggle" title="Visa CAD-lagren">${open ? "▾" : "▸"}</button><span class="cad-name" title="Dubbelklicka för att byta namn">📐 ${escHtml(r.name)}</span> <small>${r.layers.length} lager</small>`, { del: true, ...opts });
   const kids = r.layers.map(l => {
-    const sw = `<span class="cad-sw" style="background:${escHtml(cadLayerColor(r, l.name, l.color))}"></span>`;
-    return layerRow(`cadl:${r.id}:${l.name}`, `${sw}${escHtml(l.name)} <small>${l.n}</small>`, { noOpacity: true, sub: true, inFolder: opts.inFolder, hidden: opts.hidden || !open, cadSub: true });
+    // Färgrutan är en färgväljare (Victors önskemål 2026-10-02): färgen gäller lagret i alla DXF-ritningar.
+    const col = cadLayerColor(r, l.name, l.color), ov = cadColorOverride(l.name);
+    const sw = `<label class="cad-sw ca-sw${ov ? " own" : ""}" style="background:${escHtml(col)}" title="Klicka för att byta färg på lagret (gäller alla DXF-ritningar med lagret)"><input type="color" class="cl-color" data-cname="${escHtml(l.name)}" value="${escHtml(/^#[0-9a-f]{6}$/i.test(col) ? col.toLowerCase() : "#111827")}" /></label>`;
+    const reset = ov ? `<button type="button" class="ca-reset cl-reset" data-cname="${escHtml(l.name)}" title="Återställ originalfärgen från DXF:en">↺</button>` : "";
+    return layerRow(`cadl:${r.id}:${l.name}`, `${sw}${escHtml(l.name)} <small>${l.n}</small>`, { side: reset, noOpacity: true, sub: true, inFolder: opts.inFolder, hidden: opts.hidden || !open, cadSub: true });
   });
   return parent + kids.join("");
 }
@@ -654,6 +657,14 @@ function bindCadRows(el) {
     };
     row.querySelector(".lr-del").onclick = () => deleteCad(r);
   });
+  el.querySelectorAll(".cl-color").forEach(pick => {
+    const sw = pick.closest(".ca-sw"), name = pick.dataset.cname;
+    sw.addEventListener("click", e => e.stopPropagation());
+    sw.addEventListener("mousedown", e => e.stopPropagation());
+    pick.oninput = () => { cadColorPreview = { k: cadColorKey(name), c: pick.value }; sw.style.background = pick.value; renderCad(); };
+    pick.onchange = () => setCadColor(name, pick.value);
+  });
+  el.querySelectorAll(".cl-reset").forEach(b => b.onclick = e => { e.stopPropagation(); setCadColor(b.dataset.cname, null); });
 }
 /* "Alla DXF-lager" (Victors önskemål 2026-10-01): lager med samma namn i
    flera DXF-filer slås ihop till en rad, så man kan tända/släcka t.ex. "TEXT"

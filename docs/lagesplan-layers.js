@@ -1722,9 +1722,9 @@ function layerRow(key, label, opts = {}) {
   const st = ls(key, opts);
   return `<div class="layer-row${layerSel.has(key) ? " sel" : ""}${opts.sub ? " sub" : ""}${opts.cadSub ? " cad-sub" : ""}${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}" data-layer="${escHtml(key)}">
       <input type="checkbox" class="lr-vis"${st.visible ? " checked" : ""} title="Visa/dölj" />
-      <span class="ln" title="${escHtml(label)}">${label}</span>
+      <span class="ln" title="${escHtml(String(label).replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ").trim())}">${label}</span>
       ${opts.noOpacity ? "<span></span>" : `<input type="range" class="lr-op" min="0" max="100" value="${st.opacity}" title="Genomskinlighet ${st.opacity} %" />`}
-      ${opts.del ? `<button class="lr-del" title="Ta bort">🗑️</button>` : "<span></span>"}
+      ${opts.del ? `<button class="lr-del" title="Ta bort">🗑️</button>` : opts.side || "<span></span>"}
       ${opts.extra || ""}
     </div>`;
 }
