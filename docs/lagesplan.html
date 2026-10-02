@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261002114823"></script>
+<script src="github-storage.js?v=20261002120340"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -479,6 +479,9 @@
   .zs-l { width: 58px; flex: none; color: var(--muted); } .zs-v { width: 42px; text-align: right; flex: none; }
   .zs-checks .check { margin: 0; }
   .zone-item.is-hidden { opacity: .55; }
+  .wbs-row { display: flex; gap: 6px; align-items: center; margin: 2px 0 4px 22px; } .wbs-row select { flex: 1; height: 26px; }
+  .wbs-list { border-bottom: 2px solid var(--border); }
+  .zone-item.wbs-item { background: var(--panel-2); } .zone-item.wbs-item .code { font-weight: 700; }
   .zone-item .z3d { height: 24px; min-width: 28px; padding: 0 5px; margin-left: 4px; font-size: 13px; }
   .zl-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; }
   .zl-chips button { height: 24px; padding: 0 7px; font-size: 11.5px; }
@@ -799,6 +802,8 @@
             <label class="check" title="Zonrutan listar aktiviteterna som hamnar i zonen – och uppdateras medan du ändrar kopplingen, innan du sparar"><input type="checkbox" id="zoActs" /> Visa vilka aktiviteter som kopplas</label>
             <label class="check" title="Ytan i m² i zonlistan och zonrutan, och som val i etiketten (kräver kalibrering)"><input type="checkbox" id="zoArea" /> Visa ytan i m²</label>
             <label class="check" title="Ctrl-klick och Shift-klick i zonlistan markerar flera zoner, så att du kan ändra utseendet på alla på en gång"><input type="checkbox" id="zoMulti" /> Markera flera zoner i listan</label>
+            <label class="check" title="Två nivåer: varje zon kan ligga i en överzon (t.ex. 742 Sikthall). Överzonen räknas fram automatiskt ur sina zoner – yta, status och framdrift"><input type="checkbox" id="zoWbs" /> WBS-nivåer (överzoner)</label>
+            <div class="wbs-row hidden" id="zoWbsRow"><span class="muted">Visa</span><select id="zoWbsLevel"><option value="both">Båda nivåerna</option><option value="1">Bara överzoner (nivå 1)</option><option value="2">Bara zoner (nivå 2)</option></select></div>
           </details>
           <details class="zone-adv">
             <summary>Avancerat: hur zoner hittas i PDF:en</summary>
@@ -816,6 +821,12 @@
             <div class="hint hidden" id="zeArea"></div>
             <label>Kod</label>
             <input type="text" id="zeCode" />
+            <div id="zeWbs" class="hidden">
+              <label>Överzon (WBS nivå 1)</label>
+              <input type="text" id="zeParent" list="zeParents" placeholder="t.ex. 742 Sikthall – tomt = ingen" />
+              <datalist id="zeParents"></datalist>
+              <div class="hint">Överzonen ritas runt alla zoner med samma överzon, med samlad status.</div>
+            </div>
             <label>Koppling till planeringen</label>
             <select id="zeField">
               <option value="auto">Automatiskt (position i 3D och/eller koden i område/aktivitet/namn)</option>
@@ -1007,22 +1018,23 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261002114823"></script>
-<script src="lagesplan-tools.js?v=20261002114823"></script>
-<script src="lagesplan-layers.js?v=20261002114823"></script>
-<script src="lagesplan-views.js?v=20261002114823"></script>
-<script src="lagesplan-film.js?v=20261002114823"></script>
-<script src="lagesplan-cad.js?v=20261002114823"></script>
-<script src="lagesplan-vecpdf.js?v=20261002114823"></script>
-<script src="lagesplan-print.js?v=20261002114823"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261002114823"></script>
-<script src="lagesplan-objmarks.js?v=20261002114823"></script>
-<script src="lagesplan-objlist.js?v=20261002114823"></script>
-<script src="lagesplan-zones.js?v=20261002114823"></script>
-<script src="lagesplan-daily.js?v=20261002114823"></script>
-<script src="lagesplan-gps.js?v=20261002114823"></script>
-<script src="lagesplan-weather.js?v=20261002114823"></script>
-<script src="lagesplan-touch.js?v=20261002114823"></script>
-<script src="lagesplan-keys.js?v=20261002114823"></script>
+<script src="lagesplan.js?v=20261002120340"></script>
+<script src="lagesplan-tools.js?v=20261002120340"></script>
+<script src="lagesplan-layers.js?v=20261002120340"></script>
+<script src="lagesplan-views.js?v=20261002120340"></script>
+<script src="lagesplan-film.js?v=20261002120340"></script>
+<script src="lagesplan-cad.js?v=20261002120340"></script>
+<script src="lagesplan-vecpdf.js?v=20261002120340"></script>
+<script src="lagesplan-print.js?v=20261002120340"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261002120340"></script>
+<script src="lagesplan-objmarks.js?v=20261002120340"></script>
+<script src="lagesplan-objlist.js?v=20261002120340"></script>
+<script src="lagesplan-zones.js?v=20261002120340"></script>
+<script src="lagesplan-wbs.js?v=20261002120340"></script>
+<script src="lagesplan-daily.js?v=20261002120340"></script>
+<script src="lagesplan-gps.js?v=20261002120340"></script>
+<script src="lagesplan-weather.js?v=20261002120340"></script>
+<script src="lagesplan-touch.js?v=20261002120340"></script>
+<script src="lagesplan-keys.js?v=20261002120340"></script>
 </body>
 </html>

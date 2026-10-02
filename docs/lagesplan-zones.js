@@ -394,7 +394,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (selectedZoneId) openEditor(selectedZoneId);
     };
   });
-  if (Object.values(opts).some(Boolean)) $("zoneOptsBox").open = true;
+  if (Object.values(opts).some(v => v === true)) $("zoneOptsBox").open = true;
   // Rektangel och borttagning går också att ångra.
   const origFinish = finishDraw;
   finishDraw = function (a, b) {

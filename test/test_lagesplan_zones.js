@@ -253,6 +253,44 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (!(await page.locator('#layerList .zone-layer-row[data-zone="C"]').count())) fail('En ny zon ska dyka upp i lagerlistan');
   console.log('OK: zonerna i lagerhanteraren – fäll ut, släck/tänd per zon, klick markerar');
 
+  // 6e) WBS-nivåer (avancerat, avslaget från början): överzonen räknas fram ur sina zoner.
+  await page.evaluate(() => { showTab('zones'); selectZone('A'); });
+  if (await page.isVisible('#zeWbs')) fail('Överzon ska inte synas innan alternativet slagits på');
+  if (await page.isVisible('#zoWbsRow')) fail('Nivåvalet ska inte synas innan alternativet slagits på');
+  await page.evaluate(() => { $('zoneOptsBox').open = true; });
+  await page.check('#zoWbs'); await page.waitForTimeout(100);
+  if (!(await page.isVisible('#zeWbs')) || !(await page.isVisible('#zoWbsRow'))) fail('Med WBS-nivåer ska Överzon och nivåvalet synas');
+  await page.fill('#zeParent', '742 Sikthall'); await page.dispatchEvent('#zeParent', 'change'); await page.waitForTimeout(100);
+  const b41 = await page.evaluate(() => plan.zones.find(z => z.code === 'PM41').id);
+  await page.evaluate(id => selectZone(id), b41); await page.waitForTimeout(100);
+  const opts = await page.$$eval('#zeParents option', o => o.map(x => x.value));
+  if (!opts.includes('742 Sikthall')) fail('Befintliga överzoner ska föreslås: ' + JSON.stringify(opts));
+  await page.fill('#zeParent', '742 sikthall'); await page.dispatchEvent('#zeParent', 'change'); await page.waitForTimeout(150);
+  const wg = await page.evaluate(() => { const g = wbsGroups(); return g.map(x => ({ name: x.name, n: x.children.length, parts: x.polys.length, area: x.polys.reduce((s, r) => s + Math.abs(polyArea(r[0])), 0) })); });
+  const sumA = await page.evaluate(() => plan.zones.filter(z => z.parent).reduce((s, z) => s + z.polys.reduce((t, p) => t + Math.abs(polyArea(p)), 0), 0));
+  if (wg.length !== 1 || wg[0].n !== 2) fail('Zoner med samma överzon (oavsett skiftläge) ska bli en överzon: ' + JSON.stringify(wg));
+  if (wg[0].parts !== 1 || Math.abs(wg[0].area - sumA) > 1) fail('Överzonen ska vara sammanslagningen av zonerna: ' + JSON.stringify({ wg, sumA }));
+  const wl = await page.textContent('#zoneList .wbs-item');
+  if (!/742 Sikthall/.test(wl) || !/2 zoner/.test(wl)) fail('Zonlistan ska visa överzonen med samlad status: ' + wl);
+  // Nivåerna: båda, bara överzoner, bara zoner.
+  const lv = async v => { await page.selectOption('#zoWbsLevel', v); await page.waitForTimeout(100);
+    return page.evaluate(() => { const c = document.createElement('canvas'); c.width = 2000; c.height = 2000; return drawZoneShapes(c.getContext('2d'), 14, null).map(b => [b[1], b[5]]); }); };
+  const both = await lv('both'), one = await lv('1'), two = await lv('2');
+  const hasWbs = l => l.some(([t, id]) => !id && /742 Sikthall/.test(t)), hasKid = l => l.some(([t, id]) => id === 'A');
+  if (!hasWbs(both) || !hasKid(both)) fail('Båda nivåerna: överzon och zoner: ' + JSON.stringify(both));
+  if (!hasWbs(one) || hasKid(one) || !one.some(([t, id]) => id === 'C')) fail('Bara överzoner: zonerna i överzonen döljs, andra zoner syns: ' + JSON.stringify(one));
+  if (hasWbs(two) || !hasKid(two)) fail('Bara zoner: ingen överzon: ' + JSON.stringify(two));
+  await page.selectOption('#zoWbsLevel', 'both');
+  // Ångra: överzonen tas bort från zonen igen.
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(150);
+  if (await page.evaluate(id => !!plan.zones.find(z => z.id === id).parent, b41)) fail('Ctrl+Z ska ångra överzonen');
+  // Avslaget: inget av detta syns.
+  await page.uncheck('#zoWbs'); await page.waitForTimeout(100);
+  if (await page.locator('#zoneList .wbs-item').count()) fail('Utan alternativet ska överzonerna inte synas i listan');
+  if ((await page.evaluate(() => { const c = document.createElement('canvas'); return drawZoneShapes(c.getContext('2d'), 14, null).filter(b => !b[5]).length; }))) fail('Utan alternativet ska överzonerna inte ritas');
+  console.log('OK: WBS-nivåer (avancerat) – överzon räknas fram ur zonerna, visa båda/nivå 1/nivå 2, ångra');
+
   // 7) Uppladdningsdatum för DXF – diskret (syns vid hovring).
   await page.evaluate(() => { siteItems.push({ id: 'c1', type: 'cad', name: 'Ritning', path: 'x', created_at: '2026-09-30T08:15:00Z', by: 'Victor', colorMode: 'orig', layers: [{ name: 'A', color: '#ff0000', n: 1 }], stats: { lines: 1, texts: 0, kb: 1 } }); showTab('work'); renderLayerPanel(); });
   const dt = page.locator('.layer-row[data-layer="cad:c1"] .cad-date');
