@@ -222,12 +222,11 @@ function photoMarkerPx() { return planFontPx() * 1.5; }
    utklickad på planen. */
 const PIN_H = 30, PIN_R = 8.5;
 function photoScreenPt(ph) {
-  const [x, y] = toPx([ph.x, ph.y]);
-  return [view.tx + x * view.scale, view.ty + y * view.scale];
+  return stageToScreen(toPx([ph.x, ph.y]));
 }
 function photoAt(pdfPt) {
   if (!$("showPhotos").checked || !viewport) return null;
-  const [sx, sy] = toPx(pdfPt), px = view.tx + sx * view.scale, py = view.ty + sy * view.scale;
+  const [px, py] = stageToScreen(toPx(pdfPt));
   let best = null, bd = Infinity;
   photos().forEach(ph => {
     const [tx, ty] = photoScreenPt(ph), hx = tx, hy = ty - (PIN_H - PIN_R);

@@ -615,7 +615,7 @@ function positionPop(pop, rec) {
   const pt = dailyPt(rec);
   if (!pt) return;
   const anchor = mToPx(pt), r = $("viewport").getBoundingClientRect();
-  const sx = view.tx + anchor[0] * view.scale, sy = view.ty + anchor[1] * view.scale;
+  const [sx, sy] = stageToScreen(anchor);
   pop.style.left = `${Math.max(8, Math.min(r.width - pop.offsetWidth - 8, sx + 22))}px`;
   pop.style.top = `${Math.max(8, Math.min(r.height - pop.offsetHeight - 8, sy - 40))}px`;
 }

@@ -73,7 +73,8 @@
       const cx = (a.clientX + b.clientX) / 2, cy = (a.clientY + b.clientY) / 2;
       const r = vp().getBoundingClientRect();
       // Panorera med mittpunkten, zooma kring den.
-      view.tx += cx - pinch.cx; view.ty += cy - pinch.cy;
+      const [ux, uy] = typeof unrotVec === "function" ? unrotVec([cx - pinch.cx, cy - pinch.cy]) : [cx - pinch.cx, cy - pinch.cy];
+      view.tx += ux; view.ty += uy;
       if (pinch.d > 0 && d > 0) zoomAt(d / pinch.d, cx - r.left, cy - r.top); else applyView();
       pinch = { d, cx, cy };
       return;

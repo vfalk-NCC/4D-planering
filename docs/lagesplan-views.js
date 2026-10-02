@@ -24,15 +24,17 @@ function lsViewCamera() {
   if (!pc.width || !plan) return null;
   // Mitten (andel av ritningen) och synlig bredd i PDF-enheter: oberoende av skärm och upplösning.
   const cx = (vp.width / 2 - view.tx) / view.scale, cy = (vp.height / 2 - view.ty) / view.scale;
-  return { plan: plan.id, fx: cx / pc.width, fy: cy / pc.height, span: vp.width / (view.scale * renderScale) };
+  return { plan: plan.id, fx: cx / pc.width, fy: cy / pc.height, span: vp.width / (view.scale * renderScale), rot: view.rot || 0 };
 }
 function lsApplyCamera(c) {
   const vp = $("viewport").getBoundingClientRect(), pc = $("pdfCanvas");
   if (!pc.width) return;
+  if (c.rot != null) { view.rot = c.rot; try { if (c.rot) localStorage.setItem(northKey(), String(c.rot)); else localStorage.removeItem(northKey()); } catch (e) {} }
   view.scale = Math.max(0.02, Math.min(8, vp.width / (c.span * renderScale)));
   view.tx = vp.width / 2 - c.fx * pc.width * view.scale;
   view.ty = vp.height / 2 - c.fy * pc.height * view.scale;
   applyView();
+  if (typeof renderNorthUi === "function") renderNorthUi();
 }
 
 async function applyLsView(v) {
@@ -135,3 +137,71 @@ function bindLsViews() {
   renderLsViewUi();
 }
 document.addEventListener("DOMContentLoaded", bindLsViews);
+
+/* Norr uppåt (Victors önskemål 2026-10-02): vrider hela planen på skärmen så
+   att modellens norr (+Y i SWEREF 99) pekar rakt uppåt. Ligger med flit
+   undangömt under Zoner & 3D (och frågar först) så att man inte råkar vrida
+   planen. Vinkeln sparas per plan i den här webbläsaren och följer med i
+   sparade vyer med utsnitt. Utskrifterna ritas som förut i ritningens riktning. */
+const northKey = () => `lagesplan-rot-${projectId}-${plan ? plan.id : ""}`;
+/* Vinkeln (radianer) som gör att norr pekar uppåt på skärmen, eller null utan kalibrering. */
+function northUpAngle() {
+  if (!plan || !plan.calib || !viewport) return null;
+  const a = mToPx([0, 0]), b = mToPx([0, 1]);
+  const ang = -Math.PI / 2 - Math.atan2(b[1] - a[1], b[0] - a[0]);
+  return Math.atan2(Math.sin(ang), Math.cos(ang)); // -π..π
+}
+function setViewRotation(rot, save = true) {
+  const vp = $("viewport").getBoundingClientRect();
+  // Behåll det som syns i mitten.
+  const mid = screenToStage([vp.width / 2, vp.height / 2]);
+  view.rot = Math.abs(rot) < 1e-4 ? 0 : rot;
+  view.tx = vp.width / 2 - mid[0] * view.scale; view.ty = vp.height / 2 - mid[1] * view.scale;
+  if (save) { try { if (view.rot) localStorage.setItem(northKey(), String(view.rot)); else localStorage.removeItem(northKey()); } catch (e) {} }
+  applyView(); renderZones();
+  renderNorthUi();
+}
+function renderNorthBadge() {
+  const b = $("northBadge");
+  if (!b) return;
+  const n = plan && plan.calib && viewport ? northUpAngle() : null;
+  b.classList.toggle("hidden", n == null);
+  if (n == null) return;
+  // Nålen pekar dit norr ligger på skärmen just nu.
+  b.querySelector(".nb-needle").style.transform = `rotate(${(view.rot - n) * 180 / Math.PI}deg)`;
+  b.title = view.rot ? `Norr – planen är vriden ${Math.round(view.rot * 180 / Math.PI)}°` : "Norr";
+}
+function renderNorthUi() {
+  const up = $("btnNorthUp"), rs = $("btnNorthReset"), info = $("northInfo");
+  if (!up) return;
+  const n = northUpAngle();
+  up.disabled = n == null || Math.abs((view.rot || 0) - n) < 1e-3;
+  rs.disabled = !view.rot;
+  info.textContent = n == null ? "Kalibrera planen mot 3D först – då vet Lägesplan var norr är."
+    : view.rot ? `Planen visas vriden ${Math.round(view.rot * 180 / Math.PI)}° (norr uppåt). Utskrifter ritas i ritningens riktning.`
+    : `Ritningens riktning. Norr ligger ${Math.round(Math.abs(n) * 180 / Math.PI)}° ${n > 0 ? "moturs" : "medurs"} från uppåt.`;
+  renderNorthBadge();
+}
+document.addEventListener("DOMContentLoaded", () => {
+  if (!$("btnNorthUp")) return;
+  $("btnNorthUp").onclick = () => {
+    const n = northUpAngle();
+    if (n == null) return;
+    if (!confirm(`Vrida hela planen ${Math.round(Math.abs(n) * 180 / Math.PI)}° så att norr pekar rakt uppåt?\n\nDet gäller bara visningen i den här webbläsaren – ritningen och allt du ritat ändras inte. "Ritningens riktning" vrider tillbaka.`)) return;
+    setViewRotation(n);
+  };
+  $("btnNorthReset").onclick = () => setViewRotation(0);
+  // Byt plan: vinkeln som sparats för den planen.
+  const orig = openPlan;
+  openPlan = async function () {
+    view.rot = 0;
+    const r = await orig.apply(this, arguments);
+    let saved = 0;
+    try { saved = Number(localStorage.getItem(northKey())) || 0; } catch (e) {}
+    if (saved) setViewRotation(saved, false); else renderNorthUi();
+    return r;
+  };
+  // Kalibrering ändrad: uppdatera texten och nålen.
+  const origCal = updateCalibInfo;
+  updateCalibInfo = function () { const r = origCal.apply(this, arguments); renderNorthUi(); return r; };
+});

@@ -826,8 +826,9 @@ async function renderPdfHi() {
   let s = view.scale * (window.devicePixelRatio || 1);
   if (s <= 1.05) { hc.width = 0; pc.style.visibility = ""; return; }
   const vr = $("viewport").getBoundingClientRect();
-  const x0 = Math.max(0, -view.tx / view.scale), y0 = Math.max(0, -view.ty / view.scale);
-  const x1 = Math.min(pc.width, (vr.width - view.tx) / view.scale), y1 = Math.min(pc.height, (vr.height - view.ty) / view.scale);
+  const vb = visibleStageBox();
+  const x0 = Math.max(0, vb[0]), y0 = Math.max(0, vb[1]);
+  const x1 = Math.min(pc.width, vb[2]), y1 = Math.min(pc.height, vb[3]);
   if (x1 <= x0 || y1 <= y0) { hc.width = 0; return; }
   const maxPx = 30e6;
   if ((x1 - x0) * (y1 - y0) * s * s > maxPx) s = Math.sqrt(maxPx / ((x1 - x0) * (y1 - y0)));
@@ -886,7 +887,7 @@ function renderScreenLabels() {
   objLabelBoxes = [];
   if (!plan || !viewport || !labelObjects || !labelObjects.length || !objLabelsOn()) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const map = p => { const [x, y] = toPx(p); return [view.tx + x * view.scale, view.ty + y * view.scale]; };
+  const map = p => stageToScreen(toPx(p));
   // Prickens radie på skärmen just nu (prickarna ritas om först när zoomen stannat).
   const r = Math.max(3, objMinPx * view.scale);
   drawObjectLabels(ctx, labelObjects, planFontPx(), { map, fs: 11 * objLabelSize() / 100, r, w, h });
@@ -1226,8 +1227,38 @@ function scheduleObjRerender() {
 /* Rita om högst en gång per bildruta (reglage som skickar många händelser). */
 let zonesRaf = 0;
 function renderZonesSoon() { if (!zonesRaf) zonesRaf = requestAnimationFrame(() => { zonesRaf = 0; renderZones(); }); }
+/* Vriden vy (Victors önskemål 2026-10-02: "norr rakt uppåt"). Planen vrids
+   view.rot radianer kring skärmens mitt; ritning, objekt och etablering ligger
+   kvar i ritningens koordinater. Alla omräkningar skärm <-> plan går via
+   stageToScreen/screenToStage. Sparas per plan i den här webbläsaren. */
+view.rot = 0;
+let vpW = 0, vpH = 0;
+function vpSizeNow() { const r = $("viewport").getBoundingClientRect(); vpW = r.width; vpH = r.height; }
+window.addEventListener("resize", () => { vpSizeNow(); if (view.rot) applyView(); });
+function rotAbout(p, a) {
+  if (!a) return p;
+  if (!vpW) vpSizeNow();
+  const cx = vpW / 2, cy = vpH / 2, c = Math.cos(a), s = Math.sin(a), dx = p[0] - cx, dy = p[1] - cy;
+  return [cx + dx * c - dy * s, cy + dx * s + dy * c];
+}
+/* Stage-px -> skärm-px i #viewport (och tillbaka). */
+function stageToScreen([x, y]) { return rotAbout([view.tx + x * view.scale, view.ty + y * view.scale], view.rot); }
+function screenToStage(p) { const q = rotAbout(p, -view.rot); return [(q[0] - view.tx) / view.scale, (q[1] - view.ty) / view.scale]; }
+/* En förflyttning på skärmen uttryckt i den ovridna vyn (panorering). */
+function unrotVec([dx, dy]) { if (!view.rot) return [dx, dy]; const c = Math.cos(-view.rot), s = Math.sin(-view.rot); return [dx * c - dy * s, dx * s + dy * c]; }
+/* Den del av planen (stage-px) som syns: [x0, y0, x1, y1]. */
+function visibleStageBox() {
+  vpSizeNow();
+  const P = [[0, 0], [vpW, 0], [vpW, vpH], [0, vpH]].map(screenToStage), xs = P.map(p => p[0]), ys = P.map(p => p[1]);
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
 function applyView() {
-  $("stage").style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+  if (view.rot) {
+    vpSizeNow();
+    const cx = vpW / 2, cy = vpH / 2;
+    $("stage").style.transform = `translate(${cx}px, ${cy}px) rotate(${view.rot}rad) translate(${-cx}px, ${-cy}px) translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+  } else $("stage").style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
+  if (typeof renderNorthBadge === "function") renderNorthBadge();
   scheduleObjRerender();
   renderScreenLabelsSoon();
   if (typeof updateCompareClip === "function") updateCompareClip();
@@ -1244,6 +1275,7 @@ function fitView() {
   applyView();
 }
 function zoomAt(factor, cx, cy) {
+  [cx, cy] = rotAbout([cx, cy], -view.rot);
   const ns = Math.max(0.02, Math.min(8, view.scale * factor));
   view.tx = cx - (cx - view.tx) * (ns / view.scale);
   view.ty = cy - (cy - view.ty) * (ns / view.scale);
@@ -1252,7 +1284,7 @@ function zoomAt(factor, cx, cy) {
 }
 function stagePoint(e) {
   const r = $("viewport").getBoundingClientRect();
-  return [(e.clientX - r.left - view.tx) / view.scale, (e.clientY - r.top - view.ty) / view.scale];
+  return screenToStage([e.clientX - r.left, e.clientY - r.top]);
 }
 function zoneAt(pdfPt) {
   // Släckt zonlager: zonerna reagerar inte på hovring eller klick.
@@ -1286,7 +1318,8 @@ function bindViewport() {
     if (drag) {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
-      view.tx = drag.tx + dx; view.ty = drag.ty + dy; applyView();
+      const [ux, uy] = unrotVec([dx, dy]);
+      view.tx = drag.tx + ux; view.ty = drag.ty + uy; applyView();
       return;
     }
     toolMouseMove(e);

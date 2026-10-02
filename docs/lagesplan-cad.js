@@ -586,7 +586,7 @@ async function renderCad() {
   if (list.some(r => cadGeom.has(r.id)) && !cadSnapIndex) buildCadSnap();
   if (!list.length) { c.width = 0; c.height = 0; c.style.display = "none"; return; }
   const vr = $("viewport").getBoundingClientRect();
-  const x0 = -view.tx / view.scale, y0 = -view.ty / view.scale, x1 = (vr.width - view.tx) / view.scale, y1 = (vr.height - view.ty) / view.scale;
+  const [x0, y0, x1, y1] = visibleStageBox();
   const dpr = window.devicePixelRatio || 1, s = view.scale * dpr;
   c.width = Math.ceil((x1 - x0) * s); c.height = Math.ceil((y1 - y0) * s);
   Object.assign(c.style, { display: "", left: `${x0}px`, top: `${y0}px`, width: `${x1 - x0}px`, height: `${y1 - y0}px` });

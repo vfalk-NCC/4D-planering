@@ -734,9 +734,10 @@ async function paintOrtho(c, list, seq, full) {
   const vr = $("viewport").getBoundingClientRect();
   // "Visa fotot utanför ritningen": hela det synliga området, annars bara ritningens blad.
   const out = orthoOutside();
-  const x0 = out ? -view.tx / view.scale : Math.max(0, -view.tx / view.scale), y0 = out ? -view.ty / view.scale : Math.max(0, -view.ty / view.scale);
-  const x1 = out ? (vr.width - view.tx) / view.scale : Math.min(pc.width, (vr.width - view.tx) / view.scale);
-  const y1 = out ? (vr.height - view.ty) / view.scale : Math.min(pc.height, (vr.height - view.ty) / view.scale);
+  const vb = visibleStageBox();
+  const x0 = out ? vb[0] : Math.max(0, vb[0]), y0 = out ? vb[1] : Math.max(0, vb[1]);
+  const x1 = out ? vb[2] : Math.min(pc.width, vb[2]);
+  const y1 = out ? vb[3] : Math.min(pc.height, vb[3]);
   if (x1 <= x0 || y1 <= y0) { c.width = 0; return true; }
   let s = view.scale * (window.devicePixelRatio || 1);
   const maxPx = 36e6;
@@ -1636,7 +1637,7 @@ function openSitePop(rec, isNew) {
   pop.classList.remove("hidden");
   const anchor = mToPx(isRect(rec) ? [rectGeom(rec).cx, rectGeom(rec).cy] : rec.pts[rec.pts.length - 1]);
   const r = $("viewport").getBoundingClientRect();
-  const sx = view.tx + anchor[0] * view.scale, sy = view.ty + anchor[1] * view.scale;
+  const [sx, sy] = stageToScreen(anchor);
   pop.style.left = `${Math.max(8, Math.min(r.width - pop.offsetWidth - 8, sx + 16))}px`;
   pop.style.top = `${Math.max(8, Math.min(r.height - pop.offsetHeight - 8, sy + 16))}px`;
   // Bara nya objekt får markören i textfältet – ett klickat objekt ska kunna tas bort med Delete.
