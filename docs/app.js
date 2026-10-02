@@ -3034,7 +3034,10 @@ function fillSourceFilter() {
   if (!el) return;
   const keep = new Set(getSelectedValues("filterSource"));
   const n = {}; items.forEach(it => { const k = itemSourceOf(it); n[k] = (n[k] || 0) + 1; });
-  el.innerHTML = Object.entries(SOURCE_LABELS).map(([k, l]) => `<option value="${k}"${keep.has(k) ? " selected" : ""}>${escapeHtml(l)}${n[k] ? ` (${n[k]})` : ""}</option>`).join("");
+  const gone = lastPlanImport ? items.filter(isGoneFromLastImport).length : 0;
+  el.innerHTML = Object.entries(SOURCE_LABELS).map(([k, l]) => `<option value="${k}"${keep.has(k) ? " selected" : ""}>${escapeHtml(l)}${n[k] ? ` (${n[k]})` : ""}</option>`).join("")
+    // Bara när det finns en importlogg (från och med nästa 4-veckorsimport).
+    + (lastPlanImport ? `<option value="gone"${keep.has("gone") ? " selected" : ""}>Inte kvar i senaste importen (${gone})</option>` : "");
 }
 function fillMultiSelect(id, values) {
   const el = document.getElementById(id);
@@ -3163,7 +3166,7 @@ async function selectFilteredInModelOnChange() {
     if (activities.length && !activities.includes(it.activity)) return false;
     if (contractors.length && !contractors.includes(it.contractor)) return false;
     if (statuses.length && !statuses.includes(it.status)) return false;
-    if (sources.length && !sources.includes(itemSourceOf(it))) return false;
+    if (sources.length && !sources.some(s => matchesSource(it, s))) return false;
     if (types.length && !types.includes(it.elementType)) return false;
     return true;
   });
@@ -3696,6 +3699,16 @@ async function commitPlanImport(diff) {
       { data: before, sha }
     ),
     saveActivitiesForItemsBulk(activityBatches),
+    // Importloggen: flikarna och aktiviteterna i den här filen (se isGoneFromLastImport).
+    (async () => {
+      const rec = { id: ghNewId(), at: new Date().toISOString(), file: fileName, by: settings.userName || null,
+        sheets: [...new Set(diff.parsedItems.map(p => sheetOfSourceKey(p.sourceKey)).filter(Boolean))],
+        keys: [...new Set(diff.parsedItems.map(p => p.sourceKey).filter(Boolean))] };
+      try {
+        await ghWriteJSON(settings.githubToken, importsPath(), arr => [...(Array.isArray(arr) ? arr : []).slice(-19), rec], `Importlogg: ${fileName}`);
+        lastPlanImport = rec;
+      } catch (e) { console.warn("Kunde inte spara importloggen", e); }
+    })(),
   ]);
 
   return after;
@@ -4032,7 +4045,7 @@ function matchesListFilters(it, f) {
   if (f.types && f.types.length && !f.types.includes(it.elementType)) return false;
   if (f.contractors.length && !f.contractors.includes(it.contractor)) return false;
   if (f.statuses.length && !f.statuses.includes(it.status)) return false;
-  if (f.sources && f.sources.length && !f.sources.includes(itemSourceOf(it))) return false;
+  if (f.sources && f.sources.length && !f.sources.some(s => matchesSource(it, s))) return false;
   if (f.weekLimit && it.startDate && new Date(it.startDate) > f.weekLimit) return false;
   return true;
 }
@@ -5025,6 +5038,26 @@ async function loadCoupledModels() {
 function itemsPath() {
   return `projects/${encodeURIComponent(projectId)}/plan_items.json`;
 }
+/* Importloggen (Victors önskemål 2026-10-02): vilka flikar och aktiviteter
+   (source_key) som fanns i varje 4-veckorsimport – så att filtret "Inte
+   kvar i senaste importen" vet vad som har försvunnit ur Excel. */
+function importsPath() {
+  return `projects/${encodeURIComponent(projectId)}/plan_imports.json`;
+}
+let lastPlanImport = null; // { id, at, file, sheets: [...], keys: [...] }
+const sheetOfSourceKey = k => String(k || "").split("||")[0];
+/* Importerad aktivitet från en flik som fanns i senaste importen, men som
+   inte längre fanns med i filen. Aktiviteter skapade i TC räknas inte. */
+function isGoneFromLastImport(it) {
+  if (!it.sourceKey || !lastPlanImport) return false;
+  if (!lastPlanImport._keys) { lastPlanImport._keys = new Set(lastPlanImport.keys || []); lastPlanImport._sheets = new Set(lastPlanImport.sheets || []); }
+  return lastPlanImport._sheets.has(sheetOfSourceKey(it.sourceKey)) && !lastPlanImport._keys.has(it.sourceKey);
+}
+const matchesSource = (it, s) => s === "gone" ? isGoneFromLastImport(it) : itemSourceOf(it) === s;
+async function loadLastPlanImport(opts = {}) {
+  try { const log = await ghReadJSON(settings.githubToken, importsPath(), opts); lastPlanImport = Array.isArray(log) && log.length ? log[log.length - 1] : null; }
+  catch (e) { lastPlanImport = null; }
+}
 function commentsPath() {
   return `projects/${encodeURIComponent(projectId)}/plan_item_comments.json`;
 }
@@ -5121,7 +5154,7 @@ async function refreshItems(opts = {}) {
     return;
   }
   try {
-    const rows = await ghReadJSON(settings.githubToken, itemsPath(), opts);
+    const [rows] = await Promise.all([ghReadJSON(settings.githubToken, itemsPath(), opts), loadLastPlanImport(opts)]);
     items = rows.map(fromRow);
     itemsTotalCount = items.length;
     // Lyckad hämtning: ta bort en ev. kvarliggande varning från ett tidigare

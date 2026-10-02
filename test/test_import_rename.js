@@ -127,6 +127,22 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   if (get('plan_item_comments.json').length !== 1) fail('Kommentaren ska vara kvar');
   console.log('OK: efter import har M30 det nya namnet, samma id, kvar sina 3D-kopplingar och kommentaren');
 
+  // Importloggen och filtret "Inte kvar i senaste importen".
+  const log = get('plan_imports.json');
+  if (!log || log.length !== 1 || JSON.stringify(log[0].sheets) !== JSON.stringify([SH]) || !log[0].keys.some(k => k.endsWith('||M30||Fundament'))) fail('Importen ska spara flikarna och aktiviteterna i en logg: ' + JSON.stringify(log));
+  const gone = await page.evaluate(async () => {
+    await refreshItems(); 
+    // En importerad aktivitet från en flik som inte fanns i filen räknas inte som borttagen.
+    items.push({ id: 'x', sourceKey: 'ANNAN FLIK||Linje X||X1', objectName: 'X1' }, { id: 'tc', sourceKey: null, objectName: 'TC' });
+    buildFilterOptions();
+    return { gone: items.filter(isGoneFromLastImport).map(i => i.id).sort().join(','), opt: [...document.getElementById('filterSource').options].map(o => o.text).join('|') };
+  });
+  if (gone.gone !== 'j1,j2') fail('Bara J14-raderna (ej kvar i filen, samma flik) ska räknas som borttagna: ' + gone.gone);
+  if (!/Inte kvar i senaste importen \(2\)/.test(gone.opt)) fail('Källfiltret ska ha valet med antal: ' + gone.opt);
+  const shown = await page.evaluate(() => { const f = { ...currentListFilters(), sources: ['gone'] }; return items.filter(it => matchesListFilters(it, f)).map(i => i.id).sort().join(','); });
+  if (shown !== 'j1,j2') fail('Filtret ska visa bara de borttagna: ' + shown);
+  console.log('OK: importloggen sparas och filtret "Inte kvar i senaste importen" visar bara det som försvunnit ur Excel (samma flikar)');
+
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });
