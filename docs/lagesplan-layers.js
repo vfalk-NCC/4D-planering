@@ -1638,8 +1638,7 @@ function openSitePop(rec, isNew) {
   const anchor = mToPx(isRect(rec) ? [rectGeom(rec).cx, rectGeom(rec).cy] : rec.pts[rec.pts.length - 1]);
   const r = $("viewport").getBoundingClientRect();
   const [sx, sy] = stageToScreen(anchor);
-  pop.style.left = `${Math.max(8, Math.min(r.width - pop.offsetWidth - 8, sx + 16))}px`;
-  pop.style.top = `${Math.max(8, Math.min(r.height - pop.offsetHeight - 8, sy + 16))}px`;
+  placeSitePop(pop, sx + 16, sy + 16);
   // Bara nya objekt får markören i textfältet – ett klickat objekt ska kunna tas bort med Delete.
   const first = pop.querySelector(".sp-text, .sp-name"); if (first && isNew) first.focus();
   pop.querySelector(".sp-cancel").onclick = () => { closeSitePop(); if (isNew) renderZones(); };
@@ -1705,6 +1704,39 @@ function openSitePop(rec, isNew) {
     saveSiteItem(copy);
   };
 }
+/* Placera redigeringsrutan vid (x, y) i planens koordinater (Victors önskemål
+   2026-10-02): den ryms alltid i fönstret (scrollar om den är hög) och har
+   den flyttats för hand ligger den kvar där. */
+function placeSitePop(pop, x, y) {
+  const r = $("viewport").getBoundingClientRect();
+  const visH = Math.max(120, Math.min(r.height, window.innerHeight - Math.max(0, r.top)));
+  const field = document.body.classList.contains("field");
+  pop.style.maxHeight = `${Math.max(120, visH - (field ? 150 : 16))}px`;
+  if (pop.dataset.moved) { x = parseFloat(pop.style.left) || 8; y = parseFloat(pop.style.top) || 8; }
+  pop.style.left = `${Math.max(8, Math.min(r.width - pop.offsetWidth - 8, x))}px`;
+  pop.style.top = `${Math.max(8, Math.min(visH - pop.offsetHeight - 8, y))}px`;
+}
+/* Dra rutan i dess överkant (rubriken) för att flytta den. */
+document.addEventListener("DOMContentLoaded", () => {
+  const pop = $("sitePop");
+  if (!pop) return;
+  pop.addEventListener("pointerdown", e => {
+    if (e.button !== 0 || e.target.closest("input, select, textarea, button, a, label, [contenteditable]")) return;
+    const pr = pop.getBoundingClientRect();
+    if (e.clientY - pr.top > 34) return; // bara överkanten
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY, l0 = pop.offsetLeft, t0 = pop.offsetTop;
+    const move = ev => {
+      const r = $("viewport").getBoundingClientRect(), visH = Math.min(r.height, window.innerHeight - Math.max(0, r.top));
+      pop.style.left = `${Math.max(-pop.offsetWidth + 60, Math.min(r.width - 60, l0 + ev.clientX - sx))}px`;
+      pop.style.top = `${Math.max(0, Math.min(visH - 30, t0 + ev.clientY - sy))}px`;
+      pop.dataset.moved = "1";
+    };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  });
+  window.addEventListener("resize", () => { if (!pop.classList.contains("hidden")) placeSitePop(pop, parseFloat(pop.style.left) || 8, parseFloat(pop.style.top) || 8); });
+});
 let popPreview = null; // { id, orig } – förhandsvisning i redigeringsrutan som ångras om den stängs utan att sparas
 function closeSitePop() {
   if (popPreview) {
@@ -1713,7 +1745,7 @@ function closeSitePop() {
     popPreview = null;
     renderZones();
   }
-  $("sitePop").classList.add("hidden"); $("sitePop").innerHTML = "";
+  $("sitePop").classList.add("hidden"); $("sitePop").innerHTML = ""; delete $("sitePop").dataset.moved;
 }
 
 // ---------------------------------------------------------------------

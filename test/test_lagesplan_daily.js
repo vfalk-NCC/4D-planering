@@ -255,6 +255,26 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   if (!(await page.evaluate(id => siteItems.some(x => x.id === id), tgt.id))) fail('Ctrl+Z ska ta tillbaka laget');
   console.log('OK: storlek, opacitet och färg på lagen; 🗑 i listan och Delete tar bort (kan ångras)');
 
+  // 11b) Rutan ryms i ett lågt fönster (scrollar) och kan flyttas i rubriken.
+  await page.setViewportSize({ width: 1400, height: 420 }); await page.waitForTimeout(150);
+  await page.evaluate(() => { selectedSiteId = null; openDailyPop(siteItems.find(x => x.type === 'crew'), false); });
+  await page.waitForTimeout(100);
+  const fit = await page.evaluate(() => { const p = $('sitePop'), r = p.getBoundingClientRect(); return { bottom: r.bottom, top: r.top, inner: window.innerHeight, scroll: p.scrollHeight > p.clientHeight, ov: getComputedStyle(p).overflowY }; });
+  if (fit.bottom > fit.inner || fit.top < 0) fail('Rutan ska rymmas i fönstret: ' + JSON.stringify(fit));
+  if (!fit.scroll || fit.ov !== 'auto') fail('En hög ruta ska gå att scrolla: ' + JSON.stringify(fit));
+  const hb = await page.locator('#sitePop .dp-head').boundingBox();
+  await page.mouse.move(hb.x + 30, hb.y + 6); await page.mouse.down(); await page.mouse.move(hb.x - 170, hb.y + 46, { steps: 5 }); await page.mouse.up();
+  const hb2 = await page.locator('#sitePop .dp-head').boundingBox();
+  if (Math.abs(hb2.x - (hb.x - 200)) > 3 || Math.abs(hb2.y - (hb.y + 40)) > 3) fail('Rutan ska gå att dra i rubriken: ' + JSON.stringify([hb, hb2]));
+  // Rutan ritas om (t.ex. sök aktivitet) men ligger kvar där den flyttades.
+  await page.fill('#sitePop .dp-actq', 'k'); await page.waitForTimeout(100);
+  const hb3 = await page.locator('#sitePop .dp-head').boundingBox();
+  if (Math.abs(hb3.x - hb2.x) > 3) fail('Flyttad ruta ska ligga kvar när den ritas om: ' + JSON.stringify([hb2, hb3]));
+  await page.click('#sitePop .dp-cancel');
+  if (await page.evaluate(() => !!$('sitePop').dataset.moved)) fail('Nästa ruta ska öppnas vid objektet igen');
+  await page.setViewportSize({ width: 1400, height: 900 });
+  console.log('OK: planeringsrutan ryms i fönstret (scroll) och kan flyttas i rubriken');
+
   // 12) Fältläge: 👷 Dag med stora knappar.
   const fctx = await browser.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true, isMobile: true });
   const f = await setup(fctx, true);

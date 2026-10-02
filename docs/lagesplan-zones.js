@@ -599,8 +599,7 @@ function openZoneLabelPop(zid) {
   pop.classList.remove("hidden");
   const b = zoneLabelBoxes.find(x => x.zid === zid);
   const r = $("viewport").getBoundingClientRect(), sp = b ? stageToScreen([b.x, b.y]) : [r.width / 2, r.height / 2];
-  pop.style.left = `${Math.max(8, Math.min(r.width - pop.offsetWidth - 8, sp[0] + 24))}px`;
-  pop.style.top = `${Math.max(8, Math.min(r.height - pop.offsetHeight - 8, sp[1] - 40))}px`;
+  placeSitePop(pop, sp[0] + 24, sp[1] - 40);
   const q = c => pop.querySelector(c);
   const set = patch => { z.style = { ...(z.style || {}), ...patch }; renderZones(); };
   q(".zl-text").oninput = () => set({ labelText: q(".zl-text").value.replace(/\s+$/, "") || null });
