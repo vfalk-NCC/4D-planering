@@ -1040,3 +1040,8 @@ header h1, .header-titles h1 { white-space: nowrap; }
 .plan-import-comments { display: flex; gap: 6px; align-items: flex-start; margin-top: 6px; padding: 6px 8px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; font-size: 12px; font-weight: 400; }
 .plan-import-comments input { width: auto; margin-top: 2px; }
 .plan-import-comments .hint { display: block; }
+/* Excel-koppling: ny planering skickad från Excel */
+.excel-inbox { margin: 6px 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: #f8fafc; font-size: 12px; }
+.excel-inbox.fresh { background: #ecfdf5; border-color: #6ee7b7; }
+.excel-link ol { margin: 4px 0 6px 18px; padding: 0; }
+.excel-link code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; user-select: all; }

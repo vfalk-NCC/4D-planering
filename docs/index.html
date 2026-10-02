@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261002135329" />
+<link rel="stylesheet" href="style.css?v=20261002143444" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261002135329"></script>
-<script src="plan-excel-comments.js?v=20261002135329"></script>
+<script src="plan-excel-parser.js?v=20261002143444"></script>
+<script src="plan-excel-comments.js?v=20261002143444"></script>
 </head>
 <body>
 
@@ -218,11 +218,23 @@
       <h2>Excel-import/export</h2>
       <h3>4-veckorsplanering (Excel)</h3>
       <p class="hint">Läser in din 4-veckorsplanering (en flik per WBS-område). Kan köras om när filen uppdateras – kopplingar, kommentarer och egna aktiviteter rörs inte. Du ser en förhandsgranskning innan något sparas.</p>
+      <div id="excelInbox" class="excel-inbox hidden"></div>
       <input type="file" id="planExcelFile" accept=".xlsx,.xlsm,.xls" />
       <div class="row">
         <button id="btnImportPlanExcel" class="primary">Läs in och förhandsgranska</button>
       </div>
       <div id="planImportStatus" class="hint"></div>
+      <details class="excel-simple excel-link">
+        <summary>Koppla Excel direkt (makro – test)</summary>
+        <p class="hint">Med makrot i 4-veckorsplaneringen skickar du planeringen hit med en knapp i Excel, och hämtar framdriften från 4D tillbaka till Excel.</p>
+        <ol class="hint">
+          <li><a href="excel/Koppling4D.bas" download>Ladda ner makrot (Koppling4D.bas)</a>.</li>
+          <li>Öppna planeringen i Excel, tryck <b>Alt+F11</b> → <b>Arkiv → Importera fil…</b> → välj filen. Stäng fönstret.</li>
+          <li>Tryck <b>Alt+F8</b>, kör <b>Installera4DKnappar</b> – två knappar läggs på bladet. Spara filen (.xlsm).</li>
+          <li>Första gången frågar Excel efter projekt-id och GitHub-token (samma token som i inställningarna här). Token sparas bara på din dator, inte i filen.</li>
+        </ol>
+        <div class="row" style="align-items:center;"><span class="hint" style="margin:0;">Projekt-id:</span> <code id="excelLinkProject">–</code> <button type="button" id="btnCopyProjectId">Kopiera</button></div>
+      </details>
       <details class="excel-simple">
         <summary>Enkel import/export (kolumnlista med ObjektID)</summary>
       <p class="hint">Kolumner: ObjektID, Namn, Område, Aktivitet, Entreprenör, Status, Startdatum, Slutdatum</p>
@@ -576,14 +588,15 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261002135329"></script>
-  <script src="app.js?v=20261002135329"></script>
-  <script src="manual-markings.js?v=20261002135329"></script>
-  <script src="sub-activity-list.js?v=20261002135329"></script>
-  <script src="activity-remove.js?v=20261002135329"></script>
-  <script src="dup-check.js?v=20261002135329"></script>
-  <script src="ui-shell.js?v=20261002135329"></script>
-  <script src="undo.js?v=20261002135329"></script>
-  <script src="planning-keys.js?v=20261002135329"></script>
+  <script src="github-storage.js?v=20261002143444"></script>
+  <script src="excel-link.js?v=20261002143444"></script>
+  <script src="app.js?v=20261002143444"></script>
+  <script src="manual-markings.js?v=20261002143444"></script>
+  <script src="sub-activity-list.js?v=20261002143444"></script>
+  <script src="activity-remove.js?v=20261002143444"></script>
+  <script src="dup-check.js?v=20261002143444"></script>
+  <script src="ui-shell.js?v=20261002143444"></script>
+  <script src="undo.js?v=20261002143444"></script>
+  <script src="planning-keys.js?v=20261002143444"></script>
 </body>
 </html>

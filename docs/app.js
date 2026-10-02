@@ -3355,9 +3355,13 @@ async function onImportPlanExcel() {
     status.innerText = "Välj en Excel-fil först.";
     return;
   }
+  await importPlanFromBuffer(await fileInput.files[0].arrayBuffer(), fileInput.files[0].name);
+}
+/* Läser och förhandsgranskar en planeringsfil – vald fil eller skickad från Excel (inbox). */
+async function importPlanFromBuffer(buf, fileName, inbox) {
+  const status = document.getElementById("planImportStatus");
   status.innerText = "Läser och tolkar filen...";
   try {
-    const buf = await fileInput.files[0].arrayBuffer();
     // cellStyles behövs för att få med Excels radgruppering (underaktiviteter).
     const wb = XLSX.read(buf, { type: "array", cellDates: true, cellStyles: true });
     const sheetsData = buildPlanSheetsData(wb);
@@ -3371,6 +3375,8 @@ async function onImportPlanExcel() {
       return;
     }
     planImportDiff = buildPlanImportDiff(parsedItems);
+    planImportDiff.fileName = fileName;
+    planImportDiff.inbox = inbox || null;
     // Kommentarerna i Excel-filen (lösta trådar hoppas över).
     planImportDiff.excelComments = typeof readExcelComments === "function" ? matchExcelComments(readExcelComments(buf), parsedItems) : null;
     renderPlanImportPreview(planImportDiff);
@@ -3522,7 +3528,7 @@ const planImportRemoveIds = diff => new Set(diff.removedExisting.filter(it => di
    (före → efter), så man kan filtrera/sortera och gå igenom allt innan man
    importerar skarpt. Påverkar inget – det är bara en rapport. */
 function exportPlanImportReport(diff) {
-  const fileName = (document.getElementById("planExcelFile").files[0] || {}).name || "Excel";
+  const fileName = diff.fileName || (document.getElementById("planExcelFile").files[0] || {}).name || "Excel";
   const subNames = it => (activitiesByItemId.get(it.id) || []).map(r => r.name).filter(Boolean).join(", ");
   const coupledCount = list => list.filter(it => it && it.modelId).length;
   const yes = b => (b ? "Ja" : "");
@@ -3613,6 +3619,7 @@ async function onConfirmPlanImport() {
     if (typeof refreshCommentCounts === "function") { try { await refreshCommentCounts(); } catch (e) { /* ignorera */ } }
     document.getElementById("planExcelFile").value = "";
     await refreshItems();
+    if (typeof checkExcelInbox === "function") checkExcelInbox(true);
     await refreshActivities();
     buildFilterOptions();
     renderItemList();
@@ -3638,7 +3645,7 @@ async function onConfirmPlanImport() {
  * tills de kopplas via "Koppla till markering".
  */
 async function commitPlanImport(diff) {
-  const fileName = (document.getElementById("planExcelFile").files[0] || {}).name || "Excel";
+  const fileName = diff.fileName || (document.getElementById("planExcelFile").files[0] || {}).name || "Excel";
   const removeIds = planImportRemoveIds(diff);
   await createBackup(`Före import av ${fileName} (${diff.toCreate.length} nya, ${diff.toUpdate.length} uppdateras${removeIds.size ? `, ${removeIds.size} tas bort` : ""})`);
   const path = itemsPath();
@@ -3694,6 +3701,8 @@ async function commitPlanImport(diff) {
       groupId: existing ? existing.groupId : null,
       baselineStartDate: p.baselineStartDate || null,
       baselineEndDate: p.baselineEndDate || null,
+      excelSheet: p.sheet || null,
+      excelMap: p.excelMap || null,
     });
     if (phases.length > 0) {
       activityBatches.push({
@@ -3724,6 +3733,7 @@ async function commitPlanImport(diff) {
     // Importloggen: flikarna och aktiviteterna i den här filen (se isGoneFromLastImport).
     (async () => {
       const rec = { id: ghNewId(), at: new Date().toISOString(), file: fileName, by: settings.userName || null,
+        ...(diff.inbox ? { inbox_sent_at: diff.inbox.sent_at, inbox_by: diff.inbox.by || null } : {}),
         sheets: [...new Set(diff.parsedItems.map(p => sheetOfSourceKey(p.sourceKey)).filter(Boolean))],
         keys: [...new Set(diff.parsedItems.map(p => p.sourceKey).filter(Boolean))] };
       try {
@@ -5173,6 +5183,9 @@ function toRow(it) {
     // end_date är de aktuella datumen man planerar efter.
     baseline_start_date: it.baselineStartDate || null,
     baseline_end_date: it.baselineEndDate || null,
+    // Raderna i 4-veckorsplaneringen (för "Hämta framdrift från 4D" i Excel).
+    excel_sheet: it.excelSheet || null,
+    excel_map: Array.isArray(it.excelMap) && it.excelMap.length ? it.excelMap : null,
     updated_at: new Date().toISOString()
   };
 }
@@ -5201,6 +5214,8 @@ function fromRow(row) {
     groupId: row.group_id || null,
     baselineStartDate: row.baseline_start_date || null,
     baselineEndDate: row.baseline_end_date || null,
+    excelSheet: row.excel_sheet || null,
+    excelMap: Array.isArray(row.excel_map) ? row.excel_map : null,
     updatedAt: row.updated_at
   };
 }
@@ -5215,6 +5230,8 @@ async function refreshItems(opts = {}) {
     const [rows] = await Promise.all([ghReadJSON(settings.githubToken, itemsPath(), opts), loadLastPlanImport(opts)]);
     items = rows.map(fromRow);
     itemsTotalCount = items.length;
+    // Ny planering skickad från Excel? (högst en gång i minuten)
+    if (typeof checkExcelInbox === "function") { renderExcelLinkHelp(); checkExcelInbox(); }
     // Lyckad hämtning: ta bort en ev. kvarliggande varning från ett tidigare
     // (tillfälligt) fel, annars står den kvar fast allt fungerar.
     const warn = document.getElementById("connectionWarning");

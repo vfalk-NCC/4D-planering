@@ -185,6 +185,8 @@ function parsePlanSheet(rows, sheetName) {
         subActivities: subs,
         // Excelraderna (för kommentarerna i filen, se plan-excel-comments.js).
         sheet: sheetName, excelRows: [e.row, ...e.children.map(x => x.row)],
+        // För "Hämta framdrift från 4D" i Excel: rad, aktivitetstext (kontroll) och fas.
+        excelMap: [{ row: e.row, text: e.activityText, phase: null }, ...e.children.map((x, i) => ({ row: x.row, text: x.activityText, phase: subs[i].name }))],
       });
       return;
     }
@@ -222,6 +224,7 @@ function parsePlanSheet(rows, sheetName) {
     if (!it._rows) return;
     const rs = it._rows;
     delete it._rows;
+    it._rs = rs;
     if (it.subActivities.length) {
       it.subActivities = rs.map(x => ({ ...subOf(x, null), name: x.matched.rest.trim() }));
       it.startDate = minDate(it.subActivities.map(x => x.start)) || it.startDate;
@@ -240,6 +243,11 @@ function parsePlanSheet(rows, sheetName) {
       it.elementType = it.activity || null;
     }
     if (it.elementType === undefined) it.elementType = null;
+    // Raderna i Excel (för "Hämta framdrift från 4D"): en fas per rad, eller hela aktiviteten.
+    it.excelMap = it.subActivities.length
+      ? it._rs.map((x, i) => ({ row: x.row, text: x.activityText, phase: (it.subActivities[i] || {}).name || null }))
+      : [{ row: it._rs[0].row, text: it._rs[0].activityText, phase: null }];
+    delete it._rs;
     it.progress = weighted(rs, rs.length ? Math.round(rs.reduce((s, x) => s + x.progress, 0) / rs.length) : 0);
   });
   return result;

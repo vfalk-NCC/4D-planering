@@ -156,7 +156,9 @@ async function run() {
     if (req.method() === 'GET') {
       const entry = store.get(filePath);
       if (!entry) { route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ message: 'Not Found' }) }); return; }
-      const b64 = Buffer.from(JSON.stringify(entry.content)).toString('base64');
+      // Binärfiler (planeringen som skickats från Excel): rått innehåll på begäran.
+      if (entry.raw && /raw/.test(req.headers()['accept'] || '')) { route.fulfill({ status: 200, contentType: 'application/octet-stream', body: entry.raw }); return; }
+      const b64 = (entry.raw ? entry.raw : Buffer.from(JSON.stringify(entry.content))).toString('base64');
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: b64, sha: entry.sha }) });
       return;
     }
@@ -327,6 +329,35 @@ async function run() {
   const note = await page.evaluate(n => readExcelCommentsFromFiles(p => n[p] || null), notes);
   if (note.length !== 1 || note[0].text !== 'Kolla ritningen' || note[0].author !== 'Victor' || note[0].row !== 10) throw new Error('Anteckningen ska läsas utan "Namn:"-prefix: ' + JSON.stringify(note));
   console.log('OK: anteckningar läses också, och rutan kan kryssas ur');
+
+  // 5) Excel-kopplingen: importen sparar raderna (för "Hämta framdrift från 4D").
+  const m30rows = store.get(`projects/${PROJECT_ID}/plan_items.json`).content.find(r => r.object_name === 'M30');
+  if (m30rows.excel_sheet !== '742 - SIKTHALL' || JSON.stringify(m30rows.excel_map) !== JSON.stringify([{ row: 6, text: 'M30 - Fundament', phase: 'Fundament' }, { row: 7, text: 'M30 - Formning', phase: 'Formning' }])) throw new Error('Raderna i Excel ska sparas på aktiviteten: ' + JSON.stringify([m30rows.excel_sheet, m30rows.excel_map]));
+  const st = store.get(`projects/${PROJECT_ID}/plan_items.json`).content.find(r => r.object_name === 'Ställningsmontage');
+  if (JSON.stringify(st.excel_map) !== JSON.stringify([{ row: 9, text: 'Ställningsmontage', phase: null }])) throw new Error('En rad utan faser: ' + JSON.stringify(st.excel_map));
+  console.log('OK: importen sparar Excel-raderna (blad, rad, text, fas) för framdriften tillbaka till Excel');
+
+  // 6) "Skicka till 4D" från Excel: filen i excel_inbox visas och kan importeras.
+  const inboxPath = `projects/${PROJECT_ID}/excel_inbox/planering.xlsm`;
+  store.set(inboxPath, { raw: fileWithComments, sha: 'bin1' });
+  store.set(`projects/${PROJECT_ID}/excel_inbox/meta.json`, { content: { sent_at: '2099-01-01T12:00:00Z', by: 'Victor Falk', file: 'NSV 4-veckorsplanering.xlsm', path: inboxPath, size: 123 }, sha: 'm1' });
+  await page.reload({ waitUntil: 'networkidle' }); await page.waitForTimeout(600);
+  await page.evaluate(() => { const s = document.querySelector('section[data-panel-id="excel"]'); if (s) s.classList.remove('panel-hidden'); });
+  const ib = await page.locator('#excelInbox').innerText();
+  if (!/Ny planering från Excel/.test(ib) || !/NSV 4-veckorsplanering\.xlsm/.test(ib) || !/Victor Falk/.test(ib)) throw new Error('Ny planering från Excel ska visas: ' + ib);
+  if ((await page.locator('#excelLinkProject').textContent()) !== PROJECT_ID) throw new Error('Projekt-id ska visas för makrot');
+  await page.evaluate(() => document.getElementById('btnExcelInboxImport').click());
+  await page.waitForTimeout(500);
+  if (!(await page.locator('#planImportPreviewDialog').isVisible())) throw new Error('Förhandsgranskningen ska öppnas för filen från Excel');
+  await page.locator('#btnConfirmPlanImport').click();
+  await page.waitForTimeout(900);
+  const log = store.get(`projects/${PROJECT_ID}/plan_imports.json`).content;
+  const last = log[log.length - 1];
+  if (last.inbox_sent_at !== '2099-01-01T12:00:00Z' || last.file !== 'NSV 4-veckorsplanering.xlsm') throw new Error('Importloggen ska visa att filen från Excel är importerad: ' + JSON.stringify(last));
+  const ib2 = await page.locator('#excelInbox').innerText();
+  if (/Ny planering/.test(ib2) || !/är importerad/.test(ib2)) throw new Error('Efter importen ska den inte längre vara ny: ' + ib2);
+  if (!(await page.evaluate(() => document.querySelector('a[href="excel/Koppling4D.bas"]') !== null))) throw new Error('Länken till makrot ska finnas');
+  console.log('OK: planering skickad från Excel visas, importeras och markeras som importerad');
 
   if (consoleErrors.length) throw new Error('Konsolfel: ' + consoleErrors.join(' | '));
   await browser.close();
