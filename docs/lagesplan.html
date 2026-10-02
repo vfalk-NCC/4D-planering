@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261002061937"></script>
+<script src="github-storage.js?v=20261002063005"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -156,6 +156,13 @@
   .layer-row.site-item-row .ln { cursor: pointer; }
   .layer-row.site-item-row .ln:hover { text-decoration: underline; }
   .layer-row.site-item-row .si-ico { text-align: center; font-size: 12px; }
+  .layer-row.obj-item-row { grid-template-columns: 14px 1fr 22px 22px; padding-left: 28px; }
+  .layer-row.obj-item-row.in-folder { padding-left: 42px; }
+  .layer-row.obj-item-row .ln { cursor: pointer; } .layer-row.obj-item-row .ln:hover { text-decoration: underline; }
+  .layer-row.obj-item-row.off .ln { opacity: .45; text-decoration: line-through; }
+  .layer-row.obj-item-row .oi-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(0,0,0,.2); }
+  .layer-row.obj-item-row button { height: 22px; min-width: 22px; padding: 0; border: none; background: none; font-size: 13px; }
+  .layer-row.obj-item-row button:hover { background: var(--panel-2); }
   .layer-row .ul-toggle { width: 16px; padding: 0; color: var(--muted); }
   .layer-row .blend { grid-column: 2 / 5; font-size: 11px; color: var(--muted); display: flex; gap: 4px; align-items: center; margin: 0; }
   #sitePop { position: absolute; z-index: 15; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(15,23,42,.2); padding: 12px 14px; width: 280px; font-size: 12px; }
@@ -344,6 +351,7 @@
   .fs-ortho [data-ortho="prev"] { grid-column: 2; grid-row: 2; }
   .fs-ortho [data-ortho="next"] { grid-column: 3; grid-row: 2; }
   .fs-big { height: 50px; font-size: 20px; border-radius: 10px; }
+  .fs-showall { width: 100%; margin-top: 8px; justify-content: center; background: #fef9c3; border-color: #facc15; }
   .fs-mini { height: 34px; font-size: 13px; padding: 0 10px; margin-left: 4px; border-radius: 8px; }
 
   /* ---------- Dagsplanering (2026-10-01) ---------- */
@@ -971,19 +979,20 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261002061937"></script>
-<script src="lagesplan-tools.js?v=20261002061937"></script>
-<script src="lagesplan-layers.js?v=20261002061937"></script>
-<script src="lagesplan-views.js?v=20261002061937"></script>
-<script src="lagesplan-film.js?v=20261002061937"></script>
-<script src="lagesplan-cad.js?v=20261002061937"></script>
-<script src="lagesplan-vecpdf.js?v=20261002061937"></script>
-<script src="lagesplan-print.js?v=20261002061937"></script>
-<script src="lagesplan-zones.js?v=20261002061937"></script>
-<script src="lagesplan-daily.js?v=20261002061937"></script>
-<script src="lagesplan-gps.js?v=20261002061937"></script>
-<script src="lagesplan-weather.js?v=20261002061937"></script>
-<script src="lagesplan-touch.js?v=20261002061937"></script>
-<script src="lagesplan-keys.js?v=20261002061937"></script>
+<script src="lagesplan.js?v=20261002063005"></script>
+<script src="lagesplan-tools.js?v=20261002063005"></script>
+<script src="lagesplan-layers.js?v=20261002063005"></script>
+<script src="lagesplan-views.js?v=20261002063005"></script>
+<script src="lagesplan-film.js?v=20261002063005"></script>
+<script src="lagesplan-cad.js?v=20261002063005"></script>
+<script src="lagesplan-vecpdf.js?v=20261002063005"></script>
+<script src="lagesplan-print.js?v=20261002063005"></script>
+<script src="lagesplan-objlist.js?v=20261002063005"></script>
+<script src="lagesplan-zones.js?v=20261002063005"></script>
+<script src="lagesplan-daily.js?v=20261002063005"></script>
+<script src="lagesplan-gps.js?v=20261002063005"></script>
+<script src="lagesplan-weather.js?v=20261002063005"></script>
+<script src="lagesplan-touch.js?v=20261002063005"></script>
+<script src="lagesplan-keys.js?v=20261002063005"></script>
 </body>
 </html>

@@ -1742,7 +1742,10 @@ function renderLayerPanel() {
     extra: orthos().length ? `<label class="blend"><input type="checkbox" class="lr-mult"${layerState.pdfMultiply !== false ? " checked" : ""} /> Genomskinlig vit bakgrund över fotot</label>` : "", ...opts
   });
   rowHtml.zones = opts => layerRow("zones", name("zones", "fx-name", "🟧"), opts);
-  rowHtml.objects = opts => layerRow("objects", name("objects", "fx-name", "🔷"), opts);
+  // 3D-objekt kan fällas ut: en rad per aktivitet (lagesplan-objlist.js).
+  const objFams = typeof objListFamilies === "function" ? objListFamilies() : [], objOpen = objFams.length > 0 && layerState["ulopen:__objects"] === true;
+  rowHtml.objects = opts => layerRow("objects", `${objFams.length ? `<button class="cad-toggle ul-toggle" data-ul="__objects" title="Visa aktiviteterna (3D-objekten) på planen">${objOpen ? "▾" : "▸"}</button>` : ""}${name("objects", "fx-name", "🔷")}${objFams.length ? ` <small>${objFams.length}</small>` : ""}`, opts)
+    + (objFams.length ? objRowsHtml(objFams, { hidden: opts.hidden || !objOpen, inFolder: opts.inFolder }) : "");
   userLayers().forEach(l => {
     const n = siteItems.filter(x => isSiteObj(x) && layerOf(x) === l).length;
     const fixed = l === "Allmänt" || l === "Etablering";
@@ -2042,6 +2045,7 @@ function bindSiteItemRows(el) {
     itemSel.clear(); itemSel.add(key); itemSelAnchor = key; updateItemSelection();
     const id = key.slice(2);
     if (key.startsWith("s:")) { const x = siteItems.find(i => i.id === id); if (x) showSiteItem(x); }
+    else if (key.startsWith("o:")) showObjFams([id], true);
     else { const ph = photos().find(p => p.id === id); if (ph) showPhotoItem(ph); }
   }));
   el.querySelectorAll("[data-item]").forEach(row => row.addEventListener("mousedown", e => { if (e.shiftKey) e.preventDefault(); }));
@@ -2094,6 +2098,7 @@ function updateItemSelection() {
   el.querySelectorAll("[data-item]").forEach(r => r.classList.toggle("sel", itemSel.has(r.dataset.item)));
   if (!itemSel.size) { if (!layerSel.size) { bar.classList.add("hidden"); bar.innerHTML = ""; } return; }
   const keys = [...itemSel], nSite = keys.filter(k => k.startsWith("s:")).length;
+  if (typeof objSelBar === "function" && keys.every(k => k.startsWith("o:"))) { objSelBar(bar, keys); return; }
   bar.innerHTML = `<b>${keys.length} markerade</b>
     ${nSite ? `<select data-a="layer" title="Flytta markerade objekt till ett annat lager"><option value="">Till lager…</option>${noteLayers().map(l => `<option value="${escHtml(l)}">🗂 ${escHtml(ulName(l))}</option>`).join("")}</select>` : ""}
     <button type="button" data-a="del" class="danger" title="Ta bort markerade (Delete)">🗑️ Ta bort</button>
@@ -2114,6 +2119,9 @@ function updateItemSelection() {
 /* Ta bort objekt och/eller foton (keys "s:<id>"/"p:<id>"). Objekten kan
    ångras med Ctrl+Z (ett i taget); fler än ett frågar först. */
 async function deleteSelectedItems(keys) {
+  // 3D-objekt tas inte bort ur planeringen – Delete släcker dem på planen.
+  const oKeys = keys.filter(k => k.startsWith("o:"));
+  if (oKeys.length && typeof hideObjFams === "function") { hideObjFams(oKeys.map(k => k.slice(2)), true); keys = keys.filter(k => !k.startsWith("o:")); if (!keys.length) return; }
   const sIds = new Set(keys.filter(k => k.startsWith("s:")).map(k => k.slice(2)));
   const pIds = new Set(keys.filter(k => k.startsWith("p:")).map(k => k.slice(2)));
   const recs = siteItems.filter(x => sIds.has(x.id)), phs = (typeof photos === "function" ? photos() : []).filter(p => pIds.has(p.id));

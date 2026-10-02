@@ -298,6 +298,7 @@ function renderFieldSheet() {
   const cadOpen = box.dataset.cadOpen === "1";
   box.innerHTML = `
     ${views.length ? `<div class="fs-h">Sparade vyer</div><div class="fs-grid">${views.map(v => `<button type="button" class="fs-view${v.id === cur ? " on" : ""}" data-view="${fesc(v.id)}">📑 ${fesc(v.name)}</button>`).join("")}</div>` : ""}
+    ${typeof hiddenObjCount === "function" && hiddenObjCount() ? `<button type="button" class="fs-tog fs-showall" data-objshow="1"><span class="fs-lbl">💡 Tänd alla 3D-objekt <small>(${hiddenObjCount()} släckta)</small></span></button>` : ""}
     <div class="fs-h">Visa</div>
     <div class="fs-grid">${base.map(r => btn(r)).join("")}
       <button type="button" class="fs-tog${labelsOn ? " on" : ""}" data-labels="1"><span class="fs-dot"></span><span class="fs-lbl">🏷 Namn på objekten</span></button>
@@ -317,6 +318,8 @@ function renderFieldSheet() {
     c.checked = !c.checked; c.dispatchEvent(new Event("change"));
     setTimeout(renderFieldSheet, 30);
   });
+  const os = box.querySelector("[data-objshow]");
+  if (os) os.onclick = () => { $("btnObjShowAll").click(); setTimeout(renderFieldSheet, 30); };
   const lb = box.querySelector("[data-labels]");
   if (lb) lb.onclick = () => { const c = $("objLabels"); c.checked = !c.checked; c.dispatchEvent(new Event("change")); setTimeout(renderFieldSheet, 30); };
   box.querySelectorAll("[data-view]").forEach(b => b.onclick = () => { setVal("lsViewSel", b.dataset.view); setTimeout(() => { renderField(); renderFieldSheet(); }, 60); });

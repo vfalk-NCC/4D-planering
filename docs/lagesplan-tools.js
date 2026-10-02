@@ -554,6 +554,7 @@ async function exportPdfA3() {
 // Hookar från lagesplan.js
 // ---------------------------------------------------------------------
 function drawToolOverlays(ctx, fontPx) {
+  if (typeof drawObjFamHighlight === "function") drawObjFamHighlight(ctx, fontPx);
   if (selectedObjId && $("showObjects").checked) {
     const o = (objectShapesInPdf() || []).find(x => x.it.id === selectedObjId);
     if (o) {
@@ -588,6 +589,7 @@ function toolClick(pdfPt) {
   const objs = objectsAt(pdfPt);
   if (objs.length) { selectObject(objs[0].it); return true; }
   selectedObjId = null;
+  if (typeof objFamSel !== "undefined" && objFamSel.size) { objFamSel.clear(); renderZones(); }
   return false;
 }
 let moveRaf = 0;
