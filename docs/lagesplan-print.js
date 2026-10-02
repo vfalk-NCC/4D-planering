@@ -626,6 +626,14 @@ function titleLogoSource(el) {
         if (el.logoWhite) { px[i] = px[i + 1] = px[i + 2] = 255; }
       }
       ctx.putImageData(d, 0, 0);
+      // Tomma kanter runt loggan bort (Victors rapport 2026-10-02: loggan blev liten av bildens marginal).
+      let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+      for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) if (px[(y * c.width + x) * 4 + 3] > 16) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      if (x1 >= x0 && (x1 - x0 + 1 < c.width || y1 - y0 + 1 < c.height)) {
+        const t = newCanvas(x1 - x0 + 1, y1 - y0 + 1);
+        t.getContext("2d").drawImage(c, x0, y0, t.width, t.height, 0, 0, t.width, t.height);
+        c = t;
+      }
     } catch (e) { /* t.ex. SVG utan pixlar – används som den är */ }
     logoSrcCache.set(key, c);
   }
@@ -648,7 +656,11 @@ function drawTitleCard(ctx, el, tpl, X, Y, W, H, pt) {
   }
   if (fh) {
     ctx.fillStyle = col; ctx.fillRect(X, Y + H - fh, W, fh);
-    if (logo) { const lh = fh * 0.62, lw2 = Math.min(W - 2 * pad, lh * logo.width / logo.height); ctx.drawImage(logo, X + pad, Y + H - fh + (fh - lw2 * logo.height / logo.width) / 2, lw2, lw2 * logo.height / logo.width); }
+    if (logo) {
+      // Storlek: andel av fotens höjd (logoSize %, standard 60 %).
+      const lh = fh * Math.max(0.2, Math.min(0.9, (Number(el.logoSize) || 60) / 100)), lw2 = Math.min(W - 2 * pad, lh * logo.width / logo.height), lh2 = lw2 * logo.height / logo.width;
+      ctx.drawImage(logo, X + pad, Y + H - fh + (fh - lh2) / 2, lw2, lh2);
+    }
   }
   const top = Y + hh, area = H - hh - fh, rh = rows.length ? area / rows.length : 0;
   ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.5, lw * 0.6);
@@ -1179,7 +1191,7 @@ function renderPrintProps(onlyPos) {
     html += `<label>Utseende</label><select id="prTbStyle"><option value="card"${card ? " selected" : ""}>Kort med rubrik och logga</option><option value="classic"${card ? "" : " selected"}>Enkel ruta</option></select>`
       + (card ? inp("heading", "Rubrik") + `<div class="pr-grid4">${color("color", "Färg")}${num("size", "Storlek (pt)", "0.5")}</div>
         <label>Logga i foten</label><div class="row" style="flex-wrap:nowrap;"><button type="button" id="prTbLogo">${el.logo ? "🖼 Byt logga…" : "🖼 Välj logga…"}</button>${el.logo ? `<button type="button" id="prTbLogoDel" class="ghost" title="Ingen logga">✕</button>` : ""}</div>
-        ${el.logo ? chk("logoWhite", "Gör loggan vit") : ""}` : `<div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}</div>`)
+        ${el.logo ? chk("logoWhite", "Gör loggan vit") + `<label>Loggans storlek <span class="muted" id="prLogoSizeV">${Number(el.logoSize) || 60} %</span></label><input type="range" min="20" max="90" step="5" data-f="logoSize" data-num="1" value="${Number(el.logoSize) || 60}" oninput="document.getElementById('prLogoSizeV').textContent = this.value + ' %'" />` : ""}` : `<div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}</div>`)
       + `<label>Rader <span class="muted">– etikett och text, ⇆ delar raden i två</span></label>
       <div class="pr-tb">${cells.map((row, r) => `<div class="pr-tb-row" data-r="${r}">${row.map(([l, v], c) => `<div class="pr-tb-cell" data-c="${c}"><input type="text" class="tb-l" value="${escHtml(l)}" placeholder="ETIKETT" /><input type="text" class="tb-v" value="${escHtml(v)}" placeholder="Text" /></div>`).join("")}
         <div class="pr-tb-btns"><button type="button" class="tb-split icon ghost" title="${row.length > 1 ? "Slå ihop till en cell" : "Dela i två celler"}">⇆</button><button type="button" class="tb-up icon ghost" title="Flytta upp"${r ? "" : " disabled"}>↑</button><button type="button" class="tb-del icon ghost" title="Ta bort raden">🗑</button></div></div>`).join("")}</div>

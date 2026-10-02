@@ -170,6 +170,15 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (tb.n !== 7) fail('＋ Rad ska lägga till en rad: ' + JSON.stringify(tb));
   if (!tb.texts.includes('INFO') || !tb.texts.includes('PROJEKT') || !tb.texts.includes('NCC Green Industry')) fail('Kortet ska rita rubrik, etiketter och texter: ' + JSON.stringify(tb.texts));
   if (tb.classic !== 'classic') fail('Utseendet ska gå att byta till enkel ruta');
+  const trim = await page.evaluate(async () => {
+    const c = document.createElement('canvas'); c.width = 400; c.height = 200; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 400, 200); x.fillStyle = '#1f3b73'; x.fillRect(150, 80, 100, 40);
+    const im = await new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = c.toDataURL(); });
+    printImgs.set('lg.png', im);
+    const t = titleLogoSource({ logo: 'lg.png', logoWhite: true });
+    const d = t.getContext('2d').getImageData(Math.floor(t.width / 2), Math.floor(t.height / 2), 1, 1).data;
+    return { w: t.width, h: t.height, white: d[0] === 255 && d[3] === 255 };
+  });
+  if (Math.abs(trim.w - 100) > 2 || Math.abs(trim.h - 40) > 2 || !trim.white) fail('Loggans tomma kanter ska beskäras bort och loggan kunna göras vit: ' + JSON.stringify(trim));
   console.log('OK: ritningshuvudet som kort (rubrik, rader i sidomenyn, dela/lägg till rad, logga)');
   // Text i en låg ruta (t.ex. rubriken TIDPLAN) ska komma med i PDF:en, som i layouten.
   const pdfTexts = await page.evaluate(async () => {
