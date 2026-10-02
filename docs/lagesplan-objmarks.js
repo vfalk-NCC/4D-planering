@@ -18,21 +18,19 @@ function saveObjMarks(pos, label) {
 }
 const famLabel = o => { const it = o.it; return `${it.activity || it.object_name || "Objekt"}${o.members && o.members.length > 1 ? ` (${o.members.length} objekt)` : it.activity && it.object_name ? ` – ${it.object_name}` : ""}`; };
 
+/* Lås-knapparna visas i en smal list längst ner på planen (inte vid pricken,
+   där rutan täckte närliggande prickar så att nästa klick inte nådde 3D). */
 function openObjMarkPop(o) {
   if (!o || !plan || !plan.calib) return;
-  const pop = $("sitePop"), unlocked = objMarkUnlocked.has(o.fam);
+  const pop = $("objMarkBar"), unlocked = objMarkUnlocked.has(o.fam);
+  if (!pop) return;
   pop.innerHTML = `
-    <b class="dp-head">🔷 ${escHtml(famLabel(o))}</b>
-    <div class="muted" style="margin:4px 0 6px;">${unlocked ? "Upplåst – dra pricken dit du vill och lås den sedan." : o.moved ? "Markeringen är flyttad och låst." : "Markeringen är låst på objektens läge."}</div>
-    <div class="row" style="gap:6px;flex-wrap:wrap;">
-      ${unlocked ? `<button type="button" class="om-lock primary">🔒 Lås</button>` : `<button type="button" class="om-unlock" title="Lås upp så att pricken kan dras">🔓 Lås upp och flytta</button>`}
-      ${o.moved ? `<button type="button" class="om-reset" title="Tillbaka till objektens läge (och låst)">↺ Återställ</button>` : ""}
-      <button type="button" class="om-close">Stäng</button>
-    </div>`;
+    <span class="omb-name" title="${escHtml(famLabel(o))}">🔷 ${escHtml(famLabel(o))}</span>
+    <span class="muted omb-state">${unlocked ? "Upplåst – dra pricken" : o.moved ? "Flyttad, låst" : "Låst"}</span>
+    ${unlocked ? `<button type="button" class="om-lock primary">🔒 Lås</button>` : `<button type="button" class="om-unlock" title="Lås upp så att pricken kan dras">🔓 Lås upp och flytta</button>`}
+    ${o.moved ? `<button type="button" class="om-reset" title="Tillbaka till objektens läge (och låst)">↺ Återställ</button>` : ""}
+    <button type="button" class="om-close icon ghost" title="Stäng">✕</button>`;
   pop.classList.remove("hidden");
-  const r = $("viewport").getBoundingClientRect(), sp = stageToScreen(toPx(o.center));
-  pop.style.left = `${Math.max(8, Math.min(r.width - pop.offsetWidth - 8, sp[0] + 18))}px`;
-  pop.style.top = `${Math.max(8, Math.min(r.height - pop.offsetHeight - 8, sp[1] + 14))}px`;
   const q = c => pop.querySelector(c);
   const close = () => { pop.classList.add("hidden"); pop.innerHTML = ""; };
   q(".om-close").onclick = close;

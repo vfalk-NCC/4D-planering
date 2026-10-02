@@ -590,6 +590,7 @@ function toolClick(pdfPt) {
   const objs = objectsAt(pdfPt);
   if (objs.length) { selectObject(objs[0].it, objs[0]); if (typeof openObjMarkPop === "function") openObjMarkPop(objs[0]); return true; }
   selectedObjId = null;
+  if ($("objMarkBar") && !(typeof objMarkUnlocked !== "undefined" && objMarkUnlocked.size)) $("objMarkBar").classList.add("hidden"); // klick bredvid: stäng lås-listen
   if (typeof objFamSel !== "undefined" && objFamSel.size) { objFamSel.clear(); renderZones(); }
   return false;
 }

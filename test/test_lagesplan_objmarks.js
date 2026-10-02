@@ -48,14 +48,24 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   await page.check('#objGroup');
   console.log('OK: en markering per aktivitet (med antal), går att slå av');
 
+  // Klick på prickarna – flera i rad – markerar och zoomar i 3D varje gång (lås-listen ligger inte i vägen).
+  await page.evaluate(() => { window.__calls = []; window.opener = { closed: false }; askOpener = (type, extra) => { window.__calls.push([type, extra]); return Promise.resolve({}); }; });
+  for (const [x, y] of [[110, 100], [300, 200], [500, 300]]) { await page.mouse.click(vb.x + x, vb.y + y); await page.waitForTimeout(150); }
+  const calls = await page.evaluate(() => window.__calls.map(c => c[0] + ':' + c[1].ids.join('+') + ':' + c[1].jump));
+  if (JSON.stringify(calls) !== JSON.stringify(['select:a+b:true', 'select:c:true', 'select:d:true'])) fail('Varje klick på en prick ska markera och zooma i 3D: ' + JSON.stringify(calls));
+  if (!(await page.isVisible('#objMarkBar .om-unlock'))) fail('Lås-listen ska visas för den klickade pricken');
+  await page.mouse.click(vb.x + 700, vb.y + 600); await page.waitForTimeout(100);
+  if (await page.isVisible('#objMarkBar')) fail('Klick bredvid ska stänga lås-listen');
+  console.log('OK: klick på prickar zoomar i 3D varje gång, lås-knapparna ligger i en list längst ner');
+
   // 2) Låst från början: dra flyttar inte. Klick → 🔓 Lås upp → dra → sparas → 🔒 Lås.
   await page.mouse.move(vb.x + 110, vb.y + 100); await page.mouse.down(); await page.mouse.move(vb.x + 160, vb.y + 140, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(150);
   if (await page.evaluate(() => objectShapesInPdf().some(o => o.moved))) fail('En låst markering ska inte flyttas');
   await page.evaluate(() => { view.tx = 0; view.ty = 0; applyView(); }); // draget panorerade planen i stället
 
   await page.mouse.click(vb.x + 110, vb.y + 100); await page.waitForTimeout(150);
-  if (!(await page.isVisible('#sitePop .om-unlock'))) fail('Klick på pricken ska visa 🔓 Lås upp');
-  await page.click('#sitePop .om-unlock');
+  if (!(await page.isVisible('#objMarkBar .om-unlock'))) fail('Klick på pricken ska visa 🔓 Lås upp');
+  await page.click('#objMarkBar .om-unlock');
   await page.mouse.move(vb.x + 110, vb.y + 100); await page.mouse.down(); await page.mouse.move(vb.x + 210, vb.y + 160, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(300);
   const fam = j.fam;
   const saved = (JSON.parse(store.get(`projects/${PID}/site_layers.json`) || '[]').find(x => x.type === 'objmarks') || {}).pos || {};
@@ -63,7 +73,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   sh = await page.evaluate(f => objectShapesInPdf().find(o => o.fam === f), fam);
   if (!sh.moved || Math.abs(sh.center[0] - 210) > 2) fail('Pricken ska ligga där den släpptes: ' + JSON.stringify(sh.center));
   await page.mouse.click(vb.x + 210, vb.y + 160); await page.waitForTimeout(150);
-  await page.click('#sitePop .om-lock'); await page.waitForTimeout(100);
+  await page.click('#objMarkBar .om-lock'); await page.waitForTimeout(100);
   await page.mouse.move(vb.x + 210, vb.y + 160); await page.mouse.down(); await page.mouse.move(vb.x + 300, vb.y + 300, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(150);
   if (Math.abs((await page.evaluate(f => objectShapesInPdf().find(o => o.fam === f).center[0], fam)) - 210) > 2) fail('Låst igen ska den inte gå att dra');
   await page.evaluate(() => { view.tx = 0; view.ty = 0; applyView(); });
@@ -71,7 +81,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
 
   // 3) ↺ Återställ: tillbaka till objektens läge och låst. Ctrl+Z ångrar.
   await page.mouse.click(vb.x + 210, vb.y + 160); await page.waitForTimeout(150);
-  await page.click('#sitePop .om-reset'); await page.waitForTimeout(300);
+  await page.click('#objMarkBar .om-reset'); await page.waitForTimeout(300);
   sh = await page.evaluate(f => objectShapesInPdf().find(o => o.fam === f), fam);
   if (sh.moved || Math.abs(sh.center[0] - 110) > 0.01) fail('↺ ska lägga tillbaka markeringen: ' + JSON.stringify(sh.center));
   if (await page.evaluate(f => objMarkUnlocked.has(f), fam)) fail('↺ ska låsa markeringen');

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261002070959"></script>
+<script src="github-storage.js?v=20261002074657"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -480,6 +480,11 @@
   .ze-act .muted { flex: none; }
   .layer-row .cad-date { font-size: 10px; color: var(--faint); opacity: 0; transition: opacity .2s; margin-left: 4px; }
   .layer-row:hover .cad-date { opacity: .7; }
+  #objMarkBar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 14; display: flex; gap: 8px; align-items: center; max-width: calc(100% - 140px); padding: 6px 8px 6px 12px; background: rgba(255,255,255,.97); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 6px 20px rgba(15,23,42,.18); font-size: 12px; }
+  #objMarkBar.hidden { display: none; }
+  #objMarkBar .omb-name { font-weight: 650; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #objMarkBar button { height: 28px; padding: 0 9px; white-space: nowrap; }
+  body.field #objMarkBar { bottom: 132px; font-size: 14px; } body.field #objMarkBar button { height: 40px; }
   #fieldDay { position: absolute; top: 66px; right: 10px; bottom: 132px; width: min(420px, calc(100% - 20px)); z-index: 9; flex-direction: column; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 10px 30px rgba(15,23,42,.25); overflow: hidden; }
   #fieldDay .fs-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 17px; }
   #fieldDayBody { overflow-y: auto; padding: 6px 12px 14px; -webkit-overflow-scrolling: touch; font-size: 15px; }
@@ -885,6 +890,7 @@
     <input type="file" id="photoInput" accept="image/*" multiple style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:0;top:0;" tabindex="-1" aria-hidden="true" />
     <div id="tip" class="hidden"></div>
     <div id="sitePop" class="hidden"></div>
+    <div id="objMarkBar" class="hidden"></div>
     <div id="photoModal" class="hidden">
       <div class="pm-box">
         <img id="pmImg" alt="" />
@@ -980,21 +986,21 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261002070959"></script>
-<script src="lagesplan-tools.js?v=20261002070959"></script>
-<script src="lagesplan-layers.js?v=20261002070959"></script>
-<script src="lagesplan-views.js?v=20261002070959"></script>
-<script src="lagesplan-film.js?v=20261002070959"></script>
-<script src="lagesplan-cad.js?v=20261002070959"></script>
-<script src="lagesplan-vecpdf.js?v=20261002070959"></script>
-<script src="lagesplan-print.js?v=20261002070959"></script>
-<script src="lagesplan-objmarks.js?v=20261002070959"></script>
-<script src="lagesplan-objlist.js?v=20261002070959"></script>
-<script src="lagesplan-zones.js?v=20261002070959"></script>
-<script src="lagesplan-daily.js?v=20261002070959"></script>
-<script src="lagesplan-gps.js?v=20261002070959"></script>
-<script src="lagesplan-weather.js?v=20261002070959"></script>
-<script src="lagesplan-touch.js?v=20261002070959"></script>
-<script src="lagesplan-keys.js?v=20261002070959"></script>
+<script src="lagesplan.js?v=20261002074657"></script>
+<script src="lagesplan-tools.js?v=20261002074657"></script>
+<script src="lagesplan-layers.js?v=20261002074657"></script>
+<script src="lagesplan-views.js?v=20261002074657"></script>
+<script src="lagesplan-film.js?v=20261002074657"></script>
+<script src="lagesplan-cad.js?v=20261002074657"></script>
+<script src="lagesplan-vecpdf.js?v=20261002074657"></script>
+<script src="lagesplan-print.js?v=20261002074657"></script>
+<script src="lagesplan-objmarks.js?v=20261002074657"></script>
+<script src="lagesplan-objlist.js?v=20261002074657"></script>
+<script src="lagesplan-zones.js?v=20261002074657"></script>
+<script src="lagesplan-daily.js?v=20261002074657"></script>
+<script src="lagesplan-gps.js?v=20261002074657"></script>
+<script src="lagesplan-weather.js?v=20261002074657"></script>
+<script src="lagesplan-touch.js?v=20261002074657"></script>
+<script src="lagesplan-keys.js?v=20261002074657"></script>
 </body>
 </html>
