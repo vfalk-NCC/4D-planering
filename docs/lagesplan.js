@@ -180,13 +180,18 @@ function computeItemPhase(row, atDateStr, warningDays) {
   if (actualEnd && actualEnd <= at) return "klar";
   if (row.status === "pausad") return "pausad";
   // Framdrift över 0 % = påbörjad (senast i dag), även före planerad start – samma som 4D-planering.
-  let actualStart = row.actual_start_date ? new Date(row.actual_start_date) : null;
-  if ((Number(row.progress) || 0) > 0 || row.status === "pagaende") {
+  // Bara framdrift (minst 1 %) gör en aktivitet pågående; startdatum passerat
+  // utan framdrift = försenad (Victor 2026-10-02, samma som 4D-planering).
+  const hasProgress = (Number(row.progress) || 0) >= 1;
+  let actualStart = hasProgress && row.actual_start_date ? new Date(row.actual_start_date) : null;
+  if (hasProgress) {
     const today = new Date(new Date().toISOString().slice(0, 10));
     if (!actualStart || actualStart > today) actualStart = actualStart && actualStart < today ? actualStart : (start < today ? start : today);
   }
-  if (at < start && !(actualStart && actualStart <= at)) return "planerad";
+  const started = actualStart && actualStart <= at;
+  if (at < start && !started) return "planerad";
   if (plannedEnd && at > plannedEnd) return "forsenad";
+  if (!started) return "forsenad";
   return "pagaende";
 }
 

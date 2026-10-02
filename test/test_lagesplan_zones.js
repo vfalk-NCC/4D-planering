@@ -289,6 +289,9 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   await page.uncheck('#zoWbs'); await page.waitForTimeout(100);
   if (await page.locator('#zoneList .wbs-item').count()) fail('Utan alternativet ska överzonerna inte synas i listan');
   if ((await page.evaluate(() => { const c = document.createElement('canvas'); return drawZoneShapes(c.getContext('2d'), 14, null).filter(b => !b[5]).length; }))) fail('Utan alternativet ska överzonerna inte ritas');
+  const lpRule = await page.evaluate(() => { const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    return [computeItemPhase({ start_date: d(-3), end_date: d(10), status: 'pagaende', progress: 0 }, d(0), 0), computeItemPhase({ start_date: d(-3), end_date: d(10), progress: 5 }, d(0), 0)].join(','); });
+  if (lpRule !== 'forsenad,pagaende') fail('Lägesplanen: startad utan framdrift = försenad, med framdrift = pågående: ' + lpRule);
   console.log('OK: WBS-nivåer (avancerat) – överzon räknas fram ur zonerna, visa båda/nivå 1/nivå 2, ångra');
 
   // 7) Uppladdningsdatum för DXF – diskret (syns vid hovring).

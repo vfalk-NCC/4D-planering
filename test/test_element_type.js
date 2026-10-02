@@ -156,6 +156,18 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
       computeItemPhase(h30, d(0), 7), computeItemPhase(h30, d(-3), 7), computeItemPhase(notStarted, d(0), 7)].join(',');
   });
   if (ph !== 'klar,pagaende,klar,pagaende,pagaende,planerad,planerad') fail('Klar med framtida slutdatum ska vara klar i dag (och pågående bakåt i tiden), fick ' + ph);
+  // Victor 2026-10-02: bara framdrift (≥ 1 %) ger pågående; startad utan framdrift = försenad.
+  const rule = await page.evaluate(() => {
+    const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    return [
+      computeItemPhase({ startDate: d(-3), endDate: d(10), status: 'pagaende', progress: 0 }, d(0), 0),
+      computeItemPhase({ startDate: d(-3), endDate: d(10), status: 'planerad', progress: 1 }, d(0), 0),
+      computeItemPhase({ startDate: d(3), endDate: d(10), status: 'planerad', progress: 0 }, d(0), 0),
+      computeImportStatus({ startDate: d(-3), endDate: d(10), progress: 0 }, d(0)),
+      computeImportStatus({ startDate: d(-3), endDate: d(10), progress: 20 }, d(0)),
+    ].join(',');
+  });
+  if (rule !== 'forsenad,pagaende,planerad,forsenad,pagaende') fail('Startad utan framdrift ska vara försenad, med framdrift pågående: ' + rule);
   const parsedEnd = (() => { const { parsePlanSheet } = require('../docs/plan-excel-parser.js'); const fut = new Date(Date.now() + 16 * 864e5).toISOString().slice(0, 10);
     const r = []; r[1] = null; r[2] = 'F28 - Fundament'; r[5] = '2026-09-20'; r[8] = fut; r[7] = 28; r[10] = 'DP2'; r[13] = 1;
     const rows = [[], [], [], [], (() => { const h = []; h[1] = 'Linje F'; h[2] = 'Linje F'; return h; })(), r];

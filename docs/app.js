@@ -2777,16 +2777,19 @@ function computeItemPhase(item, atDateStr, warningDays) {
   // grå "ej påbörjad" eftersom planerad start var 11/10): framdrift över 0 %
   // betyder att arbetet är igång – senast i dag, även om verklig start saknas
   // eller ligger i framtiden.
-  let actualStart = item.actualStartDate ? new Date(item.actualStartDate) : null;
-  if ((Number(item.progress) || 0) > 0 || item.status === "pagaende") {
+  // Victor 2026-10-02: bara framdrift (minst 1 %) gör en aktivitet pågående.
+  // Har startdatumet passerat utan framdrift är den försenad.
+  const hasProgress = (Number(item.progress) || 0) >= 1;
+  let actualStart = hasProgress && item.actualStartDate ? new Date(item.actualStartDate) : null;
+  if (hasProgress) {
     const today = new Date(new Date().toISOString().slice(0, 10));
     if (!actualStart || actualStart > today) actualStart = actualStart && actualStart < today ? actualStart : (start < today ? start : today);
   }
   const startedAtDate = actualStart && actualStart <= at;
   if (at < start && !startedAtDate) return "planerad";
 
-  // "Snart aktuell" borttagen (Victor 2026-10-02): pågående tills slutdatum passerat.
   if (plannedEnd && at > plannedEnd) return "forsenad";
+  if (!startedAtDate) return "forsenad";
   return "pagaende";
 }
 
@@ -3338,7 +3341,9 @@ function computeImportStatus(parsed, todayStr) {
   if (Number.isFinite(parsed.progress) && parsed.progress >= 100) return "klar";
   const today = new Date(todayStr);
   if (parsed.endDate && today > new Date(parsed.endDate)) return "forsenad";
-  if (parsed.startDate && today >= new Date(parsed.startDate)) return "pagaende";
+  // Bara framdrift gör den pågående; startad utan framdrift = försenad (Victor 2026-10-02).
+  if ((Number(parsed.progress) || 0) >= 1) return "pagaende";
+  if (parsed.startDate && today >= new Date(parsed.startDate)) return "forsenad";
   return "planerad";
 }
 
