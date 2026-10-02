@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261002064453"></script>
+<script src="github-storage.js?v=20261002065544"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -572,6 +572,7 @@
             <select id="objStyle" class="grow"><option value="dots">Prick i mitten (statusfärg)</option><option value="footprint">Fotavtryck (objektets yta)</option></select></div>
           <div class="row" id="objSizeRow" style="align-items:center;gap:8px;margin-top:4px;"><span class="muted" style="font-size:12px;">Prickstorlek</span>
             <input type="range" id="objSize" class="grow" min="25" max="400" step="5" value="100" /><span id="objSizeVal" class="muted" style="font-size:12px;width:44px;text-align:right;">100 %</span></div>
+          <label class="check" title="Flera 3D-objekt kopplade till samma aktivitet visas som en prick i deras mitt, med antalet. Klicka på en prick för att låsa upp och flytta den."><input type="checkbox" id="objGroup" checked /> En markering per aktivitet</label>
           <label class="check" title="Objekt som i 4D-planering är kopplade till en delaktivitet (t.ex. bara Formning) – inte hela aktiviteten"><input type="checkbox" id="objSubs" checked /> Visa objekt kopplade till delaktiviteter</label>
           <label class="check" title="Visar objektens korta namn (t.ex. J22) som små etiketter. Etiketter som skulle krocka hoppas över – fler får plats när du zoomar in."><input type="checkbox" id="objLabels" /> Visa namn</label>
           <div class="row" style="align-items:center;gap:8px;"><span class="muted" style="font-size:12px;">Namn på</span>
@@ -979,20 +980,21 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261002064453"></script>
-<script src="lagesplan-tools.js?v=20261002064453"></script>
-<script src="lagesplan-layers.js?v=20261002064453"></script>
-<script src="lagesplan-views.js?v=20261002064453"></script>
-<script src="lagesplan-film.js?v=20261002064453"></script>
-<script src="lagesplan-cad.js?v=20261002064453"></script>
-<script src="lagesplan-vecpdf.js?v=20261002064453"></script>
-<script src="lagesplan-print.js?v=20261002064453"></script>
-<script src="lagesplan-objlist.js?v=20261002064453"></script>
-<script src="lagesplan-zones.js?v=20261002064453"></script>
-<script src="lagesplan-daily.js?v=20261002064453"></script>
-<script src="lagesplan-gps.js?v=20261002064453"></script>
-<script src="lagesplan-weather.js?v=20261002064453"></script>
-<script src="lagesplan-touch.js?v=20261002064453"></script>
-<script src="lagesplan-keys.js?v=20261002064453"></script>
+<script src="lagesplan.js?v=20261002065544"></script>
+<script src="lagesplan-tools.js?v=20261002065544"></script>
+<script src="lagesplan-layers.js?v=20261002065544"></script>
+<script src="lagesplan-views.js?v=20261002065544"></script>
+<script src="lagesplan-film.js?v=20261002065544"></script>
+<script src="lagesplan-cad.js?v=20261002065544"></script>
+<script src="lagesplan-vecpdf.js?v=20261002065544"></script>
+<script src="lagesplan-print.js?v=20261002065544"></script>
+<script src="lagesplan-objmarks.js?v=20261002065544"></script>
+<script src="lagesplan-objlist.js?v=20261002065544"></script>
+<script src="lagesplan-zones.js?v=20261002065544"></script>
+<script src="lagesplan-daily.js?v=20261002065544"></script>
+<script src="lagesplan-gps.js?v=20261002065544"></script>
+<script src="lagesplan-weather.js?v=20261002065544"></script>
+<script src="lagesplan-touch.js?v=20261002065544"></script>
+<script src="lagesplan-keys.js?v=20261002065544"></script>
 </body>
 </html>

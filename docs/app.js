@@ -3457,9 +3457,14 @@ function buildPlanImportDiff(parsedItems) {
   // t.ex. en borttagen eller omdöpt rubrik/elementkod. Rörs INTE av importen
   // (varken uppdateras eller tas bort) - bara ett observandum i förhands-
   // granskningen, se renderPlanImportPreview.
-  const removedExisting = Array.from(bySourceKey.values()).flat().filter(it => !seenKeys.has(it.sourceKey));
+  // Bara flikar som finns i filen räknas – importeras en fil med färre flikar
+  // rörs aktiviteterna från de andra flikarna inte (Victors önskemål 2026-10-02).
+  const sheetsInFile = new Set(parsedItems.map(p => sheetOfSourceKey(p.sourceKey)).filter(Boolean));
+  const removedExisting = Array.from(bySourceKey.values()).flat().filter(it => !seenKeys.has(it.sourceKey) && sheetsInFile.has(sheetOfSourceKey(it.sourceKey)));
+  // Det som inte finns kvar i Excel tas bort vid importen (förvalt: allt, kan väljas bort per aktivitet).
+  const removeKeys = new Set(removedExisting.map(it => it.sourceKey));
 
-  return { parsedItems, matched, toCreate, toUpdate, removedExisting, renames, todayStr };
+  return { parsedItems, matched, toCreate, toUpdate, removedExisting, removeKeys, renames, todayStr };
 }
 
 function renderPlanImportPreview(diff) {
@@ -3479,10 +3484,7 @@ function renderPlanImportPreview(diff) {
     summaryEl.innerHTML += `<div class="plan-import-renames"><strong>${diff.renames.length}</strong> namnbyte${diff.renames.length > 1 ? "n" : ""} – samma aktivitet, kopplingen behålls:<ul>${diff.renames.slice(0, 12).map(r => `<li><b>${escapeHtml(r.code)}</b>: ${escapeHtml(r.from || "–")} → ${escapeHtml(r.to || "–")}${r.coupled ? ` <span class="hint">(${r.coupled} kopplade objekt)</span>` : ""}</li>`).join("")}${diff.renames.length > 12 ? `<li>… och ${diff.renames.length - 12} till</li>` : ""}</ul></div>`;
   }
   if (diff.removedExisting.length > 0) {
-    const coupled = diff.removedExisting.filter(it => it.modelId).length;
-    const names = diff.removedExisting.slice(0, 8).map(it => it.objectName || it.id).join(", ");
-    removedEl.classList.remove("hidden");
-    removedEl.innerHTML = `${diff.removedExisting.length} tidigare importerade objekt finns INTE kvar i den här filen (borttagen eller omdöpt rubrik/elementkod) - de rörs inte av den här importen${coupled > 0 ? `, ${coupled} av dem har en 3D-koppling` : ""}: ${escapeHtml(names)}${diff.removedExisting.length > 8 ? " m.fl." : ""}`;
+    renderPlanImportRemoved(diff, removedEl);
   } else {
     removedEl.classList.add("hidden");
     removedEl.innerHTML = "";
@@ -3498,6 +3500,31 @@ function renderPlanImportPreview(diff) {
 
   confirmMsgEl.innerText = "";
 }
+
+/* Borttagna ur Excel (Victors önskemål 2026-10-02): aktiviteter som fanns i
+   en tidigare import men inte längre finns i filen (på de flikar filen har)
+   tas bort vid importen – en kryssruta per aktivitet, alla ikryssade från
+   början. En säkerhetskopia tas före importen. */
+function renderPlanImportRemoved(diff, el) {
+  if (!diff.removeKeys) diff.removeKeys = new Set(diff.removedExisting.map(it => it.sourceKey));
+  const groups = new Map();
+  diff.removedExisting.forEach(it => { if (!groups.has(it.sourceKey)) groups.set(it.sourceKey, []); groups.get(it.sourceKey).push(it); });
+  const list = [...groups.entries()];
+  const nSel = list.filter(([k]) => diff.removeKeys.has(k)).reduce((a, [, rows]) => a + rows.length, 0);
+  el.classList.remove("hidden");
+  el.innerHTML = `<div><b>${list.length} aktivitet${list.length === 1 ? "" : "er"} finns inte längre i Excel</b> (borttagen rubrik eller elementkod). Ikryssade tas bort vid importen – en säkerhetskopia tas först. Aktiviteter skapade i TC och flikar som inte finns i filen rörs inte.</div>
+    <div class="pir-actions"><button type="button" data-pir="all">Kryssa alla</button><button type="button" data-pir="none">Kryssa ingen</button><span class="hint">${nSel} objekt tas bort</span></div>
+    <div class="pir-list">${list.map(([k, rows], i) => {
+      const it = rows[0], coupled = rows.filter(r => r.modelId).length;
+      const comments = rows.reduce((a, r) => a + (commentCounts.get(r.id) || 0), 0), subs = rows.reduce((a, r) => a + (activitiesByItemId.get(r.id) || []).length, 0);
+      const facts = [it.area, coupled ? `${coupled} 3D-kopplade` : "", comments ? `${comments} kommentar${comments > 1 ? "er" : ""}` : "", subs ? `${subs} delakt.` : ""].filter(Boolean).join(" · ");
+      return `<label class="pir-row"><input type="checkbox" data-pir-i="${i}"${diff.removeKeys.has(k) ? " checked" : ""} /><span><b>${escapeHtml(it.objectName || "")}</b> ${escapeHtml(it.activity || "")}<br/><span class="hint">${escapeHtml(facts)}</span></span></label>`;
+    }).join("")}</div>`;
+  el.querySelectorAll("[data-pir-i]").forEach(c => c.onchange = () => { const k = list[Number(c.dataset.pirI)][0]; if (c.checked) diff.removeKeys.add(k); else diff.removeKeys.delete(k); renderPlanImportRemoved(diff, el); });
+  el.querySelector('[data-pir="all"]').onclick = () => { list.forEach(([k]) => diff.removeKeys.add(k)); renderPlanImportRemoved(diff, el); };
+  el.querySelector('[data-pir="none"]').onclick = () => { diff.removeKeys.clear(); renderPlanImportRemoved(diff, el); };
+}
+const planImportRemoveIds = diff => new Set(diff.removedExisting.filter(it => diff.removeKeys && diff.removeKeys.has(it.sourceKey)).map(it => it.id));
 
 /* Hela förhandsgranskningen som Excel-fil (Victors önskemål 2026-10-01):
    en flik per kategori, och för det som uppdateras exakt vad som ändras
@@ -3551,14 +3578,15 @@ function exportPlanImportReport(diff) {
       { "Vad": "– varav med ändringar", "Antal": updRows.filter(r => r["Ändrat"] !== "Ingen ändring").length },
       { "Vad": "– varav oförändrade", "Antal": updRows.filter(r => r["Ändrat"] === "Ingen ändring").length },
       { "Vad": "Namnbyten (kopplingen behålls)", "Antal": (diff.renames || []).length },
-      { "Vad": "Finns inte kvar i filen (rörs inte)", "Antal": diff.removedExisting.length },
+      { "Vad": "Finns inte kvar i filen", "Antal": diff.removedExisting.length },
+      { "Vad": "– varav tas bort", "Antal": planImportRemoveIds(diff).size },
       { "Vad": "– varav med 3D-koppling", "Antal": coupledCount(diff.removedExisting) },
       { "Vad": "Objekt totalt i filen", "Antal": diff.parsedItems.length },
     ]],
     ["Namnbyten", (diff.renames || []).map(r => ({ "Kod": r.code, "Område": r.area, "Gammalt namn": r.from, "Nytt namn": r.to, "Kopplade 3D-objekt": r.coupled }))],
     ["Uppdateras", updRows.sort((a, b) => (a["Ändrat"] === "Ingen ändring") - (b["Ändrat"] === "Ingen ändring") || String(a["Område"]).localeCompare(String(b["Område"]), "sv") || String(a["Kod/namn"]).localeCompare(String(b["Kod/namn"]), "sv", { numeric: true }))],
     ["Nya", diff.toCreate.map(m => { const p = m.parsed; return { "Kod/namn": p.objectName, "Område": p.area, "Aktivitet": p.activity || "", "Typ": p.elementType || "", "Start": p.startDate || "", "Slut": p.endDate || "", "Framdrift %": p.progress, "Delaktiviteter": (p.subActivities || []).map(sa => sa.name).join(", ") }; })],
-    ["Finns inte kvar", diff.removedExisting.map(it => ({ "Namn": it.objectName || "", "Område": it.area || "", "Aktivitet": it.activity || "", "Typ": it.elementType || "", "3D-kopplad": yes(it.modelId), "Kommentarer": commentCounts.get(it.id) || 0, "Källnyckel": it.sourceKey || "" }))],
+    ["Finns inte kvar", diff.removedExisting.map(it => ({ "Tas bort": diff.removeKeys && diff.removeKeys.has(it.sourceKey) ? "Ja" : "Nej", "Namn": it.objectName || "", "Område": it.area || "", "Aktivitet": it.activity || "", "Typ": it.elementType || "", "3D-kopplad": yes(it.modelId), "Kommentarer": commentCounts.get(it.id) || 0, "Källnyckel": it.sourceKey || "" }))],
   ];
   const wb = XLSX.utils.book_new();
   sheets.forEach(([name, rows]) => {
@@ -3587,10 +3615,10 @@ async function onConfirmPlanImport() {
   confirmMsgEl.innerText = "Importerar...";
   try {
     await commitPlanImport(planImportDiff);
-    const count = planImportDiff.parsedItems.length;
+    const count = planImportDiff.parsedItems.length, removed = planImportRemoveIds(planImportDiff).size;
     planImportDiff = null;
     toggle("planImportPreviewDialog", false);
-    document.getElementById("planImportStatus").innerText = `Import klar – ${count} objekt.`;
+    document.getElementById("planImportStatus").innerText = `Import klar – ${count} objekt${removed ? `, ${removed} borttagna (finns i säkerhetskopian)` : ""}.`;
     document.getElementById("planExcelFile").value = "";
     await refreshItems();
     await refreshActivities();
@@ -3619,7 +3647,8 @@ async function onConfirmPlanImport() {
  */
 async function commitPlanImport(diff) {
   const fileName = (document.getElementById("planExcelFile").files[0] || {}).name || "Excel";
-  await createBackup(`Före import av ${fileName} (${diff.toCreate.length} nya, ${diff.toUpdate.length} uppdateras)`);
+  const removeIds = planImportRemoveIds(diff);
+  await createBackup(`Före import av ${fileName} (${diff.toCreate.length} nya, ${diff.toUpdate.length} uppdateras${removeIds.size ? `, ${removeIds.size} tas bort` : ""})`);
   const path = itemsPath();
   const { data, sha } = await ghGetFile(settings.githubToken, path);
   const before = Array.isArray(data) ? data : [];
@@ -3692,7 +3721,8 @@ async function commitPlanImport(diff) {
         const next = arr.map(r => (byId.has(r.id) ? byId.get(r.id) : r));
         const existingIds = new Set(arr.map(r => r.id));
         incomingRows.forEach(r => { if (!existingIds.has(r.id)) next.push(r); });
-        return next;
+        // Borttagna ur Excel (de som var ikryssade i förhandsgranskningen).
+        return removeIds.size ? next.filter(r => !removeIds.has(r.id)) : next;
       },
       `Importera 4-veckorsplanering (${incomingRows.length} objekt)`,
       6,
@@ -3710,6 +3740,11 @@ async function commitPlanImport(diff) {
       } catch (e) { console.warn("Kunde inte spara importloggen", e); }
     })(),
   ]);
+  // Kommentarer och delaktiviteter till borttagna aktiviteter (finns kvar i säkerhetskopian).
+  if (removeIds.size) {
+    try { await deleteCommentsForItems([...removeIds]); await deleteActivitiesForItems([...removeIds]); }
+    catch (e) { console.warn("Kunde inte städa kommentarer/delaktiviteter", e); }
+  }
 
   return after;
 }

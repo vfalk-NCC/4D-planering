@@ -24,6 +24,10 @@ put('plan_items.json', [
   // J14: två aktiviteter med samma kod – båda döps om, ska INTE gissas ihop.
   { ...base, id: 'j1', model_id: 'm1', object_id: '50', object_name: 'J14', activity: 'Fundament gammal', area: SH + ' / Linje J', source_key: SH + '||Linje J||J14||Fundament gammal' },
   { ...base, id: 'j2', model_id: 'm1', object_id: '51', object_name: 'J14', activity: 'Kontrefor gammal', area: SH + ' / Linje J', source_key: SH + '||Linje J||J14||Kontrefor gammal' },
+  // Från en annan flik som inte finns i filen: ska inte räknas som borttagen.
+  { ...base, id: 'other1', model_id: 'm1', object_id: '70', object_name: 'X1', activity: 'Annat', area: 'ANNAN FLIK / Linje X', source_key: 'ANNAN FLIK||Linje X||X1' },
+  // Skapad i TC: rörs aldrig.
+  { ...base, id: 'tc1', model_id: 'm1', object_id: '80', object_name: 'TC1', activity: 'Egen', origin: 'manuell' },
 ]);
 put('plan_item_activities.json', []);
 put('plan_item_comments.json', [{ id: 'cm', plan_item_id: 'm30a', project_id: PID, text: 'kvar?', author: 'V', created_at: '2026-10-01T09:00:00Z' }]);
@@ -95,6 +99,14 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   const summary = await page.innerText('#planImportSummary');
   if (!summary.includes('namnbyte') || !summary.includes('Fundament DP2 - Betongarbeten → Fundament')) fail('Förhandsgranskningen ska visa namnbytet, fick ' + summary);
   console.log('OK: förhandsgranskningen visar namnbytet');
+  // Borttagna ur Excel: en kryssruta per aktivitet, alla ikryssade från början.
+  const pir = await page.evaluate(() => [...document.querySelectorAll('#planImportRemovedWarning [data-pir-i]')].map(c => c.checked));
+  if (JSON.stringify(pir) !== '[true,true]') fail('De två J14-aktiviteterna ska listas ikryssade: ' + JSON.stringify(pir));
+  if (/X1|TC1/.test(await page.innerText('#planImportRemovedWarning'))) fail('Andra flikar och aktiviteter skapade i TC ska inte listas');
+  // Behåll Kontrefor (j2): kryssa ur den.
+  await page.evaluate(() => { const i = [...document.querySelectorAll('#planImportRemovedWarning .pir-row')].findIndex(r => /Kontrefor/.test(r.textContent)); const c = document.querySelectorAll('#planImportRemovedWarning [data-pir-i]')[i]; c.checked = false; c.dispatchEvent(new Event('change')); });
+  if (!/1 objekt tas bort/.test(await page.innerText('#planImportRemovedWarning'))) fail('Antalet som tas bort ska uppdateras');
+  console.log('OK: borttagna ur Excel listas med kryssrutor (andra flikar och TC-aktiviteter rörs inte)');
 
   // Rapporten som Excel-fil: en flik per kategori, uppdateringar med före → efter.
   const rep = await page.evaluate(() => {
@@ -126,6 +138,12 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   if (!m30.some(r => r.id === 'm30a')) fail('Samma id ska behållas (kommentaren hänger på det)');
   if (get('plan_item_comments.json').length !== 1) fail('Kommentaren ska vara kvar');
   console.log('OK: efter import har M30 det nya namnet, samma id, kvar sina 3D-kopplingar och kommentaren');
+  const ids = get('plan_items.json').map(r => r.id);
+  if (ids.includes('j1')) fail('Den ikryssade (J14 Fundament gammal) ska tas bort vid importen');
+  if (!ids.includes('j2') || !ids.includes('other1') || !ids.includes('tc1')) fail('Urkryssade, andra flikar och TC-aktiviteter ska vara kvar: ' + ids);
+  const bk = [...store.keys()].filter(k => /backup/i.test(k));
+  if (!bk.length) fail('En säkerhetskopia ska tas före importen');
+  console.log('OK: ikryssade tas bort vid importen, resten är kvar, säkerhetskopia tas först');
 
   // Importloggen och filtret "Inte kvar i senaste importen".
   const log = get('plan_imports.json');
@@ -137,10 +155,10 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
     buildFilterOptions();
     return { gone: items.filter(isGoneFromLastImport).map(i => i.id).sort().join(','), opt: [...document.getElementById('filterSource').options].map(o => o.text).join('|') };
   });
-  if (gone.gone !== 'j1,j2') fail('Bara J14-raderna (ej kvar i filen, samma flik) ska räknas som borttagna: ' + gone.gone);
-  if (!/Inte kvar i senaste importen \(2\)/.test(gone.opt)) fail('Källfiltret ska ha valet med antal: ' + gone.opt);
+  if (gone.gone !== 'j2') fail('Bara J14 Kontrefor (kvar i TC men ej i filen, samma flik) ska räknas: ' + gone.gone);
+  if (!/Inte kvar i senaste importen \(1\)/.test(gone.opt)) fail('Källfiltret ska ha valet med antal: ' + gone.opt);
   const shown = await page.evaluate(() => { const f = { ...currentListFilters(), sources: ['gone'] }; return items.filter(it => matchesListFilters(it, f)).map(i => i.id).sort().join(','); });
-  if (shown !== 'j1,j2') fail('Filtret ska visa bara de borttagna: ' + shown);
+  if (shown !== 'j2') fail('Filtret ska visa bara de borttagna: ' + shown);
   console.log('OK: importloggen sparas och filtret "Inte kvar i senaste importen" visar bara det som försvunnit ur Excel (samma flikar)');
 
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));

@@ -94,7 +94,7 @@ function drawObjFamHighlight(ctx, fontPx) {
   const shapes = objectShapesInPdf() || [];
   ctx.save(); ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(2.5, fontPx / 6);
   shapes.forEach(o => {
-    if (!objFamSel.has(o.it.id)) return;
+    if (!(o.members || [o.it]).some(m => objFamSel.has(m.id))) return;
     const [x, y] = toPx(o.center);
     ctx.beginPath(); ctx.arc(x, y, Math.max(10, fontPx * 0.85), 0, Math.PI * 2); ctx.stroke();
   });

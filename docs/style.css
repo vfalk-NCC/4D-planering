@@ -1001,3 +1001,10 @@ header h1, .header-titles h1 { white-space: nowrap; }
 
 .plan-import-renames { margin-top: 6px; padding: 6px 8px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 6px; }
 .plan-import-renames ul { margin: 4px 0 0 18px; padding: 0; }
+/* Borttagna ur Excel i importens förhandsgranskning (2026-10-02) */
+.pir-actions { display: flex; gap: 6px; align-items: center; margin: 6px 0 4px; flex-wrap: wrap; }
+.pir-actions button { height: 26px; padding: 0 8px; font-size: 12px; }
+.pir-list { max-height: 220px; overflow-y: auto; border: 1px solid rgba(0,0,0,.12); border-radius: 6px; background: #fff; }
+.pir-row { display: flex; gap: 8px; align-items: flex-start; padding: 5px 8px; border-bottom: 1px solid rgba(0,0,0,.08); font-size: 12px; line-height: 1.35; cursor: pointer; margin: 0; }
+.pir-row:last-child { border-bottom: none; }
+.pir-row input { margin-top: 2px; }

@@ -312,13 +312,27 @@ function objectShapesInPdf() {
   if (shapeCache) return shapeCache;
   const byId = new Map(positions.map(p => [p.id, p]));
   const hideSubs = !showSubObjects() ? subCoupledIds() : null;
-  shapeCache = visibleItems().filter(it => pos.has(it.id) && !(hideSubs && hideSubs.has(it.id)) && !isObjHidden(it)).map(it => {
+  let list = visibleItems().filter(it => pos.has(it.id) && !(hideSubs && hideSubs.has(it.id)) && !isObjHidden(it)).map(it => {
     const p = byId.get(it.id);
     const poly = Number.isFinite(p.x0)
       ? [[p.x0, p.y0], [p.x1, p.y0], [p.x1, p.y1], [p.x0, p.y1]].map(([x, y]) => modelToPdf(x, y))
       : null;
-    return { it, center: pos.get(it.id), poly, zc: (p.z0 + p.z1) / 2 };
-  }).sort((a, b) => a.zc - b.zc); // lägre objekt först, högre ritas ovanpå
+    return { it, members: [it], center: pos.get(it.id), origin: pos.get(it.id), poly, zc: (p.z0 + p.z1) / 2, fam: objFamKey(it) };
+  });
+  // En markering per aktivitet (Victors önskemål 2026-10-02): flera objekt
+  // kopplade till samma aktivitet blir en prick i deras mitt (med antalet).
+  if (objGroupOn() && objStyle() !== "footprint") {
+    const fams = new Map();
+    list.forEach(o => { if (!fams.has(o.fam)) fams.set(o.fam, []); fams.get(o.fam).push(o); });
+    list = [...fams.values()].map(g => g.length === 1 ? g[0] : {
+      it: g[0].it, members: g.map(o => o.it), poly: null, fam: g[0].fam, zc: Math.max(...g.map(o => o.zc)),
+      center: [g.reduce((a, o) => a + o.center[0], 0) / g.length, g.reduce((a, o) => a + o.center[1], 0) / g.length],
+    });
+    list.forEach(o => { o.origin = o.center; });
+  }
+  // Flyttade markeringar (sparade i projektet, lagesplan-objmarks.js).
+  if (typeof objMarkPos === "function") list.forEach(o => { const m = objMarkPos(o.fam); if (m) { o.center = modelToPdf(m[0], m[1]); o.moved = true; } });
+  shapeCache = list.sort((a, b) => a.zc - b.zc); // lägre objekt först, högre ritas ovanpå
   return shapeCache;
 }
 function invalidatePositions() { posPdfCache = null; shapeCache = null; }
@@ -349,6 +363,8 @@ function subCoupledIds() {
   }).map(it => it.id));
   return subCoupledCache;
 }
+const OBJ_GROUP_KEY = "lagesplan-objgroup"; // "0" = en prick per objekt
+function objGroupOn() { try { return localStorage.getItem(OBJ_GROUP_KEY) !== "0"; } catch (e) { return true; } }
 function objStyle() { try { return localStorage.getItem(OBJ_STYLE_KEY) || "dots"; } catch (e) { return "dots"; } }
 
 /* Objekten under muspekaren (PDF-punkt): fotavtryck som innehåller punkten,
@@ -389,7 +405,9 @@ function objectTipHtml(o) {
     it.start_date ? `Plan: ${escHtml(it.start_date)} → ${escHtml(it.end_date || "?")}` : "Inga planerade datum",
     (it.actual_start_date || it.actual_end_date) ? (() => { const t = todayIso(), cap = d => (d && d > t ? t : d); return `Verkligt: ${escHtml(cap(it.actual_start_date) || "?")} → ${escHtml(cap(it.actual_end_date) || "pågår")}`; })() : "",
     it.contractor ? `Entreprenör: ${escHtml(it.contractor)}` : "",
-    zone ? `Zon: ${escHtml(zone.code)}` : ""
+    zone ? `Zon: ${escHtml(zone.code)}` : "",
+    o.members && o.members.length > 1 ? `${o.members.length} objekt: ${escHtml(o.members.slice(0, 6).map(m => m.object_name || m.object_id).join(", "))}${o.members.length > 6 ? " …" : ""}` : "",
+    o.moved ? "📍 Flyttad markering (klicka för att låsa upp eller återställa)" : ""
   ];
   return rows.filter(Boolean).join("<br>");
 }
@@ -532,7 +550,15 @@ function drawObjects(ctx, objects, fontPx) {
   ctx.save();
   ctx.lineWidth = 1;
   for (const o of objects) {
-    const color = phaseColor(computeItemPhase(o.it, at, warn) || fallbackPhase(o.it));
+    const grouped = o.members && o.members.length > 1;
+    const color = phaseColor(grouped ? zonePhase(o.members, at) : computeItemPhase(o.it, at, warn) || fallbackPhase(o.it));
+    // Flyttad markering: tunn streckad linje tillbaka till objektens läge.
+    if (o.moved && o.origin) {
+      const [ax, ay] = toPx(o.origin), [bx, by] = toPx(o.center);
+      ctx.save(); ctx.globalAlpha = 0.8; ctx.strokeStyle = shade(color, -0.45); ctx.lineWidth = Math.max(1, minPx / 4); ctx.setLineDash([minPx * 0.8, minPx * 0.6]);
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(ax, ay, Math.max(1.5, minPx / 3), 0, Math.PI * 2); ctx.fillStyle = shade(color, -0.45); ctx.fill(); ctx.restore();
+    }
     // Veckans fokus: objekten som startar snart framhävs, resten tonas ned.
     const focus = focusState(o.it);
     ctx.fillStyle = color;
@@ -560,6 +586,13 @@ function drawObjects(ctx, objects, fontPx) {
     ctx.fill();
     ctx.globalAlpha = focus === false ? 0.25 : 1;
     ctx.stroke();
+    if (!big) {
+      const [x, y] = toPx(o.center), rr = focus === true ? minPx * 2.2 : minPx;
+      // Antalet objekt i en samlad markering.
+      if (grouped && rr >= 5) { ctx.save(); ctx.fillStyle = contrastText(color); ctx.font = `800 ${Math.max(6, rr * 0.95)}px "Segoe UI", Arial, sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(o.members.length), x, y + 0.5); ctx.restore(); }
+      // Upplåst för flytt: streckad blå ring.
+      if (typeof objMarkUnlocked !== "undefined" && objMarkUnlocked.has(o.fam)) { ctx.save(); ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(1.5, rr / 4); ctx.setLineDash([rr * 0.5, rr * 0.35]); ctx.beginPath(); ctx.arc(x, y, rr * 1.55, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
+    }
   }
   ctx.restore();
 }
@@ -1404,6 +1437,8 @@ function bindViewport() {
     if (drawMode) { drag = { draw: true, start: stagePoint(e) }; return; }
     // Hörn på den markerade zonen (lagesplan-zones.js).
     if (typeof zonesPointerDown === "function" && zonesPointerDown(e)) return;
+    // Upplåsta objektmarkeringar dras (lagesplan-objmarks.js).
+    if (typeof objMarkPointerDown === "function" && objMarkPointerDown(e)) return;
     // Alt + dra: släck alla objekt inom rutan.
     if (e.altKey && e.button === 0 && plan && plan.calib) { e.preventDefault(); drag = { hideBox: true, start: stagePoint(e) }; return; }
     // Noteringar/etablering: flytta, ändra form och rotera (lagesplan-layers.js).
@@ -1448,7 +1483,7 @@ function bindViewport() {
     if (!viewport) return;
     // Högerklick på en prick: släck objektet/aktiviteten.
     const ptObjs = objectsAt(toPdf(stagePoint(e)));
-    if (ptObjs.length) { e.preventDefault(); openObjMenu(ptObjs.map(o => o.it), e); return; }
+    if (ptObjs.length) { e.preventDefault(); openObjMenu(ptObjs.flatMap(o => o.members || [o.it]), e); return; }
     if (!objLabelBoxes.length) return;
     const vr = vpEl.getBoundingClientRect(), x = e.clientX - vr.left, y = e.clientY - vr.top;
     const hit = objLabelBoxes.find(l => x >= l.box.x && x <= l.box.x + l.box.w && y >= l.box.y && y <= l.box.y + l.box.h);
@@ -2094,7 +2129,7 @@ function openObjMenu(its, e) {
 function hideObjectsInBox(a, b) {
   const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]);
   if (x1 - x0 < 4 || y1 - y0 < 4) { renderZones(); return; }
-  const inside = (objectShapesInPdf() || []).filter(o => { const [x, y] = toPx(o.center); return x >= x0 && x <= x1 && y >= y0 && y <= y1; }).map(o => o.it.id);
+  const inside = (objectShapesInPdf() || []).filter(o => { const [x, y] = toPx(o.center); return x >= x0 && x <= x1 && y >= y0 && y <= y1; }).flatMap(o => (o.members || [o.it]).map(it => it.id));
   if (!inside.length) { renderZones(); setSaveStatus("Inga objekt i rutan."); return; }
   const x = objHidden(); x.ids = [...new Set([...x.ids, ...inside])];
   setObjHidden(x);

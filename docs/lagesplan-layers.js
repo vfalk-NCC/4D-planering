@@ -211,7 +211,7 @@ function askOrthoDate(def) {
 /* Egna lager (Victors önskemål 2026-09-28): varje notering/etableringsobjekt
    ligger på ett namngivet lager. "Allmänt" och "Etablering" finns alltid;
    egna lager sparas som { type: "layer", name } i site_layers.json. */
-const isSiteObj = x => x.type !== "ortho" && x.type !== "layer" && x.type !== "layermeta" && x.type !== "cad" && x.type !== "printtpl" && x.type !== "objview" && x.type !== "lsview" && x.type !== "ue" && x.type !== "wxset" && x.type !== "dayset";
+const isSiteObj = x => x.type !== "ortho" && x.type !== "layer" && x.type !== "layermeta" && x.type !== "cad" && x.type !== "printtpl" && x.type !== "objview" && x.type !== "lsview" && x.type !== "ue" && x.type !== "wxset" && x.type !== "dayset" && x.type !== "objmarks";
 const defaultLayerOf = x => x.type === "note" ? "Allmänt" : (x.type === "crew" || x.type === "delivery" || x.type === "lift") ? "Dagsplanering" : (x.type === "wxday" || x.type === "wxweek") ? "Väder" : "Etablering";
 const layerOf = x => x.layer || defaultLayerOf(x);
 function userLayers() {

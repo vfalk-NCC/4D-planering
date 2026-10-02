@@ -125,17 +125,18 @@ function centerOnPdf(pt) {
 // Klick på objekt -> markera i 3D och hoppa till raden i 4D-planering
 // ---------------------------------------------------------------------
 let selectedObjId = null;
-async function selectObject(it) {
+async function selectObject(it, shape) {
   selectedObjId = it.id;
   renderZones();
-  const name = it.object_name || it.activity || "objektet";
+  const ids = shape && shape.members && shape.members.length > 1 ? shape.members.map(m => m.id) : [it.id];
+  const name = ids.length > 1 ? `${it.activity || it.object_name || "aktiviteten"} (${ids.length} objekt)` : it.object_name || it.activity || "objektet";
   if (!window.opener || window.opener.closed) {
     setSaveStatus(`Öppna lägesplanen via 🗺️ i 4D-planering för att markera "${name}" i 3D.`);
     return;
   }
   setSaveStatus(`🎯 Markerar "${name}" i 3D…`);
   try {
-    await askOpener("select", { ids: [it.id], jump: true }, 30000);
+    await askOpener("select", { ids, jump: true }, 30000);
     setSaveStatus(`🎯 "${name}" markerat i 3D och i Planerade objekt.`);
   } catch (e) {
     setSaveStatus(`⚠ Kunde inte markera "${name}" i 3D: ${e.message}`);
@@ -556,7 +557,7 @@ async function exportPdfA3() {
 function drawToolOverlays(ctx, fontPx) {
   if (typeof drawObjFamHighlight === "function") drawObjFamHighlight(ctx, fontPx);
   if (selectedObjId && $("showObjects").checked) {
-    const o = (objectShapesInPdf() || []).find(x => x.it.id === selectedObjId);
+    const o = (objectShapesInPdf() || []).find(x => (x.members || [x.it]).some(m => m.id === selectedObjId));
     if (o) {
       const [x, y] = toPx(o.center);
       ctx.save(); ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(3, fontPx / 5);
@@ -587,7 +588,7 @@ function toolClick(pdfPt) {
   const ph = photoAt(pdfPt);
   if (ph) { openPhoto(ph); return true; }
   const objs = objectsAt(pdfPt);
-  if (objs.length) { selectObject(objs[0].it); return true; }
+  if (objs.length) { selectObject(objs[0].it, objs[0]); if (typeof openObjMarkPop === "function") openObjMarkPop(objs[0]); return true; }
   selectedObjId = null;
   if (typeof objFamSel !== "undefined" && objFamSel.size) { objFamSel.clear(); renderZones(); }
   return false;
