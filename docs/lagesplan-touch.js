@@ -191,8 +191,9 @@ function renderField() {
 /* ↶ / ↷ i fältläget (Victors önskemål 2026-10-01): samma som Ctrl+Z / Ctrl+Y –
    ångrar det senaste (en släckning av 3D-objekt eller en ändring i
    etablering, noteringar, frihand, lag m.m.). */
-function fieldCanUndo() { return (typeof lastUndoTarget !== "undefined" && lastUndoTarget === "obj" && objHideUndo.length) || siteUndo.length; }
+function fieldCanUndo() { return (typeof lastUndoTarget !== "undefined" && lastUndoTarget === "obj" && objHideUndo.length) || (typeof lastUndoTarget !== "undefined" && lastUndoTarget === "zone" && typeof zoneUndoStack !== "undefined" && zoneUndoStack.length) || siteUndo.length; }
 function fieldUndo() {
+  if (typeof lastUndoTarget !== "undefined" && lastUndoTarget === "zone" && typeof zoneUndo === "function" && zoneUndo()) { updateFieldUndo(); return; }
   if (typeof lastUndoTarget !== "undefined" && lastUndoTarget === "obj" && typeof undoObjHide === "function" && undoObjHide()) { updateFieldUndo(); return; }
   if (siteUndo.length) undoSite().then(updateFieldUndo);
 }

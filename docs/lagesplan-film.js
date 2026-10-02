@@ -266,7 +266,7 @@ function renderFilmOverlay(P, o) {
     if (layerVisible("zones")) { ctx.save(); ctx.globalAlpha = layerOpacity("zones"); badges = drawZoneShapes(ctx, fontPx, objects, true); ctx.restore(); }
     if (objects) { ctx.save(); ctx.globalAlpha = layerOpacity("objects"); drawObjects(ctx, objects, fontPx); drawObjectLabels(ctx, objects, fontPx); ctx.restore(); }
     if (o.site) drawSiteLayers(ctx, fontPx);
-    badges.forEach(([pt, text, color, hollow]) => drawBadge(ctx, pt, text, color, fontPx, hollow));
+    badges.forEach(([pt, text, color, hollow, zs]) => drawBadge(ctx, pt, text, color, fontPx, hollow, zs));
   } else if (o.site) drawSiteLayers(ctx, fontPx);
 }
 function drawFilmFrame(ctx, list, t, o) {

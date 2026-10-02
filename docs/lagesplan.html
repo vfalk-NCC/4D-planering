@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261002054357"></script>
+<script src="github-storage.js?v=20261002055747"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -450,6 +450,18 @@
   #northBadge { position: absolute; left: 12px; bottom: 12px; z-index: 5; pointer-events: none; width: 40px; height: 40px; }
   #northBadge .nb-needle { transform-origin: 20px 20px; }
   body.field #northBadge { bottom: 140px; }
+  .zone-adv { margin-top: 8px; font-size: 12px; } .zone-adv summary { cursor: pointer; color: var(--muted); }
+  .zone-adv code { background: var(--panel-2); padding: 0 3px; border-radius: 3px; }
+  .ze-style { margin-top: 8px; border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px 8px; }
+  .ze-style summary { cursor: pointer; font-weight: 650; font-size: 12px; }
+  .zs-h { font-size: 10.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--faint); margin: 8px 0 3px; }
+  .zs-row { display: flex; gap: 6px; align-items: center; margin-top: 3px; font-size: 12px; }
+  .zs-row select { flex: 1; min-width: 0; } .zs-row input[type=range] { flex: 1; } .zs-row input[type=color] { width: 36px; height: 26px; padding: 0; }
+  .zs-l { width: 58px; flex: none; color: var(--muted); } .zs-v { width: 42px; text-align: right; flex: none; }
+  .zs-checks .check { margin: 0; }
+  .zone-item.is-hidden { opacity: .55; }
+  .layer-row .cad-date { font-size: 10px; color: var(--faint); opacity: 0; transition: opacity .2s; margin-left: 4px; }
+  .layer-row:hover .cad-date { opacity: .7; }
   #fieldDay { position: absolute; top: 66px; right: 10px; bottom: 132px; width: min(420px, calc(100% - 20px)); z-index: 9; flex-direction: column; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 10px 30px rgba(15,23,42,.25); overflow: hidden; }
   #fieldDay .fs-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 17px; }
   #fieldDayBody { overflow-y: auto; padding: 6px 12px 14px; -webkit-overflow-scrolling: touch; font-size: 15px; }
@@ -730,13 +742,22 @@
           <summary><span class="si">🟧</span>Zoner <span class="muted" id="zoneCount"></span></summary>
           <div class="row split">
             <button id="btnDetect" title="Hitta färgade rutor/markeringar och koder (t.ex. PM06) i PDF:en">🔍 Hitta zoner i PDF</button>
-            <button id="btnDraw" title="Rita en rektangel för en ny zon">▭ Rita zon</button>
           </div>
-          <label>Kodmönster för zoner</label>
-          <input type="text" id="codePattern" placeholder="PM\d+[A-Z]?" />
-          <div class="hint">Text i PDF:en som matchar mönstret blir zonens kod (t.ex. PM06, PM09A).</div>
-          <label class="check"><input type="checkbox" id="grayPdf" checked /> Ritningen i gråskala (tydligare zonfärger)</label>
-          <label class="check"><input type="checkbox" id="showOriginal" /> Visa originalmarkeringar i PDF:en</label>
+          <div class="row split" style="margin-top:6px;">
+            <button id="btnDraw" title="Dra en rektangel på planen för en ny zon">▭ Rektangel</button>
+            <button id="btnZonePoly" title="Klicka zonens hörn – Shift ger raka linjer, dubbelklick eller Enter avslutar">⬠ Polygon</button>
+          </div>
+          <div class="hint hidden" id="zoneDrawHint"></div>
+          <div class="hint">Klicka på en zon för att ändra koppling och utseende. En markerad zon har hörn som kan dras (dubbelklicka ett hörn för att ta bort det). Delete tar bort zonen, Ctrl+Z ångrar.</div>
+          <label class="check" title="Gör ritningen grå så att zonernas färger syns tydligare"><input type="checkbox" id="grayPdf" checked /> Ritningen i gråskala (tydligare zonfärger)</label>
+          <details class="zone-adv">
+            <summary>Avancerat: hur zoner hittas i PDF:en</summary>
+            <div class="hint" style="margin-top:4px;"><b>🔍 Hitta zoner i PDF</b> letar efter färgade ytor i ritningen och efter text som ser ut som en zonkod, t.ex. <b>PM06</b> eller <b>PM09A</b>. Koden blir zonens namn och används för att koppla zonen till aktiviteter i planeringen.</div>
+            <label>Hur en zonkod ser ut</label>
+            <input type="text" id="codePattern" placeholder="PM\d+[A-Z]?" />
+            <div class="hint">Ändra bara om era zoner heter något annat än PM + siffror. Exempel: <code>Z\d+</code> för Z1, Z2 … eller <code>(PM|ZON)\s*\d+</code> för både PM12 och ZON 12.</div>
+            <label class="check" title="Visar de markeringar och kommentarer som finns i själva PDF-filen (t.ex. molnmarkeringar som ritats i Bluebeam)"><input type="checkbox" id="showOriginal" /> Visa PDF:ens egna markeringar (kommentarer, moln)</label>
+          </details>
           <div class="zone-list" id="zoneList"></div>
 
           <div id="zoneEditor" class="hidden">
@@ -754,6 +775,7 @@
             <input type="text" id="zeValue" list="zeValues" placeholder="Värde" style="margin-top:4px;" />
             <datalist id="zeValues"></datalist>
             <div class="hint" id="zeMatchInfo"></div>
+            <details class="ze-style" open><summary>🎨 Utseende</summary><div id="zeStyle"></div></details>
             <div class="row" style="margin-top:8px;">
               <button id="zeSave" class="primary">Spara</button>
               <button id="zeSelect3d" title="Markera zonens objekt i 3D-modellen">🎯 Markera i 3D</button>
@@ -929,18 +951,19 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261002054357"></script>
-<script src="lagesplan-tools.js?v=20261002054357"></script>
-<script src="lagesplan-layers.js?v=20261002054357"></script>
-<script src="lagesplan-views.js?v=20261002054357"></script>
-<script src="lagesplan-film.js?v=20261002054357"></script>
-<script src="lagesplan-cad.js?v=20261002054357"></script>
-<script src="lagesplan-vecpdf.js?v=20261002054357"></script>
-<script src="lagesplan-print.js?v=20261002054357"></script>
-<script src="lagesplan-daily.js?v=20261002054357"></script>
-<script src="lagesplan-gps.js?v=20261002054357"></script>
-<script src="lagesplan-weather.js?v=20261002054357"></script>
-<script src="lagesplan-touch.js?v=20261002054357"></script>
-<script src="lagesplan-keys.js?v=20261002054357"></script>
+<script src="lagesplan.js?v=20261002055747"></script>
+<script src="lagesplan-tools.js?v=20261002055747"></script>
+<script src="lagesplan-layers.js?v=20261002055747"></script>
+<script src="lagesplan-views.js?v=20261002055747"></script>
+<script src="lagesplan-film.js?v=20261002055747"></script>
+<script src="lagesplan-cad.js?v=20261002055747"></script>
+<script src="lagesplan-vecpdf.js?v=20261002055747"></script>
+<script src="lagesplan-print.js?v=20261002055747"></script>
+<script src="lagesplan-zones.js?v=20261002055747"></script>
+<script src="lagesplan-daily.js?v=20261002055747"></script>
+<script src="lagesplan-gps.js?v=20261002055747"></script>
+<script src="lagesplan-weather.js?v=20261002055747"></script>
+<script src="lagesplan-touch.js?v=20261002055747"></script>
+<script src="lagesplan-keys.js?v=20261002055747"></script>
 </body>
 </html>

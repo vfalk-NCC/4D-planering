@@ -636,7 +636,7 @@ function buildCadSnap() {
 function cadRowsHtml(r, opts) {
   const key = "cad:" + r.id;
   const open = layerState["cadopen:" + r.id] === true;
-  const parent = layerRow(key, `<button class="cad-toggle" title="Visa CAD-lagren">${open ? "▾" : "▸"}</button><span class="cad-name" title="Dubbelklicka för att byta namn">📐 ${escHtml(r.name)}</span> <small>${r.layers.length} lager</small>`, { del: true, ...opts });
+  const parent = layerRow(key, `<button class="cad-toggle" title="Visa CAD-lagren">${open ? "▾" : "▸"}</button><span class="cad-name" title="Dubbelklicka för att byta namn">📐 ${escHtml(r.name)}</span> <small>${r.layers.length} lager</small>${r.created_at ? `<span class="cad-date" title="Uppladdad ${escHtml(new Date(r.created_at).toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }))}${r.by ? " av " + escHtml(r.by) : ""}">${escHtml(String(r.created_at).slice(0, 10))}</span>` : ""}`, { del: true, ...opts });
   const kids = r.layers.map(l => {
     // Färgrutan är en färgväljare (Victors önskemål 2026-10-02): färgen gäller lagret i alla DXF-ritningar.
     const col = cadLayerColor(r, l.name, l.color), ov = cadColorOverride(l.name);

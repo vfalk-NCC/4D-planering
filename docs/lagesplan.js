@@ -918,8 +918,9 @@ function renderZones() {
   objRenderedScale = view.scale;
   renderObjHint(objects);
   drawSiteLayers(tctx, fontPx);
-  if (layerVisible("zones")) badges.forEach(([pt, text, color, hollow]) => drawBadge(tctx, pt, text, color, fontPx, hollow));
+  if (layerVisible("zones")) badges.forEach(([pt, text, color, hollow, zs]) => drawBadge(tctx, pt, text, color, fontPx, hollow, zs));
   drawToolOverlays(tctx, fontPx);
+  if (typeof drawZoneOverlay === "function") drawZoneOverlay(tctx, fontPx);
   drawCalibMarks(tctx, fontPx);
   afterRenderTools();
   renderZoneList();
@@ -928,38 +929,90 @@ function renderZones() {
 
 /* Zonernas ytor på ctx (stage-px). Returnerar etiketterna (ritas ovanpå
    allt annat). cached = använd statusen från senaste renderZones (filmen). */
+/* Zonens utseende (Victors önskemål 2026-10-02): zone.style kan sätta
+   fyllning (statusfärg/egen/ingen), opacitet, mönster, kantlinje (färg,
+   tjocklek, streckning), etikettens stil, storlek och innehåll samt dölja
+   zonen. Utan style ser zonen ut som förut. */
+const ZONE_STYLE_DEFAULT = { fill: "phase", fillColor: "#2563eb", fillOpacity: null, pattern: "none", stroke: "auto", strokeColor: "#1f2937", strokeWidth: 1, dash: "auto", label: "pill", labelSize: 1, labelPct: true, labelName: false, hidden: false };
+const zoneStyle = z => ({ ...ZONE_STYLE_DEFAULT, ...(z.style || {}) });
+function zonePatternFill(ctx, pattern, color, fontPx) {
+  const step = Math.max(6, fontPx * 0.7);
+  ctx.save(); ctx.clip();
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = Math.max(1, fontPx / 12); ctx.globalAlpha = Math.min(1, ctx.globalAlpha * 2.2);
+  const c = ctx.canvas, W = c.width * 2, H = c.height * 2; // ritas över hela den klippta ytan
+  const t = ctx.getTransform(), inv = t.inverse();
+  const P = [[0, 0], [c.width, 0], [0, c.height], [c.width, c.height]].map(([x, y]) => [inv.a * x + inv.c * y + inv.e, inv.b * x + inv.d * y + inv.f]);
+  const x0 = Math.min(...P.map(p => p[0])), x1 = Math.max(...P.map(p => p[0])), y0 = Math.min(...P.map(p => p[1])), y1 = Math.max(...P.map(p => p[1]));
+  ctx.beginPath();
+  if (pattern === "dots") {
+    const r = Math.max(1, fontPx / 10);
+    for (let x = Math.floor(x0 / step) * step; x < x1; x += step) for (let y = Math.floor(y0 / step) * step; y < y1; y += step) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); }
+    ctx.fill();
+  } else {
+    const h = y1 - y0;
+    for (let d = Math.floor((x0 - h) / step) * step; d < x1 + h; d += step) {
+      ctx.moveTo(d, y1); ctx.lineTo(d + h, y0);
+      if (pattern === "cross") { ctx.moveTo(d, y0); ctx.lineTo(d + h, y1); }
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
 function drawZoneShapes(ctx, fontPx, objects, cached) {
   const badges = [];
   for (const zone of plan.zones || []) {
     const st = cached && zone._status ? zone._status : zoneStatus(zone);
     zone._status = st;
-    const color = phaseColor(st.phase);
+    const zs = zoneStyle(zone);
     const selected = zone.id === selectedZoneId;
+    if (zs.hidden && !selected) continue;
+    const phaseCol = phaseColor(st.phase);
+    const color = zs.fill === "custom" ? zs.fillColor : phaseCol;
+    const noStatus = st.phase === "ingen" && zs.fill === "phase";
     ctx.save();
     for (const poly of zone.polys || []) {
       if (poly.length < 2) continue;
-      ctx.beginPath();
-      poly.forEach((p, i) => { const [x, y] = toPx(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-      ctx.closePath();
+      const path = () => { ctx.beginPath(); poly.forEach((p, i) => { const [x, y] = toPx(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.closePath(); };
+      path();
       // Med objekten utritade blir zonfärgen svagare så objekten syns.
-      if (st.phase !== "ingen") { ctx.globalAlpha = (objects && objects.length ? ZONE_ALPHA / 3 : ZONE_ALPHA) * (focusActive() ? 0.4 : 1); ctx.fillStyle = color; ctx.fill(); }
-      ctx.globalAlpha = 1;
-      ctx.lineWidth = selected ? Math.max(4, fontPx / 3) : Math.max(1.5, fontPx / 8);
-      ctx.strokeStyle = selected ? "#0b5fff" : shade(color, -0.35);
-      if (st.phase === "ingen") ctx.setLineDash([fontPx / 2, fontPx / 3]);
-      ctx.stroke();
-      ctx.setLineDash([]);
+      const baseA = zs.fillOpacity != null ? zs.fillOpacity : (objects && objects.length ? ZONE_ALPHA / 3 : ZONE_ALPHA);
+      if (zs.fill !== "none" && !noStatus) {
+        ctx.globalAlpha = baseA * (focusActive() ? 0.4 : 1) * (zs.hidden ? 0.3 : 1);
+        if (zs.pattern === "none") { ctx.fillStyle = color; ctx.fill(); }
+        else { ctx.globalAlpha *= 0.35; ctx.fillStyle = color; ctx.fill(); ctx.globalAlpha /= 0.35; zonePatternFill(ctx, zs.pattern, color, fontPx); path(); }
+      }
+      ctx.globalAlpha = zs.hidden ? 0.4 : 1;
+      const lw = Math.max(1.5, fontPx / 8) * (Number(zs.strokeWidth) || 1);
+      ctx.lineWidth = selected ? Math.max(4, fontPx / 3, lw) : lw;
+      const dash = zs.dash === "auto" ? (noStatus ? "dashed" : "solid") : zs.dash;
+      if (dash === "dashed") ctx.setLineDash([fontPx / 2, fontPx / 3]);
+      else if (dash === "dotted") { ctx.setLineDash([lw * 0.2, lw * 2.2]); ctx.lineCap = "round"; }
+      if (selected) { ctx.strokeStyle = "#0b5fff"; ctx.stroke(); }
+      else if (zs.stroke !== "none") { ctx.strokeStyle = zs.stroke === "custom" ? zs.strokeColor : shade(color, -0.35); ctx.stroke(); }
+      ctx.setLineDash([]); ctx.lineCap = "butt";
     }
-    // Etikett: kod + framdrift, vid kodtexten (eller mitt i zonen)
-    const anchors = (zone.labels && zone.labels.length) ? zone.labels : [centroid(zone)];
-    anchors.filter(Boolean).forEach(a => badges.push([toPx(a), `${zone.code}${st.progress != null ? " · " + st.progress + " %" : ""}`, color, st.phase === "ingen"]));
+    // Etikett: kod (+ namn) + framdrift, vid kodtexten (eller mitt i zonen)
+    if (zs.label !== "none") {
+      const text = [zs.labelName && zone.name ? `${zone.code} ${zone.name}` : zone.code, zs.labelPct && st.progress != null ? `${st.progress} %` : ""].filter(Boolean).join(" · ");
+      const anchors = (zone.labels && zone.labels.length) ? zone.labels : [centroid(zone)];
+      anchors.filter(Boolean).forEach(a => badges.push([toPx(a), text, color, noStatus, zs]));
+    }
     ctx.restore();
   }
   return badges;
 }
 
-function drawBadge(ctx, [x, y], text, color, fontPx, hollow) {
+function drawBadge(ctx, [x, y], text, color, fontPx, hollow, zs) {
+  const kind = zs ? zs.label : "pill";
+  fontPx *= zs ? Number(zs.labelSize) || 1 : 1;
   ctx.font = `600 ${fontPx}px "Segoe UI", Arial, sans-serif`;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  if (kind === "text") {
+    ctx.lineJoin = "round"; ctx.lineWidth = Math.max(2, fontPx / 4); ctx.strokeStyle = "rgba(255,255,255,.95)";
+    ctx.strokeText(text, x, y + 1); ctx.fillStyle = shade(color, -0.45); ctx.fillText(text, x, y + 1);
+    return;
+  }
+  if (kind === "white") hollow = true;
   const w = ctx.measureText(text).width + fontPx * 0.9, h = fontPx * 1.5;
   ctx.globalAlpha = 0.95;
   ctx.fillStyle = hollow ? "#ffffff" : color;
@@ -970,7 +1023,6 @@ function drawBadge(ctx, [x, y], text, color, fontPx, hollow) {
   ctx.strokeStyle = shade(color, -0.4);
   ctx.stroke();
   ctx.fillStyle = hollow ? "#374151" : contrastText(color);
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText(text, x, y + 1);
 }
 function roundRect(ctx, x, y, w, h, r) {
@@ -1021,7 +1073,8 @@ function renderZoneList() {
     const sw = document.createElement("span"); sw.className = "sw";
     sw.style.background = st.phase === "ingen" ? "#fff" : phaseColor(st.phase);
     if (st.phase === "ingen") sw.style.border = "1.5px dashed #6b7280";
-    const code = document.createElement("span"); code.className = "code"; code.textContent = z.code || "?";
+    const code = document.createElement("span"); code.className = "code"; code.textContent = (z.code || "?") + (z.name ? " " + z.name : "") + (z.style && z.style.hidden ? " (dold)" : "");
+    if (z.style && z.style.hidden) row.classList.add("is-hidden");
     const ph = document.createElement("span"); ph.textContent = PHASE_LABELS[st.phase];
     const pct = document.createElement("span"); pct.className = "pct";
     pct.textContent = st.items.length ? `${st.progress} % · ${st.items.length} obj` : "";
@@ -1029,7 +1082,7 @@ function renderZoneList() {
     row.onclick = () => selectZone(z.id, true);
     list.appendChild(row);
   });
-  if (!zones.length) list.innerHTML = '<div class="muted" style="padding:6px;">Inga zoner än – klicka 🔍 Hitta zoner i PDF:en, eller ▭ Rita zon.</div>';
+  if (!zones.length) list.innerHTML = '<div class="muted" style="padding:6px;">Inga zoner än – klicka 🔍 Hitta zoner i PDF:en, eller rita en med ▭ Rektangel eller ⬠ Polygon.</div>';
   renderLegend();
 }
 
@@ -1290,7 +1343,7 @@ function zoneAt(pdfPt) {
   // Släckt zonlager: zonerna reagerar inte på hovring eller klick.
   if (typeof layerVisible === "function" && !layerVisible("zones")) return null;
   const zones = (plan && plan.zones) || [];
-  for (let i = zones.length - 1; i >= 0; i--) if ((zones[i].polys || []).some(p => pointInPoly(pdfPt, p))) return zones[i];
+  for (let i = zones.length - 1; i >= 0; i--) if (!(zones[i].style && zones[i].style.hidden) && (zones[i].polys || []).some(p => pointInPoly(pdfPt, p))) return zones[i];
   // Etikett-zoner utan yta: nära etiketten
   const tol = 14 / (renderScale * view.scale);
   return zones.find(z => !(z.polys || []).length && (z.labels || []).some(l => Math.hypot(l[0] - pdfPt[0], l[1] - pdfPt[1]) < tol * 3)) || null;
@@ -1307,10 +1360,13 @@ function bindViewport() {
   vpEl.addEventListener("mousedown", e => {
     if (!viewport) return;
     if (drawMode) { drag = { draw: true, start: stagePoint(e) }; return; }
+    // Hörn på den markerade zonen (lagesplan-zones.js).
+    if (typeof zonesPointerDown === "function" && zonesPointerDown(e)) return;
     // Alt + dra: släck alla objekt inom rutan.
     if (e.altKey && e.button === 0 && plan && plan.calib) { e.preventDefault(); drag = { hideBox: true, start: stagePoint(e) }; return; }
     // Noteringar/etablering: flytta, ändra form och rotera (lagesplan-layers.js).
-    if (e.target.closest && e.target.closest("#viewport") && !e.target.closest("#sitePop") && layersPointerDown(e)) return;
+    const zoneDrawing = typeof zonePoly !== "undefined" && (zonePoly || zoneLabelPlace); // zonen ritas: klick = hörn, drag = panorera
+    if (!zoneDrawing && e.target.closest && e.target.closest("#viewport") && !e.target.closest("#sitePop") && layersPointerDown(e)) return;
     drag = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, moved: false };
   });
   window.addEventListener("mousemove", e => {
@@ -1338,6 +1394,7 @@ function bindViewport() {
       return;
     }
     if (!d.moved && e.target.closest && e.target.closest("#viewport")) {
+      if (typeof zonesClick === "function" && zonesClick(e)) return;
       if (toolClick(toPdf(stagePoint(e)), e)) return;
       const z = zoneAt(toPdf(stagePoint(e)));
       selectZone(z ? z.id : null, false, true);
