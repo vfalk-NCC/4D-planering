@@ -175,7 +175,32 @@ async function vecFinish(v) {
       page.drawPage(eo, { x: 0, y: 0, width: Wpt, height: Hpt });
     }
   }
-  return await out.save();
+  // embedPage kopierar med källsidan (och dess innehåll, ibland okomprimerat)
+  // fast bara Form-kopian används. Utan rensning blev en A1 26 MB i stället
+  // för 7,6 MB (Victors fil 2026-10-02).
+  // Rensningen görs på den färdiga filen (pdf-lib bäddar in sidorna först vid save).
+  const bytes = await out.save();
+  try {
+    const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+    if (!pruneUnreachable(doc)) return bytes;
+    const small = await doc.save();
+    return small.length < bytes.length ? small : bytes;
+  } catch (e) { console.warn("Kunde inte rensa PDF:en", e); return bytes; }
+}
+/* Ta bort objekt som inget i dokumentet pekar på (sparas annars ändå). */
+function pruneUnreachable(doc) {
+  const { PDFRef, PDFDict, PDFArray, PDFStream } = window.PDFLib;
+  const ctx = doc.context, seen = new Set(), stack = [ctx.trailerInfo.Root, ctx.trailerInfo.Info].filter(Boolean);
+  while (stack.length) {
+    let o = stack.pop();
+    if (o instanceof PDFRef) { const k = o.toString(); if (seen.has(k)) continue; seen.add(k); o = ctx.lookup(o); if (!o) continue; }
+    if (o instanceof PDFDict) o.entries().forEach(([, v]) => stack.push(v));
+    else if (o instanceof PDFArray) o.asArray().forEach(v => stack.push(v));
+    else if (o instanceof PDFStream) o.dict.entries().forEach(([, v]) => stack.push(v));
+  }
+  let n = 0;
+  for (const [ref] of ctx.enumerateIndirectObjects()) if (!seen.has(ref.toString())) { ctx.delete(ref); n++; }
+  return n;
 }
 function savePdfBytes(bytes, name) {
   downloadBlob(new Blob([bytes], { type: "application/pdf" }), name);
