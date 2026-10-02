@@ -7,6 +7,24 @@
 
 let gpsLive = null; // { watch, follow, pos: { m, acc, heading, speed }, selfMove }
 
+/* Meddelanden syns även i touchläget (statusraden ligger i den dolda menyn). */
+let gpsToastTimer = 0;
+function gpsNotice(msg, ms = 4500) {
+  setSaveStatus(msg);
+  let t = $("gpsToast");
+  if (!t) { t = document.createElement("div"); t.id = "gpsToast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(gpsToastTimer);
+  gpsToastTimer = setTimeout(() => t.classList.remove("show"), ms);
+}
+/* Ungefärligt avstånd (km) från positionen till planen (kalibreringspunkten). */
+function gpsKmFromPlan(lat, lon) {
+  if (!plan || !plan.calib || typeof SWEREF_ZONES === "undefined") return null;
+  const ref = plan.calib.model[0];
+  let best = null;
+  SWEREF_ZONES.forEach(z => { const [N, E] = geodeticToGrid(lat, lon, z); const d = Math.hypot(E - ref[0], N - ref[1]); if (best == null || d < best) best = d; });
+  return best == null ? null : best / 1000;
+}
 function gpsLiveEl() {
   let el = $("gpsMe");
   if (!el) {
@@ -61,7 +79,7 @@ function stopGpsLive(msg) {
   if (gpsLive && gpsLive.watch != null && navigator.geolocation) navigator.geolocation.clearWatch(gpsLive.watch);
   gpsLive = null;
   placeGpsLive(); updateGpsBtn();
-  if (msg) setSaveStatus(msg);
+  if (msg) gpsNotice(msg, 7000);
 }
 function startGpsLive() {
   if (!navigator.geolocation) { alert("Den här enheten eller webbläsaren kan inte visa positionen."); return; }
@@ -69,14 +87,19 @@ function startGpsLive() {
   gpsLiveEl();
   gpsLive = { watch: null, follow: true, pos: null, first: true };
   updateGpsBtn();
-  setSaveStatus("📍 Hämtar din position…");
+  gpsNotice("📍 Hämtar din position…", 20000);
   gpsLive.watch = navigator.geolocation.watchPosition(p => {
     if (!gpsLive) return;
     const g = gpsToModel(p.coords.latitude, p.coords.longitude);
-    if (!g) { stopGpsLive("📍 Du verkar inte vara i närheten av planen."); return; }
+    if (!g) {
+      const km = gpsKmFromPlan(p.coords.latitude, p.coords.longitude);
+      const far = km == null ? "" : km >= 10 ? ` (ca ${Math.round(km / 10) * 10 >= 100 ? (Math.round(km / 10) * 10).toLocaleString("sv-SE") : Math.round(km)} km bort)` : "";
+      stopGpsLive(`📍 Du är inte i närheten av planen${far} – positionen kan inte visas.`);
+      return;
+    }
     gpsLive.pos = { m: g.m, acc: p.coords.accuracy, heading: p.coords.heading, speed: p.coords.speed };
     if (gpsLive.follow) centerOnGps(); else placeGpsLive();
-    if (gpsLive.first) { gpsLive.first = false; setSaveStatus(`📍 Din position (±${Math.round(p.coords.accuracy || 0)} m)`); }
+    if (gpsLive.first) { gpsLive.first = false; gpsNotice(`📍 Din position (±${Math.round(p.coords.accuracy || 0)} m)`, 3000); }
     updateGpsBtn();
   }, err => {
     const why = err.code === 1 ? "Platsåtkomst nekades – tillåt plats för sidan i webbläsarens inställningar." : err.code === 3 ? "Positionen dröjer – prova utomhus." : "Kunde inte hämta positionen.";

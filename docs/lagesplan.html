@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261002222946"></script>
+<script src="github-storage.js?v=20261002224131"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -525,6 +525,9 @@
   #gpsMe .gm-dot { position: absolute; width: 18px; height: 18px; transform: translate(-50%, -50%); border-radius: 50%; background: #1a73e8; border: 3px solid #fff; box-shadow: 0 1px 6px rgba(0,0,0,.35); animation: gmPulse 2s ease-out infinite; }
   #gpsMe .gm-head { position: absolute; width: 0; height: 0; border-left: 13px solid transparent; border-right: 13px solid transparent; border-bottom: 34px solid rgba(26,115,232,.35); transform-origin: 50% 100%; }
   @keyframes gmPulse { 0% { box-shadow: 0 0 0 0 rgba(26,115,232,.45), 0 1px 6px rgba(0,0,0,.35); } 70% { box-shadow: 0 0 0 14px rgba(26,115,232,0), 0 1px 6px rgba(0,0,0,.35); } 100% { box-shadow: 0 0 0 0 rgba(26,115,232,0), 0 1px 6px rgba(0,0,0,.35); } }
+  #gpsToast { position: fixed; left: 50%; top: 70px; transform: translate(-50%, -8px); max-width: min(92vw, 520px); background: rgba(17,24,39,.94); color: #fff; padding: 10px 14px; border-radius: 10px; font-size: 15px; line-height: 1.35; z-index: 30; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; box-shadow: 0 6px 20px rgba(0,0,0,.25); text-align: center; }
+  #gpsToast.show { opacity: 1; transform: translate(-50%, 0); }
+  body.field #gpsToast { top: 130px; }
   #btnFieldGps.on { background: #e8f0fe; color: #1a73e8; border-color: #1a73e8; }
   #btnFieldGps.gps-follow { background: #1a73e8; color: #fff; }
   .pr-tb { display: flex; flex-direction: column; gap: 4px; }
@@ -1057,26 +1060,26 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261002222946"></script>
-<script src="lagesplan-tools.js?v=20261002222946"></script>
-<script src="lagesplan-layers.js?v=20261002222946"></script>
-<script src="lagesplan-views.js?v=20261002222946"></script>
-<script src="lagesplan-film.js?v=20261002222946"></script>
-<script src="lagesplan-cad.js?v=20261002222946"></script>
-<script src="lagesplan-vecpdf.js?v=20261002222946"></script>
-<script src="lagesplan-print.js?v=20261002222946"></script>
-<script src="lagesplan-printlib.js?v=20261002222946"></script>
-<script src="lagesplan-pdflayers.js?v=20261002222946"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261002222946"></script>
-<script src="lagesplan-objmarks.js?v=20261002222946"></script>
-<script src="lagesplan-objlist.js?v=20261002222946"></script>
-<script src="lagesplan-zones.js?v=20261002222946"></script>
-<script src="lagesplan-wbs.js?v=20261002222946"></script>
-<script src="lagesplan-daily.js?v=20261002222946"></script>
-<script src="lagesplan-gps.js?v=20261002222946"></script>
-<script src="lagesplan-weather.js?v=20261002222946"></script>
-<script src="lagesplan-touch.js?v=20261002222946"></script>
-<script src="lagesplan-gpslive.js?v=20261002222946"></script>
-<script src="lagesplan-keys.js?v=20261002222946"></script>
+<script src="lagesplan.js?v=20261002224131"></script>
+<script src="lagesplan-tools.js?v=20261002224131"></script>
+<script src="lagesplan-layers.js?v=20261002224131"></script>
+<script src="lagesplan-views.js?v=20261002224131"></script>
+<script src="lagesplan-film.js?v=20261002224131"></script>
+<script src="lagesplan-cad.js?v=20261002224131"></script>
+<script src="lagesplan-vecpdf.js?v=20261002224131"></script>
+<script src="lagesplan-print.js?v=20261002224131"></script>
+<script src="lagesplan-printlib.js?v=20261002224131"></script>
+<script src="lagesplan-pdflayers.js?v=20261002224131"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261002224131"></script>
+<script src="lagesplan-objmarks.js?v=20261002224131"></script>
+<script src="lagesplan-objlist.js?v=20261002224131"></script>
+<script src="lagesplan-zones.js?v=20261002224131"></script>
+<script src="lagesplan-wbs.js?v=20261002224131"></script>
+<script src="lagesplan-daily.js?v=20261002224131"></script>
+<script src="lagesplan-gps.js?v=20261002224131"></script>
+<script src="lagesplan-weather.js?v=20261002224131"></script>
+<script src="lagesplan-touch.js?v=20261002224131"></script>
+<script src="lagesplan-gpslive.js?v=20261002224131"></script>
+<script src="lagesplan-keys.js?v=20261002224131"></script>
 </body>
 </html>

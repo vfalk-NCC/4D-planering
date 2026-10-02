@@ -189,7 +189,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
     // Långt bort från planen: stängs av med besked.
     $('btnFieldGps').click();
     __gs({ coords: { latitude: 59.33, longitude: 18.06, accuracy: 5 } });
-    out.far = gpsLive === null && /inte vara i närheten/.test($('saveStatus').textContent);
+    out.far = gpsLive === null && /inte i närheten av planen \(ca 8\d0 km bort\)/.test($('gpsToast').textContent) && $('gpsToast').classList.contains('show') && getComputedStyle($('gpsToast')).display !== 'none'; out.toast = $('gpsToast').textContent;
     return out;
   });
   if (!gl.shown || Math.abs(gl.center[0]) > 1 || Math.abs(gl.center[1]) > 1) fail('Pricken ska visas mitt på skärmen (följer): ' + JSON.stringify(gl));
