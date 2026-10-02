@@ -95,6 +95,33 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (ui.rows < 7 || ui.hidden !== 1) fail('Panelen ska lista förklaringens rader och kunna dölja en: ' + JSON.stringify(ui));
   if (!ui.ko || Math.abs(ui.ar - 1.5) > 0.01 || Math.abs(ui.h - 26.7) > 0.1) fail('Bildens val (beskär, genomskinlig) ska finnas och rutan följa beskärningen: ' + JSON.stringify(ui));
   console.log('OK: utskriftspanelen visar förklaringens rader och bildens beskärning/genomskinlighet');
+  // Lås element (särskilt ritningen), zoom i layouten och skalstocken med bladformat.
+  const pl = await page.evaluate(async () => {
+    const map = pr.tpl.elements.find(e => e.type === 'map');
+    setSel([map.id]); renderPrintProps();
+    document.getElementById('prLock').click();
+    const locked = !!map.locked, panDisabled = document.getElementById('prPan').disabled;
+    const x0 = map.x;
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    const notMoved = map.x === x0;
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete' }));
+    const notDeleted = pr.tpl.elements.includes(map);
+    const c = document.getElementById('prCanvas');
+    const u0 = pr.L.u;
+    document.getElementById('prZoomIn').click();
+    const zoomed = pr.L.u / u0, lbl = document.getElementById('prZoomLbl').textContent;
+    document.getElementById('prZoomFit').click();
+    const back = Math.abs(pr.L.u - u0) < 1e-6;
+    // Skalstockens text med formatet.
+    let txt = []; const ctx = { save() {}, restore() {}, fillRect() {}, strokeRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, stroke() {}, fill() {}, fillText: t => txt.push(t), measureText: t => ({ width: t.length * 5 }), setLineDash() {} };
+    pr.tpl.format = 'A1';
+    drawElement(ctx, pr.tpl.elements.find(e => e.type === 'scalebar'), pr.tpl, 1, 1, {});
+    return { locked, panDisabled, notMoved, notDeleted, zoomed, lbl, back, txt };
+  });
+  if (!pl.locked || !pl.panDisabled || !pl.notMoved || !pl.notDeleted) fail('En låst ritning ska inte gå att flytta, panorera eller ta bort: ' + JSON.stringify(pl));
+  if (!(Math.abs(pl.zoomed - 1.25) < 1e-6) || pl.lbl !== '125 %' || !pl.back) fail('Zoom i layouten: ' + JSON.stringify(pl));
+  if (!pl.txt.some(t => /^SKALA 1:\d+ \(A1\)$/.test(t))) fail('Skalstocken ska visa bladformatet: ' + JSON.stringify(pl.txt));
+  console.log('OK: lås ritningen i utskriftslayouten, zoom i layouten, skalstocken visar (A1)');
   if (errors.length) fail('Fel i sidan: ' + errors.join(' | '));
   await browser.close(); server.close();
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });
