@@ -90,6 +90,25 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (Math.abs(v2[0] - v0[0]) > 0.01) fail('Ctrl+Z ska ångra flytten av hörnet: ' + JSON.stringify([v0, v2]));
   console.log('OK: hörnen dras och Ctrl+Z ångrar');
 
+  // 3b) Dra en sida: båda hörnen flyttas parallellt längs sidans normal.
+  {
+    const P = (await zones())[0].polys[0], a0 = P[1], b0 = P[2];
+    const mid = [(a0[0] + b0[0]) / 2, (a0[1] + b0[1]) / 2];
+    const nx = -(b0[1] - a0[1]), ny = b0[0] - a0[0], nl = Math.hypot(nx, ny);
+    const cur = await page.evaluate(([x, y]) => { const ev = { clientX: x, clientY: y }; const h = zoneEdgeAt(ev); return h ? zoneEdgeCursor(h) : null; }, [vb.x + mid[0], vb.y + mid[1]]);
+    if (!cur || !/resize/.test(cur)) fail('Sidan ska kännas igen under pekaren: ' + cur);
+    await page.mouse.move(vb.x + mid[0], vb.y + mid[1]); await page.mouse.down();
+    await page.mouse.move(vb.x + mid[0] + 25, vb.y + mid[1] + 15, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(200);
+    const off = (25 * nx + 15 * ny) / nl, ex = nx / nl * off, ey = ny / nl * off;
+    const Q = (await zones())[0].polys[0];
+    const near = (p, q) => Math.abs(p[0] - q[0]) < 1.5 && Math.abs(p[1] - q[1]) < 1.5;
+    if (!near(Q[1], [a0[0] + ex, a0[1] + ey]) || !near(Q[2], [b0[0] + ex, b0[1] + ey])) fail('Sidan ska flyttas parallellt: ' + JSON.stringify({ a0, b0, Q, ex, ey }));
+    if (!near(Q[0], P[0]) || Q.length !== P.length) fail('Övriga hörn ska ligga kvar: ' + JSON.stringify([P, Q]));
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(200);
+    if (!near((await zones())[0].polys[0][1], a0)) fail('Ctrl+Z ska ångra flytten av sidan');
+  }
+  console.log('OK: sidorna dras parallellt och Ctrl+Z ångrar');
+
   // 4) Etiketten redigeras som en notering: dra för att flytta, klicka för text, radbrytning, rotation, storlek.
   const lb0 = await page.evaluate(() => { const b = zoneLabelBoxes[0]; return stageToScreen([b.x, b.y]); });
   await page.mouse.move(vb.x + lb0[0], vb.y + lb0[1]); await page.mouse.down();
@@ -182,6 +201,38 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   await rowOf('PM21').click(); await page.waitForTimeout(100);
   if (!/Zon PM21/.test(await page.textContent('#zeTitle'))) fail('Vanligt klick ska gå tillbaka till en zon');
   console.log('OK: fler zonfunktioner – aktiviteter som kopplas (live), yta i m² (lista, ruta, etikett), flerval med Ctrl/Shift');
+
+  // 6c) Zoner fäster mot varandra och överlappar aldrig.
+  await page.evaluate(() => { view.scale = 1; view.tx = 0; view.ty = 0; applyView(); plan.zones = [{ id: 'A', code: 'PM40', polys: [[[600, 100], [800, 100], [800, 300], [600, 300]]], labels: [] }]; selectZone(null); showTab('zones'); renderZones(); });
+  answer = 'PM41';
+  await page.click('#btnZonePoly');
+  // Hörn 4 px från A:s kant fäster på kanten; zonen ritas så att den sticker in 50 px i A.
+  for (const [x, y] of [[804, 150], [950, 150], [950, 250], [750, 250]]) await page.mouse.click(vb.x + x, vb.y + y);
+  await page.keyboard.press('Enter'); await page.waitForTimeout(300);
+  const B = await page.evaluate(() => plan.zones.find(z => z.code === 'PM41'));
+  if (!B) fail('Den nya zonen ska skapas');
+  const xs = B.polys[0].map(p => Math.round(p[0])), minX = Math.min(...xs);
+  if (minX !== 800) fail('Den nya zonen ska fästa mot och klippas vid grannens kant (x = 800): ' + JSON.stringify(B.polys));
+  const overlap = await page.evaluate(() => { const pc = polygonClipping, r = p => [[...p, p[0]]]; const [a, b] = plan.zones; return pc.intersection(r(a.polys[0]), r(b.polys[0])).reduce((s, pg) => s + Math.abs(polyArea(pg[0].slice(0, -1))), 0); });
+  if (overlap > 0.01) fail('Zonerna får inte överlappa: ' + overlap);
+  if (!/klipptes mot PM40/.test(await page.textContent('#zoneDrawHint'))) fail('Det ska framgå att zonen klipptes: ' + await page.textContent('#zoneDrawHint'));
+  // Dra ett hörn på PM41 in i PM40: zonen klipps igen.
+  await page.evaluate(() => { view.tx = 0; view.ty = 0; applyView(); selectZone(plan.zones.find(z => z.code === 'PM41').id); });
+  const v = await page.evaluate(() => { const z = plan.zones.find(z => z.code === 'PM41'); return z.polys.flat().sort((p, q) => Math.hypot(p[0] - 950, p[1] - 150) - Math.hypot(q[0] - 950, q[1] - 150))[0]; });
+  await page.mouse.move(vb.x + v[0], vb.y + v[1]); await page.mouse.down(); await page.mouse.move(vb.x + 700, vb.y + 150, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(200);
+  const ov2 = await page.evaluate(() => { const pc = polygonClipping, r = p => [[...p, p[0]]]; const a = plan.zones.find(z => z.code === 'PM40'), b = plan.zones.find(z => z.code === 'PM41'); return b.polys.reduce((s, q) => s + pc.intersection(r(a.polys[0]), r(q)).reduce((t, pg) => t + Math.abs(polyArea(pg[0].slice(0, -1))), 0), 0); });
+  if (ov2 > 0.01) fail('Ett hörn som dras in i grannen ska klippas: ' + ov2);
+  const moved = await page.evaluate(() => plan.zones.find(z => z.code === 'PM41').polys.flat().some(p => Math.abs(p[0] - 950) < 1 && Math.abs(p[1] - 150) < 1));
+  if (moved) fail('Hörnet ska ha flyttats (och klippts vid grannens kant)');
+  // En zon helt inuti en annan går inte att skapa.
+  answer = 'PM42';
+  await page.evaluate(() => { view.tx = 0; view.ty = 0; applyView(); selectZone(null); });
+  await page.click('#btnZonePoly');
+  for (const [x, y] of [[650, 150], [700, 150], [700, 200]]) await page.mouse.click(vb.x + x, vb.y + y);
+
+  await page.keyboard.press('Enter'); await page.waitForTimeout(300);
+  if (await page.evaluate(() => plan.zones.some(z => z.code === 'PM42'))) fail('En zon helt inuti en annan ska inte skapas: ' + JSON.stringify(await page.evaluate(() => plan.zones.map(z => [z.code, z.polys]))));
+  console.log('OK: zoner fäster mot varandras hörn och kanter och klipps så att de aldrig överlappar');
 
   // 7) Uppladdningsdatum för DXF – diskret (syns vid hovring).
   await page.evaluate(() => { siteItems.push({ id: 'c1', type: 'cad', name: 'Ritning', path: 'x', created_at: '2026-09-30T08:15:00Z', by: 'Victor', colorMode: 'orig', layers: [{ name: 'A', color: '#ff0000', n: 1 }], stats: { lines: 1, texts: 0, kb: 1 } }); showTab('work'); renderLayerPanel(); });

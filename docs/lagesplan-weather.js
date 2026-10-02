@@ -50,7 +50,7 @@ function gridToGeodetic(N, E, z) {
 // ---------------------------------------------------------------------
 function wxSettings() {
   const s = (typeof siteItems !== "undefined" ? siteItems : []).find(x => x.id === WX_ID) || {};
-  return { id: WX_ID, type: "wxset", zone: s.zone || "", gust: Number(s.gust) > 0 ? Number(s.gust) : 10, cold: Number.isFinite(Number(s.cold)) && s.cold !== "" && s.cold != null ? Number(s.cold) : 0, rain: Number(s.rain) > 0 ? Number(s.rain) : 10 };
+  return { id: WX_ID, type: "wxset", zone: s.zone || "", place: s.place || "", lat: Number(s.lat) || null, lon: Number(s.lon) || null, gust: Number(s.gust) > 0 ? Number(s.gust) : 10, cold: Number.isFinite(Number(s.cold)) && s.cold !== "" && s.cold != null ? Number(s.cold) : 0, rain: Number(s.rain) > 0 ? Number(s.rain) : 10 };
 }
 /* Koordinatsystemet: valt i inställningarna, annars TM för stora östvärden
    och SWEREF 99 20 15 (projektets lokala zon) för små. */
@@ -61,7 +61,24 @@ function wxZone() {
   const E = plan && plan.calib ? plan.calib.model[0][0] : 0;
   return E >= 255000 ? SWEREF_ZONES[0] : SWEREF_ZONES.find(x => x.name === "SWEREF 99 20 15");
 }
+/* Kända platser (för namnet när inget eget är angivet): prognosen gäller
+   projektets plats, och ligger den nära en av dessa visas namnet. */
+const WX_PLACES = [{ name: "Koskullskulle, Gällivare", lat: 67.175, lon: 20.685 }, { name: "Gällivare", lat: 67.133, lon: 20.659 }, { name: "Malmberget", lat: 67.175, lon: 20.655 }];
+const kmBetween = (a, b) => { const r = Math.PI / 180, x = (b[1] - a[1]) * r * Math.cos((a[0] + b[0]) / 2 * r), y = (b[0] - a[0]) * r; return Math.hypot(x, y) * 6371; };
+/* Platsnamnet som visas i väderrutorna: eget namn, annars närmaste kända plats (inom 8 km). */
+function wxPlaceName() {
+  const s = wxSettings();
+  if (s.place) return s.place;
+  const ll = wxLatLon();
+  if (!ll) return "";
+  const near = WX_PLACES.map(p => ({ p, d: kmBetween(ll, [p.lat, p.lon]) })).sort((a, b) => a.d - b.d)[0];
+  return near && near.d < 8 ? near.p.name : `${ll[0].toLocaleString("sv-SE")}° N ${ll[1].toLocaleString("sv-SE")}° Ö`;
+}
+const wxFetchedText = () => wx.at ? new Date(wx.at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
 function wxLatLon() {
+  // Egna koordinater i inställningarna går före planens kalibrering.
+  const s0 = wxSettings();
+  if (s0.lat && s0.lon && s0.lat > 54 && s0.lat < 70 && s0.lon > 10 && s0.lon < 25) return [s0.lat, s0.lon];
   if (!plan || !plan.calib) return null;
   const [E, N] = plan.calib.model[0];
   if (!Number.isFinite(E) || !Number.isFinite(N) || N < 6000000 || N > 7800000) return null; // inte SWEREF 99 – ingen plats
@@ -170,7 +187,8 @@ function dayWeatherHtml(day) {
     : wx.error ? `<span class="muted" title="${escHtml(wx.error)}">Väder saknas</span>`
     : wx.at ? `<span class="muted">Ingen prognos för dagen (ca 10 dagar framåt)</span>` : "";
   if (!body) return "";
-  return `<div class="dp-wx">${body}<button type="button" class="dp-wxset icon ghost" data-wxset="1" title="Väderinställningar (vindgräns, koordinatsystem)">⚙</button></div>`;
+  const where = wxPlaceName();
+  return `<div class="dp-wx-where muted">${where ? "📍 " + escHtml(where) : ""}${wx.at ? ` · hämtat ${escHtml(wxFetchedText())} från SMHI` : ""}</div><div class="dp-wx">${body}<button type="button" class="dp-wxset icon ghost" data-wxset="1" title="Väderinställningar (vindgräns, koordinatsystem)">⚙</button></div>`;
 }
 function weekWeatherCell(day) {
   const w = weatherFor(day);
@@ -178,7 +196,7 @@ function weekWeatherCell(day) {
   const s = wxSettings(), warn = w.gust >= s.gust || w.tmin < s.cold || w.prec >= s.rain;
   return `<span title="${escHtml(weatherText(w, false))}"${warn ? ' class="wx-warn"' : ""}>${wxSym(w)[0]}<br>${Math.round(w.tmax)}°</span>`;
 }
-function weatherPdfLine(day) { const w = weatherFor(day); return w ? `Väder (SMHI): ${weatherText(w, false)}` : ""; }
+function weatherPdfLine(day) { const w = weatherFor(day), pl = wxPlaceName(); return w ? `Väder ${pl ? pl + " " : ""}(SMHI${wx.at ? ", hämtat " + wxFetchedText() : ""}): ${weatherText(w, false)}` : ""; }
 
 /* Varningar till krocklistan (lagesplan-daily.js). */
 function weatherIssues(day, { lifts, dels }) {
@@ -210,6 +228,8 @@ function openWeatherSettings(anchor) {
     <div class="row2"><div><label>Vindgräns för lyft (byar, m/s)</label><input type="text" inputmode="decimal" class="wx-gust" value="${escHtml(s.gust)}" /></div>
       <div><label>Kyla vid gjutning under (°C)</label><input type="text" inputmode="decimal" class="wx-cold" value="${escHtml(s.cold)}" /></div></div>
     <label>Regn vid gjutning från (mm/dygn)</label><input type="text" inputmode="decimal" class="wx-rain" value="${escHtml(s.rain)}" />
+    <label>Plats (namn i väderrutorna)</label><input type="text" class="wx-place" value="${escHtml(s.place)}" placeholder="${escHtml(wxPlaceName() || "t.ex. Koskullskulle, Gällivare")}" />
+    <div class="row2"><div><label>Lat (valfritt)</label><input type="text" inputmode="decimal" class="wx-lat" value="${escHtml(s.lat || "")}" placeholder="från ritningen" /></div><div><label>Lon (valfritt)</label><input type="text" inputmode="decimal" class="wx-lon" value="${escHtml(s.lon || "")}" placeholder="från ritningen" /></div></div>
     <label>Modellens koordinatsystem</label><select class="wx-zone">${SWEREF_ZONES.map(z => `<option${z.name === cur.name ? " selected" : ""}>${escHtml(z.name)}</option>`).join("")}</select>
     <div class="muted" style="margin-top:4px;">${ll ? `Plats: ${ll[0].toLocaleString("sv-SE")}° N, ${ll[1].toLocaleString("sv-SE")}° Ö` : "Platsen kunde inte räknas ut."} · Prognos från SMHI.</div>
     <div class="row split" style="margin-top:6px;"><button type="button" class="wx-save primary">Spara</button><button type="button" class="wx-reload">↻ Hämta igen</button><button type="button" class="wx-close">Stäng</button></div>`;
@@ -218,8 +238,9 @@ function openWeatherSettings(anchor) {
   box.querySelector(".wx-close").onclick = () => box.remove();
   box.querySelector(".wx-reload").onclick = () => { box.remove(); loadWeather(true); };
   box.querySelector(".wx-save").onclick = async () => {
-    const zoneChanged = box.querySelector(".wx-zone").value !== cur.name;
-    const rec = { ...s, gust: Math.max(1, num(".wx-gust", 10)), cold: num(".wx-cold", 0), rain: Math.max(0.1, num(".wx-rain", 10)), zone: box.querySelector(".wx-zone").value, updated_at: new Date().toISOString() };
+    const lat = num(".wx-lat", 0), lon = num(".wx-lon", 0);
+    const zoneChanged = box.querySelector(".wx-zone").value !== cur.name || lat !== (s.lat || 0) || lon !== (s.lon || 0);
+    const rec = { ...s, place: box.querySelector(".wx-place").value.trim(), lat: lat || null, lon: lon || null, gust: Math.max(1, num(".wx-gust", 10)), cold: num(".wx-cold", 0), rain: Math.max(0.1, num(".wx-rain", 10)), zone: box.querySelector(".wx-zone").value, updated_at: new Date().toISOString() };
     box.remove();
     await saveSiteItem(rec, false, { record: false });
     if (zoneChanged) { wx.at = 0; wx.key = ""; loadWeather(true); }
@@ -275,7 +296,7 @@ function drawWxBox(ctx, x, fontPx, selected) {
     };
     x._wxHead = `VÄDER · ${dayShort(day).toUpperCase()}`;
   } else {
-    const mon = weekStart(day), days = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(mon, i)).filter((d, i) => i < 5 || weatherFor(d));
+    const mon = weekStart(day), days = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(mon, i)); // alltid måndag–söndag
     const cw = fs * 3.3, rows = fs * 5.3;
     W = days.length * cw + pad * 2; H = hh + rows + pad * 0.5;
     body = (bx, by) => {
@@ -295,6 +316,9 @@ function drawWxBox(ctx, x, fontPx, selected) {
     };
     x._wxHead = `VÄDER · VECKA ${dayWeekNo(day)}`;
   }
+  // Sidfot: plats och när prognosen hämtades från SMHI.
+  const foot = [wxPlaceName() ? "📍 " + wxPlaceName() : "", wx.at ? "hämtat " + wxFetchedText() : ""].filter(Boolean).join(" · ");
+  if (foot) { ctx.font = F(500, 0.5); W = Math.max(W, ctx.measureText(foot).width + pad * 2); H += fs * 0.8; }
   const bx = p[0] - W / 2, by = p[1] - H / 2, r = fs * 0.35;
   ctx.shadowColor = "rgba(15,23,42,.25)"; ctx.shadowBlur = fs * 0.4; ctx.shadowOffsetY = fs * 0.08;
   roundRect(ctx, bx, by, W, H, r); ctx.fillStyle = "rgba(255,255,255,.96)"; ctx.fill();
@@ -305,6 +329,7 @@ function drawWxBox(ctx, x, fontPx, selected) {
   ctx.textAlign = "right"; ctx.font = F(500, 0.52); ctx.fillText("SMHI", bx + W - pad, by + hh / 2);
   delete x._wxHead;
   body(bx, by);
+  if (foot) { ctx.font = F(500, 0.5); ctx.fillStyle = "#6b7280"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(foot, bx + pad, by + H - fs * 0.5); }
   if (selected) { const o = fs * 0.3; roundRect(ctx, bx - o, by - o, W + o * 2, H + o * 2, r + o); ctx.setLineDash([fs * 0.35, fs * 0.22]); ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(1.5, fs * 0.1); ctx.stroke(); }
   ctx.restore();
   if (ctx.canvas && ctx.canvas.id === "topCanvas" && typeof dailyBoxes !== "undefined") dailyBoxes.set(x.id, [{ x: p[0], y: p[1], w: W, h: H }]);

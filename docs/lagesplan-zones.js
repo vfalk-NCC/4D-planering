@@ -2,7 +2,7 @@
    - ⬠ Polygon: klicka hörnen, Shift = raka linjer (5°-steg), fäster mot
      ritningens linjer (Alt släpper), dubbelklick/Enter avslutar, ⌫ tar bort
      senaste punkten, Esc avbryter. Samma kod som en befintlig zon = en del till.
-   - Markerad zon: dra i hörnen, dubbelklicka ett hörn för att ta bort det,
+   - Markerad zon: dra i hörnen eller i en sida (flyttas parallellt), dubbelklicka ett hörn för att ta bort det,
      📍 flytta etiketten, Delete tar bort zonen.
    - Utseende per zon (zone.style, se drawZoneShapes): fyllning, opacitet,
      mönster, kantlinje, etikett och dölj.
@@ -59,8 +59,30 @@ function updateZonePolyUi() {
   }
 }
 /* Punkt med fästning (ritningens linjer, andra zoner) och Shift = 5°-steg. */
+/* Zoner fäster mot varandra (Victors önskemål 2026-10-02): hörn och kanter
+   på de andra zonerna (och första punkten på den som ritas) inom ~12 skärm-px.
+   Alt släpper. Returnerar null om inget finns i närheten. */
+let zoneSnapMark = null;
+function zoneSnapPt(raw, e, excludeId, extraPts = []) {
+  zoneSnapMark = null;
+  if (e && e.altKey) return null;
+  const p = toPx(raw), tol = 12 / view.scale;
+  let best = null, bd = tol;
+  const polys = (plan.zones || []).filter(z => z.id !== excludeId).flatMap(z => z.polys || []);
+  polys.concat(extraPts.length ? [extraPts] : []).forEach(poly => poly.forEach(v => { const q = toPx(v), d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < bd) { bd = d; best = v; } }));
+  if (best) { zoneSnapMark = { pt: best, kind: "hörn" }; return best.slice(); }
+  polys.forEach(poly => poly.forEach((a, i) => {
+    const b = poly[(i + 1) % poly.length], A = toPx(a), B = toPx(b), dx = B[0] - A[0], dy = B[1] - A[1], l = dx * dx + dy * dy;
+    const t = l ? Math.max(0, Math.min(1, ((p[0] - A[0]) * dx + (p[1] - A[1]) * dy) / l)) : 0;
+    const d = Math.hypot(A[0] + t * dx - p[0], A[1] + t * dy - p[1]);
+    if (d < bd) { bd = d; best = [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])]; }
+  }));
+  if (best) zoneSnapMark = { pt: best, kind: "kant" };
+  return best;
+}
 function zonePolyPoint(e) {
   const raw = toPdf(stagePoint(e)), prev = zonePoly.pts[zonePoly.pts.length - 1] || null;
+  if (!e.shiftKey) { const z = zoneSnapPt(raw, e, null, zonePoly.pts.slice(0, 1)); if (z) return z; }
   if (plan.calib && typeof constrainPdf === "function") { try { return constrainPdf(raw, e, prev); } catch (err) { /* utan etablering att fästa mot */ } }
   if (!e.shiftKey || !prev) return raw;
   const dx = raw[0] - prev[0], dy = raw[1] - prev[1];
@@ -77,12 +99,14 @@ function finishZonePoly() {
   if (!code) { renderZones(); return; }
   zoneSnapshot("Ny zon");
   const existing = (plan.zones || []).find(z => normCode(z.code) === normCode(code));
-  if (existing) { existing.polys.push(pts); existing.source = "manual"; selectedZoneId = existing.id; }
+  let target;
+  if (existing) { existing.polys.push(pts); existing.source = "manual"; selectedZoneId = existing.id; target = existing; }
   else {
-    const z = { id: ghNewId(), code: code.toUpperCase(), polys: [pts], labels: [], rule: { field: "auto" }, source: "manual" };
-    plan.zones = [...(plan.zones || []), z];
-    selectedZoneId = z.id;
+    target = { id: ghNewId(), code: code.toUpperCase(), polys: [pts], labels: [], rule: { field: "auto" }, source: "manual" };
+    plan.zones = [...(plan.zones || []), target];
+    selectedZoneId = target.id;
   }
+  if (!clipZoneAgainstOthers(target)) { zoneUndo(); return; }
   renderZones(); openEditor(selectedZoneId); schedulePlanSave();
 }
 
@@ -97,6 +121,30 @@ function zoneVertexAt(e) {
   (z.polys || []).forEach((poly, pi) => poly.forEach((v, vi) => { const q = toPx(v), d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < bd) { bd = d; best = { zone: z, pi, vi }; } }));
   return best;
 }
+/* Sida på den markerade zonen (Victors önskemål 2026-10-02): dra i en sida
+   för att flytta den parallellt, båda hörnen följer med. */
+function zoneEdgeAt(e) {
+  const z = selectedZoneId && plan && (plan.zones || []).find(x => x.id === selectedZoneId);
+  if (!z) return null;
+  const p = stagePoint(e), tol = 7 / view.scale;
+  let best = null, bd = tol;
+  (z.polys || []).forEach((poly, pi) => poly.forEach((v, vi) => {
+    const a = toPx(v), b = toPx(poly[(vi + 1) % poly.length]), dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy;
+    if (!L2) return;
+    const t = ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2;
+    if (t < 0.08 || t > 0.92) return; // nära hörnen: hörnet vinner
+    const d = Math.hypot(a[0] + t * dx - p[0], a[1] + t * dy - p[1]);
+    if (d < bd) { bd = d; best = { zone: z, pi, vi }; }
+  }));
+  return best;
+}
+/* Muspekare som visar åt vilket håll sidan kan dras. */
+function zoneEdgeCursor(h) {
+  const poly = h.zone.polys[h.pi], a = toPx(poly[h.vi]), b = toPx(poly[(h.vi + 1) % poly.length]);
+  let ang = (Math.atan2(b[0] - a[0], -(b[1] - a[1])) + (view.rot || 0)) * 180 / Math.PI; // normalens riktning på skärmen
+  ang = ((ang % 180) + 180) % 180;
+  return ang < 22.5 || ang >= 157.5 ? "ns-resize" : ang < 67.5 ? "nesw-resize" : ang < 112.5 ? "ew-resize" : "nwse-resize";
+}
 /* Anropas från lagesplan.js vid mousedown. true = händelsen är hanterad. */
 function zonesPointerDown(e) {
   if (!plan || !viewport || e.button !== 0) return false;
@@ -109,11 +157,20 @@ function zonesPointerDown(e) {
     return true;
   }
   const h = zoneVertexAt(e);
-  if (!h) return false;
+  if (h) {
+    e.preventDefault();
+    zoneVDrag = { ...h, orig: JSON.stringify(plan.zones), moved: false, sx: e.clientX, sy: e.clientY };
+    return true;
+  }
+  const s = zoneEdgeAt(e);
+  if (!s) return false;
   e.preventDefault();
-  zoneVDrag = { ...h, orig: JSON.stringify(plan.zones), moved: false, sx: e.clientX, sy: e.clientY };
+  const poly = s.zone.polys[s.pi];
+  zoneEDrag = { ...s, orig: JSON.stringify(plan.zones), moved: false, sx: e.clientX, sy: e.clientY, start: toPdf(stagePoint(e)),
+    a: poly[s.vi].slice(), b: poly[(s.vi + 1) % poly.length].slice() };
   return true;
 }
+let zoneEDrag = null;
 window.addEventListener("mousemove", e => {
   if (zoneLDrag) {
     if (!zoneLDrag.moved && Math.hypot(e.clientX - zoneLDrag.sx, e.clientY - zoneLDrag.sy) < 4) return;
@@ -135,15 +192,41 @@ window.addEventListener("mousemove", e => {
       const prev = poly[(zoneVDrag.vi - 1 + n) % n], dx = raw[0] - prev[0], dy = raw[1] - prev[1];
       const a = Math.round(Math.atan2(-dy, dx) * 180 / Math.PI / 5) * 5 * Math.PI / 180, len = dx * Math.cos(a) - dy * Math.sin(a);
       pt = [prev[0] + Math.cos(a) * len, prev[1] - Math.sin(a) * len];
-    } else if (plan.calib && typeof snapPdf === "function") { try { pt = snapPdf(raw, e); } catch (err) {} }
+    } else { const zs = zoneSnapPt(raw, e, zoneVDrag.zone.id); if (zs) pt = zs; else if (plan.calib && typeof snapPdf === "function") { try { pt = snapPdf(raw, e); } catch (err) {} } }
     poly[zoneVDrag.vi] = pt;
     zoneVDrag.zone._status = null;
+    renderZonesSoon();
+    return;
+  }
+  if (zoneEDrag) {
+    const d = zoneEDrag;
+    if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 3) return;
+    d.moved = true;
+    const nx = -(d.b[1] - d.a[1]), ny = d.b[0] - d.a[0], nl = Math.hypot(nx, ny) || 1; // sidans normal (pdf)
+    const raw = toPdf(stagePoint(e));
+    let pt = raw;
+    if (!e.shiftKey) { // fäst mot grannzoner (Shift = fri förflyttning längs normalen)
+      const zs = zoneSnapPt(raw, e, d.zone.id); if (zs) pt = zs;
+    }
+    const off = ((pt[0] - d.start[0]) * nx + (pt[1] - d.start[1]) * ny) / nl;
+    const poly = d.zone.polys[d.pi], n = poly.length;
+    poly[d.vi] = [d.a[0] + nx / nl * off, d.a[1] + ny / nl * off];
+    poly[(d.vi + 1) % n] = [d.b[0] + nx / nl * off, d.b[1] + ny / nl * off];
+    d.zone._status = null;
     renderZonesSoon();
     return;
   }
   if (zonePoly && e.target.closest && e.target.closest("#viewport")) {
     zonePoly.cursor = zonePolyPoint(e);
     renderZonesSoon();
+    return;
+  }
+  // Pekaren över en sida/ett hörn på den markerade zonen.
+  const vp = $("viewport");
+  if (vp && plan && selectedZoneId && !zoneVDrag && !zoneLDrag && e.target.closest && e.target.closest("#viewport")) {
+    const edge = !zoneVertexAt(e) && zoneEdgeAt(e), c = zoneVertexAt(e) ? "move" : edge ? zoneEdgeCursor(edge) : "";
+    if (c) { vp.style.cursor = c; vp._zoneCur = true; }
+    else if (vp._zoneCur) { vp.style.cursor = ""; vp._zoneCur = false; }
   }
 });
 window.addEventListener("mouseup", () => {
@@ -153,12 +236,25 @@ window.addEventListener("mouseup", () => {
     else openZoneLabelPop(d.zid);
     return;
   }
+  if (zoneEDrag) {
+    const d = zoneEDrag; zoneEDrag = null;
+    if (!d.moved) return;
+    zoneUndoStack.push({ label: "Flytta zonsida", zones: d.orig, planId: plan.id });
+    if (typeof lastUndoTarget !== "undefined") lastUndoTarget = "zone";
+    zoneSnapMark = null;
+    if (!clipZoneAgainstOthers(d.zone)) { zoneUndo(); return; }
+    renderZones(); schedulePlanSave();
+    return;
+  }
   if (!zoneVDrag) return;
   const d = zoneVDrag; zoneVDrag = null;
   if (d.moved) {
     zoneUndoStack.push({ label: "Flytta zonhörn", zones: d.orig, planId: plan.id });
     if (typeof lastUndoTarget !== "undefined") lastUndoTarget = "zone";
     if (typeof snapMark !== "undefined") snapMark = null;
+    zoneSnapMark = null;
+    // Inte in i grannzonen: zonen klipps mot de andra.
+    if (!clipZoneAgainstOthers(d.zone)) { zoneUndo(); return; }
     renderZones(); schedulePlanSave();
   }
 });
@@ -177,12 +273,23 @@ function zonesClick(e) {
 }
 function drawZoneOverlay(ctx, fontPx) {
   const lw = Math.max(1.5, fontPx / 8);
+  // Fästpunkt mot en annan zon.
+  if (zoneSnapMark && (zonePoly || zoneVDrag || zoneEDrag)) {
+    const [x, y] = toPx(zoneSnapMark.pt), r = 7 / view.scale;
+    ctx.save(); ctx.strokeStyle = "#db2777"; ctx.lineWidth = 2 / view.scale;
+    ctx.beginPath(); if (zoneSnapMark.kind === "hörn") ctx.rect(x - r, y - r, r * 2, r * 2); else ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+  }
   // Hörnen på den markerade zonen.
   const z = selectedZoneId && !zonePoly && plan && (plan.zones || []).find(x => x.id === selectedZoneId);
   if (z) {
     const hs = Math.max(4, 6 / view.scale);
     ctx.save(); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(1.5, 2 / view.scale);
     (z.polys || []).forEach(poly => poly.forEach(v => { const [x, y] = toPx(v); ctx.fillRect(x - hs, y - hs, hs * 2, hs * 2); ctx.strokeRect(x - hs, y - hs, hs * 2, hs * 2); }));
+    // Mitten på varje sida: ett runt handtag som visar att sidan kan dras.
+    (z.polys || []).forEach(poly => poly.forEach((v, i) => {
+      const a = toPx(v), b = toPx(poly[(i + 1) % poly.length]);
+      ctx.beginPath(); ctx.arc((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, hs * 0.8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }));
     ctx.restore();
   }
   if (!zonePoly) return;
@@ -290,8 +397,17 @@ document.addEventListener("DOMContentLoaded", () => {
   if (Object.values(opts).some(Boolean)) $("zoneOptsBox").open = true;
   // Rektangel och borttagning går också att ångra.
   const origFinish = finishDraw;
-  finishDraw = function () { const before = JSON.stringify(plan.zones || []); const n = (plan.zones || []).length, np = (plan.zones || []).reduce((a, z) => a + (z.polys || []).length, 0); const r = origFinish.apply(this, arguments);
-    if ((plan.zones || []).reduce((a, z) => a + (z.polys || []).length, 0) !== np || plan.zones.length !== n) { zoneUndoStack.push({ label: "Ny zon", zones: before, planId: plan.id }); if (typeof lastUndoTarget !== "undefined") lastUndoTarget = "zone"; }
+  finishDraw = function (a, b) {
+    // Rektangelns hörn fäster mot andra zoner.
+    const sa = zoneSnapPt(toPdf(a), null, null), sb = zoneSnapPt(toPdf(b), null, null); zoneSnapMark = null;
+    if (sa) a = toPx(sa); if (sb) b = toPx(sb);
+    const before = JSON.stringify(plan.zones || []); const n = (plan.zones || []).length, np = (plan.zones || []).reduce((s, z) => s + (z.polys || []).length, 0); const r = origFinish.call(this, a, b);
+    if ((plan.zones || []).reduce((s, z) => s + (z.polys || []).length, 0) !== np || plan.zones.length !== n) {
+      zoneUndoStack.push({ label: "Ny zon", zones: before, planId: plan.id }); if (typeof lastUndoTarget !== "undefined") lastUndoTarget = "zone";
+      const z = plan.zones.find(x => x.id === selectedZoneId);
+      if (z && !clipZoneAgainstOthers(z)) { zoneUndo(); return r; }
+      renderZones(); schedulePlanSave();
+    }
     return r; };
   $("zeDelete").onclick = () => deleteSelectedZone(true);
   const origSave = $("zeSave").onclick;
@@ -511,4 +627,33 @@ function openZoneLabelPop(zid) {
     if (selectedZoneId === z.id) renderZoneStyleUi(z);
   };
   pop.onkeydown = e => { if (e.key === "Escape") { e.stopPropagation(); q(".zl-cancel").click(); } };
+}
+
+/* Zoner överlappar aldrig (Victors önskemål 2026-10-02): en ny eller ändrad
+   zon klipps mot alla andra zoner (polygon-clipping, MIT). Delar som blir
+   kvar blir zonens ytor. false = inget blev kvar (zonen låg helt inuti andra). */
+function clipZoneAgainstOthers(z) {
+  if (typeof polygonClipping === "undefined" || !z) return true;
+  const ring = poly => { const r = poly.map(p => [p[0], p[1]]); r.push(r[0].slice()); return [r]; };
+  const others = (plan.zones || []).filter(o => o !== z).flatMap(o => (o.polys || []).filter(p => p.length > 2)).map(ring);
+  const own = (z.polys || []).filter(p => p.length > 2);
+  if (!others.length || !own.length) return true;
+  const before = JSON.stringify(own);
+  let parts = [], holes = false;
+  try {
+    own.forEach(poly => polygonClipping.difference(ring(poly), ...others).forEach(pg => {
+      if (pg.length > 1) holes = true;
+      const outer = pg[0].slice(0, -1);
+      if (outer.length > 2 && Math.abs(polyArea(outer)) > 1) parts.push(outer);
+    }));
+  } catch (e) { console.warn("Kunde inte klippa zonen", e); return true; }
+  if (!parts.length) { alert(`Zonen ${z.code} ligger helt inuti andra zoner och kan inte läggas där.`); return false; }
+  if (JSON.stringify(parts) === before) return true;
+  z.polys = parts;
+  const hit = (plan.zones || []).filter(o => o !== z && (o.polys || []).some(p => own.some(q => q.some(v => pointInPoly(v, p)) || p.some(v => pointInPoly(v, q))))).map(o => o.code);
+  const msg = `✂ Zon ${z.code} klipptes${hit.length ? " mot " + hit.join(", ") : ""} så att zonerna inte överlappar.${holes ? " (Den omslöt en annan zon – bara ytterkanten används.)" : ""}`;
+  // Visas under zonknapparna en stund (statusraden skrivs över av "Sparad").
+  const h = $("zoneDrawHint");
+  if (h) { h.textContent = msg; h.classList.remove("hidden"); clearTimeout(clipZoneAgainstOthers.t); clipZoneAgainstOthers.t = setTimeout(() => { if (!zonePoly && !zoneLabelPlace) h.classList.add("hidden"); }, 7000); }
+  return true;
 }

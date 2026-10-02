@@ -106,8 +106,18 @@ function smhi() {
   await page.click('details[data-sec="dayweek"] summary'); await page.waitForTimeout(200);
   if (!(await page.locator('#dayWeek tr.wk-wx').count())) fail('Veckovyn ska ha en väderrad');
   const line = await page.evaluate(d => weatherPdfLine(d), today);
-  if (!/^Väder \(SMHI\): Regn -?\d+–\d+ °C · vind 7 \(byar 14\) m\/s/.test(line) || /[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF–]/.test(line)) fail('Dagbladet ska få en väderrad utan emoji: ' + line);
+  if (!/^Väder .*\(SMHI, hämtat [^)]+\): Regn -?\d+–\d+ °C · vind 7 \(byar 14\) m\/s/.test(line) || /[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF–]/.test(line)) fail('Dagbladet ska få en väderrad utan emoji: ' + line);
   console.log('OK: väder i veckovyn och dagbladet');
+  // Plats och hämtningstid: egna koordinater (Koskullskulle) ger namnet och används för prognosen.
+  const pl = await page.evaluate(async () => {
+    const ws = siteItems.find(x => x.id === 'wxset'); Object.assign(ws, { lat: 67.175, lon: 20.685 });
+    await loadWeather(true); renderDayAll(true);
+    return { name: wxPlaceName(), where: document.querySelector('#dayPanel .dp-wx-where').textContent, fetched: wxFetchedText() };
+  });
+  if (pl.name !== 'Koskullskulle, Gällivare' || !/Koskullskulle, Gällivare · hämtat .+ från SMHI/.test(pl.where)) fail('Platsen och hämtningstiden ska visas: ' + JSON.stringify(pl));
+  if (!smhiCalls.some(u => /lon\/20\.685\/lat\/67\.175\//.test(u))) fail('Egna koordinater ska användas för prognosen: ' + smhiCalls.slice(-2));
+  await page.evaluate(() => { const ws = siteItems.find(x => x.id === 'wxset'); delete ws.lat; delete ws.lon; return loadWeather(true); });
+  console.log('OK: väderrutan visar plats (Koskullskulle, Gällivare) och när prognosen hämtades');
 
   // 5b) Väder på planen: dag- och veckoruta, egen lager, flyttas, Delete tar bort, Ctrl+Z ångrar.
   const vb = await page.locator('#viewport').boundingBox();

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261002082013"></script>
+<script src="github-storage.js?v=20261002083520"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -434,6 +434,7 @@
   #sitePop input[type=time] { height: 28px; width: 100%; }
   #sitePop:has(.dp-head) { width: 300px; max-height: calc(100% - 16px); overflow-y: auto; }
   .dp-wx { display: flex; align-items: center; gap: 4px; justify-content: center; font-size: 12px; margin: -2px 0 6px; text-align: center; line-height: 1.3; }
+  .dp-wx-where { font-size: 10.5px; text-align: center; margin: -2px 0 1px; }
   .dp-wx .dp-wxset { height: 22px; min-width: 22px; padding: 0 4px; font-size: 12px; opacity: .6; }
   .wx-warn { color: #b45309; font-weight: 650; }
   .wx-set { padding: 8px; margin: 0 0 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel-2); font-size: 12px; }
@@ -781,7 +782,7 @@
             <button id="btnZonePoly" title="Klicka zonens hörn – Shift ger raka linjer, dubbelklick eller Enter avslutar">⬠ Polygon</button>
           </div>
           <div class="hint hidden" id="zoneDrawHint"></div>
-          <div class="hint">Klicka på en zon för att ändra koppling och utseende. En markerad zon har hörn som kan dras (dubbelklicka ett hörn för att ta bort det). Delete tar bort zonen, Ctrl+Z ångrar.</div>
+          <div class="hint">Klicka på en zon för att ändra koppling och utseende. En markerad zon har hörn och sidor som kan dras – en sida flyttas parallellt (dubbelklicka ett hörn för att ta bort det). Delete tar bort zonen, Ctrl+Z ångrar.</div>
           <label class="check" title="Gör ritningen grå så att zonernas färger syns tydligare"><input type="checkbox" id="grayPdf" checked /> Ritningen i gråskala (tydligare zonfärger)</label>
           <details class="zone-adv" id="zoneOptsBox">
             <summary>Fler zonfunktioner</summary>
@@ -996,21 +997,22 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261002082013"></script>
-<script src="lagesplan-tools.js?v=20261002082013"></script>
-<script src="lagesplan-layers.js?v=20261002082013"></script>
-<script src="lagesplan-views.js?v=20261002082013"></script>
-<script src="lagesplan-film.js?v=20261002082013"></script>
-<script src="lagesplan-cad.js?v=20261002082013"></script>
-<script src="lagesplan-vecpdf.js?v=20261002082013"></script>
-<script src="lagesplan-print.js?v=20261002082013"></script>
-<script src="lagesplan-objmarks.js?v=20261002082013"></script>
-<script src="lagesplan-objlist.js?v=20261002082013"></script>
-<script src="lagesplan-zones.js?v=20261002082013"></script>
-<script src="lagesplan-daily.js?v=20261002082013"></script>
-<script src="lagesplan-gps.js?v=20261002082013"></script>
-<script src="lagesplan-weather.js?v=20261002082013"></script>
-<script src="lagesplan-touch.js?v=20261002082013"></script>
-<script src="lagesplan-keys.js?v=20261002082013"></script>
+<script src="lagesplan.js?v=20261002083520"></script>
+<script src="lagesplan-tools.js?v=20261002083520"></script>
+<script src="lagesplan-layers.js?v=20261002083520"></script>
+<script src="lagesplan-views.js?v=20261002083520"></script>
+<script src="lagesplan-film.js?v=20261002083520"></script>
+<script src="lagesplan-cad.js?v=20261002083520"></script>
+<script src="lagesplan-vecpdf.js?v=20261002083520"></script>
+<script src="lagesplan-print.js?v=20261002083520"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261002083520"></script>
+<script src="lagesplan-objmarks.js?v=20261002083520"></script>
+<script src="lagesplan-objlist.js?v=20261002083520"></script>
+<script src="lagesplan-zones.js?v=20261002083520"></script>
+<script src="lagesplan-daily.js?v=20261002083520"></script>
+<script src="lagesplan-gps.js?v=20261002083520"></script>
+<script src="lagesplan-weather.js?v=20261002083520"></script>
+<script src="lagesplan-touch.js?v=20261002083520"></script>
+<script src="lagesplan-keys.js?v=20261002083520"></script>
 </body>
 </html>
