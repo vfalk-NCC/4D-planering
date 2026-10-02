@@ -139,7 +139,23 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   const lb2 = await page.evaluate(() => { const b = zoneLabelBoxes[0]; return stageToScreen([b.x + Math.cos(b.rot) * b.w * 0.35, b.y + Math.sin(b.rot) * b.w * 0.35]); });
   await page.mouse.click(vb.x + lb2[0], vb.y + lb2[1]); await page.waitForTimeout(150);
   if (!(await page.isVisible('#sitePop .zl-text'))) fail('En roterad etikett ska gå att klicka på längs sin riktning');
-  await page.click('#sitePop .zl-cancel');
+  // Lås texten: drag flyttar den inte (planen panoreras), klick öppnar den fortfarande.
+  await page.check('#sitePop .zl-lock'); await page.click('#sitePop .zl-save'); await page.waitForTimeout(300);
+  if (!(await zones())[0].style.labelLocked) fail('Etiketten ska kunna låsas');
+  const lk0 = (await zones())[0].labels ? JSON.stringify((await zones())[0].labels) : '[]';
+  const tx0 = await page.evaluate(() => view.tx);
+  const lp = await page.evaluate(() => { const b = zoneLabelBoxes[0]; return stageToScreen([b.x, b.y]); });
+  await page.mouse.move(vb.x + lp[0], vb.y + lp[1]); await page.mouse.down();
+  await page.mouse.move(vb.x + lp[0] + 40, vb.y + lp[1] + 25, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(150);
+  if (JSON.stringify((await zones())[0].labels || []) !== lk0) fail('En låst etikett ska inte gå att dra');
+  if (Math.abs((await page.evaluate(() => view.tx)) - tx0 - 40) > 2) fail('Drag på en låst etikett ska panorera planen');
+  const lp2 = await page.evaluate(() => { const b = zoneLabelBoxes[0]; return stageToScreen([b.x, b.y]); });
+  await page.mouse.click(vb.x + lp2[0], vb.y + lp2[1]); await page.waitForTimeout(150);
+  if (!(await page.isVisible('#sitePop .zl-lock')) || !(await page.isChecked('#sitePop .zl-lock'))) fail('Klick på en låst etikett ska öppna den (för att låsa upp)');
+  // Lås upp alla / lås alla.
+  await page.click('#sitePop .zl-unlockall'); await page.click('#sitePop .zl-save'); await page.waitForTimeout(200);
+  if ((await zones()).some(z => z.style && z.style.labelLocked)) fail('Lås upp alla ska låsa upp alla zoners texter');
+  await page.evaluate(() => { view.tx -= 40; applyView(); renderZones(); });
   // 🎯 Markera i 3D ligger på zonraden.
   if (!(await page.locator('#zoneList .zone-item .z3d').count())) fail('🎯 Markera i 3D ska ligga på zonraden');
   if (await page.locator('#zeSelect3d').count()) fail('Markera i 3D ska inte längre ligga i zonrutan');

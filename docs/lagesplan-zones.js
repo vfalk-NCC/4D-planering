@@ -151,6 +151,8 @@ function zonesPointerDown(e) {
   if (zonePoly || zoneLabelPlace) return false; // klick hanteras i zonesClick (drag panorerar)
   // Zonens etikett: dra för att flytta, klicka för att redigera (som en notering).
   const lb = zoneLabelAt(stagePoint(e));
+  // Låst etikett (Victors önskemål 2026-10-02): flyttas inte – drag panorerar, klick redigerar.
+  if (lb && zoneLabelLocked(lb.zid)) return false;
   if (lb) {
     e.preventDefault();
     zoneLDrag = { ...lb, orig: JSON.stringify(plan.zones), moved: false, sx: e.clientX, sy: e.clientY, start: stagePoint(e) };
@@ -266,6 +268,8 @@ function zonesClick(e) {
     if (z) { zoneSnapshot("Flytta etikett"); z.labels = [toPdf(stagePoint(e))]; renderZones(); schedulePlanSave(); }
     return true;
   }
+  // Klick på en låst etikett öppnar den (där den kan låsas upp).
+  if (!zonePoly) { const lb = zoneLabelAt(stagePoint(e)); if (lb && zoneLabelLocked(lb.zid)) { openZoneLabelPop(lb.zid); return true; } }
   if (!zonePoly) return false;
   zonePoly.pts.push(zonePolyPoint(e));
   updateZonePolyUi(); renderZones();
@@ -552,6 +556,7 @@ function openMultiEditor() {
 // återställer.
 // ---------------------------------------------------------------------
 let zoneLDrag = null; // { zid, li, bx, by, ... }
+const zoneLabelLocked = zid => { const z = plan && (plan.zones || []).find(x => x.id === zid); return !!(z && z.style && z.style.labelLocked); };
 function zoneLabelAt(p) {
   if (typeof layerVisible === "function" && !layerVisible("zones")) return null;
   for (let i = zoneLabelBoxes.length - 1; i >= 0; i--) {
@@ -594,7 +599,9 @@ function openZoneLabelPop(zid) {
     <label>Storlek</label>
     <div class="zs-row"><input type="range" class="zl-size" min="40" max="400" step="10" value="${size}" /><span class="zs-v zl-sizev">${size} %</span></div>
     ${z.labels && z.labels.length ? `<button type="button" class="zl-center" style="margin-top:6px;" title="Etiketten tillbaka mitt i zonen">↺ Tillbaka till mitten</button>` : ""}
-    <div class="muted" style="margin-top:4px;font-size:11px;">Dra i etiketten på planen för att flytta den.</div>
+    <label class="check" style="margin-top:8px;color:var(--text);"><input type="checkbox" class="zl-lock"${s.labelLocked ? " checked" : ""} style="width:auto;" /> 🔒 Lås texten (kan inte flyttas av misstag)</label>
+    <div class="zl-chips"><button type="button" class="zl-lockall" title="Lås texterna i alla zoner på planen">🔒 Lås alla zoners texter</button><button type="button" class="zl-unlockall" title="Lås upp texterna i alla zoner">🔓 Lås upp alla</button></div>
+    <div class="muted zl-hint" style="margin-top:4px;font-size:11px;">${s.labelLocked ? "Låst – klicka på texten för att ändra den." : "Dra i etiketten på planen för att flytta den."}</div>
     <div class="acts"><span></span><span><button class="zl-cancel">Avbryt</button> <button class="zl-save primary">Spara</button></span></div>`;
   pop.classList.remove("hidden");
   const b = zoneLabelBoxes.find(x => x.zid === zid);
@@ -615,6 +622,15 @@ function openZoneLabelPop(zid) {
   q(".zl-rotv").onchange = () => setRot(String(q(".zl-rotv").value).replace(",", "."));
   pop.querySelectorAll("[data-rot]").forEach(btn => btn.onclick = () => setRot(btn.dataset.rot === "long" ? zoneLongSideDeg(z) : btn.dataset.rot));
   q(".zl-size").oninput = () => { q(".zl-sizev").textContent = q(".zl-size").value + " %"; set({ labelSize: Number(q(".zl-size").value) / 100 }); };
+  q(".zl-lock").onchange = () => { set({ labelLocked: q(".zl-lock").checked }); q(".zl-hint").textContent = q(".zl-lock").checked ? "Låst – klicka på texten för att ändra den." : "Dra i etiketten på planen för att flytta den."; };
+  const lockAll = on => {
+    zoneSnapshot(on ? "Lås alla zoners texter" : "Lås upp alla zoners texter");
+    (plan.zones || []).forEach(x => { if (x !== z) x.style = { ...(x.style || {}), labelLocked: on }; });
+    q(".zl-lock").checked = on; q(".zl-lock").onchange();
+    schedulePlanSave(); setSaveStatus(on ? "🔒 Alla zoners texter är låsta." : "🔓 Alla zoners texter är upplåsta.");
+  };
+  q(".zl-lockall").onclick = () => lockAll(true);
+  q(".zl-unlockall").onclick = () => lockAll(false);
   const ctr = q(".zl-center"); if (ctr) ctr.onclick = () => { z.labels = []; renderZones(); ctr.disabled = true; };
   const restore = () => { const o = JSON.parse(before); if (o.style) z.style = o.style; else delete z.style; z.labels = o.labels; };
   q(".zl-cancel").onclick = () => { restore(); pop.classList.add("hidden"); pop.innerHTML = ""; renderZones(); };
