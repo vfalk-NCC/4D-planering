@@ -101,6 +101,13 @@ function zoneVertexAt(e) {
 function zonesPointerDown(e) {
   if (!plan || !viewport || e.button !== 0) return false;
   if (zonePoly || zoneLabelPlace) return false; // klick hanteras i zonesClick (drag panorerar)
+  // Zonens etikett: dra för att flytta, klicka för att redigera (som en notering).
+  const lb = zoneLabelAt(stagePoint(e));
+  if (lb) {
+    e.preventDefault();
+    zoneLDrag = { ...lb, orig: JSON.stringify(plan.zones), moved: false, sx: e.clientX, sy: e.clientY, start: stagePoint(e) };
+    return true;
+  }
   const h = zoneVertexAt(e);
   if (!h) return false;
   e.preventDefault();
@@ -108,6 +115,16 @@ function zonesPointerDown(e) {
   return true;
 }
 window.addEventListener("mousemove", e => {
+  if (zoneLDrag) {
+    if (!zoneLDrag.moved && Math.hypot(e.clientX - zoneLDrag.sx, e.clientY - zoneLDrag.sy) < 4) return;
+    zoneLDrag.moved = true;
+    const z = plan.zones.find(x => x.id === zoneLDrag.zid), p = stagePoint(e);
+    if (!z) return;
+    const pt = toPdf([zoneLDrag.bx + p[0] - zoneLDrag.start[0], zoneLDrag.by + p[1] - zoneLDrag.start[1]]);
+    if (zoneLDrag.li >= 0 && z.labels && z.labels[zoneLDrag.li]) z.labels[zoneLDrag.li] = pt; else z.labels = [pt];
+    renderZonesSoon();
+    return;
+  }
   if (zoneVDrag) {
     if (!zoneVDrag.moved && Math.hypot(e.clientX - zoneVDrag.sx, e.clientY - zoneVDrag.sy) < 3) return;
     zoneVDrag.moved = true;
@@ -130,6 +147,12 @@ window.addEventListener("mousemove", e => {
   }
 });
 window.addEventListener("mouseup", () => {
+  if (zoneLDrag) {
+    const d = zoneLDrag; zoneLDrag = null;
+    if (d.moved) { zoneUndoStack.push({ label: "Flytta etikett", zones: d.orig, planId: plan.id }); if (typeof lastUndoTarget !== "undefined") lastUndoTarget = "zone"; renderZones(); schedulePlanSave(); }
+    else openZoneLabelPop(d.zid);
+    return;
+  }
   if (!zoneVDrag) return;
   const d = zoneVDrag; zoneVDrag = null;
   if (d.moved) {
@@ -196,7 +219,7 @@ function renderZoneStyleUi(sel) {
     <div class="zs-row"><span class="zs-l">Tjocklek</span><input type="range" class="zs-w" min="0.25" max="5" step="0.25" value="${s.strokeWidth}" /><span class="zs-v">${s.strokeWidth}×</span></div>
     <div class="zs-row"><span class="zs-l">Linje</span><select class="zs-dash">${zoneOpt("auto", s.dash, "Automatisk")}${zoneOpt("solid", s.dash, "Heldragen")}${zoneOpt("dashed", s.dash, "Streckad")}${zoneOpt("dotted", s.dash, "Prickad")}</select></div>
     <div class="zs-h">Etikett</div>
-    <div class="zs-row"><select class="zs-label">${zoneOpt("pill", s.label, "Färgad bubbla")}${zoneOpt("white", s.label, "Vit bubbla")}${zoneOpt("text", s.label, "Bara text")}${zoneOpt("none", s.label, "Ingen etikett")}</select>${multi ? "" : `<button type="button" class="zs-move" title="Klicka sedan på planen där etiketten ska stå">📍 Flytta</button>`}</div>
+    <div class="zs-row"><select class="zs-label">${zoneOpt("pill", s.label, "Färgad bubbla")}${zoneOpt("white", s.label, "Vit bubbla")}${zoneOpt("text", s.label, "Bara text")}${zoneOpt("none", s.label, "Ingen etikett")}</select>${multi ? "" : `<button type="button" class="zs-edlabel" title="Text, radbrytning, rotation och storlek – eller klicka på etiketten på planen">✏️ Redigera</button>`}</div>
     <div class="zs-row"><span class="zs-l">Storlek</span><input type="range" class="zs-ls" min="40" max="400" step="10" value="${Math.round(s.labelSize * 100)}" /><span class="zs-v">${Math.round(s.labelSize * 100)} %</span></div>
     <div class="zs-row zs-checks"><label class="check"><input type="checkbox" class="zs-pct"${s.labelPct ? " checked" : ""} /> Framdrift %</label><label class="check"><input type="checkbox" class="zs-showname"${s.labelName ? " checked" : ""} /> Namnet</label>${zoneOpt$("area") ? `<label class="check"><input type="checkbox" class="zs-area"${s.labelArea ? " checked" : ""} /> Ytan m²</label>` : ""}</div>
     <label class="check"><input type="checkbox" class="zs-hidden"${s.hidden ? " checked" : ""} /> Dölj zonen på planen <span class="muted">(räknas ändå)</span></label>
@@ -223,7 +246,7 @@ function renderZoneStyleUi(sel) {
   q(".zs-showname").onchange = () => change({ labelName: q(".zs-showname").checked });
   q(".zs-hidden").onchange = () => change({ hidden: q(".zs-hidden").checked });
   if (q(".zs-area")) q(".zs-area").onchange = () => change({ labelArea: q(".zs-area").checked });
-  if (q(".zs-move")) q(".zs-move").onclick = () => { if (zonePoly) cancelZonePoly(); zoneLabelPlace = z.id; updateZonePolyUi(); };
+  if (q(".zs-edlabel")) q(".zs-edlabel").onclick = () => openZoneLabelPop(z.id);
   q(".zs-reset").onclick = () => { zoneSnapshot("Standardutseende"); list.forEach(o => delete o.style); renderZones(); schedulePlanSave(); renderZoneStyleUi(list); };
   q(".zs-all").onclick = () => {
     const n = plan.zones.length - 1;
@@ -403,4 +426,89 @@ function openMultiEditor() {
   info.textContent = `${list.map(z => z.code).join(", ")}${tot ? ` · totalt ${fmtArea(tot)} m²` : ""}. Ctrl-klicka för att lägga till eller ta bort, Shift-klicka för ett intervall.`;
   renderZoneStyleUi(list);
   renderZones();
+}
+
+// ---------------------------------------------------------------------
+// Zonens etikett på planen – redigeras som en notering (Victors önskemål
+// 2026-10-02): dra i etiketten för att flytta den, klicka för en ruta med
+// text (radbrytningar och {kod} {namn} {%} {m2}), radbrytning efter antal
+// tecken, rotation, storlek och stil. Ändringarna syns direkt; Avbryt
+// återställer.
+// ---------------------------------------------------------------------
+let zoneLDrag = null; // { zid, li, bx, by, ... }
+function zoneLabelAt(p) {
+  if (typeof layerVisible === "function" && !layerVisible("zones")) return null;
+  for (let i = zoneLabelBoxes.length - 1; i >= 0; i--) {
+    const b = zoneLabelBoxes[i], c = Math.cos(-b.rot || 0), s = Math.sin(-b.rot || 0);
+    const dx = p[0] - b.x, dy = p[1] - b.y, lx = dx * c - dy * s, ly = dx * s + dy * c;
+    if (Math.abs(lx) <= b.w / 2 + 2 && Math.abs(ly) <= b.h / 2 + 2) return { zid: b.zid, li: b.li, bx: b.x, by: b.y };
+  }
+  return null;
+}
+/* Vinkeln (grader, -90..90) längs zonens längsta sida. */
+function zoneLongSideDeg(z) {
+  let best = null, bl = 0;
+  (z.polys || []).forEach(poly => poly.forEach((p, i) => {
+    const a = toPx(p), b = toPx(poly[(i + 1) % poly.length]), l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (l > bl) { bl = l; best = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI; }
+  }));
+  if (best == null) return 0;
+  while (best > 90) best -= 180;
+  while (best < -90) best += 180;
+  return Math.round(best);
+}
+function openZoneLabelPop(zid) {
+  const z = plan && plan.zones.find(x => x.id === zid);
+  if (!z) return;
+  if (selectedZoneId !== zid) selectZone(zid, false, true);
+  const pop = $("sitePop"), before = JSON.stringify({ style: z.style || null, labels: z.labels || [] });
+  const s = zoneStyle(z), rot = Math.round(Number(s.labelRot) || 0), size = Math.round((Number(s.labelSize) || 1) * 100);
+  const autoText = [s.labelName && z.name ? "{kod} {namn}" : "{kod}", s.labelPct ? "{%}" : ""].filter(Boolean).join(" · ");
+  pop.innerHTML = `
+    <b class="dp-head">🏷 Etikett för zon ${escHtml(z.code)}</b>
+    <label>Text <span class="muted">(Enter = ny rad)</span></label>
+    <textarea class="zl-text" placeholder="Automatiskt: ${escHtml(autoText)}">${escHtml(s.labelText || "")}</textarea>
+    <div class="zl-chips"><span class="muted">Infoga:</span>${["{kod}", "{namn}", "{%}", "{m2}"].map(t => `<button type="button" data-ins="${t}">${t}</button>`).join("")}</div>
+    <div class="muted" style="font-size:11px;">Tom = automatiskt. {%} = framdrift, {m2} = ytan (kräver kalibrering).</div>
+    <div class="row2"><div><label>Radbryt efter</label><select class="zl-wrap">${[0, 8, 12, 16, 20, 30].map(n => `<option value="${n}"${(Number(s.labelWrap) || 0) === n ? " selected" : ""}>${n ? n + " tecken" : "Ingen"}</option>`).join("")}</select></div>
+      <div><label>Stil</label><select class="zl-kind">${[["pill", "Färgad bubbla"], ["white", "Vit bubbla"], ["text", "Bara text"], ["none", "Dold"]].map(([v, l]) => `<option value="${v}"${s.label === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
+    <label>Rotation</label>
+    <div class="zs-row"><input type="range" class="zl-rot" min="-180" max="180" step="1" value="${rot}" /><input type="text" class="zl-rotv" inputmode="numeric" value="${rot}" style="width:48px;text-align:right;" /><span class="muted">°</span></div>
+    <div class="zl-chips"><button type="button" data-rot="0">0°</button><button type="button" data-rot="90">90°</button><button type="button" data-rot="-90">−90°</button><button type="button" data-rot="long" title="Längs zonens längsta sida">↗ Längs zonen</button></div>
+    <label>Storlek</label>
+    <div class="zs-row"><input type="range" class="zl-size" min="40" max="400" step="10" value="${size}" /><span class="zs-v zl-sizev">${size} %</span></div>
+    ${z.labels && z.labels.length ? `<button type="button" class="zl-center" style="margin-top:6px;" title="Etiketten tillbaka mitt i zonen">↺ Tillbaka till mitten</button>` : ""}
+    <div class="muted" style="margin-top:4px;font-size:11px;">Dra i etiketten på planen för att flytta den.</div>
+    <div class="acts"><span></span><span><button class="zl-cancel">Avbryt</button> <button class="zl-save primary">Spara</button></span></div>`;
+  pop.classList.remove("hidden");
+  const b = zoneLabelBoxes.find(x => x.zid === zid);
+  const r = $("viewport").getBoundingClientRect(), sp = b ? stageToScreen([b.x, b.y]) : [r.width / 2, r.height / 2];
+  pop.style.left = `${Math.max(8, Math.min(r.width - pop.offsetWidth - 8, sp[0] + 24))}px`;
+  pop.style.top = `${Math.max(8, Math.min(r.height - pop.offsetHeight - 8, sp[1] - 40))}px`;
+  const q = c => pop.querySelector(c);
+  const set = patch => { z.style = { ...(z.style || {}), ...patch }; renderZones(); };
+  q(".zl-text").oninput = () => set({ labelText: q(".zl-text").value.replace(/\s+$/, "") || null });
+  pop.querySelectorAll("[data-ins]").forEach(btn => btn.onclick = () => {
+    const t = q(".zl-text"), i = t.selectionStart ?? t.value.length;
+    t.value = t.value.slice(0, i) + btn.dataset.ins + t.value.slice(t.selectionEnd ?? i);
+    t.focus(); t.selectionStart = t.selectionEnd = i + btn.dataset.ins.length; t.oninput();
+  });
+  q(".zl-wrap").onchange = () => set({ labelWrap: Number(q(".zl-wrap").value) || 0 });
+  q(".zl-kind").onchange = () => set({ label: q(".zl-kind").value });
+  const setRot = v => { v = Math.max(-180, Math.min(180, Math.round(Number(v) || 0))); q(".zl-rot").value = v; q(".zl-rotv").value = v; set({ labelRot: v }); };
+  q(".zl-rot").oninput = () => setRot(q(".zl-rot").value);
+  q(".zl-rotv").onchange = () => setRot(String(q(".zl-rotv").value).replace(",", "."));
+  pop.querySelectorAll("[data-rot]").forEach(btn => btn.onclick = () => setRot(btn.dataset.rot === "long" ? zoneLongSideDeg(z) : btn.dataset.rot));
+  q(".zl-size").oninput = () => { q(".zl-sizev").textContent = q(".zl-size").value + " %"; set({ labelSize: Number(q(".zl-size").value) / 100 }); };
+  const ctr = q(".zl-center"); if (ctr) ctr.onclick = () => { z.labels = []; renderZones(); ctr.disabled = true; };
+  const restore = () => { const o = JSON.parse(before); if (o.style) z.style = o.style; else delete z.style; z.labels = o.labels; };
+  q(".zl-cancel").onclick = () => { restore(); pop.classList.add("hidden"); pop.innerHTML = ""; renderZones(); };
+  q(".zl-save").onclick = () => {
+    const now = { style: z.style, labels: z.labels };
+    restore(); zoneSnapshot("Ändra etikett"); z.style = now.style; z.labels = now.labels;
+    pop.classList.add("hidden"); pop.innerHTML = "";
+    renderZones(); schedulePlanSave();
+    if (selectedZoneId === z.id) renderZoneStyleUi(z);
+  };
+  pop.onkeydown = e => { if (e.key === "Escape") { e.stopPropagation(); q(".zl-cancel").click(); } };
 }

@@ -114,6 +114,20 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   if ((await order()).split('|').length !== 4) fail('✕ på etiketten ska ta bort Typ-filtret');
   console.log('OK: filter på Typ');
 
+  // Källa: skapade i TC / från 4-veckorsplaneringen / från Excel-import.
+  await page.evaluate(() => { items.find(i => i.id === 'b').sourceKey = 'k'; items.find(i => i.id === 'd').origin = 'excel'; items.find(i => i.id === 'c').origin = 'manuell'; buildFilterOptions(); renderItemList(); });
+  await page.click('#btnListFilter').catch(() => {});
+  if (!(await page.isVisible('#filterSourceChips'))) await page.click('#btnListFilter');
+  await page.click('#filterSourceChips .ms-btn');
+  await page.check('#filterSourceChips input[data-value="tc"]'); await page.waitForTimeout(200);
+  o = await order();
+  if (o.split('|').sort().join('|') !== 'E10|E12') fail('Källa Skapade i TC ska visa E10 och E12 (inte importerade), fick ' + o);
+  if (!(await page.innerText('#activeFilterChips')).includes('Skapade i TC')) fail('Källfiltret ska synas som aktiv etikett');
+  await page.mouse.click(5, 5);
+  await page.click('#activeFilterChips .active-chip button'); await page.waitForTimeout(200);
+  if ((await order()).split('|').length !== 4) fail('✕ på etiketten ska ta bort källfiltret');
+  console.log('OK: filter på Källa (skapade i TC / importerade)');
+
   // Redigera: Typ finns under Namn och sparas.
   await page.evaluate(() => editItemFromList(items.find(i => i.id === 'd')));
   await page.waitForTimeout(300);

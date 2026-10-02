@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261002061131"></script>
+<script src="github-storage.js?v=20261002061937"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -460,6 +460,9 @@
   .zs-l { width: 58px; flex: none; color: var(--muted); } .zs-v { width: 42px; text-align: right; flex: none; }
   .zs-checks .check { margin: 0; }
   .zone-item.is-hidden { opacity: .55; }
+  .zone-item .z3d { height: 24px; min-width: 28px; padding: 0 5px; margin-left: 4px; font-size: 13px; }
+  .zl-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; }
+  .zl-chips button { height: 24px; padding: 0 7px; font-size: 11.5px; }
   .zone-item.msel { background: var(--accent-weak); box-shadow: inset 3px 0 0 var(--accent); }
   .zone-item .zarea { color: var(--muted); font-size: 11px; }
   #zoneEditor.multi .ze-single { display: none; }
@@ -796,7 +799,6 @@
             <details class="ze-style" open><summary>🎨 Utseende</summary><div id="zeStyle"></div></details>
             <div class="row ze-single" style="margin-top:8px;">
               <button id="zeSave" class="primary">Spara</button>
-              <button id="zeSelect3d" title="Markera zonens objekt i 3D-modellen">🎯 Markera i 3D</button>
               <button id="zeDelete" title="Ta bort zonen">🗑️</button>
             </div>
           </div>
@@ -969,19 +971,19 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261002061131"></script>
-<script src="lagesplan-tools.js?v=20261002061131"></script>
-<script src="lagesplan-layers.js?v=20261002061131"></script>
-<script src="lagesplan-views.js?v=20261002061131"></script>
-<script src="lagesplan-film.js?v=20261002061131"></script>
-<script src="lagesplan-cad.js?v=20261002061131"></script>
-<script src="lagesplan-vecpdf.js?v=20261002061131"></script>
-<script src="lagesplan-print.js?v=20261002061131"></script>
-<script src="lagesplan-zones.js?v=20261002061131"></script>
-<script src="lagesplan-daily.js?v=20261002061131"></script>
-<script src="lagesplan-gps.js?v=20261002061131"></script>
-<script src="lagesplan-weather.js?v=20261002061131"></script>
-<script src="lagesplan-touch.js?v=20261002061131"></script>
-<script src="lagesplan-keys.js?v=20261002061131"></script>
+<script src="lagesplan.js?v=20261002061937"></script>
+<script src="lagesplan-tools.js?v=20261002061937"></script>
+<script src="lagesplan-layers.js?v=20261002061937"></script>
+<script src="lagesplan-views.js?v=20261002061937"></script>
+<script src="lagesplan-film.js?v=20261002061937"></script>
+<script src="lagesplan-cad.js?v=20261002061937"></script>
+<script src="lagesplan-vecpdf.js?v=20261002061937"></script>
+<script src="lagesplan-print.js?v=20261002061937"></script>
+<script src="lagesplan-zones.js?v=20261002061937"></script>
+<script src="lagesplan-daily.js?v=20261002061937"></script>
+<script src="lagesplan-gps.js?v=20261002061937"></script>
+<script src="lagesplan-weather.js?v=20261002061937"></script>
+<script src="lagesplan-touch.js?v=20261002061937"></script>
+<script src="lagesplan-keys.js?v=20261002061937"></script>
 </body>
 </html>

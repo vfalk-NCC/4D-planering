@@ -90,12 +90,41 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (Math.abs(v2[0] - v0[0]) > 0.01) fail('Ctrl+Z ska ångra flytten av hörnet: ' + JSON.stringify([v0, v2]));
   console.log('OK: hörnen dras och Ctrl+Z ångrar');
 
-  // 4) Flytta etiketten.
-  await page.click('#zeStyle .zs-move');
-  await page.mouse.click(vb.x + 200, vb.y + 180); await page.waitForTimeout(150);
+  // 4) Etiketten redigeras som en notering: dra för att flytta, klicka för text, radbrytning, rotation, storlek.
+  const lb0 = await page.evaluate(() => { const b = zoneLabelBoxes[0]; return stageToScreen([b.x, b.y]); });
+  await page.mouse.move(vb.x + lb0[0], vb.y + lb0[1]); await page.mouse.down();
+  await page.mouse.move(vb.x + lb0[0] + 30, vb.y + lb0[1] + 20, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(150);
   const lb = (await zones())[0].labels;
-  if (!lb || Math.abs(lb[0][0] - 200) > 1 || Math.abs(lb[0][1] - 180) > 1) fail('Etiketten ska flyttas dit man klickar: ' + JSON.stringify(lb));
-  console.log('OK: 📍 etiketten flyttas med ett klick');
+  if (!lb || !lb.length || Math.abs(lb[0][0] - lb0[0] - 30) > 1.5 || Math.abs(lb[0][1] - lb0[1] - 20) > 1.5) fail('Etiketten ska gå att dra: ' + JSON.stringify([lb0, lb]));
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+  if (((await zones())[0].labels || []).length) fail('Ctrl+Z ska ångra flytten av etiketten');
+  const lb1 = await page.evaluate(() => { const b = zoneLabelBoxes[0]; return stageToScreen([b.x, b.y]); });
+  await page.mouse.click(vb.x + lb1[0], vb.y + lb1[1]); await page.waitForTimeout(150);
+  if (!(await page.isVisible('#sitePop .zl-text'))) fail('Klick på etiketten ska öppna redigeringen (som för noteringar)');
+  await page.fill('#sitePop .zl-text', '{kod}\nFörtjockardelen {%}');
+  await page.selectOption('#sitePop .zl-wrap', '12');
+  await page.click('#sitePop [data-rot="90"]');
+  await page.$eval('#sitePop .zl-size', el => { el.value = 150; el.dispatchEvent(new Event('input')); });
+  const live = await page.evaluate(() => zoneLabelBoxes[0]);
+  if (Math.abs(live.rot - Math.PI / 2) > 1e-6 || !(live.h > 40)) fail('Rotation och flera rader ska synas direkt: ' + JSON.stringify(live));
+  await page.click('#sitePop .zl-cancel'); await page.waitForTimeout(100);
+  if ((await zones())[0].style.labelRot) fail('Avbryt ska återställa etiketten');
+  await page.mouse.click(vb.x + lb1[0], vb.y + lb1[1]); await page.waitForTimeout(150);
+  await page.fill('#sitePop .zl-text', '{kod}\nFörtjockardelen');
+  await page.fill('#sitePop .zl-rotv', '-30'); await page.$eval('#sitePop .zl-rotv', el => el.dispatchEvent(new Event('change')));
+  await page.click('#sitePop .zl-save'); await page.waitForTimeout(1500);
+  const zst = (await zones())[0].style;
+  if (zst.labelText !== '{kod}\nFörtjockardelen' || zst.labelRot !== -30) fail('Text och rotation ska sparas: ' + JSON.stringify(zst));
+  if (!savedZones()[0].style || savedZones()[0].style.labelRot !== -30) fail('Etiketten ska sparas i projektet');
+  // Klick på en roterad etikett träffar den.
+  const lb2 = await page.evaluate(() => { const b = zoneLabelBoxes[0]; return stageToScreen([b.x + Math.cos(b.rot) * b.w * 0.35, b.y + Math.sin(b.rot) * b.w * 0.35]); });
+  await page.mouse.click(vb.x + lb2[0], vb.y + lb2[1]); await page.waitForTimeout(150);
+  if (!(await page.isVisible('#sitePop .zl-text'))) fail('En roterad etikett ska gå att klicka på längs sin riktning');
+  await page.click('#sitePop .zl-cancel');
+  // 🎯 Markera i 3D ligger på zonraden.
+  if (!(await page.locator('#zoneList .zone-item .z3d').count())) fail('🎯 Markera i 3D ska ligga på zonraden');
+  if (await page.locator('#zeSelect3d').count()) fail('Markera i 3D ska inte längre ligga i zonrutan');
+  console.log('OK: zonetiketten dras och redigeras som en notering (text med radbrytning, rotation, storlek), 🎯 på zonraden');
 
   // 5) Dölj: zonen går inte att klicka på men finns kvar i listan.
   await page.check('#zeStyle .zs-hidden'); await page.waitForTimeout(100);

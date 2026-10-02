@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261002061131" />
+<link rel="stylesheet" href="style.css?v=20261002061937" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261002061131"></script>
+<script src="plan-excel-parser.js?v=20261002061937"></script>
 </head>
 <body>
 
@@ -125,6 +125,11 @@
             <span class="filter-label">Status</span>
             <select id="filterStatus" multiple class="chip-source"></select>
             <div id="filterStatusChips" class="ms" data-for="filterStatus" data-label="Status"></div>
+          </div>
+          <div class="filter-cell" title="Var aktiviteten kommer ifrån: skapad i Trimble Connect eller importerad från Excel">
+            <span class="filter-label">Källa</span>
+            <select id="filterSource" multiple class="chip-source"></select>
+            <div id="filterSourceChips" class="ms" data-for="filterSource" data-label="Källa"></div>
           </div>
           <div class="filter-cell">
             <span class="filter-label">Startar inom</span>
@@ -571,14 +576,14 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261002061131"></script>
-  <script src="app.js?v=20261002061131"></script>
-  <script src="manual-markings.js?v=20261002061131"></script>
-  <script src="sub-activity-list.js?v=20261002061131"></script>
-  <script src="activity-remove.js?v=20261002061131"></script>
-  <script src="dup-check.js?v=20261002061131"></script>
-  <script src="ui-shell.js?v=20261002061131"></script>
-  <script src="undo.js?v=20261002061131"></script>
-  <script src="planning-keys.js?v=20261002061131"></script>
+  <script src="github-storage.js?v=20261002061937"></script>
+  <script src="app.js?v=20261002061937"></script>
+  <script src="manual-markings.js?v=20261002061937"></script>
+  <script src="sub-activity-list.js?v=20261002061937"></script>
+  <script src="activity-remove.js?v=20261002061937"></script>
+  <script src="dup-check.js?v=20261002061937"></script>
+  <script src="ui-shell.js?v=20261002061937"></script>
+  <script src="undo.js?v=20261002061937"></script>
+  <script src="planning-keys.js?v=20261002061937"></script>
 </body>
 </html>

@@ -918,7 +918,11 @@ function renderZones() {
   objRenderedScale = view.scale;
   renderObjHint(objects);
   drawSiteLayers(tctx, fontPx);
-  if (layerVisible("zones")) badges.forEach(([pt, text, color, hollow, zs]) => drawBadge(tctx, pt, text, color, fontPx, hollow, zs));
+  zoneLabelBoxes = [];
+  if (layerVisible("zones")) badges.forEach(([pt, text, color, hollow, zs, zid, li]) => {
+    const r = drawBadge(tctx, pt, text, color, fontPx, hollow, zs);
+    if (zid) zoneLabelBoxes.push({ x: pt[0], y: pt[1], ...r, zid, li });
+  });
   drawToolOverlays(tctx, fontPx);
   if (typeof drawZoneOverlay === "function") drawZoneOverlay(tctx, fontPx);
   drawCalibMarks(tctx, fontPx);
@@ -929,6 +933,7 @@ function renderZones() {
 
 /* Zonernas ytor på ctx (stage-px). Returnerar etiketterna (ritas ovanpå
    allt annat). cached = använd statusen från senaste renderZones (filmen). */
+let zoneLabelBoxes = []; // zonetiketter på skärmen (stage-px): { x, y, w, h, rot, zid, li }
 /* Zonens utseende (Victors önskemål 2026-10-02): zone.style kan sätta
    fyllning (statusfärg/egen/ingen), opacitet, mönster, kantlinje (färg,
    tjocklek, streckning), etikettens stil, storlek och innehåll samt dölja
@@ -993,38 +998,62 @@ function drawZoneShapes(ctx, fontPx, objects, cached) {
     }
     // Etikett: kod (+ namn) + framdrift, vid kodtexten (eller mitt i zonen)
     if (zs.label !== "none") {
-      const area = zs.labelArea && typeof zoneAreaM2 === "function" ? zoneAreaM2(zone) : null;
-      const text = [zs.labelName && zone.name ? `${zone.code} ${zone.name}` : zone.code, zs.labelPct && st.progress != null ? `${st.progress} %` : "", area != null ? `${fmtArea(area)} m²` : ""].filter(Boolean).join(" · ");
+      const area = (zs.labelArea || /\{m2\}|\{m²\}/.test(zs.labelText || "")) && typeof zoneAreaM2 === "function" ? zoneAreaM2(zone) : null;
+      const text = zs.labelText
+        // Egen text (redigeras som en notering): {kod} {namn} {%} {m2} byts mot värdena.
+        ? String(zs.labelText).replace(/\{kod\}/gi, zone.code || "").replace(/\{namn\}/gi, zone.name || "").replace(/\{%\}/g, st.progress != null ? `${st.progress} %` : "").replace(/\{m2\}|\{m²\}/gi, area != null ? `${fmtArea(area)} m²` : "")
+        : [zs.labelName && zone.name ? `${zone.code} ${zone.name}` : zone.code, zs.labelPct && st.progress != null ? `${st.progress} %` : "", zs.labelArea && area != null ? `${fmtArea(area)} m²` : ""].filter(Boolean).join(" · ");
       const anchors = (zone.labels && zone.labels.length) ? zone.labels : [centroid(zone)];
-      anchors.filter(Boolean).forEach(a => badges.push([toPx(a), text, color, noStatus, zs]));
+      anchors.forEach((a, i) => { if (a) badges.push([toPx(a), text, color, noStatus, zs, zone.id, zone.labels && zone.labels.length ? i : -1]); });
     }
     ctx.restore();
   }
   return badges;
 }
 
+/* Etikett (zonkod m.m.). Med zonens stil: storlek, rotation (labelRot, grader),
+   radbrytning (labelWrap = max tecken per rad, och egna radbrytningar i texten).
+   Returnerar rutan { w, h, rot } (canvas-px) för träffytan. */
+function wrapLabelLines(text, n) {
+  return String(text).split("\n").flatMap(line => {
+    if (!n || line.length <= n) return [line];
+    const out = []; let cur = "";
+    line.split(" ").forEach(w => { if (cur && (cur + " " + w).length > n) { out.push(cur); cur = w; } else cur = cur ? cur + " " + w : w; });
+    if (cur) out.push(cur);
+    return out;
+  });
+}
 function drawBadge(ctx, [x, y], text, color, fontPx, hollow, zs) {
   const kind = zs ? zs.label : "pill";
   fontPx *= zs ? Number(zs.labelSize) || 1 : 1;
+  const rot = zs ? (Number(zs.labelRot) || 0) * Math.PI / 180 : 0;
+  const lines = wrapLabelLines(text, zs ? Number(zs.labelWrap) || 0 : 0);
+  ctx.save();
+  ctx.translate(x, y); if (rot) ctx.rotate(rot);
   ctx.font = `600 ${fontPx}px "Segoe UI", Arial, sans-serif`;
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const lh = fontPx * 1.2, tw = Math.max(...lines.map(l => ctx.measureText(l).width));
+  const ty = i => (i - (lines.length - 1) / 2) * lh + 1;
+  let w = tw + fontPx * 0.9, h = fontPx * 0.3 + lines.length * lh;
   if (kind === "text") {
     ctx.lineJoin = "round"; ctx.lineWidth = Math.max(2, fontPx / 4); ctx.strokeStyle = "rgba(255,255,255,.95)";
-    ctx.strokeText(text, x, y + 1); ctx.fillStyle = shade(color, -0.45); ctx.fillText(text, x, y + 1);
-    return;
+    lines.forEach((l, i) => ctx.strokeText(l, 0, ty(i)));
+    ctx.fillStyle = shade(color, -0.45); lines.forEach((l, i) => ctx.fillText(l, 0, ty(i)));
+  } else {
+    if (kind === "white") hollow = true;
+    ctx.globalAlpha *= 0.95;
+    ctx.fillStyle = hollow ? "#ffffff" : color;
+    roundRect(ctx, -w / 2, -h / 2, w, h, Math.min(h / 2, fontPx * 0.75));
+    ctx.fill();
+    ctx.globalAlpha /= 0.95;
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = shade(color, -0.4);
+    ctx.stroke();
+    ctx.fillStyle = hollow ? "#374151" : contrastText(color);
+    lines.forEach((l, i) => ctx.fillText(l, 0, ty(i)));
   }
-  if (kind === "white") hollow = true;
-  const w = ctx.measureText(text).width + fontPx * 0.9, h = fontPx * 1.5;
-  ctx.globalAlpha = 0.95;
-  ctx.fillStyle = hollow ? "#ffffff" : color;
-  roundRect(ctx, x - w / 2, y - h / 2, w, h, h / 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-  ctx.lineWidth = 1.5;
-  ctx.strokeStyle = shade(color, -0.4);
-  ctx.stroke();
-  ctx.fillStyle = hollow ? "#374151" : contrastText(color);
-  ctx.fillText(text, x, y + 1);
+  ctx.restore();
+  return { w, h, rot };
 }
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -1062,6 +1091,11 @@ function renderLegend() {
   });
 }
 
+async function selectZoneIn3d(z) {
+  const ids = itemsForZone(z).map(it => it.id);
+  if (!ids.length) { alert("Zonen har inga kopplade objekt."); return; }
+  try { await askOpener("select", { ids }, 30000); setSaveStatus(`🎯 ${ids.length} objekt i ${z.code} markerade i 3D`); } catch (e) { alert("Kunde inte markera i 3D: " + e.message); }
+}
 function renderZoneList() {
   const list = $("zoneList");
   list.innerHTML = "";
@@ -1079,7 +1113,12 @@ function renderZoneList() {
     const ph = document.createElement("span"); ph.textContent = PHASE_LABELS[st.phase];
     const pct = document.createElement("span"); pct.className = "pct";
     pct.textContent = st.items.length ? `${st.progress} % · ${st.items.length} obj` : "";
-    row.append(sw, code, ph, pct);
+    // 🎯 Markera i 3D direkt på raden (Victors önskemål 2026-10-02).
+    const sel3d = document.createElement("button");
+    sel3d.type = "button"; sel3d.className = "z3d"; sel3d.textContent = "🎯"; sel3d.title = "Markera zonens objekt i 3D-modellen";
+    sel3d.disabled = !st.items.length;
+    sel3d.onclick = e => { e.stopPropagation(); selectZoneIn3d(z); };
+    row.append(sw, code, ph, pct, sel3d);
     if (typeof zoneOpt$ === "function" && zoneOpt$("area")) { const a = zoneAreaM2(z); if (a != null) { const ar = document.createElement("span"); ar.className = "zarea"; ar.textContent = `${fmtArea(a)} m²`; pct.append(" · ", ar); } }
     if (typeof zoneSel !== "undefined" && zoneSel.size > 1 && zoneSel.has(z.id)) row.classList.add("msel");
     row.onclick = e => (typeof zoneRowClick === "function" ? zoneRowClick(e, z.id, zones) : selectZone(z.id, true));
@@ -1742,13 +1781,7 @@ function bindUI() {
     renderZones();
   };
   $("levelZ1").onchange = onLevel;
-  $("zeSelect3d").onclick = async () => {
-    const z = plan && plan.zones.find(x => x.id === selectedZoneId);
-    if (!z) return;
-    const ids = itemsForZone(z).map(it => it.id);
-    if (!ids.length) { alert("Zonen har inga kopplade objekt."); return; }
-    try { await askOpener("select", { ids }, 30000); } catch (e) { alert("Kunde inte markera i 3D: " + e.message); }
-  };
+
   bindTokenModal();
   $("zeDelete").onclick = () => {
     const z = plan.zones.find(x => x.id === selectedZoneId);

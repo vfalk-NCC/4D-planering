@@ -98,7 +98,7 @@ function activeFilterList() {
   const chk = (id, label) => { const el = document.getElementById(id); if (el && el.checked) out.push({ label, clear: () => { el.checked = false; } }); };
   chk("hideCompleted", "Dölj klara"); chk("showOnlyCompleted", "Endast klara");
   chk("todayOnly", "Endast idag"); chk("uncoupledOnly", "Endast ej kopplade");
-  ["filterArea", "filterActivity", "filterType", "filterContractor", "filterStatus"].forEach(id => {
+  ["filterArea", "filterActivity", "filterType", "filterContractor", "filterStatus", "filterSource"].forEach(id => {
     const sel = document.getElementById(id);
     [...sel.selectedOptions].forEach(o => out.push({ label: o.text, clear: () => { o.selected = false; renderChipSelects(); } }));
   });

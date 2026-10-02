@@ -570,7 +570,7 @@ function bindUI() {
   // Markera (utan att isolera/dölja) matchande objekt direkt när ett
   // filteralternativ ändras, så man ser dem i 3D-vyn innan man ev. klickar
   // "Visa filtrerat" eller isolerar/döljer manuellt i Trimble Connect.
-  ["filterArea", "filterActivity", "filterType", "filterContractor", "filterStatus"].forEach(id => {
+  ["filterArea", "filterActivity", "filterType", "filterContractor", "filterStatus", "filterSource"].forEach(id => {
     document.getElementById(id).onchange = () => { renderItemList(); selectFilteredInModelOnChange(); };
   });
   document.getElementById("filterWeeks").onchange = () => renderItemList();
@@ -1011,7 +1011,7 @@ function showHiddenMatchNotice(hiddenItems) {
     document.getElementById("showOnlyCompleted").checked = false;
     document.getElementById("todayOnly").checked = false;
     document.getElementById("uncoupledOnly").checked = false;
-    ["filterArea", "filterActivity", "filterType", "filterContractor", "filterStatus"].forEach(id => [...document.getElementById(id).options].forEach(o => { o.selected = false; }));
+    ["filterArea", "filterActivity", "filterType", "filterContractor", "filterStatus", "filterSource"].forEach(id => [...document.getElementById(id).options].forEach(o => { o.selected = false; }));
     document.getElementById("filterWeeks").value = "";
     if (typeof renderChipSelects === "function") renderChipSelects();
     jumpToItemsInList(new Set(selectedItemKeys));
@@ -2917,6 +2917,7 @@ function buildFilterOptions() {
   fillMultiSelect("filterActivity", formOptions.activity);
   fillMultiSelect("filterType", formOptions.elementType);
   fillMultiSelect("filterContractor", formOptions.contractor);
+  fillSourceFilter();
 
   // Status är en fast lista i appen, så den fylls alltid i - oavsett
   // vilka statusar som redan finns bland sparade objekt.
@@ -3020,6 +3021,21 @@ function setupAutocomplete(inputId, listId, getOptionsFn) {
   });
 }
 
+/* Källa (Victors önskemål 2026-10-02): var aktiviteten kommer ifrån.
+   - "plan": importerad från 4-veckorsplaneringen (har importnyckel)
+   - "excel": importerad med den enkla Excel-importen (märks från och med nu)
+   - "tc": skapad i Trimble Connect – "＋ Ny aktivitet", "Duplicera" eller
+     "Koppla markering". (Rader från den enkla Excel-importen före 2026-10-02
+     är inte märkta och räknas hit.) */
+const SOURCE_LABELS = { tc: "Skapade i TC", plan: "Från 4-veckorsplaneringen", excel: "Från Excel-import" };
+function itemSourceOf(it) { return it.sourceKey ? "plan" : it.origin === "excel" ? "excel" : "tc"; }
+function fillSourceFilter() {
+  const el = document.getElementById("filterSource");
+  if (!el) return;
+  const keep = new Set(getSelectedValues("filterSource"));
+  const n = {}; items.forEach(it => { const k = itemSourceOf(it); n[k] = (n[k] || 0) + 1; });
+  el.innerHTML = Object.entries(SOURCE_LABELS).map(([k, l]) => `<option value="${k}"${keep.has(k) ? " selected" : ""}>${escapeHtml(l)}${n[k] ? ` (${n[k]})` : ""}</option>`).join("");
+}
 function fillMultiSelect(id, values) {
   const el = document.getElementById(id);
   // Behåll valda filter när listan byggs om (t.ex. efter en sparning).
@@ -3138,14 +3154,16 @@ async function selectFilteredInModelOnChange() {
   const contractors = getSelectedValues("filterContractor");
   const statuses = getSelectedValues("filterStatus");
   const types = getSelectedValues("filterType");
+  const sources = getSelectedValues("filterSource");
 
-  if (!areas.length && !activities.length && !contractors.length && !statuses.length && !types.length) return;
+  if (!areas.length && !activities.length && !contractors.length && !statuses.length && !types.length && !sources.length) return;
 
   const matched = items.filter(it => {
     if (areas.length && !areas.includes(it.area)) return false;
     if (activities.length && !activities.includes(it.activity)) return false;
     if (contractors.length && !contractors.includes(it.contractor)) return false;
     if (statuses.length && !statuses.includes(it.status)) return false;
+    if (sources.length && !sources.includes(itemSourceOf(it))) return false;
     if (types.length && !types.includes(it.elementType)) return false;
     return true;
   });
@@ -3174,7 +3192,7 @@ async function selectFilteredInModelOnChange() {
 }
 
 async function clearFilter() {
-  ["filterArea", "filterActivity", "filterType", "filterContractor", "filterStatus"].forEach(id => {
+  ["filterArea", "filterActivity", "filterType", "filterContractor", "filterStatus", "filterSource"].forEach(id => {
     Array.from(document.getElementById(id).options).forEach(o => o.selected = false);
   });
   document.getElementById("filterWeeks").value = "";
@@ -3210,6 +3228,7 @@ async function onImportExcel() {
     endDate: excelDateToIso(r["Slutdatum"] || r["EndDate"]),
     actualStartDate: excelDateToIso(r["Verklig start"] || r["ActualStartDate"]),
     actualEndDate: excelDateToIso(r["Verkligt avslut"] || r["ActualEndDate"]),
+    origin: "excel", // källfiltret: importerad, inte skapad i TC
     estimatedHours: (() => {
       const v = r["Uppskattade timmar"] ?? r["EstimatedHours"];
       const n = Number(v);
@@ -4003,7 +4022,7 @@ function currentListFilters() {
   const weeks = document.getElementById("filterWeeks").value;
   return {
     areas: getSelectedValues("filterArea"), activities: getSelectedValues("filterActivity"), types: getSelectedValues("filterType"),
-    contractors: getSelectedValues("filterContractor"), statuses: getSelectedValues("filterStatus"),
+    contractors: getSelectedValues("filterContractor"), statuses: getSelectedValues("filterStatus"), sources: getSelectedValues("filterSource"),
     weekLimit: weeks ? new Date(Date.now() + Number(weeks) * 7 * 86400000) : null
   };
 }
@@ -4013,6 +4032,7 @@ function matchesListFilters(it, f) {
   if (f.types && f.types.length && !f.types.includes(it.elementType)) return false;
   if (f.contractors.length && !f.contractors.includes(it.contractor)) return false;
   if (f.statuses.length && !f.statuses.includes(it.status)) return false;
+  if (f.sources && f.sources.length && !f.sources.includes(itemSourceOf(it))) return false;
   if (f.weekLimit && it.startDate && new Date(it.startDate) > f.weekLimit) return false;
   return true;
 }
@@ -5226,7 +5246,7 @@ async function saveItems(records) {
     // source_key/group_id följer inte med från t.ex. den generiska Excel-
     // importen - behåll radens befintliga istället för att nollställa dem.
     return existing
-      ? { ...existing, ...row, id: existing.id, source_key: row.source_key || existing.source_key || null, group_id: row.group_id || existing.group_id || null }
+      ? { ...existing, ...row, id: existing.id, source_key: row.source_key || existing.source_key || null, group_id: row.group_id || existing.group_id || null, origin: existing.origin || row.origin || null }
       : row;
   });
 
