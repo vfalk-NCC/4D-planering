@@ -640,6 +640,14 @@ function bindUI() {
   document.getElementById("btnResetPlanning").onclick = onResetPlanning;
   document.getElementById("btnLoadCoupledModels").onclick = loadCoupledModels;
   document.getElementById("btnCloseSettings").onclick = () => toggle("settingsDialog", false);
+  if (document.getElementById("btnCloseSettingsX")) document.getElementById("btnCloseSettingsX").onclick = () => toggle("settingsDialog", false);
+  // Inställningarnas sektioner minns om de är utfällda (per webbläsare).
+  document.querySelectorAll("#settingsDialog .set-sec").forEach(d => {
+    try { const v = JSON.parse(localStorage.getItem("4dplan-setsecs") || "{}")[d.dataset.sec]; if (typeof v === "boolean") d.open = v; } catch (e) { /* ignorera */ }
+    d.addEventListener("toggle", () => {
+      try { const o = JSON.parse(localStorage.getItem("4dplan-setsecs") || "{}"); o[d.dataset.sec] = d.open; localStorage.setItem("4dplan-setsecs", JSON.stringify(o)); } catch (e) { /* ignorera */ }
+    });
+  });
   document.getElementById("btnSaveSettings").onclick = onSaveSettings;
 
   document.getElementById("btnCloseComments").onclick = () => toggle("commentsDialog", false);
@@ -669,15 +677,14 @@ function renderStatusColorInputs() {
   if (!wrap) return;
   wrap.innerHTML = Object.entries(COLOR_PANEL_LABELS).map(([key, label]) => {
     const hasOpacity = PHASE_OPACITY_KEYS.includes(key);
+    // En rad per status: färg, namn, opacitet i 3D (Victor 2026-10-02: städad meny).
     return `
-    <label>${escapeHtml(label)}
-      <div class="row">
-        <input type="color" id="statusColor_${key}" style="flex:0 0 40px" />
-        ${hasOpacity ? `
-        <input type="range" id="statusOpacity_${key}" min="0" max="100" step="1" style="flex:1" title="Opacitet i 3D-vyn" />
-        <span class="hint" id="statusOpacityLabel_${key}" style="align-self:center; width:38px; text-align:right;"></span>` : ""}
-      </div>
-    </label>`;
+    <div class="sc-row">
+      <input type="color" id="statusColor_${key}" title="Färg för ${escapeHtml(label)}" />
+      <span class="sc-name">${escapeHtml(label)}</span>
+      ${hasOpacity ? `<input type="range" id="statusOpacity_${key}" min="0" max="100" step="1" title="Opacitet i 3D-vyn" />
+      <span class="sc-pct" id="statusOpacityLabel_${key}"></span>` : ""}
+    </div>`;
   }).join("");
   Object.keys(COLOR_PANEL_LABELS).forEach(key => {
     const el = document.getElementById(`statusColor_${key}`);
@@ -803,7 +810,9 @@ function initPanelVisibility() {
     listEl.innerHTML = [...panels].map(panel => {
       const id = panel.dataset.panelId;
       const h2 = panel.querySelector(":scope > h2");
-      const title = h2 ? h2.textContent.trim() : id;
+      // Rubrikens text utan knappar och räknare ("Planerade objekt (0)" -> "Planerade objekt").
+      let title = id;
+      if (h2) { const c = h2.cloneNode(true); c.querySelectorAll("button, select, input, .count, .hint").forEach(x => x.remove()); title = c.textContent.replace(/\s*\(\d+(\/\d+)?\)\s*$/, "").replace(/\s+/g, " ").trim() || id; }
       const checked = hiddenPanels.has(id) ? "" : "checked";
       return `<label><input type="checkbox" class="panel-visibility-check" data-panel-id="${escapeHtml(id)}" ${checked} /> ${escapeHtml(title)}</label>`;
     }).join("");

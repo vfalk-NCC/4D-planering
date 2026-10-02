@@ -99,7 +99,11 @@ async function run() {
 
   // ---- 1) Inställningarna listar en kryssruta per block, ikryssade som standard.
   await page.locator('#btnSettings').click();
+  await page.locator('.set-sec[data-sec="blocks"] > summary').click();
   await page.waitForTimeout(50);
+  // Blockens namn utan räknare och knappar.
+  const pvNames = await page.$$eval('#panelVisibilityList label', l => l.map(x => x.textContent.trim()));
+  if (pvNames.some(n => /\(\d+\)$/.test(n))) throw new Error('Blockens namn ska inte ha räknare: ' + JSON.stringify(pvNames));
   const checkCount = await page.locator('.panel-visibility-check').count();
   const panelCount = await page.locator('section.panel[data-panel-id]').count();
   if (checkCount !== panelCount || panelCount === 0) throw new Error(`Förväntade en kryssruta per block (${panelCount}), fick ${checkCount}`);

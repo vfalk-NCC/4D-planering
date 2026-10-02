@@ -91,7 +91,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', [{ id: 'c1'
   console.log('OK: pennan hoppar till "Koppla markering" och Spara hoppar tillbaka till raden');
 
   // 4) Säkerhetskopia + historik
-  await page.click('#btnSettings'); await page.click('#btnBackupNow'); await page.waitForTimeout(800);
+  await page.click('#btnSettings'); await page.click('.set-sec[data-sec="backup"] > summary'); await page.click('#btnBackupNow'); await page.waitForTimeout(800);
   const idx = get('backups/index.json');
   if (!idx || idx.length !== 1 || idx[0].counts.items !== 2) fail('förväntade en säkerhetskopia med 2 objekt, fick ' + JSON.stringify(idx));
   if (await page.locator('#backupList .backup-row').count() !== 1) fail('historiken ska visa kopian');

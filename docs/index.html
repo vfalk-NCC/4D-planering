@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261002120340" />
+<link rel="stylesheet" href="style.css?v=20261002121050" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261002120340"></script>
+<script src="plan-excel-parser.js?v=20261002121050"></script>
 </head>
 <body>
 
@@ -402,38 +402,46 @@
 
   <!-- Inställningsdialog -->
   <div id="settingsDialog" class="dialog hidden">
-    <div class="dialog-box">
-      <h2>Inställningar</h2>
-      <label>Uppspelningshastighet (sekunder per dag)
-        <input type="number" id="playSecondsPerDay" min="0.1" step="0.1" placeholder="0.4" />
-      </label>
-      <h3 class="settings-subheading">Färger – status/fas (används i listan och 3D-modellen)</h3>
-      <p class="hint">Fasen räknas fram ur datumen och framdriften: planerad men ej startad, pågående, försenad (slutdatum passerat) eller klar. Pausad väljer du själv. Reglaget bredvid färgen styr opaciteten i 3D-vyn.</p>
-      <div id="statusColorInputs"></div>
-      <label>GitHub-token <input type="password" id="githubToken" placeholder="github_pat_..." /></label>
-      <p class="hint">En fine-grained token scopead till repot <strong>vfalk-NCC/4D-data</strong> – se GITHUB_TOKEN_SETUP.md för hur du skapar en (tar under en minut).</p>
-
-      <h3 class="settings-subheading">Säkerhetskopior och historik</h3>
-      <p class="hint">En säkerhetskopia av hela projektets data tas automatiskt innan varje import av 4-veckorsplaneringen och innan nollställning/återställning. Återställ går tillbaka till just det läget (en ny kopia tas först, så det går att ångra).</p>
-      <div class="row">
-        <button id="btnBackupNow">Skapa säkerhetskopia nu</button>
+    <div class="dialog-box settings-box">
+      <div class="set-head"><h2>Inställningar</h2><button type="button" id="btnCloseSettingsX" class="set-x" title="Stäng">✕</button></div>
+      <div class="set-body">
+        <details class="set-sec" data-sec="colors" open>
+          <summary>🎨 Status och färger</summary>
+          <p class="hint">Fasen räknas fram ur datum och framdrift. Pausad väljer du själv. Reglaget styr opaciteten i 3D-vyn.</p>
+          <div id="statusColorInputs"></div>
+        </details>
+        <details class="set-sec" data-sec="blocks">
+          <summary>👁 Synliga block</summary>
+          <p class="hint">Bocka ur ett block för att dölja det. Sparas direkt.</p>
+          <div id="panelVisibilityList" class="panel-visibility-list"></div>
+        </details>
+        <details class="set-sec" data-sec="play">
+          <summary>⏱ Uppspelning</summary>
+          <label>Sekunder per dag
+            <input type="number" id="playSecondsPerDay" min="0.1" step="0.1" placeholder="0.4" />
+          </label>
+        </details>
+        <details class="set-sec" data-sec="backup">
+          <summary>🗂 Säkerhetskopior och historik</summary>
+          <p class="hint">En kopia av projektets data tas automatiskt före varje import och före nollställning/återställning. Återställ går tillbaka till just det läget (en ny kopia tas först, så det går att ångra).</p>
+          <button id="btnBackupNow">Skapa säkerhetskopia nu</button>
+          <div id="backupList" class="backup-list"><div class="hint">Laddar…</div></div>
+          <details class="danger-zone">
+            <summary>Nollställ planeringen…</summary>
+            <p class="hint">Tar bort ALLA planerade objekt, delaktiviteter, 3D-kopplingar, kommentarer, beroenden och historik i det här projektet – t.ex. inför en helt ny import av 4-veckorsplaneringen. Lägesplanens planer, zoner och lager rörs inte. En säkerhetskopia tas först.</p>
+            <button id="btnResetPlanning" class="danger">Nollställ planeringen</button>
+          </details>
+        </details>
+        <details class="set-sec" data-sec="token">
+          <summary>🔑 Lagring (GitHub)</summary>
+          <label>GitHub-token <input type="password" id="githubToken" placeholder="github_pat_..." /></label>
+          <p class="hint">En fine-grained token för repot <strong>vfalk-NCC/4D-data</strong> – se GITHUB_TOKEN_SETUP.md.</p>
+        </details>
       </div>
-      <div id="backupList" class="backup-list"><div class="hint">Laddar…</div></div>
-      <details class="danger-zone">
-        <summary>Nollställ planeringen…</summary>
-        <p class="hint">Tar bort ALLA planerade objekt, delaktiviteter, 3D-kopplingar, kommentarer, beroenden och historik i det här projektet – t.ex. inför en helt ny import av 4-veckorsplaneringen. Lägesplanens planer, zoner och lager rörs inte. En säkerhetskopia tas först.</p>
-        <button id="btnResetPlanning" class="danger">Nollställ planeringen</button>
-      </details>
-
-      <h3 class="settings-subheading">Synliga block</h3>
-      <p class="hint">Bocka ur ett block för att dölja det. Sparas direkt i webbläsaren, ingen "Spara"-knapp behövs
-        för detta val.</p>
-      <div id="panelVisibilityList" class="panel-visibility-list"></div>
-
-      <div class="row">
-        <button id="btnPlanKeysSettings" type="button">Kortkommandon</button>
-        <button id="btnSaveSettings" class="primary">Spara</button>
+      <div class="set-foot">
+        <button id="btnPlanKeysSettings" type="button" class="set-keys" title="Visa och ändra kortkommandona">⌨ Kortkommandon</button>
         <button id="btnCloseSettings">Stäng</button>
+        <button id="btnSaveSettings" class="primary">Spara</button>
       </div>
     </div>
   </div>
@@ -567,14 +575,14 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261002120340"></script>
-  <script src="app.js?v=20261002120340"></script>
-  <script src="manual-markings.js?v=20261002120340"></script>
-  <script src="sub-activity-list.js?v=20261002120340"></script>
-  <script src="activity-remove.js?v=20261002120340"></script>
-  <script src="dup-check.js?v=20261002120340"></script>
-  <script src="ui-shell.js?v=20261002120340"></script>
-  <script src="undo.js?v=20261002120340"></script>
-  <script src="planning-keys.js?v=20261002120340"></script>
+  <script src="github-storage.js?v=20261002121050"></script>
+  <script src="app.js?v=20261002121050"></script>
+  <script src="manual-markings.js?v=20261002121050"></script>
+  <script src="sub-activity-list.js?v=20261002121050"></script>
+  <script src="activity-remove.js?v=20261002121050"></script>
+  <script src="dup-check.js?v=20261002121050"></script>
+  <script src="ui-shell.js?v=20261002121050"></script>
+  <script src="undo.js?v=20261002121050"></script>
+  <script src="planning-keys.js?v=20261002121050"></script>
 </body>
 </html>
