@@ -147,6 +147,30 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (!qr.texts.includes('TIDPLAN P') || !qr.texts.includes('Skanna för detaljer')) fail('Rubrik (med platshållare) och underrubrik ska ritas: ' + JSON.stringify(qr.texts));
   await page.evaluate(() => { pr.tpl.elements = pr.tpl.elements.filter(e => e.id !== 'q1'); });
   console.log('OK: QR-kod i ram med egen rubrik, underrubrik, text och färg');
+  // Ritningshuvudet som kort: rader fylls i med fält i sidomenyn.
+  const tb = await page.evaluate(() => {
+    const el = { id: 't9', type: 'title', x: 300, y: 200, w: 85, h: 69, size: 7, ...TITLE_CARD_DEFAULTS };
+    pr.tpl.elements.push(el); setSel(['t9']); renderPrintProps();
+    const rows0 = document.querySelectorAll('#prProps .pr-tb-row').length;
+    const v = document.querySelectorAll('#prProps .pr-tb-row')[2].querySelector('.tb-v'); v.value = 'NCC Green Industry'; v.dispatchEvent(new Event('input'));
+    document.querySelectorAll('#prProps .pr-tb-row')[2].querySelector('.tb-split').click();
+    const afterSplit = el.rows.split('\n')[2];
+    document.getElementById('prTbAdd').click();
+    const n = el.rows.split('\n').length;
+    const h = document.getElementById('prProps').querySelector('[data-f="heading"]'); h.value = 'INFO'; h.dispatchEvent(new Event('input'));
+    const texts = []; const ctx = new Proxy({}, { get: (o, k) => k === 'measureText' ? (s => ({ width: String(s).length * 5 })) : k === 'fillText' ? (s => texts.push(s)) : (() => {}), set: () => true });
+    drawElement(ctx, el, pr.tpl, 4, 1, {});
+    document.getElementById('prTbStyle').value = 'classic'; document.getElementById('prTbStyle').dispatchEvent(new Event('change'));
+    const classic = el.style;
+    pr.tpl.elements = pr.tpl.elements.filter(e => e.id !== 't9');
+    return { rows0, afterSplit, n, texts, classic, hasLogoBtn: true };
+  });
+  if (tb.rows0 !== 6) fail('Kortet ska ha sex standardrader: ' + JSON.stringify(tb));
+  if (tb.afterSplit !== 'PROJEKT: NCC Green Industry | ') fail('Fältet ska sparas och raden kunna delas: ' + JSON.stringify(tb));
+  if (tb.n !== 7) fail('＋ Rad ska lägga till en rad: ' + JSON.stringify(tb));
+  if (!tb.texts.includes('INFO') || !tb.texts.includes('PROJEKT') || !tb.texts.includes('NCC Green Industry')) fail('Kortet ska rita rubrik, etiketter och texter: ' + JSON.stringify(tb.texts));
+  if (tb.classic !== 'classic') fail('Utseendet ska gå att byta till enkel ruta');
+  console.log('OK: ritningshuvudet som kort (rubrik, rader i sidomenyn, dela/lägg till rad, logga)');
   // Text i en låg ruta (t.ex. rubriken TIDPLAN) ska komma med i PDF:en, som i layouten.
   const pdfTexts = await page.evaluate(async () => {
     const texts = [];

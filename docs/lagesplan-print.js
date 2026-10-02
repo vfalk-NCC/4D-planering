@@ -100,10 +100,7 @@ function defaultTemplate() {
       { id: id(), type: "text", x: 12, y: 223, w: 80, h: 40, text: "REFERENSER\n{plan}", size: 7, bold: false, align: "left", color: "#000000" },
       { id: id(), type: "legend", x: 95, y: 223, w: 150, h: 62, title: "FÖRKLARINGAR", cols: 2, size: 7, phases: true, site: true, cad: false, extra: "" },
       { id: id(), type: "scalebar", x: 250, y: 268, w: 74, h: 16, mapId: map.id },
-      { id: id(), type: "title", x: 327, y: 220, w: 85, h: 69, size: 7, rows: [
-        "STATUS: INFORMATION", "HANDLING: LÄGESPLAN", "DATUM: {idag} | UPPRÄTTAD AV: {användare}",
-        "PROJEKTNAMN: {plan}", "OMRÅDE: ", "PROJEKTNUMMER: | ADRESS: ", "FÖRETAG: NCC",
-        "SKALA: {skala} | FORMAT: {format}", "RITNINGSNUMMER: "].join("\n") },
+      { id: id(), type: "title", x: 327, y: 220, w: 85, h: 69, size: 7, ...TITLE_CARD_DEFAULTS },
     ],
   };
 }
@@ -481,7 +478,7 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
       break;
     }
     case "legend": drawLegend(ctx, el, X, Y, W, H, pt); break;
-    case "title": drawTitleBlock(ctx, el, tpl, X, Y, W, H, pt, k, u); break;
+    case "title": if (el.style === "card") drawTitleCard(ctx, el, tpl, X, Y, W, H, pt); else drawTitleBlock(ctx, el, tpl, X, Y, W, H, pt, k, u); break;
   }
   ctx.restore();
 }
@@ -604,6 +601,72 @@ function drawLegend(ctx, el, X, Y, W, H, pt) {
     ctx.fillStyle = "#000";
     ctx.fillText(it.kind === "text" || el.legNoEq ? it.label : "= " + it.label, it.kind === "text" ? x : x + sw + fs * 0.5, y, colW - sw - fs);
   });
+}
+/* Ritningshuvudet som kort (Victors önskemål 2026-10-02): mörkblå rubrikrad,
+   rader med liten etikett och större värde, tunna linjer, valfri logga i en
+   mörk fot. Raderna skrivs i sidomenyn (sparas som "ETIKETT: värde | …"). */
+const TITLE_CARD_DEFAULTS = { style: "card", heading: "INFORMATION", color: "#1f3b73", rows: [
+  "LÄGESPLAN: {plan}", "DATUM: {idag} | ANSVARIG: {användare}", "PROJEKT: ", "OMRÅDE: ", "RITNING: ", "SKALA: {skala} | FORMAT: {format}"].join("\n") };
+/* Loggan i foten: vit bakgrund bort och (valfritt) all färg till vitt. */
+const logoSrcCache = new Map();
+function titleLogoSource(el) {
+  const im = el.logo ? printImage(el.logo) : null;
+  if (!im) return null;
+  const key = `${el.logo}|${el.logoWhite ? 1 : 0}`;
+  let c = logoSrcCache.get(key);
+  if (!c) {
+    const nw = im.naturalWidth || im.width, nh = im.naturalHeight || im.height, k = Math.min(1, 1600 / Math.max(nw, nh));
+    c = newCanvas(Math.max(1, Math.round(nw * k)), Math.max(1, Math.round(nh * k)));
+    const ctx = c.getContext("2d"); ctx.drawImage(im, 0, 0, c.width, c.height);
+    try {
+      const d = ctx.getImageData(0, 0, c.width, c.height), px = d.data;
+      for (let i = 0; i < px.length; i += 4) {
+        const dist = 255 - Math.min(px[i], px[i + 1], px[i + 2]);
+        if (dist <= 30) px[i + 3] = 0; else if (dist <= 60) px[i + 3] = Math.round(px[i + 3] * (dist - 30) / 30);
+        if (el.logoWhite) { px[i] = px[i + 1] = px[i + 2] = 255; }
+      }
+      ctx.putImageData(d, 0, 0);
+    } catch (e) { /* t.ex. SVG utan pixlar – används som den är */ }
+    logoSrcCache.set(key, c);
+  }
+  return c;
+}
+function drawTitleCard(ctx, el, tpl, X, Y, W, H, pt) {
+  const rows = titleRows(el, tpl), col = el.color || "#1f3b73", fs = pt(el.size || 7);
+  const r = Math.min(W, H) * 0.03, lw = Math.max(1, fs * 0.12);
+  const rr = (x, y, w, h, rad) => { ctx.beginPath(); ctx.moveTo(x + rad, y); ctx.arcTo(x + w, y, x + w, y + h, rad); ctx.arcTo(x + w, y + h, x, y + h, rad); ctx.arcTo(x, y + h, x, y, rad); ctx.arcTo(x, y, x + w, y, rad); ctx.closePath(); };
+  ctx.save();
+  rr(X, Y, W, H, r); ctx.fillStyle = "#ffffff"; ctx.fill(); ctx.clip();
+  const pad = fs * 0.7;
+  const head = String(el.heading ?? "").trim() ? fillText(el.heading, tpl) : "";
+  const hh = head ? fs * 2.1 : 0;
+  const logo = titleLogoSource(el), fh = el.logo ? Math.min(H * 0.22, fs * 4.4) : 0;
+  if (hh) {
+    ctx.fillStyle = col; ctx.fillRect(X, Y, W, hh);
+    ctx.fillStyle = "#ffffff"; ctx.font = `bold ${fs * 1.25}px Helvetica, Arial, sans-serif`; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    ctx.fillText(head, X + pad, Y + hh / 2, W - 2 * pad);
+  }
+  if (fh) {
+    ctx.fillStyle = col; ctx.fillRect(X, Y + H - fh, W, fh);
+    if (logo) { const lh = fh * 0.62, lw2 = Math.min(W - 2 * pad, lh * logo.width / logo.height); ctx.drawImage(logo, X + pad, Y + H - fh + (fh - lw2 * logo.height / logo.width) / 2, lw2, lw2 * logo.height / logo.width); }
+  }
+  const top = Y + hh, area = H - hh - fh, rh = rows.length ? area / rows.length : 0;
+  ctx.strokeStyle = col; ctx.lineWidth = Math.max(0.5, lw * 0.6);
+  rows.forEach((cells, i) => {
+    const y = top + i * rh;
+    if (i) { ctx.globalAlpha = 0.55; ctx.beginPath(); ctx.moveTo(X, y); ctx.lineTo(X + W, y); ctx.stroke(); ctx.globalAlpha = 1; }
+    cells.forEach(([lab, val], c) => {
+      const cw = W / cells.length, x = X + c * cw;
+      if (c) { ctx.globalAlpha = 0.55; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y + rh); ctx.stroke(); ctx.globalAlpha = 1; }
+      const lf = Math.min(fs * 0.92, rh * 0.3), vf = Math.min(fs * 1.4, rh * (lab ? 0.42 : 0.6));
+      ctx.textAlign = "left";
+      if (lab) { ctx.fillStyle = col; ctx.font = `600 ${lf}px Helvetica, Arial, sans-serif`; ctx.textBaseline = "top"; ctx.fillText(lab.toUpperCase(), x + pad, y + rh * 0.12, cw - 2 * pad); }
+      ctx.fillStyle = "#111827"; ctx.font = `${vf}px Helvetica, Arial, sans-serif`; ctx.textBaseline = "bottom";
+      ctx.fillText(val, x + pad, y + rh - rh * 0.1, cw - 2 * pad);
+    });
+  });
+  ctx.restore();
+  rr(X, Y, W, H, r); ctx.strokeStyle = col; ctx.lineWidth = lw * 1.4; ctx.stroke();
 }
 function titleRows(el, tpl) {
   return String(el.rows || "").split("\n").map(r => r.split("|").map(c => { const i = c.indexOf(":"); return i >= 0 ? [c.slice(0, i).trim(), fillText(c.slice(i + 1).trim(), tpl)] : ["", fillText(c.trim(), tpl)]; }));
@@ -953,7 +1016,7 @@ function addEl(type) {
     scalebar: { w: 70, h: 16, mapId: firstMap && firstMap.id },
     north: { w: 20, h: 20, style: "rose4", color: "#000000", mapId: firstMap && firstMap.id },
     qr: { text: "https://", w: 30, h: 30 },
-    title: { size: 7, rows: "PROJEKTNAMN: {plan}\nDATUM: {idag} | SKALA: {skala}\nRITNINGSNUMMER: ", w: 85, h: 30 },
+    title: { size: 7, ...TITLE_CARD_DEFAULTS, w: 85, h: 69 },
     rect: { stroke: "#000000", lw: 0.35, fill: "" },
     line: { stroke: "#000000", lw: 0.35, w: 60, h: 0 },
   }[type];
@@ -1110,8 +1173,19 @@ function renderPrintProps(onlyPos) {
         <button type="button" class="pl-up icon ghost" title="Flytta upp"${i ? "" : " disabled"}>↑</button><button type="button" class="pl-dn icon ghost" title="Flytta ner"${i < arr.length - 1 ? "" : " disabled"}>↓</button>
       </div>`).join("") || `<div class="hint">Inga rader – bocka i vad förklaringen ska visa ovan.</div>`}</div>
       ${el.legHide || el.legText || el.legColor || el.legOrder ? `<button type="button" id="prLegReset" style="margin-top:4px;">↺ Återställ raderna</button>` : ""}`;
-  if (el.type === "title") html += `<label>Rader <span class="muted">– "ETIKETT: värde", celler med |</span></label><textarea data-f="rows" rows="9" style="font-family:ui-monospace,Consolas,monospace;font-size:11px;">${escHtml(el.rows || "")}</textarea>
-      <div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}</div><div class="hint">Platshållare: {plan} {datum} {idag} {skala} {format} {användare} {utskriven}</div>`;
+  if (el.type === "title") {
+    const card = el.style === "card";
+    const cells = String(el.rows || "").split("\n").map(r => r.split("|").map(c => { const i = c.indexOf(":"); return i >= 0 ? [c.slice(0, i).trim(), c.slice(i + 1).trim()] : ["", c.trim()]; }));
+    html += `<label>Utseende</label><select id="prTbStyle"><option value="card"${card ? " selected" : ""}>Kort med rubrik och logga</option><option value="classic"${card ? "" : " selected"}>Enkel ruta</option></select>`
+      + (card ? inp("heading", "Rubrik") + `<div class="pr-grid4">${color("color", "Färg")}${num("size", "Storlek (pt)", "0.5")}</div>
+        <label>Logga i foten</label><div class="row" style="flex-wrap:nowrap;"><button type="button" id="prTbLogo">${el.logo ? "🖼 Byt logga…" : "🖼 Välj logga…"}</button>${el.logo ? `<button type="button" id="prTbLogoDel" class="ghost" title="Ingen logga">✕</button>` : ""}</div>
+        ${el.logo ? chk("logoWhite", "Gör loggan vit") : ""}` : `<div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}</div>`)
+      + `<label>Rader <span class="muted">– etikett och text, ⇆ delar raden i två</span></label>
+      <div class="pr-tb">${cells.map((row, r) => `<div class="pr-tb-row" data-r="${r}">${row.map(([l, v], c) => `<div class="pr-tb-cell" data-c="${c}"><input type="text" class="tb-l" value="${escHtml(l)}" placeholder="ETIKETT" /><input type="text" class="tb-v" value="${escHtml(v)}" placeholder="Text" /></div>`).join("")}
+        <div class="pr-tb-btns"><button type="button" class="tb-split icon ghost" title="${row.length > 1 ? "Slå ihop till en cell" : "Dela i två celler"}">⇆</button><button type="button" class="tb-up icon ghost" title="Flytta upp"${r ? "" : " disabled"}>↑</button><button type="button" class="tb-del icon ghost" title="Ta bort raden">🗑</button></div></div>`).join("")}</div>
+      <button type="button" id="prTbAdd" style="margin-top:4px;">＋ Rad</button>
+      <div class="hint">Platshållare: {plan} {datum} {idag} {skala} {format} {användare} {utskriven}</div>`;
+  }
   if (el.type === "qr") html += inp("text", "Länk eller text") + chk("frame", "<b>Ram med egen text</b>")
     + (el.frame ? inp("title", "Rubrik") + inp("subtitle", "Underrubrik") + inp("footer", "Text längst ner")
       + `<div class="pr-grid4">${color("frameColor", "Ramens färg")}</div>${chk("phone", "Mobil-ikon")}<div class="hint">Platshållare: {plan} {datum} {idag}</div>` : "");
@@ -1160,6 +1234,28 @@ function renderPrintProps(onlyPos) {
     const move = d => edit(() => { const keys = legendItems(el, true).map(it => it.key), i = keys.indexOf(key), j = i + d; if (j < 0 || j >= keys.length) return; [keys[i], keys[j]] = [keys[j], keys[i]]; el.legOrder = keys; }, true);
     q(".pl-up").onclick = () => move(-1); q(".pl-dn").onclick = () => move(1);
   });
+  // Ritningshuvudets rader: läs fälten tillbaka till "ETIKETT: värde | …".
+  const tbRows = () => [...box.querySelectorAll(".pr-tb-row")].map(row => [...row.querySelectorAll(".pr-tb-cell")].map(c => [c.querySelector(".tb-l").value.trim(), c.querySelector(".tb-v").value]));
+  const tbSave = (rows, rerender) => {
+    el.rows = rows.map(cs => cs.map(([l, v]) => (l ? `${l}: ${v}` : v).replace(/\|/g, "/")).join(" | ")).join("\n");
+    pr.dirty = true; $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara mall *";
+    if (rerender) renderPrintProps(); drawPrintPage();
+  };
+  box.querySelectorAll(".pr-tb-row").forEach(row => {
+    const r = Number(row.dataset.r);
+    row.querySelectorAll("input").forEach(i => i.addEventListener("input", () => { if (!i._u) { pushUndo(); i._u = true; setTimeout(() => { i._u = false; }, 800); } tbSave(tbRows()); }));
+    row.querySelector(".tb-split").onclick = () => { pushUndo(); const rows = tbRows(); rows[r] = rows[r].length > 1 ? [[rows[r][0][0], rows[r].map(c => c[1]).filter(Boolean).join(" ")]] : [rows[r][0], ["", ""]]; tbSave(rows, true); };
+    row.querySelector(".tb-up").onclick = () => { pushUndo(); const rows = tbRows(); [rows[r - 1], rows[r]] = [rows[r], rows[r - 1]]; tbSave(rows, true); };
+    row.querySelector(".tb-del").onclick = () => { pushUndo(); const rows = tbRows(); rows.splice(r, 1); tbSave(rows, true); };
+  });
+  on("prTbAdd", () => { pushUndo(); tbSave([...tbRows(), [["", ""]]], true); });
+  if ($("prTbStyle")) $("prTbStyle").onchange = e => {
+    pushUndo(); el.style = e.target.value;
+    if (el.style === "card") { if (el.heading === undefined) el.heading = TITLE_CARD_DEFAULTS.heading; if (!el.color) el.color = TITLE_CARD_DEFAULTS.color; }
+    renderPrintProps(); drawPrintPage();
+  };
+  on("prTbLogo", () => $("prImgInput").click());
+  on("prTbLogoDel", () => { pushUndo(); delete el.logo; renderPrintProps(); drawPrintPage(); });
   on("prLegReset", () => { pushUndo(); delete el.legHide; delete el.legText; delete el.legColor; delete el.legOrder; renderPrintProps(); drawPrintPage(); });
   on("prImgReset", () => { pushUndo(); ["cropL", "cropR", "cropT", "cropB"].forEach(k => delete el[k]); el.knockout = false; const im = printImage(el.path); if (im) { printImageSource(el, im); el.h = Math.round(el.w / el.ar * 10) / 10; } renderPrintProps(); drawPrintPage(); });
   on("prPan", () => { pr.panMode = !pr.panMode; renderPrintProps(); drawPrintPage(); });
@@ -1255,6 +1351,8 @@ async function exportPrintPdf() {
     setPrintStatus("Laddar PDF-verktyget…");
     await loadScript(JSPDF_URL);
     if (tpl.elements.some(e => e.type === "qr")) { await loadScript(QR_URL).catch(() => {}); }
+    // Loggan i ritningshuvudet måste vara hämtad innan kortet rastreras.
+    for (const e of tpl.elements) if (e.type === "title" && e.logo && !printImage(e.logo)) await printImgs.get(e.logo);
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: [W, H], compress: true });
     doc.setProperties({ title: fillText("Lägesplan {plan}", tpl), creator: "4D-planering – Lägesplan" });
@@ -1331,7 +1429,7 @@ async function exportPrintPdf() {
       } else if (el.type === "line") {
         doc.setDrawColor(...hexRgb(el.stroke)); doc.setLineWidth((el.lw || 0.35) * k);
         doc.line(x, y, x + w, y + h);
-      } else if (el.type === "title") {
+      } else if (el.type === "title" && el.style !== "card") {
         const rows = titleRows(el, tpl), rh = h / Math.max(1, rows.length), fs = (el.size || 7) * k;
         doc.setDrawColor(0); doc.setLineWidth(0.25 * k); doc.rect(x, y, w, h);
         rows.forEach((cells, r) => {
@@ -1401,9 +1499,11 @@ function bindPrint() {
   $("prImgInput").onchange = async e => {
     const f = e.target.files[0]; e.target.value = "";
     const el = primary();
-    if (!f || !el || el.type !== "image") return;
+    if (!f || !el || (el.type !== "image" && el.type !== "title")) return;
     try {
       const r = await uploadPrintImage(f);
+      // Logga i ritningshuvudet.
+      if (el.type === "title") { pushUndo(); el.logo = r.path; renderPrintPanel(); drawPrintPage(); return; }
       pushUndo(); el.path = r.path; el.ar = r.ar; el.h = Math.round(el.w / r.ar * 10) / 10;
       renderPrintPanel(); drawPrintPage();
     } catch (err) { alert("Kunde inte ladda upp bilden: " + err.message); setPrintStatus(""); }
