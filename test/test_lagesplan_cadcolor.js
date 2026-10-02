@@ -209,6 +209,43 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (lib2.length !== 1 || lib2[0].name !== 'WC' || lib2[0].path !== lib[0].path) fail('Markerad bild ska kunna sparas i biblioteket: ' + JSON.stringify(lib2));
   await page.evaluate(() => { pr.tpl.elements.pop(); document.getElementById('prLib').open = false; });
   console.log('OK: bibliotek med symboler – ladda upp, kategori, lägg in med ett klick, ta bort, spara markerad bild');
+  // PDF-lager (avancerat): avslaget från början, namn på lägesplanens lager och på element.
+  const pdl = await page.evaluate(async () => {
+    const d = document.getElementById('prPdfLayers'); d.open = true; d.dispatchEvent(new Event('toggle')); await new Promise(r => setTimeout(r, 50));
+    const offAtStart = !document.getElementById('prPdfOn').checked && !document.querySelector('[data-plk]');
+    const lg = pr.tpl.elements.find(e => e.type === 'legend'); setSel([lg.id]); renderPrintProps();
+    const noElField = !document.getElementById('prElPdfLayer');
+    const on = document.getElementById('prPdfOn'); on.checked = true; on.dispatchEvent(new Event('change'));
+    const zi = document.querySelector('[data-plk="zones"]'); zi.value = '1.1 - WBS-områden'; zi.dispatchEvent(new Event('change'));
+    renderPrintProps();
+    const ef = document.getElementById('prElPdfLayer'); ef.value = '1.1 - WBS-områden'; ef.dispatchEvent(new Event('change'));
+    const tb = pr.tpl.elements.find(e => e.type === 'title'); setSel([tb.id]); renderPrintProps();
+    const ef2 = document.getElementById('prElPdfLayer'); ef2.value = '2 - Info'; ef2.dispatchEvent(new Event('change'));
+    renderPdfLayersUi();
+    const names = [...document.querySelectorAll('[data-pln]')].map(i => i.dataset.pln);
+    const cb = document.querySelector('[data-pln="2 - Info"]'); cb.checked = false; cb.dispatchEvent(new Event('change'));
+    const plan2 = pdfLayerPlan(pr.tpl);
+    // Exporten märker innehållet (jsPDF ersatt: skrivna operatorer och bilder samlas).
+    plan.zones = [{ id: 'z', code: 'PM1', polys: [[[100, 100], [600, 100], [600, 500], [100, 500]]], labels: [] }];
+    const ops = [];
+    window.jspdf = { jsPDF: function () { return new Proxy({}, { get: (t, k) => k === 'internal' ? { write: s => ops.push(s) } : k === 'addImage' ? ((u, f) => ops.push('IMG ' + f)) : k === 'splitTextToSize' ? (s => [String(s)]) : k === 'output' ? (() => new ArrayBuffer(8)) : (() => {}) }); } };
+    document.querySelectorAll('.pdf-vec-chk').forEach(c => c.checked = false);
+    const alerts = []; window.alert = m => alerts.push(m);
+    window.savePdfBytes = () => ops.push('SAVED');
+    await exportPrintPdf();
+    return { offAtStart, noElField, names, plan: { ids: [...plan2.ids], off: [...plan2.off], groups: plan2.groups.map(g => [g.name, [...g.keys]]) }, ops, alerts };
+  });
+  if (!pdl.offAtStart || !pdl.noElField) fail('PDF-lager ska vara avslaget och dolt från början: ' + JSON.stringify(pdl));
+  if (JSON.stringify(pdl.names) !== JSON.stringify(['1.1 - WBS-områden', '2 - Info'])) fail('Lagren ska listas (samma namn = samma lager): ' + JSON.stringify(pdl.names));
+  if (JSON.stringify(pdl.plan.ids) !== JSON.stringify([['1.1 - WBS-områden', 'L1'], ['2 - Info', 'L2']]) || pdl.plan.off[0] !== '2 - Info' || pdl.plan.groups[0][1][0] !== 'zones') fail('Fel lagerplan: ' + JSON.stringify(pdl.plan));
+  const seq = pdl.ops.join(' | ');
+  const depth = pdl.ops.reduce((d, o) => d < 0 ? d : d + (/BDC$/.test(o) ? 1 : o === 'EMC' ? -1 : 0), 0);
+  if (depth !== 0) fail('BDC/EMC ska vara balanserade: ' + seq);
+  if (!/\/OC \/L1 BDC \| IMG PNG \| EMC/.test(seq)) fail('Zonerna ska ligga i en egen bild i lager L1: ' + seq);
+  if (!/\/OC \/L2 BDC \| IMG PNG \| EMC/.test(seq)) fail('Ritningshuvudet ska ligga i lager L2: ' + seq);
+  if (!pdl.ops.includes('SAVED')) fail('PDF:en ska sparas (även om lagren inte kunde läggas till här): ' + JSON.stringify(pdl.alerts));
+  await page.evaluate(() => { pr.tpl.pdfLayers = { on: false, map: {}, off: [] }; pr.tpl.elements.forEach(e => delete e.pdfLayer); });
+  console.log('OK: PDF-lager (avancerat) – lägesplanens lager och element i namngivna lager, märkt i PDF:en');
   // Text i en låg ruta (t.ex. rubriken TIDPLAN) ska komma med i PDF:en, som i layouten.
   const pdfTexts = await page.evaluate(async () => {
     const texts = [];

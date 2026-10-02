@@ -251,12 +251,28 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
       if (multiplyPdf) ctx.globalCompositeOperation = "multiply";
       ctx.drawImage(pdfPlate, 0, 0); ctx.restore();
     }
-    P.overlay = newCanvas(pxW, pxH);
     // PDF-export: CAD ritas som vektorer i PDF:en (skarpa linjer), så här
     // bara zoner/etablering i ett eget genomskinligt lager ovanpå.
-    renderFilmOverlay(P, { cad: !opts.vectorCad, zones: true, site: true });
     if (opts.vectorCad) P.cadPlan = typeof cadVectorPlan === "function" ? cadVectorPlan() : [];
-    else ctx.drawImage(P.overlay, 0, 0);
+    // PDF-lager (avancerat): lagren som hör till ett PDF-lager ritas i egna bilder.
+    P.layerOverlays = [];
+    const groups = (opts.layerGroups || []).filter(g => g.keys.size);
+    if (groups.length) {
+      const keys = printLayerList().filter(l => !l.sub).map(l => l.key), vis = {};
+      keys.forEach(k => { vis[k] = ls(k).visible; });
+      const assigned = new Set(groups.flatMap(g => [...g.keys]));
+      for (const g of groups) {
+        if (![...g.keys].some(k => vis[k] && !k.startsWith("cad:"))) continue;
+        keys.forEach(k => { ls(k).visible = vis[k] && g.keys.has(k) && !k.startsWith("cad:"); });
+        P.overlay = newCanvas(pxW, pxH);
+        renderFilmOverlay(P, { cad: false, zones: true, site: true });
+        P.layerOverlays.push({ name: g.name, canvas: P.overlay });
+      }
+      keys.forEach(k => { ls(k).visible = vis[k] && !(assigned.has(k) && !k.startsWith("cad:")); });
+    }
+    P.overlay = newCanvas(pxW, pxH);
+    renderFilmOverlay(P, { cad: !opts.vectorCad, zones: true, site: true });
+    if (!opts.vectorCad) ctx.drawImage(P.overlay, 0, 0);
   });
   return opts.vectorCad ? { base: out, overlay: P.overlay, cad: P.cadPlan || [], P } : out;
 }
@@ -1380,16 +1396,25 @@ async function exportPrintPdf() {
       setPrintStatus("Laddar ritningen som vektorer…");
       try { vec = await vecBegin(doc); } catch (e) { console.warn("Vektor-PDF", e); vec = null; }
     }
+    // PDF-lager (avancerat, lagesplan-pdflayers.js): innehållet märks med /OC … BDC/EMC.
+    const PL = typeof pdfLayerPlan === "function" ? pdfLayerPlan(tpl) : null;
+    const ocOpen = name => { if (!PL || !name || !PL.ids.has(name)) return 0; doc.internal.write(`/OC /${PL.ids.get(name)} BDC`); return 1; };
+    const ocClose = n => { for (let i = 0; i < n; i++) doc.internal.write("EMC"); };
+    const inLayer = (names, fn) => { const n = names.reduce((a, nm) => a + ocOpen(nm), 0); try { return fn(); } finally { ocClose(n); } };
     for (const el of tpl.elements) {
       const x = el.x * k, y = el.y * k, w = el.w * k, h = el.h * k;
+      // Ritningsytan märks del för del (vektor-PDF:en byter sida mitt i), övriga element i sin helhet.
+      const elOc = el.type === "map" ? 0 : ocOpen(el.pdfLayer);
+      try {
       if (el.type === "map") {
+        const EL = el.pdfLayer;
         const nr = maps.indexOf(el) + 1;
         setPrintStatus(`Ritar ritning ${nr} av ${maps.length} i hög upplösning…`);
         const u = fmt.dpi / 25.4;
-        const mc = await renderMapCanvas(el, w, h, Math.round(w * u), Math.round(h * u), { vectorCad: true, vectorPdf: !!vec, status: s => setPrintStatus(`Ritning ${nr}/${maps.length}: ${s}…`) });
+        const mc = await renderMapCanvas(el, w, h, Math.round(w * u), Math.round(h * u), { vectorCad: true, vectorPdf: !!vec, layerGroups: PL ? PL.groups : null, status: s => setPrintStatus(`Ritning ${nr}/${maps.length}: ${s}…`) });
         // Egen lagergrupp per ritningsyta: staplingen blir som i mallen.
         if (vec) { vecNewGroup(vec); vecUnder(vec); }
-        doc.addImage(mc.base.toDataURL("image/jpeg", 0.9), "JPEG", x, y, w, h, undefined, "FAST");
+        inLayer([EL], () => doc.addImage(mc.base.toDataURL("image/jpeg", 0.9), "JPEG", x, y, w, h, undefined, "FAST"));
         if (vec) {
           vecOver(vec);
           const f0 = w / mc.P.W, S0 = mc.P.S * f0;
@@ -1398,10 +1423,15 @@ async function exportPrintPdf() {
         if (mc.cad.length) {
           // DXF som vektorer: stage-px -> mm på sidan.
           setPrintStatus(`Ritning ${nr}/${maps.length}: DXF som vektorer…`);
-          const f = w / mc.P.W, S = mc.P.S * f;
-          drawCadVectorsToPdf(doc, mc.cad, [S, 0, 0, S, x - mc.P.x0 * S, y - mc.P.y0 * S], [x, y, w, h], w / FILM_W, PT_MM);
+          const f = w / mc.P.W, S = mc.P.S * f, T = [S, 0, 0, S, x - mc.P.x0 * S, y - mc.P.y0 * S];
+          // DXF-filer i PDF-lager ritas var för sig i sitt lager.
+          const byName = new Map();
+          mc.cad.forEach(c => { const nm = PL ? PL.nameOfKey("cad:" + c.rec.id) : null; if (!byName.has(nm)) byName.set(nm, []); byName.get(nm).push(c); });
+          byName.forEach((list, nm) => inLayer([EL, nm], () => drawCadVectorsToPdf(doc, list, T, [x, y, w, h], w / FILM_W, PT_MM)));
         }
-        if (mc.overlay) doc.addImage(mc.overlay.toDataURL("image/png"), "PNG", x, y, w, h, undefined, "FAST");
+        if (mc.overlay) inLayer([EL], () => doc.addImage(mc.overlay.toDataURL("image/png"), "PNG", x, y, w, h, undefined, "FAST"));
+        (mc.P.layerOverlays || []).forEach(o => inLayer([EL, o.name], () => doc.addImage(o.canvas.toDataURL("image/png"), "PNG", x, y, w, h, undefined, "FAST")));
+        const mapOc = ocOpen(EL);
         if (el.border !== false) { doc.setDrawColor(0); doc.setLineWidth(0.35 * k); doc.rect(x, y, w, h); }
         if (el.label && el.label.show) {
           const s = (el.label.size || 9) * k, al = el.label.align || "left";
@@ -1411,6 +1441,7 @@ async function exportPrintPdf() {
           if (el.label.name) { doc.setFont("helvetica", "bold"); doc.setFontSize(s); doc.text(el.label.name, tx, ty, { baseline: "top", align: al }); ty += s * PT_MM * 1.25; }
           doc.setFont("helvetica", "normal"); doc.setFontSize(s * 0.85); doc.text(`Skala 1:${el.scale}`, tx, ty, { baseline: "top", align: al });
         }
+        ocClose(mapOc);
       } else if (el.type === "image") {
         const im = el.path ? printImage(el.path) || await printImgs.get(el.path) : null;
         if (!im) continue;
@@ -1461,6 +1492,7 @@ async function exportPrintPdf() {
         const c = rasterEl(el, 300);
         doc.addImage(c.toDataURL("image/png"), "PNG", Math.min(x, x + w), Math.min(y, y + h), Math.abs(w), Math.abs(h), undefined, "FAST");
       }
+      } finally { ocClose(elOc); }
     }
     const f = tpl.frame || {};
     if (f.on) {
@@ -1476,7 +1508,13 @@ async function exportPrintPdf() {
       }
     }
     const name = `${fillText("Lägesplan {plan} {datum}", tpl)} ${tpl.format}.pdf`;
-    if (vec) { setPrintStatus("Sätter ihop PDF:en med ritningen som vektorer…"); savePdfBytes(await vecFinish(vec), name); }
+    if (PL) {
+      // PDF-lager: lagren läggs till i den färdiga filen.
+      let bytes = vec ? (setPrintStatus("Sätter ihop PDF:en med ritningen som vektorer…"), await vecFinish(vec)) : doc.output("arraybuffer");
+      setPrintStatus("Lägger till PDF-lagren…");
+      try { bytes = await addPdfLayers(bytes, PL); } catch (e) { console.warn("PDF-lager", e); alert("PDF:en skapades men utan lager: " + e.message); }
+      savePdfBytes(bytes, name);
+    } else if (vec) { setPrintStatus("Sätter ihop PDF:en med ritningen som vektorer…"); savePdfBytes(await vecFinish(vec), name); }
     else doc.save(name);
     setPrintStatus(`✓ ${name}`);
   } catch (e) {

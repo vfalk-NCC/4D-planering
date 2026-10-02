@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261002133924"></script>
+<script src="github-storage.js?v=20261002135329"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -512,6 +512,12 @@
   .pr-lib-name { font-size: 10px; line-height: 1.15; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pr-lib-del { position: absolute; top: 1px; right: 3px; font-size: 10px; color: var(--muted); display: none; }
   .pr-lib-item:hover .pr-lib-del { display: block; } .pr-lib-del:hover { color: #dc2626; }
+  .pr-pl-list { display: flex; flex-direction: column; gap: 3px; max-height: 220px; overflow-y: auto; }
+  .pr-pl-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 6px; align-items: center; font-size: 11px; }
+  .pr-pl-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pr-pl-row input { height: 24px; font-size: 11px; }
+  .pr-pl-names { display: flex; flex-direction: column; gap: 2px; }
+  .pr-pl-el { margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--border); }
   .pr-tb { display: flex; flex-direction: column; gap: 4px; }
   .pr-tb-row { display: flex; gap: 4px; align-items: stretch; padding: 4px; border: 1px solid var(--border); border-radius: 6px; background: #fafbfc; }
   .pr-tb-cell { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -975,6 +981,7 @@
           <button data-add="scalebar"><i>📏</i>Skala</button><button data-add="north"><i>🧭</i>Norrpil</button><button data-add="qr"><i>▦</i>QR</button><button data-add="rect"><i>▭</i>Ruta</button><button data-add="line"><i>╱</i>Linje</button>
         </div>
         <details id="prLib" class="pr-lib"><summary>📚 Bibliotek <span class="muted" id="prLibCount"></span></summary><div id="prLibBody"></div></details>
+        <details id="prPdfLayers" class="pr-lib"><summary>⚙ Avancerat: PDF-lager</summary><div id="prPdfLayersBody"></div></details>
         <input type="file" id="prLibInput" accept="image/png,image/jpeg,image/webp,image/svg+xml" multiple class="hidden" />
         <span class="field-label">Egenskaper</span>
         <div id="prProps"></div>
@@ -1038,24 +1045,25 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261002133924"></script>
-<script src="lagesplan-tools.js?v=20261002133924"></script>
-<script src="lagesplan-layers.js?v=20261002133924"></script>
-<script src="lagesplan-views.js?v=20261002133924"></script>
-<script src="lagesplan-film.js?v=20261002133924"></script>
-<script src="lagesplan-cad.js?v=20261002133924"></script>
-<script src="lagesplan-vecpdf.js?v=20261002133924"></script>
-<script src="lagesplan-print.js?v=20261002133924"></script>
-<script src="lagesplan-printlib.js?v=20261002133924"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261002133924"></script>
-<script src="lagesplan-objmarks.js?v=20261002133924"></script>
-<script src="lagesplan-objlist.js?v=20261002133924"></script>
-<script src="lagesplan-zones.js?v=20261002133924"></script>
-<script src="lagesplan-wbs.js?v=20261002133924"></script>
-<script src="lagesplan-daily.js?v=20261002133924"></script>
-<script src="lagesplan-gps.js?v=20261002133924"></script>
-<script src="lagesplan-weather.js?v=20261002133924"></script>
-<script src="lagesplan-touch.js?v=20261002133924"></script>
-<script src="lagesplan-keys.js?v=20261002133924"></script>
+<script src="lagesplan.js?v=20261002135329"></script>
+<script src="lagesplan-tools.js?v=20261002135329"></script>
+<script src="lagesplan-layers.js?v=20261002135329"></script>
+<script src="lagesplan-views.js?v=20261002135329"></script>
+<script src="lagesplan-film.js?v=20261002135329"></script>
+<script src="lagesplan-cad.js?v=20261002135329"></script>
+<script src="lagesplan-vecpdf.js?v=20261002135329"></script>
+<script src="lagesplan-print.js?v=20261002135329"></script>
+<script src="lagesplan-printlib.js?v=20261002135329"></script>
+<script src="lagesplan-pdflayers.js?v=20261002135329"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261002135329"></script>
+<script src="lagesplan-objmarks.js?v=20261002135329"></script>
+<script src="lagesplan-objlist.js?v=20261002135329"></script>
+<script src="lagesplan-zones.js?v=20261002135329"></script>
+<script src="lagesplan-wbs.js?v=20261002135329"></script>
+<script src="lagesplan-daily.js?v=20261002135329"></script>
+<script src="lagesplan-gps.js?v=20261002135329"></script>
+<script src="lagesplan-weather.js?v=20261002135329"></script>
+<script src="lagesplan-touch.js?v=20261002135329"></script>
+<script src="lagesplan-keys.js?v=20261002135329"></script>
 </body>
 </html>
