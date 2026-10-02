@@ -217,6 +217,7 @@ async function buildOrthoPlate(o, P, status) {
 async function buildPdfPlate(P) {
   const c = newCanvas(P.W, P.H), ctx = c.getContext("2d");
   ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, P.W, P.H);
+  if (!page) return c; // ingen ritning inläst (t.ex. bara ortofoto): vit platta
   const vp = page.getViewport({ scale: renderScale * P.S, offsetX: -P.x0 * P.S, offsetY: -P.y0 * P.S });
   await page.render({ canvasContext: ctx, viewport: vp,
     annotationMode: $("showOriginal").checked ? pdfjsLib.AnnotationMode.ENABLE : pdfjsLib.AnnotationMode.DISABLE }).promise;

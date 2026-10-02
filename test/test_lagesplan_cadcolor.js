@@ -17,7 +17,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const fail = m => { throw new Error(m); };
   const page = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
-  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  const errors = []; page.on('pageerror', e => errors.push(e.message + (process.env.DBG ? e.stack : '')));
   await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); localStorage.setItem('lagesplan-field', '0'); });
   await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: 'window.pdfjsLib = { GlobalWorkerOptions: {}, getDocument: () => ({ promise: Promise.reject(new Error("x")) }) };' }));
   await page.route('https://api.github.com/**', r => {
@@ -180,6 +180,35 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   });
   if (Math.abs(trim.w - 100) > 2 || Math.abs(trim.h - 40) > 2 || !trim.white) fail('Loggans tomma kanter ska beskäras bort och loggan kunna göras vit: ' + JSON.stringify(trim));
   console.log('OK: ritningshuvudet som kort (rubrik, rader i sidomenyn, dela/lägg till rad, logga)');
+  // Bibliotek med symboler (gemensamt för alla projekt).
+  await page.evaluate(() => { document.getElementById('prLib').open = true; });
+  await page.waitForTimeout(300);
+  if (!/Biblioteket är tomt/.test(await page.textContent('#prLibBody'))) fail('Tomt bibliotek ska förklaras');
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAADUlEQVR4nGP4z8AARAAI/gH/xp559wAAAABJRU5ErkJggg==', 'base64');
+  page.once('dialog', d => d.accept('Säkerhet'));
+  await page.setInputFiles('#prLibInput', [{ name: 'AED_hjartstartare.png', mimeType: 'image/png', buffer: png }]);
+  await page.waitForTimeout(800);
+  const lib = JSON.parse(store.get('library/print_symbols.json') || '[]');
+  if (lib.length !== 1 || lib[0].name !== 'AED hjartstartare' || lib[0].cat !== 'Säkerhet' || !/^library\/print\//.test(lib[0].path) || Math.abs(lib[0].ar - 2) > 0.01) fail('Symbolen ska sparas i det gemensamma biblioteket: ' + JSON.stringify(lib));
+  if (!store.has(lib[0].path)) fail('Bilden ska laddas upp till biblioteket');
+  const libUi = await page.$$eval('#prLibBody .pr-lib-item', b => b.map(x => x.textContent.trim()));
+  if (libUi.length !== 1 || !/AED/.test(libUi[0]) || !/Säkerhet/i.test(await page.textContent('#prLibBody'))) fail('Biblioteket ska visa symbolen under sin kategori: ' + JSON.stringify(libUi));
+  const n0 = await page.evaluate(() => pr.tpl.elements.length);
+  await page.click('#prLibBody .pr-lib-item .pr-lib-name');
+  const added = await page.evaluate(() => { const e = pr.tpl.elements[pr.tpl.elements.length - 1]; return { n: pr.tpl.elements.length, type: e.type, path: e.path, w: e.w, h: e.h, sel: pr.sels[0] === e.id }; });
+  if (added.n !== n0 + 1 || added.type !== 'image' || added.path !== lib[0].path || added.w !== 25 || Math.abs(added.h - 12.5) > 0.1 || !added.sel) fail('Klick ska lägga in symbolen som bild: ' + JSON.stringify(added));
+  // Ta bort ur biblioteket (bilden i layouten ligger kvar).
+  page.once('dialog', d => d.accept());
+  await page.hover('#prLibBody .pr-lib-item'); await page.click('#prLibBody .pr-lib-del');
+  await page.waitForTimeout(400);
+  if (JSON.parse(store.get('library/print_symbols.json')).length !== 0) fail('Symbolen ska kunna tas bort ur biblioteket');
+  // Spara en markerad bild i biblioteket.
+  page.once('dialog', d => d.accept('WC'));
+  await page.click('#prLibSaveSel'); await page.waitForTimeout(400);
+  const lib2 = JSON.parse(store.get('library/print_symbols.json'));
+  if (lib2.length !== 1 || lib2[0].name !== 'WC' || lib2[0].path !== lib[0].path) fail('Markerad bild ska kunna sparas i biblioteket: ' + JSON.stringify(lib2));
+  await page.evaluate(() => { pr.tpl.elements.pop(); document.getElementById('prLib').open = false; });
+  console.log('OK: bibliotek med symboler – ladda upp, kategori, lägg in med ett klick, ta bort, spara markerad bild');
   // Text i en låg ruta (t.ex. rubriken TIDPLAN) ska komma med i PDF:en, som i layouten.
   const pdfTexts = await page.evaluate(async () => {
     const texts = [];
