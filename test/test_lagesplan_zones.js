@@ -234,6 +234,25 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (await page.evaluate(() => plan.zones.some(z => z.code === 'PM42'))) fail('En zon helt inuti en annan ska inte skapas: ' + JSON.stringify(await page.evaluate(() => plan.zones.map(z => [z.code, z.polys]))));
   console.log('OK: zoner fäster mot varandras hörn och kanter och klipps så att de aldrig överlappar');
 
+  // 6d) Zonerna i lagerhanteraren: fäll ut, släck/tänd per zon, klick markerar.
+  await page.evaluate(() => { selectZone(null); showTab('work'); renderZones(); renderLayerPanel(); });
+  if (await page.locator('#layerList .zone-layer-row:not(.hidden)').count()) fail('Zonraderna ska vara ihopfällda från början');
+  await page.click('#layerList [data-ul="__zones"]');
+  const zl = await page.$$eval('#layerList .zone-layer-row:not(.hidden) .ln', r => r.map(x => x.textContent.trim()));
+  if (zl.length !== 2 || !/PM40/.test(zl[0]) || !/PM41/.test(zl[1])) fail('Lagret Zoner ska fällas ut med en rad per zon: ' + JSON.stringify(zl));
+  await page.uncheck('#layerList .zone-layer-row[data-zone="A"] .zl-vis'); await page.waitForTimeout(200);
+  if (!(await page.evaluate(() => plan.zones.find(z => z.id === 'A').style.hidden))) fail('Kryssrutan ska släcka zonen');
+  if (!(await page.locator('#layerList .zone-layer-row[data-zone="A"]').evaluate(r => r.classList.contains('off')))) fail('Släckt zon ska synas som släckt i listan');
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(200);
+  if (await page.evaluate(() => !!(plan.zones.find(z => z.id === 'A').style || {}).hidden)) fail('Ctrl+Z ska tända zonen igen');
+  if (!(await page.isChecked('#layerList .zone-layer-row[data-zone="A"] .zl-vis'))) fail('Listan ska följa med när zonen tänds igen');
+  await page.click('#layerList .zone-layer-row[data-zone="A"] .ln'); await page.waitForTimeout(150);
+  if (await page.evaluate(() => selectedZoneId) !== 'A') fail('Klick på zonraden ska markera zonen');
+  // Ny zon syns direkt i listan.
+  await page.evaluate(() => { plan.zones.push({ id: 'C', code: 'PM43', polys: [[[1000, 400], [1100, 400], [1100, 500]]], labels: [] }); renderZones(); });
+  if (!(await page.locator('#layerList .zone-layer-row[data-zone="C"]').count())) fail('En ny zon ska dyka upp i lagerlistan');
+  console.log('OK: zonerna i lagerhanteraren – fäll ut, släck/tänd per zon, klick markerar');
+
   // 7) Uppladdningsdatum för DXF – diskret (syns vid hovring).
   await page.evaluate(() => { siteItems.push({ id: 'c1', type: 'cad', name: 'Ritning', path: 'x', created_at: '2026-09-30T08:15:00Z', by: 'Victor', colorMode: 'orig', layers: [{ name: 'A', color: '#ff0000', n: 1 }], stats: { lines: 1, texts: 0, kb: 1 } }); showTab('work'); renderLayerPanel(); });
   const dt = page.locator('.layer-row[data-layer="cad:c1"] .cad-date');

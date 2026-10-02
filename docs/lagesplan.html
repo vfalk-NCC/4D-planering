@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261002104242"></script>
+<script src="github-storage.js?v=20261002111740"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -163,6 +163,14 @@
   .layer-row.obj-item-row .oi-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(0,0,0,.2); }
   .layer-row.obj-item-row button { height: 22px; min-width: 22px; padding: 0; border: none; background: none; font-size: 13px; }
   .layer-row.obj-item-row button:hover { background: var(--panel-2); }
+  .layer-row.zone-layer-row { grid-template-columns: 18px 12px 1fr 22px; padding-left: 28px; gap: 6px; }
+  .layer-row.zone-layer-row.in-folder { padding-left: 42px; }
+  .layer-row.zone-layer-row .ln { cursor: pointer; } .layer-row.zone-layer-row .ln:hover { text-decoration: underline; }
+  .layer-row.zone-layer-row.off .ln { opacity: .45; }
+  .layer-row.zone-layer-row.sel { background: #e8f0ff; }
+  .layer-row.zone-layer-row .zl-sw { width: 10px; height: 10px; border-radius: 2px; border: 1px solid rgba(0,0,0,.25); }
+  .layer-row.zone-layer-row button { height: 22px; min-width: 22px; padding: 0; border: none; background: none; font-size: 13px; }
+  .layer-row.zone-layer-row button:hover { background: var(--panel-2); }
   .layer-row .ul-toggle { width: 16px; padding: 0; color: var(--muted); }
   .layer-row .blend { grid-column: 2 / 5; font-size: 11px; color: var(--muted); display: flex; gap: 4px; align-items: center; margin: 0; }
   #sitePop { position: absolute; z-index: 15; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(15,23,42,.2); padding: 12px 14px; width: 280px; font-size: 12px; }
@@ -997,22 +1005,22 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261002104242"></script>
-<script src="lagesplan-tools.js?v=20261002104242"></script>
-<script src="lagesplan-layers.js?v=20261002104242"></script>
-<script src="lagesplan-views.js?v=20261002104242"></script>
-<script src="lagesplan-film.js?v=20261002104242"></script>
-<script src="lagesplan-cad.js?v=20261002104242"></script>
-<script src="lagesplan-vecpdf.js?v=20261002104242"></script>
-<script src="lagesplan-print.js?v=20261002104242"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261002104242"></script>
-<script src="lagesplan-objmarks.js?v=20261002104242"></script>
-<script src="lagesplan-objlist.js?v=20261002104242"></script>
-<script src="lagesplan-zones.js?v=20261002104242"></script>
-<script src="lagesplan-daily.js?v=20261002104242"></script>
-<script src="lagesplan-gps.js?v=20261002104242"></script>
-<script src="lagesplan-weather.js?v=20261002104242"></script>
-<script src="lagesplan-touch.js?v=20261002104242"></script>
-<script src="lagesplan-keys.js?v=20261002104242"></script>
+<script src="lagesplan.js?v=20261002111740"></script>
+<script src="lagesplan-tools.js?v=20261002111740"></script>
+<script src="lagesplan-layers.js?v=20261002111740"></script>
+<script src="lagesplan-views.js?v=20261002111740"></script>
+<script src="lagesplan-film.js?v=20261002111740"></script>
+<script src="lagesplan-cad.js?v=20261002111740"></script>
+<script src="lagesplan-vecpdf.js?v=20261002111740"></script>
+<script src="lagesplan-print.js?v=20261002111740"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261002111740"></script>
+<script src="lagesplan-objmarks.js?v=20261002111740"></script>
+<script src="lagesplan-objlist.js?v=20261002111740"></script>
+<script src="lagesplan-zones.js?v=20261002111740"></script>
+<script src="lagesplan-daily.js?v=20261002111740"></script>
+<script src="lagesplan-gps.js?v=20261002111740"></script>
+<script src="lagesplan-weather.js?v=20261002111740"></script>
+<script src="lagesplan-touch.js?v=20261002111740"></script>
+<script src="lagesplan-keys.js?v=20261002111740"></script>
 </body>
 </html>

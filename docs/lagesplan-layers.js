@@ -1741,7 +1741,10 @@ function renderLayerPanel() {
   rowHtml.pdf = opts => layerRow("pdf", name("pdf", "fx-name", "📄"), {
     extra: orthos().length ? `<label class="blend"><input type="checkbox" class="lr-mult"${layerState.pdfMultiply !== false ? " checked" : ""} /> Genomskinlig vit bakgrund över fotot</label>` : "", ...opts
   });
-  rowHtml.zones = opts => layerRow("zones", name("zones", "fx-name", "🟧"), opts);
+  // Zonerna kan fällas ut: en rad per zon med tänd/släck (lagesplan-zones.js).
+  const zList = typeof zoneLayerList === "function" ? zoneLayerList() : [], zOpen = zList.length > 0 && layerState["ulopen:__zones"] === true;
+  rowHtml.zones = opts => layerRow("zones", `${zList.length ? `<button class="cad-toggle ul-toggle" data-ul="__zones" title="Visa zonerna">${zOpen ? "▾" : "▸"}</button>` : ""}${name("zones", "fx-name", "🟧")}${zList.length ? ` <small>${zList.length}</small>` : ""}`, opts)
+    + (zList.length ? zoneLayerRowsHtml(zList, { hidden: opts.hidden || !zOpen, inFolder: opts.inFolder }) : "");
   // 3D-objekt kan fällas ut: en rad per aktivitet (lagesplan-objlist.js).
   const objFams = typeof objListFamilies === "function" ? objListFamilies() : [], objOpen = objFams.length > 0 && layerState["ulopen:__objects"] === true;
   rowHtml.objects = opts => layerRow("objects", `${objFams.length ? `<button class="cad-toggle ul-toggle" data-ul="__objects" title="Visa aktiviteterna (3D-objekten) på planen">${objOpen ? "▾" : "▸"}</button>` : ""}${name("objects", "fx-name", "🔷")}${objFams.length ? ` <small>${objFams.length}</small>` : ""}`, opts)

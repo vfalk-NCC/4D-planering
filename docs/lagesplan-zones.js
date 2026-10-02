@@ -657,3 +657,66 @@ function clipZoneAgainstOthers(z) {
   if (h) { h.textContent = msg; h.classList.remove("hidden"); clearTimeout(clipZoneAgainstOthers.t); clipZoneAgainstOthers.t = setTimeout(() => { if (!zonePoly && !zoneLabelPlace) h.classList.add("hidden"); }, 7000); }
   return true;
 }
+
+// ---------------------------------------------------------------------
+// Zonerna i lagerhanteraren (Victors önskemål 2026-10-02): lagret "Zoner"
+// fälls ut med en rad per zon – kryssruta tänder/släcker, klick markerar
+// zonen på planen, 🎯 markerar zonens objekt i 3D.
+// ---------------------------------------------------------------------
+function zoneLayerList() {
+  if (!plan) return [];
+  return (plan.zones || []).slice().sort((a, b) => String(a.code).localeCompare(String(b.code), "sv", { numeric: true }));
+}
+function zoneLayerRowsHtml(zones, opts = {}) {
+  return zones.map(z => {
+    const off = !!(z.style && z.style.hidden), st = z._status || zoneStatus(z);
+    const zs = { ...ZONE_STYLE_DEFAULT, ...(z.style || {}) };
+    const col = zs.fill === "custom" ? zs.fillColor : st.phase === "ingen" ? "#fff" : phaseColor(st.phase);
+    const label = (z.code || "?") + (z.name ? " " + z.name : "");
+    return `<div class="layer-row sub zone-layer-row${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}${off ? " off" : ""}${z.id === selectedZoneId ? " sel" : ""}" data-zone="${escHtml(z.id)}">
+      <input type="checkbox" class="zl-vis"${off ? "" : " checked"} title="${off ? "Tänd" : "Släck"} zonen" />
+      <span class="zl-sw" style="background:${escHtml(col)}"></span>
+      <span class="ln" title="${escHtml(label)} – ${escHtml(PHASE_LABELS[st.phase] || "")}. Klicka för att markera på planen.">${escHtml(label)}</span>
+      <button type="button" class="zl-3d" title="Markera zonens objekt i 3D"${st.items.length ? "" : " disabled"}>🎯</button>
+    </div>`;
+  }).join("");
+}
+function setZoneHidden(ids, hide) {
+  const zs = (plan.zones || []).filter(z => ids.includes(z.id));
+  if (!zs.length) return;
+  zoneSnapshot(hide ? "Släck zon" : "Tänd zon");
+  zs.forEach(z => { z.style = { ...(z.style || {}), hidden: !!hide }; });
+  if (hide && zs.some(z => z.id === selectedZoneId) && typeof selectZone === "function") selectZone(null);
+  renderZones(); schedulePlanSave();
+  if (typeof renderLayerPanel === "function") renderLayerPanel();
+  setSaveStatus(`${hide ? "Släckte" : "Tände"} ${zs.length === 1 ? zs[0].code : zs.length + " zoner"} (Ctrl+Z ångrar).`);
+}
+function bindZoneLayerRows(el) {
+  el.querySelectorAll(".zone-layer-row").forEach(row => {
+    const id = row.dataset.zone;
+    const z = () => (plan.zones || []).find(x => x.id === id);
+    row.querySelector(".zl-vis").onclick = e => e.stopPropagation();
+    row.querySelector(".zl-vis").onchange = e => setZoneHidden([id], !e.target.checked);
+    row.querySelector(".zl-3d").onclick = e => { e.stopPropagation(); if (z()) selectZoneIn3d(z()); };
+    row.querySelector(".ln").onclick = e => {
+      e.stopPropagation();
+      const zz = z(); if (!zz) return;
+      if (zz.style && zz.style.hidden) { setSaveStatus(`${zz.code} är släckt – kryssa i rutan för att tända den.`); return; }
+      selectZone(id, true);
+      renderLayerPanel();
+    };
+  });
+}
+document.addEventListener("DOMContentLoaded", () => {
+  const orig = renderLayerPanel;
+  renderLayerPanel = function () { const r = orig.apply(this, arguments); const el = $("layerList"); if (el) bindZoneLayerRows(el); return r; };
+  // Zonerna ändras (ny, borttagen, nytt namn, dold, ny fas): uppdatera lagerlistan.
+  let sig = "";
+  const orl = renderZoneList;
+  renderZoneList = function () {
+    const r = orl.apply(this, arguments);
+    const s = zoneLayerList().map(z => [z.id, z.code, z.name, z.style && z.style.hidden, z.style && z.style.fill, z.style && z.style.fillColor, (z._status || {}).phase, (z._status || {}).items ? z._status.items.length : 0].join("|")).join(";") + "#" + selectedZoneId;
+    if (s !== sig) { sig = s; renderLayerPanel(); }
+    return r;
+  };
+});
