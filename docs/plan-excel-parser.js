@@ -183,6 +183,8 @@ function parsePlanSheet(rows, sheetName) {
         actualEndDate: e.actualEnd,
         progress: weighted(e.children, e.progress),
         subActivities: subs,
+        // Excelraderna (för kommentarerna i filen, se plan-excel-comments.js).
+        sheet: sheetName, excelRows: [e.row, ...e.children.map(x => x.row)],
       });
       return;
     }
@@ -205,13 +207,14 @@ function parsePlanSheet(rows, sheetName) {
         startDate: e.start, endDate: e.end,
         baselineStartDate: e.baselineStart, baselineEndDate: e.baselineEnd,
         actualStartDate: e.actualStart, actualEndDate: e.actualEnd,
-        subActivities: [], _rows: [],
+        subActivities: [], _rows: [], sheet: sheetName, excelRows: [],
       };
       items.set(groupKey, it);
       result.push(it);
     }
     const it = items.get(groupKey);
     it._rows.push(e);
+    it.excelRows.push(e.row);
     if (e.matched) it.subActivities.push(subOf(e, null));
   });
 

@@ -3366,6 +3366,8 @@ async function onImportPlanExcel() {
       return;
     }
     planImportDiff = buildPlanImportDiff(parsedItems);
+    // Kommentarerna i Excel-filen (lösta trådar hoppas över).
+    planImportDiff.excelComments = typeof readExcelComments === "function" ? matchExcelComments(readExcelComments(buf), parsedItems) : null;
     renderPlanImportPreview(planImportDiff);
     toggle("planImportPreviewDialog", true);
     status.innerText = "";
@@ -3464,6 +3466,14 @@ function renderPlanImportPreview(diff) {
   } else {
     removedEl.classList.add("hidden");
     removedEl.innerHTML = "";
+  }
+
+  const xc = diff.excelComments;
+  if (xc && (xc.list.length || xc.resolved || xc.unmatched)) {
+    const replies = xc.list.filter(x => x.c.parentId).length;
+    summaryEl.innerHTML += `<label class="check plan-import-comments"><input type="checkbox" id="planImportComments"${xc.list.length ? " checked" : " disabled"} />
+      💬 <span><strong>${xc.list.length}</strong> kommentar${xc.list.length === 1 ? "" : "er"} från Excel${replies ? ` (varav ${replies} svar)` : ""} läggs in på aktiviteterna
+      <span class="hint">${[xc.resolved ? `${xc.resolved} i lösta trådar hoppas över` : "", xc.unmatched ? `${xc.unmatched} saknar aktivitet på raden` : "", "redan inlagda läggs inte in igen"].filter(Boolean).join(" · ")}</span></span></label>`;
   }
 
   const samples = diff.toCreate.slice(0, 3).map(m => m.parsed);
@@ -3591,10 +3601,11 @@ async function onConfirmPlanImport() {
   confirmMsgEl.innerText = "Importerar...";
   try {
     await commitPlanImport(planImportDiff);
-    const count = planImportDiff.parsedItems.length, removed = planImportRemoveIds(planImportDiff).size;
+    const count = planImportDiff.parsedItems.length, removed = planImportRemoveIds(planImportDiff).size, nc = planImportDiff.commentsAdded || 0;
     planImportDiff = null;
     toggle("planImportPreviewDialog", false);
-    document.getElementById("planImportStatus").innerText = `Import klar – ${count} objekt${removed ? `, ${removed} borttagna (finns i säkerhetskopian)` : ""}.`;
+    document.getElementById("planImportStatus").innerText = `Import klar – ${count} objekt${removed ? `, ${removed} borttagna (finns i säkerhetskopian)` : ""}${nc ? `, ${nc} kommentarer från Excel` : ""}.`;
+    if (typeof refreshCommentCounts === "function") { try { await refreshCommentCounts(); } catch (e) { /* ignorera */ } }
     document.getElementById("planExcelFile").value = "";
     await refreshItems();
     await refreshActivities();
@@ -3721,8 +3732,39 @@ async function commitPlanImport(diff) {
     try { await deleteCommentsForItems([...removeIds]); await deleteActivitiesForItems([...removeIds]); }
     catch (e) { console.warn("Kunde inte städa kommentarer/delaktiviteter", e); }
   }
+  // Kommentarerna från Excel (om rutan är ikryssad).
+  const cb = document.getElementById("planImportComments");
+  if (diff.excelComments && diff.excelComments.list.length && (!cb || cb.checked)) {
+    const idByKey = new Map();
+    incomingRows.forEach(r => { if (r.source_key && !idByKey.has(r.source_key)) idByKey.set(r.source_key, r.id); });
+    try { diff.commentsAdded = await importExcelComments(diff.excelComments.list, idByKey); }
+    catch (e) { console.warn("Kunde inte lägga in kommentarerna från Excel", e); diff.commentsError = e.message; }
+  }
 
   return after;
+}
+
+/* Lägger in Excel-kommentarerna (EN skrivning). Varje kommentar får sitt
+   Excel-id (excel_id), så en ny import av samma fil inte lägger in den igen. */
+async function importExcelComments(list, idByKey) {
+  let added = 0;
+  await ghWriteJSON(settings.githubToken, commentsPath(), arr => {
+    const cur = Array.isArray(arr) ? arr : [];
+    const byExcel = new Map(cur.filter(c => c.excel_id).map(c => [c.excel_id, c.id]));
+    const next = [...cur];
+    list.forEach(({ c, sourceKey }) => {
+      const itemId = idByKey.get(sourceKey);
+      if (!itemId || byExcel.has(c.id)) return;
+      const parent = c.parentId ? byExcel.get(c.parentId) : null;
+      if (c.parentId && !parent) return;
+      const at = c.at && !isNaN(new Date(c.at)) ? new Date(c.at).toISOString() : new Date().toISOString();
+      const row = { id: ghNewId(), created_at: at, plan_item_id: itemId, parent_comment_id: parent || null, author: c.author || "Excel", body: c.text.trim(), excel_id: c.id, source: "excel" };
+      byExcel.set(c.id, row.id);
+      next.push(row); added++;
+    });
+    return next;
+  }, `Kommentarer från Excel`);
+  return added;
 }
 
 /**
