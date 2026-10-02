@@ -470,6 +470,7 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
       break;
     }
     case "qr": {
+      if (el.frame) { drawQrCard(ctx, el, tpl, X, Y, W, H); break; }
       const m = qrMatrix(el.text);
       ctx.fillStyle = "#fff"; ctx.fillRect(X, Y, W, H);
       if (!m) break;
@@ -483,6 +484,53 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
     case "title": drawTitleBlock(ctx, el, tpl, X, Y, W, H, pt, k, u); break;
   }
   ctx.restore();
+}
+/* QR-kod i ram med egen text (Victors önskemål 2026-10-02): färgat kort med
+   rubrik, underrubrik, QR-koden i en vit ruta och en rad längst ner med en
+   mobil. Texterna krymper så att de ryms; {datum} m.fl. fungerar. */
+const QR_CARD_DEFAULTS = { frameColor: "#1f3b73", title: "AKTUELL TIDPLAN", subtitle: "Skanna för detaljer", footer: "Öppna i mobilen eller iPad", phone: true };
+function drawQrCard(ctx, el, tpl, X, Y, W, H) {
+  const o = { ...QR_CARD_DEFAULTS, ...el };
+  const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+  const fit = (text, maxW, fs, weight) => { ctx.font = `${weight} ${fs}px Helvetica, Arial, sans-serif`; const w = ctx.measureText(text).width; return w > maxW ? fs * maxW / w : fs; };
+  const p = W * 0.07;
+  ctx.fillStyle = o.frameColor || "#1f3b73"; rr(X, Y, W, H, W * 0.045); ctx.fill();
+  ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+  let y = Y + p * 0.9;
+  const title = fillText(o.title || "", tpl), sub = fillText(o.subtitle || "", tpl), foot = fillText(o.footer || "", tpl);
+  if (title) { const fs = fit(title, W - 2 * p, W * 0.115, "bold"); ctx.font = `bold ${fs}px Helvetica, Arial, sans-serif`; ctx.fillText(title, X + W / 2, y); y += fs * 1.2; }
+  if (sub) { const fs = fit(sub, W - 2 * p, W * 0.085, "600"); ctx.font = `600 ${fs}px Helvetica, Arial, sans-serif`; ctx.fillText(sub, X + W / 2, y); y += fs * 1.25; }
+  y += p * 0.35;
+  const footH = foot || o.phone ? W * 0.26 : 0;
+  const side = Math.max(10, Math.min(W - 2 * p, Y + H - y - footH - p * (footH ? 0.5 : 1)));
+  const bx = X + (W - side) / 2;
+  ctx.fillStyle = "#ffffff"; rr(bx, y, side, side, side * 0.03); ctx.fill();
+  const m = qrMatrix(el.text);
+  if (m) {
+    const n = m.length, cell = side * 0.9 / n, ox = bx + (side - cell * n) / 2, oy = y + (side - cell * n) / 2;
+    ctx.fillStyle = "#000";
+    m.forEach((row, r) => row.forEach((d, c) => { if (d) ctx.fillRect(ox + c * cell, oy + r * cell, cell + 0.4, cell + 0.4); }));
+  }
+  if (!footH) return;
+  const fy = y + side + p * 0.45, fh = Y + H - fy - p * 0.5;
+  if (fh <= 4) return;
+  let tx = X + p, tw = W - 2 * p;
+  if (o.phone) {
+    // Mobil: rundad kontur med skärm och hemknapp.
+    const ph = fh * 0.92, pw = ph * 0.56, px = X + p * 1.1, py = fy + (fh - ph) / 2, lw = Math.max(1, pw * 0.09);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = lw; rr(px, py, pw, ph, pw * 0.18); ctx.stroke();
+    ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(px + pw / 2, py + ph - pw * 0.2, pw * 0.07, 0, Math.PI * 2); ctx.fill();
+    ctx.fillRect(px + pw * 0.38, py + pw * 0.12, pw * 0.24, lw * 0.6);
+    tx = px + pw + p * 0.8; tw = X + W - p - tx;
+  }
+  if (!foot) return;
+  let fs = Math.min(fh * 0.34, W * 0.085);
+  ctx.font = `${fs}px Helvetica, Arial, sans-serif`;
+  let lines = wrapLines(ctx, foot, tw);
+  while (lines.length * fs * 1.2 > fh && fs > 2) { fs *= 0.9; ctx.font = `${fs}px Helvetica, Arial, sans-serif`; lines = wrapLines(ctx, foot, tw); }
+  ctx.fillStyle = "#ffffff"; ctx.textAlign = o.phone ? "left" : "center"; ctx.textBaseline = "top";
+  const ty = fy + (fh - lines.length * fs * 1.2) / 2;
+  lines.forEach((l, i) => ctx.fillText(l, o.phone ? tx : X + W / 2, ty + i * fs * 1.2));
 }
 /* Förklaringens rader: faser, etablering som finns på planen, CAD, egna. */
 /* Förklaringens rader. Varje rad har en nyckel så att den kan justeras i
@@ -1064,7 +1112,9 @@ function renderPrintProps(onlyPos) {
       ${el.legHide || el.legText || el.legColor || el.legOrder ? `<button type="button" id="prLegReset" style="margin-top:4px;">↺ Återställ raderna</button>` : ""}`;
   if (el.type === "title") html += `<label>Rader <span class="muted">– "ETIKETT: värde", celler med |</span></label><textarea data-f="rows" rows="9" style="font-family:ui-monospace,Consolas,monospace;font-size:11px;">${escHtml(el.rows || "")}</textarea>
       <div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}</div><div class="hint">Platshållare: {plan} {datum} {idag} {skala} {format} {användare} {utskriven}</div>`;
-  if (el.type === "qr") html += inp("text", "Länk eller text");
+  if (el.type === "qr") html += inp("text", "Länk eller text") + chk("frame", "<b>Ram med egen text</b>")
+    + (el.frame ? inp("title", "Rubrik") + inp("subtitle", "Underrubrik") + inp("footer", "Text längst ner")
+      + `<div class="pr-grid4">${color("frameColor", "Ramens färg")}</div>${chk("phone", "Mobil-ikon")}<div class="hint">Platshållare: {plan} {datum} {idag}</div>` : "");
   if (el.type === "rect") html += `<div class="pr-grid4">${color("stroke", "Linje")}${color("fill", "Fyllning")}${num("lw", "Tjocklek (mm)", "0.05")}</div>`;
   if (el.type === "line") html += `<div class="pr-grid4">${color("stroke", "Färg")}${num("lw", "Tjocklek (mm)", "0.05")}</div><div class="hint">Höjd 0 = vågrät linje, bredd 0 = lodrät.</div>`;
   if (el.type === "north") html += `<label>Utseende</label><div class="pr-north">${Object.entries(NORTH_STYLES).map(([s, n]) => `<button type="button" data-north="${s}" class="${(el.style || "rose4") === s ? "on" : ""}" title="${n}"><img src="${northThumb(s, el.color)}" alt="" /><span>${n}</span></button>`).join("")}</div>
@@ -1084,6 +1134,12 @@ function renderPrintProps(onlyPos) {
       // Beskärning ändrar bildens proportioner: rutan följer med (bredden behålls).
       if (el.type === "image" && /^crop/.test(f)) { const im = printImage(el.path); if (im) { printImageSource(el, im); el.h = Math.round(el.w / el.ar * 10) / 10; } }
       if (el.type === "image" && f === "knockout") renderPrintProps();
+      // Ram runt QR-koden: standardtexter första gången, och kortets proportioner.
+      if (el.type === "qr" && f === "frame") {
+        if (el.frame) { Object.entries(QR_CARD_DEFAULTS).forEach(([k, v]) => { if (el[k] === undefined) el[k] = v; }); el.h = Math.round(el.w * 1.47 * 10) / 10; }
+        else el.h = el.w;
+        renderPrintProps();
+      }
       drawPrintPage();
     });
   });

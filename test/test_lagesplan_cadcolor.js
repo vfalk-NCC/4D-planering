@@ -131,6 +131,22 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (!(Math.abs(pl.zoomed - 1.25) < 1e-6) || pl.lbl !== '125 %' || !pl.back) fail('Zoom i layouten: ' + JSON.stringify(pl));
   if (!pl.txt.some(t => /^SKALA 1:\d+ \(A1\)$/.test(t))) fail('Skalstocken ska visa bladformatet: ' + JSON.stringify(pl.txt));
   console.log('OK: lås ritningen i utskriftslayouten, zoom i layouten, skalstocken visar (A1)');
+  // QR-kod i ram med egen text.
+  const qr = await page.evaluate(() => {
+    const el = { id: 'q1', type: 'qr', x: 20, y: 20, w: 40, h: 40, text: 'https://x' };
+    pr.tpl.elements.push(el); setSel(['q1']); renderPrintProps();
+    const cb = document.querySelector('#prProps [data-f="frame"]'); cb.checked = true; cb.dispatchEvent(new Event('change'));
+    const fields = ['title', 'subtitle', 'footer', 'frameColor', 'phone'].map(f => !!document.querySelector(`#prProps [data-f="${f}"]`));
+    const t = document.querySelector('#prProps [data-f="title"]'); t.value = 'TIDPLAN {plan}'; t.dispatchEvent(new Event('input'));
+    const texts = []; const ctx = new Proxy({}, { get: (o, k) => k === 'measureText' ? (s => ({ width: String(s).length * 5 })) : k === 'fillText' ? (s => texts.push(s)) : (() => {}), set: () => true });
+    drawElement(ctx, el, pr.tpl, 4, 1, {});
+    return { frame: el.frame, h: el.h, title: el.title, defaults: [el.subtitle, el.footer, el.frameColor, el.phone], fields, texts };
+  });
+  if (!qr.frame || Math.abs(qr.h - 58.8) > 0.1 || !qr.fields.every(Boolean)) fail('Ram med egen text ska slås på med fält och kortets proportioner: ' + JSON.stringify(qr));
+  if (qr.defaults[0] !== 'Skanna för detaljer' || !qr.defaults[3]) fail('Ramen ska få standardtexter: ' + JSON.stringify(qr));
+  if (!qr.texts.includes('TIDPLAN P') || !qr.texts.includes('Skanna för detaljer')) fail('Rubrik (med platshållare) och underrubrik ska ritas: ' + JSON.stringify(qr.texts));
+  await page.evaluate(() => { pr.tpl.elements = pr.tpl.elements.filter(e => e.id !== 'q1'); });
+  console.log('OK: QR-kod i ram med egen rubrik, underrubrik, text och färg');
   // Text i en låg ruta (t.ex. rubriken TIDPLAN) ska komma med i PDF:en, som i layouten.
   const pdfTexts = await page.evaluate(async () => {
     const texts = [];
