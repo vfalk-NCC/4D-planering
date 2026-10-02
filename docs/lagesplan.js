@@ -1564,12 +1564,22 @@ function showTip(e) {
   }
   const z = zoneAt(pdfPt);
   if (!z) { tip.classList.add("hidden"); return; }
+  // Kort sammanfattning (Victors önskemål 2026-10-02): status, antal per fas
+  // och bara det som är försenat – inte hela listan.
   const st = z._status || zoneStatus(z);
-  const lines = [`${z.code} – ${PHASE_LABELS[st.phase]}${st.progress != null ? ` · ${st.progress} % klart` : ""}`];
-  if (!st.items.length) lines.push("Inga planerade objekt kopplade (klicka för att koppla).");
-  st.items.slice(0, 8).forEach(it => lines.push(`• ${it.object_name || it.activity || it.object_id} – ${it.status || ""}${it.start_date ? ` (${it.start_date} → ${it.end_date || "?"})` : ""}`));
-  if (st.items.length > 8) lines.push(`… och ${st.items.length - 8} till`);
-  tip.textContent = lines.join("\n");
+  const dot = ph => `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${phaseColor(ph)};margin-right:4px;"></span>`;
+  let html = `<b>${escHtml(z.code)}${z.name ? " " + escHtml(z.name) : ""}</b>`;
+  if (!st.items.length) html += `<div style="opacity:.8;">Inga aktiviteter kopplade.</div>`;
+  else {
+    const day = $("dateInput").value || todayIso(), warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
+    const ph = new Map(st.items.map(it => [it, computeItemPhase(it, day, warn) || fallbackPhase(it)]));
+    const counts = PHASE_ORDER.filter(p => p !== "ingen").map(p => [p, [...ph.values()].filter(x => x === p).length]).filter(([, n]) => n);
+    html += `<div>${dot(st.phase)}${escHtml(PHASE_LABELS[st.phase])}${st.progress != null ? ` · ${st.progress} % klart` : ""}</div>`;
+    html += `<div style="opacity:.8;font-size:.92em;">${counts.map(([p, n]) => `${n} ${escHtml(PHASE_LABELS[p].toLowerCase())}`).join(" · ")}</div>`;
+    const late = [...new Set(st.items.filter(it => ph.get(it) === "forsenad").map(it => it.object_name || it.activity || ""))].filter(Boolean);
+    if (late.length) html += `<div style="margin-top:3px;">${dot("forsenad")}Försenat: ${escHtml(late.slice(0, 5).join(", "))}${late.length > 5 ? ` +${late.length - 5}` : ""}</div>`;
+  }
+  tip.innerHTML = html;
   place();
 }
 

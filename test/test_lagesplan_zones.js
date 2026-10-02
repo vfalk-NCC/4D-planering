@@ -308,6 +308,22 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   const lpRule = await page.evaluate(() => { const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
     return [computeItemPhase({ start_date: d(-3), end_date: d(10), status: 'pagaende', progress: 0 }, d(0), 0), computeItemPhase({ start_date: d(-3), end_date: d(10), progress: 5 }, d(0), 0)].join(','); });
   if (lpRule !== 'forsenad,pagaende') fail('Lägesplanen: startad utan framdrift = försenad, med framdrift = pågående: ' + lpRule);
+  // Hovring/tryck på en zon: kort sammanfattning, inte hela listan.
+  const tipHtml = await page.evaluate(() => {
+    const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+    const mk = (i, sd, ed, pr, st) => ({ id: 'tp' + i, object_name: 'K' + i, start_date: d(sd), end_date: d(ed), progress: pr, status: st });
+    const its = [mk(1, -20, -10, 100, 'klar'), mk(2, -5, 5, 40, 'pagaende'), mk(3, -5, 5, 0, 'planerad'), mk(4, 5, 9, 0, 'planerad')];
+    for (let i = 5; i < 20; i++) its.push(mk(i, 5, 9, 0, 'planerad'));
+    const z = plan.zones.find(x => x.id === 'A'); z.style = { ...(z.style || {}), hidden: false }; z.name = 'Sikthall';
+    z._status = { items: its, phase: 'forsenad', progress: 30 };
+    const realZs = zoneStatus; zoneStatus = zz => zz === z ? z._status : realZs(zz);
+    const vp = document.getElementById('viewport'), r = vp.getBoundingClientRect(), sp = stageToScreen(toPx([700, 200]));
+    showTip({ target: vp, clientX: r.left + sp[0], clientY: r.top + sp[1] });
+    zoneStatus = realZs;
+    return document.getElementById('tip').innerText;
+  });
+  if (!/PM40 Sikthall/.test(tipHtml) || !/Försenad · 30 % klart/.test(tipHtml) || !/Försenat: K3/.test(tipHtml)) fail('Zonens sammanfattning: ' + tipHtml);
+  if (/2026-|→|och \d+ till|K19/.test(tipHtml) || tipHtml.split('\n').length > 5) fail('Inte hela listan med datum: ' + tipHtml);
   console.log('OK: WBS-nivåer (avancerat) – överzon räknas fram ur zonerna, visa båda/nivå 1/nivå 2, ångra');
 
   // 7) Uppladdningsdatum för DXF – diskret (syns vid hovring).
