@@ -1058,7 +1058,7 @@ function suggestionsFor(day) {
     if (rows.every(rowDone)) return;
     const phs = rows.map(r => computeItemPhase(r, day, warn));
     const starting = rows.some(r => r.start_date === day);
-    const running = phs.some(p => p === "pagaende" || p === "snart" || p === "forsenad");
+    const running = phs.some(p => p === "pagaende" || p === "forsenad");
     if (!starting && !running) return;
     const inf = famInfo(key, day);
     out.push({ key, inf, starting, late: phs.includes("forsenad"), placed: placed.has(key) });

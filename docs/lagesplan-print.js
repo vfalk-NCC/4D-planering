@@ -502,7 +502,8 @@ function legendItems(el, all) {
 }
 function legendItemsRaw(el) {
   const items = [];
-  if (el.phases) PHASE_ORDER.forEach(ph => items.push({ key: "phase:" + ph, kind: "box", color: ph === "ingen" ? "#ffffff" : phaseColor(ph), dashed: ph === "ingen", label: PHASE_LABELS[ph] }));
+  // Faserna som samma prickar som på kartan (Victors önskemål 2026-10-02), inte bara färgrutor.
+  if (el.phases) PHASE_ORDER.forEach(ph => items.push({ key: "phase:" + ph, kind: "dot", color: ph === "ingen" ? "#ffffff" : phaseColor(ph), dashed: ph === "ingen", label: PHASE_LABELS[ph] }));
   if (el.site) {
     const seen = new Set();
     siteItems.filter(siteShown).forEach(x => {
@@ -542,6 +543,13 @@ function drawLegend(ctx, el, X, Y, W, H, pt) {
     if (it.kind === "box") { ctx.fillRect(x, y - sh / 2, sw, sh); ctx.strokeStyle = "#555"; ctx.lineWidth = Math.max(0.5, fs * 0.06); if (it.dashed) ctx.setLineDash([fs * 0.25, fs * 0.2]); ctx.strokeRect(x, y - sh / 2, sw, sh); }
     else if (it.kind === "area") { ctx.globalAlpha = 0.25; ctx.fillRect(x, y - sh / 2, sw, sh); ctx.globalAlpha = 1; ctx.setLineDash(dash); ctx.strokeRect(x, y - sh / 2, sw, sh); }
     else if (it.kind === "line" || it.kind === "route") { ctx.setLineDash(dash); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + sw, y); ctx.stroke(); if (it.kind === "route") { ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(x + sw, y); ctx.lineTo(x + sw - fs * 0.5, y - fs * 0.3); ctx.lineTo(x + sw - fs * 0.5, y + fs * 0.3); ctx.fill(); } }
+    else if (it.kind === "dot") {
+      // Som 3D-objektens prickar på kartan: färgad rund prick med vit ring (tunn grå kant så ringen syns på vitt papper).
+      const r = sh * 0.62, cx = x + sw / 2;
+      ctx.beginPath(); ctx.arc(cx, y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = r * 0.28; ctx.stroke();
+      ctx.beginPath(); ctx.arc(cx, y, r + r * 0.14, 0, Math.PI * 2); ctx.strokeStyle = "#6b7280"; ctx.lineWidth = Math.max(0.5, r * 0.08); ctx.stroke();
+    }
     else if (it.kind === "circle") { ctx.setLineDash(dash); ctx.beginPath(); ctx.arc(x + sw / 2, y, sh * 0.55, 0, Math.PI * 2); ctx.stroke(); }
     else if (it.kind === "note") { ctx.fillStyle = "#fffbe6"; ctx.fillRect(x, y - sh / 2, sw, sh); ctx.strokeRect(x, y - sh / 2, sw, sh); }
     ctx.restore();

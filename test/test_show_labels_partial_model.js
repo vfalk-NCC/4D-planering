@@ -128,8 +128,8 @@ async function run() {
     // markera flera rader - samma flöde som Victor använder i listan.
     for (let i = 0; i < names.length; i++) {
       const row = page.locator('.item-row', { hasText: names[i] }).first();
-      if (i === 0) await row.click();
-      else await row.click({ modifiers: ['Control'] });
+      if (i === 0) await row.locator('.item-name').click();
+      else await row.locator('.item-name').click({ modifiers: ['Control'] });
     }
   };
 

@@ -25,14 +25,16 @@
 pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 
 const DEFAULT_STATUS_COLORS = {
-  ej_planerad: "#cbd5e1", planerad: "#94a3b8", pagaende: "#f5a623", forsenad: "#e5484d",
-  klar: "#3fb950", pausad: "#a1a1aa", snart: "#eab308", klar_forsenad: "#3b82f6"
+  planerad: "#94a3b8", pagaende: "#f5a623", forsenad: "#e5484d",
+  klar: "#3fb950", pausad: "#a1a1aa"
 };
 const PHASE_LABELS = {
-  planerad: "Ej påbörjad", pagaende: "Pågående", snart: "Snart klar (deadline nära)",
-  forsenad: "Försenad", klar: "Klar", klar_forsenad: "Klar, försenad", ingen: "Ingen koppling"
+  planerad: "Planerad men ej startad", pagaende: "Pågående",
+  forsenad: "Försenad", klar: "Klar", pausad: "Pausad", ingen: "Ingen koppling"
 };
-const PHASE_ORDER = ["planerad", "pagaende", "snart", "forsenad", "klar", "klar_forsenad", "ingen"];
+// Exakt samma fem som i 4D-planeringen (Victor 2026-10-02). "ingen" (zon utan
+// kopplade aktiviteter) ritas men står inte i förklaringen.
+const PHASE_ORDER = ["planerad", "pagaende", "forsenad", "klar", "pausad"];
 const DEFAULT_CODE_PATTERN = "PM\\s*\\d+\\s*[A-Z]?";
 const ZONE_ALPHA = 0.5;
 
@@ -175,7 +177,8 @@ function computeItemPhase(row, atDateStr, warningDays) {
     const today = new Date(new Date().toISOString().slice(0, 10));
     if (actualEnd > today) actualEnd = today;
   }
-  if (actualEnd && actualEnd <= at) return (plannedEnd && actualEnd > plannedEnd) ? "klar_forsenad" : "klar";
+  if (actualEnd && actualEnd <= at) return "klar";
+  if (row.status === "pausad") return "pausad";
   // Framdrift över 0 % = påbörjad (senast i dag), även före planerad start – samma som 4D-planering.
   let actualStart = row.actual_start_date ? new Date(row.actual_start_date) : null;
   if ((Number(row.progress) || 0) > 0 || row.status === "pagaende") {
@@ -183,11 +186,7 @@ function computeItemPhase(row, atDateStr, warningDays) {
     if (!actualStart || actualStart > today) actualStart = actualStart && actualStart < today ? actualStart : (start < today ? start : today);
   }
   if (at < start && !(actualStart && actualStart <= at)) return "planerad";
-  if (plannedEnd) {
-    if (at > plannedEnd) return "forsenad";
-    const daysLeft = Math.round((plannedEnd - at) / 86400000);
-    if (warningDays > 0 && daysLeft <= warningDays) return "snart";
-  }
+  if (plannedEnd && at > plannedEnd) return "forsenad";
   return "pagaende";
 }
 
@@ -198,15 +197,14 @@ function zonePhase(zoneItems, atDate) {
   const warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
   const phases = zoneItems.map(it => computeItemPhase(it, atDate, warn) || fallbackPhase(it));
   if (phases.includes("forsenad")) return "forsenad";
-  const done = p => p === "klar" || p === "klar_forsenad";
-  if (phases.every(done)) return phases.includes("klar_forsenad") ? "klar_forsenad" : "klar";
-  if (phases.some(p => p === "pagaende" || p === "snart" || done(p))) {
-    return phases.includes("snart") && !phases.includes("pagaende") ? "snart" : "pagaende";
-  }
+  const done = p => p === "klar";
+  if (phases.every(done)) return "klar";
+  if (phases.some(p => p === "pagaende" || done(p))) return "pagaende";
+  if (phases.includes("pausad")) return "pausad";
   return "planerad";
 }
 function fallbackPhase(it) {
-  return { klar: "klar", pagaende: "pagaende", forsenad: "forsenad" }[it.status] || "planerad";
+  return { klar: "klar", pagaende: "pagaende", forsenad: "forsenad", pausad: "pausad" }[it.status] || "planerad";
 }
 function zoneProgress(zoneItems) {
   if (!zoneItems.length) return null;
@@ -469,13 +467,13 @@ function drawObjectLabels(ctx, objects, fontPx, scr) {
   const r = scr ? scr.r : objDotRadius(ctx, fontPx);
   const pad = fs * 0.3, gap = r + fs * 0.25;
   // Viktigast först: fokus, försenade, pågående, resten.
-  const rank = ph => ({ forsenad: 0, pagaende: 1, snart: 2 }[ph] ?? 3);
+  const rank = ph => ({ forsenad: 0, pagaende: 1 }[ph] ?? 3);
   const hid = hiddenLabels(), hidIds = new Set(hid.ids), hidActs = new Set(hid.acts);
   const onScreen = !!scr;
   if (onScreen) objLabelBoxes = [];
   const list = objects.map(o => ({ o, ph: computeItemPhase(o.it, at, warn) || fallbackPhase(o.it), f: focusState(o.it) }))
     .filter(x => objLabelText(x.o.it) && !hidIds.has(x.o.it.id) && !hidActs.has(String(x.o.it.activity || "").trim()))
-    .filter(x => which === "all" || (which === "active" && ["pagaende", "forsenad", "snart"].includes(x.ph)) || (which === "late" && x.ph === "forsenad") || (which === "focus" && x.f === true))
+    .filter(x => which === "all" || (which === "active" && ["pagaende", "forsenad"].includes(x.ph)) || (which === "late" && x.ph === "forsenad") || (which === "focus" && x.f === true))
     .sort((a, b) => (b.f === true) - (a.f === true) || rank(a.ph) - rank(b.ph));
   // Prickar som ligger (nästan) på samma ställe – t.ex. form, armering och
   // betong i samma fundament – blir EN etikett, annars blockerar de varandra.

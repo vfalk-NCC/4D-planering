@@ -61,7 +61,7 @@ const TODAY = iso(0);
 const TEST_ITEMS_ROWS = [
   { id: 'row-1', project_id: PROJECT_ID, model_id: 'model-1', object_id: '1', object_name: 'EjBorjad', area: 'Hus A', activity: 'Gjutning', contractor: 'NCC', status: 'planerad', start_date: iso(10), end_date: iso(20), actual_end_date: null, progress: 0, updated_at: '2026-01-01T00:00:00Z' },
   { id: 'row-2', project_id: PROJECT_ID, model_id: 'model-1', object_id: '2', object_name: 'PagaendeGottOmTid', area: 'Hus A', activity: 'Gjutning', contractor: 'NCC', status: 'pagaende', start_date: iso(-5), end_date: iso(20), actual_end_date: null, progress: 40, updated_at: '2026-01-01T00:00:00Z' },
-  { id: 'row-3', project_id: PROJECT_ID, model_id: 'model-1', object_id: '3', object_name: 'SnartAktuell', area: 'Hus A', activity: 'Gjutning', contractor: 'NCC', status: 'pagaende', start_date: iso(-10), end_date: iso(3), actual_end_date: null, progress: 70, updated_at: '2026-01-01T00:00:00Z' },
+  { id: 'row-3', project_id: PROJECT_ID, model_id: 'model-1', object_id: '3', object_name: 'Pausad', area: 'Hus A', activity: 'Gjutning', contractor: 'NCC', status: 'pausad', start_date: iso(-10), end_date: iso(3), actual_end_date: null, progress: 70, updated_at: '2026-01-01T00:00:00Z' },
   { id: 'row-4', project_id: PROJECT_ID, model_id: 'model-1', object_id: '4', object_name: 'Forsenad', area: 'Hus A', activity: 'Gjutning', contractor: 'NCC', status: 'pagaende', start_date: iso(-30), end_date: iso(-5), actual_end_date: null, progress: 60, updated_at: '2026-01-01T00:00:00Z' },
   { id: 'row-5', project_id: PROJECT_ID, model_id: 'model-1', object_id: '5', object_name: 'KlarITid', area: 'Hus A', activity: 'Gjutning', contractor: 'NCC', status: 'klar', start_date: iso(-30), end_date: iso(-10), actual_end_date: iso(-10), progress: 100, updated_at: '2026-01-01T00:00:00Z' },
   { id: 'row-6', project_id: PROJECT_ID, model_id: 'model-1', object_id: '6', object_name: 'KlarTidigt', area: 'Hus A', activity: 'Gjutning', contractor: 'NCC', status: 'klar', start_date: iso(-30), end_date: iso(-10), actual_end_date: iso(-12), progress: 100, updated_at: '2026-01-01T00:00:00Z' },
@@ -70,8 +70,8 @@ const TEST_ITEMS_ROWS = [
 ];
 
 const DEFAULT_COLORS = {
-  planerad: '#94a3b8', pagaende: '#f5a623', snart: '#eab308',
-  forsenad: '#e5484d', klar: '#3fb950', klar_forsenad: '#3b82f6'
+  planerad: '#94a3b8', pagaende: '#f5a623',
+  forsenad: '#e5484d', klar: '#3fb950', pausad: '#a1a1aa'
 };
 function hexToRgb(hex) {
   return `rgb(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)})`;
@@ -182,8 +182,9 @@ async function run() {
   const noLabelB = await phaseTagFor('PagaendeGottOmTid');
   if (noLabelB !== null) throw new Error('Ett pågående objekt med gott om tid kvar skulle inte ha någon avvikelseetikett, fick: ' + noLabelB);
 
-  const snartLabel = await phaseTagFor('SnartAktuell');
-  if (snartLabel !== '3 dagar kvar') throw new Error('Förväntade "3 dagar kvar" för SnartAktuell, fick: ' + snartLabel);
+  // "Snart aktuell" finns inte längre (Victor 2026-10-02): pausad har ingen etikett.
+  const pausadLabel = await phaseTagFor('Pausad');
+  if (pausadLabel !== null) throw new Error('Pausad ska inte ha någon avvikelseetikett, fick: ' + pausadLabel);
 
   const forsenadLabel = await phaseTagFor('Forsenad');
   if (forsenadLabel !== '5 dagar försenad') throw new Error('Förväntade "5 dagar försenad" för Forsenad, fick: ' + forsenadLabel);
@@ -205,36 +206,35 @@ async function run() {
   console.log('OK: avvikelseetiketterna i listan (inkl. bakåtkompatibel fallback för gammal klarmarkerad data) beräknas korrekt mot dagens datum');
 
   // ---- 3) Tidslinjens legend: sex faser, färgsatta från statusColors.
-  const dotIds = ['dotPlanerad', 'dotPagaende', 'dotSnart', 'dotForsenad', 'dotKlar', 'dotKlarForsenad'];
+  const dotIds = ['dotPlanerad', 'dotPagaende', 'dotForsenad', 'dotKlar', 'dotPausad'];
   const dotColors = await page.evaluate((ids) =>
     ids.map(id => { const el = document.getElementById(id); return el ? getComputedStyle(el).backgroundColor : null; }), dotIds);
-  const expectedPhaseOrder = ['planerad', 'pagaende', 'snart', 'forsenad', 'klar', 'klar_forsenad'];
+  const expectedPhaseOrder = ['planerad', 'pagaende', 'forsenad', 'klar', 'pausad'];
   expectedPhaseOrder.forEach((phase, i) => {
     const expected = hexToRgb(DEFAULT_COLORS[phase]);
     if (dotColors[i] !== expected) throw new Error(`Legend-prick ${dotIds[i]} skulle ha färgen ${expected} (${phase}), fick: ${dotColors[i]}`);
   });
-  console.log('OK: tidslinjens legend visar alla sex faser med rätt färger');
+  if (await page.evaluate(() => !!(document.getElementById('dotSnart') || document.getElementById('dotKlarForsenad')))) throw new Error('Snart aktuell / Klar (försenad) ska vara borta ur legenden');
+  console.log('OK: tidslinjens legend visar de fem faserna med rätt färger');
 
   // ---- 4) Färginställningspanelen: åtta färgval (sex statusar + två
   //         beräknade faser), delar samma panel som Victor bad om.
   await page.locator('#btnSettings').click();
   await page.waitForTimeout(150);
-  const colorKeys = ['ej_planerad', 'planerad', 'pagaende', 'forsenad', 'klar', 'pausad', 'snart', 'klar_forsenad'];
+  const colorKeys = ['planerad', 'pagaende', 'forsenad', 'klar', 'pausad'];
   const colorInputsExist = await page.evaluate((keys) => keys.map(k => !!document.getElementById(`statusColor_${k}`)), colorKeys);
-  if (!colorInputsExist.every(Boolean)) throw new Error('Förväntade en färgväljare per statusvärde OCH per beräknad fas, fick: ' + JSON.stringify(colorInputsExist));
-  const snartColorValue = await page.locator('#statusColor_snart').inputValue();
-  const klarForsenadColorValue = await page.locator('#statusColor_klar_forsenad').inputValue();
-  if (snartColorValue.toLowerCase() !== DEFAULT_COLORS.snart) throw new Error('Förväntade standardfärgen för "snart", fick: ' + snartColorValue);
-  if (klarForsenadColorValue.toLowerCase() !== DEFAULT_COLORS.klar_forsenad) throw new Error('Förväntade standardfärgen för "klar_forsenad", fick: ' + klarForsenadColorValue);
-  console.log('OK: färginställningspanelen innehåller åtta färgval (sex statusar + snart + klar_forsenad) med rätt standardfärger');
+  if (!colorInputsExist.every(Boolean)) throw new Error('Förväntade en färgväljare per status, fick: ' + JSON.stringify(colorInputsExist));
+  const removed = await page.evaluate(() => ['ej_planerad', 'snart', 'klar_forsenad'].filter(k => document.getElementById(`statusColor_${k}`)));
+  if (removed.length) throw new Error('Borttagna statusar ska inte ha färgval: ' + removed);
+  console.log('OK: färginställningspanelen innehåller fem färgval');
 
   // ---- 4b) Opacitetsreglage: bara för de sex BERÄKNADE faserna (inte de
   //          två rent manuella statusarna ej_planerad/pausad, som aldrig
   //          styr 3D-färgsättningen) - detta är regleraget Victor bad om
   //          att få tillbaka efter att det försvann när färgpanelerna
   //          slogs ihop.
-  const opacityKeysExpectedPresent = ['planerad', 'pagaende', 'snart', 'forsenad', 'klar', 'klar_forsenad'];
-  const opacityKeysExpectedAbsent = ['ej_planerad', 'pausad'];
+  const opacityKeysExpectedPresent = ['planerad', 'pagaende', 'forsenad', 'klar', 'pausad'];
+  const opacityKeysExpectedAbsent = ['ej_planerad', 'snart', 'klar_forsenad'];
   const opacityPresence = await page.evaluate((keys) => keys.map(k => !!document.getElementById(`statusOpacity_${k}`)), opacityKeysExpectedPresent);
   if (!opacityPresence.every(Boolean)) throw new Error('Förväntade ett opacitetsreglage för samtliga sex beräknade faser, fick: ' + JSON.stringify(opacityPresence));
   const opacityAbsence = await page.evaluate((keys) => keys.map(k => !!document.getElementById(`statusOpacity_${k}`)), opacityKeysExpectedAbsent);
@@ -280,27 +280,8 @@ async function run() {
   await page.locator('#btnSaveSettings').click();
   await page.waitForTimeout(200);
 
-  // ---- 5) "Snart aktuell"-slidern i Filter-panelen: default 7 dagar,
-  //         justerar tröskeln direkt och sparas i localStorage.
-  const warningDaysValue = await page.locator('#warningDaysSlider').inputValue();
-  if (warningDaysValue !== '7') throw new Error('Förväntade default 7 dagar för "Snart aktuell"-slidern, fick: ' + warningDaysValue);
-  const warningDaysLabelText = await page.locator('#warningDaysLabel').innerText();
-  if (warningDaysLabelText.trim() !== '7 dagar') throw new Error('Förväntade etiketten "7 dagar", fick: ' + warningDaysLabelText);
-
-  await page.locator('#warningDaysSlider').fill('2');
-  await page.waitForTimeout(200);
-  // Med tröskeln sänkt till 2 dagar hinner "SnartAktuell" (3 dagar kvar)
-  // inte längre klassas som "snart" - etiketten ska försvinna.
-  const snartLabelAfterLoweredThreshold = await phaseTagFor('SnartAktuell');
-  if (snartLabelAfterLoweredThreshold !== null) throw new Error('Med tröskeln sänkt till 2 dagar skulle SnartAktuell (3 dagar kvar) inte längre visas som "snart", fick: ' + snartLabelAfterLoweredThreshold);
-  const persistedWarningDays = await page.evaluate(() => JSON.parse(window.localStorage.getItem('4dplan-settings')).warningDaysBeforeEnd);
-  if (persistedWarningDays !== 2) throw new Error('Förväntade att warningDaysBeforeEnd=2 sparats direkt i localStorage, fick: ' + persistedWarningDays);
-  console.log('OK: "Snart aktuell"-slidern i Filter-panelen justerar tröskeln direkt och sparas i localStorage');
-
-  // Sätt tillbaka till 7 för resten av testet (3D-färgsättningen nedan
-  // förutsätter standardtröskeln).
-  await page.locator('#warningDaysSlider').fill('7');
-  await page.waitForTimeout(150);
+  // ---- 5) "Snart aktuell"-slidern är borttagen.
+  if (await page.locator('#warningDaysSlider').count()) throw new Error('"Snart aktuell"-slidern ska vara borttagen');
 
   // ---- 6) 3D-färgsättning: sätt tidslinjen till DAGENS datum och
   //         verifiera att setObjectState-anropen grupperar objekten per
@@ -312,8 +293,8 @@ async function run() {
 
   const colorCalls = await page.evaluate(() => window.__calls.filter(c => c[0] === 'setObjectState'));
   const expectedGroups = {
-    planerad: [1], pagaende: [2], snart: [3], forsenad: [4],
-    klar: [5, 6, 8], klar_forsenad: [7]
+    planerad: [1], pagaende: [2], pausad: [3], forsenad: [4],
+    klar: [5, 6, 7, 8]
   };
   Object.entries(expectedGroups).forEach(([phase, expectedIds]) => {
     const expectedColor = hexToRgba255(DEFAULT_COLORS[phase]);

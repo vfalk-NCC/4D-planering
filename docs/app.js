@@ -20,7 +20,7 @@ let settings = {
   userName: "",                // namn som förifylls vid nya kommentarer
   statusColors: null,          // sätts till DEFAULT_STATUS_COLORS av loadLocalSettings() - färger per status/fas, används både för badgen i listan OCH för objektens färg i 3D-vyn (se computeItemPhase/applyTimelineColors)
   statusOpacities: null,       // sätts till DEFAULT_PHASE_OPACITIES av loadLocalSettings() - opacitet i 3D-vyn per beräknad fas (påverkar INTE badgen i listan, precis som tidigare "Tidslinje-färger"-reglagen)
-  warningDaysBeforeEnd: 7,     // "snart aktuell"-tröskel (dagar innan planerat slutdatum) - styrs via slidern i Filter-panelen, se bindUI()
+  warningDaysBeforeEnd: 7,     // används inte längre ("Snart aktuell" borttagen 2026-10-02)
   timelineRangeStart: null,    // valfritt eget start-/slutdatum för tidslinjens slider (annars auto, se getTimelineStart/getTimelineEnd)
   timelineRangeEnd: null
 };
@@ -79,9 +79,10 @@ const TIMELINE_MIN_END = "2030-12-31";
 
 // Svenska visningsnamn per statusvärde - används i objektlistan,
 // filterrutan och Excel-exporten så de alltid visar samma text.
+// Victor 2026-10-02: "Ej planerad", "Snart aktuell" och "Klar, men försenad"
+// är borttagna – för många val. Kvar: planerad, pågående, försenad, klar, pausad.
 const STATUS_LABELS = {
-  ej_planerad: "Ej planerad",
-  planerad: "Planerad",
+  planerad: "Planerad men ej startad",
   pagaende: "Pågående",
   forsenad: "Försenad",
   klar: "Klar",
@@ -102,44 +103,21 @@ const GROUP_KEY_FNS = {
 
 // Standardfärger för statusmärkena i "Planerade objekt" - används tills
 // Victor eventuellt justerar dem själv via kugghjulet (settings.statusColors).
-// "snart" och "klar_forsenad" är inte riktiga värden på it.status (ingen rad
-// har någonsin status === "snart") - de är två extra beräknade FASER som
-// computeItemPhase() kan returnera, och delar samma färgpanel/inställning
-// eftersom Victor bad om det (istället för en egen sektion) när vi pratade
-// igenom hur färgsättningen av framdriften borde fungera.
+// Samma fem värden är både status och beräknad fas (computeItemPhase), och
+// lägesplanen visar exakt samma (Victor 2026-10-02).
 const DEFAULT_STATUS_COLORS = {
-  ej_planerad: "#cbd5e1",
   planerad: "#94a3b8",
   pagaende: "#f5a623",
   forsenad: "#e5484d",
   klar: "#3fb950",
-  pausad: "#a1a1aa",
-  snart: "#eab308",          // ny: närmar sig planerat slutdatum men inte klar
-  klar_forsenad: "#3b82f6"   // ny: klarmarkerad, men efter planerat slutdatum
+  pausad: "#a1a1aa"
 };
+const COLOR_PANEL_LABELS = { ...STATUS_LABELS };
 
-// De två extra fasfärgerna ovan (snart/klar_forsenad) hör inte hemma i
-// STATUS_LABELS - de är aldrig ett riktigt värde på it.status, och skulle
-// annars dyka upp som falska (alltid tomma) val i t.ex. statusfiltret eller
-// "Byt namn"-dropdownen om de låg där. COLOR_PANEL_LABELS används enbart för
-// att rendera färginställningspanelen (renderStatusColorInputs/onSaveSettings),
-// som därmed visar alla åtta färger på samma ställe.
-const PHASE_ONLY_LABELS = {
-  snart: "Snart aktuell (3D-vy/lista)",
-  klar_forsenad: "Klar, men försenad (3D-vy/lista)"
-};
-const COLOR_PANEL_LABELS = { ...STATUS_LABELS, ...PHASE_ONLY_LABELS };
-
-// De sex beräknade faserna som computeItemPhase() faktiskt kan returnera
-// (till skillnad från t.ex. "ej_planerad"/"pausad", som bara är manuella
-// statusvärden och aldrig används för 3D-färgsättningen). Bara dessa sex
-// får ett opacitetsreglage i inställningarna - motsvarar Victors gamla
-// "Tidslinje-färger"-opacitet (colorNotStarted/InProgress/Done), som han
-// bad om att få tillbaka efter att den försvann när färgpanelerna slogs
-// ihop 2026-09-16.
-const PHASE_OPACITY_KEYS = ["planerad", "pagaende", "snart", "forsenad", "klar", "klar_forsenad"];
+// Alla fem faserna färgsätter 3D-vyn och har ett opacitetsreglage.
+const PHASE_OPACITY_KEYS = ["planerad", "pagaende", "forsenad", "klar", "pausad"];
 const DEFAULT_PHASE_OPACITIES = {
-  planerad: 1, pagaende: 1, snart: 1, forsenad: 1, klar: 1, klar_forsenad: 1
+  planerad: 1, pagaende: 1, forsenad: 1, klar: 1, pausad: 1
 };
 
 /**
@@ -557,6 +535,7 @@ function bindUI() {
   // varje ändring (inte bara vid "Spara inställningar").
   const warningDaysSlider = document.getElementById("warningDaysSlider");
   const warningDaysLabel = document.getElementById("warningDaysLabel");
+  if (warningDaysSlider && warningDaysLabel) {
   warningDaysSlider.value = settings.warningDaysBeforeEnd;
   warningDaysLabel.innerText = `${settings.warningDaysBeforeEnd} dagar`;
   warningDaysSlider.oninput = () => {
@@ -567,6 +546,7 @@ function bindUI() {
     applyTimelineColors();
     renderItemList();
   };
+  }
   // Markera (utan att isolera/dölja) matchande objekt direkt när ett
   // filteralternativ ändras, så man ser dem i 3D-vyn innan man ev. klickar
   // "Visa filtrerat" eller isolerar/döljer manuellt i Trimble Connect.
@@ -678,8 +658,8 @@ function bindUI() {
 }
 
 /**
- * Bygger en färgväljare per statusvärde/fas (ej_planerad, planerad, ...,
- * plus de två beräknade faserna snart/klar_forsenad) i inställningsdialogen,
+ * Bygger en färgväljare per statusvärde/fas (planerad, pågående, försenad,
+ * klar, pausad) i inställningsdialogen,
  * utifrån COLOR_PANEL_LABELS - så listan alltid matchar det som faktiskt
  * finns i appen (fStatus-selecten, badges, 3D-färgsättningen m.m.) utan att
  * behöva underhållas på två ställen.
@@ -845,10 +825,9 @@ function initPanelVisibility() {
 const PHASE_DOT_IDS = {
   planerad: "dotPlanerad",
   pagaende: "dotPagaende",
-  snart: "dotSnart",
   forsenad: "dotForsenad",
   klar: "dotKlar",
-  klar_forsenad: "dotKlarForsenad"
+  pausad: "dotPausad"
 };
 
 function paintLegendDots() {
@@ -2748,13 +2727,11 @@ function onTogglePlay() {
  * 2026-09-16 om hur framdriften borde visualiseras).
  *
  * Möjliga returvärden (nycklar i DEFAULT_STATUS_COLORS/settings.statusColors):
- *   "planerad"      - inte påbörjat än (datumet är före startdatum)
- *   "pagaende"      - påbörjat, inte klart, gott om tid kvar
- *   "snart"         - påbörjat, inte klart, inom `warningDays` dagar från
- *                      planerat slutdatum
+ *   "planerad"      - planerad men ej startad (datumet är före startdatum)
+ *   "pagaende"      - påbörjat, inte klart
  *   "forsenad"      - inte klart och planerat slutdatum har redan passerat
- *   "klar"          - klart (verkligt avslut senast på planerat slutdatum)
- *   "klar_forsenad" - klart, men efter planerat slutdatum
+ *   "klar"          - klart
+ *   "pausad"        - satt till pausad (och inte klar)
  * Returnerar null om objektet saknar startdatum (kan då inte fasberäknas -
  * hoppas över, precis som innan).
  */
@@ -2783,8 +2760,9 @@ function computeItemPhase(item, atDateStr, warningDays) {
   // Klar går före "ej påbörjad" (kan bli klar före planerad start).
   const isDoneAtDate = actualEnd && actualEnd <= at;
   if (isDoneAtDate) {
-    return (plannedEnd && actualEnd > plannedEnd) ? "klar_forsenad" : "klar";
+    return "klar"; // "Klar, men försenad" borttagen (Victor 2026-10-02)
   }
+  if (item.status === "pausad") return "pausad";
 
   // Påbörjad före planerad start (Victors rapport 2026-10-01, H30: 17 % men
   // grå "ej påbörjad" eftersom planerad start var 11/10): framdrift över 0 %
@@ -2798,11 +2776,8 @@ function computeItemPhase(item, atDateStr, warningDays) {
   const startedAtDate = actualStart && actualStart <= at;
   if (at < start && !startedAtDate) return "planerad";
 
-  if (plannedEnd) {
-    if (at > plannedEnd) return "forsenad";
-    const daysLeft = Math.round((plannedEnd - at) / 86400000);
-    if (warningDays > 0 && daysLeft <= warningDays) return "snart";
-  }
+  // "Snart aktuell" borttagen (Victor 2026-10-02): pågående tills slutdatum passerat.
+  if (plannedEnd && at > plannedEnd) return "forsenad";
   return "pagaende";
 }
 
@@ -2817,12 +2792,12 @@ async function applyTimelineColors() {
   if (!selectedDate || items.length === 0) return;
 
   const warningDays = settings.warningDaysBeforeEnd || 0;
-  const byModel = {}; // modelId -> { planerad:[], pagaende:[], snart:[], forsenad:[], klar:[], klar_forsenad:[] }
+  const byModel = {}; // modelId -> { planerad:[], pagaende:[], forsenad:[], klar:[], pausad:[] }
 
   for (const it of items) {
     const phase = computeItemPhase(it, selectedDate, warningDays);
     if (!phase) continue;
-    byModel[it.modelId] = byModel[it.modelId] || { planerad: [], pagaende: [], snart: [], forsenad: [], klar: [], klar_forsenad: [] };
+    byModel[it.modelId] = byModel[it.modelId] || { planerad: [], pagaende: [], forsenad: [], klar: [], pausad: [] };
     byModel[it.modelId][phase].push(it.objectId);
   }
 
@@ -2870,21 +2845,13 @@ function computeDeviationLabel(item, phase, todayStr) {
     if (item.actualEndDate && plannedEnd) {
       const diff = Math.round((new Date(item.actualEndDate) - plannedEnd) / 86400000);
       if (diff < 0) return `Klar, ${Math.abs(diff)} dagar tidigt`;
+      if (diff > 0) return `Klar, ${diff} dagar sent`;
     }
     return "Klar i tid";
-  }
-  if (phase === "klar_forsenad") {
-    const actualEnd = item.actualEndDate ? new Date(item.actualEndDate) : plannedEnd;
-    const diff = (plannedEnd && actualEnd) ? Math.round((actualEnd - plannedEnd) / 86400000) : null;
-    return diff ? `Klar, ${diff} dagar sent` : "Klar, försenad";
   }
   if (phase === "forsenad" && plannedEnd) {
     const diff = Math.round((today - plannedEnd) / 86400000);
     return `${diff} dagar försenad`;
-  }
-  if (phase === "snart" && plannedEnd) {
-    const diff = Math.round((plannedEnd - today) / 86400000);
-    return `${diff} dagar kvar`;
   }
   return null;
 }
@@ -3318,7 +3285,7 @@ function excelDateToIso(value) {
 
 function normalizeStatus(value) {
   const map = {
-    "ej planerad": "ej_planerad", "ej_planerad": "ej_planerad",
+    "ej planerad": "planerad", "ej_planerad": "planerad", "planerad men ej startad": "planerad",
     "planerad": "planerad", "pågående": "pagaende", "försenad": "forsenad", "klar": "klar", "pausad": "pausad"
   };
   return map[String(value || "").toLowerCase()] || "planerad";
@@ -3355,7 +3322,7 @@ function normalizeStatus(value) {
  * egen statuskolumn (bara en färglegend på arbetsbladet), så status räknas
  * fram ur framdrift/datum istället för att läsas från en kolumn. Skild från
  * computeItemPhase() (som räknar ut listans avvikelsetagg/3D-färg och kan
- * returnera extra visningsfaser som "snart"/"klar_forsenad") - den här
+ * returnera "pausad") - den här
  * sätter bara det faktiska it.status-värdet en importerad rad ska få.
  */
 function computeImportStatus(parsed, todayStr) {
@@ -5165,7 +5132,7 @@ function fromRow(row) {
     area: row.area,
     activity: row.activity,
     contractor: row.contractor,
-    status: row.status,
+    status: row.status === "ej_planerad" ? "planerad" : row.status, // "Ej planerad" borttagen 2026-10-02
     startDate: row.start_date,
     endDate: row.end_date,
     actualStartDate: row.actual_start_date || null,

@@ -157,8 +157,8 @@ async function run() {
   await page.waitForTimeout(150);
 
   // ---- 2) "Redigera markerade": markera A+B, ändra status + förskjut datum +7 dagar.
-  await page.locator('.item-row', { hasText: 'Pelare A' }).first().click();
-  await page.locator('.item-row', { hasText: 'Pelare B' }).first().click({ modifiers: ['Control'] });
+  await page.locator('.item-row', { hasText: 'Pelare A' }).first().locator('.item-name').click();
+  await page.locator('.item-row', { hasText: 'Pelare B' }).first().locator('.item-name').click({ modifiers: ['Control'] });
   await page.waitForTimeout(100);
 
   const editBtnEnabled = await page.locator('#btnEditSelected').isEnabled();

@@ -536,8 +536,10 @@ async function exportPdfA3() {
     PHASE_ORDER.forEach(ph => {
       const hex = ph === "ingen" ? "#ffffff" : phaseColor(ph);
       const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
-      doc.setFillColor(r, g, b); doc.setDrawColor(120);
-      doc.rect(x, y - 3.5, 5, 4.5, "FD");
+      // Samma prickar som på kartan: färgad prick med vit ring och tunn grå kant.
+      doc.setFillColor(120, 120, 120); doc.circle(x + 2.5, y - 1.25, 2.6, "F");
+      doc.setFillColor(255, 255, 255); doc.circle(x + 2.5, y - 1.25, 2.35, "F");
+      doc.setFillColor(r, g, b); doc.circle(x + 2.5, y - 1.25, 1.75, "F");
       x += 7; doc.text(PHASE_LABELS[ph], x, y); x += doc.getTextWidth(PHASE_LABELS[ph]) + 8;
     });
     if ($("showObjects").checked) { doc.setTextColor(110); doc.text("Zoner och objekt färgas efter fasen vid valt datum.", x + 4, y); doc.setTextColor(0); }

@@ -155,7 +155,7 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
     return [computeItemPhase(f28, d(0), 7), computeItemPhase(f28, d(-3), 7), computeItemPhase(early, d(0), 7), computeItemPhase(going, d(0), 30),
       computeItemPhase(h30, d(0), 7), computeItemPhase(h30, d(-3), 7), computeItemPhase(notStarted, d(0), 7)].join(',');
   });
-  if (ph !== 'klar,pagaende,klar,snart,pagaende,planerad,planerad') fail('Klar med framtida slutdatum ska vara klar i dag (och pågående bakåt i tiden), fick ' + ph);
+  if (ph !== 'klar,pagaende,klar,pagaende,pagaende,planerad,planerad') fail('Klar med framtida slutdatum ska vara klar i dag (och pågående bakåt i tiden), fick ' + ph);
   const parsedEnd = (() => { const { parsePlanSheet } = require('../docs/plan-excel-parser.js'); const fut = new Date(Date.now() + 16 * 864e5).toISOString().slice(0, 10);
     const r = []; r[1] = null; r[2] = 'F28 - Fundament'; r[5] = '2026-09-20'; r[8] = fut; r[7] = 28; r[10] = 'DP2'; r[13] = 1;
     const rows = [[], [], [], [], (() => { const h = []; h[1] = 'Linje F'; h[2] = 'Linje F'; return h; })(), r];

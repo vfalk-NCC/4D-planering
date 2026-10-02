@@ -176,7 +176,7 @@ async function run() {
   // ============================================================
   await page.locator('#btnSettings').click();
   await page.waitForTimeout(150);
-  const expectedStatusKeys = ['ej_planerad', 'planerad', 'pagaende', 'forsenad', 'klar', 'pausad'];
+  const expectedStatusKeys = ['planerad', 'pagaende', 'forsenad', 'klar', 'pausad'];
   const renderedStatusInputs = await page.evaluate((keys) =>
     keys.map(k => !!document.getElementById(`statusColor_${k}`)), expectedStatusKeys);
   if (!renderedStatusInputs.every(Boolean)) throw new Error('Förväntade en färgväljare per statusvärde i inställningarna, fick: ' + JSON.stringify(renderedStatusInputs));

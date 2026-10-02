@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261002112838" />
+<link rel="stylesheet" href="style.css?v=20261002114823" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261002112838"></script>
+<script src="plan-excel-parser.js?v=20261002114823"></script>
 </head>
 <body>
 
@@ -203,19 +203,12 @@
         </div>
         <div id="timelineRangeStatus" class="hint"></div>
       </details>
-      <label class="warn-days">Varna "Snart aktuell" (dagar före slutdatum)
-        <div class="row">
-          <input type="range" id="warningDaysSlider" min="1" max="30" step="1" style="flex:1" />
-          <span class="hint" id="warningDaysLabel" style="align-self:center; width:60px;"></span>
-        </div>
-      </label>
       <div class="legend">
-        <span><i class="dot" id="dotPlanerad"></i> Planerad</span>
+        <span><i class="dot" id="dotPlanerad"></i> Planerad men ej startad</span>
         <span><i class="dot" id="dotPagaende"></i> Pågående</span>
-        <span><i class="dot" id="dotSnart"></i> Snart aktuell</span>
         <span><i class="dot" id="dotForsenad"></i> Försenad</span>
         <span><i class="dot" id="dotKlar"></i> Klar</span>
-        <span><i class="dot" id="dotKlarForsenad"></i> Klar (försenad)</span>
+        <span><i class="dot" id="dotPausad"></i> Pausad</span>
       </div>
     </section>
 
@@ -308,8 +301,7 @@
         </div>
         <label>Status
           <select id="fStatus">
-            <option value="ej_planerad">Ej planerad</option>
-            <option value="planerad">Planerad</option>
+            <option value="planerad">Planerad men ej startad</option>
             <option value="pagaende">Pågående</option>
             <option value="forsenad">Försenad</option>
             <option value="klar">Klar</option>
@@ -416,7 +408,7 @@
         <input type="number" id="playSecondsPerDay" min="0.1" step="0.1" placeholder="0.4" />
       </label>
       <h3 class="settings-subheading">Färger – status/fas (används i listan och 3D-modellen)</h3>
-      <p class="hint">"Snart aktuell" och "Klar, men försenad" är inte riktiga statusar du väljer själv - de räknas fram automatiskt utifrån planerat slutdatum och verkligt avslut, men går att färgsätta här precis som de andra. De sex beräknade faserna (allt utom "Ej planerad" och "Pausad") har även ett reglage för opaciteten i 3D-vyn.</p>
+      <p class="hint">Fasen räknas fram ur datumen och framdriften: planerad men ej startad, pågående, försenad (slutdatum passerat) eller klar. Pausad väljer du själv. Reglaget bredvid färgen styr opaciteten i 3D-vyn.</p>
       <div id="statusColorInputs"></div>
       <label>GitHub-token <input type="password" id="githubToken" placeholder="github_pat_..." /></label>
       <p class="hint">En fine-grained token scopead till repot <strong>vfalk-NCC/4D-data</strong> – se GITHUB_TOKEN_SETUP.md för hur du skapar en (tar under en minut).</p>
@@ -529,8 +521,7 @@
       <label>Status
         <select id="bulkEditStatus">
           <option value="">Behåll nuvarande</option>
-          <option value="ej_planerad">Ej planerad</option>
-          <option value="planerad">Planerad</option>
+          <option value="planerad">Planerad men ej startad</option>
           <option value="pagaende">Pågående</option>
           <option value="forsenad">Försenad</option>
           <option value="klar">Klar</option>
@@ -576,14 +567,14 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261002112838"></script>
-  <script src="app.js?v=20261002112838"></script>
-  <script src="manual-markings.js?v=20261002112838"></script>
-  <script src="sub-activity-list.js?v=20261002112838"></script>
-  <script src="activity-remove.js?v=20261002112838"></script>
-  <script src="dup-check.js?v=20261002112838"></script>
-  <script src="ui-shell.js?v=20261002112838"></script>
-  <script src="undo.js?v=20261002112838"></script>
-  <script src="planning-keys.js?v=20261002112838"></script>
+  <script src="github-storage.js?v=20261002114823"></script>
+  <script src="app.js?v=20261002114823"></script>
+  <script src="manual-markings.js?v=20261002114823"></script>
+  <script src="sub-activity-list.js?v=20261002114823"></script>
+  <script src="activity-remove.js?v=20261002114823"></script>
+  <script src="dup-check.js?v=20261002114823"></script>
+  <script src="ui-shell.js?v=20261002114823"></script>
+  <script src="undo.js?v=20261002114823"></script>
+  <script src="planning-keys.js?v=20261002114823"></script>
 </body>
 </html>

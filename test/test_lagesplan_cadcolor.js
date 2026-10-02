@@ -67,13 +67,22 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   const leg = await page.evaluate(() => {
     const el = { phases: true, extra: '#e11d48 Betongbarriär' };
     const before = legendItems(el).map(i => i.label);
-    el.legHide = { 'phase:ingen': true }; el.legText = { 'phase:pagaende': 'Pågår' }; el.legColor = { 'phase:klar': '#000000' };
+    el.legHide = { 'phase:pausad': true }; el.legText = { 'phase:pagaende': 'Pågår' }; el.legColor = { 'phase:klar': '#000000' };
     el.legOrder = ['extra:0', 'phase:klar'];
     const after = legendItems(el), all = legendItems(el, true);
     return { before: before.length, labels: after.map(i => i.label), klar: after.find(i => i.key === 'phase:klar').color, all: all.length };
   });
-  if (leg.before !== 8 || leg.all !== 8 || leg.labels.length !== 7) fail('Dolda rader ska bara försvinna ur förklaringen: ' + JSON.stringify(leg));
-  if (leg.labels[0] !== 'Betongbarriär' || leg.labels[1] !== 'Klar' || !leg.labels.includes('Pågår') || leg.labels.includes('Ingen koppling') || leg.klar !== '#000000') fail('Egen text, färg och ordning ska gälla: ' + JSON.stringify(leg));
+  if (leg.before !== 6 || leg.all !== 6 || leg.labels.length !== 5) fail('Dolda rader ska bara försvinna ur förklaringen: ' + JSON.stringify(leg));
+  if (leg.labels[0] !== 'Betongbarriär' || leg.labels[1] !== 'Klar' || !leg.labels.includes('Pågår') || leg.labels.includes('Pausad') || leg.klar !== '#000000') fail('Egen text, färg och ordning ska gälla: ' + JSON.stringify(leg));
+  // Faserna ritas som samma prickar som på kartan (rund färgad prick med vit ring).
+  const dots = await page.evaluate(() => {
+    const el = { phases: true, size: 7, title: '' };
+    const kinds = legendItems(el).map(i => i.kind);
+    const ops = []; const ctx = new Proxy({}, { get: (t, k) => k === 'measureText' ? (() => ({ width: 10 })) : ['arc', 'fillRect', 'strokeRect'].includes(k) ? ((...a) => ops.push(k)) : (() => {}), set: () => true });
+    drawLegend(ctx, el, 0, 0, 200, 200, v => v);
+    return { kinds, arcs: ops.filter(o => o === 'arc').length, rects: ops.filter(o => o === 'fillRect').length };
+  });
+  if (!dots.kinds.length || dots.kinds.some(k => k !== 'dot') || dots.arcs < dots.kinds.length * 2 || dots.rects) fail('Faserna i förklaringen ska vara prickar som på kartan: ' + JSON.stringify(dots));
   console.log('OK: förklaringens rader kan döljas, döpas om, färgas och flyttas');
   // Panelen i utskriftslayouten: förklaringens rader och bildens val.
   const ui = await page.evaluate(async () => {
@@ -92,7 +101,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
     const ko = !!document.querySelector('#prProps [data-f="knockout"]');
     return { rows, hidden, ko, h: im.h, ar: im.ar };
   });
-  if (ui.rows < 7 || ui.hidden !== 1) fail('Panelen ska lista förklaringens rader och kunna dölja en: ' + JSON.stringify(ui));
+  if (ui.rows < 5 || ui.hidden !== 1) fail('Panelen ska lista förklaringens rader och kunna dölja en: ' + JSON.stringify(ui));
   if (!ui.ko || Math.abs(ui.ar - 1.5) > 0.01 || Math.abs(ui.h - 26.7) > 0.1) fail('Bildens val (beskär, genomskinlig) ska finnas och rutan följa beskärningen: ' + JSON.stringify(ui));
   console.log('OK: utskriftspanelen visar förklaringens rader och bildens beskärning/genomskinlighet');
   // Lås element (särskilt ritningen), zoom i layouten och skalstocken med bladformat.
