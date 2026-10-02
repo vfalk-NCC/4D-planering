@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261002055747"></script>
+<script src="github-storage.js?v=20261002061131"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -460,6 +460,13 @@
   .zs-l { width: 58px; flex: none; color: var(--muted); } .zs-v { width: 42px; text-align: right; flex: none; }
   .zs-checks .check { margin: 0; }
   .zone-item.is-hidden { opacity: .55; }
+  .zone-item.msel { background: var(--accent-weak); box-shadow: inset 3px 0 0 var(--accent); }
+  .zone-item .zarea { color: var(--muted); font-size: 11px; }
+  #zoneEditor.multi .ze-single { display: none; }
+  .ze-acts { margin-top: 4px; max-height: 190px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
+  .ze-act { display: flex; gap: 6px; align-items: center; padding: 3px 6px; font-size: 11.5px; border-bottom: 1px solid var(--border); line-height: 1.3; }
+  .ze-act:last-child { border-bottom: none; } .ze-act .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ze-act .muted { flex: none; }
   .layer-row .cad-date { font-size: 10px; color: var(--faint); opacity: 0; transition: opacity .2s; margin-left: 4px; }
   .layer-row:hover .cad-date { opacity: .7; }
   #fieldDay { position: absolute; top: 66px; right: 10px; bottom: 132px; width: min(420px, calc(100% - 20px)); z-index: 9; flex-direction: column; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 10px 30px rgba(15,23,42,.25); overflow: hidden; }
@@ -750,6 +757,12 @@
           <div class="hint hidden" id="zoneDrawHint"></div>
           <div class="hint">Klicka på en zon för att ändra koppling och utseende. En markerad zon har hörn som kan dras (dubbelklicka ett hörn för att ta bort det). Delete tar bort zonen, Ctrl+Z ångrar.</div>
           <label class="check" title="Gör ritningen grå så att zonernas färger syns tydligare"><input type="checkbox" id="grayPdf" checked /> Ritningen i gråskala (tydligare zonfärger)</label>
+          <details class="zone-adv" id="zoneOptsBox">
+            <summary>Fler zonfunktioner</summary>
+            <label class="check" title="Zonrutan listar aktiviteterna som hamnar i zonen – och uppdateras medan du ändrar kopplingen, innan du sparar"><input type="checkbox" id="zoActs" /> Visa vilka aktiviteter som kopplas</label>
+            <label class="check" title="Ytan i m² i zonlistan och zonrutan, och som val i etiketten (kräver kalibrering)"><input type="checkbox" id="zoArea" /> Visa ytan i m²</label>
+            <label class="check" title="Ctrl-klick och Shift-klick i zonlistan markerar flera zoner, så att du kan ändra utseendet på alla på en gång"><input type="checkbox" id="zoMulti" /> Markera flera zoner i listan</label>
+          </details>
           <details class="zone-adv">
             <summary>Avancerat: hur zoner hittas i PDF:en</summary>
             <div class="hint" style="margin-top:4px;"><b>🔍 Hitta zoner i PDF</b> letar efter färgade ytor i ritningen och efter text som ser ut som en zonkod, t.ex. <b>PM06</b> eller <b>PM09A</b>. Koden blir zonens namn och används för att koppla zonen till aktiviteter i planeringen.</div>
@@ -762,6 +775,8 @@
 
           <div id="zoneEditor" class="hidden">
             <div class="row"><b id="zeTitle">Zon</b><button id="zeClose" class="icon ghost" style="margin-left:auto;height:24px;width:24px;">✕</button></div>
+            <div class="ze-single">
+            <div class="hint hidden" id="zeArea"></div>
             <label>Kod</label>
             <input type="text" id="zeCode" />
             <label>Koppling till planeringen</label>
@@ -775,8 +790,11 @@
             <input type="text" id="zeValue" list="zeValues" placeholder="Värde" style="margin-top:4px;" />
             <datalist id="zeValues"></datalist>
             <div class="hint" id="zeMatchInfo"></div>
+            <div id="zeActs" class="ze-acts hidden"></div>
+            </div>
+            <div class="hint hidden" id="zeMultiInfo"></div>
             <details class="ze-style" open><summary>🎨 Utseende</summary><div id="zeStyle"></div></details>
-            <div class="row" style="margin-top:8px;">
+            <div class="row ze-single" style="margin-top:8px;">
               <button id="zeSave" class="primary">Spara</button>
               <button id="zeSelect3d" title="Markera zonens objekt i 3D-modellen">🎯 Markera i 3D</button>
               <button id="zeDelete" title="Ta bort zonen">🗑️</button>
@@ -951,19 +969,19 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261002055747"></script>
-<script src="lagesplan-tools.js?v=20261002055747"></script>
-<script src="lagesplan-layers.js?v=20261002055747"></script>
-<script src="lagesplan-views.js?v=20261002055747"></script>
-<script src="lagesplan-film.js?v=20261002055747"></script>
-<script src="lagesplan-cad.js?v=20261002055747"></script>
-<script src="lagesplan-vecpdf.js?v=20261002055747"></script>
-<script src="lagesplan-print.js?v=20261002055747"></script>
-<script src="lagesplan-zones.js?v=20261002055747"></script>
-<script src="lagesplan-daily.js?v=20261002055747"></script>
-<script src="lagesplan-gps.js?v=20261002055747"></script>
-<script src="lagesplan-weather.js?v=20261002055747"></script>
-<script src="lagesplan-touch.js?v=20261002055747"></script>
-<script src="lagesplan-keys.js?v=20261002055747"></script>
+<script src="lagesplan.js?v=20261002061131"></script>
+<script src="lagesplan-tools.js?v=20261002061131"></script>
+<script src="lagesplan-layers.js?v=20261002061131"></script>
+<script src="lagesplan-views.js?v=20261002061131"></script>
+<script src="lagesplan-film.js?v=20261002061131"></script>
+<script src="lagesplan-cad.js?v=20261002061131"></script>
+<script src="lagesplan-vecpdf.js?v=20261002061131"></script>
+<script src="lagesplan-print.js?v=20261002061131"></script>
+<script src="lagesplan-zones.js?v=20261002061131"></script>
+<script src="lagesplan-daily.js?v=20261002061131"></script>
+<script src="lagesplan-gps.js?v=20261002061131"></script>
+<script src="lagesplan-weather.js?v=20261002061131"></script>
+<script src="lagesplan-touch.js?v=20261002061131"></script>
+<script src="lagesplan-keys.js?v=20261002061131"></script>
 </body>
 </html>

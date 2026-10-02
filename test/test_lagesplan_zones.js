@@ -112,6 +112,48 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if ((await zones()).length !== 1) fail('Ctrl+Z ska ta tillbaka zonen');
   console.log('OK: Delete tar bort zonen, Ctrl+Z ångrar');
 
+  // 6b) Fler zonfunktioner (av från början): aktiviteter som kopplas, yta i m², flerval.
+  await page.evaluate(() => {
+    items = [{ id: 'i1', object_name: 'J1', activity: 'Gjutning', area: 'PM20', status: 'pagaende', start_date: '2000-01-01', end_date: '2999-01-01', progress: 40, source_key: 'k1' },
+      { id: 'i2', object_name: 'J2', activity: 'Gjutning', area: 'PM20', status: 'pagaende', start_date: '2000-01-01', end_date: '2999-01-01', progress: 40, source_key: 'k1' },
+      { id: 'i3', object_name: 'F1', activity: 'Formning', area: 'PM21', status: 'planerad', start_date: '2000-01-01', end_date: '2999-01-01', progress: 0 }];
+    invalidateVisible && invalidateVisible(); itemCodeCache.clear();
+    plan.calib = { model: [[0, 0, 0], [100, 0, 0]], pdf: [[0, 0], [1000, 0]] };
+    plan.zones.push({ id: 'z2', code: 'PM21', polys: [[[400, 400], [500, 400], [500, 500], [400, 500]]], labels: [] }, { id: 'z3', code: 'PM22', polys: [[[600, 400], [700, 400], [700, 500], [600, 500]]], labels: [] });
+    plan.zones[0].style.pattern = 'hatch'; selectZone(plan.zones[0].id); showTab('zones'); renderZones();
+  });
+  if (await page.isVisible('#zeActs') || await page.isVisible('#zeArea')) fail('Aktivitetslistan och ytan ska vara avslagna från början');
+  await page.evaluate(() => { $('zoneOptsBox').open = true; });
+  await page.check('#zoActs'); await page.check('#zoArea'); await page.waitForTimeout(150);
+  if (!/Gjutning.*\(2 obj\.\)/.test(await page.textContent('#zeActs'))) fail('Zonrutan ska lista aktiviteterna som kopplas: ' + await page.textContent('#zeActs'));
+  await page.selectOption('#zeField', 'area'); await page.fill('#zeValue', 'PM21'); await page.waitForTimeout(100);
+  if (!/Formning/.test(await page.textContent('#zeActs')) || /Gjutning/.test(await page.textContent('#zeActs'))) fail('Listan ska uppdateras när kopplingen ändras, innan man sparar');
+  if ((await zones())[0].rule.field !== 'auto') fail('Förhandsvisningen ska inte spara kopplingen');
+  await page.selectOption('#zeField', 'auto');
+  if (!/Yta: [\d\s,]+ m²/.test(await page.textContent('#zeArea'))) fail('Ytan ska visas i zonrutan: ' + await page.textContent('#zeArea'));
+  if (!/m²/.test(await page.textContent('#zoneList'))) fail('Ytan ska visas i zonlistan');
+  const a21 = await page.evaluate(() => zoneAreaM2(plan.zones.find(z => z.code === 'PM21')));
+  if (Math.abs(a21 - 100) > 0.01) fail('PM21 (10 × 10 m) ska vara 100 m²: ' + a21);
+  await page.check('#zeStyle .zs-area'); await page.waitForTimeout(100);
+  if (!(await zones())[0].style.labelArea) fail('Ytan ska kunna visas i etiketten');
+  // Flerval: Ctrl-klick i listan, ändra utseendet på alla markerade.
+  await page.check('#zoMulti');
+  const rowOf = code => page.locator('#zoneList .zone-item', { hasText: code });
+  await rowOf('PM21').click();
+  await rowOf('PM22').click({ modifiers: ['Control'] }); await page.waitForTimeout(100);
+  if (!/2 zoner markerade/.test(await page.textContent('#zeTitle'))) fail('Ctrl-klick ska markera flera zoner');
+  if (await page.isVisible('#zeCode')) fail('Med flera markerade ska bara utseendet visas');
+  await page.selectOption('#zeStyle .zs-pat', 'dots'); await page.waitForTimeout(100);
+  const pats = await page.evaluate(() => plan.zones.map(z => [z.code, (z.style || {}).pattern || 'none']));
+  if (JSON.stringify(pats) !== JSON.stringify([['PM20', 'hatch'], ['PM21', 'dots'], ['PM22', 'dots']])) fail('Utseendet ska ändras på alla markerade (och bara dem): ' + JSON.stringify(pats));
+  await rowOf('PM20').click({ modifiers: ['Shift'] }); await page.waitForTimeout(100);
+  if (!/3 zoner markerade/.test(await page.textContent('#zeTitle'))) fail('Shift-klick ska markera ett intervall');
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+  if (await page.evaluate(() => (plan.zones[1].style || {}).pattern === 'dots')) fail('Ctrl+Z ska ångra ändringen på alla markerade');
+  await rowOf('PM21').click(); await page.waitForTimeout(100);
+  if (!/Zon PM21/.test(await page.textContent('#zeTitle'))) fail('Vanligt klick ska gå tillbaka till en zon');
+  console.log('OK: fler zonfunktioner – aktiviteter som kopplas (live), yta i m² (lista, ruta, etikett), flerval med Ctrl/Shift');
+
   // 7) Uppladdningsdatum för DXF – diskret (syns vid hovring).
   await page.evaluate(() => { siteItems.push({ id: 'c1', type: 'cad', name: 'Ritning', path: 'x', created_at: '2026-09-30T08:15:00Z', by: 'Victor', colorMode: 'orig', layers: [{ name: 'A', color: '#ff0000', n: 1 }], stats: { lines: 1, texts: 0, kb: 1 } }); showTab('work'); renderLayerPanel(); });
   const dt = page.locator('.layer-row[data-layer="cad:c1"] .cad-date');

@@ -964,7 +964,7 @@ function drawZoneShapes(ctx, fontPx, objects, cached) {
     const st = cached && zone._status ? zone._status : zoneStatus(zone);
     zone._status = st;
     const zs = zoneStyle(zone);
-    const selected = zone.id === selectedZoneId;
+    const selected = zone.id === selectedZoneId || (typeof zoneSel !== "undefined" && zoneSel.size > 1 && zoneSel.has(zone.id));
     if (zs.hidden && !selected) continue;
     const phaseCol = phaseColor(st.phase);
     const color = zs.fill === "custom" ? zs.fillColor : phaseCol;
@@ -993,7 +993,8 @@ function drawZoneShapes(ctx, fontPx, objects, cached) {
     }
     // Etikett: kod (+ namn) + framdrift, vid kodtexten (eller mitt i zonen)
     if (zs.label !== "none") {
-      const text = [zs.labelName && zone.name ? `${zone.code} ${zone.name}` : zone.code, zs.labelPct && st.progress != null ? `${st.progress} %` : ""].filter(Boolean).join(" · ");
+      const area = zs.labelArea && typeof zoneAreaM2 === "function" ? zoneAreaM2(zone) : null;
+      const text = [zs.labelName && zone.name ? `${zone.code} ${zone.name}` : zone.code, zs.labelPct && st.progress != null ? `${st.progress} %` : "", area != null ? `${fmtArea(area)} m²` : ""].filter(Boolean).join(" · ");
       const anchors = (zone.labels && zone.labels.length) ? zone.labels : [centroid(zone)];
       anchors.filter(Boolean).forEach(a => badges.push([toPx(a), text, color, noStatus, zs]));
     }
@@ -1079,7 +1080,9 @@ function renderZoneList() {
     const pct = document.createElement("span"); pct.className = "pct";
     pct.textContent = st.items.length ? `${st.progress} % · ${st.items.length} obj` : "";
     row.append(sw, code, ph, pct);
-    row.onclick = () => selectZone(z.id, true);
+    if (typeof zoneOpt$ === "function" && zoneOpt$("area")) { const a = zoneAreaM2(z); if (a != null) { const ar = document.createElement("span"); ar.className = "zarea"; ar.textContent = `${fmtArea(a)} m²`; pct.append(" · ", ar); } }
+    if (typeof zoneSel !== "undefined" && zoneSel.size > 1 && zoneSel.has(z.id)) row.classList.add("msel");
+    row.onclick = e => (typeof zoneRowClick === "function" ? zoneRowClick(e, z.id, zones) : selectZone(z.id, true));
     list.appendChild(row);
   });
   if (!zones.length) list.innerHTML = '<div class="muted" style="padding:6px;">Inga zoner än – klicka 🔍 Hitta zoner i PDF:en, eller rita en med ▭ Rektangel eller ⬠ Polygon.</div>';
@@ -1518,11 +1521,13 @@ function updateEditorHints() {
   if (field !== "auto") {
     [...new Set(items.map(it => it[field]).filter(Boolean))].sort().slice(0, 400).forEach(v => { const o = document.createElement("option"); o.value = v; dl.appendChild(o); });
   }
-  const tmp = { code: $("zeCode").value, rule: { field, value: $("zeValue").value } };
+  const zsel = plan && (plan.zones || []).find(z => z.id === selectedZoneId);
+  const tmp = { ...(zsel || {}), code: $("zeCode").value, rule: { field, value: $("zeValue").value } };
   const n = itemsForZone(tmp).length;
   $("zeMatchInfo").textContent = n ? `Kopplar ${n} planerade objekt.` : (field === "auto"
     ? (plan && plan.calib ? "Inga planerade objekt ligger i zonen på vald nivå, eller har koden i område/aktivitet/namn." : "Inga planerade objekt har koden i område/aktivitet/namn – kalibrera mot 3D (📐) eller välj ett fält och värde.")
     : "Inga planerade objekt matchar.");
+  if (typeof renderZoneActs === "function") renderZoneActs(tmp);
 }
 
 // ---------------------------------------------------------------------
