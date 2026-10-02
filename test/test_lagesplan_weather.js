@@ -61,6 +61,7 @@ function smhi() {
   if (Math.abs(rt.lat - 65.58) > 1e-7 || Math.abs(rt.lon - 20.25) > 1e-7 || Math.abs(rt.lat2 - 59.33) > 1e-7 || Math.abs(rt.lon2 - 18.07) > 1e-7) fail('SWEREF -> lat/lon ska bli exakt tillbaka: ' + JSON.stringify(rt));
   console.log('OK: SWEREF 99 (20 15 och TM) räknas om till lat/lon');
 
+  const rt0 = rt;
   // 2) Projektets plats -> SMHI, sammanställt per dag.
   const today = localIso(new Date()), tomorrow = localIso(new Date(Date.now() + 86400000));
   await page.evaluate(({ N, E }) => {
@@ -107,6 +108,29 @@ function smhi() {
   const line = await page.evaluate(d => weatherPdfLine(d), today);
   if (!/^Väder \(SMHI\): Regn -?\d+–\d+ °C · vind 7 \(byar 14\) m\/s/.test(line) || /[^\x09\x0A\x0D\x20-\x7E\xA0-\xFF–]/.test(line)) fail('Dagbladet ska få en väderrad utan emoji: ' + line);
   console.log('OK: väder i veckovyn och dagbladet');
+
+  // 5b) Väder på planen: dag- och veckoruta, egen lager, flyttas, Delete tar bort, Ctrl+Z ångrar.
+  const vb = await page.locator('#viewport').boundingBox();
+  await page.click('#dayPanel [data-place-wx="wxweek"]');
+  await page.mouse.click(vb.x + 300, vb.y + 300); await page.waitForTimeout(200);
+  const wk = await page.evaluate(() => siteItems.find(x => x.type === 'wxweek'));
+  if (!wk || wk.layer !== 'Väder') fail('Veckans väder ska läggas på planen i lagret Väder: ' + JSON.stringify(wk));
+  if (!(await page.evaluate(() => dailyBoxes.has(siteItems.find(x => x.type === 'wxweek').id)))) fail('Väderrutan ska ritas på planen');
+  await page.mouse.move(vb.x + 300, vb.y + 300); await page.mouse.down();
+  for (let k = 1; k <= 6; k++) await page.mouse.move(vb.x + 300 + k * 10, vb.y + 300);
+  await page.mouse.up(); await page.waitForTimeout(200);
+  const mv = await page.evaluate(() => siteItems.find(x => x.type === 'wxweek').pts[0]);
+  if (Math.abs(mv[0] - (rt0.E + 36)) > 0.6) fail('Väderrutan ska gå att dra: ' + JSON.stringify(mv));
+  await page.click('#dayPanel [data-place-wx="wxday"]');
+  await page.mouse.click(vb.x + 600, vb.y + 200); await page.waitForTimeout(200);
+  if (!(await page.evaluate(() => siteItems.some(x => x.type === 'wxday')))) fail('Dagens väder ska gå att lägga på planen');
+  if (!(await page.evaluate(() => legendItems({ site: true }).every(i => !/Väder/.test(i.label))))) fail('Väderrutorna ska inte hamna i förklaringen');
+  await page.mouse.click(vb.x + 600, vb.y + 200); await page.waitForTimeout(150);
+  await page.keyboard.press('Delete'); await page.waitForTimeout(200);
+  if (await page.evaluate(() => siteItems.some(x => x.type === 'wxday'))) fail('Delete ska ta bort den markerade väderrutan');
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(200);
+  if (!(await page.evaluate(() => siteItems.some(x => x.type === 'wxday')))) fail('Ctrl+Z ska ta tillbaka den');
+  console.log('OK: väder per dag och vecka på planen (eget lager, dras, Delete tar bort, Ctrl+Z ångrar)');
 
   // 6) Utan nät: ingen krasch, "Väder saknas".
   await page.unroute('https://opendata-download-metfcst.smhi.se/**');

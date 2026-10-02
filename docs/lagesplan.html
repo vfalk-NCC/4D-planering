@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261001211227"></script>
+<script src="github-storage.js?v=20261002050943"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -433,6 +433,18 @@
   .wx-set label { margin: 4px 0 1px; font-size: 11.5px; }
   table.wk tr.wk-wx td { font-size: 13px; line-height: 1.15; }
   #fieldDayBody .dp-wx { font-size: 15px; }
+  .dp-rowdel { flex: none; height: 26px; min-width: 26px; padding: 0 5px; border: none; background: none; opacity: .45; font-size: 14px; }
+  .dp-rowdel:hover { opacity: 1; background: #fee2e2; }
+  #fieldDayBody .dp-rowdel { height: 40px; min-width: 40px; opacity: .7; font-size: 18px; }
+  .dp-wxplace { display: flex; gap: 4px; align-items: center; justify-content: center; margin: -2px 0 6px; font-size: 11.5px; }
+  .dp-wxplace button { height: 24px; padding: 0 7px; font-size: 11.5px; } .dp-wxplace button.on { box-shadow: 0 0 0 2px var(--accent); }
+  #fieldDayBody .dp-wxplace button { height: 40px; font-size: 14px; }
+  .dp-look { margin: 8px 0 2px; border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; }
+  .dp-look summary { cursor: pointer; font-size: 12px; font-weight: 650; }
+  .dp-lookrow { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 4px; } .dp-lookrow input { flex: 1; } .dp-lookv { min-width: 40px; text-align: right; }
+  .dp-lookcols { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+  .dp-lookue { display: flex; align-items: center; gap: 3px; margin: 0; font-size: 11.5px; font-weight: 700; }
+  .dp-lookue input { width: 30px; height: 24px; padding: 0; border: none; background: none; }
   #fieldDay { position: absolute; top: 66px; right: 10px; bottom: 132px; width: min(420px, calc(100% - 20px)); z-index: 9; flex-direction: column; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 10px 30px rgba(15,23,42,.25); overflow: hidden; }
   #fieldDay .fs-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 17px; }
   #fieldDayBody { overflow-y: auto; padding: 6px 12px 14px; -webkit-overflow-scrolling: touch; font-size: 15px; }
@@ -909,18 +921,18 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261001211227"></script>
-<script src="lagesplan-tools.js?v=20261001211227"></script>
-<script src="lagesplan-layers.js?v=20261001211227"></script>
-<script src="lagesplan-views.js?v=20261001211227"></script>
-<script src="lagesplan-film.js?v=20261001211227"></script>
-<script src="lagesplan-cad.js?v=20261001211227"></script>
-<script src="lagesplan-vecpdf.js?v=20261001211227"></script>
-<script src="lagesplan-print.js?v=20261001211227"></script>
-<script src="lagesplan-daily.js?v=20261001211227"></script>
-<script src="lagesplan-gps.js?v=20261001211227"></script>
-<script src="lagesplan-weather.js?v=20261001211227"></script>
-<script src="lagesplan-touch.js?v=20261001211227"></script>
-<script src="lagesplan-keys.js?v=20261001211227"></script>
+<script src="lagesplan.js?v=20261002050943"></script>
+<script src="lagesplan-tools.js?v=20261002050943"></script>
+<script src="lagesplan-layers.js?v=20261002050943"></script>
+<script src="lagesplan-views.js?v=20261002050943"></script>
+<script src="lagesplan-film.js?v=20261002050943"></script>
+<script src="lagesplan-cad.js?v=20261002050943"></script>
+<script src="lagesplan-vecpdf.js?v=20261002050943"></script>
+<script src="lagesplan-print.js?v=20261002050943"></script>
+<script src="lagesplan-daily.js?v=20261002050943"></script>
+<script src="lagesplan-gps.js?v=20261002050943"></script>
+<script src="lagesplan-weather.js?v=20261002050943"></script>
+<script src="lagesplan-touch.js?v=20261002050943"></script>
+<script src="lagesplan-keys.js?v=20261002050943"></script>
 </body>
 </html>

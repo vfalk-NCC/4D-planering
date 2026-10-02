@@ -235,3 +235,77 @@ document.addEventListener("DOMContentLoaded", () => {
   const orig = openPlan;
   openPlan = async function () { const r = await orig.apply(this, arguments); loadWeather(); return r; };
 });
+
+// ---------------------------------------------------------------------
+// Väder på planen (Victors önskemål 2026-10-02): en ruta för dagens eller
+// veckans väder som dras in på planen och följer med i utskrifter. Följer
+// valt datum. Ligger på lagret "Väder" (kan släckas inför en utskrift).
+// ---------------------------------------------------------------------
+const WX_EMOJI_FONT = `"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif`;
+function finishWxTool() {
+  const kind = siteTool.kind, pt = siteTool.pts[siteTool.pts.length - 1];
+  stopSiteTool();
+  const rec = { id: ghNewId(), type: kind, name: "", pts: [[Math.round(pt[0] * 1000) / 1000, Math.round(pt[1] * 1000) / 1000]], layer: "Väder", created_at: new Date().toISOString(), by: settings.userName || null };
+  ls("ul:Väder").visible = true; saveLayerState();
+  selectedSiteId = rec.id;
+  saveSiteItem(rec);
+  if (!wx.at && !wx.loading) loadWeather();
+  if (typeof renderDaySoon === "function") renderDaySoon();
+}
+function drawWxBox(ctx, x, fontPx, selected) {
+  if (!x.pts || !x.pts[0]) return;
+  const fs = siteStyle(x, fontPx).fs * 1.3, p = mToPx(x.pts[0]), day = curDay(), s = wxSettings();
+  const head = x.color || "#1e40af", warnC = "#c2410c", F = (w, k) => `${w} ${fs * k}px "Segoe UI", Arial, sans-serif`;
+  ctx.save(); ctx.setLineDash([]); ctx.textBaseline = "middle";
+  const pad = fs * 0.5, hh = fs * 1.2;
+  let W, H, body;
+  if (x.type === "wxday") {
+    const w = weatherFor(day);
+    const lines = w ? [[wxSym(w)[1], F(700, 0.85), "#111827"], [`${Math.round(w.tmin)}–${Math.round(w.tmax)} °C`, F(800, 1.05), w.tmin < s.cold ? warnC : "#111827"],
+      [`Vind ${Math.round(w.ws)} (byar ${Math.round(w.gust)}) m/s`, F(500, 0.72), w.gust >= s.gust ? warnC : "#374151"], [w.prec >= 0.1 ? `Nederbörd ${wxNum(w.prec)} mm` : "Uppehåll", F(500, 0.72), w.prec >= s.rain ? warnC : "#374151"]]
+      : [[wx.loading ? "Hämtar väder…" : wx.error ? "Väder saknas" : "Ingen prognos för dagen", F(500, 0.75), "#6b7280"]];
+    const ic = w ? fs * 2.2 : 0;
+    const tw = Math.max(...lines.map(l => { ctx.font = l[1]; return ctx.measureText(l[0]).width; }));
+    ctx.font = F(700, 0.62); const hw = ctx.measureText(`VÄDER · ${dayShort(day).toUpperCase()}`).width + fs * 2.2;
+    W = Math.max(hw, ic + tw + pad * 3); H = hh + pad + lines.length * fs * 1.15 + pad * 0.6;
+    body = (bx, by) => {
+      if (w) { ctx.font = `${ic * 0.8}px ${WX_EMOJI_FONT}`; ctx.textAlign = "center"; ctx.fillStyle = "#111827"; ctx.fillText(wxSym(w)[0], bx + pad + ic / 2, by + hh + (H - hh) / 2); }
+      ctx.textAlign = "left";
+      lines.forEach((l, i) => { ctx.font = l[1]; ctx.fillStyle = l[2]; ctx.fillText(l[0], bx + pad * (w ? 2 : 1) + ic, by + hh + pad + fs * 0.55 + i * fs * 1.15); });
+    };
+    x._wxHead = `VÄDER · ${dayShort(day).toUpperCase()}`;
+  } else {
+    const mon = weekStart(day), days = [0, 1, 2, 3, 4, 5, 6].map(i => addDays(mon, i)).filter((d, i) => i < 5 || weatherFor(d));
+    const cw = fs * 3.3, rows = fs * 5.3;
+    W = days.length * cw + pad * 2; H = hh + rows + pad * 0.5;
+    body = (bx, by) => {
+      days.forEach((d, i) => {
+        const w = weatherFor(d), cx = bx + pad + i * cw + cw / 2, top = by + hh;
+        if (d === day) { ctx.fillStyle = "rgba(37,99,235,.10)"; roundRect(ctx, cx - cw / 2 + fs * 0.08, top + fs * 0.12, cw - fs * 0.16, rows - fs * 0.12, fs * 0.25); ctx.fill(); }
+        ctx.textAlign = "center";
+        ctx.font = F(700, 0.62); ctx.fillStyle = isWeekend(d) ? "#9ca3af" : "#374151";
+        ctx.fillText(`${WEEKDAYS_SV[dayDate(d).getDay()]} ${dayDate(d).getDate()}`, cx, top + fs * 0.65);
+        if (!w) { ctx.font = F(500, 0.7); ctx.fillStyle = "#9ca3af"; ctx.fillText("–", cx, top + fs * 2.4); return; }
+        ctx.font = `${fs * 1.35}px ${WX_EMOJI_FONT}`; ctx.fillStyle = "#111827"; ctx.fillText(wxSym(w)[0], cx, top + fs * 1.75);
+        ctx.font = F(800, 0.8); ctx.fillStyle = "#111827"; ctx.fillText(`${Math.round(w.tmax)}°`, cx, top + fs * 2.85);
+        ctx.font = F(500, 0.62); ctx.fillStyle = w.tmin < s.cold ? warnC : "#6b7280"; ctx.fillText(`${Math.round(w.tmin)}°`, cx, top + fs * 3.55);
+        ctx.fillStyle = w.gust >= s.gust ? warnC : "#374151"; ctx.font = F(w.gust >= s.gust ? 800 : 500, 0.6); ctx.fillText(`${Math.round(w.gust)} m/s`, cx, top + fs * 4.25);
+        ctx.fillStyle = w.prec >= s.rain ? warnC : "#2563eb"; ctx.font = F(w.prec >= s.rain ? 800 : 500, 0.6); ctx.fillText(w.prec >= 0.1 ? `${wxNum(w.prec)} mm` : "", cx, top + fs * 4.9);
+      });
+    };
+    x._wxHead = `VÄDER · VECKA ${dayWeekNo(day)}`;
+  }
+  const bx = p[0] - W / 2, by = p[1] - H / 2, r = fs * 0.35;
+  ctx.shadowColor = "rgba(15,23,42,.25)"; ctx.shadowBlur = fs * 0.4; ctx.shadowOffsetY = fs * 0.08;
+  roundRect(ctx, bx, by, W, H, r); ctx.fillStyle = "rgba(255,255,255,.96)"; ctx.fill();
+  ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+  ctx.save(); roundRect(ctx, bx, by, W, H, r); ctx.clip(); ctx.fillStyle = head; ctx.fillRect(bx, by, W, hh); ctx.restore();
+  roundRect(ctx, bx, by, W, H, r); ctx.lineWidth = Math.max(1, fs * 0.07); ctx.strokeStyle = head; ctx.stroke();
+  ctx.font = F(700, 0.62); ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.fillText(x._wxHead + (x.locked ? " 🔒" : ""), bx + pad, by + hh / 2);
+  ctx.textAlign = "right"; ctx.font = F(500, 0.52); ctx.fillText("SMHI", bx + W - pad, by + hh / 2);
+  delete x._wxHead;
+  body(bx, by);
+  if (selected) { const o = fs * 0.3; roundRect(ctx, bx - o, by - o, W + o * 2, H + o * 2, r + o); ctx.setLineDash([fs * 0.35, fs * 0.22]); ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(1.5, fs * 0.1); ctx.stroke(); }
+  ctx.restore();
+  if (ctx.canvas && ctx.canvas.id === "topCanvas" && typeof dailyBoxes !== "undefined") dailyBoxes.set(x.id, [{ x: p[0], y: p[1], w: W, h: H }]);
+}

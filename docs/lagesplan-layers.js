@@ -37,7 +37,10 @@ const SITE_KINDS = {
   // Dagsplanering (lagesplan-daily.js): gäller per dag (från–till), ett klick placerar.
   crew:     { label: "Arbetslag",   icon: "👷", clicks: 1 },
   delivery: { label: "Leverans",    icon: "🚚", clicks: 1 },
-  lift:     { label: "Lyft",        icon: "🪝", clicks: 1 }
+  lift:     { label: "Lyft",        icon: "🪝", clicks: 1 },
+  // Väder på planen (lagesplan-weather.js): följer valt datum, följer med i utskrifter.
+  wxday:    { label: "Väder (dag)",   icon: "🌤", clicks: 1 },
+  wxweek:   { label: "Väder (vecka)", icon: "📅", clicks: 1 }
 };
 /* Symbolbibliotek - färdiga mått (meter, bredd × längd). */
 const SYMBOLS = {
@@ -208,8 +211,8 @@ function askOrthoDate(def) {
 /* Egna lager (Victors önskemål 2026-09-28): varje notering/etableringsobjekt
    ligger på ett namngivet lager. "Allmänt" och "Etablering" finns alltid;
    egna lager sparas som { type: "layer", name } i site_layers.json. */
-const isSiteObj = x => x.type !== "ortho" && x.type !== "layer" && x.type !== "layermeta" && x.type !== "cad" && x.type !== "printtpl" && x.type !== "objview" && x.type !== "lsview" && x.type !== "ue" && x.type !== "wxset";
-const defaultLayerOf = x => x.type === "note" ? "Allmänt" : (x.type === "crew" || x.type === "delivery" || x.type === "lift") ? "Dagsplanering" : "Etablering";
+const isSiteObj = x => x.type !== "ortho" && x.type !== "layer" && x.type !== "layermeta" && x.type !== "cad" && x.type !== "printtpl" && x.type !== "objview" && x.type !== "lsview" && x.type !== "ue" && x.type !== "wxset" && x.type !== "dayset";
+const defaultLayerOf = x => x.type === "note" ? "Allmänt" : (x.type === "crew" || x.type === "delivery" || x.type === "lift") ? "Dagsplanering" : (x.type === "wxday" || x.type === "wxweek") ? "Väder" : "Etablering";
 const layerOf = x => x.layer || defaultLayerOf(x);
 function userLayers() {
   const names = new Set(["Allmänt", "Etablering"]);
@@ -912,7 +915,7 @@ function drawSiteLayers(ctx, fontPx) {
   const ppm = pxPerMeter();
   ctx.save();
   // Dagsplaneringen överst: leveranser, lyft och sist lagen (annars kan en avspärrnings text dölja ett lag).
-  const ORDER = { delivery: 1, lift: 2, crew: 3 };
+  const ORDER = { delivery: 1, lift: 2, crew: 3, wxday: 4, wxweek: 4 };
   const shown = siteItems.filter(siteShown).map((x, i) => [x, i]).sort((a, b) => ((ORDER[a[0].type] || 0) - (ORDER[b[0].type] || 0)) || a[1] - b[1]).map(a => a[0]);
   const barriers = shown.filter(x => x.type === "barrier");
   shown.forEach(x => {
@@ -1008,6 +1011,7 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
   const lock = x.locked ? " 🔒" : "";
   ctx.setLineDash([]);
   if ((x.type === "crew" || x.type === "delivery" || x.type === "lift") && typeof drawDailyItem === "function") { drawDailyItem(ctx, x, fontPx, ppm, selected); return; }
+  if ((x.type === "wxday" || x.type === "wxweek") && typeof drawWxBox === "function") { drawWxBox(ctx, x, fontPx, selected); return; }
   if (x.type === "symbol" && typeof drawVehicleSymbol === "function" && drawVehicleSymbol(ctx, x, fontPx, ppm, selected)) return;
   if (x.type === "note") {
     const [a, t] = x.pts.map(mToPx);
@@ -1140,7 +1144,7 @@ function wrapText(t, n) {
 }
 function drawSitePreview(ctx, fontPx, ppm) {
   const pts = siteTool.pts.concat(siteTool.cursor ? [siteTool.cursor] : []);
-  if (SITE_KINDS[siteTool.kind] && ["crew", "delivery", "lift"].includes(siteTool.kind)) return;
+  if (SITE_KINDS[siteTool.kind] && ["crew", "delivery", "lift", "wxday", "wxweek"].includes(siteTool.kind)) return;
   let tmp = { id: "_preview", type: siteTool.kind, pts, name: "", text: "…", radius: 40, sym: siteTool.sym, w: 4 };
   if (tmp.type === "symbol") {
     const sy = SYMBOLS[siteTool.sym] || { w: 3, h: 6 };
@@ -1163,7 +1167,7 @@ function drawSitePreview(ctx, fontPx, ppm) {
 function siteHandles(x, fontPx, ppm) {
   const off = (fontPx * 2.2) / ppm; // rotationshandtagets avstånd i meter
   if (x.type === "note") return [{ kind: "vertex", i: 0, m: x.pts[0] }, { kind: "vertex", i: 1, m: x.pts[1] }];
-  if (x.type === "sketch" || x.type === "crew" || x.type === "lift") return []; // frihand/lag/lyft: dra i dem för att flytta
+  if (x.type === "sketch" || x.type === "crew" || x.type === "lift" || x.type === "wxday" || x.type === "wxweek") return []; // frihand/lag/lyft: dra i dem för att flytta
   if (x.type === "delivery") { // fordon har fasta mått: bara vrid
     const g = rectGeom(x), off2 = (fontPx * 2.2) / ppm;
     return [{ kind: "rotate", m: [g.cx - Math.sin(g.rot) * (g.h / 2 + off2), g.cy + Math.cos(g.rot) * (g.h / 2 + off2)] }];
@@ -1335,7 +1339,7 @@ function layersPointerDown(e) {
   const pdfPt = toPdf(stagePoint(e));
   const sel = selectedSiteId && siteItems.find(x => x.id === selectedSiteId && siteShown(x));
   let target = sel, handle = sel ? handleAt(sel, pdfPt) : null;
-  const dt = !handle && typeof dailyAt === "function" ? dailyAt(toPx(pdfPt)) : null; // lag och lyft ritas överst
+  const dt = !handle && typeof dailyAt === "function" ? dailyAt(toPx(pdfPt)) : null; // lag, lyft och väder ritas överst
   if (dt) { target = dt; handle = { kind: "move" }; }
   if (!handle) {
     // Etiketten ligger överst: dra den fritt (för noteringar = textens läge).
@@ -1465,6 +1469,7 @@ function updateSiteUi() {
     barrier: ["Klicka hörnen, dubbelklicka (eller Enter) för att avsluta."],
     crew: ["Klicka (tryck) där laget ska jobba."], delivery: ["Klicka där fordonet ska stå – vrid det sedan med ↻."],
     lift: ["Klicka där lasten ska lyftas (lyftpunkten)."],
+    wxday: ["Klicka där dagens väder ska stå på planen."], wxweek: ["Klicka där veckans väder ska stå på planen."],
     sketch: ["Rita med fingret (eller musen). Varje drag sparas direkt – två fingrar zoomar/panorerar. Tryck på ✏️ igen när du är klar."]
   };
   $("siteHint").textContent = k ? `${k.icon} ${(hints[siteTool.kind][Math.min(siteTool.pts.length, hints[siteTool.kind].length - 1)])}${siteTool.pts.length ? " Håll Shift för rak linje (5°-steg)." : ""} Esc avbryter.`
@@ -1474,6 +1479,7 @@ function updateSiteUi() {
 function finishSiteTool() {
   if (!siteTool) return;
   if (["crew", "delivery", "lift"].includes(siteTool.kind) && typeof finishDailyTool === "function") { finishDailyTool(); return; }
+  if (["wxday", "wxweek"].includes(siteTool.kind) && typeof finishWxTool === "function") { finishWxTool(); return; }
   const { kind, pts } = siteTool;
   finishSiteTool.sym = siteTool.sym;
   const min = { fence: 2, barrier: 3, route: 2 }[kind];
@@ -1633,7 +1639,8 @@ function openSitePop(rec, isNew) {
   const sx = view.tx + anchor[0] * view.scale, sy = view.ty + anchor[1] * view.scale;
   pop.style.left = `${Math.max(8, Math.min(r.width - pop.offsetWidth - 8, sx + 16))}px`;
   pop.style.top = `${Math.max(8, Math.min(r.height - pop.offsetHeight - 8, sy + 16))}px`;
-  const first = pop.querySelector(".sp-text, .sp-name"); if (first) first.focus();
+  // Bara nya objekt får markören i textfältet – ett klickat objekt ska kunna tas bort med Delete.
+  const first = pop.querySelector(".sp-text, .sp-name"); if (first && isNew) first.focus();
   pop.querySelector(".sp-cancel").onclick = () => { closeSitePop(); if (isNew) renderZones(); };
   const num = (c, def) => { const el = pop.querySelector(c); const v = el ? Number(String(el.value).replace(",", ".")) : NaN; return Number.isFinite(v) ? v : def; };
   // Textstorlek: reglage och siffror hänger ihop, och planen visar ändringen direkt.
@@ -2369,6 +2376,16 @@ function bindLayers() {
   window.addEventListener("keydown", e => {
     if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
     if (e.key === "Escape") { if (siteTool) stopSiteTool(); else if (!$("sitePop").classList.contains("hidden")) { closeSitePop(); selectedSiteId = null; renderZones(); } }
+    else if ((e.key === "Delete" || e.key === "Backspace") && selectedSiteId && !siteTool) {
+      // Delete (⌫ på Mac) tar bort det markerade objektet på planen – kan ångras med Ctrl+Z.
+      const x = siteItems.find(y => y.id === selectedSiteId);
+      if (!x) return;
+      e.preventDefault();
+      if (x.locked) { setSaveStatus("🔒 Objektet är låst – lås upp det i redigeringsrutan för att ta bort det."); return; }
+      closeSitePop(); selectedSiteId = null;
+      saveSiteItem(x, true);
+      setSaveStatus(`🗑 ${(SITE_KINDS[x.type] || {}).label || "Objektet"} borttaget – Ctrl+Z ångrar`);
+    }
     else if (e.key === "Enter" && siteTool && !SITE_KINDS[siteTool.kind].clicks) finishSiteTool();
   });
   applyLayerCss();

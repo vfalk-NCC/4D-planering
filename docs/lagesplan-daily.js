@@ -82,6 +82,18 @@ function nextUeColor() {
   return UE_COLORS.find(c => !used.has(c)) || UE_COLORS[ues().length % UE_COLORS.length];
 }
 
+/* Utseende på lagen (Victors önskemål 2026-10-02): storlek och opacitet för
+   alla lag, sparas i projektet ({ type: "dayset" }) så utskrifterna blir lika. */
+const DAYSET_ID = "dayset";
+function daySettings() {
+  const s = siteItems.find(x => x.id === DAYSET_ID) || {};
+  return { id: DAYSET_ID, type: "dayset", crewScale: Number(s.crewScale) > 0 ? Number(s.crewScale) : 1, crewOpacity: Number(s.crewOpacity) > 0 ? Math.min(1, Number(s.crewOpacity)) : 1 };
+}
+function setDaySettingsLocal(rec) {
+  const i = siteItems.findIndex(x => x.id === DAYSET_ID);
+  if (i >= 0) siteItems[i] = rec; else siteItems.push(rec);
+}
+
 // ---------------------------------------------------------------------
 // Aktiviteter i 4D-planeringen (samma "familj" som släckningen: grupp,
 // källa från 4-veckorsplaneringen eller enskild rad).
@@ -274,7 +286,7 @@ let dailyBoxes = new Map(); // id -> [{ x, y, w, h }] i canvas-px (bara skärmen
 })();
 const issueOf = id => (dailyIssues && dailyIssues.byId.get(id)) || null;
 function dailyAt(p) {
-  const vis = siteItems.filter(x => (x.type === "crew" || x.type === "lift") && siteShown(x)).reverse();
+  const vis = siteItems.filter(x => (x.type === "crew" || x.type === "lift" || x.type === "wxday" || x.type === "wxweek") && siteShown(x)).reverse();
   for (const x of vis) {
     const bs = dailyBoxes.get(x.id);
     if (bs && bs.some(b => Math.abs(p[0] - b.x) <= b.w / 2 && Math.abs(p[1] - b.y) <= b.h / 2)) return x;
@@ -426,14 +438,15 @@ function crewTitle(x) { const ue = ueById(x.ue); return `${ueShort(ue)}${x.perso
 function drawCrew(ctx, x, fontPx, selected) {
   if (!x.pts || !x.pts[0]) return;
   const ue = ueById(x.ue), color = ueColor(ue), fg = contrastText(color);
-  const fs = siteStyle(x, fontPx).fs * 1.2;
+  const ds = daySettings();
+  const fs = siteStyle(x, fontPx).fs * 1.2 * ds.crewScale;
   const p = mToPx(x.pts[0]);
   const iss = issueOf(x.id), bad = iss && iss.sev !== "info";
   const act = x.act ? famInfo(x.act, curDay()) : null;
   const title = crewTitle(x);
   let sub = x.task || (act ? act.title : "") || (ue && ue.short ? ue.name || "" : "");
   if (sub.length > 28) sub = sub.slice(0, 27) + "…";
-  ctx.save(); ctx.setLineDash([]);
+  ctx.save(); ctx.setLineDash([]); ctx.globalAlpha *= ds.crewOpacity;
   const F1 = `800 ${fs * 0.9}px "Segoe UI", Arial, sans-serif`, F2 = `500 ${fs * 0.6}px "Segoe UI", Arial, sans-serif`;
   ctx.font = F1; const tw = ctx.measureText(title).width;
   ctx.font = F2; const sw = sub ? ctx.measureText(sub).width : 0;
@@ -477,7 +490,7 @@ function drawDelivery(ctx, x, fontPx, ppm, selected) {
   if (selected) outlineRect(ctx, g, (V.outrigger || 0) + 0.8, "#0b5fff", fontPx, true);
   const line1 = `${V.icon} ${x.time ? x.time + " " : ""}${x.what || V.label}`;
   const line2 = [x.what ? V.label : "", ue ? ueShort(ue) : ""].filter(Boolean).join(" · ");
-  siteLabel(ctx, x, vehicleLabelPt(g, st.fs, V.outrigger || 0), `${line1}${x.locked ? " 🔒" : ""}${line2 ? "\n" + line2 : ""}${bad ? "\n⚠ " + iss.texts[0] : ""}`, st.fs,
+  siteLabel(ctx, x, vehicleLabelPt(g, st.fs, V.outrigger || 0), `${line1}${x.locked ? " 🔒" : ""}${line2 ? "\n" + line2 : ""}${bad ? "\n⚠ " + (iss.texts[0].length > 42 ? iss.texts[0].slice(0, 41) + "…" : iss.texts[0]) : ""}`, st.fs,
     bad && iss.sev === "krock" ? "#fef2f2" : "#fff", bad && iss.sev === "krock" ? "#b91c1c" : "#111827", bad ? SEV_COLOR[iss.sev] : (ue ? ueColor(ue) : V.color), x.from !== x.to ? datesText(x) : "");
 }
 function drawLift(ctx, x, fontPx, ppm, selected) {
@@ -731,7 +744,7 @@ function openDailyPop(rec, isNew) {
   q(".dp-copy").onclick = () => { const n = save(true); if (n) copyItemsTo([n], nextWorkday(n.to || day), `Kopiera ${k.label.toLowerCase()}`); };
   pop.onkeydown = e => { if (e.key === "Enter" && e.target.tagName === "INPUT" && !e.target.classList.contains("dp-actq")) { e.preventDefault(); save(true); } };
   const first = q(rec.type === "crew" ? (rec.ue ? ".dp-persons" : ".dp-ue") : rec.type === "delivery" ? ".dp-what" : ".dp-what");
-  if (first && !("ontouchstart" in window)) first.focus();
+  if (first && isNew && !("ontouchstart" in window)) first.focus(); // klickat lag: Delete ska ta bort det
 }
 
 /* Framdrift från lagets bricka -> plan_items.json (alla objekt i aktiviteten). */
@@ -841,6 +854,7 @@ async function copyWeekTo(day) {
 // UE-registret (panel)
 // ---------------------------------------------------------------------
 let ueEditing = null; // id eller "new"
+let dayLookOpen = false;
 async function saveUe(u) { await saveSiteItem(u, false, { record: false }); renderZones(); renderDaySoon(true); }
 async function quickNewUe() {
   const name = (prompt("Underentreprenörens namn (t.ex. Armeringsbolaget AB):", "") || "").trim();
@@ -922,7 +936,7 @@ function dayRowsHtml(day) {
   const crews = its.filter(x => x.type === "crew").sort((a, b) => ueShort(ueById(a.ue)).localeCompare(ueShort(ueById(b.ue)), "sv"));
   const timed = its.filter(x => x.type !== "crew").sort(byTime);
   const flag = x => { const i = issueOfDay(x.id); return i ? `<span class="dp-flag ${i.sev}" title="${escHtml(i.texts.join("\n"))}">${i.sev === "info" ? "i" : "!"}</span>` : ""; };
-  const row = (x, sw, main, sub) => `<div class="dp-row${x.id === selectedSiteId ? " sel" : ""}" data-id="${escHtml(x.id)}">${sw}<span class="dp-main">${main}${sub ? `<br><span class="muted">${sub}</span>` : ""}</span>${flag(x)}</div>`;
+  const row = (x, sw, main, sub) => `<div class="dp-row${x.id === selectedSiteId ? " sel" : ""}" data-id="${escHtml(x.id)}">${sw}<span class="dp-main">${main}${sub ? `<br><span class="muted">${sub}</span>` : ""}</span>${flag(x)}<button type="button" class="dp-rowdel" data-del="${escHtml(x.id)}" title="Ta bort (kan ångras)">🗑</button></div>`;
   const crewRow = x => {
     const ue = ueById(x.ue), act = x.act ? famInfo(x.act, day) : null, place = placeOf(x);
     return row(x, `<span class="dp-chip" style="background:${ueColor(ue)};color:${contrastText(ueColor(ue))}">${escHtml(ueShort(ue))}</span>`,
@@ -966,11 +980,18 @@ function renderDayCore(box, field) {
   box.innerHTML = `
     <div class="dp-nav"><button type="button" data-dnav="-1" title="Föregående arbetsdag">◀</button><span class="dp-date">${escHtml(dayLong(day))}<br><span class="muted">vecka ${wk}${isWeekend(day) ? " · helg" : ""}</span></span><button type="button" data-dnav="1" title="Nästa arbetsdag">▶</button><button type="button" data-dnav="0">Idag</button></div>
     ${typeof dayWeatherHtml === "function" ? dayWeatherHtml(day) : ""}
+    <div class="dp-wxplace"><span class="muted">Väder på planen:</span><button type="button" data-place-wx="wxday" class="${siteTool && siteTool.kind === "wxday" ? "on" : ""}" title="Lägg dagens väder på planen (följer med i utskrifter)">🌤 Dag</button><button type="button" data-place-wx="wxweek" class="${siteTool && siteTool.kind === "wxweek" ? "on" : ""}" title="Lägg veckans väder på planen (följer med i utskrifter)">📅 Vecka</button></div>
     <div class="dp-sum">${crews.length} lag · ${persons} pers. · ${dels} lev. · ${lifts} lyft</div>
     ${iss.krock || iss.varning || iss.info ? `<button type="button" class="dp-issbtn${iss.krock ? " krock" : iss.varning ? " varning" : ""}" data-isstoggle="1">${iss.krock ? `⚠ ${iss.krock} krock${iss.krock > 1 ? "ar" : ""}` : ""}${iss.krock && iss.varning ? " · " : ""}${iss.varning ? `${iss.varning} varning${iss.varning > 1 ? "ar" : ""}` : ""}${!iss.krock && !iss.varning ? "Inga krockar" : ""}${iss.info ? ` <span class="muted">· ${iss.info} info ${showInfo ? "▴" : "▾"}</span>` : ""}</button>
       <div class="dp-isslist">${shownIss.map((i, n) => `<button type="button" class="dp-iss ${i.sev}" data-iss="${n}">${i.sev === "krock" ? "⛔" : i.sev === "varning" ? "⚠" : "ℹ"} ${escHtml(i.text)}</button>`).join("")}</div>` : `<div class="dp-ok">✓ Inga krockar</div>`}
     <div class="dp-h">Placera lag <span class="muted">– välj UE och klicka på planen</span></div>
     <div class="dp-chips">${ues().map(u => `<button type="button" class="dp-uebtn${toolOn("crew", "ue", u.id) ? " on" : ""}" data-place-ue="${escHtml(u.id)}" style="--c:${ueColor(u)};--f:${contrastText(ueColor(u))}" title="${escHtml(u.name || "")}">${escHtml(ueShort(u))}</button>`).join("")}<button type="button" class="dp-addue" data-ue-new="1">＋ UE</button></div>
+    <details class="dp-look"${dayLookOpen ? " open" : ""}><summary>🎨 Utseende på lagen</summary>
+      <div class="dp-lookrow"><span>Storlek</span><input type="range" min="40" max="300" step="10" data-look="crewScale" value="${Math.round(daySettings().crewScale * 100)}" /><span class="dp-lookv">${Math.round(daySettings().crewScale * 100)} %</span></div>
+      <div class="dp-lookrow"><span>Opacitet</span><input type="range" min="15" max="100" step="5" data-look="crewOpacity" value="${Math.round(daySettings().crewOpacity * 100)}" /><span class="dp-lookv">${Math.round(daySettings().crewOpacity * 100)} %</span></div>
+      ${ues().length ? `<div class="dp-lookcols">${ues().map(u => `<label class="dp-lookue" title="Färg för ${escHtml(u.name || "")}"><input type="color" data-uecolor="${escHtml(u.id)}" value="${escHtml(ueColor(u))}" /><span>${escHtml(ueShort(u))}</span></label>`).join("")}</div>` : ""}
+      <div class="muted" style="font-size:11px;">Gäller alla lag på planen och i utskrifter. Färgen sätts per UE.</div>
+    </details>
     <div class="dp-h">Leverans och lyft</div>
     <div class="dp-chips">${Object.entries(VEHICLES).map(([k, V]) => `<button type="button" class="dp-veh${toolOn("delivery", "veh", k) ? " on" : ""}" data-place-veh="${k}" title="${escHtml(V.label)}">${V.icon} ${escHtml(V.label.replace(/ \(.*\)/, ""))}</button>`).join("")}<button type="button" class="dp-veh${siteTool && siteTool.kind === "lift" ? " on" : ""}" data-place-lift="1">🪝 Lyft</button></div>
     ${html ? `<div class="dp-list">${html}</div>` : `<div class="hint">Inget planerat ${escHtml(dayShort(day))}. Välj en UE ovan och klicka på planen, eller kopiera från en annan dag.</div>`}
@@ -994,8 +1015,31 @@ function renderDayCore(box, field) {
   });
   box.querySelectorAll("[data-place-ue]").forEach(b => b.onclick = () => { if (field) closeFieldDay(); startDailyTool("crew", { ue: b.dataset.placeUe }); });
   box.querySelectorAll("[data-place-veh]").forEach(b => b.onclick = () => { if (field) closeFieldDay(); startDailyTool("delivery", { veh: b.dataset.placeVeh }); });
+  const look = box.querySelector(".dp-look");
+  if (look) {
+    look.ontoggle = () => { dayLookOpen = look.open; };
+    look.querySelectorAll("[data-look]").forEach(r => {
+      const rec = () => ({ ...daySettings(), [r.dataset.look]: Number(r.value) / 100, updated_at: new Date().toISOString() });
+      r.oninput = () => { r.nextElementSibling.textContent = r.value + " %"; setDaySettingsLocal(rec()); renderZones(); };
+      r.onchange = () => saveSiteItem(rec(), false, { record: false });
+    });
+    look.querySelectorAll("[data-uecolor]").forEach(c => {
+      c.oninput = () => { const u = ueById(c.dataset.uecolor); if (u) { u.color = c.value; renderZones(); } };
+      c.onchange = () => { const u = ueById(c.dataset.uecolor); if (u) saveUe({ ...u, color: c.value, updated_at: new Date().toISOString() }); };
+    });
+  }
+  box.querySelectorAll("[data-place-wx]").forEach(b => b.onclick = () => { if (field) closeFieldDay(); startSiteTool(b.dataset.placeWx); });
   const lb = box.querySelector("[data-place-lift]"); if (lb) lb.onclick = () => { if (field) closeFieldDay(); startDailyTool("lift", {}); };
   const nu = box.querySelector("[data-ue-new]"); if (nu) nu.onclick = async () => { const u = await quickNewUe(); if (u) { if (field) closeFieldDay(); startDailyTool("crew", { ue: u.id }); } };
+  box.querySelectorAll("[data-del]").forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const x = siteItems.find(y => y.id === b.dataset.del);
+    if (!x) return;
+    if (selectedSiteId === x.id) { selectedSiteId = null; closeSitePop(); }
+    saveSiteItem(x, true);
+    setSaveStatus(`🗑 ${SITE_KINDS[x.type].label} borttaget – ↶ ångrar`);
+    renderDayCore(box, field);
+  });
   box.querySelectorAll(".dp-row[data-id]").forEach(r => r.onclick = () => { const x = siteItems.find(y => y.id === r.dataset.id); if (x) { if (field) closeFieldDay(); focusDaily(x); } });
   const cd = box.querySelector("[data-copyday]"); if (cd) cd.onclick = () => copyDayTo(day, next);
   const cp = box.querySelector("[data-copyprev]"); if (cp) cp.onclick = () => copyDayTo(nextWorkday(day, -1), day);

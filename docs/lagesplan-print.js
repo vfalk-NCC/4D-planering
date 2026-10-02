@@ -457,6 +457,7 @@ function legendItems(el) {
   if (el.site) {
     const seen = new Set();
     siteItems.filter(siteShown).forEach(x => {
+      if (x.type === "wxday" || x.type === "wxweek") return; // vädret är sin egen ruta
       // Arbetslag: en rad per UE i UE:ns färg. Leveranser: per fordonstyp.
       const ue = x.type === "crew" && typeof ueById === "function" ? ueById(x.ue) : null;
       const veh = x.type === "delivery" && typeof VEHICLES !== "undefined" ? VEHICLES[x.veh] : null;

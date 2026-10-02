@@ -225,6 +225,36 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   if (!x || !/^Dagsplanering vecka/.test(x.file) || !x.sheets.includes('Bemanning') || !x.sheets.includes('Krockar')) fail('Veckan ska exporteras till Excel: ' + JSON.stringify(x && x.sheets));
   console.log('OK: veckovy med bemanning, historik, dagblad (PDF) och Excel-export');
 
+  // 11b) Utseende på lagen, 🗑 i listan och Delete-tangenten.
+  const w0 = await page.evaluate(() => { const x = siteItems.find(y => y.type === 'crew' && siteShown(y)); return dailyBoxes.get(x.id)[0].w; });
+  await page.evaluate(() => { const d = document.querySelector('#dayPanel .dp-look'); d.open = true; });
+  await page.$eval('#dayPanel [data-look="crewScale"]', el => { el.value = 200; el.dispatchEvent(new Event('input')); el.dispatchEvent(new Event('change')); });
+  await page.$eval('#dayPanel [data-look="crewOpacity"]', el => { el.value = 50; el.dispatchEvent(new Event('input')); el.dispatchEvent(new Event('change')); });
+  await page.waitForTimeout(300);
+  const w1 = await page.evaluate(() => { renderZones(); const x = siteItems.find(y => y.type === 'crew' && siteShown(y)); return dailyBoxes.get(x.id)[0].w; });
+  if (!(w1 > w0 * 1.6)) fail(`Storleken ska göra lagen större (${w0} -> ${w1})`);
+  const ds = JSON.parse(store.get(`projects/${PID}/site_layers.json`)).find(x => x.type === 'dayset');
+  if (!ds || ds.crewScale !== 2 || ds.crewOpacity !== 0.5) fail('Storlek och opacitet ska sparas i projektet: ' + JSON.stringify(ds));
+  await page.$eval('#dayPanel [data-uecolor]', el => { el.value = '#ff00aa'; el.dispatchEvent(new Event('input')); el.dispatchEvent(new Event('change')); });
+  await page.waitForTimeout(200);
+  if (!(await page.evaluate(() => ues().some(u => u.color === '#ff00aa')))) fail('Färgen ska kunna ändras per UE i panelen');
+  const nCrew = () => page.evaluate(d => dayItems(d, new Set(['crew'])).length, day);
+  const all0 = await page.evaluate(d => dayItems(d).length, day);
+  await page.locator('#dayPanel .dp-row .dp-rowdel').first().click(); await page.waitForTimeout(200);
+  const total0 = await page.evaluate(d => dayItems(d).length, day);
+  if (total0 !== all0 - 1) fail(`🗑 ska ta bort raden (${all0} -> ${total0})`);
+  await page.evaluate(() => undoSite()); await page.waitForTimeout(200);
+  if ((await page.evaluate(d => dayItems(d).length, day)) !== total0 + 1) fail('🗑 ska gå att ångra');
+  // Klicka på ett lag på planen och tryck Delete.
+  const tgt = await page.evaluate(d => { const x = dayItems(d, new Set(['crew']))[0]; const p = mToPx(x.pts[0]); return { id: x.id, p: [view.tx + p[0] * view.scale, view.ty + p[1] * view.scale] }; }, day);
+  await page.mouse.click(vb.x + tgt.p[0], vb.y + tgt.p[1]); await page.waitForTimeout(200);
+  if ((await page.evaluate(() => selectedSiteId)) !== tgt.id) fail('Klick ska markera laget');
+  await page.keyboard.press('Delete'); await page.waitForTimeout(200);
+  if (await page.evaluate(id => siteItems.some(x => x.id === id), tgt.id)) fail('Delete ska ta bort det markerade laget');
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(200);
+  if (!(await page.evaluate(id => siteItems.some(x => x.id === id), tgt.id))) fail('Ctrl+Z ska ta tillbaka laget');
+  console.log('OK: storlek, opacitet och färg på lagen; 🗑 i listan och Delete tar bort (kan ångras)');
+
   // 12) Fältläge: 👷 Dag med stora knappar.
   const fctx = await browser.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true, isMobile: true });
   const f = await setup(fctx, true);
