@@ -79,6 +79,23 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   if (!(await page.evaluate(f => objectShapesInPdf().find(o => o.fam === f).moved, fam))) fail('Ctrl+Z ska ångra återställningen');
   console.log('OK: ↺ återställer till objektens läge och låser, Ctrl+Z ångrar');
 
+  // 4) Skarpt vid inzoomning: lagren ritas i skärmens upplösning för det synliga området; export i grundupplösning.
+  await page.evaluate(() => { const pc = $('pdfCanvas'); pc.width = 1000; pc.height = 800; });
+  const zoomed = await page.evaluate(() => {
+    view.scale = 4; view.tx = -400; view.ty = -300; applyView(); renderZones();
+    const c = $('topCanvas'), o = $('objCanvas');
+    const r = { w: c.width, cssW: parseFloat(c.style.width), left: parseFloat(c.style.left), objR: objMinPx };
+    const full = composeImage(null, true, 'over');
+    r.exportW = full.width; r.after = $('topCanvas').width;
+    view.scale = 1; view.tx = 0; view.ty = 0; applyView(); renderZones();
+    r.out = { w: $('topCanvas').width, cssW: parseFloat($('topCanvas').style.width) };
+    return r;
+  });
+  if (!(zoomed.w / zoomed.cssW > 3.5) || !(zoomed.cssW < 1000)) fail('Inzoomat ska lagret ha skärmupplösning för det synliga området: ' + JSON.stringify(zoomed));
+  if (zoomed.exportW !== 1000) fail('Exporten ska ha samma storlek som förut (grundupplösning): ' + JSON.stringify(zoomed));
+  if (zoomed.after !== zoomed.w) fail('Efter exporten ska skärmen vara skarp igen: ' + JSON.stringify(zoomed));
+  if (zoomed.out.w !== 1000 || zoomed.out.cssW !== 1000) fail('Utzoomat ska hela bladet ritas som förut: ' + JSON.stringify(zoomed.out));
+  console.log('OK: skarpa prickar och etablering vid inzoomning, exporten oförändrad');
   if (errors.length) fail('Fel i sidan: ' + errors.join(' | '));
   await browser.close(); server.close();
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });

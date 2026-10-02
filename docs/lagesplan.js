@@ -415,7 +415,8 @@ function objectTipHtml(o) {
 /* Canvas-px per skärm-px för objektlagret på skärmen (1 i film/utskrift). */
 function canvasPerScreenPx(ctx) {
   const oc = ctx.canvas, ow = oc && oc.getBoundingClientRect ? oc.getBoundingClientRect().width : 0;
-  return oc && ow > 0 && oc.id === "objCanvas" ? oc.width / ow : 0;
+  // Stage-px per skärm-px (ritningen sker i stage-px, även när lagret är i högre upplösning).
+  return oc && ow > 0 && oc.id === "objCanvas" ? 1 / view.scale : 0;
 }
 function objDotRadius(ctx, fontPx) {
   const k = canvasPerScreenPx(ctx);
@@ -935,10 +936,53 @@ function rerenderTextIfFixed() {
 /* Canvaslagren i #stage, nedifrån och upp - se lagesplan-layers.js. */
 const STAGE_CANVASES = ["orthoCanvas", "pdfCanvas", "zoneCanvas", "objCanvas", "topCanvas"];
 
+/* Skarpa zoner, prickar och etablering vid inzoomning (Victors önskemål
+   2026-10-02). Lagren ritades i ritningens upplösning (~5000 px) och blev
+   suddiga när de förstorades. Inzoomat täcker de nu bara det synliga området
+   (plus en marginal för panorering) i skärmens upplösning; allt ritas
+   fortfarande i stage-px via en transform. Utzoomat och vid export (PNG,
+   PDF, film) ritas hela bladet som förut – utskrifternas storlek påverkas inte. */
+let ovFull = false, ovLast = null, ovTimer = 0;
+const OV_BUDGET = 20e6; // max pixlar per lager
+function overlayRegion() {
+  const pc = $("pdfCanvas"), W = pc.width, H = pc.height, full = { x0: 0, y0: 0, w: W, h: H, s: 1, full: true };
+  const s0 = view.scale * (window.devicePixelRatio || 1);
+  if (ovFull || !W || s0 <= 1.05) return full;
+  const vb = visibleStageBox(), mw = (vb[2] - vb[0]) * 0.5, mh = (vb[3] - vb[1]) * 0.5;
+  const x0 = Math.max(0, vb[0] - mw), y0 = Math.max(0, vb[1] - mh), x1 = Math.min(W, vb[2] + mw), y1 = Math.min(H, vb[3] + mh);
+  if (x1 <= x0 || y1 <= y0) return full;
+  let s = s0;
+  if ((x1 - x0) * (y1 - y0) * s * s > OV_BUDGET) s = Math.sqrt(OV_BUDGET / ((x1 - x0) * (y1 - y0)));
+  if (s <= 1) return full;
+  return { x0, y0, w: x1 - x0, h: y1 - y0, s, s0 };
+}
+/* Efter zoom/panorering: rita om när upplösningen inte räcker eller det synliga
+   området går utanför det som är ritat. */
+function scheduleOverlayRerender() {
+  if (!ovLast || !viewport) return;
+  const s0 = view.scale * (window.devicePixelRatio || 1);
+  const wantFull = s0 <= 1.05;
+  if (ovLast.full && wantFull) return;
+  let outside = false;
+  if (!ovLast.full) { const vb = visibleStageBox(); outside = vb[0] < ovLast.x0 - 1 || vb[1] < ovLast.y0 - 1 || vb[2] > ovLast.x0 + ovLast.w + 1 || vb[3] > ovLast.y0 + ovLast.h + 1; }
+  const res = ovLast.full ? !wantFull : (wantFull || Math.abs(s0 / ovLast.s0 - 1) > 0.15);
+  if (!outside && !res) return;
+  clearTimeout(ovTimer);
+  ovTimer = setTimeout(renderZones, outside ? 30 : 160);
+}
 function renderZones() {
   const zc = $("zoneCanvas");
   const ctx = zc.getContext("2d");
-  ["zoneCanvas", "objCanvas", "topCanvas"].forEach(id => { const c = $(id); c.getContext("2d").clearRect(0, 0, c.width, c.height); });
+  const ov = overlayRegion(); ovLast = ov;
+  const cw = Math.max(1, Math.ceil(ov.w * ov.s)), ch = Math.max(1, Math.ceil(ov.h * ov.s));
+  ["zoneCanvas", "objCanvas", "topCanvas"].forEach(id => {
+    const c = $(id);
+    if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
+    Object.assign(c.style, { left: `${ov.x0}px`, top: `${ov.y0}px`, width: `${ov.w}px`, height: `${ov.h}px` });
+    const cx = c.getContext("2d");
+    cx.setTransform(1, 0, 0, 1, 0, 0); cx.clearRect(0, 0, cw, ch);
+    cx.setTransform(ov.s, 0, 0, ov.s, -ov.x0 * ov.s, -ov.y0 * ov.s);
+  });
   const octx = $("objCanvas").getContext("2d");
   const tctx = $("topCanvas").getContext("2d");
   if (!plan || !viewport) { renderZoneList(); return; }
@@ -1388,6 +1432,7 @@ function applyView() {
   } else $("stage").style.transform = `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})`;
   if (typeof renderNorthBadge === "function") renderNorthBadge();
   scheduleObjRerender();
+  scheduleOverlayRerender();
   renderScreenLabelsSoon();
   if (typeof updateCompareClip === "function") updateCompareClip();
   if (typeof scheduleOrthoRender === "function") scheduleOrthoRender();
@@ -1654,7 +1699,15 @@ function addPlanToPdf(doc, bx, by, bw, bh, quality = 0.9, vec = null) {
   return { x, y, w: iw, h: ih };
 }
 /* part: undefined = allt, "base" = bara ortofoto + PDF, "over" = bara zoner/objekt/etablering (genomskinlig). */
+/* Export (PNG, PDF, film) behöver lagren för hela bladet i grundupplösning. */
 function composeImage(maxW, noHeader, part) {
+  if (ovLast && !ovLast.full && !ovFull) {
+    ovFull = true; renderZones();
+    try { return composeImageNow(maxW, noHeader, part); } finally { ovFull = false; renderZones(); }
+  }
+  return composeImageNow(maxW, noHeader, part);
+}
+function composeImageNow(maxW, noHeader, part) {
   const pc = $("pdfCanvas"), zc = $("zoneCanvas");
   const k = maxW ? Math.min(1, maxW / pc.width) : 1;
   const W = Math.round(pc.width * k), H = Math.round(pc.height * k);
