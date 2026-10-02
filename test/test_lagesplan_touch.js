@@ -160,6 +160,45 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   if (!(await page.isDisabled('#btnFieldRedo'))) fail('↷ ska vara avstängd när det inte finns något att göra om');
   console.log('OK: ↶ ångra och ↷ gör om i fältläget');
 
+  // 📍 Min position i realtid (som Google Maps).
+  const gl = await page.evaluate(async () => {
+    const z = SWEREF_ZONES.find(z => z.name === 'SWEREF 99 20 15');
+    const [N, E] = geodeticToGrid(67.0, 20.25, z);
+    plan = { id: 'pl', name: 'P', zones: [], calib: { model: [[E, N, 0], [E + 100, N, 0]], pdf: [[0, 0], [1000, 0]] } };
+    view.scale = 1; view.tx = 0; view.ty = 0; applyView();
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { watchPosition: (ok, err) => { window.__gs = ok; window.__ge = err; return 7; }, clearWatch: id => { window.__cleared = id; } } });
+    const out = {};
+    $('btnFieldGps').click();
+    __gs({ coords: { latitude: 67.0001, longitude: 20.2504, accuracy: 8, heading: 90, speed: 1.2 } });
+    const el = $('gpsMe'), r = $('viewport').getBoundingClientRect();
+    out.shown = !el.classList.contains('hidden');
+    out.center = [parseFloat(el.style.left) - r.width / 2, parseFloat(el.style.top) - r.height / 2];
+    out.btn = $('btnFieldGps').textContent; out.follow = $('btnFieldGps').classList.contains('gps-follow');
+    out.acc = parseFloat(el.querySelector('.gm-acc').style.width);
+    out.head = el.querySelector('.gm-head').style.display !== 'none';
+    // Ny position medan den följer: kartan följer med.
+    __gs({ coords: { latitude: 67.0002, longitude: 20.2504, accuracy: 6, heading: null, speed: 0 } });
+    out.center2 = [parseFloat(el.style.left) - r.width / 2, parseFloat(el.style.top) - r.height / 2];
+    // Panorera själv: slutar följa, pricken följer med kartan.
+    const x0 = parseFloat(el.style.left); view.tx += 100; applyView();
+    out.panned = parseFloat(el.style.left) - x0; out.followAfterPan = $('btnFieldGps').classList.contains('gps-follow');
+    $('btnFieldGps').click(); // centrera igen
+    out.recentered = Math.abs(parseFloat(el.style.left) - r.width / 2) < 1 && $('btnFieldGps').classList.contains('gps-follow');
+    $('btnFieldGps').click(); // stäng av
+    out.stopped = window.__cleared === 7 && el.classList.contains('hidden') && $('btnFieldGps').textContent === '📍';
+    // Långt bort från planen: stängs av med besked.
+    $('btnFieldGps').click();
+    __gs({ coords: { latitude: 59.33, longitude: 18.06, accuracy: 5 } });
+    out.far = gpsLive === null && /inte vara i närheten/.test($('saveStatus').textContent);
+    return out;
+  });
+  if (!gl.shown || Math.abs(gl.center[0]) > 1 || Math.abs(gl.center[1]) > 1) fail('Pricken ska visas mitt på skärmen (följer): ' + JSON.stringify(gl));
+  if (gl.btn !== '📍 ±8 m' || !gl.follow || !(gl.acc > 20) || !gl.head) fail('Knappen visar noggrannheten, cirkel och riktning: ' + JSON.stringify(gl));
+  if (Math.abs(gl.center2[0]) > 1 || Math.abs(gl.center2[1]) > 1) fail('Kartan ska följa ny position: ' + JSON.stringify(gl));
+  if (Math.abs(gl.panned - 100) > 1 || gl.followAfterPan) fail('Panorering: pricken följer kartan och slutar följa positionen: ' + JSON.stringify(gl));
+  if (!gl.recentered || !gl.stopped || !gl.far) fail('📍 centrerar igen, stänger av, och långt bort stängs av: ' + JSON.stringify(gl));
+  console.log('OK: 📍 min position i realtid – prick, noggrannhet, riktning, följ/centrera/stäng av');
+
   // 4) Datum och lager via de stora knapparna.
   await page.evaluate(() => { $('dateInput').value = '2026-10-01'; $('dateInput').dispatchEvent(new Event('change')); });
   await page.tap('#btnFieldNextW'); await page.waitForTimeout(150);
