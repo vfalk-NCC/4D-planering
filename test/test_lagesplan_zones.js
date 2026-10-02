@@ -109,6 +109,24 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   }
   console.log('OK: sidorna dras parallellt och Ctrl+Z ångrar');
 
+  // 3c) Lås alla zoner: hörn och sidor kan inte dras, zonen kan inte tas bort.
+  await page.click('#btnZoneLock'); await page.waitForTimeout(150);
+  if (!(await page.evaluate(() => plan.zonesLocked)) || !/låsta/.test(await page.textContent('#btnZoneLock'))) fail('Knappen ska låsa zonerna');
+  {
+    const P = (await zones())[0].polys[0], v = P[2];
+    await page.mouse.move(vb.x + v[0], vb.y + v[1]); await page.mouse.down();
+    await page.mouse.move(vb.x + v[0] + 40, vb.y + v[1] + 30, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(150);
+    if (JSON.stringify((await zones())[0].polys[0]) !== JSON.stringify(P)) fail('Låsta zoner ska inte gå att dra');
+    await page.evaluate(() => { view.tx = 0; view.ty = 0; applyView(); });
+    await page.evaluate(() => deleteSelectedZone(false));
+    if ((await zones()).length !== 1) fail('Låsta zoner ska inte gå att ta bort');
+    await page.waitForTimeout(1500);
+    if (!JSON.parse(store.get(`projects/${PID}/status_plans.json`))[0].zonesLocked) fail('Låset ska sparas på planen');
+  }
+  await page.click('#btnZoneLock'); await page.waitForTimeout(150);
+  if (await page.evaluate(() => plan.zonesLocked)) fail('Knappen ska låsa upp igen');
+  console.log('OK: lås alla zoner – hörn/sidor kan inte dras och zoner kan inte tas bort, låset sparas');
+
   // 4) Etiketten redigeras som en notering: dra för att flytta, klicka för text, radbrytning, rotation, storlek.
   const lb0 = await page.evaluate(() => { const b = zoneLabelBoxes[0]; return stageToScreen([b.x, b.y]); });
   await page.mouse.move(vb.x + lb0[0], vb.y + lb0[1]); await page.mouse.down();

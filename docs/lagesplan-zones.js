@@ -113,7 +113,25 @@ function finishZonePoly() {
 // ---------------------------------------------------------------------
 // Hörn på den markerade zonen
 // ---------------------------------------------------------------------
+/* Lås alla zoner (Victors önskemål 2026-10-02): hörn och sidor kan inte dras
+   och zoner kan inte tas bort av misstag. Sparas på planen. */
+const zonesLocked = () => !!(plan && plan.zonesLocked);
+function updateZoneLockUi() {
+  const b = $("btnZoneLock");
+  if (!b) return;
+  const on = zonesLocked();
+  b.textContent = on ? "🔒 Zonerna är låsta – lås upp" : "🔓 Lås alla zoner";
+  b.classList.toggle("active", on);
+  b.title = on ? "Hörn och sidor kan inte dras och zoner kan inte tas bort. Klicka för att låsa upp." : "Lås alla zoners form, så att de inte dras större eller mindre av misstag";
+}
+function toggleZonesLocked() {
+  if (!plan) return;
+  plan.zonesLocked = !zonesLocked();
+  updateZoneLockUi(); renderZones(); schedulePlanSave();
+  setSaveStatus(plan.zonesLocked ? "🔒 Alla zoner är låsta." : "🔓 Zonerna är upplåsta.");
+}
 function zoneVertexAt(e) {
+  if (zonesLocked()) return null;
   const z = selectedZoneId && plan && (plan.zones || []).find(x => x.id === selectedZoneId);
   if (!z) return null;
   const p = stagePoint(e), tol = 9 / view.scale;
@@ -124,6 +142,7 @@ function zoneVertexAt(e) {
 /* Sida på den markerade zonen (Victors önskemål 2026-10-02): dra i en sida
    för att flytta den parallellt, båda hörnen följer med. */
 function zoneEdgeAt(e) {
+  if (zonesLocked()) return null;
   const z = selectedZoneId && plan && (plan.zones || []).find(x => x.id === selectedZoneId);
   if (!z) return null;
   const p = stagePoint(e), tol = 7 / view.scale;
@@ -284,7 +303,7 @@ function drawZoneOverlay(ctx, fontPx) {
     ctx.beginPath(); if (zoneSnapMark.kind === "hörn") ctx.rect(x - r, y - r, r * 2, r * 2); else ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
   }
   // Hörnen på den markerade zonen.
-  const z = selectedZoneId && !zonePoly && plan && (plan.zones || []).find(x => x.id === selectedZoneId);
+  const z = selectedZoneId && !zonePoly && !zonesLocked() && plan && (plan.zones || []).find(x => x.id === selectedZoneId);
   if (z) {
     const hs = Math.max(4, 6 / view.scale);
     ctx.save(); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(1.5, 2 / view.scale);
@@ -436,6 +455,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 function deleteSelectedZone(ask) {
+  if (zonesLocked()) { setSaveStatus("🔒 Zonerna är låsta – lås upp dem för att ta bort en zon."); return; }
   if (zoneSel.size > 1) {
     const ids = new Set(zoneSel), n = ids.size;
     if (ask && !confirm(`Ta bort ${n} zoner? (Ctrl+Z ångrar)`)) return;
@@ -723,6 +743,8 @@ function bindZoneLayerRows(el) {
   });
 }
 document.addEventListener("DOMContentLoaded", () => {
+  if ($("btnZoneLock")) $("btnZoneLock").onclick = toggleZonesLocked;
+  const oop = openPlan; openPlan = async function () { const r = await oop.apply(this, arguments); updateZoneLockUi(); return r; };
   const orig = renderLayerPanel;
   renderLayerPanel = function () { const r = orig.apply(this, arguments); const el = $("layerList"); if (el) bindZoneLayerRows(el); return r; };
   // Zonerna ändras (ny, borttagen, nytt namn, dold, ny fas): uppdatera lagerlistan.
