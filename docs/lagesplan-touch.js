@@ -156,6 +156,25 @@ function setFieldMode(on, save = true) {
   setTimeout(() => { window.dispatchEvent(new Event("resize")); }, 50);
 }
 const fieldIsOn = () => document.body.classList.contains("field");
+/* iPhone (Victors önskemål 2026-10-03): liten skärm = kompakt fältläge med ⋯-meny. */
+function updatePhoneClass() {
+  const phone = Math.min(window.innerWidth, window.innerHeight) < 600;
+  document.body.classList.toggle("phone", phone);
+  if (!phone) document.body.classList.remove("field-more");
+}
+window.addEventListener("resize", updatePhoneClass);
+window.addEventListener("orientationchange", () => setTimeout(updatePhoneClass, 200));
+document.addEventListener("DOMContentLoaded", () => {
+  updatePhoneClass();
+  const more = $("btnFieldMore");
+  if (!more) return;
+  more.onclick = () => document.body.classList.toggle("field-more");
+  // Ett val i ⋯-menyn stänger den.
+  $("fieldTop").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (b && b.id !== "btnFieldMore" && document.body.classList.contains("field-more") && !["btnFieldGps", "btnFieldDay", "btnFieldLayers"].includes(b.id)) document.body.classList.remove("field-more");
+  });
+});
 const fesc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const setVal = (id, v) => { const el = $(id); if (!el) return; el.value = v; el.dispatchEvent(new Event("change")); };
 
