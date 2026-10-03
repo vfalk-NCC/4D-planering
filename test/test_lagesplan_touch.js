@@ -254,6 +254,8 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   if (JSON.stringify(lay.tiles.map(t => t[0])) !== JSON.stringify(['Dag', 'Lager', 'Notering', 'Foto', 'Rita', 'Spara vy', 'Dölj']) || !lay.tiles.every(t => t[1] && t[2])) fail('iPhone: verktygen som stora runda ikoner med etikett och undertext: ' + JSON.stringify(lay.tiles));
   if (JSON.stringify(lay.ctl) !== JSON.stringify(['apLayers', 'btnFieldGps']) || lay.fit !== 'apFitWrap') fail('iPhone: lager och min position i kapseln till höger, anpassa till vänster: ' + JSON.stringify(lay));
   if (!lay.arrows.every(w => w >= 16)) fail('iPhone: pilarna vid datumet ska synas: ' + JSON.stringify(lay.arrows));
+  const off = await ip.evaluate(() => [...document.querySelectorAll('#apCtl > button, #apLeft button, #apAvatar, .ap-date #btnFieldPrevW, .ap-date #btnFieldNextW')].filter(b => b.getBoundingClientRect().width && b.querySelector('svg')).map(b => { const r = b.getBoundingClientRect(), q = b.querySelector('svg').getBoundingClientRect(); return [b.id, Math.abs(q.x + q.width / 2 - r.x - r.width / 2) + Math.abs(q.y + q.height / 2 - r.y - r.height / 2)]; }));
+  if (off.length < 5 || off.some(o => o[1] > 0.6)) fail('iPhone: ikonerna ska vara centrerade i knapparna: ' + JSON.stringify(off));
   if (!/-apple-system/.test(lay.font) || !lay.meta) fail('iPhone: iOS-typsnitt, helskärm från hemskärmen: ' + JSON.stringify(lay));
   if (!lay.chip || /\d{4}/.test(lay.chip) || !lay.label.startsWith(lay.chip.slice(0, 3))) fail('iPhone: datumbrickan uppe till vänster visar dagen: ' + JSON.stringify([lay.chip, lay.label]));
   // Ihopfällt: bara sökfältet, reglaget syns inte.

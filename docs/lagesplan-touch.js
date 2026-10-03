@@ -258,7 +258,8 @@ function updatePhoneLayout() {
     gmMove($("btnFieldUndo"), $("apUndo")); gmMove($("btnFieldRedo"), $("apUndo"));
     Object.keys(AP_ICONS).forEach(id => apDecorate($(id), true));
     const av = $("apAvatar"), name = (typeof settings !== "undefined" && settings.userName) || "";
-    if (av) av.textContent = (name.split(/\s+/).filter(Boolean).map(w => w[0]).join("").slice(0, 2) || "☰").toUpperCase();
+    const ini = name.split(/\s+/).filter(Boolean).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+    if (av) { if (ini) av.textContent = ini; else av.innerHTML = AP_SVG('<path d="M4 7h16M4 12h16M4 17h16"/>'); }
     apSetDetent(apDetent, false);
     apTheme();
   } else {
