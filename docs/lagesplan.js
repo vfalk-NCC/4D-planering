@@ -1445,9 +1445,12 @@ function applyView() {
 function fitView() {
   const vp = $("viewport").getBoundingClientRect(), pc = $("pdfCanvas");
   if (!pc.width) return;
-  view.scale = Math.min(vp.width / pc.width, vp.height / pc.height) * 0.96;
-  view.tx = (vp.width - pc.width * view.scale) / 2;
-  view.ty = (vp.height - pc.height * view.scale) / 2;
+  // Fri yta: på telefon bort med det som ligger ovanpå planen (datumbricka, kortet nertill).
+  const ins = (typeof fitInsets === "function" && fitInsets(vp)) || {}, t = ins.top || 0, b = ins.bottom || 0, l = ins.left || 0;
+  const w = Math.max(50, vp.width - l), h = Math.max(50, vp.height - t - b);
+  view.scale = Math.min(w / pc.width, h / pc.height) * 0.96;
+  view.tx = l + (w - pc.width * view.scale) / 2;
+  view.ty = t + (h - pc.height * view.scale) / 2;
   applyView();
 }
 function zoomAt(factor, cx, cy) {

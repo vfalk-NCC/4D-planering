@@ -222,6 +222,16 @@ function apSetDetent(n, anim = true) {
   if (apDetent > 0) apRenderViews();
 }
 function apSheetOpen(on) { apSetDetent(on ? 1 : 0); }
+/* Anpassa på telefon: planen centreras mellan datumbrickan och det ihopfällda kortet. */
+function fitInsets(vp) {
+  if (!document.body.classList.contains("phone") || !document.body.classList.contains("field")) return null;
+  const chip = $("apDateChip"), sh = $("apSheet");
+  // Liggande: kortet ligger till vänster – planen centreras i ytan till höger om det.
+  if (sh && window.innerWidth > window.innerHeight) return { top: 0, bottom: 0, left: Math.max(0, sh.getBoundingClientRect().right + 8 - vp.left) };
+  const top = chip && getComputedStyle(chip).display !== "none" ? Math.max(0, chip.getBoundingClientRect().bottom + 8 - vp.top) : 0;
+  const sheetTop = sh ? vp.bottom - (parseFloat(getComputedStyle(sh).bottom) || 0) - apHeights()[0] : vp.bottom;
+  return { top, bottom: Math.max(0, vp.bottom - sheetTop + 8) };
+}
 /* Sparade vyer som lista (från fältlägets vyval). */
 function apRenderViews() {
   const box = document.querySelector("#apSheet .ap-list"), vs = $("fieldView");

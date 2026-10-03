@@ -258,6 +258,12 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   if (off.length < 5 || off.some(o => o[1] > 0.6)) fail('iPhone: ikonerna ska vara centrerade i knapparna: ' + JSON.stringify(off));
   if (!/-apple-system/.test(lay.font) || !lay.meta) fail('iPhone: iOS-typsnitt, helskärm från hemskärmen: ' + JSON.stringify(lay));
   if (!lay.chip || /\d{4}/.test(lay.chip) || !lay.label.startsWith(lay.chip.slice(0, 3))) fail('iPhone: datumbrickan uppe till vänster visar dagen: ' + JSON.stringify([lay.chip, lay.label]));
+  // Samma glas på alla flytande knappar (även kompassen).
+  const glass = await ip.evaluate(() => { $('northBadge').classList.remove('hidden'); const r = ['apDateChip', 'apCtl', 'apFitWrap', 'apSheet', 'northBadge'].map(id => { const c = getComputedStyle($(id)); return [id, c.backgroundColor, c.backdropFilter || c.webkitBackdropFilter]; }); $('northBadge').classList.add('hidden'); return r; });
+  if (new Set(glass.map(g => g[1] + g[2])).size !== 1) fail('iPhone: alla knappar med samma glas: ' + JSON.stringify(glass));
+  // Anpassa centrerar planen mellan datumbrickan och kortet.
+  const fi = await ip.evaluate(() => { const vp = $('viewport').getBoundingClientRect(), f = fitInsets(vp); return { top: vp.top + f.top, bot: vp.bottom - f.bottom, chip: $('apDateChip').getBoundingClientRect().bottom, sheet: $('apSheet').getBoundingClientRect().top }; });
+  if (Math.abs(fi.top - fi.chip - 8) > 1 || Math.abs(fi.sheet - fi.bot - 8) > 1) fail('iPhone: anpassa ska använda ytan mellan brickan och kortet: ' + JSON.stringify(fi));
   // Ihopfällt: bara sökfältet, reglaget syns inte.
   const sh = await ip.locator('#apSheet').boundingBox();
   if (Math.abs(sh.height - 76) > 2 || sh.x < 4 || sh.y + sh.height > 664) fail('iPhone: kortet ihopfällt, flytande nertill: ' + JSON.stringify(sh));
