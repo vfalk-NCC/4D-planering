@@ -208,7 +208,7 @@ const apHeights = () => {
   // Mellanläget visar datum och hela verktygsraden (som Kartors "Platser"), men aldrig mer än skärmen tillåter.
   let want = vh * .5;
   const sh = $("apSheet"), tools = sh && sh.querySelector(".ap-tools"), body = sh && sh.querySelector(".ap-body");
-  if (tools && body && tools.offsetHeight) want = tools.getBoundingClientRect().bottom - sh.getBoundingClientRect().top + body.scrollTop + 12;
+  if (tools && body && tools.offsetHeight) want = tools.getBoundingClientRect().bottom - sh.getBoundingClientRect().top + body.scrollTop + 6;
   return [60, Math.round(Math.min(Math.max(want, 160), vh - 140)), Math.round(vh - 70)];
 };
 function apSetHeight(h) { document.body.style.setProperty("--ap-sheet-h", Math.round(h) + "px"); }
@@ -227,7 +227,7 @@ function fitInsets(vp) {
   if (!document.body.classList.contains("phone") || !document.body.classList.contains("field")) return null;
   const chip = $("apDateChip"), sh = $("apSheet");
   // Liggande: kortet ligger till vänster – planen centreras i ytan till höger om det.
-  if (sh && window.innerWidth > window.innerHeight) return { top: 0, bottom: 0, left: Math.max(0, sh.getBoundingClientRect().right + 8 - vp.left) };
+  if (sh && window.innerWidth > window.innerHeight && !document.body.classList.contains("ap-wide")) return { top: 0, bottom: 0, left: Math.max(0, sh.getBoundingClientRect().right + 8 - vp.left) };
   const top = chip && getComputedStyle(chip).display !== "none" ? Math.max(0, chip.getBoundingClientRect().bottom + 8 - vp.top) : 0;
   const sheetTop = sh ? vp.bottom - (parseFloat(getComputedStyle(sh).bottom) || 0) - apHeights()[0] : vp.bottom;
   return { top, bottom: Math.max(0, vp.bottom - sheetTop + 8) };
@@ -254,9 +254,14 @@ function apTheme() {
   try { dark = typeof orthos === "function" && orthos().some(o => ls("ortho:" + o.id).visible); } catch (e) {}
   document.body.classList.toggle("ap-dark", dark);
 }
+/* iPad (Victors önskemål 2026-10-03): samma Apple Kartor-design som på iPhone på alla pekskärmar
+   utan mus. På större skärm ("ap-wide") ligger kortet som ett flytande kort till vänster, som i
+   Kartor på iPad, och Dag, Lager och noteringar öppnas på samma plats. */
+const touchOnly = () => !!(window.matchMedia && matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches);
 function updatePhoneLayout() {
-  const phone = Math.min(window.innerWidth, window.innerHeight) < 600;
+  const small = Math.min(window.innerWidth, window.innerHeight) < 600, phone = small || touchOnly();
   document.body.classList.toggle("phone", phone);
+  document.body.classList.toggle("ap-wide", phone && !small);
   const sheet = $("apSheet");
   if (!sheet) return;
   const q = c => sheet.querySelector(c);

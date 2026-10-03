@@ -106,10 +106,12 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   const { page, errors } = await setup(pad);
   if (!(await page.evaluate(() => document.body.classList.contains('field')))) fail('Pekskärm: fältläge ska vara på');
   if (await page.isVisible('aside')) fail('Menyn ska vara dold i fältläge');
-  for (const id of ['#fieldPlan', '#btnFieldLayers', '#btnFieldFull', '#btnFieldToday', '#fieldSlider']) if (!(await page.isVisible(id))) fail(id + ' ska synas i fältläge');
-  const h = (await page.locator('#btnFieldToday').boundingBox()).height;
+  // iPad: samma Apple Kartor-design som iPhone, med kortet flytande till vänster.
+  const pl = await page.evaluate(() => ({ phone: document.body.classList.contains('phone'), wide: document.body.classList.contains('ap-wide'), sheet: $('apSheet').getBoundingClientRect().toJSON(), plan: !!$('fieldPlan').closest('#apSheet'), ctl: $('apCtl').getBoundingClientRect().toJSON(), top: getComputedStyle($('fieldTop')).display }));
+  if (!pl.phone || !pl.wide || !pl.plan || pl.sheet.x > 20 || Math.abs(pl.sheet.width - 380) > 1 || pl.ctl.right < 1150 || pl.ctl.bottom < 780 || pl.top !== 'none') fail('iPad: Apple Kartor-design med kortet till vänster: ' + JSON.stringify(pl));
+  const h = (await page.locator('#apLayers').boundingBox()).height;
   if (h < 44) fail('Knapparna ska vara stora (minst 44 px), fick ' + h);
-  console.log('OK: pekskärm ger fältläge med stora knappar');
+  console.log('OK: pekskärm (iPad) ger fältläge i Apple Kartor-design, kortet till vänster');
 
   // 3) Pekstöd: ett finger panorerar, nyp zoomar.
   const cdp = await pad.newCDPSession(page);
@@ -130,7 +132,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   // 3b) ✏️ Rita på frihand (kalibrerad plan): ett drag sparas, nyp avbryter inte zoomen och sparar inget.
   await page.evaluate(() => { plan = { id: 'pl', name: 'P', zones: [], calib: { model: [[0, 0, 0], [100, 0, 0]], pdf: [[0, 0], [1000, 0]] } }; view.scale = 1; view.tx = 0; view.ty = 0; applyView(); });
   const n0 = await page.evaluate(() => siteItems.filter(x => x.type === 'sketch').length);
-  await page.tap('#btnFieldSketch'); await page.waitForTimeout(100);
+  await page.evaluate(() => $('btnFieldSketch').click()); await page.waitForTimeout(100);
   if (!(await page.isVisible('#fieldTools'))) fail('Ritverktyget ska visa sin rad (färger, Klar)');
   await page.tap('.ft-color[data-c="#16a34a"]');
   await touch('touchStart', [[300, 300]]); for (let k = 1; k <= 8; k++) await touch('touchMove', [[300 + k * 20, 300 + k * 8]]); await touch('touchEnd', []);
@@ -173,7 +175,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
     const el = $('gpsMe'), r = $('viewport').getBoundingClientRect();
     out.shown = !el.classList.contains('hidden');
     out.center = [parseFloat(el.style.left) - r.width / 2, parseFloat(el.style.top) - r.height / 2];
-    out.btn = $('btnFieldGps').textContent; out.follow = $('btnFieldGps').classList.contains('gps-follow');
+    out.btnTitle = $('btnFieldGps').title; out.follow = $('btnFieldGps').classList.contains('gps-follow');
     out.acc = parseFloat(el.querySelector('.gm-acc').style.width);
     out.head = el.querySelector('.gm-head').style.display !== 'none';
     // Ny position medan den följer: kartan följer med.
@@ -185,7 +187,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
     $('btnFieldGps').click(); // centrera igen
     out.recentered = Math.abs(parseFloat(el.style.left) - r.width / 2) < 1 && $('btnFieldGps').classList.contains('gps-follow');
     $('btnFieldGps').click(); // stäng av
-    out.stopped = window.__cleared === 7 && el.classList.contains('hidden') && $('btnFieldGps').textContent === '📍';
+    out.stopped = window.__cleared === 7 && el.classList.contains('hidden') && !$('btnFieldGps').classList.contains('on');
     // Långt bort från planen: stängs av med besked.
     $('btnFieldGps').click();
     __gs({ coords: { latitude: 59.33, longitude: 18.06, accuracy: 5 } });
@@ -193,19 +195,20 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
     return out;
   });
   if (!gl.shown || Math.abs(gl.center[0]) > 1 || Math.abs(gl.center[1]) > 1) fail('Pricken ska visas mitt på skärmen (följer): ' + JSON.stringify(gl));
-  if (gl.btn !== '📍 ±8 m' || !gl.follow || !(gl.acc > 20) || !gl.head) fail('Knappen visar noggrannheten, cirkel och riktning: ' + JSON.stringify(gl));
+  if (!/±8 m/.test(gl.btnTitle) || !gl.follow || !(gl.acc > 20) || !gl.head) fail('Knappen visar noggrannheten, cirkel och riktning: ' + JSON.stringify(gl));
   if (Math.abs(gl.center2[0]) > 1 || Math.abs(gl.center2[1]) > 1) fail('Kartan ska följa ny position: ' + JSON.stringify(gl));
   if (Math.abs(gl.panned - 100) > 1 || gl.followAfterPan) fail('Panorering: pricken följer kartan och slutar följa positionen: ' + JSON.stringify(gl));
   if (!gl.recentered || !gl.stopped || !gl.far) fail('📍 centrerar igen, stänger av, och långt bort stängs av: ' + JSON.stringify(gl));
   console.log('OK: 📍 min position i realtid – prick, noggrannhet, riktning, följ/centrera/stäng av');
 
   // 4) Datum och lager via de stora knapparna.
-  await page.evaluate(() => { $('dateInput').value = '2026-10-01'; $('dateInput').dispatchEvent(new Event('change')); });
-  await page.tap('#btnFieldNextW'); await page.waitForTimeout(150);
+  await page.evaluate(() => { $('dateInput').value = '2026-10-01'; $('dateInput').dispatchEvent(new Event('change')); apSetDetent(2, false); });
+  await page.waitForTimeout(300); await page.tap('#btnFieldNextW'); await page.waitForTimeout(150);
   if ((await page.inputValue('#dateInput')) !== '2026-10-08') fail('v ▶ ska gå en vecka framåt, fick ' + await page.inputValue('#dateInput'));
   if (!(await page.innerText('#fieldDateLabel')).includes('8 okt')) fail('Datumet ska visas stort, fick ' + await page.innerText('#fieldDateLabel'));
-  await page.tap('#btnFieldLayers'); await page.waitForTimeout(150);
-  const zon = page.locator('#fieldSheetBody [data-key="zones"]');
+  await page.evaluate(() => apSetDetent(0, false));
+  await page.tap('#apLayers'); await page.waitForTimeout(600);
+  const zon = page.locator('#fieldSheetBody .fs-tog', { hasText: 'Zoner' });
   if (!(await zon.isVisible())) fail('Lagerpanelen ska visa Zoner');
   const before = await page.evaluate(() => ls('zones').visible);
   await zon.tap(); await page.waitForTimeout(150);
@@ -215,20 +218,20 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   console.log('OK: datum och lager i fältläget styr samma sak som den vanliga vyn');
 
   // 4b) Dölj alla knappar – bara 👁 kvar, som tar tillbaka dem.
-  await page.tap('#btnFieldHide'); await page.waitForTimeout(100);
-  for (const id of ['#fieldTop', '#fieldBottom', '#zoomCtl']) if (await page.isVisible(id)) fail(id + ' ska döljas');
+  await page.evaluate(() => $('btnFieldHide').click()); await page.waitForTimeout(100);
+  for (const id of ['#apSheet', '#apCtl', '#apDateChip']) if (await page.isVisible(id)) fail(id + ' ska döljas');
   if (!(await page.isVisible('#btnFieldShow'))) fail('👁 ska synas när knapparna är dolda');
   await page.tap('#btnFieldShow'); await page.waitForTimeout(100);
-  if (!(await page.isVisible('#fieldTop')) || !(await page.isVisible('#zoomCtl')) || await page.isVisible('#btnFieldShow')) fail('👁 ska ta tillbaka knapparna');
+  if (!(await page.isVisible('#apSheet')) || !(await page.isVisible('#apCtl')) || await page.isVisible('#btnFieldShow')) fail('👁 ska ta tillbaka knapparna');
   console.log('OK: Dölj gömmer alla knappar, 👁 tar tillbaka dem');
 
   // 5) Fullständig vy, och valet kommer ihåg.
-  await page.tap('#btnFieldFull'); await page.waitForTimeout(150);
-  if (!(await page.isVisible('aside')) || await page.isVisible('#fieldTop')) fail('Fullständig ska visa den vanliga vyn');
+  await page.evaluate(() => $('btnFieldFull').click()); await page.waitForTimeout(150);
+  if (!(await page.isVisible('aside')) || await page.isVisible('#apSheet')) fail('Fullständig ska visa den vanliga vyn');
   await page.reload(); await page.waitForTimeout(1200);
   if (await page.evaluate(() => document.body.classList.contains('field'))) fail('Valet (fullständig) ska kommas ihåg');
   await page.click('#btnFieldMode'); await page.waitForTimeout(150);
-  if (!(await page.isVisible('#fieldTop'))) fail('📱 ska slå på fältläget igen');
+  if (!(await page.isVisible('#apSheet'))) fail('📱 ska slå på fältläget igen');
   console.log('OK: växla mellan fältläge och fullständig vy, valet kommer ihåg');
 
   // iPhone: som Apple Kartor (iOS 26) – flytande glaskort med tre lägen.
@@ -359,12 +362,13 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   await ip.setViewportSize({ width: 844, height: 390 }); await ip.waitForTimeout(600);
   const ls = await ip.evaluate(() => ({ phone: document.body.classList.contains('phone'), sheet: $('apSheet').getBoundingClientRect().toJSON(), ctl: $('apCtl').getBoundingClientRect().toJSON() }));
   if (!ls.phone || ls.sheet.width > 400 || ls.ctl.x < 700 || ls.ctl.bottom < 360) fail('iPhone liggande: ' + JSON.stringify(ls));
-  // Större skärm: allt tillbaka på sina platser.
-  await ip.setViewportSize({ width: 1024, height: 768 }); await ip.waitForTimeout(150);
-  const back = await ip.evaluate(() => ({ phone: document.body.classList.contains('phone'), day: $('btnFieldDay').parentNode.id, fit: $('btnFit').parentNode.id, date: $('fieldDateLabel').closest('#fieldBottom') !== null, ic: document.querySelectorAll('#btnFieldDay .ap-ic').length, txt: $('btnFieldDay').textContent.trim(), aria: $('btnFieldDay').getAttribute('aria-label') }));
-  if (back.phone || back.day !== 'fieldTop' || back.fit !== 'zoomCtl' || !back.date || back.ic || back.txt !== '👷 Dag' || back.aria) fail('Större skärm: knapparna tillbaka som förut: ' + JSON.stringify(back));
-  // iPad påverkas inte.
-  if (await page.evaluate(() => document.body.classList.contains('phone'))) fail('iPad ska inte få telefonformatet');
+  // Större pekskärm (iPad-storlek): samma design, kortet flyttar till vänster.
+  await ip.setViewportSize({ width: 1024, height: 768 }); await ip.waitForTimeout(400);
+  const wide = await ip.evaluate(() => ({ phone: document.body.classList.contains('phone'), wide: document.body.classList.contains('ap-wide'), sheet: $('apSheet').getBoundingClientRect().toJSON(), day: $('btnFieldDay').closest('#apSheet') !== null }));
+  if (!wide.phone || !wide.wide || wide.sheet.width > 390 || wide.sheet.x > 20 || !wide.day) fail('Större pekskärm: Apple Kartor-design med kortet till vänster: ' + JSON.stringify(wide));
+  // Infon om ett objekt: glaskort upptill, inte den svarta rutan.
+  const tp = await ip.evaluate(() => { const t = $('tip'); t.textContent = 'I32\n742 - SIKTHALL'; t.classList.remove('hidden'); t.style.display = 'block'; const c = getComputedStyle(t), r = t.getBoundingClientRect(); const out = { top: r.top, bg: c.backgroundColor, bf: c.backdropFilter }; t.style.display = ''; t.classList.add('hidden'); return out; });
+  if (tp.top > 120 || !/blur/.test(tp.bf) || /rgba\(28, 28, 30, 0\.88\)/.test(tp.bg)) fail('Objektinfon ska vara ett glaskort upptill: ' + JSON.stringify(tp));
   if (P.errors.length) fail('Sidfel (iPhone): ' + P.errors.join(' | '));
   console.log('OK: iPhone – som Apple Kartor: glaskort med tre lägen, reglaget dolt ihopfällt, kapsel, datumbricka, liggande; tillbaka på stor skärm');
 

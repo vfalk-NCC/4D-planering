@@ -47,10 +47,20 @@ const PORT = 8996;
   await page.click('#fieldSheet .fs-head button'); await page.click('#apAvatar'); await page.waitForTimeout(550);
   await page.mouse.move(250, 400); await page.mouse.down(); await page.mouse.move(60, 402, { steps: 8 }); await page.waitForTimeout(120); await page.mouse.up(); await page.waitForTimeout(550);
   if (await page.evaluate(() => drOpen)) fail('Drag åt vänster ska stänga menyn');
-  // Större skärm: ingen meny.
+  // iPad (pekskärm, större): samma meny.
   await page.setViewportSize({ width: 1024, height: 768 }); await page.waitForTimeout(200);
-  await page.evaluate(() => drOpenFn());
-  if (await page.evaluate(() => drOpen)) fail('Menyn bara på telefon');
+  await page.evaluate(() => drOpenFn()); await page.waitForTimeout(500);
+  if (!(await page.evaluate(() => drOpen && document.body.classList.contains('ap-wide')))) fail('Menyn ska finnas på iPad också');
+  await page.evaluate(() => drClose());
+  // Dator med mus: ingen meny.
+  const dctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+  const dp = await dctx.newPage();
+  await dp.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); });
+  await dp.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: 'window.pdfjsLib = { GlobalWorkerOptions: {} };' }));
+  await dp.route('https://api.github.com/**', r => r.fulfill({ status: 404, body: '{}' }));
+  await dp.goto(`http://localhost:${PORT}/lagesplan.html?project=p1`); await dp.waitForTimeout(800);
+  await dp.evaluate(() => drOpenFn());
+  if (await dp.evaluate(() => drOpen || document.body.classList.contains('phone'))) fail('Med mus: ingen meny och ingen telefonlayout');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();
   console.log('OK: sidomeny på iPhone – öppnas med avatarknappen eller från kanten, stängs med tryck eller drag, styr samma knappar');

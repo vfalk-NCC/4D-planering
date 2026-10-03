@@ -279,11 +279,12 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   const fctx = await browser.newContext({ viewport: { width: 1180, height: 820 }, hasTouch: true, isMobile: true });
   const f = await setup(fctx, true);
   if (!(await f.page.evaluate(() => document.body.classList.contains('field')))) fail('Fältläget ska vara på');
-  await f.page.click('#btnFieldDay'); await f.page.waitForTimeout(150);
-  if (!(await f.page.isVisible('#fieldDayBody .dp-uebtn'))) fail('👷 Dag ska visa UE-knapparna i fältläget');
-  const bh = await f.page.locator('#fieldDayBody .dp-uebtn').first().boundingBox();
+  // iPad har samma Apple Kartor-design som iPhone: Dag som kort med runda UE-knappar.
+  await f.page.evaluate(() => $('btnFieldDay').click()); await f.page.waitForTimeout(600);
+  if (!(await f.page.isVisible('#fieldDayBody [data-place-ue]'))) fail('👷 Dag ska visa UE-knapparna i fältläget');
+  const bh = await f.page.locator('#fieldDayBody [data-place-ue] .dq-c').first().boundingBox();
   if (bh.height < 40) fail('Knapparna i fältläget ska vara stora');
-  await f.page.locator('#fieldDayBody .dp-uebtn').first().click(); await f.page.waitForTimeout(100);
+  await f.page.locator('#fieldDayBody [data-place-ue]').first().click(); await f.page.waitForTimeout(100);
   if (await f.page.isVisible('#fieldDay')) fail('Panelen ska stängas när man ska placera på planen');
   if (!(await f.page.isVisible('#fieldTools'))) fail('Verktygsraden ska visa hur man placerar');
   console.log('OK: fältläget har 👷 Dag med stora knappar');

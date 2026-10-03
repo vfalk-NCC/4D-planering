@@ -81,9 +81,9 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   // 4) Fältläget: 💡 Tänd alla 3D-objekt i lagerpanelen.
   const f = await setup({ viewport: { width: 1180, height: 820 }, hasTouch: true, isMobile: true }, true);
   await f.page.evaluate(() => { setObjHidden({ ids: ['a', 'c'], fams: [], acts: [], view: '' }); });
-  await f.page.tap('#btnFieldLayers'); await f.page.waitForTimeout(150);
+  await f.page.tap('#apLayers'); await f.page.waitForTimeout(600);
   const btn = f.page.locator('#fieldSheetBody [data-objshow]');
-  if (!(await btn.count()) || !/2 släckta/.test(await btn.innerText())) fail('Fältläget ska ha "Tänd alla 3D-objekt" med antal');
+  if (!(await btn.count()) || !/\(2\)/.test(await btn.innerText())) fail('Fältläget ska ha "Tänd alla 3D-objekt" med antal');
   await btn.tap(); await f.page.waitForTimeout(200);
   if (await f.page.evaluate(() => hiddenObjCount())) fail('Knappen ska tända alla objekt');
   if (await f.page.locator('#fieldSheetBody [data-objshow]').count()) fail('Knappen ska försvinna när inget är släckt');
