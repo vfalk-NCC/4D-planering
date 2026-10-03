@@ -1606,7 +1606,28 @@ function openSitePop(rec, isNew) {
   const dash = rec.dash || SITE_DEFAULT_DASH[rec.type];
   const opt = (v, cur, label) => `<option value="${v}"${String(cur) === String(v) ? " selected" : ""}>${label}</option>`;
   const tsPct = Math.round((Number(rec.textSize) || 1) * 100);
-  pop.innerHTML = `
+  // iPhone: som ett iOS-ark – Avbryt och Spara överst (nås ovanför tangentbordet), inställningarna i en kompakt grupperad lista.
+  const phone = document.body.classList.contains("phone") && document.body.classList.contains("field");
+  if (phone) pop.innerHTML = `
+    <div class="sp-nav"><button type="button" class="sp-cancel">Avbryt</button><b>${symDef ? symDef.icon + " " + escHtml(symDef.label) : `${k.icon} ${isNew ? "Ny" : ""} ${k.label.toLowerCase()}`}</b><button type="button" class="sp-save primary">Spara</button></div>
+    ${rec.type === "note" ? `<textarea class="sp-text" rows="2" placeholder="Skriv en notering…">${escHtml(rec.text || "")}</textarea>`
+    : `<input type="text" class="sp-name" value="${escHtml(rec.name || "")}" placeholder="Namn: ${escHtml(symDef ? symDef.label : k.label)}" />`}
+    ${rec.type === "crane" ? `<div class="row2"><div><label>Räckvidd (m)</label><input type="text" class="sp-radius" value="${escHtml(String(rec.radius ?? 40))}" /></div><div><label>Kapacitet (t)</label><input type="text" class="sp-cap" value="${escHtml(String(rec.capacity ?? ""))}" /></div></div>
+      <label>Lyftkurva <span class="muted">(radie:ton, t.ex. 20:5, 30:3.5, 40:2)</span></label><input type="text" class="sp-chart" value="${escHtml(rec.chart || "")}" placeholder="20:5, 40:2" />` : ""}
+    ${rec.type === "route" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-rw" value="${fmtIn(Number(rec.w) || 4)}" /></div><div><label>&nbsp;</label><label style="display:flex;gap:4px;align-items:center;margin:0;"><input type="checkbox" class="sp-two"${rec.twoWay ? " checked" : ""} style="width:auto;" /> Dubbelriktad</label></div></div>
+      <button type="button" class="sp-reverse" style="margin-top:4px;">⇄ Vänd körriktning</button>` : ""}
+    ${g ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-w" value="${fmtIn(g.w)}" /></div><div><label>Längd (m)</label><input type="text" class="sp-h" value="${fmtIn(g.h)}" /></div><div><label>Vinkel (°)</label><input type="text" class="sp-rot" value="${Math.round(g.rot * 180 / Math.PI)}" /></div></div>` : ""}
+    ${rec.type === "gate" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-gw" value="${fmtIn(Number(rec.w) || 5)}" /></div><div><label>Vinkel (°)</label><input type="text" class="sp-grot" value="${Math.round((rec.rot || 0) * 180 / Math.PI)}" /></div></div>` : ""}
+    <div class="sp-grp">
+      <div class="sp-r"><span>Lager</span><select class="sp-layer">${layers.map(l => `<option value="${escHtml(l)}"${l === layerOf(rec) ? " selected" : ""}>${escHtml(ulName(l))}</option>`).join("")}<option value="__new">＋ Nytt lager…</option></select></div>
+      <div class="sp-r"><span>Stil</span><span class="sp-style"><input type="color" class="sp-color" value="${escHtml(color)}" /><select class="sp-dash">${opt("solid", dash, "Hel")}${opt("dashed", dash, "Streck")}${opt("dotted", dash, "Prick")}</select><select class="sp-weight">${opt(0.6, rec.weight || 1, "Tunn")}${opt(1, rec.weight || 1, "Normal")}${opt(1.8, rec.weight || 1, "Tjock")}</select></span></div>
+      <div class="sp-r"><span>Text</span><input type="range" class="sp-tsr" min="40" max="400" step="5" value="${tsPct}" /><input type="text" class="sp-ts" value="${tsPct}" inputmode="numeric" /><span class="sp-u">%</span></div>
+      <div class="sp-r" title="Tomt = alltid synlig"><span>Visas</span><input type="date" class="sp-from" value="${escHtml(rec.from || "")}" aria-label="Från" /><span class="sp-u">–</span><input type="date" class="sp-to" value="${escHtml(rec.to || "")}" aria-label="Till" /></div>
+      <label class="sp-r"><span>🔒 Lås</span><input type="checkbox" class="sp-lock sp-switch"${rec.locked ? " checked" : ""} /></label>
+    </div>
+    ${rec.lbl && rec.type !== "note" ? `<button type="button" class="sp-lblreset">↺ Återställ textens läge</button>` : ""}
+    ${isNew ? "" : `<div class="acts"><button type="button" class="sp-del" title="Ta bort">🗑️ Ta bort</button><button type="button" class="sp-dup" title="Kopiera objektet">⧉ Kopiera</button></div>`}`;
+  else pop.innerHTML = `
     <b>${symDef ? symDef.icon + " " + escHtml(symDef.label) : `${k.icon} ${isNew ? "Ny" : ""} ${k.label.toLowerCase()}`}</b>
     ${rec.type === "note" ? `
       <label>Text</label><textarea class="sp-text">${escHtml(rec.text || "")}</textarea>`

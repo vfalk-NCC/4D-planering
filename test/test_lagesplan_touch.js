@@ -318,6 +318,13 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   if ((await ip.evaluate(() => $('fieldSheet').getBoundingClientRect().height)) < lg.vh * 0.7) fail('iPhone: lagerkortet ska kunna dras upp');
   await ip.click('#fieldSheet .fs-head button');
   if (await ip.evaluate(() => $('fieldSheet').classList.contains('fs-tall'))) fail('iPhone: stängt lagerkort öppnas lågt nästa gång');
+  // Ny notering som ett iOS-ark: Avbryt – rubrik – Spara överst, inställningarna i en kompakt lista.
+  await ip.evaluate(() => { viewport = { transform: [1, 0, 0, 1, 0, 0], width: 1000, height: 800, convertToPdfPoint: (x, y) => [x, y], convertToViewportPoint: (x, y) => [x, y] }; plan = { id: 'pl', name: 'P', zones: [], calib: { model: [[0, 0, 0], [100, 0, 0]], pdf: [[0, 0], [1000, 0]] } }; openSitePop({ id: 'nt1', type: 'note', pts: [[0, 0], [5, 5]], text: '' }, true); });
+  await ip.waitForTimeout(650); // arket glider in
+  const np = await ip.evaluate(() => { const p = $('sitePop'), r = p.getBoundingClientRect(), sv = p.querySelector('.sp-nav .sp-save').getBoundingClientRect(); return { nav: [...p.querySelectorAll('.sp-nav button')].map(b => b.textContent), rows: p.querySelectorAll('.sp-grp .sp-r').length, h: r.height, saveTop: sv.top, help: /Tomt = alltid/.test(p.textContent) }; });
+  if (JSON.stringify(np.nav) !== '["Avbryt","Spara"]' || np.rows !== 5 || np.h > 420 || np.saveTop > 140 || np.help) fail('iPhone: noteringen som kompakt iOS-ark: ' + JSON.stringify(np));
+  await ip.fill('#sitePop .sp-text', 'Testnotering'); await ip.click('#sitePop .sp-nav .sp-save'); await ip.waitForTimeout(200);
+  if (!(await ip.evaluate(() => siteItems.some(x => x.type === 'note' && x.text === 'Testnotering')))) fail('iPhone: Spara i arkets överkant sparar noteringen');
   // Liggande: kortet till vänster, kontrollerna kvar nere till höger.
   await ip.setViewportSize({ width: 844, height: 390 }); await ip.waitForTimeout(600);
   const ls = await ip.evaluate(() => ({ phone: document.body.classList.contains('phone'), sheet: $('apSheet').getBoundingClientRect().toJSON(), ctl: $('apCtl').getBoundingClientRect().toJSON() }));
