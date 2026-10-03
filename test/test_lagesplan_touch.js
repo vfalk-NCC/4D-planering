@@ -313,6 +313,27 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   // Lagren som ett lågt kort nertill (ritningen syns ovanför), kompakta rader med strömbrytare.
   const lg = await ip.evaluate(() => { const r = $('fieldSheet').getBoundingClientRect(), rows = [...document.querySelectorAll('#fieldSheetBody .fs-grid .fs-tog')]; return { top: r.top, h: r.height, vh: innerHeight, n: rows.length, rowH: Math.max(...rows.map(x => x.getBoundingClientRect().height)), sw: rows.every(x => getComputedStyle(x.querySelector('.fs-dot')).order === '3' && x.getAttribute('role') === 'switch') }; });
   if (lg.h > lg.vh * 0.5 || lg.top < lg.vh * 0.45 || !lg.n || lg.rowH > 44 || !lg.sw) fail('iPhone: lagerkortet lågt med kompakta rader: ' + JSON.stringify(lg));
+  // Lagerträdet: sparade vyer som rullgardin med ＋, mappar/DXF/zoner fälls ut och tänds/släcks var för sig.
+  await ip.evaluate(() => {
+    const ll = $('layerList'), keep = ll.innerHTML; window.__llKeep = keep; window.__clicks = [];
+    ll.innerHTML = `<div class="layer-row folder-row" data-folder="f1"><input type="checkbox" class="fr-vis" checked data-mixed="1"><span class="ln"><button class="fr-toggle">▾</button><span class="fr-name">📁 Underlag</span> <small>2</small></span></div>
+      <div class="layer-row in-folder" data-layer="cad:a"><input type="checkbox" class="lr-vis" checked><span class="ln"><button class="cad-toggle">▸</button><span class="cad-name">📐 A-001</span> <small>2 lager</small></span></div>
+      <div class="layer-row sub cad-sub in-folder hidden" data-layer="cadl:a:VÄGG"><input type="checkbox" class="lr-vis" checked><span class="ln">VÄGG <small>120</small></span></div>
+      <div class="layer-row sub cad-sub in-folder hidden" data-layer="cadl:a:TEXT"><input type="checkbox" class="lr-vis"><span class="ln">TEXT <small>40</small></span></div>
+      <div class="layer-row in-folder" data-layer="cad:b"><input type="checkbox" class="lr-vis"><span class="ln"><span class="cad-name">📐 K-002</span></span></div>
+      <div class="layer-row" data-layer="zones"><input type="checkbox" class="lr-vis" checked><span class="ln">🟧 Zoner <small>1</small></span></div>
+      <div class="layer-row sub zone-layer-row hidden" data-zone="z1"><input type="checkbox" class="zl-vis" checked><span class="ln">K10 Grundsula</span></div>`;
+    ll.querySelectorAll('input').forEach(i => i.addEventListener('click', () => __clicks.push(i.closest('.layer-row').dataset.layer || i.closest('.layer-row').dataset.zone || i.closest('.layer-row').dataset.folder)));
+    renderFieldSheet();
+  });
+  const fp0 = await ip.evaluate(() => ({ sel: !!document.querySelector('#fieldSheetBody .fp-views select.fp-vsel'), add: !!document.querySelector('#fieldSheetBody .fp-add'), top: [...document.querySelectorAll('#fieldSheetBody .fp-row.d0 .fs-lbl')].map(x => x.textContent), bg: getComputedStyle($('fieldSheet')).backdropFilter }));
+  if (!fp0.sel || !fp0.add || JSON.stringify(fp0.top) !== '["📁 Underlag","🟧 Zoner","🏷 Objektnamn"]' || !/blur/.test(fp0.bg)) fail('iPhone: lagerträdet med vyrullgardin, ＋ och glas: ' + JSON.stringify(fp0));
+  await ip.click('[data-fpopen="f:f1"]'); await ip.click('[data-fpopen="cad:a"]'); await ip.click('[data-fpopen="zones"]');
+  const fp1 = await ip.evaluate(() => [...document.querySelectorAll('#fieldSheetBody .fp-row')].map(r => r.className.replace('fp-row ', '') + ':' + r.querySelector('.fs-lbl').textContent));
+  if (JSON.stringify(fp1) !== JSON.stringify(['d0:📁 Underlag', 'd1:📐 A-001', 'd2:VÄGG', 'd2:TEXT', 'd1:📐 K-002', 'd0:🟧 Zoner', 'd1:K10 Grundsula', 'd0:🏷 Objektnamn'])) fail('iPhone: utfällt träd: ' + JSON.stringify(fp1));
+  for (const t of ['📐 K-002', 'TEXT', 'K10 Grundsula', '📁 Underlag']) await ip.locator('#fieldSheetBody .fs-tog', { hasText: t }).click();
+  const clicks = await ip.evaluate(() => { const c = __clicks; $('layerList').innerHTML = __llKeep; renderFieldSheet(); return c; });
+  if (JSON.stringify(clicks) !== JSON.stringify(['cad:b', 'cadl:a:TEXT', 'z1', 'f1'])) fail('iPhone: varje DXF, DXF-lager, zon och mapp tänds/släcks för sig: ' + JSON.stringify(clicks));
   const lh = await ip.locator('#fieldSheet .fs-head').boundingBox();
   await ip.mouse.move(120, lh.y + 10); await ip.mouse.down(); await ip.mouse.move(120, lh.y - 120, { steps: 5 }); await ip.mouse.up(); await ip.waitForTimeout(550);
   if ((await ip.evaluate(() => $('fieldSheet').getBoundingClientRect().height)) < lg.vh * 0.7) fail('iPhone: lagerkortet ska kunna dras upp');
