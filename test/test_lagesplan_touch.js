@@ -327,8 +327,8 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   if (!(await ip.evaluate(() => siteItems.some(x => x.type === 'note' && x.text === 'Testnotering')))) fail('iPhone: Spara i arkets överkant sparar noteringen');
   // Rita: en kompakt glaskapsel på en rad – färgprickar, tjocklek, spara vy och Klar, ingen lång text.
   await ip.evaluate(() => startSiteTool('sketch')); await ip.waitForTimeout(150);
-  const sk = await ip.evaluate(() => { const b = $('fieldTools'), r = b.getBoundingClientRect(); return { h: r.height, w: r.width, txt: b.textContent.replace(/\s+/g, ' ').trim(), colors: b.querySelectorAll('.ft-color').length, ico: b.querySelectorAll('.ft-ico svg').length }; });
-  if (sk.h > 50 || sk.w > 380 || sk.txt !== 'Klar' || sk.colors < 3 || sk.ico !== 2) fail('iPhone: ritmenyn som kompakt kapsel: ' + JSON.stringify(sk));
+  const skb = await ip.evaluate(() => { const b = $('fieldTools'), r = b.getBoundingClientRect(); return { h: r.height, w: r.width, txt: b.textContent.replace(/\s+/g, ' ').trim(), colors: b.querySelectorAll('.ft-color').length, ico: b.querySelectorAll('.ft-ico svg').length }; });
+  if (skb.h > 50 || skb.w > 380 || skb.txt !== 'Klar' || skb.colors < 3 || skb.ico !== 2) fail('iPhone: ritmenyn som kompakt kapsel: ' + JSON.stringify(skb));
   await ip.click('#fieldTools .ft-w'); await ip.click('#btnFieldToolDone'); await ip.waitForTimeout(100);
   // Liggande: kortet till vänster, kontrollerna kvar nere till höger.
   await ip.setViewportSize({ width: 844, height: 390 }); await ip.waitForTimeout(600);
