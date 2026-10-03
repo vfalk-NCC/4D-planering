@@ -299,7 +299,15 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   if ((await ip.evaluate(() => getComputedStyle($('apSheet')).opacity)) !== '1') fail('iPhone: sökkortet tillbaka när kortet stängs');
   await ip.click('#apLayers'); await ip.waitForTimeout(200);
   if (!(await ip.isVisible('#fieldSheet'))) fail('iPhone: lagerknappen i kapseln öppnar lagren');
+  await ip.waitForTimeout(500);
+  // Lagren som ett lågt kort nertill (ritningen syns ovanför), kompakta rader med strömbrytare.
+  const lg = await ip.evaluate(() => { const r = $('fieldSheet').getBoundingClientRect(), rows = [...document.querySelectorAll('#fieldSheetBody .fs-grid .fs-tog')]; return { top: r.top, h: r.height, vh: innerHeight, n: rows.length, rowH: Math.max(...rows.map(x => x.getBoundingClientRect().height)), sw: rows.every(x => getComputedStyle(x.querySelector('.fs-dot')).order === '3' && x.getAttribute('role') === 'switch') }; });
+  if (lg.h > lg.vh * 0.5 || lg.top < lg.vh * 0.45 || !lg.n || lg.rowH > 44 || !lg.sw) fail('iPhone: lagerkortet lågt med kompakta rader: ' + JSON.stringify(lg));
+  const lh = await ip.locator('#fieldSheet .fs-head').boundingBox();
+  await ip.mouse.move(120, lh.y + 10); await ip.mouse.down(); await ip.mouse.move(120, lh.y - 120, { steps: 5 }); await ip.mouse.up(); await ip.waitForTimeout(550);
+  if ((await ip.evaluate(() => $('fieldSheet').getBoundingClientRect().height)) < lg.vh * 0.7) fail('iPhone: lagerkortet ska kunna dras upp');
   await ip.click('#fieldSheet .fs-head button');
+  if (await ip.evaluate(() => $('fieldSheet').classList.contains('fs-tall'))) fail('iPhone: stängt lagerkort öppnas lågt nästa gång');
   // Liggande: kortet till vänster, kontrollerna kvar nere till höger.
   await ip.setViewportSize({ width: 844, height: 390 }); await ip.waitForTimeout(600);
   const ls = await ip.evaluate(() => ({ phone: document.body.classList.contains('phone'), sheet: $('apSheet').getBoundingClientRect().toJSON(), ctl: $('apCtl').getBoundingClientRect().toJSON() }));

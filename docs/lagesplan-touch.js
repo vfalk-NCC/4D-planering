@@ -490,22 +490,24 @@ function fieldRowToggle(key) { return document.querySelector(`#layerList .layer-
 function renderFieldSheet() {
   const box = $("fieldSheetBody");
   const rows = [...document.querySelectorAll("#layerList .layer-row[data-layer]")]
-    .map(r => ({ key: r.dataset.layer, label: (r.querySelector(".ln").textContent || "").replace(/\s+/g, " ").trim(), on: r.querySelector(".lr-vis").checked }));
+    .map(r => ({ key: r.dataset.layer, label: (r.querySelector(".ln").textContent || "").replace(/\s+/g, " ").trim().replace(/^[▸▾]\s*/, ""), on: r.querySelector(".lr-vis").checked }));
   const base = rows.filter(r => ["pdf", "zones", "objects", "photos"].includes(r.key) || r.key.startsWith("ul:"));
   const cad = rows.filter(r => r.key.startsWith("cad:"));
   const ortho = rows.filter(r => r.key.startsWith("ortho:"));
-  const btn = (r, extra = "") => `<button type="button" class="fs-tog${r.on ? " on" : ""}" data-key="${fesc(r.key)}"${extra}><span class="fs-dot"></span><span class="fs-lbl">${fesc(r.label)}</span></button>`;
+  // Antalet sist i namnet ("Foton 9") visas för sig, grått till höger (som i iOS-listor).
+  const btn = (r, extra = "") => { const m = r.label.match(/^(.*\S)\s+(\d+)$/), name = m ? m[1] : r.label;
+    return `<button type="button" class="fs-tog${r.on ? " on" : ""}" data-key="${fesc(r.key)}" role="switch" aria-checked="${r.on}"${extra}><span class="fs-dot"></span><span class="fs-lbl">${fesc(name)}</span>${m ? `<span class="fs-cnt">${m[2]}</span>` : ""}</button>`; };
   const labelsOn = $("objLabels") && $("objLabels").checked;
   const orthoOn = ortho.some(r => r.on);
   const views = typeof lsViews === "function" ? lsViews() : [];
   const cur = typeof lsViewCurrent !== "undefined" ? lsViewCurrent : null;
   const cadOpen = box.dataset.cadOpen === "1";
   box.innerHTML = `
-    ${views.length ? `<div class="fs-h">Sparade vyer</div><div class="fs-grid">${views.map(v => `<button type="button" class="fs-view${v.id === cur ? " on" : ""}" data-view="${fesc(v.id)}">📑 ${fesc(v.name)}</button>`).join("")}</div>` : ""}
+    ${views.length ? `<div class="fs-h">Sparade vyer</div><div class="fs-grid fs-views">${views.map(v => `<button type="button" class="fs-view${v.id === cur ? " on" : ""}" data-view="${fesc(v.id)}">📑 ${fesc(v.name)}</button>`).join("")}</div>` : ""}
     ${typeof hiddenObjCount === "function" && hiddenObjCount() ? `<button type="button" class="fs-tog fs-showall" data-objshow="1"><span class="fs-lbl">💡 Tänd alla 3D-objekt <small>(${hiddenObjCount()} släckta)</small></span></button>` : ""}
     <div class="fs-h">Visa</div>
     <div class="fs-grid">${base.map(r => btn(r)).join("")}
-      <button type="button" class="fs-tog${labelsOn ? " on" : ""}" data-labels="1"><span class="fs-dot"></span><span class="fs-lbl">🏷 Namn på objekten</span></button>
+      <button type="button" class="fs-tog${labelsOn ? " on" : ""}" data-labels="1" role="switch" aria-checked="${!!labelsOn}"><span class="fs-dot"></span><span class="fs-lbl">🏷 Namn på objekten</span></button>
     </div>
     ${ortho.length ? `<div class="fs-h">Ortofoto</div>
       <div class="fs-ortho">
@@ -544,7 +546,7 @@ function renderFieldSheet() {
   if (co) co.onclick = () => { box.dataset.cadOpen = cadOpen ? "0" : "1"; renderFieldSheet(); };
 }
 function openFieldSheet() { $("fieldSheet").classList.remove("hidden"); $("btnFieldLayers").classList.add("on"); renderFieldSheet(); }
-function closeFieldSheet() { const s = $("fieldSheet"); if (s) s.classList.add("hidden"); const b = $("btnFieldLayers"); if (b) b.classList.remove("on"); }
+function closeFieldSheet() { const s = $("fieldSheet"); if (s) { s.classList.add("hidden"); s.classList.remove("fs-tall"); } const b = $("btnFieldLayers"); if (b) b.classList.remove("on"); }
 
 document.addEventListener("DOMContentLoaded", () => {
   if (!$("fieldTop")) return;
@@ -558,6 +560,20 @@ document.addEventListener("DOMContentLoaded", () => {
   $("fieldSlider").oninput = e => { const s = $("dateSlider"); s.value = e.target.value; s.dispatchEvent(new Event("input")); renderField(); };
   $("btnFieldLayers").onclick = () => ($("fieldSheet").classList.contains("hidden") ? openFieldSheet() : closeFieldSheet());
   $("btnFieldSheetClose").onclick = closeFieldSheet;
+  // iPhone: dra lagerkortet uppåt för fler rader, neråt för att gå tillbaka eller stänga.
+  (() => {
+    const sh = $("fieldSheet"), head = sh.querySelector(".fs-head");
+    let y0 = null;
+    head.addEventListener("pointerdown", e => { if (!document.body.classList.contains("phone") || e.target.closest("button")) return; y0 = e.clientY; head.setPointerCapture && head.setPointerCapture(e.pointerId); });
+    head.addEventListener("pointerup", e => {
+      if (y0 === null) return;
+      const dy = e.clientY - y0; y0 = null;
+      if (dy < -30) sh.classList.add("fs-tall");
+      else if (dy > 30) { if (sh.classList.contains("fs-tall")) sh.classList.remove("fs-tall"); else closeFieldSheet(); }
+      else sh.classList.toggle("fs-tall");
+    });
+    head.addEventListener("pointercancel", () => { y0 = null; });
+  })();
   $("btnFieldFull").onclick = () => setFieldMode(false);
   $("btnFieldNote").onclick = () => { closeFieldSheet(); startSiteTool("note"); };
   $("btnFieldSketch").onclick = () => { closeFieldSheet(); startSiteTool("sketch"); };

@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261003122526"></script>
+<script src="github-storage.js?v=20261003154247"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -462,6 +462,35 @@
   body.field.phone #fieldDayBody button, body.field.phone #fieldSheetBody button { border: none; border-radius: 12px; background: rgba(118,118,128,.12); box-shadow: none; color: #0a84ff; font-family: -apple-system, system-ui, sans-serif; }
   body.field.phone #fieldDayBody button.primary, body.field.phone #fieldDayBody button.on, body.field.phone #fieldSheetBody button.primary { background: #0a84ff; color: #fff; }
   body.field.phone #fieldDayBody details, body.field.phone #fieldSheetBody details { border: none; background: rgba(118,118,128,.08); border-radius: 14px; }
+  /* Lager på iPhone (Victors önskemål 2026-10-03): ett lågt kort nertill så att ritningen syns ovanför
+     medan man tänder och släcker. Kompakta rader i grupperade iOS-listor med strömbrytare till höger. */
+  body.field.phone #fieldSheet { top: auto !important; height: min(46vh, 430px); background: rgba(250,250,252,.84); }
+  body.field.phone #fieldSheet { transition: height .45s cubic-bezier(.32,.72,0,1); }
+  body.field.phone #fieldSheet.fs-tall { height: calc(100% - env(safe-area-inset-top) - 64px - var(--ap-bot)); }
+  body.field.phone #fieldSheet .fs-head { padding: 16px 14px 2px 20px; font-size: 20px; touch-action: none; cursor: grab; }
+  body.field.phone #fieldSheet .fs-head .fl-btn { width: 30px; height: 30px; }
+  body.field.phone #fieldSheet .fs-head .fl-btn::after { font-size: 13px; }
+  body.field.phone #fieldSheetBody { padding: 0 12px calc(12px + env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+  body.field.phone #fieldSheetBody .fs-h { margin: 12px 8px 5px; font: 600 12px -apple-system, system-ui, sans-serif; letter-spacing: .3px; color: rgba(60,60,67,.6); }
+  body.field.phone #fieldSheetBody .fs-grid { gap: 0; border-radius: 12px; background: rgba(255,255,255,.75); overflow: hidden; }
+  body.field.phone #fieldSheetBody .fs-tog { min-height: 42px; padding: 0 12px 0 14px; gap: 8px; border-radius: 0; background: transparent; color: #000; font: 16px -apple-system, system-ui, sans-serif; }
+  body.field.phone #fieldSheetBody .fs-grid .fs-tog + .fs-tog { box-shadow: inset 0 .5px 0 rgba(60,60,67,.2); }
+  body.field.phone #fieldSheetBody .fs-tog.on { background: transparent; }
+  body.field.phone #fieldSheetBody .fs-lbl { white-space: nowrap; }
+  body.field.phone #fieldSheetBody .fs-cnt { flex: none; color: rgba(60,60,67,.5); font-size: 15px; }
+  body.field.phone #fieldSheetBody .fs-dot { order: 3; flex: 0 0 44px; height: 26px; margin-left: 4px; border: none; border-radius: 13px; background: rgba(120,120,128,.24); box-shadow: none; position: relative; transition: background .2s; }
+  body.field.phone #fieldSheetBody .fs-dot::after { content: ""; position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: transform .2s cubic-bezier(.32,.72,0,1); }
+  body.field.phone #fieldSheetBody .fs-tog.on .fs-dot { background: #34c759; box-shadow: none; }
+  body.field.phone #fieldSheetBody .fs-tog.on .fs-dot::after { transform: translateX(18px); }
+  body.field.phone #fieldSheetBody .fs-views { display: flex; gap: 8px; overflow-x: auto; background: none; border-radius: 0; scrollbar-width: none; }
+  body.field.phone #fieldSheetBody .fs-views::-webkit-scrollbar { display: none; }
+  body.field.phone #fieldSheetBody .fs-view { flex: none; width: auto; min-height: 0; height: 34px; padding: 0 14px; border-radius: 17px; background: rgba(255,255,255,.75); color: #000; font: 15px -apple-system, system-ui, sans-serif; white-space: nowrap; }
+  body.field.phone #fieldSheetBody .fs-view.on { background: #0a84ff; color: #fff; }
+  body.field.phone #fieldSheetBody .fs-showall { min-height: 38px; margin-top: 10px; border-radius: 12px; background: rgba(255,214,10,.22); justify-content: flex-start; }
+  body.field.phone #fieldSheetBody .fs-ortho { gap: 0 6px; border-radius: 12px; background: rgba(255,255,255,.75); padding-bottom: 6px; }
+  body.field.phone #fieldSheetBody .fs-ortho .fs-oname { padding-left: 14px; font-size: 13px; }
+  body.field.phone #fieldSheetBody .fs-big { height: 32px; font-size: 14px; }
+  body.field.phone #fieldSheetBody .fs-mini { height: 28px; font-size: 13px; border-radius: 14px; }
   body.field.phone #sitePop { position: fixed; left: 8px !important; right: 8px; top: auto !important; bottom: var(--ap-bot); width: auto !important; max-height: 72% !important; border: none; border-radius: 30px; padding: 22px 18px 18px; background: var(--ap-panel); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); box-shadow: 0 12px 50px rgba(0,0,0,.28); z-index: 45; animation: apUp .45s cubic-bezier(.32,.72,0,1); font-size: 16px; color: #000; }
   body.field.phone #sitePop::before { content: ""; position: absolute; top: 7px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: rgba(60,60,67,.3); }
   body.field.phone #sitePop input, body.field.phone #sitePop select, body.field.phone #sitePop textarea { border-radius: 12px; border-color: transparent; background: rgba(118,118,128,.12); font-size: 17px; }
@@ -475,6 +504,7 @@
   @media (orientation: landscape) {
     #apSheet { right: auto !important; width: 380px; left: calc(env(safe-area-inset-left) + 10px) !important; }
     body.field.phone #fieldSheet, body.field.phone #fieldDay { top: 8px !important; left: auto; right: calc(env(safe-area-inset-right) + 8px); width: 400px; }
+    body.field.phone #fieldSheet, body.field.phone #fieldSheet.fs-tall { height: auto; width: 340px; }
     body.field.phone #sitePop { left: auto !important; right: calc(env(safe-area-inset-right) + 8px); width: 400px !important; }
     #apLeft { left: auto; right: 84px; }
     /* Kortet ligger till vänster: knapparna till höger står kvar nere i hörnet oavsett kortets höjd. */
@@ -1201,26 +1231,26 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261003122526"></script>
-<script src="lagesplan-tools.js?v=20261003122526"></script>
-<script src="lagesplan-layers.js?v=20261003122526"></script>
-<script src="lagesplan-views.js?v=20261003122526"></script>
-<script src="lagesplan-film.js?v=20261003122526"></script>
-<script src="lagesplan-cad.js?v=20261003122526"></script>
-<script src="lagesplan-vecpdf.js?v=20261003122526"></script>
-<script src="lagesplan-print.js?v=20261003122526"></script>
-<script src="lagesplan-printlib.js?v=20261003122526"></script>
-<script src="lagesplan-pdflayers.js?v=20261003122526"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261003122526"></script>
-<script src="lagesplan-objmarks.js?v=20261003122526"></script>
-<script src="lagesplan-objlist.js?v=20261003122526"></script>
-<script src="lagesplan-zones.js?v=20261003122526"></script>
-<script src="lagesplan-wbs.js?v=20261003122526"></script>
-<script src="lagesplan-daily.js?v=20261003122526"></script>
-<script src="lagesplan-gps.js?v=20261003122526"></script>
-<script src="lagesplan-weather.js?v=20261003122526"></script>
-<script src="lagesplan-touch.js?v=20261003122526"></script>
-<script src="lagesplan-gpslive.js?v=20261003122526"></script>
-<script src="lagesplan-keys.js?v=20261003122526"></script>
+<script src="lagesplan.js?v=20261003154247"></script>
+<script src="lagesplan-tools.js?v=20261003154247"></script>
+<script src="lagesplan-layers.js?v=20261003154247"></script>
+<script src="lagesplan-views.js?v=20261003154247"></script>
+<script src="lagesplan-film.js?v=20261003154247"></script>
+<script src="lagesplan-cad.js?v=20261003154247"></script>
+<script src="lagesplan-vecpdf.js?v=20261003154247"></script>
+<script src="lagesplan-print.js?v=20261003154247"></script>
+<script src="lagesplan-printlib.js?v=20261003154247"></script>
+<script src="lagesplan-pdflayers.js?v=20261003154247"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261003154247"></script>
+<script src="lagesplan-objmarks.js?v=20261003154247"></script>
+<script src="lagesplan-objlist.js?v=20261003154247"></script>
+<script src="lagesplan-zones.js?v=20261003154247"></script>
+<script src="lagesplan-wbs.js?v=20261003154247"></script>
+<script src="lagesplan-daily.js?v=20261003154247"></script>
+<script src="lagesplan-gps.js?v=20261003154247"></script>
+<script src="lagesplan-weather.js?v=20261003154247"></script>
+<script src="lagesplan-touch.js?v=20261003154247"></script>
+<script src="lagesplan-gpslive.js?v=20261003154247"></script>
+<script src="lagesplan-keys.js?v=20261003154247"></script>
 </body>
 </html>
