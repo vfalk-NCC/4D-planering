@@ -240,7 +240,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
     plan: !!$('fieldPlan').closest('#apSheet .ap-search'),
     date: ['btnFieldPrevW', 'fieldDateLabel', 'btnFieldNextW', 'btnFieldToday'].every(id => $(id).closest('#apSheet .ap-date')),
     slider: !!$('fieldSlider').closest('#apSheet .ap-datecard'),
-    tiles: [...document.querySelectorAll('#apSheet .ap-tools .ap-tile')].map(e => [e.querySelector('.ap-lb').textContent, !!e.querySelector('.ap-sub').textContent, !!e.querySelector('.ap-ic svg')]),
+    tiles: [...document.querySelectorAll('#apSheet .ap-tools .ap-tile')].map(e => [e.getAttribute('aria-label'), getComputedStyle(e.querySelector('.ap-lb')).display === 'none' && getComputedStyle(e.querySelector('.ap-sub')).display === 'none', !!e.querySelector('.ap-ic svg')]),
     ctl: [...$('apCtl').children].map(e => e.id),
     fit: $('btnFit').parentNode.id,
     arrows: ['btnFieldPrevW', 'btnFieldNextW'].map(id => $(id).querySelector('.ap-ic svg').getBoundingClientRect().width),
@@ -251,7 +251,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
     label: $('fieldDateLabel').textContent.trim(),
   }));
   if (!lay.plan || !lay.date || !lay.slider || !lay.hidden) fail('iPhone: planen som sökfält, datum och reglage i kortet, gamla rader dolda: ' + JSON.stringify(lay));
-  if (JSON.stringify(lay.tiles.map(t => t[0])) !== JSON.stringify(['Dag', 'Lager', 'Notering', 'Foto', 'Rita', 'Spara vy', 'Dölj']) || !lay.tiles.every(t => t[1] && t[2])) fail('iPhone: verktygen som stora runda ikoner med etikett och undertext: ' + JSON.stringify(lay.tiles));
+  if (JSON.stringify(lay.tiles.map(t => t[0])) !== JSON.stringify(['Dag', 'Lager', 'Notering', 'Foto', 'Rita', 'Spara vy', 'Dölj']) || !lay.tiles.every(t => t[1] && t[2])) fail('iPhone: verktygen som runda ikoner utan text (namnet för skärmläsare): ' + JSON.stringify(lay.tiles));
   if (JSON.stringify(lay.ctl) !== JSON.stringify(['apLayers', 'btnFieldGps']) || lay.fit !== 'apFitWrap') fail('iPhone: lager och min position i kapseln till höger, anpassa till vänster: ' + JSON.stringify(lay));
   if (!lay.arrows.every(w => w >= 16)) fail('iPhone: pilarna vid datumet ska synas: ' + JSON.stringify(lay.arrows));
   const off = await ip.evaluate(() => [...document.querySelectorAll('#apCtl > button, #apLeft button, #apAvatar, .ap-date #btnFieldPrevW, .ap-date #btnFieldNextW')].filter(b => b.getBoundingClientRect().width && b.querySelector('svg')).map(b => { const r = b.getBoundingClientRect(), q = b.querySelector('svg').getBoundingClientRect(); return [b.id, Math.abs(q.x + q.width / 2 - r.x - r.width / 2) + Math.abs(q.y + q.height / 2 - r.y - r.height / 2)]; }));
@@ -298,8 +298,8 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   if (!ls.phone || ls.sheet.width > 400 || ls.ctl.x < 700 || ls.ctl.bottom < 360) fail('iPhone liggande: ' + JSON.stringify(ls));
   // Större skärm: allt tillbaka på sina platser.
   await ip.setViewportSize({ width: 1024, height: 768 }); await ip.waitForTimeout(150);
-  const back = await ip.evaluate(() => ({ phone: document.body.classList.contains('phone'), day: $('btnFieldDay').parentNode.id, fit: $('btnFit').parentNode.id, date: $('fieldDateLabel').closest('#fieldBottom') !== null, ic: document.querySelectorAll('#btnFieldDay .ap-ic').length, txt: $('btnFieldDay').textContent.trim() }));
-  if (back.phone || back.day !== 'fieldTop' || back.fit !== 'zoomCtl' || !back.date || back.ic || back.txt !== '👷 Dag') fail('Större skärm: knapparna tillbaka som förut: ' + JSON.stringify(back));
+  const back = await ip.evaluate(() => ({ phone: document.body.classList.contains('phone'), day: $('btnFieldDay').parentNode.id, fit: $('btnFit').parentNode.id, date: $('fieldDateLabel').closest('#fieldBottom') !== null, ic: document.querySelectorAll('#btnFieldDay .ap-ic').length, txt: $('btnFieldDay').textContent.trim(), aria: $('btnFieldDay').getAttribute('aria-label') }));
+  if (back.phone || back.day !== 'fieldTop' || back.fit !== 'zoomCtl' || !back.date || back.ic || back.txt !== '👷 Dag' || back.aria) fail('Större skärm: knapparna tillbaka som förut: ' + JSON.stringify(back));
   // iPad påverkas inte.
   if (await page.evaluate(() => document.body.classList.contains('phone'))) fail('iPad ska inte få telefonformatet');
   if (P.errors.length) fail('Sidfel (iPhone): ' + P.errors.join(' | '));

@@ -190,11 +190,13 @@ function apDecorate(el, on) {
   if (!el) return;
   el.querySelectorAll(":scope > .ap-ic, :scope > .ap-lb, :scope > .ap-sub").forEach(x => x.remove());
   el.classList.remove("ap-tile"); el.style.removeProperty("--c");
+  if (el.dataset.apAria !== undefined) { if (el.dataset.apAria) el.setAttribute("aria-label", el.dataset.apAria); else el.removeAttribute("aria-label"); delete el.dataset.apAria; }
   if (!on) return;
   const [lb, sub, c, path] = AP_ICONS[el.id] || ["", "", "", ""];
   const ic = document.createElement("span"); ic.className = "ap-ic"; ic.innerHTML = AP_SVG(path); el.appendChild(ic);
   if (AP_TILES.includes(el.id)) {
     el.classList.add("ap-tile"); if (c) el.style.setProperty("--c", c);
+    el.dataset.apAria = el.getAttribute("aria-label") || ""; el.setAttribute("aria-label", lb);
     const l = document.createElement("span"); l.className = "ap-lb"; l.textContent = lb; el.appendChild(l);
     const t = document.createElement("span"); t.className = "ap-sub"; t.textContent = sub; el.appendChild(t);
   }
@@ -206,7 +208,7 @@ const apHeights = () => {
   // Mellanläget visar datum och hela verktygsraden (som Kartors "Platser"), men aldrig mer än skärmen tillåter.
   let want = vh * .5;
   const sh = $("apSheet"), tools = sh && sh.querySelector(".ap-tools"), body = sh && sh.querySelector(".ap-body");
-  if (tools && body && tools.offsetHeight) want = tools.getBoundingClientRect().bottom - sh.getBoundingClientRect().top + body.scrollTop + 18;
+  if (tools && body && tools.offsetHeight) want = tools.getBoundingClientRect().bottom - sh.getBoundingClientRect().top + body.scrollTop + 4;
   return [76, Math.round(Math.min(Math.max(want, 300), vh - 140)), Math.round(vh - 70)];
 };
 function apSetHeight(h) { document.body.style.setProperty("--ap-sheet-h", Math.round(h) + "px"); }
