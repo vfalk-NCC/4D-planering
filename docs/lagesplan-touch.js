@@ -159,8 +159,8 @@ const fieldIsOn = () => document.body.classList.contains("field");
 /* iPhone (Victors önskemål 2026-10-03): som Apple Kartor (iOS 26).
    Ett flytande glaskort nertill med tre lägen – bara sökfältet (planen),
    mellan och stort – som följer fingret och fjädrar till närmaste läge.
-   Uppdraget visar Datum (med tidsreglaget), Verktyg som stora färgade runda
-   ikoner och Sparade vyer som en lista. Lager och min position sitter i en
+   Uppdraget visar Verktyg som stora färgade runda ikoner, Sparade vyer som
+   en lista och sist Datum (med tidsreglaget). Lager och min position sitter i en
    kapsel till höger, Anpassa och Ångra till vänster, datumet som en bricka
    uppe till vänster. Glaset blir mörkt över ortofoto och ljust annars.
    Knapparna flyttas hit på liten skärm och tillbaka på större. */
@@ -208,8 +208,8 @@ const apHeights = () => {
   // Mellanläget visar datum och hela verktygsraden (som Kartors "Platser"), men aldrig mer än skärmen tillåter.
   let want = vh * .5;
   const sh = $("apSheet"), tools = sh && sh.querySelector(".ap-tools"), body = sh && sh.querySelector(".ap-body");
-  if (tools && body && tools.offsetHeight) want = tools.getBoundingClientRect().bottom - sh.getBoundingClientRect().top + body.scrollTop + 4;
-  return [76, Math.round(Math.min(Math.max(want, 300), vh - 140)), Math.round(vh - 70)];
+  if (tools && body && tools.offsetHeight) want = tools.getBoundingClientRect().bottom - sh.getBoundingClientRect().top + body.scrollTop + 12;
+  return [76, Math.round(Math.min(Math.max(want, 180), vh - 140)), Math.round(vh - 70)];
 };
 function apSetHeight(h) { document.body.style.setProperty("--ap-sheet-h", Math.round(h) + "px"); }
 function apSetDetent(n, anim = true) {
@@ -292,12 +292,12 @@ document.addEventListener("DOMContentLoaded", () => {
         <button type="button" class="ap-avatar" id="apAvatar" title="Fullständig vy med alla verktyg">☰</button>
       </div></div>
       <div class="ap-body">
-        <div class="ap-sec">Datum</div>
-        <div class="ap-datecard"><div class="ap-date"></div></div>
         <div class="ap-sec">Verktyg ${AP_SVG('<path d="m9 5 7 7-7 7"/>')}</div>
         <div class="ap-tools"></div>
         <div class="ap-sec">Sparade vyer</div>
         <div class="ap-list"></div><div class="ap-empty hidden">Inga sparade vyer än. Tryck på Spara vy för att spara det som visas.</div>
+        <div class="ap-sec">Datum</div>
+        <div class="ap-datecard"><div class="ap-date"></div></div>
       </div>`);
     $("apAvatar").onclick = () => $("btnFieldFull").click();
     $("apLayers").onclick = () => $("btnFieldLayers").click();
