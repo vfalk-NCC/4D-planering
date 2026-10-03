@@ -267,6 +267,8 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   // Ihopfällt: bara sökfältet, reglaget syns inte.
   const sh = await ip.locator('#apSheet').boundingBox();
   if (Math.abs(sh.height - 76) > 2 || sh.x < 4 || sh.y + sh.height > 664) fail('iPhone: kortet ihopfällt, flytande nertill: ' + JSON.stringify(sh));
+  const frame = await ip.evaluate(() => { const s = $('apSheet').getBoundingClientRect(), p = document.querySelector('.ap-search').getBoundingClientRect(), a = $('apAvatar').getBoundingClientRect(); return [p.top - s.top, s.bottom - p.bottom, p.left - s.left, s.right - a.right, a.top - s.top].map(Math.round); });
+  if (new Set(frame).size !== 1) fail('iPhone: lika tjock ram runt sökfältet: ' + JSON.stringify(frame));
   const hid = await ip.evaluate(() => ({ op: getComputedStyle(document.querySelector('#apSheet .ap-body')).opacity, ev: getComputedStyle(document.querySelector('#apSheet .ap-body')).pointerEvents }));
   if (hid.op !== '0') fail('iPhone: reglaget ska inte synas när kortet är ihopfällt: ' + JSON.stringify(hid));
   // Kapseln ligger ovanför kortet.
