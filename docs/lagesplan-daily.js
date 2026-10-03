@@ -976,7 +976,8 @@ function renderDayCore(box, field) {
   const next = nextWorkday(day), wk = dayWeekNo(day);
   const showInfo = box.dataset.info === "1";
   const shownIss = iss.list.filter(i => i.sev !== "info" || showInfo);
-  box.innerHTML = `
+  if (field && document.body.classList.contains("phone")) { box.innerHTML = dayPhoneHtml({ day, iss, shownIss, crews, timed, html, persons, dels, lifts, toolOn, next, wk }); }
+  else box.innerHTML = `
     <div class="dp-nav"><button type="button" data-dnav="-1" title="Föregående arbetsdag">◀</button><span class="dp-date">${escHtml(dayLong(day))}<br><span class="muted">vecka ${wk}${isWeekend(day) ? " · helg" : ""}</span></span><button type="button" data-dnav="1" title="Nästa arbetsdag">▶</button><button type="button" data-dnav="0">Idag</button></div>
     ${typeof dayWeatherHtml === "function" ? dayWeatherHtml(day) : ""}
     <div class="dp-wxplace"><span class="muted">Väder på planen:</span><button type="button" data-place-wx="wxday" class="${siteTool && siteTool.kind === "wxday" ? "on" : ""}" title="Lägg dagens väder på planen (följer med i utskrifter)">🌤 Dag</button><button type="button" data-place-wx="wxweek" class="${siteTool && siteTool.kind === "wxweek" ? "on" : ""}" title="Lägg veckans väder på planen (följer med i utskrifter)">📅 Vecka</button></div>
@@ -1006,6 +1007,8 @@ function renderDayCore(box, field) {
     setDate(n === 0 ? todayIso() : nextWorkday(day, n));
     if (typeof renderField === "function") renderField();
   });
+  const lt = box.querySelector("[data-looktog]");
+  if (lt) lt.onclick = () => { const d = box.querySelector(".dp-look"); d.open = !d.open; dayLookOpen = d.open; lt.classList.toggle("on", d.open); };
   const it = box.querySelector("[data-isstoggle]");
   if (it) it.onclick = () => { box.dataset.info = showInfo ? "0" : "1"; renderDayCore(box, field); };
   box.querySelectorAll("[data-iss]").forEach(b => b.onclick = () => {
@@ -1045,6 +1048,45 @@ function renderDayCore(box, field) {
   const cw = box.querySelector("[data-copyweek]"); if (cw) cw.onclick = () => { if (confirm(`Kopiera all planering i vecka ${wk} till vecka ${dayWeekNo(addDays(day, 7))}?`)) copyWeekTo(day); };
   const sh = box.querySelector("[data-sheet]"); if (sh) sh.onclick = () => exportDaySheet(day, box.querySelector(".dp-sheetue").value || null);
   const xl = box.querySelector("[data-xlsx]"); if (xl) xl.onclick = () => exportWeekExcel(day);
+}
+
+/* iPhone (Victors önskemål 2026-10-03): dagsplaneringen som ett kort i Apple Kartor – datumet som
+   rubrik med en kapsel ‹ Idag ›, siffrorna i en rad, UE och fordon som runda knappar och åtgärderna
+   som rutor med ikon. Samma data-attribut som den vanliga vyn, så all hantering är gemensam. */
+const DQ_SVG = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+const DQ_VEH = { betongbil: "Betong", pumpbil: "Pump", mobilkran: "Kran", lastbil: "Flak", semi: "Semi", kranbil: "Kranbil", lastvaxlare: "Växlare", skapbil: "Skåp" };
+function dayPhoneHtml(o) {
+  const { day, iss, shownIss, crews, timed, html, persons, dels, lifts, toolOn, next, wk } = o;
+  const cap = t => t.charAt(0).toUpperCase() + t.slice(1);
+  const wx = k => siteTool && siteTool.kind === k ? " on" : "";
+  const status = iss.krock ? `<button type="button" class="dq-stat dq-bad" data-isstoggle="1"><b>⚠ ${iss.krock}</b><span>Krock</span></button>`
+    : iss.varning ? `<button type="button" class="dq-stat dq-warn" data-isstoggle="1"><b>⚠ ${iss.varning}</b><span>Varning</span></button>`
+    : `<div class="dq-stat dq-ok"${iss.info ? ` data-isstoggle="1" role="button"` : ""}><b>✓</b><span>Krockar</span></div>`;
+  const act = (attr, icon, label, title, on = "") => `<button type="button" class="dq-act${on}" ${attr} title="${escHtml(title)}">${DQ_SVG(icon)}<span>${escHtml(label)}</span></button>`;
+  return `
+    <div class="dq-top">
+      <div class="dq-title"><b>${escHtml(cap(dayShort(day)))}</b><span>Vecka ${wk}${isWeekend(day) ? " · helg" : ""}</span></div>
+      <div class="dq-nav"><button type="button" data-dnav="-1" aria-label="Föregående arbetsdag">${DQ_SVG('<path d="m15 5-7 7 7 7"/>')}</button><button type="button" data-dnav="0">Idag</button><button type="button" data-dnav="1" aria-label="Nästa arbetsdag">${DQ_SVG('<path d="m9 5 7 7-7 7"/>')}</button></div>
+    </div>
+    <div class="dq-stats"><div class="dq-stat"><b>${crews.length}</b><span>Lag</span></div><div class="dq-stat"><b>${persons}</b><span>Pers.</span></div><div class="dq-stat"><b>${dels}</b><span>Lev.</span></div><div class="dq-stat"><b>${lifts}</b><span>Lyft</span></div>${status}</div>
+    ${shownIss.length ? `<div class="dp-isslist">${shownIss.map((i, n) => `<button type="button" class="dp-iss ${i.sev}" data-iss="${n}">${i.sev === "krock" ? "⛔" : i.sev === "varning" ? "⚠" : "ℹ"} ${escHtml(i.text)}</button>`).join("")}</div>` : ""}
+    <div class="dq-sec">Placera lag</div>
+    <div class="dq-row">${ues().map(u => `<button type="button" class="dq-btn${toolOn("crew", "ue", u.id) ? " on" : ""}" data-place-ue="${escHtml(u.id)}" title="${escHtml(u.name || "")}"><span class="dq-c" style="--c:${ueColor(u)};--f:${contrastText(ueColor(u))}">${escHtml(ueShort(u))}</span></button>`).join("")}<button type="button" class="dq-btn" data-ue-new="1" title="Ny UE"><span class="dq-c dq-add">${DQ_SVG('<path d="M12 5v14M5 12h14"/>')}</span></button></div>
+    <div class="dq-sec">Leverans och lyft</div>
+    <div class="dq-row">${Object.entries(VEHICLES).map(([k, V]) => `<button type="button" class="dq-btn${toolOn("delivery", "veh", k) ? " on" : ""}" data-place-veh="${k}" title="${escHtml(V.label)}"><span class="dq-c dq-v">${V.icon}</span><span class="dq-l">${escHtml(DQ_VEH[k] || V.label)}</span></button>`).join("")}<button type="button" class="dq-btn${siteTool && siteTool.kind === "lift" ? " on" : ""}" data-place-lift="1" title="Lyft"><span class="dq-c dq-v">🪝</span><span class="dq-l">Lyft</span></button></div>
+    ${html ? `<div class="dp-list">${html}</div>` : ""}
+    <div class="dq-acts">
+      ${act('data-place-wx="wxday"', '<path d="M12 3v2M5.6 5.6l1.4 1.4M3 12h2M17 7l1.4-1.4"/><path d="M8 13a4 4 0 0 1 7.5-2A3.5 3.5 0 1 1 17 18H8a2.5 2.5 0 0 1 0-5z"/>', "Väder", "Lägg dagens väder på planen (följer med i utskrifter)", wx("wxday"))}
+      ${act('data-place-wx="wxweek"', '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/>', "Vecka", "Lägg veckans väder på planen (följer med i utskrifter)", wx("wxweek"))}
+      ${act('data-copyprev="1"', '<path d="M19 12H5M11 6l-6 6 6 6"/>', dayShort(nextWorkday(day, -1)).split(" ")[0], `Hämta allt från ${dayShort(nextWorkday(day, -1))} till i dag`)}
+      ${act('data-copyday="1"', '<path d="M5 12h14M13 6l6 6-6 6"/>', dayShort(next).split(" ")[0], `Kopiera dagens lag, leveranser och lyft till ${dayShort(next)}`)}
+      ${act('data-looktog="1"', '<circle cx="12" cy="12" r="8.5"/><circle cx="9" cy="10" r="1.2"/><circle cx="14.5" cy="9" r="1.2"/><circle cx="15.5" cy="14" r="1.2"/>', "Utseende", "Storlek, opacitet och färger på lagen", dayLookOpen ? " on" : "")}
+    </div>
+    <details class="dp-look dq-look"${dayLookOpen ? " open" : ""}><summary>Utseende</summary>
+      <div class="dp-lookrow"><span>Storlek</span><input type="range" min="40" max="300" step="10" data-look="crewScale" value="${Math.round(daySettings().crewScale * 100)}" /><span class="dp-lookv">${Math.round(daySettings().crewScale * 100)} %</span></div>
+      <div class="dp-lookrow"><span>Opacitet</span><input type="range" min="15" max="100" step="5" data-look="crewOpacity" value="${Math.round(daySettings().crewOpacity * 100)}" /><span class="dp-lookv">${Math.round(daySettings().crewOpacity * 100)} %</span></div>
+      ${ues().length ? `<div class="dp-lookcols">${ues().map(u => `<label class="dp-lookue" title="Färg för ${escHtml(u.name || "")}"><input type="color" data-uecolor="${escHtml(u.id)}" value="${escHtml(ueColor(u))}" /><span>${escHtml(ueShort(u))}</span></label>`).join("")}</div>` : ""}
+    </details>`;
 }
 
 // ---------------------------------------------------------------------

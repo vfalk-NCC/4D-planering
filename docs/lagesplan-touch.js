@@ -502,21 +502,22 @@ function renderFieldSheet() {
   const views = typeof lsViews === "function" ? lsViews() : [];
   const cur = typeof lsViewCurrent !== "undefined" ? lsViewCurrent : null;
   const cadOpen = box.dataset.cadOpen === "1";
+  const ph = document.body.classList.contains("phone"); // iPhone: kortare texter
   box.innerHTML = `
     ${views.length ? `<div class="fs-h">Sparade vyer</div><div class="fs-grid fs-views">${views.map(v => `<button type="button" class="fs-view${v.id === cur ? " on" : ""}" data-view="${fesc(v.id)}">📑 ${fesc(v.name)}</button>`).join("")}</div>` : ""}
-    ${typeof hiddenObjCount === "function" && hiddenObjCount() ? `<button type="button" class="fs-tog fs-showall" data-objshow="1"><span class="fs-lbl">💡 Tänd alla 3D-objekt <small>(${hiddenObjCount()} släckta)</small></span></button>` : ""}
-    <div class="fs-h">Visa</div>
+    ${typeof hiddenObjCount === "function" && hiddenObjCount() ? `<button type="button" class="fs-tog fs-showall" data-objshow="1"><span class="fs-lbl">💡 ${ph ? "Tänd alla objekt" : "Tänd alla 3D-objekt"} <small>(${hiddenObjCount()}${ph ? "" : " släckta"})</small></span></button>` : ""}
+    ${ph ? `<div class="fs-gap"></div>` : `<div class="fs-h">Visa</div>`}
     <div class="fs-grid">${base.map(r => btn(r)).join("")}
-      <button type="button" class="fs-tog${labelsOn ? " on" : ""}" data-labels="1" role="switch" aria-checked="${!!labelsOn}"><span class="fs-dot"></span><span class="fs-lbl">🏷 Namn på objekten</span></button>
+      <button type="button" class="fs-tog${labelsOn ? " on" : ""}" data-labels="1" role="switch" aria-checked="${!!labelsOn}"><span class="fs-dot"></span><span class="fs-lbl">🏷 ${ph ? "Objektnamn" : "Namn på objekten"}</span></button>
     </div>
-    ${ortho.length ? `<div class="fs-h">Ortofoto</div>
+    ${ortho.length ? `<div class="fs-h">${ph ? "Bakgrund" : "Ortofoto"}</div>
       <div class="fs-ortho">
-        <button type="button" class="fs-tog${orthoOn ? " on" : ""}" data-ortho="toggle"><span class="fs-dot"></span><span class="fs-lbl">🛰 Visa</span></button>
+        <button type="button" class="fs-tog${orthoOn ? " on" : ""}" data-ortho="toggle"><span class="fs-dot"></span><span class="fs-lbl">🛰 ${ph ? "Ortofoto" : "Visa"}</span></button>
         <button type="button" class="fs-big" data-ortho="prev" title="Äldre">◀</button>
         <span class="fs-oname">${fesc(($("orthoNavLabel") && $("orthoNavLabel").textContent) || (ortho.find(r => r.on) || {}).label || "")}</span>
         <button type="button" class="fs-big" data-ortho="next" title="Nyare">▶</button>
       </div>` : ""}
-    ${cad.length ? `<div class="fs-h fs-h-row"><span>DXF-ritningar (${cad.length})</span><span><button type="button" class="fs-mini" data-cadall="1">Alla på</button><button type="button" class="fs-mini" data-cadall="0">Alla av</button><button type="button" class="fs-mini" data-cadopen="1">${cadOpen ? "Dölj ▴" : "Visa ▾"}</button></span></div>
+    ${cad.length ? `<div class="fs-h fs-h-row"><span>${ph ? "DXF" : "DXF-ritningar"} (${cad.length})</span><span><button type="button" class="fs-mini" data-cadall="1">${ph ? "På" : "Alla på"}</button><button type="button" class="fs-mini" data-cadall="0">${ph ? "Av" : "Alla av"}</button><button type="button" class="fs-mini" data-cadopen="1">${cadOpen ? (ph ? "▴" : "Dölj ▴") : (ph ? "▾" : "Visa ▾")}</button></span></div>
       ${cadOpen ? `<div class="fs-grid">${cad.map(r => btn(r)).join("")}</div>` : ""}` : ""}`;
   box.querySelectorAll("[data-key]").forEach(b => b.onclick = () => {
     const c = fieldRowToggle(b.dataset.key);

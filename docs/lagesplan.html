@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261003163803"></script>
+<script src="github-storage.js?v=20261003164627"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -742,6 +742,52 @@
   body.field.phone #fieldDayBody .dp-wx { font-size: 13px; }
   body.field.phone #fieldDayBody .dp-rowdel { height: 32px; min-width: 32px; font-size: 15px; }
   body.field.phone #fieldDayBody .dp-wxplace button { height: 30px; font-size: 13px; }
+  /* Dag på iPhone som ett kort i Apple Kartor. */
+  body.field.phone #fieldDay::before, body.field.phone #fieldSheet::before { content: ""; position: absolute; top: 5px; left: 50%; width: 32px; height: 4px; margin-left: -16px; border-radius: 2px; background: rgba(60,60,67,.3); z-index: 3; }
+  body.field.phone #fieldDay .fs-head { position: absolute; top: 12px; right: 12px; padding: 0; z-index: 2; }
+  body.field.phone #fieldDay .fs-head::before, body.field.phone #fieldDay .fs-head b { display: none; }
+  body.field.phone #fieldDayBody { padding-top: 16px; }
+  .dq-top { display: flex; align-items: center; gap: 8px; padding-right: 40px; margin: 0 4px 10px; }
+  .dq-title { flex: 1; min-width: 0; display: flex; flex-direction: column; font-family: -apple-system, system-ui, sans-serif; }
+  .dq-title b { font-size: 20px; letter-spacing: -.02em; line-height: 1.15; }
+  .dq-title span { font-size: 13px; color: rgba(60,60,67,.6); }
+  .dq-nav { display: flex; align-items: center; height: 30px; border-radius: 15px; background: rgba(118,118,128,.12); overflow: hidden; }
+  body.field.phone #fieldDayBody .dq-nav button { height: 30px; min-width: 30px; padding: 0 8px; border-radius: 0; background: transparent; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
+  body.field.phone #fieldDayBody .dq-nav button + button { box-shadow: inset .5px 0 0 rgba(60,60,67,.2); }
+  .dq-nav svg { width: 16px; height: 16px; }
+  .dq-stats { display: flex; margin: 0 0 4px; border-radius: 14px; background: rgba(255,255,255,.75); }
+  .dq-stat { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 6px 2px 5px; font-family: -apple-system, system-ui, sans-serif; }
+  .dq-stat + .dq-stat { box-shadow: inset .5px 0 0 rgba(60,60,67,.18); }
+  .dq-stat b { font-size: 16px; line-height: 1.2; }
+  .dq-stat span { font-size: 11px; color: rgba(60,60,67,.6); }
+  .dq-ok b { color: #34c759; } .dq-warn b { color: #ff9f0a; } .dq-bad b { color: #ff3b30; }
+  body.field.phone #fieldDayBody button.dq-stat { height: auto; padding: 6px 2px 5px; border-radius: 0; background: transparent; color: inherit; }
+  .dq-sec { margin: 12px 4px 6px; font: 600 15px -apple-system, system-ui, sans-serif; }
+  .dq-row { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 4px; scrollbar-width: none; }
+  .dq-row::-webkit-scrollbar { display: none; }
+  body.field.phone #fieldDayBody .dq-btn { flex: none; height: auto; padding: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 3px; color: #000; }
+  .dq-c { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--c, rgba(118,118,128,.14)); color: var(--f, #000); font: 700 13px -apple-system, system-ui, sans-serif; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.08); }
+  .dq-v { font-size: 21px; background: rgba(255,255,255,.85); box-shadow: inset 0 0 0 .5px rgba(60,60,67,.18), 0 1px 3px rgba(0,0,0,.08); }
+  .dq-add { color: #0a84ff; } .dq-add svg { width: 20px; height: 20px; }
+  .dq-btn.on .dq-c { box-shadow: 0 0 0 2.5px #fff, 0 0 0 4.5px #0a84ff; }
+  .dq-l { font: 11px -apple-system, system-ui, sans-serif; color: rgba(60,60,67,.75); }
+  .dq-acts { display: flex; gap: 6px; margin: 12px 0 2px; }
+  body.field.phone #fieldDayBody .dq-act { flex: 1; min-width: 0; height: 50px; padding: 0 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 12px; background: rgba(255,255,255,.85); box-shadow: inset 0 0 0 .5px rgba(60,60,67,.12); color: #0a84ff; }
+  body.field.phone #fieldDayBody .dq-act.on { background: #0a84ff; color: #fff; }
+  .dq-act svg { width: 20px; height: 20px; }
+  .dq-act span { font: 500 11px -apple-system, system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  body.field.phone #fieldDayBody .dq-look { margin-top: 8px; padding: 8px 12px; background: rgba(255,255,255,.75); border-radius: 12px; }
+  body.field.phone #fieldDayBody .dq-look summary { display: none; }
+  body.field.phone #fieldDayBody .dq-look:not([open]) { display: none; }
+  body.field.phone #fieldDayBody .dp-list { margin-top: 10px; border-radius: 14px; background: rgba(255,255,255,.75); overflow: hidden; }
+  body.field.phone #fieldDayBody .dp-sub { margin: 0; padding: 8px 12px 2px; font: 600 11px -apple-system, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .3px; color: rgba(60,60,67,.6); }
+  body.field.phone #fieldDayBody .dp-row { padding: 6px 8px 6px 12px; border: none; border-radius: 0; background: transparent; }
+  body.field.phone #fieldDayBody .dp-row + .dp-row { box-shadow: inset 0 .5px 0 rgba(60,60,67,.18); }
+  body.field.phone #fieldDayBody .dp-isslist { margin-top: 6px; display: grid; gap: 4px; }
+  body.field.phone #fieldDayBody .dp-iss { justify-content: flex-start; text-align: left; height: auto; padding: 6px 10px; color: #000; }
+  /* Lager: samma kortlayout. */
+  body.field.phone #fieldSheet .fs-head::before { display: none; }
+  .fs-gap { height: 8px; }
   body.field.phone #sitePop { font-size: 14px; }
   body.field.phone #sitePop input, body.field.phone #sitePop select { height: 36px !important; font-size: 16px; }
   body.field.phone #sitePop button { height: 36px; font-size: 14px; }
@@ -1248,26 +1294,26 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261003163803"></script>
-<script src="lagesplan-tools.js?v=20261003163803"></script>
-<script src="lagesplan-layers.js?v=20261003163803"></script>
-<script src="lagesplan-views.js?v=20261003163803"></script>
-<script src="lagesplan-film.js?v=20261003163803"></script>
-<script src="lagesplan-cad.js?v=20261003163803"></script>
-<script src="lagesplan-vecpdf.js?v=20261003163803"></script>
-<script src="lagesplan-print.js?v=20261003163803"></script>
-<script src="lagesplan-printlib.js?v=20261003163803"></script>
-<script src="lagesplan-pdflayers.js?v=20261003163803"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261003163803"></script>
-<script src="lagesplan-objmarks.js?v=20261003163803"></script>
-<script src="lagesplan-objlist.js?v=20261003163803"></script>
-<script src="lagesplan-zones.js?v=20261003163803"></script>
-<script src="lagesplan-wbs.js?v=20261003163803"></script>
-<script src="lagesplan-daily.js?v=20261003163803"></script>
-<script src="lagesplan-gps.js?v=20261003163803"></script>
-<script src="lagesplan-weather.js?v=20261003163803"></script>
-<script src="lagesplan-touch.js?v=20261003163803"></script>
-<script src="lagesplan-gpslive.js?v=20261003163803"></script>
-<script src="lagesplan-keys.js?v=20261003163803"></script>
+<script src="lagesplan.js?v=20261003164627"></script>
+<script src="lagesplan-tools.js?v=20261003164627"></script>
+<script src="lagesplan-layers.js?v=20261003164627"></script>
+<script src="lagesplan-views.js?v=20261003164627"></script>
+<script src="lagesplan-film.js?v=20261003164627"></script>
+<script src="lagesplan-cad.js?v=20261003164627"></script>
+<script src="lagesplan-vecpdf.js?v=20261003164627"></script>
+<script src="lagesplan-print.js?v=20261003164627"></script>
+<script src="lagesplan-printlib.js?v=20261003164627"></script>
+<script src="lagesplan-pdflayers.js?v=20261003164627"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261003164627"></script>
+<script src="lagesplan-objmarks.js?v=20261003164627"></script>
+<script src="lagesplan-objlist.js?v=20261003164627"></script>
+<script src="lagesplan-zones.js?v=20261003164627"></script>
+<script src="lagesplan-wbs.js?v=20261003164627"></script>
+<script src="lagesplan-daily.js?v=20261003164627"></script>
+<script src="lagesplan-gps.js?v=20261003164627"></script>
+<script src="lagesplan-weather.js?v=20261003164627"></script>
+<script src="lagesplan-touch.js?v=20261003164627"></script>
+<script src="lagesplan-gpslive.js?v=20261003164627"></script>
+<script src="lagesplan-keys.js?v=20261003164627"></script>
 </body>
 </html>

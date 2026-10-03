@@ -295,6 +295,16 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   const day = await ip.locator('#fieldDay').boundingBox();
   if (day.x < 4 || day.width < 360 || day.y < 40) fail('iPhone: dagsplaneringen som flytande kort: ' + JSON.stringify(day));
   if ((await ip.evaluate(() => getComputedStyle($('apSheet')).opacity)) !== '0') fail('iPhone: öppet kort ersätter sökkortet');
+  // Dag som ett kort i Apple Kartor: datum som rubrik, siffror i en rad, runda knappar, åtgärdsrutor.
+  const dq = await ip.evaluate(() => { const b = $('fieldDayBody'); return { title: (b.querySelector('.dq-title b') || {}).textContent, stats: b.querySelectorAll('.dq-stats .dq-stat').length, veh: b.querySelectorAll('.dq-row [data-place-veh]').length, acts: [...b.querySelectorAll('.dq-acts .dq-act')].map(x => x.textContent.trim()), hint: !!b.querySelector('.hint'), look: getComputedStyle(b.querySelector('.dq-look')).display }; });
+  if (!dq.title || dq.stats !== 5 || dq.veh !== 8 || dq.acts.length !== 5 || dq.hint || dq.look !== 'none') fail('iPhone: Dag som kompakt kort: ' + JSON.stringify(dq));
+  await ip.click('#fieldDayBody [data-looktog]'); await ip.waitForTimeout(100);
+  if ((await ip.evaluate(() => getComputedStyle(document.querySelector('#fieldDayBody .dq-look')).display)) === 'none') fail('iPhone: Utseende öppnar inställningarna för lagen');
+  await ip.click('#fieldDayBody [data-looktog]');
+  const d0 = await ip.evaluate(() => $('dateInput').value);
+  await ip.click('#fieldDayBody .dq-nav [data-dnav="1"]'); await ip.waitForTimeout(150);
+  if ((await ip.evaluate(() => $('dateInput').value)) === d0) fail('iPhone: › i Dag byter dag');
+  await ip.click('#fieldDayBody .dq-nav [data-dnav="0"]'); await ip.waitForTimeout(150);
   await ip.click('#fieldDay .fs-head button'); await ip.waitForTimeout(400);
   if ((await ip.evaluate(() => getComputedStyle($('apSheet')).opacity)) !== '1') fail('iPhone: sökkortet tillbaka när kortet stängs');
   await ip.click('#apLayers'); await ip.waitForTimeout(200);
