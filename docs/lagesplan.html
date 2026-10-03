@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261003184538"></script>
+<script src="github-storage.js?v=20261003191019"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -358,18 +358,24 @@
   .gm-txt, .ap-ui, .ap-ic, .ap-lb, .ap-sub { display: none; }
   body.field.phone {
     --ap-blue: #0a84ff; --ap-text: #000; --ap-text2: rgba(60,60,67,.62); --ap-fill: rgba(118,118,128,.16); --ap-sep: rgba(60,60,67,.18);
-    --ap-glass: rgba(255,255,255,.48); --ap-edge: rgba(255,255,255,.6); --ap-sheet-glass: rgba(255,255,255,.62); --ap-group: rgba(255,255,255,.55); --ap-panel: rgba(255,255,255,.9);
+    --ap-glass: rgba(255,255,255,.26); --ap-edge: rgba(255,255,255,.45); --ap-sheet-glass: rgba(255,255,255,.5); --ap-group: rgba(255,255,255,.5); --ap-rim: rgba(255,255,255,.95); --ap-rim2: rgba(255,255,255,.4); --ap-line: rgba(0,0,0,.12); --ap-sheen: linear-gradient(165deg, rgba(255,255,255,.55), rgba(255,255,255,.08) 38%, rgba(255,255,255,0) 60%, rgba(255,255,255,.18)); --ap-panel: rgba(255,255,255,.9);
     --ap-sheet-h: 60px; --ap-bot: max(8px, env(safe-area-inset-bottom));
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif; -webkit-font-smoothing: antialiased; letter-spacing: -.01em;
     -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
   }
-  body.field.phone.ap-dark { --ap-text: #fff; --ap-text2: rgba(235,235,245,.68); --ap-fill: rgba(255,255,255,.16); --ap-sep: rgba(255,255,255,.16); --ap-glass: rgba(28,28,30,.32); --ap-edge: rgba(255,255,255,.24); --ap-sheet-glass: rgba(28,28,30,.55); --ap-group: rgba(255,255,255,.09); }
+  body.field.phone.ap-dark { --ap-text: #fff; --ap-text2: rgba(235,235,245,.68); --ap-fill: rgba(255,255,255,.16); --ap-sep: rgba(255,255,255,.16); --ap-glass: rgba(28,28,30,.28); --ap-edge: rgba(255,255,255,.16); --ap-sheet-glass: rgba(28,28,30,.5); --ap-group: rgba(255,255,255,.09); --ap-rim: rgba(255,255,255,.45); --ap-rim2: rgba(255,255,255,.12); --ap-line: rgba(0,0,0,.35); --ap-sheen: linear-gradient(165deg, rgba(255,255,255,.22), rgba(255,255,255,.03) 38%, rgba(255,255,255,0) 60%, rgba(255,255,255,.07)); }
   body.field.phone #fieldTop, body.field.phone #zoomCtl, body.field.phone #fieldBottom { display: none !important; }
   body.field.phone .ap-ui { display: flex; }
   body.field.phone.field-clean .ap-ui { display: none !important; }
   body.field.phone .ap-ic, body.field.phone .ap-lb, body.field.phone .ap-sub { display: block; }
   /* Samma glas på alla flytande knappar och kort. */
-  .ap-glass, body.field.phone #northBadge, body.field.phone #btnFieldShow, body.field.phone #fieldTools, body.field.phone #objMarkBar { background: var(--ap-glass); -webkit-backdrop-filter: blur(28px) saturate(190%); backdrop-filter: blur(28px) saturate(190%); box-shadow: 0 12px 40px rgba(0,0,0,.22), inset 0 1px 0 var(--ap-edge), inset 0 0 0 .5px var(--ap-edge); color: var(--ap-text); }
+  /* Glas (Liquid Glass): tunn ton så att planen syns igenom, måttlig oskärpa, en ljus glans uppifrån
+     och en ljus kant med en tunn mörk kontur – så att glaset syns även över en vit ritning. */
+  .ap-glass, body.field.phone #northBadge, body.field.phone #btnFieldShow, body.field.phone #fieldTools, body.field.phone #objMarkBar,
+  body.field.phone #fieldSheet, body.field.phone #fieldDay, body.field.phone #sitePop, body.field.phone #tip {
+    background: var(--ap-sheen), var(--ap-glass); -webkit-backdrop-filter: blur(14px) saturate(185%) brightness(1.04); backdrop-filter: blur(14px) saturate(185%) brightness(1.04);
+    box-shadow: 0 10px 34px rgba(0,0,0,.20), 0 0 0 .5px var(--ap-line), inset 0 1px 1px var(--ap-rim), inset 0 -1px 1px var(--ap-rim2), inset 0 0 0 1px var(--ap-edge); color: var(--ap-text); }
+  body.field.phone #fieldSheet, body.field.phone #fieldDay, body.field.phone #sitePop, body.field.phone #tip, body.ap-d1 #apSheet, body.ap-d2 #apSheet { background: var(--ap-sheen), var(--ap-sheet-glass); }
   .ap-ease { transition-timing-function: cubic-bezier(.32,.72,0,1); }
 
   /* Kortet nertill */
@@ -454,45 +460,45 @@
   body.field.phone #northBadge .nb-needle path:last-of-type { fill: var(--ap-text); opacity: .55; }
   body.field.phone #northBadge text { display: none; }
   /* Paneler (dagsplanering, lager) och rutor: ljusa glaskort med stor rubrik och runt ✕ */
-  body.field.phone #fieldSheet, body.field.phone #fieldDay { position: fixed; top: calc(env(safe-area-inset-top) + 48px) !important; left: 8px; right: 8px; bottom: var(--ap-bot); width: auto; border: none; border-radius: 28px; background: var(--ap-panel); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); box-shadow: 0 12px 50px rgba(0,0,0,.28); z-index: 40; animation: apUp .5s cubic-bezier(.32,.72,0,1); color: #000; }
+  body.field.phone #fieldSheet, body.field.phone #fieldDay { position: fixed; top: calc(env(safe-area-inset-top) + 48px) !important; left: 8px; right: 8px; bottom: var(--ap-bot); width: auto; border: none; border-radius: 28px; z-index: 40; animation: apUp .5s cubic-bezier(.32,.72,0,1); }
   @keyframes apUp { from { transform: translateY(105%); } to { transform: none; } }
   body.field.phone #fieldSheet .fs-head, body.field.phone #fieldDay .fs-head { position: relative; justify-content: space-between; padding: 14px 12px 4px 16px; border-bottom: none; font: 700 20px -apple-system, system-ui, sans-serif; letter-spacing: -.02em; }
   body.field.phone #fieldSheet .fs-head::before, body.field.phone #fieldDay .fs-head::before { content: ""; position: absolute; top: 4px; left: 50%; width: 32px; height: 4px; margin-left: -16px; border-radius: 2px; background: rgba(60,60,67,.3); }
-  body.field.phone .fs-head .fl-btn { width: 30px; height: 30px; min-width: 0; padding: 0; border: none; border-radius: 50%; background: rgba(118,118,128,.16); box-shadow: none; font-size: 0 !important; color: rgba(60,60,67,.75); position: relative; }
+  body.field.phone .fs-head .fl-btn { width: 30px; height: 30px; min-width: 0; padding: 0; border: none; border-radius: 50%; background: rgba(118,118,128,.16); box-shadow: none; font-size: 0 !important; color: var(--ap-text2); position: relative; }
   body.field.phone .fs-head .fl-btn::after { content: "✕"; font: 600 13px -apple-system, system-ui, sans-serif; }
   body.field.phone #fieldDayBody button, body.field.phone #fieldSheetBody button { border: none; border-radius: 12px; background: rgba(118,118,128,.12); box-shadow: none; color: #0a84ff; font-family: -apple-system, system-ui, sans-serif; }
   body.field.phone #fieldDayBody button.primary, body.field.phone #fieldDayBody button.on, body.field.phone #fieldSheetBody button.primary { background: #0a84ff; color: #fff; }
   body.field.phone #fieldDayBody details, body.field.phone #fieldSheetBody details { border: none; background: rgba(118,118,128,.08); border-radius: 14px; }
   /* Lager på iPhone (Victors önskemål 2026-10-03): ett lågt kort nertill så att ritningen syns ovanför
      medan man tänder och släcker. Kompakta rader i grupperade iOS-listor med strömbrytare till höger. */
-  body.field.phone #fieldSheet { top: auto !important; height: min(46vh, 430px); background: var(--ap-sheet-glass); color: var(--ap-text); -webkit-backdrop-filter: blur(28px) saturate(190%); backdrop-filter: blur(28px) saturate(190%); box-shadow: 0 12px 40px rgba(0,0,0,.22), inset 0 1px 0 var(--ap-edge), inset 0 0 0 .5px var(--ap-edge); }
+  body.field.phone #fieldSheet { top: auto !important; height: min(46vh, 430px); }
   body.field.phone #fieldSheet { transition: height .45s cubic-bezier(.32,.72,0,1); }
   body.field.phone #fieldSheet.fs-tall { height: calc(100% - env(safe-area-inset-top) - 64px - var(--ap-bot)); }
   body.field.phone #fieldSheet .fs-head { padding: 14px 12px 2px 16px; font-size: 18px; touch-action: none; cursor: grab; }
   body.field.phone #fieldSheet .fs-head .fl-btn { width: 28px; height: 28px; }
   body.field.phone #fieldSheet .fs-head .fl-btn::after { font-size: 13px; }
   body.field.phone #fieldSheetBody { padding: 0 10px calc(10px + env(safe-area-inset-bottom)); overscroll-behavior: contain; }
-  body.field.phone #fieldSheetBody .fs-h { margin: 10px 8px 4px; font: 600 11px -apple-system, system-ui, sans-serif; letter-spacing: .3px; color: rgba(60,60,67,.6); }
-  body.field.phone #fieldSheetBody .fs-grid { gap: 0; border-radius: 12px; background: rgba(255,255,255,.75); overflow: hidden; }
-  body.field.phone #fieldSheetBody .fs-tog { min-height: 38px; padding: 0 10px 0 12px; gap: 8px; border-radius: 0; background: transparent; color: #000; font: 15px -apple-system, system-ui, sans-serif; }
+  body.field.phone #fieldSheetBody .fs-h { margin: 10px 8px 4px; font: 600 11px -apple-system, system-ui, sans-serif; letter-spacing: .3px; color: var(--ap-text2); }
+  body.field.phone #fieldSheetBody .fs-grid { gap: 0; border-radius: 12px; background: var(--ap-group); overflow: hidden; }
+  body.field.phone #fieldSheetBody .fs-tog { min-height: 38px; padding: 0 10px 0 12px; gap: 8px; border-radius: 0; background: transparent; color: var(--ap-text); font: 15px -apple-system, system-ui, sans-serif; }
   body.field.phone #fieldSheetBody .fs-grid .fs-tog + .fs-tog { box-shadow: inset 0 .5px 0 rgba(60,60,67,.2); }
   body.field.phone #fieldSheetBody .fs-tog.on { background: transparent; }
   body.field.phone #fieldSheetBody .fs-lbl { white-space: nowrap; }
-  body.field.phone #fieldSheetBody .fs-cnt { flex: none; color: rgba(60,60,67,.5); font-size: 14px; }
+  body.field.phone #fieldSheetBody .fs-cnt { flex: none; color: var(--ap-text2); font-size: 14px; }
   body.field.phone #fieldSheetBody .fs-dot { order: 3; flex: 0 0 40px; height: 24px; margin-left: 4px; border: none; border-radius: 12px; background: rgba(120,120,128,.24); box-shadow: none; position: relative; transition: background .2s; }
   body.field.phone #fieldSheetBody .fs-dot::after { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: transform .2s cubic-bezier(.32,.72,0,1); }
   body.field.phone #fieldSheetBody .fs-tog.on .fs-dot { background: #34c759; box-shadow: none; }
   body.field.phone #fieldSheetBody .fs-tog.on .fs-dot::after { transform: translateX(16px); }
   body.field.phone #fieldSheetBody .fs-views { display: flex; gap: 8px; overflow-x: auto; background: none; border-radius: 0; scrollbar-width: none; }
   body.field.phone #fieldSheetBody .fs-views::-webkit-scrollbar { display: none; }
-  body.field.phone #fieldSheetBody .fs-view { flex: none; width: auto; min-height: 0; height: 30px; padding: 0 12px; border-radius: 15px; background: rgba(255,255,255,.75); color: #000; font: 14px -apple-system, system-ui, sans-serif; white-space: nowrap; }
+  body.field.phone #fieldSheetBody .fs-view { flex: none; width: auto; min-height: 0; height: 30px; padding: 0 12px; border-radius: 15px; background: var(--ap-group); color: var(--ap-text); font: 14px -apple-system, system-ui, sans-serif; white-space: nowrap; }
   body.field.phone #fieldSheetBody .fs-view.on { background: #0a84ff; color: #fff; }
   body.field.phone #fieldSheetBody .fs-showall { min-height: 34px; margin-top: 8px; border-radius: 12px; background: rgba(255,214,10,.22); justify-content: flex-start; }
-  body.field.phone #fieldSheetBody .fs-ortho { gap: 0 6px; border-radius: 12px; background: rgba(255,255,255,.75); padding-bottom: 6px; }
+  body.field.phone #fieldSheetBody .fs-ortho { gap: 0 6px; border-radius: 12px; background: var(--ap-group); padding-bottom: 6px; }
   body.field.phone #fieldSheetBody .fs-ortho .fs-oname { padding-left: 14px; font-size: 13px; }
   body.field.phone #fieldSheetBody .fs-big { height: 32px; font-size: 14px; }
   body.field.phone #fieldSheetBody .fs-mini { height: 28px; font-size: 13px; border-radius: 14px; }
-  body.field.phone #sitePop { position: fixed; left: 8px !important; right: 8px; top: auto !important; bottom: var(--ap-bot); width: auto !important; max-height: 72% !important; border: none; border-radius: 24px; padding: 16px 14px 14px; background: var(--ap-panel); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); box-shadow: 0 12px 50px rgba(0,0,0,.28); z-index: 45; animation: apUp .45s cubic-bezier(.32,.72,0,1); font-size: 16px; color: #000; }
+  body.field.phone #sitePop { position: fixed; left: 8px !important; right: 8px; top: auto !important; bottom: var(--ap-bot); width: auto !important; max-height: 72% !important; border: none; border-radius: 24px; padding: 16px 14px 14px; z-index: 45; animation: apUp .45s cubic-bezier(.32,.72,0,1); font-size: 16px; }
   body.field.phone #sitePop::before { content: ""; position: absolute; top: 5px; left: 50%; width: 32px; height: 4px; margin-left: -16px; border-radius: 3px; background: rgba(60,60,67,.3); }
   body.field.phone #sitePop input, body.field.phone #sitePop select, body.field.phone #sitePop textarea { border-radius: 12px; border-color: transparent; background: rgba(118,118,128,.12); font-size: 17px; }
   body.field.phone #sitePop button { border-radius: 12px; }
@@ -510,9 +516,9 @@
   body.field.phone #objMarkBar { border: none; padding: 5px 5px 5px 12px; color: var(--ap-text); }
   body.field.phone #objMarkBar button { height: 32px; border: none; border-radius: 16px; background: var(--ap-fill); color: var(--ap-text); box-shadow: none; font-size: 14px; }
   body.field.phone #objMarkBar { position: fixed; bottom: calc(var(--ap-bot) + var(--ap-sheet-h) + 70px); max-width: calc(100% - 28px); border-radius: 18px; z-index: 26; }
-  body.field.phone #gpsToast { top: calc(env(safe-area-inset-top) + 8px); bottom: auto; padding: 8px 14px; border-radius: 17px; font: 600 14px -apple-system, system-ui, sans-serif; color: #000; background: rgba(255,255,255,.82); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); box-shadow: 0 12px 40px rgba(0,0,0,.2); max-width: calc(100% - 140px); z-index: 60; }
+  body.field.phone #gpsToast { top: calc(env(safe-area-inset-top) + 8px); bottom: auto; padding: 8px 14px; border-radius: 17px; font: 600 14px -apple-system, system-ui, sans-serif; color: var(--ap-text); background: rgba(255,255,255,.82); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); box-shadow: 0 12px 40px rgba(0,0,0,.2); max-width: calc(100% - 140px); z-index: 60; }
   body.field.phone #btnFieldShow { position: fixed; bottom: calc(var(--ap-bot) + 8px); right: 12px; width: 46px; height: 46px; border-radius: 50%; border: none; }
-  body.field.phone #tip { position: fixed; bottom: calc(var(--ap-bot) + var(--ap-sheet-h) + 70px) !important; font-size: 14px; border-radius: 18px; background: rgba(28,28,30,.88); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); z-index: 26; }
+  body.field.phone #tip { position: fixed; bottom: calc(var(--ap-bot) + var(--ap-sheet-h) + 70px) !important; font-size: 14px; border-radius: 18px; z-index: 26; }
   @media (orientation: landscape) {
     #apSheet { right: auto !important; width: 340px; left: calc(env(safe-area-inset-left) + 10px) !important; }
     body.field.phone #fieldSheet, body.field.phone #fieldDay { top: 8px !important; left: auto; right: calc(env(safe-area-inset-right) + 8px); width: 360px; }
@@ -533,7 +539,7 @@
   body.field.phone.ap-wide #fieldSheet { top: auto !important; height: min(60vh, 640px); }
   body.field.phone.ap-wide #fieldSheet.fs-tall { height: calc(100% - env(safe-area-inset-top) - 64px - var(--ap-bot)); }
   /* Infon om ett objekt (förr svart ruta): ett glaskort upptill under datumbrickan, krockar inte med raden nertill. */
-  body.field.phone #tip { position: fixed; top: calc(env(safe-area-inset-top) + 50px) !important; bottom: auto !important; left: 50% !important; right: auto; transform: translateX(-50%); width: max-content; max-width: min(420px, calc(100% - 24px)); padding: 10px 14px; border-radius: 18px; background: var(--ap-sheet-glass); color: var(--ap-text); -webkit-backdrop-filter: blur(28px) saturate(190%); backdrop-filter: blur(28px) saturate(190%); box-shadow: 0 12px 40px rgba(0,0,0,.22), inset 0 1px 0 var(--ap-edge), inset 0 0 0 .5px var(--ap-edge); font: 14px/1.4 -apple-system, system-ui, sans-serif; z-index: 26; }
+  body.field.phone #tip { position: fixed; top: calc(env(safe-area-inset-top) + 50px) !important; bottom: auto !important; left: 50% !important; right: auto; transform: translateX(-50%); width: max-content; max-width: min(420px, calc(100% - 24px)); padding: 10px 14px; border-radius: 18px; font: 14px/1.4 -apple-system, system-ui, sans-serif; z-index: 26; }
   body.field.phone:has(#fieldTools:not(.hidden)) #tip { top: calc(env(safe-area-inset-top) + 100px) !important; }
   body.field.phone.field-clean #objMarkBar { bottom: calc(var(--ap-bot) + 8px); max-width: calc(100% - 90px); }
   body.field #tip { position: absolute; left: 50% !important; top: auto !important; bottom: 132px; transform: translateX(-50%); font-size: 15px; line-height: 1.45; padding: 12px 14px; max-width: min(520px, 92%); border-radius: 12px; z-index: 8; }
@@ -773,41 +779,41 @@
   .dq-top { display: flex; align-items: center; gap: 8px; padding-right: 40px; margin: 0 4px 10px; }
   .dq-title { flex: 1; min-width: 0; display: flex; flex-direction: column; font-family: -apple-system, system-ui, sans-serif; }
   .dq-title b { font-size: 20px; letter-spacing: -.02em; line-height: 1.15; }
-  .dq-title span { font-size: 13px; color: rgba(60,60,67,.6); }
-  .dq-nav { display: flex; align-items: center; height: 30px; border-radius: 15px; background: rgba(118,118,128,.12); overflow: hidden; }
+  .dq-title span { font-size: 13px; color: var(--ap-text2); }
+  .dq-nav { display: flex; align-items: center; height: 30px; border-radius: 15px; background: var(--ap-fill); overflow: hidden; }
   body.field.phone #fieldDayBody .dq-nav button { height: 30px; min-width: 30px; padding: 0 8px; border-radius: 0; background: transparent; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; justify-content: center; }
   body.field.phone #fieldDayBody .dq-nav button + button { box-shadow: inset .5px 0 0 rgba(60,60,67,.2); }
   .dq-nav svg { width: 16px; height: 16px; }
-  .dq-stats { display: flex; margin: 0 0 4px; border-radius: 14px; background: rgba(255,255,255,.75); }
+  .dq-stats { display: flex; margin: 0 0 4px; border-radius: 14px; background: var(--ap-group); }
   .dq-stat { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 6px 2px 5px; font-family: -apple-system, system-ui, sans-serif; }
   .dq-stat + .dq-stat { box-shadow: inset .5px 0 0 rgba(60,60,67,.18); }
   .dq-stat b { font-size: 16px; line-height: 1.2; }
-  .dq-stat span { font-size: 11px; color: rgba(60,60,67,.6); }
+  .dq-stat span { font-size: 11px; color: var(--ap-text2); }
   .dq-ok b { color: #34c759; } .dq-warn b { color: #ff9f0a; } .dq-bad b { color: #ff3b30; }
   body.field.phone #fieldDayBody button.dq-stat { height: auto; padding: 6px 2px 5px; border-radius: 0; background: transparent; color: inherit; }
   .dq-sec { margin: 12px 4px 6px; font: 600 15px -apple-system, system-ui, sans-serif; }
   .dq-row { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 4px; scrollbar-width: none; }
   .dq-row::-webkit-scrollbar { display: none; }
-  body.field.phone #fieldDayBody .dq-btn { flex: none; height: auto; padding: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 3px; color: #000; }
+  body.field.phone #fieldDayBody .dq-btn { flex: none; height: auto; padding: 0; background: transparent; display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--ap-text); }
   .dq-c { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--c, rgba(118,118,128,.14)); color: var(--f, #000); font: 700 13px -apple-system, system-ui, sans-serif; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.08); }
-  .dq-v { font-size: 21px; background: rgba(255,255,255,.85); box-shadow: inset 0 0 0 .5px rgba(60,60,67,.18), 0 1px 3px rgba(0,0,0,.08); }
+  .dq-v { font-size: 21px; background: var(--ap-group); box-shadow: inset 0 0 0 .5px rgba(60,60,67,.18), 0 1px 3px rgba(0,0,0,.08); }
   .dq-add { color: #0a84ff; } .dq-add svg { width: 20px; height: 20px; }
   .dq-btn.on .dq-c { box-shadow: 0 0 0 2.5px #fff, 0 0 0 4.5px #0a84ff; }
-  .dq-l { font: 11px -apple-system, system-ui, sans-serif; color: rgba(60,60,67,.75); }
+  .dq-l { font: 11px -apple-system, system-ui, sans-serif; color: var(--ap-text2); }
   .dq-acts { display: flex; gap: 6px; margin: 12px 0 2px; }
-  body.field.phone #fieldDayBody .dq-act { flex: 1; min-width: 0; height: 50px; padding: 0 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 12px; background: rgba(255,255,255,.85); box-shadow: inset 0 0 0 .5px rgba(60,60,67,.12); color: #0a84ff; }
+  body.field.phone #fieldDayBody .dq-act { flex: 1; min-width: 0; height: 50px; padding: 0 2px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border-radius: 12px; background: var(--ap-group); box-shadow: inset 0 0 0 .5px rgba(60,60,67,.12); color: #0a84ff; }
   body.field.phone #fieldDayBody .dq-act.on { background: #0a84ff; color: #fff; }
   .dq-act svg { width: 20px; height: 20px; }
   .dq-act span { font: 500 11px -apple-system, system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-  body.field.phone #fieldDayBody .dq-look { margin-top: 8px; padding: 8px 12px; background: rgba(255,255,255,.75); border-radius: 12px; }
+  body.field.phone #fieldDayBody .dq-look { margin-top: 8px; padding: 8px 12px; background: var(--ap-group); border-radius: 12px; }
   body.field.phone #fieldDayBody .dq-look summary { display: none; }
   body.field.phone #fieldDayBody .dq-look:not([open]) { display: none; }
-  body.field.phone #fieldDayBody .dp-list { margin-top: 10px; border-radius: 14px; background: rgba(255,255,255,.75); overflow: hidden; }
-  body.field.phone #fieldDayBody .dp-sub { margin: 0; padding: 8px 12px 2px; font: 600 11px -apple-system, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .3px; color: rgba(60,60,67,.6); }
+  body.field.phone #fieldDayBody .dp-list { margin-top: 10px; border-radius: 14px; background: var(--ap-group); overflow: hidden; }
+  body.field.phone #fieldDayBody .dp-sub { margin: 0; padding: 8px 12px 2px; font: 600 11px -apple-system, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .3px; color: var(--ap-text2); }
   body.field.phone #fieldDayBody .dp-row { padding: 6px 8px 6px 12px; border: none; border-radius: 0; background: transparent; }
   body.field.phone #fieldDayBody .dp-row + .dp-row { box-shadow: inset 0 .5px 0 rgba(60,60,67,.18); }
   body.field.phone #fieldDayBody .dp-isslist { margin-top: 6px; display: grid; gap: 4px; }
-  body.field.phone #fieldDayBody .dp-iss { justify-content: flex-start; text-align: left; height: auto; padding: 6px 10px; color: #000; }
+  body.field.phone #fieldDayBody .dp-iss { justify-content: flex-start; text-align: left; height: auto; padding: 6px 10px; color: var(--ap-text); }
   /* Lager: samma kortlayout. */
   body.field.phone #fieldSheet .fs-head::before { display: none; }
   /* Lagerträdet på iPhone i glaskortet. */
@@ -874,10 +880,10 @@
   body.field.phone #sitePop .sp-nav .sp-save { background: #0a84ff; color: #fff; font-weight: 600; }
   body.field.phone #sitePop .sp-text { width: 100%; height: auto !important; min-height: 60px; padding: 8px 10px; font-size: 16px; resize: none; }
   body.field.phone #sitePop .sp-name { width: 100%; }
-  body.field.phone #sitePop .sp-grp { margin-top: 8px; border-radius: 12px; background: rgba(255,255,255,.75); overflow: hidden; }
-  body.field.phone #sitePop .sp-r { display: flex; align-items: center; gap: 6px; min-height: 40px; margin: 0; padding: 0 10px 0 12px; font: 15px -apple-system, system-ui, sans-serif; color: #000; }
+  body.field.phone #sitePop .sp-grp { margin-top: 8px; border-radius: 12px; background: var(--ap-group); overflow: hidden; }
+  body.field.phone #sitePop .sp-r { display: flex; align-items: center; gap: 6px; min-height: 40px; margin: 0; padding: 0 10px 0 12px; font: 15px -apple-system, system-ui, sans-serif; color: var(--ap-text); }
   body.field.phone #sitePop .sp-r + .sp-r { box-shadow: inset 0 .5px 0 rgba(60,60,67,.18); }
-  body.field.phone #sitePop .sp-r > span:first-child { flex: 0 0 50px; color: rgba(60,60,67,.7); }
+  body.field.phone #sitePop .sp-r > span:first-child { flex: 0 0 50px; color: var(--ap-text2); }
   body.field.phone #sitePop .sp-r select, body.field.phone #sitePop .sp-r input[type=date], body.field.phone #sitePop .sp-r .sp-ts { height: 30px !important; min-width: 0; padding: 0 8px; border-radius: 8px; }
   body.field.phone #sitePop .sp-r > select { flex: 1; }
   body.field.phone #sitePop .sp-style { flex: 1; min-width: 0; display: flex; gap: 6px; align-items: center; }
@@ -888,7 +894,7 @@
   body.field.phone #sitePop .sp-tsr { flex: 1; min-width: 0; height: 30px !important; padding: 0; background: none; }
   body.field.phone #sitePop .sp-ts { flex: none; width: 48px; text-align: right; }
   body.field.phone #sitePop .sp-r input[type=date] { flex: 1; font-size: 15px; }
-  body.field.phone #sitePop .sp-u { color: rgba(60,60,67,.6); }
+  body.field.phone #sitePop .sp-u { color: var(--ap-text2); }
   body.field.phone #sitePop .sp-switch { -webkit-appearance: none; appearance: none; flex: none; width: 40px; height: 24px !important; margin: 0 0 0 auto; padding: 0; border: none; border-radius: 12px; background: rgba(120,120,128,.24); position: relative; transition: background .2s; }
   body.field.phone #sitePop .sp-switch::before { content: ""; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,.2); transition: transform .2s; }
   body.field.phone #sitePop .sp-switch:checked { background: #34c759; }
@@ -1400,27 +1406,27 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261003184538"></script>
-<script src="lagesplan-tools.js?v=20261003184538"></script>
-<script src="lagesplan-layers.js?v=20261003184538"></script>
-<script src="lagesplan-views.js?v=20261003184538"></script>
-<script src="lagesplan-film.js?v=20261003184538"></script>
-<script src="lagesplan-cad.js?v=20261003184538"></script>
-<script src="lagesplan-vecpdf.js?v=20261003184538"></script>
-<script src="lagesplan-print.js?v=20261003184538"></script>
-<script src="lagesplan-printlib.js?v=20261003184538"></script>
-<script src="lagesplan-pdflayers.js?v=20261003184538"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261003184538"></script>
-<script src="lagesplan-objmarks.js?v=20261003184538"></script>
-<script src="lagesplan-objlist.js?v=20261003184538"></script>
-<script src="lagesplan-zones.js?v=20261003184538"></script>
-<script src="lagesplan-wbs.js?v=20261003184538"></script>
-<script src="lagesplan-daily.js?v=20261003184538"></script>
-<script src="lagesplan-gps.js?v=20261003184538"></script>
-<script src="lagesplan-weather.js?v=20261003184538"></script>
-<script src="lagesplan-touch.js?v=20261003184538"></script>
-<script src="lagesplan-drawer.js?v=20261003184538"></script>
-<script src="lagesplan-gpslive.js?v=20261003184538"></script>
-<script src="lagesplan-keys.js?v=20261003184538"></script>
+<script src="lagesplan.js?v=20261003191019"></script>
+<script src="lagesplan-tools.js?v=20261003191019"></script>
+<script src="lagesplan-layers.js?v=20261003191019"></script>
+<script src="lagesplan-views.js?v=20261003191019"></script>
+<script src="lagesplan-film.js?v=20261003191019"></script>
+<script src="lagesplan-cad.js?v=20261003191019"></script>
+<script src="lagesplan-vecpdf.js?v=20261003191019"></script>
+<script src="lagesplan-print.js?v=20261003191019"></script>
+<script src="lagesplan-printlib.js?v=20261003191019"></script>
+<script src="lagesplan-pdflayers.js?v=20261003191019"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261003191019"></script>
+<script src="lagesplan-objmarks.js?v=20261003191019"></script>
+<script src="lagesplan-objlist.js?v=20261003191019"></script>
+<script src="lagesplan-zones.js?v=20261003191019"></script>
+<script src="lagesplan-wbs.js?v=20261003191019"></script>
+<script src="lagesplan-daily.js?v=20261003191019"></script>
+<script src="lagesplan-gps.js?v=20261003191019"></script>
+<script src="lagesplan-weather.js?v=20261003191019"></script>
+<script src="lagesplan-touch.js?v=20261003191019"></script>
+<script src="lagesplan-drawer.js?v=20261003191019"></script>
+<script src="lagesplan-gpslive.js?v=20261003191019"></script>
+<script src="lagesplan-keys.js?v=20261003191019"></script>
 </body>
 </html>
