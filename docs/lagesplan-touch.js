@@ -504,7 +504,7 @@ const fpOpen = new Set();
 function fpTree() {
   const out = [];
   let folder = null, last = null;
-  const clean = ln => { const c = ln.cloneNode(true); c.querySelectorAll("button, small, input, label").forEach(x => x.remove()); return c.textContent.replace(/\s+/g, " ").trim().replace(/^[▸▾]\s*/, ""); };
+  const clean = ln => { const c = ln.cloneNode(true); c.querySelectorAll("button, small, input, label, .cad-date").forEach(x => x.remove()); return c.textContent.replace(/\s+/g, " ").trim().replace(/^[▸▾]\s*/, ""); };
   const count = ln => { const sm = ln.querySelector(":scope > small"); return sm && /^\d+/.test(sm.textContent.trim()) ? sm.textContent.trim().match(/^\d+/)[0] : ""; };
   [...(($("layerList") || {}).children || [])].forEach(r => {
     const ln = r.querySelector(".ln"); if (!ln) return;
