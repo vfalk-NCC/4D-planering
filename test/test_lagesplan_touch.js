@@ -231,39 +231,69 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   if (!(await page.isVisible('#fieldTop'))) fail('📱 ska slå på fältläget igen');
   console.log('OK: växla mellan fältläge och fullständig vy, valet kommer ihåg');
 
-  // iPhone: som en app från Apple (förebild Apple Kartor).
+  // iPhone: som Apple Kartor (iOS 26) – flytande glaskort med tre lägen.
   const ph = await browser.newContext({ viewport: { width: 390, height: 664 }, hasTouch: true, isMobile: true });
   const P = await setup(ph);
   const ip = P.page;
   if (!(await ip.evaluate(() => document.body.classList.contains('field') && document.body.classList.contains('phone')))) fail('iPhone: fältläge i telefonformat');
   const lay = await ip.evaluate(() => ({
     plan: !!$('fieldPlan').closest('#apSheet .ap-search'),
-    date: ['btnFieldPrevW', 'fieldDateLabel', 'btnFieldNextW', 'btnFieldToday'].every(id => $(id).closest('#apSheet')),
-    tiles: [...document.querySelectorAll('#apSheet .ap-tiles .ap-tile')].map(e => [e.id, e.querySelector('.ap-lb').textContent, !!e.querySelector('.ap-ic svg')]),
+    date: ['btnFieldPrevW', 'fieldDateLabel', 'btnFieldNextW', 'btnFieldToday'].every(id => $(id).closest('#apSheet .ap-date')),
+    slider: !!$('fieldSlider').closest('#apSheet .ap-datecard'),
+    tiles: [...document.querySelectorAll('#apSheet .ap-tools .ap-tile')].map(e => [e.querySelector('.ap-lb').textContent, !!e.querySelector('.ap-sub').textContent, !!e.querySelector('.ap-ic svg')]),
     ctl: [...$('apCtl').children].map(e => e.id),
+    fit: $('btnFit').parentNode.id,
+    arrows: ['btnFieldPrevW', 'btnFieldNextW'].map(id => $(id).querySelector('.ap-ic svg').getBoundingClientRect().width),
     hidden: ['fieldTop', 'zoomCtl', 'fieldBottom'].every(id => getComputedStyle($(id)).display === 'none'),
     font: getComputedStyle(document.body).fontFamily,
     meta: !!document.querySelector('meta[name="apple-mobile-web-app-capable"]') && /viewport-fit=cover/.test(document.querySelector('meta[name=viewport]').content),
+    chip: $('apDateChip').textContent.trim(),
+    label: $('fieldDateLabel').textContent.trim(),
   }));
-  if (!lay.plan || !lay.date || !lay.hidden) fail('iPhone: planen som sökfält och datum i arket, gamla rader dolda: ' + JSON.stringify(lay));
-  if (JSON.stringify(lay.tiles.map(t => t[1])) !== JSON.stringify(['Dag', 'Lager', 'Notering', 'Foto', 'Rita', 'Spara vy', 'Dölj']) || !lay.tiles.every(t => t[2])) fail('iPhone: åtgärderna som runda ikoner med etikett: ' + JSON.stringify(lay.tiles));
-  if (JSON.stringify(lay.ctl) !== JSON.stringify(['apLayers', 'btnFieldGps'])) fail('iPhone: lager och min position uppe till höger: ' + JSON.stringify(lay.ctl));
+  if (!lay.plan || !lay.date || !lay.slider || !lay.hidden) fail('iPhone: planen som sökfält, datum och reglage i kortet, gamla rader dolda: ' + JSON.stringify(lay));
+  if (JSON.stringify(lay.tiles.map(t => t[0])) !== JSON.stringify(['Dag', 'Lager', 'Notering', 'Foto', 'Rita', 'Spara vy', 'Dölj']) || !lay.tiles.every(t => t[1] && t[2])) fail('iPhone: verktygen som stora runda ikoner med etikett och undertext: ' + JSON.stringify(lay.tiles));
+  if (JSON.stringify(lay.ctl) !== JSON.stringify(['apLayers', 'btnFieldGps']) || lay.fit !== 'apFitWrap') fail('iPhone: lager och min position i kapseln till höger, anpassa till vänster: ' + JSON.stringify(lay));
+  if (!lay.arrows.every(w => w >= 16)) fail('iPhone: pilarna vid datumet ska synas: ' + JSON.stringify(lay.arrows));
   if (!/-apple-system/.test(lay.font) || !lay.meta) fail('iPhone: iOS-typsnitt, helskärm från hemskärmen: ' + JSON.stringify(lay));
+  if (!lay.chip || /\d{4}/.test(lay.chip) || !lay.label.startsWith(lay.chip.slice(0, 3))) fail('iPhone: datumbrickan uppe till vänster visar dagen: ' + JSON.stringify([lay.chip, lay.label]));
+  // Ihopfällt: bara sökfältet, reglaget syns inte.
   const sh = await ip.locator('#apSheet').boundingBox();
-  if (sh.x > 0.5 || Math.abs(sh.y + sh.height - 664) > 1 || sh.height > 200) fail('iPhone: arket ihopfällt längst ner: ' + JSON.stringify(sh));
-  if ((await ip.evaluate(() => document.querySelector('#apSheet .ap-more').getBoundingClientRect().height)) > 2) fail('iPhone: åtgärderna syns först när arket dras upp');
-  // Dra upp arket: åtgärderna syns.
-  const gy = sh.y + 8;
-  await ip.mouse.move(195, gy); await ip.mouse.down(); await ip.mouse.move(195, gy - 120, { steps: 6 }); await ip.mouse.up(); await ip.waitForTimeout(450);
-  if (!(await ip.evaluate(() => $('apSheet').classList.contains('open') && document.querySelector('#apSheet .ap-more').getBoundingClientRect().height > 150))) fail('iPhone: arket ska kunna dras upp');
-  await ip.click('#btnFieldDay'); await ip.waitForTimeout(400);
-  if (await ip.evaluate(() => $('apSheet').classList.contains('open'))) fail('iPhone: ett val fäller ihop arket');
+  if (Math.abs(sh.height - 76) > 2 || sh.x < 4 || sh.y + sh.height > 664) fail('iPhone: kortet ihopfällt, flytande nertill: ' + JSON.stringify(sh));
+  const hid = await ip.evaluate(() => ({ op: getComputedStyle(document.querySelector('#apSheet .ap-body')).opacity, ev: getComputedStyle(document.querySelector('#apSheet .ap-body')).pointerEvents }));
+  if (hid.op !== '0') fail('iPhone: reglaget ska inte synas när kortet är ihopfällt: ' + JSON.stringify(hid));
+  // Kapseln ligger ovanför kortet.
+  const ctlB = await ip.locator('#apCtl').boundingBox();
+  if (ctlB.y + ctlB.height > sh.y - 4 || ctlB.x + ctlB.width < 370) fail('iPhone: kontrollerna ovanför kortet till höger: ' + JSON.stringify(ctlB));
+  // Dra upp kortet i handtaget: mellanläget visar datum och verktyg.
+  const gy = sh.y + 10;
+  await ip.mouse.move(195, gy); await ip.mouse.down(); await ip.mouse.move(195, gy - 260, { steps: 8 }); await ip.waitForTimeout(150); await ip.mouse.up(); await ip.waitForTimeout(650);
+  const mid = await ip.evaluate(() => ({ d1: document.body.classList.contains('ap-d1'), h: $('apSheet').getBoundingClientRect().height, op: getComputedStyle(document.querySelector('#apSheet .ap-body')).opacity, toolsBottom: document.querySelector('#apSheet .ap-tools').getBoundingClientRect().bottom, sheetBottom: $('apSheet').getBoundingClientRect().bottom }));
+  if (!mid.d1 || mid.op !== '1' || mid.toolsBottom > mid.sheetBottom) fail('iPhone: dra upp till mellanläget med hela verktygsraden: ' + JSON.stringify(mid));
+  // Uppåt igen: stort läge, kontrollerna och brickan göms.
+  const sh2 = await ip.locator('#apSheet').boundingBox();
+  await ip.mouse.move(195, sh2.y + 10); await ip.mouse.down(); await ip.mouse.move(195, sh2.y - 250, { steps: 8 }); await ip.waitForTimeout(150); await ip.mouse.up(); await ip.waitForTimeout(650);
+  const big = await ip.evaluate(() => ({ d2: document.body.classList.contains('ap-d2'), h: $('apSheet').getBoundingClientRect().height, ctl: getComputedStyle(document.querySelector('.ap-float')).opacity, chip: getComputedStyle($('apDateChip')).opacity }));
+  if (!big.d2 || big.h < 560 || big.ctl !== '0' || big.chip !== '0') fail('iPhone: stort läge: ' + JSON.stringify(big));
+  // Ett tryck i handtaget fäller ihop.
+  await ip.mouse.click(195, (await ip.locator('#apSheet').boundingBox()).y + 10); await ip.waitForTimeout(650);
+  if (!(await ip.evaluate(() => document.body.classList.contains('ap-d0')))) fail('iPhone: tryck i handtaget fäller ihop kortet');
+  // Datumbrickan öppnar kortet; ett verktyg fäller ihop det igen.
+  await ip.click('#apDateChip'); await ip.waitForTimeout(650);
+  if (!(await ip.evaluate(() => document.body.classList.contains('ap-d1')))) fail('iPhone: datumbrickan öppnar kortet');
+  await ip.click('#btnFieldDay'); await ip.waitForTimeout(500);
+  if (!(await ip.evaluate(() => document.body.classList.contains('ap-d0')))) fail('iPhone: ett verktyg fäller ihop kortet');
   const day = await ip.locator('#fieldDay').boundingBox();
-  if (day.x > 1 || day.width < 388) fail('iPhone: dagsplaneringen som iOS-ark: ' + JSON.stringify(day));
-  await ip.click('#fieldDay .fs-head button'); await ip.waitForTimeout(100);
+  if (day.x < 4 || day.width < 360 || day.y < 40) fail('iPhone: dagsplaneringen som flytande kort: ' + JSON.stringify(day));
+  if ((await ip.evaluate(() => getComputedStyle($('apSheet')).opacity)) !== '0') fail('iPhone: öppet kort ersätter sökkortet');
+  await ip.click('#fieldDay .fs-head button'); await ip.waitForTimeout(400);
+  if ((await ip.evaluate(() => getComputedStyle($('apSheet')).opacity)) !== '1') fail('iPhone: sökkortet tillbaka när kortet stängs');
   await ip.click('#apLayers'); await ip.waitForTimeout(200);
-  if (!(await ip.isVisible('#fieldSheet'))) fail('iPhone: lagerknappen uppe till höger öppnar lagren');
+  if (!(await ip.isVisible('#fieldSheet'))) fail('iPhone: lagerknappen i kapseln öppnar lagren');
   await ip.click('#fieldSheet .fs-head button');
+  // Liggande: kortet till vänster, kontrollerna kvar nere till höger.
+  await ip.setViewportSize({ width: 844, height: 390 }); await ip.waitForTimeout(600);
+  const ls = await ip.evaluate(() => ({ phone: document.body.classList.contains('phone'), sheet: $('apSheet').getBoundingClientRect().toJSON(), ctl: $('apCtl').getBoundingClientRect().toJSON() }));
+  if (!ls.phone || ls.sheet.width > 400 || ls.ctl.x < 700 || ls.ctl.bottom < 360) fail('iPhone liggande: ' + JSON.stringify(ls));
   // Större skärm: allt tillbaka på sina platser.
   await ip.setViewportSize({ width: 1024, height: 768 }); await ip.waitForTimeout(150);
   const back = await ip.evaluate(() => ({ phone: document.body.classList.contains('phone'), day: $('btnFieldDay').parentNode.id, fit: $('btnFit').parentNode.id, date: $('fieldDateLabel').closest('#fieldBottom') !== null, ic: document.querySelectorAll('#btnFieldDay .ap-ic').length, txt: $('btnFieldDay').textContent.trim() }));
@@ -271,7 +301,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   // iPad påverkas inte.
   if (await page.evaluate(() => document.body.classList.contains('phone'))) fail('iPad ska inte få telefonformatet');
   if (P.errors.length) fail('Sidfel (iPhone): ' + P.errors.join(' | '));
-  console.log('OK: iPhone – som en Apple-app: ark med handtag, runda ikoner, glaskontroller, iOS-ark; tillbaka på stor skärm');
+  console.log('OK: iPhone – som Apple Kartor: glaskort med tre lägen, reglaget dolt ihopfällt, kapsel, datumbricka, liggande; tillbaka på stor skärm');
 
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();

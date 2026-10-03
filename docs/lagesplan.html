@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261003102029"></script>
+<script src="github-storage.js?v=20261003105702"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -348,96 +348,132 @@
   body.field #zoomCtl button { height: 52px; min-width: 52px; font-size: 22px; }
   body.field #zoomCtl button + button { border-left: none; border-top: 1px solid var(--border); }
   body.field #btnFit { font-size: 14px !important; }
-  /* ---------- iPhone (Victors önskemål 2026-10-03): som en app från Apple ----------
-     Förebild Apple Kartor: kartan över hela skärmen, ett ark nertill med
-     grepphandtag (planen som sökfält, datum, åtgärder som runda ikoner),
-     kontroller i frostat glas uppe till höger och iOS-ark för paneler och
-     rutor. Knapparna flyttas hit av updatePhoneLayout() i lagesplan-touch.js. */
-  .gm-txt, #apSheet, #apCtl, #apFit, #apUndo, .ap-ic, .ap-lb { display: none; }
+  /* ---------- iPhone (Victors önskemål 2026-10-03): som Apple Kartor (iOS 26) ----------
+     Flytande glaskort nertill (bara sökfältet när det är ihopfällt; tre lägen
+     som följer fingret), stora färgade runda verktyg i en svepbar rad, kapsel
+     med lager och plats till höger, Anpassa till vänster och datumet som en
+     bricka uppe till vänster. Glaset är mörkt över ortofoto och ljust över
+     ritningar. Allt ligger i fasta lager direkt i sidan (stabilt även när
+     lägesplanen öppnas från hemskärmen). Byggs av lagesplan-touch.js. */
+  .gm-txt, .ap-ui, .ap-ic, .ap-lb, .ap-sub { display: none; }
   body.field.phone {
-    --ap-blue: #007aff; --ap-label: #000; --ap-label2: rgba(60,60,67,.6); --ap-sep: rgba(60,60,67,.29); --ap-fill: rgba(118,118,128,.12);
-    --ap-mat: rgba(255,255,255,.78); --ap-shadow: 0 0 0 .5px rgba(0,0,0,.08), 0 8px 28px rgba(0,0,0,.14);
+    --ap-blue: #0a84ff; --ap-text: #000; --ap-text2: rgba(60,60,67,.62); --ap-fill: rgba(118,118,128,.16); --ap-sep: rgba(60,60,67,.18);
+    --ap-glass: rgba(255,255,255,.62); --ap-edge: rgba(255,255,255,.65); --ap-panel: rgba(255,255,255,.9);
+    --ap-sheet-h: 76px; --ap-bot: max(8px, env(safe-area-inset-bottom));
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif; -webkit-font-smoothing: antialiased; letter-spacing: -.01em;
+    -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
   }
+  body.field.phone.ap-dark { --ap-text: #fff; --ap-text2: rgba(235,235,245,.68); --ap-fill: rgba(255,255,255,.16); --ap-sep: rgba(255,255,255,.16); --ap-glass: rgba(30,34,30,.40); --ap-edge: rgba(255,255,255,.22); }
   body.field.phone #fieldTop, body.field.phone #zoomCtl, body.field.phone #fieldBottom { display: none !important; }
-  body.field.phone #apSheet, body.field.phone #apCtl, body.field.phone #apFit { display: flex; }
+  body.field.phone .ap-ui { display: flex; }
+  body.field.phone.field-clean .ap-ui { display: none !important; }
+  body.field.phone .ap-ic, body.field.phone .ap-lb, body.field.phone .ap-sub { display: block; }
+  .ap-glass { background: var(--ap-glass); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); box-shadow: 0 12px 40px rgba(0,0,0,.22), inset 0 1px 0 var(--ap-edge), inset 0 0 0 .5px var(--ap-edge); color: var(--ap-text); }
+  .ap-ease { transition-timing-function: cubic-bezier(.32,.72,0,1); }
+
+  /* Kortet nertill */
+  #apSheet { position: fixed; left: 12px; right: 12px; bottom: var(--ap-bot); height: var(--ap-sheet-h); z-index: 30; flex-direction: column; border-radius: 34px; overflow: hidden; transition: height .5s cubic-bezier(.32,.72,0,1), left .5s cubic-bezier(.32,.72,0,1), right .5s cubic-bezier(.32,.72,0,1), opacity .25s, transform .35s cubic-bezier(.32,.72,0,1); }
+  body.ap-d1 #apSheet, body.ap-d2 #apSheet { left: 8px; right: 8px; }
+  #apSheet.dragging { transition: none; }
+  .ap-head { flex: 0 0 auto; padding: 14px 12px 12px; touch-action: none; position: relative; }
+  .ap-head::before { content: ""; position: absolute; top: 6px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: var(--ap-text2); opacity: .45; }
+  .ap-searchrow { display: flex; align-items: center; gap: 10px; }
+  .ap-search { flex: 1; display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 14px; border-radius: 24px; background: var(--ap-fill); box-shadow: inset 0 0 0 .5px var(--ap-edge); min-width: 0; color: var(--ap-text2); }
+  body.field.phone .ap-search #fieldPlan { flex: 1; height: 46px; border: none; background: transparent; box-shadow: none; padding: 0; font: 19px -apple-system, system-ui, sans-serif; color: var(--ap-text); -webkit-appearance: none; appearance: none; min-width: 0; text-overflow: ellipsis; }
+  .ap-avatar { flex: 0 0 auto; width: 48px; height: 48px; border-radius: 50%; border: none; padding: 0; background: linear-gradient(160deg, #6e8cff, #1f3b73); color: #fff; font: 600 17px -apple-system, system-ui, sans-serif; display: inline-flex; align-items: center; justify-content: center; box-shadow: inset 0 0 0 .5px rgba(255,255,255,.35); }
+  .ap-body { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 4px 0 calc(16px + env(safe-area-inset-bottom)); opacity: 0; transition: opacity .25s; touch-action: pan-y; }
+  body.ap-d1 .ap-body, body.ap-d2 .ap-body { opacity: 1; }
+  .ap-sec { display: flex; align-items: center; gap: 4px; margin: 14px 20px 10px; font: 700 22px -apple-system, system-ui, sans-serif; letter-spacing: -.02em; color: var(--ap-text); }
+  .ap-sec svg { width: 18px; height: 18px; color: var(--ap-text2); }
+  /* Datum */
+  .ap-datecard { margin: 0 14px; padding: 10px 12px 6px; border-radius: 22px; background: var(--ap-fill); box-shadow: inset 0 0 0 .5px var(--ap-edge); }
+  .ap-date { display: flex; align-items: center; gap: 8px; }
+  body.field.phone .ap-date .fl-btn { height: 36px; min-width: 36px; padding: 0 10px; border: none; border-radius: 18px; background: var(--ap-fill); color: var(--ap-text); box-shadow: none; font: 600 15px -apple-system, system-ui, sans-serif; }
+  body.field.phone .ap-date #btnFieldPrevW, body.field.phone .ap-date #btnFieldNextW { width: 36px; padding: 0; flex: none; }
+  body.field.phone .ap-date .fl-date { min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
+  body.field.phone .ap-date #btnFieldToday { background: var(--ap-blue); color: #fff; padding: 0 14px; }
+  body.field.phone .ap-date .fl-date { flex: 1; height: 36px; border: none; background: transparent; font: 600 17px -apple-system, system-ui, sans-serif; color: var(--ap-text); }
+  body.field.phone #btnFieldPrevW, body.field.phone #btnFieldNextW { font-size: 0 !important; }
+  body.field.phone #apSheet #fieldSlider { -webkit-appearance: none; appearance: none; width: 100%; height: 34px; margin: 4px 0 0; background: transparent; }
+  body.field.phone #apSheet #fieldSlider::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: linear-gradient(var(--ap-blue), var(--ap-blue)) 0 / var(--ap-pct, 50%) 100% no-repeat, rgba(120,120,128,.28); }
+  body.field.phone #apSheet #fieldSlider::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; margin-top: -11px; border-radius: 50%; background: #fff; box-shadow: 0 .5px 4px rgba(0,0,0,.14), 0 6px 13px rgba(0,0,0,.14); }
+  /* Verktyg: stora färgade runda ikoner i en svepbar rad */
+  .ap-tools { display: flex; gap: 6px; overflow-x: auto; padding: 2px 14px 6px; scrollbar-width: none; scroll-snap-type: x proximity; }
+  .ap-tools::-webkit-scrollbar { display: none; }
+  body.field.phone .ap-tile { flex: 0 0 86px; display: flex; flex-direction: column; align-items: center; gap: 0; height: auto; min-width: 0; padding: 0; border: none; background: none !important; box-shadow: none; color: var(--ap-text) !important; font-size: 0 !important; scroll-snap-align: start; }
+  .ap-tile .ap-ic { width: 74px; height: 74px; border-radius: 50%; display: flex !important; align-items: center; justify-content: center; color: #fff; background: var(--c, linear-gradient(160deg,#8e8e93,#636366)); box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 4px 12px rgba(0,0,0,.18); transition: transform .15s; }
+  body.field.phone .ap-ic svg { width: 20px; height: 20px; display: block; }
+  body.field.phone .ap-date .fl-btn .ap-ic { display: flex !important; align-items: center; justify-content: center; }
+  .ap-tile .ap-ic svg { width: 34px !important; height: 34px !important; }
+  .ap-tile:active .ap-ic { transform: scale(.9); }
+  body.field.phone .ap-tile.on .ap-ic { box-shadow: 0 0 0 3px var(--ap-blue), inset 0 1px 0 rgba(255,255,255,.35); }
+  .ap-tile .ap-lb { margin-top: 8px; font: 600 15px -apple-system, system-ui, sans-serif; color: var(--ap-text); max-width: 86px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ap-tile .ap-sub { font: 400 13px -apple-system, system-ui, sans-serif; color: var(--ap-text2); max-width: 86px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Sparade vyer: lista */
+  .ap-list { margin: 0 14px; border-radius: 22px; background: var(--ap-fill); box-shadow: inset 0 0 0 .5px var(--ap-edge); overflow: hidden; }
+  .ap-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 10px 16px; border: none; border-radius: 0; background: none; box-shadow: none; color: var(--ap-text); text-align: left; font: 17px -apple-system, system-ui, sans-serif; }
+  .ap-item + .ap-item { border-top: .5px solid var(--ap-sep); }
+  .ap-item .ap-iic { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(120,120,128,.35); color: #fff; }
+  .ap-item .ap-iic svg { width: 20px; height: 20px; }
+  .ap-item .ap-it { flex: 1; min-width: 0; }
+  .ap-item .ap-it b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ap-item .ap-it span { font-size: 15px; color: var(--ap-text2); }
+  .ap-item.on .ap-iic { background: var(--ap-blue); }
+  .ap-empty { margin: 0 20px; font: 15px -apple-system, system-ui, sans-serif; color: var(--ap-text2); }
+  /* Flytande kontroller ovanför kortet */
+  .ap-float { position: fixed; z-index: 25; bottom: calc(var(--ap-bot) + var(--ap-sheet-h) + 16px); transition: bottom .5s cubic-bezier(.32,.72,0,1), opacity .25s, transform .35s; }
+  body.ap-d2 .ap-float, body.ap-d2 #apDateChip { opacity: 0; pointer-events: none; }
+  /* Som i Kartor: när ett kort (Dag, Lager) är öppet ersätter det sökkortet. */
+  body.field.phone:has(#fieldDay:not(.hidden), #fieldSheet:not(.hidden)) #apSheet,
+  body.field.phone:has(#fieldDay:not(.hidden), #fieldSheet:not(.hidden)) .ap-float { opacity: 0; pointer-events: none; transform: translateY(24px); }
+  #apSheet.dragging ~ .ap-float { transition: opacity .25s; }
+  #apCtl { right: 14px; flex-direction: column; border-radius: 28px; overflow: hidden; }
+  #apCtl > button { width: 56px; height: 56px; min-width: 0; padding: 0; border: none; border-radius: 0; background: transparent !important; box-shadow: none; color: var(--ap-text) !important; display: inline-flex; align-items: center; justify-content: center; font-size: 0 !important; }
+  #apCtl > button svg { width: 26px; height: 26px; }
+  body.field #apCtl #btnFieldGps.gps-follow { color: var(--ap-blue) !important; }
+  #apLeft { left: 14px; flex-direction: column; gap: 12px; align-items: center; }
+  #apLeft .ap-round { width: 56px; height: 56px; border-radius: 50%; }
+  #apLeft .ap-round > button, #apUndo > button { width: 100%; height: 100%; min-width: 0; padding: 0; border: none; border-radius: 0; background: transparent !important; box-shadow: none; color: var(--ap-text) !important; display: inline-flex; align-items: center; justify-content: center; font-size: 0 !important; }
+  #apLeft svg, #apUndo svg { width: 26px; height: 26px; }
+  #apUndo { display: none; flex-direction: column; width: 56px; border-radius: 28px; overflow: hidden; }
   body.field.phone #apUndo:has(button:enabled) { display: flex; }
-  body.field.phone .ap-ic, body.field.phone .ap-lb { display: block; }
-  body.field.phone #apSheet .ap-tile > :not(.ap-ic):not(.ap-lb) { display: none; }
-  .ap-glass { background: var(--ap-mat); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%); box-shadow: var(--ap-shadow); }
-  /* Arket */
-  #apSheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; flex-direction: column; padding: 6px 16px calc(12px + env(safe-area-inset-bottom)); border-radius: 14px 14px 0 0; transition: transform .32s cubic-bezier(.2,.9,.25,1); touch-action: none; }
-  #apSheet .ap-grab { align-self: center; width: 36px; height: 5px; border-radius: 3px; background: rgba(60,60,67,.3); margin: 0 0 10px; flex: 0 0 auto; }
-  #apSheet .ap-grabzone { position: absolute; left: 0; right: 0; top: 0; height: 22px; }
-  .ap-row { display: flex; align-items: center; gap: 8px; }
-  .ap-search { flex: 1; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 8px 0 10px; border-radius: 10px; background: var(--ap-fill); min-width: 0; }
-  .ap-search svg { flex: 0 0 auto; color: var(--ap-label2); }
-  body.field.phone .ap-search #fieldPlan { flex: 1; height: 36px; border: none; background: transparent; box-shadow: none; padding: 0; font: 17px -apple-system, system-ui, sans-serif; color: var(--ap-label); -webkit-appearance: none; appearance: none; min-width: 0; }
-  .ap-avatar { flex: 0 0 auto; width: 36px; height: 36px; border-radius: 50%; border: none; padding: 0; background: var(--ap-fill); color: var(--ap-blue); display: inline-flex; align-items: center; justify-content: center; }
-  .ap-date { margin-top: 12px; }
-  body.field.phone .ap-date .fl-btn { height: 34px; min-width: 34px; padding: 0 8px; border: none; border-radius: 9px; background: var(--ap-fill); color: var(--ap-blue); font: 600 15px -apple-system, system-ui, sans-serif; box-shadow: none; }
-  body.field.phone .ap-date .fl-primary { background: var(--ap-blue); color: #fff; }
-  body.field.phone .ap-date .fl-date { flex: 1; height: 34px; border: none; background: transparent; font: 600 17px -apple-system, system-ui, sans-serif; color: var(--ap-label); }
-  body.field.phone #apSheet #fieldSlider { -webkit-appearance: none; appearance: none; width: 100%; height: 28px; margin: 8px 0 2px; background: transparent; }
-  body.field.phone #apSheet #fieldSlider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(var(--ap-blue), var(--ap-blue)) 0 / var(--ap-pct, 50%) 100% no-repeat, rgba(120,120,128,.2); }
-  body.field.phone #apSheet #fieldSlider::-webkit-slider-thumb { -webkit-appearance: none; width: 28px; height: 28px; margin-top: -12px; border-radius: 50%; background: #fff; box-shadow: 0 .5px 4px rgba(0,0,0,.12), 0 6px 13px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.04); }
-  /* Åtgärder: runda ikoner med etikett (visas när arket dras upp). */
-  .ap-more { overflow: hidden; max-height: 0; opacity: 0; transition: max-height .32s cubic-bezier(.2,.9,.25,1), opacity .2s; }
-  #apSheet.open .ap-more { max-height: 320px; opacity: 1; }
-  .ap-sec { margin: 16px 0 8px; font: 600 13px -apple-system, system-ui, sans-serif; letter-spacing: .02em; text-transform: uppercase; color: var(--ap-label2); }
-  .ap-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px 6px; }
-  body.field.phone .ap-tile, body.field.phone #apFit #btnFit, body.field.phone #btnFieldPrevW, body.field.phone #btnFieldNextW, body.field.phone #apUndo button { font-size: 0 !important; }
-  .ap-ic svg { width: 26px; height: 26px; }
-  #apFit .ap-ic svg, #apUndo .ap-ic svg, .ap-date .ap-ic svg { width: 22px; height: 22px; }
-  body.field.phone .ap-tile { display: flex; flex-direction: column; align-items: center; gap: 6px; height: auto; min-width: 0; padding: 0; border: none; background: none; box-shadow: none; color: var(--ap-label); }
-  .ap-tile .ap-ic { width: 52px; height: 52px; border-radius: 50%; background: var(--ap-fill); color: var(--ap-blue); display: flex !important; align-items: center; justify-content: center; transition: transform .12s; }
-  .ap-tile:active .ap-ic { transform: scale(.92); }
-  body.field.phone .ap-tile.on .ap-ic { background: var(--ap-blue); color: #fff; }
-  .ap-tile .ap-lb { font: 500 12px -apple-system, system-ui, sans-serif; color: var(--ap-label); white-space: nowrap; }
-  body.field.phone .ap-tile.on, body.field.phone .ap-tile.on:hover { background: none; color: var(--ap-label); }
-  .ap-views { margin-top: 14px; }
-  body.field.phone .ap-views .fv-wrap { display: flex; flex: 1; }
-  body.field.phone .ap-views #fieldView { flex: 1; height: 40px; border-radius: 10px; border: none; background: var(--ap-fill); font: 17px -apple-system, system-ui, sans-serif; box-shadow: none; }
-  /* Kontroller uppe till höger (glas, som i Apple Kartor). */
-  #apCtl, #apFit, #apUndo { position: absolute; right: 10px; z-index: 7; flex-direction: column; border-radius: 12px; overflow: hidden; }
-  #apCtl { top: calc(10px + env(safe-area-inset-top)); }
-  #apFit { top: calc(110px + env(safe-area-inset-top)); }
-  #apUndo { top: calc(166px + env(safe-area-inset-top)); }
-  #apCtl > button, #apFit > button, #apUndo > button { width: 44px; height: 44px; min-width: 0; padding: 0; border: none; border-radius: 0; background: transparent; box-shadow: none; color: var(--ap-blue); display: inline-flex; align-items: center; justify-content: center; font-size: 0; }
-  #apCtl > button + button, #apUndo > button + button { border-top: .5px solid var(--ap-sep); }
+  #apUndo > button { height: 52px; }
   #apUndo > button:disabled { display: none; }
-  body.field #apCtl #btnFieldGps.on, body.field #apCtl #btnFieldGps.gps-follow { background: transparent; color: var(--ap-blue); }
-  #apCtl svg, #apFit svg, #apUndo svg { width: 22px; height: 22px; }
-  /* Knappar i arken i iOS-stil. */
-  body.field.phone #fieldDayBody button, body.field.phone #fieldSheetBody button { border: none; border-radius: 10px; background: var(--ap-fill); box-shadow: none; color: var(--ap-blue); font-family: -apple-system, system-ui, sans-serif; }
-  body.field.phone #fieldDayBody button.primary, body.field.phone #fieldDayBody button.on, body.field.phone #fieldSheetBody button.primary { background: var(--ap-blue); color: #fff; }
-  body.field.phone #fieldDayBody details, body.field.phone #fieldSheetBody details { border: none; background: rgba(118,118,128,.06); border-radius: 12px; }
-  /* Paneler (dagsplanering, lager) som iOS-ark. */
-  body.field.phone #fieldSheet, body.field.phone #fieldDay { top: calc(44px + env(safe-area-inset-top)) !important; left: 0; right: 0; bottom: 0; width: auto; border: none; border-radius: 12px 12px 0 0; background: #fff; box-shadow: 0 -1px 0 rgba(0,0,0,.04), 0 -10px 40px rgba(0,0,0,.18); z-index: 10; animation: apUp .34s cubic-bezier(.2,.9,.25,1); }
-  @keyframes apUp { from { transform: translateY(100%); } to { transform: none; } }
-  body.field.phone #fieldSheet .fs-head, body.field.phone #fieldDay .fs-head { position: relative; justify-content: center; padding: 22px 16px 10px; border-bottom: .5px solid var(--ap-sep); font: 600 17px -apple-system, system-ui, sans-serif; }
-  body.field.phone #fieldSheet .fs-head::before, body.field.phone #fieldDay .fs-head::before { content: ""; position: absolute; top: 6px; left: 50%; width: 36px; height: 5px; margin-left: -18px; border-radius: 3px; background: rgba(60,60,67,.3); }
-  body.field.phone .fs-head .fl-btn { position: absolute; right: 8px; top: 14px; height: 34px; padding: 0 8px; border: none; background: none; box-shadow: none; color: var(--ap-blue); font: 600 17px -apple-system, system-ui, sans-serif; }
-  /* Redigeringsrutor (lag, leveranser, noteringar …) som ark nerifrån. */
-  body.field.phone #sitePop { left: 0 !important; right: 0; top: auto !important; bottom: 0; width: auto !important; max-height: 78% !important; border: none; border-radius: 12px 12px 0 0; padding: 18px 16px calc(14px + env(safe-area-inset-bottom)); box-shadow: 0 -10px 40px rgba(0,0,0,.18); z-index: 12; animation: apUp .3s cubic-bezier(.2,.9,.25,1); font-size: 16px; }
-  body.field.phone #sitePop::before { content: ""; position: absolute; top: 6px; left: 50%; width: 36px; height: 5px; margin-left: -18px; border-radius: 3px; background: rgba(60,60,67,.3); }
-  body.field.phone #sitePop input, body.field.phone #sitePop select, body.field.phone #sitePop textarea { border-radius: 10px; border-color: transparent; background: var(--ap-fill); font-size: 17px; }
-  body.field.phone #sitePop button { border-radius: 10px; }
-  body.field.phone #sitePop button.primary { background: var(--ap-blue); border-color: var(--ap-blue); }
-  body.field.phone #fieldTools { top: auto !important; bottom: calc(150px + env(safe-area-inset-bottom)); max-width: calc(100% - 24px); border: none; border-radius: 14px; }
-  body.field.phone #northBadge { top: calc(64px + env(safe-area-inset-top)); bottom: auto; left: auto; right: 60px; width: 36px; height: 36px; }
-  body.field.phone #objMarkBar { bottom: calc(160px + env(safe-area-inset-bottom)); max-width: calc(100% - 24px); border-radius: 14px; }
-  /* Meddelanden: banner uppe i mitten (som iOS). */
-  body.field.phone #gpsToast { top: calc(10px + env(safe-area-inset-top)); bottom: auto; padding: 10px 18px; border-radius: 22px; font: 600 15px -apple-system, system-ui, sans-serif; color: #000; background: rgba(255,255,255,.86); -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%); box-shadow: var(--ap-shadow); max-width: calc(100% - 120px); }
-  body.field.phone #btnFieldShow { width: 44px; height: 44px; border-radius: 12px; border: none; background: var(--ap-mat); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); box-shadow: var(--ap-shadow); }
+  #apUndo > button + button { border-top: .5px solid var(--ap-sep); }
+  /* Datumbricka uppe till vänster (som vädret i Apple Kartor) */
+  #apDateChip { position: fixed; z-index: 25; top: calc(env(safe-area-inset-top) + 10px); left: 14px; height: 40px; align-items: center; gap: 6px; padding: 0 14px 0 12px; border-radius: 20px; border: none; font: 600 17px -apple-system, system-ui, sans-serif; transition: opacity .25s; }
+  #apDateChip svg { width: 20px; height: 20px; }
+  body.field.phone #northBadge { position: fixed; top: calc(env(safe-area-inset-top) + 10px); bottom: auto; left: auto; right: 14px; width: 40px; height: 40px; z-index: 25; }
+  /* Paneler (dagsplanering, lager) och rutor: ljusa glaskort med stor rubrik och runt ✕ */
+  body.field.phone #fieldSheet, body.field.phone #fieldDay { position: fixed; top: calc(env(safe-area-inset-top) + 56px) !important; left: 8px; right: 8px; bottom: var(--ap-bot); width: auto; border: none; border-radius: 34px; background: var(--ap-panel); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); box-shadow: 0 12px 50px rgba(0,0,0,.28); z-index: 40; animation: apUp .5s cubic-bezier(.32,.72,0,1); color: #000; }
+  @keyframes apUp { from { transform: translateY(105%); } to { transform: none; } }
+  body.field.phone #fieldSheet .fs-head, body.field.phone #fieldDay .fs-head { position: relative; justify-content: space-between; padding: 22px 16px 8px 20px; border-bottom: none; font: 700 26px -apple-system, system-ui, sans-serif; letter-spacing: -.02em; }
+  body.field.phone #fieldSheet .fs-head::before, body.field.phone #fieldDay .fs-head::before { content: ""; position: absolute; top: 7px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: rgba(60,60,67,.3); }
+  body.field.phone .fs-head .fl-btn { width: 36px; height: 36px; min-width: 0; padding: 0; border: none; border-radius: 50%; background: rgba(118,118,128,.16); box-shadow: none; font-size: 0 !important; color: rgba(60,60,67,.75); position: relative; }
+  body.field.phone .fs-head .fl-btn::after { content: "✕"; font: 600 16px -apple-system, system-ui, sans-serif; }
+  body.field.phone #fieldDayBody button, body.field.phone #fieldSheetBody button { border: none; border-radius: 12px; background: rgba(118,118,128,.12); box-shadow: none; color: #0a84ff; font-family: -apple-system, system-ui, sans-serif; }
+  body.field.phone #fieldDayBody button.primary, body.field.phone #fieldDayBody button.on, body.field.phone #fieldSheetBody button.primary { background: #0a84ff; color: #fff; }
+  body.field.phone #fieldDayBody details, body.field.phone #fieldSheetBody details { border: none; background: rgba(118,118,128,.08); border-radius: 14px; }
+  body.field.phone #sitePop { position: fixed; left: 8px !important; right: 8px; top: auto !important; bottom: var(--ap-bot); width: auto !important; max-height: 72% !important; border: none; border-radius: 30px; padding: 22px 18px 18px; background: var(--ap-panel); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); box-shadow: 0 12px 50px rgba(0,0,0,.28); z-index: 45; animation: apUp .45s cubic-bezier(.32,.72,0,1); font-size: 16px; color: #000; }
+  body.field.phone #sitePop::before { content: ""; position: absolute; top: 7px; left: 50%; width: 38px; height: 5px; margin-left: -19px; border-radius: 3px; background: rgba(60,60,67,.3); }
+  body.field.phone #sitePop input, body.field.phone #sitePop select, body.field.phone #sitePop textarea { border-radius: 12px; border-color: transparent; background: rgba(118,118,128,.12); font-size: 17px; }
+  body.field.phone #sitePop button { border-radius: 12px; }
+  body.field.phone #sitePop button.primary { background: #0a84ff; border-color: #0a84ff; }
+  body.field.phone #fieldTools { position: fixed; top: calc(env(safe-area-inset-top) + 60px) !important; bottom: auto; max-width: calc(100% - 28px); border: none; border-radius: 22px; background: var(--ap-panel); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); z-index: 26; }
+  body.field.phone #objMarkBar { position: fixed; bottom: calc(var(--ap-bot) + var(--ap-sheet-h) + 86px); max-width: calc(100% - 28px); border-radius: 18px; z-index: 26; }
+  body.field.phone #gpsToast { top: calc(env(safe-area-inset-top) + 10px); bottom: auto; padding: 10px 18px; border-radius: 22px; font: 600 15px -apple-system, system-ui, sans-serif; color: #000; background: rgba(255,255,255,.82); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%); box-shadow: 0 12px 40px rgba(0,0,0,.2); max-width: calc(100% - 140px); z-index: 60; }
+  body.field.phone #btnFieldShow { position: fixed; bottom: calc(var(--ap-bot) + 8px); right: 14px; width: 56px; height: 56px; border-radius: 50%; border: none; background: var(--ap-glass); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); box-shadow: 0 12px 40px rgba(0,0,0,.22); }
+  body.field.phone #tip { position: fixed; bottom: calc(var(--ap-bot) + var(--ap-sheet-h) + 86px) !important; font-size: 15px; border-radius: 18px; background: rgba(28,28,30,.88); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); z-index: 26; }
   @media (orientation: landscape) {
-    #apSheet { left: calc(10px + env(safe-area-inset-left)); right: auto; width: 360px; bottom: 10px; border-radius: 14px; padding-bottom: 12px; }
-    body.field.phone #fieldSheet, body.field.phone #fieldDay { top: 10px !important; left: auto; right: 10px; bottom: 10px; width: 380px; border-radius: 14px; }
-    body.field.phone #sitePop { left: auto !important; right: 10px; width: 380px !important; bottom: 10px; border-radius: 14px; }
-    body.field.phone #northBadge { right: 60px; }
-    .ap-tiles { gap: 10px 4px; }
+    #apSheet { right: auto !important; width: 380px; left: calc(env(safe-area-inset-left) + 10px) !important; }
+    body.field.phone #fieldSheet, body.field.phone #fieldDay { top: 8px !important; left: auto; right: calc(env(safe-area-inset-right) + 8px); width: 400px; }
+    body.field.phone #sitePop { left: auto !important; right: calc(env(safe-area-inset-right) + 8px); width: 400px !important; }
+    #apLeft { left: auto; right: 84px; }
+    /* Kortet ligger till vänster: knapparna till höger står kvar nere i hörnet oavsett kortets höjd. */
+    .ap-float { bottom: calc(var(--ap-bot) + 8px); }
+    body.ap-d2 .ap-float { opacity: 1; pointer-events: auto; }
+    body.field.phone #tip { left: calc(env(safe-area-inset-left) + 410px) !important; right: 160px; transform: none; bottom: calc(var(--ap-bot) + 8px) !important; }
   }
-  body.field.phone #tip { bottom: calc(170px + env(safe-area-inset-bottom)) !important; font-size: 15px; border-radius: 14px; background: rgba(28,28,30,.92); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
   body.field #tip { position: absolute; left: 50% !important; top: auto !important; bottom: 132px; transform: translateX(-50%); font-size: 15px; line-height: 1.45; padding: 12px 14px; max-width: min(520px, 92%); border-radius: 12px; z-index: 8; }
   #fieldSheet { position: absolute; top: 66px; right: 10px; bottom: 132px; width: min(400px, calc(100% - 20px)); z-index: 9; flex-direction: column; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 10px 30px rgba(15,23,42,.25); overflow: hidden; }
   #fieldSheet .fs-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 17px; }
@@ -1157,26 +1193,26 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261003102029"></script>
-<script src="lagesplan-tools.js?v=20261003102029"></script>
-<script src="lagesplan-layers.js?v=20261003102029"></script>
-<script src="lagesplan-views.js?v=20261003102029"></script>
-<script src="lagesplan-film.js?v=20261003102029"></script>
-<script src="lagesplan-cad.js?v=20261003102029"></script>
-<script src="lagesplan-vecpdf.js?v=20261003102029"></script>
-<script src="lagesplan-print.js?v=20261003102029"></script>
-<script src="lagesplan-printlib.js?v=20261003102029"></script>
-<script src="lagesplan-pdflayers.js?v=20261003102029"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261003102029"></script>
-<script src="lagesplan-objmarks.js?v=20261003102029"></script>
-<script src="lagesplan-objlist.js?v=20261003102029"></script>
-<script src="lagesplan-zones.js?v=20261003102029"></script>
-<script src="lagesplan-wbs.js?v=20261003102029"></script>
-<script src="lagesplan-daily.js?v=20261003102029"></script>
-<script src="lagesplan-gps.js?v=20261003102029"></script>
-<script src="lagesplan-weather.js?v=20261003102029"></script>
-<script src="lagesplan-touch.js?v=20261003102029"></script>
-<script src="lagesplan-gpslive.js?v=20261003102029"></script>
-<script src="lagesplan-keys.js?v=20261003102029"></script>
+<script src="lagesplan.js?v=20261003105702"></script>
+<script src="lagesplan-tools.js?v=20261003105702"></script>
+<script src="lagesplan-layers.js?v=20261003105702"></script>
+<script src="lagesplan-views.js?v=20261003105702"></script>
+<script src="lagesplan-film.js?v=20261003105702"></script>
+<script src="lagesplan-cad.js?v=20261003105702"></script>
+<script src="lagesplan-vecpdf.js?v=20261003105702"></script>
+<script src="lagesplan-print.js?v=20261003105702"></script>
+<script src="lagesplan-printlib.js?v=20261003105702"></script>
+<script src="lagesplan-pdflayers.js?v=20261003105702"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261003105702"></script>
+<script src="lagesplan-objmarks.js?v=20261003105702"></script>
+<script src="lagesplan-objlist.js?v=20261003105702"></script>
+<script src="lagesplan-zones.js?v=20261003105702"></script>
+<script src="lagesplan-wbs.js?v=20261003105702"></script>
+<script src="lagesplan-daily.js?v=20261003105702"></script>
+<script src="lagesplan-gps.js?v=20261003105702"></script>
+<script src="lagesplan-weather.js?v=20261003105702"></script>
+<script src="lagesplan-touch.js?v=20261003105702"></script>
+<script src="lagesplan-gpslive.js?v=20261003105702"></script>
+<script src="lagesplan-keys.js?v=20261003105702"></script>
 </body>
 </html>
