@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261003094607"></script>
+<script src="github-storage.js?v=20261003095437"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -342,49 +342,70 @@
   body.field #zoomCtl button { height: 52px; min-width: 52px; font-size: 22px; }
   body.field #zoomCtl button + button { border-left: none; border-top: 1px solid var(--border); }
   body.field #btnFit { font-size: 14px !important; }
-  /* ---------- iPhone (Victors önskemål 2026-10-03): kompakt fältläge ---------- */
-  #btnFieldMore { display: none; }
-  body.field.phone #btnFieldMore { display: inline-flex; align-items: center; justify-content: center; font-size: 22px; }
-  body.field.phone #fieldTop { top: 6px; left: 6px; right: 6px; gap: 6px; }
-  body.field.phone .fl-btn { height: 42px; min-width: 42px; padding: 0 10px; font-size: 15px; border-radius: 10px; }
-  body.field.phone .fl-sel { height: 42px; flex: 1 1 120px; padding: 0 8px; }
-  body.field.phone .fl-txt { display: none; }
-  /* Första raden: plan, 📍, 👷, 🗂, ⋯ – resten i ⋯-menyn. */
-  body.field.phone #fieldTop > * { order: 2; }
-  body.field.phone #fieldPlan, body.field.phone #btnFieldGps, body.field.phone #btnFieldDay, body.field.phone #btnFieldLayers, body.field.phone #btnFieldMore { order: 0; }
-  body.field.phone #btnFieldMore { order: 0; }
-  body.field.phone:not(.field-more) #fieldTop > :not(#fieldPlan):not(#btnFieldGps):not(#btnFieldDay):not(#btnFieldLayers):not(#btnFieldMore) { display: none !important; }
-  body.field.phone.field-more #fieldTop { background: rgba(255,255,255,.97); border: 1px solid var(--border); border-radius: 14px; padding: 6px; box-shadow: 0 10px 30px rgba(15,23,42,.25); }
-  body.field.phone.field-more #fieldTop .fv-wrap { flex: 1 1 100%; }
-  .fl-break { display: none; }
-  body.field.phone.field-more #fieldTop > .fl-break { display: block !important; order: 1; flex-basis: 100%; height: 0; }
-  body.field.phone.field-more #btnFieldMore { background: var(--accent); color: #fff; border-color: var(--accent); }
-  body.field.phone #fieldBottom { left: 6px; right: 6px; bottom: 6px; padding: 6px; gap: 2px; border-radius: 12px; }
-  body.field.phone #fieldBottom .fb-row { gap: 4px; }
-  body.field.phone #fieldBottom .fl-btn { height: 38px; min-width: 38px; padding: 0 8px; font-size: 14px; }
-  body.field.phone .fl-date { height: 38px; font-size: 15px; }
-  body.field.phone #fieldSlider { height: 26px; }
-  body.field.phone #zoomCtl { top: auto; bottom: 104px; transform: none; right: 6px; }
-  body.field.phone #btnZoomIn, body.field.phone #btnZoomOut { display: none; }
-  body.field.phone #zoomCtl button { height: 40px; min-width: 40px; font-size: 13px !important; }
-  /* Paneler (dagsplanering, lager) som ark nerifrån över hela bredden. */
-  body.field.phone #fieldSheet, body.field.phone #fieldDay { top: 56px; left: 0; right: 0; bottom: 0; width: auto; border-radius: 16px 16px 0 0; }
-  body.field.phone #sitePop { left: 6px !important; right: 6px; width: auto !important; }
-  body.field.phone #fieldTools { top: 56px; max-width: calc(100% - 12px); }
-  body.field.phone #northBadge { bottom: 104px; left: 8px; width: 34px; height: 34px; }
-  body.field.phone #objMarkBar { bottom: 100px; max-width: calc(100% - 12px); }
-  body.field.phone #gpsToast { top: 58px; font-size: 14px; }
-  body.field.phone.field-more #gpsToast { top: 170px; }
-  /* Liggande iPhone: datum och reglage på en rad. */
+  /* ---------- iPhone (Victors önskemål 2026-10-03): Google Maps-inspirerat ----------
+     Sökfält med planen överst, svepbara chips, runda knappar till höger
+     (min position nederst) och datum/tid i ett ark längst ner. Knapparna
+     flyttas hit av updatePhoneLayout() i lagesplan-touch.js. */
+  .gm-txt, #gmTop, #gmChips, #gmFabs { display: none; }
+  body.field.phone #fieldTop, body.field.phone #zoomCtl { display: none !important; }
+  body.field.phone #gmTop, body.field.phone #gmChips, body.field.phone #gmFabs { display: flex; }
+  body.field.phone .gm-txt { display: inline; }
+  body.field.phone { font-family: "Google Sans", Roboto, -apple-system, "Segoe UI", system-ui, sans-serif; }
+  #gmTop { position: absolute; top: calc(8px + env(safe-area-inset-top)); left: 10px; right: 10px; z-index: 8; align-items: center; height: 48px; padding: 0 6px 0 14px; gap: 6px; background: #fff; border-radius: 24px; box-shadow: 0 1px 3px rgba(60,64,67,.3), 0 4px 8px 3px rgba(60,64,67,.15); }
+  #gmTop .gm-pin { font-size: 18px; color: #ea4335; }
+  #gmTop #fieldPlan { flex: 1; height: 44px; border: none; box-shadow: none; background: transparent; font-size: 16px; padding: 0 4px; min-width: 0; -webkit-appearance: none; appearance: none; }
+  #gmTop .gm-icon { width: 38px; height: 38px; min-width: 38px; padding: 0; border: none; border-radius: 50%; background: transparent; box-shadow: none; font-size: 18px; color: #5f6368; }
+  #gmTop .gm-icon:active { background: #f1f3f4; }
+  #gmChips { position: absolute; top: calc(64px + env(safe-area-inset-top)); left: 0; right: 0; z-index: 7; gap: 8px; padding: 2px 10px 6px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  #gmChips::-webkit-scrollbar { display: none; }
+  #gmChips > * { flex: 0 0 auto; }
+  #gmChips .fl-btn { height: 34px; min-width: 0; padding: 0 14px 0 12px; border-radius: 17px; border: none; background: #fff; font-size: 14px; font-weight: 500; color: #3c4043; box-shadow: 0 1px 2px rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15); }
+  #gmChips .fl-btn:disabled { display: none; }
+  body.field #gmChips .fl-btn.on { background: #e8f0fe; color: #1967d2; border: none; }
+  #gmChips .fv-wrap { display: flex; flex: 0 0 auto; }
+  #gmChips .fv-wrap.hidden { display: none; }
+  #gmChips #fieldView { height: 34px; border-radius: 17px; border: none; font-size: 14px; padding: 0 10px; box-shadow: 0 1px 2px rgba(60,64,67,.3), 0 1px 3px 1px rgba(60,64,67,.15); max-width: 160px; }
+  #gmFabs { position: absolute; right: 12px; bottom: 112px; z-index: 7; flex-direction: column; gap: 12px; align-items: center; }
+  #gmFabs .fl-btn, #gmFabs #btnFit { width: 44px; height: 44px; min-width: 0; padding: 0; border-radius: 50%; border: none; background: #fff; font-size: 18px; color: #5f6368; box-shadow: 0 1px 3px rgba(60,64,67,.3), 0 4px 8px 3px rgba(60,64,67,.15); display: inline-flex; align-items: center; justify-content: center; }
+  #gmFabs .fl-btn:disabled { display: none; }
+  #gmFabs #btnFieldGps { width: 56px; height: 56px; position: relative; }
+  #gmFabs #btnFieldGps svg { width: 26px; height: 26px; }
+  body.field #gmFabs #btnFieldGps.on { background: #fff; color: #1a73e8; }
+  body.field #gmFabs #btnFieldGps.gps-follow { background: #fff; color: #1a73e8; }
+  #gmFabs #btnFieldGps .gm-acc-badge { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); background: #1a73e8; color: #fff; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
+  #gmFabs #btnFit { font-size: 0 !important; }
+  #gmFabs #btnFit::before { content: "⤢"; font-size: 20px; }
+  /* Datum och tid: ark längst ner med grepphandtag. */
+  body.field.phone #fieldBottom { left: 0; right: 0; bottom: 0; padding: 14px 12px calc(10px + env(safe-area-inset-bottom)); gap: 4px; border: none; border-radius: 18px 18px 0 0; background: #fff; box-shadow: 0 -1px 3px rgba(60,64,67,.2), 0 -4px 12px rgba(60,64,67,.12); }
+  body.field.phone #fieldBottom::before { content: ""; position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: #dadce0; }
+  body.field.phone #fieldBottom .fb-row { gap: 6px; }
+  body.field.phone #fieldBottom .fl-btn { height: 36px; min-width: 36px; padding: 0 10px; font-size: 14px; border-radius: 18px; border: 1px solid #dadce0; box-shadow: none; }
+  body.field.phone #fieldBottom .fl-primary { border-color: #1a73e8; background: #1a73e8; }
+  body.field.phone .fl-date { height: 36px; font-size: 15px; font-weight: 500; border-radius: 18px; border: 1px solid #dadce0; background: #fff; }
+  body.field.phone #fieldSlider { height: 24px; accent-color: #1a73e8; }
+  /* Paneler och rutor: ark nerifrån med handtag. */
+  body.field.phone #fieldSheet, body.field.phone #fieldDay { top: 22% !important; left: 0; right: 0; bottom: 0; width: auto; border: none; border-radius: 18px 18px 0 0; box-shadow: 0 -2px 10px rgba(60,64,67,.25); z-index: 10; }
+  body.field.phone #fieldSheet .fs-head, body.field.phone #fieldDay .fs-head { padding-top: 18px; position: relative; border-bottom: none; }
+  body.field.phone #fieldSheet .fs-head::before, body.field.phone #fieldDay .fs-head::before { content: ""; position: absolute; top: 7px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: #dadce0; }
+  body.field.phone #sitePop { left: 6px !important; right: 6px; width: auto !important; border-radius: 16px; }
+  body.field.phone #fieldTools { top: calc(108px + env(safe-area-inset-top)) !important; max-width: calc(100% - 20px); border-radius: 18px; }
+  body.field.phone #northBadge { top: calc(112px + env(safe-area-inset-top)); bottom: auto; left: auto; right: 14px; width: 40px; height: 40px; }
+  body.field.phone #objMarkBar { bottom: 108px; max-width: calc(100% - 12px); }
+  body.field.phone #gpsToast { top: auto; bottom: 120px; font-size: 14px; border-radius: 8px; background: #323232; }
+  /* Liggande iPhone: smalare ark, datum och reglage på en rad. */
   @media (orientation: landscape) {
-    body.field.phone #fieldBottom { flex-direction: row; align-items: center; left: 6px; right: auto; width: min(640px, calc(100% - 12px)); }
+    #gmTop { right: auto; width: min(420px, 50%); }
+    #gmChips { top: calc(8px + env(safe-area-inset-top)); left: calc(min(420px, 50%) + 20px); }
+    body.field.phone #fieldBottom { flex-direction: row; align-items: center; left: 10px; right: auto; width: min(640px, calc(100% - 20px)); padding-top: 10px; }
+    body.field.phone #fieldBottom::before { display: none; }
     body.field.phone #fieldBottom .fb-row { flex: 0 0 auto; }
     body.field.phone .fl-date { width: 150px; flex: 0 0 150px; }
     body.field.phone #fieldSlider { flex: 1; }
-    body.field.phone #zoomCtl, body.field.phone #northBadge, body.field.phone #objMarkBar { bottom: 62px; }
-    body.field.phone #fieldSheet, body.field.phone #fieldDay { top: 6px; left: auto; width: min(420px, 60%); border-radius: 16px 0 0 16px; }
+    #gmFabs { bottom: 70px; }
+    body.field.phone #northBadge { top: 64px; }
+    body.field.phone #fieldSheet, body.field.phone #fieldDay { top: 6px !important; left: auto; width: min(420px, 60%); border-radius: 18px 0 0 18px; }
   }
-  body.field.phone #tip { bottom: 100px !important; font-size: 14px; }
+  body.field.phone #tip { bottom: 112px !important; font-size: 14px; border-radius: 12px; }
   body.field #tip { position: absolute; left: 50% !important; top: auto !important; bottom: 132px; transform: translateX(-50%); font-size: 15px; line-height: 1.45; padding: 12px 14px; max-width: min(520px, 92%); border-radius: 12px; z-index: 8; }
   #fieldSheet { position: absolute; top: 66px; right: 10px; bottom: 132px; width: min(400px, calc(100% - 20px)); z-index: 9; flex-direction: column; background: #fff; border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 10px 30px rgba(15,23,42,.25); overflow: hidden; }
   #fieldSheet .fs-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 17px; }
@@ -966,18 +987,17 @@
     </div>
     <div id="fieldTop" class="field-ui">
       <select id="fieldPlan" class="fl-sel" title="Plan"></select>
-      <div class="fv-wrap"><select id="fieldView" class="fl-sel" title="Sparad vy"></select></div>
-      <button type="button" id="btnFieldNote" class="fl-btn" title="Ny notering: tryck där pilen ska peka, sedan där texten ska stå">💬</button>
-      <button type="button" id="btnFieldSketch" class="fl-btn" title="Rita på frihand på ritningen">✏️</button>
-      <button type="button" id="btnFieldPhoto" class="fl-btn" title="Lägg till foto – placeras enligt GPS (fotots eller iPadens)">📷</button>
+      <div class="fv-wrap" id="fvWrap"><select id="fieldView" class="fl-sel" title="Sparad vy"></select></div>
+      <button type="button" id="btnFieldNote" class="fl-btn" title="Ny notering: tryck där pilen ska peka, sedan där texten ska stå">💬<span class="gm-txt"> Notering</span></button>
+      <button type="button" id="btnFieldSketch" class="fl-btn" title="Rita på frihand på ritningen">✏️<span class="gm-txt"> Rita</span></button>
+      <button type="button" id="btnFieldPhoto" class="fl-btn" title="Lägg till foto – placeras enligt GPS (fotots eller iPadens)">📷<span class="gm-txt"> Foto</span></button>
       <button type="button" id="btnFieldGps" class="fl-btn" title="Visa min position (GPS)">📍</button>
-      <button type="button" id="btnFieldUndo" class="fl-btn" title="Ångra" disabled>↶</button>
-      <button type="button" id="btnFieldRedo" class="fl-btn" title="Gör om" disabled>↷</button>
-      <button type="button" id="btnFieldView" class="fl-btn" title="Spara det som visas nu som en vy">💾</button>
+      <button type="button" id="btnFieldUndo" class="fl-btn" title="Ångra" disabled>↶<span class="gm-txt"> Ångra</span></button>
+      <button type="button" id="btnFieldRedo" class="fl-btn" title="Gör om" disabled>↷<span class="gm-txt"> Gör om</span></button>
+      <button type="button" id="btnFieldView" class="fl-btn" title="Spara det som visas nu som en vy">💾<span class="gm-txt"> Spara vy</span></button>
       <button type="button" id="btnFieldDay" class="fl-btn" title="Dagsplanering: lag, leveranser, lyft och krockar">👷<span class="fl-txt"> Dag</span></button>
       <button type="button" id="btnFieldLayers" class="fl-btn" title="Lager, ortofoto och DXF">🗂<span class="fl-txt"> Lager</span></button>
-      <button type="button" id="btnFieldMore" class="fl-btn" title="Fler verktyg">⋯</button>
-      <span class="fl-break" aria-hidden="true"></span>
+      
       <button type="button" id="btnFieldHide" class="fl-btn fl-ghost" title="Dölj alla knappar – bara planen syns">🙈 Dölj</button>
       <button type="button" id="btnFieldFull" class="fl-btn fl-ghost" title="Tillbaka till den fullständiga vyn med alla verktyg">☰ Fullständig</button>
     </div>
@@ -1105,26 +1125,26 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261003094607"></script>
-<script src="lagesplan-tools.js?v=20261003094607"></script>
-<script src="lagesplan-layers.js?v=20261003094607"></script>
-<script src="lagesplan-views.js?v=20261003094607"></script>
-<script src="lagesplan-film.js?v=20261003094607"></script>
-<script src="lagesplan-cad.js?v=20261003094607"></script>
-<script src="lagesplan-vecpdf.js?v=20261003094607"></script>
-<script src="lagesplan-print.js?v=20261003094607"></script>
-<script src="lagesplan-printlib.js?v=20261003094607"></script>
-<script src="lagesplan-pdflayers.js?v=20261003094607"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261003094607"></script>
-<script src="lagesplan-objmarks.js?v=20261003094607"></script>
-<script src="lagesplan-objlist.js?v=20261003094607"></script>
-<script src="lagesplan-zones.js?v=20261003094607"></script>
-<script src="lagesplan-wbs.js?v=20261003094607"></script>
-<script src="lagesplan-daily.js?v=20261003094607"></script>
-<script src="lagesplan-gps.js?v=20261003094607"></script>
-<script src="lagesplan-weather.js?v=20261003094607"></script>
-<script src="lagesplan-touch.js?v=20261003094607"></script>
-<script src="lagesplan-gpslive.js?v=20261003094607"></script>
-<script src="lagesplan-keys.js?v=20261003094607"></script>
+<script src="lagesplan.js?v=20261003095437"></script>
+<script src="lagesplan-tools.js?v=20261003095437"></script>
+<script src="lagesplan-layers.js?v=20261003095437"></script>
+<script src="lagesplan-views.js?v=20261003095437"></script>
+<script src="lagesplan-film.js?v=20261003095437"></script>
+<script src="lagesplan-cad.js?v=20261003095437"></script>
+<script src="lagesplan-vecpdf.js?v=20261003095437"></script>
+<script src="lagesplan-print.js?v=20261003095437"></script>
+<script src="lagesplan-printlib.js?v=20261003095437"></script>
+<script src="lagesplan-pdflayers.js?v=20261003095437"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261003095437"></script>
+<script src="lagesplan-objmarks.js?v=20261003095437"></script>
+<script src="lagesplan-objlist.js?v=20261003095437"></script>
+<script src="lagesplan-zones.js?v=20261003095437"></script>
+<script src="lagesplan-wbs.js?v=20261003095437"></script>
+<script src="lagesplan-daily.js?v=20261003095437"></script>
+<script src="lagesplan-gps.js?v=20261003095437"></script>
+<script src="lagesplan-weather.js?v=20261003095437"></script>
+<script src="lagesplan-touch.js?v=20261003095437"></script>
+<script src="lagesplan-gpslive.js?v=20261003095437"></script>
+<script src="lagesplan-keys.js?v=20261003095437"></script>
 </body>
 </html>

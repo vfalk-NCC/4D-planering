@@ -156,24 +156,45 @@ function setFieldMode(on, save = true) {
   setTimeout(() => { window.dispatchEvent(new Event("resize")); }, 50);
 }
 const fieldIsOn = () => document.body.classList.contains("field");
-/* iPhone (Victors önskemål 2026-10-03): liten skärm = kompakt fältläge med ⋯-meny. */
-function updatePhoneClass() {
+/* iPhone (Victors önskemål 2026-10-03): Google Maps-inspirerat fältläge.
+   På liten skärm flyttas knapparna till ett sökfält (planen), en rad med
+   svepbara chips och runda knappar till höger; på större skärm tillbaka. */
+const GM_CHIPS = ["btnFieldDay", "btnFieldLayers", "btnFieldNote", "btnFieldPhoto", "btnFieldSketch", "btnFieldUndo", "btnFieldRedo", "fvWrap", "btnFieldView", "btnFieldHide", "btnFieldFull"];
+const GM_FABS = ["btnFit", "btnFieldGps"];
+const gmHome = new Map(); // element -> platshållare där det låg
+function gmMove(el, parent) {
+  if (!el || el.parentNode === parent) return;
+  if (!gmHome.has(el)) { const ph = document.createComment("gm:" + (el.id || "")); el.parentNode.insertBefore(ph, el); gmHome.set(el, ph); }
+  parent.appendChild(el);
+}
+function gmRestore() {
+  gmHome.forEach((ph, el) => { if (ph.parentNode) ph.parentNode.insertBefore(el, ph); });
+}
+function updatePhoneLayout() {
   const phone = Math.min(window.innerWidth, window.innerHeight) < 600;
   document.body.classList.toggle("phone", phone);
-  if (!phone) document.body.classList.remove("field-more");
+  const top = $("gmTop"), chips = $("gmChips"), fabs = $("gmFabs");
+  if (!top) return;
+  if (phone) {
+    gmMove($("fieldPlan"), top.querySelector(".gm-plan"));
+    GM_CHIPS.forEach(id => gmMove($(id), chips));
+    GM_FABS.forEach(id => gmMove($(id), fabs));
+  } else gmRestore();
+  if (typeof updateGpsBtn === "function") updateGpsBtn();
 }
-window.addEventListener("resize", updatePhoneClass);
-window.addEventListener("orientationchange", () => setTimeout(updatePhoneClass, 200));
+window.addEventListener("resize", updatePhoneLayout);
+window.addEventListener("orientationchange", () => setTimeout(updatePhoneLayout, 200));
 document.addEventListener("DOMContentLoaded", () => {
-  updatePhoneClass();
-  const more = $("btnFieldMore");
-  if (!more) return;
-  more.onclick = () => document.body.classList.toggle("field-more");
-  // Ett val i ⋯-menyn stänger den.
-  $("fieldTop").addEventListener("click", e => {
-    const b = e.target.closest("button");
-    if (b && b.id !== "btnFieldMore" && document.body.classList.contains("field-more") && !["btnFieldGps", "btnFieldDay", "btnFieldLayers"].includes(b.id)) document.body.classList.remove("field-more");
-  });
+  if (!$("gmTop")) {
+    const host = $("fieldTop").parentNode;
+    const top = document.createElement("div"); top.id = "gmTop"; top.className = "field-ui";
+    top.innerHTML = `<span class="gm-pin">🗺</span><span class="gm-plan" style="display:contents"></span><button type="button" class="gm-icon" id="gmFull" title="Fullständig vy med alla verktyg">☰</button>`;
+    const chips = document.createElement("div"); chips.id = "gmChips"; chips.className = "field-ui";
+    const fabs = document.createElement("div"); fabs.id = "gmFabs"; fabs.className = "field-ui";
+    host.insertBefore(top, $("fieldTop")); host.insertBefore(chips, $("fieldTop")); host.insertBefore(fabs, $("fieldTop"));
+    $("gmFull").onclick = () => $("btnFieldFull").click();
+  }
+  updatePhoneLayout();
 });
 const fesc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const setVal = (id, v) => { const el = $(id); if (!el) return; el.value = v; el.dispatchEvent(new Event("change")); };
