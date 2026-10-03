@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261003165616"></script>
+<script src="github-storage.js?v=20261003170521"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -498,11 +498,15 @@
   body.field.phone #sitePop button { border-radius: 12px; }
   body.field.phone #sitePop button.primary { background: #0a84ff; border-color: #0a84ff; }
   /* Hjälpraden när ett verktyg är igång: en glaskapsel som övriga knappar. */
-  body.field.phone #fieldTools { position: fixed; top: calc(env(safe-area-inset-top) + 50px) !important; bottom: auto; max-width: calc(100% - 24px); gap: 8px; padding: 5px 5px 5px 14px; border: none; border-radius: 22px; z-index: 26; font-family: -apple-system, system-ui, sans-serif; }
+  body.field.phone #fieldTools { position: fixed; top: calc(env(safe-area-inset-top) + 50px) !important; bottom: auto; max-width: calc(100% - 24px); gap: 8px; padding: 5px 5px 5px 12px; align-items: center; flex-wrap: nowrap; border: none; border-radius: 22px; z-index: 26; font-family: -apple-system, system-ui, sans-serif; }
   body.field.phone #fieldTools .ft-hint { font-size: 14px; color: var(--ap-text); max-width: 230px; line-height: 1.25; }
   body.field.phone #fieldTools .fl-btn { height: 34px; min-width: 0; padding: 0 14px; border: none; border-radius: 17px; background: var(--ap-fill); box-shadow: none; color: var(--ap-text); font: 600 14px -apple-system, system-ui, sans-serif; }
   body.field.phone #fieldTools .fl-primary { background: var(--ap-blue); color: #fff; }
-  body.field.phone #fieldTools .ft-color { width: 28px; height: 28px; border-width: 2px; }
+  body.field.phone #fieldTools .ft-colors { display: flex; gap: 6px; }
+  body.field.phone #fieldTools .ft-color { width: 26px; height: 26px; border: 2px solid rgba(255,255,255,.9); box-shadow: 0 1px 3px rgba(0,0,0,.25); }
+  body.field.phone #fieldTools .ft-color.on { box-shadow: 0 0 0 2px var(--ap-blue), 0 1px 3px rgba(0,0,0,.25); transform: scale(1.12); }
+  body.field.phone #fieldTools .ft-ico { width: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+  body.field.phone #fieldTools .ft-ico svg { width: 20px; height: 20px; }
   body.field.phone #objMarkBar { border: none; padding: 5px 5px 5px 12px; color: var(--ap-text); }
   body.field.phone #objMarkBar button { height: 32px; border: none; border-radius: 16px; background: var(--ap-fill); color: var(--ap-text); box-shadow: none; font-size: 14px; }
   body.field.phone #objMarkBar { position: fixed; bottom: calc(var(--ap-bot) + var(--ap-sheet-h) + 70px); max-width: calc(100% - 28px); border-radius: 18px; z-index: 26; }
@@ -1336,26 +1340,26 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261003165616"></script>
-<script src="lagesplan-tools.js?v=20261003165616"></script>
-<script src="lagesplan-layers.js?v=20261003165616"></script>
-<script src="lagesplan-views.js?v=20261003165616"></script>
-<script src="lagesplan-film.js?v=20261003165616"></script>
-<script src="lagesplan-cad.js?v=20261003165616"></script>
-<script src="lagesplan-vecpdf.js?v=20261003165616"></script>
-<script src="lagesplan-print.js?v=20261003165616"></script>
-<script src="lagesplan-printlib.js?v=20261003165616"></script>
-<script src="lagesplan-pdflayers.js?v=20261003165616"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261003165616"></script>
-<script src="lagesplan-objmarks.js?v=20261003165616"></script>
-<script src="lagesplan-objlist.js?v=20261003165616"></script>
-<script src="lagesplan-zones.js?v=20261003165616"></script>
-<script src="lagesplan-wbs.js?v=20261003165616"></script>
-<script src="lagesplan-daily.js?v=20261003165616"></script>
-<script src="lagesplan-gps.js?v=20261003165616"></script>
-<script src="lagesplan-weather.js?v=20261003165616"></script>
-<script src="lagesplan-touch.js?v=20261003165616"></script>
-<script src="lagesplan-gpslive.js?v=20261003165616"></script>
-<script src="lagesplan-keys.js?v=20261003165616"></script>
+<script src="lagesplan.js?v=20261003170521"></script>
+<script src="lagesplan-tools.js?v=20261003170521"></script>
+<script src="lagesplan-layers.js?v=20261003170521"></script>
+<script src="lagesplan-views.js?v=20261003170521"></script>
+<script src="lagesplan-film.js?v=20261003170521"></script>
+<script src="lagesplan-cad.js?v=20261003170521"></script>
+<script src="lagesplan-vecpdf.js?v=20261003170521"></script>
+<script src="lagesplan-print.js?v=20261003170521"></script>
+<script src="lagesplan-printlib.js?v=20261003170521"></script>
+<script src="lagesplan-pdflayers.js?v=20261003170521"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261003170521"></script>
+<script src="lagesplan-objmarks.js?v=20261003170521"></script>
+<script src="lagesplan-objlist.js?v=20261003170521"></script>
+<script src="lagesplan-zones.js?v=20261003170521"></script>
+<script src="lagesplan-wbs.js?v=20261003170521"></script>
+<script src="lagesplan-daily.js?v=20261003170521"></script>
+<script src="lagesplan-gps.js?v=20261003170521"></script>
+<script src="lagesplan-weather.js?v=20261003170521"></script>
+<script src="lagesplan-touch.js?v=20261003170521"></script>
+<script src="lagesplan-gpslive.js?v=20261003170521"></script>
+<script src="lagesplan-keys.js?v=20261003170521"></script>
 </body>
 </html>

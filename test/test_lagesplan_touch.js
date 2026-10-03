@@ -325,6 +325,11 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   if (JSON.stringify(np.nav) !== '["Avbryt","Spara"]' || np.rows !== 5 || np.h > 420 || np.saveTop > 140 || np.help) fail('iPhone: noteringen som kompakt iOS-ark: ' + JSON.stringify(np));
   await ip.fill('#sitePop .sp-text', 'Testnotering'); await ip.click('#sitePop .sp-nav .sp-save'); await ip.waitForTimeout(200);
   if (!(await ip.evaluate(() => siteItems.some(x => x.type === 'note' && x.text === 'Testnotering')))) fail('iPhone: Spara i arkets överkant sparar noteringen');
+  // Rita: en kompakt glaskapsel på en rad – färgprickar, tjocklek, spara vy och Klar, ingen lång text.
+  await ip.evaluate(() => startSiteTool('sketch')); await ip.waitForTimeout(150);
+  const sk = await ip.evaluate(() => { const b = $('fieldTools'), r = b.getBoundingClientRect(); return { h: r.height, w: r.width, txt: b.textContent.replace(/\s+/g, ' ').trim(), colors: b.querySelectorAll('.ft-color').length, ico: b.querySelectorAll('.ft-ico svg').length }; });
+  if (sk.h > 50 || sk.w > 380 || sk.txt !== 'Klar' || sk.colors < 3 || sk.ico !== 2) fail('iPhone: ritmenyn som kompakt kapsel: ' + JSON.stringify(sk));
+  await ip.click('#fieldTools .ft-w'); await ip.click('#btnFieldToolDone'); await ip.waitForTimeout(100);
   // Liggande: kortet till vänster, kontrollerna kvar nere till höger.
   await ip.setViewportSize({ width: 844, height: 390 }); await ip.waitForTimeout(600);
   const ls = await ip.evaluate(() => ({ phone: document.body.classList.contains('phone'), sheet: $('apSheet').getBoundingClientRect().toJSON(), ctl: $('apCtl').getBoundingClientRect().toJSON() }));

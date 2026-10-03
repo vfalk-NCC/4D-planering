@@ -442,7 +442,16 @@ function renderFieldTools() {
     return;
   }
   const hint = ($("siteHint") && $("siteHint").textContent || "").replace(/ Håll Shift.*$/, "").replace(/ Esc avbryter\.?/, "");
-  bar.innerHTML = `<span class="ft-hint">${fesc(hint)}</span>
+  // iPhone: en kompakt glaskapsel – färgprickar och ikoner, ingen lång hjälptext.
+  if (document.body.classList.contains("phone")) {
+    const svg = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+    bar.innerHTML = kind === "sketch"
+      ? `<span class="ft-colors">${SKETCH_COLORS.map(c => `<button type="button" class="ft-color${c === sketchColor ? " on" : ""}" data-c="${c}" style="background:${c}" aria-label="Färg"></button>`).join("")}</span>
+        <button type="button" class="fl-btn ft-w ft-ico" data-w="${sketchWeight >= 1.8 ? 1 : 1.8}" title="${sketchWeight >= 1.8 ? "Tjock – tryck för tunn" : "Tunn – tryck för tjock"}">${svg(`<path d="M5 12h14" stroke-width="${sketchWeight >= 1.8 ? 5 : 2}"/>`)}</button>
+        <button type="button" class="fl-btn ft-ico" id="btnFieldSketchView" title="Spara det som visas som en vy">${svg('<path d="M7 3.5h10a1 1 0 0 1 1 1V21l-6-4-6 4V4.5a1 1 0 0 1 1-1z" stroke-width="1.9"/>')}</button>
+        <button type="button" class="fl-btn fl-primary" id="btnFieldToolDone">Klar</button>`
+      : `<span class="ft-hint">${fesc(hint.split(/(?<=\.)\s/)[0])}</span><button type="button" class="fl-btn fl-primary" id="btnFieldToolDone">Avbryt</button>`;
+  } else bar.innerHTML = `<span class="ft-hint">${fesc(hint)}</span>
     ${kind === "sketch" ? `<span class="ft-colors">${SKETCH_COLORS.map(c => `<button type="button" class="ft-color${c === sketchColor ? " on" : ""}" data-c="${c}" style="background:${c}" title="Färg"></button>`).join("")}</span>
       <button type="button" class="fl-btn ft-w" data-w="${sketchWeight >= 1.8 ? 1 : 1.8}" title="Tjocklek">${sketchWeight >= 1.8 ? "Tunn" : "Tjock"}</button>` : ""}
     ${kind === "sketch" ? `<button type="button" class="fl-btn" id="btnFieldSketchView" title="Spara det som visas nu (med det du ritat) som en vy">💾 Spara vy</button>` : ""}
