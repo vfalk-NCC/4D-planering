@@ -73,11 +73,12 @@ function updateGpsBtn() {
   b.classList.toggle("gps-follow", !!(gpsLive && gpsLive.follow));
   const acc = gpsLive && gpsLive.pos && gpsLive.pos.acc;
   if (document.body.classList.contains("phone")) {
-    // Som Google Maps: sikte-ikon (fylld när den följer), noggrannheten som en liten bricka.
-    const ring = gpsLive && gpsLive.follow ? `<circle cx="12" cy="12" r="4" fill="currentColor"/>` : `<circle cx="12" cy="12" r="3.2" fill="${gpsLive ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2"/>`;
-    b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7.5"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3"/>${ring}</svg>${gpsLive && gpsLive.pos ? `<span class="gm-acc-badge">±${acc ? Math.round(acc) : "?"} m</span>` : ""}`;
+    // Som i Apple Kartor: pil (fylld när den följer dig).
+    const fill = gpsLive && gpsLive.follow ? "currentColor" : "none";
+    b.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="${fill}" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 3.5 3.5 10.6l7.4 2.5 2.5 7.4 7.1-17z"/></svg>`;
   } else b.textContent = gpsLive ? (gpsLive.pos ? `📍 ±${acc ? Math.round(acc) : "?"} m` : "📍 …") : "📍";
   b.title = !gpsLive ? "Visa min position (GPS)" : gpsLive.follow ? "Följer din position – tryck för att stänga av" : "Tryck för att centrera på din position";
+  if (acc) b.title = `±${Math.round(acc)} m – ` + b.title;
 }
 function stopGpsLive(msg) {
   if (gpsLive && gpsLive.watch != null && navigator.geolocation) navigator.geolocation.clearWatch(gpsLive.watch);

@@ -156,43 +156,112 @@ function setFieldMode(on, save = true) {
   setTimeout(() => { window.dispatchEvent(new Event("resize")); }, 50);
 }
 const fieldIsOn = () => document.body.classList.contains("field");
-/* iPhone (Victors önskemål 2026-10-03): Google Maps-inspirerat fältläge.
-   På liten skärm flyttas knapparna till ett sökfält (planen), en rad med
-   svepbara chips och runda knappar till höger; på större skärm tillbaka. */
-const GM_CHIPS = ["btnFieldDay", "btnFieldLayers", "btnFieldNote", "btnFieldPhoto", "btnFieldSketch", "btnFieldUndo", "btnFieldRedo", "fvWrap", "btnFieldView", "btnFieldHide", "btnFieldFull"];
-const GM_FABS = ["btnFit", "btnFieldGps"];
+/* iPhone (Victors önskemål 2026-10-03): som en app från Apple (förebild Apple
+   Kartor). Kartan över hela skärmen; ett ark nertill med grepphandtag (planen
+   som sökfält, datum och tid, åtgärder som runda ikoner när arket dras upp);
+   lager och min position i en glasgrupp uppe till höger. Knapparna flyttas
+   hit på liten skärm och tillbaka på större. */
+const AP_SVG = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+const AP_ICONS = {
+  btnFieldDay: ["Dag", '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2c2.4-.3 4.4 1.2 5 4.8"/>'],
+  btnFieldLayers: ["Lager", '<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/>'],
+  btnFieldNote: ["Notering", '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-8z"/><path d="M8 8h8M8 11.5h5"/>'],
+  btnFieldPhoto: ["Foto", '<path d="M4 8.5A2 2 0 0 1 6 6.5h2l1.4-2h5.2l1.4 2h2a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8.5z"/><circle cx="12" cy="12.6" r="3.4"/>'],
+  btnFieldSketch: ["Rita", '<path d="M15.5 4.5 19.5 8.5 9 19H5v-4L15.5 4.5z"/><path d="m13.5 6.5 4 4"/>'],
+  btnFieldView: ["Spara vy", '<path d="M7 3.5h10a1 1 0 0 1 1 1V21l-6-4-6 4V4.5a1 1 0 0 1 1-1z"/>'],
+  btnFieldHide: ["Dölj", '<path d="M3 3l18 18"/><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6c5 0 8.5 4.3 9.5 6-.5.9-1.6 2.4-3.1 3.7M6.6 7.6C4.6 9 3.2 10.9 2.5 12c1 1.7 4.5 6 9.5 6 1.6 0 3-.4 4.3-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'],
+  btnFieldPrevW: ["", '<path d="m15 5-7 7 7 7"/>'],
+  btnFieldNextW: ["", '<path d="m9 5 7 7-7 7"/>'],
+  btnFit: ["", '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'],
+  btnFieldUndo: ["", '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>'],
+  btnFieldRedo: ["", '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>'],
+};
+const AP_TILES = ["btnFieldDay", "btnFieldLayers", "btnFieldNote", "btnFieldPhoto", "btnFieldSketch", "btnFieldView", "btnFieldHide"];
 const gmHome = new Map(); // element -> platshållare där det låg
 function gmMove(el, parent) {
-  if (!el || el.parentNode === parent) return;
-  if (!gmHome.has(el)) { const ph = document.createComment("gm:" + (el.id || "")); el.parentNode.insertBefore(ph, el); gmHome.set(el, ph); }
+  if (!el || !parent || el.parentNode === parent) return;
+  if (!gmHome.has(el)) { const ph = document.createComment("ap:" + (el.id || "")); el.parentNode.insertBefore(ph, el); gmHome.set(el, ph); }
   parent.appendChild(el);
 }
-function gmRestore() {
-  gmHome.forEach((ph, el) => { if (ph.parentNode) ph.parentNode.insertBefore(el, ph); });
+function apDecorate(el, on) {
+  if (!el) return;
+  el.querySelectorAll(":scope > .ap-ic, :scope > .ap-lb").forEach(x => x.remove());
+  if (!on) { el.classList.remove("ap-tile"); return; }
+  const [lb, path] = AP_ICONS[el.id] || ["", ""];
+  const ic = document.createElement("span"); ic.className = "ap-ic"; ic.innerHTML = AP_SVG(path); el.appendChild(ic);
+  if (AP_TILES.includes(el.id)) { el.classList.add("ap-tile"); const l = document.createElement("span"); l.className = "ap-lb"; l.textContent = lb; el.appendChild(l); }
 }
 function updatePhoneLayout() {
   const phone = Math.min(window.innerWidth, window.innerHeight) < 600;
   document.body.classList.toggle("phone", phone);
-  const top = $("gmTop"), chips = $("gmChips"), fabs = $("gmFabs");
-  if (!top) return;
+  const sheet = $("apSheet");
+  if (!sheet) return;
+  const q = c => sheet.querySelector(c);
   if (phone) {
-    gmMove($("fieldPlan"), top.querySelector(".gm-plan"));
-    GM_CHIPS.forEach(id => gmMove($(id), chips));
-    GM_FABS.forEach(id => gmMove($(id), fabs));
-  } else gmRestore();
+    gmMove($("fieldPlan"), q(".ap-search"));
+    ["btnFieldPrevW", "fieldDateLabel", "btnFieldNextW", "btnFieldToday"].forEach(id => gmMove($(id), q(".ap-date")));
+    gmMove($("fieldSlider"), q(".ap-slider"));
+    AP_TILES.forEach(id => gmMove($(id), q(".ap-tiles")));
+    gmMove($("fvWrap"), q(".ap-views"));
+    gmMove($("btnFieldGps"), $("apCtl"));
+    gmMove($("btnFit"), $("apFit"));
+    gmMove($("btnFieldUndo"), $("apUndo")); gmMove($("btnFieldRedo"), $("apUndo"));
+    Object.keys(AP_ICONS).forEach(id => apDecorate($(id), true));
+  } else {
+    gmHome.forEach((ph, el) => { if (ph.parentNode) ph.parentNode.insertBefore(el, ph); });
+    Object.keys(AP_ICONS).forEach(id => apDecorate($(id), false));
+    sheet.classList.remove("open");
+  }
+  apSliderFill();
   if (typeof updateGpsBtn === "function") updateGpsBtn();
 }
+function apSliderFill() {
+  const sl = $("fieldSlider");
+  if (!sl) return;
+  const pct = ((Number(sl.value) - Number(sl.min || 0)) / ((Number(sl.max || 100) - Number(sl.min || 0)) || 1)) * 100;
+  sl.style.setProperty("--ap-pct", pct + "%");
+}
+function apSheetOpen(on) { const s = $("apSheet"); if (s) s.classList.toggle("open", on); }
 window.addEventListener("resize", updatePhoneLayout);
 window.addEventListener("orientationchange", () => setTimeout(updatePhoneLayout, 200));
 document.addEventListener("DOMContentLoaded", () => {
-  if (!$("gmTop")) {
+  if (!$("apSheet")) {
     const host = $("fieldTop").parentNode;
-    const top = document.createElement("div"); top.id = "gmTop"; top.className = "field-ui";
-    top.innerHTML = `<span class="gm-pin">🗺</span><span class="gm-plan" style="display:contents"></span><button type="button" class="gm-icon" id="gmFull" title="Fullständig vy med alla verktyg">☰</button>`;
-    const chips = document.createElement("div"); chips.id = "gmChips"; chips.className = "field-ui";
-    const fabs = document.createElement("div"); fabs.id = "gmFabs"; fabs.className = "field-ui";
-    host.insertBefore(top, $("fieldTop")); host.insertBefore(chips, $("fieldTop")); host.insertBefore(fabs, $("fieldTop"));
-    $("gmFull").onclick = () => $("btnFieldFull").click();
+    const sheet = document.createElement("div"); sheet.id = "apSheet"; sheet.className = "field-ui ap-glass";
+    sheet.innerHTML = `<div class="ap-grabzone"></div><div class="ap-grab"></div>
+      <div class="ap-row"><label class="ap-search">${AP_SVG('<path d="M9 4 3.5 6v14L9 18l6 2 5.5-2V4L15 6 9 4z"/><path d="M9 4v14M15 6v14"/>').replace('<svg', '<svg width="18" height="18"')}</label>
+        <button type="button" class="ap-avatar" id="apFull" title="Fullständig vy med alla verktyg">${AP_SVG('<rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/>').replace('<svg', '<svg width="20" height="20"')}</button></div>
+      <div class="ap-row ap-date"></div><div class="ap-slider"></div>
+      <div class="ap-more"><div class="ap-sec">Verktyg</div><div class="ap-tiles"></div><div class="ap-row ap-views"></div></div>`;
+    const ctl = document.createElement("div"); ctl.id = "apCtl"; ctl.className = "field-ui ap-glass";
+    ctl.innerHTML = `<button type="button" id="apLayers" title="Lager, ortofoto och DXF">${AP_SVG(AP_ICONS.btnFieldLayers[1])}</button>`;
+    const fit = document.createElement("div"); fit.id = "apFit"; fit.className = "field-ui ap-glass";
+    const und = document.createElement("div"); und.id = "apUndo"; und.className = "field-ui ap-glass";
+    [ctl, fit, und, sheet].forEach(el => host.insertBefore(el, $("fieldTop")));
+    $("apFull").onclick = () => $("btnFieldFull").click();
+    $("apLayers").onclick = () => $("btnFieldLayers").click();
+    // Arket: tryck på handtaget eller dra upp/ner.
+    let drag = null;
+    sheet.addEventListener("pointerdown", e => {
+      if (e.target.closest("button, select, input, label.ap-search")) return;
+      drag = { y: e.clientY, dy: 0 }; sheet.style.transition = "none";
+    });
+    window.addEventListener("pointermove", e => {
+      if (!drag) return;
+      drag.dy = e.clientY - drag.y;
+      const open = sheet.classList.contains("open"), lim = open ? Math.max(0, drag.dy) : Math.min(0, drag.dy) * .25;
+      sheet.style.transform = `translateY(${lim}px)`;
+    });
+    window.addEventListener("pointerup", () => {
+      if (!drag) return;
+      const { dy } = drag; drag = null;
+      sheet.style.transition = ""; sheet.style.transform = "";
+      if (Math.abs(dy) < 6) apSheetOpen(!sheet.classList.contains("open"));
+      else if (dy < -20) apSheetOpen(true); else if (dy > 20) apSheetOpen(false);
+    });
+    // Ett val i arket fäller ihop det, så kartan syns.
+    sheet.querySelector(".ap-tiles").addEventListener("click", () => setTimeout(() => apSheetOpen(false), 120));
+    setInterval(() => { if (document.body.classList.contains("phone")) apSliderFill(); }, 400);
   }
   updatePhoneLayout();
 });

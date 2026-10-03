@@ -231,42 +231,47 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   if (!(await page.isVisible('#fieldTop'))) fail('📱 ska slå på fältläget igen');
   console.log('OK: växla mellan fältläge och fullständig vy, valet kommer ihåg');
 
-  // iPhone: Google Maps-inspirerat – sökfält med planen, svepbara chips, runda knappar, ark längst ner.
+  // iPhone: som en app från Apple (förebild Apple Kartor).
   const ph = await browser.newContext({ viewport: { width: 390, height: 664 }, hasTouch: true, isMobile: true });
   const P = await setup(ph);
   const ip = P.page;
   if (!(await ip.evaluate(() => document.body.classList.contains('field') && document.body.classList.contains('phone')))) fail('iPhone: fältläge i telefonformat');
   const lay = await ip.evaluate(() => ({
-    plan: $('fieldPlan').parentNode.closest('#gmTop') !== null,
-    chips: [...$('gmChips').children].filter(e => getComputedStyle(e).display !== 'none').map(e => e.id),
-    fabs: [...$('gmFabs').children].map(e => e.id),
-    topHidden: getComputedStyle($('fieldTop')).display === 'none',
-    zoomHidden: getComputedStyle($('zoomCtl')).display === 'none',
+    plan: !!$('fieldPlan').closest('#apSheet .ap-search'),
+    date: ['btnFieldPrevW', 'fieldDateLabel', 'btnFieldNextW', 'btnFieldToday'].every(id => $(id).closest('#apSheet')),
+    tiles: [...document.querySelectorAll('#apSheet .ap-tiles .ap-tile')].map(e => [e.id, e.querySelector('.ap-lb').textContent, !!e.querySelector('.ap-ic svg')]),
+    ctl: [...$('apCtl').children].map(e => e.id),
+    hidden: ['fieldTop', 'zoomCtl', 'fieldBottom'].every(id => getComputedStyle($(id)).display === 'none'),
+    font: getComputedStyle(document.body).fontFamily,
+    meta: !!document.querySelector('meta[name="apple-mobile-web-app-capable"]') && /viewport-fit=cover/.test(document.querySelector('meta[name=viewport]').content),
   }));
-  if (!lay.plan || !lay.topHidden || !lay.zoomHidden) fail('iPhone: planen i sökfältet, gamla toppraden och +/− dolda: ' + JSON.stringify(lay));
-  for (const id of ['btnFieldDay', 'btnFieldLayers', 'btnFieldNote', 'btnFieldPhoto', 'btnFieldSketch', 'btnFieldHide', 'btnFieldFull']) if (!lay.chips.includes(id)) fail('iPhone: chip saknas: ' + id + ' ' + JSON.stringify(lay.chips));
-  if (lay.chips.includes('btnFieldUndo')) fail('iPhone: Ångra visas bara när det finns något att ångra');
-  if (JSON.stringify(lay.fabs) !== JSON.stringify(['btnFit', 'btnFieldGps'])) fail('iPhone: Anpassa och min position som runda knappar: ' + JSON.stringify(lay.fabs));
-  const gb = await ip.locator('#btnFieldGps').boundingBox();
-  if (Math.abs(gb.width - 56) > 1 || gb.x + gb.width > 390) fail('iPhone: positionsknappen rund till höger: ' + JSON.stringify(gb));
-  if (!(await ip.locator('#btnFieldGps svg').count())) fail('iPhone: positionsknappen med sikte-ikon');
-  const bot = await ip.locator('#fieldBottom').boundingBox();
-  if (bot.x > 0.5 || Math.abs(bot.y + bot.height - 664) > 1) fail('iPhone: datumarket längst ner över hela bredden: ' + JSON.stringify(bot));
-  // Chips fungerar som knapparna: Dölj gömmer allt, 👁 tar tillbaka.
-  await ip.click('#btnFieldHide'); await ip.waitForTimeout(100);
-  if (await ip.isVisible('#gmTop')) fail('iPhone: Dölj ska gömma sökfältet');
-  await ip.click('#btnFieldShow'); await ip.waitForTimeout(100);
-  await ip.click('#btnFieldDay'); await ip.waitForTimeout(200);
+  if (!lay.plan || !lay.date || !lay.hidden) fail('iPhone: planen som sökfält och datum i arket, gamla rader dolda: ' + JSON.stringify(lay));
+  if (JSON.stringify(lay.tiles.map(t => t[1])) !== JSON.stringify(['Dag', 'Lager', 'Notering', 'Foto', 'Rita', 'Spara vy', 'Dölj']) || !lay.tiles.every(t => t[2])) fail('iPhone: åtgärderna som runda ikoner med etikett: ' + JSON.stringify(lay.tiles));
+  if (JSON.stringify(lay.ctl) !== JSON.stringify(['apLayers', 'btnFieldGps'])) fail('iPhone: lager och min position uppe till höger: ' + JSON.stringify(lay.ctl));
+  if (!/-apple-system/.test(lay.font) || !lay.meta) fail('iPhone: iOS-typsnitt, helskärm från hemskärmen: ' + JSON.stringify(lay));
+  const sh = await ip.locator('#apSheet').boundingBox();
+  if (sh.x > 0.5 || Math.abs(sh.y + sh.height - 664) > 1 || sh.height > 200) fail('iPhone: arket ihopfällt längst ner: ' + JSON.stringify(sh));
+  if ((await ip.evaluate(() => document.querySelector('#apSheet .ap-more').getBoundingClientRect().height)) > 2) fail('iPhone: åtgärderna syns först när arket dras upp');
+  // Dra upp arket: åtgärderna syns.
+  const gy = sh.y + 8;
+  await ip.mouse.move(195, gy); await ip.mouse.down(); await ip.mouse.move(195, gy - 120, { steps: 6 }); await ip.mouse.up(); await ip.waitForTimeout(450);
+  if (!(await ip.evaluate(() => $('apSheet').classList.contains('open') && document.querySelector('#apSheet .ap-more').getBoundingClientRect().height > 150))) fail('iPhone: arket ska kunna dras upp');
+  await ip.click('#btnFieldDay'); await ip.waitForTimeout(400);
+  if (await ip.evaluate(() => $('apSheet').classList.contains('open'))) fail('iPhone: ett val fäller ihop arket');
   const day = await ip.locator('#fieldDay').boundingBox();
-  if (day.x > 1 || day.width < 388 || day.y < 100) fail('iPhone: dagsplaneringen som ark nerifrån (kartan syns överst): ' + JSON.stringify(day));
-  await ip.click('#fieldDay .fs-head button');
-  // Byte till större skärm: knapparna tillbaka på sina platser.
+  if (day.x > 1 || day.width < 388) fail('iPhone: dagsplaneringen som iOS-ark: ' + JSON.stringify(day));
+  await ip.click('#fieldDay .fs-head button'); await ip.waitForTimeout(100);
+  await ip.click('#apLayers'); await ip.waitForTimeout(200);
+  if (!(await ip.isVisible('#fieldSheet'))) fail('iPhone: lagerknappen uppe till höger öppnar lagren');
+  await ip.click('#fieldSheet .fs-head button');
+  // Större skärm: allt tillbaka på sina platser.
   await ip.setViewportSize({ width: 1024, height: 768 }); await ip.waitForTimeout(150);
-  if (await ip.evaluate(() => document.body.classList.contains('phone') || $('btnFieldDay').parentNode.id !== 'fieldTop' || $('btnFit').parentNode.id !== 'zoomCtl')) fail('Större skärm: knapparna tillbaka');
+  const back = await ip.evaluate(() => ({ phone: document.body.classList.contains('phone'), day: $('btnFieldDay').parentNode.id, fit: $('btnFit').parentNode.id, date: $('fieldDateLabel').closest('#fieldBottom') !== null, ic: document.querySelectorAll('#btnFieldDay .ap-ic').length, txt: $('btnFieldDay').textContent.trim() }));
+  if (back.phone || back.day !== 'fieldTop' || back.fit !== 'zoomCtl' || !back.date || back.ic || back.txt !== '👷 Dag') fail('Större skärm: knapparna tillbaka som förut: ' + JSON.stringify(back));
   // iPad påverkas inte.
   if (await page.evaluate(() => document.body.classList.contains('phone'))) fail('iPad ska inte få telefonformatet');
   if (P.errors.length) fail('Sidfel (iPhone): ' + P.errors.join(' | '));
-  console.log('OK: iPhone – Google Maps-stil: sökfält, chips, runda knappar, ark längst ner; tillbaka på stor skärm');
+  console.log('OK: iPhone – som en Apple-app: ark med handtag, runda ikoner, glaskontroller, iOS-ark; tillbaka på stor skärm');
 
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();
