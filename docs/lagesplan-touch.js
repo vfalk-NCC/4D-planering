@@ -209,7 +209,7 @@ const apHeights = () => {
   let want = vh * .5;
   const sh = $("apSheet"), tools = sh && sh.querySelector(".ap-tools"), body = sh && sh.querySelector(".ap-body");
   if (tools && body && tools.offsetHeight) want = tools.getBoundingClientRect().bottom - sh.getBoundingClientRect().top + body.scrollTop + 12;
-  return [76, Math.round(Math.min(Math.max(want, 180), vh - 140)), Math.round(vh - 70)];
+  return [60, Math.round(Math.min(Math.max(want, 160), vh - 140)), Math.round(vh - 70)];
 };
 function apSetHeight(h) { document.body.style.setProperty("--ap-sheet-h", Math.round(h) + "px"); }
 function apSetDetent(n, anim = true) {
