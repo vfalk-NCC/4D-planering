@@ -382,7 +382,7 @@ function updatePinsBtn() {
   const b = $("btnFieldPins"), on = !!($("showPhotos") && $("showPhotos").checked);
   if (!b) return;
   b.classList.toggle("on", on); b.classList.toggle("pins-off", !on);
-  b.title = on ? "Dölj fotonålarna på planen" : "Visa fotonålarna på planen";
+  b.title = on ? "Dölj fotonålarna på planen" : "Visa alla fotonålar (nollställer zonfilter och släckta dagar)";
   b.setAttribute("aria-pressed", String(on));
 }
 function renderField() {
@@ -680,7 +680,12 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btnFieldSketch").onclick = () => { closeFieldSheet(); startSiteTool("sketch"); };
   // 📍 Fotonålar: tänder/släcker fotona på planen (samma som Foton i lagren).
   $("showPhotos").addEventListener("change", updatePinsBtn);
-  $("btnFieldPins").onclick = () => { const c = fieldRowToggle("photos"); if (c) c.click(); else { const s = $("showPhotos"); s.checked = !s.checked; s.dispatchEvent(new Event("change")); } setTimeout(updatePinsBtn, 30); };
+  // På: nollställer allt för fotona (zonfilter, släckta dagar) så att alla nålar syns. Av: släcker nålarna.
+  $("btnFieldPins").onclick = () => {
+    if ($("showPhotos").checked) { const c = fieldRowToggle("photos"); if (c) c.click(); else { $("showPhotos").checked = false; $("showPhotos").dispatchEvent(new Event("change")); } }
+    else resetPhotoFilters();
+    setTimeout(() => { updatePinsBtn(); if (!$("fieldSheet").classList.contains("hidden")) renderFieldSheet(); }, 30);
+  };
   $("btnFieldPhoto").onclick = () => { closeFieldSheet(); if (typeof stopSiteTool === "function" && siteTool) stopSiteTool(); startGpsPhoto(); };
   $("btnFieldView").onclick = () => openFieldSaveView();
   $("btnFieldUndo").onclick = fieldUndo;

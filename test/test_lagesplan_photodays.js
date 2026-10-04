@@ -82,6 +82,13 @@ const PORT = 8998;
   await ph.page.selectOption('#fieldSheetBody [data-fpsel]', 'z1'); await ph.page.waitForTimeout(150);
   const pz = await ph.page.evaluate(() => ({ ids: visiblePhotos().map(p => p.id), sel: document.querySelector('#fieldSheetBody [data-fpsel]').value, on: document.querySelector('#fieldSheetBody .fp-zone').classList.contains('on') }));
   if (JSON.stringify(pz) !== JSON.stringify({ ids: ['a', 'b'], sel: 'z1', on: true })) fail('iPhone: zonfiltret i lagerträdet: ' + JSON.stringify(pz));
+  // Fotonålar av och på: nollställer allt så att alla nålar syns.
+  await ph.page.evaluate(() => { layerState['phday:2026-10-04'] = true; saveLayerState(); });
+  await ph.page.evaluate(() => $('btnFieldPins').click()); await ph.page.waitForTimeout(80);
+  if (await ph.page.evaluate(() => $('showPhotos').checked)) fail('iPhone: Fotonålar av släcker nålarna');
+  await ph.page.evaluate(() => $('btnFieldPins').click()); await ph.page.waitForTimeout(80);
+  const rs = await ph.page.evaluate(() => ({ show: $('showPhotos').checked, zone: photoZoneId(), n: visiblePhotos().length, all: photos().length, days: Object.keys(layerState).filter(k => k.startsWith('phday:')).length }));
+  if (!rs.show || rs.zone || rs.n !== rs.all || rs.days) fail('iPhone: Fotonålar på ska visa alla foton (nollställt): ' + JSON.stringify(rs));
   if (ph.errors.length) fail('Sidfel (iPhone): ' + ph.errors.join(' | '));
   await browser.close(); server.close();
   console.log('OK: fotona i datummappar och zonfilter i lagerträdet på iPhone');

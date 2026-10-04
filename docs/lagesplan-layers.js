@@ -2169,6 +2169,13 @@ function setPhotoZone(id) {
   saveLayerState(); renderZones(); renderLayerPanel();
 }
 function visiblePhotos() { return zonePhotos().filter(ph => !photoDayHidden(photoDayKey(ph))); }
+/* Visa alla fotonålar igen: inget zonfilter, alla datummappar tända och Foton på. */
+function resetPhotoFilters() {
+  layerState.phzone = "";
+  Object.keys(layerState).forEach(k => { if (k.startsWith("phday:")) delete layerState[k]; });
+  ls("photos").visible = true; if ($("showPhotos")) $("showPhotos").checked = true;
+  saveLayerState(); renderZones(); renderLayerPanel();
+}
 function photoDayLabel(d) {
   if (!d) return "Utan datum";
   const t = new Date(d + "T12:00:00");
