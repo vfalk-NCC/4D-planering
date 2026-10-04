@@ -528,8 +528,11 @@ function fpTree() {
       (folder ? folder.kids : out).push(last); return;
     }
     if (!last) return;
+    // Fotonas datummappar: en egen nivå under Foton med fotona i.
+    if (r.classList.contains("photo-day-row")) { const v = r.querySelector(".pd-vis"); last.kids.push({ id: last.id + "|d:" + r.dataset.phday, label: clean(ln), count: count(ln), on: v.checked, el: v, kids: [] }); return; }
+    const host = r.classList.contains("photo-in-day") && last.kids.length && last.kids[last.kids.length - 1].kids ? last.kids[last.kids.length - 1] : last;
     const cb = r.querySelector(".zl-vis, .lr-vis"), eye = r.querySelector(".oi-eye");
-    last.kids.push({ id: last.id + "|" + (r.dataset.zone || r.dataset.item || r.dataset.layer || last.kids.length), label: clean(ln), on: cb ? cb.checked : eye ? !r.classList.contains("off") : null, el: cb || eye, show: ln });
+    host.kids.push({ id: host.id + "|" + (r.dataset.zone || r.dataset.item || r.dataset.layer || host.kids.length), label: clean(ln), on: cb ? cb.checked : eye ? !r.classList.contains("off") : null, el: cb || eye, show: ln });
   });
   // Ortofoton som en egen gren (Victors önskemål 2026-10-04): fäll ut för att tända och släcka varje foto.
   if (orthoKids.length) {

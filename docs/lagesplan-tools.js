@@ -229,7 +229,7 @@ function photoAt(pdfPt) {
   if (!$("showPhotos").checked || !viewport) return null;
   const [px, py] = stageToScreen(toPx(pdfPt));
   let best = null, bd = Infinity;
-  photos().forEach(ph => {
+  visiblePhotos().forEach(ph => {
     const [tx, ty] = photoScreenPt(ph), hx = tx, hy = ty - (PIN_H - PIN_R);
     // Träffyta: huvudet (lite generöst för fingrar) och spetsen.
     const d = Math.min(Math.hypot(px - hx, py - hy) - PIN_R - 6, Math.hypot(px - tx, py - (ty - PIN_H / 3)) - 8);
@@ -270,7 +270,7 @@ function renderScreenPins() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const at = $("dateInput").value || todayIso();
   // Söderut sist, så nålar som ligger nära varandra överlappar snyggt.
-  photos().map(ph => ({ ph, p: photoScreenPt(ph) })).filter(o => o.p[0] > -40 && o.p[1] > -10 && o.p[0] < w + 40 && o.p[1] < h + 40)
+  visiblePhotos().map(ph => ({ ph, p: photoScreenPt(ph) })).filter(o => o.p[0] > -40 && o.p[1] > -10 && o.p[0] < w + 40 && o.p[1] < h + 40)
     .sort((a, b) => a.p[1] - b.p[1])
     .forEach(({ ph, p }) => drawPhotoPin(ctx, p[0], p[1], ph.gps ? "#2563eb" : "#e11d48", ph.date && ph.date > at)); // tagna efter valt datum: nedtonade
 }

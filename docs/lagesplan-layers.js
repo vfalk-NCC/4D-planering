@@ -2077,6 +2077,11 @@ function siteItemRowsHtml(layer, opts = {}) {
   }).join("");
 }
 function bindSiteItemRows(el) {
+  el.querySelectorAll(".photo-day-row").forEach(row => {
+    const d = row.dataset.phday;
+    row.querySelector(".pd-vis").onchange = e => { layerState["phday:" + d] = !e.target.checked; saveLayerState(); renderZones(); renderLayerPanel(); };
+    row.querySelector(".pd-toggle").onclick = e => { e.stopPropagation(); const k = "phdayopen:" + d; layerState[k] = layerState[k] !== true; saveLayerState(); renderLayerPanel(); };
+  });
   el.querySelectorAll(".ul-toggle").forEach(b => b.onclick = e => {
     e.stopPropagation();
     const k = "ulopen:" + b.dataset.ul;
@@ -2129,13 +2134,33 @@ function bindSiteItemRows(el) {
     };
   });
 }
+/* Fotona sorteras in i en mapp per datum (Victors önskemål 2026-10-04), senaste först. Varje
+   datummapp fälls ut och tänds/släcks för sig (dagens foton visas/döljs på planen). */
+const photoDayKey = ph => ph.date || "";
+const photoDayHidden = d => layerState["phday:" + d] === true;
+function visiblePhotos() { return (typeof photos === "function" ? photos() : []).filter(ph => !photoDayHidden(photoDayKey(ph))); }
+function photoDayLabel(d) {
+  if (!d) return "Utan datum";
+  const t = new Date(d + "T12:00:00");
+  return isNaN(t) ? d : t.toLocaleDateString("sv-SE", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+}
 function photoRowsHtml(opts = {}) {
   const list = (typeof photos === "function" ? photos() : []).slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(a.caption || "").localeCompare(String(b.caption || ""), "sv"));
-  return list.map(ph => `<div class="layer-row sub site-item-row photo-item-row${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}${itemSel.has("p:" + ph.id) ? " sel" : ""}" data-item="p:${escHtml(ph.id)}">
+  const days = [];
+  list.forEach(ph => { const d = photoDayKey(ph); let g = days.find(x => x.d === d); if (!g) days.push(g = { d, list: [] }); g.list.push(ph); });
+  days.sort((a, b) => (!a.d) - (!b.d) || b.d.localeCompare(a.d)); // "Utan datum" sist
+  const inF = opts.inFolder ? " in-folder" : "";
+  return days.map(g => {
+    const open = layerState["phdayopen:" + g.d] === true, off = photoDayHidden(g.d);
+    return `<div class="layer-row sub photo-day-row${inF}${opts.hidden ? " hidden" : ""}${off ? " off" : ""}" data-phday="${escHtml(g.d)}">
+      <input type="checkbox" class="pd-vis"${off ? "" : " checked"} title="${off ? "Visa" : "Dölj"} fotona från ${escHtml(photoDayLabel(g.d))}" />
+      <span class="ln"><button class="pd-toggle" title="Visa fotona">${open ? "▾" : "▸"}</button>📅 ${escHtml(photoDayLabel(g.d))} <small>${g.list.length}</small></span>
+    </div>` + g.list.map(ph => `<div class="layer-row sub site-item-row photo-item-row photo-in-day${inF}${opts.hidden || !open ? " hidden" : ""}${itemSel.has("p:" + ph.id) ? " sel" : ""}" data-item="p:${escHtml(ph.id)}">
       <span class="si-ico">${ph.gps ? "📍" : "📷"}</span>
-      <span class="ln" title="Klicka för att visa fotot på planen, dubbelklicka för att byta namn">${escHtml(ph.caption || "Foto")} <small>${escHtml(ph.date || "")}${ph.by ? " · " + escHtml(ph.by) : ""}</small></span>
+      <span class="ln" title="Klicka för att visa fotot på planen, dubbelklicka för att byta namn">${escHtml(ph.caption || "Foto")} <small>${ph.by ? escHtml(ph.by) : ""}</small></span>
       <button class="si-del" title="Ta bort fotot">🗑️</button>
     </div>`).join("");
+  }).join("");
 }
 function showPhotoItem(ph) {
   if (!viewport) return;
