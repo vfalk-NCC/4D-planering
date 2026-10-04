@@ -356,6 +356,7 @@ async function openPhoto(ph) {
   openPhotoId = ph.id;
   $("pmImg").removeAttribute("src");
   showPhotoMeta(ph);
+  photoFull(false);
   $("photoModal").classList.remove("hidden");
   try {
     if (!photoUrlCache.has(ph.id)) photoUrlCache.set(ph.id, await ghReadBinaryUrl(token, ph.path));
@@ -395,7 +396,72 @@ function editOpenPhoto() {
 function showPhotoMeta(ph) {
   $("pmMeta").innerHTML = `<b>${escHtml(ph.caption || "Foto")}</b> · ${escHtml(ph.date || "")}${ph.by ? ` · ${escHtml(ph.by)}` : ""}${ph.gps ? ` · 📍 GPS${ph.gps.acc ? ` ±${ph.gps.acc} m` : ""}` : ""}`;
 }
-function closePhoto() { openPhotoId = null; $("photoModal").classList.add("hidden"); }
+function closePhoto() { openPhotoId = null; photoFull(false); $("photoModal").classList.add("hidden"); }
+/* Helskärm (Victors önskemål 2026-10-04): tryck på fotot så fyller det skärmen mot svart bakgrund.
+   Som i Bilder: nyp för att zooma, dra för att flytta när det är inzoomat, dubbeltryck zoomar
+   in/ut, ett tryck (ej inzoomat) eller Esc går tillbaka. */
+const pmZ = { s: 1, x: 0, y: 0 };
+function pmApply(anim) {
+  const img = $("pmImg");
+  img.style.transition = anim ? "transform .25s cubic-bezier(.32,.72,0,1)" : "none";
+  img.style.transform = pmZ.s === 1 ? "" : `translate(${pmZ.x}px, ${pmZ.y}px) scale(${pmZ.s})`;
+}
+function photoFull(on) {
+  const m = $("photoModal");
+  if (!m) return;
+  m.classList.toggle("pm-full", !!on);
+  Object.assign(pmZ, { s: 1, x: 0, y: 0 }); pmApply(false);
+}
+function bindPhotoFull() {
+  const img = $("pmImg"), m = $("photoModal");
+  img.title = "Tryck för helskärm";
+  const pts = new Map();
+  let g = null, lastTap = 0, tapTimer = 0;
+  const zoomAt = (cx, cy, ns) => {
+    // Håll punkten under fingret still: (cx, cy) relativt bildens mitt.
+    const r = m.getBoundingClientRect(), px = cx - r.left - r.width / 2, py = cy - r.top - r.height / 2;
+    pmZ.x = px - (px - pmZ.x) * ns / pmZ.s; pmZ.y = py - (py - pmZ.y) * ns / pmZ.s; pmZ.s = ns;
+    if (ns <= 1) Object.assign(pmZ, { s: 1, x: 0, y: 0 });
+  };
+  img.addEventListener("pointerdown", e => {
+    if (!m.classList.contains("pm-full")) return;
+    e.preventDefault(); img.setPointerCapture && img.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, [e.clientX, e.clientY]);
+    const p = [...pts.values()];
+    g = p.length === 2 ? { d0: Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]), s0: pmZ.s, moved: true }
+      : { x: e.clientX, y: e.clientY, moved: false, t: e.timeStamp };
+  });
+  img.addEventListener("pointermove", e => {
+    if (!g || !pts.has(e.pointerId)) return;
+    const prev = pts.get(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+    const p = [...pts.values()];
+    if (p.length === 2 && g.d0) {
+      const d = Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]);
+      zoomAt((p[0][0] + p[1][0]) / 2, (p[0][1] + p[1][1]) / 2, Math.max(1, Math.min(6, g.s0 * d / g.d0))); pmApply(false);
+    } else if (p.length === 1) {
+      if (Math.hypot(e.clientX - g.x, e.clientY - g.y) > 6) g.moved = true;
+      if (pmZ.s > 1) { pmZ.x += e.clientX - prev[0]; pmZ.y += e.clientY - prev[1]; pmApply(false); }
+    }
+  });
+  const up = e => {
+    if (!pts.has(e.pointerId)) return;
+    pts.delete(e.pointerId);
+    if (pts.size || !g) return;
+    const tap = !g.moved; g = null;
+    if (!tap) return;
+    if (e.timeStamp - lastTap < 300) { // dubbeltryck: zooma in där man trycker, eller ut
+      clearTimeout(tapTimer); lastTap = 0;
+      if (pmZ.s > 1) Object.assign(pmZ, { s: 1, x: 0, y: 0 }); else zoomAt(e.clientX, e.clientY, 2.5);
+      pmApply(true); return;
+    }
+    lastTap = e.timeStamp;
+    tapTimer = setTimeout(() => { if (pmZ.s === 1) photoFull(false); }, 300);
+  };
+  img.addEventListener("pointerup", up); img.addEventListener("pointercancel", up);
+  // Ett tryck på bilden (inte i helskärm) öppnar helskärm.
+  img.addEventListener("click", () => { if (!m.classList.contains("pm-full") && img.getAttribute("src")) photoFull(true); });
+  img.addEventListener("wheel", e => { if (!m.classList.contains("pm-full")) return; e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.max(1, Math.min(6, pmZ.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15)))); pmApply(false); }, { passive: false });
+}
 async function deleteOpenPhoto() {
   const ph = photos().find(p => p.id === openPhotoId);
   if (!ph || !confirm("Ta bort fotot från planen?")) return;
@@ -677,7 +743,8 @@ function bindTools() {
   $("pmClose").onclick = closePhoto;
   $("pmDelete").onclick = deleteOpenPhoto;
   $("pmEdit").onclick = editOpenPhoto;
-  $("photoModal").onclick = e => { if (e.target.id === "photoModal") closePhoto(); };
+  $("photoModal").onclick = e => { if (e.target.id === "photoModal" && !$("photoModal").classList.contains("pm-full")) closePhoto(); };
+  bindPhotoFull();
   $("viewport").addEventListener("dblclick", () => {
     if (!measure || measure.done) return;
     // Dubbelklicket har redan lagt till samma punkt två gånger.
@@ -688,7 +755,8 @@ function bindTools() {
   window.addEventListener("keydown", e => {
     if (e.target && /INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
     if (e.key === "Escape") {
-      if (!$("photoModal").classList.contains("hidden")) closePhoto();
+      if ($("photoModal").classList.contains("pm-full")) photoFull(false);
+      else if (!$("photoModal").classList.contains("hidden")) closePhoto();
       else if (photoPlacing) cancelPhotoPlacing(true); // Esc: hoppa över (nästa foto i kön)
       else if (measure) stopMeasure();
       else if (playTimer) stopPlay();
