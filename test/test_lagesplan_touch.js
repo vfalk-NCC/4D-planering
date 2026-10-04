@@ -345,6 +345,9 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   for (const t of ['K-002', 'TEXT', 'K10 Grundsula', 'Underlag', '2026-08-15']) await ip.locator('#fieldSheetBody .fs-tog', { hasText: t }).click();
   const clicks = await ip.evaluate(() => { const c = __clicks; $('layerList').innerHTML = __llKeep; renderFieldSheet(); return c; });
   if (JSON.stringify(clicks) !== JSON.stringify(['cad:b', 'cadl:a:TEXT', 'z1', 'f1', 'ortho:o2'])) fail('iPhone: varje DXF, DXF-lager, zon och mapp tänds/släcks för sig: ' + JSON.stringify(clicks));
+  // Stängkrysset: ritat och placerat exakt i knappens mitt (oberoende av den dolda texten).
+  const xb = await ip.evaluate(() => { const b = document.querySelector('#fieldSheet .fs-head .fl-btn'), a = getComputedStyle(b, '::after'), r = b.getBoundingClientRect(); return { pos: a.position, l: a.left, t: a.top, tf: a.transform, w: r.width, h: r.height }; });
+  if (xb.pos !== 'absolute' || xb.l !== (xb.w / 2) + 'px' || xb.t !== (xb.h / 2) + 'px' || !/matrix\(1, 0, 0, 1, -5\.5, -5\.5\)/.test(xb.tf) || xb.w !== xb.h) fail('iPhone: krysset exakt centrerat: ' + JSON.stringify(xb));
   const lh = await ip.locator('#fieldSheet .fs-head').boundingBox();
   await ip.mouse.move(120, lh.y + 10); await ip.mouse.down(); await ip.mouse.move(120, lh.y - 120, { steps: 5 }); await ip.mouse.up(); await ip.waitForTimeout(550);
   if ((await ip.evaluate(() => $('fieldSheet').getBoundingClientRect().height)) < lg.vh * 0.7) fail('iPhone: lagerkortet ska kunna dras upp');
