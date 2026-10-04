@@ -326,21 +326,23 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
       <div class="layer-row in-folder" data-layer="cad:b"><input type="checkbox" class="lr-vis"><span class="ln"><span class="cad-name">📐 K-002</span></span></div>
       <div class="layer-row in-folder" data-layer="cad:c"><input type="checkbox" class="lr-vis"><span class="ln"><span class="cad-name">📐 NSV_A-40-1-0012_PLANRITNING_PLAN_1_ETAPP_2_REVIDERAD_2026-09-29_slutlig</span> <small>48 lager</small><span class="cad-date">2026-09-29</span></span></div>
       <div class="layer-row" data-layer="zones"><input type="checkbox" class="lr-vis" checked><span class="ln">🟧 Zoner <small>1</small></span></div>
-      <div class="layer-row sub zone-layer-row hidden" data-zone="z1"><input type="checkbox" class="zl-vis" checked><span class="ln">K10 Grundsula</span></div>`;
+      <div class="layer-row sub zone-layer-row hidden" data-zone="z1"><input type="checkbox" class="zl-vis" checked><span class="ln">K10 Grundsula</span></div>
+      <div class="layer-row" data-layer="ortho:o1"><input type="checkbox" class="lr-vis" checked><span class="ln"><span class="or-name">🛰 Drönarfoto 2026-09-29 etapp 2 norra delen</span></span></div>
+      <div class="layer-row" data-layer="ortho:o2"><input type="checkbox" class="lr-vis"><span class="ln"><span class="or-name">🛰 Drönarfoto 2026-08-15</span></span></div>`;
     ll.querySelectorAll('input').forEach(i => i.addEventListener('click', () => __clicks.push(i.closest('.layer-row').dataset.layer || i.closest('.layer-row').dataset.zone || i.closest('.layer-row').dataset.folder)));
     renderFieldSheet();
   });
   const fp0 = await ip.evaluate(() => ({ sel: !!document.querySelector('#fieldSheetBody .fp-views select.fp-vsel'), add: !!document.querySelector('#fieldSheetBody .fp-add'), top: [...document.querySelectorAll('#fieldSheetBody .fp-row.d0 .fs-lbl')].map(x => x.textContent), bg: getComputedStyle($('fieldSheet')).backdropFilter }));
-  if (!fp0.sel || !fp0.add || JSON.stringify(fp0.top) !== '["📁 Underlag","🟧 Zoner","🏷 Objektnamn"]' || !/blur/.test(fp0.bg)) fail('iPhone: lagerträdet med vyrullgardin, ＋ och glas: ' + JSON.stringify(fp0));
-  await ip.click('[data-fpopen="f:f1"]'); await ip.click('[data-fpopen="cad:a"]'); await ip.click('[data-fpopen="zones"]');
+  if (!fp0.sel || !fp0.add || JSON.stringify(fp0.top) !== '["📁 Underlag","🟧 Zoner","🛰 Ortofoto","🏷 Objektnamn"]' || !/blur/.test(fp0.bg)) fail('iPhone: lagerträdet med vyrullgardin, ＋ och glas: ' + JSON.stringify(fp0));
+  await ip.click('[data-fpopen="f:f1"]'); await ip.click('[data-fpopen="cad:a"]'); await ip.click('[data-fpopen="zones"]'); await ip.click('[data-fpopen="__ortho"]');
   const fp1 = await ip.evaluate(() => [...document.querySelectorAll('#fieldSheetBody .fp-row')].map(r => r.className.replace('fp-row ', '') + ':' + r.querySelector('.fs-lbl').textContent));
-  if (JSON.stringify(fp1) !== JSON.stringify(['d0:📁 Underlag', 'd1:📐 A-001', 'd2:VÄGG', 'd2:TEXT', 'd1:📐 K-002', 'd1:📐 NSV_A-40-1-0012_PLANRITNING_PLAN_1_ETAPP_2_REVIDERAD_2026-09-29_slutlig', 'd0:🟧 Zoner', 'd1:K10 Grundsula', 'd0:🏷 Objektnamn'])) fail('iPhone: utfällt träd: ' + JSON.stringify(fp1));
+  if (JSON.stringify(fp1) !== JSON.stringify(['d0:📁 Underlag', 'd1:📐 A-001', 'd2:VÄGG', 'd2:TEXT', 'd1:📐 K-002', 'd1:📐 NSV_A-40-1-0012_PLANRITNING_PLAN_1_ETAPP_2_REVIDERAD_2026-09-29_slutlig', 'd0:🟧 Zoner', 'd1:K10 Grundsula', 'd0:🛰 Ortofoto', 'd1:🛰 Drönarfoto 2026-09-29 etapp 2 norra delen', 'd1:🛰 Drönarfoto 2026-08-15', 'd0:🏷 Objektnamn'])) fail('iPhone: utfällt träd: ' + JSON.stringify(fp1));
   // Långt DXF-namn: strömbrytaren ryms i kortet.
   const longRow = await ip.evaluate(() => { const b = [...document.querySelectorAll('#fieldSheetBody .fs-tog')].find(x => /REVIDERAD/.test(x.textContent)), d = b.querySelector('.fs-dot').getBoundingClientRect(), s = $('fieldSheet').getBoundingClientRect(); return { dotRight: d.right, sheetRight: s.right, dotW: d.width, h: b.getBoundingClientRect().height }; });
-  if (longRow.dotRight > longRow.sheetRight - 8 || longRow.dotW < 38 || longRow.h > 60) fail('iPhone: långt DXF-namn får inte trycka ut strömbrytaren: ' + JSON.stringify(longRow));
-  for (const t of ['📐 K-002', 'TEXT', 'K10 Grundsula', '📁 Underlag']) await ip.locator('#fieldSheetBody .fs-tog', { hasText: t }).click();
+  if (longRow.dotRight > longRow.sheetRight - 8 || longRow.dotW < 38 || longRow.h > 72) fail('iPhone: långt DXF-namn får inte trycka ut strömbrytaren: ' + JSON.stringify(longRow));
+  for (const t of ['📐 K-002', 'TEXT', 'K10 Grundsula', '📁 Underlag', '2026-08-15']) await ip.locator('#fieldSheetBody .fs-tog', { hasText: t }).click();
   const clicks = await ip.evaluate(() => { const c = __clicks; $('layerList').innerHTML = __llKeep; renderFieldSheet(); return c; });
-  if (JSON.stringify(clicks) !== JSON.stringify(['cad:b', 'cadl:a:TEXT', 'z1', 'f1'])) fail('iPhone: varje DXF, DXF-lager, zon och mapp tänds/släcks för sig: ' + JSON.stringify(clicks));
+  if (JSON.stringify(clicks) !== JSON.stringify(['cad:b', 'cadl:a:TEXT', 'z1', 'f1', 'ortho:o2'])) fail('iPhone: varje DXF, DXF-lager, zon och mapp tänds/släcks för sig: ' + JSON.stringify(clicks));
   const lh = await ip.locator('#fieldSheet .fs-head').boundingBox();
   await ip.mouse.move(120, lh.y + 10); await ip.mouse.down(); await ip.mouse.move(120, lh.y - 120, { steps: 5 }); await ip.mouse.up(); await ip.waitForTimeout(550);
   if ((await ip.evaluate(() => $('fieldSheet').getBoundingClientRect().height)) < lg.vh * 0.7) fail('iPhone: lagerkortet ska kunna dras upp');

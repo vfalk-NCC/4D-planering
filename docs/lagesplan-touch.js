@@ -507,7 +507,7 @@ function fieldRowToggle(key) { return document.querySelector(`#layerList .layer-
    kontrollerna i lagerpanelen (klick på dem), så beteendet är detsamma som på datorn. */
 const fpOpen = new Set();
 function fpTree() {
-  const out = [];
+  const out = [], orthoKids = [];
   let folder = null, last = null;
   const clean = ln => { const c = ln.cloneNode(true); c.querySelectorAll("button, small, input, label, .cad-date").forEach(x => x.remove()); return c.textContent.replace(/\s+/g, " ").trim().replace(/^[▸▾]\s*/, ""); };
   const count = ln => { const sm = ln.querySelector(":scope > small"); return sm && /^\d+/.test(sm.textContent.trim()) ? sm.textContent.trim().match(/^\d+/)[0] : ""; };
@@ -521,7 +521,7 @@ function fpTree() {
     if (!r.classList.contains("sub")) {
       const key = r.dataset.layer || "";
       if (!r.classList.contains("in-folder")) folder = null;
-      if (key.startsWith("ortho:")) { last = null; return; }
+      if (key.startsWith("ortho:")) { const v = r.querySelector(".lr-vis"); orthoKids.push({ id: key, label: clean(ln), on: !!(v && v.checked), el: v }); last = null; return; }
       const vis = r.querySelector(".lr-vis");
       last = { id: key, label: clean(ln), count: count(ln), on: !!(vis && vis.checked), el: vis, kids: [] };
       (folder ? folder.kids : out).push(last); return;
@@ -530,13 +530,17 @@ function fpTree() {
     const cb = r.querySelector(".zl-vis, .lr-vis"), eye = r.querySelector(".oi-eye");
     last.kids.push({ id: last.id + "|" + (r.dataset.zone || r.dataset.item || r.dataset.layer || last.kids.length), label: clean(ln), on: cb ? cb.checked : eye ? !r.classList.contains("off") : null, el: cb || eye, show: ln });
   });
+  // Ortofoton som en egen gren (Victors önskemål 2026-10-04): fäll ut för att tända och släcka varje foto.
+  if (orthoKids.length) {
+    const nOn = orthoKids.filter(k => k.on).length;
+    out.push({ id: "__ortho", label: "🛰 Ortofoto", count: String(orthoKids.length), on: nOn > 0, mixed: nOn > 0 && nOn < orthoKids.length, kids: orthoKids,
+      act: () => { if (nOn) orthoKids.filter(k => k.on).forEach(k => k.el.click()); else orthoKids[0].el.click(); } });
+  }
   return out;
 }
 function renderFieldSheetPhone(box) {
   const views = typeof lsViews === "function" ? lsViews() : [];
   const cur = typeof lsViewCurrent !== "undefined" ? lsViewCurrent : null;
-  const rows = [...document.querySelectorAll("#layerList .layer-row[data-layer]")].map(r => ({ key: r.dataset.layer, label: (r.querySelector(".ln").textContent || "").replace(/\s+/g, " ").trim(), on: r.querySelector(".lr-vis").checked }));
-  const ortho = rows.filter(r => r.key.startsWith("ortho:")), orthoOn = ortho.some(r => r.on);
   const labelsOn = $("objLabels") && $("objLabels").checked;
   const tree = fpTree(), acts = [];
   const sw = (on, mixed) => `<span class="fs-dot${mixed ? " mixed" : ""}"></span>`;
@@ -554,29 +558,15 @@ function renderFieldSheetPhone(box) {
     ${typeof hiddenObjCount === "function" && hiddenObjCount() ? `<button type="button" class="fs-tog fs-showall" data-objshow="1"><span class="fs-lbl">💡 Tänd alla objekt <small>(${hiddenObjCount()})</small></span></button>` : ""}
     <div class="fs-grid fp-tree">${tree.map(n => node(n, 0)).join("")}
       <div class="fp-row d0"><span class="fp-chev"></span><button type="button" class="fs-tog${labelsOn ? " on" : ""}" data-labels="1" role="switch" aria-checked="${!!labelsOn}"><span class="fs-dot"></span><span class="fs-lbl">🏷 Objektnamn</span></button></div>
-    </div>
-    ${ortho.length ? `<div class="fs-h">Bakgrund</div><div class="fs-ortho">
-        <button type="button" class="fs-tog${orthoOn ? " on" : ""}" data-ortho="toggle" role="switch" aria-checked="${orthoOn}"><span class="fs-dot"></span><span class="fs-lbl">🛰 Ortofoto</span></button>
-        <button type="button" class="fs-big" data-ortho="prev" title="Äldre">◀</button>
-        <span class="fs-oname">${fesc(($("orthoNavLabel") && $("orthoNavLabel").textContent) || (ortho.find(r => r.on) || {}).label || "")}</span>
-        <button type="button" class="fs-big" data-ortho="next" title="Nyare">▶</button>
-      </div>` : ""}`;
+    </div>`;
   const again = () => setTimeout(renderFieldSheet, 40);
   box.querySelector(".fp-vsel").onchange = e => { if (e.target.value) { setVal("lsViewSel", e.target.value); setTimeout(() => { renderField(); renderFieldSheet(); }, 60); } };
   box.querySelector(".fp-add").onclick = () => openFieldSaveView();
   box.querySelectorAll("[data-fpopen]").forEach(b => b.onclick = () => { const id = b.dataset.fpopen; if (fpOpen.has(id)) fpOpen.delete(id); else fpOpen.add(id); renderFieldSheet(); });
-  box.querySelectorAll("[data-fpact]").forEach(b => b.onclick = () => { const n = acts[Number(b.dataset.fpact)]; if (n && n.el) { n.el.click(); again(); } });
+  box.querySelectorAll("[data-fpact]").forEach(b => b.onclick = () => { const n = acts[Number(b.dataset.fpact)]; if (!n) return; if (n.act) n.act(); else if (n.el) n.el.click(); else return; again(); });
   box.querySelectorAll("[data-fpshow]").forEach(b => b.onclick = () => { const n = acts[Number(b.dataset.fpshow)]; if (n && n.show) { closeFieldSheet(); n.show.click(); } });
   const os = box.querySelector("[data-objshow]"); if (os) os.onclick = () => { $("btnObjShowAll").click(); again(); };
   const lb = box.querySelector("[data-labels]"); if (lb) lb.onclick = () => { const c = $("objLabels"); c.checked = !c.checked; c.dispatchEvent(new Event("change")); again(); };
-  box.querySelectorAll("[data-ortho]").forEach(b => b.onclick = () => {
-    const a = b.dataset.ortho;
-    if (a === "prev") $("btnOrthoPrev").click();
-    else if (a === "next") $("btnOrthoNext").click();
-    else if (orthoOn) ortho.filter(r => r.on).forEach(r => { const c = fieldRowToggle(r.key); c.checked = false; c.dispatchEvent(new Event("change")); });
-    else { const c = fieldRowToggle(ortho[0].key); c.checked = true; c.dispatchEvent(new Event("change")); }
-    setTimeout(renderFieldSheet, 60);
-  });
 }
 function renderFieldSheet() {
   const box = $("fieldSheetBody");
