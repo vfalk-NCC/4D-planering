@@ -509,7 +509,7 @@ const fpOpen = new Set();
 function fpTree() {
   const out = [], orthoKids = [];
   let folder = null, last = null;
-  const clean = ln => { const c = ln.cloneNode(true); c.querySelectorAll("button, small, input, label, .cad-date").forEach(x => x.remove()); return c.textContent.replace(/\s+/g, " ").trim().replace(/^[▸▾]\s*/, ""); };
+  const clean = ln => { const c = ln.cloneNode(true); c.querySelectorAll("button, small, input, label, .cad-date").forEach(x => x.remove()); return c.textContent.replace(/\s+/g, " ").trim().replace(/^[^\p{L}\p{N}]+/u, ""); }; // utan pilar och emojier
   const count = ln => { const sm = ln.querySelector(":scope > small"); return sm && /^\d+/.test(sm.textContent.trim()) ? sm.textContent.trim().match(/^\d+/)[0] : ""; };
   [...(($("layerList") || {}).children || [])].forEach(r => {
     const ln = r.querySelector(".ln"); if (!ln) return;
@@ -534,7 +534,7 @@ function fpTree() {
   // Ortofoton som en egen gren (Victors önskemål 2026-10-04): fäll ut för att tända och släcka varje foto.
   if (orthoKids.length) {
     const nOn = orthoKids.filter(k => k.on).length;
-    out.push({ id: "__ortho", label: "🛰 Ortofoto", count: String(orthoKids.length), on: nOn > 0, mixed: nOn > 0 && nOn < orthoKids.length, kids: orthoKids,
+    out.push({ id: "__ortho", label: "Ortofoto", count: String(orthoKids.length), on: nOn > 0, mixed: nOn > 0 && nOn < orthoKids.length, kids: orthoKids,
       act: () => { if (nOn) orthoKids.filter(k => k.on).forEach(k => k.el.click()); else orthoKids[0].el.click(); } });
   }
   return out;
@@ -556,10 +556,10 @@ function renderFieldSheetPhone(box) {
   };
   box.innerHTML = `
     <div class="fp-views"><select class="fp-vsel" aria-label="Sparade vyer"><option value="">${views.length ? "Sparade vyer…" : "Inga sparade vyer"}</option>${views.map(v => `<option value="${fesc(v.id)}"${v.id === cur ? " selected" : ""}>${fesc(v.name)}</option>`).join("")}</select><button type="button" class="fp-add" title="Spara det som visas som en ny vy" aria-label="Ny vy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button></div>
-    ${typeof hiddenObjCount === "function" && hiddenObjCount() ? `<button type="button" class="fs-tog fs-showall" data-objshow="1"><span class="fs-lbl">💡 Tänd alla objekt <small>(${hiddenObjCount()})</small></span></button>` : ""}
     <div class="fs-grid fp-tree">${tree.map(n => node(n, 0)).join("")}
-      <div class="fp-row d0"><span class="fp-chev"></span><button type="button" class="fs-tog${labelsOn ? " on" : ""}" data-labels="1" role="switch" aria-checked="${!!labelsOn}"><span class="fs-dot"></span><span class="fs-lbl">🏷 Objektnamn</span></button></div>
-    </div>`;
+      <div class="fp-row d0"><span class="fp-chev"></span><button type="button" class="fs-tog${labelsOn ? " on" : ""}" data-labels="1" role="switch" aria-checked="${!!labelsOn}"><span class="fs-dot"></span><span class="fs-lbl">Objektnamn</span></button></div>
+    </div>
+    ${typeof hiddenObjCount === "function" && hiddenObjCount() ? `<button type="button" class="fp-showall" data-objshow="1">Tänd alla släckta objekt (${hiddenObjCount()})</button>` : ""}`;
   const again = () => setTimeout(renderFieldSheet, 40);
   box.querySelector(".fp-vsel").onchange = e => { if (e.target.value) { setVal("lsViewSel", e.target.value); setTimeout(() => { renderField(); renderFieldSheet(); }, 60); } };
   box.querySelector(".fp-add").onclick = () => openFieldSaveView();

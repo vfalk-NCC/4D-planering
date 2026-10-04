@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261004091349"></script>
+<script src="github-storage.js?v=20261004093856"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -828,6 +828,11 @@
   .fp-add svg { width: 18px; height: 18px; }
   body.field.phone #fieldSheetBody .fp-tree { margin-top: 8px; }
   .fp-row { display: flex; align-items: stretch; min-width: 0; }
+  /* Sällan använt: en diskret textrad under listan. */
+  body.field.phone #fieldSheetBody .fp-showall { display: block; width: 100%; height: auto; margin: 10px 0 2px; padding: 6px 12px; border: none; border-radius: 0; background: none; box-shadow: none; color: var(--ap-text2); font: 13px -apple-system, system-ui, sans-serif; text-align: center; }
+  body.field.phone.ap-dark #fieldSheetBody .fs-dot { background: rgba(255,255,255,.22); }
+  body.field.phone.ap-dark #fieldSheetBody .fs-tog.on .fs-dot { background: #34c759; }
+  body.field.phone #fieldSheetBody .fs-tog.on .fs-dot.mixed { background: rgba(52,199,89,.5); }
   /* Långa namn (DXF-filer, ortofoton) bryts på upp till tre rader – strömbrytaren syns alltid. */
   body.field.phone #fieldSheetBody .fs-grid { grid-template-columns: minmax(0, 1fr); }
   body.field.phone #fieldSheetBody .fp-row .fs-lbl { white-space: normal; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.2; padding: 0; }
@@ -1406,27 +1411,27 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261004091349"></script>
-<script src="lagesplan-tools.js?v=20261004091349"></script>
-<script src="lagesplan-layers.js?v=20261004091349"></script>
-<script src="lagesplan-views.js?v=20261004091349"></script>
-<script src="lagesplan-film.js?v=20261004091349"></script>
-<script src="lagesplan-cad.js?v=20261004091349"></script>
-<script src="lagesplan-vecpdf.js?v=20261004091349"></script>
-<script src="lagesplan-print.js?v=20261004091349"></script>
-<script src="lagesplan-printlib.js?v=20261004091349"></script>
-<script src="lagesplan-pdflayers.js?v=20261004091349"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261004091349"></script>
-<script src="lagesplan-objmarks.js?v=20261004091349"></script>
-<script src="lagesplan-objlist.js?v=20261004091349"></script>
-<script src="lagesplan-zones.js?v=20261004091349"></script>
-<script src="lagesplan-wbs.js?v=20261004091349"></script>
-<script src="lagesplan-daily.js?v=20261004091349"></script>
-<script src="lagesplan-gps.js?v=20261004091349"></script>
-<script src="lagesplan-weather.js?v=20261004091349"></script>
-<script src="lagesplan-touch.js?v=20261004091349"></script>
-<script src="lagesplan-drawer.js?v=20261004091349"></script>
-<script src="lagesplan-gpslive.js?v=20261004091349"></script>
-<script src="lagesplan-keys.js?v=20261004091349"></script>
+<script src="lagesplan.js?v=20261004093856"></script>
+<script src="lagesplan-tools.js?v=20261004093856"></script>
+<script src="lagesplan-layers.js?v=20261004093856"></script>
+<script src="lagesplan-views.js?v=20261004093856"></script>
+<script src="lagesplan-film.js?v=20261004093856"></script>
+<script src="lagesplan-cad.js?v=20261004093856"></script>
+<script src="lagesplan-vecpdf.js?v=20261004093856"></script>
+<script src="lagesplan-print.js?v=20261004093856"></script>
+<script src="lagesplan-printlib.js?v=20261004093856"></script>
+<script src="lagesplan-pdflayers.js?v=20261004093856"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261004093856"></script>
+<script src="lagesplan-objmarks.js?v=20261004093856"></script>
+<script src="lagesplan-objlist.js?v=20261004093856"></script>
+<script src="lagesplan-zones.js?v=20261004093856"></script>
+<script src="lagesplan-wbs.js?v=20261004093856"></script>
+<script src="lagesplan-daily.js?v=20261004093856"></script>
+<script src="lagesplan-gps.js?v=20261004093856"></script>
+<script src="lagesplan-weather.js?v=20261004093856"></script>
+<script src="lagesplan-touch.js?v=20261004093856"></script>
+<script src="lagesplan-drawer.js?v=20261004093856"></script>
+<script src="lagesplan-gpslive.js?v=20261004093856"></script>
+<script src="lagesplan-keys.js?v=20261004093856"></script>
 </body>
 </html>

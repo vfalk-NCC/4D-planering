@@ -84,6 +84,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   await f.page.tap('#apLayers'); await f.page.waitForTimeout(600);
   const btn = f.page.locator('#fieldSheetBody [data-objshow]');
   if (!(await btn.count()) || !/\(2\)/.test(await btn.innerText())) fail('Fältläget ska ha "Tänd alla 3D-objekt" med antal');
+  if (!(await f.page.evaluate(() => { const b = document.querySelector('#fieldSheetBody [data-objshow]'), t = document.querySelector('#fieldSheetBody .fp-tree'); return b.classList.contains('fp-showall') && !!(t.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); }))) fail('"Tänd alla" ska ligga diskret under listan');
   await btn.tap(); await f.page.waitForTimeout(200);
   if (await f.page.evaluate(() => hiddenObjCount())) fail('Knappen ska tända alla objekt');
   if (await f.page.locator('#fieldSheetBody [data-objshow]').count()) fail('Knappen ska försvinna när inget är släckt');
