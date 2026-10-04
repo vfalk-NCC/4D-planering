@@ -537,6 +537,9 @@ function fpTree() {
       (folder ? folder.kids : out).push(last); return;
     }
     if (!last) return;
+    // Zonfiltret för fotona: en rullgardin överst under Foton.
+    if (r.classList.contains("photo-zone-row")) { const sel = r.querySelector(".pz-sel"); last.kids.push({ id: last.id + "|zone", sel, on: !!sel.value }); return; }
+    if (r.classList.contains("photo-zone-empty")) { last.kids.push({ id: last.id + "|zempty", label: "Inga foton i zonen", on: null, el: null }); return; }
     // Fotonas datummappar: en egen nivå under Foton med fotona i.
     if (r.classList.contains("photo-day-row")) { const v = r.querySelector(".pd-vis"); last.kids.push({ id: last.id + "|d:" + r.dataset.phday, label: clean(ln), count: count(ln), on: v.checked, el: v, kids: [] }); return; }
     const host = r.classList.contains("photo-in-day") && last.kids.length && last.kids[last.kids.length - 1].kids ? last.kids[last.kids.length - 1] : last;
@@ -559,6 +562,7 @@ function renderFieldSheetPhone(box) {
   const sw = (on, mixed) => `<span class="fs-dot${mixed ? " mixed" : ""}"></span>`;
   const node = (n, depth) => {
     const i = acts.push(n) - 1, open = fpOpen.has(n.id), has = n.kids && n.kids.length;
+    if (n.sel) return `<div class="fp-row d${depth}"><span class="fp-chev"></span><label class="fp-zone${n.on ? " on" : ""}"><span>Zon</span><select data-fpsel="${i}" aria-label="Visa bara foton i en zon">${n.sel.innerHTML}</select></label></div>`;
     const chev = has ? `<button type="button" class="fp-chev${open ? " open" : ""}" data-fpopen="${fesc(n.id)}" aria-label="${open ? "Fäll ihop" : "Fäll ut"}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 5 7 7-7 7"/></svg></button>` : `<span class="fp-chev"></span>`;
     const lbl = `<span class="fs-lbl">${fesc(n.label)}</span>${n.count ? `<span class="fs-cnt">${n.count}</span>` : ""}`;
     const row = n.on === null
@@ -577,6 +581,7 @@ function renderFieldSheetPhone(box) {
   box.querySelector(".fp-add").onclick = () => openFieldSaveView();
   box.querySelectorAll("[data-fpopen]").forEach(b => b.onclick = () => { const id = b.dataset.fpopen; if (fpOpen.has(id)) fpOpen.delete(id); else fpOpen.add(id); renderFieldSheet(); });
   box.querySelectorAll("[data-fpact]").forEach(b => b.onclick = () => { const n = acts[Number(b.dataset.fpact)]; if (!n) return; if (n.act) n.act(); else if (n.el) n.el.click(); else return; again(); });
+  box.querySelectorAll("[data-fpsel]").forEach(sl => { const n = acts[Number(sl.dataset.fpsel)]; sl.value = n.sel.value; sl.onchange = () => { n.sel.value = sl.value; n.sel.dispatchEvent(new Event("change")); again(); }; });
   box.querySelectorAll("[data-fpshow]").forEach(b => b.onclick = () => { const n = acts[Number(b.dataset.fpshow)]; if (n && n.show) { closeFieldSheet(); n.show.click(); } });
   const os = box.querySelector("[data-objshow]"); if (os) os.onclick = () => { $("btnObjShowAll").click(); again(); };
   const lb = box.querySelector("[data-labels]"); if (lb) lb.onclick = () => { const c = $("objLabels"); c.checked = !c.checked; c.dispatchEvent(new Event("change")); again(); };

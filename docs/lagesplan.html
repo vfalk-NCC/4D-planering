@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261004103316"></script>
+<script src="github-storage.js?v=20261004104229"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -174,7 +174,13 @@
   .layer-row.obj-item-row .oi-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(0,0,0,.2); }
   .layer-row.obj-item-row button { height: 22px; min-width: 22px; padding: 0; border: none; background: none; font-size: 13px; }
   .layer-row.obj-item-row button:hover { background: var(--panel-2); }
-  .layer-row.zone-layer-row { grid-template-columns: 18px 12px 1fr 22px; padding-left: 28px; gap: 6px; }
+  .layer-row.zone-layer-row { grid-template-columns: 18px 12px 1fr 22px 22px; padding-left: 28px; gap: 6px; }
+  .layer-row.zone-layer-row .zl-ph.on { background: var(--accent-weak); box-shadow: inset 0 0 0 1px var(--accent); border-radius: 4px; }
+  .layer-row.photo-zone-row { grid-template-columns: 1fr; padding-left: 28px; }
+  .layer-row.photo-zone-row.in-folder { padding-left: 42px; }
+  .layer-row.photo-zone-row .pz-sel { margin-left: 6px; max-width: 75%; height: 22px; font-size: 12px; }
+  .layer-row.photo-zone-row.on .pz-sel { border-color: var(--accent); background: var(--accent-weak); }
+  .layer-row.photo-zone-empty { grid-template-columns: 1fr; padding-left: 46px; font-size: 12px; }
   .layer-row.zone-layer-row.in-folder { padding-left: 42px; }
   .layer-row.zone-layer-row .ln { cursor: pointer; } .layer-row.zone-layer-row .ln:hover { text-decoration: underline; }
   .layer-row.zone-layer-row.off .ln { opacity: .45; }
@@ -842,6 +848,9 @@
   .fp-add svg { width: 18px; height: 18px; }
   body.field.phone #fieldSheetBody .fp-tree { margin-top: 8px; }
   .fp-row { display: flex; align-items: stretch; min-width: 0; }
+  body.field.phone #fieldSheetBody .fp-zone { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; min-height: 38px; margin: 0; padding: 0 10px 0 2px; color: var(--ap-text2); font: 14px -apple-system, system-ui, sans-serif; }
+  body.field.phone #fieldSheetBody .fp-zone select { flex: 1; min-width: 0; height: 30px; padding: 0 28px 0 10px; border: none; border-radius: 8px; background: var(--ap-group) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 8px center / 14px; color: var(--ap-text); font: 16px -apple-system, system-ui, sans-serif; -webkit-appearance: none; appearance: none; }
+  body.field.phone #fieldSheetBody .fp-zone.on select { box-shadow: inset 0 0 0 1.5px var(--ap-blue); }
   /* Sällan använt: en diskret textrad under listan. */
   body.field.phone #fieldSheetBody .fp-showall { display: block; width: 100%; height: auto; margin: 10px 0 2px; padding: 6px 12px; border: none; border-radius: 0; background: none; box-shadow: none; color: var(--ap-text2); font: 13px -apple-system, system-ui, sans-serif; text-align: center; }
   body.field.phone.ap-dark #fieldSheetBody .fs-dot { background: rgba(255,255,255,.22); }
@@ -1426,27 +1435,27 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261004103316"></script>
-<script src="lagesplan-tools.js?v=20261004103316"></script>
-<script src="lagesplan-layers.js?v=20261004103316"></script>
-<script src="lagesplan-views.js?v=20261004103316"></script>
-<script src="lagesplan-film.js?v=20261004103316"></script>
-<script src="lagesplan-cad.js?v=20261004103316"></script>
-<script src="lagesplan-vecpdf.js?v=20261004103316"></script>
-<script src="lagesplan-print.js?v=20261004103316"></script>
-<script src="lagesplan-printlib.js?v=20261004103316"></script>
-<script src="lagesplan-pdflayers.js?v=20261004103316"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261004103316"></script>
-<script src="lagesplan-objmarks.js?v=20261004103316"></script>
-<script src="lagesplan-objlist.js?v=20261004103316"></script>
-<script src="lagesplan-zones.js?v=20261004103316"></script>
-<script src="lagesplan-wbs.js?v=20261004103316"></script>
-<script src="lagesplan-daily.js?v=20261004103316"></script>
-<script src="lagesplan-gps.js?v=20261004103316"></script>
-<script src="lagesplan-weather.js?v=20261004103316"></script>
-<script src="lagesplan-touch.js?v=20261004103316"></script>
-<script src="lagesplan-drawer.js?v=20261004103316"></script>
-<script src="lagesplan-gpslive.js?v=20261004103316"></script>
-<script src="lagesplan-keys.js?v=20261004103316"></script>
+<script src="lagesplan.js?v=20261004104229"></script>
+<script src="lagesplan-tools.js?v=20261004104229"></script>
+<script src="lagesplan-layers.js?v=20261004104229"></script>
+<script src="lagesplan-views.js?v=20261004104229"></script>
+<script src="lagesplan-film.js?v=20261004104229"></script>
+<script src="lagesplan-cad.js?v=20261004104229"></script>
+<script src="lagesplan-vecpdf.js?v=20261004104229"></script>
+<script src="lagesplan-print.js?v=20261004104229"></script>
+<script src="lagesplan-printlib.js?v=20261004104229"></script>
+<script src="lagesplan-pdflayers.js?v=20261004104229"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261004104229"></script>
+<script src="lagesplan-objmarks.js?v=20261004104229"></script>
+<script src="lagesplan-objlist.js?v=20261004104229"></script>
+<script src="lagesplan-zones.js?v=20261004104229"></script>
+<script src="lagesplan-wbs.js?v=20261004104229"></script>
+<script src="lagesplan-daily.js?v=20261004104229"></script>
+<script src="lagesplan-gps.js?v=20261004104229"></script>
+<script src="lagesplan-weather.js?v=20261004104229"></script>
+<script src="lagesplan-touch.js?v=20261004104229"></script>
+<script src="lagesplan-drawer.js?v=20261004104229"></script>
+<script src="lagesplan-gpslive.js?v=20261004104229"></script>
+<script src="lagesplan-keys.js?v=20261004104229"></script>
 </body>
 </html>

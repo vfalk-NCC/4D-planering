@@ -712,6 +712,7 @@ function zoneLayerRowsHtml(zones, opts = {}) {
       <input type="checkbox" class="zl-vis"${off ? "" : " checked"} title="${off ? "Tänd" : "Släck"} zonen" />
       <span class="zl-sw" style="background:${escHtml(col)}"></span>
       <span class="ln" title="${escHtml(label)} – ${escHtml(PHASE_LABELS[st.phase] || "")}. Klicka för att markera på planen.">${escHtml(label)}</span>
+      <button type="button" class="zl-ph${typeof photoZoneId === "function" && photoZoneId() === z.id ? " on" : ""}" title="Visa bara fotona i zonen"${(z.polys || []).length ? "" : " disabled"}>📷</button>
       <button type="button" class="zl-3d" title="Markera zonens objekt i 3D"${st.items.length ? "" : " disabled"}>🎯</button>
     </div>`;
   }).join("");
@@ -733,6 +734,7 @@ function bindZoneLayerRows(el) {
     row.querySelector(".zl-vis").onclick = e => e.stopPropagation();
     row.querySelector(".zl-vis").onchange = e => setZoneHidden([id], !e.target.checked);
     row.querySelector(".zl-3d").onclick = e => { e.stopPropagation(); if (z()) selectZoneIn3d(z()); };
+    row.querySelector(".zl-ph").onclick = e => { e.stopPropagation(); if (z() && typeof setPhotoZone === "function") setPhotoZone(photoZoneId() === z().id ? "" : z().id); };
     row.querySelector(".ln").onclick = e => {
       e.stopPropagation();
       const zz = z(); if (!zz) return;

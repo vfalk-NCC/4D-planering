@@ -1812,7 +1812,8 @@ function renderLayerPanel() {
   });
   // Foton: fäll ut för att se, visa och ta bort fotona på planen (som Etablering).
   const nPh = typeof photos === "function" ? photos().length : 0, phOpen = nPh > 0 && layerState["ulopen:__photos"] === true;
-  rowHtml.photos = opts => layerRow("photos", `${nPh ? `<button class="cad-toggle ul-toggle" data-ul="__photos" title="Visa fotona">${phOpen ? "▾" : "▸"}</button>` : ""}${name("photos", "fx-name", "📷")} <small>${nPh}</small>`, { noOpacity: true, ...opts })
+  const nPhZ = photoZone() ? zonePhotos().length : null; // med zonfilter: "3 av 9"
+  rowHtml.photos = opts => layerRow("photos", `${nPh ? `<button class="cad-toggle ul-toggle" data-ul="__photos" title="Visa fotona">${phOpen ? "▾" : "▸"}</button>` : ""}${name("photos", "fx-name", "📷")} <small>${nPhZ != null ? `${nPhZ} av ${nPh}` : nPh}</small>`, { noOpacity: true, ...opts })
       + photoRowsHtml({ hidden: opts.hidden || !phOpen, inFolder: opts.inFolder });
   if (typeof cads === "function") cads().forEach(r => { rowHtml["cad:" + r.id] = opts => cadRowsHtml(r, opts); });
   const keys = layerRowKeys();
@@ -2077,6 +2078,7 @@ function siteItemRowsHtml(layer, opts = {}) {
   }).join("");
 }
 function bindSiteItemRows(el) {
+  el.querySelectorAll(".pz-sel").forEach(sel => { sel.onclick = e => e.stopPropagation(); sel.onchange = () => setPhotoZone(sel.value); });
   el.querySelectorAll(".photo-day-row").forEach(row => {
     const d = row.dataset.phday;
     row.querySelector(".pd-vis").onchange = e => { layerState["phday:" + d] = !e.target.checked; saveLayerState(); renderZones(); renderLayerPanel(); };
@@ -2138,19 +2140,51 @@ function bindSiteItemRows(el) {
    datummapp fälls ut och tänds/släcks för sig (dagens foton visas/döljs på planen). */
 const photoDayKey = ph => ph.date || "";
 const photoDayHidden = d => layerState["phday:" + d] === true;
-function visiblePhotos() { return (typeof photos === "function" ? photos() : []).filter(ph => !photoDayHidden(photoDayKey(ph))); }
+/* Zonfilter för fotona (Victors önskemål 2026-10-04): bara foton inom en vald zon (med 2 m marginal
+   vid zongränsen – GPS-placerade foton kan hamna någon meter fel). Påverkar nålarna, datummapparna
+   och antalen; sparas i lagerinställningarna och i sparade vyer. */
+const PHOTO_ZONE_MARGIN_M = 2;
+const photoZoneId = () => layerState.phzone || "";
+function photoZone() { const id = photoZoneId(); return id && plan ? (plan.zones || []).find(z => z.id === id && (z.polys || []).length) || null : null; }
+function distToPoly([x, y], poly) {
+  let best = Infinity;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [ax, ay] = poly[j], [bx, by] = poly[i], dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+    const t = L ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / L)) : 0;
+    best = Math.min(best, Math.hypot(x - (ax + t * dx), y - (ay + t * dy)));
+  }
+  return best;
+}
+function photoInZone(ph, z) {
+  if (!z) return false;
+  const p = [ph.x, ph.y]; // fotots läge är i ritningens (PDF) koordinater, som zonerna
+  let tol = 0;            // 2 m i ritningens skala (kräver kalibrering)
+  if (plan && plan.calib) { const a = modelToPdf(0, 0), b = modelToPdf(PHOTO_ZONE_MARGIN_M, 0); tol = Math.hypot(b[0] - a[0], b[1] - a[1]); }
+  return (z.polys || []).some(poly => pointInPoly(p, poly) || distToPoly(p, poly) <= tol);
+}
+function zonePhotos() { const all = typeof photos === "function" ? photos() : [], z = photoZone(); return z ? all.filter(ph => photoInZone(ph, z)) : all; }
+function setPhotoZone(id) {
+  layerState.phzone = id || "";
+  if (id) { ls("photos").visible = true; if ($("showPhotos")) $("showPhotos").checked = true; layerState["ulopen:__photos"] = true; }
+  saveLayerState(); renderZones(); renderLayerPanel();
+}
+function visiblePhotos() { return zonePhotos().filter(ph => !photoDayHidden(photoDayKey(ph))); }
 function photoDayLabel(d) {
   if (!d) return "Utan datum";
   const t = new Date(d + "T12:00:00");
   return isNaN(t) ? d : t.toLocaleDateString("sv-SE", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 }
 function photoRowsHtml(opts = {}) {
-  const list = (typeof photos === "function" ? photos() : []).slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(a.caption || "").localeCompare(String(b.caption || ""), "sv"));
+  const list = zonePhotos().slice().sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || String(a.caption || "").localeCompare(String(b.caption || ""), "sv"));
   const days = [];
   list.forEach(ph => { const d = photoDayKey(ph); let g = days.find(x => x.d === d); if (!g) days.push(g = { d, list: [] }); g.list.push(ph); });
   days.sort((a, b) => (!a.d) - (!b.d) || b.d.localeCompare(a.d)); // "Utan datum" sist
   const inF = opts.inFolder ? " in-folder" : "";
-  return days.map(g => {
+  const zones = (plan && plan.zones || []).filter(z => (z.polys || []).length).sort((a, b) => String(a.code).localeCompare(String(b.code), "sv", { numeric: true })), zid = photoZone() ? photoZoneId() : "";
+  const zoneRow = zones.length ? `<div class="layer-row sub photo-zone-row${inF}${opts.hidden ? " hidden" : ""}${zid ? " on" : ""}">
+      <span class="ln">Zon <select class="pz-sel" title="Visa bara foton i en zon"><option value="">Alla zoner</option>${zones.map(z => `<option value="${escHtml(z.id)}"${z.id === zid ? " selected" : ""}>${escHtml((z.code || "?") + (z.name ? " " + z.name : ""))}</option>`).join("")}</select></span>
+    </div>` + (zid && !list.length ? `<div class="layer-row sub photo-zone-empty${inF}${opts.hidden ? " hidden" : ""}"><span class="ln muted">Inga foton i zonen.</span></div>` : "") : "";
+  return zoneRow + days.map(g => {
     const open = layerState["phdayopen:" + g.d] === true, off = photoDayHidden(g.d);
     return `<div class="layer-row sub photo-day-row${inF}${opts.hidden ? " hidden" : ""}${off ? " off" : ""}" data-phday="${escHtml(g.d)}">
       <input type="checkbox" class="pd-vis"${off ? "" : " checked"} title="${off ? "Visa" : "Dölj"} fotona från ${escHtml(photoDayLabel(g.d))}" />

@@ -17,7 +17,7 @@ function lsViewSnapshot() {
   });
   // Lager som syns i listan men aldrig rörts har standardläget (tänt).
   layerRowKeys().forEach(k => { if (!layers[k]) { const s = ls(k); layers[k] = { visible: !!s.visible, opacity: s.opacity ?? 100 }; } });
-  return { layers, pdfMultiply: layerState.pdfMultiply !== false, orthoFollowDate: !!layerState.orthoFollowDate };
+  return { layers, pdfMultiply: layerState.pdfMultiply !== false, orthoFollowDate: !!layerState.orthoFollowDate, photoZone: layerState.phzone || "" };
 }
 function lsViewCamera() {
   const vp = $("viewport").getBoundingClientRect(), pc = $("pdfCanvas");
@@ -48,6 +48,7 @@ async function applyLsView(v) {
   Object.keys(saved).forEach(k => { const s = ls(k); s.visible = !!saved[k].visible; s.opacity = saved[k].opacity ?? 100; });
   layerState.pdfMultiply = snap.pdfMultiply !== false;
   layerState.orthoFollowDate = !!snap.orthoFollowDate;
+  if ("photoZone" in snap) layerState.phzone = snap.photoZone || "";
   if ($("orthoFollowDate")) $("orthoFollowDate").checked = !!snap.orthoFollowDate;
   saveLayerState();
   if ($("showObjects")) $("showObjects").checked = ls("objects").visible;
