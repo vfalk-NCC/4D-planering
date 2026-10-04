@@ -2145,7 +2145,17 @@ const photoDayHidden = d => layerState["phday:" + d] === true;
    och antalen; sparas i lagerinställningarna och i sparade vyer. */
 const PHOTO_ZONE_MARGIN_M = 2;
 const photoZoneId = () => layerState.phzone || "";
-function photoZone() { const id = photoZoneId(); return id && plan ? (plan.zones || []).find(z => z.id === id && (z.polys || []).length) || null : null; }
+/* Överzoner (WBS nivå 1, när WBS-nivåerna är på): de zoner som har en överzon, med delzonernas ytor. */
+function photoWbsGroups() {
+  if (typeof wbsOn !== "function" || !wbsOn() || typeof wbsGroups !== "function") return [];
+  return wbsGroups().map(g => ({ id: "wbs:" + g.key, name: g.name, polys: g.children.flatMap(z => z.polys || []) })).filter(g => g.polys.length);
+}
+function photoZone() {
+  const id = photoZoneId();
+  if (!id || !plan) return null;
+  if (id.startsWith("wbs:")) return photoWbsGroups().find(g => g.id === id) || null; // foto i någon av delzonerna
+  return (plan.zones || []).find(z => z.id === id && (z.polys || []).length) || null;
+}
 function distToPoly([x, y], poly) {
   let best = Infinity;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -2188,8 +2198,9 @@ function photoRowsHtml(opts = {}) {
   days.sort((a, b) => (!a.d) - (!b.d) || b.d.localeCompare(a.d)); // "Utan datum" sist
   const inF = opts.inFolder ? " in-folder" : "";
   const zones = (plan && plan.zones || []).filter(z => (z.polys || []).length).sort((a, b) => String(a.code).localeCompare(String(b.code), "sv", { numeric: true })), zid = photoZone() ? photoZoneId() : "";
+  const groups = photoWbsGroups();
   const zoneRow = zones.length ? `<div class="layer-row sub photo-zone-row${inF}${opts.hidden ? " hidden" : ""}${zid ? " on" : ""}">
-      <span class="ln">Zon <select class="pz-sel" title="Visa bara foton i en zon"><option value="">Alla zoner</option>${zones.map(z => `<option value="${escHtml(z.id)}"${z.id === zid ? " selected" : ""}>${escHtml((z.code || "?") + (z.name ? " " + z.name : ""))}</option>`).join("")}</select></span>
+      <span class="ln">Zon <select class="pz-sel" title="Visa bara foton i en zon eller överzon"><option value="">Alla zoner</option>${groups.length ? `<optgroup label="Överzoner">${groups.map(g => `<option value="${escHtml(g.id)}"${g.id === zid ? " selected" : ""}>${escHtml(g.name)}</option>`).join("")}</optgroup><optgroup label="Zoner">` : ""}${zones.map(z => `<option value="${escHtml(z.id)}"${z.id === zid ? " selected" : ""}>${escHtml((z.code || "?") + (z.name ? " " + z.name : ""))}</option>`).join("")}${groups.length ? "</optgroup>" : ""}</select></span>
     </div>` + (zid && !list.length ? `<div class="layer-row sub photo-zone-empty${inF}${opts.hidden ? " hidden" : ""}"><span class="ln muted">Inga foton i zonen.</span></div>` : "") : "";
   return zoneRow + days.map(g => {
     const open = layerState["phdayopen:" + g.d] === true, off = photoDayHidden(g.d);

@@ -65,8 +65,19 @@ const PORT = 8998;
   await page.click('#layerList .zone-layer-row[data-zone="z1"] .zl-ph');
   if ((await page.evaluate(() => photoZoneId() + ':' + visiblePhotos().length)) !== ':6') fail('📷 igen ska visa alla foton');
   if (await page.evaluate(() => !document.querySelector('#layerList .zone-layer-row[data-zone="z3"] .zl-ph').disabled)) fail('Zon utan yta kan inte filtrera');
+  // Överzoner (WBS nivå 1): foton i någon av delzonerna; listas bara när WBS-nivåerna är på.
+  await page.evaluate(() => { const zs = plan.zones; zs[0].parent = '742 Sikthall'; zs[1].parent = '742 Sikthall'; zs.push({ id: 'z4', code: 'D1', parent: '744 Fläkthus', polys: [[[500, 500], [600, 500], [600, 600], [500, 600]]], labels: [] }); renderLayerPanel(); });
+  if (await page.evaluate(() => !!document.querySelector('#layerList .pz-sel optgroup'))) fail('Överzonerna ska bara listas när WBS-nivåerna är på');
+  await page.evaluate(() => { localStorage.setItem(ZONE_OPTS_KEY, JSON.stringify({ ...zoneOpts(), wbs: true })); renderLayerPanel(); });
+  const grp = await page.evaluate(() => [...document.querySelectorAll('#layerList .pz-sel optgroup')].map(g => g.label + ':' + [...g.querySelectorAll('option')].map(o => o.textContent).join('|')));
+  if (JSON.stringify(grp) !== JSON.stringify(['Överzoner:742 Sikthall|744 Fläkthus', 'Zoner:A1 Sektionsfickor del 2|B1 Fläkthus|D1'])) fail('Överzonerna överst i zonvalet: ' + JSON.stringify(grp));
+  await page.selectOption('#layerList .pz-sel', 'wbs:742 SIKTHALL');
+  const wb = await page.evaluate(() => ({ ids: visiblePhotos().map(p => p.id).sort(), snap: lsViewSnapshot().photoZone, sel: document.querySelector('#layerList .pz-sel').value }));
+  if (JSON.stringify(wb) !== JSON.stringify({ ids: ['a', 'b', 'e'], snap: 'wbs:742 SIKTHALL', sel: 'wbs:742 SIKTHALL' })) fail('Överzon 742: foton i alla delzoner (med marginal): ' + JSON.stringify(wb));
+  await page.evaluate(() => resetPhotoFilters());
+  if ((await page.evaluate(() => visiblePhotos().length)) !== 6) fail('Nollställning tar bort överzonsfiltret');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
-  console.log('OK: zonfilter för fotona – rullgardin, 2 m marginal, 📷 på zonen, följer med i vyer');
+  console.log('OK: zonfilter för fotona – rullgardin, 2 m marginal, överzoner, 📷 på zonen, följer med i vyer');
   // iPhone: samma datummappar i lagerträdet, som en egen nivå under Foton.
   const ph = await open({ viewport: { width: 390, height: 744 }, hasTouch: true, isMobile: true });
   await ph.page.evaluate(() => { layerState['ulopen:__photos'] = false; renderLayerPanel(); $('btnFieldLayers').click(); });
