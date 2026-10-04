@@ -170,6 +170,7 @@ const AP_ICONS = {
   btnFieldLayers: ["Lager", "Visa och dölj", "linear-gradient(160deg,#6ac4ff,#0a6cff)", '<path d="M12 3 3 7.5l9 4.5 9-4.5L12 3z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/>'],
   btnFieldNote: ["Notering", "Pil och text", "linear-gradient(160deg,#ffd84d,#ff9f0a)", '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-8z"/><path d="M8 8h8M8 11.5h5"/>'],
   btnFieldPhoto: ["Foto", "Placeras med GPS", "linear-gradient(160deg,#9aa0a8,#5a6069)", '<path d="M4 8.5A2 2 0 0 1 6 6.5h2l1.4-2h5.2l1.4 2h2a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8.5z"/><circle cx="12" cy="12.6" r="3.4"/>'],
+  btnFieldPins: ["Fotonålar", "Visa och dölj", "linear-gradient(160deg,#ff6f91,#e11d48)", '<path d="M12 21.5s-6.5-5.7-6.5-11.2a6.5 6.5 0 0 1 13 0c0 5.5-6.5 11.2-6.5 11.2z"/><circle cx="12" cy="10.2" r="2.5"/>'],
   btnFieldSketch: ["Rita", "På frihand", "linear-gradient(160deg,#ff8a5c,#ff3b30)", '<path d="M15.5 4.5 19.5 8.5 9 19H5v-4L15.5 4.5z"/><path d="m13.5 6.5 4 4"/>'],
   btnFieldView: ["Spara vy", "Det som visas", "linear-gradient(160deg,#d68bff,#8e44d6)", '<path d="M7 3.5h10a1 1 0 0 1 1 1V21l-6-4-6 4V4.5a1 1 0 0 1 1-1z"/>'],
   btnFieldHide: ["Dölj", "Bara kartan", "linear-gradient(160deg,#b8bcc4,#7d828b)", '<path d="M3 3l18 18"/><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6c5 0 8.5 4.3 9.5 6-.5.9-1.6 2.4-3.1 3.7M6.6 7.6C4.6 9 3.2 10.9 2.5 12c1 1.7 4.5 6 9.5 6 1.6 0 3-.4 4.3-1.1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'],
@@ -179,7 +180,7 @@ const AP_ICONS = {
   btnFieldUndo: ["", "", "", '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>'],
   btnFieldRedo: ["", "", "", '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>'],
 };
-const AP_TILES = ["btnFieldDay", "btnFieldLayers", "btnFieldNote", "btnFieldPhoto", "btnFieldSketch", "btnFieldView", "btnFieldHide"];
+const AP_TILES = ["btnFieldDay", "btnFieldLayers", "btnFieldNote", "btnFieldPhoto", "btnFieldPins", "btnFieldSketch", "btnFieldView", "btnFieldHide"];
 const gmHome = new Map(); // element -> platshållare där det låg
 function gmMove(el, parent) {
   if (!el || !parent || el.parentNode === parent) return;
@@ -377,8 +378,16 @@ function layoutField() {
   $("fieldSheet").style.top = y + "px";
 }
 window.addEventListener("resize", () => setTimeout(layoutField, 60));
+function updatePinsBtn() {
+  const b = $("btnFieldPins"), on = !!($("showPhotos") && $("showPhotos").checked);
+  if (!b) return;
+  b.classList.toggle("on", on); b.classList.toggle("pins-off", !on);
+  b.title = on ? "Dölj fotonålarna på planen" : "Visa fotonålarna på planen";
+  b.setAttribute("aria-pressed", String(on));
+}
 function renderField() {
   if (!fieldIsOn()) return;
+  updatePinsBtn();
   layoutField();
   // Plan
   const ps = $("fieldPlan"), src = $("planSelect");
@@ -574,6 +583,7 @@ function renderFieldSheetPhone(box) {
 }
 function renderFieldSheet() {
   const box = $("fieldSheetBody");
+  updatePinsBtn();
   if (document.body.classList.contains("phone")) return renderFieldSheetPhone(box);
   const rows = [...document.querySelectorAll("#layerList .layer-row[data-layer]")]
     .map(r => ({ key: r.dataset.layer, label: (r.querySelector(".ln").textContent || "").replace(/\s+/g, " ").trim().replace(/^[▸▾]\s*/, ""), on: r.querySelector(".lr-vis").checked }));
@@ -663,6 +673,9 @@ document.addEventListener("DOMContentLoaded", () => {
   $("btnFieldFull").onclick = () => setFieldMode(false);
   $("btnFieldNote").onclick = () => { closeFieldSheet(); startSiteTool("note"); };
   $("btnFieldSketch").onclick = () => { closeFieldSheet(); startSiteTool("sketch"); };
+  // 📍 Fotonålar: tänder/släcker fotona på planen (samma som Foton i lagren).
+  $("showPhotos").addEventListener("change", updatePinsBtn);
+  $("btnFieldPins").onclick = () => { const c = fieldRowToggle("photos"); if (c) c.click(); else { const s = $("showPhotos"); s.checked = !s.checked; s.dispatchEvent(new Event("change")); } setTimeout(updatePinsBtn, 30); };
   $("btnFieldPhoto").onclick = () => { closeFieldSheet(); if (typeof stopSiteTool === "function" && siteTool) stopSiteTool(); startGpsPhoto(); };
   $("btnFieldView").onclick = () => openFieldSaveView();
   $("btnFieldUndo").onclick = fieldUndo;

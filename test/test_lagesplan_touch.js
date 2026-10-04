@@ -254,8 +254,11 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
     label: $('fieldDateLabel').textContent.trim(),
   }));
   if (!lay.plan || !lay.date || !lay.slider || !lay.hidden) fail('iPhone: planen som sökfält, datum och reglage i kortet, gamla rader dolda: ' + JSON.stringify(lay));
-  if (JSON.stringify(lay.tiles.map(t => t[0])) !== JSON.stringify(['Dag', 'Lager', 'Notering', 'Foto', 'Rita', 'Spara vy', 'Dölj']) || !lay.tiles.every(t => t[1] && t[2])) fail('iPhone: verktygen som runda ikoner utan text (namnet för skärmläsare): ' + JSON.stringify(lay.tiles));
+  if (JSON.stringify(lay.tiles.map(t => t[0])) !== JSON.stringify(['Dag', 'Lager', 'Notering', 'Foto', 'Fotonålar', 'Rita', 'Spara vy', 'Dölj']) || !lay.tiles.every(t => t[1] && t[2])) fail('iPhone: verktygen som runda ikoner utan text (namnet för skärmläsare): ' + JSON.stringify(lay.tiles));
   if (JSON.stringify(lay.ctl) !== JSON.stringify(['apLayers', 'btnFieldGps']) || lay.fit !== 'apFitWrap') fail('iPhone: lager och min position i kapseln till höger, anpassa till vänster: ' + JSON.stringify(lay));
+  // 📍 Fotonålar tänder och släcker fotona på planen.
+  const pins = await ip.evaluate(() => { const b = $('btnFieldPins'), r = []; r.push([$('showPhotos').checked, b.classList.contains('on')]); b.click(); return new Promise(res => setTimeout(() => { r.push([$('showPhotos').checked, b.classList.contains('pins-off'), ls('photos').visible]); b.click(); setTimeout(() => { r.push([$('showPhotos').checked, b.classList.contains('on')]); res(r); }, 60); }, 60)); });
+  if (JSON.stringify(pins) !== '[[true,true],[false,true,false],[true,true]]') fail('iPhone: fotonålsknappen tänder/släcker fotona: ' + JSON.stringify(pins));
   if (!lay.arrows.every(w => w >= 16)) fail('iPhone: pilarna vid datumet ska synas: ' + JSON.stringify(lay.arrows));
   const off = await ip.evaluate(() => [...document.querySelectorAll('#apCtl > button, #apLeft button, #apAvatar, .ap-date #btnFieldPrevW, .ap-date #btnFieldNextW')].filter(b => b.getBoundingClientRect().width && b.querySelector('svg')).map(b => { const r = b.getBoundingClientRect(), q = b.querySelector('svg').getBoundingClientRect(); return [b.id, Math.abs(q.x + q.width / 2 - r.x - r.width / 2) + Math.abs(q.y + q.height / 2 - r.y - r.height / 2)]; }));
   if (off.length < 5 || off.some(o => o[1] > 0.6)) fail('iPhone: ikonerna ska vara centrerade i knapparna: ' + JSON.stringify(off));
