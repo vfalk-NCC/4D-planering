@@ -521,7 +521,8 @@ function fpTree() {
     if (!r.classList.contains("sub")) {
       const key = r.dataset.layer || "";
       if (!r.classList.contains("in-folder")) folder = null;
-      if (key.startsWith("ortho:")) { const v = r.querySelector(".lr-vis"); orthoKids.push({ id: key, label: clean(ln), on: !!(v && v.checked), el: v }); last = null; return; }
+      // Ortofoton i en egen mapp visas bara där; övriga samlas under 🛰 Ortofoto.
+      if (key.startsWith("ortho:")) { const v = r.querySelector(".lr-vis"), o = { id: key, label: clean(ln), on: !!(v && v.checked), el: v }; (folder ? folder.kids : orthoKids).push(o); last = null; return; }
       const vis = r.querySelector(".lr-vis");
       last = { id: key, label: clean(ln), count: count(ln), on: !!(vis && vis.checked), el: vis, kids: [] };
       (folder ? folder.kids : out).push(last); return;
