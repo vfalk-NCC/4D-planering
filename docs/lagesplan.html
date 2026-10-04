@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261004093856"></script>
+<script src="github-storage.js?v=20261004094909"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -358,7 +358,7 @@
   .gm-txt, .ap-ui, .ap-ic, .ap-lb, .ap-sub { display: none; }
   body.field.phone {
     --ap-blue: #0a84ff; --ap-text: #000; --ap-text2: rgba(60,60,67,.62); --ap-fill: rgba(118,118,128,.16); --ap-sep: rgba(60,60,67,.18);
-    --ap-glass: rgba(255,255,255,.26); --ap-edge: rgba(255,255,255,.45); --ap-sheet-glass: rgba(255,255,255,.5); --ap-group: rgba(255,255,255,.5); --ap-rim: rgba(255,255,255,.95); --ap-rim2: rgba(255,255,255,.4); --ap-line: rgba(0,0,0,.12); --ap-sheen: linear-gradient(165deg, rgba(255,255,255,.55), rgba(255,255,255,.08) 38%, rgba(255,255,255,0) 60%, rgba(255,255,255,.18)); --ap-panel: rgba(255,255,255,.9);
+    --ap-glass: rgba(236,237,242,.42); --ap-edge: rgba(255,255,255,.45); --ap-sheet-glass: rgba(232,234,240,.55); --ap-group: rgba(255,255,255,.32); --ap-rim: rgba(255,255,255,.95); --ap-rim2: rgba(255,255,255,.4); --ap-line: rgba(0,0,0,.12); --ap-sheen: linear-gradient(165deg, rgba(255,255,255,.55), rgba(255,255,255,.08) 38%, rgba(255,255,255,0) 60%, rgba(255,255,255,.18)); --ap-panel: rgba(255,255,255,.9);
     --ap-sheet-h: 60px; --ap-bot: max(8px, env(safe-area-inset-bottom));
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", system-ui, sans-serif; -webkit-font-smoothing: antialiased; letter-spacing: -.01em;
     -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
@@ -465,7 +465,9 @@
   body.field.phone #fieldSheet .fs-head, body.field.phone #fieldDay .fs-head { position: relative; justify-content: space-between; padding: 14px 12px 4px 16px; border-bottom: none; font: 700 20px -apple-system, system-ui, sans-serif; letter-spacing: -.02em; }
   body.field.phone #fieldSheet .fs-head::before, body.field.phone #fieldDay .fs-head::before { content: ""; position: absolute; top: 4px; left: 50%; width: 32px; height: 4px; margin-left: -16px; border-radius: 2px; background: rgba(60,60,67,.3); }
   body.field.phone .fs-head .fl-btn { width: 30px; height: 30px; min-width: 0; padding: 0; border: none; border-radius: 50%; background: rgba(118,118,128,.16); box-shadow: none; font-size: 0 !important; color: var(--ap-text2); position: relative; }
-  body.field.phone .fs-head .fl-btn::after { content: "✕"; font: 600 13px -apple-system, system-ui, sans-serif; }
+  /* Krysset ritat (inte ett tecken) så att det ligger exakt i mitten. */
+  body.field.phone .fs-head .fl-btn { display: inline-flex; align-items: center; justify-content: center; }
+  body.field.phone .fs-head .fl-btn::after { content: ""; width: 11px; height: 11px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M1.5 1.5l9 9M10.5 1.5l-9 9' stroke='black' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M1.5 1.5l9 9M10.5 1.5l-9 9' stroke='black' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat; }
   body.field.phone #fieldDayBody button, body.field.phone #fieldSheetBody button { border: none; border-radius: 12px; background: rgba(118,118,128,.12); box-shadow: none; color: #0a84ff; font-family: -apple-system, system-ui, sans-serif; }
   body.field.phone #fieldDayBody button.primary, body.field.phone #fieldDayBody button.on, body.field.phone #fieldSheetBody button.primary { background: #0a84ff; color: #fff; }
   body.field.phone #fieldDayBody details, body.field.phone #fieldSheetBody details { border: none; background: rgba(118,118,128,.08); border-radius: 14px; }
@@ -476,8 +478,7 @@
   body.field.phone #fieldSheet.fs-tall { height: calc(100% - env(safe-area-inset-top) - 64px - var(--ap-bot)); }
   body.field.phone #fieldSheet .fs-head { padding: 14px 12px 2px 16px; font-size: 18px; touch-action: none; cursor: grab; }
   body.field.phone #fieldSheet .fs-head .fl-btn { width: 28px; height: 28px; }
-  body.field.phone #fieldSheet .fs-head .fl-btn::after { font-size: 13px; }
-  body.field.phone #fieldSheetBody { padding: 0 10px calc(10px + env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+    body.field.phone #fieldSheetBody { padding: 0 10px calc(10px + env(safe-area-inset-bottom)); overscroll-behavior: contain; }
   body.field.phone #fieldSheetBody .fs-h { margin: 10px 8px 4px; font: 600 11px -apple-system, system-ui, sans-serif; letter-spacing: .3px; color: var(--ap-text2); }
   body.field.phone #fieldSheetBody .fs-grid { gap: 0; border-radius: 12px; background: var(--ap-group); overflow: hidden; }
   body.field.phone #fieldSheetBody .fs-tog { min-height: 38px; padding: 0 10px 0 12px; gap: 8px; border-radius: 0; background: transparent; color: var(--ap-text); font: 15px -apple-system, system-ui, sans-serif; }
@@ -1411,27 +1412,27 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261004093856"></script>
-<script src="lagesplan-tools.js?v=20261004093856"></script>
-<script src="lagesplan-layers.js?v=20261004093856"></script>
-<script src="lagesplan-views.js?v=20261004093856"></script>
-<script src="lagesplan-film.js?v=20261004093856"></script>
-<script src="lagesplan-cad.js?v=20261004093856"></script>
-<script src="lagesplan-vecpdf.js?v=20261004093856"></script>
-<script src="lagesplan-print.js?v=20261004093856"></script>
-<script src="lagesplan-printlib.js?v=20261004093856"></script>
-<script src="lagesplan-pdflayers.js?v=20261004093856"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261004093856"></script>
-<script src="lagesplan-objmarks.js?v=20261004093856"></script>
-<script src="lagesplan-objlist.js?v=20261004093856"></script>
-<script src="lagesplan-zones.js?v=20261004093856"></script>
-<script src="lagesplan-wbs.js?v=20261004093856"></script>
-<script src="lagesplan-daily.js?v=20261004093856"></script>
-<script src="lagesplan-gps.js?v=20261004093856"></script>
-<script src="lagesplan-weather.js?v=20261004093856"></script>
-<script src="lagesplan-touch.js?v=20261004093856"></script>
-<script src="lagesplan-drawer.js?v=20261004093856"></script>
-<script src="lagesplan-gpslive.js?v=20261004093856"></script>
-<script src="lagesplan-keys.js?v=20261004093856"></script>
+<script src="lagesplan.js?v=20261004094909"></script>
+<script src="lagesplan-tools.js?v=20261004094909"></script>
+<script src="lagesplan-layers.js?v=20261004094909"></script>
+<script src="lagesplan-views.js?v=20261004094909"></script>
+<script src="lagesplan-film.js?v=20261004094909"></script>
+<script src="lagesplan-cad.js?v=20261004094909"></script>
+<script src="lagesplan-vecpdf.js?v=20261004094909"></script>
+<script src="lagesplan-print.js?v=20261004094909"></script>
+<script src="lagesplan-printlib.js?v=20261004094909"></script>
+<script src="lagesplan-pdflayers.js?v=20261004094909"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261004094909"></script>
+<script src="lagesplan-objmarks.js?v=20261004094909"></script>
+<script src="lagesplan-objlist.js?v=20261004094909"></script>
+<script src="lagesplan-zones.js?v=20261004094909"></script>
+<script src="lagesplan-wbs.js?v=20261004094909"></script>
+<script src="lagesplan-daily.js?v=20261004094909"></script>
+<script src="lagesplan-gps.js?v=20261004094909"></script>
+<script src="lagesplan-weather.js?v=20261004094909"></script>
+<script src="lagesplan-touch.js?v=20261004094909"></script>
+<script src="lagesplan-drawer.js?v=20261004094909"></script>
+<script src="lagesplan-gpslive.js?v=20261004094909"></script>
+<script src="lagesplan-keys.js?v=20261004094909"></script>
 </body>
 </html>
