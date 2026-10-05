@@ -23,7 +23,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const fail = m => { throw new Error(m); };
   const page = await (await browser.newContext({ viewport: { width: 1300, height: 850 } })).newPage();
-  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  const errors = []; page.on('pageerror', e => errors.push(e.message + ' @ ' + (e.stack || '').split('\n').slice(1, 3).join(' ')));
   await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); });
   await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS }));
   await page.route('https://api.github.com/**', r => r.fulfill({ status: 404, body: '{}' }));
@@ -85,7 +85,20 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const s3 = await state();
   const flat = await page.evaluate(() => layerDrawOrder());
   if (!(s3.pdf > s3.zones) || !(s3.top > s3.pdf) || flat.indexOf('pdf') > flat.indexOf('zones') || flat.indexOf('pdfp:B') > flat.indexOf('zones')) fail('Mappen över zonerna: ' + JSON.stringify({ s3, flat }));
+  // Låsta lager (Victors önskemål 2026-10-05): bara Objekt och Zoner är låsta – Allmänt och Etablering kan tas bort.
+  page.on('dialog', d => d.accept());
+  await page.evaluate(() => { ghWriteJSON = async (t, p, fn) => fn([]); siteItems.push({ id: 'n1', type: 'note', layer: 'Allmänt', text: 'Hej', pts: [[1, 1], [3, 3]] }); renderLayerPanel(); });
+  const lock = await page.evaluate(() => ['objects', 'zones', 'ul:Allmänt', 'ul:Etablering'].map(k => !!document.querySelector(`#layerList .layer-row[data-layer="${k}"] .lr-del`)));
+  if (JSON.stringify(lock) !== JSON.stringify([false, false, true, true])) fail('Bara Objekt och Zoner ska vara låsta: ' + JSON.stringify(lock));
+  await page.click('#layerList .layer-row[data-layer="ul:Allmänt"] .lr-del'); await page.waitForTimeout(300);
+  const d1 = await page.evaluate(() => ({ layers: userLayers(), note: (siteItems.find(x => x.id === 'n1') || {}).layer, row: !!document.querySelector('#layerList .layer-row[data-layer="ul:Allmänt"]') }));
+  if (d1.layers.includes('Allmänt') || d1.note !== 'Etablering' || d1.row) fail('Allmänt ska kunna tas bort, objekten flyttas till Etablering: ' + JSON.stringify(d1));
+  await page.click('#layerList .layer-row[data-layer="ul:Etablering"] .lr-del'); await page.waitForTimeout(300);
+  const d2 = await page.evaluate(() => ({ layers: userLayers(), note: !!siteItems.find(x => x.id === 'n1') }));
+  if (d2.layers.length || d2.note) fail('Sista lagret tas bort med sina objekt: ' + JSON.stringify(d2));
+  await page.evaluate(() => createLayer('Allmänt')); await page.waitForTimeout(200);
+  if (!(await page.evaluate(() => userLayers().includes('Allmänt')))) fail('Ett borttaget lager ska kunna skapas igen');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();
-  console.log('OK: ritordning – listan styr nivåerna och exporten, drag av lager och mappar, Bas-raden');
+  console.log('OK: ritordning – listan styr nivåerna och exporten, drag av lager och mappar, Bas-raden, bara Objekt och Zoner låsta');
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });

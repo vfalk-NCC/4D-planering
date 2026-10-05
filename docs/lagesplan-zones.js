@@ -17,7 +17,7 @@ const zoneUndoStack = [];
 // Ångra
 // ---------------------------------------------------------------------
 function zoneSnapshot(label) {
-  zoneUndoStack.push({ label, zones: JSON.stringify((plan && plan.zones) || []), planId: plan && plan.id });
+  zoneUndoStack.push({ label, zones: JSON.stringify((plan && plan.zones) || []), wbs: JSON.stringify((plan && plan.wbs) || null), planId: plan && plan.id });
   if (zoneUndoStack.length > 50) zoneUndoStack.shift();
   if (typeof lastUndoTarget !== "undefined") lastUndoTarget = "zone";
   if (typeof updateFieldUndo === "function") updateFieldUndo();
@@ -26,6 +26,7 @@ function zoneUndo() {
   const e = zoneUndoStack.pop();
   if (!e || !plan || e.planId !== plan.id) return false;
   plan.zones = JSON.parse(e.zones);
+  if ("wbs" in e) { const w = JSON.parse(e.wbs); if (w) plan.wbs = w; else delete plan.wbs; } // överzonernas utseende
   if (selectedZoneId && !plan.zones.some(z => z.id === selectedZoneId)) selectZone(null);
   else if (selectedZoneId) openEditor(selectedZoneId);
   if (!zoneUndoStack.length && typeof lastUndoTarget !== "undefined") lastUndoTarget = "";
@@ -332,14 +333,16 @@ function drawZoneOverlay(ctx, fontPx) {
 // Utseende i zonredigeringen
 // ---------------------------------------------------------------------
 const zoneOpt = (v, cur, l) => `<option value="${v}"${String(cur) === String(v) ? " selected" : ""}>${l}</option>`;
-function renderZoneStyleUi(sel) {
+/* opts.wbs: överzonens utseende (lagesplan-wbs.js) – namnet ändras i överzonens eget fält och
+   opts.onAll ger alla överzoner samma utseende. */
+function renderZoneStyleUi(sel, opts = {}) {
   const box = $("zeStyle");
   if (!box) return;
   const list = (Array.isArray(sel) ? sel : [sel]).filter(Boolean), z = list[0], multi = list.length > 1;
   if (!z) { box.innerHTML = ""; return; }
   const s = zoneStyle(z), op = Math.round((s.fillOpacity != null ? s.fillOpacity : ZONE_ALPHA) * 100);
   box.innerHTML = `
-    ${multi ? `<div class="muted">Ändringarna gäller alla ${list.length} markerade zoner.</div>` : `<label>Namn <span class="muted">(valfritt, t.ex. Hus A plan 2)</span></label><input type="text" class="zs-name" value="${escHtml(z.name || "")}" />`}
+    ${opts.wbs ? "" : multi ? `<div class="muted">Ändringarna gäller alla ${list.length} markerade zoner.</div>` : `<label>Namn <span class="muted">(valfritt, t.ex. Hus A plan 2)</span></label><input type="text" class="zs-name" value="${escHtml(z.name || "")}" />`}
     <div class="zs-h">Fyllning</div>
     <div class="zs-row"><select class="zs-fill">${zoneOpt("phase", s.fill, "Statusfärg (fas)")}${zoneOpt("custom", s.fill, "Egen färg")}${zoneOpt("none", s.fill, "Ingen")}</select><input type="color" class="zs-fillc" value="${escHtml(s.fillColor)}"${s.fill === "custom" ? "" : " disabled"} /></div>
     <div class="zs-row"><span class="zs-l">Opacitet</span><input type="range" class="zs-op" min="0" max="100" step="5" value="${op}" /><span class="zs-v">${op} %</span></div>
@@ -349,11 +352,11 @@ function renderZoneStyleUi(sel) {
     <div class="zs-row"><span class="zs-l">Tjocklek</span><input type="range" class="zs-w" min="0.25" max="5" step="0.25" value="${s.strokeWidth}" /><span class="zs-v">${s.strokeWidth}×</span></div>
     <div class="zs-row"><span class="zs-l">Linje</span><select class="zs-dash">${zoneOpt("auto", s.dash, "Automatisk")}${zoneOpt("solid", s.dash, "Heldragen")}${zoneOpt("dashed", s.dash, "Streckad")}${zoneOpt("dotted", s.dash, "Prickad")}</select></div>
     <div class="zs-h">Etikett</div>
-    <div class="zs-row"><select class="zs-label">${zoneOpt("pill", s.label, "Färgad bubbla")}${zoneOpt("white", s.label, "Vit bubbla")}${zoneOpt("text", s.label, "Bara text")}${zoneOpt("none", s.label, "Ingen etikett")}</select>${multi ? "" : `<button type="button" class="zs-edlabel" title="Text, radbrytning, rotation och storlek – eller klicka på etiketten på planen">✏️ Redigera</button>`}</div>
+    <div class="zs-row"><select class="zs-label">${zoneOpt("pill", s.label, "Färgad bubbla")}${zoneOpt("white", s.label, "Vit bubbla")}${zoneOpt("text", s.label, "Bara text")}${zoneOpt("none", s.label, "Ingen etikett")}</select>${multi || opts.wbs ? "" : `<button type="button" class="zs-edlabel" title="Text, radbrytning, rotation och storlek – eller klicka på etiketten på planen">✏️ Redigera</button>`}</div>
     <div class="zs-row"><span class="zs-l">Storlek</span><input type="range" class="zs-ls" min="40" max="400" step="10" value="${Math.round(s.labelSize * 100)}" /><span class="zs-v">${Math.round(s.labelSize * 100)} %</span></div>
-    <div class="zs-row zs-checks"><label class="check"><input type="checkbox" class="zs-pct"${s.labelPct ? " checked" : ""} /> Framdrift %</label><label class="check"><input type="checkbox" class="zs-showname"${s.labelName ? " checked" : ""} /> Namnet</label>${zoneOpt$("area") ? `<label class="check"><input type="checkbox" class="zs-area"${s.labelArea ? " checked" : ""} /> Ytan m²</label>` : ""}</div>
-    <label class="check"><input type="checkbox" class="zs-hidden"${s.hidden ? " checked" : ""} /> Dölj zonen på planen <span class="muted">(räknas ändå)</span></label>
-    <div class="row split" style="margin-top:6px;"><button type="button" class="zs-all" title="Ge alla zoner på planen samma utseende">⧉ Samma utseende på alla</button><button type="button" class="zs-reset">↺ Standard</button></div>`;
+    <div class="zs-row zs-checks"><label class="check"><input type="checkbox" class="zs-pct"${s.labelPct ? " checked" : ""} /> Framdrift %</label>${opts.wbs ? "" : `<label class="check"><input type="checkbox" class="zs-showname"${s.labelName ? " checked" : ""} /> Namnet</label>`}${zoneOpt$("area") && !opts.wbs ? `<label class="check"><input type="checkbox" class="zs-area"${s.labelArea ? " checked" : ""} /> Ytan m²</label>` : ""}</div>
+    <label class="check"><input type="checkbox" class="zs-hidden"${s.hidden ? " checked" : ""} /> Dölj ${opts.wbs ? "överzonen" : "zonen"} på planen <span class="muted">(räknas ändå)</span></label>
+    <div class="row split" style="margin-top:6px;"><button type="button" class="zs-all" title="Ge alla ${opts.wbs ? "överzoner" : "zoner"} på planen samma utseende">⧉ Samma utseende på alla</button><button type="button" class="zs-reset">↺ Standard</button></div>`;
   const q = c => box.querySelector(c);
   let snapTaken = false;
   const change = (patch, label = "Ändra utseende") => {
@@ -362,22 +365,23 @@ function renderZoneStyleUi(sel) {
     renderZones(); schedulePlanSave();
   };
   if (q(".zs-name")) q(".zs-name").onchange = () => { zoneSnapshot("Byt namn"); z.name = q(".zs-name").value.trim(); renderZones(); renderZoneList(); schedulePlanSave(); };
-  q(".zs-fill").onchange = () => { change({ fill: q(".zs-fill").value }); renderZoneStyleUi(list); };
+  q(".zs-fill").onchange = () => { change({ fill: q(".zs-fill").value }); renderZoneStyleUi(list, opts); };
   q(".zs-fillc").oninput = () => change({ fillColor: q(".zs-fillc").value, fill: "custom" });
   q(".zs-op").oninput = () => { q(".zs-op").nextElementSibling.textContent = q(".zs-op").value + " %"; change({ fillOpacity: Number(q(".zs-op").value) / 100 }); };
   q(".zs-pat").onchange = () => change({ pattern: q(".zs-pat").value });
-  q(".zs-stroke").onchange = () => { change({ stroke: q(".zs-stroke").value }); renderZoneStyleUi(list); };
+  q(".zs-stroke").onchange = () => { change({ stroke: q(".zs-stroke").value }); renderZoneStyleUi(list, opts); };
   q(".zs-strokec").oninput = () => change({ strokeColor: q(".zs-strokec").value });
   q(".zs-w").oninput = () => { q(".zs-w").nextElementSibling.textContent = q(".zs-w").value + "×"; change({ strokeWidth: Number(q(".zs-w").value) }); };
   q(".zs-dash").onchange = () => change({ dash: q(".zs-dash").value });
   q(".zs-label").onchange = () => change({ label: q(".zs-label").value });
   q(".zs-ls").oninput = () => { q(".zs-ls").nextElementSibling.textContent = q(".zs-ls").value + " %"; change({ labelSize: Number(q(".zs-ls").value) / 100 }); };
   q(".zs-pct").onchange = () => change({ labelPct: q(".zs-pct").checked });
-  q(".zs-showname").onchange = () => change({ labelName: q(".zs-showname").checked });
+  if (q(".zs-showname")) q(".zs-showname").onchange = () => change({ labelName: q(".zs-showname").checked });
   q(".zs-hidden").onchange = () => change({ hidden: q(".zs-hidden").checked });
   if (q(".zs-area")) q(".zs-area").onchange = () => change({ labelArea: q(".zs-area").checked });
   if (q(".zs-edlabel")) q(".zs-edlabel").onclick = () => openZoneLabelPop(z.id);
-  q(".zs-reset").onclick = () => { zoneSnapshot("Standardutseende"); list.forEach(o => delete o.style); renderZones(); schedulePlanSave(); renderZoneStyleUi(list); };
+  q(".zs-reset").onclick = () => { zoneSnapshot("Standardutseende"); list.forEach(o => delete o.style); renderZones(); schedulePlanSave(); renderZoneStyleUi(list, opts); };
+  if (opts.onAll) { q(".zs-all").onclick = () => opts.onAll(z); return; }
   q(".zs-all").onclick = () => {
     const n = plan.zones.length - 1;
     if (!n || !confirm(`Ge alla ${n} andra zoner samma utseende som ${z.code}${multi ? " (den första markerade)" : ""}? (Namn och etikettens läge ändras inte.)`)) return;

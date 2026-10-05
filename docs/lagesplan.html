@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261005082749"></script>
+<script src="github-storage.js?v=20261005085532"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -229,7 +229,7 @@
   .zone-item { display: flex; gap: 6px; align-items: center; padding: 5px 8px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12px; }
   .zone-item:hover { background: var(--panel-2); }
   .zone-item:last-child { border-bottom: none; }
-  .zone-item.sel { background: var(--accent-weak); }
+  .zone-item.sel { background: var(--accent-weak); box-shadow: inset 3px 0 0 var(--accent); }
   .zone-item .code { font-weight: 600; min-width: 58px; }
   .zone-item .pct { margin-left: auto; color: var(--muted); }
   #zoneEditor { border: 1px solid var(--accent); border-radius: 8px; padding: 10px; margin-top: 10px; background: #f5f8ff; }
@@ -722,6 +722,11 @@
   .zone-item.msel { background: var(--accent-weak); box-shadow: inset 3px 0 0 var(--accent); }
   .zone-item .zarea { color: var(--muted); font-size: 11px; }
   #zoneEditor.multi .ze-single { display: none; }
+  #zoneEditor.wbs .ze-single, #zoneEditor.wbs #zeMultiInfo, #zoneEditor:not(.wbs) .ze-wbs-only { display: none; }
+  .zw-kids { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .zw-kids button { font-size: 11px; padding: 2px 7px; height: auto; border-radius: 10px; }
+  .zone-item.wbs-item.sel { background: var(--accent-weak); box-shadow: inset 3px 0 0 var(--accent); }
+  #flashCanvas { pointer-events: none; z-index: 100000 !important; }
   .ze-acts { margin-top: 4px; max-height: 190px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; }
   .ze-act { display: flex; gap: 6px; align-items: center; padding: 3px 6px; font-size: 11.5px; border-bottom: 1px solid var(--border); line-height: 1.3; }
   .ze-act:last-child { border-bottom: none; } .ze-act .grow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1262,6 +1267,16 @@
             <div class="hint" id="zeMatchInfo"></div>
             <div id="zeActs" class="ze-acts hidden"></div>
             </div>
+            <div class="ze-wbs-only" id="zeWbsEdit">
+              <label>Överzonens namn</label>
+              <input type="text" id="zwName" title="Byter överzon på alla zoner som ligger i den" />
+              <div class="hint" id="zwInfo"></div>
+              <div class="zw-kids" id="zwKids"></div>
+              <div class="row split" style="margin-top:6px;">
+                <button type="button" id="zw3d" title="Markera överzonens objekt i 3D-modellen">🎯 Markera i 3D</button>
+                <button type="button" id="zwDelete" title="Ta bort överzonen – zonerna ligger kvar, utan överzon">🗑️ Ta bort överzonen</button>
+              </div>
+            </div>
             <div class="hint hidden" id="zeMultiInfo"></div>
             <details class="ze-style" open><summary>🎨 Utseende</summary><div id="zeStyle"></div></details>
             <div class="row ze-single" style="margin-top:8px;">
@@ -1446,28 +1461,28 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261005082749"></script>
-<script src="lagesplan-tools.js?v=20261005082749"></script>
-<script src="lagesplan-layers.js?v=20261005082749"></script>
-<script src="lagesplan-pdfoverlay.js?v=20261005082749"></script>
-<script src="lagesplan-views.js?v=20261005082749"></script>
-<script src="lagesplan-film.js?v=20261005082749"></script>
-<script src="lagesplan-cad.js?v=20261005082749"></script>
-<script src="lagesplan-vecpdf.js?v=20261005082749"></script>
-<script src="lagesplan-print.js?v=20261005082749"></script>
-<script src="lagesplan-printlib.js?v=20261005082749"></script>
-<script src="lagesplan-pdflayers.js?v=20261005082749"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261005082749"></script>
-<script src="lagesplan-objmarks.js?v=20261005082749"></script>
-<script src="lagesplan-objlist.js?v=20261005082749"></script>
-<script src="lagesplan-zones.js?v=20261005082749"></script>
-<script src="lagesplan-wbs.js?v=20261005082749"></script>
-<script src="lagesplan-daily.js?v=20261005082749"></script>
-<script src="lagesplan-gps.js?v=20261005082749"></script>
-<script src="lagesplan-weather.js?v=20261005082749"></script>
-<script src="lagesplan-touch.js?v=20261005082749"></script>
-<script src="lagesplan-drawer.js?v=20261005082749"></script>
-<script src="lagesplan-gpslive.js?v=20261005082749"></script>
-<script src="lagesplan-keys.js?v=20261005082749"></script>
+<script src="lagesplan.js?v=20261005085532"></script>
+<script src="lagesplan-tools.js?v=20261005085532"></script>
+<script src="lagesplan-layers.js?v=20261005085532"></script>
+<script src="lagesplan-pdfoverlay.js?v=20261005085532"></script>
+<script src="lagesplan-views.js?v=20261005085532"></script>
+<script src="lagesplan-film.js?v=20261005085532"></script>
+<script src="lagesplan-cad.js?v=20261005085532"></script>
+<script src="lagesplan-vecpdf.js?v=20261005085532"></script>
+<script src="lagesplan-print.js?v=20261005085532"></script>
+<script src="lagesplan-printlib.js?v=20261005085532"></script>
+<script src="lagesplan-pdflayers.js?v=20261005085532"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261005085532"></script>
+<script src="lagesplan-objmarks.js?v=20261005085532"></script>
+<script src="lagesplan-objlist.js?v=20261005085532"></script>
+<script src="lagesplan-zones.js?v=20261005085532"></script>
+<script src="lagesplan-wbs.js?v=20261005085532"></script>
+<script src="lagesplan-daily.js?v=20261005085532"></script>
+<script src="lagesplan-gps.js?v=20261005085532"></script>
+<script src="lagesplan-weather.js?v=20261005085532"></script>
+<script src="lagesplan-touch.js?v=20261005085532"></script>
+<script src="lagesplan-drawer.js?v=20261005085532"></script>
+<script src="lagesplan-gpslive.js?v=20261005085532"></script>
+<script src="lagesplan-keys.js?v=20261005085532"></script>
 </body>
 </html>

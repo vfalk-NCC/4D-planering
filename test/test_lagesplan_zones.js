@@ -317,6 +317,26 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (w2.kids.some(k => k.endsWith('-')) || w2.tog !== '▾') fail('Pilen ska fälla ut överzonen: ' + JSON.stringify(w2));
   await page.click('#zoneList .wbs-tog');
   if ((await wt()).kids.some(k => k.endsWith('+'))) fail('Pilen ska fälla ihop överzonen igen');
+  // Överzonen redigeras som en zon: klick i listan markerar den (blinkar), namn, utseende, ta bort, ångra.
+  await page.click('#zoneList .wbs-item .code'); await page.waitForTimeout(150);
+  const we = await page.evaluate(() => ({ key: selectedWbsKey, zone: selectedZoneId, wbs: $('zoneEditor').classList.contains('wbs'), vis: !$('zoneEditor').classList.contains('hidden'), title: $('zeTitle').textContent, name: $('zwName').value, kids: $('zwKids').children.length, style: !!$('zeStyle').querySelector('.zs-fill'), nameField: !!$('zeStyle').querySelector('.zs-name'), sel: document.querySelector('#zoneList .wbs-item').classList.contains('sel'), flash: !!$('flashCanvas') && $('flashCanvas').style.display !== 'none' && $('flashCanvas').width > 0 }));
+  if (!we.key || we.zone || !we.wbs || !we.vis || !/742 Sikthall/.test(we.title) || we.kids !== 2 || !we.style || we.nameField || !we.sel || !we.flash) fail('Överzonen ska markeras och kunna redigeras: ' + JSON.stringify(we));
+  await page.waitForTimeout(1900);
+  if (await page.evaluate(() => $('flashCanvas').style.display !== 'none')) fail('Blinkningen ska gå över');
+  await page.selectOption('#zeStyle .zs-fill', 'custom'); await page.waitForTimeout(100);
+  if ((await page.evaluate(() => plan.wbs['742 SIKTHALL'].style.fill)) !== 'custom') fail('Överzonens utseende ska sparas i planen');
+  await page.fill('#zwName', '742 Sikthall Ny'); await page.dispatchEvent('#zwName', 'change'); await page.waitForTimeout(150);
+  const rn = await page.evaluate(() => ({ parents: plan.zones.filter(z => z.parent).map(z => z.parent), key: selectedWbsKey, style: (plan.wbs['742 SIKTHALL NY'] || {}).style }));
+  if (rn.parents.length !== 2 || rn.parents.some(p => p !== '742 Sikthall Ny') || rn.key !== '742 SIKTHALL NY' || !rn.style) fail('Namnbyte ska gälla alla zoner och behålla utseendet: ' + JSON.stringify(rn));
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(150);
+  if ((await page.evaluate(() => plan.zones.filter(z => z.parent).map(z => z.parent))).some(p => p !== '742 sikthall' && p !== '742 Sikthall')) fail('Ctrl+Z ska ångra namnbytet');
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(150);
+  if (await page.evaluate(() => !!(plan.wbs && plan.wbs['742 SIKTHALL'] && plan.wbs['742 SIKTHALL'].style))) fail('Ctrl+Z ska ångra överzonens utseende');
+  // En vanlig zon från listan: överzonen släpps, zonen blinkar.
+  await page.evaluate(id => { const r = document.querySelector(`#zoneList .zone-item[data-zone="${id}"]`); r.click(); }, b41); await page.waitForTimeout(100);
+  const zz = await page.evaluate(() => ({ key: selectedWbsKey, wbs: $('zoneEditor').classList.contains('wbs'), flash: $('flashCanvas').style.display !== 'none' }));
+  if (zz.key || zz.wbs || !zz.flash) fail('En zon från listan ska släppa överzonen och blinka: ' + JSON.stringify(zz));
   await page.evaluate(id => selectZone(id), b41); await page.waitForTimeout(100);
   // Nivåerna: båda, bara överzoner, bara zoner.
   const lv = async v => { await page.selectOption('#zoWbsLevel', v); await page.waitForTimeout(100);

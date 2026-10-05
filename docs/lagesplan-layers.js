@@ -216,8 +216,14 @@ function askOrthoDate(def) {
 const isSiteObj = x => x.type !== "ortho" && x.type !== "layer" && x.type !== "layermeta" && x.type !== "cad" && x.type !== "printtpl" && x.type !== "objview" && x.type !== "lsview" && x.type !== "ue" && x.type !== "wxset" && x.type !== "dayset" && x.type !== "objmarks";
 const defaultLayerOf = x => x.type === "note" ? "Allmänt" : (x.type === "crew" || x.type === "delivery" || x.type === "lift") ? "Dagsplanering" : (x.type === "wxday" || x.type === "wxweek") ? "Väder" : "Etablering";
 const layerOf = x => x.layer || defaultLayerOf(x);
+/* "Allmänt" och "Etablering" kan tas bort som andra lager (Victors önskemål 2026-10-05); de
+   borttagna sparas i lagermetan (removedLayers) och kommer tillbaka om något läggs i dem igen. */
+const removedDefaultLayers = () => ((siteItems.find(x => x.id === META_ID) || {}).removedLayers) || [];
+/* Lagret som objekten flyttas till när deras lager tas bort (null = inget annat lager finns). */
+const layerFallback = except => userLayers().find(l => !except.includes(l)) || null;
 function userLayers() {
-  const names = new Set(["Allmänt", "Etablering"]);
+  const gone = removedDefaultLayers();
+  const names = new Set(["Allmänt", "Etablering"].filter(n => !gone.includes(n)));
   siteItems.filter(x => x.type === "layer").sort((a, b) => (a.order || 0) - (b.order || 0)).forEach(x => names.add(x.name));
   siteItems.filter(x => isSiteObj(x)).forEach(x => names.add(layerOf(x)));
   return [...names];
@@ -227,6 +233,7 @@ async function createLayer(name) {
   name = String(name || "").trim();
   if (!name) return null;
   if (userLayers().includes(name)) return name;
+  if (removedDefaultLayers().includes(name)) { const m = layerMeta(); m.removedLayers = m.removedLayers.filter(n => n !== name); await saveLayerMeta(m); }
   await saveSiteItem({ id: ghNewId(), type: "layer", name, order: Date.now() }, false, { record: false });
   ls("ul:" + name).visible = true; saveLayerState();
   return name;
@@ -238,7 +245,7 @@ async function createLayer(name) {
 const META_ID = "layermeta";
 function layerMeta() {
   const m = siteItems.find(x => x.id === META_ID) || {};
-  return { id: META_ID, type: "layermeta", names: { ...(m.names || {}) }, folders: (m.folders || []).map(f => ({ ...f })), folderOf: { ...(m.folderOf || {}) }, sortAz: !!m.sortAz, order: [...(m.order || [])], cadColors: { ...(m.cadColors || {}) } };
+  return { id: META_ID, type: "layermeta", names: { ...(m.names || {}) }, folders: (m.folders || []).map(f => ({ ...f })), folderOf: { ...(m.folderOf || {}) }, sortAz: !!m.sortAz, order: [...(m.order || [])], removedLayers: [...(m.removedLayers || [])], cadColors: { ...(m.cadColors || {}) } };
 }
 function saveLayerMeta(m) { return saveSiteItem(m, false, { record: false }); }
 const LAYER_DEFAULT_NAMES = { pdf: "Ritningen (PDF)", zones: "Zoner", objects: "Objekt", photos: "Foton" };
@@ -400,7 +407,7 @@ function renderActiveLayerSelect() {
   if (!sel) return;
   const cur = sel.value || (() => { try { return localStorage.getItem("lagesplan-activelayer-" + projectId); } catch (e) { return null; } })() || "Etablering";
   sel.innerHTML = userLayers().map(l => `<option value="${escHtml(l)}"${l === cur ? " selected" : ""}>${escHtml(ulName(l))}</option>`).join("");
-  if (!userLayers().includes(cur)) sel.value = "Etablering";
+  if (!userLayers().includes(cur)) sel.value = userLayers().includes("Etablering") ? "Etablering" : (userLayers()[0] || "");
 }
 
 /* Flera poster i en skrivning (byt namn på/ta bort lager). */
@@ -1893,10 +1900,10 @@ function renderLayerPanel() {
     + (objFams.length ? objRowsHtml(objFams, { hidden: opts.hidden || !objOpen, inFolder: opts.inFolder }) : "");
   userLayers().forEach(l => {
     const n = siteItems.filter(x => isSiteObj(x) && layerOf(x) === l).length;
-    const fixed = l === "Allmänt" || l === "Etablering";
+    const fixed = l === "Allmänt" || l === "Etablering"; // fast namn (byts som visningsnamn), men kan tas bort
     // Fäll ut ett lager (t.ex. Etablering) och se/ta bort dess objekt direkt i listan.
     const open = n > 0 && layerState["ulopen:" + l] === true;
-    rowHtml["ul:" + l] = opts => layerRow("ul:" + l, `${n ? `<button class="cad-toggle ul-toggle" data-ul="${escHtml(l)}" title="Visa objekten i lagret">${open ? "▾" : "▸"}</button>` : ""}${name("ul:" + l, fixed ? "fx-name" : "ul-name", "🗂")} <small>${n}</small>`, { del: !fixed, ul: l, ...opts })
+    rowHtml["ul:" + l] = opts => layerRow("ul:" + l, `${n ? `<button class="cad-toggle ul-toggle" data-ul="${escHtml(l)}" title="Visa objekten i lagret">${open ? "▾" : "▸"}</button>` : ""}${name("ul:" + l, fixed ? "fx-name" : "ul-name", "🗂")} <small>${n}</small>`, { del: true, ul: l, ...opts })
       + siteItemRowsHtml(l, { hidden: opts.hidden || !open, inFolder: opts.inFolder });
   });
   // Foton: fäll ut för att se, visa och ta bort fotona på planen (som Etablering).
@@ -2081,7 +2088,7 @@ function renderLayerPanel() {
 const layerSel = new Set();
 let layerSelAnchor = null, layerListActive = false;
 const layerDeletable = key => key.startsWith("ortho:") || key.startsWith("cad:") ||
-  (key.startsWith("ul:") && key !== "ul:Allmänt" && key !== "ul:Etablering");
+  key.startsWith("ul:"); // Objekt och Zoner är låsta; Ritningen och Foton tas bort på annat sätt
 function bindLayerSelection(el, keys) {
   // Lager som inte finns längre (t.ex. borttagna) avmarkeras.
   const all = new Set([...el.querySelectorAll(".layer-row[data-layer]")].map(r => r.dataset.layer));
@@ -2167,24 +2174,27 @@ async function deleteSelectedLayers() {
   const cadRecs = keys.filter(k => k.startsWith("cad:")).map(k => (typeof cads === "function" ? cads() : []).find(x => "cad:" + x.id === k)).filter(Boolean);
   const layerNames = keys.filter(k => k.startsWith("ul:")).map(k => k.slice(3));
   const moved = siteItems.filter(x => isSiteObj(x) && layerNames.includes(layerOf(x)));
+  const to = layerFallback(layerNames);
   const parts = [];
   if (orthoRecs.length) parts.push(`${orthoRecs.length} ortofoto`);
   if (cadRecs.length) parts.push(`${cadRecs.length} CAD-ritning${cadRecs.length > 1 ? "ar" : ""}`);
-  if (layerNames.length) parts.push(`${layerNames.length} lager${moved.length ? ` (deras ${moved.length} objekt flyttas till "Allmänt")` : ""}`);
+  if (layerNames.length) parts.push(`${layerNames.length} lager${moved.length ? (to ? ` (deras ${moved.length} objekt flyttas till "${to}")` : ` och deras ${moved.length} objekt`) : ""}`);
   const names = [...orthoRecs.map(o => o.name), ...cadRecs.map(r => r.name), ...layerNames];
   const list = names.slice(0, 12).map(n => "• " + n).join("\n") + (names.length > 12 ? `\n… och ${names.length - 12} till` : "");
   if (!confirm(`Ta bort ${parts.join(", ")} från lägesplanen?\n\n${list}${orthoRecs.length || cadRecs.length ? "\n\nOriginalen i Trimble Connect ligger kvar." : ""}`)) return;
   // Allt i en sparning, sedan filerna.
-  const removeIds = [...orthoRecs.map(o => o.id), ...cadRecs.map(r => r.id), ...siteItems.filter(x => x.type === "layer" && layerNames.includes(x.name)).map(x => x.id)];
+  const removeIds = [...orthoRecs.map(o => o.id), ...cadRecs.map(r => r.id), ...siteItems.filter(x => x.type === "layer" && layerNames.includes(x.name)).map(x => x.id), ...(to ? [] : moved.map(x => x.id))];
   const m = layerMeta();
+  const gone = layerNames.filter(n => n === "Allmänt" || n === "Etablering");
+  if (gone.length) m.removedLayers = [...new Set([...m.removedLayers, ...gone])];
   keys.forEach(k => { delete m.folderOf[k]; });
   orthoRecs.forEach(o => orthoImages.delete(o.id));
   if (typeof cadGeom !== "undefined") cadRecs.forEach(r => cadGeom.delete(r.id));
   layerSel.clear();
   setSaveStatus("Tar bort…");
   try {
-    const recs = moved.map(x => ({ ...x, layer: "Allmänt" }));
-    await saveSiteItemsBatch(siteItems.some(x => x.id === META_ID) ? [...recs, m] : recs, removeIds);
+    const recs = to ? moved.map(x => ({ ...x, layer: to })) : [];
+    await saveSiteItemsBatch(siteItems.some(x => x.id === META_ID) || gone.length ? [...recs, m] : recs, removeIds);
     setSaveStatus(`✓ Tog bort ${names.length} st`);
   } catch (e) { setSaveStatus("⚠ Kunde inte ta bort: " + e.message); return; }
   [...orthoRecs, ...cadRecs].forEach(r => { if (r.path) ghDeleteBinary(token, r.path, `Lägesplan: ta bort ${r.type === "cad" ? "CAD" : "ortofoto"}`); });
@@ -2493,10 +2503,13 @@ async function renameLayer(oldName) {
   renderActiveLayerSelect();
 }
 async function deleteLayer(name) {
-  const items = siteItems.filter(x => isSiteObj(x) && layerOf(x) === name);
-  if (!confirm(items.length ? `Ta bort lagret "${name}"? Dess ${items.length} objekt flyttas till "Allmänt".` : `Ta bort lagret "${name}"?`)) return;
+  const items = siteItems.filter(x => isSiteObj(x) && layerOf(x) === name), to = layerFallback([name]);
+  const shown = layerDisplayName("ul:" + name);
+  if (!confirm(items.length ? (to ? `Ta bort lagret "${shown}"? Dess ${items.length} objekt flyttas till "${layerDisplayName("ul:" + to)}".` : `Ta bort lagret "${shown}" och dess ${items.length} objekt? Det finns inget annat lager att flytta dem till.`) : `Ta bort lagret "${shown}"?`)) return;
   const layerRecs = siteItems.filter(x => x.type === "layer" && x.name === name).map(x => x.id);
-  await saveSiteItemsBatch(items.map(x => ({ ...x, layer: "Allmänt" })), layerRecs);
+  const recs = to ? items.map(x => ({ ...x, layer: to })) : [];
+  if (name === "Allmänt" || name === "Etablering") { const m = layerMeta(); m.removedLayers = [...new Set([...m.removedLayers, name])]; recs.push(m); }
+  await saveSiteItemsBatch(recs, to ? layerRecs : [...layerRecs, ...items.map(x => x.id)]);
   renderActiveLayerSelect();
 }
 

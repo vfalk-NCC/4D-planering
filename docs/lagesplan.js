@@ -1098,7 +1098,8 @@ function drawZoneShapes(ctx, fontPx, objects, cached) {
       const dash = zs.dash === "auto" ? (noStatus ? "dashed" : "solid") : zs.dash;
       if (dash === "dashed") ctx.setLineDash([fontPx / 2, fontPx / 3]);
       else if (dash === "dotted") { ctx.setLineDash([lw * 0.2, lw * 2.2]); ctx.lineCap = "round"; }
-      if (selected) { ctx.strokeStyle = "#0b5fff"; ctx.stroke(); }
+      // Markerad: blå kant med vit kontur, så att zonens gränser syns tydligt mot ritningen.
+      if (selected) { ctx.setLineDash([]); const w = ctx.lineWidth; ctx.lineWidth = w * 1.9; ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.stroke(); ctx.lineWidth = w; ctx.strokeStyle = "#0b5fff"; ctx.stroke(); }
       else if (zs.stroke !== "none") { ctx.strokeStyle = zs.stroke === "custom" ? zs.strokeColor : shade(color, -0.35); ctx.stroke(); }
       ctx.setLineDash([]); ctx.lineCap = "butt";
     }

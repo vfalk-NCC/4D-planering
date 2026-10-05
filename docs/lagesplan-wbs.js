@@ -37,26 +37,64 @@ function wbsUnion(zones) {
 }
 const wbsCentroid = rings => { const r = rings.reduce((a, p) => (polyArea(p[0]) > polyArea(a[0]) ? p : a), rings[0])[0]; let x = 0, y = 0; r.forEach(p => { x += p[0]; y += p[1]; }); return [x / r.length, y / r.length]; };
 
+/* Överzonernas utseende (Victors önskemål 2026-10-05): redigeras som zonernas, sparas i planen
+   (plan.wbs[nyckel].style). Utan egen stil ser överzonen ut som förut. */
+const WBS_STYLE_DEFAULT = { ...ZONE_STYLE_DEFAULT, labelSize: 1.25 };
+let selectedWbsKey = null;
+function wbsMeta(key, create = false) {
+  if (!plan) return null;
+  if (create && !plan.wbs) plan.wbs = {};
+  const w = plan.wbs || {};
+  if (create && !w[key]) w[key] = {};
+  return w[key] || null;
+}
+const wbsStyle = key => ({ ...WBS_STYLE_DEFAULT, ...((wbsMeta(key) || {}).style || {}) });
+
 /* Ritas efter (och, för "bara överzoner", i stället för) zonerna. */
 function drawWbsShapes(ctx, fontPx, objects, groups, filled) {
   const badges = [];
   groups.forEach(g => {
     if (!g.polys.length) return;
-    const color = g.items.length ? phaseColor(g.phase) : "#6b7280";
+    const own = (wbsMeta(g.key) || {}).style || {}, zs = wbsStyle(g.key), selected = g.key === selectedWbsKey;
+    if (zs.hidden && !selected) return;
+    const phaseCol = g.items.length ? phaseColor(g.phase) : "#6b7280";
+    const color = zs.fill === "custom" ? zs.fillColor : phaseCol;
+    const path = () => {
+      ctx.beginPath();
+      g.polys.forEach(rings => rings.forEach(r => {
+        r.forEach((p, i) => { const [x, y] = toPx(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+        ctx.closePath();
+      }));
+    };
     ctx.save();
-    ctx.beginPath();
-    g.polys.forEach(rings => rings.forEach(r => {
-      r.forEach((p, i) => { const [x, y] = toPx(p); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-      ctx.closePath();
-    }));
-    if (filled && g.items.length) { ctx.globalAlpha = objects && objects.length ? ZONE_ALPHA / 3 : ZONE_ALPHA; ctx.fillStyle = color; ctx.fill("evenodd"); ctx.globalAlpha = 1; }
+    if (zs.hidden) ctx.globalAlpha = 0.4;
+    path();
+    // Fyllning: med "bara överzoner", eller när en egen fyllning valts.
+    const doFill = zs.fill !== "none" && (filled || "fill" in own || "fillOpacity" in own) && (zs.fill === "custom" || g.items.length);
+    if (doFill) {
+      ctx.globalAlpha = (zs.fillOpacity != null ? zs.fillOpacity : objects && objects.length ? ZONE_ALPHA / 3 : ZONE_ALPHA) * (zs.hidden ? 0.3 : 1);
+      ctx.fillStyle = color;
+      if (zs.pattern === "none") ctx.fill("evenodd");
+      else { ctx.globalAlpha *= 0.35; ctx.fill("evenodd"); ctx.globalAlpha /= 0.35; ctx.save(); ctx.clip("evenodd"); zonePatternFill(ctx, zs.pattern, color, fontPx); ctx.restore(); path(); }
+      ctx.globalAlpha = zs.hidden ? 0.4 : 1;
+    }
     ctx.lineJoin = "round";
-    ctx.lineWidth = Math.max(3, fontPx / 3.2);
-    ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.stroke();
-    ctx.lineWidth = Math.max(2, fontPx / 5); ctx.strokeStyle = filled ? shade(color, -0.35) : "#111827";
-    if (!filled) ctx.setLineDash([fontPx * 0.9, fontPx * 0.45]);
-    ctx.stroke();
+    const lw = Math.max(2, fontPx / 5) * (Number(zs.strokeWidth) || 1);
+    if (selected) {
+      ctx.lineWidth = Math.max(5, fontPx / 2.6, lw) * 1.9; ctx.strokeStyle = "rgba(255,255,255,.95)"; ctx.stroke();
+      ctx.lineWidth = Math.max(5, fontPx / 2.6, lw); ctx.strokeStyle = "#0b5fff"; ctx.stroke();
+    } else if (zs.stroke !== "none") {
+      ctx.lineWidth = Math.max(3, fontPx / 3.2) * (Number(zs.strokeWidth) || 1);
+      ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.stroke();
+      ctx.lineWidth = lw;
+      ctx.strokeStyle = zs.stroke === "custom" ? zs.strokeColor : filled ? shade(color, -0.35) : "#111827";
+      const dash = zs.dash === "auto" ? (filled ? "solid" : "dashed") : zs.dash;
+      if (dash === "dashed") ctx.setLineDash([fontPx * 0.9, fontPx * 0.45]);
+      else if (dash === "dotted") { ctx.setLineDash([lw * 0.2, lw * 2.2]); ctx.lineCap = "round"; }
+      ctx.stroke();
+    }
     ctx.restore();
+    if (zs.label === "none") return;
     // Etikett: i mitten när bara överzonerna visas, annars ovanför (zonernas egna etiketter ligger i mitten).
     let pt;
     if (filled) pt = toPx(wbsCentroid(g.polys));
@@ -64,8 +102,8 @@ function drawWbsShapes(ctx, fontPx, objects, groups, filled) {
       const P = g.polys.flatMap(rings => rings[0]).map(toPx);
       pt = [(Math.min(...P.map(p => p[0])) + Math.max(...P.map(p => p[0]))) / 2, Math.min(...P.map(p => p[1])) - fontPx * 0.9];
     }
-    const text = `${g.name}${g.progress != null ? ` · ${g.progress} %` : ""}`;
-    badges.push([pt, text, color, !g.items.length, { ...ZONE_STYLE_DEFAULT, labelSize: 1.25 }, null, -1]);
+    const text = `${g.name}${zs.labelPct && g.progress != null ? ` · ${g.progress} %` : ""}`;
+    badges.push([pt, text, color, !g.items.length && zs.fill !== "custom", zs, null, -1]);
   });
   return badges;
 }
@@ -84,6 +122,7 @@ function renderWbsList() {
   const list = $("zoneList");
   if (!list || !wbsOn()) return;
   const groups = wbsGroups();
+  if (selectedWbsKey && !groups.some(g => g.key === selectedWbsKey)) { selectedWbsKey = null; $("zoneEditor").classList.remove("wbs"); closeEditor(); }
   if (!groups.length) return;
   const open = wbsOpenSet();
   const sel = selectedZoneId && (plan.zones || []).find(z => z.id === selectedZoneId);
@@ -92,7 +131,7 @@ function renderWbsList() {
   box.className = "wbs-list";
   groups.forEach(g => {
     const row = document.createElement("div"), isOpen = open.has(g.key);
-    row.className = "zone-item wbs-item" + (isOpen ? " open" : "");
+    row.className = "zone-item wbs-item" + (isOpen ? " open" : "") + (g.key === selectedWbsKey ? " sel" : "");
     row.dataset.wbs = g.key;
     const tog = document.createElement("button"); tog.type = "button"; tog.className = "wbs-tog"; tog.textContent = isOpen ? "▾" : "▸";
     tog.title = isOpen ? "Fäll ihop" : "Visa zonerna i överzonen";
@@ -102,9 +141,9 @@ function renderWbsList() {
     const pct = document.createElement("span"); pct.className = "pct";
     pct.textContent = `${g.progress != null ? g.progress + " % · " : ""}${g.children.length} zon${g.children.length === 1 ? "" : "er"}`;
     row.append(tog, sw, code, ph, pct);
-    row.title = `Överzon (WBS nivå 1): ${g.children.map(z => z.code).join(", ")}. Klicka för att visa den på planen.`;
+    row.title = `Överzon (WBS nivå 1): ${g.children.map(z => z.code).join(", ")}. Klicka för att markera och redigera den.`;
     tog.onclick = e => { e.stopPropagation(); wbsSetOpen(g.key, !isOpen); renderZoneList(); };
-    row.onclick = () => { if (g.polys.length && typeof centerOnPdf === "function") centerOnPdf(wbsCentroid(g.polys)); };
+    row.onclick = () => selectWbs(g.key, true);
     box.appendChild(row);
     // Zonerna i överzonen flyttas hit från listan (indragna).
     g.children.forEach(z => {
@@ -116,6 +155,109 @@ function renderWbsList() {
     });
   });
   list.prepend(box);
+}
+
+/* Markera en överzon (klick i zonlistan): redigeras i zonrutan – namn, utseende, 3D, ta bort. */
+function selectWbs(key, center) {
+  selectZone(null);
+  selectedWbsKey = key;
+  renderZones();
+  const g = wbsGroups().find(x => x.key === key);
+  if (!g) { selectedWbsKey = null; return; }
+  openWbsEditor(g);
+  if (center && g.polys.length && typeof centerOnPdf === "function") centerOnPdf(wbsCentroid(g.polys));
+  flashOutline(g.polys);
+}
+function openWbsEditor(g) {
+  const ed = $("zoneEditor");
+  ed.classList.remove("hidden", "multi"); ed.classList.add("wbs");
+  if (typeof openSec === "function") openSec("zones", true);
+  $("zeTitle").textContent = `Överzon ${g.name}`;
+  const nm = $("zwName");
+  nm.value = g.name;
+  nm.onchange = () => renameWbs(g.key, nm.value);
+  $("zwInfo").textContent = `${g.children.length} zon${g.children.length === 1 ? "" : "er"} · ${g.items.length ? `${g.items.length} objekt · ${g.progress} % · ${PHASE_LABELS[g.phase]}` : "inga kopplade objekt"}. Status och framdrift räknas fram ur zonerna.`;
+  const kids = $("zwKids");
+  kids.innerHTML = g.children.slice().sort((a, b) => String(a.code).localeCompare(String(b.code), "sv", { numeric: true }))
+    .map(z => `<button type="button" data-zid="${escHtml(z.id)}" title="Markera zonen">${escHtml(z.code)}</button>`).join("");
+  kids.querySelectorAll("[data-zid]").forEach(b => b.onclick = () => selectZone(b.dataset.zid, true));
+  $("zw3d").disabled = !g.items.length;
+  $("zw3d").onclick = async () => {
+    const ids = g.items.map(it => it.id);
+    try { await askOpener("select", { ids }, 30000); setSaveStatus(`🎯 ${ids.length} objekt i ${g.name} markerade i 3D`); } catch (e) { alert("Kunde inte markera i 3D: " + e.message); }
+  };
+  $("zwDelete").onclick = () => deleteWbs(g.key);
+  renderZoneStyleUi(wbsMeta(g.key, true), { wbs: true, onAll: m => {
+    const others = wbsGroups().filter(x => x.key !== g.key);
+    if (!others.length || !confirm(`Ge alla ${others.length} andra överzoner samma utseende som ${g.name}?`)) return;
+    zoneSnapshot("Utseende på alla överzoner");
+    others.forEach(x => { const o = wbsMeta(x.key, true); if (m.style) o.style = { ...m.style }; else delete o.style; });
+    renderZones(); schedulePlanSave();
+    setSaveStatus(`✓ Alla överzoner har nu samma utseende som ${g.name}`);
+  } });
+}
+function renameWbs(key, name) {
+  const v = String(name || "").trim().replace(/\s+/g, " "), nk = wbsKey(v);
+  const g = wbsGroups().find(x => x.key === key);
+  if (!g || !v || v === g.name) { if (g) $("zwName").value = g.name; return; }
+  zoneSnapshot("Byt namn på överzon");
+  g.children.forEach(z => { z.parent = v; });
+  if (nk !== key && plan.wbs && plan.wbs[key]) { if (!plan.wbs[nk]) plan.wbs[nk] = plan.wbs[key]; delete plan.wbs[key]; }
+  if (wbsOpenSet().has(key)) { wbsSetOpen(key, false); wbsSetOpen(nk, true); }
+  selectedWbsKey = nk;
+  renderZones(); schedulePlanSave();
+  const ng = wbsGroups().find(x => x.key === nk);
+  if (ng) openWbsEditor(ng);
+  setSaveStatus(`Överzonen heter nu ${v} (Ctrl+Z ångrar).`);
+}
+function deleteWbs(key) {
+  const g = wbsGroups().find(x => x.key === key);
+  if (!g || !confirm(`Ta bort överzonen ${g.name}? De ${g.children.length} zonerna ligger kvar, utan överzon.`)) return;
+  zoneSnapshot("Ta bort överzon");
+  g.children.forEach(z => { delete z.parent; });
+  if (plan.wbs) delete plan.wbs[key];
+  selectedWbsKey = null;
+  $("zoneEditor").classList.remove("wbs"); closeEditor();
+  renderZones(); schedulePlanSave();
+  setSaveStatus(`Överzonen ${g.name} är borttagen – zonerna ligger kvar (Ctrl+Z ångrar).`);
+}
+
+/* Markering från sidomenyn (Victors önskemål 2026-10-05): zonen blinkar till – resten av planen
+   tonas ned en kort stund och zonens yttre gränslinjer pulserar i blått. polys: [[ring, hål …], …]. */
+let flashRaf = 0;
+function flashOutline(polys) {
+  const stage = $("stage");
+  if (!stage || !polys || !polys.length || !plan || !viewport) return;
+  let c = $("flashCanvas");
+  if (!c) { c = document.createElement("canvas"); c.id = "flashCanvas"; stage.appendChild(c); }
+  cancelAnimationFrame(flashRaf);
+  const [x0, y0, x1, y1] = visibleStageBox();
+  const dpr = window.devicePixelRatio || 1;
+  const s = Math.min(view.scale * dpr, 4096 / Math.max(1, x1 - x0), 4096 / Math.max(1, y1 - y0));
+  c.width = Math.max(1, Math.ceil((x1 - x0) * s)); c.height = Math.max(1, Math.ceil((y1 - y0) * s));
+  Object.assign(c.style, { display: "", left: `${x0}px`, top: `${y0}px`, width: `${x1 - x0}px`, height: `${y1 - y0}px` });
+  const ctx = c.getContext("2d"), px = 1 / view.scale; // en skärmpixel i stage-px
+  const rings = polys.flatMap(rs => rs).map(r => r.map(toPx));
+  const path = () => { ctx.beginPath(); rings.forEach(r => { r.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); }); };
+  const T = 1700, t0 = performance.now();
+  const frame = now => {
+    const t = (now - t0) / T;
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, c.width, c.height);
+    if (t >= 1) { c.style.display = "none"; c.width = c.height = 0; return; }
+    ctx.setTransform(s, 0, 0, s, -x0 * s, -y0 * s);
+    const fade = t > 0.75 ? (1 - t) / 0.25 : 1, pulse = 0.5 + 0.5 * Math.cos(t * Math.PI * 6); // tre blinkningar
+    // Allt utanför zonen tonas ned.
+    ctx.beginPath(); ctx.rect(x0, y0, x1 - x0, y1 - y0);
+    rings.forEach(r => { r.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); });
+    ctx.fillStyle = `rgba(15,23,42,${0.38 * fade})`; ctx.fill("evenodd");
+    path();
+    ctx.lineJoin = "round";
+    ctx.fillStyle = `rgba(11,95,255,${0.18 * pulse * fade})`; ctx.fill("evenodd");
+    ctx.lineWidth = (7 + 5 * pulse) * 1.9 * px; ctx.strokeStyle = `rgba(255,255,255,${0.95 * fade})`; ctx.stroke();
+    ctx.lineWidth = (7 + 5 * pulse) * px; ctx.strokeStyle = `rgba(11,95,255,${fade})`; ctx.stroke();
+    flashRaf = requestAnimationFrame(frame);
+  };
+  flashRaf = requestAnimationFrame(frame);
 }
 
 /* Fältet "Överzon" i zonrutan. */
@@ -157,7 +299,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const origList = renderZoneList;
   renderZoneList = function () { const r = origList.apply(this, arguments); renderWbsList(); return r; };
   const origOpen = openEditor;
-  openEditor = function (id) { const r = origOpen.apply(this, arguments); renderWbsField(plan && (plan.zones || []).find(x => x.id === id)); return r; };
+  openEditor = function (id) { $("zoneEditor").classList.remove("wbs"); const r = origOpen.apply(this, arguments); renderWbsField(plan && (plan.zones || []).find(x => x.id === id)); return r; };
+  // En vanlig zon markeras: överzonen släpps. Från sidomenyn (center) blinkar zonen till.
+  const origSel = selectZone;
+  selectZone = function (id, center) {
+    if (selectedWbsKey) { selectedWbsKey = null; $("zoneEditor").classList.remove("wbs"); }
+    const r = origSel.apply(this, arguments);
+    const z = id && center && plan && (plan.zones || []).find(x => x.id === id);
+    if (z) flashOutline(wbsUnion([z]));
+    return r;
+  };
   // Alternativet och nivåvalet (sparas i webbläsaren som de andra zonalternativen).
   const cb = $("zoWbs"), sel = $("zoWbsLevel");
   if (!cb || !sel) return;
