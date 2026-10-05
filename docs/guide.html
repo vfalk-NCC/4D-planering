@@ -115,8 +115,14 @@
   <ol class="steps">
     <li><b>Installera makrot en gång</b>Import &amp; verktyg → <i>Koppla Excel direkt</i> → ladda ner <i>Koppling4D.bas</i>. I Excel: <kbd>Alt</kbd>+<kbd>F11</kbd> → Arkiv → Importera fil. Kör sedan <kbd>Alt</kbd>+<kbd>F8</kbd> → <i>Installera4DKnappar</i> och spara som .xlsm.</li>
     <li><b>Skicka till 4D</b>Knappen i Excel skickar planeringen. I 4D-planering visas <i>Ny planering från Excel</i> → <span class="btn">Granska och importera</span>.</li>
-    <li><b>Hämta framdrift från 4D</b>Knappen i Excel skriver in framdriften från 4D i kolumnen Framdrift. Formler skrivs aldrig över, och du väljer om alla rader eller bara de där 4D kommit längre ska uppdateras.</li>
+    <li><b>Hämta från 4D</b>Knappen i Excel skriver in framdriften från 4D i kolumnen Framdrift. Formler skrivs aldrig över, och du väljer om alla rader eller bara de där 4D kommit längre ska uppdateras. Samtidigt får varje rad sitt <i>4D-ID</i> i en dold kolumn och zonerna från Lägesplan i kolumnerna <i>Zon (4D)</i> och <i>Överzon (4D)</i> och på fliken <i>Zoner (4D)</i>.</li>
+    <li><b>Ångra hämtning från 4D</b>Allt som den senaste hämtningen ändrade ställs tillbaka (framdrift, 4D-ID, zonkolumner och zonfliken).</li>
   </ol>
+  <ul>
+    <li><b>Byta namn</b>: när raden har fått sitt 4D-ID känns den igen även om du byter namn på den eller flyttar den i Excel – 3D-koppling, kommentarer och delaktiviteter följer med.</li>
+    <li><b>Namn ändrade i 4D</b> behålls vid nästa import så länge raden i Excel är oförändrad. Ändrar du namnet i Excel gäller Excels namn. Förhandsgranskningen visar vilka.</li>
+    <li><b>Zonerna</b> sparas automatiskt när Lägesplan är öppen (för alla arbetsytor, efter position i 3D eller zonkod).</li>
+  </ul>
   <div class="warn">Första gången frågar Excel efter projekt-id (kopiera det i 4D-planering) och GitHub-token. Token sparas bara på din dator.</div>
   <h3>Hitta i listan</h3>
   <ul>

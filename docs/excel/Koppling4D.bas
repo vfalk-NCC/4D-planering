@@ -1,14 +1,18 @@
 Attribute VB_Name = "Koppling4D"
 ' ===========================================================================
 '  Koppling mellan 4-veckorsplaneringen (Excel) och 4D-planering (Trimble Connect)
-'  Version 1 (test) - 2026-10-02
+'  Version 2 - 2026-10-05 (4D-ID, zoner och ångra)
 '
 '  SkickaTill4D            Skickar hela arbetsboken till 4D-planering. Där visas
 '                          "Ny planering från Excel" med förhandsgranskning.
-'  HamtaFramdriftFran4D    Hämtar framdriften från 4D och skriver in den i
-'                          kolumnen Framdrift (N) på rätt rad. Formler skrivs
-'                          aldrig över.
-'  Installera4DKnappar     Lägger två knappar på det aktiva bladet.
+'  HamtaFramdriftFran4D    "Hämta från 4D": framdriften i kolumnen Framdrift (N),
+'                          4D-ID i en dold kolumn (raden känns igen även om den
+'                          byter namn eller flyttas) och zonerna från Lägesplan
+'                          (kolumnerna Zon/Överzon och fliken "Zoner (4D)").
+'                          Formler skrivs aldrig över.
+'  Angra4D                 "Ångra hämtning från 4D": ställer tillbaka allt som
+'                          den senaste hämtningen ändrade.
+'  Installera4DKnappar     Lägger knapparna på det aktiva bladet.
 '  Byt4DToken / Byt4DProjekt   Ändra token eller projekt.
 '
 '  Token sparas i Windows-registret för din användare (inte i filen).
@@ -22,6 +26,13 @@ Private Const REG_APP As String = "4D-planering"
 Private Const PROP_PROJ As String = "4D-projekt"
 Private Const COL_AKTIVITET As Long = 3
 Private Const COL_FRAMDRIFT As Long = 14
+Private Const RUBRIKRAD As Long = 4
+Private Const ZONFLIK As String = "Zoner (4D)"
+Private Const ANGRAFLIK As String = "4D ångra"
+Private Const ANGRAZONFLIK As String = "4D ångra zoner"
+
+' Ångra-loggen för pågående hämtning: Array(flik, adress, typ, gammalt värde)
+Private angra As Collection
 
 ' JSON-läsare (modulnivå)
 Private js As String
@@ -66,19 +77,49 @@ Fel:
 End Sub
 
 ' ---------------------------------------------------------------------------
-'  Hämta framdriften från 4D till Excel
+'  Hämta från 4D: framdrift, 4D-ID och zoner (Version 2, 2026-10-05)
+'
+'  - Framdrift (N) skrivs på rätt rad, som förut. Formler skrivs aldrig över.
+'  - 4D-ID: aktivitetens id skrivs i en dold kolumn "4D-ID". Då känns raden igen
+'    även om den byter namn eller flyttas - både här och när planeringen
+'    skickas till 4D igen.
+'  - Zoner: kolumnerna "Zon (4D)" och "Överzon (4D)" och fliken "Zoner (4D)"
+'    (från Lägesplan i 4D-planering).
+'  - Allt som ändras sparas först i den dolda fliken "4D ångra" - knappen
+'    "Ångra hämtning från 4D" (makrot Angra4D) ställer tillbaka allt.
 ' ---------------------------------------------------------------------------
 Public Sub HamtaFramdriftFran4D()
     Dim token As String, proj As String
-    Dim items As Collection, acts As Collection, actsBy As Object, sums As Object, cnts As Object, texts As Object
-    Dim it As Variant, m As Variant, a As Variant, key As Variant, k As String
-    Dim prog As Double, found As Boolean, sh As String, ph As String, idx As String
+    Dim items As Collection, acts As Collection, actsBy As Object, sums As Object, cnts As Object
+    Dim texts As Object, ids As Object, zonK As Object, ovzK As Object, rader As Object, zonBy As Object
+    Dim zx As Object, harZoner As Boolean, zi As Variant
+    Dim it As Variant, m As Variant, a As Variant, key As Variant, k As String, j As Long
+    Dim prog As Double, found As Boolean, sh As String, ph As String, idx As String, iid As String
+    Dim ws As Worksheet, r As Long, c As Range, newV As Double, oldV As Double, idKol As Long
+    Dim hittad As Object, chg As New Collection, nUp As Long, nDown As Long, nMiss As Long, nFormula As Long, missList As String
+    Dim info As String, ans As VbMsgBoxResult, ch As Variant, n As Long
+    Dim nId As Long, nZon As Long, zKol As Long, oKol As Long, blad As Object, shn As Variant
+    Dim zonFlagga As String, msg As String, felBeskr As String, startBlad As Object, idKols As Object
+    Set angra = Nothing
+    Set startBlad = ActiveSheet
     token = Token4D(): If token = "" Then Exit Sub
     proj = Projekt4D(): If proj = "" Then Exit Sub
     On Error GoTo Fel
-    Application.StatusBar = "4D: hämtar framdriften..."
+    Application.StatusBar = "4D: hämtar framdriften och zonerna..."
     Set items = ParseJson(HamtaText(token, "projects/" & proj & "/plan_items.json"))
     Set acts = ParseJsonOrEmpty(HamtaText(token, "projects/" & proj & "/plan_item_activities.json"))
+    Set zx = ParseJson(HamtaText(token, "projects/" & proj & "/zone_export.json"))
+    harZoner = (TypeName(zx) = "Dictionary")
+
+    ' Zonerna per aktivitet (id -> "7421 Förtjockardelen; ...")
+    Set zonBy = CreateObject("Scripting.Dictionary")
+    If harZoner Then
+        If IsObject(Falt(zx, "items")) Then
+            For Each zi In zx("items")
+                zonBy(Txt(Falt(zi, "id"))) = Array(Txt(Falt(zi, "zones")), Txt(Falt(zi, "parents")))
+            Next zi
+        End If
+    End If
 
     ' Delaktiviteter per objekt
     Set actsBy = CreateObject("Scripting.Dictionary")
@@ -88,65 +129,87 @@ Public Sub HamtaFramdriftFran4D()
         actsBy(idx).Add a
     Next a
 
-    ' Framdrift per rad (medel om aktiviteten är kopplad till flera 3D-objekt)
+    ' Varje Excel-rad som 4D känner till: framdrift (medel om aktiviteten är kopplad
+    ' till flera 3D-objekt), id och zoner.
     Set sums = CreateObject("Scripting.Dictionary")
     Set cnts = CreateObject("Scripting.Dictionary")
     Set texts = CreateObject("Scripting.Dictionary")
+    Set ids = CreateObject("Scripting.Dictionary")
+    Set zonK = CreateObject("Scripting.Dictionary")
+    Set ovzK = CreateObject("Scripting.Dictionary")
+    Set rader = CreateObject("Scripting.Dictionary")
     For Each it In items
         If IsObject(it) Then
             sh = Txt(Falt(it, "excel_sheet"))
+            iid = Txt(Falt(it, "id"))
             If sh <> "" And it.Exists("excel_map") Then
                 If IsObject(it("excel_map")) Then
+                    j = 0
                     For Each m In it("excel_map")
+                        k = sh & "|" & CStr(CLng(Tal(Falt(m, "row"))))
+                        If Not rader.Exists(k) Then
+                            rader(k) = True
+                            texts(k) = Txt(Falt(m, "text"))
+                            If j = 0 Then ids(k) = iid Else ids(k) = iid & "#" & CStr(j)
+                        End If
+                        If zonBy.Exists(iid) Then
+                            zonK(k) = Slaihop(Txt(zonK(k)), zonBy(iid)(0))
+                            ovzK(k) = Slaihop(Txt(ovzK(k)), zonBy(iid)(1))
+                        End If
                         ph = Txt(Falt(m, "phase"))
                         found = False
                         If ph = "" Then
                             If Txt(Falt(it, "status")) = "klar" Then prog = 100 Else prog = Tal(Falt(it, "progress"))
                             found = True
-                        ElseIf actsBy.Exists(Txt(Falt(it, "id"))) Then
-                            For Each a In actsBy(Txt(Falt(it, "id")))
+                        ElseIf actsBy.Exists(iid) Then
+                            For Each a In actsBy(iid)
                                 If LCase$(Trim$(Txt(Falt(a, "name")))) = LCase$(Trim$(ph)) And Not IsNull(Falt(a, "progress")) Then
                                     prog = Tal(Falt(a, "progress")): found = True: Exit For
                                 End If
                             Next a
                         End If
                         If found Then
-                            k = sh & "|" & CStr(CLng(Tal(Falt(m, "row"))))
                             sums(k) = Tal(sums(k)) + prog
                             cnts(k) = Tal(cnts(k)) + 1
-                            texts(k) = Txt(Falt(m, "text"))
                         End If
+                        j = j + 1
                     Next m
                 End If
             End If
         End If
     Next it
 
-    ' Jämför med Excel
-    Dim ws As Worksheet, r As Long, c As Range, newV As Double, oldV As Double
-    Dim chg As New Collection, nUp As Long, nDown As Long, nMiss As Long, nFormula As Long, missList As String
-    For Each key In sums.Keys
+    ' Hitta raderna i Excel (på 4D-ID i första hand, annars rad och text)
+    Set hittad = CreateObject("Scripting.Dictionary")
+    Set idKols = CreateObject("Scripting.Dictionary")
+    For Each key In rader.Keys
         sh = Left$(key, InStrRev(key, "|") - 1)
         r = CLng(Mid$(key, InStrRev(key, "|") + 1))
         Set ws = Nothing
         On Error Resume Next: Set ws = ThisWorkbook.Worksheets(sh): On Error GoTo Fel
         If ws Is Nothing Then
-            nMiss = nMiss + 1
+            If sums.Exists(key) Then nMiss = nMiss + 1
         Else
-            r = HittaRad(ws, r, texts(key))
+            If Not idKols.Exists(sh) Then idKols(sh) = HittaKol(ws, "4D-ID")
+            r = HittaRad(ws, r, texts(key), ids(key), idKols(sh))
             If r = 0 Then
-                nMiss = nMiss + 1
-                If Len(missList) < 400 Then missList = missList & vbCrLf & "  " & sh & ": " & texts(key)
+                If sums.Exists(key) Then
+                    nMiss = nMiss + 1
+                    If Len(missList) < 400 Then missList = missList & vbCrLf & "  " & sh & ": " & texts(key)
+                End If
             Else
-                Set c = ws.Cells(r, COL_FRAMDRIFT)
-                If c.HasFormula Then
-                    nFormula = nFormula + 1
-                Else
-                    newV = Round(sums(key) / cnts(key)) / 100
-                    If IsNumeric(c.Value) And Not IsEmpty(c.Value) Then oldV = CDbl(c.Value) Else oldV = 0
-                    If Abs(newV - oldV) > 0.00001 Then
-                        chg.Add Array(ws.Name, r, oldV, newV)
-                        If newV > oldV Then nUp = nUp + 1 Else nDown = nDown + 1
+                hittad(key) = r
+                If sums.Exists(key) Then
+                    Set c = ws.Cells(r, COL_FRAMDRIFT)
+                    If c.HasFormula Then
+                        nFormula = nFormula + 1
+                    Else
+                        newV = Round(sums(key) / cnts(key)) / 100
+                        If IsNumeric(c.Value) And Not IsEmpty(c.Value) Then oldV = CDbl(c.Value) Else oldV = 0
+                        If Abs(newV - oldV) > 0.00001 Then
+                            chg.Add Array(ws.Name, r, oldV, newV)
+                            If newV > oldV Then nUp = nUp + 1 Else nDown = nDown + 1
+                        End If
                     End If
                 End If
             End If
@@ -154,49 +217,116 @@ Public Sub HamtaFramdriftFran4D()
     Next key
     Application.StatusBar = False
 
-    Dim info As String, ans As VbMsgBoxResult, ch As Variant, n As Long
     info = ""
     If nFormula > 0 Then info = info & vbCrLf & nFormula & " rader har en formel i Framdrift och lämnas orörda."
-    If nMiss > 0 Then info = info & vbCrLf & nMiss & " rader hittades inte (aktiviteten har bytt namn eller tagits bort):" & missList
-    If chg.Count = 0 Then
-        MsgBox "Framdriften i Excel stämmer redan med 4D-planering." & info, vbInformation, "4D-planering"
-        Exit Sub
+    If nMiss > 0 Then info = info & vbCrLf & nMiss & " rader hittades inte (aktiviteten har tagits bort eller bytt namn innan den fått 4D-ID):" & missList
+    ans = vbNo
+    If chg.Count > 0 Then
+        ans = MsgBox(chg.Count & " rader har annan framdrift i 4D-planering:" & vbCrLf & _
+                     "  " & nUp & " har kommit längre i 4D" & vbCrLf & _
+                     "  " & nDown & " har lägre framdrift i 4D" & vbCrLf & info & vbCrLf & vbCrLf & _
+                     "Ja = skriv in alla" & vbCrLf & _
+                     "Nej = bara där 4D har kommit längre (rekommenderas)" & vbCrLf & _
+                     "Avbryt = ändra ingenting" & vbCrLf & vbCrLf & _
+                     "Allt som ändras kan ångras med ""Ångra hämtning från 4D"".", vbYesNoCancel + vbQuestion, "Hämta från 4D")
+        If ans = vbCancel Then Exit Sub
     End If
-    ans = MsgBox(chg.Count & " rader har annan framdrift i 4D-planering:" & vbCrLf & _
-                 "  " & nUp & " har kommit längre i 4D" & vbCrLf & _
-                 "  " & nDown & " har lägre framdrift i 4D" & vbCrLf & info & vbCrLf & vbCrLf & _
-                 "Ja = skriv in alla" & vbCrLf & _
-                 "Nej = bara där 4D har kommit längre (rekommenderas)" & vbCrLf & _
-                 "Avbryt = ändra ingenting", vbYesNoCancel + vbQuestion, "Hämta framdrift från 4D")
-    If ans = vbCancel Then Exit Sub
+
+    ' Skriv - allt loggas först så att det kan ångras.
+    Application.ScreenUpdating = False
+    Set angra = New Collection
     n = 0
     For Each ch In chg
         If ans = vbYes Or ch(3) > ch(2) Then
-            ThisWorkbook.Worksheets(ch(0)).Cells(ch(1), COL_FRAMDRIFT).Value = ch(3)
+            Set c = ThisWorkbook.Worksheets(ch(0)).Cells(ch(1), COL_FRAMDRIFT)
+            Logga c
+            c.Value = ch(3)
             n = n + 1
         End If
     Next ch
-    MsgBox n & " rader uppdaterade med framdriften från 4D-planering.", vbInformation, "4D-planering"
+
+    ' 4D-ID och zoner på raderna
+    Set blad = CreateObject("Scripting.Dictionary")
+    For Each key In hittad.Keys
+        blad(Left$(key, InStrRev(key, "|") - 1)) = True
+    Next key
+    For Each shn In blad.Keys
+        Set ws = ThisWorkbook.Worksheets(shn)
+        idKol = SkapaKol(ws, "4D-ID", True)
+        If harZoner Then
+            zKol = SkapaKol(ws, "Zon (4D)", False)
+            oKol = SkapaKol(ws, "Överzon (4D)", False)
+        End If
+        For Each key In hittad.Keys
+            If Left$(key, InStrRev(key, "|") - 1) = shn Then
+                r = hittad(key)
+                If SattCell(ws.Cells(r, idKol), ids(key)) Then nId = nId + 1
+                If harZoner Then
+                    If SattCell(ws.Cells(r, zKol), Txt(zonK(key))) Then nZon = nZon + 1
+                    SattCell ws.Cells(r, oKol), Txt(ovzK(key))
+                End If
+            End If
+        Next key
+    Next shn
+
+    ' Fliken med zonerna
+    If harZoner Then zonFlagga = SkrivZonflik(zx)
+    SparaAngra zonFlagga
+    On Error Resume Next: startBlad.Activate: On Error GoTo Fel ' nya flikar tar inte över skärmen
+    Application.ScreenUpdating = True
+
+    msg = n & " rader fick framdriften från 4D-planering."
+    If nId > 0 Then msg = msg & vbCrLf & nId & " rader fick 4D-ID (raden känns nu igen även om den byter namn eller flyttas)."
+    If harZoner Then
+        msg = msg & vbCrLf & "Zonerna står i kolumnerna ""Zon (4D)"" och ""Överzon (4D)"" och på fliken """ & ZONFLIK & """" & _
+              IIf(nZon > 0, " (" & nZon & " rader ändrade).", ".")
+    Else
+        msg = msg & vbCrLf & "Inga zoner från Lägesplan än (öppna Lägesplan i 4D-planering så sparas de)."
+    End If
+    If chg.Count = 0 Then msg = "Framdriften i Excel stämmer redan med 4D-planering." & vbCrLf & msg
+    If angra.Count > 0 Or zonFlagga <> "" Then msg = msg & vbCrLf & vbCrLf & "Ändringarna kan ångras med ""Ångra hämtning från 4D""."
+    MsgBox msg & info, vbInformation, "4D-planering"
     Exit Sub
 Fel:
+    felBeskr = Err.Description
+    ' Det som hann ändras ska fortfarande gå att ångra.
+    On Error GoTo -1
+    On Error Resume Next
+    If Not angra Is Nothing Then SparaAngra zonFlagga
+    On Error GoTo 0
+    Application.ScreenUpdating = True
     Application.StatusBar = False
-    MsgBox "Kunde inte hämta framdriften från 4D:" & vbCrLf & Err.Description, vbExclamation, "4D-planering"
+    MsgBox "Kunde inte hämta från 4D:" & vbCrLf & felBeskr & IIf(angra Is Nothing, "", vbCrLf & vbCrLf & "Det som hann ändras kan ångras med ""Ångra hämtning från 4D""."), vbExclamation, "4D-planering"
 End Sub
 
-' Raden där aktiviteten står: samma rad som vid importen om texten stämmer,
+' Raden där aktiviteten står: i första hand raden med samma 4D-ID (bara om id:t
+' finns på en enda rad), annars samma rad som vid importen om texten stämmer,
 ' annars den enda raden på bladet med exakt samma text (0 = hittas inte).
-Private Function HittaRad(ws As Worksheet, ByVal r As Long, ByVal txt As String) As Long
-    Dim last As Long, i As Long, hit As Long, v As Variant
+' En rad som redan har ett annat 4D-ID hör till en annan aktivitet.
+Private Function HittaRad(ws As Worksheet, ByVal r As Long, ByVal txt As String, ByVal id As String, ByVal idKol As Long) As Long
+    Dim last As Long, i As Long, hit As Long, v As Variant, f As Range, g As Range
     txt = Trim$(txt)
+    If idKol > 0 And id <> "" Then
+        If r > 0 Then
+            If CellText(ws.Cells(r, idKol)) = id Then HittaRad = r: Exit Function
+        End If
+        Set f = ws.Columns(idKol).Find(What:=id, LookIn:=xlFormulas, LookAt:=xlWhole, MatchCase:=True)
+        If Not f Is Nothing Then
+            Set g = ws.Columns(idKol).FindNext(f)
+            If g.Row = f.Row Then HittaRad = f.Row: Exit Function ' annars kopierad rad: osäkert, gå på texten
+        End If
+    End If
     If r > 0 Then
         v = ws.Cells(r, COL_AKTIVITET).Value
-        If Not IsError(v) Then If Trim$(CStr(v)) = txt Then HittaRad = r: Exit Function
+        If Not IsError(v) Then
+            If Trim$(CStr(v)) = txt And AnnatId(ws, r, id, idKol) = False Then HittaRad = r: Exit Function
+        End If
     End If
     last = ws.Cells(ws.Rows.Count, COL_AKTIVITET).End(xlUp).Row
     For i = 5 To last
         v = ws.Cells(i, COL_AKTIVITET).Value
         If Not IsError(v) Then
-            If Trim$(CStr(v)) = txt Then
+            If Trim$(CStr(v)) = txt And AnnatId(ws, i, id, idKol) = False Then
                 If hit > 0 Then HittaRad = 0: Exit Function ' flera träffar: osäkert, hoppa över
                 hit = i
             End If
@@ -204,6 +334,245 @@ Private Function HittaRad(ws As Worksheet, ByVal r As Long, ByVal txt As String)
     Next i
     HittaRad = hit
 End Function
+
+Private Function AnnatId(ws As Worksheet, ByVal r As Long, ByVal id As String, ByVal idKol As Long) As Boolean
+    Dim t As String
+    If idKol = 0 Then Exit Function
+    t = CellText(ws.Cells(r, idKol))
+    AnnatId = (t <> "" And t <> id)
+End Function
+
+Private Function CellText(c As Range) As String
+    Dim v As Variant
+    v = c.Value
+    If IsError(v) Or IsEmpty(v) Then CellText = "" Else CellText = Trim$(CStr(v))
+End Function
+
+' "a; b" + "b; c" -> "a; b; c"
+Private Function Slaihop(ByVal a As String, ByVal b As String) As String
+    Dim p As Variant, t As String
+    Slaihop = a
+    If b = "" Then Exit Function
+    For Each p In Split(b, "; ")
+        t = Trim$(CStr(p))
+        If t <> "" Then
+            If Slaihop = "" Then
+                Slaihop = t
+            ElseIf InStr(1, "; " & Slaihop & "; ", "; " & t & "; ", vbBinaryCompare) = 0 Then
+                Slaihop = Slaihop & "; " & t
+            End If
+        End If
+    Next p
+End Function
+
+' ---------------------------------------------------------------------------
+'  Kolumner, zonflik och ångra
+' ---------------------------------------------------------------------------
+Private Function HittaKol(ws As Worksheet, ByVal rubrik As String) As Long
+    Dim c As Long, last As Long
+    last = ws.UsedRange.Column + ws.UsedRange.Columns.Count - 1
+    For c = 1 To last
+        If UCase$(CellText(ws.Cells(RUBRIKRAD, c))) = UCase$(rubrik) Then HittaKol = c: Exit Function
+    Next c
+End Function
+
+' Kolumnen med rubriken (rad 4), eller en ny helt tom kolumn till höger om allt annat.
+Private Function SkapaKol(ws As Worksheet, ByVal rubrik As String, ByVal dold As Boolean) As Long
+    Dim c As Long
+    c = HittaKol(ws, rubrik)
+    If c = 0 Then
+        c = ws.UsedRange.Column + ws.UsedRange.Columns.Count
+        If c < 18 Then c = 18 ' efter kolumn Q
+        Do While c < ws.Columns.Count And Application.WorksheetFunction.CountA(ws.Columns(c)) > 0
+            c = c + 1
+        Loop
+        Logga ws.Cells(RUBRIKRAD, c)
+        ws.Cells(RUBRIKRAD, c).Value = rubrik
+        ws.Cells(RUBRIKRAD, c).Font.Bold = True
+        If dold Then ws.Columns(c).Hidden = True Else ws.Columns(c).ColumnWidth = 24
+    End If
+    SkapaKol = c
+End Function
+
+' Skriver ett värde om det skiljer sig (loggas för ångra). True om cellen ändrades.
+Private Function SattCell(c As Range, ByVal v As String) As Boolean
+    If c.HasFormula Then Exit Function
+    If CellText(c) = v Then Exit Function
+    Logga c
+    If v = "" Then c.ClearContents Else c.Value = "'" & v
+    SattCell = True
+End Function
+
+' Sparar cellens nuvarande värde i ångra-loggen.
+Private Sub Logga(c As Range)
+    Dim v As Variant, kind As String
+    v = c.Value
+    If IsEmpty(v) Then
+        kind = "tom"
+    ElseIf IsError(v) Then
+        Exit Sub
+    ElseIf VarType(v) = vbString Then
+        kind = "text"
+    ElseIf VarType(v) = vbDate Then
+        kind = "datum"
+    Else
+        kind = "tal"
+    End If
+    angra.Add Array(c.Worksheet.Name, c.Address, kind, v)
+End Sub
+
+Private Sub SparaAngra(ByVal zonFlagga As String)
+    Dim ws As Worksheet, i As Long, e As Variant
+    If angra.Count = 0 And zonFlagga = "" Then Exit Sub ' inget nytt: förra ångra ligger kvar
+    Application.DisplayAlerts = False
+    On Error Resume Next: ThisWorkbook.Worksheets(ANGRAFLIK).Delete: On Error GoTo 0
+    Application.DisplayAlerts = True
+    Set ws = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+    ws.Name = ANGRAFLIK
+    ws.Cells(1, 1).Value = "Ångra senaste hämtning från 4D"
+    ws.Cells(1, 2).Value = Now
+    ws.Cells(1, 3).Value = zonFlagga
+    i = 3
+    For Each e In angra
+        ws.Cells(i, 1).Value = "'" & e(0)
+        ws.Cells(i, 2).Value = e(1)
+        ws.Cells(i, 3).Value = e(2)
+        If e(2) = "text" Then
+            ws.Cells(i, 4).Value = "'" & e(3)
+        ElseIf e(2) <> "tom" Then
+            ws.Cells(i, 4).Value = e(3)
+        End If
+        i = i + 1
+    Next e
+    ws.Visible = xlSheetHidden
+End Sub
+
+' Skriver om fliken "Zoner (4D)". Returnerar "ny" (fanns inte) eller "kopia" (den gamla
+' finns kvar som dold kopia för ångra).
+Private Function SkrivZonflik(zx As Object) As String
+    Dim ws As Worksheet, gammal As Worksheet, r As Long, pz As Variant, z As Variant, flera As Boolean
+    Dim planer As Object
+    Application.DisplayAlerts = False
+    On Error Resume Next: ThisWorkbook.Worksheets(ANGRAZONFLIK).Delete: On Error GoTo 0
+    Set gammal = Nothing
+    On Error Resume Next: Set gammal = ThisWorkbook.Worksheets(ZONFLIK): On Error GoTo 0
+    If gammal Is Nothing Then
+        SkrivZonflik = "ny"
+    Else
+        gammal.Name = ANGRAZONFLIK
+        gammal.Visible = xlSheetHidden
+        SkrivZonflik = "kopia"
+    End If
+    Application.DisplayAlerts = True
+    Set ws = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+    ws.Name = ZONFLIK
+    Set planer = CreateObject("Scripting.Dictionary")
+    If IsObject(Falt(zx, "zones")) Then
+        For Each z In zx("zones"): planer(Txt(Falt(z, "plan"))) = True: Next z
+    End If
+    flera = (planer.Count > 1)
+    ws.Cells(1, 1).Value = "Zoner från 4D-planering (Lägesplan)"
+    ws.Cells(1, 1).Font.Bold = True: ws.Cells(1, 1).Font.Size = 14
+    ws.Cells(2, 1).Value = "Uppdaterad " & Replace(Left$(Txt(Falt(zx, "updated_at")), 16), "T", " ") & " UTC" & _
+                           IIf(Txt(Falt(zx, "by")) <> "", " av " & Txt(Falt(zx, "by")), "") & ". Status per " & Txt(Falt(zx, "date")) & "."
+    ws.Range("A4:J4").Value = Array("Arbetsyta", "Överzon", "Zon", "Namn", "Yta m²", "Aktiviteter", "Framdrift", "Status", "Start", "Slut")
+    ws.Range("A4:J4").Font.Bold = True
+    ws.Range("A4:J4").Interior.Color = RGB(226, 232, 240)
+    r = 5
+    If IsObject(Falt(zx, "parents")) Then
+        For Each pz In zx("parents")
+            ZonRad ws, r, Txt(Falt(pz, "plan")), Txt(Falt(pz, "name")), "", "", pz
+            ws.Range(ws.Cells(r, 1), ws.Cells(r, 10)).Font.Bold = True
+            ws.Range(ws.Cells(r, 1), ws.Cells(r, 10)).Interior.Color = RGB(241, 245, 249)
+            r = r + 1
+            For Each z In zx("zones")
+                If Txt(Falt(z, "plan")) = Txt(Falt(pz, "plan")) And UCase$(Txt(Falt(z, "parent"))) = UCase$(Txt(Falt(pz, "name"))) Then
+                    ZonRad ws, r, Txt(Falt(z, "plan")), Txt(Falt(z, "parent")), Txt(Falt(z, "code")), Txt(Falt(z, "name")), z
+                    ws.Cells(r, 3).IndentLevel = 1
+                    r = r + 1
+                End If
+            Next z
+        Next pz
+    End If
+    If IsObject(Falt(zx, "zones")) Then
+        For Each z In zx("zones")
+            If Txt(Falt(z, "parent")) = "" Then
+                ZonRad ws, r, Txt(Falt(z, "plan")), "", Txt(Falt(z, "code")), Txt(Falt(z, "name")), z
+                r = r + 1
+            End If
+        Next z
+    End If
+    ws.Columns("A:J").AutoFit
+    If Not flera Then ws.Columns(1).Hidden = True
+End Function
+
+Private Sub ZonRad(ws As Worksheet, ByVal r As Long, ByVal plan As String, ByVal ovz As String, ByVal kod As String, ByVal namn As String, z As Variant)
+    ws.Cells(r, 1).Value = "'" & plan
+    ws.Cells(r, 2).Value = "'" & ovz
+    ws.Cells(r, 3).Value = "'" & kod
+    ws.Cells(r, 4).Value = "'" & namn
+    If Not IsNull(Falt(z, "area_m2")) Then ws.Cells(r, 5).Value = Tal(Falt(z, "area_m2")): ws.Cells(r, 5).NumberFormat = "#,##0"
+    ws.Cells(r, 6).Value = Tal(Falt(z, "items"))
+    If Not IsNull(Falt(z, "progress")) Then ws.Cells(r, 7).Value = Tal(Falt(z, "progress")) / 100: ws.Cells(r, 7).NumberFormat = "0%"
+    ws.Cells(r, 8).Value = Txt(Falt(z, "status"))
+    SattDatum ws.Cells(r, 9), Txt(Falt(z, "start"))
+    SattDatum ws.Cells(r, 10), Txt(Falt(z, "end"))
+End Sub
+
+Private Sub SattDatum(c As Range, ByVal iso As String)
+    If Len(iso) < 10 Then Exit Sub
+    c.Value = DateSerial(CInt(Left$(iso, 4)), CInt(Mid$(iso, 6, 2)), CInt(Mid$(iso, 9, 2)))
+    c.NumberFormat = "yyyy-mm-dd"
+End Sub
+
+' ---------------------------------------------------------------------------
+'  Ångra senaste hämtningen från 4D
+' ---------------------------------------------------------------------------
+Public Sub Angra4D()
+    Dim lg As Worksheet, i As Long, last As Long, c As Range, kind As String, v As Variant, zonFlagga As String, ws As Worksheet
+    On Error Resume Next: Set lg = ThisWorkbook.Worksheets(ANGRAFLIK): On Error GoTo 0
+    If lg Is Nothing Then
+        MsgBox "Det finns ingen hämtning från 4D att ångra.", vbInformation, "4D-planering"
+        Exit Sub
+    End If
+    last = lg.Cells(lg.Rows.Count, 1).End(xlUp).Row
+    zonFlagga = CStr(lg.Cells(1, 3).Value)
+    If MsgBox("Ångra hämtningen från 4D " & Format$(lg.Cells(1, 2).Value, "yyyy-mm-dd hh:nn") & "?" & vbCrLf & vbCrLf & _
+              IIf(last >= 3, last - 2, 0) & " celler ställs tillbaka" & _
+              IIf(zonFlagga = "ny", " och fliken """ & ZONFLIK & """ tas bort", IIf(zonFlagga = "kopia", " och fliken """ & ZONFLIK & """ blir som förut", "")) & ".", _
+              vbOKCancel + vbQuestion, "Ångra hämtning från 4D") <> vbOK Then Exit Sub
+    On Error GoTo Fel
+    Application.ScreenUpdating = False
+    For i = last To 3 Step -1
+        Set c = ThisWorkbook.Worksheets(CStr(lg.Cells(i, 1).Value)).Range(CStr(lg.Cells(i, 2).Value))
+        kind = CStr(lg.Cells(i, 3).Value)
+        v = lg.Cells(i, 4).Value
+        Select Case kind
+            Case "tom": c.ClearContents
+            Case "text"
+                If IsNumeric(v) Or IsDate(v) Or Left$(CStr(v), 1) = "=" Then c.Value = "'" & CStr(v) Else c.Value = CStr(v)
+            Case Else: c.Value = v
+        End Select
+    Next i
+    Application.DisplayAlerts = False
+    If zonFlagga = "ny" Or zonFlagga = "kopia" Then
+        On Error Resume Next: ThisWorkbook.Worksheets(ZONFLIK).Delete: On Error GoTo Fel
+    End If
+    If zonFlagga = "kopia" Then
+        Set ws = ThisWorkbook.Worksheets(ANGRAZONFLIK)
+        ws.Visible = xlSheetVisible
+        ws.Name = ZONFLIK
+    End If
+    lg.Delete
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+    MsgBox "Hämtningen från 4D är ångrad.", vbInformation, "4D-planering"
+    Exit Sub
+Fel:
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+    MsgBox "Kunde inte ångra helt:" & vbCrLf & Err.Description, vbExclamation, "4D-planering"
+End Sub
 
 ' ---------------------------------------------------------------------------
 '  Knappar, token och projekt
@@ -214,14 +583,17 @@ Public Sub Installera4DKnappar()
     On Error Resume Next
     ws.Buttons("btn4DSkicka").Delete
     ws.Buttons("btn4DHamta").Delete
+    ws.Buttons("btn4DAngra").Delete
     On Error GoTo 0
-    l = ActiveWindow.VisibleRange.Left + ActiveWindow.VisibleRange.Width - 330
+    l = ActiveWindow.VisibleRange.Left + ActiveWindow.VisibleRange.Width - 500
     If l < 10 Then l = 10
     t = ActiveWindow.VisibleRange.Top + 4
     Set b = ws.Buttons.Add(l, t, 150, 24)
     b.OnAction = "SkickaTill4D": b.Caption = "Skicka till 4D": b.Name = "btn4DSkicka"
     Set b = ws.Buttons.Add(l + 160, t, 160, 24)
-    b.OnAction = "HamtaFramdriftFran4D": b.Caption = "Hämta framdrift från 4D": b.Name = "btn4DHamta"
+    b.OnAction = "HamtaFramdriftFran4D": b.Caption = "Hämta från 4D": b.Name = "btn4DHamta"
+    Set b = ws.Buttons.Add(l + 330, t, 160, 24)
+    b.OnAction = "Angra4D": b.Caption = "Ångra hämtning från 4D": b.Name = "btn4DAngra"
     MsgBox "Knapparna ligger nu uppe till höger på bladet """ & ws.Name & """ - dra dem dit du vill." & vbCrLf & _
            "Spara arbetsboken som .xlsm så följer makrot med.", vbInformation, "4D-planering"
 End Sub

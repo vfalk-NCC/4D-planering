@@ -3408,10 +3408,39 @@ function buildPlanImportDiff(parsedItems) {
 
   const todayStr = new Date().toISOString().slice(0, 10);
   const seenKeys = new Set();
+  // 1) 4D-ID (Victors önskemål 2026-10-05): raden bär aktivitetens id i Excels dolda kolumn
+  //    "4D-ID" (skrivs av makrot "Hämta från 4D"). Den matchar oavsett namn, flik och rad.
+  //    Ett id som förekommer två gånger (t.ex. en kopierad rad) gäller bara den första.
+  const byId = new Map();
+  bySourceKey.forEach(list => list.forEach(it => byId.set(it.id, it)));
+  const claimed = new Set(); // source_key som tagits av ett id
+  const viaId = new Map(); // parsed -> befintlig aktivitet
+  parsedItems.forEach(p => {
+    const it = p.id4d ? byId.get(p.id4d) : null;
+    if (!it || claimed.has(it.sourceKey)) return;
+    claimed.add(it.sourceKey);
+    viaId.set(p, it);
+  });
+  const renames = [];
   const matched = parsedItems.map(p => {
+    const st = computeImportStatus(p, todayStr);
+    const idIt = viaId.get(p);
+    if (idIt) {
+      const all = bySourceKey.get(idIt.sourceKey) || [idIt];
+      const first = all.includes(idIt) ? idIt : all[0];
+      seenKeys.add(idIt.sourceKey);
+      const m = { parsed: p, existing: first, extras: all.filter(x => x !== first), status: st, viaId: true };
+      if (idIt.sourceKey !== p.sourceKey) {
+        m.renamedFrom = idIt.sourceKey;
+        renames.push({ code: p.code || p.objectName || "", from: idIt.activity || idIt.objectName || "", to: p.activity || p.objectName || "", area: p.area, coupled: all.filter(it => it.modelId).length, viaId: true });
+      }
+      return m;
+    }
+    // 2) Som förut: samma nyckel (flik + rubrik + kod/aktivitetstext) – om ingen rad med id tagit den.
+    if (claimed.has(p.sourceKey)) return { parsed: p, existing: null, extras: [], status: st };
     seenKeys.add(p.sourceKey);
     const all = bySourceKey.get(p.sourceKey) || [];
-    return { parsed: p, existing: all[0] || null, extras: all.slice(1), status: computeImportStatus(p, todayStr) };
+    return { parsed: p, existing: all[0] || null, extras: all.slice(1), status: st };
   });
 
   // Namnbyte (Victors önskemål 2026-10-01): "M30 - Fundament DP2 - Betongarbeten"
@@ -3422,7 +3451,7 @@ function buildPlanImportDiff(parsedItems) {
   // kommentarer och markeringar och får det nya namnet. Fler kandidater (t.ex.
   // J14 Fundament + J14 Kontrefor) matchas inte gissningsvis.
   const codeKeyOf = key => String(key || "").split("||").slice(0, 3).join("||");
-  const orphanKeys = [...bySourceKey.keys()].filter(k => !seenKeys.has(k));
+  const orphanKeys = [...bySourceKey.keys()].filter(k => !seenKeys.has(k) && !claimed.has(k));
   const unmatchedByCode = new Map();
   matched.forEach(m => {
     if (m.existing || !m.parsed.code) return;
@@ -3430,7 +3459,6 @@ function buildPlanImportDiff(parsedItems) {
     if (!unmatchedByCode.has(ck)) unmatchedByCode.set(ck, []);
     unmatchedByCode.get(ck).push(m);
   });
-  const renames = [];
   unmatchedByCode.forEach((list, ck) => {
     const olds = orphanKeys.filter(k => codeKeyOf(k) === ck);
     if (list.length !== 1 || olds.length !== 1) return;
@@ -3439,6 +3467,11 @@ function buildPlanImportDiff(parsedItems) {
     seenKeys.add(olds[0]);
     renames.push({ code: m.parsed.code, from: all[0].activity || all[0].objectName || "", to: m.parsed.activity || m.parsed.objectName || "", area: m.parsed.area, coupled: all.filter(it => it.modelId).length });
   });
+
+  // Namn ändrade i 4D (Victors önskemål 2026-10-05): är Excel-raden oförändrad sedan förra
+  // importen behålls namnet från 4D (aktivitet och faser) i stället för Excels.
+  matched.forEach(m => { if (m.existing) m.keep = planImportKeep4dNames(m.parsed, m.existing); });
+  const kept4d = matched.filter(m => m.keep).map(m => ({ code: m.parsed.code || m.parsed.objectName || "", name: (m.keep.names && (m.keep.names.activity || m.keep.names.objectName)) || m.existing.activity || m.existing.objectName || "", excel: m.parsed.activity || m.parsed.objectName || "", phases: m.keep.phaseMap.size }));
 
   const toCreate = matched.filter(m => !m.existing);
   const toUpdate = matched.filter(m => m.existing);
@@ -3453,7 +3486,40 @@ function buildPlanImportDiff(parsedItems) {
   // Det som inte finns kvar i Excel tas bort vid importen (förvalt: allt, kan väljas bort per aktivitet).
   const removeKeys = new Set(removedExisting.map(it => it.sourceKey));
 
-  return { parsedItems, matched, toCreate, toUpdate, removedExisting, removeKeys, renames, todayStr };
+  return { parsedItems, matched, toCreate, toUpdate, removedExisting, removeKeys, renames, kept4d, todayStr };
+}
+
+/* Excels rad med namnen från 4D inlagda (aktivitet, faser och fasnamnen i excel_map, så att
+   "Hämta från 4D" hittar faserna). */
+function planImportApplyKeep(p, keep) {
+  const out = { ...p };
+  if (keep.names) { out.objectName = keep.names.objectName; out.activity = keep.names.activity; }
+  if (keep.phaseMap.size) {
+    const ph = (p.excelMap || []).filter(e => e.phase);
+    const rename = e => e && keep.phaseMap.get(String(e.text || "").trim());
+    out.subActivities = p.subActivities.map((s, i) => { const n = rename(ph[i]); return n ? { ...s, name: n } : s; });
+    out.excelMap = p.excelMap.map(e => { const n = e.phase && keep.phaseMap.get(String(e.text || "").trim()); return n ? { ...e, phase: n } : e; });
+  }
+  return out;
+}
+/* Namn som ändrats i 4D sedan förra importen: Excel-raderna har samma text som då (excel_map)
+   men aktiviteten heter något annat i 4D. Faserna jämförs rad för rad (samma ordning som vid
+   importen). Returnerar null om inget ska behållas. */
+function planImportKeep4dNames(p, ex) {
+  const base = Array.isArray(ex.excelMap) ? ex.excelMap : null;
+  if (!base || !base.length || !Array.isArray(p.excelMap) || !p.excelMap.length) return null;
+  const txt = e => String((e && e.text) || "").trim();
+  const sameRows = base.length === p.excelMap.length && base.every((b, i) => txt(b) === txt(p.excelMap[i]));
+  const differs = (a, b) => String(a || "").trim() !== String(b || "").trim();
+  const names = sameRows && (differs(ex.objectName, p.objectName) || differs(ex.activity, p.activity)) ? { objectName: ex.objectName, activity: ex.activity } : null;
+  // Faserna: förra importens fasnamn (i ordning) mot delaktiviteterna i 4D nu.
+  const phaseMap = new Map(); // Excel-radens text -> namnet i 4D
+  const basePh = base.filter(b => b.phase), acts = activitiesByItemId.get(ex.id) || [];
+  if (basePh.length && acts.length === basePh.length) {
+    const now = new Set(p.excelMap.filter(e => e.phase).map(txt));
+    basePh.forEach((b, i) => { const n = String(acts[i].name || "").trim(); if (n && differs(n, b.phase) && now.has(txt(b))) phaseMap.set(txt(b), n); });
+  }
+  return names || phaseMap.size ? { names, phaseMap } : null;
 }
 
 function renderPlanImportPreview(diff) {
@@ -3471,6 +3537,9 @@ function renderPlanImportPreview(diff) {
 
   if (diff.renames && diff.renames.length) {
     summaryEl.innerHTML += `<div class="plan-import-renames"><strong>${diff.renames.length}</strong> namnbyte${diff.renames.length > 1 ? "n" : ""} – samma aktivitet, kopplingen behålls:<ul>${diff.renames.slice(0, 12).map(r => `<li><b>${escapeHtml(r.code)}</b>: ${escapeHtml(r.from || "–")} → ${escapeHtml(r.to || "–")}${r.coupled ? ` <span class="hint">(${r.coupled} kopplade objekt)</span>` : ""}</li>`).join("")}${diff.renames.length > 12 ? `<li>… och ${diff.renames.length - 12} till</li>` : ""}</ul></div>`;
+  }
+  if (diff.kept4d && diff.kept4d.length) {
+    summaryEl.innerHTML += `<div class="plan-import-renames"><strong>${diff.kept4d.length}</strong> namn ändrade i 4D behålls (raden i Excel är oförändrad):<ul>${diff.kept4d.slice(0, 12).map(r => `<li><b>${escapeHtml(r.code)}</b>: ${escapeHtml(r.name || "–")}${r.excel && r.excel !== r.name ? ` <span class="hint">(Excel: ${escapeHtml(r.excel)})</span>` : ""}${r.phases ? ` <span class="hint">· ${r.phases} fas${r.phases > 1 ? "er" : ""} med namn från 4D</span>` : ""}</li>`).join("")}${diff.kept4d.length > 12 ? `<li>… och ${diff.kept4d.length - 12} till</li>` : ""}</ul></div>`;
   }
   if (diff.removedExisting.length > 0) {
     renderPlanImportRemoved(diff, removedEl);
@@ -3547,7 +3616,7 @@ function exportPlanImportReport(diff) {
   let ex_keepType = null;
   const norm = v => (v === undefined || v === null || v === "" ? "" : v);
   const updRows = diff.toUpdate.map(m => {
-    const ex = m.existing, p = m.parsed;
+    const ex = m.existing, p = m.keep ? planImportApplyKeep(m.parsed, m.keep) : m.parsed;
     ex_keepType = ex.elementType || null;
     const row = { "Kod/namn": p.objectName, "Område": p.area };
     const changed = [];
@@ -3564,6 +3633,8 @@ function exportPlanImportReport(diff) {
     row["Status före"] = STATUS_LABELS[ex.status] || ex.status || ""; row["Status efter"] = STATUS_LABELS[statusAfter] || statusAfter;
     row["Kopplade 3D-objekt"] = coupledCount([ex, ...(m.extras || [])]);
     row["Namnbyte"] = yes(m.renamedFrom);
+    row["Namn från 4D behålls"] = yes(m.keep);
+    row["Känd via 4D-ID"] = yes(m.viaId);
     return { "Ändrat": changed.length ? changed.join(", ") : "Ingen ändring", ...row };
   });
   const sheets = [
@@ -3575,6 +3646,8 @@ function exportPlanImportReport(diff) {
       { "Vad": "– varav med ändringar", "Antal": updRows.filter(r => r["Ändrat"] !== "Ingen ändring").length },
       { "Vad": "– varav oförändrade", "Antal": updRows.filter(r => r["Ändrat"] === "Ingen ändring").length },
       { "Vad": "Namnbyten (kopplingen behålls)", "Antal": (diff.renames || []).length },
+      { "Vad": "Namn ändrade i 4D (behålls)", "Antal": (diff.kept4d || []).length },
+      { "Vad": "Kända via 4D-ID", "Antal": diff.matched.filter(m => m.viaId).length },
       { "Vad": "Finns inte kvar i filen", "Antal": diff.removedExisting.length },
       { "Vad": "– varav tas bort", "Antal": planImportRemoveIds(diff).size },
       { "Vad": "– varav med 3D-koppling", "Antal": coupledCount(diff.removedExisting) },
@@ -3653,7 +3726,8 @@ async function commitPlanImport(diff) {
   const before = Array.isArray(data) ? data : [];
 
   const activityBatches = [];
-  const incomingRows = diff.matched.flatMap(({ parsed: p, existing, extras, status }) => {
+  const incomingRows = diff.matched.flatMap(({ parsed: p0, existing, extras, status, keep }) => {
+    const p = keep ? planImportApplyKeep(p0, keep) : p0;
     const members = [existing, ...(extras || [])];
     // Aktivitet med flera objekt där vissa objekt bara hör till vissa
     // delaktiviteter: behåll den kopplingen (matchat på delaktivitetens

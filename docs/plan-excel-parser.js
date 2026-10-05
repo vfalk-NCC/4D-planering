@@ -90,6 +90,10 @@ function parsePlanSheet(rows, sheetName) {
     return (v === undefined || v === "") ? null : v;
   }
   const levelOf = row => Number(levels[row - 1]) || 0;
+  // 4D-ID (Victors önskemål 2026-10-05): makrot "Hämta från 4D" skriver aktivitetens id i en
+  // dold kolumn "4D-ID" (rows.ids). Då känns raden igen även om den bytt namn eller flyttats.
+  // "abc#2" = rad 2 i aktiviteten abc (faserna har samma aktivitet).
+  const idOf = row => { const v = (rows.ids || [])[row - 1]; return v == null || String(v).trim() === "" ? null : String(v).trim().split("#")[0]; };
 
   /** En datarad som objekt. */
   function readRow(row, rubric) {
@@ -108,7 +112,7 @@ function parsePlanSheet(rows, sheetName) {
       // framtiden (100 % klar med slutdatum 17/10 är klar senast i dag).
       actualStart: progress > 0 ? minDateToday(start) : null,
       actualEnd: progress >= 100 ? minDateToday(end) : null,
-      progress, days, children: [],
+      progress, days, children: [], id4d: idOf(row),
     };
   }
 
@@ -187,6 +191,7 @@ function parsePlanSheet(rows, sheetName) {
         sheet: sheetName, excelRows: [e.row, ...e.children.map(x => x.row)],
         // För "Hämta framdrift från 4D" i Excel: rad, aktivitetstext (kontroll) och fas.
         excelMap: [{ row: e.row, text: e.activityText, phase: null }, ...e.children.map((x, i) => ({ row: x.row, text: x.activityText, phase: subs[i].name }))],
+        id4d: [e, ...e.children].map(x => x.id4d).find(Boolean) || null,
       });
       return;
     }
@@ -247,6 +252,7 @@ function parsePlanSheet(rows, sheetName) {
     it.excelMap = it.subActivities.length
       ? it._rs.map((x, i) => ({ row: x.row, text: x.activityText, phase: (it.subActivities[i] || {}).name || null }))
       : [{ row: it._rs[0].row, text: it._rs[0].activityText, phase: null }];
+    it.id4d = it._rs.map(x => x.id4d).find(Boolean) || null;
     delete it._rs;
     it.progress = weighted(rs, rs.length ? Math.round(rs.reduce((s, x) => s + x.progress, 0) / rs.length) : 0);
   });
@@ -306,6 +312,13 @@ function buildPlanRowsFromSheet(sheet) {
     }
     rows.push(rowArr);
   }
+  // Kolumnen "4D-ID" (rubrik på rad 4, var som helst till höger) – se idOf i parsePlanSheet.
+  let idCol = -1;
+  for (let c = 0; c <= range.e.c; c++) {
+    const h = sheet[XLSX.utils.encode_cell({ r: 3, c })];
+    if (h && String(h.v).trim().toUpperCase() === "4D-ID") { idCol = c; break; }
+  }
+  if (idCol >= 0) rows.ids = rows.map((_, r) => { const x = sheet[XLSX.utils.encode_cell({ r, c: idCol })]; return x && x.v != null ? String(x.v) : null; });
   // Excels radgruppering (kräver XLSX.read(..., { cellStyles: true })).
   const rowProps = sheet["!rows"] || [];
   rows.levels = rows.map((_, r) => (rowProps[r] && rowProps[r].level) || 0);
@@ -322,5 +335,5 @@ function buildPlanSheetsData(workbook) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { parsePlanWorkbookRows, parsePlanSheet, matchPlanElementCode, PLAN_DATA_SHEETS, PLAN_COL };
+  module.exports = { parsePlanWorkbookRows, parsePlanSheet, matchPlanElementCode, PLAN_DATA_SHEETS, PLAN_COL, buildPlanRowsFromSheet };
 }
