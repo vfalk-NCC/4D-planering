@@ -2,8 +2,7 @@
    exporteras i modellens koordinater (samma som i Trimble Connect, i meter) så att de hamnar rätt
    mot andra ritningar. Det som syns följer med: valt datum (status), filter, släckta objekt och
    en markering per aktivitet. DXF R12 (läses av alla CAD-program), Windows-1252 för å/ä/ö.
-   Lager: 4D-<STATUS> (punkt + cirkel), 4D-FOTAVTRYCK (objektens utbredning i plan, med
-   statusfärg) och 4D-NAMN (objektets och aktivitetens namn, t.ex. "K10 - Pelare").
+   Lager: 4D-<STATUS> (punkt + cirkel i objektets mitt) och 4D-NAMN (objektets och aktivitetens namn, t.ex. "K10 - Pelare").
    Planritning (z = 0) med textstil och utbredning, så att filen öppnas på objekten. */
 
 const DXF_PHASE_LAYER = { planerad: "4D-PLANERAD", pagaende: "4D-PAGAENDE", forsenad: "4D-FORSENAD", klar: "4D-KLAR", pausad: "4D-PAUSAD", ingen: "4D-INGEN" };
@@ -47,11 +46,11 @@ function buildObjectsDxf() {
   const byId = new Map(positions.map(p => [p.id, p]));
   const out = [];
   const g = (code, v) => out.push(String(code), String(v));
-  const ents = [], used = new Set(["4D-FOTAVTRYCK", "4D-NAMN"]);
+  const ents = [], used = new Set(["4D-NAMN"]);
   objs.forEach(o => {
     const members = o.members && o.members.length ? o.members : [o.it];
     const ph = members.length > 1 ? zonePhase(members, at) : (computeItemPhase(o.it, at, warn) || fallbackPhase(o.it));
-    const layer = DXF_PHASE_LAYER[ph] || "4D-INGEN", aci = dxfAci(phaseColor(ph));
+    const layer = DXF_PHASE_LAYER[ph] || "4D-INGEN";
     used.add(layer);
     const ps = members.map(m => byId.get(m.id)).filter(Boolean);
     if (!ps.length) return;
@@ -60,14 +59,15 @@ function buildObjectsDxf() {
     if (o.moved && typeof objMarkPos === "function") { const m = objMarkPos(o.fam); if (m) [x, y] = m; } // flyttad markering
     ents.push({ t: "POINT", layer, x, y, z });
     ents.push({ t: "CIRCLE", layer, x, y, z, r: 0.25 });
-    ps.forEach(p => { if (Number.isFinite(p.x0)) ents.push({ t: "RECT", layer: "4D-FOTAVTRYCK", aci, z: 0, pts: [[p.x0, p.y0], [p.x1, p.y0], [p.x1, p.y1], [p.x0, p.y1]] }); });
+    // Inga fotavtryck (Victors val 2026-10-05): Trimble Connect ger bara en rak låda i modellens
+    // axelriktning, så vridna fundament blev fel vridna och för stora. Mittpunkten stämmer.
     const name = dxfItemName(o.it);
     if (name) ents.push({ t: "TEXT", layer: "4D-NAMN", x: x + 0.5, y: y - DXF_TEXT_H / 2, z, h: DXF_TEXT_H, s: members.length > 1 ? `${name} (${members.length})` : name });
   });
   if (!ents.length) return null;
   // Utbredning (så att filen öppnas på objekten, inte vid nollpunkten).
   const xs = [], ys = [];
-  ents.forEach(e => { if (e.pts) e.pts.forEach(([x, y]) => { xs.push(x); ys.push(y); }); else { xs.push(e.x); ys.push(e.y); } });
+  ents.forEach(e => { xs.push(e.x); ys.push(e.y); });
   const x0 = Math.min(...xs) - 5, y0 = Math.min(...ys) - 5, x1 = Math.max(...xs) + 25, y1 = Math.max(...ys) + 5;
   // HEADER
   g(0, "SECTION"); g(2, "HEADER");
@@ -98,7 +98,7 @@ function buildObjectsDxf() {
   g(0, "STYLE"); g(2, "STANDARD"); g(70, 0); g(40, "0.0"); g(41, "1.0"); g(50, "0.0"); g(71, 0); g(42, dxfNum(DXF_TEXT_H)); g(3, "txt"); g(4, "");
   g(0, "ENDTAB");
   g(0, "TABLE"); g(2, "LAYER"); g(70, used.size);
-  const layerAci = { "4D-FOTAVTRYCK": 8, "4D-NAMN": 7 };
+  const layerAci = { "4D-NAMN": 7 };
   Object.entries(DXF_PHASE_LAYER).forEach(([ph, l]) => { layerAci[l] = dxfAci(phaseColor(ph)); });
   [...used].forEach(l => { g(0, "LAYER"); g(2, l); g(70, 0); g(62, layerAci[l] || 7); g(6, "CONTINUOUS"); });
   g(0, "ENDTAB");
@@ -109,11 +109,6 @@ function buildObjectsDxf() {
     if (e.t === "POINT") { g(0, "POINT"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); }
     else if (e.t === "CIRCLE") { g(0, "CIRCLE"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); g(40, dxfNum(e.r)); }
     else if (e.t === "TEXT") { g(0, "TEXT"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); g(40, dxfNum(e.h)); g(1, e.s); g(7, "STANDARD"); }
-    else if (e.t === "RECT") {
-      g(0, "POLYLINE"); g(8, e.layer); g(62, e.aci); g(66, 1); g(10, "0.0"); g(20, "0.0"); g(30, dxfNum(e.z)); g(70, 1);
-      e.pts.forEach(([x, y]) => { g(0, "VERTEX"); g(8, e.layer); g(10, dxfNum(x)); g(20, dxfNum(y)); g(30, dxfNum(e.z)); });
-      g(0, "SEQEND"); g(8, e.layer);
-    }
   });
   g(0, "ENDSEC");
   g(0, "EOF");
