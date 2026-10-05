@@ -67,6 +67,22 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (JSON.stringify(r.aci) !== JSON.stringify({ klar: 3, pagaende: 30, forsenad: 1, planerad: 8, pausad: 8 })) fail('Statusfärgerna som CAD-färger: ' + JSON.stringify(r.aci));
   if (!r.bytes.includes(0xe4)) fail('ä ska kodas i Windows-1252');
   if (!/\$EXTMIN/.test(r.text) || !/\r\nSTYLE\r\n2\r\nSTANDARD/.test(r.text) || !/\r\n2\r\n\*ACTIVE/.test(r.text)) fail('Utbredning, textstil och vy ska finnas så att filen öppnas på objekten med synliga namn');
+  // Texterna läses vågrätt i den vy man har: vriden ritning (kalibrering) och vriden vy.
+  const rot = await page.evaluate(async () => {
+    plans[0].calib = { model: [[6512300, 150100, 0], [6512370, 150170, 0]], pdf: [[0, 0], [1000, 0]] }; // modellen 45° mot ritningen
+    await openPlan('A'); view.rot = 0.6; applyView(); invalidatePositions(); renderZones();
+    let got = null; downloadBlob = (blob, name) => { got = blob; };
+    exportObjectsDxf();
+    const text = new TextDecoder('windows-1252').decode(new Uint8Array(await got.arrayBuffer()));
+    const m = /\r\nTEXT\r\n[\s\S]*?\r\n50\r\n([-\d.]+)/.exec(text);
+    const deg = m ? Number(m[1]) : 0, rr = deg * Math.PI / 180;
+    // Läsriktningen i modellen -> skärmen.
+    const scr = mp => { const s = toPx(modelToPdf(mp[0], mp[1])); return rotAbout([s[0] * view.scale + view.tx, s[1] * view.scale + view.ty], view.rot); };
+    const a = scr([6512345, 150123]), b = scr([6512345 + Math.cos(rr) * 10, 150123 + Math.sin(rr) * 10]);
+    const up = scr([6512345 - Math.sin(rr) * 10, 150123 + Math.cos(rr) * 10]);
+    return { deg, dx: b[0] - a[0], dy: b[1] - a[1], upY: up[1] - a[1] };
+  });
+  if (!(rot.dx > 0 && Math.abs(rot.dy) < Math.abs(rot.dx) * 0.01 && rot.upY < 0)) fail('Namnen ska läsas vågrätt från vänster till höger, rätt väg upp, i vyn: ' + JSON.stringify(rot));
   console.log('OK: 3D-objekten som DXF – meter, modellens koordinater, lager per status, fotavtryck och namn (å/ä/ö)');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();

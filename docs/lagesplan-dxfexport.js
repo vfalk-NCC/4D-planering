@@ -3,7 +3,8 @@
    mot andra ritningar. Det som syns följer med: valt datum (status), filter, släckta objekt och
    en markering per aktivitet. DXF R12 (läses av alla CAD-program), Windows-1252 för å/ä/ö.
    Lager: 4D-<STATUS> (punkt + cirkel i objektets mitt) och 4D-NAMN (objektets och aktivitetens namn, t.ex. "K10 - Pelare").
-   Planritning (z = 0) med textstil och utbredning, så att filen öppnas på objekten. */
+   Planritning (z = 0) med textstil och utbredning, så att filen öppnas på objekten. Texterna
+   vrids så att de läses vågrätt i den vy man har i Lägesplan när man exporterar. */
 
 const DXF_PHASE_LAYER = { planerad: "4D-PLANERAD", pagaende: "4D-PAGAENDE", forsenad: "4D-FORSENAD", klar: "4D-KLAR", pausad: "4D-PAUSAD", ingen: "4D-INGEN" };
 /* Statusfärgen som AutoCAD-färg (ACI): efter färgton – gråaktiga färger blir grå. */
@@ -37,6 +38,18 @@ function dxfItemName(it) {
   return a || b;
 }
 
+/* Texternas vridning (grader, moturs i modellen) så att de läses vågrätt i den vy man har i
+   Lägesplan just nu – med ritningens och vyns vridning (Victors önskemål 2026-10-05). */
+function dxfTextRotation() {
+  try {
+    const r = $("viewport").getBoundingClientRect(), cx = r.width / 2, cy = r.height / 2;
+    const m = p => pdfToModel(toPdf(screenToStage(p)));
+    const a = m([cx, cy]), b = m([cx + 100, cy]);
+    const deg = Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI;
+    return Number.isFinite(deg) ? (Math.round(deg * 100) / 100 + 360) % 360 : 0;
+  } catch (e) { return 0; }
+}
+
 /* Bygger DXF-texten. Returnerar { text, n } eller null om inga objekt syns. */
 function buildObjectsDxf() {
   const objs = typeof objectShapesInPdf === "function" ? objectShapesInPdf() : null;
@@ -47,6 +60,9 @@ function buildObjectsDxf() {
   const out = [];
   const g = (code, v) => out.push(String(code), String(v));
   const ents = [], used = new Set(["4D-NAMN"]);
+  const rot = dxfTextRotation(), rr = rot * Math.PI / 180;
+  // Texten börjar en bit åt höger om punkten och står centrerad i höjd – i läsriktningen.
+  const along = (dx, dy) => [dx * Math.cos(rr) - dy * Math.sin(rr), dx * Math.sin(rr) + dy * Math.cos(rr)];
   objs.forEach(o => {
     const members = o.members && o.members.length ? o.members : [o.it];
     const ph = members.length > 1 ? zonePhase(members, at) : (computeItemPhase(o.it, at, warn) || fallbackPhase(o.it));
@@ -62,13 +78,14 @@ function buildObjectsDxf() {
     // Inga fotavtryck (Victors val 2026-10-05): Trimble Connect ger bara en rak låda i modellens
     // axelriktning, så vridna fundament blev fel vridna och för stora. Mittpunkten stämmer.
     const name = dxfItemName(o.it);
-    if (name) ents.push({ t: "TEXT", layer: "4D-NAMN", x: x + 0.5, y: y - DXF_TEXT_H / 2, z, h: DXF_TEXT_H, s: members.length > 1 ? `${name} (${members.length})` : name });
+    const [ox, oy] = along(0.5, -DXF_TEXT_H / 2);
+    if (name) ents.push({ t: "TEXT", layer: "4D-NAMN", x: x + ox, y: y + oy, z, h: DXF_TEXT_H, rot, s: members.length > 1 ? `${name} (${members.length})` : name });
   });
   if (!ents.length) return null;
   // Utbredning (så att filen öppnas på objekten, inte vid nollpunkten).
   const xs = [], ys = [];
   ents.forEach(e => { xs.push(e.x); ys.push(e.y); });
-  const x0 = Math.min(...xs) - 5, y0 = Math.min(...ys) - 5, x1 = Math.max(...xs) + 25, y1 = Math.max(...ys) + 5;
+  const x0 = Math.min(...xs) - 25, y0 = Math.min(...ys) - 25, x1 = Math.max(...xs) + 25, y1 = Math.max(...ys) + 25;
   // HEADER
   g(0, "SECTION"); g(2, "HEADER");
   g(9, "$ACADVER"); g(1, "AC1009");
@@ -108,7 +125,7 @@ function buildObjectsDxf() {
   ents.forEach(e => {
     if (e.t === "POINT") { g(0, "POINT"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); }
     else if (e.t === "CIRCLE") { g(0, "CIRCLE"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); g(40, dxfNum(e.r)); }
-    else if (e.t === "TEXT") { g(0, "TEXT"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); g(40, dxfNum(e.h)); g(1, e.s); g(7, "STANDARD"); }
+    else if (e.t === "TEXT") { g(0, "TEXT"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); g(40, dxfNum(e.h)); g(1, e.s); if (e.rot) g(50, dxfNum(e.rot)); g(7, "STANDARD"); }
   });
   g(0, "ENDSEC");
   g(0, "EOF");
