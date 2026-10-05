@@ -146,6 +146,8 @@ async function init() {
   const last = (() => { try { return localStorage.getItem("lagesplan-last-" + projectId); } catch (e) { return null; } })();
   const first = plans.find(p => p.id === last) || plans[0];
   if (first) await openPlan(first.id);
+  // Länk till en aktivitet (?item=…, t.ex. "Visa på kartan" i Excel): öppna på den.
+  if (typeof focusItemFromUrl === "function") await focusItemFromUrl();
 }
 
 function fatal(msg) {

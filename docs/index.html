@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261005155613" />
+<link rel="stylesheet" href="style.css?v=20261005162455" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261005155613"></script>
-<script src="plan-excel-comments.js?v=20261005155613"></script>
+<script src="plan-excel-parser.js?v=20261005162455"></script>
+<script src="plan-excel-comments.js?v=20261005162455"></script>
 </head>
 <body>
 
@@ -237,7 +237,7 @@
         <div class="row" style="align-items:center;"><span class="hint" style="margin:0;">Projekt-id:</span> <code id="excelLinkProject">–</code> <button type="button" id="btnCopyProjectId">Kopiera</button></div>
         <details class="excel-adv">
           <summary>Avancerat (test): 4D-ID och zoner – fristående modul</summary>
-          <p class="hint">En egen modul bredvid den vanliga – den vanliga påverkas inte. Knappen <b>4D avancerat</b> gör en <b>kopia</b> av arbetsboken och skriver i kopian: framdriften, ett dolt 4D-ID per rad (raden känns igen även om den byter namn eller flyttas) och zonerna från Lägesplan (kolumnerna Zon/Överzon och fliken Zoner (4D)). Originalet ändras aldrig – ser kopian bra ut fortsätter du i den.</p>
+          <p class="hint">En egen modul bredvid den vanliga – den vanliga påverkas inte. Knappen <b>4D avancerat</b> gör en <b>kopia</b> av arbetsboken och skriver i kopian: framdriften, ett dolt 4D-ID per rad (raden känns igen även om den byter namn eller flyttas), zonerna från Lägesplan (kolumnerna Zon/Överzon och fliken Zoner (4D)) och länken <b>Visa på kartan</b> per rad, som öppnar Lägesplan inzoomad på aktiviteten. Originalet ändras aldrig – ser kopian bra ut fortsätter du i den.</p>
           <ol class="hint">
             <li><a href="excel/Koppling4DAvancerat.bas" download>Ladda ner Koppling4DAvancerat.bas</a> och importera den som den vanliga (Alt+F11 → Arkiv → Importera fil).</li>
             <li>Alt+F8 → <b>Installera4DAvancerat</b> lägger knappen på bladet.</li>
@@ -598,15 +598,15 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261005155613"></script>
-  <script src="excel-link.js?v=20261005155613"></script>
-  <script src="app.js?v=20261005155613"></script>
-  <script src="manual-markings.js?v=20261005155613"></script>
-  <script src="sub-activity-list.js?v=20261005155613"></script>
-  <script src="activity-remove.js?v=20261005155613"></script>
-  <script src="dup-check.js?v=20261005155613"></script>
-  <script src="ui-shell.js?v=20261005155613"></script>
-  <script src="undo.js?v=20261005155613"></script>
-  <script src="planning-keys.js?v=20261005155613"></script>
+  <script src="github-storage.js?v=20261005162455"></script>
+  <script src="excel-link.js?v=20261005162455"></script>
+  <script src="app.js?v=20261005162455"></script>
+  <script src="manual-markings.js?v=20261005162455"></script>
+  <script src="sub-activity-list.js?v=20261005162455"></script>
+  <script src="activity-remove.js?v=20261005162455"></script>
+  <script src="dup-check.js?v=20261005162455"></script>
+  <script src="ui-shell.js?v=20261005162455"></script>
+  <script src="undo.js?v=20261005162455"></script>
+  <script src="planning-keys.js?v=20261005162455"></script>
 </body>
 </html>

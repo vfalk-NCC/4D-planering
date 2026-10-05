@@ -11,6 +11,8 @@ Attribute VB_Name = "Koppling4DAvancerat"
 '                            även om den byter namn eller flyttas)
 '                          - zonerna från Lägesplan i kolumnerna "Zon (4D)" och
 '                            "Överzon (4D)" och på fliken "Zoner (4D)"
+'                          - en länk "Visa på kartan" per rad (kolumnen "Karta (4D)")
+'                            som öppnar Lägesplan inzoomad på aktiviteten
 '                          Kopian öppnas så att du kan granska den. ORIGINALET
 '                          ÄNDRAS ALDRIG. Ser kopian bra ut fortsätter du i den.
 '  Installera4DAvancerat   Lägger knappen "4D avancerat (kopia)" på bladet.
@@ -28,6 +30,7 @@ Private Const COL_AKTIVITET As Long = 3
 Private Const COL_FRAMDRIFT As Long = 14
 Private Const RUBRIKRAD As Long = 4
 Private Const ZONFLIK As String = "Zoner (4D)"
+Private Const LAGESPLAN_URL As String = "https://vfalk-ncc.github.io/4D-planering/lagesplan.html"
 
 ' JSON-läsare (modulnivå)
 Private js As String
@@ -57,6 +60,7 @@ Public Sub Avancerat4D()
     Dim hittad As Object, idKols As Object, chg As New Collection, nUp As Long, nDown As Long, nMiss As Long, nFormula As Long, missList As String
     Dim ans As VbMsgBoxResult, ch As Variant, n As Long, nLast As Long, lastaBlad As String
     Dim nId As Long, nZon As Long, idKol As Long, zKol As Long, oKol As Long, blad As Object, shn As Variant
+    Dim lKol As Long, nLank As Long
     Dim nyaFlikar As Boolean, zonflikKlar As Boolean, msg As String, felBeskr As String, felNr As Long
 
     token = Token4D(): If token = "" Then Exit Sub
@@ -64,7 +68,8 @@ Public Sub Avancerat4D()
     If MsgBox("Avancerat - hämta från 4D till en KOPIA av arbetsboken:" & vbCrLf & _
               "  - framdriften (som den vanliga hämtningen)" & vbCrLf & _
               "  - 4D-ID i en dold kolumn" & vbCrLf & _
-              "  - zonerna från Lägesplan (kolumner och fliken """ & ZONFLIK & """)" & vbCrLf & vbCrLf & _
+              "  - zonerna från Lägesplan (kolumner och fliken """ & ZONFLIK & """)" & vbCrLf & _
+              "  - länken ""Visa på kartan"" per rad (öppnar Lägesplan på aktiviteten)" & vbCrLf & vbCrLf & _
               "Originalet ändras inte. Kopian sparas bredvid originalet och öppnas så att du kan granska den.", _
               vbOKCancel + vbInformation, "4D avancerat") <> vbOK Then Exit Sub
 
@@ -254,6 +259,8 @@ Public Sub Avancerat4D()
                 zKol = SkapaKol(ws, "Zon (4D)", False)
                 oKol = SkapaKol(ws, "Överzon (4D)", False)
             End If
+            steg = "lägger till kolumnen Karta (4D) på fliken " & shn
+            lKol = SkapaKol(ws, "Karta (4D)", False)
             For Each key In hittad.Keys
                 If Left$(key, InStrRev(key, "|") - 1) = shn Then
                     r = hittad(key)
@@ -263,6 +270,7 @@ Public Sub Avancerat4D()
                         If SattCell(ws.Cells(r, zKol), Txt(zonK(key))) Then nZon = nZon + 1
                         SattCell ws.Cells(r, oKol), Txt(ovzK(key))
                     End If
+                    If SattLank(ws.Cells(r, lKol), LAGESPLAN_URL & "?project=" & proj & "&item=" & Split(ids(key), "#")(0)) Then nLank = nLank + 1
                 End If
             Next key
         End If
@@ -283,7 +291,8 @@ Public Sub Avancerat4D()
 
     msg = "Kopian är klar och öppen:" & vbCrLf & "  " & wb.Name & vbCrLf & vbCrLf & _
           n & " rader fick framdriften från 4D-planering." & vbCrLf & _
-          nId & " rader fick 4D-ID."
+          nId & " rader fick 4D-ID." & vbCrLf & _
+          nLank & " rader fick länken ""Visa på kartan"" (kolumnen ""Karta (4D)"")."
     If harZoner Then
         msg = msg & vbCrLf & nZon & " rader fick zon (kolumnerna ""Zon (4D)"" och ""Överzon (4D)"")" & _
               IIf(zonflikKlar, " och fliken """ & ZONFLIK & """ är skriven.", ".")
@@ -432,6 +441,17 @@ Private Function SattCell(c As Range, ByVal v As String) As Boolean
     If CellText(c) = v Then Exit Function
     If v = "" Then c.ClearContents Else c.Value = "'" & v
     SattCell = True
+End Function
+
+' Länken "Visa på kartan" i cellen (skrivs bara om om adressen ändrats). True om ändrad.
+Private Function SattLank(c As Range, ByVal url As String) As Boolean
+    If c.HasFormula Or c.MergeCells Then Exit Function
+    If c.Hyperlinks.Count > 0 Then
+        If c.Hyperlinks(1).Address = url Then Exit Function
+        c.Hyperlinks.Delete
+    End If
+    c.Worksheet.Hyperlinks.Add Anchor:=c, Address:=url, TextToDisplay:="Visa på kartan"
+    SattLank = True
 End Function
 
 ' Skriver fliken "Zoner (4D)" i kopian (en gammal flik med samma namn ersätts).
@@ -597,7 +617,7 @@ Public Sub Installera4DAvancerat()
     If l < 10 Then l = 10
     t = ActiveWindow.VisibleRange.Top + 32
     Set b = ws.Buttons.Add(l, t, 320, 24)
-    b.OnAction = "Avancerat4D": b.Caption = "4D avancerat (kopia: framdrift, 4D-ID, zoner)": b.Name = "btn4DAvancerat"
+    b.OnAction = "Avancerat4D": b.Caption = "4D avancerat (kopia: framdrift, 4D-ID, zoner, karta)": b.Name = "btn4DAvancerat"
     MsgBox "Knappen ligger nu uppe till höger på bladet """ & ws.Name & """ - dra den dit du vill." & vbCrLf & _
            "Den gör alltid en kopia av arbetsboken - originalet ändras aldrig.", vbInformation, "4D avancerat"
 End Sub

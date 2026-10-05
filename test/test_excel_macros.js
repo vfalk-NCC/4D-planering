@@ -80,7 +80,7 @@ const advBody = adv.text.replace(/'.*$/gm, '');
 simple.pub.forEach(p => { if (new RegExp(`\\b${p}\\b`, 'i').test(advBody)) fail('Den avancerade modulen anropar den enkla modulens ' + p); });
 ['ParseJson', 'HamtaText', 'Token4D', 'Projekt4D', 'Falt', 'Txt', 'Tal'].forEach(f => { if (!adv.procs.includes(f)) fail('Den avancerade modulen saknar egen ' + f); });
 // Anropade privata procedurer ska finnas i modulen.
-['HittaRad', 'HittaKol', 'SkapaKol', 'SattCell', 'SkrivZonflik', 'ZonRad', 'SattDatum', 'KanSkriva', 'LasUppBlad', 'LasUppBok', 'LasIgen', 'Tyst', 'Vanligt', 'Slaihop', 'CellText', 'AnnatId', 'SistaKol'].forEach(f => { if (!adv.procs.includes(f)) fail('Saknar ' + f); });
+['HittaRad', 'HittaKol', 'SkapaKol', 'SattCell', 'SkrivZonflik', 'ZonRad', 'SattDatum', 'KanSkriva', 'LasUppBlad', 'LasUppBok', 'LasIgen', 'Tyst', 'Vanligt', 'Slaihop', 'CellText', 'AnnatId', 'SistaKol', 'SattLank'].forEach(f => { if (!adv.procs.includes(f)) fail('Saknar ' + f); });
 console.log('OK: den avancerade modulen är fristående (egna namn och hjälpfunktioner)');
 
 // 3) Originalet ändras aldrig: allt skrivs i kopian (wb), inte i ThisWorkbook.
@@ -90,3 +90,5 @@ const writes = main.split('\r\n').filter(l => /ThisWorkbook\./.test(l.replace(/'
 if (writes.length) fail('Avancerat4D får bara läsa namn/sökväg och göra en kopia av originalet: ' + writes.join(' | '));
 if (/ThisWorkbook\.Worksheets/.test(adv.text.replace(/'.*$/gm, '').replace(/Private Sub SattProjekt[\s\S]*?End Sub/, ''))) fail('Den avancerade modulen får inte skriva i originalets flikar');
 console.log('OK: den avancerade modulen skriver bara i kopian – originalet ändras aldrig');
+if (!/LAGESPLAN_URL As String = "https:\/\/vfalk-ncc\.github\.io\/4D-planering\/lagesplan\.html"/.test(adv.text) || !/LAGESPLAN_URL & "\?project=" & proj & "&item=" & Split\(ids\(key\), "#"\)\(0\)/.test(adv.text)) fail('Länken Visa på kartan ska gå till lagesplan.html?project=…&item=<aktivitetens id>');
+console.log('OK: länken Visa på kartan pekar på Lägesplan med projekt och aktivitet');
