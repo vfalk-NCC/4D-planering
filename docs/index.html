@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261005115609" />
+<link rel="stylesheet" href="style.css?v=20261005121337" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261005115609"></script>
-<script src="plan-excel-comments.js?v=20261005115609"></script>
+<script src="plan-excel-parser.js?v=20261005121337"></script>
+<script src="plan-excel-comments.js?v=20261005121337"></script>
 </head>
 <body>
 
@@ -227,11 +227,11 @@
       <div id="planImportStatus" class="hint"></div>
       <details class="excel-simple excel-link">
         <summary>Koppla Excel direkt (makro – test)</summary>
-        <p class="hint">Med makrot i 4-veckorsplaneringen skickar du planeringen hit med en knapp i Excel, och hämtar framdriften, 4D-ID och zonerna från Lägesplan tillbaka till Excel. Hämtningen kan ångras med en knapp. Har du en äldre version av makrot: ta bort modulen Koppling4D i Excel (Alt+F11) och importera den nya.</p>
+        <p class="hint">Med makrot i 4-veckorsplaneringen skickar du planeringen hit med en knapp i Excel, och hämtar framdriften från 4D tillbaka till Excel.</p>
         <ol class="hint">
           <li><a href="excel/Koppling4D.bas" download>Ladda ner makrot (Koppling4D.bas)</a>.</li>
           <li>Öppna planeringen i Excel, tryck <b>Alt+F11</b> → <b>Arkiv → Importera fil…</b> → välj filen. Stäng fönstret.</li>
-          <li>Tryck <b>Alt+F8</b>, kör <b>Installera4DKnappar</b> – tre knappar läggs på bladet. Spara filen (.xlsm).</li>
+          <li>Tryck <b>Alt+F8</b>, kör <b>Installera4DKnappar</b> – två knappar läggs på bladet. Spara filen (.xlsm).</li>
           <li>Första gången frågar Excel efter projekt-id och GitHub-token (samma token som i inställningarna här). Token sparas bara på din dator, inte i filen.</li>
         </ol>
         <div class="row" style="align-items:center;"><span class="hint" style="margin:0;">Projekt-id:</span> <code id="excelLinkProject">–</code> <button type="button" id="btnCopyProjectId">Kopiera</button></div>
@@ -589,15 +589,15 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261005115609"></script>
-  <script src="excel-link.js?v=20261005115609"></script>
-  <script src="app.js?v=20261005115609"></script>
-  <script src="manual-markings.js?v=20261005115609"></script>
-  <script src="sub-activity-list.js?v=20261005115609"></script>
-  <script src="activity-remove.js?v=20261005115609"></script>
-  <script src="dup-check.js?v=20261005115609"></script>
-  <script src="ui-shell.js?v=20261005115609"></script>
-  <script src="undo.js?v=20261005115609"></script>
-  <script src="planning-keys.js?v=20261005115609"></script>
+  <script src="github-storage.js?v=20261005121337"></script>
+  <script src="excel-link.js?v=20261005121337"></script>
+  <script src="app.js?v=20261005121337"></script>
+  <script src="manual-markings.js?v=20261005121337"></script>
+  <script src="sub-activity-list.js?v=20261005121337"></script>
+  <script src="activity-remove.js?v=20261005121337"></script>
+  <script src="dup-check.js?v=20261005121337"></script>
+  <script src="ui-shell.js?v=20261005121337"></script>
+  <script src="undo.js?v=20261005121337"></script>
+  <script src="planning-keys.js?v=20261005121337"></script>
 </body>
 </html>
