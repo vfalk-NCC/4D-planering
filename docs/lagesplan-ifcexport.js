@@ -223,7 +223,7 @@ function buildObjectsIfc() {
     // från samma nivå som cylinderns fot.
     if (!mk.name) return;
     const mesh = ifcTextSolid(doc, mk.name, { h: IFC_TEXT_H, t: IFC_TEXT_T, rx, ry, start: lay[i].da, across: lay[i].dc + IFC_TEXT_H / 2 });
-    if (mesh) elems.push(doc.proxy(mk.name, "Namn", "4D-text", pl, doc.shape(mesh, "Tessellation"), it.id));
+    if (mesh) elems.push(doc.proxy(`${mk.name} – text`, "Namn", "4D-text", pl, doc.shape(mesh, "Tessellation"), it.id));
   });
   return { text: doc.finish(elems, `3D-objekt ${plan ? plan.name : ""} ${at}.ifc`), n: marks.length };
 }

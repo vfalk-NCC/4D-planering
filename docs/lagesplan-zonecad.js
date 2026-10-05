@@ -125,7 +125,31 @@ function buildZonesDxf() {
   });
   // Överzonerna (WBS): konturen runt sina zoner.
   if (typeof wbsOn === "function" && wbsOn() && typeof wbsGroups === "function") {
-    wbsGroups().forEach(g => (g.polys || []).forEach(rings => rings.forEach(r => { if (r.length > 2) { used.add("OVERZON"); ents.push({ t: "POLY", layer: "OVERZON", pts: zoneOffsetPoly(r.map(pdfToModel), 0.8), w: 0.3 }); } })));
+    const rr = rot * Math.PI / 180, rx = Math.cos(rr), ry = Math.sin(rr), H = 1.2;
+    const toM = (a, c) => [a * rx - c * ry, a * ry + c * rx];
+    const groups = wbsGroups().map(g => {
+      const frames = [];
+      (g.polys || []).forEach(rings => rings.forEach(r => { if (r.length > 2) frames.push(zoneOffsetPoly(r.map(pdfToModel), 0.8)); }));
+      return { g, frames };
+    }).filter(x => x.frames.length);
+    const zonePolys = zs.flatMap(e => e.polys);
+    groups.forEach(({ g, frames }) => {
+      used.add("OVERZON");
+      frames.forEach(f => ents.push({ t: "POLY", layer: "OVERZON", pts: f, w: 0.3 }));
+      // Överzonens namn utanför sin ram: ovanför/under, vänster/höger – första läget som inte krockar
+      // med någon zon eller annan överzons ram (annars utelämnas det hellre än att skriva över något).
+      const pts = frames.flat(), al = pts.map(q => q[0] * rx + q[1] * ry), ac = pts.map(q => -q[0] * ry + q[1] * rx);
+      const minA = Math.min(...al), maxA = Math.max(...al), minC = Math.min(...ac), maxC = Math.max(...ac), w = zoneTextWidth(g.name, H);
+      const others = groups.filter(o => o.g !== g).flatMap(o => o.frames).concat(zonePolys);
+      const free = (a, c) => { // textrutan (a, c) = vänster underkant – provpunkter i rutan
+        for (let i = 0; i <= 4; i++) for (let j = 0; j <= 2; j++) { const q = toM(a + w * i / 4, c + H * j / 2); if (others.some(pp => pointInPoly(q, pp)) || frames.some(pp => pointInPoly(q, pp))) return false; }
+        return true;
+      };
+      const pick = [[minA, maxC + 0.4], [minA, minC - 0.4 - H], [maxA - w, maxC + 0.4], [maxA - w, minC - 0.4 - H]].find(([a, c]) => free(a, c));
+      if (!pick) return;
+      const [x, y] = toM(pick[0], pick[1]);
+      ents.push({ t: "TEXT", layer: "OVERZON", x, y, h: H, rot, s: g.name });
+    });
   }
   return { text: dxfWrite(ents, [...used], layerAci, { OVERZON: "DASHED" }), n: zs.length };
 }
@@ -175,7 +199,7 @@ function buildZonesIfc() {
     if (!e.name) return;
     const tpl = doc.place([e.tp[0], e.tp[1], z0 + ZONE_PLATE_T]);
     const mesh = ifcTextSolid(doc, e.name, { h: e.h, t: IFC_TEXT_T, rx, ry, start: e.centered ? null : 0, style: zoneIsDark(col) ? doc.textStyleLight : doc.textStyle });
-    if (mesh) elems.push(doc.proxy(e.name, "Namn", "4D-zontext", tpl, doc.shape(mesh, "Tessellation"), e.z.id));
+    if (mesh) elems.push(doc.proxy(`${e.name} – text`, "Namn", "4D-zontext", tpl, doc.shape(mesh, "Tessellation"), e.z.id));
   });
   return { text: doc.finish(elems, `Zoner ${plan.name} ${at}.ifc`), n: zs.length, z0, levelSet: zoneCadTopZ() != null };
 }

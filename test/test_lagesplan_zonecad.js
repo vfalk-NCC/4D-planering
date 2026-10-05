@@ -75,7 +75,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (plates.length !== 2 || labels.length !== 2) fail('En platta och en text per tänd zon: ' + proxies.length);
   const ptOf = pl => { const ax = defs.get(/#(\d+)$/.exec(defs.get(pl).args)[1]); const p = defs.get(/^#(\d+)/.exec(ax.args)[1]); return p.args.replace(/[()]/g, '').split(',').map(Number); };
   const plOf = (p, kind) => new RegExp(`,'${kind}',#(\\d+),`).exec(p.args)[1];
-  const pp = ptOf(plOf(plates.find(p => /'7411 SEKTIONSFICKOR'/.test(p.args)), '4D-zon')), tp = ptOf(plOf(labels.find(p => /'7411 SEKTIONSFICKOR'/.test(p.args)), '4D-zontext'));
+  const pp = ptOf(plOf(plates.find(p => /'7411 SEKTIONSFICKOR'/.test(p.args)), '4D-zon')), tp = ptOf(plOf(labels.find(p => /'7411 SEKTIONSFICKOR \\X2\\2013\\X0\\ text'/.test(p.args)), '4D-zontext'));
   if (Math.abs(pp[2] - 14) > 0.001 || Math.abs(tp[2] - 14.5) > 0.001 || Math.abs(pp[0] - 6512315) > 0.01) fail('Plattan på maxhöjden (+14), texten ovanpå (+14,5): ' + [pp, tp]);
   if (!/IFCEXTRUDEDAREASOLID\(#\d+,\$,#\d+,0\.5\)/.test(t) || !/IFCARBITRARYCLOSEDPROFILEDEF/.test(t)) fail('0,5 m tjocka plattor av zonens form');
   if (!/'Yta m\\X2\\00B2\\X0\\',\$,IFCREAL\(100\.\)/.test(t) || !/'\\X2\\00D6\\X0\\verzon',\$,IFCLABEL\('741 Sektionsfickor'\)/.test(t) || !/'Status',\$,IFCLABEL\('P\\X2\\00E5\\X0\\g\\X2\\00E5\\X0\\ende'\)/.test(t)) fail('Egenskaper på plattan (yta, överzon, status)');
