@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261004111732"></script>
+<script src="github-storage.js?v=20261005065808"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -1207,7 +1207,7 @@
           <button type="button" id="btnZoneLock" class="block" style="margin-top:6px;" title="Lås alla zoners form, så att de inte dras större eller mindre av misstag">🔓 Lås alla zoner</button>
           <div class="hint hidden" id="zoneDrawHint"></div>
           <div class="hint">Klicka på en zon för att ändra koppling och utseende. En markerad zon har hörn och sidor som kan dras – en sida flyttas parallellt (dubbelklicka ett hörn för att ta bort det). Delete tar bort zonen, Ctrl+Z ångrar.</div>
-          <label class="check" title="Gör ritningen grå så att zonernas färger syns tydligare"><input type="checkbox" id="grayPdf" checked /> Ritningen i gråskala (tydligare zonfärger)</label>
+          <label class="check hidden" title="Flyttad till lagret: Ritningen (PDF) → Färg"><input type="checkbox" id="grayPdf" checked /> Ritningen i gråskala (tydligare zonfärger)</label>
           <details class="zone-adv" id="zoneOptsBox">
             <summary>Fler zonfunktioner</summary>
             <label class="check" title="Zonrutan listar aktiviteterna som hamnar i zonen – och uppdateras medan du ändrar kopplingen, innan du sparar"><input type="checkbox" id="zoActs" /> Visa vilka aktiviteter som kopplas</label>
@@ -1435,27 +1435,28 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261004111732"></script>
-<script src="lagesplan-tools.js?v=20261004111732"></script>
-<script src="lagesplan-layers.js?v=20261004111732"></script>
-<script src="lagesplan-views.js?v=20261004111732"></script>
-<script src="lagesplan-film.js?v=20261004111732"></script>
-<script src="lagesplan-cad.js?v=20261004111732"></script>
-<script src="lagesplan-vecpdf.js?v=20261004111732"></script>
-<script src="lagesplan-print.js?v=20261004111732"></script>
-<script src="lagesplan-printlib.js?v=20261004111732"></script>
-<script src="lagesplan-pdflayers.js?v=20261004111732"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261004111732"></script>
-<script src="lagesplan-objmarks.js?v=20261004111732"></script>
-<script src="lagesplan-objlist.js?v=20261004111732"></script>
-<script src="lagesplan-zones.js?v=20261004111732"></script>
-<script src="lagesplan-wbs.js?v=20261004111732"></script>
-<script src="lagesplan-daily.js?v=20261004111732"></script>
-<script src="lagesplan-gps.js?v=20261004111732"></script>
-<script src="lagesplan-weather.js?v=20261004111732"></script>
-<script src="lagesplan-touch.js?v=20261004111732"></script>
-<script src="lagesplan-drawer.js?v=20261004111732"></script>
-<script src="lagesplan-gpslive.js?v=20261004111732"></script>
-<script src="lagesplan-keys.js?v=20261004111732"></script>
+<script src="lagesplan.js?v=20261005065808"></script>
+<script src="lagesplan-tools.js?v=20261005065808"></script>
+<script src="lagesplan-layers.js?v=20261005065808"></script>
+<script src="lagesplan-pdfoverlay.js?v=20261005065808"></script>
+<script src="lagesplan-views.js?v=20261005065808"></script>
+<script src="lagesplan-film.js?v=20261005065808"></script>
+<script src="lagesplan-cad.js?v=20261005065808"></script>
+<script src="lagesplan-vecpdf.js?v=20261005065808"></script>
+<script src="lagesplan-print.js?v=20261005065808"></script>
+<script src="lagesplan-printlib.js?v=20261005065808"></script>
+<script src="lagesplan-pdflayers.js?v=20261005065808"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261005065808"></script>
+<script src="lagesplan-objmarks.js?v=20261005065808"></script>
+<script src="lagesplan-objlist.js?v=20261005065808"></script>
+<script src="lagesplan-zones.js?v=20261005065808"></script>
+<script src="lagesplan-wbs.js?v=20261005065808"></script>
+<script src="lagesplan-daily.js?v=20261005065808"></script>
+<script src="lagesplan-gps.js?v=20261005065808"></script>
+<script src="lagesplan-weather.js?v=20261005065808"></script>
+<script src="lagesplan-touch.js?v=20261005065808"></script>
+<script src="lagesplan-drawer.js?v=20261005065808"></script>
+<script src="lagesplan-gpslive.js?v=20261005065808"></script>
+<script src="lagesplan-keys.js?v=20261005065808"></script>
 </body>
 </html>

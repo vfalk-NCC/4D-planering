@@ -119,6 +119,7 @@ function applyLayerCss() {
   const hi = $("pdfHiCanvas");
   if (hi) Object.assign(hi.style, { mixBlendMode: $("pdfCanvas").style.mixBlendMode, opacity: $("pdfCanvas").style.opacity, display: $("pdfCanvas").style.display });
   $("stage").style.background = hasOrtho ? "#e5e7eb" : "#fff";
+  if (typeof applyPdfOverlays === "function") applyPdfOverlays();
 }
 
 // ---------------------------------------------------------------------
@@ -285,13 +286,19 @@ async function deleteFolder(id) {
 }
 async function moveLayerToFolder(key, folderId) {
   const m = layerMeta();
-  if ((m.folderOf[key] || null) === (folderId || null)) return;
-  if (folderId) m.folderOf[key] = folderId; else delete m.folderOf[key];
+  if (folderOfKey(m, key) === (folderId || null)) return;
+  if (folderId) m.folderOf[key] = folderId; else if (key.startsWith("pdfp:")) m.folderOf[key] = ""; else delete m.folderOf[key];
   await saveLayerMeta(m);
 }
 /* Tänd/släck alla lager i en mapp. */
+/* Mappen ett lager ligger i. Andra planers PDF:er (pdfp:) följer ritningens mapp tills de flyttas
+   (ett tomt värde betyder "utanför mapp"). */
+function folderOfKey(meta, k) {
+  if (Object.prototype.hasOwnProperty.call(meta.folderOf, k)) return meta.folderOf[k] || null;
+  return k.startsWith("pdfp:") ? meta.folderOf.pdf || null : null;
+}
 function setFolderVisible(id, on) {
-  const keys = layerRowKeys().filter(k => layerMeta().folderOf[k] === id);
+  const meta = layerMeta(), keys = layerRowKeys().filter(k => folderOfKey(meta, k) === id);
   const ortho = keys.filter(k => k.startsWith("ortho:"));
   keys.filter(k => !k.startsWith("ortho:")).forEach(k => { ls(k).visible = on; });
   if (ortho.length) {
@@ -308,7 +315,8 @@ function setFolderVisible(id, on) {
 }
 function layerRowKeys() {
   const cadKeys = typeof cads === "function" ? cads().map(r => "cad:" + r.id) : [];
-  return [...orthosByDate().reverse().map(o => "ortho:" + o.id), ...cadKeys, "pdf", "zones", "objects", ...userLayers().map(l => "ul:" + l), "photos"];
+  const pdfKeys = typeof pdfOverlayPlans === "function" ? pdfOverlayPlans().map(pdfOverlayKey) : [];
+  return [...orthosByDate().reverse().map(o => "ortho:" + o.id), ...cadKeys, "pdf", ...pdfKeys, "zones", "objects", ...userLayers().map(l => "ul:" + l), "photos"];
 }
 
 function renderActiveLayerSelect() {
@@ -1787,12 +1795,14 @@ function renderLayerPanel() {
   if (!el) return;
   const meta = layerMeta();
   const folderIds = new Set(meta.folders.map(f => f.id));
-  const inFolder = k => folderIds.has(meta.folderOf[k]) ? meta.folderOf[k] : null;
+  const inFolder = k => { const f = folderOfKey(meta, k); return folderIds.has(f) ? f : null; };
   const rowHtml = {};
   const name = (key, cls, icon) => `<span class="${cls}" title="Dubbelklicka för att byta namn">${icon} ${escHtml(layerDisplayName(key))}</span>`;
   orthosByDate().forEach(o => { rowHtml["ortho:" + o.id] = opts => layerRow("ortho:" + o.id, `<span class="or-name" title="${escHtml(o.caption ? o.caption + " – " : "")}Dubbelklicka för att ändra namn, fotodatum och bildtext">🛰 ${escHtml(o.name)}</span> <small>${escHtml(orthoDate(o))}${o.caption ? " · 💬" : ""}${o.orig && o.orig.pixel_m ? ` · ${Math.round(o.orig.pixel_m * 100)} cm/px` : ""}</small>`, { del: true, ...opts }); });
+  // Andra planers PDF:er som lager (lagesplan-pdfoverlay.js).
+  if (typeof pdfOverlayPlans === "function") pdfOverlayPlans().forEach(p => { rowHtml[pdfOverlayKey(p)] = opts => pdfOverlayRowHtml(p, opts); });
   rowHtml.pdf = opts => layerRow("pdf", name("pdf", "fx-name", "📄"), {
-    extra: orthos().length ? `<label class="blend"><input type="checkbox" class="lr-mult"${layerState.pdfMultiply !== false ? " checked" : ""} /> Genomskinlig vit bakgrund över fotot</label>` : "", ...opts
+    extra: `<label class="blend"><input type="checkbox" class="lr-color"${$("grayPdf") && $("grayPdf").checked ? "" : " checked"} /> Färg</label>` + (orthos().length ? `<label class="blend"><input type="checkbox" class="lr-mult"${layerState.pdfMultiply !== false ? " checked" : ""} /> Genomskinlig vit bakgrund över fotot</label>` : ""), ...opts
   });
   // Zonerna kan fällas ut: en rad per zon med tänd/släck (lagesplan-zones.js).
   const zList = typeof zoneLayerList === "function" ? zoneLayerList() : [], zOpen = zList.length > 0 && layerState["ulopen:__zones"] === true;
@@ -1873,7 +1883,7 @@ function renderLayerPanel() {
     row.addEventListener("dragend", () => { row.classList.remove("dragging"); row.draggable = false; });
   });
   el.querySelectorAll(".layer-row").forEach(row => {
-    const target = () => row.dataset.folder || (row.classList.contains("in-folder") ? layerMeta().folderOf[row.dataset.layer] : null);
+    const target = () => row.dataset.folder || (row.classList.contains("in-folder") ? folderOfKey(layerMeta(), row.dataset.layer) : null);
     row.addEventListener("dragover", e => { if (![...e.dataTransfer.types].includes("text/x-layer")) return; e.preventDefault(); row.classList.add("drop"); });
     row.addEventListener("dragleave", () => row.classList.remove("drop"));
     row.addEventListener("drop", e => {
@@ -1909,6 +1919,12 @@ function renderLayerPanel() {
       ls(key).opacity = Number(e.target.value); op.title = `Genomskinlighet ${e.target.value} %`; saveLayerState();
       applyLayerCss();
       if (key.startsWith("ortho:")) renderOrtho(); else if (key.startsWith("cad:")) renderCad(); else if (key.startsWith("ul:")) renderZones();
+    };
+    // Färg på ritningen: den öppna planen styr "Ritningen i gråskala", andra planers PDF:er har ett eget val.
+    const col = row.querySelector(".lr-color");
+    if (col) col.onchange = e => {
+      if (key === "pdf") { const g = $("grayPdf"); g.checked = !e.target.checked; g.dispatchEvent(new Event("change")); }
+      else { layerState["pdfcolor:" + key] = e.target.checked; saveLayerState(); applyLayerCss(); }
     };
     const mult = row.querySelector(".lr-mult");
     if (mult) mult.onchange = e => { layerState.pdfMultiply = e.target.checked; saveLayerState(); applyLayerCss(); };
@@ -2022,7 +2038,7 @@ function setLayersVisible(keys, on) {
 }
 async function moveLayersToFolder(keys, folderId) {
   const m = layerMeta();
-  keys.filter(k => !k.startsWith("cadl:")).forEach(k => { if (folderId) m.folderOf[k] = folderId; else delete m.folderOf[k]; });
+  keys.filter(k => !k.startsWith("cadl:")).forEach(k => { if (folderId) m.folderOf[k] = folderId; else if (k.startsWith("pdfp:")) m.folderOf[k] = ""; else delete m.folderOf[k]; });
   await saveLayerMeta(m);
 }
 async function deleteSelectedLayers() {

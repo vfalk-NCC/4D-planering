@@ -9,7 +9,7 @@ const lsViews = () => (typeof siteItems !== "undefined" ? siteItems : []).filter
 let lsViewCurrent = null; // id för senast valda/sparade vyn
 
 /* Lagerstatus som hör till en vy (inte fällda mappar o.d.). */
-const LS_VIEW_KEY_RE = /^(ortho:|cad:|cadl:|ul:)|^(pdf|zones|objects|photos)$/;
+const LS_VIEW_KEY_RE = /^(ortho:|cad:|cadl:|ul:|pdfp:)|^(pdf|zones|objects|photos)$/;
 function lsViewSnapshot() {
   const layers = {};
   Object.keys(layerState).forEach(k => {
@@ -44,7 +44,7 @@ async function applyLsView(v) {
   const snap = v.state || {};
   const saved = snap.layers || {};
   // Lager som inte fanns när vyn sparades (nya ortofoton/DXF:er) släcks.
-  layerRowKeys().forEach(k => { if (!saved[k] && /^(ortho:|cad:)/.test(k)) ls(k).visible = false; });
+  layerRowKeys().forEach(k => { if (!saved[k] && /^(ortho:|cad:|pdfp:)/.test(k)) ls(k).visible = false; });
   Object.keys(saved).forEach(k => { const s = ls(k); s.visible = !!saved[k].visible; s.opacity = saved[k].opacity ?? 100; });
   layerState.pdfMultiply = snap.pdfMultiply !== false;
   layerState.orthoFollowDate = !!snap.orthoFollowDate;

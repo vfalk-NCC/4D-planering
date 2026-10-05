@@ -815,6 +815,7 @@ async function openPlan(id) {
     $("pdfHiCanvas").width = 0;
     await renderPdf();
     renderOrtho();
+    if (typeof applyPdfOverlays === "function") applyPdfOverlays(); // andra planers PDF:er läggs om mot den nya planen
     buildSnapIndex();
     $("empty").classList.add("hidden");
     fitView();
@@ -1748,6 +1749,13 @@ function composeImageNow(maxW, noHeader, part) {
     }
     ctx.drawImage(c, 0, head, W, H);
     ctx.restore();
+    // Andra planers PDF:er (lager under ritningen) direkt efter ritningen, som på skärmen.
+    if (id === "pdfCanvas") document.querySelectorAll("#stage canvas.pdfov").forEach(o => {
+      if (!o.width || getComputedStyle(o).display === "none") return;
+      ctx.save(); ctx.globalAlpha = Number(getComputedStyle(o).opacity) || 0; ctx.globalCompositeOperation = "multiply";
+      if (o.style.filter) ctx.filter = o.style.filter;
+      ctx.drawImage(o, 0, head, W, H); ctx.restore();
+    });
   });
   if (noHeader) return out;
   const f = Math.round(head * 0.38);
