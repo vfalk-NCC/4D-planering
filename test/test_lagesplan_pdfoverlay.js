@@ -70,6 +70,19 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // Färg av: gråskala.
   await page.click('#layerList .layer-row[data-layer="pdfp:B"] .lr-color');
   if ((await page.evaluate(() => document.querySelector('#stage canvas.pdfov[data-key="pdfp:B"]').style.filter)) !== 'grayscale(1)') fail('Färg av ska ge gråskala');
+  // Beskär inte: plan B (dubbelt så stor i modellen) syns även utanför plan A:s kant, rutan på samma ställe.
+  const crop0 = await page.evaluate(() => { const c = document.querySelector('#stage canvas.pdfov[data-key="pdfp:B"]'); return [c.style.left, c.style.top, c.style.width, c.style.height, $('pdfCanvas').width + 'px', $('pdfCanvas').height + 'px']; });
+  if (crop0[0] !== '0px' || crop0[1] !== '0px' || crop0[2] !== crop0[4] || crop0[3] !== crop0[5]) fail('Från början klipps lagret vid planens kant: ' + JSON.stringify(crop0));
+  await page.click('#layerList .layer-row[data-layer="pdfp:B"] .lr-nocrop'); await page.waitForTimeout(400);
+  const nc = await page.evaluate(() => {
+    const c = document.querySelector('#stage canvas.pdfov[data-key="pdfp:B"]'), l = parseFloat(c.style.left), t = parseFloat(c.style.top), w = parseFloat(c.style.width), h = parseFloat(c.style.height), q = c.width / w;
+    const [x, y] = toPx([300, 300]);
+    return { box: [l, t, w, h], stage: [$('pdfCanvas').width, $('pdfCanvas').height], px: [...c.getContext('2d').getImageData(Math.round((x - l) * q), Math.round((y - t) * q), 1, 1).data], saved: layerState['pdfnocrop:pdfp:B'] };
+  });
+  if (!(nc.box[2] > nc.stage[0] * 1.9 && nc.box[3] > nc.stage[1] * 1.9 && nc.box[1] < 0) || nc.px[0] < 200 || nc.px[1] > 60 || nc.saved !== true) fail('Beskär inte: hela ritningen, rutan på rätt ställe: ' + JSON.stringify(nc));
+  const ex2 = await page.evaluate(() => { const o = composeImageNow(0, true), ctx = o.getContext('2d'), [x, y] = toPx([300, 300]); return [...ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data]; });
+  if (ex2[0] > 150 || ex2[3] < 200) fail('Exporten med Beskär inte (Färg är av här: mörkgrå ruta): ' + JSON.stringify(ex2));
+  await page.click('#layerList .layer-row[data-layer="pdfp:B"] .lr-nocrop'); await page.waitForTimeout(400);
   // Okalibrerad plan ritas inte även om den tänds.
   await page.click('#layerList .layer-row[data-layer="pdfp:C"] .lr-vis'); await page.waitForTimeout(200);
   if (await page.evaluate(() => { const c = document.querySelector('#stage canvas.pdfov[data-key="pdfp:C"]'); return !!(c && c.width && c.style.display !== 'none'); })) fail('Okalibrerad plan kan inte läggas på rätt ställe');

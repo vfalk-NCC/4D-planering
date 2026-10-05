@@ -1789,7 +1789,8 @@ function composeImageNow(maxW, noHeader, part) {
       if (!o.width || getComputedStyle(o).display === "none") return;
       ctx.save(); ctx.globalAlpha = Number(getComputedStyle(o).opacity) || 0; ctx.globalCompositeOperation = "multiply";
       if (o.style.filter) ctx.filter = o.style.filter;
-      ctx.drawImage(o, 0, head, W, H); ctx.restore();
+      const kx = W / pc.width; // lagret kan ha egen yta (Beskär inte): rita på sin plats
+      ctx.drawImage(o, (parseFloat(o.style.left) || 0) * kx, head + (parseFloat(o.style.top) || 0) * kx, (parseFloat(o.style.width) || pc.width) * kx, (parseFloat(o.style.height) || pc.height) * kx); ctx.restore();
     });
   });
   if (noHeader) return out;

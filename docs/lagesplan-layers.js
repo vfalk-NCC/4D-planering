@@ -1926,6 +1926,8 @@ function renderLayerPanel() {
       if (key === "pdf") { const g = $("grayPdf"); g.checked = !e.target.checked; g.dispatchEvent(new Event("change")); }
       else { layerState["pdfcolor:" + key] = e.target.checked; saveLayerState(); applyLayerCss(); }
     };
+    const noCrop = row.querySelector(".lr-nocrop");
+    if (noCrop) noCrop.onchange = e => { layerState["pdfnocrop:" + key] = e.target.checked; saveLayerState(); applyLayerCss(); };
     const mult = row.querySelector(".lr-mult");
     if (mult) mult.onchange = e => { layerState.pdfMultiply = e.target.checked; saveLayerState(); applyLayerCss(); };
     const orName = row.querySelector(".or-name");

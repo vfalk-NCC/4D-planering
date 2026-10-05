@@ -10,6 +10,17 @@ const PDFOV_PREFIX = "pdfp:";
 const pdfOverlayPlans = () => (typeof plans !== "undefined" && plan ? plans.filter(p => p.id !== plan.id && p.file_path) : []);
 const pdfOverlayKey = p => PDFOV_PREFIX + p.id;
 const pdfOverlayColor = key => layerState["pdfcolor:" + key] !== false; // färg från början
+/* "Beskär inte" (Victors önskemål 2026-10-05): hela den andra ritningen visas, även utanför den öppna
+   planens kant. Annars klipps lagret vid planens kant (standard). */
+const pdfOverlayNoCrop = key => layerState["pdfnocrop:" + key] === true;
+/* Lagrets yta i stage-px: den öppna planens yta, eller (beskär inte) hela den andra sidan. */
+function pdfOverlayBounds(p, pg, toStage) {
+  const pc = $("pdfCanvas");
+  if (!pdfOverlayNoCrop(pdfOverlayKey(p))) return [0, 0, pc.width, pc.height];
+  const [vx0, vy0, vx1, vy1] = pg.view;
+  const pts = [[vx0, vy0], [vx1, vy0], [vx1, vy1], [vx0, vy1]].map(([x, y]) => [toStage[0] * x + toStage[2] * y + toStage[4], toStage[1] * x + toStage[3] * y + toStage[5]]);
+  return [Math.floor(Math.min(...pts.map(q => q[0]))), Math.floor(Math.min(...pts.map(q => q[1]))), Math.ceil(Math.max(...pts.map(q => q[0]))), Math.ceil(Math.max(...pts.map(q => q[1])))];
+}
 
 /* Affina matriser som i pdf.js: [a, b, c, d, e, f] → x' = a·x + c·y + e, y' = b·x + d·y + f. */
 const affMul = (m, n) => [m[0] * n[0] + m[2] * n[1], m[1] * n[0] + m[3] * n[1], m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3], m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5]];
@@ -52,7 +63,7 @@ const pdfOvBusy = new Map(); // key -> löpnummer (en nyare ritning avbryter en 
 async function renderPdfOverlay(p) {
   const key = pdfOverlayKey(p), c = pdfOverlayCanvas(key), pc = $("pdfCanvas");
   if (!pdfOverlayReady(p) || !viewport || !pc.width) { c.width = 0; return; }
-  const stamp = `${plan.id}:${pc.width}x${pc.height}:${JSON.stringify(p.calib)}:${JSON.stringify(plan.calib)}`;
+  const stamp = `${plan.id}:${pc.width}x${pc.height}:${JSON.stringify(p.calib)}:${JSON.stringify(plan.calib)}:${pdfOverlayNoCrop(key)}`;
   if (c.dataset.stamp === stamp && c.width) return;
   const seq = (pdfOvBusy.get(key) || 0) + 1; pdfOvBusy.set(key, seq);
   try {
@@ -66,9 +77,12 @@ async function renderPdfOverlay(p) {
     const tctx = tmp.getContext("2d"); tctx.fillStyle = "#fff"; tctx.fillRect(0, 0, tmp.width, tmp.height);
     await pg.render({ canvasContext: tctx, viewport: vb, annotationMode: pdfjsLib.AnnotationMode.DISABLE }).promise;
     if (pdfOvBusy.get(key) !== seq) return;
-    c.width = pc.width; c.height = pc.height;
+    const [bx0, by0, bx1, by1] = pdfOverlayBounds(p, pg, toStage), bw = bx1 - bx0, bh = by1 - by0;
+    const q = Math.min(1, 8000 / Math.max(bw, bh)); // canvas-px per stage-px (tak för mycket stora ytor)
+    c.width = Math.max(1, Math.round(bw * q)); c.height = Math.max(1, Math.round(bh * q));
+    Object.assign(c.style, { left: `${bx0}px`, top: `${by0}px`, width: `${bw}px`, height: `${bh}px` });
     const ctx = c.getContext("2d");
-    ctx.setTransform(...affMul(toStage, affInv(vb.transform)));
+    ctx.setTransform(...affMul([q, 0, 0, q, -bx0 * q, -by0 * q], affMul(toStage, affInv(vb.transform))));
     ctx.drawImage(tmp, 0, 0);
     c.dataset.stamp = stamp;
     scheduleOverlayHi();
@@ -102,7 +116,7 @@ function pdfOverlayRowHtml(p, opts) {
   const key = pdfOverlayKey(p), ready = pdfOverlayReady(p);
   ls(key, { visible: false });
   return layerRow(key, `<span class="pdfov-name" title="${escHtml(p.name || "")}${ready ? "" : " – planen (eller den öppna planen) är inte kalibrerad och kan inte läggas på rätt ställe"}">📄 ${escHtml(p.name || "Plan")}</span>${ready ? "" : " <small>ej kalibrerad</small>"}`,
-    { ...opts, extra: `<label class="blend"><input type="checkbox" class="lr-color"${pdfOverlayColor(key) ? " checked" : ""} /> Färg</label>` });
+    { ...opts, extra: `<label class="blend"><input type="checkbox" class="lr-color"${pdfOverlayColor(key) ? " checked" : ""} /> Färg</label><label class="blend" title="Visa hela ritningen, även utanför den öppna planens kant"><input type="checkbox" class="lr-nocrop"${pdfOverlayNoCrop(key) ? " checked" : ""} /> Beskär inte</label>` });
 }
 
 /* Full skärpa vid inzoomning (Victors önskemål 2026-10-05), som för den öppna planen: när zoomen
@@ -135,16 +149,16 @@ async function renderOverlayHi(p, seq) {
   if (!viewport || !pc.width || !lo.width) return;
   let s = view.scale * (window.devicePixelRatio || 1);
   if (s <= 1.05) { const h = pdfOverlayHi(key, false); if (h) h.width = 0; lo.style.visibility = ""; return; }
-  const vb = visibleStageBox();
-  const x0 = Math.max(0, vb[0]), y0 = Math.max(0, vb[1]), x1 = Math.min(pc.width, vb[2]), y1 = Math.min(pc.height, vb[3]);
-  if (x1 <= x0 || y1 <= y0) return;
-  const maxPx = 30e6;
-  if ((x1 - x0) * (y1 - y0) * s * s > maxPx) s = Math.sqrt(maxPx / ((x1 - x0) * (y1 - y0)));
-  const cw = Math.ceil((x1 - x0) * s), ch = Math.ceil((y1 - y0) * s);
   try {
     const pg = await pdfOverlayPage(p);
     if (seq !== pdfOvHiSeq) return;
     const toStage = pdfOvToStage(p), fromStage = affInv(toStage);
+    const vb = visibleStageBox(), [ox0, oy0, ox1, oy1] = pdfOverlayBounds(p, pg, toStage);
+    const x0 = Math.max(ox0, vb[0]), y0 = Math.max(oy0, vb[1]), x1 = Math.min(ox1, vb[2]), y1 = Math.min(oy1, vb[3]);
+    if (x1 <= x0 || y1 <= y0) return;
+    const maxPx = 30e6;
+    if ((x1 - x0) * (y1 - y0) * s * s > maxPx) s = Math.sqrt(maxPx / ((x1 - x0) * (y1 - y0)));
+    const cw = Math.ceil((x1 - x0) * s), ch = Math.ceil((y1 - y0) * s);
     const k = Math.sqrt(Math.abs(toStage[0] * toStage[3] - toStage[1] * toStage[2]));
     // Den synliga delen i lagrets egen PDF (en rotation gör rutan större), begränsad till sidan.
     const pts = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => [fromStage[0] * x + fromStage[2] * y + fromStage[4], fromStage[1] * x + fromStage[3] * y + fromStage[5]]);
