@@ -43,7 +43,14 @@ function zoneCadList() {
   const dots = ($("showObjects") && $("showObjects").checked && typeof objExportMarkers === "function" ? objExportMarkers() : [])
     .map(mk => [mk.x * rx + mk.y * ry, -mk.x * ry + mk.y * rx]);
   return (plan.zones || []).filter(z => !(z.style && z.style.hidden)).map(z => {
-    const polys = (z.polys || []).filter(p => p.length > 2).map(p => p.map(pdfToModel));
+    // Rensade polygoner: inga dubbla punkter i rad (< 1 cm) och ingen upprepad slutpunkt.
+    const clean = p => {
+      const out = [];
+      p.forEach(q => { const l = out[out.length - 1]; if (!l || Math.hypot(q[0] - l[0], q[1] - l[1]) > 0.01) out.push(q); });
+      while (out.length > 2 && Math.hypot(out[0][0] - out[out.length - 1][0], out[0][1] - out[out.length - 1][1]) <= 0.01) out.pop();
+      return out;
+    };
+    const polys = (z.polys || []).filter(p => p.length > 2).map(p => clean(p.map(pdfToModel))).filter(p => p.length > 2);
     if (!polys.length) return null;
     const st = z._status || zoneStatus(z);
     const areaOf = p => { let a = 0; p.forEach((q, i) => { const r = p[(i + 1) % p.length]; a += q[0] * r[1] - r[0] * q[1]; }); return a / 2; };

@@ -33,7 +33,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const sq = (x0, y0, x1, y1) => [[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]];
     plans = [{ id: 'A', name: 'Plan 1', file_path: 'a.pdf', calib: { model: [[O[0], O[1], 0], [O[0] + 100, O[1], 0]], pdf: [[0, 0], [1000, 0]] }, level: { z0: 10, z1: 14 }, zones: [
       { id: 'z1', code: '7411', name: 'SEKTIONSFICKOR', parent: '741 Sektionsfickor', polys: sq(100, 100, 200, 200), rule: { field: 'auto' } },
-      { id: 'z2', code: '7412', name: 'Förtjockare', parent: '741 Sektionsfickor', polys: sq(200, 100, 300, 200), rule: { field: 'auto' } },
+      { id: 'z2', code: '7412', name: 'Förtjockare', parent: '741 Sektionsfickor', polys: [[[200, 100], [300, 100], [300, 100.05], [300, 200], [200, 200], [200, 100]]], rule: { field: 'auto' } }, // dubbel punkt + upprepad slutpunkt
       { id: 'z3', code: '7499', name: 'Dold', polys: sq(400, 100, 500, 200), rule: { field: 'auto' }, style: { hidden: true } }] }];
     pdfCache.set('A', new Uint8Array([1]).buffer);
     items = [{ id: 'i1', object_name: 'K10', activity: 'Pelare', start_date: '2026-09-01', end_date: '2026-12-01', status: 'pagaende', progress: 40 }];
@@ -64,6 +64,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const t1 = r.texts.find(t => t[0] === '7411 SEKTIONSFICKOR'), t2 = r.texts.find(t => t[0] === '7412 Förtjockare');
   const inZ = (t, x0, x1) => t && t[1] > x0 && t[1] < x1 && t[2] > 150110 && t[2] < 150120;
   if (!inZ(t1, 6512310, 6512320) || !inZ(t2, 6512320, 6512330)) fail('Kod + namn i sin zon: ' + JSON.stringify(r.texts));
+  const z2 = r.polys.find(p => p[0] === 'ZON-INGEN');
+  if (!z2 || z2[1].length !== 4) fail('Dubbla punkter och upprepad slutpunkt rensas bort: ' + JSON.stringify(z2));
   console.log('OK: zonerna som DXF – konturer per status, överzon, kod + namn i zonen, dolda zoner utan');
   // IFC
   const t = r.ifc;
