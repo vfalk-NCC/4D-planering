@@ -306,6 +306,18 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (wg[0].parts !== 1 || Math.abs(wg[0].area - sumA) > 1) fail('Överzonen ska vara sammanslagningen av zonerna: ' + JSON.stringify({ wg, sumA }));
   const wl = await page.textContent('#zoneList .wbs-item');
   if (!/742 Sikthall/.test(wl) || !/2 zoner/.test(wl)) fail('Zonlistan ska visa överzonen med samlad status: ' + wl);
+  // Överzonen fälls ut och visar sina zoner under sig (den markerade zonens överzon är utfälld).
+  const wt = () => page.evaluate(() => { const box = document.querySelector('#zoneList .wbs-list'); return { kids: [...box.querySelectorAll('.zone-item.wbs-child')].map(r => r.dataset.zone + (r.classList.contains('hidden') ? '-' : '+')), tog: box.querySelector('.wbs-tog').textContent }; });
+  const w1 = await wt();
+  if (w1.kids.length !== 2 || w1.kids.some(k => k.endsWith('-')) || w1.tog !== '▾') fail('Markerad zons överzon ska vara utfälld med sina zoner: ' + JSON.stringify(w1));
+  await page.evaluate(() => { selectedZoneId = null; renderZoneList(); });
+  if ((await wt()).kids.some(k => k.endsWith('+'))) fail('Överzonen ska vara hopfälld från början: ' + JSON.stringify(await wt()));
+  await page.click('#zoneList .wbs-tog');
+  const w2 = await wt();
+  if (w2.kids.some(k => k.endsWith('-')) || w2.tog !== '▾') fail('Pilen ska fälla ut överzonen: ' + JSON.stringify(w2));
+  await page.click('#zoneList .wbs-tog');
+  if ((await wt()).kids.some(k => k.endsWith('+'))) fail('Pilen ska fälla ihop överzonen igen');
+  await page.evaluate(id => selectZone(id), b41); await page.waitForTimeout(100);
   // Nivåerna: båda, bara överzoner, bara zoner.
   const lv = async v => { await page.selectOption('#zoWbsLevel', v); await page.waitForTimeout(100);
     return page.evaluate(() => { const c = document.createElement('canvas'); c.width = 2000; c.height = 2000; return drawZoneShapes(c.getContext('2d'), 14, null).map(b => [b[1], b[5]]); }); };

@@ -120,6 +120,7 @@ function applyLayerCss() {
   if (hi) Object.assign(hi.style, { mixBlendMode: $("pdfCanvas").style.mixBlendMode, opacity: $("pdfCanvas").style.opacity, display: $("pdfCanvas").style.display });
   $("stage").style.background = hasOrtho ? "#e5e7eb" : "#fff";
   if (typeof applyPdfOverlays === "function") applyPdfOverlays();
+  applyLayerOrder();
 }
 
 // ---------------------------------------------------------------------
@@ -237,7 +238,7 @@ async function createLayer(name) {
 const META_ID = "layermeta";
 function layerMeta() {
   const m = siteItems.find(x => x.id === META_ID) || {};
-  return { id: META_ID, type: "layermeta", names: { ...(m.names || {}) }, folders: (m.folders || []).map(f => ({ ...f })), folderOf: { ...(m.folderOf || {}) }, sortAz: !!m.sortAz, cadColors: { ...(m.cadColors || {}) } };
+  return { id: META_ID, type: "layermeta", names: { ...(m.names || {}) }, folders: (m.folders || []).map(f => ({ ...f })), folderOf: { ...(m.folderOf || {}) }, sortAz: !!m.sortAz, order: [...(m.order || [])], cadColors: { ...(m.cadColors || {}) } };
 }
 function saveLayerMeta(m) { return saveSiteItem(m, false, { record: false }); }
 const LAYER_DEFAULT_NAMES = { pdf: "Ritningen (PDF)", zones: "Zoner", objects: "Objekt", photos: "Foton" };
@@ -248,6 +249,8 @@ function layerSortName(key) {
   return layerDisplayName(key);
 }
 function layerDisplayName(key) {
+  // Ritningens lager visar den öppna planens namn (som de andra planernas PDF-lager).
+  if (key === "pdf" && typeof plan !== "undefined" && plan && plan.name) return plan.name;
   const n = (siteItems.find(x => x.id === META_ID) || {}).names || {};
   return n[key] || LAYER_DEFAULT_NAMES[key] || (key.startsWith("ul:") ? key.slice(3) : key);
 }
@@ -287,7 +290,7 @@ async function deleteFolder(id) {
 async function moveLayerToFolder(key, folderId) {
   const m = layerMeta();
   if (folderOfKey(m, key) === (folderId || null)) return;
-  if (folderId) m.folderOf[key] = folderId; else if (key.startsWith("pdfp:")) m.folderOf[key] = ""; else delete m.folderOf[key];
+  setFolderOf(m, key, folderId);
   await saveLayerMeta(m);
 }
 /* Tänd/släck alla lager i en mapp. */
@@ -313,10 +316,83 @@ function setFolderVisible(id, on) {
   orthoChanged(); renderZones();
   if (typeof renderCad === "function") { buildCadSnap(); renderCad(); }
 }
-function layerRowKeys() {
+/* Ritordning (Victors önskemål 2026-10-05): listan i lagerhanteraren är ritordningen – det som står
+   överst ritas överst. Ordningen sparas i lagermetan (order, överst först) och ändras genom att dra
+   lager och mappar i listan. Ett nytt lager hamnar där det skulle ha legat i standardordningen.
+   Egna lager (Etablering …) och fotona ritas alltid överst, oavsett plats i listan. */
+function defaultLayerOrder() {
   const cadKeys = typeof cads === "function" ? cads().map(r => "cad:" + r.id) : [];
   const pdfKeys = typeof pdfOverlayPlans === "function" ? pdfOverlayPlans().map(pdfOverlayKey) : [];
-  return [...orthosByDate().reverse().map(o => "ortho:" + o.id), ...cadKeys, "pdf", ...pdfKeys, "zones", "objects", ...userLayers().map(l => "ul:" + l), "photos"];
+  return ["photos", ...userLayers().map(l => "ul:" + l), "objects", "zones", ...cadKeys, "pdf", ...pdfKeys, ...orthosByDate().reverse().map(o => "ortho:" + o.id)];
+}
+function layerRowKeys() {
+  const def = defaultLayerOrder(), have = new Set(def);
+  const saved = (siteItems.find(x => x.id === META_ID) || {}).order || [];
+  const out = saved.filter((k, i) => have.has(k) && saved.indexOf(k) === i), inOut = new Set(out);
+  def.forEach((k, i) => {
+    if (inOut.has(k)) return;
+    // Före det närmast följande lagret (i standardordningen) som redan har en plats.
+    let j = -1;
+    for (let t = i + 1; t < def.length && j < 0; t++) if (inOut.has(def[t])) j = out.indexOf(def[t]);
+    if (j < 0) out.push(k); else out.splice(j, 0, k);
+    inOut.add(k);
+  });
+  return out;
+}
+const layerOrderAlwaysTop = k => k === "photos" || k.startsWith("ul:");
+/* Listan som den visas: mappar (med sina lager) och lager utanför mappar. En mapp står där dess
+   översta lager står; tomma mappar överst. Med A–Ö: mapparna först, sorterade. */
+function layerDisplayEntries(meta = layerMeta(), keys = layerRowKeys()) {
+  const folderIds = new Set(meta.folders.map(f => f.id));
+  const inFolder = k => { const f = folderOfKey(meta, k); return folderIds.has(f) ? f : null; };
+  const byName = (a, b) => layerSortName(a).localeCompare(layerSortName(b), "sv", { numeric: true, sensitivity: "base" });
+  const kidsOf = id => { const kids = keys.filter(k => inFolder(k) === id); if (meta.sortAz) kids.sort(byName); return kids; };
+  const entries = [];
+  if (meta.sortAz) {
+    meta.folders.slice().sort((a, b) => a.name.localeCompare(b.name, "sv", { numeric: true, sensitivity: "base" }))
+      .forEach(f => entries.push({ folder: f, kids: kidsOf(f.id) }));
+    keys.filter(k => !inFolder(k)).forEach(k => entries.push({ key: k }));
+    return entries;
+  }
+  meta.folders.filter(f => !keys.some(k => inFolder(k) === f.id)).forEach(f => entries.push({ folder: f, kids: [] }));
+  const done = new Set();
+  keys.forEach(k => {
+    const f = inFolder(k);
+    if (!f) entries.push({ key: k });
+    else if (!done.has(f)) { done.add(f); entries.push({ folder: meta.folders.find(x => x.id === f), kids: kidsOf(f) }); }
+  });
+  return entries;
+}
+/* Ritordningen, överst först. */
+function layerDrawOrder() { return layerDisplayEntries().flatMap(e => e.folder ? e.kids : [e.key]); }
+/* Lägg lagren på sina nivåer (z-index i #stage). Ortofotona delar en yta: den ligger där det
+   översta tända ortofotot står. Varje DXF-fil och varje plans PDF har en egen yta. */
+function applyLayerOrder() {
+  if (!$("stage")) return;
+  const L = layerDrawOrder(), n = L.length, z = k => { const i = L.indexOf(k); return i < 0 ? 1 : n - i + 1; };
+  const setZ = (el, v) => { if (el) el.style.zIndex = String(v); };
+  const ok = L.filter(k => k.startsWith("ortho:")), okOn = ok.filter(k => ls(k).visible);
+  const oz = (okOn.length ? okOn : ok).reduce((m, k) => Math.max(m, z(k)), 1);
+  setZ($("orthoCanvas"), oz); setZ($("orthoCanvasB"), oz);
+  setZ($("pdfCanvas"), z("pdf")); setZ($("pdfHiCanvas"), z("pdf"));
+  setZ($("zoneCanvas"), z("zones")); setZ($("objCanvas"), z("objects"));
+  setZ($("topCanvas"), n + 3);
+  document.querySelectorAll("#stage canvas.pdfov, #stage canvas.pdfovhi, #stage canvas.cadfile").forEach(c => setZ(c, z(c.dataset.key)));
+}
+/* Flytta lager i ritordningen: före/efter refKey, och till mappen folderId (undefined = behåll). */
+function setFolderOf(m, k, folderId) {
+  if (folderId) m.folderOf[k] = folderId; else if (k.startsWith("pdfp:")) m.folderOf[k] = ""; else delete m.folderOf[k];
+}
+async function placeLayers(moved, refKey, after, folderId) {
+  const L = layerDrawOrder(), M = new Set(moved.filter(k => L.includes(k)));
+  if (!M.size || M.has(refKey)) { if (M.size && folderId !== undefined) { const m = layerMeta(); M.forEach(k => setFolderOf(m, k, folderId)); await saveLayerMeta(m); } return; }
+  const rest = L.filter(k => !M.has(k)), i = rest.indexOf(refKey);
+  if (i < 0) return;
+  rest.splice(i + (after ? 1 : 0), 0, ...L.filter(k => M.has(k)));
+  const m = layerMeta();
+  m.order = rest; m.sortAz = false;
+  if (folderId !== undefined) M.forEach(k => setFolderOf(m, k, folderId));
+  await saveLayerMeta(m);
 }
 
 function renderActiveLayerSelect() {
@@ -1803,7 +1879,8 @@ function renderLayerPanel() {
   orthosByDate().forEach(o => { rowHtml["ortho:" + o.id] = opts => layerRow("ortho:" + o.id, `<span class="or-name" title="${escHtml(o.caption ? o.caption + " – " : "")}Dubbelklicka för att ändra namn, fotodatum och bildtext">🛰 ${escHtml(o.name)}</span> <small>${escHtml(orthoDate(o))}${o.caption ? " · 💬" : ""}${o.orig && o.orig.pixel_m ? ` · ${Math.round(o.orig.pixel_m * 100)} cm/px` : ""}</small>`, { del: true, ...opts }); });
   // Andra planers PDF:er som lager (lagesplan-pdfoverlay.js).
   if (typeof pdfOverlayPlans === "function") pdfOverlayPlans().forEach(p => { rowHtml[pdfOverlayKey(p)] = opts => pdfOverlayRowHtml(p, opts); });
-  rowHtml.pdf = opts => layerRow("pdf", name("pdf", "fx-name", "📄"), {
+  // Den öppna planens ritning: samma utseende som de andra PDF-lagren, märkt "Bas".
+  rowHtml.pdf = opts => layerRow("pdf", `<span class="pdfov-name" title="Arbetsytans ritning – zoner, foton och kalibrering hör till den">📄 <small class="pdf-bas">Bas</small> ${escHtml(layerDisplayName("pdf"))}</span>`, {
     extra: `<label class="blend"><input type="checkbox" class="lr-color"${$("grayPdf") && $("grayPdf").checked ? "" : " checked"} /> Färg</label>` + (orthos().length ? `<label class="blend"><input type="checkbox" class="lr-mult"${layerState.pdfMultiply !== false ? " checked" : ""} /> Genomskinlig vit bakgrund över fotot</label>` : ""), ...opts
   });
   // Zonerna kan fällas ut: en rad per zon med tänd/släck (lagesplan-zones.js).
@@ -1830,25 +1907,22 @@ function renderLayerPanel() {
   if (typeof cads === "function") cads().forEach(r => { rowHtml["cad:" + r.id] = opts => cadRowsHtml(r, opts); });
   const keys = layerRowKeys();
   const rows = [];
-  // Mappar först (i den ordning de skapades), med sina lager; sedan resten.
+  // Listan i ritordning (överst ritas överst): mappar står där deras översta lager står.
   const sortBtn = $("btnLayerSort");
-  if (sortBtn) { sortBtn.classList.toggle("active", !!meta.sortAz); sortBtn.title = meta.sortAz ? "Lagren i mapparna är sorterade A–Ö. Klicka för vanlig ordning." : "Sortera mapparna och lagren i dem A–Ö"; }
-  const folders = meta.sortAz ? meta.folders.slice().sort((a, b) => a.name.localeCompare(b.name, "sv", { numeric: true, sensitivity: "base" })) : meta.folders;
-  folders.forEach(f => {
-    const kids = keys.filter(k => inFolder(k) === f.id);
-    // Sortera A–Ö (knappen ovanför listan, gäller alla mappar).
-    if (meta.sortAz) kids.sort((a, b) => layerSortName(a).localeCompare(layerSortName(b), "sv", { numeric: true, sensitivity: "base" }));
+  if (sortBtn) { sortBtn.classList.toggle("active", !!meta.sortAz); sortBtn.title = meta.sortAz ? "Mapparna och lagren i dem är sorterade A–Ö (det styr också vad som ritas överst). Klicka för egen ordning." : "Sortera mapparna och lagren i dem A–Ö"; }
+  layerDisplayEntries(meta, keys).forEach(e => {
+    if (!e.folder) { rows.push(rowHtml[e.key]({})); return; }
+    const f = e.folder, kids = e.kids;
     const open = layerState["folder:" + f.id] ? layerState["folder:" + f.id].open !== false : true;
     const nOn = kids.filter(k => ls(k).visible).length;
     rows.push(`<div class="layer-row folder-row" data-folder="${escHtml(f.id)}">
         <input type="checkbox" class="fr-vis"${nOn ? " checked" : ""} data-mixed="${nOn > 0 && nOn < kids.length ? 1 : 0}" title="Visa/dölj allt i mappen"${kids.length ? "" : " disabled"} />
-        <span class="ln"><button class="fr-toggle" title="Fäll ut/ihop">${open ? "▾" : "▸"}</button><span class="fr-name" title="Dubbelklicka för att byta namn">📁 ${escHtml(f.name)}</span> <small>${kids.length}</small></span>
+        <span class="ln"><button class="fr-toggle" title="Fäll ut/ihop">${open ? "▾" : "▸"}</button><span class="fr-name" title="Dubbelklicka för att byta namn. Dra för att flytta mappen (överst ritas överst).">📁 ${escHtml(f.name)}</span> <small>${kids.length}</small></span>
         <span></span>
         <button class="fr-del" title="Ta bort mappen (lagren ligger kvar)">🗑️</button>
       </div>`);
     kids.forEach(k => rows.push(rowHtml[k]({ inFolder: true, hidden: !open })));
   });
-  keys.filter(k => !inFolder(k)).forEach(k => rows.push(rowHtml[k]({})));
   el.innerHTML = rows.join("");
   // "Alla DXF-lager" i en egen ruta under sökfältet.
   const allBox = $("cadAllBox");
@@ -1873,29 +1947,67 @@ function renderLayerPanel() {
     row.querySelector(".fr-del").onclick = () => deleteFolder(id);
 
   });
-  // Dra ett lager till en mapp – eller ut ur mappen (släpp på ett lager utanför mappar).
+  // Dra lager och mappar: släpp på ett lager = lägg före/efter det (och i dess mapp), släpp ett
+  // lager på en mapp = lägg det överst i mappen. Ordningen i listan är ritordningen.
+  const keySet = new Set(keys);
   el.querySelectorAll(".layer-row[data-layer]").forEach(row => {
     // Bara namnet startar ett drag (annars skulle reglagen dras med).
     const ln = row.querySelector(".ln");
-    if (row.classList.contains("cad-sub")) return; // CAD-lager följer sin ritning
-    ln.title = ln.title || "Dra till en mapp";
+    if (row.classList.contains("cad-sub") || !keySet.has(row.dataset.layer)) return; // CAD-lager följer sin ritning
+    ln.title = ln.title || "Dra för att flytta (överst ritas överst) eller till en mapp";
     ln.addEventListener("mousedown", () => { row.draggable = true; });
     row.addEventListener("mouseup", () => { row.draggable = false; });
     row.addEventListener("dragstart", e => { e.dataTransfer.setData("text/x-layer", row.dataset.layer); e.dataTransfer.effectAllowed = "move"; row.classList.add("dragging"); });
     row.addEventListener("dragend", () => { row.classList.remove("dragging"); row.draggable = false; });
   });
+  el.querySelectorAll(".folder-row").forEach(row => {
+    const fn = row.querySelector(".fr-name");
+    fn.addEventListener("mousedown", () => { row.draggable = true; });
+    row.addEventListener("mouseup", () => { row.draggable = false; });
+    row.addEventListener("dragstart", e => { e.dataTransfer.setData("text/x-folder", row.dataset.folder); e.dataTransfer.effectAllowed = "move"; row.classList.add("dragging"); });
+    row.addEventListener("dragend", () => { row.classList.remove("dragging"); row.draggable = false; });
+  });
+  const entries = layerDisplayEntries(meta, keys);
+  const entryOf = row => row.dataset.folder ? entries.find(e => e.folder && e.folder.id === row.dataset.folder)
+    : entries.find(e => e.folder ? e.kids.includes(row.dataset.layer) : e.key === row.dataset.layer);
+  const clearDrop = row => row.classList.remove("drop", "drop-before", "drop-after");
   el.querySelectorAll(".layer-row").forEach(row => {
-    const target = () => row.dataset.folder || (row.classList.contains("in-folder") ? folderOfKey(layerMeta(), row.dataset.layer) : null);
-    row.addEventListener("dragover", e => { if (![...e.dataTransfer.types].includes("text/x-layer")) return; e.preventDefault(); row.classList.add("drop"); });
-    row.addEventListener("dragleave", () => row.classList.remove("drop"));
+    const isTarget = row.dataset.folder || keySet.has(row.dataset.layer);
+    if (!isTarget) return;
+    const mode = e => {
+      const types = [...e.dataTransfer.types], r = row.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2;
+      if (types.includes("text/x-folder")) return after ? "drop-after" : "drop-before";
+      if (!types.includes("text/x-layer")) return null;
+      return row.dataset.folder ? "drop" : after ? "drop-after" : "drop-before";
+    };
+    row.addEventListener("dragover", e => { const m = mode(e); if (!m) return; e.preventDefault(); clearDrop(row); row.classList.add(m); });
+    row.addEventListener("dragleave", () => clearDrop(row));
     row.addEventListener("drop", e => {
-      row.classList.remove("drop");
+      const m = mode(e); clearDrop(row);
+      if (!m) return;
+      e.preventDefault();
+      const fid = e.dataTransfer.getData("text/x-folder");
+      if (fid) {
+        // Hela mappen före/efter målet (ett lager i en annan mapp räknas som den mappen).
+        const src = entries.find(x => x.folder && x.folder.id === fid), tgt = entryOf(row);
+        if (!src || !tgt || src === tgt || !src.kids.length) return;
+        const tk = tgt.folder ? tgt.kids : [tgt.key];
+        if (!tk.length) return;
+        placeLayers(src.kids, m === "drop-after" ? tk[tk.length - 1] : tk[0], m === "drop-after");
+        return;
+      }
       const key = e.dataTransfer.getData("text/x-layer");
       if (!key) return;
-      e.preventDefault();
       // Drar man ett markerat lager följer alla markerade med.
-      if (layerSel.has(key) && layerSel.size > 1) moveLayersToFolder([...layerSel], target());
-      else moveLayerToFolder(key, target());
+      const moved = layerSel.has(key) && layerSel.size > 1 ? [...layerSel] : [key];
+      if (row.dataset.folder) {
+        const tgt = entryOf(row);
+        if (tgt && tgt.kids.length) placeLayers(moved, tgt.kids[0], false, row.dataset.folder);
+        else moveLayersToFolder(moved, row.dataset.folder);
+        return;
+      }
+      const ref = row.dataset.layer;
+      placeLayers(moved, ref, m === "drop-after", row.classList.contains("in-folder") ? folderOfKey(layerMeta(), ref) : null);
     });
   });
   el.querySelectorAll(".layer-row[data-layer]").forEach(row => {
@@ -1957,6 +2069,7 @@ function renderLayerPanel() {
   bindLayerSelection(el, keys);
   if (itemSel.size) updateItemSelection();
   applyLayerSearch();
+  applyLayerOrder(); // listans ordning = ritordningen
 }
 
 /* ---------------------------------------------------------------------
@@ -2044,7 +2157,7 @@ function setLayersVisible(keys, on) {
 }
 async function moveLayersToFolder(keys, folderId) {
   const m = layerMeta();
-  keys.filter(k => !k.startsWith("cadl:")).forEach(k => { if (folderId) m.folderOf[k] = folderId; else if (k.startsWith("pdfp:")) m.folderOf[k] = ""; else delete m.folderOf[k]; });
+  keys.filter(k => !k.startsWith("cadl:")).forEach(k => setFolderOf(m, k, folderId));
   await saveLayerMeta(m);
 }
 async function deleteSelectedLayers() {

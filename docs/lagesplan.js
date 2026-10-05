@@ -244,15 +244,6 @@ function codesIn(text) {
   while ((m = re.exec(s))) out.add(normCode(m[1]));
   return out;
 }
-/* Koderna som de står i PDF:en (t.ex. "PM06", "PM09B"), för visning. */
-function rawCodesIn(text) {
-  const out = [];
-  const re = codeRegex();
-  let m;
-  const s = String(text || "");
-  while ((m = re.exec(s))) out.push(m[1].replace(/\s+/g, "").toUpperCase());
-  return out;
-}
 const itemCodeCache = new Map();
 function itemCodes(it) {
   if (!itemCodeCache.has(it.id)) {
@@ -816,7 +807,6 @@ async function createPlanFromFile(file) {
     renderPlanSelect();
     pdfCache.set(id, await file.arrayBuffer());
     await openPlan(id);
-    await detectZones();
   } catch (e) {
     alert("Kunde inte skapa planen: " + e.message);
   } finally {
@@ -1221,6 +1211,7 @@ function renderZoneList() {
     const st = z._status || zoneStatus(z);
     const row = document.createElement("div");
     row.className = "zone-item" + (z.id === selectedZoneId ? " sel" : "");
+    row.dataset.zone = z.id;
     const sw = document.createElement("span"); sw.className = "sw";
     sw.style.background = st.phase === "ingen" ? "#fff" : phaseColor(st.phase);
     if (st.phase === "ingen") sw.style.border = "1.5px dashed #6b7280";
@@ -1240,35 +1231,17 @@ function renderZoneList() {
     row.onclick = e => (typeof zoneRowClick === "function" ? zoneRowClick(e, z.id, zones) : selectZone(z.id, true));
     list.appendChild(row);
   });
-  if (!zones.length) list.innerHTML = '<div class="muted" style="padding:6px;">Inga zoner än – klicka 🔍 Hitta zoner i PDF:en, eller rita en med ▭ Rektangel eller ⬠ Polygon.</div>';
+  if (!zones.length) list.innerHTML = '<div class="muted" style="padding:6px;">Inga zoner än – rita en med ▭ Rektangel eller ⬠ Polygon.</div>';
   renderLegend();
 }
 
 // ---------------------------------------------------------------------
-// Hitta zoner i PDF:en
+// Geometri för zonerna
 // ---------------------------------------------------------------------
-/* Färgad = tydligt mättad färg (inte vit/svart/grå, som vanliga ritningslinjer). */
-function isColorful(rgb) {
-  if (!rgb) return false;
-  const [r, g, b] = rgb.map(v => v / 255);
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  return max > 0.3 && (max - min) / max > 0.2;
-}
-function rgbOf(v) {
-  if (!v) return null;
-  if (typeof v === "string") { const n = parseInt(v.replace("#", ""), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
-  const a = Array.from(v).slice(0, 3).map(Number);
-  if (a.length < 3 || a.some(x => !Number.isFinite(x))) return null;
-  return a.every(x => x <= 1) ? a.map(x => x * 255) : a;
-}
 function polyArea(poly) {
   let a = 0;
   for (let i = 0; i < poly.length; i++) { const [x1, y1] = poly[i], [x2, y2] = poly[(i + 1) % poly.length]; a += x1 * y2 - x2 * y1; }
   return Math.abs(a / 2);
-}
-function bbox(poly) {
-  const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]);
-  return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
 }
 function pointInPoly([x, y], poly) {
   let inside = false;
@@ -1278,150 +1251,6 @@ function pointInPoly([x, y], poly) {
   }
   return inside;
 }
-const rectPoly = r => { const [x0, y0, x1, y1] = [Math.min(r[0], r[2]), Math.min(r[1], r[3]), Math.max(r[0], r[2]), Math.max(r[1], r[3])]; return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]; };
-
-/* 1) Markeringar (annotations): rutor/polygoner/överstrykningar + textrutor. */
-async function regionsFromAnnotations() {
-  const regions = [], labels = [];
-  const annots = await page.getAnnotations({ intent: "display" });
-  for (const a of annots) {
-    const text = (a.contentsObj && a.contentsObj.str) || a.contents || (a.textContent && a.textContent.join(" ")) || "";
-    if (["Square", "Circle", "Polygon", "PolyLine"].includes(a.subtype)) {
-      const poly = a.vertices && a.vertices.length > 2 ? a.vertices.map(v => [v.x, v.y]) : rectPoly(a.rect);
-      regions.push({ poly, source: "annotation", text });
-    } else if (a.subtype === "Highlight" && a.quadPoints) {
-      a.quadPoints.forEach(q => regions.push({ poly: rectPoly([Math.min(...q.map(p => p.x)), Math.min(...q.map(p => p.y)), Math.max(...q.map(p => p.x)), Math.max(...q.map(p => p.y))]), source: "annotation", text }));
-    }
-    if (["FreeText", "Text", "Callout"].includes(a.subtype) && text && a.rect) {
-      const r = a.rect;
-      codesIn(text).size && labels.push({ text, pos: [(r[0] + r[2]) / 2, (r[1] + r[3]) / 2] });
-    }
-  }
-  return { regions, labels };
-}
-
-/* 2) Färgade ytor i själva ritningen (fyllda vägar med tydlig färg). pdf.js 3.x:
-   constructPath = [ [OPS-koder], [koordinater], minMax ]; färgen kommer som RGB 0-255. */
-async function regionsFromFills() {
-  const OPS = pdfjsLib.OPS;
-  // Bara själva ritningen - annotations (t.ex. Bluebeam-rutor) läses separat ovan.
-  const opList = await page.getOperatorList({ annotationMode: pdfjsLib.AnnotationMode.DISABLE });
-  const mul = (m1, m2) => [m1[0] * m2[0] + m1[1] * m2[2], m1[0] * m2[1] + m1[1] * m2[3], m1[2] * m2[0] + m1[3] * m2[2], m1[2] * m2[1] + m1[3] * m2[3], m1[4] * m2[0] + m1[5] * m2[2] + m2[4], m1[4] * m2[1] + m1[5] * m2[3] + m2[5]];
-  const ap = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
-  const FILL = new Set([OPS.fill, OPS.eoFill, OPS.fillStroke, OPS.eoFillStroke, OPS.closeFillStroke, OPS.closeEOFillStroke].filter(v => v !== undefined));
-  // Konturer (vanliga ritningslinjer) och klippvägar målas inte som ytor.
-  const STROKE_ONLY = new Set([OPS.endPath, OPS.stroke, OPS.closeStroke].filter(v => v !== undefined));
-  const base = page.getViewport({ scale: 1 });
-  const minArea = base.width * base.height * 2e-5;
-  let ctm = [1, 0, 0, 1, 0, 0], fill = null, pending = [];
-  const stack = [];
-  const regions = [];
-  for (let i = 0; i < opList.fnArray.length; i++) {
-    const fn = opList.fnArray[i], args = opList.argsArray[i];
-    if (fn === OPS.save) stack.push({ ctm, fill });
-    else if (fn === OPS.restore) { const s = stack.pop(); if (s) { ctm = s.ctm; fill = s.fill; } }
-    else if (fn === OPS.transform) ctm = mul(Array.from(args), ctm);
-    else if (fn === OPS.setFillRGBColor) fill = rgbOf(args && args.length === 1 ? args[0] : args);
-    else if (STROKE_ONLY.has(fn)) pending = [];
-    else if (FILL.has(fn)) {
-      if (isColorful(fill)) pending.forEach(poly => { if (poly.length > 2 && polyArea(poly) > minArea) regions.push({ poly, source: "fill", color: fill }); });
-      pending = [];
-    }
-    else if (fn === OPS.constructPath && args && Array.isArray(args[0]) && args[1]) {
-      const ops = args[0], c = args[1];
-      let j = 0, cur = null;
-      const add = (x, y) => { if (!cur) { cur = []; pending.push(cur); } cur.push(ap(ctm, x, y)); };
-      for (const op of ops) {
-        if (op === OPS.moveTo) { cur = null; add(c[j++], c[j++]); }
-        else if (op === OPS.lineTo) add(c[j++], c[j++]);
-        else if (op === OPS.curveTo) { j += 4; add(c[j++], c[j++]); }
-        else if (op === OPS.curveTo2 || op === OPS.curveTo3) { j += 2; add(c[j++], c[j++]); }
-        else if (op === OPS.closePath) cur = null;
-        else if (op === OPS.rectangle) { const x = c[j++], y = c[j++], w = c[j++], h = c[j++]; cur = null; pending.push([[x, y], [x + w, y], [x + w, y + h], [x, y + h]].map(p => ap(ctm, p[0], p[1]))); }
-        else break;
-      }
-    }
-  }
-  return regions;
-}
-
-/* Kodtexter (t.ex. "PM06") i ritningens text, med position i PDF-koordinater. */
-async function codeLabels() {
-  const tc = await page.getTextContent();
-  const labels = [];
-  tc.items.forEach(it => {
-    if (!it.str) return;
-    const codes = codesIn(it.str);
-    if (!codes.size) return;
-    const t = it.transform;
-    labels.push({ text: it.str, pos: [t[4] + (it.width || 0) / 2, t[5] + (it.height || Math.abs(t[3]) || 0) / 3] });
-  });
-  return labels;
-}
-
-async function detectZones() {
-  if (!page) return;
-  setBusy("Söker zoner i PDF:en…");
-  try {
-    const ann = await regionsFromAnnotations();
-    const fills = await regionsFromFills();
-    const labels = [...ann.labels, ...(await codeLabels())];
-    const regions = [...ann.regions, ...fills];
-
-    // Koppla varje färgad yta till kodtext i ytan (eller nära den).
-    const zonesByCode = new Map();
-    const usedLabels = new Set();
-    const zoneFor = code => {
-      const key = normCode(code);
-      if (!zonesByCode.has(key)) zonesByCode.set(key, { code: code.replace(/\s+/g, "").toUpperCase(), polys: [], labels: [], source: "auto" });
-      return zonesByCode.get(key);
-    };
-    let unlabeled = 0;
-    regions.forEach(r => {
-      const own = rawCodesIn(r.text || "")[0];
-      const bb = bbox(r.poly);
-      const diag = Math.hypot(bb.x1 - bb.x0, bb.y1 - bb.y0);
-      let best = null, bestD = Infinity;
-      labels.forEach((l, i) => {
-        const inside = pointInPoly(l.pos, r.poly);
-        const cx = Math.max(bb.x0, Math.min(l.pos[0], bb.x1)), cy = Math.max(bb.y0, Math.min(l.pos[1], bb.y1));
-        const d = inside ? -1 : Math.hypot(l.pos[0] - cx, l.pos[1] - cy);
-        if (d < bestD) { bestD = d; best = i; }
-      });
-      const maxDist = Math.min(60, Math.max(12, diag * 0.25));
-      let code = own || null;
-      if (!code && best !== null && bestD <= maxDist) code = rawCodesIn(labels[best].text)[0];
-      if (!code) { unlabeled++; return; }
-      const z = zoneFor(code);
-      z.polys.push(r.poly);
-      if (best !== null && bestD <= maxDist) { usedLabels.add(best); if (!z.labels.some(p => Math.hypot(p[0] - labels[best].pos[0], p[1] - labels[best].pos[1]) < 1)) z.labels.push(labels[best].pos); }
-    });
-    // Kodtexter utan yta (t.ex. i en sektion): visas som färgad etikett.
-    labels.forEach((l, i) => {
-      if (usedLabels.has(i)) return;
-      rawCodesIn(l.text).forEach(c => { const z = zoneFor(c); z.labels.push(l.pos); });
-    });
-
-    // Behåll manuella zoner och tidigare kopplingar (per kod).
-    const oldByCode = new Map((plan.zones || []).map(z => [normCode(z.code), z]));
-    const manual = (plan.zones || []).filter(z => z.source === "manual");
-    const detected = [...zonesByCode.values()].map(z => {
-      const old = oldByCode.get(normCode(z.code));
-      return { id: (old && old.source !== "manual" && old.id) || ghNewId(), ...z, rule: (old && old.rule) || { field: "auto" } };
-    });
-    plan.zones = [...detected.filter(z => !manual.some(m => normCode(m.code) === normCode(z.code))), ...manual];
-    renderZones();
-    schedulePlanSave();
-    const nPoly = detected.reduce((n, z) => n + z.polys.length, 0);
-    setSaveStatus(`🔍 ${detected.length} zoner hittade (${nPoly} ytor${unlabeled ? `, ${unlabeled} färgade ytor utan kod ignorerades` : ""}).`);
-    if (!detected.length) alert("Hittade inga zoner. Kontrollera kodmönstret, eller rita zonerna med ▭ Rita zon.");
-  } catch (e) {
-    alert("Kunde inte söka i PDF:en: " + e.message);
-  } finally {
-    setBusy("");
-  }
-}
-
 // ---------------------------------------------------------------------
 // Zoom, panorering, val, ritning
 // ---------------------------------------------------------------------
@@ -1769,30 +1598,39 @@ function composeImageNow(maxW, noHeader, part) {
   const ctx = out.getContext("2d");
   if (part !== "over") { ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, out.width, out.height); }
   const inPart = id => !part || (part === "base" ? (id === "orthoCanvas" || id === "pdfCanvas") : part === "ortho" ? id === "orthoCanvas" : (id !== "orthoCanvas" && id !== "pdfCanvas"));
-  // Samma lager, synlighet, genomskinlighet och blandning som på skärmen.
-  STAGE_CANVASES.forEach(id => {
-    const c = $(id);
-    if (!inPart(id)) return;
-    if (id === "orthoCanvas") { if (getComputedStyle(c).display !== "none") drawOrthoForExport(ctx, 0, head, W / pc.width); return; }
-    if (id === "zoneCanvas" && !part && typeof drawCadForExport === "function") drawCadForExport(ctx, 0, head, W / pc.width);
-    if (!c.width || getComputedStyle(c).display === "none") return;
+  // Samma lager, synlighet, genomskinlighet, blandning och ritordning som på skärmen.
+  const kx = W / pc.width;
+  const drawStage = (c, prep) => {
+    if (!c || !c.width || getComputedStyle(c).display === "none") return;
     ctx.save();
     ctx.globalAlpha = Number(getComputedStyle(c).opacity) || 0;
-    if (id === "pdfCanvas") {
-      if ($("grayPdf").checked) ctx.filter = "grayscale(1)";
-      if (getComputedStyle(c).mixBlendMode === "multiply") ctx.globalCompositeOperation = "multiply";
-    }
-    ctx.drawImage(c, 0, head, W, H);
+    if (prep) prep();
+    // Ytan kan ha egen placering (Beskär inte, DXF/zoner över den synliga delen): rita på sin plats.
+    if (c.classList.contains("pdfov")) ctx.drawImage(c, (parseFloat(c.style.left) || 0) * kx, head + (parseFloat(c.style.top) || 0) * kx, (parseFloat(c.style.width) || pc.width) * kx, (parseFloat(c.style.height) || pc.height) * kx);
+    else ctx.drawImage(c, 0, head, W, H);
     ctx.restore();
-    // Andra planers PDF:er (lager under ritningen) direkt efter ritningen, som på skärmen.
-    if (id === "pdfCanvas") document.querySelectorAll("#stage canvas.pdfov").forEach(o => {
-      if (!o.width || getComputedStyle(o).display === "none") return;
-      ctx.save(); ctx.globalAlpha = Number(getComputedStyle(o).opacity) || 0; ctx.globalCompositeOperation = "multiply";
-      if (o.style.filter) ctx.filter = o.style.filter;
-      const kx = W / pc.width; // lagret kan ha egen yta (Beskär inte): rita på sin plats
-      ctx.drawImage(o, (parseFloat(o.style.left) || 0) * kx, head + (parseFloat(o.style.top) || 0) * kx, (parseFloat(o.style.width) || pc.width) * kx, (parseFloat(o.style.height) || pc.height) * kx); ctx.restore();
+  };
+  const order = typeof layerDrawOrder === "function" ? layerDrawOrder() : ["objects", "zones", "pdf"];
+  const orthoKeys = order.filter(k => k.startsWith("ortho:"));
+  const orthoAt = orthoKeys.find(k => ls(k).visible) || orthoKeys[0];
+  order.slice().reverse().forEach(k => { // underst först
+    if (k === orthoAt) {
+      const oc = $("orthoCanvas");
+      if (inPart("orthoCanvas") && getComputedStyle(oc).display !== "none") drawOrthoForExport(ctx, 0, head, kx);
+    }
+    if (k === "pdf" && inPart("pdfCanvas")) drawStage(pc, () => {
+      if ($("grayPdf").checked) ctx.filter = "grayscale(1)";
+      if (getComputedStyle(pc).mixBlendMode === "multiply") ctx.globalCompositeOperation = "multiply";
     });
+    else if (k.startsWith("pdfp:") && inPart("pdfCanvas")) {
+      const o = document.querySelector(`#stage canvas.pdfov[data-key="${CSS.escape(k)}"]`);
+      drawStage(o, () => { ctx.globalCompositeOperation = "multiply"; if (o.style.filter) ctx.filter = o.style.filter; });
+    }
+    else if (k.startsWith("cad:") && !part && typeof drawCadForExport === "function" && plan && plan.calib) drawCadForExport(ctx, 0, head, kx, k.slice(4));
+    else if (k === "zones" && inPart("zoneCanvas")) drawStage(zc);
+    else if (k === "objects" && inPart("objCanvas")) drawStage($("objCanvas"));
   });
+  if (inPart("topCanvas")) drawStage($("topCanvas"));
   if (noHeader) return out;
   const f = Math.round(head * 0.38);
   ctx.fillStyle = "#111827"; ctx.font = `700 ${f}px "Segoe UI", Arial, sans-serif`; ctx.textBaseline = "middle";
@@ -1858,11 +1696,6 @@ function bindUI() {
     onDateChanged();
   };
   $("btnToday").onclick = () => { $("dateInput").value = todayIso(); syncSliderFromDate(); onDateChanged(); };
-  $("btnDetect").onclick = () => {
-    if (!plan) return;
-    if ((plan.zones || []).some(z => z.source !== "manual") && !confirm("Söka igen? Automatiskt hittade zoner ersätts (kopplingar per kod och handritade zoner behålls).")) return;
-    detectZones();
-  };
   $("btnDraw").onclick = () => { if (plan) setDrawMode(!drawMode); };
   $("codePattern").onchange = () => {
     if (!plan) return;

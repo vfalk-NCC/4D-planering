@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261005080813"></script>
+<script src="github-storage.js?v=20261005082749"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -151,6 +151,8 @@
   .layer-row.folder-row .fr-toggle { width: 16px; padding: 0; color: var(--muted); }
   .layer-row.folder-row small { font-weight: 400; margin-left: 4px; }
   .layer-row.drop { box-shadow: inset 0 0 0 2px var(--accent); background: var(--accent-weak); }
+  .layer-row.drop-before { box-shadow: inset 0 2px 0 0 var(--accent); }
+  .layer-row.drop-after { box-shadow: inset 0 -2px 0 0 var(--accent); }
   .layer-row.dragging { opacity: .45; }
   .layer-row[data-layer] .ln { cursor: grab; }
   .layer-row .cad-toggle { width: 16px; padding: 0; color: var(--muted); }
@@ -191,6 +193,7 @@
   .layer-row .ul-toggle { width: 16px; padding: 0; color: var(--muted); }
   .layer-row .lr-opts { grid-column: 2 / 5; display: flex; flex-direction: column; gap: 2px; padding-left: 20px; }
   .layer-row .lr-opts.hidden { display: none; }
+  .layer-row small.pdf-bas { font-size: 9.5px; font-weight: 600; color: #1d4ed8; background: rgba(37,99,235,.12); border-radius: 4px; padding: 0 4px; margin-right: 1px; }
   .layer-row .blend { grid-column: 2 / 5; font-size: 11px; color: var(--muted); display: flex; gap: 4px; align-items: center; margin: 0; }
   #sitePop { position: absolute; z-index: 15; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(15,23,42,.2); padding: 12px 14px; width: 280px; font-size: 12px; }
   #sitePop { overflow-y: auto; overscroll-behavior: contain; }
@@ -710,6 +713,9 @@
   .wbs-row { display: flex; gap: 6px; align-items: center; margin: 2px 0 4px 22px; } .wbs-row select { flex: 1; height: 26px; }
   .wbs-list { border-bottom: 2px solid var(--border); }
   .zone-item.wbs-item { background: var(--panel-2); } .zone-item.wbs-item .code { font-weight: 700; }
+  .zone-item.wbs-item .wbs-tog { width: 16px; padding: 0; border: 0; background: none; color: var(--muted); font-size: 11px; cursor: pointer; flex: none; margin-right: -2px; }
+  .zone-item.wbs-child { padding-left: 30px; }
+  .zone-item.wbs-child.hidden { display: none; }
   .zone-item .z3d { height: 24px; min-width: 28px; padding: 0 5px; margin-left: 4px; font-size: 13px; }
   .zl-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 4px; }
   .zl-chips button { height: 24px; padding: 0 7px; font-size: 11.5px; }
@@ -962,12 +968,12 @@
       <div id="warnBox" class="warn hidden"></div>
       <button id="btnTokenOpen" class="primary block hidden" style="margin-top:8px;">Ange GitHub-token</button>
 
-      <span class="field-label">Plan</span>
+      <span class="field-label" title="Arbetsytan är ritningen du arbetar i: zoner, foton, kalibrering, höjdintervall och utskriftsformat hör till den. Andra arbetsytors PDF:er kan tändas som lager.">Arbetsyta</span>
       <div class="row" style="flex-wrap:nowrap;">
-        <select id="planSelect" class="grow"></select>
-        <button id="btnNewPlan" class="primary" title="Skapa en ny plan från en PDF-ritning">＋ Ny plan</button>
-        <button id="btnRenamePlan" class="icon" title="Byt namn på planen">✏️</button>
-        <button id="btnDeletePlan" class="icon" title="Ta bort planen">🗑️</button>
+        <select id="planSelect" class="grow" title="Arbetsyta: ritningen som zoner, foton, kalibrering, höjdintervall och utskriftsformat hör till"></select>
+        <button id="btnNewPlan" class="primary" title="Skapa en ny arbetsyta från en PDF-ritning">＋ Ny arbetsyta</button>
+        <button id="btnRenamePlan" class="icon" title="Byt namn på arbetsytan">✏️</button>
+        <button id="btnDeletePlan" class="icon" title="Ta bort arbetsytan">🗑️</button>
         <input type="file" id="pdfInput" accept="application/pdf" class="hidden" />
       </div>
 
@@ -1206,9 +1212,6 @@
         <details class="sec" data-sec="zones" open>
           <summary><span class="si">🟧</span>Zoner <span class="muted" id="zoneCount"></span></summary>
           <div class="row split">
-            <button id="btnDetect" title="Hitta färgade rutor/markeringar och koder (t.ex. PM06) i PDF:en">🔍 Hitta zoner i PDF</button>
-          </div>
-          <div class="row split" style="margin-top:6px;">
             <button id="btnDraw" title="Dra en rektangel på planen för en ny zon">▭ Rektangel</button>
             <button id="btnZonePoly" title="Klicka zonens hörn – Shift ger raka linjer, dubbelklick eller Enter avslutar">⬠ Polygon</button>
           </div>
@@ -1225,8 +1228,8 @@
             <div class="wbs-row hidden" id="zoWbsRow"><span class="muted">Visa</span><select id="zoWbsLevel"><option value="both">Båda nivåerna</option><option value="1">Bara överzoner (nivå 1)</option><option value="2">Bara zoner (nivå 2)</option></select></div>
           </details>
           <details class="zone-adv">
-            <summary>Avancerat: hur zoner hittas i PDF:en</summary>
-            <div class="hint" style="margin-top:4px;"><b>🔍 Hitta zoner i PDF</b> letar efter färgade ytor i ritningen och efter text som ser ut som en zonkod, t.ex. <b>PM06</b> eller <b>PM09A</b>. Koden blir zonens namn och används för att koppla zonen till aktiviteter i planeringen.</div>
+            <summary>Avancerat: zonkoder</summary>
+            <div class="hint" style="margin-top:4px;">Zonens kod, t.ex. <b>PM06</b> eller <b>PM09A</b>, används för att koppla zonen till aktiviteter i planeringen.</div>
             <label>Hur en zonkod ser ut</label>
             <input type="text" id="codePattern" placeholder="PM\d+[A-Z]?" />
             <div class="hint">Ändra bara om era zoner heter något annat än PM + siffror. Exempel: <code>Z\d+</code> för Z1, Z2 … eller <code>(PM|ZON)\s*\d+</code> för både PM12 och ZON 12.</div>
@@ -1297,13 +1300,13 @@
     <div id="viewport">
       <div id="stage"><canvas id="orthoCanvas"></canvas><canvas id="orthoCanvasB"></canvas><canvas id="pdfCanvas"></canvas><canvas id="pdfHiCanvas"></canvas><canvas id="cadCanvas" style="display:none"></canvas><canvas id="zoneCanvas"></canvas><canvas id="objCanvas"></canvas><canvas id="topCanvas"></canvas></div><canvas id="labelCanvas"></canvas><canvas id="pinCanvas"></canvas>
     </div>
-    <div id="empty">Välj en plan, eller klicka <b>&nbsp;＋ Ny plan&nbsp;</b> och välj en PDF (t.ex. en planritning med PM-zoner).</div>
+    <div id="empty">Välj en arbetsyta, eller klicka <b>&nbsp;＋ Ny arbetsyta&nbsp;</b> och välj en PDF (t.ex. en planritning med PM-zoner).</div>
     <div id="northBadge" class="hidden" title="Norr"><svg viewBox="0 0 40 40" width="40" height="40"><circle cx="20" cy="20" r="18" fill="rgba(255,255,255,.92)" stroke="#94a3b8"/><g class="nb-needle"><path d="M20 5 L26 21 L20 18 L14 21 Z" fill="#dc2626"/><path d="M20 35 L26 21 L20 24 L14 21 Z" fill="#94a3b8"/><text x="20" y="4.5" text-anchor="middle" font-size="7" font-weight="800" fill="#dc2626" font-family="Arial">N</text></g></svg></div>
     <div id="zoomCtl" class="float-group">
       <button id="btnZoomIn" title="Zooma in">+</button><button id="btnZoomOut" title="Zooma ut">−</button><button id="btnFit" title="Anpassa planen till fönstret">⤢ Anpassa</button>
     </div>
     <div id="fieldTop" class="field-ui">
-      <select id="fieldPlan" class="fl-sel" title="Plan"></select>
+      <select id="fieldPlan" class="fl-sel" title="Arbetsyta"></select>
       <div class="fv-wrap" id="fvWrap"><select id="fieldView" class="fl-sel" title="Sparad vy"></select></div>
       <button type="button" id="btnFieldNote" class="fl-btn" title="Ny notering: tryck där pilen ska peka, sedan där texten ska stå">💬<span class="gm-txt"> Notering</span></button>
       <button type="button" id="btnFieldSketch" class="fl-btn" title="Rita på frihand på ritningen">✏️<span class="gm-txt"> Rita</span></button>
@@ -1443,28 +1446,28 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261005080813"></script>
-<script src="lagesplan-tools.js?v=20261005080813"></script>
-<script src="lagesplan-layers.js?v=20261005080813"></script>
-<script src="lagesplan-pdfoverlay.js?v=20261005080813"></script>
-<script src="lagesplan-views.js?v=20261005080813"></script>
-<script src="lagesplan-film.js?v=20261005080813"></script>
-<script src="lagesplan-cad.js?v=20261005080813"></script>
-<script src="lagesplan-vecpdf.js?v=20261005080813"></script>
-<script src="lagesplan-print.js?v=20261005080813"></script>
-<script src="lagesplan-printlib.js?v=20261005080813"></script>
-<script src="lagesplan-pdflayers.js?v=20261005080813"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261005080813"></script>
-<script src="lagesplan-objmarks.js?v=20261005080813"></script>
-<script src="lagesplan-objlist.js?v=20261005080813"></script>
-<script src="lagesplan-zones.js?v=20261005080813"></script>
-<script src="lagesplan-wbs.js?v=20261005080813"></script>
-<script src="lagesplan-daily.js?v=20261005080813"></script>
-<script src="lagesplan-gps.js?v=20261005080813"></script>
-<script src="lagesplan-weather.js?v=20261005080813"></script>
-<script src="lagesplan-touch.js?v=20261005080813"></script>
-<script src="lagesplan-drawer.js?v=20261005080813"></script>
-<script src="lagesplan-gpslive.js?v=20261005080813"></script>
-<script src="lagesplan-keys.js?v=20261005080813"></script>
+<script src="lagesplan.js?v=20261005082749"></script>
+<script src="lagesplan-tools.js?v=20261005082749"></script>
+<script src="lagesplan-layers.js?v=20261005082749"></script>
+<script src="lagesplan-pdfoverlay.js?v=20261005082749"></script>
+<script src="lagesplan-views.js?v=20261005082749"></script>
+<script src="lagesplan-film.js?v=20261005082749"></script>
+<script src="lagesplan-cad.js?v=20261005082749"></script>
+<script src="lagesplan-vecpdf.js?v=20261005082749"></script>
+<script src="lagesplan-print.js?v=20261005082749"></script>
+<script src="lagesplan-printlib.js?v=20261005082749"></script>
+<script src="lagesplan-pdflayers.js?v=20261005082749"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261005082749"></script>
+<script src="lagesplan-objmarks.js?v=20261005082749"></script>
+<script src="lagesplan-objlist.js?v=20261005082749"></script>
+<script src="lagesplan-zones.js?v=20261005082749"></script>
+<script src="lagesplan-wbs.js?v=20261005082749"></script>
+<script src="lagesplan-daily.js?v=20261005082749"></script>
+<script src="lagesplan-gps.js?v=20261005082749"></script>
+<script src="lagesplan-weather.js?v=20261005082749"></script>
+<script src="lagesplan-touch.js?v=20261005082749"></script>
+<script src="lagesplan-drawer.js?v=20261005082749"></script>
+<script src="lagesplan-gpslive.js?v=20261005082749"></script>
+<script src="lagesplan-keys.js?v=20261005082749"></script>
 </body>
 </html>

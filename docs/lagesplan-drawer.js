@@ -40,7 +40,7 @@ function drRender() {
     ${row('data-dr-href="index.html"', '<rect x="3.5" y="4" width="17" height="16" rx="2"/><path d="M3.5 9h17M9 9v11"/>', "4D-planering")}
     ${row('data-dr-href="guide.html"', '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/>', "Guide")}
     ${views.length ? `<div class="dr-h">Sparade vyer</div>${views.map(o => row(`data-dr-view="${fesc(o.value)}"`, '<path d="M7 3.5h10a1 1 0 0 1 1 1V21l-6-4-6 4V4.5a1 1 0 0 1 1-1z"/>', o.textContent.replace(/^📑\s*/, "").trim())).join("")}` : ""}
-    ${plans.length ? `<div class="dr-h">Planer</div>${plans.map(o => row(`data-dr-plan="${fesc(o.value)}"`, '<path d="M6 3.5h8l4 4V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20z"/><path d="M14 3.5v4h4"/>', o.textContent.trim(), o.value === curPlan ? " on" : "")).join("")}` : ""}`;
+    ${plans.length ? `<div class="dr-h">Arbetsytor</div>${plans.map(o => row(`data-dr-plan="${fesc(o.value)}"`, '<path d="M6 3.5h8l4 4V20a.5.5 0 0 1-.5.5h-11A.5.5 0 0 1 6 20z"/><path d="M14 3.5v4h4"/>', o.textContent.trim(), o.value === curPlan ? " on" : "")).join("")}` : ""}`;
   const av = box.querySelector(".dr-avatar");
   if (ini) av.textContent = ini; else av.innerHTML = DR_SVG('<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>');
   av.title = name || "Ange ditt namn under Inställningar i fullständig vy";

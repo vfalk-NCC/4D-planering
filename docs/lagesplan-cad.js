@@ -462,11 +462,11 @@ async function setCadColor(name, color) {
   renderCad();
 }
 /* Ritar alla tända CAD-ritningar. stageToCanvas = [a,b,c,d,e,f] från stage-px till ctx. */
-function drawCad(ctx, stageToCanvas, pxScale = 1) {
+function drawCad(ctx, stageToCanvas, pxScale = 1, only = null) {
   if (!plan || !plan.calib) return;
   const o0 = mToPx([0, 0]), ex = mToPx([1, 0]), ey = mToPx([0, 1]);
   const M = [ex[0] - o0[0], ex[1] - o0[1], ey[0] - o0[0], ey[1] - o0[1], o0[0], o0[1]]; // modell (m) -> stage-px
-  cads().filter(r => ls("cad:" + r.id).visible && cadGeom.has(r.id)).forEach(r => {
+  cads().filter(r => ls("cad:" + r.id).visible && cadGeom.has(r.id) && (!only || r.id === only)).forEach(r => {
     const g = cadGeom.get(r.id);
     const G = mulAffine(stageToCanvas, mulAffine(M, [0.001, 0, 0, 0.001, g.origin[0], g.origin[1]]));
     const s = Math.hypot(G[0], G[1]);
@@ -578,29 +578,42 @@ function drawCadVectorsToPdf(doc, list, stageToPage, clip, lwPerWeight, ptMm) {
 }
 let cadTimer = 0, cadSeq = 0;
 function scheduleCadRender() { clearTimeout(cadTimer); cadTimer = setTimeout(renderCad, 60); }
+/* Varje DXF-fil ritas på en egen yta (canvas.cadfile) så att den kan ligga på sin egen nivå
+   i ritordningen (lagerlistan, applyLayerOrder). */
+function cadFileCanvas(key, create = true) {
+  let c = document.querySelector(`#stage canvas.cadfile[data-key="${CSS.escape(key)}"]`);
+  if (!c && create) {
+    c = document.createElement("canvas"); c.className = "cadfile"; c.dataset.key = key; c.width = 0;
+    const ref = $("cadCanvas"); ref.parentNode.insertBefore(c, ref);
+  }
+  return c;
+}
 async function renderCad() {
-  const c = $("cadCanvas");
-  if (!c) return;
+  const c0 = $("cadCanvas");
+  if (!c0) return;
   const seq = ++cadSeq;
   const list = (plan && plan.calib && viewport) ? cads().filter(r => ls("cad:" + r.id).visible) : [];
   for (const r of list) { try { await ensureCadGeom(r); } catch (e) { console.warn("Kunde inte hämta CAD", r.name, e); } }
   if (seq !== cadSeq) return;
   if (list.some(r => cadGeom.has(r.id)) && !cadSnapIndex) buildCadSnap();
-  if (!list.length) { c.width = 0; c.height = 0; c.style.display = "none"; return; }
-  const vr = $("viewport").getBoundingClientRect();
+  const want = new Set(list.map(r => "cad:" + r.id));
+  document.querySelectorAll("#stage canvas.cadfile").forEach(c => { if (!want.has(c.dataset.key)) c.remove(); });
+  if (!list.length) return;
   const [x0, y0, x1, y1] = visibleStageBox();
   const dpr = window.devicePixelRatio || 1, s = view.scale * dpr;
-  c.width = Math.ceil((x1 - x0) * s); c.height = Math.ceil((y1 - y0) * s);
-  Object.assign(c.style, { display: "", left: `${x0}px`, top: `${y0}px`, width: `${x1 - x0}px`, height: `${y1 - y0}px` });
-  const ctx = c.getContext("2d");
-  ctx.clearRect(0, 0, c.width, c.height);
-  drawCad(ctx, [s, 0, 0, s, -x0 * s, -y0 * s], dpr);
+  list.forEach(r => {
+    const c = cadFileCanvas("cad:" + r.id);
+    c.width = Math.ceil((x1 - x0) * s); c.height = Math.ceil((y1 - y0) * s);
+    Object.assign(c.style, { display: "", left: `${x0}px`, top: `${y0}px`, width: `${x1 - x0}px`, height: `${y1 - y0}px` });
+    const ctx = c.getContext("2d");
+    ctx.clearRect(0, 0, c.width, c.height);
+    drawCad(ctx, [s, 0, 0, s, -x0 * s, -y0 * s], dpr, r.id);
+  });
+  if (typeof applyLayerOrder === "function") applyLayerOrder();
 }
-/* Export (PNG/PDF/video): ox, oy och scale som för ortofotot. */
-function drawCadForExport(ctx, ox, oy, scale) {
-  const c = $("cadCanvas");
-  if (!c || c.style.display === "none") return;
-  drawCad(ctx, [scale, 0, 0, scale, ox, oy], Math.max(1, scale));
+/* Export (PNG/PDF/video): ox, oy och scale som för ortofotot. only = en fil (ritordningen). */
+function drawCadForExport(ctx, ox, oy, scale, only = null) {
+  drawCad(ctx, [scale, 0, 0, scale, ox, oy], Math.max(1, scale), only);
 }
 
 // ---------------------------------------------------------------------

@@ -40,6 +40,7 @@ function pdfOverlayCanvas(key) {
     c = document.createElement("canvas"); c.className = "pdfov"; c.dataset.key = key; c.width = 0;
     const after = $("pdfHiCanvas") || $("pdfCanvas");
     after.parentNode.insertBefore(c, after.nextSibling);
+    if (typeof applyLayerOrder === "function") applyLayerOrder(); // sin nivå i ritordningen
   }
   return c;
 }
@@ -128,6 +129,7 @@ function pdfOverlayHi(key, create = true) {
   if (!h && create) {
     h = document.createElement("canvas"); h.className = "pdfovhi"; h.dataset.key = key; h.width = 0;
     const lo = pdfOverlayCanvas(key); lo.parentNode.insertBefore(h, lo.nextSibling);
+    h.style.zIndex = lo.style.zIndex;
   }
   return h;
 }

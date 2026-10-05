@@ -70,26 +70,50 @@ function drawWbsShapes(ctx, fontPx, objects, groups, filled) {
   return badges;
 }
 
-/* Zonlistan: överzonerna överst med samlad status. */
+/* Zonlistan: överzonerna överst med samlad status. Varje överzon kan fällas ut och visar då sina
+   zoner under sig (Victors önskemål 2026-10-05); hopfälld från början. Zoner utan överzon ligger
+   kvar under överzonerna. Den markerade zonens överzon fälls ut. */
+const WBS_OPEN_KEY = () => "lagesplan-wbsopen-" + (typeof projectId !== "undefined" ? projectId : "");
+function wbsOpenSet() { try { return new Set(JSON.parse(localStorage.getItem(WBS_OPEN_KEY()) || "[]")); } catch (e) { return new Set(); } }
+function wbsSetOpen(key, open) {
+  const s = wbsOpenSet();
+  if (open) s.add(key); else s.delete(key);
+  try { localStorage.setItem(WBS_OPEN_KEY(), JSON.stringify([...s])); } catch (e) {}
+}
 function renderWbsList() {
   const list = $("zoneList");
   if (!list || !wbsOn()) return;
   const groups = wbsGroups();
   if (!groups.length) return;
+  const open = wbsOpenSet();
+  const sel = selectedZoneId && (plan.zones || []).find(z => z.id === selectedZoneId);
+  if (sel && wbsKey(sel.parent)) open.add(wbsKey(sel.parent));
   const box = document.createElement("div");
   box.className = "wbs-list";
   groups.forEach(g => {
-    const row = document.createElement("div");
-    row.className = "zone-item wbs-item";
+    const row = document.createElement("div"), isOpen = open.has(g.key);
+    row.className = "zone-item wbs-item" + (isOpen ? " open" : "");
+    row.dataset.wbs = g.key;
+    const tog = document.createElement("button"); tog.type = "button"; tog.className = "wbs-tog"; tog.textContent = isOpen ? "▾" : "▸";
+    tog.title = isOpen ? "Fäll ihop" : "Visa zonerna i överzonen";
     const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = g.items.length ? phaseColor(g.phase) : "#fff";
-    const code = document.createElement("span"); code.className = "code"; code.textContent = `▣ ${g.name}`;
+    const code = document.createElement("span"); code.className = "code"; code.textContent = g.name;
     const ph = document.createElement("span"); ph.textContent = g.items.length ? PHASE_LABELS[g.phase] : "";
     const pct = document.createElement("span"); pct.className = "pct";
     pct.textContent = `${g.progress != null ? g.progress + " % · " : ""}${g.children.length} zon${g.children.length === 1 ? "" : "er"}`;
-    row.append(sw, code, ph, pct);
+    row.append(tog, sw, code, ph, pct);
     row.title = `Överzon (WBS nivå 1): ${g.children.map(z => z.code).join(", ")}. Klicka för att visa den på planen.`;
+    tog.onclick = e => { e.stopPropagation(); wbsSetOpen(g.key, !isOpen); renderZoneList(); };
     row.onclick = () => { if (g.polys.length && typeof centerOnPdf === "function") centerOnPdf(wbsCentroid(g.polys)); };
     box.appendChild(row);
+    // Zonerna i överzonen flyttas hit från listan (indragna).
+    g.children.forEach(z => {
+      const zr = list.querySelector(`.zone-item[data-zone="${CSS.escape(z.id)}"]`);
+      if (!zr) return;
+      zr.classList.add("wbs-child");
+      zr.classList.toggle("hidden", !isOpen);
+      box.appendChild(zr);
+    });
   });
   list.prepend(box);
 }
