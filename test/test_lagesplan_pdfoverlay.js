@@ -39,6 +39,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const rows = await page.evaluate(() => [...document.querySelectorAll('#layerList .layer-row')].filter(r => /^(pdf|pdfp:)/.test(r.dataset.layer || '') || r.classList.contains('folder-row'))
     .map(r => (r.dataset.layer || 'folder') + (r.classList.contains('in-folder') ? '+in' : '') + (r.querySelector('.lr-vis') && r.querySelector('.lr-vis').checked ? '+on' : '') + (r.querySelector('.lr-color') ? '+färg' : '') + (/ej kalibrerad/.test(r.textContent) ? '+ejkal' : '')));
   if (JSON.stringify(rows) !== JSON.stringify(['folder', 'pdf+in+on+färg', 'pdfp:B+in+färg', 'pdfp:C+in+färg+ejkal'])) fail('PDF-lagren under ritningens mapp, släckta: ' + JSON.stringify(rows));
+  // Inställningarna (Färg, Beskär inte …) ligger bakom en pil.
+  const fold = await page.evaluate(() => { const r = document.querySelector('#layerList .layer-row[data-layer="pdfp:B"]'); return { hidden: getComputedStyle(r.querySelector('.lr-opts')).display === 'none', arrow: (r.querySelector('.lr-opt-toggle') || {}).textContent }; });
+  if (!fold.hidden || fold.arrow !== '▸') fail('Inställningarna ska vara hopfällda bakom en pil: ' + JSON.stringify(fold));
+  for (const k of ['pdf', 'pdfp:B', 'pdfp:C']) await page.click(`#layerList .layer-row[data-layer="${k}"] .lr-opt-toggle`);
+  const open = await page.evaluate(() => ['pdf', 'pdfp:B'].map(k => { const r = document.querySelector(`#layerList .layer-row[data-layer="${k}"]`); return getComputedStyle(r.querySelector('.lr-opts')).display !== 'none' && r.querySelector('.lr-opt-toggle').textContent === '▾'; }));
+  if (open.some(x => !x)) fail('Pilen ska fälla ut inställningarna: ' + JSON.stringify(open));
   // Tänd B: den röda rutan hamnar på modellpunkten (30, 30) = A:s PDF (300, 300), inte vid (150, 150).
   await page.click('#layerList .layer-row[data-layer="pdfp:B"] .lr-vis'); await page.waitForTimeout(300);
   const px = await page.evaluate(() => {

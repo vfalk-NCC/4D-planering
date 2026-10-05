@@ -1780,14 +1780,16 @@ function closeSitePop() {
 // ---------------------------------------------------------------------
 // Lagerpanelen
 // ---------------------------------------------------------------------
+/* Inställningar på en lagerrad (Färg, Beskär inte, genomskinlig bakgrund …) ligger bakom en pil
+   (Victors önskemål 2026-10-05) – utfällt läge sparas per lager. */
 function layerRow(key, label, opts = {}) {
-  const st = ls(key, opts);
+  const st = ls(key, opts), optsOpen = layerState["optsopen:" + key] === true;
   return `<div class="layer-row${layerSel.has(key) ? " sel" : ""}${opts.sub ? " sub" : ""}${opts.cadSub ? " cad-sub" : ""}${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}" data-layer="${escHtml(key)}">
       <input type="checkbox" class="lr-vis"${st.visible ? " checked" : ""} title="Visa/dölj" />
-      <span class="ln" title="${escHtml(String(label).replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ").trim())}">${label}</span>
+      <span class="ln" title="${escHtml(String(label).replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ").trim())}">${opts.extra ? `<button type="button" class="cad-toggle lr-opt-toggle" title="Visa/dölj inställningarna (färg, bakgrund …)">${optsOpen ? "▾" : "▸"}</button>` : ""}${label}</span>
       ${opts.noOpacity ? "<span></span>" : `<input type="range" class="lr-op" min="0" max="100" value="${st.opacity}" title="Genomskinlighet ${st.opacity} %" />`}
       ${opts.del ? `<button class="lr-del" title="Ta bort">🗑️</button>` : opts.side || "<span></span>"}
-      ${opts.extra || ""}
+      ${opts.extra ? `<div class="lr-opts${optsOpen ? "" : " hidden"}">${opts.extra}</div>` : ""}
     </div>`;
 }
 function renderLayerPanel() {
@@ -1926,6 +1928,8 @@ function renderLayerPanel() {
       if (key === "pdf") { const g = $("grayPdf"); g.checked = !e.target.checked; g.dispatchEvent(new Event("change")); }
       else { layerState["pdfcolor:" + key] = e.target.checked; saveLayerState(); applyLayerCss(); }
     };
+    const optT = row.querySelector(".lr-opt-toggle");
+    if (optT) optT.onclick = e => { e.stopPropagation(); const k = "optsopen:" + key; layerState[k] = layerState[k] !== true; saveLayerState(); renderLayerPanel(); };
     const noCrop = row.querySelector(".lr-nocrop");
     if (noCrop) noCrop.onchange = e => { layerState["pdfnocrop:" + key] = e.target.checked; saveLayerState(); applyLayerCss(); };
     const mult = row.querySelector(".lr-mult");
