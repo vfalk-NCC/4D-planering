@@ -1,13 +1,13 @@
 /* 3D-objekten som IFC (Victors önskemål 2026-10-05): samma som DXF-exporten, fast i 3D. Varje
    markering (samma som syns i Lägesplan) blir en cylinder ovanpå objektets högsta punkt (max
-   plushöjd) i statusfärgen och en stående 3D-text med namnet ("K10 - Pelare") ovanför, vänd så att
-   den läses från samma håll som vyn i Lägesplan. Modellens koordinater i meter. IFC4.
+   plushöjd) i statusfärgen och en liggande 3D-text med objektets namn ("L12") bredvid, 0,5 m tjock,
+   som läses uppifrån i planvyn från samma håll som vyn i Lägesplan. Modellens koordinater i meter. IFC4.
    Cylindern bär egenskaperna (aktivitet, status, framdrift, datum, zon) i "4D-planering".
    Texten är byggd av streck (eget enkelt typsnitt) som tunna ytor, så att den syns i alla
    IFC-visare utan typsnitt. */
 
 const IFC_CYL_R = 0.25, IFC_CYL_H = 0.6, IFC_GAP = 0.1; // meter
-const IFC_TEXT_H = 0.8, IFC_TEXT_GAP = 0.25, IFC_STROKE = 0.14; // texthöjd, avstånd över cylindern, streckbredd (del av höjden)
+const IFC_TEXT_H = 0.8, IFC_TEXT_T = 0.5, IFC_STROKE = 0.14; // texthöjd (i plan), tjocklek (uppåt), streckbredd (del av höjden)
 
 /* Streckfont: versaler, siffror och några tecken på ett rutnät 4 brett × 6 högt. */
 const IFC_GLYPHS = (() => {
@@ -149,24 +149,33 @@ function buildObjectsIfc() {
       prop("Entreprenör", it.contractor || ""), prop("Zon", zoneOf(it)), prop("Antal objekt", mk.members.length), prop("Status per", at), prop("4D-ID", it.id)];
     const pset = E(`IFCPROPERTYSET('${ifcGuid()}',$,'4D-planering',$,(${props.join(",")}))`);
     E(`IFCRELDEFINESBYPROPERTIES('${ifcGuid()}',$,$,$,(${marker}),${pset})`);
-    // 3D-texten: stående, centrerad över cylindern, vänd i läsriktningen.
+    // 3D-texten (Victors önskemål 2026-10-05): liggande så att den läses uppifrån i planvyn, vänd som
+    // Lägesplans vy, bredvid cylindern (täcker den inte uppifrån), 0,5 m tjocka bokstäver uppåt
+    // från samma nivå som cylinderns fot.
     if (!mk.name) return;
-    const { strokes, width } = ifcTextStrokes(mk.name);
+    const { strokes } = ifcTextStrokes(mk.name);
     if (!strokes.length) return;
-    const s = IFC_TEXT_H / 6, w = IFC_STROKE * IFC_TEXT_H / 2, z0 = IFC_CYL_H + IFC_TEXT_GAP, u0 = -width / 2;
-    const P = (u, v) => [((u + u0) * s) * rx, ((u + u0) * s) * ry, z0 + v * s]; // glyf -> lokalt (meter)
+    const s = IFC_TEXT_H / 6, w = IFC_STROKE * IFC_TEXT_H / 2, u0 = (IFC_CYL_R + 0.3) / s, v0 = -3;
+    // Glyf (u åt höger, v uppåt i läsriktningen) -> lokalt (meter): läsriktning (rx, ry), "uppåt" i planen (-ry, rx).
+    const P = (u, v, z) => { const a = (u + u0) * s, b = (v + v0) * s; return [a * rx - b * ry, a * ry + b * rx, z]; };
     const pts = [], tris = [];
     strokes.forEach(pl => {
       for (let i = 0; i + 1 < pl.length; i++) {
         const [u1, v1] = pl[i], [u2, v2] = pl[i + 1], du = u2 - u1, dv = v2 - v1, L = Math.hypot(du, dv) || 1;
         const nu = -dv / L * w / s, nv = du / L * w / s, eu = du / L * w / s / 2, ev = dv / L * w / s / 2; // bredd + lite förlängning
+        const q = [[u1 - eu + nu, v1 - ev + nv], [u2 + eu + nu, v2 + ev + nv], [u2 + eu - nu, v2 + ev - nv], [u1 - eu - nu, v1 - ev - nv]];
+        // Strecket som ett rätblock: botten (z = 0) och topp (z = tjocklek).
         const k = pts.length + 1;
-        pts.push(P(u1 - eu + nu, v1 - ev + nv), P(u2 + eu + nu, v2 + ev + nv), P(u2 + eu - nu, v2 + ev - nv), P(u1 - eu - nu, v1 - ev - nv));
-        tris.push([k, k + 1, k + 2], [k, k + 2, k + 3], [k, k + 2, k + 1], [k, k + 3, k + 2]); // båda sidor
+        q.forEach(([u, v]) => pts.push(P(u, v, 0)));
+        q.forEach(([u, v]) => pts.push(P(u, v, IFC_TEXT_T)));
+        const b = [k, k + 1, k + 2, k + 3], t = [k + 4, k + 5, k + 6, k + 7];
+        // q går medurs i planen (sett uppifrån) – sidorna och locken vända utåt.
+        tris.push([b[0], b[1], b[2]], [b[0], b[2], b[3]], [t[0], t[2], t[1]], [t[0], t[3], t[2]]);
+        for (let j = 0; j < 4; j++) { const j2 = (j + 1) % 4; tris.push([b[j], t[j], t[j2]], [b[j], t[j2], b[j2]]); }
       }
     });
     const pl3 = E(`IFCCARTESIANPOINTLIST3D((${pts.map(ifcPt).join(",")}))`);
-    const mesh = E(`IFCTRIANGULATEDFACESET(${pl3},$,.F.,(${tris.map(t => `(${t.join(",")})`).join(",")}),$)`);
+    const mesh = E(`IFCTRIANGULATEDFACESET(${pl3},$,.T.,(${tris.map(t => `(${t.join(",")})`).join(",")}),$)`);
     E(`IFCSTYLEDITEM(${mesh},(${textStyle}),$)`);
     const txtShape = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','Tessellation',(${mesh}))`)}))`);
     elems.push(E(`IFCBUILDINGELEMENTPROXY('${ifcGuid()}',$,${ifcStr(mk.name)},'Namn','4D-text',${pl},${txtShape},${ifcStr(it.id)},.NOTDEFINED.)`));

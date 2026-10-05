@@ -80,14 +80,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (Math.abs(pm[0] - 6512352) > 0.001 || Math.abs(pm[2] - 3.6) > 0.001) fail('M30 (två objekt): mitten och den högsta punkten av dem: ' + pm);
   // Egenskaper på cylindern.
   if (!/IFCPROPERTYSET\('[^']+',\$,'4D-planering'/.test(t) || !/'Aktivitet',\$,IFCLABEL\('Pelare'\)/.test(t) || !/'Framdrift %',\$,IFCREAL\(40\.\)/.test(t) || !/'Entrepren\\X2\\00F6\\X0\\r',\$,IFCLABEL\('NCC'\)/.test(t)) fail('Egenskaperna på cylindern');
-  // Texten: stående (z över cylindern), vänd i läsriktningen.
-  const pl3 = of('IFCCARTESIANPOINTLIST3D')[0].args.match(/\(([-\d.eE]+),([-\d.eE]+),([-\d.eE]+)\)/g).map(s => s.replace(/[()]/g, '').split(',').map(Number));
-  const zs = pl3.map(p => p[2]), xyDir = pl3.reduce((m, p) => Math.abs(p[0]) + Math.abs(p[1]) > Math.abs(m[0]) + Math.abs(m[1]) ? p : m, [0, 0]);
-  if (Math.min(...zs) < 0.75 || Math.max(...zs) > 2.0) fail('Texten ska stå ovanför cylindern: ' + [Math.min(...zs), Math.max(...zs)]);
-  const ang = Math.atan2(xyDir[1], xyDir[0]), d = Math.abs(Math.sin(ang - r.rr));
-  if (d > 0.02) fail('Texten ska ligga i läsriktningen från Lägesplans vy: ' + JSON.stringify({ ang, rr: r.rr }));
+  // Texten: liggande (läses uppifrån), 0,5 m tjock, bredvid cylindern i läsriktningen, centrerad på tvären.
+  const pls = of('IFCCARTESIANPOINTLIST3D').map(d => d.args.match(/\(([-\d.eE]+),([-\d.eE]+),([-\d.eE]+)\)/g).map(s => s.replace(/[()]/g, '').split(',').map(Number)));
+  const rx = Math.cos(r.rr), ry = Math.sin(r.rr);
+  pls.forEach(pl3 => {
+    const zs = pl3.map(p => p[2]), al = pl3.map(p => p[0] * rx + p[1] * ry), ac = pl3.map(p => -p[0] * ry + p[1] * rx);
+    if (Math.abs(Math.min(...zs)) > 0.001 || Math.abs(Math.max(...zs) - 0.5) > 0.001) fail('Bokstäverna ska vara 0,5 m tjocka (z 0–0,5): ' + [Math.min(...zs), Math.max(...zs)]);
+    if (Math.min(...al) < 0.25 || Math.max(...al) - Math.min(...al) < 1.5) fail('Texten ska börja vid cylinderns kant och gå i läsriktningen: ' + [Math.min(...al), Math.max(...al)]);
+    if (Math.max(...ac) > 0.6 || Math.min(...ac) < -0.6) fail('Texten ska ligga centrerad på tvären (0,8 m hög i plan): ' + [Math.min(...ac), Math.max(...ac)]);
+  });
+  if (!of('IFCTRIANGULATEDFACESET').every(d => /,\.T\.,/.test(d.args))) fail('Bokstäverna ska vara slutna kroppar');
   if (!(r.dir[0] > 0 && Math.abs(r.dir[1]) < Math.abs(r.dir[0]) * 0.01)) fail('Läsriktningen ska vara vågrät åt höger i vyn: ' + JSON.stringify(r.dir));
-  console.log('OK: IFC4 i meter – cylinder på högsta punkten, 3D-text ovanför i läsriktningen, egenskaper, inga trasiga referenser');
+  console.log('OK: IFC4 i meter – cylinder på högsta punkten, liggande 3D-text (0,5 m tjock) i läsriktningen, egenskaper, inga trasiga referenser');
   if (r.calls.length !== 1 || r.calls[0][1] !== 'Lägesplan export' || !/\.ifc$/.test(r.calls[0][2]) || !/sparade i Trimble Connect/.test(r.status)) fail('Lokal kopia och Trimble Connect som för DXF:en: ' + JSON.stringify(r.calls) + r.status);
   console.log('OK: IFC-exporten laddas ned lokalt och sparas i Trimble Connect (Lägesplan export)');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));

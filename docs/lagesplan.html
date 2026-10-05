@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261005222153"></script>
+<script src="github-storage.js?v=20261005223010"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -1306,7 +1306,7 @@
           <div class="hint">Exporten tar med det som syns: valt datum, filter, lager och teckenförklaring.</div>
           <button id="btnObjDxf" class="block" style="margin-top:6px;" title="Prickarna och aktivitetsnamnen för 3D-objekten som syns, i modellens koordinater (meter) – punkt i mitten och namn, lager per status">📐 3D-objekt som DXF (meter)</button>
           <label class="check" title="Varje DXF-export sparas också i Trimble Connect, i mappen &quot;Lägesplan export&quot; (kräver att lägesplanen är öppnad via 🗺️ i 4D-planering). En kopia laddas alltid ned lokalt."><input type="checkbox" id="objDxfToTc" checked /> Spara även i Trimble Connect (Lägesplan export)</label>
-          <button id="btnObjIfc" class="block" style="margin-top:6px;" title="Samma som DXF:en fast i 3D: en cylinder i statusfärg ovanpå varje objekts högsta punkt och en stående 3D-text med namnet, i modellens koordinater (meter). Egenskaper (aktivitet, status, framdrift, datum, zon) på cylindern.">🧊 3D-objekt som IFC (3D)</button>
+          <button id="btnObjIfc" class="block" style="margin-top:6px;" title="Samma som DXF:en fast i 3D: en cylinder i statusfärg ovanpå varje objekts högsta punkt och en liggande 3D-text (0,5 m tjock) med objektets namn som läses uppifrån, i modellens koordinater (meter). Egenskaper (aktivitet, status, framdrift, datum, zon) på cylindern.">🧊 3D-objekt som IFC (3D)</button>
           <label class="check" title="Varje IFC-export sparas också i Trimble Connect, i mappen &quot;Lägesplan export&quot; (kräver att lägesplanen är öppnad via 🗺️ i 4D-planering). En kopia laddas alltid ned lokalt."><input type="checkbox" id="objIfcToTc" checked /> Spara även i Trimble Connect (Lägesplan export)</label>
         </details>
         <details class="sec" data-sec="exportSite" open>
@@ -1471,32 +1471,32 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261005222153"></script>
-<script src="lagesplan-tools.js?v=20261005222153"></script>
-<script src="lagesplan-layers.js?v=20261005222153"></script>
-<script src="lagesplan-pdfoverlay.js?v=20261005222153"></script>
-<script src="lagesplan-views.js?v=20261005222153"></script>
-<script src="lagesplan-film.js?v=20261005222153"></script>
-<script src="lagesplan-cad.js?v=20261005222153"></script>
-<script src="lagesplan-vecpdf.js?v=20261005222153"></script>
-<script src="lagesplan-print.js?v=20261005222153"></script>
-<script src="lagesplan-printlib.js?v=20261005222153"></script>
-<script src="lagesplan-pdflayers.js?v=20261005222153"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261005222153"></script>
-<script src="lagesplan-objmarks.js?v=20261005222153"></script>
-<script src="lagesplan-objlist.js?v=20261005222153"></script>
-<script src="lagesplan-zones.js?v=20261005222153"></script>
-<script src="lagesplan-wbs.js?v=20261005222153"></script>
-<script src="lagesplan-zoneexport.js?v=20261005222153"></script>
-<script src="lagesplan-itemlink.js?v=20261005222153"></script>
-<script src="lagesplan-dxfexport.js?v=20261005222153"></script>
-<script src="lagesplan-ifcexport.js?v=20261005222153"></script>
-<script src="lagesplan-daily.js?v=20261005222153"></script>
-<script src="lagesplan-gps.js?v=20261005222153"></script>
-<script src="lagesplan-weather.js?v=20261005222153"></script>
-<script src="lagesplan-touch.js?v=20261005222153"></script>
-<script src="lagesplan-drawer.js?v=20261005222153"></script>
-<script src="lagesplan-gpslive.js?v=20261005222153"></script>
-<script src="lagesplan-keys.js?v=20261005222153"></script>
+<script src="lagesplan.js?v=20261005223010"></script>
+<script src="lagesplan-tools.js?v=20261005223010"></script>
+<script src="lagesplan-layers.js?v=20261005223010"></script>
+<script src="lagesplan-pdfoverlay.js?v=20261005223010"></script>
+<script src="lagesplan-views.js?v=20261005223010"></script>
+<script src="lagesplan-film.js?v=20261005223010"></script>
+<script src="lagesplan-cad.js?v=20261005223010"></script>
+<script src="lagesplan-vecpdf.js?v=20261005223010"></script>
+<script src="lagesplan-print.js?v=20261005223010"></script>
+<script src="lagesplan-printlib.js?v=20261005223010"></script>
+<script src="lagesplan-pdflayers.js?v=20261005223010"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261005223010"></script>
+<script src="lagesplan-objmarks.js?v=20261005223010"></script>
+<script src="lagesplan-objlist.js?v=20261005223010"></script>
+<script src="lagesplan-zones.js?v=20261005223010"></script>
+<script src="lagesplan-wbs.js?v=20261005223010"></script>
+<script src="lagesplan-zoneexport.js?v=20261005223010"></script>
+<script src="lagesplan-itemlink.js?v=20261005223010"></script>
+<script src="lagesplan-dxfexport.js?v=20261005223010"></script>
+<script src="lagesplan-ifcexport.js?v=20261005223010"></script>
+<script src="lagesplan-daily.js?v=20261005223010"></script>
+<script src="lagesplan-gps.js?v=20261005223010"></script>
+<script src="lagesplan-weather.js?v=20261005223010"></script>
+<script src="lagesplan-touch.js?v=20261005223010"></script>
+<script src="lagesplan-drawer.js?v=20261005223010"></script>
+<script src="lagesplan-gpslive.js?v=20261005223010"></script>
+<script src="lagesplan-keys.js?v=20261005223010"></script>
 </body>
 </html>
