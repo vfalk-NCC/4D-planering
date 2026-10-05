@@ -60,10 +60,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (r.units !== 6) fail('Enheten ska vara meter ($INSUNITS 6): ' + r.units);
   if (JSON.stringify(r.layers) !== JSON.stringify(['4D-KLAR', '4D-NAMN', '4D-PAGAENDE'])) fail('Lager per status, fotavtryck och namn: ' + JSON.stringify(r.layers));
   const t = Object.fromEntries(r.geo.map(([s, x, y]) => [s, [x, y]]));
-  if (!t['K10'] || Math.abs(t['K10'][0] - 6512346.0) > 0.001 || Math.abs(t['K10'][1] - 150122.75) > 0.001) fail('Namnet ska stå vid objektet i modellens koordinater (meter): ' + JSON.stringify(r.geo));
+  if (!t['K10'] || Math.abs(t['K10'][0] - 6512346.15) > 0.001 || Math.abs(t['K10'][1] - 150122.75) > 0.001) fail('Namnet ska stå vid objektet i modellens koordinater (meter): ' + JSON.stringify(r.geo));
   if (!r.text.includes('\r\n10\r\n6512345.500\r\n20\r\n150123.250\r\n30\r\n0.000')) fail('Punkten ska ligga exakt i modellens koordinater med höjden: ' + r.text.slice(0, 2000));
   if (!r.geo.some(([s]) => s === 'M30 (2)')) fail('Två objekt i samma aktivitet blir en markering med antalet, å/ä/ö kvar: ' + JSON.stringify(r.geo));
-  if (r.ents.some(e => /^POLYLINE/.test(e))) fail('Inga fotavtryck (raka lådor blir fel vridna): ' + JSON.stringify(r.ents));
+  if (r.ents.some(e => /^POLYLINE:4D-(FOTAVTRYCK|NAMN)/.test(e)) || r.ents.filter(e => /^POLYLINE:4D-(KLAR|PAGAENDE)/.test(e)).length !== 2) fail('En fylld prick per markering, inga fotavtryck (raka lådor blir fel vridna): ' + JSON.stringify(r.ents));
   if (JSON.stringify(r.aci) !== JSON.stringify({ klar: 3, pagaende: 30, forsenad: 1, planerad: 8, pausad: 8 })) fail('Statusfärgerna som CAD-färger: ' + JSON.stringify(r.aci));
   if (JSON.stringify(r.cp) !== JSON.stringify([0xe5, 0xe4, 0xf6, 0x96])) fail('å/ä/ö ska kodas i Windows-1252: ' + r.cp);
   if (!/\$EXTMIN/.test(r.text) || !/\r\nSTYLE\r\n2\r\nSTANDARD/.test(r.text) || !/\r\n2\r\n\*ACTIVE/.test(r.text)) fail('Utbredning, textstil och vy ska finnas så att filen öppnas på objekten med synliga namn');
@@ -100,6 +100,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (tc.downloads.length !== 3 || tc.calls.length !== 1 || tc.calls[0][0] !== 'tcUpload' || tc.calls[0][1] !== 'Lägesplan export' || !/^3D-objekt Plan 1 .*\.dxf:\d+$/.test(tc.calls[0][2])) fail('Lokal kopia varje gång, Trimble Connect bara med rutan ikryssad: ' + JSON.stringify(tc));
   if (!/sparade i Trimble Connect \(Lägesplan export\)/.test(tc.s1) || /Trimble/.test(tc.s2) || !/öppna lägesplanen via/.test(tc.s3)) fail('Statusen ska säga var filen hamnade: ' + JSON.stringify(tc));
   console.log('OK: DXF-exporten laddas ned lokalt och sparas i Trimble Connect (Lägesplan export) när rutan är ikryssad');
+  // Tätt placerade objekt: namnen krockar inte med varandra eller med grannens prick.
+  const lay = await page.evaluate(() => {
+    view.rot = 0; plans[0].calib = { model: [[0, 0, 0], [100, 0, 0]], pdf: [[0, 0], [1000, 0]] }; applyView();
+    const marks = [{ x: 0, y: 0, name: 'L12' }, { x: 1.5, y: 0, name: 'L14' }, { x: 3, y: 0, name: 'L16' }, { x: 0, y: 1.2, name: 'K12' }];
+    const L = objLabelLayout(marks, { h: 1, r: 0.4, gap: 0.25, widthOf: n => 0.85 * n.length });
+    const rr = dxfTextRotation() * Math.PI / 180;
+    return { L, marks, rr };
+  });
+  const boxes = lay.marks.map((m, i) => { const a = m.x * Math.cos(lay.rr) + m.y * Math.sin(lay.rr), c = -m.x * Math.sin(lay.rr) + m.y * Math.cos(lay.rr); return [a + lay.L[i].da, c + lay.L[i].dc, a + lay.L[i].da + 0.85 * 3, c + lay.L[i].dc + 1]; });
+  const over = (p, q) => p[0] < q[2] && p[2] > q[0] && p[1] < q[3] && p[3] > q[1];
+  if (boxes.some((b, i) => boxes.some((q, j) => j > i && over(b, q)))) fail('Namnen ska inte överlappa: ' + JSON.stringify(lay.L));
+  console.log('OK: namnen på tätt placerade objekt hamnar fritt från varandra');
   console.log('OK: 3D-objekten som DXF – meter, modellens koordinater, lager per status, fotavtryck och namn (å/ä/ö)');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();

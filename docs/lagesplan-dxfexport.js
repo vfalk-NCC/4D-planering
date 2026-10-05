@@ -73,23 +73,56 @@ function objExportMarkers() {
   return out;
 }
 
+/* Namnens placering (Victors önskemål 2026-10-05: snyggt): i läsriktningens ram provas höger om
+   pricken, vänster, ovanför och under – första platsen som inte krockar med ett annat namn eller
+   en annan prick väljs (annars höger). Returnerar per markering { da, dc }: textens vänsterkant
+   längs läsriktningen och dess underkant tvärs, i meter från markeringen. */
+function objLabelLayout(marks, { h, r, gap, widthOf }) {
+  const rr = dxfTextRotation() * Math.PI / 180, rx = Math.cos(rr), ry = Math.sin(rr);
+  const P = marks.map(mk => [mk.x * rx + mk.y * ry, -mk.x * ry + mk.y * rx]);
+  // Hinder: zonernas namn (om zonerna syns) – objektnamnen läggs inte över dem.
+  const placed = typeof zoneCadLabelBoxes === "function" ? zoneCadLabelBoxes() : [], pad = h * 0.2;
+  const ov = (b, q) => Math.max(0, Math.min(b[2], q[2]) - Math.max(b[0], q[0])) * Math.max(0, Math.min(b[3], q[3]) - Math.max(b[1], q[1]));
+  // Krock = överlappande yta mot andra namn och andra prickar (med lite luft).
+  const cost = (b, self) => {
+    const bb = [b[0] - pad, b[1] - pad, b[2] + pad, b[3] + pad];
+    let c = 0;
+    placed.forEach(q => { c += ov(bb, q); });
+    P.forEach((d, j) => { if (j !== self) c += 2 * ov(bb, [d[0] - r, d[1] - r, d[0] + r, d[1] + r]); });
+    return c;
+  };
+  return marks.map((mk, i) => {
+    const [a, c] = P[i], w = mk.name ? widthOf(mk.name) : 0, d = r * 0.75;
+    // Höger, vänster, ovanför, under och de fyra diagonalerna (vänsterkant, underkant).
+    const cands = [[a + r + gap, c - h / 2], [a - r - gap - w, c - h / 2], [a - w / 2, c + r + gap], [a - w / 2, c - r - gap - h],
+      [a + d, c + d], [a + d, c - d - h], [a - d - w, c + d], [a - d - w, c - d - h]];
+    const box = ([sa, bc]) => [sa, bc, sa + w, bc + h];
+    let pick = cands[0], best = Infinity;
+    for (const cd of cands) { const k = cost(box(cd), i); if (k < best - 1e-9) { best = k; pick = cd; } if (k === 0) break; }
+    placed.push(box(pick));
+    return { da: pick[0] - a, dc: pick[1] - c };
+  });
+}
+
 /* Bygger DXF-texten. Returnerar { text, n } eller null om inga objekt syns. */
 function buildObjectsDxf() {
   const marks = objExportMarkers();
   if (!marks.length) return null;
   const ents = [], used = new Set(["4D-NAMN"]);
   const rot = dxfTextRotation(), rr = rot * Math.PI / 180;
-  // Texten börjar en bit åt höger om punkten och står centrerad i höjd – i läsriktningen.
+  // Namnen placeras fritt från varandra (objLabelLayout) – i läsriktningen.
   const along = (dx, dy) => [dx * Math.cos(rr) - dy * Math.sin(rr), dx * Math.sin(rr) + dy * Math.cos(rr)];
-  marks.forEach(mk => {
+  const lay = objLabelLayout(marks, { h: DXF_TEXT_H, r: 0.4, gap: 0.25, widthOf: n => 1.0 * DXF_TEXT_H * n.length });
+  marks.forEach((mk, i) => {
     const layer = DXF_PHASE_LAYER[mk.ph] || "4D-INGEN", x = mk.x, y = mk.y;
     used.add(layer);
     const z = 0; // planritning (höjden skulle göra ritningen rörig i plan)
     ents.push({ t: "POINT", layer, x, y, z });
-    ents.push({ t: "CIRCLE", layer, x, y, z, r: 0.25 });
+    ents.push({ t: "DOT", layer, x, y, r: 0.4 });       // fylld prick i statusfärg (som i Lägesplan)
+    ents.push({ t: "CIRCLE", layer: "4D-NAMN", x, y, z, r: 0.4 }); // tunn ring runt (syns mot mörka underlag)
     // Inga fotavtryck (Victors val 2026-10-05): Trimble Connect ger bara en rak låda i modellens
     // axelriktning, så vridna fundament blev fel vridna och för stora. Mittpunkten stämmer.
-    const [ox, oy] = along(0.5, -DXF_TEXT_H / 2);
+    const [ox, oy] = along(lay[i].da, lay[i].dc);
     if (mk.name) ents.push({ t: "TEXT", layer: "4D-NAMN", x: x + ox, y: y + oy, z, h: DXF_TEXT_H, rot, s: mk.name });
   });
   if (!ents.length) return null;
@@ -98,10 +131,11 @@ function buildObjectsDxf() {
   return { text: dxfWrite(ents, [...used], layerAci), n: marks.length };
 }
 
-/* En DXF R12-fil (meter) av entiteterna: POINT, CIRCLE, TEXT (rot, mid = centrerad),
-   POLY (sluten polylinje, pts [[x, y]], aci = egen färg). Lagren med färg (ACI). Utbredning,
+/* En DXF R12-fil (meter) av entiteterna: POINT, CIRCLE, DOT (fylld prick, r), TEXT (rot, mid =
+   centrerad), POLY (sluten polylinje, pts [[x, y]], aci = egen färg, w = linjebredd i meter).
+   layerLtype: lager -> "DASHED" för streckad linje. Lagren med färg (ACI). Utbredning,
    textstil och vy så att filen öppnas på innehållet. Används av objekt- och zonexporten. */
-function dxfWrite(ents, layers, layerAci) {
+function dxfWrite(ents, layers, layerAci, layerLtype = {}) {
   const out = [];
   const g = (code, v) => out.push(String(code), String(v));
   // Utbredning (så att filen öppnas på innehållet, inte vid nollpunkten).
@@ -130,14 +164,15 @@ function dxfWrite(ents, layers, layerAci) {
   g(40, dxfNum(Math.max(y1 - y0, (x1 - x0) / 1.6) * 1.1)); g(41, "1.6"); g(42, "50.0"); g(43, "0.0"); g(44, "0.0"); g(50, "0.0"); g(51, "0.0");
   g(71, 0); g(72, 100); g(73, 1); g(74, 3); g(75, 0); g(76, 0); g(77, 0); g(78, 0);
   g(0, "ENDTAB");
-  g(0, "TABLE"); g(2, "LTYPE"); g(70, 1);
+  g(0, "TABLE"); g(2, "LTYPE"); g(70, 2);
   g(0, "LTYPE"); g(2, "CONTINUOUS"); g(70, 0); g(3, "Solid line"); g(72, 65); g(73, 0); g(40, "0.0");
+  g(0, "LTYPE"); g(2, "DASHED"); g(70, 0); g(3, "__ __ __ __"); g(72, 65); g(73, 2); g(40, "3.0"); g(49, "2.0"); g(49, "-1.0"); // 2 m streck, 1 m mellanrum
   g(0, "ENDTAB");
   g(0, "TABLE"); g(2, "STYLE"); g(70, 1);
   g(0, "STYLE"); g(2, "STANDARD"); g(70, 0); g(40, "0.0"); g(41, "1.0"); g(50, "0.0"); g(71, 0); g(42, dxfNum(DXF_TEXT_H)); g(3, "txt"); g(4, "");
   g(0, "ENDTAB");
   g(0, "TABLE"); g(2, "LAYER"); g(70, layers.length);
-  layers.forEach(l => { g(0, "LAYER"); g(2, l); g(70, 0); g(62, layerAci[l] || 7); g(6, "CONTINUOUS"); });
+  layers.forEach(l => { g(0, "LAYER"); g(2, l); g(70, 0); g(62, layerAci[l] || 7); g(6, layerLtype[l] || "CONTINUOUS"); });
   g(0, "ENDTAB");
   g(0, "ENDSEC");
   // ENTITIES
@@ -151,8 +186,15 @@ function dxfWrite(ents, layers, layerAci) {
       g(7, "STANDARD");
       if (e.mid) { g(72, 4); g(11, dxfNum(e.x)); g(21, dxfNum(e.y)); g(31, dxfNum(e.z || 0)); } // centrerad (Middle)
     }
+    else if (e.t === "DOT") {
+      // Fylld prick: sluten polylinje av två halvcirklar med bredd = radien.
+      g(0, "POLYLINE"); g(8, e.layer); g(66, 1); g(10, "0.0"); g(20, "0.0"); g(30, "0.0"); g(70, 1); g(40, dxfNum(e.r)); g(41, dxfNum(e.r));
+      [[e.x - e.r / 2, e.y], [e.x + e.r / 2, e.y]].forEach(([x, y]) => { g(0, "VERTEX"); g(8, e.layer); g(10, dxfNum(x)); g(20, dxfNum(y)); g(30, "0.0"); g(42, "1.0"); });
+      g(0, "SEQEND"); g(8, e.layer);
+    }
     else if (e.t === "POLY") {
       g(0, "POLYLINE"); g(8, e.layer); if (e.aci) g(62, e.aci); g(66, 1); g(10, "0.0"); g(20, "0.0"); g(30, "0.0"); g(70, 1);
+      if (e.w) { g(40, dxfNum(e.w)); g(41, dxfNum(e.w)); }
       e.pts.forEach(([x, y]) => { g(0, "VERTEX"); g(8, e.layer); g(10, dxfNum(x)); g(20, dxfNum(y)); g(30, "0.0"); });
       g(0, "SEQEND"); g(8, e.layer);
     }

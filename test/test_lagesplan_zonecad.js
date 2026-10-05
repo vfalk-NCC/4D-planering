@@ -60,10 +60,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const z1 = r.polys.find(p => p[0] === 'ZON-PAGAENDE');
   if (!z1 || z1[1].length !== 4 || Math.abs(Math.min(...z1[1].map(p => p[0])) - 6512310) > 0.001 || Math.abs(Math.max(...z1[1].map(p => p[1])) - 150120) > 0.001) fail('Zonens kontur i modellens koordinater: ' + JSON.stringify(z1));
   if (r.polys.some(p => p[1].some(q => q[0] > 6512335))) fail('Dolda zoner följer inte med');
-  if (!r.polys.some(p => p[0] === 'OVERZON' && Math.abs(Math.max(...p[1].map(q => q[0])) - 6512330) < 0.001)) fail('Överzonen runt sina zoner: ' + JSON.stringify(r.polys.filter(p => p[0] === 'OVERZON')));
+  if (!r.polys.some(p => p[0] === 'OVERZON' && Math.abs(Math.max(...p[1].map(q => q[0])) - 6512330.8) < 0.001 && Math.abs(Math.min(...p[1].map(q => q[0])) - 6512309.2) < 0.001)) fail('Överzonen som en ram 0,8 m utanför sina zoner: ' + JSON.stringify(r.polys.filter(p => p[0] === 'OVERZON')));
   const t1 = r.texts.find(t => t[0] === '7411 SEKTIONSFICKOR'), t2 = r.texts.find(t => t[0] === '7412 Förtjockare');
-  if (!t1 || !t2 || Math.abs(t1[1] - 6512315) > 0.01 || Math.abs(t1[2] - 150115) > 0.01 || !/\r\n72\r\n4\r\n/.test(r.dxfText)) fail('Kod + namn centrerat i zonen: ' + JSON.stringify(r.texts));
-  console.log('OK: zonerna som DXF – konturer per status, överzon, kod + namn centrerat i zonen, dolda zoner utan');
+  const inZ = (t, x0, x1) => t && t[1] > x0 && t[1] < x1 && t[2] > 150110 && t[2] < 150120;
+  if (!inZ(t1, 6512310, 6512320) || !inZ(t2, 6512320, 6512330)) fail('Kod + namn i sin zon: ' + JSON.stringify(r.texts));
+  console.log('OK: zonerna som DXF – konturer per status, överzon, kod + namn i zonen, dolda zoner utan');
   // IFC
   const t = r.ifc;
   const defs = new Map([...t.matchAll(/^#(\d+)=([A-Z0-9]+)\((.*)\);$/gm)].map(m => [m[1], { type: m[2], args: m[3] }]));

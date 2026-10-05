@@ -6,67 +6,83 @@
    Texten är byggd av streck (eget enkelt typsnitt) som tunna ytor, så att den syns i alla
    IFC-visare utan typsnitt. */
 
-const IFC_CYL_R = 0.25, IFC_CYL_H = 0.6, IFC_GAP = 0.1; // meter
+const IFC_CYL_R = 0.4, IFC_CYL_H = 0.6, IFC_GAP = 0.1; // meter
 const IFC_TEXT_H = 0.8, IFC_TEXT_T = 0.5, IFC_STROKE = 0.14; // texthöjd (i plan), tjocklek (uppåt), streckbredd (del av höjden)
 
-/* Streckfont: versaler, siffror och några tecken på ett rutnät 4 brett × 6 högt. */
+/* Streckfont (Victors önskemål 2026-10-05: snygg och läsbar): versaler, siffror och vanliga tecken
+   på ett rutnät 4 brett × 6 högt, med mjuka bågar (ellipsbågar som korta streck). */
 const IFC_GLYPHS = (() => {
-  const O = [[1, 0], [0, 1], [0, 5], [1, 6], [3, 6], [4, 5], [4, 1], [3, 0], [1, 0]];
-  const A = [[[0, 0], [0, 4], [2, 6], [4, 4], [4, 0]], [[0, 3], [4, 3]]];
-  const P = [[0, 0], [0, 6], [3, 6], [4, 5], [4, 4], [3, 3], [0, 3]];
-  const dots = [[[1, 6.8], [1, 7.3]], [[3, 6.8], [3, 7.3]]];
+  // Ellipsbåge: mitt (cx, cy), radier (rx, ry), från a0 till a1 grader (moturs om a1 > a0).
+  const arc = (cx, cy, rx, ry, a0, a1, n) => {
+    n = n || Math.max(3, Math.round(Math.abs(a1 - a0) / 22.5));
+    const out = [];
+    for (let k = 0; k <= n; k++) { const a = (a0 + (a1 - a0) * k / n) * Math.PI / 180; out.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)]); }
+    return out;
+  };
+  const O = arc(2, 3, 2, 3, 90, 450, 20);
+  const A = [[[0, 0], [2, 6], [4, 0]], [[0.7, 2], [3.3, 2]]];
+  const dots = [[[1.2, 7.0], [1.2, 7.45]], [[2.8, 7.0], [2.8, 7.45]]];
+  const P = [[0, 0], [0, 6], [2.4, 6], ...arc(2.4, 4.4, 1.6, 1.6, 90, -90).slice(1), [0, 2.8]];
   return {
-    A, B: [[[0, 0], [0, 6], [3, 6], [4, 5], [4, 4], [3, 3], [0, 3]], [[3, 3], [4, 2], [4, 1], [3, 0], [0, 0]]],
-    C: [[[4, 1], [3, 0], [1, 0], [0, 1], [0, 5], [1, 6], [3, 6], [4, 5]]],
-    D: [[[0, 0], [0, 6], [2, 6], [4, 4], [4, 2], [2, 0], [0, 0]]],
-    E: [[[4, 0], [0, 0], [0, 6], [4, 6]], [[0, 3], [3, 3]]],
-    F: [[[0, 0], [0, 6], [4, 6]], [[0, 3], [3, 3]]],
-    G: [[[4, 5], [3, 6], [1, 6], [0, 5], [0, 1], [1, 0], [3, 0], [4, 1], [4, 3], [2, 3]]],
+    A,
+    B: [[[0, 0], [0, 6], [2.3, 6], ...arc(2.3, 4.55, 1.45, 1.45, 90, -90).slice(1), [0, 3.1]], [[2.3, 3.1], [2.5, 3.1], ...arc(2.5, 1.55, 1.5, 1.55, 90, -90).slice(1), [0, 0]]],
+    C: [arc(2, 3, 2, 3, 40, 320, 14)],
+    D: [[[0, 0], [0, 6], [1.6, 6], ...arc(1.6, 3, 2.4, 3, 90, -90, 10).slice(1), [0, 0]]],
+    E: [[[4, 0], [0, 0], [0, 6], [4, 6]], [[0, 3], [3.2, 3]]],
+    F: [[[0, 0], [0, 6], [4, 6]], [[0, 3], [3.2, 3]]],
+    G: [[...arc(2, 3, 2, 3, 40, 360, 16), [4, 2.6]], [[4, 2.6], [2.3, 2.6]]],
     H: [[[0, 0], [0, 6]], [[4, 0], [4, 6]], [[0, 3], [4, 3]]],
-    I: [[[1, 0], [3, 0]], [[2, 0], [2, 6]], [[1, 6], [3, 6]]],
-    J: [[[0, 1], [1, 0], [3, 0], [4, 1], [4, 6]]],
-    K: [[[0, 0], [0, 6]], [[4, 6], [0, 2]], [[1, 3], [4, 0]]],
+    I: [[[0, 0], [0, 6]]],
+    J: [[[4, 6], [4, 1.8], ...arc(2, 1.8, 2, 1.8, 0, -180, 8).slice(1), [0, 2.2]]],
+    K: [[[0, 0], [0, 6]], [[4, 6], [0, 2]], [[1.4, 3.4], [4, 0]]],
     L: [[[0, 6], [0, 0], [4, 0]]],
-    M: [[[0, 0], [0, 6], [2, 3], [4, 6], [4, 0]]],
+    M: [[[0, 0], [0, 6], [2, 2.4], [4, 6], [4, 0]]],
     N: [[[0, 0], [0, 6], [4, 0], [4, 6]]],
-    O: [O], P: [P], Q: [O, [[2, 2], [4, 0]]], R: [P, [[2, 3], [4, 0]]],
-    S: [[[4, 5], [3, 6], [1, 6], [0, 5], [0, 4], [1, 3], [3, 3], [4, 2], [4, 1], [3, 0], [1, 0], [0, 1]]],
+    O: [O], P: [P], Q: [O, [[2.6, 1.3], [4.2, -0.4]]], R: [P, [[2.1, 2.8], [4, 0]]],
+    S: [[...arc(2, 4.5, 1.9, 1.5, 20, 270, 10), ...arc(2, 1.5, 2, 1.5, 90, -160, 10).slice(1)]],
     T: [[[0, 6], [4, 6]], [[2, 6], [2, 0]]],
-    U: [[[0, 6], [0, 1], [1, 0], [3, 0], [4, 1], [4, 6]]],
+    U: [[[0, 6], [0, 2], ...arc(2, 2, 2, 2, 180, 360, 8).slice(1), [4, 6]]],
     V: [[[0, 6], [2, 0], [4, 6]]],
-    W: [[[0, 6], [1, 0], [2, 3], [3, 0], [4, 6]]],
+    W: [[[0, 6], [1, 0], [2, 4], [3, 0], [4, 6]]],
     X: [[[0, 0], [4, 6]], [[0, 6], [4, 0]]],
     Y: [[[0, 6], [2, 3], [4, 6]], [[2, 3], [2, 0]]],
     Z: [[[0, 6], [4, 6], [0, 0], [4, 0]]],
-    "Å": [...A, [[1.4, 6.6], [2.6, 6.6], [2.6, 7.6], [1.4, 7.6], [1.4, 6.6]]],
+    "Å": [...A, arc(2, 7.1, 0.65, 0.65, 0, 360, 10)],
     "Ä": [...A, ...dots], "Ö": [O, ...dots],
-    0: [O, [[1, 1], [3, 5]]],
-    1: [[[1, 5], [2, 6], [2, 0]], [[1, 0], [3, 0]]],
-    2: [[[0, 5], [1, 6], [3, 6], [4, 5], [4, 4], [0, 0], [4, 0]]],
-    3: [[[0, 5], [1, 6], [3, 6], [4, 5], [4, 4], [3, 3], [1, 3]], [[3, 3], [4, 2], [4, 1], [3, 0], [1, 0], [0, 1]]],
-    4: [[[3, 0], [3, 6], [0, 2], [4, 2]]],
-    5: [[[4, 6], [0, 6], [0, 3], [3, 3], [4, 2], [4, 1], [3, 0], [0, 0]]],
-    6: [[[4, 5], [3, 6], [1, 6], [0, 5], [0, 1], [1, 0], [3, 0], [4, 1], [4, 2], [3, 3], [0, 3]]],
-    7: [[[0, 6], [4, 6], [1, 0]]],
-    8: [[[1, 3], [0, 4], [0, 5], [1, 6], [3, 6], [4, 5], [4, 4], [3, 3], [1, 3], [0, 2], [0, 1], [1, 0], [3, 0], [4, 1], [4, 2], [3, 3]]],
-    9: [[[4, 3], [1, 3], [0, 4], [0, 5], [1, 6], [3, 6], [4, 5], [4, 1], [3, 0], [1, 0], [0, 1]]],
-    "-": [[[1, 3], [3, 3]]], "+": [[[1, 3], [3, 3]], [[2, 2], [2, 4]]], ".": [[[2, 0], [2, 0.5]]], ",": [[[2, 0.6], [1.5, -0.6]]],
-    "(": [[[3, 6], [2, 5], [2, 1], [3, 0]]], ")": [[[1, 6], [2, 5], [2, 1], [1, 0]]], "/": [[[0, 0], [4, 6]]], "_": [[[0, 0], [4, 0]]],
-    ":": [[[2, 1], [2, 1.5]], [[2, 4], [2, 4.5]]], "&": [[[4, 0], [1, 4], [1, 5], [2, 6], [3, 5], [3, 4], [0, 2], [0, 1], [1, 0], [2, 0], [4, 2]]],
-    "'": [[[2, 6], [2, 5]]], "#": [[[1, 0], [1, 6]], [[3, 0], [3, 6]], [[0, 2], [4, 2]], [[0, 4], [4, 4]]], "?": [[[0, 5], [1, 6], [3, 6], [4, 5], [4, 4], [2, 3], [2, 2]], [[2, 0], [2, 0.5]]],
+    0: [O, [[0.9, 1.0], [3.1, 5.0]]],
+    1: [[[0.9, 4.7], [2.4, 6], [2.4, 0]], [[1, 0], [3.8, 0]]],
+    2: [[...arc(2, 4.2, 2, 1.8, 160, -20, 9), [0, 0], [4, 0]]],
+    3: [[...arc(2, 4.55, 1.9, 1.45, 150, -90, 9), ...arc(2, 1.55, 2, 1.55, 90, -150, 9).slice(1)]],
+    4: [[[3, 0], [3, 6], [0, 1.9], [4.2, 1.9]]],
+    5: [[[3.8, 6], [0.4, 6], [0.1, 3.3], ...arc(2, 1.9, 2, 1.9, 135, -150, 12).slice(1)]],
+    6: [arc(2, 3, 2, 3, 60, 200, 7), arc(2, 1.9, 2, 1.9, 0, 360, 16)],
+    7: [[[0, 6], [4, 6], [1.4, 0]]],
+    8: [arc(2, 4.6, 1.7, 1.4, 270, 630, 14), arc(2, 1.6, 2, 1.6, 90, 450, 16)],
+    9: [arc(2, 4.1, 2, 1.9, 0, 360, 16), arc(2, 3, 2, 3, 240, 380, 7)],
+    "-": [[[0.8, 3], [3.2, 3]]], "+": [[[0.6, 3], [3.4, 3]], [[2, 1.6], [2, 4.4]]], ".": [[[2, 0], [2, 0.45]]], ",": [[[2.1, 0.5], [1.6, -0.7]]],
+    "(": [arc(3.6, 3, 1.6, 3.4, 118, 242, 8)], ")": [arc(0.4, 3, 1.6, 3.4, 62, -62, 8)], "/": [[[0, 0], [4, 6]]], "_": [[[0, -0.2], [4, -0.2]]],
+    ":": [[[2, 0.6], [2, 1.05]], [[2, 3.6], [2, 4.05]]], "&": [[[4, 0], [1.1, 3.9], ...arc(2, 4.9, 1, 1.1, 180, 0, 6).slice(1), [0.4, 1.9], ...arc(1.6, 1.4, 1.4, 1.4, 160, 290, 5).slice(1), [4, 2.2]]],
+    "'": [[[2, 6], [2, 4.9]]], "#": [[[1.2, 0], [1.6, 6]], [[2.6, 0], [3, 6]], [[0, 2], [4, 2]], [[0, 4], [4, 4]]],
+    "?": [[...arc(2, 4.4, 1.9, 1.6, 160, -60, 8), [2, 2.4], [2, 1.7]], [[2, 0], [2, 0.45]]],
+    "°": [arc(2, 5.2, 0.8, 0.8, 0, 360, 10)],
   };
 })();
-/* Texten som streck (glyfenheter, baslinje y = 0). Andra bokstäver (é, ü …) utan accent. */
+/* Texten som streck (glyfenheter, baslinje y = 0), proportionellt: varje tecken tar sin egen
+   bredd + mellanrum. Andra bokstäver (é, ü …) utan accent. */
+const IFC_GAP_U = 1.7, IFC_SPACE_U = 3.4;
 function ifcTextStrokes(text) {
   const strokes = [];
-  let x = 0;
+  let x = 0, last = 0;
   String(text).toUpperCase().split("").forEach(ch => {
+    if (ch === " ") { x += IFC_SPACE_U; return; }
     let g = IFC_GLYPHS[ch];
-    if (!g && ch !== " ") { const base = ch.normalize("NFD").replace(/[̀-ͯ]/g, ""); g = IFC_GLYPHS[base] || IFC_GLYPHS["?"]; }
-    if (g) g.forEach(pl => strokes.push(pl.map(([u, v]) => [u + x, v])));
-    x += 6;
+    if (!g) { const base = ch.normalize("NFD").replace(/[\u0300-\u036f]/g, ""); g = IFC_GLYPHS[base] || IFC_GLYPHS["?"]; }
+    const xs = g.flatMap(pl => pl.map(p => p[0])), x0 = Math.min(...xs), w = Math.max(...xs) - x0;
+    g.forEach(pl => strokes.push(pl.map(([u, v]) => [u - x0 + x, v])));
+    last = x + w;
+    x = last + IFC_GAP_U;
   });
-  return { strokes, width: Math.max(0, x - 2) };
+  return { strokes, width: last };
 }
 
 /* IFC-hjälp: GUID (22 tecken), text (STEP, \X2\ för å/ä/ö), tal. */
@@ -136,16 +152,18 @@ function ifcDoc(projName, desc) {
     },
   };
   doc.textStyle = doc.style("__text", "#111827", "Text");
+  doc.textStyleLight = doc.style("__textl", "#ffffff", "Text (ljus)");
   return doc;
 }
 
 /* Liggande 3D-text (läses uppifrån i planvyn) som slutna kroppar: höjd h i plan, tjocklek t uppåt
    från z = 0 (lokalt), läsriktning (rx, ry). start = var texten börjar längs läsriktningen (meter),
-   eller null = centrerad. Returnerar IfcTriangulatedFaceSet-id, eller null. */
-function ifcTextSolid(doc, text, { h, t, rx, ry, start = null }) {
+   eller null = centrerad; across = förskjutning tvärs (meter, mitten av texten). Returnerar
+   IfcTriangulatedFaceSet-id, eller null. */
+function ifcTextSolid(doc, text, { h, t, rx, ry, start = null, style = null, across = 0 }) {
   const { strokes, width } = ifcTextStrokes(text);
   if (!strokes.length) return null;
-  const s = h / 6, w = IFC_STROKE * h / 2, u0 = start == null ? -width / 2 : start / s, v0 = -3;
+  const s = h / 6, w = IFC_STROKE * h / 2, u0 = start == null ? -width / 2 : start / s, v0 = -3 + across / s;
   // Glyf (u åt höger, v uppåt i läsriktningen) -> lokalt (meter): läsriktning (rx, ry), "uppåt" i planen (-ry, rx).
   const P = (u, v, z) => { const a = (u + u0) * s, b = (v + v0) * s; return [a * rx - b * ry, a * ry + b * rx, z]; };
   const pts = [], tris = [];
@@ -166,7 +184,7 @@ function ifcTextSolid(doc, text, { h, t, rx, ry, start = null }) {
   });
   const pl3 = doc.E(`IFCCARTESIANPOINTLIST3D((${pts.map(ifcPt).join(",")}))`);
   const mesh = doc.E(`IFCTRIANGULATEDFACESET(${pl3},$,.T.,(${tris.map(tr => `(${tr.join(",")})`).join(",")}),$)`);
-  doc.E(`IFCSTYLEDITEM(${mesh},(${doc.textStyle}),$)`);
+  doc.E(`IFCSTYLEDITEM(${mesh},(${style || doc.textStyle}),$)`);
   return mesh;
 }
 /* Läsriktningen (samma som DXF:en: vågrätt i Lägesplans vy). */
@@ -186,7 +204,9 @@ function buildObjectsIfc() {
   const zoneOf = typeof zoneExportItems === "function" && typeof zoneExportPositions === "function"
     ? (() => { const pos = zoneExportPositions(plan); const zs = (plan.zones || []).map(z => [z, new Set(zoneExportItems(plan, z, pos).map(x => x.id))]); return it => zs.filter(([, st]) => st.has(it.id)).map(([z]) => [z.code, z.name].filter(Boolean).join(" ")).join(", "); })()
     : () => "";
-  marks.forEach(mk => {
+  // Namnen placeras fritt från varandra (samma regel som DXF:en), med textens verkliga bredd.
+  const lay = objLabelLayout(marks, { h: IFC_TEXT_H, r: IFC_CYL_R, gap: 0.25, widthOf: n => ifcTextStrokes(n).width * IFC_TEXT_H / 6 });
+  marks.forEach((mk, i) => {
     const pl = doc.place([mk.x, mk.y, mk.zTop + IFC_GAP]);
     // Cylindern i statusfärg.
     const cyl = E(`IFCEXTRUDEDAREASOLID(${prof},$,${zDir},${ifcNum(IFC_CYL_H)})`);
@@ -202,7 +222,7 @@ function buildObjectsIfc() {
     // Lägesplans vy, bredvid cylindern (täcker den inte uppifrån), 0,5 m tjocka bokstäver uppåt
     // från samma nivå som cylinderns fot.
     if (!mk.name) return;
-    const mesh = ifcTextSolid(doc, mk.name, { h: IFC_TEXT_H, t: IFC_TEXT_T, rx, ry, start: IFC_CYL_R + 0.3 });
+    const mesh = ifcTextSolid(doc, mk.name, { h: IFC_TEXT_H, t: IFC_TEXT_T, rx, ry, start: lay[i].da, across: lay[i].dc + IFC_TEXT_H / 2 });
     if (mesh) elems.push(doc.proxy(mk.name, "Namn", "4D-text", pl, doc.shape(mesh, "Tessellation"), it.id));
   });
   return { text: doc.finish(elems, `3D-objekt ${plan ? plan.name : ""} ${at}.ifc`), n: marks.length };
