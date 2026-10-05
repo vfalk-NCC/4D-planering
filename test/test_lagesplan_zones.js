@@ -10,7 +10,7 @@ const fs = require('fs');
 const DOCS_DIR = path.join(__dirname, '..', 'docs');
 const PORT = 8967;
 const PID = 'p1';
-const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${PID}/status_plans.json`, '[]']]);
+const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${PID}/status_plans.json`, JSON.stringify([{ id: 'pl', name: 'P', zones: [], photos: [] }])]]);
 
 (async () => {
   const server = http.createServer((q, r) => fs.readFile(path.join(DOCS_DIR, q.url.split('?')[0]), (e, d) => { if (e) { r.writeHead(404); r.end(); } else { r.writeHead(200, { 'Content-Type': q.url.includes('.js') ? 'application/javascript' : 'text/html' }); r.end(d); } })).listen(PORT);

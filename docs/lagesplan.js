@@ -667,6 +667,7 @@ function finishCalib() {
   const dp = Math.hypot(pdf[1][0] - pdf[0][0], pdf[1][1] - pdf[0][1]);
   if (dm < 0.5 || dp < 5) { alert("Punkterna ligger för nära varandra. Välj två punkter långt ifrån varandra och försök igen."); return; }
   plan.calib = { pdf, model };
+  plan._calibSet = true; // kalibrerad här: får ersätta projektets kalibrering när den sparas
   renderOrtho();
   const z = (model[0][2] + model[1][2]) / 2;
   if (!plan.level) plan.level = { z0: Math.round((z - 0.5) * 10) / 10, z1: Math.round((z + 3.5) * 10) / 10 };
@@ -748,21 +749,52 @@ function renderPlanSelect() {
   $("btnRenamePlan").disabled = $("btnDeletePlan").disabled = !plan;
 }
 
-let saveTimer = null;
+/* Sparning (skydd mot överskrivning, Victors önskemål 2026-10-05):
+   – den fördröjda sparningen kommer ihåg VILKEN plan som ändrades, och sparas klart innan man byter
+     plan, tar in en ny eller tar bort en (förr kunde den förra planens senaste ändring försvinna);
+   – en plans kalibrering skrivs bara över när den kalibrerats på den här enheten, och planens PDF-fil
+     (file_path) byts aldrig – en annan enhet/flik med äldre data kan inte skriva över en inrefererad plan. */
+let saveTimer = null, savePending = null;
 function schedulePlanSave() {
   clearTimeout(saveTimer);
+  if (plan) savePending = plan;
   setSaveStatus("Osparade ändringar…");
-  saveTimer = setTimeout(savePlan, 800);
+  saveTimer = setTimeout(() => { const p = savePending; savePending = null; savePlan(p); }, 800);
 }
-async function savePlan() {
-  if (!plan) return;
-  const rec = { ...plan, updated_at: new Date().toISOString(), updated_by: settings.userName || null };
-  plan.updated_at = rec.updated_at;
+async function flushPlanSave() {
+  if (!savePending) return;
+  clearTimeout(saveTimer);
+  const p = savePending; savePending = null;
+  await savePlan(p);
+}
+async function savePlan(p = plan) {
+  if (!p) return;
+  const rec = { ...p, updated_at: new Date().toISOString(), updated_by: settings.userName || null };
+  delete rec._calibSet; delete rec._isNew;
+  p.updated_at = rec.updated_at;
+  const calibSet = !!p._calibSet, isNew = !!p._isNew;
+  let kept = null, gone = false;
   setSaveStatus("Sparar…");
   try {
     plans = await ghWriteJSON(token, dataPath("status_plans.json"),
-      arr => { const i = arr.findIndex(p => p.id === rec.id); if (i >= 0) arr[i] = rec; else arr.push(rec); return arr; },
+      arr => {
+        const i = arr.findIndex(x => x.id === rec.id), cur = i >= 0 ? arr[i] : null;
+        if (cur) {
+          if (cur.file_path) { rec.file_path = cur.file_path; rec.file_name = cur.file_name || rec.file_name; }
+          if (cur.calib && !calibSet && JSON.stringify(cur.calib) !== JSON.stringify(rec.calib)) { rec.calib = cur.calib; kept = cur.calib; }
+          arr[i] = rec;
+        } else if (isNew) arr.push(rec);
+        else gone = true; // borttagen (t.ex. på en annan enhet): återskapa den inte
+        return arr;
+      },
       `Lägesplan: ${rec.name}`);
+    if (gone) { setSaveStatus(`⚠ Planen "${rec.name}" finns inte längre i projektet – ändringen sparades inte.`); return; }
+    if (calibSet) delete p._calibSet;
+    delete p._isNew;
+    if (kept) { // kalibreringen i projektet var nyare än den här enhetens – använd den
+      p.calib = kept;
+      if (p === plan) { invalidatePositions(); renderOrtho(); renderZones(); }
+    }
     setSaveStatus(`✓ Sparad ${new Date().toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}`);
   } catch (e) {
     setSaveStatus("⚠ Kunde inte spara: " + e.message);
@@ -770,6 +802,7 @@ async function savePlan() {
 }
 
 async function createPlanFromFile(file) {
+  await flushPlanSave(); // den öppna planens senaste ändringar sparas först
   const id = ghNewId();
   const name = file.name.replace(/\.pdf$/i, "");
   setBusy("Laddar upp PDF…");
@@ -777,7 +810,7 @@ async function createPlanFromFile(file) {
     const path = dataPath(`status_plans/${id}.pdf`);
     await ghUploadBinary(token, path, file, `Lägesplan: ny plan ${name}`);
     plan = { id, name, file_path: path, file_name: file.name, page: 1, code_pattern: DEFAULT_CODE_PATTERN, zones: [],
-      created_at: new Date().toISOString(), created_by: settings.userName || null };
+      created_at: new Date().toISOString(), created_by: settings.userName || null, _isNew: true };
     plans.push(plan);
     await savePlan();
     renderPlanSelect();
@@ -793,6 +826,7 @@ async function createPlanFromFile(file) {
 
 const pdfCache = new Map();
 async function openPlan(id) {
+  await flushPlanSave(); // spara den förra planens ändringar innan vi byter
   plan = plans.find(p => p.id === id) || null;
   renderPlanSelect();
   selectedZoneId = null;
@@ -856,6 +890,7 @@ function scheduleHiRender() {
   clearTimeout(hiTimer);
   $("pdfCanvas").style.visibility = "";
   hiTimer = setTimeout(renderPdfHi, 140);
+  if (typeof scheduleOverlayHi === "function") scheduleOverlayHi(); // andra planers PDF-lager
 }
 async function renderPdfHi() {
   const hc = $("pdfHiCanvas"), pc = $("pdfCanvas");
@@ -1803,6 +1838,7 @@ function bindUI() {
   $("btnDeletePlan").onclick = async () => {
     if (!plan || !confirm(`Ta bort lägesplanen "${plan.name}"? (PDF:en och zonerna tas bort.)`)) return;
     const gone = plan;
+    if (savePending === gone) { clearTimeout(saveTimer); savePending = null; } else await flushPlanSave();
     try {
       plans = await ghWriteJSON(token, dataPath("status_plans.json"), arr => arr.filter(p => p.id !== gone.id), `Lägesplan: ta bort ${gone.name}`);
       ghDeleteBinary(token, gone.file_path, `Lägesplan: ta bort ${gone.name}`);

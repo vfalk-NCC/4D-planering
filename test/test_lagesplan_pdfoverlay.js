@@ -9,9 +9,9 @@ const PORT = 8999;
 const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DISABLE: 0, ENABLE: 1 },
   getDocument: ({ data }) => ({ promise: Promise.resolve({ numPages: 1, getPage: async () => {
     const kind = new Uint8Array(data)[0];
-    const vp = s => ({ width: 1000 * s, height: 500 * s, transform: [s, 0, 0, -s, 0, 500 * s],
-      convertToViewportPoint: (x, y) => [x * s, (500 - y) * s], convertToPdfPoint: (x, y) => [x / s, 500 - y / s] });
-    return { getViewport: ({ scale }) => vp(scale), render: ({ canvasContext: c, viewport: v }) => {
+    const vp = (s, ox = 0, oy = 0) => ({ width: 1000 * s, height: 500 * s, transform: [s, 0, 0, -s, ox, 500 * s + oy],
+      convertToViewportPoint: (x, y) => [x * s + ox, (500 - y) * s + oy], convertToPdfPoint: (x, y) => [(x - ox) / s, 500 - (y - oy) / s] });
+    return { view: [0, 0, 1000, 500], getViewport: ({ scale, offsetX, offsetY }) => vp(scale, offsetX || 0, offsetY || 0), render: ({ canvasContext: c, viewport: v }) => {
       if (kind === 2) { const [x, y] = v.convertToViewportPoint(140, 160), w = 20 * v.transform[0]; c.fillStyle = '#ff0000'; c.fillRect(x, y, w, w); }
       return { promise: Promise.resolve(), cancel() {} };
     } };
@@ -51,6 +51,22 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // Bildexporten tar med PDF-lagret.
   const ex = await page.evaluate(() => { const o = composeImageNow(0, true), ctx = o.getContext('2d'), [x, y] = toPx([300, 300]); return [...ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data]; });
   if (ex[0] < 200 || ex[1] > 60) fail('Exporten ska ta med PDF-lagret: ' + JSON.stringify(ex));
+  // Full skärpa vid inzoomning: den synliga delen ritas om i skärmens upplösning, på rätt ställe.
+  await page.evaluate(() => { const [x, y] = toPx([300, 300]), r = $('viewport').getBoundingClientRect(); view.rot = 0; view.scale = 3; view.tx = r.width / 2 - x * 3; view.ty = r.height / 2 - y * 3; applyView(); });
+  await page.waitForTimeout(900);
+  const hi = await page.evaluate(() => {
+    const h = document.querySelector('#stage canvas.pdfovhi[data-key="pdfp:B"]'), lo = document.querySelector('#stage canvas.pdfov[data-key="pdfp:B"]');
+    if (!h || !h.width) return { none: true };
+    const [x, y] = toPx([300, 300]), left = parseFloat(h.style.left), top = parseFloat(h.style.top), k = h.width / parseFloat(h.style.width);
+    const px = [...h.getContext('2d').getImageData(Math.round((x - left) * k), Math.round((y - top) * k), 1, 1).data];
+    const [wx, wy] = toPx([330, 300]); const off = [...h.getContext('2d').getImageData(Math.round((wx - left) * k), Math.round((wy - top) * k), 1, 1).data];
+    return { k, px, off, loHidden: lo.style.visibility === 'hidden', blend: h.style.mixBlendMode };
+  });
+  if (hi.none || hi.k < 2.5 || hi.px[0] < 200 || hi.px[1] > 60 || hi.off[3] && hi.off[1] < 60 || !hi.loHidden || hi.blend !== 'multiply') fail('PDF-lagret ska ritas om skarpt vid inzoomning, på rätt ställe: ' + JSON.stringify(hi));
+  // Panorering: den skarpa göms, den vanliga syns tills den ritats om.
+  await page.evaluate(() => { view.tx += 40; applyView(); });
+  if (await page.evaluate(() => getComputedStyle(document.querySelector('#stage canvas.pdfovhi')).display !== 'none' || document.querySelector('#stage canvas.pdfov[data-key="pdfp:B"]').style.visibility === 'hidden')) fail('Under panorering ska den vanliga bilden synas');
+  await page.evaluate(() => fitView()); await page.waitForTimeout(400);
   // Färg av: gråskala.
   await page.click('#layerList .layer-row[data-layer="pdfp:B"] .lr-color');
   if ((await page.evaluate(() => document.querySelector('#stage canvas.pdfov[data-key="pdfp:B"]').style.filter)) !== 'grayscale(1)') fail('Färg av ska ge gråskala');

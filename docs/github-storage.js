@@ -439,6 +439,8 @@ async function ghUpsertOne(token, path, record, keyFn, message) {
 }
 
 /** Laddar upp en bilaga (File/Blob) till given path. Returnerar path (sparas i JSON-posten). */
+/* Skriver aldrig över en befintlig fil (Victors önskemål 2026-10-05: inrefererade filer får inte
+   skrivas över). Nya filer får alltid ett unikt namn; finns filen redan avbryts uppladdningen. */
 async function ghUploadBinary(token, path, file, message) {
   const buf = await file.arrayBuffer();
   const bytes = new Uint8Array(buf);
@@ -454,8 +456,13 @@ async function ghUploadBinary(token, path, file, message) {
   for (let attempt = 0; ; attempt++) {
     await ghAwaitRateLimitGate();
     const existing = await ghGetMeta(token, path);
+    if (existing) {
+      // Vid ett omförsök kan vår egen förra skrivning ha gått igenom trots felet: samma storlek = vår fil.
+      if (attempt > 0 && existing.size === bytes.length) return path;
+      throw new Error(`Filen finns redan och skrivs inte över: ${path}`);
+    }
     try {
-      await ghPutFile(token, path, contentB64, existing ? existing.sha : null, message || `Lägg till bilaga ${path}`);
+      await ghPutFile(token, path, contentB64, null, message || `Lägg till bilaga ${path}`);
       return path;
     } catch (e) {
       if (e.rateLimited) { await ghExtendRateLimitGate(e.retryAfterMs); continue; }

@@ -415,9 +415,11 @@ async function rescaleCad(rec, newFactor) {
     if (dist > 20000 && !confirm(`Med ${unitName(newFactor)} hamnar ritningen ${Math.round(dist / 1000)} km från planen. Skala om ändå?`)) { renderCadSettings(); return; }
     await loadScript(PAKO_URL);
     const gz = pako.gzip(JSON.stringify(data));
-    await ghUploadBinary(token, rec.path, new Blob([gz], { type: "application/gzip" }), `Lägesplan: CAD ${rec.name} i ${unitName(newFactor)}`);
+    // Ny fil – originalet ligger kvar (skrivs aldrig över).
+    const newPath = dataPath(`site_layers/${rec.id}.${ghNewId().slice(0, 8)}.cad.gz`);
+    await ghUploadBinary(token, newPath, new Blob([gz], { type: "application/gzip" }), `Lägesplan: CAD ${rec.name} i ${unitName(newFactor)}`);
     cadGeom.set(rec.id, buildCadGeom(data));
-    await saveSiteItem({ ...rec, factor: newFactor, origin: no, unitNote: `Omskalad till ${unitName(newFactor)}.`, stats: { ...rec.stats, kb: Math.round(gz.length / 1024) } }, false, { record: false });
+    await saveSiteItem({ ...rec, path: newPath, prevPaths: [...(rec.prevPaths || []), rec.path], factor: newFactor, origin: no, unitNote: `Omskalad till ${unitName(newFactor)}.`, stats: { ...rec.stats, kb: Math.round(gz.length / 1024) } }, false, { record: false });
     buildCadSnap(); renderCad();
     setSaveStatus(`📐 ${rec.name} är omskalad till ${unitName(newFactor)}.`);
   } catch (e) {

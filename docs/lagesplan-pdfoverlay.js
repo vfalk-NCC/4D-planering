@@ -32,6 +32,22 @@ function pdfOverlayCanvas(key) {
   }
   return c;
 }
+/* Sidan i en annan plans PDF (hämtas och tolkas en gång). */
+const pdfOvPages = new Map(); // plan-id -> { file, page }
+async function pdfOverlayPage(p) {
+  const c = pdfOvPages.get(p.id);
+  if (c && c.file === p.file_path && c.no === (p.page || 1)) return c.page;
+  if (!pdfCache.has(p.id)) {
+    const url = await ghReadBinaryUrl(token, p.file_path);
+    pdfCache.set(p.id, await (await fetch(url)).arrayBuffer());
+    URL.revokeObjectURL(url);
+  }
+  const doc = await pdfjsLib.getDocument({ data: pdfCache.get(p.id).slice(0) }).promise;
+  const page = await doc.getPage(Math.min(p.page || 1, doc.numPages));
+  pdfOvPages.set(p.id, { file: p.file_path, no: p.page || 1, page });
+  return page;
+}
+const pdfOvToStage = p => affMul(viewport.transform, affMul(calibAffine(plan.calib), affInv(calibAffine(p.calib))));
 const pdfOvBusy = new Map(); // key -> löpnummer (en nyare ritning avbryter en äldre)
 async function renderPdfOverlay(p) {
   const key = pdfOverlayKey(p), c = pdfOverlayCanvas(key), pc = $("pdfCanvas");
@@ -40,16 +56,8 @@ async function renderPdfOverlay(p) {
   if (c.dataset.stamp === stamp && c.width) return;
   const seq = (pdfOvBusy.get(key) || 0) + 1; pdfOvBusy.set(key, seq);
   try {
-    if (!pdfCache.has(p.id)) {
-      const url = await ghReadBinaryUrl(token, p.file_path);
-      pdfCache.set(p.id, await (await fetch(url)).arrayBuffer());
-      URL.revokeObjectURL(url);
-    }
-    const doc = await pdfjsLib.getDocument({ data: pdfCache.get(p.id).slice(0) }).promise;
-    const pg = await doc.getPage(Math.min(p.page || 1, doc.numPages));
-    // B:s PDF → modell → A:s PDF → stage-px.
-    const T = affMul(calibAffine(plan.calib), affInv(calibAffine(p.calib)));
-    const toStage = affMul(viewport.transform, T);
+    const pg = await pdfOverlayPage(p);
+    const toStage = pdfOvToStage(p); // B:s PDF → modell → A:s PDF → stage-px
     const k = Math.sqrt(Math.abs(toStage[0] * toStage[3] - toStage[1] * toStage[2])); // stage-px per PDF-enhet
     const base = pg.getViewport({ scale: 1 });
     const s = Math.max(0.2, Math.min(k, 5000 / Math.max(base.width, base.height)));
@@ -63,6 +71,7 @@ async function renderPdfOverlay(p) {
     ctx.setTransform(...affMul(toStage, affInv(vb.transform)));
     ctx.drawImage(tmp, 0, 0);
     c.dataset.stamp = stamp;
+    scheduleOverlayHi();
   } catch (e) {
     c.width = 0;
     if (typeof setSaveStatus === "function") setSaveStatus(`⚠ Kunde inte visa PDF-lagret ${p.name || ""}: ${e.message}`);
@@ -81,9 +90,12 @@ function applyPdfOverlays() {
     c.style.opacity = layerOpacity(key);
     c.style.mixBlendMode = "multiply";
     c.style.filter = pdfOverlayColor(key) ? "" : "grayscale(1)";
-    if (on) renderPdfOverlay(p); else if (c.width) { c.width = 0; delete c.dataset.stamp; } // släckt: frigör minnet
+    const hi = pdfOverlayHi(key, false);
+    if (hi) Object.assign(hi.style, { opacity: c.style.opacity, filter: c.style.filter, mixBlendMode: "multiply" });
+    if (on) renderPdfOverlay(p);
+    else { if (c.width) { c.width = 0; delete c.dataset.stamp; } if (hi) hi.remove(); c.style.visibility = ""; } // släckt: frigör minnet
   });
-  document.querySelectorAll("#stage canvas.pdfov").forEach(c => { if (!keep.has(c.dataset.key)) c.remove(); });
+  document.querySelectorAll("#stage canvas.pdfov, #stage canvas.pdfovhi").forEach(c => { if (!keep.has(c.dataset.key)) c.remove(); });
 }
 /* Lagerraden för en annan plans PDF. */
 function pdfOverlayRowHtml(p, opts) {
@@ -91,4 +103,76 @@ function pdfOverlayRowHtml(p, opts) {
   ls(key, { visible: false });
   return layerRow(key, `<span class="pdfov-name" title="${escHtml(p.name || "")}${ready ? "" : " – planen (eller den öppna planen) är inte kalibrerad och kan inte läggas på rätt ställe"}">📄 ${escHtml(p.name || "Plan")}</span>${ready ? "" : " <small>ej kalibrerad</small>"}`,
     { ...opts, extra: `<label class="blend"><input type="checkbox" class="lr-color"${pdfOverlayColor(key) ? " checked" : ""} /> Färg</label>` });
+}
+
+/* Full skärpa vid inzoomning (Victors önskemål 2026-10-05), som för den öppna planen: när zoomen
+   stannat ritas den synliga delen av varje tänt PDF-lager om i skärmens upplösning. Fungerar även
+   när lagrets plan är roterad eller har annan skala: den del av sidan som syns renderas i sin egen
+   riktning och läggs sedan på plats. Under panorering visas den vanliga bilden. */
+function pdfOverlayHi(key, create = true) {
+  let h = document.querySelector(`#stage canvas.pdfovhi[data-key="${CSS.escape(key)}"]`);
+  if (!h && create) {
+    h = document.createElement("canvas"); h.className = "pdfovhi"; h.dataset.key = key; h.width = 0;
+    const lo = pdfOverlayCanvas(key); lo.parentNode.insertBefore(h, lo.nextSibling);
+  }
+  return h;
+}
+let pdfOvHiTimer = 0, pdfOvHiSeq = 0;
+const pdfOvHiTasks = new Map();
+function scheduleOverlayHi() {
+  clearTimeout(pdfOvHiTimer);
+  // Under panorering/zoom: den vanliga bilden syns, den skarpa göms tills den ritats om.
+  document.querySelectorAll("#stage canvas.pdfovhi").forEach(h => { h.style.display = "none"; });
+  document.querySelectorAll("#stage canvas.pdfov").forEach(c => { c.style.visibility = ""; });
+  pdfOvHiTimer = setTimeout(renderOverlaysHi, 160);
+}
+function renderOverlaysHi() {
+  const seq = ++pdfOvHiSeq;
+  pdfOverlayPlans().forEach(p => { const key = pdfOverlayKey(p); if (layerVisible(key) && pdfOverlayReady(p)) renderOverlayHi(p, seq); });
+}
+async function renderOverlayHi(p, seq) {
+  const key = pdfOverlayKey(p), lo = pdfOverlayCanvas(key), pc = $("pdfCanvas");
+  if (!viewport || !pc.width || !lo.width) return;
+  let s = view.scale * (window.devicePixelRatio || 1);
+  if (s <= 1.05) { const h = pdfOverlayHi(key, false); if (h) h.width = 0; lo.style.visibility = ""; return; }
+  const vb = visibleStageBox();
+  const x0 = Math.max(0, vb[0]), y0 = Math.max(0, vb[1]), x1 = Math.min(pc.width, vb[2]), y1 = Math.min(pc.height, vb[3]);
+  if (x1 <= x0 || y1 <= y0) return;
+  const maxPx = 30e6;
+  if ((x1 - x0) * (y1 - y0) * s * s > maxPx) s = Math.sqrt(maxPx / ((x1 - x0) * (y1 - y0)));
+  const cw = Math.ceil((x1 - x0) * s), ch = Math.ceil((y1 - y0) * s);
+  try {
+    const pg = await pdfOverlayPage(p);
+    if (seq !== pdfOvHiSeq) return;
+    const toStage = pdfOvToStage(p), fromStage = affInv(toStage);
+    const k = Math.sqrt(Math.abs(toStage[0] * toStage[3] - toStage[1] * toStage[2]));
+    // Den synliga delen i lagrets egen PDF (en rotation gör rutan större), begränsad till sidan.
+    const pts = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => [fromStage[0] * x + fromStage[2] * y + fromStage[4], fromStage[1] * x + fromStage[3] * y + fromStage[5]]);
+    const [vx0, vy0, vx1, vy1] = pg.view;
+    const bx0 = Math.max(vx0, Math.min(...pts.map(q => q[0]))), bx1 = Math.min(vx1, Math.max(...pts.map(q => q[0])));
+    const by0 = Math.max(vy0, Math.min(...pts.map(q => q[1]))), by1 = Math.min(vy1, Math.max(...pts.map(q => q[1])));
+    if (bx1 <= bx0 || by1 <= by0) return;
+    let sB = s * k;
+    if ((bx1 - bx0) * (by1 - by0) * sB * sB > maxPx) sB = Math.sqrt(maxPx / ((bx1 - bx0) * (by1 - by0)));
+    const full = pg.getViewport({ scale: sB });
+    const cr = [[bx0, by0], [bx1, by0], [bx1, by1], [bx0, by1]].map(([x, y]) => full.convertToViewportPoint(x, y));
+    const rx0 = Math.floor(Math.min(...cr.map(q => q[0]))), ry0 = Math.floor(Math.min(...cr.map(q => q[1])));
+    const rw = Math.ceil(Math.max(...cr.map(q => q[0]))) - rx0, rh = Math.ceil(Math.max(...cr.map(q => q[1]))) - ry0;
+    const part = pg.getViewport({ scale: sB, offsetX: -rx0, offsetY: -ry0 });
+    const tmpB = document.createElement("canvas"); tmpB.width = rw; tmpB.height = rh;
+    const bctx = tmpB.getContext("2d"); bctx.fillStyle = "#fff"; bctx.fillRect(0, 0, rw, rh);
+    const prev = pdfOvHiTasks.get(key); if (prev) { try { prev.cancel(); } catch (e) {} }
+    const task = pg.render({ canvasContext: bctx, viewport: part, annotationMode: pdfjsLib.AnnotationMode.DISABLE });
+    pdfOvHiTasks.set(key, task);
+    try { await task.promise; } catch (e) { return; } // avbruten av en nyare
+    if (seq !== pdfOvHiSeq || !layerVisible(key)) return;
+    const h = pdfOverlayHi(key);
+    h.width = cw; h.height = ch;
+    const hctx = h.getContext("2d");
+    hctx.setTransform(...affMul([s, 0, 0, s, -x0 * s, -y0 * s], affMul(toStage, affInv(part.transform))));
+    hctx.drawImage(tmpB, 0, 0);
+    Object.assign(h.style, { left: `${x0}px`, top: `${y0}px`, width: `${x1 - x0}px`, height: `${y1 - y0}px`,
+      display: lo.style.display, opacity: lo.style.opacity, filter: lo.style.filter, mixBlendMode: "multiply" });
+    lo.style.visibility = "hidden"; // den skarpa täcker det synliga – dölj den grövre (annars dubbelt mörk)
+  } catch (e) { /* den vanliga bilden finns kvar */ }
 }
