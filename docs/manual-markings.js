@@ -71,7 +71,8 @@ function markSegments(m) {
   } else if (m.shape === "freehand") (m.lines || []).forEach(l => segs.push(l));
   return segs;
 }
-function markColor(m) {
+/* Status (fas) för en markering vid tidslinjens datum, eller null om aktiviteten saknas. */
+function markPhase(m) {
   let it = items.find(x => x.id === m.itemId);
   // Markering för en delaktivitet: färgen följer delaktivitetens datum.
   if (it && m.subName) {
@@ -79,11 +80,13 @@ function markColor(m) {
     const r = all.find(x => x.name === m.subName) || { start: m.subStart, end: m.subEnd };
     it = { ...it, startDate: r.start || it.startDate, endDate: r.end || it.endDate };
   }
-  const colors = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
-  if (!it) return colors.planerad || "#888888";
+  if (!it) return null;
   const at = (document.getElementById("timelineDate") || {}).value || new Date().toISOString().slice(0, 10);
-  const phase = computeItemPhase(it, at, settings.warningDaysBeforeEnd || 0) || "planerad";
-  return colors[phase] || "#888888";
+  return computeItemPhase(it, at, settings.warningDaysBeforeEnd || 0) || "planerad";
+}
+function markColor(m) {
+  const colors = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
+  return colors[markPhase(m) || "planerad"] || "#888888";
 }
 /* Id:n för linjer vi just lagt till. Om Trimble Connect inte returnerar
    id:n letas de upp bland markeringarna i vyn (via koordinaterna). */

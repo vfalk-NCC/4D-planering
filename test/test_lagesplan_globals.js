@@ -3,7 +3,9 @@
 // Testet hittar sådana krockar statiskt (Victors exporter 2026-10-05: zoneLabelBoxes krockade).
 const fs = require('fs'), path = require('path');
 const DOCS = path.join(__dirname, '..', 'docs');
-const html = fs.readFileSync(path.join(DOCS, 'lagesplan.html'), 'utf8');
+// Samma kontroll för 4D-planeringens index.html (delar ifc-writer.js med Lägesplan).
+['lagesplan.html', 'index.html'].forEach(page => {
+const html = fs.readFileSync(path.join(DOCS, page), 'utf8');
 const files = [...html.matchAll(/<script src="([^"?]+\.js)(?:\?[^"]*)?"><\/script>/g)].map(m => m[1]).filter(f => fs.existsSync(path.join(DOCS, f)));
 const seen = new Map(), dupes = [];
 files.forEach(f => {
@@ -20,4 +22,5 @@ files.forEach(f => {
   }
 });
 if (dupes.length) { console.error('FEL: samma globala namn i flera filer (filen laddas inte):\n  ' + dupes.join('\n  ')); process.exit(1); }
-console.log(`OK: inga krockande globala namn i Lägesplanens ${files.length} skript (${seen.size} namn)`);
+console.log(`OK: inga krockande globala namn i ${page} (${files.length} skript, ${seen.size} namn)`);
+});
