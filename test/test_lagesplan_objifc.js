@@ -70,10 +70,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const proxies = of('IFCBUILDINGELEMENTPROXY');
   const markers = proxies.filter(p => /'4D-markering'/.test(p.args)), texts = proxies.filter(p => /'4D-text'/.test(p.args));
   if (markers.length !== 2 || texts.length !== 2) fail('En cylinder och en text per markering: ' + proxies.length);
-  if (!/'K10 - Pelare'/.test(markers.map(m => m.args).join()) || !/'M30 - Gjutning v\\X2\\00E4\\X0\\ggar \(2\)'/.test(t)) fail('Namnen (å/ä/ö som \\X2\\): ' + markers.map(m => m.args.slice(0, 80)).join(' | '));
+  if (!/'K10'/.test(markers.map(m => m.args).join()) || !(/'M30 \(2\)'/.test(t) && /IFCLABEL\('Gjutning v\\X2\\00E4\\X0\\ggar'\)/.test(t))) fail('Namnen (å/ä/ö som \\X2\\): ' + markers.map(m => m.args.slice(0, 80)).join(' | '));
   // Placering: cylindern ovanpå högsta punkten (+ 0,1 m).
   const ptOf = pl => { const ax = defs.get(/#(\d+)$/.exec(defs.get(pl).args)[1]); const p = defs.get(/^#(\d+)/.exec(ax.args)[1]); return p.args.replace(/[()]/g, '').split(',').map(Number); };
-  const k10 = markers.find(m => /'K10 - Pelare'/.test(m.args)), m30 = markers.find(m => /M30/.test(m.args));
+  const k10 = markers.find(m => /'K10'/.test(m.args)), m30 = markers.find(m => /M30/.test(m.args));
   const plOf = m => /,'4D-markering',#(\d+),/.exec(m.args)[1];
   const pk = ptOf(plOf(k10)), pm = ptOf(plOf(m30));
   if (Math.abs(pk[0] - 6512345.5) > 0.001 || Math.abs(pk[1] - 150123.25) > 0.001 || Math.abs(pk[2] - 14.3) > 0.001) fail('K10: cylindern ska stå på objektets högsta punkt i modellens koordinater: ' + pk);

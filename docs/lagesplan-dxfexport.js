@@ -31,11 +31,10 @@ function dxfCp1252(str) {
 const dxfNum = v => (Math.round(v * 1000) / 1000).toFixed(3);
 const dxfText = s => String(s || "").replace(/[\r\n]+/g, " ").trim();
 const DXF_TEXT_H = 1.0; // texthöjd i meter
-/* "K10 - Pelare": objektets namn/kod och aktiviteten (en gång om de är lika). */
+/* Namnet som skrivs ut: bara objektets namn/kod, t.ex. "L12" (Victors val 2026-10-05) –
+   aktiviteten om objektet saknar namn. */
 function dxfItemName(it) {
-  const a = dxfText(it.object_name), b = dxfText(it.activity);
-  if (a && b && a.toLowerCase() !== b.toLowerCase() && !a.toLowerCase().includes(b.toLowerCase())) return `${a} - ${b}`;
-  return a || b;
+  return dxfText(it.object_name) || dxfText(it.activity);
 }
 
 /* Texternas vridning (grader, moturs i modellen) så att de läses vågrätt i den vy man har i
@@ -52,7 +51,7 @@ function dxfTextRotation() {
 
 /* Markeringarna som exporteras (DXF och IFC): det som syns i Lägesplan – en per objekt, eller
    en per aktivitet när objekten slås ihop. x/y = mitten (eller den flyttade markeringen), zTop =
-   objektens högsta punkt, ph = status för valt datum, name = "K10 - Pelare" (+ antal). */
+   objektens högsta punkt, ph = status för valt datum, name = "L12" (+ antal). */
 function objExportMarkers() {
   const objs = typeof objectShapesInPdf === "function" ? objectShapesInPdf() : null;
   if (!objs || !objs.length) return [];
