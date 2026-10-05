@@ -45,7 +45,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     downloadBlob = (blob, name) => { files[name.slice(-3)] = { blob, name }; };
     askOpener = async (type, extra) => { calls.push([type, extra.folder, extra.files[0].name]); return { folder: extra.folder }; };
     Object.defineProperty(window, 'opener', { value: { closed: false }, configurable: true, writable: true });
-    $('zoneCadToTc').checked = true;
+    $('cadExportToTc').checked = true;
     await exportZonesDxf(); await exportZonesIfc();
     const dxfText = new TextDecoder('windows-1252').decode(new Uint8Array(await files.dxf.blob.arrayBuffer()));
     const dxf = parseDxf(dxfText), geo = dxfToGeometry(dxf);

@@ -90,12 +90,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     askOpener = async (type, extra) => { calls.push([type, extra.folder, extra.files.map(f => f.name + ':' + f.size).join()]); return { folder: extra.folder }; };
     const run = async (opener, checked) => {
       Object.defineProperty(window, 'opener', { value: opener, configurable: true, writable: true });
-      $('objDxfToTc').checked = checked;
+      $('cadExportToTc').checked = checked;
       await exportObjectsDxf();
       return $('saveStatus').textContent;
     };
     const s1 = await run({ closed: false }, true), s2 = await run({ closed: false }, false), s3 = await run(null, true);
-    return { calls, downloads, s1, s2, s3, def: (() => { try { return localStorage.getItem('lagesplan-objdxf-tc'); } catch (e) { return 'x'; } })() };
+    return { calls, downloads, s1, s2, s3, def: (() => { try { return localStorage.getItem('lagesplan-cadexport-tc'); } catch (e) { return 'x'; } })() };
   });
   if (tc.downloads.length !== 3 || tc.calls.length !== 1 || tc.calls[0][0] !== 'tcUpload' || tc.calls[0][1] !== 'Lägesplan export' || !/^3D-objekt Plan 1 .*\.dxf:\d+$/.test(tc.calls[0][2])) fail('Lokal kopia varje gång, Trimble Connect bara med rutan ikryssad: ' + JSON.stringify(tc));
   if (!/sparade i Trimble Connect \(Lägesplan export\)/.test(tc.s1) || /Trimble/.test(tc.s2) || !/öppna lägesplanen via/.test(tc.s3)) fail('Statusen ska säga var filen hamnade: ' + JSON.stringify(tc));

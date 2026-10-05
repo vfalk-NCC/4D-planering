@@ -214,7 +214,7 @@ function exportObjectsDxf() {
   downloadBlob(new Blob([bytes], { type: "application/dxf" }), name); // alltid en lokal kopia
   setSaveStatus(`📐 ${r.n} objekt exporterade som DXF (meter, modellens koordinater).`);
   // Även till Trimble Connect (via 4D-planering, som har behörigheten) – Victors önskemål 2026-10-05.
-  const tc = $("objDxfToTc");
+  const tc = $("cadExportToTc");
   if (!tc || !tc.checked) return;
   if (!window.opener || window.opener.closed) {
     setSaveStatus(`📐 ${r.n} objekt nedladdade. ⚠ Inte sparad i Trimble Connect – öppna lägesplanen via 🗺️ i 4D-planering för det.`);
@@ -231,10 +231,10 @@ const DXF_TC_FOLDER = "Lägesplan export";
 document.addEventListener("DOMContentLoaded", () => {
   const b = $("btnObjDxf");
   if (b) b.onclick = exportObjectsDxf;
-  // Valet "Spara även i Trimble Connect" sparas i webbläsaren (på från början).
-  const tc = $("objDxfToTc");
+  // Valet "Spara även i Trimble Connect" (gäller alla CAD-exporter) sparas i webbläsaren, på från början.
+  const tc = $("cadExportToTc");
   if (tc) {
-    try { tc.checked = localStorage.getItem("lagesplan-objdxf-tc") !== "0"; } catch (e) {}
-    tc.onchange = () => { try { localStorage.setItem("lagesplan-objdxf-tc", tc.checked ? "1" : "0"); } catch (e) {} };
+    try { tc.checked = localStorage.getItem("lagesplan-cadexport-tc") !== "0"; } catch (e) {}
+    tc.onchange = () => { try { localStorage.setItem("lagesplan-cadexport-tc", tc.checked ? "1" : "0"); } catch (e) {} };
   }
 });

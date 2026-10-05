@@ -218,9 +218,15 @@
   <h3>Bra att kunna</h3>
   <ul>
     <li><b>Förklaringen</b>: dölj, döp om, färga och flytta rader. Faserna visas som samma prickar som på kartan.</li>
-    <li><b>📐 3D-objekt som DXF</b> (Lägesplanen → <i>Export</i>): prickarna och objektnamnen ("L12") som syns, som planritning i modellens koordinater i meter – punkt i objektets mitt på lager per status (4D-KLAR, 4D-PAGAENDE …) och namnet på 4D-NAMN – vridet så att det läses vågrätt i den vy du har när du exporterar. Filen laddas alltid ned lokalt och sparas också i Trimble Connect (mappen <i>Lägesplan export</i>) om rutan är ikryssad och lägesplanen är öppnad via 🗺️ i 4D-planering. Lägg den mot era andra ritningar i CAD.</li>
-    <li><b>🧊 3D-objekt som IFC</b> (Lägesplanen → <i>Export</i>): samma objekt som DXF:en fast i 3D – en cylinder i statusfärg ovanpå varje objekts högsta punkt och en liggande 3D-text med objektnamnet (t.ex. L12) bredvid, 0,5 m tjock, som läses uppifrån i planvyn från samma håll som din vy. Klicka på cylindern i Trimble Connect för aktivitet, status, framdrift, datum och zon. Laddas ned lokalt och sparas i <i>Lägesplan export</i> i Trimble Connect.</li>
-    <li><b>🟧 Zoner som DXF / IFC</b> (Lägesplanen → <i>Export</i>): DXF med zonernas konturer per status, överzonernas kontur och kod + namn i zonen; IFC med 0,5 m tjocka plattor i statusfärg på arbetsytans kalibrerade maxhöjd och kod + namn som liggande 3D-text ovanpå. Klicka på plattan för yta, status, framdrift och aktiviteter.</li>
+    <li><b>CAD-export</b> (Lägesplanen → <i>Export</i> → rutan <i>CAD-export</i>): det som syns, i modellens koordinater i meter. Namnen läses vågrätt från samma håll som din vy och placeras så att de inte krockar.
+      <ul>
+        <li><b>3D-objekt DXF</b>: fylld prick i statusfärg och objektets namn (L12), lager per status (4D-KLAR, 4D-PAGAENDE …) och 4D-NAMN.</li>
+        <li><b>3D-objekt IFC</b>: cylinder i statusfärg ovanpå varje objekts högsta punkt och namnet som liggande 3D-text (0,5 m tjock) bredvid, läsbar uppifrån. Klicka på cylindern i Trimble Connect för aktivitet, status, framdrift, datum och zon.</li>
+        <li><b>Zoner DXF</b>: zonernas konturer per status (ZON-…), överzonernas streckade ram med namn (OVERZON) och kod + namn i zonens hörn (ZON-NAMN).</li>
+        <li><b>Zoner IFC</b>: 0,5 m tjocka plattor i statusfärg med mörkare kant, på arbetsytans kalibrerade maxhöjd, och kod + namn som 3D-text ovanpå. Klicka på plattan för yta, status, framdrift och aktiviteter.</li>
+        <li>Filen laddas alltid ned lokalt och sparas också i Trimble Connect (mappen <i>Lägesplan export</i>) om rutan är ikryssad och lägesplanen är öppnad via 🗺️ i 4D-planering.</li>
+      </ul>
+    </li>
     <li><b>QR-kod i ram</b>: bocka i <i>Ram med egen text</i> för ett färdigt kort med rubrik och mobilikon.</li>
     <li><b>📚 Bibliotek</b>: ladda upp AED, WC, stoppskyltar m.m. en gång – lägg in med ett klick i alla projekt.</li>
     <li><b>Bilder</b>: beskär och gör vit bakgrund genomskinlig.</li>

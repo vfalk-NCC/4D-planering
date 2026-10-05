@@ -48,7 +48,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     downloadBlob = (blob, name) => { got = { blob, name }; };
     askOpener = async (type, extra) => { calls.push([type, extra.folder, extra.files[0].name]); return { folder: extra.folder }; };
     Object.defineProperty(window, 'opener', { value: { closed: false }, configurable: true, writable: true });
-    $('objIfcToTc').checked = true;
+    $('cadExportToTc').checked = true;
     await exportObjectsIfc();
     const text = await got.blob.text();
     // Läsriktningen på skärmen (samma beräkning som för DXF:en).

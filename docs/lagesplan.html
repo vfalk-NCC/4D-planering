@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261005230930"></script>
+<script src="github-storage.js?v=20261005231816"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -726,6 +726,13 @@
   .zw-kids { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
   .zw-kids button { font-size: 11px; padding: 2px 7px; height: auto; border-radius: 10px; }
   .zone-item.wbs-item.sel { background: var(--accent-weak); box-shadow: inset 3px 0 0 var(--accent); }
+  .cad-exp { margin-top: 10px; padding: 8px 10px 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2, #f8fafc); }
+  .cad-exp-h { font-size: 12px; font-weight: 700; margin-bottom: 6px; display: flex; align-items: baseline; gap: 6px; }
+  .cad-exp-h span { font-weight: 400; color: var(--muted); font-size: 11px; }
+  .cad-exp-grid { display: grid; grid-template-columns: auto 1fr 1fr; gap: 5px 6px; align-items: center; }
+  .cad-exp-l { font-size: 12px; white-space: nowrap; padding-right: 2px; }
+  .cad-exp-grid button { height: 28px; font-weight: 600; }
+  .cad-exp .check { margin-top: 6px; font-size: 11.5px; }
   #itemLinkBanner { position: absolute; z-index: 30; left: 50%; top: 12px; transform: translateX(-50%); max-width: min(440px, calc(100% - 32px)); display: flex; flex-direction: column; gap: 2px; padding: 9px 34px 9px 13px; border-radius: 12px; background: rgba(255,255,255,.96); box-shadow: 0 8px 28px rgba(15,23,42,.22); font-size: 12.5px; color: #111827; }
   #itemLinkBanner.hidden { display: none; }
   #itemLinkBanner b { font-size: 13.5px; }
@@ -1304,15 +1311,18 @@
           </div>
           <label class="check" title="Vektor: ritningen blir skarp i alla zoomnivåer men filen kan bli stor om ritnings-PDF:en är tung. Bild: mindre fil, ritningen blir en bild."><input type="checkbox" class="pdf-vec-chk" checked /> Ritningen som vektor (skarp, större fil)</label>
           <div class="hint">Exporten tar med det som syns: valt datum, filter, lager och teckenförklaring.</div>
-          <button id="btnObjDxf" class="block" style="margin-top:6px;" title="Prickarna och aktivitetsnamnen för 3D-objekten som syns, i modellens koordinater (meter) – punkt i mitten och namn, lager per status">📐 3D-objekt som DXF (meter)</button>
-          <label class="check" title="Varje DXF-export sparas också i Trimble Connect, i mappen &quot;Lägesplan export&quot; (kräver att lägesplanen är öppnad via 🗺️ i 4D-planering). En kopia laddas alltid ned lokalt."><input type="checkbox" id="objDxfToTc" checked /> Spara även i Trimble Connect (Lägesplan export)</label>
-          <button id="btnObjIfc" class="block" style="margin-top:6px;" title="Samma som DXF:en fast i 3D: en cylinder i statusfärg ovanpå varje objekts högsta punkt och en liggande 3D-text (0,5 m tjock) med objektets namn som läses uppifrån, i modellens koordinater (meter). Egenskaper (aktivitet, status, framdrift, datum, zon) på cylindern.">🧊 3D-objekt som IFC (3D)</button>
-          <label class="check" title="Varje IFC-export sparas också i Trimble Connect, i mappen &quot;Lägesplan export&quot; (kräver att lägesplanen är öppnad via 🗺️ i 4D-planering). En kopia laddas alltid ned lokalt."><input type="checkbox" id="objIfcToTc" checked /> Spara även i Trimble Connect (Lägesplan export)</label>
-          <div class="row split" style="margin-top:6px;">
-            <button id="btnZoneDxf" title="Zonerna som syns: konturer på lager per status, överzonernas kontur och kod + namn i zonen – planritning i modellens koordinater (meter)">🟧 Zoner som DXF</button>
-            <button id="btnZoneIfc" title="Zonerna som 0,5 m tjocka plattor i statusfärg på arbetsytans kalibrerade maxhöjd, med kod + namn som liggande 3D-text ovanpå. Egenskaper på plattan.">🟧 Zoner som IFC</button>
+          <div class="cad-exp" title="Det som syns i lägesplanen, i modellens koordinater (meter) – läggs ovanpå ritningar i CAD eller modellen i Trimble Connect">
+            <div class="cad-exp-h">CAD-export <span>modellens koordinater · meter</span></div>
+            <div class="cad-exp-grid">
+              <span class="cad-exp-l">📐 3D-objekt</span>
+              <button id="btnObjDxf" title="Planritning: fylld prick i statusfärg och objektets namn (t.ex. L12), lager per status – namnen vända som din vy">DXF</button>
+              <button id="btnObjIfc" title="3D: cylinder i statusfärg ovanpå varje objekts högsta punkt och objektets namn som liggande 3D-text (0,5 m tjock), läsbar uppifrån. Egenskaper på cylindern.">IFC</button>
+              <span class="cad-exp-l">🟧 Zoner</span>
+              <button id="btnZoneDxf" title="Planritning: zonernas konturer per status, överzonernas streckade ram och kod + namn i zonen">DXF</button>
+              <button id="btnZoneIfc" title="3D: 0,5 m tjocka plattor i statusfärg på arbetsytans kalibrerade maxhöjd, kod + namn som 3D-text ovanpå. Egenskaper på plattan.">IFC</button>
+            </div>
+            <label class="check" title="Varje CAD-export sparas också i Trimble Connect, i mappen &quot;Lägesplan export&quot; (kräver att lägesplanen är öppnad via 🗺️ i 4D-planering). En kopia laddas alltid ned lokalt."><input type="checkbox" id="cadExportToTc" checked /> Spara även i Trimble Connect (Lägesplan export)</label>
           </div>
-          <label class="check" title="Zonexporterna sparas också i Trimble Connect, i mappen &quot;Lägesplan export&quot; (kräver att lägesplanen är öppnad via 🗺️ i 4D-planering). En kopia laddas alltid ned lokalt."><input type="checkbox" id="zoneCadToTc" checked /> Spara zonexporterna även i Trimble Connect</label>
         </details>
         <details class="sec" data-sec="exportSite" open>
           <summary><span class="si">🗓</span>Etableringsplan</summary>
@@ -1476,33 +1486,33 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261005230930"></script>
-<script src="lagesplan-tools.js?v=20261005230930"></script>
-<script src="lagesplan-layers.js?v=20261005230930"></script>
-<script src="lagesplan-pdfoverlay.js?v=20261005230930"></script>
-<script src="lagesplan-views.js?v=20261005230930"></script>
-<script src="lagesplan-film.js?v=20261005230930"></script>
-<script src="lagesplan-cad.js?v=20261005230930"></script>
-<script src="lagesplan-vecpdf.js?v=20261005230930"></script>
-<script src="lagesplan-print.js?v=20261005230930"></script>
-<script src="lagesplan-printlib.js?v=20261005230930"></script>
-<script src="lagesplan-pdflayers.js?v=20261005230930"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261005230930"></script>
-<script src="lagesplan-objmarks.js?v=20261005230930"></script>
-<script src="lagesplan-objlist.js?v=20261005230930"></script>
-<script src="lagesplan-zones.js?v=20261005230930"></script>
-<script src="lagesplan-wbs.js?v=20261005230930"></script>
-<script src="lagesplan-zoneexport.js?v=20261005230930"></script>
-<script src="lagesplan-itemlink.js?v=20261005230930"></script>
-<script src="lagesplan-dxfexport.js?v=20261005230930"></script>
-<script src="lagesplan-ifcexport.js?v=20261005230930"></script>
-<script src="lagesplan-zonecad.js?v=20261005230930"></script>
-<script src="lagesplan-daily.js?v=20261005230930"></script>
-<script src="lagesplan-gps.js?v=20261005230930"></script>
-<script src="lagesplan-weather.js?v=20261005230930"></script>
-<script src="lagesplan-touch.js?v=20261005230930"></script>
-<script src="lagesplan-drawer.js?v=20261005230930"></script>
-<script src="lagesplan-gpslive.js?v=20261005230930"></script>
-<script src="lagesplan-keys.js?v=20261005230930"></script>
+<script src="lagesplan.js?v=20261005231816"></script>
+<script src="lagesplan-tools.js?v=20261005231816"></script>
+<script src="lagesplan-layers.js?v=20261005231816"></script>
+<script src="lagesplan-pdfoverlay.js?v=20261005231816"></script>
+<script src="lagesplan-views.js?v=20261005231816"></script>
+<script src="lagesplan-film.js?v=20261005231816"></script>
+<script src="lagesplan-cad.js?v=20261005231816"></script>
+<script src="lagesplan-vecpdf.js?v=20261005231816"></script>
+<script src="lagesplan-print.js?v=20261005231816"></script>
+<script src="lagesplan-printlib.js?v=20261005231816"></script>
+<script src="lagesplan-pdflayers.js?v=20261005231816"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261005231816"></script>
+<script src="lagesplan-objmarks.js?v=20261005231816"></script>
+<script src="lagesplan-objlist.js?v=20261005231816"></script>
+<script src="lagesplan-zones.js?v=20261005231816"></script>
+<script src="lagesplan-wbs.js?v=20261005231816"></script>
+<script src="lagesplan-zoneexport.js?v=20261005231816"></script>
+<script src="lagesplan-itemlink.js?v=20261005231816"></script>
+<script src="lagesplan-dxfexport.js?v=20261005231816"></script>
+<script src="lagesplan-ifcexport.js?v=20261005231816"></script>
+<script src="lagesplan-zonecad.js?v=20261005231816"></script>
+<script src="lagesplan-daily.js?v=20261005231816"></script>
+<script src="lagesplan-gps.js?v=20261005231816"></script>
+<script src="lagesplan-weather.js?v=20261005231816"></script>
+<script src="lagesplan-touch.js?v=20261005231816"></script>
+<script src="lagesplan-drawer.js?v=20261005231816"></script>
+<script src="lagesplan-gpslive.js?v=20261005231816"></script>
+<script src="lagesplan-keys.js?v=20261005231816"></script>
 </body>
 </html>

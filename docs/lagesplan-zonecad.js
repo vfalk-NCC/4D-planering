@@ -15,7 +15,6 @@ function zoneShade(hex, f) {
   return "#" + c.map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0")).join("");
 }
 const zoneIsDark = hex => { const n = parseInt(String(hex).slice(1), 16); return (0.299 * (n >> 16 & 255) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)) / 255 < 0.5; };
-const ZONE_TC_KEY = "lagesplan-zonecad-tc";
 const ZONE_DXF_LAYER = { planerad: "ZON-PLANERAD", pagaende: "ZON-PAGAENDE", forsenad: "ZON-FORSENAD", klar: "ZON-KLAR", pausad: "ZON-PAUSAD", ingen: "ZON-INGEN" };
 
 /* Polygon förskjuten d meter utåt (gering med begränsad spets), så att en kontur kan ligga runt
@@ -208,7 +207,7 @@ function buildZonesIfc() {
 function zoneCadSave(bytes, name, type, what) {
   downloadBlob(new Blob([bytes], { type }), name);
   setSaveStatus(`🟧 ${what}.`);
-  const tc = $("zoneCadToTc");
+  const tc = $("cadExportToTc");
   if (!tc || !tc.checked) return Promise.resolve();
   if (!window.opener || window.opener.closed) { setSaveStatus(`🟧 ${what}. ⚠ Inte sparad i Trimble Connect – öppna lägesplanen via 🗺️ i 4D-planering för det.`); return Promise.resolve(); }
   setSaveStatus(`🟧 ${what} – sparar i Trimble Connect…`);
@@ -239,9 +238,4 @@ function exportZonesIfc() {
 document.addEventListener("DOMContentLoaded", () => {
   if ($("btnZoneDxf")) $("btnZoneDxf").onclick = exportZonesDxf;
   if ($("btnZoneIfc")) $("btnZoneIfc").onclick = exportZonesIfc;
-  const tc = $("zoneCadToTc");
-  if (tc) {
-    try { tc.checked = localStorage.getItem(ZONE_TC_KEY) !== "0"; } catch (e) {}
-    tc.onchange = () => { try { localStorage.setItem(ZONE_TC_KEY, tc.checked ? "1" : "0"); } catch (e) {} };
-  }
 });

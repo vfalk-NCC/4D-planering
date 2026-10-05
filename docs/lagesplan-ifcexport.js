@@ -237,7 +237,7 @@ async function exportObjectsIfc() {
   const bytes = new TextEncoder().encode(r.text); // ren ASCII (å/ä/ö som \X2\)
   downloadBlob(new Blob([bytes], { type: "application/x-step" }), name); // alltid en lokal kopia
   setSaveStatus(`🧊 ${r.n} objekt exporterade som IFC (3D, meter, modellens koordinater).`);
-  const tc = $("objIfcToTc");
+  const tc = $("cadExportToTc");
   if (!tc || !tc.checked) return;
   if (!window.opener || window.opener.closed) {
     setSaveStatus(`🧊 ${r.n} objekt nedladdade som IFC. ⚠ Inte sparad i Trimble Connect – öppna lägesplanen via 🗺️ i 4D-planering för det.`);
@@ -253,9 +253,4 @@ async function exportObjectsIfc() {
 document.addEventListener("DOMContentLoaded", () => {
   const b = $("btnObjIfc");
   if (b) b.onclick = exportObjectsIfc;
-  const tc = $("objIfcToTc");
-  if (tc) {
-    try { tc.checked = localStorage.getItem("lagesplan-objifc-tc") !== "0"; } catch (e) {}
-    tc.onchange = () => { try { localStorage.setItem("lagesplan-objifc-tc", tc.checked ? "1" : "0"); } catch (e) {} };
-  }
 });
