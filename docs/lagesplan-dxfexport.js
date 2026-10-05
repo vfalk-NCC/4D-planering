@@ -50,36 +50,50 @@ function dxfTextRotation() {
   } catch (e) { return 0; }
 }
 
-/* Bygger DXF-texten. Returnerar { text, n } eller null om inga objekt syns. */
-function buildObjectsDxf() {
+/* Markeringarna som exporteras (DXF och IFC): det som syns i Lägesplan – en per objekt, eller
+   en per aktivitet när objekten slås ihop. x/y = mitten (eller den flyttade markeringen), zTop =
+   objektens högsta punkt, ph = status för valt datum, name = "K10 - Pelare" (+ antal). */
+function objExportMarkers() {
   const objs = typeof objectShapesInPdf === "function" ? objectShapesInPdf() : null;
-  if (!objs || !objs.length) return null;
+  if (!objs || !objs.length) return [];
   const at = $("dateInput").value || todayIso();
   const warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
   const byId = new Map(positions.map(p => [p.id, p]));
+  const out = [];
+  objs.forEach(o => {
+    const members = o.members && o.members.length ? o.members : [o.it];
+    const ps = members.map(m => byId.get(m.id)).filter(Boolean);
+    if (!ps.length) return;
+    const ph = members.length > 1 ? zonePhase(members, at) : (computeItemPhase(o.it, at, warn) || fallbackPhase(o.it));
+    let x = ps.reduce((a, p) => a + p.x, 0) / ps.length, y = ps.reduce((a, p) => a + p.y, 0) / ps.length;
+    if (o.moved && typeof objMarkPos === "function") { const m = objMarkPos(o.fam); if (m) [x, y] = m; } // flyttad markering
+    const zTop = Math.max(...ps.map(p => Number.isFinite(p.z1) ? p.z1 : p.z0 || 0));
+    const nm = dxfItemName(o.it);
+    out.push({ x, y, zTop, ph, members, it: o.it, name: nm && members.length > 1 ? `${nm} (${members.length})` : nm });
+  });
+  return out;
+}
+
+/* Bygger DXF-texten. Returnerar { text, n } eller null om inga objekt syns. */
+function buildObjectsDxf() {
+  const marks = objExportMarkers();
+  if (!marks.length) return null;
   const out = [];
   const g = (code, v) => out.push(String(code), String(v));
   const ents = [], used = new Set(["4D-NAMN"]);
   const rot = dxfTextRotation(), rr = rot * Math.PI / 180;
   // Texten börjar en bit åt höger om punkten och står centrerad i höjd – i läsriktningen.
   const along = (dx, dy) => [dx * Math.cos(rr) - dy * Math.sin(rr), dx * Math.sin(rr) + dy * Math.cos(rr)];
-  objs.forEach(o => {
-    const members = o.members && o.members.length ? o.members : [o.it];
-    const ph = members.length > 1 ? zonePhase(members, at) : (computeItemPhase(o.it, at, warn) || fallbackPhase(o.it));
-    const layer = DXF_PHASE_LAYER[ph] || "4D-INGEN";
+  marks.forEach(mk => {
+    const layer = DXF_PHASE_LAYER[mk.ph] || "4D-INGEN", x = mk.x, y = mk.y;
     used.add(layer);
-    const ps = members.map(m => byId.get(m.id)).filter(Boolean);
-    if (!ps.length) return;
-    let x = ps.reduce((a, p) => a + p.x, 0) / ps.length, y = ps.reduce((a, p) => a + p.y, 0) / ps.length;
     const z = 0; // planritning (höjden skulle göra ritningen rörig i plan)
-    if (o.moved && typeof objMarkPos === "function") { const m = objMarkPos(o.fam); if (m) [x, y] = m; } // flyttad markering
     ents.push({ t: "POINT", layer, x, y, z });
     ents.push({ t: "CIRCLE", layer, x, y, z, r: 0.25 });
     // Inga fotavtryck (Victors val 2026-10-05): Trimble Connect ger bara en rak låda i modellens
     // axelriktning, så vridna fundament blev fel vridna och för stora. Mittpunkten stämmer.
-    const name = dxfItemName(o.it);
     const [ox, oy] = along(0.5, -DXF_TEXT_H / 2);
-    if (name) ents.push({ t: "TEXT", layer: "4D-NAMN", x: x + ox, y: y + oy, z, h: DXF_TEXT_H, rot, s: members.length > 1 ? `${name} (${members.length})` : name });
+    if (mk.name) ents.push({ t: "TEXT", layer: "4D-NAMN", x: x + ox, y: y + oy, z, h: DXF_TEXT_H, rot, s: mk.name });
   });
   if (!ents.length) return null;
   // Utbredning (så att filen öppnas på objekten, inte vid nollpunkten).
@@ -129,7 +143,7 @@ function buildObjectsDxf() {
   });
   g(0, "ENDSEC");
   g(0, "EOF");
-  return { text: out.join("\r\n") + "\r\n", n: objs.length };
+  return { text: out.join("\r\n") + "\r\n", n: marks.length };
 }
 
 function exportObjectsDxf() {
