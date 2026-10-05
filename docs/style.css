@@ -1045,6 +1045,8 @@ header h1, .header-titles h1 { white-space: nowrap; }
 .excel-inbox.fresh { background: #ecfdf5; border-color: #6ee7b7; }
 .excel-link ol { margin: 4px 0 6px 18px; padding: 0; }
 .excel-link code { background: #f1f5f9; padding: 1px 5px; border-radius: 3px; user-select: all; }
+.excel-adv { margin-top: 8px; border-top: 1px dashed var(--border, #e2e8f0); padding-top: 6px; }
+.excel-adv > summary { cursor: pointer; font-size: 12px; color: var(--muted); }
 /* Guide-knappen i sidhuvudet */
 a.header-help { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 30px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; background: white; color: var(--text); font-weight: 700; font-size: 14px; text-decoration: none; }
 a.header-help:hover { background: #f1f3f6; }
