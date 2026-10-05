@@ -90,102 +90,122 @@ function ifcStr(s) {
 const ifcNum = v => { const r = Math.round(v * 1000) / 1000; const s = String(r); return /[.eE]/.test(s) ? s : s + "."; };
 const ifcPt = p => `(${p.map(ifcNum).join(",")})`;
 
-/* Bygger IFC-filen. Returnerar { text, n } eller null om inga objekt syns. */
-function buildObjectsIfc() {
-  const marks = objExportMarkers();
-  if (!marks.length) return null;
-  const at = $("dateInput").value || todayIso();
+/* En IFC4-fil (meter) under uppbyggnad: projekt, enheter, plats och ytstilar. E(def) lägger till en
+   entitet och ger dess #id. Används av objekt- och zonexporten. */
+function ifcDoc(projName, desc) {
   const lines = [];
   let id = 0;
   const E = def => { id++; lines.push(`#${id}=${def};`); return `#${id}`; };
-  // Projekt, enheter, sammanhang, plats.
   const origin = E("IFCCARTESIANPOINT((0.,0.,0.))");
   const ax = E(`IFCAXIS2PLACEMENT3D(${origin},$,$)`);
   const ctx = E(`IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,${ax},$)`);
   const body = E(`IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,${ctx},$,.MODEL_VIEW.,$)`);
   const uL = E("IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)"), uA = E("IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.)");
   const units = E(`IFCUNITASSIGNMENT((${uL},${uA}))`);
-  const project = E(`IFCPROJECT('${ifcGuid()}',$,${ifcStr("4D-planering – " + (plan ? plan.name : ""))},${ifcStr("3D-objekt från Lägesplan " + at)},$,$,$,(${ctx}),${units})`);
+  const project = E(`IFCPROJECT('${ifcGuid()}',$,${ifcStr(projName)},${ifcStr(desc)},$,$,$,(${ctx}),${units})`);
   const sitePl = E(`IFCLOCALPLACEMENT($,${ax})`);
   const site = E(`IFCSITE('${ifcGuid()}',$,'4D-planering',$,$,${sitePl},$,$,.ELEMENT.,$,$,$,$,$)`);
   E(`IFCRELAGGREGATES('${ifcGuid()}',$,$,$,${project},(${site}))`);
-  // En ytstil per status.
   const styles = {};
-  const styleFor = ph => {
-    if (styles[ph]) return styles[ph];
-    const n = parseInt(String(phaseColor(ph)).slice(1), 16);
-    const rgb = E(`IFCCOLOURRGB($,${ifcNum((n >> 16 & 255) / 255)},${ifcNum((n >> 8 & 255) / 255)},${ifcNum((n & 255) / 255)})`);
-    const sh = E(`IFCSURFACESTYLESHADING(${rgb},0.)`);
-    return (styles[ph] = E(`IFCSURFACESTYLE(${ifcStr(PHASE_LABELS[ph] || ph)},.BOTH.,(${sh}))`));
+  const doc = {
+    E, body, sitePl,
+    // Ytstil (färg #rrggbb, genomskinlighet 0–1), en per nyckel.
+    style(key, hex, label, transp = 0) {
+      if (styles[key]) return styles[key];
+      const n = parseInt(String(hex).slice(1), 16);
+      const rgb = E(`IFCCOLOURRGB($,${ifcNum((n >> 16 & 255) / 255)},${ifcNum((n >> 8 & 255) / 255)},${ifcNum((n & 255) / 255)})`);
+      const sh = E(`IFCSURFACESTYLESHADING(${rgb},${ifcNum(transp)})`);
+      return (styles[key] = E(`IFCSURFACESTYLE(${ifcStr(label)},.BOTH.,(${sh}))`));
+    },
+    place: p => E(`IFCLOCALPLACEMENT(${sitePl},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt(p)})`)},$,$)`)})`),
+    shape: (item, type) => E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','${type}',(${item}))`)}))`),
+    proxy: (name, desc, objType, pl, shape, tag) => E(`IFCBUILDINGELEMENTPROXY('${ifcGuid()}',$,${ifcStr(name)},${ifcStr(desc)},${ifcStr(objType)},${pl},${shape},${ifcStr(tag || "")},.NOTDEFINED.)`),
+    // Egenskaper i "4D-planering" (tal som IFCREAL, annars text).
+    props(el, list) {
+      const ps = list.map(([n, v]) => E(`IFCPROPERTYSINGLEVALUE(${ifcStr(n)},$,${typeof v === "number" ? `IFCREAL(${ifcNum(v)})` : `IFCLABEL(${ifcStr(v)})`},$)`));
+      const pset = E(`IFCPROPERTYSET('${ifcGuid()}',$,'4D-planering',$,(${ps.join(",")}))`);
+      E(`IFCRELDEFINESBYPROPERTIES('${ifcGuid()}',$,$,$,(${el}),${pset})`);
+    },
+    finish(elems, fileName) {
+      E(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${ifcGuid()}',$,$,$,(${elems.join(",")}),${site})`);
+      const now = new Date().toISOString().slice(0, 19);
+      const head = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION(('ViewDefinition [ReferenceView]'),'2;1');",
+        `FILE_NAME(${ifcStr(fileName)},'${now}',(${ifcStr((typeof settings !== "undefined" && settings.userName) || "")}),('NCC'),'4D-planering',${ifcStr("4D-planering Lägesplan")},'');`,
+        "FILE_SCHEMA(('IFC4'));", "ENDSEC;", "DATA;"];
+      return [...head, ...lines, "ENDSEC;", "END-ISO-10303-21;"].join("\r\n") + "\r\n";
+    },
   };
-  const textStyle = (() => {
-    const rgb = E("IFCCOLOURRGB($,0.07,0.09,0.15)"), sh = E(`IFCSURFACESTYLESHADING(${rgb},0.)`);
-    return E(`IFCSURFACESTYLE('Text',.BOTH.,(${sh}))`);
-  })();
+  doc.textStyle = doc.style("__text", "#111827", "Text");
+  return doc;
+}
+
+/* Liggande 3D-text (läses uppifrån i planvyn) som slutna kroppar: höjd h i plan, tjocklek t uppåt
+   från z = 0 (lokalt), läsriktning (rx, ry). start = var texten börjar längs läsriktningen (meter),
+   eller null = centrerad. Returnerar IfcTriangulatedFaceSet-id, eller null. */
+function ifcTextSolid(doc, text, { h, t, rx, ry, start = null }) {
+  const { strokes, width } = ifcTextStrokes(text);
+  if (!strokes.length) return null;
+  const s = h / 6, w = IFC_STROKE * h / 2, u0 = start == null ? -width / 2 : start / s, v0 = -3;
+  // Glyf (u åt höger, v uppåt i läsriktningen) -> lokalt (meter): läsriktning (rx, ry), "uppåt" i planen (-ry, rx).
+  const P = (u, v, z) => { const a = (u + u0) * s, b = (v + v0) * s; return [a * rx - b * ry, a * ry + b * rx, z]; };
+  const pts = [], tris = [];
+  strokes.forEach(pl => {
+    for (let i = 0; i + 1 < pl.length; i++) {
+      const [u1, v1] = pl[i], [u2, v2] = pl[i + 1], du = u2 - u1, dv = v2 - v1, L = Math.hypot(du, dv) || 1;
+      const nu = -dv / L * w / s, nv = du / L * w / s, eu = du / L * w / s / 2, ev = dv / L * w / s / 2; // bredd + lite förlängning
+      const q = [[u1 - eu + nu, v1 - ev + nv], [u2 + eu + nu, v2 + ev + nv], [u2 + eu - nu, v2 + ev - nv], [u1 - eu - nu, v1 - ev - nv]];
+      // Strecket som ett rätblock: botten (z = 0) och topp (z = t).
+      const k = pts.length + 1;
+      q.forEach(([u, v]) => pts.push(P(u, v, 0)));
+      q.forEach(([u, v]) => pts.push(P(u, v, t)));
+      const b = [k, k + 1, k + 2, k + 3], tp = [k + 4, k + 5, k + 6, k + 7];
+      // q går medurs i planen (sett uppifrån) – sidorna och locken vända utåt.
+      tris.push([b[0], b[1], b[2]], [b[0], b[2], b[3]], [tp[0], tp[2], tp[1]], [tp[0], tp[3], tp[2]]);
+      for (let j = 0; j < 4; j++) { const j2 = (j + 1) % 4; tris.push([b[j], tp[j], tp[j2]], [b[j], tp[j2], b[j2]]); }
+    }
+  });
+  const pl3 = doc.E(`IFCCARTESIANPOINTLIST3D((${pts.map(ifcPt).join(",")}))`);
+  const mesh = doc.E(`IFCTRIANGULATEDFACESET(${pl3},$,.T.,(${tris.map(tr => `(${tr.join(",")})`).join(",")}),$)`);
+  doc.E(`IFCSTYLEDITEM(${mesh},(${doc.textStyle}),$)`);
+  return mesh;
+}
+/* Läsriktningen (samma som DXF:en: vågrätt i Lägesplans vy). */
+function ifcReadDir() { const rr = dxfTextRotation() * Math.PI / 180; return { rx: Math.cos(rr), ry: Math.sin(rr) }; }
+
+/* Bygger IFC-filen för 3D-objekten. Returnerar { text, n } eller null om inga objekt syns. */
+function buildObjectsIfc() {
+  const marks = objExportMarkers();
+  if (!marks.length) return null;
+  const at = $("dateInput").value || todayIso();
+  const doc = ifcDoc("4D-planering – " + (plan ? plan.name : ""), "3D-objekt från Lägesplan " + at), E = doc.E;
   // Gemensam geometri: cylindern (samma för alla).
   const prof = E(`IFCCIRCLEPROFILEDEF(.AREA.,$,$,${ifcNum(IFC_CYL_R)})`);
   const zDir = E("IFCDIRECTION((0.,0.,1.))");
-  // Textens läsriktning (samma som DXF:en: vågrätt i Lägesplans vy).
-  const rr = dxfTextRotation() * Math.PI / 180, rx = Math.cos(rr), ry = Math.sin(rr);
+  const { rx, ry } = ifcReadDir();
   const elems = [];
-  const warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
   const zoneOf = typeof zoneExportItems === "function" && typeof zoneExportPositions === "function"
-    ? (() => { const pos = zoneExportPositions(plan); const zs = (plan.zones || []).map(z => [z, new Set(zoneExportItems(plan, z, pos).map(x => x.id))]); return it => zs.filter(([, s]) => s.has(it.id)).map(([z]) => [z.code, z.name].filter(Boolean).join(" ")).join(", "); })()
+    ? (() => { const pos = zoneExportPositions(plan); const zs = (plan.zones || []).map(z => [z, new Set(zoneExportItems(plan, z, pos).map(x => x.id))]); return it => zs.filter(([, st]) => st.has(it.id)).map(([z]) => [z.code, z.name].filter(Boolean).join(" ")).join(", "); })()
     : () => "";
   marks.forEach(mk => {
-    const base = [mk.x, mk.y, mk.zTop + IFC_GAP];
-    const pl = E(`IFCLOCALPLACEMENT(${sitePl},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt(base)})`)},$,$)`)})`);
+    const pl = doc.place([mk.x, mk.y, mk.zTop + IFC_GAP]);
     // Cylindern i statusfärg.
     const cyl = E(`IFCEXTRUDEDAREASOLID(${prof},$,${zDir},${ifcNum(IFC_CYL_H)})`);
-    E(`IFCSTYLEDITEM(${cyl},(${styleFor(mk.ph)}),$)`);
-    const cylShape = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','SweptSolid',(${cyl}))`)}))`);
+    E(`IFCSTYLEDITEM(${cyl},(${doc.style(mk.ph, phaseColor(mk.ph), PHASE_LABELS[mk.ph] || mk.ph)}),$)`);
     const it = mk.it, prog = it.status === "klar" ? 100 : (Number(it.progress) || 0);
-    const marker = E(`IFCBUILDINGELEMENTPROXY('${ifcGuid()}',$,${ifcStr(mk.name || it.object_name || "Objekt")},${ifcStr(PHASE_LABELS[mk.ph] || mk.ph)},'4D-markering',${pl},${cylShape},${ifcStr(it.id)},.NOTDEFINED.)`);
+    const marker = doc.proxy(mk.name || it.object_name || "Objekt", PHASE_LABELS[mk.ph] || mk.ph, "4D-markering", pl, doc.shape(cyl, "SweptSolid"), it.id);
     elems.push(marker);
     // Egenskaperna (syns när man klickar på cylindern).
-    const prop = (n, v) => E(`IFCPROPERTYSINGLEVALUE(${ifcStr(n)},$,${typeof v === "number" ? `IFCREAL(${ifcNum(v)})` : `IFCLABEL(${ifcStr(v)})`},$)`);
-    const props = [prop("Objekt", it.object_name || ""), prop("Aktivitet", it.activity || ""), prop("Status", PHASE_LABELS[mk.ph] || mk.ph),
-      prop("Framdrift %", prog), prop("Start", it.start_date || ""), prop("Slut", it.end_date || ""), prop("Område", it.area || ""),
-      prop("Entreprenör", it.contractor || ""), prop("Zon", zoneOf(it)), prop("Antal objekt", mk.members.length), prop("Status per", at), prop("4D-ID", it.id)];
-    const pset = E(`IFCPROPERTYSET('${ifcGuid()}',$,'4D-planering',$,(${props.join(",")}))`);
-    E(`IFCRELDEFINESBYPROPERTIES('${ifcGuid()}',$,$,$,(${marker}),${pset})`);
+    doc.props(marker, [["Objekt", it.object_name || ""], ["Aktivitet", it.activity || ""], ["Status", PHASE_LABELS[mk.ph] || mk.ph],
+      ["Framdrift %", prog], ["Start", it.start_date || ""], ["Slut", it.end_date || ""], ["Område", it.area || ""],
+      ["Entreprenör", it.contractor || ""], ["Zon", zoneOf(it)], ["Antal objekt", mk.members.length], ["Status per", at], ["4D-ID", it.id]]);
     // 3D-texten (Victors önskemål 2026-10-05): liggande så att den läses uppifrån i planvyn, vänd som
     // Lägesplans vy, bredvid cylindern (täcker den inte uppifrån), 0,5 m tjocka bokstäver uppåt
     // från samma nivå som cylinderns fot.
     if (!mk.name) return;
-    const { strokes } = ifcTextStrokes(mk.name);
-    if (!strokes.length) return;
-    const s = IFC_TEXT_H / 6, w = IFC_STROKE * IFC_TEXT_H / 2, u0 = (IFC_CYL_R + 0.3) / s, v0 = -3;
-    // Glyf (u åt höger, v uppåt i läsriktningen) -> lokalt (meter): läsriktning (rx, ry), "uppåt" i planen (-ry, rx).
-    const P = (u, v, z) => { const a = (u + u0) * s, b = (v + v0) * s; return [a * rx - b * ry, a * ry + b * rx, z]; };
-    const pts = [], tris = [];
-    strokes.forEach(pl => {
-      for (let i = 0; i + 1 < pl.length; i++) {
-        const [u1, v1] = pl[i], [u2, v2] = pl[i + 1], du = u2 - u1, dv = v2 - v1, L = Math.hypot(du, dv) || 1;
-        const nu = -dv / L * w / s, nv = du / L * w / s, eu = du / L * w / s / 2, ev = dv / L * w / s / 2; // bredd + lite förlängning
-        const q = [[u1 - eu + nu, v1 - ev + nv], [u2 + eu + nu, v2 + ev + nv], [u2 + eu - nu, v2 + ev - nv], [u1 - eu - nu, v1 - ev - nv]];
-        // Strecket som ett rätblock: botten (z = 0) och topp (z = tjocklek).
-        const k = pts.length + 1;
-        q.forEach(([u, v]) => pts.push(P(u, v, 0)));
-        q.forEach(([u, v]) => pts.push(P(u, v, IFC_TEXT_T)));
-        const b = [k, k + 1, k + 2, k + 3], t = [k + 4, k + 5, k + 6, k + 7];
-        // q går medurs i planen (sett uppifrån) – sidorna och locken vända utåt.
-        tris.push([b[0], b[1], b[2]], [b[0], b[2], b[3]], [t[0], t[2], t[1]], [t[0], t[3], t[2]]);
-        for (let j = 0; j < 4; j++) { const j2 = (j + 1) % 4; tris.push([b[j], t[j], t[j2]], [b[j], t[j2], b[j2]]); }
-      }
-    });
-    const pl3 = E(`IFCCARTESIANPOINTLIST3D((${pts.map(ifcPt).join(",")}))`);
-    const mesh = E(`IFCTRIANGULATEDFACESET(${pl3},$,.T.,(${tris.map(t => `(${t.join(",")})`).join(",")}),$)`);
-    E(`IFCSTYLEDITEM(${mesh},(${textStyle}),$)`);
-    const txtShape = E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','Tessellation',(${mesh}))`)}))`);
-    elems.push(E(`IFCBUILDINGELEMENTPROXY('${ifcGuid()}',$,${ifcStr(mk.name)},'Namn','4D-text',${pl},${txtShape},${ifcStr(it.id)},.NOTDEFINED.)`));
+    const mesh = ifcTextSolid(doc, mk.name, { h: IFC_TEXT_H, t: IFC_TEXT_T, rx, ry, start: IFC_CYL_R + 0.3 });
+    if (mesh) elems.push(doc.proxy(mk.name, "Namn", "4D-text", pl, doc.shape(mesh, "Tessellation"), it.id));
   });
-  E(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${ifcGuid()}',$,$,$,(${elems.join(",")}),${site})`);
-  const now = new Date().toISOString().slice(0, 19);
-  const head = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION(('ViewDefinition [ReferenceView]'),'2;1');",
-    `FILE_NAME(${ifcStr(`3D-objekt ${plan ? plan.name : ""} ${at}.ifc`)},'${now}',(${ifcStr((settings && settings.userName) || "")}),('NCC'),'4D-planering',${ifcStr("4D-planering Lägesplan")},'');`,
-    "FILE_SCHEMA(('IFC4'));", "ENDSEC;", "DATA;"];
-  return { text: [...head, ...lines, "ENDSEC;", "END-ISO-10303-21;"].join("\r\n") + "\r\n", n: marks.length };
+  return { text: doc.finish(elems, `3D-objekt ${plan ? plan.name : ""} ${at}.ifc`), n: marks.length };
 }
 
 async function exportObjectsIfc() {

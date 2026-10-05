@@ -77,8 +77,6 @@ function objExportMarkers() {
 function buildObjectsDxf() {
   const marks = objExportMarkers();
   if (!marks.length) return null;
-  const out = [];
-  const g = (code, v) => out.push(String(code), String(v));
   const ents = [], used = new Set(["4D-NAMN"]);
   const rot = dxfTextRotation(), rr = rot * Math.PI / 180;
   // Texten börjar en bit åt höger om punkten och står centrerad i höjd – i läsriktningen.
@@ -95,9 +93,20 @@ function buildObjectsDxf() {
     if (mk.name) ents.push({ t: "TEXT", layer: "4D-NAMN", x: x + ox, y: y + oy, z, h: DXF_TEXT_H, rot, s: mk.name });
   });
   if (!ents.length) return null;
-  // Utbredning (så att filen öppnas på objekten, inte vid nollpunkten).
+  const layerAci = { "4D-NAMN": 7 };
+  Object.entries(DXF_PHASE_LAYER).forEach(([ph, l]) => { layerAci[l] = dxfAci(phaseColor(ph)); });
+  return { text: dxfWrite(ents, [...used], layerAci), n: marks.length };
+}
+
+/* En DXF R12-fil (meter) av entiteterna: POINT, CIRCLE, TEXT (rot, mid = centrerad),
+   POLY (sluten polylinje, pts [[x, y]], aci = egen färg). Lagren med färg (ACI). Utbredning,
+   textstil och vy så att filen öppnas på innehållet. Används av objekt- och zonexporten. */
+function dxfWrite(ents, layers, layerAci) {
+  const out = [];
+  const g = (code, v) => out.push(String(code), String(v));
+  // Utbredning (så att filen öppnas på innehållet, inte vid nollpunkten).
   const xs = [], ys = [];
-  ents.forEach(e => { xs.push(e.x); ys.push(e.y); });
+  ents.forEach(e => { if (e.pts) e.pts.forEach(([x, y]) => { xs.push(x); ys.push(y); }); else { xs.push(e.x); ys.push(e.y); } });
   const x0 = Math.min(...xs) - 25, y0 = Math.min(...ys) - 25, x1 = Math.max(...xs) + 25, y1 = Math.max(...ys) + 25;
   // HEADER
   g(0, "SECTION"); g(2, "HEADER");
@@ -127,10 +136,8 @@ function buildObjectsDxf() {
   g(0, "TABLE"); g(2, "STYLE"); g(70, 1);
   g(0, "STYLE"); g(2, "STANDARD"); g(70, 0); g(40, "0.0"); g(41, "1.0"); g(50, "0.0"); g(71, 0); g(42, dxfNum(DXF_TEXT_H)); g(3, "txt"); g(4, "");
   g(0, "ENDTAB");
-  g(0, "TABLE"); g(2, "LAYER"); g(70, used.size);
-  const layerAci = { "4D-NAMN": 7 };
-  Object.entries(DXF_PHASE_LAYER).forEach(([ph, l]) => { layerAci[l] = dxfAci(phaseColor(ph)); });
-  [...used].forEach(l => { g(0, "LAYER"); g(2, l); g(70, 0); g(62, layerAci[l] || 7); g(6, "CONTINUOUS"); });
+  g(0, "TABLE"); g(2, "LAYER"); g(70, layers.length);
+  layers.forEach(l => { g(0, "LAYER"); g(2, l); g(70, 0); g(62, layerAci[l] || 7); g(6, "CONTINUOUS"); });
   g(0, "ENDTAB");
   g(0, "ENDSEC");
   // ENTITIES
@@ -138,11 +145,21 @@ function buildObjectsDxf() {
   ents.forEach(e => {
     if (e.t === "POINT") { g(0, "POINT"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); }
     else if (e.t === "CIRCLE") { g(0, "CIRCLE"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); g(40, dxfNum(e.r)); }
-    else if (e.t === "TEXT") { g(0, "TEXT"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z)); g(40, dxfNum(e.h)); g(1, e.s); if (e.rot) g(50, dxfNum(e.rot)); g(7, "STANDARD"); }
+    else if (e.t === "TEXT") {
+      g(0, "TEXT"); g(8, e.layer); g(10, dxfNum(e.x)); g(20, dxfNum(e.y)); g(30, dxfNum(e.z || 0)); g(40, dxfNum(e.h)); g(1, e.s);
+      if (e.rot) g(50, dxfNum(e.rot));
+      g(7, "STANDARD");
+      if (e.mid) { g(72, 4); g(11, dxfNum(e.x)); g(21, dxfNum(e.y)); g(31, dxfNum(e.z || 0)); } // centrerad (Middle)
+    }
+    else if (e.t === "POLY") {
+      g(0, "POLYLINE"); g(8, e.layer); if (e.aci) g(62, e.aci); g(66, 1); g(10, "0.0"); g(20, "0.0"); g(30, "0.0"); g(70, 1);
+      e.pts.forEach(([x, y]) => { g(0, "VERTEX"); g(8, e.layer); g(10, dxfNum(x)); g(20, dxfNum(y)); g(30, "0.0"); });
+      g(0, "SEQEND"); g(8, e.layer);
+    }
   });
   g(0, "ENDSEC");
   g(0, "EOF");
-  return { text: out.join("\r\n") + "\r\n", n: marks.length };
+  return out.join("\r\n") + "\r\n";
 }
 
 function exportObjectsDxf() {
