@@ -33,6 +33,9 @@ Private Const ANGRAZONFLIK As String = "4D ångra zoner"
 
 ' Ångra-loggen för pågående hämtning: Array(flik, adress, typ, gammalt värde)
 Private angra As Collection
+' Excels inställningar under skrivningen (manuell omräkning, inga händelser) - se Tyst/Vanligt
+Private sparadCalc As Long
+Private arTyst As Boolean
 
 ' JSON-läsare (modulnivå)
 Private js As String
@@ -232,8 +235,9 @@ Public Sub HamtaFramdriftFran4D()
         If ans = vbCancel Then Exit Sub
     End If
 
-    ' Skriv - allt loggas först så att det kan ångras.
-    Application.ScreenUpdating = False
+    ' Skriv - allt loggas först så att det kan ångras. Excel räknar inte om och kör inga
+    ' händelsemakron under tiden (annars en omräkning per cell = mycket långsamt).
+    Tyst
     Set angra = New Collection
     n = 0
     For Each ch In chg
@@ -251,6 +255,8 @@ Public Sub HamtaFramdriftFran4D()
         blad(Left$(key, InStrRev(key, "|") - 1)) = True
     Next key
     For Each shn In blad.Keys
+        Application.StatusBar = "4D: skriver 4D-ID och zoner på fliken " & shn & "..."
+        DoEvents
         Set ws = ThisWorkbook.Worksheets(shn)
         idKol = SkapaKol(ws, "4D-ID", True)
         If harZoner Then
@@ -273,7 +279,7 @@ Public Sub HamtaFramdriftFran4D()
     If harZoner Then zonFlagga = SkrivZonflik(zx)
     SparaAngra zonFlagga
     On Error Resume Next: startBlad.Activate: On Error GoTo Fel ' nya flikar tar inte över skärmen
-    Application.ScreenUpdating = True
+    Vanligt
 
     msg = n & " rader fick framdriften från 4D-planering."
     If nId > 0 Then msg = msg & vbCrLf & nId & " rader fick 4D-ID (raden känns nu igen även om den byter namn eller flyttas)."
@@ -293,9 +299,8 @@ Fel:
     On Error GoTo -1
     On Error Resume Next
     If Not angra Is Nothing Then SparaAngra zonFlagga
+    Vanligt
     On Error GoTo 0
-    Application.ScreenUpdating = True
-    Application.StatusBar = False
     MsgBox "Kunde inte hämta från 4D:" & vbCrLf & felBeskr & IIf(angra Is Nothing, "", vbCrLf & vbCrLf & "Det som hann ändras kan ångras med ""Ångra hämtning från 4D""."), vbExclamation, "4D-planering"
 End Sub
 
@@ -369,19 +374,53 @@ End Function
 '  Kolumner, zonflik och ångra
 ' ---------------------------------------------------------------------------
 Private Function HittaKol(ws As Worksheet, ByVal rubrik As String) As Long
-    Dim c As Long, last As Long
-    last = ws.UsedRange.Column + ws.UsedRange.Columns.Count - 1
+    Dim c As Long, last As Long, v As Variant
+    last = ws.Cells(RUBRIKRAD, ws.Columns.Count).End(xlToLeft).Column
+    If last < 2 Then
+        If UCase$(CellText(ws.Cells(RUBRIKRAD, 1))) = UCase$(rubrik) Then HittaKol = 1
+        Exit Function
+    End If
+    v = ws.Range(ws.Cells(RUBRIKRAD, 1), ws.Cells(RUBRIKRAD, last)).Value ' en läsning
     For c = 1 To last
-        If UCase$(CellText(ws.Cells(RUBRIKRAD, c))) = UCase$(rubrik) Then HittaKol = c: Exit Function
+        If Not IsError(v(1, c)) Then
+            If UCase$(Trim$(CStr(v(1, c)))) = UCase$(rubrik) Then HittaKol = c: Exit Function
+        End If
     Next c
 End Function
+
+' Sista kolumnen med innehåll (inte bara formatering) på bladet.
+Private Function SistaKol(ws As Worksheet) As Long
+    Dim f As Range
+    Set f = ws.Cells.Find(What:="*", LookIn:=xlFormulas, SearchOrder:=xlByColumns, SearchDirection:=xlPrevious)
+    If f Is Nothing Then SistaKol = 0 Else SistaKol = f.Column
+End Function
+
+' Snabbt läge under skrivningen: ingen omräkning, inga händelsemakron, ingen skärmuppdatering.
+Private Sub Tyst()
+    If arTyst Then Exit Sub
+    sparadCalc = Application.Calculation
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+    arTyst = True
+End Sub
+
+Private Sub Vanligt()
+    If arTyst Then
+        Application.Calculation = sparadCalc
+        Application.EnableEvents = True
+        arTyst = False
+    End If
+    Application.ScreenUpdating = True
+    Application.StatusBar = False
+End Sub
 
 ' Kolumnen med rubriken (rad 4), eller en ny helt tom kolumn till höger om allt annat.
 Private Function SkapaKol(ws As Worksheet, ByVal rubrik As String, ByVal dold As Boolean) As Long
     Dim c As Long
     c = HittaKol(ws, rubrik)
     If c = 0 Then
-        c = ws.UsedRange.Column + ws.UsedRange.Columns.Count
+        c = SistaKol(ws) + 1
         If c < 18 Then c = 18 ' efter kolumn Q
         Do While c < ws.Columns.Count And Application.WorksheetFunction.CountA(ws.Columns(c)) > 0
             c = c + 1
@@ -542,7 +581,7 @@ Public Sub Angra4D()
               IIf(zonFlagga = "ny", " och fliken """ & ZONFLIK & """ tas bort", IIf(zonFlagga = "kopia", " och fliken """ & ZONFLIK & """ blir som förut", "")) & ".", _
               vbOKCancel + vbQuestion, "Ångra hämtning från 4D") <> vbOK Then Exit Sub
     On Error GoTo Fel
-    Application.ScreenUpdating = False
+    Tyst
     For i = last To 3 Step -1
         Set c = ThisWorkbook.Worksheets(CStr(lg.Cells(i, 1).Value)).Range(CStr(lg.Cells(i, 2).Value))
         kind = CStr(lg.Cells(i, 3).Value)
@@ -565,12 +604,12 @@ Public Sub Angra4D()
     End If
     lg.Delete
     Application.DisplayAlerts = True
-    Application.ScreenUpdating = True
+    Vanligt
     MsgBox "Hämtningen från 4D är ångrad.", vbInformation, "4D-planering"
     Exit Sub
 Fel:
     Application.DisplayAlerts = True
-    Application.ScreenUpdating = True
+    Vanligt
     MsgBox "Kunde inte ångra helt:" & vbCrLf & Err.Description, vbExclamation, "4D-planering"
 End Sub
 
