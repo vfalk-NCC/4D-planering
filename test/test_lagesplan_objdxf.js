@@ -60,12 +60,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (r.units !== 6) fail('Enheten ska vara meter ($INSUNITS 6): ' + r.units);
   if (JSON.stringify(r.layers) !== JSON.stringify(['4D-FOTAVTRYCK', '4D-KLAR', '4D-NAMN', '4D-PAGAENDE'])) fail('Lager per status, fotavtryck och namn: ' + JSON.stringify(r.layers));
   const t = Object.fromEntries(r.geo.map(([s, x, y]) => [s, [x, y]]));
-  if (!t['Pelare'] || Math.abs(t['Pelare'][0] - 6512345.9) > 0.001 || Math.abs(t['Pelare'][1] - 150123.4) > 0.001) fail('Namnet ska stå vid objektet i modellens koordinater (meter): ' + JSON.stringify(r.geo));
-  if (!r.text.includes('\r\n10\r\n6512345.500\r\n20\r\n150123.250\r\n30\r\n12.000')) fail('Punkten ska ligga exakt i modellens koordinater med höjden: ' + r.text.slice(0, 2000));
-  if (!r.geo.some(([s]) => s === 'Gjutning väggar (2)')) fail('Två objekt i samma aktivitet blir en markering med antalet, å/ä/ö kvar: ' + JSON.stringify(r.geo));
+  if (!t['K10 - Pelare'] || Math.abs(t['K10 - Pelare'][0] - 6512346.0) > 0.001 || Math.abs(t['K10 - Pelare'][1] - 150122.75) > 0.001) fail('Namnet ska stå vid objektet i modellens koordinater (meter): ' + JSON.stringify(r.geo));
+  if (!r.text.includes('\r\n10\r\n6512345.500\r\n20\r\n150123.250\r\n30\r\n0.000')) fail('Punkten ska ligga exakt i modellens koordinater med höjden: ' + r.text.slice(0, 2000));
+  if (!r.geo.some(([s]) => s === 'M30 - Gjutning väggar (2)')) fail('Två objekt i samma aktivitet blir en markering med antalet, å/ä/ö kvar: ' + JSON.stringify(r.geo));
   if (r.ents.filter(e => e === 'POLYLINE:4D-FOTAVTRYCK').length !== 2) fail('Fotavtryck för objekten med utbredning: ' + JSON.stringify(r.ents));
   if (JSON.stringify(r.aci) !== JSON.stringify({ klar: 3, pagaende: 30, forsenad: 1, planerad: 8, pausad: 8 })) fail('Statusfärgerna som CAD-färger: ' + JSON.stringify(r.aci));
   if (!r.bytes.includes(0xe4)) fail('ä ska kodas i Windows-1252');
+  if (!/\$EXTMIN/.test(r.text) || !/\r\nSTYLE\r\n2\r\nSTANDARD/.test(r.text) || !/\r\n2\r\n\*ACTIVE/.test(r.text)) fail('Utbredning, textstil och vy ska finnas så att filen öppnas på objekten med synliga namn');
   console.log('OK: 3D-objekten som DXF – meter, modellens koordinater, lager per status, fotavtryck och namn (å/ä/ö)');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();
