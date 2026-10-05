@@ -137,12 +137,32 @@ function exportObjectsDxf() {
   if (!$("showObjects").checked) { alert("Tänd 3D-objekten (Visa objekten på ritningen) först – exporten tar med det som syns."); return; }
   const r = buildObjectsDxf();
   if (!r) { alert("Inga 3D-objekt syns på planen (kalibrera och hämta positioner, eller ändra filtret)."); return; }
-  const blob = new Blob([dxfCp1252(r.text)], { type: "application/dxf" });
-  downloadBlob(blob, `3D-objekt ${plan.name} ${$("dateInput").value}.dxf`);
+  const name = `3D-objekt ${plan.name} ${$("dateInput").value}.dxf`;
+  const bytes = dxfCp1252(r.text);
+  downloadBlob(new Blob([bytes], { type: "application/dxf" }), name); // alltid en lokal kopia
   setSaveStatus(`📐 ${r.n} objekt exporterade som DXF (meter, modellens koordinater).`);
+  // Även till Trimble Connect (via 4D-planering, som har behörigheten) – Victors önskemål 2026-10-05.
+  const tc = $("objDxfToTc");
+  if (!tc || !tc.checked) return;
+  if (!window.opener || window.opener.closed) {
+    setSaveStatus(`📐 ${r.n} objekt nedladdade. ⚠ Inte sparad i Trimble Connect – öppna lägesplanen via 🗺️ i 4D-planering för det.`);
+    return;
+  }
+  const file = new File([bytes], name, { type: "application/dxf" });
+  setSaveStatus(`📐 ${r.n} objekt nedladdade – sparar i Trimble Connect…`);
+  return askOpener("tcUpload", { folder: DXF_TC_FOLDER, files: [file] }, 5 * 60 * 1000)
+    .then(res => setSaveStatus(`📐 ${r.n} objekt nedladdade och sparade i Trimble Connect (${res.folder || DXF_TC_FOLDER}).`))
+    .catch(e => setSaveStatus(`📐 ${r.n} objekt nedladdade. ⚠ Kunde inte spara i Trimble Connect: ${e.message}`));
 }
+const DXF_TC_FOLDER = "Lägesplan export";
 
 document.addEventListener("DOMContentLoaded", () => {
   const b = $("btnObjDxf");
   if (b) b.onclick = exportObjectsDxf;
+  // Valet "Spara även i Trimble Connect" sparas i webbläsaren (på från början).
+  const tc = $("objDxfToTc");
+  if (tc) {
+    try { tc.checked = localStorage.getItem("lagesplan-objdxf-tc") !== "0"; } catch (e) {}
+    tc.onchange = () => { try { localStorage.setItem("lagesplan-objdxf-tc", tc.checked ? "1" : "0"); } catch (e) {} };
+  }
 });

@@ -83,6 +83,23 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return { deg, dx: b[0] - a[0], dy: b[1] - a[1], upY: up[1] - a[1] };
   });
   if (!(rot.dx > 0 && Math.abs(rot.dy) < Math.abs(rot.dx) * 0.01 && rot.upY < 0)) fail('Namnen ska läsas vågrätt från vänster till höger, rätt väg upp, i vyn: ' + JSON.stringify(rot));
+  // Varje export: en lokal kopia och (om rutan är ikryssad) en till Trimble Connect via 4D-planering.
+  const tc = await page.evaluate(async () => {
+    const calls = [], downloads = [];
+    downloadBlob = (blob, name) => downloads.push(name);
+    askOpener = async (type, extra) => { calls.push([type, extra.folder, extra.files.map(f => f.name + ':' + f.size).join()]); return { folder: extra.folder }; };
+    const run = async (opener, checked) => {
+      Object.defineProperty(window, 'opener', { value: opener, configurable: true, writable: true });
+      $('objDxfToTc').checked = checked;
+      await exportObjectsDxf();
+      return $('saveStatus').textContent;
+    };
+    const s1 = await run({ closed: false }, true), s2 = await run({ closed: false }, false), s3 = await run(null, true);
+    return { calls, downloads, s1, s2, s3, def: (() => { try { return localStorage.getItem('lagesplan-objdxf-tc'); } catch (e) { return 'x'; } })() };
+  });
+  if (tc.downloads.length !== 3 || tc.calls.length !== 1 || tc.calls[0][0] !== 'tcUpload' || tc.calls[0][1] !== 'Lägesplan export' || !/^3D-objekt Plan 1 .*\.dxf:\d+$/.test(tc.calls[0][2])) fail('Lokal kopia varje gång, Trimble Connect bara med rutan ikryssad: ' + JSON.stringify(tc));
+  if (!/sparade i Trimble Connect \(Lägesplan export\)/.test(tc.s1) || /Trimble/.test(tc.s2) || !/öppna lägesplanen via/.test(tc.s3)) fail('Statusen ska säga var filen hamnade: ' + JSON.stringify(tc));
+  console.log('OK: DXF-exporten laddas ned lokalt och sparas i Trimble Connect (Lägesplan export) när rutan är ikryssad');
   console.log('OK: 3D-objekten som DXF – meter, modellens koordinater, lager per status, fotavtryck och namn (å/ä/ö)');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();
