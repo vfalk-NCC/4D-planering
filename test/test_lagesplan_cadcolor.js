@@ -104,6 +104,21 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (ui.rows < 5 || ui.hidden !== 1) fail('Panelen ska lista förklaringens rader och kunna dölja en: ' + JSON.stringify(ui));
   if (!ui.ko || Math.abs(ui.ar - 1.5) > 0.01 || Math.abs(ui.h - 26.7) > 0.1) fail('Bildens val (beskär, genomskinlig) ska finnas och rutan följa beskärningen: ' + JSON.stringify(ui));
   console.log('OK: utskriftspanelen visar förklaringens rader och bildens beskärning/genomskinlighet');
+  // Ritningens lagerlista: DXF-filernas lager hopfällda från början, pilen fäller ut.
+  const prl = await page.evaluate(() => {
+    siteItems.push({ id: 'cx', type: 'cad', name: '5082591_Utsättningsplan', layers: [{ name: '0-1', n: 3 }, { name: '0-2', n: 2 }, { name: 'K-Y2N', n: 1 }] });
+    const map = pr.tpl.elements.find(e => e.type === 'map'); map.layers = { follow: false, keys: { 'cad:cx': true, 'cadl:cx:0-1': true } };
+    setSel([map.id]); renderPrintProps();
+    const subs = () => [...document.querySelectorAll('#prProps .pr-lay-row[data-parent="cad:cx"]')];
+    const out = { n: subs().length, hidden0: subs().every(r => getComputedStyle(r).display === 'none'), arrow0: document.querySelector('#prProps [data-tog="cad:cx"]').textContent, count: document.querySelector('#prProps [data-lay="cad:cx"]').closest('label').querySelector('small').textContent };
+    document.querySelector('#prProps [data-tog="cad:cx"]').click();
+    out.shown = subs().every(r => getComputedStyle(r).display !== 'none'); out.arrow1 = document.querySelector('#prProps [data-tog="cad:cx"]').textContent;
+    renderPrintProps(); out.keptOpen = subs().every(r => getComputedStyle(r).display !== 'none');
+    document.querySelector('#prProps [data-tog="cad:cx"]').click(); out.hidden2 = subs().every(r => getComputedStyle(r).display === 'none');
+    return out;
+  });
+  if (prl.n !== 3 || !prl.hidden0 || prl.arrow0 !== '▸' || prl.count !== '3' || !prl.shown || prl.arrow1 !== '▾' || !prl.keptOpen || !prl.hidden2) fail('Utskriftens lagerlista: DXF-lagren hopfällda med pil: ' + JSON.stringify(prl));
+  console.log('OK: utskriftens lagerlista – DXF-filernas lager hopfällda från början, fälls ut med pilen');
   // Lås element (särskilt ritningen), zoom i layouten och skalstocken med bladformat.
   const pl = await page.evaluate(async () => {
     const map = pr.tpl.elements.find(e => e.type === 'map');

@@ -34,6 +34,7 @@ let pr = null; // editorns tillstånd
 // Lagerurval per ritning (viewport)
 // ---------------------------------------------------------------------
 /* Alla lager som kan visas i en ritning: [{ key, label, sub }]. */
+const prLayOpen = new Set(); // utfällda DXF-filer i utskriftens lagerlista (hopfällda från början)
 function printLayerList() {
   const L = [];
   orthosByDate().reverse().forEach(o => L.push({ key: "ortho:" + o.id, label: `🛰 ${o.name} (${orthoDate(o)})` }));
@@ -1170,9 +1171,13 @@ function renderPrintProps(onlyPos) {
     const lb = el.label || {}, cfg = el.layers || { follow: true, keys: {} };
     const vw = vpView(el), views = typeof lsViews === "function" ? lsViews() : [];
     const locked = cfg.follow || !!vw, vkeys = vpKeys(el);
-    const layerRows = printLayerList().map(l => {
+    // DXF-filernas lager fälls ut med pilen och är hopfällda från början (Victors önskemål 2026-10-05).
+    const pl = printLayerList(), nSub = k => pl.filter(x => x.parent === k).length;
+    const layerRows = pl.map(l => {
       const on = vkeys ? !!vkeys[l.key] : !!ls(l.key).visible;
-      return `<label class="check pr-lay${l.sub ? " sub" : ""}"><input type="checkbox" data-lay="${escHtml(l.key)}"${on ? " checked" : ""}${locked ? " disabled" : ""} /> <span>${escHtml(l.label)}</span></label>`;
+      const open = prLayOpen.has(l.parent || l.key), n = l.sub ? 0 : nSub(l.key);
+      const tog = n ? `<button type="button" class="pr-lay-tog" data-tog="${escHtml(l.key)}" title="Visa/dölj DXF-filens lager">${open ? "▾" : "▸"}</button>` : `<span class="pr-lay-tog"></span>`;
+      return `<div class="pr-lay-row${l.sub ? " sub" : ""}${l.sub && !open ? " hidden" : ""}"${l.parent ? ` data-parent="${escHtml(l.parent)}"` : ""}>${l.sub ? "" : tog}<label class="check pr-lay${l.sub ? " sub" : ""}"><input type="checkbox" data-lay="${escHtml(l.key)}"${on ? " checked" : ""}${locked ? " disabled" : ""} /> <span>${escHtml(l.label)}${n ? ` <small>${n}</small>` : ""}</span></label></div>`;
     }).join("");
     const viewSel = views.length ? `<div class="row" style="flex-wrap:nowrap;margin-top:4px;"><select id="prView" class="grow" title="Använd en sparad vy från Lager: dess tända lager, ortofoton och DXF-lager"><option value="">Ingen sparad vy</option>${views.map(v => `<option value="${escHtml(v.id)}"${vw && vw.id === v.id ? " selected" : ""}>📑 ${escHtml(v.name)}</option>`).join("")}</select>${vw && vw.camera ? `<button id="prViewCam" title="Samma utsnitt som vyn (mitt och skala)">🔍 Vyns utsnitt</button>` : ""}</div>` : "";
     html += `<div class="pr-grid4"><div style="grid-column:span 2;"><label>Skala</label><select data-f="scale" data-num="1">${[...new Set([...PRINT_SCALES, el.scale])].sort((a, b) => a - b).map(s => `<option value="${s}"${el.scale === s ? " selected" : ""}>1:${s}</option>`).join("")}</select></div></div>
@@ -1322,6 +1327,12 @@ function renderPrintProps(onlyPos) {
         if (c.dataset.lay.startsWith("cad:")) printLayerList().filter(l => l.parent === c.dataset.lay).forEach(l => { keys[l.key] = c.checked; });
         setLayers(keys);
       };
+    });
+    box.querySelectorAll("[data-tog]").forEach(b => b.onclick = () => {
+      const k = b.dataset.tog, open = !prLayOpen.has(k);
+      if (open) prLayOpen.add(k); else prLayOpen.delete(k);
+      b.textContent = open ? "▾" : "▸";
+      box.querySelectorAll(`.pr-lay-row[data-parent="${CSS.escape(k)}"]`).forEach(r => r.classList.toggle("hidden", !open));
     });
     on("prLayAll", () => { const keys = {}; printLayerList().forEach(l => { keys[l.key] = true; }); setLayers(keys); });
     on("prLayNone", () => setLayers({}));
