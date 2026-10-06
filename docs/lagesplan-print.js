@@ -61,11 +61,22 @@ function vpKeys(el) {
   if (!cfg) return null;
   const v = vpView(el);
   if (v) { const L = (v.state && v.state.layers) || {}, keys = {}; printLayerList().forEach(l => { keys[l.key] = !!(L[l.key] && L[l.key].visible); }); return keys; }
-  return cfg.follow ? null : cfg.keys || {};
+  if (cfg.follow) return null;
+  if (cfg.state) { const keys = {}; printLayerList().forEach(l => { keys[l.key] = !!(cfg.state[l.key] && cfg.state[l.key].visible); }); return keys; }
+  return cfg.keys || {};
 }
+/* Ritningens fullständiga lagerläge (samma som lagerpanelen: tänd, genomskinlighet, DXF-lager,
+   zoner, PDF-lager …) när den har ett eget urval gjort i lagerpanelen, annars null. */
+const vpState = el => el.layers && !el.layers.follow && !vpView(el) && el.layers.state ? el.layers.state : null;
 /* Kör fn med ritningens lagerurval tänt/släckt (återställs efteråt). En vy
    tar också med genomskinligheten och "genomskinlig vit bakgrund". */
 async function withViewportLayers(el, fn) {
+  const st = vpState(el);
+  if (st) {
+    const saved = layerState;
+    layerState = JSON.parse(JSON.stringify(st));
+    try { return await fn(); } finally { layerState = saved; }
+  }
   const keys = vpKeys(el);
   if (!keys) return fn();
   const v = vpView(el), L = v ? (v.state && v.state.layers) || {} : null;
@@ -80,7 +91,77 @@ async function withViewportLayers(el, fn) {
   try { return await fn(); }
   finally { Object.entries(saved).forEach(([k, st]) => { const s = ls(k); s.visible = st.visible; s.opacity = st.opacity; }); layerState.pdfMultiply = savedMult; }
 }
-const vpLayersKey = el => { const v = vpView(el); if (v) return "view:" + JSON.stringify(v.state); const k = vpKeys(el); return k ? JSON.stringify(k) : "follow:" + JSON.stringify(snapshotLayers()); };
+const vpLayersKey = el => { const v = vpView(el); if (v) return "view:" + JSON.stringify(v.state); const st = vpState(el); if (st) return "state:" + JSON.stringify(st); const k = vpKeys(el); return k ? JSON.stringify(k) : "follow:" + JSON.stringify(snapshotLayers()); };
+
+/* ---------------------------------------------------------------------
+   Lagerhanteringen i utskriften (Victors önskemål 2026-10-06: "exakt likadan
+   så att jag kan tända och släcka där på samma sätt"). När en ritning med
+   eget lagerurval är markerad flyttas skärmens lagerpanel (sparade vyer, sök,
+   mappar, ordning, reglage, DXF-/PDF-lager, zoner, 3D-objekt …) in under
+   ritningens egenskaper. Medan den är där visar panelen ritningens lager:
+   skärmens läge läggs undan, ritningens läggs in, och varje ändring sparas i
+   ritningen (el.layers.state) i stället för på skärmen. När ritningen inte
+   längre är markerad (eller utskriften stängs) flyttas panelen tillbaka och
+   skärmens läge återställs.
+   ------------------------------------------------------------------- */
+let prLayerHold = null; // { el, screen: skärmens layerState, nodes, home }
+function prLayerRefresh() {
+  if (typeof applyLayerCss === "function") applyLayerCss();
+  if (typeof orthoChanged === "function") orthoChanged(); else if (typeof renderLayerPanel === "function") renderLayerPanel();
+  if (typeof buildCadSnap === "function") { buildCadSnap(); renderCad(); }
+  if ($("showObjects")) $("showObjects").checked = ls("objects").visible;
+  if ($("showPhotos")) $("showPhotos").checked = ls("photos").visible;
+  if (typeof renderLsViewUi === "function") renderLsViewUi();
+  renderZones();
+}
+/* Panelens innehåll tillbaka till sin plats (utan att byta lagerläge). */
+function prLayersPark() {
+  const h = prLayerHold;
+  if (!h || h.parked) return;
+  h.nodes.forEach(n => h.home.appendChild(n));
+  h.parked = true;
+}
+function prLayersDetach() {
+  if (!prLayerHold) return;
+  prLayersPark();
+  layerState = prLayerHold.screen;
+  prLayerHold = null;
+  prSaveLayerStateOrig();
+  prLayerRefresh();
+}
+function prLayersAttach(el, host) {
+  if (prLayerHold && prLayerHold.el !== el) prLayersDetach();
+  if (!prLayerHold) {
+    const home = document.querySelector('details.sec[data-sec="layers"]');
+    if (!home) return;
+    const screen = layerState;
+    let st = el.layers && el.layers.state;
+    if (!st) {
+      // Äldre ritning (bara tänd/släckt per lager): utgå från skärmens läge med ritningens urval.
+      st = JSON.parse(JSON.stringify(screen));
+      const keys = (el.layers && el.layers.keys) || {};
+      printLayerList().forEach(l => { if (!st[l.key]) st[l.key] = { visible: true, opacity: 100 }; st[l.key].visible = !!keys[l.key]; });
+    }
+    prLayerHold = { el, screen, home, nodes: [...home.children].filter(n => n.tagName !== "SUMMARY"), parked: true };
+    layerState = JSON.parse(JSON.stringify(st));
+    prLayerRefresh();
+  }
+  prLayerHold.nodes.forEach(n => host.appendChild(n));
+  prLayerHold.parked = false;
+}
+/* Ändringar i panelen medan den visar en ritnings lager sparas i ritningen, inte på skärmen. */
+const prSaveLayerStateOrig = saveLayerState;
+saveLayerState = function () {
+  if (!prLayerHold || !pr) return prSaveLayerStateOrig.apply(this, arguments);
+  const el = prLayerHold.el;
+  // Ett ångra-steg per serie ändringar (t.ex. ett dragreglage).
+  if (!prLayerHold.u) pushUndo();
+  clearTimeout(prLayerHold.u); prLayerHold.u = setTimeout(() => { if (prLayerHold) prLayerHold.u = 0; }, 800);
+  el.layers = { follow: false, keys: snapshotLayers(), state: JSON.parse(JSON.stringify(layerState)) };
+  pr.dirty = true;
+  clearTimeout(prLayerHold.t);
+  prLayerHold.t = setTimeout(() => { if (pr) drawPrintPage(); }, 120);
+};
 
 // ---------------------------------------------------------------------
 // Standardmall (i stil med en APD-plan)
@@ -771,6 +852,7 @@ function migrateTpl(t) {
 }
 function closePrint() {
   if (pr && pr.dirty && !confirm("Mallen har osparade ändringar. Stänga ändå?")) return;
+  prLayersDetach();
   pr = null; $("printModal").classList.add("hidden");
 }
 function pageDims() { const f = PRINT_FORMATS[pr.tpl.format]; return { W: f.w, H: f.h, k: f.w / PAGE_A3[0] }; }
@@ -1134,6 +1216,12 @@ function renderPrintProps(onlyPos) {
   const els = selEls(), el = primary();
   if (onlyPos && el) { ["x", "y", "w", "h"].forEach(f => { const i = box.querySelector(`[data-f="${f}"]`); if (i && document.activeElement !== i) i.value = Math.round(el[f] * 10) / 10; }); return; }
   if (onlyPos) return;
+  prLayersPark();
+  const done = () => {
+    const host = box.querySelector("#prLayerHost");
+    if (host && el && el.type === "map") prLayersAttach(el, host); else prLayersDetach();
+  };
+  queueMicrotask(done); // när egenskaperna är ritade
   if (!els.length) { box.innerHTML = `<div class="hint">Klicka på ett element för att ändra det. Shift-klicka eller dra en ruta för att markera flera. Kanterna snäpper mot varandra (Alt = fritt). Piltangenter flyttar 1 mm (Shift 10 mm), Delete tar bort, Ctrl+C / Ctrl+V kopierar och klistrar in, Ctrl+D duplicerar, Ctrl+Z ångrar.</div>`; return; }
   if (els.length > 1) {
     box.innerHTML = `<div class="row"><b>${els.length} element markerade</b><span class="grow"></span>
@@ -1170,15 +1258,7 @@ function renderPrintProps(onlyPos) {
   if (el.type === "map") {
     const lb = el.label || {}, cfg = el.layers || { follow: true, keys: {} };
     const vw = vpView(el), views = typeof lsViews === "function" ? lsViews() : [];
-    const locked = cfg.follow || !!vw, vkeys = vpKeys(el);
-    // DXF-filernas lager fälls ut med pilen och är hopfällda från början (Victors önskemål 2026-10-05).
-    const pl = printLayerList(), nSub = k => pl.filter(x => x.parent === k).length;
-    const layerRows = pl.map(l => {
-      const on = vkeys ? !!vkeys[l.key] : !!ls(l.key).visible;
-      const open = prLayOpen.has(l.parent || l.key), n = l.sub ? 0 : nSub(l.key);
-      const tog = n ? `<button type="button" class="pr-lay-tog" data-tog="${escHtml(l.key)}" title="Visa/dölj DXF-filens lager">${open ? "▾" : "▸"}</button>` : `<span class="pr-lay-tog"></span>`;
-      return `<div class="pr-lay-row${l.sub ? " sub" : ""}${l.sub && !open ? " hidden" : ""}"${l.parent ? ` data-parent="${escHtml(l.parent)}"` : ""}>${l.sub ? "" : tog}<label class="check pr-lay${l.sub ? " sub" : ""}"><input type="checkbox" data-lay="${escHtml(l.key)}"${on ? " checked" : ""}${locked ? " disabled" : ""} /> <span>${escHtml(l.label)}${n ? ` <small>${n}</small>` : ""}</span></label></div>`;
-    }).join("");
+    const locked = cfg.follow || !!vw;
     const viewSel = views.length ? `<div class="row" style="flex-wrap:nowrap;margin-top:4px;"><select id="prView" class="grow" title="Använd en sparad vy från Lager: dess tända lager, ortofoton och DXF-lager"><option value="">Ingen sparad vy</option>${views.map(v => `<option value="${escHtml(v.id)}"${vw && vw.id === v.id ? " selected" : ""}>📑 ${escHtml(v.name)}</option>`).join("")}</select>${vw && vw.camera ? `<button id="prViewCam" title="Samma utsnitt som vyn (mitt och skala)">🔍 Vyns utsnitt</button>` : ""}</div>` : "";
     html += `<div class="pr-grid4"><div style="grid-column:span 2;"><label>Skala</label><select data-f="scale" data-num="1">${[...new Set([...PRINT_SCALES, el.scale])].sort((a, b) => a - b).map(s => `<option value="${s}"${el.scale === s ? " selected" : ""}>1:${s}</option>`).join("")}</select></div></div>
       <div class="row split" style="margin-top:8px;"><button id="prPan" class="${pr.panMode ? "active" : ""}" title="${el.locked ? "Låst – lås upp för att flytta utsnittet" : "Dra i ritningen för att flytta utsnittet, scrolla för att byta skala"}"${el.locked ? " disabled" : ""}>✋ Panorera</button><button id="prFromView" title="Samma utsnitt som på skärmen"${el.locked ? " disabled" : ""}>⤢ Skärmens utsnitt</button></div>
@@ -1190,8 +1270,8 @@ function renderPrintProps(onlyPos) {
       <label style="margin-top:10px;"><b>Visa i ritningen</b></label>
       ${viewSel}
       ${vw ? `<div class="hint" style="margin:2px 0 4px;">Ritningen visar vyn "${escHtml(vw.name)}". Ändras vyn följer utskriften med.</div>` : `<label class="check"><input type="checkbox" id="prFollow"${cfg.follow ? " checked" : ""} /> Följ skärmen (lagren som är tända där)</label>`}
-      <div class="pr-layers${locked ? " off" : ""}">${layerRows}</div>
-      <div class="row" style="margin-top:4px;"><button id="prLayAll" ${locked ? "disabled" : ""}>Alla</button><button id="prLayNone" ${locked ? "disabled" : ""}>Inga</button><button id="prLayScreen" ${locked ? "disabled" : ""} title="Samma som är tänt på skärmen just nu">Som skärmen</button></div>
+      ${locked ? "" : `<div class="hint" style="margin:2px 0 4px;">Tänd och släck precis som i Lager – det gäller bara den här ritningen.</div><div id="prLayerHost" class="pr-layerhost"></div>
+      <div class="row" style="margin-top:4px;"><button id="prLayScreen" title="Samma lager som på skärmen just nu">Som skärmen</button></div>`}
       <div class="hint">Skalan gäller på ${pr.tpl.format}. Skriv ut i verklig storlek (100 %).</div>`;
   }
   if (el.type === "legend") html += inp("title", "Rubrik") + `<div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}${num("cols", "Kolumner", "1")}</div>
@@ -1300,11 +1380,11 @@ function renderPrintProps(onlyPos) {
     $("prLblName").oninput = e => { if (!e.target._u) { pushUndo(); e.target._u = true; setTimeout(() => { e.target._u = false; }, 800); } el.label = { ...(el.label || {}), name: e.target.value }; pr.dirty = true; drawPrintPage(); };
     $("prLblSize").oninput = e => { el.label = { ...(el.label || {}), size: Number(e.target.value) || 9 }; pr.dirty = true; drawPrintPage(); };
     $("prLblAlign").onchange = e => lbl({ align: e.target.value });
-    const setLayers = keys => { pushUndo(); el.layers = { follow: false, keys }; renderPrintProps(); drawPrintPage(); };
-    if ($("prFollow")) $("prFollow").onchange = e => { pushUndo(); el.layers = { follow: e.target.checked, keys: (el.layers && el.layers.keys) || snapshotLayers() }; renderPrintProps(); drawPrintPage(); };
+    if ($("prFollow")) $("prFollow").onchange = e => { prLayersDetach(); pushUndo(); el.layers = { ...(el.layers || {}), follow: e.target.checked, keys: (el.layers && el.layers.keys) || snapshotLayers() }; renderPrintProps(); drawPrintPage(); };
     if ($("prView")) $("prView").onchange = e => {
       pushUndo();
       // Ingen vy: behåll vyns lager som eget urval, så inget ändras i ritningen.
+      prLayersDetach();
       el.layers = e.target.value ? { follow: false, view: e.target.value, keys: vpKeys(el) || snapshotLayers() } : { follow: false, keys: vpKeys(el) || snapshotLayers() };
       pr.dirty = true; renderPrintProps(); drawPrintPage();
     };
@@ -1319,24 +1399,12 @@ function renderPrintProps(onlyPos) {
       el.scale = PRINT_SCALES.find(s => s >= need) || PRINT_SCALES[PRINT_SCALES.length - 1];
       pr.dirty = true; renderPrintPanel(); drawPrintPage();
     });
-    box.querySelectorAll("[data-lay]").forEach(c => {
-      c.onchange = () => {
-        const keys = { ...((el.layers && el.layers.keys) || {}) };
-        keys[c.dataset.lay] = c.checked;
-        // En CAD-ritning tänds/släcks med sina lager
-        if (c.dataset.lay.startsWith("cad:")) printLayerList().filter(l => l.parent === c.dataset.lay).forEach(l => { keys[l.key] = c.checked; });
-        setLayers(keys);
-      };
+    on("prLayScreen", () => {
+      const screen = prLayerHold ? prLayerHold.screen : layerState;
+      prLayersDetach(); pushUndo();
+      el.layers = { follow: false, keys: snapshotLayers(), state: JSON.parse(JSON.stringify(screen)) };
+      pr.dirty = true; renderPrintProps(); drawPrintPage();
     });
-    box.querySelectorAll("[data-tog]").forEach(b => b.onclick = () => {
-      const k = b.dataset.tog, open = !prLayOpen.has(k);
-      if (open) prLayOpen.add(k); else prLayOpen.delete(k);
-      b.textContent = open ? "▾" : "▸";
-      box.querySelectorAll(`.pr-lay-row[data-parent="${CSS.escape(k)}"]`).forEach(r => r.classList.toggle("hidden", !open));
-    });
-    on("prLayAll", () => { const keys = {}; printLayerList().forEach(l => { keys[l.key] = true; }); setLayers(keys); });
-    on("prLayNone", () => setLayers({}));
-    on("prLayScreen", () => setLayers(snapshotLayers()));
   }
 }
 

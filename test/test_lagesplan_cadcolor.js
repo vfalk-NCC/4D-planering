@@ -104,21 +104,32 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (ui.rows < 5 || ui.hidden !== 1) fail('Panelen ska lista förklaringens rader och kunna dölja en: ' + JSON.stringify(ui));
   if (!ui.ko || Math.abs(ui.ar - 1.5) > 0.01 || Math.abs(ui.h - 26.7) > 0.1) fail('Bildens val (beskär, genomskinlig) ska finnas och rutan följa beskärningen: ' + JSON.stringify(ui));
   console.log('OK: utskriftspanelen visar förklaringens rader och bildens beskärning/genomskinlighet');
-  // Ritningens lagerlista: DXF-filernas lager hopfällda från början, pilen fäller ut.
-  const prl = await page.evaluate(() => {
+  // Ritningens lager (Victors önskemål 2026-10-06): exakt samma lagerpanel som på skärmen, men den
+  // tänder och släcker bara i den markerade ritningen; skärmens lager påverkas inte.
+  const prl = await page.evaluate(async () => {
     siteItems.push({ id: 'cx', type: 'cad', name: '5082591_Utsättningsplan', layers: [{ name: '0-1', n: 3 }, { name: '0-2', n: 2 }, { name: 'K-Y2N', n: 1 }] });
-    const map = pr.tpl.elements.find(e => e.type === 'map'); map.layers = { follow: false, keys: { 'cad:cx': true, 'cadl:cx:0-1': true } };
-    setSel([map.id]); renderPrintProps();
-    const subs = () => [...document.querySelectorAll('#prProps .pr-lay-row[data-parent="cad:cx"]')];
-    const out = { n: subs().length, hidden0: subs().every(r => getComputedStyle(r).display === 'none'), arrow0: document.querySelector('#prProps [data-tog="cad:cx"]').textContent, count: document.querySelector('#prProps [data-lay="cad:cx"]').closest('label').querySelector('small').textContent };
-    document.querySelector('#prProps [data-tog="cad:cx"]').click();
-    out.shown = subs().every(r => getComputedStyle(r).display !== 'none'); out.arrow1 = document.querySelector('#prProps [data-tog="cad:cx"]').textContent;
-    renderPrintProps(); out.keptOpen = subs().every(r => getComputedStyle(r).display !== 'none');
-    document.querySelector('#prProps [data-tog="cad:cx"]').click(); out.hidden2 = subs().every(r => getComputedStyle(r).display === 'none');
+    renderLayerPanel();
+    const screenZones = ls('zones').visible;
+    const map = pr.tpl.elements.find(e => e.type === 'map'); map.layers = { follow: false, keys: { 'cad:cx': true, 'cadl:cx:0-1': true, zones: screenZones } };
+    setSel([map.id]); renderPrintProps(); await new Promise(r => setTimeout(r, 50));
+    const out = { inProps: !!document.querySelector('#prProps #layerList .layer-row[data-layer="zones"]'), search: !!document.querySelector('#prProps #layerSearch'), views: !!document.querySelector('#prProps #lsViewSel'),
+      homeEmpty: !document.querySelector('details.sec[data-sec="layers"] #layerList'), cadOn: ls('cad:cx').visible, cadl2: ls('cadl:cx:0-2').visible };
+    const vis = document.querySelector('#prProps .layer-row[data-layer="zones"] .lr-vis'); vis.click(); await new Promise(r => setTimeout(r, 200));
+    out.mapZones = map.layers.state && map.layers.state.zones.visible; out.screenWhile = prLayerHold.screen.zones.visible; out.dirty = pr.dirty; out.undo = pr.undo.length > 0;
+    out.stored = JSON.parse(localStorage.getItem(LAYER_KEY()) || '{}').zones;
+    setSel([]); renderPrintProps(); await new Promise(r => setTimeout(r, 50));
+    out.back = !!document.querySelector('details.sec[data-sec="layers"] #layerList') && !document.querySelector('#prProps #layerList');
+    out.screenAfter = ls('zones').visible; out.screenZones = screenZones;
+    // Igen: ritningens eget läge kommer tillbaka.
+    setSel([map.id]); renderPrintProps(); await new Promise(r => setTimeout(r, 50));
+    out.again = ls('zones').visible; out.keysZones = vpKeys(map).zones;
+    setSel([]); renderPrintProps(); await new Promise(r => setTimeout(r, 50));
     return out;
   });
-  if (prl.n !== 3 || !prl.hidden0 || prl.arrow0 !== '▸' || prl.count !== '3' || !prl.shown || prl.arrow1 !== '▾' || !prl.keptOpen || !prl.hidden2) fail('Utskriftens lagerlista: DXF-lagren hopfällda med pil: ' + JSON.stringify(prl));
-  console.log('OK: utskriftens lagerlista – DXF-filernas lager hopfällda från början, fälls ut med pilen');
+  if (!prl.inProps || !prl.search || !prl.views || !prl.homeEmpty || !prl.cadOn || prl.cadl2) fail('Lagerpanelen ska flyttas in under ritningen och visa ritningens lager: ' + JSON.stringify(prl));
+  if (prl.mapZones !== !prl.screenZones || prl.screenWhile !== prl.screenZones || !prl.dirty || !prl.undo) fail('Tänd/släck i panelen ska gälla ritningen, inte skärmen: ' + JSON.stringify(prl));
+  if (!prl.back || prl.screenAfter !== prl.screenZones || prl.again !== !prl.screenZones || prl.keysZones !== !prl.screenZones) fail('Panelen tillbaka och skärmens lager återställda när ritningen inte är markerad: ' + JSON.stringify(prl));
+  console.log('OK: utskriftens ritning har samma lagerpanel som skärmen – tänd/släck gäller bara ritningen');
   // Lås element (särskilt ritningen), zoom i layouten och skalstocken med bladformat.
   const pl = await page.evaluate(async () => {
     const map = pr.tpl.elements.find(e => e.type === 'map');
