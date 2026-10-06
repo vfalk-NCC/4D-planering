@@ -39,6 +39,7 @@ function printLayerList() {
   const L = [];
   orthosByDate().reverse().forEach(o => L.push({ key: "ortho:" + o.id, label: `🛰 ${o.name} (${orthoDate(o)})` }));
   L.push({ key: "pdf", label: "📄 " + layerDisplayName("pdf") });
+  if (typeof pdfOverlayPlans === "function") pdfOverlayPlans().forEach(p => L.push({ key: pdfOverlayKey(p), label: "📄 " + (p.name || "PDF") }));
   if (typeof cads === "function") cads().forEach(r => {
     L.push({ key: "cad:" + r.id, label: "📐 " + r.name });
     r.layers.forEach(l => L.push({ key: `cadl:${r.id}:${l.name}`, label: l.name, sub: true, parent: "cad:" + r.id }));
@@ -336,6 +337,12 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
       ctx.save(); ctx.globalAlpha = layerOpacity("pdf");
       if (multiplyPdf) ctx.globalCompositeOperation = "multiply";
       ctx.drawImage(pdfPlate, 0, 0); ctx.restore();
+    }
+    // De andra PDF-lagren (andra arbetsytors ritningar och PDF-underlag) ovanpå Bas-ritningen.
+    P.pdfOverlays = typeof pdfOverlaysForPrint === "function" ? pdfOverlaysForPrint() : [];
+    if (!opts.vectorPdf) for (const o of P.pdfOverlays) {
+      opts.status && opts.status(`PDF-lagret ${o.p.name || ""}`);
+      try { await drawPdfOverlayForExport(ctx, o.p, P); } catch (e) { console.warn("PDF-lager i utskriften", e); }
     }
     // PDF-export: CAD ritas som vektorer i PDF:en (skarpa linjer), så här
     // bara zoner/etablering i ett eget genomskinligt lager ovanpå.
@@ -1505,6 +1512,7 @@ async function exportPrintPdf() {
           vecOver(vec);
           const f0 = w / mc.P.W, S0 = mc.P.S * f0;
           if (mc.P.pdfInfo && mc.P.pdfInfo.visible) vecAddPlan(vec, [x, y, w, h], [S0, 0, 0, S0, x - mc.P.x0 * S0, y - mc.P.y0 * S0], mc.P.pdfInfo.opacity, mc.P.pdfInfo.multiply);
+          (mc.P.pdfOverlays || []).forEach(o => vecAddPlan(vec, [x, y, w, h], [S0, 0, 0, S0, x - mc.P.x0 * S0, y - mc.P.y0 * S0], o.opacity, true, o));
         }
         if (mc.cad.length) {
           // DXF som vektorer: stage-px -> mm på sidan.

@@ -129,8 +129,25 @@ function vecNextPage(v) {
 const vecUnder = v => v.doc.setPage(vecGroup(v).under);
 const vecOver = v => v.doc.setPage(vecGroup(v).over);
 /* Ritningen ska in i rutan clip [x, y, w, h] (mm), stageToMm: stage-px -> mm (y nedåt). */
-function vecAddPlan(v, clip, stageToMm, opacity, multiply) {
-  vecGroup(v).inserts.push({ clip, stageToMm, opacity, multiply });
+function vecAddPlan(v, clip, stageToMm, opacity, multiply, ov = null) {
+  vecGroup(v).inserts.push({ clip, stageToMm, opacity, multiply, ov });
+}
+/* Ett annat PDF-lagers sida (andra arbetsytors ritningar, PDF-underlag) inbäddad i out, en gång per plan. */
+async function vecOverlayEmbed(out, cache, o) {
+  if (cache.has(o.id)) return cache.get(o.id);
+  const { PDFDocument } = window.PDFLib;
+  let res = null;
+  try {
+    let buf = pdfCache.get(o.id);
+    if (!buf) { const url = await ghReadBinaryUrl(token, o.p.file_path); buf = await (await fetch(url)).arrayBuffer(); URL.revokeObjectURL(url); pdfCache.set(o.id, buf); }
+    const d = await PDFDocument.load(new Uint8Array(buf.slice(0)), { ignoreEncryption: true });
+    const pgp = d.getPage(Math.max(0, Math.min(d.getPageCount() - 1, (o.p.page || 1) - 1)));
+    if (!o.color) { try { grayPdfPage(d, pgp); } catch (e) {} }
+    const mb = pgp.getMediaBox();
+    res = await out.embedPage(pgp, { left: mb.x, bottom: mb.y, right: mb.x + mb.width, top: mb.y + mb.height }, [1, 0, 0, 1, 0, 0]);
+  } catch (e) { console.warn("PDF-lager som vektor", e); }
+  cache.set(o.id, res);
+  return res;
 }
 /* Sätt ihop och returnera PDF-byten. */
 async function vecFinish(v) {
@@ -152,6 +169,7 @@ async function vecFinish(v) {
   const nums = [...new Set(v.pages.flatMap(pg => pg.groups.flatMap(g => [g.under, g.over])))];
   const embedded = await out.embedPages(nums.map(n => src.getPage(n - 1)));
   const emb = new Map(nums.map((n, i) => [n, embedded[i]]));
+  const ovEmb = new Map();
   for (const pg of v.pages) {
     let page = null, Wpt = 0, Hpt = 0;
     for (const grp of pg.groups) {
@@ -161,6 +179,21 @@ async function vecFinish(v) {
       for (const ins of grp.inserts) {
         // stage -> mm (y nedåt) -> pt (y uppåt)
         const toPt = [K, 0, 0, -K, 0, Hpt];
+        if (ins.ov) { // ett annat PDF-lager: dess PDF -> modell -> Bas-ritningen -> stage
+          const e = await vecOverlayEmbed(out, ovEmb, ins.ov);
+          if (!e) continue;
+          const Ts = mulAffine(toPt, ins.stageToMm), pc = $("pdfCanvas"), [cx, cy, cw, ch] = ins.clip;
+          const ops = [pushGraphicsState(), rectangle(cx * K, Hpt - (cy + ch) * K, cw * K, ch * K), clip(), endPath()];
+          if (!ins.ov.noCrop) ops.push(pushGraphicsState(), concatTransformationMatrix(...Ts), rectangle(0, 0, pc.width, pc.height), clip(), endPath(), concatTransformationMatrix(...affInv(Ts)));
+          const gs = out.context.obj({ Type: "ExtGState", ca: ins.opacity, CA: ins.opacity, BM: "Multiply" });
+          ops.push(setGraphicsState(page.node.newExtGState("GSOv", out.context.register(gs))));
+          const T = mulAffine(Ts, pdfOvToStage(ins.ov.p));
+          ops.push(concatTransformationMatrix(T[0], T[1], T[2], T[3], T[4], T[5]), drawObject(page.node.newXObject("Ov", e.ref)));
+          if (!ins.ov.noCrop) ops.push(popGraphicsState());
+          ops.push(popGraphicsState());
+          page.pushOperators(...ops);
+          continue;
+        }
         const T = mulAffine(toPt, mulAffine(ins.stageToMm, V));
         const [cx, cy, cw, ch] = ins.clip;
         const ops = [pushGraphicsState(), rectangle(cx * K, Hpt - (cy + ch) * K, cw * K, ch * K), clip(), endPath()];

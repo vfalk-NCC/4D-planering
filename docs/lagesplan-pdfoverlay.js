@@ -192,3 +192,43 @@ async function renderOverlayHi(p, seq) {
     lo.style.visibility = "hidden"; // den skarpa täcker det synliga – dölj den grövre (annars dubbelt mörk)
   } catch (e) { /* den vanliga bilden finns kvar */ }
 }
+
+/* Utskriften (Victors rapport 2026-10-06: "kan inte välja andra PDF-lager än Bas i utskriftslayout"):
+   ett tänt PDF-lager ritas i ritningsytans bild – den del som syns, i bildens upplösning, multiplicerat
+   ovanpå Bas-ritningen och klippt vid dess kant (om inte "Beskär inte"). P = mapPlate (canvas = S·(stage − x0)).
+   I vektor-PDF:en bäddas lagret i stället in som vektorer (lagesplan-vecpdf.js). */
+async function drawPdfOverlayForExport(ctx, p, P) {
+  const key = pdfOverlayKey(p), pg = await pdfOverlayPage(p), pc = $("pdfCanvas");
+  const stageToCanvas = [P.S, 0, 0, P.S, -P.x0 * P.S, -P.y0 * P.S];
+  const toCanvas = affMul(stageToCanvas, pdfOvToStage(p)), inv = affInv(toCanvas);
+  const k = Math.sqrt(Math.abs(toCanvas[0] * toCanvas[3] - toCanvas[1] * toCanvas[2])); // canvas-px per PDF-enhet
+  const pts = [[0, 0], [P.W, 0], [P.W, P.H], [0, P.H]].map(([x, y]) => [inv[0] * x + inv[2] * y + inv[4], inv[1] * x + inv[3] * y + inv[5]]);
+  const [vx0, vy0, vx1, vy1] = pg.view;
+  const bx0 = Math.max(vx0, Math.min(...pts.map(q => q[0]))), bx1 = Math.min(vx1, Math.max(...pts.map(q => q[0])));
+  const by0 = Math.max(vy0, Math.min(...pts.map(q => q[1]))), by1 = Math.min(vy1, Math.max(...pts.map(q => q[1])));
+  if (bx1 <= bx0 || by1 <= by0) return;
+  let sB = k;
+  const maxPx = 40e6;
+  if ((bx1 - bx0) * (by1 - by0) * sB * sB > maxPx) sB = Math.sqrt(maxPx / ((bx1 - bx0) * (by1 - by0)));
+  const full = pg.getViewport({ scale: sB });
+  const cr = [[bx0, by0], [bx1, by0], [bx1, by1], [bx0, by1]].map(([x, y]) => full.convertToViewportPoint(x, y));
+  const rx0 = Math.floor(Math.min(...cr.map(q => q[0]))), ry0 = Math.floor(Math.min(...cr.map(q => q[1])));
+  const rw = Math.max(1, Math.ceil(Math.max(...cr.map(q => q[0]))) - rx0), rh = Math.max(1, Math.ceil(Math.max(...cr.map(q => q[1]))) - ry0);
+  const part = pg.getViewport({ scale: sB, offsetX: -rx0, offsetY: -ry0 });
+  const tmp = document.createElement("canvas"); tmp.width = rw; tmp.height = rh;
+  const tctx = tmp.getContext("2d"); tctx.fillStyle = "#fff"; tctx.fillRect(0, 0, rw, rh);
+  await pg.render({ canvasContext: tctx, viewport: part, annotationMode: pdfjsLib.AnnotationMode.DISABLE }).promise;
+  ctx.save();
+  if (!pdfOverlayNoCrop(key)) { ctx.beginPath(); ctx.rect(-P.x0 * P.S, -P.y0 * P.S, pc.width * P.S, pc.height * P.S); ctx.clip(); }
+  ctx.globalAlpha = layerOpacity(key);
+  ctx.globalCompositeOperation = "multiply";
+  if (!pdfOverlayColor(key)) ctx.filter = "grayscale(1)";
+  ctx.setTransform(...affMul(toCanvas, affInv(part.transform)));
+  ctx.drawImage(tmp, 0, 0);
+  ctx.restore();
+}
+/* De tända PDF-lagren just nu (anropas medan ritningsytans lagerval är aktivt). */
+function pdfOverlaysForPrint() {
+  return pdfOverlayPlans().filter(p => layerVisible(pdfOverlayKey(p)) && pdfOverlayReady(p))
+    .map(p => ({ p, id: p.id, opacity: layerOpacity(pdfOverlayKey(p)), color: pdfOverlayColor(pdfOverlayKey(p)), noCrop: pdfOverlayNoCrop(pdfOverlayKey(p)) }));
+}

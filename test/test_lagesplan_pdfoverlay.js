@@ -89,6 +89,23 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const ex2 = await page.evaluate(() => { const o = composeImageNow(0, true), ctx = o.getContext('2d'), [x, y] = toPx([300, 300]); return [...ctx.getImageData(Math.round(x), Math.round(y), 1, 1).data]; });
   if (ex2[0] > 150 || ex2[3] < 200) fail('Exporten med Beskär inte (Färg är av här: mörkgrå ruta): ' + JSON.stringify(ex2));
   await page.click('#layerList .layer-row[data-layer="pdfp:B"] .lr-nocrop'); await page.waitForTimeout(400);
+  // Utskriftslayouten (Victors rapport 2026-10-06): ett tänt PDF-lager kommer med i ritningsytan (rätt läge),
+  // ett släckt inte, och det registreras för vektor-PDF:en.
+  const pr1 = await page.evaluate(async () => {
+    // Färg är av för B här: rutan blir mörkgrå.
+    const red = (c, m) => { const [x, y] = [m[0], m[1]], d = c.getContext('2d').getImageData(Math.round(x), Math.round(y), 1, 1).data; return d[0] < 120 && d[3] > 200; };
+    const el = { id: 'mx', type: 'map', x: 0, y: 0, w: 200, h: 100, scale: 500, center: [30, 30], layers: { follow: true } };
+    const P = mapPlate(el, 200, 100, 800, 400);
+    const at = pdfPt => { const st = toPx(pdfPt); return [(st[0] - P.x0) * P.S, (st[1] - P.y0) * P.S]; };
+    ls('pdfp:B').visible = true;
+    const on = await renderMapCanvas(el, 200, 100, 800, 400, {});
+    const regOn = await renderMapCanvas(el, 200, 100, 800, 400, { vectorCad: true, vectorPdf: true });
+    ls('pdfp:B').visible = false;
+    const off = await renderMapCanvas(el, 200, 100, 800, 400, {});
+    return { on: red(on, at([300, 300])), outside: red(on, at([200, 200])), off: red(off, at([300, 300])), vec: (regOn.P.pdfOverlays || []).map(o => o.id) };
+  });
+  if (!pr1.on || pr1.outside || pr1.off || JSON.stringify(pr1.vec) !== '["B"]') fail('PDF-lagret ska komma med i utskriftens ritningsyta när det är tänt: ' + JSON.stringify(pr1));
+  console.log('OK: tända PDF-lager kommer med i utskriftslayouten (bild och vektor-PDF)');
   // Okalibrerad plan ritas inte även om den tänds.
   await page.click('#layerList .layer-row[data-layer="pdfp:C"] .lr-vis'); await page.waitForTimeout(200);
   if (await page.evaluate(() => { const c = document.querySelector('#stage canvas.pdfov[data-key="pdfp:C"]'); return !!(c && c.width && c.style.display !== 'none'); })) fail('Okalibrerad plan kan inte läggas på rätt ställe');
