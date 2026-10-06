@@ -164,6 +164,7 @@ async function exportVolumesIfc() {
     return { n: r.n, name, tc: res };
   } catch (e) {
     console.warn("Volym-IFC: kunde inte spara i Trimble Connect", e);
+    alert(`Volymerna är nedladdade, men kunde inte sparas i Trimble Connect:\n${e.message}`);
     return { n: r.n, name, tc: null, error: e.message };
   }
 }

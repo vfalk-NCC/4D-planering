@@ -392,7 +392,7 @@ async function tcApiBase(tokenVal, project) {
       const regions = await res.json();
       const loc = String(project.location || "").toLowerCase();
       const hit = (regions || []).find(r => String(r.location || r.region || "").toLowerCase() === loc);
-      const uri = hit && (hit["tc-api"] || hit.tcApi || hit.serviceUri);
+      const uri = hit && (hit["tc-api"] || hit.tcApi || hit.serviceUri || (hit.origin ? `https://${hit.origin}/tc/api/2.0` : ""));
       if (uri) return uri.replace(/\/$/, "");
     }
   } catch (e) { /* faller tillbaka på kända adresser */ }
@@ -417,13 +417,26 @@ async function tcUploadFilesInner(files, folderName) {
     folder = await j(await fetch(`${base}/folders`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ name: folderName, parentId: rootId }) }), "Skapa mappen");
   }
   for (const f of files) {
-    showLagesplanBanner(`Laddar upp ${f.name} (${(f.size / 1048576).toFixed(0)} MB) till Trimble Connect…`);
-    const fd = new FormData();
-    fd.append("file", f, f.name);
-    await j(await fetch(`${base}/files?parentId=${encodeURIComponent(folder.id)}&parentType=FOLDER`, { method: "POST", headers: H, body: fd }), `Ladda upp ${f.name}`);
+    showLagesplanBanner(`Laddar upp ${f.name} (${f.size < 1048576 ? Math.max(1, Math.round(f.size / 1024)) + " kB" : (f.size / 1048576).toFixed(0) + " MB"}) till Trimble Connect…`);
+    await tcUploadOne(base, H, j, folder.id, f);
   }
   showLagesplanBanner(`✓ ${files.length} filer sparade i Trimble Connect (${folderName}).`, 6000);
   return { uploaded: files.length, folder: folderName };
+}
+
+/* En fil till en mapp i Trimble Connect (Victors rapport 2026-10-06: exporterna hamnade inte i
+   TC). Core API 2.0 laddar upp i tre steg, som Trimbles eget SDK (trimble-connect-sdk,
+   uploadFileContent): 1) POST files/fs/initiate { parentId, parentType, name } ger uploadURL +
+   uploadId, 2) PUT filen till uploadURL (lagringen, utan vår token), 3) POST files/fs/commit
+   { uploadId } skapar filen i mappen. Finns en fil med samma namn blir den en ny version. */
+async function tcUploadOne(base, H, j, folderId, f) {
+  const JH = { ...H, "Content-Type": "application/json" };
+  const init = await j(await fetch(`${base}/files/fs/initiate`, { method: "POST", headers: JH, body: JSON.stringify({ parentId: folderId, parentType: "FOLDER", name: f.name }) }), `Starta uppladdningen av ${f.name}`);
+  const url = init && (init.uploadURL || init.uploadUrl);
+  if (!url || !init.uploadId) throw new Error(`Trimble Connect gav ingen uppladdningsadress för ${f.name}`);
+  const put = await fetch(url, { method: "PUT", body: f });
+  if (!put.ok) throw new Error(`Uppladdningen av ${f.name} misslyckades (${put.status})`);
+  return j(await fetch(`${base}/files/fs/commit`, { method: "POST", headers: JH, body: JSON.stringify({ uploadId: init.uploadId }) }), `Spara ${f.name} i mappen`);
 }
 
 /** Mittpunkt och höjdintervall (meter) för alla planerade objekt i inlästa modeller. */

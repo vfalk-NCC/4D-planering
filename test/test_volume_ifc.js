@@ -43,8 +43,8 @@ put('plan_markups.json', [
   });
   await page.route('https://components.connect.trimble.com/**', r => r.fulfill({ contentType: 'application/javascript', body: `
     window.TrimbleConnectWorkspace = { connect: function(t, cb) { window.__cb = cb; return Promise.resolve({
-      project: { getProject: () => Promise.resolve({ id: '${PID}', name: 'Kv Testet' }) },
-      extension: { requestPermission: () => Promise.resolve('x') },
+      project: { getProject: () => Promise.resolve({ id: '${PID}', name: 'Kv Testet', location: 'europe' }) },
+      extension: { requestPermission: p => Promise.resolve(p === 'accesstoken' ? 'aaa.bbb.ccc' : 'x') },
       markup: { addLineMarkups: a => Promise.resolve(a.map((m, i) => ({ ...m, id: i }))), getLineMarkups: () => Promise.resolve([]), removeMarkups: () => Promise.resolve() },
       viewer: {
         getSelection: () => Promise.resolve([]), convertToObjectIds: (m, r) => Promise.resolve(r.map(String)),
@@ -53,6 +53,27 @@ put('plan_markups.json', [
         getObjectBoundingBoxes: () => Promise.resolve([]), getObjectProperties: () => Promise.resolve([]),
         setObjectState: () => Promise.resolve(), getModels: () => Promise.resolve([]), toggleModel: () => Promise.resolve()
       } }); } };` }));
+  // Trimble Connects Core API (attrapp): region, projekt, rotmapp, mappar och uppladdning i tre steg
+  // (initiate → PUT till lagringen → commit), som Trimbles eget SDK.
+  const tc = { folders: [{ id: 'f-annat', name: 'Modeller', type: 'FOLDER' }], files: [], log: [], uploads: new Map() };
+  await page.route('https://app.connect.trimble.com/tc/api/2.0/regions', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify([{ location: 'europe', origin: 'app21.connect.trimble.com', 'tc-api': 'https://app21.connect.trimble.com/tc/api/2.0/' }]) }));
+  await page.route('https://app21.connect.trimble.com/tc/api/2.0/**', async r => {
+    const req = r.request(), u = new URL(req.url()), p = u.pathname.replace('/tc/api/2.0/', ''), m = req.method();
+    tc.log.push(m + ' ' + p);
+    if (req.headers().authorization !== 'Bearer aaa.bbb.ccc') return r.fulfill({ status: 401, body: '{}' });
+    const json = (b, status = 200) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
+    if (m === 'GET' && p === `projects/${PID}`) return json({ id: PID, rootId: 'root' });
+    if (m === 'GET' && p === 'folders/root/items') return json(tc.folders);
+    if (m === 'POST' && p === 'folders') { const b = JSON.parse(req.postData()); if (b.parentId !== 'root') return json({}, 400); const f = { id: 'f' + tc.folders.length, name: b.name, type: 'FOLDER' }; tc.folders.push(f); return json(f, 201); }
+    if (m === 'POST' && p === 'files/fs/initiate') { const b = JSON.parse(req.postData()); const id = 'up' + tc.uploads.size; tc.uploads.set(id, { ...b }); return json({ uploadId: id, uploadURL: 'https://s3.example.test/put/' + id }); }
+    if (m === 'POST' && p === 'files/fs/commit') { const b = JSON.parse(req.postData()); const up = tc.uploads.get(b.uploadId); if (!up || up.body === undefined) return json({}, 400); tc.files.push(up); return json({ id: 'file1', name: up.name, parentId: up.parentId }); }
+    return json({ message: 'okänd ' + m + ' ' + p }, 404);
+  });
+  await page.route('https://s3.example.test/**', async r => {
+    const req = r.request(); const id = req.url().split('/').pop();
+    if (req.method() !== 'PUT' || req.headers().authorization) return r.fulfill({ status: 403, body: '' });
+    tc.uploads.get(id).body = req.postDataBuffer().toString('utf8'); r.fulfill({ status: 200, body: '' });
+  });
   await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: '' }));
   await page.route('https://api.github.com/**', r => {
     const req = r.request(); const f = decodeURIComponent(new URL(req.url()).pathname.replace('/repos/vfalk-NCC/4D-data/contents/', ''));
@@ -65,8 +86,6 @@ put('plan_markups.json', [
   await page.waitForTimeout(500);
   await page.evaluate(() => {
     document.getElementById('timelineDate').value = '2026-10-05';
-    window.__uploads = [];
-    tcUploadFiles = async (files, folder) => { for (const f of files) window.__uploads.push({ folder, name: f.name, text: await f.text() }); return { uploaded: files.length, folder }; };
   });
 
   // Via menyn: knappen finns i ⋯-menyn och ger en nedladdning + en uppladdning till TC.
@@ -75,10 +94,18 @@ put('plan_markups.json', [
   const name = dl.suggestedFilename();
   if (!/^Volymer Kv Testet 2026-10-05\.ifc$/.test(name)) fail('Filnamnet: ' + name);
   const text = fs.readFileSync(await dl.path(), 'utf8');
-  await page.waitForFunction(() => window.__uploads.length === 1);
-  const up = await page.evaluate(() => window.__uploads[0]);
-  if (up.folder !== 'Lägesplan export' || up.name !== name) fail('TC-uppladdningen: ' + JSON.stringify({ f: up.folder, n: up.name }));
-  if (up.text !== text) fail('Filen i TC ska vara samma som den nedladdade');
+  for (let i = 0; i < 50 && !tc.files.length; i++) await page.waitForTimeout(100);
+  const folder = tc.folders.find(f => f.name === 'Lägesplan export');
+  if (!folder) fail('Mappen Lägesplan export ska skapas i projektets rotmapp: ' + tc.log.join(', '));
+  if (tc.files.length !== 1) fail('En fil ska sparas i Trimble Connect: ' + tc.log.join(', '));
+  const up = tc.files[0];
+  if (up.parentId !== folder.id || up.parentType !== 'FOLDER' || up.name !== name) fail('TC-uppladdningen: ' + JSON.stringify({ p: up.parentId, t: up.parentType, n: up.name }));
+  if (up.body !== text) fail('Filen i TC ska vara samma som den nedladdade');
+  // Andra gången finns mappen redan: ingen ny mapp, ny uppladdning (blir en ny version i TC).
+  await page.click('#btnListMenu');
+  await Promise.all([page.waitForEvent('download'), page.click('#btnExportVolumesIfc')]);
+  for (let i = 0; i < 50 && tc.files.length < 2; i++) await page.waitForTimeout(100);
+  if (tc.files.length !== 2 || tc.log.filter(l => l === 'POST folders').length !== 1 || tc.files[1].parentId !== folder.id) fail('Andra exporten ska hamna i samma mapp: ' + tc.log.join(', '));
   console.log('OK: menyn laddar ned', name, 'och sparar samma fil i Trimble Connect (Lägesplan export)');
 
   // Innehållet.
