@@ -38,7 +38,7 @@ async function makePp(variant) {
   // Hierarki: rotstapel 1 -> Projekttidplan (10) -> stapel 11 -> PRODUKTION (20) -> stapel 21 -> 742 Sikthall (30) -> stapel 31 (aktiviteterna)
   run('INSERT INTO BAR VALUES (?,?,?)', [[1, 0, 'Projekttidplan'], [11, 10, ''], [21, 20, '742 Sikthall'], [31, 30, ''], [2, 0, ''], [51, 50, '']]);
   run('INSERT INTO EXPANDED_TASK VALUES (?,?,?)', [[10, variant === 3 ? 'Projekttidplan rev B' : 'Projekttidplan', 1], [20, 'PRODUKTION', 11], [30, '', 21], [50, 'Building', 2]]);
-  const ren = variant === 2;
+  const ren = variant === 2 || variant === 5;
   // Montage har samma UNIQUE_TASK_ID ('a01') som Gjutning – som i NSV-tidplanen är det en kod, inte unikt.
   // Variant 4: Montage och Schakt har flyttats i Powerproject och fått nya id (Montage har kvar sitt GUID).
   const mv = variant === 4, nid = id => mv && id === 101 ? 111 : mv && id === 102 ? 112 : id;
@@ -48,6 +48,7 @@ async function makePp(variant) {
     [nid(102), 'Schakt', 31, 'a03', '2026-09-01 08:00:00', '2026-09-14 16:00:00', 0, '0,0,<8.0E01>,', '{00000000-0000-0000-0000-000000000000}'],
     [103, 'https://apps.powerapps.com/x', 31, '', '2026-10-01 08:00:00', '2026-10-01 16:00:00', 0, '', null],
     [104, 'Utan datum', 31, '', null, null, 0, '', null],
+    ...(variant === 5 ? [[106, 'Ny aktivitet', 31, 'a05', '2026-12-01 08:00:00', '2026-12-05 16:00:00', 0, '0,0,<4.0E01>,', null]] : []),
     [200, 'Mallaktivitet', 51, '', '2015-01-02 08:00:00', '2015-01-09 16:00:00', 0, '0,0,<4.0E01>,', null],
   ]);
   run('INSERT INTO MILESTONE VALUES (?,?,?,?,?,?,?)', [[300, 'Tätt hus', 31, 'a04', '2026-11-10 08:00:00', '2026-11-10 08:00:00', 0]]);
@@ -161,6 +162,8 @@ async function makePp(variant) {
   // Översta raden omdöpt i Powerproject: aktiviteterna känns ändå igen på sitt id.
   await page.setInputFiles('#ppFile', { name: 'Huvudtidplan v3.pp', mimeType: 'application/octet-stream', buffer: await makePp(3) });
   await page.evaluate(() => document.getElementById('ppOptions').classList.add('hidden')); await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
+  if (await page.inputValue('#ppBaseline') !== 'keepfill') fail('Finns en baseline ska "Behåll – nya får sitt första datum" vara förvalt');
+  await page.selectOption('#ppBaseline', 'prev');
   await page.click('#btnPpPreview'); await page.waitForTimeout(200);
   const prev3 = await page.evaluate(() => ({ create: planImportDiff.toCreate.length, update: planImportDiff.toUpdate.length }));
   await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
@@ -170,6 +173,7 @@ async function makePp(variant) {
   console.log('OK: omdöpt översta rad i Powerproject – aktiviteterna känns igen på id, kopplingen kvar');
   // Samma fil igen: baseline skulle bli identisk med planen – den behålls i stället.
   await page.evaluate(() => document.getElementById('ppOptions').classList.add('hidden')); await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
+  await page.selectOption('#ppBaseline', 'prev');
   await page.click('#btnPpPreview'); await page.waitForTimeout(200);
   if (!/Inga datum har ändrats/.test(await page.innerText('#planImportSummary'))) fail('Förhandsgranskningen ska säga att baseline behålls');
   await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
@@ -193,7 +197,7 @@ async function makePp(variant) {
   let g4 = get('pp/plan_items.json').find(r => r.id === g.id), bm4 = get('pp/plan_baseline.json');
   if (g4.baseline_start_date !== '2026-11-02' || g4.baseline_end_date !== '2026-11-13' || bm4[bm4.length - 1].label !== 'Huvudtidplan BL1' || bm4[bm4.length - 1].mode !== 'file') fail('Baseline från .ppb: ' + JSON.stringify([g4, bm4]));
   await page.evaluate(() => document.getElementById('ppOptions').classList.add('hidden')); await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
-  if (await page.inputValue('#ppBaseline') !== 'prev') fail('Filvalet ska inte sparas (filen måste väljas på nytt)');
+  if (await page.inputValue('#ppBaseline') !== 'keepfill') fail('Filvalet ska inte sparas (filen måste väljas på nytt)');
   await page.selectOption('#ppBaseline', 'none');
   await page.click('#btnPpPreview'); await page.waitForTimeout(200);
   await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
@@ -214,6 +218,52 @@ async function makePp(variant) {
     fail('En flyttad aktivitet med nytt id ska kännas igen: ' + JSON.stringify({ prev4, pp4: pp4.map(r => [r.object_name, r.id, r.source_key, r.pp_guid]) }));
   if (JSON.stringify(by4['Gjutning bottenplatta'].depends_on) !== JSON.stringify([by4['Schakt'].id])) fail('Beroendena ska följa med');
   console.log('OK: flyttad aktivitet med nytt id i Powerproject känns igen (GUID, annars samma namn) – ingen ny, ingen borttagen');
+
+  // Kontraktstidplan: huvudbaselinen får namn och sätts (förra importen), nästa import behåller den
+  // och ger bara den nya aktiviteten sitt första datum som baseline.
+  const imp = async (name, v, setup) => {
+    await page.setInputFiles('#ppFile', { name, mimeType: 'application/octet-stream', buffer: await makePp(v) });
+    await page.evaluate(() => document.getElementById('ppOptions').classList.add('hidden')); await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
+    if (setup) await setup();
+    await page.click('#btnPpPreview'); await page.waitForTimeout(200);
+    const sum = await page.innerText('#planImportSummary');
+    await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
+    return sum;
+  };
+  await imp('Kontrakt.pp', 2, async () => { await page.selectOption('#ppBaseline', 'prev'); await page.fill('#ppBaselineName', 'Kontraktstidplan'); });
+  let rows5 = Object.fromEntries(get('pp/plan_items.json').map(r => [r.object_name, r]));
+  let reg = get('pp/plan_baselines.json');
+  if (rows5['Gjutning bottenplatta etapp 1'].baseline_start_date !== '2026-10-05' || !reg || reg[0].id !== 'main' || reg[0].name !== 'Kontraktstidplan') fail('Kontraktstidplanen som huvudbaseline: ' + JSON.stringify([rows5['Gjutning bottenplatta etapp 1'], reg]));
+  const sum5 = await imp('Huvudtidplan v5.pp', 5, async () => {
+    if (await page.inputValue('#ppBaseline') !== 'keepfill') fail('"Behåll – nya får sitt första datum" ska vara förvalt');
+    if (!/Kontraktstidplan \(huvudbaseline\) – 4 akt\./.test(await page.$eval('#ppBaselineTarget', el => el.selectedOptions[0].text))) fail('Baselinen ska visas med namn och antal');
+  });
+  rows5 = Object.fromEntries(get('pp/plan_items.json').map(r => [r.object_name, r]));
+  if (rows5['Gjutning bottenplatta etapp 1'].baseline_start_date !== '2026-10-05' || rows5['Ny aktivitet'].baseline_start_date !== '2026-12-01' || rows5['Ny aktivitet'].baseline_end_date !== '2026-12-05')
+    fail('Kontraktsbaselinen ska ligga kvar och den nya aktiviteten få sitt första datum: ' + JSON.stringify(Object.values(rows5).map(r => [r.object_name, r.baseline_start_date])));
+  if (!/Baseline “Kontraktstidplan”/.test(sum5) || !/4 behåller sin baseline.*1 utan baseline får sitt första datum – 1 ny aktivitet/.test(sum5)) fail('Förhandsgranskningen ska förklara påfyllningen: ' + sum5);
+  if (get('pp/plan_baselines.json')[0].source !== reg[0].source) fail('Källan för kontraktstidplanen ska inte ändras av påfyllningen');
+  console.log('OK: kontraktstidplanen ligger kvar – en ny aktivitet får sitt första datum som baseline');
+
+  // En namngiven revision bredvid: "Rev 1 – ÄTA 12" från en .ppb; huvudbaselinen orörd.
+  await imp('Huvudtidplan v5.pp', 5, async () => {
+    await page.selectOption('#ppBaselineTarget', '__new');
+    await page.click('#btnPpPreview'); await page.waitForTimeout(100);
+    if (!/Ge den nya baselinen ett namn/.test(await page.innerText('#ppStatus'))) fail('En ny baseline ska kräva ett namn');
+    await page.fill('#ppBaselineName', 'Rev 1 – ÄTA 12');
+    await page.selectOption('#ppBaseline', 'file');
+    await page.setInputFiles('#ppBaselineFile', { name: 'Rev1.ppb', mimeType: 'application/octet-stream', buffer: await makePp(1) });
+    await page.waitForFunction(() => /känns igen/.test(document.getElementById('ppBaselineFileInfo').innerText), null, { timeout: 15000 });
+  });
+  reg = get('pp/plan_baselines.json'); rows5 = Object.fromEntries(get('pp/plan_items.json').map(r => [r.object_name, r]));
+  const rev = reg.find(r => r.name === 'Rev 1 – ÄTA 12');
+  const gj = rows5['Gjutning bottenplatta etapp 1'];
+  if (reg.length !== 2 || !rev || rev.mode !== 'file' || !gj.baselines || JSON.stringify(gj.baselines[rev.id]) !== JSON.stringify(['2026-10-05', '2026-10-16']) || gj.baseline_start_date !== '2026-10-05' || rows5['Ny aktivitet'].baseline_start_date !== '2026-12-01')
+    fail('Namngiven revision bredvid huvudbaselinen: ' + JSON.stringify([reg, gj]));
+  // Nästa import med huvudbaselinen vald behåller revisionen på raderna.
+  await imp('Huvudtidplan v5.pp', 5);
+  if (JSON.stringify(Object.fromEntries(get('pp/plan_items.json').map(r => [r.object_name, r])).Schakt.baselines) !== JSON.stringify(rows5.Schakt.baselines)) fail('Revisionen ska följa med vid nästa import');
+  console.log('OK: namngiven baseline (Rev 1 – ÄTA 12) sparas bredvid kontraktstidplanen och följer med vid nästa import');
 
   // 5) Tillbaka till Excel: Excel-planeringen igen; Lägesplan öppnas med rätt planering.
   await page.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(u); return { closed: false, focus() {} }; }; });

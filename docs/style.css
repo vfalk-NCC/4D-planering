@@ -1082,3 +1082,6 @@ body.src-pp section[data-panel-id="excel"], body.src-excel section[data-panel-id
 .plan-import-baseline .bl-warn { margin-top: 6px; padding: 4px 6px; background: #fffbeb; border: 1px solid #fcd34d; border-radius: 4px; font-size: 12px; }
 .plan-import-breakdown { font-size: 12px; margin-top: 1px; }
 .plan-import-summary { max-height: 60vh; overflow: auto; }
+.pp-bl-target { display: flex; gap: 6px; flex-wrap: wrap; }
+.pp-bl-target select { flex: 1 1 160px; min-width: 0; }
+.pp-bl-target input { flex: 1 1 140px; min-width: 0; }

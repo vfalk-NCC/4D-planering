@@ -3847,6 +3847,8 @@ async function commitPlanImport(diff) {
       groupId: existing ? existing.groupId : null,
       baselineStartDate: p.baselineStartDate || null,
       baselineEndDate: p.baselineEndDate || null,
+      // Namngivna baselines: från Powerproject-importen, annars (Excel) behålls de som finns.
+      baselines: p.baselines !== undefined ? p.baselines : (existing ? existing.baselines : null),
       excelSheet: p.sheet || null,
       excelMap: p.excelMap || null,
     });
@@ -3892,6 +3894,8 @@ async function commitPlanImport(diff) {
     ),
     saveActivitiesForItemsBulk(activityBatches),
     // Baseline (Powerproject-importen): varifrån baseline-datumen kommer.
+    diff.baseline && diff.baseline.registry ? ghWriteJSON(settings.githubToken, baselineRegistryPath(), () => diff.baseline.registry, `Baselines: ${diff.baseline.name || ""}`)
+      .catch(e => console.warn("Kunde inte spara baseline-registret", e)) : null,
     diff.baseline && diff.baseline.meta !== undefined ? ghWriteJSON(settings.githubToken, baselineMetaPath(),
       arr => [...(Array.isArray(arr) ? arr : []).slice(-19), diff.baseline.meta], `Baseline: ${diff.baseline.meta.label || "ingen"}`).catch(e => console.warn("Kunde inte spara baseline-uppgiften", e)) : null,
     // Importloggen: flikarna och aktiviteterna i den här filen (se isGoneFromLastImport).
@@ -5090,10 +5094,10 @@ const BACKUP_FILES = [
   "plan_items", "plan_item_activities", "plan_item_comments", "plan_item_progress_history",
   "plan_item_baseline_history", "plan_item_positions", "status_plans", "site_layers",
   "plan_blockers", "plan_blocker_comments", "plan_milestones", "plan_deliveries",
-  "plan_document_deliveries", "plan_inspections", "plan_safety_events", "plan_staffing", "plan_baseline"
+  "plan_document_deliveries", "plan_inspections", "plan_safety_events", "plan_staffing", "plan_baseline", "plan_baselines"
 ];
 // Det som nollställs (planeringen och allt som hänger på planeringsposternas id).
-const RESET_FILES = ["plan_items", "plan_item_activities", "plan_item_comments", "plan_item_progress_history", "plan_item_baseline_history", "plan_item_positions", "plan_baseline"];
+const RESET_FILES = ["plan_items", "plan_item_activities", "plan_item_comments", "plan_item_progress_history", "plan_item_baseline_history", "plan_item_positions", "plan_baseline", "plan_baselines"];
 const projectFilePath = name => RESET_FILES.includes(name) ? `${planDir()}/${name}.json` : `projects/${encodeURIComponent(projectId)}/${name}.json`;
 const backupIndexPath = () => `${planDir()}/backups/index.json`;
 
@@ -5281,6 +5285,11 @@ function importsPath() {
 function baselineMetaPath() {
   return `${planDir()}/plan_baseline.json`;
 }
+/* Namngivna baselines (huvudbaselinen "main" + t.ex. revisioner): [{ id, name, source, mode, set_at, … }].
+   Datumen ligger på raderna: main i baseline_start_date/baseline_end_date, övriga i baselines[id]. */
+function baselineRegistryPath() {
+  return `${planDir()}/plan_baselines.json`;
+}
 let lastPlanImport = null; // { id, at, file, sheets: [...], keys: [...] }
 const sheetOfSourceKey = k => String(k || "").split("||")[0];
 /* Importerad aktivitet från en flik som fanns i senaste importen, men som
@@ -5353,6 +5362,7 @@ function toRow(it) {
     // end_date är de aktuella datumen man planerar efter.
     baseline_start_date: it.baselineStartDate || null,
     baseline_end_date: it.baselineEndDate || null,
+    ...(it.baselines && Object.keys(it.baselines).length ? { baselines: it.baselines } : {}),
     // Raderna i 4-veckorsplaneringen (för "Hämta framdrift från 4D" i Excel).
     excel_sheet: it.excelSheet || null,
     excel_map: Array.isArray(it.excelMap) && it.excelMap.length ? it.excelMap : null,
@@ -5400,6 +5410,7 @@ function fromRowStored(row) {
     groupId: row.group_id || null,
     baselineStartDate: row.baseline_start_date || null,
     baselineEndDate: row.baseline_end_date || null,
+    baselines: row.baselines && typeof row.baselines === "object" && !Array.isArray(row.baselines) ? row.baselines : null,
     excelSheet: row.excel_sheet || null,
     excelMap: Array.isArray(row.excel_map) ? row.excel_map : null,
     updatedAt: row.updated_at
