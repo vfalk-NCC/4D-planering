@@ -150,7 +150,12 @@ async function makePp(variant) {
   await page.evaluate(async id => { await ghWriteJSON(settings.githubToken, itemsPath(), arr => arr.map(r => r.id === id ? { ...r, model_id: 'm1', object_id: '77' } : r), 'koppla'); await refreshItems(); }, g.id);
   await page.setInputFiles('#ppFile', { name: 'Huvudtidplan v2.pp', mimeType: 'application/octet-stream', buffer: await makePp(2) });
   await page.evaluate(() => document.getElementById('ppOptions').classList.add('hidden')); await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
+  await page.locator('section[data-panel-id="pp"]').screenshot({ path: path.join(require('os').tmpdir(), 'pp_panel.png') });
   await page.click('#btnPpPreview'); await page.waitForTimeout(200);
+  await page.evaluate(() => document.querySelectorAll('.plan-import-changes').forEach(d => d.open = true));
+  const ch = await page.innerText('#planImportSummary');
+  if (!/1 nya datum \(1 senare, 0 tidigare/.test(ch) || !/\+28 d Gjutning bottenplatta etapp 1/.test(ch) || !/05\/10–16\/10 → 02\/11–13\/11/.test(ch) || !/1 nytt namn eller område/.test(ch)) fail('Ändringarna i detalj: ' + ch);
+  await page.locator('#planImportPreviewDialog .dialog-box').screenshot({ path: path.join(require('os').tmpdir(), 'pp_preview_changes.png') });
   await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
   const pp2 = get('pp/plan_items.json'), g2 = pp2.find(r => r.id === g.id);
   if (pp2.length !== 4 || !g2 || g2.object_name !== 'Gjutning bottenplatta etapp 1' || g2.start_date !== '2026-11-02' || g2.model_id !== 'm1' || g2.object_id !== '77') fail('En ny version ska uppdatera samma aktivitet och behålla 3D-kopplingen: ' + JSON.stringify(g2));
@@ -230,13 +235,13 @@ async function makePp(variant) {
     await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
     return sum;
   };
-  await imp('Kontrakt.pp', 2, async () => { await page.selectOption('#ppBaseline', 'prev'); await page.fill('#ppBaselineName', 'Kontraktstidplan'); });
+  await imp('Kontrakt.pp', 2, async () => { await page.selectOption('#ppBaseline', 'prev'); await page.click('#ppBaselineRename'); await page.fill('#ppBaselineName', 'Kontraktstidplan'); });
   let rows5 = Object.fromEntries(get('pp/plan_items.json').map(r => [r.object_name, r]));
   let reg = get('pp/plan_baselines.json');
   if (rows5['Gjutning bottenplatta etapp 1'].baseline_start_date !== '2026-10-05' || !reg || reg[0].id !== 'main' || reg[0].name !== 'Kontraktstidplan') fail('Kontraktstidplanen som huvudbaseline: ' + JSON.stringify([rows5['Gjutning bottenplatta etapp 1'], reg]));
   const sum5 = await imp('Huvudtidplan v5.pp', 5, async () => {
     if (await page.inputValue('#ppBaseline') !== 'keepfill') fail('"Behåll – nya får sitt första datum" ska vara förvalt');
-    if (!/Kontraktstidplan \(huvudbaseline\) – 4 akt\./.test(await page.$eval('#ppBaselineTarget', el => el.selectedOptions[0].text))) fail('Baselinen ska visas med namn och antal');
+    if (!/★ Kontraktstidplan · 4 akt\./.test(await page.$eval('#ppBaselineTarget', el => el.selectedOptions[0].text))) fail('Baselinen ska visas med namn och antal');
   });
   rows5 = Object.fromEntries(get('pp/plan_items.json').map(r => [r.object_name, r]));
   if (rows5['Gjutning bottenplatta etapp 1'].baseline_start_date !== '2026-10-05' || rows5['Ny aktivitet'].baseline_start_date !== '2026-12-01' || rows5['Ny aktivitet'].baseline_end_date !== '2026-12-05')

@@ -176,28 +176,43 @@ function renderPpOptions() {
   const pp = ppParsed, fmt = d => d ? d.replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$3/$2 $1") : "–";
   const libOpts = (pick, none) => `<option value="">${none}</option>` + pp.libs.map(l => `<option value="${l.id}"${pick(l) ? " selected" : ""}>${escapeHtml(l.name)} (${l.count})</option>`).join("");
   const areaDefault = pp.libs.find(l => /zon/i.test(l.name)), contrDefault = pp.libs.find(l => /utförs|entrepren|ue\b/i.test(l.name));
+  // Förenklat (Victor 2026-10-06): 1) delar, 2) baseline; område/entreprenör ligger hopfällt med förvalen.
+  const libName = id => { const l = pp.libs.find(x => String(x.id) === String(id)); return l ? l.name : ""; };
   box.innerHTML = `
     <div class="pp-head"><b>${escapeHtml(pp.project.name || pp.fileName)}</b> <span class="hint">${pp.tasks.length} aktiviteter · ${pp.links.length} länkar${pp.project.start ? ` · ${fmt(pp.project.start)} – ${fmt(pp.project.end)}` : ""}</span></div>
-    <label class="pp-l">Delar att importera</label>
-    <div class="pp-groups">${pp.groups.map(g => `<label class="check"><input type="checkbox" data-ppg="${g.id}"${g.defaultOn ? " checked" : ""} /> ${escapeHtml(g.name)} <span class="hint">${g.count} st · ${fmt(g.start)} – ${fmt(g.end)}</span></label>`).join("")}</div>
-    <div class="pp-grid">
-      <label class="pp-l" for="ppAreaLib">Område</label><select id="ppAreaLib">${libOpts(l => l === areaDefault, "Sammanfattningsraden i tidplanen")}</select>
-      <label class="pp-l" for="ppContractorLib">Entreprenör</label><select id="ppContractorLib">${libOpts(l => l === contrDefault, "Ingen")}</select>
-    </div>
-    <div class="pp-grid">
-      <label class="pp-l" for="ppBaselineTarget">Baseline</label>
-      <div class="pp-bl-target"><select id="ppBaselineTarget">${ppBlTargetOptions()}</select><input type="text" id="ppBaselineName" placeholder="Namn, t.ex. Kontraktstidplan" title="Baselinens namn – visas i dashboarden" /></div>
-      <label class="pp-l" for="ppBaseline">Datum</label><select id="ppBaseline">
-        <option value="keepfill">Behåll – nya aktiviteter får sitt första datum som baseline</option>
-        <option value="prev">Förra importen – datumen som gäller nu blir baseline</option>
-        <option value="keep">Behåll som den är (inget nytt läggs till)</option>
-        <option value="file">Från en Powerproject-baseline (.ppb) eller äldre .pp-fil…</option>
-        <option value="none">Ingen – ta bort den här baselinen</option>
-      </select>
-    </div>
-    <div class="pp-baseline-file hidden" id="ppBaselineFileRow"><input type="file" id="ppBaselineFile" accept=".ppb,.pp" /> <span class="hint" id="ppBaselineFileInfo"></span></div>
-    <p class="hint">Område: aktivitetens kod i biblioteket, annars sammanfattningsraden ovanför den. Länkarna blir beroenden. Baseline visas i 4D-dashboarden (jämför med t.ex. kontraktstidplanen); flera namngivna baselines kan sparas sida vid sida (t.ex. "Kontraktstidplan" och "Rev 1 – ÄTA 12"). Inget sparas förrän du bekräftar i förhandsgranskningen.</p>
-    <div class="row"><button type="button" id="btnPpPreview" class="primary">Förhandsgranska importen</button></div>`;
+    <div class="pp-step"><span class="pp-n">1</span><div class="pp-step-body"><b>Delar</b>
+      <div class="pp-groups">${pp.groups.map(g => `<label class="check pp-chip" title="${fmt(g.start)} – ${fmt(g.end)}"><input type="checkbox" data-ppg="${g.id}"${g.defaultOn ? " checked" : ""} /> ${escapeHtml(g.name)} <span class="hint">${g.count} st · ${fmt(g.start).slice(-4)}${fmt(g.end).slice(-4) !== fmt(g.start).slice(-4) ? "–" + fmt(g.end).slice(-4) : ""}</span></label>`).join("")}</div>
+    </div></div>
+    <div class="pp-step"><span class="pp-n">2</span><div class="pp-step-body"><b>Baseline</b>
+      <div class="pp-bl-row">
+        <select id="ppBaselineTarget" aria-label="Vilken baseline">${ppBlTargetOptions()}</select>
+        <button type="button" class="link-btn" id="ppBaselineRename" title="Byt namn på baselinen (t.ex. Kontraktstidplan)">✎ Namn</button>
+        <select id="ppBaseline" aria-label="Vad som händer med den">
+          <option value="keepfill">Behåll + ge nya aktiviteter sitt första datum</option>
+          <option value="prev">Ersätt med förra importens datum</option>
+          <option value="keep">Behåll som den är</option>
+          <option value="file">Hämta från en .ppb-fil…</option>
+          <option value="none">Ta bort</option>
+        </select>
+      </div>
+      <input type="text" id="ppBaselineName" class="hidden" placeholder="Namn, t.ex. Kontraktstidplan" title="Baselinens namn – visas i dashboarden" />
+      <div class="pp-baseline-file hidden" id="ppBaselineFileRow"><input type="file" id="ppBaselineFile" accept=".ppb,.pp" /> <span class="hint" id="ppBaselineFileInfo"></span></div>
+    </div></div>
+    <details class="pp-more"><summary>Område: <b id="ppAreaSum"></b> · Entreprenör: <b id="ppContrSum"></b> <span class="hint">ändra</span></summary>
+      <div class="pp-grid">
+        <label class="pp-l" for="ppAreaLib">Område</label><select id="ppAreaLib">${libOpts(l => l === areaDefault, "Sammanfattningsraden i tidplanen")}</select>
+        <label class="pp-l" for="ppContractorLib">Entreprenör</label><select id="ppContractorLib">${libOpts(l => l === contrDefault, "Ingen")}</select>
+      </div>
+      <p class="hint">Område: aktivitetens kod i biblioteket, annars sammanfattningsraden ovanför den.</p>
+    </details>
+    <div class="row"><button type="button" id="btnPpPreview" class="primary">Förhandsgranska importen</button><span class="hint">Inget sparas förrän du bekräftar.</span></div>`;
+  const sums = () => {
+    document.getElementById("ppAreaSum").textContent = libName(document.getElementById("ppAreaLib").value) || "sammanfattningsraden";
+    document.getElementById("ppContrSum").textContent = libName(document.getElementById("ppContractorLib").value) || "ingen";
+  };
+  sums();
+  document.getElementById("ppAreaLib").onchange = sums;
+  document.getElementById("ppContractorLib").onchange = sums;
   box.classList.remove("hidden");
   document.getElementById("btnPpPreview").onclick = () => ppPreview();
   const bsel = document.getElementById("ppBaseline"), brow = document.getElementById("ppBaselineFileRow");
@@ -205,6 +220,8 @@ function renderPpOptions() {
   // Förval: finns baselinen redan behålls den och nya aktiviteter fylls på; annars förra importen.
   const pickDefaults = () => {
     const t = tsel.value;
+    tname.classList.toggle("hidden", t !== "__new");
+    if (t === "__new") setTimeout(() => tname.focus(), 0);
     tname.value = t === "__new" ? "" : ppBlName(t);
     tname.placeholder = t === "__new" ? "Namn, t.ex. Rev 1 – ÄTA 12" : "Namn, t.ex. Kontraktstidplan";
     bsel.value = t !== "__new" && items.some(it => ppBlGet(it, t)) ? "keepfill" : "prev";
@@ -213,6 +230,7 @@ function renderPpOptions() {
   tsel.value = PP_BL_MAIN;
   pickDefaults();
   tsel.onchange = pickDefaults;
+  document.getElementById("ppBaselineRename").onclick = () => { tname.classList.toggle("hidden"); if (!tname.classList.contains("hidden")) tname.focus(); };
   bsel.onchange = () => brow.classList.toggle("hidden", bsel.value !== "file");
   const bfile = document.getElementById("ppBaselineFile"), binfo = document.getElementById("ppBaselineFileInfo");
   ppBaselineParsed = null;
@@ -253,7 +271,7 @@ function ppBlName(id) {
 function ppBlTargetOptions() {
   const ids = [PP_BL_MAIN, ...ppBaselineRegistry.map(r => r.id).filter(id => id !== PP_BL_MAIN)];
   const count = id => items.filter(it => ppBlGet(it, id)).length;
-  return ids.map(id => `<option value="${escapeHtml(id)}">${escapeHtml(ppBlName(id))}${id === PP_BL_MAIN ? " (huvudbaseline)" : ""} – ${count(id)} akt.</option>`).join("")
+  return ids.map(id => `<option value="${escapeHtml(id)}">${id === PP_BL_MAIN ? "★ " : ""}${escapeHtml(ppBlName(id))} · ${count(id)} akt.</option>`).join("")
     + `<option value="__new">+ Ny baseline…</option>`;
 }
 async function ppLoadBaselineRegistry() {
@@ -481,6 +499,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const read = document.getElementById("btnPpRead");
   if (read) read.onclick = ppRead;
   const f = document.getElementById("ppFile");
-  if (f) f.onchange = () => { ppParsed = null; renderPpOptions(); };
+  if (f) f.onchange = () => { ppParsed = null; renderPpOptions(); if (f.files && f.files[0]) ppRead(); };
   document.querySelectorAll("#planSourceBar [data-src]").forEach(b => { b.onclick = () => setPlanSource(b.dataset.src); });
 });

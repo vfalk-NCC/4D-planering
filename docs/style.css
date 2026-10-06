@@ -1085,3 +1085,29 @@ body.src-pp section[data-panel-id="excel"], body.src-excel section[data-panel-id
 .pp-bl-target { display: flex; gap: 6px; flex-wrap: wrap; }
 .pp-bl-target select { flex: 1 1 160px; min-width: 0; }
 .pp-bl-target input { flex: 1 1 140px; min-width: 0; }
+/* Powerproject-importen, förenklad: numrerade steg, delar som chips, område/entreprenör hopfällt. */
+.pp-file-row { align-items: center; gap: 8px; }
+.pp-file-row input[type=file] { flex: 1; min-width: 0; }
+.pp-step { display: flex; gap: 8px; align-items: flex-start; }
+.pp-n { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%; background: #2563eb; color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
+.pp-step-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.pp-options .pp-groups { flex-direction: row; flex-wrap: wrap; gap: 4px 6px; }
+.pp-options .pp-chip { border: 1px solid #d1d5db; border-radius: 999px; padding: 2px 8px; background: #fff; }
+.pp-options .pp-chip:has(input:checked) { border-color: #2563eb; background: #eff6ff; }
+.pp-bl-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pp-bl-row select { flex: 1 1 150px; min-width: 0; }
+.link-btn { background: none; border: none; color: #2563eb; padding: 2px 4px; cursor: pointer; font-size: 12px; width: auto; }
+#ppBaselineName.hidden { display: none; }
+.pp-more { font-size: 12px; }
+.pp-more summary { cursor: pointer; color: #4b5563; }
+.pp-more .pp-grid { margin-top: 6px; }
+.pp-options .row .hint { margin: 0 0 0 8px; align-self: center; }
+.plan-import-changes-box { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.plan-import-changes { font-size: 12px; border: 1px solid #e5e7eb; border-radius: 6px; padding: 4px 8px; background: #fff; }
+.plan-import-changes summary { cursor: pointer; }
+.plan-import-changes ul { margin: 4px 0 2px 18px; padding: 0; }
+.plan-import-changes li { margin: 1px 0; }
+.plan-import-changes .bl-later { color: #b42318; }
+.plan-import-changes .bl-earlier { color: #047857; }
+.pp-bl-row #ppBaselineTarget { flex: 1 1 60%; }
+.pp-bl-row #ppBaseline { flex: 1 1 100%; }

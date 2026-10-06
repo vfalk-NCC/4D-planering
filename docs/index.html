@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261006192805" />
+<link rel="stylesheet" href="style.css?v=20261006193855" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261006192805"></script>
-<script src="plan-excel-comments.js?v=20261006192805"></script>
+<script src="plan-excel-parser.js?v=20261006193855"></script>
+<script src="plan-excel-comments.js?v=20261006193855"></script>
 </head>
 <body>
 
@@ -272,9 +272,8 @@
     <!-- ===== Powerproject-import ===== -->
     <section class="panel" data-panel-id="pp" data-tab="tools">
       <h2>Powerproject-import</h2>
-      <p class="hint">Läser in en tidplan från Asta Powerproject (.pp) – aktiviteter, milstolpar, datum, framdrift, länkar (beroenden), zoner och entreprenörer. Kan köras om när tidplanen uppdateras: aktiviteterna känns igen och behåller sina 3D-kopplingar. Filen ändras aldrig och lämnar inte datorn förrän du bekräftar.</p>
-      <input type="file" id="ppFile" accept=".pp" />
-      <div class="row"><button id="btnPpRead" class="primary">Läs in</button></div>
+      <p class="hint">Välj tidplanen (.pp) – aktiviteterna känns igen vid varje ny import och behåller sina 3D-kopplingar. Filen ändras aldrig.</p>
+      <div class="row pp-file-row"><input type="file" id="ppFile" accept=".pp" /><button id="btnPpRead" title="Läs in filen igen">↻ Läs in</button></div>
       <div id="ppOptions" class="pp-options hidden"></div>
       <div id="ppStatus" class="hint"></div>
     </section>
@@ -616,18 +615,18 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261006192805"></script>
-  <script src="excel-link.js?v=20261006192805"></script>
-  <script src="app.js?v=20261006192805"></script>
-  <script src="manual-markings.js?v=20261006192805"></script>
-  <script src="ifc-writer.js?v=20261006192805"></script>
-  <script src="pp-import.js?v=20261006192805"></script>
-  <script src="volume-ifc.js?v=20261006192805"></script>
-  <script src="sub-activity-list.js?v=20261006192805"></script>
-  <script src="activity-remove.js?v=20261006192805"></script>
-  <script src="dup-check.js?v=20261006192805"></script>
-  <script src="ui-shell.js?v=20261006192805"></script>
-  <script src="undo.js?v=20261006192805"></script>
-  <script src="planning-keys.js?v=20261006192805"></script>
+  <script src="github-storage.js?v=20261006193855"></script>
+  <script src="excel-link.js?v=20261006193855"></script>
+  <script src="app.js?v=20261006193855"></script>
+  <script src="manual-markings.js?v=20261006193855"></script>
+  <script src="ifc-writer.js?v=20261006193855"></script>
+  <script src="pp-import.js?v=20261006193855"></script>
+  <script src="volume-ifc.js?v=20261006193855"></script>
+  <script src="sub-activity-list.js?v=20261006193855"></script>
+  <script src="activity-remove.js?v=20261006193855"></script>
+  <script src="dup-check.js?v=20261006193855"></script>
+  <script src="ui-shell.js?v=20261006193855"></script>
+  <script src="undo.js?v=20261006193855"></script>
+  <script src="planning-keys.js?v=20261006193855"></script>
 </body>
 </html>

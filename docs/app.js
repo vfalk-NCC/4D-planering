@@ -3537,6 +3537,51 @@ function buildPlanImportDiff(parsedItems) {
   return { parsedItems, matched, toCreate, toUpdate, removedExisting, removeKeys, renames, kept4d, todayStr };
 }
 
+/* Ändringarna i detalj (Victor 2026-10-06: "mer info … om framdriften justerats, om datum ändrats
+   osv"): hopfällbara grupper med före → efter för de största ändringarna; allt finns i Excel-rapporten. */
+function planImportChangesHtml(diff) {
+  if (!diff.toUpdate.length) return "";
+  const e = escapeHtml, f = d => (d ? String(d).replace(/^(\d{4})-(\d{2})-(\d{2}).*$/, "$3/$2") : "–");
+  const today = new Date().toISOString().slice(0, 10);
+  const days = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+  const name = (p, ex) => `<b>${e(p.objectName || ex.objectName || "")}</b>${p.area ? ` <span class="hint">${e(p.area)}</span>` : ""}`;
+  const moved = [], prog = [], renamed = [], status = [], stale = [];
+  diff.toUpdate.forEach(m => {
+    const ex = m.existing, p = m.keep ? planImportApplyKeep(m.parsed, m.keep) : m.parsed;
+    const dChanged = ex.startDate !== p.startDate || ex.endDate !== p.endDate;
+    const pBefore = Number(ex.progress) || 0, pAfter = Number(p.progress) || 0;
+    if (dChanged) moved.push({ ex, p, shift: days(ex.endDate || ex.startDate, p.endDate || p.startDate) || days(ex.startDate, p.startDate) });
+    if (pBefore !== pAfter) prog.push({ ex, p, a: pBefore, b: pAfter });
+    // Flyttad men framdriften står still på en påbörjad, ej klar aktivitet – värt att kolla.
+    else if (dChanged && pAfter > 0 && pAfter < 100) stale.push({ ex, p, shift: days(ex.endDate || ex.startDate, p.endDate || p.startDate) });
+    if ((ex.objectName || "") !== (p.objectName || "") || (ex.area || "") !== (p.area || "")) renamed.push({ ex, p });
+    const before = ex.status, after = computeItemPhase({ ...ex, startDate: p.startDate, endDate: p.endDate, progress: pAfter, actualStartDate: p.actualStartDate, actualEndDate: p.actualEndDate, status: m.status }, today) || m.status;
+    if (before !== after) status.push({ ex, p, a: before, b: after });
+  });
+  const lbl = st => e(STATUS_LABELS[st] || st || "");
+  const sh = n => `<b class="${n > 0 ? "bl-later" : n < 0 ? "bl-earlier" : ""}">${n > 0 ? "+" : ""}${n} d</b>`;
+  const group = (title, list, row, sort) => {
+    if (!list.length) return "";
+    const shown = (sort ? list.slice().sort(sort) : list).slice(0, 10);
+    return `<details class="plan-import-changes"><summary>${title}</summary><ul>${shown.map(row).join("")}${list.length > shown.length ? `<li class="hint">… och ${list.length - shown.length} till – se Exportera till Excel</li>` : ""}</ul></details>`;
+  };
+  const cnt = (list, fn) => list.filter(fn).length;
+  const byStatus = {};
+  status.forEach(x => { byStatus[x.b] = (byStatus[x.b] || 0) + 1; });
+  return `<div class="plan-import-changes-box">
+    ${group(`📅 <b>${moved.length}</b> nya datum <span class="hint">(${cnt(moved, x => x.shift > 0)} senare, ${cnt(moved, x => x.shift < 0)} tidigare – största först)</span>`, moved,
+      x => `<li>${sh(x.shift)} ${name(x.p, x.ex)} <span class="hint">${f(x.ex.startDate)}–${f(x.ex.endDate)} → ${f(x.p.startDate)}–${f(x.p.endDate)}</span></li>`, (a, b) => Math.abs(b.shift) - Math.abs(a.shift))}
+    ${group(`📈 <b>${prog.length}</b> ändrad framdrift <span class="hint">(${cnt(prog, x => x.b > x.a)} upp, ${cnt(prog, x => x.b < x.a)} ned${cnt(prog, x => x.b >= 100 && x.a < 100) ? `, ${cnt(prog, x => x.b >= 100 && x.a < 100)} blir klara` : ""}${cnt(prog, x => x.a === 0 && x.b > 0) ? `, ${cnt(prog, x => x.a === 0 && x.b > 0)} påbörjade` : ""})</span>`, prog,
+      x => `<li><b class="${x.b < x.a ? "bl-later" : "bl-earlier"}">${x.a} % → ${x.b} %</b> ${name(x.p, x.ex)}${(x.ex.startDate !== x.p.startDate || x.ex.endDate !== x.p.endDate) ? ` <span class="hint">· nya datum också</span>` : ""}</li>`, (a, b) => Math.abs(b.b - b.a) - Math.abs(a.b - a.a))}
+    ${group(`⚠ <b>${stale.length}</b> flyttade utan uppdaterad framdrift <span class="hint">(påbörjade, framdriften står still – värt att kolla)</span>`, stale,
+      x => `<li>${sh(x.shift)} ${name(x.p, x.ex)} <span class="hint">framdrift ${Number(x.p.progress) || 0} %</span></li>`, (a, b) => Math.abs(b.shift) - Math.abs(a.shift))}
+    ${group(`🚦 <b>${status.length}</b> får ny status <span class="hint">(${Object.entries(byStatus).map(([k, v]) => `${v} ${lbl(k).toLowerCase()}`).join(", ")})</span>`, status,
+      x => `<li>${lbl(x.a)} → <b>${lbl(x.b)}</b> ${name(x.p, x.ex)}</li>`, (a, b) => (b.b === "forsenad") - (a.b === "forsenad"))}
+    ${group(`✏️ <b>${renamed.length}</b> nytt namn eller område`, renamed,
+      x => `<li>${e(x.ex.objectName || "")} <span class="hint">${e(x.ex.area || "")}</span> → ${name(x.p, x.ex)}</li>`)}
+  </div>`;
+}
+
 /* Vad som faktiskt ändras bland de som uppdateras (Victor 2026-10-06: "mer info"). */
 function planImportUpdateBreakdownHtml(diff) {
   if (!diff.toUpdate.length) return "";
@@ -3615,6 +3660,7 @@ function renderPlanImportPreview(diff) {
     removedEl.innerHTML = "";
   }
 
+  summaryEl.innerHTML += planImportChangesHtml(diff);
   if (diff.baseline && diff.baseline.html) summaryEl.innerHTML += diff.baseline.html;
   else if (diff.baseline && diff.baseline.text) summaryEl.innerHTML += `<div class="plan-import-baseline">▭ ${escapeHtml(diff.baseline.text)}</div>`;
   const xc = diff.excelComments;
