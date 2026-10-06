@@ -1058,7 +1058,7 @@ a.header-help:hover { background: #f1f3f6; }
 .plan-source-seg button { font: inherit; font-size: 12px; padding: 4px 10px; border: none; border-radius: 6px; background: transparent; color: #4b5563; cursor: pointer; }
 .plan-source-seg button.active { background: #fff; color: #111827; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
 body.src-pp .plan-source { background: #eef6ff; }
-body.src-pp section[data-panel-id="excel"], body.src-excel section[data-panel-id="pp"] { display: none !important; }
+body.src-pp section[data-panel-id="excel"], body.src-excel section[data-panel-id="pp"], body.src-excel section[data-panel-id="ppbl"] { display: none !important; }
 .pp-options { margin-top: 10px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fafbfc; display: flex; flex-direction: column; gap: 6px; }
 .pp-options.hidden { display: none; }
 .pp-head { font-size: 13px; }
@@ -1111,3 +1111,10 @@ body.src-pp section[data-panel-id="excel"], body.src-excel section[data-panel-id
 .plan-import-changes .bl-earlier { color: #047857; }
 .pp-bl-row #ppBaselineTarget { flex: 1 1 60%; }
 .pp-bl-row #ppBaseline { flex: 1 1 100%; }
+.pp-bl-overview { font-size: 12.5px; display: flex; flex-direction: column; gap: 2px; padding: 4px 0 6px; border-bottom: 1px solid #e5e7eb; margin-bottom: 4px; }
+.bl-danger { margin: 0 0 8px; padding: 8px 10px; border: 1px solid #fca5a5; background: #fef2f2; border-radius: 6px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+.bl-danger input[type=text] { width: 100%; box-sizing: border-box; }
+.bl-danger .check { display: flex; gap: 6px; align-items: center; font-weight: 600; }
+.bl-danger .check input { width: auto; margin: 0; }
+button.danger { background: #dc2626 !important; border-color: #dc2626 !important; color: #fff !important; }
+button.danger:disabled, button.primary:disabled { opacity: .45; cursor: not-allowed; }

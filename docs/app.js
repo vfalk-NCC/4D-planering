@@ -5143,7 +5143,7 @@ const BACKUP_FILES = [
   "plan_document_deliveries", "plan_inspections", "plan_safety_events", "plan_staffing", "plan_baseline", "plan_baselines"
 ];
 // Det som nollställs (planeringen och allt som hänger på planeringsposternas id).
-const RESET_FILES = ["plan_items", "plan_item_activities", "plan_item_comments", "plan_item_progress_history", "plan_item_baseline_history", "plan_item_positions", "plan_baseline", "plan_baselines"];
+const RESET_FILES = ["plan_items", "plan_item_activities", "plan_item_comments", "plan_item_progress_history", "plan_item_baseline_history", "plan_item_positions", "plan_baseline", "plan_baselines", "plan_baseline_undo"];
 const projectFilePath = name => RESET_FILES.includes(name) ? `${planDir()}/${name}.json` : `projects/${encodeURIComponent(projectId)}/${name}.json`;
 const backupIndexPath = () => `${planDir()}/backups/index.json`;
 
@@ -5475,6 +5475,7 @@ async function refreshItems(opts = {}) {
     itemsTotalCount = items.length;
     // Ny planering skickad från Excel? (högst en gång i minuten)
     if (typeof checkExcelInbox === "function" && planSource === "excel") { renderExcelLinkHelp(); checkExcelInbox(); }
+    if (typeof ppBlPanelRefresh === "function" && planSource === "pp") ppBlPanelRefresh();
     // Lyckad hämtning: ta bort en ev. kvarliggande varning från ett tidigare
     // (tillfälligt) fel, annars står den kvar fast allt fungerar.
     const warn = document.getElementById("connectionWarning");
