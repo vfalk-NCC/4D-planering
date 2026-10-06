@@ -25,7 +25,7 @@ async function makePp(variant) {
   db.run(`CREATE TABLE PROJECT_SUMMARY (PROJECT_START, PROJECT_END, SHORT_NAME, LONG_NAME);
     CREATE TABLE BAR (ID INT, EXPANDED_TASK INT, NAME);
     CREATE TABLE EXPANDED_TASK (ID INT, NAME, BAR INT);
-    CREATE TABLE TASK (ID INT, NAME, BAR INT, UNIQUE_TASK_ID, EARLY_START_DATE, EARLY_END_DATE_RS, OVERALL_PERCENT_COMPLETE, DURATION);
+    CREATE TABLE TASK (ID INT, NAME, BAR INT, UNIQUE_TASK_ID, EARLY_START_DATE, EARLY_END_DATE_RS, OVERALL_PERCENT_COMPLETE, DURATION, GUID);
     CREATE TABLE MILESTONE (ID INT, NAME, BAR INT, UNIQUE_TASK_ID, EARLY_START_DATE, GIVEN_DATE_TIME, COMPLETED);
     CREATE TABLE LINK (START_TASK INT, END_TASK INT);
     CREATE TABLE CODE_LIBRARY (ID INT, NAME);
@@ -39,24 +39,26 @@ async function makePp(variant) {
   run('INSERT INTO BAR VALUES (?,?,?)', [[1, 0, 'Projekttidplan'], [11, 10, ''], [21, 20, '742 Sikthall'], [31, 30, ''], [2, 0, ''], [51, 50, '']]);
   run('INSERT INTO EXPANDED_TASK VALUES (?,?,?)', [[10, variant === 3 ? 'Projekttidplan rev B' : 'Projekttidplan', 1], [20, 'PRODUKTION', 11], [30, '', 21], [50, 'Building', 2]]);
   const ren = variant === 2;
-  run('INSERT INTO TASK VALUES (?,?,?,?,?,?,?,?)', [
-    [100, ren ? 'Gjutning bottenplatta etapp 1' : 'Gjutning bottenplatta', 31, 'a01', ren ? '2026-11-02 08:00:00' : '2026-10-05 08:00:00', ren ? '2026-11-13 16:00:00' : '2026-10-16 16:00:00', 0, '0,0,<8.0E01>,'],
-    [101, 'Montage stomme', 31, 'a02', '2026-10-19 08:00:00', '2026-11-06 16:00:00', 0, '0,0,<1.2E02>,'],
-    [102, 'Schakt', 31, 'a03', '2026-09-01 08:00:00', '2026-09-14 16:00:00', 0, '0,0,<8.0E01>,'],
-    [103, 'https://apps.powerapps.com/x', 31, '', '2026-10-01 08:00:00', '2026-10-01 16:00:00', 0, ''],
-    [104, 'Utan datum', 31, '', null, null, 0, ''],
-    [200, 'Mallaktivitet', 51, '', '2015-01-02 08:00:00', '2015-01-09 16:00:00', 0, '0,0,<4.0E01>,'],
+  // Variant 4: Montage och Schakt har flyttats i Powerproject och fått nya id (Montage har kvar sitt GUID).
+  const mv = variant === 4, nid = id => mv && id === 101 ? 111 : mv && id === 102 ? 112 : id;
+  run('INSERT INTO TASK VALUES (?,?,?,?,?,?,?,?,?)', [
+    [100, ren ? 'Gjutning bottenplatta etapp 1' : 'Gjutning bottenplatta', 31, 'a01', ren ? '2026-11-02 08:00:00' : '2026-10-05 08:00:00', ren ? '2026-11-13 16:00:00' : '2026-10-16 16:00:00', 0, '0,0,<8.0E01>,', null],
+    [nid(101), 'Montage stomme', 31, 'a02', '2026-10-19 08:00:00', '2026-11-06 16:00:00', 0, '0,0,<1.2E02>,', '{6F319DCE-1824-4C1B-8B1A-8C35B46CCD3D}'],
+    [nid(102), 'Schakt', 31, 'a03', '2026-09-01 08:00:00', '2026-09-14 16:00:00', 0, '0,0,<8.0E01>,', '{00000000-0000-0000-0000-000000000000}'],
+    [103, 'https://apps.powerapps.com/x', 31, '', '2026-10-01 08:00:00', '2026-10-01 16:00:00', 0, '', null],
+    [104, 'Utan datum', 31, '', null, null, 0, '', null],
+    [200, 'Mallaktivitet', 51, '', '2015-01-02 08:00:00', '2015-01-09 16:00:00', 0, '0,0,<4.0E01>,', null],
   ]);
   run('INSERT INTO MILESTONE VALUES (?,?,?,?,?,?,?)', [[300, 'Tätt hus', 31, 'a04', '2026-11-10 08:00:00', '2026-11-10 08:00:00', 0]]);
-  run('INSERT INTO LINK VALUES (?,?)', [[102, 100], [100, 101], [101, 300], [200, 100]]);
+  run('INSERT INTO LINK VALUES (?,?)', [[nid(102), 100], [100, nid(101)], [nid(101), 300], [200, 100]]);
   run('INSERT INTO CODE_LIBRARY VALUES (?,?)', [[1, '1. Utförs av'], [2, '3.5 Zoner'], [3, '9.6 Kran']]);
   run('INSERT INTO CODE_LIBRARY_ENTRY VALUES (?,?,?)', [[11, 'K01 NCC Bygg', 1], [12, 'K20 UE Betong', 1], [21, '7421 Sikthall del 1', 2]]);
   // Entreprenör NCC på sammanfattningsraden (ärvs), UE Betong på gjutningen; zonen bara på gjutningen.
   run('INSERT INTO CODE_LIBRARY_ASSIGNABL_CODES VALUES (?,?)', [[30, 11], [100, 12], [100, 21]]);
   // Schakt klar (två delar), montage halvvägs.
   run('INSERT INTO TASK_COMPLETED_SECTION VALUES (?,?,?,?,?)', [
-    [102, 100, '2026-09-02 07:00:00', '2026-09-08 16:00:00', '0,0,<4.0E01>,'], [102, 100, '2026-09-09 07:00:00', '2026-09-15 16:00:00', '0,0,<4.0E01>,'],
-    [101, 100, '2026-10-20 07:00:00', '2026-10-27 16:00:00', '0,0,<6.0E01>,']]);
+    [nid(102), 100, '2026-09-02 07:00:00', '2026-09-08 16:00:00', '0,0,<4.0E01>,'], [nid(102), 100, '2026-09-09 07:00:00', '2026-09-15 16:00:00', '0,0,<4.0E01>,'],
+    [nid(101), 100, '2026-10-20 07:00:00', '2026-10-27 16:00:00', '0,0,<6.0E01>,']]);
   const bytes = db.export(); db.close();
   return Buffer.from(bytes);
 }
@@ -194,6 +196,20 @@ async function makePp(variant) {
   g4 = get('pp/plan_items.json').find(r => r.id === g.id); bm4 = get('pp/plan_baseline.json');
   if (g4.baseline_start_date || bm4[bm4.length - 1].label !== null) fail('Ingen baseline ska ta bort den: ' + JSON.stringify([g4, bm4]));
   console.log('OK: baseline från en Powerproject-baseline (.ppb) och "Ingen baseline"');
+
+  // Flyttad i Powerproject med nytt id: känns igen på GUID (Montage) eller som enda med namnet (Schakt).
+  const before4 = Object.fromEntries(get('pp/plan_items.json').map(r => [r.object_name, r.id]));
+  await page.setInputFiles('#ppFile', { name: 'Huvudtidplan v4.pp', mimeType: 'application/octet-stream', buffer: await makePp(4) });
+  await page.evaluate(() => document.getElementById('ppOptions').classList.add('hidden')); await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
+  await page.click('#btnPpPreview'); await page.waitForTimeout(200);
+  const prev4 = await page.evaluate(() => ({ create: planImportDiff.toCreate.length, removed: planImportDiff.removedExisting.length }));
+  await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
+  const pp4 = get('pp/plan_items.json'), by4 = Object.fromEntries(pp4.map(r => [r.object_name, r]));
+  if (prev4.create || prev4.removed || pp4.length !== 4 || by4['Montage stomme'].id !== before4['Montage stomme'] || !/\|\|111$/.test(by4['Montage stomme'].source_key)
+    || by4['Schakt'].id !== before4['Schakt'] || !/\|\|112$/.test(by4['Schakt'].source_key) || by4['Montage stomme'].pp_guid !== '{6F319DCE-1824-4C1B-8B1A-8C35B46CCD3D}')
+    fail('En flyttad aktivitet med nytt id ska kännas igen: ' + JSON.stringify({ prev4, pp4: pp4.map(r => [r.object_name, r.id, r.source_key, r.pp_guid]) }));
+  if (JSON.stringify(by4['Gjutning bottenplatta'].depends_on) !== JSON.stringify([by4['Schakt'].id])) fail('Beroendena ska följa med');
+  console.log('OK: flyttad aktivitet med nytt id i Powerproject känns igen (GUID, annars samma namn) – ingen ny, ingen borttagen');
 
   // 5) Tillbaka till Excel: Excel-planeringen igen; Lägesplan öppnas med rätt planering.
   await page.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(u); return { closed: false, focus() {} }; }; });

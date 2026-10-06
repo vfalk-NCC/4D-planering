@@ -45,6 +45,7 @@ async function parsePowerproject(buf, fileName) {
   try {
     const q = (sql, params) => { const st = db.prepare(sql); if (params) st.bind(params); const out = []; while (st.step()) out.push(st.getAsObject()); st.free(); return out; };
     const has = t => q("SELECT name FROM sqlite_master WHERE type='table' AND name=?", [t]).length > 0;
+    const hasCol = (t, c) => q(`PRAGMA table_info(${t})`).some(r => r.name === c);
     if (!has("TASK") || !has("BAR") || !has("EXPANDED_TASK")) throw new Error("Det här ser inte ut som en Powerproject-fil (tabellerna TASK/BAR saknas).");
     const proj = has("PROJECT_SUMMARY") ? q("SELECT PROJECT_START, PROJECT_END, SHORT_NAME, LONG_NAME FROM PROJECT_SUMMARY")[0] || {} : {};
     // Hierarkin: aktivitet -> stapel (BAR) -> sammanfattningsrad (EXPANDED_TASK) -> dess stapel -> …
@@ -111,11 +112,13 @@ async function parsePowerproject(buf, fileName) {
       if (kind === "ms" && Number(r.COMPLETED)) { progress = 100; aEnd = aStart = start; }
       if (progress > 0 && !aStart) aStart = start;
       if (progress >= 100 && !aEnd) aEnd = end;
-      tasks.push({ id: r.ID, uid: r.UNIQUE_TASK_ID || "", name, kind, start, end, progress, actualStart: aStart, actualEnd: aEnd,
+      const guid = /^\{?[0-9A-F-]{36}\}?$/i.test(String(r.GUID || "")) && !/^\{?[0-]+\}?$/.test(String(r.GUID)) ? String(r.GUID).toUpperCase() : null;
+      tasks.push({ id: r.ID, uid: r.UNIQUE_TASK_ID || "", guid, name, kind, start, end, progress, actualStart: aStart, actualEnd: aEnd,
         path, top: top ? top.id : 0, topName: top ? top.name || "Tidplan" : "Tidplan", codes: inherited(r.ID, chain) });
     };
-    q("SELECT ID, NAME, BAR, UNIQUE_TASK_ID, EARLY_START_DATE, EARLY_END_DATE_RS, OVERALL_PERCENT_COMPLETE, DURATION FROM TASK").forEach(r => add(r, "task"));
-    if (has("MILESTONE")) q("SELECT ID, NAME, BAR, UNIQUE_TASK_ID, EARLY_START_DATE, GIVEN_DATE_TIME, COMPLETED FROM MILESTONE").forEach(r => add(r, "ms"));
+    const g = t => (hasCol(t, "GUID") ? ", GUID" : "");
+    q(`SELECT ID, NAME, BAR, UNIQUE_TASK_ID, EARLY_START_DATE, EARLY_END_DATE_RS, OVERALL_PERCENT_COMPLETE, DURATION${g("TASK")} FROM TASK`).forEach(r => add(r, "task"));
+    if (has("MILESTONE")) q(`SELECT ID, NAME, BAR, UNIQUE_TASK_ID, EARLY_START_DATE, GIVEN_DATE_TIME, COMPLETED${g("MILESTONE")} FROM MILESTONE`).forEach(r => add(r, "ms"));
     tasks.forEach(t => Object.keys(t.codes).forEach(l => { const lib = libById.get(Number(l)); if (lib) lib.count++; }));
     const links = has("LINK") ? q("SELECT START_TASK, END_TASK FROM LINK").map(r => [r.START_TASK, r.END_TASK]) : [];
     // Delarna (översta sammanfattningsraderna). Förvalt: de som ligger inom projektets period.
@@ -156,7 +159,7 @@ function ppToParsedItems(pp, opts) {
       startDate: t.start, endDate: t.end, baselineStartDate: null, baselineEndDate: null,
       actualStartDate: t.actualStart, actualEndDate: t.actualEnd, progress: t.progress,
       subActivities: [], contractor: opts.contractorLib ? t.codes[opts.contractorLib] || null : undefined,
-      dependsOnKeys: preds.get(t.id) || [], sheet: null, excelMap: null, id4d: null, ppId: t.id, ppUid: t.uid,
+      dependsOnKeys: preds.get(t.id) || [], sheet: null, excelMap: null, id4d: null, ppId: t.id, ppUid: t.uid, ppGuid: t.guid,
     };
   });
 }
@@ -224,12 +227,45 @@ function ppBaselineIndex(pp) {
 const ppBaselineTask = (ix, t) => (t.uid && ix.byUid.get(String(t.uid))) || ix.byId.get(t.id) || null;
 const ppFmtDate = d => (d ? d.replace(/^(\d{4})-(\d{2})-(\d{2}).*$/, "$3/$2 $1") : "");
 
+/* Vilken befintlig aktivitet varje rad i filen är (Map parsed -> item):
+   1) Powerprojects id (TASK.ID) – även om översta raden döpts om eller aktiviteten bytt del,
+   2) Powerprojects GUID – om id:t ändrats (Victors rapport 2026-10-06: en flyttad aktivitet blev
+      "finns inte längre" + en ny),
+   3) samma namn: exakt en aktivitet i filen utan träff och exakt en tidigare aktivitet med samma
+      namn som inte längre finns i filen – samma regel som namnbytena i Excel-importen.
+   Den känns då igen och behåller 3D-kopplingar, kommentarer och markeringar. */
+function ppMatchExisting(parsed) {
+  const pp = items.filter(it => it.origin !== "manuell" && /^PP .*\|\|\d+$/.test(it.sourceKey || ""));
+  const idOf = it => Number(/\|\|(\d+)$/.exec(it.sourceKey)[1]);
+  const byId = new Map(), byGuid = new Map();
+  pp.forEach(it => { if (!byId.has(idOf(it))) byId.set(idOf(it), it); if (it.ppGuid && !byGuid.has(it.ppGuid)) byGuid.set(it.ppGuid, it); });
+  const out = new Map(), taken = new Set();
+  const take = (p, it) => { out.set(p, it); taken.add(it.sourceKey); };
+  parsed.forEach(p => { const it = byId.get(p.ppId); if (it) take(p, it); });
+  parsed.forEach(p => {
+    if (out.has(p) || !p.ppGuid) return;
+    const it = byGuid.get(p.ppGuid);
+    if (it && !taken.has(it.sourceKey)) take(p, it);
+  });
+  const norm = t => String(t || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const orphans = new Map(), loose = new Map();
+  pp.forEach(it => { if (taken.has(it.sourceKey)) return; const k = norm(it.objectName); if (!orphans.has(k)) orphans.set(k, new Set()); orphans.get(k).add(it.sourceKey); });
+  parsed.forEach(p => { if (out.has(p)) return; const k = norm(p.objectName); if (!loose.has(k)) loose.set(k, []); loose.get(k).push(p); });
+  loose.forEach((list, k) => {
+    const keys = orphans.get(k);
+    if (list.length !== 1 || !keys || keys.size !== 1) return;
+    const key = [...keys][0];
+    take(list[0], pp.find(it => it.sourceKey === key));
+  });
+  return out;
+}
+
 /* Sätter baselineStartDate/baselineEndDate på raderna enligt valet. Returnerar
    { text (för förhandsgranskningen), meta (sparas i plan_baseline.json; undefined = rör inte) }. */
-function ppApplyBaseline(parsed, byPpId) {
+function ppApplyBaseline(parsed, exOfP) {
   const sel = document.getElementById("ppBaseline");
   let mode = sel ? sel.value : "prev";
-  const exOf = p => byPpId.get(p.ppId) || null;
+  const exOf = exOfP;
   const keep = () => parsed.forEach(p => { const ex = exOf(p); p.baselineStartDate = ex ? ex.baselineStartDate || null : null; p.baselineEndDate = ex ? ex.baselineEndDate || null : null; });
   const by = (typeof settings !== "undefined" && settings.userName) || null, at = new Date().toISOString();
   if (mode === "prev") {
@@ -293,13 +329,10 @@ function ppPreview() {
   if (!opts.groups.size) { status.innerText = "Välj minst en del att importera."; return; }
   const parsed = ppToParsedItems(ppParsed, opts);
   if (!parsed.length) { status.innerText = "Inga aktiviteter i de valda delarna."; return; }
-  // Powerprojects id avgör (inte delens namn): har översta raden döpts om eller aktiviteten flyttats
-  // till en annan del känns den ändå igen och behåller kopplingarna (samma väg som Excels 4D-ID).
-  const byPpId = new Map();
-  items.forEach(it => { const m = /^PP .*\|\|(\d+)$/.exec(it.sourceKey || ""); if (m && it.origin !== "manuell" && !byPpId.has(Number(m[1]))) byPpId.set(Number(m[1]), it); });
-  parsed.forEach(p => { const ex = byPpId.get(p.ppId); if (ex && ex.sourceKey !== p.sourceKey) p.id4d = ex.id; });
+  const exByP = ppMatchExisting(parsed);
+  parsed.forEach(p => { const ex = exByP.get(p); if (ex && ex.sourceKey !== p.sourceKey) p.id4d = ex.id; });
   let bl;
-  try { bl = ppApplyBaseline(parsed, byPpId); } catch (e) { status.innerText = e.message; return; }
+  try { bl = ppApplyBaseline(parsed, p => exByP.get(p) || null); } catch (e) { status.innerText = e.message; return; }
   planImportDiff = buildPlanImportDiff(parsed);
   planImportDiff.baseline = bl;
   planImportDiff.fileName = ppParsed.fileName;

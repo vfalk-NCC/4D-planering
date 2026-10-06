@@ -3823,6 +3823,7 @@ async function commitPlanImport(diff) {
       estimatedHours: existing ? existing.estimatedHours : null,
       dependsOn: existing ? existing.dependsOn : [],
       sourceKey: p.sourceKey,
+      ppGuid: p.ppGuid || (existing ? existing.ppGuid : null) || null,
       groupId: existing ? existing.groupId : null,
       baselineStartDate: p.baselineStartDate || null,
       baselineEndDate: p.baselineEndDate || null,
@@ -5324,6 +5325,7 @@ function toRow(it) {
     // "manuell" = skapad i appen med "＋ Ny aktivitet"/"⧉ Duplicera" (inte
     // importerad). Sådana poster rörs aldrig av 4-veckorsimporten.
     origin: it.origin || null,
+    ...(it.ppGuid ? { pp_guid: it.ppGuid } : {}),
     // Samma group_id = samma aktivitet kopplad till flera 3D-objekt (en rad
     // per objekt). Rader i samma grupp redigeras tillsammans, se siblingsOf.
     group_id: it.groupId || null,
@@ -5374,6 +5376,7 @@ function fromRowStored(row) {
     dependsOn: Array.isArray(row.depends_on) ? row.depends_on.map(String) : [],
     sourceKey: row.source_key || null,
     origin: row.origin || null,
+    ppGuid: row.pp_guid || null,
     groupId: row.group_id || null,
     baselineStartDate: row.baseline_start_date || null,
     baselineEndDate: row.baseline_end_date || null,
