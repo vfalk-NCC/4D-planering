@@ -3537,6 +3537,25 @@ function buildPlanImportDiff(parsedItems) {
   return { parsedItems, matched, toCreate, toUpdate, removedExisting, removeKeys, renames, kept4d, todayStr };
 }
 
+/* Vad som faktiskt ändras bland de som uppdateras (Victor 2026-10-06: "mer info"). */
+function planImportUpdateBreakdownHtml(diff) {
+  if (!diff.toUpdate.length) return "";
+  let dates = 0, later = 0, earlier = 0, prog = 0, names = 0, same = 0;
+  diff.toUpdate.forEach(m => {
+    const ex = m.existing, p = m.keep ? planImportApplyKeep(m.parsed, m.keep) : m.parsed;
+    const d = ex.startDate !== p.startDate || ex.endDate !== p.endDate;
+    const pr = (Number(ex.progress) || 0) !== (Number(p.progress) || 0);
+    const n = (ex.objectName || "") !== (p.objectName || "") || (ex.activity || "") !== (p.activity || "") || (ex.area || "") !== (p.area || "");
+    if (d) { dates++; const sh = Math.round((Date.parse(p.endDate || p.startDate) - Date.parse(ex.endDate || ex.startDate)) / 86400000); if (sh > 0) later++; else if (sh < 0) earlier++; }
+    if (pr) prog++;
+    if (n) names++;
+    if (!d && !pr && !n) same++;
+  });
+  const parts = [dates ? `<b>${dates}</b> nya datum${later || earlier ? ` (${later} senare, ${earlier} tidigare)` : ""}` : "", prog ? `<b>${prog}</b> ändrad framdrift` : "",
+    names ? `<b>${names}</b> nytt namn/område` : "", same ? `<b>${same}</b> oförändrade` : ""].filter(Boolean);
+  return parts.length ? `<div class="hint plan-import-breakdown">varav ${parts.join(" · ")}</div>` : "";
+}
+
 /* Excels rad med namnen från 4D inlagda (aktivitet, faser och fasnamnen i excel_map, så att
    "Hämta från 4D" hittar faserna). */
 function planImportApplyKeep(p, keep) {
@@ -3579,7 +3598,7 @@ function renderPlanImportPreview(diff) {
   const withPhases = diff.parsedItems.filter(p => p.subActivities.length > 0).length;
   summaryEl.innerHTML = `
     <div><strong>${diff.toCreate.length}</strong> nya objekt</div>
-    <div><strong>${diff.toUpdate.length}</strong> uppdateras (datum/framdrift/faser - 3D-koppling &amp; kommentarer rörs inte)</div>
+    <div><strong>${diff.toUpdate.length}</strong> uppdateras (datum/framdrift/faser - 3D-koppling &amp; kommentarer rörs inte)${planImportUpdateBreakdownHtml(diff)}</div>
     <div>${diff.parsedItems.length} objekt totalt i filen (${withPhases} med faser/delaktiviteter)</div>
   `;
 
@@ -3596,7 +3615,8 @@ function renderPlanImportPreview(diff) {
     removedEl.innerHTML = "";
   }
 
-  if (diff.baseline && diff.baseline.text) summaryEl.innerHTML += `<div class="plan-import-baseline">▭ ${escapeHtml(diff.baseline.text)}</div>`;
+  if (diff.baseline && diff.baseline.html) summaryEl.innerHTML += diff.baseline.html;
+  else if (diff.baseline && diff.baseline.text) summaryEl.innerHTML += `<div class="plan-import-baseline">▭ ${escapeHtml(diff.baseline.text)}</div>`;
   const xc = diff.excelComments;
   if (xc && (xc.list.length || xc.resolved || xc.unmatched)) {
     const replies = xc.list.filter(x => x.c.parentId).length;

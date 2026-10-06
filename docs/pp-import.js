@@ -215,6 +215,7 @@ function renderPpOptions() {
     binfo.innerText = "Läser…";
     try {
       ppBaselineParsed = await parsePowerproject(await f.arrayBuffer(), f.name);
+      ppBaselineParsed.savedAt = f.lastModified ? new Date(f.lastModified).toISOString() : null;
       const ids = ppBaselineIndex(ppBaselineParsed), hit = ppParsed.tasks.filter(t => ppBaselineTask(ids, t)).length;
       binfo.innerText = `${ppBaselineParsed.tasks.length} aktiviteter i filen, ${hit} av ${ppParsed.tasks.length} känns igen`;
     } catch (e) { ppBaselineParsed = null; binfo.innerText = "Kunde inte läsa filen: " + e.message; }
@@ -263,6 +264,54 @@ function ppMatchExisting(parsed) {
 /* Sätter baselineStartDate/baselineEndDate på raderna enligt valet. Returnerar
    { text (för förhandsgranskningen), meta (sparas i plan_baseline.json; undefined = rör inte) }. */
 function ppApplyBaseline(parsed, exOfP) {
+  const r = ppApplyBaselineMode(parsed, exOfP);
+  r.details = ppBaselineDetails(parsed, exOfP, r);
+  r.html = ppBaselineHtml(r);
+  return r;
+}
+
+const ppDays = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+/* Siffrorna för förhandsgranskningen: hur planen i filen ligger mot den nya baseline, och vad
+   som ändras mot den baseline som finns nu (Victor 2026-10-06: "mer info, speciellt kring baseline"). */
+function ppBaselineDetails(parsed, exOfP, r) {
+  const withBl = parsed.filter(p => p.baselineStartDate && p.baselineEndDate);
+  const rows = withBl.map(p => ({ p, end: ppDays(p.baselineEndDate, p.endDate), start: ppDays(p.baselineStartDate, p.startDate) }))
+    .map(x => ({ ...x, shift: x.end || x.start }));
+  const later = rows.filter(x => x.shift > 0), earlier = rows.filter(x => x.shift < 0);
+  const changed = parsed.filter(p => { const ex = exOfP(p); const a = ex ? `${ex.baselineStartDate || ""}|${ex.baselineEndDate || ""}` : "|"; return a !== `${p.baselineStartDate || ""}|${p.baselineEndDate || ""}`; }).length;
+  const top = list => list.slice().sort((a, b) => Math.abs(b.shift) - Math.abs(a.shift)).slice(0, 6);
+  const dates = withBl.flatMap(p => [p.baselineStartDate, p.baselineEndDate]).sort();
+  const lastEnd = (list, key) => list.map(p => p[key]).filter(Boolean).sort().pop() || null;
+  return { total: parsed.length, withBl: withBl.length, without: parsed.length - withBl.length, later: later.length, earlier: earlier.length,
+    same: rows.length - later.length - earlier.length, changed, topLater: top(later), topEarlier: top(earlier),
+    span: dates.length ? [dates[0], dates[dates.length - 1]] : null,
+    endBl: lastEnd(withBl, "baselineEndDate"), endPlan: lastEnd(withBl, "endDate") };
+}
+function ppBaselineHtml(r) {
+  const d = r.details, e = s => escapeHtml(String(s == null ? "" : s));
+  const m = r.meta;
+  const src = String(r.text || "").replace(/^Baseline:\s*/, "");
+  if (!d.withBl) return `<div class="plan-import-baseline"><b>▭ Baseline</b><div>${e(src)}</div></div>`;
+  const when = ppBaselineParsed && m && m.mode === "file" && ppBaselineParsed.savedAt ? ` · filen sparad ${ppFmtDate(ppBaselineParsed.savedAt.slice(0, 10))}` : "";
+  const shiftTxt = n => (n > 0 ? `+${n} d` : `${n} d`);
+  const li = x => `<li><b class="${x.shift > 0 ? "bl-later" : "bl-earlier"}">${shiftTxt(x.shift)}</b> ${e(x.p.objectName)} <span class="hint">${e(x.p.area || "")} · baseline ${e(ppFmtDate(x.p.baselineStartDate))}–${e(ppFmtDate(x.p.baselineEndDate))} → nu ${e(ppFmtDate(x.p.startDate))}–${e(ppFmtDate(x.p.endDate))}</span></li>`;
+  const endShift = d.endBl && d.endPlan ? ppDays(d.endBl, d.endPlan) : 0;
+  const warn = !d.later && !d.earlier ? `<div class="bl-warn">⚠ Alla datum är identiska med baseline – baseline kommer inte att visa någon skillnad. Är det rätt fil/version?</div>` : "";
+  return `<details class="plan-import-baseline" open>
+    <summary><b>▭ Baseline</b> – ${e(src)}${e(when)}</summary>
+    ${warn}
+    <div class="bl-grid">
+      <span><b>${d.withBl}</b> av ${d.total} aktiviteter får baseline${d.without ? ` <span class="hint">(${d.without} utan – visas utan grå/gul stapel)</span>` : ""}</span>
+      <span><b class="bl-later">${d.later}</b> ligger senare än baseline · <b class="bl-earlier">${d.earlier}</b> tidigare · <b>${d.same}</b> oförändrade</span>
+      ${d.span ? `<span>Baselinens datum: ${e(ppFmtDate(d.span[0]))} – ${e(ppFmtDate(d.span[1]))}${endShift ? ` · sista slut nu ${e(ppFmtDate(d.endPlan))} (<b class="${endShift > 0 ? "bl-later" : "bl-earlier"}">${shiftTxt(endShift)}</b> mot baseline)` : ""}</span>` : ""}
+      <span>${d.changed ? `<b>${d.changed}</b> aktiviteter får en annan baseline än i dag` : "Baseline är densamma som i dag"}</span>
+    </div>
+    ${d.topLater.length ? `<div class="bl-list"><span class="hint">Mest försenade mot baseline:</span><ul>${d.topLater.map(li).join("")}</ul></div>` : ""}
+    ${d.topEarlier.length ? `<div class="bl-list"><span class="hint">Mest tidigarelagda:</span><ul>${d.topEarlier.map(li).join("")}</ul></div>` : ""}
+  </details>`;
+}
+
+function ppApplyBaselineMode(parsed, exOfP) {
   const sel = document.getElementById("ppBaseline");
   let mode = sel ? sel.value : "prev";
   const exOf = exOfP;

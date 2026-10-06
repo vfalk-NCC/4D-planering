@@ -185,6 +185,9 @@ async function makePp(variant) {
   await page.waitForFunction(() => /känns igen/.test(document.getElementById('ppBaselineFileInfo').innerText), null, { timeout: 15000 });
   await page.click('#btnPpPreview'); await page.waitForTimeout(200);
   if (!/Huvudtidplan BL1\.ppb – 4 av 4/.test(await page.innerText('#planImportSummary'))) fail('Förhandsgranskningen ska säga varifrån baseline kommer: ' + await page.innerText('#planImportSummary'));
+  const sum = await page.innerText('#planImportSummary');
+  if (!/4 av 4 aktiviteter får baseline/.test(sum) || !/0 ligger senare än baseline · 1 tidigare · 3 oförändrade/.test(sum) || !/Mest tidigarelagda:[\s\S]*-28 d Gjutning bottenplatta/.test(sum) || !/varav/.test(sum)) fail('Mer info om baseline i förhandsgranskningen: ' + sum);
+  await page.locator('#planImportPreviewDialog .dialog-box').screenshot({ path: path.join(require('os').tmpdir(), 'pp_preview_baseline.png') });
   await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
   let g4 = get('pp/plan_items.json').find(r => r.id === g.id), bm4 = get('pp/plan_baseline.json');
   if (g4.baseline_start_date !== '2026-11-02' || g4.baseline_end_date !== '2026-11-13' || bm4[bm4.length - 1].label !== 'Huvudtidplan BL1' || bm4[bm4.length - 1].mode !== 'file') fail('Baseline från .ppb: ' + JSON.stringify([g4, bm4]));
