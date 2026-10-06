@@ -10,9 +10,15 @@
    – beroenden: länkarna mellan aktiviteterna,
    – nyckel: Powerprojects egna id – samma aktivitet känns igen vid nästa import och behåller
      sina 3D-kopplingar, kommentarer och markeringar.
+   – baseline (Victors önskemål 2026-10-06: "kan den tidigare tändas upp som en baseline?"): vid
+     importen väljs vad som blir baseline (baseline_start_date/baseline_end_date på raderna, som
+     dashboarden visar som en grå stapel): förra importens datum, nuvarande baseline, en
+     Powerproject-baseline (.ppb – Powerproject sparar sina baselines i en egen fil) eller ingen.
    Bara läsning: .pp-filen ändras aldrig. */
 
 let ppParsed = null; // senast inlästa fil: { fileName, project, groups, libs, tasks, links }
+let ppBaselineParsed = null; // vald baseline-fil (.ppb/.pp), samma form som ppParsed
+const PP_BASELINE_KEY = "4dplan-pp-baseline";
 
 let sqlJsPromise = null;
 function loadSqlJs() {
@@ -52,7 +58,10 @@ async function parsePowerproject(buf, fileName) {
         out.unshift({ kind: "bar", id: b, name: bar.NAME || "" });
         const e = exps.get(bar.EXPANDED_TASK);
         if (!e) break;
-        out.unshift({ kind: "exp", id: e.ID, name: (e.NAME || "").trim() });
+        // En sammanfattningsrad utan eget namn visas i Powerproject med sin stapels namn
+        // (t.ex. "7421 Förtjockardel") – samma här, annars hamnar aktiviteterna en nivå för högt.
+        const own = bars.get(e.BAR);
+        out.unshift({ kind: "exp", id: e.ID, name: (e.NAME || "").trim() || String((own && own.NAME) || "").trim() });
         b = e.BAR;
       }
       return out;
@@ -173,11 +182,94 @@ function renderPpOptions() {
       <label class="pp-l" for="ppAreaLib">Område</label><select id="ppAreaLib">${libOpts(l => l === areaDefault, "Sammanfattningsraden i tidplanen")}</select>
       <label class="pp-l" for="ppContractorLib">Entreprenör</label><select id="ppContractorLib">${libOpts(l => l === contrDefault, "Ingen")}</select>
     </div>
-    <p class="hint">Område: aktivitetens kod i biblioteket, annars sammanfattningsraden ovanför den. Länkarna blir beroenden. Inget sparas förrän du bekräftar i förhandsgranskningen.</p>
+    <div class="pp-grid">
+      <label class="pp-l" for="ppBaseline">Baseline</label><select id="ppBaseline">
+        <option value="prev">Förra importen – datumen som gäller nu blir baseline</option>
+        <option value="keep">Behåll nuvarande baseline</option>
+        <option value="file">Från en Powerproject-baseline (.ppb) eller äldre .pp-fil…</option>
+        <option value="none">Ingen baseline</option>
+      </select>
+    </div>
+    <div class="pp-baseline-file hidden" id="ppBaselineFileRow"><input type="file" id="ppBaselineFile" accept=".ppb,.pp" /> <span class="hint" id="ppBaselineFileInfo"></span></div>
+    <p class="hint">Område: aktivitetens kod i biblioteket, annars sammanfattningsraden ovanför den. Länkarna blir beroenden. Baseline visas som en grå stapel i 4D-dashboarden (jämför med en tidigare version av tidplanen). Inget sparas förrän du bekräftar i förhandsgranskningen.</p>
     <div class="row"><button type="button" id="btnPpPreview" class="primary">Förhandsgranska importen</button></div>`;
   box.classList.remove("hidden");
   document.getElementById("btnPpPreview").onclick = () => ppPreview();
+  const bsel = document.getElementById("ppBaseline"), brow = document.getElementById("ppBaselineFileRow");
+  let saved = "prev"; try { saved = localStorage.getItem(PP_BASELINE_KEY) || "prev"; } catch (e) {}
+  if (saved === "file") saved = "prev"; // filen måste väljas på nytt
+  bsel.value = saved;
+  bsel.onchange = () => {
+    brow.classList.toggle("hidden", bsel.value !== "file");
+    try { localStorage.setItem(PP_BASELINE_KEY, bsel.value); } catch (e) {}
+  };
+  const bfile = document.getElementById("ppBaselineFile"), binfo = document.getElementById("ppBaselineFileInfo");
+  ppBaselineParsed = null;
+  bfile.onchange = async () => {
+    ppBaselineParsed = null; binfo.innerText = "";
+    const f = bfile.files && bfile.files[0];
+    if (!f) return;
+    binfo.innerText = "Läser…";
+    try {
+      ppBaselineParsed = await parsePowerproject(await f.arrayBuffer(), f.name);
+      const ids = ppBaselineIndex(ppBaselineParsed), hit = ppParsed.tasks.filter(t => ppBaselineTask(ids, t)).length;
+      binfo.innerText = `${ppBaselineParsed.tasks.length} aktiviteter i filen, ${hit} av ${ppParsed.tasks.length} känns igen`;
+    } catch (e) { ppBaselineParsed = null; binfo.innerText = "Kunde inte läsa filen: " + e.message; }
+  };
 }
+/* Baseline-filens aktiviteter: Powerprojects unika id (UNIQUE_TASK_ID) i första hand, annars radens id. */
+function ppBaselineIndex(pp) {
+  return { byUid: new Map(pp.tasks.filter(t => t.uid).map(t => [String(t.uid), t])), byId: new Map(pp.tasks.map(t => [t.id, t])) };
+}
+const ppBaselineTask = (ix, t) => (t.uid && ix.byUid.get(String(t.uid))) || ix.byId.get(t.id) || null;
+const ppFmtDate = d => (d ? d.replace(/^(\d{4})-(\d{2})-(\d{2}).*$/, "$3/$2 $1") : "");
+
+/* Sätter baselineStartDate/baselineEndDate på raderna enligt valet. Returnerar
+   { text (för förhandsgranskningen), meta (sparas i plan_baseline.json; undefined = rör inte) }. */
+function ppApplyBaseline(parsed, byPpId) {
+  const sel = document.getElementById("ppBaseline");
+  let mode = sel ? sel.value : "prev";
+  const exOf = p => byPpId.get(p.ppId) || null;
+  const keep = () => parsed.forEach(p => { const ex = exOf(p); p.baselineStartDate = ex ? ex.baselineStartDate || null : null; p.baselineEndDate = ex ? ex.baselineEndDate || null : null; });
+  const by = (typeof settings !== "undefined" && settings.userName) || null, at = new Date().toISOString();
+  if (mode === "prev") {
+    const known = parsed.filter(exOf);
+    if (!known.length) {
+      parsed.forEach(p => { p.baselineStartDate = null; p.baselineEndDate = null; });
+      return { text: "Första importen – ingen baseline ännu. Vid nästa import blir de här datumen baseline.", meta: undefined };
+    }
+    const moved = known.filter(p => { const ex = exOf(p); return ex.startDate !== p.startDate || ex.endDate !== p.endDate; }).length;
+    if (!moved) {
+      // Samma datum som nu (t.ex. samma fil igen): baseline skulle bli identisk – behåll den som finns.
+      keep();
+      return { text: "Inga datum har ändrats sedan förra importen – nuvarande baseline behålls.", meta: undefined };
+    }
+    parsed.forEach(p => { const ex = exOf(p); p.baselineStartDate = ex ? ex.startDate || null : null; p.baselineEndDate = ex ? ex.endDate || null : null; });
+    const last = typeof lastPlanImport !== "undefined" && lastPlanImport ? lastPlanImport : null;
+    const label = last ? `Import ${ppFmtDate(String(last.at || "").slice(0, 10))}${last.file ? ` (${last.file})` : ""}` : `Före importen ${ppFmtDate(at.slice(0, 10))}`;
+    return { text: `Baseline: förra importen (${label}) – ${moved} av ${known.length} aktiviteter har nya datum.`, meta: { mode, label, file: last ? last.file || null : null, set_at: at, by } };
+  }
+  if (mode === "keep") {
+    keep();
+    return { text: "Nuvarande baseline behålls.", meta: undefined };
+  }
+  if (mode === "file") {
+    if (!ppBaselineParsed) throw new Error("Välj baseline-filen (.ppb) först, eller ett annat baseline-val.");
+    const ix = ppBaselineIndex(ppBaselineParsed), tById = new Map(ppParsed.tasks.map(t => [t.id, t]));
+    let hit = 0;
+    parsed.forEach(p => {
+      const b = ppBaselineTask(ix, tById.get(p.ppId) || { id: p.ppId, uid: p.ppUid });
+      p.baselineStartDate = b ? b.start : null; p.baselineEndDate = b ? b.end : null;
+      if (b) hit++;
+    });
+    if (!hit) throw new Error(`Ingen aktivitet i ${ppBaselineParsed.fileName} känns igen – är det en baseline för samma tidplan?`);
+    const label = ppBaselineParsed.fileName.replace(/\.(ppb|pp)$/i, "");
+    return { text: `Baseline: ${ppBaselineParsed.fileName} – ${hit} av ${parsed.length} aktiviteter känns igen${hit < parsed.length ? " (övriga får ingen baseline)" : ""}.`, meta: { mode, label, file: ppBaselineParsed.fileName, set_at: at, by } };
+  }
+  parsed.forEach(p => { p.baselineStartDate = null; p.baselineEndDate = null; });
+  return { text: "Ingen baseline – den som finns tas bort.", meta: { mode: "none", label: null, file: null, set_at: at, by } };
+}
+
 async function ppRead() {
   const input = document.getElementById("ppFile"), status = document.getElementById("ppStatus");
   const f = input && input.files && input.files[0];
@@ -206,7 +298,10 @@ function ppPreview() {
   const byPpId = new Map();
   items.forEach(it => { const m = /^PP .*\|\|(\d+)$/.exec(it.sourceKey || ""); if (m && it.origin !== "manuell" && !byPpId.has(Number(m[1]))) byPpId.set(Number(m[1]), it); });
   parsed.forEach(p => { const ex = byPpId.get(p.ppId); if (ex && ex.sourceKey !== p.sourceKey) p.id4d = ex.id; });
+  let bl;
+  try { bl = ppApplyBaseline(parsed, byPpId); } catch (e) { status.innerText = e.message; return; }
   planImportDiff = buildPlanImportDiff(parsed);
+  planImportDiff.baseline = bl;
   planImportDiff.fileName = ppParsed.fileName;
   planImportDiff.excelComments = null;
   renderPlanImportPreview(planImportDiff);

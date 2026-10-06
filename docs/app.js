@@ -3596,6 +3596,7 @@ function renderPlanImportPreview(diff) {
     removedEl.innerHTML = "";
   }
 
+  if (diff.baseline && diff.baseline.text) summaryEl.innerHTML += `<div class="plan-import-baseline">▭ ${escapeHtml(diff.baseline.text)}</div>`;
   const xc = diff.excelComments;
   if (xc && (xc.list.length || xc.resolved || xc.unmatched)) {
     const replies = xc.list.filter(x => x.c.parentId).length;
@@ -3869,6 +3870,9 @@ async function commitPlanImport(diff) {
       { data: before, sha }
     ),
     saveActivitiesForItemsBulk(activityBatches),
+    // Baseline (Powerproject-importen): varifrån baseline-datumen kommer.
+    diff.baseline && diff.baseline.meta !== undefined ? ghWriteJSON(settings.githubToken, baselineMetaPath(),
+      arr => [...(Array.isArray(arr) ? arr : []).slice(-19), diff.baseline.meta], `Baseline: ${diff.baseline.meta.label || "ingen"}`).catch(e => console.warn("Kunde inte spara baseline-uppgiften", e)) : null,
     // Importloggen: flikarna och aktiviteterna i den här filen (se isGoneFromLastImport).
     (async () => {
       const rec = { id: ghNewId(), at: new Date().toISOString(), file: fileName, by: settings.userName || null,
@@ -5065,10 +5069,10 @@ const BACKUP_FILES = [
   "plan_items", "plan_item_activities", "plan_item_comments", "plan_item_progress_history",
   "plan_item_baseline_history", "plan_item_positions", "status_plans", "site_layers",
   "plan_blockers", "plan_blocker_comments", "plan_milestones", "plan_deliveries",
-  "plan_document_deliveries", "plan_inspections", "plan_safety_events", "plan_staffing"
+  "plan_document_deliveries", "plan_inspections", "plan_safety_events", "plan_staffing", "plan_baseline"
 ];
 // Det som nollställs (planeringen och allt som hänger på planeringsposternas id).
-const RESET_FILES = ["plan_items", "plan_item_activities", "plan_item_comments", "plan_item_progress_history", "plan_item_baseline_history", "plan_item_positions"];
+const RESET_FILES = ["plan_items", "plan_item_activities", "plan_item_comments", "plan_item_progress_history", "plan_item_baseline_history", "plan_item_positions", "plan_baseline"];
 const projectFilePath = name => RESET_FILES.includes(name) ? `${planDir()}/${name}.json` : `projects/${encodeURIComponent(projectId)}/${name}.json`;
 const backupIndexPath = () => `${planDir()}/backups/index.json`;
 
@@ -5250,6 +5254,11 @@ function itemsPath() {
    kvar i senaste importen" vet vad som har försvunnit ur Excel. */
 function importsPath() {
   return `${planDir()}/plan_imports.json`;
+}
+/* Vad baseline-datumen (baseline_start_date/baseline_end_date) kommer från – en rad per gång den
+   sattes, den sista gäller: { mode, label, file, set_at, by }. Visas i 4D-dashboarden. */
+function baselineMetaPath() {
+  return `${planDir()}/plan_baseline.json`;
 }
 let lastPlanImport = null; // { id, at, file, sheets: [...], keys: [...] }
 const sheetOfSourceKey = k => String(k || "").split("||")[0];

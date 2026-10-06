@@ -1070,3 +1070,6 @@ body.src-pp section[data-panel-id="excel"], body.src-excel section[data-panel-id
 .pp-grid .pp-l { margin: 0; }
 .pp-groups .check { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .pp-groups .check input { width: auto; margin: 0; flex: none; }
+.plan-import-baseline { margin-top: 6px; padding: 6px 8px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 6px; }
+.pp-baseline-file { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.pp-baseline-file.hidden { display: none; }
