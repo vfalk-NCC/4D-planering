@@ -11,7 +11,7 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261006104604"></script>
+<script src="github-storage.js?v=20261006110926"></script>
 <style>
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
@@ -733,6 +733,9 @@
   .cad-exp-l { font-size: 12px; white-space: nowrap; padding-right: 2px; }
   .cad-exp-grid button { height: 28px; font-weight: 600; }
   .cad-exp .check { margin-top: 6px; font-size: 11.5px; }
+  #pdfuHint { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); z-index: 12; max-width: min(560px, calc(100% - 24px)); background: #fff; border: 2px solid #ea580c; border-radius: 10px; box-shadow: 0 8px 24px rgba(15,23,42,.2); padding: 10px 14px; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+  #pdfuHint.hidden { display: none; }
+  #pdfuHint .pdfu-acts { display: flex; gap: 6px; margin-top: 4px; }
   #itemLinkBanner { position: absolute; z-index: 30; left: 50%; top: 12px; transform: translateX(-50%); max-width: min(440px, calc(100% - 32px)); display: flex; flex-direction: column; gap: 2px; padding: 9px 34px 9px 13px; border-radius: 12px; background: rgba(255,255,255,.96); box-shadow: 0 8px 28px rgba(15,23,42,.22); font-size: 12.5px; color: #111827; }
   #itemLinkBanner.hidden { display: none; }
   #itemLinkBanner b { font-size: 13.5px; }
@@ -1140,6 +1143,19 @@
             <div class="hint" id="cadInfo"></div>
           </div>
         </details>
+        <details class="sec" data-sec="pdfu">
+          <summary><span class="si">📄</span>PDF-underlag</summary>
+          <button id="btnAddPdfUnder" class="block" title="En eller flera PDF-ritningar som lager i den här arbetsytan">📄 Lägg till PDF (en eller flera)…</button>
+          <input type="file" id="pdfuInput" accept="application/pdf,.pdf" multiple class="hidden" />
+          <label class="check"><input type="checkbox" id="pdfuToTc" checked /> <span class="grow">Spara originalfilen i Trimble Connect (mappen Lägesplan)</span></label>
+          <div class="hint">PDF:en läggs som ett lager ovanpå arbetsytan (tänd, släck och genomskinlighet i Lager). Kalibrera den med två punkter: klicka en punkt i den nya PDF:en och samma punkt på arbetsytans ritning – två gånger. Arbetsytan behöver vara kalibrerad.</div>
+          <div id="pdfuSettings" class="hidden" style="margin-top:10px;">
+            <div class="kv" style="grid-template-columns:auto 1fr;"><span>Ritning</span><select id="pdfuSel"></select></div>
+            <div class="hint" id="pdfuInfo"></div>
+            <button id="btnPdfuCalib" class="block" style="margin-top:6px;">📐 Kalibrera (två punkter)</button>
+            <div class="row split" style="margin-top:6px;"><button id="btnPdfuRename">✏️ Byt namn</button><button id="btnPdfuDelete">🗑️ Ta bort</button></div>
+          </div>
+        </details>
       </section>
 
       <!-- ============ Dagsplanering ============ -->
@@ -1486,34 +1502,35 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261006104604"></script>
-<script src="lagesplan-tools.js?v=20261006104604"></script>
-<script src="lagesplan-layers.js?v=20261006104604"></script>
-<script src="lagesplan-pdfoverlay.js?v=20261006104604"></script>
-<script src="lagesplan-views.js?v=20261006104604"></script>
-<script src="lagesplan-film.js?v=20261006104604"></script>
-<script src="lagesplan-cad.js?v=20261006104604"></script>
-<script src="lagesplan-vecpdf.js?v=20261006104604"></script>
-<script src="lagesplan-print.js?v=20261006104604"></script>
-<script src="lagesplan-printlib.js?v=20261006104604"></script>
-<script src="lagesplan-pdflayers.js?v=20261006104604"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261006104604"></script>
-<script src="lagesplan-objmarks.js?v=20261006104604"></script>
-<script src="lagesplan-objlist.js?v=20261006104604"></script>
-<script src="lagesplan-zones.js?v=20261006104604"></script>
-<script src="lagesplan-wbs.js?v=20261006104604"></script>
-<script src="lagesplan-zoneexport.js?v=20261006104604"></script>
-<script src="lagesplan-itemlink.js?v=20261006104604"></script>
-<script src="lagesplan-dxfexport.js?v=20261006104604"></script>
-<script src="ifc-writer.js?v=20261006104604"></script>
-<script src="lagesplan-ifcexport.js?v=20261006104604"></script>
-<script src="lagesplan-zonecad.js?v=20261006104604"></script>
-<script src="lagesplan-daily.js?v=20261006104604"></script>
-<script src="lagesplan-gps.js?v=20261006104604"></script>
-<script src="lagesplan-weather.js?v=20261006104604"></script>
-<script src="lagesplan-touch.js?v=20261006104604"></script>
-<script src="lagesplan-drawer.js?v=20261006104604"></script>
-<script src="lagesplan-gpslive.js?v=20261006104604"></script>
-<script src="lagesplan-keys.js?v=20261006104604"></script>
+<script src="lagesplan.js?v=20261006110926"></script>
+<script src="lagesplan-tools.js?v=20261006110926"></script>
+<script src="lagesplan-layers.js?v=20261006110926"></script>
+<script src="lagesplan-pdfoverlay.js?v=20261006110926"></script>
+<script src="lagesplan-pdfunder.js?v=20261006110926"></script>
+<script src="lagesplan-views.js?v=20261006110926"></script>
+<script src="lagesplan-film.js?v=20261006110926"></script>
+<script src="lagesplan-cad.js?v=20261006110926"></script>
+<script src="lagesplan-vecpdf.js?v=20261006110926"></script>
+<script src="lagesplan-print.js?v=20261006110926"></script>
+<script src="lagesplan-printlib.js?v=20261006110926"></script>
+<script src="lagesplan-pdflayers.js?v=20261006110926"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261006110926"></script>
+<script src="lagesplan-objmarks.js?v=20261006110926"></script>
+<script src="lagesplan-objlist.js?v=20261006110926"></script>
+<script src="lagesplan-zones.js?v=20261006110926"></script>
+<script src="lagesplan-wbs.js?v=20261006110926"></script>
+<script src="lagesplan-zoneexport.js?v=20261006110926"></script>
+<script src="lagesplan-itemlink.js?v=20261006110926"></script>
+<script src="lagesplan-dxfexport.js?v=20261006110926"></script>
+<script src="ifc-writer.js?v=20261006110926"></script>
+<script src="lagesplan-ifcexport.js?v=20261006110926"></script>
+<script src="lagesplan-zonecad.js?v=20261006110926"></script>
+<script src="lagesplan-daily.js?v=20261006110926"></script>
+<script src="lagesplan-gps.js?v=20261006110926"></script>
+<script src="lagesplan-weather.js?v=20261006110926"></script>
+<script src="lagesplan-touch.js?v=20261006110926"></script>
+<script src="lagesplan-drawer.js?v=20261006110926"></script>
+<script src="lagesplan-gpslive.js?v=20261006110926"></script>
+<script src="lagesplan-keys.js?v=20261006110926"></script>
 </body>
 </html>

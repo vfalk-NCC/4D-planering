@@ -10,6 +10,7 @@ const itemLinkId = () => new URLSearchParams(location.search).get("item");
 function itemLinkTarget(it) {
   const best = [];
   plans.forEach(p => {
+    if (p.underlay) return; // PDF-underlag är bara lager
     const pos = typeof zoneExportPositions === "function" ? zoneExportPositions(p) : null;
     const pt = pos ? pos.get(it.id) || null : null;
     const zones = (p.zones || []).filter(z => zoneExportItems(p, z, pos).some(x => x.id === it.id));
