@@ -353,12 +353,14 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (!wpop.vis || !/överzon 742 Sikthall/i.test(wpop.head) || wpop.size !== '125 %' || wpop.sel !== wkey) fail('Klick på överzonens etikett ska öppna etikettrutan: ' + JSON.stringify(wpop));
   await page.fill('#sitePop .zl-text', 'Etapp {namn}\n{%}');
   await page.evaluate(() => { const r = $('sitePop').querySelector('.zl-rot'); r.value = 30; r.oninput(); });
+  await page.evaluate(() => { const c = $('sitePop').querySelector('.zl-color'); c.value = '#7c3aed'; c.dispatchEvent(new Event('input')); });
   await page.click('#sitePop .zl-save'); await page.waitForTimeout(150);
-  const wsaved = await page.evaluate(k => { const st = plan.wbs[k].style; const c = document.createElement('canvas'); c.width = 2000; c.height = 2000; const b = drawZoneShapes(c.getContext('2d'), 14, null).find(x => x[5] === 'wbs:' + k); return { text: st.labelText, rot: st.labelRot, drawn: b && b[1], editBtn: !!$('zeStyle').querySelector('.zs-edlabel') }; }, wkey);
-  if (!/^Etapp \{namn\}\n\{%\}$/.test(wsaved.text) || wsaved.rot !== 30 || !/^Etapp 742 Sikthall\n(\d+ %)?$/.test(wsaved.drawn) || !wsaved.editBtn) fail('Överzonens etikett ska sparas och ritas: ' + JSON.stringify(wsaved));
+  const wsaved = await page.evaluate(k => { const st = plan.wbs[k].style; const c = document.createElement('canvas'); c.width = 2000; c.height = 2000; const b = drawZoneShapes(c.getContext('2d'), 14, null).find(x => x[5] === 'wbs:' + k); const fills = []; const ctx2 = c.getContext('2d'); const of = ctx2.fill.bind(ctx2); ctx2.fill = (...a) => { fills.push(ctx2.fillStyle); return of(...a); }; drawBadge(ctx2, [100, 100], 'x', '#888888', 14, false, wbsStyle(k));
+    return { text: st.labelText, rot: st.labelRot, color: st.labelColor, fill: fills[0], drawn: b && b[1], editBtn: !!$('zeStyle').querySelector('.zs-edlabel') }; }, wkey);
+  if (!/^Etapp \{namn\}\n\{%\}$/.test(wsaved.text) || wsaved.rot !== 30 || wsaved.color !== '#7c3aed' || wsaved.fill !== '#7c3aed' || !/^Etapp 742 Sikthall\n(\d+ %)?$/.test(wsaved.drawn) || !wsaved.editBtn) fail('Överzonens etikett ska sparas och ritas: ' + JSON.stringify(wsaved));
   await page.keyboard.press('Control+z'); await page.waitForTimeout(150);
   if (await page.evaluate(k => !!(plan.wbs[k] && plan.wbs[k].style && plan.wbs[k].style.labelText), wkey)) fail('Ctrl+Z ska ångra etikettens text');
-  console.log('OK: överzonens etikett flyttas genom att dra den och redigeras i etikettrutan (text, rotation, storlek), ångra');
+  console.log('OK: överzonens etikett flyttas genom att dra den och redigeras i etikettrutan (text, färg, rotation, storlek), ångra');
   await page.evaluate(id => selectZone(id), b41); await page.waitForTimeout(100);
   // Nivåerna: båda, bara överzoner, bara zoner.
   const lv = async v => { await page.selectOption('#zoWbsLevel', v); await page.waitForTimeout(100);

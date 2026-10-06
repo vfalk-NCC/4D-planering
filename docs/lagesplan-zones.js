@@ -633,6 +633,8 @@ function openZoneLabelPop(zid) {
     <div class="muted" style="font-size:11px;">Tom = automatiskt. {%} = framdrift, {m2} = ytan (kräver kalibrering).</div>
     <div class="row2"><div><label>Radbryt efter</label><select class="zl-wrap">${[0, 8, 12, 16, 20, 30].map(n => `<option value="${n}"${(Number(s.labelWrap) || 0) === n ? " selected" : ""}>${n ? n + " tecken" : "Ingen"}</option>`).join("")}</select></div>
       <div><label>Stil</label><select class="zl-kind">${[["pill", "Färgad bubbla"], ["white", "Vit bubbla"], ["text", "Bara text"], ["none", "Dold"]].map(([v, l]) => `<option value="${v}"${s.label === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
+    <label>Färg</label>
+    <div class="zs-row"><input type="color" class="zl-color" value="${escHtml(s.labelColor || "#2563eb")}" title="Etikettens färg" /><span class="muted zl-colorv">${s.labelColor ? "Egen färg" : "Statusfärg"}</span><button type="button" class="zl-color-auto"${s.labelColor ? "" : " disabled"} title="Tillbaka till statusfärgen">↺ Statusfärg</button></div>
     <label>Rotation</label>
     <div class="zs-row"><input type="range" class="zl-rot" min="-180" max="180" step="1" value="${rot}" /><input type="text" class="zl-rotv" inputmode="numeric" value="${rot}" style="width:48px;text-align:right;" /><span class="muted">°</span></div>
     <div class="zl-chips"><button type="button" data-rot="0">0°</button><button type="button" data-rot="90">90°</button><button type="button" data-rot="-90">−90°</button><button type="button" data-rot="long" title="Längs ytans längsta sida">↗ Längs zonen</button></div>
@@ -657,6 +659,9 @@ function openZoneLabelPop(zid) {
   });
   q(".zl-wrap").onchange = () => set({ labelWrap: Number(q(".zl-wrap").value) || 0 });
   q(".zl-kind").onchange = () => set({ label: q(".zl-kind").value });
+  const setColor = c => { set({ labelColor: c }); q(".zl-colorv").textContent = c ? "Egen färg" : "Statusfärg"; q(".zl-color-auto").disabled = !c; };
+  q(".zl-color").oninput = () => { if (q(".zl-kind").value === "none") { q(".zl-kind").value = "pill"; set({ label: "pill" }); } setColor(q(".zl-color").value); };
+  q(".zl-color-auto").onclick = () => setColor(null);
   const setRot = v => { v = Math.max(-180, Math.min(180, Math.round(Number(v) || 0))); q(".zl-rot").value = v; q(".zl-rotv").value = v; set({ labelRot: v }); };
   q(".zl-rot").oninput = () => setRot(q(".zl-rot").value);
   q(".zl-rotv").onchange = () => setRot(String(q(".zl-rotv").value).replace(",", "."));

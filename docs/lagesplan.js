@@ -1134,6 +1134,8 @@ function wrapLabelLines(text, n) {
 }
 function drawBadge(ctx, [x, y], text, color, fontPx, hollow, zs) {
   const kind = zs ? zs.label : "pill";
+  // Egen färg på etiketten (Victors önskemål 2026-10-06), annars statusfärgen.
+  if (zs && zs.labelColor) { color = zs.labelColor; hollow = false; }
   fontPx *= zs ? Number(zs.labelSize) || 1 : 1;
   const rot = zs ? (Number(zs.labelRot) || 0) * Math.PI / 180 : 0;
   const lines = wrapLabelLines(text, zs ? Number(zs.labelWrap) || 0 : 0);
