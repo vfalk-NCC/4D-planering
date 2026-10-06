@@ -39,11 +39,12 @@ async function makePp(variant) {
   run('INSERT INTO BAR VALUES (?,?,?)', [[1, 0, 'Projekttidplan'], [11, 10, ''], [21, 20, '742 Sikthall'], [31, 30, ''], [2, 0, ''], [51, 50, '']]);
   run('INSERT INTO EXPANDED_TASK VALUES (?,?,?)', [[10, variant === 3 ? 'Projekttidplan rev B' : 'Projekttidplan', 1], [20, 'PRODUKTION', 11], [30, '', 21], [50, 'Building', 2]]);
   const ren = variant === 2;
+  // Montage har samma UNIQUE_TASK_ID ('a01') som Gjutning – som i NSV-tidplanen är det en kod, inte unikt.
   // Variant 4: Montage och Schakt har flyttats i Powerproject och fått nya id (Montage har kvar sitt GUID).
   const mv = variant === 4, nid = id => mv && id === 101 ? 111 : mv && id === 102 ? 112 : id;
   run('INSERT INTO TASK VALUES (?,?,?,?,?,?,?,?,?)', [
     [100, ren ? 'Gjutning bottenplatta etapp 1' : 'Gjutning bottenplatta', 31, 'a01', ren ? '2026-11-02 08:00:00' : '2026-10-05 08:00:00', ren ? '2026-11-13 16:00:00' : '2026-10-16 16:00:00', 0, '0,0,<8.0E01>,', null],
-    [nid(101), 'Montage stomme', 31, 'a02', '2026-10-19 08:00:00', '2026-11-06 16:00:00', 0, '0,0,<1.2E02>,', '{6F319DCE-1824-4C1B-8B1A-8C35B46CCD3D}'],
+    [nid(101), 'Montage stomme', 31, 'a01', '2026-10-19 08:00:00', '2026-11-06 16:00:00', 0, '0,0,<1.2E02>,', '{6F319DCE-1824-4C1B-8B1A-8C35B46CCD3D}'],
     [nid(102), 'Schakt', 31, 'a03', '2026-09-01 08:00:00', '2026-09-14 16:00:00', 0, '0,0,<8.0E01>,', '{00000000-0000-0000-0000-000000000000}'],
     [103, 'https://apps.powerapps.com/x', 31, '', '2026-10-01 08:00:00', '2026-10-01 16:00:00', 0, '', null],
     [104, 'Utan datum', 31, '', null, null, 0, '', null],

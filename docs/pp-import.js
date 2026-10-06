@@ -221,11 +221,13 @@ function renderPpOptions() {
     } catch (e) { ppBaselineParsed = null; binfo.innerText = "Kunde inte läsa filen: " + e.message; }
   };
 }
-/* Baseline-filens aktiviteter: Powerprojects unika id (UNIQUE_TASK_ID) i första hand, annars radens id. */
+/* Baseline-filens aktiviteter: Powerprojects id (TASK.ID) i första hand, annars GUID.
+   OBS: UNIQUE_TASK_ID används inte – trots namnet är det en aktivitetskod (t.ex. "a09") som många
+   aktiviteter delar (Victors rapport 2026-10-06: baseline hundratals dagar fel). */
 function ppBaselineIndex(pp) {
-  return { byUid: new Map(pp.tasks.filter(t => t.uid).map(t => [String(t.uid), t])), byId: new Map(pp.tasks.map(t => [t.id, t])) };
+  return { byId: new Map(pp.tasks.map(t => [t.id, t])), byGuid: new Map(pp.tasks.filter(t => t.guid).map(t => [t.guid, t])) };
 }
-const ppBaselineTask = (ix, t) => (t.uid && ix.byUid.get(String(t.uid))) || ix.byId.get(t.id) || null;
+const ppBaselineTask = (ix, t) => ix.byId.get(t.id) || (t.guid && ix.byGuid.get(t.guid)) || null;
 const ppFmtDate = d => (d ? d.replace(/^(\d{4})-(\d{2})-(\d{2}).*$/, "$3/$2 $1") : "");
 
 /* Vilken befintlig aktivitet varje rad i filen är (Map parsed -> item):
@@ -343,7 +345,7 @@ function ppApplyBaselineMode(parsed, exOfP) {
     const ix = ppBaselineIndex(ppBaselineParsed), tById = new Map(ppParsed.tasks.map(t => [t.id, t]));
     let hit = 0;
     parsed.forEach(p => {
-      const b = ppBaselineTask(ix, tById.get(p.ppId) || { id: p.ppId, uid: p.ppUid });
+      const b = ppBaselineTask(ix, tById.get(p.ppId) || { id: p.ppId, guid: p.ppGuid });
       p.baselineStartDate = b ? b.start : null; p.baselineEndDate = b ? b.end : null;
       if (b) hit++;
     });
