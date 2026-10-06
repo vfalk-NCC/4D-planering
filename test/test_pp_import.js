@@ -36,7 +36,7 @@ async function makePp(variant) {
   run('INSERT INTO PROJECT_SUMMARY VALUES (?,?,?,?)', [['2026-08-18 08:00:00', '2028-08-21 18:00:00', 'NSV', 'NSV-LKAB Huvudtidplan']]);
   // Hierarki: rotstapel 1 -> Projekttidplan (10) -> stapel 11 -> PRODUKTION (20) -> stapel 21 -> 742 Sikthall (30) -> stapel 31 (aktiviteterna)
   run('INSERT INTO BAR VALUES (?,?,?)', [[1, 0, 'Projekttidplan'], [11, 10, ''], [21, 20, ''], [31, 30, ''], [2, 0, ''], [51, 50, '']]);
-  run('INSERT INTO EXPANDED_TASK VALUES (?,?,?)', [[10, 'Projekttidplan', 1], [20, 'PRODUKTION', 11], [30, '742 Sikthall', 21], [50, 'Building', 2]]);
+  run('INSERT INTO EXPANDED_TASK VALUES (?,?,?)', [[10, variant === 3 ? 'Projekttidplan rev B' : 'Projekttidplan', 1], [20, 'PRODUKTION', 11], [30, '742 Sikthall', 21], [50, 'Building', 2]]);
   const ren = variant === 2;
   run('INSERT INTO TASK VALUES (?,?,?,?,?,?,?,?)', [
     [100, ren ? 'Gjutning bottenplatta etapp 1' : 'Gjutning bottenplatta', 31, 'a01', ren ? '2026-11-02 08:00:00' : '2026-10-05 08:00:00', ren ? '2026-11-13 16:00:00' : '2026-10-16 16:00:00', 0, '0,0,<8.0E01>,'],
@@ -149,6 +149,15 @@ async function makePp(variant) {
   const pp2 = get('pp/plan_items.json'), g2 = pp2.find(r => r.id === g.id);
   if (pp2.length !== 4 || !g2 || g2.object_name !== 'Gjutning bottenplatta etapp 1' || g2.start_date !== '2026-11-02' || g2.model_id !== 'm1' || g2.object_id !== '77') fail('En ny version ska uppdatera samma aktivitet och behålla 3D-kopplingen: ' + JSON.stringify(g2));
   console.log('OK: ny version av tidplanen – samma aktiviteter uppdateras (namn, datum), 3D-kopplingen kvar');
+  // Översta raden omdöpt i Powerproject: aktiviteterna känns ändå igen på sitt id.
+  await page.setInputFiles('#ppFile', { name: 'Huvudtidplan v3.pp', mimeType: 'application/octet-stream', buffer: await makePp(3) });
+  await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
+  await page.click('#btnPpPreview'); await page.waitForTimeout(200);
+  const prev3 = await page.evaluate(() => ({ create: planImportDiff.toCreate.length, update: planImportDiff.toUpdate.length }));
+  await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
+  const pp3 = get('pp/plan_items.json'), g3 = pp3.find(r => r.id === g.id);
+  if (prev3.create !== 0 || pp3.length !== 4 || !g3 || g3.model_id !== 'm1' || !/^PP Projekttidplan rev B\|\|/.test(g3.source_key)) fail('Omdöpt översta rad ska inte ge nya aktiviteter: ' + JSON.stringify({ prev3, n: pp3.length, g3 }));
+  console.log('OK: omdöpt översta rad i Powerproject – aktiviteterna känns igen på id, kopplingen kvar');
 
   // 5) Tillbaka till Excel: Excel-planeringen igen; Lägesplan öppnas med rätt planering.
   await page.evaluate(() => { window.__opened = []; window.open = (u) => { window.__opened.push(u); return { closed: false, focus() {} }; }; });

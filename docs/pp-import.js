@@ -201,6 +201,11 @@ function ppPreview() {
   if (!opts.groups.size) { status.innerText = "Välj minst en del att importera."; return; }
   const parsed = ppToParsedItems(ppParsed, opts);
   if (!parsed.length) { status.innerText = "Inga aktiviteter i de valda delarna."; return; }
+  // Powerprojects id avgör (inte delens namn): har översta raden döpts om eller aktiviteten flyttats
+  // till en annan del känns den ändå igen och behåller kopplingarna (samma väg som Excels 4D-ID).
+  const byPpId = new Map();
+  items.forEach(it => { const m = /^PP .*\|\|(\d+)$/.exec(it.sourceKey || ""); if (m && it.origin !== "manuell" && !byPpId.has(Number(m[1]))) byPpId.set(Number(m[1]), it); });
+  parsed.forEach(p => { const ex = byPpId.get(p.ppId); if (ex && ex.sourceKey !== p.sourceKey) p.id4d = ex.id; });
   planImportDiff = buildPlanImportDiff(parsed);
   planImportDiff.fileName = ppParsed.fileName;
   planImportDiff.excelComments = null;
