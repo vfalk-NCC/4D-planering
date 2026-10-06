@@ -446,12 +446,16 @@ function drawCrew(ctx, x, fontPx, selected) {
   const title = crewTitle(x);
   let sub = x.task || (act ? act.title : "") || (ue && ue.short ? ue.name || "" : "");
   if (sub.length > 28) sub = sub.slice(0, 27) + "…";
+  // Datumet diskret i lagets ruta (Victors önskemål 2026-10-06: "lätt i en grå ton").
+  const when = x.from && x.from === x.to ? shortDate(x.from) : datesText(x);
   ctx.save(); ctx.setLineDash([]); ctx.globalAlpha *= ds.crewOpacity;
   const F1 = `800 ${fs * 0.9}px "Segoe UI", Arial, sans-serif`, F2 = `500 ${fs * 0.6}px "Segoe UI", Arial, sans-serif`;
   ctx.font = F1; const tw = ctx.measureText(title).width;
   ctx.font = F2; const sw = sub ? ctx.measureText(sub).width : 0;
+  const F3 = `400 ${fs * 0.48}px "Segoe UI", Arial, sans-serif`;
+  ctx.font = F3; const dw = when ? ctx.measureText(when).width : 0;
   const dot = act ? fs * 0.62 : 0, pad = fs * 0.45;
-  const w = Math.max(tw + dot, sw) + pad * 2, h = fs * (sub ? 1.8 : 1.24) + (act ? fs * 0.32 : 0);
+  const w = Math.max(tw + dot, sw, dw) + pad * 2, h = fs * (sub ? 1.8 : 1.24) + (when ? fs * 0.56 : 0) + (act ? fs * 0.32 : 0);
   const bx = p[0] - w / 2, by = p[1] - h / 2, r = fs * 0.38;
   ctx.shadowColor = "rgba(15,23,42,.35)"; ctx.shadowBlur = fs * 0.45; ctx.shadowOffsetY = fs * 0.1;
   roundRect(ctx, bx, by, w, h, r); ctx.fillStyle = color; ctx.fill();
@@ -468,6 +472,10 @@ function drawCrew(ctx, x, fontPx, selected) {
   }
   ctx.font = F1; ctx.fillStyle = fg; ctx.fillText(title, tx, ty);
   if (sub) { ctx.font = F2; ctx.globalAlpha *= 0.9; ctx.fillText(sub, bx + pad, by + fs * 1.36); ctx.globalAlpha /= 0.9; }
+  if (when) {
+    ctx.font = F3; ctx.fillStyle = fg === "#ffffff" ? "rgba(255,255,255,.62)" : "rgba(17,24,39,.55)";
+    ctx.fillText(when, bx + pad, by + fs * (sub ? 1.88 : 1.32));
+  }
   if (act) {
     const yb = by + h - fs * 0.34, bw = w - pad * 2;
     ctx.fillStyle = fg === "#ffffff" ? "rgba(255,255,255,.3)" : "rgba(0,0,0,.18)"; roundRect(ctx, bx + pad, yb, bw, fs * 0.15, fs * 0.075); ctx.fill();

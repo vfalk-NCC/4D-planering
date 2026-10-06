@@ -337,12 +337,34 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   await page.evaluate(id => { const r = document.querySelector(`#zoneList .zone-item[data-zone="${id}"]`); r.click(); }, b41); await page.waitForTimeout(100);
   const zz = await page.evaluate(() => ({ key: selectedWbsKey, wbs: $('zoneEditor').classList.contains('wbs'), flash: $('flashCanvas').style.display !== 'none' }));
   if (zz.key || zz.wbs || !zz.flash) fail('En zon från listan ska släppa överzonen och blinka: ' + JSON.stringify(zz));
+  // Överzonens etikett (Victors önskemål 2026-10-06): dras och redigeras som zonernas.
+  await page.evaluate(() => { selectZone(null); renderZones(); });
+  const wbox = await page.evaluate(() => { const b = zoneLabelBoxes.find(x => String(x.zid).startsWith('wbs:')); if (!b) return null; const r = $('viewport').getBoundingClientRect(), sp = stageToScreen([b.x, b.y]); return { zid: b.zid, x: r.left + sp[0], y: r.top + sp[1] }; });
+  if (!wbox) fail('Överzonens etikett ska gå att träffa på planen');
+  const wkey = wbox.zid.slice(4);
+  await page.mouse.move(wbox.x, wbox.y); await page.mouse.down(); await page.mouse.move(wbox.x + 40, wbox.y + 20, { steps: 4 }); await page.mouse.move(wbox.x + 80, wbox.y + 40, { steps: 4 }); await page.mouse.up(); await page.waitForTimeout(150);
+  const wmoved = await page.evaluate(k => { const m = plan.wbs && plan.wbs[k]; const b = zoneLabelBoxes.find(x => x.zid === 'wbs:' + k); const r = $('viewport').getBoundingClientRect(), sp = stageToScreen([b.x, b.y]); return { labels: m && m.labels, x: r.left + sp[0], y: r.top + sp[1], pop: !$('sitePop').classList.contains('hidden') }; }, wkey);
+  if (!wmoved.labels || wmoved.labels.length !== 1 || Math.abs(wmoved.x - wbox.x - 80) > 3 || Math.abs(wmoved.y - wbox.y - 40) > 3 || wmoved.pop) fail('Överzonens etikett ska flyttas med musen: ' + JSON.stringify({ wbox, wmoved }));
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(150);
+  if (await page.evaluate(k => !!(plan.wbs && plan.wbs[k] && plan.wbs[k].labels && plan.wbs[k].labels.length), wkey)) fail('Ctrl+Z ska flytta tillbaka överzonens etikett');
+  // Klick: etikettrutan som för zonerna, med egen text, rotation och storlek.
+  await page.mouse.click(wbox.x, wbox.y); await page.waitForTimeout(150);
+  const wpop = await page.evaluate(() => ({ vis: !$('sitePop').classList.contains('hidden'), head: ($('sitePop').querySelector('.dp-head') || {}).textContent, size: $('sitePop').querySelector('.zl-sizev').textContent, sel: selectedWbsKey }));
+  if (!wpop.vis || !/överzon 742 Sikthall/i.test(wpop.head) || wpop.size !== '125 %' || wpop.sel !== wkey) fail('Klick på överzonens etikett ska öppna etikettrutan: ' + JSON.stringify(wpop));
+  await page.fill('#sitePop .zl-text', 'Etapp {namn}\n{%}');
+  await page.evaluate(() => { const r = $('sitePop').querySelector('.zl-rot'); r.value = 30; r.oninput(); });
+  await page.click('#sitePop .zl-save'); await page.waitForTimeout(150);
+  const wsaved = await page.evaluate(k => { const st = plan.wbs[k].style; const c = document.createElement('canvas'); c.width = 2000; c.height = 2000; const b = drawZoneShapes(c.getContext('2d'), 14, null).find(x => x[5] === 'wbs:' + k); return { text: st.labelText, rot: st.labelRot, drawn: b && b[1], editBtn: !!$('zeStyle').querySelector('.zs-edlabel') }; }, wkey);
+  if (!/^Etapp \{namn\}\n\{%\}$/.test(wsaved.text) || wsaved.rot !== 30 || !/^Etapp 742 Sikthall\n(\d+ %)?$/.test(wsaved.drawn) || !wsaved.editBtn) fail('Överzonens etikett ska sparas och ritas: ' + JSON.stringify(wsaved));
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(150);
+  if (await page.evaluate(k => !!(plan.wbs[k] && plan.wbs[k].style && plan.wbs[k].style.labelText), wkey)) fail('Ctrl+Z ska ångra etikettens text');
+  console.log('OK: överzonens etikett flyttas genom att dra den och redigeras i etikettrutan (text, rotation, storlek), ångra');
   await page.evaluate(id => selectZone(id), b41); await page.waitForTimeout(100);
   // Nivåerna: båda, bara överzoner, bara zoner.
   const lv = async v => { await page.selectOption('#zoWbsLevel', v); await page.waitForTimeout(100);
     return page.evaluate(() => { const c = document.createElement('canvas'); c.width = 2000; c.height = 2000; return drawZoneShapes(c.getContext('2d'), 14, null).map(b => [b[1], b[5]]); }); };
   const both = await lv('both'), one = await lv('1'), two = await lv('2');
-  const hasWbs = l => l.some(([t, id]) => !id && /742 Sikthall/.test(t)), hasKid = l => l.some(([t, id]) => id === 'A');
+  const hasWbs = l => l.some(([t, id]) => String(id || '').startsWith('wbs:') && /742 Sikthall/.test(t)), hasKid = l => l.some(([t, id]) => id === 'A');
   if (!hasWbs(both) || !hasKid(both)) fail('Båda nivåerna: överzon och zoner: ' + JSON.stringify(both));
   if (!hasWbs(one) || hasKid(one) || !one.some(([t, id]) => id === 'C')) fail('Bara överzoner: zonerna i överzonen döljs, andra zoner syns: ' + JSON.stringify(one));
   if (hasWbs(two) || !hasKid(two)) fail('Bara zoner: ingen överzon: ' + JSON.stringify(two));
@@ -354,7 +376,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   // Avslaget: inget av detta syns.
   await page.uncheck('#zoWbs'); await page.waitForTimeout(100);
   if (await page.locator('#zoneList .wbs-item').count()) fail('Utan alternativet ska överzonerna inte synas i listan');
-  if ((await page.evaluate(() => { const c = document.createElement('canvas'); return drawZoneShapes(c.getContext('2d'), 14, null).filter(b => !b[5]).length; }))) fail('Utan alternativet ska överzonerna inte ritas');
+  if ((await page.evaluate(() => { const c = document.createElement('canvas'); return drawZoneShapes(c.getContext('2d'), 14, null).filter(b => String(b[5] || '').startsWith('wbs:')).length; }))) fail('Utan alternativet ska överzonerna inte ritas');
   const lpRule = await page.evaluate(() => { const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
     return [computeItemPhase({ start_date: d(-3), end_date: d(10), status: 'pagaende', progress: 0 }, d(0), 0), computeItemPhase({ start_date: d(-3), end_date: d(10), progress: 5 }, d(0), 0)].join(','); });
   if (lpRule !== 'forsenad,pagaende') fail('Lägesplanen: startad utan framdrift = försenad, med framdrift = pågående: ' + lpRule);

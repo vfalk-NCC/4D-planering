@@ -50,6 +50,35 @@ function wbsMeta(key, create = false) {
 }
 const wbsStyle = key => ({ ...WBS_STYLE_DEFAULT, ...((wbsMeta(key) || {}).style || {}) });
 
+/* Överzonens etikett: egen text ({namn}/{kod} = överzonens namn, {%} = framdrift, {m2} = zonernas
+   sammanlagda yta) eller automatiskt namn (+ framdrift). */
+function wbsLabelText(g, zs) {
+  const area = () => {
+    if (typeof zoneAreaM2 !== "function") return null;
+    const a = g.children.map(z => zoneAreaM2(z)).filter(v => v != null);
+    return a.length ? a.reduce((x, y) => x + y, 0) : null;
+  };
+  if (zs.labelText) {
+    const m2 = /\{m2\}|\{m²\}/i.test(zs.labelText) ? area() : null;
+    return String(zs.labelText).replace(/\{kod\}|\{namn\}/gi, g.name).replace(/\{%\}/g, g.progress != null ? `${g.progress} %` : "")
+      .replace(/\{m2\}|\{m²\}/gi, m2 != null ? `${fmtArea(m2)} m²` : "");
+  }
+  return `${g.name}${zs.labelPct && g.progress != null ? ` · ${g.progress} %` : ""}`;
+}
+/* Överzonens etikett för etikettrutan och dra-för-att-flytta (zoneLabelTarget i lagesplan-zones.js). */
+function wbsLabelTarget(key) {
+  const g = wbsGroups().find(x => x.key === key);
+  if (!g) return null;
+  return {
+    obj: wbsMeta(key, true), title: `överzon ${g.name}`, style: () => wbsStyle(key), chips: ["{namn}", "{%}", "{m2}"],
+    autoText: s => ["{namn}", s.labelPct ? "{%}" : ""].filter(Boolean).join(" · "),
+    longDeg: () => zoneLongSideDeg({ polys: g.polys.map(rings => rings[0]) }),
+    all: () => wbsGroups().map(x => wbsMeta(x.key, true)), allLabel: "alla överzoners",
+    select: () => { if (selectedWbsKey !== key) { selectedWbsKey = key; selectZone(null); selectedWbsKey = key; renderZones(); openWbsEditor(g); } },
+    afterSave: () => { const ng = wbsGroups().find(x => x.key === key); if (ng && selectedWbsKey === key) openWbsEditor(ng); },
+  };
+}
+
 /* Ritas efter (och, för "bara överzoner", i stället för) zonerna. */
 function drawWbsShapes(ctx, fontPx, objects, groups, filled) {
   const badges = [];
@@ -95,15 +124,19 @@ function drawWbsShapes(ctx, fontPx, objects, groups, filled) {
     }
     ctx.restore();
     if (zs.label === "none") return;
-    // Etikett: i mitten när bara överzonerna visas, annars ovanför (zonernas egna etiketter ligger i mitten).
+    // Etikett: där den dragits (Victors önskemål 2026-10-06: flyttas och redigeras som zonernas),
+    // annars i mitten när bara överzonerna visas, och ovanför (zonernas egna etiketter ligger i mitten).
+    const meta = wbsMeta(g.key) || {};
+    const moved = meta.labels && meta.labels.length && meta.labels[0];
     let pt;
-    if (filled) pt = toPx(wbsCentroid(g.polys));
+    if (moved) pt = toPx(meta.labels[0]);
+    else if (filled) pt = toPx(wbsCentroid(g.polys));
     else {
       const P = g.polys.flatMap(rings => rings[0]).map(toPx);
       pt = [(Math.min(...P.map(p => p[0])) + Math.max(...P.map(p => p[0]))) / 2, Math.min(...P.map(p => p[1])) - fontPx * 0.9];
     }
-    const text = `${g.name}${zs.labelPct && g.progress != null ? ` · ${g.progress} %` : ""}`;
-    badges.push([pt, text, color, !g.items.length && zs.fill !== "custom", zs, null, -1]);
+    const text = wbsLabelText(g, zs);
+    badges.push([pt, text, color, !g.items.length && zs.fill !== "custom", zs, "wbs:" + g.key, moved ? 0 : -1]);
   });
   return badges;
 }
@@ -187,7 +220,7 @@ function openWbsEditor(g) {
     try { await askOpener("select", { ids }, 30000); setSaveStatus(`🎯 ${ids.length} objekt i ${g.name} markerade i 3D`); } catch (e) { alert("Kunde inte markera i 3D: " + e.message); }
   };
   $("zwDelete").onclick = () => deleteWbs(g.key);
-  renderZoneStyleUi(wbsMeta(g.key, true), { wbs: true, onAll: m => {
+  renderZoneStyleUi(wbsMeta(g.key, true), { wbs: true, labelId: "wbs:" + g.key, onAll: m => {
     const others = wbsGroups().filter(x => x.key !== g.key);
     if (!others.length || !confirm(`Ge alla ${others.length} andra överzoner samma utseende som ${g.name}?`)) return;
     zoneSnapshot("Utseende på alla överzoner");

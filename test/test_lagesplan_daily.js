@@ -108,6 +108,31 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   const vis = await page.evaluate(d => { const x = siteItems.find(y => y.type === 'crew'); const a = siteShown(x); $('dateInput').value = nextWorkday(d); const b = siteShown(x); $('dateInput').value = d; return [a, b]; }, day);
   if (!vis[0] || vis[1]) fail('Laget ska bara synas den dag det gäller: ' + JSON.stringify(vis));
   console.log('OK: laget följer datumet (syns bara sin dag)');
+  // Datumet syns diskret i lagets ruta (Victors önskemål 2026-10-06).
+  const crewTexts = await page.evaluate(d => {
+    const x = { ...siteItems.find(y => y.type === 'crew') }, out = [];
+    const c = document.createElement('canvas'); c.width = 800; c.height = 600; const ctx = c.getContext('2d');
+    const orig = ctx.fillText.bind(ctx); ctx.fillText = (t, ...a) => { out.push([t, String(ctx.fillStyle)]); return orig(t, ...a); };
+    drawCrew(ctx, x, 20, false);
+    const two = { ...x, to: nextWorkday(d) }; out.push(['--']); drawCrew(ctx, two, 20, false);
+    return { out, one: shortDate(d), span: datesText(two) };
+  }, day);
+  const i0 = crewTexts.out.findIndex(t => t[0] === '--');
+  const dOne = crewTexts.out.slice(0, i0).find(t => t[0] === crewTexts.one), dSpan = crewTexts.out.slice(i0).find(t => t[0] === crewTexts.span);
+  if (!dOne || !dSpan || !/rgba\(/.test(dOne[1])) fail('Lagets datum ska stå i en dämpad ton i rutan: ' + JSON.stringify(crewTexts));
+  if (process.env.CREW_SHOT) {
+    const url = await page.evaluate(d => {
+      const c = document.createElement('canvas'); c.width = 900; c.height = 260; const ctx = c.getContext('2d');
+      ctx.fillStyle = '#4b5563'; ctx.fillRect(0, 0, 900, 260);
+      const x = { ...siteItems.find(y => y.type === 'crew'), persons: 2, task: 'Sätter L-stål' };
+      const u = ues()[0]; u.color = '#0e7490';
+      const at = (o, px, py) => { const p = mToPx(o.pts[0]); ctx.save(); ctx.translate(px - p[0], py - p[1]); drawCrew(ctx, o, 28, false); ctx.restore(); };
+      at(x, 220, 130); at({ ...x, to: nextWorkday(nextWorkday(d)) }, 640, 130);
+      return c.toDataURL('image/png');
+    }, day);
+    require('fs').writeFileSync(process.env.CREW_SHOT, Buffer.from(url.split(',')[1], 'base64'));
+  }
+  console.log('OK: lagets datum syns diskret i rutan (en dag eller från–till)');
 
   // 5) Krockar: annan UE i samma zon (varning), i avspärrning (krock), lyft utanför kranens räckvidd (krock).
   await page.evaluate(d => {
