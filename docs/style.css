@@ -1068,3 +1068,5 @@ body.src-pp section[data-panel-id="excel"], body.src-excel section[data-panel-id
 .pp-groups .hint { margin: 0 0 0 4px; display: inline; }
 .pp-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 8px; align-items: center; }
 .pp-grid .pp-l { margin: 0; }
+.pp-groups .check { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.pp-groups .check input { width: auto; margin: 0; flex: none; }
