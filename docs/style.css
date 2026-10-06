@@ -445,6 +445,11 @@ button:disabled { opacity: 0.5; cursor: default; filter: none; }
   margin-top: 2px;
 }
 .dependency-tag.blocked { color: #e5484d; }
+.dependency-tag.waiting { color: #b45309; }
+.dependency-tag { display: inline-flex; max-width: 100%; white-space: nowrap; vertical-align: bottom; gap: 4px; }
+.dependency-tag .dep-name { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.dependency-tag .dep-more { flex: 0 0 auto; padding: 0 4px; border-radius: 6px; background: rgba(229, 72, 77, .12); }
+.dependency-tag.waiting .dep-more { background: rgba(180, 83, 9, .12); }
 .dependency-tag.ok { color: var(--muted); font-weight: 500; }
 
 /* Beroenden ("Koppla markering") - se renderDependencyPicker i app.js. */

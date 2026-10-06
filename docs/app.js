@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-06 22:16";
+const APP_VERSION = "2026-10-06 22:47";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -1888,8 +1888,13 @@ function dependencyStatusHtml(it) {
   if (unfinished.length === 0) {
     return `<br/><span class="dependency-tag ok" title="Alla beroenden är klarmarkerade">${it.dependsOn.length} beroende${it.dependsOn.length === 1 ? "" : "n"}, alla klara</span>`;
   }
-  const names = unfinished.map(d => d.objectName || d.objectId).join(", ");
-  return `<br/><span class="dependency-tag blocked" title="Väntar på: ${escapeHtml(names)}">Väntar på: ${escapeHtml(names)}</span>`;
+  // En rad (Victor 2026-10-06: långa texter): första namnet kortat + "+N", hela listan i tipsrutan.
+  // Rött bara när en ofärdig föregångare slutar på/efter att den här ska starta – annars gult.
+  const late = unfinished.some(d => it.startDate && (d.actualEndDate || d.endDate) && (d.actualEndDate || d.endDate) >= it.startDate);
+  const short = t => { t = String(t || ""); return t.length > 48 ? t.slice(0, 47).trimEnd() + "…" : t; };
+  const first = unfinished[0].objectName || unfinished[0].objectId;
+  const all = unfinished.map(d => `• ${d.objectName || d.objectId} (${STATUS_LABELS[d.status] || d.status || ""}, slut ${d.endDate || "?"})`).join("\n");
+  return `<br/><span class="dependency-tag ${late ? "blocked" : "waiting"}" title="${late ? "Risk – en föregångare slutar först när den här ska starta" : "Väntar på"}:\n${escapeHtml(all)}"><span class="dep-name">⏳ Väntar på ${escapeHtml(short(first))}</span>${unfinished.length > 1 ? `<b class="dep-more">+${unfinished.length - 1}</b>` : ""}</span>`;
 }
 
 /**
@@ -2299,7 +2304,10 @@ function activityProgressOf(it) {
 function activitySubLineHtml(entry) {
   const it = entry.it;
   const hasSubs = typeof subsForEntry === "function" && subsForEntry(entry).length > 0;
-  const full = `${it.area || "–"} · ${it.activity || "–"}`;
+  // Aktiviteten står ofta redan sist i området (Powerproject: "PRODUKTION / 742A Krönlinje J" ·
+  // "742A Krönlinje J") – då visas den inte två gånger.
+  const dup = it.activity && it.area && String(it.area).trim().toLowerCase().endsWith(String(it.activity).trim().toLowerCase());
+  const full = dup ? (it.area || "–") : `${it.area || "–"} · ${it.activity || "–"}`;
   // Blockelement (klippt till två rader) – ingen extra <br/> efter, annars blir det en tomrad.
   if (hasSubs) return `<span class="item-sub" title="${escapeHtml(full)}">${escapeHtml(it.area || "–")}</span><br/>`;
   return `<span class="item-sub item-sub-clamp" title="${escapeHtml(full)}">${escapeHtml(full)}</span>`;
