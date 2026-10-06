@@ -461,6 +461,11 @@ async function setCadColor(name, color) {
   await saveLayerMeta(m);
   renderCad();
 }
+/* Utskriftslayoutens val för DXF:erna i en ritning (Victors önskemål 2026-10-06), satta medan
+   ritningen ritas: lw = linjetjocklek (×), minTextMm = minsta texthöjd på papperet (null = som
+   på skärmen), hideText = inga texter, pxPerMm = canvas-px per mm på papperet. */
+let cadPrintOpts = null;
+const CAD_PRINT_TEXT_SKIP_MM = 0.3; // mindre än så blir bara en prick även i utskrift
 /* Ritar alla tända CAD-ritningar. stageToCanvas = [a,b,c,d,e,f] från stage-px till ctx. */
 function drawCad(ctx, stageToCanvas, pxScale = 1, only = null) {
   if (!plan || !plan.calib) return;
@@ -473,7 +478,7 @@ function drawCad(ctx, stageToCanvas, pxScale = 1, only = null) {
     ctx.save();
     ctx.globalAlpha = layerOpacity("cad:" + r.id);
     ctx.setTransform(...G);
-    ctx.lineWidth = Math.max(0.6, (Number(r.weight) || 1)) * pxScale / s;
+    ctx.lineWidth = Math.max(0.6, (Number(r.weight) || 1)) * (cadPrintOpts ? cadPrintOpts.lw || 1 : 1) * pxScale / s;
     ctx.lineJoin = "round"; ctx.lineCap = "round";
     const names = r.layers.map(l => l.name);
     g.groups.forEach(gr => {
@@ -481,14 +486,19 @@ function drawCad(ctx, stageToCanvas, pxScale = 1, only = null) {
       ctx.strokeStyle = cadLayerColor(r, names[gr.l], gr.c);
       ctx.stroke(gr.path);
     });
-    // Texter (hoppar över de som blir oläsligt små)
+    // Texter (hoppar över de som blir oläsligt små). I utskriften: på papperets mått, med minsta höjd.
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const P = cadPrintOpts;
     g.groups.forEach(gr => {
-      if (!gr.texts.length || !cadLayerOn(r, names[gr.l])) return;
+      if (!gr.texts.length || !cadLayerOn(r, names[gr.l]) || (P && P.hideText)) return;
       ctx.fillStyle = cadLayerColor(r, names[gr.l], gr.c);
       gr.texts.forEach(([x, y, h, rot, str, al]) => {
-        const hp = h * s;
-        if (hp < 3 * pxScale) return;
+        let hp = h * s;
+        if (P && P.pxPerMm) {
+          if (hp < CAD_PRINT_TEXT_SKIP_MM * P.pxPerMm && !P.minTextMm) return;
+          if (P.minTextMm) hp = Math.max(hp, P.minTextMm * P.pxPerMm);
+          if (hp < 1) return;
+        } else if (hp < 3 * pxScale) return;
         const [px, py] = applyAffine(G, [x, y]);
         // Rotation: modellens vinkel genom transformen (y-axeln vänds).
         const a = rot * Math.PI / 180;
@@ -512,7 +522,8 @@ function cadVectorPlan() {
   if (!plan || !plan.calib) return [];
   return cads().filter(r => ls("cad:" + r.id).visible && cadGeom.has(r.id)).map(r => {
     const g = cadGeom.get(r.id), names = r.layers.map(l => l.name);
-    return { rec: r, g, opacity: layerOpacity("cad:" + r.id), weight: Number(r.weight) || 1,
+    return { rec: r, g, opacity: layerOpacity("cad:" + r.id), weight: Number(r.weight) || 1, lwMul: cadPrintOpts ? cadPrintOpts.lw || 1 : 1,
+      minTextMm: cadPrintOpts ? cadPrintOpts.minTextMm : null, hideText: !!(cadPrintOpts && cadPrintOpts.hideText),
       groups: g.groups.filter(gr => cadLayerOn(r, names[gr.l])).map(gr => ({ gr, color: cadLayerColor(r, names[gr.l], gr.c) })) };
   });
 }
@@ -526,12 +537,12 @@ function drawCadVectorsToPdf(doc, list, stageToPage, clip, lwPerWeight, ptMm) {
   const [cx, cy, cw, ch] = clip;
   doc.saveGraphicsState();
   doc.rect(cx, cy, cw, ch, null); doc.clip(); doc.discardPath();
-  list.forEach(({ g, opacity, weight, groups }) => {
+  list.forEach(({ g, opacity, weight, groups, lwMul = 1, minTextMm = null, hideText = false }) => {
     const G = mulAffine(stageToPage, mulAffine(M, [0.001, 0, 0, 0.001, g.origin[0], g.origin[1]]));
     const s = Math.hypot(G[0], G[1]);
     doc.saveGraphicsState();
     if (opacity < 1 && doc.GState) doc.setGState(new doc.GState({ opacity, "stroke-opacity": opacity }));
-    doc.setLineWidth(Math.max(0.6, weight) * lwPerWeight);
+    doc.setLineWidth(Math.max(0.6, weight) * lwMul * lwPerWeight);
     doc.setLineCap("round"); doc.setLineJoin("round");
     groups.forEach(({ gr, color }) => {
       doc.setDrawColor(color);
@@ -552,11 +563,12 @@ function drawCadVectorsToPdf(doc, list, stageToPage, clip, lwPerWeight, ptMm) {
     });
     // Texter som riktig text (skarp och sökbar)
     groups.forEach(({ gr, color }) => {
-      if (!gr.texts || !gr.texts.length) return;
+      if (!gr.texts || !gr.texts.length || hideText) return;
       doc.setTextColor(color);
       gr.texts.forEach(([x, y, h, rot, str, al]) => {
-        const hp = h * s;
-        if (hp < 0.6) return;
+        let hp = h * s;
+        if (minTextMm) hp = Math.max(hp, minTextMm);
+        else if (hp < CAD_PRINT_TEXT_SKIP_MM) return;
         const [px, py] = applyAffine(G, [x, y]);
         if (px < cx - 50 || px > cx + cw + 50 || py < cy - 50 || py > cy + ch + 50) return;
         const a = rot * Math.PI / 180;

@@ -316,6 +316,10 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
   if (typeof cads === "function") for (const r of cads()) { if (!vk || vk["cad:" + r.id]) { try { await ensureCadGeom(r); } catch (e) {} } }
   const P = mapPlate(el, wMm, hMm, pxW, pxH);
   P.noTiles = !!opts.preview;
+  // DXF i den här ritningen: linjetjocklek och minsta texthöjd på papperet (Victors önskemål 2026-10-06).
+  const tm = el.cadTextMin == null ? 1 : Number(el.cadTextMin);
+  cadPrintOpts = { lw: Number(el.cadLw) || 1, minTextMm: tm > 0 ? tm : null, hideText: tm < 0, pxPerMm: pxW / wMm };
+  try {
   await withViewportLayers(el, async () => {
     for (const o of orthosByDate().filter(x => ls("ortho:" + x.id).visible)) {
       try {
@@ -356,12 +360,13 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
     renderFilmOverlay(P, { cad: !opts.vectorCad, zones: true, site: true });
     if (!opts.vectorCad) ctx.drawImage(P.overlay, 0, 0);
   });
+  } finally { cadPrintOpts = null; }
   return opts.vectorCad ? { base: out, overlay: P.overlay, cad: P.cadPlan || [], P } : out;
 }
 const mapPreviews = new Map(); // el.id -> { key, canvas }
 const mapPending = new Map();
 function mapPreview(el, wPx, hPx) {
-  const key = JSON.stringify([el.scale, el.center, el.w, el.h, Math.round(wPx), $("dateInput").value, pr && pr.tpl.format, vpLayersKey(el)]);
+  const key = JSON.stringify([el.scale, el.center, el.w, el.h, Math.round(wPx), $("dateInput").value, pr && pr.tpl.format, vpLayersKey(el), el.cadLw || 1, el.cadTextMin ?? 1]);
   const hit = mapPreviews.get(el.id);
   if ((!hit || hit.key !== key) && mapPending.get(el.id) !== key) {
     mapPending.set(el.id, key);
@@ -1261,6 +1266,8 @@ function renderPrintProps(onlyPos) {
     const locked = cfg.follow || !!vw;
     const viewSel = views.length ? `<div class="row" style="flex-wrap:nowrap;margin-top:4px;"><select id="prView" class="grow" title="Använd en sparad vy från Lager: dess tända lager, ortofoton och DXF-lager"><option value="">Ingen sparad vy</option>${views.map(v => `<option value="${escHtml(v.id)}"${vw && vw.id === v.id ? " selected" : ""}>📑 ${escHtml(v.name)}</option>`).join("")}</select>${vw && vw.camera ? `<button id="prViewCam" title="Samma utsnitt som vyn (mitt och skala)">🔍 Vyns utsnitt</button>` : ""}</div>` : "";
     html += `<div class="pr-grid4"><div style="grid-column:span 2;"><label>Skala</label><select data-f="scale" data-num="1">${[...new Set([...PRINT_SCALES, el.scale])].sort((a, b) => a - b).map(s => `<option value="${s}"${el.scale === s ? " selected" : ""}>1:${s}</option>`).join("")}</select></div></div>
+      ${typeof cads === "function" && cads().length ? `<div class="pr-grid4"><div style="grid-column:span 2;"><label>DXF-linjer</label><select data-f="cadLw" data-num="1" title="Linjetjockleken för DXF-ritningarna i den här ritningen">${[[0.4, "Mycket tunna"], [0.7, "Tunna"], [1, "Som på skärmen"], [1.6, "Tjocka"], [2.5, "Mycket tjocka"], [4, "Extra tjocka"]].map(([v, l]) => `<option value="${v}"${(Number(el.cadLw) || 1) === v ? " selected" : ""}>${l}</option>`).join("")}</select></div>
+        <div style="grid-column:span 2;"><label>DXF-texter</label><select data-f="cadTextMin" data-num="1" title="Små texter förstoras till minst den här höjden på papperet så att de syns">${[[0, "Som ritningen"], [1, "Minst 1 mm"], [1.5, "Minst 1,5 mm"], [2, "Minst 2 mm"], [3, "Minst 3 mm"], [-1, "Dölj texterna"]].map(([v, l]) => `<option value="${v}"${(el.cadTextMin == null ? 1 : Number(el.cadTextMin)) === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>` : ""}
       <div class="row split" style="margin-top:8px;"><button id="prPan" class="${pr.panMode ? "active" : ""}" title="${el.locked ? "Låst – lås upp för att flytta utsnittet" : "Dra i ritningen för att flytta utsnittet, scrolla för att byta skala"}"${el.locked ? " disabled" : ""}>✋ Panorera</button><button id="prFromView" title="Samma utsnitt som på skärmen"${el.locked ? " disabled" : ""}>⤢ Skärmens utsnitt</button></div>
       ${chk("border", "Ram runt ritningen")}
       <label class="check"><input type="checkbox" id="prLblShow"${lb.show ? " checked" : ""} /> <b>Visa namn &amp; skala</b></label>
