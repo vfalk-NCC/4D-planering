@@ -125,6 +125,15 @@
     <li><b>Granska kopian</b>Ser den bra ut fortsätter du i den – raderna känns sedan igen även om de byter namn eller flyttas. Annars stänger du den.</li>
   </ol>
   <div class="warn">Första gången frågar Excel efter projekt-id (kopiera det i 4D-planering) och GitHub-token. Token sparas bara på din dator.</div>
+  <h3>Från Powerproject (.pp)</h3>
+  <ol class="steps">
+    <li><b>Välj Powerproject överst</b>Växeln <i>Planering: 📊 Excel-import / 📅 Powerproject</i> byter mellan två helt separata planeringar. Excel-planeringen rörs aldrig av Powerproject och tvärtom; växeln kommer ihåg ditt val.</li>
+    <li><b>Import &amp; verktyg → Powerproject-import</b>Välj .pp-filen och <span class="btn">Läs in</span>. Filen läses i webbläsaren och ändras aldrig.</li>
+    <li><b>Välj delar, område och entreprenör</b>Projektets egen tidplan är förvald (mallbibliotek med gamla datum inte). Område = kod i valt bibliotek (t.ex. 3.5 Zoner), annars sammanfattningsraden ovanför aktiviteten. Entreprenör = t.ex. 1. Utförs av.</li>
+    <li><b>Förhandsgranska och importera</b>Samma granskning som för Excel. Aktiviteter, milstolpar, datum, framdrift (avklarade delar) och länkarna (blir beroenden) kommer med.</li>
+    <li><b>Ny version av tidplanen</b>Importera igen – aktiviteterna känns igen på Powerprojects id och behåller 3D-kopplingar, kommentarer och markeringar även om de bytt namn eller datum.</li>
+  </ol>
+  <div class="warn">Lägesplanen visar den planering som är vald när du öppnar den (🗺️). 4D-dashboard och Excel-makrona arbetar med Excel-planeringen.</div>
   <h3>Hitta i listan</h3>
   <ul>
     <li><b>Källfilter</b>: visa bara aktiviteter skapade i Trimble Connect, importerade från Excel – eller de som inte längre finns i senaste Excel-filen.</li>

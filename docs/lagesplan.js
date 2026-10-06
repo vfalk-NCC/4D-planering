@@ -110,6 +110,7 @@ async function init() {
         unlocked = true;
       }
       if (!projectId && r.projectId) projectId = r.projectId;
+      if (r.planSource) planSource = r.planSource === "pp" ? "pp" : "excel";
     } catch (e) { /* ingen extension - använd lokal lagring */ }
   }
   if (manualToken()) { token = manualToken(); tokenSource = "manuell"; unlocked = true; }
@@ -156,7 +157,11 @@ function fatal(msg) {
   w.classList.remove("hidden");
 }
 
-const dataPath = f => `projects/${encodeURIComponent(projectId)}/${f}`;
+/* Planeringen (Excel eller Powerproject, se planSource i 4D-planering): aktiviteterna, deras
+   positioner och delaktiviteter ligger i projects/<id>/pp/ för Powerproject. Zoner, lager m.m. delas. */
+let planSource = new URLSearchParams(location.search).get("source") === "pp" ? "pp" : "excel";
+const PLAN_SOURCE_FILES = new Set(["plan_items.json", "plan_item_positions.json", "plan_item_activities.json"]);
+const dataPath = f => `projects/${encodeURIComponent(projectId)}/${planSource === "pp" && PLAN_SOURCE_FILES.has(f) ? "pp/" : ""}${f}`;
 function todayIso() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

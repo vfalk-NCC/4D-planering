@@ -1050,3 +1050,21 @@ header h1, .header-titles h1 { white-space: nowrap; }
 /* Guide-knappen i sidhuvudet */
 a.header-help { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 30px; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; background: white; color: var(--text); font-weight: 700; font-size: 14px; text-decoration: none; }
 a.header-help:hover { background: #f1f3f6; }
+
+/* Planeringskälla (Victors önskemål 2026-10-06): Excel-import eller Powerproject, egna data. */
+.plan-source { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; }
+.plan-source-l { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #6b7280; }
+.plan-source-seg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid #d1d5db; border-radius: 8px; background: #eef0f3; }
+.plan-source-seg button { font: inherit; font-size: 12px; padding: 4px 10px; border: none; border-radius: 6px; background: transparent; color: #4b5563; cursor: pointer; }
+.plan-source-seg button.active { background: #fff; color: #111827; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+body.src-pp .plan-source { background: #eef6ff; }
+body.src-pp section[data-panel-id="excel"], body.src-excel section[data-panel-id="pp"] { display: none !important; }
+.pp-options { margin-top: 10px; padding: 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fafbfc; display: flex; flex-direction: column; gap: 6px; }
+.pp-options.hidden { display: none; }
+.pp-head { font-size: 13px; }
+.pp-l { font-size: 11px; font-weight: 700; color: #4b5563; margin: 4px 0 0; }
+.pp-groups { display: flex; flex-direction: column; gap: 2px; }
+.pp-groups .check { font-size: 12px; margin: 0; }
+.pp-groups .hint { margin: 0 0 0 4px; display: inline; }
+.pp-grid { display: grid; grid-template-columns: auto 1fr; gap: 6px 8px; align-items: center; }
+.pp-grid .pp-l { margin: 0; }

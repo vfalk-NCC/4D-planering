@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261006120429" />
+<link rel="stylesheet" href="style.css?v=20261006134014" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261006120429"></script>
-<script src="plan-excel-comments.js?v=20261006120429"></script>
+<script src="plan-excel-parser.js?v=20261006134014"></script>
+<script src="plan-excel-comments.js?v=20261006134014"></script>
 </head>
 <body>
 
@@ -44,6 +44,13 @@
         <button id="btnSettings" title="Inställningar (databas, färger m.m.)"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg></button>
       </div>
     </header>
+    <div id="planSourceBar" class="plan-source" role="group" aria-label="Planering">
+      <span class="plan-source-l">Planering</span>
+      <div class="plan-source-seg">
+        <button type="button" data-src="excel" title="4-veckorsplaneringen från Excel (som vanligt)">📊 Excel-import</button>
+        <button type="button" data-src="pp" title="Tidplanen från Asta Powerproject (.pp) – en egen planering, blandas aldrig med Excel">📅 Powerproject</button>
+      </div>
+    </div>
     <nav id="mainTabs" class="main-tabs">
       <button type="button" data-tab="plan" class="active">Planera</button>
       <button type="button" data-tab="time">Tidslinje</button>
@@ -260,6 +267,16 @@
       <div id="importStatus" class="hint"></div>
 
       </details>
+    </section>
+
+    <!-- ===== Powerproject-import ===== -->
+    <section class="panel" data-panel-id="pp" data-tab="tools">
+      <h2>Powerproject-import</h2>
+      <p class="hint">Läser in en tidplan från Asta Powerproject (.pp) – aktiviteter, milstolpar, datum, framdrift, länkar (beroenden), zoner och entreprenörer. Kan köras om när tidplanen uppdateras: aktiviteterna känns igen och behåller sina 3D-kopplingar. Filen ändras aldrig och lämnar inte datorn förrän du bekräftar.</p>
+      <input type="file" id="ppFile" accept=".pp" />
+      <div class="row"><button id="btnPpRead" class="primary">Läs in</button></div>
+      <div id="ppOptions" class="pp-options hidden"></div>
+      <div id="ppStatus" class="hint"></div>
     </section>
 
     <!-- ===== Hitta objekt (koordinat) ===== -->
@@ -599,17 +616,18 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261006120429"></script>
-  <script src="excel-link.js?v=20261006120429"></script>
-  <script src="app.js?v=20261006120429"></script>
-  <script src="manual-markings.js?v=20261006120429"></script>
-  <script src="ifc-writer.js?v=20261006120429"></script>
-  <script src="volume-ifc.js?v=20261006120429"></script>
-  <script src="sub-activity-list.js?v=20261006120429"></script>
-  <script src="activity-remove.js?v=20261006120429"></script>
-  <script src="dup-check.js?v=20261006120429"></script>
-  <script src="ui-shell.js?v=20261006120429"></script>
-  <script src="undo.js?v=20261006120429"></script>
-  <script src="planning-keys.js?v=20261006120429"></script>
+  <script src="github-storage.js?v=20261006134014"></script>
+  <script src="excel-link.js?v=20261006134014"></script>
+  <script src="app.js?v=20261006134014"></script>
+  <script src="manual-markings.js?v=20261006134014"></script>
+  <script src="ifc-writer.js?v=20261006134014"></script>
+  <script src="pp-import.js?v=20261006134014"></script>
+  <script src="volume-ifc.js?v=20261006134014"></script>
+  <script src="sub-activity-list.js?v=20261006134014"></script>
+  <script src="activity-remove.js?v=20261006134014"></script>
+  <script src="dup-check.js?v=20261006134014"></script>
+  <script src="ui-shell.js?v=20261006134014"></script>
+  <script src="undo.js?v=20261006134014"></script>
+  <script src="planning-keys.js?v=20261006134014"></script>
 </body>
 </html>

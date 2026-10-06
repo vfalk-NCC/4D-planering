@@ -22,7 +22,7 @@ let markShownIds = [];          // TC-markeringar som 4D-planering själv ritat 
 let markPreviewIds = [];
 let markRenderSeq = 0;
 
-function marksPath() { return `projects/${encodeURIComponent(projectId)}/plan_markups.json`; }
+function marksPath() { return `${typeof planDir === "function" ? planDir() : `projects/${encodeURIComponent(projectId)}`}/plan_markups.json`; }
 async function loadManualMarks() {
   try { manualMarks = await ghReadJSON(settings.githubToken, marksPath()); }
   catch (e) { manualMarks = []; console.warn("Kunde inte läsa plan_markups.json", e); }

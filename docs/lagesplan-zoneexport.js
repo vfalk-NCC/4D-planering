@@ -99,6 +99,7 @@ async function runZoneExport() {
   if (typeof token === "undefined" || !token || !Array.isArray(plans) || !Array.isArray(items) || !items.length) return;
   if (zoneExportBusy) { scheduleZoneExport(); return; }
   if (!plans.some(p => (p.zones || []).length)) return;
+  if (typeof planSource !== "undefined" && planSource === "pp") return; // zonerna till Excel gäller Excel-planeringen
   zoneExportBusy = true;
   try {
     const data = zoneExportData(), sig = JSON.stringify(data);

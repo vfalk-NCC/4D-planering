@@ -13,6 +13,12 @@ const APP_VERSION = "2026-10-01 10:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
+/* Planeringskälla (Victors önskemål 2026-10-06): "excel" = 4-veckorsplaneringen från Excel (som
+   alltid, filerna i projects/<id>/), "pp" = tidplanen från Powerproject (egna filer i
+   projects/<id>/pp/). Byts med växeln överst – de två blandas aldrig. */
+let planSource = "excel";
+const planDir = () => `projects/${encodeURIComponent(projectId)}${planSource === "pp" ? "/pp" : ""}`;
+const PLAN_SOURCE_KEY = () => "4dplan-source-" + projectId;
 let items = [];              // Cache av planeringsposter (från backend)
 let settings = {
   playSecondsPerDay: 0.4,     // sekunder realtid per simulerad dag vid "spela upp"
@@ -211,6 +217,8 @@ async function initApp() {
 
   const project = await API.project.getProject();
   projectId = project.id;
+  try { planSource = localStorage.getItem(PLAN_SOURCE_KEY()) === "pp" ? "pp" : "excel"; } catch (e) { planSource = "excel"; }
+  renderPlanSourceUi();
 
   await refreshItems();
   await refreshCommentCounts();
@@ -220,6 +228,33 @@ async function initApp() {
   renderItemList();
   initTimelineRange();
   if (typeof renderManualMarks === "function") renderManualMarks();
+}
+
+/* Växeln Excel / Powerproject överst: visar den valda planeringen (egna filer, se planDir). */
+function renderPlanSourceUi() {
+  document.body.classList.toggle("src-pp", planSource === "pp");
+  document.body.classList.toggle("src-excel", planSource !== "pp");
+  document.querySelectorAll("#planSourceBar [data-src]").forEach(b => {
+    const on = b.dataset.src === planSource;
+    b.classList.toggle("active", on); b.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+async function setPlanSource(src) {
+  src = src === "pp" ? "pp" : "excel";
+  if (src === planSource) return;
+  if ([...saveJobs.values()].some(j => j.status === "pending")) { alert("Vänta tills ändringarna är sparade innan du byter planering."); return; }
+  planSource = src;
+  try { localStorage.setItem(PLAN_SOURCE_KEY(), src); } catch (e) {}
+  renderPlanSourceUi();
+  // Det som hör till den förra planeringen nollställs.
+  items = []; itemsTotalCount = null; lastPlanImport = null; planImportDiff = null;
+  selectedItemKeys = new Set(); selectionAnchorKey = null;
+  if (typeof undoStack !== "undefined") { undoStack.length = 0; redoStack.length = 0; if (typeof renderUndoButtons === "function") renderUndoButtons(); }
+  renderItemList();
+  try { if (API && API.viewer) await API.viewer.setObjectState(undefined, { color: "reset" }); } catch (e) { /* inga modeller */ }
+  await refreshAllData();
+  try { await applyTimelineColors(); } catch (e) { /* inga modeller */ }
+  if (typeof showLagesplanBanner === "function") showLagesplanBanner(src === "pp" ? "📅 Visar Powerproject-tidplanen" : "📊 Visar Excel-planeringen", 3000);
 }
 
 /**
@@ -332,7 +367,7 @@ window.addEventListener("message", async e => {
   const reply = payload => e.source.postMessage({ lagesplanReply: true, reqId: msg.reqId, ...payload }, location.origin);
   try {
     if (msg.type === "hello") {
-      reply({ settings, projectId });
+      reply({ settings, projectId, planSource });
     } else if (msg.type === "pick") {
       if (lagesplanPick) lagesplanPick({ error: "Avbruten" });
       lagesplanPick = reply;
@@ -638,7 +673,7 @@ function bindUI() {
     // bredvid Trimble Connect - kalibreringen kräver klick i båda.
     const w = Math.round(screen.availWidth / 2), h = screen.availHeight;
     const left = (screen.availLeft || 0) + screen.availWidth - w, top = screen.availTop || 0;
-    const win = window.open("lagesplan.html?project=" + encodeURIComponent(projectId), "lagesplan-" + projectId,
+    const win = window.open("lagesplan.html?project=" + encodeURIComponent(projectId) + (planSource === "pp" ? "&source=pp" : ""), "lagesplan-" + projectId,
       `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
     if (win) win.focus();
   };
@@ -3701,7 +3736,7 @@ async function onConfirmPlanImport() {
     const count = planImportDiff.parsedItems.length, removed = planImportRemoveIds(planImportDiff).size, nc = planImportDiff.commentsAdded || 0;
     planImportDiff = null;
     toggle("planImportPreviewDialog", false);
-    document.getElementById("planImportStatus").innerText = `Import klar – ${count} objekt${removed ? `, ${removed} borttagna (finns i säkerhetskopian)` : ""}${nc ? `, ${nc} kommentarer från Excel` : ""}.`;
+    document.getElementById(planSource === "pp" && document.getElementById("ppStatus") ? "ppStatus" : "planImportStatus").innerText = `Import klar – ${count} objekt${removed ? `, ${removed} borttagna (finns i säkerhetskopian)` : ""}${nc ? `, ${nc} kommentarer från Excel` : ""}.`;
     if (typeof refreshCommentCounts === "function") { try { await refreshCommentCounts(); } catch (e) { /* ignorera */ } }
     document.getElementById("planExcelFile").value = "";
     await refreshItems();
@@ -3739,6 +3774,7 @@ async function commitPlanImport(diff) {
   const before = Array.isArray(data) ? data : [];
 
   const activityBatches = [];
+  const depKeysById = new Map(); // rad-id -> föregångarnas source_key (Powerproject-länkarna)
   const incomingRows = diff.matched.flatMap(({ parsed: p0, existing, extras, status, keep }) => {
     const p = keep ? planImportApplyKeep(p0, keep) : p0;
     const members = [existing, ...(extras || [])];
@@ -3775,7 +3811,8 @@ async function commitPlanImport(diff) {
       elementType: p.elementType || (existing ? existing.elementType : null) || null,
       area: p.area,
       activity: p.activity,
-      contractor: existing ? existing.contractor : null,
+      // Powerproject ger entreprenören (kodbiblioteket "Utförs av"); Excel behåller den ifyllda.
+      contractor: p.contractor !== undefined ? p.contractor : (existing ? existing.contractor : null),
       status,
       startDate: dates.startDate,
       endDate: dates.endDate,
@@ -3791,6 +3828,7 @@ async function commitPlanImport(diff) {
       excelSheet: p.sheet || null,
       excelMap: p.excelMap || null,
     });
+    if (Array.isArray(p.dependsOnKeys)) depKeysById.set(id, p.dependsOnKeys);
     if (phases.length > 0) {
       activityBatches.push({
         planItemId: id,
@@ -3798,6 +3836,20 @@ async function commitPlanImport(diff) {
       });
     }
     return row;
+  }
+
+  // Beroenden från Powerproject: föregångarnas source_key -> id (alla objekt med nyckeln).
+  if (depKeysById.size) {
+    const idsByKey = new Map();
+    const addKey = (k, id) => { if (!k) return; if (!idsByKey.has(k)) idsByKey.set(k, []); if (!idsByKey.get(k).includes(id)) idsByKey.get(k).push(id); };
+    before.forEach(r => addKey(r.source_key, r.id));
+    incomingRows.forEach(r => addKey(r.source_key, r.id));
+    incomingRows.forEach(r => {
+      const keys = depKeysById.get(r.id);
+      if (!keys) return;
+      const own = new Set(idsByKey.get(r.source_key) || [r.id]);
+      r.depends_on = [...new Set(keys.flatMap(k => idsByKey.get(k) || []))].filter(id => !own.has(id));
+    });
   }
 
   const [after] = await Promise.all([
@@ -5017,8 +5069,8 @@ const BACKUP_FILES = [
 ];
 // Det som nollställs (planeringen och allt som hänger på planeringsposternas id).
 const RESET_FILES = ["plan_items", "plan_item_activities", "plan_item_comments", "plan_item_progress_history", "plan_item_baseline_history", "plan_item_positions"];
-const projectFilePath = name => `projects/${encodeURIComponent(projectId)}/${name}.json`;
-const backupIndexPath = () => `projects/${encodeURIComponent(projectId)}/backups/index.json`;
+const projectFilePath = name => RESET_FILES.includes(name) ? `${planDir()}/${name}.json` : `projects/${encodeURIComponent(projectId)}/${name}.json`;
+const backupIndexPath = () => `${planDir()}/backups/index.json`;
 
 async function createBackup(reason) {
   if (!isBackendConfigured()) throw new Error("Ingen databas ansluten.");
@@ -5030,7 +5082,7 @@ async function createBackup(reason) {
   const now = new Date();
   const id = ghNewId();
   const stamp = now.toISOString().replace(/[:.]/g, "-");
-  const path = `projects/${encodeURIComponent(projectId)}/backups/${stamp}-${id.slice(0, 8)}.json`;
+  const path = `${planDir()}/backups/${stamp}-${id.slice(0, 8)}.json`;
   const counts = {
     items: Array.isArray(files.plan_items) ? files.plan_items.length : 0,
     coupled: Array.isArray(files.plan_items) ? files.plan_items.filter(r => r.model_id).length : 0,
@@ -5191,13 +5243,13 @@ async function loadCoupledModels() {
 }
 
 function itemsPath() {
-  return `projects/${encodeURIComponent(projectId)}/plan_items.json`;
+  return `${planDir()}/plan_items.json`;
 }
 /* Importloggen (Victors önskemål 2026-10-02): vilka flikar och aktiviteter
    (source_key) som fanns i varje 4-veckorsimport – så att filtret "Inte
    kvar i senaste importen" vet vad som har försvunnit ur Excel. */
 function importsPath() {
-  return `projects/${encodeURIComponent(projectId)}/plan_imports.json`;
+  return `${planDir()}/plan_imports.json`;
 }
 let lastPlanImport = null; // { id, at, file, sheets: [...], keys: [...] }
 const sheetOfSourceKey = k => String(k || "").split("||")[0];
@@ -5214,16 +5266,16 @@ async function loadLastPlanImport(opts = {}) {
   catch (e) { lastPlanImport = null; }
 }
 function commentsPath() {
-  return `projects/${encodeURIComponent(projectId)}/plan_item_comments.json`;
+  return `${planDir()}/plan_item_comments.json`;
 }
 function progressHistoryPath() {
-  return `projects/${encodeURIComponent(projectId)}/plan_item_progress_history.json`;
+  return `${planDir()}/plan_item_progress_history.json`;
 }
 function baselineHistoryPath() {
-  return `projects/${encodeURIComponent(projectId)}/plan_item_baseline_history.json`;
+  return `${planDir()}/plan_item_baseline_history.json`;
 }
 function activitiesPath() {
-  return `projects/${encodeURIComponent(projectId)}/plan_item_activities.json`;
+  return `${planDir()}/plan_item_activities.json`;
 }
 
 function toRow(it) {
@@ -5318,7 +5370,7 @@ async function refreshItems(opts = {}) {
     items = rows.map(fromRow);
     itemsTotalCount = items.length;
     // Ny planering skickad från Excel? (högst en gång i minuten)
-    if (typeof checkExcelInbox === "function") { renderExcelLinkHelp(); checkExcelInbox(); }
+    if (typeof checkExcelInbox === "function" && planSource === "excel") { renderExcelLinkHelp(); checkExcelInbox(); }
     // Lyckad hämtning: ta bort en ev. kvarliggande varning från ett tidigare
     // (tillfälligt) fel, annars står den kvar fast allt fungerar.
     const warn = document.getElementById("connectionWarning");
