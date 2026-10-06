@@ -2803,7 +2803,7 @@ function computeItemPhase(item, atDateStr, warningDays) {
   // slutdatum eller startdatum som en rimlig uppskattning - så gammal data
   // inte plötsligt ser "inte klar" ut bara för att fältet är tomt.
   let actualEnd = item.actualEndDate ? new Date(item.actualEndDate) : null;
-  if (!actualEnd && item.status === "klar") {
+  if (!actualEnd && (item.status === "klar" || (Number(item.progress) || 0) >= 100)) {
     actualEnd = plannedEnd || start;
   }
   // Klar kan inte ha avslutats i framtiden (Victors rapport 2026-10-01, F28:
@@ -5338,7 +5338,22 @@ function toRow(it) {
   };
 }
 
+/* Status mot dagens datum (Victor 2026-10-06: "det vi måste utgå ifrån är väl dagens datum"):
+   den sparade statusen sattes vid importen eller för hand och blir inaktuell när dagarna går.
+   Den visade statusen räknas därför alltid fram som fasen i dag (samma regler som 3D-färgerna,
+   computeItemPhase): Klar (100 %/verkligt avslut/klarmarkerad) och Pausad står kvar; i övrigt
+   slutdatum passerat = försenad, framdrift = pågående, startdatum passerat utan framdrift =
+   försenad, annars planerad. storedStatus = det som står i filen. */
+function liveItemStatus(item) {
+  return (item.startDate && computeItemPhase(item, new Date().toISOString().slice(0, 10))) || item.status;
+}
 function fromRow(row) {
+  const it = fromRowStored(row);
+  it.storedStatus = it.status;
+  it.status = liveItemStatus(it);
+  return it;
+}
+function fromRowStored(row) {
   return {
     id: row.id,
     projectId: row.project_id,

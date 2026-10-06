@@ -20,7 +20,7 @@ put('plan_items.json', [
   { ...base, id: 'a2', group_id: 'g1', model_id: 'm1', object_id: '11', object_name: 'Gjutning plan 2', progress: 30, start_date: '2026-10-08', end_date: '2026-10-10' },
   { ...base, id: 'b1', group_id: 'g2', model_id: 'm1', object_id: '20', object_name: 'Gammal data', progress: 20 },
   { ...base, id: 'b2', group_id: 'g2', model_id: 'm1', object_id: '21', object_name: 'Gammal data', progress: 80 },
-  { ...base, id: 'c', model_id: 'm1', object_id: '30', object_name: 'Annan', progress: 10 },
+  { ...base, id: 'c', model_id: 'm1', object_id: '30', object_name: 'Annan', progress: 10, status: 'pagaende' },
 ]);
 put('plan_item_activities.json', [
   { id: 'x1', plan_item_id: 'a1', project_id: PID, name: 'Formning', start_date: '2026-10-01', end_date: '2026-10-04' },
@@ -72,6 +72,8 @@ put('plan_markups.json', [{ id: 'mk1', itemId: 'a2', shape: 'line', pts: [[0,0,0
   });
   const fail = m => { throw new Error(m); };
   const row = id => get('plan_items.json').find(r => r.id === id);
+  // Statusen räknas mot dagens datum (liveItemStatus) – klockan står fast inom fixturens period.
+  await page.clock.setFixedTime(new Date('2026-10-06T10:00:00Z'));
   await page.goto(`http://localhost:${PORT}/index.html`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(500);
   const wait = ms => page.waitForTimeout(ms);
@@ -83,11 +85,11 @@ put('plan_markups.json', [{ id: 'mk1', itemId: 'a2', shape: 'line', pts: [[0,0,0
   if (!(await page.isVisible('#undoToast'))) fail('ett meddelande med Ångra ska visas');
   if (await page.isDisabled('#btnUndo')) fail('↶ ska vara aktiv');
   await page.keyboard.press('Control+z'); await wait(1200);
-  if (row('c').status !== 'planerad') fail('Ctrl+Z ska ångra statusen, fick ' + row('c').status);
+  if (row('c').status !== 'pagaende') fail('Ctrl+Z ska ångra statusen, fick ' + row('c').status);
   await page.keyboard.press('Control+y'); await wait(1200);
   if (row('c').status !== 'klar') fail('Ctrl+Y ska göra om');
   await page.click('#btnUndo'); await wait(1200);
-  if (row('c').status !== 'planerad') fail('↶ ska ångra');
+  if (row('c').status !== 'pagaende') fail('↶ ska ångra');
   console.log('OK: ångra/gör om av status med Ctrl+Z, Ctrl+Y och ↶');
 
   // 2) Ny aktivitet med kortkommando N → ångra tar bort den

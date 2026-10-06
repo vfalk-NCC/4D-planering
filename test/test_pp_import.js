@@ -145,7 +145,7 @@ async function makePp(variant) {
   await page.evaluate(id => { items.find(x => x.id === id).modelId = 'm1'; }, g.id);
   await page.evaluate(async id => { await ghWriteJSON(settings.githubToken, itemsPath(), arr => arr.map(r => r.id === id ? { ...r, model_id: 'm1', object_id: '77' } : r), 'koppla'); await refreshItems(); }, g.id);
   await page.setInputFiles('#ppFile', { name: 'Huvudtidplan v2.pp', mimeType: 'application/octet-stream', buffer: await makePp(2) });
-  await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
+  await page.evaluate(() => document.getElementById('ppOptions').classList.add('hidden')); await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
   await page.click('#btnPpPreview'); await page.waitForTimeout(200);
   await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
   const pp2 = get('pp/plan_items.json'), g2 = pp2.find(r => r.id === g.id);
@@ -157,7 +157,7 @@ async function makePp(variant) {
   console.log('OK: förra importens datum blir baseline (plan_baseline.json säger varifrån)');
   // Översta raden omdöpt i Powerproject: aktiviteterna känns ändå igen på sitt id.
   await page.setInputFiles('#ppFile', { name: 'Huvudtidplan v3.pp', mimeType: 'application/octet-stream', buffer: await makePp(3) });
-  await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
+  await page.evaluate(() => document.getElementById('ppOptions').classList.add('hidden')); await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
   await page.click('#btnPpPreview'); await page.waitForTimeout(200);
   const prev3 = await page.evaluate(() => ({ create: planImportDiff.toCreate.length, update: planImportDiff.toUpdate.length }));
   await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
@@ -166,7 +166,7 @@ async function makePp(variant) {
   if (g3.baseline_start_date !== '2026-11-02' || get('pp/plan_baseline.json').length !== 2) fail('v2:s datum ska bli baseline: ' + JSON.stringify(g3));
   console.log('OK: omdöpt översta rad i Powerproject – aktiviteterna känns igen på id, kopplingen kvar');
   // Samma fil igen: baseline skulle bli identisk med planen – den behålls i stället.
-  await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
+  await page.evaluate(() => document.getElementById('ppOptions').classList.add('hidden')); await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
   await page.click('#btnPpPreview'); await page.waitForTimeout(200);
   if (!/Inga datum har ändrats/.test(await page.innerText('#planImportSummary'))) fail('Förhandsgranskningen ska säga att baseline behålls');
   await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
@@ -175,7 +175,7 @@ async function makePp(variant) {
   console.log('OK: samma datum igen – baseline behålls (blir inte identisk med planen)');
 
   // Baseline från en Powerproject-baseline (.ppb), sedan ingen baseline.
-  await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
+  await page.evaluate(() => document.getElementById('ppOptions').classList.add('hidden')); await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
   await page.selectOption('#ppBaseline', 'file');
   await page.click('#btnPpPreview'); await page.waitForTimeout(200);
   if (!/Välj baseline-filen/.test(await page.innerText('#ppStatus'))) fail('Utan vald baseline-fil ska det sägas till');
@@ -186,7 +186,7 @@ async function makePp(variant) {
   await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
   let g4 = get('pp/plan_items.json').find(r => r.id === g.id), bm4 = get('pp/plan_baseline.json');
   if (g4.baseline_start_date !== '2026-11-02' || g4.baseline_end_date !== '2026-11-13' || bm4[bm4.length - 1].label !== 'Huvudtidplan BL1' || bm4[bm4.length - 1].mode !== 'file') fail('Baseline från .ppb: ' + JSON.stringify([g4, bm4]));
-  await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
+  await page.evaluate(() => document.getElementById('ppOptions').classList.add('hidden')); await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
   if (await page.inputValue('#ppBaseline') !== 'prev') fail('Filvalet ska inte sparas (filen måste väljas på nytt)');
   await page.selectOption('#ppBaseline', 'none');
   await page.click('#btnPpPreview'); await page.waitForTimeout(200);

@@ -73,14 +73,16 @@ put('plan_markups.json', []);
   });
   const fail = m => { throw new Error(m); };
   const row = id => get('plan_items.json').find(r => r.id === id);
+  // Statusen räknas mot dagens datum (liveItemStatus) – klockan står fast inom fixturens period.
+  await page.clock.setFixedTime(new Date('2026-10-06T10:00:00Z'));
   await page.goto(`http://localhost:${PORT}/index.html`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(500);
 
   // 1) Status på ett objekt som bara hör till en delaktivitet → hela aktiviteten
-  await page.evaluate(() => setStatusQuick([items.find(x => x.id === 'a2')], 'pagaende'));
+  await page.evaluate(() => setStatusQuick([items.find(x => x.id === 'a2')], 'pausad'));
   await page.waitForTimeout(1200);
   const st = ['h', 'a1', 'a2'].map(id => row(id).status).join(',');
-  if (st !== 'pagaende,pagaende,pagaende') fail('status ska spridas till hela aktiviteten, fick ' + st);
+  if (st !== 'pausad,pausad,pausad') fail('status ska spridas till hela aktiviteten, fick ' + st);
   if (row('c').status !== 'planerad') fail('andra aktiviteter ska inte påverkas');
   console.log('OK: status på ett delaktivitetsobjekt gäller hela aktiviteten');
 
