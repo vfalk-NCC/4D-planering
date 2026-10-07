@@ -197,7 +197,8 @@ async function renderOverlayHi(p, seq) {
    ett tänt PDF-lager ritas i ritningsytans bild – den del som syns, i bildens upplösning, multiplicerat
    ovanpå Bas-ritningen och klippt vid dess kant (om inte "Beskär inte"). P = mapPlate (canvas = S·(stage − x0)).
    I vektor-PDF:en bäddas lagret i stället in som vektorer (lagesplan-vecpdf.js). */
-async function drawPdfOverlayForExport(ctx, p, P) {
+/* o (från pdfOverlaysForPrint): genomskinlighet, färg och beskärning som de var när utskriften började. */
+async function drawPdfOverlayForExport(ctx, p, P, o = null) {
   const key = pdfOverlayKey(p), pg = await pdfOverlayPage(p), pc = $("pdfCanvas");
   const stageToCanvas = [P.S, 0, 0, P.S, -P.x0 * P.S, -P.y0 * P.S];
   const toCanvas = affMul(stageToCanvas, pdfOvToStage(p)), inv = affInv(toCanvas);
@@ -219,10 +220,10 @@ async function drawPdfOverlayForExport(ctx, p, P) {
   const tctx = tmp.getContext("2d"); tctx.fillStyle = "#fff"; tctx.fillRect(0, 0, rw, rh);
   await pg.render({ canvasContext: tctx, viewport: part, annotationMode: pdfjsLib.AnnotationMode.DISABLE }).promise;
   ctx.save();
-  if (!pdfOverlayNoCrop(key)) { ctx.beginPath(); ctx.rect(-P.x0 * P.S, -P.y0 * P.S, pc.width * P.S, pc.height * P.S); ctx.clip(); }
-  ctx.globalAlpha = layerOpacity(key);
+  if (!(o ? o.noCrop : pdfOverlayNoCrop(key))) { ctx.beginPath(); ctx.rect(-P.x0 * P.S, -P.y0 * P.S, pc.width * P.S, pc.height * P.S); ctx.clip(); }
+  ctx.globalAlpha = o ? o.opacity : layerOpacity(key);
   ctx.globalCompositeOperation = "multiply";
-  if (!pdfOverlayColor(key)) ctx.filter = "grayscale(1)";
+  if (!(o ? o.color : pdfOverlayColor(key))) ctx.filter = "grayscale(1)";
   ctx.setTransform(...affMul(toCanvas, affInv(part.transform)));
   ctx.drawImage(tmp, 0, 0);
   ctx.restore();

@@ -49,50 +49,42 @@ function printLayerList() {
   userLayers().forEach(l => L.push({ key: "ul:" + l, label: "🗂 " + ulName(l) }));
   return L;
 }
-function snapshotLayers() {
-  const keys = {};
-  printLayerList().forEach(l => { keys[l.key] = !!ls(l.key).visible; });
-  return keys;
-}
-/* En sparad vy (lagesplan-views.js) som ritningen använder, om någon. */
+/* Ritningens lager (Victor 2026-10-07: "lite buggigt när man växlar … stabilisera"). Tre lägen:
+     { follow: true }                 – följer skärmens lager
+     { follow: false, view: id }      – en sparad vy (lagesplan-views.js)
+     { follow: false, state: {...} }  – eget urval (samma form som layerState i lagerpanelen)
+   Varje ritning ritas med en egen kopia av lagerläget (vpLayerState) som bara byts in under
+   synkrona steg – så att tänd/släck i panelen aldrig krockar med en ritning som håller på att ritas. */
 const vpView = el => el.layers && el.layers.view && typeof lsViews === "function" ? lsViews().find(v => v.id === el.layers.view) || null : null;
-/* Ritningens lagerurval: { key: tänd } – null = följ skärmen. */
-function vpKeys(el) {
-  const cfg = el.layers;
-  if (!cfg) return null;
-  const v = vpView(el);
-  if (v) { const L = (v.state && v.state.layers) || {}, keys = {}; printLayerList().forEach(l => { keys[l.key] = !!(L[l.key] && L[l.key].visible); }); return keys; }
-  if (cfg.follow) return null;
-  if (cfg.state) { const keys = {}; printLayerList().forEach(l => { keys[l.key] = !!(cfg.state[l.key] && cfg.state[l.key].visible); }); return keys; }
-  return cfg.keys || {};
+const vpMode = el => (vpView(el) ? "view" : el.layers && !el.layers.follow && el.layers.state ? "own" : "follow");
+/* Skärmens lagerläge – även när lagerpanelen just nu visar en ritnings lager. */
+const prScreenState = () => (prLayerHold ? prLayerHold.screen : layerState);
+/* Kör fn (synkront!) med lagerläget st. */
+function withLayerState(st, fn) {
+  const saved = layerState;
+  layerState = st;
+  try { return fn(); } finally { layerState = saved; }
 }
-/* Ritningens fullständiga lagerläge (samma som lagerpanelen: tänd, genomskinlighet, DXF-lager,
-   zoner, PDF-lager …) när den har ett eget urval gjort i lagerpanelen, annars null. */
-const vpState = el => el.layers && !el.layers.follow && !vpView(el) && el.layers.state ? el.layers.state : null;
-/* Kör fn med ritningens lagerurval tänt/släckt (återställs efteråt). En vy
-   tar också med genomskinligheten och "genomskinlig vit bakgrund". */
-async function withViewportLayers(el, fn) {
-  const st = vpState(el);
-  if (st) {
-    const saved = layerState;
-    layerState = JSON.parse(JSON.stringify(st));
-    try { return await fn(); } finally { layerState = saved; }
-  }
-  const keys = vpKeys(el);
-  if (!keys) return fn();
-  const v = vpView(el), L = v ? (v.state && v.state.layers) || {} : null;
-  const saved = {}, savedMult = layerState.pdfMultiply;
-  printLayerList().forEach(l => {
-    const s = ls(l.key);
-    saved[l.key] = { visible: s.visible, opacity: s.opacity };
-    s.visible = l.key in keys ? !!keys[l.key] : false;
-    if (L && L[l.key] && L[l.key].opacity != null) s.opacity = L[l.key].opacity;
+/* En sparad vy ovanpå skärmens läge (samma regler som när vyn väljs i Lager). */
+function viewLayerState(v) {
+  const st = JSON.parse(JSON.stringify(prScreenState())), snap = v.state || {}, saved = snap.layers || {};
+  withLayerState(st, () => {
+    if (typeof layerRowKeys === "function") layerRowKeys().forEach(k => { if (!saved[k] && /^(ortho:|cad:|pdfp:)/.test(k)) ls(k).visible = false; });
+    Object.keys(saved).forEach(k => { const x = ls(k); x.visible = !!saved[k].visible; x.opacity = saved[k].opacity ?? 100; });
+    layerState.pdfMultiply = snap.pdfMultiply !== false;
+    layerState.orthoFollowDate = !!snap.orthoFollowDate;
   });
-  if (v && v.state) layerState.pdfMultiply = v.state.pdfMultiply !== false;
-  try { return await fn(); }
-  finally { Object.entries(saved).forEach(([k, st]) => { const s = ls(k); s.visible = st.visible; s.opacity = st.opacity; }); layerState.pdfMultiply = savedMult; }
+  return st;
 }
-const vpLayersKey = el => { const v = vpView(el); if (v) return "view:" + JSON.stringify(v.state); const st = vpState(el); if (st) return "state:" + JSON.stringify(st); const k = vpKeys(el); return k ? JSON.stringify(k) : "follow:" + JSON.stringify(snapshotLayers()); };
+/* Lagerläget som ritningen ritas med. */
+function vpLayerState(el) {
+  if (prLayerHold && prLayerHold.el === el) return layerState; // panelen visar just den här ritningen
+  const m = vpMode(el);
+  if (m === "view") return viewLayerState(vpView(el));
+  if (m === "own") return el.layers.state;
+  return prScreenState();
+}
+const vpLayersKey = el => vpMode(el) + ":" + JSON.stringify(vpLayerState(el));
 
 /* ---------------------------------------------------------------------
    Lagerhanteringen i utskriften (Victors önskemål 2026-10-06: "exakt likadan
@@ -136,15 +128,8 @@ function prLayersAttach(el, host) {
     const home = document.querySelector('details.sec[data-sec="layers"]');
     if (!home) return;
     const screen = layerState;
-    let st = el.layers && el.layers.state;
-    if (!st) {
-      // Äldre ritning (bara tänd/släckt per lager): utgå från skärmens läge med ritningens urval.
-      st = JSON.parse(JSON.stringify(screen));
-      const keys = (el.layers && el.layers.keys) || {};
-      printLayerList().forEach(l => { if (!st[l.key]) st[l.key] = { visible: true, opacity: 100 }; st[l.key].visible = !!keys[l.key]; });
-    }
     prLayerHold = { el, screen, home, nodes: [...home.children].filter(n => n.tagName !== "SUMMARY"), parked: true };
-    layerState = JSON.parse(JSON.stringify(st));
+    layerState = JSON.parse(JSON.stringify((el.layers && el.layers.state) || screen));
     prLayerRefresh();
   }
   prLayerHold.nodes.forEach(n => host.appendChild(n));
@@ -153,12 +138,13 @@ function prLayersAttach(el, host) {
 /* Ändringar i panelen medan den visar en ritnings lager sparas i ritningen, inte på skärmen. */
 const prSaveLayerStateOrig = saveLayerState;
 saveLayerState = function () {
+  if (prLayerHold && (!pr || !pr.tpl.elements.includes(prLayerHold.el))) prLayersDetach(); // mallen bytt/ångrad
   if (!prLayerHold || !pr) return prSaveLayerStateOrig.apply(this, arguments);
   const el = prLayerHold.el;
   // Ett ångra-steg per serie ändringar (t.ex. ett dragreglage).
   if (!prLayerHold.u) pushUndo();
   clearTimeout(prLayerHold.u); prLayerHold.u = setTimeout(() => { if (prLayerHold) prLayerHold.u = 0; }, 800);
-  el.layers = { follow: false, keys: snapshotLayers(), state: JSON.parse(JSON.stringify(layerState)) };
+  el.layers = { follow: false, state: JSON.parse(JSON.stringify(layerState)) };
   pr.dirty = true;
   clearTimeout(prLayerHold.t);
   prLayerHold.t = setTimeout(() => { if (pr) drawPrintPage(); }, 120);
@@ -169,7 +155,7 @@ saveLayerState = function () {
 // ---------------------------------------------------------------------
 function newMapEl(x, y, w, h, format) {
   return { id: ghNewId(), type: "map", x, y, w, h, scale: fitScale(w, h, format), center: viewCenterModel(), border: true,
-    layers: { follow: false, keys: snapshotLayers() }, label: { show: false, name: "", size: 9, align: "left" } };
+    layers: { follow: false, state: JSON.parse(JSON.stringify(prScreenState())) }, label: { show: false, name: "", size: 9, align: "left" } };
 }
 function defaultTemplate() {
   const id = () => ghNewId();
@@ -312,61 +298,69 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
   const out = newCanvas(pxW, pxH), ctx = out.getContext("2d");
   ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, pxW, pxH);
   if (!plan || !plan.calib || !viewport) return out;
-  // Geometri och bilder hämtas innan lagren tillfälligt byts.
-  const vk = vpKeys(el);
-  if (typeof cads === "function") for (const r of cads()) { if (!vk || vk["cad:" + r.id]) { try { await ensureCadGeom(r); } catch (e) {} } }
+  // Lagerläget läses av en gång (synkront) – sedan ritas allt utan att skärmens lagerläge rörs.
+  const st = JSON.parse(JSON.stringify(vpLayerState(el)));
+  const L = withLayerState(st, () => ({
+    cads: typeof cads === "function" ? cads().filter(r => ls("cad:" + r.id).visible) : [],
+    orthos: orthosByDate().filter(x => ls("ortho:" + x.id).visible).map(o => ({ o, op: layerOpacity("ortho:" + o.id) })),
+    pdfVis: layerVisible("pdf"), pdfOp: layerOpacity("pdf"), pdfMultiply: layerState.pdfMultiply !== false,
+    overlays: typeof pdfOverlaysForPrint === "function" ? pdfOverlaysForPrint() : [],
+  }));
+  for (const r of L.cads) { try { await ensureCadGeom(r); } catch (e) {} }
   const P = mapPlate(el, wMm, hMm, pxW, pxH);
   P.noTiles = !!opts.preview;
   // DXF i den här ritningen: linjetjocklek och minsta texthöjd på papperet (Victors önskemål 2026-10-06).
   const tm = el.cadTextMin == null ? 1 : Number(el.cadTextMin);
   cadPrintOpts = { lw: Number(el.cadLw) || 1, minTextMm: tm > 0 ? tm : null, hideText: tm < 0, pxPerMm: pxW / wMm };
   try {
-  await withViewportLayers(el, async () => {
-    for (const o of orthosByDate().filter(x => ls("ortho:" + x.id).visible)) {
+    for (const { o, op } of L.orthos) {
       try {
-        const plate = await buildOrthoPlate(o, P, s => opts.status && opts.status(`ortofoto – ${s}`));
-        ctx.globalAlpha = layerOpacity("ortho:" + o.id); ctx.drawImage(plate, 0, 0); ctx.globalAlpha = 1;
+        const plate = await buildOrthoPlate(o, P, s2 => opts.status && opts.status(`ortofoto – ${s2}`));
+        ctx.globalAlpha = op; ctx.drawImage(plate, 0, 0); ctx.globalAlpha = 1;
       } catch (e) { console.warn("Ortofoto i utskriften", e); }
     }
-    const multiplyPdf = orthos().some(o => ls("ortho:" + o.id).visible) && layerState.pdfMultiply !== false;
-    P.pdfInfo = { visible: layerVisible("pdf"), opacity: layerOpacity("pdf"), multiply: multiplyPdf };
+    const multiplyPdf = L.orthos.length > 0 && L.pdfMultiply;
+    P.pdfInfo = { visible: L.pdfVis, opacity: L.pdfOp, multiply: multiplyPdf };
     // Vektor-PDF: ritningen bäddas in som vektorer efteråt (lagesplan-vecpdf.js).
-    if (layerVisible("pdf") && !opts.vectorPdf) {
+    if (L.pdfVis && !opts.vectorPdf) {
       opts.status && opts.status("PDF-ritningen");
       const pdfPlate = await buildPdfPlate(P);
-      ctx.save(); ctx.globalAlpha = layerOpacity("pdf");
+      ctx.save(); ctx.globalAlpha = L.pdfOp;
       if (multiplyPdf) ctx.globalCompositeOperation = "multiply";
       ctx.drawImage(pdfPlate, 0, 0); ctx.restore();
     }
     // De andra PDF-lagren (andra arbetsytors ritningar och PDF-underlag) ovanpå Bas-ritningen.
-    P.pdfOverlays = typeof pdfOverlaysForPrint === "function" ? pdfOverlaysForPrint() : [];
+    P.pdfOverlays = L.overlays;
     if (!opts.vectorPdf) for (const o of P.pdfOverlays) {
       opts.status && opts.status(`PDF-lagret ${o.p.name || ""}`);
-      try { await drawPdfOverlayForExport(ctx, o.p, P); } catch (e) { console.warn("PDF-lager i utskriften", e); }
+      try { await drawPdfOverlayForExport(ctx, o.p, P, o); } catch (e) { console.warn("PDF-lager i utskriften", e); }
     }
-    // PDF-export: CAD ritas som vektorer i PDF:en (skarpa linjer), så här
-    // bara zoner/etablering i ett eget genomskinligt lager ovanpå.
-    if (opts.vectorCad) P.cadPlan = typeof cadVectorPlan === "function" ? cadVectorPlan() : [];
-    // PDF-lager (avancerat): lagren som hör till ett PDF-lager ritas i egna bilder.
-    P.layerOverlays = [];
-    const groups = (opts.layerGroups || []).filter(g => g.keys.size);
-    if (groups.length) {
-      const keys = printLayerList().filter(l => !l.sub).map(l => l.key), vis = {};
-      keys.forEach(k => { vis[k] = ls(k).visible; });
-      const assigned = new Set(groups.flatMap(g => [...g.keys]));
-      for (const g of groups) {
-        if (![...g.keys].some(k => vis[k] && !k.startsWith("cad:"))) continue;
-        keys.forEach(k => { ls(k).visible = vis[k] && g.keys.has(k) && !k.startsWith("cad:"); });
-        P.overlay = newCanvas(pxW, pxH);
-        renderFilmOverlay(P, { cad: false, zones: true, site: true });
-        P.layerOverlays.push({ name: g.name, canvas: P.overlay });
+    // Det som ritas direkt ur lagerläget (DXF-plan, PDF-lager, zoner, objekt, etablering) – synkront,
+    // på en egen kopia eftersom PDF-lagren tänder och släcker tillfälligt.
+    withLayerState(JSON.parse(JSON.stringify(st)), () => {
+      // PDF-export: CAD ritas som vektorer i PDF:en (skarpa linjer), så här
+      // bara zoner/etablering i ett eget genomskinligt lager ovanpå.
+      if (opts.vectorCad) P.cadPlan = typeof cadVectorPlan === "function" ? cadVectorPlan() : [];
+      // PDF-lager (avancerat): lagren som hör till ett PDF-lager ritas i egna bilder.
+      P.layerOverlays = [];
+      const groups = (opts.layerGroups || []).filter(g => g.keys.size);
+      if (groups.length) {
+        const keys = printLayerList().filter(l => !l.sub).map(l => l.key), vis = {};
+        keys.forEach(k => { vis[k] = ls(k).visible; });
+        const assigned = new Set(groups.flatMap(g => [...g.keys]));
+        for (const g of groups) {
+          if (![...g.keys].some(k => vis[k] && !k.startsWith("cad:"))) continue;
+          keys.forEach(k => { ls(k).visible = vis[k] && g.keys.has(k) && !k.startsWith("cad:"); });
+          P.overlay = newCanvas(pxW, pxH);
+          renderFilmOverlay(P, { cad: false, zones: true, site: true });
+          P.layerOverlays.push({ name: g.name, canvas: P.overlay });
+        }
+        keys.forEach(k => { ls(k).visible = vis[k] && !(assigned.has(k) && !k.startsWith("cad:")); });
       }
-      keys.forEach(k => { ls(k).visible = vis[k] && !(assigned.has(k) && !k.startsWith("cad:")); });
-    }
-    P.overlay = newCanvas(pxW, pxH);
-    renderFilmOverlay(P, { cad: !opts.vectorCad, zones: true, site: true });
+      P.overlay = newCanvas(pxW, pxH);
+      renderFilmOverlay(P, { cad: !opts.vectorCad, zones: true, site: true });
+    });
     if (!opts.vectorCad) ctx.drawImage(P.overlay, 0, 0);
-  });
   } finally { cadPrintOpts = null; }
   return opts.vectorCad ? { base: out, overlay: P.overlay, cad: P.cadPlan || [], P } : out;
 }
@@ -674,7 +668,10 @@ function legendItemsRaw(el) {
       items.push({ key: "site:" + key, kind, color: ue ? ue.color || st.color : veh ? veh.color : st.color, dash: x.dash || SITE_DEFAULT_DASH[x.type], label });
     });
   }
-  if (el.cad && typeof cads === "function") cads().filter(r => ls("cad:" + r.id).visible).forEach(r => items.push({ key: "cad:" + r.id, kind: "line", color: r.colorMode === "mono" ? r.color : "#111827", dash: "solid", label: r.name }));
+  // DXF-raderna efter lagren i förklaringens ritning (inte det som råkar synas på skärmen).
+  const legMap = pr && typeof mapFor === "function" ? mapFor(el, pr.tpl) : null;
+  const legSt = JSON.parse(JSON.stringify(legMap ? vpLayerState(legMap) : prScreenState()));
+  if (el.cad && typeof cads === "function") cads().filter(r => withLayerState(legSt, () => ls("cad:" + r.id).visible)).forEach(r => items.push({ key: "cad:" + r.id, kind: "line", color: r.colorMode === "mono" ? r.color : "#111827", dash: "solid", label: r.name }));
   String(el.extra || "").split("\n").map(s => s.trim()).filter(Boolean).forEach((s, i) => {
     const m = s.match(/^(#[0-9a-f]{6})\s+(.*)$/i);
     items.push(m ? { key: "extra:" + i, kind: "box", color: m[1], label: m[2] } : { key: "extra:" + i, kind: "text", label: s });
@@ -854,10 +851,20 @@ async function openPrint() {
   renderPrintPanel();
   requestAnimationFrame(drawPrintPage);
 }
-/* Äldre mallar: ritningar utan lagerval följer skärmen. */
+/* Äldre mallar: ritningar utan lagerval följer skärmen; ett gammalt urval (bara tänd/släckt per
+   lager, layers.keys) blir ett eget urval utifrån skärmens läge. Alltid ett av de tre lägena. */
+function migrateLayers(cfg) {
+  if (!cfg) return { follow: true };
+  if (cfg.view) return { follow: false, view: cfg.view };
+  if (cfg.follow) return { follow: true };
+  if (cfg.state) return { follow: false, state: cfg.state };
+  const st = JSON.parse(JSON.stringify(prScreenState())), keys = cfg.keys || {};
+  withLayerState(st, () => printLayerList().forEach(l => { ls(l.key).visible = !!keys[l.key]; }));
+  return { follow: false, state: st };
+}
 function migrateTpl(t) {
   t.elements.forEach(e => {
-    if (e.type === "map") { if (!e.layers) e.layers = { follow: true, keys: snapshotLayers() }; if (!e.label) e.label = { show: false, name: "", size: 9, align: "left" }; }
+    if (e.type === "map") { e.layers = migrateLayers(e.layers); if (!e.label) e.label = { show: false, name: "", size: 9, align: "left" }; }
     if (e.type === "north" && !e.style) e.style = "rose4";
   });
   return t;
@@ -928,8 +935,8 @@ function prPoint(e) {
 }
 const gridMm = v => Math.round(v * 2) / 2;
 function pushUndo() { pr.undo.push(JSON.stringify(pr.tpl)); if (pr.undo.length > 80) pr.undo.shift(); pr.redo = []; pr.dirty = true; }
-function prUndo() { if (!pr.undo.length) return; pr.redo.push(JSON.stringify(pr.tpl)); pr.tpl = JSON.parse(pr.undo.pop()); pr.sels = pr.sels.filter(id => pr.tpl.elements.some(e => e.id === id)); pr.dirty = true; renderPrintPanel(); drawPrintPage(); }
-function prRedo() { if (!pr.redo.length) return; pr.undo.push(JSON.stringify(pr.tpl)); pr.tpl = JSON.parse(pr.redo.pop()); pr.sels = pr.sels.filter(id => pr.tpl.elements.some(e => e.id === id)); pr.dirty = true; renderPrintPanel(); drawPrintPage(); }
+function prUndo() { if (!pr.undo.length) return; prLayersDetach(); pr.redo.push(JSON.stringify(pr.tpl)); pr.tpl = JSON.parse(pr.undo.pop()); pr.sels = pr.sels.filter(id => pr.tpl.elements.some(e => e.id === id)); pr.dirty = true; renderPrintPanel(); drawPrintPage(); }
+function prRedo() { if (!pr.redo.length) return; prLayersDetach(); pr.undo.push(JSON.stringify(pr.tpl)); pr.tpl = JSON.parse(pr.redo.pop()); pr.sels = pr.sels.filter(id => pr.tpl.elements.some(e => e.id === id)); pr.dirty = true; renderPrintPanel(); drawPrintPage(); }
 
 /* Snäpplinjer: andra elements kanter/mittlinjer, bladets kanter, ramen och mitten. */
 function snapTargets(exclude) {
@@ -1268,10 +1275,14 @@ function renderPrintProps(onlyPos) {
       ${el.knockout ? `<div class="pr-grid4">${num("knockTol", "Hur nära vitt", "5")}</div><div class="hint">Högre värde tar bort mer av ljusa färger (standard 30).</div>` : ""}
       ${el.cropL || el.cropR || el.cropT || el.cropB || el.knockout ? `<button type="button" id="prImgReset" style="margin-top:6px;">↺ Original (ingen beskärning)</button>` : ""}` : ""}`;
   if (el.type === "map") {
-    const lb = el.label || {}, cfg = el.layers || { follow: true, keys: {} };
-    const vw = vpView(el), views = typeof lsViews === "function" ? lsViews() : [];
-    const locked = cfg.follow || !!vw;
-    const viewSel = views.length ? `<div class="row" style="flex-wrap:nowrap;margin-top:4px;"><select id="prView" class="grow" title="Använd en sparad vy från Lager: dess tända lager, ortofoton och DXF-lager"><option value="">Ingen sparad vy</option>${views.map(v => `<option value="${escHtml(v.id)}"${vw && vw.id === v.id ? " selected" : ""}>📑 ${escHtml(v.name)}</option>`).join("")}</select>${vw && vw.camera ? `<button id="prViewCam" title="Samma utsnitt som vyn (mitt och skala)">🔍 Vyns utsnitt</button>` : ""}</div>` : "";
+    const lb = el.label || {};
+    const vw = vpView(el), views = typeof lsViews === "function" ? lsViews() : [], mode = vpMode(el);
+    // Ett val för ritningens lager: följ skärmen, eget urval eller en sparad vy.
+    const modeSel = `<div class="row" style="flex-wrap:nowrap;margin-top:4px;"><select id="prLayMode" class="grow" title="Vilka lager ritningen visar">
+        <option value="follow"${mode === "follow" ? " selected" : ""}>🖥 Följ skärmen</option>
+        <option value="own"${mode === "own" ? " selected" : ""}>🗂 Eget urval</option>
+        ${views.map(v => `<option value="view:${escHtml(v.id)}"${vw && vw.id === v.id ? " selected" : ""}>📑 Vy: ${escHtml(v.name)}</option>`).join("")}
+      </select>${vw && vw.camera ? `<button id="prViewCam" title="Samma utsnitt som vyn (mitt och skala)">🔍 Vyns utsnitt</button>` : ""}</div>`;
     html += `<div class="pr-grid4"><div style="grid-column:span 2;"><label>Skala</label><select data-f="scale" data-num="1">${[...new Set([...PRINT_SCALES, el.scale])].sort((a, b) => a - b).map(s => `<option value="${s}"${el.scale === s ? " selected" : ""}>1:${s}</option>`).join("")}</select></div></div>
       ${typeof cads === "function" && cads().length ? `<div class="pr-grid4"><div style="grid-column:span 2;"><label>DXF-linjer</label><select data-f="cadLw" data-num="1" title="Linjetjockleken för DXF-ritningarna i den här ritningen">${[[0.4, "Mycket tunna"], [0.7, "Tunna"], [1, "Som på skärmen"], [1.6, "Tjocka"], [2.5, "Mycket tjocka"], [4, "Extra tjocka"]].map(([v, l]) => `<option value="${v}"${(Number(el.cadLw) || 1) === v ? " selected" : ""}>${l}</option>`).join("")}</select></div>
         <div style="grid-column:span 2;"><label>DXF-texter</label><select data-f="cadTextMin" data-num="1" title="Små texter förstoras till minst den här höjden på papperet så att de syns">${[[0, "Som ritningen"], [1, "Minst 1 mm"], [1.5, "Minst 1,5 mm"], [2, "Minst 2 mm"], [3, "Minst 3 mm"], [-1, "Dölj texterna"]].map(([v, l]) => `<option value="${v}"${(el.cadTextMin == null ? 1 : Number(el.cadTextMin)) === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>` : ""}
@@ -1281,11 +1292,12 @@ function renderPrintProps(onlyPos) {
       <div class="pr-grid4"><div style="grid-column:span 4;"><label>Vyns namn</label><input type="text" id="prLblName" value="${escHtml(lb.name || "")}" placeholder="t.ex. Översikt etablering" /></div>
         <div><label>Storlek (pt)</label><input type="number" step="0.5" id="prLblSize" value="${lb.size || 9}" /></div>
         <div style="grid-column:span 2;"><label>Justering</label><select id="prLblAlign">${["left", "center", "right"].map(a => `<option value="${a}"${(lb.align || "left") === a ? " selected" : ""}>${{ left: "Vänster", center: "Mitten", right: "Höger" }[a]}</option>`).join("")}</select></div></div>
-      <label style="margin-top:10px;"><b>Visa i ritningen</b></label>
-      ${viewSel}
-      ${vw ? `<div class="hint" style="margin:2px 0 4px;">Ritningen visar vyn "${escHtml(vw.name)}". Ändras vyn följer utskriften med.</div>` : `<label class="check"><input type="checkbox" id="prFollow"${cfg.follow ? " checked" : ""} /> Följ skärmen (lagren som är tända där)</label>`}
-      ${locked ? "" : `<div class="hint" style="margin:2px 0 4px;">Tänd och släck precis som i Lager – det gäller bara den här ritningen.</div><div id="prLayerHost" class="pr-layerhost"></div>
-      <div class="row" style="margin-top:4px;"><button id="prLayScreen" title="Samma lager som på skärmen just nu">Som skärmen</button></div>`}
+      <label style="margin-top:10px;"><b>Lager i ritningen</b></label>
+      ${modeSel}
+      ${mode === "view" ? `<div class="hint" style="margin:2px 0 4px;">Ritningen visar vyn "${escHtml(vw.name)}". Ändras vyn följer utskriften med.</div>`
+        : mode === "follow" ? `<div class="hint" style="margin:2px 0 4px;">Ritningen visar de lager som är tända på skärmen. Välj Eget urval för att tända och släcka bara här.</div>`
+        : `<div class="hint" style="margin:2px 0 4px;">Tänd och släck precis som i Lager – det gäller bara den här ritningen.</div><div id="prLayerHost" class="pr-layerhost"></div>
+      <div class="row" style="margin-top:4px;"><button id="prLayScreen" title="Börja om med samma lager som på skärmen just nu">↺ Som skärmen</button></div>`}
       <div class="hint">Skalan gäller på ${pr.tpl.format}. Skriv ut i verklig storlek (100 %).</div>`;
   }
   if (el.type === "legend") html += inp("title", "Rubrik") + `<div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}${num("cols", "Kolumner", "1")}</div>
@@ -1394,12 +1406,11 @@ function renderPrintProps(onlyPos) {
     $("prLblName").oninput = e => { if (!e.target._u) { pushUndo(); e.target._u = true; setTimeout(() => { e.target._u = false; }, 800); } el.label = { ...(el.label || {}), name: e.target.value }; pr.dirty = true; drawPrintPage(); };
     $("prLblSize").oninput = e => { el.label = { ...(el.label || {}), size: Number(e.target.value) || 9 }; pr.dirty = true; drawPrintPage(); };
     $("prLblAlign").onchange = e => lbl({ align: e.target.value });
-    if ($("prFollow")) $("prFollow").onchange = e => { prLayersDetach(); pushUndo(); el.layers = { ...(el.layers || {}), follow: e.target.checked, keys: (el.layers && el.layers.keys) || snapshotLayers() }; renderPrintProps(); drawPrintPage(); };
-    if ($("prView")) $("prView").onchange = e => {
-      pushUndo();
-      // Ingen vy: behåll vyns lager som eget urval, så inget ändras i ritningen.
-      prLayersDetach();
-      el.layers = e.target.value ? { follow: false, view: e.target.value, keys: vpKeys(el) || snapshotLayers() } : { follow: false, keys: vpKeys(el) || snapshotLayers() };
+    $("prLayMode").onchange = e => {
+      const v = e.target.value, before = JSON.parse(JSON.stringify(vpLayerState(el)));
+      prLayersDetach(); pushUndo();
+      // Eget urval börjar med det ritningen visade nyss – inget ändras förrän man tänder/släcker.
+      el.layers = v === "follow" ? { follow: true } : v === "own" ? { follow: false, state: before } : { follow: false, view: v.slice(5) };
       pr.dirty = true; renderPrintProps(); drawPrintPage();
     };
     on("prViewCam", () => {
@@ -1414,9 +1425,9 @@ function renderPrintProps(onlyPos) {
       pr.dirty = true; renderPrintPanel(); drawPrintPage();
     });
     on("prLayScreen", () => {
-      const screen = prLayerHold ? prLayerHold.screen : layerState;
+      const screen = prScreenState();
       prLayersDetach(); pushUndo();
-      el.layers = { follow: false, keys: snapshotLayers(), state: JSON.parse(JSON.stringify(screen)) };
+      el.layers = { follow: false, state: JSON.parse(JSON.stringify(screen)) };
       pr.dirty = true; renderPrintProps(); drawPrintPage();
     });
   }
@@ -1435,6 +1446,7 @@ function switchTemplate(id) {
   if (pr.dirty && !confirm("Byta mall utan att spara ändringarna?")) { renderPrintPanel(); return; }
   const t = printTpls().find(x => x.id === id);
   if (!t) return;
+  prLayersDetach();
   pr = { ...pr, tpl: migrateTpl(JSON.parse(JSON.stringify(t))), saved: true, sels: [], dirty: false, undo: [], redo: [], panMode: false, fmtAsk: null };
   if (pr.clip) pr.clip.n = 0;
   try { localStorage.setItem("lagesplan-printtpl", t.id); } catch (e) {}
@@ -1445,7 +1457,8 @@ function newTemplate(copy) {
   if (!name) return;
   const t = copy ? { ...JSON.parse(JSON.stringify(pr.tpl)), id: ghNewId(), name } : { ...defaultTemplate(), name };
   if (copy) { const idMap = {}; t.elements.forEach(e => { const n = ghNewId(); idMap[e.id] = n; e.id = n; }); t.elements.forEach(e => { if (e.mapId) e.mapId = idMap[e.mapId]; }); }
-  pr = { ...pr, tpl: t, saved: false, sels: [], dirty: true, undo: [], redo: [], panMode: false, fmtAsk: null };
+  prLayersDetach();
+  pr = { ...pr, tpl: migrateTpl(t), saved: false, sels: [], dirty: true, undo: [], redo: [], panMode: false, fmtAsk: null };
   renderPrintPanel(); drawPrintPage();
 }
 async function renameTemplate() {

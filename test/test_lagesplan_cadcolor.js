@@ -110,7 +110,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
     siteItems.push({ id: 'cx', type: 'cad', name: '5082591_Utsättningsplan', layers: [{ name: '0-1', n: 3 }, { name: '0-2', n: 2 }, { name: 'K-Y2N', n: 1 }] });
     renderLayerPanel();
     const screenZones = ls('zones').visible;
-    const map = pr.tpl.elements.find(e => e.type === 'map'); map.layers = { follow: false, keys: { 'cad:cx': true, 'cadl:cx:0-1': true, zones: screenZones } };
+    const map = pr.tpl.elements.find(e => e.type === 'map'); map.layers = migrateLayers({ follow: false, keys: { 'cad:cx': true, 'cadl:cx:0-1': true, zones: screenZones } }); // gammalt format -> eget urval
     setSel([map.id]); renderPrintProps(); await new Promise(r => setTimeout(r, 50));
     const out = { inProps: !!document.querySelector('#prProps #layerList .layer-row[data-layer="zones"]'), search: !!document.querySelector('#prProps #layerSearch'), views: !!document.querySelector('#prProps #lsViewSel'),
       homeEmpty: !document.querySelector('details.sec[data-sec="layers"] #layerList'), cadOn: ls('cad:cx').visible, cadl2: ls('cadl:cx:0-2').visible };
@@ -122,7 +122,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
     out.screenAfter = ls('zones').visible; out.screenZones = screenZones;
     // Igen: ritningens eget läge kommer tillbaka.
     setSel([map.id]); renderPrintProps(); await new Promise(r => setTimeout(r, 50));
-    out.again = ls('zones').visible; out.keysZones = vpKeys(map).zones;
+    out.again = ls('zones').visible; out.keysZones = map.layers.state.zones.visible;
     setSel([]); renderPrintProps(); await new Promise(r => setTimeout(r, 50));
     return out;
   });
