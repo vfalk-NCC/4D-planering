@@ -186,13 +186,21 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   await page.uncheck('#zeStyle .zs-hidden');
   console.log('OK: dölj zon');
 
-  // 6) Delete tar bort den markerade zonen, Ctrl+Z tar tillbaka den.
+  // 6) Raderingsskyddet (Victor 2026-10-07): Delete gör ingenting när skyddet är på. Med skyddet av
+  //    tar Delete bort zonen först när man skrivit RADERA, och Ctrl+Z tar tillbaka den.
   await page.evaluate(() => document.activeElement && document.activeElement.blur());
   await page.keyboard.press('Delete'); await page.waitForTimeout(150);
-  if ((await zones()).length) fail('Delete ska ta bort den markerade zonen');
+  if ((await zones()).length !== 1) fail('Delete ska inte ta bort när raderingsskyddet är på');
+  await page.evaluate(() => $('btnZoneGuard').click());
+  answer = 'RADERA';
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.keyboard.press('Delete'); await page.waitForTimeout(150);
+  if ((await zones()).length) fail('Delete + RADERA ska ta bort den markerade zonen');
   await page.keyboard.press('Control+z'); await page.waitForTimeout(150);
   if ((await zones()).length !== 1) fail('Ctrl+Z ska ta tillbaka zonen');
-  console.log('OK: Delete tar bort zonen, Ctrl+Z ångrar');
+  await page.evaluate(() => $('btnZoneGuard').click());
+  answer = 'PM20';
+  console.log('OK: raderingsskydd – Delete stoppas; med skyddet av krävs RADERA, Ctrl+Z ångrar');
 
   // 6b) Fler zonfunktioner (av från början): aktiviteter som kopplas, yta i m², flerval.
   await page.evaluate(() => {

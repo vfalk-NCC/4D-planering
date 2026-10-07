@@ -245,6 +245,7 @@ function renameWbs(key, name) {
 }
 function deleteWbs(key) {
   const g = wbsGroups().find(x => x.key === key);
+  if (typeof zoneGuardBlock === "function" && zoneGuardBlock("Ta bort överzon")) return;
   if (!g || !confirm(`Ta bort överzonen ${g.name}? De ${g.children.length} zonerna ligger kvar, utan överzon.`)) return;
   zoneSnapshot("Ta bort överzon");
   g.children.forEach(z => { delete z.parent; });

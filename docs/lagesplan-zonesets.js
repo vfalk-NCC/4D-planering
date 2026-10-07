@@ -69,6 +69,7 @@ function setZoneSet(id) {
   if (typeof closeEditor === "function") closeEditor();
   if (typeof selectedWbsKey !== "undefined") { try { selectedWbsKey = null; } catch (e) { /* const */ } }
   planSwitchZoneSet(plan, id);
+  if (typeof zoneGuardReset === "function") zoneGuardReset(); // raderingsskyddet på igen i det nya lagret
   zoneSetRenderSeg();
   if (typeof renderZones === "function") renderZones();
   if (typeof renderLayerPanel === "function") renderLayerPanel();

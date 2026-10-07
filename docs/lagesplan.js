@@ -827,6 +827,7 @@ async function openPlan(id) {
   await flushPlanSave(); // spara den förra planens ändringar innan vi byter
   plan = plans.find(p => p.id === id) || null;
   if (plan && typeof zoneSetRestore === "function") zoneSetRestore(plan); // samma zonlager som senast
+  if (typeof zoneGuardReset === "function") zoneGuardReset(); // raderingsskyddet på igen
   renderPlanSelect();
   selectedZoneId = null;
   closeEditor();
@@ -1687,7 +1688,14 @@ function bindUI() {
     if (n) { plan.name = n; renderPlanSelect(); schedulePlanSave(); }
   };
   $("btnDeletePlan").onclick = async () => {
-    if (!plan || !confirm(`Ta bort lägesplanen "${plan.name}"? (PDF:en och zonerna tas bort.)`)) return;
+    if (!plan) return;
+    // En plan med zoner tas bara bort om man skriver dess namn (Victor 2026-10-07: svårt att radera zoner).
+    const nZones = (typeof zonesMainOf === "function" ? zonesMainOf(plan).length : (plan.zones || []).length) + ((plan._zoneSet === "prefab" ? plan.zones : plan.zones_prefab) || []).length;
+    if (nZones) {
+      const t = prompt(`Ta bort lägesplanen "${plan.name}"?\n\nPDF:en och planens ${nZones} zoner tas bort. Skriv planens namn för att bekräfta:`, "");
+      if (t === null) return;
+      if (t.trim() !== String(plan.name).trim()) { alert("Namnet stämde inte – planen togs inte bort."); return; }
+    } else if (!confirm(`Ta bort lägesplanen "${plan.name}"? (PDF:en tas bort.)`)) return;
     const gone = plan;
     if (savePending === gone) { clearTimeout(saveTimer); savePending = null; } else await flushPlanSave();
     try {
@@ -1777,12 +1785,7 @@ function bindUI() {
   $("levelZ1").onchange = onLevel;
 
   bindTokenModal();
-  $("zeDelete").onclick = () => {
-    const z = plan.zones.find(x => x.id === selectedZoneId);
-    if (!z || !confirm(`Ta bort zon ${z.code}?`)) return;
-    plan.zones = plan.zones.filter(x => x.id !== z.id);
-    selectZone(null); schedulePlanSave();
-  };
+  $("zeDelete").onclick = () => deleteSelectedZone(true); // raderingsskyddet gäller även här
   $("btnZoomIn").onclick = () => { const r = $("viewport").getBoundingClientRect(); zoomAt(1.3, r.width / 2, r.height / 2); };
   $("btnZoomOut").onclick = () => { const r = $("viewport").getBoundingClientRect(); zoomAt(1 / 1.3, r.width / 2, r.height / 2); };
   $("btnFit").onclick = fitView;

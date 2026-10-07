@@ -461,9 +461,13 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 function deleteSelectedZone(ask) {
   if (zonesLocked()) { setSaveStatus("🔒 Zonerna är låsta – lås upp dem för att ta bort en zon."); return; }
+  // Raderingsskyddet (lagesplan-zoneguard.js): på från början, och man måste alltid skriva RADERA –
+  // även med Delete-tangenten (Victor 2026-10-07).
+  if (typeof zoneGuardBlock === "function" && zoneGuardBlock("Ta bort zon")) return;
+  const guardOk = zs => (typeof zoneGuardConfirm === "function" ? zoneGuardConfirm(zs) : confirm(`Ta bort ${zs.length} zoner? (Ctrl+Z ångrar)`));
   if (zoneSel.size > 1) {
     const ids = new Set(zoneSel), n = ids.size;
-    if (ask && !confirm(`Ta bort ${n} zoner? (Ctrl+Z ångrar)`)) return;
+    if (!guardOk(plan.zones.filter(x => ids.has(x.id)))) return;
     zoneSnapshot(`Ta bort ${n} zoner`);
     plan.zones = plan.zones.filter(x => !ids.has(x.id));
     zoneSel.clear(); selectZone(null); schedulePlanSave();
@@ -471,7 +475,7 @@ function deleteSelectedZone(ask) {
     return;
   }
   const z = plan && plan.zones.find(x => x.id === selectedZoneId);
-  if (!z || (ask && !confirm(`Ta bort zon ${z.code}? (Ctrl+Z ångrar)`))) return;
+  if (!z || !guardOk([z])) return;
   zoneSnapshot(`Ta bort zon ${z.code}`);
   plan.zones = plan.zones.filter(x => x.id !== z.id);
   selectZone(null); schedulePlanSave();

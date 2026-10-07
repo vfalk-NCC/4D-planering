@@ -24,7 +24,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const fail = m => { throw new Error(m); };
   const page = await (await browser.newContext({ viewport: { width: 1300, height: 850 } })).newPage();
   const errors = []; page.on('pageerror', e => errors.push(e.message + ' @ ' + (e.stack || '').split('\n').slice(1, 3).join(' ')));
-  page.on('dialog', d => d.accept());
+  let answer = ''; const dlgs = []; page.on('dialog', d => { dlgs.push(d.message()); d.type() === 'prompt' ? d.accept(answer) : d.accept(); });
   await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); });
   await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS }));
   // Lagringen: status_plans.json i minnet.
@@ -84,6 +84,37 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   st = await page.evaluate(() => ({ set: zoneSetOf(plan), ids: plan.zones.map(z => z.id), main: zonesMainOf(plan).map(z => z.id) }));
   if (st.set !== 'prefab' || JSON.stringify(st.ids) !== '["p2"]' || JSON.stringify(st.main) !== '["z1"]') fail('Öppnas i samma lager: ' + JSON.stringify(st));
   console.log('OK: zonlagren WBS och WBS - Prefab – egna zoner och överzoner, de vanliga sparas orörda, Excel-exporten bara vanliga, filnamn, ångra per lager, samma lager vid öppning');
+
+  // Raderingsskydd (Victor 2026-10-07): på från början, Delete-tangenten och 🗑 gör ingenting.
+  await page.evaluate(() => document.querySelector('#zoneSetSeg [data-zset="main"]').click()); await page.waitForTimeout(150);
+  const del = async viaKey => page.evaluate(k => { selectZone('z1'); deleteSelectedZone(!k); return { n: plan.zones.length, st: $('saveStatus').textContent, btn: $('btnZoneGuard').textContent }; }, viaKey);
+  let d = await del(true);
+  if (d.n !== 1 || !/skyddade mot radering/.test(d.st) || !/Raderingsskydd på/.test(d.btn)) fail('Skyddet ska stoppa Delete: ' + JSON.stringify(d));
+  d = await del(false);
+  if (d.n !== 1) fail('Skyddet ska stoppa 🗑');
+  if (await page.evaluate(() => { deleteWbs('741 SEKTIONSFICKOR'); return plan.zones[0].parent; }) !== '741 Sektionsfickor') fail('Skyddet ska stoppa ta bort överzon');
+  // Av: måste ändå skriva RADERA.
+  await page.evaluate(() => $('btnZoneGuard').click());
+  if (!/Raderingsskydd av/.test(await page.textContent('#btnZoneGuard'))) fail('Knappen stänger av skyddet');
+  answer = 'ja'; d = await del(true);
+  if (d.n !== 1) fail('Fel bekräftelse ska inte ta bort');
+  answer = 'radera'; d = await del(true);
+  if (d.n !== 0) fail('RADERA ska ta bort zonen');
+  await page.evaluate(() => zoneUndo());
+  if (await page.evaluate(() => plan.zones.length) !== 1) fail('Ctrl+Z tar tillbaka zonen');
+  // Byter man lager (eller plan) är skyddet på igen.
+  await page.evaluate(() => { document.querySelector('#zoneSetSeg [data-zset="prefab"]').click(); document.querySelector('#zoneSetSeg [data-zset="main"]').click(); });
+  if (!/Raderingsskydd på/.test(await page.textContent('#btnZoneGuard'))) fail('Skyddet ska slås på igen vid lagerbyte');
+  // Släckta zoner syns som en rad med Tänd alla.
+  await page.evaluate(() => setZoneHidden(['z1'], true)); await page.waitForTimeout(100);
+  const hi = await page.evaluate(() => ({ t: $('zoneHiddenInfo').textContent, h: $('zoneHiddenInfo').classList.contains('hidden') }));
+  if (hi.h || !/1 av 1 zoner är släckta/.test(hi.t)) fail('Släckta zoner ska visas: ' + JSON.stringify(hi));
+  await page.evaluate(() => $('zoneHiddenInfo').querySelector('button').click());
+  if (await page.evaluate(() => !!(plan.zones[0].style && plan.zones[0].style.hidden)) || !(await page.evaluate(() => $('zoneHiddenInfo').classList.contains('hidden')))) fail('Tänd alla');
+  // En plan med zoner tas bara bort med planens namn.
+  answer = 'fel'; await page.evaluate(() => $('btnDeletePlan').click()); await page.waitForTimeout(400);
+  if (await page.evaluate(() => plans.length) !== 1 || !dlgs.some(m => /Skriv planens namn/.test(m))) fail('Planen ska inte tas bort utan namnet');
+  console.log('OK: raderingsskydd – på från början (Delete, 🗑, överzon), RADERA krävs, Ctrl+Z, på igen vid lagerbyte, släckta zoner med Tänd alla, planen kräver namnet');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('ALLA TESTER OK');
   await browser.close(); server.close();
