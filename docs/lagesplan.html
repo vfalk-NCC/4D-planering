@@ -11,8 +11,15 @@
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261007120842"></script>
+<script src="github-storage.js?v=20261007140605"></script>
 <style>
+  /* Zonlager: WBS / WBS - Prefab (lagesplan-zonesets.js) */
+  .zone-set-seg { display: flex; gap: 0; margin: 2px 0 8px; border: 1px solid #d1d5db; border-radius: 7px; overflow: hidden; }
+  .zone-set-seg button { flex: 1; border: none; border-radius: 0; background: #fff; padding: 5px 6px; font: inherit; font-size: 12px; cursor: pointer; color: #374151; }
+  .zone-set-seg button + button { border-left: 1px solid #d1d5db; }
+  .zone-set-seg button.active { background: #ea580c; color: #fff; font-weight: 600; }
+  .zone-set-seg button small { opacity: .75; font-weight: 400; margin-left: 2px; }
+
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
     --text: #1b1f24; --muted: #6b7280; --faint: #9aa1ab;
@@ -1245,6 +1252,7 @@
 
         <details class="sec" data-sec="zones" open>
           <summary><span class="si">🟧</span>Zoner <span class="muted" id="zoneCount"></span></summary>
+          <div class="zone-set-seg" id="zoneSetSeg" role="group" aria-label="Zonlager" title="Två lager med zoner: de vanliga WBS-zonerna och WBS - Prefab. Samma funktioner i båda – välj vilket du ritar och visar."><button type="button" data-zset="main" class="active">WBS</button><button type="button" data-zset="prefab">WBS - Prefab</button></div>
           <div class="row split">
             <button id="btnDraw" title="Dra en rektangel på planen för en ny zon">▭ Rektangel</button>
             <button id="btnZonePoly" title="Klicka zonens hörn – Shift ger raka linjer, dubbelklick eller Enter avslutar">⬠ Polygon</button>
@@ -1505,36 +1513,37 @@
     </div>
   </main>
 </div>
-<script src="lagesplan.js?v=20261007120842"></script>
-<script src="lagesplan-tools.js?v=20261007120842"></script>
-<script src="lagesplan-layers.js?v=20261007120842"></script>
-<script src="lagesplan-pdfoverlay.js?v=20261007120842"></script>
-<script src="lagesplan-pdfunder.js?v=20261007120842"></script>
-<script src="lagesplan-views.js?v=20261007120842"></script>
-<script src="lagesplan-film.js?v=20261007120842"></script>
-<script src="lagesplan-cad.js?v=20261007120842"></script>
-<script src="lagesplan-vecpdf.js?v=20261007120842"></script>
-<script src="lagesplan-print.js?v=20261007120842"></script>
-<script src="lagesplan-printlib.js?v=20261007120842"></script>
-<script src="lagesplan-pdflayers.js?v=20261007120842"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261007120842"></script>
-<script src="lagesplan-objmarks.js?v=20261007120842"></script>
-<script src="lagesplan-objlist.js?v=20261007120842"></script>
-<script src="lagesplan-zones.js?v=20261007120842"></script>
-<script src="lagesplan-wbs.js?v=20261007120842"></script>
-<script src="lagesplan-zoneexport.js?v=20261007120842"></script>
-<script src="lagesplan-itemlink.js?v=20261007120842"></script>
-<script src="lagesplan-dxfexport.js?v=20261007120842"></script>
-<script src="ifc-writer.js?v=20261007120842"></script>
-<script src="lagesplan-ifcexport.js?v=20261007120842"></script>
-<script src="lagesplan-zonecad.js?v=20261007120842"></script>
-<script src="lagesplan-siteifc.js?v=20261007120842"></script>
-<script src="lagesplan-daily.js?v=20261007120842"></script>
-<script src="lagesplan-gps.js?v=20261007120842"></script>
-<script src="lagesplan-weather.js?v=20261007120842"></script>
-<script src="lagesplan-touch.js?v=20261007120842"></script>
-<script src="lagesplan-drawer.js?v=20261007120842"></script>
-<script src="lagesplan-gpslive.js?v=20261007120842"></script>
-<script src="lagesplan-keys.js?v=20261007120842"></script>
+<script src="lagesplan.js?v=20261007140605"></script>
+<script src="lagesplan-tools.js?v=20261007140605"></script>
+<script src="lagesplan-layers.js?v=20261007140605"></script>
+<script src="lagesplan-pdfoverlay.js?v=20261007140605"></script>
+<script src="lagesplan-pdfunder.js?v=20261007140605"></script>
+<script src="lagesplan-views.js?v=20261007140605"></script>
+<script src="lagesplan-film.js?v=20261007140605"></script>
+<script src="lagesplan-cad.js?v=20261007140605"></script>
+<script src="lagesplan-vecpdf.js?v=20261007140605"></script>
+<script src="lagesplan-print.js?v=20261007140605"></script>
+<script src="lagesplan-printlib.js?v=20261007140605"></script>
+<script src="lagesplan-pdflayers.js?v=20261007140605"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261007140605"></script>
+<script src="lagesplan-objmarks.js?v=20261007140605"></script>
+<script src="lagesplan-objlist.js?v=20261007140605"></script>
+<script src="lagesplan-zones.js?v=20261007140605"></script>
+<script src="lagesplan-wbs.js?v=20261007140605"></script>
+<script src="lagesplan-zonesets.js?v=20261007140605"></script>
+<script src="lagesplan-zoneexport.js?v=20261007140605"></script>
+<script src="lagesplan-itemlink.js?v=20261007140605"></script>
+<script src="lagesplan-dxfexport.js?v=20261007140605"></script>
+<script src="ifc-writer.js?v=20261007140605"></script>
+<script src="lagesplan-ifcexport.js?v=20261007140605"></script>
+<script src="lagesplan-zonecad.js?v=20261007140605"></script>
+<script src="lagesplan-siteifc.js?v=20261007140605"></script>
+<script src="lagesplan-daily.js?v=20261007140605"></script>
+<script src="lagesplan-gps.js?v=20261007140605"></script>
+<script src="lagesplan-weather.js?v=20261007140605"></script>
+<script src="lagesplan-touch.js?v=20261007140605"></script>
+<script src="lagesplan-drawer.js?v=20261007140605"></script>
+<script src="lagesplan-gpslive.js?v=20261007140605"></script>
+<script src="lagesplan-keys.js?v=20261007140605"></script>
 </body>
 </html>

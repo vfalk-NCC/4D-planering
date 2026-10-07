@@ -56,13 +56,13 @@ function zoneExportData() {
     return { items: list.length, progress: zoneProgress(list), status: list.length ? PHASE_LABELS[ph] || ph : "", start: starts[0] || null, end: ends[ends.length - 1] || null };
   };
   const zonesOut = [], parentsOut = [], byItem = new Map();
-  const multi = plans.filter(p => (p.zones || []).length).length > 1;
+  const multi = plans.filter(p => (typeof zonesMainOf === "function" ? zonesMainOf(p) : (p.zones || [])).length).length > 1;
   const note = (id, kind, label) => {
     if (!byItem.has(id)) byItem.set(id, { zones: new Set(), parents: new Set() });
     byItem.get(id)[kind].add(label);
   };
   plans.forEach(p => {
-    const zones = p.zones || [];
+    const zones = typeof zonesMainOf === "function" ? zonesMainOf(p) : (p.zones || []);
     if (!zones.length) return;
     const posPdf = zoneExportPositions(p), k = p.calib ? pdfUnitsPerM2(p.calib) : 0;
     const groups = new Map();
@@ -98,7 +98,7 @@ function scheduleZoneExport(delay = 5000) {
 async function runZoneExport() {
   if (typeof token === "undefined" || !token || !Array.isArray(plans) || !Array.isArray(items) || !items.length) return;
   if (zoneExportBusy) { scheduleZoneExport(); return; }
-  if (!plans.some(p => (p.zones || []).length)) return;
+  if (!plans.some(p => (typeof zonesMainOf === "function" ? zonesMainOf(p) : (p.zones || [])).length)) return;
   if (typeof planSource !== "undefined" && planSource === "pp") return; // zonerna till Excel gäller Excel-planeringen
   zoneExportBusy = true;
   try {

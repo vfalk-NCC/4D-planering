@@ -21,6 +21,8 @@ function zoneShade(hex, f) {
   return "#" + c.map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0")).join("");
 }
 const zoneIsDark = hex => { const n = parseInt(String(hex).slice(1), 16); return (0.299 * (n >> 16 & 255) + 0.587 * (n >> 8 & 255) + 0.114 * (n & 255)) / 255 < 0.5; };
+/* Prefab-lagret märks i filnamnen (lagesplan-zonesets.js). */
+const zoneSetTag = () => (typeof zoneSetOf === "function" && zoneSetOf(plan) === "prefab" ? " WBS - Prefab" : "");
 const ZONE_DXF_LAYER = { planerad: "ZON-PLANERAD", pagaende: "ZON-PAGAENDE", forsenad: "ZON-FORSENAD", klar: "ZON-KLAR", pausad: "ZON-PAUSAD", ingen: "ZON-INGEN" };
 
 /* Polygon förskjuten d meter utåt (gering med begränsad spets), så att en kontur kan ligga runt
@@ -235,7 +237,7 @@ function buildZoneVolumesIfc() {
       ["Framdrift %", e.progress == null ? 0 : e.progress], ["Yta m²", Math.round(e.area * 10) / 10], ["Aktiviteter", e.items.length],
       ["Start", e.start], ["Slut", e.end], ["Från +", ZONE_VOL_Z0], ["Till +", ZONE_VOL_Z1], ["Arbetsyta", plan.name || ""], ["Status per", at]]);
   });
-  return { text: doc.finish(elems, `Zonvolymer ${plan.name} ${at}.ifc`), n: zs.length };
+  return { text: doc.finish(elems, `Zonvolymer${zoneSetTag()} ${plan.name} ${at}.ifc`), n: zs.length };
 }
 
 function buildZonesIfc() {
@@ -290,7 +292,7 @@ function buildZonesIfc() {
     const meshes = L.lines.map((ln, i) => ifcTextSolid(doc, ln, { h: L.h, t: IFC_TEXT_T, rx, ry, start: L.start, across: L.offs[i], style: zoneIsDark(col) ? doc.textStyleLight : doc.textStyle })).filter(Boolean);
     if (meshes.length) elems.push(doc.proxy(`${e.name} – text`, "Namn", "4D-zontext", tpl, doc.shape(meshes.join(","), "Tessellation"), e.z.id));
   });
-  return { text: doc.finish(elems, `Zoner ${plan.name} ${at}.ifc`), n: zs.length, z0, levelSet: zoneCadTopZ() != null };
+  return { text: doc.finish(elems, `Zoner${zoneSetTag()} ${plan.name} ${at}.ifc`), n: zs.length, z0, levelSet: zoneCadTopZ() != null };
 }
 
 /* Lokal kopia alltid, och till Trimble Connect (Lägesplan export) om rutan är ikryssad. */
@@ -315,7 +317,7 @@ function exportZonesDxf() {
   if (!zoneCadCheck()) return;
   const r = buildZonesDxf();
   if (!r) { alert("Inga zoner att exportera på den här arbetsytan."); return; }
-  return zoneCadSave(dxfCp1252(r.text), `Zoner ${plan.name} ${$("dateInput").value}.dxf`, "application/dxf", `${r.n} zoner exporterade som DXF (meter, modellens koordinater)`);
+  return zoneCadSave(dxfCp1252(r.text), `Zoner${zoneSetTag()} ${plan.name} ${$("dateInput").value}.dxf`, "application/dxf", `${r.n} zoner exporterade som DXF (meter, modellens koordinater)`);
 }
 function exportZonesIfc() {
   if (!zoneCadCheck()) return;
@@ -324,8 +326,8 @@ function exportZonesIfc() {
   const lvl = r.levelSet ? `på +${(Math.round(r.z0 * 100) / 100).toFixed(2)}` : "på +0 (ingen maxhöjd kalibrerad)";
   const v = buildZoneVolumesIfc();
   // Två filer: plattorna (som förut) och de långa soliderna +370 till +500 (Victor 2026-10-07).
-  return zoneCadSave(new TextEncoder().encode(r.text), `Zoner ${plan.name} ${$("dateInput").value}.ifc`, "application/x-step", `${r.n} zoner exporterade som IFC-plattor ${lvl}`)
-    .then(() => v && zoneCadSave(new TextEncoder().encode(v.text), `Zonvolymer ${plan.name} ${$("dateInput").value} +${ZONE_VOL_Z0} till +${ZONE_VOL_Z1}.ifc`, "application/x-step", `${r.n} zoner exporterade som IFC-plattor ${lvl} och som solider +${ZONE_VOL_Z0} till +${ZONE_VOL_Z1}`));
+  return zoneCadSave(new TextEncoder().encode(r.text), `Zoner${zoneSetTag()} ${plan.name} ${$("dateInput").value}.ifc`, "application/x-step", `${r.n} zoner exporterade som IFC-plattor ${lvl}`)
+    .then(() => v && zoneCadSave(new TextEncoder().encode(v.text), `Zonvolymer${zoneSetTag()} ${plan.name} ${$("dateInput").value} +${ZONE_VOL_Z0} till +${ZONE_VOL_Z1}.ifc`, "application/x-step", `${r.n} zoner exporterade som IFC-plattor ${lvl} och som solider +${ZONE_VOL_Z0} till +${ZONE_VOL_Z1}`));
 }
 
 document.addEventListener("DOMContentLoaded", () => {

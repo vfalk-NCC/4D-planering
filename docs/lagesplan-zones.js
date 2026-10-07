@@ -17,7 +17,7 @@ const zoneUndoStack = [];
 // Ångra
 // ---------------------------------------------------------------------
 function zoneSnapshot(label) {
-  zoneUndoStack.push({ label, zones: JSON.stringify((plan && plan.zones) || []), wbs: JSON.stringify((plan && plan.wbs) || null), planId: plan && plan.id });
+  zoneUndoStack.push({ label, zones: JSON.stringify((plan && plan.zones) || []), wbs: JSON.stringify((plan && plan.wbs) || null), planId: plan && plan.id, set: typeof zoneSetOf === "function" ? zoneSetOf(plan) : "main" });
   if (zoneUndoStack.length > 50) zoneUndoStack.shift();
   if (typeof lastUndoTarget !== "undefined") lastUndoTarget = "zone";
   if (typeof updateFieldUndo === "function") updateFieldUndo();
@@ -25,6 +25,7 @@ function zoneSnapshot(label) {
 function zoneUndo() {
   const e = zoneUndoStack.pop();
   if (!e || !plan || e.planId !== plan.id) return false;
+  if (typeof zoneSetOf === "function" && (e.set || "main") !== zoneSetOf(plan)) { zoneUndoStack.push(e); setSaveStatus(`Byt till zonlagret ${ZONE_SETS[e.set || "main"]} för att ångra "${e.label}".`); return true; }
   plan.zones = JSON.parse(e.zones);
   if ("wbs" in e) { const w = JSON.parse(e.wbs); if (w) plan.wbs = w; else delete plan.wbs; } // överzonernas utseende
   if (selectedZoneId && !plan.zones.some(z => z.id === selectedZoneId)) selectZone(null);

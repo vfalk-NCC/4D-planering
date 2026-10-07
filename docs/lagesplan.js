@@ -767,7 +767,8 @@ async function flushPlanSave() {
 }
 async function savePlan(p = plan) {
   if (!p) return;
-  const rec = { ...p, updated_at: new Date().toISOString(), updated_by: settings.userName || null };
+  // Zonlagren (lagesplan-zonesets.js): vanliga zoner alltid i zones, prefab i zones_prefab.
+  const rec = { ...(typeof planRecordForSave === "function" ? planRecordForSave(p) : p), updated_at: new Date().toISOString(), updated_by: settings.userName || null };
   delete rec._calibSet; delete rec._isNew;
   p.updated_at = rec.updated_at;
   const calibSet = !!p._calibSet, isNew = !!p._isNew;
@@ -825,6 +826,7 @@ const pdfCache = new Map();
 async function openPlan(id) {
   await flushPlanSave(); // spara den förra planens ändringar innan vi byter
   plan = plans.find(p => p.id === id) || null;
+  if (plan && typeof zoneSetRestore === "function") zoneSetRestore(plan); // samma zonlager som senast
   renderPlanSelect();
   selectedZoneId = null;
   closeEditor();

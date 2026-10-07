@@ -13,7 +13,7 @@ function itemLinkTarget(it) {
     if (p.underlay) return; // PDF-underlag är bara lager
     const pos = typeof zoneExportPositions === "function" ? zoneExportPositions(p) : null;
     const pt = pos ? pos.get(it.id) || null : null;
-    const zones = (p.zones || []).filter(z => zoneExportItems(p, z, pos).some(x => x.id === it.id));
+    const zones = (typeof zonesMainOf === "function" ? zonesMainOf(p) : (p.zones || [])).filter(z => zoneExportItems(p, z, pos).some(x => x.id === it.id));
     if (!pt && !zones.length) return;
     best.push({ p, pt, zones, score: (pt ? 2 : 0) + (zones.length ? 1 : 0) + (plan && p.id === plan.id ? 0.5 : 0) });
   });
