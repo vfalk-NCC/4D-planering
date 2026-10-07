@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261007084239" />
+<link rel="stylesheet" href="style.css?v=20261007103036" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261007084239"></script>
-<script src="plan-excel-comments.js?v=20261007084239"></script>
+<script src="plan-excel-parser.js?v=20261007103036"></script>
+<script src="plan-excel-comments.js?v=20261007103036"></script>
 </head>
 <body>
 
@@ -86,6 +86,8 @@
             <hr />
             <button id="btnRenameValue" title="Byt namn på Område/Aktivitet/Entreprenör för alla objekt som har det, i ett svep">Byt namn på område/aktivitet…</button>
             <button id="btnSuggestDeps" title="Föreslår beroenden mellan objekt i samma område med samma namn, baserat på en vanlig byggordning (t.ex. Formning → Armering → Gjutning) - helt regelbaserat, ingen AI/extern tjänst.">Föreslå beroenden…</button>
+            <hr />
+            <button id="btnWeekSummary" title="Avancerat (test): en sammanfattning av veckan – klart, försenat, värt att hålla koll på, startar nästa vecka och läget mot baseline. Räknas ur planeringen, går att kopiera till mejl eller skriva ut.">📋 Veckosammanfattning <small>(test)</small></button>
             <hr />
             <button id="btnExportVolumesIfc" title="Gör om de ritade volymerna (manuella markeringar) till en IFC-fil i modellens koordinater, i statusfärg med namnet ovanpå. Laddas ned och sparas i Trimble Connect-mappen Lägesplan export.">Exportera volymer som IFC</button>
             <button id="btnClearLabels" title="Ta bort namnetiketterna i 3D-vyn">Rensa namnetiketter i 3D</button>
@@ -635,19 +637,20 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261007084239"></script>
-  <script src="excel-link.js?v=20261007084239"></script>
-  <script src="app.js?v=20261007084239"></script>
-  <script src="manual-markings.js?v=20261007084239"></script>
-  <script src="ifc-writer.js?v=20261007084239"></script>
-  <script src="pp-import.js?v=20261007084239"></script>
-  <script src="ifc-subset.js?v=20261007084239"></script>
-  <script src="volume-ifc.js?v=20261007084239"></script>
-  <script src="sub-activity-list.js?v=20261007084239"></script>
-  <script src="activity-remove.js?v=20261007084239"></script>
-  <script src="dup-check.js?v=20261007084239"></script>
-  <script src="ui-shell.js?v=20261007084239"></script>
-  <script src="undo.js?v=20261007084239"></script>
-  <script src="planning-keys.js?v=20261007084239"></script>
+  <script src="github-storage.js?v=20261007103036"></script>
+  <script src="excel-link.js?v=20261007103036"></script>
+  <script src="app.js?v=20261007103036"></script>
+  <script src="manual-markings.js?v=20261007103036"></script>
+  <script src="ifc-writer.js?v=20261007103036"></script>
+  <script src="pp-import.js?v=20261007103036"></script>
+  <script src="ifc-subset.js?v=20261007103036"></script>
+  <script src="week-summary.js?v=20261007103036"></script>
+  <script src="volume-ifc.js?v=20261007103036"></script>
+  <script src="sub-activity-list.js?v=20261007103036"></script>
+  <script src="activity-remove.js?v=20261007103036"></script>
+  <script src="dup-check.js?v=20261007103036"></script>
+  <script src="ui-shell.js?v=20261007103036"></script>
+  <script src="undo.js?v=20261007103036"></script>
+  <script src="planning-keys.js?v=20261007103036"></script>
 </body>
 </html>
