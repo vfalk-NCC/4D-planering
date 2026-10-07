@@ -145,12 +145,12 @@ put('plan_items.json', []); put('plan_item_activities.json', []); put('plan_item
   await page.goto(`http://localhost:${PORT}/index.html`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(500);
   // Inget markerat: en tydlig uppmaning.
-  await page.click('#btnExportSelIfc'); await page.waitForTimeout(300);
+  await page.click('#btnExportSelIfcTop'); await page.waitForTimeout(300);
   if (!dialogs.some(d => /Markera objekten i 3D-vyn/.test(d))) fail('Utan markering: ' + JSON.stringify(dialogs));
   // A, armeringsdelen och ett objekt i en Revit-modell.
   await page.evaluate(g => { window.__guids = { 1: g.A, 2: g.R }; window.__sel = [{ modelId: 'mod1', objectRuntimeIds: [1, 2] }, { modelId: 'mod2', objectRuntimeIds: [1] }]; }, { A: G('A'), R: G('R') });
   dialogs.length = 0;
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#btnExportSelIfc')]);
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#btnExportSelIfcTop')]);
   const name = dl.suggestedFilename();
   if (!/^Konstruktion K1 - urval 2 objekt \d{4}-\d{2}-\d{2}\.ifc$/.test(name)) fail('Filnamnet: ' + name);
   const got = fs.readFileSync(await dl.path());

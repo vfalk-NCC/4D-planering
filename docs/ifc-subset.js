@@ -325,9 +325,10 @@ const ifcSubsetBanner = (t, ms) => { if (typeof showLagesplanBanner === "functio
 
 /* Knappen: markeringen -> en IFC-fil per modell, nedladdad och sparad i TC-mappen IFC-urval. */
 async function exportSelectionIfc() {
-  const btn = document.getElementById("btnExportSelIfc");
-  if (btn && btn.disabled) return null;
-  if (btn) btn.disabled = true;
+  const btns = ["btnExportSelIfcTop"].map(id => document.getElementById(id)).filter(Boolean);
+  if (exportSelectionIfc.busy) return null;
+  exportSelectionIfc.busy = true;
+  btns.forEach(b => { b.disabled = true; });
   const results = [];
   try {
     const sel = await ifcSubsetReadSelection();
@@ -368,12 +369,14 @@ async function exportSelectionIfc() {
     alert("Kunde inte exportera de markerade objekten: " + e.message);
     return null;
   } finally {
-    if (btn) btn.disabled = false;
+    exportSelectionIfc.busy = false;
+    btns.forEach(b => { b.disabled = false; });
   }
 }
 
 if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded", () => {
-  const b = document.getElementById("btnExportSelIfc");
+  // Knappen ligger i sidhuvudet bredvid ångra/gör om (Victor 2026-10-07).
+  const b = document.getElementById("btnExportSelIfcTop");
   if (b) b.onclick = () => { exportSelectionIfc(); };
 });
 if (typeof module !== "undefined") module.exports = { ifcSubset, ifcParse, ifcSplitArgs, ifcRefs, ifcBytesToStr, ifcStrToBytes };

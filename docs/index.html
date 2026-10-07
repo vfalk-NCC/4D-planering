@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261007080342" />
+<link rel="stylesheet" href="style.css?v=20261007084239" />
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261007080342"></script>
-<script src="plan-excel-comments.js?v=20261007080342"></script>
+<script src="plan-excel-parser.js?v=20261007084239"></script>
+<script src="plan-excel-comments.js?v=20261007084239"></script>
 </head>
 <body>
 
@@ -37,6 +37,7 @@
       <div class="header-actions">
         <button id="btnUndo" title="Inget att ångra" disabled>↶</button>
         <button id="btnRedo" title="Inget att göra om" disabled>↷</button>
+        <button id="btnExportSelIfcTop" title="Exportera markerade objekt som IFC – bara det du har markerat i 3D-vyn (utan underdelar), nedladdad och sparad i Trimble Connect-mappen IFC-urval"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4.5v9L12 20l-8-4.5v-9L12 2z"/><path d="M4 6.5l8 4.5 8-4.5"/><path d="M12 11v9"/></svg><span class="hdr-ifc">IFC</span></button>
         <button id="btnCollapseAll" title="Minimera alla block">⊟</button>
         <button id="btnStatusPlan" title="Lägesplan: en PDF-plan (t.ex. med PM-zoner) färgad efter framdriften"><svg class="ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/><path d="M9 4v14"/><path d="M15 6v14"/></svg></button>
         <button id="btnRefresh" title="Hämta senaste data">↻</button>
@@ -65,7 +66,6 @@
       <p class="hint">Markera objekt i 3D och koppla dem – eller skapa en aktivitet och koppla den senare via kopplingsknappen på raden.</p>
       <div class="row" style="gap:6px;">
         <button id="btnLinkSelection" class="primary">Koppla markerade objekt (<span id="selCount">0</span>)</button>
-        <button id="btnExportSelIfc" title="Exporterar bara de objekt du har markerat i 3D-vyn som en egen IFC-fil – med geometri, färger, egenskaper och våning, i modellens koordinater. Underdelar följer inte med. Laddas ned och sparas i Trimble Connect-mappen IFC-urval.">⬇ Markerade som IFC</button>
         <button id="btnNewActivity" title="Skapa en aktivitet i tidplanen utan att koppla den till något. Koppla senare (objekt eller manuell markering) – eller låt den vara okopplad.">＋ Ny aktivitet</button>
       </div>
     </section>
@@ -635,19 +635,19 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261007080342"></script>
-  <script src="excel-link.js?v=20261007080342"></script>
-  <script src="app.js?v=20261007080342"></script>
-  <script src="manual-markings.js?v=20261007080342"></script>
-  <script src="ifc-writer.js?v=20261007080342"></script>
-  <script src="pp-import.js?v=20261007080342"></script>
-  <script src="ifc-subset.js?v=20261007080342"></script>
-  <script src="volume-ifc.js?v=20261007080342"></script>
-  <script src="sub-activity-list.js?v=20261007080342"></script>
-  <script src="activity-remove.js?v=20261007080342"></script>
-  <script src="dup-check.js?v=20261007080342"></script>
-  <script src="ui-shell.js?v=20261007080342"></script>
-  <script src="undo.js?v=20261007080342"></script>
-  <script src="planning-keys.js?v=20261007080342"></script>
+  <script src="github-storage.js?v=20261007084239"></script>
+  <script src="excel-link.js?v=20261007084239"></script>
+  <script src="app.js?v=20261007084239"></script>
+  <script src="manual-markings.js?v=20261007084239"></script>
+  <script src="ifc-writer.js?v=20261007084239"></script>
+  <script src="pp-import.js?v=20261007084239"></script>
+  <script src="ifc-subset.js?v=20261007084239"></script>
+  <script src="volume-ifc.js?v=20261007084239"></script>
+  <script src="sub-activity-list.js?v=20261007084239"></script>
+  <script src="activity-remove.js?v=20261007084239"></script>
+  <script src="dup-check.js?v=20261007084239"></script>
+  <script src="ui-shell.js?v=20261007084239"></script>
+  <script src="undo.js?v=20261007084239"></script>
+  <script src="planning-keys.js?v=20261007084239"></script>
 </body>
 </html>
