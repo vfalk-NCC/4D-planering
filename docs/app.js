@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-06 22:47";
+const APP_VERSION = "2026-10-07 09:43";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -3896,6 +3896,7 @@ async function commitPlanImport(diff) {
       progress: p.progress,
       estimatedHours: existing ? existing.estimatedHours : null,
       dependsOn: existing ? existing.dependsOn : [],
+      depLags: existing ? existing.depLags : null,
       sourceKey: p.sourceKey,
       ppGuid: p.ppGuid || (existing ? existing.ppGuid : null) || null,
       groupId: existing ? existing.groupId : null,
@@ -3927,6 +3928,8 @@ async function commitPlanImport(diff) {
       if (!keys) return;
       const own = new Set(idsByKey.get(r.source_key) || [r.id]);
       r.depends_on = [...new Set(keys.flatMap(k => idsByKey.get(k) || []))].filter(id => !own.has(id));
+      // Glappen följer med så länge kopplingen finns kvar i Powerproject.
+      if (r.dep_lags) { const l = depLagsFor(r.dep_lags, r.depends_on); if (l) r.dep_lags = l; else delete r.dep_lags; }
     });
   }
 
@@ -5396,6 +5399,10 @@ function toRow(it) {
     // strängar (ghNewId()-UUID:er), aldrig objekt - se dependencyPickerRows
     // /buildLinkPayloadFromForm.
     depends_on: Array.isArray(it.dependsOn) ? [...new Set(it.dependsOn.filter(Boolean).map(String))] : [],
+    // Glapp per koppling (sätts i 4D-dashboardens Gantt, Victor 2026-10-07): { föregångarens id: dagar }.
+    // Bara de som hör till en koppling som finns kvar; undefined tar bort fältet. Saknas depLags (posten
+    // är inte inläst från filen) skrivs inget – då behålls filens glapp vid sparningen.
+    ...(it.depLags ? { dep_lags: depLagsFor(it.depLags, it.dependsOn) } : {}),
     // Sätts bara på objekt som kommer från "4-veckorsplanering"-importen
     // (se plan-excel-parser.js/commitPlanImport) - en radnummer-oberoende
     // nyckel (flik+rubrik+elementkod/aktivitetstext) som gör att en ny
@@ -5422,6 +5429,12 @@ function toRow(it) {
     excel_map: Array.isArray(it.excelMap) && it.excelMap.length ? it.excelMap : null,
     updated_at: new Date().toISOString()
   };
+}
+
+function depLagsFor(lags, deps) {
+  const keep = new Set((deps || []).map(String));
+  const out = Object.fromEntries(Object.entries(lags || {}).filter(([k, v]) => keep.has(k) && Number.isFinite(Number(v)) && v !== null && v !== ""));
+  return Object.keys(out).length ? out : undefined;
 }
 
 /* Status mot dagens datum (Victor 2026-10-06: "det vi måste utgå ifrån är väl dagens datum"):
@@ -5458,6 +5471,7 @@ function fromRowStored(row) {
     progress: Number.isFinite(row.progress) ? row.progress : 0,
     estimatedHours: Number.isFinite(row.estimated_hours) ? row.estimated_hours : null,
     dependsOn: Array.isArray(row.depends_on) ? row.depends_on.map(String) : [],
+    depLags: row.dep_lags && typeof row.dep_lags === "object" && !Array.isArray(row.dep_lags) ? row.dep_lags : null,
     sourceKey: row.source_key || null,
     origin: row.origin || null,
     ppGuid: row.pp_guid || null,
