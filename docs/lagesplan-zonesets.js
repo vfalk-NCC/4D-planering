@@ -32,11 +32,14 @@ function planSwitchZoneSet(p, id) {
 /* Posten som sparas: alltid vanliga zoner i zones/wbs och prefab i zones_prefab/wbs_prefab. */
 function planRecordForSave(p) {
   const rec = { ...p };
+  const clean = zs => (Array.isArray(zs) ? zs.map(z => { const o = {}; for (const k in z) if (!k.startsWith("_")) o[k] = z[k]; return o; }) : zs);
   if (p._zoneSet === "prefab") {
     rec.zones_prefab = p.zones || []; rec.wbs_prefab = p.wbs;
     rec.zones = p._zonesMain || []; rec.wbs = p._wbsMain;
   }
   delete rec._zonesMain; delete rec._wbsMain; delete rec._zoneSet;
+  // Zonernas tillfälliga fält (_status m.m.) sparas inte (lagesplan-merge.js).
+  rec.zones = clean(rec.zones); if (rec.zones_prefab) rec.zones_prefab = clean(rec.zones_prefab);
   ["wbs", "wbs_prefab"].forEach(k => { if (rec[k] === undefined || rec[k] === null) delete rec[k]; });
   if (Array.isArray(rec.zones_prefab) && !rec.zones_prefab.length && !rec.wbs_prefab) delete rec.zones_prefab;
   return rec;

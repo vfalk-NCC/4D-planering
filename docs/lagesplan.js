@@ -130,6 +130,10 @@ async function init() {
     [items, plans, positions, subActs] = await Promise.all([ghReadJSON(token, dataPath("plan_items.json")), ghReadJSON(token, dataPath("status_plans.json")),
       ghReadJSON(token, dataPath("plan_item_positions.json")).catch(() => []), ghReadJSON(token, dataPath("plan_item_activities.json")).catch(() => [])]);
     subCoupledCache = null;
+    // Tillfälliga fält som äldre versioner sparat (zonernas _status) tas bort, och basen för
+    // sammanslagning vid sparning sätts (lagesplan-merge.js).
+    if (typeof cleanPlanRecord === "function") plans = plans.map(cleanPlanRecord);
+    if (typeof planBaseSet === "function") planBaseSet(plans);
   } catch (e) {
     setBusy("");
     if (/\b401\b/.test(e.message)) {
@@ -775,17 +779,26 @@ async function savePlan(p = plan) {
   delete rec._calibSet; delete rec._isNew;
   p.updated_at = rec.updated_at;
   const calibSet = !!p._calibSet, isNew = !!p._isNew;
-  let kept = null, gone = false;
+  const startSig = typeof planSig === "function" ? planSig(rec) : "";
+  const baseSig = typeof planBase !== "undefined" ? planBase.get(rec.id) : null;
+  let gone = false, written = null, merged = false, conflicts = 0;
   setSaveStatus("Sparar…");
   try {
-    plans = await ghWriteJSON(token, dataPath("status_plans.json"),
+    const result = await ghWriteJSON(token, dataPath("status_plans.json"),
       arr => {
         const i = arr.findIndex(x => x.id === rec.id), cur = i >= 0 ? arr[i] : null;
+        merged = false; conflicts = 0; gone = false;
         if (cur) {
-          if (cur.file_path) { rec.file_path = cur.file_path; rec.file_name = cur.file_name || rec.file_name; }
-          if (cur.calib && !calibSet && JSON.stringify(cur.calib) !== JSON.stringify(rec.calib)) { rec.calib = cur.calib; kept = cur.calib; }
-          arr[i] = rec;
-        } else if (isNew) arr.push(rec);
+          let next = { ...rec };
+          if (cur.file_path) { next.file_path = cur.file_path; next.file_name = cur.file_name || next.file_name; }
+          // Ändrad någon annanstans sedan vi läste den: slå ihop i stället för att skriva över (lagesplan-merge.js).
+          if (baseSig && typeof mergePlanRecord === "function" && planSig(cur) !== baseSig) {
+            const m = mergePlanRecord(JSON.parse(baseSig), next, cur);
+            next = m.rec; merged = true; conflicts = m.conflicts;
+          } else if (cur.calib && !calibSet && JSON.stringify(cur.calib) !== JSON.stringify(next.calib)) next.calib = cur.calib; // äldre bas saknas: projektets kalibrering gäller
+          if (calibSet) next.calib = rec.calib;
+          arr[i] = written = next;
+        } else if (isNew) arr.push(written = rec);
         else gone = true; // borttagen (t.ex. på en annan enhet): återskapa den inte
         return arr;
       },
@@ -793,13 +806,23 @@ async function savePlan(p = plan) {
     if (gone) { setSaveStatus(`⚠ Planen "${rec.name}" finns inte längre i projektet – ändringen sparades inte.`); return; }
     if (calibSet) delete p._calibSet;
     delete p._isNew;
-    if (kept) { // kalibreringen i projektet var nyare än den här enhetens – använd den
-      p.calib = kept;
-      if (p === plan) { invalidatePositions(); renderOrtho(); renderZones(); }
+    // Planen i minnet ligger kvar i listan (inte en kopia), så att allt annat ser samma plan.
+    plans = result.map(r => (r.id === p.id ? p : r));
+    const unchanged = typeof planSig !== "function" || planSig({ ...(typeof planRecordForSave === "function" ? planRecordForSave(p) : p), updated_at: rec.updated_at, updated_by: rec.updated_by }) === startSig;
+    const differs = written && JSON.stringify(written) !== JSON.stringify({ ...rec, file_path: written.file_path, file_name: written.file_name });
+    if (differs && unchanged && typeof applyPlanRecord === "function") {
+      applyPlanRecord(p, written);
+      if (p === plan) { invalidatePositions(); renderOrtho(); renderZones(); if (typeof renderLayerPanel === "function") renderLayerPanel(); }
     }
-    setSaveStatus(`✓ Sparad ${new Date().toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}`);
+    // Basen flyttas bara fram när planen i minnet motsvarar det som sparades – annars slås det ihop igen nästa gång.
+    if (typeof planBase !== "undefined" && written && (unchanged || !differs)) planBase.set(written.id, planSig(written));
+    if (differs && !unchanged) schedulePlanSave();
+    setSaveStatus(merged
+      ? `✓ Sparad ${new Date().toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })} – ändringar från en annan enhet har lagts ihop${conflicts ? ` (${conflicts} ändrade på båda ställena – dina gäller)` : ""}`
+      : `✓ Sparad ${new Date().toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}`);
   } catch (e) {
     setSaveStatus("⚠ Kunde inte spara: " + e.message);
+    if (typeof showAppError === "function") showAppError("Lägesplanen kunde inte sparas: " + e.message);
   }
 }
 
@@ -1717,7 +1740,7 @@ function bindUI() {
     const gone = plan;
     if (savePending === gone) { clearTimeout(saveTimer); savePending = null; } else await flushPlanSave();
     try {
-      plans = await ghWriteJSON(token, dataPath("status_plans.json"), arr => arr.filter(p => p.id !== gone.id), `Lägesplan: ta bort ${gone.name}`);
+      plans = (await ghWriteJSON(token, dataPath("status_plans.json"), arr => arr.filter(p => p.id !== gone.id), `Lägesplan: ta bort ${gone.name}`)).map(r => (typeof cleanPlanRecord === "function" ? cleanPlanRecord(r) : r));
       ghDeleteBinary(token, gone.file_path, `Lägesplan: ta bort ${gone.name}`);
       plan = null; viewport = null;
       renderPlanSelect();
