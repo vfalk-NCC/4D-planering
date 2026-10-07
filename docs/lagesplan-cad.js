@@ -394,6 +394,13 @@ async function ensureCadGeom(rec) {
   })().finally(() => cadLoading.delete(rec.id)));
   return cadLoading.get(rec.id);
 }
+/* Flera DXF:er: sex åt gången i stället för en i taget (Victor 2026-10-07: optimera – 34 DXF:er
+   hämtades efter varandra innan något kunde ritas). Fel för en fil stoppar inte de andra. */
+async function ensureCadGeoms(list, conc = 6) {
+  const queue = list.filter(r => !cadGeom.has(r.id));
+  const worker = async () => { for (let r = queue.shift(); r; r = queue.shift()) { try { await ensureCadGeom(r); } catch (e) { console.warn("Kunde inte hämta CAD", r.name, e); } } };
+  await Promise.all(Array.from({ length: Math.min(conc, queue.length) }, worker));
+}
 /* Skala om en inlagd ritning till en annan enhet (t.ex. om den hamnat fel
    för att filen var i mm). Geometrin räknas om och sparas på nytt. */
 async function rescaleCad(rec, newFactor) {
@@ -605,7 +612,7 @@ async function renderCad() {
   if (!c0) return;
   const seq = ++cadSeq;
   const list = (plan && plan.calib && viewport) ? cads().filter(r => ls("cad:" + r.id).visible) : [];
-  for (const r of list) { try { await ensureCadGeom(r); } catch (e) { console.warn("Kunde inte hämta CAD", r.name, e); } }
+  await ensureCadGeoms(list);
   if (seq !== cadSeq) return;
   if (list.some(r => cadGeom.has(r.id)) && !cadSnapIndex) buildCadSnap();
   const want = new Set(list.map(r => "cad:" + r.id));

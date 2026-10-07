@@ -17,7 +17,7 @@ function lsViewSnapshot() {
   });
   // Lager som syns i listan men aldrig rörts har standardläget (tänt).
   layerRowKeys().forEach(k => { if (!layers[k]) { const s = ls(k); layers[k] = { visible: !!s.visible, opacity: s.opacity ?? 100 }; } });
-  return { layers, pdfMultiply: layerState.pdfMultiply !== false, orthoFollowDate: !!layerState.orthoFollowDate, photoZone: layerState.phzone || "" };
+  return { layers: typeof pruneLayerState === "function" ? pruneLayerState(layers) : layers, pdfMultiply: layerState.pdfMultiply !== false, orthoFollowDate: !!layerState.orthoFollowDate, photoZone: layerState.phzone || "" };
 }
 function lsViewCamera() {
   const vp = $("viewport").getBoundingClientRect(), pc = $("pdfCanvas");

@@ -780,12 +780,29 @@ document.addEventListener("DOMContentLoaded", () => {
   const orig = renderLayerPanel;
   renderLayerPanel = function () { const r = orig.apply(this, arguments); const el = $("layerList"); if (el) bindZoneLayerRows(el); return r; };
   // Zonerna ändras (ny, borttagen, nytt namn, dold, ny fas): uppdatera lagerlistan.
-  let sig = "";
+  // Bara zonraderna uppdateras på plats när zonerna är desamma (markering, fas, dold, färg) – hela
+  // lagerpanelen byggs om först när zoner läggs till, tas bort eller byter namn (Victor 2026-10-07:
+  // förut byggdes hela panelen om vid varje klick på en zon och varje datumbyte).
+  let sig = "", rowsSig = "";
   const orl = renderZoneList;
   renderZoneList = function () {
     const r = orl.apply(this, arguments);
-    const s = zoneLayerList().map(z => [z.id, z.code, z.name, z.style && z.style.hidden, z.style && z.style.fill, z.style && z.style.fillColor, (z._status || {}).phase, (z._status || {}).items ? z._status.items.length : 0].join("|")).join(";") + "#" + selectedZoneId;
-    if (s !== sig) { sig = s; renderLayerPanel(); }
+    const list = zoneLayerList();
+    const rs = list.map(z => [z.id, z.code, z.name].join("|")).join(";");
+    const s = rs + "#" + list.map(z => [z.style && z.style.hidden, z.style && z.style.fill, z.style && z.style.fillColor, (z._status || {}).phase, (z._status || {}).items ? z._status.items.length : 0].join("|")).join(";") + "#" + selectedZoneId + "#" + (typeof photoZoneId === "function" ? photoZoneId() : "");
+    if (s === sig) return r;
+    const el = $("layerList"), rows = el ? [...el.querySelectorAll(".zone-layer-row[data-zone]")] : [];
+    if (rs === rowsSig && rows.length === list.length && rows.every((row, i) => row.dataset.zone === list[i].id)) {
+      const tmp = document.createElement("div");
+      rows.forEach((row, i) => {
+        tmp.innerHTML = zoneLayerRowsHtml([list[i]], { inFolder: row.classList.contains("in-folder"), hidden: row.classList.contains("hidden") });
+        const nr = tmp.firstElementChild;
+        if (row.classList.contains("filtered")) nr.classList.add("filtered");
+        if (nr.outerHTML !== row.outerHTML) row.replaceWith(nr);
+      });
+      bindZoneLayerRows(el);
+    } else renderLayerPanel();
+    sig = s; rowsSig = rs;
     return r;
   };
 });

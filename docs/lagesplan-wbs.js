@@ -104,7 +104,7 @@ function drawWbsShapes(ctx, fontPx, objects, groups, filled) {
       ctx.globalAlpha = (zs.fillOpacity != null ? zs.fillOpacity : objects && objects.length ? ZONE_ALPHA / 3 : ZONE_ALPHA) * (zs.hidden ? 0.3 : 1);
       ctx.fillStyle = color;
       if (zs.pattern === "none") ctx.fill("evenodd");
-      else { ctx.globalAlpha *= 0.35; ctx.fill("evenodd"); ctx.globalAlpha /= 0.35; ctx.save(); ctx.clip("evenodd"); zonePatternFill(ctx, zs.pattern, color, fontPx); ctx.restore(); path(); }
+      else { ctx.globalAlpha *= 0.35; ctx.fill("evenodd"); ctx.globalAlpha /= 0.35; ctx.save(); ctx.clip("evenodd"); { const q = g.polys.flat(2).map(toPx); zonePatternFill(ctx, zs.pattern, color, fontPx, q.length ? [Math.min(...q.map(v => v[0])), Math.min(...q.map(v => v[1])), Math.max(...q.map(v => v[0])), Math.max(...q.map(v => v[1]))] : null); } ctx.restore(); path(); }
       ctx.globalAlpha = zs.hidden ? 0.4 : 1;
     }
     ctx.lineJoin = "round";

@@ -267,9 +267,12 @@ function itemsForZone(zone) {
   }
   const code = normCode(zone.code);
   const pos = positionsInPdf();
-  const polys = zone.polys || [];
+  const polys = (zone.polys || []).filter(p => p.length > 2);
+  // Rutan runt varje polygon först – punkt-i-polygon bara för objekt som kan ligga i zonen.
+  const boxes = polys.map(p => { let a = Infinity, b = Infinity, c = -Infinity, d = -Infinity; for (const q of p) { if (q[0] < a) a = q[0]; if (q[0] > c) c = q[0]; if (q[1] < b) b = q[1]; if (q[1] > d) d = q[1]; } return [a, b, c, d]; });
+  const inZone = q => polys.some((poly, i) => { const bx = boxes[i]; return q[0] >= bx[0] && q[0] <= bx[2] && q[1] >= bx[1] && q[1] <= bx[3] && pointInPoly(q, poly); });
   return visibleItems().filter(it => (code && itemCodes(it).has(code)) ||
-    (pos && polys.length && pos.has(it.id) && polys.some(poly => pointInPoly(pos.get(it.id), poly))));
+    (pos && polys.length && pos.has(it.id) && inZone(pos.get(it.id))));
 }
 
 // ---------------------------------------------------------------------
@@ -940,7 +943,8 @@ function textFixed() { try { return localStorage.getItem("lagesplan-textfixed") 
 function planFontPx() {
   const zc = $("zoneCanvas");
   if (textFixed()) return Math.max(2, 13 * textScale() / Math.max(0.01, view.scale));
-  return Math.max(14, Math.round(zc.width / 110)) * textScale();
+  // Efter ritningens storlek (inte zonlagrets, som följer zoomen) – samma textstorlek oavsett zoom.
+  return Math.max(14, Math.round(($("pdfCanvas").width || zc.width) / 110)) * textScale();
 }
 /* Namnen på skärmen: eget canvas ovanpå ritningen i skärmens koordinater,
    ritas om vid varje zoom/panorering. */
@@ -983,10 +987,16 @@ const STAGE_CANVASES = ["orthoCanvas", "pdfCanvas", "zoneCanvas", "objCanvas", "
    PDF, film) ritas hela bladet som förut – utskrifternas storlek påverkas inte. */
 let ovFull = false, ovLast = null, ovTimer = 0;
 const OV_BUDGET = 20e6; // max pixlar per lager
+/* Utzoomat ritas zonerna, objekten och etableringen i skärmens upplösning (i steg om 25 %), inte i
+   ritningens – förut ritades tre lager à 5000×3500 px vid varje ändring (Victor 2026-10-07: optimera).
+   Bildexporten (ovFull) ritar fortfarande i full upplösning. */
+const OV_MIN_S = 0.2;
+const ovStep = s => Math.pow(1.25, Math.round(Math.log(s) / Math.log(1.25)));
 function overlayRegion() {
   const pc = $("pdfCanvas"), W = pc.width, H = pc.height, full = { x0: 0, y0: 0, w: W, h: H, s: 1, full: true };
   const s0 = view.scale * (window.devicePixelRatio || 1);
-  if (ovFull || !W || s0 <= 1.05) return full;
+  if (ovFull || !W) return full;
+  if (s0 <= 1.05) { const s = Math.min(1, Math.max(OV_MIN_S, ovStep(s0))); return s >= 0.99 ? full : { ...full, s }; }
   const vb = visibleStageBox(), mw = (vb[2] - vb[0]) * 0.5, mh = (vb[3] - vb[1]) * 0.5;
   const x0 = Math.max(0, vb[0] - mw), y0 = Math.max(0, vb[1] - mh), x1 = Math.min(W, vb[2] + mw), y1 = Math.min(H, vb[3] + mh);
   if (x1 <= x0 || y1 <= y0) return full;
@@ -1001,7 +1011,7 @@ function scheduleOverlayRerender() {
   if (!ovLast || !viewport) return;
   const s0 = view.scale * (window.devicePixelRatio || 1);
   const wantFull = s0 <= 1.05;
-  if (ovLast.full && wantFull) return;
+  if (ovLast.full && wantFull) { if (Math.abs(overlayRegion().s / ovLast.s - 1) < 0.01) return; clearTimeout(ovTimer); ovTimer = setTimeout(renderZones, 160); return; }
   let outside = false;
   if (!ovLast.full) { const vb = visibleStageBox(); outside = vb[0] < ovLast.x0 - 1 || vb[1] < ovLast.y0 - 1 || vb[2] > ovLast.x0 + ovLast.w + 1 || vb[3] > ovLast.y0 + ovLast.h + 1; }
   const res = ovLast.full ? !wantFull : (wantFull || Math.abs(s0 / ovLast.s0 - 1) > 0.15);
@@ -1056,14 +1066,18 @@ let zoneLabelBoxes = []; // zonetiketter på skärmen (stage-px): { x, y, w, h, 
    zonen. Utan style ser zonen ut som förut. */
 const ZONE_STYLE_DEFAULT = { fill: "phase", fillColor: "#2563eb", fillOpacity: null, pattern: "none", stroke: "auto", strokeColor: "#1f2937", strokeWidth: 1, dash: "auto", label: "pill", labelSize: 1, labelPct: true, labelName: false, hidden: false };
 const zoneStyle = z => ({ ...ZONE_STYLE_DEFAULT, ...(z.style || {}) });
-function zonePatternFill(ctx, pattern, color, fontPx) {
+/* box = [x0, y0, x1, y1] (i ctx-koordinater): mönstret ritas bara där, inte över hela bilden
+   (förut drogs linjerna över hela ritningen för varje zon och klipptes – det var det som tog tid). */
+function zonePatternFill(ctx, pattern, color, fontPx, box = null) {
   const step = Math.max(6, fontPx * 0.7);
   ctx.save(); ctx.clip();
   ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = Math.max(1, fontPx / 12); ctx.globalAlpha = Math.min(1, ctx.globalAlpha * 2.2);
   const c = ctx.canvas, W = c.width * 2, H = c.height * 2; // ritas över hela den klippta ytan
   const t = ctx.getTransform(), inv = t.inverse();
   const P = [[0, 0], [c.width, 0], [0, c.height], [c.width, c.height]].map(([x, y]) => [inv.a * x + inv.c * y + inv.e, inv.b * x + inv.d * y + inv.f]);
-  const x0 = Math.min(...P.map(p => p[0])), x1 = Math.max(...P.map(p => p[0])), y0 = Math.min(...P.map(p => p[1])), y1 = Math.max(...P.map(p => p[1]));
+  let x0 = Math.min(...P.map(p => p[0])), x1 = Math.max(...P.map(p => p[0])), y0 = Math.min(...P.map(p => p[1])), y1 = Math.max(...P.map(p => p[1]));
+  if (box) { x0 = Math.max(x0, box[0] - step); y0 = Math.max(y0, box[1] - step); x1 = Math.min(x1, box[2] + step); y1 = Math.min(y1, box[3] + step); }
+  if (x1 <= x0 || y1 <= y0) { ctx.restore(); return; }
   ctx.beginPath();
   if (pattern === "dots") {
     const r = Math.max(1, fontPx / 10);
@@ -1100,7 +1114,11 @@ function drawZoneShapes(ctx, fontPx, objects, cached) {
       if (zs.fill !== "none" && !noStatus) {
         ctx.globalAlpha = baseA * (focusActive() ? 0.4 : 1) * (zs.hidden ? 0.3 : 1);
         if (zs.pattern === "none") { ctx.fillStyle = color; ctx.fill(); }
-        else { ctx.globalAlpha *= 0.35; ctx.fillStyle = color; ctx.fill(); ctx.globalAlpha /= 0.35; zonePatternFill(ctx, zs.pattern, color, fontPx); path(); }
+        else {
+          ctx.globalAlpha *= 0.35; ctx.fillStyle = color; ctx.fill(); ctx.globalAlpha /= 0.35;
+          const q = poly.map(toPx), bx = [Math.min(...q.map(v => v[0])), Math.min(...q.map(v => v[1])), Math.max(...q.map(v => v[0])), Math.max(...q.map(v => v[1]))];
+          zonePatternFill(ctx, zs.pattern, color, fontPx, bx); path();
+        }
       }
       ctx.globalAlpha = zs.hidden ? 0.4 : 1;
       const lw = Math.max(1.5, fontPx / 8) * (Number(zs.strokeWidth) || 1);

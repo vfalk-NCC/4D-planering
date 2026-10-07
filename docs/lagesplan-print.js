@@ -59,6 +59,8 @@ const vpView = el => el.layers && el.layers.view && typeof lsViews === "function
 const vpMode = el => (vpView(el) ? "view" : el.layers && !el.layers.follow && el.layers.state ? "own" : "follow");
 /* Skärmens lagerläge – även när lagerpanelen just nu visar en ritnings lager. */
 const prScreenState = () => (prLayerHold ? prLayerHold.screen : layerState);
+/* Ritningens eget lagerläge som det sparas i mallen: utan borttagna lager och DXF-lager i standardläget. */
+const prStateForSave = st => (typeof pruneLayerState === "function" ? pruneLayerState(JSON.parse(JSON.stringify(st)), { dropDefaults: true }) : JSON.parse(JSON.stringify(st)));
 /* Kör fn (synkront!) med lagerläget st. */
 function withLayerState(st, fn) {
   const saved = layerState;
@@ -144,7 +146,7 @@ saveLayerState = function () {
   // Ett ångra-steg per serie ändringar (t.ex. ett dragreglage).
   if (!prLayerHold.u) pushUndo();
   clearTimeout(prLayerHold.u); prLayerHold.u = setTimeout(() => { if (prLayerHold) prLayerHold.u = 0; }, 800);
-  el.layers = { follow: false, state: JSON.parse(JSON.stringify(layerState)) };
+  el.layers = { follow: false, state: prStateForSave(layerState) };
   pr.dirty = true;
   clearTimeout(prLayerHold.t);
   prLayerHold.t = setTimeout(() => { if (pr) drawPrintPage(); }, 120);
@@ -155,7 +157,7 @@ saveLayerState = function () {
 // ---------------------------------------------------------------------
 function newMapEl(x, y, w, h, format) {
   return { id: ghNewId(), type: "map", x, y, w, h, scale: fitScale(w, h, format), center: viewCenterModel(), border: true,
-    layers: { follow: false, state: JSON.parse(JSON.stringify(prScreenState())) }, label: { show: false, name: "", size: 9, align: "left" } };
+    layers: { follow: false, state: prStateForSave(prScreenState()) }, label: { show: false, name: "", size: 9, align: "left" } };
 }
 function defaultTemplate() {
   const id = () => ghNewId();
@@ -306,7 +308,7 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
     pdfVis: layerVisible("pdf"), pdfOp: layerOpacity("pdf"), pdfMultiply: layerState.pdfMultiply !== false,
     overlays: typeof pdfOverlaysForPrint === "function" ? pdfOverlaysForPrint() : [],
   }));
-  for (const r of L.cads) { try { await ensureCadGeom(r); } catch (e) {} }
+  await ensureCadGeoms(L.cads);
   const P = mapPlate(el, wMm, hMm, pxW, pxH);
   P.noTiles = !!opts.preview;
   // DXF i den här ritningen: linjetjocklek och minsta texthöjd på papperet (Victors önskemål 2026-10-06).
@@ -1410,7 +1412,7 @@ function renderPrintProps(onlyPos) {
       const v = e.target.value, before = JSON.parse(JSON.stringify(vpLayerState(el)));
       prLayersDetach(); pushUndo();
       // Eget urval börjar med det ritningen visade nyss – inget ändras förrän man tänder/släcker.
-      el.layers = v === "follow" ? { follow: true } : v === "own" ? { follow: false, state: before } : { follow: false, view: v.slice(5) };
+      el.layers = v === "follow" ? { follow: true } : v === "own" ? { follow: false, state: prStateForSave(before) } : { follow: false, view: v.slice(5) };
       pr.dirty = true; renderPrintProps(); drawPrintPage();
     };
     on("prViewCam", () => {
@@ -1427,14 +1429,15 @@ function renderPrintProps(onlyPos) {
     on("prLayScreen", () => {
       const screen = prScreenState();
       prLayersDetach(); pushUndo();
-      el.layers = { follow: false, state: JSON.parse(JSON.stringify(screen)) };
+      el.layers = { follow: false, state: prStateForSave(screen) };
       pr.dirty = true; renderPrintProps(); drawPrintPage();
     });
   }
 }
 
 async function saveTemplate() {
-  const t = { ...pr.tpl, updated_at: new Date().toISOString() };
+  // Ritningarnas lagerläge sparas utan borttagna lager (mallarna hade vuxit till flera hundra kB).
+  const t = { ...pr.tpl, elements: pr.tpl.elements.map(e => e.type === "map" && e.layers && e.layers.state ? { ...e, layers: { ...e.layers, state: prStateForSave(e.layers.state) } } : e), updated_at: new Date().toISOString() };
   await saveSiteItem(t, false, { record: false });
   pr.saved = true; pr.dirty = false;
   try { localStorage.setItem("lagesplan-printtpl", t.id); } catch (e) {}

@@ -202,14 +202,22 @@ async function buildOrthoPlate(o, P, status) {
     const jobs = [];
     for (let ty = Math.floor(v0 / t.size); ty <= Math.min(t.rows - 1, Math.floor(v1 / t.size)); ty++)
       for (let tx = Math.floor(u0 / t.size); tx <= Math.min(t.cols - 1, Math.floor(u1 / t.size)); tx++) if (u1 > u0 && v1 > v0) jobs.push([tx, ty]);
-    for (let i = 0; i < jobs.length; i++) {
-      const [tx, ty] = jobs[i];
-      status(`full upplösning ${i + 1}/${jobs.length}`);
-      const img = await tileAwait(`${t.prefix}t_${tx}_${ty}.webp`);
-      if (!img) continue;
+    // Rutorna hämtas sex åt gången (förut en i taget) och ritas sedan i ordning.
+    const imgs = new Array(jobs.length), queue = jobs.map((_, i) => i);
+    let done = 0;
+    const worker = async () => {
+      for (let i = queue.shift(); i !== undefined; i = queue.shift()) {
+        const [tx, ty] = jobs[i];
+        try { imgs[i] = await tileAwait(`${t.prefix}t_${tx}_${ty}.webp`); } catch (e) { imgs[i] = null; }
+        status(`full upplösning ${++done}/${jobs.length}`);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, jobs.length) }, worker));
+    jobs.forEach(([tx, ty], i) => {
+      if (!imgs[i]) return;
       ctx.setTransform(...mulAffine(mf, [1, 0, 0, 1, tx * t.size, ty * t.size]));
-      ctx.drawImage(img, 0, 0);
-    }
+      ctx.drawImage(imgs[i], 0, 0);
+    });
   }
   return c;
 }

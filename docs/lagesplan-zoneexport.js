@@ -95,9 +95,21 @@ function scheduleZoneExport(delay = 5000) {
   clearTimeout(zoneExportTimer);
   zoneExportTimer = setTimeout(runZoneExport, delay);
 }
+/* Billigt fingeravtryck av det exporten bygger på – oförändrat (t.ex. vid zoom) räknas inget om. */
+let zoneExportFp = null;
+function zoneExportFingerprint() {
+  const day = ($("dateInput") && $("dateInput").value) || "";
+  const zs = plans.map(p => { const z = typeof zonesMainOf === "function" ? zonesMainOf(p) : (p.zones || []); return [p.id, p.calib ? JSON.stringify(p.calib) : "", z.map(x => [x.id, x.code, x.name, x.parent, JSON.stringify(x.polys), JSON.stringify(x.rule || null)].join("|")).join(";")].join("#"); }).join("@");
+  if (!zoneExportFingerprint.ids) zoneExportFingerprint.ids = new WeakMap();
+  const idOf = o => { if (!o || typeof o !== "object") return String(o); const m = zoneExportFingerprint.ids; if (!m.has(o)) m.set(o, (zoneExportFingerprint.n = (zoneExportFingerprint.n || 0) + 1)); return m.get(o); };
+  const itemsAt = items.reduce((m, x) => (x && x.updated_at > m ? x.updated_at : m), "");
+  return [day, zs, idOf(items), items.length, itemsAt, idOf(typeof positions !== "undefined" ? positions : null), typeof planSource !== "undefined" ? planSource : ""].join("¤");
+}
 async function runZoneExport() {
   if (typeof token === "undefined" || !token || !Array.isArray(plans) || !Array.isArray(items) || !items.length) return;
   if (zoneExportBusy) { scheduleZoneExport(); return; }
+  const fp = zoneExportFingerprint();
+  if (fp === zoneExportFp) return;
   if (!plans.some(p => (typeof zonesMainOf === "function" ? zonesMainOf(p) : (p.zones || [])).length)) return;
   if (typeof planSource !== "undefined" && planSource === "pp") return; // zonerna till Excel gäller Excel-planeringen
   zoneExportBusy = true;
@@ -108,11 +120,12 @@ async function runZoneExport() {
       if (cur && typeof cur === "object" && !Array.isArray(cur)) { const { updated_at, by, ...rest } = cur; zoneExportSig = JSON.stringify(rest); }
       else zoneExportSig = "";
     }
+    zoneExportFp = fp;
     if (sig === zoneExportSig) return;
     const rec = { ...data, updated_at: new Date().toISOString(), by: (typeof settings !== "undefined" && settings.userName) || null };
     await ghWriteJSON(token, dataPath(ZONE_EXPORT_FILE), () => rec, "Lägesplan: zoner till Excel");
     zoneExportSig = sig;
-  } catch (e) { console.warn("Kunde inte spara zonerna till Excel", e); }
+  } catch (e) { zoneExportFp = null; console.warn("Kunde inte spara zonerna till Excel", e); }
   finally { zoneExportBusy = false; }
 }
 

@@ -440,9 +440,36 @@ async function redoSite() {
   selectedSiteId = null; closeSitePop(); updateUndoButtons(); setSaveStatus(`↷ Gjorde om: ${e.label}`);
 }
 
+/* Lagerinställningar för lager som inte finns längre – borttagna DXF:er (och deras lager) och
+   ortofoton – rensas bort (Victor 2026-10-07: optimera). De följde annars med för alltid: i skärmens
+   läge, i varje sparad vy och i varje ritning i utskriftsmallarna (site_layers.json hade vuxit till
+   över 1 MB). dropDefaults: DXF-lager i standardläget (tänt, 100 %) behöver inte sparas i ett fullt
+   lagerläge (en ritnings eget urval), eftersom ls() ger samma sak. Inget rensas förrän projektets
+   lager är inlästa. */
+function pruneLayerState(st, { dropDefaults = false } = {}) {
+  if (!st || typeof st !== "object" || !siteLoaded) return st;
+  const cadIds = new Set((typeof cads === "function" ? cads() : []).map(r => r.id)), orthoIds = new Set(orthos().map(o => o.id));
+  const out = {};
+  for (const [k, v] of Object.entries(st)) {
+    let m;
+    if ((m = /^(?:cad|cadopen):(.+)$/.exec(k)) && !cadIds.has(m[1])) continue;
+    if ((m = /^cadl:([^:]+):/.exec(k))) {
+      if (!cadIds.has(m[1])) continue;
+      if (dropDefaults && v && v.visible === true && (v.opacity ?? 100) === 100 && Object.keys(v).length <= 2) continue;
+    }
+    if ((m = /^ortho:(.+)$/.exec(k)) && !orthoIds.has(m[1])) continue;
+    out[k] = v;
+  }
+  return out;
+}
 async function loadSiteLayers() {
   try { siteItems = await ghReadJSON(token, sitePath()); } catch (e) { siteItems = []; console.warn("Kunde inte läsa site_layers.json", e); }
   siteLoaded = true;
+  { // skärmens läge (i webbläsaren): rensa bort borttagna lager
+    const kept = pruneLayerState(layerState);
+    const gone = Object.keys(layerState).filter(k => !(k in kept));
+    if (gone.length) { gone.forEach(k => delete layerState[k]); saveLayerState(); }
+  }
   renderActiveLayerSelect();
   if (typeof setupDateRange === "function" && dateMin != null) setupDateRange();
   syncOrthoToDate();
