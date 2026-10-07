@@ -42,14 +42,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     renderPlanSelect(); await openPlan('A');
     invalidateVisible(); invalidatePositions(); renderZones();
     const files = {}, calls = [];
-    downloadBlob = (blob, name) => { files[name.slice(-3)] = { blob, name }; };
+    downloadBlob = (blob, name) => { files[name.startsWith('Zonvolymer') ? 'vol' : name.slice(-3)] = { blob, name }; };
     askOpener = async (type, extra) => { calls.push([type, extra.folder, extra.files[0].name]); return { folder: extra.folder }; };
     Object.defineProperty(window, 'opener', { value: { closed: false }, configurable: true, writable: true });
     $('cadExportToTc').checked = true;
     await exportZonesDxf(); await exportZonesIfc();
     const dxfText = new TextDecoder('windows-1252').decode(new Uint8Array(await files.dxf.blob.arrayBuffer()));
     const dxf = parseDxf(dxfText), geo = dxfToGeometry(dxf);
-    return { names: [files.dxf.name, files.ifc.name], calls, status: $('saveStatus').textContent, ifc: await files.ifc.blob.text(),
+    const { rx, ry } = ifcReadDir();
+    const lbl = zoneCadList().map(e => { const L = zoneIfcLabel(e, rx, ry, []); return [e.name, L.lines, L.h]; });
+    const cf = zoneIfcColors([{ parent: '741 Sektionsfickor' }, { parent: '742 Sikthall' }, { parent: '', ph: 'klar' }]);
+    const grp = [cf({ parent: '741  sektionsfickor' }).col, cf({ parent: '741 Sektionsfickor' }).col, cf({ parent: '742 Sikthall' }).col, cf({ parent: '', ph: 'klar' }).col === phaseColor('klar')];
+    return { grp, lbl, vol: files.vol && await files.vol.blob.text(), volName: files.vol && files.vol.name, names: [files.dxf.name, files.ifc.name], calls, status: $('saveStatus').textContent, ifc: await files.ifc.blob.text(),
       layers: Object.keys(dxf.layers).sort(), polys: dxf.entities.filter(e => e.type === 'POLYLINE').map(e => [(e.g.find(p => p[0] === 8) || [])[1], e.verts.map(v => [Number(v.g.find(p => p[0] === 10)[1]), Number(v.g.find(p => p[0] === 20)[1])])]),
       texts: geo.filter(x => x.text).map(x => [x.text, x.x, x.y]), dxfText };
   });
@@ -82,7 +86,25 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!/IFCEXTRUDEDAREASOLID\(#\d+,\$,#\d+,0\.5\)/.test(t) || !/IFCARBITRARYCLOSEDPROFILEDEF/.test(t)) fail('0,5 m tjocka plattor av zonens form');
   if (!/'Yta m\\X2\\00B2\\X0\\',\$,IFCREAL\(100\.\)/.test(t) || !/'\\X2\\00D6\\X0\\verzon',\$,IFCLABEL\('741 Sektionsfickor'\)/.test(t) || !/'Status',\$,IFCLABEL\('P\\X2\\00E5\\X0\\g\\X2\\00E5\\X0\\ende'\)/.test(t)) fail('Egenskaper på plattan (yta, överzon, status)');
   console.log('OK: zonerna som IFC – 0,5 m plattor på kalibrerad maxhöjd, kod + namn ovanpå, egenskaper, inga trasiga referenser');
-  if (r.calls.length !== 2 || !r.calls.every(c => c[1] === 'Lägesplan export') || !/på \+14\.00/.test(r.status)) fail('Lokal kopia och Trimble Connect för båda: ' + JSON.stringify(r.calls) + ' ' + r.status);
+  // Samma texthöjd i alla zoner, radbrytning när det blir trångt (Victor 2026-10-07).
+  if (!r.lbl.every(l => l[2] === 1.5) || JSON.stringify(r.lbl.map(l => l[1])) !== JSON.stringify([['7411', 'SEKTIONSFICKOR'], ['7412', 'Förtjockare']])) fail('Texthöjd och radbrytning: ' + JSON.stringify(r.lbl));
+  const reps = [...t.matchAll(/^#\d+=IFCSHAPEREPRESENTATION\(#\d+,'Body','Tessellation',\((#\d+(?:,#\d+)*)\)\);$/gm)].map(m => m[1].split(',').length);
+  if (!reps.length || !reps.every(n => n === 2)) fail('Två textrader per zon: ' + JSON.stringify(reps));
+  // En färg per överzon (Victor 2026-10-07): båda zonerna ligger i 741 Sektionsfickor.
+  if (r.grp[0] !== r.grp[1] || r.grp[1] === r.grp[2] || r.grp[3] !== true) fail('Färg per överzon: ' + JSON.stringify(r.grp));
+  const surf = [...t.matchAll(/IFCSURFACESTYLE\('([^']*)'/g)].map(m => m[1]);
+  if (!surf.includes('741 Sektionsfickor') || surf.some(x => /^P\\X2\\00E5/.test(x)) || !/IFCCOLOURRGB\(\$,0\.145,0\.388,0\.922\)/.test(t)) fail('Plattorna i överzonens färg, inte statusfärg: ' + JSON.stringify(surf));
+  if (!/IFCSURFACESTYLE\('741 Sektionsfickor volym'/.test(r.vol)) fail('Soliderna i överzonens färg');
+  // Den långa soliden: egen fil, +370 till +500.
+  if (!/^Zonvolymer Plan 1 .* \+370 till \+500\.ifc$/.test(r.volName || '')) fail('Volymfilen: ' + r.volName);
+  const vdefs = new Map([...r.vol.matchAll(/^#(\d+)=([A-Z0-9]+)\((.*)\);$/gm)].map(m => [m[1], { type: m[2], args: m[3] }]));
+  if ([...r.vol.matchAll(/#(\d+)/g)].some(m => !vdefs.has(m[1]))) fail('Volymfilen: trasiga referenser');
+  const vols = [...vdefs.values()].filter(d => d.type === 'IFCBUILDINGELEMENTPROXY' && /'4D-zonvolym'/.test(d.args));
+  if (vols.length !== 2 || !/IFCEXTRUDEDAREASOLID\(#\d+,\$,#\d+,130\.\)/.test(r.vol)) fail('En 130 m hög solid per zon');
+  const vp = (() => { const pl = /,'4D-zonvolym',#(\d+),/.exec(vols[0].args)[1]; const ax = vdefs.get(/#(\d+)$/.exec(vdefs.get(pl).args)[1]); return vdefs.get(/^#(\d+)/.exec(ax.args)[1]).args.replace(/[()]/g, '').split(',').map(Number); })();
+  if (Math.abs(vp[2] - 370) > 0.001) fail('Soliden börjar på +370: ' + vp);
+  console.log('OK: IFC – samma texthöjd (1,5 m) i alla zoner med radbrytning, och en solid +370 till +500 per zon i en egen fil');
+  if (r.calls.length !== 3 || !r.calls.every(c => c[1] === 'Lägesplan export') || !/på \+14\.00/.test(r.status)) fail('Lokal kopia och Trimble Connect för båda: ' + JSON.stringify(r.calls) + ' ' + r.status);
   console.log('OK: zonexporterna laddas ned lokalt och sparas i Trimble Connect (Lägesplan export)');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();
