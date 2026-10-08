@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-08 17:37";
+const APP_VERSION = "2026-10-08 17:50";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -3895,6 +3895,8 @@ async function commitPlanImport(diff) {
       actualEndDate: p.actualEndDate,
       progress: p.progress,
       estimatedHours: existing ? existing.estimatedHours : null,
+      // Resurser (antal och timmar per resurs) från Powerproject; har aktiviteten inga där behålls de som finns.
+      resources: p.resources !== undefined ? p.resources : (existing ? existing.resources : null),
       dependsOn: existing ? existing.dependsOn : [],
       depLags: existing ? existing.depLags : null,
       sourceKey: p.sourceKey,
@@ -5424,6 +5426,8 @@ function toRow(it) {
     baseline_start_date: it.baselineStartDate || null,
     baseline_end_date: it.baselineEndDate || null,
     ...(it.baselines && Object.keys(it.baselines).length ? { baselines: it.baselines } : {}),
+    // Resurser per aktivitet (PP-importen / dashboardens "Avancerat (resurser)"): [{ name, qty, hours, start, end }].
+    ...(Array.isArray(it.resources) && it.resources.length ? { resources: it.resources } : {}),
     // Raderna i 4-veckorsplaneringen (för "Hämta framdrift från 4D" i Excel).
     excel_sheet: it.excelSheet || null,
     excel_map: Array.isArray(it.excelMap) && it.excelMap.length ? it.excelMap : null,
@@ -5479,6 +5483,7 @@ function fromRowStored(row) {
     baselineStartDate: row.baseline_start_date || null,
     baselineEndDate: row.baseline_end_date || null,
     baselines: row.baselines && typeof row.baselines === "object" && !Array.isArray(row.baselines) ? row.baselines : null,
+    resources: Array.isArray(row.resources) ? row.resources : null,
     excelSheet: row.excel_sheet || null,
     excelMap: Array.isArray(row.excel_map) ? row.excel_map : null,
     updatedAt: row.updated_at

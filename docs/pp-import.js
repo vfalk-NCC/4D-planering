@@ -36,6 +36,33 @@ function loadSqlJs() {
 const ppDate = v => (v && /^\d{4}-\d{2}-\d{2}/.test(String(v)) ? String(v).slice(0, 10) : null);
 const ppNum = v => { const m = /<([-\d.E+]+)>/i.exec(String(v || "")); return m ? Number(m[1]) || 0 : 0; };
 
+/* Resurstilldelningar: aktivitets-id -> [{ name, qty, hours, start, end }]. Samma resurs två gånger på
+   en aktivitet slås ihop (timmarna summeras, antalet är det största). */
+function ppResources(q, has) {
+  const out = new Map();
+  if (!has("PERMANENT_SCHEDUL_ALLOCATION") || !has("PERMANENT_RESOURCE")) return out;
+  const resName = new Map(q("SELECT ID, NAME FROM PERMANENT_RESOURCE").map(r => [r.ID, String(r.NAME || "").trim()]));
+  // Tilldelningen pekar på en "färdighet" (PERM_RESOURCE_SKILL) vars PLAYER är resursen.
+  const skill = has("PERM_RESOURCE_SKILL") ? new Map(q("SELECT ID, PLAYER, ROLE FROM PERM_RESOURCE_SKILL").map(r => [r.ID, r])) : new Map();
+  const nameOf = id => resName.get(id) || (skill.has(id) ? resName.get(skill.get(id).PLAYER) || resName.get(skill.get(id).ROLE) : "") || "";
+  const r1 = v => Math.round((Number(v) || 0) * 10) / 10;
+  q("SELECT ALLOCATION_OF, ALLOCATED_TO, EFFORT, ALLOCATION, LINKABLE_START, LINKABLE_FINISH FROM PERMANENT_SCHEDUL_ALLOCATION").forEach(a => {
+    const name = nameOf(a.ALLOCATION_OF);
+    if (!name) return;
+    const hours = (Number(a.EFFORT) || 0) / 3600, qty = Number(a.ALLOCATION) || 0;
+    if (!(hours > 0) && !(qty > 0)) return;
+    if (!out.has(a.ALLOCATED_TO)) out.set(a.ALLOCATED_TO, []);
+    const list = out.get(a.ALLOCATED_TO), start = ppDate(a.LINKABLE_START), end = ppDate(a.LINKABLE_FINISH);
+    const same = list.find(x => x.name === name);
+    if (same) {
+      same.hours = r1(same.hours + hours); same.qty = Math.max(same.qty, r1(qty));
+      if (start && (!same.start || start < same.start)) same.start = start;
+      if (end && (!same.end || end > same.end)) same.end = end;
+    } else list.push({ name, qty: r1(qty), hours: r1(hours), start, end });
+  });
+  return out;
+}
+
 /* Läser .pp-filen (ArrayBuffer). Kastar ett begripligt fel om det inte är en Powerproject-fil. */
 async function parsePowerproject(buf, fileName) {
   const SQL = await loadSqlJs();
@@ -120,6 +147,10 @@ async function parsePowerproject(buf, fileName) {
     if (has("MILESTONE")) q(`SELECT ID, NAME, BAR, UNIQUE_TASK_ID, EARLY_START_DATE, GIVEN_DATE_TIME, COMPLETED${g("MILESTONE")} FROM MILESTONE`).forEach(r => add(r, "ms"));
     tasks.forEach(t => Object.keys(t.codes).forEach(l => { const lib = libById.get(Number(l)); if (lib) lib.count++; }));
     const links = has("LINK") ? q("SELECT START_TASK, END_TASK FROM LINK").map(r => [r.START_TASK, r.END_TASK]) : [];
+    // Resurser (Victor 2026-10-08): tilldelningarna (PERMANENT_SCHEDUL_ALLOCATION) per aktivitet –
+    // resursens namn, antal (ALLOCATION) och timmar (EFFORT är i sekunder: antal × varaktighet).
+    const resOf = ppResources(q, has);
+    tasks.forEach(t => { const r = resOf.get(t.id); if (r && r.length) t.resources = r; });
     // Delarna (översta sammanfattningsraderna). Förvalt: de som ligger inom projektets period.
     const pStart = ppDate(proj.PROJECT_START), pEnd = ppDate(proj.PROJECT_END);
     const groupMap = new Map();
@@ -161,6 +192,8 @@ function ppToParsedItems(pp, opts) {
       // Entreprenören skrivs bara över när Powerproject har en (Victor 2026-10-08): saknas koden på
       // aktiviteten behålls den som fyllts i i 4D/dashboarden (undefined = rör inte).
       contractor: opts.contractorLib && t.codes[opts.contractorLib] ? t.codes[opts.contractorLib] : undefined,
+      // Resurser bara när Powerproject har några på aktiviteten – annars behålls de som finns (undefined).
+      resources: t.resources && t.resources.length ? t.resources : undefined,
       dependsOnKeys: preds.get(t.id) || [], sheet: null, excelMap: null, id4d: null, ppId: t.id, ppUid: t.uid, ppGuid: t.guid,
     };
   });
