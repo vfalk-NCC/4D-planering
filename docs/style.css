@@ -1190,3 +1190,26 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .design-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .plan-source-seg button { white-space: nowrap; }
 @media (max-width: 440px) { .plan-source { padding: 6px 8px; gap: 6px; } .plan-source-seg button { padding: 4px 7px; } }
+
+/* Placera i 3D – egna modeller (Sketchfab / fil) */
+.place-lib button.place-add { border-style: dashed; color: #1d4ed8; }
+.pm-browser { margin-top: 8px; padding: 8px; border: 1px solid #b9cdfc; border-radius: 6px; background: #f8fbff; }
+.pm-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.pm-head b { flex: 1; }
+.pm-tabs { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid #d1d5db; border-radius: 8px; background: #eef0f3; }
+.pm-tabs button { border: none; background: transparent; padding: 3px 9px; border-radius: 6px; }
+.pm-tabs button.active { background: #fff; font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.12); }
+.pm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; margin-top: 8px; max-height: 420px; overflow: auto; }
+.pm-card { border: 1px solid var(--border); border-radius: 6px; padding: 4px; background: #fff; display: flex; flex-direction: column; gap: 2px; }
+.pm-card img, .pm-noimg { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; background: #e5e7eb; }
+.pm-cn { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-card .hint { font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-confirm { display: flex; flex-direction: column; gap: 6px; }
+.pm-confirm label { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); }
+.pm-msg { margin-top: 6px; font-size: 12px; min-height: 0; }
+.pm-msg:empty { display: none; }
+.pm-spin { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border: 2px solid #93c5fd; border-top-color: #1d4ed8; border-radius: 50%; animation: pmspin .8s linear infinite; vertical-align: -1px; }
+@keyframes pmspin { to { transform: rotate(360deg); } }
+.pm-lib { margin-top: 8px; font-size: 12px; }
+.pm-libr { display: flex; gap: 6px; justify-content: space-between; padding: 2px 0; }
+.pm-msg.place-bad { color: #dc2626; }

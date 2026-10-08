@@ -23,6 +23,17 @@ const PLACE_LIB = {
   barriar:   { group: "Säkerhet",   label: "Barriär",    L: 4,    B: 0.5,  H: 0.8,  color: "#9ca3af" },
 };
 
+/* Biblioteksposten för en typ – även egna modeller ("model:<id>", se place-models.js). */
+function placeLib(type) {
+  if (PLACE_LIB[type]) return PLACE_LIB[type];
+  if (String(type || "").startsWith("model:")) {
+    const a = typeof placeAssetOf === "function" ? placeAssetOf(type.slice(6)) : null;
+    return { group: "Egna modeller", label: a ? a.name : "Modell (saknas)", color: "#64748b", model: a || null, isModel: true };
+  }
+  return null;
+}
+const placeScale = p => (placeLib(p.type) || {}).model && placeLib(p.type).model.kind === "mesh" ? (Number(p.scale) || 1) : 1;
+
 let placements = [];            // [{ id, type, name, x, y, z, L, B, H, R, rot, dz, color, pts, itemId, start, end, updated_at, ifc_at }]
 let placeLoaded = false;
 let placeActiveId = null;
@@ -39,6 +50,7 @@ async function place3dLoad() {
   if (!projectId) return;
   try { placements = (await ghReadJSON(settings.githubToken, placePath())) || []; }
   catch (e) { placements = []; console.warn("Kunde inte läsa plan_placements.json", e); }
+  if (typeof placeAssetsLoad === "function") await placeAssetsLoad();
   placeLoaded = true; placeDirty.clear(); placeDeleted.clear(); placeUndoStack = [];
   if (!placements.some(p => p.id === placeActiveId)) placeActiveId = null;
   renderPlacePanel(); placeRedraw();
@@ -63,8 +75,15 @@ function placeCircle(p, r, n) {
 /* Delarna: { poly: [[x,y]…] moturs, z0, z1, role, transp } – z i meter. ringN = hörn i räckviddscirkeln. */
 function placeParts(p, ringN = 48) {
   const z = (Number(p.z) || 0) + (Number(p.dz) || 0), H = Math.max(0.01, Number(p.H) || 0);
-  const L = Math.max(0.01, Number(p.L) || 0), B = Math.max(0.01, Number(p.B) || 0), lib = PLACE_LIB[p.type] || {};
+  const L = Math.max(0.01, Number(p.L) || 0), B = Math.max(0.01, Number(p.B) || 0), lib = placeLib(p.type) || {};
   const tr = Number(lib.transp) || 0;
+  if (lib.isModel) {
+    // Egen modell: förhandsvisningen är modellens omslutande låda.
+    const a = lib.model;
+    if (!a || !a.bbox) return [];
+    const k = placeScale(p), b = a.bbox;
+    return [{ poly: placeRect(p, b.min[0] * k, b.max[0] * k, b.min[1] * k, b.max[1] * k), z0: z + b.min[2] * k, z1: z + b.max[2] * k, role: "body", transp: 0 }];
+  }
   if (lib.fence) {
     const P = p.pts || [];
     const parts = [];
@@ -94,11 +113,11 @@ function placeSegments(p, full) {
   const ring = (poly, z) => poly.forEach((q, i) => { const r = poly[(i + 1) % poly.length]; segs.push([[q[0], q[1], z], [r[0], r[1], z]]); });
   const parts = placeParts(p, 24);
   if (!full) {
-    if (PLACE_LIB[p.type] && PLACE_LIB[p.type].fence) parts.forEach(pt => { const [a, b] = [pt.poly[0], pt.poly[1]]; segs.push([[a[0], a[1], pt.z0], [b[0], b[1], pt.z0]]); });
+    if ((placeLib(p.type) || {}).fence) parts.forEach(pt => { const [a, b] = [pt.poly[0], pt.poly[1]]; segs.push([[a[0], a[1], pt.z0], [b[0], b[1], pt.z0]]); });
     else if (parts[0]) ring(parts[0].poly, parts[0].z0);
     return segs;
   }
-  if (PLACE_LIB[p.type] && PLACE_LIB[p.type].fence) {
+  if ((placeLib(p.type) || {}).fence) {
     // Staket: underkant, överkant och en stolpe i varje punkt (mittlinjen räcker).
     const P = p.pts || [], dz = Number(p.dz) || 0, H = Number(p.H) || 0;
     P.forEach((a, i) => {
@@ -199,16 +218,17 @@ async function placeSaveNow() {
 function placeStart(type) {
   if (typeof API === "undefined" || !API || !API.markup) { alert("Trimble Connect stöder inte förhandsvisning i den här vyn."); return; }
   if (!projectId) { alert("Inget projekt är inläst än."); return; }
-  placeMode = PLACE_LIB[type].fence ? { kind: "fence", type, id: null } : { kind: "place", type };
+  placeMode = (placeLib(type) || {}).fence ? { kind: "fence", type, id: null } : { kind: "place", type };
   renderPlacePanel();
 }
 function placeNew(type, pt) {
-  const lib = PLACE_LIB[type];
+  const lib = placeLib(type);
   const n = placements.filter(p => p.type === type).length + 1;
   const p = { id: ghNewId(), type, name: `${lib.label} ${n}`, x: placeR3(pt[0]), y: placeR3(pt[1]), z: placeR3(pt[2] || 0),
     L: lib.L || 0, B: lib.B || 0, H: lib.H, R: lib.R || 0, rot: 0, dz: 0, color: lib.color,
     created_at: new Date().toISOString(), by: settings.userName || null };
   if (lib.fence) p.pts = [[p.x, p.y, p.z]];
+  if (lib.isModel) { p.scale = (lib.model && lib.model.scale) || 1; p.L = 0; p.B = 0; p.H = 0; p.color = "#64748b"; }
   return p;
 }
 
@@ -279,18 +299,23 @@ function placePrismMesh(doc, poly, z0, z1, o) {
 }
 function placeItemOf(p) { return p.itemId && typeof items !== "undefined" ? items.find(x => x.id === p.itemId) || null : null; }
 function buildPlacementsIfc(projName) {
-  const list = placements.filter(p => placeParts(p).length);
+  // Egna IFC-modeller blir egna filer (se placeModelIfcFiles); GLB-modeller följer med här.
+  const list = placements.filter(p => {
+    const l = placeLib(p.type) || {};
+    if (l.isModel) return !!(l.model && l.model.kind === "mesh" && typeof placeMeshReady === "function" && placeMeshReady(l.model.id));
+    return placeParts(p).length;
+  });
   if (!list.length) return null;
   const doc = ifcDoc("4D-planering – " + (projName || "etablering"), "Placerade objekt från 4D-planering", "4D-planering"), E = doc.E;
   const elems = [];
   list.forEach(p => {
-    const lib = PLACE_LIB[p.type] || { label: p.type };
+    const lib = placeLib(p.type) || { label: p.type };
     const parts = placeParts(p);
     const o = [Math.round(p.x), Math.round(p.y), placeR3((Number(p.z) || 0) + (Number(p.dz) || 0))];
     const it = placeItemOf(p);
     const start = p.start || (it && it.startDate) || "", end = p.end || (it && it.endDate) || "";
     const mk = (role, name, salt) => {
-      const meshes = parts.filter(pt => pt.role === role).map(pt => {
+      const meshes = lib.isModel ? (role === "body" ? placeModelMeshes(doc, p, o) : []) : parts.filter(pt => pt.role === role).map(pt => {
         const m = placePrismMesh(doc, pt.poly, pt.z0, pt.z1, o);
         const col = p.color || lib.color || "#888888";
         E(`IFCSTYLEDITEM(${m},(${doc.style(`${col}:${pt.transp}`, col, lib.label, pt.transp)}),$)`);
@@ -302,8 +327,13 @@ function buildPlacementsIfc(projName) {
       return el;
     };
     const el = mk("body", p.name || lib.label, "");
-    const props = [["Typ", lib.label], ["Namn", p.name || ""]];
-    if (!lib.fence) props.push(["Längd m", placeR3(Number(p.L) || 0)], ["Bredd m", placeR3(Number(p.B) || 0)], ["Vridning grader", Number(p.rot) || 0]);
+    const props = [["Typ", lib.isModel ? "Egen modell" : lib.label], ["Namn", p.name || ""]];
+    if (lib.isModel) {
+      const a = lib.model, b = a.bbox, k = placeScale(p);
+      props.push(["Modell", a.name || ""], ["Källa", a.source || ""], ["Upphov", a.author || ""], ["Licens", a.license || ""], ["Länk", a.url || ""],
+        ["Skala", k], ["Vridning grader", Number(p.rot) || 0], ["Bredd m", placeR3((b.max[0] - b.min[0]) * k)], ["Djup m", placeR3((b.max[1] - b.min[1]) * k)]);
+      p = { ...p, H: (b.max[2] - b.min[2]) * k };
+    } else if (!lib.fence) props.push(["Längd m", placeR3(Number(p.L) || 0)], ["Bredd m", placeR3(Number(p.B) || 0)], ["Vridning grader", Number(p.rot) || 0]);
     else props.push(["Längd m", placeR3(parts.reduce((s, pt) => s + Math.hypot(pt.poly[1][0] - pt.poly[0][0], pt.poly[1][1] - pt.poly[0][1]), 0))]);
     props.push(["Höjd m", placeR3(Number(p.H) || 0)]);
     if (Number(p.R) > 0) props.push(["Räckvidd m", placeR3(Number(p.R))]);
@@ -318,29 +348,34 @@ async function placeSaveIfc() {
   await placeSaveNow();
   let projName = "";
   try { projName = ((await API.project.getProject()) || {}).name || ""; } catch (e) { /* utan namn */ }
+  // Egna modeller: GLB-geometrin hämtas in, IFC-modellerna blir egna (flyttade) filer.
+  if (typeof placeModelsPrepare === "function") await placeModelsPrepare();
   const r = buildPlacementsIfc(projName);
-  if (!r) { alert("Det finns inga placerade objekt att spara. Välj ett objekt och tryck i modellen."); return null; }
+  const extra = typeof placeModelIfcFiles === "function" ? await placeModelIfcFiles() : [];
+  if (!r && !extra.length) { alert("Det finns inga placerade objekt att spara. Välj ett objekt och tryck i modellen."); return null; }
   // Samma filnamn varje gång: Trimble Connect sparar då en ny version av filen.
   const name = `Etablering ${projName || "4D-planering"}.ifc`.replace(/[\\/:*?"<>|]/g, "-");
-  const bytes = new TextEncoder().encode(r.text);
-  const file = new File([bytes], name, { type: "application/x-step" });
-  setPlaceStatus(`Sparar ${r.n} objekt som IFC i Trimble Connect…`);
+  const files = [...(r ? [new File([new TextEncoder().encode(r.text)], name, { type: "application/x-step" })] : []), ...extra];
+  const n = (r ? r.n : 0) + extra.length;
+  setPlaceStatus(`Sparar ${n} objekt som IFC i Trimble Connect…`);
   try {
-    await tcUploadFiles([file], PLACE_TC_FOLDER);
+    await tcUploadFiles(files, PLACE_TC_FOLDER);
   } catch (e) {
     // Reserv: en lokal kopia, så att inget arbete går förlorat.
-    const url = URL.createObjectURL(new Blob([bytes], { type: "application/x-step" }));
-    const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 30000);
-    setPlaceStatus(`Kunde inte spara i Trimble Connect (${e.message}). Filen laddades ned i stället.`, true);
-    return { n: r.n, name, tc: null, error: e.message };
+    files.forEach(f => {
+      const url = URL.createObjectURL(f);
+      const a = document.createElement("a"); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    });
+    setPlaceStatus(`Kunde inte spara i Trimble Connect (${e.message}). Filerna laddades ned i stället.`, true);
+    return { n, name, tc: null, error: e.message };
   }
   const at = new Date().toISOString();
   placements.forEach(p => { if (placeIsNew(p)) { p.ifc_at = at; placeDirty.add(p.id); } });
   await placeSaveNow();
-  setPlaceStatus(`✓ ${r.n} objekt sparade i "${PLACE_TC_FOLDER}/${name}". Öppna filen i 3D-vyn för att se dem.`);
+  setPlaceStatus(`✓ ${n} objekt sparade i mappen "${PLACE_TC_FOLDER}" (${files.map(f => f.name).join(", ")}). Öppna filerna i 3D-vyn för att se dem.`);
   renderPlacePanel(); placeRedraw();
-  return { n: r.n, name };
+  return { n, name, files: files.map(f => f.name) };
 }
 
 // ---------------------------------------------------------------------
@@ -352,7 +387,7 @@ function setPlaceStatus(text, bad) {
 }
 function placeModeText() {
   if (!placeMode) return "";
-  const lib = PLACE_LIB[placeMode.type] || {};
+  const lib = placeLib(placeMode.type) || {};
   return { place: `Tryck i modellen där ${lib.label ? lib.label.toLowerCase() : "objektet"} ska stå.`,
     fence: "Tryck punkter längs staketet. Tryck Klar när det är färdigt.",
     move: "Tryck i modellen dit objektet ska flyttas.",
@@ -361,12 +396,19 @@ function placeModeText() {
 function placeListHtml() {
   const esc = typeof escapeHtml === "function" ? escapeHtml : s => String(s);
   return placements.map(p => {
-    const l = PLACE_LIB[p.type] || { label: p.type };
-    const dims = l.fence ? `${Math.max(0, (p.pts || []).length - 1)} sträckor, h ${p.H} m` : `${p.L}×${p.B}×${p.H} m${Number(p.R) > 0 ? `, r ${p.R} m` : ""}`;
+    const l = placeLib(p.type) || { label: p.type };
+    const dims = l.isModel ? placeModelDims(p) : l.fence ? `${Math.max(0, (p.pts || []).length - 1)} sträckor, h ${p.H} m` : `${p.L}×${p.B}×${p.H} m${Number(p.R) > 0 ? `, r ${p.R} m` : ""}`;
     return `<div class="place-row ${p.id === placeActiveId ? "on" : ""}" data-place-id="${esc(p.id)}"><i style="background:${p.color || l.color}"></i>
       <span class="pn">${esc(p.name || l.label)}</span><span class="hint">${dims}</span>
       <span class="place-state ${placeIsNew(p) ? "new" : ""}">${placeIsNew(p) ? "ej i IFC" : "i IFC"}</span></div>`;
   }).join("") || `<div class="hint">Inga placerade objekt än. Välj ett objekt ovan och tryck i modellen.</div>`;
+}
+/* Storleken på en egen modell (omslutande låda × skala). */
+function placeModelDims(p) {
+  const a = (placeLib(p.type) || {}).model;
+  if (!a || !a.bbox) return "modellen saknas";
+  const k = placeScale(p), b = a.bbox, f = v => Math.round(v * k * 10) / 10;
+  return `${f(b.max[0] - b.min[0])}×${f(b.max[1] - b.min[1])}×${f(b.max[2] - b.min[2])} m${a.kind === "ifc" ? " (IFC)" : ""}`;
 }
 function placeSaveLabel() { const n = placements.filter(placeIsNew).length; return `Spara som IFC i Trimble Connect${n ? ` (${n} nya/ändrade)` : ""}`; }
 /* Efter en ändring i ett fält: bara listan och knapparna – inte hela panelen (fokus och klick
@@ -389,21 +431,27 @@ function renderPlacePanel() {
   Object.entries(PLACE_LIB).forEach(([k, l]) => { (groups[l.group] = groups[l.group] || []).push([k, l]); });
   const act = placeActive();
   const esc = typeof escapeHtml === "function" ? escapeHtml : s => String(s);
+  const assets = typeof placeAssets !== "undefined" ? placeAssets : [];
+  groups["Egna modeller"] = assets.map(a => [`model:${a.id}`, { label: a.name, color: a.kind === "ifc" ? "#0e7490" : "#64748b", title: [a.kind === "ifc" ? "IFC-fil" : "3D-modell", a.author ? `av ${a.author}` : "", a.license || ""].filter(Boolean).join(" · ") }]);
   const lib = Object.entries(groups).map(([g, list]) => `<div class="place-group"><span class="place-gl">${g}</span>${list.map(([k, l]) =>
-    `<button type="button" data-place-type="${k}" class="${placeMode && placeMode.type === k ? "active" : ""}"><i style="background:${l.color}"></i>${l.label}</button>`).join("")}</div>`).join("");
+    `<button type="button" data-place-type="${esc(k)}" class="${placeMode && placeMode.type === k ? "active" : ""}" ${l.title ? `title="${esc(l.title)}"` : ""}><i style="background:${l.color}"></i>${esc(l.label)}</button>`).join("")}${g === "Egna modeller" ? `<button type="button" id="placeOpenBrowser" class="place-add">+ Hämta modell</button>` : ""}</div>`).join("");
   const mode = placeMode ? `<div class="place-mode"><b>${esc(placeModeText())}</b>
       ${placeMode.kind === "fence" ? `<button type="button" id="placeFenceDone" class="primary">Klar</button>` : ""}
       <button type="button" id="placeModeCancel">Avbryt</button></div>` : "";
   let edit = "";
   if (act) {
-    const L = PLACE_LIB[act.type] || {};
+    const L = placeLib(act.type) || {};
+    const A = L.isModel ? L.model : null;
+    const mH = A && A.bbox ? Math.round((A.bbox.max[2] - A.bbox.min[2]) * placeScale(act) * 100) / 100 : "";
     const f = (k, label, step = "0.1") => `<label>${label}<input type="number" step="${step}" data-pf="${k}" value="${act[k] ?? ""}" /></label>`;
     const itemOpts = typeof items !== "undefined" ? [...new Map(items.map(it => [it.id, it])).values()].slice(0, 2000) : [];
     edit = `<div class="place-edit">
       <div class="place-edit-head"><input type="text" data-pf="name" value="${esc(act.name || "")}" title="Namn" />
-        <input type="color" data-pf="color" value="${act.color || L.color || "#888888"}" title="Färg" /></div>
+        ${L.isModel ? "" : `<input type="color" data-pf="color" value="${act.color || L.color || "#888888"}" title="Färg" />`}</div>
+      ${L.isModel ? `<div class="hint">${esc(A ? `${A.name}${A.author ? ` av ${A.author}` : ""}${A.license ? ` (${A.license})` : ""}` : "Modellen finns inte längre i biblioteket")} · ${placeModelDims(act)}</div>` : ""}
       <div class="place-grid">
-        ${L.fence ? f("H", "Höjd m") : f("L", "Längd m") + f("B", "Bredd m") + f("H", "Höjd m")}
+        ${L.isModel ? (A && A.kind === "mesh" ? `<label>Höjd m<input type="number" step="0.1" data-pf="mH" value="${mH}" title="Skalar modellen så att den blir så här hög" /></label>` + f("scale", "Skala", "0.01") : "")
+          : L.fence ? f("H", "Höjd m") : f("L", "Längd m") + f("B", "Bredd m") + f("H", "Höjd m")}
         ${L.R ? f("R", "Räckvidd m", "1") : ""}
         ${L.fence ? "" : f("rot", "Vrid °", "1")}
         ${f("dz", "Höjd över punkten m")}
@@ -438,6 +486,7 @@ function bindPlacePanel(box, act) {
   on("placeModeCancel", () => { placeMode = null; renderPlacePanel(); });
   on("placeFenceDone", () => { placeMode = null; renderPlacePanel(); placeRedraw(); });
   on("placeUndo", placeUndo);
+  on("placeOpenBrowser", () => { if (typeof placeBrowserToggle === "function") placeBrowserToggle(true); });
   on("placeSaveIfc", () => { placeSaveIfc().catch(e => setPlaceStatus("Kunde inte spara som IFC: " + e.message, true)); });
   if (!act) return;
   const change = (fn, live) => { if (!live) placeSnapshot(); fn(act); placeTouch(act); placeRedraw(); };
@@ -451,6 +500,8 @@ function bindPlacePanel(box, act) {
         if (it) { a.start = it.startDate || a.start || ""; a.end = it.endDate || a.end || ""; }
       } else {
         const v = placeNum(inp.value, a[k]);
+        if (k === "mH") { const A = (placeLib(a.type) || {}).model, h = A && A.bbox ? A.bbox.max[2] - A.bbox.min[2] : 0; if (h > 0 && v > 0) a.scale = Math.round(v / h * 10000) / 10000; return; }
+        if (k === "scale") { a.scale = Math.max(0.0001, v); return; }
         a[k] = k === "rot" ? ((v % 360) + 360) % 360 : k === "dz" ? v : Math.max(k === "R" ? 0 : 0.01, v);
       }
     };
@@ -465,7 +516,8 @@ function bindPlacePanel(box, act) {
   on("placeFenceMore", () => { placeMode = { kind: "fence", type: act.type, id: act.id }; renderPlacePanel(); });
   on("placeDone", () => { placeActiveId = null; placeMode = null; renderPlacePanel(); placeRedraw(); });
   on("placeDelete", () => {
-    if (!confirm(`Ta bort "${act.name}"?`)) return;
+    const ifcFile = ((placeLib(act.type) || {}).model || {}).kind === "ifc" && act.ifc_at;
+    if (!confirm(`Ta bort "${act.name}"?${ifcFile ? `\n\nDen sparade IFC-filen i "${PLACE_TC_FOLDER}" ligger kvar i Trimble Connect – ta bort den där om den inte ska synas.` : ""}`)) return;
     placeSnapshot();
     placements = placements.filter(p => p.id !== act.id);
     placeDeleted.add(act.id); placeDirty.delete(act.id); placeActiveId = null; placeMode = null;
