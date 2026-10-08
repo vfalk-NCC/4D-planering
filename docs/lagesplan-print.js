@@ -1421,7 +1421,8 @@ function renderPrintProps(onlyPos) {
     html += `<label>Klassiska</label><div class="pr-north pr-arrows">${grp("Klassiska").map(sbtn).join("")}</div>
       <label>Moderna</label><div class="pr-north pr-arrows">${grp("Moderna").map(sbtn).join("")}</div>
       <label>Form</label><div class="pr-north pr-arrows pr-ashape">${Object.entries(ARROW_SHAPES).map(([k, n]) => `<button type="button" data-ashape="${k}" class="${sh === k ? "on" : ""}" title="${n}"><img src="${arrowThumb(st, k, el.stroke)}" alt="" /><span>${n}</span></button>`).join("")}</div>
-      <div class="pr-grid4">${color("stroke", "Färg")}${num("lw", "Tjocklek (mm)", "0.1")}${num("head", "Spets (%)", "10")}${sh === "arc" ? num("bend", "Böj (%)", "5") : ""}</div>
+      <div class="pr-grid4 pr-agrid"><div><label>Färg</label><input type="color" data-f="stroke" value="${escHtml(el.stroke || "#dc2626")}" class="pr-color" /></div>${num("lw", "Tjocklek", "0.1")}${num("head", "Spets %", "10")}${sh === "arc" ? num("bend", "Böj %", "5") : "<div></div>"}</div>
+      <div class="hint" style="margin-top:2px;">Tjocklek i mm. Spets i % av standardstorleken.</div>
       ${ARROW_RIBBON.has(st) ? (st === "block" ? `<div class="pr-grid4">${color("outline", "Kantlinje")}</div>` : "") : `<label>Linje</label><select data-f="dash">${[["solid", "Heldragen"], ["dashed", "Streckad"], ["dotted", "Prickad"]].map(([v, n]) => `<option value="${v}"${(el.dash || "solid") === v ? " selected" : ""}>${n}</option>`).join("")}</select>`}
       ${chk("double", "Spets i båda ändar")} ${chk("shadow", "Skugga")}
       <div class="hint">Dra i handtagen i ändarna för att flytta start och spets. Böj: minus böjer åt andra hållet.</div>`;
