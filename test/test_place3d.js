@@ -217,6 +217,15 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   if (!(await page.locator('#placeStatus').innerText()).includes('kopplat till sina aktiviteter')) fail('Statusen ska berätta om 4D-kopplingen');
   if (up[1].name === up[0].name || !/ \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(up[1].name)) fail('Varje sparning ska bli en ny fil med datum och klockslag: ' + up[0].name + ' / ' + up[1].name);
 
+  // 3D-vyn i lägesplanen har sparat: 4D-planering läser om etableringen (meddelande från samma origin).
+  const ext = get('plan_placements.json'); ext.push({ id: 'fran3d', type: 'container', name: 'Från 3D', x: 5, y: 5, z: 0, L: 6, B: 2.4, H: 2.6, rot: 0, dz: 0 }); put('plan_placements.json', ext);
+  const rep = await page.evaluate(() => new Promise(res => {
+    window.addEventListener('message', e => { if (e.data && e.data.lagesplanReply && e.data.reqId === 77) res(e.data); });
+    window.postMessage({ lagesplan: true, type: 'placementsChanged', reqId: 77 }, location.origin);
+  }));
+  await wait(300);
+  if (rep.error || !(await page.evaluate(() => placements.some(p => p.id === 'fran3d')))) fail('placementsChanged ska läsa om etableringen: ' + JSON.stringify(rep));
+  if (!(await page.locator('.place-row', { hasText: 'Från 3D' }).count())) fail('Listan ska visa objektet från 3D-vyn');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_place3d');
   await browser.close(); server.close();

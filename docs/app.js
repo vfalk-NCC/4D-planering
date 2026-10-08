@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-08 22:26";
+const APP_VERSION = "2026-10-08 22:34";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -384,6 +384,19 @@ window.addEventListener("message", async e => {
       reply({});
     } else if (msg.type === "tcUpload") {
       reply(await tcUploadFiles(msg.files || [], msg.folder || "Lägesplan"));
+    } else if (msg.type === "placementsChanged") {
+      // 3D-vyn i lägesplanen har sparat etableringen: läs om (egna osparade ändringar sparas först).
+      if (typeof place3dLoad === "function") {
+        if (placeDirty.size || placeDeleted.size) await placeSaveNow();
+        await place3dLoad({ fresh: true });
+      }
+      reply({});
+    } else if (msg.type === "placeSaveIfc") {
+      if (typeof placeSaveIfc !== "function") throw new Error("Placera i 3D finns inte i den här versionen av 4D-planering.");
+      if (placeDirty.size || placeDeleted.size) await placeSaveNow();
+      await place3dLoad({ fresh: true });
+      const r = await placeSaveIfc();
+      reply(r || { n: 0 });
     } else if (msg.type === "positions") {
       reply(await lagesplanPositions());
     } else if (msg.type === "select") {
@@ -673,16 +686,20 @@ function bindUI() {
 
   document.getElementById("btnRefresh").onclick = refreshAllData;
   // Lägesplan öppnas som egen sida (samma origin -> delar token/inställningar).
-  document.getElementById("btnStatusPlan").onclick = () => {
+  document.getElementById("btnStatusPlan").onclick = () => openLagesplanWindow("");
+  const b3d = document.getElementById("btnOpen3d");
+  if (b3d) b3d.onclick = () => openLagesplanWindow("&view=3d");
+  /* Lägesplanen (view=3d: direkt i 3D-vyn). */
+  function openLagesplanWindow(extra) {
     if (!projectId) { alert("Projektet är inte laddat än."); return; }
     // Eget fönster (inte flik) på högra halvan av skärmen, så det kan ligga
     // bredvid Trimble Connect - kalibreringen kräver klick i båda.
     const w = Math.round(screen.availWidth / 2), h = screen.availHeight;
     const left = (screen.availLeft || 0) + screen.availWidth - w, top = screen.availTop || 0;
-    const win = window.open("lagesplan.html?project=" + encodeURIComponent(projectId) + (planSource === "pp" ? "&source=pp" : ""), "lagesplan-" + projectId,
+    const win = window.open("lagesplan.html?project=" + encodeURIComponent(projectId) + (planSource === "pp" ? "&source=pp" : "") + (extra || ""), "lagesplan-" + projectId,
       `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
     if (win) win.focus();
-  };
+  }
   document.getElementById("btnSettings").onclick = () => { toggle("settingsDialog", true); renderBackupList(); };
   document.getElementById("btnBackupNow").onclick = async () => {
     const btn = document.getElementById("btnBackupNow");

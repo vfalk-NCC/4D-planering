@@ -20,8 +20,8 @@ const placeIfcCache = new Map();   // asset-id -> IFC-text
 let pmState = { open: false, tab: "sketchfab", q: "", results: [], next: null, busy: false, msg: "", bad: false, me: null, pending: null };
 
 const pmAssetsPath = () => `projects/${encodeURIComponent(projectId)}/plan_models.json`;
-async function placeAssetsLoad() {
-  try { placeAssets = (await ghReadJSON(settings.githubToken, pmAssetsPath())) || []; }
+async function placeAssetsLoad(opts = {}) {
+  try { placeAssets = (await ghReadJSON(settings.githubToken, pmAssetsPath(), opts.fresh ? { fresh: true } : undefined)) || []; }
   catch (e) { placeAssets = []; console.warn("Kunde inte läsa plan_models.json", e); }
 }
 function placeAssetOf(id) { return placeAssets.find(a => a.id === id) || null; }

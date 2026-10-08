@@ -47,11 +47,13 @@ let placeUndoStack = [];
 const placeNum = (v, d = 0) => { const n = Number(String(v ?? "").replace(",", ".")); return Number.isFinite(n) ? n : d; };
 const placeR3 = v => Math.round(v * 1000) / 1000;
 function placePath() { return `projects/${encodeURIComponent(projectId)}/plan_placements.json`; }
-async function place3dLoad() {
+/* opts.fresh: läs om från GitHub även om vi nyss skrev filen själva (t.ex. när 3D-vyn i
+   lägesplanen har sparat ändringar). */
+async function place3dLoad(opts = {}) {
   if (!projectId) return;
-  try { placements = (await ghReadJSON(settings.githubToken, placePath())) || []; }
+  try { placements = (await ghReadJSON(settings.githubToken, placePath(), opts.fresh ? { fresh: true } : undefined)) || []; }
   catch (e) { placements = []; console.warn("Kunde inte läsa plan_placements.json", e); }
-  if (typeof placeAssetsLoad === "function") await placeAssetsLoad();
+  if (typeof placeAssetsLoad === "function") await placeAssetsLoad(opts);
   placeLoaded = true; placeDirty.clear(); placeDeleted.clear(); placeUndoStack = [];
   if (!placements.some(p => p.id === placeActiveId)) placeActiveId = null;
   renderPlacePanel(); placeRedraw();
