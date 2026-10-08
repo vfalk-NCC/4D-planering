@@ -99,10 +99,16 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
     setSel(['im']); renderPrintProps();
     const crop = document.querySelector('#prProps [data-f="cropL"]'); crop.value = 25; crop.dispatchEvent(new Event('input'));
     const ko = !!document.querySelector('#prProps [data-f="knockout"]');
-    return { rows, hidden, ko, h: im.h, ar: im.ar };
+    const sz = { x: im.x, y: im.y, w: im.w, h: im.h };
+    const cb2 = document.querySelector('#prProps [data-f="cropB"]'); cb2.value = 50; cb2.dispatchEvent(new Event('input'));
+    const sz2 = { x: im.x, y: im.y, w: im.w, h: im.h };
+    cb2.value = 0; cb2.dispatchEvent(new Event('input'));
+    return { rows, hidden, ko, h: im.h, ar: im.ar, sz, sz2 };
   });
   if (ui.rows < 5 || ui.hidden !== 1) fail('Panelen ska lista förklaringens rader och kunna dölja en: ' + JSON.stringify(ui));
-  if (!ui.ko || Math.abs(ui.ar - 1.5) > 0.01 || Math.abs(ui.h - 26.7) > 0.1) fail('Bildens val (beskär, genomskinlig) ska finnas och rutan följa beskärningen: ' + JSON.stringify(ui));
+  // Beskärning skär bort (skalan behålls): vänster 25 % => rutan blir 10 mm smalare och vänsterkanten flyttas 10 mm.
+  if (JSON.stringify(ui.sz) !== JSON.stringify({ x: 20, y: 10, w: 30, h: 20 }) || JSON.stringify(ui.sz2) !== JSON.stringify({ x: 20, y: 10, w: 30, h: 10 })) fail('Beskärning ska skära bort, inte skala om bilden: ' + JSON.stringify(ui));
+  if (!ui.ko || Math.abs(ui.ar - 1.5) > 0.01 || Math.abs(ui.h - 20) > 0.1) fail('Bildens val (beskär, genomskinlig) ska finnas och rutan följa beskärningen: ' + JSON.stringify(ui));
   console.log('OK: utskriftspanelen visar förklaringens rader och bildens beskärning/genomskinlighet');
   // Beskär med musen (Victors önskemål 2026-10-08): handtag och flytta utsnittet, Enter använder, Esc avbryter.
   await page.click('#prImgCrop');
@@ -118,10 +124,10 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   const cancelState = await page.evaluate(() => { const el = pr.tpl.elements.find(e => e.id === 'im'); return [el.cropL, el.cropR, el.cropT, el.cropB]; });
   if (cancelState[0] !== 25 || cancelState[1]) fail('Elementet ska inte ändras förrän man trycker Använd: ' + JSON.stringify(cancelState));
   await page.keyboard.press('Enter'); await page.waitForTimeout(100);
-  const cr = await page.evaluate(() => { const el = pr.tpl.elements.find(e => e.id === 'im'); return { l: el.cropL || 0, r: el.cropR || 0, t: el.cropT || 0, b: el.cropB || 0, h: el.h, w: el.w, open: !!document.getElementById('imgCropModal'), num: +document.querySelector('#prProps [data-f="cropR"]').value }; });
+  const cr = await page.evaluate(() => { const el = pr.tpl.elements.find(e => e.id === 'im'); return { l: el.cropL || 0, r: el.cropR || 0, t: el.cropT || 0, b: el.cropB || 0, h: el.h, w: el.w, x: el.x, y: el.y, open: !!document.getElementById('imgCropModal'), num: +document.querySelector('#prProps [data-f="cropR"]').value }; });
   const near = (a, b) => Math.abs(a - b) < 1.5;
   if (cr.open || !near(cr.l, 0) || !near(cr.r, 25) || !near(cr.t, 20) || !near(cr.b, 0) || !near(cr.num, cr.r)) fail('Dra i handtagen/flytta ska ge rätt beskärning och sifferrutorna följa med: ' + JSON.stringify(cr));
-  if (Math.abs(cr.h - cr.w / ((200 * 0.75) / (100 * 0.8))) > 0.2) fail('Rutans höjd ska följa beskärningen: ' + JSON.stringify(cr));
+  if (!near(cr.w, 30) || !near(cr.h, 16) || !near(cr.x, 10) || !near(cr.y, 14)) fail('Rutan ska följa beskärningen med samma skala (bara skära bort): ' + JSON.stringify(cr));
   await page.click('#prImgCrop'); await drag(await hb('w'), area.width * 0.3, 0); await page.keyboard.press('Escape'); await page.waitForTimeout(100);
   const esc = await page.evaluate(() => ({ l: pr.tpl.elements.find(e => e.id === 'im').cropL || 0, open: !!document.getElementById('imgCropModal'), sel: pr.sels.includes('im') }));
   if (esc.open || !near(esc.l, 0) || !esc.sel) fail('Esc ska avbryta utan ändring och utan att påverka markeringen: ' + JSON.stringify(esc));

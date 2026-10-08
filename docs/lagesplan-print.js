@@ -258,6 +258,20 @@ function printImageSource(el, im) {
   }
   return { src: c, sx: 0, sy: 0, sw: c.width, sh: c.height };
 }
+/* Beskärning ska skära bort, inte skala: bildens skala (mm per bildpixel) behålls,
+   rutan krymper/växer på den sida som beskärs och resten av bilden står still.
+   old = beskärningen före ändringen (cropL/R/T/B), el har redan de nya värdena. */
+function cropOf(el) { return { l: el.cropL, r: el.cropR, t: el.cropT, b: el.cropB }; }
+function applyCropResize(el, old) {
+  const pct = v => Math.max(0, Math.min(95, Number(v) || 0)) / 100;
+  const fw = c => Math.max(0.01, 1 - pct(c.l) - pct(c.r)), fh = c => Math.max(0.01, 1 - pct(c.t) - pct(c.b));
+  const nu = cropOf(el), W = el.w / fw(old), H = el.h / fh(old); // hela bildens storlek i mm
+  const r1 = v => Math.round(v * 10) / 10;
+  el.x = r1(el.x + W * (pct(nu.l) - pct(old.l))); el.y = r1(el.y + H * (pct(nu.t) - pct(old.t)));
+  el.w = r1(W * fw(nu)); el.h = r1(H * fh(nu));
+  const im = printImage(el.path);
+  if (im) printImageSource(el, im);
+}
 async function uploadPrintImage(file) {
   const ext = (file.name.match(/\.(png|jpe?g|webp|svg)$/i) || [0, "png"])[1].toLowerCase();
   const path = dataPath(`print/${ghNewId()}.${ext}`);
@@ -1383,13 +1397,13 @@ function renderPrintProps(onlyPos) {
     const ev = i.tagName === "SELECT" || i.type === "checkbox" || i.type === "color" ? "change" : "input";
     i.addEventListener(ev, () => {
       if (!i._u) { pushUndo(); i._u = true; setTimeout(() => { i._u = false; }, 800); }
-      const f = i.dataset.f;
+      const f = i.dataset.f, cropBefore = el.type === "image" && /^crop/.test(f) ? cropOf(el) : null;
       el[f] = i.type === "checkbox" ? i.checked : i.dataset.num ? Number(String(i.value).replace(",", ".")) || 0 : i.value;
       pr.dirty = true;
       $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara mall *";
       if (f === "color" && el.type === "north") { renderPrintProps(); }
       // Beskärning ändrar bildens proportioner: rutan följer med (bredden behålls).
-      if (el.type === "image" && /^crop/.test(f)) { const im = printImage(el.path); if (im) { printImageSource(el, im); el.h = Math.round(el.w / el.ar * 10) / 10; } }
+      if (cropBefore) { applyCropResize(el, cropBefore); ["x", "y", "w", "h"].forEach(k => { const n = document.querySelector(`#prProps [data-f="${k}"]`); if (n) n.value = el[k]; }); }
       if (el.type === "image" && f === "knockout") renderPrintProps();
       // Ram runt QR-koden: standardtexter första gången, och kortets proportioner.
       if (el.type === "qr" && f === "frame") {
@@ -1445,13 +1459,14 @@ function renderPrintProps(onlyPos) {
     if (!im || typeof openImageCrop !== "function") { setPrintStatus("Bilden laddas fortfarande – försök igen om en stund."); return; }
     openImageCrop(im, { l: el.cropL, r: el.cropR, t: el.cropT, b: el.cropB }, c => {
       pushUndo();
+      const before = cropOf(el);
       [["cropL", c.l], ["cropR", c.r], ["cropT", c.t], ["cropB", c.b]].forEach(([k, v]) => { if (v) el[k] = v; else delete el[k]; });
-      printImageSource(el, im); el.h = Math.round(el.w / el.ar * 10) / 10;
+      applyCropResize(el, before);
       $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara mall *";
       renderPrintProps(); drawPrintPage();
     });
   });
-  on("prImgReset", () => { pushUndo(); ["cropL", "cropR", "cropT", "cropB"].forEach(k => delete el[k]); el.knockout = false; const im = printImage(el.path); if (im) { printImageSource(el, im); el.h = Math.round(el.w / el.ar * 10) / 10; } renderPrintProps(); drawPrintPage(); });
+  on("prImgReset", () => { pushUndo(); const before = cropOf(el); ["cropL", "cropR", "cropT", "cropB"].forEach(k => delete el[k]); el.knockout = false; applyCropResize(el, before); renderPrintProps(); drawPrintPage(); });
   on("prPan", () => { pr.panMode = !pr.panMode; renderPrintProps(); drawPrintPage(); });
   on("prFromView", () => { pushUndo(); el.center = viewCenterModel(); el.scale = fitScale(el.w, el.h, pr.tpl.format); renderPrintPanel(); drawPrintPage(); });
   box.querySelectorAll("[data-north]").forEach(b => { b.onclick = () => { pushUndo(); el.style = b.dataset.north; renderPrintProps(); drawPrintPage(); }; });
