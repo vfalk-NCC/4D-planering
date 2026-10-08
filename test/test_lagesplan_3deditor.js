@@ -189,7 +189,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const [hx, hy] = await at(6512352, 150127, 6); await page.mouse.move(hx - 3, hy + 3); await page.waitForTimeout(150);
   if ((await page.evaluate(() => document.querySelector('.v3-snap').textContent)) !== 'Ändpunkt') fail('Fästpunkt mot byggnadens hörn');
   // Visa i 4D-planering.
-  await page.keyboard.press('v'); await tap(6512350, 150125, 6);
+  await page.keyboard.press('Escape'); await tap(6512350, 150125, 6);
   await page.click('#v3InfoJump'); await page.waitForTimeout(150);
   if (!(await page.evaluate(() => window.__calls)).includes('select')) fail('Visa i 4D-planering');
   // Hjälpen, datumet i nederkanten och lägesplanens meny tillbaka när 3D stängs.

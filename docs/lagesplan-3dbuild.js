@@ -99,7 +99,7 @@ async function l3bParse(bytes, placement, maxTris) {
     g.setIndex(cur.pos.length / 3 > 65535 ? new THREE.Uint32BufferAttribute(cur.idx, 1) : new THREE.Uint16BufferAttribute(cur.idx, 1));
     g.computeVertexNormals(); g.computeBoundingSphere(); g.computeBoundingBox();
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-    m.userData.kind = "bldg"; m.userData.surface = true; m.userData.l3b = { ranges: cur.ranges, model: out };
+    m.userData.kind = "bldg"; m.userData.surface = true; m.userData.l3b = { ranges: cur.ranges, model: out, origIdx: cur.idx.slice(), hidden: new Set() };
     out.meshes.push(m); out.ranges.push(...cur.ranges);
     cur = null;
   };
@@ -167,3 +167,25 @@ function l3bHitInfo(h) {
   const model = l3b.models.find(m => m === u.model);
   return { itemId: r.itemId, name: r.name || "Objekt i modellen", extra: [["Modell", model ? model.name : ""], ["IFC-id", r.guid || ""]] };
 }
+
+/* Dölja enskilda objekt i byggnaden: indexlistan byggs om utan objektets trianglar. */
+function l3bApplyHidden(mesh) {
+  const u = mesh.userData.l3b, src = u.origIdx;
+  let idx = src;
+  if (u.hidden.size) {
+    const hid = new Uint8Array(mesh.geometry.getAttribute("position").count);
+    u.hidden.forEach(ri => { const r = u.ranges[ri]; hid.fill(1, r.start, r.start + r.count); });
+    idx = [];
+    for (let i = 0; i + 2 < src.length; i += 3) if (!hid[src[i]]) idx.push(src[i], src[i + 1], src[i + 2]);
+  }
+  mesh.geometry.setIndex(mesh.geometry.getAttribute("position").count > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
+}
+function l3bHideHit(h) {
+  const u = h.object.userData.l3b;
+  if (!u || !h.face) return;
+  const v = h.face.a, ri = u.ranges.findIndex(r => v >= r.start && v < r.start + r.count);
+  if (ri < 0) return;
+  u.hidden.add(ri); l3bApplyHidden(h.object);
+}
+function l3bShowAllRanges() { l3b.models.forEach(m => m.meshes.forEach(x => { const u = x.userData.l3b; if (u.hidden.size) { u.hidden.clear(); l3bApplyHidden(x); } })); }
+function l3bHiddenCount() { let n = 0; l3b.models.forEach(m => m.meshes.forEach(x => { n += x.userData.l3b.hidden.size; })); return n; }
