@@ -1722,5 +1722,35 @@ function bindPrint() {
   zb("prZoomFit", () => { pr.zoom = 1; pr.vx = pr.vy = 0; drawPrintPage(); updatePrZoomUi(); });
   window.addEventListener("keydown", prKey, true);
   window.addEventListener("resize", () => { if (pr) drawPrintPage(); });
+  bindPrSideResize();
+}
+/* Sidopanelens bredd: dra i vänsterkanten, dubbelklick återställer. Bredden minns per webbläsare. */
+const PR_SIDE_KEY = "lp.prSideW", PR_SIDE_DEF = 340;
+function setPrSideW(w, save) {
+  const side = document.querySelector("#printModal .pr-side");
+  if (!side) return;
+  const max = Math.max(260, Math.round(innerWidth * 0.7));
+  w = Math.round(Math.min(max, Math.max(260, +w || PR_SIDE_DEF)));
+  side.style.width = w + "px"; side.style.flexBasis = w + "px";
+  if (save) { try { localStorage.setItem(PR_SIDE_KEY, String(w)); } catch (e) {} }
+  if (pr) drawPrintPage();
+}
+function bindPrSideResize() {
+  const h = $("prResize");
+  if (!h) return;
+  let saved = null;
+  try { saved = localStorage.getItem(PR_SIDE_KEY); } catch (e) {}
+  if (saved) setPrSideW(saved, false);
+  h.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    h.setPointerCapture(e.pointerId); h.classList.add("drag");
+    const move = ev => setPrSideW(innerWidth - ev.clientX, false);
+    const up = ev => {
+      h.removeEventListener("pointermove", move); h.removeEventListener("pointerup", up); h.removeEventListener("pointercancel", up);
+      h.classList.remove("drag"); setPrSideW(innerWidth - ev.clientX, true);
+    };
+    h.addEventListener("pointermove", move); h.addEventListener("pointerup", up); h.addEventListener("pointercancel", up);
+  });
+  h.addEventListener("dblclick", () => setPrSideW(PR_SIDE_DEF, true));
 }
 bindPrint();

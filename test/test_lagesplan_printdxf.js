@@ -95,6 +95,25 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     mapProgressSet = orig;
     out.progress = seen.length > 0 && seen.every((v, i) => !i || v >= seen[i - 1]) && !mapProgress.size;
     out.button = !!document.getElementById('prExportDxf');
+    // Menyn hamnar framför allt och inom fönstret (sidopanelen klipper den inte).
+    const btn = document.getElementById('prExportDxf'), mn = document.getElementById('prDxfMenu');
+    btn.click();
+    const mr = mn.getBoundingClientRect(), first = mn.querySelector('button').getBoundingClientRect();
+    const hit = document.elementFromPoint(first.left + 5, first.top + first.height / 2);
+    out.menuVisible = !mn.classList.contains('hidden') && mr.left >= 0 && mr.right <= innerWidth + 0.5 && mr.top >= 0 && getComputedStyle(mn).position === 'fixed' && !!hit && mn.contains(hit);
+    document.body.click(); out.menuCloses = mn.classList.contains('hidden');
+    // Sidopanelen kan dras bredare/smalare och minns bredden.
+    const side = document.querySelector('#printModal .pr-side'), rz = document.getElementById('prResize');
+    const w0 = side.getBoundingClientRect().width;
+    const pe = (t, x) => rz.dispatchEvent(new PointerEvent(t, { clientX: x, clientY: 300, pointerId: 1, bubbles: true }));
+    rz.setPointerCapture = () => {};
+    pe('pointerdown', innerWidth - w0); pe('pointermove', innerWidth - 500); pe('pointerup', innerWidth - 500);
+    const w1 = side.getBoundingClientRect().width;
+    pe('pointerdown', innerWidth - 500); pe('pointerup', innerWidth - 50);
+    const w2 = side.getBoundingClientRect().width;
+    rz.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    const w3 = side.getBoundingClientRect().width;
+    out.resize = Math.abs(w1 - 500) < 2 && Math.abs(w2 - 260) < 2 && Math.abs(w3 - 340) < 2 && localStorage.getItem('lp.prSideW') === '340';
     pr.dirty = false; closePrint();
     return out;
   }, { a: sq(100, 100, 200, 200), b: sq(800, 300, 900, 400) });

@@ -438,7 +438,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const b = $("prExportDxf"), menu = $("prDxfMenu");
   if (!b || !menu) return;
   menu.innerHTML = Object.entries(PRINT_DXF_MODES).map(([m, t]) => `<button type="button" data-dxf="${m}" title="${{ sheet: "Hela bladet som i PDF:en, i millimeter: ram, titelruta, förklaring och ritningarna i skala.", model4d: "Varje ritnings zoner, 3D-objekt och etablering på sin riktiga plats i modellens koordinater (samma som 3D-modellen, SWEREF), en fil per ritning.", modelAll: "Som ovan plus DXF-underlagen. Filerna kan bli stora." }[m]}">${t}</button>`).join("");
-  b.onclick = e => { e.stopPropagation(); menu.classList.toggle("hidden"); };
+  // Fast placering mot fönstret – sidopanelen klipper annars menyn.
+  const place = () => {
+    const r = b.getBoundingClientRect();
+    menu.style.right = Math.max(4, innerWidth - r.right) + "px";
+    menu.style.bottom = Math.max(4, innerHeight - r.top + 6) + "px";
+    menu.style.maxWidth = Math.max(200, innerWidth - 8) + "px";
+  };
+  b.onclick = e => { e.stopPropagation(); place(); menu.classList.toggle("hidden"); };
+  window.addEventListener("resize", () => menu.classList.add("hidden"));
   menu.addEventListener("click", e => { const x = e.target.closest("[data-dxf]"); if (!x) return; menu.classList.add("hidden"); exportPrintDxf(x.dataset.dxf); });
   document.addEventListener("click", e => { if (!menu.contains(e.target) && e.target !== b) menu.classList.add("hidden"); });
 });
