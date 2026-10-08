@@ -159,6 +159,8 @@ function l3Dom() {
           <button type="button" data-v3cmd="hide">Dölj markerade <kbd>H</kbd></button>
           <button type="button" data-v3cmd="iso">Visa bara markerade <kbd>I</kbd></button>
           <button type="button" data-v3cmd="showall">Visa alla <kbd>U</kbd></button>
+          <hr/>
+          <button type="button" data-v3cmd="clash">Kollisionskontroll…</button>
         </div>
       </div>
       <button type="button" id="v3ClipBtn" class="v3-ghost" title="Snitt: tryck på en yta där modellen ska skäras">${I.scissors}<span>Snitt</span></button>
@@ -255,7 +257,7 @@ function l3Dom() {
   $3("v3SvSave").onclick = svSave;
   $3("v3SvName").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); svSave(); } else if (e.key === "Escape") { e.preventDefault(); e.target.blur(); l3HideMenus(); } };
   l3RenderSavedViews(); dd("v3ShowBtn", "v3Show"); dd("v3EditBtn", "v3Edit");
-  box.querySelectorAll("[data-v3cmd]").forEach(b => { b.onclick = () => { l3HideMenus(); ({ cspec: () => l3OpenSpecial("copy"), mspec: () => l3OpenSpecial("move"), dup: l3DuplicateSel, copy: l3CopySel, paste: () => l3Paste(), drop: l3DropSel, del: l3DeleteSel, all: () => l3SelectIds(placements.filter(p => !l3.hidden.has(p.id)).map(p => p.id)), similar: l3SelectSimilar, hide: l3HideSel, iso: l3Isolate, showall: l3ShowAll })[b.dataset.v3cmd](); }; });
+  box.querySelectorAll("[data-v3cmd]").forEach(b => { b.onclick = () => { l3HideMenus(); ({ cspec: () => l3OpenSpecial("copy"), mspec: () => l3OpenSpecial("move"), dup: l3DuplicateSel, copy: l3CopySel, paste: () => l3Paste(), drop: l3DropSel, del: l3DeleteSel, all: () => l3SelectIds(placements.filter(p => !l3.hidden.has(p.id)).map(p => p.id)), similar: l3SelectSimilar, hide: l3HideSel, iso: l3Isolate, showall: l3ShowAll, clash: l3OpenClash })[b.dataset.v3cmd](); }; });
   $3("v3ClipBtn").onclick = () => { if (l3.clips && l3.clips.length) l3RenderClipDlg(); l3StartClip(); };
   $3("v3LaunchBtn").onclick = e => { e.stopPropagation(); l3OpenLaunch(); };
   box.querySelectorAll("[data-v3view]").forEach(b => { b.onclick = () => { l3HideMenus(); const v = b.dataset.v3view; if (v === "plan") l3TogglePlan(); else if (v === "center") l3StartV(); else l3View(v); }; });
@@ -311,7 +313,7 @@ function l3HelpHtml() {
     <div><b>Verktyg</b><table>${r("Mellanslag", "Välj")}${r("M", "Flytta punkt till punkt")}${r("Q", "Vrid")}${r("A", "Rikta kant mot kant")}${r("T", "Mät avstånd, vinkel, yta")}${r("Ctrl+K", "Snabbsök kommando")}</table></div>
     <div><b>Under Flytta / Vrid / Mät</b><table>${r("→ ← ↑", "Lås röd / grön / blå axel")}${r("↓", "Släpp axellåset")}${r("5,5 Enter", "Exakt avstånd eller vinkel")}${r("3;0;1,5 Enter", "Relativt dx;dy;dz")}${r("Ctrl", "Flytta ↔ kopiera")}${r("*5 / 5 Enter", "Efter en kopia: 5 i rad / 5 jämnt fördelade")}${r("O / G", "Orto / rutnät av-på")}</table></div>
     <div><b>Markerat</b><table>${r("Pilar", "Flytta ett steg (Skift = 10)")}${r("PgUp / PgDn", "Upp / ned")}${r(", .", "Vrid ett steg")}${r("Ctrl+C / Ctrl+V", "Kopiera / klistra in vid markören")}${r("Ctrl+D", "Duplicera")}${r("Delete", "Ta bort")}${r("H / I / U", "Dölj / visa bara markerade / visa alla")}${r("Ctrl+Z / Ctrl+Y", "Ångra / gör om")}</table></div>
-    <div><b>Redigera-menyn</b><table>${r("Kopiera special", "Linjärt, runt en punkt eller speglat – med antal")}${r("Flytta special", "Exakt dX/dY/dZ, vrida, spegla")}${r("Egenskaper", "Flera markerade: kryssa i fälten och tryck Ändra")}${r("Snitt", "Tryck på en yta – flytta snittet med reglaget")}</table></div>
+    <div><b>Redigera-menyn</b><table>${r("Kopiera special", "Linjärt, runt en punkt eller speglat – med antal")}${r("Flytta special", "Exakt dX/dY/dZ, vrida, spegla")}${r("Egenskaper", "Flera markerade: kryssa i fälten och tryck Ändra")}${r("Snitt", "Tryck på en yta – flytta snittet med reglaget")}${r("Kollisionskontroll", "Krockar med varandra och byggnaden – i tid (4D)")}</table></div>
     <div><b>Handtag på markerat objekt</b><table>${r("□ på en sida", "Dra: längd/bredd (andra sidan står kvar)")}${r("□ på toppen", "Dra: höjd")}${r("○ röd", "Dra: kranens räckvidd")}${r("○ grön", "Staket: dra punkten, dubbeltryck = ta bort")}${r("+", "Staket: dra för ny punkt")}${r("Esc", "Avbryt draget")}</table></div></div>`;
 }
 
@@ -1103,6 +1105,7 @@ function l3Changed() {
   }, 1200);
   l3UndoBtns();
   if (typeof l3RenderObjList === "function") l3RenderObjList();
+  if (typeof l3ClashRefresh === "function") l3ClashRefresh();
   l3Render();
 }
 function l3UndoBtns() {

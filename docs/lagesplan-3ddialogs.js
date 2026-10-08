@@ -58,7 +58,7 @@ function l3DialogKey(e) {
   if (e.key === "Escape") {
     if (l3.dlgPick) { l3.dlgPick = null; l3Status("Punktvalet avbröts."); l3SpPreview(); return true; }
     if (l3.clipPick) { l3.clipPick = false; l3.renderer.domElement.style.cursor = ""; l3Status(""); return true; }
-    for (const id of ["v3Launch", "v3Special", "v3Clip"]) if (l3DlgClose(id)) return true;
+    for (const id of ["v3Launch", "v3Special", "v3Clash", "v3Clip"]) if (l3DlgClose(id)) return true;
     return false;
   }
   if (mod || e.altKey) return false;
@@ -458,7 +458,7 @@ function l3Commands() {
     ["Ta bort markerade", "Delete", l3DeleteSel, sel], ["Ställ på ytan", "", l3DropSel, sel], ["Markera alla", "Ctrl+A", () => l3SelectIds(placements.filter(p => !l3.hidden.has(p.id)).map(p => p.id))],
     ["Markera alla av samma typ", "", l3SelectSimilar, sel], ["Avmarkera", "Esc", () => l3SelectIds([])],
     ["Dölj markerade", "H", l3HideSel, sel], ["Visa bara markerade", "I", l3Isolate, sel], ["Visa alla", "U", l3ShowAll],
-    ["Snitt…", "", l3StartClip], ["Vågrätt snitt", "", l3ClipHorizontal], ["Ta bort alla snitt", "", l3ClearClips, () => l3.clips.length > 0],
+    ["Kollisionskontroll…", "", l3OpenClash], ["Snitt…", "", l3StartClip], ["Vågrätt snitt", "", l3ClipHorizontal], ["Ta bort alla snitt", "", l3ClearClips, () => l3.clips.length > 0],
     ["Översikt (visa allt)", "Home", () => l3Frame(true)], ["Vy uppifrån", "", () => l3View("top")], ["Vy från norr", "", () => l3View("n")], ["Vy från söder", "", () => l3View("s")],
     ["Vy från öster", "", () => l3View("e")], ["Vy från väster", "", () => l3View("w")], ["Zooma till markerat", "F", () => l3View("sel"), sel],
     ["Plan ↔ 3D", "Ctrl+P", l3TogglePlan], ["Parallell projektion av/på", "", () => l3SetProjection(!l3IsOrtho())], ["Rotationscentrum", "V", l3StartV],
