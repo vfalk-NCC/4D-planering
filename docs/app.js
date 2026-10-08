@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-08 23:04";
+const APP_VERSION = "2026-10-08 23:13";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -311,6 +311,8 @@ function onWorkspaceEvent(event, data) {
     return;
   }
   // Placera i 3D: medan man placerar ett objekt tas klicken om hand där.
+  // Flytta modell live: medan man väljer vridpunkt/punkter tas klicken om hand där.
+  if (typeof lmEvent === "function" && lmEvent(event, data)) return;
   if (typeof place3dEvent === "function" && place3dEvent(event, data)) return;
   // Manuella markeringar: medan man ritar tas klick/frihand om hand där.
   if (typeof manualMarksEvent === "function" && manualMarksEvent(event, data)) return;

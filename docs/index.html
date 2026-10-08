@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261008210456" />
-<script src="error-guard.js?v=20261008210456"></script>
+<link rel="stylesheet" href="style.css?v=20261008211309" />
+<script src="error-guard.js?v=20261008211309"></script>
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261008210456"></script>
-<script src="plan-excel-comments.js?v=20261008210456"></script>
+<script src="plan-excel-parser.js?v=20261008211309"></script>
+<script src="plan-excel-comments.js?v=20261008211309"></script>
 </head>
 <body>
 
@@ -324,13 +324,42 @@
       <div id="placeStatus" class="hint"></div>
     </section>
 
-    <section class="panel" data-panel-id="placeLiveTest" data-tab="design">
-      <h2>Test: flytta modell live i TC</h2>
-      <p class="hint">Provar Trimble Connects funktion för att flytta och vrida en tänd modell direkt i 3D-vyn. Markera ett objekt i den modell du vill testa med (t.ex. en IFC i "4D Etablering") och tryck <b>Hämta markerad modell</b>. Tryck sedan Flytta eller Vrid och titta i 3D-vyn. <b>Återställ</b> lägger tillbaka modellen. Kopiera resultatet och skicka det till mig.</p>
-      <div class="row"><button type="button" id="pltPick" class="primary">Hämta markerad modell</button></div>
-      <div class="row"><button type="button" id="pltMove" disabled>Flytta 1 m österut</button><button type="button" id="pltRot" disabled>Vrid 15°</button><button type="button" id="pltReset" disabled>Återställ</button></div>
-      <pre id="pltLog" class="plt-log"></pre>
-      <div class="row"><button type="button" id="pltCopy">Kopiera resultatet</button></div>
+    <section class="panel" data-panel-id="liveMove" data-tab="design">
+      <h2>Flytta och vrid modell live</h2>
+      <p class="hint">Flytta eller vrid en hel modell direkt i Trimble Connects 3D-vy, t.ex. en IFC från "4D Etablering" eller en leverantörsmodell. Markera ett objekt i modellen och tryck <b>Hämta markerad modell</b>.</p>
+      <div class="row"><button type="button" id="lmPick" class="primary">Hämta markerad modell</button></div>
+      <div id="lmBody" class="hidden">
+        <div class="lm-name" id="lmName"></div>
+        <div class="place-nudge">
+          <span class="place-gl">Flytta</span>
+          <select id="lmStep" title="Steglängd"><option value="0.01">1 cm</option><option value="0.1" selected>0,1 m</option><option value="0.5">0,5 m</option><option value="1">1 m</option><option value="5">5 m</option></select>
+          <button type="button" data-lmmove="-1,0,0" title="Väster (X−) · ←">X−</button><button type="button" data-lmmove="1,0,0" title="Öster (X+) · →">X+</button>
+          <button type="button" data-lmmove="0,1,0" title="Norr (Y+) · ↑">Y+</button><button type="button" data-lmmove="0,-1,0" title="Söder (Y−) · ↓">Y−</button>
+          <button type="button" data-lmmove="0,0,1" title="Upp · Page Up">Upp</button><button type="button" data-lmmove="0,0,-1" title="Ned · Page Down">Ned</button>
+        </div>
+        <div class="place-nudge">
+          <span class="place-gl">Vrid</span>
+          <select id="lmRotStep" title="Vinkelsteg"><option value="0.5">0,5°</option><option value="1">1°</option><option value="5">5°</option><option value="15" selected>15°</option><option value="45">45°</option><option value="90">90°</option></select>
+          <button type="button" data-lmrot="1" title="Moturs · ,">↺</button><button type="button" data-lmrot="-1" title="Medurs · .">↻</button>
+        </div>
+        <div class="place-nudge">
+          <span class="place-gl">Vridpunkt</span>
+          <span class="hint" id="lmPivotTxt"></span>
+          <button type="button" data-lmpick="pivot" title="Tryck på punkten i 3D-vyn som modellen ska vridas kring (visas som ett blått kryss)">Välj punkt</button>
+          <button type="button" id="lmPivotObj" title="Mitten på det objekt som är markerat i modellen">Markerat objekts mitt</button>
+        </div>
+        <div class="place-nudge">
+          <span class="place-gl">Exakt</span>
+          <button type="button" data-lmpick="p2p" title="Tryck en punkt på modellen (t.ex. ett hörn) och sedan dit den ska">Punkt till punkt</button>
+          <button type="button" data-lmpick="rot3" title="Vridpunkt, utgångsriktning och ny riktning – som Vrid i SketchUp">Vrid mot riktning</button>
+          <button type="button" id="lmCancelPick" class="hidden">Avbryt</button>
+        </div>
+        <div class="hint" id="lmMode"></div>
+        <div class="hint" id="lmState"></div>
+        <div class="row"><button type="button" id="lmUndo">↶ Ångra</button><button type="button" id="lmReset">Återställ</button><button type="button" id="lmDone">Klar</button></div>
+        <div class="row"><button type="button" id="lmSave" class="primary" title="Gör läget permanent och synligt för alla: en flyttad kopia av IFC-filen sparas som ny fil">Spara läget som ny IFC-fil</button></div>
+        <div class="hint">Piltangenterna flyttar, Page Up/Down höjer/sänker, , och . vrider (Skift = 10 gånger längre). <b>Spara läget</b> gör flytten permanent och synlig för alla: en flyttad kopia sparas som ny fil i "4D Etablering" – den gamla filen lämnas orörd.</div>
+      </div>
     </section>
 
     <section class="panel" data-panel-id="find" data-tab="tools">
@@ -669,24 +698,24 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261008210456"></script>
-  <script src="excel-link.js?v=20261008210456"></script>
-  <script src="app.js?v=20261008210456"></script>
-  <script src="manual-markings.js?v=20261008210456"></script>
-  <script src="ifc-writer.js?v=20261008210456"></script>
-  <script src="pp-import.js?v=20261008210456"></script>
-  <script src="ifc-subset.js?v=20261008210456"></script>
-  <script src="week-summary.js?v=20261008210456"></script>
-  <script src="ifc-mesh.js?v=20261008210456"></script>
-  <script src="place-models.js?v=20261008210456"></script>
-  <script src="tc-placetest.js?v=20261008210456"></script>
-  <script src="place3d.js?v=20261008210456"></script>
-  <script src="volume-ifc.js?v=20261008210456"></script>
-  <script src="sub-activity-list.js?v=20261008210456"></script>
-  <script src="activity-remove.js?v=20261008210456"></script>
-  <script src="dup-check.js?v=20261008210456"></script>
-  <script src="ui-shell.js?v=20261008210456"></script>
-  <script src="undo.js?v=20261008210456"></script>
-  <script src="planning-keys.js?v=20261008210456"></script>
+  <script src="github-storage.js?v=20261008211309"></script>
+  <script src="excel-link.js?v=20261008211309"></script>
+  <script src="app.js?v=20261008211309"></script>
+  <script src="manual-markings.js?v=20261008211309"></script>
+  <script src="ifc-writer.js?v=20261008211309"></script>
+  <script src="pp-import.js?v=20261008211309"></script>
+  <script src="ifc-subset.js?v=20261008211309"></script>
+  <script src="week-summary.js?v=20261008211309"></script>
+  <script src="ifc-mesh.js?v=20261008211309"></script>
+  <script src="place-models.js?v=20261008211309"></script>
+  <script src="tc-livemove.js?v=20261008211309"></script>
+  <script src="place3d.js?v=20261008211309"></script>
+  <script src="volume-ifc.js?v=20261008211309"></script>
+  <script src="sub-activity-list.js?v=20261008211309"></script>
+  <script src="activity-remove.js?v=20261008211309"></script>
+  <script src="dup-check.js?v=20261008211309"></script>
+  <script src="ui-shell.js?v=20261008211309"></script>
+  <script src="undo.js?v=20261008211309"></script>
+  <script src="planning-keys.js?v=20261008211309"></script>
 </body>
 </html>
