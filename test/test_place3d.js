@@ -178,6 +178,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   await page.click('#placeSaveIfc'); await wait(1500);
   up = await page.evaluate(() => window.__up);
   if (JSON.stringify(proxies(up[1].text)) !== JSON.stringify(g1)) fail('IFC-id:n ska vara desamma i nästa version');
+  if (up[1].name === up[0].name || !/ \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(up[1].name)) fail('Varje sparning ska bli en ny fil med datum och klockslag: ' + up[0].name + ' / ' + up[1].name);
 
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_place3d');

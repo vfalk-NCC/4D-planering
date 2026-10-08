@@ -551,14 +551,14 @@ async function placeModelsPrepare() {
   }
 }
 /* En flyttad IFC-fil per ny/ändrad placering av en IFC-modell. */
-async function placeModelIfcFiles() {
+async function placeModelIfcFiles(stamp = placeStamp()) {
   const out = [];
   for (const p of placements) {
     const a = String(p.type).startsWith("model:") ? placeAssetOf(p.type.slice(6)) : null;
     if (!a || a.kind !== "ifc" || !placeIsNew(p)) continue;
     let text = placeIfcCache.get(a.id);
     if (!text) { text = await pmReadAssetFile(a); placeIfcCache.set(a.id, text); }
-    const name = `${p.name || a.name} [${p.id.slice(0, 6)}].ifc`.replace(/[\\/:*?"<>|]/g, "-");
+    const name = `${p.name || a.name} ${stamp}.ifc`.replace(/[\\/:*?"<>|]/g, "-");
     out.push(new File([new TextEncoder().encode(pmIfcPlaced(text, p, a))], name, { type: "application/x-step" }));
   }
   return out;

@@ -92,7 +92,7 @@ put('plan_markups.json', [
   await page.click('#btnListMenu');
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#btnExportVolumesIfc')]);
   const name = dl.suggestedFilename();
-  if (!/^Volymer Kv Testet 2026-10-05\.ifc$/.test(name)) fail('Filnamnet: ' + name);
+  if (!/^Volymer Kv Testet 2026-10-05 kl \d\d\.\d\d\.\d\d\.ifc$/.test(name)) fail('Filnamnet: ' + name);
   const text = fs.readFileSync(await dl.path(), 'utf8');
   for (let i = 0; i < 50 && !tc.files.length; i++) await page.waitForTimeout(100);
   const folder = tc.folders.find(f => f.name === 'Lägesplan export');

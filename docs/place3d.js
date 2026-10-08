@@ -5,9 +5,10 @@
    som trådmodell, övriga ej sparade som en fotavtryck-ram (4 linjer), och sådant som redan finns
    i IFC-filen ritas inte alls. Linjerna ritas bara om när något ändras.
    Placeringarna sparas i projects/<id>/plan_placements.json (egen fil, rör inga andra filer) och
-   blir en IFC-fil ("Spara som IFC") i Trimble Connect-mappen "4D Etablering". Varje objekt får ett
-   fast IFC-id (från placeringens id), så en ny version av filen behåller objektens id:n och
-   eventuella 4D-kopplingar. Koordinater i meter, modellens system (som manuella markeringar). */
+   blir en IFC-fil ("Spara som IFC") i Trimble Connect-mappen "4D Etablering". Varje sparning blir
+   en ny fil med datum och klockslag i namnet (Victors önskemål 2026-10-08: tidigare exporter ska
+   inte skrivas över). Varje objekt får ett fast IFC-id (från placeringens id), så objektens id:n
+   och eventuella 4D-kopplingar är desamma i alla filerna. Koordinater i meter, modellens system (som manuella markeringar). */
 
 const PLACE_TC_FOLDER = "4D Etablering";
 const PLACE_MAX_LINES = 300; // tak för förhandsvisningen
@@ -351,10 +352,11 @@ async function placeSaveIfc() {
   // Egna modeller: GLB-geometrin hämtas in, IFC-modellerna blir egna (flyttade) filer.
   if (typeof placeModelsPrepare === "function") await placeModelsPrepare();
   const r = buildPlacementsIfc(projName);
-  const extra = typeof placeModelIfcFiles === "function" ? await placeModelIfcFiles() : [];
+  const stamp = placeStamp();
+  const extra = typeof placeModelIfcFiles === "function" ? await placeModelIfcFiles(stamp) : [];
   if (!r && !extra.length) { alert("Det finns inga placerade objekt att spara. Välj ett objekt och tryck i modellen."); return null; }
-  // Samma filnamn varje gång: Trimble Connect sparar då en ny version av filen.
-  const name = `Etablering ${projName || "4D-planering"}.ifc`.replace(/[\\/:*?"<>|]/g, "-");
+  // Ny fil varje gång (datum + klockslag) – en tidigare export skrivs aldrig över.
+  const name = `Etablering ${projName || "4D-planering"} ${stamp}.ifc`.replace(/[\\/:*?"<>|]/g, "-");
   const files = [...(r ? [new File([new TextEncoder().encode(r.text)], name, { type: "application/x-step" })] : []), ...extra];
   const n = (r ? r.n : 0) + extra.length;
   setPlaceStatus(`Sparar ${n} objekt som IFC i Trimble Connect…`);
@@ -409,6 +411,11 @@ function placeModelDims(p) {
   if (!a || !a.bbox) return "modellen saknas";
   const k = placeScale(p), b = a.bbox, f = v => Math.round(v * k * 10) / 10;
   return `${f(b.max[0] - b.min[0])}×${f(b.max[1] - b.min[1])}×${f(b.max[2] - b.min[2])} m${a.kind === "ifc" ? " (IFC)" : ""}`;
+}
+/* Datum och klockslag för filnamnet, t.ex. "2026-10-08 kl 21.45.07" (lokal tid, inga kolon). */
+function placeStamp(d = new Date()) {
+  const z = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())} kl ${z(d.getHours())}.${z(d.getMinutes())}.${z(d.getSeconds())}`;
 }
 function placeSaveLabel() { const n = placements.filter(placeIsNew).length; return `Spara som IFC i Trimble Connect${n ? ` (${n} nya/ändrade)` : ""}`; }
 /* Efter en ändring i ett fält: bara listan och knapparna – inte hela panelen (fokus och klick
@@ -476,7 +483,7 @@ function renderPlacePanel() {
     <div class="place-list">${placeListHtml()}</div>
     <div class="row"><button type="button" id="placeUndo" ${placeUndoStack.length ? "" : "disabled"}>↶ Ångra</button>
       <button type="button" id="placeSaveIfc" class="primary" ${placements.length ? "" : "disabled"}>${placeSaveLabel()}</button></div>
-    <div class="hint">Sparas i mappen "${PLACE_TC_FOLDER}". Samma fil får en ny version varje gång.</div>`;
+    <div class="hint">Sparas i mappen "${PLACE_TC_FOLDER}". Varje sparning blir en ny fil med datum och klockslag – tidigare filer skrivs inte över.</div>`;
   bindPlacePanel(box, act);
 }
 function bindPlacePanel(box, act) {

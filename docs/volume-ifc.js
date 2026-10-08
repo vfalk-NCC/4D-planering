@@ -152,7 +152,8 @@ async function exportVolumesIfc() {
   const r = buildVolumesIfc(projName);
   if (!r) { alert("Det finns inga ritade volymer att exportera. Rita en volym via en aktivitets meny (Manuell markering → Volym)."); return null; }
   const at = (document.getElementById("timelineDate") || {}).value || new Date().toISOString().slice(0, 10);
-  const name = `Volymer ${projName ? projName + " " : ""}${at}.ifc`.replace(/[\\/:*?"<>|]/g, "-");
+  // Klockslaget i namnet: en ny export samma dag skriver inte över den förra.
+  const name = `Volymer ${projName ? projName + " " : ""}${at} ${typeof placeStamp === "function" ? placeStamp().slice(11) : ""}.ifc`.replace(/ \.ifc$/, ".ifc").replace(/[\\/:*?"<>|]/g, "-");
   const bytes = new TextEncoder().encode(r.text); // ren ASCII (å/ä/ö som \X2\)
   // Alltid en lokal kopia.
   const url = URL.createObjectURL(new Blob([bytes], { type: "application/x-step" }));
