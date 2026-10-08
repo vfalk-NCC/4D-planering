@@ -54,6 +54,8 @@ function l3ToolsInit() {
   l3.orbit.addEventListener("change", l3PlaceMeasLabel);
   // Ctrl (tryckt och släppt utan annan tangent) växlar Kopia i Flytta – som i SketchUp.
   window.addEventListener("keydown", e => { l3t.ctrlClean = e.key === "Control"; }, true);
+  // Ctrl användes till något annat (Ctrl + mitten = rotera, Ctrl + tryck/ruta, Ctrl + hjul) -> ingen växling.
+  ["pointerdown", "wheel"].forEach(t => window.addEventListener(t, () => { l3t.ctrlClean = false; }, { capture: true, passive: true }));
   window.addEventListener("keyup", e => {
     if (e.key !== "Control" || !l3t.ctrlClean || !l3 || l3.tool !== "move") return;
     const b = document.getElementById("view3d"); if (!b || b.classList.contains("hidden")) return;

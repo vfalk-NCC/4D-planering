@@ -840,6 +840,12 @@ function l3NudgeSel(dx, dy, dz, drot) {
   });
   l3RenderSide(true); l3Changed();
 }
+/* Världsaxeln (±X eller ±Y) som ligger närmast skärmens högerriktning (1,0) eller uppåt (0,1). */
+function l3ScreenAxis(sx, sy) {
+  const v = new THREE.Vector3(sx, sy, 0).applyQuaternion(l3.camera.quaternion);
+  if (Math.hypot(v.x, v.y) < 1e-6) return sy ? [0, 1] : [1, 0];
+  return Math.abs(v.x) >= Math.abs(v.y) ? [Math.sign(v.x), 0] : [0, Math.sign(v.y)];
+}
 const l3StepVal = () => Number((document.getElementById("v3Step") || {}).value) || 0.1;
 
 // ---------------------------------------------------------------------
@@ -1075,7 +1081,9 @@ function l3Key(e) {
   if ((e.key === "Delete" || e.key === "Backspace") && l3.sel.size) { e.preventDefault(); l3DeleteSel(); return; }
   if (l3.sel.size && l3.tool === "select") {
     const st = l3StepVal() * (e.shiftKey ? 10 : 1), rs = (({ 0.1: 5, 0.5: 15, 1: 45 })[l3StepVal()] || 1) * (e.shiftKey ? 2 : 1);
-    const m = { ArrowLeft: [-st, 0, 0, 0], ArrowRight: [st, 0, 0, 0], ArrowUp: [0, st, 0, 0], ArrowDown: [0, -st, 0, 0], PageUp: [0, 0, st, 0], PageDown: [0, 0, -st, 0], ",": [0, 0, 0, rs], ".": [0, 0, 0, -rs] }[e.key];
+    // Pilarna följer skärmen (höger = åt höger i bilden), längs den världsaxel som ligger närmast.
+    const R = l3ScreenAxis(1, 0), U = l3ScreenAxis(0, 1);
+    const m = { ArrowLeft: [-st * R[0], -st * R[1], 0, 0], ArrowRight: [st * R[0], st * R[1], 0, 0], ArrowUp: [st * U[0], st * U[1], 0, 0], ArrowDown: [-st * U[0], -st * U[1], 0, 0], PageUp: [0, 0, st, 0], PageDown: [0, 0, -st, 0], ",": [0, 0, 0, rs], ".": [0, 0, 0, -rs] }[e.key];
     if (m) { e.preventDefault(); l3NudgeSel(...m); }
   }
 }

@@ -107,6 +107,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.keyboard.press('Control+z'); await page.waitForTimeout(150);
   if ((await P('a')).H !== 2) fail('Ctrl+Z ska ångra höjden');
 
+  // --- Piltangenterna följer skärmen: sett från norr flyttar höger-pil åt väster (−X), upp-pil söderut.
+  await page.evaluate(() => { l3StopFly(); const c = new THREE.Vector3(6512330 - l3.O[0], 150115 - l3.O[1], 0); l3.camera.position.set(c.x + 0.5, c.y + 45, 35); l3.orbit.target.copy(c); l3.orbit.update(); l3SelectIds(['a']); });
+  let x0 = (await P('a')).x, y0 = (await P('a')).y;
+  await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowUp'); await page.waitForTimeout(100);
+  p = await P('a');
+  if (Math.abs(p.x - (x0 - 0.5)) > 1e-6 || Math.abs(p.y - (y0 - 0.5)) > 1e-6) fail('Pilarna ska följa skärmen: ' + JSON.stringify([p.x - x0, p.y - y0]));
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+
   // --- Kranens räckvidd.
   await page.evaluate(() => l3SelectIds(['k'])); await view(); await page.waitForTimeout(80);
   if (await page.locator('.v3-hds .v3-hd-R').count() !== 1) fail('Kranen ska ha ett räckviddshandtag');

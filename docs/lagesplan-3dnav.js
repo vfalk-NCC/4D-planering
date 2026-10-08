@@ -18,6 +18,9 @@ function l3NavInit() {
   window.addEventListener("pointercancel", () => { if (l3Piv) l3OrbitPivotEnd(); });
   window.addEventListener("blur", () => { if (l3Piv) l3OrbitPivotEnd(); }); // släppt utanför fönstret
   el.addEventListener("wheel", l3Wheel, { passive: false });
+  // Mittenknappen: ingen autoscroll (Windows) och ingen inklistring (Linux) – den panorerar/roterar.
+  el.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault(); });
+  el.addEventListener("auxclick", e => { if (e.button === 1) e.preventDefault(); });
   const rect = document.createElement("div"); rect.className = "v3-rect hidden"; host.appendChild(rect); l3.rectEl = rect;
   const tri = document.createElement("div"); tri.className = "v3-triad"; tri.title = "Klicka för vy uppifrån (plan)"; host.appendChild(tri); l3.triadEl = tri;
   tri.onclick = () => l3View("top");
@@ -36,6 +39,7 @@ function l3ApplyMouse() {
 let l3Area = null, l3RightDown = null;
 function l3NavDown(e) {
   if (e.pointerType !== "mouse") return;
+  if (e.button === 1 && e.target === l3.renderer.domElement) e.preventDefault();
   if (l3OrbitPivotStart(e)) return;
   if (e.button === 2) { l3RightDown = { x: e.clientX, y: e.clientY }; return; }
   if (e.button !== 0 || !l3IsTekla()) return;
