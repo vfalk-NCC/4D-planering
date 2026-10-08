@@ -77,6 +77,7 @@ function l3DlgPick(n, prompts, done) {
   l3.dlgPick = { n, pts: [], prompts, done };
   l3Status(prompts[0] + " (Esc avbryter)");
   l3.renderer.domElement.style.cursor = "crosshair";
+  l3Render(); l3HandlesPos(); // handtagen göms direkt
 }
 function l3DlgPickTap(e) {
   if (l3.clipPick) { l3ClipAt(e); return true; }
@@ -355,7 +356,7 @@ function l3UpdateHidden() {
 // ---------------------------------------------------------------------
 // Snitt (klipplan)
 // ---------------------------------------------------------------------
-function l3StartClip() { l3.clipPick = true; l3.renderer.domElement.style.cursor = "crosshair"; l3Status("Snitt: tryck på en yta där modellen ska skäras (det som är närmast dig tas bort). Esc avbryter."); }
+function l3StartClip() { l3.clipPick = true; l3.renderer.domElement.style.cursor = "crosshair"; l3Render(); l3HandlesPos(); l3Status("Snitt: tryck på en yta där modellen ska skäras (det som är närmast dig tas bort). Esc avbryter."); }
 function l3ClipAt(e) {
   l3.clipPick = false; l3.renderer.domElement.style.cursor = "";
   const h = l3Ray(e, l3Surfaces())[0];

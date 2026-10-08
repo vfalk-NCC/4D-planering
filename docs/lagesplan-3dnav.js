@@ -77,7 +77,8 @@ function l3IdsInRect(x0, y0, x1, y1, cross) {
   const out = [];
   l3.placeMeshes.forEach((g, id) => {
     if (!g.visible) return;
-    const b = new THREE.Box3().setFromObject(g);
+    const b = new THREE.Box3(); // utan kranens räckviddsskiva
+    g.updateMatrixWorld(true); g.children.forEach(m => { if (!m.userData.noHit) b.expandByObject(m); });
     if (b.isEmpty()) return;
     const pts = [];
     for (const x of [b.min.x, b.max.x]) for (const y of [b.min.y, b.max.y]) for (const z of [b.min.z, b.max.z]) {
@@ -255,7 +256,7 @@ function l3PxSize(p) {
 // ---------------------------------------------------------------------
 // V: rotationscentrum
 // ---------------------------------------------------------------------
-function l3StartV() { l3.vPick = true; l3Status("Tryck på punkten vyn ska rotera kring (Esc avbryter)."); l3.renderer.domElement.style.cursor = "crosshair"; }
+function l3StartV() { l3.vPick = true; l3Render(); l3HandlesPos(); l3Status("Tryck på punkten vyn ska rotera kring (Esc avbryter)."); l3.renderer.domElement.style.cursor = "crosshair"; }
 function l3VTap(e) {
   l3.vPick = false; l3.renderer.domElement.style.cursor = "";
   const s = typeof l3Snap === "function" ? l3Snap(e) : null, P = s ? s.point : (l3Ray(e, l3Surfaces())[0] || {}).point;

@@ -303,7 +303,8 @@ function l3HelpHtml() {
     <div><b>Verktyg</b><table>${r("Mellanslag", "Välj")}${r("M", "Flytta punkt till punkt")}${r("Q", "Vrid")}${r("A", "Rikta kant mot kant")}${r("T", "Mät avstånd, vinkel, yta")}${r("Ctrl+K", "Snabbsök kommando")}</table></div>
     <div><b>Under Flytta / Vrid / Mät</b><table>${r("→ ← ↑", "Lås röd / grön / blå axel")}${r("↓", "Släpp axellåset")}${r("5,5 Enter", "Exakt avstånd eller vinkel")}${r("3;0;1,5 Enter", "Relativt dx;dy;dz")}${r("Ctrl", "Flytta ↔ kopiera")}${r("*5 / 5 Enter", "Efter en kopia: 5 i rad / 5 jämnt fördelade")}${r("O / G", "Orto / rutnät av-på")}</table></div>
     <div><b>Markerat</b><table>${r("Pilar", "Flytta ett steg (Skift = 10)")}${r("PgUp / PgDn", "Upp / ned")}${r(", .", "Vrid ett steg")}${r("Ctrl+C / Ctrl+V", "Kopiera / klistra in vid markören")}${r("Ctrl+D", "Duplicera")}${r("Delete", "Ta bort")}${r("H / I / U", "Dölj / visa bara markerade / visa alla")}${r("Ctrl+Z / Ctrl+Y", "Ångra / gör om")}</table></div>
-    <div><b>Redigera-menyn</b><table>${r("Kopiera special", "Linjärt, runt en punkt eller speglat – med antal")}${r("Flytta special", "Exakt dX/dY/dZ, vrida, spegla")}${r("Egenskaper", "Flera markerade: kryssa i fälten och tryck Ändra")}${r("Snitt", "Tryck på en yta – flytta snittet med reglaget")}</table></div></div>`;
+    <div><b>Redigera-menyn</b><table>${r("Kopiera special", "Linjärt, runt en punkt eller speglat – med antal")}${r("Flytta special", "Exakt dX/dY/dZ, vrida, spegla")}${r("Egenskaper", "Flera markerade: kryssa i fälten och tryck Ändra")}${r("Snitt", "Tryck på en yta – flytta snittet med reglaget")}</table></div>
+    <div><b>Handtag på markerat objekt</b><table>${r("□ på en sida", "Dra: längd/bredd (andra sidan står kvar)")}${r("□ på toppen", "Dra: höjd")}${r("○ röd", "Dra: kranens räckvidd")}${r("○ grön", "Staket: dra punkten, dubbeltryck = ta bort")}${r("+", "Staket: dra för ny punkt")}${r("Esc", "Avbryt draget")}</table></div></div>`;
 }
 
 // ---------------------------------------------------------------------
@@ -396,6 +397,7 @@ function l3Render() {
     l3.groups.sel.children.forEach(h => h.update && h.update());
     l3.renderer.render(l3.scene, l3.camera);
     l3RenderLabels();
+    if (typeof l3HandlesPos === "function") l3HandlesPos();
   });
 }
 const l3Clear = g => { while (g.children.length) { const c = g.children.pop(); c.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => { if (m.map) m.map.dispose(); m.dispose(); }); }); } };
@@ -518,7 +520,7 @@ function l3PlacementGroup(p) {
     // Biblioteksobjekt: delarna räknade för en kopia i origo (ovriden), staket relativt första punkten.
     const local = { ...p, x: 0, y: 0, z: 0, dz: 0, rot: 0 };
     if (p.pts) local.pts = p.pts.map(q => [q[0] - p.x, q[1] - p.y, (q[2] || 0) - (Number(p.z) || 0)]);
-    placeParts(local, 48).forEach(pt => add(prism(pt.poly, pt.z0, pt.z1), p.color || lib.color || "#888888", pt.transp || 0));
+    placeParts(local, 48).forEach(pt => { const m = add(prism(pt.poly, pt.z0, pt.z1), p.color || lib.color || "#888888", pt.transp || 0); if (pt.role === "reach") m.userData.noHit = true; }); // räckvidden går inte att träffa (fästa, ställa på, markera)
     if (lib.fence && (p.pts || []).length === 1) add(prism([[-0.05, -0.05], [0.05, -0.05], [0.05, 0.05], [-0.05, 0.05]], 0, Number(p.H) || 2), p.color || lib.color, 0);
   }
   grp.position.set(p.x - l3.O[0], p.y - l3.O[1], z - l3.O[2]);
@@ -607,7 +609,7 @@ function l3Ray(e, targets) {
   const r = l3.renderer.domElement.getBoundingClientRect();
   const ray = new THREE.Raycaster();
   ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), l3.camera);
-  return ray.intersectObjects(targets, true).filter(h => h.object.visible && h.object.type !== "LineSegments" && h.object.type !== "Line" && l3VisibleChain(h.object) && l3NotClipped(h.point));
+  return ray.intersectObjects(targets, true).filter(h => h.object.visible && !h.object.userData.noHit && h.object.type !== "LineSegments" && h.object.type !== "Line" && l3VisibleChain(h.object) && l3NotClipped(h.point));
 }
 /* Bortskuret av ett snittplan (syns inte -> ska inte gå att träffa). */
 function l3NotClipped(p) { const cl = l3 && l3.renderer.clippingPlanes; return !cl || !cl.length || cl.every(pl => pl.distanceToPoint(p) >= -1e-6); }
@@ -638,6 +640,7 @@ function l3RefreshSel() {
   const one = l3.sel.size === 1 && (l3.tool || "select") === "select" ? l3.placeMeshes.get([...l3.sel][0]) : null;
   if (one) { if (l3.gizmo.object !== one) l3.gizmo.attach(one); } else l3.gizmo.detach();
   if (one) l3Mode(l3.gizmo.mode || "translate");
+  if (typeof l3HandlesBuild === "function") l3HandlesBuild();
 }
 function l3SetHover(id) {
   if (!l3 || l3.hoverId === id) return;
@@ -745,7 +748,7 @@ function l3DragEnd() {
 /* Ställer objektet på ytan rakt under dess mitt (plan, planerade objekt, byggnaden eller annan etablering). */
 function l3DropToSurface(p, g) {
   const ray = new THREE.Raycaster(new THREE.Vector3(g.position.x, g.position.y, g.position.z + 500), new THREE.Vector3(0, 0, -1));
-  const hits = ray.intersectObjects(l3Surfaces(p.id), true).filter(h => h.object.visible && h.object.type !== "LineSegments" && l3VisibleChain(h.object));
+  const hits = ray.intersectObjects(l3Surfaces(p.id), true).filter(h => h.object.visible && !h.object.userData.noHit && h.object.type !== "LineSegments" && l3VisibleChain(h.object));
   if (!hits.length) return false;
   const zTop = hits[0].point.z + l3.O[2];
   p.z = placeR3(zTop); p.dz = 0;
@@ -989,6 +992,7 @@ function l3RenderLib() {
     l3Status(l3.addType ? ((placeLib(k) || {}).fence ? "Staket: tryck första punkten." : "Tryck där objektet ska stå (marken eller ett objekt). Esc avbryter.") : "");
     l3RenderLib();
   }; });
+  if (typeof l3HandlesPos === "function") l3HandlesPos(); // inga handtag medan man lägger till
 }
 
 /* Namn ovanför etableringen (högst 80, de närmaste). */
@@ -1040,6 +1044,7 @@ function l3Key(e) {
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
   // I 3D gäller bara 3D-vyns tangenter (lägesplanens genvägar och 2D-ångra ska inte reagera).
   e.stopImmediatePropagation();
+  if (typeof l3HandleKey === "function" && l3HandleKey(e)) return; // drag i ett handtag pågår
   const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
   if (mod && k === "z" && !e.shiftKey) { e.preventDefault(); l3Undo(); return; }
   if (mod && (k === "y" || (k === "z" && e.shiftKey))) { e.preventDefault(); l3Redo(); return; }
