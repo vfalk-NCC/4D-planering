@@ -25,6 +25,8 @@ const ELEMENT_TYPES = {
   rect: { label: "Ruta", icon: "▭" },
   line: { label: "Linje", icon: "╱" },
   arrow: { label: "Pil", icon: "➜" },
+  ellipse: { label: "Ellips", icon: "◯" },
+  callout: { label: "Pratbubbla", icon: "💬" },
 };
 const NORTH_STYLES = { rose4: "Stjärna", classic: "Klassisk halvpil", rose8: "Kompassros", minimal: "Minimal", compass: "Bussola", feather: "Pil med fjäder" };
 
@@ -461,6 +463,7 @@ function mapLabelHeight(el) {
 /* Elementets yta inklusive namn & skala-texten. */
 function elBox(el) {
   if (el.type === "arrow" && typeof arrowBounds === "function") return arrowBounds(el);
+  if (el.type === "callout" && typeof calloutBounds === "function") return calloutBounds(el);
   const x0 = Math.min(el.x, el.x + el.w), y0 = Math.min(el.y, el.y + el.h);
   return { x: x0, y: y0, w: Math.abs(el.w), h: Math.abs(el.h) + (el.type === "map" ? mapLabelHeight(el) : 0) };
 }
@@ -572,6 +575,32 @@ function prTextTop(el, Y, H, pad, n, lh, fs) {
   if (el.valign === "bottom") return Y + H - pad - th;
   return Y + pad;
 }
+/* Text i en ruta (text och pratbubbla): radbrytning, justering, lodrät justering, klipps vid rutan. fs = teckenhöjd i px, s = px per mm. */
+function drawTextBlock(ctx, el, X, Y, W, H, tpl, fs, s) {
+  const pad = prTextPad(el) * s, lh = fs * prTextLh(el);
+  ctx.save();
+  ctx.font = `${el.italic ? "italic " : ""}${el.bold ? "bold " : ""}${fs}px Helvetica, Arial, sans-serif`;
+  ctx.fillStyle = el.color || "#000"; ctx.textBaseline = "top";
+  ctx.textAlign = el.align || "left";
+  const tx = el.align === "center" ? X + W / 2 : el.align === "right" ? X + W - pad : X + pad;
+  ctx.beginPath(); ctx.rect(X, Y, W, H); ctx.clip();
+  const lines = wrapLines(ctx, fillText(el.text, tpl), W - 2 * pad), y0 = prTextTop(el, Y, H, pad, lines.length, lh, fs);
+  lines.forEach((ln, i) => ctx.fillText(ln, tx, y0 + i * lh));
+  ctx.restore();
+}
+/* Samma text i PDF:en (vektor). */
+function pdfTextBlock(doc, el, x, y, w, h, tpl, k, defSize = 10) {
+  const size = (el.size || defSize) * k, pad = prTextPad(el) * k;
+  doc.setFont("helvetica", el.bold && el.italic ? "bolditalic" : el.bold ? "bold" : el.italic ? "italic" : "normal"); doc.setFontSize(size); doc.setTextColor(...hexRgb(el.color));
+  const lines = doc.splitTextToSize(fillText(el.text, tpl), w - 2 * pad);
+  const tx = el.align === "center" ? x + w / 2 : el.align === "right" ? x + w - pad : x + pad;
+  const lh = size * PT_MM * prTextLh(el), y0 = prTextTop(el, y, h, pad, lines.length, lh, size * PT_MM);
+  // Som i layouten (som klipper vid rutan): en rad skrivs så länge bokstäverna
+  // ryms, radavståndet under får sticka ut. Första raden skrivs alltid.
+  const glyph = size * PT_MM * 0.8;
+  lines.forEach((ln, i) => { const ly = y0 + i * lh; if (!i || (ly >= y - 0.5 && ly + glyph <= y + h + 0.5)) doc.text(ln, tx, ly, { baseline: "top", align: el.align || "left" }); });
+  doc.setTextColor(0);
+}
 /* Streckad/prickad linje (ruta, linje): mönstret i mm efter linjens tjocklek. null = heldragen. */
 function prDashMm(el) {
   const lw = Math.max(0.1, Number(el.lw) || 0.35);
@@ -609,14 +638,18 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
     case "text": {
       if (el.fill) { ctx.fillStyle = el.fill; ctx.fillRect(X, Y, W, H); }
       if (el.border) { ctx.strokeStyle = el.border; ctx.lineWidth = Math.max(1, 0.3 * k * u); ctx.strokeRect(X, Y, W, H); }
-      const fs = pt(el.size || 10), pad = prTextPad(el) * k * u, lh = fs * prTextLh(el);
-      ctx.font = `${el.italic ? "italic " : ""}${el.bold ? "bold " : ""}${fs}px Helvetica, Arial, sans-serif`;
-      ctx.fillStyle = el.color || "#000"; ctx.textBaseline = "top";
-      ctx.textAlign = el.align || "left";
-      const tx = el.align === "center" ? X + W / 2 : el.align === "right" ? X + W - pad : X + pad;
-      ctx.beginPath(); ctx.rect(X, Y, W, H); ctx.clip();
-      const lines = wrapLines(ctx, fillText(el.text, tpl), W - 2 * pad), y0 = prTextTop(el, Y, H, pad, lines.length, lh, fs);
-      lines.forEach((ln, i) => ctx.fillText(ln, tx, y0 + i * lh));
+      drawTextBlock(ctx, el, X, Y, W, H, tpl, pt(el.size || 10), k * u);
+      break;
+    }
+    case "callout": { // lagesplan-printshapes.js
+      if (typeof drawCalloutShape === "function") drawCalloutShape(ctx, el, k * u);
+      drawTextBlock(ctx, el, X, Y, W, H, tpl, pt(el.size || 9), k * u);
+      break;
+    }
+    case "ellipse": {
+      const dash = prDashMm(el), path = () => { ctx.beginPath(); ctx.ellipse(X + W / 2, Y + H / 2, Math.abs(W / 2), Math.abs(H / 2), 0, 0, Math.PI * 2); };
+      if (el.fill) { ctx.save(); ctx.globalAlpha = prFillAlpha(el); ctx.fillStyle = el.fill; path(); ctx.fill(); ctx.restore(); }
+      if (el.stroke) { ctx.strokeStyle = el.stroke; ctx.lineWidth = Math.max(0.5, (el.lw || 0.35) * k * u); if (dash) { ctx.setLineDash(dash.map(v => v * k * u)); if (el.dash === "dotted") ctx.lineCap = "round"; } path(); ctx.stroke(); ctx.setLineDash([]); }
       break;
     }
     case "image": {
@@ -1036,6 +1069,8 @@ function handlePts(el, k, u) {
   const x = el.x * k * u, y = el.y * k * u, w = el.w * k * u, h = el.h * k * u;
   // Pilen har bara två handtag: start (index 0) och spets (index 3) – de övriga ritas/träffas inte.
   if (el.type === "arrow") return [[x, y], [NaN, NaN], [NaN, NaN], [x + w, y + h]];
+  // Pratbubblan: fyra hörn + spetsen (index 4).
+  if (el.type === "callout") return [[x, y], [x + w, y], [x, y + h], [x + w, y + h], [(el.x + (Number(el.tx) || 0)) * k * u, (el.y + (Number(el.ty) || 0)) * k * u]];
   return [[x, y], [x + w, y], [x, y + h], [x + w, y + h]];
 }
 function prPoint(e) {
@@ -1135,6 +1170,7 @@ function prMouseMove(e) {
       if (sx) { px = sx.at; pr.guides.push({ x: sx.at }); } else px = gridMm(px);
       if (sy) { py = sy.at; pr.guides.push({ y: sy.at }); } else py = gridMm(py);
     }
+    if (d.el.type === "callout" && d.hi === 4) { d.el.tx = Math.round((px - o.x) * 10) / 10; d.el.ty = Math.round((py - o.y) * 10) / 10; pr.dirty = true; drawPrintPage(); return; }
     let x0 = right ? o.x : px, x1 = right ? px : o.x + o.w;
     let y0 = bottom ? o.y : py, y1 = bottom ? py : o.y + o.h;
     if (d.el.type === "line" || d.el.type === "arrow") { d.el.x = x0; d.el.y = y0; d.el.w = x1 - x0; d.el.h = y1 - y0; }
@@ -1148,6 +1184,8 @@ function prMouseMove(e) {
         if (bottom) y1 = y0 + h; else y0 = y1 - h;
       }
       Object.assign(d.el, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+      // Pratbubblans spets står still på bladet när rutan ändras.
+      if (d.el.type === "callout") { d.el.tx = (o.x + (Number(o.tx) || 0)) - d.el.x; d.el.ty = (o.y + (Number(o.ty) || 0)) - d.el.y; }
     }
   } else if (d.kind === "pan") {
     const { k } = pageDims();
@@ -1259,6 +1297,8 @@ function addEl(type) {
     title: { size: 7, ...TITLE_CARD_DEFAULTS, w: 85, h: 69 },
     rect: { stroke: "#000000", lw: 0.35, fill: "" },
     line: { stroke: "#000000", lw: 0.35, w: 60, h: 0 },
+    ellipse: { stroke: "#dc2626", lw: 0.7, fill: "", fillOpacity: 100, dash: "solid", w: 40, h: 25 },
+    callout: { text: "Text", size: 9, color: "#111827", fill: "#ffffff", stroke: "#1f2937", lw: 0.35, radius: 2, pad: 2, align: "center", valign: "middle", w: 50, h: 18, tx: 62, ty: 34 },
     arrow: { style: "modern", shape: "straight", stroke: "#dc2626", lw: 2.2, head: 100, bend: 40, dash: "solid", outline: "#000000", w: 50, h: -15 },
   }[type];
   pushUndo();
@@ -1384,12 +1424,16 @@ function renderPrintProps(onlyPos) {
       <button class="icon ${el.locked ? "pr-locked" : "ghost"}" id="prLock" title="${el.locked ? "Låst – klicka för att låsa upp" : "Lås (kan inte flyttas, ändras i storlek eller tas bort av misstag)"}">${el.locked ? "🔒" : "🔓"}</button></div>
     ${el.locked ? `<div class="hint" style="margin:2px 0 4px;">🔒 Låst – flyttas inte med musen eller piltangenterna.${el.type === "map" ? " Utsnittet och skalan kan inte heller ändras genom att dra." : ""}</div>` : ""}
     <div class="pr-grid4">${num("x", "X (mm)")}${num("y", "Y (mm)")}${num("w", "Bredd")}${num("h", "Höjd")}</div>`;
-  if (el.type === "text") html += `<label>Text <span class="muted">– {plan} {datum} {idag} {skala} {format} {användare} {utskriven}</span></label><textarea data-f="text" rows="4">${escHtml(el.text || "")}</textarea>
-      <div class="pr-grid4">${num("size", "Storlek pt", "0.5")}<div style="grid-column:span 3;"><label>Justering</label><div class="seg pr-seg">${[["left", "⯇", "Vänster"], ["center", "≡", "Mitten"], ["right", "⯈", "Höger"]].map(([a, i, t]) => `<button type="button" data-tset="align" data-v="${a}" class="${(el.align || "left") === a ? "on" : ""}" title="${t}">${t}</button>`).join("")}</div></div>
-        ${color("color", "Färg")}${color("fill", "Bakgrund", true)}${color("border", "Ram", true)}<div></div>
+  // Textens val – används av Text och Pratbubbla.
+  const textOpts = (defSize, colors) => `<label>Text <span class="muted">– {plan} {datum} {idag} {skala} {format} {användare} {utskriven}</span></label><textarea data-f="text" rows="4">${escHtml(el.text || "")}</textarea>
+      <div class="pr-grid4">${num("size", "Storlek pt", "0.5", defSize)}<div style="grid-column:span 3;"><label>Justering</label><div class="seg pr-seg">${[["left", "⯇", "Vänster"], ["center", "≡", "Mitten"], ["right", "⯈", "Höger"]].map(([a, i, t]) => `<button type="button" data-tset="align" data-v="${a}" class="${(el.align || "left") === a ? "on" : ""}" title="${t}">${t}</button>`).join("")}</div></div>
+        ${colors}
         <div style="grid-column:span 4;"><label>Lodrätt</label><div class="seg pr-seg">${[["top", "Topp"], ["middle", "Mitten"], ["bottom", "Botten"]].map(([a, t]) => `<button type="button" data-tset="valign" data-v="${a}" class="${(el.valign || "top") === a ? "on" : ""}">${t}</button>`).join("")}</div></div>
         ${num("pad", "Marginal", "0.5", 1.2)}${num("lineH", "Radavst. ×", "0.1", 1.2)}</div>
       <div class="row" style="gap:14px;">${chk("bold", "<b>Fetstil</b>")}${chk("italic", "<i>Kursiv</i>")}</div><div class="hint">Marginal i mm från rutans kant. Radavstånd i × teckenhöjden.</div>`;
+  if (el.type === "text") html += textOpts(10, `${color("color", "Färg")}${color("fill", "Bakgrund", true)}${color("border", "Ram", true)}<div></div>`);
+  if (el.type === "callout") html += textOpts(9, `${color("color", "Text")}${color("fill", "Fyllning", true)}${color("stroke", "Kant", true)}${num("lw", "Tjocklek", "0.05")}`)
+    + `<div class="pr-grid4">${num("radius", "Hörn mm", "0.5")}</div><div class="hint">Dra i handtaget i spetsen för att peka ut något. Spetsen står kvar när bubblan ändrar storlek.</div>`;
   if (el.type === "image") html += `<button id="prPickImg" class="block" style="margin-top:8px;">🖼 ${el.path ? "Byt bild…" : "Välj bild…"}</button><div class="hint">PNG, JPG eller SVG – t.ex. företagets logga eller skyltar. Bilden sparas i projektet. Proportionerna behålls (Shift = fritt).</div>
       ${el.path ? `<label style="margin-top:8px;">Beskär (% av bilden)</label><button type="button" id="prImgCrop" class="block" title="Dra i handtagen på bilden för att beskära">✂ Beskär med musen…</button><div class="pr-grid4">${num("cropL", "Vänster", "1")}${num("cropR", "Höger", "1")}${num("cropT", "Över", "1")}${num("cropB", "Under", "1")}</div>
       ${chk("knockout", "Gör vit bakgrund genomskinlig")}
@@ -1449,9 +1493,9 @@ function renderPrintProps(onlyPos) {
   if (el.type === "qr") html += inp("text", "Länk eller text") + chk("frame", "<b>Ram med egen text</b>")
     + (el.frame ? inp("title", "Rubrik") + inp("subtitle", "Underrubrik") + inp("footer", "Text längst ner")
       + `<div class="pr-grid4">${color("frameColor", "Ramens färg", false, QR_CARD_DEFAULTS.frameColor)}</div>${chk("phone", "Mobil-ikon")}<div class="hint">Platshållare: {plan} {datum} {idag}</div>` : "");
-  if (el.type === "rect") html += `<div class="pr-grid4">${color("stroke", "Linje", true)}${num("lw", "Tjocklek", "0.05")}<div style="grid-column:span 2;"><label>Linjetyp</label><select data-f="dash">${[["solid", "Heldragen"], ["dashed", "Streckad"], ["dotted", "Prickad"]].map(([v, n]) => `<option value="${v}"${(el.dash || "solid") === v ? " selected" : ""}>${n}</option>`).join("")}</select></div>
-      ${color("fill", "Fyllning", true)}${num("fillOpacity", "Täckning %", "10", 100)}${num("radius", "Hörn mm", "0.5")}</div>
-      <div class="hint">Tjocklek i mm. Täckning 100 % = heltäckande fyllning, lägre = genomskinlig. Hörn = rundade hörn (0 = raka).</div>`;
+  if (el.type === "rect" || el.type === "ellipse") html += `<div class="pr-grid4">${color("stroke", "Linje", true)}${num("lw", "Tjocklek", "0.05")}<div style="grid-column:span 2;"><label>Linjetyp</label><select data-f="dash">${[["solid", "Heldragen"], ["dashed", "Streckad"], ["dotted", "Prickad"]].map(([v, n]) => `<option value="${v}"${(el.dash || "solid") === v ? " selected" : ""}>${n}</option>`).join("")}</select></div>
+      ${color("fill", "Fyllning", true)}${num("fillOpacity", "Täckning %", "10", 100)}${el.type === "rect" ? num("radius", "Hörn mm", "0.5") : ""}</div>
+      <div class="hint">Tjocklek i mm. Täckning 100 % = heltäckande fyllning, lägre = genomskinlig.${el.type === "rect" ? " Hörn = rundade hörn (0 = raka)." : " Lika bredd och höjd ger en cirkel."}</div>`;
   if (el.type === "line") html += `<div class="pr-grid4">${color("stroke", "Färg")}${num("lw", "Tjocklek", "0.05")}<div style="grid-column:span 2;"><label>Linjetyp</label><select data-f="dash">${[["solid", "Heldragen"], ["dashed", "Streckad"], ["dotted", "Prickad"]].map(([v, n]) => `<option value="${v}"${(el.dash || "solid") === v ? " selected" : ""}>${n}</option>`).join("")}</select></div></div><div class="hint">Tjocklek i mm. Höjd 0 = vågrät linje, bredd 0 = lodrät. Vill du ha en spets – använd Pil.</div>`;
   if (el.type === "arrow") {
     const st = el.style || "modern", sh = el.shape || "straight", grp = g => Object.entries(ARROW_STYLES).filter(([, v]) => v.group === g);
@@ -1712,16 +1756,26 @@ async function exportPrintPdf() {
       } else if (el.type === "text") {
         if (el.fill) { doc.setFillColor(...hexRgb(el.fill)); doc.rect(x, y, w, h, "F"); }
         if (el.border) { doc.setDrawColor(...hexRgb(el.border)); doc.setLineWidth(0.3 * k); doc.rect(x, y, w, h); }
-        const size = (el.size || 10) * k, pad = prTextPad(el) * k;
-        doc.setFont("helvetica", el.bold && el.italic ? "bolditalic" : el.bold ? "bold" : el.italic ? "italic" : "normal"); doc.setFontSize(size); doc.setTextColor(...hexRgb(el.color));
-        const lines = doc.splitTextToSize(fillText(el.text, tpl), w - 2 * pad);
-        const tx = el.align === "center" ? x + w / 2 : el.align === "right" ? x + w - pad : x + pad;
-        const lh = size * PT_MM * prTextLh(el), y0 = prTextTop(el, y, h, pad, lines.length, lh, size * PT_MM);
-        // Som i layouten (som klipper vid rutan): en rad skrivs så länge bokstäverna
-        // ryms, radavståndet under får sticka ut. Första raden skrivs alltid.
-        const glyph = size * PT_MM * 0.8;
-        lines.forEach((ln, i) => { const ly = y0 + i * lh; if (!i || (ly >= y - 0.5 && ly + glyph <= y + h + 0.5)) doc.text(ln, tx, ly, { baseline: "top", align: el.align || "left" }); });
-        doc.setTextColor(0);
+        pdfTextBlock(doc, el, x, y, w, h, tpl, k, 10);
+      } else if (el.type === "callout") {
+        pdfCalloutShape(doc, el, k);
+        pdfTextBlock(doc, el, x, y, w, h, tpl, k, 9);
+      } else if (el.type === "ellipse") {
+        if (!el.stroke && !el.fill) continue;
+        const dash = prDashMm(el), cx = x + w / 2, cy = y + h / 2;
+        if (el.fill) {
+          const a = prFillAlpha(el);
+          doc.saveGraphicsState();
+          if (a < 1 && doc.GState) doc.setGState(new doc.GState({ opacity: a }));
+          doc.setFillColor(...hexRgb(el.fill)); doc.ellipse(cx, cy, Math.abs(w / 2), Math.abs(h / 2), "F");
+          doc.restoreGraphicsState();
+        }
+        if (el.stroke) {
+          doc.setDrawColor(...hexRgb(el.stroke)); doc.setLineWidth((el.lw || 0.35) * k);
+          if (dash) { doc.setLineDashPattern(dash.map(v => v * k), 0); if (el.dash === "dotted") doc.setLineCap("round"); }
+          doc.ellipse(cx, cy, Math.abs(w / 2), Math.abs(h / 2), "D");
+          if (dash) { doc.setLineDashPattern([], 0); doc.setLineCap("butt"); }
+        }
       } else if (el.type === "rect") {
         if (!el.stroke && !el.fill) continue;
         const r = Math.min(Math.max(0, Number(el.radius) || 0) * k, Math.abs(w) / 2, Math.abs(h) / 2), dash = prDashMm(el);

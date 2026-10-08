@@ -115,6 +115,37 @@ const PORT = 8990;
     });
     if (tx.panel !== true || tx.set !== true || tx.pdf !== true) fail('Text: ' + JSON.stringify(tx));
     console.log('OK: text – kursiv, lodrät justering (mitten), justering, marginal och radavstånd, även i PDF:en');
+    // 6) Pratbubbla och ellips: läggs in med knapparna, spetsen dras med sitt handtag, följer med vid flytt, PDF/DXF.
+    const cb = await page.evaluate(() => {
+      pr.tpl.elements = []; setSel([]);
+      document.querySelector('#prAdd [data-add="callout"]').click();
+      const el = pr.tpl.elements[0];
+      el.x = 50; el.y = 50; el.w = 50; el.h = 20; el.tx = 80; el.ty = 40; drawPrintPage();
+      const { k } = pageDims(), { u, ox, oy, dpr, c } = pr.L, r = c.getBoundingClientRect();
+      const scr = (x, y) => [r.left + (x * k * u + ox) / dpr, r.top + (y * k * u + oy) / dpr];
+      return { type: el.type, panel: !!document.querySelector('#prProps textarea[data-f="text"]') && !!document.querySelector('#prProps [data-f="radius"]'), tip: scr(130, 90), to: scr(20, 100), body: scr(60, 55) };
+    });
+    if (cb.type !== 'callout' || !cb.panel) fail('Pratbubblan ska läggas in med sina val: ' + JSON.stringify(cb));
+    await page.mouse.move(...cb.tip); await page.mouse.down(); await page.mouse.move(cb.to[0], cb.to[1], { steps: 4 }); await page.mouse.up();
+    const tip = await page.evaluate(() => { const el = pr.tpl.elements[0]; return { x: el.x, y: el.y, w: el.w, tx: el.tx, ty: el.ty, out: calloutOutline(el).some(([x, y]) => Math.abs(x - 20) < 0.6 && Math.abs(y - 100) < 0.6) }; });
+    if (tip.x !== 50 || tip.w !== 50 || Math.abs(tip.tx + 30) > 0.6 || Math.abs(tip.ty - 50) > 0.6 || !tip.out) fail('Spetsens handtag ska flytta spetsen, inte rutan: ' + JSON.stringify(tip));
+    await page.mouse.move(...cb.body); await page.mouse.down(); await page.mouse.move(cb.body[0] + 30, cb.body[1], { steps: 3 }); await page.mouse.up();
+    const mv = await page.evaluate(() => { const el = pr.tpl.elements[0]; return { x: el.x, tx: el.tx }; });
+    if (mv.x <= 50 || Math.abs(mv.tx + 30) > 0.6) fail('Spetsen ska följa med när bubblan flyttas: ' + JSON.stringify(mv));
+    const sh = await page.evaluate(async () => {
+      setSel([]); document.querySelector('#prAdd [data-add="ellipse"]').click();
+      const e = pr.tpl.elements[pr.tpl.elements.length - 1];
+      const out = { type: e.type, panel: !!document.querySelector('#prProps [data-f="fillOpacity"]') && !document.querySelector('#prProps [data-f="radius"]') };
+      const calls = [];
+      window.jspdf = { jsPDF: function () { return new Proxy({}, { get: (t, k) => k === 'GState' ? function () {} : k === 'splitTextToSize' ? (s => [String(s)]) : k === 'output' ? (() => new ArrayBuffer(8)) : ((...a) => { calls.push([k, a]); }) }); } };
+      await exportPrintPdf();
+      out.pdf = calls.some(c => c[0] === 'lines' && c[1][5] === true && c[1][4] === 'FD') && calls.some(c => c[0] === 'text' && c[1][0] === 'Text') && calls.some(c => c[0] === 'ellipse' && c[1][4] === 'D');
+      const d = parseDxf((await buildPrintDxf(pr.tpl, () => {}, 'sheet'))[0].text);
+      out.dxf = 'PRATBUBBLOR' in d.layers && 'FORMER' in d.layers;
+      return out;
+    });
+    if (sh.type !== 'ellipse' || !sh.panel || !sh.pdf || !sh.dxf) fail('Ellips/pratbubbla i panel, PDF och DXF: ' + JSON.stringify(sh));
+    console.log('OK: pratbubbla (spetsen dras med sitt handtag och följer med vid flytt) och ellips – panel, PDF (vektor) och DXF');
     await page.evaluate(() => { pr.dirty = false; closePrint(); });
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
