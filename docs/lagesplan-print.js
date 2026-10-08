@@ -563,6 +563,15 @@ function wrapLines(ctx, text, maxW) {
   });
   return out;
 }
+/* Text: inre marginal (mm), radavstånd (× teckenhöjden) och var första raden börjar (lodrät justering). */
+function prTextPad(el) { const p = Number(el.pad); return el.pad == null || isNaN(p) ? 1.2 : Math.max(0, p); }
+function prTextLh(el) { const v = Number(el.lineH); return v > 0 ? Math.max(0.8, Math.min(3, v)) : 1.2; }
+function prTextTop(el, Y, H, pad, n, lh, fs) {
+  const th = Math.max(0, n - 1) * lh + fs;
+  if (el.valign === "middle") return Y + (H - th) / 2;
+  if (el.valign === "bottom") return Y + H - pad - th;
+  return Y + pad;
+}
 /* Streckad/prickad linje (ruta, linje): mönstret i mm efter linjens tjocklek. null = heldragen. */
 function prDashMm(el) {
   const lw = Math.max(0.1, Number(el.lw) || 0.35);
@@ -600,13 +609,14 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
     case "text": {
       if (el.fill) { ctx.fillStyle = el.fill; ctx.fillRect(X, Y, W, H); }
       if (el.border) { ctx.strokeStyle = el.border; ctx.lineWidth = Math.max(1, 0.3 * k * u); ctx.strokeRect(X, Y, W, H); }
-      const fs = pt(el.size || 10), pad = 1.2 * k * u;
-      ctx.font = `${el.bold ? "bold " : ""}${fs}px Helvetica, Arial, sans-serif`;
+      const fs = pt(el.size || 10), pad = prTextPad(el) * k * u, lh = fs * prTextLh(el);
+      ctx.font = `${el.italic ? "italic " : ""}${el.bold ? "bold " : ""}${fs}px Helvetica, Arial, sans-serif`;
       ctx.fillStyle = el.color || "#000"; ctx.textBaseline = "top";
       ctx.textAlign = el.align || "left";
       const tx = el.align === "center" ? X + W / 2 : el.align === "right" ? X + W - pad : X + pad;
       ctx.beginPath(); ctx.rect(X, Y, W, H); ctx.clip();
-      wrapLines(ctx, fillText(el.text, tpl), W - 2 * pad).forEach((ln, i) => ctx.fillText(ln, tx, Y + pad + i * fs * 1.2));
+      const lines = wrapLines(ctx, fillText(el.text, tpl), W - 2 * pad), y0 = prTextTop(el, Y, H, pad, lines.length, lh, fs);
+      lines.forEach((ln, i) => ctx.fillText(ln, tx, y0 + i * lh));
       break;
     }
     case "image": {
@@ -1375,9 +1385,11 @@ function renderPrintProps(onlyPos) {
     ${el.locked ? `<div class="hint" style="margin:2px 0 4px;">🔒 Låst – flyttas inte med musen eller piltangenterna.${el.type === "map" ? " Utsnittet och skalan kan inte heller ändras genom att dra." : ""}</div>` : ""}
     <div class="pr-grid4">${num("x", "X (mm)")}${num("y", "Y (mm)")}${num("w", "Bredd")}${num("h", "Höjd")}</div>`;
   if (el.type === "text") html += `<label>Text <span class="muted">– {plan} {datum} {idag} {skala} {format} {användare} {utskriven}</span></label><textarea data-f="text" rows="4">${escHtml(el.text || "")}</textarea>
-      <div class="pr-grid4">${num("size", "Storlek pt", "0.5")}<div style="grid-column:span 2;"><label>Justering</label><select data-f="align">${["left", "center", "right"].map(a => `<option value="${a}"${(el.align || "left") === a ? " selected" : ""}>${{ left: "Vänster", center: "Mitten", right: "Höger" }[a]}</option>`).join("")}</select></div><div></div>
-        ${color("color", "Färg")}${color("fill", "Bakgrund", true)}${color("border", "Ram", true)}</div>
-      ${chk("bold", "Fetstil")}`;
+      <div class="pr-grid4">${num("size", "Storlek pt", "0.5")}<div style="grid-column:span 3;"><label>Justering</label><div class="seg pr-seg">${[["left", "⯇", "Vänster"], ["center", "≡", "Mitten"], ["right", "⯈", "Höger"]].map(([a, i, t]) => `<button type="button" data-tset="align" data-v="${a}" class="${(el.align || "left") === a ? "on" : ""}" title="${t}">${t}</button>`).join("")}</div></div>
+        ${color("color", "Färg")}${color("fill", "Bakgrund", true)}${color("border", "Ram", true)}<div></div>
+        <div style="grid-column:span 4;"><label>Lodrätt</label><div class="seg pr-seg">${[["top", "Topp"], ["middle", "Mitten"], ["bottom", "Botten"]].map(([a, t]) => `<button type="button" data-tset="valign" data-v="${a}" class="${(el.valign || "top") === a ? "on" : ""}">${t}</button>`).join("")}</div></div>
+        ${num("pad", "Marginal", "0.5", 1.2)}${num("lineH", "Radavst. ×", "0.1", 1.2)}</div>
+      <div class="row" style="gap:14px;">${chk("bold", "<b>Fetstil</b>")}${chk("italic", "<i>Kursiv</i>")}</div><div class="hint">Marginal i mm från rutans kant. Radavstånd i × teckenhöjden.</div>`;
   if (el.type === "image") html += `<button id="prPickImg" class="block" style="margin-top:8px;">🖼 ${el.path ? "Byt bild…" : "Välj bild…"}</button><div class="hint">PNG, JPG eller SVG – t.ex. företagets logga eller skyltar. Bilden sparas i projektet. Proportionerna behålls (Shift = fritt).</div>
       ${el.path ? `<label style="margin-top:8px;">Beskär (% av bilden)</label><button type="button" id="prImgCrop" class="block" title="Dra i handtagen på bilden för att beskära">✂ Beskär med musen…</button><div class="pr-grid4">${num("cropL", "Vänster", "1")}${num("cropR", "Höger", "1")}${num("cropT", "Över", "1")}${num("cropB", "Under", "1")}</div>
       ${chk("knockout", "Gör vit bakgrund genomskinlig")}
@@ -1535,6 +1547,7 @@ function renderPrintProps(onlyPos) {
   on("prImgReset", () => { pushUndo(); const before = cropOf(el); ["cropL", "cropR", "cropT", "cropB"].forEach(k => delete el[k]); el.knockout = false; applyCropResize(el, before); renderPrintProps(); drawPrintPage(); });
   on("prPan", () => { pr.panMode = !pr.panMode; renderPrintProps(); drawPrintPage(); });
   on("prFromView", () => { pushUndo(); el.center = viewCenterModel(); el.scale = fitScale(el.w, el.h, pr.tpl.format); renderPrintPanel(); drawPrintPage(); });
+  box.querySelectorAll("[data-tset]").forEach(b => { b.onclick = () => { pushUndo(); el[b.dataset.tset] = b.dataset.v; renderPrintProps(); drawPrintPage(); }; });
   box.querySelectorAll("[data-arrow]").forEach(b => { b.onclick = () => { pushUndo(); el.style = b.dataset.arrow; el.lw = ARROW_STYLES[el.style].lw; renderPrintProps(); drawPrintPage(); }; });
   box.querySelectorAll("[data-ashape]").forEach(b => { b.onclick = () => { pushUndo(); el.shape = b.dataset.ashape; renderPrintProps(); drawPrintPage(); }; });
   box.querySelectorAll("[data-north]").forEach(b => { b.onclick = () => { pushUndo(); el.style = b.dataset.north; renderPrintProps(); drawPrintPage(); }; });
@@ -1699,15 +1712,15 @@ async function exportPrintPdf() {
       } else if (el.type === "text") {
         if (el.fill) { doc.setFillColor(...hexRgb(el.fill)); doc.rect(x, y, w, h, "F"); }
         if (el.border) { doc.setDrawColor(...hexRgb(el.border)); doc.setLineWidth(0.3 * k); doc.rect(x, y, w, h); }
-        const size = (el.size || 10) * k, pad = 1.2 * k;
-        doc.setFont("helvetica", el.bold ? "bold" : "normal"); doc.setFontSize(size); doc.setTextColor(...hexRgb(el.color));
+        const size = (el.size || 10) * k, pad = prTextPad(el) * k;
+        doc.setFont("helvetica", el.bold && el.italic ? "bolditalic" : el.bold ? "bold" : el.italic ? "italic" : "normal"); doc.setFontSize(size); doc.setTextColor(...hexRgb(el.color));
         const lines = doc.splitTextToSize(fillText(el.text, tpl), w - 2 * pad);
         const tx = el.align === "center" ? x + w / 2 : el.align === "right" ? x + w - pad : x + pad;
-        const lh = size * PT_MM * 1.2;
+        const lh = size * PT_MM * prTextLh(el), y0 = prTextTop(el, y, h, pad, lines.length, lh, size * PT_MM);
         // Som i layouten (som klipper vid rutan): en rad skrivs så länge bokstäverna
         // ryms, radavståndet under får sticka ut. Första raden skrivs alltid.
         const glyph = size * PT_MM * 0.8;
-        lines.forEach((ln, i) => { const ly = y + pad + i * lh; if (!i || ly + glyph <= y + h + 0.5) doc.text(ln, tx, ly, { baseline: "top", align: el.align || "left" }); });
+        lines.forEach((ln, i) => { const ly = y0 + i * lh; if (!i || (ly >= y - 0.5 && ly + glyph <= y + h + 0.5)) doc.text(ln, tx, ly, { baseline: "top", align: el.align || "left" }); });
         doc.setTextColor(0);
       } else if (el.type === "rect") {
         if (!el.stroke && !el.fill) continue;

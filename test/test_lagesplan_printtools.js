@@ -94,6 +94,27 @@ const PORT = 8990;
     });
     if (rc.corner !== true || rc.half !== true || rc.panel !== true || rc.pdf !== true) fail('Ruta/linje: ' + JSON.stringify(rc));
     console.log('OK: ruta med rundade hörn, streckad linje och genomskinlig fyllning (skärm och PDF), streckad/prickad linje');
+    // 5) Text: kursiv, lodrät justering, marginal, radavstånd – skärm och PDF.
+    const tx = await page.evaluate(async () => {
+      const el = { id: 'tx', type: 'text', x: 10, y: 10, w: 60, h: 40, text: 'Rad', size: 10, color: '#000000', fill: '', border: '' };
+      pr.tpl.elements = [el]; setSel(['tx']); renderPrintPanel();
+      const out = { panel: ['italic', 'pad', 'lineH'].every(f => !!document.querySelector(`#prProps [data-f="${f}"]`)) && document.querySelectorAll('#prProps [data-tset="valign"]').length === 3 };
+      document.querySelector('#prProps [data-tset="valign"][data-v="middle"]').click();
+      document.querySelector('#prProps [data-tset="align"][data-v="center"]').click();
+      const it = document.querySelector('#prProps [data-f="italic"]'); it.checked = true; it.dispatchEvent(new Event('change'));
+      const b = document.querySelector('#prProps [data-f="bold"]'); b.checked = true; b.dispatchEvent(new Event('change'));
+      out.set = el.valign === 'middle' && el.align === 'center' && el.italic && el.bold && document.querySelector('#prProps [data-tset="valign"][data-v="middle"]').classList.contains('on');
+      const calls = [];
+      window.jspdf = { jsPDF: function () { return new Proxy({}, { get: (t, k) => k === 'splitTextToSize' ? (s => [String(s)]) : k === 'output' ? (() => new ArrayBuffer(8)) : ((...a) => { calls.push([k, a]); }) }); } };
+      await exportPrintPdf();
+      const k = pageDims().k, font = calls.find(c => c[0] === 'setFont'), t = calls.find(c => c[0] === 'text');
+      const fsMm = 10 * k * PT_MM, mid = 10 * k + (40 * k - fsMm) / 2;
+      out.pdf = font && font[1][1] === 'bolditalic' && t && Math.abs(t[1][2] - mid) < 0.01 && t[1][3].align === 'center';
+      if (!out.pdf) out.dbg = JSON.stringify({ font, t, mid });
+      return out;
+    });
+    if (tx.panel !== true || tx.set !== true || tx.pdf !== true) fail('Text: ' + JSON.stringify(tx));
+    console.log('OK: text – kursiv, lodrät justering (mitten), justering, marginal och radavstånd, även i PDF:en');
     await page.evaluate(() => { pr.dirty = false; closePrint(); });
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
