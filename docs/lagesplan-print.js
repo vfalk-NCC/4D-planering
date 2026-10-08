@@ -1340,7 +1340,11 @@ function renderPrintProps(onlyPos) {
   const inp = (f, label, type = "text", attrs = "") => `<label>${label}</label><input type="${type}" data-f="${f}" value="${escHtml(el[f] ?? "")}" ${attrs} />`;
   const num = (f, label, step = "0.5") => `<div><label>${label}</label><input type="number" step="${step}" data-f="${f}" data-num="1" value="${Math.round((el[f] || 0) * 10) / 10}" /></div>`;
   const chk = (f, label) => `<label class="check"><input type="checkbox" data-f="${f}"${el[f] ? " checked" : ""} /> ${label}</label>`;
-  const color = (f, label) => `<div><label>${label}</label><div class="row" style="flex-wrap:nowrap;"><input type="color" data-f="${f}" value="${escHtml(el[f] || "#000000")}" class="pr-color" /><button type="button" class="icon ghost pr-nocolor" data-f="${f}" title="Ingen">∅</button></div></div>`;
+  // Färgruta. none = "ingen färg" är tillåtet: tom färg visas rutig med ∅ (inte svart), ∅-knappen tömmer.
+  const color = (f, label, none = false, def = "#000000") => {
+    const empty = none && !el[f];
+    return `<div><label title="${escHtml(label)}">${label}</label><div class="pr-colw"><input type="color" data-f="${f}" value="${escHtml(el[f] || (none ? "#ffffff" : def))}" class="pr-color${empty ? " empty" : ""}" title="${empty ? "Ingen – klicka för att välja färg" : "Välj färg"}" />${none ? `<button type="button" class="icon ghost pr-nocolor${empty ? " on" : ""}" data-f="${f}" title="Ingen färg">∅</button>` : ""}</div></div>`;
+  };
   const maps = pr.tpl.elements.filter(e => e.type === "map");
   const mapSel = () => maps.length > 1 ? `<label>Hör till ritning</label><select data-f="mapId">${maps.map((m, i) => `<option value="${escHtml(m.id)}"${(mapFor(el, pr.tpl) || {}).id === m.id ? " selected" : ""}>${escHtml(m.label && m.label.name || "Ritning " + (i + 1))} (1:${m.scale})</option>`).join("")}</select>` : "";
   let html = `<div class="row"><b>${t.icon} ${t.label}</b><span class="grow"></span>
@@ -1352,8 +1356,9 @@ function renderPrintProps(onlyPos) {
     ${el.locked ? `<div class="hint" style="margin:2px 0 4px;">🔒 Låst – flyttas inte med musen eller piltangenterna.${el.type === "map" ? " Utsnittet och skalan kan inte heller ändras genom att dra." : ""}</div>` : ""}
     <div class="pr-grid4">${num("x", "X (mm)")}${num("y", "Y (mm)")}${num("w", "Bredd")}${num("h", "Höjd")}</div>`;
   if (el.type === "text") html += `<label>Text <span class="muted">– {plan} {datum} {idag} {skala} {format} {användare} {utskriven}</span></label><textarea data-f="text" rows="4">${escHtml(el.text || "")}</textarea>
-      <div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}<div><label>Justering</label><select data-f="align">${["left", "center", "right"].map(a => `<option value="${a}"${el.align === a ? " selected" : ""}>${{ left: "Vänster", center: "Mitten", right: "Höger" }[a]}</option>`).join("")}</select></div>${color("color", "Färg")}${color("fill", "Bakgrund")}</div>
-      ${chk("bold", "Fetstil")} <div class="pr-grid4">${color("border", "Ram")}</div>`;
+      <div class="pr-grid4">${num("size", "Storlek pt", "0.5")}<div style="grid-column:span 2;"><label>Justering</label><select data-f="align">${["left", "center", "right"].map(a => `<option value="${a}"${(el.align || "left") === a ? " selected" : ""}>${{ left: "Vänster", center: "Mitten", right: "Höger" }[a]}</option>`).join("")}</select></div><div></div>
+        ${color("color", "Färg")}${color("fill", "Bakgrund", true)}${color("border", "Ram", true)}</div>
+      ${chk("bold", "Fetstil")}`;
   if (el.type === "image") html += `<button id="prPickImg" class="block" style="margin-top:8px;">🖼 ${el.path ? "Byt bild…" : "Välj bild…"}</button><div class="hint">PNG, JPG eller SVG – t.ex. företagets logga eller skyltar. Bilden sparas i projektet. Proportionerna behålls (Shift = fritt).</div>
       ${el.path ? `<label style="margin-top:8px;">Beskär (% av bilden)</label><button type="button" id="prImgCrop" class="block" title="Dra i handtagen på bilden för att beskära">✂ Beskär med musen…</button><div class="pr-grid4">${num("cropL", "Vänster", "1")}${num("cropR", "Höger", "1")}${num("cropT", "Över", "1")}${num("cropB", "Under", "1")}</div>
       ${chk("knockout", "Gör vit bakgrund genomskinlig")}
@@ -1385,10 +1390,10 @@ function renderPrintProps(onlyPos) {
       <div class="row" style="margin-top:4px;"><button id="prLayScreen" title="Börja om med samma lager som på skärmen just nu">↺ Som skärmen</button></div>`}
       <div class="hint">Skalan gäller på ${pr.tpl.format}. Skriv ut i verklig storlek (100 %).</div>`;
   }
-  if (el.type === "legend") html += inp("title", "Rubrik") + `<div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}${num("cols", "Kolumner", "1")}</div>
+  if (el.type === "legend") html += inp("title", "Rubrik") + `<div class="pr-grid4">${num("size", "Storlek pt", "0.5")}${num("cols", "Kolumner", "1")}</div>
       ${chk("phases", "Statusfärger (faser)")}${chk("site", "Etablering som finns på planen")}${chk("cad", "CAD-ritningar")}
       <label>Egna rader <span class="muted">(t.ex. "#e11d48 Betongbarriär")</span></label><textarea data-f="extra" rows="3">${escHtml(el.extra || "")}</textarea>
-      <div class="pr-grid4">${num("legSpacing", "Radavstånd (×)", "0.1")}</div>${chk("legNoEq", "Utan =-tecken")}
+      <div class="pr-grid4">${num("legSpacing", "Radavstånd ×", "0.1")}</div>${chk("legNoEq", "Utan =-tecken")}
       <label>Rader <span class="muted">– bock = visa, färg, egen text, ↑↓ ordning</span></label>
       <div class="pr-leg">${legendItems(el, true).map((it, i, arr) => `<div class="pr-leg-row${it.hidden ? " off" : ""}" data-lk="${escHtml(it.key)}">
         <input type="checkbox" class="pl-vis"${it.hidden ? "" : " checked"} title="Visa raden" />
@@ -1401,9 +1406,9 @@ function renderPrintProps(onlyPos) {
     const card = el.style === "card";
     const cells = String(el.rows || "").split("\n").map(r => r.split("|").map(c => { const i = c.indexOf(":"); return i >= 0 ? [c.slice(0, i).trim(), c.slice(i + 1).trim()] : ["", c.trim()]; }));
     html += `<label>Utseende</label><select id="prTbStyle"><option value="card"${card ? " selected" : ""}>Kort med rubrik och logga</option><option value="classic"${card ? "" : " selected"}>Enkel ruta</option></select>`
-      + (card ? inp("heading", "Rubrik") + `<div class="pr-grid4">${color("color", "Färg")}${num("size", "Storlek (pt)", "0.5")}</div>
+      + (card ? inp("heading", "Rubrik") + `<div class="pr-grid4">${color("color", "Färg", false, TITLE_CARD_DEFAULTS.color)}${num("size", "Storlek pt", "0.5")}</div>
         <label>Logga i foten</label><div class="row" style="flex-wrap:nowrap;"><button type="button" id="prTbLogo">${el.logo ? "🖼 Byt logga…" : "🖼 Välj logga…"}</button>${el.logo ? `<button type="button" id="prTbLogoDel" class="ghost" title="Ingen logga">✕</button>` : ""}</div>
-        ${el.logo ? chk("logoWhite", "Gör loggan vit") + `<label>Loggans storlek <span class="muted" id="prLogoSizeV">${Number(el.logoSize) || 60} %</span></label><input type="range" min="20" max="90" step="5" data-f="logoSize" data-num="1" value="${Number(el.logoSize) || 60}" oninput="document.getElementById('prLogoSizeV').textContent = this.value + ' %'" />` : ""}` : `<div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}</div>`)
+        ${el.logo ? chk("logoWhite", "Gör loggan vit") + `<label>Loggans storlek <span class="muted" id="prLogoSizeV">${Number(el.logoSize) || 60} %</span></label><input type="range" min="20" max="90" step="5" data-f="logoSize" data-num="1" value="${Number(el.logoSize) || 60}" oninput="document.getElementById('prLogoSizeV').textContent = this.value + ' %'" />` : ""}` : `<div class="pr-grid4">${num("size", "Storlek pt", "0.5")}</div>`)
       + `<label>Rader <span class="muted">– etikett och text, ⇆ delar raden i två</span></label>
       <div class="pr-tb">${cells.map((row, r) => `<div class="pr-tb-row" data-r="${r}">${row.map(([l, v], c) => `<div class="pr-tb-cell" data-c="${c}"><input type="text" class="tb-l" value="${escHtml(l)}" placeholder="ETIKETT" /><input type="text" class="tb-v" value="${escHtml(v)}" placeholder="Text" /></div>`).join("")}
         <div class="pr-tb-btns"><button type="button" class="tb-split icon ghost" title="${row.length > 1 ? "Slå ihop till en cell" : "Dela i två celler"}">⇆</button><button type="button" class="tb-up icon ghost" title="Flytta upp"${r ? "" : " disabled"}>↑</button><button type="button" class="tb-del icon ghost" title="Ta bort raden">🗑</button></div></div>`).join("")}</div>
@@ -1412,9 +1417,9 @@ function renderPrintProps(onlyPos) {
   }
   if (el.type === "qr") html += inp("text", "Länk eller text") + chk("frame", "<b>Ram med egen text</b>")
     + (el.frame ? inp("title", "Rubrik") + inp("subtitle", "Underrubrik") + inp("footer", "Text längst ner")
-      + `<div class="pr-grid4">${color("frameColor", "Ramens färg")}</div>${chk("phone", "Mobil-ikon")}<div class="hint">Platshållare: {plan} {datum} {idag}</div>` : "");
-  if (el.type === "rect") html += `<div class="pr-grid4">${color("stroke", "Linje")}${color("fill", "Fyllning")}${num("lw", "Tjocklek (mm)", "0.05")}</div>`;
-  if (el.type === "line") html += `<div class="pr-grid4">${color("stroke", "Färg")}${num("lw", "Tjocklek (mm)", "0.05")}</div><div class="hint">Höjd 0 = vågrät linje, bredd 0 = lodrät.</div>`;
+      + `<div class="pr-grid4">${color("frameColor", "Ramens färg", false, QR_CARD_DEFAULTS.frameColor)}</div>${chk("phone", "Mobil-ikon")}<div class="hint">Platshållare: {plan} {datum} {idag}</div>` : "");
+  if (el.type === "rect") html += `<div class="pr-grid4">${color("stroke", "Linje", true)}${color("fill", "Fyllning", true)}${num("lw", "Tjocklek", "0.05")}</div>`;
+  if (el.type === "line") html += `<div class="pr-grid4">${color("stroke", "Färg")}${num("lw", "Tjocklek", "0.05")}</div><div class="hint">Höjd 0 = vågrät linje, bredd 0 = lodrät.</div>`;
   if (el.type === "arrow") {
     const st = el.style || "modern", sh = el.shape || "straight", grp = g => Object.entries(ARROW_STYLES).filter(([, v]) => v.group === g);
     const sbtn = ([k, v]) => `<button type="button" data-arrow="${k}" class="${st === k ? "on" : ""}" title="${v.label}"><img src="${arrowThumb(k, sh, el.stroke)}" alt="" /><span>${v.label}</span></button>`;
@@ -1423,7 +1428,7 @@ function renderPrintProps(onlyPos) {
       <label>Form</label><div class="pr-north pr-arrows pr-ashape">${Object.entries(ARROW_SHAPES).map(([k, n]) => `<button type="button" data-ashape="${k}" class="${sh === k ? "on" : ""}" title="${n}"><img src="${arrowThumb(st, k, el.stroke)}" alt="" /><span>${n}</span></button>`).join("")}</div>
       <div class="pr-grid4 pr-agrid"><div><label>Färg</label><input type="color" data-f="stroke" value="${escHtml(el.stroke || "#dc2626")}" class="pr-color" /></div>${num("lw", "Tjocklek", "0.1")}${num("head", "Spets %", "10")}${sh === "arc" ? num("bend", "Böj %", "5") : "<div></div>"}</div>
       <div class="hint" style="margin-top:2px;">Tjocklek i mm. Spets i % av standardstorleken.</div>
-      ${ARROW_RIBBON.has(st) ? (st === "block" ? `<div class="pr-grid4">${color("outline", "Kantlinje")}</div>` : "") : `<label>Linje</label><select data-f="dash">${[["solid", "Heldragen"], ["dashed", "Streckad"], ["dotted", "Prickad"]].map(([v, n]) => `<option value="${v}"${(el.dash || "solid") === v ? " selected" : ""}>${n}</option>`).join("")}</select>`}
+      ${ARROW_RIBBON.has(st) ? (st === "block" ? `<div class="pr-grid4">${color("outline", "Kantlinje", true)}</div>` : "") : `<label>Linje</label><select data-f="dash">${[["solid", "Heldragen"], ["dashed", "Streckad"], ["dotted", "Prickad"]].map(([v, n]) => `<option value="${v}"${(el.dash || "solid") === v ? " selected" : ""}>${n}</option>`).join("")}</select>`}
       ${chk("double", "Spets i båda ändar")} ${chk("shadow", "Skugga")}
       <div class="hint">Dra i handtagen i ändarna för att flytta start och spets. Böj: minus böjer åt andra hållet.</div>`;
   }
@@ -1438,6 +1443,7 @@ function renderPrintProps(onlyPos) {
       if (!i._u) { pushUndo(); i._u = true; setTimeout(() => { i._u = false; }, 800); }
       const f = i.dataset.f, cropBefore = el.type === "image" && /^crop/.test(f) ? cropOf(el) : null;
       el[f] = i.type === "checkbox" ? i.checked : i.dataset.num ? Number(String(i.value).replace(",", ".")) || 0 : i.value;
+      if (i.type === "color") { i.classList.remove("empty"); const nb = i.parentNode.querySelector(".pr-nocolor"); if (nb) nb.classList.remove("on"); }
       pr.dirty = true;
       $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara mall *";
       if (f === "color" && el.type === "north") { renderPrintProps(); }
