@@ -308,7 +308,15 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
     pdfVis: layerVisible("pdf"), pdfOp: layerOpacity("pdf"), pdfMultiply: layerState.pdfMultiply !== false,
     overlays: typeof pdfOverlaysForPrint === "function" ? pdfOverlaysForPrint() : [],
   }));
-  await ensureCadGeoms(L.cads);
+  // Förlopp (Victor 2026-10-08: "en loadingslider 1-100% … man vet inte om det händer något"):
+  // varje DXF som ska hämtas, varje ortofoto, PDF:en, varje PDF-lager och själva ritandet är ett steg.
+  const toLoad = typeof cadGeom !== "undefined" ? L.cads.filter(r => !cadGeom.has(r.id)).length : 0;
+  const total = toLoad + L.orthos.length + (L.pdfVis && !opts.vectorPdf ? 1 : 0) + (opts.vectorPdf ? 0 : L.overlays.length) + 1;
+  let done = 0;
+  const prog = label => { if (opts.progress) opts.progress(Math.min(0.99, done / total), label); };
+  prog(toLoad ? `DXF 0/${toLoad}` : "Ritar…");
+  let cadDone = 0;
+  await ensureCadGeoms(L.cads, 6, () => { done++; prog(`DXF ${++cadDone}/${toLoad}`); });
   const P = mapPlate(el, wMm, hMm, pxW, pxH);
   P.noTiles = !!opts.preview;
   // DXF i den här ritningen: linjetjocklek och minsta texthöjd på papperet (Victors önskemål 2026-10-06).
@@ -317,16 +325,20 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
   try {
     for (const { o, op } of L.orthos) {
       try {
+        prog(`Ortofoto ${o.name || ""}`.trim());
         const plate = await buildOrthoPlate(o, P, s2 => opts.status && opts.status(`ortofoto – ${s2}`));
         ctx.globalAlpha = op; ctx.drawImage(plate, 0, 0); ctx.globalAlpha = 1;
       } catch (e) { console.warn("Ortofoto i utskriften", e); }
+      done++;
     }
     const multiplyPdf = L.orthos.length > 0 && L.pdfMultiply;
     P.pdfInfo = { visible: L.pdfVis, opacity: L.pdfOp, multiply: multiplyPdf };
     // Vektor-PDF: ritningen bäddas in som vektorer efteråt (lagesplan-vecpdf.js).
     if (L.pdfVis && !opts.vectorPdf) {
       opts.status && opts.status("PDF-ritningen");
+      prog("PDF-ritningen");
       const pdfPlate = await buildPdfPlate(P);
+      done++;
       ctx.save(); ctx.globalAlpha = L.pdfOp;
       if (multiplyPdf) ctx.globalCompositeOperation = "multiply";
       ctx.drawImage(pdfPlate, 0, 0); ctx.restore();
@@ -335,8 +347,11 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
     P.pdfOverlays = L.overlays;
     if (!opts.vectorPdf) for (const o of P.pdfOverlays) {
       opts.status && opts.status(`PDF-lagret ${o.p.name || ""}`);
+      prog(`PDF ${o.p.name || ""}`.trim());
       try { await drawPdfOverlayForExport(ctx, o.p, P, o); } catch (e) { console.warn("PDF-lager i utskriften", e); }
+      done++;
     }
+    prog("Ritar zoner, objekt och DXF…");
     // Det som ritas direkt ur lagerläget (DXF-plan, PDF-lager, zoner, objekt, etablering) – synkront,
     // på en egen kopia eftersom PDF-lagren tänder och släcker tillfälligt.
     withLayerState(JSON.parse(JSON.stringify(st)), () => {
@@ -368,16 +383,27 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
 }
 const mapPreviews = new Map(); // el.id -> { key, canvas }
 const mapPending = new Map();
+const mapProgress = new Map(); // el.id -> { f: 0–1, label } medan ritningen laddas/ritas
+let mapProgressRaf = 0;
+function mapProgressSet(id, f, label) {
+  if (f == null) mapProgress.delete(id); else mapProgress.set(id, { f, label });
+  if (!mapProgressRaf) mapProgressRaf = requestAnimationFrame(() => { mapProgressRaf = 0; if (pr) drawPrintPage(); });
+}
 function mapPreview(el, wPx, hPx) {
   const key = JSON.stringify([el.scale, el.center, el.w, el.h, Math.round(wPx), $("dateInput").value, pr && pr.tpl.format, vpLayersKey(el), el.cadLw || 1, el.cadTextMin ?? 1]);
   const hit = mapPreviews.get(el.id);
   if ((!hit || hit.key !== key) && mapPending.get(el.id) !== key) {
     mapPending.set(el.id, key);
     clearTimeout(mapPreview.timers && mapPreview.timers[el.id]);
+    if (!mapProgress.has(el.id)) mapProgress.set(el.id, { f: 0, label: "Väntar…" });
     (mapPreview.timers = mapPreview.timers || {})[el.id] = setTimeout(async () => {
       if (!pr) return;
       const k = PRINT_FORMATS[pr.tpl.format].w / PAGE_A3[0];
-      const c = await renderMapCanvas(el, el.w * k, el.h * k, Math.max(50, Math.round(wPx)), Math.max(50, Math.round(hPx)), { preview: true });
+      let c = null;
+      try {
+        c = await renderMapCanvas(el, el.w * k, el.h * k, Math.max(50, Math.round(wPx)), Math.max(50, Math.round(hPx)),
+          { preview: true, progress: (f, label) => { if (mapPending.get(el.id) === key) mapProgressSet(el.id, f, label); } });
+      } finally { if (mapPending.get(el.id) === key) mapProgressSet(el.id, null); }
       if (mapPending.get(el.id) === key) { mapPreviews.set(el.id, { key, canvas: c }); mapPending.delete(el.id); }
       if (pr) drawPrintPage();
     }, 150);
@@ -503,7 +529,21 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
     case "map": {
       const c = opts.mapCanvas || (opts.noMap ? null : mapPreview(el, W, H));
       if (c) ctx.drawImage(c, X, Y, W, H);
-      else if (!opts.noMap) { ctx.fillStyle = "#eef2f7"; ctx.fillRect(X, Y, W, H); ctx.fillStyle = "#64748b"; ctx.font = `${pt(10)}px Helvetica, Arial`; ctx.textAlign = "center"; ctx.fillText("Ritningen ritas…", X + W / 2, Y + H / 2); }
+      else if (!opts.noMap) { ctx.fillStyle = "#eef2f7"; ctx.fillRect(X, Y, W, H); }
+      // Förloppet (bara i editorn): en stapel med procent och vad som laddas, mitt i ramen.
+      const pg = opts.editor && !opts.noMap ? mapProgress.get(el.id) : null;
+      if (pg) {
+        const bw = Math.min(W * 0.8, Math.max(160, W * 0.5)), bh = Math.max(10, Math.min(22, H * 0.05)), bx = X + (W - bw) / 2, by = Y + H / 2 - bh / 2;
+        const fs = Math.max(11, Math.min(16, bh * 0.75));
+        ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.fillRect(bx - 12, by - fs * 1.9, bw + 24, bh + fs * 3.2);
+        ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 1; ctx.strokeRect(bx - 12, by - fs * 1.9, bw + 24, bh + fs * 3.2);
+        ctx.fillStyle = "#e2e8f0"; ctx.fillRect(bx, by, bw, bh);
+        ctx.fillStyle = "#2563eb"; ctx.fillRect(bx, by, Math.max(2, bw * pg.f), bh);
+        ctx.fillStyle = "#0f172a"; ctx.font = `bold ${fs}px Helvetica, Arial`; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+        ctx.fillText(`Laddar ritningen – ${Math.round(pg.f * 100)} %`, X + W / 2, by - fs * 0.6);
+        ctx.fillStyle = "#475569"; ctx.font = `${fs * 0.85}px Helvetica, Arial`; ctx.textBaseline = "top";
+        ctx.fillText(pg.label || "", X + W / 2, by + bh + fs * 0.35);
+      } else if (!c && !opts.noMap) { ctx.fillStyle = "#64748b"; ctx.font = `${pt(10)}px Helvetica, Arial`; ctx.textAlign = "center"; ctx.fillText("Ritningen ritas…", X + W / 2, Y + H / 2); }
       if (el.border !== false && !opts.noMap) { ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, 0.35 * k * u); ctx.strokeRect(X, Y, W, H); }
       if (el.label && el.label.show && !opts.noLabel) {
         const s = el.label.size || 9, lines = mapLabelLines(el);
@@ -1290,6 +1330,7 @@ function renderPrintProps(onlyPos) {
         <div style="grid-column:span 2;"><label>DXF-texter</label><select data-f="cadTextMin" data-num="1" title="Små texter förstoras till minst den här höjden på papperet så att de syns">${[[0, "Som ritningen"], [1, "Minst 1 mm"], [1.5, "Minst 1,5 mm"], [2, "Minst 2 mm"], [3, "Minst 3 mm"], [-1, "Dölj texterna"]].map(([v, l]) => `<option value="${v}"${(el.cadTextMin == null ? 1 : Number(el.cadTextMin)) === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>` : ""}
       <div class="row split" style="margin-top:8px;"><button id="prPan" class="${pr.panMode ? "active" : ""}" title="${el.locked ? "Låst – lås upp för att flytta utsnittet" : "Dra i ritningen för att flytta utsnittet, scrolla för att byta skala"}"${el.locked ? " disabled" : ""}>✋ Panorera</button><button id="prFromView" title="Samma utsnitt som på skärmen"${el.locked ? " disabled" : ""}>⤢ Skärmens utsnitt</button></div>
       ${chk("border", "Ram runt ritningen")}
+      <label class="check" title="📐 DXF ger alltid hela bladet i millimeter. Med det här valet blir ritningens innehåll dessutom en egen DXF i modellens koordinater (meter), för att läggas in på rätt plats i en annan CAD-ritning."><input type="checkbox" data-f="dxfModel"${el.dxfModel ? " checked" : ""} /> DXF: även i modellens koordinater (egen fil)</label>
       <label class="check"><input type="checkbox" id="prLblShow"${lb.show ? " checked" : ""} /> <b>Visa namn &amp; skala</b></label>
       <div class="pr-grid4"><div style="grid-column:span 4;"><label>Vyns namn</label><input type="text" id="prLblName" value="${escHtml(lb.name || "")}" placeholder="t.ex. Översikt etablering" /></div>
         <div><label>Storlek (pt)</label><input type="number" step="0.5" id="prLblSize" value="${lb.size || 9}" /></div>

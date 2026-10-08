@@ -145,7 +145,7 @@ async function lagesplan(browser, report) {
     const n = await page.evaluate(() => lsViews().length);
     for (let i = 0; i < n; i++) await page.evaluate(async i => { await applyLsView(lsViews()[i]); }, i), await page.waitForTimeout(800);
   });
-  await step(report, 'Utskrift: varje mall och ritning, alla lagerlägen, förhandsvisning', () => page.evaluate(async () => {
+  await step(report, 'Utskrift: varje mall och ritning, alla lagerlägen, förhandsvisning, DXF', () => page.evaluate(async () => {
     const tick = (ms = 300) => new Promise(r => setTimeout(r, ms));
     await openPrint(); await tick(800);
     for (const t of printTpls()) {
@@ -156,6 +156,9 @@ async function lagesplan(browser, report) {
         await renderMapCanvas(m, m.w * k, m.h * k, 600, Math.max(50, Math.round(600 * m.h / m.w)), { preview: true });
       }
       for (const e of pr.tpl.elements) { setSel([e.id]); renderPrintProps(); }
+      // DXF (bladet + ritningarna i modellens koordinater) byggs och läses in igen.
+      pr.tpl.elements.filter(e => e.type === 'map').forEach(m => { m.dxfModel = true; });
+      for (const f of await buildPrintDxf(pr.tpl)) { const d = parseDxf(f.text); if (!d.entities.length) throw new Error('Tom DXF: ' + f.name); dxfToGeometry(d); }
       setSel([]); renderPrintProps(); drawPrintPage();
     }
     pr.dirty = false; closePrint();

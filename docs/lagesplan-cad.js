@@ -396,9 +396,9 @@ async function ensureCadGeom(rec) {
 }
 /* Flera DXF:er: sex åt gången i stället för en i taget (Victor 2026-10-07: optimera – 34 DXF:er
    hämtades efter varandra innan något kunde ritas). Fel för en fil stoppar inte de andra. */
-async function ensureCadGeoms(list, conc = 6) {
+async function ensureCadGeoms(list, conc = 6, onEach = null) {
   const queue = list.filter(r => !cadGeom.has(r.id));
-  const worker = async () => { for (let r = queue.shift(); r; r = queue.shift()) { try { await ensureCadGeom(r); } catch (e) { console.warn("Kunde inte hämta CAD", r.name, e); } } };
+  const worker = async () => { for (let r = queue.shift(); r; r = queue.shift()) { try { await ensureCadGeom(r); } catch (e) { console.warn("Kunde inte hämta CAD", r.name, e); } if (onEach) onEach(r); } };
   await Promise.all(Array.from({ length: Math.min(conc, queue.length) }, worker));
 }
 /* Skala om en inlagd ritning till en annan enhet (t.ex. om den hamnat fel
