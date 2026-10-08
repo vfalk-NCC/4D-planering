@@ -66,11 +66,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     // --- Hela bladet ---
     await openPrint();
     const map = pr.tpl.elements.find(e => e.type === 'map');
-    Object.assign(map, { center: [O[0] + 15, O[1] + 15], scale: 500, w: 100, h: 60, x: 20, y: 20, dxfModel: true }); // 100 mm à 1:500 = 50 m
+    Object.assign(map, { center: [O[0] + 15, O[1] + 15], scale: 500, w: 100, h: 60, x: 20, y: 20 }); // 100 mm à 1:500 = 50 m
     map.layers = { follow: true };
-    const files = await buildPrintDxf(pr.tpl);
-    out.nFiles = files.length;
-    const sheet = files[0].text, model = files[1] ? files[1].text : '';
+    const files = await buildPrintDxf(pr.tpl, () => {}, 'sheet');
+    const mfiles = await buildPrintDxf(pr.tpl, () => {}, 'model4d');
+    const afiles = await buildPrintDxf(pr.tpl, () => {}, 'modelAll');
+    out.nFiles = files.length + mfiles.length + afiles.length;
+    const sheet = files[0].text, model = mfiles[0] ? mfiles[0].text : '';
+    out.names = /koordinatriktig\)\.dxf$/.test(mfiles[0].name) && /med DXF-underlag\)\.dxf$/.test(afiles[0].name) && /\$INSUNITS\r\n70\r\n6\r\n/.test(afiles[0].text);
+    out.menu = !!document.querySelector('#prDxfMenu');
     out.mm = /\$INSUNITS\r\n70\r\n4\r\n/.test(sheet) && /\$INSUNITS\r\n70\r\n6\r\n/.test(model);
     const d = parseDxf(sheet), geo = dxfToGeometry(d);
     out.layers = ['RAM', 'RITNINGSRAM', 'ZONER', 'FORKLARING', 'SKALSTOCK', 'NORRPIL'].every(l => l in d.layers);
@@ -95,7 +99,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return out;
   }, { a: sq(100, 100, 200, 200), b: sq(800, 300, 900, 400) });
   const bad = Object.entries(r).filter(([k, v]) => k !== 'nFiles' && v !== true);
-  if (bad.length || r.nFiles !== 2) fail('Fel: ' + JSON.stringify(r));
+  if (bad.length || r.nFiles !== 3) fail('Fel: ' + JSON.stringify(r));
   console.log('OK: DXF – inspelaren (linjer, ytor, prickar, cirklar, text), klippning, förenkling, bladet i mm med lager, zonerna inom ramen, B i modellens koordinater, laddningsindikatorn');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('ALLA TESTER OK');

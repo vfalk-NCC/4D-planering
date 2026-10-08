@@ -291,7 +291,7 @@ function printDxfWrite(ents, A, { units = "mm", layerAci = {} } = {}) {
 /* ---- Bladet ---- */
 const PRINT_DXF_LAYER = { text: "TEXT", legend: "FORKLARING", scalebar: "SKALSTOCK", north: "NORRPIL", title: "TITELRUTA", qr: "QR", rect: "RUTOR", line: "LINJER", image: "BILDER" };
 /* Ritningens innehåll i bladets mm (y nedåt), klippt mot ramen. Returnerar { ents, toModel }. */
-async function printDxfMapEnts(el, tpl, k, progress) {
+async function printDxfMapEnts(el, tpl, k, progress, tolMm = DXF_SIMPLIFY_MM) {
   const x = el.x * k, y = el.y * k, w = el.w * k, h = el.h * k;
   if (!plan || !plan.calib || !viewport) return { ents: [], toModel: null };
   const st = JSON.parse(JSON.stringify(vpLayerState(el)));
@@ -317,8 +317,8 @@ async function printDxfMapEnts(el, tpl, k, progress) {
             let pts = [], bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
             for (let i = 0; i + 1 < arr.length; i += 2) { const p = applyAffine(G, [arr[i], arr[i + 1]]); pts.push(p); if (p[0] < bx0) bx0 = p[0]; if (p[0] > bx1) bx1 = p[0]; if (p[1] < by0) by0 = p[1]; if (p[1] > by1) by1 = p[1]; }
             if (bx1 < x || bx0 > x + w || by1 < y || by0 > y + h) return; // helt utanför ramen
-            if (bx1 - bx0 < DXF_SIMPLIFY_MM && by1 - by0 < DXF_SIMPLIFY_MM) return; // osynligt litet
-            pts = dxfSimplify(pts, DXF_SIMPLIFY_MM);
+            if (bx1 - bx0 < tolMm && by1 - by0 < tolMm) return; // osynligt litet
+            pts = dxfSimplify(pts, tolMm);
             ents.push({ t: "PL", layer, pts, closed: false, aci: a, cad: true });
           });
           if (hideText) return;
@@ -345,22 +345,41 @@ async function printDxfMapEnts(el, tpl, k, progress) {
   return { ents: dxfClipToRect(ents, [x, y, x + w, y + h]), toModel: invAffine(mulAffine(T, M)) };
 }
 
-async function buildPrintDxf(tpl, progress = () => {}) {
+/* Tre sätt (Victor 2026-10-08: "en dropdown på DXF-knappen … koordinatriktig eller ritningslayout"):
+     "sheet"    – ritningslayouten: hela bladet i mm
+     "model4d"  – koordinatriktig: varje ritnings zoner, 3D-objekt och etablering i modellens
+                  koordinater (samma som 3D-modellen, SWEREF), en fil per ritning
+     "modelAll" – koordinatriktig med DXF-underlagen (förenklade bara där de avviker < 5 mm i verkligheten) */
+const DXF_MODEL_TOL_M = 0.005;
+const PRINT_DXF_MODES = { sheet: "Ritningslayout (mm)", model4d: "Koordinatriktig – 4D-innehåll", modelAll: "Koordinatriktig – allt inkl. DXF-underlag" };
+async function buildPrintDxf(tpl, progress = () => {}, mode = "sheet") {
   const fmt = PRINT_FORMATS[tpl.format], k = fmt.w / PAGE_A3[0], W = fmt.w, H = fmt.h;
-  if (tpl.elements.some(e => e.type === "qr") && typeof loadScript === "function") await loadScript(QR_URL).catch(() => {});
   const maps = tpl.elements.filter(e => e.type === "map");
-  const sheet = [], models = [];
+  const base = fillText("Lägesplan {plan} {datum}", tpl);
+  if (mode !== "sheet") {
+    // Koordinatriktigt: bara ritningarnas innehåll, en fil per ritning, i modellens koordinater (meter).
+    const files = [];
+    for (const [i, el] of maps.entries()) {
+      progress(i / Math.max(1, maps.length), `Ritning ${i + 1} av ${maps.length}`);
+      const tol = mode === "modelAll" ? DXF_MODEL_TOL_M * 1000 / (el.scale || 1000) : DXF_SIMPLIFY_MM;
+      const { ents, toModel } = await printDxfMapEnts(el, tpl, k, null, tol);
+      const use = mode === "modelAll" ? ents : ents.filter(e => !e.cad);
+      if (!toModel || !use.length) continue;
+      const nm = (el.label && el.label.name) || (maps.length > 1 ? `Ritning ${i + 1}` : "");
+      files.push({ name: `${base}${nm ? " - " + nm : ""} (koordinatriktig${mode === "modelAll" ? ", med DXF-underlag" : ""}).dxf`.replace(/[\\/:*?"<>|]/g, "-"), text: printDxfWrite(use, toModel, { units: "m" }), n: use.length });
+    }
+    progress(1, "Klar");
+    return files;
+  }
+  if (tpl.elements.some(e => e.type === "qr") && typeof loadScript === "function") await loadScript(QR_URL).catch(() => {});
+  const sheet = [];
   let done = 0;
   const total = maps.length + 1;
   for (const el of tpl.elements) {
     if (el.type === "map") {
       progress(done / total, `Ritning ${maps.indexOf(el) + 1} av ${maps.length}`);
-      const { ents, toModel } = await printDxfMapEnts(el, tpl, k);
+      const { ents } = await printDxfMapEnts(el, tpl, k);
       sheet.push(...ents);
-      // B: ritningens 4D-innehåll (zoner, objekt, etablering) i modellens koordinater – DXF-underlagen
-      // finns redan som egna CAD-filer och tas inte med igen.
-      const own = ents.filter(e => !e.cad);
-      if (el.dxfModel && toModel && own.length) models.push({ el, ents: own, toModel });
       // Ramen och namn/skala under ritningen.
       const x = el.x * k, y = el.y * k, w = el.w * k, h = el.h * k;
       if (el.border !== false) sheet.push({ t: "PL", layer: "RITNINGSRAM", pts: [[x, y], [x + w, y], [x + w, y + h], [x, y + h]], closed: true, aci: 7 });
@@ -386,20 +405,17 @@ async function buildPrintDxf(tpl, progress = () => {}) {
   }
   sheet.push({ t: "PL", layer: "BLAD", pts: [[0, 0], [W, 0], [W, H], [0, H]], closed: true, aci: 8 });
   progress(done / total, "Skriver DXF…");
-  const files = [{ name: `${fillText("Lägesplan {plan} {datum}", tpl)} ${tpl.format}.dxf`, text: printDxfWrite(sheet, [1, 0, 0, -1, 0, H], { units: "mm" }), n: sheet.length }];
-  models.forEach(({ el, ents, toModel }, i) => {
-    const nm = (el.label && el.label.name) || `Ritning ${maps.indexOf(el) + 1}`;
-    files.push({ name: `${fillText("Lägesplan {plan} {datum}", tpl)} - ${nm} (modellkoordinater).dxf`.replace(/[\\/:*?"<>|]/g, "-"), text: printDxfWrite(ents, toModel, { units: "m" }), n: ents.length });
-  });
-  return files;
+  return [{ name: `${base} ${tpl.format}.dxf`, text: printDxfWrite(sheet, [1, 0, 0, -1, 0, H], { units: "mm" }), n: sheet.length }];
 }
 
-async function exportPrintDxf() {
+async function exportPrintDxf(mode = "sheet") {
   if (!pr) return;
   const b = $("prExportDxf");
   if (b) b.disabled = true;
   try {
-    const files = await buildPrintDxf(pr.tpl, (f, s) => setPrintStatus(`DXF ${Math.round(f * 100)} % – ${s}`));
+    if (mode !== "sheet" && !pr.tpl.elements.some(e => e.type === "map")) { alert("Mallen har ingen ritning att exportera koordinatriktigt."); return null; }
+    const files = await buildPrintDxf(pr.tpl, (f, s) => setPrintStatus(`DXF ${Math.round(f * 100)} % – ${s}`), mode);
+    if (!files.length) { alert("Ritningarna visar inget som kan bli DXF (zoner, objekt, etablering eller DXF-underlag)."); setPrintStatus(""); return files; }
     for (const f of files) {
       const bytes = dxfCp1252(f.text);
       downloadBlob(new Blob([bytes], { type: "application/dxf" }), f.name);
@@ -408,7 +424,7 @@ async function exportPrintDxf() {
         catch (e) { setPrintStatus(`⚠ DXF nedladdad men inte sparad i Trimble Connect: ${e.message}`); }
       }
     }
-    setPrintStatus(`✓ ${files.length === 1 ? files[0].name : `${files.length} DXF-filer`} (bladet i mm${files.length > 1 ? ", ritningar i modellens koordinater" : ""})`);
+    setPrintStatus(`✓ ${files.length === 1 ? files[0].name : `${files.length} DXF-filer`} – ${PRINT_DXF_MODES[mode]}`);
     return files;
   } catch (e) {
     console.error(e);
@@ -417,4 +433,12 @@ async function exportPrintDxf() {
     return null;
   } finally { if (b) b.disabled = false; }
 }
-document.addEventListener("DOMContentLoaded", () => { const b = $("prExportDxf"); if (b) b.onclick = exportPrintDxf; });
+/* Knappen öppnar en liten meny med de tre sätten (uppåt, eftersom knappen sitter längst ned). */
+document.addEventListener("DOMContentLoaded", () => {
+  const b = $("prExportDxf"), menu = $("prDxfMenu");
+  if (!b || !menu) return;
+  menu.innerHTML = Object.entries(PRINT_DXF_MODES).map(([m, t]) => `<button type="button" data-dxf="${m}" title="${{ sheet: "Hela bladet som i PDF:en, i millimeter: ram, titelruta, förklaring och ritningarna i skala.", model4d: "Varje ritnings zoner, 3D-objekt och etablering på sin riktiga plats i modellens koordinater (samma som 3D-modellen, SWEREF), en fil per ritning.", modelAll: "Som ovan plus DXF-underlagen. Filerna kan bli stora." }[m]}">${t}</button>`).join("");
+  b.onclick = e => { e.stopPropagation(); menu.classList.toggle("hidden"); };
+  menu.addEventListener("click", e => { const x = e.target.closest("[data-dxf]"); if (!x) return; menu.classList.add("hidden"); exportPrintDxf(x.dataset.dxf); });
+  document.addEventListener("click", e => { if (!menu.contains(e.target) && e.target !== b) menu.classList.add("hidden"); });
+});

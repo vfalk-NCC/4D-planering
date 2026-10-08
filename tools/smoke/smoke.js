@@ -157,8 +157,7 @@ async function lagesplan(browser, report) {
       }
       for (const e of pr.tpl.elements) { setSel([e.id]); renderPrintProps(); }
       // DXF (bladet + ritningarna i modellens koordinater) byggs och läses in igen.
-      pr.tpl.elements.filter(e => e.type === 'map').forEach(m => { m.dxfModel = true; });
-      for (const f of await buildPrintDxf(pr.tpl)) { const d = parseDxf(f.text); if (!d.entities.length) throw new Error('Tom DXF: ' + f.name); dxfToGeometry(d); }
+      for (const mode of ['sheet', 'model4d', 'modelAll']) for (const f of await buildPrintDxf(pr.tpl, () => {}, mode)) { const d = parseDxf(f.text); if (!d.entities.length) throw new Error('Tom DXF: ' + f.name); dxfToGeometry(d); }
       setSel([]); renderPrintProps(); drawPrintPage();
     }
     pr.dirty = false; closePrint();
