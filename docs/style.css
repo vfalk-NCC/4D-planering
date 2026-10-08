@@ -1237,3 +1237,5 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .place-inl input { width: 56px; }
 .place-keys { font-size: 10px; margin-top: 2px; }
 @media (hover: none) { .place-keys { display: none; } }
+.plt-log { margin: 6px 0 0; padding: 6px 8px; background: #0f172a; color: #e2e8f0; border-radius: 6px; font-size: 11px; line-height: 1.45; max-height: 240px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.plt-log:empty { display: none; }
