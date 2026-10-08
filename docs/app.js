@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-08 23:13";
+const APP_VERSION = "2026-10-08 23:39";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -386,6 +386,21 @@ window.addEventListener("message", async e => {
       reply({});
     } else if (msg.type === "tcUpload") {
       reply(await tcUploadFiles(msg.files || [], msg.folder || "Lägesplan"));
+    } else if (msg.type === "ifcModelsList") {
+      // 3D-vyn i lägesplanen: de IFC-modeller som är tända i TC (för den riktiga byggnaden).
+      let ms = [];
+      try { ms = await API.viewer.getModels("loaded"); } catch (e) { ms = await API.viewer.getModels(); }
+      const list = (ms || []).filter(m => (!m.state || m.state === "loaded") && /\.ifc(zip)?$/i.test(m.name || ""))
+        .map(m => ({ id: m.id, name: m.name, etab: /^Etablering /.test(m.name || "") }));
+      reply({ models: list });
+    } else if (msg.type === "ifcModelData") {
+      const ms = await API.viewer.getModels();
+      const spec = (ms || []).find(m => m.id === msg.modelId);
+      if (!spec) throw new Error("Modellen är inte tänd i Trimble Connect längre.");
+      showLagesplanBanner(`Hämtar ${spec.name} till lägesplanens 3D-vy…`);
+      const bytes = await ifcSubsetUnzip(await ifcSubsetDownload(spec));
+      showLagesplanBanner("", 0);
+      reply({ name: spec.name, placement: spec.placement || null, bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) });
     } else if (msg.type === "placementsChanged") {
       // 3D-vyn i lägesplanen har sparat etableringen: läs om (egna osparade ändringar sparas först).
       if (typeof place3dLoad === "function") {

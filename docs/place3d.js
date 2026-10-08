@@ -54,7 +54,7 @@ async function place3dLoad(opts = {}) {
   try { placements = (await ghReadJSON(settings.githubToken, placePath(), opts.fresh ? { fresh: true } : undefined)) || []; }
   catch (e) { placements = []; console.warn("Kunde inte läsa plan_placements.json", e); }
   if (typeof placeAssetsLoad === "function") await placeAssetsLoad(opts);
-  placeLoaded = true; placeDirty.clear(); placeDeleted.clear(); placeUndoStack = [];
+  placeLoaded = true; placeDirty.clear(); placeDeleted.clear(); placeUndoStack = []; placeRedoStack = [];
   if (!placements.some(p => p.id === placeActiveId)) placeActiveId = null;
   renderPlacePanel(); placeRedraw();
 }
@@ -194,15 +194,29 @@ async function placeDrawNow() {
 // ---------------------------------------------------------------------
 // Ändringar, ångra och sparning
 // ---------------------------------------------------------------------
+let placeRedoStack = [];
 function placeSnapshot() {
   placeUndoStack.push(JSON.stringify(placements));
-  if (placeUndoStack.length > 40) placeUndoStack.shift();
+  if (placeUndoStack.length > 60) placeUndoStack.shift();
+  placeRedoStack = []; // en ny ändring gör att "gör om" inte längre gäller
 }
 function placeTouch(p) { p.updated_at = new Date().toISOString(); placeDirty.add(p.id); placeDeleted.delete(p.id); placeScheduleSave(); }
 function placeUndo() {
   const prev = placeUndoStack.pop();
   if (!prev) return;
-  const before = JSON.parse(prev), keep = new Set(before.map(p => p.id));
+  placeRedoStack.push(JSON.stringify(placements));
+  placeRestoreState(prev);
+}
+/* Gör om det som senast ångrades. */
+function placeRedo() {
+  const next = placeRedoStack.pop();
+  if (!next) return;
+  placeUndoStack.push(JSON.stringify(placements));
+  placeRestoreState(next);
+}
+/* Återställer listan till ett sparat läge och markerar skillnaden för sparning. */
+function placeRestoreState(json) {
+  const before = JSON.parse(json), keep = new Set(before.map(p => p.id));
   placements.forEach(p => { if (!keep.has(p.id)) { placeDeleted.add(p.id); placeDirty.delete(p.id); } });
   placements = before;
   placements.forEach(p => { placeDirty.add(p.id); placeDeleted.delete(p.id); });

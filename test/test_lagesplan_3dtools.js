@@ -69,7 +69,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   let s = await page.evaluate(() => { const g = l3.placeMeshes.get('m1'); const cols = []; g.traverse(o => { if (o.isMesh) cols.push('#' + o.material.color.getHexString()); }); return cols.sort(); });
   if (JSON.stringify(s) !== JSON.stringify(['#00aa33', '#aa3300'])) fail('IFC-modellen ska visas med riktig geometri: ' + JSON.stringify(s));
   // Kameran rakt uppifrån (förutsägbara skärmpunkter).
-  const top = () => page.evaluate(() => { const c = new THREE.Vector3(6512335 - l3.O[0], 150125 - l3.O[1], 0); l3.camera.position.set(c.x, c.y - 0.01, 60); l3.orbit.target.copy(c); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); });
+  const top = () => page.evaluate(() => { l3StopFly(); const c = new THREE.Vector3(6512335 - l3.O[0], 150125 - l3.O[1], 0); l3.camera.position.set(c.x, c.y - 0.01, 60); l3.orbit.target.copy(c); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); });
   await top();
   const rect = await page.locator('#v3Canvas canvas').boundingBox();
   const scr = (x, y, z) => page.evaluate(([x, y, z]) => { const q = l3ToScreen(new THREE.Vector3(x - l3.O[0], y - l3.O[1], z - l3.O[2])); return [q.x, q.y]; }, [x, y, z]);
