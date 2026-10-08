@@ -469,6 +469,8 @@ function l3Commands() {
     ["Objektlistan", "", () => l3PalTab("list")], ["Biblioteket (lägg till)", "", () => l3PalTab("add")],
     ["Spara som IFC i Trimble Connect", "", l3SaveIfc], ["Hjälp och kortkommandon", "?", () => document.getElementById("v3HelpBtn").click()], ["Tillbaka till 2D", "", close3d],
   ];
+  C.push(["Spara vy…", "", () => { document.getElementById("v3ViewsBtn").click(); setTimeout(() => document.getElementById("v3SvName").focus(), 0); }]);
+  l3SavedViews().forEach((v, i) => C.push([`Gå till vy: ${v.name}`, "", () => l3GoView(i)]));
   Object.entries(PLACE_LIB).forEach(([k, l]) => C.push([`Lägg till: ${l.label}`, "", () => { l3SetTool("select"); l3.addType = k; l3.fenceId = null; l3RenderLib(); l3Status(l.fence ? "Staket: tryck första punkten." : "Tryck där objektet ska stå."); }]));
   (typeof placeAssets !== "undefined" ? placeAssets : []).forEach(a => C.push([`Lägg till: ${a.name}`, "", () => { l3SetTool("select"); l3.addType = `model:${a.id}`; l3RenderLib(); l3Status("Tryck där objektet ska stå."); }]));
   return C.map(([label, keys, run, ok]) => ({ label, keys, run, ok: ok || (() => true) }));

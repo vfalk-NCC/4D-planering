@@ -133,6 +133,24 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (Math.hypot(v[0] - 6512338, v[1] - 150111) > 0.1) fail('V ska sätta rotationscentrum i punkten (hörnet): ' + v);
   await top();
 
+  // --- Sparade vyer: spara (med ett snitt), ändra kameran, gå tillbaka – kamera och snitt återställs.
+  await page.evaluate(() => { l3StopFly(); const c = new THREE.Vector3(6512330 - l3.O[0], 150115 - l3.O[1], 0); l3.camera.position.set(c.x - 25, c.y - 40, 35); l3.orbit.target.copy(c); l3.orbit.update(); l3AddClip(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 0, 1.5)); });
+  await page.click('#v3ViewsBtn'); await page.fill('#v3SvName', 'Infart'); await page.press('#v3SvName', 'Enter');
+  if (await page.locator('[data-svgo]').count() !== 1 || !(await page.textContent('[data-svgo="0"]')).includes('Infart')) fail('Vyn ska listas');
+  const cam0 = await page.evaluate(() => l3.camera.position.toArray());
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => { l3ClearClips(); l3View('top'); }); await page.waitForTimeout(600);
+  await page.click('#v3ViewsBtn'); await page.click('[data-svgo="0"]'); await page.waitForTimeout(700);
+  v = await page.evaluate(() => ({ p: l3.camera.position.toArray(), n: l3.renderer.clippingPlanes.length, o: l3IsOrtho() }));
+  if (Math.hypot(...v.p.map((x, i) => x - cam0[i])) > 0.05 || v.n !== 1 || v.o) fail('Vyn ska återställa kamera och snitt: ' + JSON.stringify(v) + ' ' + cam0);
+  await page.evaluate(() => l3ClearClips());
+  await page.click('#v3ViewsBtn');
+  if (process.env.SHOT_VIEWS) await page.screenshot({ path: process.env.SHOT_VIEWS, clip: { x: 700, y: 0, width: 600, height: 560 } });
+  await page.click('[data-svdel="0"]');
+  if (await page.locator('[data-svgo]').count() !== 0) fail('Vyn ska kunna tas bort');
+  await page.keyboard.press('Escape');
+  await top();
+
   // --- Kopiera special, linjär: c, dX 10, 3 kopior, förhandsvisning.
   await page.evaluate(() => l3SelectIds(['c']));
   await page.click('#v3EditBtn'); await page.click('[data-v3cmd="cspec"]');

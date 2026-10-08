@@ -179,6 +179,10 @@ function l3Dom() {
           <button type="button" data-v3view="plan">Plan ↔ 3D <kbd>Ctrl+P</kbd></button>
           <label class="v3-chk v3-pop-row"><input type="checkbox" id="v3Ortho" ${P.ortho ? "checked" : ""} /> Parallell projektion</label>
           <button type="button" data-v3view="center">Rotationscentrum… <kbd>V</kbd></button>
+          <hr/>
+          <div class="v3-pop-l">Sparade vyer</div>
+          <div id="v3SavedViews"></div>
+          <div class="v3-sv-new"><input type="text" id="v3SvName" placeholder="Namn, t.ex. Infart" maxlength="40" /><button type="button" id="v3SvSave" title="Spara kameran, projektionen och snitten">Spara vy</button></div>
         </div>
       </div>
       <div class="v3-dd">
@@ -246,7 +250,11 @@ function l3Dom() {
   $3("v3Redo").onclick = l3Redo;
   $3("v3Fit").onclick = () => l3Frame(true);
   const dd = (btn, pop) => { $3(btn).onclick = e => { e.stopPropagation(); const open = $3(pop).classList.contains("hidden"); l3HideMenus(); $3(pop).classList.toggle("hidden", !open); }; $3(pop).onclick = e => e.stopPropagation(); };
-  dd("v3ViewsBtn", "v3Views"); dd("v3ShowBtn", "v3Show"); dd("v3EditBtn", "v3Edit");
+  dd("v3ViewsBtn", "v3Views");
+  const svSave = () => { const inp = $3("v3SvName"); l3SaveView(inp.value); inp.value = ""; };
+  $3("v3SvSave").onclick = svSave;
+  $3("v3SvName").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); svSave(); } else if (e.key === "Escape") { e.preventDefault(); e.target.blur(); l3HideMenus(); } };
+  l3RenderSavedViews(); dd("v3ShowBtn", "v3Show"); dd("v3EditBtn", "v3Edit");
   box.querySelectorAll("[data-v3cmd]").forEach(b => { b.onclick = () => { l3HideMenus(); ({ cspec: () => l3OpenSpecial("copy"), mspec: () => l3OpenSpecial("move"), dup: l3DuplicateSel, copy: l3CopySel, paste: () => l3Paste(), drop: l3DropSel, del: l3DeleteSel, all: () => l3SelectIds(placements.filter(p => !l3.hidden.has(p.id)).map(p => p.id)), similar: l3SelectSimilar, hide: l3HideSel, iso: l3Isolate, showall: l3ShowAll })[b.dataset.v3cmd](); }; });
   $3("v3ClipBtn").onclick = () => { if (l3.clips && l3.clips.length) l3RenderClipDlg(); l3StartClip(); };
   $3("v3LaunchBtn").onclick = e => { e.stopPropagation(); l3OpenLaunch(); };

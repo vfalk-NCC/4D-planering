@@ -279,3 +279,49 @@ function l3DrawTriad() {
   }).sort((a, b) => a.z - b.z);
   el.innerHTML = `<svg viewBox="0 0 72 72" width="72" height="72">${ax.map(a => `<line x1="${c}" y1="${c}" x2="${a.x.toFixed(1)}" y2="${a.y.toFixed(1)}" stroke="${a.col}" stroke-width="2.5" stroke-linecap="round"/><text x="${(c + (a.x - c) * 1.28).toFixed(1)}" y="${(c + (a.y - c) * 1.28 + 3.5).toFixed(1)}" fill="${a.col}" font-size="10" font-weight="700" text-anchor="middle">${a.n === "Y" ? "N" : a.n}</text>`).join("")}<circle cx="${c}" cy="${c}" r="2.5" fill="#334155"/></svg>`;
 }
+
+// ---------------------------------------------------------------------
+// Sparade vyer (som Teklas namngivna vyer): kamera, projektion och snitt per projekt.
+// Sparas i webbläsaren (inställningarna för 3D-vyn), i modellens koordinater.
+// ---------------------------------------------------------------------
+function l3ViewKey() { return typeof projectId !== "undefined" && projectId ? String(projectId) : "_"; }
+function l3SavedViews() { return ((l3Prefs().views || {})[l3ViewKey()] || []).filter(v => v && v.t && v.p); }
+function l3StoreViews(list) { const all = { ...(l3Prefs().views || {}) }; all[l3ViewKey()] = list; l3SetPref("views", all); }
+function l3SaveView(name) {
+  name = String(name || "").trim();
+  const list = l3SavedViews();
+  if (!name) name = `Vy ${list.length + 1}`;
+  const O = l3.O, cam = l3.camera, W = v => [0, 1, 2].map(i => Math.round((v.getComponent(i) + O[i]) * 1000) / 1000);
+  const v = {
+    name, p: W(cam.position), t: W(l3.orbit.target), ortho: !!cam.isOrthographicCamera, zoom: cam.zoom,
+    clips: (l3.clips || []).map(c => { const pt = c.plane.coplanarPoint(new THREE.Vector3()); return { n: c.plane.normal.toArray(), p: W(pt), label: c.label }; }),
+  };
+  const i = list.findIndex(x => x.name.toLowerCase() === name.toLowerCase());
+  if (i >= 0) list[i] = v; else list.push(v);
+  l3StoreViews(list.slice(-30));
+  l3RenderSavedViews();
+  l3Status(i >= 0 ? `Vyn "${name}" uppdaterad.` : `Vyn "${name}" sparad – finns under Vyer.`);
+}
+function l3GoView(i) {
+  const v = l3SavedViews()[i];
+  if (!v) return;
+  const O = l3.O, S = a => new THREE.Vector3(a[0] - O[0], a[1] - O[1], a[2] - O[2]);
+  l3StopFly();
+  if (l3IsOrtho() !== !!v.ortho) l3SetProjection(!!v.ortho);
+  const T = S(v.t), P = S(v.p), dir = P.clone().sub(T);
+  const dist = v.ortho ? L3_ORTHO_H / (Math.max(1e-4, v.zoom || 1) * 2 * Math.tan(THREE.MathUtils.degToRad(25))) : dir.length();
+  // Snitten i vyn.
+  l3.clips = (v.clips || []).map(c => { const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(...c.n), S(c.p)); return { plane, base: plane.constant, off: 0, label: c.label || "Snitt" }; });
+  l3ApplyClips(); if (l3.clips.length) l3RenderClipDlg(); else l3DlgClose("v3Clip");
+  l3FlyTo(T, dist, dir, 450);
+  l3Status(`Vy: ${v.name}`);
+}
+function l3DelView(i) { const list = l3SavedViews(); const v = list.splice(i, 1)[0]; l3StoreViews(list); l3RenderSavedViews(); if (v) l3Status(`Vyn "${v.name}" borttagen.`); }
+function l3RenderSavedViews() {
+  const host = document.getElementById("v3SavedViews");
+  if (!host) return;
+  const list = l3SavedViews();
+  host.innerHTML = list.length ? list.map((v, i) => `<div class="v3-sv"><button type="button" data-svgo="${i}" title="Gå till vyn">${escHtml(v.name)}${v.clips && v.clips.length ? ` <em>· ${v.clips.length} snitt</em>` : ""}</button><button type="button" class="v3-sv-x" data-svdel="${i}" title="Ta bort vyn">✕</button></div>`).join("") : `<div class="v3-pop-hint">Inga sparade vyer än.</div>`;
+  host.querySelectorAll("[data-svgo]").forEach(b => { b.onclick = () => { l3HideMenus(); l3GoView(+b.dataset.svgo); }; });
+  host.querySelectorAll("[data-svdel]").forEach(b => { b.onclick = e => { e.stopPropagation(); l3DelView(+b.dataset.svdel); }; });
+}
