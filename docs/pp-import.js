@@ -157,7 +157,10 @@ function ppToParsedItems(pp, opts) {
       elementType: null, code: null,
       startDate: t.start, endDate: t.end, baselineStartDate: null, baselineEndDate: null,
       actualStartDate: t.actualStart, actualEndDate: t.actualEnd, progress: t.progress,
-      subActivities: [], contractor: opts.contractorLib ? t.codes[opts.contractorLib] || null : undefined,
+      subActivities: [],
+      // Entreprenören skrivs bara över när Powerproject har en (Victor 2026-10-08): saknas koden på
+      // aktiviteten behålls den som fyllts i i 4D/dashboarden (undefined = rör inte).
+      contractor: opts.contractorLib && t.codes[opts.contractorLib] ? t.codes[opts.contractorLib] : undefined,
       dependsOnKeys: preds.get(t.id) || [], sheet: null, excelMap: null, id4d: null, ppId: t.id, ppUid: t.uid, ppGuid: t.guid,
     };
   });
