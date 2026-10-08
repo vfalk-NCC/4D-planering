@@ -104,6 +104,30 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (ui.rows < 5 || ui.hidden !== 1) fail('Panelen ska lista förklaringens rader och kunna dölja en: ' + JSON.stringify(ui));
   if (!ui.ko || Math.abs(ui.ar - 1.5) > 0.01 || Math.abs(ui.h - 26.7) > 0.1) fail('Bildens val (beskär, genomskinlig) ska finnas och rutan följa beskärningen: ' + JSON.stringify(ui));
   console.log('OK: utskriftspanelen visar förklaringens rader och bildens beskärning/genomskinlighet');
+  // Beskär med musen (Victors önskemål 2026-10-08): handtag och flytta utsnittet, Enter använder, Esc avbryter.
+  await page.click('#prImgCrop');
+  const area = await page.locator('#imgCropModal .ic-img').boundingBox();
+  const hb = async h => { const b = await page.locator(`#imgCropModal .ic-${h}`).boundingBox(); return [b.x + b.width / 2, b.y + b.height / 2]; };
+  const drag = async ([x, y], dx, dy) => { await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + dx / 2, y + dy / 2); await page.mouse.move(x + dx, y + dy); await page.mouse.up(); };
+  if (!area || area.width < 100) fail('Beskärningsdialogen ska visa bilden: ' + JSON.stringify(area));
+  await drag(await hb('e'), -area.width * 0.25, 0);   // höger 25 %
+  await drag(await hb('n'), 0, area.height * 0.2);   // över 20 %
+  await drag(await hb('sw'), -area.width * 0.5, 0);  // vänster ända ut till 0 (stoppar vid kanten)
+  const mid = await page.locator('#imgCropModal .ic-box').boundingBox();
+  await drag([mid.x + mid.width / 2, mid.y + mid.height / 2], 0, area.height * 0.5); // flytta nedåt: stoppar vid underkanten
+  const cancelState = await page.evaluate(() => { const el = pr.tpl.elements.find(e => e.id === 'im'); return [el.cropL, el.cropR, el.cropT, el.cropB]; });
+  if (cancelState[0] !== 25 || cancelState[1]) fail('Elementet ska inte ändras förrän man trycker Använd: ' + JSON.stringify(cancelState));
+  await page.keyboard.press('Enter'); await page.waitForTimeout(100);
+  const cr = await page.evaluate(() => { const el = pr.tpl.elements.find(e => e.id === 'im'); return { l: el.cropL || 0, r: el.cropR || 0, t: el.cropT || 0, b: el.cropB || 0, h: el.h, w: el.w, open: !!document.getElementById('imgCropModal'), num: +document.querySelector('#prProps [data-f="cropR"]').value }; });
+  const near = (a, b) => Math.abs(a - b) < 1.5;
+  if (cr.open || !near(cr.l, 0) || !near(cr.r, 25) || !near(cr.t, 20) || !near(cr.b, 0) || !near(cr.num, cr.r)) fail('Dra i handtagen/flytta ska ge rätt beskärning och sifferrutorna följa med: ' + JSON.stringify(cr));
+  if (Math.abs(cr.h - cr.w / ((200 * 0.75) / (100 * 0.8))) > 0.2) fail('Rutans höjd ska följa beskärningen: ' + JSON.stringify(cr));
+  await page.click('#prImgCrop'); await drag(await hb('w'), area.width * 0.3, 0); await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+  const esc = await page.evaluate(() => ({ l: pr.tpl.elements.find(e => e.id === 'im').cropL || 0, open: !!document.getElementById('imgCropModal'), sel: pr.sels.includes('im') }));
+  if (esc.open || !near(esc.l, 0) || !esc.sel) fail('Esc ska avbryta utan ändring och utan att påverka markeringen: ' + JSON.stringify(esc));
+  await page.evaluate(() => prUndo());
+  if ((await page.evaluate(() => pr.tpl.elements.find(e => e.id === 'im').cropL)) !== 25) fail('Ctrl+Z ska ångra beskärningen');
+  console.log('OK: beskär bild med musen – handtag, flytta utsnittet, Enter/Esc, ångra');
   // Ritningens lager (Victors önskemål 2026-10-06): exakt samma lagerpanel som på skärmen, men den
   // tänder och släcker bara i den markerade ritningen; skärmens lager påverkas inte.
   const prl = await page.evaluate(async () => {

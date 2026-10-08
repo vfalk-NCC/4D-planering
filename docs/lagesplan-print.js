@@ -218,9 +218,11 @@ const printImgs = new Map(); // path -> HTMLImageElement | Promise
 function printImage(path) {
   const hit = printImgs.get(path);
   if (hit && !(hit instanceof Promise)) return hit;
-  if (!hit) printImgs.set(path, ghReadBinaryUrl(token, path).then(url => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; }))
-    .then(im => { printImgs.set(path, im); if (pr) drawPrintPage(); return im; })
-    .catch(e => { printImgs.delete(path); console.warn("Kunde inte hämta bilden", path, e); }));
+  // En hämtning som blir klar (eller misslyckas) efter att bilden redan bytts ut rör inte den nya.
+  if (!hit) { const p = ghReadBinaryUrl(token, path).then(url => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; }))
+    .then(im => { if (printImgs.get(path) !== p) return printImgs.get(path); printImgs.set(path, im); if (pr) drawPrintPage(); return im; })
+    .catch(e => { if (printImgs.get(path) === p) printImgs.delete(path); console.warn("Kunde inte hämta bilden", path, e); });
+    printImgs.set(path, p); }
   return null;
 }
 /* Bildelement (Victors önskemål 2026-10-02): beskär (cropL/R/T/B, % av
@@ -1155,7 +1157,7 @@ function pasteClip() {
   renderPrintPanel(); drawPrintPage();
 }
 function prKey(e) {
-  if (!pr || $("printModal").classList.contains("hidden")) return;
+  if (!pr || $("printModal").classList.contains("hidden") || document.getElementById("imgCropModal")) return; // beskärningsdialogen har egna tangenter
   if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
   const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
   const stop = () => { e.preventDefault(); e.stopPropagation(); };
@@ -1312,7 +1314,7 @@ function renderPrintProps(onlyPos) {
       <div class="pr-grid4">${num("size", "Storlek (pt)", "0.5")}<div><label>Justering</label><select data-f="align">${["left", "center", "right"].map(a => `<option value="${a}"${el.align === a ? " selected" : ""}>${{ left: "Vänster", center: "Mitten", right: "Höger" }[a]}</option>`).join("")}</select></div>${color("color", "Färg")}${color("fill", "Bakgrund")}</div>
       ${chk("bold", "Fetstil")} <div class="pr-grid4">${color("border", "Ram")}</div>`;
   if (el.type === "image") html += `<button id="prPickImg" class="block" style="margin-top:8px;">🖼 ${el.path ? "Byt bild…" : "Välj bild…"}</button><div class="hint">PNG, JPG eller SVG – t.ex. företagets logga eller skyltar. Bilden sparas i projektet. Proportionerna behålls (Shift = fritt).</div>
-      ${el.path ? `<label style="margin-top:8px;">Beskär (% av bilden)</label><div class="pr-grid4">${num("cropL", "Vänster", "1")}${num("cropR", "Höger", "1")}${num("cropT", "Över", "1")}${num("cropB", "Under", "1")}</div>
+      ${el.path ? `<label style="margin-top:8px;">Beskär (% av bilden)</label><button type="button" id="prImgCrop" class="block" title="Dra i handtagen på bilden för att beskära">✂ Beskär med musen…</button><div class="pr-grid4">${num("cropL", "Vänster", "1")}${num("cropR", "Höger", "1")}${num("cropT", "Över", "1")}${num("cropB", "Under", "1")}</div>
       ${chk("knockout", "Gör vit bakgrund genomskinlig")}
       ${el.knockout ? `<div class="pr-grid4">${num("knockTol", "Hur nära vitt", "5")}</div><div class="hint">Högre värde tar bort mer av ljusa färger (standard 30).</div>` : ""}
       ${el.cropL || el.cropR || el.cropT || el.cropB || el.knockout ? `<button type="button" id="prImgReset" style="margin-top:6px;">↺ Original (ingen beskärning)</button>` : ""}` : ""}`;
@@ -1438,6 +1440,17 @@ function renderPrintProps(onlyPos) {
   on("prTbLogo", () => $("prImgInput").click());
   on("prTbLogoDel", () => { pushUndo(); delete el.logo; renderPrintProps(); drawPrintPage(); });
   on("prLegReset", () => { pushUndo(); delete el.legHide; delete el.legText; delete el.legColor; delete el.legOrder; renderPrintProps(); drawPrintPage(); });
+  on("prImgCrop", () => {
+    const im = printImage(el.path);
+    if (!im || typeof openImageCrop !== "function") { setPrintStatus("Bilden laddas fortfarande – försök igen om en stund."); return; }
+    openImageCrop(im, { l: el.cropL, r: el.cropR, t: el.cropT, b: el.cropB }, c => {
+      pushUndo();
+      [["cropL", c.l], ["cropR", c.r], ["cropT", c.t], ["cropB", c.b]].forEach(([k, v]) => { if (v) el[k] = v; else delete el[k]; });
+      printImageSource(el, im); el.h = Math.round(el.w / el.ar * 10) / 10;
+      $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara mall *";
+      renderPrintProps(); drawPrintPage();
+    });
+  });
   on("prImgReset", () => { pushUndo(); ["cropL", "cropR", "cropT", "cropB"].forEach(k => delete el[k]); el.knockout = false; const im = printImage(el.path); if (im) { printImageSource(el, im); el.h = Math.round(el.w / el.ar * 10) / 10; } renderPrintProps(); drawPrintPage(); });
   on("prPan", () => { pr.panMode = !pr.panMode; renderPrintProps(); drawPrintPage(); });
   on("prFromView", () => { pushUndo(); el.center = viewCenterModel(); el.scale = fitScale(el.w, el.h, pr.tpl.format); renderPrintPanel(); drawPrintPage(); });
