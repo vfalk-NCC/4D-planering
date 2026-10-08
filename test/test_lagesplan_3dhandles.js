@@ -79,6 +79,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.waitForTimeout(100);
   if (await page.locator('.v3-hds .v3-hd').count() !== 5) fail('Containern ska ha 5 handtag (4 sidor + topp): ' + await page.locator('.v3-hds .v3-hd').count());
 
+  // Klick i ett fält utan ändring ger inget ångra-steg; en ändring ger exakt ett.
+  let us = await page.evaluate(() => placeUndoStack.length);
+  await page.click('[data-v3f="L"]'); await page.click('[data-v3f="B"]'); await page.mouse.click(cv.x + 5, cv.y + cv.height - 5);
+  if (await page.evaluate(() => placeUndoStack.length) !== us) fail('Klick i fälten ska inte ge ångra-steg');
+  await page.evaluate(() => l3SelectIds(['a']));
+  await page.fill('[data-v3f="H"]', '2,5'); await page.press('[data-v3f="H"]', 'Tab');
+  if ((await P('a')).H !== 2.5 || await page.evaluate(() => placeUndoStack.length) !== us + 1) fail('Ändrad höjd: ett steg i ångra');
+  await page.evaluate(() => { placeUndo(); l3BuildPlacements(); l3SelectIds(['a']); });
+  if ((await P('a')).H !== 2) fail('Ångra höjden');
+  await view();
+
   // --- Längd: dra +L-handtaget 3 m österut -> L 9, västra sidan står kvar.
   const undo0 = await page.evaluate(() => placeUndoStack.length);
   await dragTo(await hd(0), await at(6512326, 150110, 1));

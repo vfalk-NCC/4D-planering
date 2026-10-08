@@ -756,7 +756,7 @@ function l3ApplyStep() {
   l3.gizmo.setTranslationSnap(v || null);
   l3.gizmo.setRotationSnap(v ? ({ 0.1: 5, 0.5: 15, 1: 45 }[v] || 15) * Math.PI / 180 : null);
 }
-const l3GroupState = () => { const g = l3.gizmo.object; return g ? { x: g.position.x, y: g.position.y, z: g.position.z } : null; };
+const l3GroupState = () => { const g = l3.gizmo.object; return g ? { x: g.position.x, y: g.position.y, z: g.position.z, r: g.rotation.z } : null; };
 /* Handtagen -> placeringen (meter i modellens system). */
 function l3FromGizmo() {
   const g = l3.gizmo.object, p = g && placements.find(x => x.id === g.userData.placeId);
@@ -772,6 +772,7 @@ function l3DragEnd() {
   const g = l3.gizmo.object, p = g && placements.find(x => x.id === g.userData.placeId);
   if (!p) return;
   const s = l3.dragStart, moved = s && (Math.abs(s.x - g.position.x) > 1e-4 || Math.abs(s.y - g.position.y) > 1e-4);
+  if (s && !moved && Math.abs(s.z - g.position.z) < 1e-4 && Math.abs(s.r - g.rotation.z) < 1e-6) { placeUndoStack.pop(); return; } // bara ett klick på handtaget
   // Fäst mot ytan: efter en flytt i plan ställer sig objektet på det som ligger under det.
   if (moved && l3.gizmo.mode === "translate" && document.getElementById("v3Snap").checked && Math.abs(s.z - g.position.z) < 1e-4) l3DropToSurface(p, g);
   placeTouch(p); l3Changed(); l3RenderSide();
@@ -927,7 +928,7 @@ function l3RenderSide(liveOnly) {
   const p = list[0], lib = placeLib(p.type) || {}, A = lib.isModel ? lib.model : null;
   if (liveOnly && side.dataset.id === p.id) {
     const set = (k, v) => { const el = side.querySelector(`[data-v3f="${k}"]`); if (el && document.activeElement !== el) el.value = v == null ? "" : String(v).replace(".", ","); };
-    set("x", p.x); set("y", p.y); set("dz", p.dz); set("rot", p.rot);
+    ["x", "y", "dz", "rot", "L", "B", "H", "R"].forEach(k => set(k, p[k]));
     return;
   }
   side.dataset.id = p.id;
@@ -954,8 +955,8 @@ function l3RenderSide(liveOnly) {
       <button type="button" id="v3SpMove" title="Flytta exakt dX/dY/dZ, vrid kring en punkt eller spegla">Flytta special</button></div>`;
   side.querySelectorAll("[data-v3f]").forEach(inp => {
     const k = inp.dataset.v3f;
-    inp.onfocus = () => placeSnapshot();
     inp.onchange = () => {
+      placeSnapshot(); // ett steg i ångra per ändring (inte per klick i fältet)
       if (k === "name" || k === "color" || k === "start" || k === "end") p[k] = inp.value;
       else if (k === "itemId") {
         p.itemId = inp.value || null;
