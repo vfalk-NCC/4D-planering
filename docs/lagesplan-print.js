@@ -1797,6 +1797,24 @@ function bindPrint() {
   window.addEventListener("keydown", prKey, true);
   window.addEventListener("resize", () => { if (pr) drawPrintPage(); });
   bindPrSideResize();
+  bindPrSections();
+}
+/* Blad, Lägg till och Egenskaper kan fällas ihop; valet minns i webbläsaren. */
+const PR_SEC_KEY = "lp.prSecs";
+function bindPrSections() {
+  let st = {};
+  try { st = JSON.parse(localStorage.getItem(PR_SEC_KEY) || "{}") || {}; } catch (e) { st = {}; }
+  document.querySelectorAll("#printModal [data-prsec]").forEach(h => {
+    const key = h.dataset.prsec, body = document.querySelector(`#printModal [data-prsec-body="${key}"]`);
+    if (!body) return;
+    const set = open => { body.classList.toggle("collapsed", !open); h.setAttribute("aria-expanded", String(open)); };
+    set(st[key] !== false);
+    h.onclick = () => {
+      const open = body.classList.contains("collapsed");
+      set(open); st[key] = open;
+      try { localStorage.setItem(PR_SEC_KEY, JSON.stringify(st)); } catch (e) {}
+    };
+  });
 }
 /* Sidopanelens bredd: dra i vänsterkanten, dubbelklick återställer. Bredden minns per webbläsare. */
 const PR_SIDE_KEY = "lp.prSideW", PR_SIDE_DEF = 340;

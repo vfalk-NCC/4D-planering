@@ -133,6 +133,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const w2 = side.getBoundingClientRect().width;
     rz.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     const w3 = side.getBoundingClientRect().width;
+    // Blad, Lägg till och Egenskaper kan fällas ihop och minns det.
+    const secs = ['blad', 'add', 'props'].map(k => {
+      const h = document.querySelector(`#printModal [data-prsec="${k}"]`), b = document.querySelector(`#printModal [data-prsec-body="${k}"]`);
+      h.click(); const hid = b.offsetHeight === 0 && h.getAttribute('aria-expanded') === 'false' && JSON.parse(localStorage.getItem('lp.prSecs'))[k] === false;
+      h.click(); return hid && b.offsetHeight > 0;
+    });
+    out.sections = secs.every(Boolean) && !!document.getElementById('prProps') && !!document.querySelector('#prAdd [data-add="arrow"]');
     out.resize = Math.abs(w1 - 500) < 2 && Math.abs(w2 - 260) < 2 && Math.abs(w3 - 340) < 2 && localStorage.getItem('lp.prSideW') === '340';
     pr.dirty = false; closePrint();
     return out;
