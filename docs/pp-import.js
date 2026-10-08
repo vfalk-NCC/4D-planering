@@ -193,7 +193,7 @@ function ppToParsedItems(pp, opts) {
       // aktiviteten behålls den som fyllts i i 4D/dashboarden (undefined = rör inte).
       contractor: opts.contractorLib && t.codes[opts.contractorLib] ? t.codes[opts.contractorLib] : undefined,
       // Resurser bara när Powerproject har några på aktiviteten – annars behålls de som finns (undefined).
-      resources: t.resources && t.resources.length ? t.resources : undefined,
+      resources: opts.resources !== false && t.resources && t.resources.length ? t.resources : undefined,
       dependsOnKeys: preds.get(t.id) || [], sheet: null, excelMap: null, id4d: null, ppId: t.id, ppUid: t.uid, ppGuid: t.guid,
     };
   });
@@ -203,7 +203,17 @@ function ppToParsedItems(pp, opts) {
 function ppOptionsFromUi() {
   const groups = new Set([...document.querySelectorAll("#ppOptions [data-ppg]")].filter(c => c.checked).map(c => Number(c.dataset.ppg)));
   const a = document.getElementById("ppAreaLib").value, c = document.getElementById("ppContractorLib").value;
-  return { groups, areaLib: a ? Number(a) : null, contractorLib: c ? Number(c) : null };
+  const r = document.getElementById("ppResources");
+  return { groups, areaLib: a ? Number(a) : null, contractorLib: c ? Number(c) : null, resources: r ? r.checked : true };
+}
+/* Resurserna i de valda delarna (Victor 2026-10-08: "det står inget om resurser vid importfönstret"). */
+function ppResourceSummary(pp, groups) {
+  const tasks = pp.tasks.filter(t => groups.has(t.top) && t.resources && t.resources.length);
+  const byName = new Map();
+  let hours = 0;
+  tasks.forEach(t => t.resources.forEach(r => { hours += Number(r.hours) || 0; byName.set(r.name, (byName.get(r.name) || 0) + (Number(r.hours) || 0)); }));
+  const top = [...byName].sort((a, b) => b[1] - a[1]);
+  return { tasks: tasks.length, hours, names: top.map(([n]) => n), top };
 }
 const ppOptsKey = () => `4dplan-pp-opts-${typeof projectId !== "undefined" ? projectId : ""}`;
 function ppSavedOpts() {
@@ -226,6 +236,10 @@ function renderPpOptions() {
     <div class="pp-step"><span class="pp-n">1</span><div class="pp-step-body"><b>Delar</b>
       <div class="pp-groups">${pp.groups.map(g => `<label class="check pp-chip" title="${fmt(g.start)} – ${fmt(g.end)}"><input type="checkbox" data-ppg="${g.id}"${groupOn(g) ? " checked" : ""} /> ${escapeHtml(g.name)} <span class="hint">${g.count} st · ${fmt(g.start).slice(-4)}${fmt(g.end).slice(-4) !== fmt(g.start).slice(-4) ? "–" + fmt(g.end).slice(-4) : ""}</span></label>`).join("")}</div>
     </div></div>
+    <div class="pp-step"><span class="pp-n">2</span><div class="pp-step-body"><b>Resurser</b>
+      <div class="pp-groups"><label class="check pp-chip"><input type="checkbox" id="ppResources"${saved.res === false ? "" : " checked"} /> Ta med resurser <span class="hint">resurs, antal och timmar per aktivitet</span></label></div>
+      <div class="hint" id="ppResSum"></div>
+    </div></div>
     <details class="pp-more"><summary>Område: <b id="ppAreaSum"></b> · Entreprenör: <b id="ppContrSum"></b> <span class="hint">ändra</span></summary>
       <div class="pp-grid">
         <label class="pp-l" for="ppAreaLib">Område</label><select id="ppAreaLib">${libOpts(l => l === areaDefault, "Sammanfattningsraden i tidplanen")}</select>
@@ -239,16 +253,27 @@ function renderPpOptions() {
     document.getElementById("ppContrSum").textContent = libName(document.getElementById("ppContractorLib").value) || "ingen";
   };
   sums();
+  const resSum = () => {
+    const el = document.getElementById("ppResSum"), on = document.getElementById("ppResources").checked;
+    const groups = new Set(pp.groups.filter(g => box.querySelector(`[data-ppg="${g.id}"]`).checked).map(g => g.id));
+    const r = ppResourceSummary(pp, groups);
+    el.innerHTML = !r.tasks ? "Inga resurser inlagda i Powerproject för de valda delarna – resurser som redan finns i 4D behålls."
+      : `${on ? "" : "<b>Tas inte med</b> – "}${r.tasks} ${r.tasks === 1 ? "aktivitet" : "aktiviteter"} har resurser · ${Math.round(r.hours).toLocaleString("sv-SE")} timmar · ${r.names.length} ${r.names.length === 1 ? "resurs" : "resurser"}${r.names.length ? ` (${r.top.slice(0, 3).map(([n, h]) => `${escapeHtml(n)} ${Math.round(h).toLocaleString("sv-SE")} h`).join(", ")}${r.names.length > 3 ? " …" : ""})` : ""}.${on ? " Aktiviteter utan resurser i Powerproject behåller sina." : " Resurserna i 4D lämnas orörda."}`;
+  };
+  resSum();
+  box.querySelectorAll("[data-ppg]").forEach(c => c.addEventListener("change", resSum));
+  document.getElementById("ppResources").addEventListener("change", resSum);
   document.getElementById("ppAreaLib").onchange = sums;
   document.getElementById("ppContractorLib").onchange = sums;
   box.classList.remove("hidden");
   document.getElementById("btnPpPreview").onclick = () => ppPreview();
   const remember = () => {
     const off = pp.groups.filter(g => !box.querySelector(`[data-ppg="${g.id}"]`).checked).map(g => g.name);
-    try { localStorage.setItem(ppOptsKey(), JSON.stringify({ off, area: libName(document.getElementById("ppAreaLib").value) || null, contr: libName(document.getElementById("ppContractorLib").value) || null })); } catch (e) {}
+    try { localStorage.setItem(ppOptsKey(), JSON.stringify({ off, area: libName(document.getElementById("ppAreaLib").value) || null, contr: libName(document.getElementById("ppContractorLib").value) || null, res: document.getElementById("ppResources").checked })); } catch (e) {}
   };
   box.querySelectorAll("[data-ppg]").forEach(c => { c.onchange = remember; });
   document.getElementById("ppAreaLib").addEventListener("change", remember);
+  document.getElementById("ppResources").addEventListener("change", remember);
   document.getElementById("ppContractorLib").addEventListener("change", remember);
 }
 /* Namngivna baselines (Victor 2026-10-06: "en baseline som alltid ligger i grunden, Kontraktstidplanen
@@ -501,6 +526,14 @@ function ppPreview() {
   try { bl = ppApplyBaseline(parsed, p => exByP.get(p) || null, { target: PP_BL_MAIN, mode: mainSet ? "keepfill" : "untouched" }); } catch (e) { status.innerText = e.message; return; }
   planImportDiff = buildPlanImportDiff(parsed);
   planImportDiff.baseline = bl;
+  // Resurserna i förhandsgranskningen.
+  const rs = ppResourceSummary(ppParsed, opts.groups);
+  if (bl) {
+    const rtxt = opts.resources === false ? "Resurser: tas inte med – resurserna i 4D lämnas orörda."
+      : rs.tasks ? `Resurser: ${rs.tasks} ${rs.tasks === 1 ? "aktivitet" : "aktiviteter"} får resurs, antal och timmar (${Math.round(rs.hours).toLocaleString("sv-SE")} h, ${rs.names.length} ${rs.names.length === 1 ? "resurs" : "resurser"}). Aktiviteter utan resurser i Powerproject behåller sina.`
+      : "Resurser: inga i Powerproject för de valda delarna – resurserna i 4D lämnas orörda.";
+    bl.html = (bl.html || (bl.text ? `<div class="plan-import-baseline">▭ ${escapeHtml(bl.text)}</div>` : "")) + `<div class="plan-import-baseline">${escapeHtml(rtxt)}</div>`;
+  }
   planImportDiff.fileName = ppParsed.fileName;
   planImportDiff.excelComments = null;
   renderPlanImportPreview(planImportDiff);

@@ -31,7 +31,13 @@ async function makePp(variant) {
     CREATE TABLE CODE_LIBRARY (ID INT, NAME);
     CREATE TABLE CODE_LIBRARY_ENTRY (ID INT, NAME, CODE_LIBRARY INT);
     CREATE TABLE CODE_LIBRARY_ASSIGNABL_CODES (CODES INT, ASSIGNED_TO INT);
-    CREATE TABLE TASK_COMPLETED_SECTION (TASK INT, OVERALL_PERCENT_COMPLETE, ACTUAL_START, ACTUAL_END, DURATION);`);
+    CREATE TABLE TASK_COMPLETED_SECTION (TASK INT, OVERALL_PERCENT_COMPLETE, ACTUAL_START, ACTUAL_END, DURATION);
+    CREATE TABLE PERMANENT_RESOURCE (ID INT, NAME); CREATE TABLE PERM_RESOURCE_SKILL (ID INT, PLAYER INT, ROLE INT);
+    CREATE TABLE PERMANENT_SCHEDUL_ALLOCATION (ALLOCATION_OF INT, ALLOCATED_TO INT, EFFORT, ALLOCATION, LINKABLE_START, LINKABLE_FINISH);`);
+  // Resurser (Victor 2026-10-08): 4 betongarbetare på gjutningen (320 h), mallens aktivitet 1 snickare.
+  db.run('INSERT INTO PERMANENT_RESOURCE VALUES (1, "R012 Betongarbetare"), (2, "R01 Byggnadsarbetare")');
+  db.run('INSERT INTO PERM_RESOURCE_SKILL VALUES (501, 1, 0), (502, 2, 0)');
+  db.run(`INSERT INTO PERMANENT_SCHEDUL_ALLOCATION VALUES (501, 100, ${4 * 80 * 3600}, 4, '2026-10-05 08:00:00', '2026-10-16 16:00:00'), (502, 200, ${40 * 3600}, 1, '2015-01-02 08:00:00', '2015-01-09 16:00:00')`);
   const run = (sql, rows) => rows.forEach(r => db.run(sql, r));
   run('INSERT INTO PROJECT_SUMMARY VALUES (?,?,?,?)', [['2026-08-18 08:00:00', '2028-08-21 18:00:00', 'NSV', 'NSV-LKAB Huvudtidplan']]);
   // Sammanfattningsraden 742 Sikthall har inget eget namn (som i NSV-tidplanen) – stapelns namn gäller.
@@ -125,7 +131,11 @@ async function makePp(variant) {
   const o = await page.evaluate(() => ({ head: document.querySelector('.pp-head').innerText, groups: [...document.querySelectorAll('#ppOptions [data-ppg]')].map(c => c.closest('label').innerText.trim().split(/\s+/)[0] + (c.checked ? '+' : '-')), area: document.getElementById('ppAreaLib').selectedOptions[0].text, contr: document.getElementById('ppContractorLib').selectedOptions[0].text, bl: !!document.getElementById('ppBaseline') }));
   if (!/NSV-LKAB Huvudtidplan/.test(o.head) || !/5 aktiviteter/.test(o.head) || JSON.stringify(o.groups) !== '["Projekttidplan+","Building+"]' || o.area !== 'Sammanfattningsraden i tidplanen' || o.contr !== 'Ingen' || o.bl) fail('Inläsningen och förvalen: ' + JSON.stringify(o));
   // Välj zoner/Utförs av och bara projektet – sparas till nästa inläsning.
+  const rs0 = await page.innerText('#ppResSum');
+  if (!(await page.isChecked('#ppResources')) || !/2 aktiviteter har resurser · 360 timmar · 2 resurser/.test(rs0)) fail('Resurser i importfönstret: ' + rs0);
   await page.uncheck('#ppOptions [data-ppg="50"]');
+  const rs1 = await page.innerText('#ppResSum');
+  if (!/1 aktivitet har resurser · 320 timmar · 1 resurs \(R012 Betongarbetare 320 h\)/.test(rs1)) fail('Resurserna ska följa de valda delarna: ' + rs1);
   await page.evaluate(() => { document.querySelector('.pp-more').open = true; });
   const pickLib = (sel, re) => page.$eval(sel, (el, src) => { const o = [...el.options].find(x => new RegExp(src).test(x.text)); el.value = o.value; el.dispatchEvent(new Event('change', { bubbles: true })); }, re);
   await pickLib('#ppAreaLib', '^3\\.5 Zoner'); await pickLib('#ppContractorLib', '^1\\. Utförs av');
@@ -135,9 +145,12 @@ async function makePp(variant) {
   await page.click('#btnPpPreview'); await page.waitForTimeout(200);
   if (!(await page.isVisible('#planImportPreviewDialog'))) fail('Förhandsgranskningen ska öppnas');
   if (!/Ingen baseline är satt/.test(await page.innerText('#planImportSummary'))) fail('Importen ska säga att ingen baseline är satt');
+  if (!/Resurser: 1 aktivitet får resurs, antal och timmar \(320 h, 1 resurs\)/.test(await page.innerText('#planImportSummary'))) fail('Förhandsgranskningen ska säga vad som händer med resurserna: ' + await page.innerText('#planImportSummary'));
   await page.click('#btnConfirmPlanImport'); await page.waitForTimeout(1500);
   const pp = get('pp/plan_items.json');
   if (!pp) fail('Powerproject-planeringen ska sparas i pp/plan_items.json');
+  const gjR = pp.find(r => /^Gjutning/.test(r.object_name));
+  if (!gjR || JSON.stringify(gjR.resources) !== '[{"name":"R012 Betongarbetare","qty":4,"hours":320,"start":"2026-10-05","end":"2026-10-16"}]') fail('Resurserna ska sparas på gjutningen: ' + JSON.stringify(gjR && gjR.resources));
   const by = Object.fromEntries(pp.map(r => [r.object_name, r]));
   if (Object.keys(by).sort().join(',') !== 'Gjutning bottenplatta,Montage stomme,Schakt,Tätt hus') fail('Aktiviteterna (utan länkrader, utan datumlösa, utan mallen): ' + Object.keys(by));
   const g = by['Gjutning bottenplatta'], m = by['Montage stomme'], sc = by['Schakt'], ms = by['Tätt hus'];
