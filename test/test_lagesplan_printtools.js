@@ -72,6 +72,28 @@ const PORT = 8990;
     });
     if (JSON.stringify(dist.xs) !== '[20,110,200]' || !dist.style || !dist.undo) fail('Fördela jämnt / stil: ' + JSON.stringify(dist));
     console.log('OK: fördela jämnt (första/sista står still), kopiera och klistra in stil, ångra');
+    // 4) Ruta: rundade hörn, streckad, genomskinlig fyllning – på skärmen och i PDF:en. Linje: streckad.
+    const rc = await page.evaluate(async () => {
+      const el = { id: 'r', type: 'rect', x: 0, y: 0, w: 20, h: 10, stroke: '#000000', fill: '#ff0000', lw: 0.35, radius: 3, fillOpacity: 50, dash: 'dashed' };
+      const c = document.createElement('canvas'); c.width = 200; c.height = 100; const g = c.getContext('2d');
+      drawElement(g, el, pr.tpl, 10, 1);
+      const px = (x, y) => g.getImageData(x, y, 1, 1).data;
+      const out = { corner: px(1, 1)[3] === 0, half: Math.abs(px(100, 50)[3] - 128) < 4 && px(100, 50)[0] > 200 };
+      setSel([]); pr.tpl.elements.push(el, { id: 'l', type: 'line', x: 0, y: 40, w: 50, h: 0, stroke: '#000000', lw: 0.5, dash: 'dotted' }); setSel(['r']); renderPrintPanel();
+      out.panel = ['radius', 'fillOpacity', 'dash'].every(f => !!document.querySelector(`#prProps [data-f="${f}"]`)) && document.querySelector('#prProps [data-f="fillOpacity"]').value === '50';
+      const calls = [];
+      window.jspdf = { jsPDF: function () { return new Proxy({}, { get: (t, k) => k === 'GState' ? function (o) { calls.push('GState ' + JSON.stringify(o)); } : k === 'splitTextToSize' ? (s => [String(s)]) : k === 'output' ? (() => new ArrayBuffer(8)) : ((...a) => { calls.push(k + ' ' + JSON.stringify(a)); }) }); } };
+      window.alert = m => calls.push('ALERT ' + m);
+      pr.tpl.elements = pr.tpl.elements.filter(e => e.id === 'r' || e.id === 'l'); pr.tpl.frame = { on: false };
+      await exportPrintPdf();
+      const k = pageDims().k;
+      out.pdf = calls.some(c => c.startsWith('roundedRect') && c.includes('"F"')) && calls.some(c => c.startsWith('roundedRect') && c.includes('"D"'))
+        && calls.some(c => c === 'GState {"opacity":0.5}') && calls.filter(c => /^setLineDashPattern \[\[\d/.test(c)).length === 2 && calls.some(c => c.startsWith('line '));
+      if (!out.pdf) out.calls = calls.filter(c => /Rect|rect|GState|Dash|line /.test(c));
+      return out;
+    });
+    if (rc.corner !== true || rc.half !== true || rc.panel !== true || rc.pdf !== true) fail('Ruta/linje: ' + JSON.stringify(rc));
+    console.log('OK: ruta med rundade hörn, streckad linje och genomskinlig fyllning (skärm och PDF), streckad/prickad linje');
     await page.evaluate(() => { pr.dirty = false; closePrint(); });
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');

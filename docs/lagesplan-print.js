@@ -563,6 +563,14 @@ function wrapLines(ctx, text, maxW) {
   });
   return out;
 }
+/* Streckad/prickad linje (ruta, linje): mönstret i mm efter linjens tjocklek. null = heldragen. */
+function prDashMm(el) {
+  const lw = Math.max(0.1, Number(el.lw) || 0.35);
+  if (el.dash === "dashed") return [lw * 6 + 1.5, lw * 4 + 1];
+  if (el.dash === "dotted") return [0.001, lw * 2.5 + 0.6];
+  return null;
+}
+function prFillAlpha(el) { const o = el.fillOpacity == null ? 100 : Number(el.fillOpacity); return Math.max(0, Math.min(100, isNaN(o) ? 100 : o)) / 100; }
 function drawElement(ctx, el, tpl, u, k, opts = {}) {
   const X = el.x * k * u, Y = el.y * k * u, W = el.w * k * u, H = el.h * k * u;
   const pt = s => s * k * PT_MM * u; // punkter i mallen -> px
@@ -615,13 +623,21 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
       break;
     }
     case "rect": {
-      if (el.fill) { ctx.fillStyle = el.fill; ctx.fillRect(X, Y, W, H); }
-      if (el.stroke) { ctx.strokeStyle = el.stroke; ctx.lineWidth = Math.max(0.5, (el.lw || 0.35) * k * u); ctx.strokeRect(X, Y, W, H); }
+      const r = Math.min(Math.max(0, Number(el.radius) || 0) * k * u, Math.abs(W) / 2, Math.abs(H) / 2), dash = prDashMm(el);
+      const path = () => { ctx.beginPath(); if (r > 0) { // rundade hörn (bezierkurvor – följer också med i DXF:en)
+        ctx.moveTo(X + r, Y); ctx.lineTo(X + W - r, Y); ctx.bezierCurveTo(X + W - r * 0.448, Y, X + W, Y + r * 0.448, X + W, Y + r);
+        ctx.lineTo(X + W, Y + H - r); ctx.bezierCurveTo(X + W, Y + H - r * 0.448, X + W - r * 0.448, Y + H, X + W - r, Y + H);
+        ctx.lineTo(X + r, Y + H); ctx.bezierCurveTo(X + r * 0.448, Y + H, X, Y + H - r * 0.448, X, Y + H - r);
+        ctx.lineTo(X, Y + r); ctx.bezierCurveTo(X, Y + r * 0.448, X + r * 0.448, Y, X + r, Y); ctx.closePath(); } else ctx.rect(X, Y, W, H); };
+      if (el.fill) { ctx.save(); ctx.globalAlpha = prFillAlpha(el); ctx.fillStyle = el.fill; path(); ctx.fill(); ctx.restore(); }
+      if (el.stroke) { ctx.strokeStyle = el.stroke; ctx.lineWidth = Math.max(0.5, (el.lw || 0.35) * k * u); if (dash) { ctx.setLineDash(dash.map(v => v * k * u)); if (el.dash === "dotted") ctx.lineCap = "round"; } path(); ctx.stroke(); ctx.setLineDash([]); }
       break;
     }
     case "line": {
+      const dash = prDashMm(el);
       ctx.strokeStyle = el.stroke || "#000"; ctx.lineWidth = Math.max(0.5, (el.lw || 0.35) * k * u);
-      ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X + W, Y + H); ctx.stroke();
+      if (dash) { ctx.setLineDash(dash.map(v => v * k * u)); if (el.dash === "dotted") ctx.lineCap = "round"; }
+      ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X + W, Y + H); ctx.stroke(); ctx.setLineDash([]);
       break;
     }
     case "arrow": { // lagesplan-arrows.js
@@ -1341,7 +1357,7 @@ function renderPrintProps(onlyPos) {
   }
   const t = ELEMENT_TYPES[el.type];
   const inp = (f, label, type = "text", attrs = "") => `<label>${label}</label><input type="${type}" data-f="${f}" value="${escHtml(el[f] ?? "")}" ${attrs} />`;
-  const num = (f, label, step = "0.5") => `<div><label>${label}</label><input type="number" step="${step}" data-f="${f}" data-num="1" value="${Math.round((el[f] || 0) * 10) / 10}" /></div>`;
+  const num = (f, label, step = "0.5", def = 0) => `<div><label title="${escHtml(label)}">${label}</label><input type="number" step="${step}" data-f="${f}" data-num="1" value="${Math.round((el[f] ?? def) * 10) / 10}" /></div>`;
   const chk = (f, label) => `<label class="check"><input type="checkbox" data-f="${f}"${el[f] ? " checked" : ""} /> ${label}</label>`;
   // Färgruta. none = "ingen färg" är tillåtet: tom färg visas rutig med ∅ (inte svart), ∅-knappen tömmer.
   const color = (f, label, none = false, def = "#000000") => {
@@ -1421,8 +1437,10 @@ function renderPrintProps(onlyPos) {
   if (el.type === "qr") html += inp("text", "Länk eller text") + chk("frame", "<b>Ram med egen text</b>")
     + (el.frame ? inp("title", "Rubrik") + inp("subtitle", "Underrubrik") + inp("footer", "Text längst ner")
       + `<div class="pr-grid4">${color("frameColor", "Ramens färg", false, QR_CARD_DEFAULTS.frameColor)}</div>${chk("phone", "Mobil-ikon")}<div class="hint">Platshållare: {plan} {datum} {idag}</div>` : "");
-  if (el.type === "rect") html += `<div class="pr-grid4">${color("stroke", "Linje", true)}${color("fill", "Fyllning", true)}${num("lw", "Tjocklek", "0.05")}</div>`;
-  if (el.type === "line") html += `<div class="pr-grid4">${color("stroke", "Färg")}${num("lw", "Tjocklek", "0.05")}</div><div class="hint">Höjd 0 = vågrät linje, bredd 0 = lodrät.</div>`;
+  if (el.type === "rect") html += `<div class="pr-grid4">${color("stroke", "Linje", true)}${num("lw", "Tjocklek", "0.05")}<div style="grid-column:span 2;"><label>Linjetyp</label><select data-f="dash">${[["solid", "Heldragen"], ["dashed", "Streckad"], ["dotted", "Prickad"]].map(([v, n]) => `<option value="${v}"${(el.dash || "solid") === v ? " selected" : ""}>${n}</option>`).join("")}</select></div>
+      ${color("fill", "Fyllning", true)}${num("fillOpacity", "Täckning %", "10", 100)}${num("radius", "Hörn mm", "0.5")}</div>
+      <div class="hint">Tjocklek i mm. Täckning 100 % = heltäckande fyllning, lägre = genomskinlig. Hörn = rundade hörn (0 = raka).</div>`;
+  if (el.type === "line") html += `<div class="pr-grid4">${color("stroke", "Färg")}${num("lw", "Tjocklek", "0.05")}<div style="grid-column:span 2;"><label>Linjetyp</label><select data-f="dash">${[["solid", "Heldragen"], ["dashed", "Streckad"], ["dotted", "Prickad"]].map(([v, n]) => `<option value="${v}"${(el.dash || "solid") === v ? " selected" : ""}>${n}</option>`).join("")}</select></div></div><div class="hint">Tjocklek i mm. Höjd 0 = vågrät linje, bredd 0 = lodrät. Vill du ha en spets – använd Pil.</div>`;
   if (el.type === "arrow") {
     const st = el.style || "modern", sh = el.shape || "straight", grp = g => Object.entries(ARROW_STYLES).filter(([, v]) => v.group === g);
     const sbtn = ([k, v]) => `<button type="button" data-arrow="${k}" class="${st === k ? "on" : ""}" title="${v.label}"><img src="${arrowThumb(k, sh, el.stroke)}" alt="" /><span>${v.label}</span></button>`;
@@ -1692,14 +1710,29 @@ async function exportPrintPdf() {
         lines.forEach((ln, i) => { const ly = y + pad + i * lh; if (!i || ly + glyph <= y + h + 0.5) doc.text(ln, tx, ly, { baseline: "top", align: el.align || "left" }); });
         doc.setTextColor(0);
       } else if (el.type === "rect") {
-        const st = el.stroke ? "D" : "", fl = el.fill ? "F" : "";
-        if (!st && !fl) continue;
-        if (el.fill) doc.setFillColor(...hexRgb(el.fill));
-        if (el.stroke) { doc.setDrawColor(...hexRgb(el.stroke)); doc.setLineWidth((el.lw || 0.35) * k); }
-        doc.rect(x, y, w, h, fl + st);
+        if (!el.stroke && !el.fill) continue;
+        const r = Math.min(Math.max(0, Number(el.radius) || 0) * k, Math.abs(w) / 2, Math.abs(h) / 2), dash = prDashMm(el);
+        const shape = style => r > 0 ? doc.roundedRect(Math.min(x, x + w), Math.min(y, y + h), Math.abs(w), Math.abs(h), r, r, style) : doc.rect(x, y, w, h, style);
+        if (el.fill) {
+          // Fyllning (ev. genomskinlig) och linje var för sig, så att linjen alltid är heltäckande.
+          const a = prFillAlpha(el);
+          doc.saveGraphicsState();
+          if (a < 1 && doc.GState) doc.setGState(new doc.GState({ opacity: a }));
+          doc.setFillColor(...hexRgb(el.fill)); shape("F");
+          doc.restoreGraphicsState();
+        }
+        if (el.stroke) {
+          doc.setDrawColor(...hexRgb(el.stroke)); doc.setLineWidth((el.lw || 0.35) * k);
+          if (dash) { doc.setLineDashPattern(dash.map(v => v * k), 0); if (el.dash === "dotted") doc.setLineCap("round"); }
+          shape("D");
+          if (dash) { doc.setLineDashPattern([], 0); doc.setLineCap("butt"); }
+        }
       } else if (el.type === "line") {
+        const dash = prDashMm(el);
         doc.setDrawColor(...hexRgb(el.stroke)); doc.setLineWidth((el.lw || 0.35) * k);
+        if (dash) { doc.setLineDashPattern(dash.map(v => v * k), 0); if (el.dash === "dotted") doc.setLineCap("round"); }
         doc.line(x, y, x + w, y + h);
+        if (dash) { doc.setLineDashPattern([], 0); doc.setLineCap("butt"); }
       } else if (el.type === "title" && el.style !== "card") {
         const rows = titleRows(el, tpl), rh = h / Math.max(1, rows.length), fs = (el.size || 7) * k;
         doc.setDrawColor(0); doc.setLineWidth(0.25 * k); doc.rect(x, y, w, h);
