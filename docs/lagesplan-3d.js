@@ -193,6 +193,8 @@ function l3Dom() {
           <label class="v3-chk"><input type="checkbox" id="v3ShowPlan" ${P.plan ? "checked" : ""} /> Planen (PDF) som mark</label>
           <div class="v3-pop-l">Planerade objekt (lådor)</div>
           <div class="v3-segs" id="v3ObjMode">${[["solid", "Lådor"], ["ghost", "Genomskinliga"], ["edges", "Konturer"], ["hidden", "Dolda"]].map(([k, l]) => `<button type="button" data-v3objs="${k}" class="${P.objs === k ? "on" : ""}">${l}</button>`).join("")}</div>
+          <div class="v3-pop-l">Etablering på datumet</div>
+          <div class="v3-segs" id="v3Etab4d">${[["ghost", "Tona det som inte finns"], ["all", "Visa allt"]].map(([k, l]) => `<button type="button" data-v3e4d="${k}" class="${(P.etab4d || "ghost") === k ? "on" : ""}">${l}</button>`).join("")}</div>
           <div class="v3-pop-l">Byggnad</div>
           <div id="v3BldgBox"><button type="button" id="v3BldgBtn" class="v3-wide">${I.building} Visa byggnaden från Trimble Connect…</button></div>
           <div class="v3-pop-l">Övrigt</div>
@@ -267,6 +269,7 @@ function l3Dom() {
   box.querySelectorAll("[data-v3mouse]").forEach(b => { b.onclick = () => { l3SetPref("mouse", b.dataset.v3mouse); box.querySelectorAll("[data-v3mouse]").forEach(x => x.classList.toggle("on", x === b)); if (l3) l3ApplyMouse(); mouseHint(); }; });
   mouseHint();
   $3("v3ShowPlan").onchange = e => { l3SetPref("plan", e.target.checked); if (l3.planMesh) l3.planMesh.visible = e.target.checked; l3Render(); };
+  box.querySelectorAll("[data-v3e4d]").forEach(b => { b.onclick = () => { l3SetPref("etab4d", b.dataset.v3e4d); box.querySelectorAll("[data-v3e4d]").forEach(x => x.classList.toggle("on", x === b)); l3Etab4dAll(); }; });
   box.querySelectorAll("[data-v3objs]").forEach(b => { b.onclick = () => { l3SetPref("objs", b.dataset.v3objs); box.querySelectorAll("[data-v3objs]").forEach(x => x.classList.toggle("on", x === b)); l3BuildObjects(); l3Render(); }; });
   $3("v3LabelsChk").onchange = e => { l3SetPref("labels", e.target.checked); l3Render(); };
   $3("v3LegendChk").onchange = e => { l3SetPref("legend", e.target.checked); $3("v3Legend").classList.toggle("hidden", !e.target.checked); };
@@ -386,7 +389,7 @@ function l3Init(box) {
     if (!l3 || !b || b.classList.contains("hidden")) return;
     const d = $("dateInput").value;
     l3SyncDate();
-    if (d !== l3.date) { l3BuildObjects(); if (typeof l3bRecolor === "function") l3bRecolor(); l3RenderLegend(); l3Render(); }
+    if (d !== l3.date) { l3BuildObjects(); if (typeof l3bRecolor === "function") l3bRecolor(); l3Etab4dAll(); }
   }, 700);
 }
 function l3SyncDate() { const el = document.getElementById("v3Date"); if (el && document.activeElement !== el && el.value !== $("dateInput").value) el.value = $("dateInput").value; }
@@ -490,7 +493,9 @@ function l3RenderLegend() {
   if (typeof l3bCoupledIds === "function") l3bCoupledIds().forEach(id => ids.add(id));
   ids.forEach(id => { const ph = l3Phase(byId.get(id)); n[ph] = (n[ph] || 0) + 1; });
   const order = [...PHASE_ORDER, "ingen"].filter(k => n[k]);
-  el.innerHTML = order.length ? `<div class="v3-legend-h">Status ${escHtml($("dateInput").value || "")}</div>` + order.map(k => `<div><i style="background:${phaseColor(k)}"></i>${escHtml(PHASE_LABELS[k] || k)} <span>${n[k]}</span></div>`).join("") : "";
+  const off = [...l3.placeMeshes.values()].filter(g => g.userData.off4d).length;
+  el.innerHTML = order.length || off ? `<div class="v3-legend-h">Status ${escHtml($("dateInput").value || "")}</div>` + order.map(k => `<div><i style="background:${phaseColor(k)}"></i>${escHtml(PHASE_LABELS[k] || k)} <span>${n[k]}</span></div>`).join("")
+    + (off ? `<div title="Etablering vars start–slut inte omfattar datumet (tonad)"><i class="v3-legend-off"></i>Etablering ej på plats <span>${off}</span></div>` : "") : "";
 }
 
 /* Ett etableringsobjekt som en grupp i sitt eget lokala system (origo = insättningspunkten, ovridet),
@@ -502,7 +507,7 @@ function l3PlacementGroup(p) {
   const z = (Number(p.z) || 0) + (Number(p.dz) || 0);
   const add = (geo, color, transp) => {
     const mat = new THREE.MeshLambertMaterial({ color: new THREE.Color(color), transparent: transp > 0, opacity: 1 - (transp || 0), depthWrite: !(transp > 0.5), side: THREE.DoubleSide });
-    const m = new THREE.Mesh(geo, mat); m.userData.placeId = p.id; grp.add(m); return m;
+    const m = new THREE.Mesh(geo, mat); m.userData.placeId = p.id; m.userData.mat0 = { t: mat.transparent, o: mat.opacity, d: mat.depthWrite }; grp.add(m); return m;
   };
   const prism = (poly, z0, z1) => {
     const n = poly.length, pos = [];
@@ -535,8 +540,24 @@ function l3PlacementGroup(p) {
   }
   grp.position.set(p.x - l3.O[0], p.y - l3.O[1], z - l3.O[2]);
   if (!lib.fence) grp.rotation.z = (Number(p.rot) || 0) * Math.PI / 180;
+  l3Etab4d(grp, p);
   return grp;
 }
+/* 4D för etableringen: finns objektet på datumet (start–slut)? Utan datum finns det alltid. */
+function l3PlaceOnDate(p, d) { d = d || $("dateInput").value || todayIso(); return !((p.start && p.start > d) || (p.end && p.end < d)); }
+/* Tonar ett etableringsobjekt som inte finns på datumet (Visa → Etablering). */
+function l3Etab4d(grp, p) {
+  if (!grp) return;
+  const off = (l3Prefs().etab4d || "ghost") === "ghost" && !l3PlaceOnDate(p);
+  grp.userData.off4d = off;
+  grp.traverse(o => {
+    const m0 = o.userData && o.userData.mat0;
+    if (!o.isMesh || !m0) return;
+    o.material.transparent = off || m0.t; o.material.opacity = off ? m0.o * 0.18 : m0.o; o.material.depthWrite = off ? false : m0.d;
+    o.material.needsUpdate = true;
+  });
+}
+function l3Etab4dAll() { if (!l3) return; placements.forEach(p => l3Etab4d(l3.placeMeshes.get(p.id), p)); l3RenderLegend(); l3Render(); }
 function l3BuildPlacements() {
   l3.gizmo.detach();
   l3Clear(l3.groups.places); l3.placeMeshes.clear();
@@ -1018,7 +1039,7 @@ function l3RenderLabels() {
   if (!l3Prefs().labels || !l3.placeMeshes.size) { host.innerHTML = ""; return; }
   const r = l3.renderer.domElement.getBoundingClientRect(), cam = l3.camera.position;
   const list = placements.map(p => {
-    const g = l3.placeMeshes.get(p.id); if (!g) return null;
+    const g = l3.placeMeshes.get(p.id); if (!g || !g.visible) return null; // dolda (H/I) har ingen etikett
     const v = new THREE.Vector3(g.position.x, g.position.y, g.position.z + l3PlaceHeight(p) + 0.6);
     return { p, v, d: v.distanceTo(cam) };
   }).filter(Boolean).sort((a, b) => a.d - b.d).slice(0, 80);
@@ -1027,7 +1048,8 @@ function l3RenderLabels() {
     const q = v.clone().project(l3.camera);
     if (q.z > 1 || q.x < -1.1 || q.x > 1.1 || q.y < -1.1 || q.y > 1.1) return;
     const x = (q.x + 1) / 2 * r.width, y = (1 - q.y) / 2 * r.height;
-    html += `<div class="v3-label ${l3.sel.has(p.id) ? "on" : ""}" style="left:${x.toFixed(0)}px;top:${y.toFixed(0)}px">${escHtml(p.name || "")}</div>`;
+    const g = l3.placeMeshes.get(p.id);
+    html += `<div class="v3-label ${l3.sel.has(p.id) ? "on" : ""} ${g && g.userData.off4d ? "off" : ""}" style="left:${x.toFixed(0)}px;top:${y.toFixed(0)}px">${escHtml(p.name || "")}</div>`;
   });
   host.innerHTML = html;
 }

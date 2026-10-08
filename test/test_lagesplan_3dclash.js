@@ -65,6 +65,24 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.click('#btn3d');
   await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.placeMeshes.size === 8, null, { timeout: 15000 });
   await page.waitForTimeout(300);
+  // --- 4D för etableringen: boden (slut 2019-12-01) är tonad på dagens datum, syns i förklaringen.
+  let e4 = await page.evaluate(() => { const g = l3.placeMeshes.get('b'); let o = 1; g.traverse(m => { if (m.isMesh) o = Math.min(o, m.material.opacity); }); return { off: g.userData.off4d, o, a: l3.placeMeshes.get('a').userData.off4d }; });
+  if (!e4.off || e4.o > 0.3 || e4.a) fail('Boden ska vara tonad (inte på plats), a inte: ' + JSON.stringify(e4));
+  if (!(await page.textContent('#v3Legend')).includes('Etablering ej på plats')) fail('Förklaringen ska visa etablering som inte är på plats');
+  if (!(await page.locator('.v3-label.off', { hasText: 'B' }).count())) fail('Bodens etikett ska vara tonad');
+  await page.click('#v3ShowBtn'); await page.click('[data-v3e4d="all"]');
+  e4 = await page.evaluate(() => { const g = l3.placeMeshes.get('b'); let o = 0; g.traverse(m => { if (m.isMesh) o = Math.max(o, m.material.opacity); }); return { off: g.userData.off4d, o }; });
+  if (e4.off || e4.o < 0.99) fail('Visa allt: boden ska vara normal: ' + JSON.stringify(e4));
+  // Datum före bodens slut -> på plats även med tonning.
+  await page.click('[data-v3e4d="ghost"]'); await page.keyboard.press('Escape');
+  await page.evaluate(() => { $('dateInput').value = '2019-06-01'; }); await page.waitForTimeout(900);
+  if (await page.evaluate(() => l3.placeMeshes.get('b').userData.off4d)) fail('2019-06-01: boden ska vara på plats');
+  await page.evaluate(() => { $('dateInput').value = todayIso(); }); await page.waitForTimeout(900);
+  // Dolda objekt har ingen etikett.
+  await page.evaluate(() => { l3SelectIds(['a']); l3HideSel(); }); await page.waitForTimeout(100);
+  if (await page.locator('.v3-label', { hasText: /^A$/ }).count()) fail('Dolt objekt ska inte ha etikett');
+  await page.evaluate(() => l3ShowAll());
+
   const pairs = () => page.evaluate(() => l3ClashRes.map(c => [c.a, c.b].sort().join('-')).sort());
   await page.click('#v3EditBtn'); await page.click('[data-v3cmd="clash"]');
   await page.click('#v3ClashGo'); await page.waitForTimeout(100);
