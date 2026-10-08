@@ -161,13 +161,19 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   await page.setInputFiles('#pmFile', { name: 'Pall.ifc', mimeType: 'application/octet-stream', buffer: Buffer.from(ifc) });
   await wait(500);
   const conf2 = await page.locator('.pm-confirm').innerText();
-  if (!conf2.includes('IFC-fil') || !conf2.includes('1 × 2 × 3 m')) fail('IFC-bekräftelsen ska visa storleken i meter: ' + conf2);
+  if (!conf2.includes('IFC-fil') || !conf2.includes('1 × 2 × 3 m') || !conf2.includes('12 trianglar') || conf2.includes('ungefär')) fail('IFC-bekräftelsen ska visa storleken i meter: ' + conf2);
   await page.click('#pmAccept'); await wait(800);
   await pick(100, 200, 5); await wait(300);
   await page.fill('[data-pf="rot"]', '90'); await wait(300);
   if (await page.locator('[data-pf="mH"]').count()) fail('IFC-modeller ska inte kunna skalas');
   assets = get('plan_models.json');
   if (assets.length !== 2 || assets[1].kind !== 'ifc' || assets[1].factor !== 0.001) fail('IFC-filen ska ligga i biblioteket (mm)');
+  // web-ifc: riktig geometri sparad bredvid, exakt storlek och konturbild (lådans 12 kanter).
+  const ia = assets[1];
+  if (!ia.meshPath || !store.get(ia.meshPath) || ia.tris !== 12) fail('IFC-geometrin ska sparas som egen fil: ' + JSON.stringify({ meshPath: ia.meshPath, tris: ia.tris }));
+  if (JSON.stringify(ia.bbox) !== JSON.stringify({ min: [-0.5, -1, 0], max: [0.5, 1, 3] })) fail('Exakt storlek från geometrin: ' + JSON.stringify(ia.bbox));
+  if (!Array.isArray(ia.outline) || ia.outline.length !== 12) fail('Konturbild för IFC: ' + JSON.stringify(ia.outline));
+  if ((await shown()).length !== 20) fail('Den aktiva IFC-modellen (konturbild 12 + fotavtryck 4) + GLB-modellens fotavtryck (4): ' + (await shown()).length);
 
   // Georefererad fil: mitten placeras i punkten.
   const geo = await page.evaluate(t => pmIfcInfo(t.replace('(-500.,-1000.,0.)', '(169000000.,7456000000.,0.)').replace('(500.,1000.,3000.)', '(169002000.,7456001000.,3000.)').replace(/IFCRECTANGLEPROFILEDEF[^;]*/, 'IFCRECTANGLEPROFILEDEF(.AREA.,$,$,1.,1.)')), ifc);

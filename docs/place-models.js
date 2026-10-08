@@ -470,15 +470,29 @@ function pmOutline(mesh, bbox, max = 36) {
 /* Konturbild till äldre modeller i biblioteket (hämtade innan den fanns): räknas fram en gång och sparas. */
 const pmOutlineBusy = new Set();
 async function placeEnsureOutline(a) {
-  if (!a || a.kind !== "mesh" || a.outline || pmOutlineBusy.has(a.id)) return;
+  if (!a || pmOutlineBusy.has(a.id) || a._meshFailed) return;
+  if (a.kind === "ifc" ? a.meshPath && a.outline : a.outline) return;
   pmOutlineBusy.add(a.id);
   try {
-    let mesh = placeMeshCache.get(a.id);
-    if (!mesh) { mesh = await pmReadAssetFile(a); placeMeshCache.set(a.id, mesh); }
-    a.outline = pmOutline(mesh, a.bbox);
+    let mesh = placeMeshCache.get(a.id), extra = {};
+    if (!mesh && a.kind === "ifc" && !a.meshPath) {
+      // IFC hämtad innan web-ifc fanns: läs geometrin nu (en gång) och spara den bredvid.
+      let text = placeIfcCache.get(a.id);
+      if (!text) { text = await pmReadAssetFile(a); placeIfcCache.set(a.id, text); }
+      const geo = await ifcToMesh(text, a.offset || [0, 0, 0]);
+      mesh = geo.mesh;
+      const meshPath = `projects/${encodeURIComponent(projectId)}/models/${a.id}.mesh.json`;
+      try { await ghUploadBinary(settings.githubToken, meshPath, new File([JSON.stringify(mesh)], `${a.id}.mesh.json`), `Geometri för modellen ${a.name}`); }
+      catch (e) { if (!/finns redan/.test(e.message)) throw e; }
+      extra = { meshPath, bbox: geo.bbox, tris: geo.tris };
+    } else if (!mesh) mesh = a.kind === "ifc" ? await pmReadJsonPath(a.meshPath) : await pmReadAssetFile(a);
+    placeMeshCache.set(a.id, mesh);
+    Object.assign(a, extra, { outline: pmOutline(mesh, extra.bbox || a.bbox) });
     placeRedraw();
-    await ghWriteJSON(settings.githubToken, pmAssetsPath(), arr => (arr || []).map(x => (x.id === a.id ? { ...x, outline: a.outline } : x)), `Konturbild för modellen ${a.name}`);
-  } catch (e) { console.warn("Konturbild", e); }
+    if (typeof l3RebuildAsset === "function") l3RebuildAsset(a.id);
+    const upd = { outline: a.outline, ...extra };
+    await ghWriteJSON(settings.githubToken, pmAssetsPath(), arr => (arr || []).map(x => (x.id === a.id ? { ...x, ...upd } : x)), `Konturbild för modellen ${a.name}`);
+  } catch (e) { a._meshFailed = true; console.warn("Konturbild/geometri", e); }
   finally { pmOutlineBusy.delete(a.id); }
 }
 
@@ -616,6 +630,10 @@ function placeModelMeshes(doc, p, o) {
     return m;
   });
 }
+async function pmReadJsonPath(path) {
+  const url = await ghReadBinaryUrl(settings.githubToken, path);
+  try { return (await fetch(url)).json(); } finally { URL.revokeObjectURL(url); }
+}
 async function pmReadAssetFile(a) {
   const url = await ghReadBinaryUrl(settings.githubToken, a.path);
   try { const r = await fetch(url); return a.kind === "ifc" ? r.text() : r.json(); }
@@ -626,8 +644,8 @@ async function placeModelsPrepare() {
   const ids = new Set(placements.filter(p => String(p.type).startsWith("model:")).map(p => p.type.slice(6)));
   for (const id of ids) {
     const a = placeAssetOf(id);
-    if (!a || a.kind !== "mesh" || placeMeshCache.has(id)) continue;
-    try { placeMeshCache.set(id, await pmReadAssetFile(a)); }
+    if (!a || placeMeshCache.has(id) || (a.kind === "ifc" && !a.meshPath)) continue;
+    try { placeMeshCache.set(id, a.kind === "ifc" ? await pmReadJsonPath(a.meshPath) : await pmReadAssetFile(a)); }
     catch (e) { setPlaceStatus(`Kunde inte läsa modellen "${a.name}": ${e.message}`, true); }
   }
 }
@@ -655,12 +673,19 @@ async function pmSaveAsset(pd, scale) {
   const path = `projects/${encodeURIComponent(projectId)}/models/${id}.${pd.kind === "ifc" ? "ifc" : "json"}`;
   const body = pd.kind === "ifc" ? pd.text : JSON.stringify(pd.mesh);
   await ghUploadBinary(settings.githubToken, path, new File([body], path.split("/").pop()), `Modell till Placera i 3D: ${pd.name}`);
-  const a = { id, name: pd.name, kind: pd.kind, source: pd.source, uid: pd.uid || null, url: pd.url || null, author: pd.author || null, license: pd.license || null,
+  // IFC: geometrin (web-ifc) sparas bredvid som egen fil – för 3D-vyn och konturbilden.
+  let meshPath = null;
+  if (pd.kind === "ifc" && pd.mesh) {
+    meshPath = `projects/${encodeURIComponent(projectId)}/models/${id}.mesh.json`;
+    await ghUploadBinary(settings.githubToken, meshPath, new File([JSON.stringify(pd.mesh)], `${id}.mesh.json`), `Geometri för modellen ${pd.name}`);
+  }
+  const a = { id, name: pd.name, kind: pd.kind, meshPath, source: pd.source, uid: pd.uid || null, url: pd.url || null, author: pd.author || null, license: pd.license || null,
     bbox: pd.bbox, tris: pd.tris || null, factor: pd.factor || null, offset: pd.offset || null, scale: pd.kind === "mesh" ? scale || 1 : 1,
-    path, size: body.length, dl_size: pd.dlSize || null, outline: pd.kind === "mesh" ? pmOutline(pd.mesh, pd.bbox) : null, created_at: new Date().toISOString(), by: settings.userName || null };
+    path, size: body.length, dl_size: pd.dlSize || null, outline: pd.mesh ? pmOutline(pd.mesh, pd.bbox) : null, created_at: new Date().toISOString(), by: settings.userName || null };
   await ghWriteJSON(settings.githubToken, pmAssetsPath(), arr => [...(arr || []).filter(x => x.id !== id), a], `Modell till Placera i 3D: ${pd.name}`);
   placeAssets.push(a);
-  if (pd.kind === "ifc") placeIfcCache.set(id, pd.text); else placeMeshCache.set(id, pd.mesh);
+  if (pd.kind === "ifc") placeIfcCache.set(id, pd.text);
+  if (pd.mesh) placeMeshCache.set(id, pd.mesh);
   return a;
 }
 async function pmFromFile(file) {
@@ -670,7 +695,19 @@ async function pmFromFile(file) {
     if (file.size > PM_MAX_IFC) throw new Error(`IFC-filen är för stor (${Math.round(file.size / 1048576)} MB, max ${PM_MAX_IFC / 1048576} MB).`);
     const text = await file.text();
     const info = pmIfcInfo(text);
-    return { name, kind: "ifc", source: "Fil", text, dlSize: file.size, ...info };
+    // Riktig geometri (web-ifc): exakt storlek, konturbild i TC och visning/fästpunkter i 3D-vyn.
+    let geo = null, geoErr = null;
+    try { if (typeof ifcToMesh === "function") geo = await ifcToMesh(text, [0, 0, 0]); } catch (e) { geoErr = e.message; }
+    if (geo) {
+      const b = geo.bbox, cx = (b.min[0] + b.max[0]) / 2, cy = (b.min[1] + b.max[1]) / 2;
+      const r3 = v => Math.round(v * 1000) / 1000;
+      const off = Math.hypot(cx, cy) > 50 ? [r3(-cx), r3(-cy), r3(-b.min[2])] : [0, 0, 0];
+      const mm = off.map(v => Math.round(v * 1000));
+      geo.mesh.parts.forEach(pt => { for (let k = 0; k < pt.p.length; k++) pt.p[k] += mm[k % 3]; });
+      return { name, kind: "ifc", source: "Fil", text, dlSize: file.size, factor: info.factor, products: info.products, offset: off,
+        bbox: { min: b.min.map((v, j) => r3(v + off[j])), max: b.max.map((v, j) => r3(v + off[j])) }, mesh: geo.mesh, tris: geo.tris };
+    }
+    return { name, kind: "ifc", source: "Fil", text, dlSize: file.size, geoErr, ...info };
   }
   if (file.size > PM_MAX_DOWNLOAD) throw new Error(`Filen är för stor (${Math.round(file.size / 1048576)} MB).`);
   const r = await pmModelFromBuffer(await file.arrayBuffer(), file.name);
@@ -781,7 +818,7 @@ function renderPmBrowser() {
     const b = pd.bbox, d = j => Math.round((b.max[j] - b.min[j]) * 100) / 100;
     body = `<div class="pm-confirm">
       <label>Namn<input type="text" id="pmName" value="${esc(pd.name)}" /></label>
-      <div class="hint">${pd.kind === "ifc" ? `IFC-fil${pd.dlSize ? ` (${pmBytes(pd.dlSize)})` : ""} · ungefär ${d(0)} × ${d(1)} × ${d(2)} m · ${pmFmt(pd.products)} objekt${pd.offset && pd.offset.some(v => v) ? " · filen ligger långt från origo – dess mitt placeras i punkten" : ""}`
+      <div class="hint">${pd.kind === "ifc" ? `IFC-fil${pd.dlSize ? ` (${pmBytes(pd.dlSize)})` : ""} · ${pd.mesh ? "" : "ungefär "}${d(0)} × ${d(1)} × ${d(2)} m · ${pmFmt(pd.products)} objekt${pd.tris ? ` · ${pmFmt(pd.tris)} trianglar` : ""}${pd.geoErr ? ` · geometrin kunde inte läsas (${esc(pd.geoErr)}) – visas som låda` : ""}${pd.offset && pd.offset.some(v => v) ? " · filen ligger långt från origo – dess mitt placeras i punkten" : ""}`
         : `${pd.dlSize ? `${pmBytes(pd.dlSize)} · ` : ""}${pmFmt(pd.tris)} trianglar · ${d(0)} × ${d(1)} × ${d(2)} m i filen${pd.author ? ` · av ${esc(pd.author)}` : ""}${pd.license ? ` · ${esc(pd.license)}` : ""}`}</div>
       ${pd.kind === "mesh" ? `<label>Höjd i verkligheten (m)<input type="number" step="0.1" id="pmHeight" value="${d(2)}" title="Modeller från nätet har ofta fel skala – ange hur hög den ska vara" /></label>` : ""}
       <div class="row"><button type="button" id="pmAccept" class="primary">Lägg till och placera</button><button type="button" id="pmReject">Avbryt</button></div>

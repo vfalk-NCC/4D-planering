@@ -160,6 +160,11 @@ function placePreviewLines() {
   const lines = [];
   const act = placeActive();
   if (act) { const c = hexToRgbaObj(act.color || "#7c3aed"); placeSegments(act, true).forEach(([a, b]) => lines.push({ start: toMm(a), end: toMm(b), color: c })); }
+  if (placeMode && placeMode.pts && placeMode.pts.length) {
+    const red = { r: 220, g: 38, b: 38, a: 255 }, P = placeMode.pts, d = 0.3;
+    P.forEach(q => { lines.push({ start: toMm([q[0] - d, q[1], q[2]]), end: toMm([q[0] + d, q[1], q[2]]), color: red }, { start: toMm([q[0], q[1] - d, q[2]]), end: toMm([q[0], q[1] + d, q[2]]), color: red }); });
+    for (let i = 1; i < P.length; i++) lines.push({ start: toMm(P[0]), end: toMm(P[i]), color: red });
+  }
   for (const p of placements) {
     if (p === act || !placeIsNew(p)) continue;
     const segs = placeSegments(p, false);
@@ -171,7 +176,7 @@ function placePreviewLines() {
 async function placeDrawNow() {
   if (typeof API === "undefined" || !API || !API.markup) return;
   const am = placeActive() && (placeLib(placeActive().type) || {}).model;
-  if (am && am.kind === "mesh" && !am.outline && typeof placeEnsureOutline === "function") placeEnsureOutline(am);
+  if (am && !am._meshFailed && (am.kind === "ifc" ? !(am.meshPath && am.outline) : !am.outline) && typeof placeEnsureOutline === "function") placeEnsureOutline(am);
   const seq = ++placeDrawSeq;
   const lines = placePreviewLines();
   const old = placeShownIds; placeShownIds = [];
@@ -234,6 +239,15 @@ function placeShift(p, dx, dy, dz = 0) {
   p.x = placeR3(p.x + dx); p.y = placeR3(p.y + dy);
   if (dz) p.dz = placeR3((Number(p.dz) || 0) + dz);
   if (p.pts) p.pts = p.pts.map(a => [placeR3(a[0] + dx), placeR3(a[1] + dy), a[2] || 0]);
+}
+/* Vrider ett objekt deg grader kring punkten (cx, cy) i plan: läget flyttas runt punkten och
+   objektets egen vridning ökar lika mycket (staketets punkter vrids med). */
+function placeRotateAbout(p, cx, cy, deg) {
+  const t = deg * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+  const rot = (x, y) => [placeR3(cx + (x - cx) * c - (y - cy) * s), placeR3(cy + (x - cx) * s + (y - cy) * c)];
+  [p.x, p.y] = rot(p.x, p.y);
+  if (p.pts) p.pts = p.pts.map(q => [...rot(q[0], q[1]), q[2] || 0]);
+  if (!(placeLib(p.type) || {}).fence) p.rot = Math.round((((Number(p.rot) || 0) + deg) % 360 + 360) % 360 * 10) / 10;
 }
 /* Objektets längd längs och tvärs (meter), för kopiornas avstånd. */
 function placeExtent(p) {
@@ -315,6 +329,28 @@ function place3dEvent(event, data) {
       if (act.pts) act.pts = act.pts.map(a => [placeR3(a[0] + dx), placeR3(a[1] + dy), placeR3((a[2] || 0) + dzz)]);
       Object.assign(act, { x: placeR3(pt[0]), y: placeR3(pt[1]), z: placeR3(pt[2]) });
       placeMode = null; placeTouch(act);
+    } else if (m.kind === "p2p" && act) {
+      // Punkt till punkt: första trycket på objektet (t.ex. ett hörn), andra dit punkten ska.
+      m.pts.push(pt);
+      if (m.pts.length === 2) {
+        const [a, b] = m.pts;
+        placeShift(act, b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+        placeMode = null; placeTouch(act);
+        setPlaceStatus(`Flyttat ${(Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2])).toLocaleString("sv-SE", { maximumFractionDigits: 2 })} m. Spara som IFC för att se objektet på det nya stället.`);
+      } else placeUndoStack.pop(); // ett steg i ångra för hela flytten
+    } else if (m.kind === "rot3" && act) {
+      // Vrid kring punkt: vridpunkt, utgångsriktning, ny riktning (fäster var 15:e grad när man är nära).
+      m.pts.push(pt);
+      if (m.pts.length === 3) {
+        const [c, r, t] = m.pts;
+        let deg = (Math.atan2(t[1] - c[1], t[0] - c[0]) - Math.atan2(r[1] - c[1], r[0] - c[0])) * 180 / Math.PI;
+        deg = ((deg + 180) % 360 + 360) % 360 - 180;
+        const snap = Math.round(deg / 15) * 15;
+        deg = Math.abs(deg - snap) < 2 ? snap : Math.round(deg * 10) / 10;
+        placeRotateAbout(act, c[0], c[1], deg);
+        placeMode = null; placeTouch(act);
+        setPlaceStatus(`Vridet ${deg.toLocaleString("sv-SE")}° kring punkten. Spara som IFC för att se objektet på det nya stället.`);
+      } else placeUndoStack.pop();
     } else if (m.kind === "aim" && act) {
       const dx = pt[0] - act.x, dy = pt[1] - act.y;
       if (Math.hypot(dx, dy) > 0.05) { act.rot = Math.round(Math.atan2(dy, dx) * 180 / Math.PI * 10) / 10; placeTouch(act); }
@@ -503,7 +539,9 @@ function placeModeText() {
   return { place: `Tryck i modellen där ${lib.label ? lib.label.toLowerCase() : "objektet"} ska stå.`,
     fence: "Tryck punkter längs staketet. Tryck Klar när det är färdigt.",
     move: "Tryck i modellen dit objektet ska flyttas.",
-    aim: "Tryck en punkt längs väggen/kanten – objektet vrids så att långsidan pekar dit." }[placeMode.kind];
+    aim: "Tryck en punkt längs väggen/kanten – objektet vrids så att långsidan pekar dit.",
+    p2p: (placeMode.pts || []).length ? "Tryck dit punkten ska (t.ex. hörnet på fundamentet eller väggen)." : "Tryck på en punkt på objektet, t.ex. ett hörn (den IFC-fil som är tänd i 3D-vyn går att trycka på).",
+    rot3: ["Tryck på vridpunkten.", "Tryck en punkt som visar utgångsriktningen (t.ex. längs objektets kant).", "Tryck den nya riktningen – fäster var 15:e grad när du är nära."][(placeMode.pts || []).length] || "" }[placeMode.kind];
 }
 function placeListHtml() {
   const esc = typeof escapeHtml === "function" ? escapeHtml : s => String(s);
@@ -599,6 +637,11 @@ function renderPlacePanel() {
         <select id="placeArrDir"><option value="along">längs</option><option value="across">tvärs</option></select>
         <button type="button" id="placeCopy">Skapa kopior</button>
       </div>
+      <div class="place-nudge">
+        <span class="place-gl">Exakt</span>
+        <button type="button" id="placeP2P" title="Som Flytta i SketchUp: tryck en punkt på objektet (t.ex. ett hörn på den tända IFC-filen) och sedan dit den ska">Punkt till punkt</button>
+        ${L.fence ? "" : `<button type="button" id="placeRot3" title="Som Vrid i SketchUp: vridpunkt, utgångsriktning och ny riktning">Vrid kring punkt</button>`}
+      </div>
       <div class="row"><button type="button" id="placeMove">Flytta (tryck ny punkt)</button>
         ${L.fence ? `<button type="button" id="placeFenceMore">Lägg till punkter</button>` : ""}
         <button type="button" id="placeDone">Klar</button>
@@ -646,6 +689,8 @@ function bindPlacePanel(box, act) {
   on("placeNorth", () => { change(a => { a.rot = 90; }); renderPlacePanel(); });
   on("placeAim", () => { placeMode = { kind: "aim" }; renderPlacePanel(); });
   on("placeMove", () => { placeMode = { kind: "move" }; renderPlacePanel(); });
+  on("placeP2P", () => { placeMode = { kind: "p2p", pts: [] }; renderPlacePanel(); placeRedraw(); });
+  on("placeRot3", () => { placeMode = { kind: "rot3", pts: [] }; renderPlacePanel(); placeRedraw(); });
   on("placeFenceMore", () => { placeMode = { kind: "fence", type: act.type, id: act.id }; renderPlacePanel(); });
   const stepSel = box.querySelector("#placeStepSel");
   if (stepSel) stepSel.onchange = () => { try { localStorage.setItem("4dplan-place-step", stepSel.value); } catch (e) {} };

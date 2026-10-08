@@ -144,6 +144,26 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   if ((await st()).list.length !== 1) fail('Ångra ska ta bort kopiorna');
   if (!(await page.locator('[data-pf="itemId"]').count())) await page.click('.place-row:nth-child(1)');
 
+  // Exakt i TC: punkt till punkt (hörn -> mål) och vrid kring punkt (fäster var 15:e grad).
+  await page.click('#placeP2P');
+  if (!(await page.locator('.place-mode').innerText()).includes('punkt på objektet')) fail('Punkt till punkt ska förklara första trycket');
+  await pick(101, 201, 5); await wait(150);
+  if ((await shown()).length !== 12 + 2) fail('Första punkten ska markeras med ett kryss: ' + (await shown()).length);
+  await pick(111, 206, 6); await wait(150);
+  s = await st();
+  if (s.list[0].x !== 110 || s.list[0].y !== 205 || s.list[0].dz !== 1.5 || s.mode) fail('Punkt till punkt: ' + JSON.stringify(s.list[0]));
+  await page.click('#placeUndo'); await wait(50);
+  s = await st();
+  if (s.list[0].x !== 100 || s.list[0].dz !== 0.5) fail('Punkt till punkt ska vara ett steg i ångra: ' + JSON.stringify(s.list[0]));
+  if (!(await page.locator('[data-pf="itemId"]').count())) await page.click('.place-row:nth-child(1)');
+  await page.click('#placeRot3');
+  await pick(90, 200, 5); await pick(80, 200, 5); await pick(90.2, 190, 5); await wait(150);
+  s = await st();
+  if (s.list[0].rot !== 180 || Math.abs(s.list[0].x - 90) > 1e-6 || Math.abs(s.list[0].y - 210) > 1e-6) fail('Vrid kring punkt (90° kring (90,200)): ' + JSON.stringify(s.list[0]));
+  await page.click('#placeUndo'); await wait(50);
+  if ((await st()).list[0].rot !== 90) fail('Vrid kring punkt ska gå att ångra');
+  if (!(await page.locator('[data-pf="itemId"]').count())) await page.click('.place-row:nth-child(1)');
+
   // 4D-koppling: aktivitet ger start/slut.
   await page.selectOption('[data-pf="itemId"]', 'a'); await wait(50);
   s = await st();

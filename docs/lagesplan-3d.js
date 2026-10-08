@@ -70,8 +70,10 @@ function l3Dom() {
   box.innerHTML = `<div class="v3-bar">
       <button type="button" id="v3Close" title="Tillbaka till lägesplanen">✕ 2D</button>
       <span class="v3-sep"></span>
-      <button type="button" data-v3mode="translate" class="on" title="Flytta det valda objektet med handtagen (W)">Flytta</button>
-      <button type="button" data-v3mode="rotate" title="Vrid det valda objektet (E)">Vrid</button>
+      <button type="button" data-v3tool="select" class="on" title="Välj objekt och dra i handtagen (V)">Välj</button>
+      <button type="button" data-v3tool="move" title="Flytta som i SketchUp: tryck en punkt på objektet och sedan dit den ska – fäster mot hörn, kantmitter och axlar, skriv ett avstånd (M)">Flytta</button>
+      <button type="button" data-v3tool="rotate" title="Vrid som i SketchUp: vridpunkt, utgångsriktning, ny riktning – fäster var 15:e grad, skriv en vinkel (Q)">Vrid</button>
+      <button type="button" data-v3tool="align" title="Rikta kant mot kant: två punkter på objektets kant, sedan två punkter på kanten det ska ligga mot (A)">Rikta</button>
       <label class="v3-chk" title="Objektet ställer sig på ytan under sig när du släpper det"><input type="checkbox" id="v3Snap" checked /> Fäst mot ytor</label>
       <select id="v3Step" title="Steg för handtagen"><option value="0">fritt</option><option value="0.1">0,1 m · 5°</option><option value="0.5" selected>0,5 m · 15°</option><option value="1">1 m · 45°</option></select>
       <span class="v3-sep"></span>
@@ -88,9 +90,9 @@ function l3Dom() {
     <div class="v3-canvas" id="v3Canvas"><div class="v3-side hidden" id="v3Side"></div><div class="v3-status" id="v3Status"></div></div>`;
   (document.querySelector("main") || document.body).appendChild(box);
   box.querySelector("#v3Close").onclick = close3d;
-  box.querySelectorAll("[data-v3mode]").forEach(b => { b.onclick = () => l3Mode(b.dataset.v3mode); });
+  box.querySelectorAll("[data-v3tool]").forEach(b => { b.onclick = () => { if (typeof l3SetTool === "function") l3SetTool(b.dataset.v3tool); }; });
   box.querySelector("#v3Step").onchange = l3ApplyStep;
-  box.querySelector("#v3Measure").onclick = () => { l3.addType = null; l3.measure = { pts: [] }; l3ClearMeasure(); l3Status("Mät: tryck på första punkten."); l3RenderLib(); };
+  box.querySelector("#v3Measure").onclick = () => { if (typeof l3SetTool === "function") l3SetTool("select"); l3.addType = null; l3.measure = { pts: [] }; l3ClearMeasure(); l3Status("Mät: tryck på första punkten."); l3RenderLib(); };
   box.querySelector("#v3Undo").onclick = l3Undo;
   box.querySelector("#v3ShowPlan").onchange = e => { if (l3.planMesh) l3.planMesh.visible = e.target.checked; l3Render(); };
   box.querySelector("#v3ShowObjs").onchange = e => { if (l3.objMesh) l3.objMesh.visible = e.target.checked; l3Render(); };
@@ -127,6 +129,7 @@ function l3Init(box) {
   gizmo.addEventListener("objectChange", l3FromGizmo);
   gizmo.addEventListener("mouseUp", l3DragEnd);
   l3ApplyStep();
+  if (typeof l3ToolsInit === "function") l3ToolsInit();
   // Tryck (inte dra) = välj / lägg till / mät.
   let down = null;
   renderer.domElement.addEventListener("pointerdown", e => { down = { x: e.clientX, y: e.clientY }; });
@@ -136,7 +139,7 @@ function l3Init(box) {
     if (moved < 6) l3Tap(e);
   });
   window.addEventListener("resize", () => { if (l3 && !document.getElementById("view3d").classList.contains("hidden")) { l3Resize(); l3Render(); } });
-  document.addEventListener("keydown", l3Key);
+  window.addEventListener("keydown", l3Key, true); // före lägesplanens kortkommandon (de stängs av i 3D)
   // Datum (uppspelning m.m.) -> statusfärgerna följer med.
   setInterval(() => {
     const box = document.getElementById("view3d");
@@ -261,13 +264,21 @@ function l3BuildPlacements() {
   l3.gizmo.detach();
   l3Clear(l3.groups.places); l3.placeMeshes.clear();
   placements.forEach(p => { const g = l3PlacementGroup(p); l3.groups.places.add(g); l3.placeMeshes.set(p.id, g); });
-  if (keep && l3.placeMeshes.has(keep)) l3.gizmo.attach(l3.placeMeshes.get(keep));
+  if (keep && l3.placeMeshes.has(keep) && (!l3.tool || l3.tool === "select")) l3.gizmo.attach(l3.placeMeshes.get(keep));
+  // Modeller utan inläst geometri (t.ex. IFC hämtad innan web-ifc fanns): läs in i bakgrunden.
+  const seen = new Set();
+  placements.forEach(p => { const a = (placeLib(p.type) || {}).model; if (a && !seen.has(a.id) && !placeMeshCache.has(a.id)) { seen.add(a.id); placeEnsureOutline(a); } });
+}
+/* Geometrin för en modell blev klar: rita om dess placeringar. */
+function l3RebuildAsset(assetId) {
+  if (!l3) return;
+  placements.filter(p => p.type === `model:${assetId}`).forEach(l3RebuildOne);
 }
 function l3RebuildOne(p) {
   const old = l3.placeMeshes.get(p.id), attached = l3.gizmo.object === old;
   if (old) { if (attached) l3.gizmo.detach(); l3.groups.places.remove(old); old.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
   const g = l3PlacementGroup(p); l3.groups.places.add(g); l3.placeMeshes.set(p.id, g);
-  if (attached || placeActiveId === p.id) l3.gizmo.attach(g);
+  if ((attached || placeActiveId === p.id) && (!l3.tool || l3.tool === "select")) l3.gizmo.attach(g);
   l3Render();
 }
 
@@ -293,6 +304,7 @@ function l3Ray(e, targets) {
 }
 const l3Surfaces = (exceptId) => [l3.planMesh, l3.objMesh, ...[...l3.placeMeshes.entries()].filter(([id]) => id !== exceptId).map(([, g]) => g)].filter(o => o && o.visible !== false);
 function l3Tap(e) {
+  if (l3.tool && l3.tool !== "select" && typeof l3ToolTap === "function" && l3ToolTap(e)) return;
   if (l3.measure) {
     const h = l3Ray(e, l3Surfaces())[0];
     if (!h) return;
@@ -326,7 +338,7 @@ function l3Tap(e) {
 function l3Select(id) {
   placeActiveId = id && placements.some(p => p.id === id) ? id : null;
   const g = placeActiveId && l3.placeMeshes.get(placeActiveId);
-  if (g) l3.gizmo.attach(g); else l3.gizmo.detach();
+  if (g && (!l3.tool || l3.tool === "select")) l3.gizmo.attach(g); else l3.gizmo.detach();
   l3Mode(l3.gizmo.mode || "translate");
   l3RenderSide();
   l3Render();
@@ -400,11 +412,12 @@ function l3RenderSide(liveOnly) {
     <div class="v3-grid">${f("x", "X m", "0.1")}${f("y", "Y m", "0.1")}${f("dz", "Höjd över ytan m")}${lib.fence ? "" : f("rot", "Vrid °", "1")}
       ${lib.isModel ? (A && A.kind === "mesh" ? f("mH", "Höjd m", "0.1", mH) : "") : lib.fence ? f("H", "Höjd m") : f("L", "Längd m") + f("B", "Bredd m") + f("H", "Höjd m")}
       ${lib.R ? f("R", "Räckvidd m", "1") : ""}</div>
+    ${lib.fence ? "" : `<div class="v3-handles"><span>Handtag</span><button type="button" data-v3mode="translate" title="Pilar för att flytta (W)">↔ Flytta</button><button type="button" data-v3mode="rotate" title="Ring för att vrida (E)">⟳ Vrid</button></div>`}
     <div class="v3-btns"><button type="button" id="v3Drop" title="Ställ objektet på ytan under det">Ställ på ytan</button>
       <button type="button" id="v3Copy" title="En kopia bredvid">Kopiera</button>
       <button type="button" id="v3Del" class="v3-danger">Ta bort</button>
       <button type="button" id="v3Deselect">Klar</button></div>
-    <div class="v3-hint">Dra i pilarna för att flytta (rött = X, grönt = Y, blått = höjd) eller i ringen för att vrida. Mitten flyttar fritt.</div>`;
+    <div class="v3-hint">Dra i pilarna för att flytta (rött = X, grönt = Y, blått = höjd) eller i ringen för att vrida. För exakt flytt punkt till punkt: verktygen Flytta (M), Vrid (Q) och Rikta (A).</div>`;
   side.querySelectorAll("[data-v3f]").forEach(inp => {
     const k = inp.dataset.v3f;
     inp.onfocus = () => placeSnapshot();
@@ -421,6 +434,7 @@ function l3RenderSide(liveOnly) {
       placeTouch(p); l3RebuildOne(p); l3Changed();
     };
   });
+  side.querySelectorAll("[data-v3mode]").forEach(b => { b.classList.toggle("on", b.dataset.v3mode === l3.gizmo.mode); b.onclick = () => l3Mode(b.dataset.v3mode); });
   side.querySelector("#v3Drop").onclick = () => { placeSnapshot(); const g = l3.placeMeshes.get(p.id); if (g && l3DropToSurface(p, g)) { placeTouch(p); l3Changed(); l3RenderSide(); } else l3Status("Ingen yta under objektet."); };
   side.querySelector("#v3Copy").onclick = () => {
     placeSnapshot();
@@ -469,7 +483,10 @@ function l3Key(e) {
   if (!l3 || !box || box.classList.contains("hidden")) return;
   const tag = e.target && e.target.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  // I 3D gäller bara 3D-vyns tangenter (lägesplanens genvägar och 2D-ångra ska inte reagera).
+  e.stopImmediatePropagation();
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") { e.preventDefault(); l3Undo(); return; }
+  if (typeof l3ToolKey === "function" && l3ToolKey(e)) return;
   if (e.key === "Escape") { l3.addType = null; l3.measure = null; l3ClearMeasure(); l3RenderLib(); l3Select(null); }
   else if (e.key === "w" || e.key === "W") l3Mode("translate");
   else if (e.key === "e" || e.key === "E") l3Mode("rotate");
