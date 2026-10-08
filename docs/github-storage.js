@@ -473,13 +473,28 @@ async function ghUploadBinary(token, path, file, message) {
 }
 
 /** Hämtar en bilaga och returnerar en blob:-URL som kan användas i <img src>/<a href>. */
-async function ghReadBinaryUrl(token, path) {
+async function ghReadBinaryUrl(token, path, onProgress) {
   const res = await fetch(`${ghContentsUrl(path)}?ref=${GH_BRANCH}`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github.raw" },
   });
   if (!res.ok) throw new Error(`GitHub GET (raw) ${path} misslyckades: ${res.status}`);
-  const blob = await res.blob();
+  const blob = onProgress && res.body ? await ghReadBodyWithProgress(res, onProgress) : await res.blob();
   return URL.createObjectURL(blob);
+}
+/** Läser svaret bit för bit och rapporterar onProgress(0–1, laddade byte). Utan
+ *  Content-Length närmar sig förloppet 90 % tills filen är klar. */
+async function ghReadBodyWithProgress(res, onProgress) {
+  const total = Number(res.headers.get("Content-Length")) || 0, type = res.headers.get("Content-Type") || "";
+  const reader = res.body.getReader(), parts = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value); got += value.length;
+    try { onProgress(total ? Math.min(1, got / total) : 0.9 * (1 - Math.exp(-got / 1.5e6)), got); } catch (e) {}
+  }
+  try { onProgress(1, got); } catch (e) {}
+  return new Blob(parts, type ? { type } : undefined);
 }
 
 /** Tar bort en bilaga. Best-effort - kastar inte om den redan är borta. */

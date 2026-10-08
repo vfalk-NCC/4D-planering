@@ -36,6 +36,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     if (req.method() === 'PUT') { const b = JSON.parse(req.postData() || '{}'); const sha = 's' + (++n); store.set(f, { content: Buffer.from(b.content, 'base64').toString('utf8'), sha }); return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha } }) }); }
     r.fulfill({ status: 404, body: '{}' });
   });
+  // En bild i utskriften (riktig PNG, med Content-Length) – för bildens laddningsstapel.
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+KAAAAEUlEQVR42mNk+M/AwMDAAAAMAQEAbXxVRgAAAABJRU5ErkJggg==', 'base64');
+  await page.route('**/contents/**/print/bild.png*', r => r.fulfill({ status: 200, headers: { 'Content-Type': 'image/png', 'Content-Length': String(PNG.length) }, body: PNG }));
   const saved = () => JSON.parse([...store.entries()].find(([k]) => k.endsWith('status_plans.json'))[1].content)[0];
   await page.goto(`http://localhost:${PORT}/lagesplan.html?project=p1`); await page.waitForTimeout(900);
   const sq = (x0, y0, x1, y1) => [[[x0, y0], [x1, y0], [x1, y1], [x0, y1]]];
@@ -94,6 +97,23 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     drawPrintPage(); await new Promise(res => setTimeout(res, 1500));
     mapProgressSet = orig;
     out.progress = seen.length > 0 && seen.every((v, i) => !i || v >= seen[i - 1]) && !mapProgress.size;
+    // Bildens laddningsstapel: strömmad läsning ger 0–100 %, stapeln ritas i bildrutan och försvinner när bilden är klar.
+    const chunks = [new Uint8Array(400), new Uint8Array(300), new Uint8Array(300)], fr = [];
+    const body = new ReadableStream({ pull(c) { const x = chunks.shift(); x ? c.enqueue(x) : c.close(); } });
+    const blob = await ghReadBodyWithProgress(new Response(body, { headers: { 'Content-Length': '1000' } }), f => fr.push(Math.round(f * 100)));
+    out.stream = blob.size === 1000 && JSON.stringify(fr) === JSON.stringify([40, 70, 100, 100]);
+    const ip = 'projects/p1/print/bild.png', seenImg = [];
+    const im = { id: 'imgP', type: 'image', x: 150, y: 20, w: 40, h: 20, path: ip }; pr.tpl.elements.push(im);
+    const origI = imgProgressSet; imgProgressSet = (p, f) => { if (f != null) seenImg.push(Math.round(f * 100)); return origI(p, f); };
+    const texts = []; const origBox = drawProgressBox; drawProgressBox = (...a) => { texts.push(a[6]); return origBox(...a); };
+    drawPrintPage();
+    const during = imgProgress.has(ip); drawPrintPage();
+    const loaded = await printImgs.get(ip); await new Promise(res => setTimeout(res, 100));
+    imgProgressSet = origI; drawProgressBox = origBox;
+    out.imgProgress = during && !!loaded && loaded.naturalWidth === 2 && !imgProgress.size && seenImg.length >= 2 && seenImg.every((v, i) => !i || v >= seenImg[i - 1]) && seenImg.includes(95)
+      && texts.some(t => /^Laddar bilden – \d+ %$/.test(t));
+    if (!out.imgProgress) out.imgDbg = JSON.stringify({ during, w: loaded && loaded.naturalWidth, size: imgProgress.size, seenImg, texts });
+    pr.tpl.elements = pr.tpl.elements.filter(e => e.id !== 'imgP');
     out.button = !!document.getElementById('prExportDxf');
     // Menyn hamnar framför allt och inom fönstret (sidopanelen klipper den inte).
     const btn = document.getElementById('prExportDxf'), mn = document.getElementById('prDxfMenu');
@@ -117,9 +137,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     pr.dirty = false; closePrint();
     return out;
   }, { a: sq(100, 100, 200, 200), b: sq(800, 300, 900, 400) });
-  const bad = Object.entries(r).filter(([k, v]) => k !== 'nFiles' && v !== true);
+  const bad = Object.entries(r).filter(([k, v]) => k !== 'nFiles' && k !== 'imgDbg' && v !== true);
   if (bad.length || r.nFiles !== 3) fail('Fel: ' + JSON.stringify(r));
-  console.log('OK: DXF – inspelaren (linjer, ytor, prickar, cirklar, text), klippning, förenkling, bladet i mm med lager, zonerna inom ramen, B i modellens koordinater, laddningsindikatorn');
+  console.log('OK: DXF – inspelaren (linjer, ytor, prickar, cirklar, text), klippning, förenkling, bladet i mm med lager, zonerna inom ramen, B i modellens koordinater, laddningsindikatorn för ritningar och bilder');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('ALLA TESTER OK');
   await browser.close(); server.close();

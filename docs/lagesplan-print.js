@@ -219,10 +219,14 @@ function printImage(path) {
   const hit = printImgs.get(path);
   if (hit && !(hit instanceof Promise)) return hit;
   // En hämtning som blir klar (eller misslyckas) efter att bilden redan bytts ut rör inte den nya.
-  if (!hit) { const p = ghReadBinaryUrl(token, path).then(url => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; }))
-    .then(im => { if (printImgs.get(path) !== p) return printImgs.get(path); printImgs.set(path, im); if (pr) drawPrintPage(); return im; })
-    .catch(e => { if (printImgs.get(path) === p) printImgs.delete(path); console.warn("Kunde inte hämta bilden", path, e); });
-    printImgs.set(path, p); }
+  if (!hit) {
+    // Förloppet visas som en stapel i bildrutan: hämtning 0–95 %, avkodning sista biten.
+    imgProgressSet(path, 0);
+    const p = ghReadBinaryUrl(token, path, f => imgProgressSet(path, f * 0.95)).then(url => new Promise((res, rej) => { imgProgressSet(path, 0.97); const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; }))
+    .then(im => { imgProgressSet(path, null); if (printImgs.get(path) !== p) return printImgs.get(path); printImgs.set(path, im); if (pr) drawPrintPage(); return im; })
+    .catch(e => { imgProgressSet(path, null); if (printImgs.get(path) === p) printImgs.delete(path); console.warn("Kunde inte hämta bilden", path, e); });
+    printImgs.set(path, p);
+  }
   return null;
 }
 /* Bildelement (Victors önskemål 2026-10-02): beskär (cropL/R/T/B, % av
@@ -399,8 +403,28 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
 }
 const mapPreviews = new Map(); // el.id -> { key, canvas }
 const mapPending = new Map();
-const mapProgress = new Map(); // el.id -> { f: 0–1, label } medan ritningen laddas/ritas
 let mapProgressRaf = 0;
+const imgProgress = new Map(); // bildens sökväg -> 0–1 medan bilden hämtas
+function imgProgressSet(path, f) {
+  if (f == null) imgProgress.delete(path); else imgProgress.set(path, Math.max(imgProgress.get(path) || 0, f));
+  if (!mapProgressRaf) mapProgressRaf = requestAnimationFrame(() => { mapProgressRaf = 0; if (pr) drawPrintPage(); });
+}
+/* Förloppsstapel mitt i en ruta (ritningar och bilder, bara i editorn). */
+function drawProgressBox(ctx, X, Y, W, H, f, title, label) {
+  const bw = Math.min(W * 0.8, Math.max(Math.min(160, W * 0.8), W * 0.5)), bh = Math.max(6, Math.min(22, H * 0.05, H * 0.18)), bx = X + (W - bw) / 2, by = Y + H / 2 - bh / 2;
+  const fs = Math.max(9, Math.min(16, bh * 0.75, W / Math.max(8, title.length) * 1.6));
+  const pad = Math.min(12, W * 0.08), top = by - fs * 1.9, hh = bh + fs * (label ? 3.2 : 2.3);
+  ctx.save();
+  ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.fillRect(bx - pad, top, bw + pad * 2, hh);
+  ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 1; ctx.strokeRect(bx - pad, top, bw + pad * 2, hh);
+  ctx.fillStyle = "#e2e8f0"; ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = "#2563eb"; ctx.fillRect(bx, by, Math.max(2, bw * Math.max(0, Math.min(1, f))), bh);
+  ctx.fillStyle = "#0f172a"; ctx.font = `bold ${fs}px Helvetica, Arial`; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+  ctx.fillText(title, X + W / 2, by - fs * 0.6);
+  if (label) { ctx.fillStyle = "#475569"; ctx.font = `${fs * 0.85}px Helvetica, Arial`; ctx.textBaseline = "top"; ctx.fillText(label, X + W / 2, by + bh + fs * 0.35); }
+  ctx.restore();
+}
+const mapProgress = new Map(); // el.id -> { f: 0–1, label } medan ritningen laddas/ritas
 function mapProgressSet(id, f, label) {
   if (f == null) mapProgress.delete(id); else mapProgress.set(id, { f, label });
   if (!mapProgressRaf) mapProgressRaf = requestAnimationFrame(() => { mapProgressRaf = 0; if (pr) drawPrintPage(); });
@@ -548,18 +572,8 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
       else if (!opts.noMap) { ctx.fillStyle = "#eef2f7"; ctx.fillRect(X, Y, W, H); }
       // Förloppet (bara i editorn): en stapel med procent och vad som laddas, mitt i ramen.
       const pg = opts.editor && !opts.noMap ? mapProgress.get(el.id) : null;
-      if (pg) {
-        const bw = Math.min(W * 0.8, Math.max(160, W * 0.5)), bh = Math.max(10, Math.min(22, H * 0.05)), bx = X + (W - bw) / 2, by = Y + H / 2 - bh / 2;
-        const fs = Math.max(11, Math.min(16, bh * 0.75));
-        ctx.fillStyle = "rgba(255,255,255,.9)"; ctx.fillRect(bx - 12, by - fs * 1.9, bw + 24, bh + fs * 3.2);
-        ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 1; ctx.strokeRect(bx - 12, by - fs * 1.9, bw + 24, bh + fs * 3.2);
-        ctx.fillStyle = "#e2e8f0"; ctx.fillRect(bx, by, bw, bh);
-        ctx.fillStyle = "#2563eb"; ctx.fillRect(bx, by, Math.max(2, bw * pg.f), bh);
-        ctx.fillStyle = "#0f172a"; ctx.font = `bold ${fs}px Helvetica, Arial`; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
-        ctx.fillText(`Laddar ritningen – ${Math.round(pg.f * 100)} %`, X + W / 2, by - fs * 0.6);
-        ctx.fillStyle = "#475569"; ctx.font = `${fs * 0.85}px Helvetica, Arial`; ctx.textBaseline = "top";
-        ctx.fillText(pg.label || "", X + W / 2, by + bh + fs * 0.35);
-      } else if (!c && !opts.noMap) { ctx.fillStyle = "#64748b"; ctx.font = `${pt(10)}px Helvetica, Arial`; ctx.textAlign = "center"; ctx.fillText("Ritningen ritas…", X + W / 2, Y + H / 2); }
+      if (pg) drawProgressBox(ctx, X, Y, W, H, pg.f, `Laddar ritningen – ${Math.round(pg.f * 100)} %`, pg.label || "");
+      else if (!c && !opts.noMap) { ctx.fillStyle = "#64748b"; ctx.font = `${pt(10)}px Helvetica, Arial`; ctx.textAlign = "center"; ctx.fillText("Ritningen ritas…", X + W / 2, Y + H / 2); }
       if (el.border !== false && !opts.noMap) { ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, 0.35 * k * u); ctx.strokeRect(X, Y, W, H); }
       if (el.label && el.label.show && !opts.noLabel) {
         const s = el.label.size || 9, lines = mapLabelLines(el);
@@ -591,6 +605,10 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
         const S = printImageSource(el, im), ar = S.sw / S.sh || 1;
         let w = W, h = W / ar; if (h > H) { h = H; w = H * ar; }
         ctx.drawImage(S.src, S.sx, S.sy, S.sw, S.sh, X + (W - w) / 2, Y + (H - h) / 2, w, h);
+      } else if (opts.editor && el.path && imgProgress.has(el.path)) {
+        ctx.fillStyle = "#f1f5f9"; ctx.fillRect(X, Y, W, H);
+        const f = imgProgress.get(el.path);
+        drawProgressBox(ctx, X, Y, W, H, f, `Laddar bilden – ${Math.max(1, Math.round(f * 100))} %`, "");
       } else if (opts.editor) { ctx.fillStyle = "#f1f5f9"; ctx.fillRect(X, Y, W, H); ctx.fillStyle = "#64748b"; ctx.font = `${pt(9)}px Helvetica, Arial`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(el.path ? "Laddar bild…" : "Välj bild i panelen", X + W / 2, Y + H / 2); }
       break;
     }
