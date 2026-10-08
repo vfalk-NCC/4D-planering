@@ -10,9 +10,9 @@
 <meta name="theme-color" content="#ffffff" />
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
-<script src="error-guard.js?v=20261008133029"></script>
+<script src="error-guard.js?v=20261008133227"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261008133029"></script>
+<script src="github-storage.js?v=20261008133227"></script>
 <style>
   /* Beskär bild med musen (lagesplan-imgcrop.js) */
   #imgCropModal { position: fixed; inset: 0; z-index: 1100; background: rgba(15,23,42,.55); display: flex; align-items: center; justify-content: center; }
@@ -870,6 +870,17 @@
   .pr-leg-row input[type=color] { width: 30px; height: 24px; padding: 0; }
   .pr-leg-row .pl-txt { height: 24px; font-size: 12px; min-width: 0; }
   .pr-leg-row button { height: 22px; width: 22px; padding: 0; }
+  /* Verktygsraden överst på bladet (Lägg till). */
+  .pr-bar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 20px); overflow-x: auto; display: flex; align-items: stretch; gap: 2px; padding: 4px 6px; background: rgba(255,255,255,.97); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 6px 18px rgba(15,23,42,.14); z-index: 2; scrollbar-width: thin; }
+  .pr-bar .pb-lead { align-self: center; padding: 0 8px 0 4px; font-size: 10.5px; font-weight: 650; letter-spacing: .5px; text-transform: uppercase; color: var(--faint); white-space: nowrap; }
+  .pr-bar button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 50px; height: 48px; padding: 3px 4px; border: 1px solid transparent; background: none; border-radius: 8px; color: #1f2937; font-size: 10.5px; cursor: pointer; box-shadow: none; }
+  .pr-bar button:hover { background: #eff6ff; border-color: #bfdbfe; color: var(--accent); }
+  .pr-bar button:active { transform: translateY(1px); }
+  .pr-bar button i { display: block; width: 22px; height: 22px; }
+  .pr-bar .pb-sep { width: 1px; margin: 6px 3px; background: var(--border); flex: 0 0 1px; }
+  .pr-ico { width: 100%; height: 100%; display: block; }
+  .pr-elhead { display: inline-flex; align-items: center; gap: 6px; }
+  .pr-elhead .pr-ico { width: 18px; height: 18px; color: var(--accent); }
   .pr-zoom { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 4px; align-items: center; background: rgba(255,255,255,.95); border: 1px solid var(--border); border-radius: 8px; padding: 3px; box-shadow: 0 4px 12px rgba(15,23,42,.15); }
   .pr-zoom button { height: 26px; min-width: 28px; padding: 0 6px; } .pr-zoom span { min-width: 44px; text-align: center; font-size: 12px; }
   .pr-locked { background: #fef3c7; border-color: #f59e0b; }
@@ -1501,6 +1512,7 @@
     </div>
     <div id="printModal" class="hidden">
       <div class="pr-main" id="prCanvasWrap"><canvas id="prCanvas"></canvas>
+        <div id="prAdd" class="pr-bar" role="toolbar" aria-label="Lägg till på bladet"><span class="pb-lead">Lägg till</span><button type="button" data-add="text" title="Textruta"><i data-ico="text"></i><span>Text</span></button><button type="button" data-add="callout" title="Pratbubbla – text med en spets som pekar ut något"><i data-ico="callout"></i><span>Bubbla</span></button><span class="pb-sep"></span><button type="button" data-add="map" title="Ritning (lägesplanen i skala)"><i data-ico="map"></i><span>Ritning</span></button><button type="button" data-add="image" title="Bild, t.ex. logga eller skylt"><i data-ico="image"></i><span>Bild</span></button><span class="pb-sep"></span><button type="button" data-add="legend" title="Förklaring (statusfärger, etablering, CAD)"><i data-ico="legend"></i><span>Förklaring</span></button><button type="button" data-add="title" title="Ritningshuvud"><i data-ico="title"></i><span>Huvud</span></button><button type="button" data-add="scalebar" title="Skalstock"><i data-ico="scalebar"></i><span>Skala</span></button><button type="button" data-add="north" title="Norrpil"><i data-ico="north"></i><span>Norrpil</span></button><button type="button" data-add="qr" title="QR-kod"><i data-ico="qr"></i><span>QR</span></button><span class="pb-sep"></span><button type="button" data-add="rect" title="Ruta"><i data-ico="rect"></i><span>Ruta</span></button><button type="button" data-add="ellipse" title="Ellips eller cirkel"><i data-ico="ellipse"></i><span>Ellips</span></button><button type="button" data-add="line" title="Linje"><i data-ico="line"></i><span>Linje</span></button><button type="button" data-add="arrow" title="Pil (klassisk eller modern)"><i data-ico="arrow"></i><span>Pil</span></button></div>
         <div class="pr-zoom" title="Zooma: mushjulet, Ctrl + / Ctrl −. Flytta vyn: Mellanslag + dra eller mittenknappen."><button type="button" id="prZoomOut">−</button><span id="prZoomLbl">100 %</span><button type="button" id="prZoomIn">+</button><button type="button" id="prZoomFit" title="Hela bladet (Ctrl+0)">⤢</button></div></div>
       <div class="pr-resize" id="prResize" title="Dra för att göra panelen bredare eller smalare (dubbelklicka = standardbredd)"></div>
       <div class="pr-side">
@@ -1514,12 +1526,7 @@
         <div class="pr-sec-body" data-prsec-body="blad"><div class="row" style="flex-wrap:nowrap;"><div id="prFormat" class="seg"><button data-f="A3">A3</button><button data-f="A1">A1</button></div><span class="muted">liggande</span><span class="grow"></span><label class="check" style="margin:0;"><input type="checkbox" id="prFrame" /> Ram</label></div>
         <div id="prFmtAsk" class="hidden" style="margin-top:8px;padding:8px;border:1px solid var(--accent);border-radius:8px;background:var(--accent-weak);"></div>
         </div>
-        <button type="button" class="field-label pr-sec-head" data-prsec="add" aria-expanded="true" title="Visa/dölj"><span class="pr-caret">▾</span>Lägg till</button>
-        <div class="pr-sec-body" data-prsec-body="add"><div id="prAdd" class="tool-grid" style="grid-template-columns:repeat(5,1fr);">
-          <button data-add="text"><i>🔤</i>Text</button><button data-add="image"><i>🖼</i>Bild</button><button data-add="map"><i>🗺</i>Ritning</button><button data-add="legend"><i>📋</i>Förklaring</button><button data-add="title"><i>🗂</i>Huvud</button>
-          <button data-add="scalebar"><i>📏</i>Skala</button><button data-add="north"><i>🧭</i>Norrpil</button><button data-add="qr"><i>▦</i>QR</button><button data-add="rect"><i>▭</i>Ruta</button><button data-add="line"><i>╱</i>Linje</button><button data-add="arrow"><i>➜</i>Pil</button><button data-add="ellipse"><i>◯</i>Ellips</button><button data-add="callout"><i>💬</i>Bubbla</button>
-        </div>
-        <details id="prLib" class="pr-lib"><summary>📚 Bibliotek <span class="muted" id="prLibCount"></span></summary><div id="prLibBody"></div></details>
+        <div class="pr-sec-body" data-prsec-body="add" style="margin-top:8px;"><details id="prLib" class="pr-lib"><summary>📚 Bibliotek <span class="muted" id="prLibCount"></span></summary><div id="prLibBody"></div></details>
         <details id="prPdfLayers" class="pr-lib"><summary>⚙ Avancerat: PDF-lager</summary><div id="prPdfLayersBody"></div></details>
         <input type="file" id="prLibInput" accept="image/png,image/jpeg,image/webp,image/svg+xml" multiple class="hidden" />
         </div>
@@ -1586,44 +1593,44 @@
     </div>
   </main>
 </div>
-<script src="lagesplan-merge.js?v=20261008133029"></script>
-<script src="lagesplan.js?v=20261008133029"></script>
-<script src="lagesplan-tools.js?v=20261008133029"></script>
-<script src="lagesplan-layers.js?v=20261008133029"></script>
-<script src="lagesplan-pdfoverlay.js?v=20261008133029"></script>
-<script src="lagesplan-pdfunder.js?v=20261008133029"></script>
-<script src="lagesplan-views.js?v=20261008133029"></script>
-<script src="lagesplan-film.js?v=20261008133029"></script>
-<script src="lagesplan-cad.js?v=20261008133029"></script>
-<script src="lagesplan-vecpdf.js?v=20261008133029"></script>
-<script src="lagesplan-print.js?v=20261008133029"></script>
-<script src="lagesplan-arrows.js?v=20261008133029"></script>
-<script src="lagesplan-printshapes.js?v=20261008133029"></script>
-<script src="lagesplan-printctx.js?v=20261008133029"></script>
-<script src="lagesplan-printdxf.js?v=20261008133029"></script>
-<script src="lagesplan-imgcrop.js?v=20261008133029"></script>
-<script src="lagesplan-printlib.js?v=20261008133029"></script>
-<script src="lagesplan-pdflayers.js?v=20261008133029"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261008133029"></script>
-<script src="lagesplan-objmarks.js?v=20261008133029"></script>
-<script src="lagesplan-objlist.js?v=20261008133029"></script>
-<script src="lagesplan-zones.js?v=20261008133029"></script>
-<script src="lagesplan-wbs.js?v=20261008133029"></script>
-<script src="lagesplan-zonesets.js?v=20261008133029"></script>
-<script src="lagesplan-zoneguard.js?v=20261008133029"></script>
-<script src="lagesplan-zoneexport.js?v=20261008133029"></script>
-<script src="lagesplan-itemlink.js?v=20261008133029"></script>
-<script src="lagesplan-dxfexport.js?v=20261008133029"></script>
-<script src="ifc-writer.js?v=20261008133029"></script>
-<script src="lagesplan-ifcexport.js?v=20261008133029"></script>
-<script src="lagesplan-zonecad.js?v=20261008133029"></script>
-<script src="lagesplan-siteifc.js?v=20261008133029"></script>
-<script src="lagesplan-daily.js?v=20261008133029"></script>
-<script src="lagesplan-gps.js?v=20261008133029"></script>
-<script src="lagesplan-weather.js?v=20261008133029"></script>
-<script src="lagesplan-touch.js?v=20261008133029"></script>
-<script src="lagesplan-drawer.js?v=20261008133029"></script>
-<script src="lagesplan-gpslive.js?v=20261008133029"></script>
-<script src="lagesplan-keys.js?v=20261008133029"></script>
+<script src="lagesplan-merge.js?v=20261008133227"></script>
+<script src="lagesplan.js?v=20261008133227"></script>
+<script src="lagesplan-tools.js?v=20261008133227"></script>
+<script src="lagesplan-layers.js?v=20261008133227"></script>
+<script src="lagesplan-pdfoverlay.js?v=20261008133227"></script>
+<script src="lagesplan-pdfunder.js?v=20261008133227"></script>
+<script src="lagesplan-views.js?v=20261008133227"></script>
+<script src="lagesplan-film.js?v=20261008133227"></script>
+<script src="lagesplan-cad.js?v=20261008133227"></script>
+<script src="lagesplan-vecpdf.js?v=20261008133227"></script>
+<script src="lagesplan-print.js?v=20261008133227"></script>
+<script src="lagesplan-arrows.js?v=20261008133227"></script>
+<script src="lagesplan-printshapes.js?v=20261008133227"></script>
+<script src="lagesplan-printctx.js?v=20261008133227"></script>
+<script src="lagesplan-printdxf.js?v=20261008133227"></script>
+<script src="lagesplan-imgcrop.js?v=20261008133227"></script>
+<script src="lagesplan-printlib.js?v=20261008133227"></script>
+<script src="lagesplan-pdflayers.js?v=20261008133227"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261008133227"></script>
+<script src="lagesplan-objmarks.js?v=20261008133227"></script>
+<script src="lagesplan-objlist.js?v=20261008133227"></script>
+<script src="lagesplan-zones.js?v=20261008133227"></script>
+<script src="lagesplan-wbs.js?v=20261008133227"></script>
+<script src="lagesplan-zonesets.js?v=20261008133227"></script>
+<script src="lagesplan-zoneguard.js?v=20261008133227"></script>
+<script src="lagesplan-zoneexport.js?v=20261008133227"></script>
+<script src="lagesplan-itemlink.js?v=20261008133227"></script>
+<script src="lagesplan-dxfexport.js?v=20261008133227"></script>
+<script src="ifc-writer.js?v=20261008133227"></script>
+<script src="lagesplan-ifcexport.js?v=20261008133227"></script>
+<script src="lagesplan-zonecad.js?v=20261008133227"></script>
+<script src="lagesplan-siteifc.js?v=20261008133227"></script>
+<script src="lagesplan-daily.js?v=20261008133227"></script>
+<script src="lagesplan-gps.js?v=20261008133227"></script>
+<script src="lagesplan-weather.js?v=20261008133227"></script>
+<script src="lagesplan-touch.js?v=20261008133227"></script>
+<script src="lagesplan-drawer.js?v=20261008133227"></script>
+<script src="lagesplan-gpslive.js?v=20261008133227"></script>
+<script src="lagesplan-keys.js?v=20261008133227"></script>
 </body>
 </html>

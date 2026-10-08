@@ -146,6 +146,15 @@ const PORT = 8990;
     });
     if (sh.type !== 'ellipse' || !sh.panel || !sh.pdf || !sh.dxf) fail('Ellips/pratbubbla i panel, PDF och DXF: ' + JSON.stringify(sh));
     console.log('OK: pratbubbla (spetsen dras med sitt handtag och följer med vid flytt) och ellips – panel, PDF (vektor) och DXF');
+    // 7) Verktygsraden överst: alla verktyg med ikon och namn, och den täcker inte bladet.
+    const bar = await page.evaluate(() => {
+      pr.zoom = 1; pr.vx = pr.vy = 0; drawPrintPage();
+      const b = document.getElementById('prAdd'), btns = [...b.querySelectorAll('[data-add]')];
+      const { oy, dpr, c } = pr.L, pageTop = c.getBoundingClientRect().top + oy / dpr;
+      return { n: btns.length, icons: btns.every(x => x.querySelector('svg') && x.textContent.trim() && x.title), types: btns.every(x => ELEMENT_TYPES[x.dataset.add]), clear: b.getBoundingClientRect().bottom <= pageTop, oldGone: !document.querySelector('.pr-side .tool-grid') };
+    });
+    if (bar.n !== 13 || !bar.icons || !bar.types || !bar.clear || !bar.oldGone) fail('Verktygsraden: ' + JSON.stringify(bar));
+    console.log('OK: verktygsraden överst – 13 verktyg med ikon, namn och förklaring, täcker inte bladet');
     await page.evaluate(() => { pr.dirty = false; closePrint(); });
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');

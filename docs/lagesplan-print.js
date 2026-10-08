@@ -28,6 +28,22 @@ const ELEMENT_TYPES = {
   ellipse: { label: "Ellips", icon: "◯" },
   callout: { label: "Pratbubbla", icon: "💬" },
 };
+/* Enhetliga linjeikoner (verktygsraden och panelens rubrik). */
+const PR_ICONS = Object.fromEntries(Object.entries({
+  text: '<path d="M5 7V5h14v2M12 5v14M9 19h6"/>',
+  callout: '<path d="M5 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M8 9h8M8 12h5"/>',
+  map: '<path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20z"/><path d="M9 4v13.5M15 6.5V20"/>',
+  image: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="15.5" cy="9.5" r="1.5"/><path d="m3 16 5-5 4 4 2.5-2.5L21 19"/>',
+  legend: '<rect x="4" y="5" width="4" height="3" rx=".5"/><rect x="4" y="10.5" width="4" height="3" rx=".5"/><rect x="4" y="16" width="4" height="3" rx=".5"/><path d="M11 6.5h9M11 12h9M11 17.5h6"/>',
+  title: '<rect x="3" y="6" width="18" height="12" rx="1"/><path d="M3 10h18M3 14h18M12 10v8"/>',
+  scalebar: '<path d="M3 11h18v4H3z"/><path d="M7.5 11v4M12 11v4M16.5 11v4" /><path d="M3 8v3M21 8v3"/>',
+  north: '<circle cx="12" cy="12" r="9"/><path d="m12 5 3 9-3-2-3 2z" fill="currentColor"/>',
+  qr: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2"/>',
+  rect: '<rect x="4" y="6" width="16" height="12" rx="1.5"/>',
+  ellipse: '<ellipse cx="12" cy="12" rx="9" ry="6.5"/>',
+  line: '<path d="M5 19 19 5"/>',
+  arrow: '<path d="M4 12h15M13.5 6.5 19 12l-5.5 5.5"/>'
+}).map(([k, v]) => [k, `<svg class="pr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${v}</svg>`]));
 const NORTH_STYLES = { rose4: "Stjärna", classic: "Klassisk halvpil", rose8: "Kompassros", minimal: "Minimal", compass: "Bussola", feather: "Pil med fjäder" };
 
 const printTpls = () => siteItems.filter(x => x.type === "printtpl").sort((a, b) => (a.name || "").localeCompare(b.name || "", "sv"));
@@ -1024,8 +1040,9 @@ function layoutPreview() {
   const { W, H } = pageDims(), pad = 24 * dpr;
   // Zoom i layouten (Victors önskemål 2026-10-02): pr.zoom × "hela bladet", pr.vx/vy = förskjutning (skärm-px).
   const z = (pr && pr.zoom) || 1;
-  const u = Math.min((c.width - 2 * pad) / W, (c.height - 2 * pad) / H) * z;
-  return { c, u, ox: (c.width - W * u) / 2 + ((pr && pr.vx) || 0) * dpr, oy: (c.height - H * u) / 2 + ((pr && pr.vy) || 0) * dpr, dpr };
+  const top = 70 * dpr; // plats för verktygsraden överst
+  const u = Math.min((c.width - 2 * pad) / W, (c.height - pad - top) / H) * z;
+  return { c, u, ox: (c.width - W * u) / 2 + ((pr && pr.vx) || 0) * dpr, oy: top + (c.height - pad - top - H * u) / 2 + ((pr && pr.vy) || 0) * dpr, dpr };
 }
 function drawPrintPage() {
   if (!pr) return;
@@ -1416,7 +1433,7 @@ function renderPrintProps(onlyPos) {
   };
   const maps = pr.tpl.elements.filter(e => e.type === "map");
   const mapSel = () => maps.length > 1 ? `<label>Hör till ritning</label><select data-f="mapId">${maps.map((m, i) => `<option value="${escHtml(m.id)}"${(mapFor(el, pr.tpl) || {}).id === m.id ? " selected" : ""}>${escHtml(m.label && m.label.name || "Ritning " + (i + 1))} (1:${m.scale})</option>`).join("")}</select>` : "";
-  let html = `<div class="row"><b>${t.icon} ${t.label}</b><span class="grow"></span>
+  let html = `<div class="row"><b class="pr-elhead">${PR_ICONS[el.type] || t.icon} ${t.label}</b><span class="grow"></span>
       <button class="icon ghost" id="prDup" title="Duplicera (Ctrl+D)">⧉</button>
       <button class="icon ghost" id="prUp" title="Lägg överst">⤒</button>
       <button class="icon ghost" id="prDown" title="Lägg underst">⤓</button>
@@ -1879,6 +1896,7 @@ function bindPrint() {
     };
   });
   $("prFrame").onchange = e => { pushUndo(); pr.tpl.frame = { margin: 8, ticks: true, ...(pr.tpl.frame || {}), on: e.target.checked }; drawPrintPage(); renderPrintPanel(); };
+  document.querySelectorAll("#prAdd [data-ico]").forEach(i => { i.innerHTML = PR_ICONS[i.dataset.ico] || ""; });
   document.querySelectorAll("#prAdd [data-add]").forEach(b => { b.onclick = () => addEl(b.dataset.add); });
   $("prImgInput").onchange = async e => {
     const f = e.target.files[0]; e.target.value = "";

@@ -134,7 +134,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     rz.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     const w3 = side.getBoundingClientRect().width;
     // Blad, Lägg till och Egenskaper kan fällas ihop och minns det.
-    const secs = ['blad', 'add', 'props'].map(k => {
+    const secs = ['blad', 'props'].map(k => {
       const h = document.querySelector(`#printModal [data-prsec="${k}"]`), b = document.querySelector(`#printModal [data-prsec-body="${k}"]`);
       h.click(); const hid = b.offsetHeight === 0 && h.getAttribute('aria-expanded') === 'false' && JSON.parse(localStorage.getItem('lp.prSecs'))[k] === false;
       h.click(); return hid && b.offsetHeight > 0;
