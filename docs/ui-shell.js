@@ -22,12 +22,17 @@ function currentTab() {
    man kommer tillbaka exakt dit (Victors önskemål 2026-09-30). */
 const tabScroll = {};
 let activeTab = null;
+let lastWorkTab = "plan";
 function showTab(tab) {
   if (activeTab && activeTab !== tab) tabScroll[activeTab] = window.scrollY;
   const changed = activeTab !== tab;
   activeTab = tab;
   document.querySelectorAll("#mainTabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   document.querySelectorAll("section.panel[data-tab]").forEach(p => p.classList.toggle("tab-hidden", p.dataset.tab !== tab));
+  // Design (tredje valet i Planering-raden): egen vy utan planeringsflikarna.
+  if (tab !== "design") lastWorkTab = tab;
+  document.body.classList.toggle("tab-design", tab === "design");
+  document.querySelectorAll("#planSourceBar [data-design]").forEach(b => { b.classList.toggle("active", tab === "design"); b.setAttribute("aria-pressed", tab === "design" ? "true" : "false"); });
   try { localStorage.setItem(TAB_KEY, tab); } catch (e) {}
   if (changed) window.scrollTo(0, tabScroll[tab] || 0);
 }
@@ -176,6 +181,10 @@ function revealElement(el) {
 function initUiShell() {
   // Flikar
   document.querySelectorAll("#mainTabs button").forEach(b => { b.onclick = () => showTab(b.dataset.tab); });
+  // Design-valet i Planering-raden. Excel/Powerproject tar en tillbaka till planeringen.
+  document.querySelectorAll("#planSourceBar [data-design]").forEach(b => { b.onclick = () => showTab("design"); });
+  document.querySelectorAll("#planSourceBar [data-src]").forEach(b => b.addEventListener("click", () => { if (activeTab === "design") showTab(lastWorkTab); }));
+  document.querySelectorAll("[data-design-click]").forEach(b => { b.onclick = () => { const t = document.getElementById(b.dataset.designClick); if (t) t.click(); }; });
   showTab(currentTab());
 
   // Filter-knappen fäller ut/ihop filtren ovanför listan (valet sparas).

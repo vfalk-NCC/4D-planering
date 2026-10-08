@@ -1181,3 +1181,12 @@ button.danger:disabled, button.primary:disabled { opacity: .45; cursor: not-allo
 .place-state.new { color: #b45309; }
 .danger-text { color: #dc2626; }
 #placeStatus.place-bad { color: #dc2626; }
+
+/* Design – tredje valet i Planering-raden */
+body.tab-design #mainTabs { display: none; }
+body.tab-design .plan-source-seg button[data-src].active { background: transparent; color: #4b5563; font-weight: normal; box-shadow: none; }
+.plan-source-seg button[data-design] { display: inline-flex; align-items: center; gap: 4px; }
+body.tab-design .plan-source { background: #f5f3ff; }
+.design-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.plan-source-seg button { white-space: nowrap; }
+@media (max-width: 440px) { .plan-source { padding: 6px 8px; gap: 6px; } .plan-source-seg button { padding: 4px 7px; } }

@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261008193249" />
-<script src="error-guard.js?v=20261008193249"></script>
+<link rel="stylesheet" href="style.css?v=20261008193503" />
+<script src="error-guard.js?v=20261008193503"></script>
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261008193249"></script>
-<script src="plan-excel-comments.js?v=20261008193249"></script>
+<script src="plan-excel-parser.js?v=20261008193503"></script>
+<script src="plan-excel-comments.js?v=20261008193503"></script>
 </head>
 <body>
 
@@ -51,6 +51,7 @@
       <div class="plan-source-seg">
         <button type="button" data-src="excel" title="4-veckorsplaneringen från Excel (som vanligt)">📊 Excel-import</button>
         <button type="button" data-src="pp" title="Tidplanen från Asta Powerproject (.pp) – en egen planering, blandas aldrig med Excel">📅 Powerproject</button>
+        <button type="button" data-design title="Design: rita och placera i 3D och exportera IFC"><svg class="ico" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21l3.5-1 11-11-2.5-2.5-11 11L3 21z"/><path d="M14 6l2.5 2.5"/></svg> Design</button>
       </div>
     </div>
     <nav id="mainTabs" class="main-tabs">
@@ -302,7 +303,19 @@
     </div>
 
     <!-- ===== Hitta objekt (koordinat) ===== -->
-    <section class="panel" data-panel-id="place3d" data-tab="tools">
+    <section class="panel" data-panel-id="designIfc" data-tab="design">
+      <h2>IFC och ritning</h2>
+      <p class="hint">Exportera delar av modellen eller det du ritat som IFC. Filerna laddas ned och sparas i Trimble Connect.</p>
+      <div class="design-actions">
+        <button type="button" data-design-click="btnExportSelIfcTop" title="Bara det du har markerat i 3D-vyn (utan underdelar), sparas i mappen IFC-urval">Markerade objekt som IFC</button>
+        <button type="button" data-design-click="btnExportVolumesIfc" title="De ritade volymerna (manuella markeringar) i statusfärg med namnet ovanpå, sparas i mappen Lägesplan export">Ritade volymer som IFC</button>
+        <button type="button" data-design-click="btnStatusPlan" title="Lägesplanen: PDF-plan, zoner, utskriftslayout, DXF och IFC">Öppna lägesplanen</button>
+        <button type="button" data-design-click="btnLoadCoupledModels" title="Tänder modellerna med kopplade objekt och visar de manuella markeringarna">Tänd kopplade modeller/markeringar</button>
+      </div>
+      <p class="hint">Manuella markeringar (linje, yta, volym, frihand) ritas via en aktivitets meny: Koppla → Rita en manuell markering.</p>
+    </section>
+
+    <section class="panel" data-panel-id="place3d" data-tab="design">
       <h2>Placera i 3D</h2>
       <p class="hint">Välj ett objekt och tryck i modellen där det ska stå. Justera mått, vridning och 4D-period och spara som IFC i Trimble Connect.</p>
       <div id="placePanel"></div>
@@ -645,21 +658,21 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261008193249"></script>
-  <script src="excel-link.js?v=20261008193249"></script>
-  <script src="app.js?v=20261008193249"></script>
-  <script src="manual-markings.js?v=20261008193249"></script>
-  <script src="ifc-writer.js?v=20261008193249"></script>
-  <script src="pp-import.js?v=20261008193249"></script>
-  <script src="ifc-subset.js?v=20261008193249"></script>
-  <script src="week-summary.js?v=20261008193249"></script>
-  <script src="place3d.js?v=20261008193249"></script>
-  <script src="volume-ifc.js?v=20261008193249"></script>
-  <script src="sub-activity-list.js?v=20261008193249"></script>
-  <script src="activity-remove.js?v=20261008193249"></script>
-  <script src="dup-check.js?v=20261008193249"></script>
-  <script src="ui-shell.js?v=20261008193249"></script>
-  <script src="undo.js?v=20261008193249"></script>
-  <script src="planning-keys.js?v=20261008193249"></script>
+  <script src="github-storage.js?v=20261008193503"></script>
+  <script src="excel-link.js?v=20261008193503"></script>
+  <script src="app.js?v=20261008193503"></script>
+  <script src="manual-markings.js?v=20261008193503"></script>
+  <script src="ifc-writer.js?v=20261008193503"></script>
+  <script src="pp-import.js?v=20261008193503"></script>
+  <script src="ifc-subset.js?v=20261008193503"></script>
+  <script src="week-summary.js?v=20261008193503"></script>
+  <script src="place3d.js?v=20261008193503"></script>
+  <script src="volume-ifc.js?v=20261008193503"></script>
+  <script src="sub-activity-list.js?v=20261008193503"></script>
+  <script src="activity-remove.js?v=20261008193503"></script>
+  <script src="dup-check.js?v=20261008193503"></script>
+  <script src="ui-shell.js?v=20261008193503"></script>
+  <script src="undo.js?v=20261008193503"></script>
+  <script src="planning-keys.js?v=20261008193503"></script>
 </body>
 </html>

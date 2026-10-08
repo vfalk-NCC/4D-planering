@@ -37,6 +37,7 @@ const PK_SHORTCUTS = [
   { id: "tabPlan", label: "Planera", key: "1", run: () => showTab("plan") },
   { id: "tabTime", label: "Tidslinje", key: "2", run: () => showTab("time") },
   { id: "tabTools", label: "Import & verktyg", key: "3", run: () => showTab("tools") },
+  { id: "tabDesign", label: "Design", key: "4", run: () => showTab("design") },
   { group: "Tidslinje" },
   { id: "play", label: "▶ Spela upp/pausa", key: " ", run: pkClick("btnPlay"), btn: "btnPlay" },
   { id: "dayBack", label: "En dag bakåt", key: ",", run: () => pkShiftDay(-1) },

@@ -78,6 +78,17 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   const st = () => page.evaluate(() => ({ list: placements.map(p => ({ ...p })), active: placeActiveId, mode: placeMode && placeMode.kind }));
   const wait = ms => page.waitForTimeout(ms);
 
+  // Design: tredje valet i Planering-raden, döljer planeringsflikarna, Excel/PP tar en tillbaka.
+  await page.click('#planSourceBar [data-design]');
+  if (!(await page.locator('section[data-panel-id="place3d"]').isVisible()) || await page.locator('#mainTabs').isVisible()) fail('Design ska visa Placera i 3D utan planeringsflikarna');
+  if (await page.locator('section[data-panel-id="items"]').isVisible()) fail('Planeringslistan ska inte synas i Design');
+  await page.click('#planSourceBar [data-src="excel"]');
+  if (!(await page.locator('section[data-panel-id="items"]').isVisible()) || !(await page.locator('#mainTabs').isVisible())) fail('Excel ska ta tillbaka till planeringen');
+  await page.click('#planSourceBar [data-design]');
+  await page.evaluate(() => { window.__vol = 0; document.getElementById('btnExportVolumesIfc').onclick = () => { window.__vol++; }; });
+  await page.click('[data-design-click="btnExportVolumesIfc"]');
+  if (await page.evaluate(() => window.__vol) !== 1) fail('Design-knappen ska köra volymexporten');
+
   // Bod: välj, tryck i modellen.
   await page.click('[data-place-type="bod"]');
   if (!(await page.locator('.place-mode').innerText()).includes('Tryck i modellen')) fail('Läget ska visa instruktion');
