@@ -79,6 +79,14 @@ async function pmTextureColor(json, buffers, texIndex, resolveUri) {
     if (img.bufferView !== undefined) { const bv = json.bufferViews[img.bufferView]; blob = new Blob([buffers[bv.buffer || 0].slice(bv.byteOffset || 0, (bv.byteOffset || 0) + bv.byteLength)], { type: img.mimeType || "image/png" }); }
     else if (img.uri) { const b = await resolveUri(img.uri); if (!b) return null; blob = new Blob([b]); }
     else return null;
+    const avg = await pmImageAvg(blob);
+    // sRGB -> linjärt (glTF:s färgfaktorer är linjära)
+    return avg ? avg.map(v => Math.pow(v, 2.2)) : null;
+  } catch (e) { return null; }
+}
+/* Medelfärgen i en bild (sRGB 0–1), eller null. */
+async function pmImageAvg(blob) {
+  try {
     const bmp = await createImageBitmap(blob);
     const cv = document.createElement("canvas"); cv.width = 8; cv.height = 8;
     const ctx = cv.getContext("2d"); ctx.drawImage(bmp, 0, 0, 8, 8);
@@ -86,9 +94,7 @@ async function pmTextureColor(json, buffers, texIndex, resolveUri) {
     let r = 0, g = 0, b = 0;
     for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
     const n = d.length / 4 * 255;
-    // sRGB -> linjärt (glTF:s färgfaktorer är linjära)
-    const lin = v => Math.pow(v, 2.2);
-    return [lin(r / n), lin(g / n), lin(b / n)];
+    return [r / n, g / n, b / n];
   } catch (e) { return null; }
 }
 /* glTF (json + buffertar) -> { bbox, tris, mesh: { parts } }. Y uppåt -> Z uppåt, origo i botten-mitt. */
@@ -163,6 +169,10 @@ async function pmGltfToMesh(json, bin, resolveUri) {
   const roots = scene ? scene.nodes || [] : (json.nodes || []).map((_, i) => i);
   const I4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
   for (const r of roots) await walk(r, I4);
+  return pmFinish(groups, tris);
+}
+/* Grupperna (färg -> punkter i meter, Z upp + index) -> origo i botten-mitt, mm-heltal. */
+function pmFinish(groups, tris) {
   if (!tris) throw new Error("Modellen innehåller ingen geometri.");
   const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
   groups.forEach(g => { for (let k = 0; k < g.pos.length; k++) { const j = k % 3; if (g.pos[k] < mn[j]) mn[j] = g.pos[k]; if (g.pos[k] > mx[j]) mx[j] = g.pos[k]; } });
@@ -170,6 +180,225 @@ async function pmGltfToMesh(json, bin, resolveUri) {
   const parts = [...groups.values()].map(g => ({ c: g.c, t: g.t, p: g.pos.map((v, k) => Math.round((v - sh[k % 3]) * 1000)), i: g.idx }));
   const r3 = v => Math.round(v * 1000) / 1000;
   return { tris, bbox: { min: [r3(mn[0] - sh[0]), r3(mn[1] - sh[1]), 0], max: [r3(mx[0] - sh[0]), r3(mx[1] - sh[1]), r3(mx[2] - sh[2])] }, mesh: { v: 1, parts } };
+}
+
+/* Samlar trianglar per färg för Collada/OBJ (punkter redan i meter, Z uppåt). */
+function pmBuilder() {
+  const groups = new Map();
+  let tris = 0;
+  return {
+    add(col, pts, idx) {
+      tris += idx.length / 3;
+      if (tris > PM_MAX_TRIS) throw new Error(`Modellen har mer än ${PM_MAX_TRIS.toLocaleString("sv-SE")} trianglar – för tung för Trimble Connect. Välj en enklare modell.`);
+      const key = col.c + ":" + col.t;
+      if (!groups.has(key)) groups.set(key, { c: col.c, t: col.t, pos: [], idx: [] });
+      const g = groups.get(key), o = g.pos.length / 3;
+      for (const v of pts) g.pos.push(v);
+      for (const i of idx) g.idx.push(i + o);
+    },
+    finish() { return pmFinish(groups, tris); },
+  };
+}
+const PM_GREY = { c: "#bfbfbf", t: 0 };
+const pmCol = (rgb, t = 0) => ({ c: pmHex(rgb[0], rgb[1], rgb[2]), t: Math.max(0, Math.min(0.95, Math.round(t * 100) / 100)) });
+/* Fil i en zip relativt en annan fil (skiftlägesokänsligt som reserv). */
+function pmZipResolver(files, baseName) {
+  const dir = baseName && baseName.includes("/") ? baseName.slice(0, baseName.lastIndexOf("/") + 1) : "";
+  const lower = new Map([...files.keys()].map(k => [k.toLowerCase(), k]));
+  return async uri => {
+    if (!files) return null;
+    let u = decodeURIComponent(String(uri || "")).replace(/^file:\/+/, "").replace(/\\/g, "/").replace(/^\.\//, "");
+    const tries = [dir + u, u, u.split("/").pop(), dir + u.split("/").pop()];
+    for (const t of tries) { const k = files.has(t) ? t : lower.get(t.toLowerCase()); if (k) return files.get(k)(); }
+    // ../ i sökvägen
+    const norm = (dir + u).split("/").reduce((a, x) => (x === ".." ? a.slice(0, -1) : x === "." ? a : [...a, x]), []).join("/");
+    const k = lower.get(norm.toLowerCase());
+    return k ? files.get(k)() : null;
+  };
+}
+
+/* Collada (.dae, t.ex. SketchUp/3D Warehouse) -> mesh. resolve(uri) ger texturfiler ur zip/kmz. */
+async function pmDaeToMesh(text, resolve) {
+  const doc = new DOMParser().parseFromString(text, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length || !doc.getElementsByTagName("COLLADA").length) throw new Error("Collada-filen kunde inte läsas.");
+  const kids = (el, tag) => el ? [...el.children].filter(c => c.localName === tag) : [];
+  const kid = (el, tag) => kids(el, tag)[0] || null;
+  const byId = new Map();
+  for (const el of doc.getElementsByTagName("*")) { const id = el.getAttribute("id"); if (id) byId.set(id, el); }
+  const ref = u => byId.get(String(u || "").replace(/^#/, "")) || null;
+  const nums = el => (el ? el.textContent.trim().split(/\s+/).filter(Boolean).map(Number) : []);
+  const asset = kid(doc.documentElement, "asset");
+  const unit = Number((kid(asset, "unit") || { getAttribute: () => 1 }).getAttribute("meter")) || 1;
+  const up = ((kid(asset, "up_axis") || {}).textContent || "Y_UP").trim();
+  // Material -> färg
+  const matCache = new Map();
+  const matColor = async matId => {
+    if (matCache.has(matId)) return matCache.get(matId);
+    let col = PM_GREY;
+    try {
+      const mat = ref(matId), eff = mat && ref(kid(mat, "instance_effect").getAttribute("url"));
+      const prof = eff && kid(eff, "profile_COMMON"), tech = prof && kid(prof, "technique");
+      const sh = tech && (kid(tech, "phong") || kid(tech, "lambert") || kid(tech, "blinn") || kid(tech, "constant"));
+      const dif = sh && (kid(sh, "diffuse") || kid(sh, "emission"));
+      let rgb = null;
+      const c = kid(dif, "color");
+      if (c) rgb = nums(c).slice(0, 3);
+      const tx = kid(dif, "texture");
+      if (tx && !rgb) {
+        const sid = tx.getAttribute("texture");
+        const np = sid => [...prof.getElementsByTagName("newparam")].find(n => n.getAttribute("sid") === sid);
+        let img = null;
+        const p1 = np(sid);
+        if (p1) {
+          const smp = p1.getElementsByTagName("source")[0];
+          const p2 = smp ? np(smp.textContent.trim()) : p1;
+          const init = p2 && p2.getElementsByTagName("init_from")[0];
+          img = init ? ref(init.textContent.trim()) : null;
+        } else img = ref(sid);
+        const file = img && img.getElementsByTagName("init_from")[0];
+        const buf = file && resolve ? await resolve(file.textContent.trim()) : null;
+        if (buf) rgb = await pmImageAvg(new Blob([buf]));
+      }
+      let t = 0;
+      const tr = kid(sh, "transparency"), f = tr && kid(tr, "float");
+      if (f) { const v = Number(f.textContent); if (Number.isFinite(v) && v > 0 && v < 1) t = 1 - v; }
+      if (rgb) col = pmCol(rgb, t);
+    } catch (e) { /* grått */ }
+    matCache.set(matId, col); return col;
+  };
+  // Geometri -> primitiver { sym, pos, idx }
+  const geoCache = new Map();
+  const geometry = gid => {
+    if (geoCache.has(gid)) return geoCache.get(gid);
+    const g = ref(gid), mesh = g && kid(g, "mesh"), prims = [];
+    if (mesh) {
+      const srcPos = new Map();
+      kids(mesh, "vertices").forEach(v => { const inp = kids(v, "input").find(i => i.getAttribute("semantic") === "POSITION"); if (inp) srcPos.set(v.getAttribute("id"), inp.getAttribute("source")); });
+      const floats = new Map();
+      const srcData = id => {
+        if (floats.has(id)) return floats.get(id);
+        const s = ref(id), fa = s && kid(s, "float_array"), acc = s && s.getElementsByTagName("accessor")[0];
+        const r = { f: nums(fa), stride: acc ? Number(acc.getAttribute("stride")) || 3 : 3 };
+        floats.set(id, r); return r;
+      };
+      for (const el of mesh.children) {
+        const tag = el.localName;
+        if (!["triangles", "polylist", "polygons", "trifans", "tristrips"].includes(tag)) continue;
+        const inputs = kids(el, "input");
+        const stride = Math.max(...inputs.map(i => Number(i.getAttribute("offset")) || 0)) + 1;
+        const vin = inputs.find(i => i.getAttribute("semantic") === "VERTEX");
+        if (!vin) continue;
+        const vo = Number(vin.getAttribute("offset")) || 0;
+        const vid = vin.getAttribute("source").replace(/^#/, "");
+        const ps = srcData(srcPos.get(vid) || vid);
+        const P = [];
+        for (let i = 0; i * ps.stride + 2 < ps.f.length; i++) P.push(ps.f[i * ps.stride], ps.f[i * ps.stride + 1], ps.f[i * ps.stride + 2]);
+        const idx = [];
+        const polys = [];
+        if (tag === "triangles") { const p = nums(kid(el, "p")); for (let i = 0; i + 3 * stride <= p.length; i += 3 * stride) polys.push([p[i + vo], p[i + stride + vo], p[i + 2 * stride + vo]]); }
+        else if (tag === "polylist") {
+          const vc = nums(kid(el, "vcount")), p = nums(kid(el, "p"));
+          let o = 0; vc.forEach(n => { const poly = []; for (let k = 0; k < n; k++) poly.push(p[(o + k) * stride + vo]); polys.push(poly); o += n; });
+        } else kids(el, "p").forEach(pe => {
+          const p = nums(pe), poly = []; for (let k = 0; k * stride < p.length; k++) poly.push(p[k * stride + vo]);
+          if (tag === "tristrips") { for (let k = 2; k < poly.length; k++) polys.push(k % 2 ? [poly[k - 1], poly[k - 2], poly[k]] : [poly[k - 2], poly[k - 1], poly[k]]); }
+          else polys.push(poly);
+        });
+        polys.forEach(poly => { for (let k = 1; k + 1 < poly.length; k++) idx.push(poly[0], poly[k], poly[k + 1]); });
+        if (idx.length) prims.push({ sym: el.getAttribute("material") || "", pos: P, idx });
+      }
+    }
+    geoCache.set(gid, prims); return prims;
+  };
+  const B = pmBuilder();
+  const rowToCol = m => [m[0], m[4], m[8], m[12], m[1], m[5], m[9], m[13], m[2], m[6], m[10], m[14], m[3], m[7], m[11], m[15]];
+  const axisRot = (x, y, z, deg) => {
+    const l = Math.hypot(x, y, z) || 1, h = deg * Math.PI / 360, s = Math.sin(h) / l;
+    return m4trs(undefined, [x * s, y * s, z * s, Math.cos(h)]);
+  };
+  // Upp-axel och enhet: Y upp -> Z upp
+  const fix = up === "Z_UP" ? [unit, 0, 0, 0, 0, unit, 0, 0, 0, 0, unit, 0, 0, 0, 0, 1]
+    : up === "X_UP" ? [0, unit, 0, 0, -unit, 0, 0, 0, 0, 0, unit, 0, 0, 0, 0, 1]
+    : [unit, 0, 0, 0, 0, 0, unit, 0, 0, -unit, 0, 0, 0, 0, 0, 1];
+  let depth = 0;
+  const walk = async (node, parent) => {
+    if (++depth > 64) { depth--; return; }
+    let M = parent;
+    for (const t of node.children) {
+      const v = nums(t);
+      if (t.localName === "matrix" && v.length === 16) M = m4mul(M, rowToCol(v));
+      else if (t.localName === "translate") M = m4mul(M, m4trs([v[0], v[1], v[2]]));
+      else if (t.localName === "rotate") M = m4mul(M, axisRot(v[0], v[1], v[2], v[3]));
+      else if (t.localName === "scale") M = m4mul(M, m4trs(undefined, undefined, [v[0], v[1], v[2]]));
+    }
+    const det = M[0] * (M[5] * M[10] - M[9] * M[6]) - M[4] * (M[1] * M[10] - M[9] * M[2]) + M[8] * (M[1] * M[6] - M[5] * M[2]);
+    for (const ig of kids(node, "instance_geometry")) {
+      const bind = {};
+      ig.querySelectorAll("instance_material").forEach(im => { bind[im.getAttribute("symbol")] = im.getAttribute("target"); });
+      for (const pr of geometry(ig.getAttribute("url").replace(/^#/, ""))) {
+        const col = await matColor(bind[pr.sym] || pr.sym);
+        const pts = [];
+        for (let i = 0; i < pr.pos.length; i += 3) {
+          const x = pr.pos[i], y = pr.pos[i + 1], z = pr.pos[i + 2];
+          pts.push(M[0] * x + M[4] * y + M[8] * z + M[12], M[1] * x + M[5] * y + M[9] * z + M[13], M[2] * x + M[6] * y + M[10] * z + M[14]);
+        }
+        const idx = det < 0 ? pr.idx.map((v, i) => pr.idx[i - (i % 3) + [0, 2, 1][i % 3]]) : pr.idx;
+        B.add(col, pts, idx);
+      }
+    }
+    for (const n of kids(node, "node")) await walk(n, M);
+    for (const inn of kids(node, "instance_node")) { const n = ref(inn.getAttribute("url")); if (n) await walk(n, M); }
+    depth--;
+  };
+  const sceneRef = doc.getElementsByTagName("instance_visual_scene")[0];
+  const scene = sceneRef ? ref(sceneRef.getAttribute("url")) : doc.getElementsByTagName("visual_scene")[0];
+  if (!scene) throw new Error("Collada-filen saknar en scen.");
+  for (const n of kids(scene, "node")) await walk(n, fix);
+  return B.finish();
+}
+
+/* OBJ (+ .mtl i samma zip) -> mesh. Y uppåt antas (vanligast). */
+async function pmObjToMesh(text, resolve) {
+  const V = [], B = pmBuilder(), mats = new Map();
+  let cur = null, curPts = [], curIdx = [], map = new Map();
+  const flush = async () => {
+    if (curIdx.length) B.add(cur ? await cur : PM_GREY, curPts, curIdx);
+    curPts = []; curIdx = []; map = new Map();
+  };
+  const loadMtl = async name => {
+    const buf = resolve ? await resolve(name) : null;
+    if (!buf) return;
+    let m = null;
+    for (const line of new TextDecoder().decode(buf).split(/\r?\n/)) {
+      const t = line.trim().split(/\s+/), k = t[0];
+      if (k === "newmtl") { m = { kd: null, d: 1, tex: null }; mats.set(t.slice(1).join(" "), m); }
+      else if (!m) continue;
+      else if (k === "Kd") m.kd = t.slice(1, 4).map(Number);
+      else if (k === "d") m.d = Number(t[1]);
+      else if (k === "Tr") m.d = 1 - Number(t[1]);
+      else if (k === "map_Kd") m.tex = t[t.length - 1];
+    }
+  };
+  const colOf = async name => {
+    const m = mats.get(name);
+    if (!m) return PM_GREY;
+    let rgb = m.kd;
+    if (m.tex && (!rgb || rgb.every(v => v >= 0.99))) { const b = resolve ? await resolve(m.tex) : null; const avg = b ? await pmImageAvg(new Blob([b])) : null; if (avg) rgb = avg.map((v, i) => v * (rgb ? rgb[i] : 1)); }
+    return rgb ? pmCol(rgb, Number.isFinite(m.d) && m.d < 1 ? 1 - m.d : 0) : PM_GREY;
+  };
+  for (const line of text.split(/\r?\n/)) {
+    const t = line.trim().split(/\s+/), k = t[0];
+    if (k === "v") V.push([Number(t[1]), Number(t[2]), Number(t[3])]);
+    else if (k === "mtllib") await loadMtl(t.slice(1).join(" "));
+    else if (k === "usemtl") { await flush(); cur = colOf(t.slice(1).join(" ")); }
+    else if (k === "f") {
+      const ids = t.slice(1).map(x => { const i = parseInt(x, 10); return i < 0 ? V.length + i : i - 1; }).filter(i => i >= 0 && i < V.length);
+      const loc = ids.map(i => { if (!map.has(i)) { const v = V[i]; map.set(i, curPts.length / 3); curPts.push(v[0], -v[2], v[1]); } return map.get(i); });
+      for (let j = 1; j + 1 < loc.length; j++) curIdx.push(loc[0], loc[j], loc[j + 1]);
+    }
+  }
+  await flush();
+  return B.finish();
 }
 
 /* Minimal zip-läsare (Sketchfabs glTF-zip): namn -> () => ArrayBuffer. */
@@ -195,21 +424,32 @@ async function pmUnzip(buf) {
   return files;
 }
 /* GLB eller glTF-zip (ArrayBuffer) -> mesh-resultat. */
-async function pmModelFromBuffer(buf) {
-  const sig = new DataView(buf).getUint32(0, true);
+const PM_SKP_MSG = "SketchUp-filer (.skp) kan inte läsas direkt. Välj Collada (.dae) eller glTF/GLB när du laddar ned från 3D Warehouse, eller exportera från SketchUp (Arkiv → Exportera → 3D-modell → .dae).";
+/* GLB, glTF-zip, Collada (.dae / .zip / .kmz) eller OBJ -> mesh-resultat. name = filnamnet (för formatet). */
+async function pmModelFromBuffer(buf, name = "") {
+  if (/\.skp$/i.test(name)) throw new Error(PM_SKP_MSG);
+  const sig = buf.byteLength >= 4 ? new DataView(buf).getUint32(0, true) : 0;
   if (sig === 0x46546C67) { const { json, bin } = glbSplit(buf); return pmGltfToMesh(json, bin, async () => null); }
   if (sig === 0x04034b50) {
     const files = await pmUnzip(buf);
-    const gl = [...files.keys()].find(k => /\.glb$/i.test(k));
-    if (gl) return pmModelFromBuffer(await files.get(gl)());
-    const gf = [...files.keys()].find(k => /\.gltf$/i.test(k));
-    if (!gf) throw new Error("Zip-filen innehåller ingen glTF-modell.");
-    const dir = gf.includes("/") ? gf.slice(0, gf.lastIndexOf("/") + 1) : "";
-    const json = JSON.parse(new TextDecoder().decode(await files.get(gf)()));
-    const resolve = async uri => { const f = files.get(dir + decodeURIComponent(uri)) || files.get(decodeURIComponent(uri)); return f ? f() : null; };
-    return pmGltfToMesh(json, null, resolve);
+    const keys = [...files.keys()].filter(k => !/(^|\/)__MACOSX\//.test(k));
+    const find = re => keys.find(k => re.test(k));
+    const gl = find(/\.glb$/i);
+    if (gl) return pmModelFromBuffer(await files.get(gl)(), gl);
+    const gf = find(/\.gltf$/i);
+    if (gf) return pmGltfToMesh(JSON.parse(new TextDecoder().decode(await files.get(gf)())), null, pmZipResolver(files, gf));
+    const dae = find(/\.dae$/i);
+    if (dae) return pmDaeToMesh(new TextDecoder().decode(await files.get(dae)()), pmZipResolver(files, dae));
+    const obj = find(/\.obj$/i);
+    if (obj) return pmObjToMesh(new TextDecoder().decode(await files.get(obj)()), pmZipResolver(files, obj));
+    if (find(/\.skp$/i)) throw new Error(PM_SKP_MSG);
+    throw new Error("Zip-filen innehåller ingen modell (.glb, .gltf, .dae eller .obj).");
   }
-  throw new Error("Okänt filformat – använd .glb, .zip (glTF) eller .ifc.");
+  const head = new TextDecoder().decode(buf.slice(0, 2000));
+  if (/<COLLADA/i.test(head) || /\.dae$/i.test(name)) return pmDaeToMesh(new TextDecoder().decode(buf), null);
+  if (/\.obj$/i.test(name) || /^\s*(#.*\n\s*)*(v|o|g|mtllib)\s/m.test(head)) return pmObjToMesh(new TextDecoder().decode(buf), null);
+  if (/^\s*\{/.test(head) && /"asset"/.test(head)) return pmGltfToMesh(JSON.parse(new TextDecoder().decode(buf)), null, async () => null);
+  throw new Error("Okänt filformat – använd .ifc, .glb, .gltf, .dae, .obj eller en .zip/.kmz med någon av dem.");
 }
 
 // ---------------------------------------------------------------------
@@ -343,7 +583,8 @@ async function pmSaveAsset(pd, scale) {
   return a;
 }
 async function pmFromFile(file) {
-  const name = file.name.replace(/\.(ifc|glb|zip)$/i, "");
+  const name = file.name.replace(/\.(ifc|glb|gltf|zip|kmz|dae|obj)$/i, "");
+  if (/\.skp$/i.test(file.name)) throw new Error(PM_SKP_MSG);
   if (/\.ifc$/i.test(file.name)) {
     if (file.size > PM_MAX_IFC) throw new Error(`IFC-filen är för stor (${Math.round(file.size / 1048576)} MB, max ${PM_MAX_IFC / 1048576} MB).`);
     const text = await file.text();
@@ -351,7 +592,7 @@ async function pmFromFile(file) {
     return { name, kind: "ifc", source: "Fil", text, ...info };
   }
   if (file.size > PM_MAX_DOWNLOAD) throw new Error(`Filen är för stor (${Math.round(file.size / 1048576)} MB).`);
-  const r = await pmModelFromBuffer(await file.arrayBuffer());
+  const r = await pmModelFromBuffer(await file.arrayBuffer(), file.name);
   return { name, kind: "mesh", source: "Fil", ...r };
 }
 
@@ -439,8 +680,15 @@ function renderPmBrowser() {
       }).join("")}</div>
       ${pmState.next ? `<button type="button" id="pmMore">Visa fler</button>` : ""}`;
   } else {
-    body = `<p class="hint">Välj en IFC-fil (t.ex. nedladdad från <a href="https://www.bimobject.com/sv" target="_blank" rel="noopener">BIMobject</a> eller en leverantör) eller en 3D-modell som .glb eller glTF-zip.</p>
-      <input type="file" id="pmFile" accept=".ifc,.glb,.zip" />`;
+    body = `<div class="pm-drop" id="pmDrop">
+        <b>Släpp en fil här</b> eller <label class="pm-pick">välj fil<input type="file" id="pmFile" accept=".ifc,.glb,.gltf,.dae,.obj,.zip,.kmz,.skp" /></label>
+        <div class="hint">IFC, GLB/glTF, Collada (.dae), OBJ – eller en .zip/.kmz med modell och texturer.</div>
+      </div>
+      <ul class="pm-sites hint">
+        <li><a href="https://3dwarehouse.sketchup.com" target="_blank" rel="noopener">3D Warehouse</a> – välj <b>Collada</b> eller <b>glTF</b> vid nedladdning (inte .skp).</li>
+        <li><a href="https://www.bimobject.com/sv" target="_blank" rel="noopener">BIMobject</a> – välj <b>IFC</b>.</li>
+        <li>CGTrader, TurboSquid m.fl. – välj <b>GLB</b>, <b>OBJ</b> eller <b>DAE</b>.</li>
+      </ul>`;
   }
   const lib = placeAssets.length ? `<details class="pm-lib"><summary>Biblioteket (${placeAssets.length})</summary>${placeAssets.map(a =>
     `<div class="pm-libr"><span>${esc(a.name)}</span><span class="hint">${a.kind === "ifc" ? "IFC" : `${pmFmt(a.tris)} tri`}${a.author ? ` · ${esc(a.author)}` : ""}${a.license ? ` · ${esc(a.license)}` : ""}</span></div>`).join("")}</details>` : "";
@@ -460,8 +708,15 @@ function renderPmBrowser() {
   const q = box.querySelector("#pmQuery"); if (q) q.onkeydown = e => { if (e.key === "Enter") doSearch(); };
   on("pmMore", () => pmRun("Hämtar fler…", () => sfSearch(true)));
   box.querySelectorAll("[data-sf-uid]").forEach(b => { b.onclick = () => pmRun("Laddar ned och läser modellen…", async () => { pmState.pending = await sfImport(b.dataset.sfUid); }); });
+  const readFile = f => { if (f) pmRun("Läser filen…", async () => { pmState.pending = await pmFromFile(f); }); };
   const fi = box.querySelector("#pmFile");
-  if (fi) fi.onchange = () => { const f = fi.files[0]; if (f) pmRun("Läser filen…", async () => { pmState.pending = await pmFromFile(f); }); };
+  if (fi) fi.onchange = () => readFile(fi.files[0]);
+  const dz = box.querySelector("#pmDrop");
+  if (dz) {
+    dz.ondragover = e => { e.preventDefault(); dz.classList.add("over"); };
+    dz.ondragleave = () => dz.classList.remove("over");
+    dz.ondrop = e => { e.preventDefault(); dz.classList.remove("over"); readFile(e.dataTransfer && e.dataTransfer.files[0]); };
+  }
   on("pmReject", () => { pmState.pending = null; renderPmBrowser(); });
   on("pmAccept", () => {
     const p = pmState.pending;

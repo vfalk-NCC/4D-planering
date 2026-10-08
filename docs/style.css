@@ -1213,3 +1213,9 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .pm-lib { margin-top: 8px; font-size: 12px; }
 .pm-libr { display: flex; gap: 6px; justify-content: space-between; padding: 2px 0; }
 .pm-msg.place-bad { color: #dc2626; }
+.pm-drop { border: 2px dashed #93c5fd; border-radius: 8px; padding: 14px 10px; text-align: center; background: #fff; }
+.pm-drop.over { background: #e0ebff; border-color: #1d4ed8; }
+.pm-pick { color: #1d4ed8; text-decoration: underline; cursor: pointer; }
+.pm-pick input { display: none; }
+.pm-sites { margin: 8px 0 0; padding-left: 18px; }
+.pm-sites li { margin: 2px 0; }
