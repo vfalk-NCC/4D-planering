@@ -1219,3 +1219,14 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .pm-pick input { display: none; }
 .pm-sites { margin: 8px 0 0; padding-left: 18px; }
 .pm-sites li { margin: 2px 0; }
+.pm-grid { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); max-height: 560px; }
+.pm-key { font-size: 12px; }
+.pm-heavy { color: #b45309; }
+.pm-by { font-size: 10px; }
+.pm-more { font-size: 11px; }
+.pm-more summary { cursor: pointer; color: #1d4ed8; }
+.pm-more dl { display: grid; grid-template-columns: auto 1fr; gap: 1px 6px; margin: 4px 0; }
+.pm-more dt { color: var(--muted); }
+.pm-more dd { margin: 0; overflow-wrap: anywhere; }
+.pm-desc { margin: 4px 0; color: #374151; white-space: normal; }
+.pm-grid { align-items: start; }

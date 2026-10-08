@@ -99,7 +99,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   await page.route('https://api.sketchfab.com/**', r => {
     const u = new URL(r.request().url()), a = r.request().headers()['authorization'];
     if (u.pathname === '/v3/me') { sfAuth.push(a); return a === 'Token abc' ? r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ username: 'victor', displayName: 'Victor F' }) }) : r.fulfill({ status: 401, body: '{}' }); }
-    if (u.pathname === '/v3/search') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ next: null, results: [{ uid: 'u1', name: 'Byggbod röd', user: { displayName: 'Modellare' }, faceCount: 13, license: { label: 'CC Attribution' }, viewerUrl: 'https://sketchfab.com/3d-models/u1', thumbnails: { images: [{ url: 'https://media.sketchfab.com/t.jpg', width: 200, height: 112 }] } }] }) });
+    if (u.pathname === '/v3/search') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ next: null, results: [{ uid: 'u1', name: 'Byggbod röd', user: { displayName: 'Modellare' }, faceCount: 13, vertexCount: 11, license: { label: 'CC Attribution' }, likeCount: 1520, viewCount: 30200, animationCount: 0, publishedAt: '2024-05-17T10:00:00', description: '<p>En röd <b>byggbod</b> för etableringsplaner.</p>', tags: [{ name: 'bod' }, { name: 'bygg' }], categories: [{ name: 'Architecture' }], archives: { glb: { size: 3355443, faceCount: 13, vertexCount: 11, textureCount: 2, textureMaxResolution: 2048 } }, viewerUrl: 'https://sketchfab.com/3d-models/u1', thumbnails: { images: [{ url: 'https://media.sketchfab.com/t.jpg', width: 200, height: 112 }] } }] }) });
     if (u.pathname === '/v3/models/u1/download') { sfAuth.push(a); return a === 'Token abc' ? r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ glb: { url: 'https://dl.sketchfab.test/u1.glb', size: glb.length } }) }) : r.fulfill({ status: 401, body: '{}' }); }
     return r.fulfill({ status: 404, body: '{}' });
   });
@@ -119,8 +119,16 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   await page.fill('#pmQuery', 'bod');
   await page.click('#pmSearch'); await wait(300);
   if (await page.locator('.pm-card').count() !== 1) fail('Sökningen ska visa ett kort');
+  const key = await page.locator('.pm-card .pm-key').innerText();
+  if (!key.includes('3,2 MB') || !key.includes('13 tri')) fail('Kortet ska visa storlek och trianglar direkt: ' + key);
+  await page.evaluate(() => { document.querySelector('.pm-more').open = true; });
+  const more = await page.locator('.pm-more').innerText();
+  for (const t of ['GLB', 'Hörn', '2 st, max 2048 px', '2024-05-17', '1\u00a0520 gillar', 'Architecture', 'bod, bygg', 'En röd byggbod för etableringsplaner.', 'Öppna på Sketchfab'])
+    if (!more.includes(t)) fail(`"Mer info" ska innehålla ${t}: ${more}`);
+  if (await page.locator('.pm-more b').count()) fail('Beskrivningens HTML ska tas bort');
   await page.click('[data-sf-uid="u1"]'); await wait(800);
   const conf = await page.locator('.pm-confirm').innerText();
+  if (!/\d+ kB/.test(conf)) fail('Bekräftelsen ska visa nedladdad storlek: ' + conf);
   if (!conf.includes('13 trianglar') || !conf.includes('2 × 2 × 6 m') || !conf.includes('CC Attribution')) fail('Bekräftelsen ska visa trianglar, storlek och licens: ' + conf);
   await page.fill('#pmHeight', '12');
   await page.click('#pmAccept'); await wait(800);

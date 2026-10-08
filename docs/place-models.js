@@ -576,7 +576,7 @@ async function pmSaveAsset(pd, scale) {
   await ghUploadBinary(settings.githubToken, path, new File([body], path.split("/").pop()), `Modell till Placera i 3D: ${pd.name}`);
   const a = { id, name: pd.name, kind: pd.kind, source: pd.source, uid: pd.uid || null, url: pd.url || null, author: pd.author || null, license: pd.license || null,
     bbox: pd.bbox, tris: pd.tris || null, factor: pd.factor || null, offset: pd.offset || null, scale: pd.kind === "mesh" ? scale || 1 : 1,
-    path, size: body.length, created_at: new Date().toISOString(), by: settings.userName || null };
+    path, size: body.length, dl_size: pd.dlSize || null, created_at: new Date().toISOString(), by: settings.userName || null };
   await ghWriteJSON(settings.githubToken, pmAssetsPath(), arr => [...(arr || []).filter(x => x.id !== id), a], `Modell till Placera i 3D: ${pd.name}`);
   placeAssets.push(a);
   if (pd.kind === "ifc") placeIfcCache.set(id, pd.text); else placeMeshCache.set(id, pd.mesh);
@@ -589,11 +589,11 @@ async function pmFromFile(file) {
     if (file.size > PM_MAX_IFC) throw new Error(`IFC-filen är för stor (${Math.round(file.size / 1048576)} MB, max ${PM_MAX_IFC / 1048576} MB).`);
     const text = await file.text();
     const info = pmIfcInfo(text);
-    return { name, kind: "ifc", source: "Fil", text, ...info };
+    return { name, kind: "ifc", source: "Fil", text, dlSize: file.size, ...info };
   }
   if (file.size > PM_MAX_DOWNLOAD) throw new Error(`Filen är för stor (${Math.round(file.size / 1048576)} MB).`);
   const r = await pmModelFromBuffer(await file.arrayBuffer(), file.name);
-  return { name, kind: "mesh", source: "Fil", ...r };
+  return { name, kind: "mesh", source: "Fil", dlSize: file.size, ...r };
 }
 
 // ---------------------------------------------------------------------
@@ -628,11 +628,12 @@ async function sfImport(uid) {
   if (pick.size > PM_MAX_DOWNLOAD) throw new Error(`Modellen är för stor (${Math.round(pick.size / 1048576)} MB). Välj en enklare modell.`);
   const res = await fetch(pick.url);
   if (!res.ok) throw new Error(`Nedladdningen misslyckades (${res.status}).`);
-  const r = await pmModelFromBuffer(await res.arrayBuffer());
+  const buf = await res.arrayBuffer();
+  const r = await pmModelFromBuffer(buf, dl.glb ? "modell.glb" : "modell.zip");
   let lic = info.license && (info.license.label || info.license.slug || info.license);
   if (!lic) { try { const full = await sfFetch(`/models/${uid}`, false); lic = full.license && (full.license.label || full.license.slug); } catch (e) {} }
   return { name: info.name || "Sketchfab-modell", kind: "mesh", source: "Sketchfab", uid, url: info.viewerUrl || `https://sketchfab.com/3d-models/${uid}`,
-    author: info.user ? info.user.displayName || info.user.username : null, license: typeof lic === "string" ? lic : null, ...r };
+    author: info.user ? info.user.displayName || info.user.username : null, license: typeof lic === "string" ? lic : null, dlSize: pick.size || buf.byteLength, ...r };
 }
 
 // ---------------------------------------------------------------------
@@ -646,6 +647,47 @@ async function pmRun(label, fn) {
   pmState.busy = false; renderPmBrowser();
 }
 function pmFmt(n) { return Number(n || 0).toLocaleString("sv-SE"); }
+/* Filstorlek i läsbar form: "850 kB", "3,2 MB". */
+function pmBytes(n) {
+  n = Number(n) || 0;
+  if (!n) return "";
+  if (n < 1048576) return `${Math.max(1, Math.round(n / 1024))} kB`;
+  return `${(n / 1048576).toLocaleString("sv-SE", { maximumFractionDigits: n < 10485760 ? 1 : 0 })} MB`;
+}
+/* Ett sökresultat från Sketchfab som kort: bild, namn, storlek och trianglar direkt, resten under "Mer info". */
+function pmCardHtml(r, esc) {
+  const th = ((r.thumbnails && r.thumbnails.images) || []).filter(i => i.width >= 150).sort((a, b) => a.width - b.width)[0];
+  const lic = r.license && (r.license.label || r.license);
+  const ar = r.archives || {}, arc = ar.glb || ar.gltf || null;
+  const size = arc && arc.size, tris = (arc && arc.faceCount) || r.faceCount, verts = (arc && arc.vertexCount) || r.vertexCount;
+  const heavy = size > 30 * 1048576 || tris > 100000;
+  const date = r.publishedAt ? String(r.publishedAt).slice(0, 10) : "";
+  const tags = (r.tags || []).map(t => t.name || t.slug || t).filter(x => typeof x === "string").slice(0, 10);
+  const cats = (r.categories || []).map(c => c.name || c.slug || c).filter(x => typeof x === "string");
+  let desc = String(r.description || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  if (desc.length > 400) desc = desc.slice(0, 400).replace(/\s+\S*$/, "") + " …";
+  const row = (k, v) => v || v === 0 ? `<dt>${k}</dt><dd>${v}</dd>` : "";
+  const facts = [
+    row("Nedladdning", size ? `${pmBytes(size)} (${ar.glb ? "GLB" : "glTF"})` : "okänd storlek"),
+    row("Trianglar", tris ? pmFmt(tris) : ""),
+    row("Hörn", verts ? pmFmt(verts) : ""),
+    row("Texturer", arc && arc.textureCount ? `${arc.textureCount} st${arc.textureMaxResolution ? `, max ${arc.textureMaxResolution} px` : ""} (blir medelfärg i IFC)` : ""),
+    row("Animerad", r.animationCount ? `ja (${r.animationCount}) – bara första läget följer med` : ""),
+    row("Licens", typeof lic === "string" ? esc(lic) : ""),
+    row("Upphov", esc((r.user && (r.user.displayName || r.user.username)) || "")),
+    row("Publicerad", date),
+    row("Populär", r.likeCount || r.viewCount ? `${pmFmt(r.likeCount)} gillar · ${pmFmt(r.viewCount)} visningar` : ""),
+    row("Kategori", esc(cats.join(", "))),
+    row("Taggar", esc(tags.join(", "))),
+  ].join("");
+  return `<div class="pm-card">${th ? `<img src="${esc(th.url)}" alt="" loading="lazy" />` : `<div class="pm-noimg"></div>`}
+    <div class="pm-cn" title="${esc(r.name)}">${esc(r.name)}</div>
+    <div class="pm-key"><b class="${heavy ? "pm-heavy" : ""}" title="${heavy ? "Tung modell – kan ta tid att hämta och göra Trimble Connect långsamt" : "Nedladdningsstorlek"}">${size ? pmBytes(size) : "? MB"}</b>${tris ? ` · ${pmFmt(tris)} tri` : ""}</div>
+    <div class="hint pm-by">${esc((r.user && (r.user.displayName || r.user.username)) || "")}${typeof lic === "string" ? ` · ${esc(lic)}` : ""}</div>
+    <details class="pm-more"><summary>Mer info</summary><dl>${facts}</dl>${desc ? `<p class="pm-desc">${esc(desc)}</p>` : ""}
+      ${r.viewerUrl ? `<a href="${esc(r.viewerUrl)}" target="_blank" rel="noopener">Öppna på Sketchfab (3D-förhandsvisning)</a>` : ""}</details>
+    <button type="button" data-sf-uid="${esc(r.uid)}">Hämta</button></div>`;
+}
 function renderPmBrowser() {
   const box = document.getElementById("placeModelBrowser");
   if (!box) return;
@@ -658,8 +700,8 @@ function renderPmBrowser() {
     const b = pd.bbox, d = j => Math.round((b.max[j] - b.min[j]) * 100) / 100;
     body = `<div class="pm-confirm">
       <label>Namn<input type="text" id="pmName" value="${esc(pd.name)}" /></label>
-      <div class="hint">${pd.kind === "ifc" ? `IFC-fil · ungefär ${d(0)} × ${d(1)} × ${d(2)} m · ${pmFmt(pd.products)} objekt${pd.offset && pd.offset.some(v => v) ? " · filen ligger långt från origo – dess mitt placeras i punkten" : ""}`
-        : `${pmFmt(pd.tris)} trianglar · ${d(0)} × ${d(1)} × ${d(2)} m i filen${pd.author ? ` · av ${esc(pd.author)}` : ""}${pd.license ? ` · ${esc(pd.license)}` : ""}`}</div>
+      <div class="hint">${pd.kind === "ifc" ? `IFC-fil${pd.dlSize ? ` (${pmBytes(pd.dlSize)})` : ""} · ungefär ${d(0)} × ${d(1)} × ${d(2)} m · ${pmFmt(pd.products)} objekt${pd.offset && pd.offset.some(v => v) ? " · filen ligger långt från origo – dess mitt placeras i punkten" : ""}`
+        : `${pd.dlSize ? `${pmBytes(pd.dlSize)} · ` : ""}${pmFmt(pd.tris)} trianglar · ${d(0)} × ${d(1)} × ${d(2)} m i filen${pd.author ? ` · av ${esc(pd.author)}` : ""}${pd.license ? ` · ${esc(pd.license)}` : ""}`}</div>
       ${pd.kind === "mesh" ? `<label>Höjd i verkligheten (m)<input type="number" step="0.1" id="pmHeight" value="${d(2)}" title="Modeller från nätet har ofta fel skala – ange hur hög den ska vara" /></label>` : ""}
       <div class="row"><button type="button" id="pmAccept" class="primary">Lägg till och placera</button><button type="button" id="pmReject">Avbryt</button></div>
     </div>`;
@@ -670,14 +712,7 @@ function renderPmBrowser() {
       </div>`;
     else body = `<div class="pm-who hint">Inloggad på Sketchfab${pmState.me ? ` som <b>${esc(pmState.me.displayName || pmState.me.username || "")}</b>` : ""} · <a href="#" id="pmLogout">Logga ut</a></div>
       <div class="row"><input type="search" id="pmQuery" value="${esc(pmState.q)}" placeholder="Sök modell, t.ex. tornkran, bod, grävmaskin" style="flex:1" /><button type="button" id="pmSearch" class="primary">Sök</button></div>
-      <div class="pm-grid">${pmState.results.map(r => {
-        const th = ((r.thumbnails && r.thumbnails.images) || []).filter(i => i.width >= 150).sort((a, b) => a.width - b.width)[0];
-        const lic = r.license && (r.license.label || r.license);
-        return `<div class="pm-card">${th ? `<img src="${esc(th.url)}" alt="" loading="lazy" />` : `<div class="pm-noimg"></div>`}
-          <div class="pm-cn" title="${esc(r.name)}">${esc(r.name)}</div>
-          <div class="hint">${esc((r.user && (r.user.displayName || r.user.username)) || "")}${r.faceCount ? ` · ${pmFmt(r.faceCount)} tri` : ""}${typeof lic === "string" ? ` · ${esc(lic)}` : ""}</div>
-          <button type="button" data-sf-uid="${esc(r.uid)}">Hämta</button></div>`;
-      }).join("")}</div>
+      <div class="pm-grid">${pmState.results.map(r => pmCardHtml(r, esc)).join("")}</div>
       ${pmState.next ? `<button type="button" id="pmMore">Visa fler</button>` : ""}`;
   } else {
     body = `<div class="pm-drop" id="pmDrop">
@@ -691,7 +726,7 @@ function renderPmBrowser() {
       </ul>`;
   }
   const lib = placeAssets.length ? `<details class="pm-lib"><summary>Biblioteket (${placeAssets.length})</summary>${placeAssets.map(a =>
-    `<div class="pm-libr"><span>${esc(a.name)}</span><span class="hint">${a.kind === "ifc" ? "IFC" : `${pmFmt(a.tris)} tri`}${a.author ? ` · ${esc(a.author)}` : ""}${a.license ? ` · ${esc(a.license)}` : ""}</span></div>`).join("")}</details>` : "";
+    `<div class="pm-libr"><span>${esc(a.name)}</span><span class="hint">${a.kind === "ifc" ? "IFC" : `${pmFmt(a.tris)} tri`}${a.dl_size || a.size ? ` · ${pmBytes(a.dl_size || a.size)}` : ""}${a.author ? ` · ${esc(a.author)}` : ""}${a.license ? ` · ${esc(a.license)}` : ""}</span></div>`).join("")}</details>` : "";
   box.innerHTML = `<div class="pm-head"><b>Hämta modell</b>
       <span class="pm-tabs"><button type="button" data-pmtab="sketchfab" class="${pmState.tab === "sketchfab" ? "active" : ""}">Sketchfab</button><button type="button" data-pmtab="file" class="${pmState.tab === "file" ? "active" : ""}">Från fil</button></span>
       <button type="button" id="pmClose" title="Stäng">✕</button></div>
