@@ -221,6 +221,7 @@ function l3Dom() {
         <div id="v3PalList" class="v3-paltab ${P.palTab === "list" ? "" : "hidden"}">
           <input type="search" id="v3ObjSearch" placeholder="Sök i etableringen…" />
           <div id="v3ObjList"></div>
+          <button type="button" id="v3ObjCsv" class="v3-wide" title="Lista över etableringen som öppnas i Excel (namn, typ, mått, läge, 4D)">Exportera lista (Excel/CSV)</button>
           <div class="v3-pal-hint">Klicka = markera (Skift = flera), dubbelklick = zooma, ögat = dölj/visa, gruppnamnet = markera hela gruppen.</div>
         </div>
       </div>
@@ -257,6 +258,7 @@ function l3Dom() {
   dd("v3ViewsBtn", "v3Views");
   const svSave = () => { const inp = $3("v3SvName"); l3SaveView(inp.value); inp.value = ""; };
   $3("v3SvSave").onclick = svSave;
+  $3("v3ObjCsv").onclick = () => l3ExportCsv();
   $3("v3SvName").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); svSave(); } else if (e.key === "Escape") { e.preventDefault(); e.target.blur(); l3HideMenus(); } };
   l3RenderSavedViews(); dd("v3ShowBtn", "v3Show"); dd("v3EditBtn", "v3Edit");
   box.querySelectorAll("[data-v3cmd]").forEach(b => { b.onclick = () => { l3HideMenus(); ({ cspec: () => l3OpenSpecial("copy"), mspec: () => l3OpenSpecial("move"), dup: l3DuplicateSel, copy: l3CopySel, paste: () => l3Paste(), drop: l3DropSel, del: l3DeleteSel, all: () => l3SelectIds(placements.filter(p => !l3.hidden.has(p.id)).map(p => p.id)), similar: l3SelectSimilar, hide: l3HideSel, iso: l3Isolate, showall: l3ShowAll, clash: l3OpenClash })[b.dataset.v3cmd](); }; });

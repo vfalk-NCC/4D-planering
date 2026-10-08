@@ -83,6 +83,20 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (await page.locator('.v3-label', { hasText: /^A$/ }).count()) fail('Dolt objekt ska inte ha etikett');
   await page.evaluate(() => l3ShowAll());
 
+  // --- Lista till Excel (CSV): semikolon, decimalkomma, BOM, formler neutraliseras.
+  await page.evaluate(() => { placements.find(p => p.id === 'e').name = '=SUMMA(A1)'; });
+  await page.evaluate(() => l3PalTab('list'));
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#v3ObjCsv')]);
+  const csv = fs.readFileSync(await dl.path(), 'utf8');
+  if (!dl.suggestedFilename().endsWith('.csv') || csv.charCodeAt(0) !== 0xfeff) fail('CSV med BOM: ' + dl.suggestedFilename());
+  const lines = csv.slice(1).trim().split('\r\n');
+  if (lines.length !== 9 || !lines[0].startsWith('Namn;Typ;Längd (m)')) fail('CSV-rader: ' + lines.length + ' ' + lines[0]);
+  const la = lines.find(l => l.startsWith('A;'));
+  if (!la || !la.includes(';6;2;2;') || !la.includes('6512320;150110')) fail('Rad A: ' + la);
+  if (!lines.some(l => l.startsWith("'=SUMMA(A1);"))) fail('Formel ska neutraliseras');
+  if (!lines.find(l => l.startsWith('B;')).includes('2019-12-01') || !lines.find(l => l.startsWith('B;')).endsWith('Ej på plats')) fail('Rad B: 4D');
+  await page.evaluate(() => { placements.find(p => p.id === 'e').name = 'E'; });
+
   const pairs = () => page.evaluate(() => l3ClashRes.map(c => [c.a, c.b].sort().join('-')).sort());
   await page.click('#v3EditBtn'); await page.click('[data-v3cmd="clash"]');
   await page.click('#v3ClashGo'); await page.waitForTimeout(100);

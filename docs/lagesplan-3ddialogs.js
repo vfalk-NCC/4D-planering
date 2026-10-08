@@ -435,6 +435,31 @@ function l3RenderObjList() {
   host.querySelectorAll("[data-olbm]").forEach(c => { c.onchange = () => { l3bShow(c.dataset.olbm, c.checked); l3Render(); }; });
 }
 
+/* Lista över etableringen (som Teklas rapporter): CSV som Excel öppnar direkt (semikolon, decimalkomma,
+   UTF-8 med BOM). Bara det som syns i listan (sökningen) – eller allt. Ändrar ingenting. */
+function l3CsvRows() {
+  const q = ((document.getElementById("v3ObjSearch") || {}).value || "").trim().toLowerCase();
+  const byId = new Map((typeof items !== "undefined" ? items : []).map(r => [r.id, r]));
+  const n = v => v === "" || v == null || !Number.isFinite(Number(v)) ? "" : String(Math.round(Number(v) * 1000) / 1000).replace(".", ",");
+  const head = ["Namn", "Typ", "Längd (m)", "Bredd (m)", "Höjd (m)", "Räckvidd (m)", "Staketlängd (m)", "X", "Y", "Z", "Över ytan (m)", "Vridning (°)", "Start", "Slut", "Aktivitet", "Status på datumet"];
+  const rows = placements.filter(p => { const l = placeLib(p.type) || { label: p.type }; return !q || `${p.name} ${l.label}`.toLowerCase().includes(q); }).map(p => {
+    const l = placeLib(p.type) || { label: p.type }, r = p.itemId ? byId.get(p.itemId) : null;
+    const fl = l.fence ? (p.pts || []).reduce((s, q2, i, a) => i ? s + Math.hypot(q2[0] - a[i - 1][0], q2[1] - a[i - 1][1]) : 0, 0) : "";
+    return [p.name || "", l.label || p.type, l.fence || l.isModel ? "" : n(p.L), l.fence || l.isModel ? "" : n(p.B), n(p.H), l.R != null ? n(p.R) : "", n(fl), n(p.x), n(p.y), n(p.z), n(p.dz), l.fence ? "" : n(p.rot),
+      p.start || "", p.end || "", r ? [r.object_name, r.activity].filter(Boolean).join(" · ") : "", l3PlaceOnDate(p) ? "På plats" : "Ej på plats"];
+  });
+  return [head, ...rows];
+}
+function l3ExportCsv() {
+  const rows = l3CsvRows();
+  if (rows.length < 2) { l3Status("Ingen etablering att lista."); return; }
+  const cell = v => { v = String(v ?? ""); if (/^[=+@]|^-[^0-9]/.test(v)) v = "'" + v; /* aldrig en formel i Excel */ return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
+  const csv = "\ufeff" + rows.map(r => r.map(cell).join(";")).join("\r\n") + "\r\n";
+  const name = `Etablering ${(typeof projectName !== "undefined" && projectName) || ""} ${$("dateInput").value || todayIso()}.csv`.replace(/\s+/g, " ").replace(/[\\/:*?"<>|]/g, "");
+  downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), name);
+  l3Status(`Listan med ${rows.length - 1} objekt är nedladdad (${name}).`);
+}
+
 // ---------------------------------------------------------------------
 // Markera alla av samma typ
 // ---------------------------------------------------------------------
@@ -466,7 +491,7 @@ function l3Commands() {
     ["Planerade objekt: lådor", "", () => l3SetObjMode("solid")], ["Planerade objekt: genomskinliga", "", () => l3SetObjMode("ghost")], ["Planerade objekt: konturer", "", () => l3SetObjMode("edges")], ["Planerade objekt: dolda", "", () => l3SetObjMode("hidden")],
     ["Fäst mot hörn av/på", "", () => l3ToggleSnap("end")], ["Fäst mot mittpunkter av/på", "", () => l3ToggleSnap("mid")], ["Fäst mot kanter av/på", "", () => l3ToggleSnap("edge")],
     ["Fäst mot axlar av/på", "", () => l3ToggleSnap("axis")], ["Orto av/på", "O", () => l3ToggleSnap("ortho")], ["Rutnät av/på", "G", () => l3ToggleSnap("grid")],
-    ["Objektlistan", "", () => l3PalTab("list")], ["Biblioteket (lägg till)", "", () => l3PalTab("add")],
+    ["Objektlistan", "", () => l3PalTab("list")], ["Exportera lista (Excel/CSV)", "", l3ExportCsv], ["Biblioteket (lägg till)", "", () => l3PalTab("add")],
     ["Spara som IFC i Trimble Connect", "", l3SaveIfc], ["Hjälp och kortkommandon", "?", () => document.getElementById("v3HelpBtn").click()], ["Tillbaka till 2D", "", close3d],
   ];
   C.push(["Spara vy…", "", () => { document.getElementById("v3ViewsBtn").click(); setTimeout(() => document.getElementById("v3SvName").focus(), 0); }]);
