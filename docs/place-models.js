@@ -401,6 +401,87 @@ async function pmObjToMesh(text, resolve) {
   return B.finish();
 }
 
+/* Förenklad konturbild till förhandsvisningen (Trimble Connect laggar av många linjer): modellens
+   skarpa kanter (vinkel > 35° eller öppen kant) slås ihop till raka linjer där de fortsätter i samma
+   riktning, och de längsta får plats – för en kran blir det mastens och bommens hörnlinjer.
+   Returnerar [[a, b], …] i meter (lokalt, skala 1), högst max linjer. */
+function pmOutline(mesh, bbox, max = 36) {
+  const vid = new Map(), V = [];
+  const vtx = (x, y, z) => { const k = x + "," + y + "," + z; let i = vid.get(k); if (i === undefined) { i = V.length / 3; vid.set(k, i); V.push(x, y, z); } return i; };
+  const edges = new Map(); // a*2^21+b -> [nx,ny,nz, antal, skarp]
+  const COS = Math.cos(35 * Math.PI / 180);
+  for (const part of mesh.parts) {
+    const P = part.p, I = part.i, loc = new Map();
+    const id = j => { let g = loc.get(j); if (g === undefined) { g = vtx(P[j * 3], P[j * 3 + 1], P[j * 3 + 2]); loc.set(j, g); } return g; };
+    for (let t = 0; t + 2 < I.length; t += 3) {
+      const a = id(I[t]), b = id(I[t + 1]), c = id(I[t + 2]);
+      if (a === b || b === c || a === c) continue;
+      const ux = V[b * 3] - V[a * 3], uy = V[b * 3 + 1] - V[a * 3 + 1], uz = V[b * 3 + 2] - V[a * 3 + 2];
+      const wx = V[c * 3] - V[a * 3], wy = V[c * 3 + 1] - V[a * 3 + 1], wz = V[c * 3 + 2] - V[a * 3 + 2];
+      let nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+      const l = Math.hypot(nx, ny, nz); if (!l) continue;
+      nx /= l; ny /= l; nz /= l;
+      for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+        const k = Math.min(u, v) * 2097152 + Math.max(u, v);
+        const e = edges.get(k);
+        if (!e) edges.set(k, [nx, ny, nz, 1, 0]);
+        else { e[3]++; if (Math.abs(e[0] * nx + e[1] * ny + e[2] * nz) < COS) e[4] = 1; }
+      }
+    }
+  }
+  const adj = new Map(), feat = [];
+  edges.forEach((e, k) => {
+    if (e[3] !== 1 && !e[4] && e[3] <= 2) return;
+    const a = Math.floor(k / 2097152), b = k % 2097152, idx = feat.length;
+    feat.push([a, b]);
+    for (const v of [a, b]) { if (!adj.has(v)) adj.set(v, []); adj.get(v).push(idx); }
+  });
+  const dir = (a, b) => { const d = [V[b * 3] - V[a * 3], V[b * 3 + 1] - V[a * 3 + 1], V[b * 3 + 2] - V[a * 3 + 2]], l = Math.hypot(...d) || 1; return d.map(x => x / l); };
+  const used = new Uint8Array(feat.length), lines = [];
+  for (let i = 0; i < feat.length; i++) {
+    if (used[i]) continue;
+    used[i] = 1;
+    let [s0, e0] = feat[i];
+    const d = dir(s0, e0);
+    const grow = (end, sign) => {
+      for (;;) {
+        const next = (adj.get(end) || []).find(j => { if (used[j]) return false; const [p, q] = feat[j], o = p === end ? q : p, dd = dir(end, o); return (dd[0] * d[0] + dd[1] * d[1] + dd[2] * d[2]) * sign > 0.999; });
+        if (next === undefined) return end;
+        used[next] = 1; const [p, q] = feat[next]; end = p === end ? q : p;
+      }
+    };
+    e0 = grow(e0, 1); s0 = grow(s0, -1);
+    const len = Math.hypot(V[e0 * 3] - V[s0 * 3], V[e0 * 3 + 1] - V[s0 * 3 + 1], V[e0 * 3 + 2] - V[s0 * 3 + 2]);
+    lines.push({ a: s0, b: e0, len, d });
+  }
+  lines.sort((x, y) => y.len - x.len);
+  const diag = bbox ? Math.hypot(bbox.max[0] - bbox.min[0], bbox.max[1] - bbox.min[1], bbox.max[2] - bbox.min[2]) * 1000 : 1e4;
+  const near = Math.max(300, diag * 0.03), out = [];
+  for (const L of lines) {
+    if (out.length >= max || L.len < diag * 0.02) break;
+    const m = [(V[L.a * 3] + V[L.b * 3]) / 2, (V[L.a * 3 + 1] + V[L.b * 3 + 1]) / 2, (V[L.a * 3 + 2] + V[L.b * 3 + 2]) / 2];
+    // Hoppa över nästan likadana linjer (parallella och nära varandra, t.ex. rörens båda sidor).
+    if (out.some(o => Math.abs(o.d[0] * L.d[0] + o.d[1] * L.d[1] + o.d[2] * L.d[2]) > 0.98 && Math.hypot(o.m[0] - m[0], o.m[1] - m[1], o.m[2] - m[2]) < near)) continue;
+    out.push({ ...L, m });
+  }
+  const pt = v => [Math.round(V[v * 3] / 10) / 100, Math.round(V[v * 3 + 1] / 10) / 100, Math.round(V[v * 3 + 2] / 10) / 100];
+  return out.map(L => [pt(L.a), pt(L.b)]);
+}
+/* Konturbild till äldre modeller i biblioteket (hämtade innan den fanns): räknas fram en gång och sparas. */
+const pmOutlineBusy = new Set();
+async function placeEnsureOutline(a) {
+  if (!a || a.kind !== "mesh" || a.outline || pmOutlineBusy.has(a.id)) return;
+  pmOutlineBusy.add(a.id);
+  try {
+    let mesh = placeMeshCache.get(a.id);
+    if (!mesh) { mesh = await pmReadAssetFile(a); placeMeshCache.set(a.id, mesh); }
+    a.outline = pmOutline(mesh, a.bbox);
+    placeRedraw();
+    await ghWriteJSON(settings.githubToken, pmAssetsPath(), arr => (arr || []).map(x => (x.id === a.id ? { ...x, outline: a.outline } : x)), `Konturbild för modellen ${a.name}`);
+  } catch (e) { console.warn("Konturbild", e); }
+  finally { pmOutlineBusy.delete(a.id); }
+}
+
 /* Minimal zip-läsare (Sketchfabs glTF-zip): namn -> () => ArrayBuffer. */
 async function pmUnzip(buf) {
   const dv = new DataView(buf);
@@ -576,7 +657,7 @@ async function pmSaveAsset(pd, scale) {
   await ghUploadBinary(settings.githubToken, path, new File([body], path.split("/").pop()), `Modell till Placera i 3D: ${pd.name}`);
   const a = { id, name: pd.name, kind: pd.kind, source: pd.source, uid: pd.uid || null, url: pd.url || null, author: pd.author || null, license: pd.license || null,
     bbox: pd.bbox, tris: pd.tris || null, factor: pd.factor || null, offset: pd.offset || null, scale: pd.kind === "mesh" ? scale || 1 : 1,
-    path, size: body.length, dl_size: pd.dlSize || null, created_at: new Date().toISOString(), by: settings.userName || null };
+    path, size: body.length, dl_size: pd.dlSize || null, outline: pd.kind === "mesh" ? pmOutline(pd.mesh, pd.bbox) : null, created_at: new Date().toISOString(), by: settings.userName || null };
   await ghWriteJSON(settings.githubToken, pmAssetsPath(), arr => [...(arr || []).filter(x => x.id !== id), a], `Modell till Placera i 3D: ${pd.name}`);
   placeAssets.push(a);
   if (pd.kind === "ifc") placeIfcCache.set(id, pd.text); else placeMeshCache.set(id, pd.mesh);

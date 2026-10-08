@@ -1230,3 +1230,10 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .pm-more dd { margin: 0; overflow-wrap: anywhere; }
 .pm-desc { margin: 4px 0; color: #374151; white-space: normal; }
 .pm-grid { align-items: start; }
+.place-nudge { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-top: 6px; }
+.place-nudge button { padding: 3px 7px; min-width: 34px; }
+.place-nudge select { padding: 2px 4px; }
+.place-inl { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--muted); }
+.place-inl input { width: 56px; }
+.place-keys { font-size: 10px; margin-top: 2px; }
+@media (hover: none) { .place-keys { display: none; } }

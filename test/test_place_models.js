@@ -134,13 +134,14 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   await page.click('#pmAccept'); await wait(800);
   let assets = get('plan_models.json');
   if (!assets || assets.length !== 1 || assets[0].scale !== 2 || assets[0].author !== 'Modellare' || assets[0].source !== 'Sketchfab') fail('Modellen ska sparas i biblioteket med skala 2: ' + JSON.stringify(assets));
+  if (!Array.isArray(assets[0].outline) || assets[0].outline.length !== 15) fail('Konturbilden ska vara kubens 12 kanter + triangelns 3: ' + JSON.stringify(assets[0].outline));
   const meshFile = store.get(assets[0].path);
   if (!meshFile || JSON.parse(meshFile.content).parts.length !== 2) fail('Geometrin ska sparas som egen fil med två färger');
   if (!(await page.locator('.place-mode').innerText()).includes('Tryck i modellen')) fail('Efter hämtning ska man direkt kunna placera');
   await pick(50, 60, 1); await wait(400);
   let m = await shown();
   const xs = m.flatMap(l => [l.start.positionX, l.end.positionX]), zs = m.flatMap(l => [l.start.positionZ, l.end.positionZ]);
-  if (m.length !== 12 || Math.round(Math.min(...xs)) !== 48000 || Math.round(Math.max(...xs)) !== 52000 || Math.round(Math.max(...zs)) !== 13000) fail('Modellen ska förhandsvisas som en låda 4×4×12 m: ' + m.length);
+  if (m.length !== 19 || Math.round(Math.min(...xs)) !== 48000 || Math.round(Math.max(...xs)) !== 52000 || Math.round(Math.max(...zs)) !== 13000) fail('Modellen ska förhandsvisas som konturbild (kubens 12 kanter) + fotavtryck, 4×4×12 m: ' + m.length);
 
   // --- IFC från fil (millimeter): rektangel 1000×2000, 3000 hög
   const ifc = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');", "FILE_NAME('a.ifc','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));", "ENDSEC;", "DATA;",

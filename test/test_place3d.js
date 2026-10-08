@@ -115,6 +115,35 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   if ((await st()).list[0].rot !== 90) fail('Rikta mot kant ska ge 90°, fick ' + (await st()).list[0].rot);
   await page.fill('[data-pf="dz"]', '0.5'); await wait(50);
 
+  // Finjustering: knappar (steg 0,5 m) och tangentbord (bara i Design, inte i fält).
+  await page.click('[data-nudge="1,0,0"]'); await page.click('[data-nudge="0,1,0"]'); await page.click('[data-nudge="0,0,1"]');
+  await page.click('[data-nudge-rot="1"]');
+  s = await st();
+  if (s.list[0].x !== 100.5 || s.list[0].y !== 200.5 || s.list[0].dz !== 1 || s.list[0].rot !== 91) fail('Finjusteringsknapparna: ' + JSON.stringify(s.list[0]));
+  await page.selectOption('#placeStepSel', '0.1');
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.keyboard.press('ArrowLeft'); await page.keyboard.press('ArrowDown'); await page.keyboard.press('PageDown'); await page.keyboard.press(','); await page.keyboard.press('Shift+ArrowLeft');
+  s = await st();
+  if (s.list[0].x !== 99.4 || s.list[0].y !== 200.4 || s.list[0].dz !== 0.9 || s.list[0].rot !== 90) fail('Piltangenterna: ' + JSON.stringify(s.list[0]));
+  await page.click('[data-pf="name"]'); await page.keyboard.press('ArrowLeft');
+  if ((await st()).list[0].x !== 99.4) fail('Pilar i ett textfält ska inte flytta objektet');
+  // En följd av finjusteringar (utan paus) är ett enda steg i ångra.
+  await page.click('#placeUndo'); await wait(50);
+  s = await st();
+  if (s.list[0].x !== 100 || s.list[0].y !== 200 || s.list[0].dz !== 0.5 || s.list[0].rot !== 90) fail('Ångra ska ta tillbaka hela finjusteringen: ' + JSON.stringify(s.list[0]));
+  if (!(await page.locator('#placeStepSel').count())) await page.click('.place-row:nth-child(1)');
+
+  // Kopiera: 2 kopior längs (rot 90° = längs Y), 10,5 m isär.
+  if (await page.locator('#placeArrD').inputValue() !== '10.5') fail('Avståndet ska föreslås som längden + 0,5 m');
+  await page.fill('#placeArrN', '2');
+  await page.click('#placeCopy'); await wait(50);
+  s = await st();
+  const cps = s.list.filter(p => p.type === 'bod');
+  if (cps.length !== 3 || Math.abs(cps[1].y - 210.5) > 1e-6 || Math.abs(cps[2].y - 221) > 1e-6 || Math.abs(cps[1].x - 100) > 1e-6 || cps[1].name !== 'Bod 2' || cps[2].name !== 'Bod 3') fail('Kopiorna: ' + JSON.stringify(cps.map(p => [p.name, p.x, p.y, p.itemId])));
+  await page.click('#placeUndo'); await wait(50);
+  if ((await st()).list.length !== 1) fail('Ångra ska ta bort kopiorna');
+  if (!(await page.locator('[data-pf="itemId"]').count())) await page.click('.place-row:nth-child(1)');
+
   // 4D-koppling: aktivitet ger start/slut.
   await page.selectOption('[data-pf="itemId"]', 'a'); await wait(50);
   s = await st();
@@ -160,7 +189,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   if (!after.some(p => p.id === 'kollega') || !after.some(p => p.name === 'Kran A')) fail('Sparningen ska slå ihop med kollegans ändringar');
 
   // IFC: uppladdning fångas.
-  await page.evaluate(() => { window.__up = []; window.tcUploadFiles = async (files, folder) => { for (const f of files) window.__up.push({ name: f.name, folder, text: await f.text() }); return { uploaded: files.length }; }; });
+  await page.evaluate(() => { window.__up = []; window.__fid = 0; window.tcUploadFiles = async (files, folder) => { const out = []; for (const f of files) { window.__up.push({ name: f.name, folder, text: await f.text() }); out.push({ name: f.name, res: { id: 'file-' + (++window.__fid) } }); } return { uploaded: files.length, files: out }; }; });
   await page.click('#placeSaveIfc'); await wait(1500);
   let up = await page.evaluate(() => window.__up);
   if (up.length !== 1 || up[0].folder !== '4D Etablering' || !up[0].name.endsWith('.ifc')) fail('IFC ska laddas upp till 4D Etablering: ' + JSON.stringify(up.map(u => [u.name, u.folder])));
@@ -178,6 +207,14 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   await page.click('#placeSaveIfc'); await wait(1500);
   up = await page.evaluate(() => window.__up);
   if (JSON.stringify(proxies(up[1].text)) !== JSON.stringify(g1)) fail('IFC-id:n ska vara desamma i nästa version');
+  // 4D: boden (kopplad till aktivitet a) blir ett 3D-objekt i aktiviteten, i den nya filen – utan dubbletter.
+  const bodGuid = await page.evaluate(() => placeGuid(placements.find(p => p.type === 'bod').id, ''));
+  const rowsNow = get('plan_items.json').filter(r => r.object_id === bodGuid);
+  if (rowsNow.length !== 1 || rowsNow[0].model_id !== 'file-2' || rowsNow[0].activity !== 'Borrning') fail('4D-kopplingen ska följa med till den nya filen: ' + JSON.stringify(rowsNow));
+  if (get('plan_items.json').length !== 3) fail('Bara en ny rad i planeringen: ' + get('plan_items.json').length);
+  const tog = await page.evaluate(() => window.__toggled);
+  if (JSON.stringify(tog) !== JSON.stringify([['file-1', true], ['file-2', true], ['file-1', false]])) fail('Den nya filen ska tändas och den förra släckas: ' + JSON.stringify(tog));
+  if (!(await page.locator('#placeStatus').innerText()).includes('kopplat till sina aktiviteter')) fail('Statusen ska berätta om 4D-kopplingen');
   if (up[1].name === up[0].name || !/ \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(up[1].name)) fail('Varje sparning ska bli en ny fil med datum och klockslag: ' + up[0].name + ' / ' + up[1].name);
 
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));

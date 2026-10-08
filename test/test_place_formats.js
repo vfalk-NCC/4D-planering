@@ -169,7 +169,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   if (await page.locator('#pmName').inputValue() !== 'Bod') fail('Namnet ska komma från filen');
   await page.click('#pmAccept'); await page.waitForTimeout(800);
   await pick(10, 20, 0); await page.waitForTimeout(400);
-  if ((await shown()).length !== 12) fail('Den hämtade modellen ska förhandsvisas som en låda');
+  if ((await shown()).length !== 16) fail('Den hämtade modellen ska förhandsvisas som konturbild + fotavtryck, fick ' + (await shown()).length);
 
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_place_formats');

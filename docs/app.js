@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-08 22:11";
+const APP_VERSION = "2026-10-08 22:26";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -455,12 +455,14 @@ async function tcUploadFilesInner(files, folderName) {
   if (!folder) {
     folder = await j(await fetch(`${base}/folders`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ name: folderName, parentId: rootId }) }), "Skapa mappen");
   }
+  const done = [];
   for (const f of files) {
     showLagesplanBanner(`Laddar upp ${f.name} (${f.size < 1048576 ? Math.max(1, Math.round(f.size / 1024)) + " kB" : (f.size / 1048576).toFixed(0) + " MB"}) till Trimble Connect…`);
-    await tcUploadOne(base, H, j, folder.id, f);
+    done.push({ name: f.name, res: await tcUploadOne(base, H, j, folder.id, f) });
   }
   showLagesplanBanner(`✓ ${files.length} filer sparade i Trimble Connect (${folderName}).`, 6000);
-  return { uploaded: files.length, folder: folderName };
+  // files: svaret från commit per fil (id m.m.), t.ex. för att tända filen i 3D-vyn.
+  return { uploaded: files.length, folder: folderName, files: done };
 }
 
 /* En fil till en mapp i Trimble Connect (Victors rapport 2026-10-06: exporterna hamnade inte i

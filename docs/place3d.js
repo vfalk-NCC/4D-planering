@@ -128,6 +128,15 @@ function placeSegments(p, full) {
     });
     return segs;
   }
+  const L0 = placeLib(p.type) || {};
+  if (L0.isModel && L0.model && Array.isArray(L0.model.outline) && L0.model.outline.length && parts[0]) {
+    // Egen modell: förenklad konturbild (de längsta raka kanterna, högst ~36 linjer) + fotavtryck.
+    const k = placeScale(p), z = (Number(p.z) || 0) + (Number(p.dz) || 0);
+    const w = q => { const [x, y] = placeToWorld(p, q[0] * k, q[1] * k); return [x, y, z + q[2] * k]; };
+    L0.model.outline.forEach(([a, b]) => segs.push([w(a), w(b)]));
+    ring(parts[0].poly, parts[0].z0);
+    return segs;
+  }
   parts.forEach(pt => {
     if (pt.role === "reach") { ring(pt.poly, pt.z0); return; }
     ring(pt.poly, pt.z0); ring(pt.poly, pt.z1);
@@ -159,6 +168,8 @@ function placePreviewLines() {
 }
 async function placeDrawNow() {
   if (typeof API === "undefined" || !API || !API.markup) return;
+  const am = placeActive() && (placeLib(placeActive().type) || {}).model;
+  if (am && am.kind === "mesh" && !am.outline && typeof placeEnsureOutline === "function") placeEnsureOutline(am);
   const seq = ++placeDrawSeq;
   const lines = placePreviewLines();
   const old = placeShownIds; placeShownIds = [];
@@ -215,6 +226,52 @@ async function placeSaveNow() {
     setPlaceStatus("Kunde inte spara placeringarna: " + e.message + " – försöker igen vid nästa ändring.", true);
   }
 }
+
+/* Flyttar ett objekt (och staketets punkter) dx/dy/dz meter. */
+function placeShift(p, dx, dy, dz = 0) {
+  p.x = placeR3(p.x + dx); p.y = placeR3(p.y + dy);
+  if (dz) p.dz = placeR3((Number(p.dz) || 0) + dz);
+  if (p.pts) p.pts = p.pts.map(a => [placeR3(a[0] + dx), placeR3(a[1] + dy), a[2] || 0]);
+}
+/* Objektets längd längs och tvärs (meter), för kopiornas avstånd. */
+function placeExtent(p) {
+  const l = placeLib(p.type) || {};
+  if (l.isModel) { const b = l.model && l.model.bbox, k = placeScale(p); return b ? [(b.max[0] - b.min[0]) * k, (b.max[1] - b.min[1]) * k] : [1, 1]; }
+  if (l.fence) { const P = p.pts || []; const xs = P.map(q => q[0]), ys = P.map(q => q[1]); return P.length ? [Math.max(...xs) - Math.min(...xs) || 1, Math.max(...ys) - Math.min(...ys) || 1] : [1, 1]; }
+  return [Number(p.L) || 1, Number(p.B) || 1];
+}
+/* n kopior av p i rad, avstånd step meter längs (along) eller tvärs objektet. Returnerar kopiorna. */
+function placeCopies(p, n, step, along = true) {
+  const t = (Number(p.rot) || 0) * Math.PI / 180;
+  const ux = along ? Math.cos(t) : -Math.sin(t), uy = along ? Math.sin(t) : Math.cos(t);
+  const base = p.name.replace(/\s+\d+$/, "");
+  const out = [];
+  for (let i = 1; i <= n; i++) {
+    const c = JSON.parse(JSON.stringify(p));
+    Object.assign(c, { id: ghNewId(), created_at: new Date().toISOString(), by: settings.userName || null });
+    delete c.ifc_at;
+    c.name = `${base} ${placements.filter(x => x.type === p.type).length + out.length + 1}`;
+    placeShift(c, ux * step * i, uy * step * i);
+    out.push(c);
+  }
+  return out;
+}
+let placeNudgeAt = 0;
+/* Finjustering (knappar/piltangenter): ett steg i ångra per sekvens. */
+function placeNudge(dx, dy, dz, drot) {
+  const act = placeActive();
+  if (!act) return;
+  if (Date.now() - placeNudgeAt > 1200) placeSnapshot();
+  placeNudgeAt = Date.now();
+  placeShift(act, dx, dy, dz);
+  if (drot) act.rot = Math.round((((Number(act.rot) || 0) + drot) % 360 + 360) % 360 * 10) / 10;
+  placeTouch(act); placeRedraw();
+  const box = document.getElementById("placePanel");
+  const r = box && box.querySelector('[data-pf="rot"]'); if (r && document.activeElement !== r) r.value = act.rot;
+  const z = box && box.querySelector('[data-pf="dz"]'); if (z && document.activeElement !== z) z.value = act.dz;
+  placeRefreshLight();
+}
+function placeStep() { try { return Number(localStorage.getItem("4dplan-place-step")) || 0.5; } catch (e) { return 0.5; } }
 
 function placeStart(type) {
   if (typeof API === "undefined" || !API || !API.markup) { alert("Trimble Connect stöder inte förhandsvisning i den här vyn."); return; }
@@ -360,8 +417,9 @@ async function placeSaveIfc() {
   const files = [...(r ? [new File([new TextEncoder().encode(r.text)], name, { type: "application/x-step" })] : []), ...extra];
   const n = (r ? r.n : 0) + extra.length;
   setPlaceStatus(`Sparar ${n} objekt som IFC i Trimble Connect…`);
+  let upRes = null;
   try {
-    await tcUploadFiles(files, PLACE_TC_FOLDER);
+    upRes = await tcUploadFiles(files, PLACE_TC_FOLDER);
   } catch (e) {
     // Reserv: en lokal kopia, så att inget arbete går förlorat.
     files.forEach(f => {
@@ -375,9 +433,59 @@ async function placeSaveIfc() {
   const at = new Date().toISOString();
   placements.forEach(p => { if (placeIsNew(p)) { p.ifc_at = at; placeDirty.add(p.id); } });
   await placeSaveNow();
-  setPlaceStatus(`✓ ${n} objekt sparade i mappen "${PLACE_TC_FOLDER}" (${files.map(f => f.name).join(", ")}). Öppna filerna i 3D-vyn för att se dem.`);
+  const etabId = r ? placeUploadedId(upRes, name) : null;
+  const shown = await placeShowUploaded(upRes);
+  const coupled = r && etabId ? await placeCouple4D(etabId) : { n: 0 };
+  setPlaceStatus(`✓ ${n} objekt sparade i mappen "${PLACE_TC_FOLDER}" (${files.map(f => f.name).join(", ")}).${shown ? " Den nya filen visas i 3D-vyn och den förra är släckt." : " Öppna filen i 3D-vyn för att se dem."}${coupled.n ? ` ${coupled.n} ${coupled.n === 1 ? "objekt kopplat" : "objekt kopplade"} till sina aktiviteter (4D).` : ""}`);
   renderPlacePanel(); placeRedraw();
-  return { n, name, files: files.map(f => f.name) };
+  return { n, name, files: files.map(f => f.name), coupled: coupled.n };
+}
+
+/* Trimble Connect-id för en uppladdad fil (från files/fs/commit), eller null. */
+function placeUploadedId(upRes, name) {
+  const f = upRes && Array.isArray(upRes.files) ? upRes.files.find(x => x.name === name) : null;
+  const r = f && f.res;
+  return r ? String(r.id || r.fileId || (r.file && r.file.id) || "") || null : null;
+}
+const placeLastKey = () => `4dplan-place-lastfiles-${projectId}`;
+/* Tänder de nya filerna i 3D-vyn och släcker de som förra sparningen tände (så att objekten inte
+   syns dubbelt). Best-effort: Trimble Connect kan behöva bearbeta filen först. */
+async function placeShowUploaded(upRes) {
+  const ids = (upRes && Array.isArray(upRes.files) ? upRes.files : []).map(f => placeUploadedId(upRes, f.name)).filter(Boolean);
+  if (!ids.length || typeof API === "undefined" || !API || !API.viewer || !API.viewer.toggleModel) return false;
+  let prev = [];
+  try { prev = JSON.parse(localStorage.getItem(placeLastKey()) || "[]"); } catch (e) {}
+  let ok = false;
+  for (const id of ids) { try { await API.viewer.toggleModel(id, true); ok = true; } catch (e) { console.warn("Kunde inte tända", id, e); } }
+  if (ok) for (const id of prev.filter(x => !ids.includes(x))) { try { await API.viewer.toggleModel(id, false); } catch (e) { /* redan släckt/borta */ } }
+  try { localStorage.setItem(placeLastKey(), JSON.stringify(ids)); } catch (e) {}
+  return ok;
+}
+/* 4D: placeringar som är kopplade till en aktivitet kopplas också som 3D-objekt i planeringen
+   (objektets fasta IFC-id i den nya filen), så att de färgas/visas på tidslinjen som andra
+   objekt. Finns kopplingen redan (samma IFC-id) flyttas den bara till den nya filen. */
+async function placeCouple4D(fileId) {
+  if (typeof items === "undefined" || typeof coupleItemToModelObjects !== "function" || typeof isBackendConfigured === "function" && !isBackendConfigured()) return { n: 0 };
+  const todo = placements.filter(p => p.itemId && items.some(it => it.id === p.itemId) && placeParts(p).length &&
+    !(((placeLib(p.type) || {}).model || {}).kind === "ifc"));
+  const move = [];
+  let n = 0;
+  for (const p of todo) {
+    const guid = placeGuid(p.id, "");
+    const row = items.find(it => String(it.objectId) === guid);
+    if (row) { if (row.modelId !== fileId) move.push(row); n++; continue; }
+    await coupleItemToModelObjects(items.find(it => it.id === p.itemId), [{ modelId: fileId, objectId: guid }]);
+    n++;
+  }
+  if (move.length) {
+    const ids = new Set(move.map(r => r.id));
+    move.forEach(r => { r.modelId = fileId; });
+    try {
+      await ghWriteJSON(settings.githubToken, itemsPath(), arr => arr.map(r => (ids.has(r.id) ? { ...r, model_id: fileId } : r)), `Placera i 3D: ${move.length} kopplingar till den nya IFC-filen`);
+    } catch (e) { setPlaceStatus("Kunde inte flytta 4D-kopplingarna till den nya filen: " + e.message, true); }
+    if (typeof renderItemList === "function") renderItemList();
+  }
+  return { n };
 }
 
 // ---------------------------------------------------------------------
@@ -473,6 +581,22 @@ function renderPlacePanel() {
         <label>Start<input type="date" data-pf="start" value="${act.start || ""}" /></label>
         <label>Slut<input type="date" data-pf="end" value="${act.end || ""}" /></label>
       </div>
+      <div class="place-nudge">
+        <span class="place-gl">Finjustera</span>
+        <select id="placeStepSel" title="Steglängd">${[0.1, 0.5, 1, 5].map(v => `<option value="${v}" ${v === placeStep() ? "selected" : ""}>${String(v).replace(".", ",")} m</option>`).join("")}</select>
+        <button type="button" data-nudge="-1,0,0" title="Väster (X−) · ←">X−</button><button type="button" data-nudge="1,0,0" title="Öster (X+) · →">X+</button>
+        <button type="button" data-nudge="0,1,0" title="Norr (Y+) · ↑">Y+</button><button type="button" data-nudge="0,-1,0" title="Söder (Y−) · ↓">Y−</button>
+        <button type="button" data-nudge="0,0,1" title="Upp · Page Up">Upp</button><button type="button" data-nudge="0,0,-1" title="Ned · Page Down">Ned</button>
+        ${L.fence ? "" : `<button type="button" data-nudge-rot="-1" title="Vrid 1° · ,">↺ 1°</button><button type="button" data-nudge-rot="1" title="Vrid 1° · .">↻ 1°</button>`}
+      </div>
+      <div class="hint place-keys">På datorn: piltangenterna flyttar, Page Up/Down höjer/sänker, , och . vrider (Skift = 10 gånger större steg).</div>
+      <div class="place-nudge">
+        <span class="place-gl">Kopiera</span>
+        <label class="place-inl">Antal<input type="number" id="placeArrN" min="1" max="50" step="1" value="1" /></label>
+        <label class="place-inl">Avstånd m<input type="number" id="placeArrD" step="0.1" value="${Math.round((placeExtent(act)[0] + 0.5) * 10) / 10}" /></label>
+        <select id="placeArrDir"><option value="along">längs</option><option value="across">tvärs</option></select>
+        <button type="button" id="placeCopy">Skapa kopior</button>
+      </div>
       <div class="row"><button type="button" id="placeMove">Flytta (tryck ny punkt)</button>
         ${L.fence ? `<button type="button" id="placeFenceMore">Lägg till punkter</button>` : ""}
         <button type="button" id="placeDone">Klar</button>
@@ -521,6 +645,21 @@ function bindPlacePanel(box, act) {
   on("placeAim", () => { placeMode = { kind: "aim" }; renderPlacePanel(); });
   on("placeMove", () => { placeMode = { kind: "move" }; renderPlacePanel(); });
   on("placeFenceMore", () => { placeMode = { kind: "fence", type: act.type, id: act.id }; renderPlacePanel(); });
+  const stepSel = box.querySelector("#placeStepSel");
+  if (stepSel) stepSel.onchange = () => { try { localStorage.setItem("4dplan-place-step", stepSel.value); } catch (e) {} };
+  box.querySelectorAll("[data-nudge]").forEach(b => { b.onclick = () => { const [x, y, z] = b.dataset.nudge.split(",").map(Number), st = placeStep(); placeNudge(x * st, y * st, z * st, 0); }; });
+  box.querySelectorAll("[data-nudge-rot]").forEach(b => { b.onclick = () => placeNudge(0, 0, 0, Number(b.dataset.nudgeRot)); });
+  const arrD = box.querySelector("#placeArrD"), arrDir = box.querySelector("#placeArrDir");
+  if (arrDir) arrDir.onchange = () => { const e = placeExtent(act); arrD.value = Math.round(((arrDir.value === "along" ? e[0] : e[1]) + 0.5) * 10) / 10; };
+  on("placeCopy", () => {
+    const n = Math.max(1, Math.min(50, Math.round(placeNum(box.querySelector("#placeArrN").value, 1))));
+    const d = placeNum(arrD.value, placeExtent(act)[0] + 0.5);
+    placeSnapshot();
+    const cs = placeCopies(act, n, d, arrDir.value === "along");
+    placements.push(...cs); cs.forEach(placeTouch);
+    setPlaceStatus(`${n} ${n === 1 ? "kopia" : "kopior"} av "${act.name}" skapade.`);
+    renderPlacePanel(); placeRedraw();
+  });
   on("placeDone", () => { placeActiveId = null; placeMode = null; renderPlacePanel(); placeRedraw(); });
   on("placeDelete", () => {
     const ifcFile = ((placeLib(act.type) || {}).model || {}).kind === "ifc" && act.ifc_at;
@@ -532,3 +671,15 @@ function bindPlacePanel(box, act) {
   });
 }
 document.addEventListener("DOMContentLoaded", () => renderPlacePanel());
+/* Piltangenter m.m. för det aktiva objektet (bara i Design-vyn och inte när man skriver i ett fält). */
+document.addEventListener("keydown", e => {
+  if (!placeActive() || placeMode || !document.body.classList.contains("tab-design")) return;
+  const t = e.target, tag = t && t.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (t && t.isContentEditable) || e.ctrlKey || e.metaKey || e.altKey) return;
+  const st = placeStep() * (e.shiftKey ? 10 : 1), r = e.shiftKey ? 10 : 1;
+  const m = { ArrowLeft: [-st, 0, 0, 0], ArrowRight: [st, 0, 0, 0], ArrowUp: [0, st, 0, 0], ArrowDown: [0, -st, 0, 0],
+    PageUp: [0, 0, st, 0], PageDown: [0, 0, -st, 0], ",": [0, 0, 0, -r], ".": [0, 0, 0, r], ";": [0, 0, 0, -r], ":": [0, 0, 0, r] }[e.key];
+  if (!m) return;
+  e.preventDefault();
+  placeNudge(...m);
+});
