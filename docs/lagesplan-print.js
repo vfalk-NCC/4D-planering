@@ -24,6 +24,7 @@ const ELEMENT_TYPES = {
   title: { label: "Ritningshuvud", icon: "🗂" },
   rect: { label: "Ruta", icon: "▭" },
   line: { label: "Linje", icon: "╱" },
+  arrow: { label: "Pil", icon: "➜" },
 };
 const NORTH_STYLES = { rose4: "Stjärna", classic: "Klassisk halvpil", rose8: "Kompassros", minimal: "Minimal", compass: "Bussola", feather: "Pil med fjäder" };
 
@@ -459,6 +460,7 @@ function mapLabelHeight(el) {
 }
 /* Elementets yta inklusive namn & skala-texten. */
 function elBox(el) {
+  if (el.type === "arrow" && typeof arrowBounds === "function") return arrowBounds(el);
   const x0 = Math.min(el.x, el.x + el.w), y0 = Math.min(el.y, el.y + el.h);
   return { x: x0, y: y0, w: Math.abs(el.w), h: Math.abs(el.h) + (el.type === "map" ? mapLabelHeight(el) : 0) };
 }
@@ -620,6 +622,10 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
     case "line": {
       ctx.strokeStyle = el.stroke || "#000"; ctx.lineWidth = Math.max(0.5, (el.lw || 0.35) * k * u);
       ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X + W, Y + H); ctx.stroke();
+      break;
+    }
+    case "arrow": { // lagesplan-arrows.js
+      if (typeof drawArrow === "function") drawArrow(ctx, [X, Y], [X + W, Y + H], el, k * u);
       break;
     }
     case "north": {
@@ -1002,6 +1008,8 @@ function drawPrintPage() {
 }
 function handlePts(el, k, u) {
   const x = el.x * k * u, y = el.y * k * u, w = el.w * k * u, h = el.h * k * u;
+  // Pilen har bara två handtag: start (index 0) och spets (index 3) – de övriga ritas/träffas inte.
+  if (el.type === "arrow") return [[x, y], [NaN, NaN], [NaN, NaN], [x + w, y + h]];
   return [[x, y], [x + w, y], [x, y + h], [x + w, y + h]];
 }
 function prPoint(e) {
@@ -1103,7 +1111,7 @@ function prMouseMove(e) {
     }
     let x0 = right ? o.x : px, x1 = right ? px : o.x + o.w;
     let y0 = bottom ? o.y : py, y1 = bottom ? py : o.y + o.h;
-    if (d.el.type === "line") { d.el.x = x0; d.el.y = y0; d.el.w = x1 - x0; d.el.h = y1 - y0; }
+    if (d.el.type === "line" || d.el.type === "arrow") { d.el.x = x0; d.el.y = y0; d.el.w = x1 - x0; d.el.h = y1 - y0; }
     else {
       if (x1 - x0 < 2) { if (right) x1 = x0 + 2; else x0 = x1 - 2; }
       if (y1 - y0 < 2) { if (bottom) y1 = y0 + 2; else y0 = y1 - 2; }
@@ -1225,6 +1233,7 @@ function addEl(type) {
     title: { size: 7, ...TITLE_CARD_DEFAULTS, w: 85, h: 69 },
     rect: { stroke: "#000000", lw: 0.35, fill: "" },
     line: { stroke: "#000000", lw: 0.35, w: 60, h: 0 },
+    arrow: { style: "modern", shape: "straight", stroke: "#dc2626", lw: 2.2, head: 100, bend: 40, dash: "solid", outline: "#000000", w: 50, h: -15 },
   }[type];
   pushUndo();
   const el = type === "map" ? { ...newMapEl(cx - 100, cy - 70, 200, 140, pr.tpl.format), label: { show: true, name: "Ny vy", size: 9, align: "left" } } : { ...base, ...extra };
@@ -1406,6 +1415,17 @@ function renderPrintProps(onlyPos) {
       + `<div class="pr-grid4">${color("frameColor", "Ramens färg")}</div>${chk("phone", "Mobil-ikon")}<div class="hint">Platshållare: {plan} {datum} {idag}</div>` : "");
   if (el.type === "rect") html += `<div class="pr-grid4">${color("stroke", "Linje")}${color("fill", "Fyllning")}${num("lw", "Tjocklek (mm)", "0.05")}</div>`;
   if (el.type === "line") html += `<div class="pr-grid4">${color("stroke", "Färg")}${num("lw", "Tjocklek (mm)", "0.05")}</div><div class="hint">Höjd 0 = vågrät linje, bredd 0 = lodrät.</div>`;
+  if (el.type === "arrow") {
+    const st = el.style || "modern", sh = el.shape || "straight", grp = g => Object.entries(ARROW_STYLES).filter(([, v]) => v.group === g);
+    const sbtn = ([k, v]) => `<button type="button" data-arrow="${k}" class="${st === k ? "on" : ""}" title="${v.label}"><img src="${arrowThumb(k, sh, el.stroke)}" alt="" /><span>${v.label}</span></button>`;
+    html += `<label>Klassiska</label><div class="pr-north pr-arrows">${grp("Klassiska").map(sbtn).join("")}</div>
+      <label>Moderna</label><div class="pr-north pr-arrows">${grp("Moderna").map(sbtn).join("")}</div>
+      <label>Form</label><div class="pr-north pr-arrows pr-ashape">${Object.entries(ARROW_SHAPES).map(([k, n]) => `<button type="button" data-ashape="${k}" class="${sh === k ? "on" : ""}" title="${n}"><img src="${arrowThumb(st, k, el.stroke)}" alt="" /><span>${n}</span></button>`).join("")}</div>
+      <div class="pr-grid4">${color("stroke", "Färg")}${num("lw", "Tjocklek (mm)", "0.1")}${num("head", "Spets (%)", "10")}${sh === "arc" ? num("bend", "Böj (%)", "5") : ""}</div>
+      ${ARROW_RIBBON.has(st) ? (st === "block" ? `<div class="pr-grid4">${color("outline", "Kantlinje")}</div>` : "") : `<label>Linje</label><select data-f="dash">${[["solid", "Heldragen"], ["dashed", "Streckad"], ["dotted", "Prickad"]].map(([v, n]) => `<option value="${v}"${(el.dash || "solid") === v ? " selected" : ""}>${n}</option>`).join("")}</select>`}
+      ${chk("double", "Spets i båda ändar")} ${chk("shadow", "Skugga")}
+      <div class="hint">Dra i handtagen i ändarna för att flytta start och spets. Böj: minus böjer åt andra hållet.</div>`;
+  }
   if (el.type === "north") html += `<label>Utseende</label><div class="pr-north">${Object.entries(NORTH_STYLES).map(([s, n]) => `<button type="button" data-north="${s}" class="${(el.style || "rose4") === s ? "on" : ""}" title="${n}"><img src="${northThumb(s, el.color)}" alt="" /><span>${n}</span></button>`).join("")}</div>
       <div class="pr-grid4">${color("color", "Färg")}</div>${mapSel()}<div class="hint">Vrids efter ritningens riktning mot norr.</div>`;
   if (el.type === "scalebar") html += mapSel() + `<div class="hint">Följer ritningens skala.</div>`;
@@ -1487,6 +1507,8 @@ function renderPrintProps(onlyPos) {
   on("prImgReset", () => { pushUndo(); const before = cropOf(el); ["cropL", "cropR", "cropT", "cropB"].forEach(k => delete el[k]); el.knockout = false; applyCropResize(el, before); renderPrintProps(); drawPrintPage(); });
   on("prPan", () => { pr.panMode = !pr.panMode; renderPrintProps(); drawPrintPage(); });
   on("prFromView", () => { pushUndo(); el.center = viewCenterModel(); el.scale = fitScale(el.w, el.h, pr.tpl.format); renderPrintPanel(); drawPrintPage(); });
+  box.querySelectorAll("[data-arrow]").forEach(b => { b.onclick = () => { pushUndo(); el.style = b.dataset.arrow; el.lw = ARROW_STYLES[el.style].lw; renderPrintProps(); drawPrintPage(); }; });
+  box.querySelectorAll("[data-ashape]").forEach(b => { b.onclick = () => { pushUndo(); el.shape = b.dataset.ashape; renderPrintProps(); drawPrintPage(); }; });
   box.querySelectorAll("[data-north]").forEach(b => { b.onclick = () => { pushUndo(); el.style = b.dataset.north; renderPrintProps(); drawPrintPage(); }; });
   if (el.type === "map") {
     const lbl = patch => { pushUndo(); el.label = { show: false, name: "", size: 9, align: "left", ...(el.label || {}), ...patch }; drawPrintPage(); };
@@ -1683,6 +1705,12 @@ async function exportPrintPdf() {
             doc.setFontSize(vf); doc.text(doc.splitTextToSize(val, cw - lf * PT_MM)[0] || "", cx + lf * PT_MM * 0.4, ry + rh - vf * PT_MM * 0.12, { baseline: "bottom" });
           });
         });
+      } else if (el.type === "arrow") {
+        // Pilen rastreras i 300 dpi i sin egen ruta (spets, tjocklek och skugga får plats).
+        const b = arrowBounds(el), uu = 300 / 25.4;
+        const c = newCanvas(Math.max(1, Math.ceil(b.w * k * uu)), Math.max(1, Math.ceil(b.h * k * uu))), cx = c.getContext("2d");
+        cx.translate(-b.x * k * uu, -b.y * k * uu); drawElement(cx, el, tpl, uu, k);
+        doc.addImage(c.toDataURL("image/png"), "PNG", b.x * k, b.y * k, b.w * k, b.h * k, undefined, "FAST");
       } else {
         // Förklaring, skalstock, norrpil och QR: rastrerade i 300 dpi.
         const c = rasterEl(el, 300);

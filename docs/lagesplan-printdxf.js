@@ -289,7 +289,7 @@ function printDxfWrite(ents, A, { units = "mm", layerAci = {} } = {}) {
 }
 
 /* ---- Bladet ---- */
-const PRINT_DXF_LAYER = { text: "TEXT", legend: "FORKLARING", scalebar: "SKALSTOCK", north: "NORRPIL", title: "TITELRUTA", qr: "QR", rect: "RUTOR", line: "LINJER", image: "BILDER" };
+const PRINT_DXF_LAYER = { text: "TEXT", legend: "FORKLARING", scalebar: "SKALSTOCK", north: "NORRPIL", title: "TITELRUTA", qr: "QR", rect: "RUTOR", line: "LINJER", arrow: "PILAR", image: "BILDER" };
 /* Ritningens innehåll i bladets mm (y nedåt), klippt mot ramen. Returnerar { ents, toModel }. */
 async function printDxfMapEnts(el, tpl, k, progress, tolMm = DXF_SIMPLIFY_MM) {
   const x = el.x * k, y = el.y * k, w = el.w * k, h = el.h * k;
