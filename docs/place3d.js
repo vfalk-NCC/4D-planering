@@ -270,6 +270,15 @@ function placeExtent(p) {
   if (l.fence) { const P = p.pts || []; const xs = P.map(q => q[0]), ys = P.map(q => q[1]); return P.length ? [Math.max(...xs) - Math.min(...xs) || 1, Math.max(...ys) - Math.min(...ys) || 1] : [1, 1]; }
   return [Number(p.L) || 1, Number(p.B) || 1];
 }
+/* Nästa lediga namn "Bas N": ett högre nummer än alla befintliga med samma bas (aldrig en dubblett,
+   även när objekt tagits bort emellan). extra = namn som just skapats men inte lagts till än. */
+function placeNextName(name, extra = []) {
+  const base = String(name || "").replace(/\s+\d+$/, "").trim() || "Objekt";
+  const re = new RegExp("^" + base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\s+(\\d+)$");
+  let max = 0;
+  for (const n of [...placements.map(p => p.name), ...extra]) { const m = re.exec(String(n || "").trim()); if (m) max = Math.max(max, Number(m[1])); }
+  return `${base} ${max + 1}`;
+}
 /* n kopior av p i rad, avstånd step meter längs (along) eller tvärs objektet. Returnerar kopiorna. */
 function placeCopies(p, n, step, along = true) {
   const t = (Number(p.rot) || 0) * Math.PI / 180;
@@ -280,7 +289,7 @@ function placeCopies(p, n, step, along = true) {
     const c = JSON.parse(JSON.stringify(p));
     Object.assign(c, { id: ghNewId(), created_at: new Date().toISOString(), by: settings.userName || null });
     delete c.ifc_at;
-    c.name = `${base} ${placements.filter(x => x.type === p.type).length + out.length + 1}`;
+    c.name = placeNextName(base, out.map(o => o.name));
     placeShift(c, ux * step * i, uy * step * i);
     out.push(c);
   }
@@ -311,8 +320,7 @@ function placeStart(type) {
 }
 function placeNew(type, pt) {
   const lib = placeLib(type);
-  const n = placements.filter(p => p.type === type).length + 1;
-  const p = { id: ghNewId(), type, name: `${lib.label} ${n}`, x: placeR3(pt[0]), y: placeR3(pt[1]), z: placeR3(pt[2] || 0),
+  const p = { id: ghNewId(), type, name: placeNextName(lib.label), x: placeR3(pt[0]), y: placeR3(pt[1]), z: placeR3(pt[2] || 0),
     L: lib.L || 0, B: lib.B || 0, H: lib.H, R: lib.R || 0, rot: 0, dz: 0, color: lib.color,
     created_at: new Date().toISOString(), by: settings.userName || null };
   if (lib.fence) p.pts = [[p.x, p.y, p.z]];

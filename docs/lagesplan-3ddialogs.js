@@ -115,11 +115,11 @@ function l3RenderSpecial() {
   const tabs = [["lin", "Linjär"], ["rot", "Rotation"], ["mir", "Spegling"]];
   const body = {
     lin: `<div class="v3-dlg-g3">${f("dx", "dX", "m")}${f("dy", "dY", "m")}${f("dz", "dZ", "m")}</div>
-      <div class="v3-dlg-row">${copy ? f("n", "Antal kopior", "st", "1") : ""}<button type="button" class="v3-dlg-pick" data-sppick="lin">Välj två punkter</button></div>
+      <div class="v3-dlg-row"><button type="button" class="v3-dlg-pick" data-sppick="lin">Välj två punkter</button></div>
       <div class="v3-hint">Varje kopia hamnar dX, dY, dZ längre bort än den förra (som i Tekla).</div>`,
     rot: `<div class="v3-dlg-g3">${f("x0", "X0", "m", "0.1", fmt(c && c.x))}${f("y0", "Y0", "m", "0.1", fmt(c && c.y))}${f("z0", "Z0", "m", "0.1", fmt(c && c.z))}</div>
       <div class="v3-dlg-row"><button type="button" class="v3-dlg-pick" data-sppick="rot">Välj rotationspunkt</button><button type="button" class="v3-dlg-pick" data-sppick="rotang">Välj vinkel (3 punkter)</button></div>
-      <div class="v3-dlg-g3">${f("ang", "Vinkel", "°", "1")}${f("rdz", "dZ", "m")}${copy ? f("rn", "Antal kopior", "st", "1") : ""}</div>
+      <div class="v3-dlg-g3">${f("ang", "Vinkel", "°", "1")}${f("rdz", "dZ", "m")}</div>
       <div class="v3-hint">Vrids kring en lodrät axel genom punkten. Tom punkt = markeringens mitt. Positiv vinkel = moturs.</div>`,
     mir: `<div class="v3-dlg-g3">${f("mx0", "X0", "m", "0.1", fmt(c && c.x))}${f("my0", "Y0", "m", "0.1", fmt(c && c.y))}${f("mang", "Vinkel", "°", "1")}</div>
       <div class="v3-dlg-row"><button type="button" class="v3-dlg-pick" data-sppick="mir">Välj två punkter på speglingslinjen</button></div>
@@ -128,12 +128,18 @@ function l3RenderSpecial() {
   const d = l3Dlg("v3Special", copy ? "Kopiera special" : "Flytta special", `
     <div class="v3-segs v3-dlg-tabs">${tabs.map(([k, l]) => `<button type="button" data-sptab="${k}" class="${v.tab === k ? "on" : ""}">${l}</button>`).join("")}</div>
     ${body}
+    ${copy ? l3SpCountHtml(v) : ""}
     <label class="v3-chk"><input type="checkbox" id="v3SpPrev" ${v.preview ? "checked" : ""} /> Förhandsvisa</label>
     <div class="v3-dlg-foot"><span class="v3-dlg-sel">${l3.sel.size ? `${l3.sel.size} markerade` : "Inget markerat"}</span>
       <button type="button" class="v3-primary" id="v3SpGo">${copy ? "Kopiera" : "Flytta"}</button><button type="button" id="v3SpClose">Stäng</button></div>`,
     { onClose: () => { l3Sp = null; l3.dlgPick = null; l3ClearPrev(); } });
   d.querySelectorAll("[data-sptab]").forEach(b => { b.onclick = () => { v.tab = b.dataset.sptab; l3SpSave(); l3RenderSpecial(); }; });
-  d.querySelectorAll("[data-sp]").forEach(inp => { inp.oninput = () => { const k = inp.dataset.sp; v[k] = inp.value === "" ? "" : placeNum(inp.value, 0); l3SpSave(); l3SpPreview(); }; });
+  d.querySelectorAll("[data-sp]").forEach(inp => { inp.oninput = () => { const k = inp.dataset.sp; v[k] = inp.value === "" ? "" : placeNum(inp.value, 0); l3SpSave(); l3SpCountInfo(d); l3SpPreview(); }; });
+  d.querySelectorAll("[data-spstep]").forEach(b => { b.onclick = () => {
+    const k = v.tab === "rot" ? "rn" : "n", n = Math.max(1, Math.min(200, Math.round(Number(v[k]) || 1) + Number(b.dataset.spstep)));
+    v[k] = n; l3SpSave(); const inp = d.querySelector(`[data-sp="${k}"]`); if (inp) inp.value = n; l3SpCountInfo(d); l3SpPreview();
+  }; });
+  l3SpCountInfo(d);
   d.querySelector("#v3SpPrev").onchange = e => { v.preview = e.target.checked; l3SpSave(); l3SpPreview(); };
   d.querySelectorAll("[data-sppick]").forEach(b => { b.onclick = () => {
     const k = b.dataset.sppick, R = x => Math.round(x * 1000) / 1000;
@@ -149,6 +155,20 @@ function l3RenderSpecial() {
   d.querySelector("#v3SpGo").onclick = l3SpApply;
   d.querySelector("#v3SpClose").onclick = () => l3DlgClose("v3Special");
   l3SpPreview();
+}
+/* Antal kopior – stor och tydlig ruta som i Teklas "Number of copies", med − / + och summering. */
+function l3SpCountHtml(v) {
+  if (v.tab === "mir") return `<div class="v3-spcount mir"><span>Antal kopior</span><b>1</b><em>Spegling ger en kopia per markerat objekt.</em></div>`;
+  const k = v.tab === "rot" ? "rn" : "n";
+  return `<div class="v3-spcount"><label for="v3SpN">Antal kopior</label>
+    <div class="v3-spcount-in"><button type="button" data-spstep="-1" title="En färre">−</button><input type="text" inputmode="numeric" id="v3SpN" data-sp="${k}" value="${v[k] === "" ? "" : v[k]}" /><button type="button" data-spstep="1" title="En till">+</button></div>
+    <em id="v3SpInfo"></em></div>`;
+}
+function l3SpCountInfo(d) {
+  const el = d.querySelector("#v3SpInfo");
+  if (!el || !l3Sp) return;
+  const v = l3Sp.v, n = Math.max(1, Math.min(200, Math.round(Number(v[v.tab === "rot" ? "rn" : "n"]) || 1))), m = l3.sel.size;
+  el.textContent = m ? `= ${n * m} nya objekt` : "Markera objekt";
 }
 function l3SpSave() { if (l3Sp) l3SetPref("special", { ...l3Sp.v }); }
 /* Spegling av en placering kring en lodrät linje genom (x0, y0) i vinkeln ang (grader). */
@@ -211,7 +231,7 @@ function l3SpApply() {
       const c = JSON.parse(JSON.stringify(src));
       Object.assign(c, { id: ghNewId(), created_at: new Date().toISOString(), by: settings.userName || null });
       delete c.ifc_at;
-      c.name = `${String(src.name || "").replace(/\s+\d+$/, "")} ${placements.filter(x => x.type === src.type).length + 1}`;
+      c.name = placeNextName(src.name);
       fn(c); placements.push(c); placeTouch(c); l3AddPlacementMesh(c); n++;
     }));
     l3Status(`${n} ${n === 1 ? "kopia" : "kopior"} skapade. De ursprungliga är fortfarande markerade – tryck Kopiera igen för fler.`);

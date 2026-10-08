@@ -15,6 +15,8 @@ function l3NavInit() {
   host.addEventListener("pointerdown", l3NavDown, true); // före OrbitControls/TransformControls
   window.addEventListener("pointermove", l3NavMove);
   window.addEventListener("pointerup", l3NavUp);
+  window.addEventListener("pointercancel", () => { if (l3Piv) l3OrbitPivotEnd(); });
+  window.addEventListener("blur", () => { if (l3Piv) l3OrbitPivotEnd(); }); // släppt utanför fönstret
   el.addEventListener("wheel", l3Wheel, { passive: false });
   const rect = document.createElement("div"); rect.className = "v3-rect hidden"; host.appendChild(rect); l3.rectEl = rect;
   const tri = document.createElement("div"); tri.className = "v3-triad"; tri.title = "Klicka för vy uppifrån (plan)"; host.appendChild(tri); l3.triadEl = tri;
@@ -34,6 +36,7 @@ function l3ApplyMouse() {
 let l3Area = null, l3RightDown = null;
 function l3NavDown(e) {
   if (e.pointerType !== "mouse") return;
+  if (l3OrbitPivotStart(e)) return;
   if (e.button === 2) { l3RightDown = { x: e.clientX, y: e.clientY }; return; }
   if (e.button !== 0 || !l3IsTekla()) return;
   if (e.target !== l3.renderer.domElement) return; // paneler ovanpå
@@ -41,6 +44,7 @@ function l3NavDown(e) {
   l3Area = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, add: e.shiftKey, toggle: e.ctrlKey || e.metaKey, on: false };
 }
 function l3NavMove(e) {
+  if (l3Piv) { l3OrbitPivotMove(e); return; }
   if (!l3Area) return;
   l3Area.x1 = e.clientX; l3Area.y1 = e.clientY;
   if (!l3Area.on && Math.hypot(l3Area.x1 - l3Area.x0, l3Area.y1 - l3Area.y0) > 6) l3Area.on = true;
@@ -53,6 +57,7 @@ function l3NavMove(e) {
   el.classList.remove("hidden");
 }
 function l3NavUp(e) {
+  if (l3Piv && e.button === l3Piv.button) l3OrbitPivotEnd();
   if (e.button === 2 && l3RightDown) { l3.noCtx = Math.hypot(e.clientX - l3RightDown.x, e.clientY - l3RightDown.y) > 6; l3RightDown = null; }
   if (!l3Area) return;
   const a = l3Area; l3Area = null;
@@ -87,6 +92,84 @@ function l3IdsInRect(x0, y0, x1, y1, cross) {
     if (cross ? touch : inside) out.push(id);
   });
   return out;
+}
+
+// ---------------------------------------------------------------------
+// Automatiskt rotationscentrum (Tekla): rotationen sker kring punkten under markören där man
+// tryckte ner (Ctrl/Skift + mitten i Tekla-läget, vänster i standardläget). Kameran hoppar inte –
+// kamera och mål vrids tillsammans kring punkten. Av/på under Visa → Mus.
+// ---------------------------------------------------------------------
+let l3Piv = null;
+function l3AutoRot() { return l3Prefs().autoRot !== false; }
+function l3OrbitPivotStart(e) {
+  if (l3Piv) l3OrbitPivotEnd();
+  if (!l3AutoRot() || e.target !== l3.renderer.domElement) return false;
+  const tekla = l3IsTekla();
+  const want = tekla ? e.button === 1 && (e.ctrlKey || e.shiftKey || e.metaKey) : e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.metaKey;
+  if (!want || l3.gizmo.axis || l3.gizmo.dragging) return false;
+  const P = l3PivotPoint(e);
+  // OrbitControls får inte rotera samtidigt: stäng av knappen tills släpp (trycket når ändå
+  // duken så att ett vanligt tryck fortfarande markerar).
+  const key = e.button === 1 ? "MIDDLE" : "LEFT";
+  l3Piv = { button: e.button, key, prev: l3.orbit.mouseButtons[key], x: e.clientX, y: e.clientY, P, on: false };
+  l3.orbit.mouseButtons = { ...l3.orbit.mouseButtons, [key]: -1 };
+  if (e.button === 1) e.preventDefault(); // ingen autoscroll i webbläsaren
+  return true;
+}
+/* Punkten under markören: närmaste yta, annars planet genom målpunkten vinkelrätt mot blicken. */
+function l3PivotPoint(e) {
+  const hit = l3Ray(e, l3Surfaces())[0];
+  if (hit) return hit.point.clone();
+  const r = l3.renderer.domElement.getBoundingClientRect(), rc = new THREE.Raycaster();
+  rc.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), l3.camera);
+  const n = l3.camera.getWorldDirection(new THREE.Vector3()), pl = new THREE.Plane().setFromNormalAndCoplanarPoint(n, l3.orbit.target);
+  return rc.ray.intersectPlane(pl, new THREE.Vector3()) || l3.orbit.target.clone();
+}
+function l3OrbitPivotMove(e) {
+  const v = l3Piv;
+  if (e.buttons === 0) { l3OrbitPivotEnd(); return; } // knappen släpptes utan att vi märkte det
+  if (!v.on) {
+    if (Math.hypot(e.clientX - v.x, e.clientY - v.y) < 3) return;
+    v.on = true; l3StopFly(); l3PivMark(true);
+  }
+  const h = l3.renderer.domElement.clientHeight || 600, dx = e.clientX - v.x, dy = e.clientY - v.y;
+  v.x = e.clientX; v.y = e.clientY;
+  l3OrbitAbout(v.P, -2 * Math.PI * dx / h, 2 * Math.PI * dy / h);
+  l3PivMark(true);
+}
+/* Vrid kameran kring P: yaw kring lodaxeln, pitch = minskning av blickens polvinkel (uppåt i bilden
+   = man tittar mer uppifrån). Samma gränser som OrbitControls (aldrig under horisonten). */
+function l3OrbitAbout(P, yaw, pitch) {
+  const cam = l3.camera, T = l3.orbit.target, Z = new THREE.Vector3(0, 0, 1);
+  const off = cam.position.clone().sub(T), len = off.length();
+  if (len < 1e-9) return;
+  const phi0 = Math.acos(Math.max(-1, Math.min(1, off.z / len))), maxPhi = l3.orbit.maxPolarAngle, minPhi = 0.002;
+  const phi1 = Math.max(minPhi, Math.min(maxPhi, phi0 - pitch)), a = phi0 - phi1;
+  const q = new THREE.Quaternion();
+  if (Math.abs(a) > 1e-9) {
+    const f = off.clone().negate().normalize(), r = new THREE.Vector3().crossVectors(f, Z);
+    if (r.lengthSq() < 1e-12) r.set(1, 0, 0).applyQuaternion(cam.quaternion); // rakt uppifrån: kamerans högeraxel
+    q.setFromAxisAngle(r.normalize(), -a);
+  }
+  q.premultiply(new THREE.Quaternion().setFromAxisAngle(Z, yaw));
+  cam.position.sub(P).applyQuaternion(q).add(P);
+  T.sub(P).applyQuaternion(q).add(P);
+  l3.orbit.update();
+  l3Render();
+}
+function l3OrbitPivotEnd() {
+  const v = l3Piv; l3Piv = null;
+  l3.orbit.mouseButtons = { ...l3.orbit.mouseButtons, [v.key]: v.prev };
+  l3PivMark(false);
+}
+/* Liten markering av rotationspunkten medan man roterar. */
+function l3PivMark(show) {
+  let m = l3.pivEl;
+  if (!m) { m = document.createElement("div"); m.className = "v3-pivot hidden"; l3.renderer.domElement.parentElement.appendChild(m); l3.pivEl = m; }
+  if (!show || !l3Piv) { m.classList.add("hidden"); return; }
+  const q = l3Piv.P.clone().project(l3.camera), el = l3.renderer.domElement;
+  m.style.left = ((q.x + 1) / 2 * el.clientWidth) + "px"; m.style.top = ((1 - q.y) / 2 * el.clientHeight) + "px";
+  m.classList.remove("hidden");
 }
 
 // ---------------------------------------------------------------------

@@ -494,7 +494,7 @@ function l3MakeCopies(src, offs) {
     const c = JSON.parse(JSON.stringify(p));
     Object.assign(c, { id: ghNewId(), created_at: new Date().toISOString(), by: settings.userName || null });
     delete c.ifc_at;
-    c.name = `${String(p.name || "").replace(/\s+\d+$/, "")} ${placements.filter(x => x.type === p.type).length + 1}`;
+    c.name = placeNextName(p.name);
     placeShift(c, o.x, o.y, o.z); placements.push(c); placeTouch(c); l3AddPlacementMesh(c); made.push(c.id);
   }));
   return made;

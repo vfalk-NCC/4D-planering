@@ -66,7 +66,7 @@ function l3PdfToModel(px, py) {
 // Inställningar (per webbläsare)
 // ---------------------------------------------------------------------
 const L3_PREFS_KEY = "lagesplan-3d-prefs";
-const L3_PREFS_DEFAULT = { plan: true, objs: "solid", labels: true, legend: true, snap: true, step: "0.5", pal: true, mouse: "tekla", ortho: false };
+const L3_PREFS_DEFAULT = { plan: true, objs: "solid", labels: true, legend: true, snap: true, step: "0.5", pal: true, mouse: "tekla", ortho: false, autoRot: true };
 function l3Prefs() {
   if (l3 && l3.prefs) return l3.prefs;
   try { return { ...L3_PREFS_DEFAULT, ...JSON.parse(localStorage.getItem(L3_PREFS_KEY) || "{}") }; } catch (e) { return { ...L3_PREFS_DEFAULT }; }
@@ -195,6 +195,7 @@ function l3Dom() {
           <label class="v3-chk"><input type="checkbox" id="v3PalChk" ${P.pal ? "checked" : ""} /> Panelen till vänster</label>
           <div class="v3-pop-l">Mus</div>
           <div class="v3-segs">${[["tekla", "Som i Tekla"], ["standard", "Standard"]].map(([k, l]) => `<button type="button" data-v3mouse="${k}" class="${(P.mouse || "tekla") === k ? "on" : ""}">${l}</button>`).join("")}</div>
+          <label class="v3-chk" title="Som Teklas automatiska rotationscentrum: vyn roteras kring punkten där du trycker ner"><input type="checkbox" id="v3AutoRot" ${P.autoRot !== false ? "checked" : ""} /> Rotera kring punkten under markören</label>
           <div class="v3-pop-hint" id="v3MouseHint"></div>
         </div>
       </div>
@@ -251,7 +252,8 @@ function l3Dom() {
   $3("v3LaunchBtn").onclick = e => { e.stopPropagation(); l3OpenLaunch(); };
   box.querySelectorAll("[data-v3view]").forEach(b => { b.onclick = () => { l3HideMenus(); const v = b.dataset.v3view; if (v === "plan") l3TogglePlan(); else if (v === "center") l3StartV(); else l3View(v); }; });
   $3("v3Ortho").onchange = e => { l3SetProjection(e.target.checked); };
-  const mouseHint = () => { $3("v3MouseHint").textContent = l3Prefs().mouse === "standard" ? "Vänster = rotera, höger/mitten = panorera, hjul = zooma mot markören. Skift + vänster = panorera." : "Vänster = markera (dra en ruta), mitten = panorera, Ctrl + mitten = rotera, hjul = zooma mot markören, höger = meny."; };
+  const mouseHint = () => { const a = l3Prefs().autoRot !== false ? " kring punkten under markören" : " kring rotationscentrum (V)"; $3("v3MouseHint").textContent = l3Prefs().mouse === "standard" ? `Vänster = rotera${a}, höger/mitten = panorera, hjul = zooma mot markören. Skift + vänster = panorera.` : `Vänster = markera (dra en ruta), mitten = panorera, Ctrl + mitten = rotera${a}, hjul = zooma mot markören, höger = meny.`; };
+  $3("v3AutoRot").onchange = e => { l3SetPref("autoRot", e.target.checked); mouseHint(); };
   box.querySelectorAll("[data-v3mouse]").forEach(b => { b.onclick = () => { l3SetPref("mouse", b.dataset.v3mouse); box.querySelectorAll("[data-v3mouse]").forEach(x => x.classList.toggle("on", x === b)); if (l3) l3ApplyMouse(); mouseHint(); }; });
   mouseHint();
   $3("v3ShowPlan").onchange = e => { l3SetPref("plan", e.target.checked); if (l3.planMesh) l3.planMesh.visible = e.target.checked; l3Render(); };
@@ -295,8 +297,8 @@ function l3HelpHtml() {
   const r = (k, t) => `<tr><td><kbd>${k}</kbd></td><td>${t}</td></tr>`, T = l3Prefs().mouse !== "standard";
   return `<div class="v3-help-h"><b>Hjälp – kortkommandon</b><button type="button" onclick="this.closest('.v3-help').classList.add('hidden')">✕</button></div>
     <div class="v3-help-c"><div><b>Navigera ${T ? "(som i Tekla)" : "(standard)"}</b><table>
-      ${T ? r("Mittenknapp dra", "Panorera") + r("Ctrl + mitten dra", "Rotera") + r("Vänster dra", "Markera med ruta") : r("Vänster dra", "Rotera") + r("Höger dra", "Panorera")}
-      ${r("Hjul", "Zooma mot markören")}${r("V + tryck", "Rotationscentrum")}${r("Ctrl+P", "Plan ↔ 3D")}${r("Home", "Visa allt")}${r("F / dubbelklick", "Zooma till markerat")}${r("Axelkorset", "Vy uppifrån")}</table></div>
+      ${T ? r("Mittenknapp dra", "Panorera") + r("Ctrl + mitten dra", "Rotera kring punkten under markören") + r("Vänster dra", "Markera med ruta") : r("Vänster dra", "Rotera kring punkten under markören") + r("Höger dra", "Panorera")}
+      ${r("Hjul", "Zooma mot markören")}${r("V + tryck", "Centrera vyn kring en punkt")}${r("Ctrl+P", "Plan ↔ 3D")}${r("Home", "Visa allt")}${r("F / dubbelklick", "Zooma till markerat")}${r("Axelkorset", "Vy uppifrån")}</table></div>
     <div><b>Markera</b><table>${r("Tryck", "Markera")}${r("Skift + tryck", "Lägg till")}${r("Ctrl + tryck", "Växla")}${T ? r("Dra →", "Ruta: det som är helt inne") + r("Dra ←", "Ruta: allt som rutan nuddar") : ""}${r("Ctrl+A", "Markera alla")}${r("Esc", "Avmarkera / avbryt")}</table></div>
     <div><b>Verktyg</b><table>${r("Mellanslag", "Välj")}${r("M", "Flytta punkt till punkt")}${r("Q", "Vrid")}${r("A", "Rikta kant mot kant")}${r("T", "Mät avstånd, vinkel, yta")}${r("Ctrl+K", "Snabbsök kommando")}</table></div>
     <div><b>Under Flytta / Vrid / Mät</b><table>${r("→ ← ↑", "Lås röd / grön / blå axel")}${r("↓", "Släpp axellåset")}${r("5,5 Enter", "Exakt avstånd eller vinkel")}${r("3;0;1,5 Enter", "Relativt dx;dy;dz")}${r("Ctrl", "Flytta ↔ kopiera")}${r("*5 / 5 Enter", "Efter en kopia: 5 i rad / 5 jämnt fördelade")}${r("O / G", "Orto / rutnät av-på")}</table></div>
@@ -794,7 +796,7 @@ function l3Paste(at) {
     const c = JSON.parse(JSON.stringify(src));
     Object.assign(c, { id: ghNewId(), created_at: new Date().toISOString(), by: settings.userName || null });
     delete c.ifc_at;
-    c.name = `${String(src.name || "").replace(/\s+\d+$/, "")} ${placements.filter(x => x.type === src.type).length + 1}`;
+    c.name = placeNextName(src.name);
     placeShift(c, dx, dy, 0);
     c.z = placeR3((Number(c.z) || 0) + dz0);
     if (c.pts) c.pts = c.pts.map(q => [q[0], q[1], placeR3((q[2] || 0) + dz0)]);

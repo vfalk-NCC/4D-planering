@@ -92,6 +92,30 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (Math.hypot(t1[0] - t0[0], t1[1] - t0[1]) < 0.5) fail('Mittenknappen ska panorera');
   await top();
 
+  // --- Automatiskt rotationscentrum: Ctrl + mitten roterar kring punkten under markören – den står kvar på skärmen.
+  const tilt = () => page.evaluate(() => { l3StopFly(); const c = new THREE.Vector3(6512330 - l3.O[0], 150115 - l3.O[1], 0); l3.camera.position.set(c.x - 25, c.y - 40, 35); l3.orbit.target.copy(c); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); });
+  await tilt();
+  const pv = await at(6512338, 150111, 2, -6, 4);                    // på c:s tak, inte i mitten av vyn
+  const pivW = await page.evaluate(([x, y]) => { const r = l3.renderer.domElement.getBoundingClientRect(); return l3PivotPoint({ clientX: x, clientY: y }).toArray().map((v, i) => v + l3.O[i]); }, pv);
+  const dir0 = await page.evaluate(() => l3.camera.getWorldDirection(new THREE.Vector3()).toArray());
+  await page.keyboard.down('Control');
+  await drag([pv[0], pv[1]], [pv[0] + 140, pv[1] + 50], 'middle');
+  await page.keyboard.up('Control');
+  const dir1 = await page.evaluate(() => l3.camera.getWorldDirection(new THREE.Vector3()).toArray());
+  const pv2 = await at(...pivW);
+  if (Math.hypot(dir1[0] - dir0[0], dir1[1] - dir0[1], dir1[2] - dir0[2]) < 0.2) fail('Ctrl + mitten ska rotera vyn: ' + dir0 + ' / ' + dir1);
+  if (Math.hypot(pv2[0] - pv[0], pv2[1] - pv[1]) > 2) fail('Rotationen ska ske kring punkten under markören (den ska stå kvar): ' + pv + ' -> ' + pv2);
+  if (dir1[2] > -0.01) fail('Kameran får inte hamna under horisonten: ' + dir1);
+  if (await page.evaluate(() => JSON.stringify(l3.orbit.mouseButtons)) !== JSON.stringify({ LEFT: -1, MIDDLE: 2, RIGHT: -1 })) fail('Musknapparna ska återställas efter rotationen');
+  if (JSON.stringify(await sel()) !== '["a","b","c"]') fail('Rotationen får inte ändra markeringen: ' + await sel());
+  // Av: roterar kring målpunkten, punkten under markören flyttar sig.
+  await page.evaluate(() => l3SetPref('autoRot', false)); await tilt();
+  await page.keyboard.down('Control'); await drag([pv[0], pv[1]], [pv[0] + 140, pv[1] + 50], 'middle'); await page.keyboard.up('Control');
+  const pv3 = await at(...pivW);
+  if (Math.hypot(pv3[0] - pv[0], pv3[1] - pv[1]) < 10) fail('Utan automatiskt rotationscentrum ska vyn rotera kring målpunkten');
+  await page.evaluate(() => l3SetPref('autoRot', true));
+  await top();
+
   // --- Ctrl+P: plan (parallell, uppifrån) och tillbaka.
   await page.mouse.move(cv.x + 5, cv.y + 5);
   await page.keyboard.press('Control+p'); await page.waitForTimeout(600);
@@ -115,6 +139,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.fill('[data-sp="dx"]', '10'); await page.fill('[data-sp="dy"]', '0'); await page.fill('[data-sp="dz"]', '0'); await page.fill('[data-sp="n"]', '3');
   await page.waitForTimeout(100);
   if (await page.evaluate(() => l3.groups.prev.children.length) !== 3) fail('Förhandsvisningen ska visa 3 kopior');
+  if (!(await page.textContent('#v3SpInfo')).includes('3 nya objekt')) fail('Antal kopior ska summeras');
+  await page.click('[data-spstep="1"]'); await page.waitForTimeout(80);
+  if (await page.inputValue('#v3SpN') !== '4' || await page.evaluate(() => l3.groups.prev.children.length) !== 4) fail('+ ska ge 4 kopior');
+  await page.click('[data-spstep="-1"]'); await page.waitForTimeout(80);
+  if (await page.inputValue('#v3SpN') !== '3' || await page.evaluate(() => l3.groups.prev.children.length) !== 3) fail('− ska ge 3 kopior igen');
   await page.click('#v3SpGo'); await page.waitForTimeout(100);
   let all = await page.evaluate(() => placements.filter(p => p.type === 'container').map(p => p.x).sort((a, b) => a - b));
   if (await N() !== 7 || !all.includes(6512345) || !all.includes(6512355) || !all.includes(6512365)) fail('Kopiera special linjärt: ' + all);
@@ -267,7 +296,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
 
   await page.waitForTimeout(2200);
   if (getStore('plan_placements.json').length !== await N()) fail('Allt ska vara sparat');
-  if (process.env.SHOT) { await page.keyboard.press('Escape'); await page.evaluate(() => { l3SelectIds(['a', 'b']); l3OpenSpecial('copy'); l3Frame(false); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOT }); }
+  const names = await page.evaluate(() => placements.map(p => p.name));
+  if (new Set(names).size !== names.length) fail('Kopiornas namn ska vara unika: ' + names);
+  if (process.env.SHOT) { await page.keyboard.press('Escape'); await page.evaluate(() => { l3SelectIds(['a', 'b']); l3SetPref('special', { ...l3Prefs().special, tab: 'lin' }); l3OpenSpecial('copy'); l3Frame(false); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOT }); }
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_3dtekla');
   await browser.close(); server.close();
