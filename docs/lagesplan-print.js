@@ -1043,7 +1043,7 @@ function bestSnap(vals, targets, tol) {
 }
 
 function prMouseDown(e) {
-  if (!pr) return;
+  if (!pr || e.button === 2) return; // högerklick: menyn (lagesplan-printctx.js)
   // Flytta vyn i layouten: mittenknappen eller Mellanslag + dra.
   if (e.button === 1 || prSpace) { e.preventDefault(); pr.drag = { kind: "view", sx: e.clientX, sy: e.clientY, vx: pr.vx || 0, vy: pr.vy || 0 }; return; }
   const [mx, my] = prPoint(e);
@@ -1197,7 +1197,7 @@ function pasteClip() {
   renderPrintPanel(); drawPrintPage();
 }
 function prKey(e) {
-  if (!pr || $("printModal").classList.contains("hidden") || document.getElementById("imgCropModal")) return; // beskärningsdialogen har egna tangenter
+  if (!pr || $("printModal").classList.contains("hidden") || document.getElementById("imgCropModal") || document.getElementById("prCtx")) return; // dialoger/menyer har egna tangenter
   if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
   const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
   const stop = () => { e.preventDefault(); e.stopPropagation(); };
@@ -1331,7 +1331,10 @@ function renderPrintProps(onlyPos) {
     box.innerHTML = `<div class="row"><b>${els.length} element markerade</b><span class="grow"></span>
         <button class="icon ghost" id="prDup" title="Duplicera (Ctrl+D)">⧉</button><button class="icon ghost" id="prUp" title="Lägg överst">⤒</button><button class="icon ghost" id="prDown" title="Lägg underst">⤓</button><button class="icon ghost" id="prDel" title="Ta bort (Delete)">🗑️</button></div>
       <label>Justera</label>
-      <div class="row" style="gap:4px;">${[["left", "⇤", "Vänsterkanter"], ["hcenter", "↔", "Mitten (vågrätt)"], ["right", "⇥", "Högerkanter"], ["top", "⤒", "Överkanter"], ["vcenter", "↕", "Mitten (lodrätt)"], ["bottom", "⤓", "Nederkanter"]].map(([h, i, t]) => `<button class="icon" data-align="${h}" title="${t}">${i}</button>`).join("")}</div>`;
+      <div class="row" style="gap:4px;">${[["left", "⇤", "Vänsterkanter"], ["hcenter", "↔", "Mitten (vågrätt)"], ["right", "⇥", "Högerkanter"], ["top", "⤒", "Överkanter"], ["vcenter", "↕", "Mitten (lodrätt)"], ["bottom", "⤓", "Nederkanter"]].map(([h, i, t]) => `<button class="icon" data-align="${h}" title="${t}">${i}</button>`).join("")}</div>
+      ${els.length >= 3 ? `<label>Fördela jämnt</label><div class="row" style="gap:4px;"><button data-dist="h" title="Lika stora mellanrum vågrätt (första och sista står still)">⋯ Vågrätt</button><button data-dist="v" title="Lika stora mellanrum lodrätt (översta och understa står still)">⋮ Lodrätt</button></div>` : ""}
+      <div class="hint">Högerklicka för fler val.</div>`;
+    box.querySelectorAll("[data-dist]").forEach(b => { b.onclick = () => distributeSel(b.dataset.dist); });
     box.querySelectorAll("[data-align]").forEach(b => { b.onclick = () => alignSel(b.dataset.align); });
     $("prDup").onclick = duplicateSel; $("prUp").onclick = () => orderSel("top"); $("prDown").onclick = () => orderSel("bottom"); $("prDel").onclick = deleteSel;
     return;
