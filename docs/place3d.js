@@ -1,0 +1,475 @@
+/* 4D-planering – Placera i 3D (Victors önskemål 2026-10-08). Etableringsobjekt (bod, container,
+   kran, staket …) placeras med ett tryck i modellen (viewer.onPicked) och justeras i panelen:
+   mått, vridning, höjd över punkten, färg och 4D-period. Förhandsvisningen är medvetet snål med
+   linjer (Trimble Connect laggar av många linjemarkeringar): bara objektet man jobbar med ritas
+   som trådmodell, övriga ej sparade som en fotavtryck-ram (4 linjer), och sådant som redan finns
+   i IFC-filen ritas inte alls. Linjerna ritas bara om när något ändras.
+   Placeringarna sparas i projects/<id>/plan_placements.json (egen fil, rör inga andra filer) och
+   blir en IFC-fil ("Spara som IFC") i Trimble Connect-mappen "4D Etablering". Varje objekt får ett
+   fast IFC-id (från placeringens id), så en ny version av filen behåller objektens id:n och
+   eventuella 4D-kopplingar. Koordinater i meter, modellens system (som manuella markeringar). */
+
+const PLACE_TC_FOLDER = "4D Etablering";
+const PLACE_MAX_LINES = 300; // tak för förhandsvisningen
+const PLACE_LIB = {
+  bod:       { group: "Etablering", label: "Bod",        L: 8.4,  B: 3,    H: 2.7,  color: "#f59e0b" },
+  container: { group: "Etablering", label: "Container",  L: 6.06, B: 2.44, H: 2.59, color: "#2563eb" },
+  upplag:    { group: "Etablering", label: "Upplag",     L: 10,   B: 5,    H: 0.3,  color: "#a16207" },
+  stallning: { group: "Etablering", label: "Ställning",  L: 10,   B: 0.75, H: 10,   color: "#eab308", transp: 0.5 },
+  lada:      { group: "Etablering", label: "Egen låda",  L: 2,    B: 2,    H: 2,    color: "#7c3aed" },
+  tornkran:  { group: "Maskiner",   label: "Tornkran",   L: 1.6,  B: 1.6,  H: 40,   R: 50, color: "#facc15" },
+  mobilkran: { group: "Maskiner",   label: "Mobilkran",  L: 12,   B: 2.8,  H: 3.5,  R: 30, color: "#dc2626" },
+  staket:    { group: "Säkerhet",   label: "Staket",     H: 2,    fence: true, color: "#16a34a" },
+  barriar:   { group: "Säkerhet",   label: "Barriär",    L: 4,    B: 0.5,  H: 0.8,  color: "#9ca3af" },
+};
+
+let placements = [];            // [{ id, type, name, x, y, z, L, B, H, R, rot, dz, color, pts, itemId, start, end, updated_at, ifc_at }]
+let placeLoaded = false;
+let placeActiveId = null;
+let placeMode = null;           // null | { kind: "place", type } | { kind: "move" } | { kind: "aim" } | { kind: "fence" }
+let placeShownIds = [];
+let placeDrawSeq = 0, placeDrawTimer = null;
+let placeDirty = new Set(), placeDeleted = new Set(), placeSaveTimer = null;
+let placeUndoStack = [];
+
+const placeNum = (v, d = 0) => { const n = Number(String(v ?? "").replace(",", ".")); return Number.isFinite(n) ? n : d; };
+const placeR3 = v => Math.round(v * 1000) / 1000;
+function placePath() { return `projects/${encodeURIComponent(projectId)}/plan_placements.json`; }
+async function place3dLoad() {
+  if (!projectId) return;
+  try { placements = (await ghReadJSON(settings.githubToken, placePath())) || []; }
+  catch (e) { placements = []; console.warn("Kunde inte läsa plan_placements.json", e); }
+  placeLoaded = true; placeDirty.clear(); placeDeleted.clear(); placeUndoStack = [];
+  if (!placements.some(p => p.id === placeActiveId)) placeActiveId = null;
+  renderPlacePanel(); placeRedraw();
+}
+const placeActive = () => placements.find(p => p.id === placeActiveId) || null;
+const placeIsNew = p => !p.ifc_at || String(p.updated_at || "") > String(p.ifc_at);
+
+// ---------------------------------------------------------------------
+// Geometri: delar (raka prismor) i världskoordinater
+// ---------------------------------------------------------------------
+/* Lokal punkt (längs, tvärs) -> världens x/y kring insättningspunkten, vridet rot grader. */
+function placeToWorld(p, a, b) {
+  const t = (Number(p.rot) || 0) * Math.PI / 180, c = Math.cos(t), s = Math.sin(t);
+  return [p.x + a * c - b * s, p.y + a * s + b * c];
+}
+const placeRect = (p, a0, a1, b0, b1) => [[a0, b0], [a1, b0], [a1, b1], [a0, b1]].map(([a, b]) => placeToWorld(p, a, b));
+function placeCircle(p, r, n) {
+  const out = [];
+  for (let i = 0; i < n; i++) { const t = 2 * Math.PI * i / n; out.push([p.x + r * Math.cos(t), p.y + r * Math.sin(t)]); }
+  return out;
+}
+/* Delarna: { poly: [[x,y]…] moturs, z0, z1, role, transp } – z i meter. ringN = hörn i räckviddscirkeln. */
+function placeParts(p, ringN = 48) {
+  const z = (Number(p.z) || 0) + (Number(p.dz) || 0), H = Math.max(0.01, Number(p.H) || 0);
+  const L = Math.max(0.01, Number(p.L) || 0), B = Math.max(0.01, Number(p.B) || 0), lib = PLACE_LIB[p.type] || {};
+  const tr = Number(lib.transp) || 0;
+  if (lib.fence) {
+    const P = p.pts || [];
+    const parts = [];
+    for (let i = 1; i < P.length; i++) {
+      const a = P[i - 1], b = P[i], d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (d < 0.01) continue;
+      const ux = (b[0] - a[0]) / d, uy = (b[1] - a[1]) / d, w = 0.03;
+      const z0 = Math.min(a[2] || 0, b[2] || 0) + (Number(p.dz) || 0);
+      parts.push({ poly: [[a[0] + uy * w, a[1] - ux * w], [b[0] + uy * w, b[1] - ux * w], [b[0] - uy * w, b[1] + ux * w], [a[0] - uy * w, a[1] + ux * w]], z0, z1: z0 + H, role: "body", transp: tr });
+    }
+    return parts;
+  }
+  const body = { poly: placeRect(p, -L / 2, L / 2, -B / 2, B / 2), z0: z, z1: z + H, role: "body", transp: tr };
+  const R = Number(p.R) || 0;
+  if (p.type === "tornkran") {
+    const parts = [body, { poly: placeRect(p, -R * 0.3, R, -0.6, 0.6), z0: z + H, z1: z + H + 1.8, role: "body", transp: tr }];
+    if (R > 0) parts.push({ poly: placeCircle(p, R, ringN), z0: z, z1: z + 0.05, role: "reach", transp: 0.8 });
+    return parts;
+  }
+  if (p.type === "mobilkran" && R > 0) return [body, { poly: placeCircle(p, R, ringN), z0: z, z1: z + 0.05, role: "reach", transp: 0.8 }];
+  return [body];
+}
+
+/* Linjer till förhandsvisningen. full = trådmodell (aktivt objekt), annars bara fotavtrycket. */
+function placeSegments(p, full) {
+  const segs = [];
+  const ring = (poly, z) => poly.forEach((q, i) => { const r = poly[(i + 1) % poly.length]; segs.push([[q[0], q[1], z], [r[0], r[1], z]]); });
+  const parts = placeParts(p, 24);
+  if (!full) {
+    if (PLACE_LIB[p.type] && PLACE_LIB[p.type].fence) parts.forEach(pt => { const [a, b] = [pt.poly[0], pt.poly[1]]; segs.push([[a[0], a[1], pt.z0], [b[0], b[1], pt.z0]]); });
+    else if (parts[0]) ring(parts[0].poly, parts[0].z0);
+    return segs;
+  }
+  if (PLACE_LIB[p.type] && PLACE_LIB[p.type].fence) {
+    // Staket: underkant, överkant och en stolpe i varje punkt (mittlinjen räcker).
+    const P = p.pts || [], dz = Number(p.dz) || 0, H = Number(p.H) || 0;
+    P.forEach((a, i) => {
+      const z0 = (a[2] || 0) + dz;
+      segs.push([[a[0], a[1], z0], [a[0], a[1], z0 + H]]);
+      if (i) { const b = P[i - 1], zb = (b[2] || 0) + dz; segs.push([[b[0], b[1], zb], [a[0], a[1], z0]], [[b[0], b[1], zb + H], [a[0], a[1], z0 + H]]); }
+    });
+    return segs;
+  }
+  parts.forEach(pt => {
+    if (pt.role === "reach") { ring(pt.poly, pt.z0); return; }
+    ring(pt.poly, pt.z0); ring(pt.poly, pt.z1);
+    pt.poly.forEach(q => segs.push([[q[0], q[1], pt.z0], [q[0], q[1], pt.z1]]));
+  });
+  return segs;
+}
+
+// ---------------------------------------------------------------------
+// Förhandsvisning (få linjer, bara vid ändring)
+// ---------------------------------------------------------------------
+function placeRedraw() {
+  clearTimeout(placeDrawTimer);
+  placeDrawTimer = setTimeout(placeDrawNow, 120);
+}
+function placePreviewLines() {
+  const toMm = q => ({ positionX: q[0] * 1000, positionY: q[1] * 1000, positionZ: (q[2] || 0) * 1000 });
+  const grey = { r: 107, g: 114, b: 128, a: 255 };
+  const lines = [];
+  const act = placeActive();
+  if (act) { const c = hexToRgbaObj(act.color || "#7c3aed"); placeSegments(act, true).forEach(([a, b]) => lines.push({ start: toMm(a), end: toMm(b), color: c })); }
+  for (const p of placements) {
+    if (p === act || !placeIsNew(p)) continue;
+    const segs = placeSegments(p, false);
+    if (lines.length + segs.length > PLACE_MAX_LINES) break;
+    segs.forEach(([a, b]) => lines.push({ start: toMm(a), end: toMm(b), color: grey }));
+  }
+  return lines;
+}
+async function placeDrawNow() {
+  if (typeof API === "undefined" || !API || !API.markup) return;
+  const seq = ++placeDrawSeq;
+  const lines = placePreviewLines();
+  const old = placeShownIds; placeShownIds = [];
+  // Nya först, sedan bort med de gamla (mindre blink). Inga linjer = bara bort.
+  let ids = [];
+  if (lines.length) {
+    try { const added = await API.markup.addLineMarkups(lines); ids = await addedLineIds(lines, added); }
+    catch (e) { console.warn("Placera i 3D: kunde inte rita förhandsvisningen", e); }
+  }
+  await clearMarkupIds(old);
+  if (seq !== placeDrawSeq) { await clearMarkupIds(ids); return; }
+  placeShownIds = ids;
+}
+
+// ---------------------------------------------------------------------
+// Ändringar, ångra och sparning
+// ---------------------------------------------------------------------
+function placeSnapshot() {
+  placeUndoStack.push(JSON.stringify(placements));
+  if (placeUndoStack.length > 40) placeUndoStack.shift();
+}
+function placeTouch(p) { p.updated_at = new Date().toISOString(); placeDirty.add(p.id); placeDeleted.delete(p.id); placeScheduleSave(); }
+function placeUndo() {
+  const prev = placeUndoStack.pop();
+  if (!prev) return;
+  const before = JSON.parse(prev), keep = new Set(before.map(p => p.id));
+  placements.forEach(p => { if (!keep.has(p.id)) { placeDeleted.add(p.id); placeDirty.delete(p.id); } });
+  placements = before;
+  placements.forEach(p => { placeDirty.add(p.id); placeDeleted.delete(p.id); });
+  if (!placements.some(p => p.id === placeActiveId)) placeActiveId = null;
+  placeMode = null;
+  placeScheduleSave(); renderPlacePanel(); placeRedraw();
+}
+function placeScheduleSave() {
+  clearTimeout(placeSaveTimer);
+  placeSaveTimer = setTimeout(placeSaveNow, 900);
+}
+async function placeSaveNow() {
+  clearTimeout(placeSaveTimer); placeSaveTimer = null;
+  if (!placeDirty.size && !placeDeleted.size) return;
+  const dirty = new Set(placeDirty), del = new Set(placeDeleted);
+  placeDirty.clear(); placeDeleted.clear();
+  const mine = placements.filter(p => dirty.has(p.id)).map(p => JSON.parse(JSON.stringify(p)));
+  try {
+    // Bara de egna, ändrade posterna skrivs – kollegors placeringar i filen lämnas orörda.
+    await ghWriteJSON(settings.githubToken, placePath(), arr => {
+      const out = (arr || []).filter(p => !del.has(p.id)).map(p => (dirty.has(p.id) ? mine.find(m => m.id === p.id) : p));
+      mine.forEach(m => { if (!out.some(p => p.id === m.id)) out.push(m); });
+      return out;
+    }, `Placera i 3D (${mine.length + del.size} ändring${mine.length + del.size === 1 ? "" : "ar"})`);
+    setPlaceStatus("Sparat.");
+  } catch (e) {
+    dirty.forEach(id => placeDirty.add(id)); del.forEach(id => placeDeleted.add(id));
+    setPlaceStatus("Kunde inte spara placeringarna: " + e.message + " – försöker igen vid nästa ändring.", true);
+  }
+}
+
+function placeStart(type) {
+  if (typeof API === "undefined" || !API || !API.markup) { alert("Trimble Connect stöder inte förhandsvisning i den här vyn."); return; }
+  if (!projectId) { alert("Inget projekt är inläst än."); return; }
+  placeMode = PLACE_LIB[type].fence ? { kind: "fence", type, id: null } : { kind: "place", type };
+  renderPlacePanel();
+}
+function placeNew(type, pt) {
+  const lib = PLACE_LIB[type];
+  const n = placements.filter(p => p.type === type).length + 1;
+  const p = { id: ghNewId(), type, name: `${lib.label} ${n}`, x: placeR3(pt[0]), y: placeR3(pt[1]), z: placeR3(pt[2] || 0),
+    L: lib.L || 0, B: lib.B || 0, H: lib.H, R: lib.R || 0, rot: 0, dz: 0, color: lib.color,
+    created_at: new Date().toISOString(), by: settings.userName || null };
+  if (lib.fence) p.pts = [[p.x, p.y, p.z]];
+  return p;
+}
+
+/* Anropas från onWorkspaceEvent. true = händelsen är hanterad. */
+function place3dEvent(event, data) {
+  if (!placeMode) return false;
+  const d = data && data.data !== undefined ? data.data : data;
+  if (event === "viewer.onPicked") {
+    const q = d && (d.position || d.point || d.hitPoint);
+    if (!q || q.x === undefined) return true;
+    const pt = [q.x, q.y, q.z || 0];
+    const m = placeMode, act = placeActive();
+    placeSnapshot();
+    if (m.kind === "place") {
+      const p = placeNew(m.type, pt);
+      placements.push(p); placeActiveId = p.id; placeMode = null; placeTouch(p);
+    } else if (m.kind === "fence") {
+      let p = m.id && placements.find(x => x.id === m.id);
+      if (!p) { p = placeNew(m.type, pt); placements.push(p); m.id = p.id; placeActiveId = p.id; }
+      else p.pts.push(pt.map(placeR3));
+      placeTouch(p);
+    } else if (m.kind === "move" && act) {
+      const dx = pt[0] - act.x, dy = pt[1] - act.y, dzz = pt[2] - act.z;
+      if (act.pts) act.pts = act.pts.map(a => [placeR3(a[0] + dx), placeR3(a[1] + dy), placeR3((a[2] || 0) + dzz)]);
+      Object.assign(act, { x: placeR3(pt[0]), y: placeR3(pt[1]), z: placeR3(pt[2]) });
+      placeMode = null; placeTouch(act);
+    } else if (m.kind === "aim" && act) {
+      const dx = pt[0] - act.x, dy = pt[1] - act.y;
+      if (Math.hypot(dx, dy) > 0.05) { act.rot = Math.round(Math.atan2(dy, dx) * 180 / Math.PI * 10) / 10; placeTouch(act); }
+      placeMode = null;
+    } else placeMode = null;
+    renderPlacePanel(); placeRedraw();
+    return true;
+  }
+  // Tryck i modellen ska inte markera/koppla objekt medan man placerar.
+  if (event === "viewer.onSelectionChanged" || event === "extension.onSelectionChanged") return true;
+  return false;
+}
+
+// ---------------------------------------------------------------------
+// IFC
+// ---------------------------------------------------------------------
+/* Fast IFC-GUID (22 tecken) från placeringens id, så att en ny filversion behåller objektens id. */
+function placeGuid(id, salt = "") {
+  let hex = String(id).replace(/[^0-9a-f]/gi, "").toLowerCase();
+  if (hex.length !== 32 || salt) {
+    // FNV-1a i fyra varv -> 128 bitar
+    hex = "";
+    for (let k = 0; k < 4; k++) {
+      let h = 0x811c9dc5 ^ k;
+      for (const ch of `${id}|${salt}|${k}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+      hex += h.toString(16).padStart(8, "0");
+    }
+  }
+  let n = BigInt("0x" + hex), out = "";
+  for (let i = 0; i < 22; i++) { out = IFC_GUID_CHARS[Number(n & 63n)] + out; n >>= 6n; }
+  return out;
+}
+/* Ett rakt prisma (moturs polygon) som IfcTriangulatedFaceSet, lokalt kring o. */
+function placePrismMesh(doc, poly, z0, z1, o) {
+  const n = poly.length;
+  const pts = [...poly.map(q => [q[0] - o[0], q[1] - o[1], z0 - o[2]]), ...poly.map(q => [q[0] - o[0], q[1] - o[1], z1 - o[2]])];
+  const faces = [];
+  for (let k = 1; k + 1 < n; k++) faces.push([1, k + 2, k + 1], [n + 1, n + k + 1, n + k + 2]);
+  for (let i = 0; i < n; i++) { const j = (i + 1) % n; faces.push([i + 1, j + 1, j + n + 1], [i + 1, j + n + 1, i + n + 1]); }
+  const pl = doc.E(`IFCCARTESIANPOINTLIST3D((${pts.map(ifcPt).join(",")}))`);
+  return doc.E(`IFCTRIANGULATEDFACESET(${pl},$,.T.,(${faces.map(f => `(${f.join(",")})`).join(",")}),$)`);
+}
+function placeItemOf(p) { return p.itemId && typeof items !== "undefined" ? items.find(x => x.id === p.itemId) || null : null; }
+function buildPlacementsIfc(projName) {
+  const list = placements.filter(p => placeParts(p).length);
+  if (!list.length) return null;
+  const doc = ifcDoc("4D-planering – " + (projName || "etablering"), "Placerade objekt från 4D-planering", "4D-planering"), E = doc.E;
+  const elems = [];
+  list.forEach(p => {
+    const lib = PLACE_LIB[p.type] || { label: p.type };
+    const parts = placeParts(p);
+    const o = [Math.round(p.x), Math.round(p.y), placeR3((Number(p.z) || 0) + (Number(p.dz) || 0))];
+    const it = placeItemOf(p);
+    const start = p.start || (it && it.startDate) || "", end = p.end || (it && it.endDate) || "";
+    const mk = (role, name, salt) => {
+      const meshes = parts.filter(pt => pt.role === role).map(pt => {
+        const m = placePrismMesh(doc, pt.poly, pt.z0, pt.z1, o);
+        const col = p.color || lib.color || "#888888";
+        E(`IFCSTYLEDITEM(${m},(${doc.style(`${col}:${pt.transp}`, col, lib.label, pt.transp)}),$)`);
+        return m;
+      });
+      if (!meshes.length) return null;
+      const el = E(`IFCBUILDINGELEMENTPROXY('${placeGuid(p.id, salt)}',$,${ifcStr(name)},${ifcStr("Placerad i 4D-planering")},${ifcStr(lib.label)},${doc.place(o)},${doc.shape(meshes.join(","), "Tessellation")},${ifcStr(p.id)},.NOTDEFINED.)`);
+      elems.push(el);
+      return el;
+    };
+    const el = mk("body", p.name || lib.label, "");
+    const props = [["Typ", lib.label], ["Namn", p.name || ""]];
+    if (!lib.fence) props.push(["Längd m", placeR3(Number(p.L) || 0)], ["Bredd m", placeR3(Number(p.B) || 0)], ["Vridning grader", Number(p.rot) || 0]);
+    else props.push(["Längd m", placeR3(parts.reduce((s, pt) => s + Math.hypot(pt.poly[1][0] - pt.poly[0][0], pt.poly[1][1] - pt.poly[0][1]), 0))]);
+    props.push(["Höjd m", placeR3(Number(p.H) || 0)]);
+    if (Number(p.R) > 0) props.push(["Räckvidd m", placeR3(Number(p.R))]);
+    props.push(["Start", start], ["Slut", end], ["Aktivitet", it ? (it.objectName || it.activity || "") : ""], ["4D-ID", p.itemId || ""], ["Placerad av", p.by || ""], ["Placerings-ID", p.id]);
+    if (el) doc.props(el, props);
+    const reach = mk("reach", `${p.name || lib.label} – räckvidd`, "reach");
+    if (reach) doc.props(reach, [["Typ", `${lib.label} räckvidd`], ["Räckvidd m", placeR3(Number(p.R) || 0)], ["Start", start], ["Slut", end], ["Placerings-ID", p.id]]);
+  });
+  return { text: doc.finish(elems, `Etablering ${projName || ""}.ifc`), n: list.length };
+}
+async function placeSaveIfc() {
+  await placeSaveNow();
+  let projName = "";
+  try { projName = ((await API.project.getProject()) || {}).name || ""; } catch (e) { /* utan namn */ }
+  const r = buildPlacementsIfc(projName);
+  if (!r) { alert("Det finns inga placerade objekt att spara. Välj ett objekt och tryck i modellen."); return null; }
+  // Samma filnamn varje gång: Trimble Connect sparar då en ny version av filen.
+  const name = `Etablering ${projName || "4D-planering"}.ifc`.replace(/[\\/:*?"<>|]/g, "-");
+  const bytes = new TextEncoder().encode(r.text);
+  const file = new File([bytes], name, { type: "application/x-step" });
+  setPlaceStatus(`Sparar ${r.n} objekt som IFC i Trimble Connect…`);
+  try {
+    await tcUploadFiles([file], PLACE_TC_FOLDER);
+  } catch (e) {
+    // Reserv: en lokal kopia, så att inget arbete går förlorat.
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/x-step" }));
+    const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    setPlaceStatus(`Kunde inte spara i Trimble Connect (${e.message}). Filen laddades ned i stället.`, true);
+    return { n: r.n, name, tc: null, error: e.message };
+  }
+  const at = new Date().toISOString();
+  placements.forEach(p => { if (placeIsNew(p)) { p.ifc_at = at; placeDirty.add(p.id); } });
+  await placeSaveNow();
+  setPlaceStatus(`✓ ${r.n} objekt sparade i "${PLACE_TC_FOLDER}/${name}". Öppna filen i 3D-vyn för att se dem.`);
+  renderPlacePanel(); placeRedraw();
+  return { n: r.n, name };
+}
+
+// ---------------------------------------------------------------------
+// Panelen
+// ---------------------------------------------------------------------
+function setPlaceStatus(text, bad) {
+  const el = document.getElementById("placeStatus");
+  if (el) { el.textContent = text || ""; el.classList.toggle("place-bad", !!bad); }
+}
+function placeModeText() {
+  if (!placeMode) return "";
+  const lib = PLACE_LIB[placeMode.type] || {};
+  return { place: `Tryck i modellen där ${lib.label ? lib.label.toLowerCase() : "objektet"} ska stå.`,
+    fence: "Tryck punkter längs staketet. Tryck Klar när det är färdigt.",
+    move: "Tryck i modellen dit objektet ska flyttas.",
+    aim: "Tryck en punkt längs väggen/kanten – objektet vrids så att långsidan pekar dit." }[placeMode.kind];
+}
+function placeListHtml() {
+  const esc = typeof escapeHtml === "function" ? escapeHtml : s => String(s);
+  return placements.map(p => {
+    const l = PLACE_LIB[p.type] || { label: p.type };
+    const dims = l.fence ? `${Math.max(0, (p.pts || []).length - 1)} sträckor, h ${p.H} m` : `${p.L}×${p.B}×${p.H} m${Number(p.R) > 0 ? `, r ${p.R} m` : ""}`;
+    return `<div class="place-row ${p.id === placeActiveId ? "on" : ""}" data-place-id="${esc(p.id)}"><i style="background:${p.color || l.color}"></i>
+      <span class="pn">${esc(p.name || l.label)}</span><span class="hint">${dims}</span>
+      <span class="place-state ${placeIsNew(p) ? "new" : ""}">${placeIsNew(p) ? "ej i IFC" : "i IFC"}</span></div>`;
+  }).join("") || `<div class="hint">Inga placerade objekt än. Välj ett objekt ovan och tryck i modellen.</div>`;
+}
+function placeSaveLabel() { const n = placements.filter(placeIsNew).length; return `Spara som IFC i Trimble Connect${n ? ` (${n} nya/ändrade)` : ""}`; }
+/* Efter en ändring i ett fält: bara listan och knapparna – inte hela panelen (fokus och klick
+   på nästa knapp ska inte tappas). */
+function placeRefreshLight() {
+  const box = document.getElementById("placePanel");
+  if (!box) return;
+  const list = box.querySelector(".place-list");
+  if (list) { list.innerHTML = placeListHtml(); bindPlaceRows(box); }
+  const u = box.querySelector("#placeUndo"); if (u) u.disabled = !placeUndoStack.length;
+  const sv = box.querySelector("#placeSaveIfc"); if (sv) { sv.textContent = placeSaveLabel(); sv.disabled = !placements.length; }
+}
+function bindPlaceRows(box) {
+  box.querySelectorAll("[data-place-id]").forEach(r => { r.onclick = () => { placeActiveId = r.dataset.placeId === placeActiveId ? null : r.dataset.placeId; placeMode = null; renderPlacePanel(); placeRedraw(); }; });
+}
+function renderPlacePanel() {
+  const box = document.getElementById("placePanel");
+  if (!box) return;
+  const groups = {};
+  Object.entries(PLACE_LIB).forEach(([k, l]) => { (groups[l.group] = groups[l.group] || []).push([k, l]); });
+  const act = placeActive();
+  const esc = typeof escapeHtml === "function" ? escapeHtml : s => String(s);
+  const lib = Object.entries(groups).map(([g, list]) => `<div class="place-group"><span class="place-gl">${g}</span>${list.map(([k, l]) =>
+    `<button type="button" data-place-type="${k}" class="${placeMode && placeMode.type === k ? "active" : ""}"><i style="background:${l.color}"></i>${l.label}</button>`).join("")}</div>`).join("");
+  const mode = placeMode ? `<div class="place-mode"><b>${esc(placeModeText())}</b>
+      ${placeMode.kind === "fence" ? `<button type="button" id="placeFenceDone" class="primary">Klar</button>` : ""}
+      <button type="button" id="placeModeCancel">Avbryt</button></div>` : "";
+  let edit = "";
+  if (act) {
+    const L = PLACE_LIB[act.type] || {};
+    const f = (k, label, step = "0.1") => `<label>${label}<input type="number" step="${step}" data-pf="${k}" value="${act[k] ?? ""}" /></label>`;
+    const itemOpts = typeof items !== "undefined" ? [...new Map(items.map(it => [it.id, it])).values()].slice(0, 2000) : [];
+    edit = `<div class="place-edit">
+      <div class="place-edit-head"><input type="text" data-pf="name" value="${esc(act.name || "")}" title="Namn" />
+        <input type="color" data-pf="color" value="${act.color || L.color || "#888888"}" title="Färg" /></div>
+      <div class="place-grid">
+        ${L.fence ? f("H", "Höjd m") : f("L", "Längd m") + f("B", "Bredd m") + f("H", "Höjd m")}
+        ${L.R ? f("R", "Räckvidd m", "1") : ""}
+        ${L.fence ? "" : f("rot", "Vrid °", "1")}
+        ${f("dz", "Höjd över punkten m")}
+      </div>
+      ${L.fence ? "" : `<div class="row place-rot">
+        <button type="button" data-rot="-15">↺ 15°</button><button type="button" data-rot="15">↻ 15°</button>
+        <button type="button" data-rot="90">90°</button><button type="button" id="placeNorth" title="Långsidan i nord–sydlig riktning (modellens Y)">Norr</button>
+        <button type="button" id="placeAim" title="Tryck en punkt längs en vägg eller kant">Rikta mot kant</button></div>`}
+      <div class="place-grid">
+        <label class="wide">Koppla till aktivitet (4D)<select data-pf="itemId"><option value="">– ingen –</option>${itemOpts.map(it =>
+          `<option value="${esc(it.id)}" ${it.id === act.itemId ? "selected" : ""}>${esc(it.objectName || it.activity || it.id)}${it.startDate ? ` (${it.startDate} – ${it.endDate || ""})` : ""}</option>`).join("")}</select></label>
+        <label>Start<input type="date" data-pf="start" value="${act.start || ""}" /></label>
+        <label>Slut<input type="date" data-pf="end" value="${act.end || ""}" /></label>
+      </div>
+      <div class="row"><button type="button" id="placeMove">Flytta (tryck ny punkt)</button>
+        ${L.fence ? `<button type="button" id="placeFenceMore">Lägg till punkter</button>` : ""}
+        <button type="button" id="placeDone">Klar</button>
+        <button type="button" id="placeDelete" class="danger-text">Ta bort</button></div>
+    </div>`;
+  }
+  box.innerHTML = `<div class="place-lib">${lib}</div>${mode}${edit}
+    <div class="place-list">${placeListHtml()}</div>
+    <div class="row"><button type="button" id="placeUndo" ${placeUndoStack.length ? "" : "disabled"}>↶ Ångra</button>
+      <button type="button" id="placeSaveIfc" class="primary" ${placements.length ? "" : "disabled"}>${placeSaveLabel()}</button></div>
+    <div class="hint">Sparas i mappen "${PLACE_TC_FOLDER}". Samma fil får en ny version varje gång.</div>`;
+  bindPlacePanel(box, act);
+}
+function bindPlacePanel(box, act) {
+  box.querySelectorAll("[data-place-type]").forEach(b => { b.onclick = () => placeStart(b.dataset.placeType); });
+  bindPlaceRows(box);
+  const on = (id, fn) => { const el = box.querySelector("#" + id); if (el) el.onclick = fn; };
+  on("placeModeCancel", () => { placeMode = null; renderPlacePanel(); });
+  on("placeFenceDone", () => { placeMode = null; renderPlacePanel(); placeRedraw(); });
+  on("placeUndo", placeUndo);
+  on("placeSaveIfc", () => { placeSaveIfc().catch(e => setPlaceStatus("Kunde inte spara som IFC: " + e.message, true)); });
+  if (!act) return;
+  const change = (fn, live) => { if (!live) placeSnapshot(); fn(act); placeTouch(act); placeRedraw(); };
+  box.querySelectorAll("[data-pf]").forEach(inp => {
+    const k = inp.dataset.pf;
+    const apply = a => {
+      if (k === "name" || k === "color" || k === "start" || k === "end") a[k] = inp.value;
+      else if (k === "itemId") {
+        a.itemId = inp.value || null;
+        const it = placeItemOf(a);
+        if (it) { a.start = it.startDate || a.start || ""; a.end = it.endDate || a.end || ""; }
+      } else {
+        const v = placeNum(inp.value, a[k]);
+        a[k] = k === "rot" ? ((v % 360) + 360) % 360 : k === "dz" ? v : Math.max(k === "R" ? 0 : 0.01, v);
+      }
+    };
+    // Mått: förhandsvisningen följer med medan man skriver; ett steg i ångra per ändring.
+    if (inp.type === "number") { inp.onfocus = () => placeSnapshot(); inp.oninput = () => change(apply, true); inp.onchange = placeRefreshLight; }
+    else inp.onchange = () => { change(apply); if (k === "itemId") renderPlacePanel(); else placeRefreshLight(); };
+  });
+  box.querySelectorAll("[data-rot]").forEach(b => { b.onclick = () => { change(a => { a.rot = (((Number(a.rot) || 0) + Number(b.dataset.rot)) % 360 + 360) % 360; }); renderPlacePanel(); }; });
+  on("placeNorth", () => { change(a => { a.rot = 90; }); renderPlacePanel(); });
+  on("placeAim", () => { placeMode = { kind: "aim" }; renderPlacePanel(); });
+  on("placeMove", () => { placeMode = { kind: "move" }; renderPlacePanel(); });
+  on("placeFenceMore", () => { placeMode = { kind: "fence", type: act.type, id: act.id }; renderPlacePanel(); });
+  on("placeDone", () => { placeActiveId = null; placeMode = null; renderPlacePanel(); placeRedraw(); });
+  on("placeDelete", () => {
+    if (!confirm(`Ta bort "${act.name}"?`)) return;
+    placeSnapshot();
+    placements = placements.filter(p => p.id !== act.id);
+    placeDeleted.add(act.id); placeDirty.delete(act.id); placeActiveId = null; placeMode = null;
+    placeScheduleSave(); renderPlacePanel(); placeRedraw();
+  });
+}
+document.addEventListener("DOMContentLoaded", () => renderPlacePanel());

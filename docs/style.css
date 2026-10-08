@@ -1153,3 +1153,31 @@ button.danger:disabled, button.primary:disabled { opacity: .45; cursor: not-allo
 .ws-doc .ws-table { border-collapse: collapse; width: 100%; font-size: 12px; }
 .ws-doc .ws-table th { text-align: left; background: #f8fafc; font-weight: 600; }
 .ws-doc .ws-table th, .ws-doc .ws-table td { border-bottom: 1px solid #e5e7eb; padding: 4px 6px; vertical-align: top; }
+
+/* Placera i 3D */
+.place-lib { display: flex; flex-direction: column; gap: 4px; }
+.place-group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.place-gl { font-size: 11px; color: var(--muted); width: 70px; }
+.place-lib button { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; }
+.place-lib button.active { outline: 2px solid #0b5fff; }
+.place-lib i, .place-row i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex: 0 0 auto; }
+.place-mode { margin-top: 8px; padding: 6px 8px; background: #eef4ff; border: 1px solid #b9cdfc; border-radius: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.place-mode b { flex: 1 1 100%; font-weight: 600; }
+.place-edit { margin-top: 8px; padding: 8px; border: 1px solid var(--border); border-radius: 6px; }
+.place-edit-head { display: flex; gap: 6px; }
+.place-edit-head input[type=text] { flex: 1; font-weight: 600; }
+.place-edit-head input[type=color] { width: 36px; padding: 0; }
+.place-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 6px; margin-top: 6px; }
+.place-grid label { display: flex; flex-direction: column; font-size: 11px; color: var(--muted); }
+.place-grid label.wide { grid-column: 1 / -1; }
+.place-grid input, .place-grid select { width: 100%; box-sizing: border-box; }
+.place-rot { flex-wrap: wrap; }
+.place-list { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow: auto; }
+.place-row { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 4px; cursor: pointer; }
+.place-row:hover { background: #f3f4f6; }
+.place-row.on { background: #e0ebff; }
+.place-row .pn { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.place-state { font-size: 11px; color: #15803d; }
+.place-state.new { color: #b45309; }
+.danger-text { color: #dc2626; }
+#placeStatus.place-bad { color: #dc2626; }

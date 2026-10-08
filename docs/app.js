@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-08 18:25";
+const APP_VERSION = "2026-10-08 21:32";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -224,6 +224,7 @@ async function initApp() {
   await refreshCommentCounts();
   await refreshActivities();
   if (typeof loadManualMarks === "function") await loadManualMarks();
+  if (typeof place3dLoad === "function") place3dLoad();
   buildFilterOptions();
   renderItemList();
   initTimelineRange();
@@ -273,6 +274,7 @@ async function refreshAllData() {
     await refreshCommentCounts();
     await refreshActivities();
     if (typeof loadManualMarks === "function") await loadManualMarks();
+    if (typeof place3dLoad === "function") place3dLoad();
     buildFilterOptions();
     renderItemList();
     initTimelineRange();
@@ -308,6 +310,8 @@ function onWorkspaceEvent(event, data) {
     }
     return;
   }
+  // Placera i 3D: medan man placerar ett objekt tas klicken om hand där.
+  if (typeof place3dEvent === "function" && place3dEvent(event, data)) return;
   // Manuella markeringar: medan man ritar tas klick/frihand om hand där.
   if (typeof manualMarksEvent === "function" && manualMarksEvent(event, data)) return;
   // Uppdatera markeringsräknaren och synka markeringen mot "Planerade
