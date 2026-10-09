@@ -88,6 +88,7 @@ const UI_ICON_PATHS = {
   key: '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3M15 8l2 2"/>',
   refresh: '<path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/>',
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/>',
+  move: '<path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/>',
   chevL: '<path d="m15 18-6-6 6-6"/>',
   chevR: '<path d="m9 18 6-6-6-6"/>',
   locate: '<circle cx="12" cy="12" r="7"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="2"/>',
@@ -114,7 +115,7 @@ const UI_EMOJI = {
   "📋": "clipboard", "📤": "upload", "🔎": "search", "🔍": "search", "💡": "bulb", "🧭": "compass", "☰": "menu", "⚙": "settings",
   "⏹": "stop", "🏷": "tag", "📝": "note", "🖌": "brush", "⇕": "updown", "📱": "phone", "⏱": "timer", "🏢": "building",
   "🕘": "history", "📚": "library", "⭐": "star", "📊": "chart", "🔤": "type", "🖥": "monitor", "✋": "hand", "⏸": "pause",
-  "▶": "play", "◀": "chevL", "⏵": "play", "⎘": "copy", "⧉": "copy", "＋": "plus", "⬚": "dashed", "〰": "fence", "⤢": "maximize", "▭": "dashed",
+  "↔": "move", "⟳": "rotcw", "⟲": "rotccw", "▶": "play", "◀": "chevL", "⏵": "play", "⎘": "copy", "⧉": "copy", "＋": "plus", "⬚": "dashed", "〰": "fence", "⤢": "maximize", "▭": "dashed",
 };
 const UI_EMOJI_RE = new RegExp("^(\\s*)(" + Object.keys(UI_EMOJI).sort((a, b) => b.length - a.length).map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")\\uFE0F?(?:\\s+|$)", "u");
 
@@ -126,7 +127,7 @@ const UI_TMPL = document.createElement("template");
 function uiIconNode(name) { UI_TMPL.innerHTML = uiIcon(name); return UI_TMPL.content.firstChild; }
 
 /* Var ikoner får sättas: menyernas knappar, rubriker, flikar och etiketter. */
-const UI_ICON_TARGETS = "button, summary, a, label, .si, .ti, i, b, h1, h2, h3, .sub-head, .field-label, .cad-exp-l, .v3-pop-l, .pb-lead, .pr-sec-h, .ui-icon-lead, .layer-row .ln, .stor-h, .dp-head, .sp-nav b, .kr > span:first-child, .ui-icon-lead";
+const UI_ICON_TARGETS = "button, summary, a, label, .si, .ti, i, b, h1, h2, h3, .sub-head, .field-label, .cad-exp-l, .v3-pop-l, .pb-lead, .pr-sec-h, .ui-icon-lead, .layer-row .ln, .stor-h, .dp-head, .sp-nav b, .kr > span:first-child, .ui-icon-lead, #tip, #siteHint, .dq-c, .dp-chips button, .v3-handles span, .hint";
 /* Aldrig: innehåll och fritext. */
 const UI_ICON_SKIP = "canvas, select, option, textarea, input, [contenteditable], [data-noicon], .v3-label, #v3Labels, .wx, .wx-box, .lp-label, .note-text, .zl-text";
 
@@ -173,3 +174,46 @@ function uiIconize(root) {
   };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start); else start();
 })();
+
+// ---------------------------------------------------------------------
+// Samma ikoner på duken (planens etiketter, PDF och utskrift): Path2D av SVG-banorna.
+// ---------------------------------------------------------------------
+const UI_P2D = new Map();
+function uiPath2D(name) {
+  if (UI_P2D.has(name)) return UI_P2D.get(name);
+  const src = UI_ICON_PATHS[name];
+  if (!src || typeof Path2D === "undefined") return null;
+  const parts = [];
+  const attr = (tag, a) => { const m = new RegExp(`\\b${a}="([^"]*)"`).exec(tag); return m ? m[1] : null; };
+  (src.match(/<(path|circle|rect)\b[^>]*>/g) || []).forEach(tag => {
+    if (tag.startsWith("<path")) { const d = attr(tag, "d"); if (d) parts.push(d); return; }
+    if (tag.startsWith("<circle")) { const cx = +attr(tag, "cx"), cy = +attr(tag, "cy"), r = +attr(tag, "r"); parts.push(`M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`); return; }
+    const x = +attr(tag, "x"), y = +attr(tag, "y"), w = +attr(tag, "width"), h = +attr(tag, "height"), r = Math.min(+(attr(tag, "rx") || 0), w / 2, h / 2);
+    parts.push(r ? `M${x + r} ${y}h${w - 2 * r}a${r} ${r} 0 0 1 ${r} ${r}v${h - 2 * r}a${r} ${r} 0 0 1 ${-r} ${r}h${-(w - 2 * r)}a${r} ${r} 0 0 1 ${-r} ${-r}v${-(h - 2 * r)}a${r} ${r} 0 0 1 ${r} ${-r}z` : `M${x} ${y}h${w}v${h}h${-w}z`);
+  });
+  let p = null;
+  try { p = new Path2D(parts.join(" ")); } catch (e) { p = null; }
+  UI_P2D.set(name, p);
+  return p;
+}
+/* Ritar ikonen med mitten i (cx, cy) och storleken size (px). */
+function uiCanvasIcon(ctx, name, cx, cy, size, color) {
+  const p = uiPath2D(name);
+  if (!p) return false;
+  ctx.save();
+  ctx.translate(cx - size / 2, cy - size / 2); ctx.scale(size / 24, size / 24);
+  ctx.strokeStyle = color; ctx.lineWidth = 2.2; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.setLineDash([]);
+  ctx.stroke(p);
+  ctx.restore();
+  return true;
+}
+/* "📦 Upplag" -> { name: "package", rest: "Upplag" } (eller null om raden inte börjar med en ikon). */
+function uiLeadIcon(line) {
+  const m = UI_EMOJI_RE.exec(String(line || ""));
+  if (!m || !UI_EMOJI[m[2]]) return null;
+  return { name: UI_EMOJI[m[2]], rest: String(line).slice(m[0].length) };
+}
+/* Text utan ikon-emoji (för rullistor, statusrader och filnamn där en ikon inte kan visas). */
+function uiStripEmoji(text) {
+  return String(text || "").replace(new RegExp(UI_EMOJI_RE.source.replace("^(\\s*)", "(^|\\s)"), "gu"), "$1").replace(/[\u{1F300}-\u{1FAFF}️]/gu, "").replace(/\s{2,}/g, " ").trim();
+}

@@ -650,7 +650,7 @@ function openDailyPop(rec, isNew) {
   } else if (rec.type === "delivery") {
     const V = VEHICLES[rec.veh] || VEHICLES.lastbil;
     body = `
-      <label>Fordon</label><select class="dp-veh">${Object.entries(VEHICLES).map(([key, v]) => opt(key, rec.veh, `${v.icon} ${v.label}`)).join("")}</select>
+      <label>Fordon</label><select class="dp-veh">${Object.entries(VEHICLES).map(([key, v]) => opt(key, rec.veh, v.label)).join("")}</select>
       <div class="row2"><div><label>Tid</label><input type="time" class="dp-time" value="${escHtml(rec.time || "")}" /></div><div><label>UE</label><select class="dp-ue">${ueOptions(rec.ue)}</select></div></div>
       <label>Vad levereras</label><input type="text" class="dp-what" value="${escHtml(rec.what || "")}" placeholder="t.ex. Betong C30/37, 12 m³" />
       ${V.reach || rec.veh === "mobilkran" ? `<div class="row2"><div><label>Räckvidd (m)</label><input type="text" class="dp-reach" value="${escHtml(rec.reach ?? V.reach ?? "")}" /></div>

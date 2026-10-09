@@ -1067,17 +1067,32 @@ function drawSiteLayers(ctx, fontPx) {
 /* Etikett (vit ruta) med valfri grå datumrad under. */
 function labelBox(ctx, x, y, text, fs, bg, fg, border, dates) {
   ctx.font = `600 ${fs * 0.85}px "Segoe UI", Arial, sans-serif`;
-  const lines = String(text).split("\n");
-  let w = Math.max(...lines.map(l => ctx.measureText(l).width));
+  // En ikon först på raden (📦, 🚚 …) ritas som samma linjeikon som i menyerna (ui-icons.js).
+  const lines = String(text).split("\n").map(l => {
+    const ic = typeof uiLeadIcon === "function" ? uiLeadIcon(l) : null, o = ic && uiPath2D(ic.name) ? { t: ic.rest, ic: ic.name } : { t: l, ic: null };
+    if (typeof uiPath2D === "function" && / 🔒$/u.test(o.t)) { o.t = o.t.replace(/ 🔒$/u, ""); o.lock = true; } // låst: hänglås efter texten
+    return o;
+  });
+  const isz = fs * 0.95, gap = fs * 0.3;
+  const lw = l => ctx.measureText(l.t).width + (l.ic ? isz + gap : 0) + (l.lock ? isz * 0.85 + gap : 0);
+  let w = Math.max(...lines.map(lw));
   if (dates) { ctx.font = `400 ${fs * 0.68}px "Segoe UI", Arial, sans-serif`; w = Math.max(w, ctx.measureText(dates).width); }
   w += fs * 0.8;
   const h = lines.length * fs * 1.1 + fs * 0.5 + (dates ? fs * 0.85 : 0);
   ctx.fillStyle = bg; roundRect(ctx, x - w / 2, y - h / 2, w, h, fs * 0.25); ctx.fill();
   if (border) { ctx.setLineDash([]); ctx.strokeStyle = border; ctx.lineWidth = Math.max(1.5, fs / 10); ctx.stroke(); }
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.textBaseline = "middle";
   ctx.font = `600 ${fs * 0.85}px "Segoe UI", Arial, sans-serif`;
-  ctx.fillStyle = fg;
-  lines.forEach((l, i) => ctx.fillText(l, x, y - h / 2 + fs * 0.25 + fs * 0.55 + i * fs * 1.1));
+  lines.forEach((l, i) => {
+    const ly = y - h / 2 + fs * 0.25 + fs * 0.55 + i * fs * 1.1;
+    ctx.fillStyle = fg;
+    if (!l.ic && !l.lock) { ctx.textAlign = "center"; ctx.fillText(l.t, x, ly); return; }
+    const tw = lw(l); let cx = x - tw / 2;
+    if (l.ic) { uiCanvasIcon(ctx, l.ic, cx + isz / 2, ly, isz, border || fg); cx += isz + gap; }
+    ctx.fillStyle = fg; ctx.textAlign = "left"; ctx.fillText(l.t, cx, ly);
+    if (l.lock) uiCanvasIcon(ctx, "lock", cx + ctx.measureText(l.t).width + gap + isz * 0.42, ly, isz * 0.85, "#64748b");
+  });
+  ctx.textAlign = "center";
   if (dates) {
     ctx.font = `400 ${fs * 0.68}px "Segoe UI", Arial, sans-serif`;
     ctx.fillStyle = "#6b7280";
@@ -1085,12 +1100,6 @@ function labelBox(ctx, x, y, text, fs, bg, fg, border, dates) {
   }
   return { w, h };
 }
-
-/* Objektens etiketter kan dras fritt (Victors önskemål 2026-09-28). Läget
-   sparas som förskjutning i meter (x.lbl = [dx, dy]) från standardläget, så
-   att etiketten följer med när objektet flyttas. En streckad stödlinje visar
-   vilket objekt etiketten hör till. Rutorna sparas för träffytan vid klick. */
-let labelBoxes = new Map(); // id -> { x, y, w, h } i canvas-px (bara skärmen)
 function siteLabel(ctx, x, def, text, fs, bg, fg, border, dates) {
   let p = def;
   if (x.lbl && (x.lbl[0] || x.lbl[1])) {
@@ -2650,7 +2659,7 @@ function bindLayers() {
   $("btnOrthoNext").onclick = () => stepOrtho(1);
   document.querySelectorAll("[data-site]").forEach(b => { b.onclick = () => startSiteTool(b.dataset.site); });
   const symSel = $("symbolSelect");
-  symSel.innerHTML += Object.entries(SYMBOLS).map(([k, v]) => `<option value="${k}">${v.icon} ${escHtml(v.label)} (${fmtM(v.w)} × ${fmtM(v.h)} m)</option>`).join("");
+  symSel.innerHTML += Object.entries(SYMBOLS).map(([k, v]) => `<option value="${k}">${escHtml(v.label)} (${fmtM(v.w)} × ${fmtM(v.h)} m)</option>`).join("");
   symSel.onchange = () => { const k = symSel.value; symSel.value = ""; if (k) startSiteTool("symbol", k); };
   $("activeLayer").onchange = () => { try { localStorage.setItem("lagesplan-activelayer-" + projectId, $("activeLayer").value); } catch (e) {} };
   $("btnNewLayer").onclick = async () => {
