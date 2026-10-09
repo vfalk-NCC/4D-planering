@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-09 00:46";
+const APP_VERSION = "2026-10-09 05:26";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -763,6 +763,8 @@ function bindUI() {
 function renderStatusColorInputs() {
   const wrap = document.getElementById("statusColorInputs");
   if (!wrap) return;
+  const tempOffEl = document.getElementById("setTempOff");
+  if (tempOffEl) { const v = String(tempOffOpacity()); tempOffEl.value = [...tempOffEl.options].some(o => o.value === v) ? v : "0"; }
   wrap.innerHTML = Object.entries(COLOR_PANEL_LABELS).map(([key, label]) => {
     const hasOpacity = PHASE_OPACITY_KEYS.includes(key);
     // En rad per status: färg, namn, opacitet i 3D (Victor 2026-10-02: städad meny).
@@ -978,6 +980,8 @@ function onSaveSettings() {
     newStatusOpacities[key] = el ? Number(el.value) / 100 : (settings.statusOpacities && settings.statusOpacities[key]) ?? DEFAULT_PHASE_OPACITIES[key];
   });
   settings.statusOpacities = newStatusOpacities;
+  const tempOffEl = document.getElementById("setTempOff");
+  if (tempOffEl) settings.tempOffOpacity = Number(tempOffEl.value) || 0;
   window.localStorage.setItem("4dplan-settings", JSON.stringify(settings));
   paintLegendDots();
   updateConnectionWarning();
@@ -1594,6 +1598,7 @@ function fillLinkForm(existing) {
   document.getElementById("fEnd").value = existing ? existing.endDate || "" : "";
   document.getElementById("fActualStart").value = existing ? existing.actualStartDate || "" : "";
   document.getElementById("fActualEnd").value = existing ? existing.actualEndDate || "" : "";
+  document.getElementById("fTemporary").checked = !!(existing && existing.temporary === true);
   // Fäll ut "Verklig start/avslut"-sektionen automatiskt om det redan finns
   // data där (annars skulle man tro fälten var tomma när de bara är dolda),
   // annars börjar den hopfälld så formuläret känns kompakt i vanliga fallet.
@@ -1880,7 +1885,8 @@ function buildLinkPayloadFromForm() {
     actualEndDate: document.getElementById("fActualEnd").value || null,
     progress: Number(document.getElementById("fProgress").value) || 0,
     estimatedHours: document.getElementById("fEstimatedHours").value !== "" ? Number(document.getElementById("fEstimatedHours").value) : null,
-    dependsOn: [...linkFormDependsOn]
+    dependsOn: [...linkFormDependsOn],
+    temporary: document.getElementById("fTemporary").checked
   };
 }
 
@@ -2310,7 +2316,7 @@ function onSaveLink() {
    aktivitet samma framdrift, status och verkliga start/avslut. Ändras något
    av dem på ett objekt följer resten av aktiviteten med. Datumen (start/slut)
    är däremot fortfarande per objekt, så 3D-färgerna följer delaktiviteterna. */
-const ACTIVITY_WIDE_FIELDS = ["progress", "status", "actualStartDate", "actualEndDate"];
+const ACTIVITY_WIDE_FIELDS = ["progress", "status", "actualStartDate", "actualEndDate", "temporary"];
 function spreadActivityWideFields(records) {
   const inBatch = new Map(records.map(r => [r.id, r]));
   const extra = new Map();
@@ -2902,15 +2908,18 @@ async function applyTimelineColors() {
   const warningDays = settings.warningDaysBeforeEnd || 0;
   const byModel = {}; // modelId -> { planerad:[], pagaende:[], forsenad:[], klar:[], pausad:[] }
 
+  // Temporära objekt (t.ex. en mobilkran) utanför sin tid får en egen grupp: dolda eller svaga.
+  const empty = () => ({ planerad: [], pagaende: [], forsenad: [], klar: [], pausad: [], tempoff: [] });
   for (const it of items) {
     const phase = computeItemPhase(it, selectedDate, warningDays);
     if (!phase) continue;
-    byModel[it.modelId] = byModel[it.modelId] || { planerad: [], pagaende: [], forsenad: [], klar: [], pausad: [] };
-    byModel[it.modelId][phase].push(it.objectId);
+    byModel[it.modelId] = byModel[it.modelId] || empty();
+    byModel[it.modelId][isTempOffAt(it, selectedDate) ? "tempoff" : phase].push(it.objectId);
   }
 
   const colors = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
   const opacities = { ...DEFAULT_PHASE_OPACITIES, ...(settings.statusOpacities || {}) };
+  colors.tempoff = colors.planerad; opacities.tempoff = tempOffOpacity();
   for (const modelId of Object.keys(byModel)) {
     if (modelId === "null" || modelId === "undefined") continue; // ej kopplade (t.ex. bara manuell markering)
     const group = byModel[modelId];
@@ -2920,6 +2929,16 @@ async function applyTimelineColors() {
   }
   if (typeof renderManualMarks === "function") renderManualMarks();
 }
+
+/* Temporär (t.ex. mobilkran, stämp): finns bara från startdatum till och med slutdatum. Slutet är det
+   verkliga avslutet om det finns (kranen åkte tidigare/senare), annars planerat slut. */
+function isTempOffAt(it, dateStr) {
+  if (!it || it.temporary !== true || !dateStr) return false;
+  const end = it.actualEndDate || it.endDate;
+  return !!((it.startDate && dateStr < it.startDate) || (end && dateStr > end));
+}
+/* Opaciteten för temporära objekt utanför sin tid (Inställningar): 0 = dolda. */
+function tempOffOpacity() { const v = Number(settings.tempOffOpacity); return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0; }
 
 /**
  * Färgsätter en grupp objekt i en modell. Använder convertToRuntimeIdsSafe
@@ -4552,7 +4571,7 @@ function renderItemList() {
         <div class="item-row${entry.rep ? " group-rep" : ""}${isSelected ? " selected" : ""}${it._saveError ? " save-error" : ""}${it.id === flashEditId && Date.now() < flashEditUntil ? " flash-edit" : ""}" data-index="${idx}" data-item-id="${escapeHtml(it.id)}"${activityKeyOf(it) ? ` data-activity-key="${escapeHtml(activityKeyOf(it))}"` : ""}>
           <div class="item-row-top">
             <span class="item-main" data-action="select" title="Klicka för att markera. Ctrl/Cmd = lägg till, Shift = markera intervall.">
-              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it.elementType ? `<span class="type-tag" title="Typ">${escapeHtml(it.elementType)}</span>` : ""}${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">Ej i modellen</span>' : ""}${typeof manualMarkTagHtml === "function" && manualMarkTagHtml(it) ? manualMarkTagHtml(it) : (entry.rep ? !entry.members.some(m => m.modelId) : !it.modelId) ? (it.origin === "manuell" ? '<span class="uncoupled-tag" title="Egen aktivitet (skapad i appen), ännu inte kopplad – koppla med eller låt den vara okopplad">◇ Ej kopplad</span>' : '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>') : ""}<br/>
+              <span class="item-name">${escapeHtml(it.objectName || it.objectId)}</span>${it.elementType ? `<span class="type-tag" title="Typ">${escapeHtml(it.elementType)}</span>` : ""}${it.temporary === true ? `<span class="temp-tag" title="Temporär: syns i 3D bara ${escapeHtml(formatDateRange(it))}">⏱ Temporär</span>` : ""}${it._pending ? '<span class="save-pending-tag">Sparar...</span>' : ""}${it._saveError ? `<span class="save-error-tag" title="${escapeHtml(it._saveError)}">Kunde inte spara</span>` : ""}${it._notInModel ? '<span class="not-in-model-tag" title="Hittades inte i den just nu inlästa 3D-modellen - kan vara en äldre modellversion">Ej i modellen</span>' : ""}${typeof manualMarkTagHtml === "function" && manualMarkTagHtml(it) ? manualMarkTagHtml(it) : (entry.rep ? !entry.members.some(m => m.modelId) : !it.modelId) ? (it.origin === "manuell" ? '<span class="uncoupled-tag" title="Egen aktivitet (skapad i appen), ännu inte kopplad – koppla med eller låt den vara okopplad">◇ Ej kopplad</span>' : '<span class="uncoupled-tag" title="Importerad från Excel men ännu inte kopplad till ett 3D-objekt - använd \'Koppla till markering\'">◇ Ej kopplad</span>') : ""}<br/>
               ${activitySubLineHtml(entry)}
               <span class="item-dates">${escapeHtml(shownDates)} · Framdrift ${progress}%</span>${phaseTagHtml}${dependencyTagHtml}
             </span>
@@ -5471,6 +5490,9 @@ function toRow(it) {
     // Raderna i 4-veckorsplaneringen (för "Hämta framdrift från 4D" i Excel).
     excel_sheet: it.excelSheet || null,
     excel_map: Array.isArray(it.excelMap) && it.excelMap.length ? it.excelMap : null,
+    // Temporär (Victor 2026-10-09, t.ex. mobilkran): syns i 3D bara mellan start och slut. Skrivs bara när
+    // det är satt (true/false) – saknas fältet behålls filens värde vid sparningen.
+    ...(typeof it.temporary === "boolean" ? { temporary: it.temporary } : {}),
     updated_at: new Date().toISOString()
   };
 }
@@ -5526,6 +5548,7 @@ function fromRowStored(row) {
     resources: Array.isArray(row.resources) ? row.resources : null,
     excelSheet: row.excel_sheet || null,
     excelMap: Array.isArray(row.excel_map) ? row.excel_map : null,
+    temporary: typeof row.temporary === "boolean" ? row.temporary : undefined,
     updatedAt: row.updated_at
   };
 }

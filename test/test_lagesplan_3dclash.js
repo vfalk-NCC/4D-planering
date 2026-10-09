@@ -50,7 +50,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     pdfCache.set('A', new Uint8Array([1]).buffer);
     items = [
       { id: 'i1', object_name: 'K10', activity: 'Pelare', start_date: '2020-01-01', end_date: '2030-12-01', status: 'pagaende', progress: 40 },
-      { id: 'i2', object_name: 'M30', activity: 'Gjutning', start_date: '2020-01-01', end_date: '2020-02-01', status: 'klar', progress: 100, actual_end_date: '2020-02-01' },
+      { id: 'i2', object_name: 'M30', activity: 'Gjutning', start_date: '2020-01-01', end_date: '2020-02-01', status: 'klar', progress: 100, actual_end_date: '2020-02-01', temporary: true },
     ];
     positions = [
       { id: 'i1', x: 6512350, y: 150125, z0: 0, z1: 14, x0: 6512345, x1: 6512355, y0: 150120, y1: 150130 },
@@ -65,6 +65,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.click('#btn3d');
   await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.placeMeshes.size === 8, null, { timeout: 15000 });
   await page.waitForTimeout(300);
+  // --- Temporärt byggnadsobjekt (M30, slut 2020-02-01): syns inte i dag, men 2020-01-15.
+  const objIds = () => page.evaluate(() => [...new Set((l3.objMesh && l3.objMesh.userData.ids) || [])].sort().join(','));
+  if (await objIds() !== 'i1') fail('Temporärt objekt efter sitt slut ska inte synas i 3D: ' + await objIds());
+  if (await page.evaluate(() => visibleItems().some(r => r.id === 'i2'))) fail('Temporärt objekt efter sitt slut ska inte färga zoner/objekt i planen');
+  await page.evaluate(() => { $('dateInput').value = '2020-01-15'; }); await page.waitForTimeout(900);
+  if (await objIds() !== 'i1,i2' || !(await page.evaluate(() => visibleItems().some(r => r.id === 'i2')))) fail('Under sin tid ska det temporära objektet synas: ' + await objIds());
+  await page.evaluate(() => { $('dateInput').value = todayIso(); }); await page.waitForTimeout(900);
+
   // --- 4D för etableringen: boden (slut 2019-12-01) är tonad på dagens datum, syns i förklaringen.
   let e4 = await page.evaluate(() => { const g = l3.placeMeshes.get('b'); let o = 1; g.traverse(m => { if (m.isMesh) o = Math.min(o, m.material.opacity); }); return { off: g.userData.off4d, o, a: l3.placeMeshes.get('a').userData.off4d }; });
   if (!e4.off || e4.o > 0.3 || e4.a) fail('Boden ska vara tonad (inte på plats), a inte: ' + JSON.stringify(e4));

@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261008224613" />
-<script src="error-guard.js?v=20261008224613"></script>
+<link rel="stylesheet" href="style.css?v=20261009032601" />
+<script src="error-guard.js?v=20261009032601"></script>
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261008224613"></script>
-<script src="plan-excel-comments.js?v=20261008224613"></script>
+<script src="plan-excel-parser.js?v=20261009032601"></script>
+<script src="plan-excel-comments.js?v=20261009032601"></script>
 </head>
 <body>
 
@@ -431,6 +431,10 @@
             <option value="pausad">Pausad</option>
           </select>
         </label>
+        <label class="temp-row" title="För t.ex. en mobilkran, stämp eller tillfällig vägg: syns i 3D bara från startdatum till slutdatum och försvinner sedan">
+          <input type="checkbox" id="fTemporary" />
+          <span><b>Temporär</b> – syns i 3D bara mellan start och slut (t.ex. mobilkran, stämp)</span>
+        </label>
         <label>Framdrift (<span id="fProgressLabel">0</span>%)
           <input type="range" id="fProgress" min="0" max="100" step="1" value="0" />
         </label>
@@ -532,6 +536,9 @@
           <summary>🎨 Status och färger</summary>
           <p class="hint">Fasen räknas fram ur datum och framdrift. Pausad väljer du själv. Reglaget styr opaciteten i 3D-vyn.</p>
           <div id="statusColorInputs"></div>
+          <label class="temp-set">Temporära objekt utanför sin tid
+            <select id="setTempOff"><option value="0">Dolda</option><option value="0.15">Svaga (15 %)</option><option value="0.35">Halvgenomskinliga (35 %)</option></select>
+          </label>
         </details>
         <details class="set-sec" data-sec="blocks">
           <summary>👁 Synliga block</summary>
@@ -698,24 +705,24 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261008224613"></script>
-  <script src="excel-link.js?v=20261008224613"></script>
-  <script src="app.js?v=20261008224613"></script>
-  <script src="manual-markings.js?v=20261008224613"></script>
-  <script src="ifc-writer.js?v=20261008224613"></script>
-  <script src="pp-import.js?v=20261008224613"></script>
-  <script src="ifc-subset.js?v=20261008224613"></script>
-  <script src="week-summary.js?v=20261008224613"></script>
-  <script src="ifc-mesh.js?v=20261008224613"></script>
-  <script src="place-models.js?v=20261008224613"></script>
-  <script src="tc-livemove.js?v=20261008224613"></script>
-  <script src="place3d.js?v=20261008224613"></script>
-  <script src="volume-ifc.js?v=20261008224613"></script>
-  <script src="sub-activity-list.js?v=20261008224613"></script>
-  <script src="activity-remove.js?v=20261008224613"></script>
-  <script src="dup-check.js?v=20261008224613"></script>
-  <script src="ui-shell.js?v=20261008224613"></script>
-  <script src="undo.js?v=20261008224613"></script>
-  <script src="planning-keys.js?v=20261008224613"></script>
+  <script src="github-storage.js?v=20261009032601"></script>
+  <script src="excel-link.js?v=20261009032601"></script>
+  <script src="app.js?v=20261009032601"></script>
+  <script src="manual-markings.js?v=20261009032601"></script>
+  <script src="ifc-writer.js?v=20261009032601"></script>
+  <script src="pp-import.js?v=20261009032601"></script>
+  <script src="ifc-subset.js?v=20261009032601"></script>
+  <script src="week-summary.js?v=20261009032601"></script>
+  <script src="ifc-mesh.js?v=20261009032601"></script>
+  <script src="place-models.js?v=20261009032601"></script>
+  <script src="tc-livemove.js?v=20261009032601"></script>
+  <script src="place3d.js?v=20261009032601"></script>
+  <script src="volume-ifc.js?v=20261009032601"></script>
+  <script src="sub-activity-list.js?v=20261009032601"></script>
+  <script src="activity-remove.js?v=20261009032601"></script>
+  <script src="dup-check.js?v=20261009032601"></script>
+  <script src="ui-shell.js?v=20261009032601"></script>
+  <script src="undo.js?v=20261009032601"></script>
+  <script src="planning-keys.js?v=20261009032601"></script>
 </body>
 </html>

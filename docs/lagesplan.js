@@ -317,6 +317,7 @@ let shapeCache = null;
 function objectShapesInPdf() {
   const pos = positionsInPdf();
   if (!pos) return null;
+  visibleItems(); // nytt datum -> temporära objekt kan ha kommit/gått (nollställer shapeCache)
   if (shapeCache) return shapeCache;
   const byId = new Map(positions.map(p => [p.id, p]));
   const hideSubs = !showSubObjects() ? subCoupledIds() : null;

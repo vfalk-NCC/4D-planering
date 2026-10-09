@@ -40,12 +40,23 @@ function filterState() {
 function filterActive() { const f = filterState(); return !!(f.contractor || f.text); }
 /* Planerade objekt som klarar filtret - används av zoner, objekt och fokus. */
 function visibleItems() {
-  if (visibleCache) return visibleCache;
+  // Temporära objekt (t.ex. mobilkran) finns bara mellan start och slut -> cachen gäller ett datum.
+  const at = ($("dateInput") && $("dateInput").value) || todayIso();
+  if (visibleCache && visibleCacheAt === at) return visibleCache;
+  if (visibleCacheAt !== at && typeof shapeCache !== "undefined") shapeCache = null; // objektens former följer med
+  visibleCacheAt = at;
   const f = filterState();
-  visibleCache = (!f.contractor && !f.text) ? items : items.filter(it =>
+  visibleCache = items.filter(it => !rowTempOffAt(it, at) &&
     (!f.contractor || (it.contractor || "") === f.contractor) &&
     (!f.text || [it.activity, it.object_name, it.area].filter(Boolean).join(" ").toLowerCase().includes(f.text)));
   return visibleCache;
+}
+let visibleCacheAt = null;
+/* Temporär rad (plan_items: temporary) utanför sin tid: före start eller efter (verkligt) slut. */
+function rowTempOffAt(r, at) {
+  if (!r || r.temporary !== true || !at) return false;
+  const end = r.actual_end_date || r.end_date;
+  return !!((r.start_date && at < r.start_date) || (end && at > end));
 }
 function invalidateVisible() { visibleCache = null; invalidatePositions(); }
 function onFilterChanged() {

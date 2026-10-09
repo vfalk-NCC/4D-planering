@@ -144,15 +144,21 @@ function l3bRecolor() {
   if (!l3 || !l3b.models.length) return;
   const byId = new Map((items || []).map(r => [r.id, r]));
   const byGuid = new Map((items || []).filter(r => r.object_id).map(r => [String(r.object_id), r.id]));
+  const at = $("dateInput").value || todayIso();
   l3b.models.forEach(m => m.meshes.forEach(x => {
-    const col = x.geometry.getAttribute("color"), d = col.array;
-    x.userData.l3b.ranges.forEach(r => {
+    const col = x.geometry.getAttribute("color"), d = col.array, u = x.userData.l3b;
+    const off = new Set();
+    u.ranges.forEach((r, ri) => {
       if (r.guid && !r.itemId) r.itemId = byGuid.get(r.guid) || null; // kopplad efter att modellen lästes
-      const c = r.itemId ? new THREE.Color(phaseColor(l3Phase(byId.get(r.itemId)))) : null;
+      const row = r.itemId ? byId.get(r.itemId) : null;
+      if (row && typeof rowTempOffAt === "function" && rowTempOffAt(row, at)) off.add(ri); // temporär utanför sin tid: syns inte
+      const c = r.itemId ? new THREE.Color(phaseColor(l3Phase(row))) : null;
       const rgb = c ? [c.r, c.g, c.b] : r.base;
       for (let i = r.start; i < r.start + r.count; i++) { d[i * 3] = rgb[0]; d[i * 3 + 1] = rgb[1]; d[i * 3 + 2] = rgb[2]; }
     });
     col.needsUpdate = true;
+    const was = u.tempOff || new Set();
+    if (off.size !== was.size || [...off].some(i => !was.has(i))) { u.tempOff = off; l3bApplyHidden(x); }
   }));
 }
 function l3bCoupledIds() { const s = new Set(); l3b.models.forEach(m => m.visible && m.ranges.forEach(r => { if (r.itemId) s.add(r.itemId); })); return s; }
@@ -172,9 +178,10 @@ function l3bHitInfo(h) {
 function l3bApplyHidden(mesh) {
   const u = mesh.userData.l3b, src = u.origIdx;
   let idx = src;
-  if (u.hidden.size) {
+  const off = u.tempOff || new Set();
+  if (u.hidden.size || off.size) {
     const hid = new Uint8Array(mesh.geometry.getAttribute("position").count);
-    u.hidden.forEach(ri => { const r = u.ranges[ri]; hid.fill(1, r.start, r.start + r.count); });
+    [...u.hidden, ...off].forEach(ri => { const r = u.ranges[ri]; hid.fill(1, r.start, r.start + r.count); });
     idx = [];
     for (let i = 0; i + 2 < src.length; i += 3) if (!hid[src[i]]) idx.push(src[i], src[i + 1], src[i + 2]);
   }

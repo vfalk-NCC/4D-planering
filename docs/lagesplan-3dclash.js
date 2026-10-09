@@ -21,7 +21,7 @@ function l3ClashBldg() {
   return (typeof positions !== "undefined" ? positions : []).filter(q => !(l3.hiddenObjs && l3.hiddenObjs.has(q.id))).map(q => {
     const h = 0.25, x0 = q.x0 ?? q.x - h, x1 = q.x1 ?? q.x + h, y0 = q.y0 ?? q.y - h, y1 = q.y1 ?? q.y + h;
     const r = byId.get(q.id) || {};
-    return { id: q.id, name: [r.object_name, r.activity].filter(Boolean).join(" · ") || q.id, start: r.start_date || "",
+    return { id: q.id, name: [r.object_name, r.activity].filter(Boolean).join(" · ") || q.id, start: r.start_date || "", end: r.temporary === true ? (r.actual_end_date || r.end_date || "") : "",
       shape: { poly: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], z0: q.z0 ?? 0, z1: Math.max(q.z1 ?? 0, (q.z0 ?? 0) + 0.05), box: [x0, y0, x1, y1] } };
   });
 }
@@ -73,6 +73,7 @@ function l3ClashRun(opt) {
       if (focus && !focus.has(a.id)) return;
       B.forEach(q => {
         if (o.time && a.end && q.start && a.end < q.start) return; // etableringen är borta innan byggnadsdelen påbörjas
+        if (o.time && q.end && a.start && q.end < a.start) return; // temporär byggnadsdel (t.ex. stämp) borta innan etableringen kommer
         const c = best(sh.get(a.id), [q.shape]);
         if (c) out.push({ a: a.id, b: q.id, bName: q.name, kind: "bldg", ...c });
       });

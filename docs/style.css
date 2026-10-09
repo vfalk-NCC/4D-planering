@@ -1239,3 +1239,11 @@ body.tab-design .plan-source { background: #f5f3ff; }
 @media (hover: none) { .place-keys { display: none; } }
 .lm-name { font-weight: 600; margin: 6px 0 2px; overflow-wrap: anywhere; }
 .place-nudge button.active { outline: 2px solid #0b5fff; }
+
+/* Temporär (t.ex. mobilkran): syns i 3D bara mellan start och slut. */
+.item-row .temp-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 9px; background: #fff7ed; color: #9a3412; border: 1px dashed #fb923c; font-size: 10.5px; font-weight: 600; line-height: 15px; vertical-align: 1px; }
+.temp-row { display: flex !important; gap: 8px; align-items: flex-start; padding: 6px 8px; border-radius: 8px; background: #fff7ed; border: 1px dashed #fdba74; cursor: pointer; }
+.temp-row input { width: auto !important; margin-top: 2px; }
+.temp-row span { font-size: 12.5px; line-height: 1.35; }
+.temp-set { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 13px; }
+.temp-set select { width: auto; }

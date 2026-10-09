@@ -463,8 +463,10 @@ function l3BuildObjects() {
   const pos = [], col = [], ids = [];
   const F = [[0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7], [0, 1, 5], [0, 5, 4], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 0, 4], [3, 4, 7]];
   const E = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+  const at = $("dateInput").value || todayIso();
   positions.forEach(p => {
     if (l3.hiddenObjs && l3.hiddenObjs.has(p.id)) return;
+    if (typeof rowTempOffAt === "function" && rowTempOffAt(byId.get(p.id), at)) return; // temporär utanför sin tid
     const c = new THREE.Color(phaseColor(l3Phase(byId.get(p.id))));
     const h = 0.25;
     const x0 = (p.x0 ?? p.x - h) - l3.O[0], x1 = (p.x1 ?? p.x + h) - l3.O[0], y0 = (p.y0 ?? p.y - h) - l3.O[1], y1 = (p.y1 ?? p.y + h) - l3.O[1];

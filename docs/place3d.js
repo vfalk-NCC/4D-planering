@@ -537,6 +537,19 @@ async function placeCouple4D(fileId) {
     await coupleItemToModelObjects(items.find(it => it.id === p.itemId), [{ modelId: fileId, objectId: guid }]);
     n++;
   }
+  // Etablering (t.ex. mobilkran) står en viss tid: aktiviteten blir Temporär – syns i 3D bara mellan
+  // start och slut – om ingen valt något annat (Victor 2026-10-09). Ett eget val (true/false) rörs inte.
+  try {
+    const coupled = items.filter(it => todo.some(p => p.itemId === it.id) || todo.some(p => String(it.objectId) === placeGuid(p.id, "")));
+    const groups = new Set(coupled.map(it => it.groupId).filter(Boolean));
+    const mark = items.filter(it => it.temporary === undefined && (coupled.includes(it) || (it.groupId && groups.has(it.groupId))));
+    if (mark.length) {
+      const ids = new Set(mark.map(it => it.id));
+      mark.forEach(it => { it.temporary = true; });
+      await ghWriteJSON(settings.githubToken, itemsPath(), arr => arr.map(r => (ids.has(r.id) && typeof r.temporary !== "boolean" ? { ...r, temporary: true } : r)), `Placera i 3D: etableringen temporär (${mark.length} objekt)`);
+      if (typeof renderItemList === "function") renderItemList();
+    }
+  } catch (e) { setPlaceStatus("Kunde inte markera etableringen som temporär: " + e.message, true); }
   if (move.length) {
     const ids = new Set(move.map(r => r.id));
     move.forEach(r => { r.modelId = fileId; });
