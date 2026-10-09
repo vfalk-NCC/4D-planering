@@ -10,9 +10,9 @@
 <meta name="theme-color" content="#ffffff" />
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
-<script src="error-guard.js?v=20261009101513"></script>
+<script src="error-guard.js?v=20261009104926"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261009101513"></script>
+<script src="github-storage.js?v=20261009104926"></script>
 <style>
   /* Beskär bild med musen (lagesplan-imgcrop.js) */
   #imgCropModal { position: fixed; inset: 0; z-index: 1100; background: rgba(15,23,42,.55); display: flex; align-items: center; justify-content: center; }
@@ -20,9 +20,9 @@
   #imgCropModal .ic-stage { display: flex; justify-content: center; margin: 10px 0 6px; padding: 14px; background: repeating-conic-gradient(#e5e7eb 0 25%, #f9fafb 0 50%) 0 0 / 16px 16px; border-radius: 6px; }
   #imgCropModal .ic-img { position: relative; user-select: none; touch-action: none; }
   #imgCropModal .ic-img img { display: block; width: 100%; height: 100%; pointer-events: none; }
-  #imgCropModal .ic-box { position: absolute; box-sizing: border-box; border: 2px solid #2563eb; box-shadow: 0 0 0 9999px rgba(15,23,42,.5); cursor: move; }
+  #imgCropModal .ic-box { position: absolute; box-sizing: border-box; border: 2px solid #6d5efc; box-shadow: 0 0 0 9999px rgba(15,23,42,.5); cursor: move; }
   #imgCropModal .ic-img { overflow: hidden; }
-  #imgCropModal .ic-h { position: absolute; width: 14px; height: 14px; background: #fff; border: 2px solid #2563eb; border-radius: 3px; box-sizing: border-box; }
+  #imgCropModal .ic-h { position: absolute; width: 14px; height: 14px; background: #fff; border: 2px solid #6d5efc; border-radius: 3px; box-sizing: border-box; }
   #imgCropModal .ic-nw { left: -7px; top: -7px; cursor: nwse-resize; } #imgCropModal .ic-se { right: -7px; bottom: -7px; cursor: nwse-resize; }
   #imgCropModal .ic-ne { right: -7px; top: -7px; cursor: nesw-resize; } #imgCropModal .ic-sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
   #imgCropModal .ic-n { left: calc(50% - 7px); top: -7px; cursor: ns-resize; } #imgCropModal .ic-s { left: calc(50% - 7px); bottom: -7px; cursor: ns-resize; }
@@ -31,7 +31,7 @@
   #prCtx { position: fixed; z-index: 1200; min-width: 230px; padding: 4px; background: #fff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.2); font-size: 13px; }
   #prCtx .pc-head { padding: 4px 10px 6px; font-size: 11px; font-weight: 650; color: #64748b; text-transform: uppercase; letter-spacing: .5px; }
   #prCtx button { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: none; padding: 6px 10px; border-radius: 6px; font: inherit; text-align: left; cursor: pointer; height: auto; }
-  #prCtx button:hover:not(:disabled) { background: #eff6ff; }
+  #prCtx button:hover:not(:disabled) { background: #f3f1ff; }
   #prCtx button:disabled { opacity: .4; cursor: default; }
   #prCtx button i { width: 18px; text-align: center; font-style: normal; }
   #prCtx button span { flex: 1; }
@@ -42,7 +42,7 @@
   .pr-dxf-menu { position: fixed; z-index: 1000; display: flex; flex-direction: column; min-width: 280px; padding: 4px; background: #fff; border: 1px solid #d1d5db; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
   .pr-dxf-menu.hidden { display: none; }
   .pr-dxf-menu button { text-align: left; border: none; background: none; padding: 7px 10px; border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
-  .pr-dxf-menu button:hover { background: #eff6ff; }
+  .pr-dxf-menu button:hover { background: #f3f1ff; }
 
   /* Lagerpanelen inne i utskriften: vyval och datuminställning hör till skärmen (ritningen har eget val ovanför). */
   .pr-layerhost .ls-views, .pr-layerhost #lsViewForm, .pr-layerhost label.check:has(#layersFollowDate) { display: none !important; }
@@ -66,7 +66,7 @@
   :root {
     --bg: #f3f4f6; --panel: #ffffff; --panel-2: #f8f9fb; --border: #e2e5ea; --border-strong: #cfd4dc;
     --text: #1b1f24; --muted: #6b7280; --faint: #9aa1ab;
-    --accent: #0b5fff; --accent-weak: #eaf1ff; --accent-strong: #0848c7; --danger: #c62828;
+    --accent: #6d5efc; --accent-weak: #f3f1ff; --accent-strong: #5b4be8; --danger: #c62828;
     --radius: 6px; --ctl-h: 30px;
     font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
   }
@@ -166,12 +166,12 @@
   .layer-row { display: grid; grid-template-columns: 20px 1fr 84px 22px; align-items: center; gap: 6px; padding: 5px 8px; border-bottom: 1px solid var(--border); font-size: 12px; }
   .layer-row:hover { background: var(--panel-2); }
   .layer-row[data-layer] { cursor: default; user-select: none; }
-  .layer-selbar { position: sticky; top: -10px; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; margin: -10px -12px 10px; background: #eff6ff; border-bottom: 1px solid #bfdbfe; box-shadow: 0 2px 8px rgba(15,23,42,.12); font-size: 12px; }
+  .layer-selbar { position: sticky; top: -10px; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; margin: -10px -12px 10px; background: #f3f1ff; border-bottom: 1px solid #d6d0ff; box-shadow: 0 2px 8px rgba(15,23,42,.12); font-size: 12px; }
   .layer-selbar b { white-space: nowrap; margin-right: auto; }
   .layer-selbar button, .layer-selbar select { font-size: 12px; padding: 2px 8px; height: 26px; white-space: nowrap; }
   .layer-selbar select { min-width: 0; flex: 0 1 140px; width: auto; }
   .layer-selbar button.danger { color: #b91c1c; }
-  .layer-list .layer-row.sel, .layer-list .layer-row.sel:hover { background: #dbeafe; box-shadow: inset 3px 0 0 #2563eb; }
+  .layer-list .layer-row.sel, .layer-list .layer-row.sel:hover { background: #e6e1ff; box-shadow: inset 3px 0 0 #6d5efc; }
   .layer-row:last-child { border-bottom: none; }
   .layer-row.sub { padding-left: 24px; background: #fafbfc; }
   .layer-row input[type=range] { width: 84px; margin: 0; }
@@ -193,8 +193,8 @@
   .cadall-box .cadall-sub { padding-left: 30px; }
   .cadall-box .layer-row.filtered { display: none; }
   .ca-sw { position: relative; cursor: pointer; width: 12px; height: 12px; }
-  .ca-sw:hover { outline: 2px solid #2563eb; outline-offset: 1px; }
-  .ca-sw.own { box-shadow: 0 0 0 1px #fff, 0 0 0 2px #2563eb; }
+  .ca-sw:hover { outline: 2px solid #6d5efc; outline-offset: 1px; }
+  .ca-sw.own { box-shadow: 0 0 0 1px #fff, 0 0 0 2px #6d5efc; }
   .ca-sw input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; padding: 0; border: 0; cursor: pointer; }
   .ca-reset { margin-left: 4px; padding: 0 4px; height: 18px; font-size: 11px; color: var(--muted); }
   .layer-row.folder-row .ln { display: flex; align-items: center; gap: 2px; }
@@ -243,7 +243,7 @@
   .layer-row .ul-toggle { width: 16px; padding: 0; color: var(--muted); }
   .layer-row .lr-opts { grid-column: 2 / 5; display: flex; flex-direction: column; gap: 2px; padding-left: 20px; }
   .layer-row .lr-opts.hidden { display: none; }
-  .layer-row small.pdf-bas { font-size: 9.5px; font-weight: 600; color: #1d4ed8; background: rgba(37,99,235,.12); border-radius: 4px; padding: 0 4px; margin-right: 1px; }
+  .layer-row small.pdf-bas { font-size: 9.5px; font-weight: 600; color: #5b4be8; background: rgba(109,94,252,.12); border-radius: 4px; padding: 0 4px; margin-right: 1px; }
   .layer-row .blend { grid-column: 2 / 5; font-size: 11px; color: var(--muted); display: flex; gap: 4px; align-items: center; margin: 0; }
   #sitePop { position: absolute; z-index: 15; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 12px 32px rgba(15,23,42,.2); padding: 12px 14px; width: 280px; font-size: 12px; }
   #sitePop { overflow-y: auto; overscroll-behavior: contain; }
@@ -335,7 +335,7 @@
   #printModal #prCanvas { position: absolute; inset: 0; cursor: default; }
   #printModal .pr-side { width: 340px; flex: 0 0 340px; background: #fff; border-left: 1px solid var(--border); padding: 12px 14px; overflow-y: auto; display: flex; flex-direction: column; }
   #printModal .pr-resize { flex: 0 0 6px; margin-right: -6px; z-index: 2; cursor: col-resize; background: transparent; }
-  #printModal .pr-resize:hover, #printModal .pr-resize.drag { background: rgba(37,99,235,.35); }
+  #printModal .pr-resize:hover, #printModal .pr-resize.drag { background: rgba(109,94,252,.35); }
   #printModal .pr-side textarea { width: 100%; font: inherit; border: 1px solid var(--border-strong); border-radius: 6px; padding: 5px 7px; resize: vertical; }
   #printModal .pr-side input[type=number] { font: inherit; height: 30px; padding: 0 6px; border: 1px solid var(--border-strong); border-radius: 6px; width: 100%; }
   #printModal .pr-grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
@@ -707,7 +707,7 @@
   .dp-srow.placed { opacity: .6; }
   .dp-srow .dp-sue { width: 74px; height: 26px; font-size: 11.5px; }
   .dp-srow button { height: 26px; padding: 0 8px; font-size: 12px; }
-  .dp-tag { font-size: 10px; padding: 0 5px; border-radius: 4px; background: #dbeafe; color: #1d4ed8; font-weight: 650; }
+  .dp-tag { font-size: 10px; padding: 0 5px; border-radius: 4px; background: #e6e1ff; color: #5b4be8; font-weight: 650; }
   .dp-tag.late { background: #fee2e2; color: #b91c1c; }
   .wk-wrap { overflow-x: auto; }
   table.wk { border-collapse: collapse; width: 100%; font-size: 11.5px; }
@@ -874,7 +874,7 @@
   .pr-bar { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 20px); overflow-x: auto; display: flex; align-items: stretch; gap: 2px; padding: 4px 6px; background: rgba(255,255,255,.97); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 6px 18px rgba(15,23,42,.14); z-index: 2; scrollbar-width: thin; }
   .pr-bar .pb-lead { align-self: center; padding: 0 8px 0 4px; font-size: 10.5px; font-weight: 650; letter-spacing: .5px; text-transform: uppercase; color: var(--faint); white-space: nowrap; }
   .pr-bar button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 50px; height: 48px; padding: 3px 4px; border: 1px solid transparent; background: none; border-radius: 8px; color: #1f2937; font-size: 10.5px; cursor: pointer; box-shadow: none; }
-  .pr-bar button:hover { background: #eff6ff; border-color: #bfdbfe; color: var(--accent); }
+  .pr-bar button:hover { background: #f3f1ff; border-color: #d6d0ff; color: var(--accent); }
   .pr-bar button:active { transform: translateY(1px); }
   .pr-bar button i { display: block; width: 22px; height: 22px; }
   .pr-bar .pb-sep { width: 1px; margin: 6px 3px; background: var(--border); flex: 0 0 1px; }
@@ -1062,10 +1062,10 @@
   .v3-bar > button, .v3-dd > button, .v3-seg button { display: inline-flex; align-items: center; gap: 6px; height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: #334155; cursor: pointer; white-space: nowrap; }
   .v3-bar > button:hover, .v3-dd > button:hover, .v3-seg button:hover { background: #f1f5f9; }
   .v3-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 10px; background: #f1f5f9; border: 1px solid #e2e8f0; }
-  .v3-seg button.on { background: #fff; color: #1d4ed8; box-shadow: 0 1px 3px rgba(15,23,42,.15); }
+  .v3-seg button.on { background: #fff; color: #5b4be8; box-shadow: 0 1px 3px rgba(15,23,42,.15); }
   .v3-seg button:disabled { opacity: .35; cursor: default; background: transparent; }
-  #view3d .v3-primary { background: #1d4ed8; color: #fff; border-color: #1d4ed8; font-weight: 600; }
-  #view3d .v3-primary:hover { background: #1e40af; }
+  #view3d .v3-primary { background: #5b4be8; color: #fff; border-color: #5b4be8; font-weight: 600; }
+  #view3d .v3-primary:hover { background: #4a3bd6; }
   #view3d .v3-primary:disabled { opacity: .6; }
   .v3-grow { flex: 1; }
   .v3-dd { position: relative; }
@@ -1078,7 +1078,7 @@
   .v3-pop-hint.bad { color: #dc2626; }
   .v3-segs { display: flex; gap: 2px; padding: 2px; background: #f1f5f9; border-radius: 8px; }
   .v3-segs button { flex: 1; border: none; background: transparent; padding: 5px 4px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-  .v3-segs button.on { background: #fff; color: #1d4ed8; box-shadow: 0 1px 2px rgba(15,23,42,.15); }
+  .v3-segs button.on { background: #fff; color: #5b4be8; box-shadow: 0 1px 2px rgba(15,23,42,.15); }
   #view3d .v3-wide { display: flex; align-items: center; gap: 6px; justify-content: center; width: 100%; padding: 7px 10px; border-radius: 8px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer; }
   .v3-bldg-list { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow: auto; }
   .v3-bldg-list label { display: flex; align-items: center; gap: 6px; }
@@ -1095,7 +1095,7 @@
   #v3Lib { display: flex; flex-direction: column; gap: 2px; }
   #view3d #v3Lib button { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; text-align: left; height: auto; padding: 7px 8px; border-radius: 8px; border: 1px solid transparent; background: transparent; cursor: pointer; }
   #v3Lib button:hover { background: #f1f5f9; }
-  #v3Lib button.on { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+  #v3Lib button.on { background: #f3f1ff; border-color: #b9b0ff; color: #5b4be8; }
   #v3Lib button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #v3Lib i { width: 14px; height: 14px; border-radius: 4px; flex: 0 0 auto; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
   .v3-pal-hint { font-size: 11px; color: #64748b; line-height: 1.4; margin-top: 4px; }
@@ -1118,7 +1118,7 @@
   .v3-grid label, label.v3-field { display: flex; flex-direction: column; gap: 2px; color: #64748b; font-size: 11px; }
   label.v3-field { margin-bottom: 6px; }
   .v3-in { display: flex; align-items: center; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; }
-  .v3-in:focus-within { border-color: #1d4ed8; box-shadow: 0 0 0 2px rgba(29,78,216,.15); }
+  .v3-in:focus-within { border-color: #5b4be8; box-shadow: 0 0 0 2px rgba(91,75,232,.15); }
   #view3d .v3-in input { border: none; width: 100%; min-width: 0; height: 30px; padding: 0 6px; background: transparent; font-size: 13px; outline: none; }
   .v3-in em { font-style: normal; color: #94a3b8; padding-right: 6px; font-size: 11px; }
   #view3d .v3-grid input[type=date], #view3d label.v3-field select { height: 32px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0 6px; width: 100%; box-sizing: border-box; }
@@ -1126,7 +1126,7 @@
   .v3-handles { display: flex; align-items: center; gap: 4px; margin-top: 8px; color: #64748b; font-size: 11px; }
   .v3-handles span { margin-right: 4px; }
   .v3-handles button { height: 28px; padding: 0 9px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer; }
-  .v3-handles button.on { background: #1d4ed8; color: #fff; border-color: #1d4ed8; }
+  .v3-handles button.on { background: #5b4be8; color: #fff; border-color: #5b4be8; }
   .v3-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
   .v3-btns button { display: flex; align-items: center; justify-content: center; gap: 6px; height: 34px; border-radius: 8px; border: 1px solid #cbd5e1; background: #fff; cursor: pointer; }
   .v3-btns button:hover { background: #f8fafc; }
@@ -1161,7 +1161,7 @@
   .v3-ctx kbd { font-size: 10px; background: transparent; border: none; color: #94a3b8; }
   .v3-ctx hr { border: none; border-top: 1px solid #e2e8f0; margin: 4px 2px; }
   .v3-toast { position: absolute; z-index: 8; left: 50%; top: 14px; transform: translateX(-50%); background: #0f172a; color: #fff; padding: 9px 12px 9px 16px; border-radius: 10px; display: flex; align-items: center; gap: 14px; box-shadow: 0 10px 30px rgba(15,23,42,.3); font-size: 13px; max-width: calc(100% - 40px); }
-  .v3-toast button { border: none; background: transparent; color: #93c5fd; font-weight: 700; cursor: pointer; padding: 4px 6px; }
+  .v3-toast button { border: none; background: transparent; color: #b9b0ff; font-weight: 700; cursor: pointer; padding: 4px 6px; }
   .v3-foot { display: flex; align-items: center; gap: 12px; padding: 5px 10px; background: #fff; border-top: 1px solid #e2e8f0; font-size: 12px; min-height: 34px; flex-wrap: wrap; }
   #view3d .v3-status { flex: 1; min-width: 200px; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #view3d .v3-status.bad { color: #dc2626; }
@@ -1185,9 +1185,9 @@
   .v3-meas { position: absolute; z-index: 3; pointer-events: none; transform: translate(-50%, -130%); background: #dc2626; color: #fff; font-weight: 700; font-size: 12px; padding: 2px 8px; border-radius: 6px; box-shadow: 0 2px 6px rgba(0,0,0,.2); }
   @keyframes v3blink { 50% { opacity: 0; } }
   /* Tekla-delarna: områdesmarkering, axelkors, dialoger, fästlägen, objektlista, snabbsök */
-  .v3-rect { position: absolute; z-index: 4; border: 1.5px solid #1d4ed8; background: rgba(29,78,216,.08); pointer-events: none; }
-  .v3-pivot { position: absolute; z-index: 4; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid #1d4ed8; border-radius: 50%; background: rgba(255,255,255,.75); box-shadow: 0 0 0 3px rgba(29,78,216,.18); pointer-events: none; }
-  .v3-pivot::after { content: ""; position: absolute; left: 4px; top: 4px; width: 2px; height: 2px; border-radius: 50%; background: #1d4ed8; }
+  .v3-rect { position: absolute; z-index: 4; border: 1.5px solid #5b4be8; background: rgba(91,75,232,.08); pointer-events: none; }
+  .v3-pivot { position: absolute; z-index: 4; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid #5b4be8; border-radius: 50%; background: rgba(255,255,255,.75); box-shadow: 0 0 0 3px rgba(91,75,232,.18); pointer-events: none; }
+  .v3-pivot::after { content: ""; position: absolute; left: 4px; top: 4px; width: 2px; height: 2px; border-radius: 50%; background: #5b4be8; }
   .v3-hds { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
   .v3-hd { position: absolute; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 3px; background: #fff; border: 2px solid #f59e0b; box-shadow: 0 1px 3px rgba(0,0,0,.35); pointer-events: auto; cursor: grab; touch-action: none; }
   .v3-hd:hover, .v3-hd.on { background: #f59e0b; transform: scale(1.25); }
@@ -1209,7 +1209,7 @@
   .v3-sv-x:hover { color: #dc2626; }
   .v3-sv-new { display: flex; gap: 4px; margin-top: 4px; }
   .v3-sv-new input { flex: 1; min-width: 0; height: 28px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 0 8px; font-size: 13px; }
-  .v3-sv-new button { flex: 0 0 auto; height: 28px; border: 1px solid #2563eb; background: #2563eb; color: #fff; border-radius: 6px; padding: 0 10px; cursor: pointer; font-size: 13px; }
+  .v3-sv-new button { flex: 0 0 auto; height: 28px; border: 1px solid #6d5efc; background: #6d5efc; color: #fff; border-radius: 6px; padding: 0 10px; cursor: pointer; font-size: 13px; }
   .v3-clash-opt { display: flex; flex-direction: column; gap: 4px; }
   .v3-clash-gap { flex-direction: row !important; align-items: center; gap: 8px !important; }
   .v3-clash-gap .v3-in { width: 110px; }
@@ -1239,7 +1239,7 @@
   #view3d #v3ObjSearch { width: 100%; box-sizing: border-box; height: 32px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0 9px; }
   .v3-ol-g { display: flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 12px; }
   .v3-ol-g b { flex: 1; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .v3-ol-g b:hover { color: #1d4ed8; }
+  .v3-ol-g b:hover { color: #5b4be8; }
   .v3-ol-g span { color: #94a3b8; font-size: 11px; }
   .v3-ol-r { display: flex; align-items: center; gap: 6px; padding: 4px 4px 4px 2px; border-radius: 6px; cursor: pointer; font-size: 12px; }
   .v3-ol-r:hover { background: #f1f5f9; }
@@ -1253,14 +1253,14 @@
   .v3-dlg-h { display: flex; align-items: center; justify-content: space-between; padding: 6px 6px 6px 12px; border-bottom: 1px solid #e2e8f0; cursor: move; background: #f8fafc; border-radius: 12px 12px 0 0; }
   .v3-dlg-b { padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
   .v3-dlg-tabs { margin-bottom: 2px; }
-  .v3-spcount { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: #eff6ff; border: 1px solid #bfdbfe; }
+  .v3-spcount { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: #f3f1ff; border: 1px solid #d6d0ff; }
   .v3-spcount > label, .v3-spcount > span { font-weight: 600; color: #1e3a8a; font-size: 13px; }
   .v3-spcount > b { font-size: 16px; color: #1e3a8a; }
   .v3-spcount > em { font-style: normal; color: #475569; font-size: 12px; }
-  .v3-spcount-in { display: flex; align-items: stretch; border: 1px solid #93c5fd; border-radius: 8px; overflow: hidden; background: #fff; }
-  .v3-spcount-in button { width: 32px; border: 0; background: #fff; color: #1d4ed8; font-size: 18px; cursor: pointer; }
-  .v3-spcount-in button:hover { background: #dbeafe; }
-  .v3-spcount-in input { width: 56px; border: 0; border-left: 1px solid #bfdbfe; border-right: 1px solid #bfdbfe; text-align: center; font-size: 16px; font-weight: 600; padding: 4px 0; }
+  .v3-spcount-in { display: flex; align-items: stretch; border: 1px solid #b9b0ff; border-radius: 8px; overflow: hidden; background: #fff; }
+  .v3-spcount-in button { width: 32px; border: 0; background: #fff; color: #5b4be8; font-size: 18px; cursor: pointer; }
+  .v3-spcount-in button:hover { background: #e6e1ff; }
+  .v3-spcount-in input { width: 56px; border: 0; border-left: 1px solid #d6d0ff; border-right: 1px solid #d6d0ff; text-align: center; font-size: 16px; font-weight: 600; padding: 4px 0; }
   .v3-dlg-g3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .v3-dlg-f { display: flex; flex-direction: column; gap: 2px; color: #64748b; font-size: 11px; }
   .v3-dlg-row { display: flex; gap: 6px; align-items: flex-end; flex-wrap: wrap; }
@@ -1273,7 +1273,7 @@
   #view3d #v3LaunchQ { width: 100%; box-sizing: border-box; height: 36px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0 10px; font-size: 14px; }
   .v3-launch { display: flex; flex-direction: column; gap: 1px; max-height: 360px; overflow: auto; }
   .v3-launch button { display: flex; justify-content: space-between; align-items: center; gap: 10px; text-align: left; padding: 7px 10px; border: none; background: transparent; border-radius: 6px; cursor: pointer; }
-  .v3-launch button.on, .v3-launch button:hover:not(:disabled) { background: #eff6ff; }
+  .v3-launch button.on, .v3-launch button:hover:not(:disabled) { background: #f3f1ff; }
   .v3-launch button:disabled { opacity: .4; }
   .v3-clips { display: flex; flex-direction: column; gap: 8px; }
   .v3-clip { display: grid; grid-template-columns: auto 1fr auto auto; gap: 4px 8px; align-items: center; }
@@ -1293,7 +1293,7 @@
   .v3-snapbar-l { color: #94a3b8; font-size: 11px; margin-right: 4px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; }
   .v3-snapbar-sep { width: 1px; height: 18px; background: #e2e8f0; margin: 0 6px; }
   #view3d .v3-snapbar > button { height: 26px; padding: 0 8px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: #94a3b8; cursor: pointer; }
-  #view3d .v3-snapbar > button.on { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
+  #view3d .v3-snapbar > button.on { color: #5b4be8; background: #f3f1ff; border-color: #d6d0ff; }
   #view3d .v3-snapbar select { height: 26px; border: 1px solid #e2e8f0; border-radius: 6px; margin-left: 2px; width: auto; font-size: 12px; }
   .v3-snapbar .v3-segs button { padding: 3px 8px; }
   .v3-hidden-chip { border: 1px solid #fcd34d; background: #fffbeb; color: #92400e; border-radius: 999px; padding: 2px 10px; cursor: pointer; font-size: 12px; white-space: nowrap; }
@@ -1334,7 +1334,7 @@
   #view3d { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
   .v3-touchbar { position: absolute; z-index: 7; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; gap: 6px; padding: 6px; border-radius: 14px; background: rgba(15,23,42,.88); box-shadow: 0 8px 24px rgba(15,23,42,.3); }
   .v3-touchbar button { height: 44px; min-width: 44px; padding: 0 14px; border: 0; border-radius: 10px; background: rgba(255,255,255,.12); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
-  .v3-touchbar button[data-tb="done"] { background: #2563eb; }
+  .v3-touchbar button[data-tb="done"] { background: #6d5efc; }
   .v3-touchbar button.hidden { display: none; }
   @media (pointer: coarse) {
     .v3-hd { width: 22px; height: 22px; margin: -11px 0 0 -11px; border-width: 3px; }
@@ -1380,7 +1380,7 @@
   :root {
     --bg: #f1f5f9; --panel: #ffffff; --panel-2: #f8fafc; --border: #e2e8f0; --border-strong: #cbd5e1;
     --text: #0f172a; --muted: #64748b; --faint: #94a3b8;
-    --accent: #2563eb; --accent-weak: #eff6ff; --accent-strong: #1d4ed8; --danger: #dc2626;
+    --accent: #6d5efc; --accent-weak: #f3f1ff; --accent-strong: #5b4be8; --danger: #dc2626;
     --radius: 8px; --ctl-h: 32px; --r-card: 12px;
     --sh-1: 0 1px 2px rgba(15,23,42,.06); --sh-2: 0 4px 14px rgba(15,23,42,.08); --sh-pop: 0 18px 44px rgba(15,23,42,.18), 0 2px 6px rgba(15,23,42,.06);
     font-family: Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
@@ -1393,11 +1393,11 @@
   /* Knappar och fält */
   button { font-weight: 500; letter-spacing: .1px; }
   button:active:not(:disabled) { transform: translateY(.5px); }
-  button.primary { box-shadow: 0 1px 2px rgba(37,99,235,.35); }
+  button.primary { box-shadow: 0 1px 2px rgba(109,94,252,.35); }
   button.icon svg { width: 16px; height: 16px; }
   select, input[type=text], input[type=date], input[type=number], input[type=search] { transition: border-color .12s, box-shadow .12s; }
   select:hover, input[type=text]:hover, input[type=date]:hover { border-color: #94a3b8; }
-  select:focus, input:focus, button:focus-visible, textarea:focus { box-shadow: 0 0 0 3px rgba(37,99,235,.18); }
+  select:focus, input:focus, button:focus-visible, textarea:focus { box-shadow: 0 0 0 3px rgba(109,94,252,.18); }
   label { color: var(--muted); font-weight: 500; }
   label.check { font-weight: 400; }
   kbd { font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 2px 5px; border-radius: 4px; border: 1px solid var(--border-strong); border-bottom-width: 2px; background: var(--panel-2); color: var(--muted); }
@@ -1407,7 +1407,7 @@
   /* Sidhuvud */
   .side-head { padding: 14px 14px 12px; }
   .brand { gap: 10px; }
-  .brand-mark { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(140deg, #2563eb, #60a5fa); box-shadow: 0 4px 10px rgba(37,99,235,.28); }
+  .brand-mark { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(140deg, #6d5efc, #9b7bff); box-shadow: 0 4px 10px rgba(109,94,252,.28); }
   .brand-mark svg { width: 17px; height: 17px; }
   h1 { font-size: 15.5px; font-weight: 700; letter-spacing: -.1px; }
   .brand > button.icon, .brand .hdr-more > button { width: 30px; height: 30px; color: var(--muted); }
@@ -1436,14 +1436,14 @@
   details.sec[open] > summary { padding: 11px 12px; }
   details.sec > summary .si { width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent-weak); color: var(--accent); flex: 0 0 auto; }
   details.sec > summary .si svg { width: 15px; height: 15px; }
-  details.sec > summary:hover .si { background: #dbeafe; }
+  details.sec > summary:hover .si { background: #e6e1ff; }
 
   /* Verktygsrutor (Rita): kort med ikon */
   .tool-grid { gap: 8px; }
   .tool-grid button { height: 62px; border-radius: 10px; font-size: 11.5px; font-weight: 500; color: var(--text); background: var(--panel); gap: 5px; }
   .tool-grid button i { display: inline-flex; color: var(--accent); }
   .tool-grid button i svg { width: 20px; height: 20px; }
-  .tool-grid button:hover:not(:disabled) { border-color: #93c5fd; background: var(--accent-weak); }
+  .tool-grid button:hover:not(:disabled) { border-color: #b9b0ff; background: var(--accent-weak); }
   .tool-grid button.active { box-shadow: inset 0 0 0 1.5px var(--accent); }
 
   /* Segment (WBS / Prefab m.fl.): samma blå som allt annat */
@@ -1513,7 +1513,7 @@
   .ui-toast span { flex: 1; min-width: 0; }
   .ui-toast button { height: 30px; border: 0; background: rgba(255,255,255,.12); color: #fff; border-radius: 8px; padding: 0 12px; font-weight: 600; }
   .ui-toast button:hover:not(:disabled) { background: rgba(255,255,255,.22); }
-  .ui-toast .ui-toast-act { color: #93c5fd; }
+  .ui-toast .ui-toast-act { color: #b9b0ff; }
   .ui-toast .ui-toast-x { width: 30px; padding: 0; background: transparent; color: #94a3b8; }
   /* Hjälptexter bakom ⓘ, "Fler inställningar" och tomlägen (Victor 2026-10-09) */
   details.sec:not(.show-help) .sec-help { display: none; }
@@ -1538,6 +1538,108 @@
   .empty-mini { border: 1px dashed var(--border); border-radius: 12px; padding: 12px; text-align: center; margin: 4px 0; }
   .empty-mini .empty-t { font-weight: 650; font-size: 12.5px; }
   .empty-mini .empty-b { color: var(--muted); font-size: 12px; margin: 2px 0 8px; }
+
+  /* =====================================================================
+     Designsystem v3 – "Gradientkant & docka" (Victor 2026-10-09 valde förslag D3)
+     Ljus färgtoning bakom allt, frostade paneler, kort med färgad topplinje,
+     knappar med tunn kant i färgtoning, flikarna som en flytande docka. Bara
+     grafiken – upplägget är detsamma. Ligger sist så att den gäller över v2.
+     ===================================================================== */
+  :root {
+    --bg: #f4f5fb; --panel: #ffffff; --panel-2: #f7f6fd; --border: #e7e5f3; --border-strong: #d6d3ea;
+    --text: #1d1d2b; --muted: #6b6b85; --faint: #9b9bb5;
+    --accent: #6d5efc; --accent-weak: #f1efff; --accent-strong: #5b4be8; --accent-2: #50b4ff;
+    --grad: linear-gradient(135deg, #6d5efc, #50b4ff); --grad-soft: linear-gradient(135deg, rgba(109,94,252,.45), rgba(177,140,255,.25), rgba(80,180,255,.35));
+    --radius: 12px; --r-card: 18px; --ctl-h: 34px;
+    --sh-1: 0 8px 24px rgba(80,70,160,.08); --sh-2: 0 12px 32px rgba(80,70,160,.12); --sh-pop: 0 30px 80px rgba(60,50,140,.25), 0 2px 8px rgba(60,50,140,.08);
+    font-family: -apple-system, "SF Pro Text", Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, Arial, sans-serif;
+  }
+  html, body { background: radial-gradient(1200px 700px at 10% 0%, #e0dcff 0%, transparent 60%), radial-gradient(900px 600px at 100% 100%, #d6f0ff 0%, transparent 55%), #f4f5fb; background-attachment: fixed; }
+  main { background: transparent; }
+  /* Ingen backdrop-filter på paneler med menyer i: den gör paneln till ram för position: fixed och klipper menyerna. */
+  aside { background: rgba(255,255,255,.62); border-right: 1px solid rgba(255,255,255,.8); }
+  @media (min-width: 901px) {
+    aside { margin: 10px 0 10px 10px; border-radius: 24px; height: calc(100% - 20px); box-shadow: 0 20px 60px rgba(60,50,140,.12); overflow: hidden; border: 1px solid rgba(255,255,255,.85); }
+  }
+  .side-head, .tabs { background: transparent; border-bottom-color: rgba(120,120,160,.12); }
+  .brand-mark { border-radius: 12px; background: var(--grad); box-shadow: 0 6px 16px rgba(109,94,252,.35); }
+  select:focus, input:focus, button:focus-visible, textarea:focus { box-shadow: 0 0 0 3px rgba(109,94,252,.2); border-color: var(--accent); }
+  select, input[type=text], input[type=date], input[type=number], input[type=search] { border-radius: 12px; background: rgba(255,255,255,.9); border-color: var(--border-strong); }
+  input[type=range], input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
+
+  /* Knappar: tunn kant i färgtoning (vanliga knappar i menyer, rutor och dialoger) */
+  button { border-radius: 12px; }
+  /* :where håller specificiteten låg – knappar med egna klasser (färgrutor, segment, 3D) behåller sin stil. */
+  button:where(:where(aside, #sitePop, .ui-dlg, #empty, #printModal .pr-side) *):where(:not([class]), .block, .icon):not(:where(.primary, .active, .ghost, .danger, .on, .sec-help-btn, .tabs *, #zoomCtl *)),
+  .tool-grid button:not(.active) {
+    border: 1.5px solid transparent;
+    background: linear-gradient(#fff, #fff) padding-box, var(--grad-soft) border-box;
+  }
+  button:where(:where(aside, #sitePop, .ui-dlg, #empty, #printModal .pr-side) *):where(:not([class]), .block, .icon):not(:where(.primary, .active, .ghost, .danger, .on, .sec-help-btn, .tabs *, #zoomCtl *)):hover:not(:disabled),
+  .tool-grid button:not(.active):hover:not(:disabled) {
+    background: linear-gradient(#f6f4ff, #f6f4ff) padding-box, linear-gradient(135deg, #6d5efc, #b18cff, #50b4ff) border-box;
+  }
+  button.primary, .ui-dlg-ok.primary { background: var(--grad); border: 0; color: #fff; box-shadow: 0 6px 16px rgba(109,94,252,.32); }
+  button.primary:hover:not(:disabled) { background: linear-gradient(135deg, #5b4be8, #3ea6f5); }
+  button.active { background: var(--accent-weak); border-color: var(--accent); color: var(--accent-strong); box-shadow: inset 0 0 0 1px var(--accent); }
+
+  /* Flikarna: en flytande docka, vald flik fylld */
+  .tabs { margin: 2px 12px 10px; padding: 6px; border: 0; border-radius: 20px; background: rgba(255,255,255,.88); box-shadow: 0 10px 30px rgba(60,50,140,.14); gap: 2px; }
+  .tabs button { border: 0; border-radius: 14px; font-size: 10.5px; margin: 0; padding: 7px 2px 6px; }
+  .tabs button:hover { background: var(--accent-weak); color: var(--accent); }
+  .tabs button.on { background: linear-gradient(135deg, #6d5efc, #9b7bff); color: #fff; box-shadow: 0 6px 14px rgba(109,94,252,.35); border-bottom-color: transparent; }
+  .tab-body { padding-top: 4px; }
+
+  /* Kort: frostat glas med en färgad linje överst */
+  details.sec { position: relative; overflow: hidden; border-radius: var(--r-card); background: rgba(255,255,255,.78); border: 1px solid rgba(255,255,255,.95); box-shadow: var(--sh-1); }
+  details.sec::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 3px; background: linear-gradient(90deg, #6d5efc, #b18cff, #50b4ff); opacity: .9; }
+  details.sec > summary .si { background: transparent; color: var(--accent); width: 20px; }
+  details.sec > summary:hover .si { background: transparent; color: var(--accent-strong); }
+  .tool-grid button { border-radius: 16px; }
+  .tool-grid button i svg { width: 22px; height: 22px; }
+  .tool-grid button.active { background: var(--accent-weak); box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+  /* Segment (WBS / Prefab m.fl.) */
+  .zone-set-seg { border: 0; border-radius: 999px; background: rgba(120,120,160,.09); padding: 3px; }
+  .zone-set-seg button { border-radius: 999px; }
+  .zone-set-seg button.active { background: linear-gradient(135deg, #6d5efc, #9b7bff); color: #fff; box-shadow: 0 4px 10px rgba(109,94,252,.3); }
+
+  /* Menyer och popupfönster */
+  .hdr-menu { border-radius: 20px; padding: 8px; border: 1.5px solid transparent; background: linear-gradient(rgba(255,255,255,.97), rgba(255,255,255,.97)) padding-box, var(--grad) border-box; box-shadow: var(--sh-pop); }
+  .hdr-menu > button, .hdr-menu > a { border: 0; border-radius: 12px; background: transparent; }
+  .hdr-menu > button:hover, .hdr-menu > a:hover { background: var(--accent-weak); color: var(--accent-strong); }
+  #sitePop { border-radius: 20px; background: rgba(255,255,255,.94); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,.95); }
+  #sitePop > b:first-child svg { color: var(--accent); }
+  #zoomCtl { border-radius: 999px; overflow: hidden; background: rgba(255,255,255,.85); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: var(--sh-2); border: 1px solid rgba(255,255,255,.9); }
+  #zoomCtl button { border-radius: 0; background: transparent; }
+  #zoomCtl button:hover { background: var(--accent-weak); color: var(--accent); }
+
+  /* Tomlägen, dialoger och notiser */
+  #empty .empty-card { background: rgba(255,255,255,.7); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,.95); border-radius: 28px; box-shadow: 0 30px 80px rgba(60,50,140,.15); }
+  #empty .empty-ic { border-radius: 16px; background: var(--grad); color: #fff; }
+  .empty-mini { border-color: rgba(109,94,252,.25); border-radius: 16px; background: rgba(255,255,255,.5); }
+  .ui-dlg { border-radius: 24px !important; background: rgba(255,255,255,.94) !important; backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
+  .ui-dlg-wrap.in { background: rgba(40,30,90,.22); }
+  .ui-toast { border-radius: 999px; background: rgba(29,29,43,.88); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+  .ui-toast .ui-toast-act { color: #c4b8ff; }
+  details.zone-adv > summary:hover { color: var(--accent); }
+  .sec-help-btn:hover, .sec-help-btn[aria-pressed="true"] { background: var(--accent-weak); color: var(--accent); }
+
+  /* Utskriftslayoutens sidopanel och 3D-vyns paneler får samma glas */
+  #printModal { background: radial-gradient(1000px 600px at 0% 0%, #e7e3ff 0%, transparent 60%), #eef0f8; }
+  #printModal .pr-side { background: rgba(255,255,255,.88); border-left: 1px solid rgba(255,255,255,.9); }
+
+  /* 3D-vyn: samma glas och färgtoning runt modellen */
+  #view3d { background: radial-gradient(1200px 700px at 10% 0%, #e0dcff 0%, transparent 60%), radial-gradient(900px 600px at 100% 100%, #d6f0ff 0%, transparent 55%), #eef0f8; color: var(--text); }
+  .v3-bar { background: rgba(255,255,255,.9); border-bottom: 1px solid rgba(120,120,160,.12); box-shadow: 0 6px 20px rgba(60,50,140,.08); }
+  .v3-seg, .v3-segs { background: rgba(120,120,160,.09); border-color: transparent; border-radius: 14px; }
+  .v3-seg button, .v3-segs button { border-radius: 11px; }
+  .v3-seg button.on, .v3-segs button.on { background: linear-gradient(135deg, #6d5efc, #9b7bff); color: #fff; box-shadow: 0 4px 10px rgba(109,94,252,.3); }
+  #view3d .v3-primary { background: var(--grad); border: 0; border-radius: 12px; box-shadow: 0 6px 16px rgba(109,94,252,.32); }
+  #view3d .v3-primary:hover { background: linear-gradient(135deg, #5b4be8, #3ea6f5); }
+  .v3-pal { background: rgba(255,255,255,.78); border-right: 1px solid rgba(255,255,255,.9); }
+  .v3-foot { background: rgba(255,255,255,.9); border-top: 1px solid rgba(120,120,160,.12); }
+  .v3-legend, .v3-snapbar { border-radius: 16px; border-color: rgba(255,255,255,.95); background: rgba(255,255,255,.88); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); box-shadow: var(--sh-2); }
 </style>
 </head>
 <body>
@@ -2103,58 +2205,58 @@
     </div>
   </main>
 </div>
-<script src="lagesplan-merge.js?v=20261009101513"></script>
-<script src="ui-icons.js?v=20261009101513"></script>
-<script src="ui-dialog.js?v=20261009101513"></script>
-<script src="lagesplan-ui.js?v=20261009101513"></script>
-<script src="lagesplan.js?v=20261009101513"></script>
-<script src="lagesplan-tools.js?v=20261009101513"></script>
-<script src="lagesplan-layers.js?v=20261009101513"></script>
-<script src="lagesplan-storage.js?v=20261009101513"></script>
-<script src="lagesplan-pdfoverlay.js?v=20261009101513"></script>
-<script src="lagesplan-pdfunder.js?v=20261009101513"></script>
-<script src="lagesplan-views.js?v=20261009101513"></script>
-<script src="lagesplan-film.js?v=20261009101513"></script>
-<script src="lagesplan-cad.js?v=20261009101513"></script>
-<script src="lagesplan-vecpdf.js?v=20261009101513"></script>
-<script src="lagesplan-print.js?v=20261009101513"></script>
-<script src="lagesplan-arrows.js?v=20261009101513"></script>
-<script src="lagesplan-printshapes.js?v=20261009101513"></script>
-<script src="lagesplan-printctx.js?v=20261009101513"></script>
-<script src="lagesplan-printdxf.js?v=20261009101513"></script>
-<script src="lagesplan-imgcrop.js?v=20261009101513"></script>
-<script src="lagesplan-printlib.js?v=20261009101513"></script>
-<script src="lagesplan-pdflayers.js?v=20261009101513"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261009101513"></script>
-<script src="lagesplan-objmarks.js?v=20261009101513"></script>
-<script src="lagesplan-objlist.js?v=20261009101513"></script>
-<script src="lagesplan-zones.js?v=20261009101513"></script>
-<script src="lagesplan-wbs.js?v=20261009101513"></script>
-<script src="lagesplan-zonesets.js?v=20261009101513"></script>
-<script src="lagesplan-zoneguard.js?v=20261009101513"></script>
-<script src="lagesplan-zoneexport.js?v=20261009101513"></script>
-<script src="lagesplan-itemlink.js?v=20261009101513"></script>
-<script src="lagesplan-dxfexport.js?v=20261009101513"></script>
-<script src="ifc-writer.js?v=20261009101513"></script>
-<script src="lagesplan-ifcexport.js?v=20261009101513"></script>
-<script src="lagesplan-zonecad.js?v=20261009101513"></script>
-<script src="lagesplan-siteifc.js?v=20261009101513"></script>
-<script src="lagesplan-daily.js?v=20261009101513"></script>
-<script src="lagesplan-gps.js?v=20261009101513"></script>
-<script src="lagesplan-weather.js?v=20261009101513"></script>
-<script src="lagesplan-touch.js?v=20261009101513"></script>
-<script src="lagesplan-drawer.js?v=20261009101513"></script>
-<script src="lagesplan-gpslive.js?v=20261009101513"></script>
-<script src="place3d.js?v=20261009101513"></script>
-<script src="ifc-mesh.js?v=20261009101513"></script>
-<script src="place-models.js?v=20261009101513"></script>
-<script src="lagesplan-3dbuild.js?v=20261009101513"></script>
-<script src="lagesplan-3dnav.js?v=20261009101513"></script>
-<script src="lagesplan-3ddialogs.js?v=20261009101513"></script>
-<script src="lagesplan-3dclash.js?v=20261009101513"></script>
-<script src="lagesplan-3dhandles.js?v=20261009101513"></script>
-<script src="lagesplan-3dtools.js?v=20261009101513"></script>
-<script src="lagesplan-3d.js?v=20261009101513"></script>
-<script src="lagesplan-keys.js?v=20261009101513"></script>
+<script src="lagesplan-merge.js?v=20261009104926"></script>
+<script src="ui-icons.js?v=20261009104926"></script>
+<script src="ui-dialog.js?v=20261009104926"></script>
+<script src="lagesplan-ui.js?v=20261009104926"></script>
+<script src="lagesplan.js?v=20261009104926"></script>
+<script src="lagesplan-tools.js?v=20261009104926"></script>
+<script src="lagesplan-layers.js?v=20261009104926"></script>
+<script src="lagesplan-storage.js?v=20261009104926"></script>
+<script src="lagesplan-pdfoverlay.js?v=20261009104926"></script>
+<script src="lagesplan-pdfunder.js?v=20261009104926"></script>
+<script src="lagesplan-views.js?v=20261009104926"></script>
+<script src="lagesplan-film.js?v=20261009104926"></script>
+<script src="lagesplan-cad.js?v=20261009104926"></script>
+<script src="lagesplan-vecpdf.js?v=20261009104926"></script>
+<script src="lagesplan-print.js?v=20261009104926"></script>
+<script src="lagesplan-arrows.js?v=20261009104926"></script>
+<script src="lagesplan-printshapes.js?v=20261009104926"></script>
+<script src="lagesplan-printctx.js?v=20261009104926"></script>
+<script src="lagesplan-printdxf.js?v=20261009104926"></script>
+<script src="lagesplan-imgcrop.js?v=20261009104926"></script>
+<script src="lagesplan-printlib.js?v=20261009104926"></script>
+<script src="lagesplan-pdflayers.js?v=20261009104926"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261009104926"></script>
+<script src="lagesplan-objmarks.js?v=20261009104926"></script>
+<script src="lagesplan-objlist.js?v=20261009104926"></script>
+<script src="lagesplan-zones.js?v=20261009104926"></script>
+<script src="lagesplan-wbs.js?v=20261009104926"></script>
+<script src="lagesplan-zonesets.js?v=20261009104926"></script>
+<script src="lagesplan-zoneguard.js?v=20261009104926"></script>
+<script src="lagesplan-zoneexport.js?v=20261009104926"></script>
+<script src="lagesplan-itemlink.js?v=20261009104926"></script>
+<script src="lagesplan-dxfexport.js?v=20261009104926"></script>
+<script src="ifc-writer.js?v=20261009104926"></script>
+<script src="lagesplan-ifcexport.js?v=20261009104926"></script>
+<script src="lagesplan-zonecad.js?v=20261009104926"></script>
+<script src="lagesplan-siteifc.js?v=20261009104926"></script>
+<script src="lagesplan-daily.js?v=20261009104926"></script>
+<script src="lagesplan-gps.js?v=20261009104926"></script>
+<script src="lagesplan-weather.js?v=20261009104926"></script>
+<script src="lagesplan-touch.js?v=20261009104926"></script>
+<script src="lagesplan-drawer.js?v=20261009104926"></script>
+<script src="lagesplan-gpslive.js?v=20261009104926"></script>
+<script src="place3d.js?v=20261009104926"></script>
+<script src="ifc-mesh.js?v=20261009104926"></script>
+<script src="place-models.js?v=20261009104926"></script>
+<script src="lagesplan-3dbuild.js?v=20261009104926"></script>
+<script src="lagesplan-3dnav.js?v=20261009104926"></script>
+<script src="lagesplan-3ddialogs.js?v=20261009104926"></script>
+<script src="lagesplan-3dclash.js?v=20261009104926"></script>
+<script src="lagesplan-3dhandles.js?v=20261009104926"></script>
+<script src="lagesplan-3dtools.js?v=20261009104926"></script>
+<script src="lagesplan-3d.js?v=20261009104926"></script>
+<script src="lagesplan-keys.js?v=20261009104926"></script>
 </body>
 </html>

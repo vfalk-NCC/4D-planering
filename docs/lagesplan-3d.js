@@ -337,7 +337,7 @@ function l3Init(box) {
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   host.insertBefore(renderer.domElement, host.firstChild);
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xe9eef4);
+  scene.background = new THREE.Color(0xeef0f8);
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 20000);
   camera.up.set(0, 0, 1);
   scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.8));
