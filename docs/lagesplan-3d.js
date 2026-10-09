@@ -221,6 +221,7 @@ function l3Dom() {
         <div id="v3PalAdd" class="v3-paltab ${(P.palTab || "add") === "add" ? "" : "hidden"}">
           <input type="search" id="v3PalSearch" placeholder="Sök…" />
           <div id="v3Lib"></div>
+          <button type="button" id="v3GetModel" class="v3-wide" title="Hämta en 3D-modell från Sketchfab, projektets mappar i Trimble Connect eller en fil – den hamnar under Egna modeller">＋ Hämta modell…</button>
           <div class="v3-pal-hint">Tryck på ett objekt här och sedan där det ska stå. Staket: tryck punkt för punkt och avsluta med Enter.</div>
         </div>
         <div id="v3PalList" class="v3-paltab ${P.palTab === "list" ? "" : "hidden"}">
@@ -285,6 +286,7 @@ function l3Dom() {
   $3("v3PalClose").onclick = () => pal(false);
   $3("v3PalOpen").onclick = () => pal(true);
   $3("v3PalSearch").oninput = l3RenderLib;
+  $3("v3GetModel").onclick = l3OpenModels;
   $3("v3ObjSearch").oninput = () => l3RenderObjList();
   box.querySelectorAll("[data-paltab]").forEach(b => { b.onclick = () => l3PalTab(b.dataset.paltab); });
   $3("v3BldgBtn").onclick = () => { if (typeof l3bOpenDialog === "function") l3bOpenDialog(); };
@@ -1056,6 +1058,22 @@ function l3RenderLib() {
   }; });
   if (typeof l3HandlesPos === "function") l3HandlesPos(); // inga handtag medan man lägger till
   if (typeof l3TouchBarUpdate === "function") l3TouchBarUpdate(); // Avbryt på pekskärm
+}
+
+/* Hämta modell (Victors önskemål 2026-10-09: "plocka in saker från Sketchfab i 3D-editorn"): samma
+   panel som i Placera i 3D (place-models.js) – Sketchfab, projektets mappar i Trimble Connect eller
+   en fil. Modellen sparas i projektets bibliotek (Egna modeller) och läggs sedan till med ett tryck. */
+function l3OpenModels() {
+  if (typeof pmOpenIn !== "function") { l3Status("Hämta modell finns inte i den här versionen."); return; }
+  const d = l3Dlg("v3Models", "Hämta modell", `<div id="v3ModelBrowser" class="pm-browser"></div>`, {});
+  d._onClose = () => { if (pmState.host === "v3ModelBrowser") { pmState.open = false; pmState.host = "placeModelBrowser"; pmState.onAdded = pmState.onClose = null; } };
+  pmOpenIn("v3ModelBrowser", a => {
+    l3DlgClose("v3Models");
+    if (l3.tool !== "select" && typeof l3SetTool === "function") l3SetTool("select");
+    l3.fenceId = null; l3.addType = `model:${a.id}`;
+    l3RenderLib();
+    l3Status(`"${a.name}" finns nu under Egna modeller. Tryck där den ska stå (Esc avbryter).`);
+  }, () => l3DlgClose("v3Models"));
 }
 
 /* Namn ovanför etableringen (högst 80, de närmaste). */

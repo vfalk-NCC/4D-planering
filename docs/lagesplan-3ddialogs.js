@@ -58,7 +58,7 @@ function l3DialogKey(e) {
   if (e.key === "Escape") {
     if (l3.dlgPick) { l3.dlgPick = null; l3Status("Punktvalet avbröts."); l3SpPreview(); return true; }
     if (l3.clipPick) { l3.clipPick = false; l3.renderer.domElement.style.cursor = ""; l3Status(""); return true; }
-    for (const id of ["v3Launch", "v3Special", "v3Clash", "v3Clip"]) if (l3DlgClose(id)) return true;
+    for (const id of ["v3Launch", "v3Special", "v3Clash", "v3Clip", "v3Models"]) if (l3DlgClose(id)) return true;
     return false;
   }
   if (mod || e.altKey) return false;
@@ -497,6 +497,7 @@ function l3Commands() {
   C.push(["Spara vy…", "", () => { document.getElementById("v3ViewsBtn").click(); setTimeout(() => document.getElementById("v3SvName").focus(), 0); }]);
   l3SavedViews().forEach((v, i) => C.push([`Gå till vy: ${v.name}`, "", () => l3GoView(i)]));
   Object.entries(PLACE_LIB).forEach(([k, l]) => C.push([`Lägg till: ${l.label}`, "", () => { l3SetTool("select"); l3.addType = k; l3.fenceId = null; l3RenderLib(); l3Status(l.fence ? "Staket: tryck första punkten." : "Tryck där objektet ska stå."); }]));
+  C.push(["Hämta modell (Sketchfab, Trimble Connect, fil)…", "", () => l3OpenModels()]);
   (typeof placeAssets !== "undefined" ? placeAssets : []).forEach(a => C.push([`Lägg till: ${a.name}`, "", () => { l3SetTool("select"); l3.addType = `model:${a.id}`; l3RenderLib(); l3Status("Tryck där objektet ska stå."); }]));
   return C.map(([label, keys, run, ok]) => ({ label, keys, run, ok: ok || (() => true) }));
 }

@@ -1247,3 +1247,13 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .temp-row span { font-size: 12.5px; line-height: 1.35; }
 .temp-set { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 13px; }
 .temp-set select { width: auto; }
+/* Hämta modell: Trimble Connect-mappar (2026-10-09) */
+.pm-crumbs { margin: 2px 0 6px; font-size: 12px; }
+.pm-crumbs a { color: #1d4ed8; }
+.pm-tclist { max-height: 380px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+.pm-tcr { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-bottom: 1px solid #f1f5f9; font-size: 12px; }
+.pm-tcr:last-child { border-bottom: 0; }
+.pm-tcr.dir { cursor: pointer; }
+.pm-tcr.dir:hover { background: #f1f5ff; }
+.pm-tcn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-tcr .hint { white-space: nowrap; }

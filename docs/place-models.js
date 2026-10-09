@@ -1,6 +1,7 @@
 /* 4D-planering – egna modeller i Placera i 3D (Victors önskemål 2026-10-08): hämta 3D-modeller
-   från Sketchfab (inloggning med den egna API-nyckeln) eller från en fil (t.ex. IFC från
-   BIMobject) och placera dem fritt i modellen med ett tryck, precis som biblioteksobjekten.
+   från Sketchfab (inloggning med den egna API-nyckeln), från projektets mappar i Trimble Connect
+   (2026-10-09) eller från en fil (t.ex. IFC från BIMobject) och placera dem fritt i modellen med ett
+   tryck, precis som biblioteksobjekten. Samma panel finns i lägesplanens 3D-editor (pmOpenIn).
    - Sketchfab levererar glTF/GLB (aldrig IFC). Geometrin görs om till trianglar i meter, Z uppåt,
      med origo i modellens botten-mitt, och följer med i Etablering-IFC:n (place3d.js).
    - En IFC-fil behålls som den är: vid sparning skrivs bara dess yttersta placering om (flyttad
@@ -17,7 +18,10 @@ const PM_MAX_DOWNLOAD = 80 * 1048576, PM_MAX_IFC = 40 * 1048576;
 let placeAssets = [];
 const placeMeshCache = new Map();  // asset-id -> { parts: [{ c, t, p, i }] }
 const placeIfcCache = new Map();   // asset-id -> IFC-text
-let pmState = { open: false, tab: "sketchfab", q: "", results: [], next: null, busy: false, msg: "", bad: false, me: null, pending: null };
+let pmState = { open: false, tab: "sketchfab", q: "", results: [], next: null, busy: false, msg: "", bad: false, me: null, pending: null,
+  tcStack: [], tcItems: null, tcProject: "",
+  host: "placeModelBrowser", onAdded: null, onClose: null }; // host/onAdded/onClose: lägesplanens 3D-editor visar panelen i en egen ruta
+const PM_TC_EXT = /\.(ifc|ifczip|glb|gltf|dae|obj|zip|kmz)$/i;
 
 const pmAssetsPath = () => `projects/${encodeURIComponent(projectId)}/plan_models.json`;
 async function placeAssetsLoad(opts = {}) {
@@ -715,6 +719,54 @@ async function pmFromFile(file) {
 }
 
 // ---------------------------------------------------------------------
+// Trimble Connect: projektets mappar (bara läsning)
+// ---------------------------------------------------------------------
+/* I 4D-planering (tillägget) anropas TC direkt; i lägesplanen går det via 4D-planering (askOpener),
+   som har behörigheten. */
+async function pmTc(op, args) {
+  if (typeof tcFolderItems === "function" && typeof API !== "undefined") {
+    if (op === "folder") return tcFolderItems(args.folderId || null);
+    return { bytes: await tcFileBytes(args.fileId, args.name) };
+  }
+  if (typeof askOpener === "function") return askOpener(op === "folder" ? "tcFolder" : "tcFile", args, op === "folder" ? 30000 : 180000);
+  throw new Error("Trimble Connect går bara att nå när 4D-planering är öppen i Trimble Connect.");
+}
+async function pmTcOpen(folderId, name) {
+  const r = await pmTc("folder", { folderId });
+  if (!folderId) { pmState.tcStack = [{ id: r.folderId, name: r.projectName || "Projektet" }]; pmState.tcProject = r.projectName || ""; }
+  else {
+    const i = pmState.tcStack.findIndex(f => f.id === folderId);
+    pmState.tcStack = i >= 0 ? pmState.tcStack.slice(0, i + 1) : [...pmState.tcStack, { id: folderId, name }];
+  }
+  pmState.tcItems = r.items || [];
+}
+async function pmFromTc(fileId, name) {
+  const size = ((pmState.tcItems || []).find(x => x.id === fileId) || {}).size || 0;
+  const max = /\.ifc(zip)?$/i.test(name) ? PM_MAX_IFC : PM_MAX_DOWNLOAD;
+  if (size > max * (/\.ifczip$/i.test(name) ? 0.5 : 1)) throw new Error(`Filen är för stor (${pmBytes(size)}, max ${Math.round(max / 1048576)} MB).`);
+  const r = await pmTc("file", { fileId, name });
+  const fname = name.replace(/\.ifczip$/i, ".ifc");
+  const pd = await pmFromFile(new File([r.bytes], fname));
+  pd.source = "Trimble Connect";
+  return pd;
+}
+function pmTcHtml(esc) {
+  if (!pmState.tcItems) return pmState.busy ? `<div class="hint">Hämtar projektets mappar från Trimble Connect…</div>` : `<button type="button" id="pmTcRetry">Försök igen</button>`;
+  const crumbs = pmState.tcStack.map((f, i) => i === pmState.tcStack.length - 1 ? `<b>${esc(f.name)}</b>` : `<a href="#" data-tcdir="${esc(f.id)}">${esc(f.name)}</a>`).join(" › ");
+  const dirs = pmState.tcItems.filter(x => x.type === "folder");
+  const files = pmState.tcItems.filter(x => x.type === "file" && PM_TC_EXT.test(x.name));
+  const other = pmState.tcItems.filter(x => x.type === "file" && !PM_TC_EXT.test(x.name)).length;
+  const row = (x, isDir) => `<div class="pm-tcr${isDir ? " dir" : ""}" ${isDir ? `data-tcdir="${esc(x.id)}" data-tcname="${esc(x.name)}"` : ""}>
+      <span class="pm-tcn" title="${esc(x.name)}">${isDir ? "📁 " : ""}${esc(x.name)}</span>
+      <span class="hint">${isDir ? "" : [pmBytes(x.size), x.modified ? String(x.modified).slice(0, 10) : ""].filter(Boolean).join(" · ")}</span>
+      ${isDir ? "" : `<button type="button" data-tcfile="${esc(x.id)}" data-tcname="${esc(x.name)}">Hämta</button>`}</div>`;
+  return `<div class="pm-crumbs hint">${crumbs}</div>
+    <div class="pm-tclist">${dirs.map(x => row(x, true)).join("")}${files.map(x => row(x, false)).join("")}
+      ${!dirs.length && !files.length ? `<div class="hint" style="padding:8px">Inga mappar eller modellfiler här.</div>` : ""}</div>
+    ${other ? `<div class="hint">${other} andra filer visas inte (bara IFC, IFCZIP, GLB/glTF, DAE, OBJ och ZIP/KMZ).</div>` : ""}`;
+}
+
+// ---------------------------------------------------------------------
 // Sketchfab
 // ---------------------------------------------------------------------
 async function sfFetch(path, auth) {
@@ -757,7 +809,17 @@ async function sfImport(uid) {
 // ---------------------------------------------------------------------
 // Panelen "Hämta modell"
 // ---------------------------------------------------------------------
-function placeBrowserToggle(open) { pmState.open = open === undefined ? !pmState.open : !!open; renderPmBrowser(); }
+function placeBrowserToggle(open) {
+  pmState.open = open === undefined ? !pmState.open : !!open;
+  renderPmBrowser();
+  if (!pmState.open && pmState.onClose) pmState.onClose();
+}
+/* Panelen i en annan ruta (lägesplanens 3D-editor): hostId = elementet, onAdded(a) = modellen är sparad. */
+function pmOpenIn(hostId, onAdded, onClose) {
+  pmState.host = hostId; pmState.onAdded = onAdded || null; pmState.onClose = onClose || null;
+  pmState.open = true; pmState.pending = null; pmState.msg = ""; pmState.bad = false;
+  renderPmBrowser();
+}
 async function pmRun(label, fn) {
   pmState.busy = true; pmState.msg = label; pmState.bad = false; renderPmBrowser();
   try { await fn(); pmState.msg = ""; }
@@ -807,7 +869,7 @@ function pmCardHtml(r, esc) {
     <button type="button" data-sf-uid="${esc(r.uid)}">Hämta</button></div>`;
 }
 function renderPmBrowser() {
-  const box = document.getElementById("placeModelBrowser");
+  const box = document.getElementById(pmState.host || "placeModelBrowser");
   if (!box) return;
   box.classList.toggle("hidden", !pmState.open);
   if (!pmState.open) { box.innerHTML = ""; return; }
@@ -832,6 +894,8 @@ function renderPmBrowser() {
       <div class="row"><input type="search" id="pmQuery" value="${esc(pmState.q)}" placeholder="Sök modell, t.ex. tornkran, bod, grävmaskin" style="flex:1" /><button type="button" id="pmSearch" class="primary">Sök</button></div>
       <div class="pm-grid">${pmState.results.map(r => pmCardHtml(r, esc)).join("")}</div>
       ${pmState.next ? `<button type="button" id="pmMore">Visa fler</button>` : ""}`;
+  } else if (pmState.tab === "tc") {
+    body = pmTcHtml(esc);
   } else {
     body = `<div class="pm-drop" id="pmDrop">
         <b>Släpp en fil här</b> eller <label class="pm-pick">välj fil<input type="file" id="pmFile" accept=".ifc,.glb,.gltf,.dae,.obj,.zip,.kmz,.skp" /></label>
@@ -846,7 +910,7 @@ function renderPmBrowser() {
   const lib = placeAssets.length ? `<details class="pm-lib"><summary>Biblioteket (${placeAssets.length})</summary>${placeAssets.map(a =>
     `<div class="pm-libr"><span>${esc(a.name)}</span><span class="hint">${a.kind === "ifc" ? "IFC" : `${pmFmt(a.tris)} tri`}${a.dl_size || a.size ? ` · ${pmBytes(a.dl_size || a.size)}` : ""}${a.author ? ` · ${esc(a.author)}` : ""}${a.license ? ` · ${esc(a.license)}` : ""}</span></div>`).join("")}</details>` : "";
   box.innerHTML = `<div class="pm-head"><b>Hämta modell</b>
-      <span class="pm-tabs"><button type="button" data-pmtab="sketchfab" class="${pmState.tab === "sketchfab" ? "active" : ""}">Sketchfab</button><button type="button" data-pmtab="file" class="${pmState.tab === "file" ? "active" : ""}">Från fil</button></span>
+      <span class="pm-tabs"><button type="button" data-pmtab="sketchfab" class="${pmState.tab === "sketchfab" ? "active" : ""}">Sketchfab</button><button type="button" data-pmtab="tc" class="${pmState.tab === "tc" ? "active" : ""}">Trimble Connect</button><button type="button" data-pmtab="file" class="${pmState.tab === "file" ? "active" : ""}">Från fil</button></span>
       <button type="button" id="pmClose" title="Stäng">✕</button></div>
     ${body}
     <div class="pm-msg ${pmState.bad ? "place-bad" : ""}">${pmState.busy ? '<span class="pm-spin"></span>' : ""}${esc(pmState.msg || "")}</div>${lib}`;
@@ -860,6 +924,9 @@ function renderPmBrowser() {
   on("pmSearch", doSearch);
   const q = box.querySelector("#pmQuery"); if (q) q.onkeydown = e => { if (e.key === "Enter") doSearch(); };
   on("pmMore", () => pmRun("Hämtar fler…", () => sfSearch(true)));
+  on("pmTcRetry", () => pmRun("Hämtar projektets mappar från Trimble Connect…", () => pmTcOpen(null)));
+  box.querySelectorAll("[data-tcdir]").forEach(el => { el.onclick = e => { if (e.target.closest("button")) return; e.preventDefault(); pmRun("Öppnar mappen…", () => pmTcOpen(el.dataset.tcdir, el.dataset.tcname || "")); }; });
+  box.querySelectorAll("[data-tcfile]").forEach(b => { b.onclick = () => pmRun(`Hämtar ${b.dataset.tcname} från Trimble Connect och läser modellen…`, async () => { pmState.pending = await pmFromTc(b.dataset.tcfile, b.dataset.tcname); }); });
   box.querySelectorAll("[data-sf-uid]").forEach(b => { b.onclick = () => pmRun("Laddar ned och läser modellen…", async () => { pmState.pending = await sfImport(b.dataset.sfUid); }); });
   const readFile = f => { if (f) pmRun("Läser filen…", async () => { pmState.pending = await pmFromFile(f); }); };
   const fi = box.querySelector("#pmFile");
@@ -879,10 +946,16 @@ function renderPmBrowser() {
     pmRun("Sparar modellen i projektet…", async () => {
       const a = await pmSaveAsset(p, Math.round(scale * 10000) / 10000);
       pmState.pending = null; pmState.open = false;
+      if (pmState.onAdded) { pmState.onAdded(a); return; }
       renderPlacePanel();
       placeStart(`model:${a.id}`);
     });
   });
+  // Trimble Connect: rotmappen första gången fliken öppnas.
+  if (pmState.tab === "tc" && !pmState.tcItems && !pmState.busy && !pd && !pmState._tcTried) {
+    pmState._tcTried = true;
+    pmRun("Hämtar projektets mappar från Trimble Connect…", () => pmTcOpen(null)).then(() => { if (!pmState.tcItems) pmState._tcTried = false; });
+  }
   // Visa vem som är inloggad (en gång).
   if (tok && !pmState.me && !pmState.busy && pmState.tab === "sketchfab" && !pmState._meTried) {
     pmState._meTried = true;

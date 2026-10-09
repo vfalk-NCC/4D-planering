@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-09 12:49";
+const APP_VERSION = "2026-10-09 13:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -401,6 +401,12 @@ window.addEventListener("message", async e => {
       const bytes = await ifcSubsetUnzip(await ifcSubsetDownload(spec));
       showLagesplanBanner("", 0);
       reply({ name: spec.name, placement: spec.placement || null, bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) });
+    } else if (msg.type === "tcFolder") {
+      // Hämta modell i lägesplanens 3D-vy: bläddra i projektets mappar i TC.
+      reply(await tcFolderItems(msg.folderId || null));
+    } else if (msg.type === "tcFile") {
+      const bytes = await tcFileBytes(msg.fileId, msg.name);
+      reply({ bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) });
     } else if (msg.type === "placementsChanged") {
       // 3D-vyn i lägesplanen har sparat etableringen: läs om (egna osparade ändringar sparas först).
       if (typeof place3dLoad === "function") {
@@ -508,6 +514,30 @@ async function tcUploadOne(base, H, j, folderId, f) {
   const put = await fetch(url, { method: "PUT", body: f });
   if (!put.ok) throw new Error(`Uppladdningen av ${f.name} misslyckades (${put.status})`);
   return j(await fetch(`${base}/files/fs/commit`, { method: "POST", headers: JH, body: JSON.stringify({ uploadId: init.uploadId }) }), `Spara ${f.name} i mappen`);
+}
+
+/* Bläddra i projektets mappar i Trimble Connect (Victors önskemål 2026-10-09: "importera IFC:er
+   från Trimble Connect" till Placera i 3D och lägesplanens 3D-editor). folderId null = rotmappen.
+   Bara läsning – inget i TC ändras. */
+async function tcFolderItems(folderId) {
+  const tokenVal = await tcAccessToken();
+  const project = await API.project.getProject();
+  const base = await tcApiBase(tokenVal, project);
+  const H = { Authorization: `Bearer ${tokenVal}` };
+  const j = async (res, what) => { if (!res.ok) throw new Error(`${what} misslyckades (${res.status}).`); return res.json(); };
+  let id = folderId;
+  if (!id) { const proj = await j(await fetch(`${base}/projects/${encodeURIComponent(project.id)}`, { headers: H }), "Läsa projektet"); id = proj.rootId || proj.rootFolderId; }
+  const list = await j(await fetch(`${base}/folders/${encodeURIComponent(id)}/items`, { headers: H }), "Läsa mappen");
+  const items = (list || []).map(x => ({ id: x.id, name: x.name || "", type: String(x.type || "").toUpperCase() === "FOLDER" ? "folder" : "file",
+    size: Number(x.size || x.filesize || 0) || 0, modified: x.modifiedOn || x.modified || x.createdOn || null, versionId: x.versionId || null }));
+  items.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name, "sv", { numeric: true }) : a.type === "folder" ? -1 : 1));
+  return { folderId: id, projectName: project.name || "", items };
+}
+/* En fil från TC som bytes (.ifczip packas upp till IFC). */
+async function tcFileBytes(fileId, name = "") {
+  if (!fileId) throw new Error("Ingen fil vald.");
+  const bytes = await ifcSubsetDownload({ fileId });
+  return /\.ifczip$/i.test(name) ? ifcSubsetUnzip(bytes) : bytes;
 }
 
 /** Mittpunkt och höjdintervall (meter) för alla planerade objekt i inlästa modeller. */
