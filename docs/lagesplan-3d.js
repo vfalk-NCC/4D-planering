@@ -104,6 +104,8 @@ async function open3d() {
     await l3BuildPlan();
     l3BuildObjects();
     if (typeof l3bRebuild === "function") l3bRebuild();
+    // Byggnaden som var tänd förra gången: direkt ur cachen (versionen kontrolleras i bakgrunden).
+    if (typeof l3bRestore === "function" && !l3b.models.length && !l3b.busy) setTimeout(() => l3bRestore().catch(e => console.warn(e)), 0);
     l3BuildPlacements();
     l3Frame(false);
     l3RenderLib();

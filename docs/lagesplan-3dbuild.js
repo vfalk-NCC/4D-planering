@@ -40,16 +40,19 @@ function l3bShow(id, on) {
   const m = l3b.models.find(x => x.id === id);
   if (!m) return;
   m.visible = on; m.meshes.forEach(x => { x.visible = on; });
+  l3bRemember(m.src, on);
   if (typeof l3LayersRender === "function") l3LayersRender();
 }
-async function l3bLoad(list) {
-  if (l3b.busy) return;
+/* opts.cacheOnly: bara det som finns i cachen (direkt vid öppning); opts.replace: en ny version ersätter den visade. */
+async function l3bLoad(list, opts = {}) {
+  if (l3b.busy) return { missing: list };
   l3b.busy = true;
-  const first = !l3b.models.length;
-  let total = l3b.models.reduce((s, m) => s + m.tris, 0);
+  const first = !l3b.models.length, missing = [], times = [];
+  let total = l3b.models.reduce((s, m) => s + m.tris, 0), skippedAll = 0;
   try {
     for (let i = 0; i < list.length; i++) {
       const w = list[i];
+      if (!opts.replace && l3b.models.some(m => m.id === w.id)) continue;
       l3Status(`Hämtar ${w.name || "modellen"} från Trimble Connect (${i + 1} av ${list.length})…`);
       // Laddningsindikatorn: varje modell är en lika stor del av stapeln (hämtning 60 %, läsning 40 %).
       const part = (a, b) => (i + a + (b - a)) / list.length;
@@ -59,13 +62,16 @@ async function l3bLoad(list) {
       const cached = await l3bCacheGet(w);
       if (cached) {
         const m = l3bFromCache(cached);
-        m.id = w.id; m.name = cached.name || w.name; m.visible = true;
+        m.id = w.id; m.name = cached.name || w.name; m.visible = true; m.src = w;
+        if (opts.replace) l3bRemove(w.id);
         total += m.tris;
         m.meshes.forEach(x => l3.groups.bldg.add(x));
-        l3b.models.push(m); l3bPosition();
+        l3b.models.push(m); l3bPosition(); l3bRemember(w, true);
         busyProgress("bldg", lbl, part(0, 1));
         continue;
       }
+      if (opts.cacheOnly) { missing.push(w); continue; }
+      const tDl0 = Date.now();
       const tick = setInterval(() => { const j = busyJobs.get("bldg"); if (j && j.f < part(0, 0.55)) busyProgress("bldg", lbl, j.f + 0.01 / list.length); }, 400);
       let r;
       // En IFC-fil ur projektets mappar (Lager): hämtas som fil, utan TC:s placering i 3D-vyn.
@@ -73,18 +79,22 @@ async function l3bLoad(list) {
       const dl = f => { clearInterval(tick); busyProgress("bldg", lbl, part(0, 0.55 * f)); };
       try { r = w.fileId ? { ...(await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, dl)), name: w.name, placement: null } : await askOpener("ifcModelData", { modelId: w.id }, 0, dl); }
       finally { clearInterval(tick); }
+      const tDl = Date.now() - tDl0, tRd0 = Date.now();
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 0.6));
       l3Status(`Läser ${r.name || w.name} (${i + 1} av ${list.length})…`);
       await new Promise(res => setTimeout(res, 30));
       const lblRead = `Läser ${r.name || w.name}`;
       const m = await l3bParseAny(r.bytes, r.placement, l3bMaxTris() - total, f => busyProgress("bldg", lblRead, part(0, 0.6 + 0.4 * f)), ms => { ms.forEach(x => l3.groups.bldg.add(x)); l3Render(); });
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 1));
-      m.id = w.id; m.name = r.name || w.name; m.visible = true;
+      times.push(`${m.name || r.name || w.name}: hämtning ${(tDl / 1000).toFixed(1)} s, läsning ${((Date.now() - tRd0) / 1000).toFixed(1)} s${m.parts > 1 ? ` (${m.parts} trådar)` : ""}`);
+      skippedAll += m.skipped || 0;
+      if (opts.replace) l3bRemove(w.id);
+      m.id = w.id; m.name = r.name || w.name; m.visible = true; m.src = w;
       total += m.tris;
       if (!m.capped) l3bCachePut(w, m); // i bakgrunden
       m.meshes.forEach(x => l3.groups.bldg.add(x));
       l3b.models.push(m);
-      l3bPosition();
+      l3bPosition(); l3bRemember(w, true);
       if (m.capped) { l3Toast(`${m.name} är för stor för att visas helt här – en del av den visas.`); break; }
     }
     l3bRecolor();
@@ -96,13 +106,53 @@ async function l3bLoad(list) {
       l3Toast("Byggnaden visas. Lådorna runt de planerade objekten är dolda (Visa → Planerade objekt).");
     }
     const n = l3b.models.reduce((s, m) => s + m.ranges.filter(r => r.itemId).length, 0);
-    l3Status(`Byggnaden visas (${l3b.models.length} ${l3b.models.length === 1 ? "modell" : "modeller"}, ${(total / 1000).toFixed(0)}k trianglar). ${n} objekt är kopplade och färgas efter status. Tryck på ett objekt för att se det.`);
-    if (first) l3Frame(true);
+    // Var tiden gick (hämtning från TC respektive läsning) och vad som hoppades över.
+    const extra = [times.join(" · "), skippedAll ? `${skippedAll.toLocaleString("sv-SE")} detaljer (armering, inredning, installationer) visas inte – Lager → Visa detaljer` : ""].filter(Boolean).join(". ");
+    if (l3b.models.length) l3Status(`Byggnaden visas (${l3b.models.length} ${l3b.models.length === 1 ? "modell" : "modeller"}, ${(total / 1000).toFixed(0)}k trianglar). ${n} objekt är kopplade och färgas efter status.${extra ? " " + extra + "." : ""}`);
+    if (first && l3b.models.length) l3Frame(true);
   } catch (e) { l3Status("Kunde inte visa byggnaden: " + (e && e.message ? e.message : e), true); }
   busyProgress("bldg", "", null);
   l3b.busy = false;
   if (typeof l3LayersRender === "function") l3LayersRender();
   l3Render();
+  return { missing };
+}
+function l3bRemove(id) {
+  const i = l3b.models.findIndex(m => m.id === id);
+  if (i < 0) return;
+  l3b.models[i].meshes.forEach(x => { if (x.parent) x.parent.remove(x); x.geometry.dispose(); x.material.dispose(); });
+  l3b.models.splice(i, 1);
+}
+/* Modellerna som var tända sparas per projekt och visas direkt (ur cachen) nästa gång 3D-vyn öppnas. */
+const l3bRememberKey = () => `lagesplan-bldg-${projectId}`;
+function l3bRemembered() { try { return JSON.parse(localStorage.getItem(l3bRememberKey()) || "[]") || []; } catch (e) { return []; } }
+function l3bRemember(w, on) {
+  if (!w || !w.id) return;
+  const list = l3bRemembered().filter(x => x.id !== w.id);
+  if (on) list.push({ id: w.id, fileId: w.fileId || null, name: w.name || "", version: w.version || "", parentId: w.parentId || null });
+  try { localStorage.setItem(l3bRememberKey(), JSON.stringify(list.slice(-8))); } catch (e) { /* privat läge */ }
+}
+/* Vid öppning: direkt ur cachen, sedan i bakgrunden – finns en nyare version i TC läses den och ersätter den visade. */
+async function l3bRestore() {
+  const list = l3bRemembered();
+  if (!list.length || !l3) return;
+  const r = await l3bLoad(list, { cacheOnly: true });
+  let fresh = [];
+  try {
+    const onTc = list.filter(w => !w.fileId);
+    if (onTc.length) {
+      const tc = (await askOpener("ifcModelsList", {}, 20000)).models || [];
+      onTc.forEach(w => { const m = tc.find(x => x.id === w.id); if (m && m.version && m.version !== w.version) fresh.push({ ...w, version: m.version }); });
+    }
+    const byFolder = new Map();
+    list.filter(w => w.fileId && w.parentId).forEach(w => { if (!byFolder.has(w.parentId)) byFolder.set(w.parentId, []); byFolder.get(w.parentId).push(w); });
+    for (const [folderId, ws] of byFolder) {
+      const items = (await askOpener("tcFolder", { folderId }, 30000)).items || [];
+      ws.forEach(w => { const f = items.find(x => x.id === w.fileId); const v = f && (f.versionId || (f.modified ? String(f.modified) : "")); if (v && v !== w.version) fresh.push({ ...w, version: v }); });
+    }
+  } catch (e) { fresh = []; /* 4D-planering inte öppen: visa det som finns i cachen */ }
+  const todo = [...(r && r.missing || []).filter(w => !fresh.some(f => f.id === w.id)), ...fresh];
+  if (todo.length) { l3Toast(fresh.length ? "En nyare version av byggnaden finns i Trimble Connect – den läses in och ersätter den visade." : "Byggnaden läses in…"); await l3bLoad(todo, { replace: true }); }
 }
 /* Bitarna ligger relativt O när de lästes; flytta dem om origo bytts (annan arbetsyta). */
 function l3bPosition() { l3b.models.forEach(m => m.meshes.forEach(x => x.position.set(m.O[0] - l3.O[0], m.O[1] - l3.O[1], m.O[2] - l3.O[2]))); }
@@ -120,7 +170,7 @@ function l3bDb() {
     q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
   });
 }
-const l3bCacheKey = w => (w && w.version ? `${projectId}|${w.fileId ? "f:" + w.fileId : w.id}|${w.version}|${l3bVoids() ? "u" : "s"}` : null);
+const l3bCacheKey = w => (w && w.version ? `${projectId}|${w.fileId ? "f:" + w.fileId : w.id}|${w.version}|${l3bVoids() ? "u" : "s"}${l3bDetails() ? "d" : ""}` : null);
 async function l3bCacheGet(w) {
   const key = l3bCacheKey(w);
   if (!key) return null;
@@ -179,14 +229,17 @@ function l3bMeshFromArrays(pos, col, idx, ranges, out) {
 }
 /* Antal trådar: stora filer delas på flera (var och en räknar vart N:te objekt), men varje tråd läser hela
    filen och behöver eget minne – därför efter filstorlek, kärnor och minne (Victor 2026-10-09: "nästan instant"). */
-function l3bParts(size) {
+function l3bParts(size, voids = l3bVoids()) {
   const cores = navigator.hardwareConcurrency || 4, memGb = navigator.deviceMemory || 8;
   if (size < 25e6) return 1;
-  const byMem = Math.max(1, Math.floor(memGb * 1e9 / (size * 9))); // ungefär 9 × filen per tråd
+  // Varje tråd läser hela filen: utan urtag är geometrin lätt och flera trådar lönar sig bara på stora datorer.
+  if (!voids && cores < 8) return 1;
+  const byMem = Math.max(1, Math.floor(memGb * 1e9 * 0.5 / (size * 10))); // ~10 × filen per tråd, högst halva minnet
   return Math.max(1, Math.min(6, Math.floor(cores / 2), byMem)); // halva de logiska kärnorna (hypertrådar konkurrerar)
 }
 /* Urtag (fönster- och dörrhål) är den i särklass dyraste delen – av som standard, kan slås på under Lager. */
 const l3bVoids = () => !!(typeof l3Prefs === "function" && l3Prefs().ifcVoids);
+const l3bDetails = () => !!(typeof l3Prefs === "function" && l3Prefs().ifcDetails);
 function l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes) {
   return new Promise((resolve, reject) => {
     const buf0 = bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes).slice().buffer;
@@ -219,16 +272,16 @@ function l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes) {
           out.meshes.push(m); out.ranges.push(...d.ranges); out.tris += d.idx.length / 3;
           if (onMeshes) onMeshes([m]);
         } else if (d.type === "done") {
-          out.capped = out.capped || !!d.capped; wk.terminate(); prog[k] = 1;
+          out.capped = out.capped || !!d.capped; out.skipped = (out.skipped || 0) + (d.skipped || 0); wk.terminate(); prog[k] = 1;
           if (--left === 0) resolve(out);
         } else if (d.type === "error") fail(new Error(d.message));
       };
       wk.onerror = e => { const err = new Error(e.message || "IFC-tråden avbröts (för lite minne?)"); err.workerStart = !started; fail(err); };
     });
-    const base = new URL("vendor/web-ifc/", location.href).href, voids = l3bVoids();
+    const base = new URL("vendor/web-ifc/", location.href).href, voids = l3bVoids(), details = l3bDetails();
     wks.forEach((wk, k) => {
       const b = k === N - 1 ? buf0 : buf0.slice(0); // varje tråd sin kopia; den sista får originalet
-      wk.postMessage({ bytes: b, placement, O: out.O, maxTris: Math.ceil(maxTris / N), chunkTris: L3B_CHUNK, base, part: k, parts: N, voids }, [b]);
+      wk.postMessage({ bytes: b, placement, O: out.O, maxTris: Math.ceil(maxTris / N), chunkTris: L3B_CHUNK, base, part: k, parts: N, voids, details }, [b]);
     });
   });
 }

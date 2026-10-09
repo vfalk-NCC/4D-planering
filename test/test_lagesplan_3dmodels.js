@@ -180,6 +180,22 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   if (!wc.workers || !wc.chunks || !wc.tris) fail('IFC:n ska läsas i en egen tråd och sparas i cachen: ' + JSON.stringify(wc));
   const fromCache = await page.evaluate(async () => { const rec = await l3bCacheGet({ fileId: 'F2', version: 'v1' }); const m = l3bFromCache(rec); return { meshes: m.meshes.length, tris: m.tris, ranges: m.ranges.length }; });
   if (!fromCache.meshes || !fromCache.ranges) fail('Cachen ska ge tillbaka modellen: ' + JSON.stringify(fromCache));
+  // Nästa öppning: modellen som var tänd visas direkt ur cachen (ingen ny hämtning) ...
+  const re1 = await page.evaluate(async () => {
+    l3bShow('f:F2', true); l3bRemove('f:F2'); const n0 = window.__calls.filter(c => c[0] === 'tcFile').length;
+    await l3bRestore();
+    return { loaded: l3b.models.some(m => m.id === 'f:F2' && m.visible), fetched: window.__calls.filter(c => c[0] === 'tcFile').length - n0, remembered: l3bRemembered().map(w => w.id + '@' + w.version) };
+  });
+  if (!re1.loaded || re1.fetched !== 0 || !re1.remembered.includes('f:F2@v1')) fail('Tända modeller ska visas direkt ur cachen vid öppning: ' + JSON.stringify(re1));
+  // ... och finns en ny version i TC läses den in och ersätter den visade.
+  const re2 = await page.evaluate(async () => {
+    const orig = askOpener;
+    askOpener = async (type, extra, t, p) => { const r = await orig(type, extra, t, p); if (type === 'tcFolder' && extra.folderId === 'f1') r.items = r.items.map(x => x.id === 'F2' ? { ...x, versionId: 'v2' } : x); return r; };
+    const n0 = window.__calls.filter(c => c[0] === 'tcFile').length;
+    await l3bRestore(); askOpener = orig;
+    return { n: l3b.models.filter(m => m.id === 'f:F2').length, ver: (l3b.models.find(m => m.id === 'f:F2') || {}).src.version, fetched: window.__calls.filter(c => c[0] === 'tcFile').length - n0 };
+  });
+  if (re2.n !== 1 || re2.ver !== 'v2' || re2.fetched !== 1) fail('En ny version i TC ska ersätta den visade: ' + JSON.stringify(re2));
 
   // Esc stänger rutan.
   await page.evaluate(() => l3PalTab('add'));

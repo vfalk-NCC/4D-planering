@@ -38,6 +38,50 @@ function dropVoids(u8) {
   return n;
 }
 
+/* GUID och namn för alla objekt direkt ur filens text (en genomläsning) – web-ifc:s GetLine per objekt tog
+   ~40 % av tiden. Raden ser ut som #123=IFCWALL('guid',#5,'Namn',…); \X2\…\X0\ (t.ex. å, ä, ö) avkodas. */
+function decodeIfcStr(t) {
+  return t.replace(/''/g, "'")
+    .replace(/\\X2\\([0-9A-F]+)\\X0\\/gi, (_, h) => { let o = ""; for (let i = 0; i + 4 <= h.length; i += 4) o += String.fromCharCode(parseInt(h.slice(i, i + 4), 16)); return o; })
+    .replace(/\\X\\([0-9A-F]{2})/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\S\\(.)/g, (_, c) => String.fromCharCode(c.charCodeAt(0) + 128));
+}
+function scanNames(u8, want) {
+  const out = new Map(), N = u8.length, dec = new TextDecoder("latin1"), utf8 = new TextDecoder("utf-8");
+  // Bitkarta i stället för Set (2 miljoner rader slås upp – en Set var 5 × långsammare).
+  let mx = 0; want.forEach(v => { if (v > mx) mx = v; });
+  const bm = new Uint8Array(mx + 1); want.forEach(v => { bm[v] = 1; });
+  let special = false;
+  const str = (i) => { // läser 'text' från i (vid '); returnerar [text, slutindex]
+    let j = i + 1, hi = false; special = false;
+    for (; j < N; j++) { const c = u8[j]; if (c === 39) { if (u8[j + 1] === 39) { special = true; j++; continue; } break; } if (c === 92) special = true; else if (c > 127) hi = true; }
+    const sub = u8.subarray(i + 1, j);
+    // Rå UTF-8 (en del program skriver å/ä/ö direkt i stället för \X2\…\X0\).
+    return [hi ? utf8.decode(sub) : sub.length < 4096 ? String.fromCharCode.apply(null, sub) : dec.decode(sub), j + 1];
+  };
+  for (let i = 0; i < N; ) {
+    // Rad för rad (indexOf är inbyggd och snabb); bara rader som börjar med "#".
+    const nl = u8.indexOf(10, i), next = nl < 0 ? N : nl + 1;
+    if (u8[i] !== 35) { i = next; continue; }
+    let j = i + 1, id = 0, c;
+    while ((c = u8[j]) >= 48 && c <= 57) { id = id * 10 + c - 48; j++; }
+    if (id > mx || !bm[id]) { i = next; continue; }
+    while (j < N && u8[j] !== 40 && u8[j] !== 10) j++; // till "("
+    if (u8[j] !== 40 || u8[j + 1] !== 39) { i = next; continue; }
+    const [guid, k0] = str(j + 1);
+    let k = k0;
+    while (k < N && u8[k] !== 44) k++; k++;            // till "," efter GUID
+    while (k < N && u8[k] !== 44) k++; k++;            // förbi ägaren (#5 eller $)
+    while (k < N && u8[k] === 32) k++;
+    let name = "";
+    if (u8[k] === 39) { const t = str(k)[0]; name = (special ? decodeIfcStr(t) : t).slice(0, 200); }
+    out.set(id, [guid, name]);
+    i = Math.max(next, k); // namnet kan innehålla radbrytning (sällsynt)
+    if (i < N && u8[i - 1] !== 10) { const nl2 = u8.indexOf(10, i); i = nl2 < 0 ? N : nl2 + 1; }
+  }
+  return out;
+}
+
 /* Växande typad array (ingen JS-lista med miljontals tal). */
 function grow(Type, cap) {
   let a = new Type(cap), n = 0;
@@ -50,7 +94,7 @@ function grow(Type, cap) {
 }
 
 self.onmessage = async ev => {
-  const { bytes, placement, O, maxTris = 6e6, chunkTris = 80000, base, part = 0, parts = 1, names = true, voids = false } = ev.data || {};
+  const { bytes, placement, O, maxTris = 6e6, chunkTris = 80000, base, part = 0, parts = 1, names = true, voids = false, details = false } = ev.data || {};
   let id = null;
   try {
     const t0 = Date.now();
@@ -58,19 +102,36 @@ self.onmessage = async ev => {
     self.postMessage({ type: "progress", f: 0.02, n: 0 });
     const u8 = new Uint8Array(bytes);
     if (!voids) dropVoids(u8);
-    id = A.OpenModel(u8, { COORDINATE_TO_ORIGIN: false, CIRCLE_SEGMENTS: 10 });
+    id = A.OpenModel(u8, { COORDINATE_TO_ORIGIN: false, CIRCLE_SEGMENTS: 8 });
     const tOpen = Date.now() - t0;
     self.postMessage({ type: "progress", f: 0.05, n: 0 });
     // Objekten som ska ritas: alla produkter utom rymder, öppningar och de rumsliga nivåerna (har ingen kropp).
     const skip = new Set([WebIFC.IFCSPACE, WebIFC.IFCOPENINGELEMENT, WebIFC.IFCSITE, WebIFC.IFCBUILDING, WebIFC.IFCBUILDINGSTOREY, WebIFC.IFCPROJECT,
       WebIFC.IFCANNOTATION, WebIFC.IFCGRID, WebIFC.IFCVIRTUALELEMENT].filter(Boolean));
-    let mine = null;
+    const W = WebIFC, ids = (types, inh = true) => { const s = new Set(); types.filter(Boolean).forEach(t => { try { const v = A.GetLineIDsWithType(id, t, inh); for (let i = 0; i < v.size(); i++) s.add(v.get(i)); } catch (e) { /* typen finns inte i schemat */ } }); return s; };
+    // Tunga detaljer som sällan behövs i en etableringsvy (av som standard, Lager → Visa detaljer):
+    // armering, inredning, installationer (rör, kanaler, el, VVS-komponenter) och fästdon.
+    const detailIds = details ? new Set() : ids([W.IFCREINFORCINGELEMENT, W.IFCREINFORCINGBAR, W.IFCREINFORCINGMESH, W.IFCTENDON, W.IFCTENDONANCHOR,
+      W.IFCFURNISHINGELEMENT, W.IFCFURNITURE, W.IFCSYSTEMFURNITUREELEMENT, W.IFCDISTRIBUTIONELEMENT, W.IFCFASTENER, W.IFCMECHANICALFASTENER, W.IFCDISCRETEACCESSORY]);
+    // Stommen och skalet först, så att byggnaden syns efter några sekunder medan resten fylls på.
+    const firstIds = ids([W.IFCSLAB, W.IFCWALL, W.IFCWALLSTANDARDCASE, W.IFCCOLUMN, W.IFCBEAM, W.IFCROOF, W.IFCFOOTING, W.IFCPILE, W.IFCCURTAINWALL,
+      W.IFCSTAIR, W.IFCSTAIRFLIGHT, W.IFCRAMP, W.IFCRAMPFLIGHT]);
+    let mine = null, skipped = 0;
     try {
-      const all = A.GetLineIDsWithType(id, WebIFC.IFCPRODUCT, true), list = [];
-      for (let i = 0; i < all.size(); i++) { const e = all.get(i); if (!skip.has(A.GetLineType(id, e))) list.push(e); }
-      list.sort((a, b) => a - b);
+      const all = A.GetLineIDsWithType(id, W.IFCPRODUCT, true), first = [], rest = [];
+      for (let i = 0; i < all.size(); i++) {
+        const e = all.get(i);
+        if (skip.has(A.GetLineType(id, e))) continue;
+        if (detailIds.has(e)) { skipped++; continue; }
+        (firstIds.has(e) ? first : rest).push(e);
+      }
+      first.sort((a, b) => a - b); rest.sort((a, b) => a - b);
+      const list = first.concat(rest);
       mine = parts > 1 ? list.filter((_, i) => i % parts === part) : list;
     } catch (e) { mine = null; } // äldre web-ifc: alla objekt i en tråd
+    // GUID och namn ur texten (snabbt); saknas något används web-ifc för just det objektet.
+    let names0 = null;
+    try { if (mine && names) names0 = scanNames(u8, new Set(mine)); } catch (e) { names0 = null; }
     const total = mine ? mine.length : 0, tList = Date.now() - t0 - tOpen;
     const pl = placement || { position: { x: 0, y: 0, z: 0 }, refDirection: { x: 1, y: 0, z: 0 } };
     const rd = pl.refDirection || { x: 1, y: 0, z: 0 }, rl = Math.hypot(rd.x, rd.y) || 1, cs = rd.x / rl, sn = rd.y / rl;
@@ -90,7 +151,9 @@ self.onmessage = async ev => {
       n++;
       if (!mine) { let type = 0; try { type = A.GetLineType(id, mesh.expressID); } catch (e) { /* okänd */ } if (skip.has(type)) return; }
       let guid = null, name = "";
-      try {
+      const nm = names0 && names0.get(mesh.expressID);
+      if (nm) { guid = nm[0]; name = nm[1]; }
+      else try {
         if (hasGuid) guid = A.GetGuidFromExpressId(id, mesh.expressID) || null;
         if (names || !guid) {
           const line = A.GetLine(id, mesh.expressID, false);
@@ -129,7 +192,7 @@ self.onmessage = async ev => {
     };
     if (mine) A.StreamMeshes(id, mine, onMesh); else A.StreamAllMeshes(id, onMesh);
     flush();
-    self.postMessage({ type: "done", tris, capped, products: n, ms: { open: tOpen, list: tList, geo: Date.now() - t0 - tOpen - tList } });
+    self.postMessage({ type: "done", tris, capped, products: n, skipped: part === 0 ? skipped : 0, ms: { open: tOpen, list: tList, geo: Date.now() - t0 - tOpen - tList } });
   } catch (e) {
     self.postMessage({ type: "error", message: (e && e.message) || String(e) });
   } finally {
