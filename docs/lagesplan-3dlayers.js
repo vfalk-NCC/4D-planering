@@ -56,6 +56,7 @@ function l3LayersRender() {
     h += ms.length ? ms.map(m => row(`data-l3l-model="${esc(m.id)}"`, m.visible, esc(m.name), `<em class="v3-lr-k">${(m.tris / 1000).toFixed(0)}k</em>`)).join("")
       : `<div class="v3-pal-hint">Inga modeller är inlästa än. Välj under Mappar eller hämta de som är tända i Trimble Connect.</div>`;
   } else h += l3lTreeHtml(l3lay.root, 0);
+  h += `<label class="v3-chk v3-lay-voids" title="Fönster- och dörrhål sågas ut ur väggar och bjälklag. Gör inläsningen av stora modeller många gånger långsammare – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayVoids" ${P.ifcVoids ? "checked" : ""} /> Visa urtag (hål i väggar) – långsammare</label>`;
   h += `<button type="button" class="v3-wide" id="v3LayTcOn" title="De IFC-modeller som är tända i Trimble Connect just nu">Hämta tända modeller från TC…</button><div id="v3LayBldgBox"></div>`;
   if (l3lay.err) h += `<div class="v3-pal-hint bad">${esc(l3lay.err)}</div><button type="button" class="v3-wide" id="v3LayRetry">Försök igen</button>`;
   host.innerHTML = h;
@@ -70,6 +71,8 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3l-file]").forEach(b => { b.onclick = () => l3lFile(b.dataset.l3lFile, b.dataset.name); });
   const op = host.querySelector('[data-l3l-op="plan"]');
   if (op) op.oninput = () => { l3SetPref("planOp", Number(op.value)); l3lApplyPlanOp(); l3Render(); };
+  const vo = host.querySelector("#v3LayVoids");
+  if (vo) vo.onchange = () => { l3SetPref("ifcVoids", vo.checked); l3Status(vo.checked ? "Urtag visas i modeller som läses in härefter (långsammare)." : "Urtag hoppas över i modeller som läses in härefter (snabbare)."); };
   const tcOn = host.querySelector("#v3LayTcOn");
   if (tcOn) tcOn.onclick = () => { if (typeof l3bOpenDialog === "function") l3bOpenDialog("v3LayBldgBox"); };
   // Rotmappen hämtas en gång (Försök igen i felraden om det misslyckas).

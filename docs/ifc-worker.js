@@ -3,7 +3,9 @@
    medan web-ifc läste filen. Här läses modellen utan att låsa sidan, och geometrin skickas tillbaka i
    bitar (typade arrayer, utan kopiering) så att byggnaden byggs upp medan resten läses.
 
-   In:  { bytes: ArrayBuffer (överförd), placement, O: [x,y,z], maxTris, chunkTris, base: vendor-URL }
+   In:  { bytes: ArrayBuffer, placement, O: [x,y,z], maxTris, chunkTris, base: vendor-URL, part, parts, names }
+        part/parts: flera trådar delar på objekten (var och en tar vart parts:e objekt, part = 0..parts-1) –
+        varje tråd öppnar filen själv, så att geometrin (det tunga, t.ex. urtag) räknas parallellt.
    Ut:  { type: "progress", f, n } – andel klar (0–1) och antal objekt
         { type: "chunk", pos: Float32Array, col: Float32Array, idx: Uint32Array, ranges: [...] }
         { type: "done", tris, capped, products } | { type: "error", message }
@@ -21,6 +23,21 @@ async function load(base) {
   return a;
 }
 
+/* Utan urtag (snabbt): IFCRELVOIDSELEMENT byts mot ett okänt namn med samma längd, så att web-ifc inte
+   sågar ut fönster- och dörrhål (den booleska operationen är det i särklass dyraste vid inläsningen).
+   Fönster, dörrar och allt annat ritas som vanligt – bara hålen i väggarna och bjälklagen uteblir. */
+function dropVoids(u8) {
+  const pat = "IFCRELVOIDSELEMENT", L = pat.length, P = new Uint8Array(L);
+  for (let i = 0; i < L; i++) P[i] = pat.charCodeAt(i);
+  let n = 0;
+  for (let i = u8.indexOf(73); i !== -1 && i <= u8.length - L; i = u8.indexOf(73, i + 1)) { // 73 = "I"
+    let k = 1;
+    while (k < L && u8[i + k] === P[k]) k++;
+    if (k === L) { u8[i + 3] = 88; n++; i += L - 1; } // IFCRELVOIDS… -> IFCXELVOIDS…
+  }
+  return n;
+}
+
 /* Växande typad array (ingen JS-lista med miljontals tal). */
 function grow(Type, cap) {
   let a = new Type(cap), n = 0;
@@ -33,16 +50,28 @@ function grow(Type, cap) {
 }
 
 self.onmessage = async ev => {
-  const { bytes, placement, O, maxTris = 6e6, chunkTris = 80000, base } = ev.data || {};
+  const { bytes, placement, O, maxTris = 6e6, chunkTris = 80000, base, part = 0, parts = 1, names = true, voids = false } = ev.data || {};
   let id = null;
   try {
+    const t0 = Date.now();
     const A = await load(base);
     self.postMessage({ type: "progress", f: 0.02, n: 0 });
-    id = A.OpenModel(new Uint8Array(bytes), { COORDINATE_TO_ORIGIN: false, CIRCLE_SEGMENTS: 12 });
-    // Antal objekt med geometri (för procenten): byggdelar och andra produkter.
-    let total = 0;
-    try { total = A.GetLineIDsWithType(id, WebIFC.IFCPRODUCT, true).size(); } catch (e) { total = 0; }
-    const skip = new Set([WebIFC.IFCSPACE, WebIFC.IFCOPENINGELEMENT].filter(Boolean));
+    const u8 = new Uint8Array(bytes);
+    if (!voids) dropVoids(u8);
+    id = A.OpenModel(u8, { COORDINATE_TO_ORIGIN: false, CIRCLE_SEGMENTS: 10 });
+    const tOpen = Date.now() - t0;
+    self.postMessage({ type: "progress", f: 0.05, n: 0 });
+    // Objekten som ska ritas: alla produkter utom rymder, öppningar och de rumsliga nivåerna (har ingen kropp).
+    const skip = new Set([WebIFC.IFCSPACE, WebIFC.IFCOPENINGELEMENT, WebIFC.IFCSITE, WebIFC.IFCBUILDING, WebIFC.IFCBUILDINGSTOREY, WebIFC.IFCPROJECT,
+      WebIFC.IFCANNOTATION, WebIFC.IFCGRID, WebIFC.IFCVIRTUALELEMENT].filter(Boolean));
+    let mine = null;
+    try {
+      const all = A.GetLineIDsWithType(id, WebIFC.IFCPRODUCT, true), list = [];
+      for (let i = 0; i < all.size(); i++) { const e = all.get(i); if (!skip.has(A.GetLineType(id, e))) list.push(e); }
+      list.sort((a, b) => a - b);
+      mine = parts > 1 ? list.filter((_, i) => i % parts === part) : list;
+    } catch (e) { mine = null; } // äldre web-ifc: alla objekt i en tråd
+    const total = mine ? mine.length : 0, tList = Date.now() - t0 - tOpen;
     const pl = placement || { position: { x: 0, y: 0, z: 0 }, refDirection: { x: 1, y: 0, z: 0 } };
     const rd = pl.refDirection || { x: 1, y: 0, z: 0 }, rl = Math.hypot(rd.x, rd.y) || 1, cs = rd.x / rl, sn = rd.y / rl;
     const P = pl.position || { x: 0, y: 0, z: 0 };
@@ -56,18 +85,18 @@ self.onmessage = async ev => {
       self.postMessage(m, [m.pos.buffer, m.col.buffer, m.idx.buffer]);
     };
     const hasGuid = typeof A.GetGuidFromExpressId === "function";
-    A.StreamAllMeshes(id, mesh => {
+    const onMesh = mesh => {
       if (capped) return;
       n++;
-      let type = 0;
-      try { type = A.GetLineType(id, mesh.expressID); } catch (e) { /* okänd */ }
-      if (skip.has(type)) return;
+      if (!mine) { let type = 0; try { type = A.GetLineType(id, mesh.expressID); } catch (e) { /* okänd */ } if (skip.has(type)) return; }
       let guid = null, name = "";
       try {
         if (hasGuid) guid = A.GetGuidFromExpressId(id, mesh.expressID) || null;
-        const line = A.GetLine(id, mesh.expressID, false);
-        if (!guid && line && line.GlobalId) guid = line.GlobalId.value;
-        name = line && line.Name ? line.Name.value || "" : "";
+        if (names || !guid) {
+          const line = A.GetLine(id, mesh.expressID, false);
+          if (!guid && line && line.GlobalId) guid = line.GlobalId.value;
+          name = line && line.Name ? line.Name.value || "" : "";
+        }
       } catch (e) { /* utan namn */ }
       const start = pos.length / 3;
       let baseCol = null;
@@ -96,10 +125,11 @@ self.onmessage = async ev => {
       if (count) ranges.push({ start, count, guid, name, base: baseCol || [0.85, 0.87, 0.9] });
       if (tris - chunkStartTris > chunkTris) flush();
       const now = Date.now();
-      if (now - lastPost > 250) { lastPost = now; self.postMessage({ type: "progress", f: total ? Math.min(0.99, n / total) : 0.5, n }); }
-    });
+      if (now - lastPost > 250) { lastPost = now; self.postMessage({ type: "progress", f: total ? Math.min(0.99, 0.05 + 0.95 * n / total) : 0.5, n }); }
+    };
+    if (mine) A.StreamMeshes(id, mine, onMesh); else A.StreamAllMeshes(id, onMesh);
     flush();
-    self.postMessage({ type: "done", tris, capped, products: n });
+    self.postMessage({ type: "done", tris, capped, products: n, ms: { open: tOpen, list: tList, geo: Date.now() - t0 - tOpen - tList } });
   } catch (e) {
     self.postMessage({ type: "error", message: (e && e.message) || String(e) });
   } finally {
