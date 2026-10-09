@@ -10,6 +10,7 @@ const PORT = 8998;
   const fail = m => { throw new Error(m); };
   const open = async ctxOpts => {
     const page = await (await browser.newContext(ctxOpts)).newPage();
+    await require('./_dialogs').bridge(page); // appens egna dialogrutor
     require('./_reveal').autoReveal(page); // flikar och menyer (UI-översynen 2026-10-09)
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); });

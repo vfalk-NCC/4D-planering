@@ -159,23 +159,27 @@ async function selectObject(it, shape) {
 // ---------------------------------------------------------------------
 let measure = null; // { mode: "len"|"area", pts: [[x,y]...] (PDF), cursor, done }
 /* Meter per PDF-punkt: från kalibreringen, annars från en angiven skala. */
-function metersPerPdfUnit(ask) {
+function metersPerPdfUnit() {
   if (plan && plan.calib) {
     const [m1, m2] = plan.calib.model, [p1, p2] = plan.calib.pdf;
     return Math.hypot(m2[0] - m1[0], m2[1] - m1[1]) / Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
   }
   if (plan && plan.scale) return plan.scale * 25.4 / 72 / 1000;
-  if (!ask) return null;
-  const v = prompt("Planen är inte kalibrerad mot 3D. Ange ritningens skala för att mäta, 1:", "100");
+  return null;
+}
+/* Skalan för mätning – frågar efter ritningens skala om planen inte är kalibrerad. */
+async function ensureMeasureScale() {
+  if (metersPerPdfUnit()) return metersPerPdfUnit();
+  const v = await uiPrompt("Planen är inte kalibrerad mot 3D\n\nAnge ritningens skala för att mäta, 1:", "100");
   const n = Number(String(v || "").replace(",", "."));
   if (!n || n <= 0) return null;
   plan.scale = n; schedulePlanSave();
-  return metersPerPdfUnit(false);
+  return metersPerPdfUnit();
 }
-function startMeasure(mode) {
+async function startMeasure(mode) {
   if (!plan || !viewport) return;
   if (measure && measure.mode === mode && !measure.done) { stopMeasure(); return; }
-  if (!metersPerPdfUnit(true)) return;
+  if (!(await ensureMeasureScale())) return;
   if (drawMode) setDrawMode(false);
   cancelPhotoPlacing();
   measure = { mode, pts: [], cursor: null, done: false };
@@ -318,9 +322,9 @@ async function addPhotoFile(file, opts = {}) {
     // Flera foton på en gång: filnamnet som beskrivning, datumet från fotot (ändras i listan/fotot vid behov).
     caption = file.name.replace(/\.[^.]+$/, ""); date = defDate;
   } else {
-    caption = prompt("Beskrivning av fotot (valfritt):", "");
+    caption = await uiPrompt("Beskrivning av fotot (valfritt):", "");
     if (caption === null) return;
-    date = (prompt("Datum då fotot togs (ÅÅÅÅ-MM-DD):", defDate) || defDate).trim();
+    date = (await uiPrompt("Datum då fotot togs (ÅÅÅÅ-MM-DD):", defDate) || defDate).trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) date = defDate;
   }
   setBusy(opts.progress || "Laddar upp fotot…");
@@ -475,7 +479,7 @@ function bindPhotoFull() {
 }
 async function deleteOpenPhoto() {
   const ph = photos().find(p => p.id === openPhotoId);
-  if (!ph || !confirm("Ta bort fotot från planen?")) return;
+  if (!ph || !await uiConfirm("Ta bort fotot från planen?")) return;
   closePhoto();
   plan.photos = photos().filter(p => p.id !== ph.id);
   renderZones(); schedulePlanSave();

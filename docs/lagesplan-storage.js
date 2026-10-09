@@ -137,7 +137,7 @@ function bindStoragePop(pop, rec) {
   const add = pop.querySelector(".stor-add");
   if (add) add.onchange = async () => {
     const d = planDeliveries.find(x => x.id === add.value); if (!d) return;
-    const m2 = prompt(`Hur stor yta tar "${deliveryName(d)}" på upplaget (m²)?`, d.space_m2 != null ? String(d.space_m2) : "");
+    const m2 = await uiPrompt(`Hur stor yta tar "${deliveryName(d)}" på upplaget (m²)?`, d.space_m2 != null ? String(d.space_m2) : "");
     if (m2 === null) { add.value = ""; return; }
     await patchDelivery(d.id, { storage_id: rec.id, space_m2: m2.trim() === "" ? null : Math.max(0, Number(m2.replace(",", ".")) || 0) });
     reopen();

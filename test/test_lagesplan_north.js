@@ -17,6 +17,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const fail = m => { throw new Error(m); };
   const page = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+  await require('./_dialogs').bridge(page); // appens egna dialogrutor
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   let dialogs = 0, accept = false; page.on('dialog', d => { dialogs++; accept ? d.accept() : d.dismiss(); });
   await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); localStorage.setItem('lagesplan-field', '0'); });
@@ -37,6 +38,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
     plan = { id: 'pl', name: 'P', zones: [], photos: [{ id: 'ph', x: 400, y: 300, date: '2026-10-01', caption: 'Foto' }], calib: { model: [[0, 0, 0], [100, 0, 0]], pdf: [[300, 200], [300 + 1000 * Math.cos(a), 200 + 1000 * Math.sin(a)]] } };
     view.scale = 1; view.tx = 0; view.ty = 0; applyView(); renderZones(); showTab('zones'); updateCalibInfo();
   });
+  await page.$eval('#btnNorthUp', el => revealElement(el)); // ligger under "Fler inställningar"
   if (await page.isHidden('#btnNorthUp')) fail('Knappen ska finnas under Zoner & 3D');
   const n = await page.evaluate(() => northUpAngle() * 180 / Math.PI);
   // Avbryt i frågan: ingenting händer.

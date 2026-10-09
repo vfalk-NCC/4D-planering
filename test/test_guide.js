@@ -8,6 +8,7 @@ const PORT = 8994;
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const fail = m => { throw new Error(m); };
   const page = await browser.newPage({ viewport: { width: 390, height: 800 } });
+  await require('./_dialogs').bridge(page); // appens egna dialogrutor
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   await page.goto(`http://localhost:${PORT}/guide.html`);
   const visible = async () => page.$$eval('main section', s => s.filter(x => getComputedStyle(x).display !== 'none').map(x => x.id));

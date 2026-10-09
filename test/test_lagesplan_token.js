@@ -16,6 +16,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   const server = http.createServer((q, r) => fs.readFile(path.join(DOCS_DIR, q.url.split('?')[0]), (e, d) => { if (e) { r.writeHead(404); r.end(); } else { r.writeHead(200, { 'Content-Type': q.url.includes('.js') ? 'application/javascript' : 'text/html' }); r.end(d); } })).listen(PORT);
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+  await require('./_dialogs').bridge(page); // appens egna dialogrutor
   require('./_reveal').autoReveal(page); // flikar och menyer (UI-översynen 2026-10-09)
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   page.on('dialog', d => d.accept());

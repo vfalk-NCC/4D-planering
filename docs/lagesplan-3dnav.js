@@ -356,9 +356,9 @@ function l3TouchBarUpdate() {
     bar.onclick = e => e.stopPropagation();
     bar.querySelector('[data-tb="cancel"]').onclick = () => l3FakeKey("Escape");
     bar.querySelector('[data-tb="done"]').onclick = () => l3FakeKey("Enter");
-    bar.querySelector('[data-tb="num"]').onclick = () => {
+    bar.querySelector('[data-tb="num"]').onclick = async () => {
       const lbl = l3.tool === "rotate" ? "Vinkel i grader (minus = medurs):" : "Avstånd i meter – eller dx;dy;dz från baspunkten:";
-      const v = prompt(lbl, "");
+      const v = await uiPrompt(lbl, "");
       if (v === null || !v.trim()) return;
       l3t.vcb = v.trim(); l3FakeKey("Enter");
     };

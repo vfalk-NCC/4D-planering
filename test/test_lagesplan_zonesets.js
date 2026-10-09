@@ -23,6 +23,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const fail = m => { throw new Error(m); };
   const page = await (await browser.newContext({ viewport: { width: 1300, height: 850 } })).newPage();
+  await require('./_dialogs').bridge(page); // appens egna dialogrutor
   const errors = []; page.on('pageerror', e => errors.push(e.message + ' @ ' + (e.stack || '').split('\n').slice(1, 3).join(' ')));
   let answer = ''; const dlgs = []; page.on('dialog', d => { dlgs.push(d.message()); d.type() === 'prompt' ? d.accept(answer) : d.accept(); });
   await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); });
@@ -87,12 +88,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
 
   // Raderingsskydd (Victor 2026-10-07): på från början, Delete-tangenten och 🗑 gör ingenting.
   await page.evaluate(() => document.querySelector('#zoneSetSeg [data-zset="main"]').click()); await page.waitForTimeout(150);
-  const del = async viaKey => page.evaluate(k => { selectZone('z1'); deleteSelectedZone(!k); return { n: plan.zones.length, st: $('saveStatus').textContent, btn: $('btnZoneGuard').textContent }; }, viaKey);
+  const del = async viaKey => page.evaluate(async k => { selectZone('z1'); await deleteSelectedZone(!k); return { n: plan.zones.length, st: $('saveStatus').textContent, btn: $('btnZoneGuard').textContent }; }, viaKey);
   let d = await del(true);
   if (d.n !== 1 || !/skyddade mot radering/.test(d.st) || !/Raderingsskydd på/.test(d.btn)) fail('Skyddet ska stoppa Delete: ' + JSON.stringify(d));
   d = await del(false);
   if (d.n !== 1) fail('Skyddet ska stoppa 🗑');
-  if (await page.evaluate(() => { deleteWbs('741 SEKTIONSFICKOR'); return plan.zones[0].parent; }) !== '741 Sektionsfickor') fail('Skyddet ska stoppa ta bort överzon');
+  if (await page.evaluate(async () => { await deleteWbs('741 SEKTIONSFICKOR'); return plan.zones[0].parent; }) !== '741 Sektionsfickor') fail('Skyddet ska stoppa ta bort överzon');
   // Av: måste ändå skriva RADERA.
   await page.evaluate(() => $('btnZoneGuard').click());
   if (!/Raderingsskydd av/.test(await page.textContent('#btnZoneGuard'))) fail('Knappen stänger av skyddet');

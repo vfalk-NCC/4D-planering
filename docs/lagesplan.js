@@ -171,7 +171,18 @@ function todayIso() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 function setBusy(t) { $("busy").textContent = t; $("busy").classList.toggle("hidden", !t); }
-function setSaveStatus(t) { $("saveStatus").textContent = t; }
+function setSaveStatus(t) {
+  $("saveStatus").textContent = t;
+  // Borttagningar och annat som går att ångra visas också som en notis med en
+  // Ångra-knapp nere till höger (samma som i 3D).
+  const s = String(t || "");
+  if (typeof uiToast === "function" && !document.body.classList.contains("v3-open") && /ångrar|borttag/i.test(s) && !/inget togs bort/i.test(s)) {
+    const msg = typeof uiStripEmoji === "function" ? uiStripEmoji(s) : s;
+    const clean = msg.replace(/\s*[–-]\s*Ctrl\+Z ångrar\.?/i, "").replace(/\s*\((?:[^()]*?)Ctrl\+Z ångrar\)\.?/i, "").replace(/\s+\./, ".").trim();
+    const canUndo = /ångrar/i.test(s) && typeof fieldUndo === "function";
+    uiToast(clean, canUndo ? { action: "Ångra", fn: () => fieldUndo(), icon: /borttag/i.test(s) ? "trash" : "check" } : { icon: "trash" });
+  }
+}
 
 // ---------------------------------------------------------------------
 // Faser (samma logik som computeItemPhase i app.js)
@@ -609,10 +620,12 @@ function drawObjects(ctx, objects, fontPx) {
 
 function updateCalibInfo() {
   const el = $("calibInfo");
+  // Nästa steg syns direkt: okalibrerad plan ger en blå Kalibrera-knapp.
+  $("btnCalib").classList.toggle("primary", !!plan && !plan.calib);
   if (!plan) { el.textContent = ""; return; }
   const [z0, z1] = levelRange();
   $("levelZ0").value = z0 ?? ""; $("levelZ1").value = z1 ?? "";
-  if (!plan.calib) { el.textContent = "Inte kalibrerad ännu."; return; }
+  if (!plan.calib) { el.textContent = "Inte kalibrerad ännu – börja med Kalibrera mot 3D: klicka två punkter på ritningen och samma två i modellen."; return; }
   const [m1, m2] = plan.calib.model, [p1, p2] = plan.calib.pdf;
   const scale = Math.hypot(m2[0] - m1[0], m2[1] - m1[1]) * 1000 / (Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * 25.4 / 72);
   const pos = positionsInPdf();
@@ -1286,7 +1299,13 @@ function renderZoneList() {
     row.onclick = e => (typeof zoneRowClick === "function" ? zoneRowClick(e, z.id, zones) : selectZone(z.id, true));
     list.appendChild(row);
   });
-  if (!zones.length) list.innerHTML = '<div class="muted" style="padding:6px;">Inga zoner än – rita en med ▭ Rektangel eller ⬠ Polygon.</div>';
+  if (!zones.length) {
+    // Tomt läge med nästa steg som knappar.
+    list.innerHTML = plan
+      ? '<div class="empty-mini"><div class="empty-t">Inga zoner än</div><div class="empty-b">Rita den första zonen på planen.</div><div class="row split"><button type="button" data-empty="btnDraw">▭ Rektangel</button><button type="button" data-empty="btnZonePoly">⬠ Polygon</button></div></div>'
+      : '<div class="empty-mini"><div class="empty-t">Ingen arbetsyta öppen</div><div class="empty-b">Zonerna ritas på en arbetsyta (PDF-ritning).</div><button type="button" class="primary block" data-empty="btnNewPlan">＋ Ny arbetsyta</button></div>';
+    list.querySelectorAll("[data-empty]").forEach(b => { b.onclick = () => { const t = $(b.dataset.empty); if (t && !t.disabled) t.click(); }; });
+  }
   renderLegend();
 }
 
@@ -1515,10 +1534,10 @@ function drawRubber(a, b) {
   ctx.strokeRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1]));
   ctx.restore();
 }
-function finishDraw(a, b) {
+async function finishDraw(a, b) {
   setDrawMode(false);
   if (Math.abs(b[0] - a[0]) < 5 || Math.abs(b[1] - a[1]) < 5) { renderZones(); return; }
-  const code = (prompt("Kod för zonen (t.ex. PM06):") || "").trim();
+  const code = (await uiPrompt("Kod för zonen (t.ex. PM06):") || "").trim();
   if (!code) { renderZones(); return; }
   const corners = [[a[0], a[1]], [b[0], a[1]], [b[0], b[1]], [a[0], b[1]]].map(toPdf);
   const existing = (plan.zones || []).find(z => normCode(z.code) === normCode(code));
@@ -1723,10 +1742,11 @@ function bindUI() {
   bindViewport();
   $("planSelect").onchange = () => openPlan($("planSelect").value);
   $("btnNewPlan").onclick = () => $("pdfInput").click();
+  if ($("btnEmptyNew")) $("btnEmptyNew").onclick = () => $("btnNewPlan").click();
   $("pdfInput").onchange = e => { const f = e.target.files[0]; e.target.value = ""; if (f) createPlanFromFile(f); };
-  $("btnRenamePlan").onclick = () => {
+  $("btnRenamePlan").onclick = async () => {
     if (!plan) return;
-    const n = (prompt("Nytt namn på planen:", plan.name) || "").trim();
+    const n = (await uiPrompt("Nytt namn på planen:", plan.name) || "").trim();
     if (n) { plan.name = n; renderPlanSelect(); schedulePlanSave(); }
   };
   $("btnDeletePlan").onclick = async () => {
@@ -1734,10 +1754,10 @@ function bindUI() {
     // En plan med zoner tas bara bort om man skriver dess namn (Victor 2026-10-07: svårt att radera zoner).
     const nZones = (typeof zonesMainOf === "function" ? zonesMainOf(plan).length : (plan.zones || []).length) + ((plan._zoneSet === "prefab" ? plan.zones : plan.zones_prefab) || []).length;
     if (nZones) {
-      const t = prompt(`Ta bort lägesplanen "${plan.name}"?\n\nPDF:en och planens ${nZones} zoner tas bort. Skriv planens namn för att bekräfta:`, "");
+      const t = await uiPrompt(`Ta bort lägesplanen "${plan.name}"?\n\nPDF:en och planens ${nZones} zoner tas bort. Skriv planens namn för att bekräfta:`, "");
       if (t === null) return;
       if (t.trim() !== String(plan.name).trim()) { alert("Namnet stämde inte – planen togs inte bort."); return; }
-    } else if (!confirm(`Ta bort lägesplanen "${plan.name}"? (PDF:en tas bort.)`)) return;
+    } else if (!await uiConfirm(`Ta bort lägesplanen "${plan.name}"? (PDF:en tas bort.)`)) return;
     const gone = plan;
     if (savePending === gone) { clearTimeout(saveTimer); savePending = null; } else await flushPlanSave();
     try {
@@ -1979,12 +1999,12 @@ function bindTokenModal() {
     msg("Testar…");
     let r = null;
     try { r = await testToken(t); } catch (e) { /* nätverksfel – spara ändå */ }
-    if (r && !r.ok && !confirm(`${r.text}\n\nSpara ändå?`)) return msg(r.text, false);
+    if (r && !r.ok && !await uiConfirm(`${r.text}\n\nSpara ändå?`)) return msg(r.text, false);
     try { localStorage.setItem(LS_TOKEN_KEY, t); localStorage.setItem("4dplan-unlocked", "1"); } catch (e) {}
     location.reload();
   };
-  $("btnTokenClear").onclick = () => {
-    if (!confirm("Ta bort den manuella token:en? Lägesplan använder då token:en från 4D-planering igen.")) return;
+  $("btnTokenClear").onclick = async () => {
+    if (!await uiConfirm("Ta bort den manuella token:en? Lägesplan använder då token:en från 4D-planering igen.")) return;
     try { localStorage.removeItem(LS_TOKEN_KEY); } catch (e) {}
     location.reload();
   };
@@ -2172,7 +2192,7 @@ function bindObjViewUi() {
   };
   $("btnObjViewSave").onclick = async () => {
     const h = objHidden(), cur = objViews().find(v => v.id === h.view);
-    const name = (prompt("Namn på vyn (t.ex. \"Utan grundsula\"). Samma namn skriver över.", cur ? cur.name : "") || "").trim();
+    const name = (await uiPrompt("Namn på vyn (t.ex. \"Utan grundsula\"). Samma namn skriver över.", cur ? cur.name : "") || "").trim();
     if (!name) return;
     const existing = objViews().find(v => v.name.toLowerCase() === name.toLowerCase());
     const rec = { id: existing ? existing.id : ghNewId(), type: "objview", name, hidden: { ids: h.ids, fams: h.fams, acts: h.acts }, updated_by: settings.userName || null, updated_at: new Date().toISOString() };
@@ -2182,7 +2202,7 @@ function bindObjViewUi() {
   };
   $("btnObjViewDelete").onclick = async () => {
     const v = objViews().find(x => x.id === objHidden().view);
-    if (!v || !confirm(`Ta bort vyn "${v.name}"? Det du har släckt just nu ligger kvar.`)) return;
+    if (!v || !await uiConfirm(`Ta bort vyn "${v.name}"? Det du har släckt just nu ligger kvar.`)) return;
     await saveSiteItem(v, true, { record: false });
     const h = objHidden(); h.view = ""; setObjHidden(h, { undo: false });
   };

@@ -28,6 +28,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   const fail = m => { throw new Error(m); };
   const setup = async (ctx, field) => {
     const page = await ctx.newPage();
+    await require('./_dialogs').bridge(page); // appens egna dialogrutor
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(f => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't', userName: 'Victor' })); if (f) localStorage.setItem('lagesplan-field', '1'); else localStorage.setItem('lagesplan-field', '0'); }, field);
     await page.route('https://cdnjs.cloudflare.com/**', r => {

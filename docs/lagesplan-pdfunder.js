@@ -156,7 +156,7 @@ function renderPdfUnderUi(selId) {
   $("btnPdfuCalib").textContent = pdfuCal && pdfuCal.id === p.id ? "Avbryt kalibreringen" : "📐 Kalibrera (två punkter)";
 }
 async function deletePdfUnderlay(p) {
-  if (!p || !confirm(`Ta bort PDF-underlaget "${p.name}"? Lagret och filen tas bort.`)) return;
+  if (!p || !await uiConfirm(`Ta bort PDF-underlaget "${p.name}"? Lagret och filen tas bort.`)) return;
   if (pdfuCal && pdfuCal.id === p.id) cancelPdfuCalib();
   try {
     await ghWriteJSON(token, dataPath("status_plans.json"), arr => arr.filter(x => x.id !== p.id), `Lägesplan: ta bort PDF-underlag ${p.name}`);
@@ -195,7 +195,7 @@ document.addEventListener("DOMContentLoaded", () => {
   inp.onchange = () => { const f = [...inp.files]; inp.value = ""; if (f.length) addPdfUnderlays(f); };
   $("pdfuSel").onchange = () => renderPdfUnderUi();
   $("btnPdfuCalib").onclick = () => { const p = pdfuSelected(); if (!p) return; if (pdfuCal && pdfuCal.id === p.id) cancelPdfuCalib("Kalibreringen avbröts."); else startPdfuCalib(p.id); };
-  $("btnPdfuRename").onclick = () => { const p = pdfuSelected(); if (!p) return; const n = (prompt("Nytt namn på PDF-underlaget:", p.name) || "").trim(); if (n && n !== p.name) { p.name = n; savePlan(p); renderLayerPanel(); renderPdfUnderUi(p.id); } };
+  $("btnPdfuRename").onclick = async () => { const p = pdfuSelected(); if (!p) return; const n = (await uiPrompt("Nytt namn på PDF-underlaget:", p.name) || "").trim(); if (n && n !== p.name) { p.name = n; savePlan(p); renderLayerPanel(); renderPdfUnderUi(p.id); } };
   $("btnPdfuDelete").onclick = () => deletePdfUnderlay(pdfuSelected());
   try { const v = localStorage.getItem("lagesplan-pdfu-tc"); if (v != null) $("pdfuToTc").checked = v === "1"; } catch (e) {}
   $("pdfuToTc").onchange = () => { try { localStorage.setItem("lagesplan-pdfu-tc", $("pdfuToTc").checked ? "1" : "0"); } catch (e) {} };

@@ -318,7 +318,7 @@ async function addDxfFile(file) {
       unitNote = `Filen anger ${unitName(declared)} men hamnade ${Math.round(distOf(declared) / 1000)} km bort – tolkas som ${unitName(best)}.`;
     } else if (!declared) unitNote = `Ingen enhet i filen – tolkas som ${unitName(best)}.`;
     const dist = distOf(factor);
-    if (dist > 20000 && !confirm(`${file.name}: CAD-ritningen ligger ${Math.round(dist / 1000)} km från planens kalibreringspunkter. Ligger den verkligen i samma koordinatsystem som modellen? Lägg till ändå?`)) return false;
+    if (dist > 20000 && !await uiConfirm(`${file.name}: CAD-ritningen ligger ${Math.round(dist / 1000)} km från planens kalibreringspunkter. Ligger den verkligen i samma koordinatsystem som modellen? Lägg till ändå?`)) return false;
     // Kompakt lagring: mm-heltal relativt ett origo.
     const origin = [Math.round(cx * factor), Math.round(cy * factor)];
     const q = v => Math.round(v * factor * 1000);
@@ -419,7 +419,7 @@ async function rescaleCad(rec, newFactor) {
     })) };
     const m1 = plan && plan.calib ? plan.calib.model[0] : null;
     const dist = m1 ? Math.hypot(no[0] - m1[0], no[1] - m1[1]) : 0;
-    if (dist > 20000 && !confirm(`Med ${unitName(newFactor)} hamnar ritningen ${Math.round(dist / 1000)} km från planen. Skala om ändå?`)) { renderCadSettings(); return; }
+    if (dist > 20000 && !await uiConfirm(`Med ${unitName(newFactor)} hamnar ritningen ${Math.round(dist / 1000)} km från planen. Skala om ändå?`)) { renderCadSettings(); return; }
     await loadScript(PAKO_URL);
     const gz = pako.gzip(JSON.stringify(data));
     // Ny fil – originalet ligger kvar (skrivs aldrig över).
@@ -435,7 +435,7 @@ async function rescaleCad(rec, newFactor) {
   } finally { setBusy(""); }
 }
 async function deleteCad(rec) {
-  if (!confirm(`Ta bort CAD-ritningen "${rec.name}" från lägesplanen?`)) return;
+  if (!await uiConfirm(`Ta bort CAD-ritningen "${rec.name}" från lägesplanen?`)) return;
   cadGeom.delete(rec.id);
   await saveSiteItem(rec, true, { record: false });
   ghDeleteBinary(token, rec.path, "Lägesplan: ta bort CAD");
@@ -686,7 +686,7 @@ function bindCadRows(el) {
     if (!r) return;
     row.querySelector(".cad-toggle").onclick = e => { e.stopPropagation(); layerState["cadopen:" + r.id] = layerState["cadopen:" + r.id] !== true; saveLayerState(); renderLayerPanel(); };
     row.querySelector(".cad-name").ondblclick = async () => {
-      const name = (prompt("Namn på CAD-ritningen:", r.name) || "").trim();
+      const name = (await uiPrompt("Namn på CAD-ritningen:", r.name) || "").trim();
       if (name && name !== r.name) await saveSiteItem({ ...r, name }, false, { record: false });
     };
     row.querySelector(".lr-del").onclick = () => deleteCad(r);

@@ -864,9 +864,9 @@ let ueEditing = null; // id eller "new"
 let dayLookOpen = false;
 async function saveUe(u) { await saveSiteItem(u, false, { record: false }); renderZones(); renderDaySoon(true); }
 async function quickNewUe() {
-  const name = (prompt("Underentreprenörens namn (t.ex. Armeringsbolaget AB):", "") || "").trim();
+  const name = (await uiPrompt("Underentreprenörens namn (t.ex. Armeringsbolaget AB):", "") || "").trim();
   if (!name) return null;
-  const short = (prompt("Förkortning som visas på planen (2–5 tecken):", name.replace(/[^A-Za-zÅÄÖåäö]/g, "").slice(0, 3).toUpperCase()) || "").trim().toUpperCase().slice(0, 6);
+  const short = (await uiPrompt("Förkortning som visas på planen (2–5 tecken):", name.replace(/[^A-Za-zÅÄÖåäö]/g, "").slice(0, 3).toUpperCase()) || "").trim().toUpperCase().slice(0, 6);
   const u = { id: ghNewId(), type: "ue", name, short: short || name.slice(0, 3).toUpperCase(), color: nextUeColor(), contact: "", phone: "", trade: "", persons: null, created_at: new Date().toISOString() };
   await saveUe(u);
   return u;
@@ -875,7 +875,7 @@ async function importUesFrom4D() {
   const have = new Set(ues().map(u => String(u.name || "").toLowerCase()));
   const names = [...new Set(items.map(it => String(it.contractor || "").trim()).filter(Boolean))].filter(n => !have.has(n.toLowerCase()) && !ueForContractor(n));
   if (!names.length) { alert("Alla entreprenörer i 4D-planeringen finns redan i registret."); return; }
-  if (!confirm(`Lägga till ${names.length} entreprenör${names.length > 1 ? "er" : ""} från 4D-planeringen?\n\n${names.slice(0, 15).join("\n")}${names.length > 15 ? "\n…" : ""}`)) return;
+  if (!await uiConfirm(`Lägga till ${names.length} entreprenör${names.length > 1 ? "er" : ""} från 4D-planeringen?\n\n${names.slice(0, 15).join("\n")}${names.length > 15 ? "\n…" : ""}`)) return;
   const used = new Set(ues().map(u => (u.color || "").toLowerCase()));
   const recs = names.map((n, i) => {
     const color = UE_COLORS.find(c => !used.has(c)) || UE_COLORS[i % UE_COLORS.length]; used.add(color);
@@ -925,7 +925,7 @@ function renderUeList() {
     const del = q(".uf-del");
     if (del) del.onclick = async () => {
       const u = ueById(id), n = count(id);
-      if (!confirm(`Ta bort ${u.name}?${n ? `\n\n${n} lag på planen är kopplade till den – de blir kvar men utan UE.` : ""}`)) return;
+      if (!await uiConfirm(`Ta bort ${u.name}?${n ? `\n\n${n} lag på planen är kopplade till den – de blir kvar men utan UE.` : ""}`)) return;
       ueEditing = null;
       await saveSiteItem(u, true, { record: false });
       renderZones(); renderDaySoon(true);
@@ -1053,7 +1053,7 @@ function renderDayCore(box, field) {
   box.querySelectorAll(".dp-row[data-id]").forEach(r => r.onclick = () => { const x = siteItems.find(y => y.id === r.dataset.id); if (x) { if (field) closeFieldDay(); focusDaily(x); } });
   const cd = box.querySelector("[data-copyday]"); if (cd) cd.onclick = () => copyDayTo(day, next);
   const cp = box.querySelector("[data-copyprev]"); if (cp) cp.onclick = () => copyDayTo(nextWorkday(day, -1), day);
-  const cw = box.querySelector("[data-copyweek]"); if (cw) cw.onclick = () => { if (confirm(`Kopiera all planering i vecka ${wk} till vecka ${dayWeekNo(addDays(day, 7))}?`)) copyWeekTo(day); };
+  const cw = box.querySelector("[data-copyweek]"); if (cw) cw.onclick = async () => { if (await uiConfirm(`Kopiera all planering i vecka ${wk} till vecka ${dayWeekNo(addDays(day, 7))}?`)) copyWeekTo(day); };
   const sh = box.querySelector("[data-sheet]"); if (sh) sh.onclick = () => exportDaySheet(day, box.querySelector(".dp-sheetue").value || null);
   const xl = box.querySelector("[data-xlsx]"); if (xl) xl.onclick = () => exportWeekExcel(day);
 }

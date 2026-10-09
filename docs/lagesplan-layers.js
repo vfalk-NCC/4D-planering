@@ -190,19 +190,19 @@ function renderOrthoNav() {
   if (typeof renderCompareUi === "function") renderCompareUi();
 }
 async function editOrtho(o) {
-  const name = prompt("Namn på ortofotot:", o.name);
+  const name = await uiPrompt("Namn på ortofotot:", o.name);
   if (name === null) return;
-  const date = askOrthoDate(orthoDate(o));
+  const date = await askOrthoDate(orthoDate(o));
   if (date === null) return;
-  const caption = prompt("Bildtext (visas i framdriftsfilmen), t.ex. \"Stomme hus A klar\" – lämna tomt för ingen:", o.caption || "");
+  const caption = await uiPrompt("Bildtext (visas i framdriftsfilmen), t.ex. \"Stomme hus A klar\" – lämna tomt för ingen:", o.caption || "");
   if (caption === null) return;
   await saveSiteItem({ ...o, name: name.trim() || o.name, date, caption: caption.trim() || null });
   syncOrthoToDate(); renderOrthoNav();
 }
 /* Frågar efter fotodatum (ÅÅÅÅ-MM-DD). null = avbrutet. */
-function askOrthoDate(def) {
+async function askOrthoDate(def) {
   for (;;) {
-    const v = prompt("Fotodatum – när togs bilden (flygningen)? ÅÅÅÅ-MM-DD", def);
+    const v = await uiPrompt("Fotodatum – när togs bilden (flygningen)? ÅÅÅÅ-MM-DD", def);
     if (v === null) return null;
     const t = v.trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(t) && !isNaN(Date.parse(t))) return t;
@@ -264,7 +264,7 @@ function layerDisplayName(key) {
 const ulName = l => layerDisplayName("ul:" + l);
 async function renameFixedLayer(key) {
   const def = LAYER_DEFAULT_NAMES[key] || key.slice(3);
-  const v = prompt(`Nytt namn på lagret (tomt = "${def}"):`, layerDisplayName(key));
+  const v = await uiPrompt(`Nytt namn på lagret (tomt = "${def}"):`, layerDisplayName(key));
   if (v === null) return;
   const m = layerMeta();
   if (v.trim() && v.trim() !== def) m.names[key] = v.trim(); else delete m.names[key];
@@ -272,7 +272,7 @@ async function renameFixedLayer(key) {
   renderActiveLayerSelect();
 }
 async function createFolder() {
-  const name = (prompt("Namn på mappen:", "Ny mapp") || "").trim();
+  const name = (await uiPrompt("Namn på mappen:", "Ny mapp") || "").trim();
   if (!name) return;
   const m = layerMeta();
   m.folders.push({ id: ghNewId(), name });
@@ -282,14 +282,14 @@ async function createFolder() {
 async function renameFolder(id) {
   const m = layerMeta(), f = m.folders.find(x => x.id === id);
   if (!f) return;
-  const name = (prompt("Nytt namn på mappen:", f.name) || "").trim();
+  const name = (await uiPrompt("Nytt namn på mappen:", f.name) || "").trim();
   if (!name || name === f.name) return;
   f.name = name;
   await saveLayerMeta(m);
 }
 async function deleteFolder(id) {
   const m = layerMeta(), f = m.folders.find(x => x.id === id);
-  if (!f || !confirm(`Ta bort mappen "${f.name}"? Lagren i den ligger kvar utanför mappen.`)) return;
+  if (!f || !await uiConfirm(`Ta bort mappen "${f.name}"? Lagren i den ligger kvar utanför mappen.`)) return;
   m.folders = m.folders.filter(x => x.id !== id);
   Object.keys(m.folderOf).forEach(k => { if (m.folderOf[k] === id) delete m.folderOf[k]; });
   await saveLayerMeta(m);
@@ -726,7 +726,7 @@ async function addOrthoFiles(files) {
   if (!plan || !plan.calib) { alert("Kalibrera planen mot 3D (📐) först – ortofotot placeras via modellens koordinater."); return; }
   let world;
   try { world = parseWorldFile(await wf.text()); } catch (e) { alert(e.message); return; }
-  const date = askOrthoDate(img.lastModified ? isoOf(new Date(img.lastModified)) : todayIso());
+  const date = await askOrthoDate(img.lastModified ? isoOf(new Date(img.lastModified)) : todayIso());
   if (date === null) return;
   const toTc = $("orthoToTc").checked;
   const id = ghNewId();
@@ -756,7 +756,7 @@ async function addOrthoFiles(files) {
     const m1 = plan.calib.model[0];
     const dist = Math.hypot(cx - m1[0], cy - m1[1]);
     const ext = Math.hypot(sw.A * canvas.width, sw.E * canvas.height);
-    if (dist > ext * 3 && !confirm(`Ortofotot ligger ${Math.round(dist / 1000)} km från planens kalibreringspunkter. Ligger modellen verkligen i samma koordinatsystem som fotot? Spara ändå?`)) return;
+    if (dist > ext * 3 && !await uiConfirm(`Ortofotot ligger ${Math.round(dist / 1000)} km från planens kalibreringspunkter. Ligger modellen verkligen i samma koordinatsystem som fotot? Spara ändå?`)) return;
     setBusy(`Laddar upp (${(blob.size / 1048576).toFixed(1)} MB)…`);
     await ghUploadBinary(token, path, blob, `Lägesplan: ortofoto ${name}`);
     const rec = { id, type: "ortho", name, date, path, width: canvas.width, height: canvas.height, world: sw, tiles,
@@ -1603,6 +1603,8 @@ function updateSiteUi() {
   };
   $("siteHint").textContent = k ? `${k.icon} ${(hints[siteTool.kind][Math.min(siteTool.pts.length, hints[siteTool.kind].length - 1)])}${siteTool.pts.length ? " Håll Shift för rak linje (5°-steg)." : ""} Esc avbryter.`
     : "Klicka på ett objekt för att ändra det. Dra i det för att flytta, i de vita handtagen för att ändra form, i ⊕ för att lägga till en punkt (dubbelklicka på en punkt för att ta bort den) och i ↻ för att rotera (Shift = fritt). Texten kan dras fritt.";
+  // Den allmänna förklaringen ligger bakom kortets ⓘ; verktygets instruktion syns alltid.
+  $("siteHint").classList.toggle("sec-help", !k);
   $("viewport").classList.toggle("drawing", !!siteTool || !!measure || photoPlacing || drawMode);
 }
 function finishSiteTool() {
@@ -1809,7 +1811,7 @@ function openSitePop(rec, isNew) {
   tsT.oninput = () => { const v = num(".sp-ts", NaN); if (Number.isFinite(v)) { tsR.value = Math.max(40, Math.min(400, v)); preview({ textSize: tsValue() }); } };
   const lblReset = pop.querySelector(".sp-lblreset");
   if (lblReset) lblReset.onclick = () => { if (popPreview) popPreview.lblReset = true; preview({ lbl: null }); lblReset.disabled = true; lblReset.textContent = "↺ Texten återställd"; };
-  pop.querySelector(".sp-save").onclick = () => {
+  pop.querySelector(".sp-save").onclick = async () => {
     const v = c => { const el = pop.querySelector(c); return el ? el.value.trim() : undefined; };
     const next = { ...rec, from: v(".sp-from") || null, to: v(".sp-to") || null, updated_at: new Date().toISOString() };
     if (next.from && next.to && next.from > next.to) { alert("Från-datumet måste vara före till-datumet."); return; }
@@ -1817,7 +1819,7 @@ function openSitePop(rec, isNew) {
     next.dash = v(".sp-dash"); next.weight = Number(v(".sp-weight")); next.textSize = tsValue();
     if (popPreview && popPreview.lblReset) next.lbl = null;
     let layer = v(".sp-layer");
-    if (layer === "__new") { layer = (prompt("Namn på det nya lagret:", "") || "").trim(); if (!layer) return; createLayer(layer); }
+    if (layer === "__new") { layer = (await uiPrompt("Namn på det nya lagret:", "") || "").trim(); if (!layer) return; createLayer(layer); }
     next.layer = layer || defaultLayerOf(rec);
     ls("ul:" + next.layer).visible = true; saveLayerState();
     next.locked = pop.querySelector(".sp-lock").checked;
@@ -1843,7 +1845,7 @@ function openSitePop(rec, isNew) {
   const rev = pop.querySelector(".sp-reverse");
   if (rev) rev.onclick = () => { rec.pts = rec.pts.slice().reverse(); renderZones(); rev.textContent = "⇄ Vänd körriktning ✓"; };
   const del = pop.querySelector(".sp-del");
-  if (del) del.onclick = () => { if (!confirm(`Ta bort ${k.label.toLowerCase()}?`)) return; closeSitePop(); selectedSiteId = null; saveSiteItem(rec, true); };
+  if (del) del.onclick = async () => { if (!await uiConfirm(`Ta bort ${k.label.toLowerCase()}?`)) return; closeSitePop(); selectedSiteId = null; saveSiteItem(rec, true); };
   const dup = pop.querySelector(".sp-dup");
   if (dup) dup.onclick = () => {
     const copy = JSON.parse(JSON.stringify(rec));
@@ -2102,9 +2104,9 @@ function renderLayerPanel() {
     const del = row.querySelector(".lr-del");
     if (key.startsWith("cad:")) return; // knapparna kopplas i bindCadRows
     if (del && key.startsWith("ul:")) { del.onclick = () => deleteLayer(key.slice(3)); return; }
-    if (del) del.onclick = () => {
+    if (del) del.onclick = async () => {
       const o = siteItems.find(x => "ortho:" + x.id === key);
-      if (!o || !confirm(`Ta bort ortofotot "${o.name}" från lägesplanen? (Originalet i Trimble Connect ligger kvar.)`)) return;
+      if (!o || !await uiConfirm(`Ta bort ortofotot "${o.name}" från lägesplanen? (Originalet i Trimble Connect ligger kvar.)`)) return;
       orthoImages.delete(o.id);
       saveSiteItem(o, true).then(() => { syncOrthoToDate(); orthoChanged(); });
       ghDeleteBinary(token, o.path, "Lägesplan: ta bort ortofoto");
@@ -2221,7 +2223,7 @@ async function deleteSelectedLayers() {
   if (layerNames.length) parts.push(`${layerNames.length} lager${moved.length ? (to ? ` (deras ${moved.length} objekt flyttas till "${to}")` : ` och deras ${moved.length} objekt`) : ""}`);
   const names = [...orthoRecs.map(o => o.name), ...cadRecs.map(r => r.name), ...layerNames];
   const list = names.slice(0, 12).map(n => "• " + n).join("\n") + (names.length > 12 ? `\n… och ${names.length - 12} till` : "");
-  if (!confirm(`Ta bort ${parts.join(", ")} från lägesplanen?\n\n${list}${orthoRecs.length || cadRecs.length ? "\n\nOriginalen i Trimble Connect ligger kvar." : ""}`)) return;
+  if (!await uiConfirm(`Ta bort ${parts.join(", ")} från lägesplanen?\n\n${list}${orthoRecs.length || cadRecs.length ? "\n\nOriginalen i Trimble Connect ligger kvar." : ""}`)) return;
   // Allt i en sparning, sedan filerna.
   const removeIds = [...orthoRecs.map(o => o.id), ...cadRecs.map(r => r.id), ...siteItems.filter(x => x.type === "layer" && layerNames.includes(x.name)).map(x => x.id), ...(to ? [] : moved.map(x => x.id))];
   const m = layerMeta();
@@ -2298,11 +2300,11 @@ function bindSiteItemRows(el) {
   }));
   el.querySelectorAll("[data-item]").forEach(row => row.addEventListener("mousedown", e => { if (e.shiftKey) e.preventDefault(); }));
   // Dubbelklick på ett foto i listan: byt namn (som för lager).
-  el.querySelectorAll(".photo-item-row .ln").forEach(n => n.ondblclick = e => {
+  el.querySelectorAll(".photo-item-row .ln").forEach(n => n.ondblclick = async e => {
     e.stopPropagation();
     const ph = photos().find(p => "p:" + p.id === n.closest("[data-item]").dataset.item);
     if (!ph) return;
-    const v = prompt("Nytt namn på fotot:", ph.caption || "");
+    const v = await uiPrompt("Nytt namn på fotot:", ph.caption || "");
     if (v !== null && v.trim() !== (ph.caption || "")) { updatePhoto(ph.id, { caption: v.trim() }); if (typeof closePhoto === "function") closePhoto(); }
   });
   el.querySelectorAll(".photo-item-row .si-del").forEach(b => b.onclick = e => {
@@ -2314,7 +2316,7 @@ function bindSiteItemRows(el) {
     if (!x) return;
     row.querySelector(".si-del").onclick = async e => {
       e.stopPropagation();
-      if (x.locked && !confirm(`"${siteItemLabel(x)}" är låst. Ta bort ändå?`)) return;
+      if (x.locked && !await uiConfirm(`"${siteItemLabel(x)}" är låst. Ta bort ändå?`)) return;
       if (selectedSiteId === x.id) { selectedSiteId = null; closeSitePop(); }
       await saveSiteItem(x, true);
       setSaveStatus(`🗑️ "${siteItemLabel(x)}" borttagen – Ctrl+Z ångrar.`);
@@ -2446,7 +2448,7 @@ async function deleteSelectedItems(keys) {
   const n = recs.length + phs.length;
   if (!n) return;
   const locked = recs.filter(x => x.locked).length;
-  if ((n > 1 || phs.length || locked) && !confirm(`Ta bort ${recs.length ? `${recs.length} objekt` : ""}${recs.length && phs.length ? " och " : ""}${phs.length ? `${phs.length} foto${phs.length > 1 ? "n" : ""}` : ""}?${locked ? ` (${locked} är låsta)` : ""}${phs.length ? "\nFotona går inte att ångra." : "\nObjekten kan ångras med Ctrl+Z."}`)) return;
+  if ((n > 1 || phs.length || locked) && !await uiConfirm(`Ta bort ${recs.length ? `${recs.length} objekt` : ""}${recs.length && phs.length ? " och " : ""}${phs.length ? `${phs.length} foto${phs.length > 1 ? "n" : ""}` : ""}?${locked ? ` (${locked} är låsta)` : ""}${phs.length ? "\nFotona går inte att ångra." : "\nObjekten kan ångras med Ctrl+Z."}`)) return;
   itemSel.clear();
   if (recs.length) {
     if (recs.some(x => x.id === selectedSiteId)) { selectedSiteId = null; closeSitePop(); }
@@ -2532,7 +2534,7 @@ function applyLayerSearch() {
 
 async function renameLayer(oldName) {
   if (oldName === "Allmänt" || oldName === "Etablering") return renameFixedLayer("ul:" + oldName);
-  const name = (prompt("Nytt namn på lagret:", oldName) || "").trim();
+  const name = (await uiPrompt("Nytt namn på lagret:", oldName) || "").trim();
   if (!name || name === oldName) return;
   const meta = layerMeta();
   if (meta.folderOf["ul:" + oldName]) { meta.folderOf["ul:" + name] = meta.folderOf["ul:" + oldName]; delete meta.folderOf["ul:" + oldName]; }
@@ -2545,7 +2547,7 @@ async function renameLayer(oldName) {
 async function deleteLayer(name) {
   const items = siteItems.filter(x => isSiteObj(x) && layerOf(x) === name), to = layerFallback([name]);
   const shown = layerDisplayName("ul:" + name);
-  if (!confirm(items.length ? (to ? `Ta bort lagret "${shown}"? Dess ${items.length} objekt flyttas till "${layerDisplayName("ul:" + to)}".` : `Ta bort lagret "${shown}" och dess ${items.length} objekt? Det finns inget annat lager att flytta dem till.`) : `Ta bort lagret "${shown}"?`)) return;
+  if (!await uiConfirm(items.length ? (to ? `Ta bort lagret "${shown}"? Dess ${items.length} objekt flyttas till "${layerDisplayName("ul:" + to)}".` : `Ta bort lagret "${shown}" och dess ${items.length} objekt? Det finns inget annat lager att flytta dem till.`) : `Ta bort lagret "${shown}"?`)) return;
   const layerRecs = siteItems.filter(x => x.type === "layer" && x.name === name).map(x => x.id);
   const recs = to ? items.map(x => ({ ...x, layer: to })) : [];
   if (name === "Allmänt" || name === "Etablering") { const m = layerMeta(); m.removedLayers = [...new Set([...m.removedLayers, name])]; recs.push(m); }
@@ -2565,7 +2567,7 @@ async function exportSitePlanPdf() {
     months.push([a, isoOf(e)]);
   }
   if (!months.length) { alert("Inga datum att göra en plan över."); return; }
-  if (months.length > 12 && !confirm(`Etableringsplanen blir ${months.length} sidor. Fortsätt?`)) return;
+  if (months.length > 12 && !await uiConfirm(`Etableringsplanen blir ${months.length} sidor. Fortsätt?`)) return;
   const MON = ["januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december"];
   const origDate = $("dateInput").value;
   setBusy("Skapar etableringsplan…");
@@ -2663,7 +2665,7 @@ function bindLayers() {
   symSel.onchange = () => { const k = symSel.value; symSel.value = ""; if (k) startSiteTool("symbol", k); };
   $("activeLayer").onchange = () => { try { localStorage.setItem("lagesplan-activelayer-" + projectId, $("activeLayer").value); } catch (e) {} };
   $("btnNewLayer").onclick = async () => {
-    const name = (prompt("Namn på det nya lagret (t.ex. Arbetsmiljö, Logistik v.42):", "") || "").trim();
+    const name = (await uiPrompt("Namn på det nya lagret (t.ex. Arbetsmiljö, Logistik v.42):", "") || "").trim();
     if (!name) return;
     await createLayer(name);
     renderActiveLayerSelect(); $("activeLayer").value = name; $("activeLayer").onchange();

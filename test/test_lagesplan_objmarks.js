@@ -19,6 +19,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const fail = m => { throw new Error(m); };
   const page = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+  await require('./_dialogs').bridge(page); // appens egna dialogrutor
   require('./_reveal').autoReveal(page); // flikar och menyer (UI-översynen 2026-10-09)
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); localStorage.setItem('lagesplan-field', '0'); });

@@ -1026,8 +1026,8 @@ function migrateTpl(t) {
   });
   return t;
 }
-function closePrint() {
-  if (pr && pr.dirty && !confirm("Mallen har osparade ändringar. Stänga ändå?")) return;
+async function closePrint() {
+  if (pr && pr.dirty && !await uiConfirm("Mallen har osparade ändringar. Stänga ändå?")) return;
   prLayersDetach();
   pr = null; $("printModal").classList.add("hidden");
 }
@@ -1654,9 +1654,9 @@ async function saveTemplate() {
   setPrintStatus(`✓ Mallen "${t.name}" sparad.`);
   renderPrintPanel();
 }
-function switchTemplate(id) {
+async function switchTemplate(id) {
   if (id === pr.tpl.id) return;
-  if (pr.dirty && !confirm("Byta mall utan att spara ändringarna?")) { renderPrintPanel(); return; }
+  if (pr.dirty && !await uiConfirm("Byta mall utan att spara ändringarna?")) { renderPrintPanel(); return; }
   const t = printTpls().find(x => x.id === id);
   if (!t) return;
   prLayersDetach();
@@ -1665,8 +1665,8 @@ function switchTemplate(id) {
   try { localStorage.setItem("lagesplan-printtpl", t.id); } catch (e) {}
   renderPrintPanel(); drawPrintPage();
 }
-function newTemplate(copy) {
-  const name = (prompt(copy ? "Namn på kopian:" : "Namn på den nya mallen:", copy ? pr.tpl.name + " (kopia)" : "Ny mall") || "").trim();
+async function newTemplate(copy) {
+  const name = (await uiPrompt(copy ? "Namn på kopian:" : "Namn på den nya mallen:", copy ? pr.tpl.name + " (kopia)" : "Ny mall") || "").trim();
   if (!name) return;
   const t = copy ? { ...JSON.parse(JSON.stringify(pr.tpl)), id: ghNewId(), name } : { ...defaultTemplate(), name };
   if (copy) { const idMap = {}; t.elements.forEach(e => { const n = ghNewId(); idMap[e.id] = n; e.id = n; }); t.elements.forEach(e => { if (e.mapId) e.mapId = idMap[e.mapId]; }); }
@@ -1675,15 +1675,15 @@ function newTemplate(copy) {
   renderPrintPanel(); drawPrintPage();
 }
 async function renameTemplate() {
-  const name = (prompt("Nytt namn på mallen:", pr.tpl.name) || "").trim();
+  const name = (await uiPrompt("Nytt namn på mallen:", pr.tpl.name) || "").trim();
   if (!name || name === pr.tpl.name) return;
   pushUndo(); pr.tpl.name = name; renderPrintPanel();
 }
 async function deleteTemplate() {
-  if (!pr.saved) { if (confirm("Släng den osparade mallen?")) { pr.dirty = false; closePrint(); openPrint(); } return; }
-  if (!confirm(`Ta bort mallen "${pr.tpl.name}" för hela projektet?`)) return;
+  if (!pr.saved) { if (await uiConfirm("Släng den osparade mallen?")) { pr.dirty = false; await closePrint(); openPrint(); } return; }
+  if (!await uiConfirm(`Ta bort mallen "${pr.tpl.name}" för hela projektet?`)) return;
   await saveSiteItem(pr.tpl, true, { record: false });
-  pr.dirty = false; closePrint(); openPrint();
+  pr.dirty = false; await closePrint(); openPrint();
 }
 
 // ---------------------------------------------------------------------

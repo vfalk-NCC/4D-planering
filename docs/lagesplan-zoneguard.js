@@ -18,18 +18,18 @@ function zoneGuardUi() {
   const b = document.getElementById("btnZoneGuard");
   if (!b) return;
   const on = zoneDeleteGuarded();
-  b.textContent = on ? "🛡 Raderingsskydd på" : "⚠ Raderingsskydd av – slå på";
+  b.textContent = on ? "🛡 Raderingsskydd på" : "⚠ Raderingsskydd av";
   b.classList.toggle("active", on);
   b.classList.toggle("zg-off", !on);
   b.title = on ? `Zonerna i ${zoneGuardLayer()} kan inte tas bort. Klicka för att stänga av skyddet tillfälligt (slås på igen när du byter plan eller lager).`
     : "Zonerna kan tas bort (du måste ändå skriva RADERA). Klicka för att slå på skyddet igen.";
 }
-function toggleZoneGuard() {
+async function toggleZoneGuard() {
   const k = zoneGuardKey();
   if (!k) return;
   if (zoneGuardOpen.has(k)) { zoneGuardOpen.delete(k); setSaveStatus(`🛡 Raderingsskyddet är på igen (${zoneGuardLayer()}).`); }
   else {
-    if (!confirm(`Stänga av raderingsskyddet för zonerna i ${zoneGuardLayer()}?\n\nDet gäller bara den här planen och slås på igen när du byter plan eller lager eller laddar om sidan. Du måste ändå skriva RADERA för att ta bort en zon.`)) return;
+    if (!await uiConfirm(`Stänga av raderingsskyddet för zonerna i ${zoneGuardLayer()}?\n\nDet gäller bara den här planen och slås på igen när du byter plan eller lager eller laddar om sidan. Du måste ändå skriva RADERA för att ta bort en zon.`)) return;
     zoneGuardOpen.add(k);
     setSaveStatus(`⚠ Raderingsskyddet är av för ${zoneGuardLayer()} – slå på det igen när du är klar.`);
   }
@@ -44,10 +44,10 @@ function zoneGuardBlock(what) {
   return true;
 }
 /* Skriv RADERA för att ta bort zonerna zs. */
-function zoneGuardConfirm(zs) {
+async function zoneGuardConfirm(zs) {
   const codes = zs.map(z => z.code || z.name || "zon");
   const label = zs.length === 1 ? `zon ${codes[0]}` : `${zs.length} zoner (${codes.slice(0, 8).join(", ")}${codes.length > 8 ? " …" : ""})`;
-  const t = prompt(`Ta bort ${label} i ${zoneGuardLayer()}?\n\nSkriv RADERA för att bekräfta. (Ctrl+Z ångrar direkt efteråt.)`, "");
+  const t = await uiPrompt(`Ta bort ${label} i ${zoneGuardLayer()}?\n\nSkriv RADERA för att bekräfta. (Ctrl+Z ångrar direkt efteråt.)`, "");
   if (t === null) return false;
   if (t.trim().toUpperCase() !== "RADERA") { setSaveStatus("Inget togs bort – skriv RADERA för att bekräfta."); return false; }
   return true;

@@ -44,8 +44,8 @@ function renderPrintLib() {
     addLibSymbol(s);
   });
   if ($("prLibAdd")) $("prLibAdd").onclick = () => $("prLibInput").click();
-  if ($("prLibSaveSel")) $("prLibSaveSel").onclick = () => {
-    const name = prompt("Namn i biblioteket:", "Symbol");
+  if ($("prLibSaveSel")) $("prLibSaveSel").onclick = async () => {
+    const name = await uiPrompt("Namn i biblioteket:", "Symbol");
     if (name === null) return;
     saveToPrintLib([{ id: ghNewId(), name: name.trim() || "Symbol", cat: "", path: sel.path, ar: sel.ar || 1, w: Math.round(sel.w * 10) / 10 }]);
   };
@@ -73,7 +73,7 @@ async function saveToPrintLib(recs) {
   renderPrintLib();
 }
 async function removeFromPrintLib(s) {
-  if (!confirm(`Ta bort "${s.name}" ur biblioteket? (Utskrifter där den redan ligger påverkas inte.)`)) return;
+  if (!await uiConfirm(`Ta bort "${s.name}" ur biblioteket? (Utskrifter där den redan ligger påverkas inte.)`)) return;
   try {
     const next = await ghWriteJSON(token, PRLIB_PATH, arr => (Array.isArray(arr) ? arr : []).filter(x => x.id !== s.id), `Utskriftsbibliotek: ta bort ${s.name}`);
     prLib = Array.isArray(next) ? next : prLib.filter(x => x.id !== s.id);
@@ -81,7 +81,7 @@ async function removeFromPrintLib(s) {
   renderPrintLib();
 }
 async function uploadToPrintLib(files) {
-  const cat = files.length ? (prompt("Kategori (valfritt, t.ex. Skyltar, Säkerhet):", "") || "").trim() : "";
+  const cat = files.length ? (await uiPrompt("Kategori (valfritt, t.ex. Skyltar, Säkerhet):", "") || "").trim() : "";
   const recs = [];
   for (const f of files) {
     const ext = (f.name.match(/\.(png|jpe?g|webp|svg)$/i) || [0, "png"])[1].toLowerCase();

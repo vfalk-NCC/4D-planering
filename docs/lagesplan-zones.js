@@ -91,13 +91,13 @@ function zonePolyPoint(e) {
   const a = Math.round(Math.atan2(-dy, dx) * 180 / Math.PI / 5) * 5 * Math.PI / 180, len = dx * Math.cos(a) - dy * Math.sin(a);
   return [prev[0] + Math.cos(a) * len, prev[1] - Math.sin(a) * len];
 }
-function finishZonePoly() {
+async function finishZonePoly() {
   if (!zonePoly) return;
   const pts = zonePoly.pts.filter((p, i, a) => !i || Math.hypot(p[0] - a[i - 1][0], p[1] - a[i - 1][1]) > 1e-6);
   if (pts.length < 3) { alert("En zon behöver minst tre hörn."); return; }
   zonePoly = null; updateZonePolyUi();
   const sel = selectedZoneId && plan.zones.find(z => z.id === selectedZoneId);
-  const code = (prompt(`Kod för zonen (t.ex. PM06).${sel ? `\nSkriv ${sel.code} för att lägga till ytan på den zonen.` : ""}`, "") || "").trim();
+  const code = (await uiPrompt(`Kod för zonen (t.ex. PM06).${sel ? `\nSkriv ${sel.code} för att lägga till ytan på den zonen.` : ""}`, "") || "").trim();
   if (!code) { renderZones(); return; }
   zoneSnapshot("Ny zon");
   const existing = (plan.zones || []).find(z => normCode(z.code) === normCode(code));
@@ -122,7 +122,7 @@ function updateZoneLockUi() {
   const b = $("btnZoneLock");
   if (!b) return;
   const on = zonesLocked();
-  b.textContent = on ? "🔒 Zonerna är låsta – lås upp" : "🔓 Lås alla zoner";
+  b.textContent = on ? "🔒 Zonerna låsta" : "🔓 Lås zonerna";
   b.classList.toggle("active", on);
   b.title = on ? "Hörn och sidor kan inte dras och zoner kan inte tas bort. Klicka för att låsa upp." : "Lås alla zoners form, så att de inte dras större eller mindre av misstag";
 }
@@ -383,9 +383,9 @@ function renderZoneStyleUi(sel, opts = {}) {
   if (q(".zs-edlabel")) q(".zs-edlabel").onclick = () => openZoneLabelPop(opts.labelId || z.id);
   q(".zs-reset").onclick = () => { zoneSnapshot("Standardutseende"); list.forEach(o => delete o.style); renderZones(); schedulePlanSave(); renderZoneStyleUi(list, opts); };
   if (opts.onAll) { q(".zs-all").onclick = () => opts.onAll(z); return; }
-  q(".zs-all").onclick = () => {
+  q(".zs-all").onclick = async () => {
     const n = plan.zones.length - 1;
-    if (!n || !confirm(`Ge alla ${n} andra zoner samma utseende som ${z.code}${multi ? " (den första markerade)" : ""}? (Namn och etikettens läge ändras inte.)`)) return;
+    if (!n || !await uiConfirm(`Ge alla ${n} andra zoner samma utseende som ${z.code}${multi ? " (den första markerade)" : ""}? (Namn och etikettens läge ändras inte.)`)) return;
     zoneSnapshot("Utseende på alla zoner");
     plan.zones.forEach(o => { if (o !== z) o.style = z.style ? { ...z.style } : undefined; if (o !== z && !o.style) delete o.style; });
     renderZones(); schedulePlanSave();
@@ -459,15 +459,15 @@ document.addEventListener("DOMContentLoaded", () => {
     poly.splice(h.vi, 1); renderZones(); schedulePlanSave();
   });
 });
-function deleteSelectedZone(ask) {
+async function deleteSelectedZone(ask) {
   if (zonesLocked()) { setSaveStatus("🔒 Zonerna är låsta – lås upp dem för att ta bort en zon."); return; }
   // Raderingsskyddet (lagesplan-zoneguard.js): på från början, och man måste alltid skriva RADERA –
   // även med Delete-tangenten (Victor 2026-10-07).
   if (typeof zoneGuardBlock === "function" && zoneGuardBlock("Ta bort zon")) return;
-  const guardOk = zs => (typeof zoneGuardConfirm === "function" ? zoneGuardConfirm(zs) : confirm(`Ta bort ${zs.length} zoner? (Ctrl+Z ångrar)`));
+  const guardOk = async zs => (typeof zoneGuardConfirm === "function" ? await zoneGuardConfirm(zs) : await uiConfirm(`Ta bort ${zs.length} zoner? (Ctrl+Z ångrar)`));
   if (zoneSel.size > 1) {
     const ids = new Set(zoneSel), n = ids.size;
-    if (!guardOk(plan.zones.filter(x => ids.has(x.id)))) return;
+    if (!(await guardOk(plan.zones.filter(x => ids.has(x.id))))) return;
     zoneSnapshot(`Ta bort ${n} zoner`);
     plan.zones = plan.zones.filter(x => !ids.has(x.id));
     zoneSel.clear(); selectZone(null); schedulePlanSave();
@@ -475,7 +475,7 @@ function deleteSelectedZone(ask) {
     return;
   }
   const z = plan && plan.zones.find(x => x.id === selectedZoneId);
-  if (!z || !guardOk([z])) return;
+  if (!z || !(await guardOk([z]))) return;
   zoneSnapshot(`Ta bort zon ${z.code}`);
   plan.zones = plan.zones.filter(x => x.id !== z.id);
   selectZone(null); schedulePlanSave();
@@ -625,7 +625,9 @@ function zoneLongSideDeg(z) {
 function openZoneLabelPop(zid) {
   const t = zoneLabelTarget(zid);
   if (!t) return;
-  const z = t.obj;
+  let z = t.obj;
+  // En sparning medan rutan är öppen kan byta ut zonobjekten (sammanslagning): ändra alltid den aktuella.
+  const fresh = () => { const n = zoneLabelTarget(zid); if (n && n.obj) z = n.obj; return z; };
   t.select();
   const pop = $("sitePop"), before = JSON.stringify({ style: z.style || null, labels: z.labels || [] });
   const s = t.style(), rot = Math.round(Number(s.labelRot) || 0), size = Math.round((Number(s.labelSize) || 1) * 100);
@@ -655,7 +657,7 @@ function openZoneLabelPop(zid) {
   const r = $("viewport").getBoundingClientRect(), sp = b ? stageToScreen([b.x, b.y]) : [r.width / 2, r.height / 2];
   placeSitePop(pop, sp[0] + 24, sp[1] - 40);
   const q = c => pop.querySelector(c);
-  const set = patch => { z.style = { ...(z.style || {}), ...patch }; renderZones(); };
+  const set = patch => { fresh(); z.style = { ...(z.style || {}), ...patch }; renderZones(); };
   q(".zl-text").oninput = () => set({ labelText: q(".zl-text").value.replace(/\s+$/, "") || null });
   pop.querySelectorAll("[data-ins]").forEach(btn => btn.onclick = () => {
     const t = q(".zl-text"), i = t.selectionStart ?? t.value.length;
@@ -681,10 +683,11 @@ function openZoneLabelPop(zid) {
   };
   q(".zl-lockall").onclick = () => lockAll(true);
   q(".zl-unlockall").onclick = () => lockAll(false);
-  const ctr = q(".zl-center"); if (ctr) ctr.onclick = () => { z.labels = []; renderZones(); ctr.disabled = true; };
-  const restore = () => { const o = JSON.parse(before); if (o.style) z.style = o.style; else delete z.style; z.labels = o.labels; };
+  const ctr = q(".zl-center"); if (ctr) ctr.onclick = () => { fresh(); z.labels = []; renderZones(); ctr.disabled = true; };
+  const restore = () => { fresh(); const o = JSON.parse(before); if (o.style) z.style = o.style; else delete z.style; z.labels = o.labels; };
   q(".zl-cancel").onclick = () => { restore(); pop.classList.add("hidden"); pop.innerHTML = ""; renderZones(); };
   q(".zl-save").onclick = () => {
+    fresh();
     const now = { style: z.style, labels: z.labels };
     restore(); zoneSnapshot("Ändra etikett"); z.style = now.style; z.labels = now.labels;
     pop.classList.add("hidden"); pop.innerHTML = "";

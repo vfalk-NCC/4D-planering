@@ -96,7 +96,7 @@ function openLsViewForm() {
     const n = name.value.trim();
     if (!n) { name.focus(); return; }
     const existing = lsViews().find(v => (v.name || "").toLowerCase() === n.toLowerCase());
-    if (existing && existing.id !== lsViewCurrent && !confirm(`Det finns redan en vy som heter "${existing.name}". Skriva över den?`)) return;
+    if (existing && existing.id !== lsViewCurrent && !await uiConfirm(`Det finns redan en vy som heter "${existing.name}". Skriva över den?`)) return;
     box.classList.add("hidden");
     await saveLsView(n, { date: $("lsViewDate").checked, camera: $("lsViewCam").checked });
   };
@@ -130,7 +130,7 @@ function bindLsViews() {
   $("btnLsViewSave").onclick = openLsViewForm;
   $("btnLsViewDelete").onclick = async () => {
     const v = lsViews().find(x => x.id === lsViewCurrent);
-    if (!v || !confirm(`Ta bort vyn "${v.name}"? Det som visas just nu ändras inte.`)) return;
+    if (!v || !await uiConfirm(`Ta bort vyn "${v.name}"? Det som visas just nu ändras inte.`)) return;
     lsViewCurrent = null;
     await saveSiteItem(v, true, { record: false });
     renderLsViewUi();
@@ -185,10 +185,10 @@ function renderNorthUi() {
 }
 document.addEventListener("DOMContentLoaded", () => {
   if (!$("btnNorthUp")) return;
-  $("btnNorthUp").onclick = () => {
+  $("btnNorthUp").onclick = async () => {
     const n = northUpAngle();
     if (n == null) return;
-    if (!confirm(`Vrida hela planen ${Math.round(Math.abs(n) * 180 / Math.PI)}° så att norr pekar rakt uppåt?\n\nDet gäller bara visningen i den här webbläsaren – ritningen och allt du ritat ändras inte. "Ritningens riktning" vrider tillbaka.`)) return;
+    if (!await uiConfirm(`Vrida hela planen ${Math.round(Math.abs(n) * 180 / Math.PI)}° så att norr pekar rakt uppåt?\n\nDet gäller bara visningen i den här webbläsaren – ritningen och allt du ritat ändras inte. "Ritningens riktning" vrider tillbaka.`)) return;
     setViewRotation(n);
   };
   $("btnNorthReset").onclick = () => setViewRotation(0);

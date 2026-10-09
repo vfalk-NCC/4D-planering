@@ -220,9 +220,9 @@ function openWbsEditor(g) {
     try { await askOpener("select", { ids }, 30000); setSaveStatus(`🎯 ${ids.length} objekt i ${g.name} markerade i 3D`); } catch (e) { alert("Kunde inte markera i 3D: " + e.message); }
   };
   $("zwDelete").onclick = () => deleteWbs(g.key);
-  renderZoneStyleUi(wbsMeta(g.key, true), { wbs: true, labelId: "wbs:" + g.key, onAll: m => {
+  renderZoneStyleUi(wbsMeta(g.key, true), { wbs: true, labelId: "wbs:" + g.key, onAll: async m => {
     const others = wbsGroups().filter(x => x.key !== g.key);
-    if (!others.length || !confirm(`Ge alla ${others.length} andra överzoner samma utseende som ${g.name}?`)) return;
+    if (!others.length || !await uiConfirm(`Ge alla ${others.length} andra överzoner samma utseende som ${g.name}?`)) return;
     zoneSnapshot("Utseende på alla överzoner");
     others.forEach(x => { const o = wbsMeta(x.key, true); if (m.style) o.style = { ...m.style }; else delete o.style; });
     renderZones(); schedulePlanSave();
@@ -243,10 +243,10 @@ function renameWbs(key, name) {
   if (ng) openWbsEditor(ng);
   setSaveStatus(`Överzonen heter nu ${v} (Ctrl+Z ångrar).`);
 }
-function deleteWbs(key) {
+async function deleteWbs(key) {
   const g = wbsGroups().find(x => x.key === key);
   if (typeof zoneGuardBlock === "function" && zoneGuardBlock("Ta bort överzon")) return;
-  if (!g || !confirm(`Ta bort överzonen ${g.name}? De ${g.children.length} zonerna ligger kvar, utan överzon.`)) return;
+  if (!g || !await uiConfirm(`Ta bort överzonen ${g.name}? De ${g.children.length} zonerna ligger kvar, utan överzon.`)) return;
   zoneSnapshot("Ta bort överzon");
   g.children.forEach(z => { delete z.parent; });
   if (plan.wbs) delete plan.wbs[key];

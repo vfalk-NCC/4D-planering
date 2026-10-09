@@ -144,8 +144,8 @@ function bindKeys() {
   window.addEventListener("keydown", onShortcutKey);
   $("btnKeys").onclick = openKeys;
   $("btnKeysClose").onclick = closeKeys;
-  $("btnKeysReset").onclick = () => {
-    if (!confirm("Återställa alla kortkommandon till standard?")) return;
+  $("btnKeysReset").onclick = async () => {
+    if (!await uiConfirm("Återställa alla kortkommandon till standard?")) return;
     SC.forEach(s => { keyMap[s.id] = s.key; });
     saveKeys(); applyKeyTitles(); renderKeys();
     $("keysMsg").textContent = "Standardtangenterna är återställda.";

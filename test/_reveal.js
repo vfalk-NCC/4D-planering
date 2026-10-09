@@ -16,6 +16,8 @@ function wrapLocator(loc) {
   });
 }
 function autoReveal(page) {
+  if (page.__revealWrapped) return page;
+  page.__revealWrapped = true;
   const origLocator = page.locator.bind(page);
   page.locator = (...a) => wrapLocator(origLocator(...a));
   // waitForSelector: byt först flik/öppna menyn så att elementet kan bli synligt.

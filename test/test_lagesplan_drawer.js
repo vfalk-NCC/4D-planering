@@ -11,6 +11,7 @@ const PORT = 8996;
   const fail = m => { throw new Error(m); };
   const ctx = await browser.newContext({ viewport: { width: 390, height: 744 }, hasTouch: true, isMobile: true });
   const page = await ctx.newPage();
+  await require('./_dialogs').bridge(page); // appens egna dialogrutor
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't', userName: 'Victor Falk' })); });
   await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: 'window.pdfjsLib = { GlobalWorkerOptions: {}, getDocument: () => ({ promise: Promise.reject(new Error("x")) }) };' }));
@@ -55,6 +56,7 @@ const PORT = 8996;
   // Dator med mus: ingen meny.
   const dctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
   const dp = await dctx.newPage();
+  await require('./_dialogs').bridge(dp); // appens egna dialogrutor
   await dp.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); });
   await dp.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: 'window.pdfjsLib = { GlobalWorkerOptions: {} };' }));
   await dp.route('https://api.github.com/**', r => r.fulfill({ status: 404, body: '{}' }));

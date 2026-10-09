@@ -21,6 +21,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   const fail = m => { throw new Error(m); };
   const setup = async (ctxOpts, field) => {
     const page = await (await browser.newContext(ctxOpts)).newPage();
+    await require('./_dialogs').bridge(page); // appens egna dialogrutor
     require('./_reveal').autoReveal(page); // flikar och menyer (UI-översynen 2026-10-09)
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(f => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); localStorage.setItem('lagesplan-field', f ? '1' : '0'); }, field);

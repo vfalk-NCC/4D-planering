@@ -75,11 +75,26 @@ function mergePlanRecord(base, ours, theirs) {
   return { rec: out, conflicts };
 }
 /* Lägg in en sammanslagen post i planen i minnet (med hänsyn till vilket zonlager som är valt). */
+/* Samma objekt för samma zon (id) eller överzon (nyckel) efter en sammanslagning: rutor som är
+   öppna (zon, etikett, överzon) håller i objektet och ska fortsätta ändra det som visas och sparas. */
+function keepSame(oldV, newV) {
+  if (!oldV || !newV || typeof oldV !== "object" || typeof newV !== "object") return newV;
+  const fill = (o, n) => { Object.keys(o).forEach(k => { if (!(k in n)) delete o[k]; }); Object.assign(o, n); return o; };
+  if (Array.isArray(newV)) {
+    if (!Array.isArray(oldV)) return newV;
+    const byId = new Map(oldV.filter(x => x && x.id != null).map(x => [x.id, x]));
+    return newV.map(n => (n && n.id != null && byId.has(n.id) && byId.get(n.id) !== n ? fill(byId.get(n.id), n) : n));
+  }
+  Object.keys(newV).forEach(k => { const o = oldV[k], n = newV[k]; if (o && n && typeof o === "object" && typeof n === "object" && !Array.isArray(n) && o !== n) newV[k] = fill(o, n); });
+  return newV;
+}
 function applyPlanRecord(p, w) {
+  const prev = { zones: p.zones, wbs: p.wbs, zones_prefab: p.zones_prefab, wbs_prefab: p.wbs_prefab, _zonesMain: p._zonesMain, _wbsMain: p._wbsMain };
   Object.keys(p).forEach(k => { if (!k.startsWith("_") && !(k in w) && !MERGE_LISTS.includes(k) && !MERGE_MAPS.includes(k)) delete p[k]; });
   Object.keys(w).forEach(k => { if (!MERGE_LISTS.includes(k) && !MERGE_MAPS.includes(k)) p[k] = w[k]; });
   if (p._zoneSet === "prefab") { p._zonesMain = w.zones || []; p._wbsMain = w.wbs; p.zones = w.zones_prefab || []; p.wbs = w.wbs_prefab; }
   else { p.zones = w.zones || []; p.wbs = w.wbs; p.zones_prefab = w.zones_prefab; p.wbs_prefab = w.wbs_prefab; }
   ["wbs", "wbs_prefab", "zones_prefab", "_wbsMain"].forEach(k => { if (p[k] === undefined || p[k] === null) delete p[k]; });
+  Object.keys(prev).forEach(k => { if (p[k] && prev[k]) p[k] = keepSame(prev[k], p[k]); });
 }
 if (typeof module !== "undefined") module.exports = { mergeById, mergeByKey, mergePlanRecord, planSig, cleanPlanRecord };
