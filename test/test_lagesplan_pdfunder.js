@@ -22,6 +22,7 @@ store.set(`projects/${PID}/status_plans.json`, { content: JSON.stringify([{ id: 
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const fail = m => { throw new Error(m); };
   const page = await (await browser.newContext({ viewport: { width: 1300, height: 850 } })).newPage();
+  require('./_reveal').autoReveal(page); // flikar och menyer (UI-översynen 2026-10-09)
   const errors = []; page.on('pageerror', e => errors.push(e.message));
   page.on('dialog', d => d.accept(d.type() === 'prompt' ? 'Markplan rev B' : undefined));
   await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); });

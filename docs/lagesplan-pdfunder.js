@@ -27,7 +27,7 @@ function pdfuProvisionalCalib(pg) {
 }
 
 async function addPdfUnderlays(files) {
-  if (!plan || !plan.calib) { alert("Kalibrera arbetsytan först (Zoner & 3D → 📐 Kalibrera mot 3D) – PDF-underlaget placeras via arbetsytans kalibrering."); return; }
+  if (!plan || !plan.calib) { alert("Kalibrera arbetsytan först (Zoner → Kalibrera mot 3D) – PDF-underlaget placeras via arbetsytans kalibrering."); return; }
   await flushPlanSave();
   let last = null;
   for (const file of files) {

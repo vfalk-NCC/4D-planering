@@ -23,6 +23,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
   const fail = m => { throw new Error(m); };
   const page = await (await browser.newContext({ viewport: { width: 1300, height: 850 } })).newPage();
+  require('./_reveal').autoReveal(page); // flikar och menyer (UI-översynen 2026-10-09)
   const errors = []; page.on('pageerror', e => errors.push(e.message + ' @ ' + (e.stack || '').split('\n').slice(1, 3).join(' ')));
   await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); });
   await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS }));
@@ -61,6 +62,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!(s1.px[0] > 200 && s1.px[1] < 60)) fail('Exporten ska rita B överst (röd): ' + JSON.stringify(s1.px));
   if (!(s0.px[0] > 200 && s0.px[1] > 200 && s0.px[2] > 200)) fail('Exporten med Bas överst ska täcka B (vitt): ' + JSON.stringify(s0.px));
   // Dra-och-släpp i listan: B nedanför Bas igen (släpp på nedre halvan av Bas-raden).
+  await page.evaluate(() => showTab('layers')); // lagerlistan ligger på fliken Lager
   await page.evaluate(() => {
     const src = document.querySelector('#layerList .layer-row[data-layer="pdfp:B"]'), dst = document.querySelector('#layerList .layer-row[data-layer="pdf"]');
     const dt = new DataTransfer(); src.querySelector('.ln').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));

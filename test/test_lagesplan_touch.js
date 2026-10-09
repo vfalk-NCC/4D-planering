@@ -20,6 +20,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify([{ id:
   const fail = m => { throw new Error(m); };
   const setup = async ctx => {
     const page = await ctx.newPage();
+    require('./_reveal').autoReveal(page); // flikar och menyer (UI-översynen 2026-10-09)
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); });
     await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: 'window.pdfjsLib = window.pdfjsLib || { GlobalWorkerOptions: {}, getDocument: () => ({ promise: Promise.reject(new Error("ingen pdf")) }) };' }));

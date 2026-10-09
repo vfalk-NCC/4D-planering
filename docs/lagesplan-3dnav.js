@@ -376,7 +376,8 @@ function l3TouchBarUpdate() {
   if (!show) return;
   bar.querySelector('[data-tb="num"]').classList.toggle("hidden", !num);
   bar.querySelector('[data-tb="done"]').classList.toggle("hidden", !done);
-  bar.querySelector('[data-tb="cancel"]').textContent = st > 0 || area || l3.addType || l3.dlgPick || l3.clipPick || l3.vPick ? "✕ Avbryt" : "✕ Välj";
+  const cl = st > 0 || area || l3.addType || l3.dlgPick || l3.clipPick || l3.vPick ? "✕ Avbryt" : "✕ Välj", cb = bar.querySelector('[data-tb="cancel"]');
+  if (cb.dataset.lbl !== cl) { cb.dataset.lbl = cl; cb.textContent = cl; } // bara vid ändring (ikonerna byts in automatiskt)
 }
 /* iPhone: arket nedtill täcker nedre halvan – flytta vyn så att det markerade hamnar i övre delen. */
 function l3KeepSelVisible() {

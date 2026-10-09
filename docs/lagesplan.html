@@ -10,9 +10,9 @@
 <meta name="theme-color" content="#ffffff" />
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
-<script src="error-guard.js?v=20261009084533"></script>
+<script src="error-guard.js?v=20261009093305"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261009084533"></script>
+<script src="github-storage.js?v=20261009093305"></script>
 <style>
   /* Beskär bild med musen (lagesplan-imgcrop.js) */
   #imgCropModal { position: fixed; inset: 0; z-index: 1100; background: rgba(15,23,42,.55); display: flex; align-items: center; justify-content: center; }
@@ -1309,7 +1309,9 @@
   .stor-warn button.krock { color: #b91c1c; font-weight: 600; }
   .stor-warn button:hover { text-decoration: underline; }
   .stor-pop { margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border, #e2e8f0); display: flex; flex-direction: column; gap: 4px; }
-  .stor-h { font-weight: 600; font-size: 12.5px; display: flex; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+  .stor-h { font-weight: 600; font-size: 12.5px; display: flex; align-items: center; gap: 0 6px; flex-wrap: wrap; }
+  .stor-h > span { flex-basis: 100%; }
+  .stor-h > svg { color: var(--accent); margin-right: 0 !important; }
   .stor-h span { font-weight: 500; color: #15803d; }
   .stor-h span.bad { color: #b91c1c; font-weight: 700; }
   .stor-r { display: grid; grid-template-columns: 64px 1fr 26px; gap: 2px 4px; align-items: center; font-size: 12px; opacity: .7; padding: 4px 0; border-bottom: 1px solid var(--border, #eef2f7); }
@@ -1369,6 +1371,122 @@
     .v3-touchbar { bottom: calc(46% + 16px); }
     .v3-me-list { max-height: none; }
   }
+
+  /* =====================================================================
+     Designsystem v2 (Victor 2026-10-09: "helhet, premiumkänsla, användarvänligt")
+     Ett formspråk för lägesplanen, 3D-vyn och utskriften: samma färger, ikoner (ui-icons.js),
+     knappar, fält, kort, flikar och popupfönster. Ligger sist så att den gäller över äldre stilar.
+     ===================================================================== */
+  :root {
+    --bg: #f1f5f9; --panel: #ffffff; --panel-2: #f8fafc; --border: #e2e8f0; --border-strong: #cbd5e1;
+    --text: #0f172a; --muted: #64748b; --faint: #94a3b8;
+    --accent: #2563eb; --accent-weak: #eff6ff; --accent-strong: #1d4ed8; --danger: #dc2626;
+    --radius: 8px; --ctl-h: 32px; --r-card: 12px;
+    --sh-1: 0 1px 2px rgba(15,23,42,.06); --sh-2: 0 4px 14px rgba(15,23,42,.08); --sh-pop: 0 18px 44px rgba(15,23,42,.18), 0 2px 6px rgba(15,23,42,.06);
+    font-family: Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+  }
+  body { -webkit-font-smoothing: antialiased; }
+  svg.ui-ic { width: 16px; height: 16px; flex: 0 0 auto; vertical-align: -3px; }
+  :has(> .ap-ic) > svg.ui-ic { display: none !important; } /* iPhone-fältläget har egna ikoner */
+  i.ui-ic-only, .si.ui-ic-only, .ti.ui-ic-only { display: inline-flex; align-items: center; justify-content: center; }
+
+  /* Knappar och fält */
+  button { font-weight: 500; letter-spacing: .1px; }
+  button:active:not(:disabled) { transform: translateY(.5px); }
+  button.primary { box-shadow: 0 1px 2px rgba(37,99,235,.35); }
+  button.icon svg { width: 16px; height: 16px; }
+  select, input[type=text], input[type=date], input[type=number], input[type=search] { transition: border-color .12s, box-shadow .12s; }
+  select:hover, input[type=text]:hover, input[type=date]:hover { border-color: #94a3b8; }
+  select:focus, input:focus, button:focus-visible, textarea:focus { box-shadow: 0 0 0 3px rgba(37,99,235,.18); }
+  label { color: var(--muted); font-weight: 500; }
+  label.check { font-weight: 400; }
+  kbd { font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 2px 5px; border-radius: 4px; border: 1px solid var(--border-strong); border-bottom-width: 2px; background: var(--panel-2); color: var(--muted); }
+  .hint { color: var(--faint); font-size: 11.5px; }
+  .muted { color: var(--muted); }
+
+  /* Sidhuvud */
+  .side-head { padding: 14px 14px 12px; }
+  .brand { gap: 10px; }
+  .brand-mark { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(140deg, #2563eb, #60a5fa); box-shadow: 0 4px 10px rgba(37,99,235,.28); }
+  .brand-mark svg { width: 17px; height: 17px; }
+  h1 { font-size: 15.5px; font-weight: 700; letter-spacing: -.1px; }
+  .brand > button.icon, .brand .hdr-more > button { width: 30px; height: 30px; color: var(--muted); }
+  .brand > button.icon:hover, .brand .hdr-more > button:hover { color: var(--text); }
+  .hdr-more { position: relative; }
+  .hdr-menu { position: absolute; right: 0; top: 36px; z-index: 40; min-width: 240px; padding: 6px; background: #fff; border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--sh-pop); display: flex; flex-direction: column; gap: 1px; }
+  .hdr-menu > button, .hdr-menu > a { justify-content: flex-start; width: 100%; height: 34px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font-size: 13px; font-weight: 500; text-decoration: none; display: flex; align-items: center; gap: 10px; }
+  .hdr-menu > button:hover, .hdr-menu > a:hover { background: var(--panel-2); }
+  .hdr-menu > button svg, .hdr-menu > a svg { color: var(--muted); width: 16px; height: 16px; }
+  .hdr-menu kbd { margin-left: auto; }
+  .hdr-menu hr { border: 0; border-top: 1px solid var(--border); margin: 4px 2px; width: auto; }
+  .field-label { color: var(--faint); font-weight: 700; letter-spacing: .7px; }
+
+  /* Flikar: ikon över text, tydlig markering */
+  .tabs { padding: 0 6px; gap: 0; }
+  .tabs button { padding: 10px 2px 9px; font-size: 11.5px; font-weight: 600; gap: 4px; color: var(--muted); border-bottom-width: 2px; }
+  .tabs button .ti { filter: none; opacity: 1; height: 18px; }
+  .tabs button .ti svg { width: 18px; height: 18px; }
+  .tabs button:hover { background: transparent; color: var(--text); }
+  .tabs button.on { color: var(--accent); }
+  .tab-body { padding: 12px 12px 16px; }
+
+  /* Kort (infällbara avsnitt) */
+  details.sec { border-radius: var(--r-card); box-shadow: var(--sh-1); border-color: var(--border); margin-bottom: 12px; }
+  details.sec > summary { font-size: 13px; font-weight: 650; gap: 10px; padding: 11px 0; }
+  details.sec[open] > summary { padding: 11px 12px; }
+  details.sec > summary .si { width: 26px; height: 26px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: var(--accent-weak); color: var(--accent); flex: 0 0 auto; }
+  details.sec > summary .si svg { width: 15px; height: 15px; }
+  details.sec > summary:hover .si { background: #dbeafe; }
+
+  /* Verktygsrutor (Rita): kort med ikon */
+  .tool-grid { gap: 8px; }
+  .tool-grid button { height: 62px; border-radius: 10px; font-size: 11.5px; font-weight: 500; color: var(--text); background: var(--panel); gap: 5px; }
+  .tool-grid button i { display: inline-flex; color: var(--accent); }
+  .tool-grid button i svg { width: 20px; height: 20px; }
+  .tool-grid button:hover:not(:disabled) { border-color: #93c5fd; background: var(--accent-weak); }
+  .tool-grid button.active { box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+  /* Segment (WBS / Prefab m.fl.): samma blå som allt annat */
+  .zone-set-seg { border-color: var(--border-strong); border-radius: 9px; padding: 2px; gap: 2px; background: var(--panel-2); }
+  .zone-set-seg button { border-radius: 7px; background: transparent; }
+  .zone-set-seg button + button { border-left: 0; }
+  .zone-set-seg button.active { background: #fff; color: var(--accent); box-shadow: var(--sh-1), inset 0 0 0 1px var(--border); }
+  .seg { border-radius: 9px; }
+
+  /* Lagerlistan */
+  .layer-list { border-radius: 10px; }
+  .layer-row { padding: 6px 10px; }
+  .layer-row .ln svg { color: var(--muted); margin-right: 2px; }
+
+  /* Popupfönster på planen */
+  #sitePop { border-radius: 14px; box-shadow: var(--sh-pop); border-color: var(--border); padding: 14px 16px; }
+  #sitePop > b:first-child { font-size: 14px; font-weight: 700; display: flex !important; align-items: center; gap: 8px; text-transform: capitalize; margin-bottom: 4px; }
+  #sitePop > b:first-child svg { color: var(--accent); }
+  #sitePop button { height: 30px; border-radius: 8px; }
+  #sitePop { width: 300px; }
+  #sitePop .acts { padding-top: 10px; border-top: 1px solid var(--border); margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: nowrap; }
+  #sitePop .acts { flex-wrap: wrap; row-gap: 6px; }
+  #sitePop .acts > span { display: inline-flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
+  #sitePop .acts > span:last-child { margin-left: auto; }
+  .cad-exp-l { display: inline-flex; align-items: center; gap: 6px; }
+  :where(summary, b, h1, h2, h3, .pr-sec-h, .stor-h, .dp-head, .field-label, .sub-head) > svg.ui-ic { margin-right: 6px; }
+  .pr-side .row.split > button { padding: 0 6px; font-size: 12.5px; }
+  #printModal .pr-side { padding: 14px 16px; }
+  .pr-lib { border-radius: 10px; box-shadow: var(--sh-1); padding: 0 10px; }
+  .pr-lib > summary { padding: 9px 0; font-size: 12.5px; display: flex; align-items: center; gap: 2px; }
+  #printModal .pr-sec-head { color: var(--faint); }
+  .pr-side .row.split > button svg.ui-ic { width: 14px; height: 14px; }
+  .pr-side summary svg.ui-ic, .pr-side b svg.ui-ic { color: var(--accent); }
+  .cad-exp-l svg { color: var(--accent); }
+  .kr > span:first-child { display: inline-flex; align-items: center; gap: 8px; }
+  .kr > span:first-child svg { color: var(--muted); }
+  .ui-icon-lead { display: inline-flex; align-items: center; gap: 6px; }
+
+  /* Flytande knappar på planen */
+  .float-group { border-radius: 12px; box-shadow: var(--sh-2); border-color: var(--border); }
+  .float-group button { height: 36px; min-width: 38px; font-weight: 600; }
+  #btnShowSide { border-radius: 10px; }
+  .warn { border-radius: 10px; }
 </style>
 </head>
 <body>
@@ -1376,18 +1494,24 @@
   <aside>
     <div class="side-head">
       <div class="brand">
-        <div class="brand-mark">🗺️</div>
+        <div class="brand-mark"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg></div>
         <div class="brand-text">
           <h1>Lägesplan</h1>
           <div id="projectInfo">Laddar…</div>
         </div>
-        <button id="btnToken" class="icon ghost" title="Anslutning: GitHub-token"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9"/><path d="M17 6l3 3"/><path d="M15 8l2 2"/></svg></button>
         <button id="btnRefreshData" class="icon ghost" title="Uppdatera: läs om planeringen och hämta positioner för det du kopplat (4D-planering behöver vara öppen)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/></svg></button>
-        <button id="btnKeys" class="icon ghost" title="Kortkommandon (?)">⌨</button>
-        <button id="btnSecAll" class="icon ghost" title="Fäll ihop/ut alla kort på fliken">⇕</button>
-        <button id="btnFieldMode" class="icon ghost" title="Fältläge: förenklad vy med stora knappar (iPad)">📱</button>
-        <a href="guide.html#lagesplan" target="_blank" rel="noopener" class="icon ghost header-help" title="Guide till lägesplanen, dagsplaneringen och utskrift">?</a>
-        <button id="btnHideSide" class="icon ghost" title="Dölj menyn (mer plats för planen)">◀</button>
+        <div class="hdr-more">
+          <button id="btnHdrMore" class="icon ghost" title="Fler val" aria-haspopup="menu"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
+          <div class="hdr-menu hidden" id="hdrMenu" role="menu">
+            <button id="btnFieldMode" title="Fältläge: förenklad vy med stora knappar (iPad)">📱 Fältläge (iPad)</button>
+            <button id="btnKeys" title="Kortkommandon (?)">⌨ Kortkommandon <kbd>?</kbd></button>
+            <button id="btnSecAll" title="Fäll ihop/ut alla kort på fliken">⇕ Fäll ihop/ut alla kort</button>
+            <a href="guide.html#lagesplan" target="_blank" rel="noopener" class="header-help" title="Guide till lägesplanen, dagsplaneringen och utskrift">📚 Guide</a>
+            <hr/>
+            <button id="btnToken" title="Anslutning: GitHub-token"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9"/><path d="M17 6l3 3"/><path d="M15 8l2 2"/></svg> Anslutning (GitHub-token)</button>
+          </div>
+        </div>
+        <button id="btnHideSide" class="icon ghost" title="Dölj menyn (mer plats för planen)"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M16 10l-2 2 2 2"/></svg></button>
       </div>
       <div id="warnBox" class="warn hidden"></div>
       <button id="btnTokenOpen" class="primary block hidden" style="margin-top:8px;">Ange GitHub-token</button>
@@ -1412,29 +1536,74 @@
     </div>
 
     <nav class="tabs" role="tablist">
-      <button data-tab="work" role="tab" title="Lager, etablering, mätning och foton"><span class="ti">✏️</span>Planering</button>
-      <button data-tab="time" role="tab" title="Uppspelning, filter och teckenförklaring"><span class="ti">⏱</span>Tid &amp; filter</button>
-      <button data-tab="zones" role="tab" title="Zoner och koppling mot 3D-modellen"><span class="ti">🧩</span>Zoner &amp; 3D</button>
+      <button data-tab="work" role="tab" title="Rita: etablering, noteringar, mätning och foton"><span class="ti">✏️</span>Rita</button>
+      <button data-tab="layers" role="tab" title="Lager, 3D-objekt på planen, ortofoto och underlag (DXF/PDF)"><span class="ti">🗂</span>Lager</button>
+      <button data-tab="zones" role="tab" title="Zoner och koppling mot 3D-modellen (kalibrering)"><span class="ti">🟧</span>Zoner</button>
+      <button data-tab="time" role="tab" title="Uppspelning, filter och teckenförklaring"><span class="ti">⏱</span>Tid</button>
       <button data-tab="day" role="tab" title="Dagsplanering med underentreprenörer, leveranser och lyft"><span class="ti">👷</span>Dag</button>
-      <button data-tab="export" role="tab" title="Spara bild, PDF och etableringsplan"><span class="ti">📤</span>Export</button>
+      <button data-tab="export" role="tab" title="Utskriftslayout, PDF, bild och CAD-export"><span class="ti">📤</span>Export</button>
     </nav>
 
     <div class="tab-body">
       <!-- ============ Planering ============ -->
       <section class="tab" data-tab="work">
+
+
+        <details class="sec" data-sec="draw" open>
+          <summary><span class="si">🏗</span>Etablering och noteringar</summary>
+          <div class="row" style="flex-wrap:nowrap;">
+            <select id="activeLayer" class="grow" title="Nya objekt hamnar på det här lagret"></select>
+            <button id="btnNewLayer" title="Skapa ett nytt lager">＋ Lager</button>
+            <button id="siteUndo" class="icon" title="Ångra (Ctrl+Z)" disabled>↶</button>
+            <button id="siteRedo" class="icon" title="Gör om (Ctrl+Y)" disabled>↷</button>
+          </div>
+          <div class="tool-grid site-add" style="margin-top:8px;">
+            <button data-site="note" title="Klicka först där pilen ska peka, sedan där texten ska stå"><i>💬</i>Notering</button>
+            <button data-site="crane" title="Klicka kranens placering"><i>🏗</i>Kran</button>
+            <button data-site="shed" title="Klicka två motstående hörn"><i>🏠</i>Bod</button>
+            <button data-site="storage" title="Klicka två motstående hörn"><i>📦</i>Upplag</button>
+            <button data-site="gate" title="Klicka grindens placering"><i>🚪</i>Grind</button>
+            <button data-site="fence" title="Klicka punkter längs stängslet, dubbelklicka för att avsluta"><i>〰</i>Stängsel</button>
+            <button data-site="barrier" title="Klicka hörnen, dubbelklicka för att avsluta"><i>⛔</i>Avspärrning</button>
+            <button data-site="route" title="Klicka punkter längs vägen i körriktningen, dubbelklicka för att avsluta"><i>➡</i>Transport&shy;väg</button>
+            <button data-site="sketch" title="Rita på frihand – varje drag sparas direkt"><i>✏️</i>Frihand</button>
+          </div>
+          <select id="symbolSelect" style="margin-top:6px;" title="Färdiga symboler med rätt mått - välj och klicka på planen">
+            <option value="">Infoga symbol med rätt mått…</option>
+          </select>
+          <label class="check"><input type="checkbox" id="snapOn" checked /> 🧲 Fäst mot linjer och hörn <span class="muted">(Alt släpper)</span></label>
+          <div class="hint" id="siteHint"></div>
+        </details>
+
+        <details class="sec" data-sec="measure" open>
+          <summary><span class="si">📏</span>Mät och foton</summary>
+          <div class="tool-grid cols-3">
+            <button id="btnMeasureLen" title="Klicka punkter på planen, dubbelklicka för att avsluta"><i>📏</i>Avstånd</button>
+            <button id="btnMeasureArea" title="Klicka hörnen, dubbelklicka för att avsluta"><i>⬠</i>Yta</button>
+            <button id="btnAddPhoto" title="Välj ett eller flera foton – de med GPS placeras automatiskt, övriga klickar du ut på planen"><i>📍</i>Foto</button>
+          </div>
+          <div class="hint" id="measureInfo"></div>
+          <label class="check"><input type="checkbox" id="showPhotos" checked /> Visa foton på planen</label>
+          <div class="hint" id="photoInfo"></div>
+        </details>
+
+
+      </section>
+
+      <!-- ============ Lager ============ -->
+      <section class="tab" data-tab="layers">
         <div id="layerSelBar" class="layer-selbar hidden"></div>
         <details class="sec" data-sec="layers" open>
           <summary><span class="si">🗂</span>Lager</summary>
           <div class="ls-views"><select id="lsViewSel" class="grow" title="Sparade vyer: tända lager, ortofoto, DXF, släckta objekt och ev. datum och utsnitt"></select><button id="btnLsViewSave" title="Spara det som visas nu som en vy">💾 Spara</button><button id="btnLsViewDelete" class="icon" title="Ta bort vyn">🗑️</button></div>
           <div id="lsViewForm" class="ls-view-form hidden"></div>
-          <div class="layer-search"><input type="text" id="layerSearch" placeholder="🔎 Sök lager…" autocomplete="off" /><button id="layerSearchClear" class="icon ghost hidden" title="Rensa">✕</button><button id="btnLayerSort" class="layer-sort" title="Sortera mapparna och lagren i dem A–Ö">A–Ö</button></div>
+          <div class="layer-search"><input type="text" id="layerSearch" placeholder="Sök lager…" autocomplete="off" /><button id="layerSearchClear" class="icon ghost hidden" title="Rensa">✕</button><button id="btnLayerSort" class="layer-sort" title="Sortera mapparna och lagren i dem A–Ö">A–Ö</button></div>
           <div id="cadAllBox" class="cadall-box hidden"></div>
           <div id="layerList" class="layer-list"></div>
           <div class="hint hidden" id="layerSearchInfo"></div>
           <div class="row" style="margin-top:6px;"><button id="btnNewFolder" title="Skapa en mapp och dra lager till den">📁 ＋ Mapp</button><span class="hint grow" style="margin:0;">Klicka för att markera, Ctrl-klick för flera, Shift-klick för ett intervall. Dra lager till en mapp. Dubbelklicka på ett namn för att byta det.</span></div>
           <label class="check"><input type="checkbox" id="layersFollowDate" checked /> Noteringar och etablering följer datumet</label>
         </details>
-
         <details class="sec" data-sec="objects3d" open>
           <summary><span class="si">🔷</span>3D Objekt</summary>
           <div class="row" style="align-items:center;gap:6px;margin-top:4px;"><span id="objHiddenCount" class="grow" style="font-size:12px;">Inga objekt släckta</span>
@@ -1465,45 +1634,6 @@
           </div>
           <label class="check"><input type="checkbox" id="textFixed" /> Samma textstorlek på skärmen oavsett zoom</label>
         </details>
-
-        <details class="sec" data-sec="draw" open>
-          <summary><span class="si">🏗</span>Etablering och noteringar</summary>
-          <div class="row" style="flex-wrap:nowrap;">
-            <select id="activeLayer" class="grow" title="Nya objekt hamnar på det här lagret"></select>
-            <button id="btnNewLayer" title="Skapa ett nytt lager">＋ Lager</button>
-            <button id="siteUndo" class="icon" title="Ångra (Ctrl+Z)" disabled>↶</button>
-            <button id="siteRedo" class="icon" title="Gör om (Ctrl+Y)" disabled>↷</button>
-          </div>
-          <div class="tool-grid site-add" style="margin-top:8px;">
-            <button data-site="note" title="Klicka först där pilen ska peka, sedan där texten ska stå"><i>💬</i>Notering</button>
-            <button data-site="crane" title="Klicka kranens placering"><i>🏗</i>Kran</button>
-            <button data-site="shed" title="Klicka två motstående hörn"><i>🏠</i>Bod</button>
-            <button data-site="storage" title="Klicka två motstående hörn"><i>📦</i>Upplag</button>
-            <button data-site="gate" title="Klicka grindens placering"><i>🚪</i>Grind</button>
-            <button data-site="fence" title="Klicka punkter längs stängslet, dubbelklicka för att avsluta"><i>〰</i>Stängsel</button>
-            <button data-site="barrier" title="Klicka hörnen, dubbelklicka för att avsluta"><i>⛔</i>Avspärrning</button>
-            <button data-site="route" title="Klicka punkter längs vägen i körriktningen, dubbelklicka för att avsluta"><i>➡</i>Transport&shy;väg</button>
-            <button data-site="sketch" title="Rita på frihand – varje drag sparas direkt"><i>✏️</i>Frihand</button>
-          </div>
-          <select id="symbolSelect" style="margin-top:6px;" title="Färdiga symboler med rätt mått - välj och klicka på planen">
-            <option value="">🧩 Infoga symbol med rätt mått…</option>
-          </select>
-          <label class="check"><input type="checkbox" id="snapOn" checked /> 🧲 Fäst mot linjer och hörn <span class="muted">(Alt släpper)</span></label>
-          <div class="hint" id="siteHint"></div>
-        </details>
-
-        <details class="sec" data-sec="measure" open>
-          <summary><span class="si">📏</span>Mät och foton</summary>
-          <div class="tool-grid cols-3">
-            <button id="btnMeasureLen" title="Klicka punkter på planen, dubbelklicka för att avsluta"><i>📏</i>Avstånd</button>
-            <button id="btnMeasureArea" title="Klicka hörnen, dubbelklicka för att avsluta"><i>⬠</i>Yta</button>
-            <button id="btnAddPhoto" title="Välj ett eller flera foton – de med GPS placeras automatiskt, övriga klickar du ut på planen"><i>📍</i>Foto</button>
-          </div>
-          <div class="hint" id="measureInfo"></div>
-          <label class="check"><input type="checkbox" id="showPhotos" checked /> Visa foton på planen</label>
-          <div class="hint" id="photoInfo"></div>
-        </details>
-
         <details class="sec" data-sec="ortho" open>
           <summary><span class="si">🛰</span>Ortofoto</summary>
           <button id="btnAddOrtho" class="block" title="Välj bildfilen (PNG/JPG) och dess världsfil (.pgw/.jgw) samtidigt">🛰 Ladda upp ortofoto…</button>
@@ -1530,7 +1660,6 @@
             <div class="row" style="margin-top:6px;"><button id="cmpSwap" title="Byt plats på fotona">⇄ Byt sida</button><span class="hint grow" style="margin:0;">Dra i snittet på planen.</span></div>
           </div>
         </details>
-
         <details class="sec" data-sec="cad">
           <summary><span class="si">📐</span>CAD-underlag (DXF)</summary>
           <button id="btnAddDxf" class="block" title="En eller flera DXF-filer i samma koordinatsystem som modellen (spara DWG som DXF)">📐 Lägg till DXF (en eller flera)…</button>
@@ -1643,7 +1772,7 @@
           </div>
           <div class="hint" id="calibInfo"></div>
           <label class="check"><input type="checkbox" id="showObjects" checked /> Visa objekten på ritningen (i sin fasfärg)</label>
-          <div class="north-row"><span class="muted">🧭 Planens riktning</span><button type="button" id="btnNorthUp" title="Vrid hela planen så att norr pekar rakt uppåt (frågar först)">Norr uppåt</button><button type="button" id="btnNorthReset" title="Tillbaka till ritningens egen riktning" disabled>Ritningens riktning</button></div>
+          <div class="north-row"><span class="muted ui-icon-lead">🧭 Planens riktning</span><button type="button" id="btnNorthUp" title="Vrid hela planen så att norr pekar rakt uppåt (frågar först)">Norr uppåt</button><button type="button" id="btnNorthReset" title="Tillbaka till ritningens egen riktning" disabled>Ritningens riktning</button></div>
           <div class="hint" id="northInfo"></div>
         </details>
 
@@ -1737,7 +1866,7 @@
           <div class="cad-exp" title="Det som syns i lägesplanen, i modellens koordinater (meter) – läggs ovanpå ritningar i CAD eller modellen i Trimble Connect">
             <div class="cad-exp-h">CAD-export <span>modellens koordinater · meter</span></div>
             <div class="cad-exp-grid">
-              <span class="cad-exp-l">📐 3D-objekt</span>
+              <span class="cad-exp-l">🧊 3D-objekt</span>
               <button id="btnObjDxf" title="Planritning: fylld prick i statusfärg och objektets namn (t.ex. L12), lager per status – namnen vända som din vy">DXF</button>
               <button id="btnObjIfc" title="3D: cylinder i statusfärg ovanpå varje objekts högsta punkt och objektets namn som liggande 3D-text (0,5 m tjock), läsbar uppifrån. Egenskaper på cylindern.">IFC</button>
               <span class="cad-exp-l">🟧 Zoner</span>
@@ -1753,7 +1882,7 @@
         <details class="sec" data-sec="exportSite" open>
           <summary><span class="si">🗓</span>Etableringsplan</summary>
           <button id="btnSitePlanPdf" class="block" title="En A3-sida per månad med det som gäller den månaden (noteringar och etablering med datum)">🗓 Etableringsplan per månad (PDF)</button>
-          <div class="hint">En A3-sida per månad med noteringar och etablering som gäller den månaden. Uppspelning som video eller bildserie finns under <b>Tid &amp; filter</b>.</div>
+          <div class="hint">En A3-sida per månad med noteringar och etablering som gäller den månaden. Uppspelning som video eller bildserie finns under <b>Tid</b>.</div>
         </details>
       </section>
     </div>
@@ -1762,7 +1891,7 @@
 
   <div id="sideResizer" title="Dra för att ändra menyns bredd (dubbelklick = standard)"></div>
   <main>
-    <button id="btnShowSide" class="hidden" title="Visa menyn">▶ Meny</button>
+    <button id="btnShowSide" class="hidden" title="Visa menyn">☰ Meny</button>
     <div id="viewport">
       <div id="stage"><canvas id="orthoCanvas"></canvas><canvas id="orthoCanvasB"></canvas><canvas id="pdfCanvas"></canvas><canvas id="pdfHiCanvas"></canvas><canvas id="cadCanvas" style="display:none"></canvas><canvas id="zoneCanvas"></canvas><canvas id="objCanvas"></canvas><canvas id="topCanvas"></canvas></div><canvas id="labelCanvas"></canvas><canvas id="pinCanvas"></canvas>
     </div>
@@ -1778,7 +1907,7 @@
       <button type="button" id="btnFieldSketch" class="fl-btn" title="Rita på frihand på ritningen">✏️<span class="gm-txt"> Rita</span></button>
       <button type="button" id="btnFieldPhoto" class="fl-btn" title="Lägg till foto – placeras enligt GPS (fotots eller iPadens)">📷<span class="gm-txt"> Foto</span></button>
       <button type="button" id="btnFieldPins" class="fl-btn" title="Visa/dölj fotonålarna på planen">📍<span class="gm-txt"> Fotonålar</span></button>
-      <button type="button" id="btnFieldGps" class="fl-btn" title="Visa min position (GPS)">📍</button>
+      <button type="button" id="btnFieldGps" class="fl-btn" title="Visa min position (GPS)">🎯</button>
       <button type="button" id="btnFieldUndo" class="fl-btn" title="Ångra" disabled>↶<span class="gm-txt"> Ångra</span></button>
       <button type="button" id="btnFieldRedo" class="fl-btn" title="Gör om" disabled>↷<span class="gm-txt"> Gör om</span></button>
       <button type="button" id="btnFieldView" class="fl-btn" title="Spara det som visas nu som en vy">💾<span class="gm-txt"> Spara vy</span></button>
@@ -1912,55 +2041,57 @@
     </div>
   </main>
 </div>
-<script src="lagesplan-merge.js?v=20261009084533"></script>
-<script src="lagesplan.js?v=20261009084533"></script>
-<script src="lagesplan-tools.js?v=20261009084533"></script>
-<script src="lagesplan-layers.js?v=20261009084533"></script>
-<script src="lagesplan-storage.js?v=20261009084533"></script>
-<script src="lagesplan-pdfoverlay.js?v=20261009084533"></script>
-<script src="lagesplan-pdfunder.js?v=20261009084533"></script>
-<script src="lagesplan-views.js?v=20261009084533"></script>
-<script src="lagesplan-film.js?v=20261009084533"></script>
-<script src="lagesplan-cad.js?v=20261009084533"></script>
-<script src="lagesplan-vecpdf.js?v=20261009084533"></script>
-<script src="lagesplan-print.js?v=20261009084533"></script>
-<script src="lagesplan-arrows.js?v=20261009084533"></script>
-<script src="lagesplan-printshapes.js?v=20261009084533"></script>
-<script src="lagesplan-printctx.js?v=20261009084533"></script>
-<script src="lagesplan-printdxf.js?v=20261009084533"></script>
-<script src="lagesplan-imgcrop.js?v=20261009084533"></script>
-<script src="lagesplan-printlib.js?v=20261009084533"></script>
-<script src="lagesplan-pdflayers.js?v=20261009084533"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261009084533"></script>
-<script src="lagesplan-objmarks.js?v=20261009084533"></script>
-<script src="lagesplan-objlist.js?v=20261009084533"></script>
-<script src="lagesplan-zones.js?v=20261009084533"></script>
-<script src="lagesplan-wbs.js?v=20261009084533"></script>
-<script src="lagesplan-zonesets.js?v=20261009084533"></script>
-<script src="lagesplan-zoneguard.js?v=20261009084533"></script>
-<script src="lagesplan-zoneexport.js?v=20261009084533"></script>
-<script src="lagesplan-itemlink.js?v=20261009084533"></script>
-<script src="lagesplan-dxfexport.js?v=20261009084533"></script>
-<script src="ifc-writer.js?v=20261009084533"></script>
-<script src="lagesplan-ifcexport.js?v=20261009084533"></script>
-<script src="lagesplan-zonecad.js?v=20261009084533"></script>
-<script src="lagesplan-siteifc.js?v=20261009084533"></script>
-<script src="lagesplan-daily.js?v=20261009084533"></script>
-<script src="lagesplan-gps.js?v=20261009084533"></script>
-<script src="lagesplan-weather.js?v=20261009084533"></script>
-<script src="lagesplan-touch.js?v=20261009084533"></script>
-<script src="lagesplan-drawer.js?v=20261009084533"></script>
-<script src="lagesplan-gpslive.js?v=20261009084533"></script>
-<script src="place3d.js?v=20261009084533"></script>
-<script src="ifc-mesh.js?v=20261009084533"></script>
-<script src="place-models.js?v=20261009084533"></script>
-<script src="lagesplan-3dbuild.js?v=20261009084533"></script>
-<script src="lagesplan-3dnav.js?v=20261009084533"></script>
-<script src="lagesplan-3ddialogs.js?v=20261009084533"></script>
-<script src="lagesplan-3dclash.js?v=20261009084533"></script>
-<script src="lagesplan-3dhandles.js?v=20261009084533"></script>
-<script src="lagesplan-3dtools.js?v=20261009084533"></script>
-<script src="lagesplan-3d.js?v=20261009084533"></script>
-<script src="lagesplan-keys.js?v=20261009084533"></script>
+<script src="lagesplan-merge.js?v=20261009093305"></script>
+<script src="ui-icons.js?v=20261009093305"></script>
+<script src="lagesplan-ui.js?v=20261009093305"></script>
+<script src="lagesplan.js?v=20261009093305"></script>
+<script src="lagesplan-tools.js?v=20261009093305"></script>
+<script src="lagesplan-layers.js?v=20261009093305"></script>
+<script src="lagesplan-storage.js?v=20261009093305"></script>
+<script src="lagesplan-pdfoverlay.js?v=20261009093305"></script>
+<script src="lagesplan-pdfunder.js?v=20261009093305"></script>
+<script src="lagesplan-views.js?v=20261009093305"></script>
+<script src="lagesplan-film.js?v=20261009093305"></script>
+<script src="lagesplan-cad.js?v=20261009093305"></script>
+<script src="lagesplan-vecpdf.js?v=20261009093305"></script>
+<script src="lagesplan-print.js?v=20261009093305"></script>
+<script src="lagesplan-arrows.js?v=20261009093305"></script>
+<script src="lagesplan-printshapes.js?v=20261009093305"></script>
+<script src="lagesplan-printctx.js?v=20261009093305"></script>
+<script src="lagesplan-printdxf.js?v=20261009093305"></script>
+<script src="lagesplan-imgcrop.js?v=20261009093305"></script>
+<script src="lagesplan-printlib.js?v=20261009093305"></script>
+<script src="lagesplan-pdflayers.js?v=20261009093305"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261009093305"></script>
+<script src="lagesplan-objmarks.js?v=20261009093305"></script>
+<script src="lagesplan-objlist.js?v=20261009093305"></script>
+<script src="lagesplan-zones.js?v=20261009093305"></script>
+<script src="lagesplan-wbs.js?v=20261009093305"></script>
+<script src="lagesplan-zonesets.js?v=20261009093305"></script>
+<script src="lagesplan-zoneguard.js?v=20261009093305"></script>
+<script src="lagesplan-zoneexport.js?v=20261009093305"></script>
+<script src="lagesplan-itemlink.js?v=20261009093305"></script>
+<script src="lagesplan-dxfexport.js?v=20261009093305"></script>
+<script src="ifc-writer.js?v=20261009093305"></script>
+<script src="lagesplan-ifcexport.js?v=20261009093305"></script>
+<script src="lagesplan-zonecad.js?v=20261009093305"></script>
+<script src="lagesplan-siteifc.js?v=20261009093305"></script>
+<script src="lagesplan-daily.js?v=20261009093305"></script>
+<script src="lagesplan-gps.js?v=20261009093305"></script>
+<script src="lagesplan-weather.js?v=20261009093305"></script>
+<script src="lagesplan-touch.js?v=20261009093305"></script>
+<script src="lagesplan-drawer.js?v=20261009093305"></script>
+<script src="lagesplan-gpslive.js?v=20261009093305"></script>
+<script src="place3d.js?v=20261009093305"></script>
+<script src="ifc-mesh.js?v=20261009093305"></script>
+<script src="place-models.js?v=20261009093305"></script>
+<script src="lagesplan-3dbuild.js?v=20261009093305"></script>
+<script src="lagesplan-3dnav.js?v=20261009093305"></script>
+<script src="lagesplan-3ddialogs.js?v=20261009093305"></script>
+<script src="lagesplan-3dclash.js?v=20261009093305"></script>
+<script src="lagesplan-3dhandles.js?v=20261009093305"></script>
+<script src="lagesplan-3dtools.js?v=20261009093305"></script>
+<script src="lagesplan-3d.js?v=20261009093305"></script>
+<script src="lagesplan-keys.js?v=20261009093305"></script>
 </body>
 </html>

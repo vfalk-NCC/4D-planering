@@ -194,7 +194,7 @@ function apDecorate(el, on) {
   if (el.dataset.apAria !== undefined) { if (el.dataset.apAria) el.setAttribute("aria-label", el.dataset.apAria); else el.removeAttribute("aria-label"); delete el.dataset.apAria; }
   if (!on) return;
   const [lb, sub, c, path] = AP_ICONS[el.id] || ["", "", "", ""];
-  const ic = document.createElement("span"); ic.className = "ap-ic"; ic.innerHTML = AP_SVG(path); el.appendChild(ic);
+  const ic = document.createElement("span"); ic.className = "ap-ic"; ic.innerHTML = AP_SVG(path); el.insertBefore(ic, el.firstChild); // före den vanliga ikonen (som göms)
   if (AP_TILES.includes(el.id)) {
     el.classList.add("ap-tile"); if (c) el.style.setProperty("--c", c);
     el.dataset.apAria = el.getAttribute("aria-label") || ""; el.setAttribute("aria-label", lb);

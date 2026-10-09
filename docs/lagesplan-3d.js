@@ -81,13 +81,14 @@ function l3SetPref(k, v) {
 // ---------------------------------------------------------------------
 async function open3d() {
   if (!plan) { alert("Välj en arbetsyta först."); return; }
-  if (!plan.calib) { alert("Arbetsytan behöver kalibreras mot 3D-modellen först (Zoner & 3D → Kalibrera). Annars vet 3D-vyn inte var planen ligger."); return; }
+  if (!plan.calib) { alert("Arbetsytan behöver kalibreras mot 3D-modellen först (Zoner → Kalibrera mot 3D). Annars vet 3D-vyn inte var planen ligger."); return; }
   if (!settings.githubToken && token) settings.githubToken = token;
   const box = l3Dom();
   box.classList.remove("hidden");
   document.body.classList.add("v3-open"); // fältlägets flytande knappar och ark (iPhone) göms under 3D
   // Smal skärm (iPad): lägesplanens meny göms medan 3D är öppen – datumet finns i 3D-vyns nederkant.
-  if (window.innerWidth < 1400 && typeof setSideHidden === "function" && !$("layout").classList.contains("side-hidden")) { setSideHidden(true); box.dataset.hidSide = "1"; }
+  // 3D-vyn får hela bredden: lägesplanens meny göms medan 3D är öppen (datumet finns i 3D-vyns nederkant).
+  if (typeof setSideHidden === "function" && !$("layout").classList.contains("side-hidden")) { setSideHidden(true); box.dataset.hidSide = "1"; }
   // iPhone/smal skärm: biblioteket börjar ihopfällt (öppnas med ＋ Lägg till) så att modellen syns.
   if (window.innerWidth < 700) { const pal = box.querySelector("#v3Pal"), po = box.querySelector("#v3PalOpen"); if (pal && po) { pal.classList.add("hidden"); po.classList.remove("hidden"); } }
   l3SyncDate();
@@ -109,7 +110,7 @@ async function open3d() {
     l3SelectIds([]);
     if (typeof l3SetTool === "function") l3SetTool("select");
     l3RenderLegend(); l3UndoBtns(); l3RenderObjList(); if (typeof l3RenderSnapBar === "function") l3RenderSnapBar();
-    l3Status(`${positions.length ? positions.length + " planerade objekt" : "Inga objektpositioner – hämta dem i Zoner & 3D, eller visa byggnaden (Visa → Byggnad)"} · ${placements.length} etableringsobjekt. Tryck på ett objekt för att välja det – högerklicka eller håll inne för fler val.`);
+    l3Status(`${positions.length ? positions.length + " planerade objekt" : "Inga objektpositioner – hämta dem under Zoner, eller visa byggnaden (Visa → Byggnad)"} · ${placements.length} etableringsobjekt. Tryck på ett objekt för att välja det – högerklicka eller håll inne för fler val.`);
   } catch (e) { l3Status("3D-vyn kunde inte öppnas: " + e.message, true); console.error(e); }
   l3Resize(); l3Render();
 }

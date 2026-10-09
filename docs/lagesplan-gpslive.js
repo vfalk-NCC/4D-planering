@@ -88,7 +88,7 @@ function stopGpsLive(msg) {
 }
 function startGpsLive() {
   if (!navigator.geolocation) { alert("Den här enheten eller webbläsaren kan inte visa positionen."); return; }
-  if (!plan || !plan.calib) { alert("Planen är inte kalibrerad mot 3D-modellen, så positionen kan inte visas på den. Kalibrera under Zoner & 3D."); return; }
+  if (!plan || !plan.calib) { alert("Planen är inte kalibrerad mot 3D-modellen, så positionen kan inte visas på den. Kalibrera under Zoner."); return; }
   gpsLiveEl();
   gpsLive = { watch: null, follow: true, pos: null, first: true };
   updateGpsBtn();
