@@ -18,6 +18,11 @@ function l3NavInit() {
   window.addEventListener("pointercancel", () => { if (l3Piv) l3OrbitPivotEnd(); });
   window.addEventListener("blur", () => { if (l3Piv) l3OrbitPivotEnd(); }); // släppt utanför fönstret
   el.addEventListener("wheel", l3Wheel, { passive: false });
+  host.addEventListener("wheel", () => { l3.orbit.enableZoom = false; }, { capture: true, passive: true }); // före OrbitControls
+  if (l3IsTouch()) { l3.gizmo.size = 1.5; l3.orbit.rotateSpeed = 0.8; }
+  // Egenskapsarket (iPhone): ▾ fäller ihop det så att modellen syns.
+  const side = document.getElementById("v3Side");
+  if (side) side.addEventListener("click", e => { if (e.target.closest(".v3-side-min")) side.classList.toggle("min"); });
   // Mittenknappen: ingen autoscroll (Windows) och ingen inklistring (Linux) – den panorerar/roterar.
   el.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault(); });
   el.addEventListener("auxclick", e => { if (e.button === 1) e.preventDefault(); });
@@ -27,6 +32,8 @@ function l3NavInit() {
   l3.orbit.addEventListener("change", l3DrawTriad);
   l3DrawTriad();
 }
+/* Pekskärm som huvudsaklig inmatning (iPad/iPhone): större handtag, inga tangentbordstips. */
+function l3IsTouch() { try { return matchMedia("(pointer: coarse)").matches; } catch (e) { return false; } }
 function l3IsTekla() { return l3Prefs().mouse !== "standard"; }
 function l3ApplyMouse() {
   const M = THREE.MOUSE;
@@ -38,6 +45,8 @@ function l3ApplyMouse() {
 // ---------------------------------------------------------------------
 let l3Area = null, l3RightDown = null;
 function l3NavDown(e) {
+  // Nyp-zoom med två fingrar sköts av OrbitControls; mushjulet av l3Wheel (zoom mot markören).
+  l3.orbit.enableZoom = e.pointerType === "touch" || e.pointerType === "pen";
   if (e.pointerType !== "mouse") return;
   if (e.button === 1 && e.target === l3.renderer.domElement) e.preventDefault();
   if (l3OrbitPivotStart(e)) return;
@@ -328,4 +337,58 @@ function l3RenderSavedViews() {
   host.innerHTML = list.length ? list.map((v, i) => `<div class="v3-sv"><button type="button" data-svgo="${i}" title="Gå till vyn">${escHtml(v.name)}${v.clips && v.clips.length ? ` <em>· ${v.clips.length} snitt</em>` : ""}</button><button type="button" class="v3-sv-x" data-svdel="${i}" title="Ta bort vyn">✕</button></div>`).join("") : `<div class="v3-pop-hint">Inga sparade vyer än.</div>`;
   host.querySelectorAll("[data-svgo]").forEach(b => { b.onclick = () => { l3HideMenus(); l3GoView(+b.dataset.svgo); }; });
   host.querySelectorAll("[data-svdel]").forEach(b => { b.onclick = e => { e.stopPropagation(); l3DelView(+b.dataset.svdel); }; });
+}
+
+// ---------------------------------------------------------------------
+// iPad/iPhone: knappar för det som annars kräver tangentbordet (Esc, Enter, skriva ett mått)
+// ---------------------------------------------------------------------
+function l3FakeKey(key) {
+  const e = { key, target: document.body, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, preventDefault() {}, stopImmediatePropagation() {}, stopPropagation() {} };
+  l3Key(e);
+}
+function l3TouchBarUpdate() {
+  if (!l3) return;
+  let bar = l3.touchBar;
+  if (!bar) {
+    bar = document.createElement("div"); bar.className = "v3-touchbar hidden";
+    bar.innerHTML = `<button type="button" data-tb="num" title="Skriv ett exakt mått (avstånd, vinkel eller dx;dy;dz)">123 Mått…</button><button type="button" data-tb="done">✓ Klar</button><button type="button" data-tb="cancel">✕ Avbryt</button>`;
+    l3.renderer.domElement.parentElement.appendChild(bar); l3.touchBar = bar;
+    bar.onclick = e => e.stopPropagation();
+    bar.querySelector('[data-tb="cancel"]').onclick = () => l3FakeKey("Escape");
+    bar.querySelector('[data-tb="done"]').onclick = () => l3FakeKey("Enter");
+    bar.querySelector('[data-tb="num"]').onclick = () => {
+      const lbl = l3.tool === "rotate" ? "Vinkel i grader (minus = medurs):" : "Avstånd i meter – eller dx;dy;dz från baspunkten:";
+      const v = prompt(lbl, "");
+      if (v === null || !v.trim()) return;
+      l3t.vcb = v.trim(); l3FakeKey("Enter");
+    };
+  }
+  const t = l3.tool || "select", st = (typeof l3t !== "undefined" && l3t.step) || 0;
+  // Smal skärm: fästlägesraden visas bara när man pekar ut punkter.
+  const host = l3.renderer.domElement.parentElement, mode = t === "select" && !l3.addType && !l3.dlgPick && !l3.clipPick && !l3.vPick ? "select" : "pick";
+  if (host.dataset.tool !== mode) host.dataset.tool = mode;
+  const area = t === "measure" && (l3t.mp || []).length;
+  const num = (t === "move" || t === "measure" || (t === "rotate" && st === 2)) && st > 0;
+  const done = !!l3.fenceId || (area && l3Prefs().measure === "area");
+  const cancel = st > 0 || area || !!l3.addType || !!l3.dlgPick || !!l3.clipPick || !!l3.vPick || t !== "select";
+  const show = l3IsTouch() && (num || done || cancel);
+  bar.classList.toggle("hidden", !show);
+  if (!show) return;
+  bar.querySelector('[data-tb="num"]').classList.toggle("hidden", !num);
+  bar.querySelector('[data-tb="done"]').classList.toggle("hidden", !done);
+  bar.querySelector('[data-tb="cancel"]').textContent = st > 0 || area || l3.addType || l3.dlgPick || l3.clipPick || l3.vPick ? "✕ Avbryt" : "✕ Välj";
+}
+/* iPhone: arket nedtill täcker nedre halvan – flytta vyn så att det markerade hamnar i övre delen. */
+function l3KeepSelVisible() {
+  if (!l3 || window.innerWidth >= 700 || l3.sel.size !== 1) return;
+  const g = l3.placeMeshes.get([...l3.sel][0]); if (!g) return;
+  const P = new THREE.Box3().setFromObject(g).getCenter(new THREE.Vector3());
+  const el = l3.renderer.domElement, h = el.clientHeight || 1, q = P.clone().project(l3.camera), y = (1 - q.y) / 2 * h;
+  if (q.z > 1 || y < h * 0.45) return;
+  const want = new THREE.Vector2(q.x, 1 - 2 * 0.28); // samma x, 28 % från överkanten
+  const rc = new THREE.Raycaster(); rc.setFromCamera(want, l3.camera);
+  const n = l3.camera.getWorldDirection(new THREE.Vector3()), Q = rc.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(n, P), new THREE.Vector3());
+  if (!Q) return;
+  const d = P.clone().sub(Q);
+  l3StopFly(); l3.camera.position.add(d); l3.orbit.target.add(d); l3.orbit.update(); l3Render();
 }

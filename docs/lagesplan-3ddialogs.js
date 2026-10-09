@@ -268,7 +268,7 @@ function l3RenderMultiSide(side, list) {
     return `<label class="v3-me"><input type="checkbox" data-mec="${k}" title="Ändra det här fältet" /><span>${label}</span><div class="v3-me-in">${inp}${unit ? `<em>${unit}</em>` : ""}</div></label>`;
   };
   side.dataset.id = "multi:" + list.map(p => p.id).join(",");
-  side.innerHTML = `<div class="v3-side-h"><b>${list.length} objekt markerade</b><button type="button" class="v3-x" id="v3Deselect" title="Avmarkera (Esc)">✕</button></div>
+  side.innerHTML = `<div class="v3-side-h"><b>${list.length} objekt markerade</b><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3Deselect" title="Avmarkera (Esc)">✕</button></div>
     <div class="v3-sub">${escHtml([...new Set(list.map(p => (placeLib(p.type) || {}).label || p.type))].join(", "))}</div>
     <div class="v3-sec">Egenskaper – kryssa i det som ska ändras</div>
     <div class="v3-me-list">${fields.map(row).join("")}</div>

@@ -85,8 +85,11 @@ async function open3d() {
   if (!settings.githubToken && token) settings.githubToken = token;
   const box = l3Dom();
   box.classList.remove("hidden");
+  document.body.classList.add("v3-open"); // fältlägets flytande knappar och ark (iPhone) göms under 3D
   // Smal skärm (iPad): lägesplanens meny göms medan 3D är öppen – datumet finns i 3D-vyns nederkant.
   if (window.innerWidth < 1400 && typeof setSideHidden === "function" && !$("layout").classList.contains("side-hidden")) { setSideHidden(true); box.dataset.hidSide = "1"; }
+  // iPhone/smal skärm: biblioteket börjar ihopfällt (öppnas med ＋ Lägg till) så att modellen syns.
+  if (window.innerWidth < 700) { const pal = box.querySelector("#v3Pal"), po = box.querySelector("#v3PalOpen"); if (pal && po) { pal.classList.add("hidden"); po.classList.remove("hidden"); } }
   l3SyncDate();
   l3Status("Laddar 3D…");
   try {
@@ -111,6 +114,7 @@ async function open3d() {
   l3Resize(); l3Render();
 }
 function close3d() {
+  document.body.classList.remove("v3-open");
   const box = document.getElementById("view3d");
   if (box) box.classList.add("hidden");
   if (box && box.dataset.hidSide === "1" && typeof setSideHidden === "function") { setSideHidden(false); box.dataset.hidSide = ""; }
@@ -311,7 +315,7 @@ function l3SaveState(s, msg) {
 function l3HelpHtml() {
   const r = (k, t) => `<tr><td><kbd>${k}</kbd></td><td>${t}</td></tr>`, T = l3Prefs().mouse !== "standard";
   return `<div class="v3-help-h"><b>Hjälp – kortkommandon</b><button type="button" onclick="this.closest('.v3-help').classList.add('hidden')">✕</button></div>
-    <div class="v3-help-c"><div><b>Navigera ${T ? "(som i Tekla)" : "(standard)"}</b><table>
+    <div class="v3-help-c">${typeof l3IsTouch === "function" && l3IsTouch() ? `<div><b>Pekskärm (iPad/iPhone)</b><table>${r("Ett finger", "Rotera")}${r("Två fingrar", "Nyp = zooma, dra = panorera")}${r("Tryck", "Markera / peka ut punkt")}${r("Dubbeltryck", "Zooma dit")}${r("Håll inne", "Meny")}${r("123 Mått…", "Exakt avstånd, vinkel eller dx;dy;dz")}${r("✓ Klar / ✕ Avbryt", "I stället för Enter / Esc")}${r("▾ på panelen", "Fäll ihop egenskaperna")}</table></div>` : ""}<div><b>Navigera ${T ? "(som i Tekla)" : "(standard)"}</b><table>
       ${T ? r("Mittenknapp dra", "Panorera") + r("Ctrl + mitten dra", "Rotera kring punkten under markören") + r("Vänster dra", "Markera med ruta") : r("Vänster dra", "Rotera kring punkten under markören") + r("Höger dra", "Panorera")}
       ${r("Hjul", "Zooma mot markören")}${r("V + tryck", "Centrera vyn kring en punkt")}${r("Ctrl+P", "Plan ↔ 3D")}${r("Home", "Visa allt")}${r("F / dubbelklick", "Zooma till markerat")}${r("Axelkorset", "Vy uppifrån")}</table></div>
     <div><b>Markera</b><table>${r("Tryck", "Markera")}${r("Skift + tryck", "Lägg till")}${r("Ctrl + tryck", "Växla")}${T ? r("Dra →", "Ruta: det som är helt inne") + r("Dra ←", "Ruta: allt som rutan nuddar") : ""}${r("Ctrl+A", "Markera alla")}${r("Esc", "Avmarkera / avbryt")}</table></div>
@@ -371,16 +375,11 @@ function l3Init(box) {
     clearTimeout(press);
     if (!down || gizmo.dragging || down.longed) { down = null; return; }
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); down = null;
-    if (moved < 6 && e.button !== 2) l3Tap(e);
+    if (moved < 6 && e.button !== 2) { l3Tap(e); l3Render(); } // ritas om: pekskärmens knappar följer verktygets steg
   });
   el.addEventListener("pointerleave", () => { l3SetHover(null); const c = document.getElementById("v3Coord"); if (c) c.textContent = ""; });
   el.addEventListener("contextmenu", e => { e.preventDefault(); if (l3.noCtx) { l3.noCtx = false; return; } l3OpenCtx(e.clientX, e.clientY, e); });
-  el.addEventListener("dblclick", e => {
-    if (l3.tool !== "select") return;
-    const id = l3PlaceAt(e);
-    if (id) { l3SelectIds([id]); l3View("sel"); }
-    else { const h = l3Ray(e, l3Surfaces())[0]; if (h) l3FlyTo(h.point, Math.max(8, l3.camera.position.distanceTo(h.point) * 0.45)); }
-  });
+  el.addEventListener("dblclick", e => { if (e.pointerType !== "touch") l3DoubleAt(e); });
   window.addEventListener("resize", () => { if (l3 && !document.getElementById("view3d").classList.contains("hidden")) { l3Resize(); l3Render(); } });
   window.addEventListener("keydown", l3Key, true); // före lägesplanens kortkommandon (de stängs av i 3D)
   if (typeof l3NavInit === "function") l3NavInit();
@@ -414,6 +413,7 @@ function l3Render() {
     l3.renderer.render(l3.scene, l3.camera);
     l3RenderLabels();
     if (typeof l3HandlesPos === "function") l3HandlesPos();
+    if (typeof l3TouchBarUpdate === "function") l3TouchBarUpdate();
   });
 }
 const l3Clear = g => { while (g.children.length) { const c = g.children.pop(); c.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) [].concat(o.material).forEach(m => { if (m.map) m.map.dispose(); m.dispose(); }); }); } };
@@ -667,6 +667,7 @@ function l3SelectIds(ids) {
   if (l3.sel.size) l3HideInfo();
   if (typeof l3RenderObjList === "function") l3RenderObjList();
   if (typeof l3Sp !== "undefined" && l3Sp) l3RenderSpecial();
+  if (typeof l3KeepSelVisible === "function") requestAnimationFrame(l3KeepSelVisible);
   l3Render();
 }
 function l3Select(id) { l3SelectIds(id ? [id] : []); }
@@ -704,8 +705,22 @@ function l3Hover(e) {
     }
   });
 }
+/* Dubbelklick / dubbeltryck: zooma till objektet (Välj) eller till punkten. */
+function l3DoubleAt(e) {
+  if (l3.tool !== "select" || l3.addType) return;
+  const id = l3PlaceAt(e);
+  if (id) { l3SelectIds([id]); l3View("sel"); }
+  else { const h = l3Ray(e, l3Surfaces())[0]; if (h) l3FlyTo(h.point, Math.max(8, l3.camera.position.distanceTo(h.point) * 0.45)); }
+}
+let l3LastTouchTap = null;
 function l3Tap(e) {
   l3HideMenus();
+  // Pekskärm: två tryck på samma ställe = zooma dit (iPad/iPhone har inget dubbelklick på duken).
+  if (e.pointerType === "touch") {
+    const t = performance.now(), last = l3LastTouchTap;
+    l3LastTouchTap = { t, x: e.clientX, y: e.clientY };
+    if (last && t - last.t < 350 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 30 && l3.tool === "select" && !l3.addType) { l3LastTouchTap = null; l3DoubleAt(e); return; }
+  }
   if (l3.vPick) return l3VTap(e);
   if (typeof l3DlgPickTap === "function" && l3DlgPickTap(e)) return;
   if (l3.tool && l3.tool !== "select" && typeof l3ToolTap === "function" && l3ToolTap(e)) return;
@@ -942,7 +957,7 @@ function l3RenderSide(liveOnly) {
   const mH = A && A.bbox ? Math.round((A.bbox.max[2] - A.bbox.min[2]) * placeScale(p) * 100) / 100 : "";
   const itemOpts = (typeof items !== "undefined" ? items : []).filter(r => r.start_date || r.object_name).slice(0, 3000);
   const col = p.color || lib.color || "#888888";
-  side.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:${col}"></i><input type="text" class="v3-name" data-v3f="name" value="${escHtml(p.name || "")}" title="Namn" /><button type="button" class="v3-x" id="v3Deselect" title="Avmarkera (Esc)">✕</button></div>
+  side.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:${col}"></i><input type="text" class="v3-name" data-v3f="name" value="${escHtml(p.name || "")}" title="Namn" /><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3Deselect" title="Avmarkera (Esc)">✕</button></div>
     <div class="v3-sub">${escHtml(lib.label || p.type)}${A && A.author ? ` · ${escHtml(A.author)}` : ""}${A && A.kind === "ifc" && !placeMeshCache.has(A.id) ? " · IFC (läses in…)" : ""}</div>
     <div class="v3-sec">Läge</div>
     <div class="v3-grid">${f("x", "X")}${f("y", "Y")}${f("dz", "Över ytan")}${lib.fence ? "" : f("rot", "Vridning", "1", p.rot, "°")}</div>
@@ -1033,10 +1048,13 @@ function l3RenderLib() {
     const k = b.dataset.v3add;
     l3.fenceId = null;
     l3.addType = l3.addType === k ? null : k;
+    // Smal skärm: biblioteket ligger över modellen – fäll ihop det så att man kan trycka i 3D.
+    if (l3.addType && window.innerWidth < 700) { const pal = document.getElementById("v3Pal"), po = document.getElementById("v3PalOpen"); if (pal && po) { pal.classList.add("hidden"); po.classList.remove("hidden"); } }
     l3Status(l3.addType ? ((placeLib(k) || {}).fence ? "Staket: tryck första punkten." : "Tryck där objektet ska stå (marken eller ett objekt). Esc avbryter.") : "");
     l3RenderLib();
   }; });
   if (typeof l3HandlesPos === "function") l3HandlesPos(); // inga handtag medan man lägger till
+  if (typeof l3TouchBarUpdate === "function") l3TouchBarUpdate(); // Avbryt på pekskärm
 }
 
 /* Namn ovanför etableringen (högst 80, de närmaste). */
