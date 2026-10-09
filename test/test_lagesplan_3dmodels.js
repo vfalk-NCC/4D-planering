@@ -63,12 +63,14 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
     items = []; positions = [];
     renderPlanSelect(); await openPlan('A');
     window.__calls = [];
+    // Räkna IFC-trådar (stora modeller läses utanför sidans tråd).
+    const W = window.Worker; window.__workers = 0; window.Worker = function (u, o) { window.__workers++; return new W(u, o); };
     Object.defineProperty(window, 'opener', { value: { closed: false }, configurable: true, writable: true });
     // 4D-planering (som har TC-behörigheten) svarar på mapplistor och filer.
     askOpener = async (type, extra) => {
       window.__calls.push([type, extra && (extra.folderId || extra.fileId) || null]);
       if (type === 'tcFolder' && !extra.folderId) return { folderId: 'root', projectName: 'Kvarteret', items: [{ id: 'f1', name: 'Etablering', type: 'folder' }, { id: 'x1', name: 'Ritning.pdf', type: 'file', size: 2000 }] };
-      if (type === 'tcFolder' && extra.folderId === 'f1') return { folderId: 'f1', items: [{ id: 'F1', name: 'Bod.obj', type: 'file', size: obj.length, modified: '2026-10-01T10:00:00Z' }, { id: 'F2', name: 'Hus A.ifc', type: 'file', size: ifc.length }, { id: 'x2', name: 'Bild.png', type: 'file', size: 10 }] };
+      if (type === 'tcFolder' && extra.folderId === 'f1') return { folderId: 'f1', items: [{ id: 'F1', name: 'Bod.obj', type: 'file', size: obj.length, modified: '2026-10-01T10:00:00Z' }, { id: 'F2', name: 'Hus A.ifc', type: 'file', size: ifc.length, versionId: 'v1' }, { id: 'x2', name: 'Bild.png', type: 'file', size: 10 }] };
       if (type === 'tcFile' && extra.fileId === 'F1') return { bytes: new TextEncoder().encode(obj).buffer };
       if (type === 'tcFile' && extra.fileId === 'F2') return { bytes: new TextEncoder().encode(ifc).buffer };
       return {};
@@ -173,6 +175,11 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   await page.click('#v3PalLayers [data-l3l-sort="list"]');
   if (!/Hus A\.ifc/.test(await page.textContent('#v3PalLayers'))) fail('Inlästa ska lista modellen');
   if (!(await page.evaluate(() => window.__calls.some(c => c[0] === 'tcFile' && c[1] === 'F2')))) fail('Modellen ska hämtas via 4D-planering');
+  // Läst i en egen tråd och sparad i webbläsarens cache (samma version öppnas direkt nästa gång).
+  const wc = await page.evaluate(async () => { for (let i = 0; i < 40; i++) { const r = await l3bCacheGet({ fileId: 'F2', version: 'v1' }); if (r) return { workers: window.__workers, chunks: r.chunks.length, tris: r.tris }; await new Promise(res => setTimeout(res, 100)); } return { workers: window.__workers }; });
+  if (!wc.workers || !wc.chunks || !wc.tris) fail('IFC:n ska läsas i en egen tråd och sparas i cachen: ' + JSON.stringify(wc));
+  const fromCache = await page.evaluate(async () => { const rec = await l3bCacheGet({ fileId: 'F2', version: 'v1' }); const m = l3bFromCache(rec); return { meshes: m.meshes.length, tris: m.tris, ranges: m.ranges.length }; });
+  if (!fromCache.meshes || !fromCache.ranges) fail('Cachen ska ge tillbaka modellen: ' + JSON.stringify(fromCache));
 
   // Esc stänger rutan.
   await page.evaluate(() => l3PalTab('add'));

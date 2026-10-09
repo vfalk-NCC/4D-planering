@@ -7,7 +7,8 @@
 
 let l3b = { models: [], busy: false };
 const L3B_CHUNK = 80000;
-const l3bMaxTris = () => (matchMedia("(pointer: coarse)").matches ? 1500000 : 3000000);
+// Tak för trianglar (geometrin läses i en egen tråd i typade arrayer, så datorn klarar mer än förut).
+const l3bMaxTris = () => (matchMedia("(pointer: coarse)").matches ? 2000000 : 6000000);
 
 /* Lista över tända IFC-modeller (från 4D-planering) och val av vilka som ska visas. */
 async function l3bOpenDialog(boxId = "v3BldgBox") {
@@ -26,7 +27,7 @@ async function l3bOpenDialog(boxId = "v3BldgBox") {
     }).join("")}</div>
     <button type="button" class="v3-wide v3-primary" id="v3BldgGo">Visa valda</button>`;
   box.querySelector("#v3BldgGo").onclick = async () => {
-    const want = [...box.querySelectorAll("[data-bldg]")].map(c => ({ id: c.dataset.bldg, on: c.checked, name: (list.find(m => m.id === c.dataset.bldg) || {}).name }));
+    const want = [...box.querySelectorAll("[data-bldg]")].map(c => { const m = list.find(x => x.id === c.dataset.bldg) || {}; return { id: c.dataset.bldg, on: c.checked, name: m.name, version: m.version || "" }; });
     want.filter(w => !w.on).forEach(w => l3bShow(w.id, false));
     want.filter(w => w.on && loaded.has(w.id)).forEach(w => l3bShow(w.id, true));
     const todo = want.filter(w => w.on && !loaded.has(w.id));
@@ -54,18 +55,33 @@ async function l3bLoad(list) {
       const part = (a, b) => (i + a + (b - a)) / list.length;
       const lbl = `Byggnaden: ${w.name || "modellen"}${list.length > 1 ? ` (${i + 1} av ${list.length})` : ""}`;
       busyProgress("bldg", lbl, i / list.length);
+      // Redan inläst tidigare (samma version): direkt från webbläsarens cache, utan hämtning och läsning.
+      const cached = await l3bCacheGet(w);
+      if (cached) {
+        const m = l3bFromCache(cached);
+        m.id = w.id; m.name = cached.name || w.name; m.visible = true;
+        total += m.tris;
+        m.meshes.forEach(x => l3.groups.bldg.add(x));
+        l3b.models.push(m); l3bPosition();
+        busyProgress("bldg", lbl, part(0, 1));
+        continue;
+      }
       const tick = setInterval(() => { const j = busyJobs.get("bldg"); if (j && j.f < part(0, 0.55)) busyProgress("bldg", lbl, j.f + 0.01 / list.length); }, 400);
       let r;
       // En IFC-fil ur projektets mappar (Lager): hämtas som fil, utan TC:s placering i 3D-vyn.
-      try { r = w.fileId ? { ...(await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0)), name: w.name, placement: null } : await askOpener("ifcModelData", { modelId: w.id }, 0); }
+      // Hämtningens verkliga procent kommer från 4D-planering (0–55 % av modellens del av stapeln).
+      const dl = f => { clearInterval(tick); busyProgress("bldg", lbl, part(0, 0.55 * f)); };
+      try { r = w.fileId ? { ...(await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, dl)), name: w.name, placement: null } : await askOpener("ifcModelData", { modelId: w.id }, 0, dl); }
       finally { clearInterval(tick); }
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 0.6));
       l3Status(`Läser ${r.name || w.name} (${i + 1} av ${list.length})…`);
       await new Promise(res => setTimeout(res, 30));
-      const m = await l3bParse(r.bytes, r.placement, l3bMaxTris() - total);
+      const lblRead = `Läser ${r.name || w.name}`;
+      const m = await l3bParseAny(r.bytes, r.placement, l3bMaxTris() - total, f => busyProgress("bldg", lblRead, part(0, 0.6 + 0.4 * f)), ms => { ms.forEach(x => l3.groups.bldg.add(x)); l3Render(); });
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 1));
       m.id = w.id; m.name = r.name || w.name; m.visible = true;
       total += m.tris;
+      if (!m.capped) l3bCachePut(w, m); // i bakgrunden
       m.meshes.forEach(x => l3.groups.bldg.add(x));
       l3b.models.push(m);
       l3bPosition();
@@ -92,6 +108,106 @@ async function l3bLoad(list) {
 function l3bPosition() { l3b.models.forEach(m => m.meshes.forEach(x => x.position.set(m.O[0] - l3.O[0], m.O[1] - l3.O[1], m.O[2] - l3.O[2]))); }
 function l3bRebuild() { if (!l3b.models.length) return; l3b.models.forEach(m => m.meshes.forEach(x => { if (!x.parent) l3.groups.bldg.add(x); })); l3bPosition(); l3bRecolor(); }
 
+/* Cache i webbläsaren (IndexedDB) för lästa modeller, per modell och version (Victor 2026-10-09:
+   stora bygg-IFC:er). Bara geometri och objektens GUID/namn sparas; kopplingen till planeringen räknas
+   om vid öppning. Högst tre modeller sparas – den äldsta tas bort. Fel här stoppar aldrig inläsningen. */
+const L3B_DB = "lagesplan-ifc-cache", L3B_STORE = "models", L3B_KEEP = 3;
+function l3bDb() {
+  return new Promise((res, rej) => {
+    if (typeof indexedDB === "undefined") return rej(new Error("ingen IndexedDB"));
+    const q = indexedDB.open(L3B_DB, 1);
+    q.onupgradeneeded = () => q.result.createObjectStore(L3B_STORE);
+    q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+  });
+}
+const l3bCacheKey = w => (w && w.version ? `${projectId}|${w.fileId ? "f:" + w.fileId : w.id}|${w.version}` : null);
+async function l3bCacheGet(w) {
+  const key = l3bCacheKey(w);
+  if (!key) return null;
+  try {
+    const db = await l3bDb();
+    return await new Promise(res => { const q = db.transaction(L3B_STORE).objectStore(L3B_STORE).get(key); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); });
+  } catch (e) { return null; }
+}
+async function l3bCachePut(w, m) {
+  const key = l3bCacheKey(w);
+  if (!key) return;
+  try {
+    const db = await l3bDb();
+    const rec = { key, name: m.name, O: m.O, tris: m.tris, at: Date.now(),
+      chunks: m.meshes.map(x => ({ pos: x.geometry.getAttribute("position").array, col: x.geometry.getAttribute("color").array, idx: x.userData.l3b.origIdx,
+        ranges: x.userData.l3b.ranges.map(r => ({ start: r.start, count: r.count, guid: r.guid, name: r.name, base: r.base })) })) };
+    const st = db.transaction(L3B_STORE, "readwrite").objectStore(L3B_STORE);
+    st.put(rec, key);
+    // Rensa: behåll de senaste L3B_KEEP.
+    const all = await new Promise(res => { const out = []; const c = db.transaction(L3B_STORE).objectStore(L3B_STORE).openCursor(); c.onsuccess = () => { const cur = c.result; if (!cur) return res(out); out.push([cur.key, cur.value.at || 0]); cur.continue(); }; c.onerror = () => res(out); });
+    if (all.length > L3B_KEEP) { const del = db.transaction(L3B_STORE, "readwrite").objectStore(L3B_STORE); all.sort((a, b) => b[1] - a[1]).slice(L3B_KEEP).forEach(([k]) => del.delete(k)); }
+  } catch (e) { console.warn("Kunde inte spara modellen i cachen", e); }
+}
+function l3bFromCache(rec) {
+  const byGuid = new Map((items || []).filter(r => r.object_id).map(r => [String(r.object_id), r.id]));
+  const out = { meshes: [], ranges: [], tris: rec.tris || 0, O: rec.O, capped: false };
+  rec.chunks.forEach(c => {
+    const ranges = c.ranges.map(r => ({ ...r, itemId: r.guid ? byGuid.get(r.guid) || null : null }));
+    const m = l3bMeshFromArrays(c.pos, c.col.slice(), c.idx, ranges, out);
+    out.meshes.push(m); out.ranges.push(...ranges);
+  });
+  return out;
+}
+
+/* Stora modeller (Victor 2026-10-09: 115 MB fryste sidan): läs i en egen tråd (ifc-worker.js) med
+   procent, och visa bitarna medan resten läses. Går tråden inte att starta används l3bParse nedan. */
+async function l3bParseAny(bytes, placement, maxTris, onProgress, onMeshes) {
+  if (typeof Worker === "function" && !window.__l3NoWorker) {
+    try { return await l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes); }
+    catch (e) { if (!e || !e.workerStart) throw e; console.warn("IFC-tråden kunde inte starta – läser på sidan", e); }
+  }
+  const out = await l3bParse(bytes, placement, maxTris);
+  if (onMeshes) onMeshes(out.meshes.slice());
+  return out;
+}
+function l3bMeshFromArrays(pos, col, idx, ranges, out) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  g.setIndex(pos.length / 3 > 65535 ? new THREE.BufferAttribute(idx, 1) : new THREE.BufferAttribute(Uint16Array.from(idx), 1));
+  g.computeVertexNormals(); g.computeBoundingSphere(); g.computeBoundingBox();
+  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  m.userData.kind = "bldg"; m.userData.surface = true;
+  m.userData.l3b = { ranges, model: out, origIdx: g.index.array.slice(), hidden: new Set() };
+  return m;
+}
+function l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes) {
+  return new Promise((resolve, reject) => {
+    let wk;
+    try { wk = new Worker(new URL("ifc-worker.js", location.href).href); }
+    catch (e) { e.workerStart = true; reject(e); return; }
+    const byGuid = new Map((items || []).filter(r => r.object_id).map(r => [String(r.object_id), r.id]));
+    const out = { meshes: [], ranges: [], tris: 0, O: [...l3.O], capped: false };
+    let started = false;
+    wk.onmessage = ev => {
+      const d = ev.data || {};
+      started = true;
+      if (d.type === "progress") { if (onProgress) onProgress(d.f); }
+      else if (d.type === "chunk") {
+        d.ranges.forEach(r => { r.itemId = r.guid ? byGuid.get(r.guid) || null : null; });
+        const m = l3bMeshFromArrays(d.pos, d.col, d.idx, d.ranges, out);
+        out.meshes.push(m); out.ranges.push(...d.ranges); out.tris += d.idx.length / 3;
+        if (onMeshes) onMeshes([m]);
+      } else if (d.type === "done") { out.capped = !!d.capped; wk.terminate(); resolve(out); }
+      else if (d.type === "error") { fail(new Error(d.message)); }
+    };
+    // Avbrutet mitt i (t.ex. slut på minne): ta bort de bitar som hann visas.
+    const fail = err => {
+      wk.terminate();
+      out.meshes.forEach(m => { if (m.parent) m.parent.remove(m); m.geometry.dispose(); m.material.dispose(); });
+      reject(err);
+    };
+    wk.onerror = e => { const err = new Error(e.message || "IFC-tråden avbröts (för lite minne?)"); err.workerStart = !started; fail(err); };
+    const buf = bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes).slice().buffer;
+    wk.postMessage({ bytes: buf, placement, O: out.O, maxTris, chunkTris: L3B_CHUNK, base: new URL("vendor/web-ifc/", location.href).href }, [buf]);
+  });
+}
 /* IFC-bytes -> bitar (Mesh) med färg per objekt. placement = TC:s placering av modellen (mm). */
 async function l3bParse(bytes, placement, maxTris) {
   const api = await ifcmLoad();

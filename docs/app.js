@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-09 16:11";
+const APP_VERSION = "2026-10-09 17:13";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -370,7 +370,9 @@ function showLagesplanBanner(text, hideAfterMs) {
 window.addEventListener("message", async e => {
   if (e.origin !== location.origin || !e.data || !e.data.lagesplan || !e.source) return;
   const msg = e.data;
-  const reply = payload => e.source.postMessage({ lagesplanReply: true, reqId: msg.reqId, ...payload }, location.origin);
+  // Stora filer (IFC) flyttas till lägesplanen utan att kopieras (transfer); progress = hämtningens procent.
+  const reply = (payload, transfer) => e.source.postMessage({ lagesplanReply: true, reqId: msg.reqId, ...payload }, location.origin, transfer || []);
+  const progress = f => { try { e.source.postMessage({ lagesplanProgress: true, reqId: msg.reqId, f }, location.origin); } catch (er) { /* fönstret stängt */ } };
   try {
     if (msg.type === "hello") {
       reply({ settings, projectId, planSource });
@@ -391,22 +393,24 @@ window.addEventListener("message", async e => {
       let ms = [];
       try { ms = await API.viewer.getModels("loaded"); } catch (e) { ms = await API.viewer.getModels(); }
       const list = (ms || []).filter(m => (!m.state || m.state === "loaded") && /\.ifc(zip)?$/i.test(m.name || ""))
-        .map(m => ({ id: m.id, name: m.name, etab: /^Etablering /.test(m.name || "") }));
+        .map(m => ({ id: m.id, name: m.name, etab: /^Etablering /.test(m.name || ""), version: m.versionId || m.version || "" }));
       reply({ models: list });
     } else if (msg.type === "ifcModelData") {
       const ms = await API.viewer.getModels();
       const spec = (ms || []).find(m => m.id === msg.modelId);
       if (!spec) throw new Error("Modellen är inte tänd i Trimble Connect längre.");
       showLagesplanBanner(`Hämtar ${spec.name} till lägesplanens 3D-vy…`);
-      const bytes = await ifcSubsetUnzip(await ifcSubsetDownload(spec));
+      const bytes = await ifcSubsetUnzip(await ifcSubsetDownload(spec, progress));
       showLagesplanBanner("", 0);
-      reply({ name: spec.name, placement: spec.placement || null, bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) });
+      const buf = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.buffer : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      reply({ name: spec.name, placement: spec.placement || null, bytes: buf }, [buf]);
     } else if (msg.type === "tcFolder") {
       // Hämta modell i lägesplanens 3D-vy: bläddra i projektets mappar i TC.
       reply(await tcFolderItems(msg.folderId || null));
     } else if (msg.type === "tcFile") {
-      const bytes = await tcFileBytes(msg.fileId, msg.name);
-      reply({ bytes: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) });
+      const bytes = await tcFileBytes(msg.fileId, msg.name, progress);
+      const buf = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.buffer : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      reply({ bytes: buf }, [buf]);
     } else if (msg.type === "placementsChanged") {
       // 3D-vyn i lägesplanen har sparat etableringen: läs om (egna osparade ändringar sparas först).
       if (typeof place3dLoad === "function") {
@@ -534,9 +538,9 @@ async function tcFolderItems(folderId) {
   return { folderId: id, projectName: project.name || "", items };
 }
 /* En fil från TC som bytes (.ifczip packas upp till IFC). */
-async function tcFileBytes(fileId, name = "") {
+async function tcFileBytes(fileId, name = "", onProgress = null) {
   if (!fileId) throw new Error("Ingen fil vald.");
-  const bytes = await ifcSubsetDownload({ fileId });
+  const bytes = await ifcSubsetDownload({ fileId }, onProgress);
   return /\.ifczip$/i.test(name) ? ifcSubsetUnzip(bytes) : bytes;
 }
 

@@ -283,7 +283,7 @@ async function ifcSubsetReadSelection() {
   return out;
 }
 /* Modellens fil i Trimble Connect (den version som visas) som bytes. */
-async function ifcSubsetDownload(spec) {
+async function ifcSubsetDownload(spec, onProgress = null) {
   const tokenVal = await tcAccessToken();
   const project = await API.project.getProject();
   const base = await tcApiBase(tokenVal, project);
@@ -305,6 +305,8 @@ async function ifcSubsetDownload(spec) {
   let res = await fetch(url);
   if (res.status === 401 || res.status === 403) res = await fetch(url, { headers: H });
   if (!res.ok) throw new Error(`Kunde inte ladda ner modellfilen (${res.status}).`);
+  // Med procent (stora modeller tar tid): läs svaret bit för bit.
+  if (onProgress && res.body && typeof ghReadBodyWithProgress === "function") return new Uint8Array(await (await ghReadBodyWithProgress(res, f => onProgress(f))).arrayBuffer());
   return new Uint8Array(await res.arrayBuffer());
 }
 /* .ifczip -> IFC-bytes (JSZip laddas bara när det behövs). */

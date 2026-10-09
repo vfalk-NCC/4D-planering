@@ -67,18 +67,22 @@ let posPdfCache = null;    // item-id -> [x, y] i PDF-koordinater (för aktiv pl
 // ---------------------------------------------------------------------
 let bridgeSeq = 0;
 const bridgeWait = new Map();
+const bridgeProg = new Map(); // reqId -> onProgress (hämtningar från Trimble Connect)
 window.addEventListener("message", e => {
-  if (e.origin !== location.origin || !e.data || !e.data.lagesplanReply) return;
+  if (e.origin !== location.origin || !e.data) return;
+  if (e.data.lagesplanProgress) { const p = bridgeProg.get(e.data.reqId); if (p) try { p(e.data.f); } catch (er) { /* bara visning */ } return; }
+  if (!e.data.lagesplanReply) return;
   const done = bridgeWait.get(e.data.reqId);
   if (done) { bridgeWait.delete(e.data.reqId); done(e.data); }
 });
-function askOpener(type, extra = {}, timeoutMs = 10000) {
+function askOpener(type, extra = {}, timeoutMs = 10000, onProgress = null) {
   return new Promise((resolve, reject) => {
     const op = window.opener;
     if (!op || op.closed) return reject(new Error("4D-planering är inte öppen. Öppna lägesplanen via 🗺️-knappen i 4D-planering (i Trimble Connect) och låt den vara öppen."));
     const reqId = ++bridgeSeq;
     const timer = timeoutMs ? setTimeout(() => { bridgeWait.delete(reqId); reject(new Error("Inget svar från 4D-planering. Är den fortfarande öppen i Trimble Connect?")); }, timeoutMs) : null;
-    bridgeWait.set(reqId, d => { clearTimeout(timer); d.error ? reject(new Error(d.error)) : resolve(d); });
+    if (onProgress) bridgeProg.set(reqId, onProgress);
+    bridgeWait.set(reqId, d => { clearTimeout(timer); bridgeProg.delete(reqId); d.error ? reject(new Error(d.error)) : resolve(d); });
     try { op.postMessage({ lagesplan: true, type, reqId, ...extra }, location.origin); }
     catch (err) { clearTimeout(timer); bridgeWait.delete(reqId); reject(err); }
   });

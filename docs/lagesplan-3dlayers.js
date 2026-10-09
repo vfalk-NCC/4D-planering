@@ -115,7 +115,8 @@ async function l3lFile(fileId, name) {
   if (m) { l3bShow(id, !m.visible); l3RenderLegend(); l3Render(); l3LayersRender(); return; }
   if (l3lay.loading.has(fileId) || l3b.busy) { l3Status("Vänta tills den andra modellen är inläst."); return; }
   l3lay.loading.add(fileId); l3LayersRender();
-  try { await l3bLoad([{ id, fileId, name, on: true }]); }
+  const f = [...l3lay.folders.values()].flat().find(x => x.id === fileId) || {};
+  try { await l3bLoad([{ id, fileId, name, on: true, version: f.versionId || (f.modified ? String(f.modified) : "") }]); }
   finally { l3lay.loading.delete(fileId); l3RenderLegend(); l3Render(); l3LayersRender(); }
 }
 function l3lToggle(k) {
