@@ -103,6 +103,15 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   const placed = await page.evaluate(() => placements.map(p => ({ type: p.type, x: p.x, y: p.y })));
   if (placed.length !== 1 || !placed[0].type.startsWith('model:') || Math.abs(placed[0].x - 6512340) > 1.5) fail('Ett tryck ska placera modellen: ' + JSON.stringify(placed));
 
+  // Z (Victor 2026-10-09): underkant i modellens koordinater, går att skriva in; överkant visas.
+  await page.waitForSelector('#v3Side [data-v3f="zAbs"]', { timeout: 5000 });
+  const z0 = await page.inputValue('#v3Side [data-v3f="zAbs"]');
+  await page.fill('#v3Side [data-v3f="zAbs"]', '12,5'); await page.press('#v3Side [data-v3f="zAbs"]', 'Enter');
+  await page.$eval('#v3Side [data-v3f="zAbs"]', el => el.dispatchEvent(new Event('change')));
+  await page.waitForTimeout(150);
+  const zs = await page.evaluate(() => ({ dz: placements[0].dz, z: placements[0].z, base: placeBaseZ(placements[0]), txt: document.querySelector('#v3Side .v3-ztop').textContent, csv: l3CsvRows()[1].join(';') }));
+  if (zs.base !== 12.5 || !/Z 12,500 \(underkant\) – 15,000 \(överkant\)/.test(zs.txt) || !/12,5;15/.test(zs.csv)) fail('Z ska visas och gå att ändra: ' + JSON.stringify({ z0, ...zs }));
+
   // Esc stänger rutan.
   await page.click('#v3GetModel'); await page.waitForTimeout(150);
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);

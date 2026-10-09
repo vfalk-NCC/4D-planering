@@ -441,11 +441,11 @@ function l3CsvRows() {
   const q = ((document.getElementById("v3ObjSearch") || {}).value || "").trim().toLowerCase();
   const byId = new Map((typeof items !== "undefined" ? items : []).map(r => [r.id, r]));
   const n = v => v === "" || v == null || !Number.isFinite(Number(v)) ? "" : String(Math.round(Number(v) * 1000) / 1000).replace(".", ",");
-  const head = ["Namn", "Typ", "Längd (m)", "Bredd (m)", "Höjd (m)", "Räckvidd (m)", "Staketlängd (m)", "X", "Y", "Z", "Över ytan (m)", "Vridning (°)", "Start", "Slut", "Aktivitet", "Status på datumet"];
+  const head = ["Namn", "Typ", "Längd (m)", "Bredd (m)", "Höjd (m)", "Räckvidd (m)", "Staketlängd (m)", "X", "Y", "Z underkant", "Z överkant", "Över ytan (m)", "Vridning (°)", "Start", "Slut", "Aktivitet", "Status på datumet"];
   const rows = placements.filter(p => { const l = placeLib(p.type) || { label: p.type }; return !q || `${p.name} ${l.label}`.toLowerCase().includes(q); }).map(p => {
     const l = placeLib(p.type) || { label: p.type }, r = p.itemId ? byId.get(p.itemId) : null;
     const fl = l.fence ? (p.pts || []).reduce((s, q2, i, a) => i ? s + Math.hypot(q2[0] - a[i - 1][0], q2[1] - a[i - 1][1]) : 0, 0) : "";
-    return [p.name || "", l.label || p.type, l.fence || l.isModel ? "" : n(p.L), l.fence || l.isModel ? "" : n(p.B), n(p.H), l.R != null ? n(p.R) : "", n(fl), n(p.x), n(p.y), n(p.z), n(p.dz), l.fence ? "" : n(p.rot),
+    return [p.name || "", l.label || p.type, l.fence || l.isModel ? "" : n(p.L), l.fence || l.isModel ? "" : n(p.B), n(p.H), l.R != null ? n(p.R) : "", n(fl), n(p.x), n(p.y), n(placeBaseZ(p)), n(placeBaseZ(p) + (Number(l3PlaceHeight(p)) || 0)), n(p.dz), l.fence ? "" : n(p.rot),
       p.start || "", p.end || "", r ? [r.object_name, r.activity].filter(Boolean).join(" · ") : "", l3PlaceOnDate(p) ? "På plats" : "Ej på plats"];
   });
   return [head, ...rows];

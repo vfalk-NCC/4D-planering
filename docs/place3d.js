@@ -46,6 +46,17 @@ let placeUndoStack = [];
 
 const placeNum = (v, d = 0) => { const n = Number(String(v ?? "").replace(",", ".")); return Number.isFinite(n) ? n : d; };
 const placeR3 = v => Math.round(v * 1000) / 1000;
+/* Underkantens Z i modellens koordinater (SWEREF 99 20 15 och modellens höjdsystem, Victor 2026-10-09:
+   "så att jag vet i vilken höjd det ligger"): ytan objektet står på (z, eller staketets lägsta punkt)
+   plus höjden över ytan (dz). Att ändra Z ändrar bara dz – punkten på ytan ligger kvar. */
+function placeBaseZ(p) {
+  const ground = p.pts && p.pts.length ? Math.min(...p.pts.map(q => Number(q[2]) || 0)) : Number(p.z) || 0;
+  return placeR3(ground + (Number(p.dz) || 0));
+}
+function placeSetBaseZ(p, v) {
+  const ground = p.pts && p.pts.length ? Math.min(...p.pts.map(q => Number(q[2]) || 0)) : Number(p.z) || 0;
+  p.dz = placeR3(v - ground);
+}
 function placePath() { return `projects/${encodeURIComponent(projectId)}/plan_placements.json`; }
 /* opts.fresh: läs om från GitHub även om vi nyss skrev filen själva (t.ex. när 3D-vyn i
    lägesplanen har sparat ändringar). */
@@ -308,6 +319,7 @@ function placeNudge(dx, dy, dz, drot) {
   const box = document.getElementById("placePanel");
   const r = box && box.querySelector('[data-pf="rot"]'); if (r && document.activeElement !== r) r.value = act.rot;
   const z = box && box.querySelector('[data-pf="dz"]'); if (z && document.activeElement !== z) z.value = act.dz;
+  const za = box && box.querySelector('[data-pf="zAbs"]'); if (za && document.activeElement !== za) za.value = placeBaseZ(act);
   placeRefreshLight();
 }
 function placeStep() { try { return Number(localStorage.getItem("4dplan-place-step")) || 0.5; } catch (e) { return 0.5; } }
@@ -645,6 +657,7 @@ function renderPlacePanel() {
         ${L.R ? f("R", "Räckvidd m", "1") : ""}
         ${L.fence ? "" : f("rot", "Vrid °", "1")}
         ${f("dz", "Höjd över punkten m")}
+        <label title="Underkant i modellens koordinater (SWEREF 99 20 15, modellens höjdsystem)">Z underkant m<input type="number" step="0.01" data-pf="zAbs" value="${placeBaseZ(act)}" /></label>
       </div>
       ${L.fence ? "" : `<div class="row place-rot">
         <button type="button" data-rot="-15">↺ 15°</button><button type="button" data-rot="15">↻ 15°</button>
@@ -713,6 +726,7 @@ function bindPlacePanel(box, act) {
         const v = placeNum(inp.value, a[k]);
         if (k === "mH") { const A = (placeLib(a.type) || {}).model, h = A && A.bbox ? A.bbox.max[2] - A.bbox.min[2] : 0; if (h > 0 && v > 0) a.scale = Math.round(v / h * 10000) / 10000; return; }
         if (k === "scale") { a.scale = Math.max(0.0001, v); return; }
+        if (k === "zAbs") { placeSetBaseZ(a, placeNum(inp.value, placeBaseZ(a))); return; }
         a[k] = k === "rot" ? ((v % 360) + 360) % 360 : k === "dz" ? v : Math.max(k === "R" ? 0 : 0.01, v);
       }
     };

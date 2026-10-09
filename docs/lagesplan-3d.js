@@ -953,6 +953,8 @@ function l3RenderSide(liveOnly) {
   if (liveOnly && side.dataset.id === p.id) {
     const set = (k, v) => { const el = side.querySelector(`[data-v3f="${k}"]`); if (el && document.activeElement !== el) el.value = v == null ? "" : String(v).replace(".", ","); };
     ["x", "y", "dz", "rot", "L", "B", "H", "R"].forEach(k => set(k, p[k]));
+    set("zAbs", placeBaseZ(p));
+    const zt = side.querySelector(".v3-ztop"); if (zt) zt.textContent = l3ZText(p);
     return;
   }
   side.dataset.id = p.id;
@@ -963,7 +965,8 @@ function l3RenderSide(liveOnly) {
   side.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:${col}"></i><input type="text" class="v3-name" data-v3f="name" value="${escHtml(p.name || "")}" title="Namn" /><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3Deselect" title="Avmarkera (Esc)">✕</button></div>
     <div class="v3-sub">${escHtml(lib.label || p.type)}${A && A.author ? ` · ${escHtml(A.author)}` : ""}${A && A.kind === "ifc" && !placeMeshCache.has(A.id) ? " · IFC (läses in…)" : ""}</div>
     <div class="v3-sec">Läge</div>
-    <div class="v3-grid">${f("x", "X")}${f("y", "Y")}${f("dz", "Över ytan")}${lib.fence ? "" : f("rot", "Vridning", "1", p.rot, "°")}</div>
+    <div class="v3-grid">${f("x", "X")}${f("y", "Y")}${f("zAbs", "Z underkant", "0.01", placeBaseZ(p))}${f("dz", "Över ytan")}${lib.fence ? "" : f("rot", "Vridning", "1", p.rot, "°")}</div>
+    <div class="v3-sub v3-ztop" title="Modellens koordinater: SWEREF 99 20 15 och modellens höjdsystem">${l3ZText(p)}</div>
     ${lib.fence ? "" : `<div class="v3-handles"><span>Handtag</span><button type="button" data-v3mode="translate" title="Pilar för att flytta (W)">↔ Flytta</button><button type="button" data-v3mode="rotate" title="Ring för att vrida (E)">⟳ Vrid</button></div>`}
     <div class="v3-sec">Mått</div>
     <div class="v3-grid">${lib.isModel ? (A && A.kind === "mesh" ? f("mH", "Höjd", "0.1", mH) : `<div class="v3-sub">${typeof placeModelDims === "function" ? escHtml(placeModelDims(p)) : ""}</div>`) : lib.fence ? f("H", "Höjd") : f("L", "Längd") + f("B", "Bredd") + f("H", "Höjd")}
@@ -992,9 +995,14 @@ function l3RenderSide(liveOnly) {
         else if (k === "mH") { const h = A.bbox.max[2] - A.bbox.min[2]; if (h > 0 && v > 0) p.scale = Math.round(v / h * 10000) / 10000; }
         else if (k === "rot") p.rot = ((v % 360) + 360) % 360;
         else if (k === "dz") p.dz = v;
+        else if (k === "zAbs") placeSetBaseZ(p, placeNum(inp.value, placeBaseZ(p)));
         else p[k] = Math.max(k === "R" ? 0 : 0.01, v);
       }
       placeTouch(p); l3RebuildOne(p); l3Changed();
+      // Z och överkant följer med när höjd, "Över ytan" eller Z ändras.
+      const zt = side.querySelector(".v3-ztop"); if (zt) zt.textContent = l3ZText(p);
+      const za = side.querySelector('[data-v3f="zAbs"]'); if (za) za.value = String(placeBaseZ(p)).replace(".", ",");
+      const dzf = side.querySelector('[data-v3f="dz"]'); if (dzf && k === "zAbs") dzf.value = String(p.dz).replace(".", ",");
       if (k === "itemId" || k === "color") { side.dataset.id = ""; l3RenderSide(); }
     };
   });
@@ -1096,6 +1104,12 @@ function l3RenderLabels() {
     html += `<div class="v3-label ${l3.sel.has(p.id) ? "on" : ""} ${g && g.userData.off4d ? "off" : ""}" style="left:${x.toFixed(0)}px;top:${y.toFixed(0)}px">${escHtml(p.name || "")}</div>`;
   });
   host.innerHTML = html;
+}
+/* "Z 12,350 – 14,950 (överkant)": underkant och överkant i modellens koordinater. */
+function l3ZText(p) {
+  const z0 = placeBaseZ(p), z1 = placeR3(z0 + (Number(l3PlaceHeight(p)) || 0));
+  const n = v => v.toLocaleString("sv-SE", { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+  return `SWEREF 99 20 15 · Z ${n(z0)} (underkant) – ${n(z1)} (överkant)`;
 }
 function l3PlaceHeight(p) {
   const lib = placeLib(p.type) || {};
