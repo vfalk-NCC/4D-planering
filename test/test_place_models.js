@@ -199,7 +199,7 @@ for fn in sys.argv[1:]:
 `;
   const out = execFileSync('python3', ['-I', '-c', py, path.join(SP, 'pm0.ifc'), path.join(SP, 'pm1.ifc')]).toString();
   const lines = out.trim().split('\n').map(l => l.split(' '));
-  const bod = lines.find(l => l[0].startsWith('Byggbod')), pall = lines.find(l => l[0] === 'Pall');
+  const bod = lines.find(l => l.some(w => w.startsWith('Byggbod'))), pall = lines.find(l => l[0] === 'Pall');
   if (!bod || bod.slice(-6).join(' ') !== '48.0 52.0 58.0 62.0 1.0 13.0') fail('GLB-modellen ska hamna i punkten med skala 2: ' + out);
   if (!pall || pall.slice(-6).join(' ') !== '99.0 101.0 199.5 200.5 5.0 8.0') fail('IFC-filen ska flyttas och vridas till punkten: ' + out);
   if (pall[1] === '2O2Fr$t4X7Zf8NOew3FLOK') fail('Den placerade IFC:n ska få egna objekt-id:n');

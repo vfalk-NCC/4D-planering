@@ -10,15 +10,15 @@ const L3B_CHUNK = 80000;
 const l3bMaxTris = () => (matchMedia("(pointer: coarse)").matches ? 1500000 : 3000000);
 
 /* Lista över tända IFC-modeller (från 4D-planering) och val av vilka som ska visas. */
-async function l3bOpenDialog() {
-  const box = document.getElementById("v3BldgBox");
+async function l3bOpenDialog(boxId = "v3BldgBox") {
+  const box = document.getElementById(boxId);
   if (!box) return;
   box.innerHTML = `<div class="v3-pop-hint">Hämtar listan över tända modeller i Trimble Connect…</div>`;
   let list = [];
   try { list = (await askOpener("ifcModelsList", {}, 20000)).models || []; }
-  catch (e) { box.innerHTML = `<div class="v3-pop-hint bad">${escHtml(e.message)}</div><button type="button" class="v3-wide" id="v3BldgRetry">Försök igen</button>`; box.querySelector("#v3BldgRetry").onclick = l3bOpenDialog; return; }
+  catch (e) { box.innerHTML = `<div class="v3-pop-hint bad">${escHtml(e.message)}</div><button type="button" class="v3-wide" id="v3BldgRetry">Försök igen</button>`; box.querySelector("#v3BldgRetry").onclick = () => l3bOpenDialog(boxId); return; }
   const loaded = new Map(l3b.models.map(m => [m.id, m]));
-  if (!list.length && !loaded.size) { box.innerHTML = `<div class="v3-pop-hint">Inga IFC-modeller är tända i Trimble Connect. Tänd byggnadens modeller i TC och försök igen.</div><button type="button" class="v3-wide" id="v3BldgRetry">Försök igen</button>`; box.querySelector("#v3BldgRetry").onclick = l3bOpenDialog; return; }
+  if (!list.length && !loaded.size) { box.innerHTML = `<div class="v3-pop-hint">Inga IFC-modeller är tända i Trimble Connect. Tänd byggnadens modeller i TC och försök igen.</div><button type="button" class="v3-wide" id="v3BldgRetry">Försök igen</button>`; box.querySelector("#v3BldgRetry").onclick = () => l3bOpenDialog(boxId); return; }
   box.innerHTML = `<div class="v3-pop-hint">Välj vilka modeller som ska visas. Etableringsfiler visas redan som etablering.</div>
     <div class="v3-bldg-list">${list.map(m => {
       const L = loaded.get(m.id);
@@ -39,6 +39,7 @@ function l3bShow(id, on) {
   const m = l3b.models.find(x => x.id === id);
   if (!m) return;
   m.visible = on; m.meshes.forEach(x => { x.visible = on; });
+  if (typeof l3LayersRender === "function") l3LayersRender();
 }
 async function l3bLoad(list) {
   if (l3b.busy) return;
@@ -49,10 +50,20 @@ async function l3bLoad(list) {
     for (let i = 0; i < list.length; i++) {
       const w = list[i];
       l3Status(`Hämtar ${w.name || "modellen"} från Trimble Connect (${i + 1} av ${list.length})…`);
-      const r = await askOpener("ifcModelData", { modelId: w.id }, 0);
+      // Laddningsindikatorn: varje modell är en lika stor del av stapeln (hämtning 60 %, läsning 40 %).
+      const part = (a, b) => (i + a + (b - a)) / list.length;
+      const lbl = `Byggnaden: ${w.name || "modellen"}${list.length > 1 ? ` (${i + 1} av ${list.length})` : ""}`;
+      busyProgress("bldg", lbl, i / list.length);
+      const tick = setInterval(() => { const j = busyJobs.get("bldg"); if (j && j.f < part(0, 0.55)) busyProgress("bldg", lbl, j.f + 0.01 / list.length); }, 400);
+      let r;
+      // En IFC-fil ur projektets mappar (Lager): hämtas som fil, utan TC:s placering i 3D-vyn.
+      try { r = w.fileId ? { ...(await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0)), name: w.name, placement: null } : await askOpener("ifcModelData", { modelId: w.id }, 0); }
+      finally { clearInterval(tick); }
+      busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 0.6));
       l3Status(`Läser ${r.name || w.name} (${i + 1} av ${list.length})…`);
       await new Promise(res => setTimeout(res, 30));
       const m = await l3bParse(r.bytes, r.placement, l3bMaxTris() - total);
+      busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 1));
       m.id = w.id; m.name = r.name || w.name; m.visible = true;
       total += m.tris;
       m.meshes.forEach(x => l3.groups.bldg.add(x));
@@ -72,7 +83,9 @@ async function l3bLoad(list) {
     l3Status(`Byggnaden visas (${l3b.models.length} ${l3b.models.length === 1 ? "modell" : "modeller"}, ${(total / 1000).toFixed(0)}k trianglar). ${n} objekt är kopplade och färgas efter status. Tryck på ett objekt för att se det.`);
     if (first) l3Frame(true);
   } catch (e) { l3Status("Kunde inte visa byggnaden: " + (e && e.message ? e.message : e), true); }
+  busyProgress("bldg", "", null);
   l3b.busy = false;
+  if (typeof l3LayersRender === "function") l3LayersRender();
   l3Render();
 }
 /* Bitarna ligger relativt O när de lästes; flytta dem om origo bytts (annan arbetsyta). */

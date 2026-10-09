@@ -49,13 +49,18 @@ const pdfOvPages = new Map(); // plan-id -> { file, page }
 async function pdfOverlayPage(p) {
   const c = pdfOvPages.get(p.id);
   if (c && c.file === p.file_path && c.no === (p.page || 1)) return c.page;
-  if (!pdfCache.has(p.id)) {
-    const url = await ghReadBinaryUrl(token, p.file_path);
-    pdfCache.set(p.id, await (await fetch(url)).arrayBuffer());
-    URL.revokeObjectURL(url);
-  }
-  const doc = await pdfjsLib.getDocument({ data: pdfCache.get(p.id).slice(0) }).promise;
-  const page = await doc.getPage(Math.min(p.page || 1, doc.numPages));
+  const key = "ov:" + p.id, lbl = `Hämtar PDF-lagret ${p.name || ""}`.trim();
+  try {
+    if (!pdfCache.has(p.id)) {
+      busyProgress(key, lbl, 0);
+      const url = await ghReadBinaryUrl(token, p.file_path, busyStep(key, lbl, 0, 0.8));
+      pdfCache.set(p.id, await (await fetch(url)).arrayBuffer());
+      URL.revokeObjectURL(url);
+    }
+    busyProgress(key, lbl, 0.9);
+    const doc = await pdfjsLib.getDocument({ data: pdfCache.get(p.id).slice(0) }).promise;
+    var page = await doc.getPage(Math.min(p.page || 1, doc.numPages));
+  } finally { busyProgress(key, "", null); }
   pdfOvPages.set(p.id, { file: p.file_path, no: p.page || 1, page });
   return page;
 }

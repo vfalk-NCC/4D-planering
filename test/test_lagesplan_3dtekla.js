@@ -169,6 +169,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (JSON.stringify(await sel()) !== '["c"]') fail('Originalet ska vara kvar markerat (som i Tekla)');
   // Välj två punkter fyller dX/dY/dZ.
   await page.click('[data-sppick="lin"]');
+  // Dialogen ur vägen för punkterna (den bredare vänsterpanelen flyttar ritytan).
+  await page.evaluate(() => { const d = document.getElementById('v3Special'), c = document.getElementById('v3Canvas'); d.style.left = (c.clientWidth - d.offsetWidth - 10) + 'px'; });
   await tap(6512320, 150110, 2, 0, 0); await tap(6512320, 150120, 2, 0, 0);
   v = await page.evaluate(() => [document.querySelector('[data-sp="dx"]').value, document.querySelector('[data-sp="dy"]').value].map(Number));
   if (Math.abs(v[0]) > 0.3 || Math.abs(v[1] - 10) > 0.3) fail('Välj två punkter ska fylla dX/dY: ' + v);

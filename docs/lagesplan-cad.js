@@ -384,14 +384,17 @@ const cadLoading = new Map();
 async function ensureCadGeom(rec) {
   if (cadGeom.has(rec.id)) return cadGeom.get(rec.id);
   if (!cadLoading.has(rec.id)) cadLoading.set(rec.id, (async () => {
+    const key = "cad:" + rec.id, lbl = `Hämtar CAD-lagret ${rec.name || ""}`.trim();
+    busyProgress(key, lbl, 0);
     await loadScript(PAKO_URL);
-    const url = await ghReadBinaryUrl(token, rec.path);
+    const url = await ghReadBinaryUrl(token, rec.path, busyStep(key, lbl, 0.05, 0.8));
     const buf = await (await fetch(url)).arrayBuffer();
     URL.revokeObjectURL(url);
+    busyProgress(key, lbl, 0.85);
     const g = buildCadGeom(JSON.parse(pako.ungzip(new Uint8Array(buf), { to: "string" })));
     cadGeom.set(rec.id, g);
     return g;
-  })().finally(() => cadLoading.delete(rec.id)));
+  })().finally(() => { cadLoading.delete(rec.id); busyProgress("cad:" + rec.id, "", null); }));
   return cadLoading.get(rec.id);
 }
 /* Flera DXF:er: sex åt gången i stället för en i taget (Victor 2026-10-07: optimera – 34 DXF:er

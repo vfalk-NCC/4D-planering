@@ -784,8 +784,13 @@ function blobToImage(blob) {
 }
 async function ensureOrthoImage(o) {
   if (orthoImages.has(o.id)) return orthoImages.get(o.id);
-  const url = await ghReadBinaryUrl(token, o.path);
-  const im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+  const key = "or:" + o.id, lbl = `Hämtar ortofotot ${o.name || ""}`.trim();
+  let im;
+  try {
+    busyProgress(key, lbl, 0);
+    const url = await ghReadBinaryUrl(token, o.path, busyStep(key, lbl, 0, 0.9));
+    im = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+  } finally { busyProgress(key, "", null); }
   orthoImages.set(o.id, im);
   return im;
 }

@@ -43,8 +43,21 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
     const sha = 's' + (++n); store.set(f, { content: Buffer.from(body.content, 'base64').toString(), sha });
     r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha } }) });
   });
+  const ifc = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');", "FILE_NAME('b.ifc','',(''),(''),'','','');", "FILE_SCHEMA(('IFC4'));", "ENDSEC;", "DATA;",
+    "#1=IFCCARTESIANPOINT((0.,0.,0.));", "#2=IFCAXIS2PLACEMENT3D(#1,$,$);", "#3=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#2,$);",
+    "#4=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);", "#5=IFCUNITASSIGNMENT((#4));", "#6=IFCPROJECT('2O2Fr$t4X7Zf8NOew3FLOH',$,'B',$,$,$,$,(#3),#5);",
+    "#7=IFCLOCALPLACEMENT($,#2);", "#8=IFCSITE('2O2Fr$t4X7Zf8NOew3FLOI',$,'Site',$,$,#7,$,$,.ELEMENT.,$,$,$,$,$);", "#9=IFCRELAGGREGATES('2O2Fr$t4X7Zf8NOew3FLOJ',$,$,$,#6,(#8));",
+    "#12=IFCDIRECTION((0.,0.,1.));",
+    "#20=IFCCARTESIANPOINT((6512350.,150125.,0.));", "#21=IFCAXIS2PLACEMENT3D(#20,$,$);", "#22=IFCLOCALPLACEMENT(#7,#21);",
+    "#23=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.,4.);", "#24=IFCEXTRUDEDAREASOLID(#23,#2,#12,6.);", "#25=IFCSHAPEREPRESENTATION(#3,'Body','SweptSolid',(#24));", "#26=IFCPRODUCTDEFINITIONSHAPE($,$,(#25));",
+    "#27=IFCBUILDINGELEMENTPROXY('1hZq3$Bq9Fxu8nZK0bW1aA',$,'Pelare K10',$,$,#22,#26,$,$);",
+    "#30=IFCCARTESIANPOINT((6512380.,150125.,0.));", "#31=IFCAXIS2PLACEMENT3D(#30,$,$);", "#32=IFCLOCALPLACEMENT(#7,#31);",
+    "#33=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,2.,10.);", "#34=IFCEXTRUDEDAREASOLID(#33,#2,#12,3.);", "#35=IFCSHAPEREPRESENTATION(#3,'Body','SweptSolid',(#34));", "#36=IFCPRODUCTDEFINITIONSHAPE($,$,(#35));",
+    "#37=IFCBUILDINGELEMENTPROXY('3vB2YO$MX4xv5uCqZZG05x',$,'Vagg V1',$,$,#32,#36,$,$);",
+    "#40=IFCRELCONTAINEDINSPATIALSTRUCTURE('2O2Fr$t4X7Zf8NOew3FLOL',$,$,$,(#27,#37),#8);",
+    "ENDSEC;", "END-ISO-10303-21;"].join("\n");
   await page.goto(`http://localhost:${PORT}/lagesplan.html?project=p1`); await page.waitForTimeout(900);
-  await page.evaluate(async obj => {
+  await page.evaluate(async ([obj, ifc]) => {
     plans = [{ id: 'A', name: 'Plan 1', file_path: 'a.pdf', calib: { model: [[6512300, 150100, 0], [6512400, 150100, 0]], pdf: [[0, 0], [1000, 0]] }, zones: [] }];
     pdfCache.set('A', new Uint8Array([1]).buffer);
     items = []; positions = [];
@@ -55,11 +68,12 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
     askOpener = async (type, extra) => {
       window.__calls.push([type, extra && (extra.folderId || extra.fileId) || null]);
       if (type === 'tcFolder' && !extra.folderId) return { folderId: 'root', projectName: 'Kvarteret', items: [{ id: 'f1', name: 'Etablering', type: 'folder' }, { id: 'x1', name: 'Ritning.pdf', type: 'file', size: 2000 }] };
-      if (type === 'tcFolder' && extra.folderId === 'f1') return { folderId: 'f1', items: [{ id: 'F1', name: 'Bod.obj', type: 'file', size: obj.length, modified: '2026-10-01T10:00:00Z' }, { id: 'x2', name: 'Bild.png', type: 'file', size: 10 }] };
+      if (type === 'tcFolder' && extra.folderId === 'f1') return { folderId: 'f1', items: [{ id: 'F1', name: 'Bod.obj', type: 'file', size: obj.length, modified: '2026-10-01T10:00:00Z' }, { id: 'F2', name: 'Hus A.ifc', type: 'file', size: ifc.length }, { id: 'x2', name: 'Bild.png', type: 'file', size: 10 }] };
       if (type === 'tcFile' && extra.fileId === 'F1') return { bytes: new TextEncoder().encode(obj).buffer };
+      if (type === 'tcFile' && extra.fileId === 'F2') return { bytes: new TextEncoder().encode(ifc).buffer };
       return {};
     };
-  }, OBJ);
+  }, [OBJ, ifc]);
   await page.click('#btn3d');
   await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.renderer, null, { timeout: 15000 });
   await page.waitForTimeout(400);
@@ -85,6 +99,10 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   if (!/Kvarteret.*Etablering/.test(crumbs) || !/1 andra filer/.test(await page.textContent('#v3Models'))) fail('Undermappen ska visas med sökväg och antal dolda filer: ' + crumbs);
   await page.click('#v3Models [data-tcfile="F1"]');
   await page.waitForSelector('#pmAccept', { timeout: 10000 });
+  // Namnet föreslås som dagens datum (ÅÅMMDD) + modellens namn och är markerat för att kunna ändras.
+  const dn = await page.evaluate(() => ({ v: document.querySelector('#pmName').value, f: document.activeElement && document.activeElement.id }));
+  const ymd = new Date().toISOString().slice(2, 10).replace(/-/g, '');
+  if (dn.v !== `${ymd} Bod` || dn.f !== 'pmName') fail('Namnet ska föreslås som ÅÅMMDD + namn och vara markerat: ' + JSON.stringify(dn));
   const conf = await page.textContent('#v3Models .pm-confirm');
   if (!/6 × 2.6 × 2.5 m/.test(conf)) fail('Bekräftelsen ska visa modellens mått: ' + conf);
   await page.fill('#pmName', 'Bod från TC');
@@ -112,14 +130,62 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   const zs = await page.evaluate(() => ({ dz: placements[0].dz, z: placements[0].z, base: placeBaseZ(placements[0]), txt: document.querySelector('#v3Side .v3-ztop').textContent, csv: l3CsvRows()[1].join(';') }));
   if (zs.base !== 12.5 || !/Z 12,500 \(underkant\) – 15,000 \(överkant\)/.test(zs.txt) || !/12,5;15/.test(zs.csv)) fail('Z ska visas och gå att ändra: ' + JSON.stringify({ z0, ...zs }));
 
+  // Tydlig markering: lila konturer på det markerade objektet.
+  const edges = await page.evaluate(() => { let n = 0; l3.placeMeshes.get(placements[0].id).traverse(o => { if (o.userData.selEdge) n++; }); return n; });
+  if (!edges) fail('Det markerade objektet ska få konturer');
+  // Högerpanelen kan breddas.
+  const rs = await page.locator('#v3Side > .v3-rs').boundingBox();
+  const w0 = await page.evaluate(() => document.getElementById('v3Side').getBoundingClientRect().width);
+  await page.mouse.move(rs.x + 3, rs.y + rs.height / 2); await page.mouse.down(); await page.mouse.move(rs.x - 120, rs.y + rs.height / 2, { steps: 4 }); await page.mouse.up();
+  const w1 = await page.evaluate(() => ({ w: document.getElementById('v3Side').getBoundingClientRect().width, pref: l3Prefs().sideW }));
+  if (w1.w < w0 + 100 || Math.abs(w1.pref - w1.w) > 2) fail('Högerpanelen ska gå att bredda och bredden sparas: ' + JSON.stringify({ w0, ...w1 }));
+  await page.evaluate(() => l3SelectIds([]));
+
+  // Lägg till-menyn: grupperna fälls ihop och ut.
+  await page.evaluate(() => l3PalTab('add'));
+  await page.click('#v3Lib [data-v3grp="Maskiner"]');
+  if (await page.$('#v3Lib [data-v3add="tornkran"]') || !(await page.evaluate(() => (l3Prefs().palClosed || []).includes('Maskiner')))) fail('Gruppen ska fällas ihop och sparas');
+  await page.click('#v3Lib [data-v3grp="Maskiner"]');
+  if (!(await page.$('#v3Lib [data-v3add="tornkran"]'))) fail('Gruppen ska fällas ut igen');
+
+  // Lager: ritningen som mark, etableringen per typ och projektets modeller i mappar.
+  await page.click('[data-paltab="layers"]');
+  await page.waitForSelector('#v3PalLayers [data-l3l="plan"]');
+  const plan0 = await page.evaluate(() => l3Prefs().plan);
+  await page.click('#v3PalLayers [data-l3l="plan"]');
+  const st = await page.evaluate(() => [l3Prefs().plan, l3.planMesh ? l3.planMesh.visible : null]);
+  if (st[0] !== !plan0 || (st[1] !== null && st[1] !== !plan0)) fail('Ritningen ska tändas/släckas i Lager: ' + st);
+  const typeBtn = '#v3PalLayers [data-l3l-type^="model:"]';
+  await page.click(typeBtn);
+  if (await page.evaluate(() => l3.placeMeshes.get(placements[0].id).visible)) fail('Typen ska kunna släckas i Lager');
+  await page.click(typeBtn);
+  if (!(await page.evaluate(() => l3.placeMeshes.get(placements[0].id).visible))) fail('Typen ska kunna tändas igen');
+  await page.waitForSelector('#v3PalLayers [data-l3l-dir="f1"]', { timeout: 5000 });
+  await page.click('#v3PalLayers [data-l3l-dir="f1"]');
+  await page.waitForSelector('#v3PalLayers [data-l3l-file="F2"]', { timeout: 5000 });
+  if (await page.$('#v3PalLayers [data-l3l-file="F1"]')) fail('Lager ska bara visa IFC-filer');
+  await page.click('#v3PalLayers [data-l3l-file="F2"]');
+  await page.waitForFunction(() => l3b.models.some(m => m.id === 'f:F2' && m.visible), null, { timeout: 30000 });
+  await page.waitForTimeout(200);
+  if (!(await page.evaluate(() => document.querySelector('#v3PalLayers [data-l3l-file="F2"]').classList.contains('on')))) fail('Ögat ska visa att modellen är tänd');
+  await page.click('#v3PalLayers [data-l3l-file="F2"]');
+  if (await page.evaluate(() => l3b.models.find(m => m.id === 'f:F2').visible)) fail('Ögat ska släcka modellen');
+  await page.click('#v3PalLayers [data-l3l-sort="list"]');
+  if (!/Hus A\.ifc/.test(await page.textContent('#v3PalLayers'))) fail('Inlästa ska lista modellen');
+  if (!(await page.evaluate(() => window.__calls.some(c => c[0] === 'tcFile' && c[1] === 'F2')))) fail('Modellen ska hämtas via 4D-planering');
+
   // Esc stänger rutan.
+  await page.evaluate(() => l3PalTab('add'));
   await page.click('#v3GetModel'); await page.waitForTimeout(150);
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
   if (!(await page.isHidden('#v3Models'))) fail('Esc ska stänga Hämta modell');
   // Snabbsök (Ctrl+K) har kommandot.
   if (!(await page.evaluate(() => l3Commands().some(c => /Hämta modell/.test(c.label))))) fail('Snabbsök ska ha Hämta modell');
 
-  if (process.env.SHOT) { await page.click('#v3GetModel'); await page.click('#v3Models [data-pmtab="tc"]'); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SHOT }); }
+  if (process.env.SHOT) {
+    await page.evaluate(() => { l3PalTab('layers'); l3SetPref('laySort', 'tree'); l3LayersRender(); l3SelectIds([placements[0].id]); });
+    await page.waitForTimeout(300); await page.screenshot({ path: process.env.SHOT });
+  }
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_3dmodels');
   await browser.close(); server.close();

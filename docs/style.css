@@ -1257,3 +1257,7 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .pm-tcr.dir:hover { background: #f1f5ff; }
 .pm-tcn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pm-tcr .hint { white-space: nowrap; }
+.pm-bar { display: block; height: 5px; margin-top: 5px; border-radius: 999px; background: #e0e7ff; overflow: hidden; position: relative; }
+.pm-bar b { display: block; height: 100%; border-radius: 999px; background: #1d4ed8; transition: width .2s; }
+.pm-bar.ind b { position: absolute; animation: pmInd 1.2s ease-in-out infinite; }
+@keyframes pmInd { from { left: -35%; } to { left: 100%; } }

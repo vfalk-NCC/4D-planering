@@ -402,6 +402,8 @@ function l3ClearClips() { l3.clips = []; l3ApplyClips(); l3DlgClose("v3Clip"); l
 // Objektlistan (Organizer)
 // ---------------------------------------------------------------------
 function l3RenderObjList() {
+  // Lager-fliken visar också etableringen per typ: håll den aktuell.
+  { const lay = document.getElementById("v3PalLayers"); if (lay && !lay.classList.contains("hidden") && typeof l3LayersRender === "function") l3LayersRender(); }
   const host = document.getElementById("v3ObjList");
   if (!host || !l3 || host.closest(".hidden")) return;
   const q = ((document.getElementById("v3ObjSearch") || {}).value || "").trim().toLowerCase();
@@ -532,6 +534,8 @@ function l3PalTab(t) {
   document.querySelectorAll("[data-paltab]").forEach(b => b.classList.toggle("on", b.dataset.paltab === t));
   document.getElementById("v3PalAdd").classList.toggle("hidden", t !== "add");
   document.getElementById("v3PalList").classList.toggle("hidden", t !== "list");
+  const lay = document.getElementById("v3PalLayers"); if (lay) lay.classList.toggle("hidden", t !== "layers");
   l3SetPref("palTab", t);
   if (t === "list") l3RenderObjList();
+  if (t === "layers" && typeof l3LayersRender === "function") l3LayersRender();
 }

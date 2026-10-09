@@ -170,7 +170,27 @@ function todayIso() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-function setBusy(t) { $("busy").textContent = t; $("busy").classList.toggle("hidden", !t); }
+/* Laddningsindikator (Victor 2026-10-09: "laddningsindikator på alla ställen där det är risk för
+   laddningstider längre än 2 sekunder"). Flera jobb kan pågå; det senaste visas med text, procent och
+   stapel. f = 0–1 visar procent, f = -1 en rullande stapel (okänd längd), null tar bort jobbet. */
+const busyJobs = new Map();
+function busyProgress(key, label, f) {
+  if (f == null) busyJobs.delete(key); else { busyJobs.delete(key); busyJobs.set(key, { label, f }); }
+  renderBusy();
+}
+/* onProgress-funktion för nedladdningar: f (0–1) skalas till [a, b] av jobbets stapel. */
+function busyStep(key, label, a = 0, b = 1) { return f => busyProgress(key, label, a + (b - a) * Math.max(0, Math.min(1, f))); }
+function renderBusy() {
+  const el = $("busy");
+  if (!el) return;
+  const jobs = [...busyJobs.values()], j = jobs[jobs.length - 1];
+  if (!j) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+  const pct = j.f >= 0 ? Math.max(1, Math.min(100, Math.round(j.f * 100))) : null;
+  el.innerHTML = `<span class="busy-t">${uiEsc(j.label)}${pct != null ? ` – ${pct} %` : ""}${jobs.length > 1 ? ` <em>(+${jobs.length - 1})</em>` : ""}</span>` +
+    (j.f === undefined ? "" : `<i class="busy-bar${pct == null ? " ind" : ""}"><b style="width:${pct == null ? 35 : pct}%"></b></i>`);
+  el.classList.remove("hidden");
+}
+function setBusy(t) { if (t) busyJobs.set("_", { label: t, f: undefined }); else busyJobs.delete("_"); renderBusy(); }
 function setSaveStatus(t) {
   $("saveStatus").textContent = t;
   // Borttagningar och annat som går att ångra visas också som en notis med en
@@ -877,15 +897,18 @@ async function openPlan(id) {
   itemCodeCache.clear();
   invalidatePositions();
   if (calib) cancelCalib();
-  setBusy("Hämtar PDF…");
+  const lbl = `Öppnar ${plan.name || "arbetsytan"}`;
+  busyProgress("plan", lbl, 0);
   try {
     if (!pdfCache.has(id)) {
-      const url = await ghReadBinaryUrl(token, plan.file_path);
+      const url = await ghReadBinaryUrl(token, plan.file_path, busyStep("plan", lbl, 0, 0.7));
       pdfCache.set(id, await (await fetch(url)).arrayBuffer());
       URL.revokeObjectURL(url);
     }
+    busyProgress("plan", lbl, 0.75);
     pdfDoc = await pdfjsLib.getDocument({ data: pdfCache.get(id).slice(0) }).promise;
     page = await pdfDoc.getPage(Math.min(plan.page || 1, pdfDoc.numPages));
+    busyProgress("plan", lbl, 0.85);
     $("pdfHiCanvas").width = 0;
     await renderPdf();
     renderOrtho();
@@ -896,7 +919,7 @@ async function openPlan(id) {
   } catch (e) {
     alert("Kunde inte öppna PDF:en: " + e.message);
   } finally {
-    setBusy("");
+    busyProgress("plan", "", null);
   }
   renderZones();
 }

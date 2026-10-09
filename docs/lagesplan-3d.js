@@ -217,13 +217,14 @@ function l3Dom() {
     </div>
     <div class="v3-main">
       <div class="v3-pal ${P.pal ? "" : "hidden"}" id="v3Pal">
-        <div class="v3-pal-head"><div class="v3-segs v3-paltabs"><button type="button" data-paltab="add" class="${(P.palTab || "add") === "add" ? "on" : ""}">Lägg till</button><button type="button" data-paltab="list" class="${P.palTab === "list" ? "on" : ""}">Objekt</button></div><button type="button" id="v3PalClose" title="Dölj panelen">‹</button></div>
+        <div class="v3-pal-head"><div class="v3-segs v3-paltabs"><button type="button" data-paltab="add" class="${(P.palTab || "add") === "add" ? "on" : ""}">Lägg till</button><button type="button" data-paltab="list" class="${P.palTab === "list" ? "on" : ""}">Objekt</button><button type="button" data-paltab="layers" class="${P.palTab === "layers" ? "on" : ""}">Lager</button></div><button type="button" id="v3PalClose" title="Dölj panelen">‹</button></div>
         <div id="v3PalAdd" class="v3-paltab ${(P.palTab || "add") === "add" ? "" : "hidden"}">
           <input type="search" id="v3PalSearch" placeholder="Sök…" />
           <div id="v3Lib"></div>
           <button type="button" id="v3GetModel" class="v3-wide" title="Hämta en 3D-modell från Sketchfab, projektets mappar i Trimble Connect eller en fil – den hamnar under Egna modeller">＋ Hämta modell…</button>
           <div class="v3-pal-hint">Tryck på ett objekt här och sedan där det ska stå. Staket: tryck punkt för punkt och avsluta med Enter.</div>
         </div>
+        <div id="v3PalLayers" class="v3-paltab v3-layers ${P.palTab === "layers" ? "" : "hidden"}"></div>
         <div id="v3PalList" class="v3-paltab ${P.palTab === "list" ? "" : "hidden"}">
           <input type="search" id="v3ObjSearch" placeholder="Sök i etableringen…" />
           <div id="v3ObjList"></div>
@@ -267,6 +268,7 @@ function l3Dom() {
   $3("v3ObjCsv").onclick = () => l3ExportCsv();
   $3("v3SvName").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); svSave(); } else if (e.key === "Escape") { e.preventDefault(); e.target.blur(); l3HideMenus(); } };
   l3RenderSavedViews(); dd("v3ShowBtn", "v3Show"); dd("v3EditBtn", "v3Edit");
+  if (typeof l3LayersInit === "function") l3LayersInit(); // Lager-fliken och breddbara paneler
   box.querySelectorAll("[data-v3cmd]").forEach(b => { b.onclick = () => { l3HideMenus(); ({ cspec: () => l3OpenSpecial("copy"), mspec: () => l3OpenSpecial("move"), dup: l3DuplicateSel, copy: l3CopySel, paste: () => l3Paste(), drop: l3DropSel, del: l3DeleteSel, all: () => l3SelectIds(placements.filter(p => !l3.hidden.has(p.id)).map(p => p.id)), similar: l3SelectSimilar, hide: l3HideSel, iso: l3Isolate, showall: l3ShowAll, clash: l3OpenClash })[b.dataset.v3cmd](); }; });
   $3("v3ClipBtn").onclick = () => { if (l3.clips && l3.clips.length) l3RenderClipDlg(); l3StartClip(); };
   $3("v3LaunchBtn").onclick = e => { e.stopPropagation(); l3OpenLaunch(); };
@@ -276,7 +278,7 @@ function l3Dom() {
   $3("v3AutoRot").onchange = e => { l3SetPref("autoRot", e.target.checked); mouseHint(); };
   box.querySelectorAll("[data-v3mouse]").forEach(b => { b.onclick = () => { l3SetPref("mouse", b.dataset.v3mouse); box.querySelectorAll("[data-v3mouse]").forEach(x => x.classList.toggle("on", x === b)); if (l3) l3ApplyMouse(); mouseHint(); }; });
   mouseHint();
-  $3("v3ShowPlan").onchange = e => { l3SetPref("plan", e.target.checked); if (l3.planMesh) l3.planMesh.visible = e.target.checked; l3Render(); };
+  $3("v3ShowPlan").onchange = e => { l3SetPref("plan", e.target.checked); if (l3.planMesh) l3.planMesh.visible = e.target.checked; if (typeof l3LayersRender === "function") l3LayersRender(); l3Render(); };
   box.querySelectorAll("[data-v3e4d]").forEach(b => { b.onclick = () => { l3SetPref("etab4d", b.dataset.v3e4d); box.querySelectorAll("[data-v3e4d]").forEach(x => x.classList.toggle("on", x === b)); l3Etab4dAll(); }; });
   box.querySelectorAll("[data-v3objs]").forEach(b => { b.onclick = () => { l3SetPref("objs", b.dataset.v3objs); box.querySelectorAll("[data-v3objs]").forEach(x => x.classList.toggle("on", x === b)); l3BuildObjects(); l3Render(); }; });
   $3("v3LabelsChk").onchange = e => { l3SetPref("labels", e.target.checked); l3Render(); };
@@ -448,6 +450,7 @@ async function l3BuildPlan() {
   m.userData.surface = true; m.userData.kind = "plan";
   l3.planMesh = m; l3.groups.plan.add(m);
   m.visible = l3Prefs().plan;
+  if (typeof l3lApplyPlanOp === "function") l3lApplyPlanOp();
 }
 
 /* Status (fas) för en planeringsrad vid datumet i lägesplanen. */
@@ -674,10 +677,29 @@ function l3SelectIds(ids) {
   l3Render();
 }
 function l3Select(id) { l3SelectIds(id ? [id] : []); }
+/* Tydlig markering (Victor 2026-10-09): objektet tonas lila, får lila konturer som syns även bakom
+   annat och en lila ram runt sig. Konturerna sitter på själva objektet och följer med handtagen. */
+const L3_SEL_COL = 0x6d5efc, L3_SEL_TINT = 0x2b1d8f;
+function l3SelDeco(g, on) {
+  if (!g) return;
+  const meshes = []; g.traverse(o => { if (o.isMesh && !o.userData.selEdge) meshes.push(o); });
+  meshes.forEach(o => {
+    if (o.material && o.material.emissive) o.material.emissive.setHex(on ? L3_SEL_TINT : 0x000000);
+    if (on && !o.userData.selEdges && o.geometry) {
+      const e = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 30), new THREE.LineBasicMaterial({ color: L3_SEL_COL, depthTest: false, transparent: true, opacity: .9 }));
+      e.renderOrder = 6; e.userData.selEdge = true; e.raycast = () => {};
+      o.add(e); o.userData.selEdges = e;
+    } else if (!on && o.userData.selEdges) {
+      const e = o.userData.selEdges; o.remove(e); e.geometry.dispose(); e.material.dispose(); delete o.userData.selEdges;
+    }
+  });
+}
 function l3RefreshSel() {
   if (!l3) return;
   l3Clear(l3.groups.sel);
-  l3.sel.forEach(id => { const g = l3.placeMeshes.get(id); if (g) { const h = new THREE.BoxHelper(g, 0xf59e0b); h.material.depthTest = false; h.renderOrder = 5; l3.groups.sel.add(h); } });
+  (l3.selDeco || new Set()).forEach(id => { if (!l3.sel.has(id)) l3SelDeco(l3.placeMeshes.get(id), false); });
+  l3.selDeco = new Set(l3.sel);
+  l3.sel.forEach(id => { const g = l3.placeMeshes.get(id); if (g) { l3SelDeco(g, true); const h = new THREE.BoxHelper(g, L3_SEL_COL); h.material.depthTest = false; h.material.transparent = true; h.material.opacity = .55; h.renderOrder = 5; l3.groups.sel.add(h); } });
   const one = l3.sel.size === 1 && (l3.tool || "select") === "select" ? l3.placeMeshes.get([...l3.sel][0]) : null;
   if (one) { if (l3.gizmo.object !== one) l3.gizmo.attach(one); } else l3.gizmo.detach();
   if (one) l3Mode(l3.gizmo.mode || "translate");
@@ -685,7 +707,7 @@ function l3RefreshSel() {
 }
 function l3SetHover(id) {
   if (!l3 || l3.hoverId === id) return;
-  const set = (pid, on) => { const g = pid && l3.placeMeshes.get(pid); if (g) g.traverse(o => { if (o.isMesh && o.material && o.material.emissive) o.material.emissive.setHex(on ? 0x3b3b1a : 0x000000); }); };
+  const set = (pid, on) => { const g = pid && l3.placeMeshes.get(pid); if (g) g.traverse(o => { if (o.isMesh && !o.userData.selEdge && o.material && o.material.emissive) o.material.emissive.setHex(on ? 0x3b3b1a : l3.sel.has(pid) ? L3_SEL_TINT : 0x000000); }); };
   set(l3.hoverId, false); l3.hoverId = id; set(id, true);
   l3.renderer.domElement.style.cursor = id ? "pointer" : "";
   l3Render();
@@ -1048,12 +1070,21 @@ function l3RenderLib() {
   const groups = {};
   Object.entries(PLACE_LIB).forEach(([k, l]) => { (groups[l.group] = groups[l.group] || []).push([k, l.label, l.color]); });
   if (assets.length) groups["Egna modeller"] = assets.map(a => [`model:${a.id}`, a.name, a.kind === "ifc" ? "#0e7490" : "#64748b"]);
+  // Grupperna fälls ihop/ut med ett klick på rubriken (Victor 2026-10-09); valet sparas. Vid sökning visas alla träffar.
+  const closed = new Set(l3Prefs().palClosed || []);
   const html = Object.entries(groups).map(([g, list]) => {
     const f = list.filter(([, l]) => !q || l.toLowerCase().includes(q));
     if (!f.length) return "";
-    return `<div class="v3-pal-g">${escHtml(g)}</div>` + f.map(([k, l, c]) => `<button type="button" data-v3add="${escHtml(k)}" class="${l3 && l3.addType === k ? "on" : ""}" title="${escHtml(l)}"><i style="background:${c}"></i><span>${escHtml(l)}</span></button>`).join("");
+    const open = q || !closed.has(g) || f.some(([k]) => l3 && l3.addType === k);
+    return `<button type="button" class="v3-pal-g" data-v3grp="${escHtml(g)}" aria-expanded="${open}"><span>${escHtml(g)}</span><em>${f.length}</em></button>` +
+      (open ? `<div class="v3-pal-items">` + f.map(([k, l, c]) => `<button type="button" data-v3add="${escHtml(k)}" class="${l3 && l3.addType === k ? "on" : ""}" title="${escHtml(l)}"><i style="background:${c}"></i><span>${escHtml(l)}</span></button>`).join("") + `</div>` : "");
   }).join("");
   el.innerHTML = html || `<div class="v3-pal-hint">Inget matchar "${escHtml(q)}".</div>`;
+  el.querySelectorAll("[data-v3grp]").forEach(b => { b.onclick = () => {
+    const g = b.dataset.v3grp, set = new Set(l3Prefs().palClosed || []);
+    if (b.getAttribute("aria-expanded") === "true") set.add(g); else set.delete(g);
+    l3SetPref("palClosed", [...set]); l3RenderLib();
+  }; });
   el.querySelectorAll("[data-v3add]").forEach(b => { b.onclick = () => {
     if (typeof l3SetTool === "function" && l3.tool !== "select") l3SetTool("select");
     const k = b.dataset.v3add;

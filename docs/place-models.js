@@ -744,7 +744,10 @@ async function pmFromTc(fileId, name) {
   const size = ((pmState.tcItems || []).find(x => x.id === fileId) || {}).size || 0;
   const max = /\.ifc(zip)?$/i.test(name) ? PM_MAX_IFC : PM_MAX_DOWNLOAD;
   if (size > max * (/\.ifczip$/i.test(name) ? 0.5 : 1)) throw new Error(`Filen är för stor (${pmBytes(size)}, max ${Math.round(max / 1048576)} MB).`);
+  // Hämtningen går via 4D-planering – längden är okänd, så stapeln rullar tills filen är här.
+  pmProgress(`Hämtar ${name} från Trimble Connect`, -1);
   const r = await pmTc("file", { fileId, name });
+  pmProgress(`Läser ${name}`, 0.9);
   const fname = name.replace(/\.ifczip$/i, ".ifc");
   const pd = await pmFromFile(new File([r.bytes], fname));
   pd.source = "Trimble Connect";
@@ -798,7 +801,10 @@ async function sfImport(uid) {
   if (pick.size > PM_MAX_DOWNLOAD) throw new Error(`Modellen är för stor (${Math.round(pick.size / 1048576)} MB). Välj en enklare modell.`);
   const res = await fetch(pick.url);
   if (!res.ok) throw new Error(`Nedladdningen misslyckades (${res.status}).`);
-  const buf = await res.arrayBuffer();
+  const buf = typeof ghReadBodyWithProgress === "function" && res.body
+    ? await (await ghReadBodyWithProgress(res, f => pmProgress("Laddar ned modellen från Sketchfab", f * 0.9))).arrayBuffer()
+    : await res.arrayBuffer();
+  pmProgress("Läser modellen", 0.95);
   const r = await pmModelFromBuffer(buf, dl.glb ? "modell.glb" : "modell.zip");
   let lic = info.license && (info.license.label || info.license.slug || info.license);
   if (!lic) { try { const full = await sfFetch(`/models/${uid}`, false); lic = full.license && (full.license.label || full.license.slug); } catch (e) {} }
@@ -826,6 +832,23 @@ async function pmRun(label, fn) {
   catch (e) { pmState.msg = e.message || String(e); pmState.bad = true; }
   pmState.busy = false; renderPmBrowser();
 }
+/* "261009 Liebherr tower crane" (Victor 2026-10-09): dagens datum som ÅÅMMDD före modellens namn,
+   om namnet inte redan börjar med ett datum. */
+function pmDatedName(name, d = new Date()) {
+  const n = String(name || "").trim();
+  if (/^\d{6}\b/.test(n)) return n;
+  const ymd = String(d.getFullYear()).slice(2) + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+  return `${ymd} ${n}`.trim();
+}
+/* Procent och stapel i panelens statusrad medan något laddas (f = -1: okänd längd). */
+function pmProgress(label, f) {
+  pmState.msg = label;
+  const box = document.getElementById(pmState.host || "placeModelBrowser"), m = box && box.querySelector(".pm-msg");
+  if (!m) return;
+  const pct = f >= 0 ? Math.max(1, Math.min(100, Math.round(f * 100))) : null;
+  m.innerHTML = `<span class="pm-spin"></span>${(typeof escapeHtml === "function" ? escapeHtml : uiEscPm)(label)}${pct != null ? ` – ${pct} %` : ""}<i class="pm-bar${pct == null ? " ind" : ""}"><b style="width:${pct == null ? 35 : pct}%"></b></i>`;
+}
+const uiEscPm = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function pmFmt(n) { return Number(n || 0).toLocaleString("sv-SE"); }
 /* Filstorlek i läsbar form: "850 kB", "3,2 MB". */
 function pmBytes(n) {
@@ -879,11 +902,11 @@ function renderPmBrowser() {
   if (pd) {
     const b = pd.bbox, d = j => Math.round((b.max[j] - b.min[j]) * 100) / 100;
     body = `<div class="pm-confirm">
-      <label>Namn<input type="text" id="pmName" value="${esc(pd.name)}" /></label>
+      <label>Namn – så sparas modellen i biblioteket och i Trimble Connect<input type="text" id="pmName" value="${esc(pmDatedName(pd.name))}" title="Dagens datum (ÅÅMMDD) och modellens namn – ändra om du vill" /></label>
       <div class="hint">${pd.kind === "ifc" ? `IFC-fil${pd.dlSize ? ` (${pmBytes(pd.dlSize)})` : ""} · ${pd.mesh ? "" : "ungefär "}${d(0)} × ${d(1)} × ${d(2)} m · ${pmFmt(pd.products)} objekt${pd.tris ? ` · ${pmFmt(pd.tris)} trianglar` : ""}${pd.geoErr ? ` · geometrin kunde inte läsas (${esc(pd.geoErr)}) – visas som låda` : ""}${pd.offset && pd.offset.some(v => v) ? " · filen ligger långt från origo – dess mitt placeras i punkten" : ""}`
         : `${pd.dlSize ? `${pmBytes(pd.dlSize)} · ` : ""}${pmFmt(pd.tris)} trianglar · ${d(0)} × ${d(1)} × ${d(2)} m i filen${pd.author ? ` · av ${esc(pd.author)}` : ""}${pd.license ? ` · ${esc(pd.license)}` : ""}`}</div>
       ${pd.kind === "mesh" ? `<label>Höjd i verkligheten (m)<input type="number" step="0.1" id="pmHeight" value="${d(2)}" title="Modeller från nätet har ofta fel skala – ange hur hög den ska vara" /></label>` : ""}
-      <div class="row"><button type="button" id="pmAccept" class="primary">Lägg till och placera</button><button type="button" id="pmReject">Avbryt</button></div>
+      <div class="row"><button type="button" id="pmAccept" class="primary">Spara och placera</button><button type="button" id="pmReject">Avbryt</button></div>
     </div>`;
   } else if (pmState.tab === "sketchfab") {
     if (!tok) body = `<div class="pm-login">
@@ -938,6 +961,9 @@ function renderPmBrowser() {
     dz.ondrop = e => { e.preventDefault(); dz.classList.remove("over"); readFile(e.dataTransfer && e.dataTransfer.files[0]); };
   }
   on("pmReject", () => { pmState.pending = null; renderPmBrowser(); });
+  // Namnrutan: markerad direkt så att Enter sparar och man kan skriva över namnet.
+  const nameIn = box.querySelector("#pmName");
+  if (nameIn && !pmState.busy) { setTimeout(() => { nameIn.focus(); nameIn.select(); }, 0); nameIn.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); const a = box.querySelector("#pmAccept"); if (a) a.click(); } }; }
   on("pmAccept", () => {
     const p = pmState.pending;
     p.name = (box.querySelector("#pmName").value || p.name).trim() || p.name;

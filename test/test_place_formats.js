@@ -166,7 +166,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   await page.waitForTimeout(800);
   const conf = await page.locator('.pm-confirm').innerText();
   if (!conf.includes('12 trianglar') || !conf.includes('1.27 × 2.54 × 0.51 m')) fail('Släppt fil ska ge bekräftelse: ' + conf);
-  if (await page.locator('#pmName').inputValue() !== 'Bod') fail('Namnet ska komma från filen');
+  if (!/^\d{6} Bod$/.test(await page.locator('#pmName').inputValue())) fail('Namnet ska vara dagens datum (ÅÅMMDD) och filens namn');
   await page.click('#pmAccept'); await page.waitForTimeout(800);
   await pick(10, 20, 0); await page.waitForTimeout(400);
   if ((await shown()).length !== 16) fail('Den hämtade modellen ska förhandsvisas som konturbild + fotavtryck, fick ' + (await shown()).length);
