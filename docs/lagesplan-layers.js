@@ -1185,6 +1185,7 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
       ctx.restore();
     }
     strokePath(ctx, P, true, st);
+    const storTxt = x.type === "storage" && typeof drawStorageFill === "function" ? drawStorageFill(ctx, x, P) : ""; // leveranser på upplaget
     const sym = x.type === "symbol" ? SYMBOLS[x.sym] || {} : null;
     if (sym && sym.outrigger) { // stödben: fotavtryck runt fordonet
       const og = { cx: g.cx, cy: g.cy, w: sym.outrigger, h: Math.min(g.h, sym.outrigger), rot: g.rot };
@@ -1194,7 +1195,7 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
     }
     const c = mToPx([g.cx, g.cy]);
     const icon = sym ? sym.icon || "🧩" : k.icon;
-    siteLabel(ctx, x, [c[0], c[1]], `${icon} ${x.name || (sym ? sym.label : k.label)}${lock}\n${fmtM(g.w)} × ${fmtM(g.h)} m`, st.fs, "rgba(255,255,255,.9)", "#111827", null, dates);
+    siteLabel(ctx, x, [c[0], c[1]], `${icon} ${x.name || (sym ? sym.label : k.label)}${lock}\n${fmtM(g.w)} × ${fmtM(g.h)} m${storTxt}`, st.fs, "rgba(255,255,255,.9)", "#111827", null, dates);
   } else if (x.type === "gate") {
     const [e1, e2] = gateEnds(x).map(mToPx), c = mToPx(x.pts[0]);
     strokePath(ctx, [e1, e2], false, { ...st, lw: st.lw * 2 });
@@ -1744,6 +1745,7 @@ function openSitePop(rec, isNew) {
       <label class="sp-r"><span>🔒 Lås</span><input type="checkbox" class="sp-lock sp-switch"${rec.locked ? " checked" : ""} /></label>
     </div>
     ${rec.lbl && rec.type !== "note" ? `<button type="button" class="sp-lblreset">↺ Återställ textens läge</button>` : ""}
+    ${!isNew && typeof storagePopHtml === "function" ? storagePopHtml(rec) : ""}
     ${isNew ? "" : `<div class="acts"><button type="button" class="sp-del" title="Ta bort">🗑️ Ta bort</button><button type="button" class="sp-dup" title="Kopiera objektet">⧉ Kopiera</button></div>`}`;
   else pop.innerHTML = `
     <b>${symDef ? symDef.icon + " " + escHtml(symDef.label) : `${k.icon} ${isNew ? "Ny" : ""} ${k.label.toLowerCase()}`}</b>
@@ -1772,12 +1774,14 @@ function openSitePop(rec, isNew) {
     <div class="row2"><div><label>Från</label><input type="date" class="sp-from" value="${escHtml(rec.from || "")}" /></div><div><label>Till</label><input type="date" class="sp-to" value="${escHtml(rec.to || "")}" /></div></div>
     <div class="muted" style="margin-top:2px;">Tomt = alltid synlig. Datumen visas i grått vid objektet.</div>
     <label style="display:flex;gap:6px;align-items:center;margin-top:6px;color:var(--text);"><input type="checkbox" class="sp-lock"${rec.locked ? " checked" : ""} style="width:auto;" /> 🔒 Lås (kan inte flyttas av misstag)</label>
+    ${!isNew && typeof storagePopHtml === "function" ? storagePopHtml(rec) : ""}
     <div class="acts">${isNew ? "<span></span>" : `<span><button class="sp-del" title="Ta bort">🗑️</button> <button class="sp-dup" title="Kopiera objektet">⧉ Kopiera</button></span>`}<span><button class="sp-cancel">Avbryt</button> <button class="sp-save primary">Spara</button></span></div>`;
   pop.classList.remove("hidden");
   const anchor = mToPx(isRect(rec) ? [rectGeom(rec).cx, rectGeom(rec).cy] : rec.pts[rec.pts.length - 1]);
   const r = $("viewport").getBoundingClientRect();
   const [sx, sy] = stageToScreen(anchor);
   placeSitePop(pop, sx + 16, sy + 16);
+  if (typeof bindStoragePop === "function") bindStoragePop(pop, rec);
   // Bara nya objekt får markören i textfältet – ett klickat objekt ska kunna tas bort med Delete.
   const first = pop.querySelector(".sp-text, .sp-name"); if (first && isNew) first.focus();
   pop.querySelector(".sp-cancel").onclick = () => { closeSitePop(); if (isNew) renderZones(); };

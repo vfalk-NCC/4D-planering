@@ -144,7 +144,7 @@ async function init() {
     return fatal("Kunde inte hämta data: " + e.message);
   }
   setBusy("");
-  loadSiteLayers();
+  loadSiteLayers().then(() => { if (typeof loadDeliveries === "function") loadDeliveries(); });
   $("projectInfo").textContent = `Projekt ${projectId} · ${items.length} planerade objekt`;
   setupDateRange();
   renderPlanSelect();
@@ -1602,7 +1602,7 @@ function syncSliderFromDate() {
   const t = Date.parse($("dateInput").value || todayIso());
   $("dateSlider").value = dateMax > dateMin ? Math.round((t - dateMin) / (dateMax - dateMin) * 100) : 100;
 }
-function onDateChanged() { if (typeof syncOrthoToDate === "function") syncOrthoToDate(); renderZones(); }
+function onDateChanged() { if (typeof syncOrthoToDate === "function") syncOrthoToDate(); renderZones(); if (typeof renderStorageWarnings === "function") renderStorageWarnings(); }
 
 // ---------------------------------------------------------------------
 // Export

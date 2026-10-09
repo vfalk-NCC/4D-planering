@@ -392,7 +392,7 @@ function l3Init(box) {
     if (!l3 || !b || b.classList.contains("hidden")) return;
     const d = $("dateInput").value;
     l3SyncDate();
-    if (d !== l3.date) { l3BuildObjects(); if (typeof l3bRecolor === "function") l3bRecolor(); l3Etab4dAll(); }
+    if (d !== l3.date) { l3BuildObjects(); if (typeof l3bRecolor === "function") l3bRecolor(); l3Etab4dAll(); if (typeof l3StorageBuild === "function") l3StorageBuild(); }
   }, 700);
 }
 function l3SyncDate() { const el = document.getElementById("v3Date"); if (el && document.activeElement !== el && el.value !== $("dateInput").value) el.value = $("dateInput").value; }
@@ -568,6 +568,7 @@ function l3BuildPlacements() {
   l3Clear(l3.groups.places); l3.placeMeshes.clear();
   placements.forEach(p => { const g = l3PlacementGroup(p); if (l3.hidden && l3.hidden.has(p.id)) g.visible = false; l3.groups.places.add(g); l3.placeMeshes.set(p.id, g); });
   l3SelectIds([...l3.sel].filter(id => l3.placeMeshes.has(id)));
+  if (typeof l3StorageBuild === "function") l3StorageBuild();
   l3RenderObjList();
   // Modeller utan inläst geometri (t.ex. IFC hämtad innan web-ifc fanns): läs in i bakgrunden.
   const seen = new Set();
@@ -1134,6 +1135,7 @@ function l3Changed() {
   l3UndoBtns();
   if (typeof l3RenderObjList === "function") l3RenderObjList();
   if (typeof l3ClashRefresh === "function") l3ClashRefresh();
+  if (typeof l3StorageBuild === "function") l3StorageBuild(); // leveranserna följer upplaget
   l3Render();
 }
 function l3UndoBtns() {
