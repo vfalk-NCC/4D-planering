@@ -276,6 +276,9 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     // Ta bort mappen: innehållet hamnar i Utan mapp.
     await page.evaluate(() => { window.__c = uiConfirm; uiConfirm = async () => true; });
     await page.click(`#v3PalComments [data-afdel="${f0.cur}"]`); await page.waitForTimeout(500);
+    await page.uncheck('#v3AfAll'); await page.waitForTimeout(150);
+    if (await page.evaluate(() => l3.groups.csigns.children.filter(o => o.isSprite).length)) fail('Bocka ur Alla ska dölja alla kommentarer');
+    await page.check('#v3AfAll'); await page.waitForTimeout(150);
     await page.evaluate(() => { uiConfirm = window.__c; l3aAll(true); l3m.list = l3m.list.filter(m => m.text !== '5 m'); l3mDraw(); l3kUi.sel.clear(); l3kRenderTab(); });
     const del = await page.evaluate(() => ({ folders: l3a.folders.length, kf: l3k.list[0].folder }));
     const ff2 = JSON.parse(gh.get('projects/p1/plan_annotfolders.json') || '[]');

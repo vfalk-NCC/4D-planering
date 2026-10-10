@@ -92,27 +92,28 @@ function l3aHtml() {
   const row = (id, name, own) => {
     const k = l3aKey(id), on = !hid[k], n = count(id), cur = (l3a.cur || null) === id;
     return `<div class="v3-af ${on ? "" : "off"} ${cur ? "cur" : ""}">
-      <button type="button" class="v3-ic" data-afeye="${k}" title="${on ? "Släck mappen" : "Tänd mappen"}" aria-pressed="${on}">${on ? I.eye : I.eyeOff}</button>
+      <label class="v3-af-chk" title="${on ? "Visas i 3D – bocka ur för att dölja mappens kommentarer och mått" : "Dold – bocka i för att visa mappens kommentarer och mått"}"><input type="checkbox" data-afeye="${k}" ${on ? "checked" : ""} /></label>
       <button type="button" class="v3-af-n" data-afcur="${k}" title="${cur ? "Nya kommentarer och mått hamnar här" : "Klicka: nya kommentarer och mått hamnar här"}"><b>${esc(name)}</b><em>${n.k} kommentarer · ${n.m} mått${cur ? " · nya hamnar här" : ""}</em></button>
       <button type="button" class="v3-ic" data-afsolo="${k}" title="Visa bara den här mappen">◎</button>
       ${own ? `<button type="button" class="v3-ic" data-afren="${k}" title="Byt namn">${I.edit}</button><button type="button" class="v3-ic" data-afdel="${k}" title="Ta bort mappen (innehållet flyttas till Utan mapp)">${I.trash}</button>` : ""}
     </div>`;
   };
   const sel = l3aSelected();
-  const shut = !!l3Prefs().afShut;
-  return `<section class="v3-afold ${shut ? "shut" : ""}"><div class="v3-afold-h"><button type="button" class="v3-msec-h" id="v3AfHead" aria-expanded="${!shut}" title="Fäll ihop eller ut mapparna"><i>›</i>Mappar <span>${l3a.folders.length}</span></button><button type="button" id="v3AfNew" title="Ny mapp – t.ex. för ett område">＋ Ny mapp</button><button type="button" id="v3AfAll" title="Tänd alla mappar">Tänd alla</button></div>
+  const shut = !!l3Prefs().afShut, keys = ["_", ...l3a.folders.map(f => f.id)], nOn = keys.filter(k => !hid[k]).length, allOn = nOn === keys.length;
+  return `<section class="v3-afold ${shut ? "shut" : ""}"><div class="v3-afold-h"><button type="button" class="v3-msec-h" id="v3AfHead" aria-expanded="${!shut}" title="Fäll ihop eller ut mapparna"><i>›</i>Mappar <span>${l3a.folders.length}</span></button><button type="button" id="v3AfNew" title="Ny mapp – t.ex. för ett område">＋ Ny mapp</button><label class="v3-chk v3-af-all" title="Visa eller dölj alla mappars kommentarer och mått i 3D"><input type="checkbox" id="v3AfAll" ${allOn ? "checked" : ""} /> Alla</label></div>
     <div class="v3-kc-list">${l3a.folders.map(f => row(f.id, f.name, true)).join("")}${row(null, "Utan mapp", false)}</div>
     ${sel.length && l3a.folders.length ? `<label class="v3-af-mv">Flytta markerade (${sel.length}) till <select id="v3AfMove"><option value="">välj mapp…</option>${l3a.folders.map(f => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("")}<option value="_">Utan mapp</option></select></label>` : ""}</section>`;
 }
 function l3aBind(host) {
   const id = k => (k === "_" ? null : k);
-  host.querySelectorAll("[data-afeye]").forEach(b => { b.onclick = () => l3aToggle(id(b.dataset.afeye)); });
+  host.querySelectorAll("[data-afeye]").forEach(b => { b.onchange = () => l3aToggle(id(b.dataset.afeye)); b.onclick = e => e.stopPropagation(); });
   host.querySelectorAll("[data-afsolo]").forEach(b => { b.onclick = () => l3aSolo(id(b.dataset.afsolo)); });
   host.querySelectorAll("[data-afcur]").forEach(b => { b.onclick = () => { l3a.cur = id(b.dataset.afcur); const h = { ...l3aHiddenMap() }; if (h[l3aKey(l3a.cur)]) { delete h[l3aKey(l3a.cur)]; l3aSetHidden(h); } else l3kRenderTab(); }; });
   host.querySelectorAll("[data-afren]").forEach(b => { b.onclick = () => l3aRename(id(b.dataset.afren)); });
   host.querySelectorAll("[data-afdel]").forEach(b => { b.onclick = () => l3aDelete(id(b.dataset.afdel)); });
   const nw = host.querySelector("#v3AfNew"); if (nw) nw.onclick = () => l3aNew();
-  const al = host.querySelector("#v3AfAll"); if (al) al.onclick = () => l3aAll(true);
+  const al = host.querySelector("#v3AfAll");
+  if (al) { const keys = ["_", ...l3a.folders.map(f => f.id)], hid = l3aHiddenMap(), nOn = keys.filter(k => !hid[k]).length; al.indeterminate = nOn > 0 && nOn < keys.length; al.onchange = () => l3aAll(al.checked); }
   const ah = host.querySelector("#v3AfHead"); if (ah) ah.onclick = () => { l3SetPref("afShut", !l3Prefs().afShut); l3kRenderTab(); };
   const mv = host.querySelector("#v3AfMove"); if (mv) mv.onchange = () => { if (!mv.value) return; l3aMove(l3aSelected(), id(mv.value)); };
   l3aDragBind(host);
