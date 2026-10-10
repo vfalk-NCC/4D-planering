@@ -97,6 +97,8 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   if (!gh.has('projects/p1/site_layers.json') || !/Ny ritning/.test(gh.get('projects/p1/site_layers.json'))) fail('DXF:en ska sparas som CAD-lager i lägesplanen');
 
   // DXF ur projektets mappar i Trimble Connect: syns i trädet och läses in (laddas inte upp igen).
+  // Fliken Trimble Connect mapp (Hämtade 3D-modeller är förvald).
+  await page.click('#v3PalLayers [data-l3l-sort="tree"]');
   await page.waitForSelector('#v3PalLayers [data-l3l-dir="f1"]', { timeout: 5000 });
   await page.click('#v3PalLayers [data-l3l-dir="f1"]');
   await page.waitForSelector('#v3PalLayers [data-l3l-dxf="D1"]', { timeout: 5000 });

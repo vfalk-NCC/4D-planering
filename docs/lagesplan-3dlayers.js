@@ -37,7 +37,7 @@ function l3lSetIdsVisible(ids, on) {
 }
 
 /* Hopfällbart block i lagerhanteraren (Victor 2026-10-10: "man måste kunna collapsa alla block"). */
-const L3L_SECS = ["base", "plan", "site2d", "models"];
+const L3L_SECS = ["models", "base", "plan", "site2d"];
 const l3lClosed = () => new Set(l3Prefs().layClosed || []);
 function l3lSec(id, title, body, extra = "") {
   const shut = l3lClosed().has(id) && !(l3lay.q || "").trim();
@@ -53,7 +53,7 @@ function l3LayersRender() {
   const allShut = L3L_SECS.every(id => l3lClosed().has(id));
   // Sök i lagermenyn (Victor 2026-10-10): filtrerar raderna, blocken visas utfällda medan man söker.
   const q = (l3lay.q || "").trim().toLowerCase();
-  let h = `<div class="v3-lay-top"><input type="search" class="v3-pp-q" id="v3LayQ" placeholder="Sök lager, modell, DXF…" value="${esc(l3lay.q || "")}" /><button type="button" class="v3-link" id="v3LayFold" title="${allShut ? "Fäll ut alla block" : "Fäll ihop alla block"}">${allShut ? "Fäll ut alla" : "Fäll ihop alla"}</button></div>`;
+  let h = `<div class="v3-lay-top"><input type="search" class="v3-pp-q" id="v3LayQ" placeholder="Sök lager, modell, DXF…" value="${esc(l3lay.q || "")}" /><button type="button" class="v3-link" id="v3LayFold" title="${allShut ? "Fäll ut alla block" : "Fäll ihop alla block"}">${allShut ? "Fäll ut alla" : "Fäll ihop alla"}</button></div><!--l3l-models-->`;
   h += l3lSec("base", "Underlag", `${row('data-l3l="plan"', !!P.plan, "Ritningen (PDF) som mark")}
     <div class="v3-lr-opr" title="Ritningens synlighet i 3D (genomskinlighet)"><input type="range" data-l3l-op="plan" min="10" max="100" step="5" value="${P.planOp || 100}" /></div>`);
   h += l3lSec("plan", "Planering och etablering", `${row('data-l3l="objs"', objsOn, "Planerade objekt (lådor)")}
@@ -63,7 +63,7 @@ function l3LayersRender() {
     ${typeof l3k !== "undefined" ? row('data-l3k-eye="1"', !l3k.hidden, `Kommentarer <em>${l3k.list.filter(c => !c.done).length}${l3k.list.some(c => c.done) ? ` + ${l3k.list.filter(c => c.done).length} klara` : ""}</em>`) + row('data-l3k-signs="1"', l3kSigns(), "Som skyltar i 3D", "", "v3-lr-sub") : ""}`);
   if (typeof l3sHtml === "function") { const s2 = l3sHtml(row, l3lEye); if (s2) h += l3lSec("site2d", "2D-lager och DXF", s2.body, s2.extra); }
   let mh = "";
-  if (P.laySort === "list") {
+  if ((P.laySort || "list") === "list") {
     const ms = l3b.models.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), "sv", { numeric: true }));
     const pend = m => (typeof l3bmPending === "function" ? l3bmPending(m.id) : 0);
     mh += ms.length ? ms.map(m => row(`data-l3l-model="${esc(m.id)}"`, m.visible, esc(m.name), `<button type="button" class="v3-lr-zoom" data-l3l-zoom="${esc(m.id)}" title="Zooma till modellen">${L3_ICO.focus}</button>` + (pend(m) ? `<button type="button" class="v3-lr-save" data-l3l-save="${esc(m.id)}" title="Spara flyttarna som en ny IFC-fil i Trimble Connect">Spara ${pend(m)}</button>` : `<em class="v3-lr-k">${(m.tris / 1000).toFixed(0)}k</em>`))).join("")
@@ -73,7 +73,10 @@ function l3LayersRender() {
   mh += `<label class="v3-chk v3-lay-voids" title="Fönster- och dörrhål sågas ut ur väggar och bjälklag. Gör inläsningen av stora modeller många gånger långsammare – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayVoids" ${P.ifcVoids ? "checked" : ""} /> Visa urtag (hål i väggar) – långsammare</label>`;
   mh += `<button type="button" class="v3-wide" id="v3LayTcOn" title="De IFC-modeller som är tända i Trimble Connect just nu">Hämta tända modeller från TC…</button><div id="v3LayBldgBox"></div>`;
   if (l3lay.err) mh += `<div class="v3-pal-hint bad">${esc(l3lay.err)}</div><button type="button" class="v3-wide" id="v3LayRetry">Försök igen</button>`;
-  h += l3lSec("models", "Modeller i projektet", mh, `<span class="v3-segs v3-lay-sort"><button type="button" data-l3l-sort="tree" class="${(P.laySort || "tree") === "tree" ? "on" : ""}" title="Projektets mappar i Trimble Connect">Mappar</button><button type="button" data-l3l-sort="list" class="${P.laySort === "list" ? "on" : ""}" title="De modeller som är inlästa, i bokstavsordning">Inlästa</button></span>`);
+  // 3D-modeller överst (Victor 2026-10-10): flikarna Hämtade 3D-modeller (de inlästa) och Trimble Connect mapp.
+  const sortNow = P.laySort || "list";
+  const modelsSec = l3lSec("models", "3D-modeller", `<div class="v3-segs v3-lay-sort"><button type="button" data-l3l-sort="list" class="${sortNow === "list" ? "on" : ""}" title="De modeller som är hämtade och visas, i bokstavsordning">Hämtade 3D-modeller</button><button type="button" data-l3l-sort="tree" class="${sortNow === "tree" ? "on" : ""}" title="Projektets mappar i Trimble Connect">Trimble Connect mapp</button></div>${mh}`);
+  h = h.replace("<!--l3l-models-->", modelsSec);
   host.innerHTML = h;
   if (q) {
     host.querySelectorAll(".v3-lsec-b .v3-lr, .v3-lsec-b .v3-lr-dir").forEach(r => { r.style.display = r.textContent.toLowerCase().includes(q) ? "" : "none"; });
@@ -110,7 +113,7 @@ function l3LayersRender() {
   const tcOn = host.querySelector("#v3LayTcOn");
   if (tcOn) tcOn.onclick = () => { if (typeof l3bOpenDialog === "function") l3bOpenDialog("v3LayBldgBox"); };
   // Rotmappen hämtas en gång (Försök igen i felraden om det misslyckas).
-  if ((P.laySort || "tree") === "tree" && !l3lay.root && !l3lay.rootTried) { l3lay.rootTried = true; l3lOpenDir(null); }
+  if (P.laySort === "tree" && !l3lay.root && !l3lay.rootTried) { l3lay.rootTried = true; l3lOpenDir(null); }
 }
 
 /* Mappträdet: mappar fälls ut/ihop, IFC-filer har ett öga. */

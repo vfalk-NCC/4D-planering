@@ -162,6 +162,8 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   if (await page.evaluate(() => l3.placeMeshes.get(placements[0].id).visible)) fail('Typen ska kunna släckas i Lager');
   await page.click(typeBtn);
   if (!(await page.evaluate(() => l3.placeMeshes.get(placements[0].id).visible))) fail('Typen ska kunna tändas igen');
+  // Fliken Trimble Connect mapp (Hämtade 3D-modeller är förvald).
+  await page.click('#v3PalLayers [data-l3l-sort="tree"]');
   await page.waitForSelector('#v3PalLayers [data-l3l-dir="f1"]', { timeout: 5000 });
   await page.click('#v3PalLayers [data-l3l-dir="f1"]');
   await page.waitForSelector('#v3PalLayers [data-l3l-file="F2"]', { timeout: 5000 });
