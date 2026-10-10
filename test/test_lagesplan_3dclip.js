@@ -214,6 +214,17 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     const h1 = await page.evaluate(() => ({ pos: l3k.list[0].pos.slice(), sp: (() => { const sp = l3.groups.csigns.children.find(o => o.isSprite && o.userData.commentId === l3k.list[0].id); return [sp.position.x + l3.O[0], sp.position.y + l3.O[1]]; })() }));
     const dxy = Math.hypot(h1.pos[0] - h0.pos[0], h1.pos[1] - h0.pos[1]);
     if (dxy < 0.2 || Math.abs(h1.pos[2] - h0.pos[2]) > 1e-6 || Math.abs(h1.sp[0] - h1.pos[0]) > 0.01) fail('Flytta kommentarens punkt: ' + JSON.stringify({ h0, h1 }));
+    // Kommentar på ett objekt: punkten lämnar aldrig objektet (här finns objektet inte under markören – står kvar).
+    {
+      const t0 = await page.evaluate(() => { const c = l3k.list[0]; c._t = c.target; c.target = { kind: 'item', id: 'finns-inte', name: 'X' }; return c.pos.slice(); });
+      const b = await page.evaluate(() => { const r = document.querySelector('.v3-khandle.xy').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+      await page.mouse.move(b.x, b.y); await page.mouse.down(); await page.mouse.move(b.x + 50, b.y + 20, { steps: 5 });
+      const off = await page.evaluate(() => document.querySelector('.v3-khandle.xy').classList.contains('off'));
+      await page.mouse.up(); await page.waitForTimeout(200);
+      const t1 = await page.evaluate(() => { const c = l3k.list[0]; c.target = c._t; delete c._t; return c.pos.slice(); });
+      if (!off || t1.join() !== t0.join()) fail('Punkten ska inte släppa från sitt objekt: ' + JSON.stringify({ off, t0, t1 }));
+      if (await page.evaluate(() => typeof l3kSameTarget !== 'function' || !l3kSameTarget({ kind: 'ifc', guid: 'G1' }, { object: {}, point: new THREE.Vector3() }) === false)) fail('l3kSameTarget');
+    }
     const zb = await page.evaluate(() => { const r = document.querySelector('.v3-khandle.z').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
     await page.mouse.move(zb.x, zb.y); await page.mouse.down(); await page.mouse.move(zb.x, zb.y - 40, { steps: 5 }); await page.mouse.up();
     await page.waitForTimeout(300);

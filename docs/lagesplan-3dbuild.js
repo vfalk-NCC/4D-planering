@@ -59,15 +59,21 @@ async function l3bLoad(list, opts = {}) {
     for (let i = 0; i < list.length; i++) {
       const w = list[i];
       if (!opts.replace && l3b.models.some(m => m.id === w.id)) continue;
-      l3Status(`Hämtar ${w.name || "modellen"} från Trimble Connect (${i + 1} av ${list.length})…`);
+      l3Status(`Öppnar ${w.name || "modellen"} (${i + 1} av ${list.length})…`);
       // Laddningsindikatorn: varje modell är en lika stor del av stapeln (hämtning 60 %, läsning 40 %).
       const part = (a, b) => (i + a + (b - a)) / list.length;
       const lbl = `Byggnaden: ${w.name || "modellen"}${list.length > 1 ? ` (${i + 1} av ${list.length})` : ""}`;
       busyProgress("bldg", lbl, i / list.length);
       // Redan inläst tidigare (samma version): direkt från webbläsarens cache, utan hämtning och läsning.
+      const tC0 = Date.now();
       const cached = await l3bCacheGet(w);
       if (cached) {
+        const tC1 = Date.now();
         const m = l3bFromCache(cached);
+        // Var tiden går ur cachen (Victor 2026-10-10: modellen tog ~7 s att visa trots cachen).
+        times.push(`${cached.name || w.name}: ur webbläsarens cache – läsning ${((tC1 - tC0) / 1000).toFixed(1)} s, uppbyggnad ${((Date.now() - tC1) / 1000).toFixed(1)} s`);
+        // Äldre poster saknar normaler: spara om en gång med dem, så går det fortare nästa gång.
+        if (cached.chunks.some(c => !c.nrm)) setTimeout(() => l3bCachePut(w, m), 1500);
         m.id = w.id; m.name = cached.name || w.name; m.visible = true; m.src = w;
         if (opts.replace) l3bRemove(w.id);
         total += m.tris;
@@ -77,6 +83,7 @@ async function l3bLoad(list, opts = {}) {
         continue;
       }
       if (opts.cacheOnly) { missing.push(w); continue; }
+      l3Status(`Hämtar ${w.name || "modellen"} från Trimble Connect (${i + 1} av ${list.length})…`);
       const tDl0 = Date.now();
       const tick = setInterval(() => { const j = busyJobs.get("bldg"); if (j && j.f < part(0, 0.55)) busyProgress("bldg", lbl, j.f + 0.01 / list.length); }, 400);
       let r;
@@ -207,7 +214,7 @@ async function l3bCachePut(w, m) {
   try {
     const db = await l3bDb();
     const rec = { key, name: m.name, O: m.O, tris: m.tris, at: Date.now(),
-      chunks: m.meshes.map(x => ({ pos: x.geometry.getAttribute("position").array, col: x.geometry.getAttribute("color").array, idx: x.userData.l3b.origIdx,
+      chunks: m.meshes.map(x => ({ pos: x.geometry.getAttribute("position").array, col: x.geometry.getAttribute("color").array, idx: x.userData.l3b.origIdx, nrm: l3bNrm8(x.geometry),
         ranges: x.userData.l3b.ranges.map(r => ({ start: r.start, count: r.count, idxStart: r.idxStart, idxCount: r.idxCount, guid: r.guid, name: r.name, base: r.base })) })) };
     const st = db.transaction(L3B_STORE, "readwrite").objectStore(L3B_STORE);
     st.put(rec, key);
@@ -216,12 +223,21 @@ async function l3bCachePut(w, m) {
     if (all.length > L3B_KEEP) { const del = db.transaction(L3B_STORE, "readwrite").objectStore(L3B_STORE); all.sort((a, b) => b[1] - a[1]).slice(L3B_KEEP).forEach(([k]) => del.delete(k)); }
   } catch (e) { console.warn("Kunde inte spara modellen i cachen", e); }
 }
+/* Normalerna som Int8 (en fjärdedel av minnet): slipper räkna om dem för miljontals trianglar vid öppning. */
+function l3bNrm8(g) {
+  const a = g.getAttribute("normal");
+  if (!a) return null;
+  if (a.array instanceof Int8Array) return a.array;
+  const s = a.array, o = new Int8Array(s.length);
+  for (let i = 0; i < s.length; i++) o[i] = Math.round(Math.max(-1, Math.min(1, s[i])) * 127);
+  return o;
+}
 function l3bFromCache(rec) {
   const byGuid = new Map((items || []).filter(r => r.object_id).map(r => [String(r.object_id), r.id]));
   const out = { meshes: [], ranges: [], tris: rec.tris || 0, O: rec.O, capped: false };
   rec.chunks.forEach(c => {
     const ranges = c.ranges.map(r => ({ ...r, itemId: r.guid ? byGuid.get(r.guid) || null : null }));
-    const m = l3bMeshFromArrays(c.pos, c.col.slice(), c.idx, ranges, out);
+    const m = l3bMeshFromArrays(c.pos, c.col, c.idx, ranges, out, c.nrm || null); // posten är redan en egen kopia
     out.meshes.push(m); out.ranges.push(...ranges);
   });
   return out;
@@ -238,12 +254,14 @@ async function l3bParseAny(bytes, placement, maxTris, onProgress, onMeshes) {
   if (onMeshes) onMeshes(out.meshes.slice());
   return out;
 }
-function l3bMeshFromArrays(pos, col, idx, ranges, out) {
+function l3bMeshFromArrays(pos, col, idx, ranges, out, nrm = null) {
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   g.setAttribute("color", new THREE.BufferAttribute(col, 3));
   g.setIndex(pos.length / 3 > 65535 ? new THREE.BufferAttribute(idx, 1) : new THREE.BufferAttribute(Uint16Array.from(idx), 1));
-  g.computeVertexNormals(); g.computeBoundingSphere(); g.computeBoundingBox();
+  if (nrm && nrm.length === pos.length) g.setAttribute("normal", new THREE.BufferAttribute(nrm, 3, true));
+  else g.computeVertexNormals();
+  g.computeBoundingSphere(); g.computeBoundingBox();
   const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
   m.userData.kind = "bldg"; m.userData.surface = true;
   m.userData.l3b = { ranges, model: out, origIdx: g.index.array.slice(), hidden: new Set() };

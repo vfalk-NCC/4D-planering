@@ -227,9 +227,10 @@ function l3kClose() {
 }
 /* ---- Handtag (Victor 2026-10-10: "ett handtag på insättningspunkten för kommentaren så att jag kan flytta
    den i sidled och längsled och samma för kommentarbubblan också i höjdled") ---------------------------
-   För kommentaren som är öppen eller ensam markerad i listan: ett handtag på punkten (flyttar den vågrätt,
-   höjden står kvar) och ett där stolpen möter skylten (skyltens höjd över punkten). Skift: jämna 10 cm.
-   Sparas när man släpper; Ctrl+Z ångrar. */
+   För kommentaren som är öppen eller ensam markerad i listan: ett handtag på punkten och ett där stolpen
+   möter skylten (skyltens höjd över punkten, Skift: jämna 10 cm). Sparas när man släpper; Ctrl+Z ångrar.
+   Punkten glider på ytan av det objekt kommentaren skapades på och lämnar det aldrig (Victor 2026-10-10:
+   "punkten ska alltid ha koppling mot 3d-objekten den är skapad på") – utanför objektet står den kvar. */
 const L3K_LIFT = 2.2;
 const l3kLift = c => (Number.isFinite(c.lift) ? c.lift : L3K_LIFT);
 const l3kH = { xy: null, z: null, drag: null };
@@ -248,7 +249,7 @@ function l3kHandlesPlace() {
       b.onpointerdown = e => l3kHDown(e, kind); b.onclick = e => e.stopPropagation();
       host.appendChild(b); return b;
     };
-    l3kH.xy = mk("xy", "Dra för att flytta kommentarens punkt i sidled och längsled (Skift: jämna 10 cm)", `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>`, "xy");
+    l3kH.xy = mk("xy", "Dra för att flytta kommentarens punkt – den glider på ytan av objektet den sitter på", `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>`, "xy");
     l3kH.z = mk("z", "Dra för att flytta skylten i höjdled (Skift: jämna 10 cm)", `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"/></svg>`, "z");
   }
   const base = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]);
@@ -269,19 +270,27 @@ function l3kSignMove(c) {
     else if (o.userData.kPart === "pole") { o.geometry.dispose(); o.geometry = new THREE.BufferGeometry().setFromPoints([base, top]); }
   });
 }
+/* Samma objekt som kommentaren gäller? (Kommentarer på marken eller en punkt får ligga på vilken yta som helst.) */
+function l3kSameTarget(t, h) {
+  if (!t || t.kind === "point") return true;
+  const u = l3kTarget(h);
+  if (u.kind !== t.kind) return false;
+  if (t.kind === "ifc") return t.guid ? u.guid === t.guid : u.name === t.name && u.model === t.model;
+  return u.id === t.id;
+}
+/* Punkten under markören på kommentarens objekt, eller null. */
+function l3kSurfaceAt(ev, c) {
+  const hits = typeof l3Ray === "function" ? l3Ray(ev, typeof l3Surfaces === "function" ? l3Surfaces() : [l3.scene]) : [];
+  const h = hits.find(x => l3kSameTarget(c.target, x));
+  return h ? h.point.clone() : null;
+}
 function l3kHDown(e, kind) {
   const c = l3kActive(); if (!c) return;
   e.preventDefault(); e.stopPropagation();
   const el = e.currentTarget; el.setPointerCapture(e.pointerId);
-  const rect = l3.renderer.domElement.getBoundingClientRect(), rc = new THREE.Raycaster();
-  const ray = ev => { rc.setFromCamera(new THREE.Vector2((ev.clientX - rect.left) / rect.width * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1), l3.camera); return rc.ray; };
   const base = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]);
   const d = l3kH.drag = { kind, c, pos0: c.pos.slice(), lift0: l3kLift(c), x0: e.clientX, y0: e.clientY, moved: false };
-  if (kind === "xy") {
-    d.plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -base.z);
-    const h = ray(e).intersectPlane(d.plane, new THREE.Vector3());
-    d.grab = h ? h.sub(base) : new THREE.Vector3();
-  } else {
+  if (kind === "z") {
     const top = base.clone().add(new THREE.Vector3(0, 0, d.lift0)), p0 = l3ToScreen(top), p1 = l3ToScreen(top.clone().add(new THREE.Vector3(0, 0, 1)));
     d.v = [p1.x - p0.x, p1.y - p0.y]; d.vv = d.v[0] * d.v[0] + d.v[1] * d.v[1] || 1;
   }
@@ -290,11 +299,10 @@ function l3kHDown(e, kind) {
     if (Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) > 2) d.moved = true;
     if (!d.moved) return;
     if (kind === "xy") {
-      const h = ray(ev).intersectPlane(d.plane, new THREE.Vector3()); if (!h) return;
-      h.sub(d.grab);
-      let x = h.x + l3.O[0], y = h.y + l3.O[1];
-      if (ev.shiftKey) { x = Math.round(x * 10) / 10; y = Math.round(y * 10) / 10; }
-      c.pos = [r3(x), r3(y), d.pos0[2]];
+      const h = l3kSurfaceAt(ev, c);
+      el.classList.toggle("off", !h);
+      if (!h) return; // utanför objektet: punkten står kvar på objektet
+      c.pos = [r3(h.x + l3.O[0]), r3(h.y + l3.O[1]), r3(h.z + l3.O[2])];
     } else {
       let lift = d.lift0 + ((ev.clientX - d.x0) * d.v[0] + (ev.clientY - d.y0) * d.v[1]) / d.vv;
       if (ev.shiftKey) lift = Math.round(lift * 10) / 10;
@@ -304,8 +312,9 @@ function l3kHDown(e, kind) {
   };
   const up = () => {
     el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
-    l3kH.drag = null;
+    l3kH.drag = null; el.classList.remove("off");
     if (!d.moved) { l3Render(); return; }
+    if (c.pos.join() === d.pos0.join() && l3kLift(c) === d.lift0) { l3Status("Punkten står kvar – den kan bara flyttas på objektet den sitter på."); l3Render(); return; }
     const now = { pos: c.pos.slice(), lift: c.lift }, was = { pos: d.pos0, lift: d.lift0 };
     const apply = s => { c.pos = s.pos.slice(); if (kind === "z" || Number.isFinite(c.lift)) c.lift = s.lift; l3kDraw(); l3kWrite(c); };
     if (typeof l3VPush === "function") l3VPush(() => apply(was), () => apply(now), kind === "xy" ? "flytta kommentaren" : "kommentarens höjd");
