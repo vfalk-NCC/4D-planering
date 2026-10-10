@@ -65,7 +65,7 @@ function l3LayersRender() {
         + (ex ? t.ids.map(id => { const p = placements.find(x => x.id === id); if (!p) return ""; const on = !l3.hidden.has(id); return `<div class="v3-lr v3-lr-obj ${l3.sel.has(id) ? "on" : ""}"><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3l-obj="${esc(id)}" title="${on ? "Dölj" : "Visa"}">${l3lEye(on)}</button><button type="button" class="v3-lr-n v3-lr-pick" data-l3l-osel="${esc(id)}" title="Klick: markera (Skift = flera) · Dubbelklick: zooma">${esc(p.name || t.label)}</button></div>`; }).join("") : "");
     }).join("")}
     ${placements.length ? `<button type="button" class="v3-link v3-lay-csv" id="v3LayCsv" title="Lista över etableringen som öppnas i Excel (namn, typ, mått, läge, 4D)">Exportera etableringen som lista (Excel/CSV)</button>` : ""}
-    ${typeof l3m !== "undefined" ? row('data-l3m-eye="1"', !l3m.hidden, `Mått <em>${l3m.list.length}</em>`) : ""}
+    ${typeof l3m !== "undefined" ? row('data-l3m-eye="1"', !(typeof l3mAllHidden === "function" && l3mAllHidden()), `Mått <em>${l3m.list.length}</em>`) : ""}
     ${typeof l3k !== "undefined" ? row('data-l3k-eye="1"', !l3k.hidden, `Kommentarer <em>${l3k.list.filter(c => !c.done).length}${l3k.list.some(c => c.done) ? ` + ${l3k.list.filter(c => c.done).length} klara` : ""}</em>`) + row('data-l3k-signs="1"', l3kSigns(), "Som skyltar i 3D", "", "v3-lr-sub") : ""}`);
   if (typeof l3sHtml === "function") { const s2 = l3sHtml(row, l3lEye); if (s2) h += l3lSec("site2d", "2D-lager och DXF", s2.body, s2.extra); }
   let mh = "";

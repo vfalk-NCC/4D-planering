@@ -10,9 +10,9 @@
 <meta name="theme-color" content="#ffffff" />
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
-<script src="error-guard.js?v=20261010162121"></script>
+<script src="error-guard.js?v=20261010163309"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261010162121"></script>
+<script src="github-storage.js?v=20261010163309"></script>
 <style>
   /* Beskär bild med musen (lagesplan-imgcrop.js) */
   #imgCropModal { position: fixed; inset: 0; z-index: 1100; background: rgba(15,23,42,.55); display: flex; align-items: center; justify-content: center; }
@@ -1204,6 +1204,7 @@
   .v3-snap i.end { border-radius: 50%; background: var(--c); }
   .v3-snap i.mid { border-radius: 50%; }
   .v3-snap i.edge { transform: rotate(45deg); width: 8px; height: 8px; }
+  .v3-snap i.perp { width: 10px; height: 10px; border-radius: 0; border-top-color: transparent; border-right-color: transparent; } /* rät vinkel */
   .v3-snap i.axis { border-radius: 50%; width: 8px; height: 8px; background: var(--c); }
   .v3-snap span { position: absolute; left: 14px; top: 10px; white-space: nowrap; font-size: 11px; font-weight: 600; color: var(--c); background: rgba(255,255,255,.94); border-radius: 4px; padding: 1px 5px; box-shadow: 0 1px 3px rgba(0,0,0,.15); }
   .v3-vcb { position: absolute; z-index: 3; right: 54px; bottom: 10px; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 12px; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.12); font-variant-numeric: tabular-nums; }
@@ -2701,72 +2702,72 @@
     </div>
   </main>
 </div>
-<script src="lagesplan-merge.js?v=20261010162121"></script>
-<script src="ui-icons.js?v=20261010162121"></script>
-<script src="ui-dialog.js?v=20261010162121"></script>
-<script src="lagesplan-ui.js?v=20261010162121"></script>
-<script src="lagesplan.js?v=20261010162121"></script>
-<script src="lagesplan-tools.js?v=20261010162121"></script>
-<script src="lagesplan-layers.js?v=20261010162121"></script>
-<script src="lagesplan-storage.js?v=20261010162121"></script>
-<script src="lagesplan-pdfoverlay.js?v=20261010162121"></script>
-<script src="lagesplan-pdfunder.js?v=20261010162121"></script>
-<script src="lagesplan-views.js?v=20261010162121"></script>
-<script src="lagesplan-film.js?v=20261010162121"></script>
-<script src="lagesplan-cad.js?v=20261010162121"></script>
-<script src="lagesplan-vecpdf.js?v=20261010162121"></script>
-<script src="lagesplan-print.js?v=20261010162121"></script>
-<script src="lagesplan-arrows.js?v=20261010162121"></script>
-<script src="lagesplan-printshapes.js?v=20261010162121"></script>
-<script src="lagesplan-printctx.js?v=20261010162121"></script>
-<script src="lagesplan-printdxf.js?v=20261010162121"></script>
-<script src="lagesplan-imgcrop.js?v=20261010162121"></script>
-<script src="lagesplan-printlib.js?v=20261010162121"></script>
-<script src="lagesplan-pdflayers.js?v=20261010162121"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261010162121"></script>
-<script src="lagesplan-objmarks.js?v=20261010162121"></script>
-<script src="lagesplan-objlist.js?v=20261010162121"></script>
-<script src="lagesplan-zones.js?v=20261010162121"></script>
-<script src="lagesplan-wbs.js?v=20261010162121"></script>
-<script src="lagesplan-zonesets.js?v=20261010162121"></script>
-<script src="lagesplan-zoneguard.js?v=20261010162121"></script>
-<script src="lagesplan-zoneexport.js?v=20261010162121"></script>
-<script src="lagesplan-itemlink.js?v=20261010162121"></script>
-<script src="lagesplan-dxfexport.js?v=20261010162121"></script>
-<script src="ifc-writer.js?v=20261010162121"></script>
-<script src="lagesplan-ifcexport.js?v=20261010162121"></script>
-<script src="lagesplan-zonecad.js?v=20261010162121"></script>
-<script src="lagesplan-siteifc.js?v=20261010162121"></script>
-<script src="lagesplan-daily.js?v=20261010162121"></script>
-<script src="lagesplan-gps.js?v=20261010162121"></script>
-<script src="lagesplan-weather.js?v=20261010162121"></script>
-<script src="lagesplan-touch.js?v=20261010162121"></script>
-<script src="lagesplan-drawer.js?v=20261010162121"></script>
-<script src="lagesplan-gpslive.js?v=20261010162121"></script>
-<script src="place3d.js?v=20261010162121"></script>
-<script src="ifc-mesh.js?v=20261010162121"></script>
-<script src="place-models.js?v=20261010162121"></script>
-<script src="lagesplan-3dbuild.js?v=20261010162121"></script>
-<script src="lagesplan-3dbsel.js?v=20261010162121"></script>
-<script src="lagesplan-3dtint.js?v=20261010162121"></script>
-<script src="lagesplan-3dbmove.js?v=20261010162121"></script>
-<script src="ifc-subset.js?v=20261010162121"></script>
-<script src="lagesplan-3dprops.js?v=20261010162121"></script>
-<script src="lagesplan-3dgroups.js?v=20261010162121"></script>
-<script src="lagesplan-3dsite.js?v=20261010162121"></script>
-<script src="lagesplan-3dsitesel.js?v=20261010162121"></script>
-<script src="lagesplan-3ddxf.js?v=20261010162121"></script>
-<script src="lagesplan-3dmeasure.js?v=20261010162121"></script>
-<script src="lagesplan-3dclip.js?v=20261010162121"></script>
-<script src="lagesplan-3dcomments.js?v=20261010162121"></script>
-<script src="lagesplan-3dannot.js?v=20261010162121"></script>
-<script src="lagesplan-3dlayers.js?v=20261010162121"></script>
-<script src="lagesplan-3dnav.js?v=20261010162121"></script>
-<script src="lagesplan-3ddialogs.js?v=20261010162121"></script>
-<script src="lagesplan-3dclash.js?v=20261010162121"></script>
-<script src="lagesplan-3dhandles.js?v=20261010162121"></script>
-<script src="lagesplan-3dtools.js?v=20261010162121"></script>
-<script src="lagesplan-3d.js?v=20261010162121"></script>
-<script src="lagesplan-keys.js?v=20261010162121"></script>
+<script src="lagesplan-merge.js?v=20261010163309"></script>
+<script src="ui-icons.js?v=20261010163309"></script>
+<script src="ui-dialog.js?v=20261010163309"></script>
+<script src="lagesplan-ui.js?v=20261010163309"></script>
+<script src="lagesplan.js?v=20261010163309"></script>
+<script src="lagesplan-tools.js?v=20261010163309"></script>
+<script src="lagesplan-layers.js?v=20261010163309"></script>
+<script src="lagesplan-storage.js?v=20261010163309"></script>
+<script src="lagesplan-pdfoverlay.js?v=20261010163309"></script>
+<script src="lagesplan-pdfunder.js?v=20261010163309"></script>
+<script src="lagesplan-views.js?v=20261010163309"></script>
+<script src="lagesplan-film.js?v=20261010163309"></script>
+<script src="lagesplan-cad.js?v=20261010163309"></script>
+<script src="lagesplan-vecpdf.js?v=20261010163309"></script>
+<script src="lagesplan-print.js?v=20261010163309"></script>
+<script src="lagesplan-arrows.js?v=20261010163309"></script>
+<script src="lagesplan-printshapes.js?v=20261010163309"></script>
+<script src="lagesplan-printctx.js?v=20261010163309"></script>
+<script src="lagesplan-printdxf.js?v=20261010163309"></script>
+<script src="lagesplan-imgcrop.js?v=20261010163309"></script>
+<script src="lagesplan-printlib.js?v=20261010163309"></script>
+<script src="lagesplan-pdflayers.js?v=20261010163309"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261010163309"></script>
+<script src="lagesplan-objmarks.js?v=20261010163309"></script>
+<script src="lagesplan-objlist.js?v=20261010163309"></script>
+<script src="lagesplan-zones.js?v=20261010163309"></script>
+<script src="lagesplan-wbs.js?v=20261010163309"></script>
+<script src="lagesplan-zonesets.js?v=20261010163309"></script>
+<script src="lagesplan-zoneguard.js?v=20261010163309"></script>
+<script src="lagesplan-zoneexport.js?v=20261010163309"></script>
+<script src="lagesplan-itemlink.js?v=20261010163309"></script>
+<script src="lagesplan-dxfexport.js?v=20261010163309"></script>
+<script src="ifc-writer.js?v=20261010163309"></script>
+<script src="lagesplan-ifcexport.js?v=20261010163309"></script>
+<script src="lagesplan-zonecad.js?v=20261010163309"></script>
+<script src="lagesplan-siteifc.js?v=20261010163309"></script>
+<script src="lagesplan-daily.js?v=20261010163309"></script>
+<script src="lagesplan-gps.js?v=20261010163309"></script>
+<script src="lagesplan-weather.js?v=20261010163309"></script>
+<script src="lagesplan-touch.js?v=20261010163309"></script>
+<script src="lagesplan-drawer.js?v=20261010163309"></script>
+<script src="lagesplan-gpslive.js?v=20261010163309"></script>
+<script src="place3d.js?v=20261010163309"></script>
+<script src="ifc-mesh.js?v=20261010163309"></script>
+<script src="place-models.js?v=20261010163309"></script>
+<script src="lagesplan-3dbuild.js?v=20261010163309"></script>
+<script src="lagesplan-3dbsel.js?v=20261010163309"></script>
+<script src="lagesplan-3dtint.js?v=20261010163309"></script>
+<script src="lagesplan-3dbmove.js?v=20261010163309"></script>
+<script src="ifc-subset.js?v=20261010163309"></script>
+<script src="lagesplan-3dprops.js?v=20261010163309"></script>
+<script src="lagesplan-3dgroups.js?v=20261010163309"></script>
+<script src="lagesplan-3dsite.js?v=20261010163309"></script>
+<script src="lagesplan-3dsitesel.js?v=20261010163309"></script>
+<script src="lagesplan-3ddxf.js?v=20261010163309"></script>
+<script src="lagesplan-3dmeasure.js?v=20261010163309"></script>
+<script src="lagesplan-3dclip.js?v=20261010163309"></script>
+<script src="lagesplan-3dcomments.js?v=20261010163309"></script>
+<script src="lagesplan-3dannot.js?v=20261010163309"></script>
+<script src="lagesplan-3dlayers.js?v=20261010163309"></script>
+<script src="lagesplan-3dnav.js?v=20261010163309"></script>
+<script src="lagesplan-3ddialogs.js?v=20261010163309"></script>
+<script src="lagesplan-3dclash.js?v=20261010163309"></script>
+<script src="lagesplan-3dhandles.js?v=20261010163309"></script>
+<script src="lagesplan-3dtools.js?v=20261010163309"></script>
+<script src="lagesplan-3d.js?v=20261010163309"></script>
+<script src="lagesplan-keys.js?v=20261010163309"></script>
 </body>
 </html>

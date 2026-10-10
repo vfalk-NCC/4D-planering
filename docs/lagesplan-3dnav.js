@@ -392,7 +392,7 @@ function l3TouchBarUpdate() {
   if (host.dataset.tool !== mode) host.dataset.tool = mode;
   const area = t === "measure" && (l3t.mp || []).length;
   const num = (t === "move" || t === "measure" || (t === "rotate" && st === 2)) && st > 0;
-  const done = !!l3.fenceId || (area && l3Prefs().measure === "area");
+  const done = !!l3.fenceId || (area && (l3Prefs().measure === "area" || l3Prefs().measure === "poly"));
   const cancel = st > 0 || area || !!l3.addType || !!l3.dlgPick || !!l3.clipPick || !!l3.vPick || t !== "select";
   const show = l3IsTouch() && (num || done || cancel);
   bar.classList.toggle("hidden", !show);

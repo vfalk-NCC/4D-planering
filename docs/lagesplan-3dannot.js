@@ -74,7 +74,7 @@ async function l3aMove(items, folderId, quiet) {
   l3aRefresh();
   try {
     if (ks.length) await ghWriteJSON(token, l3kPath(), arr => { const ids = new Set(ks.map(c => c.id)); return [...(Array.isArray(arr) ? arr : []).filter(x => !ids.has(x.id)), ...ks]; }, `3D: ${ks.length} kommentarer till mapp`);
-    const msv = ms.filter(m => m.saved).map(({ saved, ...x }) => x);
+    const msv = ms.filter(m => m.saved).map(({ saved, hid, ...x }) => x);
     if (msv.length) await ghWriteJSON(token, l3mPath(), arr => { const ids = new Set(msv.map(m => m.id)); return [...(Array.isArray(arr) ? arr : []).filter(x => !ids.has(x.id)), ...msv]; }, `3D: ${msv.length} mått till mapp`);
   } catch (e) { l3Status("Kunde inte spara flytten: " + e.message, true); return; }
   if (!quiet) l3Status(`${ks.length ? `${ks.length} kommentarer` : ""}${ks.length && ms.length ? " och " : ""}${ms.length ? `${ms.length} mått` : ""} flyttade till ${folderId ? `"${l3aFolderName(folderId)}"` : "Utan mapp"}.`);

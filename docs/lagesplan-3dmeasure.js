@@ -38,7 +38,7 @@ async function l3mLoad() {
 function l3mAdd(kind, pts, text, objs) {
   const m = { id: ghNewId(), plan: plan && plan.id, kind, text, objs: (objs || []).map(o => o || null), folder: (typeof l3a !== "undefined" && l3a.cur) || null, pts: pts.map(p => [p.x + l3.O[0], p.y + l3.O[1], p.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000)), at: new Date().toISOString(), by: (settings && settings.userName) || null, saved: false };
   l3m.list.push(m);
-  l3m.hidden = false;
+  // Nya mått syns alltid – även om de andra är dolda (Victor 2026-10-10).
   l3mDraw();
   l3mRenderBar();
   return m;
@@ -67,9 +67,10 @@ function l3mDraw() {
   l3Clear(grp);
   const host = l3.renderer.domElement.parentElement;
   l3m.labels.forEach(el => el.remove()); l3m.labels.clear();
-  grp.visible = !l3m.hidden;
+  grp.visible = true;
   l3m.list.forEach(m => {
     if (!(typeof l3aOn !== "function" || l3aOn(m))) return; // släckt mapp
+    if (m.hid) return; // dolt (Dölj måtten gäller de mått som fanns då)
     const P = m.pts.map(p => new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]));
     const sel = l3m.sel && l3m.sel.has(m.id), col = sel ? 0xf59e0b : m.saved ? 0x2563eb : 0xdc2626;
     const line = (a, b, op = 1) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: col, depthTest: false, transparent: op < 1, opacity: op })); l.renderOrder = 10; l.userData.noHit = true; l.raycast = () => {}; grp.add(l); };
@@ -88,7 +89,7 @@ function l3mDraw() {
     }
     const pts = new THREE.Points(new THREE.BufferGeometry().setFromPoints(P), new THREE.PointsMaterial({ color: col, size: 6, sizeAttenuation: false, depthTest: false }));
     pts.renderOrder = 11; pts.userData.noHit = true; pts.raycast = () => {}; grp.add(pts);
-    const at = m.kind === "angle" ? P[1] : m.kind === "area" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length) : D[0].clone().add(D[1]).multiplyScalar(0.5);
+    const at = m.kind === "poly" ? l3mPathMid(P) : m.kind === "angle" ? P[1] : m.kind === "area" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length) : D[0].clone().add(D[1]).multiplyScalar(0.5);
     const el = document.createElement("div");
     el.className = "v3-meas v3-meas-keep" + (m.saved ? " saved" : "") + (sel ? " sel" : "") + (m.kind === "dist" ? " drag" : "");
     if (m.kind === "dist") el.title = "Tryck för att markera måttet – dra för att föra måttlinjen uppåt eller nedåt (fästpunkterna sitter kvar). Dubbelklick: tillbaka.";
@@ -106,7 +107,6 @@ function l3mDraw() {
 function l3mPlaceLabels() {
   if (!l3 || !l3m.labels.size) return;
   l3m.labels.forEach(el => {
-    if (l3m.hidden) { el.style.display = "none"; return; }
     const q = l3ToScreen(el._at);
     el.style.display = q.behind ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px";
     el.style.pointerEvents = l3.tool === "select" || !l3.tool ? "auto" : "none"; // med andra verktyg går trycket igenom
@@ -118,7 +118,7 @@ function l3mPlaceLabels() {
    (hörn, kanter, ytor, DXF); Skift = var 5:e grad från grannpunkten. Måttet räknas om; Ctrl+Z ångrar. */
 const l3mH = { els: [], drag: null };
 function l3mActive() {
-  if (!l3 || l3m.hidden || !l3m.sel || l3m.sel.size !== 1 || (l3.tool && l3.tool !== "select")) return null;
+  if (!l3 || !l3m.sel || l3m.sel.size !== 1 || (l3.tool && l3.tool !== "select")) return null;
   const m = l3m.list.find(x => l3m.sel.has(x.id));
   return m && !m.locked && (typeof l3aOn !== "function" || l3aOn(m)) ? m : null;
 }
@@ -142,6 +142,7 @@ function l3mHandlesPlace() {
 function l3mRecalc(m) {
   const P = m.pts.map(p => new THREE.Vector3(p[0], p[1], p[2]));
   if (m.kind === "dist") m.text = `${l3Fmt(P[0].distanceTo(P[1]))} m`;
+  else if (m.kind === "poly") { let s = 0; for (let i = 1; i < P.length; i++) s += P[i].distanceTo(P[i - 1]); m.text = `${l3Fmt(s)} m`; }
   else if (m.kind === "angle" && typeof l3Angle3 === "function") m.text = `${l3Fmt(l3Angle3(P[0], P[1], P[2]), 1)}°`;
   else if (m.kind === "area" && typeof l3PolyArea === "function") m.text = `${l3Fmt(l3PolyArea(P).area)} m²`;
 }
@@ -229,7 +230,7 @@ function l3mRemove(id) {
 async function l3mSave(only) {
   const list = (only || l3m.list.filter(x => !x.saved));
   if (!list.length) { l3Status("Alla mått är redan sparade."); return; }
-  const recs = list.map(({ saved, ...x }) => x), ids = new Set(recs.map(x => x.id));
+  const recs = list.map(({ saved, hid, ...x }) => x), ids = new Set(recs.map(x => x.id));
   try {
     await ghWriteJSON(token, l3mPath(), arr => [...(Array.isArray(arr) ? arr : []).filter(x => !ids.has(x.id)), ...recs], `3D: ${recs.length} mått sparade`);
     list.forEach(x => { x.saved = true; });
@@ -244,7 +245,9 @@ function l3mClearUnsaved() {
   if (typeof l3VPush === "function") l3VPush(() => { l3m.list.push(...gone); l3mDraw(); l3mRenderBar(); }, () => { const s = new Set(gone); l3m.list = l3m.list.filter(x => !s.has(x)); l3mDraw(); l3mRenderBar(); }, "rensa mått");
   l3mDraw(); l3mRenderBar();
 }
-function l3mToggle(on) { l3m.hidden = on === undefined ? !l3m.hidden : !on; l3mDraw(); l3mRenderBar(); }
+/* Dölj/visa måtten: gäller de mått som finns nu (m.hid) – mått som mäts efteråt syns (Victor 2026-10-10). */
+const l3mAllHidden = () => l3m.list.length > 0 && l3m.list.every(m => m.hid);
+function l3mToggle(on) { const show = on === undefined ? l3mAllHidden() : !!on; l3m.list.forEach(m => { m.hid = !show; }); l3m.hidden = false; l3mDraw(); l3mRenderBar(); }
 
 /* Fästraden (när Mät är valt): en knapp som visar måtten under fliken Kommentarer (Victor 2026-10-10:
    "Måtten tycker jag att ni kan lägga in under kommentarer"). */
@@ -288,6 +291,13 @@ function l3mInfo(m) {
     rows.push(["Avstånd (3D)", `${f(d)} m`], ["Vågrätt", `${f(hz)} m`], ["Höjdskillnad", `${sg(dz)} m`],
       ["Lutning", slope == null ? "lodrätt" : `${sg(slope, 1)} % (${sg(ang, 1)}°)`], ["ΔX / ΔY", `${f(b.x - a.x)} / ${f(b.y - a.y)} m`]);
     sub = `vågrätt ${f(hz, 2)} m · höjd ${sg(dz, 2)} m${slope != null && Math.abs(dz) > 0.005 ? ` · ${sg(slope, 1)} %` : ""}`;
+  } else if (m.kind === "poly" && P.length >= 2) {
+    let len = 0, hz = 0; const parts = [];
+    for (let i = 1; i < P.length; i++) { const d = P[i].distanceTo(P[i - 1]); len += d; hz += Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y); parts.push(d); }
+    const dz = P[P.length - 1].z - P[0].z;
+    rows.push(["Längd (3D)", `${f(len)} m`], ["Vågrätt", `${f(hz)} m`], ["Höjdskillnad (start → slut)", `${sg(dz)} m`], ["Punkter", String(P.length)], ["Rakt start → slut", `${f(P[0].distanceTo(P[P.length - 1]))} m`],
+      ...parts.map((d, i) => [`Delsträcka ${i + 1}`, `${f(d)} m`]));
+    sub = `${P.length} punkter · ${parts.length} delsträckor · vågrätt ${f(hz, 2)} m`;
   } else if (m.kind === "angle" && P.length >= 3) {
     const a3 = (p, v, q) => { const u = p.clone().sub(v), w = q.clone().sub(v), d = u.length() * w.length(); return d ? deg(Math.acos(Math.max(-1, Math.min(1, u.dot(w) / d)))) : 0; };
     const flat = P.map(p => new THREE.Vector3(p.x, p.y, 0));
@@ -310,7 +320,15 @@ function l3mInfo(m) {
   rows.push(["Mätt av", `${m.by || "–"} · ${m.at ? new Date(m.at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}`], ["Status", m.saved ? "Sparad i projektet" : "Inte sparad"]);
   return { sub, objTxt, rows };
 }
-const L3M_KIND = { dist: "Avstånd", angle: "Vinkel", area: "Yta" };
+const L3M_KIND = { dist: "Avstånd", poly: "Polylinje", angle: "Vinkel", area: "Yta" };
+/* Punkten mitt längs en polylinje (för etiketten). pts: [x, y, z] eller THREE.Vector3. */
+function l3mPathMid(pts) {
+  const V = pts.map(p => (p.isVector3 ? p : new THREE.Vector3(p[0], p[1], p[2])));
+  let tot = 0; for (let i = 1; i < V.length; i++) tot += V[i].distanceTo(V[i - 1]);
+  let left = tot / 2;
+  for (let i = 1; i < V.length; i++) { const d = V[i].distanceTo(V[i - 1]); if (left <= d) return V[i - 1].clone().lerp(V[i], d ? left / d : 0); left -= d; }
+  return V[V.length - 1].clone();
+}
 function l3mTabHtml() {
   const esc = escHtml, I = L3_ICO, n = l3m.list.length, uns = l3m.list.filter(x => !x.saved).length;
   l3m.exp = l3m.exp || new Set();
@@ -338,7 +356,7 @@ function l3mTabHtml() {
       <button type="button" id="v3MeasNotesOff" title="Visa bara måtten i 3D (kommentarerna finns kvar)">${I.eyeOff} Dölj alla måttkommentarer</button>` : ""}
       ${l3m.list.some(m => !m.locked) ? `<button type="button" id="v3MeasLockAll" title="Lås alla mått">${L3M_LOCK} Lås alla</button>` : ""}
       ${l3m.list.some(m => m.locked) ? `<button type="button" id="v3MeasUnlockAll" title="Lås upp alla mått">${L3M_UNLOCK} Lås upp alla</button>` : ""}
-      <button type="button" id="v3MeasHide">${l3m.hidden ? I.eye + " Visa måtten" : I.eyeOff + " Dölj måtten"}</button>
+      <button type="button" id="v3MeasHide">${l3mAllHidden() ? I.eye + " Visa måtten" : I.eyeOff + " Dölj måtten"}</button>
       <button type="button" id="v3MeasCopyAll" title="Alla mått med detaljer som text (t.ex. till e-post eller Excel)">${I.copy || "⧉"} Kopiera alla</button>
       <button type="button" id="v3MeasClr" ${uns ? "" : "disabled"}>${I.trash} Rensa osparade</button></div>` : ""}` : ""}</section>`;
 }
@@ -358,7 +376,7 @@ function l3mBindTab(host) {
     if (e.shiftKey && l3m.anchor && ids.includes(l3m.anchor)) { const a = ids.indexOf(l3m.anchor), z = ids.indexOf(m.id); if (!(e.ctrlKey || e.metaKey)) l3m.sel.clear(); ids.slice(Math.min(a, z), Math.max(a, z) + 1).forEach(id => l3m.sel.add(id)); l3kRenderTab(); l3mDraw(); return; }
     if (e.ctrlKey || e.metaKey) { l3m.sel.has(m.id) ? l3m.sel.delete(m.id) : l3m.sel.add(m.id); l3m.anchor = m.id; l3kRenderTab(); l3mDraw(); return; }
     l3m.sel.clear(); l3m.sel.add(m.id); l3m.anchor = m.id; l3kRenderTab(); l3mDraw();
-    if (l3m.hidden) l3mToggle(true); const b3 = new THREE.Box3(); m.pts.forEach(p => b3.expandByPoint(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]))); l3FlyTo(b3.getCenter(new THREE.Vector3()), Math.max(6, b3.getSize(new THREE.Vector3()).length() * 1.6)); }; });
+    if (m.hid) { m.hid = false; l3mDraw(); } const b3 = new THREE.Box3(); m.pts.forEach(p => b3.expandByPoint(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]))); l3FlyTo(b3.getCenter(new THREE.Vector3()), Math.max(6, b3.getSize(new THREE.Vector3()).length() * 1.6)); }; });
   on("#v3MeasSave", () => l3mSave());
   on("#v3MeasLockAll", () => l3mLock(l3m.list, true));
   on("#v3MeasUnlockAll", () => l3mLock(l3m.list, false));
@@ -383,7 +401,7 @@ function l3mBindTab(host) {
 function l3mChanged(m) {
   l3mDraw(); l3kRenderTab();
   if (!m.saved) return;
-  const { saved, ...rec } = m;
+  const { saved, hid, ...rec } = m;
   ghWriteJSON(token, l3mPath(), arr => [...(Array.isArray(arr) ? arr : []).filter(x => x.id !== m.id), rec], "3D: måttets kommentar").catch(e => l3Status("Kunde inte spara måttets kommentar: " + e.message, true));
 }
 
@@ -442,7 +460,7 @@ function l3mIfcBuild(list, withNotes) {
     const raw = withNotes && m.note ? (typeof wrapText === "function" ? wrapText(m.note, 30) : m.note).split("\n").filter(Boolean).slice(0, 3) : [];
     const lines = [{ t: m.text, h: 0.22 }, ...raw.map(t => ({ t, h: 0.15 }))];
     const W = Math.max(0.6, ...lines.map(l => W1(l.t, l.h))) + L3M_IFC.pad * 2, H = lines.reduce((a, l) => a + l.h * 1.4, 0) + L3M_IFC.pad * 1.4;
-    const at = m.kind === "angle" ? P[1] : m.kind === "dist" ? [(DP[0][0] + DP[1][0]) / 2, (DP[0][1] + DP[1][1]) / 2, (DP[0][2] + DP[1][2]) / 2] : P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0]);
+    const at = m.kind === "poly" ? l3mPathMid(P).toArray() : m.kind === "angle" ? P[1] : m.kind === "dist" ? [(DP[0][0] + DP[1][0]) / 2, (DP[0][1] + DP[1][1]) / 2, (DP[0][2] + DP[1][2]) / 2] : P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0]);
     const center = [at[0], at[1], (m.kind === "area" ? Math.max(...P.map(p => p[2])) : at[2]) + L3M_IFC.lift + H / 2];
     // Vit linje från skylten ner till måttlinjen – visar att skylten hör till måttet (Victor 2026-10-10).
     const lead = tube(rel(at), rel([at[0], at[1], center[2] - H / 2]), 0.012, white);
@@ -501,7 +519,7 @@ function l3mNotesAll(on) {
   l3Status(`${ch.length} måttkommentarer ${on ? "visas" : "är dolda"} i 3D.`);
 }
 function l3mWriteMany(list) {
-  const recs = list.filter(m => m.saved).map(({ saved, ...x }) => x);
+  const recs = list.filter(m => m.saved).map(({ saved, hid, ...x }) => x);
   if (!recs.length) return;
   const ids = new Set(recs.map(x => x.id));
   ghWriteJSON(token, l3mPath(), arr => [...(Array.isArray(arr) ? arr : []).filter(x => !ids.has(x.id)), ...recs], "3D: måttkommentarer").catch(e => l3Status("Kunde inte spara: " + e.message, true));

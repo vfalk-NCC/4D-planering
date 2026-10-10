@@ -53,7 +53,8 @@ function l3ssCadAt(e) {
 function l3ssTap(e, hadSel) {
   const r = l3ssCadAt(e);
   if (r) { l3ssSelect({ kind: "cad", id: r.id }); return true; }
-  if (!hadSel && !l3ss.sel && l3.planMesh && l3.planMesh.visible && l3Ray(e, [l3.planMesh])[0]) { l3ssSelect({ kind: "pdf" }); return true; }
+  // Marken = PDF:en bara med mus (på pekskärm är tryck på marken till för att zooma och avmarkera).
+  if (!hadSel && !l3ss.sel && e.pointerType !== "touch" && !(typeof l3IsTouch === "function" && l3IsTouch() && !e.pointerType) && l3.planMesh && l3.planMesh.visible && l3Ray(e, [l3.planMesh])[0]) { l3ssSelect({ kind: "pdf" }); return true; }
   if (l3ss.sel) l3ssSelect(null);
   return false;
 }

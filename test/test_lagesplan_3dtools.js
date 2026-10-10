@@ -155,6 +155,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return out;
   });
   if (es.some(x => !x || x.kind !== 'edge' || x.dx > 0.02 || x.dz > 0.02 || Math.abs(x.y - x.want) > 0.25)) fail('Fäst längs hela kanten: ' + JSON.stringify(es));
+  // Vinkelrätt: från en punkt på ena långsidan fäster andra punkten i fotpunkten på motstående kant.
+  const pp = await page.evaluate(() => {
+    const g = l3.placeMeshes.get('c1'), b = new THREE.Box3().setFromObject(g), r = l3.renderer.domElement.getBoundingClientRect();
+    const base = new THREE.Vector3(b.min.x, b.min.y + (b.max.y - b.min.y) * 0.5, b.max.z); // på kanten x = min
+    // Markören på kanten x = max, en bit från fotpunkten (y + 0,4 m).
+    const near = new THREE.Vector3(b.max.x, base.y + 0.4, b.max.z), q = l3ToScreen(near);
+    l3SetPref('snaps', { ...l3Snaps(), perp: true, axis: false });
+    const s = l3Target({ clientX: r.left + q.x, clientY: r.top + q.y }, base);
+    return s && { kind: s.kind, x: s.point.x - b.max.x, y: s.point.y - base.y };
+  });
+  if (!pp || pp.kind !== 'perp' || Math.abs(pp.x) > 0.02 || Math.abs(pp.y) > 0.02) fail('Vinkelrätt (kortaste vägen): ' + JSON.stringify(pp));
   if (process.env.SHOT) { await page.evaluate(() => { l3Frame(); l3.renderer.render(l3.scene, l3.camera); }); await page.keyboard.press('m'); await move(6512346, 150123, 14, 0, 0); await page.screenshot({ path: process.env.SHOT }); }
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_3dtools');

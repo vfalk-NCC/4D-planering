@@ -277,7 +277,7 @@ function l3Dom() {
     </div>
     <div class="v3-main">
       <div class="v3-pal ${P.pal ? "" : "hidden"}" id="v3Pal">
-        <div class="v3-pal-head"><div class="v3-segs v3-paltabs"><button type="button" data-paltab="layers" class="${P.palTab === "layers" || P.palTab === "list" ? "on" : ""}">Lager</button><button type="button" data-paltab="props" class="${P.palTab === "props" ? "on" : ""}" title="Gruppera och färga IFC-objekten efter egenskaper (UDA)">Egenskaper</button><button type="button" data-paltab="groups" class="${P.palTab === "groups" ? "on" : ""}" title="Dina egna grupper av IFC-objekt (t.ex. Bandgång 1)">Grupper</button><button type="button" data-paltab="comments" class="${P.palTab === "comments" ? "on" : ""}" title="Kommentarerna i 3D – sök, färg, klara">Kommentarer</button><button type="button" data-paltab="add" class="${(P.palTab || "add") === "add" ? "on" : ""}" title="Färdiga objekt att placera ut – etablering, maskiner, säkerhet och egna modeller">3D-bibliotek</button></div><button type="button" id="v3PalClose" title="Dölj menyn (Ctrl+B)">‹</button></div>
+        <div class="v3-pal-head"><div class="v3-segs v3-paltabs"><button type="button" data-paltab="layers" class="${P.palTab === "layers" || P.palTab === "list" ? "on" : ""}">Lager</button><button type="button" data-paltab="props" class="${P.palTab === "props" ? "on" : ""}" title="Gruppera och färga IFC-objekten efter egenskaper (UDA)">Egenskaper</button><button type="button" data-paltab="groups" class="${P.palTab === "groups" ? "on" : ""}" title="Dina egna grupper av IFC-objekt (t.ex. Bandgång 1)">Grupper</button><button type="button" data-paltab="comments" class="${P.palTab === "comments" ? "on" : ""}" title="Kommentarerna och måtten i 3D – sök, färg, mappar, export">Kommentarer &amp; mått</button><button type="button" data-paltab="add" class="${(P.palTab || "add") === "add" ? "on" : ""}" title="Färdiga objekt att placera ut – etablering, maskiner, säkerhet och egna modeller">3D-bibliotek</button></div><button type="button" id="v3PalClose" title="Dölj menyn (Ctrl+B)">‹</button></div>
         <div id="v3PalAdd" class="v3-paltab ${(P.palTab || "add") === "add" ? "" : "hidden"}">
           <input type="search" id="v3PalSearch" placeholder="Sök…" />
           <div id="v3Lib"></div>
@@ -1415,6 +1415,15 @@ function l3Key(e) {
   if (e.key === "F2" && !mod) { e.preventDefault(); l3LogToggle(); return; }
   if (e.key === "Escape" && typeof l3k !== "undefined" && (l3k.open || l3k.draft)) { l3kClose(); return; } // kommentarens popup
   if (e.key === "Escape" && typeof l3ss !== "undefined" && l3ss.sel) { l3ssSelect(null); return; } // markerad DXF/PDF
+  // Delete tar bort markerade mått (Victor 2026-10-10) – låsta står kvar.
+  if ((e.key === "Delete" || e.key === "Backspace") && typeof l3m !== "undefined" && l3m.sel && l3m.sel.size && !l3.sel.size && !(typeof l3bs !== "undefined" && l3bs.sel.length) && !(typeof l3d !== "undefined" && l3d.rec)) {
+    e.preventDefault();
+    const ids = [...l3m.sel], locked = ids.filter(id => (l3m.list.find(m => m.id === id) || {}).locked);
+    ids.filter(id => !locked.includes(id)).forEach(id => l3mRemove(id));
+    l3m.sel = new Set(locked); l3mDraw(); if (typeof l3kRenderTab === "function") l3kRenderTab();
+    l3Status(locked.length ? `${ids.length - locked.length} mått borttagna – ${locked.length} låsta står kvar.` : `${ids.length === 1 ? "Måttet" : `${ids.length} mått`} borttaget (Ctrl+Z ångrar).`);
+    return;
+  }
   if (mod && k === "b" && l3PalToggle) { e.preventDefault(); l3PalToggle(); return; } // visa/dölj vänstermenyn
   if (typeof l3dKey === "function" && l3dKey(e)) return; // DXF-redigering
   if (typeof l3DialogKey === "function" && l3DialogKey(e)) return;

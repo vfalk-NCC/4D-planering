@@ -298,6 +298,31 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   if (process.env.SHOTM) await page.screenshot({ path: process.env.SHOTM });
   await page.evaluate(() => l3SetTool('select'));
 
+  // Polylinje-mått: punkt för punkt, Enter avslutar; längden längs vägen och delsträckorna.
+  {
+    await page.evaluate(() => { l3SetTool('measure'); l3SetPref('measure', 'poly'); l3RenderSnapBar(); l3SetPref('snaps', { ...l3Snaps(), end: false, mid: false, edge: false, axis: false, perp: false }); });
+    await click(6512341, 150127); await click(6512344, 150127); await click(6512344, 150131);
+    await page.keyboard.press('Enter'); await page.waitForTimeout(150);
+    const pl = await page.evaluate(() => { const m = l3m.list[l3m.list.length - 1]; return { kind: m.kind, n: m.pts.length, text: m.text, rows: l3mInfo(m).rows.map(r => r[0]) }; });
+    if (pl.kind !== 'poly' || pl.n !== 3 || !/^7(,0\d)? m$/.test(pl.text) || !pl.rows.includes('Delsträcka 2')) fail('Polylinje-mått: ' + JSON.stringify(pl));
+    await page.evaluate(() => { l3mRemove(l3m.list[l3m.list.length - 1].id); l3SetPref('measure', 'dist'); l3SetPref('snaps', { ...l3Snaps(), end: true, mid: true, edge: true, axis: true, perp: true }); l3SetTool('select'); });
+  }
+  // Dolda mått: ett nytt mått syns ändå, de gamla förblir dolda. Delete tar bort ett markerat mått.
+  {
+    await page.evaluate(() => { l3SetTool('select'); l3mToggle(false); });
+    const n0 = await page.evaluate(() => l3m.list.length);
+    await page.evaluate(() => l3SetTool('measure'));
+    await click(6512341, 150126); await click(6512346, 150126);
+    await page.evaluate(() => l3SetTool('select'));
+    const hv = await page.evaluate(() => ({ n: l3m.list.length, labels: [...document.querySelectorAll('.v3-meas-keep')].map(e => e.dataset.mid), last: l3m.list[l3m.list.length - 1].id, oldHid: l3m.list.slice(0, -1).every(m => m.hid) }));
+    if (hv.n !== n0 + 1 || hv.labels.length !== 1 || hv.labels[0] !== hv.last || !hv.oldHid) fail('Nytt mått ska synas fast måtten är dolda: ' + JSON.stringify(hv));
+    await page.evaluate(id => { l3m.sel = new Set([id]); l3mDraw(); }, hv.last);
+    await page.keyboard.press('Delete'); await page.waitForTimeout(150);
+    if ((await page.evaluate(() => l3m.list.length)) !== n0) fail('Delete ska ta bort det markerade måttet');
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(150);
+    if ((await page.evaluate(() => l3m.list.length)) !== n0 + 1) fail('Ctrl+Z ska ta tillbaka måttet');
+    await page.evaluate(id => { l3mRemove(id); l3mToggle(true); }, hv.last);
+  }
   // Historiken kan nålas fast som utfälld.
   await page.keyboard.press('F2'); await page.waitForTimeout(100);
   await page.click('#v3Log [data-log="pin"]');

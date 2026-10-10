@@ -10,13 +10,13 @@
    Ändringarna går via place3d.js (placeShift/placeRotateAbout, ångra, sparning). */
 
 const L3_AX = { x: { v: [1, 0, 0], col: "#dc2626", name: "på röd axel" }, y: { v: [0, 1, 0], col: "#16a34a", name: "på grön axel" }, z: { v: [0, 0, 1], col: "#2563eb", name: "på blå axel" } };
-const L3_SNAP = { deg5: ["5°", "#7c3aed"], end: ["Ändpunkt", "#16a34a"], mid: ["Mittpunkt", "#06b6d4"], edge: ["På kant", "#dc2626"], face: ["På yta", "#2563eb"], ground: ["På marken", "#64748b"], grid: ["Rutnät", "#a855f7"] };
+const L3_SNAP = { perp: ["Vinkelrätt (kortaste vägen)", "#ea580c"], deg5: ["5°", "#7c3aed"], end: ["Ändpunkt", "#16a34a"], mid: ["Mittpunkt", "#06b6d4"], edge: ["På kant", "#dc2626"], face: ["På yta", "#2563eb"], ground: ["På marken", "#64748b"], grid: ["Rutnät", "#a855f7"] };
 /* Fästlägen (som Teklas fästverktygsrad): hörn, mittpunkter, kanter, axlar, orto, rutnät. */
-const L3_SNAP_DEF = { end: true, mid: true, edge: true, axis: true, ortho: false, grid: false, gstep: 1 };
+const L3_SNAP_DEF = { end: true, mid: true, edge: true, perp: true, axis: true, ortho: false, grid: false, gstep: 1 };
 function l3Snaps() { return { ...L3_SNAP_DEF, ...(l3Prefs().snaps || {}) }; }
 function l3ToggleSnap(k) {
   const s = l3Snaps(); s[k] = !s[k]; l3SetPref("snaps", s); l3RenderSnapBar();
-  const names = { end: "Fäst mot hörn", mid: "Fäst mot mittpunkter", edge: "Fäst mot kanter", axis: "Fäst mot axlar", ortho: "Orto", grid: `Rutnät (${String(s.gstep).replace(".", ",")} m)` };
+  const names = { end: "Fäst mot hörn", mid: "Fäst mot mittpunkter", edge: "Fäst mot kanter", perp: "Vinkelrätt (kortaste vägen)", axis: "Fäst mot axlar", ortho: "Orto", grid: `Rutnät (${String(s.gstep).replace(".", ",")} m)` };
   l3Status(`${names[k]} ${s[k] ? "på" : "av"}.`);
 }
 function l3RenderSnapBar() {
@@ -26,17 +26,17 @@ function l3RenderSnapBar() {
   if (!bar) { bar = document.createElement("div"); bar.id = "v3SnapBar"; bar.className = "v3-snapbar"; host.appendChild(bar); bar.onclick = e => e.stopPropagation(); }
   const s = l3Snaps(), m = l3Prefs().measure || "dist";
   const b = (k, label, title) => `<button type="button" data-snapk="${k}" class="${s[k] ? "on" : ""}" title="${title}">${label}</button>`;
-  bar.innerHTML = `<span class="v3-snapbar-l">Fäst</span>${b("end", "Hörn", "Fäst mot hörn (ändpunkter)")}${b("mid", "Mitt", "Fäst mot mittpunkter på kanter")}${b("edge", "Kant", "Fäst mot närmaste punkt på en kant")}${b("axis", "Axlar", "Fäst mot röd/grön/blå axel från baspunkten")}${b("ortho", "Orto", "Orto (O): bara i X-, Y- eller Z-led")}${b("grid", "Rutnät", "Rutnät (G): fäst mot rutnätet på marken och ytor")}
+  bar.innerHTML = `<span class="v3-snapbar-l">Fäst</span>${b("end", "Hörn", "Fäst mot hörn (ändpunkter)")}${b("mid", "Mitt", "Fäst mot mittpunkter på kanter")}${b("edge", "Kant", "Fäst mot närmaste punkt på en kant")}${b("perp", "Vinkelrätt", "Vinkelrätt: på en kant fäster punkten där linjen från förra punkten möter kanten i rät vinkel – kortaste vägen över ett objekt")}${b("axis", "Axlar", "Fäst mot röd/grön/blå axel från baspunkten")}${b("ortho", "Orto", "Orto (O): bara i X-, Y- eller Z-led")}${b("grid", "Rutnät", "Rutnät (G): fäst mot rutnätet på marken och ytor")}
     <select id="v3GridStep" title="Rutnätets steg">${[0.1, 0.5, 1, 2, 5, 10].map(v => `<option value="${v}" ${Number(s.gstep) === v ? "selected" : ""}>${String(v).replace(".", ",")} m</option>`).join("")}</select>
     ${l3.tool === "move" ? `<span class="v3-snapbar-sep"></span><label class="v3-chk" title="Kopiera i stället för att flytta (tryck Ctrl)"><input type="checkbox" id="v3CopyMode" ${l3t.copyMode ? "checked" : ""} /> Kopia</label>` : ""}
-    ${l3.tool === "measure" ? `<span class="v3-snapbar-sep"></span><div class="v3-segs">${[["dist", "Avstånd"], ["angle", "Vinkel"], ["area", "Yta"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : ""}`;
+    ${l3.tool === "measure" ? `<span class="v3-snapbar-sep"></span><div class="v3-segs">${[["dist", "Avstånd"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : ""}`;
   if (typeof l3mBindBar === "function") l3mBindBar(bar);
   bar.querySelectorAll("[data-snapk]").forEach(x => { x.onclick = () => l3ToggleSnap(x.dataset.snapk); });
   bar.querySelector("#v3GridStep").onchange = e => { const v = { ...l3Snaps(), gstep: Number(e.target.value) }; l3SetPref("snaps", v); };
   const cm = bar.querySelector("#v3CopyMode"); if (cm) cm.onchange = () => { l3t.copyMode = cm.checked; l3Status(cm.checked ? "Kopierar: punkten du trycker härnäst får en kopia." : "Flyttar."); };
   bar.querySelectorAll("[data-mmode]").forEach(x => { x.onclick = () => { l3SetPref("measure", x.dataset.mmode); l3ToolCancel(); l3RenderSnapBar(); l3Status(L3_MEAS_START[x.dataset.mmode]); }; });
 }
-const L3_MEAS_START = { dist: "Mät avstånd: tryck på första punkten.", angle: "Mät vinkel: tryck på första punkten, sedan hörnet (vinkelns spets) och sist den andra punkten.", area: "Mät yta: tryck hörnen i tur och ordning. Avsluta med Enter eller tryck på första punkten igen." };
+const L3_MEAS_START = { dist: "Mät avstånd: tryck på första punkten.", poly: "Mät polylinje: tryck punkt för punkt längs vägen. Avsluta med Enter, dubbeltryck eller tryck på sista punkten igen.", angle: "Mät vinkel: tryck på första punkten, sedan hörnet (vinkelns spets) och sist den andra punkten.", area: "Mät yta: tryck hörnen i tur och ordning. Avsluta med Enter eller tryck på första punkten igen." };
 let l3t = { step: 0, lock: null, vcb: "", last: null };
 let l3HoverRaf = 0;
 
@@ -171,8 +171,10 @@ function l3EdgeSnap(e, S, hits, mx, my, exclude) {
   if (!cand.length) return null;
   const ray = l3MouseRay(e), v0 = new THREE.Vector3(), v1 = new THREE.Vector3(), onSeg = new THREE.Vector3();
   let best = null;
-  const consider = (d, p, kind, lim, pri) => { if (d < lim && (!best || pri < best.pri || (pri === best.pri && d < best.d))) best = { d, p: p.clone(), kind, pri }; };
+  let curObj = null;
+  const consider = (d, p, kind, lim, pri, seg) => { if (d < lim && (!best || pri < best.pri || (pri === best.pri && d < best.d))) best = { d, p: p.clone(), kind, pri, seg: seg ? [seg[0].clone(), seg[1].clone()] : null, obj: curObj }; };
   for (const [o, ri] of cand) {
+    curObj = o;
     const E = l3ObjEdges(o, ri); if (!E) continue;
     o.updateMatrixWorld();
     const M = o.matrixWorld;
@@ -184,11 +186,11 @@ function l3EdgeSnap(e, S, hits, mx, my, exclude) {
       if (S.edge) {
         ray.distanceSqToSegment(v0, v1, null, onSeg);
         const s = l3ToScreen(onSeg);
-        if (!s.behind) consider(Math.hypot(s.x - mx, s.y - my), onSeg, "edge", 10, 2);
+        if (!s.behind) consider(Math.hypot(s.x - mx, s.y - my), onSeg, "edge", 10, 2, [v0, v1]);
       }
     }
   }
-  return best ? { point: best.p, kind: best.kind } : null;
+  return best ? { point: best.p, kind: best.kind, seg: best.seg, obj: best.obj } : null;
 }
 
 function l3SnapRaw(e, exclude) {
@@ -196,7 +198,8 @@ function l3SnapRaw(e, exclude) {
   const hits = l3Ray(e, l3Surfaces(exclude));
   // Objektens riktiga kanter först (hörn > mittpunkt > längs kanten); annars som förut.
   const es = l3EdgeSnap(e, S, hits, mx, my, exclude);
-  if (es) return { ...es, placeId: hits[0] ? l3PlaceIdOf(hits[0].object) : null };
+  // Objektet vars kant/hörn punkten fäste mot (kan vara ett grannobjekt intill markören).
+  if (es) { const pid = (es.obj && l3PlaceIdOf(es.obj)) || (hits[0] ? l3PlaceIdOf(hits[0].object) : null); const { obj, ...rest } = es; return { ...rest, placeId: pid }; }
   if (hits.length) {
     const h = hits[0], o = h.object, pos = o.geometry.getAttribute("position");
     const placeId = l3PlaceIdOf(o);
@@ -251,6 +254,15 @@ function l3Target(e, base, exclude) {
   // Mät med Skift: riktningen hoppar 5° åt gången (Victor 2026-10-10).
   if (e.shiftKey && l3.tool === "measure" && typeof l3mShiftSnap === "function") return l3mShiftSnap(base, s);
   const S = l3Snaps();
+  // Vinkelrätt (Victor 2026-10-10: "mäta … över objekt kortaste vägen"): på en kant fäster punkten i
+  // fotpunkten – där linjen från baspunkten möter kanten i rät vinkel – när markören är i närheten.
+  if (S.perp && s && s.seg && base) {
+    const [a, b] = s.seg, ab = b.clone().sub(a), L2 = ab.lengthSq();
+    if (L2 > 1e-10) {
+      const t = Math.max(0, Math.min(1, base.clone().sub(a).dot(ab) / L2)), foot = a.clone().addScaledVector(ab, t), q = l3ToScreen(foot);
+      if (t > 0 && t < 1 && !q.behind && Math.hypot(q.x - mx, q.y - my) < 40 && foot.distanceTo(base) > 1e-4) return { point: foot, kind: "perp" };
+    }
+  }
   if (S.ortho && s) {
     // Orto: bara längs X, Y eller Z från baspunkten (den riktning som ligger närmast).
     const d = s.point.clone().sub(base), k = ["x", "y", "z"].reduce((a, b) => Math.abs(d[b]) > Math.abs(d[a]) ? b : a, "x");
@@ -396,6 +408,7 @@ function l3ToolHover(e) {
       if ((l3Prefs().measure === "area") && all.length >= 3) l3TmpLine(all[all.length - 1], all[0], "#dc2626", true);
       if (l3Prefs().measure === "angle" && mp.length === 2) l3ShowVcb("Vinkel", l3Fmt(l3Angle3(mp[0], mp[1], s.point), 1) + "°");
       if (l3Prefs().measure === "area" && all.length >= 3) l3ShowVcb("Yta", l3Fmt(l3PolyArea(all).area) + " m²");
+      if (l3Prefs().measure === "poly" && all.length >= 2) l3ShowVcb("Längd", l3Fmt(l3PathLen(all)) + " m");
     }
   } else if (t === "measure") {
     const s = st === 1 ? l3Target(e, l3t.M1) : l3Snap(e);
@@ -458,6 +471,8 @@ function l3ToolTap(e) {
     if (!mp.length) { l3ClearMeasure(); l3Busy(true); l3t.mpObjs = []; }
     // Yta: tryck på första punkten igen = klar.
     if (mode === "area" && mp.length >= 3) { const a = l3ToScreen(mp[0]), b = l3ToScreen(s.point); if (Math.hypot(a.x - b.x, a.y - b.y) < 12) { l3FinishArea(); return true; } }
+    // Polylinje: tryck på sista punkten igen = klar.
+    if (mode === "poly" && mp.length >= 2) { const a = l3ToScreen(mp[mp.length - 1]), b = l3ToScreen(s.point); if (Math.hypot(a.x - b.x, a.y - b.y) < 12) { l3FinishPoly(); return true; } }
     mp.push(s.point.clone()); l3Dot(s.point, 0xdc2626, l3.groups.meas);
     if (typeof l3mObjAt === "function") (l3t.mpObjs || (l3t.mpObjs = [])).push(l3mObjAt(e));
     if (mp.length > 1) l3TmpLine(mp[mp.length - 2], mp[mp.length - 1], "#dc2626", false, l3.groups.meas);
@@ -467,7 +482,7 @@ function l3ToolTap(e) {
       l3Status(`Vinkel ${l3Fmt(ang, 2)}° (vågrätt ${l3Fmt(l3Angle3(...mp.map(p => new THREE.Vector3(p.x, p.y, 0))), 2)}°). Tryck en ny punkt för att mäta igen.`);
       l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp);
       if (typeof l3mAdd === "function") { l3mAdd("angle", mp, `${l3Fmt(ang, 1)}°`, l3t.mpObjs); l3ClearMeasure(); } // ligger kvar
-    } else l3Status(mode === "angle" ? (mp.length === 1 ? "Tryck på vinkelns spets (hörnet)." : "Tryck på den andra punkten.") : `${mp.length} hörn. Fortsätt – avsluta med Enter eller tryck på första punkten.`);
+    } else l3Status(mode === "angle" ? (mp.length === 1 ? "Tryck på vinkelns spets (hörnet)." : "Tryck på den andra punkten.") : mode === "poly" ? `${mp.length} punkter${mp.length > 1 ? `, ${l3Fmt(l3PathLen(mp))} m` : ""}. Fortsätt – avsluta med Enter eller tryck på sista punkten igen.` : `${mp.length} hörn. Fortsätt – avsluta med Enter eller tryck på första punkten.`);
     l3Render();
     return true;
   }
@@ -549,6 +564,16 @@ function l3PolyArea(pts) {
   let a = 0, per = 0;
   for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; a += p.x * q.y - q.x * p.y; per += Math.hypot(q.x - p.x, q.y - p.y); }
   return { area: Math.abs(a) / 2, per };
+}
+/* Polylinje (Victor 2026-10-10: "polyline mått"): längden längs punkterna. */
+function l3PathLen(pts) { let s = 0; for (let i = 1; i < pts.length; i++) s += pts[i].distanceTo(pts[i - 1]); return s; }
+function l3FinishPoly() {
+  const mp = l3t.mp || [];
+  if (mp.length < 2) { l3Status("Polylinjen behöver minst två punkter."); return; }
+  const len = l3PathLen(mp), hz = mp.reduce((s, p, i) => (i ? s + Math.hypot(p.x - mp[i - 1].x, p.y - mp[i - 1].y) : 0), 0);
+  l3Status(`Polylinje ${l3Fmt(len)} m · vågrätt ${l3Fmt(hz)} m · ${mp.length} punkter. Tryck en ny punkt för att mäta igen.`);
+  l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp); l3Render();
+  if (typeof l3mAdd === "function") { l3mAdd("poly", mp, `${l3Fmt(len)} m`, l3t.mpObjs); l3ClearMeasure(); } // ligger kvar
 }
 function l3FinishArea() {
   const mp = l3t.mp || [];
@@ -637,6 +662,7 @@ function l3ToolKey(e) {
   }
   if (l3.tool === "move" && l3t.step === 0 && l3t.vcb && k === "Backspace") { l3t.vcb = l3t.vcb.slice(0, -1); l3ShowVcb("Kopior", ""); e.preventDefault(); return true; }
   if (l3.tool === "measure" && l3Prefs().measure === "area" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3FinishArea(); return true; }
+  if (l3.tool === "measure" && l3Prefs().measure === "poly" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3FinishPoly(); return true; }
   if (typing && /^[0-9]$|^[.,;\- ]$/.test(k)) { l3t.vcb += k; l3ShowVcb(label, ""); e.preventDefault(); return true; }
   if (typing && k === "Backspace" && l3t.vcb) { l3t.vcb = l3t.vcb.slice(0, -1); l3ShowVcb(label, ""); e.preventDefault(); return true; }
   if (typing && k === "Enter") {
