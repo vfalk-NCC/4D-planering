@@ -154,6 +154,7 @@ async function open3d() {
     if (typeof l3sRefresh === "function") l3sRefresh(0); // 2D-lagren och DXF
     if (typeof l3mLoad === "function") l3mLoad().catch(e => console.warn(e)); // sparade mått
     if (typeof l3kLoad === "function") l3kLoad().catch(e => console.warn(e)); // kommentarer
+    if (typeof l3aLoad === "function") l3aLoad().catch(e => console.warn(e)); // mappar för kommentarer och mått
     l3BuildObjects();
     if (typeof l3bRebuild === "function") l3bRebuild();
     // Byggnaden som var tänd förra gången: direkt ur cachen (versionen kontrolleras i bakgrunden).

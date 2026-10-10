@@ -52,7 +52,7 @@ function l3kNew(point, hit) {
   if (!point) { l3Status("Högerklicka på ett objekt eller marken för att kommentera där.", true); return; }
   l3kClose();
   const now = new Date().toISOString();
-  l3k.draft = { id: ghNewId(), plan: plan && plan.id, pos: [point.x + l3.O[0], point.y + l3.O[1], point.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000), target: l3kTarget(hit), text: "", by: l3kMe(), at: now, replies: [], done: false };
+  l3k.draft = { id: ghNewId(), plan: plan && plan.id, pos: [point.x + l3.O[0], point.y + l3.O[1], point.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000), target: l3kTarget(hit), text: "", by: l3kMe(), at: now, replies: [], done: false, folder: (typeof l3a !== "undefined" && l3a.cur) || null };
   l3k.hidden = false;
   l3kOpen(l3k.draft, true);
 }
@@ -62,7 +62,7 @@ function l3kDraw() {
   if (!l3) return;
   const host = l3.renderer.domElement.parentElement;
   l3k.els.forEach(el => el.remove()); l3k.els.clear();
-  const list = l3k.list.filter(c => l3k.showDone || !c.done);
+  const list = l3k.list.filter(c => (l3k.showDone || !c.done) && (typeof l3aOn !== "function" || l3aOn(c)));
   list.forEach((c, i) => {
     const el = document.createElement("button");
     el.type = "button"; el.className = "v3-cpin" + (c.done ? " done" : "") + (l3k.open && l3k.open.id === c.id ? " on" : "");
@@ -117,6 +117,7 @@ function l3kSignsBuild() {
   if (!grp.visible) return;
   l3k.list.forEach((c, i) => {
     if (!l3k.showDone && c.done) return;
+    if (!(typeof l3aOn !== "function" || l3aOn(c))) return; // släckt mapp
     const base = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]), lift = l3kLift(c);
     const cv = l3kCard(c, i + 1), tex = new THREE.CanvasTexture(cv); tex.anisotropy = 4;
     if ("encoding" in tex) tex.encoding = THREE.sRGBEncoding;
@@ -236,6 +237,10 @@ const l3kLift = c => (Number.isFinite(c.lift) ? c.lift : L3K_LIFT);
 const l3kH = { xy: null, z: null, drag: null };
 function l3kActive() {
   if (l3k.hidden) return null;
+  const a = l3kActive0();
+  return a && (typeof l3aOn !== "function" || l3aOn(a)) ? a : null;
+}
+function l3kActive0() {
   if (l3k.open && l3k.open !== l3k.draft && l3k.list.includes(l3k.open)) return l3k.open;
   if (typeof l3kUi !== "undefined" && l3kUi.sel.size === 1) return l3k.list.find(c => l3kUi.sel.has(c.id)) || null;
   return null;
@@ -344,9 +349,10 @@ function l3kRenderTab() {
       <label class="v3-chk"><input type="checkbox" id="v3KSigns" ${l3kSigns() ? "checked" : ""} /> Som skyltar</label>
       <label class="v3-chk"><input type="checkbox" id="v3KDone" ${l3k.showDone ? "checked" : ""} /> Klara (${done})</label>
     </div>
-    <div class="v3-kc-list">${list.length ? list.map(({ c, nr }) => `<div class="v3-kc ${c.done ? "done" : ""} ${l3k.open && l3k.open.id === c.id ? "on" : ""} ${l3kUi.sel.has(c.id) ? "sel" : ""}">
+    ${typeof l3aHtml === "function" ? l3aHtml() : ""}
+    <div class="v3-kc-list">${list.length ? list.map(({ c, nr }) => `<div class="v3-kc ${typeof l3aOn !== "function" || l3aOn(c) ? "" : "off"} ${c.done ? "done" : ""} ${l3k.open && l3k.open.id === c.id ? "on" : ""} ${l3kUi.sel.has(c.id) ? "sel" : ""}">
         <label class="v3-kc-col" title="Byt färg"><input type="color" data-kccol="${esc(c.id)}" value="${esc(c.color || L3K_COLORS[0])}" /><i style="background:${l3kCol(c)}">${nr}</i></label>
-        <button type="button" class="v3-kc-b" data-kcgo="${esc(c.id)}" title="Klick: zooma till kommentaren · Ctrl+klick: välj flera · Skift+klick: välj flera i rad"><b>${esc(String(c.text).slice(0, 160))}</b><em>${esc([c.target && c.target.name, c.by, new Date(c.at).toLocaleDateString("sv-SE", { day: "numeric", month: "short" }), (c.replies || []).length ? `${c.replies.length} svar` : ""].filter(Boolean).join(" · "))}</em></button>
+        <button type="button" class="v3-kc-b" data-kcgo="${esc(c.id)}" title="Klick: zooma till kommentaren · Ctrl+klick: välj flera · Skift+klick: välj flera i rad"><b>${esc(String(c.text).slice(0, 160))}</b><em>${c.folder && typeof l3aFolderName === "function" && l3aFolderName(c.folder) ? `<span class="v3-fchip">${esc(l3aFolderName(c.folder))}</span>` : ""}${esc([c.target && c.target.name, c.by, new Date(c.at).toLocaleDateString("sv-SE", { day: "numeric", month: "short" }), (c.replies || []).length ? `${c.replies.length} svar` : ""].filter(Boolean).join(" · "))}</em></button>
         <button type="button" class="v3-ic" data-kcdone="${esc(c.id)}" title="${c.done ? "Öppna igen" : "Markera som klar"}">${c.done ? "↺" : "✓"}</button>
         <button type="button" class="v3-ic" data-kcdel="${esc(c.id)}" title="Ta bort">${I.trash}</button>
       </div>`).join("") : `<div class="v3-pal-hint">${l3k.list.length ? "Ingen kommentar matchar." : "Inga kommentarer än. Högerklicka på ett objekt i 3D → Kommentar här…"}</div>`}</div>
@@ -354,6 +360,7 @@ function l3kRenderTab() {
     <div class="v3-pal-hint">${open} öppna${done ? ` · ${done} klara` : ""}. Högerklick i 3D → Kommentar här… skapar en ny.</div>
     ${typeof l3mTabHtml === "function" ? l3mTabHtml() : ""}`;
   if (typeof l3mBindTab === "function") l3mBindTab(host);
+  if (typeof l3aBind === "function") l3aBind(host);
   const q = host.querySelector("#v3KQ");
   q.oninput = () => { l3kUi.q = q.value; const pos = q.selectionStart; l3kRenderTab(); const n = document.getElementById("v3KQ"); if (n) { n.focus(); n.setSelectionRange(pos, pos); } };
   host.querySelector("#v3KShow").onchange = e => { l3k.hidden = !e.target.checked; if (l3k.hidden) l3kClose(); l3kDraw(); };
@@ -447,7 +454,7 @@ function l3kIfcBuild(list) {
 /* ids: bara de kommentarerna (markerade i listan); annars alla som syns. Numret är alltid kommentarens nummer i listan. */
 async function l3kExportIfc(ids) {
   const want = ids ? new Set(ids) : null;
-  const list = l3k.list.map((c, i) => ({ c, nr: i + 1 })).filter(({ c }) => want ? want.has(c.id) : (l3k.showDone || !c.done));
+  const list = l3k.list.map((c, i) => ({ c, nr: i + 1 })).filter(({ c }) => want ? want.has(c.id) : (l3k.showDone || !c.done) && (typeof l3aOn !== "function" || l3aOn(c)));
   if (!list.length) { l3Status("Inga kommentarer att exportera.", true); return null; }
   const r = l3kIfcBuild(list);
   const file = new File([new TextEncoder().encode(r.text)], r.fileName, { type: "application/x-step" });

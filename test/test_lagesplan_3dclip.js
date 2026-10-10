@@ -239,6 +239,36 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     if (Math.abs(back[0] - h0.pos[0]) > 1e-6 || Math.abs(back[1] - h0.pos[1]) > 1e-6) fail('Ctrl+Z ska ångra flytten: ' + JSON.stringify({ back, was: h0.pos }));
     await page.evaluate(() => { l3kUi.sel.clear(); l3kRenderTab(); l3Render(); });
   }
+  // Mappar för kommentarer och mått: tänd/släck, visa bara, nya hamnar i vald mapp, flytta markerade.
+  {
+    await page.evaluate(() => { window.__p = uiPrompt; uiPrompt = async () => 'Område A'; });
+    await page.click('#v3AfNew'); await page.waitForTimeout(400);
+    await page.evaluate(() => { uiPrompt = window.__p; });
+    const kid = await page.evaluate(() => l3k.list[0].id);
+    const f0 = await page.evaluate(() => { const m = l3mAdd('dist', [new THREE.Vector3(55, 22, 0), new THREE.Vector3(60, 22, 0)], '5 m'); return { folders: l3a.folders.map(f => f.name), cur: l3a.cur, mFolder: m.folder, file: null }; });
+    const ff = JSON.parse(gh.get('projects/p1/plan_annotfolders.json') || '[]');
+    if (f0.folders.join() !== 'Område A' || f0.mFolder !== f0.cur || ff.length !== 1 || ff[0].name !== 'Område A') fail('Ny mapp och nya mått i den: ' + JSON.stringify({ f0, ff }));
+    // Kommentaren (Utan mapp) markeras och flyttas till mappen.
+    await page.click(`#v3PalComments [data-kcgo="${kid}"]`); await page.waitForTimeout(200);
+    await page.selectOption('#v3AfMove', f0.cur); await page.waitForTimeout(500);
+    const saved = JSON.parse(gh.get('projects/p1/plan_comments3d.json') || '[]').find(x => x.id === kid);
+    if (!saved || saved.folder !== f0.cur) fail('Flytta kommentaren till mappen: ' + JSON.stringify(saved));
+    if (process.env.SHOTF) await page.screenshot({ path: process.env.SHOTF });
+    // Släck mappen: skylten och måttet syns inte i 3D; tänd igen.
+    await page.click(`#v3PalComments [data-afeye="${f0.cur}"]`); await page.waitForTimeout(200);
+    const off = await page.evaluate(() => ({ signs: l3.groups.csigns.children.filter(o => o.isSprite).length, meas: document.querySelectorAll('.v3-meas-keep').length, rowOff: document.querySelectorAll('#v3PalComments .v3-kc.off').length, hid: l3Prefs().annotHidden }));
+    if (off.signs !== 0 || off.meas !== 0 || off.rowOff < 2) fail('Släckt mapp: ' + JSON.stringify(off));
+    await page.click(`#v3PalComments [data-afsolo="${f0.cur}"]`); await page.waitForTimeout(200);
+    const solo = await page.evaluate(() => ({ signs: l3.groups.csigns.children.filter(o => o.isSprite).length, meas: document.querySelectorAll('.v3-meas-keep').length, hid: l3Prefs().annotHidden }));
+    if (solo.signs !== 1 || solo.meas !== 1 || !solo.hid._) fail('Visa bara mappen: ' + JSON.stringify(solo));
+    // Ta bort mappen: innehållet hamnar i Utan mapp.
+    await page.evaluate(() => { window.__c = uiConfirm; uiConfirm = async () => true; });
+    await page.click(`#v3PalComments [data-afdel="${f0.cur}"]`); await page.waitForTimeout(500);
+    await page.evaluate(() => { uiConfirm = window.__c; l3aAll(true); l3m.list = l3m.list.filter(m => m.text !== '5 m'); l3mDraw(); l3kUi.sel.clear(); l3kRenderTab(); });
+    const del = await page.evaluate(() => ({ folders: l3a.folders.length, kf: l3k.list[0].folder }));
+    const ff2 = JSON.parse(gh.get('projects/p1/plan_annotfolders.json') || '[]');
+    if (del.folders !== 0 || del.kf !== null || ff2.length !== 0) fail('Ta bort mappen: ' + JSON.stringify({ del, ff2 }));
+  }
   // Allt som sparas i TC ger en rad i historiken med länk till mappen.
   const tcl = await page.evaluate(() => { tcSavedNote({ folder: 'Lägesplan', uploaded: 1, link: 'https://web.connect.trimble.com/projects/P/data/folder/F' }, [{ name: 'X.ifc' }]); const last = l3Log[l3Log.length - 1], a = document.getElementById('v3StatusLink'); return { link: last.link, text: last.text, shown: !a.classList.contains('hidden'), href: a.href }; });
   if (!/folder\/F$/.test(tcl.link) || !/Lägesplan: X\.ifc/.test(tcl.text) || !tcl.shown || !/folder\/F$/.test(tcl.href)) fail('Länk till TC i historiken: ' + JSON.stringify(tcl));

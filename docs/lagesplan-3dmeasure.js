@@ -36,7 +36,7 @@ async function l3mLoad() {
 }
 /* Färdigt mått från mätverktyget: pts i scenens koordinater. */
 function l3mAdd(kind, pts, text, objs) {
-  const m = { id: ghNewId(), plan: plan && plan.id, kind, text, objs: (objs || []).map(o => o || null), pts: pts.map(p => [p.x + l3.O[0], p.y + l3.O[1], p.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000)), at: new Date().toISOString(), by: (settings && settings.userName) || null, saved: false };
+  const m = { id: ghNewId(), plan: plan && plan.id, kind, text, objs: (objs || []).map(o => o || null), folder: (typeof l3a !== "undefined" && l3a.cur) || null, pts: pts.map(p => [p.x + l3.O[0], p.y + l3.O[1], p.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000)), at: new Date().toISOString(), by: (settings && settings.userName) || null, saved: false };
   l3m.list.push(m);
   l3m.hidden = false;
   l3mDraw();
@@ -52,6 +52,7 @@ function l3mDraw() {
   l3m.labels.forEach(el => el.remove()); l3m.labels.clear();
   grp.visible = !l3m.hidden;
   l3m.list.forEach(m => {
+    if (!(typeof l3aOn !== "function" || l3aOn(m))) return; // släckt mapp
     const P = m.pts.map(p => new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]));
     const col = m.saved ? 0x2563eb : 0xdc2626;
     const line = (a, b) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: col, depthTest: false })); l.renderOrder = 10; l.userData.noHit = true; l.raycast = () => {}; grp.add(l); };
@@ -182,8 +183,8 @@ function l3mTabHtml() {
   const nSel = l3m.sel.size, withNotes = l3Prefs().measExpNotes !== false;
   return `<section class="v3-msec" id="v3MeasSec"><button type="button" class="v3-msec-h" id="v3MeasHead" aria-expanded="${open}"><i>›</i>Mått <span>${n}${uns ? ` · ${uns} osparade` : ""}</span></button>
     ${open ? `${n ? `<div class="v3-kc-list">${l3m.list.map((m, i) => { const inf = l3mInfo(m), ex = l3m.exp.has(m.id); return `<div class="v3-mr ${ex ? "ex" : ""}">
-      <div class="v3-kc ${l3m.sel.has(m.id) ? "sel" : ""}"><i class="v3-mdot ${m.saved ? "saved" : ""}" title="${m.saved ? "Sparad i projektet" : "Inte sparad"}"></i>
-        <button type="button" class="v3-kc-b" data-mzoom="${esc(m.id)}" title="Klick: zooma till måttet · Ctrl+klick: välj flera · Skift+klick: välj flera i rad"><b>${L3M_KIND[m.kind] || ""} ${esc(m.text).replace(/ (m²?|°)$/, "&nbsp;$1")}</b>${m.note ? `<em class="v3-mnote">${m.showNote ? "" : "(dold) "}${esc(m.note)}</em>` : ""}<em>${esc(inf.sub)}</em>${inf.objTxt ? `<em>${esc(inf.objTxt)}</em>` : ""}</button>
+      <div class="v3-kc ${l3m.sel.has(m.id) ? "sel" : ""} ${typeof l3aOn !== "function" || l3aOn(m) ? "" : "off"}"><i class="v3-mdot ${m.saved ? "saved" : ""}" title="${m.saved ? "Sparad i projektet" : "Inte sparad"}"></i>
+        <button type="button" class="v3-kc-b" data-mzoom="${esc(m.id)}" title="Klick: zooma till måttet · Ctrl+klick: välj flera · Skift+klick: välj flera i rad"><b>${L3M_KIND[m.kind] || ""} ${esc(m.text).replace(/ (m²?|°)$/, "&nbsp;$1")}</b>${m.folder && typeof l3aFolderName === "function" && l3aFolderName(m.folder) ? `<em><span class="v3-fchip">${esc(l3aFolderName(m.folder))}</span></em>` : ""}${m.note ? `<em class="v3-mnote">${m.showNote ? "" : "(dold) "}${esc(m.note)}</em>` : ""}<em>${esc(inf.sub)}</em>${inf.objTxt ? `<em>${esc(inf.objTxt)}</em>` : ""}</button>
         <button type="button" class="v3-ic" data-mexp="${esc(m.id)}" title="${ex ? "Dölj detaljerna" : "Visa alla detaljer"}" aria-expanded="${ex}">${ex ? "▴" : "▾"}</button>
         <button type="button" class="v3-ic" data-mcopy="${esc(m.id)}" title="Kopiera måttet med alla detaljer">${I.copy || "⧉"}</button>
         <button type="button" class="v3-ic" data-mdel="${esc(m.id)}" title="Ta bort måttet">${I.trash}</button></div>
@@ -319,7 +320,7 @@ function l3mIfcBuild(list, withNotes) {
 /* ids: bara de måtten (markerade); annars alla. Ny fil i TC (mappen Lägesplan) varje gång. */
 async function l3mExportIfc(ids) {
   const want = ids ? new Set(ids) : null;
-  const list = l3m.list.map((m, i) => ({ m, nr: i + 1 })).filter(({ m }) => !want || want.has(m.id));
+  const list = l3m.list.map((m, i) => ({ m, nr: i + 1 })).filter(({ m }) => want ? want.has(m.id) : (typeof l3aOn !== "function" || l3aOn(m)));
   if (!list.length) { l3Status("Inga mått att exportera.", true); return null; }
   const withNotes = l3Prefs().measExpNotes !== false;
   const r = l3mIfcBuild(list, withNotes);
