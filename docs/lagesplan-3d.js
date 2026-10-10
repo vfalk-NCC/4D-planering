@@ -276,6 +276,8 @@ function l3Dom() {
       </div>
     </div>
     <div class="v3-foot">
+      <div class="v3-log hidden" id="v3Log"></div>
+      <button type="button" class="v3-status-more" id="v3StatusMore" aria-expanded="false" title="Historik – vad som hänt tidigare (F2)">▴</button>
       <span class="v3-status" id="v3Status"></span>
       <label class="v3-chk" title="Objektet ställer sig på ytan under sig när du släpper handtagen"><input type="checkbox" id="v3Snap" ${P.snap ? "checked" : ""} /> Fäst mot ytor</label>
       <select id="v3Step" title="Steg för handtag och piltangenter">${[["0", "fritt"], ["0.1", "0,1 m · 5°"], ["0.5", "0,5 m · 15°"], ["1", "1 m · 45°"]].map(([v, l]) => `<option value="${v}" ${P.step === v ? "selected" : ""}>${l}</option>`).join("")}</select>
@@ -286,6 +288,8 @@ function l3Dom() {
   (document.querySelector("main") || document.body).appendChild(box);
   const $3 = id => box.querySelector("#" + id);
   $3("v3Close").onclick = close3d;
+  $3("v3StatusMore").onclick = () => l3LogToggle();
+  $3("v3Status").onclick = () => l3LogToggle();
   box.querySelectorAll("[data-v3tool]").forEach(b => { b.onclick = () => { if (typeof l3SetTool === "function") l3SetTool(b.dataset.v3tool); }; });
   $3("v3Step").onchange = () => { l3SetPref("step", $3("v3Step").value); l3ApplyStep(); };
   $3("v3Snap").onchange = () => l3SetPref("snap", $3("v3Snap").checked);
@@ -332,7 +336,40 @@ function l3Dom() {
 function l3HideMenus() {
   ["v3Views", "v3Show", "v3Edit", "v3Ctx", "v3Help"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("hidden"); });
 }
-function l3Status(t, bad) { const el = document.getElementById("v3Status"); if (el) { el.textContent = t || ""; el.classList.toggle("bad", !!bad); el.title = t || ""; } }
+/* Statusraden med historik (Victor 2026-10-10: "expandera den raden ungefär som i autocad så att jag kan
+   se på vad som skett tidigare"). l3Status skriver och sparar i historiken; l3StatusLive skriver bara
+   (löpande procent/MB som annars skulle fylla historiken). Klick på raden eller F2 fäller ut historiken. */
+const l3Log = [];
+function l3StatusShow(t, bad) { const el = document.getElementById("v3Status"); if (el) { el.textContent = t || ""; el.classList.toggle("bad", !!bad); el.title = t ? `${t}\n(klicka eller F2: historik)` : "Klicka eller F2: historik"; } }
+function l3StatusLive(t) { l3StatusShow(t, false); }
+function l3Status(t, bad) {
+  l3StatusShow(t, bad);
+  if (!t) return;
+  const last = l3Log[l3Log.length - 1];
+  if (last && last.text === t) { last.at = new Date(); last.n = (last.n || 1) + 1; }
+  else { l3Log.push({ at: new Date(), text: String(t), bad: !!bad }); if (l3Log.length > 500) l3Log.splice(0, l3Log.length - 500); }
+  l3LogRender();
+}
+function l3LogRender() {
+  const box = document.getElementById("v3Log");
+  if (!box || box.classList.contains("hidden")) return;
+  const p2 = x => String(x).padStart(2, "0"), tm = d => `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+  const atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
+  box.innerHTML = `<div class="v3-log-h"><b>Historik</b><span>${l3Log.length} rader</span><button type="button" data-log="copy" title="Kopiera historiken">Kopiera</button><button type="button" data-log="clear" title="Töm historiken">Töm</button><button type="button" class="v3-x" data-log="close" title="Stäng (F2)">✕</button></div>`
+    + (l3Log.length ? l3Log.map(x => `<div class="v3-log-r${x.bad ? " bad" : ""}"><time>${tm(x.at)}</time><span>${escHtml(x.text)}${x.n > 1 ? ` <em>×${x.n}</em>` : ""}</span></div>`).join("") : `<div class="v3-pal-hint">Inget har hänt än.</div>`);
+  box.querySelector('[data-log="close"]').onclick = () => l3LogToggle(false);
+  box.querySelector('[data-log="clear"]').onclick = () => { l3Log.length = 0; l3LogRender(); };
+  box.querySelector('[data-log="copy"]').onclick = () => { const t = l3Log.map(x => `${tm(x.at)}  ${x.text}`).join("\n"); try { navigator.clipboard.writeText(t).then(() => l3Toast("Historiken är kopierad.")); } catch (e) { /* ingen urklipp */ } };
+  if (atEnd || !box.dataset.seen) { box.scrollTop = box.scrollHeight; box.dataset.seen = "1"; }
+}
+function l3LogToggle(on) {
+  const box = document.getElementById("v3Log"), btn = document.getElementById("v3StatusMore");
+  if (!box) return;
+  const show = on === undefined ? box.classList.contains("hidden") : on;
+  box.classList.toggle("hidden", !show);
+  if (btn) btn.setAttribute("aria-expanded", show);
+  if (show) { delete box.dataset.seen; l3LogRender(); }
+}
 let l3ToastTimer = 0;
 function l3Toast(text, action, fn, ms = 6000) {
   const el = document.getElementById("v3Toast");
@@ -1244,6 +1281,7 @@ function l3Key(e) {
   if (mod && k === "d") { e.preventDefault(); l3DuplicateSel(); return; }
   if (mod && k === "a") { e.preventDefault(); l3SelectIds(placements.filter(p => { const g = l3.placeMeshes.get(p.id); return g && g.visible; }).map(p => p.id)); return; }
   if (mod && k === "p") { e.preventDefault(); l3TogglePlan(); return; }
+  if (e.key === "F2" && !mod) { e.preventDefault(); l3LogToggle(); return; }
   if (typeof l3DialogKey === "function" && l3DialogKey(e)) return;
   if (l3.vPick && e.key === "Escape") { l3.vPick = false; l3.renderer.domElement.style.cursor = ""; l3Status(""); return; }
   if (typeof l3ToolKey === "function" && l3ToolKey(e)) return;

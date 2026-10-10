@@ -81,10 +81,11 @@ function l3bmAccept() {
     if (!l3bm.edits.has(key)) l3bm.edits.set(key, { model, moves: new Map() });
     const ed = l3bm.edits.get(key), prev = ed.moves.get(r.guid) || new THREE.Matrix4();
     ed.moves.set(r.guid, Dg.clone().multiply(prev));
+    ed.dirty = true;
   });
   touched.forEach(m => { m.geometry.getAttribute("position").needsUpdate = true; m.geometry.computeVertexNormals(); m.geometry.computeBoundingSphere(); m.geometry.computeBoundingBox(); m.userData.l3b.centers = null; if (typeof l3BvhSchedule === "function") l3BvhSchedule(m); });
   l3bsSet(ents);
-  const n = [...l3bm.edits.values()].reduce((a, x) => a + x.moves.size, 0);
+  const n = [...l3bm.edits.values()].reduce((a, x) => a + (x.dirty ? x.moves.size : 0), 0);
   l3Toast(`${ents.length} objekt flyttade. ${n} ändrade objekt väntar på att sparas som ny IFC i Trimble Connect.`);
   if (typeof l3LayersRender === "function") l3LayersRender();
   l3Render();
@@ -257,33 +258,49 @@ function l3bmApplyToIfc(text, moves) {
   return { text: out, moved: n, missing };
 }
 /* Hela kedjan: hämta originalet, skriv in flyttarna, spara som ny fil i samma mapp i TC. */
+/* Modellens original-IFC från Trimble Connect som text (en byte per tecken), med alla flyttar i modellen
+   inskrivna. Används både av Spara och av Exportera markerade. */
+async function l3bmFetchIfc(m, onProgress) {
+  const w = m.src || {}, ed = l3bm.edits.get(m.id);
+  const r = w.fileId ? await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, onProgress)
+    : await askOpener("ifcModelData", { modelId: w.id || m.id }, 0, onProgress);
+  await new Promise(res => setTimeout(res, 20));
+  const u8 = new Uint8Array(r.bytes);
+  let text = ""; for (let i = 0; i < u8.length; i += 65536) text += String.fromCharCode.apply(null, u8.subarray(i, i + 65536)); // latin1: byte för byte
+  if (!/(^|[\s;])DATA\s*;/i.test(text.slice(0, 1 << 20))) throw new Error(`${m.name} är ingen IFC-fil i textformat (t.ex. .ifczip) och kan inte skrivas.`);
+  if (!ed || !ed.moves.size) return { text, moved: 0, missing: 0 };
+  // Flyttarna i scenen (SWEREF-meter) -> modellens IFC-koordinater (TC:s placering av modellen räknas bort).
+  const pl = w.fileId ? null : r.placement;
+  const rd = (pl && pl.refDirection) || { x: 1, y: 0, z: 0 }, rl = Math.hypot(rd.x, rd.y) || 1, P = (pl && pl.position) || { x: 0, y: 0, z: 0 };
+  const Pl = new THREE.Matrix4().makeRotationZ(Math.atan2(rd.y / rl, rd.x / rl)).setPosition(P.x / 1000, P.y / 1000, P.z / 1000), Pli = Pl.clone().invert();
+  const movesIfc = new Map([...ed.moves].map(([g, D]) => [g, Pli.clone().multiply(D).multiply(Pl)]));
+  return l3bmApplyToIfc(text, movesIfc);
+}
+function l3bmStrBytes(t) { const b = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) b[i] = t.charCodeAt(i) & 255; return b; }
+/* Unikt filnamn med sekunder – aldrig en ny version av en befintlig fil. */
+function l3bmFileName(m, what) {
+  const d = new Date(), p2 = x => String(x).padStart(2, "0");
+  const stamp = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} kl ${p2(d.getHours())}.${p2(d.getMinutes())}.${p2(d.getSeconds())}`;
+  return `${String(m.name || "Modell").replace(/\.ifc(zip)?$/i, "")} ${what} ${stamp}.ifc`.replace(/[\\/:*?"<>|]/g, "-");
+}
+async function l3bmUpload(m, bytes, name) {
+  const w = m.src || {};
+  return askOpener("tcUpload", { folderId: w.parentId || null, folder: w.parentId ? null : "4D Etablering", files: [new File([bytes], name, { type: "application/x-step" })] }, 30 * 60 * 1000);
+}
+
 async function l3bmSave(modelKey) {
   const ed = l3bm.edits.get(modelKey);
   if (!ed || !ed.moves.size) { l3Status("Inga flyttar att spara."); return; }
-  const m = ed.model, w = m.src || {};
+  const m = ed.model;
   const key = "bmsave", lbl = `Sparar ${m.name}`;
   try {
     busyProgress(key, `${lbl}: hämtar originalet`, 0);
-    const r = w.fileId ? await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, f => busyProgress(key, `${lbl}: hämtar originalet`, 0.5 * f))
-      : await askOpener("ifcModelData", { modelId: w.id || m.id }, 0, f => busyProgress(key, `${lbl}: hämtar originalet`, 0.5 * f));
-    busyProgress(key, `${lbl}: skriver in flyttarna`, 0.55);
-    await new Promise(res => setTimeout(res, 20));
-    const u8 = new Uint8Array(r.bytes);
-    let text = ""; for (let i = 0; i < u8.length; i += 65536) text += String.fromCharCode.apply(null, u8.subarray(i, i + 65536)); // latin1: byte för byte
-    // Flyttarna i scenen (SWEREF-meter) -> modellens IFC-koordinater (TC:s placering av modellen räknas bort).
-    const pl = w.fileId ? null : r.placement;
-    const rd = (pl && pl.refDirection) || { x: 1, y: 0, z: 0 }, rl = Math.hypot(rd.x, rd.y) || 1, P = (pl && pl.position) || { x: 0, y: 0, z: 0 };
-    const Pl = new THREE.Matrix4().makeRotationZ(Math.atan2(rd.y / rl, rd.x / rl)).setPosition(P.x / 1000, P.y / 1000, P.z / 1000), Pli = Pl.clone().invert();
-    const movesIfc = new Map([...ed.moves].map(([g, D]) => [g, Pli.clone().multiply(D).multiply(Pl)]));
-    const res = l3bmApplyToIfc(text, movesIfc);
+    const res = await l3bmFetchIfc(m, f => busyProgress(key, `${lbl}: hämtar originalet`, 0.5 * f));
     busyProgress(key, `${lbl}: laddar upp`, 0.7);
-    const bytes = new Uint8Array(res.text.length); for (let i = 0; i < res.text.length; i++) bytes[i] = res.text.charCodeAt(i) & 255;
-    const d = new Date(), p2 = x => String(x).padStart(2, "0");
-    const stamp = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} kl ${p2(d.getHours())}.${p2(d.getMinutes())}.${p2(d.getSeconds())}`; // unikt namn – aldrig en ny version av en befintlig fil
-    const name = `${String(m.name || "Modell").replace(/\.ifc(zip)?$/i, "")} flyttad ${stamp}.ifc`.replace(/[\\/:*?"<>|]/g, "-");
-    const up = await askOpener("tcUpload", { folderId: w.parentId || null, folder: w.parentId ? null : "4D Etablering", files: [new File([bytes], name, { type: "application/x-step" })] }, 30 * 60 * 1000);
+    const name = l3bmFileName(m, "flyttad");
+    const up = await l3bmUpload(m, l3bmStrBytes(res.text), name);
     busyProgress(key, "", null);
-    l3bm.edits.delete(modelKey);
+    ed.dirty = false; // flyttarna finns kvar (i scenen och för Exportera markerade) men är sparade
     l3Toast(`Sparad som ny fil i Trimble Connect: ${name}${up && up.folder ? ` (${up.folder})` : ""} – ${res.moved} objekt flyttade${res.missing ? `, ${res.missing} hittades inte i filen` : ""}. Originalet är orört.`);
     l3Status(`Sparad: ${name}`);
     if (typeof l3LayersRender === "function") l3LayersRender();
@@ -294,5 +311,4 @@ async function l3bmSave(modelKey) {
     throw e;
   }
 }
-/* Antal ändrade objekt som inte sparats (per modell, för panelen och Lager). */
-function l3bmPending(modelKey) { const ed = l3bm.edits.get(modelKey); return ed ? ed.moves.size : 0; }
+function l3bmPending(modelKey) { const ed = l3bm.edits.get(modelKey); return ed && ed.dirty ? ed.moves.size : 0; }

@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-10 07:56";
+const APP_VERSION = "2026-10-10 08:03";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -372,7 +372,7 @@ window.addEventListener("message", async e => {
   const msg = e.data;
   // Stora filer (IFC) flyttas till lägesplanen utan att kopieras (transfer); progress = hämtningens procent.
   const reply = (payload, transfer) => e.source.postMessage({ lagesplanReply: true, reqId: msg.reqId, ...payload }, location.origin, transfer || []);
-  const progress = f => { try { e.source.postMessage({ lagesplanProgress: true, reqId: msg.reqId, f }, location.origin); } catch (er) { /* fönstret stängt */ } };
+  const progress = (f, got, total) => { try { e.source.postMessage({ lagesplanProgress: true, reqId: msg.reqId, f, got: got || 0, total: total || 0 }, location.origin); } catch (er) { /* fönstret stängt */ } };
   try {
     if (msg.type === "hello") {
       reply({ settings, projectId, planSource });

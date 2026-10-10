@@ -8,7 +8,13 @@
 let l3b = { models: [], busy: false };
 const L3B_CHUNK = 80000;
 // Tak för trianglar (geometrin läses i en egen tråd i typade arrayer, så datorn klarar mer än förut).
-const l3bMaxTris = () => (matchMedia("(pointer: coarse)").matches ? 2000000 : 6000000);
+/* Taket för alla inlästa modeller tillsammans (Victor 2026-10-10: "jag måste kunna ladda in IFCer upp till
+   200 mb iaf"). ~90 byte per triangel i minnet + lika mycket i grafikkortet: 16 miljoner ≈ 1,5 GB. */
+const l3bMaxTris = () => {
+  if (matchMedia("(pointer: coarse)").matches) return 2500000;
+  const gb = navigator.deviceMemory || 8; // Chrome rapporterar högst 8
+  return gb >= 8 ? 16000000 : gb >= 4 ? 9000000 : 5000000;
+};
 
 /* Lista över tända IFC-modeller (från 4D-planering) och val av vilka som ska visas. */
 async function l3bOpenDialog(boxId = "v3BldgBox") {
@@ -76,10 +82,19 @@ async function l3bLoad(list, opts = {}) {
       let r;
       // En IFC-fil ur projektets mappar (Lager): hämtas som fil, utan TC:s placering i 3D-vyn.
       // Hämtningens verkliga procent kommer från 4D-planering (0–55 % av modellens del av stapeln).
-      const dl = f => { clearInterval(tick); busyProgress("bldg", lbl, part(0, 0.55 * f)); };
+      // Statusraden visar hur många MB som hämtats (Victor 2026-10-10).
+      let gotMb = 0;
+      const dl = (f, got, tot) => {
+        clearInterval(tick);
+        const mb = got ? l3bMb(got) + (tot ? ` av ${l3bMb(tot)}` : "") + " MB" : "";
+        if (got) gotMb = got;
+        busyProgress("bldg", mb ? `${lbl} – ${mb}` : lbl, part(0, 0.55 * f));
+        l3StatusLive(`Hämtar ${w.name} (${i + 1} av ${list.length})${mb ? `: ${mb}` : ""}${tot ? ` (${Math.round(100 * Math.min(1, got / tot))} %)` : ""}…`);
+      };
       try { r = w.fileId ? { ...(await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, dl)), name: w.name, placement: null } : await askOpener("ifcModelData", { modelId: w.id }, 0, dl); }
       finally { clearInterval(tick); }
       const tDl = Date.now() - tDl0, tRd0 = Date.now();
+      l3Status(`Hämtade ${r.name || w.name}: ${l3bMb(r.bytes ? r.bytes.byteLength : gotMb)} MB på ${(tDl / 1000).toFixed(1)} s.`);
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 0.6));
       l3Status(`Läser ${r.name || w.name} (${i + 1} av ${list.length})…`);
       await new Promise(res => setTimeout(res, 30));
@@ -95,7 +110,11 @@ async function l3bLoad(list, opts = {}) {
       m.meshes.forEach(x => l3.groups.bldg.add(x));
       l3b.models.push(m);
       l3bPosition(); l3bRemember(w, true);
-      if (m.capped) { l3Toast(`${m.name} är för stor för att visas helt här – en del av den visas.`); break; }
+      if (m.capped) {
+        const msg = `${m.name} visas bara delvis: taket på ${(l3bMaxTris() / 1e6).toFixed(0)} miljoner trianglar för alla modeller tillsammans nåddes (${(total / 1e6).toFixed(1)} miljoner inlästa). Ta bort modeller du inte behöver under Lager och läs in igen.`;
+        l3Toast(msg, null, null, 12000); l3Status(msg, true);
+        break;
+      }
     }
     l3bRecolor();
     // Lådorna behövs inte när byggnaden syns.
@@ -407,3 +426,5 @@ function l3bHideHit(h) {
 }
 function l3bShowAllRanges() { l3b.models.forEach(m => m.meshes.forEach(x => { const u = x.userData.l3b; if (u.hidden.size) { u.hidden.clear(); l3bApplyHidden(x); } })); }
 function l3bHiddenCount() { let n = 0; l3b.models.forEach(m => m.meshes.forEach(x => { n += x.userData.l3b.hidden.size; })); return n; }
+
+function l3bMb(b) { const m = b / 1048576; const d = m < 1 ? 2 : m < 10 ? 1 : 0; return m.toLocaleString("sv-SE", { minimumFractionDigits: d, maximumFractionDigits: d }); }

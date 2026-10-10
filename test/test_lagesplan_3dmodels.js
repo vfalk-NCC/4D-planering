@@ -233,6 +233,37 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   if (!/^Hus A flyttad \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(sv.name) || sv.folderId !== 'f1' || Math.abs(sv.pelare - 5) > 0.001 || Math.abs(sv.vagg) > 0.001 || sv.pending !== 0)
     fail('Spara som ny IFC: ny fil i samma mapp, pelaren 5 m längre bort, väggen orörd: ' + JSON.stringify(sv));
 
+  // Exportera markerade som ny IFC: bara pelaren, med flytten inräknad (Victor 2026-10-10).
+  await page.evaluate(() => { window.__up = null; l3RenderSide(); });
+  await page.click('#v3BsExport');
+  await page.waitForFunction(() => window.__up, null, { timeout: 30000 });
+  const ex = await page.evaluate(async ifc0 => {
+    const up = window.__up, api = await ifcmLoad();
+    const centers = text => { const id = api.OpenModel(new TextEncoder().encode(text), { COORDINATE_TO_ORIGIN: false }); const cx = {};
+      api.StreamAllMeshes(id, mesh => { const g = api.GetLine(id, mesh.expressID).GlobalId.value; let sx = 0, n = 0;
+        for (let i = 0; i < mesh.geometries.size(); i++) { const pg = mesh.geometries.get(i), geom = api.GetGeometry(id, pg.geometryExpressID), v = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize()), T = pg.flatTransformation;
+          for (let k = 0; k < v.length; k += 6) { sx += T[0] * v[k] + T[4] * v[k + 1] + T[8] * v[k + 2] + T[12]; n++; } }
+        cx[g] = sx / n; });
+      api.CloseModel(id); return cx; };
+    const a = centers(ifc0), b = centers(up.text);
+    return { name: up.name, folderId: up.folderId, guids: Object.keys(b), pelare: b['1hZq3$Bq9Fxu8nZK0bW1aA'] - a['1hZq3$Bq9Fxu8nZK0bW1aA'] };
+  }, ifc);
+  if (!/^Hus A urval 1 objekt \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(ex.name) || ex.folderId !== 'f1' || ex.guids.length !== 1 || Math.abs(ex.pelare - 5) > 0.001)
+    fail('Exportera markerade: bara pelaren, flyttad 5 m, ny fil i samma mapp: ' + JSON.stringify(ex));
+
+  // Zooma till modell i lagerhanteraren.
+  const zm = await page.evaluate(() => { l3PalTab('layers'); l3SetPref('laySort', 'list'); l3LayersRender(); const b = document.querySelector('[data-l3l-zoom="f:F2"]'); if (!b) return null; const t0 = l3.orbit.target.clone(); b.click(); return true; });
+  await page.waitForTimeout(700);
+  const zm2 = await page.evaluate(() => { const m = l3b.models.find(x => x.id === 'f:F2'), bx = new THREE.Box3(); m.meshes.forEach(x => bx.union(x.geometry.boundingBox.clone().applyMatrix4(x.matrixWorld))); return l3.orbit.target.distanceTo(bx.getCenter(new THREE.Vector3())); });
+  if (!zm || zm2 > 0.5) fail('Zooma till modell: ' + JSON.stringify({ zm, zm2 }));
+
+  // Statusradens historik (F2) och MB vid hämtning.
+  const lg = await page.evaluate(() => { l3Status('Testrad A'); l3Status('Testrad B', true); l3StatusLive('Hämtar 1,0 MB'); l3LogToggle(true); const box = document.getElementById('v3Log'); return { open: !box.classList.contains('hidden'), a: /Testrad A/.test(box.textContent), b: !!box.querySelector('.v3-log-r.bad'), live: /Hämtar 1,0 MB/.test(box.textContent), mb: l3bMb(115 * 1048576) }; });
+  await page.keyboard.press('F2'); await page.waitForTimeout(100);
+  if (!lg.open || !lg.a || !lg.b || lg.live || lg.mb !== '115' || !(await page.isHidden('#v3Log'))) fail('Historik i statusraden: ' + JSON.stringify(lg));
+  const hist = await page.evaluate(() => l3Log.map(x => x.text).join(' | '));
+  if (!/Hämtade Hus A\.ifc: [\d,]+ MB på/.test(hist)) fail('Historiken ska visa hämtade MB: ' + hist);
+
   // Esc stänger rutan.
   await page.evaluate(() => l3PalTab('add'));
   await page.click('#v3GetModel'); await page.waitForTimeout(150);

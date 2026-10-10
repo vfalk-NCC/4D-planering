@@ -70,7 +70,7 @@ const bridgeWait = new Map();
 const bridgeProg = new Map(); // reqId -> onProgress (hämtningar från Trimble Connect)
 window.addEventListener("message", e => {
   if (e.origin !== location.origin || !e.data) return;
-  if (e.data.lagesplanProgress) { const p = bridgeProg.get(e.data.reqId); if (p) try { p(e.data.f); } catch (er) { /* bara visning */ } return; }
+  if (e.data.lagesplanProgress) { const p = bridgeProg.get(e.data.reqId); if (p) try { p(e.data.f, e.data.got || 0, e.data.total || 0); } catch (er) { /* bara visning */ } return; }
   if (!e.data.lagesplanReply) return;
   const done = bridgeWait.get(e.data.reqId);
   if (done) { bridgeWait.delete(e.data.reqId); done(e.data); }

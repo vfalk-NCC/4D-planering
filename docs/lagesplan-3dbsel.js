@@ -176,6 +176,7 @@ function l3bsRenderSide(side) {
       <button type="button" id="v3BsHide" title="Dölj de markerade (H)">Dölj</button>
       <button type="button" id="v3BsIso" title="Visa bara de markerade (I)">Visa bara dessa</button>
       ${typeof l3bmStart === "function" ? `<button type="button" id="v3BsMove" title="Flytta de markerade – sparas som en ny IFC-fil i Trimble Connect">Flytta…</button>` : ""}
+      ${typeof ifcSubset === "function" && typeof l3bmFetchIfc === "function" ? `<button type="button" id="v3BsExport" class="v3-wide" title="De markerade objekten (med dina flyttar) blir en egen IFC-fil i samma mapp i Trimble Connect – originalet rörs inte">Exportera markerade som ny IFC (${n})</button>` : ""}
       ${l3bsPendingHtml(info)}
       ${coupled.length ? `<button type="button" id="v3BsJump" class="v3-wide" title="Markera de kopplade aktiviteterna i 4D-planering och objekten i Trimble Connect">Markera i 4D-planering (${coupled.length})</button>` : ""}
     </div>`;
@@ -185,6 +186,47 @@ function l3bsRenderSide(side) {
   on("v3BsHide", l3bsHide);
   on("v3BsIso", l3bsIsolate);
   on("v3BsMove", () => l3bmStart());
+  on("v3BsExport", async () => { const b = side.querySelector("#v3BsExport"); b.disabled = true; try { await l3bsExportIfc(); } catch (e) { /* visas i statusraden */ } if (b.isConnected) b.disabled = false; });
   side.querySelectorAll("[data-bmsave]").forEach(b => { b.onclick = async () => { b.disabled = true; try { await l3bmSave(b.dataset.bmsave); } catch (e) { /* visas i statusraden */ } l3RenderSide(); }; });
   on("v3BsJump", () => askOpener("select", { ids: [...new Set(coupled.map(x => x.item.id))], jump: true }, 15000).then(() => l3Toast("Markerat i 4D-planering och i Trimble Connect.")).catch(e => l3Toast(e.message)));
+}
+
+/* Exportera markerade (Victor 2026-10-10: "markera objekten i modell och göra en separat IFC på just dom
+   jag har markerat"): per modell hämtas originalet, alla flyttar i modellen skrivs in och de markerade
+   plockas ut med ifcSubset (geometri, placering, färger, egenskaper, våning). Sparas som en ny fil i
+   samma mapp i Trimble Connect – aldrig över en befintlig. */
+async function l3bsExportIfc() {
+  const byModel = new Map();
+  l3bs.sel.forEach(e => {
+    const u = e.mesh.userData.l3b, g = u.ranges[e.ri].guid;
+    if (!u.model || !g) return;
+    if (!byModel.has(u.model)) byModel.set(u.model, new Set());
+    byModel.get(u.model).add(g);
+  });
+  if (!byModel.size) { l3Status("Inget markerat objekt har IFC-id – inget att exportera.", true); return []; }
+  const key = "bsexport", out = [], list = [...byModel];
+  try {
+    for (let i = 0; i < list.length; i++) {
+      const [m, guids] = list[i], lbl = `Exporterar ${guids.size} objekt ur ${m.name}`, f0 = i / list.length, fw = 1 / list.length;
+      busyProgress(key, `${lbl}: hämtar originalet`, f0);
+      const res = await l3bmFetchIfc(m, f => busyProgress(key, `${lbl}: hämtar originalet`, f0 + fw * 0.5 * f));
+      busyProgress(key, `${lbl}: plockar ut`, f0 + fw * 0.55);
+      await new Promise(r => setTimeout(r, 20));
+      const name = l3bmFileName(m, `urval ${guids.size} objekt`);
+      const sub = ifcSubset(res.text, [...guids], { fileName: name });
+      if (!sub.text) throw new Error(`Hittade inga av de markerade objekten i ${m.name}.`);
+      busyProgress(key, `${lbl}: laddar upp`, f0 + fw * 0.75);
+      const up = await l3bmUpload(m, l3bmStrBytes(sub.text), name);
+      out.push({ name, folder: up && up.folder, found: sub.found.length, missing: sub.missing.length });
+    }
+    busyProgress(key, "", null);
+    const miss = out.reduce((a, x) => a + x.missing, 0);
+    l3Toast(`Sparad som ny fil i Trimble Connect: ${out.map(x => `${x.name}${x.folder ? ` (${x.folder})` : ""}`).join(", ")} – ${out.reduce((a, x) => a + x.found, 0)} objekt${miss ? `, ${miss} hittades inte i filen` : ""}. Originalet är orört.`);
+    l3Status(`Exporterad: ${out.map(x => x.name).join(", ")}`);
+    return out;
+  } catch (e) {
+    busyProgress(key, "", null);
+    l3Status("Kunde inte exportera: " + e.message, true);
+    throw e;
+  }
 }

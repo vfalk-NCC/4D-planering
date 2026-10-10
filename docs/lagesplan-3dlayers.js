@@ -54,7 +54,7 @@ function l3LayersRender() {
   if (P.laySort === "list") {
     const ms = l3b.models.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), "sv", { numeric: true }));
     const pend = m => (typeof l3bmPending === "function" ? l3bmPending(m.id) : 0);
-    h += ms.length ? ms.map(m => row(`data-l3l-model="${esc(m.id)}"`, m.visible, esc(m.name), pend(m) ? `<button type="button" class="v3-lr-save" data-l3l-save="${esc(m.id)}" title="Spara flyttarna som en ny IFC-fil i Trimble Connect">Spara ${pend(m)}</button>` : `<em class="v3-lr-k">${(m.tris / 1000).toFixed(0)}k</em>`)).join("")
+    h += ms.length ? ms.map(m => row(`data-l3l-model="${esc(m.id)}"`, m.visible, esc(m.name), `<button type="button" class="v3-lr-zoom" data-l3l-zoom="${esc(m.id)}" title="Zooma till modellen">${L3_ICO.focus}</button>` + (pend(m) ? `<button type="button" class="v3-lr-save" data-l3l-save="${esc(m.id)}" title="Spara flyttarna som en ny IFC-fil i Trimble Connect">Spara ${pend(m)}</button>` : `<em class="v3-lr-k">${(m.tris / 1000).toFixed(0)}k</em>`))).join("")
       : `<div class="v3-pal-hint">Inga modeller är inlästa än. Välj under Mappar eller hämta de som är tända i Trimble Connect.</div>`;
   } else h += l3lTreeHtml(l3lay.root, 0);
   h += `<label class="v3-chk v3-lay-voids" title="Armering, inredning, installationer (rör, kanaler, el) och fästdon. Ofta en stor del av modellen – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayDetails" ${P.ifcDetails ? "checked" : ""} /> Visa detaljer (armering, installationer) – långsammare</label>`;
@@ -68,6 +68,7 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3l]").forEach(b => { b.onclick = () => l3lToggle(b.dataset.l3l); });
   host.querySelectorAll("[data-l3l-type]").forEach(b => { b.onclick = () => { const t = types.find(x => x.type === b.dataset.l3lType); if (t) { l3lSetIdsVisible(t.ids, !l3lTypeOn(t)); l3LayersRender(); } }; });
   host.querySelectorAll("[data-l3l-model]").forEach(b => { b.onclick = () => { const m = l3b.models.find(x => x.id === b.dataset.l3lModel); if (m) { l3bShow(m.id, !m.visible); l3RenderLegend(); l3Render(); l3LayersRender(); } }; });
+  host.querySelectorAll("[data-l3l-zoom]").forEach(b => { b.onclick = () => l3lZoomModel(b.dataset.l3lZoom); });
   host.querySelectorAll("[data-l3l-save]").forEach(b => { b.onclick = async () => { b.disabled = true; try { await l3bmSave(b.dataset.l3lSave); } catch (e) { /* statusraden */ } l3LayersRender(); }; });
   host.querySelectorAll("[data-l3l-sort]").forEach(b => { b.onclick = () => { l3SetPref("laySort", b.dataset.l3lSort); l3LayersRender(); }; });
   host.querySelectorAll("[data-l3l-dir]").forEach(b => { b.onclick = () => l3lOpenDir(b.dataset.l3lDir); });
@@ -99,7 +100,7 @@ function l3lTreeHtml(id, depth) {
   });
   files.forEach(f => {
     const m = l3b.models.find(x => x.id === "f:" + f.id), busy = l3lay.loading.has(f.id);
-    h += `<div class="v3-lr" ${pad}><button type="button" class="v3-eye ${m && m.visible ? "on" : ""}" data-l3l-file="${esc(f.id)}" data-name="${esc(f.name)}" title="${m ? (m.visible ? "Släck" : "Tänd") : "Läs in och visa"}">${busy ? '<span class="pm-spin"></span>' : l3lEye(!!(m && m.visible))}</button><span class="v3-lr-n" title="${esc(f.name)}">${esc(f.name)}</span>${m ? `<em class="v3-lr-k">${(m.tris / 1000).toFixed(0)}k</em>` : f.size ? `<em class="v3-lr-k">${typeof pmBytes === "function" ? pmBytes(f.size) : ""}</em>` : ""}</div>`;
+    h += `<div class="v3-lr" ${pad}><button type="button" class="v3-eye ${m && m.visible ? "on" : ""}" data-l3l-file="${esc(f.id)}" data-name="${esc(f.name)}" title="${m ? (m.visible ? "Släck" : "Tänd") : "Läs in och visa"}">${busy ? '<span class="pm-spin"></span>' : l3lEye(!!(m && m.visible))}</button><span class="v3-lr-n" title="${esc(f.name)}">${esc(f.name)}</span>${m ? `<button type="button" class="v3-lr-zoom" data-l3l-zoom="${esc(m.id)}" title="Zooma till modellen">${L3_ICO.focus}</button>` : ""}${m ? `<em class="v3-lr-k">${(m.tris / 1000).toFixed(0)}k</em>` : f.size ? `<em class="v3-lr-k">${typeof pmBytes === "function" ? pmBytes(f.size) : ""}</em>` : ""}</div>`;
   });
   if (!dirs.length && !files.length && l3lay.folders.has(id)) h += `<div class="v3-pal-hint" ${pad}>Inga IFC-filer här.</div>`;
   return h;
@@ -181,4 +182,16 @@ function l3lResizable(el, pref, side, min, max) {
 function l3LayersInit() {
   l3lResizable(document.getElementById("v3Side"), "sideW", "right", 240, 640);
   l3lResizable(document.getElementById("v3Pal"), "palW", "left", 170, 460);
+}
+
+/* Zooma till en inläst modell (släckt modell tänds först). */
+function l3lZoomModel(id) {
+  const m = l3b.models.find(x => x.id === id);
+  if (!m) return;
+  if (!m.visible) { l3bShow(m.id, true); l3RenderLegend(); l3LayersRender(); }
+  const b = new THREE.Box3();
+  m.meshes.forEach(x => { if (!x.geometry.boundingBox) x.geometry.computeBoundingBox(); x.updateMatrixWorld(true); b.union(x.geometry.boundingBox.clone().applyMatrix4(x.matrixWorld)); });
+  if (b.isEmpty()) return;
+  l3FlyTo(b.getCenter(new THREE.Vector3()), Math.max(6, b.getSize(new THREE.Vector3()).length() * 1.1));
+  l3Status(`Zoomar till ${m.name}.`);
 }
