@@ -230,14 +230,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (await page.evaluate(() => l3.renderer.clippingPlanes.length)) fail('Ta bort alla snitt');
 
   // --- Objektlistan.
-  await page.click('[data-paltab="list"]');
-  if (await page.locator('[data-olid]').count() !== await N()) fail('Objektlistan ska visa all etablering');
-  await page.click('[data-olid="u"]');
+  // Objekten ligger under Lager → Planering och etablering (fliken Objekt är borttagen).
+  await page.click('[data-paltab="layers"]'); await page.waitForTimeout(100);
+  if (await page.locator('[data-paltab="list"]').count()) fail('Fliken Objekt ska vara borttagen');
+  await page.evaluate(() => { l3lTypes().forEach(t => l3lay.texp.add(t.type)); l3LayersRender(); });
+  if (await page.locator('[data-l3l-osel]').count() !== await N()) fail('Lager ska visa all etablering per objekt');
+  await page.click('[data-l3l-osel="u"]');
   if (JSON.stringify(await sel()) !== '["u"]') fail('Klick i listan ska markera');
-  await page.click('[data-oleye="u"]');
+  await page.click('[data-l3l-obj="u"]');
   if (await page.evaluate(() => l3.placeMeshes.get('u').visible)) fail('Ögat ska dölja');
-  await page.click('[data-oleye="u"]');
-  await page.click('[data-olg="Container"]');
+  await page.click('[data-l3l-obj="u"]');
+  await page.click('.v3-lr-tsel:text-is("Container")');
   if ((await sel()).length !== 8) fail('Gruppnamnet ska markera hela gruppen (8 containrar): ' + (await sel()).length);
   await page.click('[data-paltab="add"]');
 

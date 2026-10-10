@@ -11,7 +11,7 @@
    Panelerna till höger och vänster kan breddas genom att dra i kanten. */
 
 const L3L_EXT = /\.(ifc|ifczip|dxf)$/i; // DXF blir ett CAD-lager (lagesplan-3dsite.js)
-let l3lay = { folders: new Map(), open: new Set(), root: null, project: "", loading: new Set(), err: "" };
+let l3lay = { folders: new Map(), open: new Set(), root: null, project: "", loading: new Set(), err: "", texp: new Set() };
 
 const l3lEye = on => `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${on
   ? '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>'
@@ -58,7 +58,13 @@ function l3LayersRender() {
     <div class="v3-lr-opr" title="Ritningens synlighet i 3D (genomskinlighet)"><input type="range" data-l3l-op="plan" min="10" max="100" step="5" value="${P.planOp || 100}" /></div>`);
   h += l3lSec("plan", "Planering och etablering", `${row('data-l3l="objs"', objsOn, "Planerade objekt (lådor)")}
     ${row('data-l3l="etab"', etabOn, `Etablering <em>${placements.length}</em>`, "", "v3-lr-b")}
-    ${types.map(t => row(`data-l3l-type="${esc(t.type)}"`, l3lTypeOn(t), `<i class="v3-lr-dot" style="background:${esc(t.color)}"></i>${esc(t.label)} <em>${t.ids.length}</em>`, "", "v3-lr-sub")).join("")}
+    ${types.map(t => {
+      // Varje typ går att fälla ut till sina objekt (Victor 2026-10-10: fliken Objekt var "kaka på kaka").
+      const ex = l3lay.texp.has(t.type) || !!q;
+      return row(`data-l3l-type="${esc(t.type)}"`, l3lTypeOn(t), `<i class="v3-lr-dot" style="background:${esc(t.color)}"></i><b class="v3-lr-tsel" data-l3l-tsel="${esc(t.type)}" title="Markera alla ${esc(t.label)}">${esc(t.label)}</b> <em>${t.ids.length}</em>`, `<button type="button" class="v3-lr-texp" data-l3l-texp="${esc(t.type)}" aria-expanded="${ex}" title="${ex ? "Fäll ihop" : "Visa objekten"}"><i>›</i></button>`, "v3-lr-sub")
+        + (ex ? t.ids.map(id => { const p = placements.find(x => x.id === id); if (!p) return ""; const on = !l3.hidden.has(id); return `<div class="v3-lr v3-lr-obj ${l3.sel.has(id) ? "on" : ""}"><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3l-obj="${esc(id)}" title="${on ? "Dölj" : "Visa"}">${l3lEye(on)}</button><button type="button" class="v3-lr-n v3-lr-pick" data-l3l-osel="${esc(id)}" title="Klick: markera (Skift = flera) · Dubbelklick: zooma">${esc(p.name || t.label)}</button></div>`; }).join("") : "");
+    }).join("")}
+    ${placements.length ? `<button type="button" class="v3-link v3-lay-csv" id="v3LayCsv" title="Lista över etableringen som öppnas i Excel (namn, typ, mått, läge, 4D)">Exportera etableringen som lista (Excel/CSV)</button>` : ""}
     ${typeof l3m !== "undefined" ? row('data-l3m-eye="1"', !l3m.hidden, `Mått <em>${l3m.list.length}</em>`) : ""}
     ${typeof l3k !== "undefined" ? row('data-l3k-eye="1"', !l3k.hidden, `Kommentarer <em>${l3k.list.filter(c => !c.done).length}${l3k.list.some(c => c.done) ? ` + ${l3k.list.filter(c => c.done).length} klara` : ""}</em>`) + row('data-l3k-signs="1"', l3kSigns(), "Som skyltar i 3D", "", "v3-lr-sub") : ""}`);
   if (typeof l3sHtml === "function") { const s2 = l3sHtml(row, l3lEye); if (s2) h += l3lSec("site2d", "2D-lager och DXF", s2.body, s2.extra); }
@@ -95,6 +101,14 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3m-eye]").forEach(b => { b.onclick = () => l3mToggle(); });
   host.querySelectorAll("[data-l3k-eye]").forEach(b => { b.onclick = () => l3kToggle(); });
   host.querySelectorAll("[data-l3k-signs]").forEach(b => { b.onclick = () => { l3SetPref("cSigns", !l3kSigns()); l3kDraw(); }; });
+  host.querySelectorAll("[data-l3l-texp]").forEach(b => { b.onclick = () => { const t = b.dataset.l3lTexp; l3lay.texp.has(t) ? l3lay.texp.delete(t) : l3lay.texp.add(t); l3LayersRender(); }; });
+  host.querySelectorAll("[data-l3l-obj]").forEach(b => { b.onclick = () => { const id = b.dataset.l3lObj; l3lSetIdsVisible([id], l3.hidden.has(id)); if (typeof l3UpdateHidden === "function") l3UpdateHidden(); l3LayersRender(); }; });
+  host.querySelectorAll("[data-l3l-osel]").forEach(b => {
+    b.onclick = e => { const id = b.dataset.l3lOsel; if (e.shiftKey || e.ctrlKey || e.metaKey) { const s = new Set(l3.sel); s.has(id) ? s.delete(id) : s.add(id); l3SelectIds([...s]); } else l3SelectIds([id]); l3LayersRender(); };
+    b.ondblclick = () => { l3SelectIds([b.dataset.l3lOsel]); l3View("sel"); };
+  });
+  host.querySelectorAll("[data-l3l-tsel]").forEach(b => { b.onclick = () => { const t = types.find(x => x.type === b.dataset.l3lTsel); if (t) { l3SelectIds(t.ids.filter(id => !l3.hidden.has(id))); l3LayersRender(); } }; });
+  const csv = host.querySelector("#v3LayCsv"); if (csv) csv.onclick = () => l3ExportCsv();
   host.querySelectorAll("[data-l3l-type]").forEach(b => { b.onclick = () => { const t = types.find(x => x.type === b.dataset.l3lType); if (t) { l3lSetIdsVisible(t.ids, !l3lTypeOn(t)); l3LayersRender(); } }; });
   host.querySelectorAll("[data-l3l-model]").forEach(b => { b.onclick = () => { const m = l3b.models.find(x => x.id === b.dataset.l3lModel); if (m) { l3bShow(m.id, !m.visible); l3RenderLegend(); l3Render(); l3LayersRender(); } }; });
   host.querySelectorAll("[data-l3l-zoom]").forEach(b => { b.onclick = () => l3lZoomModel(b.dataset.l3lZoom); });

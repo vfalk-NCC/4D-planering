@@ -95,7 +95,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // --- Lista till Excel (CSV): semikolon, decimalkomma, BOM, formler neutraliseras.
   await page.evaluate(() => { placements.find(p => p.id === 'e').name = '=SUMMA(A1)'; });
   await page.evaluate(() => l3PalTab('list'));
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#v3ObjCsv')]);
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#v3LayCsv')]); // Lager → Planering och etablering
   const csv = fs.readFileSync(await dl.path(), 'utf8');
   if (!dl.suggestedFilename().endsWith('.csv') || csv.charCodeAt(0) !== 0xfeff) fail('CSV med BOM: ' + dl.suggestedFilename());
   const lines = csv.slice(1).trim().split('\r\n');

@@ -510,7 +510,7 @@ function l3Commands() {
     ["Planerade objekt: lådor", "", () => l3SetObjMode("solid")], ["Planerade objekt: genomskinliga", "", () => l3SetObjMode("ghost")], ["Planerade objekt: konturer", "", () => l3SetObjMode("edges")], ["Planerade objekt: dolda", "", () => l3SetObjMode("hidden")],
     ["Fäst mot hörn av/på", "", () => l3ToggleSnap("end")], ["Fäst mot mittpunkter av/på", "", () => l3ToggleSnap("mid")], ["Fäst mot kanter av/på", "", () => l3ToggleSnap("edge")],
     ["Fäst mot axlar av/på", "", () => l3ToggleSnap("axis")], ["Orto av/på", "O", () => l3ToggleSnap("ortho")], ["Rutnät av/på", "G", () => l3ToggleSnap("grid")],
-    ["Objektlistan", "", () => l3PalTab("list")], ["Exportera lista (Excel/CSV)", "", l3ExportCsv], ["Biblioteket (lägg till)", "", () => l3PalTab("add")],
+    ["Objektlistan (Lager → Etablering)", "", () => l3PalTab("layers")], ["Exportera lista (Excel/CSV)", "", l3ExportCsv], ["Biblioteket (lägg till)", "", () => l3PalTab("add")],
     ["Spara som IFC i Trimble Connect", "", l3SaveIfc], ["Hjälp och kortkommandon", "?", () => document.getElementById("v3HelpBtn").click()], ["Tillbaka till 2D", "", close3d],
   ];
   C.push(["Spara vy…", "", () => { document.getElementById("v3ViewsBtn").click(); setTimeout(() => document.getElementById("v3SvName").focus(), 0); }]);
@@ -568,6 +568,7 @@ function l3OpenLaunch() {
   render(); setTimeout(() => q.focus(), 0);
 }
 function l3PalTab(t) {
+  if (t === "list") t = "layers"; // fliken Objekt finns inte längre – objekten ligger under Lager → Etablering
   const pal = document.getElementById("v3Pal");
   if (pal.classList.contains("hidden")) document.getElementById("v3PalOpen").click();
   document.querySelectorAll("[data-paltab]").forEach(b => b.classList.toggle("on", b.dataset.paltab === t));

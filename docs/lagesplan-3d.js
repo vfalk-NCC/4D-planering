@@ -277,14 +277,14 @@ function l3Dom() {
     </div>
     <div class="v3-main">
       <div class="v3-pal ${P.pal ? "" : "hidden"}" id="v3Pal">
-        <div class="v3-pal-head"><div class="v3-segs v3-paltabs"><button type="button" data-paltab="add" class="${(P.palTab || "add") === "add" ? "on" : ""}">Lägg till</button><button type="button" data-paltab="list" class="${P.palTab === "list" ? "on" : ""}">Objekt</button><button type="button" data-paltab="layers" class="${P.palTab === "layers" ? "on" : ""}">Lager</button><button type="button" data-paltab="props" class="${P.palTab === "props" ? "on" : ""}" title="Gruppera och färga IFC-objekten efter egenskaper (UDA)">Egenskaper</button><button type="button" data-paltab="groups" class="${P.palTab === "groups" ? "on" : ""}" title="Dina egna grupper av IFC-objekt (t.ex. Bandgång 1)">Grupper</button><button type="button" data-paltab="comments" class="${P.palTab === "comments" ? "on" : ""}" title="Kommentarerna i 3D – sök, färg, klara">Kommentarer</button></div><button type="button" id="v3PalClose" title="Dölj menyn (Ctrl+B)">‹</button></div>
+        <div class="v3-pal-head"><div class="v3-segs v3-paltabs"><button type="button" data-paltab="add" class="${(P.palTab || "add") === "add" ? "on" : ""}">Lägg till</button><button type="button" data-paltab="layers" class="${P.palTab === "layers" || P.palTab === "list" ? "on" : ""}">Lager</button><button type="button" data-paltab="props" class="${P.palTab === "props" ? "on" : ""}" title="Gruppera och färga IFC-objekten efter egenskaper (UDA)">Egenskaper</button><button type="button" data-paltab="groups" class="${P.palTab === "groups" ? "on" : ""}" title="Dina egna grupper av IFC-objekt (t.ex. Bandgång 1)">Grupper</button><button type="button" data-paltab="comments" class="${P.palTab === "comments" ? "on" : ""}" title="Kommentarerna i 3D – sök, färg, klara">Kommentarer</button></div><button type="button" id="v3PalClose" title="Dölj menyn (Ctrl+B)">‹</button></div>
         <div id="v3PalAdd" class="v3-paltab ${(P.palTab || "add") === "add" ? "" : "hidden"}">
           <input type="search" id="v3PalSearch" placeholder="Sök…" />
           <div id="v3Lib"></div>
           <button type="button" id="v3GetModel" class="v3-wide" title="Hämta en 3D-modell från Sketchfab, projektets mappar i Trimble Connect eller en fil – den hamnar under Egna modeller">＋ Hämta modell…</button>
           <div class="v3-pal-hint">Tryck på ett objekt här och sedan där det ska stå. Staket: tryck punkt för punkt och avsluta med Enter.</div>
         </div>
-        <div id="v3PalLayers" class="v3-paltab v3-layers ${P.palTab === "layers" ? "" : "hidden"}"></div>
+        <div id="v3PalLayers" class="v3-paltab v3-layers ${P.palTab === "layers" || P.palTab === "list" ? "" : "hidden"}"></div>
         <div id="v3PalProps" class="v3-paltab v3-pprops ${P.palTab === "props" ? "" : "hidden"}"></div>
         <div id="v3PalGroups" class="v3-paltab v3-pgroups ${P.palTab === "groups" ? "" : "hidden"}"></div>
         <div id="v3PalComments" class="v3-paltab v3-pcomments ${P.palTab === "comments" ? "" : "hidden"}"></div>
