@@ -200,6 +200,34 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     l3k.list = l3k.list.filter(c => c.id !== 'kx2' && c.id !== 'kx3'); l3kUi.sel.clear(); l3kRenderTab(); l3kDraw();
     return { names: (up.match(/'Kommentar \d+: [^']*'/g) || []).filter(x => !/text'$/.test(x)) };
   });
+  // Handtagen: punkten flyttas vågrätt, skylten i höjdled; sparas och Ctrl+Z ångrar.
+  {
+    const kid = await page.evaluate(() => l3k.list[0].id);
+    await page.click(`#v3PalComments [data-kcgo="${kid}"]`); await page.waitForTimeout(1200);
+    if (await page.evaluate(() => (l3.camera.getWorldDirection(new THREE.Vector3()).z < -0.97) && getComputedStyle(document.querySelector('.v3-khandle.z')).display !== 'none')) fail('Höjdhandtaget ska döljas rakt uppifrån');
+    await page.evaluate(() => { const c = l3k.list[0], P = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2] + 1); l3StopFly(); l3.orbit.target.copy(P); l3.camera.position.copy(P).add(new THREE.Vector3(-6, -14, 8)); l3.orbit.update(); l3Render(); });
+    await page.waitForTimeout(300);
+    const h0 = await page.evaluate(() => { const g = s => { const r = document.querySelector(s).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, d: getComputedStyle(document.querySelector(s)).display }; }; return { xy: g('.v3-khandle.xy'), z: g('.v3-khandle.z'), pos: l3k.list[0].pos.slice(), lift: l3kLift(l3k.list[0]) }; });
+    if (h0.xy.d === 'none' || h0.z.d === 'none') fail('Handtagen ska synas för den markerade kommentaren: ' + JSON.stringify(h0));
+    await page.mouse.move(h0.xy.x, h0.xy.y); await page.mouse.down(); await page.mouse.move(h0.xy.x + 40, h0.xy.y + 10, { steps: 5 }); await page.mouse.up();
+    await page.waitForTimeout(300);
+    const h1 = await page.evaluate(() => ({ pos: l3k.list[0].pos.slice(), sp: (() => { const sp = l3.groups.csigns.children.find(o => o.isSprite && o.userData.commentId === l3k.list[0].id); return [sp.position.x + l3.O[0], sp.position.y + l3.O[1]]; })() }));
+    const dxy = Math.hypot(h1.pos[0] - h0.pos[0], h1.pos[1] - h0.pos[1]);
+    if (dxy < 0.2 || Math.abs(h1.pos[2] - h0.pos[2]) > 1e-6 || Math.abs(h1.sp[0] - h1.pos[0]) > 0.01) fail('Flytta kommentarens punkt: ' + JSON.stringify({ h0, h1 }));
+    const zb = await page.evaluate(() => { const r = document.querySelector('.v3-khandle.z').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    await page.mouse.move(zb.x, zb.y); await page.mouse.down(); await page.mouse.move(zb.x, zb.y - 40, { steps: 5 }); await page.mouse.up();
+    await page.waitForTimeout(300);
+    const h2 = await page.evaluate(() => l3k.list[0].lift);
+    if (!(h2 > h0.lift + 0.2)) fail('Skyltens höjd: ' + JSON.stringify({ was: h0.lift, now: h2 }));
+    const file = JSON.parse(gh.get('projects/p1/plan_comments3d.json') || '[]').find(x => x.id === kid);
+    if (!file || Math.abs(file.lift - h2) > 1e-6 || Math.abs(file.pos[0] - h1.pos[0]) > 1e-6) fail('Handtagen ska spara: ' + JSON.stringify(file));
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(200);
+    if (Math.abs((await page.evaluate(() => l3k.list[0].lift)) - h0.lift) > 1e-6) fail('Ctrl+Z ska ångra höjden');
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(200);
+    const back = await page.evaluate(() => l3k.list[0].pos.slice());
+    if (Math.abs(back[0] - h0.pos[0]) > 1e-6 || Math.abs(back[1] - h0.pos[1]) > 1e-6) fail('Ctrl+Z ska ångra flytten: ' + JSON.stringify({ back, was: h0.pos }));
+    await page.evaluate(() => { l3kUi.sel.clear(); l3kRenderTab(); l3Render(); });
+  }
   // Allt som sparas i TC ger en rad i historiken med länk till mappen.
   const tcl = await page.evaluate(() => { tcSavedNote({ folder: 'Lägesplan', uploaded: 1, link: 'https://web.connect.trimble.com/projects/P/data/folder/F' }, [{ name: 'X.ifc' }]); const last = l3Log[l3Log.length - 1], a = document.getElementById('v3StatusLink'); return { link: last.link, text: last.text, shown: !a.classList.contains('hidden'), href: a.href }; });
   if (!/folder\/F$/.test(tcl.link) || !/Lägesplan: X\.ifc/.test(tcl.text) || !tcl.shown || !/folder\/F$/.test(tcl.href)) fail('Länk till TC i historiken: ' + JSON.stringify(tcl));

@@ -117,7 +117,7 @@ function l3kSignsBuild() {
   if (!grp.visible) return;
   l3k.list.forEach((c, i) => {
     if (!l3k.showDone && c.done) return;
-    const base = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]), lift = 2.2;
+    const base = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]), lift = l3kLift(c);
     const cv = l3kCard(c, i + 1), tex = new THREE.CanvasTexture(cv); tex.anisotropy = 4;
     if ("encoding" in tex) tex.encoding = THREE.sRGBEncoding;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
@@ -125,9 +125,9 @@ function l3kSignsBuild() {
     sp.center.set(0.08, 0); sp.position.copy(base).add(new THREE.Vector3(0, 0, lift));
     sp.userData.commentId = c.id; sp.renderOrder = 5;
     const pole = new THREE.Line(new THREE.BufferGeometry().setFromPoints([base, base.clone().add(new THREE.Vector3(0, 0, lift))]), new THREE.LineBasicMaterial({ color: new THREE.Color(l3kCol(c)) }));
-    pole.userData.noHit = true; pole.raycast = () => {};
+    pole.userData.noHit = true; pole.raycast = () => {}; pole.userData.commentId = c.id; pole.userData.kPart = "pole";
     const dot = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(l3kCol(c)) }));
-    dot.position.copy(base); dot.userData.noHit = true; dot.raycast = () => {};
+    dot.position.copy(base); dot.userData.noHit = true; dot.raycast = () => {}; dot.userData.commentId = c.id; dot.userData.kPart = "dot";
     grp.add(pole, dot, sp);
   });
 }
@@ -149,6 +149,7 @@ function l3kTap(e) {
 function l3kPlace() {
   if (!l3) return;
   const at = c => new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]);
+  l3kHandlesPlace();
   l3k.els.forEach((el, id) => {
     const c = l3k.list.find(x => x.id === id);
     if (!c || l3k.hidden || l3kSigns()) { el.style.display = "none"; return; } // skyltarna i 3D har numret
@@ -224,6 +225,95 @@ function l3kClose() {
   l3k.open = null; l3k.draft = null;
   l3kDraw();
 }
+/* ---- Handtag (Victor 2026-10-10: "ett handtag på insättningspunkten för kommentaren så att jag kan flytta
+   den i sidled och längsled och samma för kommentarbubblan också i höjdled") ---------------------------
+   För kommentaren som är öppen eller ensam markerad i listan: ett handtag på punkten (flyttar den vågrätt,
+   höjden står kvar) och ett där stolpen möter skylten (skyltens höjd över punkten). Skift: jämna 10 cm.
+   Sparas när man släpper; Ctrl+Z ångrar. */
+const L3K_LIFT = 2.2;
+const l3kLift = c => (Number.isFinite(c.lift) ? c.lift : L3K_LIFT);
+const l3kH = { xy: null, z: null, drag: null };
+function l3kActive() {
+  if (l3k.hidden) return null;
+  if (l3k.open && l3k.open !== l3k.draft && l3k.list.includes(l3k.open)) return l3k.open;
+  if (typeof l3kUi !== "undefined" && l3kUi.sel.size === 1) return l3k.list.find(c => l3kUi.sel.has(c.id)) || null;
+  return null;
+}
+function l3kHandlesPlace() {
+  const c = l3kActive(), visible = c && (l3k.showDone || !c.done);
+  if (!visible) { if (l3kH.xy) l3kH.xy.style.display = "none"; if (l3kH.z) l3kH.z.style.display = "none"; return; }
+  if (!l3kH.xy) {
+    const host = l3.renderer.domElement.parentElement, mk = (cls, title, html, kind) => {
+      const b = document.createElement("button"); b.type = "button"; b.className = "v3-khandle " + cls; b.title = title; b.innerHTML = html;
+      b.onpointerdown = e => l3kHDown(e, kind); b.onclick = e => e.stopPropagation();
+      host.appendChild(b); return b;
+    };
+    l3kH.xy = mk("xy", "Dra för att flytta kommentarens punkt i sidled och längsled (Skift: jämna 10 cm)", `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20M12 2l-3 3M12 2l3 3M12 22l-3-3M12 22l3-3M2 12l3-3M2 12l3 3M22 12l-3-3M22 12l-3 3"/></svg>`, "xy");
+    l3kH.z = mk("z", "Dra för att flytta skylten i höjdled (Skift: jämna 10 cm)", `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"/></svg>`, "z");
+  }
+  const base = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]);
+  const col = l3kCol(c), put = (el, p, show) => { const q = l3ToScreen(p); el.style.display = show && !q.behind ? "grid" : "none"; el.style.left = q.x + "px"; el.style.top = q.y + "px"; el.style.borderColor = col; el.style.color = col; el.classList.toggle("drag", !!(l3kH.drag && l3kH.drag.kind === el.classList[1])); };
+  put(l3kH.xy, base, true);
+  // Rakt uppifrån går höjden inte att dra (och handtaget skulle ligga på punktens) – vrid vyn för höjden.
+  const look = l3.camera.getWorldDirection(new THREE.Vector3());
+  put(l3kH.z, base.clone().add(new THREE.Vector3(0, 0, l3kLift(c))), l3kSigns() && Math.abs(look.z) < 0.97);
+}
+/* Flyttar skylt, stolpe och punkt för en kommentar utan att bygga om skyltarna (medan man drar). */
+function l3kSignMove(c) {
+  const g = l3.groups.csigns; if (!g) return;
+  const base = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]), top = base.clone().add(new THREE.Vector3(0, 0, l3kLift(c)));
+  g.children.forEach(o => {
+    if (o.userData.commentId !== c.id) return;
+    if (o.isSprite) o.position.copy(top);
+    else if (o.userData.kPart === "dot") o.position.copy(base);
+    else if (o.userData.kPart === "pole") { o.geometry.dispose(); o.geometry = new THREE.BufferGeometry().setFromPoints([base, top]); }
+  });
+}
+function l3kHDown(e, kind) {
+  const c = l3kActive(); if (!c) return;
+  e.preventDefault(); e.stopPropagation();
+  const el = e.currentTarget; el.setPointerCapture(e.pointerId);
+  const rect = l3.renderer.domElement.getBoundingClientRect(), rc = new THREE.Raycaster();
+  const ray = ev => { rc.setFromCamera(new THREE.Vector2((ev.clientX - rect.left) / rect.width * 2 - 1, -((ev.clientY - rect.top) / rect.height) * 2 + 1), l3.camera); return rc.ray; };
+  const base = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]);
+  const d = l3kH.drag = { kind, c, pos0: c.pos.slice(), lift0: l3kLift(c), x0: e.clientX, y0: e.clientY, moved: false };
+  if (kind === "xy") {
+    d.plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -base.z);
+    const h = ray(e).intersectPlane(d.plane, new THREE.Vector3());
+    d.grab = h ? h.sub(base) : new THREE.Vector3();
+  } else {
+    const top = base.clone().add(new THREE.Vector3(0, 0, d.lift0)), p0 = l3ToScreen(top), p1 = l3ToScreen(top.clone().add(new THREE.Vector3(0, 0, 1)));
+    d.v = [p1.x - p0.x, p1.y - p0.y]; d.vv = d.v[0] * d.v[0] + d.v[1] * d.v[1] || 1;
+  }
+  const r3 = v => Math.round(v * 1000) / 1000;
+  const mv = ev => {
+    if (Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) > 2) d.moved = true;
+    if (!d.moved) return;
+    if (kind === "xy") {
+      const h = ray(ev).intersectPlane(d.plane, new THREE.Vector3()); if (!h) return;
+      h.sub(d.grab);
+      let x = h.x + l3.O[0], y = h.y + l3.O[1];
+      if (ev.shiftKey) { x = Math.round(x * 10) / 10; y = Math.round(y * 10) / 10; }
+      c.pos = [r3(x), r3(y), d.pos0[2]];
+    } else {
+      let lift = d.lift0 + ((ev.clientX - d.x0) * d.v[0] + (ev.clientY - d.y0) * d.v[1]) / d.vv;
+      if (ev.shiftKey) lift = Math.round(lift * 10) / 10;
+      c.lift = r3(Math.max(0.3, Math.min(200, lift)));
+    }
+    l3kSignMove(c); l3Render();
+  };
+  const up = () => {
+    el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
+    l3kH.drag = null;
+    if (!d.moved) { l3Render(); return; }
+    const now = { pos: c.pos.slice(), lift: c.lift }, was = { pos: d.pos0, lift: d.lift0 };
+    const apply = s => { c.pos = s.pos.slice(); if (kind === "z" || Number.isFinite(c.lift)) c.lift = s.lift; l3kDraw(); l3kWrite(c); };
+    if (typeof l3VPush === "function") l3VPush(() => apply(was), () => apply(now), kind === "xy" ? "flytta kommentaren" : "kommentarens höjd");
+    l3kDraw(); l3kWrite(c);
+    l3Status(kind === "xy" ? "Kommentarens punkt är flyttad (Ctrl+Z ångrar)." : `Skylten står ${String(l3kLift(c).toFixed(2)).replace(".", ",")} m över punkten (Ctrl+Z ångrar).`);
+  };
+  el.addEventListener("pointermove", mv); el.addEventListener("pointerup", up); el.addEventListener("pointercancel", up);
+}
 function l3kToggle() { l3k.hidden = !l3k.hidden; if (l3k.hidden) l3kClose(); l3kDraw(); }
 
 /* ---- Fliken Kommentarer (Victor 2026-10-10: "en egen meny bredvid grupper") ---------------------- */
@@ -271,9 +361,9 @@ function l3kRenderTab() {
       const a = ids.indexOf(l3kUi.anchor), z = ids.indexOf(c.id);
       if (!(e.ctrlKey || e.metaKey)) l3kUi.sel.clear();
       ids.slice(Math.min(a, z), Math.max(a, z) + 1).forEach(id => l3kUi.sel.add(id));
-      l3kRenderTab(); return;
+      l3kRenderTab(); l3Render(); return;
     }
-    if (e.ctrlKey || e.metaKey) { if (l3kUi.sel.has(c.id)) l3kUi.sel.delete(c.id); else l3kUi.sel.add(c.id); l3kUi.anchor = c.id; l3kRenderTab(); return; }
+    if (e.ctrlKey || e.metaKey) { if (l3kUi.sel.has(c.id)) l3kUi.sel.delete(c.id); else l3kUi.sel.add(c.id); l3kUi.anchor = c.id; l3kRenderTab(); l3Render(); return; }
     l3kUi.sel.clear(); l3kUi.sel.add(c.id); l3kUi.anchor = c.id;
     l3k.hidden = false; l3kDraw();
     l3FlyTo(new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]), 18);
@@ -289,7 +379,7 @@ function l3kRenderTab() {
    Varje kommentar: en skylt (platta i kommentarens färg) på en stolpe ovanför punkten och en markering
    vid punkten, med texten som 3D-text på båda sidor. Skylten vänds mot den vy man har när man exporterar.
    Egenskaperna (text, av, datum, status, svar, objekt) ligger i "4D-planering". Ny fil i TC varje gång. */
-const L3K_IFC = { lift: 2.2, T: 0.06, tT: 0.02, pad: 0.12 };
+const L3K_IFC = { T: 0.06, tT: 0.02, pad: 0.12 };
 function l3kIfcBuild(list) {
   if (!list.length) return null;
   const doc = ifcDoc("4D-planering – " + (plan ? plan.name : ""), "Kommentarer från 3D-vyn i Lägesplan"), E = doc.E;
@@ -308,7 +398,7 @@ function l3kIfcBuild(list) {
       ...raw.split("\n").filter(Boolean).slice(0, 6).map(t => ({ t, h: 0.2 })), (c.replies || []).length ? { t: `${c.replies.length} svar`, h: 0.13 } : null].filter(Boolean);
     const W = Math.max(1.2, ...lines.map(l => W1(l.t, l.h))) + L3K_IFC.pad * 2;
     const H = lines.reduce((a, l) => a + l.h * 1.4, 0) + L3K_IFC.pad * 1.6;
-    const P = c.pos, up = L3K_IFC.lift + H / 2;
+    const P = c.pos, lift = l3kLift(c), up = lift + H / 2;
     // Skyltens koordinatsystem: X = läsriktning, Y = uppåt, Z = mot betraktaren.
     const axes = (o, rx, ry, nx, ny) => E(`IFCLOCALPLACEMENT(${doc.sitePl},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt(o)})`)},${dir([nx, ny, 0])},${dir([rx, ry, 0])})`)})`);
     const center = [P[0], P[1], P[2] + up];
@@ -317,7 +407,7 @@ function l3kIfcBuild(list) {
     const sty = doc.style("kom-" + col, col, "Kommentar");
     E(`IFCSTYLEDITEM(${board},(${sty}),$)`);
     // Stolpen (lodrät = skyltens Y) och markeringen vid punkten.
-    const pole = E(`IFCEXTRUDEDAREASOLID(${E("IFCCIRCLEPROFILEDEF(.AREA.,$,$,0.035)")},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, -up, 0])})`)},${dir([0, 1, 0])},${dir([1, 0, 0])})`)},${dir([0, 0, 1])},${ifcNum(L3K_IFC.lift)})`);
+    const pole = E(`IFCEXTRUDEDAREASOLID(${E("IFCCIRCLEPROFILEDEF(.AREA.,$,$,0.035)")},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, -up, 0])})`)},${dir([0, 1, 0])},${dir([1, 0, 0])})`)},${dir([0, 0, 1])},${ifcNum(lift)})`);
     const dot = E(`IFCEXTRUDEDAREASOLID(${E("IFCCIRCLEPROFILEDEF(.AREA.,$,$,0.12)")},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, -up, 0])})`)},${dir([0, 1, 0])},${dir([1, 0, 0])})`)},${dir([0, 0, 1])},0.05)`);
     E(`IFCSTYLEDITEM(${pole},(${sty}),$)`); E(`IFCSTYLEDITEM(${dot},(${sty}),$)`);
     const name = `Kommentar ${nr}: ${String(c.text || "").split("\n")[0].slice(0, 60)}`;

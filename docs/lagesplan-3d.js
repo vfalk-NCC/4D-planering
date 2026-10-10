@@ -50,10 +50,11 @@ const L3_ICO = (() => {
 function l3LoadScripts() {
   if (window.THREE && THREE.TransformControls && window.MeshBVHLib) return Promise.resolve();
   if (l3Loading) return l3Loading;
-  l3Loading = L3_SCRIPTS.reduce((p, src) => p.then(() => new Promise((res, rej) => {
-    const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("Kunde inte ladda " + src));
+  // Alla hämtas samtidigt men körs i ordning (async = false) – i stället för en i taget.
+  l3Loading = Promise.all(L3_SCRIPTS.map(src => new Promise((res, rej) => {
+    const s = document.createElement("script"); s.src = src; s.async = false; s.onload = res; s.onerror = () => rej(new Error("Kunde inte ladda " + src));
     document.head.appendChild(s);
-  })), Promise.resolve());
+  }))).then(() => {});
   l3Loading.catch(() => { l3Loading = null; });
   l3Loading.then(l3BvhInit, () => {});
   return l3Loading;
@@ -128,15 +129,28 @@ async function open3d() {
   if (window.innerWidth < 700) { const pal = box.querySelector("#v3Pal"), po = box.querySelector("#v3PalOpen"); if (pal && po) { pal.classList.add("hidden"); po.classList.remove("hidden"); } }
   l3SyncDate();
   l3Status("Laddar 3D…");
+  const T0 = performance.now(), tm = {}, lap = (k, t) => { tm[k] = performance.now() - t; };
+  const step = (label, f) => { if (typeof bootSet === "function") bootSet(label, f); };
   try {
-    await l3LoadScripts();
+    let t = performance.now();
+    step("Laddar 3D-motorn…", 0.97);
+    await l3LoadScripts(); lap("skript", t);
     if (!l3) l3Init(box);
     else if (l3.planId !== plan.id) { const [m1] = plan.calib.model; l3.O = [m1[0], m1[1], m1[2] || 0]; }
     l3.planId = plan.id;
     l3SaveState("ok");
+    // Marken (ritningen) byggs samtidigt som etableringen hämtas.
+    t = performance.now();
+    const pPlan = l3BuildPlan().then(() => lap("mark", t));
+    step("Hämtar etableringen…", 0.98);
+    const t2 = performance.now();
     if (typeof place3dLoad === "function") await place3dLoad({ fresh: true });
+    lap("etablering", t2);
+    const t3 = performance.now();
+    step("Förbereder modellerna…", 0.99);
     if (typeof placeModelsPrepare === "function") await placeModelsPrepare();
-    await l3BuildPlan();
+    lap("modeller", t3);
+    await pPlan;
     if (typeof l3sRefresh === "function") l3sRefresh(0); // 2D-lagren och DXF
     if (typeof l3mLoad === "function") l3mLoad().catch(e => console.warn(e)); // sparade mått
     if (typeof l3kLoad === "function") l3kLoad().catch(e => console.warn(e)); // kommentarer
@@ -150,6 +164,10 @@ async function open3d() {
     l3SelectIds([]);
     if (typeof l3SetTool === "function") l3SetTool("select");
     l3RenderLegend(); l3UndoBtns(); l3RenderObjList(); if (typeof l3RenderSnapBar === "function") l3RenderSnapBar();
+    // Var tiden gick (syns i historiken, F2) – så att det går att se vad som är långsamt.
+    const sec = x => (x / 1000).toFixed(1).replace(".", ",") + " s";
+    console.info("3D öppnad", tm);
+    l3Status(`3D-vyn öppnad på ${sec(performance.now() - T0)} (${Object.entries(tm).map(([k, v]) => `${k} ${sec(v)}`).join(", ")}).`);
     l3Status(`${positions.length ? positions.length + " planerade objekt" : "Inga objektpositioner – hämta dem under Zoner, eller visa byggnaden (Visa → Byggnad)"} · ${placements.length} etableringsobjekt. Tryck på ett objekt för att välja det – högerklicka eller håll inne för fler val.`);
   } catch (e) { l3Status("3D-vyn kunde inte öppnas: " + e.message, true); console.error(e); }
   l3Resize(); l3Render();
@@ -559,7 +577,11 @@ async function l3BuildPlan() {
   const vp = page.getViewport({ scale: s });
   const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
   const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
-  await page.render({ canvasContext: ctx, viewport: vp }).promise;
+  // Ritningen är redan ritad i 2D (~5000 px): skala ner den i stället för att rita PDF:en en gång till –
+  // det var det som tog flera sekunder när lägesplanen öppnades direkt i 3D (Victor 2026-10-10).
+  const pc = typeof $ === "function" && $("pdfCanvas");
+  if (pc && pc.width > 0 && pc.height > 0 && Math.abs(pc.width / pc.height - cv.width / cv.height) < 0.01) ctx.drawImage(pc, 0, 0, cv.width, cv.height);
+  else await page.render({ canvasContext: ctx, viewport: vp }).promise;
   const corners = [[0, cv.height], [cv.width, cv.height], [cv.width, 0], [0, 0]];
   const pos = [], uv = [];
   corners.forEach(([cx, cy]) => {
@@ -1447,10 +1469,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const b = document.getElementById("btn3d"); if (b) b.onclick = () => open3d();
   // Öppnad via "Öppna 3D-vy" i 4D-planering (?view=3d): vänta tills arbetsytan är inläst.
   if (new URLSearchParams(location.search).get("view") === "3d") {
+    l3LoadScripts().catch(() => {}); // 3D-motorn hämtas medan planeringen och ritningen laddas
     let n = 0;
     const t = setInterval(() => {
       if (++n > 120) { clearInterval(t); if (typeof bootHide === "function") bootHide(); return; }
-      if (typeof plan !== "undefined" && plan && page) {
+      if (typeof plan !== "undefined" && plan && page && !(typeof busyJobs !== "undefined" && busyJobs.has("plan"))) {
         clearInterval(t);
         if (typeof bootSet === "function") bootSet("Öppnar 3D-vyn…", 0.97);
         Promise.resolve(open3d()).catch(() => {}).finally(() => { if (typeof bootHide === "function") bootHide(); });
