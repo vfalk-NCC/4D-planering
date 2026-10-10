@@ -412,7 +412,8 @@ function l3bRecolor() {
       if (row && typeof rowTempOffAt === "function" && rowTempOffAt(row, at)) off.add(ri); // temporär utanför sin tid: syns inte
       const c = r.itemId ? new THREE.Color(phaseColor(l3Phase(row))) : null;
       const cb = typeof l3pColorFor === "function" ? l3pColorFor(m, r) : null; // Färga efter värde (Egenskaper)
-      const rgb = cb || (c ? [c.r, c.g, c.b] : r.base);
+      const tint = u.tint && u.tint.get(ri); // tillfällig färg (bara sessionen) går före allt
+      const rgb = tint || cb || (c ? [c.r, c.g, c.b] : r.base);
       for (let i = r.start; i < r.start + r.count; i++) { d[i * 3] = rgb[0]; d[i * 3 + 1] = rgb[1]; d[i * 3 + 2] = rgb[2]; }
     });
     col.needsUpdate = true;
@@ -423,6 +424,7 @@ function l3bRecolor() {
 function l3bCoupledIds() { const s = new Set(); l3b.models.forEach(m => m.visible && m.ranges.forEach(r => { if (r.itemId) s.add(r.itemId); })); return s; }
 /* Träff i byggnaden -> objektets uppgifter. */
 function l3bHitInfo(h) {
+  if (h && h.object && h.object.userData.l3bMain) h = { ...h, object: h.object.userData.l3bMain };
   const u = h.object.userData.l3b;
   if (!u || !h.face) return null;
   const v = h.face.a, R = u.ranges;
@@ -437,18 +439,46 @@ function l3bHitInfo(h) {
 function l3bApplyHidden(mesh) {
   const u = mesh.userData.l3b, src = u.origIdx;
   let idx = src;
-  const off = u.tempOff || new Set();
-  if (u.hidden.size || off.size) {
+  const off = u.tempOff || new Set(), alpha = u.alpha || new Map();
+  if (u.hidden.size || off.size || alpha.size) {
     const hid = new Uint8Array(mesh.geometry.getAttribute("position").count);
-    [...u.hidden, ...off].forEach(ri => { const r = u.ranges[ri]; hid.fill(1, r.start, r.start + r.count); });
+    // Genomskinliga (tillfällig opacitet) ritas i en egen bit ovanpå – inte i huvudbiten.
+    [...u.hidden, ...off, ...alpha.keys()].forEach(ri => { const r = u.ranges[ri]; hid.fill(1, r.start, r.start + r.count); });
     idx = [];
     for (let i = 0; i + 2 < src.length; i += 3) if (!hid[src[i]]) idx.push(src[i], src[i + 1], src[i + 2]);
   }
   // Alltid en kopia: det rumsliga indexet (BVH) ordnar om indexlistan, origIdx måste vara orörd.
   mesh.geometry.setIndex(mesh.geometry.getAttribute("position").count > 65535 ? new THREE.Uint32BufferAttribute(idx === src ? src.slice() : idx, 1) : new THREE.Uint16BufferAttribute(idx === src ? src.slice() : idx, 1));
   if (typeof l3BvhSchedule === "function") l3BvhSchedule(mesh);
+  l3bApplyAlpha(mesh);
+}
+/* Tillfällig opacitet (Victor 2026-10-10): de genomskinliga objekten i en bit per opacitet som delar
+   huvudbitens hörn och färger (inget extra minne för geometrin), med egen indexlista. */
+function l3bApplyAlpha(mesh) {
+  const u = mesh.userData.l3b;
+  (u.ghosts || []).forEach(g => { mesh.remove(g); g.geometry.attributes = {}; g.geometry.dispose(); g.material.dispose(); }); // de delade hörnen lämnas orörda
+  u.ghosts = [];
+  if (!u.alpha || !u.alpha.size) return;
+  const src = u.origIdx, n = mesh.geometry.getAttribute("position").count, gone = new Set([...u.hidden, ...(u.tempOff || [])]);
+  const byA = new Map();
+  u.alpha.forEach((a, ri) => { if (gone.has(ri)) return; if (!byA.has(a)) byA.set(a, []); byA.get(a).push(ri); });
+  byA.forEach((ris, a) => {
+    const on = new Uint8Array(n);
+    ris.forEach(ri => { const r = u.ranges[ri]; on.fill(1, r.start, r.start + r.count); });
+    const idx = [];
+    for (let i = 0; i + 2 < src.length; i += 3) if (on[src[i]]) idx.push(src[i], src[i + 1], src[i + 2]);
+    if (!idx.length) return;
+    const g = new THREE.BufferGeometry();
+    ["position", "color", "normal"].forEach(k => { const at = mesh.geometry.getAttribute(k); if (at) g.setAttribute(k, at); });
+    g.setIndex(n > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
+    g.computeBoundingSphere();
+    const gm = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: a, depthWrite: false, side: THREE.DoubleSide }));
+    gm.userData.l3b = u; gm.userData.l3bMain = mesh; gm.userData.surface = true; gm.userData.kind = "bldg"; gm.renderOrder = 3;
+    mesh.add(gm); u.ghosts.push(gm);
+  });
 }
 function l3bHideHit(h) {
+  if (h && h.object && h.object.userData.l3bMain) h = { ...h, object: h.object.userData.l3bMain };
   const u = h.object.userData.l3b;
   if (!u || !h.face) return;
   const v = h.face.a, ri = u.ranges.findIndex(r => v >= r.start && v < r.start + r.count);

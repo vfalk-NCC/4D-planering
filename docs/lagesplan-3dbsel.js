@@ -73,6 +73,7 @@ function l3bsSet(list, opts = {}) {
 function l3bsClear() { if (l3bs.sel.length) l3bsSet([]); }
 /* Träff i byggnaden -> markera (additive: lägg till/ta bort). */
 function l3bsFromHit(h) {
+  if (h && h.object && h.object.userData.l3bMain) h = { ...h, object: h.object.userData.l3bMain }; // genomskinlig bit -> huvudbiten
   const u = h && h.object && h.object.userData.l3b;
   if (!u || !h.face) return null;
   const v = h.face.a, R = u.ranges;
@@ -236,7 +237,8 @@ function l3bsRenderSide(side) {
   // Kompakt verktygsrad (Victor 2026-10-10: "nu är det väldigt stora knappar … mer kompakt och intuitiv").
   const act = (id, ico, label, title, cls = "") => `<button type="button" id="${id}" class="v3-act ${cls}" title="${esc(title)}">${ico}<span>${label}</span></button>`;
   side.dataset.id = "bsel:" + l3bs.sel.map(e => e.key).join(",");
-  side.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:#6d5efc"></i><b title="${esc(one ? one.name : "")}">${one ? esc(one.name) : `${n} objekt markerade`}</b><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3BsClose" title="Avmarkera (Esc)">✕</button></div>
+  const tc = typeof l3tintOf === "function" ? l3tintOf(l3bs.sel) : null;
+  side.innerHTML = `<div class="v3-side-h"><button type="button" class="v3-chip v3-tintbtn ${tc ? "set" : ""}" id="v3BsTint" style="background:${tc ? tc.css : "#6d5efc"}" title="Tillfällig färg och genomskinlighet för de markerade (bara den här sessionen)"></button><b title="${esc(one ? one.name : "")}">${one ? esc(one.name) : `${n} objekt markerade`}</b><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3BsClose" title="Avmarkera (Esc)">✕</button></div>
     <div class="v3-sub">${one ? esc(one.model) : esc([...new Set(info.map(x => x.model))].join(", "))}</div>
     <div class="v3-acts">
       ${act("v3BsZoom", I.focus, "Zooma", "Zooma till de markerade")}
@@ -253,6 +255,7 @@ function l3bsRenderSide(side) {
       ${typeof l3pGroupBy === "function" ? `<button type="button" id="v3BsGroup" class="v3-link" title="Fliken Egenskaper: välj en egenskap och se alla värden">Gruppera efter egenskap…</button>` : ""}`}`;
   const on = (id, fn) => { const b = side.querySelector("#" + id); if (b) b.onclick = fn; };
   on("v3BsClose", l3bsClear);
+  on("v3BsTint", e => { if (typeof l3tintOpen === "function") l3tintOpen(e.currentTarget); });
   on("v3BsZoom", l3bsZoom);
   on("v3BsHide", l3bsHide);
   on("v3BsIso", l3bsIsolate);

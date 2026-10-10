@@ -249,6 +249,32 @@ const IFC = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');", "FILE_
     if (process.env.SHOTGF) await page.screenshot({ path: process.env.SHOTGF });
   }
 
+  // Tillfällig färg och opacitet på de markerade (bara sessionen), Ctrl+Z ångrar.
+  {
+    await page.evaluate(() => { const m = l3b.models[0], ents = []; m.meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => { if (r.name === 'Balk B1' || r.name === 'Balk B2') ents.push({ mesh, ri }); })); l3bsSet(ents); });
+    await page.waitForSelector('#v3BsTint');
+    await page.click('#v3BsTint'); await page.waitForSelector('#v3TintPop');
+    await page.click('#v3TintPop [data-tc="#ef4444"]'); await page.waitForTimeout(100);
+    const col = () => page.evaluate(() => { const out = {}; l3b.models[0].meshes.forEach(mesh => { const c = mesh.geometry.getAttribute('color'); mesh.userData.l3b.ranges.forEach(r => { out[r.name] = '#' + new THREE.Color(c.getX(r.start), c.getY(r.start), c.getZ(r.start)).getHexString(); }); }); return out; });
+    let c1 = await col();
+    if (c1['Balk B1'] !== '#ef4444' || c1['Balk B2'] !== '#ef4444' || c1['Pelare Kå'] === '#ef4444') fail('Tillfällig färg: ' + JSON.stringify(c1));
+    await page.$eval('#v3TintOp', el => { el.value = '0.4'; el.dispatchEvent(new Event('input')); el.dispatchEvent(new Event('change')); });
+    await page.waitForTimeout(150);
+    const ga = await page.evaluate(() => { const ghosts = []; l3b.models[0].meshes.forEach(m => (m.userData.l3b.ghosts || []).forEach(g => ghosts.push({ op: g.material.opacity, tris: g.geometry.index.count / 3, parent: g.parent === m }))); const mainTris = l3b.models[0].meshes.reduce((a, m) => a + m.geometry.index.count / 3, 0), orig = l3b.models[0].meshes.reduce((a, m) => a + m.userData.l3b.origIdx.length / 3, 0); return { ghosts, mainTris, orig }; });
+    if (!ga.ghosts.length || ga.ghosts.some(g => Math.abs(g.op - 0.4) > 1e-6 || !g.parent) || ga.mainTris + ga.ghosts.reduce((a, g) => a + g.tris, 0) !== ga.orig) fail('Opacitet: ' + JSON.stringify(ga));
+    // Träff på den genomskinliga biten markerar objektet i huvudbiten.
+    const hit = await page.evaluate(() => { const g = l3b.models[0].meshes.flatMap(m => m.userData.l3b.ghosts || [])[0]; const i = g.geometry.index.getX(0); const e = l3bsFromHit({ object: g, face: { a: i } }); return e && e.mesh === g.userData.l3bMain && e.mesh.userData.l3b.ranges[e.ri].name; });
+    if (!/Balk B/.test(hit || '')) fail('Träff på genomskinligt objekt: ' + hit);
+    if (process.env.SHOTT) await page.screenshot({ path: process.env.SHOTT });
+    await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(150);
+    if ((await page.evaluate(() => l3b.models[0].meshes.reduce((a, m) => a + (m.userData.l3b.ghosts || []).length, 0))) !== 0) fail('Ctrl+Z ska ta bort opaciteten');
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(150);
+    c1 = await col();
+    if (c1['Balk B1'] === '#ef4444') fail('Ctrl+Z ska ta bort den tillfälliga färgen');
+    await page.evaluate(() => l3bsClear());
+  }
+
   // Skriv in grupperna i IFC:n: ny fil i samma mapp, egenskapen 4D-planering › Grupp, aldrig dubblerad.
   const gs = await page.evaluate(async () => {
     window.__up = null; const orig = askOpener;
