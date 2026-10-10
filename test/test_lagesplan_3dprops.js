@@ -214,8 +214,10 @@ const IFC = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');", "FILE_
   await page.click('#v3PalGroups [data-ghide]');
   const hid = () => page.evaluate(() => l3b.models[0].meshes.reduce((a, m) => a + m.userData.l3b.hidden.size, 0));
   if ((await hid()) !== 2) fail('Dölj gruppen');
+  if (!(await page.isVisible('#v3HiddenFloat')) || !/2 objekt dolda/.test(await page.textContent('#v3HiddenFloat'))) fail('Knappen Visa alla ska synas när något är dolt');
   await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
   if ((await hid()) !== 0) fail('Ctrl+Z ska visa gruppen igen');
+  if (await page.isVisible('#v3HiddenFloat')) fail('Knappen Visa alla ska försvinna när inget är dolt');
   await page.keyboard.press('Control+y'); await page.waitForTimeout(100);
   if ((await hid()) !== 2) fail('Ctrl+Y ska dölja den igen');
   await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
