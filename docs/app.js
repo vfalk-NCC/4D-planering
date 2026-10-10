@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-10 23:53";
+const APP_VERSION = "2026-10-11 01:25";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -502,9 +502,19 @@ async function tcUploadFilesInner(files, folderName, folderId = null) {
   const proj = folder ? null : await j(await fetch(`${base}/projects/${encodeURIComponent(project.id)}`, { headers: H }), "Läsa projektet");
   const rootId = proj && (proj.rootId || proj.rootFolderId);
   const children = folder ? [] : await j(await fetch(`${base}/folders/${encodeURIComponent(rootId)}/items`, { headers: H }), "Läsa rotmappen");
-  if (!folder) folder = (children || []).find(x => (x.type || "").toUpperCase() === "FOLDER" && x.name === folderName);
+  // Samma namn oavsett stora/små bokstäver, mellanslag och hur å/ä/ö är kodade (Victor 2026-10-10: "Skapa mappen
+  // misslyckades (409) … same name already exists" – mappen fanns men namnet matchade inte tecken för tecken).
+  const sameName = (a, b) => String(a || "").normalize("NFC").trim().toLowerCase() === String(b || "").normalize("NFC").trim().toLowerCase();
+  const findFolder = list => (list || []).find(x => (x.type || "").toUpperCase() === "FOLDER" && sameName(x.name, folderName));
+  if (!folder) folder = findFolder(children);
   if (!folder) {
-    folder = await j(await fetch(`${base}/folders`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ name: folderName, parentId: rootId }) }), "Skapa mappen");
+    const res = await fetch(`${base}/folders`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ name: folderName, parentId: rootId }) });
+    if (res.status === 409) {
+      // Finns redan (t.ex. skapad nyss av någon annan, eller listan var ofullständig): läs om rotmappen och använd den.
+      const again = await j(await fetch(`${base}/folders/${encodeURIComponent(rootId)}/items`, { headers: H }), "Läsa rotmappen");
+      folder = findFolder(again);
+      if (!folder) throw new Error(`Det finns redan något som heter "${folderName}" i projektets rotmapp men det gick inte att hitta som mapp – kontrollera i Trimble Connect (det kan vara en fil med samma namn).`);
+    } else folder = await j(res, "Skapa mappen");
   }
   const done = [];
   for (const f of files) {

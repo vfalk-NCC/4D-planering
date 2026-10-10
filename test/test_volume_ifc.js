@@ -64,7 +64,7 @@ put('plan_markups.json', [
     const json = (b, status = 200) => r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(b) });
     if (m === 'GET' && p === `projects/${PID}`) return json({ id: PID, rootId: 'root' });
     if (m === 'GET' && p === 'folders/root/items') return json(tc.folders);
-    if (m === 'POST' && p === 'folders') { const b = JSON.parse(req.postData()); if (b.parentId !== 'root') return json({}, 400); const f = { id: 'f' + tc.folders.length, name: b.name, type: 'FOLDER' }; tc.folders.push(f); return json(f, 201); }
+    if (m === 'POST' && p === 'folders') { const b = JSON.parse(req.postData()); if (b.parentId !== 'root') return json({}, 400); if (tc.folders.some(x => x.name.normalize('NFC').toLowerCase() === b.name.normalize('NFC').toLowerCase())) return json({ message: 'A file/folder with same name already exists.', errorcode: 'DUPLICATE_NAME' }, 409); const f = { id: 'f' + tc.folders.length, name: b.name, type: 'FOLDER' }; tc.folders.push(f); return json(f, 201); }
     if (m === 'POST' && p === 'files/fs/initiate') { const b = JSON.parse(req.postData()); const id = 'up' + tc.uploads.size; tc.uploads.set(id, { ...b }); return json({ uploadId: id, uploadURL: 'https://s3.example.test/put/' + id }); }
     if (m === 'POST' && p === 'files/fs/commit') { const b = JSON.parse(req.postData()); const up = tc.uploads.get(b.uploadId); if (!up || up.body === undefined) return json({}, 400); tc.files.push(up); return json({ id: 'file1', name: up.name, parentId: up.parentId }); }
     return json({ message: 'okänd ' + m + ' ' + p }, 404);
@@ -106,6 +106,13 @@ put('plan_markups.json', [
   await Promise.all([page.waitForEvent('download'), page.click('#btnExportVolumesIfc')]);
   for (let i = 0; i < 50 && tc.files.length < 2; i++) await page.waitForTimeout(100);
   if (tc.files.length !== 2 || tc.log.filter(l => l === 'POST folders').length !== 1 || tc.files[1].parentId !== folder.id) fail('Andra exporten ska hamna i samma mapp: ' + tc.log.join(', '));
+  // Mappen heter likadant men med andra versaler och å/ä/ö kodade på annat sätt (Victor 2026-10-10: 409
+  // DUPLICATE_NAME): samma mapp används, ingen ny skapas och inget fel.
+  folder.name = 'LÄGESPLAN EXPORT'.normalize('NFD');
+  await page.click('#btnListMenu');
+  await Promise.all([page.waitForEvent('download'), page.click('#btnExportVolumesIfc')]);
+  for (let i = 0; i < 50 && tc.files.length < 3; i++) await page.waitForTimeout(100);
+  if (tc.files.length !== 3 || tc.files[2].parentId !== folder.id || tc.log.filter(l => l === 'POST folders').length !== 1) fail('Samma mapp trots annan stavning: ' + tc.log.join(', '));
   console.log('OK: menyn laddar ned', name, 'och sparar samma fil i Trimble Connect (Lägesplan export)');
 
   // Innehållet.
