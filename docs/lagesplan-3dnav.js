@@ -161,8 +161,7 @@ function l3OrbitPivotMove(e) {
   }
   const h = l3.renderer.domElement.clientHeight || 600, dx = e.clientX - v.x, dy = e.clientY - v.y;
   v.x = e.clientX; v.y = e.clientY;
-  l3OrbitAbout(v.P, -2 * Math.PI * dx / h, 2 * Math.PI * dy / h);
-  l3PivMark(true);
+  l3OrbitAbout(v.P, -2 * Math.PI * dx / h, 2 * Math.PI * dy / h); // markeringen flyttas när bilden ritas (l3Render)
 }
 /* Vrid kameran kring P: yaw kring lodaxeln, pitch = minskning av blickens polvinkel (uppåt i bilden
    = man tittar mer uppifrån). Samma gränser som OrbitControls (aldrig under horisonten). */
@@ -194,6 +193,9 @@ function l3PivMark(show) {
   let m = l3.pivEl;
   if (!m) { m = document.createElement("div"); m.className = "v3-pivot hidden"; l3.renderer.domElement.parentElement.appendChild(m); l3.pivEl = m; }
   if (!show || !l3Piv) { m.classList.add("hidden"); return; }
+  // Samma kamera som bilden: matrisen uppdateras först (annars räknas punkten med förra bildens
+  // kamera och markeringen hoppar fram och tillbaka mot modellen – Victor 2026-10-10).
+  l3.camera.updateMatrixWorld();
   const q = l3Piv.P.clone().project(l3.camera), el = l3.renderer.domElement;
   m.style.left = ((q.x + 1) / 2 * el.clientWidth) + "px"; m.style.top = ((1 - q.y) / 2 * el.clientHeight) + "px";
   m.classList.remove("hidden");

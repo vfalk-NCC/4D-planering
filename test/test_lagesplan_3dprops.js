@@ -59,7 +59,14 @@ const IFC = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');", "FILE_
   const errors = []; page.on('pageerror', e => errors.push(e.message + ' @ ' + (e.stack || '').split('\n').slice(1, 3).join(' ')));
   await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't', userName: 'Victor' })); });
   await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS }));
-  await page.route('https://api.github.com/**', r => r.request().method() === 'GET' ? r.fulfill({ status: 404, body: '{}' }) : r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha: 's1' } }) }));
+  const gh = new Map();
+  await page.route('https://api.github.com/**', r => {
+    const req = r.request(), f = decodeURIComponent(new URL(req.url()).pathname.replace('/repos/vfalk-NCC/4D-data/contents/', ''));
+    if (req.method() === 'GET') { const e = gh.get(f); return e ? r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: Buffer.from(e).toString('base64'), sha: 's' + e.length }) }) : r.fulfill({ status: 404, body: '{}' }); }
+    const body = JSON.parse(req.postData()); gh.set(f, Buffer.from(body.content, 'base64').toString());
+    if (/ifc_groups\.json$/.test(f)) page.evaluate(t => { window.__gsaved = JSON.parse(t); }, gh.get(f)).catch(() => {});
+    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha: 's' + gh.get(f).length } }) });
+  });
   await page.goto(`http://localhost:${PORT}/lagesplan.html?project=p1`); await page.waitForTimeout(900);
   await page.evaluate(async ifc => {
     plans = [{ id: 'A', name: 'Plan 1', file_path: 'a.pdf', calib: { model: [[6512300, 150100, 0], [6512400, 150100, 0]], pdf: [[0, 0], [1000, 0]] }, zones: [] }];
@@ -145,6 +152,67 @@ const IFC = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');", "FILE_
   // Många markerade: ett överlägg per bit, inte ett per objekt.
   const ov = await page.evaluate(() => { const ents = []; l3b.models[0].meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => ents.push({ mesh, ri }))); l3bsSet(ents); return { sel: l3bs.sel.length, ov: l3bs.ov.length, meshes: l3b.models[0].meshes.length }; });
   if (ov.sel !== 3 || ov.ov > ov.meshes * 2) fail('Överläggen per bit: ' + JSON.stringify(ov));
+
+  // Kompakt panel: verktygsrad med små knappar, handtag i hörnet ändrar bredd och höjd.
+  await page.evaluate(() => { const m = l3b.models[0]; let e = null; m.meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => { if (r.guid === '1hZq3$Bq9Fxu8nZK0bW1aA') e = { mesh, ri }; })); l3bsSet([e]); });
+  await page.waitForSelector('#v3Side .v3-acts .v3-act');
+  const actH = await page.$eval('#v3BsZoom', b => b.getBoundingClientRect().height);
+  if (actH > 28) fail('Knapparna ska vara kompakta: ' + actH);
+  const rc = await page.locator('#v3Side .v3-rc').boundingBox();
+  const sz0 = await page.evaluate(() => { const r = document.getElementById('v3Side').getBoundingClientRect(); return [r.width, r.height]; });
+  await page.mouse.move(rc.x + 6, rc.y + 6); await page.mouse.down(); await page.mouse.move(rc.x - 74, rc.y - 34, { steps: 4 }); await page.mouse.up();
+  const sz1 = await page.evaluate(() => { const r = document.getElementById('v3Side').getBoundingClientRect(); return { w: r.width, h: r.height, pw: l3Prefs().sideW, ph: l3Prefs().sideH }; });
+  if (Math.abs(sz1.w - sz0[0] - 80) > 3 || Math.abs(sz1.h - (sz0[1] - 40)) > 3 || Math.abs(sz1.pw - sz1.w) > 2 || Math.abs(sz1.ph - sz1.h) > 2) fail('Hörnhandtaget: ' + JSON.stringify({ sz0, sz1 }));
+  await page.dblclick('#v3Side .v3-rc');
+
+  // Markera flera: varje tryck lägger till.
+  await page.click('#v3Multi');
+  const cvb = await page.locator('#v3Canvas canvas').boundingBox();
+  const tapAt = async guid => {
+    const p = await page.evaluate(g => { const m = l3b.models[0]; let pt = null; m.meshes.forEach(mesh => { const pos = mesh.geometry.getAttribute('position'), r = mesh.userData.l3b.ranges.find(x => x.guid === g); if (r) { const b = new THREE.Box3(); for (let i = r.start; i < r.start + r.count; i++) b.expandByPoint(new THREE.Vector3().fromBufferAttribute(pos, i)); pt = b.getCenter(new THREE.Vector3()).applyMatrix4(mesh.matrixWorld); pt.z = b.max.z; } }); const q = l3ToScreen(pt); return [q.x, q.y]; }, guid);
+    await page.mouse.click(cvb.x + p[0], cvb.y + p[1]); await page.waitForTimeout(150);
+  };
+  await page.evaluate(() => { l3bsClear(); l3StopFly(); const c = new THREE.Vector3(6512361 - l3.O[0], 150126 - l3.O[1], 0); l3.camera.position.set(c.x, c.y - 0.01, 60); l3.orbit.target.copy(c); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); });
+  await tapAt('1hZq3$Bq9Fxu8nZK0bW1aA'); await tapAt('1hZq3$Bq9Fxu8nZK0bW1aB');
+  const multi = await page.evaluate(() => l3bs.sel.map(e => e.mesh.userData.l3b.ranges[e.ri].guid).sort().join(','));
+  if (multi !== '1hZq3$Bq9Fxu8nZK0bW1aA,1hZq3$Bq9Fxu8nZK0bW1aB') fail('Markera flera ska lägga till: ' + multi);
+  await page.click('#v3Multi');
+
+  // Ny grupp av de markerade (Bandgång 1), sparad i projektets ifc_groups.json.
+  page.on('dialog', d => d.accept('Bandgång 1'));
+  await page.selectOption('#v3GAdd', '__new');
+  await page.waitForFunction(() => l3g.list.length === 1 && window.__gsaved, null, { timeout: 10000 });
+  const g1 = await page.evaluate(() => ({ g: l3g.list[0], chips: [...document.querySelectorAll('#v3Side .v3-gchip')].map(c => c.textContent.replace(/\s+/g, ' ').trim()), saved: window.__gsaved }));
+  if (g1.g.name !== 'Bandgång 1' || g1.g.guids.length !== 2 || !/Bandgång 1/.test(g1.chips.join()) || !g1.saved.some(x => x.name === 'Bandgång 1')) fail('Ny grupp: ' + JSON.stringify(g1));
+  // Gruppen i fliken Egenskaper: markera den, färga efter grupp.
+  await page.evaluate(() => { l3bsClear(); l3p.group = null; l3PalTab('props'); });
+  await page.waitForSelector('#v3PalProps [data-gsel]');
+  await page.click('#v3PalProps .v3-grp-n');
+  if ((await page.evaluate(() => l3bs.sel.length)) !== 2) fail('Gruppen ska markeras från fliken');
+  await page.click('#v3GBy');
+  await page.waitForSelector('#v3PalProps .v3-pp-v');
+  const gv = await page.$$eval('#v3PalProps .v3-pp-v', b => b.map(x => x.querySelector('span').textContent + '=' + x.querySelector('em').textContent));
+  if (gv.join('|') !== 'Bandgång 1=2|(saknas)=1') fail('Färga efter grupp: ' + gv);
+  await page.evaluate(() => { l3pColorOff(); l3p.group = null; });
+
+  // Skriv in grupperna i IFC:n: ny fil i samma mapp, egenskapen 4D-planering › Grupp, aldrig dubblerad.
+  const gs = await page.evaluate(async () => {
+    window.__up = null; const orig = askOpener;
+    askOpener = async (type, extra, t, p) => { if (type === 'tcUpload') { const f = extra.files[0]; window.__up = { name: f.name, folderId: extra.folderId, bytes: new Uint8Array(await f.arrayBuffer()) }; return { uploaded: 1 }; } return orig(type, extra, t, p); };
+    await l3gSaveModel(l3b.models[0]);
+    const up = window.__up, text = new TextDecoder('latin1').decode(up.bytes);
+    const again = l3gApplyToIfc(text).text;
+    // Läs tillbaka med egenskapstråden.
+    const wk = new Worker('ifc-props-worker.js');
+    const call = msg => new Promise(res => { wk.onmessage = ev => { if (!('prog' in ev.data)) res(ev.data.ok); }; wk.postMessage(msg); });
+    await call({ id: 1, op: 'open', bytes: up.bytes.buffer.slice(0), guids: [] });
+    const a = await call({ id: 2, op: 'props', guid: '1hZq3$Bq9Fxu8nZK0bW1aB' }), c = await call({ id: 3, op: 'props', guid: '1hZq3$Bq9Fxu8nZK0bW1aC' });
+    wk.terminate(); askOpener = orig;
+    return { name: up.name, folderId: up.folderId, b2: (a.psets.find(p => p.n === '4D-planering') || { p: [] }).p, pel: c.psets.some(p => p.n === '4D-planering'),
+      sets1: (text.match(/IFCPROPERTYSET\('[^']*',[^,]*,'4D-planering'/g) || []).length, rels2: (again.match(/IFCRELDEFINESBYPROPERTIES\([^;]*/g) || []).length, rels1: (text.match(/IFCRELDEFINESBYPROPERTIES\([^;]*/g) || []).length, esc: /Bandg\\X2\\00E5\\X0\\ng 1/.test(text) };
+  });
+  if (!/^Stål grupper \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(gs.name) || gs.folderId !== 'f1' || gs.b2.join() !== 'Grupp,Bandgång 1' || gs.pel || gs.sets1 !== 1 || gs.rels2 !== gs.rels1 || !gs.esc)
+    fail('Grupperna i IFC:n: ' + JSON.stringify(gs));
 
   if (process.env.SHOT) {
     await page.evaluate(() => { const m = l3b.models[0]; let e = null; m.meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => { if (r.guid === '1hZq3$Bq9Fxu8nZK0bW1aA') e = { mesh, ri }; })); l3bsSet([e]); l3SetPref('propsClosed', []); l3Frame(true); });

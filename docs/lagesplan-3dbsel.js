@@ -173,29 +173,32 @@ function l3bsIsolate() {
 function l3bsPendingHtml() {
   if (typeof l3bmPending !== "function") return "";
   const models = [...new Set(l3bs.sel.map(e => e.mesh.userData.l3b.model))].filter(m => m && l3bmPending(m.id));
-  return models.map(m => `<button type="button" class="v3-wide v3-primary" data-bmsave="${escHtml(m.id)}" title="Originalet hämtas från Trimble Connect, flyttarna skrivs in och resultatet sparas som en ny fil i samma mapp – originalet skrivs aldrig över">Spara som ny IFC i TC (${l3bmPending(m.id)} flyttade i ${escHtml(m.name)})</button>`).join("");
+  return models.map(m => `<button type="button" class="v3-save-btn" data-bmsave="${escHtml(m.id)}" title="Originalet hämtas från Trimble Connect, flyttarna skrivs in och resultatet sparas som en ny fil i samma mapp – originalet skrivs aldrig över">${L3_ICO.upload}<span>Spara flytten som ny IFC i TC <em>${l3bmPending(m.id)} flyttade i ${escHtml(m.name)}</em></span></button>`).join("");
 }
 /* Panelen till höger när objekt i byggnaden är markerade. */
 function l3bsRenderSide(side) {
-  const info = l3bsInfo(), n = info.length, esc = escHtml;
+  const info = l3bsInfo(), n = info.length, esc = escHtml, I = L3_ICO;
   const coupled = info.filter(x => x.item);
   const one = n === 1 ? info[0] : null;
   const row = (k, v) => v ? `<tr><td>${k}</td><td>${esc(v)}</td></tr>` : "";
+  // Kompakt verktygsrad (Victor 2026-10-10: "nu är det väldigt stora knappar … mer kompakt och intuitiv").
+  const act = (id, ico, label, title, cls = "") => `<button type="button" id="${id}" class="v3-act ${cls}" title="${esc(title)}">${ico}<span>${label}</span></button>`;
   side.dataset.id = "bsel:" + l3bs.sel.map(e => e.key).join(",");
-  side.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:#6d5efc"></i><b>${one ? esc(one.name) : `${n} objekt i byggnaden`}</b><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3BsClose" title="Avmarkera (Esc)">✕</button></div>
+  side.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:#6d5efc"></i><b title="${esc(one ? one.name : "")}">${one ? esc(one.name) : `${n} objekt markerade`}</b><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3BsClose" title="Avmarkera (Esc)">✕</button></div>
     <div class="v3-sub">${one ? esc(one.model) : esc([...new Set(info.map(x => x.model))].join(", "))}</div>
-    ${one ? `<table class="v3-info-t">${row("IFC-id", one.guid)}${one.item ? row("Aktivitet", one.item.activity) + row("Status", PHASE_LABELS[l3Phase(one.item)] || "") + row("Period", one.item.start_date ? `${one.item.start_date} – ${one.item.end_date || ""}` : "") : row("Planering", "Inte kopplad")}</table>${typeof l3pFillSide === "function" ? `<div id="v3BsProps" class="v3-props"></div>` : ""}`
-      : `<div class="v3-bs-list">${info.slice(0, 60).map(x => `<div class="v3-bs-row" title="${esc(x.guid)}"><span>${esc(x.name)}</span>${x.item ? `<em>${esc(x.item.activity || "kopplad")}</em>` : ""}</div>`).join("")}${n > 60 ? `<div class="v3-pal-hint">… och ${n - 60} till</div>` : ""}</div>`}
-    <div class="v3-btns">
-      <button type="button" id="v3BsZoom">${L3_ICO.focus}Zooma</button>
-      <button type="button" id="v3BsHide" title="Dölj de markerade (H)">Dölj</button>
-      <button type="button" id="v3BsIso" title="Visa bara de markerade (I)">Visa bara dessa</button>
-      ${typeof l3bmStart === "function" ? `<button type="button" id="v3BsMove" title="Flytta de markerade – sparas som en ny IFC-fil i Trimble Connect">Flytta…</button>` : ""}
-      ${typeof ifcSubset === "function" && typeof l3bmFetchIfc === "function" ? `<button type="button" id="v3BsExport" class="v3-wide" title="De markerade objekten (med dina flyttar) blir en egen IFC-fil i samma mapp i Trimble Connect – originalet rörs inte">Exportera markerade som ny IFC (${n})</button>` : ""}
-      ${l3bsPendingHtml(info)}
-      ${!one && typeof l3pGroupBy === "function" ? `<button type="button" id="v3BsGroup" class="v3-wide" title="Fliken Egenskaper: välj en egenskap och se alla värden">Gruppera efter egenskap…</button>` : ""}
-      ${coupled.length ? `<button type="button" id="v3BsJump" class="v3-wide" title="Markera de kopplade aktiviteterna i 4D-planering och objekten i Trimble Connect">Markera i 4D-planering (${coupled.length})</button>` : ""}
-    </div>`;
+    <div class="v3-acts">
+      ${act("v3BsZoom", I.focus, "Zooma", "Zooma till de markerade")}
+      ${act("v3BsHide", I.eyeOff, "Dölj", "Dölj de markerade (H)")}
+      ${act("v3BsIso", I.isolate, "Isolera", "Visa bara de markerade (I)")}
+      ${typeof l3bmStart === "function" ? act("v3BsMove", I.move, "Flytta", "Flytta de markerade – sparas som en ny IFC-fil i Trimble Connect") : ""}
+      ${typeof ifcSubset === "function" && typeof l3bmFetchIfc === "function" ? act("v3BsExport", I.upload, "IFC", `Exportera de ${n} markerade (med dina flyttar och grupper) som en egen IFC-fil i samma mapp i Trimble Connect – originalet rörs inte`) : ""}
+      ${coupled.length ? act("v3BsJump", I.select, "4D", `Markera de ${coupled.length} kopplade aktiviteterna i 4D-planering och objekten i Trimble Connect`) : ""}
+    </div>
+    ${typeof l3gSelHtml === "function" ? l3gSelHtml() : ""}
+    ${l3bsPendingHtml(info)}
+    ${one ? `<table class="v3-info-t">${one.item ? row("Aktivitet", one.item.activity) + row("Status", PHASE_LABELS[l3Phase(one.item)] || "") + row("Period", one.item.start_date ? `${one.item.start_date} – ${one.item.end_date || ""}` : "") : row("Planering", "Inte kopplad")}${typeof l3pFillSide === "function" ? "" : row("IFC-id", one.guid)}</table>${typeof l3pFillSide === "function" ? `<div id="v3BsProps" class="v3-props"></div>` : ""}`
+      : `<div class="v3-bs-list">${info.slice(0, 60).map(x => `<div class="v3-bs-row" title="${esc(x.guid)}"><span>${esc(x.name)}</span>${x.item ? `<em>${esc(x.item.activity || "kopplad")}</em>` : ""}</div>`).join("")}${n > 60 ? `<div class="v3-pal-hint">… och ${n - 60} till</div>` : ""}</div>
+      ${typeof l3pGroupBy === "function" ? `<button type="button" id="v3BsGroup" class="v3-link" title="Fliken Egenskaper: välj en egenskap och se alla värden">Gruppera efter egenskap…</button>` : ""}`}`;
   const on = (id, fn) => { const b = side.querySelector("#" + id); if (b) b.onclick = fn; };
   on("v3BsClose", l3bsClear);
   on("v3BsZoom", l3bsZoom);
@@ -206,6 +209,7 @@ function l3bsRenderSide(side) {
   on("v3BsExport", async () => { const b = side.querySelector("#v3BsExport"); b.disabled = true; try { await l3bsExportIfc(); } catch (e) { /* visas i statusraden */ } if (b.isConnected) b.disabled = false; });
   side.querySelectorAll("[data-bmsave]").forEach(b => { b.onclick = async () => { b.disabled = true; try { await l3bmSave(b.dataset.bmsave); } catch (e) { /* visas i statusraden */ } l3RenderSide(); }; });
   on("v3BsJump", () => askOpener("select", { ids: [...new Set(coupled.map(x => x.item.id))], jump: true }, 15000).then(() => l3Toast("Markerat i 4D-planering och i Trimble Connect.")).catch(e => l3Toast(e.message)));
+  if (typeof l3gBindSel === "function") l3gBindSel(side);
   if (one && typeof l3pFillSide === "function") l3pFillSide(side, l3bs.sel[0]);
 }
 

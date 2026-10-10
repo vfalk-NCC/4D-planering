@@ -271,13 +271,15 @@ async function l3bmFetchIfc(m, onProgress) {
   const u8 = new Uint8Array(r.bytes);
   let text = ""; for (let i = 0; i < u8.length; i += 65536) text += String.fromCharCode.apply(null, u8.subarray(i, i + 65536)); // latin1: byte för byte
   if (!/(^|[\s;])DATA\s*;/i.test(text.slice(0, 1 << 20))) throw new Error(`${m.name} är ingen IFC-fil i textformat (t.ex. .ifczip) och kan inte skrivas.`);
-  if (!ed || !ed.moves.size) return { text, moved: 0, missing: 0 };
+  // Egna grupper (lagesplan-3dgroups.js) skrivs in som egenskapen 4D-planering › Grupp.
+  const withGroups = r => (typeof l3gApplyToIfc === "function" ? { ...r, ...l3gApplyToIfc(r.text) } : r);
+  if (!ed || !ed.moves.size) return withGroups({ text, moved: 0, missing: 0 });
   // Flyttarna i scenen (SWEREF-meter) -> modellens IFC-koordinater (TC:s placering av modellen räknas bort).
   const pl = w.fileId ? null : r.placement;
   const rd = (pl && pl.refDirection) || { x: 1, y: 0, z: 0 }, rl = Math.hypot(rd.x, rd.y) || 1, P = (pl && pl.position) || { x: 0, y: 0, z: 0 };
   const Pl = new THREE.Matrix4().makeRotationZ(Math.atan2(rd.y / rl, rd.x / rl)).setPosition(P.x / 1000, P.y / 1000, P.z / 1000), Pli = Pl.clone().invert();
   const movesIfc = new Map([...ed.moves].map(([g, D]) => [g, Pli.clone().multiply(D).multiply(Pl)]));
-  return l3bmApplyToIfc(text, movesIfc);
+  return withGroups(l3bmApplyToIfc(text, movesIfc));
 }
 function l3bmStrBytes(t) { const b = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) b[i] = t.charCodeAt(i) & 255; return b; }
 /* Unikt filnamn med sekunder – aldrig en ny version av en befintlig fil. */

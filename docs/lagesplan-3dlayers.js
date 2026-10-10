@@ -179,8 +179,39 @@ function l3lResizable(el, pref, side, min, max) {
   ensure();
   new MutationObserver(ensure).observe(el, { childList: true });
 }
+/* Handtag nere i vänstra hörnet (Victor 2026-10-10: "justera storleken genom en dragable nere i vänster
+   hörn"): drar bredd och höjd samtidigt. Sparas (sideW/sideH); dubbelklick = standard. */
+function l3lCorner(el) {
+  if (!el || el.dataset.rc) return;
+  el.dataset.rc = "1";
+  const host = () => el.parentElement || document.body;
+  const maxH = () => host().clientHeight - el.offsetTop - 10;
+  const applyH = h => { el.style.height = `${h}px`; el.style.maxHeight = "none"; };
+  const savedH = Number(l3Prefs().sideH); if (savedH) applyH(Math.max(160, Math.min(maxH() > 200 ? maxH() : 2000, savedH)));
+  const ensure = () => {
+    if (el.querySelector(":scope > .v3-rc")) { const c = el.querySelector(":scope > .v3-rc"); if (c !== el.lastElementChild) el.appendChild(c); return; }
+    const hd = document.createElement("div");
+    hd.className = "v3-rc"; hd.title = "Dra för att ändra storleken (dubbelklick = standard)";
+    hd.onpointerdown = e => {
+      e.preventDefault(); e.stopPropagation();
+      const x0 = e.clientX, y0 = e.clientY, r = el.getBoundingClientRect();
+      hd.setPointerCapture(e.pointerId); el.classList.add("v3-resizing");
+      const mv = ev => {
+        el.style.width = `${Math.max(240, Math.min(720, r.width + x0 - ev.clientX))}px`;
+        applyH(Math.max(160, Math.min(maxH(), r.height + ev.clientY - y0)));
+      };
+      const up = () => { el.classList.remove("v3-resizing"); hd.removeEventListener("pointermove", mv); hd.removeEventListener("pointerup", up); const b = el.getBoundingClientRect(); l3SetPref("sideW", Math.round(b.width)); l3SetPref("sideH", Math.round(b.height)); l3Render(); };
+      hd.addEventListener("pointermove", mv); hd.addEventListener("pointerup", up);
+    };
+    hd.ondblclick = () => { el.style.width = ""; el.style.height = ""; el.style.maxHeight = ""; l3SetPref("sideW", 0); l3SetPref("sideH", 0); l3Render(); };
+    el.appendChild(hd);
+  };
+  ensure();
+  new MutationObserver(ensure).observe(el, { childList: true });
+}
 function l3LayersInit() {
   l3lResizable(document.getElementById("v3Side"), "sideW", "right", 240, 640);
+  l3lCorner(document.getElementById("v3Side"));
   l3lResizable(document.getElementById("v3Pal"), "palW", "left", 170, 460);
 }
 

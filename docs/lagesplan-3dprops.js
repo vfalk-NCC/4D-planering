@@ -185,7 +185,7 @@ async function l3pFillSide(side, ent) {
 
 /* ---- Gruppera (fliken Egenskaper) --------------------------------------------------------------- */
 const L3P_ATTR = { "a:cls": "IFC-klass", "a:type": "Typ", "a:storey": "Våning", "a:material": "Material", "a:name": "Namn", "a:objtype": "Objekttyp", "a:tag": "Tag" };
-function l3pKeyLabel(k) { if (L3P_ATTR[k]) return L3P_ATTR[k]; const [ps, pn] = k.slice(2).split(SEPK); return `${pn} (${ps})`; }
+function l3pKeyLabel(k) { if (k === "g:4d") return "Mina grupper"; if (L3P_ATTR[k]) return L3P_ATTR[k]; const [ps, pn] = k.slice(2).split(SEPK); return `${pn} (${ps})`; }
 const l3pModels = () => l3b.models.filter(m => m.visible);
 async function l3pOpenAll(download) {
   const out = [], missing = [];
@@ -218,13 +218,14 @@ function l3pRenderTab() {
   const body = host.querySelector(".v3-pp-body"), qi = host.querySelector(".v3-pp-q");
   if (!l3b.models.length) { body.innerHTML = `<div class="v3-pal-hint">Läs in en IFC-modell under Lager först.</div>`; return; }
   if (l3p.group) { qi.classList.add("hidden"); l3pRenderValues(body); return; }
+  if (typeof l3gLoad === "function" && !l3g.loaded) l3gLoad().then(() => l3pRenderTab());
   qi.classList.remove("hidden");
   const sig = l3pModels().map(m => m.id + "@" + (m.src && m.src.version)).join(",");
   if (!l3p.keys || l3p.keysFor !== sig) { l3pLoadKeys(false).then(() => l3pRenderTab()).catch(e => { body.innerHTML = `<div class="v3-pal-hint bad">${escHtml(e.message)}</div>`; }); return; }
   const esc = escHtml, { list, missing } = l3p.keys, t = qi.value.trim().toLowerCase();
   const closed = l3pClosed();
   let h = missing.length ? `<button type="button" class="v3-wide" id="v3PpLoad" title="Originalfilerna hämtas från Trimble Connect en gång och sparas i webbläsaren">Läs egenskaper i ${missing.length} ${missing.length === 1 ? "modell" : "modeller"} till (hämtar från TC)</button>` : "";
-  const groups = new Map([["", []]]);
+  const groups = new Map([["", typeof l3g !== "undefined" && l3g.list.length ? [["g:4d", "", "Mina grupper", l3g.list.reduce((a, g) => a + (g.guids || []).length, 0)]] : []]]);
   list.forEach(x => { const g = x[1] || ""; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(x); });
   groups.forEach((rows, g) => {
     const vis = rows.filter(x => !t || (l3pKeyLabel(x[0]) + " " + g).toLowerCase().includes(t));
@@ -234,7 +235,9 @@ function l3pRenderTab() {
       + vis.map(x => `<button type="button" class="v3-pp-k" data-pkey="${esc(x[0])}"><span>${esc(x[2] || L3P_ATTR[x[0]])}</span><em>${x[3].toLocaleString("sv-SE")}</em></button>`).join("") + `</details>`;
   });
   if (!list.length && !missing.length) h += `<div class="v3-pal-hint">Inga egenskaper hittades.</div>`;
-  body.innerHTML = h;
+  const gh = typeof l3gTabHtml === "function" ? l3gTabHtml() : "";
+  body.innerHTML = gh + h;
+  if (gh) l3gBindTab(body);
   qi.oninput = () => l3pRenderTab();
   body.querySelectorAll("details.v3-ps").forEach(dt => { dt.ontoggle = () => { if (t) return; const c = l3pClosed(); if (dt.open) c.delete(dt.dataset.sec); else c.add(dt.dataset.sec); l3SetPref("propsClosed", [...c].slice(-300)); }; });
   body.querySelectorAll("[data-pkey]").forEach(b => { b.onclick = () => l3pGroupBy(b.dataset.pkey); });
@@ -246,9 +249,10 @@ async function l3pGroupBy(key) {
   if (typeof l3PalTab === "function") l3PalTab("props");
   const body = document.querySelector("#v3PalProps .v3-pp-body");
   if (body) body.innerHTML = `<div class="v3-pal-hint"><span class="pm-spin"></span> Grupperar efter ${escHtml(l3pKeyLabel(key))}…</div>`;
-  const { out } = await l3pOpenAll(false);
+  const { out } = key === "g:4d" ? { out: [] } : await l3pOpenAll(false);
   const vals = new Map();
-  for (const [m, st] of out) {
+  if (key === "g:4d") { await l3gLoad(); l3pModels().forEach(m => l3gValues(m).forEach(([v, guids]) => { if (!vals.has(v)) vals.set(v, []); vals.get(v).push([m, guids]); })); }
+  else for (const [m, st] of out) {
     const res = await l3pCall(st, { op: "values", key }, f => busyProgress("propvals", `Grupperar ${m.name}`, f));
     res.forEach(([v, guids]) => { if (!vals.has(v)) vals.set(v, []); vals.get(v).push([m, guids]); });
   }
@@ -256,7 +260,8 @@ async function l3pGroupBy(key) {
   const list = [...vals].map(([v, parts]) => ({ v, parts, n: parts.reduce((a, p) => a + p[1].length, 0) }))
     .sort((a, b) => (a.v === "\u0000") - (b.v === "\u0000") || b.n - a.n || String(a.v).localeCompare(String(b.v), "sv", { numeric: true }));
   let ci = 0;
-  list.forEach(x => { x.color = x.v === "\u0000" ? "#cbd5e1" : ci < L3P_COLORS.length ? L3P_COLORS[ci++] : "#94a3b8"; });
+  const gcol = key === "g:4d" ? new Map(l3g.list.map(g => [g.name, g.color])) : null;
+  list.forEach(x => { x.color = x.v === "\u0000" ? "#cbd5e1" : gcol && gcol.has(x.v) ? gcol.get(x.v) : ci < L3P_COLORS.length ? L3P_COLORS[ci++] : "#94a3b8"; });
   l3p.group = { key, list };
   if (l3p.colorBy) l3pColorOn(); // färgerna följer med till den nya egenskapen
   l3pRenderTab();

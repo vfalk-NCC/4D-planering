@@ -191,7 +191,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.keyboard.down('Shift'); await tap(6512380, 150125, 3); await page.keyboard.up('Shift');
   await page.evaluate(() => { document.getElementById('v3Side').style.visibility = ''; });
   const two = await page.evaluate(() => ({ n: l3bs.sel.length, txt: document.getElementById('v3Side').innerText }));
-  if (two.n !== 2 || !/2 objekt i byggnaden/.test(two.txt) || !/Vagg V1/.test(two.txt)) fail('Skift ska lägga till objekt i markeringen: ' + JSON.stringify(two));
+  if (two.n !== 2 || !/2 objekt markerade/.test(two.txt) || !/Vagg V1/.test(two.txt)) fail('Skift ska lägga till objekt i markeringen: ' + JSON.stringify(two));
   await page.keyboard.press('Escape');
   if (await page.evaluate(() => l3bs.sel.length || l3b.models[0].meshes.reduce((a, m) => a + m.children.filter(c => c.userData.bsel).length, 0))) fail('Esc ska avmarkera och ta bort överlägget');
   await tap(6512380, 150125, 3);

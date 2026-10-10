@@ -29,6 +29,10 @@ const L3_ICO = (() => {
     fit: s('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
     cube: s('<path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>'),
     eye: s('<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>'),
+    eyeOff: s('<path d="M17.9 17.9A10 10 0 0 1 12 19c-7 0-11-7-11-7a18 18 0 0 1 5.1-5.9M9.9 4.2A9 9 0 0 1 12 4c7 0 11 7 11 7a18 18 0 0 1-2.2 3.2M1 1l22 22"/>'),
+    isolate: s('<rect x="7" y="7" width="10" height="10" rx="1"/><path d="M3 3h3M3 3v3M21 3h-3M21 3v3M3 21h3M3 21v-3M21 21h-3M21 21v-3"/>'),
+    multi: s('<path d="M4 4l7 4-3 1-1.5 3z"/><rect x="12" y="12" width="9" height="9" rx="2"/><path d="M16.5 14.5v4M14.5 16.5h4"/>'),
+    group: s('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/>'),
     upload: s('<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 20h16"/>'),
     help: s('<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4"/><path d="M12 17h.01"/>'),
     trash: s('<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>'),
@@ -173,6 +177,7 @@ function l3Dom() {
         ${tool("rotate", I.rotate, "Vrid", "Q", "Vrid: vridpunkt, utgångsriktning, ny riktning. Fäster var 15:e grad – skriv en vinkel och Enter")}
         ${tool("align", I.align, "Rikta", "A", "Rikta kant mot kant: två punkter på objektets kant, sedan två på kanten det ska ligga mot")}
         ${tool("measure", I.measure, "Mät", "T", "Mät avstånd mellan två punkter (fäster mot hörn och kanter)")}
+        <button type="button" id="v3Multi" class="v3-multi" aria-pressed="false" title="Markera flera: varje tryck lägger till eller tar bort objekt (samma som Skift/Ctrl)">${I.multi}<span>Flera</span></button>
       </div>
       <div class="v3-seg">
         <button type="button" id="v3Undo" title="Ångra (Ctrl+Z)">${I.undo}</button>
@@ -290,6 +295,7 @@ function l3Dom() {
   const $3 = id => box.querySelector("#" + id);
   $3("v3Close").onclick = close3d;
   $3("v3StatusMore").onclick = () => l3LogToggle();
+  $3("v3Multi").onclick = () => l3SetMulti(!l3.multi);
   $3("v3Status").onclick = () => l3LogToggle();
   box.querySelectorAll("[data-v3tool]").forEach(b => { b.onclick = () => { if (typeof l3SetTool === "function") l3SetTool(b.dataset.v3tool); }; });
   $3("v3Step").onchange = () => { l3SetPref("step", $3("v3Step").value); l3ApplyStep(); };
@@ -343,6 +349,13 @@ function l3HideMenus() {
 const l3Log = [];
 function l3StatusShow(t, bad) { const el = document.getElementById("v3Status"); if (el) { el.textContent = t || ""; el.classList.toggle("bad", !!bad); el.title = t ? `${t}\n(klicka eller F2: historik)` : "Klicka eller F2: historik"; } }
 function l3StatusLive(t) { l3StatusShow(t, false); }
+/* Markera flera (Victor 2026-10-10: "Multiselect i 3d-vyn"): varje tryck lägger till/tar bort, som Skift. */
+function l3SetMulti(on) {
+  l3.multi = !!on;
+  const b = document.getElementById("v3Multi");
+  if (b) { b.classList.toggle("on", l3.multi); b.setAttribute("aria-pressed", l3.multi); }
+  l3Status(l3.multi ? "Markera flera: varje tryck lägger till eller tar bort ett objekt (knappen Flera stänger av)." : "Markera flera är av.");
+}
 function l3Status(t, bad) {
   l3StatusShow(t, bad);
   if (!t) return;
@@ -502,6 +515,7 @@ function l3Render() {
     l3.groups.sel.children.forEach(h => h.update && h.update());
     l3AdaptRes();
     l3.renderer.render(l3.scene, l3.camera);
+    if (typeof l3Piv !== "undefined" && l3Piv && l3Piv.on) l3PivMark(true); // rotationspunkten i samma bild
     l3RenderLabels();
     if (typeof l3HandlesPos === "function") l3HandlesPos();
     if (typeof l3TouchBarUpdate === "function") l3TouchBarUpdate();
@@ -843,11 +857,11 @@ function l3Tap(e) {
   if (l3.addType) return l3AddAt(e);
   const id = l3PlaceAt(e);
   if (id) {
-    if (e.shiftKey || e.ctrlKey || e.metaKey) { const s = new Set(l3.sel); if (s.has(id)) s.delete(id); else s.add(id); l3SelectIds([...s]); }
+    if (e.shiftKey || e.ctrlKey || e.metaKey || l3.multi) { const s = new Set(l3.sel); if (s.has(id)) s.delete(id); else s.add(id); l3SelectIds([...s]); }
     else l3SelectIds([id]);
     return;
   }
-  const add = e.shiftKey || e.ctrlKey || e.metaKey;
+  const add = e.shiftKey || e.ctrlKey || e.metaKey || !!l3.multi;
   if (!add) l3SelectIds([]);
   // Objekt i byggnaden: markeras (lila); planerat objekt (låda): visa uppgifterna.
   const h = l3Ray(e, [l3.objMesh, ...l3.groups.bldg.children].filter(Boolean))[0];
