@@ -687,6 +687,11 @@ function l3PlacementGroup(p) {
         add(g, pt.c, pt.t || 0);
       });
     } else if (a && a.bbox) {
+      // Geometrin är inte hämtad än (modellen placerades nu): lådan visas tills den kommit, sedan ritas alla om.
+      if (typeof placeMeshEnsure === "function" && !(l3.meshWait || (l3.meshWait = new Set())).has(a.id)) {
+        l3.meshWait.add(a.id);
+        placeMeshEnsure(a.id).then(mm => { l3.meshWait.delete(a.id); if (mm) { placements.filter(q => q.type === p.type).forEach(q => l3RebuildOne(q)); l3Render(); } });
+      }
       const b = a.bbox;
       const m = add(prism([[b.min[0] * k, b.min[1] * k], [b.max[0] * k, b.min[1] * k], [b.max[0] * k, b.max[1] * k], [b.min[0] * k, b.max[1] * k]], b.min[2] * k, b.max[2] * k), "#0e7490", 0.55);
       m.add(new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), new THREE.LineBasicMaterial({ color: 0x0e7490 })));

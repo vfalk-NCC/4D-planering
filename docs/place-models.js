@@ -653,6 +653,20 @@ async function placeModelsPrepare() {
     catch (e) { setPlaceStatus(`Kunde inte läsa modellen "${a.name}": ${e.message}`, true); }
   }
 }
+/* Geometrin för en modell som placeras nu (Victor 2026-10-10: "egna modeller syns bara som bounding
+   boxes") – hämtas en gång; null om den inte finns (IFC utan sparad geometri). */
+const placeMeshLoading = new Map();
+function placeMeshEnsure(id) {
+  if (placeMeshCache.has(id)) return Promise.resolve(placeMeshCache.get(id));
+  const a = placeAssetOf(id);
+  if (!a || (a.kind === "ifc" && !a.meshPath)) return Promise.resolve(null);
+  if (!placeMeshLoading.has(id)) placeMeshLoading.set(id, (async () => {
+    try { const m = a.kind === "ifc" ? await pmReadJsonPath(a.meshPath) : await pmReadAssetFile(a); placeMeshCache.set(id, m); return m; }
+    catch (e) { setPlaceStatus(`Kunde inte läsa modellen "${a.name}": ${e.message}`, true); return null; }
+    finally { placeMeshLoading.delete(id); }
+  })());
+  return placeMeshLoading.get(id);
+}
 /* En flyttad IFC-fil per ny/ändrad placering av en IFC-modell. */
 async function placeModelIfcFiles(stamp = placeStamp()) {
   const out = [];

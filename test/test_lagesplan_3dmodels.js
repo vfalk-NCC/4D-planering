@@ -38,6 +38,7 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   await page.route('https://api.github.com/**', r => {
     const req = r.request(); const f = decodeURIComponent(new URL(req.url()).pathname.replace('/repos/vfalk-NCC/4D-data/contents/', ''));
     const e = store.get(f);
+    if (req.method() === 'GET' && e && /raw/.test(req.headers()['accept'] || '')) return r.fulfill({ status: 200, contentType: 'application/octet-stream', body: e.content }); // som GitHub: rå fil
     if (req.method() === 'GET') return e ? r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: Buffer.from(e.content).toString('base64'), sha: e.sha }) }) : r.fulfill({ status: 404, body: '{}' });
     const body = JSON.parse(req.postData()); if (e && body.sha !== e.sha) return r.fulfill({ status: 409, body: '{}' });
     const sha = 's' + (++n); store.set(f, { content: Buffer.from(body.content, 'base64').toString(), sha });
@@ -115,13 +116,15 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   if (!(await page.isHidden('#v3Models'))) fail('Rutan ska stängas när modellen är tillagd');
   if (!/Bod från TC/.test(await page.textContent('#v3Lib'))) fail('Modellen ska finnas under Egna modeller');
 
-  // Ett tryck i scenen placerar den.
+  // Ett tryck i scenen placerar den – geometrin hämtas då (inte bara en låda; Victor 2026-10-10).
+  await page.evaluate(() => placeMeshCache.clear());
   const cv = await page.locator('#v3Canvas canvas').boundingBox();
   await page.evaluate(() => { l3StopFly(); const c = new THREE.Vector3(6512340 - l3.O[0], 150120 - l3.O[1], 0); l3.camera.position.set(c.x, c.y - 0.01, 90); l3.orbit.target.copy(c); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); });
   const [sx, sy] = await page.evaluate(() => { const q = l3ToScreen(new THREE.Vector3(6512340 - l3.O[0], 150120 - l3.O[1], 0)); return [q.x, q.y]; });
   await page.mouse.move(cv.x + sx, cv.y + sy); await page.waitForTimeout(60); await page.mouse.click(cv.x + sx, cv.y + sy); await page.waitForTimeout(300);
   const placed = await page.evaluate(() => placements.map(p => ({ type: p.type, x: p.x, y: p.y })));
   if (placed.length !== 1 || !placed[0].type.startsWith('model:') || Math.abs(placed[0].x - 6512340) > 1.5) fail('Ett tryck ska placera modellen: ' + JSON.stringify(placed));
+  await page.waitForFunction(() => { const p = placements[0], g = l3.placeMeshes.get(p.id); return placeMeshCache.size === 1 && g && g.children.some(c => c.isMesh && c.geometry.index); } /* modellens delar är indexerade – lådan är det inte */, null, { timeout: 8000 }).catch(() => fail('Den placerade modellen ska visas med sin geometri, inte som en låda'));
 
   // Z (Victor 2026-10-09): underkant i modellens koordinater, går att skriva in; överkant visas.
   await page.waitForSelector('#v3Side [data-v3f="zAbs"]', { timeout: 5000 });
