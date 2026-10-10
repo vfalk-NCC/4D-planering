@@ -96,7 +96,7 @@ function grow(Type, cap) {
 }
 
 self.onmessage = async ev => {
-  const { bytes, placement, O, maxTris = 6e6, chunkTris = 80000, base, part = 0, parts = 1, names = true, voids = false, details = false, rebar = false } = ev.data || {};
+  const { bytes, placement, O, maxTris = 6e6, chunkTris = 80000, base, part = 0, parts = 1, names = true, voids = false, details = false, rebar = false, startAt = 0, skipIdx = [] } = ev.data || {};
   let id = null;
   try {
     const t0 = Date.now();
@@ -220,15 +220,37 @@ self.onmessage = async ev => {
       if (now < earlyUntil && now - lastEarly > 1500) { lastEarly = now; flush(); }
       if (now - lastPost > 250) { lastPost = now; self.postMessage({ type: "progress", f: total ? Math.min(0.99, 0.05 + 0.95 * n / total) : 0.5, n }); }
     };
-    if (mine) A.StreamMeshes(id, mine, onMesh); else A.StreamAllMeshes(id, onMesh);
+    // I små portioner (Victor 2026-10-10: läsningen hängde sig på ett enstaka objekt och resten kom aldrig):
+    // före varje portion sägs var tråden är ("at"), och med jämna mellanrum skickas allt som är läst ("ckpt" –
+    // allt före i är framme). Hänger läsaren sig startar sidan en ny tråd från senaste ckpt och hoppar över
+    // just den portionen (skipIdx).
+    const B = 10, inSkip = i => skipIdx.some(([a, b]) => i >= a && i < b);
+    if (mine) {
+      if (skipIdx.length) {
+        const list = [];
+        skipIdx.forEach(([a, b]) => { for (let j = a; j < b && j < mine.length; j++) { const e = mine[j], nm = names0 && names0.get(e); let t = "?"; try { t = A.GetNameFromTypeCode(A.GetLineType(id, e)); } catch (err) { /* okänd */ } list.push([t, nm ? nm[1] : "", nm ? nm[0] : ""]); } });
+        self.postMessage({ type: "skipinfo", list });
+      }
+      self.postMessage({ type: "ckpt", i: startAt });
+      let lastCk = Date.now();
+      for (let i = startAt; i < mine.length && !capped; i += B) {
+        if (Date.now() - lastCk > 8000) { flush(); self.postMessage({ type: "ckpt", i }); lastCk = Date.now(); }
+        self.postMessage({ type: "at", i });
+        const batch = [];
+        for (let j = i; j < Math.min(i + B, mine.length); j++) if (!inSkip(j)) batch.push(mine[j]);
+        if (batch.length) A.StreamMeshes(id, batch, onMesh);
+      }
+    } else A.StreamAllMeshes(id, onMesh);
     // Allt ska med (Victor 2026-10-10: "den klarar fortfarande inte av att hämta in precis allt"): objekt som
     // inte kom med i strömmen provas en gång till var för sig. Objekt utan egen form (sammansättningar som
     // IfcElementAssembly/IfcRoof – delarna ritas för sig) räknas inte som saknade; resten redovisas per klass.
     const missing = {};
+    if (mine && !capped) { flush(); self.postMessage({ type: "ckpt", i: mine.length }); self.postMessage({ type: "at", i: mine.length }); } // hänger ett nytt försök sig: klart härifrån
     if (mine && !capped) {
       const until = Date.now() + 30000; let tries = 0; // högst 30 s och 3 000 nya försök
-      for (const e of mine) {
-        if (seen.has(e)) continue;
+      for (let i = startAt; i < mine.length; i++) {
+        const e = mine[i];
+        if (seen.has(e) || inSkip(i)) continue;
         if (Date.now() > until || tries >= 3000) { missing["(ej provade)"] = (missing["(ej provade)"] || 0) + 1; continue; }
         let line = null;
         try { line = A.GetLine(id, e, false); } catch (err) { line = null; }

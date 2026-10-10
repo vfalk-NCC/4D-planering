@@ -135,6 +135,7 @@ async function l3bLoad(list, opts = {}) {
       skippedAll += m.skipped || 0;
       // Objekt med form som web-ifc inte kunde rita – redovisas per IFC-klass (syns i statusraden och historiken).
       const miss = Object.entries(m.missing || {}).sort((a, b) => b[1] - a[1]);
+      if (m.hung && m.hung.length) times.push(`${r.name || w.name}: ${m.hung.length} objekt hoppades över eftersom läsaren hängde sig på dem (${m.hung.slice(0, 4).map(([t, n]) => `${t}${n ? " " + n : ""}`).join(", ")}${m.hung.length > 4 ? " …" : ""})`);
       if (miss.length) times.push(`${r.name || w.name}: ${miss.reduce((a, x) => a + x[1], 0).toLocaleString("sv-SE")} objekt kunde inte ritas (${miss.slice(0, 6).map(([t, c]) => `${t} ${c}`).join(", ")}${miss.length > 6 ? " …" : ""})`);
       if (opts.replace) l3bRemove(w.id);
       m.id = w.id; m.name = r.name || w.name; m.visible = true; m.src = w;
@@ -322,82 +323,99 @@ function l3bMeshFromArrays(pos, col, idx, ranges, out, nrm = null) {
 /* Antal trådar: stora filer delas på flera (var och en räknar vart N:te objekt), men varje tråd läser hela
    filen och behöver eget minne – därför efter filstorlek, kärnor och minne (Victor 2026-10-09: "nästan instant"). */
 function l3bParts(size, voids = l3bVoids()) {
-  const cores = navigator.hardwareConcurrency || 4, memGb = navigator.deviceMemory || 8;
+  // Högst 8 GB räknas (nyare Chrome kan rapportera mer, men flikens minne räcker inte till fler trådar).
+  const cores = navigator.hardwareConcurrency || 4, memGb = Math.min(8, navigator.deviceMemory || 8);
   if (size < 25e6) return 1;
   // Varje tråd läser hela filen: utan urtag är geometrin lätt och flera trådar lönar sig bara på stora datorer.
   if (!voids && cores < 8) return 1;
   // ~16 × filen per tråd (med detaljer), högst en tredjedel av minnet – alla trådar delar flikens minne.
   const byMem = Math.max(1, Math.floor(memGb * 1e9 / 3 / (size * 16)));
-  return Math.max(1, Math.min(6, Math.floor(cores / 2), byMem)); // halva de logiska kärnorna (hypertrådar konkurrerar)
+  return Math.max(1, Math.min(3, Math.floor(cores / 2), byMem)); // halva de logiska kärnorna, högst tre
 }
 /* Urtag (fönster- och dörrhål) är den i särklass dyraste delen – av som standard, kan slås på under Lager. */
 const l3bVoids = () => !!(typeof l3Prefs === "function" && l3Prefs().ifcVoids);
 // Allt läses in som standard (Victor 2026-10-10: "precis allt"); detaljerna kan stängas av under Lager → Avancerat.
 const l3bDetails = () => !(typeof l3Prefs === "function" && l3Prefs().ifcDetails === false);
 const l3bRebar = () => !!(typeof l3Prefs === "function" && l3Prefs().ifcRebar);
-/* Vakt: en tråd som inte hört av sig på så här länge har stannat (Chrome stänger en tråd som får slut på
-   minne utan felmeddelande – då väntade sidan förut för evigt). */
-const L3B_STALL_MS = 150000;
+/* Vakt (Victor 2026-10-10: "sen händer inget mer" – läsaren kunde hänga sig på ett enstaka objekt, eller
+   Chrome stänga tråden vid minnesbrist utan fel). Tråden säger före varje portion om tio objekt var den är;
+   hörs inget på STALL ms startas en ny tråd från senaste kontrollpunkt (det som redan är framme ligger kvar)
+   och just den portionen hoppas över och redovisas. Innan första portionen (filen öppnas) väntar vakten längre. */
+const L3B_STALL_MS = 60000, L3B_OPEN_MS = 300000, L3B_RESTARTS = 8;
 function l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes, partsOverride) {
   return new Promise((resolve, reject) => {
     const buf0 = bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes).slice().buffer;
     // Samma versionsstämpel som skripten (tools/stamp.py), så att en ny tråd-fil inte fastnar i webbläsarens cache.
     const ver = ((document.querySelector('script[src*="lagesplan-3dbuild.js"]') || {}).src || "").split("?")[1] || "";
     const N = partsOverride || window.__l3Parts || l3bParts(buf0.byteLength), url = new URL("ifc-worker.js" + (ver ? "?" + ver : ""), location.href).href;
-    const wks = [];
-    try { for (let k = 0; k < N; k++) wks.push(new Worker(url)); }
-    catch (e) { wks.forEach(w => w.terminate()); e.workerStart = true; reject(e); return; }
     const byGuid = new Map((items || []).filter(r => r.object_id).map(r => [String(r.object_id), r.id]));
-    const out = { meshes: [], ranges: [], tris: 0, O: [...l3.O], capped: false, parts: N };
-    const prog = new Array(N).fill(0), cnt = new Array(N).fill(0), heard = new Array(N).fill(Date.now());
-    let started = false, left = N, failed = false;
-    const watch = setInterval(() => {
-      if (failed) { clearInterval(watch); return; }
-      const now = Date.now();
-      if (heard.some((t, k) => prog[k] < 1 && now - t > (window.__l3StallMs || L3B_STALL_MS))) {
-        const err = new Error(`Läsningen av modellen stannade (troligen slut på minne i webbläsaren${N > 1 ? ` med ${N} trådar` : ""}).`);
-        err.parts = N; fail(err);
-      }
-    }, 5000);
-    // Avbrutet mitt i (t.ex. slut på minne): stoppa alla trådar och ta bort de bitar som hann visas.
+    const out = { meshes: [], ranges: [], tris: 0, O: [...l3.O], capped: false, parts: N, hung: [] };
+    const base = new URL("vendor/web-ifc/", location.href).href, voids = l3bVoids(), details = l3bDetails(), rebar = l3bRebar();
+    // En post per del (tråd): var den är (at), senaste kontrollpunkt (ckpt), bitar efter den (pending).
+    const W = [];
+    let left = N, failed = false, started = false;
+    const finish = () => { failed = true; clearInterval(watch); W.forEach(w => w.wk && w.wk.terminate()); };
     const fail = err => {
-      if (failed) return; failed = true; clearInterval(watch);
-      wks.forEach(w => w.terminate());
+      if (failed) return; finish();
       out.meshes.forEach(m => { if (m.parent) m.parent.remove(m); m.geometry.dispose(); m.material.dispose(); });
       reject(err);
     };
-    wks.forEach((wk, k) => {
+    const drop = ms => {
+      if (!ms.length) return;
+      const set = new Set(ms), rset = new Set();
+      ms.forEach(m => { m.userData.l3b.ranges.forEach(r => rset.add(r)); out.tris -= m.geometry.index.count / 3; if (m.parent) m.parent.remove(m); m.geometry.dispose(); m.material.dispose(); });
+      out.meshes = out.meshes.filter(m => !set.has(m)); out.ranges = out.ranges.filter(r => !rset.has(r));
+    };
+    const start = (k, startAt, skipIdx) => {
+      let wk;
+      try { wk = new Worker(url); } catch (e) { e.workerStart = !started; e.parts = N; fail(e); return; }
+      const w = W[k] = Object.assign(W[k] || { restarts: 0, skips: [], prog: 0, n: 0 }, { wk, at: null, ckpt: startAt, pending: [], heard: Date.now() });
       wk.onmessage = ev => {
         const d = ev.data || {};
-        if (failed) return;
-        started = true; heard[k] = Date.now();
-        if (d.type === "progress") {
-          prog[k] = d.f; cnt[k] = d.n || cnt[k];
-          const f = prog.reduce((a, b) => a + b, 0) / N, n = cnt.reduce((a, b) => a + b, 0);
+        if (failed || W[k] !== w || w.wk !== wk) return;
+        started = true; w.heard = Date.now();
+        if (d.type === "at") w.at = d.i;
+        else if (d.type === "ckpt") { w.ckpt = d.i; w.pending = []; }
+        else if (d.type === "skipinfo") { (d.list || []).forEach(x => { if (!out.hung.some(y => y[2] && y[2] === x[2])) out.hung.push(x); }); }
+        else if (d.type === "progress") {
+          w.prog = d.f; w.n = Math.max(w.n, d.n || 0);
+          const f = W.reduce((a, x) => a + (x ? x.prog : 0), 0) / N, n = W.reduce((a, x) => a + (x ? x.n : 0), 0);
           if (onProgress) onProgress(f);
           if (n && typeof l3StatusLive === "function") l3StatusLive(`Läser modellen: ${n.toLocaleString("sv-SE")} objekt (${Math.round(f * 100)} %)${N > 1 ? ` – ${N} trådar` : ""}…`);
-        }
-        else if (d.type === "chunk") {
+        } else if (d.type === "chunk") {
           d.ranges.forEach(r => { r.itemId = r.guid ? byGuid.get(r.guid) || null : null; });
           const m = l3bMeshFromArrays(d.pos, d.col, d.idx, d.ranges, out, d.nrm && d.nrm.length ? d.nrm : null); // normalerna från tråden
-          out.meshes.push(m); out.ranges.push(...d.ranges); out.tris += d.idx.length / 3;
+          out.meshes.push(m); out.ranges.push(...d.ranges); out.tris += d.idx.length / 3; w.pending.push(m);
           if (onMeshes) onMeshes([m]);
-          // Taket gäller alla trådar tillsammans (förut fick varje tråd en lika stor del – en tråd med
-          // tunga objekt kunde slå i sin del medan det fanns plats kvar).
-          if (out.tris >= maxTris && !failed) { failed = true; clearInterval(watch); out.capped = true; wks.forEach(w => w.terminate()); resolve(out); }
+          // Taket gäller alla trådar tillsammans.
+          if (out.tris >= maxTris && !failed) { finish(); out.capped = true; resolve(out); }
         } else if (d.type === "done") {
-          out.capped = out.capped || !!d.capped; out.skipped = (out.skipped || 0) + (d.skipped || 0); wk.terminate(); prog[k] = 1;
+          out.capped = out.capped || !!d.capped; out.skipped = (out.skipped || 0) + (d.skipped || 0); wk.terminate(); w.prog = 1; w.done = true;
           Object.entries(d.missing || {}).forEach(([t, c]) => { out.missing = out.missing || {}; out.missing[t] = (out.missing[t] || 0) + c; });
-          if (--left === 0) { clearInterval(watch); resolve(out); }
+          if (--left === 0) { finish(); resolve(out); }
         } else if (d.type === "error") { const err = new Error(d.message); err.parts = N; fail(err); }
       };
       wk.onerror = e => { const err = new Error(e.message || "IFC-tråden avbröts (för lite minne?)"); err.workerStart = !started; err.parts = N; fail(err); };
-    });
-    const base = new URL("vendor/web-ifc/", location.href).href, voids = l3bVoids(), details = l3bDetails(), rebar = l3bRebar();
-    wks.forEach((wk, k) => {
-      const b = buf0.slice(0); // varje tråd sin kopia – originalet finns kvar för ett nytt försök
-      wk.postMessage({ bytes: b, placement, O: out.O, maxTris: Math.ceil(maxTris), chunkTris: L3B_CHUNK, base, part: k, parts: N, voids, details, rebar }, [b]);
-    });
+      const b = buf0.slice(0); // varje tråd sin kopia – originalet finns kvar för en ny tråd
+      wk.postMessage({ bytes: b, placement, O: out.O, maxTris: Math.ceil(maxTris), chunkTris: L3B_CHUNK, base, part: k, parts: N, voids, details, rebar, startAt, skipIdx }, [b]);
+    };
+    const watch = setInterval(() => {
+      if (failed) return;
+      const now = Date.now();
+      W.forEach((w, k) => {
+        if (!w || w.done) return;
+        const lim = w.at === null ? (window.__l3OpenMs || L3B_OPEN_MS) : (window.__l3StallMs || L3B_STALL_MS);
+        if (now - w.heard <= lim) return;
+        // Hängt: ny tråd från senaste kontrollpunkt; det som kom efter den läses om, portionen där den hängde hoppas över.
+        w.wk.terminate();
+        if (w.at === null || ++w.restarts > L3B_RESTARTS) { const err = new Error(`Läsningen av modellen stannade${w.at === null ? " när filen öppnades (troligen slut på minne i webbläsaren)" : ""}.`); err.parts = N; fail(err); return; }
+        drop(w.pending);
+        w.skips.push([w.at, w.at + 10]);
+        if (typeof l3StatusLive === "function") l3StatusLive(`Läsaren hängde sig på ett objekt – hoppar över det och fortsätter (${w.restarts} av högst ${L3B_RESTARTS})…`);
+        start(k, Math.min(w.ckpt, w.at), w.skips.slice());
+      });
+    }, 2000);
+    for (let k = 0; k < N; k++) start(k, 0, []);
   });
 }
 /* IFC-bytes -> bitar (Mesh) med färg per objekt. placement = TC:s placering av modellen (mm). */
