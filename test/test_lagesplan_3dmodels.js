@@ -148,10 +148,52 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
 
   // Lägg till-menyn: grupperna fälls ihop och ut.
   await page.evaluate(() => l3PalTab('add'));
-  await page.click('#v3Lib [data-v3grp="Maskiner"]');
-  if (await page.$('#v3Lib [data-v3add="tornkran"]') || !(await page.evaluate(() => (l3Prefs().palClosed || []).includes('Maskiner')))) fail('Gruppen ska fällas ihop och sparas');
-  await page.click('#v3Lib [data-v3grp="Maskiner"]');
+  await page.click('#v3Lib [data-v3grp="g:Maskiner"]');
+  if (await page.$('#v3Lib [data-v3add="tornkran"]') || !(await page.evaluate(() => (l3Prefs().palClosed || []).includes('g:Maskiner')))) fail('Gruppen ska fällas ihop och sparas');
+  await page.click('#v3Lib [data-v3grp="g:Maskiner"]');
   if (!(await page.$('#v3Lib [data-v3add="tornkran"]'))) fail('Gruppen ska fällas ut igen');
+
+  // 3D-biblioteket (Victor 2026-10-10): kategorierna är mappar – dra objekt mellan dem, tänd/släck per mapp.
+  const mid = await page.evaluate(() => placements[0].type);
+  const drag = async (from, to) => {
+    const a = await page.locator(from).boundingBox(), b = await page.locator(to).boundingBox();
+    await page.mouse.move(a.x + 20, a.y + a.height / 2); await page.mouse.down();
+    await page.mouse.move(a.x + 40, a.y + a.height / 2 + 10, { steps: 3 }); await page.mouse.move(b.x + 30, b.y + b.height / 2, { steps: 6 }); await page.mouse.up();
+    await page.waitForTimeout(250);
+  };
+  await drag(`#v3Lib [data-v3add="${mid}"]`, '#v3Lib [data-lfid="g:Maskiner"]');
+  await page.waitForFunction(m => l3libFolderOf(m) === 'g:Maskiner', mid, { timeout: 5000 }).catch(() => fail('Modellen ska kunna dras till mappen Maskiner'));
+  await page.waitForTimeout(200);
+  const lf = JSON.parse(store.get('projects/p1/plan_libfolders.json').content);
+  if (!lf.some(x => x.t === mid && x.f === 'g:Maskiner')) fail('Mappvalet ska sparas i plan_libfolders.json: ' + JSON.stringify(lf));
+  if (!(await page.$(`#v3Lib [data-lfid="g:Maskiner"] + .v3-pal-items [data-v3add="${mid}"]`))) fail('Modellen ska visas i Maskiner');
+  // Ny mapp genom att släppa på ＋ Ny mapp.
+  page.once('dialog', d => d.accept('Mina kranar'));
+  await drag('#v3Lib [data-v3add="tornkran"]', '#v3LibNew');
+  await page.waitForFunction(() => l3lib.folders.some(f => f.name === 'Mina kranar') && l3libFolderOf('tornkran') === l3lib.folders.find(f => f.name === 'Mina kranar').id, null, { timeout: 5000 }).catch(async () => fail('Släpp på Ny mapp ska skapa mappen och flytta objektet dit' + JSON.stringify(await page.evaluate(() => [l3lib, l3libFolderOf('tornkran'), document.getElementById('v3LibNew').getBoundingClientRect(), document.getElementById('v3Status') && document.getElementById('v3Status').textContent]))));
+  // Bocken släcker mappens placerade objekt (och Ctrl+Z ångrar).
+  await page.click('#v3Lib [data-lfvis="g:Maskiner"]');
+  if (await page.evaluate(() => l3.placeMeshes.get(placements[0].id).visible)) fail('Bocken ska släcka mappens objekt');
+  await page.click('#v3Lib [data-lfvis="g:Maskiner"]');
+  if (!(await page.evaluate(() => l3.placeMeshes.get(placements[0].id).visible))) fail('Bocken ska tända mappens objekt igen');
+  // Mappen tas bort – objekten går tillbaka till sina vanliga mappar.
+  const fid = await page.evaluate(() => l3lib.folders.find(f => f.name === 'Mina kranar').id);
+  page.once('dialog', d => d.accept());
+  await page.click(`#v3Lib [data-lfdel="${fid}"]`);
+  await page.waitForFunction(() => l3libFolderOf('tornkran') === 'g:Maskiner' && !l3lib.folders.some(f => f.name === 'Mina kranar'), null, { timeout: 5000 }).catch(() => fail('Borttagen mapp: objekten ska tillbaka'));
+  // En modell som används kan inte tas bort ur biblioteket – de placerade objekten markeras.
+  await page.click(`#v3Lib [data-v3libdel="${mid.slice(6)}"]`);
+  if (!(await page.evaluate(() => placeAssets.length === 1 && l3.sel.has(placements[0].id)))) fail('En använd modell ska inte tas bort');
+  await page.evaluate(() => l3SelectIds([]));
+  // En oanvänd modell tas bort ur biblioteket (filerna och TC rörs inte).
+  await page.evaluate(async () => { const a = { id: 'old1', name: 'Gammal kran', kind: 'mesh', path: 'projects/p1/models/old1.json' }; placeAssets.push(a); await ghWriteJSON(settings.githubToken, pmAssetsPath(), arr => [...arr, a], 't'); l3RenderLib(); });
+  const tc0 = await page.evaluate(() => window.__calls.length);
+  page.once('dialog', d => d.accept());
+  await page.click('#v3Lib [data-v3libdel="old1"]');
+  await page.waitForFunction(() => !placeAssets.some(a => a.id === 'old1') && !document.querySelector('#v3Lib [data-v3add="model:old1"]'), null, { timeout: 5000 }).catch(() => fail('Modellen ska tas bort ur biblioteket'));
+  await page.waitForTimeout(200);
+  const lib2 = JSON.parse(store.get('projects/p1/plan_models.json').content);
+  if (lib2.length !== 1 || lib2[0].id === 'old1' || (await page.evaluate(() => window.__calls.length)) !== tc0) fail('Bara biblioteksposten ska tas bort, inget i TC: ' + JSON.stringify(lib2));
 
   // Lager: ritningen som mark, etableringen per typ och projektets modeller i mappar.
   await page.click('[data-paltab="layers"]');

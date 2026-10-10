@@ -1267,42 +1267,7 @@ function l3ShowHitInfo(h) {
 function l3HideInfo() { const el = document.getElementById("v3Info"); if (el) el.classList.add("hidden"); }
 
 /* Biblioteket: sök, grupper med färg. Tryck på ett objekt och sedan i scenen. */
-function l3RenderLib() {
-  const el = document.getElementById("v3Lib");
-  if (!el) return;
-  const q = ((document.getElementById("v3PalSearch") || {}).value || "").trim().toLowerCase();
-  const assets = typeof placeAssets !== "undefined" ? placeAssets : [];
-  const groups = {};
-  Object.entries(PLACE_LIB).forEach(([k, l]) => { (groups[l.group] = groups[l.group] || []).push([k, l.label, l.color]); });
-  if (assets.length) groups["Egna modeller"] = assets.map(a => [`model:${a.id}`, a.name, a.kind === "ifc" ? "#0e7490" : "#64748b"]);
-  // Grupperna fälls ihop/ut med ett klick på rubriken (Victor 2026-10-09); valet sparas. Vid sökning visas alla träffar.
-  const closed = new Set(l3Prefs().palClosed || []);
-  const html = Object.entries(groups).map(([g, list]) => {
-    const f = list.filter(([, l]) => !q || l.toLowerCase().includes(q));
-    if (!f.length) return "";
-    const open = q || !closed.has(g) || f.some(([k]) => l3 && l3.addType === k);
-    return `<button type="button" class="v3-pal-g" data-v3grp="${escHtml(g)}" aria-expanded="${open}"><span>${escHtml(g)}</span><em>${f.length}</em></button>` +
-      (open ? `<div class="v3-pal-items">` + f.map(([k, l, c]) => `<button type="button" data-v3add="${escHtml(k)}" class="${l3 && l3.addType === k ? "on" : ""}" title="${escHtml(l)}"><i style="background:${c}"></i><span>${escHtml(l)}</span></button>`).join("") + `</div>` : "");
-  }).join("");
-  el.innerHTML = html || `<div class="v3-pal-hint">Inget matchar "${escHtml(q)}".</div>`;
-  el.querySelectorAll("[data-v3grp]").forEach(b => { b.onclick = () => {
-    const g = b.dataset.v3grp, set = new Set(l3Prefs().palClosed || []);
-    if (b.getAttribute("aria-expanded") === "true") set.add(g); else set.delete(g);
-    l3SetPref("palClosed", [...set]); l3RenderLib();
-  }; });
-  el.querySelectorAll("[data-v3add]").forEach(b => { b.onclick = () => {
-    if (typeof l3SetTool === "function" && l3.tool !== "select") l3SetTool("select");
-    const k = b.dataset.v3add;
-    l3.fenceId = null;
-    l3.addType = l3.addType === k ? null : k;
-    // Smal skärm: biblioteket ligger över modellen – fäll ihop det så att man kan trycka i 3D.
-    if (l3.addType && window.innerWidth < 700) { const pal = document.getElementById("v3Pal"), po = document.getElementById("v3PalOpen"); if (pal && po) { pal.classList.add("hidden"); po.classList.remove("hidden"); } }
-    l3Status(l3.addType ? ((placeLib(k) || {}).fence ? "Staket: tryck första punkten." : "Tryck där objektet ska stå (marken eller ett objekt). Esc avbryter.") : "");
-    l3RenderLib();
-  }; });
-  if (typeof l3HandlesPos === "function") l3HandlesPos(); // inga handtag medan man lägger till
-  if (typeof l3TouchBarUpdate === "function") l3TouchBarUpdate(); // Avbryt på pekskärm
-}
+/* l3RenderLib (fliken 3D-bibliotek med mappar) finns i lagesplan-3dlib.js. */
 
 /* Hämta modell (Victors önskemål 2026-10-09: "plocka in saker från Sketchfab i 3D-editorn"): samma
    panel som i Placera i 3D (place-models.js) – Sketchfab, projektets mappar i Trimble Connect eller
