@@ -152,6 +152,33 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   await page.fill('#v3DxR', '90'); await page.click('#v3DxRot'); P = await pts();
   if (Math.abs(P[0][0] - 6512357.5) > 1e-3 || Math.abs(P[0][1] - 150117.5) > 1e-3) fail('Vrid 90°: ' + JSON.stringify(P));
   await page.keyboard.press('Control+z');
+  // Verktygen Flytta och Vrid fungerar på de markerade linjerna i DXF-redigeringen.
+  {
+    const P0 = await pts();
+    await page.evaluate(() => l3SetTool('move'));
+    await click(P0[0][0], P0[0][1]); await page.mouse.move(0, 0);
+    const [hx, hy] = await scr(6512353, 150118.5); await page.mouse.move(cv.x + hx, cv.y + hy); await page.waitForTimeout(100);
+    const ghost = await page.evaluate(() => !!(l3dT.ghost && l3dT.ghost.parent));
+    await click(6512353, 150118.5);
+    let Q = await pts();
+    if (!ghost || Math.abs(Q[0][0] - (6512353)) > 0.15 || Math.abs(Q[0][1] - 150118.5) > 0.15 || Math.abs((Q[2][0] - Q[0][0]) - (P0[2][0] - P0[0][0])) > 1e-6) fail('Flytta-verktyget i DXF-redigeringen: ' + JSON.stringify({ ghost, P0, Q }));
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+    if (JSON.stringify(await pts()) !== JSON.stringify(P0)) fail('Ctrl+Z efter Flytta-verktyget');
+    const n0 = await page.evaluate(() => l3d.ents.filter(e => !e.del).length);
+    await click(P0[0][0], P0[0][1]); await click(6512353, 150118.5, 'Control');
+    const n1 = await page.evaluate(() => l3d.ents.filter(e => !e.del).length);
+    if (n1 !== n0 + 1 || JSON.stringify(await pts()) !== JSON.stringify(P0)) fail('Flytta med Ctrl ska kopiera: ' + JSON.stringify({ n0, n1 }));
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+    await page.evaluate(id => { l3d.sel = new Set([id]); l3dRebuild(); }, L1);
+    // Vrid 90° runt första punkten: vridpunkt, utgångsriktning åt öster, ny riktning åt norr.
+    await page.evaluate(() => l3SetTool('rotate'));
+    await click(P0[0][0], P0[0][1]); await click(P0[0][0] + 4, P0[0][1] - 1.3); await click(P0[0][0] + 1.3, P0[0][1] + 4);
+    Q = await pts();
+    const ex = [P0[0][0] - (P0[2][1] - P0[0][1]), P0[0][1] + (P0[2][0] - P0[0][0])];
+    if (Math.abs(Q[0][0] - P0[0][0]) > 1e-6 || Math.abs(Q[2][0] - ex[0]) > 1e-3 || Math.abs(Q[2][1] - ex[1]) > 1e-3) fail('Vrid-verktyget i DXF-redigeringen: ' + JSON.stringify({ P0, Q, ex }));
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+    await page.evaluate(() => l3SetTool('select'));
+  }
   // Ny text: tryck på marken (svaret på frågan är 4D-RITAT), ändra text, höjd och vinkel.
   await page.click('#v3DxText');
   await click(6512352, 150124); await page.waitForTimeout(250);

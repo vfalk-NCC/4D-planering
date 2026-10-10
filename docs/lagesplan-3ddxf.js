@@ -56,7 +56,7 @@ async function l3dStart(id) {
 async function l3dEnd(force) {
   if (!l3d.rec) return true;
   if (!force && l3d.dirty && !(await uiConfirm(`Avsluta redigeringen av ${l3d.rec.name} utan att spara? Ändringarna försvinner (originalet är orört).`, { ok: "Avsluta utan att spara" }))) return false;
-  l3dStopDraw();
+  l3dStopDraw(); if (typeof l3dToolCancel === "function") l3dToolCancel();
   [l3d.mesh, l3d.selMesh, l3d.selPts, l3d.prev].forEach(o => { if (o) { if (o.parent) o.parent.remove(o); o.geometry.dispose(); o.material.dispose(); } });
   l3sDisposeMeshes(l3d.tmeshes); l3d.tmeshes = []; l3d.tbuilt = -1;
   l3d.mesh = l3d.selMesh = l3d.selPts = l3d.prev = null;
@@ -289,6 +289,7 @@ function l3dRect(a) {
 }
 function l3dKey(e) {
   if (!l3d.rec) return false;
+  if (e.key === "Escape" && l3dT.step) { l3dToolCancel(); l3Status("Avbrutet."); return true; }
   if (e.key === "Escape") { if (l3d.draw && l3d.draw.pts && l3d.draw.pts.length) { l3d.draw.pts = []; l3dPreview(null); l3Status("Linjen avbröts."); } else if (l3d.draw) l3dStopDraw(); else if (l3d.sel.size) { l3d.sel = new Set(); l3dRebuild(); l3RenderSide(); } else l3dEnd(); return true; }
   if (e.key === "Enter" && l3d.draw && l3d.draw.pts) { l3dFinishLine(); return true; }
   if ((e.key === "Delete" || e.key === "Backspace") && l3d.sel.size) { e.preventDefault(); l3dDelete(); return true; }
@@ -374,18 +375,18 @@ function l3dMove(dx, dy) {
   l3dOp(`flytta ${what}`, () => sh(1), () => sh(-1), tl.length > 0);
   l3Status(`${what} flyttade ${String(Math.round(dx * 1000) / 1000).replace(".", ",")} / ${String(Math.round(dy * 1000) / 1000).replace(".", ",")} m.`);
 }
-/* Vrid de markerade deg grader (moturs) runt markeringens mitt. */
-function l3dRotate(deg) {
+/* Vrid de markerade deg grader (moturs) runt markeringens mitt, eller runt C = [x, y]. */
+function l3dRotate(deg, C) {
   const list = l3dSelEnts(), tl = l3dSelTexts(); if ((!list.length && !tl.length) || !deg) return;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   const ext = p => { if (p[0] < x0) x0 = p[0]; if (p[0] > x1) x1 = p[0]; if (p[1] < y0) y0 = p[1]; if (p[1] > y1) y1 = p[1]; };
   list.forEach(e => e.pts.forEach(ext)); tl.forEach(t => ext([t.x, t.y]));
-  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const cx = C ? C[0] : (x0 + x1) / 2, cy = C ? C[1] : (y0 + y1) / 2;
   const turn = d => { const a = d * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), R = p => [cx + (p[0] - cx) * c - (p[1] - cy) * s, cy + (p[0] - cx) * s + (p[1] - cy) * c];
     list.forEach(e => { e.pts = e.pts.map(R); }); tl.forEach(t => { const q = R([t.x, t.y]); t.x = q[0]; t.y = q[1]; t.rot = ((t.rot || 0) + d) % 360; }); };
   const [, , what] = l3dSelCount();
   l3dOp(`vrid ${what} ${deg}°`, () => turn(deg), () => turn(-deg), tl.length > 0);
-  l3Status(`${what} vridna ${String(deg).replace(".", ",")}° runt markeringens mitt.`);
+  l3Status(`${what} vridna ${String(deg).replace(".", ",")}° runt ${C ? "punkten" : "markeringens mitt"}.`);
 }
 function l3dCopy(dx, dy) {
   const list = l3dSelEnts(), tl = l3dSelTexts(); if (!list.length && !tl.length) return;
@@ -509,4 +510,76 @@ async function l3dSave() {
     l3Status(`Sparad: ${name}`);
     return { name, id: added.id };
   } catch (e) { busyProgress(key, "", null); throw e; }
+}
+
+/* ---- Verktygen Flytta och Vrid i DXF-redigeringen (Victor 2026-10-10: "Flytta verktyget fungerar inte
+   inne i dxf-redigeringen") ------------------------------------------------------------------------
+   Flytta: tryck en baspunkt (på eller nära det markerade – är inget markerat markeras linjen/texten under
+   markören), sedan dit den ska. Ctrl eller bocken Kopia = kopiera. Vrid: tryck vridpunkten, en punkt för
+   utgångsriktningen och sedan den nya riktningen (fäster var 15:e grad; Skift = fritt). Fäster mot
+   ändpunkter som när man ritar. Förhandsvisning i rosa medan man flyttar markören. Esc avbryter. */
+const l3dT = { step: 0, base: null, ref: null, ghost: null };
+function l3dToolCancel() {
+  l3dT.step = 0; l3dT.base = null; l3dT.ref = null;
+  l3dGhost(null);
+}
+function l3dGhost(fn, extra) {
+  if (l3dT.ghost) { if (l3dT.ghost.parent) l3dT.ghost.parent.remove(l3dT.ghost); l3dT.ghost.geometry.dispose(); l3dT.ghost.material.dispose(); l3dT.ghost = null; }
+  if (!fn) { if (l3) l3Render(); return; }
+  const list = l3dSelEnts().map(e => ({ ...e, pts: e.pts.map(fn) }));
+  // Texterna som en liten ruta runt insättningspunkten, plus en extra linje (gummiband).
+  l3dSelTexts().forEach(t => { const h = (t.h || 0.5) / 2, q = [[t.x - h, t.y - h], [t.x + h, t.y - h], [t.x + h, t.y + h], [t.x - h, t.y + h], [t.x - h, t.y - h]].map(fn); list.push({ pts: q }); });
+  if (extra) list.push({ pts: extra });
+  const g = l3dSegs(list, false);
+  l3dT.ghost = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xe11d48, depthTest: false, transparent: true, opacity: 0.85 }));
+  l3dT.ghost.renderOrder = 12; l3dT.ghost.userData.noHit = true; l3dT.ghost.raycast = () => {}; l3dT.ghost.position.z = l3dZ() + 0.01;
+  l3sGroup("cad").add(l3dT.ghost);
+  l3Render();
+}
+const l3dAng = (c, p) => Math.atan2(p[1] - c[1], p[0] - c[0]) * 180 / Math.PI;
+function l3dRotDeg(e, p) {
+  let d = l3dAng(l3dT.base, p) - l3dAng(l3dT.base, l3dT.ref);
+  d = ((d + 540) % 360) - 180;
+  return e.shiftKey ? Math.round(d * 10) / 10 : Math.round(d / 15) * 15;
+}
+const l3dRot = (C, deg) => { const a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a); return p => [C[0] + (p[0] - C[0]) * c - (p[1] - C[1]) * s, C[1] + (p[0] - C[0]) * s + (p[1] - C[1]) * c]; };
+function l3dToolTap(e) {
+  if (!l3d.rec || l3d.draw || (l3.tool !== "move" && l3.tool !== "rotate")) return false;
+  const g = l3dGround(e, l3dT.step ? l3dT.base : null);
+  if (!g) return true;
+  if (l3dT.step === 0) {
+    if (!l3d.sel.size) { const en = l3dHit(e); if (en) { l3d.sel = new Set([en.id]); l3dRebuild(); l3RenderSide(); } }
+    if (!l3d.sel.size) { l3Status(l3.tool === "move" ? "Flytta: markera linjer eller texter först (eller tryck direkt på en linje)." : "Vrid: markera linjer eller texter först (eller tryck direkt på en linje)."); return true; }
+    l3dT.base = g.p; l3dT.step = 1;
+    l3Status(l3.tool === "move" ? `Flytta ${l3dSelCount()[2]}: tryck dit baspunkten ska (fäster mot ändpunkter, Skift = var 5:e grad). Ctrl = kopia. Esc avbryter.` : "Vrid: tryck en punkt som visar utgångsriktningen.");
+    return true;
+  }
+  if (l3.tool === "move") {
+    const dx = g.p[0] - l3dT.base[0], dy = g.p[1] - l3dT.base[1];
+    const copy = e.ctrlKey || e.metaKey || (typeof l3t !== "undefined" && l3t.copyMode);
+    l3dToolCancel();
+    if (copy) { l3dCopy(dx, dy); l3Status(`Kopierat ${Math.hypot(dx, dy).toFixed(2).replace(".", ",")} m bort.`); }
+    else l3dMove(dx, dy);
+    return true;
+  }
+  if (l3dT.step === 1) {
+    if (Math.hypot(g.p[0] - l3dT.base[0], g.p[1] - l3dT.base[1]) < 1e-3) return true;
+    l3dT.ref = g.p; l3dT.step = 2;
+    l3Status("Vrid: tryck den nya riktningen (fäster var 15:e grad, Skift = fritt).");
+    return true;
+  }
+  const deg = l3dRotDeg(e, g.p), C = l3dT.base;
+  l3dToolCancel();
+  if (deg) l3dRotate(deg, C);
+  return true;
+}
+function l3dToolHover(e) {
+  if (!l3d.rec || l3d.draw || (l3.tool !== "move" && l3.tool !== "rotate")) return false;
+  if (!l3dT.step) { l3dGhost(null); return true; }
+  const g = l3dGround(e, l3dT.base);
+  if (!g) return true;
+  if (l3.tool === "move") { const dx = g.p[0] - l3dT.base[0], dy = g.p[1] - l3dT.base[1]; l3dGhost(p => [p[0] + dx, p[1] + dy], [l3dT.base, g.p]); }
+  else if (l3dT.step === 1) l3dGhost(p => p, [l3dT.base, g.p]);
+  else { const deg = l3dRotDeg(e, g.p); l3dGhost(l3dRot(l3dT.base, deg), [l3dT.base, g.p]); l3StatusLive(`Vrid ${deg}° – tryck för att vrida.`); }
+  return true;
 }

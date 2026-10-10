@@ -249,6 +249,7 @@ function l3Restore(objs) { (objs || []).forEach(o => { if (o.g) { o.g.position.c
 /* Under ett pågående verktygssteg tonas panelerna ned och släpper igenom tryck. */
 function l3Busy(on) { ["v3Side", "v3Info"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.toggle("v3-busy", !!on); }); }
 function l3ToolCancel() {
+  if (typeof l3dToolCancel === "function") l3dToolCancel(); // Flytta/Vrid i DXF-redigeringen
   l3Busy(false);
   if (l3t.objs) l3Restore(l3t.objs);
   l3t = { ...l3t, step: 0, lock: null, vcb: "", last: null, objs: null, base: null, C: null, R: null, A1: null, A2: null, B1: null, M1: null, mp: null };
@@ -281,6 +282,7 @@ function l3ToolTargets(s, e) {
 // ---------------------------------------------------------------------
 function l3ToolHover(e) {
   l3Clear(l3.groups.tmp);
+  if (typeof l3dToolHover === "function" && l3dToolHover(e)) { l3Render(); return; }
   const t = l3.tool, st = l3t.step;
   if (l3.addType || l3.vPick || l3.clipPick) { l3ShowMarker(l3Snap(e)); l3Render(); return; }
   if (l3.dlgPick) {
@@ -364,6 +366,7 @@ function l3SnapAngle(deg, s) {
 
 /* Tryck med ett verktyg. true = hanterat. */
 function l3ToolTap(e) {
+  if (typeof l3dToolTap === "function" && l3dToolTap(e)) return true; // DXF-redigering: Flytta/Vrid gäller linjerna
   const t = l3.tool, st = l3t.step;
   if (t === "measure" && (l3Prefs().measure || "dist") !== "dist") {
     const mode = l3Prefs().measure, mp = l3t.mp || (l3t.mp = []);
