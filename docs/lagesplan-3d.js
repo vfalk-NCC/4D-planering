@@ -800,12 +800,30 @@ function l3Frame(animate = true) {
   if (!l3.camera.isOrthographicCamera) { l3.camera.far = Math.max(20000, size * 20); l3.camera.updateProjectionMatrix(); }
   l3FlyTo(c, size * 0.95, new THREE.Vector3(-0.45, -0.75, 0.55), animate ? 450 : 0);
 }
-function l3View(v) {
-  if (v === "sel") {
-    if (!l3.sel.size) { l3Status("Markera ett objekt först (tryck på det)."); return; }
-    const b = l3SceneBox(true), c = b.getCenter(new THREE.Vector3()), size = Math.max(4, b.getSize(new THREE.Vector3()).length());
-    l3FlyTo(c, size * 1.6); return;
+/* Zoom selected (Victor 2026-10-10): zoomar in det som är markerat – etablering, objekt i byggnaden,
+   mått, en öppen kommentar, en DXF eller PDF:en. Riktningen behålls; F eller eget kortkommando. */
+function l3SelBox() {
+  const b = new THREE.Box3();
+  if (l3.sel.size) b.union(l3SceneBox(true));
+  if (typeof l3bs !== "undefined" && l3bs.sel.length) b.union(l3bsBox());
+  if (typeof l3m !== "undefined" && l3m.sel && l3m.sel.size) l3m.list.forEach(m => { if (l3m.sel.has(m.id)) (typeof l3mDimPts === "function" ? [...m.pts, ...l3mDimPts(m)] : m.pts).forEach(p => b.expandByPoint(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2] + (m.kind === "volume" ? 0 : 0)))); });
+  if (typeof l3m !== "undefined" && l3m.sel && l3m.sel.size) l3m.list.forEach(m => { if (l3m.sel.has(m.id) && m.kind === "volume" && m.h) m.pts.forEach(p => b.expandByPoint(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2] + Number(m.h)))); });
+  if (typeof l3k !== "undefined" && l3k.open && l3k.open.pos) { const c = l3k.open.pos; b.expandByPoint(new THREE.Vector3(c[0] - l3.O[0], c[1] - l3.O[1], c[2] - l3.O[2])); }
+  if (typeof l3ss !== "undefined" && l3ss.sel) {
+    if (l3ss.sel.kind === "pdf" && l3.planMesh) b.union(new THREE.Box3().setFromObject(l3.planMesh));
+    else if (typeof l3s !== "undefined" && l3s.cad) l3s.cad.forEach(o => { if (o.userData.cadId === l3ss.sel.id) b.union(new THREE.Box3().setFromObject(o)); });
   }
+  return b;
+}
+function l3ZoomSelected() {
+  if (!l3) return;
+  const b = l3SelBox();
+  if (b.isEmpty()) { l3Status("Markera något först – ett objekt, ett mått, en kommentar eller en ritning."); return; }
+  const c = b.getCenter(new THREE.Vector3()), size = Math.max(3, b.getSize(new THREE.Vector3()).length());
+  l3FlyTo(c, size * 1.6);
+}
+function l3View(v) {
+  if (v === "sel") return l3ZoomSelected();
   if (v === "iso") return l3Frame(true);
   const b = l3SceneBox(), c = b.getCenter(new THREE.Vector3()), size = Math.max(10, b.getSize(new THREE.Vector3()).length());
   const dirs = { top: [0, -0.0001, 1], n: [0, 1, 0.35], s: [0, -1, 0.35], e: [1, 0, 0.35], w: [-1, 0, 0.35] };
@@ -1435,7 +1453,7 @@ function l3Key(e) {
   if (e.key === "Escape") { l3HideMenus(); l3HideInfo(); if (l3.addType) { l3EndAdd(); l3Status(""); } else { l3SelectIds([]); if (typeof l3bsClear === "function") l3bsClear(); } return; }
   if (e.key === "Home") { e.preventDefault(); l3Frame(true); return; }
   if (e.key === "?") { document.getElementById("v3HelpBtn").click(); return; }
-  if (k === "f") { l3View(l3.sel.size ? "sel" : "iso"); return; }
+  if (k === "f") { if (l3SelBox().isEmpty()) l3View("iso"); else l3ZoomSelected(); return; }
   if (k === "v" && !mod) { l3StartV(); return; }
   if (k === "w") return l3Mode("translate");
   if (k === "e") return l3Mode("rotate");

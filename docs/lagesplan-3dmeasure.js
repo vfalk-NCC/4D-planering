@@ -90,12 +90,23 @@ function l3mDraw() {
       ends.renderOrder = 11; ends.userData.noHit = true; ends.raycast = () => {}; grp.add(ends);
     } else for (let i = 1; i < P.length; i++) line(P[i - 1], P[i]);
     if (m.kind === "volume" && P.length > 2) {
-      // Volymen som en lodrät prisma: basytan, toppen (h över/under) och kanterna däremellan.
+      // Volymen som en lodrät prisma (Victor 2026-10-10: "volymgrafiken lite tydligare och snyggare"):
+      // belysta, halvgenomskinliga väggar (sidorna får olika ljus och läses som en kropp), tydligare tak och
+      // botten, heldragna kanter, hörnpunkter uppe och nere och ett höjdmått på närmaste hörnkant.
       const h = Number(m.h) || 0, T = P.map(p => p.clone().add(new THREE.Vector3(0, 0, h)));
-      line(P[P.length - 1], P[0]); for (let i = 0; i < T.length; i++) { line(T[i], T[(i + 1) % T.length]); line(P[i], T[i], 0.7); }
+      line(P[P.length - 1], P[0]); for (let i = 0; i < T.length; i++) { line(T[i], T[(i + 1) % T.length]); line(P[i], T[i], 0.85); }
       const shp = new THREE.Shape(P.map(p => new THREE.Vector2(p.x, p.y))), zb = Math.min(0, h) + P.reduce((s, p) => s + p.z, 0) / P.length;
-      const box = new THREE.Mesh(new THREE.ExtrudeGeometry(shp, { depth: Math.abs(h), bevelEnabled: false }), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }));
-      box.position.z = zb; box.userData.noHit = true; box.raycast = () => {}; grp.add(box);
+      const mat = o => new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.25, transparent: true, opacity: o, side: THREE.DoubleSide, depthWrite: false });
+      const box = new THREE.Mesh(new THREE.ExtrudeGeometry(shp, { depth: Math.abs(h), bevelEnabled: false }), [mat(0.3), mat(0.2)]); // tak/botten, väggar
+      box.renderOrder = 9; box.position.z = zb; box.userData.noHit = true; box.raycast = () => {}; grp.add(box);
+      const tops = new THREE.Points(new THREE.BufferGeometry().setFromPoints(T), new THREE.PointsMaterial({ color: col, size: 6, sizeAttenuation: false, depthTest: false }));
+      tops.renderOrder = 11; tops.userData.noHit = true; tops.raycast = () => {}; grp.add(tops);
+      // Höjdmåttet på den hörnkant som ligger närmast kameran.
+      const cam = l3.camera.position; let k = 0; P.forEach((p, i) => { if (p.distanceToSquared(cam) < P[k].distanceToSquared(cam)) k = i; });
+      const hl = document.createElement("div");
+      hl.className = "v3-meas v3-meas-keep v3-meas-h" + (m.saved ? " saved" : "") + (sel ? " sel" : "");
+      hl.textContent = `h ${l3Fmt(Math.abs(h), 2)} m`;
+      host.appendChild(hl); hl._at = P[k].clone().lerp(T[k], 0.5); l3m.labels.set(m.id + ":h", hl);
     }
     if (m.kind === "area" && P.length > 2) {
       line(P[P.length - 1], P[0]);

@@ -287,7 +287,13 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     await page.waitForTimeout(300);
     const q1 = await page.evaluate(id => { const m = l3m.list.find(x => x.id === id), el = document.querySelector(`.v3-meas-keep[data-mid="${id}"]`), r = el.getBoundingClientRect(); return { off: m.off, y: r.top + r.height / 2, dz: l3mDimPts(m).map((p, i) => p[2] - m.pts[i][2]), ifc: (l3mIfcBuild([{ m, nr: 1 }], false).text || '').length }; }, id);
     if (!q0.drag || !(q1.off > 0.5) || q1.y > q0.y - 30 || q1.dz.some(d => Math.abs(d - q1.off) > 1e-6) || q1.ifc < 500) fail('Polylinjen ska gå att dra upp: ' + JSON.stringify({ q0, q1 }));
-    await page.evaluate(id => { l3mRemove(id); l3m.sel = new Set(); l3mDraw(); }, id);
+    // Zoom selected (F) zoomar in det markerade måttet.
+    await page.evaluate(() => { window.__cam = [l3.camera.position.clone(), l3.orbit.target.clone()]; });
+    await page.evaluate(id => { l3m.sel = new Set([id]); l3StopFly(); l3.orbit.target.add(new THREE.Vector3(200, 0, 0)); l3.camera.position.add(new THREE.Vector3(200, 0, 300)); l3.orbit.update(); document.activeElement && document.activeElement.blur(); }, id);
+    await page.keyboard.press('f'); await page.waitForTimeout(700);
+    const zs = await page.evaluate(id => { const m = l3m.list.find(x => x.id === id), c = l3mPathMid(l3mDimPts(m)); return [l3.orbit.target.distanceTo(new THREE.Vector3(c.x - l3.O[0], c.y - l3.O[1], c.z - l3.O[2])), l3.camera.position.distanceTo(l3.orbit.target)]; }, id);
+    if (zs[0] > 3 || zs[1] > 40) fail('Zoom selected ska zooma in det markerade måttet: ' + zs);
+    await page.evaluate(id => { l3mRemove(id); l3m.sel = new Set(); l3mDraw(); l3StopFly(); l3.camera.position.copy(__cam[0]); l3.orbit.target.copy(__cam[1]); l3.orbit.update(); l3Render(); }, id);
   }
   // Dra i en ändpunkt: måttet räknas om; Ctrl+Z ångrar. Låst mått: inga handtag, går inte att ta bort.
   {
