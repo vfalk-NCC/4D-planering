@@ -217,6 +217,10 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   await page.waitForFunction(() => l3b.models.some(m => m.id === 'f:F2' && m.visible), null, { timeout: 30000 });
   await page.waitForTimeout(200);
   if (!(await page.evaluate(() => document.querySelector('#v3PalLayers [data-l3l-file="F2"]').classList.contains('on')))) fail('Ögat ska visa att modellen är tänd');
+  // Normalerna kommer färdiga från tråden (Int8) och pekar som ytorna; färgerna är modellens egna.
+  const nq = await page.evaluate(() => { let ok = 0, bad = 0, int8 = true; l3b.models.find(m => m.id === 'f:F2').meshes.forEach(x => { const g = x.geometry, P = g.getAttribute('position'), N = g.getAttribute('normal'), I = g.index.array; int8 = int8 && N.array instanceof Int8Array; for (let t = 0; t < I.length; t += 3) { const a = new THREE.Vector3().fromBufferAttribute(P, I[t]), b = new THREE.Vector3().fromBufferAttribute(P, I[t + 1]), c = new THREE.Vector3().fromBufferAttribute(P, I[t + 2]); const f = b.sub(a).cross(c.sub(a)).normalize(), n = new THREE.Vector3().fromBufferAttribute(N, I[t]).normalize(); if (f.dot(n) > 0.95) ok++; else bad++; } }); return { ok, bad, int8 }; });
+  if (!nq.int8 || nq.bad || !nq.ok) fail('Normalerna från tråden: ' + JSON.stringify(nq));
+  if (process.env.SHOTL) { await page.evaluate(() => { const b = new THREE.Box3(); l3b.models.forEach(m => m.meshes.forEach(x => b.expandByObject(x))); const c = b.getCenter(new THREE.Vector3()); l3StopFly(); l3.orbit.target.copy(c); l3.camera.position.copy(c).add(new THREE.Vector3(-22, -30, 18)); l3.orbit.update(); l3Render(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOTL }); }
   await page.click('#v3PalLayers [data-l3l-file="F2"]');
   if (await page.evaluate(() => l3b.models.find(m => m.id === 'f:F2').visible)) fail('Ögat ska släcka modellen');
   await page.click('#v3PalLayers [data-l3l-sort="list"]');

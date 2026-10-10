@@ -81,7 +81,7 @@ async function l3bLoad(list, opts = {}) {
         // Var tiden går ur cachen (Victor 2026-10-10: modellen tog ~7 s att visa trots cachen).
         times.push(`${cached.name || w.name}: ur webbläsarens cache – läsning ${((tC1 - tC0) / 1000).toFixed(1)} s, uppbyggnad ${((Date.now() - tC1) / 1000).toFixed(1)} s`);
         // Äldre poster saknar normaler: spara om en gång med dem, så går det fortare nästa gång.
-        if (cached.chunks.some(c => !c.nrm)) setTimeout(() => l3bCachePut(w, m), 1500);
+        if (cached.chunks.some(c => !c.nrm) || cached.colV !== 2) setTimeout(() => l3bCachePut(w, m), 1500);
         m.id = w.id; m.name = cached.name || w.name; m.visible = true; m.src = w;
         if (opts.replace) l3bRemove(w.id);
         total += m.tris;
@@ -208,7 +208,8 @@ function l3bRebuild() { if (!l3b.models.length) return; l3b.models.forEach(m => 
 /* Cache i webbläsaren (IndexedDB) för lästa modeller, per modell och version (Victor 2026-10-09:
    stora bygg-IFC:er). Bara geometri och objektens GUID/namn sparas; kopplingen till planeringen räknas
    om vid öppning. Högst tre modeller sparas – den äldsta tas bort. Fel här stoppar aldrig inläsningen. */
-const L3B_DB = "lagesplan-ifc-cache", L3B_STORE = "models", L3B_KEEP = 3;
+// Sex modeller (Victor 2026-10-10: stål- och byggmodell på 130–150 MB vardera ska inte tränga ut varandra).
+const L3B_DB = "lagesplan-ifc-cache", L3B_STORE = "models", L3B_KEEP = 6;
 function l3bDb() {
   return new Promise((res, rej) => {
     if (typeof indexedDB === "undefined") return rej(new Error("ingen IndexedDB"));
@@ -230,8 +231,10 @@ async function l3bCachePut(w, m) {
   const key = l3bCacheKey(w);
   if (!key) return;
   try {
+    // Be webbläsaren att inte rensa cachen när disken blir trång (annars kan stora modeller försvinna).
+    if (!l3bCachePut.asked && navigator.storage && navigator.storage.persist) { l3bCachePut.asked = true; navigator.storage.persist().catch(() => {}); }
     const db = await l3bDb();
-    const rec = { key, name: m.name, O: m.O, tris: m.tris, at: Date.now(),
+    const rec = { key, name: m.name, O: m.O, tris: m.tris, at: Date.now(), colV: 2,
       chunks: m.meshes.map(x => ({ pos: x.geometry.getAttribute("position").array, col: x.geometry.getAttribute("color").array, idx: x.userData.l3b.origIdx, nrm: l3bNrm8(x.geometry),
         ranges: x.userData.l3b.ranges.map(r => ({ start: r.start, count: r.count, idxStart: r.idxStart, idxCount: r.idxCount, guid: r.guid, name: r.name, base: r.base })) })) };
     const st = db.transaction(L3B_STORE, "readwrite").objectStore(L3B_STORE);
@@ -250,7 +253,12 @@ function l3bNrm8(g) {
   for (let i = 0; i < s.length; i++) o[i] = Math.round(Math.max(-1, Math.min(1, s[i])) * 127);
   return o;
 }
+/* Äldre cacheposter har färgerna blandade 45 % mot ljusgrått (före 2026-10-10) – räknas tillbaka till
+   modellens egna färger, så att cachen inte behöver läsas om från Trimble Connect. */
+const L3B_OLDMIX = [0.875, 0.894, 0.918];
+function l3bUnmix(a) { for (let i = 0; i < a.length; i++) a[i] = Math.min(1, Math.max(0, (a[i] - L3B_OLDMIX[i % 3] * 0.45) / 0.55)); return a; }
 function l3bFromCache(rec) {
+  if (rec.colV !== 2) rec.chunks.forEach(c => { l3bUnmix(c.col); c.ranges.forEach(r => { if (r.base) r.base = l3bUnmix(r.base.slice()); }); });
   const byGuid = new Map((items || []).filter(r => r.object_id).map(r => [String(r.object_id), r.id]));
   const out = { meshes: [], ranges: [], tris: rec.tris || 0, O: rec.O, capped: false };
   rec.chunks.forEach(c => {
@@ -327,7 +335,7 @@ function l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes) {
         if (d.type === "progress") { prog[k] = d.f; if (onProgress) onProgress(prog.reduce((a, b) => a + b, 0) / N); }
         else if (d.type === "chunk") {
           d.ranges.forEach(r => { r.itemId = r.guid ? byGuid.get(r.guid) || null : null; });
-          const m = l3bMeshFromArrays(d.pos, d.col, d.idx, d.ranges, out);
+          const m = l3bMeshFromArrays(d.pos, d.col, d.idx, d.ranges, out, d.nrm && d.nrm.length ? d.nrm : null); // normalerna från tråden
           out.meshes.push(m); out.ranges.push(...d.ranges); out.tris += d.idx.length / 3;
           if (onMeshes) onMeshes([m]);
         } else if (d.type === "done") {
@@ -352,7 +360,6 @@ async function l3bParse(bytes, placement, maxTris) {
   const rd = pl.refDirection || { x: 1, y: 0, z: 0 }, rl = Math.hypot(rd.x, rd.y) || 1, cs = rd.x / rl, sn = rd.y / rl;
   const P = pl.position || { x: 0, y: 0, z: 0 }, O = [...l3.O];
   const byGuid = new Map((items || []).filter(r => r.object_id).map(r => [String(r.object_id), r.id]));
-  const ctx = new THREE.Color(0xdfe4ea);
   const out = { meshes: [], ranges: [], tris: 0, O, capped: false };
   let cur = null;
   const open = () => { cur = { pos: [], col: [], idx: [], ranges: [] }; };
@@ -385,7 +392,7 @@ async function l3bParse(bytes, placement, maxTris) {
         if (out.tris + ix.length / 3 > maxTris) { out.capped = true; return; }
         out.tris += ix.length / 3;
         const T = pg.flatTransformation, c = pg.color || { x: 0.8, y: 0.8, z: 0.8 };
-        const col = new THREE.Color(c.x, c.y, c.z).lerp(ctx, 0.45);
+        const col = new THREE.Color(c.x, c.y, c.z); // modellens egna färger (som i Trimble Connect)
         if (!base) base = [col.r, col.g, col.b];
         const o = cur.pos.length / 3;
         for (let k = 0; k < v.length; k += 6) {

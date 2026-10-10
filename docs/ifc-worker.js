@@ -143,13 +143,13 @@ self.onmessage = async ev => {
     // block får ett litet rumsligt index för träffar. Objektet hamnar i blocket där dess mitt ligger.
     const CELL = 40, cells = new Map();
     let tris = 0, capped = false, n = 0, lastPost = 0;
-    const objPos = grow(Float32Array, 3 * 8192), objCol = grow(Float32Array, 3 * 8192), objIdx = grow(Uint32Array, 3 * 8192);
-    const cellOf = key => { let c = cells.get(key); if (!c) { c = { pos: grow(Float32Array, 3 * 4096), col: grow(Float32Array, 3 * 4096), idx: grow(Uint32Array, 3 * 4096), ranges: [], tris: 0 }; cells.set(key, c); } return c; };
+    const objPos = grow(Float32Array, 3 * 8192), objCol = grow(Float32Array, 3 * 8192), objIdx = grow(Uint32Array, 3 * 8192), objNrm = grow(Int8Array, 3 * 8192);
+    const cellOf = key => { let c = cells.get(key); if (!c) { c = { pos: grow(Float32Array, 3 * 4096), col: grow(Float32Array, 3 * 4096), nrm: grow(Int8Array, 3 * 4096), idx: grow(Uint32Array, 3 * 4096), ranges: [], tris: 0 }; cells.set(key, c); } return c; };
     const flushCell = c => {
       if (!c.idx.length) return;
-      const m = { type: "chunk", pos: c.pos.take(), col: c.col.take(), idx: c.idx.take(), ranges: c.ranges };
+      const m = { type: "chunk", pos: c.pos.take(), col: c.col.take(), nrm: c.nrm.take(), idx: c.idx.take(), ranges: c.ranges, colV: 2 };
       c.ranges = []; c.tris = 0;
-      self.postMessage(m, [m.pos.buffer, m.col.buffer, m.idx.buffer]);
+      self.postMessage(m, [m.pos.buffer, m.col.buffer, m.nrm.buffer, m.idx.buffer]);
     };
     const flush = () => cells.forEach(flushCell);
     // De första sekunderna skickas även halvfulla block, så att stommen syns direkt.
@@ -170,7 +170,7 @@ self.onmessage = async ev => {
           name = line && line.Name ? line.Name.value || "" : "";
         }
       } catch (e) { /* utan namn */ }
-      objPos.reset(); objCol.reset(); objIdx.reset();
+      objPos.reset(); objCol.reset(); objIdx.reset(); objNrm.reset();
       let baseCol = null, sx = 0, sy = 0, nv = 0, otris = 0;
       for (let gi = 0; gi < mesh.geometries.size(); gi++) {
         const pg = mesh.geometries.get(gi), geom = A.GetGeometry(id, pg.geometryExpressID);
@@ -180,8 +180,9 @@ self.onmessage = async ev => {
         if (tris + otris + ix.length / 3 > maxTris) { capped = true; return; }
         otris += ix.length / 3;
         const T = pg.flatTransformation, c = pg.color || { x: 0.8, y: 0.8, z: 0.8 };
-        // Samma ljusning som tidigare (mot ljusgrått) – byggnaden är bakgrund till etableringen.
-        const r = c.x + (0.875 - c.x) * 0.45, g = c.y + (0.894 - c.y) * 0.45, b = c.z + (0.918 - c.z) * 0.45;
+        // Modellens egna färger, som i Trimble Connect (Victor 2026-10-10: "min vy känns nästan dimmig" –
+        // färgerna blandades tidigare 45 % mot ljusgrått).
+        const r = c.x, g = c.y, b = c.z;
         if (!baseCol) baseCol = [r, g, b];
         const o = objPos.length / 3;
         for (let k = 0; k < v.length; k += 6) {
@@ -190,6 +191,11 @@ self.onmessage = async ev => {
           const X = wx, Y = -wz, Z = wy; // web-ifc: Y uppåt -> Z uppåt
           const px = cs * X - sn * Y + ox, py = sn * X + cs * Y + oy;
           objPos.push3(px, py, Z + oz); objCol.push3(r, g, b);
+          // Normalen från web-ifc (samma vridning, utan förflyttning) – sidan slipper räkna fram dem.
+          const nx0 = v[k + 3], ny0 = v[k + 4], nz0 = v[k + 5];
+          const nwx = T[0] * nx0 + T[4] * ny0 + T[8] * nz0, nwy = T[1] * nx0 + T[5] * ny0 + T[9] * nz0, nwz = T[2] * nx0 + T[6] * ny0 + T[10] * nz0;
+          const NX = cs * nwx + sn * nwz, NY = sn * nwx - cs * nwz, NZ = nwy, nl = Math.hypot(NX, NY, NZ) || 1;
+          objNrm.push3(Math.round(NX / nl * 127), Math.round(NY / nl * 127), Math.round(NZ / nl * 127));
           sx += px; sy += py; nv++;
         }
         for (let k = 0; k < ix.length; k++) objIdx.push(ix[k] + o);
@@ -199,7 +205,8 @@ self.onmessage = async ev => {
       const cell = cellOf(Math.floor(sx / nv / CELL) + ":" + Math.floor(sy / nv / CELL));
       const start = cell.pos.length / 3, idxStart = cell.idx.length;
       const P = objPos.view(), C = objCol.view(), I = objIdx.view();
-      for (let k = 0; k < P.length; k += 3) { cell.pos.push3(P[k], P[k + 1], P[k + 2]); cell.col.push3(C[k], C[k + 1], C[k + 2]); }
+      const Nn = objNrm.view();
+      for (let k = 0; k < P.length; k += 3) { cell.pos.push3(P[k], P[k + 1], P[k + 2]); cell.col.push3(C[k], C[k + 1], C[k + 2]); cell.nrm.push3(Nn[k], Nn[k + 1], Nn[k + 2]); }
       for (let k = 0; k < I.length; k++) cell.idx.push(I[k] + start);
       cell.ranges.push({ start, count: nv, idxStart, idxCount: I.length, guid, name, base: baseCol || [0.85, 0.87, 0.9] });
       cell.tris += otris;

@@ -466,11 +466,15 @@ function l3Init(box) {
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   host.insertBefore(renderer.domElement, host.firstChild);
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xeef0f8);
+  // Neutral, nästan vit bakgrund och ljus som i Trimble Connect (Victor 2026-10-10: "min vy känns nästan
+  // dimmig"): svagt neutralt allmänljus, tydligt solljus och ett svagt motljus. Uppåtvända ytor får högst
+  // ~100 % ljus så att mörka färger (svarta tak) förblir mörka; sidorna får olika ljus och läses som kroppar.
+  scene.background = new THREE.Color(0xf7f8fa);
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 20000);
   camera.up.set(0, 0, 1);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.8));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.65); sun.position.set(-0.5, -0.8, 1.2); scene.add(sun);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xd9d6cf, 0.5));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.62); sun.position.set(-0.5, -0.8, 1.2); scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xffffff, 0.18); fill.position.set(0.7, 0.6, 0.25); scene.add(fill);
   const orbit = new THREE.OrbitControls(camera, renderer.domElement);
   orbit.enableDamping = false; orbit.screenSpacePanning = true; orbit.maxPolarAngle = Math.PI - 0.002; // hela vägen runt, även underifrån (Victor 2026-10-10)
   const gizmo = new THREE.TransformControls(camera, renderer.domElement);
