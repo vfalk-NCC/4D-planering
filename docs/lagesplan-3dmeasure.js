@@ -93,7 +93,8 @@ function l3mDraw() {
     el.className = "v3-meas v3-meas-keep" + (m.saved ? " saved" : "") + (sel ? " sel" : "") + (m.kind === "dist" ? " drag" : "");
     if (m.kind === "dist") el.title = "Tryck för att markera måttet – dra för att föra måttlinjen uppåt eller nedåt (fästpunkterna sitter kvar). Dubbelklick: tillbaka.";
     el.onpointerdown = e => l3mLabelDown(e, m);
-    el.ondblclick = e => { e.stopPropagation(); if (m.kind === "dist" && m.off) l3mSetOff(m, 0, m.off); };
+    el.ondblclick = e => { e.stopPropagation(); if (m.kind === "dist" && m.off && !m.locked) l3mSetOff(m, 0, m.off); };
+    if (m.locked) { el.classList.remove("drag"); el.classList.add("locked"); el.title = "Låst mått – lås upp det i listan Mått för att ändra det."; }
     el.textContent = l3mLabel(m); el.dataset.mid = m.id;
     host.appendChild(el);
     l3m.labels.set(m.id, el); el._at = at;
@@ -110,13 +111,86 @@ function l3mPlaceLabels() {
     el.style.display = q.behind ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px";
     el.style.pointerEvents = l3.tool === "select" || !l3.tool ? "auto" : "none"; // med andra verktyg går trycket igenom
   });
+  l3mHandlesPlace();
+}
+/* ---- Ändpunkterna (Victor 2026-10-10: "dra ändpunkterna på måtten jag har satt ut") ------------------
+   För ett ensamt markerat, olåst mått: ett handtag på varje punkt. Dra = punkten fäster som när man mäter
+   (hörn, kanter, ytor, DXF); Skift = var 5:e grad från grannpunkten. Måttet räknas om; Ctrl+Z ångrar. */
+const l3mH = { els: [], drag: null };
+function l3mActive() {
+  if (!l3 || l3m.hidden || !l3m.sel || l3m.sel.size !== 1 || (l3.tool && l3.tool !== "select")) return null;
+  const m = l3m.list.find(x => l3m.sel.has(x.id));
+  return m && !m.locked && (typeof l3aOn !== "function" || l3aOn(m)) ? m : null;
+}
+function l3mHandlesPlace() {
+  const m = l3mActive(), n = m ? m.pts.length : 0, host = l3.renderer.domElement.parentElement;
+  while (l3mH.els.length > n) l3mH.els.pop().remove();
+  while (l3mH.els.length < n) {
+    const i = l3mH.els.length, b = document.createElement("button");
+    b.type = "button"; b.className = "v3-mhandle"; b.title = "Dra för att flytta måttets punkt (fäster mot hörn, kanter och ytor; Skift = var 5:e grad)";
+    b.onpointerdown = e => l3mHDown(e, i); b.onclick = e => e.stopPropagation();
+    host.appendChild(b); l3mH.els.push(b);
+  }
+  if (!m) return;
+  m.pts.forEach((p, i) => {
+    const q = l3ToScreen(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2])), el = l3mH.els[i];
+    el.style.display = q.behind ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px";
+    el.classList.toggle("drag", !!(l3mH.drag && l3mH.drag.i === i));
+  });
+}
+/* Värdet ur punkterna (efter att en punkt flyttats). */
+function l3mRecalc(m) {
+  const P = m.pts.map(p => new THREE.Vector3(p[0], p[1], p[2]));
+  if (m.kind === "dist") m.text = `${l3Fmt(P[0].distanceTo(P[1]))} m`;
+  else if (m.kind === "angle" && typeof l3Angle3 === "function") m.text = `${l3Fmt(l3Angle3(P[0], P[1], P[2]), 1)}°`;
+  else if (m.kind === "area" && typeof l3PolyArea === "function") m.text = `${l3Fmt(l3PolyArea(P).area)} m²`;
+}
+function l3mHDown(e, i) {
+  const m = l3mActive(); if (!m || e.button !== 0) return;
+  e.preventDefault(); e.stopPropagation();
+  const was = { pts: m.pts.map(p => p.slice()), text: m.text, objs: (m.objs || []).slice() };
+  l3mH.drag = { i };
+  let moved = false;
+  const mv = ev => {
+    let s = typeof l3Snap === "function" ? l3Snap(ev) : null;
+    const nb = m.pts[i === 0 ? 1 : i - 1];
+    if (s && ev.shiftKey && nb) s = l3mShiftSnap(new THREE.Vector3(nb[0] - l3.O[0], nb[1] - l3.O[1], nb[2] - l3.O[2]), s);
+    if (typeof l3ShowMarker === "function") l3ShowMarker(s);
+    if (!s) return;
+    moved = true;
+    m.pts[i] = [s.point.x + l3.O[0], s.point.y + l3.O[1], s.point.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000);
+    l3mRecalc(m); l3mDraw(); l3StatusLive(`${L3M_KIND[m.kind] || "Mått"} ${m.text}`);
+  };
+  const up = ev => {
+    window.removeEventListener("pointermove", mv, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("pointercancel", up, true);
+    l3mH.drag = null; if (typeof l3ShowMarker === "function") l3ShowMarker(null);
+    if (!moved || JSON.stringify(m.pts) === JSON.stringify(was.pts)) { l3mDraw(); return; }
+    if (typeof l3mObjAt === "function") { m.objs = (m.objs || []).slice(); m.objs[i] = l3mObjAt(ev); }
+    const now = { pts: m.pts.map(p => p.slice()), text: m.text, objs: (m.objs || []).slice() };
+    const set = st => { m.pts = st.pts.map(p => p.slice()); m.text = st.text; m.objs = st.objs.slice(); l3mChanged(m); };
+    if (typeof l3VPush === "function") l3VPush(() => set(was), () => set(now), "flytta måttets punkt");
+    l3mChanged(m);
+    l3Status(`${L3M_KIND[m.kind] || "Måttet"} är nu ${m.text} (Ctrl+Z ångrar).`);
+  };
+  window.addEventListener("pointermove", mv, true); window.addEventListener("pointerup", up, true); window.addEventListener("pointercancel", up, true);
+}
+/* Låsa mått (Victor 2026-10-10: "låsa måtten i måttmenyn"): låsta går inte att flytta, dra ut eller ta bort. */
+const L3M_LOCK = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+const L3M_UNLOCK = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>';
+function l3mLock(list, on) {
+  const ch = list.filter(m => !!m.locked !== on);
+  if (!ch.length) return;
+  const apply = v => { ch.forEach(m => { m.locked = v; }); l3mDraw(); l3kRenderTab(); l3mWriteMany(ch); };
+  if (typeof l3VPush === "function") l3VPush(() => apply(!on), () => apply(on), on ? "lås mått" : "lås upp mått");
+  apply(on);
+  l3Status(`${ch.length === 1 ? "Måttet" : `${ch.length} mått`} ${on ? "låst – går inte att flytta eller ta bort" : "upplåst"}.`);
 }
 /* Tryck på måttets text: markera måttet; dra = för måttlinjen längs l3mOffDir (Skift: jämna 10 cm). */
 function l3mLabelDown(e, m) {
   if (e.button !== 0) return;
   e.preventDefault(); e.stopPropagation();
   if (!(l3m.sel.size === 1 && l3m.sel.has(m.id))) { l3m.sel.clear(); l3m.sel.add(m.id); l3m.anchor = m.id; l3mDraw(); if (typeof l3kRenderTab === "function") l3kRenderTab(); }
-  if (m.kind !== "dist") return;
+  if (m.kind !== "dist" || m.locked) return;
   const D0 = l3mDimPts(m).map(p => new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]));
   const mid = D0[0].clone().add(D0[1]).multiplyScalar(0.5), n = l3mOffDir(m.pts[0], m.pts[1]);
   const p0 = l3ToScreen(mid), p1 = l3ToScreen(mid.clone().add(n));
@@ -146,6 +220,7 @@ function l3mSetOff(m, off, was) {
 }
 function l3mRemove(id) {
   const m = l3m.list.find(x => x.id === id); if (!m) return;
+  if (m.locked) { l3Status("Måttet är låst – lås upp det i listan Mått för att ta bort det.", true); return; }
   l3m.list = l3m.list.filter(x => x.id !== id);
   if (m.saved) ghWriteJSON(token, l3mPath(), arr => (Array.isArray(arr) ? arr : []).filter(x => x.id !== id), "3D: mått borttaget").catch(e => l3Status("Kunde inte ta bort måttet ur projektet: " + e.message, true));
   if (typeof l3VPush === "function") l3VPush(() => { l3m.list.push(m); if (m.saved) l3mSave([m]); l3mDraw(); l3mRenderBar(); }, () => l3mRemove(id), "ta bort mått");
@@ -163,9 +238,9 @@ async function l3mSave(only) {
   l3mDraw(); l3mRenderBar();
 }
 function l3mClearUnsaved() {
-  const gone = l3m.list.filter(x => !x.saved);
+  const gone = l3m.list.filter(x => !x.saved && !x.locked);
   if (!gone.length) return;
-  l3m.list = l3m.list.filter(x => x.saved);
+  { const s0 = new Set(gone); l3m.list = l3m.list.filter(x => !s0.has(x)); }
   if (typeof l3VPush === "function") l3VPush(() => { l3m.list.push(...gone); l3mDraw(); l3mRenderBar(); }, () => { const s = new Set(gone); l3m.list = l3m.list.filter(x => !s.has(x)); l3mDraw(); l3mRenderBar(); }, "rensa mått");
   l3mDraw(); l3mRenderBar();
 }
@@ -248,7 +323,8 @@ function l3mTabHtml() {
         <button type="button" class="v3-kc-b" data-mzoom="${esc(m.id)}" title="Klick: zooma till måttet · Ctrl+klick: välj flera · Skift+klick: välj flera i rad"><b>${L3M_KIND[m.kind] || ""} ${esc(m.text).replace(/ (m²?|°)$/, "&nbsp;$1")}</b>${m.folder && typeof l3aFolderName === "function" && l3aFolderName(m.folder) ? `<em><span class="v3-fchip">${esc(l3aFolderName(m.folder))}</span></em>` : ""}${m.note ? `<em class="v3-mnote">${m.showNote ? "" : "(dold) "}${esc(m.note)}</em>` : ""}<em>${esc(inf.sub)}</em>${inf.objTxt ? `<em>${esc(inf.objTxt)}</em>` : ""}</button>
         <button type="button" class="v3-ic" data-mexp="${esc(m.id)}" title="${ex ? "Dölj detaljerna" : "Visa alla detaljer"}" aria-expanded="${ex}">${ex ? "▴" : "▾"}</button>
         <button type="button" class="v3-ic" data-mcopy="${esc(m.id)}" title="Kopiera måttet med alla detaljer">${I.copy || "⧉"}</button>
-        <button type="button" class="v3-ic" data-mdel="${esc(m.id)}" title="Ta bort måttet">${I.trash}</button></div>
+        <button type="button" class="v3-ic ${m.locked ? "on" : ""}" data-mlock="${esc(m.id)}" title="${m.locked ? "Låst – tryck för att låsa upp" : "Lås måttet (går inte att flytta eller ta bort)"}" aria-pressed="${!!m.locked}">${m.locked ? L3M_LOCK : L3M_UNLOCK}</button>
+        <button type="button" class="v3-ic" data-mdel="${esc(m.id)}" title="${m.locked ? "Låst – lås upp för att ta bort" : "Ta bort måttet"}" ${m.locked ? "disabled" : ""}>${I.trash}</button></div>
       ${ex ? `<div class="v3-mnoteed"><input type="text" data-mnote="${esc(m.id)}" value="${esc(m.note || "")}" placeholder="Kommentar till måttet, t.ex. Mått mellan fundament" maxlength="120" />
         <label class="v3-chk" title="Visa kommentaren efter måttet i 3D: ${esc(m.text)} – kommentar"><input type="checkbox" data-mshow="${esc(m.id)}" ${m.showNote ? "checked" : ""} ${m.note ? "" : "disabled"} /> Visa i 3D</label></div>
       <dl class="v3-mdl">${inf.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : ""}</div>`; }).join("")}</div>` : `<div class="v3-pal-hint">Inga mått än. Mät med Mät (M) – avstånd, vinkel eller yta – så hamnar de här.</div>`}
@@ -260,6 +336,8 @@ function l3mTabHtml() {
       <button type="button" id="v3MeasSave" ${uns ? "" : "disabled"} title="Spara de osparade måtten i projektet (finns kvar nästa gång och för andra)">${I.upload} Spara i projektet${uns ? ` (${uns})` : ""}</button>
       ${l3m.list.some(m => m.note) ? `<button type="button" id="v3MeasNotesOn" title="Visa kommentaren efter måttet i 3D för alla mått som har en kommentar">${I.eye} Visa alla måttkommentarer</button>
       <button type="button" id="v3MeasNotesOff" title="Visa bara måtten i 3D (kommentarerna finns kvar)">${I.eyeOff} Dölj alla måttkommentarer</button>` : ""}
+      ${l3m.list.some(m => !m.locked) ? `<button type="button" id="v3MeasLockAll" title="Lås alla mått">${L3M_LOCK} Lås alla</button>` : ""}
+      ${l3m.list.some(m => m.locked) ? `<button type="button" id="v3MeasUnlockAll" title="Lås upp alla mått">${L3M_UNLOCK} Lås upp alla</button>` : ""}
       <button type="button" id="v3MeasHide">${l3m.hidden ? I.eye + " Visa måtten" : I.eyeOff + " Dölj måtten"}</button>
       <button type="button" id="v3MeasCopyAll" title="Alla mått med detaljer som text (t.ex. till e-post eller Excel)">${I.copy || "⧉"} Kopiera alla</button>
       <button type="button" id="v3MeasClr" ${uns ? "" : "disabled"}>${I.trash} Rensa osparade</button></div>` : ""}` : ""}</section>`;
@@ -282,6 +360,9 @@ function l3mBindTab(host) {
     l3m.sel.clear(); l3m.sel.add(m.id); l3m.anchor = m.id; l3kRenderTab(); l3mDraw();
     if (l3m.hidden) l3mToggle(true); const b3 = new THREE.Box3(); m.pts.forEach(p => b3.expandByPoint(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]))); l3FlyTo(b3.getCenter(new THREE.Vector3()), Math.max(6, b3.getSize(new THREE.Vector3()).length() * 1.6)); }; });
   on("#v3MeasSave", () => l3mSave());
+  on("#v3MeasLockAll", () => l3mLock(l3m.list, true));
+  on("#v3MeasUnlockAll", () => l3mLock(l3m.list, false));
+  host.querySelectorAll("[data-mlock]").forEach(x => { x.onclick = e => { e.stopPropagation(); const m = l3m.list.find(y => y.id === x.dataset.mlock); if (m) l3mLock([m], !m.locked); }; });
   on("#v3MeasNotesOn", () => l3mNotesAll(true));
   on("#v3MeasNotesOff", () => l3mNotesAll(false));
   on("#v3MeasSelClr", () => { l3m.sel.clear(); l3m.anchor = null; l3kRenderTab(); l3mDraw(); });
@@ -324,9 +405,12 @@ function l3mIfcBuild(list, withNotes) {
   const elems = [];
   const W1 = (t, h) => ifcTextStrokes(t).width * h / 6;
   // Rör från a till b (relativt elementets punkt o), cirkelprofil med radie rad.
-  const tube = (a, b, rad, st = red) => {
+  // ext: förläng röret med radien i båda ändar – då möts rören i en måttkedja utan glipa i hörnen.
+  const tube = (a0, b0, rad, st = red, ext = false) => {
+    const v0 = [b0[0] - a0[0], b0[1] - a0[1], b0[2] - a0[2]], L0 = Math.hypot(...v0);
+    if (L0 < 1e-4) return null;
+    const e = ext ? rad : 0, u = v0.map(x => x / L0), a = a0.map((x, i) => x - u[i] * e), b = b0.map((x, i) => x + u[i] * e);
     const v = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L = Math.hypot(...v);
-    if (L < 1e-4) return null;
     const ax = v.map(x => x / L), ref = Math.abs(ax[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
     // refDirection vinkelrät mot axeln.
     const dt = ref[0] * ax[0] + ref[1] * ax[1] + ref[2] * ax[2], rf = [ref[0] - dt * ax[0], ref[1] - dt * ax[1], ref[2] - dt * ax[2]], rl = Math.hypot(...rf);
@@ -341,7 +425,7 @@ function l3mIfcBuild(list, withNotes) {
     const items = [];
     const DP = l3mDimPts(m);
     const segs = m.kind === "area" ? P.map((p, i) => [p, P[(i + 1) % P.length]]) : m.kind === "dist" && m.off ? [[P[0], DP[0]], [DP[0], DP[1]], [DP[1], P[1]]] : P.slice(1).map((p, i) => [P[i], p]);
-    segs.forEach(([a, b]) => { const t = tube(rel(a), rel(b), L3M_IFC.r); if (t) items.push(t); });
+    segs.forEach(([a, b]) => { const t = tube(rel(a), rel(b), L3M_IFC.r, red, segs.length > 1); if (t) items.push(t); });
     P.forEach((p, i) => {
       const q = P[i + 1] || P[i - 1]; if (!q) return;
       const v = [q[0] - p[0], q[1] - p[1], q[2] - p[2]], L = Math.hypot(...v) || 1;

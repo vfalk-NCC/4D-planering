@@ -276,6 +276,25 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   if (process.env.SHOTD) await page.screenshot({ path: process.env.SHOTD });
   await page.keyboard.press('Control+z'); await page.waitForTimeout(200);
   if (await page.evaluate(() => l3m.list[0].off)) fail('Ctrl+Z ska ta tillbaka måttlinjen');
+  // Dra i en ändpunkt: måttet räknas om; Ctrl+Z ångrar. Låst mått: inga handtag, går inte att ta bort.
+  {
+    await page.evaluate(() => { l3m.sel = new Set([l3m.list[0].id]); l3mDraw(); l3Render(); }); await page.waitForTimeout(200);
+    const h = await page.evaluate(() => [...document.querySelectorAll('.v3-mhandle')].filter(b => b.style.display !== 'none').map(b => { const r = b.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }));
+    if (h.length !== 2) fail('Ändpunkternas handtag: ' + JSON.stringify(h));
+    const t0 = await page.evaluate(() => ({ text: l3m.list[0].text, p0: l3m.list[0].pts[0].slice() }));
+    await page.mouse.move(h[1][0], h[1][1]); await page.mouse.down(); await page.mouse.move(h[1][0] - 120, h[1][1] + 10, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(300);
+    const t1 = await page.evaluate(() => ({ text: l3m.list[0].text, p0: l3m.list[0].pts[0].slice(), d: Math.hypot(l3m.list[0].pts[1][0] - l3m.list[0].pts[0][0], l3m.list[0].pts[1][1] - l3m.list[0].pts[0][1]) }));
+    if (t1.text === t0.text || t1.p0.join() !== t0.p0.join() || !(t1.d < 9.5)) fail('Dra ändpunkten: ' + JSON.stringify({ t0, t1 }));
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(200);
+    if ((await page.evaluate(() => l3m.list[0].text)) !== t0.text) fail('Ctrl+Z ska ta tillbaka ändpunkten');
+    await page.click('#v3MeasSec [data-mlock]'); await page.waitForTimeout(300);
+    const lk = await page.evaluate(() => ({ locked: l3m.list[0].locked, handles: [...document.querySelectorAll('.v3-mhandle')].filter(b => b.style.display !== 'none').length, delDis: document.querySelector('#v3MeasSec [data-mdel]').disabled, cls: document.querySelector('.v3-meas-keep').className }));
+    const l3mRemoveTry = await page.evaluate(() => { l3mRemove(l3m.list[0].id); return l3m.list.length; });
+    const savedL = (JSON.parse(gh.get('projects/p1/plan_measures.json') || '[]')[0] || {}).locked;
+    if (!lk.locked || lk.handles || !lk.delDis || !/locked/.test(lk.cls) || l3mRemoveTry !== 1 || savedL !== true) fail('Låst mått: ' + JSON.stringify({ lk, l3mRemoveTry, savedL }));
+    await page.click('#v3MeasSec [data-mlock]'); await page.waitForTimeout(200);
+    if (await page.evaluate(() => l3m.list[0].locked)) fail('Lås upp måttet');
+  }
   if (process.env.SHOTM) await page.screenshot({ path: process.env.SHOTM });
   await page.evaluate(() => l3SetTool('select'));
 
