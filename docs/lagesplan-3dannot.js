@@ -127,59 +127,75 @@ function l3aDragBind(host) {
     ...[...host.querySelectorAll("[data-kcgo]")].map(b => ({ b, item: () => l3k.list.find(c => c.id === b.dataset.kcgo), kind: "k" })),
     ...[...host.querySelectorAll("[data-mzoom]")].map(b => ({ b, item: () => l3m.list.find(m => m.id === b.dataset.mzoom), kind: "m" })),
   ];
-  rows.forEach(({ b, item, kind }) => {
-    b.addEventListener("pointerdown", e => {
-      if (e.button !== 0 || e.pointerType === "touch") return; // pekskärm: rullning går före, flytta med listan "Flytta markerade"
-      const x0 = e.clientX, y0 = e.clientY;
-      let drag = null;
-      const mv = ev => {
-        if (!drag) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 6) return; drag = l3aDragStart(b, item(), kind); if (!drag) { done(); return; } }
-        l3aDragMove(drag, ev);
-      };
-      const done = () => { window.removeEventListener("pointermove", mv, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", esc, true); };
-      const up = ev => {
-        done();
-        if (!drag) return;
-        // Klicket som följer på släppet ska inte räknas som ett klick på raden.
-        const eat = ce => { ce.stopPropagation(); ce.preventDefault(); };
-        window.addEventListener("click", eat, { capture: true, once: true }); setTimeout(() => window.removeEventListener("click", eat, true), 0);
-        l3aDragEnd(drag, ev);
-      };
-      const esc = ev => { if (ev.key === "Escape" && drag) { ev.stopPropagation(); done(); l3aDragEnd(drag, null); } };
-      window.addEventListener("pointermove", mv, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", esc, true);
-    });
+  rows.forEach(({ b, item, kind }) => l3DndBind(b, () => {
+    const it = item(); if (!it) return null;
+    // Raden är markerad: alla markerade följer med; annars bara den.
+    const sel = l3aSelected(), items = sel.includes(it) ? sel : [it];
+    const pal = b.closest(".v3-paltab") || document.body, ids = new Set(items.map(x => x.id));
+    const nk = items.filter(x => l3k.list.includes(x)).length, nm = items.length - nk;
+    return {
+      items, pal,
+      color: kind === "k" ? (typeof l3kCol === "function" ? l3kCol(it) : "#f97316") : "#dc2626",
+      title: kind === "k" ? String(it.text || "Kommentar").split("\n")[0] : `${(typeof L3M_KIND !== "undefined" && L3M_KIND[it.kind]) || "Mått"} ${it.text}`,
+      sub: items.length > 1 ? `${nk ? `${nk} kommentarer` : ""}${nk && nm ? " + " : ""}${nm ? `${nm} mått` : ""}` : "Släpp på en mapp",
+      src: [...pal.querySelectorAll("[data-kcgo],[data-mzoom]")].filter(x => ids.has(x.dataset.kcgo || x.dataset.mzoom)).map(x => x.closest(".v3-kc")),
+      targets: [...pal.querySelectorAll(".v3-af"), ...pal.querySelectorAll("#v3AfNew")],
+      name: t => (t.id === "v3AfNew" ? "Ny mapp…" : (t.querySelector(".v3-af-n b") || {}).textContent),
+      drop: async t => {
+        if (t.id === "v3AfNew") { const f = await l3aNew(); if (f) await l3aMove(items, f.id); return; }
+        const k = (t.querySelector("[data-afeye]") || {}).dataset; if (!k) return;
+        const fid = k.afeye === "_" ? null : k.afeye;
+        if (items.every(x => (x.folder || null) === fid)) { l3Status("De ligger redan i den mappen."); return; }
+        await l3aMove(items, fid);
+      },
+    };
+  }));
+}
+
+/* ---- Gemensamt dra-och-släpp (kommentarer, mått och grupper in i mappar) ------------------------------
+   start() ger { items, pal, color, title, sub, src (rader som tonas), targets (mål), name(t), drop(t) }. */
+function l3DndBind(btn, start) {
+  btn.addEventListener("pointerdown", e => {
+    if (e.button !== 0 || e.pointerType === "touch") return; // pekskärm: rullning går före
+    const x0 = e.clientX, y0 = e.clientY;
+    let drag = null;
+    const mv = ev => {
+      if (!drag) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 6) return; drag = l3DndStart(start()); if (!drag) { done(); return; } }
+      l3DndMove(drag, ev);
+    };
+    const done = () => { window.removeEventListener("pointermove", mv, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", esc, true); };
+    const up = ev => {
+      done();
+      if (!drag) return;
+      // Klicket som följer på släppet ska inte räknas som ett klick på raden.
+      const eat = ce => { ce.stopPropagation(); ce.preventDefault(); };
+      window.addEventListener("click", eat, { capture: true, once: true }); setTimeout(() => window.removeEventListener("click", eat, true), 0);
+      l3DndEnd(drag, ev);
+    };
+    const esc = ev => { if (ev.key === "Escape" && drag) { ev.stopPropagation(); done(); l3DndEnd(drag, null); } };
+    window.addEventListener("pointermove", mv, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", esc, true);
   });
 }
-function l3aDragStart(btn, it, kind) {
-  if (!it) return null;
-  // Raden är markerad: alla markerade följer med; annars bara den.
-  const sel = l3aSelected(), items = sel.includes(it) ? sel : [it];
-  const pal = btn.closest(".v3-paltab") || document.body;
+function l3DndStart(c) {
+  if (!c || !c.items || !c.items.length) return null;
   const ghost = document.createElement("div");
   ghost.className = "v3-dragghost";
-  const nk = items.filter(x => l3k.list.includes(x)).length, nm = items.length - nk;
-  const col = kind === "k" ? (typeof l3kCol === "function" ? l3kCol(it) : "#f97316") : "#dc2626";
-  const title = kind === "k" ? String(it.text || "Kommentar").split("\n")[0] : `${(typeof L3M_KIND !== "undefined" && L3M_KIND[it.kind]) || "Mått"} ${it.text}`;
-  ghost.innerHTML = `<i style="background:${col}"></i><span><b>${escHtml(title.slice(0, 48))}</b><em>${items.length > 1 ? `${nk ? `${nk} kommentarer` : ""}${nk && nm ? " + " : ""}${nm ? `${nm} mått` : ""}` : "Släpp på en mapp"}</em></span>${items.length > 1 ? `<u>${items.length}</u>` : ""}`;
-  const em0 = ghost.querySelector("em"); em0.dataset.def = em0.textContent;
+  ghost.innerHTML = `<i style="background:${c.color || "#6d5efc"}"></i><span><b>${escHtml(String(c.title || "").slice(0, 48))}</b><em>${escHtml(c.sub || "Släpp på en mapp")}</em></span>${c.items.length > 1 ? `<u>${c.items.length}</u>` : ""}`;
   document.body.appendChild(ghost);
   document.body.classList.add("v3-dragging");
-  // Raderna som dras tonas ned; mapparna blir mål.
-  const ids = new Set(items.map(x => x.id));
-  pal.querySelectorAll("[data-kcgo],[data-mzoom]").forEach(b => { if (ids.has(b.dataset.kcgo || b.dataset.mzoom)) b.closest(".v3-kc").classList.add("v3-dragsrc"); });
-  const targets = [...pal.querySelectorAll(".v3-af")].concat([...pal.querySelectorAll("#v3AfNew")]);
-  targets.forEach(t => t.classList.add("v3-droptgt"));
-  return { items, ghost, pal, targets, hot: null, scroller: l3aScroller(pal), raf: 0 };
+  (c.src || []).forEach(x => x && x.classList.add("v3-dragsrc"));
+  c.targets.forEach(t => t.classList.add("v3-droptgt"));
+  return { ...c, ghost, hot: null, scroller: l3aScroller(c.pal || document.body), raf: 0 };
 }
 function l3aScroller(el) { for (let p = el; p && p !== document.body; p = p.parentElement) { const cs = getComputedStyle(p); if (/(auto|scroll)/.test(cs.overflowY) && p.scrollHeight > p.clientHeight) return p; } return null; }
-function l3aDragMove(d, ev) {
+function l3DndMove(d, ev) {
   d.ghost.style.transform = `translate(${ev.clientX + 14}px, ${ev.clientY + 10}px)`;
   const el = document.elementFromPoint(ev.clientX, ev.clientY);
-  const t = el && (el.closest(".v3-af") || el.closest("#v3AfNew"));
-  const hot = t && d.targets.includes(t) ? t : null;
+  let hot = null;
+  for (let p = el; p && !hot; p = p.parentElement) if (d.targets.includes(p)) hot = p;
   if (hot !== d.hot) { if (d.hot) d.hot.classList.remove("v3-drophot"); if (hot) hot.classList.add("v3-drophot"); d.hot = hot; }
-  const name = hot ? (hot.id === "v3AfNew" ? "Ny mapp…" : (hot.querySelector(".v3-af-n b") || {}).textContent) : null;
-  const em = d.ghost.querySelector("em"); if (em) em.textContent = name ? `Släpp i ${name}` : em.dataset.def;
+  const name = hot ? d.name(hot) : null;
+  const em = d.ghost.querySelector("em"); if (em) em.textContent = name ? `Släpp i ${name}` : (d.sub || "Släpp på en mapp");
   d.ghost.classList.toggle("ok", !!hot);
   // Nära kanten på listan: rulla.
   cancelAnimationFrame(d.raf);
@@ -188,10 +204,10 @@ function l3aDragMove(d, ev) {
     if (dy) { const step = () => { d.scroller.scrollTop += dy * 10; d.raf = requestAnimationFrame(step); }; d.raf = requestAnimationFrame(step); }
   }
 }
-async function l3aDragEnd(d, ev) {
+async function l3DndEnd(d, ev) {
   cancelAnimationFrame(d.raf);
   document.body.classList.remove("v3-dragging");
-  d.pal.querySelectorAll(".v3-dragsrc").forEach(x => x.classList.remove("v3-dragsrc"));
+  (d.src || []).forEach(x => x && x.classList.remove("v3-dragsrc"));
   d.targets.forEach(t => t.classList.remove("v3-droptgt", "v3-drophot"));
   const hot = ev ? d.hot : null;
   // Kortet åker in i mappen (eller tonas bort).
@@ -199,11 +215,6 @@ async function l3aDragEnd(d, ev) {
   else { d.ghost.style.transition = "opacity .15s"; d.ghost.style.opacity = "0"; }
   setTimeout(() => d.ghost.remove(), 220);
   if (!hot) return;
-  if (hot.id === "v3AfNew") { const f = await l3aNew(); if (f) await l3aMove(d.items, f.id); return; }
-  const k = (hot.querySelector("[data-afeye]") || {}).dataset;
-  if (!k) return;
-  const fid = k.afeye === "_" ? null : k.afeye;
-  if (d.items.every(x => (x.folder || null) === fid)) { l3Status("De ligger redan i den mappen."); return; }
-  await l3aMove(d.items, fid);
-  hot.classList.add("v3-dropdone"); // en kort puls när det landat (raden ritas om – ingen skada om den försvinner)
+  hot.classList.add("v3-dropdone");
+  await d.drop(hot);
 }

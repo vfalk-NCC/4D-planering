@@ -226,6 +226,28 @@ const IFC = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');", "FILE_
   await page.click('#v3GBy');
   if (await page.evaluate(() => !!l3p.colorBy)) fail('Sluta färga');
   await page.evaluate(() => { l3p.group = null; });
+  // Mappar för grupperna: ny mapp, dra gruppen dit, dölj/visa mappens objekt.
+  await page.evaluate(() => { window.__p = uiPrompt; uiPrompt = async () => 'Bandgångar'; l3gUi.open = null; l3gRenderTab(); });
+  await page.click('#v3GfNew'); await page.waitForTimeout(400);
+  if (!(await page.evaluate(() => l3g.folders.length))) fail('Ny gruppmapp');
+  await page.evaluate(() => { uiPrompt = window.__p; });
+  {
+    const box = sel => page.evaluate(q => { const r = document.querySelector(q).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }, sel);
+    const [sx, sy] = await box('#v3PalGroups [data-gsel]'), fid = await page.evaluate(() => l3g.folders[0].id), [tx, ty] = await box(`#v3PalGroups .v3-gf[data-gfid="${fid}"]`);
+    await page.mouse.move(sx, sy); await page.mouse.down(); await page.mouse.move(sx, sy + 8, { steps: 2 }); await page.mouse.move(tx, ty, { steps: 8 });
+    const hot = await page.evaluate(() => ({ hot: document.querySelectorAll('#v3PalGroups .v3-drophot').length, txt: (document.querySelector('.v3-dragghost em') || {}).textContent }));
+    await page.mouse.up(); await page.waitForTimeout(800);
+    const gf = await page.evaluate(() => ({ folder: l3g.list[0].folder, fid: l3g.folders[0].id, sel: l3bs.sel.length, rows: document.querySelectorAll('#v3PalGroups .v3-gf').length }));
+    const savedF = JSON.parse(gh.get('projects/p1/ifc_groupfolders.json') || '[]');
+    if (hot.hot !== 1 || !/Bandgångar/.test(hot.txt || '') || gf.folder !== gf.fid || savedF.length !== 1 || gf.rows !== 2) fail('Dra gruppen till mappen: ' + JSON.stringify({ hot, gf, savedF }));
+    const savedG = JSON.parse(gh.get('projects/p1/ifc_groups.json') || '[]');
+    if (!savedG.some(g => g.folder === gf.fid)) fail('Gruppens mapp ska sparas: ' + JSON.stringify(savedG));
+    await page.click(`#v3PalGroups [data-gfeye="${gf.fid}"]`); await page.waitForTimeout(150);
+    if ((await hid()) !== 2) fail('Dölj mappens objekt');
+    await page.click(`#v3PalGroups [data-gfeye="${gf.fid}"]`); await page.waitForTimeout(150);
+    if ((await hid()) !== 0) fail('Visa mappens objekt');
+    if (process.env.SHOTGF) await page.screenshot({ path: process.env.SHOTGF });
+  }
 
   // Skriv in grupperna i IFC:n: ny fil i samma mapp, egenskapen 4D-planering › Grupp, aldrig dubblerad.
   const gs = await page.evaluate(async () => {

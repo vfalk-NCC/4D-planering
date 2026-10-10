@@ -9,7 +9,10 @@
      "4D-planering" › "Grupp" (en egenskapsgrupp per objekt, flera grupper kommaseparerade).
      En tidigare inskriven 4D-planering-grupp i filen ersätts – den dubbleras aldrig. */
 
-const l3g = { list: [], loaded: false, byGuid: null };
+const l3g = { list: [], loaded: false, byGuid: null, folders: [] };
+/* Mappar för grupperna (Victor 2026-10-10: "samma dra-och-släpp för grupperna"): egen fil, gruppens
+   mapp i g.folder. Projektgemensamma som grupperna. */
+const l3gfPath = () => `projects/${encodeURIComponent(projectId)}/ifc_groupfolders.json`;
 const L3G_COLORS = ["#0ea5e9", "#f97316", "#22c55e", "#e11d48", "#a855f7", "#eab308", "#14b8a6", "#f43f5e", "#6366f1", "#84cc16"];
 const l3gPath = () => `projects/${encodeURIComponent(projectId)}/ifc_groups.json`;
 
@@ -17,6 +20,8 @@ async function l3gLoad(force) {
   if (l3g.loaded && !force) return l3g.list;
   try { const a = await ghReadJSON(token, l3gPath(), force ? { fresh: true } : undefined); l3g.list = Array.isArray(a) ? a : []; }
   catch (e) { console.warn("Kunde inte läsa ifc_groups.json", e); }
+  try { const f = await ghReadJSON(token, l3gfPath(), force ? { fresh: true } : undefined); l3g.folders = Array.isArray(f) ? f : []; }
+  catch (e) { console.warn("Kunde inte läsa ifc_groupfolders.json", e); }
   l3g.loaded = true; l3g.byGuid = null;
   return l3g.list;
 }
@@ -111,8 +116,60 @@ function l3gBindSel(side) {
   const s = side.querySelector("#v3GAdd");
   if (s) s.onchange = () => { const v = s.value; s.value = ""; if (v === "__new") l3gNew(); else if (v) l3gAdd(v); };
 }
+/* ---- Mapparna -------------------------------------------------------------------------------------- */
+async function l3gfWrite(f, remove) {
+  try { await ghWriteJSON(token, l3gfPath(), arr => { const a = (Array.isArray(arr) ? arr : []).filter(x => x.id !== f.id); return remove ? a : [...a, f]; }, remove ? "3D: gruppmapp borttagen" : `3D: gruppmapp – ${f.name}`); }
+  catch (e) { l3Status("Kunde inte spara mappen: " + e.message, true); }
+}
+async function l3gfNew() {
+  const name = ((await uiPrompt("Namn på mappen:", "")) || "").trim();
+  if (!name) return null;
+  const f = { id: "gf" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name: name.slice(0, 60) };
+  l3g.folders.push(f); l3gRenderTab();
+  await l3gfWrite(f);
+  return f;
+}
+async function l3gfRename(id) {
+  const f = l3g.folders.find(x => x.id === id); if (!f) return;
+  const name = ((await uiPrompt("Nytt namn på mappen:", f.name)) || "").trim();
+  if (!name || name === f.name) return;
+  f.name = name.slice(0, 60); l3gRenderTab(); await l3gfWrite(f);
+}
+async function l3gfDelete(id) {
+  const f = l3g.folders.find(x => x.id === id); if (!f) return;
+  const inside = l3g.list.filter(g => g.folder === id);
+  if (!(await uiConfirm(`Ta bort mappen ${f.name}?${inside.length ? ` Grupperna i den (${inside.length}) flyttas till Utan mapp – inget tas bort.` : ""}`, { ok: "Ta bort" }))) return;
+  l3g.folders = l3g.folders.filter(x => x !== f);
+  if (inside.length) await l3gMoveTo(inside.map(g => g.id), null, true);
+  l3gRenderTab(); await l3gfWrite(f, true);
+}
+async function l3gMoveTo(ids, fid, quiet) {
+  const s = new Set(ids);
+  await l3gWrite(arr => arr.map(x => s.has(x.id) ? { ...x, folder: fid || null } : x), `3D: ${ids.length} grupper till ${fid ? (l3g.folders.find(f => f.id === fid) || {}).name : "Utan mapp"}`);
+  if (!quiet) l3Status(`${ids.length === 1 ? (l3g.list.find(g => g.id === ids[0]) || {}).name || "Gruppen" : `${ids.length} grupper`} flyttad${ids.length === 1 ? "" : "e"} till ${fid ? (l3g.folders.find(f => f.id === fid) || {}).name : "Utan mapp"}.`);
+}
+/* Mappens objekt dolda? (alla objekt i dess grupper som finns i scenen är dolda) */
+function l3gfHidden(fid) {
+  const ents = l3g.list.filter(g => (g.folder || null) === fid).flatMap(l3gEnts);
+  return ents.length > 0 && ents.every(e => e.mesh.userData.l3b.hidden.has(e.ri));
+}
+function l3gfVis(fid, show) {
+  const ents = l3g.list.filter(g => (g.folder || null) === fid).flatMap(l3gEnts);
+  if (!ents.length) { l3Status("Mappens grupper har inga objekt i de inlästa modellerna."); return; }
+  const name = fid ? (l3g.folders.find(f => f.id === fid) || {}).name : "Utan mapp";
+  l3VisRecord(`${show ? "visa" : "dölj"} ${name}`, () => {
+    const meshes = new Set();
+    ents.forEach(e => { if (show) e.mesh.userData.l3b.hidden.delete(e.ri); else e.mesh.userData.l3b.hidden.add(e.ri); meshes.add(e.mesh); });
+    meshes.forEach(m => l3bApplyHidden(m));
+    if (!show) l3bsSet(l3bs.sel.filter(e => !e.mesh.userData.l3b.hidden.has(e.ri)).map(e => ({ mesh: e.mesh, ri: e.ri })));
+    l3UpdateHidden();
+  });
+  l3Status(`${name}: ${show ? "visas" : "dold (Ctrl+Z ångrar)"}.`);
+  l3gRenderTab();
+}
+
 /* Fliken Grupper (Victor 2026-10-10: "hantera grupperna på ett specifikt ställe som jag skapar"). */
-const l3gUi = { q: "", open: null };
+const l3gUi = { q: "", open: null, shut: new Set() };
 function l3gRenderTab() {
   const host = document.getElementById("v3PalGroups");
   if (!host || host.classList.contains("hidden")) return;
@@ -120,7 +177,7 @@ function l3gRenderTab() {
   const esc = escHtml, I = L3_ICO, n = l3gSelGuids().length, sel = new Set(l3gSelGuids()), t = l3gUi.q.toLowerCase();
   const list = l3g.list.filter(g => !t || g.name.toLowerCase().includes(t)).sort((a, b) => a.name.localeCompare(b.name, "sv", { numeric: true }));
   const inScene = g => { let k = 0; l3b.models.forEach(m => { const map = l3pEnts(m); (g.guids || []).forEach(x => { if (map.has(x)) k++; }); }); return k; };
-  const rows = list.map(g => {
+  const rowOf = g => {
     const tot = (g.guids || []).length, here = inScene(g), mine = n ? (g.guids || []).filter(x => sel.has(x)).length : 0, open = l3gUi.open === g.id;
     return `<div class="v3-gr ${open ? "open" : ""}" data-gid="${esc(g.id)}">
       <div class="v3-gr-h">
@@ -141,9 +198,21 @@ function l3gRenderTab() {
         <div class="v3-gr-who">${g.updated_by ? `Ändrad av ${esc(g.updated_by)}` : ""}${g.updated_at ? ` ${esc(String(g.updated_at).slice(0, 10))}` : ""}</div>
       </div>` : ""}
     </div>`;
-  }).join("");
+  };
+  // Med mappar: en rubrik per mapp (fäll ihop, tänd/släck objekten, byt namn, ta bort) och "Utan mapp".
+  const hasF = l3g.folders.length > 0;
+  const sec = (fid, name) => {
+    const k = fid || "_", gs = list.filter(g => (g.folder || null) === fid), shut = l3gUi.shut.has(k), hid = l3gfHidden(fid);
+    if (!fid && !gs.length && t) return "";
+    return `<div class="v3-gf ${shut ? "shut" : ""}" data-gfid="${esc(k)}">
+      <button type="button" class="v3-gf-t" data-gffold="${esc(k)}" aria-expanded="${!shut}"><i>›</i><b>${esc(name)}</b><em>${gs.length} ${gs.length === 1 ? "grupp" : "grupper"}</em></button>
+      <button type="button" class="v3-ic" data-gfeye="${esc(k)}" title="${hid ? "Visa mappens objekt" : "Dölj mappens objekt"}">${hid ? I.eyeOff : I.eye}</button>
+      ${fid ? `<button type="button" class="v3-ic" data-gfren="${esc(k)}" title="Byt namn">${I.edit}</button><button type="button" class="v3-ic" data-gfdel="${esc(k)}" title="Ta bort mappen (grupperna flyttas till Utan mapp)">${I.trash}</button>` : ""}
+    </div>${shut ? "" : `<div class="v3-gf-b">${gs.map(rowOf).join("") || `<div class="v3-pal-hint">Dra grupper hit.</div>`}</div>`}`;
+  };
+  const rows = hasF ? l3g.folders.slice().sort((a, b) => a.name.localeCompare(b.name, "sv", { numeric: true })).map(f => sec(f.id, f.name)).join("") + sec(null, "Utan mapp") : list.map(rowOf).join("");
   const colorOn = l3p.colorBy && l3p.colorBy.key === "g:4d";
-  host.innerHTML = `<button type="button" class="v3-gnew" id="v3GNew" ${n ? "" : "disabled"} title="${n ? "Ny grupp av de markerade objekten" : "Markera objekt i byggnaden först (tryck, Skift, ruta eller Flera)"}">＋ Ny grupp av markerade${n ? ` (${n})` : ""}</button>
+  host.innerHTML = `<div class="v3-gnew-row"><button type="button" class="v3-gnew" id="v3GNew" ${n ? "" : "disabled"} title="${n ? "Ny grupp av de markerade objekten" : "Markera objekt i byggnaden först (tryck, Skift, ruta eller Flera)"}">＋ Ny grupp av markerade${n ? ` (${n})` : ""}</button><button type="button" id="v3GfNew" title="Ny mapp för grupperna – dra sedan grupper dit">＋ Ny mapp</button></div>
     ${l3g.list.length > 6 ? `<input type="search" class="v3-pp-q" id="v3GQ" placeholder="Sök grupp…" value="${esc(l3gUi.q)}" />` : ""}
     <div class="v3-grs">${rows || `<div class="v3-pal-hint">${l3g.list.length ? "Ingen grupp matchar." : "Inga grupper än. Markera objekt och skapa en grupp, t.ex. Bandgång 1 – den sparas i projektet och kan skrivas in som en egenskap (UDA) i IFC:n."}</div>`}</div>
     ${l3g.list.length ? `<div class="v3-grp-acts">
@@ -167,6 +236,28 @@ function l3gBindTab(host) {
   host.querySelectorAll("[data-gcol]").forEach(inp => { inp.onchange = () => l3gSetColor(inp.dataset.gcol, inp.value); });
   host.querySelectorAll("[data-gsave]").forEach(b => { b.onclick = async () => { b.disabled = true; try { await l3gSaveModel(l3b.models.find(m => m.id === b.dataset.gsave)); } catch (e) { /* statusraden */ } if (b.isConnected) b.disabled = false; }; });
   const nw = host.querySelector("#v3GNew"); if (nw) nw.onclick = () => l3gNew();
+  const fn = host.querySelector("#v3GfNew"); if (fn) fn.onclick = () => l3gfNew();
+  const fidOf = k => (k === "_" ? null : k);
+  host.querySelectorAll("[data-gffold]").forEach(b => { b.onclick = () => { const k = b.dataset.gffold; l3gUi.shut.has(k) ? l3gUi.shut.delete(k) : l3gUi.shut.add(k); l3gRenderTab(); }; });
+  host.querySelectorAll("[data-gfeye]").forEach(b => { b.onclick = () => { const f = fidOf(b.dataset.gfeye); l3gfVis(f, l3gfHidden(f)); }; });
+  host.querySelectorAll("[data-gfren]").forEach(b => { b.onclick = () => l3gfRename(b.dataset.gfren); });
+  host.querySelectorAll("[data-gfdel]").forEach(b => { b.onclick = () => l3gfDelete(b.dataset.gfdel); });
+  // Dra en grupp till en mapp (samma grafik som för kommentarer och mått).
+  if (typeof l3DndBind === "function") host.querySelectorAll("[data-gsel]").forEach(b => l3DndBind(b, () => {
+    const g = l3g.list.find(x => x.id === b.dataset.gsel); if (!g) return null;
+    return {
+      items: [g], pal: host, color: g.color, title: g.name, sub: l3g.folders.length ? "Släpp på en mapp" : "Släpp på ＋ Ny mapp",
+      src: [b.closest(".v3-gr")],
+      targets: [...host.querySelectorAll(".v3-gf"), ...host.querySelectorAll("#v3GfNew")],
+      name: tg => (tg.id === "v3GfNew" ? "Ny mapp…" : (tg.querySelector(".v3-gf-t b") || {}).textContent),
+      drop: async tg => {
+        if (tg.id === "v3GfNew") { const f = await l3gfNew(); if (f) await l3gMoveTo([g.id], f.id); return; }
+        const fid = fidOf(tg.dataset.gfid);
+        if ((g.folder || null) === fid) { l3Status("Gruppen ligger redan där."); return; }
+        await l3gMoveTo([g.id], fid);
+      },
+    };
+  }));
   const by = host.querySelector("#v3GBy");
   if (by) by.onclick = async () => { if (l3p.colorBy && l3p.colorBy.key === "g:4d") { l3pColorOff(); l3p.group = null; } else { await l3pGroupBy("g:4d", { stay: true }); l3pColorOn(); } l3gRenderTab(); };
 }
