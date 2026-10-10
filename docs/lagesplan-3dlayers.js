@@ -184,30 +184,38 @@ function l3lResizable(el, pref, side, min, max) {
 function l3lCorner(el) {
   if (!el || el.dataset.rc) return;
   el.dataset.rc = "1";
-  const host = () => el.parentElement || document.body;
-  const maxH = () => host().clientHeight - el.offsetTop - 10;
+  const host = el.parentElement || document.body;
+  const maxH = () => host.clientHeight - el.offsetTop - 10;
   const applyH = h => { el.style.height = `${h}px`; el.style.maxHeight = "none"; };
   const savedH = Number(l3Prefs().sideH); if (savedH) applyH(Math.max(160, Math.min(maxH() > 200 ? maxH() : 2000, savedH)));
-  const ensure = () => {
-    if (el.querySelector(":scope > .v3-rc")) { const c = el.querySelector(":scope > .v3-rc"); if (c !== el.lastElementChild) el.appendChild(c); return; }
-    const hd = document.createElement("div");
-    hd.className = "v3-rc"; hd.title = "Dra för att ändra storleken (dubbelklick = standard)";
-    hd.onpointerdown = e => {
-      e.preventDefault(); e.stopPropagation();
-      const x0 = e.clientX, y0 = e.clientY, r = el.getBoundingClientRect();
-      hd.setPointerCapture(e.pointerId); el.classList.add("v3-resizing");
-      const mv = ev => {
-        el.style.width = `${Math.max(240, Math.min(720, r.width + x0 - ev.clientX))}px`;
-        applyH(Math.max(160, Math.min(maxH(), r.height + ev.clientY - y0)));
-      };
-      const up = () => { el.classList.remove("v3-resizing"); hd.removeEventListener("pointermove", mv); hd.removeEventListener("pointerup", up); const b = el.getBoundingClientRect(); l3SetPref("sideW", Math.round(b.width)); l3SetPref("sideH", Math.round(b.height)); l3Render(); };
-      hd.addEventListener("pointermove", mv); hd.addEventListener("pointerup", up);
-    };
-    hd.ondblclick = () => { el.style.width = ""; el.style.height = ""; el.style.maxHeight = ""; l3SetPref("sideW", 0); l3SetPref("sideH", 0); l3Render(); };
-    el.appendChild(hd);
+  // Handtaget ligger bredvid panelen (inte i den – panelen rullar) och följer dess hörn.
+  const hd = document.createElement("div");
+  hd.className = "v3-rc hidden"; hd.title = "Dra för att ändra storleken (dubbelklick = standard)";
+  host.appendChild(hd);
+  const place = () => {
+    const shown = !el.classList.contains("hidden") && el.offsetParent !== null && el.offsetHeight > 0 && getComputedStyle(el).display !== "none";
+    hd.classList.toggle("hidden", !shown);
+    if (!shown) return;
+    hd.style.left = `${el.offsetLeft}px`; hd.style.top = `${el.offsetTop + el.offsetHeight - 22}px`;
   };
-  ensure();
-  new MutationObserver(ensure).observe(el, { childList: true });
+  new ResizeObserver(place).observe(el);
+  new MutationObserver(place).observe(el, { attributes: true, attributeFilter: ["class", "style"], childList: true });
+  window.addEventListener("resize", place);
+  hd.onpointerdown = e => {
+    e.preventDefault(); e.stopPropagation();
+    const x0 = e.clientX, y0 = e.clientY, r = el.getBoundingClientRect();
+    hd.setPointerCapture(e.pointerId); hd.classList.add("drag");
+    const mv = ev => {
+      el.style.width = `${Math.max(240, Math.min(720, r.width + x0 - ev.clientX))}px`;
+      applyH(Math.max(160, Math.min(maxH(), r.height + ev.clientY - y0)));
+      place();
+    };
+    const up = () => { hd.classList.remove("drag"); hd.removeEventListener("pointermove", mv); hd.removeEventListener("pointerup", up); const b = el.getBoundingClientRect(); l3SetPref("sideW", Math.round(b.width)); l3SetPref("sideH", Math.round(b.height)); l3Render(); };
+    hd.addEventListener("pointermove", mv); hd.addEventListener("pointerup", up);
+  };
+  hd.ondblclick = () => { el.style.width = ""; el.style.height = ""; el.style.maxHeight = ""; l3SetPref("sideW", 0); l3SetPref("sideH", 0); place(); l3Render(); };
+  el.addEventListener("mouseenter", () => hd.classList.add("near")); el.addEventListener("mouseleave", () => hd.classList.remove("near"));
+  place();
 }
 function l3LayersInit() {
   l3lResizable(document.getElementById("v3Side"), "sideW", "right", 240, 640);

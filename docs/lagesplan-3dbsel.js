@@ -67,6 +67,7 @@ function l3bsSet(list, opts = {}) {
   l3bsRebuild();
   if (l3bs.sel.length && l3.sel && l3.sel.size && !opts.keepPlaces) l3SelectIds([]); // en sorts markering i taget
   if (typeof l3RenderSide === "function") l3RenderSide();
+  if (typeof l3gRenderTab === "function") l3gRenderTab(); // Grupper: knapparna för de markerade
   l3Render();
 }
 function l3bsClear() { if (l3bs.sel.length) l3bsSet([]); }
@@ -106,20 +107,69 @@ function l3bsCenters(mesh) {
   return (u.centers = c);
 }
 /* Rutmarkering: byggnadens objekt vars mitt ligger i rutan (dolda och släckta modeller räknas inte). */
-function l3bsInRect(L, R, T, B, rect) {
-  const out = [], v = new THREE.Vector3();
+/* Objektens lådor (lokala koordinater, 6 tal per objekt). */
+function l3bsBoxes(mesh) {
+  const u = mesh.userData.l3b;
+  if (u.boxes) return u.boxes;
+  const p = mesh.geometry.getAttribute("position").array, c = new Float32Array(u.ranges.length * 6);
+  u.ranges.forEach((r, i) => {
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+    for (let v = r.start; v < r.start + r.count; v++) { const x = p[v * 3], y = p[v * 3 + 1], z = p[v * 3 + 2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+    c.set([x0, y0, z0, x1, y1, z1], i * 6);
+  });
+  return (u.boxes = c);
+}
+/* Markeringsfönster (Victor 2026-10-10, som i AutoCAD/Tekla): window = bara objekt som ligger helt inne
+   i rutan (dra vänster -> höger), cross = allt som rutan nuddar (dra höger -> vänster). Lådan sållar
+   först; bara objekt som ligger delvis i rutan provas triangel för triangel på skärmen. */
+function l3bsInRect(L, R, T, B, rect, cross = false) {
+  const out = [], v = new THREE.Vector3(), W = rect.width, H = rect.height, MAX = 200000;
+  const PM = new THREE.Matrix4();
+  const inR = (x, y) => x >= L && x <= R && y >= T && y <= B;
+  // Sträcka mot rutan (Liang–Barsky).
+  const segHit = (ax, ay, bx, by) => {
+    let t0 = 0, t1 = 1; const dx = bx - ax, dy = by - ay;
+    const clip = (p, q) => { if (p === 0) return q >= 0; const t = q / p; if (p < 0) { if (t > t1) return false; if (t > t0) t0 = t; } else { if (t < t0) return false; if (t < t1) t1 = t; } return true; };
+    return clip(-dx, ax - L) && clip(dx, R - ax) && clip(-dy, ay - T) && clip(dy, B - ay);
+  };
+  const triHas = (ax, ay, bx, by, cx, cy, px, py) => { const d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by), d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy), d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay); return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0)); };
+  l3.camera.updateMatrixWorld();
   l3b.models.forEach(m => {
     if (!m.visible) return;
     m.meshes.forEach(mesh => {
-      if (!mesh.visible) return;
-      const u = mesh.userData.l3b, c = l3bsCenters(mesh), off = u.tempOff || new Set();
+      if (!mesh.visible || out.length >= MAX) return;
+      const u = mesh.userData.l3b, bx = l3bsBoxes(mesh), off = u.tempOff || new Set();
       mesh.updateMatrixWorld(true);
-      for (let i = 0; i < u.ranges.length && out.length < 5000; i++) {
+      PM.multiplyMatrices(l3.camera.projectionMatrix, l3.camera.matrixWorldInverse).multiply(mesh.matrixWorld);
+      const pos = mesh.geometry.getAttribute("position").array, src = u.origIdx;
+      let sx = null, sy = null, ok = null; // skärmpunkter för bitens hörn, räknas vid behov
+      const proj = i => { v.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]).applyMatrix4(PM); sx[i] = (v.x + 1) / 2 * W; sy[i] = (1 - v.y) / 2 * H; ok[i] = v.z < 1 && v.z > -1 ? 1 : 2; };
+      for (let i = 0; i < u.ranges.length && out.length < MAX; i++) {
         if (u.hidden.has(i) || off.has(i)) continue;
-        v.set(c[i * 3], c[i * 3 + 1], c[i * 3 + 2]).applyMatrix4(mesh.matrixWorld).project(l3.camera);
-        if (v.z > 1) continue;
-        const x = (v.x + 1) / 2 * rect.width, y = (1 - v.y) / 2 * rect.height;
-        if (x >= L && x <= R && y >= T && y <= B) out.push({ mesh, ri: i });
+        // Lådans hörn på skärmen.
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, behind = false;
+        for (let k = 0; k < 8; k++) {
+          v.set(bx[i * 6 + (k & 1 ? 3 : 0)], bx[i * 6 + 1 + (k & 2 ? 3 : 0)], bx[i * 6 + 2 + (k & 4 ? 3 : 0)]).applyMatrix4(PM);
+          if (v.z > 1 || v.z < -1) { behind = true; continue; }
+          const x = (v.x + 1) / 2 * W, y = (1 - v.y) / 2 * H;
+          if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+        }
+        if (x1 < L || x0 > R || y1 < T || y0 > B) continue;              // helt utanför
+        if (!behind && x0 >= L && x1 <= R && y0 >= T && y1 <= B) { out.push({ mesh, ri: i }); continue; } // helt inne
+        if (!cross && behind) continue;
+        // Delvis: objektets trianglar.
+        if (!sx) { const n = pos.length / 3; sx = new Float32Array(n); sy = new Float32Array(n); ok = new Uint8Array(n); }
+        const [s, c] = l3bsIdx(mesh, i);
+        let hit = false, all = true;
+        for (let t = s; t < s + c; t += 3) {
+          const a = src[t], b = src[t + 1], d = src[t + 2];
+          if (!ok[a]) proj(a); if (!ok[b]) proj(b); if (!ok[d]) proj(d);
+          if (ok[a] === 2 || ok[b] === 2 || ok[d] === 2) { all = false; continue; }
+          if (cross) {
+            if (inR(sx[a], sy[a]) || inR(sx[b], sy[b]) || inR(sx[d], sy[d]) || segHit(sx[a], sy[a], sx[b], sy[b]) || segHit(sx[b], sy[b], sx[d], sy[d]) || segHit(sx[d], sy[d], sx[a], sy[a]) || triHas(sx[a], sy[a], sx[b], sy[b], sx[d], sy[d], L, T)) { hit = true; break; }
+          } else if (!(inR(sx[a], sy[a]) && inR(sx[b], sy[b]) && inR(sx[d], sy[d]))) { all = false; break; }
+        }
+        if (cross ? hit : all && c > 0) out.push({ mesh, ri: i });
       }
     });
   });
@@ -148,7 +198,8 @@ function l3bsZoom() {
   if (b.isEmpty()) return;
   l3FlyTo(b.getCenter(new THREE.Vector3()), Math.max(4, b.getSize(new THREE.Vector3()).length() * 1.4));
 }
-function l3bsHide() {
+function l3bsHide() { return l3VisRecord("dölj", l3bsHide0); }
+function l3bsHide0() {
   const n = l3bs.sel.length, meshes = new Set();
   l3bs.sel.forEach(e => { e.mesh.userData.l3b.hidden.add(e.ri); meshes.add(e.mesh); });
   l3bsSet([]);
@@ -157,7 +208,8 @@ function l3bsHide() {
   l3Render();
 }
 /* Visa bara de markerade: alla andra objekt i byggnaden döljs. */
-function l3bsIsolate() {
+function l3bsIsolate() { return l3VisRecord("visa bara markerade", l3bsIsolate0); }
+function l3bsIsolate0() {
   const keep = new Map();
   l3bs.sel.forEach(e => { if (!keep.has(e.mesh)) keep.set(e.mesh, new Set()); keep.get(e.mesh).add(e.ri); });
   l3b.models.forEach(m => m.meshes.forEach(mesh => {

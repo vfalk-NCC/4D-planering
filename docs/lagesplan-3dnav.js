@@ -37,7 +37,7 @@ function l3IsTouch() { try { return matchMedia("(pointer: coarse)").matches; } c
 function l3IsTekla() { return l3Prefs().mouse !== "standard"; }
 function l3ApplyMouse() {
   const M = THREE.MOUSE;
-  l3.orbit.mouseButtons = l3IsTekla() ? { LEFT: -1, MIDDLE: M.PAN, RIGHT: -1 } : { LEFT: M.ROTATE, MIDDLE: M.PAN, RIGHT: M.PAN };
+  l3.orbit.mouseButtons = l3IsTekla() ? { LEFT: -1, MIDDLE: M.PAN, RIGHT: -1 } : { LEFT: l3.multi ? -1 : M.ROTATE, MIDDLE: M.PAN, RIGHT: M.PAN };
 }
 
 // ---------------------------------------------------------------------
@@ -51,7 +51,7 @@ function l3NavDown(e) {
   if (e.button === 1 && e.target === l3.renderer.domElement) e.preventDefault();
   if (l3OrbitPivotStart(e)) return;
   if (e.button === 2) { l3RightDown = { x: e.clientX, y: e.clientY }; return; }
-  if (e.button !== 0 || !l3IsTekla()) return;
+  if (e.button !== 0 || !(l3IsTekla() || l3.multi)) return; // standardläget: med Flera på blir vänster-dra ett markeringsfönster
   if (e.target !== l3.renderer.domElement) return; // paneler ovanpå
   if (l3.tool !== "select" || l3.addType || l3.vPick || l3.gizmo.axis || l3.gizmo.dragging) return;
   l3Area = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, add: e.shiftKey, toggle: e.ctrlKey || e.metaKey, on: false };
@@ -80,13 +80,14 @@ function l3NavUp(e) {
   // Ingen etablering i rutan: objekt i byggnaden (IFC) vars mitt ligger i rutan.
   if (!ids.length && typeof l3bsInRect === "function" && l3b.models.length) {
     const r = l3.renderer.domElement.getBoundingClientRect();
-    const bs = l3bsInRect(Math.min(a.x0, a.x1) - r.left, Math.max(a.x0, a.x1) - r.left, Math.min(a.y0, a.y1) - r.top, Math.max(a.y0, a.y1) - r.top, r);
+    const cross = a.x1 < a.x0;
+    const bs = l3bsInRect(Math.min(a.x0, a.x1) - r.left, Math.max(a.x0, a.x1) - r.left, Math.min(a.y0, a.y1) - r.top, Math.max(a.y0, a.y1) - r.top, r, cross);
     if (bs.length) {
       const cur = a.add || a.toggle ? l3bs.sel.map(x => ({ mesh: x.mesh, ri: x.ri })) : [];
       const have = new Set(cur.map(x => l3bsKey(x.mesh, x.ri)));
       bs.forEach(x => { const k = l3bsKey(x.mesh, x.ri); if (have.has(k)) { if (a.toggle) { const i = cur.findIndex(y => l3bsKey(y.mesh, y.ri) === k); cur.splice(i, 1); } } else cur.push(x); });
       l3bsSet(cur);
-      l3Status(`${l3bs.sel.length} objekt i byggnaden markerade.${bs.length >= 5000 ? " (högst 5 000 åt gången)" : ""}`);
+      l3Status(`${l3bs.sel.length} objekt markerade (${cross ? "allt som rutan nuddar" : "helt inne i rutan"}).${bs.length >= 200000 ? " (högst 200 000 åt gången)" : ""}`);
       return;
     }
   }
@@ -132,7 +133,7 @@ function l3OrbitPivotStart(e) {
   if (l3Piv) l3OrbitPivotEnd();
   if (!l3AutoRot() || e.target !== l3.renderer.domElement) return false;
   const tekla = l3IsTekla();
-  const want = tekla ? e.button === 1 && (e.ctrlKey || e.shiftKey || e.metaKey) : e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.metaKey;
+  const want = tekla ? e.button === 1 && (e.ctrlKey || e.shiftKey || e.metaKey) : e.button === 0 && !e.shiftKey && !e.ctrlKey && !e.metaKey && !l3.multi;
   if (!want || l3.gizmo.axis || l3.gizmo.dragging) return false;
   const P = l3PivotPoint(e);
   // OrbitControls får inte rotera samtidigt: stäng av knappen tills släpp (trycket når ändå

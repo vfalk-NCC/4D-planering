@@ -34,6 +34,7 @@ async function l3gWrite(mut, msg) {
 function l3gChanged() {
   if (typeof l3RenderSide === "function") l3RenderSide();
   if (typeof l3pRenderTab === "function") l3pRenderTab();
+  l3gRenderTab();
 }
 const l3gStamp = g => ({ ...g, updated_by: (typeof settings !== "undefined" && settings.userName) || "", updated_at: new Date().toISOString() });
 function l3gIndex() {
@@ -110,27 +111,80 @@ function l3gBindSel(side) {
   const s = side.querySelector("#v3GAdd");
   if (s) s.onchange = () => { const v = s.value; s.value = ""; if (v === "__new") l3gNew(); else if (v) l3gAdd(v); };
 }
-/* Överst i fliken Egenskaper. */
-function l3gTabHtml() {
-  if (!l3g.loaded) return `<div class="v3-pal-hint"><span class="pm-spin"></span> Hämtar grupperna…</div>`;
-  const esc = escHtml, closed = l3pClosed(), n = l3bs.sel.length;
-  const rows = l3g.list.map(g => `<div class="v3-grp-r"><i style="background:${esc(g.color)}"></i><button type="button" class="v3-grp-n" data-gsel="${esc(g.id)}" title="Markera gruppens objekt (Skift lägger till)">${esc(g.name)}</button><em>${(g.guids || []).length}</em><button type="button" class="v3-ic" data-giso="${esc(g.id)}" title="Visa bara gruppen">${L3_ICO.eye}</button><button type="button" class="v3-ic" data-gren="${esc(g.id)}" title="Byt namn">${L3_ICO.edit}</button><button type="button" class="v3-ic" data-gdel="${esc(g.id)}" title="Ta bort gruppen">${L3_ICO.trash}</button></div>`).join("");
-  return `<details class="v3-ps v3-grps" data-sec="grp" ${closed.has("grp") ? "" : "open"}><summary><span>Mina grupper</span><em>${l3g.list.length}</em></summary>
-    ${rows || `<div class="v3-pal-hint">Markera objekt (Skift, ruta eller Markera flera) och skapa en grupp, t.ex. Bandgång 1.</div>`}
-    <div class="v3-grp-acts"><button type="button" id="v3GNew" ${n ? "" : "disabled"} title="Ny grupp av de markerade objekten">＋ Ny grupp av markerade${n ? ` (${n})` : ""}</button>${l3g.list.length ? `<button type="button" id="v3GBy" title="Färga och räkna alla objekt efter grupp">Färga efter grupp</button>` : ""}</div>
-    ${l3g.list.length && l3b.models.length ? `<div class="v3-grp-acts">${l3b.models.filter(m => m.visible).map(m => `<button type="button" data-gsave="${esc(m.id)}" title="Grupperna skrivs in som egenskapen 4D-planering › Grupp och sparas som en ny IFC-fil i samma mapp i Trimble Connect – originalet skrivs aldrig över">${L3_ICO.upload} Skriv in i ${esc(m.name.replace(/\.ifc(zip)?$/i, ""))} (ny IFC i TC)</button>`).join("")}</div>` : ""}
-  </details>`;
+/* Fliken Grupper (Victor 2026-10-10: "hantera grupperna på ett specifikt ställe som jag skapar"). */
+const l3gUi = { q: "", open: null };
+function l3gRenderTab() {
+  const host = document.getElementById("v3PalGroups");
+  if (!host || host.classList.contains("hidden")) return;
+  if (!l3g.loaded) { host.innerHTML = `<div class="v3-pal-hint"><span class="pm-spin"></span> Hämtar grupperna…</div>`; l3gLoad().then(() => l3gRenderTab()); return; }
+  const esc = escHtml, I = L3_ICO, n = l3gSelGuids().length, sel = new Set(l3gSelGuids()), t = l3gUi.q.toLowerCase();
+  const list = l3g.list.filter(g => !t || g.name.toLowerCase().includes(t)).sort((a, b) => a.name.localeCompare(b.name, "sv", { numeric: true }));
+  const inScene = g => { let k = 0; l3b.models.forEach(m => { const map = l3pEnts(m); (g.guids || []).forEach(x => { if (map.has(x)) k++; }); }); return k; };
+  const rows = list.map(g => {
+    const tot = (g.guids || []).length, here = inScene(g), mine = n ? (g.guids || []).filter(x => sel.has(x)).length : 0, open = l3gUi.open === g.id;
+    return `<div class="v3-gr ${open ? "open" : ""}" data-gid="${esc(g.id)}">
+      <div class="v3-gr-h">
+        <label class="v3-gr-col" title="Gruppens färg"><input type="color" data-gcol="${esc(g.id)}" value="${esc(g.color || "#6d5efc")}" /><i style="background:${esc(g.color)}"></i></label>
+        <button type="button" class="v3-gr-n" data-gsel="${esc(g.id)}" title="Markera gruppens objekt (Skift lägger till)">${esc(g.name)}</button>
+        <em title="${here} av ${tot} finns i de inlästa modellerna">${here === tot ? tot : `${here}/${tot}`}</em>
+        ${mine ? `<span class="v3-gr-mine" title="${mine} av de markerade ligger i gruppen">${mine}✓</span>` : ""}
+        <button type="button" class="v3-ic" data-gmore="${esc(g.id)}" title="Fler val" aria-expanded="${open}">⋯</button>
+      </div>
+      ${open ? `<div class="v3-gr-acts">
+        <button type="button" data-gadd="${esc(g.id)}" ${n ? "" : "disabled"} title="Lägg de markerade i gruppen">＋ Lägg till${n ? ` (${n})` : ""}</button>
+        <button type="button" data-gout="${esc(g.id)}" ${mine ? "" : "disabled"} title="Ta de markerade ur gruppen">－ Ta ur${mine ? ` (${mine})` : ""}</button>
+        <button type="button" data-giso="${esc(g.id)}" title="Visa bara gruppen (Ctrl+Z ångrar)">${I.isolate} Visa bara</button>
+        <button type="button" data-ghide="${esc(g.id)}" title="Dölj gruppen (Ctrl+Z ångrar)">${I.eyeOff} Dölj</button>
+        <button type="button" data-gzoom="${esc(g.id)}">${I.focus} Zooma</button>
+        <button type="button" data-gren="${esc(g.id)}">${I.edit} Byt namn</button>
+        <button type="button" data-gdel="${esc(g.id)}" class="bad" title="Ta bort gruppen (objekten finns kvar)">${I.trash} Ta bort</button>
+        <div class="v3-gr-who">${g.updated_by ? `Ändrad av ${esc(g.updated_by)}` : ""}${g.updated_at ? ` ${esc(String(g.updated_at).slice(0, 10))}` : ""}</div>
+      </div>` : ""}
+    </div>`;
+  }).join("");
+  const colorOn = l3p.colorBy && l3p.colorBy.key === "g:4d";
+  host.innerHTML = `<button type="button" class="v3-gnew" id="v3GNew" ${n ? "" : "disabled"} title="${n ? "Ny grupp av de markerade objekten" : "Markera objekt i byggnaden först (tryck, Skift, ruta eller Flera)"}">＋ Ny grupp av markerade${n ? ` (${n})` : ""}</button>
+    ${l3g.list.length > 6 ? `<input type="search" class="v3-pp-q" id="v3GQ" placeholder="Sök grupp…" value="${esc(l3gUi.q)}" />` : ""}
+    <div class="v3-grs">${rows || `<div class="v3-pal-hint">${l3g.list.length ? "Ingen grupp matchar." : "Inga grupper än. Markera objekt och skapa en grupp, t.ex. Bandgång 1 – den sparas i projektet och kan skrivas in som en egenskap (UDA) i IFC:n."}</div>`}</div>
+    ${l3g.list.length ? `<div class="v3-grp-acts">
+      <button type="button" id="v3GBy" class="${colorOn ? "on" : ""}" title="Färga alla objekt efter sin grupp">${colorOn ? "Sluta färga" : "Färga efter grupp"}</button>
+      ${l3b.models.filter(m => m.visible).map(m => `<button type="button" data-gsave="${esc(m.id)}" title="Grupperna skrivs in som egenskapen 4D-planering › Grupp och sparas som en ny IFC-fil i samma mapp i Trimble Connect – originalet skrivs aldrig över">${I.upload} Skriv in i ${esc(m.name.replace(/\.ifc(zip)?$/i, ""))} (ny IFC i TC)</button>`).join("")}
+    </div>` : ""}`;
+  l3gBindTab(host);
 }
 function l3gBindTab(host) {
+  const q = host.querySelector("#v3GQ");
+  if (q) q.oninput = () => { l3gUi.q = q.value; const pos = q.selectionStart; l3gRenderTab(); const q2 = document.getElementById("v3GQ"); if (q2) { q2.focus(); q2.setSelectionRange(pos, pos); } };
   host.querySelectorAll("[data-gsel]").forEach(b => { b.onclick = e => l3gSelect(b.dataset.gsel, e.shiftKey || e.ctrlKey || e.metaKey); });
+  host.querySelectorAll("[data-gmore]").forEach(b => { b.onclick = () => { l3gUi.open = l3gUi.open === b.dataset.gmore ? null : b.dataset.gmore; l3gRenderTab(); }; });
+  host.querySelectorAll("[data-gadd]").forEach(b => { b.onclick = () => l3gAdd(b.dataset.gadd); });
+  host.querySelectorAll("[data-gout]").forEach(b => { b.onclick = () => l3gRemoveSel(b.dataset.gout); });
   host.querySelectorAll("[data-giso]").forEach(b => { b.onclick = () => { l3gSelect(b.dataset.giso); if (l3bs.sel.length) l3bsIsolate(); }; });
+  host.querySelectorAll("[data-ghide]").forEach(b => { b.onclick = () => l3gHide(b.dataset.ghide); });
+  host.querySelectorAll("[data-gzoom]").forEach(b => { b.onclick = () => { l3gSelect(b.dataset.gzoom); l3bsZoom(); }; });
   host.querySelectorAll("[data-gren]").forEach(b => { b.onclick = () => l3gRename(b.dataset.gren); });
   host.querySelectorAll("[data-gdel]").forEach(b => { b.onclick = () => l3gDelete(b.dataset.gdel); });
+  host.querySelectorAll("[data-gcol]").forEach(inp => { inp.onchange = () => l3gSetColor(inp.dataset.gcol, inp.value); });
   host.querySelectorAll("[data-gsave]").forEach(b => { b.onclick = async () => { b.disabled = true; try { await l3gSaveModel(l3b.models.find(m => m.id === b.dataset.gsave)); } catch (e) { /* statusraden */ } if (b.isConnected) b.disabled = false; }; });
   const nw = host.querySelector("#v3GNew"); if (nw) nw.onclick = () => l3gNew();
-  const by = host.querySelector("#v3GBy"); if (by) by.onclick = async () => { await l3pGroupBy("g:4d"); l3pColorOn(); l3pRenderTab(); };
-  const dt = host.querySelector("details.v3-grps");
-  if (dt) dt.ontoggle = () => { const c = l3pClosed(); if (dt.open) c.delete("grp"); else c.add("grp"); l3SetPref("propsClosed", [...c].slice(-300)); };
+  const by = host.querySelector("#v3GBy");
+  if (by) by.onclick = async () => { if (l3p.colorBy && l3p.colorBy.key === "g:4d") { l3pColorOff(); l3p.group = null; } else { await l3pGroupBy("g:4d", { stay: true }); l3pColorOn(); } l3gRenderTab(); };
+}
+async function l3gSetColor(id, color) {
+  const g = l3g.list.find(x => x.id === id); if (!g || g.color === color) return;
+  await l3gWrite(arr => arr.map(x => x.id === id ? l3gStamp({ ...x, color }) : x), `3D: ny färg på gruppen ${g.name}`);
+  if (l3p.colorBy && l3p.colorBy.key === "g:4d") { await l3pGroupBy("g:4d", { stay: true }); l3pColorOn(); }
+}
+function l3gHide(id) {
+  const g = l3g.list.find(x => x.id === id); if (!g) return;
+  l3VisRecord(`dölj ${g.name}`, () => {
+    const meshes = new Set();
+    l3gEnts(g).forEach(e => { e.mesh.userData.l3b.hidden.add(e.ri); meshes.add(e.mesh); });
+    meshes.forEach(m => l3bApplyHidden(m));
+    l3bsSet(l3bs.sel.filter(e => !e.mesh.userData.l3b.hidden.has(e.ri)).map(e => ({ mesh: e.mesh, ri: e.ri })));
+    l3UpdateHidden();
+  });
+  l3Status(`${g.name} är dold – Ctrl+Z eller Visa alla (U) visar den igen.`);
 }
 /* Gruppera efter grupp (för Färga efter grupp): samma form som egenskapstrådens svar. */
 function l3gValues(m) {

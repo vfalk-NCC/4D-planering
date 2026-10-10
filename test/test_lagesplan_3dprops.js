@@ -158,12 +158,14 @@ const IFC = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');", "FILE_
   await page.waitForSelector('#v3Side .v3-acts .v3-act');
   const actH = await page.$eval('#v3BsZoom', b => b.getBoundingClientRect().height);
   if (actH > 28) fail('Knapparna ska vara kompakta: ' + actH);
-  const rc = await page.locator('#v3Side .v3-rc').boundingBox();
+  const rc = await page.locator('#view3d .v3-rc').boundingBox();
   const sz0 = await page.evaluate(() => { const r = document.getElementById('v3Side').getBoundingClientRect(); return [r.width, r.height]; });
   await page.mouse.move(rc.x + 6, rc.y + 6); await page.mouse.down(); await page.mouse.move(rc.x - 74, rc.y - 34, { steps: 4 }); await page.mouse.up();
   const sz1 = await page.evaluate(() => { const r = document.getElementById('v3Side').getBoundingClientRect(); return { w: r.width, h: r.height, pw: l3Prefs().sideW, ph: l3Prefs().sideH }; });
+  const rc1 = await page.locator('#view3d .v3-rc').boundingBox(), sb = await page.evaluate(() => { const r = document.getElementById('v3Side').getBoundingClientRect(); return [r.left, r.bottom]; });
+  if (Math.abs(rc1.x - sb[0]) > 1 || Math.abs(rc1.y + rc1.height - sb[1]) > 1) fail('Handtaget ska sitta i panelens nedre vänstra hörn: ' + JSON.stringify({ rc1, sb }));
   if (Math.abs(sz1.w - sz0[0] - 80) > 3 || Math.abs(sz1.h - (sz0[1] - 40)) > 3 || Math.abs(sz1.pw - sz1.w) > 2 || Math.abs(sz1.ph - sz1.h) > 2) fail('Hörnhandtaget: ' + JSON.stringify({ sz0, sz1 }));
-  await page.dblclick('#v3Side .v3-rc');
+  await page.dblclick('#view3d .v3-rc');
 
   // Markera flera: varje tryck lägger till.
   await page.click('#v3Multi');
@@ -178,22 +180,52 @@ const IFC = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');", "FILE_
   if (multi !== '1hZq3$Bq9Fxu8nZK0bW1aA,1hZq3$Bq9Fxu8nZK0bW1aB') fail('Markera flera ska lägga till: ' + multi);
   await page.click('#v3Multi');
 
+  // Markeringsfönster: vänster -> höger = bara hela objekt inne i rutan, höger -> vänster = allt som rutan nuddar.
+  await page.evaluate(() => { l3bsClear(); l3StopFly(); const c = new THREE.Vector3(6512361 - l3.O[0], 150126 - l3.O[1], 0); l3.camera.position.set(c.x, c.y - 0.01, 60); l3.orbit.target.copy(c); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); });
+  // Rutan: från strax vänster om B1 till mitten av B2 (B1 helt inne, B2 till hälften).
+  const box = await page.evaluate(() => { const a = l3ToScreen(new THREE.Vector3(6512349.5 - l3.O[0], 150124.5 - l3.O[1], 0)), b = l3ToScreen(new THREE.Vector3(6512360 - l3.O[0], 150127.5 - l3.O[1], 0)); return [a.x, a.y, b.x, b.y]; });
+  const drag = async (fx, fy, tx, ty) => { await page.mouse.move(cvb.x + fx, cvb.y + fy); await page.mouse.down(); await page.mouse.move(cvb.x + (fx + tx) / 2, cvb.y + (fy + ty) / 2, { steps: 3 }); await page.mouse.move(cvb.x + tx, cvb.y + ty, { steps: 3 }); await page.mouse.up(); await page.waitForTimeout(150); };
+  const selG = () => page.evaluate(() => l3bs.sel.map(e => e.mesh.userData.l3b.ranges[e.ri].guid.slice(-1)).sort().join(','));
+  await page.evaluate(() => { document.getElementById('v3Side').style.visibility = 'hidden'; });
+  await drag(Math.min(box[0], box[2]) - 45, Math.min(box[1], box[3]) - 30, Math.max(box[0], box[2]), Math.max(box[1], box[3]) + 30);
+  const win = await selG();
+  await page.evaluate(() => l3bsClear());
+  await drag(Math.max(box[0], box[2]), Math.max(box[1], box[3]) + 30, Math.min(box[0], box[2]) - 45, Math.min(box[1], box[3]) - 30);
+  const crs = await selG();
+  await page.evaluate(() => { document.getElementById('v3Side').style.visibility = ''; });
+  if (win !== 'A' || crs !== 'A,B') fail('Fönster ska ta hela objekt, kryss allt som nuddas: ' + JSON.stringify({ win, crs }));
+  // Kryss som bara nuddar en kant (ingen hörnpunkt i rutan) träffar ändå.
+  const edge = await page.evaluate(() => { const r = l3.renderer.domElement.getBoundingClientRect(), p = l3ToScreen(new THREE.Vector3(6512370 - l3.O[0], 150125 - l3.O[1], 3)); return l3bsInRect(p.x - 3, p.x + 3, p.y - 3, p.y + 3, r, true).map(e => e.mesh.userData.l3b.ranges[e.ri].guid.slice(-1)).join(); });
+  if (edge !== 'C') fail('Kryss mitt på en yta ska träffa objektet: ' + edge);
+  await page.evaluate(() => { const m = l3b.models[0]; const ents = []; m.meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => { if (r.guid !== '1hZq3$Bq9Fxu8nZK0bW1aC') ents.push({ mesh, ri }); })); l3bsSet(ents); });
+
   // Ny grupp av de markerade (Bandgång 1), sparad i projektets ifc_groups.json.
   page.on('dialog', d => d.accept('Bandgång 1'));
   await page.selectOption('#v3GAdd', '__new');
   await page.waitForFunction(() => l3g.list.length === 1 && window.__gsaved, null, { timeout: 10000 });
   const g1 = await page.evaluate(() => ({ g: l3g.list[0], chips: [...document.querySelectorAll('#v3Side .v3-gchip')].map(c => c.textContent.replace(/\s+/g, ' ').trim()), saved: window.__gsaved }));
   if (g1.g.name !== 'Bandgång 1' || g1.g.guids.length !== 2 || !/Bandgång 1/.test(g1.chips.join()) || !g1.saved.some(x => x.name === 'Bandgång 1')) fail('Ny grupp: ' + JSON.stringify(g1));
-  // Gruppen i fliken Egenskaper: markera den, färga efter grupp.
-  await page.evaluate(() => { l3bsClear(); l3p.group = null; l3PalTab('props'); });
-  await page.waitForSelector('#v3PalProps [data-gsel]');
-  await page.click('#v3PalProps .v3-grp-n');
-  if ((await page.evaluate(() => l3bs.sel.length)) !== 2) fail('Gruppen ska markeras från fliken');
+  // Fliken Grupper: markera gruppen, dölj (Ctrl+Z visar igen), färga efter grupp.
+  await page.evaluate(() => { l3bsClear(); l3p.group = null; l3PalTab('groups'); });
+  await page.waitForSelector('#v3PalGroups [data-gsel]');
+  await page.click('#v3PalGroups .v3-gr-n');
+  if ((await page.evaluate(() => l3bs.sel.length)) !== 2) fail('Gruppen ska markeras från fliken Grupper');
+  await page.click('#v3PalGroups [data-gmore]');
+  await page.click('#v3PalGroups [data-ghide]');
+  const hid = () => page.evaluate(() => l3b.models[0].meshes.reduce((a, m) => a + m.userData.l3b.hidden.size, 0));
+  if ((await hid()) !== 2) fail('Dölj gruppen');
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+  if ((await hid()) !== 0) fail('Ctrl+Z ska visa gruppen igen');
+  await page.keyboard.press('Control+y'); await page.waitForTimeout(100);
+  if ((await hid()) !== 2) fail('Ctrl+Y ska dölja den igen');
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
   await page.click('#v3GBy');
-  await page.waitForSelector('#v3PalProps .v3-pp-v');
-  const gv = await page.$$eval('#v3PalProps .v3-pp-v', b => b.map(x => x.querySelector('span').textContent + '=' + x.querySelector('em').textContent));
-  if (gv.join('|') !== 'Bandgång 1=2|(saknas)=1') fail('Färga efter grupp: ' + gv);
-  await page.evaluate(() => { l3pColorOff(); l3p.group = null; });
+  await page.waitForFunction(() => l3p.colorBy && l3p.colorBy.key === 'g:4d', null, { timeout: 10000 });
+  const gcol = await page.evaluate(() => { const out = {}; l3b.models[0].meshes.forEach(mesh => { const c = mesh.geometry.getAttribute('color'); mesh.userData.l3b.ranges.forEach(r => { out[r.name] = '#' + new THREE.Color(c.getX(r.start), c.getY(r.start), c.getZ(r.start)).getHexString(); }); }); return { out, g: l3g.list[0].color }; });
+  if (gcol.out['Balk B1'] !== gcol.g || gcol.out['Balk B2'] !== gcol.g || gcol.out['Pelare Kå'] === gcol.g) fail('Färga efter grupp ska använda gruppens färg: ' + JSON.stringify(gcol));
+  await page.click('#v3GBy');
+  if (await page.evaluate(() => !!l3p.colorBy)) fail('Sluta färga');
+  await page.evaluate(() => { l3p.group = null; });
 
   // Skriv in grupperna i IFC:n: ny fil i samma mapp, egenskapen 4D-planering › Grupp, aldrig dubblerad.
   const gs = await page.evaluate(async () => {
@@ -214,10 +246,23 @@ const IFC = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');", "FILE_
   if (!/^Stål grupper \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(gs.name) || gs.folderId !== 'f1' || gs.b2.join() !== 'Grupp,Bandgång 1' || gs.pel || gs.sets1 !== 1 || gs.rels2 !== gs.rels1 || !gs.esc)
     fail('Grupperna i IFC:n: ' + JSON.stringify(gs));
 
+  // Ctrl+Z/Ctrl+Y på en flytt i byggnaden.
+  const mz = await page.evaluate(() => {
+    const m = l3b.models[0]; let e = null; m.meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => { if (r.guid === '1hZq3$Bq9Fxu8nZK0bW1aC') e = { mesh, ri }; }));
+    l3bsSet([e]); const p = e.mesh.geometry.getAttribute('position'), r = e.mesh.userData.l3b.ranges[e.ri], x0 = p.getX(r.start);
+    l3bmStart(); const side = document.getElementById('v3Side'); side.querySelector('[data-bm="dx"]').value = '5'; l3bmApplyFields(side); l3bmAccept();
+    const x1 = p.getX(r.start), pend1 = l3bmPending(m.id);
+    l3Undo(); const x2 = p.getX(r.start), pend2 = l3bmPending(m.id);
+    l3Redo(); const x3 = p.getX(r.start);
+    l3Undo();
+    return { d1: x1 - x0, d2: x2 - x0, d3: x3 - x0, pend1, pend2 };
+  });
+  if (Math.abs(mz.d1 - 5) > 1e-3 || Math.abs(mz.d2) > 1e-3 || Math.abs(mz.d3 - 5) > 1e-3 || mz.pend1 !== 1 || mz.pend2 !== 0) fail('Ångra/gör om flytt: ' + JSON.stringify(mz));
+
   if (process.env.SHOT) {
     await page.evaluate(() => { const m = l3b.models[0]; let e = null; m.meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => { if (r.guid === '1hZq3$Bq9Fxu8nZK0bW1aA') e = { mesh, ri }; })); l3bsSet([e]); l3SetPref('propsClosed', []); l3Frame(true); });
     await page.waitForSelector('#v3BsProps details.v3-ps', { timeout: 15000 });
-    await page.evaluate(() => l3pGroupBy('p:UDA\u0001Fas').then(() => l3pColorOn()));
+    await page.evaluate(() => { l3gUi.open = l3g.list[0].id; l3PalTab('groups'); });
     await page.waitForTimeout(600); await page.screenshot({ path: process.env.SHOT });
   }
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));

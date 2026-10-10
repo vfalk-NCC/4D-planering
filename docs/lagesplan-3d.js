@@ -254,7 +254,7 @@ function l3Dom() {
     </div>
     <div class="v3-main">
       <div class="v3-pal ${P.pal ? "" : "hidden"}" id="v3Pal">
-        <div class="v3-pal-head"><div class="v3-segs v3-paltabs"><button type="button" data-paltab="add" class="${(P.palTab || "add") === "add" ? "on" : ""}">Lägg till</button><button type="button" data-paltab="list" class="${P.palTab === "list" ? "on" : ""}">Objekt</button><button type="button" data-paltab="layers" class="${P.palTab === "layers" ? "on" : ""}">Lager</button><button type="button" data-paltab="props" class="${P.palTab === "props" ? "on" : ""}" title="Gruppera och färga IFC-objekten efter egenskaper (UDA)">Egenskaper</button></div><button type="button" id="v3PalClose" title="Dölj panelen">‹</button></div>
+        <div class="v3-pal-head"><div class="v3-segs v3-paltabs"><button type="button" data-paltab="add" class="${(P.palTab || "add") === "add" ? "on" : ""}">Lägg till</button><button type="button" data-paltab="list" class="${P.palTab === "list" ? "on" : ""}">Objekt</button><button type="button" data-paltab="layers" class="${P.palTab === "layers" ? "on" : ""}">Lager</button><button type="button" data-paltab="props" class="${P.palTab === "props" ? "on" : ""}" title="Gruppera och färga IFC-objekten efter egenskaper (UDA)">Egenskaper</button><button type="button" data-paltab="groups" class="${P.palTab === "groups" ? "on" : ""}" title="Dina egna grupper av IFC-objekt (t.ex. Bandgång 1)">Grupper</button></div><button type="button" id="v3PalClose" title="Dölj panelen">‹</button></div>
         <div id="v3PalAdd" class="v3-paltab ${(P.palTab || "add") === "add" ? "" : "hidden"}">
           <input type="search" id="v3PalSearch" placeholder="Sök…" />
           <div id="v3Lib"></div>
@@ -263,6 +263,7 @@ function l3Dom() {
         </div>
         <div id="v3PalLayers" class="v3-paltab v3-layers ${P.palTab === "layers" ? "" : "hidden"}"></div>
         <div id="v3PalProps" class="v3-paltab v3-pprops ${P.palTab === "props" ? "" : "hidden"}"></div>
+        <div id="v3PalGroups" class="v3-paltab v3-pgroups ${P.palTab === "groups" ? "" : "hidden"}"></div>
         <div id="v3PalList" class="v3-paltab ${P.palTab === "list" ? "" : "hidden"}">
           <input type="search" id="v3ObjSearch" placeholder="Sök i etableringen…" />
           <div id="v3ObjList"></div>
@@ -354,6 +355,7 @@ function l3SetMulti(on) {
   l3.multi = !!on;
   const b = document.getElementById("v3Multi");
   if (b) { b.classList.toggle("on", l3.multi); b.setAttribute("aria-pressed", l3.multi); }
+  if (typeof l3ApplyMouse === "function") l3ApplyMouse(); // standardläget: vänster-dra = markeringsfönster i stället för att vrida
   l3Status(l3.multi ? "Markera flera: varje tryck lägger till eller tar bort ett objekt (knappen Flera stänger av)." : "Markera flera är av.");
 }
 function l3Status(t, bad) {
@@ -1268,13 +1270,64 @@ function l3PlaceHeight(p) {
 // ---------------------------------------------------------------------
 // Ångra / gör om, tangenter, sparning
 // ---------------------------------------------------------------------
+/* Ångra/gör om för vyn och byggnaden (Victor 2026-10-10: "om jag döljer ett objekt ska jag kunna backa
+   för att visa det igen"): dölj, visa bara, visa alla och flytt av IFC-objekt. Etableringens egen
+   historik (place3d.js) ligger kvar; pl/pr = hur lång den var när steget gjordes, så att Ctrl+Z alltid
+   tar det senaste steget av de två. */
+const l3VHist = { u: [], r: [], rec: 0 };
+const l3PlU = () => (typeof placeUndoStack !== "undefined" ? placeUndoStack.length : 0);
+const l3PlR = () => (typeof placeRedoStack !== "undefined" ? placeRedoStack.length : 0);
+function l3VPush(undo, redo, label) {
+  l3VHist.u.push({ undo, redo, label, pl: l3PlU() });
+  if (l3VHist.u.length > 40) l3VHist.u.shift();
+  l3VHist.r = [];
+  l3UndoBtns();
+}
+/* Det som syns: etableringens dolda, planerade objekt, byggnadens dolda objekt (kompakt). */
+function l3VisSnap() {
+  return {
+    hidden: [...l3.hidden], hiddenObjs: [...l3.hiddenObjs], isolated: !!l3.isolated, bldg: l3.groups.bldg.visible, obj: l3.objMesh ? l3.objMesh.visible : true,
+    meshes: typeof l3b !== "undefined" ? l3b.models.flatMap(m => m.meshes.map(x => [x, Uint32Array.from(x.userData.l3b.hidden)])) : [],
+  };
+}
+function l3VisApply(s) {
+  l3.hidden = new Set(s.hidden); l3.hiddenObjs = new Set(s.hiddenObjs); l3.isolated = s.isolated;
+  l3.placeMeshes.forEach((g, id) => { g.visible = !l3.hidden.has(id); });
+  l3.groups.bldg.visible = s.bldg;
+  s.meshes.forEach(([x, h]) => { const u = x.userData.l3b; if (!u || !x.parent) return; u.hidden = new Set(h); l3bApplyHidden(x); });
+  l3BuildObjects();
+  if (l3.objMesh) l3.objMesh.visible = s.obj;
+  l3UpdateHidden(); l3RenderLegend();
+}
+/* Kör fn och lägger det som syntes före/efter i historiken (ett steg även om fn anropar andra steg). */
+function l3VisRecord(label, fn) {
+  if (l3VHist.rec) return fn();
+  const before = l3VisSnap();
+  l3VHist.rec++;
+  try { return fn(); }
+  finally {
+    l3VHist.rec--;
+    const after = l3VisSnap();
+    l3VPush(() => l3VisApply(before), () => l3VisApply(after), label);
+  }
+}
 function l3Undo() {
+  const v = l3VHist.u[l3VHist.u.length - 1];
+  if (v && v.pl >= l3PlU()) {
+    l3VHist.u.pop(); v.undo(); v.pr = l3PlR(); l3VHist.r.push(v);
+    l3UndoBtns(); l3Status(`Ångrat: ${v.label}.`); return;
+  }
   if (typeof placeUndo !== "function" || !placeUndoStack.length) { l3Status("Inget att ångra."); return; }
   placeUndo();
   l3BuildPlacements(); l3RenderSide(); l3Changed();
   l3Status("Ångrat.");
 }
 function l3Redo() {
+  const v = l3VHist.r[l3VHist.r.length - 1];
+  if (v && v.pr >= l3PlR()) {
+    l3VHist.r.pop(); v.redo(); v.pl = l3PlU(); l3VHist.u.push(v);
+    l3UndoBtns(); l3Status(`Gjort om: ${v.label}.`); return;
+  }
   if (typeof placeRedo !== "function" || !placeRedoStack.length) { l3Status("Inget att göra om."); return; }
   placeRedo();
   l3BuildPlacements(); l3RenderSide(); l3Changed();
@@ -1340,8 +1393,8 @@ function l3Changed() {
 }
 function l3UndoBtns() {
   const u = document.getElementById("v3Undo"), r = document.getElementById("v3Redo");
-  if (u) u.disabled = !(typeof placeUndoStack !== "undefined" && placeUndoStack.length);
-  if (r) r.disabled = !(typeof placeRedoStack !== "undefined" && placeRedoStack.length);
+  if (u) u.disabled = !(l3PlU() || l3VHist.u.length);
+  if (r) r.disabled = !(l3PlR() || l3VHist.r.length);
 }
 async function l3NotifyOpener() { try { await askOpener("placementsChanged", {}, 15000); } catch (e) { /* 4D-planering är inte öppen – filen är ändå sparad */ } }
 async function l3SaveIfc() {

@@ -235,9 +235,7 @@ function l3pRenderTab() {
       + vis.map(x => `<button type="button" class="v3-pp-k" data-pkey="${esc(x[0])}"><span>${esc(x[2] || L3P_ATTR[x[0]])}</span><em>${x[3].toLocaleString("sv-SE")}</em></button>`).join("") + `</details>`;
   });
   if (!list.length && !missing.length) h += `<div class="v3-pal-hint">Inga egenskaper hittades.</div>`;
-  const gh = typeof l3gTabHtml === "function" ? l3gTabHtml() : "";
-  body.innerHTML = gh + h;
-  if (gh) l3gBindTab(body);
+  body.innerHTML = h;
   qi.oninput = () => l3pRenderTab();
   body.querySelectorAll("details.v3-ps").forEach(dt => { dt.ontoggle = () => { if (t) return; const c = l3pClosed(); if (dt.open) c.delete(dt.dataset.sec); else c.add(dt.dataset.sec); l3SetPref("propsClosed", [...c].slice(-300)); }; });
   body.querySelectorAll("[data-pkey]").forEach(b => { b.onclick = () => l3pGroupBy(b.dataset.pkey); });
@@ -245,8 +243,8 @@ function l3pRenderTab() {
   if (ld) ld.onclick = async () => { ld.disabled = true; try { await l3pLoadKeys(true); } catch (e) { l3Status(e.message, true); } l3pRenderTab(); };
 }
 /* Grupperar alla synliga modellers objekt efter en egenskap. */
-async function l3pGroupBy(key) {
-  if (typeof l3PalTab === "function") l3PalTab("props");
+async function l3pGroupBy(key, opts = {}) {
+  if (!opts.stay && typeof l3PalTab === "function") l3PalTab("props");
   const body = document.querySelector("#v3PalProps .v3-pp-body");
   if (body) body.innerHTML = `<div class="v3-pal-hint"><span class="pm-spin"></span> Grupperar efter ${escHtml(l3pKeyLabel(key))}…</div>`;
   const { out } = key === "g:4d" ? { out: [] } : await l3pOpenAll(false);

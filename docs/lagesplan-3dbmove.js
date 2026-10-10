@@ -70,6 +70,18 @@ function l3bmAccept() {
   if (!moved) { l3Status("Inget flyttades."); l3RenderSide(); return; }
   const O = new THREE.Matrix4().makeTranslation(l3.O[0], l3.O[1], l3.O[2]), Oi = O.clone().invert();
   const Dg = O.clone().multiply(D).multiply(Oi); // i SWEREF-meter
+  const list = ents.map(e => ({ mesh: e.mesh, ri: e.ri }));
+  l3bmApplyDelta(list, D, Dg);
+  // Ctrl+Z flyttar tillbaka, Ctrl+Y igen (Victor 2026-10-10).
+  if (typeof l3VPush === "function") l3VPush(() => { l3bmApplyDelta(list, D.clone().invert(), Dg.clone().invert()); l3bsSet(list); }, () => { l3bmApplyDelta(list, D, Dg); l3bsSet(list); }, "flytt");
+  l3bsSet(ents);
+  const n = [...l3bm.edits.values()].reduce((a, x) => a + (x.dirty ? x.moves.size : 0), 0);
+  l3Toast(`${ents.length} objekt flyttade. ${n} ändrade objekt väntar på att sparas som ny IFC i Trimble Connect.`);
+  if (typeof l3LayersRender === "function") l3LayersRender();
+  l3Render();
+}
+/* Flyttar bitarna (D i scenen, Dg i SWEREF-meter) och för in flytten i det som sparas. */
+function l3bmApplyDelta(ents, D, Dg) {
   const touched = new Set();
   ents.forEach(e => {
     const u = e.mesh.userData.l3b, r = u.ranges[e.ri], pos = e.mesh.geometry.getAttribute("position");
@@ -80,13 +92,12 @@ function l3bmAccept() {
     const model = u.model, key = model.id;
     if (!l3bm.edits.has(key)) l3bm.edits.set(key, { model, moves: new Map() });
     const ed = l3bm.edits.get(key), prev = ed.moves.get(r.guid) || new THREE.Matrix4();
-    ed.moves.set(r.guid, Dg.clone().multiply(prev));
-    ed.dirty = true;
+    const nx = Dg.clone().multiply(prev);
+    // Tillbaka där det var (t.ex. efter Ctrl+Z): ingen flytt att skriva in.
+    if (nx.elements.every((x, i) => Math.abs(x - (i % 5 === 0 ? 1 : 0)) < 1e-9)) ed.moves.delete(r.guid); else ed.moves.set(r.guid, nx);
+    ed.dirty = ed.moves.size > 0;
   });
-  touched.forEach(m => { m.geometry.getAttribute("position").needsUpdate = true; m.geometry.computeVertexNormals(); m.geometry.computeBoundingSphere(); m.geometry.computeBoundingBox(); m.userData.l3b.centers = null; if (typeof l3BvhSchedule === "function") l3BvhSchedule(m); });
-  l3bsSet(ents);
-  const n = [...l3bm.edits.values()].reduce((a, x) => a + (x.dirty ? x.moves.size : 0), 0);
-  l3Toast(`${ents.length} objekt flyttade. ${n} ändrade objekt väntar på att sparas som ny IFC i Trimble Connect.`);
+  touched.forEach(m => { m.geometry.getAttribute("position").needsUpdate = true; m.geometry.computeVertexNormals(); m.geometry.computeBoundingSphere(); m.geometry.computeBoundingBox(); m.userData.l3b.centers = null; m.userData.l3b.boxes = null; if (typeof l3BvhSchedule === "function") l3BvhSchedule(m); });
   if (typeof l3LayersRender === "function") l3LayersRender();
   l3Render();
 }

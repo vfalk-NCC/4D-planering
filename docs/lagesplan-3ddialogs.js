@@ -314,14 +314,16 @@ function l3RenderMultiSide(side, list) {
 // ---------------------------------------------------------------------
 // Dölj / visa bara markerade / visa alla
 // ---------------------------------------------------------------------
-function l3HideSel() {
+function l3HideSel() { return l3VisRecord("dölj", l3HideSel0); }
+function l3HideSel0() {
   if (!l3.sel.size && typeof l3bs !== "undefined" && l3bs.sel.length) { l3bsHide(); return; }
   if (!l3.sel.size) { l3Status("Markera det som ska döljas (H), eller högerklicka på en låda/ett objekt i byggnaden."); return; }
   l3.sel.forEach(id => { l3.hidden.add(id); const g = l3.placeMeshes.get(id); if (g) g.visible = false; });
   const n = l3.sel.size; l3SelectIds([]); l3UpdateHidden();
   l3Toast(`${n} objekt dolda.`, "Visa alla", l3ShowAll);
 }
-function l3Isolate() {
+function l3Isolate() { return l3VisRecord("visa bara markerade", l3Isolate0); }
+function l3Isolate0() {
   if (!l3.sel.size && typeof l3bs !== "undefined" && l3bs.sel.length) { l3bsIsolate(); return; }
   if (!l3.sel.size) { l3Status("Markera det som ska visas (I = visa bara markerade)."); return; }
   l3.placeMeshes.forEach((g, id) => { if (!l3.sel.has(id)) { l3.hidden.add(id); g.visible = false; } });
@@ -331,7 +333,8 @@ function l3Isolate() {
   l3UpdateHidden();
   l3Toast("Visar bara de markerade.", "Visa alla", l3ShowAll);
 }
-function l3ShowAll() {
+function l3ShowAll() { return l3VisRecord("visa alla", l3ShowAll0); }
+function l3ShowAll0() {
   l3.hidden.clear(); l3.hiddenObjs.clear(); l3.isolated = false;
   l3.placeMeshes.forEach(g => { g.visible = true; });
   l3.groups.bldg.visible = true;
@@ -340,7 +343,8 @@ function l3ShowAll() {
   l3Status("Allt visas.");
 }
 /* Döljer ett planerat objekt (låda) eller ett objekt i byggnaden (från menyn). */
-function l3HideHit(h) {
+function l3HideHit(h) { return l3VisRecord("dölj", () => l3HideHit0(h)); }
+function l3HideHit0(h) {
   if (h.object === l3.objMesh) { const ids = h.object.userData.ids, id = ids && ids[h.face ? h.face.a : h.index]; if (id) { l3.hiddenObjs.add(id); l3BuildObjects(); } }
   else if (typeof l3bHideHit === "function") l3bHideHit(h);
   l3UpdateHidden(); l3HideInfo();
@@ -538,8 +542,10 @@ function l3PalTab(t) {
   document.getElementById("v3PalList").classList.toggle("hidden", t !== "list");
   const lay = document.getElementById("v3PalLayers"); if (lay) lay.classList.toggle("hidden", t !== "layers");
   const pp = document.getElementById("v3PalProps"); if (pp) pp.classList.toggle("hidden", t !== "props");
+  const pg = document.getElementById("v3PalGroups"); if (pg) pg.classList.toggle("hidden", t !== "groups");
   l3SetPref("palTab", t);
   if (t === "list") l3RenderObjList();
   if (t === "layers" && typeof l3LayersRender === "function") l3LayersRender();
   if (t === "props" && typeof l3pRenderTab === "function") l3pRenderTab();
+  if (t === "groups" && typeof l3gRenderTab === "function") l3gRenderTab();
 }
