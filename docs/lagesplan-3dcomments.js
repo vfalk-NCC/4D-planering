@@ -350,6 +350,8 @@ function l3kRenderTab() {
       <label class="v3-chk"><input type="checkbox" id="v3KDone" ${l3k.showDone ? "checked" : ""} /> Klara (${done})</label>
     </div>
     ${typeof l3aHtml === "function" ? l3aHtml() : ""}
+    <button type="button" class="v3-msec-h v3-ksec-h" id="v3KListHead" aria-expanded="${!l3Prefs().kListShut}" title="Fäll ihop eller ut kommentarerna"><i>›</i>Kommentarer <span>${l3k.list.length}${nSel ? ` · ${nSel} markerade` : ""}</span></button>
+    <div class="v3-ksec-b" ${l3Prefs().kListShut ? "hidden" : ""}>
     <div class="v3-kc-list">${list.length ? list.map(({ c, nr }) => `<div class="v3-kc ${typeof l3aOn !== "function" || l3aOn(c) ? "" : "off"} ${c.done ? "done" : ""} ${l3k.open && l3k.open.id === c.id ? "on" : ""} ${l3kUi.sel.has(c.id) ? "sel" : ""}">
         <label class="v3-kc-col" title="Byt färg"><input type="color" data-kccol="${esc(c.id)}" value="${esc(c.color || L3K_COLORS[0])}" /><i style="background:${l3kCol(c)}">${nr}</i></label>
         <button type="button" class="v3-kc-b" data-kcgo="${esc(c.id)}" title="Klick: zooma till kommentaren · Ctrl+klick: välj flera · Skift+klick: välj flera i rad"><b>${esc(String(c.text).slice(0, 160))}</b><em>${c.folder && typeof l3aFolderName === "function" && l3aFolderName(c.folder) ? `<span class="v3-fchip">${esc(l3aFolderName(c.folder))}</span>` : ""}${esc([c.target && c.target.name, c.by, new Date(c.at).toLocaleDateString("sv-SE", { day: "numeric", month: "short" }), (c.replies || []).length ? `${c.replies.length} svar` : ""].filter(Boolean).join(" · "))}</em></button>
@@ -358,9 +360,11 @@ function l3kRenderTab() {
       </div>`).join("") : `<div class="v3-pal-hint">${l3k.list.length ? "Ingen kommentar matchar." : "Inga kommentarer än. Högerklicka på ett objekt i 3D → Kommentar här…"}</div>`}</div>
     ${l3k.list.length ? `<div class="v3-grp-acts"><button type="button" id="v3KIfcSel" ${nSel ? "" : "disabled"} title="De markerade kommentarerna (Ctrl+klick / Skift+klick i listan) som 3D-skyltar i en ny IFC-fil i Trimble Connect">${I.upload} Exportera markerade${nSel ? ` (${nSel})` : ""}</button>${nSel ? `<button type="button" id="v3KSelClr" title="Avmarkera alla">Avmarkera</button>` : ""}<button type="button" id="v3KIfc" title="Alla kommentarer som syns i listan som riktiga 3D-skyltar (skylt, stolpe, 3D-text och egenskaper) i en ny IFC-fil i Trimble Connect – vända mot vyn du har nu">${I.upload} Exportera alla som 3D-skyltar</button></div>` : ""}
     <div class="v3-pal-hint">${open} öppna${done ? ` · ${done} klara` : ""}. Högerklick i 3D → Kommentar här… skapar en ny.</div>
+    </div>
     ${typeof l3mTabHtml === "function" ? l3mTabHtml() : ""}`;
   if (typeof l3mBindTab === "function") l3mBindTab(host);
   if (typeof l3aBind === "function") l3aBind(host);
+  const kh = host.querySelector("#v3KListHead"); if (kh) kh.onclick = () => { l3SetPref("kListShut", !l3Prefs().kListShut); l3kRenderTab(); };
   const q = host.querySelector("#v3KQ");
   q.oninput = () => { l3kUi.q = q.value; const pos = q.selectionStart; l3kRenderTab(); const n = document.getElementById("v3KQ"); if (n) { n.focus(); n.setSelectionRange(pos, pos); } };
   host.querySelector("#v3KShow").onchange = e => { l3k.hidden = !e.target.checked; if (l3k.hidden) l3kClose(); l3kDraw(); };

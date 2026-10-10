@@ -281,6 +281,14 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     const ff2 = JSON.parse(gh.get('projects/p1/plan_annotfolders.json') || '[]');
     if (del.folders !== 0 || del.kf !== null || ff2.length !== 0) fail('Ta bort mappen: ' + JSON.stringify({ del, ff2 }));
   }
+  // Kommentarerna och mapparna går att fälla ihop.
+  await page.click('#v3KListHead'); await page.waitForTimeout(100);
+  if (await page.isVisible('#v3PalComments .v3-kc [data-kcgo]')) fail('Fäll ihop kommentarerna');
+  await page.click('#v3KListHead'); await page.waitForTimeout(100);
+  if (!(await page.isVisible('#v3PalComments .v3-kc [data-kcgo]'))) fail('Fäll ut kommentarerna');
+  await page.click('#v3AfHead'); await page.waitForTimeout(100);
+  if (await page.isVisible('#v3PalComments .v3-af')) fail('Fäll ihop mapparna');
+  await page.click('#v3AfHead'); await page.waitForTimeout(100);
   // Allt som sparas i TC ger en rad i historiken med länk till mappen.
   const tcl = await page.evaluate(() => { tcSavedNote({ folder: 'Lägesplan', uploaded: 1, link: 'https://web.connect.trimble.com/projects/P/data/folder/F' }, [{ name: 'X.ifc' }]); const last = l3Log[l3Log.length - 1], a = document.getElementById('v3StatusLink'); return { link: last.link, text: last.text, shown: !a.classList.contains('hidden'), href: a.href }; });
   if (!/folder\/F$/.test(tcl.link) || !/Lägesplan: X\.ifc/.test(tcl.text) || !tcl.shown || !/folder\/F$/.test(tcl.href)) fail('Länk till TC i historiken: ' + JSON.stringify(tcl));

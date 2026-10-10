@@ -99,7 +99,8 @@ function l3aHtml() {
     </div>`;
   };
   const sel = l3aSelected();
-  return `<section class="v3-afold"><div class="v3-afold-h"><b>Mappar</b><button type="button" id="v3AfNew" title="Ny mapp – t.ex. för ett område">＋ Ny mapp</button><button type="button" id="v3AfAll" title="Tänd alla mappar">Tänd alla</button></div>
+  const shut = !!l3Prefs().afShut;
+  return `<section class="v3-afold ${shut ? "shut" : ""}"><div class="v3-afold-h"><button type="button" class="v3-msec-h" id="v3AfHead" aria-expanded="${!shut}" title="Fäll ihop eller ut mapparna"><i>›</i>Mappar <span>${l3a.folders.length}</span></button><button type="button" id="v3AfNew" title="Ny mapp – t.ex. för ett område">＋ Ny mapp</button><button type="button" id="v3AfAll" title="Tänd alla mappar">Tänd alla</button></div>
     <div class="v3-kc-list">${l3a.folders.map(f => row(f.id, f.name, true)).join("")}${row(null, "Utan mapp", false)}</div>
     ${sel.length && l3a.folders.length ? `<label class="v3-af-mv">Flytta markerade (${sel.length}) till <select id="v3AfMove"><option value="">välj mapp…</option>${l3a.folders.map(f => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("")}<option value="_">Utan mapp</option></select></label>` : ""}</section>`;
 }
@@ -112,6 +113,7 @@ function l3aBind(host) {
   host.querySelectorAll("[data-afdel]").forEach(b => { b.onclick = () => l3aDelete(id(b.dataset.afdel)); });
   const nw = host.querySelector("#v3AfNew"); if (nw) nw.onclick = () => l3aNew();
   const al = host.querySelector("#v3AfAll"); if (al) al.onclick = () => l3aAll(true);
+  const ah = host.querySelector("#v3AfHead"); if (ah) ah.onclick = () => { l3SetPref("afShut", !l3Prefs().afShut); l3kRenderTab(); };
   const mv = host.querySelector("#v3AfMove"); if (mv) mv.onchange = () => { if (!mv.value) return; l3aMove(l3aSelected(), id(mv.value)); };
   l3aDragBind(host);
 }
