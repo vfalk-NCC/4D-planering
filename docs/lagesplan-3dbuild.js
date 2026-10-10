@@ -162,18 +162,26 @@ function l3bRemove(id) {
   l3b.models.splice(i, 1);
   if (typeof l3pDrop === "function") l3pDrop(id);
 }
-/* Modellerna som var tända sparas per projekt och visas direkt (ur cachen) nästa gång 3D-vyn öppnas. */
+/* De hämtade modellerna sparas per projekt (Victor 2026-10-10: hämtade från Trimble Connect ska ligga kvar
+   under Hämtade 3D-modeller tills de tas bort med soptunnan). De tända visas direkt (ur cachen) nästa gång
+   3D-vyn öppnas; de släckta står i listan och läses in när de tänds. */
 const l3bRememberKey = () => `lagesplan-bldg-${projectId}`;
-function l3bRemembered() { try { return JSON.parse(localStorage.getItem(l3bRememberKey()) || "[]") || []; } catch (e) { return []; } }
+function l3bRememberedAll() { try { return JSON.parse(localStorage.getItem(l3bRememberKey()) || "[]") || []; } catch (e) { return []; } }
+function l3bRemembered() { return l3bRememberedAll().filter(x => x.on !== false); }
 function l3bRemember(w, on) {
   if (!w || !w.id) return;
-  const list = l3bRemembered().filter(x => x.id !== w.id);
-  if (on) list.push({ id: w.id, fileId: w.fileId || null, name: w.name || "", version: w.version || "", parentId: w.parentId || null });
-  try { localStorage.setItem(l3bRememberKey(), JSON.stringify(list.slice(-8))); } catch (e) { /* privat läge */ }
+  const list = l3bRememberedAll().filter(x => x.id !== w.id);
+  list.push({ id: w.id, fileId: w.fileId || null, name: w.name || "", version: w.version || "", parentId: w.parentId || null, on: !!on });
+  try { localStorage.setItem(l3bRememberKey(), JSON.stringify(list.slice(-30))); } catch (e) { /* privat läge */ }
+}
+/* Soptunnan: bort ur listan och ur vyn. Bara här i webbläsaren – inget i Trimble Connect ändras. */
+function l3bForget(id) {
+  try { localStorage.setItem(l3bRememberKey(), JSON.stringify(l3bRememberedAll().filter(x => x.id !== id))); } catch (e) { /* privat läge */ }
+  l3bRemove(id);
 }
 /* Vid öppning: direkt ur cachen, sedan i bakgrunden – finns en nyare version i TC läses den och ersätter den visade. */
 async function l3bRestore() {
-  const list = l3bRemembered();
+  const list = l3bRemembered().map(({ on, ...w }) => w);
   if (!list.length || !l3) return;
   const r = await l3bLoad(list, { cacheOnly: true });
   let fresh = [];

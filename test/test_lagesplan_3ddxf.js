@@ -337,6 +337,7 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     await page.keyboard.press('Enter'); await page.waitForSelector('#v3VolDlg');
     await page.fill('#v3VolH', '2'); await page.click('#v3VolOk'); await page.waitForTimeout(150);
     const vo = await page.evaluate(() => { const m = l3m.list[l3m.list.length - 1]; return { kind: m.kind, h: m.h, text: m.text, rows: l3mInfo(m).rows.map(r => r[0]) }; });
+    if (process.env.SHOTV) { await page.evaluate(() => { l3SetTool('select'); const m = l3m.list[l3m.list.length - 1], c = new THREE.Vector3(6512343 - l3.O[0], 150128.5 - l3.O[1], m.pts[0][2] - l3.O[2] + 1); l3StopFly(); l3.orbit.target.copy(c); l3.camera.position.copy(c).add(new THREE.Vector3(6, -9, 6)); l3.orbit.update(); l3mDraw(); l3Render(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOTV }); }
     if (vo.kind !== 'volume' || vo.h !== 2 || !/^2[34](,\d+)? m³$/.test(vo.text) || !vo.rows.includes('Basyta (i plan)')) fail('Volym-mått: ' + JSON.stringify(vo));
     await page.evaluate(() => { l3mRemove(l3m.list[l3m.list.length - 1].id); l3SetPref('measure', 'dist'); l3SetPref('snaps', { ...l3Snaps(), end: true, mid: true, edge: true, axis: true, perp: true }); l3SetTool('select'); });
   }

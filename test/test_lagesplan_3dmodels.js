@@ -243,6 +243,13 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
     return { n: l3b.models.filter(m => m.id === 'f:F2').length, ver: (l3b.models.find(m => m.id === 'f:F2') || {}).src.version, fetched: window.__calls.filter(c => c[0] === 'tcFile').length - n0 };
   });
   if (re2.n !== 1 || re2.ver !== 'v2' || re2.fetched !== 1) fail('En ny version i TC ska ersätta den visade: ' + JSON.stringify(re2));
+  // Hämtade 3D-modeller (Victor 2026-10-10): släckta hämtade står kvar i listan, soptunnan tar bort (inget i TC).
+  await page.evaluate(() => { const k = l3bRememberKey(), a = JSON.parse(localStorage.getItem(k)); a.push({ id: 'f:F9', fileId: 'F9', name: 'Gammal.ifc', version: 'v1', parentId: 'f1', on: false }); localStorage.setItem(k, JSON.stringify(a)); l3SetPref('laySort', 'list'); l3LayersRender(); });
+  const hm = await page.evaluate(() => ({ rem: !!document.querySelector('#v3PalLayers [data-l3l-rem="f:F9"]'), trashF2: !!document.querySelector('#v3PalLayers [data-l3l-forget="f:F2"]'), restoreSkips: !l3bRemembered().some(w => w.id === 'f:F9') }));
+  if (!hm.rem || !hm.trashF2 || !hm.restoreSkips) fail('Släckta hämtade modeller ska stå kvar med soptunna: ' + JSON.stringify(hm));
+  const tcF = await page.evaluate(() => window.__calls.length);
+  await page.click('#v3PalLayers [data-l3l-forget="f:F9"]'); await page.waitForTimeout(150);
+  if (await page.$('#v3PalLayers [data-l3l-rem="f:F9"]') || await page.evaluate(() => l3bRememberedAll().some(w => w.id === 'f:F9')) || (await page.evaluate(() => window.__calls.length)) !== tcF) fail('Soptunnan ska ta bort modellen ur Hämtade (utan anrop till TC)');
 
   // Flytta ett objekt i IFC:n och spara som ny fil i samma mapp i TC (Victor 2026-10-10).
   const mv = await page.evaluate(async () => {

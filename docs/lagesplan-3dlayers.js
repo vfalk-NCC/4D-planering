@@ -72,7 +72,13 @@ function l3LayersRender() {
   if ((P.laySort || "list") === "list") {
     const ms = l3b.models.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), "sv", { numeric: true }));
     const pend = m => (typeof l3bmPending === "function" ? l3bmPending(m.id) : 0);
-    mh += ms.length ? ms.map(m => row(`data-l3l-model="${esc(m.id)}"`, m.visible, esc(m.name), `<button type="button" class="v3-lr-zoom" data-l3l-zoom="${esc(m.id)}" title="Zooma till modellen">${L3_ICO.focus}</button>` + (pend(m) ? `<button type="button" class="v3-lr-save" data-l3l-save="${esc(m.id)}" title="Spara flyttarna som en ny IFC-fil i Trimble Connect">Spara ${pend(m)}</button>` : `<em class="v3-lr-k">${(m.tris / 1000).toFixed(0)}k</em>`))).join("")
+    // Även släckta, sparade modeller som inte är inlästa i den här sessionen står kvar (läses in när de tänds).
+    const rest = (typeof l3bRememberedAll === "function" ? l3bRememberedAll() : []).filter(w => !l3b.models.some(m => m.id === w.id));
+    const all = [...ms.map(m => ({ m, name: m.name })), ...rest.map(w => ({ w, name: w.name || "Modell" }))].sort((a, b) => String(a.name).localeCompare(String(b.name), "sv", { numeric: true }));
+    const del = id => `<button type="button" class="v3-lr-zoom v3-lr-del" data-l3l-forget="${esc(id)}" title="Ta bort från Hämtade 3D-modeller (inget i Trimble Connect ändras)">${L3_ICO.trash}</button>`;
+    mh += all.length ? all.map(({ m, w, name }) => m
+      ? row(`data-l3l-model="${esc(m.id)}"`, m.visible, esc(name), `<button type="button" class="v3-lr-zoom" data-l3l-zoom="${esc(m.id)}" title="Zooma till modellen">${L3_ICO.focus}</button>` + (pend(m) ? `<button type="button" class="v3-lr-save" data-l3l-save="${esc(m.id)}" title="Spara flyttarna som en ny IFC-fil i Trimble Connect">Spara ${pend(m)}</button>` : `<em class="v3-lr-k">${(m.tris / 1000).toFixed(0)}k</em>`) + del(m.id))
+      : row(`data-l3l-rem="${esc(w.id)}"`, false, esc(name), (l3lay.loading.has(w.id) ? '<span class="pm-spin"></span>' : "") + del(w.id))).join("")
       : `<div class="v3-pal-hint">Inga modeller är hämtade än. Välj under Trimble Connect mapp eller hämta de som är tända i Trimble Connect.</div>`;
   } else mh += l3lTreeHtml(l3lay.root, 0);
   mh += `<button type="button" class="v3-wide" id="v3LayTcOn" title="De IFC-modeller som är tända i Trimble Connect just nu">Hämta tända modeller från TC…</button><div id="v3LayBldgBox"></div>`;
@@ -110,6 +116,8 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3l-tsel]").forEach(b => { b.onclick = () => { const t = types.find(x => x.type === b.dataset.l3lTsel); if (t) { l3SelectIds(t.ids.filter(id => !l3.hidden.has(id))); l3LayersRender(); } }; });
   const csv = host.querySelector("#v3LayCsv"); if (csv) csv.onclick = () => l3ExportCsv();
   host.querySelectorAll("[data-l3l-type]").forEach(b => { b.onclick = () => { const t = types.find(x => x.type === b.dataset.l3lType); if (t) { l3lSetIdsVisible(t.ids, !l3lTypeOn(t)); l3LayersRender(); } }; });
+  host.querySelectorAll("[data-l3l-rem]").forEach(b => { b.onclick = () => l3lLoadRemembered(b.dataset.l3lRem); });
+  host.querySelectorAll("[data-l3l-forget]").forEach(b => { b.onclick = () => l3lForget(b.dataset.l3lForget); });
   host.querySelectorAll("[data-l3l-model]").forEach(b => { b.onclick = () => { const m = l3b.models.find(x => x.id === b.dataset.l3lModel); if (m) { l3bShow(m.id, !m.visible); l3RenderLegend(); l3Render(); l3LayersRender(); } }; });
   host.querySelectorAll("[data-l3l-zoom]").forEach(b => { b.onclick = () => l3lZoomModel(b.dataset.l3lZoom); });
   host.querySelectorAll("[data-l3l-save]").forEach(b => { b.onclick = async () => { b.disabled = true; try { await l3bmSave(b.dataset.l3lSave); } catch (e) { /* statusraden */ } l3LayersRender(); }; });
@@ -169,6 +177,25 @@ async function l3lOpenDir(id) {
     l3lay.folders.set(r.folderId, r.items || []);
   } catch (e) { l3lay.err = `Kunde inte läsa mapparna i Trimble Connect: ${e.message}`; if (id) l3lay.open.delete(id); }
   l3lay.loading.delete(key); l3LayersRender();
+}
+/* En sparad, släckt modell tänds: läses in (ur cachen om den finns). */
+async function l3lLoadRemembered(id) {
+  const w = l3bRememberedAll().find(x => x.id === id); if (!w) return;
+  if (l3lay.loading.has(id) || l3b.busy) { l3Status("Vänta tills den andra modellen är inläst."); return; }
+  l3lay.loading.add(id); l3LayersRender();
+  try { const { on, ...src } = w; await l3bLoad([{ ...src, on: true }]); }
+  finally { l3lay.loading.delete(id); l3RenderLegend(); l3Render(); l3LayersRender(); }
+}
+async function l3lForget(id) {
+  const m = l3b.models.find(x => x.id === id), w = l3bRememberedAll().find(x => x.id === id), name = (m || w || {}).name || "modellen";
+  const pend = m && typeof l3bmPending === "function" ? l3bmPending(m.id) : 0;
+  if (pend && !(await uiConfirm(`${name} har ${pend} flyttade objekt som inte är sparade. Ta bort den ändå? Flyttarna försvinner.`, { ok: "Ta bort" }))) return;
+  l3bForget(id);
+  if (typeof l3bm !== "undefined" && l3bm.edits) l3bm.edits.delete(id); // osparade flyttar i den
+
+  l3Status(`${name} är borttagen från Hämtade 3D-modeller. Inget i Trimble Connect ändrades – den kan hämtas igen under Trimble Connect mapp.`);
+  l3RenderLegend(); l3Render(); l3LayersRender();
+  if (typeof l3RenderSide === "function") l3RenderSide();
 }
 async function l3lFile(fileId, name) {
   const id = "f:" + fileId, m = l3b.models.find(x => x.id === id);
