@@ -120,6 +120,7 @@ async function l3bLoad(list, opts = {}) {
 function l3bRemove(id) {
   const i = l3b.models.findIndex(m => m.id === id);
   if (i < 0) return;
+  if (typeof l3bs !== "undefined" && l3bs.sel.some(e => e.mesh.userData.l3b.model === l3b.models[i])) l3bsSet(l3bs.sel.filter(e => e.mesh.userData.l3b.model !== l3b.models[i]));
   l3b.models[i].meshes.forEach(x => { if (x.parent) x.parent.remove(x); x.geometry.dispose(); x.material.dispose(); });
   l3b.models.splice(i, 1);
 }

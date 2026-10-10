@@ -717,6 +717,7 @@ function l3PlaceAt(e) {
 /* Markerar ids (etableringsobjekt). Handtagen visas när ett objekt är markerat i Välj. */
 function l3SelectIds(ids) {
   l3.sel = new Set(ids.filter(id => placements.some(p => p.id === id)));
+  if (l3.sel.size && typeof l3bsClear === "function") l3bsClear(); // en sorts markering i taget
   placeActiveId = l3.sel.size ? [...l3.sel][l3.sel.size - 1] : null;
   l3RefreshSel();
   l3RenderSide();
@@ -808,9 +809,12 @@ function l3Tap(e) {
     else l3SelectIds([id]);
     return;
   }
-  if (!(e.shiftKey || e.ctrlKey || e.metaKey)) l3SelectIds([]);
-  // Planerat objekt eller byggnaden: visa uppgifterna.
+  const add = e.shiftKey || e.ctrlKey || e.metaKey;
+  if (!add) l3SelectIds([]);
+  // Objekt i byggnaden: markeras (lila); planerat objekt (låda): visa uppgifterna.
   const h = l3Ray(e, [l3.objMesh, ...l3.groups.bldg.children].filter(Boolean))[0];
+  if (h && h.object.userData.l3b && typeof l3bsTap === "function") { l3HideInfo(); l3bsTap(h, add); return; }
+  if (!add && typeof l3bsClear === "function") l3bsClear();
   if (h) l3ShowHitInfo(h); else l3HideInfo();
 }
 
@@ -1015,6 +1019,12 @@ function l3RenderSide(liveOnly) {
   const side = document.getElementById("v3Side");
   if (!side || !l3) return;
   const list = l3SelList();
+  // Objekt i byggnaden (IFC) markerade: deras panel.
+  if (!list.length && typeof l3bs !== "undefined" && l3bs.sel.length) {
+    side.classList.remove("hidden");
+    if (!(liveOnly && side.dataset.id === "bsel:" + l3bs.sel.map(e => e.key).join(","))) l3bsRenderSide(side);
+    return;
+  }
   side.classList.toggle("hidden", !list.length);
   if (!list.length) { side.dataset.id = ""; return; }
   if (list.length > 1) {
@@ -1236,7 +1246,7 @@ function l3Key(e) {
   if (l3.vPick && e.key === "Escape") { l3.vPick = false; l3.renderer.domElement.style.cursor = ""; l3Status(""); return; }
   if (typeof l3ToolKey === "function" && l3ToolKey(e)) return;
   if (e.key === "Enter" && l3.fenceId) { l3EndAdd(); l3Status("Staketet är klart."); return; }
-  if (e.key === "Escape") { l3HideMenus(); l3HideInfo(); if (l3.addType) { l3EndAdd(); l3Status(""); } else l3SelectIds([]); return; }
+  if (e.key === "Escape") { l3HideMenus(); l3HideInfo(); if (l3.addType) { l3EndAdd(); l3Status(""); } else { l3SelectIds([]); if (typeof l3bsClear === "function") l3bsClear(); } return; }
   if (e.key === "Home") { e.preventDefault(); l3Frame(true); return; }
   if (e.key === "?") { document.getElementById("v3HelpBtn").click(); return; }
   if (k === "f") { l3View(l3.sel.size ? "sel" : "iso"); return; }

@@ -180,18 +180,31 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (s.n !== 2 || s.c1 !== s.ph || s.c2 === s.ph || s.boxes) fail('Byggnaden: kopplad pelare i statusfärg, väggen neutral, lådorna dolda: ' + JSON.stringify(s));
   await top();
+  // Tryck på ett objekt i byggnaden: det markeras (lila överlägg + konturer) och panelen visar uppgifterna.
   await tap(6512350, 150125, 6);
-  const info = await page.locator('#v3Info').innerText();
-  if (!info.includes('K10') || !info.includes('Pågående') || !info.includes('Hus A')) fail('Tryck på byggnaden ska visa objektets uppgifter: ' + info);
+  const info = await page.locator('#v3Side').innerText();
+  if (!info.includes('K10') || !info.includes('Pågående') || !info.includes('Hus A')) fail('Tryck på byggnaden ska markera objektet och visa uppgifterna: ' + info);
+  const ov = await page.evaluate(() => ({ n: l3bs.sel.length, overlay: l3b.models[0].meshes.reduce((a, m) => a + m.children.filter(c => c.userData.bsel).length, 0) }));
+  if (ov.n !== 1 || ov.overlay !== 2) fail('Markerat objekt ska få överlägg och konturer: ' + JSON.stringify(ov));
+  await page.keyboard.down('Shift'); await tap(6512380, 150125, 3); await page.keyboard.up('Shift');
+  const two = await page.evaluate(() => ({ n: l3bs.sel.length, txt: document.getElementById('v3Side').innerText }));
+  if (two.n !== 2 || !/2 objekt i byggnaden/.test(two.txt) || !/Vagg V1/.test(two.txt)) fail('Skift ska lägga till objekt i markeringen: ' + JSON.stringify(two));
+  await page.keyboard.press('Escape');
+  if (await page.evaluate(() => l3bs.sel.length || l3b.models[0].meshes.reduce((a, m) => a + m.children.filter(c => c.userData.bsel).length, 0))) fail('Esc ska avmarkera och ta bort överlägget');
   await tap(6512380, 150125, 3);
-  if (!(await page.locator('#v3Info').innerText()).includes('Vagg V1')) fail('Okopplat objekt: namnet från IFC:n');
+  if (!(await page.locator('#v3Side').innerText()).includes('Vagg V1')) fail('Okopplat objekt: namnet från IFC:n');
+  // H döljer det markerade objektet i byggnaden, U visar allt igen.
+  await page.keyboard.press('h');
+  if (await page.evaluate(() => l3b.models[0].meshes[0].userData.l3b.hidden.size) !== 1) fail('H ska dölja det markerade objektet i byggnaden');
+  await page.keyboard.press('u');
+  await page.keyboard.press('Escape');
   // Fästpunkt mot byggnadens hörn med Mät.
   await page.keyboard.press('t');
   const [hx, hy] = await at(6512352, 150127, 6); await page.mouse.move(hx - 3, hy + 3); await page.waitForTimeout(150);
   if ((await page.evaluate(() => document.querySelector('.v3-snap').textContent)) !== 'Ändpunkt') fail('Fästpunkt mot byggnadens hörn');
   // Visa i 4D-planering.
   await page.keyboard.press('Escape'); await tap(6512350, 150125, 6);
-  await page.click('#v3InfoJump'); await page.waitForTimeout(150);
+  await page.click('#v3BsJump'); await page.waitForTimeout(150);
   if (!(await page.evaluate(() => window.__calls)).includes('select')) fail('Visa i 4D-planering');
   // Hjälpen, datumet i nederkanten och lägesplanens meny tillbaka när 3D stängs.
   await page.click('#v3HelpBtn');

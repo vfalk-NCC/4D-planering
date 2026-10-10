@@ -77,6 +77,19 @@ function l3NavUp(e) {
   l3.rectEl.classList.add("hidden");
   if (!a.on) return;
   const ids = l3IdsInRect(a.x0, a.y0, a.x1, a.y1, a.x1 < a.x0);
+  // Ingen etablering i rutan: objekt i byggnaden (IFC) vars mitt ligger i rutan.
+  if (!ids.length && typeof l3bsInRect === "function" && l3b.models.length) {
+    const r = l3.renderer.domElement.getBoundingClientRect();
+    const bs = l3bsInRect(Math.min(a.x0, a.x1) - r.left, Math.max(a.x0, a.x1) - r.left, Math.min(a.y0, a.y1) - r.top, Math.max(a.y0, a.y1) - r.top, r);
+    if (bs.length) {
+      const cur = a.add || a.toggle ? l3bs.sel.map(x => ({ mesh: x.mesh, ri: x.ri })) : [];
+      const have = new Set(cur.map(x => l3bsKey(x.mesh, x.ri)));
+      bs.forEach(x => { const k = l3bsKey(x.mesh, x.ri); if (have.has(k)) { if (a.toggle) { const i = cur.findIndex(y => l3bsKey(y.mesh, y.ri) === k); cur.splice(i, 1); } } else cur.push(x); });
+      l3bsSet(cur);
+      l3Status(`${l3bs.sel.length} objekt i byggnaden markerade.${bs.length >= 5000 ? " (högst 5 000 åt gången)" : ""}`);
+      return;
+    }
+  }
   let next;
   if (a.toggle) { next = new Set(l3.sel); ids.forEach(id => (next.has(id) ? next.delete(id) : next.add(id))); next = [...next]; }
   else next = a.add ? [...new Set([...l3.sel, ...ids])] : ids;

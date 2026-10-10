@@ -315,12 +315,14 @@ function l3RenderMultiSide(side, list) {
 // Dölj / visa bara markerade / visa alla
 // ---------------------------------------------------------------------
 function l3HideSel() {
+  if (!l3.sel.size && typeof l3bs !== "undefined" && l3bs.sel.length) { l3bsHide(); return; }
   if (!l3.sel.size) { l3Status("Markera det som ska döljas (H), eller högerklicka på en låda/ett objekt i byggnaden."); return; }
   l3.sel.forEach(id => { l3.hidden.add(id); const g = l3.placeMeshes.get(id); if (g) g.visible = false; });
   const n = l3.sel.size; l3SelectIds([]); l3UpdateHidden();
   l3Toast(`${n} objekt dolda.`, "Visa alla", l3ShowAll);
 }
 function l3Isolate() {
+  if (!l3.sel.size && typeof l3bs !== "undefined" && l3bs.sel.length) { l3bsIsolate(); return; }
   if (!l3.sel.size) { l3Status("Markera det som ska visas (I = visa bara markerade)."); return; }
   l3.placeMeshes.forEach((g, id) => { if (!l3.sel.has(id)) { l3.hidden.add(id); g.visible = false; } });
   l3.isolated = true;
