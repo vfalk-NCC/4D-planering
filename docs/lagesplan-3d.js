@@ -151,6 +151,7 @@ async function open3d() {
     if (typeof placeModelsPrepare === "function") await placeModelsPrepare();
     lap("modeller", t3);
     await pPlan;
+    if (typeof l3sEnter === "function") l3sEnter(); // 2D-lagren släckta i 3D (2D-läget sparas undan)
     if (typeof l3sRefresh === "function") l3sRefresh(0); // 2D-lagren och DXF
     if (typeof l3mLoad === "function") l3mLoad().catch(e => console.warn(e)); // sparade mått
     if (typeof l3kLoad === "function") l3kLoad().catch(e => console.warn(e)); // kommentarer
@@ -175,6 +176,7 @@ async function open3d() {
 }
 function close3d() {
   document.body.classList.remove("v3-open");
+  if (typeof l3sLeave === "function") l3sLeave(); // 2D-lagren som de var i 2D
   const box = document.getElementById("view3d");
   if (box) box.classList.add("hidden");
   if (box && box.dataset.hidSide === "1" && typeof setSideHidden === "function") { setSideHidden(false); box.dataset.hidSide = ""; }

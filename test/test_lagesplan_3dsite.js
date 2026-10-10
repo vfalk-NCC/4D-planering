@@ -57,6 +57,13 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   }, DXF('GRUND'));
   await page.click('#btn3d');
   await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.renderer, null, { timeout: 15000 });
+  // 2D-lagren är släckta när 3D öppnas (Victor 2026-10-10); 2D-läget sparas undan och står kvar i webbläsaren.
+  await page.waitForFunction(() => l3s.snap2d, null, { timeout: 10000 });
+  const st0 = await page.evaluate(() => ({ cad: ls('cad:c1').visible, snap: l3s.snap2d['cad:c1'], saved: (JSON.parse(localStorage.getItem(LAYER_KEY()) || '{}')['cad:c1'] || {}).visible }));
+  if (st0.cad !== false || st0.snap !== true) fail('2D-lagren ska vara släckta när 3D öppnas: ' + JSON.stringify(st0));
+  await page.evaluate(() => { saveLayerState(); });
+  if (await page.evaluate(() => (JSON.parse(localStorage.getItem(LAYER_KEY()) || '{}')['cad:c1'] || {}).visible) !== true) fail('Webbläsaren ska spara 2D-läget medan 3D är öppen');
+  await page.click('#v3PalLayers [data-l3s="cad:c1"]').catch(async () => { await page.click('[data-paltab="layers"]'); await page.click('#v3PalLayers [data-l3s="cad:c1"]'); });
   await page.waitForFunction(() => l3.groups.cad && l3.groups.cad.children.length === 2, null, { timeout: 10000 });
 
   // DXF som linjer på marken, i modellens koordinater.
@@ -113,12 +120,11 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   await page.waitForTimeout(250);
 
   // Övriga 2D-lager (zoner, noteringar …) som bild på marken; kan stängas av.
+  await page.evaluate(() => { setLayersVisible(layerDrawOrder().filter(k => k !== 'pdf' && !k.startsWith('cad')), true); l3sRefresh(0); l3LayersRender(); });
   await page.waitForFunction(() => l3.groups.ground2d && l3.groups.ground2d.children.length === 1, null, { timeout: 10000 });
   const gr = await page.evaluate(() => { const m = l3.groups.ground2d.children[0], p = m.geometry.getAttribute('position'), xs = [0, 1, 2, 3].map(i => p.getX(i) + l3.O[0]); return { minX: Math.min(...xs), maxX: Math.max(...xs), transparent: m.material.transparent, img: m.material.map.image.width }; });
   if (Math.abs(gr.minX - 6512300) > 0.01 || Math.abs(gr.maxX - 6512400) > 0.01 || !gr.transparent || gr.img < 500) fail('2D-lagren på marken: ' + JSON.stringify(gr));
-  await page.click('#v3S2d'); await page.waitForTimeout(250);
-  if (await page.evaluate(() => l3.groups.ground2d.children.length)) fail('2D-lagren ska kunna stängas av på marken');
-  await page.click('#v3S2d'); await page.waitForTimeout(250);
+  if (await page.$('#v3S2d')) fail('Kryssrutan "på marken" ska vara borta – varje lager tänds för sig');
 
   // Läs in en DXF direkt i 3D (fil) – blir ett CAD-lager i lägesplanen, ritas som linjer.
   await page.setInputFiles('#v3SDxfIn', { name: 'Ny ritning.dxf', mimeType: 'application/dxf', buffer: Buffer.from(DXF('NYTT')) });
@@ -144,6 +150,11 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   if ((await page.evaluate(() => l3.groups.cad.children.filter(o => o.visible).length)) !== 2) fail('Ögat ska släcka DXF:en');
 
   if (process.env.SHOT) { await page.evaluate(() => { l3Frame(true); }); await page.waitForTimeout(700); await page.screenshot({ path: process.env.SHOT }); }
+  // Tillbaka till 2D: lagren som de var i 2D (DXF:en tänd, de övriga som före 3D).
+  const before = await page.evaluate(() => ({ ...l3s.snap2d }));
+  await page.click('#v3Close'); await page.waitForTimeout(200);
+  const after = await page.evaluate(keys => ({ snap: l3s.snap2d, vis: Object.fromEntries(keys.map(k => [k, ls(k).visible])) }), Object.keys(before));
+  if (after.snap || Object.keys(before).some(k => before[k] !== after.vis[k])) fail('2D-lagren ska återställas när 3D stängs: ' + JSON.stringify({ before, after }));
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_3dsite');
   await browser.close(); server.close();

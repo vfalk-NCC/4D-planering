@@ -5,13 +5,43 @@
      objekt per CAD-lager och färg, så de är skarpa på alla avstånd. Varje CAD-lager tänds/släcks.
    – Resten av 2D-lagren (zoner, noteringar, etablering i 2D, foton, ortofoto, andra PDF:er) läggs som en
      genomskinlig bild på marken, ritad på samma sätt som 2D-exporten.
-   – Tänd/släck här är samma inställning som i 2D (setLayersVisible), så vyerna visar samma sak.
+   – Alla 2D-lager är släckta när 3D öppnas (Victor 2026-10-10: "Låt alla dom lagren vara släckta som standard
+     i 3d-läge"). 2D-lägets tänd/släck sparas undan och återställs när man går tillbaka till 2D; det som
+     sparas i webbläsaren under tiden är 2D-läget (stängs fliken i 3D är 2D som förut).
    – DXF kan läsas in direkt i 3D (fil eller från projektets mappar i Trimble Connect); den sparas som ett
      CAD-lager i lägesplanen precis som när den läses in i 2D. */
 
 const l3s = { cad: new Map(), timer: 0, seq: 0, open: new Set() };
 
-const l3sOn = () => l3Prefs().ground2d !== false;
+const l3sOn = () => true; // varje lager tänds för sig (släckta från början)
+/* 3D öppnas: 2D-lägets tänd/släck sparas undan och alla lager (utom ritningen, som har egen rad) släcks. */
+function l3sEnter() {
+  if (l3s.snap2d || typeof layerDrawOrder !== "function" || typeof setLayersVisible !== "function") return;
+  const keys = layerDrawOrder().filter(k => k !== "pdf");
+  l3s.snap2d = Object.fromEntries(keys.map(k => [k, !!ls(k).visible]));
+  const on = keys.filter(k => ls(k).visible);
+  if (on.length) setLayersVisible(on, false);
+}
+/* Tillbaka till 2D: precis som det var. */
+function l3sLeave() {
+  const snap = l3s.snap2d; if (!snap) return;
+  l3s.snap2d = null;
+  const keys = Object.keys(snap), on = keys.filter(k => snap[k] && !ls(k).visible), off = keys.filter(k => !snap[k] && ls(k).visible);
+  if (off.length) setLayersVisible(off, false);
+  if (on.length) setLayersVisible(on, true);
+  if (typeof saveLayerState === "function") saveLayerState();
+}
+/* Medan 3D är öppen sparas 2D-lägets tänd/släck (opaciteten och nya lager som de är). */
+if (typeof saveLayerState === "function") {
+  const l3sSave0 = saveLayerState;
+  saveLayerState = function () {
+    const snap = l3s.snap2d;
+    if (!snap) return l3sSave0();
+    const keep = {};
+    Object.keys(snap).forEach(k => { keep[k] = ls(k).visible; ls(k).visible = snap[k]; });
+    try { return l3sSave0(); } finally { Object.keys(keep).forEach(k => { ls(k).visible = keep[k]; }); }
+  };
+}
 function l3sZ() { return (plan && plan.calib ? plan.calib.model[0][2] || 0 : 0) - l3.O[2]; }
 function l3sGroup(name) {
   if (!l3.groups[name]) { const g = new THREE.Group(); g.name = name; l3.groups[name] = g; l3.scene.add(g); }
@@ -221,8 +251,8 @@ function l3sHtml(row, eye) {
       h += `<div class="v3-lr v3-lr-b"><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3s-folder="${esc(e.folder.id)}">${eye(on)}</button><button type="button" class="v3-lr-fold" data-l3s-fold="${esc(e.folder.id)}" aria-expanded="${!shut}"><i>›</i>${esc(e.folder.name)} <em>${kids.length}</em></button></div>` + (shut ? "" : kids.map(k => keyRow(k, 1)).join(""));
     } else h += keyRow(e.key, 0);
   });
-  return { extra: `<label class="v3-chk v3-lg-chk" title="Visa 2D-lagren (zoner, noteringar, etablering, ortofoto, DXF) på marken i 3D"><input type="checkbox" id="v3S2d" ${l3sOn() ? "checked" : ""} /> på marken</label>`, body: `
-    ${l3sOn() ? h || `<div class="v3-pal-hint">Inga 2D-lager.</div>` : ""}
+  return { extra: "", body: `
+    ${h ? `<div class="v3-pal-hint">Släckta när 3D öppnas – tänd det du vill se på marken. 2D-läget påverkas inte.</div>${h}` : `<div class="v3-pal-hint">Inga 2D-lager.</div>`}
     <button type="button" class="v3-wide" id="v3SDxf" title="Läs in en DXF – den hamnar på rätt plats via modellens koordinater och blir ett CAD-lager i lägesplanen (även i 2D)">＋ Läs in DXF…</button><input type="file" id="v3SDxfIn" accept=".dxf" multiple hidden />` };
 }
 function l3sBind(host) {
