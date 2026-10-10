@@ -220,6 +220,17 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   // Normalerna kommer färdiga från tråden (Int8) och pekar som ytorna; färgerna är modellens egna.
   const nq = await page.evaluate(() => { let ok = 0, bad = 0, int8 = true; l3b.models.find(m => m.id === 'f:F2').meshes.forEach(x => { const g = x.geometry, P = g.getAttribute('position'), N = g.getAttribute('normal'), I = g.index.array; int8 = int8 && N.array instanceof Int8Array; for (let t = 0; t < I.length; t += 3) { const a = new THREE.Vector3().fromBufferAttribute(P, I[t]), b = new THREE.Vector3().fromBufferAttribute(P, I[t + 1]), c = new THREE.Vector3().fromBufferAttribute(P, I[t + 2]); const f = b.sub(a).cross(c.sub(a)).normalize(), n = new THREE.Vector3().fromBufferAttribute(N, I[t]).normalize(); if (f.dot(n) > 0.95) ok++; else bad++; } }); return { ok, bad, int8 }; });
   if (!nq.int8 || nq.bad || !nq.ok) fail('Normalerna från tråden: ' + JSON.stringify(nq));
+  // Allt ska med (Victor 2026-10-10): detaljer (t.ex. IfcDiscreteAccessory) ritas som standard, och ett objekt vars
+  // form inte går att läsa redovisas per klass i stället för att försvinna tyst.
+  const ifc2 = ifc.replace("#40=IFCRELCONTAINEDINSPATIALSTRUCTURE('2O2Fr$t4X7Zf8NOew3FLOL',$,$,$,(#27,#37),#8);", [
+    "#50=IFCCARTESIANPOINT((6512360.,150125.,0.));", "#51=IFCAXIS2PLACEMENT3D(#50,$,$);", "#52=IFCLOCALPLACEMENT(#7,#51);",
+    "#53=IFCEXTRUDEDAREASOLID(#23,#2,#12,1.);", "#54=IFCSHAPEREPRESENTATION(#3,'Body','SweptSolid',(#53));", "#55=IFCPRODUCTDEFINITIONSHAPE($,$,(#54));",
+    "#56=IFCDISCRETEACCESSORY('2b3K1nUZ90qeBq0yNYB3Qm',$,'Takplåt',$,$,#52,#55,$,$);",
+    "#60=IFCSHAPEREPRESENTATION(#3,'Body','SweptSolid',(#99));", "#61=IFCPRODUCTDEFINITIONSHAPE($,$,(#60));",
+    "#62=IFCBEAM('0r1kK1nUZ90qeBq0yNYB3Qn',$,'Trasig balk',$,$,#52,#61,$,$);",
+    "#40=IFCRELCONTAINEDINSPATIALSTRUCTURE('2O2Fr$t4X7Zf8NOew3FLOL',$,$,$,(#27,#37,#56,#62),#8);"].join("\n"));
+  const all = await page.evaluate(async t => { const out = await l3bParseWorker(new TextEncoder().encode(t).buffer, null, 1e6); out.meshes.forEach(m => m.geometry.dispose()); return { names: out.ranges.map(r => r.name), missing: out.missing || {} }; }, ifc2);
+  if (!all.names.includes('Takplåt') || all.missing.IfcBeam !== 1) fail('Allt ska läsas in och det som inte går redovisas: ' + JSON.stringify(all));
   if (process.env.SHOTL) { await page.evaluate(() => { const b = new THREE.Box3(); l3b.models.forEach(m => m.meshes.forEach(x => b.expandByObject(x))); const c = b.getCenter(new THREE.Vector3()); l3StopFly(); l3.orbit.target.copy(c); l3.camera.position.copy(c).add(new THREE.Vector3(-22, -30, 18)); l3.orbit.update(); l3Render(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOTL }); }
   await page.click('#v3PalLayers [data-l3l-file="F2"]');
   if (await page.evaluate(() => l3b.models.find(m => m.id === 'f:F2').visible)) fail('Ögat ska släcka modellen');

@@ -133,6 +133,9 @@ async function l3bLoad(list, opts = {}) {
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 1));
       times.push(`${m.name || r.name || w.name}: ${r.local ? "ur webbläsarens kopia" : `hämtning ${(tDl / 1000).toFixed(1)} s`}, läsning ${((Date.now() - tRd0) / 1000).toFixed(1)} s${m.parts > 1 ? ` (${m.parts} trådar)` : ""}`);
       skippedAll += m.skipped || 0;
+      // Objekt med form som web-ifc inte kunde rita – redovisas per IFC-klass (syns i statusraden och historiken).
+      const miss = Object.entries(m.missing || {}).sort((a, b) => b[1] - a[1]);
+      if (miss.length) times.push(`${r.name || w.name}: ${miss.reduce((a, x) => a + x[1], 0).toLocaleString("sv-SE")} objekt kunde inte ritas (${miss.slice(0, 6).map(([t, c]) => `${t} ${c}`).join(", ")}${miss.length > 6 ? " …" : ""})`);
       if (opts.replace) l3bRemove(w.id);
       m.id = w.id; m.name = r.name || w.name; m.visible = true; m.src = w;
       total += m.tris;
@@ -319,7 +322,8 @@ function l3bParts(size, voids = l3bVoids()) {
 }
 /* Urtag (fönster- och dörrhål) är den i särklass dyraste delen – av som standard, kan slås på under Lager. */
 const l3bVoids = () => !!(typeof l3Prefs === "function" && l3Prefs().ifcVoids);
-const l3bDetails = () => !!(typeof l3Prefs === "function" && l3Prefs().ifcDetails);
+// Allt läses in som standard (Victor 2026-10-10: "precis allt"); detaljerna kan stängas av under Lager → Avancerat.
+const l3bDetails = () => !(typeof l3Prefs === "function" && l3Prefs().ifcDetails === false);
 function l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes) {
   return new Promise((resolve, reject) => {
     const buf0 = bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes).slice().buffer;
@@ -356,6 +360,7 @@ function l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes) {
           if (out.tris >= maxTris && !failed) { failed = true; out.capped = true; wks.forEach(w => w.terminate()); resolve(out); }
         } else if (d.type === "done") {
           out.capped = out.capped || !!d.capped; out.skipped = (out.skipped || 0) + (d.skipped || 0); wk.terminate(); prog[k] = 1;
+          Object.entries(d.missing || {}).forEach(([t, c]) => { out.missing = out.missing || {}; out.missing[t] = (out.missing[t] || 0) + c; });
           if (--left === 0) resolve(out);
         } else if (d.type === "error") fail(new Error(d.message));
       };

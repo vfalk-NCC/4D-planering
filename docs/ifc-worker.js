@@ -113,22 +113,23 @@ self.onmessage = async ev => {
     const W = WebIFC, ids = (types, inh = true) => { const s = new Set(); types.filter(Boolean).forEach(t => { try { const v = A.GetLineIDsWithType(id, t, inh); for (let i = 0; i < v.size(); i++) s.add(v.get(i)); } catch (e) { /* typen finns inte i schemat */ } }); return s; };
     // Tunga detaljer som sällan behövs i en etableringsvy (av som standard, Lager → Visa detaljer):
     // armering, inredning, installationer (rör, kanaler, el, VVS-komponenter) och fästdon.
-    const detailIds = details ? new Set() : ids([W.IFCREINFORCINGELEMENT, W.IFCREINFORCINGBAR, W.IFCREINFORCINGMESH, W.IFCTENDON, W.IFCTENDONANCHOR,
+    const detailIds = ids([W.IFCREINFORCINGELEMENT, W.IFCREINFORCINGBAR, W.IFCREINFORCINGMESH, W.IFCTENDON, W.IFCTENDONANCHOR,
       W.IFCFURNISHINGELEMENT, W.IFCFURNITURE, W.IFCSYSTEMFURNITUREELEMENT, W.IFCDISTRIBUTIONELEMENT, W.IFCFASTENER, W.IFCMECHANICALFASTENER, W.IFCDISCRETEACCESSORY]);
     // Stommen och skalet först, så att byggnaden syns efter några sekunder medan resten fylls på.
     const firstIds = ids([W.IFCSLAB, W.IFCWALL, W.IFCWALLSTANDARDCASE, W.IFCCOLUMN, W.IFCBEAM, W.IFCROOF, W.IFCFOOTING, W.IFCPILE, W.IFCCURTAINWALL,
       W.IFCSTAIR, W.IFCSTAIRFLIGHT, W.IFCRAMP, W.IFCRAMPFLIGHT]);
     let mine = null, skipped = 0;
     try {
-      const all = A.GetLineIDsWithType(id, W.IFCPRODUCT, true), first = [], rest = [];
+      const all = A.GetLineIDsWithType(id, W.IFCPRODUCT, true), first = [], rest = [], late = [];
       for (let i = 0; i < all.size(); i++) {
         const e = all.get(i);
         if (skip.has(A.GetLineType(id, e))) continue;
-        if (detailIds.has(e)) { skipped++; continue; }
+        if (detailIds.has(e)) { if (details) late.push(e); else skipped++; continue; }
         (firstIds.has(e) ? first : rest).push(e);
       }
-      first.sort((a, b) => a - b); rest.sort((a, b) => a - b);
-      const list = first.concat(rest);
+      first.sort((a, b) => a - b); rest.sort((a, b) => a - b); late.sort((a, b) => a - b);
+      // Detaljerna (bultar, armering, installationer) sist: nås taket för trianglar är det de som faller bort.
+      const list = first.concat(rest, late);
       mine = parts > 1 ? list.filter((_, i) => i % parts === part) : list;
     } catch (e) { mine = null; } // äldre web-ifc: alla objekt i en tråd
     // GUID och namn ur texten (snabbt); saknas något används web-ifc för just det objektet.
@@ -155,9 +156,10 @@ self.onmessage = async ev => {
     // De första sekunderna skickas även halvfulla block, så att stommen syns direkt.
     let earlyUntil = Date.now() + 6000, lastEarly = Date.now();
     const hasGuid = typeof A.GetGuidFromExpressId === "function";
+    const seen = new Set();
     const onMesh = mesh => {
       if (capped) return;
-      n++;
+      n++; seen.add(mesh.expressID);
       if (!mine) { let type = 0; try { type = A.GetLineType(id, mesh.expressID); } catch (e) { /* okänd */ } if (skip.has(type)) return; }
       let guid = null, name = "";
       const nm = names0 && names0.get(mesh.expressID);
@@ -216,8 +218,23 @@ self.onmessage = async ev => {
       if (now - lastPost > 250) { lastPost = now; self.postMessage({ type: "progress", f: total ? Math.min(0.99, 0.05 + 0.95 * n / total) : 0.5, n }); }
     };
     if (mine) A.StreamMeshes(id, mine, onMesh); else A.StreamAllMeshes(id, onMesh);
+    // Allt ska med (Victor 2026-10-10: "den klarar fortfarande inte av att hämta in precis allt"): objekt som
+    // inte kom med i strömmen provas en gång till var för sig. Objekt utan egen form (sammansättningar som
+    // IfcElementAssembly/IfcRoof – delarna ritas för sig) räknas inte som saknade; resten redovisas per klass.
+    const missing = {};
+    if (mine && !capped) {
+      for (const e of mine) {
+        if (seen.has(e)) continue;
+        let line = null;
+        try { line = A.GetLine(id, e, false); } catch (err) { line = null; }
+        if (!line || !line.Representation) continue;
+        try { const fm = A.GetFlatMesh(id, e); if (fm && fm.geometries && fm.geometries.size()) onMesh(fm); } catch (err) { /* geometrin går inte att läsa */ }
+        if (!seen.has(e)) { let t = "?"; try { t = A.GetNameFromTypeCode ? A.GetNameFromTypeCode(A.GetLineType(id, e)) : String(A.GetLineType(id, e)); } catch (err) { /* okänd */ } missing[t] = (missing[t] || 0) + 1; }
+        if (capped) break;
+      }
+    }
     flush();
-    self.postMessage({ type: "done", tris, capped, products: n, skipped: part === 0 ? skipped : 0, ms: { open: tOpen, list: tList, geo: Date.now() - t0 - tOpen - tList } });
+    self.postMessage({ type: "done", tris, capped, products: n, skipped: part === 0 ? skipped : 0, missing, ms: { open: tOpen, list: tList, geo: Date.now() - t0 - tOpen - tList } });
   } catch (e) {
     self.postMessage({ type: "error", message: (e && e.message) || String(e) });
   } finally {
