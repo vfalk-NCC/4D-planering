@@ -138,6 +138,23 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.waitForTimeout(2600);
   const saved = getStore('plan_placements.json').find(p => p.id === 'c1');
   if (!saved || saved.rot !== 90 || Math.abs(saved.x - 6512344) > 1e-6) fail('plan_placements.json: ' + JSON.stringify(saved));
+  // Kantfästning längs hela objektets kant (även strax utanför): punkten glider längs kanten.
+  const es = await page.evaluate(() => {
+    l3SetPref('snaps', { ...l3Snaps(), end: true, mid: true, edge: true, axis: false, grid: false, ortho: false });
+    const g = l3.placeMeshes.get('c1'); g.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(g), c = b.getCenter(new THREE.Vector3());
+    l3StopFly(); l3.orbit.target.copy(c); const sz = b.getSize(new THREE.Vector3()).length(); l3.camera.position.copy(c).add(new THREE.Vector3(0.5, -1.1, 0.8).multiplyScalar(sz * 1.1)); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera);
+    const r = l3.renderer.domElement.getBoundingClientRect(), out = [];
+    // Övre långa kanten på sidan som vetter mot kameran (x = max, z = max, längs y), vid 30 % och 70 %.
+    [0.3, 0.7].forEach(t => {
+      const p = new THREE.Vector3(b.max.x, b.min.y + (b.max.y - b.min.y) * t, b.max.z), q = l3ToScreen(p), qc = l3ToScreen(new THREE.Vector3(c.x, p.y, b.max.z));
+      const dx = q.x - qc.x, dy = q.y - qc.y, L = Math.hypot(dx, dy) || 1;
+      const s = l3Snap({ clientX: r.left + q.x + dx / L * 4, clientY: r.top + q.y + dy / L * 4 }); // 4 px utanför kanten
+      out.push(s && { kind: s.kind, dx: Math.abs(s.point.x - b.max.x), dz: Math.abs(s.point.z - b.max.z), y: s.point.y, want: p.y });
+    });
+    return out;
+  });
+  if (es.some(x => !x || x.kind !== 'edge' || x.dx > 0.02 || x.dz > 0.02 || Math.abs(x.y - x.want) > 0.25)) fail('Fäst längs hela kanten: ' + JSON.stringify(es));
   if (process.env.SHOT) { await page.evaluate(() => { l3Frame(); l3.renderer.render(l3.scene, l3.camera); }); await page.keyboard.press('m'); await move(6512346, 150123, 14, 0, 0); await page.screenshot({ path: process.env.SHOT }); }
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_3dtools');

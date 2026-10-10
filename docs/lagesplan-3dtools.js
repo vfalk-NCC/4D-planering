@@ -111,9 +111,92 @@ function l3Snap(e, exclude) {
   }
   return s;
 }
+/* ---- Objektens riktiga kanter (Victor 2026-10-10: "snappa sömlöst längs hela kanten på ett objekt") ---
+   En kant är där två ytor möts i vinkel (mer än ~20°) eller en fri kant – inte trianglarnas diagonaler.
+   Räknas en gång per objekt (IFC-objekt i en bit, eller ett etableringsobjekts geometri) och sparas. */
+const l3EdgeCache = new WeakMap();
+function l3ObjEdges(mesh, ri) {
+  let per = l3EdgeCache.get(mesh);
+  if (!per) { per = new Map(); l3EdgeCache.set(mesh, per); }
+  const key = ri == null ? -1 : ri;
+  if (per.has(key)) return per.get(key);
+  const g = mesh.geometry, pos = g.getAttribute("position");
+  let tri;
+  const u = mesh.userData.l3b;
+  if (u && ri != null) { const r = u.ranges[ri], src = u.origIdx; tri = src.subarray ? src.subarray(r.idxStart, r.idxStart + r.idxCount) : src.slice(r.idxStart, r.idxStart + r.idxCount); }
+  else tri = g.index ? g.index.array : null;
+  const nTri = tri ? tri.length / 3 : pos.count / 3;
+  if (nTri > 60000) { per.set(key, null); return null; } // för stort objekt – trianglarnas kanter får räcka
+  const P = i => [pos.getX(i), pos.getY(i), pos.getZ(i)], q = v => Math.round(v * 1e4);
+  const vk = p => `${q(p[0])},${q(p[1])},${q(p[2])}`;
+  const edges = new Map();
+  for (let t = 0; t < nTri; t++) {
+    const ia = tri ? tri[t * 3] : t * 3, ib = tri ? tri[t * 3 + 1] : t * 3 + 1, ic = tri ? tri[t * 3 + 2] : t * 3 + 2;
+    const a = P(ia), b = P(ib), c = P(ic);
+    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], wx = c[0] - a[0], wy = c[1] - a[1], wz = c[2] - a[2];
+    let nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx; const nl = Math.hypot(nx, ny, nz);
+    if (nl < 1e-12) continue;
+    nx /= nl; ny /= nl; nz /= nl;
+    [[a, b], [b, c], [c, a]].forEach(([p0, p1]) => {
+      const k0 = vk(p0), k1 = vk(p1), k = k0 < k1 ? k0 + "|" + k1 : k1 + "|" + k0, e = edges.get(k);
+      if (e) e.n.push([nx, ny, nz]); else edges.set(k, { p0, p1, n: [[nx, ny, nz]] });
+    });
+  }
+  const cosT = Math.cos(20 * Math.PI / 180), out = [];
+  edges.forEach(e => {
+    let sharp = e.n.length === 1;
+    for (let i = 1; i < e.n.length && !sharp; i++) { const d = e.n[0][0] * e.n[i][0] + e.n[0][1] * e.n[i][1] + e.n[0][2] * e.n[i][2]; if (Math.abs(d) < cosT) sharp = true; }
+    if (sharp) out.push(...e.p0, ...e.p1);
+  });
+  const arr = new Float32Array(out);
+  per.set(key, arr);
+  return arr;
+}
+/* Fästning mot hela kanter: hörn, mittpunkter och närmaste punkt längs kanten på objekten under och
+   strax runt markören. Ger { point, kind } eller null. */
+function l3EdgeSnap(e, S, hits, mx, my, exclude) {
+  if (!(S.end || S.mid || S.edge)) return null;
+  // Objekten: träffen under markören och – för att kunna fästa precis utanför kanten – runt omkring.
+  const cand = [], seen = new Set();
+  const add = h => {
+    if (!h || !h.object || h.object === l3.planMesh) return;
+    let o = h.object, ri = null;
+    if (o.userData.l3bMain) o = o.userData.l3bMain;
+    if (o.userData.l3b && typeof l3bsFromHit === "function") { const x = l3bsFromHit(h); if (!x) return; ri = x.ri; o = x.mesh; }
+    const k = o.uuid + ":" + ri;
+    if (seen.has(k)) return; seen.add(k); cand.push([o, ri]);
+  };
+  hits.slice(0, 3).forEach(add);
+  [[-9, 0], [9, 0], [0, -9], [0, 9]].forEach(([dx, dy]) => { const hs = l3Ray({ clientX: e.clientX + dx, clientY: e.clientY + dy }, l3Surfaces(exclude)); add(hs[0]); });
+  if (!cand.length) return null;
+  const ray = l3MouseRay(e), v0 = new THREE.Vector3(), v1 = new THREE.Vector3(), onSeg = new THREE.Vector3();
+  let best = null;
+  const consider = (d, p, kind, lim, pri) => { if (d < lim && (!best || pri < best.pri || (pri === best.pri && d < best.d))) best = { d, p: p.clone(), kind, pri }; };
+  for (const [o, ri] of cand) {
+    const E = l3ObjEdges(o, ri); if (!E) continue;
+    o.updateMatrixWorld();
+    const M = o.matrixWorld;
+    for (let i = 0; i < E.length; i += 6) {
+      v0.set(E[i], E[i + 1], E[i + 2]).applyMatrix4(M); v1.set(E[i + 3], E[i + 4], E[i + 5]).applyMatrix4(M);
+      if (typeof l3NotClipped === "function" && !l3NotClipped(v0) && !l3NotClipped(v1)) continue;
+      if (S.end) [v0, v1].forEach(v => { const s = l3ToScreen(v); if (!s.behind) consider(Math.hypot(s.x - mx, s.y - my), v, "end", 14, 0); });
+      if (S.mid) { const m = v0.clone().add(v1).multiplyScalar(0.5), s = l3ToScreen(m); if (!s.behind) consider(Math.hypot(s.x - mx, s.y - my), m, "mid", 12, 1); }
+      if (S.edge) {
+        ray.distanceSqToSegment(v0, v1, null, onSeg);
+        const s = l3ToScreen(onSeg);
+        if (!s.behind) consider(Math.hypot(s.x - mx, s.y - my), onSeg, "edge", 10, 2);
+      }
+    }
+  }
+  return best ? { point: best.p, kind: best.kind } : null;
+}
+
 function l3SnapRaw(e, exclude) {
   const r = l3Rect(), mx = e.clientX - r.left, my = e.clientY - r.top, S = l3Snaps();
   const hits = l3Ray(e, l3Surfaces(exclude));
+  // Objektens riktiga kanter först (hörn > mittpunkt > längs kanten); annars som förut.
+  const es = l3EdgeSnap(e, S, hits, mx, my, exclude);
+  if (es) return { ...es, placeId: hits[0] ? l3PlaceIdOf(hits[0].object) : null };
   if (hits.length) {
     const h = hits[0], o = h.object, pos = o.geometry.getAttribute("position");
     const placeId = l3PlaceIdOf(o);

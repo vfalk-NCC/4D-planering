@@ -171,7 +171,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.click('[data-sppick="lin"]');
   // Dialogen ur vägen för punkterna (den bredare vänsterpanelen flyttar ritytan).
   await page.evaluate(() => { const d = document.getElementById('v3Special'), c = document.getElementById('v3Canvas'); d.style.left = (c.clientWidth - d.offsetWidth - 10) + 'px'; });
+  // Punkter på marken intill objekt: fästningen mot objektens hörn/kanter är av här (den skulle fästa på objektet).
+  await page.evaluate(() => { window.__sn = l3Prefs().snaps; l3SetPref('snaps', { ...l3Snaps(), end: false, mid: false, edge: false }); });
   await tap(6512320, 150110, 2, 0, 0); await tap(6512320, 150120, 2, 0, 0);
+  await page.evaluate(() => l3SetPref('snaps', window.__sn || {}));
   v = await page.evaluate(() => [document.querySelector('[data-sp="dx"]').value, document.querySelector('[data-sp="dy"]').value].map(Number));
   if (Math.abs(v[0]) > 0.3 || Math.abs(v[1] - 10) > 0.3) fail('Välj två punkter ska fylla dX/dY: ' + v);
   // Rotation: 2 kopior à 90° kring (6512335, 150110) -> c (som ligger i punkten) står kvar men vrids.
