@@ -29,14 +29,14 @@ function l3RenderSnapBar() {
   bar.innerHTML = `<span class="v3-snapbar-l">Fäst</span>${b("end", "Hörn", "Fäst mot hörn (ändpunkter)")}${b("mid", "Mitt", "Fäst mot mittpunkter på kanter")}${b("edge", "Kant", "Fäst mot närmaste punkt på en kant")}${b("perp", "Vinkelrätt", "Vinkelrätt: på en kant fäster punkten där linjen från förra punkten möter kanten i rät vinkel – kortaste vägen över ett objekt")}${b("axis", "Axlar", "Fäst mot röd/grön/blå axel från baspunkten")}${b("ortho", "Orto", "Orto (O): bara i X-, Y- eller Z-led")}${b("grid", "Rutnät", "Rutnät (G): fäst mot rutnätet på marken och ytor")}
     <select id="v3GridStep" title="Rutnätets steg">${[0.1, 0.5, 1, 2, 5, 10].map(v => `<option value="${v}" ${Number(s.gstep) === v ? "selected" : ""}>${String(v).replace(".", ",")} m</option>`).join("")}</select>
     ${l3.tool === "move" ? `<span class="v3-snapbar-sep"></span><label class="v3-chk" title="Kopiera i stället för att flytta (tryck Ctrl)"><input type="checkbox" id="v3CopyMode" ${l3t.copyMode ? "checked" : ""} /> Kopia</label>` : ""}
-    ${l3.tool === "measure" ? `<span class="v3-snapbar-sep"></span><div class="v3-segs">${[["dist", "Avstånd"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : ""}`;
+    ${l3.tool === "measure" ? `<span class="v3-snapbar-sep"></span><div class="v3-segs">${[["point", "Punkt"], ["dist", "Avstånd"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : ""}`;
   if (typeof l3mBindBar === "function") l3mBindBar(bar);
   bar.querySelectorAll("[data-snapk]").forEach(x => { x.onclick = () => l3ToggleSnap(x.dataset.snapk); });
   bar.querySelector("#v3GridStep").onchange = e => { const v = { ...l3Snaps(), gstep: Number(e.target.value) }; l3SetPref("snaps", v); };
   const cm = bar.querySelector("#v3CopyMode"); if (cm) cm.onchange = () => { l3t.copyMode = cm.checked; l3Status(cm.checked ? "Kopierar: punkten du trycker härnäst får en kopia." : "Flyttar."); };
   bar.querySelectorAll("[data-mmode]").forEach(x => { x.onclick = () => { l3SetPref("measure", x.dataset.mmode); l3ToolCancel(); l3RenderSnapBar(); l3Status(L3_MEAS_START[x.dataset.mmode]); }; });
 }
-const L3_MEAS_START = { dist: "Mät avstånd: tryck på första punkten.", poly: "Mät polylinje: tryck punkt för punkt längs vägen. Avsluta med Enter, dubbeltryck eller tryck på sista punkten igen.", angle: "Mät vinkel: tryck på första punkten, sedan hörnet (vinkelns spets) och sist den andra punkten.", area: "Mät yta: tryck hörnen i tur och ordning. Avsluta med Enter eller tryck på första punkten igen." };
+const L3_MEAS_START = { point: "Mät punkt: tryck på en punkt – X, Y och Z visas och ligger kvar.", volume: "Mät volym: tryck basytans hörn (som Yta), avsluta med Enter eller första punkten – sedan höjden: skriv den eller tryck på en plan yta i modellen.", dist: "Mät avstånd: tryck på första punkten.", poly: "Mät polylinje: tryck punkt för punkt längs vägen. Avsluta med Enter, dubbeltryck eller tryck på sista punkten igen.", angle: "Mät vinkel: tryck på första punkten, sedan hörnet (vinkelns spets) och sist den andra punkten.", area: "Mät yta: tryck hörnen i tur och ordning. Avsluta med Enter eller tryck på första punkten igen." };
 let l3t = { step: 0, lock: null, vcb: "", last: null };
 let l3HoverRaf = 0;
 
@@ -345,6 +345,7 @@ function l3Restore(objs) { (objs || []).forEach(o => { if (o.g) { o.g.position.c
 function l3Busy(on) { ["v3Side", "v3Info"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.toggle("v3-busy", !!on); }); }
 function l3ToolCancel() {
   if (typeof l3dToolCancel === "function") l3dToolCancel(); // Flytta/Vrid i DXF-redigeringen
+  if (l3t.volPick || document.getElementById("v3VolDlg")) { const d = document.getElementById("v3VolDlg"); if (d) d.remove(); l3t.volPick = null; }
   l3Busy(false);
   if (l3t.objs) l3Restore(l3t.objs);
   l3t = { ...l3t, step: 0, lock: null, vcb: "", last: null, objs: null, base: null, C: null, R: null, A1: null, A2: null, B1: null, M1: null, mp: null };
@@ -399,15 +400,19 @@ function l3ToolHover(e) {
       l3TmpLine(l3t.base, s.point, s.kind === "axis" ? L3_AX[s.axis].col : "#111827", s.kind !== "axis");
       l3ShowVcb("Avstånd", l3Fmt(delta.length()) + " m");
     }
+  } else if (t === "measure" && (l3t.volPick || l3Prefs().measure === "point")) {
+    const s = l3Snap(e); l3ShowMarker(s);
+    if (s && l3t.volPick) { const h = s.point.z - l3t.volPick.z0; l3ShowVcb("Höjd", l3Fmt(h) + " m · " + l3Fmt(Math.abs(l3t.volPick.area * h)) + " m³"); }
+    if (s && !l3t.volPick) l3ShowVcb("Z", l3Fmt(s.point.z + l3.O[2], 2) + " m");
   } else if (t === "measure" && (l3Prefs().measure || "dist") !== "dist") {
     const mp = l3t.mp || [], s = mp.length ? l3Target(e, mp[mp.length - 1]) : l3Snap(e);
     l3ShowMarker(s);
     if (s) {
       const all = [...mp, s.point];
       for (let i = 1; i < all.length; i++) l3TmpLine(all[i - 1], all[i], "#dc2626", false);
-      if ((l3Prefs().measure === "area") && all.length >= 3) l3TmpLine(all[all.length - 1], all[0], "#dc2626", true);
+      if ((l3Prefs().measure === "area" || l3Prefs().measure === "volume") && all.length >= 3) l3TmpLine(all[all.length - 1], all[0], "#dc2626", true);
       if (l3Prefs().measure === "angle" && mp.length === 2) l3ShowVcb("Vinkel", l3Fmt(l3Angle3(mp[0], mp[1], s.point), 1) + "°");
-      if (l3Prefs().measure === "area" && all.length >= 3) l3ShowVcb("Yta", l3Fmt(l3PolyArea(all).area) + " m²");
+      if ((l3Prefs().measure === "area" || l3Prefs().measure === "volume") && all.length >= 3) l3ShowVcb(l3Prefs().measure === "volume" ? "Basyta" : "Yta", l3Fmt(l3PolyArea(all).area) + " m²");
       if (l3Prefs().measure === "poly" && all.length >= 2) l3ShowVcb("Längd", l3Fmt(l3PathLen(all)) + " m");
     }
   } else if (t === "measure") {
@@ -464,13 +469,23 @@ function l3SnapAngle(deg, s) {
 function l3ToolTap(e) {
   if (typeof l3dToolTap === "function" && l3dToolTap(e)) return true; // DXF-redigering: Flytta/Vrid gäller linjerna
   const t = l3.tool, st = l3t.step;
+  // Volym: höjden från en yta i modellen (efter att basytan ritats).
+  if (t === "measure" && l3t.volPick) { const s = l3Snap(e); if (s) l3VolFinish(l3t.volPick, s.point.z - l3t.volPick.z0, true); return true; }
+  // Punkt (Victor 2026-10-10: "alternativet Punkt som ger mig xyz").
+  if (t === "measure" && l3Prefs().measure === "point") {
+    const s = l3Snap(e); if (!s) return true;
+    const P = s.point, X = P.x + l3.O[0], Y = P.y + l3.O[1], Z = P.z + l3.O[2], f = v => l3Fmt(v, 2);
+    l3Status(`Punkt X ${f(X)} m · Y ${f(Y)} m · Z ${f(Z)} m. Tryck en ny punkt för att mäta igen.`);
+    if (typeof l3mAdd === "function") l3mAdd("point", [P.clone()], `X ${f(X)} m | Y ${f(Y)} m | Z ${f(Z)} m`, typeof l3mObjAt === "function" ? [l3mObjAt(e)] : []);
+    return true;
+  }
   if (t === "measure" && (l3Prefs().measure || "dist") !== "dist") {
     const mode = l3Prefs().measure, mp = l3t.mp || (l3t.mp = []);
     const s = mp.length ? l3Target(e, mp[mp.length - 1]) : l3Snap(e);
     if (!s) return true;
     if (!mp.length) { l3ClearMeasure(); l3Busy(true); l3t.mpObjs = []; }
     // Yta: tryck på första punkten igen = klar.
-    if (mode === "area" && mp.length >= 3) { const a = l3ToScreen(mp[0]), b = l3ToScreen(s.point); if (Math.hypot(a.x - b.x, a.y - b.y) < 12) { l3FinishArea(); return true; } }
+    if ((mode === "area" || mode === "volume") && mp.length >= 3) { const a = l3ToScreen(mp[0]), b = l3ToScreen(s.point); if (Math.hypot(a.x - b.x, a.y - b.y) < 12) { mode === "volume" ? l3VolBase() : l3FinishArea(); return true; } }
     // Polylinje: tryck på sista punkten igen = klar.
     if (mode === "poly" && mp.length >= 2) { const a = l3ToScreen(mp[mp.length - 1]), b = l3ToScreen(s.point); if (Math.hypot(a.x - b.x, a.y - b.y) < 12) { l3FinishPoly(); return true; } }
     mp.push(s.point.clone()); l3Dot(s.point, 0xdc2626, l3.groups.meas);
@@ -564,6 +579,44 @@ function l3PolyArea(pts) {
   let a = 0, per = 0;
   for (let i = 0; i < pts.length; i++) { const p = pts[i], q = pts[(i + 1) % pts.length]; a += p.x * q.y - q.x * p.y; per += Math.hypot(q.x - p.x, q.y - p.y); }
   return { area: Math.abs(a) / 2, per };
+}
+/* Volym (Victor 2026-10-10: "mäta volym … klickar ut med polyline ytan sedan … vilken höjd det är på
+   volymen eller att jag kan klicka i modellen på en plan yta som den ska mäta till"). Basytan ritas som
+   en yta; sedan frågar en ruta efter höjden (skriv den) – eller tryck på en yta, då blir höjden skillnaden
+   mot basytans medelhöjd. Volymen = basytan i plan × höjden (en lodrät prisma). */
+function l3VolBase() {
+  const mp = l3t.mp || [];
+  if (mp.length < 3) { l3Status("Basytan behöver minst tre hörn."); return; }
+  const z0 = mp.reduce((s, p) => s + p.z, 0) / mp.length, area = l3PolyArea(mp).area;
+  l3t.mp = null; l3ShowVcb(null); l3Clear(l3.groups.tmp);
+  l3TmpLine(mp[mp.length - 1], mp[0], "#dc2626", false, l3.groups.meas);
+  const host = l3.renderer.domElement.parentElement;
+  let d = document.getElementById("v3VolDlg"); if (d) d.remove();
+  d = document.createElement("div"); d.id = "v3VolDlg"; d.className = "v3-pop v3-voldlg";
+  d.innerHTML = `<b>Volym</b><div class="v3-voldlg-a">Basyta ${l3Fmt(area)} m² · ${mp.length} hörn</div>
+    <label>Höjd <input type="text" inputmode="decimal" id="v3VolH" placeholder="t.ex. 2,5" /> m</label>
+    <div class="v3-voldlg-r"><button type="button" class="primary" id="v3VolOk">Räkna volymen</button><button type="button" id="v3VolPick" title="Tryck sedan på en plan yta – höjden blir skillnaden mot basytan">Tryck på en yta i modellen…</button><button type="button" id="v3VolX">Avbryt</button></div>`;
+  ["pointerdown", "click", "keydown"].forEach(t => d.addEventListener(t, ev => ev.stopPropagation()));
+  host.appendChild(d);
+  const st = { mp: mp.map(p => p.clone()), z0, area, objs: l3t.mpObjs };
+  const inp = d.querySelector("#v3VolH"); inp.focus();
+  const ok = () => { const h = Number(String(inp.value).replace(/\s/g, "").replace(",", ".")); if (!Number.isFinite(h) || !h) { inp.focus(); l3Status("Skriv höjden i meter (minus = nedåt).", true); return; } l3VolFinish(st, h); };
+  d.querySelector("#v3VolOk").onclick = ok;
+  inp.onkeydown = ev => { ev.stopPropagation(); if (ev.key === "Enter") ok(); if (ev.key === "Escape") l3VolCancel(); };
+  d.querySelector("#v3VolPick").onclick = () => { d.remove(); l3t.volPick = st; l3Busy(true); l3Status("Tryck på den plana yta volymen ska gå till (uppåt eller nedåt). Esc avbryter."); };
+  d.querySelector("#v3VolX").onclick = l3VolCancel;
+  l3Busy(true);
+  l3Status(`Basyta ${l3Fmt(area)} m². Skriv höjden eller tryck på en yta i modellen.`);
+  l3Render();
+}
+function l3VolCancel() { const d = document.getElementById("v3VolDlg"); if (d) d.remove(); l3t.volPick = null; l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3ClearMeasure(); l3Status(L3_MEAS_START.volume); }
+function l3VolFinish(st, h, picked) {
+  const d = document.getElementById("v3VolDlg"); if (d) d.remove();
+  l3t.volPick = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp);
+  if (Math.abs(h) < 1e-4) { l3Status("Höjden blev 0 – tryck på en yta som ligger högre eller lägre än basytan.", true); l3ClearMeasure(); return; }
+  const vol = Math.abs(st.area * h);
+  l3Status(`Volym ${l3Fmt(vol)} m³ · basyta ${l3Fmt(st.area)} m² · höjd ${l3Fmt(h)} m${picked ? " (till ytan du tryckte på)" : ""}. Tryck en ny punkt för att mäta igen.`);
+  if (typeof l3mAdd === "function") { const m = l3mAdd("volume", st.mp, `${l3Fmt(vol)} m³`, st.objs); m.h = Math.round(h * 1000) / 1000; l3mDraw(); l3ClearMeasure(); }
 }
 /* Polylinje (Victor 2026-10-10: "polyline mått"): längden längs punkterna. */
 function l3PathLen(pts) { let s = 0; for (let i = 1; i < pts.length; i++) s += pts[i].distanceTo(pts[i - 1]); return s; }
@@ -663,6 +716,7 @@ function l3ToolKey(e) {
   if (l3.tool === "move" && l3t.step === 0 && l3t.vcb && k === "Backspace") { l3t.vcb = l3t.vcb.slice(0, -1); l3ShowVcb("Kopior", ""); e.preventDefault(); return true; }
   if (l3.tool === "measure" && l3Prefs().measure === "area" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3FinishArea(); return true; }
   if (l3.tool === "measure" && l3Prefs().measure === "poly" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3FinishPoly(); return true; }
+  if (l3.tool === "measure" && l3Prefs().measure === "volume" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3VolBase(); return true; }
   if (typing && /^[0-9]$|^[.,;\- ]$/.test(k)) { l3t.vcb += k; l3ShowVcb(label, ""); e.preventDefault(); return true; }
   if (typing && k === "Backspace" && l3t.vcb) { l3t.vcb = l3t.vcb.slice(0, -1); l3ShowVcb(label, ""); e.preventDefault(); return true; }
   if (typing && k === "Enter") {
@@ -698,6 +752,7 @@ function l3ToolKey(e) {
     e.preventDefault(); return true;
   }
   if (k === "Escape") {
+    if (l3t.volPick || document.getElementById("v3VolDlg")) { l3VolCancel(); return true; }
     if (l3.tool === "measure" && (l3t.mp || []).length) { l3t.mp = null; l3ToolCancel(); l3ClearMeasure(); l3Status(L3_MEAS_START[l3Prefs().measure || "dist"]); return true; }
     if (l3.tool === "move" && l3t.vcb) { l3t.vcb = ""; l3ShowVcb(null); return true; }
     if (l3.tool !== "select" && l3t.step > 0) { l3ToolCancel(); l3Status(L3_TOOL_START[l3.tool]); return true; }

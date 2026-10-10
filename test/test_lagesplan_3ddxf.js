@@ -309,6 +309,20 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     if (pl.kind !== 'poly' || pl.n !== 3 || !/^7(,0\d)? m$/.test(pl.text) || !pl.rows.includes('Delsträcka 2')) fail('Polylinje-mått: ' + JSON.stringify(pl));
     await page.evaluate(() => { l3mRemove(l3m.list[l3m.list.length - 1].id); l3SetPref('measure', 'dist'); l3SetPref('snaps', { ...l3Snaps(), end: true, mid: true, edge: true, axis: true, perp: true }); l3SetTool('select'); });
   }
+  // Punkt (X/Y/Z) och Volym (basyta + höjd i rutan, eller till en yta).
+  {
+    await page.evaluate(() => { l3SetTool('measure'); l3SetPref('measure', 'point'); l3RenderSnapBar(); l3SetPref('snaps', { ...l3Snaps(), end: false, mid: false, edge: false, axis: false, perp: false }); });
+    await click(6512342, 150128);
+    const pt = await page.evaluate(() => { const m = l3m.list[l3m.list.length - 1]; return { kind: m.kind, text: m.text, lbl: document.querySelector(`.v3-meas-keep[data-mid="${m.id}"]`).className }; });
+    if (pt.kind !== 'point' || !/^X 6\s?512\s?34[12](,\d+)? m \| Y 150\s?12[78](,\d+)? m \| Z /.test(pt.text.replace(/\u00a0/g, ' ')) || !/\bpt\b/.test(pt.lbl)) fail('Punkt-mått: ' + JSON.stringify(pt));
+    await page.evaluate(() => { l3mRemove(l3m.list[l3m.list.length - 1].id); l3SetPref('measure', 'volume'); l3RenderSnapBar(); });
+    await click(6512341, 150127); await click(6512345, 150127); await click(6512345, 150130); await click(6512341, 150130);
+    await page.keyboard.press('Enter'); await page.waitForSelector('#v3VolDlg');
+    await page.fill('#v3VolH', '2'); await page.click('#v3VolOk'); await page.waitForTimeout(150);
+    const vo = await page.evaluate(() => { const m = l3m.list[l3m.list.length - 1]; return { kind: m.kind, h: m.h, text: m.text, rows: l3mInfo(m).rows.map(r => r[0]) }; });
+    if (vo.kind !== 'volume' || vo.h !== 2 || !/^2[34](,\d+)? m³$/.test(vo.text) || !vo.rows.includes('Basyta (i plan)')) fail('Volym-mått: ' + JSON.stringify(vo));
+    await page.evaluate(() => { l3mRemove(l3m.list[l3m.list.length - 1].id); l3SetPref('measure', 'dist'); l3SetPref('snaps', { ...l3Snaps(), end: true, mid: true, edge: true, axis: true, perp: true }); l3SetTool('select'); });
+  }
   // Dolda mått: ett nytt mått syns ändå, de gamla förblir dolda. Delete tar bort ett markerat mått.
   {
     await page.evaluate(() => { l3SetTool('select'); l3mToggle(false); });

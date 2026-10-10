@@ -55,8 +55,8 @@ function l3mOffDir(a, b) {
 }
 /* Måttlinjens ändar (samma koordinater som pts) – fästpunkterna själva när måttet inte är utdraget. */
 function l3mDimPts(m) {
+  if (m.kind !== "dist" || !m.off) return m.pts.slice();
   const [a, b] = m.pts;
-  if (m.kind !== "dist" || !m.off) return [a, b];
   const n = l3mOffDir(a, b), o = [n.x * m.off, n.y * m.off, n.z * m.off];
   return [a.map((v, i) => v + o[i]), b.map((v, i) => v + o[i])];
 }
@@ -82,6 +82,14 @@ function l3mDraw() {
       const ends = new THREE.Points(new THREE.BufferGeometry().setFromPoints(D), new THREE.PointsMaterial({ color: col, size: 5, sizeAttenuation: false, depthTest: false }));
       ends.renderOrder = 11; ends.userData.noHit = true; ends.raycast = () => {}; grp.add(ends);
     } else for (let i = 1; i < P.length; i++) line(P[i - 1], P[i]);
+    if (m.kind === "volume" && P.length > 2) {
+      // Volymen som en lodrät prisma: basytan, toppen (h över/under) och kanterna däremellan.
+      const h = Number(m.h) || 0, T = P.map(p => p.clone().add(new THREE.Vector3(0, 0, h)));
+      line(P[P.length - 1], P[0]); for (let i = 0; i < T.length; i++) { line(T[i], T[(i + 1) % T.length]); line(P[i], T[i], 0.7); }
+      const shp = new THREE.Shape(P.map(p => new THREE.Vector2(p.x, p.y))), zb = Math.min(0, h) + P.reduce((s, p) => s + p.z, 0) / P.length;
+      const box = new THREE.Mesh(new THREE.ExtrudeGeometry(shp, { depth: Math.abs(h), bevelEnabled: false }), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }));
+      box.position.z = zb; box.userData.noHit = true; box.raycast = () => {}; grp.add(box);
+    }
     if (m.kind === "area" && P.length > 2) {
       line(P[P.length - 1], P[0]);
       const fill = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape(P.map(p => new THREE.Vector2(p.x, p.y)))), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.15, side: THREE.DoubleSide, depthWrite: false }));
@@ -89,9 +97,9 @@ function l3mDraw() {
     }
     const pts = new THREE.Points(new THREE.BufferGeometry().setFromPoints(P), new THREE.PointsMaterial({ color: col, size: 6, sizeAttenuation: false, depthTest: false }));
     pts.renderOrder = 11; pts.userData.noHit = true; pts.raycast = () => {}; grp.add(pts);
-    const at = m.kind === "poly" ? l3mPathMid(P) : m.kind === "angle" ? P[1] : m.kind === "area" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length) : D[0].clone().add(D[1]).multiplyScalar(0.5);
+    const at = m.kind === "point" ? P[0].clone() : m.kind === "volume" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length).add(new THREE.Vector3(0, 0, (Number(m.h) || 0) / 2)) : m.kind === "poly" ? l3mPathMid(P) : m.kind === "angle" ? P[1] : m.kind === "area" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length) : D[0].clone().add(D[1]).multiplyScalar(0.5);
     const el = document.createElement("div");
-    el.className = "v3-meas v3-meas-keep" + (m.saved ? " saved" : "") + (sel ? " sel" : "") + (m.kind === "dist" ? " drag" : "");
+    el.className = "v3-meas v3-meas-keep" + (m.kind === "point" ? " pt" : "") + (m.saved ? " saved" : "") + (sel ? " sel" : "") + (m.kind === "dist" ? " drag" : "");
     if (m.kind === "dist") el.title = "Tryck för att markera måttet – dra för att föra måttlinjen uppåt eller nedåt (fästpunkterna sitter kvar). Dubbelklick: tillbaka.";
     el.onpointerdown = e => l3mLabelDown(e, m);
     el.ondblclick = e => { e.stopPropagation(); if (m.kind === "dist" && m.off && !m.locked) l3mSetOff(m, 0, m.off); };
@@ -142,6 +150,8 @@ function l3mHandlesPlace() {
 function l3mRecalc(m) {
   const P = m.pts.map(p => new THREE.Vector3(p[0], p[1], p[2]));
   if (m.kind === "dist") m.text = `${l3Fmt(P[0].distanceTo(P[1]))} m`;
+  else if (m.kind === "point") m.text = `X ${l3Fmt(P[0].x, 2)} m | Y ${l3Fmt(P[0].y, 2)} m | Z ${l3Fmt(P[0].z, 2)} m`;
+  else if (m.kind === "volume" && typeof l3PolyArea === "function") m.text = `${l3Fmt(Math.abs(l3PolyArea(P).area * (Number(m.h) || 0)))} m³`;
   else if (m.kind === "poly") { let s = 0; for (let i = 1; i < P.length; i++) s += P[i].distanceTo(P[i - 1]); m.text = `${l3Fmt(s)} m`; }
   else if (m.kind === "angle" && typeof l3Angle3 === "function") m.text = `${l3Fmt(l3Angle3(P[0], P[1], P[2]), 1)}°`;
   else if (m.kind === "area" && typeof l3PolyArea === "function") m.text = `${l3Fmt(l3PolyArea(P).area)} m²`;
@@ -291,6 +301,15 @@ function l3mInfo(m) {
     rows.push(["Avstånd (3D)", `${f(d)} m`], ["Vågrätt", `${f(hz)} m`], ["Höjdskillnad", `${sg(dz)} m`],
       ["Lutning", slope == null ? "lodrätt" : `${sg(slope, 1)} % (${sg(ang, 1)}°)`], ["ΔX / ΔY", `${f(b.x - a.x)} / ${f(b.y - a.y)} m`]);
     sub = `vågrätt ${f(hz, 2)} m · höjd ${sg(dz, 2)} m${slope != null && Math.abs(dz) > 0.005 ? ` · ${sg(slope, 1)} %` : ""}`;
+  } else if (m.kind === "point" && P.length >= 1) {
+    rows.push(["X", `${f(P[0].x)} m`], ["Y", `${f(P[0].y)} m`], ["Z", `${f(P[0].z)} m`]);
+    sub = "koordinat";
+  } else if (m.kind === "volume" && P.length >= 3) {
+    let a = 0, per = 0;
+    for (let i = 0; i < P.length; i++) { const p = P[i], q = P[(i + 1) % P.length]; a += p.x * q.y - q.x * p.y; per += Math.hypot(q.x - p.x, q.y - p.y); }
+    const base = Math.abs(a) / 2, h = Number(m.h) || 0, z0 = P.reduce((s2, p) => s2 + p.z, 0) / P.length;
+    rows.push(["Volym", `${f(base * Math.abs(h), 2)} m³`], ["Basyta (i plan)", `${f(base, 2)} m²`], ["Höjd", `${sg(h)} m`], ["Basens höjd (medel)", `${f(z0)} m`], ["Toppens höjd", `${f(z0 + h)} m`], ["Omkrets", `${f(per)} m`], ["Hörn", String(P.length)]);
+    sub = `basyta ${f(base, 2)} m² · höjd ${sg(h, 2)} m`;
   } else if (m.kind === "poly" && P.length >= 2) {
     let len = 0, hz = 0; const parts = [];
     for (let i = 1; i < P.length; i++) { const d = P[i].distanceTo(P[i - 1]); len += d; hz += Math.hypot(P[i].x - P[i - 1].x, P[i].y - P[i - 1].y); parts.push(d); }
@@ -320,7 +339,7 @@ function l3mInfo(m) {
   rows.push(["Mätt av", `${m.by || "–"} · ${m.at ? new Date(m.at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}`], ["Status", m.saved ? "Sparad i projektet" : "Inte sparad"]);
   return { sub, objTxt, rows };
 }
-const L3M_KIND = { dist: "Avstånd", poly: "Polylinje", angle: "Vinkel", area: "Yta" };
+const L3M_KIND = { point: "Punkt", dist: "Avstånd", poly: "Polylinje", angle: "Vinkel", area: "Yta", volume: "Volym" };
 /* Punkten mitt längs en polylinje (för etiketten). pts: [x, y, z] eller THREE.Vector3. */
 function l3mPathMid(pts) {
   const V = pts.map(p => (p.isVector3 ? p : new THREE.Vector3(p[0], p[1], p[2])));
@@ -491,12 +510,19 @@ function l3mIfcBuild(list, withNotes) {
     const segs = m.kind === "area" ? P.map((p, i) => [p, P[(i + 1) % P.length]]) : m.kind === "dist" && m.off ? [[P[0], DP[0]], [DP[0], DP[1]], [DP[1], P[1]]] : P.slice(1).map((p, i) => [P[i], p]);
     // Måttlinjen/kedjan som ett rör med rundade brytningar, och en kon på varje mätpunkt.
     const way = m.kind === "dist" && m.off ? [P[0], DP[0], DP[1], P[1]] : P;
-    const path = l3mFillet(way.map(rel), m.kind === "area", L3M_IFC.bend);
+    const path = m.kind === "point" ? [] : l3mFillet(way.map(rel), m.kind === "area" || m.kind === "volume", L3M_IFC.bend);
     const tri = (g, st) => { if (!g.pts.length) return null; const pl = E(`IFCCARTESIANPOINTLIST3D((${g.pts.map(v => ifcPt([v.x, v.y, v.z])).join(",")}))`), fs = E(`IFCTRIANGULATEDFACESET(${pl},$,.T.,(${g.tris.map(t => `(${t.join(",")})`).join(",")}),$)`); E(`IFCSTYLEDITEM(${fs},(${st}),$)`); return fs; };
     const meshItems = [];
     if (path.length >= 2) { const t = tri(l3mSweep(path, L3M_IFC.r), red); if (t) meshItems.push(t); }
     P.forEach(p => { const v = rel(p), t = tri(l3mCone({ x: v[0], y: v[1], z: v[2] }, L3M_IFC.cone.h, L3M_IFC.cone.r), red); if (t) meshItems.push(t); });
     void segs; void dotAt;
+    if (m.kind === "volume" && P.length >= 3) {
+      // Volymen som en halvgenomskinlig prisma.
+      const h = Number(m.h) || 0, zAvg = P.reduce((s2, p) => s2 + p[2], 0) / P.length - o[2];
+      const poly = E(`IFCPOLYLINE((${[...P, P[0]].map(p => E(`IFCCARTESIANPOINT(${ifcPt([p[0] - o[0], p[1] - o[1]])})`)).join(",")}))`);
+      const vol = E(`IFCEXTRUDEDAREASOLID(${E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${poly})`)},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, 0, zAvg + Math.min(0, h)])})`)},$,$)`)},${dir([0, 0, 1])},${ifcNum(Math.max(0.001, Math.abs(h)))})`);
+      E(`IFCSTYLEDITEM(${vol},(${fillSt}),$)`); items.push(vol);
+    }
     if (m.kind === "area" && P.length >= 3) {
       const zAvg = P.reduce((s2, p) => s2 + p[2], 0) / P.length - o[2];
       const poly = E(`IFCPOLYLINE((${[...P, P[0]].map(p => E(`IFCCARTESIANPOINT(${ifcPt([p[0] - o[0], p[1] - o[1]])})`)).join(",")}))`);
@@ -508,7 +534,7 @@ function l3mIfcBuild(list, withNotes) {
     const raw = withNotes && m.note ? (typeof wrapText === "function" ? wrapText(m.note, 30) : m.note).split("\n").filter(Boolean).slice(0, 3) : [];
     const lines = [{ t: m.text, h: L3M_IFC.h1 }, ...raw.map(t => ({ t, h: L3M_IFC.h2 }))];
     const W = Math.max(0.6, ...lines.map(l => W1(l.t, l.h))) + L3M_IFC.pad * 2, H = lines.reduce((a, l) => a + l.h * 1.4, 0) + L3M_IFC.pad * 1.4;
-    const at = m.kind === "poly" ? l3mPathMid(P).toArray() : m.kind === "angle" ? P[1] : m.kind === "dist" ? [(DP[0][0] + DP[1][0]) / 2, (DP[0][1] + DP[1][1]) / 2, (DP[0][2] + DP[1][2]) / 2] : P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0]);
+    const at = m.kind === "point" ? P[0] : m.kind === "volume" ? (c => [c[0], c[1], c[2] + Math.max(0, Number(m.h) || 0)])(P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0])) : m.kind === "poly" ? l3mPathMid(P).toArray() : m.kind === "angle" ? P[1] : m.kind === "dist" ? [(DP[0][0] + DP[1][0]) / 2, (DP[0][1] + DP[1][1]) / 2, (DP[0][2] + DP[1][2]) / 2] : P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0]);
     const center = [at[0], at[1], (m.kind === "area" ? Math.max(...P.map(p => p[2])) : at[2]) + L3M_IFC.lift + H / 2];
     // Vit linje från skylten ner till måttlinjen – visar att skylten hör till måttet (Victor 2026-10-10).
     const lead = tube(rel(at), rel([at[0], at[1], center[2] - H / 2]), 0.012, white);
