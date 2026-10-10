@@ -222,7 +222,18 @@ function attrValue(oid, k) {
 function valueOf(oid, key) {
   if (key.startsWith("a:")) return attrValue(oid, key);
   const [ps, pn] = key.slice(2).split(SEP);
-  for (const src of [ownPsets(oid), typePsets(oid)]) for (const x of src) if (x.n === ps) { const f = x.p.find(y => y[0] === pn); if (f) return f[1]; }
+  // Bara den egenskapsgrupp och egenskap som söks läses (inte alla värden i alla grupper).
+  const t = objType.get(oid), te = t ? ent(t) : null;
+  for (const pid of [...(objPsets.get(oid) || []), ...(te ? refs(te.a[5]) : [])]) {
+    const e = ent(pid); if (!e || (e.t !== "IFCPROPERTYSET" && e.t !== "IFCELEMENTQUANTITY")) continue;
+    if ((typeof e.a[2] === "string" && e.a[2] ? e.a[2] : e.t) !== ps) continue;
+    for (const q of refs(e.t === "IFCPROPERTYSET" ? e.a[4] : e.a[5])) {
+      const h = entHead(q); if (!h) continue;
+      const cx = h.t === "IFCCOMPLEXPROPERTY" || h.t === "IFCPHYSICALCOMPLEXQUANTITY";
+      if (!cx && h.name !== pn) continue;
+      const out = []; propOut(q, out); const f = out.find(y => y[0] === pn); if (f) return f[1];
+    }
+  }
   return null;
 }
 
@@ -242,6 +253,37 @@ function props(guid) {
     psets: ownPsets(oid),
   };
 }
+/* Bara egenskapernas namn (fliken Egenskaper behöver inga värden): läser postens typ och första sträng –
+   mycket snabbare än pset() för stora modeller (Victor 2026-10-10: 129 000 objekt "fortsätter att ladda"). */
+const nameCache = new Map();
+function entHead(id) {
+  if (!id || id > maxId || !off[id]) return null;
+  P = off[id];
+  while (P < N && u8[P] !== 61) P++;
+  P++; ws();
+  const s = P; while (P < N && u8[P] !== 40 && u8[P] !== 32) P++;
+  const t = latin.decode(u8.subarray(s, P)); ws();
+  if (u8[P] !== 40) return { t, name: "" };
+  P++; ws();
+  return { t, name: u8[P] === 39 ? str() : "" };
+}
+function psetKeys(id) {
+  if (nameCache.has(id)) return nameCache.get(id);
+  let r = null;
+  const h = entHead(id);
+  if (h && (h.t === "IFCPROPERTYSET" || h.t === "IFCELEMENTQUANTITY")) {
+    const e = ent(id), list = refs(h.t === "IFCPROPERTYSET" ? e.a[4] : e.a[5]), ps = typeof e.a[2] === "string" && e.a[2] ? e.a[2] : e.t, out = [];
+    list.forEach(pid => {
+      const q = entHead(pid); if (!q) return;
+      if (q.t === "IFCCOMPLEXPROPERTY" || q.t === "IFCPHYSICALCOMPLEXQUANTITY") { const tmp = []; propOut(pid, tmp); tmp.forEach(([pn]) => out.push("p:" + ps + SEP + pn)); }
+      else if (q.t.startsWith("IFCPROPERTY") || QTY[q.t]) out.push("p:" + ps + SEP + q.name);
+    });
+    if (out.length) r = out;
+  }
+  if (nameCache.size > 400000) nameCache.clear();
+  nameCache.set(id, r);
+  return r;
+}
 function sceneIds() { return scene.map(g => guidId.get(g) || 0); }
 function keys(onProg) {
   if (keysCache) return keysCache;
@@ -250,8 +292,9 @@ function keys(onProg) {
   ids.forEach((oid, i) => {
     if (!oid) return;
     const seen = new Set();
-    for (const src of [ownPsets(oid), typePsets(oid)]) for (const x of src) for (const [pn] of x.p) { const k = "p:" + x.n + SEP + pn; if (!seen.has(k)) { seen.add(k); add(k, 1); } }
-    if (i % 5000 === 0) onProg(i / ids.length);
+    const t = objType.get(oid), te = t ? ent(t) : null;
+    for (const pid of [...(objPsets.get(oid) || []), ...(te ? refs(te.a[5]) : [])]) for (const k of psetKeys(pid) || []) if (!seen.has(k)) { seen.add(k); add(k, 1); }
+    if (i % 2000 === 0) onProg(i / ids.length);
   });
   const out = [];
   [["a:cls"], ["a:type"], ["a:storey"], ["a:material"], ["a:name"], ["a:objtype"], ["a:tag"]].forEach(([k]) => out.push([k, "", "", ids.filter(Boolean).length]));

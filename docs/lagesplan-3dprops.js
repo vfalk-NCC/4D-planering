@@ -196,14 +196,26 @@ async function l3pOpenAll(download) {
   return { out, missing };
 }
 async function l3pLoadKeys(download) {
-  const host = document.getElementById("v3PalProps");
   const sig = l3pModels().map(m => m.id + "@" + (m.src && m.src.version)).join(",");
   if (l3p.keys && l3p.keysFor === sig && !download) return l3p.keys;
+  // En insamling i taget: fliken ritas om medan den pågår, och varje omritning startade förut en ny.
+  if (l3p.keysJob && l3p.keysJob.sig === sig && !download) return l3p.keysJob.p;
+  const job = { sig, p: null };
+  job.p = l3pLoadKeys0(download, sig).finally(() => { if (l3p.keysJob === job) l3p.keysJob = null; });
+  l3p.keysJob = job;
+  return job.p;
+}
+async function l3pLoadKeys0(download, sig) {
+  const host = document.getElementById("v3PalProps");
   if (host) host.querySelector(".v3-pp-body").innerHTML = `<div class="v3-pal-hint"><span class="pm-spin"></span> Läser egenskaperna…</div>`;
   const { out, missing } = await l3pOpenAll(download);
   const merged = new Map();
   for (const [m, st] of out) {
-    const ks = await l3pCall(st, { op: "keys" }, f => busyProgress("propkeys", `Samlar egenskaper i ${m.name}`, f));
+    const ks = await l3pCall(st, { op: "keys" }, f => {
+      busyProgress("propkeys", `Samlar egenskaper i ${m.name}`, f);
+      const hint = document.querySelector("#v3PalProps .v3-pp-body .v3-pal-hint");
+      if (hint) hint.innerHTML = `<span class="pm-spin"></span> Samlar egenskaperna i ${escHtml(m.name)} – ${Math.round(f * 100)} %`;
+    });
     ks.forEach(([k, ps, pn, n]) => { const x = merged.get(k); if (x) x[3] += n; else merged.set(k, [k, ps, pn, n]); });
   }
   busyProgress("propkeys", "", null);
