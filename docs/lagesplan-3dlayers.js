@@ -60,7 +60,7 @@ function l3LayersRender() {
     ${row('data-l3l="etab"', etabOn, `Etablering <em>${placements.length}</em>`, "", "v3-lr-b")}
     ${types.map(t => row(`data-l3l-type="${esc(t.type)}"`, l3lTypeOn(t), `<i class="v3-lr-dot" style="background:${esc(t.color)}"></i>${esc(t.label)} <em>${t.ids.length}</em>`, "", "v3-lr-sub")).join("")}
     ${typeof l3m !== "undefined" ? row('data-l3m-eye="1"', !l3m.hidden, `Mått <em>${l3m.list.length}</em>`) : ""}
-    ${typeof l3k !== "undefined" ? row('data-l3k-eye="1"', !l3k.hidden, `Kommentarer <em>${l3k.list.filter(c => !c.done).length}${l3k.list.some(c => c.done) ? ` + ${l3k.list.filter(c => c.done).length} klara` : ""}</em>`) : ""}`);
+    ${typeof l3k !== "undefined" ? row('data-l3k-eye="1"', !l3k.hidden, `Kommentarer <em>${l3k.list.filter(c => !c.done).length}${l3k.list.some(c => c.done) ? ` + ${l3k.list.filter(c => c.done).length} klara` : ""}</em>`) + row('data-l3k-signs="1"', l3kSigns(), "Som skyltar i 3D", "", "v3-lr-sub") : ""}`);
   if (typeof l3sHtml === "function") { const s2 = l3sHtml(row, l3lEye); if (s2) h += l3lSec("site2d", "2D-lager och DXF", s2.body, s2.extra); }
   let mh = "";
   if (P.laySort === "list") {
@@ -91,6 +91,7 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3l]").forEach(b => { b.onclick = () => l3lToggle(b.dataset.l3l); });
   host.querySelectorAll("[data-l3m-eye]").forEach(b => { b.onclick = () => l3mToggle(); });
   host.querySelectorAll("[data-l3k-eye]").forEach(b => { b.onclick = () => l3kToggle(); });
+  host.querySelectorAll("[data-l3k-signs]").forEach(b => { b.onclick = () => { l3SetPref("cSigns", !l3kSigns()); l3kDraw(); }; });
   host.querySelectorAll("[data-l3l-type]").forEach(b => { b.onclick = () => { const t = types.find(x => x.type === b.dataset.l3lType); if (t) { l3lSetIdsVisible(t.ids, !l3lTypeOn(t)); l3LayersRender(); } }; });
   host.querySelectorAll("[data-l3l-model]").forEach(b => { b.onclick = () => { const m = l3b.models.find(x => x.id === b.dataset.l3lModel); if (m) { l3bShow(m.id, !m.visible); l3RenderLegend(); l3Render(); l3LayersRender(); } }; });
   host.querySelectorAll("[data-l3l-zoom]").forEach(b => { b.onclick = () => l3lZoomModel(b.dataset.l3lZoom); });

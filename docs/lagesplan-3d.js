@@ -869,6 +869,7 @@ function l3Tap(e) {
   if (l3.tool && l3.tool !== "select" && typeof l3ToolTap === "function" && l3ToolTap(e)) return;
   if (l3.addType) return l3AddAt(e);
   if (typeof l3dTap === "function" && l3dTap(e)) return; // DXF-redigering pågår
+  if (typeof l3kTap === "function" && l3kTap(e)) return; // kommentarens skylt
   const id = l3PlaceAt(e);
   if (id) {
     if (e.shiftKey || e.ctrlKey || e.metaKey || l3.multi) { const s = new Set(l3.sel); if (s.has(id)) s.delete(id); else s.add(id); l3SelectIds([...s]); }

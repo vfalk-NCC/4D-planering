@@ -141,18 +141,25 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   if (!meta.includes('Victor') || !meta.includes(today)) fail('Popupen ska visa namn och dagens datum: ' + meta + ' / ' + today);
   await page.fill('#v3CPop #v3CText', 'Kolla schaktet här innan gjutning');
   await page.click('#v3CPop [data-k="save"]');
-  await page.waitForFunction(() => l3k.list.length === 1 && document.querySelector('#view3d .v3-cpin'), null, { timeout: 5000 });
+  await page.waitForFunction(() => l3k.list.length === 1 && l3.groups.csigns && l3.groups.csigns.children.some(o => o.isSprite), null, { timeout: 5000 });
   await page.waitForTimeout(300);
   const saved = JSON.parse(gh.get('projects/p1/plan_comments3d.json') || '[]');
   if (saved.length !== 1 || saved[0].text !== 'Kolla schaktet här innan gjutning' || saved[0].by !== 'Victor' || saved[0].plan !== 'A' || saved[0].target.kind !== 'point') fail('Kommentaren ska sparas: ' + JSON.stringify(saved));
+  // Skylten i 3D: ett kort på en stolpe; numrerade bubblan döljs. Tryck på skylten öppnar kommentaren.
+  const sg = await page.evaluate(() => { const sp = l3.groups.csigns.children.find(o => o.isSprite); const q = l3ToScreen(sp.position); return { x: q.x, y: q.y, w: sp.scale.x, h: sp.scale.y, lift: sp.position.z - (l3k.list[0].pos[2] - l3.O[2]), pin: getComputedStyle(document.querySelector('#view3d .v3-cpin')).display }; });
+  if (sg.w < 2 || sg.h <= 0 || Math.abs(sg.lift - 2.2) > 1e-6 || sg.pin !== 'none') fail('Skylten i 3D: ' + JSON.stringify(sg));
   await page.keyboard.press('Escape');
-  await page.click('#view3d .v3-cpin');
+  if (await page.isVisible('#v3CPop')) fail('Esc ska stänga kommentaren');
+  await page.evaluate(() => { const c = new THREE.Vector3(6512355 - l3.O[0], 150122 - l3.O[1], 0); l3.camera.position.set(c.x, c.y - 25, 12); l3.orbit.target.copy(c); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); });
+  const sg2 = await page.evaluate(() => { const sp = l3.groups.csigns.children.find(o => o.isSprite); const q = l3ToScreen(sp.position.clone().add(new THREE.Vector3(0.6, 0, 0.6))); return [q.x, q.y]; });
+  await page.mouse.click(cv2.x + sg2[0], cv2.y + sg2[1]); await page.waitForTimeout(200);
+  if (!(await page.isVisible('#v3CPop #v3CReply'))) fail('Tryck på skylten ska öppna kommentaren');
   await page.fill('#v3CPop #v3CReply', 'Klart, kollat');
   await page.click('#v3CPop [data-k="reply"]'); await page.waitForTimeout(200);
   await page.click('#v3CPop [data-k="done"]'); await page.waitForTimeout(300);
-  const cs = await page.evaluate(() => ({ replies: l3k.list[0].replies.length, done: l3k.list[0].done, pin: document.querySelector('#view3d .v3-cpin').classList.contains('done'), txt: document.querySelector('#v3CPop .v3-cpop-body').textContent }));
+  const cs = await page.evaluate(() => ({ replies: l3k.list[0].replies.length, done: l3k.list[0].done, pin: document.querySelector('#view3d .v3-cpin').classList.contains('done') && l3.groups.csigns.children.some(o => o.isSprite), txt: document.querySelector('#v3CPop .v3-cpop-body').textContent }));
   const saved2 = JSON.parse(gh.get('projects/p1/plan_comments3d.json') || '[]');
-  if (process.env.SHOT2) await page.screenshot({ path: process.env.SHOT2 });
+  if (process.env.SHOT2) { await page.keyboard.press('Escape'); await page.waitForTimeout(200); await page.screenshot({ path: process.env.SHOT2 }); await page.mouse.click(cv2.x + sg2[0], cv2.y + sg2[1]); await page.waitForTimeout(200); }
   if (cs.replies !== 1 || !cs.done || !cs.pin || !/Klart, kollat/.test(cs.txt) || !saved2[0].done || saved2[0].replies.length !== 1) fail('Svar och klar: ' + JSON.stringify(cs));
   await page.keyboard.press('Escape');
 

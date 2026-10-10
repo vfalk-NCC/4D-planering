@@ -69,14 +69,83 @@ function l3kDraw() {
     host.appendChild(el); l3k.els.set(c.id, el);
   });
   l3kPlace();
+  l3kSignsBuild();
   if (typeof l3LayersRender === "function") l3LayersRender();
+  l3Render();
+}
+/* ---- Skyltar i 3D (Victor 2026-10-10: "om popupen går att få till som ett 3d-objekt") ---------------
+   Varje kommentar som ett kort på en tunn stolpe ovanför punkten: skalar med avståndet och skyms av
+   byggnaden som ett riktigt föremål. Tryck på skylten öppnar kommentaren. */
+const l3kSigns = () => l3Prefs().cSigns !== false;
+function l3kCard(c, nr) {
+  const W = 640, pad = 28, F = 30, cv = document.createElement("canvas"), x = cv.getContext("2d");
+  x.font = `${F}px "Segoe UI", Arial, sans-serif`;
+  // Radbryt texten (högst 5 rader).
+  const words = String(c.text || "").split(/\s+/), lines = [];
+  let ln = "";
+  words.forEach(w => { const t = ln ? ln + " " + w : w; if (x.measureText(t).width > W - pad * 2 && ln) { lines.push(ln); ln = w; } else ln = t; });
+  if (ln) lines.push(ln);
+  if (lines.length > 5) { lines.length = 5; lines[4] = lines[4].replace(/\s*\S*$/, "") + " …"; }
+  const head = 64, H = head + pad / 2 + lines.length * F * 1.3 + ((c.replies || []).length ? F * 1.4 : 0) + pad;
+  cv.width = W; cv.height = Math.ceil(H);
+  const r = 26;
+  x.fillStyle = "rgba(15,23,42,.18)"; x.beginPath(); x.roundRect(4, 8, W - 8, H - 10, r); x.fill();
+  x.fillStyle = "#fff"; x.beginPath(); x.roundRect(0, 0, W - 8, H - 10, r); x.fill();
+  const g = x.createLinearGradient(0, 0, W, 0); g.addColorStop(0, c.done ? "#94a3b8" : "#f59e0b"); g.addColorStop(1, c.done ? "#94a3b8" : "#f97316");
+  x.fillStyle = g; x.beginPath(); x.roundRect(0, 0, W - 8, head, [r, r, 0, 0]); x.fill();
+  x.fillStyle = "#fff"; x.beginPath(); x.arc(40, head / 2, 20, 0, Math.PI * 2); x.fill();
+  x.fillStyle = c.done ? "#64748b" : "#f97316"; x.font = `700 ${F * 0.8}px "Segoe UI", Arial, sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(String(nr), 40, head / 2 + 1);
+  x.textAlign = "left"; x.fillStyle = "#fff"; x.font = `600 ${F * 0.8}px "Segoe UI", Arial, sans-serif`;
+  x.fillText(`${c.by || ""} · ${new Date(c.at).toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" })}${c.done ? " · klar" : ""}`.slice(0, 44), 72, head / 2 + 1);
+  x.fillStyle = c.done ? "#64748b" : "#0f172a"; x.font = `${F}px "Segoe UI", Arial, sans-serif`; x.textBaseline = "alphabetic";
+  lines.forEach((l, i) => x.fillText(l, pad, head + pad / 2 + F + i * F * 1.3));
+  if ((c.replies || []).length) { x.fillStyle = "#94a3b8"; x.font = `${F * 0.8}px "Segoe UI", Arial, sans-serif`; x.fillText(`${c.replies.length} svar`, pad, head + pad / 2 + F + lines.length * F * 1.3 + F * 0.4); }
+  return cv;
+}
+function l3kSignsBuild() {
+  if (!l3) return;
+  if (!l3.groups.csigns) { const g = new THREE.Group(); g.name = "csigns"; l3.groups.csigns = g; l3.scene.add(g); }
+  const grp = l3.groups.csigns;
+  l3Clear(grp);
+  grp.visible = !l3k.hidden && l3kSigns();
+  if (!grp.visible) return;
+  l3k.list.forEach((c, i) => {
+    if (!l3k.showDone && c.done) return;
+    const base = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]), lift = 2.2;
+    const cv = l3kCard(c, i + 1), tex = new THREE.CanvasTexture(cv); tex.anisotropy = 4;
+    if ("encoding" in tex) tex.encoding = THREE.sRGBEncoding;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    const w = 3.2; sp.scale.set(w, w * cv.height / cv.width, 1);
+    sp.center.set(0.08, 0); sp.position.copy(base).add(new THREE.Vector3(0, 0, lift));
+    sp.userData.commentId = c.id; sp.renderOrder = 5;
+    const pole = new THREE.Line(new THREE.BufferGeometry().setFromPoints([base, base.clone().add(new THREE.Vector3(0, 0, lift))]), new THREE.LineBasicMaterial({ color: c.done ? 0x94a3b8 : 0xf97316 }));
+    pole.userData.noHit = true; pole.raycast = () => {};
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), new THREE.MeshBasicMaterial({ color: c.done ? 0x94a3b8 : 0xf97316 }));
+    dot.position.copy(base); dot.userData.noHit = true; dot.raycast = () => {};
+    grp.add(pole, dot, sp);
+  });
+}
+/* Tryck på en skylt: öppna kommentaren (anropas först i 3D-vyns tryck). */
+function l3kTap(e) {
+  if (!l3 || !l3.groups.csigns || !l3.groups.csigns.visible || !l3.groups.csigns.children.length) return false;
+  const r = l3.renderer.domElement.getBoundingClientRect(), rc = new THREE.Raycaster();
+  rc.setFromCamera(new THREE.Vector2((e.clientX - r.left) / r.width * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), l3.camera);
+  const hit = rc.intersectObjects(l3.groups.csigns.children.filter(o => o.isSprite), false)[0];
+  if (!hit) return false;
+  // Byggnaden framför skylten vinner.
+  const front = typeof l3Ray === "function" ? l3Ray(e, l3Surfaces())[0] : null;
+  if (front && front.distance < hit.distance - 0.05) return false;
+  const c = l3k.list.find(x => x.id === hit.object.userData.commentId);
+  if (!c) return false;
+  l3kOpen(c);
+  return true;
 }
 function l3kPlace() {
   if (!l3) return;
   const at = c => new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]);
   l3k.els.forEach((el, id) => {
     const c = l3k.list.find(x => x.id === id);
-    if (!c || l3k.hidden) { el.style.display = "none"; return; }
+    if (!c || l3k.hidden || l3kSigns()) { el.style.display = "none"; return; } // skyltarna i 3D har numret
     const q = l3ToScreen(at(c));
     el.style.display = q.behind ? "none" : "flex"; el.style.left = q.x + "px"; el.style.top = q.y + "px";
   });
