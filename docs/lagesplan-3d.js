@@ -1307,8 +1307,12 @@ document.addEventListener("DOMContentLoaded", () => {
   if (new URLSearchParams(location.search).get("view") === "3d") {
     let n = 0;
     const t = setInterval(() => {
-      if (++n > 120) return clearInterval(t);
-      if (typeof plan !== "undefined" && plan && page) { clearInterval(t); open3d(); }
+      if (++n > 120) { clearInterval(t); if (typeof bootHide === "function") bootHide(); return; }
+      if (typeof plan !== "undefined" && plan && page) {
+        clearInterval(t);
+        if (typeof bootSet === "function") bootSet("Öppnar 3D-vyn…", 0.97);
+        Promise.resolve(open3d()).catch(() => {}).finally(() => { if (typeof bootHide === "function") bootHide(); });
+      }
     }, 500);
   }
 });

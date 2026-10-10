@@ -101,11 +101,14 @@ async function init() {
   try { unlocked = localStorage.getItem("4dplan-unlocked") === "1"; } catch (e) {}
 
   bindUI();
+  bootSet("Startar…", 0.05);
+  setTimeout(bootHide, 90000); // aldrig fast bakom laddningsskärmen
 
   // Öppnad från extensionen: fliken har inte extensionens localStorage
   // (webbläsaren delar upp lagringen för inbäddade iframes), så token och
   // inställningar hämtas från 4D-planering via postMessage.
   if (window.opener) {
+    bootSet("Ansluter till 4D-planering…", 0.08);
     try {
       const r = await askOpener("hello", {}, 4000);
       if (r.settings) {
@@ -129,10 +132,13 @@ async function init() {
 
   $("projectInfo").textContent = `Projekt ${projectId}`;
   $("dateInput").value = todayIso();
-  setBusy("Hämtar planering…");
+  bootSet("Hämtar planeringen…", 0.15);
   try {
-    [items, plans, positions, subActs] = await Promise.all([ghReadJSON(token, dataPath("plan_items.json")), ghReadJSON(token, dataPath("status_plans.json")),
-      ghReadJSON(token, dataPath("plan_item_positions.json")).catch(() => []), ghReadJSON(token, dataPath("plan_item_activities.json")).catch(() => [])]);
+    // Fyra filer parallellt; varje färdig fil flyttar stapeln (15–70 %).
+    let got = 0;
+    const step = p => p.then(v => { got++; bootSet(`Hämtar planeringen… (${got} av 4)`, 0.15 + 0.55 * got / 4); return v; });
+    [items, plans, positions, subActs] = await Promise.all([step(ghReadJSON(token, dataPath("plan_items.json"))), step(ghReadJSON(token, dataPath("status_plans.json"))),
+      step(ghReadJSON(token, dataPath("plan_item_positions.json")).catch(() => [])), step(ghReadJSON(token, dataPath("plan_item_activities.json")).catch(() => []))]);
     subCoupledCache = null;
     // Tillfälliga fält som äldre versioner sparat (zonernas _status) tas bort, och basen för
     // sammanslagning vid sparning sätts (lagesplan-merge.js).
@@ -154,12 +160,17 @@ async function init() {
   renderPlanSelect();
   const last = (() => { try { return localStorage.getItem("lagesplan-last-" + projectId); } catch (e) { return null; } })();
   const first = plans.find(p => p.id === last) || plans[0];
+  bootSet(first ? `Öppnar ${first.name || "arbetsytan"}…` : "Klart", 0.7);
   if (first) await openPlan(first.id);
+  else $("empty").classList.remove("hidden"); // först nu vet vi att det inte finns någon arbetsyta
+  // 3D-vyn direkt (?view=3d): laddningsskärmen ligger kvar tills den är öppen (lagesplan-3d.js).
+  if (new URLSearchParams(location.search).get("view") !== "3d" || !first) bootHide();
   // Länk till en aktivitet (?item=…, t.ex. "Visa på kartan" i Excel): öppna på den.
   if (typeof focusItemFromUrl === "function") await focusItemFromUrl();
 }
 
 function fatal(msg) {
+  bootError(msg);
   const w = $("warnBox");
   w.textContent = msg;
   w.classList.remove("hidden");
@@ -188,6 +199,8 @@ function renderBusy() {
   const el = $("busy");
   if (!el) return;
   const jobs = [...busyJobs.values()], j = jobs[jobs.length - 1];
+  // Under laddningsskärmen visas förloppet där (arbetsytans PDF = 70–100 %).
+  if (bootBusy()) { const p = busyJobs.get("plan"); if (p && p.f >= 0) bootSet(p.label, 0.7 + 0.28 * p.f); el.classList.add("hidden"); return; }
   if (!j) { el.classList.add("hidden"); el.innerHTML = ""; return; }
   const pct = j.f >= 0 ? Math.max(1, Math.min(100, Math.round(j.f * 100))) : null;
   el.innerHTML = `<span class="busy-t">${uiEsc(j.label)}${pct != null ? ` – ${pct} %` : ""}${jobs.length > 1 ? ` <em>(+${jobs.length - 1})</em>` : ""}</span>` +
@@ -195,6 +208,32 @@ function renderBusy() {
   el.classList.remove("hidden");
 }
 function setBusy(t) { if (t) busyJobs.set("_", { label: t, f: undefined }); else busyJobs.delete("_"); renderBusy(); }
+
+/* Laddningsskärmen vid start: steg och procent tills planeringen och arbetsytan är inlästa (Victor
+   2026-10-10). Andelarna: anslutning 0–15 %, planeringen 15–70 %, arbetsytan (PDF) 70–100 %. */
+let bootPctNow = 0;
+function bootSet(label, f) {
+  const el = $("bootScreen");
+  if (!el || el.classList.contains("done")) return;
+  if (f != null) bootPctNow = Math.max(bootPctNow, Math.min(100, Math.round(f * 100)));
+  if (label) $("bootStep").textContent = label;
+  $("bootBar").style.width = bootPctNow + "%";
+  $("bootPct").textContent = bootPctNow + " %";
+}
+function bootHide() {
+  const el = $("bootScreen");
+  if (!el || el.classList.contains("done")) return;
+  bootSet("Klart", 1);
+  setTimeout(() => el.classList.add("done"), 150);
+}
+function bootError(msg) {
+  const el = $("bootScreen");
+  if (!el) return;
+  el.classList.add("err");
+  $("bootStep").textContent = msg;
+  el.classList.add("done"); // meddelandet står i varningsrutan; inget får ligga över nyckelrutan
+}
+const bootBusy = () => { const el = $("bootScreen"); return !!el && !el.classList.contains("done"); };
 function setSaveStatus(t) {
   $("saveStatus").textContent = t;
   // Borttagningar och annat som går att ångra visas också som en notis med en
