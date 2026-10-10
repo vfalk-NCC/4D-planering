@@ -259,8 +259,9 @@ async function l3pGroupBy(key, opts = {}) {
     .sort((a, b) => (a.v === "\u0000") - (b.v === "\u0000") || b.n - a.n || String(a.v).localeCompare(String(b.v), "sv", { numeric: true }));
   let ci = 0;
   const gcol = key === "g:4d" ? new Map(l3g.list.map(g => [g.name, g.color])) : null;
-  list.forEach(x => { x.color = x.v === "\u0000" ? "#cbd5e1" : gcol && gcol.has(x.v) ? gcol.get(x.v) : ci < L3P_COLORS.length ? L3P_COLORS[ci++] : "#94a3b8"; });
-  l3p.group = { key, list };
+  const own = (l3Prefs().propColors || {})[key] || {};
+  list.forEach(x => { x.color = own[x.v] || (x.v === "\u0000" ? "#cbd5e1" : gcol && gcol.has(x.v) ? gcol.get(x.v) : ci < L3P_COLORS.length ? L3P_COLORS[ci++] : "#94a3b8"); });
+  l3p.group = { key, list }; l3p.vq = "";
   if (l3p.colorBy) l3pColorOn(); // färgerna följer med till den nya egenskapen
   l3pRenderTab();
   return l3p.group;
@@ -270,11 +271,24 @@ function l3pRenderValues(body) {
   const total = g.list.reduce((a, x) => a + x.n, 0);
   body.innerHTML = `<div class="v3-pp-head"><button type="button" class="v3-pp-back" id="v3PpBack" title="Tillbaka till alla egenskaper">‹</button><b title="${esc(l3pKeyLabel(g.key))}">${esc(l3pKeyLabel(g.key))}</b></div>
     <div class="v3-pal-hint">${g.list.length} ${g.list.length === 1 ? "värde" : "värden"} · ${total.toLocaleString("sv-SE")} objekt. Tryck på ett värde för att markera objekten (Skift lägger till).</div>
-    <div class="v3-btns"><button type="button" id="v3PpColor" class="${l3p.colorBy ? "on" : ""}" title="Färga alla objekt efter värdet">${l3p.colorBy ? "Sluta färga" : "Färga efter värde"}</button></div>
-    <div class="v3-pp-vals">${g.list.map((x, i) => `<button type="button" class="v3-pp-v" data-pv="${i}" title="${esc(x.v === "\u0000" ? "Objekt som saknar egenskapen" : x.v || "(tomt)")}"><i style="background:${x.color}"></i><span class="${x.v === "\u0000" || x.v === "" ? "dim" : ""}">${esc(x.v === "\u0000" ? "(saknas)" : x.v === "" ? "(tomt)" : x.v)}</span><em>${x.n.toLocaleString("sv-SE")}</em></button>`).join("")}</div>`;
-  body.querySelector("#v3PpBack").onclick = () => { l3p.group = null; l3pRenderTab(); };
+    <div class="v3-grp-acts v3-pp-acts"><button type="button" id="v3PpColor" class="${l3p.colorBy ? "on" : ""}" title="Färga alla objekt efter värdet">${l3p.colorBy ? "Sluta färga" : "Färga efter värde"}</button></div>
+    ${g.list.length > 5 ? `<input type="search" class="v3-pp-q" id="v3PpVq" placeholder="Sök värde, t.ex. HEA160…" value="${esc(l3p.vq || "")}" />` : ""}
+    <div class="v3-pp-vals">${g.list.map((x, i) => `<div class="v3-pp-v" data-pvq="${esc(String(x.v === "\u0000" ? "(saknas)" : x.v === "" ? "(tomt)" : x.v).toLowerCase())}"><label class="v3-gr-col" title="Välj färg för ${esc(x.v === "\u0000" ? "(saknas)" : x.v || "(tomt)")}"><input type="color" data-pvc="${i}" value="${esc(x.color)}" /><i style="background:${x.color}"></i></label><button type="button" class="v3-pp-vb" data-pv="${i}" title="${esc(x.v === "\u0000" ? "Objekt som saknar egenskapen" : x.v || "(tomt)")} – tryck för att markera"><span class="${x.v === "\u0000" || x.v === "" ? "dim" : ""}">${esc(x.v === "\u0000" ? "(saknas)" : x.v === "" ? "(tomt)" : x.v)}</span><em>${x.n.toLocaleString("sv-SE")}</em></button></div>`).join("")}</div>`;
+  body.querySelector("#v3PpBack").onclick = () => { l3p.group = null; l3p.vq = ""; l3pRenderTab(); };
+  // Sök bland värdena (Victor 2026-10-10: "jag söker på HEA160 så vill jag bara se dom").
+  const vq = body.querySelector("#v3PpVq");
+  const filt = () => { const t = (l3p.vq || "").trim().toLowerCase(); let n = 0; body.querySelectorAll("[data-pvq]").forEach(r => { const hit = !t || r.dataset.pvq.includes(t); r.style.display = hit ? "" : "none"; if (hit) n++; }); const h = body.querySelector("#v3PpVn"); if (h) h.textContent = t ? `${n} av ${g.list.length} värden matchar` : ""; };
+  if (vq) { vq.insertAdjacentHTML("afterend", `<div class="v3-pal-hint" id="v3PpVn"></div>`); vq.oninput = () => { l3p.vq = vq.value; filt(); }; filt(); }
   body.querySelector("#v3PpColor").onclick = () => { if (l3p.colorBy) l3pColorOff(); else l3pColorOn(); l3pRenderTab(); };
   body.querySelectorAll("[data-pv]").forEach(b => { b.onclick = e => l3pSelectValue(g.list[Number(b.dataset.pv)], e.shiftKey || e.ctrlKey || e.metaKey); });
+  // Egen färg per värde (Victor 2026-10-10): sparas per egenskap, och för Mina grupper på gruppen.
+  body.querySelectorAll("[data-pvc]").forEach(inp => { inp.onchange = () => {
+    const x = g.list[Number(inp.dataset.pvc)]; x.color = inp.value;
+    if (g.key === "g:4d" && typeof l3gSetColor === "function") { const grp = l3g.list.find(y => y.name === x.v); if (grp) l3gSetColor(grp.id, inp.value); }
+    else { const pc = { ...(l3Prefs().propColors || {}) }; pc[g.key] = { ...(pc[g.key] || {}), [x.v]: inp.value }; const ks = Object.keys(pc); if (ks.length > 40) delete pc[ks[0]]; l3SetPref("propColors", pc); }
+    l3pColorOn(); // färgen syns direkt
+    l3pRenderTab();
+  }; });
 }
 /* guid -> scenens bitar ({ mesh, ri }) per modell. */
 function l3pEnts(m) {

@@ -139,9 +139,12 @@ function dxfWrite(ents, layers, layerAci, layerLtype = {}) {
   const out = [];
   const g = (code, v) => out.push(String(code), String(v));
   // Utbredning (så att filen öppnas på innehållet, inte vid nollpunkten).
-  const xs = [], ys = [];
-  ents.forEach(e => { if (e.pts) e.pts.forEach(([x, y]) => { xs.push(x); ys.push(y); }); else { xs.push(e.x); ys.push(e.y); } });
-  const x0 = Math.min(...xs) - 25, y0 = Math.min(...ys) - 25, x1 = Math.max(...xs) + 25, y1 = Math.max(...ys) + 25;
+  // Utan Math.min(...lista): stora ritningar (hundratusentals punkter) spräcker annars anropsstacken.
+  let mnx = Infinity, mny = Infinity, mxx = -Infinity, mxy = -Infinity;
+  const ext = (x, y) => { if (x < mnx) mnx = x; if (x > mxx) mxx = x; if (y < mny) mny = y; if (y > mxy) mxy = y; };
+  ents.forEach(e => { if (e.pts) e.pts.forEach(([x, y]) => ext(x, y)); else ext(e.x, e.y); });
+  if (!Number.isFinite(mnx)) { mnx = mny = 0; mxx = mxy = 0; }
+  const x0 = mnx - 25, y0 = mny - 25, x1 = mxx + 25, y1 = mxy + 25;
   // HEADER
   g(0, "SECTION"); g(2, "HEADER");
   g(9, "$ACADVER"); g(1, "AC1009");
@@ -190,6 +193,11 @@ function dxfWrite(ents, layers, layerAci, layerLtype = {}) {
       // Fylld prick: sluten polylinje av två halvcirklar med bredd = radien.
       g(0, "POLYLINE"); g(8, e.layer); g(66, 1); g(10, "0.0"); g(20, "0.0"); g(30, "0.0"); g(70, 1); g(40, dxfNum(e.r)); g(41, dxfNum(e.r));
       [[e.x - e.r / 2, e.y], [e.x + e.r / 2, e.y]].forEach(([x, y]) => { g(0, "VERTEX"); g(8, e.layer); g(10, dxfNum(x)); g(20, dxfNum(y)); g(30, "0.0"); g(42, "1.0"); });
+      g(0, "SEQEND"); g(8, e.layer);
+    }
+    else if (e.t === "PLINE") { // öppen eller sluten linje (DXF-redigeringen i 3D)
+      g(0, "POLYLINE"); g(8, e.layer); if (e.aci) g(62, e.aci); g(66, 1); g(10, "0.0"); g(20, "0.0"); g(30, "0.0"); g(70, e.closed ? 1 : 0);
+      e.pts.forEach(([x, y]) => { g(0, "VERTEX"); g(8, e.layer); g(10, dxfNum(x)); g(20, dxfNum(y)); g(30, "0.0"); });
       g(0, "SEQEND"); g(8, e.layer);
     }
     else if (e.t === "POLY") {

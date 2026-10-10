@@ -14,6 +14,7 @@
 const L3_SCRIPTS = ["vendor/three/three.min.js", "vendor/three/OrbitControls.js", "vendor/three/TransformControls.js", "vendor/three/three-mesh-bvh.js"];
 let l3 = null;
 let l3Loading = null;
+let l3PalToggle = null; // visa/dölj vänstermenyn (Ctrl+B)
 
 const L3_ICO = (() => {
   const s = d => `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
@@ -137,6 +138,7 @@ async function open3d() {
     if (typeof placeModelsPrepare === "function") await placeModelsPrepare();
     await l3BuildPlan();
     if (typeof l3sRefresh === "function") l3sRefresh(0); // 2D-lagren och DXF
+    if (typeof l3mLoad === "function") l3mLoad().catch(e => console.warn(e)); // sparade mått
     l3BuildObjects();
     if (typeof l3bRebuild === "function") l3bRebuild();
     // Byggnaden som var tänd förra gången: direkt ur cachen (versionen kontrolleras i bakgrunden).
@@ -255,7 +257,7 @@ function l3Dom() {
     </div>
     <div class="v3-main">
       <div class="v3-pal ${P.pal ? "" : "hidden"}" id="v3Pal">
-        <div class="v3-pal-head"><div class="v3-segs v3-paltabs"><button type="button" data-paltab="add" class="${(P.palTab || "add") === "add" ? "on" : ""}">Lägg till</button><button type="button" data-paltab="list" class="${P.palTab === "list" ? "on" : ""}">Objekt</button><button type="button" data-paltab="layers" class="${P.palTab === "layers" ? "on" : ""}">Lager</button><button type="button" data-paltab="props" class="${P.palTab === "props" ? "on" : ""}" title="Gruppera och färga IFC-objekten efter egenskaper (UDA)">Egenskaper</button><button type="button" data-paltab="groups" class="${P.palTab === "groups" ? "on" : ""}" title="Dina egna grupper av IFC-objekt (t.ex. Bandgång 1)">Grupper</button></div><button type="button" id="v3PalClose" title="Dölj panelen">‹</button></div>
+        <div class="v3-pal-head"><div class="v3-segs v3-paltabs"><button type="button" data-paltab="add" class="${(P.palTab || "add") === "add" ? "on" : ""}">Lägg till</button><button type="button" data-paltab="list" class="${P.palTab === "list" ? "on" : ""}">Objekt</button><button type="button" data-paltab="layers" class="${P.palTab === "layers" ? "on" : ""}">Lager</button><button type="button" data-paltab="props" class="${P.palTab === "props" ? "on" : ""}" title="Gruppera och färga IFC-objekten efter egenskaper (UDA)">Egenskaper</button><button type="button" data-paltab="groups" class="${P.palTab === "groups" ? "on" : ""}" title="Dina egna grupper av IFC-objekt (t.ex. Bandgång 1)">Grupper</button></div><button type="button" id="v3PalClose" title="Dölj menyn (Ctrl+B)">‹</button></div>
         <div id="v3PalAdd" class="v3-paltab ${(P.palTab || "add") === "add" ? "" : "hidden"}">
           <input type="search" id="v3PalSearch" placeholder="Sök…" />
           <div id="v3Lib"></div>
@@ -273,7 +275,7 @@ function l3Dom() {
         </div>
       </div>
       <div class="v3-canvas" id="v3Canvas">
-        <button type="button" class="v3-palopen ${P.pal ? "hidden" : ""}" id="v3PalOpen" title="Visa biblioteket">＋ Lägg till</button>
+        <button type="button" class="v3-palopen ${P.pal ? "hidden" : ""}" id="v3PalOpen" title="Visa menyn till vänster (Ctrl+B)">›<span>Meny</span></button>
         <div class="v3-side hidden" id="v3Side"></div>
         <div class="v3-info hidden" id="v3Info"></div>
         <div class="v3-legend ${P.legend ? "" : "hidden"}" id="v3Legend"></div>
@@ -297,6 +299,7 @@ function l3Dom() {
   const $3 = id => box.querySelector("#" + id);
   $3("v3Close").onclick = close3d;
   $3("v3StatusMore").onclick = () => l3LogToggle();
+  if (P.logPin) setTimeout(() => l3LogToggle(true), 0); // nålad: utfälld från start
   $3("v3Multi").onclick = () => l3SetMulti(!l3.multi);
   $3("v3Status").onclick = () => l3LogToggle();
   box.querySelectorAll("[data-v3tool]").forEach(b => { b.onclick = () => { if (typeof l3SetTool === "function") l3SetTool(b.dataset.v3tool); }; });
@@ -319,7 +322,7 @@ function l3Dom() {
   $3("v3LaunchBtn").onclick = e => { e.stopPropagation(); l3OpenLaunch(); };
   box.querySelectorAll("[data-v3view]").forEach(b => { b.onclick = () => { l3HideMenus(); const v = b.dataset.v3view; if (v === "plan") l3TogglePlan(); else if (v === "center") l3StartV(); else l3View(v); }; });
   $3("v3Ortho").onchange = e => { l3SetProjection(e.target.checked); };
-  const mouseHint = () => { const a = l3Prefs().autoRot !== false ? " kring punkten under markören" : " kring rotationscentrum (V)"; $3("v3MouseHint").textContent = l3Prefs().mouse === "standard" ? `Vänster = rotera${a}, höger/mitten = panorera, hjul = zooma mot markören. Skift + vänster = panorera.` : `Vänster = markera (dra en ruta), mitten = panorera, Ctrl + mitten = rotera${a}, hjul = zooma mot markören, höger = meny.`; };
+  const mouseHint = () => { const a = l3Prefs().autoRot !== false ? " kring punkten under markören" : " kring rotationscentrum (V)"; $3("v3MouseHint").textContent = l3Prefs().mouse === "standard" ? `Vänster = rotera${a}, Ctrl + vänster = markeringsfönster, höger/mitten = panorera, hjul = zooma mot markören. Skift + vänster = panorera.` : `Vänster = markera (dra en ruta), mitten = panorera, Ctrl + mitten = rotera${a}, hjul = zooma mot markören, höger = meny.`; };
   $3("v3AutoRot").onchange = e => { l3SetPref("autoRot", e.target.checked); mouseHint(); };
   box.querySelectorAll("[data-v3mouse]").forEach(b => { b.onclick = () => { l3SetPref("mouse", b.dataset.v3mouse); box.querySelectorAll("[data-v3mouse]").forEach(x => x.classList.toggle("on", x === b)); if (l3) l3ApplyMouse(); mouseHint(); }; });
   mouseHint();
@@ -331,6 +334,7 @@ function l3Dom() {
   const pal = on => { l3SetPref("pal", on); $3("v3Pal").classList.toggle("hidden", !on); $3("v3PalOpen").classList.toggle("hidden", on); $3("v3PalChk").checked = on; setTimeout(() => { l3Resize(); l3Render(); }, 0); };
   $3("v3PalChk").onchange = e => pal(e.target.checked);
   $3("v3PalClose").onclick = () => pal(false);
+  l3PalToggle = () => pal($3("v3Pal").classList.contains("hidden"));
   $3("v3PalOpen").onclick = () => pal(true);
   $3("v3PalSearch").oninput = l3RenderLib;
   $3("v3GetModel").onclick = l3OpenModels;
@@ -372,9 +376,10 @@ function l3LogRender() {
   if (!box || box.classList.contains("hidden")) return;
   const p2 = x => String(x).padStart(2, "0"), tm = d => `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
   const atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
-  box.innerHTML = `<div class="v3-log-h"><b>Historik</b><span>${l3Log.length} rader</span><button type="button" data-log="copy" title="Kopiera historiken">Kopiera</button><button type="button" data-log="clear" title="Töm historiken">Töm</button><button type="button" class="v3-x" data-log="close" title="Stäng (F2)">✕</button></div>`
+  box.innerHTML = `<div class="v3-log-h"><b>Historik</b><span>${l3Log.length} rader</span><button type="button" data-log="pin" class="${l3Prefs().logPin ? "on" : ""}" title="${l3Prefs().logPin ? "Nålad: historiken är alltid utfälld" : "Nåla fast historiken som utfälld"}">${l3Prefs().logPin ? "Nålad" : "Nåla fast"}</button><button type="button" data-log="copy" title="Kopiera historiken">Kopiera</button><button type="button" data-log="clear" title="Töm historiken">Töm</button><button type="button" class="v3-x" data-log="close" title="Stäng (F2)">✕</button></div>`
     + (l3Log.length ? l3Log.map(x => `<div class="v3-log-r${x.bad ? " bad" : ""}"><time>${tm(x.at)}</time><span>${escHtml(x.text)}${x.n > 1 ? ` <em>×${x.n}</em>` : ""}</span></div>`).join("") : `<div class="v3-pal-hint">Inget har hänt än.</div>`);
-  box.querySelector('[data-log="close"]').onclick = () => l3LogToggle(false);
+  box.querySelector('[data-log="close"]').onclick = () => { if (l3Prefs().logPin) l3SetPref("logPin", false); l3LogToggle(false); };
+  box.querySelector('[data-log="pin"]').onclick = () => { l3SetPref("logPin", !l3Prefs().logPin); l3LogRender(); };
   box.querySelector('[data-log="clear"]').onclick = () => { l3Log.length = 0; l3LogRender(); };
   box.querySelector('[data-log="copy"]').onclick = () => { const t = l3Log.map(x => `${tm(x.at)}  ${x.text}`).join("\n"); try { navigator.clipboard.writeText(t).then(() => l3Toast("Historiken är kopierad.")); } catch (e) { /* ingen urklipp */ } };
   if (atEnd || !box.dataset.seen) { box.scrollTop = box.scrollHeight; box.dataset.seen = "1"; }
@@ -407,9 +412,9 @@ function l3HelpHtml() {
   const r = (k, t) => `<tr><td><kbd>${k}</kbd></td><td>${t}</td></tr>`, T = l3Prefs().mouse !== "standard";
   return `<div class="v3-help-h"><b>Hjälp – kortkommandon</b><button type="button" onclick="this.closest('.v3-help').classList.add('hidden')">✕</button></div>
     <div class="v3-help-c">${typeof l3IsTouch === "function" && l3IsTouch() ? `<div><b>Pekskärm (iPad/iPhone)</b><table>${r("Ett finger", "Rotera")}${r("Två fingrar", "Nyp = zooma, dra = panorera")}${r("Tryck", "Markera / peka ut punkt")}${r("Dubbeltryck", "Zooma dit")}${r("Håll inne", "Meny")}${r("123 Mått…", "Exakt avstånd, vinkel eller dx;dy;dz")}${r("✓ Klar / ✕ Avbryt", "I stället för Enter / Esc")}${r("▾ på panelen", "Fäll ihop egenskaperna")}</table></div>` : ""}<div><b>Navigera ${T ? "(som i Tekla)" : "(standard)"}</b><table>
-      ${T ? r("Mittenknapp dra", "Panorera") + r("Ctrl + mitten dra", "Rotera kring punkten under markören") + r("Vänster dra", "Markera med ruta") : r("Vänster dra", "Rotera kring punkten under markören") + r("Höger dra", "Panorera")}
+      ${T ? r("Mittenknapp dra", "Panorera") + r("Ctrl + mitten dra", "Rotera kring punkten under markören") + r("Vänster dra", "Markera med ruta") : r("Vänster dra", "Rotera kring punkten under markören") + r("Ctrl + vänster dra", "Markeringsfönster") + r("Höger dra", "Panorera")}
       ${r("Hjul", "Zooma mot markören")}${r("V + tryck", "Centrera vyn kring en punkt")}${r("Ctrl+P", "Plan ↔ 3D")}${r("Home", "Visa allt")}${r("F / dubbelklick", "Zooma till markerat")}${r("Axelkorset", "Vy uppifrån")}</table></div>
-    <div><b>Markera</b><table>${r("Tryck", "Markera")}${r("Skift + tryck", "Lägg till")}${r("Ctrl + tryck", "Växla")}${T ? r("Dra →", "Ruta: det som är helt inne") + r("Dra ←", "Ruta: allt som rutan nuddar") : ""}${r("Ctrl+A", "Markera alla")}${r("Esc", "Avmarkera / avbryt")}</table></div>
+    <div><b>Markera</b><table>${r("Tryck", "Markera")}${r("Skift + tryck", "Lägg till")}${r("Ctrl + tryck", "Växla")}${r(T ? "Dra →" : "Ctrl + dra →", "Ruta: det som är helt inne") + r(T ? "Dra ←" : "Ctrl + dra ←", "Ruta: allt som rutan nuddar")}${r("Ctrl+A", "Markera alla")}${r("Esc", "Avmarkera / avbryt")}</table></div>
     <div><b>Verktyg</b><table>${r("Mellanslag", "Välj")}${r("M", "Flytta punkt till punkt")}${r("Q", "Vrid")}${r("A", "Rikta kant mot kant")}${r("T", "Mät avstånd, vinkel, yta")}${r("Ctrl+K", "Snabbsök kommando")}</table></div>
     <div><b>Under Flytta / Vrid / Mät</b><table>${r("→ ← ↑", "Lås röd / grön / blå axel")}${r("↓", "Släpp axellåset")}${r("5,5 Enter", "Exakt avstånd eller vinkel")}${r("3;0;1,5 Enter", "Relativt dx;dy;dz")}${r("Ctrl", "Flytta ↔ kopiera")}${r("*5 / 5 Enter", "Efter en kopia: 5 i rad / 5 jämnt fördelade")}${r("O / G", "Orto / rutnät av-på")}</table></div>
     <div><b>Markerat</b><table>${r("Pilar", "Flytta ett steg (Skift = 10)")}${r("PgUp / PgDn", "Upp / ned")}${r(", .", "Vrid ett steg")}${r("Ctrl+C / Ctrl+V", "Kopiera / klistra in vid markören")}${r("Ctrl+D", "Duplicera")}${r("Delete", "Ta bort")}${r("H / I / U", "Dölj / visa bara markerade / visa alla")}${r("Ctrl+Z / Ctrl+Y", "Ångra / gör om")}</table></div>
@@ -519,6 +524,7 @@ function l3Render() {
     l3AdaptRes();
     l3.renderer.render(l3.scene, l3.camera);
     if (typeof l3Piv !== "undefined" && l3Piv && l3Piv.on) l3PivMark(true); // rotationspunkten i samma bild
+    if (typeof l3mPlaceLabels === "function") l3mPlaceLabels(); // måtten som ligger kvar
     l3RenderLabels();
     if (typeof l3HandlesPos === "function") l3HandlesPos();
     if (typeof l3TouchBarUpdate === "function") l3TouchBarUpdate();
@@ -858,6 +864,7 @@ function l3Tap(e) {
   if (typeof l3DlgPickTap === "function" && l3DlgPickTap(e)) return;
   if (l3.tool && l3.tool !== "select" && typeof l3ToolTap === "function" && l3ToolTap(e)) return;
   if (l3.addType) return l3AddAt(e);
+  if (typeof l3dTap === "function" && l3dTap(e)) return; // DXF-redigering pågår
   const id = l3PlaceAt(e);
   if (id) {
     if (e.shiftKey || e.ctrlKey || e.metaKey || l3.multi) { const s = new Set(l3.sel); if (s.has(id)) s.delete(id); else s.add(id); l3SelectIds([...s]); }
@@ -1075,6 +1082,7 @@ function l3RenderSide(liveOnly) {
   if (!side || !l3) return;
   // Pågående flytt av objekt i byggnaden: flyttpanelen ligger kvar.
   if (typeof l3bm !== "undefined" && l3bm.session) { if (side.dataset.id !== "bmove") l3bmRenderSide(); return; }
+  if (typeof l3d !== "undefined" && l3d.rec) { side.classList.remove("hidden"); l3dRenderSide(side); return; } // DXF-redigering
   const list = l3SelList();
   // Objekt i byggnaden (IFC) markerade: deras panel.
   if (!list.length && typeof l3bs !== "undefined" && l3bs.sel.length) {
@@ -1351,6 +1359,8 @@ function l3Key(e) {
   if (mod && k === "a") { e.preventDefault(); l3SelectIds(placements.filter(p => { const g = l3.placeMeshes.get(p.id); return g && g.visible; }).map(p => p.id)); return; }
   if (mod && k === "p") { e.preventDefault(); l3TogglePlan(); return; }
   if (e.key === "F2" && !mod) { e.preventDefault(); l3LogToggle(); return; }
+  if (mod && k === "b" && l3PalToggle) { e.preventDefault(); l3PalToggle(); return; } // visa/dölj vänstermenyn
+  if (typeof l3dKey === "function" && l3dKey(e)) return; // DXF-redigering
   if (typeof l3DialogKey === "function" && l3DialogKey(e)) return;
   if (l3.vPick && e.key === "Escape") { l3.vPick = false; l3.renderer.domElement.style.cursor = ""; l3Status(""); return; }
   if (typeof l3ToolKey === "function" && l3ToolKey(e)) return;

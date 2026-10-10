@@ -117,7 +117,7 @@ const IFC = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');", "FILE_
   await page.waitForSelector('#v3PalProps .v3-pp-v', { timeout: 15000 });
   const vals = await page.$$eval('#v3PalProps .v3-pp-v', b => b.map(x => x.querySelector('span').textContent + '=' + x.querySelector('em').textContent));
   if (vals.join('|') !== '2=2|1=1') fail('Grupperingen efter Fas: ' + vals);
-  await page.click('#v3PalProps .v3-pp-v[data-pv="0"]');
+  await page.click('#v3PalProps [data-pv="0"]');
   const sel = await page.evaluate(() => l3bs.sel.map(e => e.mesh.userData.l3b.ranges[e.ri].guid).sort().join(','));
   if (sel !== '1hZq3$Bq9Fxu8nZK0bW1aB,1hZq3$Bq9Fxu8nZK0bW1aC') fail('Värdet 2 ska markera B2 och pelaren: ' + sel);
   await page.click('#v3PpColor');

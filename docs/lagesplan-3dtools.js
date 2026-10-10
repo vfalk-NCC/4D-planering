@@ -10,7 +10,7 @@
    Ändringarna går via place3d.js (placeShift/placeRotateAbout, ångra, sparning). */
 
 const L3_AX = { x: { v: [1, 0, 0], col: "#dc2626", name: "på röd axel" }, y: { v: [0, 1, 0], col: "#16a34a", name: "på grön axel" }, z: { v: [0, 0, 1], col: "#2563eb", name: "på blå axel" } };
-const L3_SNAP = { end: ["Ändpunkt", "#16a34a"], mid: ["Mittpunkt", "#06b6d4"], edge: ["På kant", "#dc2626"], face: ["På yta", "#2563eb"], ground: ["På marken", "#64748b"], grid: ["Rutnät", "#a855f7"] };
+const L3_SNAP = { deg5: ["5°", "#7c3aed"], end: ["Ändpunkt", "#16a34a"], mid: ["Mittpunkt", "#06b6d4"], edge: ["På kant", "#dc2626"], face: ["På yta", "#2563eb"], ground: ["På marken", "#64748b"], grid: ["Rutnät", "#a855f7"] };
 /* Fästlägen (som Teklas fästverktygsrad): hörn, mittpunkter, kanter, axlar, orto, rutnät. */
 const L3_SNAP_DEF = { end: true, mid: true, edge: true, axis: true, ortho: false, grid: false, gstep: 1 };
 function l3Snaps() { return { ...L3_SNAP_DEF, ...(l3Prefs().snaps || {}) }; }
@@ -29,7 +29,8 @@ function l3RenderSnapBar() {
   bar.innerHTML = `<span class="v3-snapbar-l">Fäst</span>${b("end", "Hörn", "Fäst mot hörn (ändpunkter)")}${b("mid", "Mitt", "Fäst mot mittpunkter på kanter")}${b("edge", "Kant", "Fäst mot närmaste punkt på en kant")}${b("axis", "Axlar", "Fäst mot röd/grön/blå axel från baspunkten")}${b("ortho", "Orto", "Orto (O): bara i X-, Y- eller Z-led")}${b("grid", "Rutnät", "Rutnät (G): fäst mot rutnätet på marken och ytor")}
     <select id="v3GridStep" title="Rutnätets steg">${[0.1, 0.5, 1, 2, 5, 10].map(v => `<option value="${v}" ${Number(s.gstep) === v ? "selected" : ""}>${String(v).replace(".", ",")} m</option>`).join("")}</select>
     ${l3.tool === "move" ? `<span class="v3-snapbar-sep"></span><label class="v3-chk" title="Kopiera i stället för att flytta (tryck Ctrl)"><input type="checkbox" id="v3CopyMode" ${l3t.copyMode ? "checked" : ""} /> Kopia</label>` : ""}
-    ${l3.tool === "measure" ? `<span class="v3-snapbar-sep"></span><div class="v3-segs">${[["dist", "Avstånd"], ["angle", "Vinkel"], ["area", "Yta"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>` : ""}`;
+    ${l3.tool === "measure" ? `<span class="v3-snapbar-sep"></span><div class="v3-segs">${[["dist", "Avstånd"], ["angle", "Vinkel"], ["area", "Yta"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : ""}`;
+  if (typeof l3mBindBar === "function") l3mBindBar(bar);
   bar.querySelectorAll("[data-snapk]").forEach(x => { x.onclick = () => l3ToggleSnap(x.dataset.snapk); });
   bar.querySelector("#v3GridStep").onchange = e => { const v = { ...l3Snaps(), gstep: Number(e.target.value) }; l3SetPref("snaps", v); };
   const cm = bar.querySelector("#v3CopyMode"); if (cm) cm.onchange = () => { l3t.copyMode = cm.checked; l3Status(cm.checked ? "Kopierar: punkten du trycker härnäst får en kopia." : "Flyttar."); };
@@ -157,6 +158,8 @@ function l3Target(e, base, exclude) {
     const p = s && (s.kind === "end" || s.kind === "mid") ? base.clone().add(v.multiplyScalar(s.point.clone().sub(base).dot(v))) : l3AxisPoint(e, base, l3t.lock);
     return p ? { point: p, kind: "axis", axis: l3t.lock, locked: true } : s;
   }
+  // Mät med Skift: riktningen hoppar 5° åt gången (Victor 2026-10-10).
+  if (e.shiftKey && l3.tool === "measure" && typeof l3mShiftSnap === "function") return l3mShiftSnap(base, s);
   const S = l3Snaps();
   if (S.ortho && s) {
     // Orto: bara längs X, Y eller Z från baspunkten (den riktning som ligger närmast).
@@ -183,7 +186,7 @@ function l3ShowMarker(s) {
   l3.lastSnap = s ? s.point.clone() : null;
   if (!s) { m.style.display = "none"; return; }
   const q = l3ToScreen(s.point);
-  const [txt, col] = s.kind === "axis" ? [L3_AX[s.axis].name + (s.locked ? " (låst)" : s.ortho ? " (orto)" : ""), L3_AX[s.axis].col] : (L3_SNAP[s.kind] || ["", "#111"]);
+  const [txt, col] = s.kind === "axis" ? [L3_AX[s.axis].name + (s.locked ? " (låst)" : s.ortho ? " (orto)" : ""), L3_AX[s.axis].col] : s.kind === "deg5" ? [`${s.deg}° (Skift)`, "#7c3aed"] : (L3_SNAP[s.kind] || ["", "#111"]);
   m.style.display = "block"; m.style.left = q.x + "px"; m.style.top = q.y + "px";
   m.style.setProperty("--c", col);
   m.innerHTML = `<i class="${s.kind}"></i><span>${txt}</span>`;
@@ -368,6 +371,7 @@ function l3ToolTap(e) {
       l3.measLabel = { at: mp[1].clone(), text: `${l3Fmt(ang, 1)}°` }; l3PlaceMeasLabel();
       l3Status(`Vinkel ${l3Fmt(ang, 2)}° (vågrätt ${l3Fmt(l3Angle3(...mp.map(p => new THREE.Vector3(p.x, p.y, 0))), 2)}°). Tryck en ny punkt för att mäta igen.`);
       l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp);
+      if (typeof l3mAdd === "function") { l3mAdd("angle", mp, `${l3Fmt(ang, 1)}°`); l3ClearMeasure(); } // ligger kvar
     } else l3Status(mode === "angle" ? (mp.length === 1 ? "Tryck på vinkelns spets (hörnet)." : "Tryck på den andra punkten.") : `${mp.length} hörn. Fortsätt – avsluta med Enter eller tryck på första punkten.`);
     l3Render();
     return true;
@@ -463,6 +467,7 @@ function l3FinishArea() {
   l3.measLabel = { at: c, text: `${l3Fmt(area)} m²` }; l3PlaceMeasLabel();
   l3Status(`Yta ${l3Fmt(area)} m² (i plan) · omkrets ${l3Fmt(per)} m · ${mp.length} hörn. Tryck en ny punkt för att mäta igen.`);
   l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp); l3Render();
+  if (typeof l3mAdd === "function") { l3mAdd("area", mp, `${l3Fmt(area)} m²`); l3ClearMeasure(); } // ligger kvar
 }
 function l3MeasureTo(b) {
   const a = l3t.M1, d = a.distanceTo(b), hz = Math.hypot(b.x - a.x, b.y - a.y), dz = b.z - a.z;
@@ -471,6 +476,7 @@ function l3MeasureTo(b) {
   l3PlaceMeasLabel();
   l3Status(`Avstånd ${l3Fmt(d)} m · vågrätt ${l3Fmt(hz)} m · höjdskillnad ${l3Fmt(dz)} m. Tryck en ny punkt för att mäta igen.`);
   l3t = { ...l3t, step: 0, M1: null, lock: null, vcb: "", last: null }; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp); l3Render();
+  if (typeof l3mAdd === "function") { l3mAdd("dist", [a, b], `${l3Fmt(d)} m`); l3ClearMeasure(); } // ligger kvar
 }
 function l3MoveTo(T) {
   const d = T.clone().sub(l3t.base), n = (l3t.objs || []).length;

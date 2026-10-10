@@ -45,6 +45,7 @@ async function l3sBuildCad() {
   const z = l3sZ() + 0.03, live = new Set();
   want.forEach(r => {
     const g = cadGeom.get(r.id); if (!g) return;
+    if (typeof l3d !== "undefined" && l3d.rec && l3d.rec.id === r.id) return; // redigeras – ritas av lagesplan-3ddxf.js
     const names = r.layers.map(l => l.name), op = layerOpacity("cad:" + r.id);
     g.groups.forEach((gr, gi) => {
       if (!gr.raw || !gr.raw.length) return;
@@ -117,12 +118,12 @@ function l3sName(k) {
   return layerDisplayName(k);
 }
 function l3sHtml(row, eye) {
-  if (typeof layerDisplayEntries !== "function" || !plan) return "";
+  if (typeof layerDisplayEntries !== "function" || !plan) return null;
   const esc = escHtml;
   const keyRow = (k, depth) => {
     if (k === "pdf") return ""; // ritningen har egen rad (Underlag)
     const on = !!ls(k).visible, cad = k.startsWith("cad:") ? siteItems.find(x => "cad:" + x.id === k) : null, open = cad && l3s.open.has(k);
-    let h = `<div class="v3-lr ${depth ? "v3-lr-sub" : ""}"><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3s="${esc(k)}" title="${on ? "Släck" : "Tänd"}">${eye(on)}</button><span class="v3-lr-n" title="${esc(l3sName(k))}">${esc(l3sName(k))}</span>${cad ? `<button type="button" class="v3-lr-x" data-l3s-open="${esc(k)}" aria-expanded="${!!open}" title="CAD-lagren i ritningen">${cad.layers.length} lager ${open ? "▴" : "▾"}</button>` : ""}</div>`;
+    let h = `<div class="v3-lr ${depth ? "v3-lr-sub" : ""}"><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3s="${esc(k)}" title="${on ? "Släck" : "Tänd"}">${eye(on)}</button><span class="v3-lr-n" title="${esc(l3sName(k))}">${esc(l3sName(k))}</span>${cad ? `<button type="button" class="v3-lr-x" data-l3s-open="${esc(k)}" aria-expanded="${!!open}" title="CAD-lagren i ritningen">${cad.layers.length} lager ${open ? "▴" : "▾"}</button>${typeof l3dStart === "function" ? `<button type="button" class="v3-lr-zoom" data-l3s-edit="${esc(cad.id)}" title="Redigera DXF:en – välj, flytta, ta bort och rita linjer">${L3_ICO.edit}</button>` : ""}` : ""}</div>`;
     if (open) h += cad.layers.map(l => { const lk = `cadl:${cad.id}:${l.name}`, lon = !!ls(lk).visible; return `<div class="v3-lr v3-lr-sub2"><button type="button" class="v3-eye ${lon ? "on" : ""}" data-l3s="${esc(lk)}">${eye(lon)}</button><i class="v3-lr-dot" style="background:${esc(cadLayerColor(cad, l.name, l.color))}"></i><span class="v3-lr-n" title="${esc(l.name)}">${esc(l.name)}</span><em class="v3-lr-k">${l.n || ""}</em></div>`; }).join("");
     return h;
   };
@@ -130,17 +131,19 @@ function l3sHtml(row, eye) {
   layerDisplayEntries().forEach(e => {
     if (e.folder) {
       const kids = e.kids.filter(k => k !== "pdf"); if (!kids.length) return;
-      const on = kids.some(k => ls(k).visible);
-      h += `<div class="v3-lr v3-lr-b"><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3s-folder="${esc(e.folder.id)}">${eye(on)}</button><span class="v3-lr-n">${esc(e.folder.name)}</span></div>` + kids.map(k => keyRow(k, 1)).join("");
+      const on = kids.some(k => ls(k).visible), shut = l3s.fold && (l3s.fold.has("*") ? !l3s.fold.has("+" + e.folder.id) : l3s.fold.has(e.folder.id));
+      h += `<div class="v3-lr v3-lr-b"><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3s-folder="${esc(e.folder.id)}">${eye(on)}</button><button type="button" class="v3-lr-fold" data-l3s-fold="${esc(e.folder.id)}" aria-expanded="${!shut}"><i>›</i>${esc(e.folder.name)} <em>${kids.length}</em></button></div>` + (shut ? "" : kids.map(k => keyRow(k, 1)).join(""));
     } else h += keyRow(e.key, 0);
   });
-  return `<div class="v3-lg v3-lg-row"><span>2D-lägesplanen</span><label class="v3-chk v3-lg-chk" title="Visa 2D-lagren (zoner, noteringar, etablering, ortofoto, DXF) på marken i 3D"><input type="checkbox" id="v3S2d" ${l3sOn() ? "checked" : ""} /> på marken</label></div>
+  return { extra: `<label class="v3-chk v3-lg-chk" title="Visa 2D-lagren (zoner, noteringar, etablering, ortofoto, DXF) på marken i 3D"><input type="checkbox" id="v3S2d" ${l3sOn() ? "checked" : ""} /> på marken</label>`, body: `
     ${l3sOn() ? h || `<div class="v3-pal-hint">Inga 2D-lager.</div>` : ""}
-    <button type="button" class="v3-wide" id="v3SDxf" title="Läs in en DXF – den hamnar på rätt plats via modellens koordinater och blir ett CAD-lager i lägesplanen (även i 2D)">＋ Läs in DXF…</button><input type="file" id="v3SDxfIn" accept=".dxf" multiple hidden />`;
+    <button type="button" class="v3-wide" id="v3SDxf" title="Läs in en DXF – den hamnar på rätt plats via modellens koordinater och blir ett CAD-lager i lägesplanen (även i 2D)">＋ Läs in DXF…</button><input type="file" id="v3SDxfIn" accept=".dxf" multiple hidden />` };
 }
 function l3sBind(host) {
   host.querySelectorAll("[data-l3s]").forEach(b => { b.onclick = () => { const k = b.dataset.l3s; setLayersVisible([k], !ls(k).visible); l3sRefresh(0); l3LayersRender(); }; });
   host.querySelectorAll("[data-l3s-folder]").forEach(b => { b.onclick = () => { const e = layerDisplayEntries().find(x => x.folder && x.folder.id === b.dataset.l3sFolder); if (!e) return; const kids = e.kids.filter(k => k !== "pdf"); setLayersVisible(kids, !kids.some(k => ls(k).visible)); l3sRefresh(0); l3LayersRender(); }; });
+  host.querySelectorAll("[data-l3s-fold]").forEach(b => { b.onclick = () => { const id = b.dataset.l3sFold; l3s.fold = l3s.fold || new Set(); if (l3s.fold.has("*")) { if (l3s.fold.has("+" + id)) l3s.fold.delete("+" + id); else l3s.fold.add("+" + id); } else if (l3s.fold.has(id)) l3s.fold.delete(id); else l3s.fold.add(id); l3LayersRender(); }; });
+  host.querySelectorAll("[data-l3s-edit]").forEach(b => { b.onclick = () => l3dStart(b.dataset.l3sEdit); });
   host.querySelectorAll("[data-l3s-open]").forEach(b => { b.onclick = () => { const k = b.dataset.l3sOpen; if (l3s.open.has(k)) l3s.open.delete(k); else l3s.open.add(k); l3LayersRender(); }; });
   const cb = host.querySelector("#v3S2d"); if (cb) cb.onchange = () => { l3SetPref("ground2d", cb.checked); l3sRefresh(0); l3LayersRender(); };
   const bt = host.querySelector("#v3SDxf"), inp = host.querySelector("#v3SDxfIn");

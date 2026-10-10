@@ -51,10 +51,13 @@ function l3NavDown(e) {
   if (e.button === 1 && e.target === l3.renderer.domElement) e.preventDefault();
   if (l3OrbitPivotStart(e)) return;
   if (e.button === 2) { l3RightDown = { x: e.clientX, y: e.clientY }; return; }
-  if (e.button !== 0 || !(l3IsTekla() || l3.multi)) return; // standardläget: med Flera på blir vänster-dra ett markeringsfönster
+  // Standardläget: Ctrl + vänster-dra (Victor 2026-10-10) eller Flera på ger markeringsfönster i stället för att vrida.
+  const ctrl = e.ctrlKey || e.metaKey, tekla = l3IsTekla();
+  if (e.button !== 0 || !(tekla || l3.multi || ctrl)) return;
   if (e.target !== l3.renderer.domElement) return; // paneler ovanpå
   if (l3.tool !== "select" || l3.addType || l3.vPick || l3.gizmo.axis || l3.gizmo.dragging) return;
-  l3Area = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, add: e.shiftKey, toggle: e.ctrlKey || e.metaKey, on: false };
+  if (!tekla && l3.orbit.enabled) { l3.orbit.enabled = false; l3.orbitOffForArea = true; } // OrbitControls panorerar annars med Ctrl
+  l3Area = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, add: e.shiftKey, toggle: tekla && ctrl, on: false };
 }
 function l3NavMove(e) {
   if (l3Piv) { l3OrbitPivotMove(e); return; }
@@ -72,10 +75,12 @@ function l3NavMove(e) {
 function l3NavUp(e) {
   if (l3Piv && e.button === l3Piv.button) l3OrbitPivotEnd();
   if (e.button === 2 && l3RightDown) { l3.noCtx = Math.hypot(e.clientX - l3RightDown.x, e.clientY - l3RightDown.y) > 6; l3RightDown = null; }
+  if (l3.orbitOffForArea) { l3.orbitOffForArea = false; l3.orbit.enabled = true; }
   if (!l3Area) return;
   const a = l3Area; l3Area = null;
   l3.rectEl.classList.add("hidden");
   if (!a.on) return;
+  if (typeof l3dRect === "function" && l3dRect(a)) return; // DXF-redigering: linjer
   const ids = l3IdsInRect(a.x0, a.y0, a.x1, a.y1, a.x1 < a.x0);
   // Ingen etablering i rutan: objekt i byggnaden (IFC) vars mitt ligger i rutan.
   if (!ids.length && typeof l3bsInRect === "function" && l3b.models.length) {

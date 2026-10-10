@@ -136,7 +136,7 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   const edges = await page.evaluate(() => { let n = 0; l3.placeMeshes.get(placements[0].id).traverse(o => { if (o.userData.selEdge) n++; }); return n; });
   if (!edges) fail('Det markerade objektet ska få konturer');
   // Högerpanelen kan breddas.
-  const rs = await page.locator('#v3Side > .v3-rs').boundingBox();
+  const rs = await page.locator('#view3d .v3-rs-right').boundingBox();
   const w0 = await page.evaluate(() => document.getElementById('v3Side').getBoundingClientRect().width);
   await page.mouse.move(rs.x + 3, rs.y + rs.height / 2); await page.mouse.down(); await page.mouse.move(rs.x - 120, rs.y + rs.height / 2, { steps: 4 }); await page.mouse.up();
   const w1 = await page.evaluate(() => ({ w: document.getElementById('v3Side').getBoundingClientRect().width, pref: l3Prefs().sideW }));
