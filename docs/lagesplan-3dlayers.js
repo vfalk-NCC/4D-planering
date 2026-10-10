@@ -73,11 +73,11 @@ function l3LayersRender() {
     const ms = l3b.models.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), "sv", { numeric: true }));
     const pend = m => (typeof l3bmPending === "function" ? l3bmPending(m.id) : 0);
     mh += ms.length ? ms.map(m => row(`data-l3l-model="${esc(m.id)}"`, m.visible, esc(m.name), `<button type="button" class="v3-lr-zoom" data-l3l-zoom="${esc(m.id)}" title="Zooma till modellen">${L3_ICO.focus}</button>` + (pend(m) ? `<button type="button" class="v3-lr-save" data-l3l-save="${esc(m.id)}" title="Spara flyttarna som en ny IFC-fil i Trimble Connect">Spara ${pend(m)}</button>` : `<em class="v3-lr-k">${(m.tris / 1000).toFixed(0)}k</em>`))).join("")
-      : `<div class="v3-pal-hint">Inga modeller är inlästa än. Välj under Mappar eller hämta de som är tända i Trimble Connect.</div>`;
+      : `<div class="v3-pal-hint">Inga modeller är hämtade än. Välj under Trimble Connect mapp eller hämta de som är tända i Trimble Connect.</div>`;
   } else mh += l3lTreeHtml(l3lay.root, 0);
-  mh += `<label class="v3-chk v3-lay-voids" title="Armering, inredning, installationer (rör, kanaler, el) och fästdon. Ofta en stor del av modellen – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayDetails" ${P.ifcDetails ? "checked" : ""} /> Visa detaljer (armering, installationer) – långsammare</label>`;
-  mh += `<label class="v3-chk v3-lay-voids" title="Fönster- och dörrhål sågas ut ur väggar och bjälklag. Gör inläsningen av stora modeller många gånger långsammare – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayVoids" ${P.ifcVoids ? "checked" : ""} /> Visa urtag (hål i väggar) – långsammare</label>`;
   mh += `<button type="button" class="v3-wide" id="v3LayTcOn" title="De IFC-modeller som är tända i Trimble Connect just nu">Hämta tända modeller från TC…</button><div id="v3LayBldgBox"></div>`;
+  // Sällan använt (Victor 2026-10-10: "flytta ner dessa under en avancerad flik"): ihopfällt längst ner.
+  mh += `<details class="v3-lay-adv" ${P.layAdv ? "open" : ""}><summary>Avancerat</summary><label class="v3-chk v3-lay-voids" title="Armering, inredning, installationer (rör, kanaler, el) och fästdon. Ofta en stor del av modellen – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayDetails" ${P.ifcDetails ? "checked" : ""} /> Visa detaljer (armering, installationer) – långsammare</label><label class="v3-chk v3-lay-voids" title="Fönster- och dörrhål sågas ut ur väggar och bjälklag. Gör inläsningen av stora modeller många gånger långsammare – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayVoids" ${P.ifcVoids ? "checked" : ""} /> Visa urtag (hål i väggar) – långsammare</label></details>`;
   if (l3lay.err) mh += `<div class="v3-pal-hint bad">${esc(l3lay.err)}</div><button type="button" class="v3-wide" id="v3LayRetry">Försök igen</button>`;
   // 3D-modeller överst (Victor 2026-10-10): flikarna Hämtade 3D-modeller (de inlästa) och Trimble Connect mapp.
   const sortNow = P.laySort || "list";
@@ -120,6 +120,7 @@ function l3LayersRender() {
   if (typeof l3sBind === "function") l3sBind(host);
   const op = host.querySelector('[data-l3l-op="plan"]');
   if (op) op.oninput = () => { l3SetPref("planOp", Number(op.value)); l3lApplyPlanOp(); l3Render(); };
+  const adv = host.querySelector(".v3-lay-adv"); if (adv) adv.ontoggle = () => l3SetPref("layAdv", adv.open);
   const de = host.querySelector("#v3LayDetails");
   if (de) de.onchange = () => { l3SetPref("ifcDetails", de.checked); l3Status(de.checked ? "Detaljer visas i modeller som läses in härefter (långsammare)." : "Detaljer hoppas över i modeller som läses in härefter (snabbare)."); };
   const vo = host.querySelector("#v3LayVoids");
