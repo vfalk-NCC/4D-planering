@@ -338,6 +338,18 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     await page.fill('#v3VolH', '2'); await page.click('#v3VolOk'); await page.waitForTimeout(150);
     const vo = await page.evaluate(() => { const m = l3m.list[l3m.list.length - 1]; return { kind: m.kind, h: m.h, text: m.text, rows: l3mInfo(m).rows.map(r => r[0]) }; });
     if (process.env.SHOTV) { await page.evaluate(() => { l3SetTool('select'); const m = l3m.list[l3m.list.length - 1], c = new THREE.Vector3(6512343 - l3.O[0], 150128.5 - l3.O[1], m.pts[0][2] - l3.O[2] + 1); l3StopFly(); l3.orbit.target.copy(c); l3.camera.position.copy(c).add(new THREE.Vector3(6, -9, 6)); l3.orbit.update(); l3mDraw(); l3Render(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOTV }); }
+    // Volymens färg via punkten i måttlistan (Victor 2026-10-10); följer med i IFC-exporten.
+    {
+      await page.evaluate(() => { l3PalTab('comments'); l3kRenderTab(); });
+      const id = await page.evaluate(() => l3m.list[l3m.list.length - 1].id);
+      await page.waitForSelector(`[data-mcol="${id}"]`, { state: 'attached', timeout: 5000 });
+      await page.$eval(`[data-mcol="${id}"]`, el => { el.dispatchEvent(new Event('focus')); el.value = '#16a34a'; el.dispatchEvent(new Event('input')); el.dispatchEvent(new Event('change')); });
+      await page.waitForTimeout(150);
+      const vc = await page.evaluate(id => { const m = l3m.list.find(x => x.id === id); const box = l3.groups.measKeep.children.find(o => o.isMesh && Array.isArray(o.material)); const ifc = l3mIfcBuild([{ m, nr: 1 }], false).text; return { color: m.color, mesh: box ? '#' + box.material[0].color.getHexString() : null, ifc: /0\.0[89]\d*,0\.6[45]\d*,0\.2[0-9]\d*/.test(ifc) || /IFCCOLOURRGB\([^)]*0\.08/.test(ifc), dot: document.querySelector(`[data-mcol="${id}"]`).closest('.v3-mcol').style.background }; }, id);
+      if (vc.color !== '#16a34a' || vc.mesh !== '#16a34a' || !vc.ifc || !/22, 163, 74|16a34a/.test(vc.dot)) fail('Volymens färg: ' + JSON.stringify(vc));
+      await page.keyboard.press('Control+z'); await page.waitForTimeout(150);
+      if (await page.evaluate(id => l3m.list.find(x => x.id === id).color, id)) fail('Ctrl+Z ska ta tillbaka volymens färg');
+    }
     if (vo.kind !== 'volume' || vo.h !== 2 || !/^2[34](,\d+)? m³$/.test(vo.text) || !vo.rows.includes('Basyta (i plan)')) fail('Volym-mått: ' + JSON.stringify(vo));
     await page.evaluate(() => { l3mRemove(l3m.list[l3m.list.length - 1].id); l3SetPref('measure', 'dist'); l3SetPref('snaps', { ...l3Snaps(), end: true, mid: true, edge: true, axis: true, perp: true }); l3SetTool('select'); });
   }

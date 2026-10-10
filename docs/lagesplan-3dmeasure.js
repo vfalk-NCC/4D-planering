@@ -78,7 +78,8 @@ function l3mDraw() {
     if (!(typeof l3aOn !== "function" || l3aOn(m))) return; // släckt mapp
     if (m.hid) return; // dolt (Dölj måtten gäller de mått som fanns då)
     const P = m.pts.map(p => new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]));
-    const sel = l3m.sel && l3m.sel.has(m.id), col = sel ? 0xf59e0b : m.saved ? 0x2563eb : 0xdc2626;
+    const sel = l3m.sel && l3m.sel.has(m.id), own = m.kind === "volume" && m.color ? new THREE.Color(m.color).getHex() : null;
+    const col = sel ? 0xf59e0b : own != null ? own : m.saved ? 0x2563eb : 0xdc2626;
     const line = (a, b, op = 1) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: col, depthTest: false, transparent: op < 1, opacity: op })); l.renderOrder = 10; l.userData.noHit = true; l.raycast = () => {}; grp.add(l); };
     const D = l3mDimPts(m).map(p => new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]));
     if (l3mCanOff(m) && m.off) {
@@ -96,7 +97,8 @@ function l3mDraw() {
       const h = Number(m.h) || 0, T = P.map(p => p.clone().add(new THREE.Vector3(0, 0, h)));
       line(P[P.length - 1], P[0]); for (let i = 0; i < T.length; i++) { line(T[i], T[(i + 1) % T.length]); line(P[i], T[i], 0.85); }
       const shp = new THREE.Shape(P.map(p => new THREE.Vector2(p.x, p.y))), zb = Math.min(0, h) + P.reduce((s, p) => s + p.z, 0) / P.length;
-      const mat = o => new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.25, transparent: true, opacity: o, side: THREE.DoubleSide, depthWrite: false });
+      const fc = own != null ? own : col; // egen färg syns i ytan även när volymen är markerad
+      const mat = o => new THREE.MeshLambertMaterial({ color: fc, emissive: fc, emissiveIntensity: 0.25, transparent: true, opacity: o, side: THREE.DoubleSide, depthWrite: false });
       const box = new THREE.Mesh(new THREE.ExtrudeGeometry(shp, { depth: Math.abs(h), bevelEnabled: false }), [mat(0.3), mat(0.2)]); // tak/botten, väggar
       box.renderOrder = 9; box.position.z = zb; box.userData.noHit = true; box.raycast = () => {}; grp.add(box);
       const tops = new THREE.Points(new THREE.BufferGeometry().setFromPoints(T), new THREE.PointsMaterial({ color: col, size: 6, sizeAttenuation: false, depthTest: false }));
@@ -106,6 +108,7 @@ function l3mDraw() {
       const hl = document.createElement("div");
       hl.className = "v3-meas v3-meas-keep v3-meas-h" + (m.saved ? " saved" : "") + (sel ? " sel" : "");
       hl.textContent = `h ${l3Fmt(Math.abs(h), 2)} m`;
+      if (m.color && !sel) hl.style.color = m.color;
       host.appendChild(hl); hl._at = P[k].clone().lerp(T[k], 0.5); l3m.labels.set(m.id + ":h", hl);
     }
     if (m.kind === "area" && P.length > 2) {
@@ -123,6 +126,7 @@ function l3mDraw() {
     el.ondblclick = e => { e.stopPropagation(); if (l3mCanOff(m) && m.off && !m.locked) l3mSetOff(m, 0, m.off); };
     if (m.locked) { el.classList.remove("drag"); el.classList.add("locked"); el.title = "Låst mått – lås upp det i listan Mått för att ändra det."; }
     el.textContent = l3mLabel(m); el.dataset.mid = m.id;
+    if (own != null && !sel) el.style.background = m.color;
     host.appendChild(el);
     l3m.labels.set(m.id, el); el._at = at;
   });
@@ -374,7 +378,7 @@ function l3mTabHtml() {
   const nSel = l3m.sel.size, withNotes = l3Prefs().measExpNotes !== false;
   return `<section class="v3-msec" id="v3MeasSec"><button type="button" class="v3-msec-h" id="v3MeasHead" aria-expanded="${open}"><i>›</i>Mått <span>${n}${uns ? ` · ${uns} osparade` : ""}</span></button>
     ${open ? `${n ? `<div class="v3-kc-list">${l3m.list.map((m, i) => { const inf = l3mInfo(m), ex = l3m.exp.has(m.id); return `<div class="v3-mr ${ex ? "ex" : ""}">
-      <div class="v3-kc ${l3m.sel.has(m.id) ? "sel" : ""} ${typeof l3aOn !== "function" || l3aOn(m) ? "" : "off"}"><i class="v3-mdot ${m.saved ? "saved" : ""}" title="${m.saved ? "Sparad i projektet" : "Inte sparad"}"></i>
+      <div class="v3-kc ${l3m.sel.has(m.id) ? "sel" : ""} ${typeof l3aOn !== "function" || l3aOn(m) ? "" : "off"}">${m.kind === "volume" ? `<label class="v3-mdot v3-mcol ${m.saved ? "saved" : ""}" style="${m.color ? `background:${esc(m.color)}` : ""}" title="Volymens färg – klicka för att välja (${m.saved ? "sparad i projektet" : "inte sparad"})"><input type="color" data-mcol="${esc(m.id)}" value="${esc(m.color || (m.saved ? "#2563eb" : "#dc2626"))}" /></label>` : `<i class="v3-mdot ${m.saved ? "saved" : ""}" title="${m.saved ? "Sparad i projektet" : "Inte sparad"}"></i>`}
         <button type="button" class="v3-kc-b" data-mzoom="${esc(m.id)}" title="Klick: zooma till måttet · Ctrl+klick: välj flera · Skift+klick: välj flera i rad"><b>${L3M_KIND[m.kind] || ""} ${esc(m.text).replace(/ (m²?|°)$/, "&nbsp;$1")}</b>${m.folder && typeof l3aFolderName === "function" && l3aFolderName(m.folder) ? `<em><span class="v3-fchip">${esc(l3aFolderName(m.folder))}</span></em>` : ""}${m.note ? `<em class="v3-mnote">${m.showNote ? "" : "(dold) "}${esc(m.note)}</em>` : ""}<em>${esc(inf.sub)}</em>${inf.objTxt ? `<em>${esc(inf.objTxt)}</em>` : ""}</button>
         <button type="button" class="v3-ic" data-mexp="${esc(m.id)}" title="${ex ? "Dölj detaljerna" : "Visa alla detaljer"}" aria-expanded="${ex}">${ex ? "▴" : "▾"}</button>
         <button type="button" class="v3-ic" data-mcopy="${esc(m.id)}" title="Kopiera måttet med alla detaljer">${I.copy || "⧉"}</button>
@@ -403,6 +407,18 @@ function l3mCopyText(list) {
 function l3mBindTab(host) {
   const on = (sel, fn) => { const x = host.querySelector(sel); if (x) x.onclick = e => { e.stopPropagation(); fn(x); }; };
   on("#v3MeasHead", () => { l3m.secOpen = !(l3m.secOpen !== false); l3kRenderTab(); });
+  // Volymens färg (Victor 2026-10-10: "välja färg på volymboxarna genom att klicka på den lilla röda punkten").
+  host.querySelectorAll("[data-mcol]").forEach(x => {
+    x.onclick = e => e.stopPropagation();
+    x.oninput = () => { const m = l3m.list.find(q => q.id === x.dataset.mcol); if (m) { m.color = x.value; l3mDraw(); } };
+    x.onchange = () => {
+      const m = l3m.list.find(q => q.id === x.dataset.mcol); if (!m) return;
+      const was = x.dataset.was !== undefined ? x.dataset.was || null : null, now = x.value;
+      if (typeof l3VPush === "function") l3VPush(() => { m.color = was; l3mChanged(m); }, () => { m.color = now; l3mChanged(m); }, "volymens färg");
+      m.color = now; l3mChanged(m);
+    };
+    x.onfocus = () => { const m = l3m.list.find(q => q.id === x.dataset.mcol); x.dataset.was = (m && m.color) || ""; };
+  });
   host.querySelectorAll("[data-mdel]").forEach(x => { x.onclick = e => { e.stopPropagation(); l3mRemove(x.dataset.mdel); }; });
   host.querySelectorAll("[data-mexp]").forEach(x => { x.onclick = e => { e.stopPropagation(); const id = x.dataset.mexp; l3m.exp.has(id) ? l3m.exp.delete(id) : l3m.exp.add(id); l3kRenderTab(); }; });
   const copy = t => { try { navigator.clipboard.writeText(t).then(() => l3Toast("Kopierat."), () => l3Status("Kunde inte kopiera.", true)); } catch (err) { l3Status("Kunde inte kopiera.", true); } };
@@ -504,6 +520,8 @@ function l3mIfcBuild(list, withNotes) {
   const dir = v => E(`IFCDIRECTION(${ifcPt(v)})`);
   const red = doc.style("matt", L3M_IFC.red, "Mått"), white = doc.style("matt-skylt", "#ffffff", "Måttskylt"), fillSt = doc.style("matt-yta", L3M_IFC.red, "Måttyta", 0.6);
   const elems = [];
+  // Volymens egna färg (vald i måttlistan) – en stil per färg.
+  const stC = new Map(), stOf = (c, fill) => { const k = c + (fill ? "f" : ""); if (!stC.has(k)) stC.set(k, fill ? doc.style("matt-yta-" + c.slice(1), c, "Måttyta", 0.6) : doc.style("matt-" + c.slice(1), c, "Mått")); return stC.get(k); };
   const W1 = (t, h) => ifcTextStrokes(t).width * h / 6;
   // Rör från a till b (relativt elementets punkt o), cirkelprofil med radie rad.
   // ext: förläng röret med radien i båda ändar – då möts rören i en måttkedja utan glipa i hörnen.
@@ -532,17 +550,18 @@ function l3mIfcBuild(list, withNotes) {
     const path = m.kind === "point" ? [] : l3mFillet(way.map(rel), m.kind === "area" || m.kind === "volume", L3M_IFC.bend);
     const tri = (g, st) => { if (!g.pts.length) return null; const pl = E(`IFCCARTESIANPOINTLIST3D((${g.pts.map(v => ifcPt([v.x, v.y, v.z])).join(",")}))`), fs = E(`IFCTRIANGULATEDFACESET(${pl},$,.T.,(${g.tris.map(t => `(${t.join(",")})`).join(",")}),$)`); E(`IFCSTYLEDITEM(${fs},(${st}),$)`); return fs; };
     const meshItems = [];
-    if (path.length >= 2) { const t = tri(l3mSweep(path, L3M_IFC.r), red); if (t) meshItems.push(t); }
+    const own = m.kind === "volume" && /^#[0-9a-f]{6}$/i.test(m.color || ""), mRed = own ? stOf(m.color) : red, mFill = own ? stOf(m.color, true) : fillSt;
+    if (path.length >= 2) { const t = tri(l3mSweep(path, L3M_IFC.r), mRed); if (t) meshItems.push(t); }
     // Utdragen polylinje: hjälplinjer även från mellanpunkterna upp till kedjan.
     if (offd) for (let i = 1; i < P.length - 1; i++) { const t = tri(l3mSweep([rel(P[i]), rel(DP[i])].map(v => new THREE.Vector3(v[0], v[1], v[2])), L3M_IFC.r * 0.6), red); if (t) meshItems.push(t); }
-    P.forEach(p => { const v = rel(p), t = tri(l3mCone({ x: v[0], y: v[1], z: v[2] }, L3M_IFC.cone.h, L3M_IFC.cone.r), red); if (t) meshItems.push(t); });
+    P.forEach(p => { const v = rel(p), t = tri(l3mCone({ x: v[0], y: v[1], z: v[2] }, L3M_IFC.cone.h, L3M_IFC.cone.r), mRed); if (t) meshItems.push(t); });
     void segs; void dotAt;
     if (m.kind === "volume" && P.length >= 3) {
       // Volymen som en halvgenomskinlig prisma.
       const h = Number(m.h) || 0, zAvg = P.reduce((s2, p) => s2 + p[2], 0) / P.length - o[2];
       const poly = E(`IFCPOLYLINE((${[...P, P[0]].map(p => E(`IFCCARTESIANPOINT(${ifcPt([p[0] - o[0], p[1] - o[1]])})`)).join(",")}))`);
       const vol = E(`IFCEXTRUDEDAREASOLID(${E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${poly})`)},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, 0, zAvg + Math.min(0, h)])})`)},$,$)`)},${dir([0, 0, 1])},${ifcNum(Math.max(0.001, Math.abs(h)))})`);
-      E(`IFCSTYLEDITEM(${vol},(${fillSt}),$)`); items.push(vol);
+      E(`IFCSTYLEDITEM(${vol},(${mFill}),$)`); items.push(vol);
     }
     if (m.kind === "area" && P.length >= 3) {
       const zAvg = P.reduce((s2, p) => s2 + p[2], 0) / P.length - o[2];
