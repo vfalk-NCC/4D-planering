@@ -53,12 +53,18 @@ function l3mOffDir(a, b) {
   if (n.lengthSq() < 1e-6) n.set(1, 0, 0).addScaledVector(u, -u.x);
   return n.normalize();
 }
-/* Måttlinjens ändar (samma koordinater som pts) – fästpunkterna själva när måttet inte är utdraget. */
+/* Avstånd och polylinje kan dras ut (polylinjen: Victor 2026-10-10 "Polyline ska också gå att dra upp").
+   Polylinjens riktning räknas från första till sista punkten – en vågrät kedja dras rakt uppåt. */
+const l3mCanOff = m => m.kind === "dist" || (m.kind === "poly" && m.pts.length >= 2);
+function l3mOffN(m) {
+  const a = m.pts[0], b = m.pts[m.pts.length - 1];
+  return Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) < 1e-6 ? new THREE.Vector3(0, 0, 1) : l3mOffDir(a, b);
+}
+/* Måttlinjens punkter (samma koordinater som pts) – fästpunkterna själva när måttet inte är utdraget. */
 function l3mDimPts(m) {
-  if (m.kind !== "dist" || !m.off) return m.pts.slice();
-  const [a, b] = m.pts;
-  const n = l3mOffDir(a, b), o = [n.x * m.off, n.y * m.off, n.z * m.off];
-  return [a.map((v, i) => v + o[i]), b.map((v, i) => v + o[i])];
+  if (!l3mCanOff(m) || !m.off) return m.pts.slice();
+  const n = l3mOffN(m), o = [n.x * m.off, n.y * m.off, n.z * m.off];
+  return m.pts.map(p => p.map((v, i) => v + o[i]));
 }
 function l3mDraw() {
   if (!l3) return;
@@ -75,10 +81,11 @@ function l3mDraw() {
     const sel = l3m.sel && l3m.sel.has(m.id), col = sel ? 0xf59e0b : m.saved ? 0x2563eb : 0xdc2626;
     const line = (a, b, op = 1) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineBasicMaterial({ color: col, depthTest: false, transparent: op < 1, opacity: op })); l.renderOrder = 10; l.userData.noHit = true; l.raycast = () => {}; grp.add(l); };
     const D = l3mDimPts(m).map(p => new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]));
-    if (m.kind === "dist" && m.off) {
-      // Hjälplinjer från fästpunkterna ut till måttlinjen (lite förlängda), och måttlinjen.
+    if (l3mCanOff(m) && m.off) {
+      // Hjälplinjer från fästpunkterna ut till måttlinjen (lite förlängda), och måttlinjen/kedjan.
       const n = D[0].clone().sub(P[0]).normalize().multiplyScalar(Math.min(0.15, Math.abs(m.off) * 0.2));
-      line(P[0], D[0].clone().add(n), 0.55); line(P[1], D[1].clone().add(n), 0.55); line(D[0], D[1]);
+      P.forEach((p, i) => line(p, D[i].clone().add(n), 0.55));
+      for (let i = 1; i < D.length; i++) line(D[i - 1], D[i]);
       const ends = new THREE.Points(new THREE.BufferGeometry().setFromPoints(D), new THREE.PointsMaterial({ color: col, size: 5, sizeAttenuation: false, depthTest: false }));
       ends.renderOrder = 11; ends.userData.noHit = true; ends.raycast = () => {}; grp.add(ends);
     } else for (let i = 1; i < P.length; i++) line(P[i - 1], P[i]);
@@ -97,12 +104,12 @@ function l3mDraw() {
     }
     const pts = new THREE.Points(new THREE.BufferGeometry().setFromPoints(P), new THREE.PointsMaterial({ color: col, size: 6, sizeAttenuation: false, depthTest: false }));
     pts.renderOrder = 11; pts.userData.noHit = true; pts.raycast = () => {}; grp.add(pts);
-    const at = m.kind === "point" ? P[0].clone() : m.kind === "volume" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length).add(new THREE.Vector3(0, 0, (Number(m.h) || 0) / 2)) : m.kind === "poly" ? l3mPathMid(P) : m.kind === "angle" ? P[1] : m.kind === "area" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length) : D[0].clone().add(D[1]).multiplyScalar(0.5);
+    const at = m.kind === "point" ? P[0].clone() : m.kind === "volume" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length).add(new THREE.Vector3(0, 0, (Number(m.h) || 0) / 2)) : m.kind === "poly" ? l3mPathMid(D) : m.kind === "angle" ? P[1] : m.kind === "area" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length) : D[0].clone().add(D[1]).multiplyScalar(0.5);
     const el = document.createElement("div");
-    el.className = "v3-meas v3-meas-keep" + (m.kind === "point" ? " pt" : "") + (m.saved ? " saved" : "") + (sel ? " sel" : "") + (m.kind === "dist" ? " drag" : "");
-    if (m.kind === "dist") el.title = "Tryck för att markera måttet – dra för att föra måttlinjen uppåt eller nedåt (fästpunkterna sitter kvar). Dubbelklick: tillbaka.";
+    el.className = "v3-meas v3-meas-keep" + (m.kind === "point" ? " pt" : "") + (m.saved ? " saved" : "") + (sel ? " sel" : "") + (l3mCanOff(m) ? " drag" : "");
+    if (l3mCanOff(m)) el.title = "Tryck för att markera måttet – dra för att föra måttlinjen uppåt eller nedåt (fästpunkterna sitter kvar). Dubbelklick: tillbaka.";
     el.onpointerdown = e => l3mLabelDown(e, m);
-    el.ondblclick = e => { e.stopPropagation(); if (m.kind === "dist" && m.off && !m.locked) l3mSetOff(m, 0, m.off); };
+    el.ondblclick = e => { e.stopPropagation(); if (l3mCanOff(m) && m.off && !m.locked) l3mSetOff(m, 0, m.off); };
     if (m.locked) { el.classList.remove("drag"); el.classList.add("locked"); el.title = "Låst mått – lås upp det i listan Mått för att ändra det."; }
     el.textContent = l3mLabel(m); el.dataset.mid = m.id;
     host.appendChild(el);
@@ -201,9 +208,9 @@ function l3mLabelDown(e, m) {
   if (e.button !== 0) return;
   e.preventDefault(); e.stopPropagation();
   if (!(l3m.sel.size === 1 && l3m.sel.has(m.id))) { l3m.sel.clear(); l3m.sel.add(m.id); l3m.anchor = m.id; l3mDraw(); if (typeof l3kRenderTab === "function") l3kRenderTab(); }
-  if (m.kind !== "dist" || m.locked) return;
+  if (!l3mCanOff(m) || m.locked) return;
   const D0 = l3mDimPts(m).map(p => new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]));
-  const mid = D0[0].clone().add(D0[1]).multiplyScalar(0.5), n = l3mOffDir(m.pts[0], m.pts[1]);
+  const mid = D0[0].clone().add(D0[D0.length - 1]).multiplyScalar(0.5), n = l3mOffN(m);
   const p0 = l3ToScreen(mid), p1 = l3ToScreen(mid.clone().add(n));
   const v = [p1.x - p0.x, p1.y - p0.y], vv = v[0] * v[0] + v[1] * v[1];
   const off0 = m.off || 0, x0 = e.clientX, y0 = e.clientY;
@@ -508,12 +515,15 @@ function l3mIfcBuild(list, withNotes) {
     const items = [];
     const DP = l3mDimPts(m);
     const segs = m.kind === "area" ? P.map((p, i) => [p, P[(i + 1) % P.length]]) : m.kind === "dist" && m.off ? [[P[0], DP[0]], [DP[0], DP[1]], [DP[1], P[1]]] : P.slice(1).map((p, i) => [P[i], p]);
+    const offd = l3mCanOff(m) && m.off;
     // Måttlinjen/kedjan som ett rör med rundade brytningar, och en kon på varje mätpunkt.
-    const way = m.kind === "dist" && m.off ? [P[0], DP[0], DP[1], P[1]] : P;
+    const way = offd ? [P[0], ...DP, P[P.length - 1]] : P;
     const path = m.kind === "point" ? [] : l3mFillet(way.map(rel), m.kind === "area" || m.kind === "volume", L3M_IFC.bend);
     const tri = (g, st) => { if (!g.pts.length) return null; const pl = E(`IFCCARTESIANPOINTLIST3D((${g.pts.map(v => ifcPt([v.x, v.y, v.z])).join(",")}))`), fs = E(`IFCTRIANGULATEDFACESET(${pl},$,.T.,(${g.tris.map(t => `(${t.join(",")})`).join(",")}),$)`); E(`IFCSTYLEDITEM(${fs},(${st}),$)`); return fs; };
     const meshItems = [];
     if (path.length >= 2) { const t = tri(l3mSweep(path, L3M_IFC.r), red); if (t) meshItems.push(t); }
+    // Utdragen polylinje: hjälplinjer även från mellanpunkterna upp till kedjan.
+    if (offd) for (let i = 1; i < P.length - 1; i++) { const t = tri(l3mSweep([rel(P[i]), rel(DP[i])].map(v => new THREE.Vector3(v[0], v[1], v[2])), L3M_IFC.r * 0.6), red); if (t) meshItems.push(t); }
     P.forEach(p => { const v = rel(p), t = tri(l3mCone({ x: v[0], y: v[1], z: v[2] }, L3M_IFC.cone.h, L3M_IFC.cone.r), red); if (t) meshItems.push(t); });
     void segs; void dotAt;
     if (m.kind === "volume" && P.length >= 3) {
@@ -534,7 +544,7 @@ function l3mIfcBuild(list, withNotes) {
     const raw = withNotes && m.note ? (typeof wrapText === "function" ? wrapText(m.note, 30) : m.note).split("\n").filter(Boolean).slice(0, 3) : [];
     const lines = [{ t: m.text, h: L3M_IFC.h1 }, ...raw.map(t => ({ t, h: L3M_IFC.h2 }))];
     const W = Math.max(0.6, ...lines.map(l => W1(l.t, l.h))) + L3M_IFC.pad * 2, H = lines.reduce((a, l) => a + l.h * 1.4, 0) + L3M_IFC.pad * 1.4;
-    const at = m.kind === "point" ? P[0] : m.kind === "volume" ? (c => [c[0], c[1], c[2] + Math.max(0, Number(m.h) || 0)])(P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0])) : m.kind === "poly" ? l3mPathMid(P).toArray() : m.kind === "angle" ? P[1] : m.kind === "dist" ? [(DP[0][0] + DP[1][0]) / 2, (DP[0][1] + DP[1][1]) / 2, (DP[0][2] + DP[1][2]) / 2] : P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0]);
+    const at = m.kind === "point" ? P[0] : m.kind === "volume" ? (c => [c[0], c[1], c[2] + Math.max(0, Number(m.h) || 0)])(P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0])) : m.kind === "poly" ? l3mPathMid(DP).toArray() : m.kind === "angle" ? P[1] : m.kind === "dist" ? [(DP[0][0] + DP[1][0]) / 2, (DP[0][1] + DP[1][1]) / 2, (DP[0][2] + DP[1][2]) / 2] : P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0]);
     const center = [at[0], at[1], (m.kind === "area" ? Math.max(...P.map(p => p[2])) : at[2]) + L3M_IFC.lift + H / 2];
     // Vit linje från skylten ner till måttlinjen – visar att skylten hör till måttet (Victor 2026-10-10).
     const lead = tube(rel(at), rel([at[0], at[1], center[2] - H / 2]), 0.012, white);

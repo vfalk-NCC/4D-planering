@@ -86,6 +86,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.mouse.move(zx, zy); await page.mouse.wheel(0, -400); await page.waitForTimeout(150);
   const [zx2, zy2] = await at(6512335, 150110, 2);
   if (Math.hypot(zx2 - zx, zy2 - zy) > 2.5) fail('Hjulet ska zooma mot markören: ' + [zx, zy, zx2, zy2]);
+  // Rotationspunkten visas en kort stund där man zoomar (Victor 2026-10-10).
+  const zp = await page.evaluate(() => { const m = document.querySelector('#view3d .v3-pivot'), r = m && m.getBoundingClientRect(); return m && !m.classList.contains('hidden') ? [r.left + r.width / 2, r.top + r.height / 2] : null; });
+  if (!zp || Math.hypot(zp[0] - zx, zp[1] - zy) > 4) fail('Rotationspunkten ska visas vid zoom: ' + JSON.stringify({ zp, zx, zy }));
+  await page.waitForTimeout(900);
+  if (await page.evaluate(() => !document.querySelector('#view3d .v3-pivot').classList.contains('hidden'))) fail('Rotationspunkten ska försvinna efter zoomen');
   // Mitten-dra panorerar.
   const t0 = await page.evaluate(() => l3.orbit.target.toArray());
   await drag([cv.x + 300, cv.y + 300], [cv.x + 400, cv.y + 300], 'middle');

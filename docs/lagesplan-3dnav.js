@@ -207,6 +207,21 @@ function l3PivMark(show) {
   m.style.left = ((q.x + 1) / 2 * el.clientWidth) + "px"; m.style.top = ((1 - q.y) / 2 * el.clientHeight) + "px";
   m.classList.remove("hidden");
 }
+/* Vid zoom (Victor 2026-10-10: "kan den runda ikonen … också visas då för att visa vart man har
+   rotationscentrum"): markeringen visas en kort stund på punkten man zoomar mot – med "Rotera kring
+   punkten under markören" är det också där vyn roteras; annars på vyns mittpunkt (orbit-målet). */
+function l3PivFlash(P) {
+  if (l3Piv) return; // roterar redan – den markeringen gäller
+  l3PivMark(false);
+  const m = l3.pivEl, el = l3.renderer.domElement;
+  l3.camera.updateMatrixWorld();
+  const q = P.clone().project(l3.camera);
+  if (q.z > 1 || Math.abs(q.x) > 1 || Math.abs(q.y) > 1) return;
+  m.style.left = ((q.x + 1) / 2 * el.clientWidth) + "px"; m.style.top = ((1 - q.y) / 2 * el.clientHeight) + "px";
+  m.classList.remove("hidden");
+  clearTimeout(l3PivFlash.t);
+  l3PivFlash.t = setTimeout(() => { if (!l3Piv && l3.pivEl) l3.pivEl.classList.add("hidden"); }, 700);
+}
 
 // ---------------------------------------------------------------------
 // Zoom mot markören
@@ -233,6 +248,7 @@ function l3Wheel(e) {
       const n = cam.getWorldDirection(new THREE.Vector3()), pl = new THREE.Plane().setFromNormalAndCoplanarPoint(n, orbit.target);
       P = rc.ray.intersectPlane(pl, new THREE.Vector3()) || orbit.target.clone();
     }
+    l3Wheel.P = P.clone();
     const dist = cam.position.distanceTo(P);
     let kk = k;
     if (dist * kk < 0.5) kk = 0.5 / dist;               // inte genom ytan
@@ -243,6 +259,7 @@ function l3Wheel(e) {
   }
   orbit.update();
   l3Render();
+  l3PivFlash(!l3AutoRot() ? orbit.target : cam.isOrthographicCamera ? l3PivotPoint(e) : l3Wheel.P);
 }
 
 // ---------------------------------------------------------------------

@@ -278,6 +278,17 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   if (process.env.SHOTD) await page.screenshot({ path: process.env.SHOTD });
   await page.keyboard.press('Control+z'); await page.waitForTimeout(200);
   if (await page.evaluate(() => l3m.list[0].off)) fail('Ctrl+Z ska ta tillbaka måttlinjen');
+  // Polylinje dras upp på samma sätt (Victor 2026-10-10): hela kedjan och texten följer med, hjälplinje från varje punkt.
+  {
+    const id = await page.evaluate(() => { const m0 = l3m.list[0], v = m0.pts.map(p => new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2])); const mid = v[0].clone().lerp(v[1], 0.5).add(new THREE.Vector3(0, 3, 0)); const m = l3mAdd('poly', [v[0], mid, v[1]], 'poly'); l3Render(); return m.id; });
+    await page.waitForTimeout(250);
+    const q0 = await page.evaluate(id => { const el = document.querySelector(`.v3-meas-keep[data-mid="${id}"]`), r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, drag: el.classList.contains('drag') }; }, id);
+    await page.mouse.move(q0.x, q0.y); await page.mouse.down(); await page.mouse.move(q0.x, q0.y - 60, { steps: 6 }); await page.mouse.up();
+    await page.waitForTimeout(300);
+    const q1 = await page.evaluate(id => { const m = l3m.list.find(x => x.id === id), el = document.querySelector(`.v3-meas-keep[data-mid="${id}"]`), r = el.getBoundingClientRect(); return { off: m.off, y: r.top + r.height / 2, dz: l3mDimPts(m).map((p, i) => p[2] - m.pts[i][2]), ifc: (l3mIfcBuild([{ m, nr: 1 }], false).text || '').length }; }, id);
+    if (!q0.drag || !(q1.off > 0.5) || q1.y > q0.y - 30 || q1.dz.some(d => Math.abs(d - q1.off) > 1e-6) || q1.ifc < 500) fail('Polylinjen ska gå att dra upp: ' + JSON.stringify({ q0, q1 }));
+    await page.evaluate(id => { l3mRemove(id); l3m.sel = new Set(); l3mDraw(); }, id);
+  }
   // Dra i en ändpunkt: måttet räknas om; Ctrl+Z ångrar. Låst mått: inga handtag, går inte att ta bort.
   {
     await page.evaluate(() => { l3m.sel = new Set([l3m.list[0].id]); l3mDraw(); l3Render(); }); await page.waitForTimeout(200);
