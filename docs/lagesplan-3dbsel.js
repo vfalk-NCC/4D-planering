@@ -56,7 +56,7 @@ function l3bsRebuild() {
     const fill = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: L3BS_COL, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     fill.userData.bselFill = true;
     const objs = [fill];
-    if (total <= L3BS_EDGE_MAX) objs.push(new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), new THREE.LineBasicMaterial({ color: L3BS_COL, transparent: true, opacity: 0.95, depthTest: false })));
+    if (total <= L3BS_EDGE_MAX) objs.push(new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), new THREE.LineBasicMaterial({ color: L3BS_COL, transparent: true, opacity: 0.95 })));
     objs.forEach(o => { o.userData.noHit = true; o.userData.bsel = true; o.raycast = () => {}; o.renderOrder = 6; mesh.add(o); l3bs.ov.push(o); });
   });
 }

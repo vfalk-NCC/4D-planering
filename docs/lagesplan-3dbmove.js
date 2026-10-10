@@ -35,7 +35,7 @@ function l3bmStart() {
     const idx = new Uint32Array(n); for (let i = 0; i < n; i++) idx[i] = u.origIdx[s + i] - r.start;
     const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(col, 3)); g.setIndex(new THREE.BufferAttribute(idx, 1)); g.computeVertexNormals();
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: new THREE.Color(0x2b1d8f) }));
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), new THREE.LineBasicMaterial({ color: 0x6d5efc, transparent: true, opacity: .95, depthTest: false }));
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), new THREE.LineBasicMaterial({ color: 0x6d5efc, transparent: true, opacity: .95 }));
     edges.renderOrder = 6; [m, edges].forEach(o => { o.userData.noHit = true; o.raycast = () => {}; G.add(o); });
     if (!hideBy.has(e.mesh)) hideBy.set(e.mesh, []);
     hideBy.get(e.mesh).push(e.ri);

@@ -142,7 +142,8 @@ function l3HandleMove(e) {
 function l3HandleApply(e) {
   const H = l3H, p = H.p, h = H.h, O = l3.O;
   if (!H.moved) { placeSnapshot(); H.moved = true; }
-  const step = Number((document.getElementById("v3Step") || {}).value) || 0;
+  // Fritt som flytthandtagen; steget (fritt: 0,1 m) bara medan Skift hålls ned (Victor 2026-10-10: "sömlöst").
+  const step = e.shiftKey ? Number((document.getElementById("v3Step") || {}).value) || 0.1 : 0;
   let label = "";
   if (h.key === "pt") {
     const s = typeof l3Snap === "function" ? l3Snap(e, p.id) : null;

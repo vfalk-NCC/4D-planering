@@ -311,7 +311,7 @@ function l3Dom() {
       <button type="button" class="v3-status-more" id="v3StatusMore" aria-expanded="false" title="Historik – vad som hänt tidigare (F2)">▴</button>
       <span class="v3-status" id="v3Status"></span><a class="v3-status-link hidden" id="v3StatusLink" target="_blank" rel="noopener" title="Öppna mappen i Trimble Connect">Öppna i TC ↗</a>
       <label class="v3-chk" title="Objektet ställer sig på ytan under sig när du släpper handtagen"><input type="checkbox" id="v3Snap" ${P.snap ? "checked" : ""} /> Fäst mot ytor</label>
-      <select id="v3Step" title="Steg för handtag och piltangenter">${[["0", "fritt"], ["0.1", "0,1 m · 5°"], ["0.5", "0,5 m · 15°"], ["1", "1 m · 45°"]].map(([v, l]) => `<option value="${v}" ${P.step === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <select id="v3Step" title="Steg för piltangenterna – och för handtagen medan Skift hålls ned (annars flyttar och vrider de fritt)">${[["0", "fritt"], ["0.1", "0,1 m · 5°"], ["0.5", "0,5 m · 15°"], ["1", "1 m · 45°"]].map(([v, l]) => `<option value="${v}" ${P.step === v ? "selected" : ""}>${l}</option>`).join("")}</select>
       <label class="v3-date" title="Datum för statusfärgerna (samma som i lägesplanen)">Datum <input type="date" id="v3Date" /></label>
       <span class="v3-coord" id="v3Coord"></span>
       <span class="v3-save" id="v3Save"></span>
@@ -847,8 +847,9 @@ function l3SelectIds(ids) {
   l3Render();
 }
 function l3Select(id) { l3SelectIds(id ? [id] : []); }
-/* Tydlig markering (Victor 2026-10-09): objektet tonas lila, får lila konturer som syns även bakom
-   annat och en lila ram runt sig. Konturerna sitter på själva objektet och följer med handtagen. */
+/* Tydlig markering (Victor 2026-10-09): objektet tonas lila, får lila konturer och en lila ram runt sig.
+   Konturerna och ramen döljs bakom annat (Victor 2026-10-10: "Modellerna ska inte bli genomskinliga och
+   visa dolda delar när jag markerar dom") – annars är det svårt att passa in t.ex. lyftkranar. Konturerna sitter på själva objektet och följer med handtagen. */
 const L3_SEL_COL = 0x6d5efc, L3_SEL_TINT = 0x2b1d8f;
 function l3SelDeco(g, on) {
   if (!g) return;
@@ -856,7 +857,7 @@ function l3SelDeco(g, on) {
   meshes.forEach(o => {
     if (o.material && o.material.emissive) o.material.emissive.setHex(on ? L3_SEL_TINT : 0x000000);
     if (on && !o.userData.selEdges && o.geometry) {
-      const e = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 30), new THREE.LineBasicMaterial({ color: L3_SEL_COL, depthTest: false, transparent: true, opacity: .9 }));
+      const e = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 30), new THREE.LineBasicMaterial({ color: L3_SEL_COL, transparent: true, opacity: .9 }));
       e.renderOrder = 6; e.userData.selEdge = true; e.raycast = () => {};
       o.add(e); o.userData.selEdges = e;
     } else if (!on && o.userData.selEdges) {
@@ -869,7 +870,7 @@ function l3RefreshSel() {
   l3Clear(l3.groups.sel);
   (l3.selDeco || new Set()).forEach(id => { if (!l3.sel.has(id)) l3SelDeco(l3.placeMeshes.get(id), false); });
   l3.selDeco = new Set(l3.sel);
-  l3.sel.forEach(id => { const g = l3.placeMeshes.get(id); if (g) { l3SelDeco(g, true); const h = new THREE.BoxHelper(g, L3_SEL_COL); h.material.depthTest = false; h.material.transparent = true; h.material.opacity = .55; h.renderOrder = 5; l3.groups.sel.add(h); } });
+  l3.sel.forEach(id => { const g = l3.placeMeshes.get(id); if (g) { l3SelDeco(g, true); const h = new THREE.BoxHelper(g, L3_SEL_COL); h.material.transparent = true; h.material.opacity = .55; h.renderOrder = 5; l3.groups.sel.add(h); } });
   const one = l3.sel.size === 1 && (l3.tool || "select") === "select" ? l3.placeMeshes.get([...l3.sel][0]) : null;
   if (one) { if (l3.gizmo.object !== one) l3.gizmo.attach(one); } else if (!(l3.gizmo.object && l3.gizmo.object.userData.bmove)) l3.gizmo.detach(); // IFC-flytt behåller handtagen
   if (one) l3Mode(l3.gizmo.mode || "translate");
@@ -979,11 +980,21 @@ function l3Mode(mode) {
   document.querySelectorAll("[data-v3mode]").forEach(b => b.classList.toggle("on", b.dataset.v3mode === mode));
   l3Render();
 }
+/* Handtagen flyttar och vrider fritt (Victor 2026-10-10: "Rörelsen när jag flyttar objekt ska ske sömlöst –
+   nu hackar den fram"). Stegen gäller piltangenterna och, medan Skift hålls ned, handtagen (fritt: 0,1 m · 5°). */
 function l3ApplyStep() {
-  const v = Number((document.getElementById("v3Step") || {}).value) || 0;
+  if (!l3) return;
+  const v = l3.stepHeld ? Number((document.getElementById("v3Step") || {}).value) || 0.1 : 0;
   l3.gizmo.setTranslationSnap(v || null);
   l3.gizmo.setRotationSnap(v ? ({ 0.1: 5, 0.5: 15, 1: 45 }[v] || 15) * Math.PI / 180 : null);
+  if (l3.gizmoR) l3.gizmoR.setRotationSnap(l3.gizmo.rotationSnap || null);
 }
+function l3StepKey(e) {
+  if (!l3 || e.key !== "Shift" || l3.stepHeld === (e.type === "keydown")) return;
+  l3.stepHeld = e.type === "keydown"; l3ApplyStep();
+}
+window.addEventListener("keydown", l3StepKey, true); window.addEventListener("keyup", l3StepKey, true);
+window.addEventListener("blur", () => { if (l3 && l3.stepHeld) { l3.stepHeld = false; l3ApplyStep(); } });
 const l3GroupState = () => { const g = l3.gizmo.object; return g ? { x: g.position.x, y: g.position.y, z: g.position.z, r: g.rotation.z } : null; };
 /* Vridringen visas med flyttpilarna (inte i vridläget – där är ringen redan handtaget), och inte för staket. */
 function l3RingSync() {
