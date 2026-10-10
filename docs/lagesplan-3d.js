@@ -427,6 +427,7 @@ function l3HelpHtml() {
 // Scenen
 // ---------------------------------------------------------------------
 function l3Init(box) {
+  if (typeof l3cShader === "function") l3cShader(); // snittkanterna (innan något ritas)
   const host = box.querySelector("#v3Canvas");
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -525,6 +526,7 @@ function l3Render() {
     l3.renderer.render(l3.scene, l3.camera);
     if (typeof l3Piv !== "undefined" && l3Piv && l3Piv.on) l3PivMark(true); // rotationspunkten i samma bild
     if (typeof l3mPlaceLabels === "function") l3mPlaceLabels(); // måtten som ligger kvar
+    if (typeof l3cPlace === "function") l3cPlace(); // saxarna på snitten
     l3RenderLabels();
     if (typeof l3HandlesPos === "function") l3HandlesPos();
     if (typeof l3TouchBarUpdate === "function") l3TouchBarUpdate();
@@ -1351,6 +1353,7 @@ function l3Key(e) {
   e.stopImmediatePropagation();
   if (typeof l3HandleKey === "function" && l3HandleKey(e)) return; // drag i ett handtag pågår
   const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
+  if (typeof l3KeyCustom === "function" && l3KeyCustom(e)) return; // egna kortkommandon gäller först
   if (mod && k === "z" && !e.shiftKey) { e.preventDefault(); l3Undo(); return; }
   if (mod && (k === "y" || (k === "z" && e.shiftKey))) { e.preventDefault(); l3Redo(); return; }
   if (mod && k === "c") { e.preventDefault(); l3CopySel(); return; }

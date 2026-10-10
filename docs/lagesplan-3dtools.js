@@ -75,6 +75,8 @@ const L3_TOOL_START = {
 };
 function l3SetTool(t) {
   l3ToolCancel();
+  // Ett påbörjat snitt (saxen) avbryts när man byter verktyg (Victor 2026-10-10: "låg kvar fast jag bytte till flytta").
+  if (l3.clipPick) { l3.clipPick = false; l3.renderer.domElement.style.cursor = ""; }
   if (t !== "measure") l3ClearMeasure();
   if (t !== "move") l3t.copyMode = false;
   l3.tool = t; l3.addType = null; l3.fenceId = null;
@@ -138,8 +140,13 @@ function l3SnapRaw(e, exclude) {
       }
       if (best) return { point: best.p, kind: best.kind, placeId };
     }
+    // Ingen fästpunkt i 3D: DXF-linjerna i andra hand (Victor 2026-10-10: "snappa mot dxferna också men 3d i förstahand").
+    const dx = typeof l3sDxfSnap === "function" ? l3sDxfSnap(e, S) : null;
+    if (dx) return dx;
     return { point: h.point.clone(), kind: o === l3.planMesh ? "ground" : "face", placeId };
   }
+  const dx = typeof l3sDxfSnap === "function" ? l3sDxfSnap(e, S) : null;
+  if (dx) return dx;
   const ray = l3MouseRay(e), pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -l3GroundZ()), p = new THREE.Vector3();
   return ray.intersectPlane(pl, p) ? { point: p, kind: "ground", placeId: null } : null;
 }
@@ -186,7 +193,8 @@ function l3ShowMarker(s) {
   l3.lastSnap = s ? s.point.clone() : null;
   if (!s) { m.style.display = "none"; return; }
   const q = l3ToScreen(s.point);
-  const [txt, col] = s.kind === "axis" ? [L3_AX[s.axis].name + (s.locked ? " (låst)" : s.ortho ? " (orto)" : ""), L3_AX[s.axis].col] : s.kind === "deg5" ? [`${s.deg}° (Skift)`, "#7c3aed"] : (L3_SNAP[s.kind] || ["", "#111"]);
+  const [txt0, col] = s.kind === "axis" ? [L3_AX[s.axis].name + (s.locked ? " (låst)" : s.ortho ? " (orto)" : ""), L3_AX[s.axis].col] : s.kind === "deg5" ? [`${s.deg}° (Skift)`, "#7c3aed"] : (L3_SNAP[s.kind] || ["", "#111"]);
+  const txt = s.dxf ? `${txt0} (DXF)` : txt0;
   m.style.display = "block"; m.style.left = q.x + "px"; m.style.top = q.y + "px";
   m.style.setProperty("--c", col);
   m.innerHTML = `<i class="${s.kind}"></i><span>${txt}</span>`;

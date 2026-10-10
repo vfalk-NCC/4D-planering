@@ -516,17 +516,38 @@ function l3OpenLaunch() {
   const host = document.getElementById("v3Canvas");
   d.style.left = Math.max(10, (host.clientWidth - 440) / 2) + "px"; d.style.top = "40px";
   const cmds = l3Commands(), q = d.querySelector("#v3LaunchQ");
-  let hit = [], idx = 0;
+  let hit = [], idx = 0, capture = null;
   const render = () => {
-    const words = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const words = q.value.trim().toLowerCase().split(/\s+/).filter(Boolean), own = l3KeysOwn();
     hit = cmds.filter(c => words.every(w => c.label.toLowerCase().includes(w))).slice(0, 12);
     idx = Math.min(idx, Math.max(0, hit.length - 1));
-    d.querySelector("#v3LaunchList").innerHTML = hit.map((c, i) => `<button type="button" data-li="${i}" class="${i === idx ? "on" : ""}" ${c.ok() ? "" : "disabled"}><span>${escHtml(c.label)}</span>${c.keys ? `<kbd>${escHtml(c.keys)}</kbd>` : ""}</button>`).join("") || `<div class="v3-pal-hint">Inget kommando matchar.</div>`;
+    const nOwn = Object.keys(own).length;
+    d.querySelector("#v3LaunchList").innerHTML = (hit.map((c, i) => `<div class="v3-launch-r ${i === idx ? "on" : ""}"><button type="button" data-li="${i}" class="v3-launch-b" ${c.ok() ? "" : "disabled"}><span>${escHtml(c.label)}</span>${capture === c.label ? `<kbd class="cap">Tryck tangenterna… (Esc avbryter, Delete tar bort)</kbd>` : own[c.label] ? `<kbd class="own" title="Ditt eget kortkommando${c.keys ? ` (standard: ${escHtml(c.keys)})` : ""}">${escHtml(own[c.label])}</kbd>` : c.keys ? `<kbd>${escHtml(c.keys)}</kbd>` : ""}</button><button type="button" class="v3-ic v3-launch-k" data-lk="${i}" title="Eget kortkommando för ${escHtml(c.label)}">⌨</button></div>`).join("") || `<div class="v3-pal-hint">Inget kommando matchar.</div>`)
+      + `<div class="v3-launch-foot">⌨ = välj eget kortkommando${nOwn ? ` · ${nOwn} egna <button type="button" class="v3-link" id="v3KeysReset">Återställ alla</button>` : ""}</div>`;
     d.querySelectorAll("[data-li]").forEach(b => { b.onclick = () => run(+b.dataset.li); });
+    d.querySelectorAll("[data-lk]").forEach(b => { b.onclick = () => { capture = hit[+b.dataset.lk].label; render(); q.focus(); }; });
+    const rs = d.querySelector("#v3KeysReset"); if (rs) rs.onclick = () => { l3SetPref("keys", {}); render(); l3Status("Egna kortkommandon borttagna – standard gäller."); };
   };
   const run = i => { const c = hit[i]; if (!c || !c.ok()) return; l3DlgClose("v3Launch"); c.run(); };
   q.oninput = () => { idx = 0; render(); };
   q.onkeydown = e => {
+    // Väntar på ett kortkommando för en rad (Victor 2026-10-10: "skapa egna kortkommandon till funktionerna").
+    if (capture) {
+      if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) return;
+      e.preventDefault(); e.stopPropagation();
+      const label = capture; capture = null;
+      if (e.key === "Escape") { render(); return; }
+      const own = { ...l3KeysOwn() };
+      if (e.key === "Delete" || e.key === "Backspace") { delete own[label]; l3SetPref("keys", own); render(); l3Status(`${label}: eget kortkommando borttaget.`); return; }
+      const combo = l3KeyCombo(e);
+      if (!combo || combo === "Enter" || combo === "Tab") { render(); return; }
+      const was = Object.keys(own).find(k => own[k] === combo && k !== label);
+      if (was) delete own[was];
+      own[label] = combo; l3SetPref("keys", own); render();
+      const builtin = cmds.find(c => c.keys === combo && c.label !== label);
+      l3Status(`${label}: ${combo}${was ? ` (togs från ${was})` : ""}${builtin ? ` – ersätter ${builtin.label}` : ""}.`);
+      return;
+    }
     if (e.key === "ArrowDown") { idx = Math.min(hit.length - 1, idx + 1); render(); e.preventDefault(); }
     else if (e.key === "ArrowUp") { idx = Math.max(0, idx - 1); render(); e.preventDefault(); }
     else if (e.key === "Enter") { run(idx); e.preventDefault(); }
@@ -548,4 +569,27 @@ function l3PalTab(t) {
   if (t === "layers" && typeof l3LayersRender === "function") l3LayersRender();
   if (t === "props" && typeof l3pRenderTab === "function") l3pRenderTab();
   if (t === "groups" && typeof l3gRenderTab === "function") l3gRenderTab();
+}
+
+/* ---- Egna kortkommandon (sparas i 3D-inställningarna, per webbläsare) ----------------------------- */
+function l3KeysOwn() { const k = l3Prefs().keys; return k && typeof k === "object" ? k : {}; }
+function l3KeyCombo(e) {
+  const k = e.key;
+  if (!k || ["Control", "Shift", "Alt", "Meta", "Dead"].includes(k)) return "";
+  const name = k === " " ? "Mellanslag" : k.length === 1 ? k.toUpperCase() : k.replace(/^Arrow/, "Pil ");
+  // Skift skrivs ut för bokstäver/siffror och namngivna tangenter (för ? ! osv. ingår Skift i tecknet).
+  const shift = e.shiftKey && (k.length > 1 || /[a-zåäöæø0-9]/i.test(k));
+  return [(e.ctrlKey || e.metaKey) && "Ctrl", e.altKey && "Alt", shift && "Skift", name].filter(Boolean).join("+");
+}
+/* Anropas först i 3D-vyns tangenthantering: ett eget kortkommando kör sitt kommando. */
+function l3KeyCustom(e) {
+  const own = l3KeysOwn(), labels = Object.keys(own);
+  if (!labels.length) return false;
+  const combo = l3KeyCombo(e), label = labels.find(l => own[l] === combo);
+  if (!label) return false;
+  const c = l3Commands().find(x => x.label === label);
+  if (!c) return false;
+  e.preventDefault();
+  if (c.ok()) { c.run(); l3Status(`${label} (${combo})`); } else l3Status(`${label} går inte just nu.`);
+  return true;
 }
