@@ -186,7 +186,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!info.includes('K10') || !info.includes('Pågående') || !info.includes('Hus A')) fail('Tryck på byggnaden ska markera objektet och visa uppgifterna: ' + info);
   const ov = await page.evaluate(() => ({ n: l3bs.sel.length, overlay: l3b.models[0].meshes.reduce((a, m) => a + m.children.filter(c => c.userData.bsel).length, 0) }));
   if (ov.n !== 1 || ov.overlay !== 2) fail('Markerat objekt ska få överlägg och konturer: ' + JSON.stringify(ov));
+  // Panelen kan ligga över väggen på testskärmen – göm den under klicket.
+  await page.evaluate(() => { document.getElementById('v3Side').style.visibility = 'hidden'; });
   await page.keyboard.down('Shift'); await tap(6512380, 150125, 3); await page.keyboard.up('Shift');
+  await page.evaluate(() => { document.getElementById('v3Side').style.visibility = ''; });
   const two = await page.evaluate(() => ({ n: l3bs.sel.length, txt: document.getElementById('v3Side').innerText }));
   if (two.n !== 2 || !/2 objekt i byggnaden/.test(two.txt) || !/Vagg V1/.test(two.txt)) fail('Skift ska lägga till objekt i markeringen: ' + JSON.stringify(two));
   await page.keyboard.press('Escape');

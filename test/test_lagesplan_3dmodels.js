@@ -197,6 +197,42 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   });
   if (re2.n !== 1 || re2.ver !== 'v2' || re2.fetched !== 1) fail('En ny version i TC ska ersätta den visade: ' + JSON.stringify(re2));
 
+  // Flytta ett objekt i IFC:n och spara som ny fil i samma mapp i TC (Victor 2026-10-10).
+  const mv = await page.evaluate(async () => {
+    const m = l3b.models.find(x => x.id === 'f:F2'); m.visible = true; m.meshes.forEach(x => { x.visible = true; });
+    let ent = null; m.meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => { if (/K10/.test(r.name)) ent = { mesh, ri }; }));
+    l3bsSet([ent]);
+    const p = ent.mesh.geometry.getAttribute('position'), r = ent.mesh.userData.l3b.ranges[ent.ri], x0 = p.getX(r.start);
+    l3bmStart();
+    const side = document.getElementById('v3Side'); side.querySelector('[data-bm="dx"]').value = '5'; l3bmApplyFields(side);
+    l3bmAccept();
+    window.__up = null;
+    const orig = askOpener;
+    askOpener = async (type, extra, t, pr) => { if (type === 'tcUpload') { const f = extra.files[0]; window.__up = { name: f.name, folderId: extra.folderId, text: await f.text() }; return { uploaded: 1, folder: 'Etablering' }; } return orig(type, extra, t, pr); };
+    return { moved: p.getX(r.start) - x0, pending: l3bmPending('f:F2'), btn: !!document.querySelector('#v3Side [data-bmsave]') };
+  });
+  if (Math.abs(mv.moved - 5) > 1e-3 || mv.pending !== 1 || !mv.btn) fail('Flytta IFC-objekt: ' + JSON.stringify(mv));
+  await page.click('#v3Side [data-bmsave]');
+  await page.waitForFunction(() => window.__up, null, { timeout: 30000 });
+  const sv = await page.evaluate(async ifc0 => {
+    const up = window.__up, api = await ifcmLoad();
+    const centers = text => {
+    const id = api.OpenModel(new TextEncoder().encode(text), { COORDINATE_TO_ORIGIN: false });
+    const cx = {};
+    api.StreamAllMeshes(id, mesh => {
+      const g = api.GetLine(id, mesh.expressID).GlobalId.value; let sx = 0, n = 0;
+      for (let i = 0; i < mesh.geometries.size(); i++) { const pg = mesh.geometries.get(i), geom = api.GetGeometry(id, pg.geometryExpressID), v = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize()), T = pg.flatTransformation;
+        for (let k = 0; k < v.length; k += 6) { sx += T[0] * v[k] + T[4] * v[k + 1] + T[8] * v[k + 2] + T[12]; n++; } }
+      cx[g] = sx / n;
+    });
+    api.CloseModel(id);
+    return cx; };
+    const a = centers(ifc0), b = centers(up.text);
+    return { name: up.name, folderId: up.folderId, pelare: b['1hZq3$Bq9Fxu8nZK0bW1aA'] - a['1hZq3$Bq9Fxu8nZK0bW1aA'], vagg: b['3vB2YO$MX4xv5uCqZZG05x'] - a['3vB2YO$MX4xv5uCqZZG05x'], pending: l3bmPending('f:F2') };
+  }, ifc);
+  if (!/^Hus A flyttad \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(sv.name) || sv.folderId !== 'f1' || Math.abs(sv.pelare - 5) > 0.001 || Math.abs(sv.vagg) > 0.001 || sv.pending !== 0)
+    fail('Spara som ny IFC: ny fil i samma mapp, pelaren 5 m längre bort, väggen orörd: ' + JSON.stringify(sv));
+
   // Esc stänger rutan.
   await page.evaluate(() => l3PalTab('add'));
   await page.click('#v3GetModel'); await page.waitForTimeout(150);

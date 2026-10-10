@@ -53,7 +53,8 @@ function l3LayersRender() {
     <div class="v3-lg v3-lg-row"><span>Modeller i projektet</span><span class="v3-segs v3-lay-sort"><button type="button" data-l3l-sort="tree" class="${(P.laySort || "tree") === "tree" ? "on" : ""}" title="Projektets mappar i Trimble Connect">Mappar</button><button type="button" data-l3l-sort="list" class="${P.laySort === "list" ? "on" : ""}" title="De modeller som är inlästa, i bokstavsordning">Inlästa</button></span></div>`;
   if (P.laySort === "list") {
     const ms = l3b.models.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), "sv", { numeric: true }));
-    h += ms.length ? ms.map(m => row(`data-l3l-model="${esc(m.id)}"`, m.visible, esc(m.name), `<em class="v3-lr-k">${(m.tris / 1000).toFixed(0)}k</em>`)).join("")
+    const pend = m => (typeof l3bmPending === "function" ? l3bmPending(m.id) : 0);
+    h += ms.length ? ms.map(m => row(`data-l3l-model="${esc(m.id)}"`, m.visible, esc(m.name), pend(m) ? `<button type="button" class="v3-lr-save" data-l3l-save="${esc(m.id)}" title="Spara flyttarna som en ny IFC-fil i Trimble Connect">Spara ${pend(m)}</button>` : `<em class="v3-lr-k">${(m.tris / 1000).toFixed(0)}k</em>`)).join("")
       : `<div class="v3-pal-hint">Inga modeller är inlästa än. Välj under Mappar eller hämta de som är tända i Trimble Connect.</div>`;
   } else h += l3lTreeHtml(l3lay.root, 0);
   h += `<label class="v3-chk v3-lay-voids" title="Armering, inredning, installationer (rör, kanaler, el) och fästdon. Ofta en stor del av modellen – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayDetails" ${P.ifcDetails ? "checked" : ""} /> Visa detaljer (armering, installationer) – långsammare</label>`;
@@ -67,6 +68,7 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3l]").forEach(b => { b.onclick = () => l3lToggle(b.dataset.l3l); });
   host.querySelectorAll("[data-l3l-type]").forEach(b => { b.onclick = () => { const t = types.find(x => x.type === b.dataset.l3lType); if (t) { l3lSetIdsVisible(t.ids, !l3lTypeOn(t)); l3LayersRender(); } }; });
   host.querySelectorAll("[data-l3l-model]").forEach(b => { b.onclick = () => { const m = l3b.models.find(x => x.id === b.dataset.l3lModel); if (m) { l3bShow(m.id, !m.visible); l3RenderLegend(); l3Render(); l3LayersRender(); } }; });
+  host.querySelectorAll("[data-l3l-save]").forEach(b => { b.onclick = async () => { b.disabled = true; try { await l3bmSave(b.dataset.l3lSave); } catch (e) { /* statusraden */ } l3LayersRender(); }; });
   host.querySelectorAll("[data-l3l-sort]").forEach(b => { b.onclick = () => { l3SetPref("laySort", b.dataset.l3lSort); l3LayersRender(); }; });
   host.querySelectorAll("[data-l3l-dir]").forEach(b => { b.onclick = () => l3lOpenDir(b.dataset.l3lDir); });
   host.querySelectorAll("[data-l3l-file]").forEach(b => { b.onclick = () => l3lFile(b.dataset.l3lFile, b.dataset.name); });

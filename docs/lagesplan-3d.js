@@ -391,8 +391,8 @@ function l3Init(box) {
   orbit.addEventListener("start", l3StopFly); // egen kamerarörelse avbryter en pågående övergång
   gizmo.addEventListener("change", l3Render);
   gizmo.addEventListener("dragging-changed", e => { orbit.enabled = !e.value; });
-  gizmo.addEventListener("mouseDown", () => { if (typeof placeSnapshot === "function") placeSnapshot(); l3.dragStart = l3GroupState(); });
-  gizmo.addEventListener("objectChange", l3FromGizmo);
+  gizmo.addEventListener("mouseDown", () => { if (gizmo.object && gizmo.object.userData.bmove) return; if (typeof placeSnapshot === "function") placeSnapshot(); l3.dragStart = l3GroupState(); });
+  gizmo.addEventListener("objectChange", () => { if (gizmo.object && gizmo.object.userData.bmove) { if (typeof l3bmGizmoChange === "function") l3bmGizmoChange(); return; } l3FromGizmo(); });
   gizmo.addEventListener("mouseUp", l3DragEnd);
   l3ApplyStep();
   if (typeof l3ToolsInit === "function") l3ToolsInit();
@@ -752,7 +752,7 @@ function l3RefreshSel() {
   l3.selDeco = new Set(l3.sel);
   l3.sel.forEach(id => { const g = l3.placeMeshes.get(id); if (g) { l3SelDeco(g, true); const h = new THREE.BoxHelper(g, L3_SEL_COL); h.material.depthTest = false; h.material.transparent = true; h.material.opacity = .55; h.renderOrder = 5; l3.groups.sel.add(h); } });
   const one = l3.sel.size === 1 && (l3.tool || "select") === "select" ? l3.placeMeshes.get([...l3.sel][0]) : null;
-  if (one) { if (l3.gizmo.object !== one) l3.gizmo.attach(one); } else l3.gizmo.detach();
+  if (one) { if (l3.gizmo.object !== one) l3.gizmo.attach(one); } else if (!(l3.gizmo.object && l3.gizmo.object.userData.bmove)) l3.gizmo.detach(); // IFC-flytt behåller handtagen
   if (one) l3Mode(l3.gizmo.mode || "translate");
   if (typeof l3HandlesBuild === "function") l3HandlesBuild();
 }
@@ -1018,6 +1018,8 @@ function l3OpenCtx(x, y, e) {
 function l3RenderSide(liveOnly) {
   const side = document.getElementById("v3Side");
   if (!side || !l3) return;
+  // Pågående flytt av objekt i byggnaden: flyttpanelen ligger kvar.
+  if (typeof l3bm !== "undefined" && l3bm.session) { if (side.dataset.id !== "bmove") l3bmRenderSide(); return; }
   const list = l3SelList();
   // Objekt i byggnaden (IFC) markerade: deras panel.
   if (!list.length && typeof l3bs !== "undefined" && l3bs.sel.length) {
@@ -1246,6 +1248,7 @@ function l3Key(e) {
   if (l3.vPick && e.key === "Escape") { l3.vPick = false; l3.renderer.domElement.style.cursor = ""; l3Status(""); return; }
   if (typeof l3ToolKey === "function" && l3ToolKey(e)) return;
   if (e.key === "Enter" && l3.fenceId) { l3EndAdd(); l3Status("Staketet är klart."); return; }
+  if (e.key === "Escape" && typeof l3bm !== "undefined" && l3bm.session) { l3bmCancel(); return; }
   if (e.key === "Escape") { l3HideMenus(); l3HideInfo(); if (l3.addType) { l3EndAdd(); l3Status(""); } else { l3SelectIds([]); if (typeof l3bsClear === "function") l3bsClear(); } return; }
   if (e.key === "Home") { e.preventDefault(); l3Frame(true); return; }
   if (e.key === "?") { document.getElementById("v3HelpBtn").click(); return; }

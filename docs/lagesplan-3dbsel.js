@@ -154,6 +154,12 @@ function l3bsIsolate() {
   l3Render();
 }
 
+/* Osparade flyttar i de markerade objektens modeller: knapp för att spara som ny IFC i TC. */
+function l3bsPendingHtml() {
+  if (typeof l3bmPending !== "function") return "";
+  const models = [...new Set(l3bs.sel.map(e => e.mesh.userData.l3b.model))].filter(m => m && l3bmPending(m.id));
+  return models.map(m => `<button type="button" class="v3-wide v3-primary" data-bmsave="${escHtml(m.id)}" title="Originalet hämtas från Trimble Connect, flyttarna skrivs in och resultatet sparas som en ny fil i samma mapp – originalet skrivs aldrig över">Spara som ny IFC i TC (${l3bmPending(m.id)} flyttade i ${escHtml(m.name)})</button>`).join("");
+}
 /* Panelen till höger när objekt i byggnaden är markerade. */
 function l3bsRenderSide(side) {
   const info = l3bsInfo(), n = info.length, esc = escHtml;
@@ -170,6 +176,7 @@ function l3bsRenderSide(side) {
       <button type="button" id="v3BsHide" title="Dölj de markerade (H)">Dölj</button>
       <button type="button" id="v3BsIso" title="Visa bara de markerade (I)">Visa bara dessa</button>
       ${typeof l3bmStart === "function" ? `<button type="button" id="v3BsMove" title="Flytta de markerade – sparas som en ny IFC-fil i Trimble Connect">Flytta…</button>` : ""}
+      ${l3bsPendingHtml(info)}
       ${coupled.length ? `<button type="button" id="v3BsJump" class="v3-wide" title="Markera de kopplade aktiviteterna i 4D-planering och objekten i Trimble Connect">Markera i 4D-planering (${coupled.length})</button>` : ""}
     </div>`;
   const on = (id, fn) => { const b = side.querySelector("#" + id); if (b) b.onclick = fn; };
@@ -178,5 +185,6 @@ function l3bsRenderSide(side) {
   on("v3BsHide", l3bsHide);
   on("v3BsIso", l3bsIsolate);
   on("v3BsMove", () => l3bmStart());
+  side.querySelectorAll("[data-bmsave]").forEach(b => { b.onclick = async () => { b.disabled = true; try { await l3bmSave(b.dataset.bmsave); } catch (e) { /* visas i statusraden */ } l3RenderSide(); }; });
   on("v3BsJump", () => askOpener("select", { ids: [...new Set(coupled.map(x => x.item.id))], jump: true }, 15000).then(() => l3Toast("Markerat i 4D-planering och i Trimble Connect.")).catch(e => l3Toast(e.message)));
 }

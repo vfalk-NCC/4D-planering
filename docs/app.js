@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-10 07:46";
+const APP_VERSION = "2026-10-10 07:56";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -387,7 +387,7 @@ window.addEventListener("message", async e => {
       showLagesplanBanner("");
       reply({});
     } else if (msg.type === "tcUpload") {
-      reply(await tcUploadFiles(msg.files || [], msg.folder || "Lägesplan"));
+      reply(await tcUploadFiles(msg.files || [], msg.folder || "Lägesplan", msg.folderId || null));
     } else if (msg.type === "ifcModelsList") {
       // 3D-vyn i lägesplanen: de IFC-modeller som är tända i TC (för den riktiga byggnaden).
       let ms = [];
@@ -477,21 +477,28 @@ async function tcApiBase(tokenVal, project) {
   } catch (e) { /* faller tillbaka på kända adresser */ }
   return byLocation[String(project.location || "").toLowerCase()] || "https://app.connect.trimble.com/tc/api/2.0";
 }
-async function tcUploadFiles(files, folderName) {
-  try { return await tcUploadFilesInner(files, folderName); }
+async function tcUploadFiles(files, folderName, folderId = null) {
+  try { return await tcUploadFilesInner(files, folderName, folderId); }
   catch (e) { showLagesplanBanner(`Kunde inte spara i Trimble Connect: ${e.message}`, 10000); throw e; }
 }
-async function tcUploadFilesInner(files, folderName) {
+/* folderId: en bestämd mapp (t.ex. samma mapp som originalet), annars mappen folderName under roten. */
+async function tcUploadFilesInner(files, folderName, folderId = null) {
   if (!files.length) return { uploaded: 0 };
   const tokenVal = await tcAccessToken();
   const project = await API.project.getProject();
   const base = await tcApiBase(tokenVal, project);
   const H = { Authorization: `Bearer ${tokenVal}` };
   const j = async (res, what) => { if (!res.ok) throw new Error(`${what} misslyckades (${res.status}) ${await res.text().catch(() => "")}`.trim()); return res.json(); };
-  const proj = await j(await fetch(`${base}/projects/${encodeURIComponent(project.id)}`, { headers: H }), "Läsa projektet");
-  const rootId = proj.rootId || proj.rootFolderId;
-  const children = await j(await fetch(`${base}/folders/${encodeURIComponent(rootId)}/items`, { headers: H }), "Läsa rotmappen");
-  let folder = (children || []).find(x => (x.type || "").toUpperCase() === "FOLDER" && x.name === folderName);
+  let folder = null;
+  if (folderId) {
+    const info = await fetch(`${base}/folders/${encodeURIComponent(folderId)}`, { headers: H }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    folder = { id: folderId, name: (info && info.name) || "samma mapp" };
+    folderName = folder.name;
+  }
+  const proj = folder ? null : await j(await fetch(`${base}/projects/${encodeURIComponent(project.id)}`, { headers: H }), "Läsa projektet");
+  const rootId = proj && (proj.rootId || proj.rootFolderId);
+  const children = folder ? [] : await j(await fetch(`${base}/folders/${encodeURIComponent(rootId)}/items`, { headers: H }), "Läsa rotmappen");
+  if (!folder) folder = (children || []).find(x => (x.type || "").toUpperCase() === "FOLDER" && x.name === folderName);
   if (!folder) {
     folder = await j(await fetch(`${base}/folders`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ name: folderName, parentId: rootId }) }), "Skapa mappen");
   }
