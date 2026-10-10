@@ -369,17 +369,18 @@ function l3ToolTap(e) {
     const mode = l3Prefs().measure, mp = l3t.mp || (l3t.mp = []);
     const s = mp.length ? l3Target(e, mp[mp.length - 1]) : l3Snap(e);
     if (!s) return true;
-    if (!mp.length) { l3ClearMeasure(); l3Busy(true); }
+    if (!mp.length) { l3ClearMeasure(); l3Busy(true); l3t.mpObjs = []; }
     // Yta: tryck på första punkten igen = klar.
     if (mode === "area" && mp.length >= 3) { const a = l3ToScreen(mp[0]), b = l3ToScreen(s.point); if (Math.hypot(a.x - b.x, a.y - b.y) < 12) { l3FinishArea(); return true; } }
     mp.push(s.point.clone()); l3Dot(s.point, 0xdc2626, l3.groups.meas);
+    if (typeof l3mObjAt === "function") (l3t.mpObjs || (l3t.mpObjs = [])).push(l3mObjAt(e));
     if (mp.length > 1) l3TmpLine(mp[mp.length - 2], mp[mp.length - 1], "#dc2626", false, l3.groups.meas);
     if (mode === "angle" && mp.length === 3) {
       const ang = l3Angle3(mp[0], mp[1], mp[2]);
       l3.measLabel = { at: mp[1].clone(), text: `${l3Fmt(ang, 1)}°` }; l3PlaceMeasLabel();
       l3Status(`Vinkel ${l3Fmt(ang, 2)}° (vågrätt ${l3Fmt(l3Angle3(...mp.map(p => new THREE.Vector3(p.x, p.y, 0))), 2)}°). Tryck en ny punkt för att mäta igen.`);
       l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp);
-      if (typeof l3mAdd === "function") { l3mAdd("angle", mp, `${l3Fmt(ang, 1)}°`); l3ClearMeasure(); } // ligger kvar
+      if (typeof l3mAdd === "function") { l3mAdd("angle", mp, `${l3Fmt(ang, 1)}°`, l3t.mpObjs); l3ClearMeasure(); } // ligger kvar
     } else l3Status(mode === "angle" ? (mp.length === 1 ? "Tryck på vinkelns spets (hörnet)." : "Tryck på den andra punkten.") : `${mp.length} hörn. Fortsätt – avsluta med Enter eller tryck på första punkten.`);
     l3Render();
     return true;
@@ -387,7 +388,8 @@ function l3ToolTap(e) {
   if (t === "measure") {
     const s = st === 1 ? l3Target(e, l3t.M1) : l3Snap(e);
     if (!s) return true;
-    if (st === 0) { l3ClearMeasure(); l3t.M1 = s.point.clone(); l3t.step = 1; l3Busy(true); l3Dot(l3t.M1, 0xdc2626, l3.groups.meas); l3Status("Mät: tryck på andra punkten. Piltangenter låser axel."); l3Render(); return true; }
+    if (st === 0) { l3ClearMeasure(); l3t.mObjs = typeof l3mObjAt === "function" ? [l3mObjAt(e)] : []; l3t.M1 = s.point.clone(); l3t.step = 1; l3Busy(true); l3Dot(l3t.M1, 0xdc2626, l3.groups.meas); l3Status("Mät: tryck på andra punkten. Piltangenter låser axel."); l3Render(); return true; }
+    if (typeof l3mObjAt === "function") l3t.mObjs = [...(l3t.mObjs || []).slice(0, 1), l3mObjAt(e)];
     l3MeasureTo(s.point.clone());
     return true;
   }
@@ -475,16 +477,17 @@ function l3FinishArea() {
   l3.measLabel = { at: c, text: `${l3Fmt(area)} m²` }; l3PlaceMeasLabel();
   l3Status(`Yta ${l3Fmt(area)} m² (i plan) · omkrets ${l3Fmt(per)} m · ${mp.length} hörn. Tryck en ny punkt för att mäta igen.`);
   l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp); l3Render();
-  if (typeof l3mAdd === "function") { l3mAdd("area", mp, `${l3Fmt(area)} m²`); l3ClearMeasure(); } // ligger kvar
+  if (typeof l3mAdd === "function") { l3mAdd("area", mp, `${l3Fmt(area)} m²`, l3t.mpObjs); l3ClearMeasure(); } // ligger kvar
 }
 function l3MeasureTo(b) {
+  const objs = l3t.mObjs || []; l3t.mObjs = null;
   const a = l3t.M1, d = a.distanceTo(b), hz = Math.hypot(b.x - a.x, b.y - a.y), dz = b.z - a.z;
   l3TmpLine(a, b, "#dc2626", false, l3.groups.meas); l3Dot(b, 0xdc2626, l3.groups.meas);
   l3.measLabel = { at: a.clone().add(b).multiplyScalar(0.5), text: `${l3Fmt(d)} m` };
   l3PlaceMeasLabel();
   l3Status(`Avstånd ${l3Fmt(d)} m · vågrätt ${l3Fmt(hz)} m · höjdskillnad ${l3Fmt(dz)} m. Tryck en ny punkt för att mäta igen.`);
   l3t = { ...l3t, step: 0, M1: null, lock: null, vcb: "", last: null }; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp); l3Render();
-  if (typeof l3mAdd === "function") { l3mAdd("dist", [a, b], `${l3Fmt(d)} m`); l3ClearMeasure(); } // ligger kvar
+  if (typeof l3mAdd === "function") { l3mAdd("dist", [a, b], `${l3Fmt(d)} m`, objs); l3ClearMeasure(); } // ligger kvar
 }
 function l3MoveTo(T) {
   const d = T.clone().sub(l3t.base), n = (l3t.objs || []).length;

@@ -188,6 +188,14 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   if (saved.length !== 1 || saved[0].text !== m1.text || saved[0].plan !== 'A') fail('Måtten ska sparas i projektet: ' + JSON.stringify(saved));
   await page.evaluate(() => { l3m.loaded = false; l3m.list = []; return l3mLoad(); });
   if ((await page.evaluate(() => l3m.list.length)) !== 1) fail('Sparade mått ska läsas in igen');
+  // Måtten under fliken Kommentarer, med detaljer (vågrätt, höjd, lutning, objekt, koordinater).
+  await page.click('#v3MeasBtn').catch(() => {}); await page.evaluate(() => l3mShowInTab()); await page.waitForTimeout(150);
+  const mt = await page.evaluate(() => ({ tab: !document.getElementById('v3PalComments').classList.contains('hidden'), rows: document.querySelectorAll('#v3MeasSec [data-mzoom]').length, sub: (document.querySelector('#v3MeasSec .v3-kc-b em') || {}).textContent, objs: l3m.list[0].objs }));
+  if (!mt.tab || mt.rows !== 1 || !/vågrätt 10/.test(mt.sub || '')) fail('Måtten under Kommentarer: ' + JSON.stringify(mt));
+  await page.click('#v3MeasSec [data-mexp]');
+  const dl = await page.evaluate(() => [...document.querySelectorAll('#v3MeasSec .v3-mdl dt')].map(x => x.textContent));
+  if (!dl.includes('Vågrätt') || !dl.includes('Lutning') || !dl.some(x => /Punkt 2/.test(x)) || !dl.includes('Mätt av')) fail('Måttets detaljer: ' + JSON.stringify(dl));
+  if (process.env.SHOTM) await page.screenshot({ path: process.env.SHOTM });
   await page.evaluate(() => l3SetTool('select'));
 
   // Historiken kan nålas fast som utfälld.

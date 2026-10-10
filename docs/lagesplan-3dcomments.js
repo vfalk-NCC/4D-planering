@@ -351,7 +351,9 @@ function l3kRenderTab() {
         <button type="button" class="v3-ic" data-kcdel="${esc(c.id)}" title="Ta bort">${I.trash}</button>
       </div>`).join("") : `<div class="v3-pal-hint">${l3k.list.length ? "Ingen kommentar matchar." : "Inga kommentarer än. Högerklicka på ett objekt i 3D → Kommentar här…"}</div>`}</div>
     ${l3k.list.length ? `<div class="v3-grp-acts"><button type="button" id="v3KIfcSel" ${nSel ? "" : "disabled"} title="De markerade kommentarerna (Ctrl+klick / Skift+klick i listan) som 3D-skyltar i en ny IFC-fil i Trimble Connect">${I.upload} Exportera markerade${nSel ? ` (${nSel})` : ""}</button>${nSel ? `<button type="button" id="v3KSelClr" title="Avmarkera alla">Avmarkera</button>` : ""}<button type="button" id="v3KIfc" title="Alla kommentarer som syns i listan som riktiga 3D-skyltar (skylt, stolpe, 3D-text och egenskaper) i en ny IFC-fil i Trimble Connect – vända mot vyn du har nu">${I.upload} Exportera alla som 3D-skyltar</button></div>` : ""}
-    <div class="v3-pal-hint">${open} öppna${done ? ` · ${done} klara` : ""}. Högerklick i 3D → Kommentar här… skapar en ny.</div>`;
+    <div class="v3-pal-hint">${open} öppna${done ? ` · ${done} klara` : ""}. Högerklick i 3D → Kommentar här… skapar en ny.</div>
+    ${typeof l3mTabHtml === "function" ? l3mTabHtml() : ""}`;
+  if (typeof l3mBindTab === "function") l3mBindTab(host);
   const q = host.querySelector("#v3KQ");
   q.oninput = () => { l3kUi.q = q.value; const pos = q.selectionStart; l3kRenderTab(); const n = document.getElementById("v3KQ"); if (n) { n.focus(); n.setSelectionRange(pos, pos); } };
   host.querySelector("#v3KShow").onchange = e => { l3k.hidden = !e.target.checked; if (l3k.hidden) l3kClose(); l3kDraw(); };

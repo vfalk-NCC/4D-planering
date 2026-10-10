@@ -33,8 +33,8 @@ async function l3mLoad() {
   l3mDraw();
 }
 /* Färdigt mått från mätverktyget: pts i scenens koordinater. */
-function l3mAdd(kind, pts, text) {
-  const m = { id: ghNewId(), plan: plan && plan.id, kind, text, pts: pts.map(p => [p.x + l3.O[0], p.y + l3.O[1], p.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000)), at: new Date().toISOString(), by: (settings && settings.userName) || null, saved: false };
+function l3mAdd(kind, pts, text, objs) {
+  const m = { id: ghNewId(), plan: plan && plan.id, kind, text, objs: (objs || []).map(o => o || null), pts: pts.map(p => [p.x + l3.O[0], p.y + l3.O[1], p.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000)), at: new Date().toISOString(), by: (settings && settings.userName) || null, saved: false };
   l3m.list.push(m);
   l3m.hidden = false;
   l3mDraw();
@@ -105,28 +105,103 @@ function l3mClearUnsaved() {
   if (typeof l3VPush === "function") l3VPush(() => { l3m.list.push(...gone); l3mDraw(); l3mRenderBar(); }, () => { const s = new Set(gone); l3m.list = l3m.list.filter(x => !s.has(x)); l3mDraw(); l3mRenderBar(); }, "rensa mått");
   l3mDraw(); l3mRenderBar();
 }
-function l3mToggle(on) { l3m.hidden = on === undefined ? !l3m.hidden : !on; l3mDraw(); l3mRenderBar(); if (typeof l3LayersRender === "function") l3LayersRender(); }
+function l3mToggle(on) { l3m.hidden = on === undefined ? !l3m.hidden : !on; l3mDraw(); l3mRenderBar(); }
 
-/* Listan Mått: knapp i fästraden (när Mät är valt) med en meny. */
+/* Fästraden (när Mät är valt): en knapp som visar måtten under fliken Kommentarer (Victor 2026-10-10:
+   "Måtten tycker jag att ni kan lägga in under kommentarer"). */
 function l3mBarHtml() {
   const n = l3m.list.length, uns = l3m.list.filter(x => !x.saved).length;
-  return `<span class="v3-snapbar-sep"></span><div class="v3-dd v3-mdd"><button type="button" id="v3MeasBtn" class="${l3m.open ? "on" : ""}" title="Måtten som ligger kvar – ta bort, dölj och spara">Mått ${n}${uns ? ` <em>${uns} osparade</em>` : ""} ▾</button>${l3m.open ? l3mMenuHtml() : ""}</div>`;
+  return `<span class="v3-snapbar-sep"></span><button type="button" id="v3MeasBtn" title="Måtten som ligger kvar – visas under fliken Kommentarer (ta bort, dölj, spara, detaljer)">Mått ${n}${uns ? ` <em>${uns} osparade</em>` : ""} ›</button>`;
 }
-function l3mMenuHtml() {
-  const esc = escHtml, K = { dist: "Avstånd", angle: "Vinkel", area: "Yta" };
-  return `<div class="v3-pop v3-mpop">${l3m.list.length ? l3m.list.map(m => `<div class="v3-mrow"><i class="${m.saved ? "saved" : ""}" title="${m.saved ? "Sparad i projektet" : "Inte sparad"}"></i><button type="button" class="v3-mname" data-mzoom="${esc(m.id)}" title="Zooma till måttet">${K[m.kind] || ""} <b>${esc(m.text)}</b></button><button type="button" class="v3-ic" data-mdel="${esc(m.id)}" title="Ta bort måttet">${L3_ICO.trash}</button></div>`).join("") : `<div class="v3-pal-hint">Inga mått än. Mät avstånd, vinkel eller yta – måtten ligger kvar här.</div>`}
-    <div class="v3-grp-acts"><button type="button" id="v3MeasSave" ${l3m.list.some(x => !x.saved) ? "" : "disabled"} title="Spara de osparade måtten i projektet (finns kvar nästa gång och för andra)">${L3_ICO.upload} Spara i projektet${l3m.list.some(x => !x.saved) ? ` (${l3m.list.filter(x => !x.saved).length})` : ""}</button>
-    <button type="button" id="v3MeasHide">${l3m.hidden ? L3_ICO.eye + " Visa måtten" : L3_ICO.eyeOff + " Dölj måtten"}</button>
-    <button type="button" id="v3MeasClr" ${l3m.list.some(x => !x.saved) ? "" : "disabled"}>${L3_ICO.trash} Rensa osparade</button></div></div>`;
+function l3mRenderBar() { if (typeof l3RenderSnapBar === "function") l3RenderSnapBar(); if (typeof l3LayersRender === "function") l3LayersRender(); if (typeof l3kRenderTab === "function") l3kRenderTab(); }
+function l3mShowInTab() {
+  if (typeof l3PalTab === "function") l3PalTab("comments");
+  const pal = document.getElementById("v3Pal"); if (pal && pal.classList.contains("hidden") && typeof l3PalToggle === "function") l3PalToggle(true);
+  l3m.secOpen = true;
+  if (typeof l3kRenderTab === "function") l3kRenderTab();
+  const sec = document.getElementById("v3MeasSec"); if (sec) sec.scrollIntoView({ block: "nearest" });
 }
-function l3mRenderBar() { if (typeof l3RenderSnapBar === "function") l3RenderSnapBar(); if (typeof l3LayersRender === "function") l3LayersRender(); }
 function l3mBindBar(bar) {
   const b = bar.querySelector("#v3MeasBtn");
-  if (!b) return;
-  b.onclick = e => { e.stopPropagation(); l3m.open = !l3m.open; l3mRenderBar(); };
-  bar.querySelectorAll("[data-mdel]").forEach(x => { x.onclick = e => { e.stopPropagation(); l3mRemove(x.dataset.mdel); }; });
-  bar.querySelectorAll("[data-mzoom]").forEach(x => { x.onclick = e => { e.stopPropagation(); const m = l3m.list.find(y => y.id === x.dataset.mzoom); if (!m) return; const b3 = new THREE.Box3(); m.pts.forEach(p => b3.expandByPoint(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]))); l3FlyTo(b3.getCenter(new THREE.Vector3()), Math.max(6, b3.getSize(new THREE.Vector3()).length() * 1.6)); }; });
-  const sv = bar.querySelector("#v3MeasSave"); if (sv) sv.onclick = e => { e.stopPropagation(); l3mSave(); };
-  const hd = bar.querySelector("#v3MeasHide"); if (hd) hd.onclick = e => { e.stopPropagation(); l3mToggle(); };
-  const cl = bar.querySelector("#v3MeasClr"); if (cl) cl.onclick = e => { e.stopPropagation(); l3mClearUnsaved(); };
+  if (b) b.onclick = e => { e.stopPropagation(); l3mShowInTab(); };
+}
+
+/* Vilket objekt en mätpunkt ligger på (från tryckets träff i 3D). */
+function l3mObjAt(e) {
+  try {
+    const h = typeof l3Ray === "function" ? l3Ray(e, typeof l3Surfaces === "function" ? l3Surfaces() : [l3.scene])[0] : null;
+    if (!h || typeof l3kTarget !== "function") return null;
+    const t = l3kTarget(h);
+    return { kind: t.kind, name: t.name || "", guid: t.guid || null, model: t.model || null };
+  } catch (err) { return null; }
+}
+
+/* Allt som går att räkna ut ur måttet (Victor 2026-10-10: "lägg in mer information än bara måttet"). */
+function l3mInfo(m) {
+  // Nära noll visas som 0 (inte "−0"); sg ger tecken framför höjder och lutningar.
+  const P = m.pts.map(p => new THREE.Vector3(p[0], p[1], p[2])), f = (v, d = 3) => l3Fmt(Math.abs(v) < 0.5 * Math.pow(10, -d) ? 0 : v, d), rows = [];
+  const sg = (v, d = 3) => (Math.abs(v) < 0.5 * Math.pow(10, -d) ? "0" : (v > 0 ? "+" : "") + f(v, d));
+  const deg = r => r * 180 / Math.PI;
+  let sub = "";
+  if (m.kind === "dist" && P.length >= 2) {
+    const [a, b] = P, d = a.distanceTo(b), hz = Math.hypot(b.x - a.x, b.y - a.y), dz = b.z - a.z;
+    const slope = hz > 1e-6 ? dz / hz * 100 : null, ang = deg(Math.atan2(dz, hz));
+    rows.push(["Avstånd (3D)", `${f(d)} m`], ["Vågrätt", `${f(hz)} m`], ["Höjdskillnad", `${sg(dz)} m`],
+      ["Lutning", slope == null ? "lodrätt" : `${sg(slope, 1)} % (${sg(ang, 1)}°)`], ["ΔX / ΔY", `${f(b.x - a.x)} / ${f(b.y - a.y)} m`]);
+    sub = `vågrätt ${f(hz, 2)} m · höjd ${sg(dz, 2)} m${slope != null && Math.abs(dz) > 0.005 ? ` · ${sg(slope, 1)} %` : ""}`;
+  } else if (m.kind === "angle" && P.length >= 3) {
+    const a3 = (p, v, q) => { const u = p.clone().sub(v), w = q.clone().sub(v), d = u.length() * w.length(); return d ? deg(Math.acos(Math.max(-1, Math.min(1, u.dot(w) / d)))) : 0; };
+    const flat = P.map(p => new THREE.Vector3(p.x, p.y, 0));
+    const v = a3(P[0], P[1], P[2]), vh = a3(flat[0], flat[1], flat[2]);
+    rows.push(["Vinkel (3D)", `${f(v, 2)}°`], ["Vinkel i plan", `${f(vh, 2)}°`], ["Ben 1", `${f(P[0].distanceTo(P[1]))} m`], ["Ben 2", `${f(P[2].distanceTo(P[1]))} m`]);
+    sub = `i plan ${f(vh, 1)}° · ben ${f(P[0].distanceTo(P[1]), 2)} / ${f(P[2].distanceTo(P[1]), 2)} m`;
+  } else if (m.kind === "area" && P.length >= 3) {
+    let a = 0, per = 0, per3 = 0;
+    const n3 = new THREE.Vector3();
+    for (let i = 0; i < P.length; i++) { const p = P[i], q = P[(i + 1) % P.length]; a += p.x * q.y - q.x * p.y; per += Math.hypot(q.x - p.x, q.y - p.y); per3 += p.distanceTo(q); n3.add(new THREE.Vector3().crossVectors(p.clone().sub(P[0]), q.clone().sub(P[0]))); }
+    const plan = Math.abs(a) / 2, real = n3.length() / 2, zs = P.map(p => p.z);
+    rows.push(["Yta i plan", `${f(plan, 2)} m²`], ["Verklig yta (lutande)", `${f(real, 2)} m²`], ["Omkrets i plan", `${f(per)} m`], ["Omkrets (3D)", `${f(per3)} m`], ["Hörn", String(P.length)],
+      ["Höjd", `${f(Math.min(...zs))} – ${f(Math.max(...zs))} m (medel ${f(zs.reduce((s2, z) => s2 + z, 0) / zs.length)})`]);
+    sub = `omkrets ${f(per, 2)} m · ${P.length} hörn${Math.abs(real - plan) > plan * 0.01 ? ` · lutande ${f(real, 2)} m²` : ""}`;
+  }
+  const names = (m.objs || []).map(o => (o && o.name) || "");
+  const objTxt = names.some(Boolean) ? (m.kind === "dist" ? `${names[0] || "?"} → ${names[1] || "?"}` : [...new Set(names.filter(Boolean))].join(", ")) : "";
+  if (objTxt) rows.push([m.kind === "dist" ? "Från → till" : "Objekt", objTxt]);
+  P.forEach((p, i) => rows.push([`Punkt ${i + 1}`, `X ${f(p.x)}\nY ${f(p.y)}\nZ ${f(p.z)}`]));
+  rows.push(["Mätt av", `${m.by || "–"} · ${m.at ? new Date(m.at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}`], ["Status", m.saved ? "Sparad i projektet" : "Inte sparad"]);
+  return { sub, objTxt, rows };
+}
+const L3M_KIND = { dist: "Avstånd", angle: "Vinkel", area: "Yta" };
+function l3mTabHtml() {
+  const esc = escHtml, I = L3_ICO, n = l3m.list.length, uns = l3m.list.filter(x => !x.saved).length;
+  l3m.exp = l3m.exp || new Set();
+  const open = l3m.secOpen !== false;
+  return `<section class="v3-msec" id="v3MeasSec"><button type="button" class="v3-msec-h" id="v3MeasHead" aria-expanded="${open}"><i>›</i>Mått <span>${n}${uns ? ` · ${uns} osparade` : ""}</span></button>
+    ${open ? `${n ? `<div class="v3-kc-list">${l3m.list.map((m, i) => { const inf = l3mInfo(m), ex = l3m.exp.has(m.id); return `<div class="v3-mr ${ex ? "ex" : ""}">
+      <div class="v3-kc"><i class="v3-mdot ${m.saved ? "saved" : ""}" title="${m.saved ? "Sparad i projektet" : "Inte sparad"}"></i>
+        <button type="button" class="v3-kc-b" data-mzoom="${esc(m.id)}" title="Zooma till måttet"><b>${L3M_KIND[m.kind] || ""} ${esc(m.text).replace(/ (m²?|°)$/, "&nbsp;$1")}</b><em>${esc(inf.sub)}</em>${inf.objTxt ? `<em>${esc(inf.objTxt)}</em>` : ""}</button>
+        <button type="button" class="v3-ic" data-mexp="${esc(m.id)}" title="${ex ? "Dölj detaljerna" : "Visa alla detaljer"}" aria-expanded="${ex}">${ex ? "▴" : "▾"}</button>
+        <button type="button" class="v3-ic" data-mcopy="${esc(m.id)}" title="Kopiera måttet med alla detaljer">${I.copy || "⧉"}</button>
+        <button type="button" class="v3-ic" data-mdel="${esc(m.id)}" title="Ta bort måttet">${I.trash}</button></div>
+      ${ex ? `<dl class="v3-mdl">${inf.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : ""}</div>`; }).join("")}</div>` : `<div class="v3-pal-hint">Inga mått än. Mät med Mät (M) – avstånd, vinkel eller yta – så hamnar de här.</div>`}
+    ${n ? `<div class="v3-grp-acts"><button type="button" id="v3MeasSave" ${uns ? "" : "disabled"} title="Spara de osparade måtten i projektet (finns kvar nästa gång och för andra)">${I.upload} Spara i projektet${uns ? ` (${uns})` : ""}</button>
+      <button type="button" id="v3MeasHide">${l3m.hidden ? I.eye + " Visa måtten" : I.eyeOff + " Dölj måtten"}</button>
+      <button type="button" id="v3MeasCopyAll" title="Alla mått med detaljer som text (t.ex. till e-post eller Excel)">${I.copy || "⧉"} Kopiera alla</button>
+      <button type="button" id="v3MeasClr" ${uns ? "" : "disabled"}>${I.trash} Rensa osparade</button></div>` : ""}` : ""}</section>`;
+}
+function l3mCopyText(list) {
+  return list.map(m => { const inf = l3mInfo(m); return `${L3M_KIND[m.kind] || ""} ${m.text}\n${inf.rows.map(([k, v]) => `  ${k}: ${String(v).replace(/\n/g, ", ")}`).join("\n")}`; }).join("\n\n");
+}
+function l3mBindTab(host) {
+  const on = (sel, fn) => { const x = host.querySelector(sel); if (x) x.onclick = e => { e.stopPropagation(); fn(x); }; };
+  on("#v3MeasHead", () => { l3m.secOpen = !(l3m.secOpen !== false); l3kRenderTab(); });
+  host.querySelectorAll("[data-mdel]").forEach(x => { x.onclick = e => { e.stopPropagation(); l3mRemove(x.dataset.mdel); }; });
+  host.querySelectorAll("[data-mexp]").forEach(x => { x.onclick = e => { e.stopPropagation(); const id = x.dataset.mexp; l3m.exp.has(id) ? l3m.exp.delete(id) : l3m.exp.add(id); l3kRenderTab(); }; });
+  const copy = t => { try { navigator.clipboard.writeText(t).then(() => l3Toast("Kopierat."), () => l3Status("Kunde inte kopiera.", true)); } catch (err) { l3Status("Kunde inte kopiera.", true); } };
+  host.querySelectorAll("[data-mcopy]").forEach(x => { x.onclick = e => { e.stopPropagation(); const m = l3m.list.find(y => y.id === x.dataset.mcopy); if (m) copy(l3mCopyText([m])); }; });
+  host.querySelectorAll("[data-mzoom]").forEach(x => { x.onclick = e => { e.stopPropagation(); const m = l3m.list.find(y => y.id === x.dataset.mzoom); if (!m) return; if (l3m.hidden) l3mToggle(true); const b3 = new THREE.Box3(); m.pts.forEach(p => b3.expandByPoint(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]))); l3FlyTo(b3.getCenter(new THREE.Vector3()), Math.max(6, b3.getSize(new THREE.Vector3()).length() * 1.6)); }; });
+  on("#v3MeasSave", () => l3mSave());
+  on("#v3MeasHide", () => l3mToggle());
+  on("#v3MeasCopyAll", () => copy(l3mCopyText(l3m.list)));
+  on("#v3MeasClr", () => l3mClearUnsaved());
 }
