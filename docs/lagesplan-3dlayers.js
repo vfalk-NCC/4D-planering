@@ -10,7 +10,7 @@
      (via 4D-planering, som har TC-behörigheten) och tänder/släcker den sedan.
    Panelerna till höger och vänster kan breddas genom att dra i kanten. */
 
-const L3L_EXT = /\.(ifc|ifczip)$/i;
+const L3L_EXT = /\.(ifc|ifczip|dxf)$/i; // DXF blir ett CAD-lager (lagesplan-3dsite.js)
 let l3lay = { folders: new Map(), open: new Set(), root: null, project: "", loading: new Set(), err: "" };
 
 const l3lEye = on => `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${on
@@ -50,6 +50,7 @@ function l3LayersRender() {
     ${row('data-l3l="objs"', objsOn, "Planerade objekt (lådor)")}
     ${row('data-l3l="etab"', etabOn, `Etablering <em>${placements.length}</em>`, "", "v3-lr-b")}
     ${types.map(t => row(`data-l3l-type="${esc(t.type)}"`, l3lTypeOn(t), `<i class="v3-lr-dot" style="background:${esc(t.color)}"></i>${esc(t.label)} <em>${t.ids.length}</em>`, "", "v3-lr-sub")).join("")}
+    ${typeof l3sHtml === "function" ? l3sHtml(row, l3lEye) : ""}
     <div class="v3-lg v3-lg-row"><span>Modeller i projektet</span><span class="v3-segs v3-lay-sort"><button type="button" data-l3l-sort="tree" class="${(P.laySort || "tree") === "tree" ? "on" : ""}" title="Projektets mappar i Trimble Connect">Mappar</button><button type="button" data-l3l-sort="list" class="${P.laySort === "list" ? "on" : ""}" title="De modeller som är inlästa, i bokstavsordning">Inlästa</button></span></div>`;
   if (P.laySort === "list") {
     const ms = l3b.models.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), "sv", { numeric: true }));
@@ -73,6 +74,8 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3l-sort]").forEach(b => { b.onclick = () => { l3SetPref("laySort", b.dataset.l3lSort); l3LayersRender(); }; });
   host.querySelectorAll("[data-l3l-dir]").forEach(b => { b.onclick = () => l3lOpenDir(b.dataset.l3lDir); });
   host.querySelectorAll("[data-l3l-file]").forEach(b => { b.onclick = () => l3lFile(b.dataset.l3lFile, b.dataset.name); });
+  host.querySelectorAll("[data-l3l-dxf]").forEach(b => { b.onclick = () => { if (b.dataset.cad) { const k = "cad:" + b.dataset.cad; setLayersVisible([k], !ls(k).visible); l3sRefresh(0); l3LayersRender(); } else l3sDxfFromTc(b.dataset.l3lDxf, b.dataset.name); }; });
+  if (typeof l3sBind === "function") l3sBind(host);
   const op = host.querySelector('[data-l3l-op="plan"]');
   if (op) op.oninput = () => { l3SetPref("planOp", Number(op.value)); l3lApplyPlanOp(); l3Render(); };
   const de = host.querySelector("#v3LayDetails");
@@ -99,10 +102,15 @@ function l3lTreeHtml(id, depth) {
     if (open) h += l3lTreeHtml(d.id, depth + 1);
   });
   files.forEach(f => {
+    if (/\.dxf$/i.test(f.name)) {
+      const cad = typeof cads === "function" ? cads().find(r => r.name === f.name.replace(/\.dxf$/i, "")) : null, on = cad && ls("cad:" + cad.id).visible;
+      h += `<div class="v3-lr" ${pad}><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3l-dxf="${esc(f.id)}" data-name="${esc(f.name)}" data-cad="${cad ? esc(cad.id) : ""}" title="${cad ? (on ? "Släck" : "Tänd") : "Läs in som CAD-lager"}">${l3lEye(!!on)}</button><span class="v3-lr-n" title="${esc(f.name)}">${esc(f.name)}</span><em class="v3-lr-k">DXF</em></div>`;
+      return;
+    }
     const m = l3b.models.find(x => x.id === "f:" + f.id), busy = l3lay.loading.has(f.id);
     h += `<div class="v3-lr" ${pad}><button type="button" class="v3-eye ${m && m.visible ? "on" : ""}" data-l3l-file="${esc(f.id)}" data-name="${esc(f.name)}" title="${m ? (m.visible ? "Släck" : "Tänd") : "Läs in och visa"}">${busy ? '<span class="pm-spin"></span>' : l3lEye(!!(m && m.visible))}</button><span class="v3-lr-n" title="${esc(f.name)}">${esc(f.name)}</span>${m ? `<button type="button" class="v3-lr-zoom" data-l3l-zoom="${esc(m.id)}" title="Zooma till modellen">${L3_ICO.focus}</button>` : ""}${m ? `<em class="v3-lr-k">${(m.tris / 1000).toFixed(0)}k</em>` : f.size ? `<em class="v3-lr-k">${typeof pmBytes === "function" ? pmBytes(f.size) : ""}</em>` : ""}</div>`;
   });
-  if (!dirs.length && !files.length && l3lay.folders.has(id)) h += `<div class="v3-pal-hint" ${pad}>Inga IFC-filer här.</div>`;
+  if (!dirs.length && !files.length && l3lay.folders.has(id)) h += `<div class="v3-pal-hint" ${pad}>Inga IFC- eller DXF-filer här.</div>`;
   return h;
 }
 async function l3lOpenDir(id) {

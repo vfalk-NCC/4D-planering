@@ -136,6 +136,7 @@ async function open3d() {
     if (typeof place3dLoad === "function") await place3dLoad({ fresh: true });
     if (typeof placeModelsPrepare === "function") await placeModelsPrepare();
     await l3BuildPlan();
+    if (typeof l3sRefresh === "function") l3sRefresh(0); // 2D-lagren och DXF
     l3BuildObjects();
     if (typeof l3bRebuild === "function") l3bRebuild();
     // Byggnaden som var tänd förra gången: direkt ur cachen (versionen kontrolleras i bakgrunden).

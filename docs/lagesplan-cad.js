@@ -276,7 +276,7 @@ const unitName = f => (CAD_UNITS.find(u => Math.abs(u.f - f) < 1e-12) || { n: f 
 const INSUNITS_M = { 1: 0.0254, 2: 0.3048, 4: 0.001, 5: 0.01, 6: 1, 14: 0.1 };
 
 /* Flera filer i taget: läses och laddas upp en i taget. */
-async function addDxfFiles(files) {
+async function addDxfFiles(files, opts = {}) {
   const list = files.filter(f => /\.dxf$/i.test(f.name));
   const skipped = files.length - list.length;
   if (!list.length) { alert("Välj en eller flera DXF-filer. En DWG sparas som DXF i AutoCAD (Spara som → DXF) eller med ODA File Converter."); return; }
@@ -284,13 +284,13 @@ async function addDxfFiles(files) {
   const done = [];
   for (let i = 0; i < list.length; i++) {
     cadBatch = list.length > 1 ? `${i + 1}/${list.length} ` : "";
-    if (await addDxfFile(list[i])) done.push(list[i].name);
+    if (await addDxfFile(list[i], opts)) done.push(list[i].name);
   }
   cadBatch = "";
   if (list.length > 1 || skipped) setSaveStatus(`📐 ${done.length} av ${list.length} DXF-filer inlagda${skipped ? ` (${skipped} filer var inte DXF och hoppades över)` : ""}.`);
 }
 let cadBatch = "";
-async function addDxfFile(file) {
+async function addDxfFile(file, opts = {}) {
   if (!plan || !plan.calib) { alert("Kalibrera planen mot 3D (📐) först – CAD-ritningen placeras via modellens koordinater."); return false; }
   setBusy(`${cadBatch}Läser ${file.name}…`);
   try {
@@ -355,7 +355,7 @@ async function addDxfFile(file) {
     await saveSiteItem(rec, false, { record: false });
     buildCadSnap(); renderCad();
     setSaveStatus(`📐 ${rec.name}: ${rec.stats.lines} linjer, ${rec.stats.texts} texter i ${rec.layers.length} lager.${unitNote ? " " + unitNote : ""}`);
-    if ($("cadToTc").checked) {
+    if (!opts.noTc && $("cadToTc") && $("cadToTc").checked) { // noTc: filen kom från Trimble Connect
       if (!window.opener || window.opener.closed) setSaveStatus("⚠ Originalet kunde inte sparas i Trimble Connect – öppna lägesplanen via 🗺️ i 4D-planering.");
       else askOpener("tcUpload", { folder: "Lägesplan", files: [file] }, 10 * 60 * 1000)
         .then(r => setSaveStatus(`☁ ${file.name} sparad i Trimble Connect (${r.folder || "Lägesplan"}).`))
