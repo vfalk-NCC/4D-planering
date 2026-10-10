@@ -11,7 +11,7 @@
    three.js r147 ligger i vendor/three och laddas först när 3D-vyn öppnas. Koordinaterna räknas
    relativt kalibreringens första punkt (stora SWEREF-tal tål inte 32-bitarsgrafik). */
 
-const L3_SCRIPTS = ["vendor/three/three.min.js", "vendor/three/OrbitControls.js", "vendor/three/TransformControls.js"];
+const L3_SCRIPTS = ["vendor/three/three.min.js", "vendor/three/OrbitControls.js", "vendor/three/TransformControls.js", "vendor/three/three-mesh-bvh.js"];
 let l3 = null;
 let l3Loading = null;
 
@@ -43,14 +43,44 @@ const L3_ICO = (() => {
 })();
 
 function l3LoadScripts() {
-  if (window.THREE && THREE.TransformControls) return Promise.resolve();
+  if (window.THREE && THREE.TransformControls && window.MeshBVHLib) return Promise.resolve();
   if (l3Loading) return l3Loading;
   l3Loading = L3_SCRIPTS.reduce((p, src) => p.then(() => new Promise((res, rej) => {
     const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("Kunde inte ladda " + src));
     document.head.appendChild(s);
   })), Promise.resolve());
   l3Loading.catch(() => { l3Loading = null; });
+  l3Loading.then(l3BvhInit, () => {});
   return l3Loading;
+}
+/* Snabba träffar mot stora modeller (Victor 2026-10-10: "hackigt när jag snurrar"): three-mesh-bvh (MIT)
+   bygger ett rumsligt index per byggnadsbit, så att en träff under markören tar under en millisekund i
+   stället för att prova miljontals trianglar. Utan index (eller medan det byggs) används vanlig träff. */
+function l3BvhInit() {
+  if (!window.MeshBVHLib || !window.THREE || THREE.BufferGeometry.prototype.computeBoundsTree) return;
+  THREE.BufferGeometry.prototype.computeBoundsTree = MeshBVHLib.computeBoundsTree;
+  THREE.BufferGeometry.prototype.disposeBoundsTree = MeshBVHLib.disposeBoundsTree;
+  THREE.Mesh.prototype.raycast = MeshBVHLib.acceleratedRaycast;
+}
+/* Indexen byggs en bit i taget när sidan är ledig, så att inläsningen inte hackar. */
+const l3BvhQueue = [];
+let l3BvhBusy = false;
+function l3BvhSchedule(mesh) {
+  if (!mesh || !mesh.geometry || !THREE.BufferGeometry.prototype.computeBoundsTree) return;
+  if (mesh.geometry.boundsTree) mesh.geometry.disposeBoundsTree();
+  if (!l3BvhQueue.includes(mesh)) l3BvhQueue.push(mesh);
+  if (l3BvhBusy) return;
+  l3BvhBusy = true;
+  const idle = window.requestIdleCallback || (f => setTimeout(() => f({ timeRemaining: () => 12 }), 16));
+  const step = dl => {
+    while (l3BvhQueue.length && (!dl || dl.timeRemaining() > 4)) {
+      const m = l3BvhQueue.shift();
+      try { if (m.parent && m.geometry && m.geometry.index && !m.geometry.boundsTree) m.geometry.computeBoundsTree({ maxLeafTris: 16 }); } catch (e) { console.warn("BVH", e); }
+      if (!dl) break;
+    }
+    if (l3BvhQueue.length) idle(step); else l3BvhBusy = false;
+  };
+  idle(step);
 }
 
 /* PDF-punkt -> modellens XY (inversen av modelToPdf). */
@@ -412,11 +442,27 @@ function l3Resize() {
   cam.updateProjectionMatrix();
 }
 let l3Raf = 0;
+/* Lägre upplösning medan kameran rör sig (rotera, panorera, zooma, flyga) när scenen är tung – full skärpa
+   200 ms efter att rörelsen slutat. Ger jämn rotation även med flera miljoner trianglar. */
+const l3CamLast = { m: null, hiT: 0 };
+function l3AdaptRes() {
+  const cam = l3.camera, r = l3.renderer, base = l3.basePR || (l3.basePR = r.getPixelRatio());
+  const key = cam.matrixWorld.elements.join(",") + (cam.isOrthographicCamera ? cam.zoom : "");
+  const moved = l3CamLast.m !== null && l3CamLast.m !== key;
+  l3CamLast.m = key;
+  if (!moved) return;
+  const tris = typeof l3b !== "undefined" ? l3b.models.reduce((a, m) => a + (m.visible ? m.tris : 0), 0) : 0;
+  const low = Math.max(0.6, Math.min(1, base) * (tris > 1.5e6 ? 0.7 : tris > 4e5 ? 0.85 : 1));
+  if (low < base - 0.01 && r.getPixelRatio() !== low) r.setPixelRatio(low);
+  clearTimeout(l3CamLast.hiT);
+  l3CamLast.hiT = setTimeout(() => { if (l3 && r.getPixelRatio() !== base) { r.setPixelRatio(base); l3Render(); } }, 200);
+}
 function l3Render() {
   if (!l3 || l3Raf) return;
   l3Raf = requestAnimationFrame(() => {
     l3Raf = 0;
     l3.groups.sel.children.forEach(h => h.update && h.update());
+    l3AdaptRes();
     l3.renderer.render(l3.scene, l3.camera);
     l3RenderLabels();
     if (typeof l3HandlesPos === "function") l3HandlesPos();
@@ -654,6 +700,8 @@ function l3Ray(e, targets) {
   const r = l3.renderer.domElement.getBoundingClientRect();
   const ray = new THREE.Raycaster();
   ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), l3.camera);
+  // Med rumsligt index räcker närmaste träff per bit (utom med snitt, där den närmaste kan vara bortskuren).
+  const cl = l3.renderer.clippingPlanes; ray.firstHitOnly = !(cl && cl.length);
   return ray.intersectObjects(targets, true).filter(h => h.object.visible && !h.object.userData.noHit && h.object.type !== "LineSegments" && h.object.type !== "Line" && l3VisibleChain(h.object) && l3NotClipped(h.point));
 }
 /* Bortskuret av ett snittplan (syns inte -> ska inte gå att träffa). */
@@ -721,7 +769,9 @@ function l3Hover(e) {
   l3HoverRaf2 = requestAnimationFrame(() => {
     l3HoverRaf2 = 0;
     const ev = l3HoverEv; if (!ev || !l3) return;
-    if (l3.tool === "select" && !l3.gizmo.dragging && !l3.addType) l3SetHover(l3PlaceAt(ev)); else l3SetHover(null);
+    // Medan en knapp hålls nere (rotera, panorera, dra) räknas inga träffar – det var det som hackade.
+    if (ev.buttons || l3.gizmo.dragging || l3.moving) return;
+    if (l3.tool === "select" && !l3.addType) l3SetHover(l3PlaceAt(ev)); else l3SetHover(null);
     // Koordinaten under markören (verktygen visar fästpunkten själva).
     const h = l3.lastSnap && l3.tool !== "select" ? { point: l3.lastSnap } : l3Ray(ev, l3Surfaces())[0];
     const c = document.getElementById("v3Coord");

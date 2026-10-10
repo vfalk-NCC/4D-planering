@@ -170,7 +170,7 @@ function l3bDb() {
     q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
   });
 }
-const l3bCacheKey = w => (w && w.version ? `${projectId}|${w.fileId ? "f:" + w.fileId : w.id}|${w.version}|${l3bVoids() ? "u" : "s"}${l3bDetails() ? "d" : ""}` : null);
+const l3bCacheKey = w => (w && w.version ? `v2|${projectId}|${w.fileId ? "f:" + w.fileId : w.id}|${w.version}|${l3bVoids() ? "u" : "s"}${l3bDetails() ? "d" : ""}` : null);
 async function l3bCacheGet(w) {
   const key = l3bCacheKey(w);
   if (!key) return null;
@@ -186,7 +186,7 @@ async function l3bCachePut(w, m) {
     const db = await l3bDb();
     const rec = { key, name: m.name, O: m.O, tris: m.tris, at: Date.now(),
       chunks: m.meshes.map(x => ({ pos: x.geometry.getAttribute("position").array, col: x.geometry.getAttribute("color").array, idx: x.userData.l3b.origIdx,
-        ranges: x.userData.l3b.ranges.map(r => ({ start: r.start, count: r.count, guid: r.guid, name: r.name, base: r.base })) })) };
+        ranges: x.userData.l3b.ranges.map(r => ({ start: r.start, count: r.count, idxStart: r.idxStart, idxCount: r.idxCount, guid: r.guid, name: r.name, base: r.base })) })) };
     const st = db.transaction(L3B_STORE, "readwrite").objectStore(L3B_STORE);
     st.put(rec, key);
     // Rensa: behåll de senaste L3B_KEEP.
@@ -225,6 +225,7 @@ function l3bMeshFromArrays(pos, col, idx, ranges, out) {
   const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
   m.userData.kind = "bldg"; m.userData.surface = true;
   m.userData.l3b = { ranges, model: out, origIdx: g.index.array.slice(), hidden: new Set() };
+  if (typeof l3BvhSchedule === "function") setTimeout(() => l3BvhSchedule(m), 0); // när biten ligger i scenen
   return m;
 }
 /* Antal trådar: stora filer delas på flera (var och en räknar vart N:te objekt), men varje tråd läser hela
@@ -306,6 +307,7 @@ async function l3bParse(bytes, placement, maxTris) {
     g.computeVertexNormals(); g.computeBoundingSphere(); g.computeBoundingBox();
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
     m.userData.kind = "bldg"; m.userData.surface = true; m.userData.l3b = { ranges: cur.ranges, model: out, origIdx: cur.idx.slice(), hidden: new Set() };
+    if (typeof l3BvhSchedule === "function") setTimeout(() => l3BvhSchedule(m), 0);
     out.meshes.push(m); out.ranges.push(...cur.ranges);
     cur = null;
   };
@@ -391,7 +393,9 @@ function l3bApplyHidden(mesh) {
     idx = [];
     for (let i = 0; i + 2 < src.length; i += 3) if (!hid[src[i]]) idx.push(src[i], src[i + 1], src[i + 2]);
   }
-  mesh.geometry.setIndex(mesh.geometry.getAttribute("position").count > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
+  // Alltid en kopia: det rumsliga indexet (BVH) ordnar om indexlistan, origIdx måste vara orörd.
+  mesh.geometry.setIndex(mesh.geometry.getAttribute("position").count > 65535 ? new THREE.Uint32BufferAttribute(idx === src ? src.slice() : idx, 1) : new THREE.Uint16BufferAttribute(idx === src ? src.slice() : idx, 1));
+  if (typeof l3BvhSchedule === "function") l3BvhSchedule(mesh);
 }
 function l3bHideHit(h) {
   const u = h.object.userData.l3b;

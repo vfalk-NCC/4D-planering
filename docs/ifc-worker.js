@@ -90,6 +90,8 @@ function grow(Type, cap) {
     push(v) { if (n + 1 > a.length) { const b = new Type(a.length * 2); b.set(a); a = b; } a[n++] = v; },
     get length() { return n; },
     take() { const out = a.slice(0, n); a = new Type(cap); n = 0; return out; },
+    view() { return a.subarray(0, n); }, // utan kopia (gäller tills nästa push)
+    reset() { n = 0; },
   };
 }
 
@@ -137,14 +139,21 @@ self.onmessage = async ev => {
     const rd = pl.refDirection || { x: 1, y: 0, z: 0 }, rl = Math.hypot(rd.x, rd.y) || 1, cs = rd.x / rl, sn = rd.y / rl;
     const P = pl.position || { x: 0, y: 0, z: 0 };
     const ox = P.x / 1000 - O[0], oy = P.y / 1000 - O[1], oz = P.z / 1000 - O[2];
-    const pos = grow(Float32Array, 3 * 200000), col = grow(Float32Array, 3 * 200000), idx = grow(Uint32Array, 3 * chunkTris + 3000);
-    let ranges = [], tris = 0, capped = false, n = 0, lastPost = 0, chunkStartTris = 0;
-    const flush = () => {
-      if (!idx.length) return;
-      const m = { type: "chunk", pos: pos.take(), col: col.take(), idx: idx.take(), ranges };
-      ranges = []; chunkStartTris = tris;
+    // Rumsliga block (~40 × 40 m): bara block som syns ritas (grafikkortet hoppar över resten) och varje
+    // block får ett litet rumsligt index för träffar. Objektet hamnar i blocket där dess mitt ligger.
+    const CELL = 40, cells = new Map();
+    let tris = 0, capped = false, n = 0, lastPost = 0;
+    const objPos = grow(Float32Array, 3 * 8192), objCol = grow(Float32Array, 3 * 8192), objIdx = grow(Uint32Array, 3 * 8192);
+    const cellOf = key => { let c = cells.get(key); if (!c) { c = { pos: grow(Float32Array, 3 * 4096), col: grow(Float32Array, 3 * 4096), idx: grow(Uint32Array, 3 * 4096), ranges: [], tris: 0 }; cells.set(key, c); } return c; };
+    const flushCell = c => {
+      if (!c.idx.length) return;
+      const m = { type: "chunk", pos: c.pos.take(), col: c.col.take(), idx: c.idx.take(), ranges: c.ranges };
+      c.ranges = []; c.tris = 0;
       self.postMessage(m, [m.pos.buffer, m.col.buffer, m.idx.buffer]);
     };
+    const flush = () => cells.forEach(flushCell);
+    // De första sekunderna skickas även halvfulla block, så att stommen syns direkt.
+    let earlyUntil = Date.now() + 6000, lastEarly = Date.now();
     const hasGuid = typeof A.GetGuidFromExpressId === "function";
     const onMesh = mesh => {
       if (capped) return;
@@ -161,33 +170,42 @@ self.onmessage = async ev => {
           name = line && line.Name ? line.Name.value || "" : "";
         }
       } catch (e) { /* utan namn */ }
-      const start = pos.length / 3;
-      let baseCol = null;
+      objPos.reset(); objCol.reset(); objIdx.reset();
+      let baseCol = null, sx = 0, sy = 0, nv = 0, otris = 0;
       for (let gi = 0; gi < mesh.geometries.size(); gi++) {
         const pg = mesh.geometries.get(gi), geom = A.GetGeometry(id, pg.geometryExpressID);
         const v = A.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize());
         const ix = A.GetIndexArray(geom.GetIndexData(), geom.GetIndexDataSize());
         if (geom.delete) geom.delete();
-        if (tris + ix.length / 3 > maxTris) { capped = true; return; }
-        tris += ix.length / 3;
+        if (tris + otris + ix.length / 3 > maxTris) { capped = true; return; }
+        otris += ix.length / 3;
         const T = pg.flatTransformation, c = pg.color || { x: 0.8, y: 0.8, z: 0.8 };
         // Samma ljusning som tidigare (mot ljusgrått) – byggnaden är bakgrund till etableringen.
         const r = c.x + (0.875 - c.x) * 0.45, g = c.y + (0.894 - c.y) * 0.45, b = c.z + (0.918 - c.z) * 0.45;
         if (!baseCol) baseCol = [r, g, b];
-        const o = pos.length / 3;
+        const o = objPos.length / 3;
         for (let k = 0; k < v.length; k += 6) {
           const x = v[k], y = v[k + 1], z = v[k + 2];
           const wx = T[0] * x + T[4] * y + T[8] * z + T[12], wy = T[1] * x + T[5] * y + T[9] * z + T[13], wz = T[2] * x + T[6] * y + T[10] * z + T[14];
           const X = wx, Y = -wz, Z = wy; // web-ifc: Y uppåt -> Z uppåt
-          pos.push3(cs * X - sn * Y + ox, sn * X + cs * Y + oy, Z + oz);
-          col.push3(r, g, b);
+          const px = cs * X - sn * Y + ox, py = sn * X + cs * Y + oy;
+          objPos.push3(px, py, Z + oz); objCol.push3(r, g, b);
+          sx += px; sy += py; nv++;
         }
-        for (let k = 0; k < ix.length; k++) idx.push(ix[k] + o);
+        for (let k = 0; k < ix.length; k++) objIdx.push(ix[k] + o);
       }
-      const count = pos.length / 3 - start;
-      if (count) ranges.push({ start, count, guid, name, base: baseCol || [0.85, 0.87, 0.9] });
-      if (tris - chunkStartTris > chunkTris) flush();
+      if (!nv) return;
+      tris += otris;
+      const cell = cellOf(Math.floor(sx / nv / CELL) + ":" + Math.floor(sy / nv / CELL));
+      const start = cell.pos.length / 3, idxStart = cell.idx.length;
+      const P = objPos.view(), C = objCol.view(), I = objIdx.view();
+      for (let k = 0; k < P.length; k += 3) { cell.pos.push3(P[k], P[k + 1], P[k + 2]); cell.col.push3(C[k], C[k + 1], C[k + 2]); }
+      for (let k = 0; k < I.length; k++) cell.idx.push(I[k] + start);
+      cell.ranges.push({ start, count: nv, idxStart, idxCount: I.length, guid, name, base: baseCol || [0.85, 0.87, 0.9] });
+      cell.tris += otris;
+      if (cell.tris > chunkTris) flushCell(cell);
       const now = Date.now();
+      if (now < earlyUntil && now - lastEarly > 1500) { lastEarly = now; flush(); }
       if (now - lastPost > 250) { lastPost = now; self.postMessage({ type: "progress", f: total ? Math.min(0.99, 0.05 + 0.95 * n / total) : 0.5, n }); }
     };
     if (mine) A.StreamMeshes(id, mine, onMesh); else A.StreamAllMeshes(id, onMesh);
