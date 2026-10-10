@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-11 01:25";
+const APP_VERSION = "2026-10-11 01:35";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -481,6 +481,17 @@ async function tcApiBase(tokenVal, project) {
 function tcWebFolderUrl(projectId, folderId) {
   return projectId && folderId ? `https://web.connect.trimble.com/projects/${encodeURIComponent(projectId)}/data/folder/${encodeURIComponent(folderId)}` : null;
 }
+/* Reservmappar per projekt och önskat mappnamn (webbläsarens minne): { id, name } eller null för att glömma. */
+function tcFolderAlias(projectId, name, set) {
+  const key = "4dplan-tcfolder-alias";
+  let all = {};
+  try { all = JSON.parse(localStorage.getItem(key) || "{}") || {}; } catch (e) { all = {}; }
+  const k = projectId + "|" + String(name || "").normalize("NFC").toLowerCase();
+  if (set === undefined) return all[k] || null;
+  if (set) all[k] = set; else delete all[k];
+  try { localStorage.setItem(key, JSON.stringify(all)); } catch (e) { /* privat läge */ }
+  return set;
+}
 async function tcUploadFiles(files, folderName, folderId = null) {
   try { return await tcUploadFilesInner(files, folderName, folderId); }
   catch (e) { showLagesplanBanner(`Kunde inte spara i Trimble Connect: ${e.message}`, 10000); throw e; }
@@ -499,6 +510,12 @@ async function tcUploadFilesInner(files, folderName, folderId = null) {
     folder = { id: folderId, name: (info && info.name) || "samma mapp" };
     folderName = folder.name;
   }
+  // En reservmapp som använts tidigare (se nedan): direkt dit, om den fortfarande finns.
+  const alias = folder ? null : tcFolderAlias(project.id, folderName);
+  if (alias) {
+    const ok = await fetch(`${base}/folders/${encodeURIComponent(alias.id)}`, { headers: H }).then(r => r.ok).catch(() => false);
+    if (ok) { folder = { id: alias.id, name: alias.name }; folderName = alias.name; } else tcFolderAlias(project.id, folderName, null);
+  }
   const proj = folder ? null : await j(await fetch(`${base}/projects/${encodeURIComponent(project.id)}`, { headers: H }), "Läsa projektet");
   const rootId = proj && (proj.rootId || proj.rootFolderId);
   const children = folder ? [] : await j(await fetch(`${base}/folders/${encodeURIComponent(rootId)}/items`, { headers: H }), "Läsa rotmappen");
@@ -513,7 +530,20 @@ async function tcUploadFilesInner(files, folderName, folderId = null) {
       // Finns redan (t.ex. skapad nyss av någon annan, eller listan var ofullständig): läs om rotmappen och använd den.
       const again = await j(await fetch(`${base}/folders/${encodeURIComponent(rootId)}/items`, { headers: H }), "Läsa rotmappen");
       folder = findFolder(again);
-      if (!folder) throw new Error(`Det finns redan något som heter "${folderName}" i projektets rotmapp men det gick inte att hitta som mapp – kontrollera i Trimble Connect (det kan vara en fil med samma namn).`);
+      if (!folder) {
+        // Namnet är upptaget av något som inte syns för kontot (mapp i papperskorgen, utan behörighet, eller en fil):
+        // en reservmapp används – den kommer ihåg sparningen, så att nästa gång hamnar filerna på samma ställe
+        // (Victor 2026-10-10: "Det finns redan något som heter Lägesplan …").
+        const alt = `${folderName} (4D-planering)`;
+        folder = (again || []).find(x => (x.type || "").toUpperCase() === "FOLDER" && sameName(x.name, alt));
+        if (!folder) {
+          const r2 = await fetch(`${base}/folders`, { method: "POST", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ name: alt, parentId: rootId }) });
+          folder = await j(r2, "Skapa mappen");
+        }
+        tcFolderAlias(project.id, folderName, { id: folder.id, name: alt });
+        showLagesplanBanner(`Mappen "${folderName}" går inte att nå i Trimble Connect (den kan ligga i papperskorgen eller sakna behörighet) – filerna sparas i "${alt}".`, 9000);
+        folderName = alt;
+      }
     } else folder = await j(res, "Skapa mappen");
   }
   const done = [];
