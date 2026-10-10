@@ -324,14 +324,14 @@ function l3mIfcBuild(list, withNotes) {
   const elems = [];
   const W1 = (t, h) => ifcTextStrokes(t).width * h / 6;
   // Rör från a till b (relativt elementets punkt o), cirkelprofil med radie rad.
-  const tube = (a, b, rad) => {
+  const tube = (a, b, rad, st = red) => {
     const v = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L = Math.hypot(...v);
     if (L < 1e-4) return null;
     const ax = v.map(x => x / L), ref = Math.abs(ax[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
     // refDirection vinkelrät mot axeln.
     const dt = ref[0] * ax[0] + ref[1] * ax[1] + ref[2] * ax[2], rf = [ref[0] - dt * ax[0], ref[1] - dt * ax[1], ref[2] - dt * ax[2]], rl = Math.hypot(...rf);
     const s = E(`IFCEXTRUDEDAREASOLID(${E(`IFCCIRCLEPROFILEDEF(.AREA.,$,$,${ifcNum(rad)})`)},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt(a)})`)},${dir(ax)},${dir(rf.map(x => x / rl))})`)},${dir([0, 0, 1])},${ifcNum(L)})`);
-    E(`IFCSTYLEDITEM(${s},(${red}),$)`);
+    E(`IFCSTYLEDITEM(${s},(${st}),$)`);
     return s;
   };
   // Ändpunkt: en kort tjockare cylinder längs linjen.
@@ -354,16 +354,19 @@ function l3mIfcBuild(list, withNotes) {
       E(`IFCSTYLEDITEM(${fill},(${fillSt}),$)`); items.push(fill);
     }
     const inf = l3mInfo(m), name = `Mått ${nr}: ${m.text}${withNotes && m.note ? " – " + m.note : ""}`;
-    const el = doc.proxy(name.slice(0, 120), withNotes ? m.note || "" : "", "4D-mått", doc.place(o), doc.shape(items.join(","), "SweptSolid"), m.id);
-    elems.push(el);
-    doc.props(el, [["Typ", L3M_KIND[m.kind] || m.kind], ["Värde", m.text], ...(withNotes ? [["Kommentar", m.note || ""]] : []), ["Nummer", nr],
-      ...inf.rows.filter(([k]) => k !== "Status").map(([k, v]) => [k, String(v).replace(/\n/g, ", ")]), ["Arbetsyta", plan ? plan.name || "" : ""]]);
     // Skylten med måttet (och kommentaren) – vit platta strax ovanför mitten, 3D-text på båda sidor.
     const raw = withNotes && m.note ? (typeof wrapText === "function" ? wrapText(m.note, 30) : m.note).split("\n").filter(Boolean).slice(0, 3) : [];
     const lines = [{ t: m.text, h: 0.22 }, ...raw.map(t => ({ t, h: 0.15 }))];
     const W = Math.max(0.6, ...lines.map(l => W1(l.t, l.h))) + L3M_IFC.pad * 2, H = lines.reduce((a, l) => a + l.h * 1.4, 0) + L3M_IFC.pad * 1.4;
     const at = m.kind === "angle" ? P[1] : m.kind === "dist" ? [(DP[0][0] + DP[1][0]) / 2, (DP[0][1] + DP[1][1]) / 2, (DP[0][2] + DP[1][2]) / 2] : P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0]);
     const center = [at[0], at[1], (m.kind === "area" ? Math.max(...P.map(p => p[2])) : at[2]) + L3M_IFC.lift + H / 2];
+    // Vit linje från skylten ner till måttlinjen – visar att skylten hör till måttet (Victor 2026-10-10).
+    const lead = tube(rel(at), rel([at[0], at[1], center[2] - H / 2]), 0.012, white);
+    if (lead) items.push(lead); // hör till måttets element
+    const el = doc.proxy(name.slice(0, 120), withNotes ? m.note || "" : "", "4D-mått", doc.place(o), doc.shape(items.join(","), "SweptSolid"), m.id);
+    elems.push(el);
+    doc.props(el, [["Typ", L3M_KIND[m.kind] || m.kind], ["Värde", m.text], ...(withNotes ? [["Kommentar", m.note || ""]] : []), ["Nummer", nr],
+      ...inf.rows.filter(([k]) => k !== "Status").map(([k, v]) => [k, String(v).replace(/\n/g, ", ")]), ["Arbetsyta", plan ? plan.name || "" : ""]]);
     const axes = (p, rx, ry, nx, ny) => E(`IFCLOCALPLACEMENT(${doc.sitePl},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt(p)})`)},${dir([nx, ny, 0])},${dir([rx, ry, 0])})`)})`);
     const board = E(`IFCEXTRUDEDAREASOLID(${E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,$,${ifcNum(W)},${ifcNum(H)})`)},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, 0, -L3M_IFC.T / 2])})`)},$,$)`)},${dir([0, 0, 1])},${ifcNum(L3M_IFC.T)})`);
     E(`IFCSTYLEDITEM(${board},(${white}),$)`);

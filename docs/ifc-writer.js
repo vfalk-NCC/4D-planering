@@ -51,10 +51,10 @@ const IFC_GLYPHS = (() => {
     3: [[...arc(2, 4.55, 1.9, 1.45, 150, -90, 9), ...arc(2, 1.55, 2, 1.55, 90, -150, 9).slice(1)]],
     4: [[[3, 0], [3, 6], [0, 1.9], [4.2, 1.9]]],
     5: [[[3.8, 6], [0.4, 6], [0.1, 3.3], ...arc(2, 1.9, 2, 1.9, 135, -150, 12).slice(1)]],
-    6: [arc(2, 3, 2, 3, 60, 200, 7), arc(2, 1.9, 2, 1.9, 0, 360, 16)],
+    6: [[...arc(1.85, 4.0, 1.75, 2.0, 50, 180, 7), [0.1, 1.9]], arc(2, 1.9, 1.9, 1.9, 0, 360, 18)],
     7: [[[0, 6], [4, 6], [1.4, 0]]],
     8: [arc(2, 4.6, 1.7, 1.4, 270, 630, 14), arc(2, 1.6, 2, 1.6, 90, 450, 16)],
-    9: [arc(2, 4.1, 2, 1.9, 0, 360, 16), arc(2, 3, 2, 3, 240, 380, 7)],
+    9: [arc(2, 4.1, 1.9, 1.9, 0, 360, 18), [[3.9, 4.1], ...arc(2.15, 2.0, 1.75, 2.0, 0, -130, 7)]],
     "-": [[[0.8, 3], [3.2, 3]]], "–": [[[0.4, 3], [3.6, 3]]], "×": [[[0.8, 1.4], [3.2, 4.2]], [[0.8, 4.2], [3.2, 1.4]]], "·": [[[2, 2.8], [2, 3.25]]],
     "=": [[[0.6, 2.2], [3.4, 2.2]], [[0.6, 3.8], [3.4, 3.8]]], "!": [[[2, 1.7], [2, 6]], [[2, 0], [2, 0.45]]], "%": [[[0, 0], [4, 6]], arc(0.8, 5, 0.8, 1, 0, 360, 8), arc(3.2, 1, 0.8, 1, 0, 360, 8)],
     '"': [[[1.3, 6], [1.3, 4.9]], [[2.7, 6], [2.7, 4.9]]], "+": [[[0.6, 3], [3.4, 3]], [[2, 1.6], [2, 4.4]]], ".": [[[2, 0], [2, 0.45]]], ",": [[[2.1, 0.5], [1.6, -0.7]]],
@@ -164,21 +164,66 @@ function ifcTextSolid(doc, text, { h, t, rx, ry, start = null, style = null, acr
   const s = h / 6, w = IFC_STROKE * h / 2, u0 = start == null ? -width / 2 : start / s, v0 = -3 + across / s;
   // Glyf (u åt höger, v uppåt i läsriktningen) -> lokalt (meter): läsriktning (rx, ry), "uppåt" i planen (-ry, rx).
   const P = (u, v, z) => { const a = (u + u0) * s, b = (v + v0) * s; return [a * rx - b * ry, a * ry + b * rx, z]; };
+  // Varje streck som en sammanhängande kropp (Victor 2026-10-10: "lite hackiga"): skarvarna i en båge
+  // görs med gering, skarpa hörn och ändarna får runda "pennspetsar" (en tolvhörning). Trianglarna
+  // vänds utåt genom att jämföras med en riktning de ska peka åt.
   const pts = [], tris = [];
-  strokes.forEach(pl => {
-    for (let i = 0; i + 1 < pl.length; i++) {
-      const [u1, v1] = pl[i], [u2, v2] = pl[i + 1], du = u2 - u1, dv = v2 - v1, L = Math.hypot(du, dv) || 1;
-      const nu = -dv / L * w / s, nv = du / L * w / s, eu = du / L * w / s / 2, ev = dv / L * w / s / 2; // bredd + lite förlängning
-      const q = [[u1 - eu + nu, v1 - ev + nv], [u2 + eu + nu, v2 + ev + nv], [u2 + eu - nu, v2 + ev - nv], [u1 - eu - nu, v1 - ev - nv]];
-      // Strecket som ett rätblock: botten (z = 0) och topp (z = t).
-      const k = pts.length + 1;
-      q.forEach(([u, v]) => pts.push(P(u, v, 0)));
-      q.forEach(([u, v]) => pts.push(P(u, v, t)));
-      const b = [k, k + 1, k + 2, k + 3], tp = [k + 4, k + 5, k + 6, k + 7];
-      // q går medurs i planen (sett uppifrån) – sidorna och locken vända utåt.
-      tris.push([b[0], b[1], b[2]], [b[0], b[2], b[3]], [tp[0], tp[2], tp[1]], [tp[0], tp[3], tp[2]]);
-      for (let j = 0; j < 4; j++) { const j2 = (j + 1) % 4; tris.push([b[j], tp[j], tp[j2]], [b[j], tp[j2], b[j2]]); }
+  const add = (u, v, z) => { pts.push(P(u, v, z)); return pts.length; };
+  const tri = (a, b, c, hint) => {
+    const A = pts[a - 1], B = pts[b - 1], C = pts[c - 1];
+    const n = [(B[1] - A[1]) * (C[2] - A[2]) - (B[2] - A[2]) * (C[1] - A[1]), (B[2] - A[2]) * (C[0] - A[0]) - (B[0] - A[0]) * (C[2] - A[2]), (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0])];
+    tris.push(n[0] * hint[0] + n[1] * hint[1] + n[2] * hint[2] >= 0 ? [a, b, c] : [a, c, b]);
+  };
+  // Riktning i glyfplanet -> lokalt (samma vridning som P, utan förskjutning).
+  const dirL = (du, dv) => [du * rx - dv * ry, du * ry + dv * rx, 0];
+  const r = w / s; // halva streckbredden i glyfenheter
+  const disc = (cu, cv) => {
+    const K = 12, c0 = add(cu, cv, 0), c1 = add(cu, cv, t), ring = [];
+    for (let k = 0; k < K; k++) { const a = 2 * Math.PI * k / K; ring.push([add(cu + r * Math.cos(a), cv + r * Math.sin(a), 0), add(cu + r * Math.cos(a), cv + r * Math.sin(a), t), Math.cos(a), Math.sin(a)]); }
+    for (let k = 0; k < K; k++) {
+      const [b0, t0, ca, sa] = ring[k], [b1, t1, cb, sb] = ring[(k + 1) % K], out = dirL((ca + cb) / 2, (sa + sb) / 2);
+      tri(c0, b0, b1, [0, 0, -1]); tri(c1, t0, t1, [0, 0, 1]); tri(b0, b1, t1, out); tri(b0, t1, t0, out);
     }
+  };
+  const ribbon = q => {
+    if (q.length < 2) return;
+    const L = [], R = [];
+    for (let i = 0; i < q.length; i++) {
+      const seg = (a, b) => { const du = b[0] - a[0], dv = b[1] - a[1], l = Math.hypot(du, dv) || 1; return [du / l, dv / l]; };
+      const d0 = i > 0 ? seg(q[i - 1], q[i]) : seg(q[0], q[1]), d1 = i < q.length - 1 ? seg(q[i], q[i + 1]) : d0;
+      let nu = -(d0[1] + d1[1]), nv = d0[0] + d1[0];
+      const nl = Math.hypot(nu, nv) || 1; nu /= nl; nv /= nl;
+      const cosH = Math.max(0.5, nu * -d1[1] + nv * d1[0]); // gering, högst dubbel bredd
+      const ou = nu * r / cosH, ov = nv * r / cosH, [u, v] = q[i];
+      L.push([add(u + ou, v + ov, 0), add(u + ou, v + ov, t), [ou, ov]]);
+      R.push([add(u - ou, v - ov, 0), add(u - ou, v - ov, t), [-ou, -ov]]);
+    }
+    for (let i = 0; i + 1 < q.length; i++) {
+      const [lb0, lt0, lo] = L[i], [lb1, lt1] = L[i + 1], [rb0, rt0, ro] = R[i], [rb1, rt1] = R[i + 1];
+      tri(lb0, lb1, rb1, [0, 0, -1]); tri(lb0, rb1, rb0, [0, 0, -1]);
+      tri(lt0, lt1, rt1, [0, 0, 1]); tri(lt0, rt1, rt0, [0, 0, 1]);
+      tri(lb0, lb1, lt1, dirL(lo[0], lo[1])); tri(lb0, lt1, lt0, dirL(lo[0], lo[1]));
+      tri(rb0, rb1, rt1, dirL(ro[0], ro[1])); tri(rb0, rt1, rt0, dirL(ro[0], ro[1]));
+    }
+    // Ändarna stängs (rundningen täcker dem).
+    const end = (i, sgn) => { const d = q[i + sgn] ? [q[i][0] - q[i + sgn][0], q[i][1] - q[i + sgn][1]] : [1, 0], o = dirL(d[0], d[1]); tri(L[i][0], R[i][0], R[i][1], o); tri(L[i][0], R[i][1], L[i][1], o); };
+    end(0, 1); end(q.length - 1, -1);
+  };
+  strokes.forEach(pl0 => {
+    const pl = pl0.filter((p, i) => !i || Math.hypot(p[0] - pl0[i - 1][0], p[1] - pl0[i - 1][1]) > 1e-6);
+    if (pl.length === 1) { disc(pl[0][0], pl[0][1]); return; }
+    // Dela vid skarpa hörn (mer än ~50°) – där blir det en rund skarv i stället för en spetsig gering.
+    let piece = [pl[0]];
+    for (let i = 1; i < pl.length; i++) {
+      piece.push(pl[i]);
+      if (i < pl.length - 1) {
+        const a = [pl[i][0] - pl[i - 1][0], pl[i][1] - pl[i - 1][1]], b = [pl[i + 1][0] - pl[i][0], pl[i + 1][1] - pl[i][1]];
+        const c = (a[0] * b[0] + a[1] * b[1]) / ((Math.hypot(...a) * Math.hypot(...b)) || 1);
+        if (c < 0.64) { ribbon(piece); disc(pl[i][0], pl[i][1]); piece = [pl[i]]; }
+      }
+    }
+    ribbon(piece);
+    disc(pl[0][0], pl[0][1]); disc(pl[pl.length - 1][0], pl[pl.length - 1][1]);
   });
   const pl3 = doc.E(`IFCCARTESIANPOINTLIST3D((${pts.map(ifcPt).join(",")}))`);
   const mesh = doc.E(`IFCTRIANGULATEDFACESET(${pl3},$,.T.,(${tris.map(tr => `(${tr.join(",")})`).join(",")}),$)`);
