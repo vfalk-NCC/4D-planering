@@ -231,6 +231,15 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
     "#40=IFCRELCONTAINEDINSPATIALSTRUCTURE('2O2Fr$t4X7Zf8NOew3FLOL',$,$,$,(#27,#37,#56,#62),#8);"].join("\n"));
   const all = await page.evaluate(async t => { const out = await l3bParseWorker(new TextEncoder().encode(t).buffer, null, 1e6); out.meshes.forEach(m => m.geometry.dispose()); return { names: out.ranges.map(r => r.name), missing: out.missing || {} }; }, ifc2);
   if (!all.names.includes('Takplåt') || all.missing.IfcBeam !== 1) fail('Allt ska läsas in och det som inte går redovisas: ' + JSON.stringify(all));
+  // En tråd som tystnar (Chrome stänger den vid minnesbrist utan fel): vakten märker det och läser om med en tråd.
+  const stall = await page.evaluate(async t => {
+    const W0 = window.Worker; let n = 0;
+    window.Worker = function (u) { const w = new W0(u); if (n++ === 0) { const pm = w.postMessage.bind(w); w.postMessage = () => {}; } return w; }; // den första tråden får aldrig sitt jobb
+    window.__l3Parts = 2; window.__l3StallMs = 1500;
+    try { const out = await l3bParseAny(new TextEncoder().encode(t).buffer, null, 1e6); const names = out.ranges.map(r => r.name); out.meshes.forEach(m => { if (m.parent) m.parent.remove(m); m.geometry.dispose(); }); return { names, parts: out.parts, status: document.getElementById('v3Status').textContent }; }
+    finally { window.Worker = W0; delete window.__l3Parts; delete window.__l3StallMs; }
+  }, ifc2);
+  if (stall.parts !== 1 || !stall.names.includes('Takplåt') || !stall.names.includes('Pelare K10')) fail('En tyst tråd ska ge ett nytt försök med en tråd: ' + JSON.stringify(stall));
   if (process.env.SHOTL) { await page.evaluate(() => { const b = new THREE.Box3(); l3b.models.forEach(m => m.meshes.forEach(x => b.expandByObject(x))); const c = b.getCenter(new THREE.Vector3()); l3StopFly(); l3.orbit.target.copy(c); l3.camera.position.copy(c).add(new THREE.Vector3(-22, -30, 18)); l3.orbit.update(); l3Render(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOTL }); }
   await page.click('#v3PalLayers [data-l3l-file="F2"]');
   if (await page.evaluate(() => l3b.models.find(m => m.id === 'f:F2').visible)) fail('Ögat ska släcka modellen');

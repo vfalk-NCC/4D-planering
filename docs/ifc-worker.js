@@ -96,7 +96,7 @@ function grow(Type, cap) {
 }
 
 self.onmessage = async ev => {
-  const { bytes, placement, O, maxTris = 6e6, chunkTris = 80000, base, part = 0, parts = 1, names = true, voids = false, details = false } = ev.data || {};
+  const { bytes, placement, O, maxTris = 6e6, chunkTris = 80000, base, part = 0, parts = 1, names = true, voids = false, details = false, rebar = false } = ev.data || {};
   let id = null;
   try {
     const t0 = Date.now();
@@ -113,6 +113,8 @@ self.onmessage = async ev => {
     const W = WebIFC, ids = (types, inh = true) => { const s = new Set(); types.filter(Boolean).forEach(t => { try { const v = A.GetLineIDsWithType(id, t, inh); for (let i = 0; i < v.size(); i++) s.add(v.get(i)); } catch (e) { /* typen finns inte i schemat */ } }); return s; };
     // Tunga detaljer som sällan behövs i en etableringsvy (av som standard, Lager → Visa detaljer):
     // armering, inredning, installationer (rör, kanaler, el, VVS-komponenter) och fästdon.
+    // Armeringen för sig (av som standard): tiotusentals böjda järn är det tyngsta i en byggmodell.
+    const rebarIds = rebar ? new Set() : ids([W.IFCREINFORCINGELEMENT, W.IFCREINFORCINGBAR, W.IFCREINFORCINGMESH, W.IFCTENDON, W.IFCTENDONANCHOR]);
     const detailIds = ids([W.IFCREINFORCINGELEMENT, W.IFCREINFORCINGBAR, W.IFCREINFORCINGMESH, W.IFCTENDON, W.IFCTENDONANCHOR,
       W.IFCFURNISHINGELEMENT, W.IFCFURNITURE, W.IFCSYSTEMFURNITUREELEMENT, W.IFCDISTRIBUTIONELEMENT, W.IFCFASTENER, W.IFCMECHANICALFASTENER, W.IFCDISCRETEACCESSORY]);
     // Stommen och skalet först, så att byggnaden syns efter några sekunder medan resten fylls på.
@@ -124,6 +126,7 @@ self.onmessage = async ev => {
       for (let i = 0; i < all.size(); i++) {
         const e = all.get(i);
         if (skip.has(A.GetLineType(id, e))) continue;
+        if (rebarIds.has(e)) { skipped++; continue; }
         if (detailIds.has(e)) { if (details) late.push(e); else skipped++; continue; }
         (firstIds.has(e) ? first : rest).push(e);
       }
@@ -223,11 +226,14 @@ self.onmessage = async ev => {
     // IfcElementAssembly/IfcRoof – delarna ritas för sig) räknas inte som saknade; resten redovisas per klass.
     const missing = {};
     if (mine && !capped) {
+      const until = Date.now() + 30000; let tries = 0; // högst 30 s och 3 000 nya försök
       for (const e of mine) {
         if (seen.has(e)) continue;
+        if (Date.now() > until || tries >= 3000) { missing["(ej provade)"] = (missing["(ej provade)"] || 0) + 1; continue; }
         let line = null;
         try { line = A.GetLine(id, e, false); } catch (err) { line = null; }
         if (!line || !line.Representation) continue;
+        tries++;
         try { const fm = A.GetFlatMesh(id, e); if (fm && fm.geometries && fm.geometries.size()) onMesh(fm); } catch (err) { /* geometrin går inte att läsa */ }
         if (!seen.has(e)) { let t = "?"; try { t = A.GetNameFromTypeCode ? A.GetNameFromTypeCode(A.GetLineType(id, e)) : String(A.GetLineType(id, e)); } catch (err) { /* okänd */ } missing[t] = (missing[t] || 0) + 1; }
         if (capped) break;
