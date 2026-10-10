@@ -52,7 +52,7 @@ async function l3sBuildCad() {
       const key = r.id + "|" + gi;
       let obj = l3s.cad.get(key);
       if (!obj) { obj = l3sCadMesh(r, g, gr); obj.userData.cadId = r.id; l3s.cad.set(key, obj); grp.add(obj); }
-      obj.position.z = z;
+      obj.position.z = z + (Number(r.z3) || 0); // höjd i 3D satt i panelen (lagesplan-3dsitesel.js)
       obj.visible = cadLayerOn(r, names[gr.l]);
       obj.material.color.set(cadLayerColor(r, names[gr.l], gr.c));
       obj.material.opacity = op;
@@ -62,9 +62,9 @@ async function l3sBuildCad() {
   l3s.cad.forEach((obj, key) => { if (!live.has(key)) obj.visible = false; });
   // Texterna (siffror och bokstäver) – Victor 2026-10-10.
   const liveT = new Set();
-  want.forEach(r => { if (typeof l3d !== "undefined" && l3d.rec && l3d.rec.id === r.id) return; const g = cadGeom.get(r.id); if (g) { l3sCadTexts(r, g, z + 0.005); liveT.add(r.id); } }); // redigeras: egna texter
+  want.forEach(r => { if (typeof l3d !== "undefined" && l3d.rec && l3d.rec.id === r.id) return; const g = cadGeom.get(r.id); if (g) { l3sCadTexts(r, g, z + 0.005 + (Number(r.z3) || 0)); liveT.add(r.id); } }); // redigeras: egna texter
   l3s.text.forEach((t, id) => { t.meshes.forEach(m => { m.visible = liveT.has(id); }); });
-  l3Render();
+  if (typeof l3ssHighlight === "function" && l3ss.sel) l3ssHighlight(); else l3Render();
 }
 
 /* ---- DXF-texter ------------------------------------------------------------------------------- */

@@ -67,6 +67,37 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   if (lines.n !== 4 || Math.abs(lines.x0 - 6512350) > 1e-3 || Math.abs(lines.y0 - 150120) > 1e-3 || Math.abs(lines.x1 - 6512360) > 1e-3 || lines.z < 0 || lines.z > 0.1 || lines.col !== '#ff0000' || lines.col2 !== '#0000ff' || lines.vis.join() !== 'true,true')
     fail('DXF-linjerna i 3D: ' + JSON.stringify(lines));
 
+  // Markera DXF:en genom att trycka på en linje: panel med uppgifter och läge (förskjutning 2D+3D, höjd i 3D).
+  {
+    const scrOf = (x, y, z = 0.03) => page.evaluate(([x, y, z]) => { const r = l3.renderer.domElement.getBoundingClientRect(), q = l3ToScreen(new THREE.Vector3(x - l3.O[0], y - l3.O[1], l3sZ() + z)); return [r.left + q.x, r.top + q.y]; }, [x, y, z]);
+    const [lx, ly] = await scrOf(6512355, 150120);
+    await page.mouse.click(lx, ly); await page.waitForTimeout(200);
+    const s1 = await page.evaluate(() => ({ sel: l3ss.sel, side: (document.querySelector('#v3Side .v3-sub') || {}).textContent, col: l3.groups.cad.children.filter(o => o.userData.cadId === 'c1').map(o => '#' + o.material.color.getHexString()) }));
+    if (!s1.sel || s1.sel.kind !== 'cad' || s1.sel.id !== 'c1' || !/DXF/.test(s1.side || '') || s1.col.some(c => c !== '#f59e0b')) fail('Markera DXF i 3D: ' + JSON.stringify(s1));
+    await page.fill('#v3Side [data-ssf="dx"]', '2'); await page.fill('#v3Side [data-ssf="dy"]', '1'); await page.fill('#v3Side [data-ssf="z3"]', '0,5');
+    await page.click('#v3SsApply'); await page.waitForTimeout(500);
+    const mv = await page.evaluate(() => { const o = l3.groups.cad.children.find(c => c.userData.cadId === 'c1' && c.visible), p = o.geometry.getAttribute('position'); return { x0: p.getX(0) + l3.O[0], y0: p.getY(0) + l3.O[1], z: o.position.z, z0: l3sZ() + 0.03, origin: cadGeom.get('c1').origin, shift: cads().find(r => r.id === 'c1').shift }; });
+    const saved = JSON.parse(gh.get('projects/p1/site_layers.json') || '[]').find(r => r.id === 'c1') || {};
+    if (Math.abs(mv.x0 - 6512352) > 1e-3 || Math.abs(mv.y0 - 150121) > 1e-3 || Math.abs(mv.z - mv.z0 - 0.5) > 1e-6 || JSON.stringify(saved.shift) !== '[2,1]' || saved.z3 !== 0.5) fail('Flytta DXF: ' + JSON.stringify({ mv, saved: { shift: saved.shift, z3: saved.z3 } }));
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(400);
+    const back = await page.evaluate(() => { const o = l3.groups.cad.children.find(c => c.userData.cadId === 'c1' && c.visible), p = o.geometry.getAttribute('position'); return { x0: p.getX(0) + l3.O[0], shift: cads().find(r => r.id === 'c1').shift || null }; });
+    if (Math.abs(back.x0 - 6512350) > 1e-3 || back.shift) fail('Ctrl+Z ska flytta tillbaka DXF:en: ' + JSON.stringify(back));
+    await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+    if (await page.evaluate(() => !!l3ss.sel)) fail('Esc ska avmarkera DXF:en');
+    // Tryck på marken (inget markerat): arbetsytans PDF markeras; flytta 1 m i X ändrar kalibreringen.
+    const [gx, gy] = await scrOf(6512330, 150140, 0);
+    await page.mouse.click(gx, gy); await page.waitForTimeout(200);
+    const pd = await page.evaluate(() => ({ sel: l3ss.sel, side: (document.querySelector('#v3Side .v3-sub') || {}).textContent, ring: !!l3ss.ring, m0: plan.calib.model[0].slice() }));
+    if (!pd.sel || pd.sel.kind !== 'pdf' || !/PDF/.test(pd.side || '') || !pd.ring) fail('Markera PDF:en: ' + JSON.stringify(pd));
+    await page.fill('#v3Side [data-ssf="dx"]', '1'); await page.click('#v3SsApply'); await page.waitForTimeout(500);
+    const m1 = await page.evaluate(() => plan.calib.model[0].slice());
+    if (Math.abs(m1[0] - pd.m0[0] - 1) > 1e-6 || Math.abs(m1[1] - pd.m0[1]) > 1e-6) fail('Flytta PDF:en: ' + JSON.stringify({ m0: pd.m0, m1 }));
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(400);
+    if (Math.abs((await page.evaluate(() => plan.calib.model[0][0])) - pd.m0[0]) > 1e-6) fail('Ctrl+Z ska ta tillbaka kalibreringen');
+    if (process.env.SHOTS) await page.screenshot({ path: process.env.SHOTS });
+    await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+  }
+
   // Lager: 2D-lagren med DXF:en och dess CAD-lager; tänd/släck är samma som i 2D.
   await page.click('[data-paltab="layers"]');
   await page.waitForSelector('#v3PalLayers [data-l3s="cad:c1"]');

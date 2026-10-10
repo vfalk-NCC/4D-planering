@@ -392,6 +392,7 @@ async function ensureCadGeom(rec) {
     URL.revokeObjectURL(url);
     busyProgress(key, lbl, 0.85);
     const g = buildCadGeom(JSON.parse(pako.ungzip(new Uint8Array(buf), { to: "string" })));
+    if (typeof cadApplyShift === "function") cadApplyShift(rec, g); // förskjutning satt i 3D-vyn (rec.shift)
     cadGeom.set(rec.id, g);
     return g;
   })().finally(() => { cadLoading.delete(rec.id); busyProgress("cad:" + rec.id, "", null); }));
@@ -429,7 +430,7 @@ async function rescaleCad(rec, newFactor) {
     const newPath = dataPath(`site_layers/${rec.id}.${ghNewId().slice(0, 8)}.cad.gz`);
     await ghUploadBinary(token, newPath, new Blob([gz], { type: "application/gzip" }), `Lägesplan: CAD ${rec.name} i ${unitName(newFactor)}`);
     cadGeom.set(rec.id, buildCadGeom(data));
-    await saveSiteItem({ ...rec, path: newPath, prevPaths: [...(rec.prevPaths || []), rec.path], factor: newFactor, origin: no, unitNote: `Omskalad till ${unitName(newFactor)}.`, stats: { ...rec.stats, kb: Math.round(gz.length / 1024) } }, false, { record: false });
+    await saveSiteItem({ ...rec, path: newPath, prevPaths: [...(rec.prevPaths || []), rec.path], factor: newFactor, origin: no, shift: null, unitNote: `Omskalad till ${unitName(newFactor)}.`, stats: { ...rec.stats, kb: Math.round(gz.length / 1024) } }, false, { record: false });
     buildCadSnap(); renderCad();
     setSaveStatus(`📐 ${rec.name} är omskalad till ${unitName(newFactor)}.`);
   } catch (e) {

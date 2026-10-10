@@ -915,10 +915,13 @@ function l3Tap(e) {
     return;
   }
   const add = e.shiftKey || e.ctrlKey || e.metaKey || !!l3.multi;
+  const hadSel = !!(l3.sel.size || (typeof l3bs !== "undefined" && l3bs.sel.length));
   if (!add) l3SelectIds([]);
   // Objekt i byggnaden: markeras (lila); planerat objekt (låda): visa uppgifterna.
   const h = l3Ray(e, [l3.objMesh, ...l3.groups.bldg.children].filter(Boolean))[0];
-  if (h && h.object.userData.l3b && typeof l3bsTap === "function") { l3HideInfo(); l3bsTap(h, add); return; }
+  if (h && h.object.userData.l3b && typeof l3bsTap === "function") { l3HideInfo(); if (typeof l3ss !== "undefined" && l3ss.sel) l3ssSelect(null, true); l3bsTap(h, add); return; }
+  // DXF-linje, eller marken (arbetsytans PDF) när inget var markerat: markera den (lagesplan-3dsitesel.js).
+  if (!h && !add && typeof l3ssTap === "function" && l3ssTap(e, hadSel)) { if (typeof l3bsClear === "function") l3bsClear(); l3HideInfo(); l3RenderSide(); return; }
   if (!add && typeof l3bsClear === "function") l3bsClear();
   if (h) l3ShowHitInfo(h); else l3HideInfo();
 }
@@ -1129,6 +1132,11 @@ function l3RenderSide(liveOnly) {
   if (typeof l3bm !== "undefined" && l3bm.session) { if (side.dataset.id !== "bmove") l3bmRenderSide(); return; }
   if (typeof l3d !== "undefined" && l3d.rec) { side.classList.remove("hidden"); l3dRenderSide(side); return; } // DXF-redigering
   const list = l3SelList();
+  // DXF eller PDF markerad i bilden (lagesplan-3dsitesel.js) – men andra markeringar går före.
+  if (typeof l3ss !== "undefined" && l3ss.sel) {
+    if (list.length || (typeof l3bs !== "undefined" && l3bs.sel.length)) l3ssSelect(null, true);
+    else { side.classList.remove("hidden"); l3ssRenderSide(side); return; }
+  }
   // Objekt i byggnaden (IFC) markerade: deras panel.
   if (!list.length && typeof l3bs !== "undefined" && l3bs.sel.length) {
     side.classList.remove("hidden");
@@ -1406,6 +1414,7 @@ function l3Key(e) {
   if (mod && k === "p") { e.preventDefault(); l3TogglePlan(); return; }
   if (e.key === "F2" && !mod) { e.preventDefault(); l3LogToggle(); return; }
   if (e.key === "Escape" && typeof l3k !== "undefined" && (l3k.open || l3k.draft)) { l3kClose(); return; } // kommentarens popup
+  if (e.key === "Escape" && typeof l3ss !== "undefined" && l3ss.sel) { l3ssSelect(null); return; } // markerad DXF/PDF
   if (mod && k === "b" && l3PalToggle) { e.preventDefault(); l3PalToggle(); return; } // visa/dölj vänstermenyn
   if (typeof l3dKey === "function" && l3dKey(e)) return; // DXF-redigering
   if (typeof l3DialogKey === "function" && l3DialogKey(e)) return;
