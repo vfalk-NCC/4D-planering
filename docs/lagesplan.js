@@ -82,7 +82,13 @@ function askOpener(type, extra = {}, timeoutMs = 10000, onProgress = null) {
     const reqId = ++bridgeSeq;
     const timer = timeoutMs ? setTimeout(() => { bridgeWait.delete(reqId); reject(new Error("Inget svar från 4D-planering. Är den fortfarande öppen i Trimble Connect?")); }, timeoutMs) : null;
     if (onProgress) bridgeProg.set(reqId, onProgress);
-    bridgeWait.set(reqId, d => { clearTimeout(timer); bridgeProg.delete(reqId); d.error ? reject(new Error(d.error)) : resolve(d); });
+    bridgeWait.set(reqId, d => {
+      clearTimeout(timer); bridgeProg.delete(reqId);
+      if (d.error) return reject(new Error(d.error));
+      // Allt som sparas i TC hamnar i historiken med en länk till mappen.
+      if (type === "tcUpload" && d && typeof tcSavedNote === "function") { try { tcSavedNote(d, extra.files); } catch (e) { console.warn(e); } }
+      resolve(d);
+    });
     try { op.postMessage({ lagesplan: true, type, reqId, ...extra }, location.origin); }
     catch (err) { clearTimeout(timer); bridgeWait.delete(reqId); reject(err); }
   });

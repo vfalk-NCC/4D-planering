@@ -290,7 +290,7 @@ function l3Dom() {
     <div class="v3-foot">
       <div class="v3-log hidden" id="v3Log"></div>
       <button type="button" class="v3-status-more" id="v3StatusMore" aria-expanded="false" title="Historik – vad som hänt tidigare (F2)">▴</button>
-      <span class="v3-status" id="v3Status"></span>
+      <span class="v3-status" id="v3Status"></span><a class="v3-status-link hidden" id="v3StatusLink" target="_blank" rel="noopener" title="Öppna mappen i Trimble Connect">Öppna i TC ↗</a>
       <label class="v3-chk" title="Objektet ställer sig på ytan under sig när du släpper handtagen"><input type="checkbox" id="v3Snap" ${P.snap ? "checked" : ""} /> Fäst mot ytor</label>
       <select id="v3Step" title="Steg för handtag och piltangenter">${[["0", "fritt"], ["0.1", "0,1 m · 5°"], ["0.5", "0,5 m · 15°"], ["1", "1 m · 45°"]].map(([v, l]) => `<option value="${v}" ${P.step === v ? "selected" : ""}>${l}</option>`).join("")}</select>
       <label class="v3-date" title="Datum för statusfärgerna (samma som i lägesplanen)">Datum <input type="date" id="v3Date" /></label>
@@ -355,7 +355,10 @@ function l3HideMenus() {
    se på vad som skett tidigare"). l3Status skriver och sparar i historiken; l3StatusLive skriver bara
    (löpande procent/MB som annars skulle fylla historiken). Klick på raden eller F2 fäller ut historiken. */
 const l3Log = [];
-function l3StatusShow(t, bad) { const el = document.getElementById("v3Status"); if (el) { el.textContent = t || ""; el.classList.toggle("bad", !!bad); el.title = t ? `${t}\n(klicka eller F2: historik)` : "Klicka eller F2: historik"; } }
+function l3StatusShow(t, bad, link) {
+  const a = document.getElementById("v3StatusLink");
+  if (a) { a.classList.toggle("hidden", !link); if (link) a.href = link; else a.removeAttribute("href"); }
+  const el = document.getElementById("v3Status"); if (el) { el.textContent = t || ""; el.classList.toggle("bad", !!bad); el.title = t ? `${t}\n(klicka eller F2: historik)` : "Klicka eller F2: historik"; } }
 function l3StatusLive(t) { l3StatusShow(t, false); }
 /* Markera flera (Victor 2026-10-10: "Multiselect i 3d-vyn"): varje tryck lägger till/tar bort, som Skift. */
 function l3SetMulti(on) {
@@ -365,13 +368,22 @@ function l3SetMulti(on) {
   if (typeof l3ApplyMouse === "function") l3ApplyMouse(); // standardläget: vänster-dra = markeringsfönster i stället för att vrida
   l3Status(l3.multi ? "Markera flera: varje tryck lägger till eller tar bort ett objekt (knappen Flera stänger av)." : "Markera flera är av.");
 }
-function l3Status(t, bad) {
-  l3StatusShow(t, bad);
+function l3Status(t, bad, link) {
+  l3StatusShow(t, bad, link);
   if (!t) return;
   const last = l3Log[l3Log.length - 1];
-  if (last && last.text === t) { last.at = new Date(); last.n = (last.n || 1) + 1; }
-  else { l3Log.push({ at: new Date(), text: String(t), bad: !!bad }); if (l3Log.length > 500) l3Log.splice(0, l3Log.length - 500); }
+  if (last && last.text === t && last.link === link) { last.at = new Date(); last.n = (last.n || 1) + 1; }
+  else { l3Log.push({ at: new Date(), text: String(t), bad: !!bad, link: link || null }); if (l3Log.length > 500) l3Log.splice(0, l3Log.length - 500); }
   l3LogRender();
+}
+/* Anropas för varje fil som sparats i TC (askOpener tcUpload): rad i historiken med länk till mappen
+   (Victor 2026-10-10: "lägger med en länk här i kommandoraden också varje gång du sparar något i TC-mappen"). */
+function tcSavedNote(d, files) {
+  const names = (files || []).map(f => f && f.name).filter(Boolean);
+  const t = `Sparad i Trimble Connect › ${d.folder || "mappen"}: ${names.join(", ") || `${d.uploaded || 0} filer`}`;
+  if (l3 && document.body.classList.contains("v3-open")) { l3Status(t, false, d.link || null); return; }
+  if (typeof setSaveStatus === "function") setSaveStatus(t);
+  if (d.link && typeof uiToast === "function") uiToast(t, { action: "Öppna i TC", fn: () => window.open(d.link, "_blank", "noopener"), icon: "check" });
 }
 function l3LogRender() {
   const box = document.getElementById("v3Log");
@@ -379,11 +391,11 @@ function l3LogRender() {
   const p2 = x => String(x).padStart(2, "0"), tm = d => `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
   const atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
   box.innerHTML = `<div class="v3-log-h"><b>Historik</b><span>${l3Log.length} rader</span><button type="button" data-log="pin" class="${l3Prefs().logPin ? "on" : ""}" title="${l3Prefs().logPin ? "Nålad: historiken är alltid utfälld" : "Nåla fast historiken som utfälld"}">${l3Prefs().logPin ? "Nålad" : "Nåla fast"}</button><button type="button" data-log="copy" title="Kopiera historiken">Kopiera</button><button type="button" data-log="clear" title="Töm historiken">Töm</button><button type="button" class="v3-x" data-log="close" title="Stäng (F2)">✕</button></div>`
-    + (l3Log.length ? l3Log.map(x => `<div class="v3-log-r${x.bad ? " bad" : ""}"><time>${tm(x.at)}</time><span>${escHtml(x.text)}${x.n > 1 ? ` <em>×${x.n}</em>` : ""}</span></div>`).join("") : `<div class="v3-pal-hint">Inget har hänt än.</div>`);
+    + (l3Log.length ? l3Log.map(x => `<div class="v3-log-r${x.bad ? " bad" : ""}"><time>${tm(x.at)}</time><span>${escHtml(x.text)}${x.link ? ` <a href="${escHtml(x.link)}" target="_blank" rel="noopener" title="${escHtml(x.link)}">Öppna i TC ↗</a>` : ""}${x.n > 1 ? ` <em>×${x.n}</em>` : ""}</span></div>`).join("") : `<div class="v3-pal-hint">Inget har hänt än.</div>`);
   box.querySelector('[data-log="close"]').onclick = () => { if (l3Prefs().logPin) l3SetPref("logPin", false); l3LogToggle(false); };
   box.querySelector('[data-log="pin"]').onclick = () => { l3SetPref("logPin", !l3Prefs().logPin); l3LogRender(); };
   box.querySelector('[data-log="clear"]').onclick = () => { l3Log.length = 0; l3LogRender(); };
-  box.querySelector('[data-log="copy"]').onclick = () => { const t = l3Log.map(x => `${tm(x.at)}  ${x.text}`).join("\n"); try { navigator.clipboard.writeText(t).then(() => l3Toast("Historiken är kopierad.")); } catch (e) { /* ingen urklipp */ } };
+  box.querySelector('[data-log="copy"]').onclick = () => { const t = l3Log.map(x => `${tm(x.at)}  ${x.text}${x.link ? "  " + x.link : ""}`).join("\n"); try { navigator.clipboard.writeText(t).then(() => l3Toast("Historiken är kopierad.")); } catch (e) { /* ingen urklipp */ } };
   if (atEnd || !box.dataset.seen) { box.scrollTop = box.scrollHeight; box.dataset.seen = "1"; }
 }
 function l3LogToggle(on) {

@@ -227,7 +227,7 @@ function l3kClose() {
 function l3kToggle() { l3k.hidden = !l3k.hidden; if (l3k.hidden) l3kClose(); l3kDraw(); }
 
 /* ---- Fliken Kommentarer (Victor 2026-10-10: "en egen meny bredvid grupper") ---------------------- */
-const l3kUi = { q: "" };
+const l3kUi = { q: "", sel: new Set(), anchor: null };
 function l3kRenderTab() {
   const host = document.getElementById("v3PalComments");
   if (!host || host.classList.contains("hidden")) return;
@@ -236,19 +236,22 @@ function l3kRenderTab() {
   const all = l3k.list.map((c, i) => ({ c, nr: i + 1 }));
   const list = all.filter(({ c }) => (l3k.showDone || !c.done) && (!t || [c.text, c.by, c.target && c.target.name, ...(c.replies || []).map(r => r.text)].join(" ").toLowerCase().includes(t)));
   const open = l3k.list.filter(c => !c.done).length, done = l3k.list.length - open;
+  // Markeringen: bara kommentarer som finns kvar (Victor 2026-10-10: "ctrl klick för att välja flera och shift klicka för att välja flera på rad").
+  l3kUi.sel.forEach(id => { if (!l3k.list.some(c => c.id === id)) l3kUi.sel.delete(id); });
+  const nSel = l3kUi.sel.size;
   host.innerHTML = `<div class="v3-kc-top"><input type="search" class="v3-pp-q" id="v3KQ" placeholder="Sök i kommentarerna…" value="${esc(l3kUi.q)}" /></div>
     <div class="v3-kc-opts">
       <label class="v3-chk"><input type="checkbox" id="v3KShow" ${l3k.hidden ? "" : "checked"} /> Visa i 3D</label>
       <label class="v3-chk"><input type="checkbox" id="v3KSigns" ${l3kSigns() ? "checked" : ""} /> Som skyltar</label>
       <label class="v3-chk"><input type="checkbox" id="v3KDone" ${l3k.showDone ? "checked" : ""} /> Klara (${done})</label>
     </div>
-    <div class="v3-kc-list">${list.length ? list.map(({ c, nr }) => `<div class="v3-kc ${c.done ? "done" : ""} ${l3k.open && l3k.open.id === c.id ? "on" : ""}">
+    <div class="v3-kc-list">${list.length ? list.map(({ c, nr }) => `<div class="v3-kc ${c.done ? "done" : ""} ${l3k.open && l3k.open.id === c.id ? "on" : ""} ${l3kUi.sel.has(c.id) ? "sel" : ""}">
         <label class="v3-kc-col" title="Byt färg"><input type="color" data-kccol="${esc(c.id)}" value="${esc(c.color || L3K_COLORS[0])}" /><i style="background:${l3kCol(c)}">${nr}</i></label>
-        <button type="button" class="v3-kc-b" data-kcgo="${esc(c.id)}" title="Visa kommentaren i 3D"><b>${esc(String(c.text).slice(0, 80))}</b><em>${esc([c.target && c.target.name, c.by, new Date(c.at).toLocaleDateString("sv-SE", { day: "numeric", month: "short" }), (c.replies || []).length ? `${c.replies.length} svar` : ""].filter(Boolean).join(" · "))}</em></button>
+        <button type="button" class="v3-kc-b" data-kcgo="${esc(c.id)}" title="Klick: zooma till kommentaren · Ctrl+klick: välj flera · Skift+klick: välj flera i rad"><b>${esc(String(c.text).slice(0, 160))}</b><em>${esc([c.target && c.target.name, c.by, new Date(c.at).toLocaleDateString("sv-SE", { day: "numeric", month: "short" }), (c.replies || []).length ? `${c.replies.length} svar` : ""].filter(Boolean).join(" · "))}</em></button>
         <button type="button" class="v3-ic" data-kcdone="${esc(c.id)}" title="${c.done ? "Öppna igen" : "Markera som klar"}">${c.done ? "↺" : "✓"}</button>
         <button type="button" class="v3-ic" data-kcdel="${esc(c.id)}" title="Ta bort">${I.trash}</button>
       </div>`).join("") : `<div class="v3-pal-hint">${l3k.list.length ? "Ingen kommentar matchar." : "Inga kommentarer än. Högerklicka på ett objekt i 3D → Kommentar här…"}</div>`}</div>
-    ${l3k.list.length ? `<div class="v3-grp-acts"><button type="button" id="v3KIfc" title="Kommentarerna som riktiga 3D-skyltar (skylt, stolpe, 3D-text och egenskaper) i en ny IFC-fil i Trimble Connect – vända mot vyn du har nu">${I.upload} Exportera som 3D-skyltar (IFC) till TC</button></div>` : ""}
+    ${l3k.list.length ? `<div class="v3-grp-acts"><button type="button" id="v3KIfcSel" ${nSel ? "" : "disabled"} title="De markerade kommentarerna (Ctrl+klick / Skift+klick i listan) som 3D-skyltar i en ny IFC-fil i Trimble Connect">${I.upload} Exportera markerade${nSel ? ` (${nSel})` : ""}</button>${nSel ? `<button type="button" id="v3KSelClr" title="Avmarkera alla">Avmarkera</button>` : ""}<button type="button" id="v3KIfc" title="Alla kommentarer som syns i listan som riktiga 3D-skyltar (skylt, stolpe, 3D-text och egenskaper) i en ny IFC-fil i Trimble Connect – vända mot vyn du har nu">${I.upload} Exportera alla som 3D-skyltar</button></div>` : ""}
     <div class="v3-pal-hint">${open} öppna${done ? ` · ${done} klara` : ""}. Högerklick i 3D → Kommentar här… skapar en ny.</div>`;
   const q = host.querySelector("#v3KQ");
   q.oninput = () => { l3kUi.q = q.value; const pos = q.selectionStart; l3kRenderTab(); const n = document.getElementById("v3KQ"); if (n) { n.focus(); n.setSelectionRange(pos, pos); } };
@@ -256,8 +259,26 @@ function l3kRenderTab() {
   host.querySelector("#v3KSigns").onchange = e => { l3SetPref("cSigns", e.target.checked); l3kDraw(); };
   host.querySelector("#v3KDone").onchange = e => { l3k.showDone = e.target.checked; l3kDraw(); };
   const find = id => l3k.list.find(x => x.id === id);
-  const ex = host.querySelector("#v3KIfc"); if (ex) ex.onclick = async () => { ex.disabled = true; try { await l3kExportIfc(); } catch (e) { /* statusraden */ } if (ex.isConnected) ex.disabled = false; };
-  host.querySelectorAll("[data-kcgo]").forEach(b => { b.onclick = () => { const c = find(b.dataset.kcgo); if (!c) return; l3k.hidden = false; l3FlyTo(new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]), 18); l3kOpen(c); }; });
+  const exBtn = (id, ids) => { const ex = host.querySelector(id); if (ex) ex.onclick = async () => { ex.disabled = true; try { await l3kExportIfc(ids && ids()); } catch (e) { /* statusraden */ } if (ex.isConnected) ex.disabled = !!ids && !l3kUi.sel.size; }; };
+  exBtn("#v3KIfc", null);
+  exBtn("#v3KIfcSel", () => [...l3kUi.sel]);
+  const clr = host.querySelector("#v3KSelClr"); if (clr) clr.onclick = () => { l3kUi.sel.clear(); l3kUi.anchor = null; l3kRenderTab(); };
+  // Klick zoomar bara till kommentaren (öppnar inte redigeringen); Ctrl+klick väljer flera, Skift+klick ett intervall.
+  const ids = list.map(({ c }) => c.id);
+  host.querySelectorAll("[data-kcgo]").forEach(b => { b.onclick = e => {
+    const c = find(b.dataset.kcgo); if (!c) return;
+    if (e.shiftKey && l3kUi.anchor && ids.includes(l3kUi.anchor)) {
+      const a = ids.indexOf(l3kUi.anchor), z = ids.indexOf(c.id);
+      if (!(e.ctrlKey || e.metaKey)) l3kUi.sel.clear();
+      ids.slice(Math.min(a, z), Math.max(a, z) + 1).forEach(id => l3kUi.sel.add(id));
+      l3kRenderTab(); return;
+    }
+    if (e.ctrlKey || e.metaKey) { if (l3kUi.sel.has(c.id)) l3kUi.sel.delete(c.id); else l3kUi.sel.add(c.id); l3kUi.anchor = c.id; l3kRenderTab(); return; }
+    l3kUi.sel.clear(); l3kUi.sel.add(c.id); l3kUi.anchor = c.id;
+    l3k.hidden = false; l3kDraw();
+    l3FlyTo(new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]), 18);
+    l3kRenderTab();
+  }; });
   host.querySelectorAll("[data-kccol]").forEach(inp => { inp.onchange = async () => { const c = find(inp.dataset.kccol); if (!c) return; c.color = inp.value; l3kDraw(); if (l3k.open === c) l3kOpen(c); await l3kWrite(c); }; });
   host.querySelectorAll("[data-kcdone]").forEach(b => { b.onclick = async () => { const c = find(b.dataset.kcdone); if (!c) return; c.done = !c.done; l3kDraw(); if (l3k.open === c) l3kOpen(c); await l3kWrite(c); }; });
   host.querySelectorAll("[data-kcdel]").forEach(b => { b.onclick = async () => { const c = find(b.dataset.kcdel); if (!c || !(await uiConfirm("Ta bort kommentaren och dess svar?"))) return; l3k.list = l3k.list.filter(x => x !== c); if (l3k.open === c) l3kClose(); l3kDraw(); await l3kWrite(c, true); }; });
@@ -321,8 +342,10 @@ function l3kIfcBuild(list) {
   const fileName = `Kommentarer ${plan ? plan.name : ""} ${d2.getFullYear()}-${p2(d2.getMonth() + 1)}-${p2(d2.getDate())} kl ${p2(d2.getHours())}.${p2(d2.getMinutes())}.${p2(d2.getSeconds())}.ifc`.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ");
   return { text: doc.finish(elems, fileName), fileName, n: list.length };
 }
-async function l3kExportIfc() {
-  const list = l3k.list.map((c, i) => ({ c, nr: i + 1 })).filter(({ c }) => l3k.showDone || !c.done);
+/* ids: bara de kommentarerna (markerade i listan); annars alla som syns. Numret är alltid kommentarens nummer i listan. */
+async function l3kExportIfc(ids) {
+  const want = ids ? new Set(ids) : null;
+  const list = l3k.list.map((c, i) => ({ c, nr: i + 1 })).filter(({ c }) => want ? want.has(c.id) : (l3k.showDone || !c.done));
   if (!list.length) { l3Status("Inga kommentarer att exportera.", true); return null; }
   const r = l3kIfcBuild(list);
   const file = new File([new TextEncoder().encode(r.text)], r.fileName, { type: "application/x-step" });
@@ -333,7 +356,6 @@ async function l3kExportIfc() {
     const up = await askOpener("tcUpload", { folder: "Lägesplan", files: [file] }, 10 * 60 * 1000);
     busyProgress(key, "", null);
     l3Toast(`${r.n} kommentarer sparade som 3D-skyltar i Trimble Connect: ${r.fileName}${up && up.folder ? ` (${up.folder})` : ""}.`, null, null, 9000);
-    l3Status(`Sparad: ${r.fileName}`);
     return r;
   } catch (e) { busyProgress(key, "", null); l3Status("Kunde inte spara kommentarerna som IFC: " + e.message, true); throw e; }
 }

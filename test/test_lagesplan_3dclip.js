@@ -178,8 +178,34 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   await page.fill('#v3KQ', 'schakt'); await page.waitForTimeout(100);
   await page.click('#v3PalComments [data-kcgo]'); await page.waitForTimeout(200);
   if (process.env.SHOT3) await page.screenshot({ path: process.env.SHOT3 });
-  if (!(await page.isVisible('#v3CPop'))) fail('Tryck i listan ska öppna kommentaren');
-  await page.keyboard.press('Escape');
+  if (await page.isVisible('#v3CPop')) fail('Tryck i listan ska bara zooma, inte öppna kommentaren');
+  // Ctrl+klick och Skift+klick markerar flera; Exportera markerade tar bara dem.
+  await page.fill('#v3KQ', ''); await page.waitForTimeout(100);
+  const k0 = await page.evaluate(() => { const c = l3k.list[0]; l3k.list.push({ ...c, id: 'kx2', text: 'Andra kommentaren med en lång text som ska synas helt och inte klippas av i listan', replies: [] }, { ...c, id: 'kx3', text: 'Tredje', replies: [] }); l3kRenderTab(); return l3k.list.length; });
+  const k1 = await page.evaluate(() => l3k.list[0].id);
+  await page.click(`#v3PalComments [data-kcgo="${k1}"]`);
+  await page.click('#v3PalComments [data-kcgo="kx3"]', { modifiers: ['Shift'] });
+  let sel = await page.evaluate(() => [...l3kUi.sel].join(','));
+  if (sel.split(',').length !== 3) fail('Skift+klick ska markera en rad: ' + sel);
+  await page.click('#v3PalComments [data-kcgo="kx2"]', { modifiers: ['Control'] });
+  sel = await page.evaluate(() => ({ s: [...l3kUi.sel], n: document.querySelectorAll('#v3PalComments .v3-kc.sel').length, btn: document.querySelector('#v3KIfcSel').textContent, clip: (() => { const b = document.querySelector('#v3PalComments [data-kcgo="kx2"] b'); return b.scrollHeight - b.clientHeight; })() }));
+  if (sel.s.length !== 2 || sel.s.includes('kx2') || sel.n !== 2 || !/Exportera markerade \(2\)/.test(sel.btn) || sel.clip > 1) fail('Ctrl+klick avmarkerar: ' + JSON.stringify(sel));
+  if (await page.isVisible('#v3CPop')) fail('Markering ska inte öppna kommentaren');
+  if (process.env.SHOT5) { await page.screenshot({ path: process.env.SHOT5 }); await page.evaluate(() => l3PalTab('layers')); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SHOT5.replace('.png', '-lager.png') }); await page.evaluate(() => l3PalTab('comments')); await page.waitForTimeout(200); }
+  const ksel = await page.evaluate(async () => {
+    let up = null; const orig = askOpener;
+    askOpener = async (type, extra) => { if (type === 'tcUpload') { up = new TextDecoder().decode(await extra.files[0].arrayBuffer()); return { uploaded: 1, folder: extra.folder }; } return orig(type, extra); };
+    document.querySelector('#v3KIfcSel').click(); for (let i = 0; i < 50 && !up; i++) await new Promise(r => setTimeout(r, 50));
+    askOpener = orig;
+    l3k.list = l3k.list.filter(c => c.id !== 'kx2' && c.id !== 'kx3'); l3kUi.sel.clear(); l3kRenderTab(); l3kDraw();
+    return { names: (up.match(/'Kommentar \d+: [^']*'/g) || []).filter(x => !/text'$/.test(x)) };
+  });
+  // Allt som sparas i TC ger en rad i historiken med länk till mappen.
+  const tcl = await page.evaluate(() => { tcSavedNote({ folder: 'Lägesplan', uploaded: 1, link: 'https://web.connect.trimble.com/projects/P/data/folder/F' }, [{ name: 'X.ifc' }]); const last = l3Log[l3Log.length - 1], a = document.getElementById('v3StatusLink'); return { link: last.link, text: last.text, shown: !a.classList.contains('hidden'), href: a.href }; });
+  if (!/folder\/F$/.test(tcl.link) || !/Lägesplan: X\.ifc/.test(tcl.text) || !tcl.shown || !/folder\/F$/.test(tcl.href)) fail('Länk till TC i historiken: ' + JSON.stringify(tcl));
+  await page.evaluate(() => l3Status('Klart.'));
+  if (await page.evaluate(() => !document.getElementById('v3StatusLink').classList.contains('hidden'))) fail('Länken ska försvinna vid nästa status');
+  if (ksel.names.length !== 2 || !ksel.names.some(x => /Kommentar 3: Tredje/.test(x)) || ksel.names.some(x => /Kommentar 2:/.test(x))) fail('Exportera markerade: ' + JSON.stringify(ksel));
 
   // Kommentarerna som riktiga 3D-skyltar i IFC till TC.
   const kifc = await page.evaluate(async () => {

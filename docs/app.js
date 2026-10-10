@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-10 13:39";
+const APP_VERSION = "2026-10-10 14:42";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -477,6 +477,10 @@ async function tcApiBase(tokenVal, project) {
   } catch (e) { /* faller tillbaka på kända adresser */ }
   return byLocation[String(project.location || "").toLowerCase()] || "https://app.connect.trimble.com/tc/api/2.0";
 }
+/* Mappen i Trimble Connect på webben (samma adress i alla regioner). */
+function tcWebFolderUrl(projectId, folderId) {
+  return projectId && folderId ? `https://web.connect.trimble.com/projects/${encodeURIComponent(projectId)}/data/folder/${encodeURIComponent(folderId)}` : null;
+}
 async function tcUploadFiles(files, folderName, folderId = null) {
   try { return await tcUploadFilesInner(files, folderName, folderId); }
   catch (e) { showLagesplanBanner(`Kunde inte spara i Trimble Connect: ${e.message}`, 10000); throw e; }
@@ -509,7 +513,8 @@ async function tcUploadFilesInner(files, folderName, folderId = null) {
   }
   showLagesplanBanner(`✓ ${files.length} filer sparade i Trimble Connect (${folderName}).`, 6000);
   // files: svaret från commit per fil (id m.m.), t.ex. för att tända filen i 3D-vyn.
-  return { uploaded: files.length, folder: folderName, files: done };
+  // link: mappen i Trimble Connect på webben (Victor 2026-10-10: "en länk … varje gång du sparar något i TC-mappen").
+  return { uploaded: files.length, folder: folderName, folderId: folder.id, projectId: project.id, link: tcWebFolderUrl(project.id, folder.id), files: done };
 }
 
 /* En fil till en mapp i Trimble Connect (Victors rapport 2026-10-06: exporterna hamnade inte i
