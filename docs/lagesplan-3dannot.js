@@ -113,4 +113,97 @@ function l3aBind(host) {
   const nw = host.querySelector("#v3AfNew"); if (nw) nw.onclick = () => l3aNew();
   const al = host.querySelector("#v3AfAll"); if (al) al.onclick = () => l3aAll(true);
   const mv = host.querySelector("#v3AfMove"); if (mv) mv.onchange = () => { if (!mv.value) return; l3aMove(l3aSelected(), id(mv.value)); };
+  l3aDragBind(host);
+}
+
+/* ---- Dra och släpp in i mapparna (Victor 2026-10-10: "dom ska kunna dras in i mappar … snygg grafik när
+   jag drar dom") ------------------------------------------------------------------------------------
+   Håll ned på en kommentar eller ett mått i listan och dra: ett kort följer markören (med antal om flera
+   är markerade), mapparna lyser upp som mål och den under markören markeras. Släpp på en mapp (eller
+   "Utan mapp") = flytta dit; släpp på "＋ Ny mapp" = ny mapp med dem i. Släpp någon annanstans eller Esc
+   = inget händer. Ett vanligt klick (utan att dra) fungerar som förut. */
+function l3aDragBind(host) {
+  const rows = [
+    ...[...host.querySelectorAll("[data-kcgo]")].map(b => ({ b, item: () => l3k.list.find(c => c.id === b.dataset.kcgo), kind: "k" })),
+    ...[...host.querySelectorAll("[data-mzoom]")].map(b => ({ b, item: () => l3m.list.find(m => m.id === b.dataset.mzoom), kind: "m" })),
+  ];
+  rows.forEach(({ b, item, kind }) => {
+    b.addEventListener("pointerdown", e => {
+      if (e.button !== 0 || e.pointerType === "touch") return; // pekskärm: rullning går före, flytta med listan "Flytta markerade"
+      const x0 = e.clientX, y0 = e.clientY;
+      let drag = null;
+      const mv = ev => {
+        if (!drag) { if (Math.hypot(ev.clientX - x0, ev.clientY - y0) < 6) return; drag = l3aDragStart(b, item(), kind); if (!drag) { done(); return; } }
+        l3aDragMove(drag, ev);
+      };
+      const done = () => { window.removeEventListener("pointermove", mv, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("keydown", esc, true); };
+      const up = ev => {
+        done();
+        if (!drag) return;
+        // Klicket som följer på släppet ska inte räknas som ett klick på raden.
+        const eat = ce => { ce.stopPropagation(); ce.preventDefault(); };
+        window.addEventListener("click", eat, { capture: true, once: true }); setTimeout(() => window.removeEventListener("click", eat, true), 0);
+        l3aDragEnd(drag, ev);
+      };
+      const esc = ev => { if (ev.key === "Escape" && drag) { ev.stopPropagation(); done(); l3aDragEnd(drag, null); } };
+      window.addEventListener("pointermove", mv, true); window.addEventListener("pointerup", up, true); window.addEventListener("keydown", esc, true);
+    });
+  });
+}
+function l3aDragStart(btn, it, kind) {
+  if (!it) return null;
+  // Raden är markerad: alla markerade följer med; annars bara den.
+  const sel = l3aSelected(), items = sel.includes(it) ? sel : [it];
+  const pal = btn.closest(".v3-paltab") || document.body;
+  const ghost = document.createElement("div");
+  ghost.className = "v3-dragghost";
+  const nk = items.filter(x => l3k.list.includes(x)).length, nm = items.length - nk;
+  const col = kind === "k" ? (typeof l3kCol === "function" ? l3kCol(it) : "#f97316") : "#dc2626";
+  const title = kind === "k" ? String(it.text || "Kommentar").split("\n")[0] : `${(typeof L3M_KIND !== "undefined" && L3M_KIND[it.kind]) || "Mått"} ${it.text}`;
+  ghost.innerHTML = `<i style="background:${col}"></i><span><b>${escHtml(title.slice(0, 48))}</b><em>${items.length > 1 ? `${nk ? `${nk} kommentarer` : ""}${nk && nm ? " + " : ""}${nm ? `${nm} mått` : ""}` : "Släpp på en mapp"}</em></span>${items.length > 1 ? `<u>${items.length}</u>` : ""}`;
+  const em0 = ghost.querySelector("em"); em0.dataset.def = em0.textContent;
+  document.body.appendChild(ghost);
+  document.body.classList.add("v3-dragging");
+  // Raderna som dras tonas ned; mapparna blir mål.
+  const ids = new Set(items.map(x => x.id));
+  pal.querySelectorAll("[data-kcgo],[data-mzoom]").forEach(b => { if (ids.has(b.dataset.kcgo || b.dataset.mzoom)) b.closest(".v3-kc").classList.add("v3-dragsrc"); });
+  const targets = [...pal.querySelectorAll(".v3-af")].concat([...pal.querySelectorAll("#v3AfNew")]);
+  targets.forEach(t => t.classList.add("v3-droptgt"));
+  return { items, ghost, pal, targets, hot: null, scroller: l3aScroller(pal), raf: 0 };
+}
+function l3aScroller(el) { for (let p = el; p && p !== document.body; p = p.parentElement) { const cs = getComputedStyle(p); if (/(auto|scroll)/.test(cs.overflowY) && p.scrollHeight > p.clientHeight) return p; } return null; }
+function l3aDragMove(d, ev) {
+  d.ghost.style.transform = `translate(${ev.clientX + 14}px, ${ev.clientY + 10}px)`;
+  const el = document.elementFromPoint(ev.clientX, ev.clientY);
+  const t = el && (el.closest(".v3-af") || el.closest("#v3AfNew"));
+  const hot = t && d.targets.includes(t) ? t : null;
+  if (hot !== d.hot) { if (d.hot) d.hot.classList.remove("v3-drophot"); if (hot) hot.classList.add("v3-drophot"); d.hot = hot; }
+  const name = hot ? (hot.id === "v3AfNew" ? "Ny mapp…" : (hot.querySelector(".v3-af-n b") || {}).textContent) : null;
+  const em = d.ghost.querySelector("em"); if (em) em.textContent = name ? `Släpp i ${name}` : em.dataset.def;
+  d.ghost.classList.toggle("ok", !!hot);
+  // Nära kanten på listan: rulla.
+  cancelAnimationFrame(d.raf);
+  if (d.scroller) {
+    const r = d.scroller.getBoundingClientRect(), edge = 36, dy = ev.clientY < r.top + edge ? -1 : ev.clientY > r.bottom - edge ? 1 : 0;
+    if (dy) { const step = () => { d.scroller.scrollTop += dy * 10; d.raf = requestAnimationFrame(step); }; d.raf = requestAnimationFrame(step); }
+  }
+}
+async function l3aDragEnd(d, ev) {
+  cancelAnimationFrame(d.raf);
+  document.body.classList.remove("v3-dragging");
+  d.pal.querySelectorAll(".v3-dragsrc").forEach(x => x.classList.remove("v3-dragsrc"));
+  d.targets.forEach(t => t.classList.remove("v3-droptgt", "v3-drophot"));
+  const hot = ev ? d.hot : null;
+  // Kortet åker in i mappen (eller tonas bort).
+  if (hot) { const r = hot.getBoundingClientRect(); d.ghost.style.transition = "transform .18s ease-in, opacity .18s ease-in"; d.ghost.style.transform = `translate(${r.left + 20}px, ${r.top + r.height / 2 - 14}px) scale(.4)`; d.ghost.style.opacity = "0"; }
+  else { d.ghost.style.transition = "opacity .15s"; d.ghost.style.opacity = "0"; }
+  setTimeout(() => d.ghost.remove(), 220);
+  if (!hot) return;
+  if (hot.id === "v3AfNew") { const f = await l3aNew(); if (f) await l3aMove(d.items, f.id); return; }
+  const k = (hot.querySelector("[data-afeye]") || {}).dataset;
+  if (!k) return;
+  const fid = k.afeye === "_" ? null : k.afeye;
+  if (d.items.every(x => (x.folder || null) === fid)) { l3Status("De ligger redan i den mappen."); return; }
+  await l3aMove(d.items, fid);
+  hot.classList.add("v3-dropdone"); // en kort puls när det landat (raden ritas om – ingen skada om den försvinner)
 }

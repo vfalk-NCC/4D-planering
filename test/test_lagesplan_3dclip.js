@@ -248,6 +248,18 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     const f0 = await page.evaluate(() => { const m = l3mAdd('dist', [new THREE.Vector3(55, 22, 0), new THREE.Vector3(60, 22, 0)], '5 m'); return { folders: l3a.folders.map(f => f.name), cur: l3a.cur, mFolder: m.folder, file: null }; });
     const ff = JSON.parse(gh.get('projects/p1/plan_annotfolders.json') || '[]');
     if (f0.folders.join() !== 'Område A' || f0.mFolder !== f0.cur || ff.length !== 1 || ff[0].name !== 'Område A') fail('Ny mapp och nya mått i den: ' + JSON.stringify({ f0, ff }));
+    // Dra kommentaren till mappen (dra och släpp), sedan tillbaka till Utan mapp.
+    {
+      const box = s2 => page.evaluate(sel => { const r = document.querySelector(sel).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }, s2);
+      const [sx, sy] = await box(`#v3PalComments [data-kcgo="${kid}"]`), [tx, ty] = await box(`#v3PalComments [data-afcur="${f0.cur}"]`);
+      await page.mouse.move(sx, sy); await page.mouse.down(); await page.mouse.move(sx, sy + 8, { steps: 2 }); await page.mouse.move(tx, ty, { steps: 8 });
+      const mid = await page.evaluate(() => ({ ghost: !!document.querySelector('.v3-dragghost.ok'), hot: document.querySelectorAll('.v3-drophot').length, txt: (document.querySelector('.v3-dragghost em') || {}).textContent }));
+      if (process.env.SHOTG) await page.screenshot({ path: process.env.SHOTG });
+      await page.mouse.up(); await page.waitForTimeout(600);
+      const dd = await page.evaluate(id => ({ folder: l3k.list.find(c => c.id === id).folder, ghosts: document.querySelectorAll('.v3-dragghost').length, pop: !document.getElementById('v3CPop') || document.getElementById('v3CPop').classList.contains('hidden') }), kid);
+      if (!mid.ghost || mid.hot !== 1 || !/Område A/.test(mid.txt || '') || dd.folder !== f0.cur || dd.ghosts || !dd.pop) fail('Dra kommentaren till mappen: ' + JSON.stringify({ mid, dd }));
+      await page.evaluate(id => { l3k.list.find(c => c.id === id).folder = null; l3aRefresh(); }, kid);
+    }
     // Kommentaren (Utan mapp) markeras och flyttas till mappen.
     await page.click(`#v3PalComments [data-kcgo="${kid}"]`); await page.waitForTimeout(200);
     await page.selectOption('#v3AfMove', f0.cur); await page.waitForTimeout(500);
