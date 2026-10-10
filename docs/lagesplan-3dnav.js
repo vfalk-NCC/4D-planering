@@ -51,6 +51,7 @@ function l3NavDown(e) {
   if (e.button === 1 && e.target === l3.renderer.domElement) e.preventDefault();
   if (typeof l3dGripDown === "function" && l3dGripDown(e)) return; // DXF: dra i en hörnpunkt
   if (l3OrbitPivotStart(e)) return;
+  l3PanAnchor(e);
   if (e.button === 2) { l3RightDown = { x: e.clientX, y: e.clientY }; return; }
   // Standardläget: Ctrl + vänster-dra (Victor 2026-10-10) eller Flera på ger markeringsfönster i stället för att vrida.
   const ctrl = e.ctrlKey || e.metaKey, tekla = l3IsTekla();
@@ -59,6 +60,25 @@ function l3NavDown(e) {
   if (l3.tool !== "select" || l3.addType || l3.vPick || l3.gizmo.axis || l3.gizmo.dragging || (l3.gizmoR && (l3.gizmoR.axis || l3.gizmoR.dragging))) return;
   if (!tekla && l3.orbit.enabled) { l3.orbit.enabled = false; l3.orbitOffForArea = true; } // OrbitControls panorerar annars med Ctrl
   l3Area = { x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, add: e.shiftKey, toggle: tekla && ctrl, on: false };
+}
+/* Panorering i rätt takt (Victor 2026-10-10: "ibland blir panoreringen jätteseg så man panorerar pyttelite i
+   taget"): OrbitControls panorerar efter avståndet till sin målpunkt, och den kan efter zoom mot markören
+   ligga nästan i kameran. När en panorering börjar läggs målpunkten på samma djup som det man tar tag i
+   (ytan under markören) – rakt fram, så att bilden inte rör sig – och det man håller i följer musen. */
+function l3PanAnchor(e) {
+  if (e.target !== l3.renderer.domElement || l3.camera.isOrthographicCamera) return;
+  const M = THREE.MOUSE, mb = l3.orbit.mouseButtons;
+  const act = e.button === 0 ? mb.LEFT : e.button === 1 ? mb.MIDDLE : e.button === 2 ? mb.RIGHT : -1;
+  const pan = act === M.PAN || (act === M.ROTATE && (e.ctrlKey || e.metaKey || e.shiftKey) && l3.orbit.enabled);
+  if (!pan) return;
+  const cam = l3.camera, fwd = cam.getWorldDirection(new THREE.Vector3());
+  const hit = l3Ray(e, l3Surfaces())[0];
+  let d = hit ? hit.point.clone().sub(cam.position).dot(fwd) : 0;
+  if (!(d > 0.3)) { const c = l3SceneBox().getCenter(new THREE.Vector3()); d = Math.max(c.sub(cam.position).dot(fwd), l3.orbit.target.distanceTo(cam.position)); }
+  if (!(d > 0.3)) return;
+  l3StopFly();
+  l3.orbit.target.copy(cam.position).addScaledVector(fwd, d);
+  l3.orbit.update();
 }
 function l3NavMove(e) {
   if (l3Piv) { l3OrbitPivotMove(e); return; }

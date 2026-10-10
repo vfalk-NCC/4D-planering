@@ -96,6 +96,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await drag([cv.x + 300, cv.y + 300], [cv.x + 400, cv.y + 300], 'middle');
   const t1 = await page.evaluate(() => l3.orbit.target.toArray());
   if (Math.hypot(t1[0] - t0[0], t1[1] - t0[1]) < 0.5) fail('Mittenknappen ska panorera');
+  // Seg panorering (Victor 2026-10-10): målpunkten nästan i kameran – panoreringen ska ändå följa det man håller i.
+  await page.evaluate(() => { const c = l3.camera, f = c.getWorldDirection(new THREE.Vector3()); l3StopFly(); l3.orbit.target.copy(c.position).addScaledVector(f, 0.05); l3.orbit.update(); l3Render(); });
+  const c0 = await page.evaluate(() => l3.camera.position.toArray());
+  await drag([cv.x + 300, cv.y + 300], [cv.x + 400, cv.y + 300], 'middle');
+  const c1 = await page.evaluate(() => l3.camera.position.toArray());
+  if (Math.hypot(c1[0] - c0[0], c1[1] - c0[1], c1[2] - c0[2]) < 1) fail('Panoreringen ska inte bli seg när målpunkten ligger nära kameran: ' + JSON.stringify([c0, c1]));
   await top();
 
   // --- Automatiskt rotationscentrum: Ctrl + mitten roterar kring punkten under markören – den står kvar på skärmen.

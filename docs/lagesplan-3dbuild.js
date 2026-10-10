@@ -10,11 +10,16 @@ const L3B_CHUNK = 80000;
 // Tak för trianglar (geometrin läses i en egen tråd i typade arrayer, så datorn klarar mer än förut).
 /* Taket för alla inlästa modeller tillsammans (Victor 2026-10-10: "jag måste kunna ladda in IFCer upp till
    200 mb iaf"). ~90 byte per triangel i minnet + lika mycket i grafikkortet: 16 miljoner ≈ 1,5 GB. */
-const l3bMaxTris = () => {
+/* Höjt 2026-10-10 (Victor: "du får nog öka taket", tak saknades i en stor modell): färgerna lagras som byte och
+   normalerna som Int8, ~70 byte per triangel. Chrome rapporterar högst 8 GB – en större dator kan höja taket
+   själv under Lager → Avancerat (eller med knappen när taket nås). */
+const L3B_CAPS = [8, 16, 24, 32, 48];
+const l3bAutoTris = () => {
   if (matchMedia("(pointer: coarse)").matches) return 2500000;
-  const gb = navigator.deviceMemory || 8; // Chrome rapporterar högst 8
-  return gb >= 8 ? 16000000 : gb >= 4 ? 9000000 : 5000000;
+  const gb = navigator.deviceMemory || 8;
+  return gb >= 8 ? 24000000 : gb >= 4 ? 10000000 : 5000000;
 };
+const l3bMaxTris = () => { const v = Number(typeof l3Prefs === "function" && l3Prefs().triCap) || 0; return v ? v * 1e6 : l3bAutoTris(); };
 
 /* Lista över tända IFC-modeller (från 4D-planering) och val av vilka som ska visas. */
 async function l3bOpenDialog(boxId = "v3BldgBox") {
@@ -106,20 +111,27 @@ async function l3bLoad(list, opts = {}) {
         busyProgress("bldg", mb ? `${lbl} – ${mb}` : lbl, part(0, 0.55 * f));
         l3StatusLive(`Hämtar ${w.name} (${i + 1} av ${list.length})${mb ? `: ${mb}` : ""}${tot ? ` (${Math.round(100 * Math.min(1, got / tot))} %)` : ""}…`);
       };
-      try { r = w.fileId ? { ...(await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, dl)), name: w.name, placement: null } : await askOpener("ifcModelData", { modelId: w.id }, 0, dl); }
+      // Originalfilen finns ofta redan här i webbläsaren (sparas för egenskaperna): samma version läses
+      // därifrån i stället för att hämtas från TC igen (t.ex. efter höjt tak eller ändrade detaljer).
+      let local = null;
+      try { local = w.version && typeof l3pRawLocal === "function" ? await l3pRawLocal({ id: w.id, src: w }) : null; } catch (e) { local = null; }
+      try {
+        if (local && local.blob) { clearInterval(tick); r = { bytes: await local.blob.arrayBuffer(), placement: w.fileId ? null : local.placement || null, name: w.name, local: true }; }
+        else r = w.fileId ? { ...(await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, dl)), name: w.name, placement: null } : await askOpener("ifcModelData", { modelId: w.id }, 0, dl);
+      }
       finally { clearInterval(tick); }
       const tDl = Date.now() - tDl0, tRd0 = Date.now();
-      l3Status(`Hämtade ${r.name || w.name}: ${l3bMb(r.bytes ? r.bytes.byteLength : gotMb)} MB på ${(tDl / 1000).toFixed(1)} s.`);
+      l3Status(r.local ? `${r.name || w.name}: ${l3bMb(r.bytes.byteLength)} MB ur webbläsarens kopia (ingen hämtning från TC).` : `Hämtade ${r.name || w.name}: ${l3bMb(r.bytes ? r.bytes.byteLength : gotMb)} MB på ${(tDl / 1000).toFixed(1)} s.`);
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 0.6));
       l3Status(`Läser ${r.name || w.name} (${i + 1} av ${list.length})…`);
       await new Promise(res => setTimeout(res, 30));
       const lblRead = `Läser ${r.name || w.name}`;
-      if (typeof l3pKeepRaw === "function") l3pKeepRaw(w, r.bytes, r.placement || null); // för egenskaper, spara och exportera
+      if (typeof l3pKeepRaw === "function" && !r.local) l3pKeepRaw(w, r.bytes, r.placement || null); // för egenskaper, spara och exportera
       let m;
       try { m = await l3bParseAny(r.bytes, r.placement, l3bMaxTris() - total, f => busyProgress("bldg", lblRead, part(0, 0.6 + 0.4 * f)), ms => { hideOld(); ms.forEach(x => l3.groups.bldg.add(x)); l3Render(); }); }
       catch (err) { if (old) { old.meshes.forEach(x => { x.visible = true; }); old.visible = true; } throw err; } // den gamla syns igen
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 1));
-      times.push(`${m.name || r.name || w.name}: hämtning ${(tDl / 1000).toFixed(1)} s, läsning ${((Date.now() - tRd0) / 1000).toFixed(1)} s${m.parts > 1 ? ` (${m.parts} trådar)` : ""}`);
+      times.push(`${m.name || r.name || w.name}: ${r.local ? "ur webbläsarens kopia" : `hämtning ${(tDl / 1000).toFixed(1)} s`}, läsning ${((Date.now() - tRd0) / 1000).toFixed(1)} s${m.parts > 1 ? ` (${m.parts} trådar)` : ""}`);
       skippedAll += m.skipped || 0;
       if (opts.replace) l3bRemove(w.id);
       m.id = w.id; m.name = r.name || w.name; m.visible = true; m.src = w;
@@ -129,8 +141,9 @@ async function l3bLoad(list, opts = {}) {
       l3b.models.push(m);
       l3bPosition(); l3bRemember(w, true);
       if (m.capped) {
-        const msg = `${m.name} visas bara delvis: taket på ${(l3bMaxTris() / 1e6).toFixed(0)} miljoner trianglar för alla modeller tillsammans nåddes (${(total / 1e6).toFixed(1)} miljoner inlästa). Ta bort modeller du inte behöver under Lager och läs in igen.`;
-        l3Toast(msg, null, null, 12000); l3Status(msg, true);
+        const cap = l3bMaxTris() / 1e6, next = L3B_CAPS.find(c => c > cap);
+        const msg = `${m.name} visas bara delvis: taket på ${cap.toFixed(0)} miljoner trianglar för alla modeller tillsammans nåddes (${(total / 1e6).toFixed(1)} miljoner inlästa). Höj taket (kräver mer minne) eller ta bort modeller du inte behöver under Lager.`;
+        l3Toast(msg, next ? `Höj till ${next} miljoner och läs in igen` : null, () => { l3SetPref("triCap", next); l3bLoad([w], { replace: true }); }, 20000); l3Status(msg, true);
         break;
       }
     }
@@ -283,7 +296,7 @@ async function l3bParseAny(bytes, placement, maxTris, onProgress, onMeshes) {
 function l3bMeshFromArrays(pos, col, idx, ranges, out, nrm = null) {
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-  g.setAttribute("color", new THREE.BufferAttribute(col, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(col, 3, col instanceof Uint8Array)); // byte (0–255) från tråden, äldre cache: tal 0–1
   g.setIndex(pos.length / 3 > 65535 ? new THREE.BufferAttribute(idx, 1) : new THREE.BufferAttribute(Uint16Array.from(idx), 1));
   if (nrm && nrm.length === pos.length) g.setAttribute("normal", new THREE.BufferAttribute(nrm, 3, true));
   else g.computeVertexNormals();
@@ -338,6 +351,9 @@ function l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes) {
           const m = l3bMeshFromArrays(d.pos, d.col, d.idx, d.ranges, out, d.nrm && d.nrm.length ? d.nrm : null); // normalerna från tråden
           out.meshes.push(m); out.ranges.push(...d.ranges); out.tris += d.idx.length / 3;
           if (onMeshes) onMeshes([m]);
+          // Taket gäller alla trådar tillsammans (förut fick varje tråd en lika stor del – en tråd med
+          // tunga objekt kunde slå i sin del medan det fanns plats kvar).
+          if (out.tris >= maxTris && !failed) { failed = true; out.capped = true; wks.forEach(w => w.terminate()); resolve(out); }
         } else if (d.type === "done") {
           out.capped = out.capped || !!d.capped; out.skipped = (out.skipped || 0) + (d.skipped || 0); wk.terminate(); prog[k] = 1;
           if (--left === 0) resolve(out);
@@ -348,7 +364,7 @@ function l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes) {
     const base = new URL("vendor/web-ifc/", location.href).href, voids = l3bVoids(), details = l3bDetails();
     wks.forEach((wk, k) => {
       const b = k === N - 1 ? buf0 : buf0.slice(0); // varje tråd sin kopia; den sista får originalet
-      wk.postMessage({ bytes: b, placement, O: out.O, maxTris: Math.ceil(maxTris / N), chunkTris: L3B_CHUNK, base, part: k, parts: N, voids, details }, [b]);
+      wk.postMessage({ bytes: b, placement, O: out.O, maxTris: Math.ceil(maxTris), chunkTris: L3B_CHUNK, base, part: k, parts: N, voids, details }, [b]);
     });
   });
 }
@@ -419,7 +435,7 @@ function l3bRecolor() {
   const byGuid = new Map((items || []).filter(r => r.object_id).map(r => [String(r.object_id), r.id]));
   const at = $("dateInput").value || todayIso();
   l3b.models.forEach(m => m.meshes.forEach(x => {
-    const col = x.geometry.getAttribute("color"), d = col.array, u = x.userData.l3b;
+    const col = x.geometry.getAttribute("color"), d = col.array, u = x.userData.l3b, K = d instanceof Uint8Array ? 255 : 1; // byte eller tal 0–1
     const off = new Set();
     u.ranges.forEach((r, ri) => {
       if (r.guid && !r.itemId) r.itemId = byGuid.get(r.guid) || null; // kopplad efter att modellen lästes
@@ -429,7 +445,8 @@ function l3bRecolor() {
       const cb = typeof l3pColorFor === "function" ? l3pColorFor(m, r) : null; // Färga efter värde (Egenskaper)
       const tint = u.tint && u.tint.get(ri); // tillfällig färg (bara sessionen) går före allt
       const rgb = tint || cb || (c ? [c.r, c.g, c.b] : r.base);
-      for (let i = r.start; i < r.start + r.count; i++) { d[i * 3] = rgb[0]; d[i * 3 + 1] = rgb[1]; d[i * 3 + 2] = rgb[2]; }
+      const c0 = K === 255 ? Math.round(rgb[0] * 255) : rgb[0], c1 = K === 255 ? Math.round(rgb[1] * 255) : rgb[1], c2 = K === 255 ? Math.round(rgb[2] * 255) : rgb[2];
+      for (let i = r.start; i < r.start + r.count; i++) { d[i * 3] = c0; d[i * 3 + 1] = c1; d[i * 3 + 2] = c2; }
     });
     col.needsUpdate = true;
     const was = u.tempOff || new Set();

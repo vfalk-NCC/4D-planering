@@ -29,9 +29,9 @@ function l3bmStart() {
   const hideBy = new Map();
   ents.forEach(e => {
     const u = e.mesh.userData.l3b, r = u.ranges[e.ri], [s, n] = l3bsIdx(e.mesh, e.ri);
-    const P = e.mesh.geometry.getAttribute("position").array, C = e.mesh.geometry.getAttribute("color").array;
+    const P = e.mesh.geometry.getAttribute("position").array, C = e.mesh.geometry.getAttribute("color").array, CK = C instanceof Uint8Array ? 1 / 255 : 1;
     const pos = new Float32Array(r.count * 3), col = new Float32Array(r.count * 3), off = e.mesh.position.clone().sub(c);
-    for (let i = 0; i < r.count; i++) { const k = (r.start + i) * 3; pos[i * 3] = P[k] + off.x; pos[i * 3 + 1] = P[k + 1] + off.y; pos[i * 3 + 2] = P[k + 2] + off.z; col[i * 3] = C[k]; col[i * 3 + 1] = C[k + 1]; col[i * 3 + 2] = C[k + 2]; }
+    for (let i = 0; i < r.count; i++) { const k = (r.start + i) * 3; pos[i * 3] = P[k] + off.x; pos[i * 3 + 1] = P[k + 1] + off.y; pos[i * 3 + 2] = P[k + 2] + off.z; col[i * 3] = C[k] * CK; col[i * 3 + 1] = C[k + 1] * CK; col[i * 3 + 2] = C[k + 2] * CK; }
     const idx = new Uint32Array(n); for (let i = 0; i < n; i++) idx[i] = u.origIdx[s + i] - r.start;
     const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(col, 3)); g.setIndex(new THREE.BufferAttribute(idx, 1)); g.computeVertexNormals();
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: new THREE.Color(0x2b1d8f) }));

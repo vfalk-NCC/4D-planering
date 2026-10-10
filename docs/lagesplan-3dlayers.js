@@ -83,7 +83,8 @@ function l3LayersRender() {
   } else mh += l3lTreeHtml(l3lay.root, 0);
   mh += `<button type="button" class="v3-wide" id="v3LayTcOn" title="De IFC-modeller som är tända i Trimble Connect just nu">Hämta tända modeller från TC…</button><div id="v3LayBldgBox"></div>`;
   // Sällan använt (Victor 2026-10-10: "flytta ner dessa under en avancerad flik"): ihopfällt längst ner.
-  mh += `<details class="v3-lay-adv" ${P.layAdv ? "open" : ""}><summary>Avancerat</summary><label class="v3-chk v3-lay-voids" title="Armering, inredning, installationer (rör, kanaler, el) och fästdon. Ofta en stor del av modellen – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayDetails" ${P.ifcDetails ? "checked" : ""} /> Visa detaljer (armering, installationer) – långsammare</label><label class="v3-chk v3-lay-voids" title="Fönster- och dörrhål sågas ut ur väggar och bjälklag. Gör inläsningen av stora modeller många gånger långsammare – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayVoids" ${P.ifcVoids ? "checked" : ""} /> Visa urtag (hål i väggar) – långsammare</label></details>`;
+  mh += `<details class="v3-lay-adv" ${P.layAdv ? "open" : ""}><summary>Avancerat</summary><label class="v3-chk v3-lay-voids" title="Armering, inredning, installationer (rör, kanaler, el) och fästdon. Ofta en stor del av modellen – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayDetails" ${P.ifcDetails ? "checked" : ""} /> Visa detaljer (armering, installationer) – långsammare</label><label class="v3-chk v3-lay-voids" title="Fönster- och dörrhål sågas ut ur väggar och bjälklag. Gör inläsningen av stora modeller många gånger långsammare – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayVoids" ${P.ifcVoids ? "checked" : ""} /> Visa urtag (hål i väggar) – långsammare</label>`
+    + `<label class="v3-chk v3-lay-voids" title="Högsta antal trianglar för alla modeller tillsammans. Högre visar mer av stora modeller men kräver mer minne – för högt kan få fliken att stängas på en dator med lite minne. Gäller modeller som läses in efter att du ändrat.">Tak för trianglar <select id="v3LayCap">${[["", `Auto (${(l3bAutoTris() / 1e6).toFixed(0)} milj.)`], ...L3B_CAPS.map(c => [String(c), `${c} miljoner`])].map(([v, l]) => `<option value="${v}" ${String(P.triCap || "") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label></details>`;
   if (l3lay.err) mh += `<div class="v3-pal-hint bad">${esc(l3lay.err)}</div><button type="button" class="v3-wide" id="v3LayRetry">Försök igen</button>`;
   // 3D-modeller överst (Victor 2026-10-10): flikarna Hämtade 3D-modeller (de inlästa) och Trimble Connect mapp.
   const sortNow = P.laySort || "list";
@@ -133,6 +134,13 @@ function l3LayersRender() {
   if (de) de.onchange = () => { l3SetPref("ifcDetails", de.checked); l3Status(de.checked ? "Detaljer visas i modeller som läses in härefter (långsammare)." : "Detaljer hoppas över i modeller som läses in härefter (snabbare)."); };
   const vo = host.querySelector("#v3LayVoids");
   if (vo) vo.onchange = () => { l3SetPref("ifcVoids", vo.checked); l3Status(vo.checked ? "Urtag visas i modeller som läses in härefter (långsammare)." : "Urtag hoppas över i modeller som läses in härefter (snabbare)."); };
+  const cap = host.querySelector("#v3LayCap");
+  if (cap) cap.onchange = () => {
+    l3SetPref("triCap", cap.value ? Number(cap.value) : null);
+    const cut = l3b.models.filter(m => m.capped && m.src);
+    l3Status(`Taket är ${(l3bMaxTris() / 1e6).toFixed(0)} miljoner trianglar.${cut.length ? ` ${cut.map(m => m.name).join(", ")} läses in igen.` : " Gäller modeller som läses in härefter."}`);
+    if (cut.length) l3bLoad(cut.map(m => m.src), { replace: true });
+  };
   const tcOn = host.querySelector("#v3LayTcOn");
   if (tcOn) tcOn.onclick = () => { if (typeof l3bOpenDialog === "function") l3bOpenDialog("v3LayBldgBox"); };
   // Rotmappen hämtas en gång (Försök igen i felraden om det misslyckas).
