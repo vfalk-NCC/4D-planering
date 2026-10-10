@@ -905,6 +905,8 @@ function l3Tap(e) {
   if (l3.tool && l3.tool !== "select" && typeof l3ToolTap === "function" && l3ToolTap(e)) return;
   if (l3.addType) return l3AddAt(e);
   if (typeof l3dTap === "function" && l3dTap(e)) return; // DXF-redigering pågår
+  // Ett tryck i bilden avmarkerar måtten (måttet markeras genom att trycka på dess text).
+  if (typeof l3m !== "undefined" && l3m.sel && l3m.sel.size) { l3m.sel.clear(); l3mDraw(); if (typeof l3kRenderTab === "function") l3kRenderTab(); }
   if (typeof l3kTap === "function" && l3kTap(e)) return; // kommentarens skylt
   const id = l3PlaceAt(e);
   if (id) {

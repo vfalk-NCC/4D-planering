@@ -217,6 +217,24 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   if (mex.names.length !== 2 || mex.names[0] === mex.names[1] || !/^Mått Plan 1 \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(mex.names[0]) || mex.folder !== 'Lägesplan' || mex.meshes < 3 || !mex.with || mex.without || !mex.props) fail('Exportera måtten som IFC: ' + JSON.stringify(mex));
   const un = await page.evaluate(() => [tcUniqueName('X 1.ifc'), tcUniqueName('X 1.ifc'), tcUniqueName('x 1.IFC')]);
   if (un.join('|') !== 'X 1.ifc|X 1 (2).ifc|x 1 (3).IFC') fail('Unika filnamn till TC: ' + un.join('|'));
+  // Visa/dölj alla måttkommentarer.
+  await page.click('#v3MeasNotesOff'); await page.waitForTimeout(150);
+  const nOff = await page.evaluate(() => ({ s: l3m.list[0].showNote, lbl: document.querySelector('.v3-meas-keep').textContent }));
+  await page.click('#v3MeasNotesOn'); await page.waitForTimeout(150);
+  const nOn = await page.evaluate(() => ({ s: l3m.list[0].showNote, lbl: document.querySelector('.v3-meas-keep').textContent }));
+  if (nOff.s !== false || /fundament/.test(nOff.lbl) || nOn.s !== true || !/fundament/.test(nOn.lbl)) fail('Visa/dölj alla måttkommentarer: ' + JSON.stringify({ nOff, nOn }));
+  // Markera måttet genom att trycka på texten och dra måttlinjen uppåt – fästpunkterna sitter kvar.
+  await page.evaluate(() => { l3SetTool('select'); const m = l3m.list[0], c = new THREE.Vector3((m.pts[0][0] + m.pts[1][0]) / 2 - l3.O[0], (m.pts[0][1] + m.pts[1][1]) / 2 - l3.O[1], m.pts[0][2] - l3.O[2]); l3StopFly(); l3.orbit.target.copy(c); l3.camera.position.copy(c).add(new THREE.Vector3(2, -18, 7)); l3.orbit.update(); l3Render(); });
+  await page.waitForTimeout(300);
+  const lb0 = await page.evaluate(() => { const r = document.querySelector('.v3-meas-keep').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, pts: JSON.stringify(l3m.list[0].pts) }; });
+  await page.mouse.move(lb0.x, lb0.y); await page.mouse.down(); await page.mouse.move(lb0.x, lb0.y - 60, { steps: 6 }); await page.mouse.up();
+  await page.waitForTimeout(400);
+  const dr = await page.evaluate(() => { const r = document.querySelector('.v3-meas-keep').getBoundingClientRect(); return { y: r.top + r.height / 2, off: l3m.list[0].off, sel: l3m.sel.has(l3m.list[0].id), cls: document.querySelector('.v3-meas-keep').className, pts: JSON.stringify(l3m.list[0].pts), lines: l3.groups.measKeep.children.filter(o => o.isLine).length }; });
+  const svOff = (JSON.parse(gh.get('projects/p1/plan_measures.json') || '[]')[0] || {}).off;
+  if (!(dr.off > 0.5) || !dr.sel || !/ sel/.test(dr.cls) || dr.pts !== lb0.pts || dr.y > lb0.y - 30 || dr.lines !== 3 || Math.abs(svOff - dr.off) > 1e-6) fail('Dra måttlinjen uppåt: ' + JSON.stringify({ lb0, dr, svOff }));
+  if (process.env.SHOTD) await page.screenshot({ path: process.env.SHOTD });
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(200);
+  if (await page.evaluate(() => l3m.list[0].off)) fail('Ctrl+Z ska ta tillbaka måttlinjen');
   if (process.env.SHOTM) await page.screenshot({ path: process.env.SHOTM });
   await page.evaluate(() => l3SetTool('select'));
 
