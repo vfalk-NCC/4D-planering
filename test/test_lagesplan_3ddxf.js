@@ -195,6 +195,28 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   await page.click('#v3MeasSec [data-mexp]');
   const dl = await page.evaluate(() => [...document.querySelectorAll('#v3MeasSec .v3-mdl dt')].map(x => x.textContent));
   if (!dl.includes('Vågrätt') || !dl.includes('Lutning') || !dl.some(x => /Punkt 2/.test(x)) || !dl.includes('Mätt av')) fail('Måttets detaljer: ' + JSON.stringify(dl));
+  // Kommentar på måttet: syns i 3D först när Visa i 3D är ibockad.
+  await page.fill('#v3MeasSec [data-mnote]', 'Mått mellan fundament'); await page.press('#v3MeasSec [data-mnote]', 'Enter'); await page.waitForTimeout(150);
+  const lb1 = await page.evaluate(() => document.querySelector('.v3-meas-keep').textContent);
+  await page.check('#v3MeasSec [data-mshow]'); await page.waitForTimeout(300);
+  const lb2 = await page.evaluate(() => document.querySelector('.v3-meas-keep').textContent);
+  const savedN = JSON.parse(gh.get('projects/p1/plan_measures.json') || '[]')[0] || {};
+  if (/fundament/.test(lb1) || !/^10(,0\d)? m – Mått mellan fundament$/.test(lb2) || savedN.note !== 'Mått mellan fundament' || savedN.showNote !== true) fail('Kommentar på måttet: ' + JSON.stringify({ lb1, lb2, savedN }));
+  // Exportera måtten som IFC till TC – med och utan kommentarer.
+  const mex = await page.evaluate(async () => {
+    const out = []; const orig = askOpener;
+    askOpener = async (type, extra, t, p) => { if (type === 'tcUpload') { out.push({ name: extra.files[0].name, folder: extra.folder, bytes: new Uint8Array(await extra.files[0].arrayBuffer()) }); return { uploaded: 1, folder: extra.folder }; } return orig(type, extra, t, p); };
+    l3SetPref('measExpNotes', true); await l3mExportIfc();
+    l3SetPref('measExpNotes', false); await l3mExportIfc([l3m.list[0].id]);
+    l3SetPref('measExpNotes', true); askOpener = orig;
+    const api = await ifcmLoad(); let meshes = 0;
+    const id = api.OpenModel(out[0].bytes, { COORDINATE_TO_ORIGIN: false }); api.StreamAllMeshes(id, () => { meshes++; }); api.CloseModel(id);
+    const t = out.map(o => new TextDecoder().decode(o.bytes));
+    return { names: out.map(o => o.name), folder: out[0].folder, meshes, with: /fundament/i.test(t[0]), without: /fundament/i.test(t[1]), props: /'Lutning'/.test(t[0]) && /'Punkt 2'/.test(t[0]) };
+  });
+  if (mex.names.length !== 2 || mex.names[0] === mex.names[1] || !/^Mått Plan 1 \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(mex.names[0]) || mex.folder !== 'Lägesplan' || mex.meshes < 3 || !mex.with || mex.without || !mex.props) fail('Exportera måtten som IFC: ' + JSON.stringify(mex));
+  const un = await page.evaluate(() => [tcUniqueName('X 1.ifc'), tcUniqueName('X 1.ifc'), tcUniqueName('x 1.IFC')]);
+  if (un.join('|') !== 'X 1.ifc|X 1 (2).ifc|x 1 (3).IFC') fail('Unika filnamn till TC: ' + un.join('|'));
   if (process.env.SHOTM) await page.screenshot({ path: process.env.SHOTM });
   await page.evaluate(() => l3SetTool('select'));
 

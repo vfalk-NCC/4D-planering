@@ -75,6 +75,16 @@ window.addEventListener("message", e => {
   const done = bridgeWait.get(e.data.reqId);
   if (done) { bridgeWait.delete(e.data.reqId); done(e.data); }
 });
+/* Filnamn som aldrig återanvänds under sessionen: två sparningar samma sekund får " (2)", " (3)" … – en
+   uppladdning till TC ska alltid bli en ny fil, aldrig en ny version av en tidigare (Victor). */
+const tcUsedNames = new Set();
+function tcUniqueName(name) {
+  const m = String(name).match(/^(.*?)(\.[^.]+)?$/), base = m[1], ext = m[2] || "";
+  let n = name, i = 2;
+  while (tcUsedNames.has(n.toLowerCase())) n = `${base} (${i++})${ext}`;
+  tcUsedNames.add(n.toLowerCase());
+  return n;
+}
 function askOpener(type, extra = {}, timeoutMs = 10000, onProgress = null) {
   return new Promise((resolve, reject) => {
     const op = window.opener;

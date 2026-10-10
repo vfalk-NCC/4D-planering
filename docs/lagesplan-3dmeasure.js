@@ -9,7 +9,9 @@
    – Skift med mätverktyget: riktningen från förra punkten hoppar 5° åt gången (vågrätt), höjden följer
      fästpunkten. */
 
-const l3m = { list: [], loaded: false, hidden: false, labels: new Map() };
+const l3m = { list: [], loaded: false, hidden: false, labels: new Map(), sel: new Set(), anchor: null };
+/* Etiketten i 3D: bara måttet, eller "12,95 m – Mått mellan fundament" när kommentaren ska visas (Victor 2026-10-10). */
+const l3mLabel = m => (m.showNote && m.note ? `${m.text} – ${m.note}` : m.text);
 const l3mPath = () => `projects/${encodeURIComponent(projectId)}/plan_measures.json`;
 
 /* Skift: riktningen från base låst till var 5:e grad (anropas av l3Target). */
@@ -64,7 +66,7 @@ function l3mDraw() {
     const at = m.kind === "angle" ? P[1] : m.kind === "area" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length) : P[0].clone().add(P[P.length - 1]).multiplyScalar(0.5);
     const el = document.createElement("div");
     el.className = "v3-meas v3-meas-keep" + (m.saved ? " saved" : "");
-    el.textContent = m.text; el.dataset.mid = m.id;
+    el.textContent = l3mLabel(m); el.dataset.mid = m.id;
     host.appendChild(el);
     l3m.labels.set(m.id, el); el._at = at;
   });
@@ -176,15 +178,24 @@ function l3mTabHtml() {
   const esc = escHtml, I = L3_ICO, n = l3m.list.length, uns = l3m.list.filter(x => !x.saved).length;
   l3m.exp = l3m.exp || new Set();
   const open = l3m.secOpen !== false;
+  l3m.sel.forEach(id => { if (!l3m.list.some(m => m.id === id)) l3m.sel.delete(id); });
+  const nSel = l3m.sel.size, withNotes = l3Prefs().measExpNotes !== false;
   return `<section class="v3-msec" id="v3MeasSec"><button type="button" class="v3-msec-h" id="v3MeasHead" aria-expanded="${open}"><i>›</i>Mått <span>${n}${uns ? ` · ${uns} osparade` : ""}</span></button>
     ${open ? `${n ? `<div class="v3-kc-list">${l3m.list.map((m, i) => { const inf = l3mInfo(m), ex = l3m.exp.has(m.id); return `<div class="v3-mr ${ex ? "ex" : ""}">
-      <div class="v3-kc"><i class="v3-mdot ${m.saved ? "saved" : ""}" title="${m.saved ? "Sparad i projektet" : "Inte sparad"}"></i>
-        <button type="button" class="v3-kc-b" data-mzoom="${esc(m.id)}" title="Zooma till måttet"><b>${L3M_KIND[m.kind] || ""} ${esc(m.text).replace(/ (m²?|°)$/, "&nbsp;$1")}</b><em>${esc(inf.sub)}</em>${inf.objTxt ? `<em>${esc(inf.objTxt)}</em>` : ""}</button>
+      <div class="v3-kc ${l3m.sel.has(m.id) ? "sel" : ""}"><i class="v3-mdot ${m.saved ? "saved" : ""}" title="${m.saved ? "Sparad i projektet" : "Inte sparad"}"></i>
+        <button type="button" class="v3-kc-b" data-mzoom="${esc(m.id)}" title="Klick: zooma till måttet · Ctrl+klick: välj flera · Skift+klick: välj flera i rad"><b>${L3M_KIND[m.kind] || ""} ${esc(m.text).replace(/ (m²?|°)$/, "&nbsp;$1")}</b>${m.note ? `<em class="v3-mnote">${m.showNote ? "" : "(dold) "}${esc(m.note)}</em>` : ""}<em>${esc(inf.sub)}</em>${inf.objTxt ? `<em>${esc(inf.objTxt)}</em>` : ""}</button>
         <button type="button" class="v3-ic" data-mexp="${esc(m.id)}" title="${ex ? "Dölj detaljerna" : "Visa alla detaljer"}" aria-expanded="${ex}">${ex ? "▴" : "▾"}</button>
         <button type="button" class="v3-ic" data-mcopy="${esc(m.id)}" title="Kopiera måttet med alla detaljer">${I.copy || "⧉"}</button>
         <button type="button" class="v3-ic" data-mdel="${esc(m.id)}" title="Ta bort måttet">${I.trash}</button></div>
-      ${ex ? `<dl class="v3-mdl">${inf.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : ""}</div>`; }).join("")}</div>` : `<div class="v3-pal-hint">Inga mått än. Mät med Mät (M) – avstånd, vinkel eller yta – så hamnar de här.</div>`}
-    ${n ? `<div class="v3-grp-acts"><button type="button" id="v3MeasSave" ${uns ? "" : "disabled"} title="Spara de osparade måtten i projektet (finns kvar nästa gång och för andra)">${I.upload} Spara i projektet${uns ? ` (${uns})` : ""}</button>
+      ${ex ? `<div class="v3-mnoteed"><input type="text" data-mnote="${esc(m.id)}" value="${esc(m.note || "")}" placeholder="Kommentar till måttet, t.ex. Mått mellan fundament" maxlength="120" />
+        <label class="v3-chk" title="Visa kommentaren efter måttet i 3D: ${esc(m.text)} – kommentar"><input type="checkbox" data-mshow="${esc(m.id)}" ${m.showNote ? "checked" : ""} ${m.note ? "" : "disabled"} /> Visa i 3D</label></div>
+      <dl class="v3-mdl">${inf.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : ""}</div>`; }).join("")}</div>` : `<div class="v3-pal-hint">Inga mått än. Mät med Mät (M) – avstånd, vinkel eller yta – så hamnar de här.</div>`}
+    ${n ? `<div class="v3-grp-acts">
+      <button type="button" id="v3MeasIfcSel" ${nSel ? "" : "disabled"} title="De markerade måtten (Ctrl+klick / Skift+klick) som 3D-objekt i en ny IFC-fil i Trimble Connect">${I.upload} Exportera markerade${nSel ? ` (${nSel})` : ""}</button>
+      <button type="button" id="v3MeasIfc" title="Alla mått som 3D-objekt (linje, ändpunkter och skylt med måttet) i en ny IFC-fil i Trimble Connect">${I.upload} Exportera alla mått</button>
+      <label class="v3-chk" title="Ta med måttens kommentarer på skyltarna i IFC:n"><input type="checkbox" id="v3MeasExpNotes" ${withNotes ? "checked" : ""} /> Med kommentarer</label>
+      ${nSel ? `<button type="button" id="v3MeasSelClr">Avmarkera</button>` : ""}
+      <button type="button" id="v3MeasSave" ${uns ? "" : "disabled"} title="Spara de osparade måtten i projektet (finns kvar nästa gång och för andra)">${I.upload} Spara i projektet${uns ? ` (${uns})` : ""}</button>
       <button type="button" id="v3MeasHide">${l3m.hidden ? I.eye + " Visa måtten" : I.eyeOff + " Dölj måtten"}</button>
       <button type="button" id="v3MeasCopyAll" title="Alla mått med detaljer som text (t.ex. till e-post eller Excel)">${I.copy || "⧉"} Kopiera alla</button>
       <button type="button" id="v3MeasClr" ${uns ? "" : "disabled"}>${I.trash} Rensa osparade</button></div>` : ""}` : ""}</section>`;
@@ -199,9 +210,127 @@ function l3mBindTab(host) {
   host.querySelectorAll("[data-mexp]").forEach(x => { x.onclick = e => { e.stopPropagation(); const id = x.dataset.mexp; l3m.exp.has(id) ? l3m.exp.delete(id) : l3m.exp.add(id); l3kRenderTab(); }; });
   const copy = t => { try { navigator.clipboard.writeText(t).then(() => l3Toast("Kopierat."), () => l3Status("Kunde inte kopiera.", true)); } catch (err) { l3Status("Kunde inte kopiera.", true); } };
   host.querySelectorAll("[data-mcopy]").forEach(x => { x.onclick = e => { e.stopPropagation(); const m = l3m.list.find(y => y.id === x.dataset.mcopy); if (m) copy(l3mCopyText([m])); }; });
-  host.querySelectorAll("[data-mzoom]").forEach(x => { x.onclick = e => { e.stopPropagation(); const m = l3m.list.find(y => y.id === x.dataset.mzoom); if (!m) return; if (l3m.hidden) l3mToggle(true); const b3 = new THREE.Box3(); m.pts.forEach(p => b3.expandByPoint(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]))); l3FlyTo(b3.getCenter(new THREE.Vector3()), Math.max(6, b3.getSize(new THREE.Vector3()).length() * 1.6)); }; });
+  const ids = l3m.list.map(m => m.id);
+  host.querySelectorAll("[data-mzoom]").forEach(x => { x.onclick = e => { e.stopPropagation(); const m = l3m.list.find(y => y.id === x.dataset.mzoom); if (!m) return;
+    // Som kommentarerna: Ctrl+klick väljer flera, Skift+klick ett intervall, vanligt klick zoomar.
+    if (e.shiftKey && l3m.anchor && ids.includes(l3m.anchor)) { const a = ids.indexOf(l3m.anchor), z = ids.indexOf(m.id); if (!(e.ctrlKey || e.metaKey)) l3m.sel.clear(); ids.slice(Math.min(a, z), Math.max(a, z) + 1).forEach(id => l3m.sel.add(id)); l3kRenderTab(); return; }
+    if (e.ctrlKey || e.metaKey) { l3m.sel.has(m.id) ? l3m.sel.delete(m.id) : l3m.sel.add(m.id); l3m.anchor = m.id; l3kRenderTab(); return; }
+    l3m.sel.clear(); l3m.sel.add(m.id); l3m.anchor = m.id; l3kRenderTab();
+    if (l3m.hidden) l3mToggle(true); const b3 = new THREE.Box3(); m.pts.forEach(p => b3.expandByPoint(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]))); l3FlyTo(b3.getCenter(new THREE.Vector3()), Math.max(6, b3.getSize(new THREE.Vector3()).length() * 1.6)); }; });
   on("#v3MeasSave", () => l3mSave());
+  on("#v3MeasSelClr", () => { l3m.sel.clear(); l3m.anchor = null; l3kRenderTab(); });
+  const ex = (sel, idsFn) => on(sel, async b => { b.disabled = true; try { await l3mExportIfc(idsFn && idsFn()); } catch (err) { /* statusraden */ } if (b.isConnected) b.disabled = false; });
+  ex("#v3MeasIfc", null); ex("#v3MeasIfcSel", () => [...l3m.sel]);
+  const wn = host.querySelector("#v3MeasExpNotes"); if (wn) wn.onchange = () => l3SetPref("measExpNotes", wn.checked);
+  host.querySelectorAll("[data-mnote]").forEach(inp => {
+    inp.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") inp.blur(); if (e.key === "Escape") { inp.value = (l3m.list.find(y => y.id === inp.dataset.mnote) || {}).note || ""; inp.blur(); } };
+    inp.onchange = () => { const m = l3m.list.find(y => y.id === inp.dataset.mnote); if (!m) return; const v = inp.value.trim(); if ((m.note || "") === v) return; m.note = v; if (v && m.showNote === undefined) m.showNote = false; if (!v) m.showNote = false; l3mChanged(m); };
+  });
+  host.querySelectorAll("[data-mshow]").forEach(cb => { cb.onchange = () => { const m = l3m.list.find(y => y.id === cb.dataset.mshow); if (!m) return; m.showNote = cb.checked; l3mChanged(m); }; });
   on("#v3MeasHide", () => l3mToggle());
   on("#v3MeasCopyAll", () => copy(l3mCopyText(l3m.list)));
   on("#v3MeasClr", () => l3mClearUnsaved());
+}
+
+/* Kommentaren på ett mått ändrad: rita om och – om måttet redan är sparat – spara ändringen i projektet. */
+function l3mChanged(m) {
+  l3mDraw(); l3kRenderTab();
+  if (!m.saved) return;
+  const { saved, ...rec } = m;
+  ghWriteJSON(token, l3mPath(), arr => [...(Array.isArray(arr) ? arr : []).filter(x => x.id !== m.id), rec], "3D: måttets kommentar").catch(e => l3Status("Kunde inte spara måttets kommentar: " + e.message, true));
+}
+
+/* ---- Måtten som 3D-objekt i IFC (Victor 2026-10-10: "exportera måtten likt jag kan göra med
+   3d-kommentarerna … med eller utan kommentarer") ------------------------------------------------------
+   Varje mått: linjerna som tunna rör med markerade ändpunkter (ytan: kanterna och en tunn platta) och en
+   vit skylt med måttet – och kommentaren om den ska med – som 3D-text på båda sidor, vänd mot vyn.
+   Egenskaperna (värde, vågrätt, höjdskillnad, lutning, objekt, koordinater …) ligger i "4D-planering". */
+const L3M_IFC = { r: 0.02, dot: 0.06, T: 0.04, tT: 0.015, pad: 0.1, lift: 0.35, red: "#dc2626" };
+function l3mIfcBuild(list, withNotes) {
+  if (!list.length) return null;
+  const doc = ifcDoc("4D-planering – " + (plan ? plan.name : ""), "Mått från 3D-vyn i Lägesplan"), E = doc.E;
+  const d = l3.orbit.target.clone().sub(l3.camera.position); d.z = 0;
+  if (d.lengthSq() < 1e-9) d.set(0, 1, 0);
+  d.normalize();
+  const r = [d.y, -d.x], n = [-d.x, -d.y];
+  const dir = v => E(`IFCDIRECTION(${ifcPt(v)})`);
+  const red = doc.style("matt", L3M_IFC.red, "Mått"), white = doc.style("matt-skylt", "#ffffff", "Måttskylt"), fillSt = doc.style("matt-yta", L3M_IFC.red, "Måttyta", 0.6);
+  const elems = [];
+  const W1 = (t, h) => ifcTextStrokes(t).width * h / 6;
+  // Rör från a till b (relativt elementets punkt o), cirkelprofil med radie rad.
+  const tube = (a, b, rad) => {
+    const v = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L = Math.hypot(...v);
+    if (L < 1e-4) return null;
+    const ax = v.map(x => x / L), ref = Math.abs(ax[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+    // refDirection vinkelrät mot axeln.
+    const dt = ref[0] * ax[0] + ref[1] * ax[1] + ref[2] * ax[2], rf = [ref[0] - dt * ax[0], ref[1] - dt * ax[1], ref[2] - dt * ax[2]], rl = Math.hypot(...rf);
+    const s = E(`IFCEXTRUDEDAREASOLID(${E(`IFCCIRCLEPROFILEDEF(.AREA.,$,$,${ifcNum(rad)})`)},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt(a)})`)},${dir(ax)},${dir(rf.map(x => x / rl))})`)},${dir([0, 0, 1])},${ifcNum(L)})`);
+    E(`IFCSTYLEDITEM(${s},(${red}),$)`);
+    return s;
+  };
+  // Ändpunkt: en kort tjockare cylinder längs linjen.
+  const dotAt = (p, ax) => { const h = L3M_IFC.dot; return tube(p.map((x, i) => x - ax[i] * h), p.map((x, i) => x + ax[i] * h), L3M_IFC.dot); };
+  list.forEach(({ m, nr }) => {
+    const P = m.pts, o = P[0], rel = p => [p[0] - o[0], p[1] - o[1], p[2] - o[2]];
+    const items = [];
+    const segs = m.kind === "area" ? P.map((p, i) => [p, P[(i + 1) % P.length]]) : P.slice(1).map((p, i) => [P[i], p]);
+    segs.forEach(([a, b]) => { const t = tube(rel(a), rel(b), L3M_IFC.r); if (t) items.push(t); });
+    P.forEach((p, i) => {
+      const q = P[i + 1] || P[i - 1]; if (!q) return;
+      const v = [q[0] - p[0], q[1] - p[1], q[2] - p[2]], L = Math.hypot(...v) || 1;
+      const dt = dotAt(rel(p), v.map(x => x / L)); if (dt) items.push(dt);
+    });
+    if (m.kind === "area" && P.length >= 3) {
+      const zAvg = P.reduce((s2, p) => s2 + p[2], 0) / P.length - o[2];
+      const poly = E(`IFCPOLYLINE((${[...P, P[0]].map(p => E(`IFCCARTESIANPOINT(${ifcPt([p[0] - o[0], p[1] - o[1]])})`)).join(",")}))`);
+      const fill = E(`IFCEXTRUDEDAREASOLID(${E(`IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,${poly})`)},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, 0, zAvg])})`)},$,$)`)},${dir([0, 0, 1])},0.01)`);
+      E(`IFCSTYLEDITEM(${fill},(${fillSt}),$)`); items.push(fill);
+    }
+    const inf = l3mInfo(m), name = `Mått ${nr}: ${m.text}${withNotes && m.note ? " – " + m.note : ""}`;
+    const el = doc.proxy(name.slice(0, 120), withNotes ? m.note || "" : "", "4D-mått", doc.place(o), doc.shape(items.join(","), "SweptSolid"), m.id);
+    elems.push(el);
+    doc.props(el, [["Typ", L3M_KIND[m.kind] || m.kind], ["Värde", m.text], ...(withNotes ? [["Kommentar", m.note || ""]] : []), ["Nummer", nr],
+      ...inf.rows.filter(([k]) => k !== "Status").map(([k, v]) => [k, String(v).replace(/\n/g, ", ")]), ["Arbetsyta", plan ? plan.name || "" : ""]]);
+    // Skylten med måttet (och kommentaren) – vit platta strax ovanför mitten, 3D-text på båda sidor.
+    const raw = withNotes && m.note ? (typeof wrapText === "function" ? wrapText(m.note, 30) : m.note).split("\n").filter(Boolean).slice(0, 3) : [];
+    const lines = [{ t: m.text, h: 0.22 }, ...raw.map(t => ({ t, h: 0.15 }))];
+    const W = Math.max(0.6, ...lines.map(l => W1(l.t, l.h))) + L3M_IFC.pad * 2, H = lines.reduce((a, l) => a + l.h * 1.4, 0) + L3M_IFC.pad * 1.4;
+    const at = m.kind === "angle" ? P[1] : P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0]);
+    const center = [at[0], at[1], (m.kind === "area" ? Math.max(...P.map(p => p[2])) : at[2]) + L3M_IFC.lift + H / 2];
+    const axes = (p, rx, ry, nx, ny) => E(`IFCLOCALPLACEMENT(${doc.sitePl},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt(p)})`)},${dir([nx, ny, 0])},${dir([rx, ry, 0])})`)})`);
+    const board = E(`IFCEXTRUDEDAREASOLID(${E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,$,${ifcNum(W)},${ifcNum(H)})`)},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, 0, -L3M_IFC.T / 2])})`)},$,$)`)},${dir([0, 0, 1])},${ifcNum(L3M_IFC.T)})`);
+    E(`IFCSTYLEDITEM(${board},(${white}),$)`);
+    const bEl = doc.proxy(`${name.slice(0, 100)} – skylt`, "Skylt", "4D-måttskylt", axes(center, r[0], r[1], n[0], n[1]), doc.shape(board, "SweptSolid"), m.id);
+    elems.push(bEl);
+    [[1, 1], [-1, -1]].forEach(([sr, sn]) => {
+      const meshes = [];
+      let y = H / 2 - L3M_IFC.pad * 0.7;
+      lines.forEach(({ t, h }, li) => { const msh = ifcTextSolid(doc, t, { h, t: L3M_IFC.tT, rx: 1, ry: 0, start: -W / 2 + L3M_IFC.pad, across: y - h / 2, style: li ? doc.textStyle : red }); if (msh) meshes.push(msh); y -= h * 1.4; });
+      if (!meshes.length) return;
+      const p = [center[0] + sn * n[0] * L3M_IFC.T / 2, center[1] + sn * n[1] * L3M_IFC.T / 2, center[2]];
+      elems.push(doc.proxy(`${name.slice(0, 100)} – text`, "Text", "4D-måtttext", axes(p, sr * r[0], sr * r[1], sn * n[0], sn * n[1]), doc.shape(meshes.join(","), "Tessellation"), m.id));
+    });
+  });
+  const d2 = new Date(), p2 = x => String(x).padStart(2, "0");
+  const fileName = `Mått ${plan ? plan.name : ""} ${d2.getFullYear()}-${p2(d2.getMonth() + 1)}-${p2(d2.getDate())} kl ${p2(d2.getHours())}.${p2(d2.getMinutes())}.${p2(d2.getSeconds())}.ifc`.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ");
+  const fn = typeof tcUniqueName === "function" ? tcUniqueName(fileName) : fileName;
+  return { text: doc.finish(elems, fn), fileName: fn, n: list.length };
+}
+/* ids: bara de måtten (markerade); annars alla. Ny fil i TC (mappen Lägesplan) varje gång. */
+async function l3mExportIfc(ids) {
+  const want = ids ? new Set(ids) : null;
+  const list = l3m.list.map((m, i) => ({ m, nr: i + 1 })).filter(({ m }) => !want || want.has(m.id));
+  if (!list.length) { l3Status("Inga mått att exportera.", true); return null; }
+  const withNotes = l3Prefs().measExpNotes !== false;
+  const r = l3mIfcBuild(list, withNotes);
+  const file = new File([new TextEncoder().encode(r.text)], r.fileName, { type: "application/x-step" });
+  const key = "mifc";
+  busyProgress(key, `Sparar ${r.fileName}`, 0.3);
+  try {
+    if (!window.opener || window.opener.closed) throw new Error("öppna lägesplanen via 4D-planering för att spara i Trimble Connect");
+    const up = await askOpener("tcUpload", { folder: "Lägesplan", files: [file] }, 10 * 60 * 1000);
+    busyProgress(key, "", null);
+    l3Toast(`${r.n} mått sparade som 3D-objekt i Trimble Connect${withNotes ? " (med kommentarer)" : ""}: ${r.fileName}${up && up.folder ? ` (${up.folder})` : ""}.`, null, null, 9000);
+    return r;
+  } catch (e) { busyProgress(key, "", null); l3Status("Kunde inte spara måtten som IFC: " + e.message, true); throw e; }
 }

@@ -441,7 +441,8 @@ function l3kIfcBuild(list) {
   });
   const d2 = new Date(), p2 = x => String(x).padStart(2, "0");
   const fileName = `Kommentarer ${plan ? plan.name : ""} ${d2.getFullYear()}-${p2(d2.getMonth() + 1)}-${p2(d2.getDate())} kl ${p2(d2.getHours())}.${p2(d2.getMinutes())}.${p2(d2.getSeconds())}.ifc`.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ");
-  return { text: doc.finish(elems, fileName), fileName, n: list.length };
+  const fn = typeof tcUniqueName === "function" ? tcUniqueName(fileName) : fileName;
+  return { text: doc.finish(elems, fn), fileName: fn, n: list.length };
 }
 /* ids: bara de kommentarerna (markerade i listan); annars alla som syns. Numret är alltid kommentarens nummer i listan. */
 async function l3kExportIfc(ids) {
