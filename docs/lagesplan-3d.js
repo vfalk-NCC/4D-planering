@@ -139,6 +139,7 @@ async function open3d() {
     await l3BuildPlan();
     if (typeof l3sRefresh === "function") l3sRefresh(0); // 2D-lagren och DXF
     if (typeof l3mLoad === "function") l3mLoad().catch(e => console.warn(e)); // sparade mått
+    if (typeof l3kLoad === "function") l3kLoad().catch(e => console.warn(e)); // kommentarer
     l3BuildObjects();
     if (typeof l3bRebuild === "function") l3bRebuild();
     // Byggnaden som var tänd förra gången: direkt ur cachen (versionen kontrolleras i bakgrunden).
@@ -439,7 +440,7 @@ function l3Init(box) {
   scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 0.8));
   const sun = new THREE.DirectionalLight(0xffffff, 0.65); sun.position.set(-0.5, -0.8, 1.2); scene.add(sun);
   const orbit = new THREE.OrbitControls(camera, renderer.domElement);
-  orbit.enableDamping = false; orbit.screenSpacePanning = true; orbit.maxPolarAngle = Math.PI * 0.495;
+  orbit.enableDamping = false; orbit.screenSpacePanning = true; orbit.maxPolarAngle = Math.PI - 0.002; // hela vägen runt, även underifrån (Victor 2026-10-10)
   const gizmo = new THREE.TransformControls(camera, renderer.domElement);
   gizmo.setSpace("world"); gizmo.size = 0.9;
   scene.add(gizmo);
@@ -527,6 +528,7 @@ function l3Render() {
     if (typeof l3Piv !== "undefined" && l3Piv && l3Piv.on) l3PivMark(true); // rotationspunkten i samma bild
     if (typeof l3mPlaceLabels === "function") l3mPlaceLabels(); // måtten som ligger kvar
     if (typeof l3cPlace === "function") l3cPlace(); // saxarna på snitten
+    if (typeof l3kPlace === "function") l3kPlace(); // kommentarerna
     l3RenderLabels();
     if (typeof l3HandlesPos === "function") l3HandlesPos();
     if (typeof l3TouchBarUpdate === "function") l3TouchBarUpdate();
@@ -1056,7 +1058,8 @@ function l3OpenCtx(x, y, e) {
     ["dup", "Duplicera", "Ctrl+D"], ["copy", "Kopiera", "Ctrl+C"], ["drop", "Ställ på ytan", ""], ["similar", "Markera alla av samma typ", ""], ["focus", "Zooma hit", "F"], null,
     ["hide", "Dölj", "H"], ["iso", "Visa bara markerade", "I"], null,
     ["del", n === 1 ? "Ta bort" : `Ta bort ${n} objekt`, "Del"],
-  ] : [...(objHit ? [["hideobj", "Dölj objektet", ""], ["info", "Visa uppgifter", ""], null] : []), ["paste", "Klistra in här", "Ctrl+V"], ["showall", "Visa alla", "U"], ["fit", "Visa allt", "Home"], ["top", "Uppifrån", ""], ["clip", "Snitt här", ""]];
+    ...(typeof l3kNew === "function" && at ? [null, ["comment", "Kommentar här…", ""]] : []),
+  ] : [...(typeof l3kNew === "function" && at ? [["comment", "Kommentar här…", ""], null] : []), ...(objHit ? [["hideobj", "Dölj objektet", ""], ["info", "Visa uppgifter", ""], null] : []), ["paste", "Klistra in här", "Ctrl+V"], ["showall", "Visa alla", "U"], ["fit", "Visa allt", "Home"], ["top", "Uppifrån", ""], ["clip", "Snitt här", ""]];
   ctx.innerHTML = items.map(it => it ? `<button type="button" data-ctx="${it[0]}" ${it[0] === "paste" && !(l3.clip && l3.clip.length) ? "disabled" : ""} class="${it[0] === "del" ? "v3-danger" : ""}"><span>${it[1]}</span><kbd>${it[2]}</kbd></button>` : "<hr/>").join("");
   const r = document.getElementById("v3Canvas").getBoundingClientRect();
   ctx.classList.remove("hidden");
@@ -1072,6 +1075,7 @@ function l3OpenCtx(x, y, e) {
     else if (k === "cspec") l3OpenSpecial("copy"); else if (k === "mspec") l3OpenSpecial("move"); else if (k === "similar") l3SelectSimilar();
     else if (k === "hide") l3HideSel(); else if (k === "iso") l3Isolate(); else if (k === "showall") l3ShowAll();
     else if (k === "hideobj") l3HideHit(objHit); else if (k === "info") l3ShowHitInfo(objHit);
+    else if (k === "comment") l3kNew(at, hit);
     else if (k === "clip" && hit && hit.face) { const nrm = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize(); if (nrm.dot(l3.camera.position.clone().sub(hit.point)) < 0) nrm.negate(); l3AddClip(nrm.negate(), hit.point.clone()); }
   }; });
 }
@@ -1362,6 +1366,7 @@ function l3Key(e) {
   if (mod && k === "a") { e.preventDefault(); l3SelectIds(placements.filter(p => { const g = l3.placeMeshes.get(p.id); return g && g.visible; }).map(p => p.id)); return; }
   if (mod && k === "p") { e.preventDefault(); l3TogglePlan(); return; }
   if (e.key === "F2" && !mod) { e.preventDefault(); l3LogToggle(); return; }
+  if (e.key === "Escape" && typeof l3k !== "undefined" && (l3k.open || l3k.draft)) { l3kClose(); return; } // kommentarens popup
   if (mod && k === "b" && l3PalToggle) { e.preventDefault(); l3PalToggle(); return; } // visa/dölj vänstermenyn
   if (typeof l3dKey === "function" && l3dKey(e)) return; // DXF-redigering
   if (typeof l3DialogKey === "function" && l3DialogKey(e)) return;

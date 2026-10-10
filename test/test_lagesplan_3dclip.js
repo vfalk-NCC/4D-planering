@@ -116,6 +116,46 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   const top = await page.evaluate(() => { const d = l3.camera.position.clone().sub(l3.orbit.target).normalize(); return d.z; });
   if (top < 0.95) fail('Ctrl+Skift+U ska ge vy uppifrån: ' + top);
 
+  // Rotation hela vägen: under horisonten går nu (underifrån).
+  const rot = await page.evaluate(() => { l3StopFly(); const T = l3.orbit.target.clone(); l3.camera.position.set(T.x, T.y - 30, T.z + 20); l3.orbit.update(); for (let i = 0; i < 30; i++) l3OrbitAbout(T, 0, -0.1); return { max: l3.orbit.maxPolarAngle, below: l3.camera.position.z < T.z }; });
+  if (rot.max < 3 || !rot.below) fail('Vrid ska gå under horisonten: ' + JSON.stringify(rot));
+  // En sparad vy med snitt öppnar inte snittfönstret.
+  const sv = await page.evaluate(() => {
+    l3ClipHorizontal(); l3DlgClose('v3Clip'); l3SaveView('Snittvy'); l3.clips = []; l3ApplyClips();
+    const i = l3SavedViews().findIndex(v => v.name === 'Snittvy'); l3GoView(i);
+    const d = document.getElementById('v3Clip');
+    return { clips: l3.clips.length, dlg: !!(d && !d.classList.contains('hidden')), scissors: document.querySelectorAll('#view3d .v3-scissor').length };
+  });
+  await page.waitForTimeout(600);
+  if (sv.clips !== 1 || sv.dlg) fail('En sparad vy med snitt ska inte öppna snittfönstret: ' + JSON.stringify(sv));
+  await page.evaluate(() => { l3.clips = []; l3ApplyClips(); });
+
+  // Kommentar: högerklick på marken -> Kommentar här… -> popup med dagens datum, spara, svara, klar.
+  await page.evaluate(() => { l3StopFly(); const c = new THREE.Vector3(6512355 - l3.O[0], 150122 - l3.O[1], 0); l3.camera.position.set(c.x, c.y - 0.01, 40); l3.orbit.target.copy(c); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); });
+  const cv2 = await page.locator('#v3Canvas canvas').boundingBox();
+  await page.mouse.click(cv2.x + cv2.width / 2, cv2.y + cv2.height / 2, { button: 'right' }); await page.waitForTimeout(150);
+  await page.click('#v3Ctx [data-ctx="comment"]');
+  await page.waitForSelector('#v3CPop #v3CText');
+  const meta = await page.textContent('#v3CPop .v3-cpop-meta');
+  const today = new Date().toLocaleDateString('sv-SE', { day: 'numeric', month: 'short', year: 'numeric' });
+  if (!meta.includes('Victor') || !meta.includes(today)) fail('Popupen ska visa namn och dagens datum: ' + meta + ' / ' + today);
+  await page.fill('#v3CPop #v3CText', 'Kolla schaktet här innan gjutning');
+  await page.click('#v3CPop [data-k="save"]');
+  await page.waitForFunction(() => l3k.list.length === 1 && document.querySelector('#view3d .v3-cpin'), null, { timeout: 5000 });
+  await page.waitForTimeout(300);
+  const saved = JSON.parse(gh.get('projects/p1/plan_comments3d.json') || '[]');
+  if (saved.length !== 1 || saved[0].text !== 'Kolla schaktet här innan gjutning' || saved[0].by !== 'Victor' || saved[0].plan !== 'A' || saved[0].target.kind !== 'point') fail('Kommentaren ska sparas: ' + JSON.stringify(saved));
+  await page.keyboard.press('Escape');
+  await page.click('#view3d .v3-cpin');
+  await page.fill('#v3CPop #v3CReply', 'Klart, kollat');
+  await page.click('#v3CPop [data-k="reply"]'); await page.waitForTimeout(200);
+  await page.click('#v3CPop [data-k="done"]'); await page.waitForTimeout(300);
+  const cs = await page.evaluate(() => ({ replies: l3k.list[0].replies.length, done: l3k.list[0].done, pin: document.querySelector('#view3d .v3-cpin').classList.contains('done'), txt: document.querySelector('#v3CPop .v3-cpop-body').textContent }));
+  const saved2 = JSON.parse(gh.get('projects/p1/plan_comments3d.json') || '[]');
+  if (process.env.SHOT2) await page.screenshot({ path: process.env.SHOT2 });
+  if (cs.replies !== 1 || !cs.done || !cs.pin || !/Klart, kollat/.test(cs.txt) || !saved2[0].done || saved2[0].replies.length !== 1) fail('Svar och klar: ' + JSON.stringify(cs));
+  await page.keyboard.press('Escape');
+
   if (process.env.SHOT) { await page.evaluate(() => { l3ClipHorizontal(); l3.camera.position.set(l3.orbit.target.x + 30, l3.orbit.target.y - 30, l3.orbit.target.z + 20); l3.orbit.update(); }); await page.waitForTimeout(500); await page.screenshot({ path: process.env.SHOT }); }
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_3dclip');

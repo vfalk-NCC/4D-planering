@@ -170,7 +170,7 @@ function l3OrbitPivotMove(e) {
   l3OrbitAbout(v.P, -2 * Math.PI * dx / h, 2 * Math.PI * dy / h); // markeringen flyttas när bilden ritas (l3Render)
 }
 /* Vrid kameran kring P: yaw kring lodaxeln, pitch = minskning av blickens polvinkel (uppåt i bilden
-   = man tittar mer uppifrån). Samma gränser som OrbitControls (aldrig under horisonten). */
+   = man tittar mer uppifrån). Samma gränser som OrbitControls (hela vägen från rakt ovanifrån till rakt underifrån). */
 function l3OrbitAbout(P, yaw, pitch) {
   const cam = l3.camera, T = l3.orbit.target, Z = new THREE.Vector3(0, 0, 1);
   const off = cam.position.clone().sub(T), len = off.length();
@@ -346,7 +346,8 @@ function l3GoView(i) {
   const dist = v.ortho ? L3_ORTHO_H / (Math.max(1e-4, v.zoom || 1) * 2 * Math.tan(THREE.MathUtils.degToRad(25))) : dir.length();
   // Snitten i vyn.
   l3.clips = (v.clips || []).map(c => { const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(...c.n), S(c.p)); return { plane, base: plane.constant, off: 0, label: c.label || "Snitt" }; });
-  l3ApplyClips(); if (l3.clips.length) l3RenderClipDlg(); else l3DlgClose("v3Clip");
+  // Snittfönstret öppnas inte av sig självt (Victor 2026-10-10) – saxarna i bilden flyttar snitten; är det öppet uppdateras det.
+  l3ApplyClips(); if (!l3.clips.length) l3DlgClose("v3Clip"); else if (document.getElementById("v3Clip") && !document.getElementById("v3Clip").classList.contains("hidden")) l3RenderClipDlg();
   l3FlyTo(T, dist, dir, 450);
   l3Status(`Vy: ${v.name}`);
 }
