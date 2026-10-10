@@ -8,7 +8,7 @@
      föremålen (baksidorna som syns genom snittet) tonas i snittfärgen – snittet ser fyllt ut. Görs i
      ljussättningens shader (Lambert), så det kostar inget extra även för stora modeller. */
 
-const L3C_EDGE = "vec3( 0.88, 0.16, 0.38 )", L3C_FILL = "vec3( 0.96, 0.80, 0.86 )";
+const L3C_EDGE = "vec3( 0.93, 0.18, 0.45 )", L3C_CORE = "vec3( 1.0, 0.86, 0.93 )", L3C_FILL = "vec3( 0.96, 0.80, 0.86 )";
 let l3cShaderDone = false;
 /* Lägger in snittkanten i Lambert-shadern (en gång, innan något ritas). */
 function l3cShader() {
@@ -17,27 +17,33 @@ function l3cShader() {
   const L = THREE.ShaderLib.lambert;
   L.fragmentShader = L.fragmentShader
     .replace("#include <clipping_planes_fragment>", `#include <clipping_planes_fragment>
-	float l3Edge = 0.0;
+	float l3Edge = 0.0, l3Halo = 0.0;
 	#if NUM_CLIPPING_PLANES > 0
 	vec4 l3Pl;
 	#pragma unroll_loop_start
 	for ( int i = 0; i < UNION_CLIPPING_PLANES; i ++ ) {
 		l3Pl = clippingPlanes[ i ];
-		l3Edge = max( l3Edge, 1.0 - smoothstep( 1.2, 2.6, ( l3Pl.w - dot( vClipPosition, l3Pl.xyz ) ) / max( fwidth( dot( vClipPosition, l3Pl.xyz ) ), 1e-6 ) ) );
+		l3Edge = max( l3Edge, 1.0 - smoothstep( 0.6, 1.6, ( l3Pl.w - dot( vClipPosition, l3Pl.xyz ) ) / max( fwidth( dot( vClipPosition, l3Pl.xyz ) ), 1e-6 ) ) );
+		l3Halo = max( l3Halo, 1.0 - smoothstep( 1.0, 9.0, ( l3Pl.w - dot( vClipPosition, l3Pl.xyz ) ) / max( fwidth( dot( vClipPosition, l3Pl.xyz ) ), 1e-6 ) ) );
 	}
 	#pragma unroll_loop_end
 	#endif`)
     .replace("#include <dithering_fragment>", `#include <dithering_fragment>
 	#if NUM_CLIPPING_PLANES > 0
 	if ( ! gl_FrontFacing ) gl_FragColor.rgb = mix( gl_FragColor.rgb, ${L3C_FILL}, 0.82 );
-	gl_FragColor.rgb = mix( gl_FragColor.rgb, ${L3C_EDGE}, l3Edge );
+	// Glöd: en mjuk rosa halo några pixlar in, en ljus kärna precis i snittet (Victor 2026-10-10: "lysa lite snyggare").
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, ${L3C_EDGE}, l3Halo * l3Halo * 0.7 );
+	gl_FragColor.rgb = mix( gl_FragColor.rgb, ${L3C_CORE}, l3Edge );
 	#endif`);
 }
 
 /* ---- Saxhandtagen ------------------------------------------------------------------------------- */
 const l3c = { els: [], drag: null, plane: null };
-/* Punkt på snittet nära mitten av det man tittar på. */
-function l3cAnchor(c) { return c.plane.projectPoint(l3.orbit.target, new THREE.Vector3()); }
+/* Saxens punkt på snittet: där den släpptes senast (först: mitt i det man tittar på). Ligger alltid i planet. */
+function l3cAnchor(c) {
+  if (!c.anchor) c.anchor = c.plane.projectPoint(l3.orbit.target, new THREE.Vector3());
+  return c.plane.projectPoint(c.anchor, new THREE.Vector3());
+}
 function l3cPlace() {
   if (!l3) return;
   const clips = l3.clips || [], host = l3.renderer.domElement.parentElement;
@@ -62,18 +68,25 @@ function l3cPlace() {
 function l3cDragStart(e, i) {
   const c = l3.clips[i]; if (!c) return;
   e.preventDefault(); e.stopPropagation();
-  const a = l3cAnchor(c), p0 = l3ToScreen(a), p1 = l3ToScreen(a.clone().add(c.plane.normal.clone().multiplyScalar(-1))); // +off = planet mot -normal
+  // +off flyttar planet längs normalen (constant = base - off): dra åt det håll normalen pekar på skärmen.
+  const a = l3cAnchor(c), p0 = l3ToScreen(a), p1 = l3ToScreen(a.clone().add(c.plane.normal));
   const v = [p1.x - p0.x, p1.y - p0.y], vv = v[0] * v[0] + v[1] * v[1];
-  l3c.drag = { i, x0: e.clientX, y0: e.clientY, off0: c.off, v, vv: vv || 1 };
+  l3c.drag = { i, x0: e.clientX, y0: e.clientY, off0: c.off, v, vv: vv || 1, a0: a.clone() };
   const el = e.currentTarget; el.setPointerCapture(e.pointerId);
   l3cShowPlane(c);
   const mv = ev => {
     const d = l3c.drag; if (!d) return;
     const dx = ev.clientX - d.x0, dy = ev.clientY - d.y0;
-    // Planet flyttas lika långt som markören längs normalens riktning på skärmen (snäpper till 5 cm, Skift = 1 cm).
+    // Planet följer markören sömlöst längs normalens riktning på skärmen (Victor 2026-10-10); Skift = jämna 5 cm.
     let off = d.off0 + (dx * d.v[0] + dy * d.v[1]) / d.vv;
-    const st = ev.shiftKey ? 0.01 : 0.05; off = Math.round(off / st) * st;
+    if (ev.shiftKey) off = Math.round(off / 0.05) * 0.05;
     l3cSet(i, off);
+    // Saxen följer markören: punkten i det flyttade planet under markören (annars rakt längs normalen).
+    const r = l3.renderer.domElement.getBoundingClientRect(), rc = new THREE.Raycaster();
+    rc.setFromCamera(new THREE.Vector2((ev.clientX - r.left) / r.width * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1), l3.camera);
+    const hit = rc.ray.intersectPlane(c.plane, new THREE.Vector3());
+    c.anchor = hit && hit.distanceTo(d.a0) < 500 ? hit : d.a0.clone().add(c.plane.normal.clone().multiplyScalar(off - d.off0));
+    l3cPlace();
   };
   const up = () => { el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); l3c.drag = null; l3cShowPlane(null); if (typeof l3RenderClipDlg === "function") l3RenderClipDlg(); l3Render(); };
   el.addEventListener("pointermove", mv); el.addEventListener("pointerup", up);
@@ -82,7 +95,7 @@ function l3cSet(i, off) {
   const c = l3.clips[i]; if (!c) return;
   c.off = off; c.plane.constant = c.base - off;
   const d = document.getElementById("v3Clip");
-  if (d) { const r = d.querySelector(`[data-clipoff="${i}"]`), nb = d.querySelector(`[data-clipnum="${i}"]`); if (r) r.value = off; if (nb && document.activeElement !== nb) nb.value = String(Math.round(off * 100) / 100).replace(".", ","); }
+  if (d) { const r = d.querySelector(`[data-clipoff="${i}"]`), nb = d.querySelector(`[data-clipnum="${i}"]`); if (r) r.value = off; if (nb && document.activeElement !== nb) nb.value = l3ClipFmt(off); }
   l3cShowPlane(l3c.drag ? c : null);
   l3Render();
 }

@@ -131,6 +131,48 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   if (!/^Utsättning redigerad \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d$/.test(sv.name) || sv.layers !== '4D-RITAT,AXLAR,MÅTT' || sv.orig || !sv.nyOn || sv.up.length !== 1 || !/redigerad .*\.dxf$/.test(sv.up[0]) || sv.folder !== 'Lägesplan' || !/POLYLINE/.test(sv.txt) || !/6512352\.000/.test(sv.txt))
     fail('Spara som ny DXF: ' + JSON.stringify({ ...sv, txt: (sv.txt || '').length }));
 
+  // Fortsatt redigering (Victor 2026-10-10 "utveckla"): hörnpunkter, Alt, vrid, texter.
+  await page.evaluate(async () => { await l3dStart('c1'); l3StopFly(); const c = new THREE.Vector3(6512355 - l3.O[0], 150122 - l3.O[1], 0); l3.camera.position.set(c.x, c.y - 0.01, 40); l3.orbit.target.copy(c); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); });
+  const L1 = await page.evaluate(() => { const e = l3d.ents.find(x => x.pts.length === 3); l3d.sel = new Set([e.id]); l3dRebuild(); l3RenderSide(); return e.id; });
+  const pts = () => page.evaluate(id => l3d.ents.find(e => e.id === id).pts.map(p => p.map(v => Math.round(v * 1000) / 1000)), L1);
+  // Dra i hörnpunkten (6512360, 150125) till (6512362, 150127).
+  const [vx, vy] = await scr(6512360, 150125), [tx2, ty2] = await scr(6512362, 150127);
+  await page.mouse.move(cv.x + vx, cv.y + vy); await page.mouse.down(); await page.mouse.move(cv.x + (vx + tx2) / 2, cv.y + (vy + ty2) / 2, { steps: 3 }); await page.mouse.move(cv.x + tx2, cv.y + ty2, { steps: 3 }); await page.mouse.up(); await page.waitForTimeout(150);
+  let P = await pts();
+  if (Math.abs(P[2][0] - 6512362) > 0.1 || Math.abs(P[2][1] - 150127) > 0.1 || P[0][0] !== 6512350) fail('Dra i hörnpunkten: ' + JSON.stringify(P));
+  if ((await page.evaluate(id => [...l3d.sel], L1)).join() !== String(L1)) fail('Linjen ska vara kvar markerad efter dragningen');
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+  P = await pts(); if (P[2][0] !== 6512360 || P[2][1] !== 150125) fail('Ctrl+Z på hörnpunkten: ' + JSON.stringify(P));
+  // Alt + tryck mitt på en markerad linje: ny hörnpunkt; Alt + tryck på den: borta igen.
+  await click(6512355, 150120, 'Alt'); P = await pts();
+  if (P.length !== 4 || Math.abs(P[1][0] - 6512355) > 0.1) fail('Alt + tryck ska lägga till en hörnpunkt: ' + JSON.stringify(P));
+  await click(6512355, 150120, 'Alt'); P = await pts();
+  if (P.length !== 3) fail('Alt + tryck på hörnpunkten ska ta bort den: ' + JSON.stringify(P));
+  // Vrid 90° runt markeringens mitt (6512355, 150122,5).
+  await page.fill('#v3DxR', '90'); await page.click('#v3DxRot'); P = await pts();
+  if (Math.abs(P[0][0] - 6512357.5) > 1e-3 || Math.abs(P[0][1] - 150117.5) > 1e-3) fail('Vrid 90°: ' + JSON.stringify(P));
+  await page.keyboard.press('Control+z');
+  // Ny text: tryck på marken (svaret på frågan är 4D-RITAT), ändra text, höjd och vinkel.
+  await page.click('#v3DxText');
+  await click(6512352, 150124); await page.waitForTimeout(250);
+  const t1 = await page.evaluate(() => { const t = l3d.texts.find(x => x.added); return t && { s: t.s, x: t.x, sel: l3d.sel.has(t.id), meshes: l3d.tmeshes.length }; });
+  if (!t1 || t1.s !== '4D-RITAT' || Math.abs(t1.x - 6512352) > 0.1 || !t1.sel || !t1.meshes) fail('Ny text: ' + JSON.stringify(t1));
+  await page.click('#v3DxSel');
+  await page.fill('#v3DxTs', 'NY TEXT'); await page.fill('#v3DxTh', '0,8'); await page.fill('#v3DxTr', '45'); await page.click('#v3DxTApply');
+  const t2 = await page.evaluate(() => { const t = l3d.texts.find(x => x.added); return { s: t.s, h: t.h, rot: t.rot }; });
+  if (t2.s !== 'NY TEXT' || t2.h !== 0.8 || t2.rot !== 45) fail('Ändra texten: ' + JSON.stringify(t2));
+  // Tryck på texten markerar den.
+  await page.evaluate(() => { l3d.sel = new Set(); l3dRebuild(); });
+  const tc2 = await page.evaluate(() => { const t = l3d.texts.find(x => x.added), q = l3dTextQuads(t)[0], cx = q.reduce((a, p) => a + p[0], 0) / 4, cy = q.reduce((a, p) => a + p[1], 0) / 4; return [cx, cy]; });
+  await click(tc2[0], tc2[1]);
+  if (!(await page.evaluate(() => l3dSelTexts().length === 1))) fail('Tryck på texten ska markera den');
+  // Spara: texten med innehåll, höjd och vinkel finns i den nya DXF:en.
+  await page.click('#v3DxSave');
+  await page.waitForFunction(() => !l3d.rec && cads().length === 3, null, { timeout: 15000 });
+  const tx3 = await page.evaluate(() => ({ dxf: window.__upText, rec: cads()[cads().length - 1] }));
+  if (!/\nTEXT\r?\n[\s\S]*\nNY TEXT\r?\n/.test(tx3.dxf) || !/\n 40\r?\n0\.800\r?\n|\n40\r?\n0\.800\r?\n/.test(tx3.dxf) || !/\n50\r?\n45\.000\r?\n/.test(tx3.dxf) || tx3.rec.stats.texts !== 1)
+    fail('Texten i den sparade DXF:en: ' + JSON.stringify({ stats: tx3.rec.stats, snippet: (tx3.dxf.match(/TEXT[\s\S]{0,200}/) || [''])[0] }));
+
   // Mät: Skift ger var 5:e grad, måtten ligger kvar och kan sparas i projektet.
   await page.evaluate(() => l3SetTool('measure'));
   await click(6512348, 150116);

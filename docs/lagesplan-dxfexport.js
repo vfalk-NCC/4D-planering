@@ -188,6 +188,7 @@ function dxfWrite(ents, layers, layerAci, layerLtype = {}) {
       if (e.rot) g(50, dxfNum(e.rot));
       g(7, "STANDARD");
       if (e.mid) { g(72, 4); g(11, dxfNum(e.x)); g(21, dxfNum(e.y)); g(31, dxfNum(e.z || 0)); } // centrerad (Middle)
+      else if (e.ha || e.va) { if (e.ha) g(72, e.ha); g(11, dxfNum(e.x)); g(21, dxfNum(e.y)); g(31, dxfNum(e.z || 0)); if (e.va) g(73, e.va); } // justering (DXF-redigeringen)
     }
     else if (e.t === "DOT") {
       // Fylld prick: sluten polylinje av två halvcirklar med bredd = radien.

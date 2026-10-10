@@ -91,15 +91,23 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   const sh = await page.evaluate(() => ({ lam: /l3Edge/.test(THREE.ShaderLib.lambert.fragmentShader), off: l3.clips[0].off }));
   if (!sh.lam) fail('Snittkanterna ska finnas i shadern');
   const sc = await page.locator('#view3d .v3-scissor').boundingBox();
+  const z0 = await page.evaluate(() => l3.clips[0].plane.coplanarPoint(new THREE.Vector3()).z);
   await page.mouse.move(sc.x + sc.width / 2, sc.y + sc.height / 2); await page.mouse.down();
-  await page.mouse.move(sc.x + sc.width / 2, sc.y + sc.height / 2 + 60, { steps: 5 });
+  await page.mouse.move(sc.x + sc.width / 2 + 30, sc.y + sc.height / 2 + 60, { steps: 5 });
   const mid = await page.evaluate(() => ({ plane: !!l3c.plane, off: l3.clips[0].off }));
   await page.mouse.up(); await page.waitForTimeout(100);
   const after = await page.evaluate(() => ({ plane: !!l3c.plane, off: l3.clips[0].off, slider: Number(document.querySelector('#v3Clip [data-clipoff="0"]').value), lbl: document.querySelector('#view3d .v3-scissor span').textContent }));
-  if (!mid.plane || after.plane || Math.abs(after.off) < 0.2 || Math.abs(after.slider - after.off) > 0.051 || !/m$/.test(after.lbl)) fail('Dra i saxen: ' + JSON.stringify({ mid, after }));
-  // Ner i bilden = planet sänks (vågrätt snitt ovanifrån: mindre syns).
-  const zc = await page.evaluate(() => -l3.clips[0].plane.constant / l3.clips[0].plane.normal.z);
-  if (!(after.off < 0) && !(after.off > 0)) fail('Förskjutningen ska ändras');
+  if (!mid.plane || after.plane || Math.abs(after.off) < 0.2 || Math.abs(after.slider - after.off) > 1e-6 || !/m$/.test(after.lbl)) fail('Dra i saxen: ' + JSON.stringify({ mid, after }));
+  // Ner i bilden = planet sänks (Victor 2026-10-10: "när jag drar saxen nedåt så går den uppåt"), och saxen
+  // ligger kvar där musen släpptes.
+  const z1 = await page.evaluate(() => l3.clips[0].plane.coplanarPoint(new THREE.Vector3()).z);
+  const sc2 = await page.locator('#view3d .v3-scissor').boundingBox();
+  if (!(z1 < z0 - 0.2)) fail('Dra nedåt ska sänka snittet: ' + JSON.stringify({ z0, z1 }));
+  if (Math.abs(sc2.x + sc2.width / 2 - (sc.x + sc.width / 2 + 30)) > 4 || Math.abs(sc2.y + sc2.height / 2 - (sc.y + sc.height / 2 + 60)) > 4) fail('Saxen ska ligga där den släpptes: ' + JSON.stringify({ sc, sc2 }));
+  await page.evaluate(() => { l3.camera.position.x += 3; l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); });
+  await page.waitForTimeout(100);
+  const sc3 = await page.evaluate(() => { const c = l3.clips[0], q = l3ToScreen(c.anchor); return Math.abs(c.plane.distanceToPoint(c.anchor)); });
+  if (sc3 > 1e-6) fail('Saxen ska ligga kvar i snittplanet');
   await page.evaluate(() => l3ClearClips());
   if (await page.$('#view3d .v3-scissor')) { await page.waitForTimeout(100); if (await page.evaluate(() => document.querySelectorAll('#view3d .v3-scissor').length)) fail('Saxen ska försvinna med snittet'); }
 
@@ -163,7 +171,7 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   if (cs.replies !== 1 || !cs.done || !cs.pin || !/Klart, kollat/.test(cs.txt) || !saved2[0].done || saved2[0].replies.length !== 1) fail('Svar och klar: ' + JSON.stringify(cs));
   await page.keyboard.press('Escape');
 
-  if (process.env.SHOT) { await page.evaluate(() => { l3ClipHorizontal(); l3.camera.position.set(l3.orbit.target.x + 30, l3.orbit.target.y - 30, l3.orbit.target.z + 20); l3.orbit.update(); }); await page.waitForTimeout(500); await page.screenshot({ path: process.env.SHOT }); }
+  if (process.env.SHOT) { await page.evaluate(() => { const m = new THREE.Mesh(new THREE.BoxGeometry(6, 6, 6), new THREE.MeshLambertMaterial({ color: 0x9aa7b8, side: THREE.DoubleSide })); m.position.copy(l3.orbit.target).add(new THREE.Vector3(0, 0, 3)); l3.groups.bldg.add(m); l3ClipHorizontal(); l3.camera.position.set(l3.orbit.target.x + 30, l3.orbit.target.y - 30, l3.orbit.target.z + 20); l3.orbit.update(); }); await page.waitForTimeout(500); await page.screenshot({ path: process.env.SHOT }); }
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_3dclip');
   await browser.close(); server.close();

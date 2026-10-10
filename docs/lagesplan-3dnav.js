@@ -49,6 +49,7 @@ function l3NavDown(e) {
   l3.orbit.enableZoom = e.pointerType === "touch" || e.pointerType === "pen";
   if (e.pointerType !== "mouse") return;
   if (e.button === 1 && e.target === l3.renderer.domElement) e.preventDefault();
+  if (typeof l3dGripDown === "function" && l3dGripDown(e)) return; // DXF: dra i en hörnpunkt
   if (l3OrbitPivotStart(e)) return;
   if (e.button === 2) { l3RightDown = { x: e.clientX, y: e.clientY }; return; }
   // Standardläget: Ctrl + vänster-dra (Victor 2026-10-10) eller Flera på ger markeringsfönster i stället för att vrida.

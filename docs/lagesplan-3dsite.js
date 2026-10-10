@@ -62,7 +62,7 @@ async function l3sBuildCad() {
   l3s.cad.forEach((obj, key) => { if (!live.has(key)) obj.visible = false; });
   // Texterna (siffror och bokstäver) – Victor 2026-10-10.
   const liveT = new Set();
-  want.forEach(r => { const g = cadGeom.get(r.id); if (g) { l3sCadTexts(r, g, z + 0.005); liveT.add(r.id); } });
+  want.forEach(r => { if (typeof l3d !== "undefined" && l3d.rec && l3d.rec.id === r.id) return; const g = cadGeom.get(r.id); if (g) { l3sCadTexts(r, g, z + 0.005); liveT.add(r.id); } }); // redigeras: egna texter
   l3s.text.forEach((t, id) => { t.meshes.forEach(m => { m.visible = liveT.has(id); }); });
   l3Render();
 }
@@ -78,58 +78,75 @@ function l3sCadTexts(r, g, z) {
   const sig = names.map(n => (cadLayerOn(r, n) ? 1 : 0)).join("") + "|" + r.colorMode + "|" + r.color + "|" + z.toFixed(3) + "|" + l3.O.join(",");
   const cur = l3s.text.get(r.id);
   if (cur && cur.sig === sig) { cur.meshes.forEach(m => { m.material.opacity = layerOpacity("cad:" + r.id); }); return; }
-  if (cur) cur.meshes.forEach(m => { if (m.parent) m.parent.remove(m); m.geometry.dispose(); m.material.map.dispose(); m.material.dispose(); });
+  if (cur) l3sDisposeMeshes(cur.meshes);
   const list = [];
   g.groups.forEach(gr => {
     if (!gr.texts || !gr.texts.length || !cadLayerOn(r, names[gr.l])) return;
     const col = new THREE.Color(cadLayerColor(r, names[gr.l], gr.c));
-    gr.texts.forEach(([x, y, h, rot, str, al]) => {
-      String(str || "").split("\n").forEach((ln, k) => { if (ln.trim()) list.push({ x: g.origin[0] + x / 1000, y: g.origin[1] + y / 1000, h: Math.max(0.01, h / 1000), rot: rot || 0, s: ln, al: al || "lb", k, col }); });
-    });
+    gr.texts.forEach(([x, y, h, rot, str, al]) => list.push(...l3sTextLines({ x: g.origin[0] + x / 1000, y: g.origin[1] + y / 1000, h: h / 1000, rot, s: str, al }, col)));
   });
-  const meshes = [];
-  if (list.length) {
-    // Atlas: unika strängar, rad för rad.
-    const ctxOf = () => { const c = document.createElement("canvas"); c.width = L3S_ATLAS; c.height = L3S_ATLAS; const x = c.getContext("2d"); x.font = `${L3S_FONT}px "Segoe UI", Arial, sans-serif`; x.fillStyle = "#fff"; x.textBaseline = "alphabetic"; return { c, x, px: 2, py: 0, map: new Map(), items: [] }; };
-    const atlases = [ctxOf()];
-    const slot = s => {
-      for (const A of atlases) if (A.map.has(s)) return [A, A.map.get(s)];
-      let A = atlases[atlases.length - 1];
-      const w = Math.min(L3S_ATLAS - 4, Math.ceil(A.x.measureText(s).width) + 4);
-      if (A.px + w > L3S_ATLAS) { A.px = 2; A.py += L3S_ROW; }
-      if (A.py + L3S_ROW > L3S_ATLAS) { if (atlases.length >= 6) return [null, null]; A = ctxOf(); atlases.push(A); }
-      const sl = { u0: A.px / L3S_ATLAS, v0: 1 - (A.py + L3S_ROW) / L3S_ATLAS, u1: (A.px + w) / L3S_ATLAS, v1: 1 - A.py / L3S_ATLAS, w };
-      A.x.fillText(s, A.px + 2, A.py + L3S_FONT); A.px += w + 4; A.map.set(s, sl);
-      return [A, sl];
-    };
-    list.forEach(t => { const [A, sl] = slot(t.s); if (A) A.items.push([t, sl]); });
-    atlases.forEach(A => {
-      if (!A.items.length) return;
-      const n = A.items.length, pos = new Float32Array(n * 12), uv = new Float32Array(n * 8), col = new Float32Array(n * 12), idx = new Uint32Array(n * 6);
-      A.items.forEach(([t, sl], i) => {
-        // Rutan i meter: höjden h motsvarar bokstavshöjden (L3S_FONT px), raden är L3S_ROW px.
-        const k = t.h / (L3S_FONT * 0.72), W = sl.w * k, H = L3S_ROW * k;
-        const ax = t.al[0] === "c" ? -W / 2 : t.al[0] === "r" ? -W : 0;
-        // Baslinjen ligger (ROW - FONT) px ovanför rutans underkant. Lodrätt: b = baslinjen, m = mitt på
-        // versalhöjden, t = versalhöjdens topp. Rad k av en flerradig text ligger k × 1,25 h längre ned.
-        const ay = -(L3S_ROW - L3S_FONT) * k - (t.al[1] === "t" ? t.h : t.al[1] === "m" ? t.h / 2 : 0) - t.k * t.h * 1.25;
-        const a = t.rot * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
-        const P = (dx, dy) => [t.x + (ax + dx) * c - (ay + dy) * s - l3.O[0], t.y + (ax + dx) * s + (ay + dy) * c - l3.O[1], 0];
-        const q = [P(0, 0), P(W, 0), P(W, H), P(0, H)];
-        q.forEach((p, j) => { pos.set(p, i * 12 + j * 3); col.set([t.col.r, t.col.g, t.col.b], i * 12 + j * 3); });
-        uv.set([sl.u0, sl.v0, sl.u1, sl.v0, sl.u1, sl.v1, sl.u0, sl.v1], i * 8);
-        idx.set([i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3], i * 6);
-      });
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3)); geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2)); geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
-      geo.setIndex(new THREE.BufferAttribute(idx, 1)); geo.computeBoundingSphere();
-      const tex = new THREE.CanvasTexture(A.c); tex.anisotropy = 8; tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter;
-      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, vertexColors: true, transparent: true, opacity: layerOpacity("cad:" + r.id), depthWrite: false, side: THREE.DoubleSide, alphaTest: 0.02 }));
-      m.position.z = z; m.renderOrder = 3; m.userData.noHit = true; m.raycast = () => {}; m.userData.cadText = r.id;
-      l3sGroup("cad").add(m); meshes.push(m);
-    });
-  }
+  const meshes = l3sTextMeshes(list, z, layerOpacity("cad:" + r.id));
+  meshes.forEach(m => { m.userData.cadText = r.id; l3sGroup("cad").add(m); });
   l3s.text.set(r.id, { sig, meshes, n: list.length });
+}
+function l3sDisposeMeshes(ms) { ms.forEach(m => { if (m.parent) m.parent.remove(m); m.geometry.dispose(); m.material.map.dispose(); m.material.dispose(); }); }
+/* En text (kan ha flera rader) -> en post per rad för l3sTextMeshes. */
+function l3sTextLines(t, col) {
+  const out = [];
+  String(t.s || "").split("\n").forEach((ln, k) => { if (ln.trim()) out.push({ x: t.x, y: t.y, h: Math.max(0.01, t.h), rot: t.rot || 0, s: ln, al: t.al || "lb", k, col }); });
+  return out;
+}
+/* Textens ruta i modellens meter (fyra hörn), samma mått som när den ritas. */
+let l3sMeasureCtx = null;
+function l3sTextWidth(s) {
+  if (!l3sMeasureCtx) { l3sMeasureCtx = document.createElement("canvas").getContext("2d"); l3sMeasureCtx.font = `${L3S_FONT}px "Segoe UI", Arial, sans-serif`; }
+  return Math.min(L3S_ATLAS - 4, Math.ceil(l3sMeasureCtx.measureText(s).width) + 4);
+}
+function l3sTextQuad(t, wpx) {
+  const k = t.h / (L3S_FONT * 0.72), W = (wpx == null ? l3sTextWidth(t.s) : wpx) * k, H = L3S_ROW * k;
+  const ax = t.al[0] === "c" ? -W / 2 : t.al[0] === "r" ? -W : 0;
+  // Baslinjen ligger (ROW - FONT) px ovanför rutans underkant. Lodrätt: b = baslinjen, m = mitt på
+  // versalhöjden, t = versalhöjdens topp. Rad k av en flerradig text ligger k × 1,25 h längre ned.
+  const ay = -(L3S_ROW - L3S_FONT) * k - (t.al[1] === "t" ? t.h : t.al[1] === "m" ? t.h / 2 : 0) - (t.k || 0) * t.h * 1.25;
+  const a = (t.rot || 0) * Math.PI / 180, c = Math.cos(a), s = Math.sin(a);
+  const P = (dx, dy) => [t.x + (ax + dx) * c - (ay + dy) * s, t.y + (ax + dx) * s + (ay + dy) * c];
+  return [P(0, 0), P(W, 0), P(W, H), P(0, H)];
+}
+/* Texterna som platta rutor på marken: en teckenatlas (4096 px, vita tecken) och en mesh per atlas –
+   tusentals texter blir ett par ritanrop. list: [{ x, y, h, rot, s, al, k, col }] i modellens meter. */
+function l3sTextMeshes(list, z, opacity = 1) {
+  const meshes = [];
+  if (!list.length) return meshes;
+  const ctxOf = () => { const c = document.createElement("canvas"); c.width = L3S_ATLAS; c.height = L3S_ATLAS; const x = c.getContext("2d"); x.font = `${L3S_FONT}px "Segoe UI", Arial, sans-serif`; x.fillStyle = "#fff"; x.textBaseline = "alphabetic"; return { c, x, px: 2, py: 0, map: new Map(), items: [] }; };
+  const atlases = [ctxOf()];
+  const slot = s => {
+    for (const A of atlases) if (A.map.has(s)) return [A, A.map.get(s)];
+    let A = atlases[atlases.length - 1];
+    const w = l3sTextWidth(s);
+    if (A.px + w > L3S_ATLAS) { A.px = 2; A.py += L3S_ROW; }
+    if (A.py + L3S_ROW > L3S_ATLAS) { if (atlases.length >= 6) return [null, null]; A = ctxOf(); atlases.push(A); }
+    const sl = { u0: A.px / L3S_ATLAS, v0: 1 - (A.py + L3S_ROW) / L3S_ATLAS, u1: (A.px + w) / L3S_ATLAS, v1: 1 - A.py / L3S_ATLAS, w };
+    A.x.fillText(s, A.px + 2, A.py + L3S_FONT); A.px += w + 4; A.map.set(s, sl);
+    return [A, sl];
+  };
+  list.forEach(t => { const [A, sl] = slot(t.s); if (A) A.items.push([t, sl]); });
+  atlases.forEach(A => {
+    if (!A.items.length) return;
+    const n = A.items.length, pos = new Float32Array(n * 12), uv = new Float32Array(n * 8), col = new Float32Array(n * 12), idx = new Uint32Array(n * 6);
+    A.items.forEach(([t, sl], i) => {
+      l3sTextQuad(t, sl.w).forEach((p, j) => { pos.set([p[0] - l3.O[0], p[1] - l3.O[1], 0], i * 12 + j * 3); col.set([t.col.r, t.col.g, t.col.b], i * 12 + j * 3); });
+      uv.set([sl.u0, sl.v0, sl.u1, sl.v0, sl.u1, sl.v1, sl.u0, sl.v1], i * 8);
+      idx.set([i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3], i * 6);
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3)); geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2)); geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    geo.setIndex(new THREE.BufferAttribute(idx, 1)); geo.computeBoundingSphere();
+    const tex = new THREE.CanvasTexture(A.c); tex.anisotropy = 8; tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter;
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: tex, vertexColors: true, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide, alphaTest: 0.02 }));
+    m.position.z = z; m.renderOrder = 3; m.userData.noHit = true; m.raycast = () => {};
+    meshes.push(m);
+  });
+  return meshes;
 }
 
 /* ---- Övriga 2D-lager som bild på marken ------------------------------------------------------- */
