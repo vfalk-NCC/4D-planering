@@ -244,14 +244,16 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   });
   if (mex.names.length !== 2 || mex.names[0] === mex.names[1] || !/^Mått Plan 1 \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(mex.names[0]) || mex.folder !== 'Lägesplan' || mex.meshes < 3 || !mex.with || mex.without || !mex.props) fail('Exportera måtten som IFC: ' + JSON.stringify(mex));
   if (process.env.SHOTX) {
+    if (process.env.SHOTOFF) await page.evaluate(() => { window.__shotOff = true; });
     await page.evaluate(async () => {
+      if (window.__shotOff) { const mm = l3m.list[0]; mm.off = 1.5; let up = null; const o0 = askOpener; askOpener = async (t, ex) => { if (t === 'tcUpload') { up = new Uint8Array(await ex.files[0].arrayBuffer()); return { uploaded: 1 }; } return o0(t, ex); }; await l3mExportIfc([mm.id]); askOpener = o0; window.__mexBytes = up; mm.off = 0; }
       const bytes = window.__mexBytes, orig = askOpener;
       askOpener = async (type, extra, t, p) => (type === 'tcFile' && extra.fileId === 'MIFC' ? { bytes: bytes.slice().buffer } : orig(type, extra, t, p));
       l3mToggle(false);
       await l3bLoad([{ id: 'f:MIFC', fileId: 'MIFC', name: 'Matt.ifc', version: 'm1' }]);
       askOpener = orig;
       const m = l3m.list[0], c = new THREE.Vector3((m.pts[0][0] + m.pts[1][0]) / 2 - l3.O[0], (m.pts[0][1] + m.pts[1][1]) / 2 - l3.O[1], m.pts[0][2] - l3.O[2] + 0.5);
-      l3StopFly(); l3.orbit.target.copy(c); l3.camera.position.copy(c).add(new THREE.Vector3(0.6, -3.2, 0.4)); l3.orbit.update();
+      l3StopFly(); l3.orbit.target.copy(c); l3.camera.position.copy(c).add(window.__shotOff ? new THREE.Vector3(3, -9, 4) : new THREE.Vector3(0.6, -3.2, 0.4)); l3.orbit.update();
     });
     await page.waitForTimeout(900); await page.screenshot({ path: process.env.SHOTX });
     await page.evaluate(() => { l3bRemove('f:MIFC'); l3mToggle(true); });

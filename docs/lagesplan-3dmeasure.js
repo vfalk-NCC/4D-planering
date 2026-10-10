@@ -410,7 +410,53 @@ function l3mChanged(m) {
    Varje mått: linjerna som tunna rör med markerade ändpunkter (ytan: kanterna och en tunn platta) och en
    vit skylt med måttet – och kommentaren om den ska med – som 3D-text på båda sidor, vänd mot vyn.
    Egenskaperna (värde, vågrätt, höjdskillnad, lutning, objekt, koordinater …) ligger i "4D-planering". */
-const L3M_IFC = { r: 0.02, dot: 0.06, T: 0.04, tT: 0.015, pad: 0.1, lift: 0.35, red: "#dc2626" };
+// Victor 2026-10-10: tunnare linjer, rundade brytningar, en upp-och-nedvänd kon på varje mätpunkt, mindre text.
+const L3M_IFC = { r: 0.012, bend: 0.08, cone: { h: 0.14, r: 0.045 }, T: 0.03, tT: 0.012, pad: 0.07, lift: 0.3, red: "#dc2626", h1: 0.14, h2: 0.1 };
+/* Väg med rundade hörn: raka bitar och en båge (radie R, begränsad av bitarnas längd) i varje brytning. */
+function l3mFillet(P, closed, R) {
+  const V = P.map(p => new THREE.Vector3(p[0], p[1], p[2])), n = V.length, out = [];
+  if (n < 3 && !closed) return V;
+  for (let i = 0; i < n; i++) {
+    const prev = V[(i - 1 + n) % n], cur = V[i], next = V[(i + 1) % n];
+    if (!closed && (i === 0 || i === n - 1)) { out.push(cur.clone()); continue; }
+    const u = cur.clone().sub(prev), w = next.clone().sub(cur), lu = u.length(), lw = w.length();
+    if (lu < 1e-6 || lw < 1e-6) { out.push(cur.clone()); continue; }
+    u.divideScalar(lu); w.divideScalar(lw);
+    const th = Math.acos(Math.max(-1, Math.min(1, u.dot(w)))); // vinkeln man svänger
+    if (th < 0.02) { out.push(cur.clone()); continue; }
+    const d = Math.min(R * Math.tan(th / 2), lu * 0.45, lw * 0.45), A = cur.clone().addScaledVector(u, -d), B = cur.clone().addScaledVector(w, d);
+    // Kvadratisk Bézier A–cur–B: en mjuk båge in i hörnet.
+    const k = Math.max(3, Math.round(th / (Math.PI / 12)));
+    for (let j = 0; j <= k; j++) { const t = j / k, a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t; out.push(new THREE.Vector3(A.x * a + cur.x * b + B.x * c, A.y * a + cur.y * b + B.y * c, A.z * a + cur.z * b + B.z * c)); }
+  }
+  if (closed) out.push(out[0].clone());
+  return out;
+}
+/* Rör längs en väg som slutna trianglar (ringar med parallellförflyttad ram), ändarna stängda. */
+function l3mSweep(path, r, seg = 10) {
+  const pts = [], tris = [], rings = [];
+  let nPrev = null;
+  for (let i = 0; i < path.length; i++) {
+    const t = (i < path.length - 1 ? path[i + 1].clone().sub(path[i]) : path[i].clone().sub(path[i - 1])).normalize();
+    if (i > 0 && i < path.length - 1) t.add(path[i].clone().sub(path[i - 1]).normalize()).normalize();
+    let nrm = nPrev ? nPrev.clone().addScaledVector(t, -nPrev.dot(t)) : new THREE.Vector3(0, 0, 1).cross(t);
+    if (nrm.lengthSq() < 1e-8) nrm = new THREE.Vector3(1, 0, 0).cross(t);
+    nrm.normalize(); nPrev = nrm;
+    const bin = t.clone().cross(nrm).normalize(), ring = [];
+    for (let k = 0; k < seg; k++) { const a = 2 * Math.PI * k / seg, q = path[i].clone().addScaledVector(nrm, Math.cos(a) * r).addScaledVector(bin, Math.sin(a) * r); pts.push(q); ring.push(pts.length); }
+    rings.push(ring);
+  }
+  for (let i = 0; i + 1 < rings.length; i++) for (let k = 0; k < seg; k++) { const a = rings[i][k], b = rings[i][(k + 1) % seg], c = rings[i + 1][(k + 1) % seg], d = rings[i + 1][k]; tris.push([a, b, c], [a, c, d]); }
+  [[0, -1], [rings.length - 1, 1]].forEach(([ri, sgn]) => { pts.push(path[ri].clone()); const c = pts.length, R = rings[ri]; for (let k = 0; k < seg; k++) tris.push(sgn > 0 ? [c, R[k], R[(k + 1) % seg]] : [c, R[(k + 1) % seg], R[k]]); });
+  return { pts, tris };
+}
+/* Upp-och-nedvänd kon med spetsen i punkten. */
+function l3mCone(p, h, r, seg = 16) {
+  const pts = [new THREE.Vector3(p.x, p.y, p.z), new THREE.Vector3(p.x, p.y, p.z + h)], tris = [];
+  for (let k = 0; k < seg; k++) { const a = 2 * Math.PI * k / seg; pts.push(new THREE.Vector3(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r, p.z + h)); }
+  for (let k = 0; k < seg; k++) { const a = 3 + k, b = 3 + (k + 1) % seg; tris.push([1, b, a], [2, a, b]); }
+  return { pts, tris };
+}
 function l3mIfcBuild(list, withNotes) {
   if (!list.length) return null;
   const doc = ifcDoc("4D-planering – " + (plan ? plan.name : ""), "Mått från 3D-vyn i Lägesplan"), E = doc.E;
@@ -443,12 +489,14 @@ function l3mIfcBuild(list, withNotes) {
     const items = [];
     const DP = l3mDimPts(m);
     const segs = m.kind === "area" ? P.map((p, i) => [p, P[(i + 1) % P.length]]) : m.kind === "dist" && m.off ? [[P[0], DP[0]], [DP[0], DP[1]], [DP[1], P[1]]] : P.slice(1).map((p, i) => [P[i], p]);
-    segs.forEach(([a, b]) => { const t = tube(rel(a), rel(b), L3M_IFC.r, red, segs.length > 1); if (t) items.push(t); });
-    P.forEach((p, i) => {
-      const q = P[i + 1] || P[i - 1]; if (!q) return;
-      const v = [q[0] - p[0], q[1] - p[1], q[2] - p[2]], L = Math.hypot(...v) || 1;
-      const dt = dotAt(rel(p), v.map(x => x / L)); if (dt) items.push(dt);
-    });
+    // Måttlinjen/kedjan som ett rör med rundade brytningar, och en kon på varje mätpunkt.
+    const way = m.kind === "dist" && m.off ? [P[0], DP[0], DP[1], P[1]] : P;
+    const path = l3mFillet(way.map(rel), m.kind === "area", L3M_IFC.bend);
+    const tri = (g, st) => { if (!g.pts.length) return null; const pl = E(`IFCCARTESIANPOINTLIST3D((${g.pts.map(v => ifcPt([v.x, v.y, v.z])).join(",")}))`), fs = E(`IFCTRIANGULATEDFACESET(${pl},$,.T.,(${g.tris.map(t => `(${t.join(",")})`).join(",")}),$)`); E(`IFCSTYLEDITEM(${fs},(${st}),$)`); return fs; };
+    const meshItems = [];
+    if (path.length >= 2) { const t = tri(l3mSweep(path, L3M_IFC.r), red); if (t) meshItems.push(t); }
+    P.forEach(p => { const v = rel(p), t = tri(l3mCone({ x: v[0], y: v[1], z: v[2] }, L3M_IFC.cone.h, L3M_IFC.cone.r), red); if (t) meshItems.push(t); });
+    void segs; void dotAt;
     if (m.kind === "area" && P.length >= 3) {
       const zAvg = P.reduce((s2, p) => s2 + p[2], 0) / P.length - o[2];
       const poly = E(`IFCPOLYLINE((${[...P, P[0]].map(p => E(`IFCCARTESIANPOINT(${ifcPt([p[0] - o[0], p[1] - o[1]])})`)).join(",")}))`);
@@ -458,14 +506,18 @@ function l3mIfcBuild(list, withNotes) {
     const inf = l3mInfo(m), name = `Mått ${nr}: ${m.text}${withNotes && m.note ? " – " + m.note : ""}`;
     // Skylten med måttet (och kommentaren) – vit platta strax ovanför mitten, 3D-text på båda sidor.
     const raw = withNotes && m.note ? (typeof wrapText === "function" ? wrapText(m.note, 30) : m.note).split("\n").filter(Boolean).slice(0, 3) : [];
-    const lines = [{ t: m.text, h: 0.22 }, ...raw.map(t => ({ t, h: 0.15 }))];
+    const lines = [{ t: m.text, h: L3M_IFC.h1 }, ...raw.map(t => ({ t, h: L3M_IFC.h2 }))];
     const W = Math.max(0.6, ...lines.map(l => W1(l.t, l.h))) + L3M_IFC.pad * 2, H = lines.reduce((a, l) => a + l.h * 1.4, 0) + L3M_IFC.pad * 1.4;
     const at = m.kind === "poly" ? l3mPathMid(P).toArray() : m.kind === "angle" ? P[1] : m.kind === "dist" ? [(DP[0][0] + DP[1][0]) / 2, (DP[0][1] + DP[1][1]) / 2, (DP[0][2] + DP[1][2]) / 2] : P.reduce((s2, p) => [s2[0] + p[0] / P.length, s2[1] + p[1] / P.length, s2[2] + p[2] / P.length], [0, 0, 0]);
     const center = [at[0], at[1], (m.kind === "area" ? Math.max(...P.map(p => p[2])) : at[2]) + L3M_IFC.lift + H / 2];
     // Vit linje från skylten ner till måttlinjen – visar att skylten hör till måttet (Victor 2026-10-10).
     const lead = tube(rel(at), rel([at[0], at[1], center[2] - H / 2]), 0.012, white);
     if (lead) items.push(lead); // hör till måttets element
-    const el = doc.proxy(name.slice(0, 120), withNotes ? m.note || "" : "", "4D-mått", doc.place(o), doc.shape(items.join(","), "SweptSolid"), m.id);
+    // Rör och konor som trianglar (Tessellation), platta och ledlinje som extruderade (SweptSolid).
+    const reps = [];
+    if (items.length) reps.push(E(`IFCSHAPEREPRESENTATION(${doc.body},'Body','SweptSolid',(${items.join(",")}))`));
+    if (meshItems.length) reps.push(E(`IFCSHAPEREPRESENTATION(${doc.body},'Body','Tessellation',(${meshItems.join(",")}))`));
+    const el = doc.proxy(name.slice(0, 120), withNotes ? m.note || "" : "", "4D-mått", doc.place(o), E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${reps.join(",")}))`), m.id);
     elems.push(el);
     doc.props(el, [["Typ", L3M_KIND[m.kind] || m.kind], ["Värde", m.text], ...(withNotes ? [["Kommentar", m.note || ""]] : []), ["Nummer", nr],
       ...inf.rows.filter(([k]) => k !== "Status").map(([k, v]) => [k, String(v).replace(/\n/g, ", ")]), ["Arbetsyta", plan ? plan.name || "" : ""]]);
