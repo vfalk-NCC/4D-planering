@@ -272,6 +272,9 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   // Snabbsök (Ctrl+K) har kommandot.
   if (!(await page.evaluate(() => l3Commands().some(c => /Hämta modell/.test(c.label))))) fail('Snabbsök ska ha Hämta modell');
 
+  // Samma modell två gånger (annat id, samma namn) läses inte in – dubbla ytor flimrar.
+  const dup = await page.evaluate(async () => { const m = l3b.models.find(x => x.visible && x.name); if (!m) return { skip: true }; const n0 = l3b.models.length; await l3bLoad([{ id: 'dubblett', fileId: 'X9', name: m.name.toUpperCase(), version: 'v1' }]); return { n0, n1: l3b.models.length }; });
+  if (!dup.skip && dup.n1 !== dup.n0) fail('Samma modell ska inte läsas in två gånger: ' + JSON.stringify(dup));
   if (process.env.SHOT) {
     await page.evaluate(() => { l3PalTab('layers'); l3SetPref('laySort', 'tree'); l3LayersRender(); l3SelectIds([placements[0].id]); });
     await page.waitForTimeout(300); await page.screenshot({ path: process.env.SHOT });

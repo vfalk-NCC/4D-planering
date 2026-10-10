@@ -59,6 +59,14 @@ async function l3bLoad(list, opts = {}) {
     for (let i = 0; i < list.length; i++) {
       const w = list[i];
       if (!opts.replace && l3b.models.some(m => m.id === w.id)) continue;
+      // Samma fil får inte visas två gånger (t.ex. både som tänd modell i TC och ur mappen under Lager):
+      // två exakt likadana ytor på samma ställe ger "sågtänder" i bilden (Victor 2026-10-10).
+      const twin = !opts.replace && w.name && l3b.models.find(m => m.id !== w.id && m.name && m.name.toLowerCase() === String(w.name).toLowerCase());
+      if (twin) { l3Status(`${w.name} visas redan – den läses inte in en gång till (samma modell två gånger ger flimrande ytor). Ta bort den under Lager → Inlästa om du vill läsa in den på nytt.`, true); continue; }
+      // Ny version som ersätter en visad: den gamla döljs så fort den nya börjar synas (annars ligger
+      // båda på samma ställe en stund och ytorna flimrar).
+      const old = opts.replace ? l3b.models.find(m => m.id === w.id) : null;
+      const hideOld = () => { if (old && old.visible !== false) { old.meshes.forEach(x => { x.visible = false; }); old.visible = false; } };
       l3Status(`Öppnar ${w.name || "modellen"} (${i + 1} av ${list.length})…`);
       // Laddningsindikatorn: varje modell är en lika stor del av stapeln (hämtning 60 %, läsning 40 %).
       const part = (a, b) => (i + a + (b - a)) / list.length;
@@ -107,7 +115,9 @@ async function l3bLoad(list, opts = {}) {
       await new Promise(res => setTimeout(res, 30));
       const lblRead = `Läser ${r.name || w.name}`;
       if (typeof l3pKeepRaw === "function") l3pKeepRaw(w, r.bytes, r.placement || null); // för egenskaper, spara och exportera
-      const m = await l3bParseAny(r.bytes, r.placement, l3bMaxTris() - total, f => busyProgress("bldg", lblRead, part(0, 0.6 + 0.4 * f)), ms => { ms.forEach(x => l3.groups.bldg.add(x)); l3Render(); });
+      let m;
+      try { m = await l3bParseAny(r.bytes, r.placement, l3bMaxTris() - total, f => busyProgress("bldg", lblRead, part(0, 0.6 + 0.4 * f)), ms => { hideOld(); ms.forEach(x => l3.groups.bldg.add(x)); l3Render(); }); }
+      catch (err) { if (old) { old.meshes.forEach(x => { x.visible = true; }); old.visible = true; } throw err; } // den gamla syns igen
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 1));
       times.push(`${m.name || r.name || w.name}: hämtning ${(tDl / 1000).toFixed(1)} s, läsning ${((Date.now() - tRd0) / 1000).toFixed(1)} s${m.parts > 1 ? ` (${m.parts} trådar)` : ""}`);
       skippedAll += m.skipped || 0;
