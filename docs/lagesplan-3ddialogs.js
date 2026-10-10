@@ -537,7 +537,9 @@ function l3PalTab(t) {
   document.getElementById("v3PalAdd").classList.toggle("hidden", t !== "add");
   document.getElementById("v3PalList").classList.toggle("hidden", t !== "list");
   const lay = document.getElementById("v3PalLayers"); if (lay) lay.classList.toggle("hidden", t !== "layers");
+  const pp = document.getElementById("v3PalProps"); if (pp) pp.classList.toggle("hidden", t !== "props");
   l3SetPref("palTab", t);
   if (t === "list") l3RenderObjList();
   if (t === "layers" && typeof l3LayersRender === "function") l3LayersRender();
+  if (t === "props" && typeof l3pRenderTab === "function") l3pRenderTab();
 }

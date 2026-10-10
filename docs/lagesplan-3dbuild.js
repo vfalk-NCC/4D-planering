@@ -99,6 +99,7 @@ async function l3bLoad(list, opts = {}) {
       l3Status(`Läser ${r.name || w.name} (${i + 1} av ${list.length})…`);
       await new Promise(res => setTimeout(res, 30));
       const lblRead = `Läser ${r.name || w.name}`;
+      if (typeof l3pKeepRaw === "function") l3pKeepRaw(w, r.bytes, r.placement || null); // för egenskaper, spara och exportera
       const m = await l3bParseAny(r.bytes, r.placement, l3bMaxTris() - total, f => busyProgress("bldg", lblRead, part(0, 0.6 + 0.4 * f)), ms => { ms.forEach(x => l3.groups.bldg.add(x)); l3Render(); });
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 1));
       times.push(`${m.name || r.name || w.name}: hämtning ${(tDl / 1000).toFixed(1)} s, läsning ${((Date.now() - tRd0) / 1000).toFixed(1)} s${m.parts > 1 ? ` (${m.parts} trådar)` : ""}`);
@@ -142,6 +143,7 @@ function l3bRemove(id) {
   if (typeof l3bs !== "undefined" && l3bs.sel.some(e => e.mesh.userData.l3b.model === l3b.models[i])) l3bsSet(l3bs.sel.filter(e => e.mesh.userData.l3b.model !== l3b.models[i]));
   l3b.models[i].meshes.forEach(x => { if (x.parent) x.parent.remove(x); x.geometry.dispose(); x.material.dispose(); });
   l3b.models.splice(i, 1);
+  if (typeof l3pDrop === "function") l3pDrop(id);
 }
 /* Modellerna som var tända sparas per projekt och visas direkt (ur cachen) nästa gång 3D-vyn öppnas. */
 const l3bRememberKey = () => `lagesplan-bldg-${projectId}`;
@@ -381,7 +383,8 @@ function l3bRecolor() {
       const row = r.itemId ? byId.get(r.itemId) : null;
       if (row && typeof rowTempOffAt === "function" && rowTempOffAt(row, at)) off.add(ri); // temporär utanför sin tid: syns inte
       const c = r.itemId ? new THREE.Color(phaseColor(l3Phase(row))) : null;
-      const rgb = c ? [c.r, c.g, c.b] : r.base;
+      const cb = typeof l3pColorFor === "function" ? l3pColorFor(m, r) : null; // Färga efter värde (Egenskaper)
+      const rgb = cb || (c ? [c.r, c.g, c.b] : r.base);
       for (let i = r.start; i < r.start + r.count; i++) { d[i * 3] = rgb[0]; d[i * 3 + 1] = rgb[1]; d[i * 3 + 2] = rgb[2]; }
     });
     col.needsUpdate = true;

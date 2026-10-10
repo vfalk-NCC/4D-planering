@@ -262,7 +262,10 @@ function l3bmApplyToIfc(text, moves) {
    inskrivna. Används både av Spara och av Exportera markerade. */
 async function l3bmFetchIfc(m, onProgress) {
   const w = m.src || {}, ed = l3bm.edits.get(m.id);
-  const r = w.fileId ? await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, onProgress)
+  // Originalet: webbläsarens kopia från inläsningen om den finns, annars från Trimble Connect.
+  const loc = typeof l3pRaw === "function" ? await l3pRaw(m, onProgress) : null;
+  const r = loc ? { bytes: await loc.blob.arrayBuffer(), placement: loc.placement }
+    : w.fileId ? await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, onProgress)
     : await askOpener("ifcModelData", { modelId: w.id || m.id }, 0, onProgress);
   await new Promise(res => setTimeout(res, 20));
   const u8 = new Uint8Array(r.bytes);

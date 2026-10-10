@@ -8,7 +8,7 @@
    Markeringen ritas som ett överlägg som delar punkterna med byggnadsbiten (inget kopieras) och följer
    med om biten flyttas. */
 
-const l3bs = { sel: [] }; // [{ mesh, ri, key }]
+const l3bs = { sel: [], ov: [] }; // sel: [{ mesh, ri, key }], ov: överläggen
 const L3BS_COL = 0x6d5efc;
 
 /* Objektets triangelintervall i bitens ursprungliga indexlista (workern sparar det; äldre cache: sök). */
@@ -23,33 +23,48 @@ function l3bsIdx(mesh, ri) {
 }
 function l3bsKey(mesh, ri) { const r = mesh.userData.l3b.ranges[ri]; return (mesh.userData.l3b.model && mesh.userData.l3b.model.id || "") + "|" + (r.guid || `${mesh.uuid}:${ri}`); }
 
-function l3bsOverlay(ent) {
-  const { mesh, ri } = ent, [s, c] = l3bsIdx(mesh, ri);
-  if (!c) return;
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", mesh.geometry.getAttribute("position")); // delas med biten
-  g.setIndex(new THREE.BufferAttribute(mesh.userData.l3b.origIdx.slice(s, s + c), 1));
-  g.computeBoundingSphere();
-  const fill = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: L3BS_COL, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), new THREE.LineBasicMaterial({ color: L3BS_COL, transparent: true, opacity: 0.95, depthTest: false }));
-  [fill, edges].forEach(o => { o.userData.noHit = true; o.userData.bsel = true; o.raycast = () => {}; o.renderOrder = 6; mesh.add(o); });
-  ent.fill = fill; ent.edges = edges;
-}
-function l3bsDropOverlay(ent) {
-  [ent.fill, ent.edges].forEach(o => {
-    if (!o) return;
+/* Överlägget: ett per modellbit med alla markerade objekt i biten (tusentals markerade objekt – t.ex.
+   alla med ett visst egenskapsvärde – blir då några få ritanrop). Konturer bara upp till en gräns. */
+const L3BS_EDGE_MAX = 400000;
+function l3bsDropOverlays() {
+  (l3bs.ov || []).forEach(o => {
     if (o.parent) o.parent.remove(o);
-    if (o === ent.fill) o.geometry.deleteAttribute("position"); // punkterna tillhör biten – släpp bara indexet
+    if (o.userData.bselFill) o.geometry.deleteAttribute("position"); // punkterna tillhör biten – släpp bara indexet
     o.geometry.dispose(); o.material.dispose();
   });
-  ent.fill = ent.edges = null;
+  l3bs.ov = [];
+}
+function l3bsRebuild() {
+  l3bsDropOverlays();
+  const byMesh = new Map();
+  l3bs.sel.forEach(e => { const a = byMesh.get(e.mesh); if (a) a.push(e.ri); else byMesh.set(e.mesh, [e.ri]); });
+  let total = 0;
+  const parts = [];
+  byMesh.forEach((ris, mesh) => {
+    const src = mesh.userData.l3b.origIdx;
+    let n = 0; const rs = ris.map(ri => { const sc = l3bsIdx(mesh, ri); n += sc[1]; return sc; });
+    if (!n) return;
+    const idx = new Uint32Array(n); let o = 0;
+    rs.forEach(([st, c]) => { idx.set(src.subarray(st, st + c), o); o += c; });
+    total += n / 3; parts.push([mesh, idx]);
+  });
+  parts.forEach(([mesh, idx]) => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", mesh.geometry.getAttribute("position")); // delas med biten
+    g.setIndex(new THREE.BufferAttribute(idx, 1));
+    g.computeBoundingSphere();
+    const fill = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: L3BS_COL, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    fill.userData.bselFill = true;
+    const objs = [fill];
+    if (total <= L3BS_EDGE_MAX) objs.push(new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), new THREE.LineBasicMaterial({ color: L3BS_COL, transparent: true, opacity: 0.95, depthTest: false })));
+    objs.forEach(o => { o.userData.noHit = true; o.userData.bsel = true; o.raycast = () => {}; o.renderOrder = 6; mesh.add(o); l3bs.ov.push(o); });
+  });
 }
 
 function l3bsSet(list, opts = {}) {
   const want = new Map(list.map(e => [l3bsKey(e.mesh, e.ri), e]));
-  l3bs.sel.forEach(e => { if (!want.has(e.key)) l3bsDropOverlay(e); });
-  const keep = new Map(l3bs.sel.filter(e => want.has(e.key)).map(e => [e.key, e]));
-  l3bs.sel = [...want.entries()].map(([key, e]) => keep.get(key) || (() => { const ent = { mesh: e.mesh, ri: e.ri, key }; l3bsOverlay(ent); return ent; })());
+  l3bs.sel = [...want.entries()].map(([key, e]) => ({ mesh: e.mesh, ri: e.ri, key }));
+  l3bsRebuild();
   if (l3bs.sel.length && l3.sel && l3.sel.size && !opts.keepPlaces) l3SelectIds([]); // en sorts markering i taget
   if (typeof l3RenderSide === "function") l3RenderSide();
   l3Render();
@@ -169,7 +184,7 @@ function l3bsRenderSide(side) {
   side.dataset.id = "bsel:" + l3bs.sel.map(e => e.key).join(",");
   side.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:#6d5efc"></i><b>${one ? esc(one.name) : `${n} objekt i byggnaden`}</b><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3BsClose" title="Avmarkera (Esc)">✕</button></div>
     <div class="v3-sub">${one ? esc(one.model) : esc([...new Set(info.map(x => x.model))].join(", "))}</div>
-    ${one ? `<table class="v3-info-t">${row("IFC-id", one.guid)}${one.item ? row("Aktivitet", one.item.activity) + row("Status", PHASE_LABELS[l3Phase(one.item)] || "") + row("Period", one.item.start_date ? `${one.item.start_date} – ${one.item.end_date || ""}` : "") : row("Planering", "Inte kopplad")}</table>`
+    ${one ? `<table class="v3-info-t">${row("IFC-id", one.guid)}${one.item ? row("Aktivitet", one.item.activity) + row("Status", PHASE_LABELS[l3Phase(one.item)] || "") + row("Period", one.item.start_date ? `${one.item.start_date} – ${one.item.end_date || ""}` : "") : row("Planering", "Inte kopplad")}</table>${typeof l3pFillSide === "function" ? `<div id="v3BsProps" class="v3-props"></div>` : ""}`
       : `<div class="v3-bs-list">${info.slice(0, 60).map(x => `<div class="v3-bs-row" title="${esc(x.guid)}"><span>${esc(x.name)}</span>${x.item ? `<em>${esc(x.item.activity || "kopplad")}</em>` : ""}</div>`).join("")}${n > 60 ? `<div class="v3-pal-hint">… och ${n - 60} till</div>` : ""}</div>`}
     <div class="v3-btns">
       <button type="button" id="v3BsZoom">${L3_ICO.focus}Zooma</button>
@@ -178,6 +193,7 @@ function l3bsRenderSide(side) {
       ${typeof l3bmStart === "function" ? `<button type="button" id="v3BsMove" title="Flytta de markerade – sparas som en ny IFC-fil i Trimble Connect">Flytta…</button>` : ""}
       ${typeof ifcSubset === "function" && typeof l3bmFetchIfc === "function" ? `<button type="button" id="v3BsExport" class="v3-wide" title="De markerade objekten (med dina flyttar) blir en egen IFC-fil i samma mapp i Trimble Connect – originalet rörs inte">Exportera markerade som ny IFC (${n})</button>` : ""}
       ${l3bsPendingHtml(info)}
+      ${!one && typeof l3pGroupBy === "function" ? `<button type="button" id="v3BsGroup" class="v3-wide" title="Fliken Egenskaper: välj en egenskap och se alla värden">Gruppera efter egenskap…</button>` : ""}
       ${coupled.length ? `<button type="button" id="v3BsJump" class="v3-wide" title="Markera de kopplade aktiviteterna i 4D-planering och objekten i Trimble Connect">Markera i 4D-planering (${coupled.length})</button>` : ""}
     </div>`;
   const on = (id, fn) => { const b = side.querySelector("#" + id); if (b) b.onclick = fn; };
@@ -186,9 +202,11 @@ function l3bsRenderSide(side) {
   on("v3BsHide", l3bsHide);
   on("v3BsIso", l3bsIsolate);
   on("v3BsMove", () => l3bmStart());
+  on("v3BsGroup", () => l3PalTab("props"));
   on("v3BsExport", async () => { const b = side.querySelector("#v3BsExport"); b.disabled = true; try { await l3bsExportIfc(); } catch (e) { /* visas i statusraden */ } if (b.isConnected) b.disabled = false; });
   side.querySelectorAll("[data-bmsave]").forEach(b => { b.onclick = async () => { b.disabled = true; try { await l3bmSave(b.dataset.bmsave); } catch (e) { /* visas i statusraden */ } l3RenderSide(); }; });
   on("v3BsJump", () => askOpener("select", { ids: [...new Set(coupled.map(x => x.item.id))], jump: true }, 15000).then(() => l3Toast("Markerat i 4D-planering och i Trimble Connect.")).catch(e => l3Toast(e.message)));
+  if (one && typeof l3pFillSide === "function") l3pFillSide(side, l3bs.sel[0]);
 }
 
 /* Exportera markerade (Victor 2026-10-10: "markera objekten i modell och göra en separat IFC på just dom
