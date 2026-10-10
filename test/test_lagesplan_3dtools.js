@@ -167,6 +167,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (!pp || pp.kind !== 'perp' || Math.abs(pp.x) > 0.02 || Math.abs(pp.y) > 0.02) fail('Vinkelrätt (kortaste vägen): ' + JSON.stringify(pp));
   if (process.env.SHOT) { await page.evaluate(() => { l3Frame(); l3.renderer.render(l3.scene, l3.camera); }); await page.keyboard.press('m'); await move(6512346, 150123, 14, 0, 0); await page.screenshot({ path: process.env.SHOT }); }
+  if (process.env.SHOTGZ) { await page.evaluate(() => { l3SetTool('select'); l3SelectIds(['c1']); const g = l3.placeMeshes.get('c1'), c = new THREE.Box3().setFromObject(g).getCenter(new THREE.Vector3()); l3StopFly(); l3.orbit.target.copy(c); l3.camera.position.copy(c).add(new THREE.Vector3(9, -12, 8)); l3.orbit.update(); l3Render(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOTGZ }); }
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_3dtools');
   await browser.close(); server.close();

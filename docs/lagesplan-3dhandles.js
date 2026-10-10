@@ -73,7 +73,7 @@ function l3HandlesPos() {
   const box = l3 && l3.handlesEl;
   if (!box) return;
   const p = l3H ? l3H.p : l3HandleTarget();
-  const hide = !p || box.dataset.id !== p.id || l3.gizmo.dragging || l3.dlgPick || l3.clipPick || l3.vPick;
+  const hide = !p || box.dataset.id !== p.id || l3.gizmo.dragging || (l3.gizmoR && l3.gizmoR.dragging) || l3.dlgPick || l3.clipPick || l3.vPick;
   box.classList.toggle("hidden", !!hide);
   if (hide) return;
   const defs = l3HandleDefs(p), r = l3.renderer.domElement;

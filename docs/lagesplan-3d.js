@@ -487,6 +487,19 @@ function l3Init(box) {
   gizmo.addEventListener("mouseDown", () => { if (gizmo.object && gizmo.object.userData.bmove) return; if (typeof placeSnapshot === "function") placeSnapshot(); l3.dragStart = l3GroupState(); });
   gizmo.addEventListener("objectChange", () => { if (gizmo.object && gizmo.object.userData.bmove) { if (typeof l3bmGizmoChange === "function") l3bmGizmoChange(); return; } l3FromGizmo(); });
   gizmo.addEventListener("mouseUp", l3DragEnd);
+  // Vridning i samma handtag (Victor 2026-10-10: "Vrid kan ligga med som ett alternativ direkt i denna
+  // flytta"): en blå ring runt flyttpilarna vrider kring lodaxeln. Ett andra handtag i vridläge, bara Z,
+  // som följer det första (samma objekt, samma händelser).
+  const ring = new THREE.TransformControls(camera, renderer.domElement);
+  ring.setSpace("world"); ring.setMode("rotate"); ring.showX = false; ring.showY = false; ring.showZ = true; ring.size = 1.45;
+  scene.add(ring);
+  ["change", "dragging-changed", "mouseDown", "objectChange", "mouseUp"].forEach(t => (gizmo._listeners && gizmo._listeners[t] || []).slice().forEach(fn => ring.addEventListener(t, fn)));
+  l3.gizmoR = ring;
+  const att = gizmo.attach.bind(gizmo), det = gizmo.detach.bind(gizmo), mode = gizmo.setMode.bind(gizmo);
+  gizmo.attach = o => { att(o); l3RingSync(); return gizmo; };
+  gizmo.detach = () => { det(); ring.detach(); return gizmo; };
+  gizmo.setMode = m => { mode(m); l3RingSync(); };
+  const rsnap = gizmo.setRotationSnap.bind(gizmo); gizmo.setRotationSnap = v => { rsnap(v); ring.setRotationSnap(v); };
   l3ApplyStep();
   if (typeof l3ToolsInit === "function") l3ToolsInit();
   const el = renderer.domElement;
@@ -495,7 +508,7 @@ function l3Init(box) {
   el.addEventListener("pointerdown", e => {
     down = { x: e.clientX, y: e.clientY, t: Date.now(), longed: false };
     clearTimeout(press);
-    if (e.pointerType === "touch") press = setTimeout(() => { if (down && !gizmo.dragging) { down.longed = true; l3OpenCtx(e.clientX, e.clientY, e); } }, 550);
+    if (e.pointerType === "touch") press = setTimeout(() => { if (down && !gizmo.dragging && !(l3.gizmoR && l3.gizmoR.dragging)) { down.longed = true; l3OpenCtx(e.clientX, e.clientY, e); } }, 550);
   });
   el.addEventListener("pointermove", e => {
     if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) clearTimeout(press);
@@ -503,7 +516,7 @@ function l3Init(box) {
   });
   el.addEventListener("pointerup", e => {
     clearTimeout(press);
-    if (!down || gizmo.dragging || down.longed) { down = null; return; }
+    if (!down || gizmo.dragging || (l3.gizmoR && l3.gizmoR.dragging) || down.longed) { down = null; return; }
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); down = null;
     if (moved < 6 && e.button !== 2) { l3Tap(e); l3Render(); } // ritas om: pekskärmens knappar följer verktygets steg
   });
@@ -877,7 +890,7 @@ function l3Hover(e) {
     l3HoverRaf2 = 0;
     const ev = l3HoverEv; if (!ev || !l3) return;
     // Medan en knapp hålls nere (rotera, panorera, dra) räknas inga träffar – det var det som hackade.
-    if (ev.buttons || l3.gizmo.dragging || l3.moving) return;
+    if (ev.buttons || l3.gizmo.dragging || (l3.gizmoR && l3.gizmoR.dragging) || l3.moving) return;
     if (l3.tool === "select" && !l3.addType) l3SetHover(l3PlaceAt(ev)); else l3SetHover(null);
     // Koordinaten under markören (verktygen visar fästpunkten själva).
     const h = l3.lastSnap && l3.tool !== "select" ? { point: l3.lastSnap } : l3Ray(ev, l3Surfaces())[0];
@@ -972,6 +985,13 @@ function l3ApplyStep() {
   l3.gizmo.setRotationSnap(v ? ({ 0.1: 5, 0.5: 15, 1: 45 }[v] || 15) * Math.PI / 180 : null);
 }
 const l3GroupState = () => { const g = l3.gizmo.object; return g ? { x: g.position.x, y: g.position.y, z: g.position.z, r: g.rotation.z } : null; };
+/* Vridringen visas med flyttpilarna (inte i vridläget – där är ringen redan handtaget), och inte för staket. */
+function l3RingSync() {
+  const g = l3.gizmo, r = l3.gizmoR; if (!r) return;
+  const o = g.object, p = o && placements.find(x => x.id === o.userData.placeId), fence = p && (placeLib(p.type) || {}).fence;
+  if (o && g.mode === "translate" && !fence) { if (r.object !== o) r.attach(o); } else if (r.object) r.detach();
+  r.setRotationSnap(g.rotationSnap || null);
+}
 /* Handtagen -> placeringen (meter i modellens system). */
 function l3FromGizmo() {
   const g = l3.gizmo.object, p = g && placements.find(x => x.id === g.userData.placeId);

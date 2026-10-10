@@ -702,17 +702,17 @@
 			const matHelper = gizmoLineMaterial.clone();
 			matHelper.opacity = 0.5;
 			const matRed = gizmoMaterial.clone();
-			matRed.color.setHex( 0xff0000 );
+			matRed.color.setHex( 0xef4444 ); // 4D-planering: mjukare färger
 			const matGreen = gizmoMaterial.clone();
-			matGreen.color.setHex( 0x00ff00 );
+			matGreen.color.setHex( 0x22c55e );
 			const matBlue = gizmoMaterial.clone();
-			matBlue.color.setHex( 0x0000ff );
+			matBlue.color.setHex( 0x3b82f6 );
 			const matRedTransparent = gizmoMaterial.clone();
-			matRedTransparent.color.setHex( 0xff0000 );
-			matRedTransparent.opacity = 0.5;
+			matRedTransparent.color.setHex( 0xef4444 );
+			matRedTransparent.opacity = 0.35;
 			const matGreenTransparent = gizmoMaterial.clone();
-			matGreenTransparent.color.setHex( 0x00ff00 );
-			matGreenTransparent.opacity = 0.5;
+			matGreenTransparent.color.setHex( 0x22c55e );
+			matGreenTransparent.opacity = 0.35;
 			const matBlueTransparent = gizmoMaterial.clone();
 			matBlueTransparent.color.setHex( 0x0000ff );
 			matBlueTransparent.opacity = 0.5;
@@ -728,17 +728,17 @@
 
 			// reusable geometry
 
-			const arrowGeometry = new THREE.CylinderGeometry( 0, 0.04, 0.1, 12 );
-			arrowGeometry.translate( 0, 0.05, 0 );
+			const arrowGeometry = new THREE.CylinderGeometry( 0, 0.045, 0.13, 24 ); // 4D-planering: tydligare pilspets
+			arrowGeometry.translate( 0, 0.065, 0 );
 			const scaleHandleGeometry = new THREE.BoxGeometry( 0.08, 0.08, 0.08 );
 			scaleHandleGeometry.translate( 0, 0.04, 0 );
 			const lineGeometry = new THREE.BufferGeometry();
 			lineGeometry.setAttribute( 'position', new THREE.Float32BufferAttribute( [ 0, 0, 0, 1, 0, 0 ], 3 ) );
-			const lineGeometry2 = new THREE.CylinderGeometry( 0.0075, 0.0075, 0.5, 3 );
+			const lineGeometry2 = new THREE.CylinderGeometry( 0.011, 0.011, 0.5, 12 ); // 4D-planering: tjockare, rund
 			lineGeometry2.translate( 0, 0.25, 0 );
 			function CircleGeometry( radius, arc ) {
 
-				const geometry = new THREE.TorusGeometry( radius, 0.0075, 3, 64, arc * Math.PI * 2 );
+				const geometry = new THREE.TorusGeometry( radius, 0.011, 8, 96, arc * Math.PI * 2 ); // 4D-planering: rund och slät
 				geometry.rotateY( Math.PI / 2 );
 				geometry.rotateX( Math.PI / 2 );
 				return geometry;
@@ -758,18 +758,19 @@
 			// Gizmo definitions - custom hierarchy definitions for setupGizmo() function
 
 			const gizmoTranslate = {
-				X: [[ new THREE.Mesh( arrowGeometry, matRed ), [ 0.5, 0, 0 ], [ 0, 0, - Math.PI / 2 ]], [ new THREE.Mesh( arrowGeometry, matRed ), [ - 0.5, 0, 0 ], [ 0, 0, Math.PI / 2 ]], [ new THREE.Mesh( lineGeometry2, matRed ), [ 0, 0, 0 ], [ 0, 0, - Math.PI / 2 ]]],
-				Y: [[ new THREE.Mesh( arrowGeometry, matGreen ), [ 0, 0.5, 0 ]], [ new THREE.Mesh( arrowGeometry, matGreen ), [ 0, - 0.5, 0 ], [ Math.PI, 0, 0 ]], [ new THREE.Mesh( lineGeometry2, matGreen ) ]],
-				Z: [[ new THREE.Mesh( arrowGeometry, matBlue ), [ 0, 0, 0.5 ], [ Math.PI / 2, 0, 0 ]], [ new THREE.Mesh( arrowGeometry, matBlue ), [ 0, 0, - 0.5 ], [ - Math.PI / 2, 0, 0 ]], [ new THREE.Mesh( lineGeometry2, matBlue ), null, [ Math.PI / 2, 0, 0 ]]],
-				XYZ: [[ new THREE.Mesh( new THREE.OctahedronGeometry( 0.1, 0 ), matWhiteTransparent.clone() ), [ 0, 0, 0 ]]],
+				// 4D-planering: en pil per axel (linje + spets), ingen lös spets på andra sidan.
+				X: [[ new THREE.Mesh( arrowGeometry, matRed ), [ 0.5, 0, 0 ], [ 0, 0, - Math.PI / 2 ]], [ new THREE.Mesh( lineGeometry2, matRed ), [ 0, 0, 0 ], [ 0, 0, - Math.PI / 2 ]]],
+				Y: [[ new THREE.Mesh( arrowGeometry, matGreen ), [ 0, 0.5, 0 ]], [ new THREE.Mesh( lineGeometry2, matGreen ) ]],
+				Z: [[ new THREE.Mesh( arrowGeometry, matBlue ), [ 0, 0, 0.5 ], [ Math.PI / 2, 0, 0 ]], [ new THREE.Mesh( lineGeometry2, matBlue ), null, [ Math.PI / 2, 0, 0 ]]],
+				XYZ: [[ new THREE.Mesh( new THREE.SphereGeometry( 0.055, 20, 14 ), matWhiteTransparent.clone() ), [ 0, 0, 0 ]]],
 				XY: [[ new THREE.Mesh( new THREE.BoxGeometry( 0.15, 0.15, 0.01 ), matBlueTransparent.clone() ), [ 0.15, 0.15, 0 ]]],
 				YZ: [[ new THREE.Mesh( new THREE.BoxGeometry( 0.15, 0.15, 0.01 ), matRedTransparent.clone() ), [ 0, 0.15, 0.15 ], [ 0, Math.PI / 2, 0 ]]],
 				XZ: [[ new THREE.Mesh( new THREE.BoxGeometry( 0.15, 0.15, 0.01 ), matGreenTransparent.clone() ), [ 0.15, 0, 0.15 ], [ - Math.PI / 2, 0, 0 ]]]
 			};
 			const pickerTranslate = {
-				X: [[ new THREE.Mesh( new THREE.CylinderGeometry( 0.2, 0, 0.6, 4 ), matInvisible ), [ 0.3, 0, 0 ], [ 0, 0, - Math.PI / 2 ]], [ new THREE.Mesh( new THREE.CylinderGeometry( 0.2, 0, 0.6, 4 ), matInvisible ), [ - 0.3, 0, 0 ], [ 0, 0, Math.PI / 2 ]]],
-				Y: [[ new THREE.Mesh( new THREE.CylinderGeometry( 0.2, 0, 0.6, 4 ), matInvisible ), [ 0, 0.3, 0 ]], [ new THREE.Mesh( new THREE.CylinderGeometry( 0.2, 0, 0.6, 4 ), matInvisible ), [ 0, - 0.3, 0 ], [ 0, 0, Math.PI ]]],
-				Z: [[ new THREE.Mesh( new THREE.CylinderGeometry( 0.2, 0, 0.6, 4 ), matInvisible ), [ 0, 0, 0.3 ], [ Math.PI / 2, 0, 0 ]], [ new THREE.Mesh( new THREE.CylinderGeometry( 0.2, 0, 0.6, 4 ), matInvisible ), [ 0, 0, - 0.3 ], [ - Math.PI / 2, 0, 0 ]]],
+				X: [[ new THREE.Mesh( new THREE.CylinderGeometry( 0.2, 0, 0.6, 4 ), matInvisible ), [ 0.3, 0, 0 ], [ 0, 0, - Math.PI / 2 ]]],
+				Y: [[ new THREE.Mesh( new THREE.CylinderGeometry( 0.2, 0, 0.6, 4 ), matInvisible ), [ 0, 0.3, 0 ]]],
+				Z: [[ new THREE.Mesh( new THREE.CylinderGeometry( 0.2, 0, 0.6, 4 ), matInvisible ), [ 0, 0, 0.3 ], [ Math.PI / 2, 0, 0 ]]],
 				XYZ: [[ new THREE.Mesh( new THREE.OctahedronGeometry( 0.2, 0 ), matInvisible ) ]],
 				XY: [[ new THREE.Mesh( new THREE.BoxGeometry( 0.2, 0.2, 0.01 ), matInvisible ), [ 0.15, 0.15, 0 ]]],
 				YZ: [[ new THREE.Mesh( new THREE.BoxGeometry( 0.2, 0.2, 0.01 ), matInvisible ), [ 0, 0.15, 0.15 ], [ 0, Math.PI / 2, 0 ]]],
@@ -785,9 +786,10 @@
 			};
 			const gizmoRotate = {
 				XYZE: [[ new THREE.Mesh( CircleGeometry( 0.5, 1 ), matGray ), null, [ 0, Math.PI / 2, 0 ]]],
-				X: [[ new THREE.Mesh( CircleGeometry( 0.5, 0.5 ), matRed ) ]],
-				Y: [[ new THREE.Mesh( CircleGeometry( 0.5, 0.5 ), matGreen ), null, [ 0, 0, - Math.PI / 2 ]]],
-				Z: [[ new THREE.Mesh( CircleGeometry( 0.5, 0.5 ), matBlue ), null, [ 0, Math.PI / 2, 0 ]]],
+				// 4D-planering: hela ringar (inte halva).
+				X: [[ new THREE.Mesh( CircleGeometry( 0.5, 1 ), matRed ) ]],
+				Y: [[ new THREE.Mesh( CircleGeometry( 0.5, 1 ), matGreen ), null, [ 0, 0, - Math.PI / 2 ]]],
+				Z: [[ new THREE.Mesh( CircleGeometry( 0.5, 1 ), matBlue ), null, [ 0, Math.PI / 2, 0 ]]],
 				E: [[ new THREE.Mesh( CircleGeometry( 0.75, 1 ), matYellowTransparent ), null, [ 0, Math.PI / 2, 0 ]]]
 			};
 			const helperRotate = {
