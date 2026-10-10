@@ -211,8 +211,7 @@ function l3dGripDown(e) {
     if (!moved) return;
     const now = v.en.pts.map(p => p.slice());
     l3dOp("flytta hörnpunkt", () => { v.en.pts = now.map(p => p.slice()); }, () => { v.en.pts = old.map(p => p.slice()); });
-    l3d.suppressTap = Date.now();
-    l3Status("Hörnpunkten flyttad (Ctrl+Z ångrar).");
+    l3Status("Hörnpunkten flyttad (Ctrl+Z ångrar)."); // trycket når inte vyn (nedtrycket stoppades), så inget extra tryck
   };
   window.addEventListener("pointermove", mv, true); window.addEventListener("pointerup", up, true);
   return true;
@@ -221,7 +220,6 @@ function l3dRemoveVertex(en, i) {
   if (en.pts.length <= 2) { l3Status("En linje behöver minst två punkter – ta bort hela linjen med Delete.", true); return; }
   const old = en.pts.map(p => p.slice());
   l3dOp("ta bort hörnpunkt", () => { en.pts = old.filter((_, j) => j !== i).map(p => p.slice()); }, () => { en.pts = old.map(p => p.slice()); });
-  l3d.suppressTap = Date.now();
   l3Status("Hörnpunkten borttagen.");
 }
 function l3dInsertVertex(en, e) {
@@ -243,7 +241,6 @@ function l3dInsertVertex(en, e) {
 /* ---- Tryck, ruta, tangenter (anropas från 3D-vyn) --------------------------------------------- */
 function l3dTap(e) {
   if (!l3d.rec || l3.tool !== "select") return false;
-  if (l3d.suppressTap && Date.now() - l3d.suppressTap < 400) { l3d.suppressTap = 0; return true; }
   if (l3d.draw && l3d.draw.text) { l3dPlaceText(e); return true; }
   if (l3d.draw) {
     const pts = l3d.draw.pts, g = l3dGround(e, pts[pts.length - 1]);

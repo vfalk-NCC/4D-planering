@@ -53,6 +53,7 @@ function l3cPlace() {
     el.type = "button"; el.className = "v3-scissor";
     el.innerHTML = `${L3_ICO.scissors}<span></span>`;
     el.onpointerdown = e => l3cDragStart(e, i);
+    el.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); l3cMenu(e, i); };
     el.ondblclick = e => { e.preventDefault(); const c = l3.clips[i]; if (!c) return; c.plane.negate(); c.base = c.plane.constant; c.off = 0; if (typeof l3RenderClipDlg === "function") l3RenderClipDlg(); l3Render(); };
     host.appendChild(el); l3c.els.push(el);
   }
@@ -117,4 +118,24 @@ function l3cShowPlane(c) {
   [quad, edge].forEach(o => { o.renderOrder = 7; o.raycast = () => {}; o.userData.noHit = true; });
   grp.position.add(c.plane.normal.clone().multiplyScalar(0.01)); // en centimeter på den sida som syns – klipps inte bort
   l3.scene.add(grp); l3c.plane = grp;
+}
+
+/* Högerklick på saxen (Victor 2026-10-10: "så ska jag kunna välja att ta bort den"). */
+function l3cMenu(e, i) {
+  const ctx = document.getElementById("v3Ctx"); if (!ctx) return;
+  if (typeof l3HideMenus === "function") l3HideMenus();
+  const c = l3.clips[i]; if (!c) return;
+  ctx.innerHTML = `<button type="button" data-cc="del" class="v3-danger"><span>Ta bort snittet</span><kbd></kbd></button><button type="button" data-cc="flip"><span>Vänd snittet</span><kbd></kbd></button><button type="button" data-cc="zero"><span>Tillbaka till +0 m</span><kbd></kbd></button><hr/><button type="button" data-cc="all"><span>Ta bort alla snitt</span><kbd></kbd></button>`;
+  const r = document.getElementById("v3Canvas").getBoundingClientRect();
+  ctx.classList.remove("hidden");
+  ctx.style.left = Math.min(e.clientX - r.left, r.width - ctx.offsetWidth - 6) + "px"; ctx.style.top = Math.min(e.clientY - r.top, r.height - ctx.offsetHeight - 6) + "px";
+  ctx.querySelectorAll("[data-cc]").forEach(b => { b.onclick = ev => {
+    ev.stopPropagation(); ctx.classList.add("hidden");
+    const k = b.dataset.cc;
+    if (k === "del") { l3.clips.splice(i, 1); l3ApplyClips(); if (l3.clips.length) { if (document.getElementById("v3Clip") && !document.getElementById("v3Clip").classList.contains("hidden")) l3RenderClipDlg(); } else l3DlgClose("v3Clip"); l3Status("Snittet är borttaget."); }
+    else if (k === "flip") { c.plane.negate(); c.base = c.plane.constant; c.off = 0; if (document.getElementById("v3Clip") && !document.getElementById("v3Clip").classList.contains("hidden")) l3RenderClipDlg(); }
+    else if (k === "zero") l3cSet(i, 0);
+    else if (k === "all") l3ClearClips();
+    l3Render();
+  }; });
 }

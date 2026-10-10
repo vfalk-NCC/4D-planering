@@ -10,6 +10,10 @@
 const l3k = { list: [], loaded: false, plan: null, hidden: false, showDone: true, els: new Map(), open: null, draft: null };
 const l3kPath = () => `projects/${encodeURIComponent(projectId)}/plan_comments3d.json`;
 const l3kDate = iso => { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" }) + " " + d.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" }); };
+/* Färger (Victor 2026-10-10: "byta färger på kommentarerna"). Klara är alltid grå. */
+const L3K_COLORS = ["#f97316", "#e11d48", "#db2777", "#7c3aed", "#2563eb", "#0891b2", "#16a34a", "#ca8a04", "#475569"];
+const l3kCol = c => (c.done ? "#94a3b8" : c.color || L3K_COLORS[0]);
+const l3kLight = hex => { const n = parseInt(String(hex).slice(1), 16), m = v => Math.round(v + (255 - v) * 0.28); return `rgb(${m(n >> 16 & 255)},${m(n >> 8 & 255)},${m(n & 255)})`; };
 const l3kMe = () => (typeof settings !== "undefined" && settings.userName) || "Okänd";
 
 async function l3kLoad() {
@@ -63,6 +67,7 @@ function l3kDraw() {
     const el = document.createElement("button");
     el.type = "button"; el.className = "v3-cpin" + (c.done ? " done" : "") + (l3k.open && l3k.open.id === c.id ? " on" : "");
     el.innerHTML = `<span>${l3k.list.indexOf(c) + 1}</span>`;
+    el.style.background = `linear-gradient(135deg, ${l3kLight(l3kCol(c))}, ${l3kCol(c)})`;
     el.title = `${c.target && c.target.name ? c.target.name + ": " : ""}${c.text}`.slice(0, 200);
     el.onclick = e => { e.stopPropagation(); l3kOpen(c); };
     el.onpointerdown = e => e.stopPropagation();
@@ -71,6 +76,7 @@ function l3kDraw() {
   l3kPlace();
   l3kSignsBuild();
   if (typeof l3LayersRender === "function") l3LayersRender();
+  if (typeof l3kRenderTab === "function") l3kRenderTab();
   l3Render();
 }
 /* ---- Skyltar i 3D (Victor 2026-10-10: "om popupen går att få till som ett 3d-objekt") ---------------
@@ -91,10 +97,10 @@ function l3kCard(c, nr) {
   const r = 26;
   x.fillStyle = "rgba(15,23,42,.18)"; x.beginPath(); x.roundRect(4, 8, W - 8, H - 10, r); x.fill();
   x.fillStyle = "#fff"; x.beginPath(); x.roundRect(0, 0, W - 8, H - 10, r); x.fill();
-  const g = x.createLinearGradient(0, 0, W, 0); g.addColorStop(0, c.done ? "#94a3b8" : "#f59e0b"); g.addColorStop(1, c.done ? "#94a3b8" : "#f97316");
+  const g = x.createLinearGradient(0, 0, W, 0); g.addColorStop(0, l3kLight(l3kCol(c))); g.addColorStop(1, l3kCol(c));
   x.fillStyle = g; x.beginPath(); x.roundRect(0, 0, W - 8, head, [r, r, 0, 0]); x.fill();
   x.fillStyle = "#fff"; x.beginPath(); x.arc(40, head / 2, 20, 0, Math.PI * 2); x.fill();
-  x.fillStyle = c.done ? "#64748b" : "#f97316"; x.font = `700 ${F * 0.8}px "Segoe UI", Arial, sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(String(nr), 40, head / 2 + 1);
+  x.fillStyle = l3kCol(c); x.font = `700 ${F * 0.8}px "Segoe UI", Arial, sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(String(nr), 40, head / 2 + 1);
   x.textAlign = "left"; x.fillStyle = "#fff"; x.font = `600 ${F * 0.8}px "Segoe UI", Arial, sans-serif`;
   x.fillText(`${c.by || ""} · ${new Date(c.at).toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" })}${c.done ? " · klar" : ""}`.slice(0, 44), 72, head / 2 + 1);
   x.fillStyle = c.done ? "#64748b" : "#0f172a"; x.font = `${F}px "Segoe UI", Arial, sans-serif`; x.textBaseline = "alphabetic";
@@ -118,9 +124,9 @@ function l3kSignsBuild() {
     const w = 3.2; sp.scale.set(w, w * cv.height / cv.width, 1);
     sp.center.set(0.08, 0); sp.position.copy(base).add(new THREE.Vector3(0, 0, lift));
     sp.userData.commentId = c.id; sp.renderOrder = 5;
-    const pole = new THREE.Line(new THREE.BufferGeometry().setFromPoints([base, base.clone().add(new THREE.Vector3(0, 0, lift))]), new THREE.LineBasicMaterial({ color: c.done ? 0x94a3b8 : 0xf97316 }));
+    const pole = new THREE.Line(new THREE.BufferGeometry().setFromPoints([base, base.clone().add(new THREE.Vector3(0, 0, lift))]), new THREE.LineBasicMaterial({ color: new THREE.Color(l3kCol(c)) }));
     pole.userData.noHit = true; pole.raycast = () => {};
-    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), new THREE.MeshBasicMaterial({ color: c.done ? 0x94a3b8 : 0xf97316 }));
+    const dot = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(l3kCol(c)) }));
     dot.position.copy(base); dot.userData.noHit = true; dot.raycast = () => {};
     grp.add(pole, dot, sp);
   });
@@ -166,7 +172,8 @@ function l3kOpen(c, edit) {
   if (!pop) { pop = document.createElement("div"); pop.id = "v3CPop"; pop.className = "v3-cpop"; l3.renderer.domElement.parentElement.appendChild(pop); pop.onpointerdown = e => e.stopPropagation(); pop.onclick = e => e.stopPropagation(); pop.onkeydown = e => e.stopPropagation(); }
   const esc = escHtml, isNew = c === l3k.draft, t = c.target || {};
   const kindLbl = { place: "Etablering", ifc: "IFC-objekt", item: "Planerat objekt", point: "" }[t.kind] || "";
-  pop.innerHTML = `<div class="v3-cpop-h"><i></i><div><b title="${esc(t.name || "")}">${esc(t.name || "Kommentar")}</b><em>${esc([kindLbl, t.model].filter(Boolean).join(" · "))}</em></div><button type="button" class="v3-x" data-k="close" title="Stäng (Esc)">✕</button></div>
+  pop.innerHTML = `<div class="v3-cpop-h"><i style="background:linear-gradient(135deg, ${l3kLight(l3kCol(c))}, ${l3kCol(c)})"></i><div><b title="${esc(t.name || "")}">${esc(t.name || "Kommentar")}</b><em>${esc([kindLbl, t.model].filter(Boolean).join(" · "))}</em></div><button type="button" class="v3-x" data-k="close" title="Stäng (Esc)">✕</button></div>
+    <div class="v3-cpop-cols" title="Kommentarens färg">${L3K_COLORS.map(col => `<button type="button" data-kcol="${col}" class="${(c.color || L3K_COLORS[0]) === col ? "on" : ""}" style="background:${col}" title="${col}"></button>`).join("")}<label class="v3-cpop-own" title="Egen färg"><input type="color" data-kcolin value="${esc(c.color || L3K_COLORS[0])}" />＋</label></div>
     ${isNew || edit ? `<div class="v3-cpop-meta">${esc(l3kMe())} · ${esc(l3kDate(c.at))}</div>
       <textarea id="v3CText" rows="4" placeholder="Skriv en kommentar…">${esc(c.text || "")}</textarea>
       <div class="v3-cpop-f"><button type="button" data-k="cancel">Avbryt</button><button type="button" class="pri" data-k="save">Spara</button></div>`
@@ -179,6 +186,9 @@ function l3kOpen(c, edit) {
   pop.classList.remove("hidden");
   const on = (k, fn) => { const b = pop.querySelector(`[data-k="${k}"]`); if (b) b.onclick = fn; };
   on("close", l3kClose); on("cancel", l3kClose);
+  const setCol = async col => { if (!col || c.color === col) return; c.color = col; const ta0 = pop.querySelector("#v3CText"), keep = ta0 ? ta0.value : null; l3kOpen(c, edit); if (keep != null) { const t2 = pop.querySelector("#v3CText"); if (t2) t2.value = keep; } if (!isNew) { l3kDraw(); await l3kWrite(c); } };
+  pop.querySelectorAll("[data-kcol]").forEach(b => { b.onclick = () => setCol(b.dataset.kcol); });
+  const ci = pop.querySelector("[data-kcolin]"); if (ci) ci.onchange = () => setCol(ci.value);
   on("save", async () => {
     const v = pop.querySelector("#v3CText").value.trim();
     if (!v) { pop.querySelector("#v3CText").focus(); return; }
@@ -215,3 +225,115 @@ function l3kClose() {
   l3kDraw();
 }
 function l3kToggle() { l3k.hidden = !l3k.hidden; if (l3k.hidden) l3kClose(); l3kDraw(); }
+
+/* ---- Fliken Kommentarer (Victor 2026-10-10: "en egen meny bredvid grupper") ---------------------- */
+const l3kUi = { q: "" };
+function l3kRenderTab() {
+  const host = document.getElementById("v3PalComments");
+  if (!host || host.classList.contains("hidden")) return;
+  if (!l3k.loaded) { host.innerHTML = `<div class="v3-pal-hint"><span class="pm-spin"></span> Hämtar kommentarerna…</div>`; l3kLoad().then(() => l3kRenderTab()); return; }
+  const esc = escHtml, I = L3_ICO, t = l3kUi.q.trim().toLowerCase();
+  const all = l3k.list.map((c, i) => ({ c, nr: i + 1 }));
+  const list = all.filter(({ c }) => (l3k.showDone || !c.done) && (!t || [c.text, c.by, c.target && c.target.name, ...(c.replies || []).map(r => r.text)].join(" ").toLowerCase().includes(t)));
+  const open = l3k.list.filter(c => !c.done).length, done = l3k.list.length - open;
+  host.innerHTML = `<div class="v3-kc-top"><input type="search" class="v3-pp-q" id="v3KQ" placeholder="Sök i kommentarerna…" value="${esc(l3kUi.q)}" /></div>
+    <div class="v3-kc-opts">
+      <label class="v3-chk"><input type="checkbox" id="v3KShow" ${l3k.hidden ? "" : "checked"} /> Visa i 3D</label>
+      <label class="v3-chk"><input type="checkbox" id="v3KSigns" ${l3kSigns() ? "checked" : ""} /> Som skyltar</label>
+      <label class="v3-chk"><input type="checkbox" id="v3KDone" ${l3k.showDone ? "checked" : ""} /> Klara (${done})</label>
+    </div>
+    <div class="v3-kc-list">${list.length ? list.map(({ c, nr }) => `<div class="v3-kc ${c.done ? "done" : ""} ${l3k.open && l3k.open.id === c.id ? "on" : ""}">
+        <label class="v3-kc-col" title="Byt färg"><input type="color" data-kccol="${esc(c.id)}" value="${esc(c.color || L3K_COLORS[0])}" /><i style="background:${l3kCol(c)}">${nr}</i></label>
+        <button type="button" class="v3-kc-b" data-kcgo="${esc(c.id)}" title="Visa kommentaren i 3D"><b>${esc(String(c.text).slice(0, 80))}</b><em>${esc([c.target && c.target.name, c.by, new Date(c.at).toLocaleDateString("sv-SE", { day: "numeric", month: "short" }), (c.replies || []).length ? `${c.replies.length} svar` : ""].filter(Boolean).join(" · "))}</em></button>
+        <button type="button" class="v3-ic" data-kcdone="${esc(c.id)}" title="${c.done ? "Öppna igen" : "Markera som klar"}">${c.done ? "↺" : "✓"}</button>
+        <button type="button" class="v3-ic" data-kcdel="${esc(c.id)}" title="Ta bort">${I.trash}</button>
+      </div>`).join("") : `<div class="v3-pal-hint">${l3k.list.length ? "Ingen kommentar matchar." : "Inga kommentarer än. Högerklicka på ett objekt i 3D → Kommentar här…"}</div>`}</div>
+    ${l3k.list.length ? `<div class="v3-grp-acts"><button type="button" id="v3KIfc" title="Kommentarerna som riktiga 3D-skyltar (skylt, stolpe, 3D-text och egenskaper) i en ny IFC-fil i Trimble Connect – vända mot vyn du har nu">${I.upload} Exportera som 3D-skyltar (IFC) till TC</button></div>` : ""}
+    <div class="v3-pal-hint">${open} öppna${done ? ` · ${done} klara` : ""}. Högerklick i 3D → Kommentar här… skapar en ny.</div>`;
+  const q = host.querySelector("#v3KQ");
+  q.oninput = () => { l3kUi.q = q.value; const pos = q.selectionStart; l3kRenderTab(); const n = document.getElementById("v3KQ"); if (n) { n.focus(); n.setSelectionRange(pos, pos); } };
+  host.querySelector("#v3KShow").onchange = e => { l3k.hidden = !e.target.checked; if (l3k.hidden) l3kClose(); l3kDraw(); };
+  host.querySelector("#v3KSigns").onchange = e => { l3SetPref("cSigns", e.target.checked); l3kDraw(); };
+  host.querySelector("#v3KDone").onchange = e => { l3k.showDone = e.target.checked; l3kDraw(); };
+  const find = id => l3k.list.find(x => x.id === id);
+  const ex = host.querySelector("#v3KIfc"); if (ex) ex.onclick = async () => { ex.disabled = true; try { await l3kExportIfc(); } catch (e) { /* statusraden */ } if (ex.isConnected) ex.disabled = false; };
+  host.querySelectorAll("[data-kcgo]").forEach(b => { b.onclick = () => { const c = find(b.dataset.kcgo); if (!c) return; l3k.hidden = false; l3FlyTo(new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]), 18); l3kOpen(c); }; });
+  host.querySelectorAll("[data-kccol]").forEach(inp => { inp.onchange = async () => { const c = find(inp.dataset.kccol); if (!c) return; c.color = inp.value; l3kDraw(); if (l3k.open === c) l3kOpen(c); await l3kWrite(c); }; });
+  host.querySelectorAll("[data-kcdone]").forEach(b => { b.onclick = async () => { const c = find(b.dataset.kcdone); if (!c) return; c.done = !c.done; l3kDraw(); if (l3k.open === c) l3kOpen(c); await l3kWrite(c); }; });
+  host.querySelectorAll("[data-kcdel]").forEach(b => { b.onclick = async () => { const c = find(b.dataset.kcdel); if (!c || !(await uiConfirm("Ta bort kommentaren och dess svar?"))) return; l3k.list = l3k.list.filter(x => x !== c); if (l3k.open === c) l3kClose(); l3kDraw(); await l3kWrite(c, true); }; });
+}
+
+/* ---- Kommentarerna som riktiga 3D-skyltar i IFC (Victor 2026-10-10: "riktig solid 3d så jag kan
+   exportera till tc och visa dom där") ----------------------------------------------------------------
+   Varje kommentar: en skylt (platta i kommentarens färg) på en stolpe ovanför punkten och en markering
+   vid punkten, med texten som 3D-text på båda sidor. Skylten vänds mot den vy man har när man exporterar.
+   Egenskaperna (text, av, datum, status, svar, objekt) ligger i "4D-planering". Ny fil i TC varje gång. */
+const L3K_IFC = { lift: 2.2, T: 0.06, tT: 0.02, pad: 0.12 };
+function l3kIfcBuild(list) {
+  if (!list.length) return null;
+  const doc = ifcDoc("4D-planering – " + (plan ? plan.name : ""), "Kommentarer från 3D-vyn i Lägesplan"), E = doc.E;
+  // Vyns riktning (vågrätt): skylten vänds mot den som tittar. r = läsriktning, n = skyltens framsida.
+  const d = l3.orbit.target.clone().sub(l3.camera.position); d.z = 0;
+  if (d.lengthSq() < 1e-9) d.set(0, 1, 0);
+  d.normalize();
+  const r = [d.y, -d.x], n = [-d.x, -d.y];
+  const dir = v => E(`IFCDIRECTION(${ifcPt(v)})`);
+  const elems = [];
+  const W1 = (t, h) => ifcTextStrokes(t).width * h / 6;
+  list.forEach(({ c, nr }) => {
+    const col = l3kCol(c), lum = (() => { const x = parseInt(col.slice(1), 16); return (0.299 * (x >> 16 & 255) + 0.587 * (x >> 8 & 255) + 0.114 * (x & 255)) / 255; })();
+    const raw = typeof wrapText === "function" ? wrapText(c.text || "", 30) : String(c.text || "");
+    const lines = [{ t: `${nr} · ${c.by || ""} · ${new Date(c.at).toLocaleDateString("sv-SE")}${c.done ? " · klar" : ""}`, h: 0.16 },
+      ...raw.split("\n").filter(Boolean).slice(0, 6).map(t => ({ t, h: 0.2 })), (c.replies || []).length ? { t: `${c.replies.length} svar`, h: 0.13 } : null].filter(Boolean);
+    const W = Math.max(1.2, ...lines.map(l => W1(l.t, l.h))) + L3K_IFC.pad * 2;
+    const H = lines.reduce((a, l) => a + l.h * 1.4, 0) + L3K_IFC.pad * 1.6;
+    const P = c.pos, up = L3K_IFC.lift + H / 2;
+    // Skyltens koordinatsystem: X = läsriktning, Y = uppåt, Z = mot betraktaren.
+    const axes = (o, rx, ry, nx, ny) => E(`IFCLOCALPLACEMENT(${doc.sitePl},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt(o)})`)},${dir([nx, ny, 0])},${dir([rx, ry, 0])})`)})`);
+    const center = [P[0], P[1], P[2] + up];
+    const plSign = axes(center, r[0], r[1], n[0], n[1]);
+    const board = E(`IFCEXTRUDEDAREASOLID(${E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,$,${ifcNum(W)},${ifcNum(H)})`)},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, 0, -L3K_IFC.T / 2])})`)},$,$)`)},${dir([0, 0, 1])},${ifcNum(L3K_IFC.T)})`);
+    const sty = doc.style("kom-" + col, col, "Kommentar");
+    E(`IFCSTYLEDITEM(${board},(${sty}),$)`);
+    // Stolpen (lodrät = skyltens Y) och markeringen vid punkten.
+    const pole = E(`IFCEXTRUDEDAREASOLID(${E("IFCCIRCLEPROFILEDEF(.AREA.,$,$,0.035)")},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, -up, 0])})`)},${dir([0, 1, 0])},${dir([1, 0, 0])})`)},${dir([0, 0, 1])},${ifcNum(L3K_IFC.lift)})`);
+    const dot = E(`IFCEXTRUDEDAREASOLID(${E("IFCCIRCLEPROFILEDEF(.AREA.,$,$,0.12)")},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, -up, 0])})`)},${dir([0, 1, 0])},${dir([1, 0, 0])})`)},${dir([0, 0, 1])},0.05)`);
+    E(`IFCSTYLEDITEM(${pole},(${sty}),$)`); E(`IFCSTYLEDITEM(${dot},(${sty}),$)`);
+    const name = `Kommentar ${nr}: ${String(c.text || "").split("\n")[0].slice(0, 60)}`;
+    const el = doc.proxy(name, c.text || "", "4D-kommentar", plSign, doc.shape([board, pole, dot].join(","), "SweptSolid"), c.id);
+    elems.push(el);
+    doc.props(el, [["Text", c.text || ""], ["Av", c.by || ""], ["Datum", c.at ? c.at.slice(0, 16).replace("T", " ") : ""], ["Status", c.done ? "Klar" : "Öppen"],
+      ["Svar", (c.replies || []).map(x => `${x.by || ""}: ${x.text}`).join(" | ")], ["Objekt", (c.target && c.target.name) || ""], ["Objektets GUID", (c.target && c.target.guid) || ""],
+      ["Nummer", nr], ["Arbetsyta", plan ? plan.name || "" : ""]]);
+    // Texten på båda sidor (baksidan vänd ett halvt varv så att den också läses rätt).
+    const textStyle = lum < 0.6 ? doc.textStyleLight : doc.textStyle;
+    [[1, 1], [-1, -1]].forEach(([sr, sn]) => {
+      const meshes = [];
+      let y = H / 2 - L3K_IFC.pad * 0.8;
+      lines.forEach(({ t, h }) => { const m = ifcTextSolid(doc, t, { h, t: L3K_IFC.tT, rx: 1, ry: 0, start: -W / 2 + L3K_IFC.pad, across: y - h / 2, style: textStyle }); if (m) meshes.push(m); y -= h * 1.4; });
+      if (!meshes.length) return;
+      const o = [center[0] + sn * n[0] * L3K_IFC.T / 2, center[1] + sn * n[1] * L3K_IFC.T / 2, center[2]];
+      // ifcTextSolid ligger i XY med tjockleken i Z – här är Z skyltens normal, så texten står på skylten.
+      elems.push(doc.proxy(`${name} – text`, "Text", "4D-kommentartext", axes(o, sr * r[0], sr * r[1], sn * n[0], sn * n[1]), doc.shape(meshes.join(","), "Tessellation"), c.id));
+    });
+  });
+  const d2 = new Date(), p2 = x => String(x).padStart(2, "0");
+  const fileName = `Kommentarer ${plan ? plan.name : ""} ${d2.getFullYear()}-${p2(d2.getMonth() + 1)}-${p2(d2.getDate())} kl ${p2(d2.getHours())}.${p2(d2.getMinutes())}.${p2(d2.getSeconds())}.ifc`.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ");
+  return { text: doc.finish(elems, fileName), fileName, n: list.length };
+}
+async function l3kExportIfc() {
+  const list = l3k.list.map((c, i) => ({ c, nr: i + 1 })).filter(({ c }) => l3k.showDone || !c.done);
+  if (!list.length) { l3Status("Inga kommentarer att exportera.", true); return null; }
+  const r = l3kIfcBuild(list);
+  const file = new File([new TextEncoder().encode(r.text)], r.fileName, { type: "application/x-step" });
+  const key = "kifc";
+  busyProgress(key, `Sparar ${r.fileName}`, 0.3);
+  try {
+    if (!window.opener || window.opener.closed) throw new Error("öppna lägesplanen via 4D-planering för att spara i Trimble Connect");
+    const up = await askOpener("tcUpload", { folder: "Lägesplan", files: [file] }, 10 * 60 * 1000);
+    busyProgress(key, "", null);
+    l3Toast(`${r.n} kommentarer sparade som 3D-skyltar i Trimble Connect: ${r.fileName}${up && up.folder ? ` (${up.folder})` : ""}.`, null, null, 9000);
+    l3Status(`Sparad: ${r.fileName}`);
+    return r;
+  } catch (e) { busyProgress(key, "", null); l3Status("Kunde inte spara kommentarerna som IFC: " + e.message, true); throw e; }
+}

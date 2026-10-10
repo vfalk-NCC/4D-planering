@@ -108,6 +108,12 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   await page.waitForTimeout(100);
   const sc3 = await page.evaluate(() => { const c = l3.clips[0], q = l3ToScreen(c.anchor); return Math.abs(c.plane.distanceToPoint(c.anchor)); });
   if (sc3 > 1e-6) fail('Saxen ska ligga kvar i snittplanet');
+  // Högerklick på saxen: Ta bort snittet.
+  const scm = await page.locator('#view3d .v3-scissor').boundingBox();
+  await page.mouse.click(scm.x + scm.width / 2, scm.y + scm.height / 2, { button: 'right' }); await page.waitForTimeout(150);
+  if (!(await page.isVisible('#v3Ctx [data-cc="del"]'))) fail('Högerklick på saxen ska visa Ta bort snittet');
+  await page.click('#v3Ctx [data-cc="del"]'); await page.waitForTimeout(150);
+  if (await page.evaluate(() => l3.clips.length || document.querySelectorAll('#view3d .v3-scissor').length)) fail('Snittet och saxen ska vara borta');
   await page.evaluate(() => l3ClearClips());
   if (await page.$('#view3d .v3-scissor')) { await page.waitForTimeout(100); if (await page.evaluate(() => document.querySelectorAll('#view3d .v3-scissor').length)) fail('Saxen ska försvinna med snittet'); }
 
@@ -153,6 +159,57 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   await page.waitForTimeout(300);
   const saved = JSON.parse(gh.get('projects/p1/plan_comments3d.json') || '[]');
   if (saved.length !== 1 || saved[0].text !== 'Kolla schaktet här innan gjutning' || saved[0].by !== 'Victor' || saved[0].plan !== 'A' || saved[0].target.kind !== 'point') fail('Kommentaren ska sparas: ' + JSON.stringify(saved));
+  // Färg på kommentaren (Victor 2026-10-10): i popupen och i fliken Kommentarer.
+  await page.evaluate(() => l3kOpen(l3k.list[0]));
+  await page.click('#v3CPop [data-kcol="#2563eb"]'); await page.waitForTimeout(300);
+  const kcol = await page.evaluate(() => ({ c: l3k.list[0].color, pole: '#' + l3.groups.csigns.children.find(o => o.isLine).material.color.getHexString() }));
+  const savedC = JSON.parse(gh.get('projects/p1/plan_comments3d.json') || '[]');
+  if (kcol.c !== '#2563eb' || kcol.pole !== '2563eb'.padStart(7, '#') || savedC[0].color !== '#2563eb') fail('Byt färg i popupen: ' + JSON.stringify({ kcol, saved: savedC[0].color }));
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => l3PalTab('comments'));
+  await page.waitForSelector('#v3PalComments .v3-kc');
+  const row = await page.evaluate(() => ({ n: document.querySelectorAll('#v3PalComments .v3-kc').length, txt: document.querySelector('#v3PalComments .v3-kc-b b').textContent, bg: getComputedStyle(document.querySelector('#v3PalComments .v3-kc-col i')).backgroundColor }));
+  if (row.n !== 1 || !/schaktet/.test(row.txt) || row.bg !== 'rgb(37, 99, 235)') fail('Fliken Kommentarer: ' + JSON.stringify(row));
+  await page.$eval('#v3PalComments [data-kccol]', el => { el.value = '#16a34a'; el.dispatchEvent(new Event('change')); });
+  await page.waitForTimeout(300);
+  if ((await page.evaluate(() => l3k.list[0].color)) !== '#16a34a') fail('Byt färg i listan');
+  await page.fill('#v3KQ', 'finns inte'); await page.waitForTimeout(100);
+  if (await page.$('#v3PalComments .v3-kc')) fail('Sök ska filtrera kommentarerna');
+  await page.fill('#v3KQ', 'schakt'); await page.waitForTimeout(100);
+  await page.click('#v3PalComments [data-kcgo]'); await page.waitForTimeout(200);
+  if (process.env.SHOT3) await page.screenshot({ path: process.env.SHOT3 });
+  if (!(await page.isVisible('#v3CPop'))) fail('Tryck i listan ska öppna kommentaren');
+  await page.keyboard.press('Escape');
+
+  // Kommentarerna som riktiga 3D-skyltar i IFC till TC.
+  const kifc = await page.evaluate(async () => {
+    window.__kup = null; const orig = askOpener;
+    askOpener = async (type, extra, t, p) => { if (type === 'tcUpload') { window.__kup = { name: extra.files[0].name, folder: extra.folder, bytes: new Uint8Array(await extra.files[0].arrayBuffer()) }; return { uploaded: 1, folder: extra.folder }; } return orig(type, extra, t, p); };
+    await l3kExportIfc(); askOpener = orig;
+    const up = window.__kup, api = await ifcmLoad();
+    const id = api.OpenModel(up.bytes, { COORDINATE_TO_ORIGIN: false });
+    let meshes = 0, tris = 0, zmax = -1e9, zmin = 1e9;
+    api.StreamAllMeshes(id, mesh => { meshes++; for (let i = 0; i < mesh.geometries.size(); i++) { const pg = mesh.geometries.get(i), g = api.GetGeometry(id, pg.geometryExpressID), ix = api.GetIndexArray(g.GetIndexData(), g.GetIndexDataSize()), v = api.GetVertexArray(g.GetVertexData(), g.GetVertexDataSize()), T = pg.flatTransformation; tris += ix.length / 3; for (let k = 0; k < v.length; k += 6) { const z = T[1] * v[k] + T[5] * v[k + 1] + T[9] * v[k + 2] + T[13]; /* web-ifc: höjden i Y */ if (z > zmax) zmax = z; if (z < zmin) zmin = z; } } });
+    api.CloseModel(id);
+    const txt = new TextDecoder().decode(up.bytes);
+    return { name: up.name, folder: up.folder, meshes, tris, zmin, zmax, hasText: /Kolla schaktet/.test(txt), status: /'Status',\$,IFCLABEL\('(Öppen|\\X2\\00D6\\X0\\ppen)'\)/.test(txt) || /'Status'/.test(txt), proxies: (txt.match(/IFCBUILDINGELEMENTPROXY\(/g) || []).length };
+  });
+  if (!/^Kommentarer Plan 1 \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(kifc.name) || kifc.folder !== 'Lägesplan' || kifc.meshes < 3 || kifc.tris < 100 || !kifc.hasText || !kifc.status || kifc.proxies !== 3 || kifc.zmax < kifc.zmin + 2.2)
+    fail('Kommentarerna som 3D-skyltar i IFC: ' + JSON.stringify(kifc));
+  if (process.env.SHOT4) {
+    await page.evaluate(async () => {
+      const bytes = window.__kup.bytes, orig = askOpener;
+      askOpener = async (type, extra, t, p) => (type === 'tcFile' && extra.fileId === 'KIFC' ? { bytes: bytes.slice().buffer } : orig(type, extra, t, p));
+      l3k.hidden = true; l3kDraw();
+      await l3bLoad([{ id: 'f:KIFC', fileId: 'KIFC', name: 'Kommentarer.ifc', version: 'k1' }]);
+      askOpener = orig;
+      const c = l3k.list[0], P = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2] + 2.6);
+      l3StopFly(); l3.orbit.target.copy(P); l3.camera.position.copy(P).add(new THREE.Vector3(-1.5, -5, 0.8)); l3.orbit.update();
+    });
+    await page.waitForTimeout(900); await page.screenshot({ path: process.env.SHOT4 });
+    await page.evaluate(() => { l3bRemove('f:KIFC'); l3k.hidden = false; l3kDraw(); });
+  }
+
   // Skylten i 3D: ett kort på en stolpe; numrerade bubblan döljs. Tryck på skylten öppnar kommentaren.
   const sg = await page.evaluate(() => { const sp = l3.groups.csigns.children.find(o => o.isSprite); const q = l3ToScreen(sp.position); return { x: q.x, y: q.y, w: sp.scale.x, h: sp.scale.y, lift: sp.position.z - (l3k.list[0].pos[2] - l3.O[2]), pin: getComputedStyle(document.querySelector('#view3d .v3-cpin')).display }; });
   if (sg.w < 2 || sg.h <= 0 || Math.abs(sg.lift - 2.2) > 1e-6 || sg.pin !== 'none') fail('Skylten i 3D: ' + JSON.stringify(sg));

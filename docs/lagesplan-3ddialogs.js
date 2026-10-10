@@ -509,7 +509,7 @@ function l3Commands() {
   l3SavedViews().forEach((v, i) => C.push([`Gå till vy: ${v.name}`, "", () => l3GoView(i)]));
   Object.entries(PLACE_LIB).forEach(([k, l]) => C.push([`Lägg till: ${l.label}`, "", () => { l3SetTool("select"); l3.addType = k; l3.fenceId = null; l3RenderLib(); l3Status(l.fence ? "Staket: tryck första punkten." : "Tryck där objektet ska stå."); }]));
   C.push(["Hämta modell (Sketchfab, Trimble Connect, fil)…", "", () => l3OpenModels()]);
-  if (typeof l3k !== "undefined") { C.push(["Kommentarer: visa/dölj", "", () => l3kToggle()]); l3k.list.forEach((c, i) => C.push([`Kommentar ${i + 1}: ${String(c.text).slice(0, 40)}`, "", () => { const p = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]); l3FlyTo(p, 15); l3k.hidden = false; l3kOpen(c); }])); }
+  if (typeof l3k !== "undefined") { C.push(["Kommentarer: visa/dölj", "", () => l3kToggle()], ["Kommentarer (listan)", "", () => l3PalTab("comments")]); l3k.list.forEach((c, i) => C.push([`Kommentar ${i + 1}: ${String(c.text).slice(0, 40)}`, "", () => { const p = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]); l3FlyTo(p, 15); l3k.hidden = false; l3kOpen(c); }])); }
   (typeof placeAssets !== "undefined" ? placeAssets : []).forEach(a => C.push([`Lägg till: ${a.name}`, "", () => { l3SetTool("select"); l3.addType = `model:${a.id}`; l3RenderLib(); l3Status("Tryck där objektet ska stå."); }]));
   return C.map(([label, keys, run, ok]) => ({ label, keys, run, ok: ok || (() => true) }));
 }
@@ -568,11 +568,13 @@ function l3PalTab(t) {
   const lay = document.getElementById("v3PalLayers"); if (lay) lay.classList.toggle("hidden", t !== "layers");
   const pp = document.getElementById("v3PalProps"); if (pp) pp.classList.toggle("hidden", t !== "props");
   const pg = document.getElementById("v3PalGroups"); if (pg) pg.classList.toggle("hidden", t !== "groups");
+  const pk = document.getElementById("v3PalComments"); if (pk) pk.classList.toggle("hidden", t !== "comments");
   l3SetPref("palTab", t);
   if (t === "list") l3RenderObjList();
   if (t === "layers" && typeof l3LayersRender === "function") l3LayersRender();
   if (t === "props" && typeof l3pRenderTab === "function") l3pRenderTab();
   if (t === "groups" && typeof l3gRenderTab === "function") l3gRenderTab();
+  if (t === "comments" && typeof l3kRenderTab === "function") l3kRenderTab();
 }
 
 /* ---- Egna kortkommandon (sparas i 3D-inställningarna, per webbläsare) ----------------------------- */
