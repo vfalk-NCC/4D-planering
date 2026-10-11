@@ -731,6 +731,7 @@ function bindTools() {
   $("btnRecVideo").onclick = recordVideo;
   $("btnRecZip").onclick = recordZip;
   $("btnPdfA3").onclick = exportPdfA3;
+  if ($("btnHtmlOffline")) $("btnHtmlOffline").onclick = () => exportOfflineHtml();
   $("btnMeasureLen").onclick = () => startMeasure("len");
   $("btnMeasureArea").onclick = () => startMeasure("area");
   $("btnAddPhoto").onclick = startPhotoPlacing;
