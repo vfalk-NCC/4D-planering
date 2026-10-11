@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-11 12:48";
+const APP_VERSION = "2026-10-11 13:28";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -348,6 +348,13 @@ function onWorkspaceEvent(event, data) {
    boxes, meter) och att markera objekt i modellen.
    ------------------------------------------------------------------- */
 let lagesplanPick = null; // svarsfunktion medan lägesplanen väntar på ett klick i 3D
+/* Signal till lägesplanens fönster (Victor 2026-10-11): laddar iPhone/iPad om fliken försvinner dess window.opener –
+   signalen ger den kopplingen tillbaka (avsändaren blir bryggan). Liten och billig, var tredje sekund. */
+let lagesplanWin = null;
+setInterval(() => {
+  try { if (lagesplanWin && !lagesplanWin.closed) lagesplanWin.postMessage({ lagesplanPing: true }, location.origin); else lagesplanWin = null; }
+  catch (e) { lagesplanWin = null; }
+}, 3000);
 let lagesplanPickN = 1;    // vilken kalibreringspunkt (1 eller 2) som väntas
 let lagesplanBannerTimer = null;
 
@@ -801,7 +808,7 @@ function bindUI() {
     const left = (screen.availLeft || 0) + screen.availWidth - w, top = screen.availTop || 0;
     const win = window.open("lagesplan.html?project=" + encodeURIComponent(projectId) + (planSource === "pp" ? "&source=pp" : "") + (extra || ""), "lagesplan-" + projectId,
       `popup=yes,width=${w},height=${h},left=${left},top=${top}`);
-    if (win) win.focus();
+    if (win) { win.focus(); lagesplanWin = win; }
   }
   document.getElementById("btnSettings").onclick = () => { toggle("settingsDialog", true); renderBackupList(); };
   document.getElementById("btnBackupNow").onclick = async () => {

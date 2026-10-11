@@ -84,8 +84,31 @@ let posPdfCache = null;    // item-id -> [x, y] i PDF-koordinater (för aktiv pl
 let bridgeSeq = 0;
 const bridgeWait = new Map();
 const bridgeProg = new Map(); // reqId -> onProgress (hämtningar från Trimble Connect)
+/* Kopplingen till 4D-planering (Victor 2026-10-11: "Jag får alltid detta meddelande i 3d-vyn för iPhone. Tror den
+   liksom laddar in det två gånger och då tappar det kopplingen mot TC"): när iPhone/iPad laddar om fliken försvinner
+   window.opener. 4D-planering skickar därför en signal till fönstret den öppnade med några sekunders mellanrum –
+   signalens avsändare blir bryggan igen, så kopplingen kommer tillbaka av sig själv. */
+let bridgeSrc = null, bridgeWaiters = [];
+function bridgeWin() {
+  try { if (window.opener && !window.opener.closed) return window.opener; } catch (e) { /* annan origin */ }
+  try { if (bridgeSrc && !bridgeSrc.closed) return bridgeSrc; } catch (e) { /* stängd */ }
+  return null;
+}
+const bridgeOk = () => !!bridgeWin();
+/* Kopplingen kom tillbaka efter start: 3D-vyns mappar i Trimble Connect kan läsas igen. */
+function bridgeReconnected() {
+  if (typeof l3lay !== "undefined" && l3lay) { l3lay.err = ""; l3lay.rootTried = false; }
+  if (typeof l3LayersRender === "function") l3LayersRender();
+  if (typeof setSaveStatus === "function") setSaveStatus("✓ Kopplingen till 4D-planering (Trimble Connect) är tillbaka.");
+}
+/* Väntar högst ms på signalen från 4D-planering (efter en omladdning). */
+function bridgeAwait(ms) {
+  if (bridgeOk()) return Promise.resolve(true);
+  return new Promise(res => { const t = setTimeout(() => { bridgeWaiters = bridgeWaiters.filter(f => f !== done); res(false); }, ms); const done = () => { clearTimeout(t); res(true); }; bridgeWaiters.push(done); });
+}
 window.addEventListener("message", e => {
   if (e.origin !== location.origin || !e.data) return;
+  if (e.data.lagesplanPing) { if (e.source && !bridgeOk()) { bridgeSrc = e.source; const w = bridgeWaiters; bridgeWaiters = []; w.forEach(f => f()); if (typeof bridgeReconnected === "function") bridgeReconnected(); } return; }
   if (e.data.lagesplanProgress) { const p = bridgeProg.get(e.data.reqId); if (p) try { p(e.data.f, e.data.got || 0, e.data.total || 0); } catch (er) { /* bara visning */ } return; }
   if (!e.data.lagesplanReply) return;
   const done = bridgeWait.get(e.data.reqId);
@@ -103,8 +126,8 @@ function tcUniqueName(name) {
 }
 function askOpener(type, extra = {}, timeoutMs = 10000, onProgress = null) {
   return new Promise((resolve, reject) => {
-    const op = window.opener;
-    if (!op || op.closed) return reject(new Error("4D-planering är inte öppen. Öppna lägesplanen via 🗺️-knappen i 4D-planering (i Trimble Connect) och låt den vara öppen."));
+    const op = bridgeWin();
+    if (!op) return reject(new Error("4D-planering är inte öppen. Öppna lägesplanen via 🗺️-knappen i 4D-planering (i Trimble Connect) och låt den vara öppen."));
     const reqId = ++bridgeSeq;
     const timer = timeoutMs ? setTimeout(() => { bridgeWait.delete(reqId); reject(new Error("Inget svar från 4D-planering. Är den fortfarande öppen i Trimble Connect?")); }, timeoutMs) : null;
     if (onProgress) bridgeProg.set(reqId, onProgress);
@@ -139,7 +162,10 @@ async function init() {
   // Öppnad från extensionen: fliken har inte extensionens localStorage
   // (webbläsaren delar upp lagringen för inbäddade iframes), så token och
   // inställningar hämtas från 4D-planering via postMessage.
-  if (window.opener) {
+  // Omladdad flik (iPhone/iPad): ingen window.opener. Finns ingen token här heller väntas kort på signalen från
+  // 4D-planering (utan den kan sidan ändå inte starta); annars startar den direkt och kopplingen kommer i bakgrunden.
+  if (!window.opener && !token && !manualToken()) { bootSet("Ansluter till 4D-planering…", 0.07); await bridgeAwait(2500); }
+  if (bridgeOk()) {
     bootSet("Ansluter till 4D-planering…", 0.08);
     try {
       const r = await askOpener("hello", {}, 4000);

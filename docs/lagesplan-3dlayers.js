@@ -88,7 +88,8 @@ function l3LayersRender() {
     + `<label class="v3-chk v3-lay-voids" title="När datorn läst in en modell sparas en lätt kopia av geometrin (utan egenskaper) i datalagret – inte i Trimble Connect. iPhone/iPad läser den i stället för IFC-filen."><input type="checkbox" id="v3LayLight" ${P.mobileCopy !== false ? "checked" : ""} /> Spara lätt kopia för mobilen</label>`
     + `<label class="v3-chk v3-lay-voids" title="web-ifc läser snabbt och ifc-lite tar de objekt web-ifc inte klarar. Med ifc-lite för hela modellen skärs hål exakt men modeller med många håltagningar läses långsammare – web-ifc tar över om ifc-lite inte klarar filen.">IFC-läsare <select id="v3LayEngine"><option value="webifc" ${P.ifcEngine !== "lite" ? "selected" : ""}>web-ifc + ifc-lite för det som saknas</option><option value="lite" ${P.ifcEngine === "lite" ? "selected" : ""}>ifc-lite för hela modellen</option></select></label>`
     + `<label class="v3-chk v3-lay-voids" title="Högsta antal trianglar för alla modeller tillsammans. Högre visar mer av stora modeller men kräver mer minne – för högt kan få fliken att stängas på en dator med lite minne. Gäller modeller som läses in efter att du ändrat.">Tak för trianglar <select id="v3LayCap">${[["", `Auto (${(l3bAutoTris() / 1e6).toFixed(0)} milj.)`], ...L3B_CAPS.map(c => [String(c), `${c} miljoner`])].map(([v, l]) => `<option value="${v}" ${String(P.triCap || "") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label></details>`;
-  if (l3lay.err) mh += `<div class="v3-pal-hint bad">${esc(l3lay.err)}</div><button type="button" class="v3-wide" id="v3LayRetry">Försök igen</button>`;
+  if (P.laySort === "tree" && !l3lay.root && typeof bridgeOk === "function" && !bridgeOk()) mh += `<div class="v3-pal-hint">Mapparna i Trimble Connect går att bläddra i när lägesplanen är öppnad med 🗺️ i 4D-planering och den fliken är öppen. Kopplingen kommer tillbaka av sig själv när du går tillbaka till Trimble Connect en stund. Hämtade 3D-modeller fungerar ändå.</div><button type="button" class="v3-wide" id="v3LayRetry">Försök igen</button>`;
+  else if (l3lay.err) mh += `<div class="v3-pal-hint bad">${esc(l3lay.err)}</div><button type="button" class="v3-wide" id="v3LayRetry">Försök igen</button>`;
   // 3D-modeller överst (Victor 2026-10-10): flikarna Hämtade 3D-modeller (de inlästa) och Trimble Connect mapp.
   const sortNow = P.laySort || "list";
   const modelsSec = l3lSec("models", "3D-modeller", `<div class="v3-segs v3-lay-sort"><button type="button" data-l3l-sort="list" class="${sortNow === "list" ? "on" : ""}" title="De modeller som är hämtade och visas, i bokstavsordning">Hämtade 3D-modeller</button><button type="button" data-l3l-sort="tree" class="${sortNow === "tree" ? "on" : ""}" title="Projektets mappar i Trimble Connect">Trimble Connect mapp</button></div>${mh}`);
@@ -171,7 +172,7 @@ function l3LayersRender() {
   const tcOn = host.querySelector("#v3LayTcOn");
   if (tcOn) tcOn.onclick = () => { if (typeof l3bOpenDialog === "function") l3bOpenDialog("v3LayBldgBox"); };
   // Rotmappen hämtas en gång (Försök igen i felraden om det misslyckas).
-  if (P.laySort === "tree" && !l3lay.root && !l3lay.rootTried) { l3lay.rootTried = true; l3lOpenDir(null); }
+  if (P.laySort === "tree" && !l3lay.root && !l3lay.rootTried && (typeof bridgeOk !== "function" || bridgeOk())) { l3lay.rootTried = true; l3lOpenDir(null); }
 }
 
 /* Mappträdet: mappar fälls ut/ihop, IFC-filer har ett öga. */
