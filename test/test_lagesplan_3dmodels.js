@@ -265,6 +265,27 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
     try { const out = await l3bParseWorker(new TextEncoder().encode(t).buffer, null, 1e6); const names = out.ranges.map(r => r.name); out.meshes.forEach(m => m.geometry.dispose()); return { names, hung: out.hung.map(h => h[1]) }; }
     finally { window.Worker = W0; delete window.__l3Parts; delete window.__l3StallMs; }
   }, many);
+  // ifc-lite (Victor 2026-10-11): samma geometri som web-ifc på samma ställe; och det web-ifc hängde sig på läses av ifc-lite.
+  const cmp = await page.evaluate(async t => {
+    const box = out => { const b = {}; out.meshes.forEach(m => { const P = m.geometry.getAttribute('position'), N = m.geometry.getAttribute('normal'); m.userData.l3b.ranges.forEach(r => { const bb = new THREE.Box3(); for (let i = r.start; i < r.start + r.count; i++) bb.expandByPoint(new THREE.Vector3().fromBufferAttribute(P, i)); b[r.name] = { min: bb.min.toArray().map(v => Math.round(v * 1000) / 1000), max: bb.max.toArray().map(v => Math.round(v * 1000) / 1000), guid: r.guid, nrm: N && N.array instanceof Int8Array }; }); }); return b; };
+    const a = await l3bParseWorker(new TextEncoder().encode(t).buffer, null, 1e6, null, null, 1);
+    const b = await l3bParseWorker(new TextEncoder().encode(t).buffer, null, 1e6, null, null, 1, { engine: 'lite' });
+    const r = { web: box(a), lite: box(b) }; [a, b].forEach(o => o.meshes.forEach(m => m.geometry.dispose())); return r;
+  }, ifc2);
+  for (const n of ['Pelare K10', 'Vagg V1', 'Takplåt']) if (!cmp.lite[n] || JSON.stringify(cmp.lite[n]) !== JSON.stringify(cmp.web[n])) fail('ifc-lite ska ge samma objekt på samma ställe som web-ifc (' + n + '): ' + JSON.stringify({ web: cmp.web[n], lite: cmp.lite[n] }));
+  const rec = await page.evaluate(async t => {
+    const W0 = window.Worker; let n = 0;
+    window.Worker = function (u, o) {
+      const w = new W0(u, o);
+      if (n++ === 0) { let dead = false; const real = w.addEventListener.bind(w); Object.defineProperty(w, 'onmessage', { set(fn) { real('message', ev => { if (dead) return; if (ev.data && ev.data.type === 'at' && ev.data.i === 10) dead = true; fn(ev); }); } }); }
+      return w;
+    };
+    window.__l3Parts = 1; window.__l3StallMs = 1500;
+    try { const out = await l3bParseAny(new TextEncoder().encode(t).buffer, null, 1e6); const names = out.ranges.map(r => r.name); out.meshes.forEach(m => m.geometry.dispose()); return { names, hung: out.hung.length, recovered: out.recovered }; }
+    finally { window.Worker = W0; delete window.__l3Parts; delete window.__l3StallMs; }
+  }, many);
+  const rboxes = rec.names.filter(x => /^Låda/.test(x));
+  if (rboxes.length !== 25 || new Set(rboxes).size !== 25 || rec.hung !== 0 || rec.recovered !== 10) fail('Det web-ifc hängde sig på ska läsas med ifc-lite: ' + JSON.stringify(rec));
   const boxes = hang.names.filter(x => /^Låda/.test(x));
   if (boxes.length !== 15 || new Set(boxes).size !== 15 || hang.hung.length !== 10 || hang.hung.some(h => boxes.includes(h))) fail('Läsaren som hänger sig ska hoppa över just den portionen: ' + JSON.stringify(hang));
   if (process.env.SHOTL) { await page.evaluate(() => { const b = new THREE.Box3(); l3b.models.forEach(m => m.meshes.forEach(x => b.expandByObject(x))); const c = b.getCenter(new THREE.Vector3()); l3StopFly(); l3.orbit.target.copy(c); l3.camera.position.copy(c).add(new THREE.Vector3(-22, -30, 18)); l3.orbit.update(); l3Render(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOTL }); }

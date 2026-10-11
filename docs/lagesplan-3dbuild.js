@@ -131,7 +131,7 @@ async function l3bLoad(list, opts = {}) {
       try { m = await l3bParseAny(r.bytes, r.placement, l3bMaxTris() - total, f => busyProgress("bldg", lblRead, part(0, 0.6 + 0.4 * f)), ms => { hideOld(); ms.forEach(x => l3.groups.bldg.add(x)); l3Render(); }); }
       catch (err) { if (old) { old.meshes.forEach(x => { x.visible = true; }); old.visible = true; } throw err; } // den gamla syns igen
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 1));
-      times.push(`${m.name || r.name || w.name}: ${r.local ? "ur webbläsarens kopia" : `hämtning ${(tDl / 1000).toFixed(1)} s`}, läsning ${((Date.now() - tRd0) / 1000).toFixed(1)} s${m.parts > 1 ? ` (${m.parts} trådar)` : ""}`);
+      times.push(`${m.name || r.name || w.name}: ${r.local ? "ur webbläsarens kopia" : `hämtning ${(tDl / 1000).toFixed(1)} s`}, läsning ${((Date.now() - tRd0) / 1000).toFixed(1)} s${m.engine === "ifc-lite" ? " med ifc-lite" : m.parts > 1 ? ` (${m.parts} trådar)` : ""}${m.recovered ? `, ${m.recovered.toLocaleString("sv-SE")} objekt lästa med ifc-lite (web-ifc klarade dem inte)` : ""}`);
       skippedAll += m.skipped || 0;
       // Objekt med form som web-ifc inte kunde rita – redovisas per IFC-klass (syns i statusraden och historiken).
       const miss = Object.entries(m.missing || {}).sort((a, b) => b[1] - a[1]);
@@ -235,7 +235,7 @@ function l3bDb() {
     q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
   });
 }
-const l3bCacheKey = w => (w && w.version ? `v2|${projectId}|${w.fileId ? "f:" + w.fileId : w.id}|${w.version}|${l3bVoids() ? "u" : "s"}${l3bDetails() ? "d" : ""}${l3bRebar() ? "r" : ""}` : null);
+const l3bCacheKey = w => (w && w.version ? `v2|${projectId}|${w.fileId ? "f:" + w.fileId : w.id}|${w.version}|${l3bVoids() ? "u" : "s"}${l3bDetails() ? "d" : ""}${l3bRebar() ? "r" : ""}${l3bEngine() === "lite" ? "L" : ""}` : null);
 async function l3bCacheGet(w) {
   const key = l3bCacheKey(w);
   if (!key) return null;
@@ -288,9 +288,20 @@ function l3bFromCache(rec) {
 
 /* Stora modeller (Victor 2026-10-09: 115 MB fryste sidan): läs i en egen tråd (ifc-worker.js) med
    procent, och visa bitarna medan resten läses. Går tråden inte att starta används l3bParse nedan. */
+/* Läsaren (Victor 2026-10-11: "Utvärdera ifc-lite som läsare … med web-ifc som reserv"). Mätt på en konstgjord
+   103 MB-modell: utan håltagningar lika snabba (ifc-lite 6,0 s, web-ifc 7,0 s), med 6 000 håltagningar är ifc-lite
+   3–4 gånger långsammare (den skär exakt). Därför läser web-ifc först (snabbt) och ifc-lite tar sedan de objekt
+   som web-ifc hängde sig på eller inte kunde rita. Under Lager → Avancerat kan ifc-lite väljas för hela modellen
+   (web-ifc tar då över om ifc-lite inte klarar filen). */
+const l3bEngine = () => (typeof l3Prefs === "function" && l3Prefs().ifcEngine === "lite" ? "lite" : "webifc");
 async function l3bParseAny(bytes, placement, maxTris, onProgress, onMeshes) {
   if (typeof Worker === "function" && !window.__l3NoWorker) {
-    try { return await l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes); }
+    const keep = bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes).slice().buffer; // originalet till ett andra försök
+    if (l3bEngine() === "lite") {
+      try { const out = await l3bParseWorker(keep, placement, maxTris, onProgress, onMeshes, 1, { engine: "lite" }); out.engine = "ifc-lite"; return out; }
+      catch (e) { if (!window.__l3NoFallback) l3Status(`ifc-lite kunde inte läsa modellen (${e.message}) – läser med web-ifc i stället…`, true); else throw e; }
+    }
+    try { return await l3bRecover(await l3bParseWorker(keep, placement, maxTris, onProgress, onMeshes), keep, placement, maxTris, onMeshes); }
     catch (e) {
       // Flera trådar har var sin kopia av modellen i samma minne: stannade eller kraschade läsningen
       // (Victor 2026-10-10: "sen händer inget mer") läses den om med en tråd, som behöver mindre minne.
@@ -337,17 +348,35 @@ const l3bVoids = () => !!(typeof l3Prefs === "function" && l3Prefs().ifcVoids);
 // Allt läses in som standard (Victor 2026-10-10: "precis allt"); detaljerna kan stängas av under Lager → Avancerat.
 const l3bDetails = () => !(typeof l3Prefs === "function" && l3Prefs().ifcDetails === false);
 const l3bRebar = () => !!(typeof l3Prefs === "function" && l3Prefs().ifcRebar);
+/* Det web-ifc hängde sig på eller inte kunde rita läses med ifc-lite och läggs till (samma bitar, samma vy). */
+async function l3bRecover(out, bytes, placement, maxTris, onMeshes) {
+  const ids = [...new Set([...(out.hung || []).map(h => h[3]).filter(Boolean), ...(out.missingIds || [])])];
+  if (!ids.length || out.capped || window.__l3NoLite) return out;
+  l3StatusLive(`${ids.length.toLocaleString("sv-SE")} objekt som web-ifc inte klarade läses med ifc-lite…`);
+  try {
+    const add = await l3bParseWorker(bytes, placement, Math.max(1, maxTris - out.tris), null, onMeshes, 1, { engine: "lite", ids });
+    const got = new Set(add.ranges.map(r => r.guid).filter(Boolean));
+    out.meshes.push(...add.meshes); out.ranges.push(...add.ranges); out.tris += add.tris;
+    add.meshes.forEach(m => { m.userData.l3b.model = out; });
+    out.recovered = add.ranges.length;
+    out.hung = (out.hung || []).filter(h => !got.has(h[2]));
+    out.missing = add.missing || {};
+    (add.hung || []).forEach(h => { if (!out.hung.some(x => x[2] && x[2] === h[2])) out.hung.push(h); });
+  } catch (e) { console.warn("ifc-lite kunde inte läsa de återstående objekten", e); out.recoverError = e.message; }
+  return out;
+}
 /* Vakt (Victor 2026-10-10: "sen händer inget mer" – läsaren kunde hänga sig på ett enstaka objekt, eller
    Chrome stänga tråden vid minnesbrist utan fel). Tråden säger före varje portion om tio objekt var den är;
    hörs inget på STALL ms startas en ny tråd från senaste kontrollpunkt (det som redan är framme ligger kvar)
    och just den portionen hoppas över och redovisas. Innan första portionen (filen öppnas) väntar vakten längre. */
 const L3B_STALL_MS = 60000, L3B_OPEN_MS = 300000, L3B_RESTARTS = 8;
-function l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes, partsOverride) {
+function l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes, partsOverride, opt = {}) {
   return new Promise((resolve, reject) => {
     const buf0 = bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes).slice().buffer;
     // Samma versionsstämpel som skripten (tools/stamp.py), så att en ny tråd-fil inte fastnar i webbläsarens cache.
     const ver = ((document.querySelector('script[src*="lagesplan-3dbuild.js"]') || {}).src || "").split("?")[1] || "";
-    const N = partsOverride || window.__l3Parts || l3bParts(buf0.byteLength), url = new URL("ifc-worker.js" + (ver ? "?" + ver : ""), location.href).href;
+    const lite = opt.engine === "lite";
+    const N = lite ? 1 : partsOverride || window.__l3Parts || l3bParts(buf0.byteLength), url = new URL((lite ? "ifc-lite-worker.js" : "ifc-worker.js") + (ver ? "?" + ver : ""), location.href).href;
     const byGuid = new Map((items || []).filter(r => r.object_id).map(r => [String(r.object_id), r.id]));
     const out = { meshes: [], ranges: [], tris: 0, O: [...l3.O], capped: false, parts: N, hung: [] };
     const base = new URL("vendor/web-ifc/", location.href).href, voids = l3bVoids(), details = l3bDetails(), rebar = l3bRebar();
@@ -368,7 +397,7 @@ function l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes, partsOv
     };
     const start = (k, startAt, skipIdx) => {
       let wk;
-      try { wk = new Worker(url); } catch (e) { e.workerStart = !started; e.parts = N; fail(e); return; }
+      try { wk = lite ? new Worker(url, { type: "module" }) : new Worker(url); } catch (e) { e.workerStart = !started; e.parts = N; fail(e); return; }
       const w = W[k] = Object.assign(W[k] || { restarts: 0, skips: [], prog: 0, n: 0 }, { wk, at: null, ckpt: startAt, pending: [], heard: Date.now() });
       wk.onmessage = ev => {
         const d = ev.data || {};
@@ -392,12 +421,13 @@ function l3bParseWorker(bytes, placement, maxTris, onProgress, onMeshes, partsOv
         } else if (d.type === "done") {
           out.capped = out.capped || !!d.capped; out.skipped = (out.skipped || 0) + (d.skipped || 0); wk.terminate(); w.prog = 1; w.done = true;
           Object.entries(d.missing || {}).forEach(([t, c]) => { out.missing = out.missing || {}; out.missing[t] = (out.missing[t] || 0) + c; });
+          out.missingIds = (out.missingIds || []).concat(d.missingIds || []);
           if (--left === 0) { finish(); resolve(out); }
         } else if (d.type === "error") { const err = new Error(d.message); err.parts = N; fail(err); }
       };
       wk.onerror = e => { const err = new Error(e.message || "IFC-tråden avbröts (för lite minne?)"); err.workerStart = !started; err.parts = N; fail(err); };
       const b = buf0.slice(0); // varje tråd sin kopia – originalet finns kvar för en ny tråd
-      wk.postMessage({ bytes: b, placement, O: out.O, maxTris: Math.ceil(maxTris), chunkTris: L3B_CHUNK, base, part: k, parts: N, voids, details, rebar, startAt, skipIdx }, [b]);
+      wk.postMessage({ bytes: b, placement, O: out.O, maxTris: Math.ceil(maxTris), chunkTris: L3B_CHUNK, base, part: k, parts: N, voids, details, rebar, startAt, skipIdx, ids: opt.ids || null }, [b]);
     };
     const watch = setInterval(() => {
       if (failed) return;
