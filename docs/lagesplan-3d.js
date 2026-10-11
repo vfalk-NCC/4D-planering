@@ -595,7 +595,7 @@ async function l3BuildPlan() {
   const z = (plan.calib.model[0][2] || 0) - l3.O[2];
   if (!page) { const g = new THREE.GridHelper(200, 40, 0x94a3b8, 0xcbd5e1); g.rotateX(Math.PI / 2); g.position.z = z; l3.groups.plan.add(g); return; }
   const v1 = page.getViewport({ scale: 1 });
-  const s = Math.min((typeof lowMemPhone !== "undefined" && lowMemPhone ? 2048 : 4096) / Math.max(v1.width, v1.height), 4);
+  const s = Math.min((typeof lowMemDevice !== "undefined" && lowMemDevice ? 2048 : 4096) / Math.max(v1.width, v1.height), 4);
   const vp = page.getViewport({ scale: s });
   const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
   const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);

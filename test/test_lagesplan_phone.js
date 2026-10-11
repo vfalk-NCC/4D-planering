@@ -37,9 +37,9 @@ async function run(browser, phone) {
     items = []; positions = [];
     renderPlanSelect(); await openPlan('A');
   });
-  const st = await page.evaluate(() => ({ phone: lowMemPhone, w: $('pdfCanvas').width, vis: Object.fromEntries(['pdf', 'zones', 'objects', 'photos', 'cad:c1', 'cadl:c1:AXLAR', 'ortho:o1', 'ul:Skisser', 'ul:Ny'].map(k => [k, ls(k).visible])), photos: $('showPhotos').checked }));
+  const st = await page.evaluate(() => ({ phone: lowMemDevice, w: $('pdfCanvas').width, vis: Object.fromEntries(['pdf', 'zones', 'objects', 'photos', 'cad:c1', 'cadl:c1:AXLAR', 'ortho:o1', 'ul:Skisser', 'ul:Ny'].map(k => [k, ls(k).visible])), photos: $('showPhotos').checked }));
   const on = Object.entries(st.vis).filter(([, v]) => v).map(([k]) => k).join();
-  if (st.phone !== phone) fail('lowMemPhone ska vara ' + phone);
+  if (st.phone !== phone) fail('lowMemDevice ska vara ' + phone);
   if (phone) {
     if (on !== 'pdf,zones,objects,photos,cadl:c1:AXLAR' || !st.photos) fail('bara ritningen, zonerna, objekten och fotona tända (lagren i DXF:en behåller sitt läge): ' + on);
     if (st.w > 2500) fail('ritningen i lägre upplösning: ' + st.w);
@@ -71,5 +71,22 @@ async function run(browser, phone) {
   try {
     await run(browser, true); console.log('OK: iPhone – lager och modeller släckta, ritningen i lägre upplösning');
     await run(browser, false); console.log('OK: datorn – allt som förut');
+    // iPad (iPadOS Safari säger "Macintosh" men har pekskärm) får samma läge; en Mac (ingen pekskärm) och en
+    // vanlig dator gör det inte.
+    const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
+    const det = async (opts, touch) => {
+      const ctx = await browser.newContext(opts), p = await ctx.newPage();
+      if (touch != null) await p.addInitScript(n => Object.defineProperty(navigator, 'maxTouchPoints', { get: () => n }), touch);
+      await p.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS }));
+      await p.route('https://api.github.com/**', r => r.fulfill({ status: 404, body: '{}' }));
+      await p.goto(`http://localhost:${PORT}/lagesplan.html?project=p1`); await p.waitForTimeout(400);
+      const v = await p.evaluate(() => lowMemDevice); await ctx.close(); return v;
+    };
+    const ipad = await det({ viewport: { width: 1180, height: 820 }, userAgent: MAC, hasTouch: true, isMobile: true }, 5);
+    const mac = await det({ viewport: { width: 1440, height: 900 }, userAgent: MAC }, 0);
+    const ipadUa = await det({ viewport: { width: 1024, height: 768 }, userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1' }, null);
+    const pc = await det({ viewport: { width: 700, height: 900 } }, null);
+    if (ipad !== true || ipadUa !== true || mac !== false || pc !== false) throw new Error('Identifiering: ' + JSON.stringify({ ipad, ipadUa, mac, pc }));
+    console.log('OK: iPad (även som "Macintosh") får samma läge – Mac och smalt datorfönster gör det inte');
   } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

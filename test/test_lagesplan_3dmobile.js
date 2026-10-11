@@ -58,7 +58,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     askOpener = async (type, extra) => { window.__calls.push(type); return type === 'placeSaveIfc' ? { n: 2, files: ['Etablering x.ifc'] } : {}; };
 
   });
-  await page.evaluate(() => open3d());
+  // open3d() startas utan att vänta på dess löfte inne i sidan (Playwright tappade ibland svaret på det långa
+  // anropet – sidan var oskadd); att 3D är klar kontrolleras nedan.
+  await page.evaluate(() => { open3d(); });
   await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.placeMeshes.size === 4, null, { timeout: 15000 });
   await page.waitForTimeout(500);
   const cv = await page.locator('#v3Canvas canvas').boundingBox();
