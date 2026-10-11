@@ -15,7 +15,7 @@ function l3NavInit() {
   host.addEventListener("pointerdown", l3NavDown, true); // före OrbitControls/TransformControls
   window.addEventListener("pointermove", l3NavMove);
   window.addEventListener("pointerup", l3NavUp);
-  window.addEventListener("pointercancel", () => { if (l3Piv) l3OrbitPivotEnd(); });
+  window.addEventListener("pointercancel", e => { if (e.pointerType === "touch") l3Touches.delete(e.pointerId); if (l3Piv) l3OrbitPivotEnd(); });
   window.addEventListener("blur", () => { if (l3Piv) l3OrbitPivotEnd(); }); // släppt utanför fönstret
   el.addEventListener("wheel", l3Wheel, { passive: false });
   host.addEventListener("wheel", () => { l3.orbit.enableZoom = false; }, { capture: true, passive: true }); // före OrbitControls
@@ -47,6 +47,7 @@ let l3Area = null, l3RightDown = null;
 function l3NavDown(e) {
   // Nyp-zoom med två fingrar sköts av OrbitControls; mushjulet av l3Wheel (zoom mot markören).
   l3.orbit.enableZoom = e.pointerType === "touch" || e.pointerType === "pen";
+  if (e.pointerType === "touch") { l3TouchDown(e); return; }
   if (e.pointerType !== "mouse") return;
   if (e.button === 1 && e.target === l3.renderer.domElement) e.preventDefault();
   if (typeof l3dGripDown === "function" && l3dGripDown(e)) return; // DXF: dra i en hörnpunkt
@@ -94,7 +95,8 @@ function l3NavMove(e) {
   el.classList.remove("hidden");
 }
 function l3NavUp(e) {
-  if (l3Piv && e.button === l3Piv.button) l3OrbitPivotEnd();
+  if (e.pointerType === "touch") { l3TouchUp(e); return; }
+  if (l3Piv && !l3Piv.touch && e.button === l3Piv.button) l3OrbitPivotEnd();
   if (e.button === 2 && l3RightDown) { l3.noCtx = Math.hypot(e.clientX - l3RightDown.x, e.clientY - l3RightDown.y) > 6; l3RightDown = null; }
   if (l3.orbitOffForArea) { l3.orbitOffForArea = false; l3.orbit.enabled = true; }
   if (!l3Area) return;
@@ -170,6 +172,23 @@ function l3OrbitPivotStart(e) {
   if (e.button === 1) e.preventDefault(); // ingen autoscroll i webbläsaren
   return true;
 }
+/* Pekskärm (Victor 2026-10-11: "Rotationscentrum på iPhone är konstigt"): ett finger vrider kring punkten
+   under fingret – som med musen – i stället för kring OrbitControls målpunkt, som efter nyp och panorering kan
+   ligga långt bort. Den runda markeringen visar punkten. Två fingrar (nyp/panorera) sköts av OrbitControls. */
+const l3Touches = new Set();
+function l3TouchDown(e) {
+  l3Touches.add(e.pointerId);
+  if (l3Touches.size > 1) { if (l3Piv && l3Piv.touch) l3OrbitPivotEnd(); return; } // två fingrar: nyp/panorera
+  if (!l3AutoRot() || e.target !== l3.renderer.domElement || l3.camera.isOrthographicCamera) return;
+  if (l3.tool !== "select" || l3.addType || l3.multi || l3.gizmo.axis || l3.gizmo.dragging || (l3.gizmoR && (l3.gizmoR.axis || l3.gizmoR.dragging))) return;
+  if (l3Piv) l3OrbitPivotEnd();
+  l3Piv = { touch: true, id: e.pointerId, button: 0, x: e.clientX, y: e.clientY, P: l3PivotPoint(e), on: false, prevOne: l3.orbit.touches.ONE };
+  l3.orbit.touches = { ...l3.orbit.touches, ONE: -1 }; // OrbitControls vrider inte samtidigt (ett tryck markerar fortfarande)
+}
+function l3TouchUp(e) {
+  l3Touches.delete(e.pointerId);
+  if (l3Piv && l3Piv.touch && l3Piv.id === e.pointerId) l3OrbitPivotEnd();
+}
 /* Punkten under markören: närmaste yta, annars planet genom målpunkten vinkelrätt mot blicken. */
 function l3PivotPoint(e) {
   const hit = l3Ray(e, l3Surfaces())[0];
@@ -181,14 +200,17 @@ function l3PivotPoint(e) {
 }
 function l3OrbitPivotMove(e) {
   const v = l3Piv;
+  if (v.touch && e.pointerId !== v.id) return; // ett annat finger
+  // Fingret tog tag i flytt-/vridhandtaget eller ett mått-/DXF-handtag: det draget gäller, inte vridningen.
+  if (v.touch && (!l3.orbit.enabled || l3.gizmo.dragging || (l3.gizmoR && l3.gizmoR.dragging))) { l3OrbitPivotEnd(); return; }
   if (e.buttons === 0) { l3OrbitPivotEnd(); return; } // knappen släpptes utan att vi märkte det
   if (!v.on) {
-    if (Math.hypot(e.clientX - v.x, e.clientY - v.y) < 3) return;
+    if (Math.hypot(e.clientX - v.x, e.clientY - v.y) < (v.touch ? 6 : 3)) return; // ett tryck ska fortfarande markera
     v.on = true; l3StopFly(); l3PivMark(true);
   }
-  const h = l3.renderer.domElement.clientHeight || 600, dx = e.clientX - v.x, dy = e.clientY - v.y;
+  const h = l3.renderer.domElement.clientHeight || 600, dx = e.clientX - v.x, dy = e.clientY - v.y, k = v.touch ? 0.8 : 1;
   v.x = e.clientX; v.y = e.clientY;
-  l3OrbitAbout(v.P, -2 * Math.PI * dx / h, 2 * Math.PI * dy / h); // markeringen flyttas när bilden ritas (l3Render)
+  l3OrbitAbout(v.P, -2 * Math.PI * dx / h * k, 2 * Math.PI * dy / h * k); // markeringen flyttas när bilden ritas (l3Render)
 }
 /* Vrid kameran kring P: yaw kring lodaxeln, pitch = minskning av blickens polvinkel (uppåt i bilden
    = man tittar mer uppifrån). Samma gränser som OrbitControls (hela vägen från rakt ovanifrån till rakt underifrån). */
@@ -212,6 +234,7 @@ function l3OrbitAbout(P, yaw, pitch) {
 }
 function l3OrbitPivotEnd() {
   const v = l3Piv; l3Piv = null;
+  if (v.touch) { l3.orbit.touches = { ...l3.orbit.touches, ONE: v.prevOne }; l3PivMark(false); return; }
   l3.orbit.mouseButtons = { ...l3.orbit.mouseButtons, [v.key]: v.prev };
   l3PivMark(false);
 }
@@ -452,4 +475,50 @@ function l3KeepSelVisible() {
   if (!Q) return;
   const d = P.clone().sub(Q);
   l3StopFly(); l3.camera.position.add(d); l3.orbit.target.add(d); l3.orbit.update(); l3Render();
+}
+
+/* Verktygsraden på smal skärm (Victor 2026-10-11: "jag kan inte öppna alla menyer i 3d-vyn"): det som inte får
+   plats göms bakifrån och ligger under ⋯ Mer – inget hamnar utanför skärmen. Tillbaka, verktygen (Välj, Flytta …)
+   står alltid kvar. Menyknapparna (Vyer, Visa, Redigera) göms men deras menyer finns kvar och öppnas från Mer. */
+function l3BarFit() {
+  const bar = document.querySelector("#view3d .v3-bar");
+  if (!bar) return;
+  let more = document.getElementById("v3More");
+  if (!more) {
+    more = document.createElement("button"); more.type = "button"; more.id = "v3More"; more.className = "v3-ghost"; more.title = "Fler verktyg och menyer";
+    more.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>`;
+    bar.appendChild(more);
+    const pop = document.createElement("div"); pop.id = "v3MorePop"; pop.className = "v3-pop v3-more hidden";
+    bar.appendChild(pop);
+    pop.onclick = e => e.stopPropagation();
+    more.onclick = e => { e.stopPropagation(); const open = pop.classList.contains("hidden"); l3HideMenus(); if (open) { l3MoreRender(); pop.classList.remove("hidden"); } };
+  }
+  bar.querySelectorAll("[data-ovf]").forEach(el => { el.style.display = ""; delete el.dataset.ovf; });
+  more.style.display = "none"; l3.barHidden = [];
+  if (bar.scrollWidth <= bar.clientWidth + 1) return;
+  more.style.display = "";
+  // Ordningen de göms i (det som används minst först). Tillbaka, Välj, Flytta och Ångra står alltid kvar.
+  const q = sel => bar.querySelector(sel);
+  const order = ["#v3SaveIfc", "#v3HelpBtn", "#v3ViewsBtn", "#v3Fit", "#v3ClipBtn", "#v3EditBtn", "#v3ShowBtn", '[data-v3tool="align"]', "#v3Multi", '[data-v3tool="rotate"]', "#v3Redo", '[data-v3tool="measure"]'].map(q).filter(b => b && b.offsetWidth);
+  const hidden = [];
+  for (const b of order) {
+    if (bar.scrollWidth <= bar.clientWidth + 1) break;
+    b.style.display = "none"; b.dataset.ovf = "1"; hidden.push(b);
+  }
+  // I menyn i samma ordning som i raden.
+  const all = [...bar.querySelectorAll("button")];
+  hidden.sort((a, b) => all.indexOf(a) - all.indexOf(b));
+  l3.barHidden = hidden;
+}
+function l3MoreRender() {
+  const pop = document.getElementById("v3MorePop");
+  if (!pop) return;
+  const name = b => String(b.title || b.textContent || "").split(/\s[–(]|:/)[0].trim() || "Knapp";
+  pop.innerHTML = "";
+  (l3.barHidden || []).forEach(b => {
+    const r = document.createElement("button"); r.type = "button"; r.disabled = !!b.disabled;
+    const ic = b.querySelector("svg"); r.innerHTML = (ic ? ic.outerHTML : "") + `<span>${escHtml(name(b))}</span>`;
+    r.onclick = e => { e.stopPropagation(); pop.classList.add("hidden"); b.click(); };
+    pop.appendChild(r);
+  });
 }

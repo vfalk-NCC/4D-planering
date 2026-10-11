@@ -75,8 +75,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (await page.isVisible('#v3Pal') || !(await page.isVisible('#v3PalOpen'))) fail('Biblioteket ska börja ihopfällt på iPhone');
   const sw = await page.evaluate(() => [document.documentElement.scrollWidth, document.getElementById('view3d').scrollWidth, innerWidth]);
   if (sw[0] > sw[2] + 1 || sw[1] > sw[2] + 1) fail('Inget får sticka ut i sidled: ' + sw);
-  const bar = await page.evaluate(() => { const b = document.querySelector('.v3-bar'); return [b.scrollWidth > b.clientWidth, getComputedStyle(b).overflowX]; });
-  if (bar[1] !== 'auto') fail('Verktygsraden ska gå att bläddra i sidled: ' + bar);
+  // Verktygsraden ryms på en rad – resten ligger under ⋯ Mer (Victor 2026-10-11); Tillbaka, Välj, Flytta och Ångra syns alltid.
+  const bar = await page.evaluate(() => { const b = document.querySelector('.v3-bar'), vis = id => { const e = document.querySelector(id); return !!(e && e.offsetParent && e.getBoundingClientRect().right <= innerWidth); }; return { fits: b.scrollWidth <= b.clientWidth + 1, more: vis('#v3More'), keep: ['#v3Close', '[data-v3tool="select"]', '[data-v3tool="move"]', '#v3Undo'].every(vis), n: l3.barHidden.length }; });
+  if (!bar.fits || !bar.more || !bar.keep || !bar.n) fail('Verktygsraden ska rymmas med ⋯ Mer: ' + JSON.stringify(bar));
   if (!(await page.evaluate(() => l3.gizmo.size > 1))) fail('Större handtag (gizmo) på pekskärm');
 
   // --- Tryck = markera; egenskaperna som ark nedtill inom skärmen.
@@ -115,6 +116,47 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await touch('touchEnd', []); await page.waitForTimeout(150);
   const dir1 = await page.evaluate(() => l3.camera.getWorldDirection(new THREE.Vector3()).toArray());
   if (Math.hypot(...dir1.map((v, i) => v - dir0[i])) < 0.05) fail('Ett finger ska rotera');
+  // Rotationscentrum (Victor 2026-10-11: "Rotationscentrum på iPhone är konstigt"): ett finger vrider kring punkten
+  // under fingret – containern man tar tag i står kvar under fingret, och den runda markeringen syns där.
+  await page.evaluate(() => { l3SelectIds([]); l3StopFly(); const c = new THREE.Vector3(6512335 - l3.O[0], 150115 - l3.O[1], 0); l3.camera.position.set(c.x - 30, c.y - 40, 30); l3.orbit.target.set(c.x + 60, c.y + 80, -20); l3.orbit.update(); l3.camera.lookAt(c); l3.orbit.target.copy(l3.camera.position).addScaledVector(l3.camera.getWorldDirection(new THREE.Vector3()), 400); l3.orbit.update(); });
+  {
+    const [gx, gy] = await at(6512340, 150120, 1); // Container 2 (mitt)
+    await touch('touchStart', [[gx, gy]]);
+    let mark = false, P = null;
+    const cam0 = await page.evaluate(() => l3.camera.position.toArray());
+    for (let i = 1; i <= 8; i++) { await touch('touchMove', [[gx + i * 12, gy + i * 4]]); await page.waitForTimeout(16); if (i === 4) [mark, P] = await page.evaluate(() => [!!(l3.pivEl && !l3.pivEl.classList.contains('hidden')), l3Piv && l3Piv.touch && l3Piv.P.toArray().map((v, a) => v + l3.O[a])]); }
+    await touch('touchEnd', []); await page.waitForTimeout(150);
+    if (!P) fail('Vridningen ska ske kring en punkt under fingret');
+    const onBox = Math.hypot(P[0] - 6512340, P[1] - 150120, P[2] - 1) < 3; // på eller precis vid containern
+    const [hx, hy] = await at(P[0], P[1], P[2]);
+    const moved = await page.evaluate(c => l3.camera.position.distanceTo(new THREE.Vector3(...c)), cam0);
+    if (!onBox || Math.hypot(hx - gx, hy - gy) > 3 || !(moved > 1)) fail('Ett finger ska vrida kring punkten under fingret (containern – den står kvar under fingret): ' + JSON.stringify({ P, gx, gy, hx, hy, moved }));
+    if (!mark) fail('Den runda markeringen ska visa rotationspunkten medan man vrider');
+    if (await page.evaluate(() => l3.orbit.touches.ONE) === -1) fail('OrbitControls ska få tillbaka ett-fingers-läget efteråt');
+  }
+
+  // --- Hela verktygsraden syns (Victor 2026-10-11: "jag kan inte öppna alla menyer i 3d-vyn") och menyerna ryms.
+  {
+    await page.waitForTimeout(700); // fingerdraget ovan är helt avslutat (pekgesterna i webbläsaren)
+    const out = await page.evaluate(() => [...document.querySelectorAll('#view3d .v3-bar button')].filter(b => b.offsetParent).filter(b => { const r = b.getBoundingClientRect(); return r.right > innerWidth + 1 || r.left < -1; }).map(b => b.id || b.title));
+    if (out.length) fail('Knappar utanför skärmen: ' + out.join(', '));
+    const tapEl = async sel => { const b = await page.locator(sel).boundingBox(); await page.touchscreen.tap(b.x + b.width / 2, b.y + b.height / 2); await page.waitForTimeout(200); };
+    for (const [btn, pop] of [['v3ShowBtn', 'v3Show'], ['v3ViewsBtn', 'v3Views'], ['v3EditBtn', 'v3Edit'], ['v3HelpBtn', 'v3Help']]) {
+      // Knappen syns i raden, annars ligger den under ⋯ Mer.
+      const i = await page.evaluate(id => { const e = document.getElementById(id); return e.offsetParent ? -1 : l3.barHidden.indexOf(e); }, btn);
+      if (i < 0) await tapEl('#' + btn);
+      else {
+        await tapEl('#v3More');
+        const rows = await page.evaluate(() => [...document.querySelectorAll('#v3MorePop button')].map(b => b.textContent));
+        if (!(await page.isVisible('#v3MorePop')) || rows.length !== (await page.evaluate(() => l3.barHidden.length))) fail('⋯ Mer ska lista det som inte får plats: ' + rows);
+        await tapEl(`#v3MorePop button:nth-child(${i + 1})`);
+      }
+      const m = await page.evaluate(id => { const e = document.getElementById(id), r = e.getBoundingClientRect(); return { open: !e.classList.contains('hidden'), l: r.left, r: r.right, sw: e.scrollWidth, cw: e.clientWidth }; }, pop);
+      if (!m.open || m.l < 0 || m.r > 391 || m.sw > m.cw + 1) fail(`Menyn ${pop} ska öppnas och rymmas: ` + JSON.stringify(m));
+      if (await page.isVisible('#v3MorePop')) fail('⋯ Mer ska stängas när en meny öppnas');
+      await page.evaluate(() => l3HideMenus()); await page.waitForTimeout(100);
+    }
+  }
 
   // --- Dubbeltryck på marken zoomar dit.
   await top();

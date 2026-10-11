@@ -371,7 +371,7 @@ function l3Dom() {
   return box;
 }
 function l3HideMenus() {
-  ["v3Views", "v3Show", "v3Edit", "v3Ctx", "v3Help"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("hidden"); });
+  ["v3Views", "v3Show", "v3Edit", "v3Ctx", "v3Help", "v3MorePop"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("hidden"); });
 }
 /* Statusraden med historik (Victor 2026-10-10: "expandera den raden ungefär som i autocad så att jag kan
    se på vad som skett tidigare"). l3Status skriver och sparar i historiken; l3StatusLive skriver bara
@@ -547,6 +547,7 @@ function l3Init(box) {
 function l3SyncDate() { const el = document.getElementById("v3Date"); if (el && document.activeElement !== el && el.value !== $("dateInput").value) el.value = $("dateInput").value; }
 function l3Resize() {
   if (!l3) return;
+  if (typeof l3BarFit === "function") l3BarFit();
   const host = document.getElementById("v3Canvas"), w = host.clientWidth || 800, h = host.clientHeight || 600;
   l3.renderer.setSize(w, h);
   const cam = l3.camera;
