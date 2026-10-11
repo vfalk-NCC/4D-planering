@@ -93,9 +93,27 @@ async function l3bLoad(list, opts = {}) {
         m.meshes.forEach(x => l3.groups.bldg.add(x));
         l3b.models.push(m); l3bPosition(); l3bRemember(w, true);
         busyProgress("bldg", lbl, part(0, 1));
+        if (typeof l3ltEnsure === "function") setTimeout(() => l3ltEnsure(w, m).catch(() => {}), 3000); // lätt kopia för mobilen
         continue;
       }
       if (opts.cacheOnly) { missing.push(w); continue; }
+      // iPhone/iPad: den lätta kopian i datalagret i stället för IFC-filen (lagesplan-3dlight.js).
+      if (typeof l3ltUse === "function" && l3ltUse()) {
+        let lt = null;
+        try { l3Status(`Hämtar den lätta kopian av ${w.name || "modellen"}…`); lt = await l3ltLoad(w, f => busyProgress("bldg", `${lbl} – lätt kopia`, part(0, f))); }
+        catch (e) { console.warn("Lätt kopia", e); }
+        if (lt) {
+          if (opts.replace) l3bRemove(w.id);
+          lt.id = w.id; lt.name = lt.name || w.name; lt.visible = true; lt.src = w;
+          total += lt.tris;
+          lt.meshes.forEach(x => l3.groups.bldg.add(x));
+          l3b.models.push(lt); l3bPosition(); l3bRemember(w, true);
+          l3bCachePut(w, lt);
+          times.push(`${lt.name}: lätt kopia för mobilen (${(lt.tris / 1e6).toFixed(1).replace(".", ",")} milj. trianglar)`);
+          busyProgress("bldg", lbl, part(0, 1));
+          continue;
+        }
+      }
       l3Status(`Hämtar ${w.name || "modellen"} från Trimble Connect (${i + 1} av ${list.length})…`);
       const tDl0 = Date.now();
       const tick = setInterval(() => { const j = busyJobs.get("bldg"); if (j && j.f < part(0, 0.55)) busyProgress("bldg", lbl, j.f + 0.01 / list.length); }, 400);
@@ -141,6 +159,7 @@ async function l3bLoad(list, opts = {}) {
       m.id = w.id; m.name = r.name || w.name; m.visible = true; m.src = w;
       total += m.tris;
       if (!m.capped) l3bCachePut(w, m); // i bakgrunden
+      if (!m.capped && typeof l3ltEnsure === "function") setTimeout(() => l3ltEnsure(w, m).catch(() => {}), 3000); // lätt kopia för mobilen
       m.meshes.forEach(x => l3.groups.bldg.add(x));
       l3b.models.push(m);
       l3bPosition(); l3bRemember(w, true);
