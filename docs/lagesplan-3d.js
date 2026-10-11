@@ -28,6 +28,7 @@ const L3_ICO = (() => {
     undo: s('<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>'),
     redo: s('<path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>'),
     fit: s('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
+    camera: s('<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>'),
     cube: s('<path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>'),
     eye: s('<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>'),
     eyeOff: s('<path d="M17.9 17.9A10 10 0 0 1 12 19c-7 0-11-7-11-7a18 18 0 0 1 5.1-5.9M9.9 4.2A9 9 0 0 1 12 4c7 0 11 7 11 7a18 18 0 0 1-2.2 3.2M1 1l22 22"/>'),
@@ -232,6 +233,7 @@ function l3Dom() {
         </div>
       </div>
       <button type="button" id="v3ClipBtn" class="v3-ghost" title="Snitt: tryck på en yta där modellen ska skäras">${I.scissors}<span>Snitt</span></button>
+      <button type="button" id="v3PhotoBtn" class="v3-ghost" title="Lägg till foto: placeras enligt fotots GPS, annars trycker du där det är taget">${I.camera}<span>Foto</span></button>
       <span class="v3-grow"></span>
       <button type="button" id="v3LaunchBtn" class="v3-ghost v3-launchbtn" title="Snabbsök kommando (Ctrl+K)">${I.search}<span>Sök kommando</span><kbd>Ctrl+K</kbd></button>
       <button type="button" id="v3Fit" class="v3-ghost" title="Visa allt (Home)">${I.fit}<span>Översikt</span></button>
@@ -342,6 +344,7 @@ function l3Dom() {
   l3RenderSavedViews(); dd("v3ShowBtn", "v3Show"); dd("v3EditBtn", "v3Edit");
   if (typeof l3LayersInit === "function") l3LayersInit(); // Lager-fliken och breddbara paneler
   box.querySelectorAll("[data-v3cmd]").forEach(b => { b.onclick = () => { l3HideMenus(); ({ cspec: () => l3OpenSpecial("copy"), mspec: () => l3OpenSpecial("move"), dup: l3DuplicateSel, copy: l3CopySel, paste: () => l3Paste(), drop: l3DropSel, del: l3DeleteSel, all: () => l3SelectIds(placements.filter(p => !l3.hidden.has(p.id)).map(p => p.id)), similar: l3SelectSimilar, hide: l3HideSel, iso: l3Isolate, showall: l3ShowAll, clash: l3OpenClash })[b.dataset.v3cmd](); }; });
+  $3("v3PhotoBtn").onclick = () => { if (typeof l3phAdd === "function") l3phAdd(); };
   $3("v3ClipBtn").onclick = () => { if (l3.clips && l3.clips.length) l3RenderClipDlg(); l3StartClip(); };
   $3("v3LaunchBtn").onclick = e => { e.stopPropagation(); l3OpenLaunch(); };
   box.querySelectorAll("[data-v3view]").forEach(b => { b.onclick = () => { l3HideMenus(); const v = b.dataset.v3view; if (v === "plan") l3TogglePlan(); else if (v === "center") l3StartV(); else l3View(v); }; });
@@ -946,6 +949,7 @@ function l3Tap(e) {
     l3LastTouchTap = { t, x: e.clientX, y: e.clientY };
     if (last && t - last.t < 350 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 30 && l3.tool === "select" && !l3.addType) { l3LastTouchTap = null; l3DoubleAt(e); return; }
   }
+  if (l3.phPick && typeof l3phPickTap === "function") return l3phPickTap(e); // fotot som läggs till
   if (l3.vPick) return l3VTap(e);
   if (typeof l3DlgPickTap === "function" && l3DlgPickTap(e)) return;
   if (l3.tool && l3.tool !== "select" && typeof l3ToolTap === "function" && l3ToolTap(e)) return;
@@ -1460,6 +1464,7 @@ function l3Key(e) {
   if (typeof l3ToolKey === "function" && l3ToolKey(e)) return;
   if (e.key === "Enter" && l3.fenceId) { l3EndAdd(); l3Status("Staketet är klart."); return; }
   if (e.key === "Escape" && typeof l3bm !== "undefined" && l3bm.session) { l3bmCancel(); return; }
+  if (e.key === "Escape" && l3.phPick && typeof l3phPickCancel === "function") { l3phPickCancel(); return; }
   if (e.key === "Escape") { l3HideMenus(); l3HideInfo(); if (l3.addType) { l3EndAdd(); l3Status(""); } else { l3SelectIds([]); if (typeof l3bsClear === "function") l3bsClear(); } return; }
   if (e.key === "Home") { e.preventDefault(); l3Frame(true); return; }
   if (e.key === "?") { document.getElementById("v3HelpBtn").click(); return; }

@@ -67,7 +67,7 @@ function l3LayersRender() {
     ${placements.length ? `<button type="button" class="v3-link v3-lay-csv" id="v3LayCsv" title="Lista över etableringen som öppnas i Excel (namn, typ, mått, läge, 4D)">Exportera etableringen som lista (Excel/CSV)</button>` : ""}
     ${typeof l3m !== "undefined" ? row('data-l3m-eye="1"', !(typeof l3mAllHidden === "function" && l3mAllHidden()), `Mått <em>${l3m.list.length}</em>`) : ""}
     ${typeof l3k !== "undefined" ? row('data-l3k-eye="1"', !l3k.hidden, `Kommentarer <em>${l3k.list.filter(c => !c.done).length}${l3k.list.some(c => c.done) ? ` + ${l3k.list.filter(c => c.done).length} klara` : ""}</em>`) + row('data-l3k-signs="1"', l3kSigns(), "Som skyltar i 3D", "", "v3-lr-sub") : ""}
-    ${typeof l3ph !== "undefined" ? row('data-l3ph-eye="1"', l3phOn(), `Foton <em>${l3phList().length}</em>`) : ""}`);
+    ${typeof l3ph !== "undefined" ? row('data-l3ph-eye="1"', l3phOn(), `Foton <em>${l3phList().length}</em>`, `<button type="button" class="v3-lr-zoom" data-l3ph-add="1" title="Lägg till foto (GPS, annars tryck där det är taget)">＋</button>`) : ""}`);
   if (typeof l3sHtml === "function") { const s2 = l3sHtml(row, l3lEye); if (s2) h += l3lSec("site2d", "2D-lager och DXF", s2.body, s2.extra); }
   let mh = "";
   if ((P.laySort || "list") === "list") {
@@ -111,6 +111,7 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3m-eye]").forEach(b => { b.onclick = () => l3mToggle(); });
   host.querySelectorAll("[data-l3k-eye]").forEach(b => { b.onclick = () => l3kToggle(); });
   host.querySelectorAll("[data-l3ph-eye]").forEach(b => { b.onclick = () => l3phToggle(); });
+  host.querySelectorAll("[data-l3ph-add]").forEach(b => { b.onclick = () => l3phAdd(); });
   host.querySelectorAll("[data-l3k-signs]").forEach(b => { b.onclick = () => { l3SetPref("cSigns", !l3kSigns()); l3kDraw(); }; });
   host.querySelectorAll("[data-l3l-texp]").forEach(b => { b.onclick = () => { const t = b.dataset.l3lTexp; l3lay.texp.has(t) ? l3lay.texp.delete(t) : l3lay.texp.add(t); l3LayersRender(); }; });
   host.querySelectorAll("[data-l3l-obj]").forEach(b => { b.onclick = () => { const id = b.dataset.l3lObj; l3lSetIdsVisible([id], l3.hidden.has(id)); if (typeof l3UpdateHidden === "function") l3UpdateHidden(); l3LayersRender(); }; });

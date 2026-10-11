@@ -254,3 +254,65 @@ function l3phToggle(on) {
 }
 /* Popup och handtag följer kameran (anropas efter varje bild i l3Render). */
 function l3phPlace() { if (l3ph.open) { l3phHandlePlace(); l3phPlacePop(); } }
+
+/* ---- Lägg till foto i 3D (Victor 2026-10-11: "Hittar ingen knapp för att ladda upp foton i 3d-vyn") -------------
+   📷 Foto i verktygsraden (⋯ Mer på iPhone), ＋ vid Foton under Lager eller "Lägg till foto…" i sökningen.
+   Med GPS (fotots EXIF eller telefonens position för en nytagen bild) hamnar det direkt rätt – höjden enligt
+   GPS-höjden. Utan GPS: tryck i 3D där fotot är taget – det ställs på ytan där du trycker + ögonhöjd.
+   Samma uppladdning som i 2D (beskrivning och datum frågas), sparas med arbetsytan. */
+let l3phInput = null, l3phQueue = [];
+function l3phAdd() {
+  if (!plan || !plan.calib) { l3Status("Arbetsytan behöver vara kalibrerad mot 3D för att foton ska kunna placeras.", true); return; }
+  if (typeof startDevicePosition === "function") startDevicePosition(); // telefonens position, om bilden tas nu
+  if (!l3phInput) {
+    l3phInput = document.createElement("input");
+    l3phInput.type = "file"; l3phInput.accept = "image/*"; l3phInput.multiple = true;
+    l3phInput.style.cssText = "position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:0;top:0;";
+    document.getElementById("view3d").appendChild(l3phInput);
+    l3phInput.onchange = () => { const f = [...l3phInput.files]; l3phInput.value = ""; if (f.length) { l3phQueue = f; l3phNext(); } };
+  }
+  l3phInput.click();
+}
+async function l3phNext() {
+  const f = l3phQueue.shift();
+  if (!f) return;
+  if (!l3phOn()) l3phToggle(true);
+  let sug = null;
+  try { sug = typeof suggestPhotoPosition === "function" ? await suggestPhotoPosition(f) : null; } catch (e) { sug = null; }
+  if (sug && sug.pt) {
+    l3Status(`📍 ${f.name} placeras enligt GPS (${sug.src}, ±${Math.round(sug.acc || 0)} m).`);
+    const n0 = photos().length;
+    await addPhotoFile(f, { pt: sug.pt, gps: sug.gps, quiet: l3phQueue.length > 0 });
+    l3phAdded(n0);
+    return l3phNext();
+  }
+  l3.phPick = f;
+  const why = sug && sug.far ? "GPS-positionen ligger inte på den här arbetsytan" : "Fotot saknar GPS";
+  l3Status(`📷 ${why} – tryck i 3D där "${f.name}" är taget (Esc avbryter).`);
+  l3Toast(`Tryck där fotot är taget`, "Avbryt", l3phPickCancel, 60000);
+}
+function l3phPickTap(e) {
+  const f = l3.phPick;
+  const hit = l3Ray(e, l3Surfaces())[0];
+  if (!hit) { l3Status("Tryck på marken eller ett objekt där fotot är taget.", true); return; }
+  l3.phPick = null;
+  const t = document.getElementById("v3Toast"); if (t) t.classList.add("hidden");
+  const mx = hit.point.x + l3.O[0], my = hit.point.y + l3.O[1], z = Math.round((hit.point.z + l3.O[2] + L3PH_EYE) * 100) / 100;
+  const n0 = photos().length;
+  Promise.resolve(addPhotoFile(f, { pt: modelToPdf(mx, my), gps: null, z, quiet: l3phQueue.length > 0 })).then(() => { l3phAdded(n0); l3phNext(); });
+}
+function l3phPickCancel() {
+  if (!l3.phPick) return;
+  l3.phPick = null;
+  const t = document.getElementById("v3Toast"); if (t) t.classList.add("hidden");
+  l3Status(l3phQueue.length ? "Fotot hoppades över." : "Inget foto lades till.");
+  l3phNext();
+}
+function l3phAdded(n0) {
+  l3phBuild();
+  if (typeof l3LayersRender === "function") l3LayersRender();
+  // Bara om fotot faktiskt kom med (avbruten beskrivning eller misslyckad uppladdning: inget nytt foto).
+  if (photos().length <= n0) { l3Status("Fotot lades inte till.", true); return; }
+  const ph = photos().slice(-1)[0];
+  if (ph) { const p = l3phPos(ph); l3Status(`✓ Fotot "${ph.caption || ph.date}" är sparat – ${String(l3phR2(p.p.z + l3.O[2]).toFixed(2)).replace(".", ",")} m (${l3phSrcText(ph, p.src)}).`); }
+}

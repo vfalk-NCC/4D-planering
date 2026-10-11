@@ -34,7 +34,7 @@ const JPG = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP/////////////////////
     await page.route('https://api.github.com/**', r => {
       const req = r.request(), f = decodeURIComponent(new URL(req.url()).pathname.replace('/repos/vfalk-NCC/4D-data/contents/', ''));
       if (req.method() === 'GET') {
-        if (/photos\//.test(f)) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: JPG.toString('base64'), sha: 'p' }) });
+        if (/photos\/[gnh]\.jpg$/.test(f)) return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: JPG.toString('base64'), sha: 'p' }) });
         const e = gh.get(f); return e ? r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: Buffer.from(e).toString('base64'), sha: 's' + e.length }) }) : r.fulfill({ status: 404, body: '{}' });
       }
       const body = JSON.parse(req.postData() || '{}'); gh.set(f, Buffer.from(body.content || '', 'base64').toString());
@@ -134,6 +134,36 @@ const JPG = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP/////////////////////
     const off = await page.evaluate(() => ({ vis: l3.groups.photos.visible, pop: document.querySelector('#v3PhPop').classList.contains('hidden') }));
     if (off.vis || !off.pop) fail('Släcka: ' + JSON.stringify(off));
     console.log('OK: popup, våning, ytan, GPS-höjd, dra-handtag, Ctrl+Z och släck');
+
+    // 7. Lägg till foto i 3D (Victor 2026-10-11: "Hittar ingen knapp för att ladda upp foton i 3d-vyn").
+    //    📷 Foto öppnar filväljaren; med GPS placeras fotot direkt, utan GPS trycker man där det är taget.
+    page.on('dialog', d => d.accept(d.type() === 'prompt' ? (d.message().startsWith('Beskrivning') ? 'Från 3D' : '') : undefined));
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 5000 }), page.click('#v3PhotoBtn')]);
+    if (!chooser.isMultiple()) fail('Filväljaren ska ta flera foton');
+    const mkFile = name => page.evaluate(name => new Promise(res => { const c = document.createElement('canvas'); c.width = 40; c.height = 30; c.getContext('2d').fillRect(0, 0, 20, 20); c.toBlob(b => { window.__f = new File([b], name, { type: 'image/jpeg', lastModified: Date.now() - 3600e3 }); res(); }, 'image/jpeg'); }), name);
+    const n0 = await page.evaluate(() => photos().length);
+    // Med GPS (förslaget från fotots EXIF): direkt på planen, GPS-höjd och riktning följer med.
+    await mkFile('gps.jpg');
+    await page.evaluate(() => { window.__sug0 = suggestPhotoPosition; suggestPhotoPosition = async () => ({ pt: [600, 300], acc: 4, src: 'foto', zone: 'z', gps: { lat: 59.3, lon: 18.1, acc: 4, src: 'foto', alt: 31.25, dir: 180 } }); l3phQueue = [window.__f]; return l3phNext(); });
+    await page.waitForFunction(n => photos().length === n + 1, n0, { timeout: 10000 });
+    const a1 = await page.evaluate(() => { const ph = photos().slice(-1)[0], s = l3.groups.photos.children.find(o => o.isSprite && o.userData.photoId === ph.id); return { cap: ph.caption, x: ph.x, y: ph.y, alt: ph.gps && ph.gps.alt, z: s && +(s.position.z + l3.O[2]).toFixed(2), on: l3.groups.photos.visible }; });
+    if (a1.cap !== 'Från 3D' || a1.x !== 600 || a1.y !== 300 || a1.alt !== 31.25 || a1.z !== 31.25 || !a1.on) fail('Foto med GPS från 3D: ' + JSON.stringify(a1));
+    // Utan GPS: tryck i 3D där fotot är taget → på ytan + ögonhöjd.
+    await mkFile('utan.jpg');
+    await page.evaluate(() => { suggestPhotoPosition = async () => null; l3phQueue = [window.__f]; return l3phNext(); });
+    if (!(await page.evaluate(() => !!l3.phPick))) fail('Utan GPS ska man få trycka i 3D');
+    await page.evaluate(() => { l3View('top'); }); await page.waitForTimeout(600);
+    const [tx, ty] = await page.evaluate(() => { const r = l3.renderer.domElement.getBoundingClientRect(), q = l3ToScreen(new THREE.Vector3(6512350 - l3.O[0], 150125 - l3.O[1], 5 - l3.O[2])); return [r.left + q.x, r.top + q.y]; });
+    await page.mouse.click(tx, ty);
+    await page.waitForFunction(n => photos().length === n + 2, n0, { timeout: 10000 });
+    const a2 = await page.evaluate(() => { const ph = photos().slice(-1)[0], [mx, my] = l3PdfToModel(ph.x, ph.y); return { z: ph.z, mx: Math.round(mx), my: Math.round(my), gps: !!ph.gps, pick: !!l3.phPick }; });
+    if (Math.abs(a2.z - 6.6) > 0.05 || Math.abs(a2.mx - 6512350) > 1 || Math.abs(a2.my - 150125) > 1 || a2.gps || a2.pick) fail('Foto utan GPS, tryck i 3D: ' + JSON.stringify(a2));
+    // Esc avbryter.
+    await page.evaluate(() => { l3phQueue = [window.__f]; return l3phNext(); });
+    await page.keyboard.press('Escape');
+    if (await page.evaluate(() => !!l3.phPick) || await page.evaluate(() => photos().length) !== n0 + 2) fail('Esc ska avbryta utan att lägga till');
+    await page.evaluate(() => { suggestPhotoPosition = window.__sug0; });
+    console.log('OK: lägg till foto i 3D – filväljaren, med GPS direkt, utan GPS med ett tryck, Esc avbryter');
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

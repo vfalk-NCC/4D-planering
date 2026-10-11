@@ -333,7 +333,7 @@ async function addPhotoFile(file, opts = {}) {
     const id = ghNewId();
     const path = dataPath(`status_plans/photos/${id}.jpg`);
     await ghUploadBinary(token, path, blob, `Lägesplan: foto ${caption || date}`);
-    plan.photos = [...photos(), { id, x: pt[0], y: pt[1], path, date, caption: caption.trim(), ...(gps ? { gps } : {}), by: settings.userName || null, created_at: new Date().toISOString() }];
+    plan.photos = [...photos(), { id, x: pt[0], y: pt[1], path, date, caption: caption.trim(), ...(gps ? { gps } : {}), ...(Number.isFinite(opts.z) ? { z: opts.z } : {}), by: settings.userName || null, created_at: new Date().toISOString() }];
     renderZones(); schedulePlanSave();
     if (typeof renderLayerPanel === "function") renderLayerPanel();
   } catch (e) {
