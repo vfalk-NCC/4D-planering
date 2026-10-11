@@ -147,6 +147,36 @@ const PORT = 8990;
     });
     if (sh.type !== 'ellipse' || !sh.panel || !sh.pdf || !sh.dxf) fail('Ellips/pratbubbla i panel, PDF och DXF: ' + JSON.stringify(sh));
     console.log('OK: pratbubbla (spetsen dras med sitt handtag och följer med vid flytt) och ellips – panel, PDF (vektor) och DXF');
+    // 6b) Tabell på bladet (Victor 2026-10-11): etablering med datum, zoner, leveranser – skärm och PDF (vektor).
+    const tb = await page.evaluate(async () => {
+      const d = $('dateInput').value || todayIso();
+      siteItems.push({ id: 'tb1', type: 'shed', name: 'Bod A', cx: 10, cy: 10, w: 8.4, h: 3, rot: 0, from: '2020-01-01', to: '2099-12-31' },
+        { id: 'tb2', type: 'storage', name: 'Upplag Ö', cx: 30, cy: 10, w: 10, h: 5, rot: 0, from: '2099-01-01', to: '2099-02-01' },
+        { id: 'tb3', type: 'delivery', veh: Object.keys(VEHICLES)[0], cx: 20, cy: 20, w: 3, h: 8, rot: 0, from: d, time: '07:30', what: 'Armering' });
+      pr.tpl.elements = []; setSel([]);
+      document.querySelector('#prAdd [data-add="table"]').click();
+      const el = pr.tpl.elements[0];
+      const out = { type: el.type, panel: !!document.querySelector('#prProps [data-f="src"]') && document.querySelectorAll('#prProps [data-ptcol]').length === 6 };
+      const rowsDate = ptRows(el).map(r => r.name), rowsAll = ptRows({ ...el, when: 'all' }).map(r => r.name);
+      out.rows = rowsDate.includes('Bod A') && !rowsDate.includes('Upplag Ö') && rowsAll.includes('Upplag Ö');
+      out.area = ptRows(el).find(r => r.name === 'Bod A').area === '25';
+      const dv = ptRows({ src: 'deliv', when: 'date' });
+      out.deliv = dv.length === 1 && dv[0].time === '07:30' && dv[0].what === 'Armering';
+      // Kolumn av i panelen.
+      const c = document.querySelector('#prProps [data-ptcol="area"]'); c.checked = false; c.dispatchEvent(new Event('change'));
+      out.hide = el.hide && el.hide.area === true && ptCols(el).length === 5;
+      drawPrintPage();
+      const calls = [];
+      window.jspdf = { jsPDF: function () { return new Proxy({}, { get: (t, k) => k === 'GState' ? function () {} : k === 'getTextWidth' ? (s => String(s).length * 1.5) : k === 'splitTextToSize' ? (s => [String(s)]) : k === 'output' ? (() => new ArrayBuffer(8)) : ((...a) => { calls.push([k, a]); }) }); } };
+      await exportPrintPdf();
+      out.pdf = calls.some(x => x[0] === 'text' && x[1][0] === 'Typ') && calls.some(x => x[0] === 'text' && x[1][0] === 'Bod A') && !calls.some(x => x[0] === 'addImage');
+      el.x = 20; el.y = 20; el.w = 150; el.h = 50; el.hide = {}; pr.zoom = 1; pr.vx = pr.vy = 0; drawPrintPage();
+      return out;
+    });
+    if (process.env.SHOTT) await page.screenshot({ path: process.env.SHOTT });
+    await page.evaluate(() => siteItems.splice(siteItems.findIndex(x => x.id === 'tb1'), 3));
+    if (tb.type !== 'table' || !tb.panel || !tb.rows || !tb.area || !tb.deliv || !tb.hide || !tb.pdf) fail('Tabell på bladet: ' + JSON.stringify(tb));
+    console.log('OK: tabell – etablering vid utskriftens datum (med yta), leveranser, kolumnval, PDF som text');
     // 7) Verktygsraden överst: alla verktyg med ikon och namn, och den täcker inte bladet.
     const bar = await page.evaluate(() => {
       pr.zoom = 1; pr.vx = pr.vy = 0; drawPrintPage();
@@ -154,8 +184,8 @@ const PORT = 8990;
       const { oy, dpr, c } = pr.L, pageTop = c.getBoundingClientRect().top + oy / dpr;
       return { n: btns.length, icons: btns.every(x => x.querySelector('svg') && x.textContent.trim() && x.title), types: btns.every(x => ELEMENT_TYPES[x.dataset.add]), clear: b.getBoundingClientRect().bottom <= pageTop, oldGone: !document.querySelector('.pr-side .tool-grid') };
     });
-    if (bar.n !== 13 || !bar.icons || !bar.types || !bar.clear || !bar.oldGone) fail('Verktygsraden: ' + JSON.stringify(bar));
-    console.log('OK: verktygsraden överst – 13 verktyg med ikon, namn och förklaring, täcker inte bladet');
+    if (bar.n !== 14 || !bar.icons || !bar.types || !bar.clear || !bar.oldGone) fail('Verktygsraden: ' + JSON.stringify(bar));
+    console.log('OK: verktygsraden överst – 14 verktyg med ikon, namn och förklaring, täcker inte bladet');
     await page.evaluate(() => { pr.dirty = false; closePrint(); });
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');

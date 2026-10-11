@@ -27,6 +27,7 @@ const ELEMENT_TYPES = {
   arrow: { label: "Pil", icon: "➜" },
   ellipse: { label: "Ellips", icon: "◯" },
   callout: { label: "Pratbubbla", icon: "💬" },
+  table: { label: "Tabell", icon: "▤" },
 };
 /* Enhetliga linjeikoner (verktygsraden och panelens rubrik). */
 const PR_ICONS = Object.fromEntries(Object.entries({
@@ -42,7 +43,8 @@ const PR_ICONS = Object.fromEntries(Object.entries({
   rect: '<rect x="4" y="6" width="16" height="12" rx="1.5"/>',
   ellipse: '<ellipse cx="12" cy="12" rx="9" ry="6.5"/>',
   line: '<path d="M5 19 19 5"/>',
-  arrow: '<path d="M4 12h15M13.5 6.5 19 12l-5.5 5.5"/>'
+  arrow: '<path d="M4 12h15M13.5 6.5 19 12l-5.5 5.5"/>',
+  table: '<rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 9.5h18M3 14h18M9 9.5V19M15 9.5V19"/>'
 }).map(([k, v]) => [k, `<svg class="pr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${v}</svg>`]));
 const NORTH_STYLES = { rose4: "Stjärna", classic: "Klassisk halvpil", rose8: "Kompassros", minimal: "Minimal", compass: "Bussola", feather: "Pil med fjäder" };
 
@@ -739,6 +741,7 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
       break;
     }
     case "legend": drawLegend(ctx, el, X, Y, W, H, pt); break;
+    case "table": if (typeof drawPrTable === "function") drawPrTable(ctx, el, X, Y, W, H, pt); break; // lagesplan-printtable.js
     case "title": if (el.style === "card") drawTitleCard(ctx, el, tpl, X, Y, W, H, pt); else drawTitleBlock(ctx, el, tpl, X, Y, W, H, pt, k, u); break;
   }
   ctx.restore();
@@ -1315,6 +1318,7 @@ function addEl(type) {
     rect: { stroke: "#000000", lw: 0.35, fill: "" },
     line: { stroke: "#000000", lw: 0.35, w: 60, h: 0 },
     ellipse: { stroke: "#dc2626", lw: 0.7, fill: "", fillOpacity: 100, dash: "solid", w: 40, h: 25 },
+    table: { ...(typeof PT_DEF !== "undefined" ? PT_DEF : {}), title: "ETABLERING", w: 130, h: 60 },
     callout: { text: "Text", size: 9, color: "#111827", fill: "#ffffff", stroke: "#1f2937", lw: 0.35, radius: 2, pad: 2, align: "center", valign: "middle", w: 50, h: 18, tx: 62, ty: 34 },
     arrow: { style: "modern", shape: "straight", stroke: "#dc2626", lw: 2.2, head: 100, bend: 40, dash: "solid", outline: "#000000", w: 50, h: -15 },
   }[type];
@@ -1529,7 +1533,9 @@ function renderPrintProps(onlyPos) {
   if (el.type === "north") html += `<label>Utseende</label><div class="pr-north">${Object.entries(NORTH_STYLES).map(([s, n]) => `<button type="button" data-north="${s}" class="${(el.style || "rose4") === s ? "on" : ""}" title="${n}"><img src="${northThumb(s, el.color)}" alt="" /><span>${n}</span></button>`).join("")}</div>
       <div class="pr-grid4">${color("color", "Färg")}</div>${mapSel()}<div class="hint">Vrids efter ritningens riktning mot norr.</div>`;
   if (el.type === "scalebar") html += mapSel() + `<div class="hint">Följer ritningens skala.</div>`;
+  if (el.type === "table" && typeof prTableHtml === "function") html += prTableHtml(el);
   box.innerHTML = html;
+  if (el.type === "table" && typeof prTableBind === "function") prTableBind(box, el);
   box.querySelectorAll("[data-f]").forEach(i => {
     if (i.classList.contains("pr-nocolor")) { i.onclick = () => { pushUndo(); el[i.dataset.f] = ""; renderPrintPanel(); drawPrintPage(); }; return; }
     const ev = i.tagName === "SELECT" || i.type === "checkbox" || i.type === "color" ? "change" : "input";
@@ -1774,6 +1780,8 @@ async function exportPrintPdf() {
         if (el.fill) { doc.setFillColor(...hexRgb(el.fill)); doc.rect(x, y, w, h, "F"); }
         if (el.border) { doc.setDrawColor(...hexRgb(el.border)); doc.setLineWidth(0.3 * k); doc.rect(x, y, w, h); }
         pdfTextBlock(doc, el, x, y, w, h, tpl, k, 10);
+      } else if (el.type === "table" && typeof pdfPrTable === "function") {
+        pdfPrTable(doc, el, x, y, w, h, k);
       } else if (el.type === "callout") {
         pdfCalloutShape(doc, el, k);
         pdfTextBlock(doc, el, x, y, w, h, tpl, k, 9);
