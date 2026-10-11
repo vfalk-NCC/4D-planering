@@ -75,6 +75,9 @@ function parseExif(v, t) {
       if (g[3] && ascii(g[3]) === "W") lon = -lon;
       if (Number.isFinite(lat) && Number.isFinite(lon) && (lat || lon)) { out.lat = lat; out.lon = lon; out.acc = g[31] ? rat(g[31].at, 0) : null; }
     }
+    // Höjd över havet (tagg 6, 5 = 1 under havet) och kompassriktningen fotot togs åt (tagg 17) – för 3D (Victor 2026-10-11).
+    if (g[6]) { let alt = rat(g[6].at, 0); if (g[5] && v.getUint8(t + g[5].at) === 1) alt = -alt; if (Number.isFinite(alt)) out.alt = alt; }
+    if (g[17]) { const d = rat(g[17].at, 0); if (Number.isFinite(d)) out.dir = ((d % 360) + 360) % 360; }
   }
   return out;
 }
@@ -87,7 +90,7 @@ function startDevicePosition() {
   const started = Date.now();
   gpsWatch = new Promise(res => {
     navigator.geolocation.getCurrentPosition(
-      p => res({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, at: started }),
+      p => res({ lat: p.coords.latitude, lon: p.coords.longitude, acc: p.coords.accuracy, alt: p.coords.altitude, altAcc: p.coords.altitudeAccuracy, dir: p.coords.heading, at: started }),
       () => res(null), { enableHighAccuracy: true, timeout: 20000, maximumAge: 15000 });
   });
   return gpsWatch;
@@ -120,7 +123,7 @@ function startGpsPhoto() {
 async function suggestPhotoPosition(file) {
   const exif = await readExifGps(file);
   if (exif && exif.date) file.__exifDate = exif.date;
-  let pos = exif && exif.lat !== undefined ? { lat: exif.lat, lon: exif.lon, acc: exif.acc || 10, src: "foto" } : null;
+  let pos = exif && exif.lat !== undefined ? { lat: exif.lat, lon: exif.lon, acc: exif.acc || 10, alt: exif.alt, dir: exif.dir, src: "foto" } : null;
   // iPadens egen position bara för en bild som just tagits (annars kan den vara tagen någon annanstans).
   if (!pos && gpsWatch && file.lastModified && Date.now() - file.lastModified < 15 * 60 * 1000) {
     setStatusMsg("Hämtar iPadens position…");
@@ -131,6 +134,14 @@ async function suggestPhotoPosition(file) {
   const hit = gpsToModel(pos.lat, pos.lon);
   if (!hit) return { far: true };
   const pdfPt = modelToPdf(hit.m[0], hit.m[1]);
-  return { pt: pdfPt, acc: pos.acc, src: pos.src, zone: hit.zone, gps: { lat: +pos.lat.toFixed(7), lon: +pos.lon.toFixed(7), acc: pos.acc ? Math.round(pos.acc) : null, src: pos.src, zone: hit.zone } };
+  return { pt: pdfPt, acc: pos.acc, src: pos.src, zone: hit.zone, gps: { lat: +pos.lat.toFixed(7), lon: +pos.lon.toFixed(7), acc: pos.acc ? Math.round(pos.acc) : null, src: pos.src, zone: hit.zone, ...gpsExtra(pos) } };
+}
+/* Höjd (m över havet, ± om känt) och riktning (grader från norr) – sparas bara när de finns. */
+function gpsExtra(pos) {
+  const o = {}, ok = v => v != null && Number.isFinite(v);
+  if (ok(pos.alt)) o.alt = Math.round(pos.alt * 100) / 100;
+  if (ok(pos.altAcc)) o.altAcc = Math.round(pos.altAcc * 10) / 10;
+  if (ok(pos.dir)) o.dir = Math.round(pos.dir * 10) / 10;
+  return o;
 }
 function setStatusMsg(t) { if (typeof setSaveStatus === "function") setSaveStatus(t); }

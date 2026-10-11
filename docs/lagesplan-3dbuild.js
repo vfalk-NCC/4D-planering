@@ -187,6 +187,7 @@ async function l3bLoad(list, opts = {}) {
   busyProgress("bldg", "", null);
   l3b.busy = false;
   if (typeof l3LayersRender === "function") l3LayersRender();
+  if (typeof l3phOn === "function" && l3phOn()) l3phBuild(); // fotona utan GPS-höjd står på byggnaden
   l3Render();
   return { missing };
 }

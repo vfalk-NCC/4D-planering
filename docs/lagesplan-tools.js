@@ -409,7 +409,7 @@ function editOpenPhoto() {
   cap.onkeydown = $("pmDate").onkeydown = e => { if (e.key === "Enter") save(); if (e.key === "Escape") { e.stopPropagation(); showPhotoMeta(ph); } };
 }
 function showPhotoMeta(ph) {
-  $("pmMeta").innerHTML = `<b>${escHtml(ph.caption || "Foto")}</b> · ${escHtml(ph.date || "")}${ph.by ? ` · ${escHtml(ph.by)}` : ""}${ph.gps ? ` · 📍 GPS${ph.gps.acc ? ` ±${ph.gps.acc} m` : ""}` : ""}`;
+  $("pmMeta").innerHTML = `<b>${escHtml(ph.caption || "Foto")}</b> · ${escHtml(ph.date || "")}${ph.by ? ` · ${escHtml(ph.by)}` : ""}${ph.gps ? ` · 📍 GPS${ph.gps.acc ? ` ±${ph.gps.acc} m` : ""}${Number.isFinite(ph.gps.alt) ? ` · höjd ${String(ph.gps.alt).replace(".", ",")} m` : ""}${Number.isFinite(ph.gps.dir) ? ` · riktning ${Math.round(ph.gps.dir)}°` : ""}` : ""}`;
 }
 function closePhoto() { openPhotoId = null; photoFull(false); $("photoModal").classList.add("hidden"); }
 /* Helskärm (Victors önskemål 2026-10-04): tryck på fotot så fyller det skärmen mot svart bakgrund.

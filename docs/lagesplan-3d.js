@@ -156,6 +156,7 @@ async function open3d() {
     if (typeof l3mLoad === "function") l3mLoad().catch(e => console.warn(e)); // sparade mått
     if (typeof l3kLoad === "function") l3kLoad().catch(e => console.warn(e)); // kommentarer
     if (typeof l3aLoad === "function") l3aLoad().catch(e => console.warn(e)); // mappar för kommentarer och mått
+    if (typeof l3phBuild === "function") l3phBuild(); // fotomarkörerna
     l3BuildObjects();
     if (typeof l3bRebuild === "function") l3bRebuild();
     // Byggnaden som var tänd förra gången: direkt ur cachen (versionen kontrolleras i bakgrunden).
@@ -580,6 +581,7 @@ function l3Render() {
     if (typeof l3mPlaceLabels === "function") l3mPlaceLabels(); // måtten som ligger kvar
     if (typeof l3cPlace === "function") l3cPlace(); // saxarna på snitten
     if (typeof l3kPlace === "function") l3kPlace(); // kommentarerna
+    if (typeof l3phPlace === "function") l3phPlace(); // fotot som är öppet
     l3RenderLabels();
     if (typeof l3HandlesPos === "function") l3HandlesPos();
     if (typeof l3TouchBarUpdate === "function") l3TouchBarUpdate();
@@ -951,6 +953,7 @@ function l3Tap(e) {
   // Ett tryck i bilden avmarkerar måtten (måttet markeras genom att trycka på dess text).
   if (typeof l3m !== "undefined" && l3m.sel && l3m.sel.size) { l3m.sel.clear(); l3mDraw(); if (typeof l3kRenderTab === "function") l3kRenderTab(); }
   if (typeof l3kTap === "function" && l3kTap(e)) return; // kommentarens skylt
+  if (typeof l3phTap === "function" && l3phTap(e)) return; // fotomarkör
   const id = l3PlaceAt(e);
   if (id) {
     if (e.shiftKey || e.ctrlKey || e.metaKey || l3.multi) { const s = new Set(l3.sel); if (s.has(id)) s.delete(id); else s.add(id); l3SelectIds([...s]); }
