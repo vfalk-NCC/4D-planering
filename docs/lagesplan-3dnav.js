@@ -15,7 +15,7 @@ function l3NavInit() {
   host.addEventListener("pointerdown", l3NavDown, true); // före OrbitControls/TransformControls
   window.addEventListener("pointermove", l3NavMove);
   window.addEventListener("pointerup", l3NavUp);
-  window.addEventListener("pointercancel", e => { if (e.pointerType === "touch") { l3Touches.delete(e.pointerId); l3TouchAt.delete(e.pointerId); } if (l3Piv) l3OrbitPivotEnd(); });
+  window.addEventListener("pointercancel", e => { if (e.pointerType === "touch") { l3Touches.delete(e.pointerId); l3TouchAt.delete(e.pointerId); if (l3Pinch) l3PinchEnd(); } if (l3Piv) l3OrbitPivotEnd(); });
   window.addEventListener("blur", () => { if (l3Piv) l3OrbitPivotEnd(); }); // släppt utanför fönstret
   el.addEventListener("wheel", l3Wheel, { passive: false });
   host.addEventListener("wheel", () => { l3.orbit.enableZoom = false; }, { capture: true, passive: true }); // före OrbitControls
@@ -82,6 +82,10 @@ function l3PanAnchor(e) {
   l3.orbit.update();
 }
 function l3NavMove(e) {
+  if (e.pointerType === "touch" && l3TouchAt.has(e.pointerId)) {
+    l3TouchAt.set(e.pointerId, [e.clientX, e.clientY]);
+    if (l3Pinch) { l3PinchMove(); return; }
+  }
   if (l3Piv) { l3OrbitPivotMove(e); return; }
   if (!l3Area) return;
   l3Area.x1 = e.clientX; l3Area.y1 = e.clientY;
@@ -180,7 +184,7 @@ function l3TouchDown(e) {
   l3Touches.add(e.pointerId); l3TouchAt.set(e.pointerId, [e.clientX, e.clientY]);
   if (l3Touches.size > 1) { // två fingrar: nyp/panorera (OrbitControls)
     if (l3Piv && l3Piv.touch) l3OrbitPivotEnd();
-    if (l3Touches.size === 2) l3TouchPanAnchor();
+    if (l3Touches.size === 2) l3PinchStart(); else l3PinchEnd();
     return;
   }
   if (!l3AutoRot() || e.target !== l3.renderer.domElement || l3.camera.isOrthographicCamera) return;
@@ -191,25 +195,59 @@ function l3TouchDown(e) {
 }
 function l3TouchUp(e) {
   l3Touches.delete(e.pointerId); l3TouchAt.delete(e.pointerId);
+  if (l3Pinch) l3PinchEnd();
   if (l3Piv && l3Piv.touch && l3Piv.id === e.pointerId) l3OrbitPivotEnd();
 }
-/* Panorering med två fingrar i rätt takt (Victor 2026-10-11: "Panoreringen är alldeles för snabb på iPhone"):
-   OrbitControls panorerar efter avståndet till sin målpunkt, som efter vridning och nyp kan ligga långt bakom det
-   man tittar på. När två fingrar sätts ner läggs målpunkten – rakt fram, så att bilden inte rör sig – på samma
-   djup som ytan mellan fingrarna. Då följer det man håller i fingrarna, varken snabbare eller långsammare. */
-function l3TouchPanAnchor() {
-  if (!l3 || l3.camera.isOrthographicCamera) return; // parallell projektion: panoreringen följer redan fingrarna
-  const pts = [...l3TouchAt.values()].slice(0, 2);
-  if (pts.length < 2) return;
-  const ev = { clientX: (pts[0][0] + pts[1][0]) / 2, clientY: (pts[0][1] + pts[1][1]) / 2 };
-  const cam = l3.camera, fwd = cam.getWorldDirection(new THREE.Vector3());
+/* Två fingrar i rätt takt (Victor 2026-10-11: "Panoreringen är alldeles för snabb på iPhone" – "Zoomen också"):
+   OrbitControls panorerade och zoomade efter avståndet till sin målpunkt (som kan ligga långt bort) och zoomade
+   mot skärmens mitt. Nu sköts två fingrar här: punkten mellan fingrarna (ytan där, annars modellens djup) står
+   kvar under fingrarna – nyp isär och det växer i fingrarnas takt, dra och det följer med. */
+let l3Pinch = null;
+function l3PinchPts() { const p = [...l3TouchAt.values()].slice(0, 2); return p.length < 2 ? null : { m: [(p[0][0] + p[1][0]) / 2, (p[0][1] + p[1][1]) / 2], d: Math.hypot(p[0][0] - p[1][0], p[0][1] - p[1][1]) }; }
+function l3PinchStart() {
+  l3PinchEnd();
+  if (!l3 || l3.camera.isOrthographicCamera) return; // parallell projektion: OrbitControls följer redan fingrarna
+  const q = l3PinchPts(); if (!q || q.d < 4) return;
+  const cam = l3.camera, fwd = cam.getWorldDirection(new THREE.Vector3()), ev = { clientX: q.m[0], clientY: q.m[1] };
   const hit = l3Ray(ev, l3Surfaces())[0];
-  let d = hit ? hit.point.clone().sub(cam.position).dot(fwd) : 0;
-  if (!(d > 0.3)) { const c = l3SceneBox().getCenter(new THREE.Vector3()); d = c.sub(cam.position).dot(fwd); }
-  if (!(d > 0.3)) return;
+  let P = hit ? hit.point.clone() : null;
+  if (!P) { // ingen yta mellan fingrarna: planet genom modellens mitt (vinkelrätt mot blicken)
+    const c = l3SceneBox().getCenter(new THREE.Vector3()), pl = new THREE.Plane().setFromNormalAndCoplanarPoint(fwd, c.clone().sub(cam.position).dot(fwd) > 0.3 ? c : l3.orbit.target);
+    P = l3PinchRay(q.m).intersectPlane(pl, new THREE.Vector3());
+  }
+  if (!P || P.clone().sub(cam.position).dot(fwd) < 0.05) return;
   l3StopFly();
-  l3.orbit.target.copy(cam.position).addScaledVector(fwd, d);
+  l3Pinch = { P, last: q, prevTwo: l3.orbit.touches.TWO };
+  l3.orbit.touches = { ...l3.orbit.touches, TWO: -1 }; // OrbitControls gör inget med två fingrar medan vi sköter dem
+}
+function l3PinchRay(m) {
+  const r = l3.renderer.domElement.getBoundingClientRect(), rc = new THREE.Raycaster();
+  rc.setFromCamera(new THREE.Vector2((m[0] - r.left) / r.width * 2 - 1, -((m[1] - r.top) / r.height) * 2 + 1), l3.camera);
+  return rc.ray;
+}
+function l3PinchMove() {
+  const v = l3Pinch, q = l3PinchPts(); if (!v || !q || q.d < 4) return;
+  const cam = l3.camera, T = l3.orbit.target, P = v.P;
+  // Zoom kring P (P ligger kvar på samma ställe i bilden), högst 3 cm från punkten och 20 km bort.
+  let k = v.last.d / q.d;
+  const dist = cam.position.distanceTo(P);
+  k = Math.max(0.03 / dist, Math.min(20000 / dist, k));
+  cam.position.sub(P).multiplyScalar(k).add(P);
+  T.sub(P).multiplyScalar(k).add(P);
+  cam.updateMatrixWorld();
+  // Panorera: punkten följer fingrarnas mittpunkt.
+  const fwd = cam.getWorldDirection(new THREE.Vector3()), pl = new THREE.Plane().setFromNormalAndCoplanarPoint(fwd, P);
+  const Q = l3PinchRay(q.m).intersectPlane(pl, new THREE.Vector3());
+  if (Q) { const sh = P.clone().sub(Q); cam.position.add(sh); T.add(sh); }
+  v.last = q;
   l3.orbit.update();
+  if (typeof l3PivFlash === "function") l3PivFlash(P);
+  l3Render();
+}
+function l3PinchEnd() {
+  if (!l3Pinch) return;
+  l3.orbit.touches = { ...l3.orbit.touches, TWO: l3Pinch.prevTwo };
+  l3Pinch = null;
 }
 /* Punkten under markören: närmaste yta, annars planet genom målpunkten vinkelrätt mot blicken. */
 function l3PivotPoint(e) {

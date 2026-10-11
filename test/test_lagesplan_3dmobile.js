@@ -149,6 +149,21 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     if (!(mv > want * 0.7 && mv < want * 1.3)) fail(`Två fingrar ska panorera i fingrarnas takt (målpunkt ${far} m bort): flyttade ${mv.toFixed(0)} px, fingrarna ${want.toFixed(0)} px`);
   }
 
+  // Nypzoom i rätt takt och mot fingrarna (Victor 2026-10-11: "Zoomen också"): nyp isär från 80 till 160 px över
+  // containern – den blir dubbelt så stor och står kvar mellan fingrarna, även när målpunkten ligger långt bort.
+  for (const far of [400, 3]) {
+    await page.waitForTimeout(400);
+    await page.evaluate(far => { l3SelectIds([]); l3StopFly(); const c = new THREE.Vector3(6512340 - l3.O[0], 150120 - l3.O[1], 1); l3.camera.position.set(c.x - 40, c.y - 55, 40); l3.camera.lookAt(c); l3.orbit.target.copy(l3.camera.position).addScaledVector(l3.camera.getWorldDirection(new THREE.Vector3()), far); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); }, far);
+    const span = async () => { const a = await at(6512337, 150120, 2), b = await at(6512343, 150120, 2); return Math.hypot(a[0] - b[0], a[1] - b[1]); };
+    const s0 = await span(), [gx, gy] = await at(6512340, 150120, 2);
+    await touch('touchStart', [[gx - 40, gy], [gx + 40, gy]]);
+    for (let i = 1; i <= 8; i++) { await touch('touchMove', [[gx - 40 - i * 5, gy], [gx + 40 + i * 5, gy]]); await page.waitForTimeout(16); }
+    await touch('touchEnd', []); await page.waitForTimeout(150);
+    const s1 = await span(), [hx, hy] = await at(6512340, 150120, 2), ratio = s1 / s0;
+    if (!(ratio > 1.75 && ratio < 2.3) || Math.hypot(hx - gx, hy - gy) > 12) fail(`Nypzoom (målpunkt ${far} m bort): ${ratio.toFixed(2)} gånger större (ska vara 2), punkten flyttade ${Math.hypot(hx - gx, hy - gy).toFixed(0)} px`);
+  }
+  if (await page.evaluate(() => l3.orbit.touches.TWO) === -1) fail('OrbitControls ska få tillbaka två-fingers-läget efteråt');
+
   // --- Hela verktygsraden syns (Victor 2026-10-11: "jag kan inte öppna alla menyer i 3d-vyn") och menyerna ryms.
   {
     await page.waitForTimeout(700); // fingerdraget ovan är helt avslutat (pekgesterna i webbläsaren)
