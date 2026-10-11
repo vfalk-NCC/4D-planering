@@ -17,3 +17,7 @@ Förslag som diskuterats (inget byggt än):
 - Öppen fråga: hur mobilen får geometrin utan att läsa hela IFC:n med web-ifc och utan nya filer i TC –
   t.ex. läsa IFC:n i delar/strömmande på telefonen och släppa minnet efter varje bit, eller använda TC:s
   egna visningsdata för modellen om de går att nå.
+
+**Byggt 2026-10-11:** lätt geometrikopia i datalagret (lagesplan-3dlight.js) – datorn sparar den när en modell
+läses in, iPhone/iPad läser den i stället för IFC-filen. Inget skapas i TC. Kvar av förslagen ovan: 16-bitars
+positioner även i minnet (i dag packas de bara upp), instansering, träffar via ID-bild och detaljnivå.
