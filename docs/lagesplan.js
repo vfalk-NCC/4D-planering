@@ -1,3 +1,15 @@
+/* iPhone (Victor 2026-10-11: "kraschar vid öppning varje gång"): Safari på iPhone har lite minne för bilder och
+   3D. Bara på en telefon – iPhone, eller pekskärm utan mus med liten skärm – aldrig på en dator, även om
+   fönstret är smalt. Där: ritningen i lägre upplösning, alla lager och modeller släckta vid start (tänds för hand). */
+const lowMemPhone = (() => {
+  try {
+    if (window.__forcePhone) return true;
+    if (/iPhone|iPod/.test(navigator.userAgent || "")) return true;
+    const touchOnly = matchMedia("(pointer: coarse)").matches && !matchMedia("(any-pointer: fine)").matches;
+    return touchOnly && Math.min(screen.width, screen.height) < 500;
+  } catch (e) { return false; }
+})();
+
 // ---------------------------------------------------------------------
 // Lägesplan – en PDF-plan (t.ex. planritning med PM-zoner) färgad efter
 // framdriften i 4D-planering.
@@ -989,7 +1001,7 @@ async function openPlan(id) {
 async function renderPdf() {
   const base = page.getViewport({ scale: 1 });
   // Stor nog för att zooma in, men under webbläsarnas canvas-gränser.
-  renderScale = Math.min(4, 5000 / Math.max(base.width, base.height));
+  renderScale = Math.min(4, (lowMemPhone ? 2500 : 5000) / Math.max(base.width, base.height));
   viewport = page.getViewport({ scale: renderScale });
   const pc = $("pdfCanvas"), zc = $("zoneCanvas"), stage = $("stage");
   // Alla lager (ortofoto, ritning, zoner, objekt, översta) har samma storlek.
@@ -1025,7 +1037,7 @@ async function renderPdfHi() {
   const x0 = Math.max(0, vb[0]), y0 = Math.max(0, vb[1]);
   const x1 = Math.min(pc.width, vb[2]), y1 = Math.min(pc.height, vb[3]);
   if (x1 <= x0 || y1 <= y0) { hc.width = 0; return; }
-  const maxPx = 30e6;
+  const maxPx = lowMemPhone ? 4e6 : 30e6;
   if ((x1 - x0) * (y1 - y0) * s * s > maxPx) s = Math.sqrt(maxPx / ((x1 - x0) * (y1 - y0)));
   const cw = Math.ceil((x1 - x0) * s), ch = Math.ceil((y1 - y0) * s);
   const tmp = document.createElement("canvas");

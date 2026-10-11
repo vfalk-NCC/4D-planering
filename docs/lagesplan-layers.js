@@ -94,10 +94,14 @@ function pxPerMeter() {
 // ---------------------------------------------------------------------
 function loadLayerState() {
   try { layerState = JSON.parse(localStorage.getItem(LAYER_KEY()) || "{}") || {}; } catch (e) { layerState = {}; }
+  // iPhone: allt utom ritningen, zonerna, objekten och fotona släckt vid varje öppning (lagesplan.js, lowMemPhone).
+  if (typeof lowMemPhone !== "undefined" && lowMemPhone) Object.entries(layerState).forEach(([k, v]) => { if (v && typeof v === "object" && "visible" in v && !phoneKeep(k)) v.visible = false; });
 }
+const PHONE_KEEP = new Set(["pdf", "zones", "objects", "photos"]);
+const phoneKeep = k => PHONE_KEEP.has(k) || k.startsWith("cadl:"); // lagren inuti en DXF behåller sitt läge
 function saveLayerState() { try { localStorage.setItem(LAYER_KEY(), JSON.stringify(layerState)); } catch (e) {} }
 function ls(key, def = {}) {
-  if (!layerState[key]) layerState[key] = { visible: def.visible !== false, opacity: def.opacity ?? 100 };
+  if (!layerState[key]) layerState[key] = { visible: def.visible !== false && !(typeof lowMemPhone !== "undefined" && lowMemPhone && !phoneKeep(key)), opacity: def.opacity ?? 100 };
   return layerState[key];
 }
 function layerVisible(key) { return ls(key).visible; }

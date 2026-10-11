@@ -219,6 +219,8 @@ function l3bForget(id) {
 async function l3bRestore() {
   const list = l3bRemembered().map(({ on, ...w }) => w);
   if (!list.length || !l3) return;
+  // iPhone: modellerna läses inte in av sig själva (minnet) – de står släckta under Lager och tänds för hand.
+  if (typeof lowMemPhone !== "undefined" && lowMemPhone) { l3Status(`iPhone: ${list.length === 1 ? "modellen är släckt" : `de ${list.length} modellerna är släckta`} för att 3D-vyn ska orka öppna – tänd under Lager.`); if (typeof l3LayersRender === "function") l3LayersRender(); return; }
   const r = await l3bLoad(list, { cacheOnly: true });
   let fresh = [];
   try {
