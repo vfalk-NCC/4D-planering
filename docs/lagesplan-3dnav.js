@@ -15,7 +15,7 @@ function l3NavInit() {
   host.addEventListener("pointerdown", l3NavDown, true); // före OrbitControls/TransformControls
   window.addEventListener("pointermove", l3NavMove);
   window.addEventListener("pointerup", l3NavUp);
-  window.addEventListener("pointercancel", e => { if (e.pointerType === "touch") l3Touches.delete(e.pointerId); if (l3Piv) l3OrbitPivotEnd(); });
+  window.addEventListener("pointercancel", e => { if (e.pointerType === "touch") { l3Touches.delete(e.pointerId); l3TouchAt.delete(e.pointerId); } if (l3Piv) l3OrbitPivotEnd(); });
   window.addEventListener("blur", () => { if (l3Piv) l3OrbitPivotEnd(); }); // släppt utanför fönstret
   el.addEventListener("wheel", l3Wheel, { passive: false });
   host.addEventListener("wheel", () => { l3.orbit.enableZoom = false; }, { capture: true, passive: true }); // före OrbitControls
@@ -175,10 +175,14 @@ function l3OrbitPivotStart(e) {
 /* Pekskärm (Victor 2026-10-11: "Rotationscentrum på iPhone är konstigt"): ett finger vrider kring punkten
    under fingret – som med musen – i stället för kring OrbitControls målpunkt, som efter nyp och panorering kan
    ligga långt bort. Den runda markeringen visar punkten. Två fingrar (nyp/panorera) sköts av OrbitControls. */
-const l3Touches = new Set();
+const l3Touches = new Set(), l3TouchAt = new Map();
 function l3TouchDown(e) {
-  l3Touches.add(e.pointerId);
-  if (l3Touches.size > 1) { if (l3Piv && l3Piv.touch) l3OrbitPivotEnd(); return; } // två fingrar: nyp/panorera
+  l3Touches.add(e.pointerId); l3TouchAt.set(e.pointerId, [e.clientX, e.clientY]);
+  if (l3Touches.size > 1) { // två fingrar: nyp/panorera (OrbitControls)
+    if (l3Piv && l3Piv.touch) l3OrbitPivotEnd();
+    if (l3Touches.size === 2) l3TouchPanAnchor();
+    return;
+  }
   if (!l3AutoRot() || e.target !== l3.renderer.domElement || l3.camera.isOrthographicCamera) return;
   if (l3.tool !== "select" || l3.addType || l3.multi || l3.gizmo.axis || l3.gizmo.dragging || (l3.gizmoR && (l3.gizmoR.axis || l3.gizmoR.dragging))) return;
   if (l3Piv) l3OrbitPivotEnd();
@@ -186,8 +190,26 @@ function l3TouchDown(e) {
   l3.orbit.touches = { ...l3.orbit.touches, ONE: -1 }; // OrbitControls vrider inte samtidigt (ett tryck markerar fortfarande)
 }
 function l3TouchUp(e) {
-  l3Touches.delete(e.pointerId);
+  l3Touches.delete(e.pointerId); l3TouchAt.delete(e.pointerId);
   if (l3Piv && l3Piv.touch && l3Piv.id === e.pointerId) l3OrbitPivotEnd();
+}
+/* Panorering med två fingrar i rätt takt (Victor 2026-10-11: "Panoreringen är alldeles för snabb på iPhone"):
+   OrbitControls panorerar efter avståndet till sin målpunkt, som efter vridning och nyp kan ligga långt bakom det
+   man tittar på. När två fingrar sätts ner läggs målpunkten – rakt fram, så att bilden inte rör sig – på samma
+   djup som ytan mellan fingrarna. Då följer det man håller i fingrarna, varken snabbare eller långsammare. */
+function l3TouchPanAnchor() {
+  if (!l3 || l3.camera.isOrthographicCamera) return; // parallell projektion: panoreringen följer redan fingrarna
+  const pts = [...l3TouchAt.values()].slice(0, 2);
+  if (pts.length < 2) return;
+  const ev = { clientX: (pts[0][0] + pts[1][0]) / 2, clientY: (pts[0][1] + pts[1][1]) / 2 };
+  const cam = l3.camera, fwd = cam.getWorldDirection(new THREE.Vector3());
+  const hit = l3Ray(ev, l3Surfaces())[0];
+  let d = hit ? hit.point.clone().sub(cam.position).dot(fwd) : 0;
+  if (!(d > 0.3)) { const c = l3SceneBox().getCenter(new THREE.Vector3()); d = c.sub(cam.position).dot(fwd); }
+  if (!(d > 0.3)) return;
+  l3StopFly();
+  l3.orbit.target.copy(cam.position).addScaledVector(fwd, d);
+  l3.orbit.update();
 }
 /* Punkten under markören: närmaste yta, annars planet genom målpunkten vinkelrätt mot blicken. */
 function l3PivotPoint(e) {
