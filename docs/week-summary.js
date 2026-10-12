@@ -68,7 +68,10 @@ function buildWeekSummary(list, weekStart, opts = {}) {
   const today = opts.today || wsIso(new Date());
   const ws = wsMonday(weekStart), we = wsAdd(ws, 6), ns = wsAdd(ws, 7), ne = wsAdd(ws, 13);
   const all = wsActivities(list);
-  const inFilter = a => (!opts.area || a.area === opts.area || a.area.startsWith(opts.area + " / ")) && (!opts.contractor || a.contractor === opts.contractor);
+  // Områden: ett (opts.area) eller flera ikryssade (opts.areas, Victor 2026-10-12); ett område omfattar sina underområden.
+  const areaList = (opts.areas && opts.areas.length ? opts.areas : opts.area ? [opts.area] : []);
+  const inArea = a => !areaList.length || areaList.some(x => a.area === x || a.area.startsWith(x + " / "));
+  const inFilter = a => inArea(a) && (!opts.contractor || a.contractor === opts.contractor);
   const acts = all.filter(inFilter);
   const within = (d, a, b) => d && d >= a && d <= b;
 
@@ -159,7 +162,15 @@ h4{margin:16px 0 6px;font-size:14px;border-bottom:1px solid #e5e7eb;padding-bott
 .ws-table{border-collapse:collapse;width:100%;font-size:12px}.ws-table th{text-align:left;background:#f8fafc;font-weight:600}.ws-table th,.ws-table td{border-bottom:1px solid #e5e7eb;padding:4px 6px;vertical-align:top}`;
 
 /* ---- Dialogen ---- */
-let wsState = { week: null, area: "", contractor: "", blId: "main" };
+let wsState = { week: null, areas: null, contractor: "", blId: "main" };
+/* Ikryssade områden sparas i webbläsaren (per projekt), så valet står kvar till nästa vecka. */
+const wsAreaKey = () => `4dplan-ws-areas-${(typeof currentProjectId !== "undefined" && currentProjectId) || (typeof projectId !== "undefined" && projectId) || ""}`;
+function wsAreasGet() {
+  if (wsState.areas) return wsState.areas;
+  try { const a = JSON.parse(localStorage.getItem(wsAreaKey()) || "[]"); wsState.areas = Array.isArray(a) ? a : []; } catch (e) { wsState.areas = []; }
+  return wsState.areas;
+}
+function wsAreasSet(a) { wsState.areas = a; try { localStorage.setItem(wsAreaKey(), JSON.stringify(a)); } catch (e) { /* bara minnet */ } }
 async function openWeekSummary() {
   if (typeof ppLoadBaselineRegistry === "function" && (!ppBaselineRegistry || !ppBaselineRegistry.length)) { try { await ppLoadBaselineRegistry(); } catch (e) { /* utan namn */ } }
   let dlg = document.getElementById("weekSumDialog");
@@ -171,7 +182,7 @@ async function openWeekSummary() {
       <div class="ws-head"><b>📋 Veckosammanfattning</b> <span class="ws-beta">test</span><button type="button" class="ws-x" title="Stäng">✕</button></div>
       <div class="ws-bar">
         <button type="button" class="ws-prev" title="Föregående vecka">‹</button><span class="ws-wk"></span><button type="button" class="ws-next" title="Nästa vecka">›</button><button type="button" class="ws-now">Denna vecka</button>
-        <select class="ws-area" title="Område"></select><select class="ws-contr" title="Entreprenör"></select><select class="ws-bl" title="Baseline"></select>
+        <span class="ws-areas"><button type="button" class="ws-area-btn" title="Kryssa i vilka områden sammanfattningen gäller"></button><div class="ws-area-pop hidden"></div></span><select class="ws-contr" title="Entreprenör"></select><select class="ws-bl" title="Baseline"></select>
       </div>
       <div class="ws-body"></div>
       <div class="ws-foot"><span class="hint">Räknas ur planeringen – inget skickas någonstans. Klicka på en rad för att markera den i 3D.</span><button type="button" class="ws-copy">Kopiera</button><button type="button" class="ws-print primary">Skriv ut / PDF</button></div>
@@ -184,7 +195,16 @@ async function openWeekSummary() {
     q(".ws-prev").onclick = () => { wsState.week = wsAdd(wsState.week, -7); renderWeekSummary(); };
     q(".ws-next").onclick = () => { wsState.week = wsAdd(wsState.week, 7); renderWeekSummary(); };
     q(".ws-now").onclick = () => { wsState.week = wsMonday(wsIso(new Date())); renderWeekSummary(); };
-    q(".ws-area").onchange = () => { wsState.area = q(".ws-area").value; renderWeekSummary(); };
+    q(".ws-area-btn").onclick = ev => { ev.stopPropagation(); q(".ws-area-pop").classList.toggle("hidden"); };
+    q(".ws-area-pop").addEventListener("click", ev => ev.stopPropagation());
+    dlg.addEventListener("click", () => q(".ws-area-pop").classList.add("hidden"));
+    q(".ws-area-pop").addEventListener("change", ev => {
+      const c = ev.target;
+      if (!c.matches("input[type=checkbox]")) return;
+      if (c.dataset.all != null) wsAreasSet([]);
+      else wsAreasSet([...q(".ws-area-pop").querySelectorAll("input[data-area]:checked")].map(x => x.dataset.area));
+      renderWeekSummary();
+    });
     q(".ws-contr").onchange = () => { wsState.contractor = q(".ws-contr").value; renderWeekSummary(); };
     q(".ws-bl").onchange = () => { wsState.blId = q(".ws-bl").value; renderWeekSummary(); };
     q(".ws-copy").onclick = () => copyWeekSummary();
@@ -212,15 +232,19 @@ function renderWeekSummary() {
   const uniq = f => [...new Set(items.map(f).filter(Boolean))].sort((a, b) => a.localeCompare(b, "sv", { numeric: true }));
   const areas = uniq(it => it.area);
   const opt = (v, t, sel) => `<option value="${escapeHtml(v)}"${v === sel ? " selected" : ""}>${escapeHtml(t)}</option>`;
-  q(".ws-area").innerHTML = opt("", "Alla områden", wsState.area) + areas.map(a => opt(a, a, wsState.area)).join("");
+  const chosen = wsAreasGet().filter(a => areas.includes(a)), on = new Set(chosen);
+  q(".ws-area-btn").textContent = !chosen.length ? "Alla områden ▾" : chosen.length === 1 ? `${chosen[0]} ▾` : `${chosen.length} områden ▾`;
+  q(".ws-area-btn").title = chosen.length ? chosen.join("\n") : "Kryssa i vilka områden sammanfattningen gäller";
+  q(".ws-area-pop").innerHTML = `<label class="ws-area-all"><input type="checkbox" data-all ${chosen.length ? "" : "checked"}> Alla områden</label>`
+    + areas.map(a => `<label><input type="checkbox" data-area="${escapeHtml(a)}" ${on.has(a) ? "checked" : ""}> ${escapeHtml(a)}</label>`).join("");
   q(".ws-contr").innerHTML = opt("", "Alla entreprenörer", wsState.contractor) + uniq(it => it.contractor).map(c => opt(c, c, wsState.contractor)).join("");
   const blGet = typeof ppBlGet === "function" ? ppBlGet : (o, id) => (id === "main" && o.baselineStartDate && o.baselineEndDate ? [o.baselineStartDate, o.baselineEndDate] : null);
   const blIds = ["main", ...new Set(items.flatMap(it => Object.keys(it.baselines || {})))].filter(id => items.some(it => blGet(it, id)));
   const blName = id => (typeof ppBlName === "function" ? ppBlName(id) : id === "main" ? "Baseline" : id);
   if (!blIds.includes(wsState.blId)) wsState.blId = blIds[0] || "";
   q(".ws-bl").innerHTML = blIds.length ? blIds.map(id => opt(id, blName(id) === "Baseline" ? "Baseline" : `Baseline: ${blName(id)}`, wsState.blId)).join("") + opt("", "Ingen baseline", wsState.blId) : opt("", "Ingen baseline finns", "");
-  const S = buildWeekSummary(items, wsState.week, { area: wsState.area, contractor: wsState.contractor, blId: wsState.blId, blGet });
-  const meta = { project: wsState.project, filter: [wsState.area, wsState.contractor].filter(Boolean).join(" · "), blName: blName(wsState.blId) };
+  const S = buildWeekSummary(items, wsState.week, { areas: chosen, contractor: wsState.contractor, blId: wsState.blId, blGet });
+  const meta = { project: wsState.project, filter: [chosen.join(", "), wsState.contractor].filter(Boolean).join(" · "), blName: blName(wsState.blId) };
   dlg._S = S; dlg._meta = meta;
   q(".ws-wk").textContent = `v.${S.week} · ${wsDay(S.ws)}–${wsDay(S.we)}`;
   q(".ws-body").innerHTML = weekSummaryHtml(S, meta);

@@ -41,6 +41,8 @@ const rows = [
   if (P.total !== 2 || P.late.length || P.next.length !== 1) fail('Filter Peab');
   const A = W.buildWeekSummary(items, '2026-10-08', { today: '2026-10-08', area: 'Linje E' });
   if (A.total !== 6) fail('Filter område');
+  const AA = W.buildWeekSummary(items, '2026-10-08', { today: '2026-10-08', areas: ['Linje E', 'Linje K'] }), AK = W.buildWeekSummary(items, '2026-10-08', { today: '2026-10-08', areas: ['Linje K'] });
+  if (AA.total !== A.total + AK.total || AK.total !== 2) fail('Flera områden: ' + [AA.total, A.total, AK.total]);
   const T = W.weekSummaryText(S, { project: 'NSV' });
   if (!/^Vecka 41 · 5 okt–11 okt 2026 · NSV/.test(T) || !/FÖRSENAT – BEHÖVER ÅTGÄRD\n- Grovbetong E31-40 \(NCC\) – skulle vara klar 7 okt, 40 %, påverkar 2 akt\./.test(T)) fail('Texten:\n' + T);
   console.log('OK: beräkningen – klart före/efter plan, försenat med påverkan, risker, nästa vecka (en rad per aktivitet), baseline, filter, text');
@@ -109,6 +111,16 @@ put('plan_items.json', rows); put('plan_item_activities.json', []); put('plan_it
   t = await body();
   if (!t.startsWith('📋 Vecka 42') || !t.includes('Startar nästa vecka (v.43)') || !t.includes('Montage pelare')) fail('Nästa vecka:\n' + t);
   await page.click('#weekSumDialog .ws-now'); await page.waitForTimeout(150);
+  // Kryssrutor för områden (Victor 2026-10-12): bara Linje K, sedan Alla igen.
+  await page.click('#weekSumDialog .ws-area-btn');
+  await page.check('#weekSumDialog .ws-area-pop input[data-area="Linje K"]'); await page.waitForTimeout(150);
+  t = await body();
+  if (t.includes('Grovbetong') || !t.includes('Schakt linje K') || !/Linje K ▾/.test(await page.textContent('#weekSumDialog .ws-area-btn'))) fail('Områden med kryss:\n' + t);
+  if (!(await page.isVisible('#weekSumDialog .ws-area-pop'))) fail('Listan ska stå öppen medan man kryssar');
+  await page.check('#weekSumDialog .ws-area-pop input[data-all]'); await page.waitForTimeout(150);
+  if (!(await body()).includes('Grovbetong')) fail('Alla områden igen');
+  await page.click('#weekSumDialog .ws-body'); 
+  if (await page.isVisible('#weekSumDialog .ws-area-pop')) fail('Listan ska stängas vid klick utanför');
   // Kopiera: html + text i urklipp.
   await page.click('#weekSumDialog .ws-copy'); await page.waitForTimeout(300);
   const clip = await page.evaluate(() => navigator.clipboard.readText());
