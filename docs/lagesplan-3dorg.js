@@ -35,10 +35,17 @@ async function l3orgFetch() {
   l3orgRender();
 }
 
+/* Organizer skickar namnen URL-kodade ("742%20-%20Bj%C3%A4lklag", Victor 2026-10-12: "Det blev lite tokigt med
+   vissa tecken och bokstäver") – avkodas per nivå (ett kodat "/" i ett namn delar då inte upp det). */
+function l3orgDec(s) {
+  s = String(s == null ? "" : s);
+  if (!/%[0-9A-Fa-f]{2}/.test(s)) return s;
+  try { return decodeURIComponent(s); } catch (e) { return s.replace(/%20/g, " "); }
+}
 /* Trädet: noder med parentId, annars namnet som sökväg ("Etapp 1/Fundament"). */
 function l3orgTree(t) {
   const byId = new Map(), roots = [];
-  const mk = (id, name, own) => ({ id, name, own: own || [], kids: [] });
+  const mk = (id, name, own) => ({ id, name: l3orgDec(name), own: own || [], kids: [] });
   const usePid = t.groups.some(g => g.parentId);
   if (usePid) {
     t.groups.forEach(g => byId.set(g.id, mk(g.id, g.name.split("/").pop() || g.name, g.guids)));
@@ -115,7 +122,7 @@ function l3orgHtml() {
   let body = "";
   if (d && d.trees.length) body = d.trees.map(t => {
     const k = "t:" + t.id, shut = l3org.shut.has(k), roots = l3orgTree(t);
-    return `<div class="v3-gf ${shut ? "shut" : ""}"><button type="button" class="v3-gf-t" data-orgtree="${esc(t.id)}" aria-expanded="${!shut}"><i>›</i><b>${esc(t.name)}</b><em>${t.groups.length} grupper</em></button></div>${shut ? "" : `<div class="v3-gf-b">${roots.map(n => rowOf(n, 0)).join("") || `<div class="v3-pal-hint">Inga grupper i trädet.</div>`}</div>`}`;
+    return `<div class="v3-gf ${shut ? "shut" : ""}"><button type="button" class="v3-gf-t" data-orgtree="${esc(t.id)}" aria-expanded="${!shut}"><i>›</i><b>${esc(l3orgDec(t.name))}</b><em>${t.groups.length} grupper</em></button></div>${shut ? "" : `<div class="v3-gf-b">${roots.map(n => rowOf(n, 0)).join("") || `<div class="v3-pal-hint">Inga grupper i trädet.</div>`}</div>`}`;
   }).join("");
   else if (d) body = `<div class="v3-pal-hint">Organizer har inga träd i det här projektet.</div>`;
   else if (!l3org.loading && !l3org.err) body = `<div class="v3-pal-hint">Tryck ↻ för att hämta indelningen du gjort i Organizer i Trimble Connect.</div>`;

@@ -7,18 +7,29 @@
    – används placeringen bara av objektet (och av delar som ärver den, t.ex. öppningar och trappsteg)
      ändras den på plats, så att allt som hör till objektet följer med;
    – delas den av andra objekt får objektet en egen, ny placering.
-   Resultatet blir en NY fil i samma mapp ("… flyttad <tid>.ifc") – originalet skrivs aldrig över. */
+   Resultatet blir en NY fil i samma mapp ("… flyttad <tid>.ifc") – originalet skrivs aldrig över.
 
-const l3bm = { session: null, edits: new Map() }; // edits: modell-id -> { model, moves: Map(guid -> Matrix4 i SWEREF-meter) }
+   Kopiera (Victor 2026-10-12: "Kopiera hade nog också varit bra här på modellobjekt"): som Flytta men originalen
+   står kvar; kopian dras ut med handtagen och blir nya objekt i modellen (nytt IFC-id, samma form, egenskaper,
+   material och våning som originalet). Sparas på samma sätt som flyttarna – som en ny fil. */
+
+const l3bm = { session: null, edits: new Map() }; // edits: modell-id -> { model, moves: Map(guid -> Matrix4 i SWEREF-meter), copies: Map(nytt guid -> { src, M }) }
+function l3bmEd(model) {
+  if (!l3bm.edits.has(model.id)) l3bm.edits.set(model.id, { model, moves: new Map(), copies: new Map() });
+  const ed = l3bm.edits.get(model.id); if (!ed.copies) ed.copies = new Map();
+  return ed;
+}
+const l3bmCount = ed => (ed ? ed.moves.size + (ed.copies ? ed.copies.size : 0) : 0);
 
 // ---------------------------------------------------------------------
 // Flytta i 3D
 // ---------------------------------------------------------------------
-function l3bmStart() {
+function l3bmStart(opts = {}) {
   if (l3bm.session) l3bmCancel();
+  const copy = !!opts.copy;
   const ents = (typeof l3bs !== "undefined" ? l3bs.sel : []).map(e => ({ mesh: e.mesh, ri: e.ri }));
   if (!ents.length) { l3Status("Markera först objekt i byggnaden (tryck på dem)."); return; }
-  if (ents.some(e => !e.mesh.userData.l3b.ranges[e.ri].guid)) { l3Status("Något av objekten saknar IFC-id och kan inte flyttas.", true); return; }
+  if (ents.some(e => !e.mesh.userData.l3b.ranges[e.ri].guid)) { l3Status(`Något av objekten saknar IFC-id och kan inte ${copy ? "kopieras" : "flyttas"}.`, true); return; }
   l3bsSet([]);
   // Gruppen: kopior av objektens trianglar runt deras gemensamma mitt; originalen döljs under tiden.
   const G = new THREE.Group(); G.userData.bmove = true;
@@ -37,16 +48,18 @@ function l3bmStart() {
     const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, emissive: new THREE.Color(0x2b1d8f) }));
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), new THREE.LineBasicMaterial({ color: 0x6d5efc, transparent: true, opacity: .95 }));
     edges.renderOrder = 6; [m, edges].forEach(o => { o.userData.noHit = true; o.raycast = () => {}; G.add(o); });
+    if (copy) return; // originalen står kvar
     if (!hideBy.has(e.mesh)) hideBy.set(e.mesh, []);
     hideBy.get(e.mesh).push(e.ri);
   });
   hideBy.forEach((ris, mesh) => { ris.forEach(ri => mesh.userData.l3b.hidden.add(ri)); l3bApplyHidden(mesh); });
   l3.groups.bldg.add(G);
   G.updateMatrix();
-  l3bm.session = { ents, G, start: G.matrix.clone(), c: c.clone(), hideBy };
+  l3bm.session = { ents, G, start: G.matrix.clone(), c: c.clone(), hideBy, copy };
   l3.gizmo.attach(G); l3.gizmo.setMode("translate"); l3.gizmo.showX = l3.gizmo.showY = l3.gizmo.showZ = true;
   l3bmRenderSide();
-  l3Status(`Flytta ${ents.length} objekt: dra i handtagen eller skriv in hur långt. Klar lägger in flytten, Avbryt återställer.`);
+  l3Status(copy ? `Kopiera ${ents.length} objekt: dra kopian dit den ska med handtagen eller skriv in hur långt. Klar lägger in kopian, Avbryt ångrar.`
+    : `Flytta ${ents.length} objekt: dra i handtagen eller skriv in hur långt. Klar lägger in flytten, Avbryt återställer.`);
   l3Render();
 }
 /* Flytten just nu (i scenen, meter) som matris: grupp nu · grupp vid start⁻¹. */
@@ -59,23 +72,24 @@ function l3bmEnd() {
   s.hideBy.forEach((ris, mesh) => { ris.forEach(ri => mesh.userData.l3b.hidden.delete(ri)); l3bApplyHidden(mesh); });
   l3bm.session = null;
 }
-function l3bmCancel() { l3bmEnd(); l3Status("Flytten avbröts."); if (typeof l3RenderSide === "function") l3RenderSide(); l3Render(); }
+function l3bmCancel() { const copy = l3bm.session && l3bm.session.copy; l3bmEnd(); l3Status(copy ? "Kopieringen avbröts." : "Flytten avbröts."); if (typeof l3RenderSide === "function") l3RenderSide(); l3Render(); }
 /* Klar: punkterna i bitarna flyttas på riktigt och flytten sparas per modell (för Spara som ny IFC). */
 function l3bmAccept() {
   const s = l3bm.session; if (!s) return;
   const D = l3bmDelta();
   const moved = !D.equals(new THREE.Matrix4());
-  const ents = s.ents;
+  const ents = s.ents, copy = s.copy;
   l3bmEnd();
-  if (!moved) { l3Status("Inget flyttades."); l3RenderSide(); return; }
+  if (!moved) { l3Status(copy ? "Kopian ligger på originalet – dra den dit den ska först. Inget kopierades." : "Inget flyttades."); l3RenderSide(); return; }
   const O = new THREE.Matrix4().makeTranslation(l3.O[0], l3.O[1], l3.O[2]), Oi = O.clone().invert();
   const Dg = O.clone().multiply(D).multiply(Oi); // i SWEREF-meter
+  if (copy) { l3bmCopyAccept(ents, D, Dg); return; }
   const list = ents.map(e => ({ mesh: e.mesh, ri: e.ri }));
   l3bmApplyDelta(list, D, Dg);
   // Ctrl+Z flyttar tillbaka, Ctrl+Y igen (Victor 2026-10-10).
   if (typeof l3VPush === "function") l3VPush(() => { l3bmApplyDelta(list, D.clone().invert(), Dg.clone().invert()); l3bsSet(list); }, () => { l3bmApplyDelta(list, D, Dg); l3bsSet(list); }, "flytt");
   l3bsSet(ents);
-  const n = [...l3bm.edits.values()].reduce((a, x) => a + (x.dirty ? x.moves.size : 0), 0);
+  const n = [...l3bm.edits.values()].reduce((a, x) => a + (x.dirty ? l3bmCount(x) : 0), 0);
   l3Toast(`${ents.length} objekt flyttade. ${n} ändrade objekt väntar på att sparas som ny IFC i Trimble Connect.`);
   if (typeof l3LayersRender === "function") l3LayersRender();
   l3Render();
@@ -89,13 +103,12 @@ function l3bmApplyDelta(ents, D, Dg) {
     const M = e.mesh.matrixWorld, Mi = M.clone().invert(), L = Mi.clone().multiply(D).multiply(M), v = new THREE.Vector3();
     for (let i = r.start; i < r.start + r.count; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(L); pos.setXYZ(i, v.x, v.y, v.z); }
     touched.add(e.mesh);
-    const model = u.model, key = model.id;
-    if (!l3bm.edits.has(key)) l3bm.edits.set(key, { model, moves: new Map() });
-    const ed = l3bm.edits.get(key), prev = ed.moves.get(r.guid) || new THREE.Matrix4();
+    const model = u.model;
+    const ed = l3bmEd(model), prev = ed.moves.get(r.guid) || new THREE.Matrix4();
     const nx = Dg.clone().multiply(prev);
     // Tillbaka där det var (t.ex. efter Ctrl+Z): ingen flytt att skriva in.
     if (nx.elements.every((x, i) => Math.abs(x - (i % 5 === 0 ? 1 : 0)) < 1e-9)) ed.moves.delete(r.guid); else ed.moves.set(r.guid, nx);
-    ed.dirty = ed.moves.size > 0;
+    ed.dirty = l3bmCount(ed) > 0;
   });
   touched.forEach(m => { m.geometry.getAttribute("position").needsUpdate = true; m.geometry.computeVertexNormals(); m.geometry.computeBoundingSphere(); m.geometry.computeBoundingBox(); m.userData.l3b.centers = null; m.userData.l3b.boxes = null; if (typeof l3BvhSchedule === "function") l3BvhSchedule(m); });
   if (typeof l3LayersRender === "function") l3LayersRender();
@@ -115,8 +128,8 @@ function l3bmRenderSide() {
   side.dataset.id = "bmove";
   const d = s.G.position.clone().sub(s.c), rot = Math.round(s.G.rotation.z * 180 / Math.PI * 10) / 10;
   const f = (k, label, val, unit) => `<label><span>${label}</span><div class="v3-in"><input type="text" inputmode="decimal" data-bm="${k}" value="${String(Math.round(val * 1000) / 1000).replace(".", ",")}" /><em>${unit}</em></div></label>`;
-  side.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:#6d5efc"></i><b>Flytta ${s.ents.length} objekt</b><button type="button" class="v3-x" id="v3BmX" title="Avbryt (Esc)">✕</button></div>
-    <div class="v3-sub">Dra i handtagen eller skriv in hur långt (meter). Vridningen sker kring markeringens mitt.</div>
+  side.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:#6d5efc"></i><b>${s.copy ? "Kopiera" : "Flytta"} ${s.ents.length} objekt</b><button type="button" class="v3-x" id="v3BmX" title="Avbryt (Esc)">✕</button></div>
+    <div class="v3-sub">${s.copy ? "Kopian: dra" : "Dra"} i handtagen eller skriv in hur långt (meter). Vridningen sker kring markeringens mitt.</div>
     <div class="v3-grid">${f("dx", "dX", d.x, "m")}${f("dy", "dY", d.y, "m")}${f("dz", "dZ", d.z, "m")}${f("rot", "Vrid", rot, "°")}</div>
     <div class="v3-handles"><span>Handtag</span><button type="button" data-bmmode="translate" class="${l3.gizmo.mode === "translate" ? "on" : ""}">Flytta</button><button type="button" data-bmmode="rotate" class="${l3.gizmo.mode === "rotate" ? "on" : ""}">Vrid</button></div>
     <div class="v3-btns"><button type="button" id="v3BmOk" class="v3-primary">Klar</button><button type="button" id="v3BmCancel">Avbryt</button></div>`;
@@ -284,13 +297,19 @@ async function l3bmFetchIfc(m, onProgress) {
   if (!/(^|[\s;])DATA\s*;/i.test(text.slice(0, 1 << 20))) throw new Error(`${m.name} är ingen IFC-fil i textformat (t.ex. .ifczip) och kan inte skrivas.`);
   // Egna grupper (lagesplan-3dgroups.js) skrivs in som egenskapen 4D-planering › Grupp.
   const withGroups = r => (typeof l3gApplyToIfc === "function" ? { ...r, ...l3gApplyToIfc(r.text) } : r);
-  if (!ed || !ed.moves.size) return withGroups({ text, moved: 0, missing: 0 });
+  if (!l3bmCount(ed)) return withGroups({ text, moved: 0, missing: 0 });
   // Flyttarna i scenen (SWEREF-meter) -> modellens IFC-koordinater (TC:s placering av modellen räknas bort).
   const pl = w.fileId ? null : r.placement;
   const rd = (pl && pl.refDirection) || { x: 1, y: 0, z: 0 }, rl = Math.hypot(rd.x, rd.y) || 1, P = (pl && pl.position) || { x: 0, y: 0, z: 0 };
   const Pl = new THREE.Matrix4().makeRotationZ(Math.atan2(rd.y / rl, rd.x / rl)).setPosition(P.x / 1000, P.y / 1000, P.z / 1000), Pli = Pl.clone().invert();
-  const movesIfc = new Map([...ed.moves].map(([g, D]) => [g, Pli.clone().multiply(D).multiply(Pl)]));
-  return withGroups(l3bmApplyToIfc(text, movesIfc));
+  const toIfc = D => Pli.clone().multiply(D).multiply(Pl);
+  let copied = 0, cmiss = 0;
+  if (ed.copies && ed.copies.size) {
+    const c = l3bmCopiesToIfc(text, new Map([...ed.copies].map(([g, x]) => [g, { src: x.src, M: toIfc(x.M) }])));
+    text = c.text; copied = c.copied; cmiss = c.missing;
+  }
+  const res = ed.moves.size ? l3bmApplyToIfc(text, new Map([...ed.moves].map(([g, D]) => [g, toIfc(D)]))) : { text, moved: 0, missing: 0 };
+  return withGroups({ ...res, copied, missing: res.missing + cmiss });
 }
 function l3bmStrBytes(t) { const b = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) b[i] = t.charCodeAt(i) & 255; return b; }
 /* Unikt filnamn med sekunder – aldrig en ny version av en befintlig fil. */
@@ -306,18 +325,18 @@ async function l3bmUpload(m, bytes, name) {
 
 async function l3bmSave(modelKey) {
   const ed = l3bm.edits.get(modelKey);
-  if (!ed || !ed.moves.size) { l3Status("Inga flyttar att spara."); return; }
+  if (!l3bmCount(ed)) { l3Status("Inga flyttar eller kopior att spara."); return; }
   const m = ed.model;
   const key = "bmsave", lbl = `Sparar ${m.name}`;
   try {
     busyProgress(key, `${lbl}: hämtar originalet`, 0);
     const res = await l3bmFetchIfc(m, f => busyProgress(key, `${lbl}: hämtar originalet`, 0.5 * f));
     busyProgress(key, `${lbl}: laddar upp`, 0.7);
-    const name = l3bmFileName(m, "flyttad");
+    const name = l3bmFileName(m, ed.moves.size ? "flyttad" : "kopierad");
     const up = await l3bmUpload(m, l3bmStrBytes(res.text), name);
     busyProgress(key, "", null);
     ed.dirty = false; // flyttarna finns kvar (i scenen och för Exportera markerade) men är sparade
-    l3Toast(`Sparad som ny fil i Trimble Connect: ${name}${up && up.folder ? ` (${up.folder})` : ""} – ${res.moved} objekt flyttade${res.missing ? `, ${res.missing} hittades inte i filen` : ""}. Originalet är orört.`);
+    l3Toast(`Sparad som ny fil i Trimble Connect: ${name}${up && up.folder ? ` (${up.folder})` : ""} – ${[res.moved ? `${res.moved} objekt flyttade` : "", res.copied ? `${res.copied} kopior` : ""].filter(Boolean).join(", ") || "inga ändringar"}${res.missing ? `, ${res.missing} hittades inte i filen` : ""}. Originalet är orört.`);
     l3Status(`Sparad: ${name}`);
     if (typeof l3LayersRender === "function") l3LayersRender();
     return { name, ...res };
@@ -327,4 +346,156 @@ async function l3bmSave(modelKey) {
     throw e;
   }
 }
-function l3bmPending(modelKey) { const ed = l3bm.edits.get(modelKey); return ed && ed.dirty ? ed.moves.size : 0; }
+function l3bmPending(modelKey) { const ed = l3bm.edits.get(modelKey); return ed && ed.dirty ? l3bmCount(ed) : 0; }
+
+// ---------------------------------------------------------------------
+// Kopiera
+// ---------------------------------------------------------------------
+/* Nytt IFC-id (22 tecken, IFC:s base64 – 128 slumpbitar). */
+const L3BM_B64 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
+function l3bmGuid() {
+  const b = crypto.getRandomValues(new Uint8Array(22));
+  let s = L3BM_B64[b[0] & 3];
+  for (let i = 1; i < 22; i++) s += L3BM_B64[b[i] & 63];
+  return s;
+}
+/* Klar i kopieringsläget: kopiorna blir en egen bit per modell (markerbar, flyttbar, kan kopieras igen). */
+function l3bmCopyAccept(ents, D, Dg) {
+  const byModel = new Map();
+  ents.forEach(e => { const m = e.mesh.userData.l3b.model; if (!byModel.has(m)) byModel.set(m, []); byModel.get(m).push(e); });
+  const made = [], I = new THREE.Matrix4(), v = new THREE.Vector3();
+  byModel.forEach((list, model) => {
+    const ed = l3bmEd(model);
+    let nv = 0, ni = 0; list.forEach(e => { nv += e.mesh.userData.l3b.ranges[e.ri].count; ni += l3bsIdx(e.mesh, e.ri)[1]; });
+    const pos = new Float32Array(nv * 3), col = new Uint8Array(nv * 3), idx = new Uint32Array(ni), ranges = [], recs = [];
+    const base = list[0].mesh; base.updateMatrixWorld(true);
+    const Bi = base.matrixWorld.clone().invert();
+    let vo = 0, io = 0;
+    list.forEach(e => {
+      const u = e.mesh.userData.l3b, r = u.ranges[e.ri], [s, n] = l3bsIdx(e.mesh, e.ri);
+      e.mesh.updateMatrixWorld(true);
+      const L = Bi.clone().multiply(D).multiply(e.mesh.matrixWorld);
+      const P = e.mesh.geometry.getAttribute("position"), C = e.mesh.geometry.getAttribute("color").array, k8 = C instanceof Uint8Array;
+      for (let i = 0; i < r.count; i++) {
+        v.fromBufferAttribute(P, r.start + i).applyMatrix4(L);
+        const o = (vo + i) * 3, k = (r.start + i) * 3;
+        pos[o] = v.x; pos[o + 1] = v.y; pos[o + 2] = v.z;
+        for (let a = 0; a < 3; a++) col[o + a] = k8 ? C[k + a] : Math.round(C[k + a] * 255);
+      }
+      for (let i = 0; i < n; i++) idx[io + i] = u.origIdx[s + i] - r.start + vo;
+      const guid = l3bmGuid();
+      ranges.push({ start: vo, count: r.count, idxStart: io, idxCount: n, guid, name: r.name, base: r.base, copyOf: r.copyOf || r.guid });
+      // Kopian i förhållande till originalet i filen: denna kopiering · originalets flytt (· tidigare kopiering).
+      const was = ed.copies.get(r.guid);
+      recs.push([guid, { src: was ? was.src : r.guid, M: Dg.clone().multiply(ed.moves.get(r.guid) || I).multiply(was ? was.M : I) }]);
+      vo += r.count; io += n;
+    });
+    const m = l3bMeshFromArrays(pos, col, idx, ranges, model);
+    m.position.copy(base.position);
+    m.userData.bcopy = recs;
+    made.push(m);
+  });
+  l3bmCopyAttach(made);
+  const sel = () => made.flatMap(m => m.userData.l3b.ranges.map((r, ri) => ({ mesh: m, ri })));
+  if (typeof l3VPush === "function") l3VPush(() => { l3bsSet([]); l3bmCopyDetach(made); }, () => { l3bmCopyAttach(made); l3bsSet(sel()); }, "kopiering");
+  l3bsSet(sel());
+  const n = [...l3bm.edits.values()].reduce((a, x) => a + (x.dirty ? l3bmCount(x) : 0), 0);
+  l3Toast(`${ents.length} objekt kopierade. ${n} ändrade objekt väntar på att sparas som ny IFC i Trimble Connect.`);
+  if (typeof l3LayersRender === "function") l3LayersRender();
+  l3Render();
+}
+function l3bmCopyAttach(made) {
+  made.forEach(m => {
+    const u = m.userData.l3b, model = u.model, ed = l3bmEd(model);
+    if (!model.meshes.includes(m)) { model.meshes.push(m); model.ranges.push(...u.ranges); model.tris = (model.tris || 0) + u.origIdx.length / 3; }
+    if (model.visible !== false) m.visible = true; else m.visible = false;
+    l3.groups.bldg.add(m);
+    model._pEnts = null;
+    m.userData.bcopy.forEach(([g, x]) => ed.copies.set(g, x));
+    ed.dirty = l3bmCount(ed) > 0;
+    if (typeof l3BvhSchedule === "function") l3BvhSchedule(m);
+  });
+  l3Render();
+}
+function l3bmCopyDetach(made) {
+  made.forEach(m => {
+    const u = m.userData.l3b, model = u.model, ed = l3bmEd(model);
+    const i = model.meshes.indexOf(m);
+    if (i >= 0) { model.meshes.splice(i, 1); const rs = new Set(u.ranges); model.ranges = model.ranges.filter(r => !rs.has(r)); model.tris = Math.max(0, (model.tris || 0) - u.origIdx.length / 3); }
+    if (m.parent) m.parent.remove(m);
+    model._pEnts = null;
+    m.userData.bcopy.forEach(([g]) => { ed.copies.delete(g); ed.moves.delete(g); });
+    ed.dirty = l3bmCount(ed) > 0;
+  });
+  if (typeof l3LayersRender === "function") l3LayersRender();
+  l3Render();
+}
+/* Skriver in kopiorna i IFC-texten. copies: Map(nytt guid -> { src: originalets guid, M: Matrix4 i modellens
+   IFC-koordinater, meter, från originalets plats i filen }). Kopian får en egen rad med nytt id och egen placering
+   (originalets placering · M); formen (Representation) delas med originalet. Kopian läggs in i samma relationer
+   som originalet: våning, egenskaper, typ, material, klassning, grupper och sammansättning. Urtag (hål i väggar)
+   kopieras med. */
+const L3BM_REL_LIST = { IFCRELCONTAINEDINSPATIALSTRUCTURE: 4, IFCRELDEFINESBYPROPERTIES: 4, IFCRELDEFINESBYTYPE: 4, IFCRELASSOCIATESMATERIAL: 4, IFCRELASSOCIATESCLASSIFICATION: 4, IFCRELASSIGNSTOGROUP: 4, IFCRELAGGREGATES: 5, IFCRELNESTS: 5 };
+function l3bmCopiesToIfc(text, copies) {
+  const ix = l3bmIndex(text), unit = l3bmUnit(text);
+  const S = new THREE.Matrix4().makeScale(unit, unit, unit), Si = S.clone().invert();
+  let next = ix.maxId + 1;
+  const added = [], replace = new Map();
+  const add = body => { const id = next++; added.push(`#${id}=${body};`); return id; };
+  const srcGuids = new Set([...copies.values()].map(x => x.src)), found = new Map();
+  const re = /^#(\d+)\s*=\s*(IFC[A-Z0-9_]+)\s*\(\s*'([^']{22})'/i;
+  ix.starts.forEach((s, id) => { const m = re.exec(text.slice(s, s + 120)); if (m && srcGuids.has(m[3])) found.set(m[3], id); });
+  // Relationerna som originalen ingår i (och urtagen).
+  const srcIds = new Set(found.values()), rels = new Map(), voids = new Map();
+  const relRe = /^#(\d+)\s*=\s*(IFCREL[A-Z]+)\s*\(/i, tokRe = /#(\d+)/g;
+  ix.starts.forEach((s, id) => {
+    const head = text.slice(s, s + 60), m = relRe.exec(head);
+    if (!m) return;
+    const type = m[2].toUpperCase();
+    if (type === "IFCRELVOIDSELEMENT") { const a = l3bmArgs(ix.line(id)), el = l3bmRef(a[4]), op = l3bmRef(a[5]); if (srcIds.has(el) && op != null) { if (!voids.has(el)) voids.set(el, []); voids.get(el).push([id, op]); } return; }
+    if (!(type in L3BM_REL_LIST)) return;
+    const list = l3bmArgs(ix.line(id))[L3BM_REL_LIST[type]] || ""; let t; tokRe.lastIndex = 0; // bara listan med de ingående objekten
+    while ((t = tokRe.exec(list))) { const r = Number(t[1]); if (srcIds.has(r)) { if (!rels.has(r)) rels.set(r, new Set()); rels.get(r).add(id); } }
+  });
+  const withNewGuid = (ln, guid, setArgs) => { const a = l3bmArgs(ln), head = ln.slice(ln.indexOf("=") + 1, ln.indexOf("(") + 1).trim(); a[0] = `'${guid}'`; if (setArgs) setArgs(a); return head + a.join(",") + ")"; };
+  let copied = 0, missing = 0;
+  copies.forEach((x, guid) => {
+    const id = found.get(x.src);
+    if (id == null) { missing++; return; }
+    const ln = ix.line(id), a = l3bmArgs(ln), pl = l3bmRef(a[5]);
+    let own = null;
+    if (pl != null && /IFCLOCALPLACEMENT/i.test(ix.line(pl) || "")) {
+      const [rel, ax] = l3bmArgs(ix.line(pl)), relId = l3bmRef(rel), Wrel = l3bmWorld(ix, relId);
+      const Q = Wrel.clone().invert().multiply(S.clone().multiply(x.M).multiply(Si)).multiply(Wrel);
+      const qPl = add(`IFCLOCALPLACEMENT(${relId != null ? "#" + relId : "$"},#${l3bmWriteAxis(Q, add)})`);
+      own = add(`IFCLOCALPLACEMENT(#${qPl},${ax})`);
+    } else { missing++; return; }
+    const nid = add(withNewGuid(ln, guid, b => { b[5] = "#" + own; }));
+    // Samma relationer som originalet.
+    (rels.get(id) || []).forEach(rid => {
+      const cur = replace.get(rid) || ix.line(rid), ra = l3bmArgs(cur), k = L3BM_REL_LIST[(relRe.exec(cur) || [])[2].toUpperCase()];
+      const list = String(ra[k] || "").trim();
+      if (!/^\(.*\)$/.test(list)) return;
+      ra[k] = list.slice(0, -1) + `,#${nid})`;
+      replace.set(rid, cur.slice(0, cur.indexOf("(") + 1) + ra.join(",") + ");");
+    });
+    // Urtagen: nya öppningar placerade i kopian.
+    (voids.get(id) || []).forEach(([rid, op]) => {
+      const oln = ix.line(op); if (!oln) return;
+      const oa = l3bmArgs(oln), opl = l3bmRef(oa[5]), opln = opl != null && ix.line(opl);
+      if (!opln || !/IFCLOCALPLACEMENT/i.test(opln) || l3bmRef(l3bmArgs(opln)[0]) !== pl) return; // bara öppningar placerade i objektet
+      const nopl = add(`IFCLOCALPLACEMENT(#${own},${l3bmArgs(opln)[1]})`);
+      const nop = add(withNewGuid(oln, l3bmGuid(), b => { b[5] = "#" + nopl; }));
+      add(withNewGuid(ix.line(rid), l3bmGuid(), b => { b[4] = "#" + nid; b[5] = "#" + nop; }));
+    });
+    copied++;
+  });
+  let out = "", last = 0;
+  [...replace.keys()].map(id => ({ id, s: ix.starts.get(id) })).sort((a, b) => a.s - b.s).forEach(({ id, s }) => {
+    out += text.slice(last, s) + replace.get(id); last = text.indexOf(";", s) + 1;
+  });
+  out += text.slice(last);
+  const endData = out.lastIndexOf("ENDSEC;");
+  out = out.slice(0, endData) + added.join("\n") + "\n" + out.slice(endData);
+  return { text: out, copied, missing };
+}

@@ -36,6 +36,7 @@ function l3ltEncode(m) {
     body.push(u); const at = off; off += u.byteLength; return at;
   };
   m.meshes.forEach(x => {
+    if (x.userData.bcopy) return; // osparade kopior hör inte till filen
     const g = x.geometry, P = g.getAttribute("position").array, n = P.length / 3, u = x.userData.l3b;
     if (!n) return;
     const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];

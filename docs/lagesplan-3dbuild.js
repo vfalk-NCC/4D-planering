@@ -274,7 +274,7 @@ async function l3bCachePut(w, m) {
     if (!l3bCachePut.asked && navigator.storage && navigator.storage.persist) { l3bCachePut.asked = true; navigator.storage.persist().catch(() => {}); }
     const db = await l3bDb();
     const rec = { key, name: m.name, O: m.O, tris: m.tris, at: Date.now(), colV: 2,
-      chunks: m.meshes.map(x => ({ pos: x.geometry.getAttribute("position").array, col: x.geometry.getAttribute("color").array, idx: x.userData.l3b.origIdx, nrm: l3bNrm8(x.geometry),
+      chunks: m.meshes.filter(x => !x.userData.bcopy).map(x => ({ pos: x.geometry.getAttribute("position").array, col: x.geometry.getAttribute("color").array, idx: x.userData.l3b.origIdx, nrm: l3bNrm8(x.geometry),
         ranges: x.userData.l3b.ranges.map(r => ({ start: r.start, count: r.count, idxStart: r.idxStart, idxCount: r.idxCount, guid: r.guid, name: r.name, base: r.base })) })) };
     const st = db.transaction(L3B_STORE, "readwrite").objectStore(L3B_STORE);
     st.put(rec, key);

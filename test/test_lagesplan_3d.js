@@ -81,6 +81,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (s.n !== 2 || !s.bod || s.active !== s.bod.id || !s.side || !s.gizmo) fail('Boden ska läggas till där man trycker och väljas med handtag: ' + JSON.stringify(s));
   if (!(s.bod.x > 6512300 && s.bod.x < 6512400 && s.bod.y > 150050 && s.bod.y < 150200)) fail('Boden ska hamna på planen: ' + JSON.stringify(s.bod));
 
+  // Ett handtag i taget (Victor 2026-10-12): inga lodräta plan eller fri mittpunkt, och pilen går före ringen.
+  s = await page.evaluate(() => {
+    const names = [...l3.gizmo._gizmo.picker.translate.children].map(c => c.name);
+    const g = l3.gizmo, r = l3.gizmoR; g.axis = 'X';
+    r.pointerHover({ x: 0, y: 0, button: 0 }); r.pointerDown({ x: 0, y: 0, button: 0 });
+    const out = { names, ringAxis: r.axis, ringDrag: r.dragging, ringOn: !!r.object };
+    g.axis = null;
+    return out;
+  });
+  if (s.names.some(n => /^(YZ|XZ|XYZ)$/.test(n)) || !s.names.includes('XY') || s.ringAxis || s.ringDrag || !s.ringOn) fail('Handtagen: bara en rörelse i taget: ' + JSON.stringify(s));
+
   // Handtagen: flytta boden in över pelaren K10 (14 m hög) -> fäst mot ytan = står på taket.
   s = await page.evaluate(() => {
     const g = l3.gizmo.object; placeSnapshot(); l3.dragStart = l3GroupState();

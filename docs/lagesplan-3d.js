@@ -506,6 +506,16 @@ function l3Init(box) {
   scene.add(ring);
   ["change", "dragging-changed", "mouseDown", "objectChange", "mouseUp"].forEach(t => (gizmo._listeners && gizmo._listeners[t] || []).slice().forEach(fn => ring.addEventListener(t, fn)));
   l3.gizmoR = ring;
+  // En sak i taget (Victor 2026-10-12: "jag vill aldrig ha möjlighet att både röra i höjd, sidled och rotera
+  // samtidigt"): pilarna går före ringen där de korsar varandra, och rutorna som flyttar i höjd och sidled på en
+  // gång (lodräta plan) och den fria mittpunkten tas bort. Kvar: en pil = en riktning, den vågräta rutan
+  // (bara sidled), ringen (bara vridning).
+  ["YZ", "XZ", "XYZ"].forEach(n => ["gizmo", "picker", "helper"].forEach(k => { const G = gizmo._gizmo[k] && gizmo._gizmo[k].translate; if (G) G.children.filter(c => c.name === n).forEach(c => G.remove(c)); }));
+  const gBusy = () => !!(gizmo.dragging || (gizmo.object && gizmo.axis));
+  const rHover = ring.pointerHover.bind(ring), rDown = ring.pointerDown.bind(ring), gDown = gizmo.pointerDown.bind(gizmo);
+  ring.pointerHover = p => { if (gBusy()) { if (!ring.dragging) ring.axis = null; return; } rHover(p); };
+  ring.pointerDown = p => { if (gBusy()) return; rDown(p); };
+  gizmo.pointerDown = p => { if (ring.dragging) return; gDown(p); };
   const att = gizmo.attach.bind(gizmo), det = gizmo.detach.bind(gizmo), mode = gizmo.setMode.bind(gizmo);
   gizmo.attach = o => { att(o); l3RingSync(); return gizmo; };
   gizmo.detach = () => { det(); ring.detach(); return gizmo; };

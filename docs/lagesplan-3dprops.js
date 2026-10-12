@@ -171,14 +171,14 @@ async function l3pFillSide(side, ent) {
   };
   host.innerHTML = `<div class="v3-pal-hint"><span class="pm-spin"></span> Läser egenskaper…</div>`;
   try {
-    const d = await l3pProps(m, r.guid, { local: true });
+    const d = await l3pProps(m, r.copyOf || r.guid, { local: true }); // kopia: originalets egenskaper
     if (d !== null || l3p.w.has(m.id)) { show(d); return; }
     // Originalet finns inte lokalt (modellen kom ur cachen): hämtas först på begäran.
     if (side.dataset.id !== sid) return;
     host.innerHTML = `<button type="button" class="v3-wide" id="v3PropsLoad" title="Modellens IFC-fil hämtas från Trimble Connect en gång och sparas i webbläsaren">Visa alla egenskaper (hämtar ${escHtml(m.name)})</button>`;
     host.querySelector("#v3PropsLoad").onclick = async () => {
       host.innerHTML = `<div class="v3-pal-hint"><span class="pm-spin"></span> Hämtar och läser egenskaper…</div>`;
-      try { show(await l3pProps(m, r.guid)); } catch (e) { host.innerHTML = `<div class="v3-pal-hint bad">${escHtml(e.message)}</div>`; }
+      try { show(await l3pProps(m, r.copyOf || r.guid)); } catch (e) { host.innerHTML = `<div class="v3-pal-hint bad">${escHtml(e.message)}</div>`; }
     };
   } catch (e) { if (side.dataset.id === sid) host.innerHTML = `<div class="v3-pal-hint bad">Kunde inte läsa egenskaperna: ${escHtml(e.message)}</div>`; }
 }

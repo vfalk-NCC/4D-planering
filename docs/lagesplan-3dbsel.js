@@ -294,7 +294,7 @@ function l3bsIsolate0() {
 function l3bsPendingHtml() {
   if (typeof l3bmPending !== "function") return "";
   const models = [...new Set(l3bs.sel.map(e => e.mesh.userData.l3b.model))].filter(m => m && l3bmPending(m.id));
-  return models.map(m => `<button type="button" class="v3-save-btn" data-bmsave="${escHtml(m.id)}" title="Originalet hämtas från Trimble Connect, flyttarna skrivs in och resultatet sparas som en ny fil i samma mapp – originalet skrivs aldrig över">${L3_ICO.upload}<span>Spara flytten som ny IFC i TC <em>${l3bmPending(m.id)} flyttade i ${escHtml(m.name)}</em></span></button>`).join("");
+  return models.map(m => `<button type="button" class="v3-save-btn" data-bmsave="${escHtml(m.id)}" title="Originalet hämtas från Trimble Connect, flyttar och kopior skrivs in och resultatet sparas som en ny fil i samma mapp – originalet skrivs aldrig över">${L3_ICO.upload}<span>Spara ändringarna som ny IFC i TC <em>${l3bmPending(m.id)} ändrade i ${escHtml(m.name)}</em></span></button>`).join("");
 }
 /* Panelen till höger när objekt i byggnaden är markerade. */
 function l3bsRenderSide(side) {
@@ -313,6 +313,7 @@ function l3bsRenderSide(side) {
       ${act("v3BsHide", I.eyeOff, "Dölj", "Dölj de markerade (H)")}
       ${act("v3BsIso", I.isolate, "Isolera", "Visa bara de markerade (I)")}
       ${typeof l3bmStart === "function" ? act("v3BsMove", I.move, "Flytta", "Flytta de markerade – sparas som en ny IFC-fil i Trimble Connect") : ""}
+      ${typeof l3bmStart === "function" ? act("v3BsCopy", I.copy, "Kopiera", "Kopiera de markerade och dra kopian dit den ska – sparas som en ny IFC-fil i Trimble Connect, originalet står kvar") : ""}
       ${typeof ifcSubset === "function" && typeof l3bmFetchIfc === "function" ? act("v3BsExport", I.upload, "IFC", `Exportera de ${n} markerade (med dina flyttar och grupper) som en egen IFC-fil i samma mapp i Trimble Connect – originalet rörs inte`) : ""}
       ${coupled.length ? act("v3BsJump", I.select, "4D", `Markera de ${coupled.length} kopplade aktiviteterna i 4D-planering och objekten i Trimble Connect`) : ""}
     </div>
@@ -328,6 +329,7 @@ function l3bsRenderSide(side) {
   on("v3BsHide", l3bsHide);
   on("v3BsIso", l3bsIsolate);
   on("v3BsMove", () => l3bmStart());
+  on("v3BsCopy", () => l3bmStart({ copy: true }));
   on("v3BsGroup", () => l3PalTab("props"));
   on("v3BsExport", async () => { const b = side.querySelector("#v3BsExport"); b.disabled = true; try { await l3bsExportIfc(); } catch (e) { /* visas i statusraden */ } if (b.isConnected) b.disabled = false; });
   side.querySelectorAll("[data-bmsave]").forEach(b => { b.onclick = async () => { b.disabled = true; try { await l3bmSave(b.dataset.bmsave); } catch (e) { /* visas i statusraden */ } l3RenderSide(); }; });

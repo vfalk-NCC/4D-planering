@@ -392,6 +392,45 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   if (!/^Hus A urval 1 objekt \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(ex.name) || ex.folderId !== 'f1' || ex.guids.length !== 1 || Math.abs(ex.pelare - 5) > 0.001)
     fail('Exportera markerade: bara pelaren, flyttad 5 m, ny fil i samma mapp: ' + JSON.stringify(ex));
 
+  // Kopiera (Victor 2026-10-12): kopian 3 m i Y, originalet kvar; sparas som ny fil med kopian som nytt objekt
+  // i samma våning. Ctrl+Z tar bort kopian.
+  const cp = await page.evaluate(() => {
+    const m = l3b.models.find(x => x.id === 'f:F2');
+    let ent = null; m.meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => { if (r.guid === '1hZq3$Bq9Fxu8nZK0bW1aA') ent = { mesh, ri }; }));
+    l3bsSet([ent]); l3RenderSide();
+    document.getElementById('v3BsCopy').click();
+    const hidden = ent.mesh.userData.l3b.hidden.has(ent.ri);
+    const side = document.getElementById('v3Side'); side.querySelector('[data-bm="dy"]').value = '3'; l3bmApplyFields(side);
+    l3bmAccept();
+    const sel = l3bs.sel.map(e => e.mesh.userData.l3b.ranges[e.ri]);
+    window.__up = null;
+    return { hidden, meshes: m.meshes.length, sel: sel.map(r => ({ guid: r.guid, copyOf: r.copyOf })), pending: l3bmPending('f:F2') };
+  });
+  if (cp.hidden || cp.sel.length !== 1 || cp.sel[0].copyOf !== '1hZq3$Bq9Fxu8nZK0bW1aA' || !/^[0-9A-Za-z_$]{22}$/.test(cp.sel[0].guid) || cp.pending !== 2) fail('Kopiera: ' + JSON.stringify(cp));
+  await page.click('#v3Side [data-bmsave]');
+  await page.waitForFunction(() => window.__up, null, { timeout: 30000 });
+  const cs = await page.evaluate(async ([ifc0, ng]) => {
+    const up = window.__up, api = await ifcmLoad();
+    const centers = text => { const id = api.OpenModel(new TextEncoder().encode(text), { COORDINATE_TO_ORIGIN: false }); const cx = {};
+      api.StreamAllMeshes(id, mesh => { const g = api.GetLine(id, mesh.expressID).GlobalId.value; let sx = 0, sy = 0, n = 0;
+        for (let i = 0; i < mesh.geometries.size(); i++) { const pg = mesh.geometries.get(i), geom = api.GetGeometry(id, pg.geometryExpressID), v = api.GetVertexArray(geom.GetVertexData(), geom.GetVertexDataSize()), T = pg.flatTransformation;
+          for (let k = 0; k < v.length; k += 6) { sx += T[0] * v[k] + T[4] * v[k + 1] + T[8] * v[k + 2] + T[12]; sy += T[1] * v[k] + T[5] * v[k + 1] + T[9] * v[k + 2] + T[13]; n++; } }
+        cx[g] = [sx / n, sy / n]; });
+      api.CloseModel(id); return cx; };
+    const a = centers(ifc0), b = centers(up.text), P = '1hZq3$Bq9Fxu8nZK0bW1aA';
+    const contained = new RegExp(`IFCRELCONTAINEDINSPATIALSTRUCTURE\\([^;]*#${(new RegExp(`#(\\d+)=IFC[A-Z]+\\('${ng.replace(/\$/g, '\\$')}'`).exec(up.text) || [])[1]}[,)]`).test(up.text);
+    // Placeringarna i filen (web-ifc ger delad form samma läge, därför räknas kedjan här).
+    const ix = l3bmIndex(up.text), at = g => { let id = null; ix.starts.forEach((st, k) => { if (up.text.slice(st, st + 80).includes(`'${g}'`)) id = k; }); return new THREE.Vector3().setFromMatrixPosition(l3bmWorld(ix, l3bmRef(l3bmArgs(ix.line(id))[5]))); };
+    const po = at(P), pc = at(ng), p0 = new THREE.Vector3(6512350, 150125, 0);
+    const r = { name: up.name, opens: !!(b[P] && b[ng]), orig: [po.x - p0.x, po.y - p0.y], copy: [pc.x - p0.x, pc.y - p0.y], contained };
+    l3Undo();
+    const m = l3b.models.find(x => x.id === 'f:F2');
+    r.afterUndo = { pending: l3bmPending('f:F2'), has: m.meshes.some(x => x.userData.l3b.ranges.some(q => q.guid === ng)) };
+    return r;
+  }, [ifc, cp.sel[0].guid]);
+  if (!cs.opens || Math.abs(cs.orig[0] - 5) > 0.001 || Math.abs(cs.orig[1]) > 0.001 || Math.abs(cs.copy[0] - 5) > 0.001 || Math.abs(cs.copy[1] - 3) > 0.001 || !cs.contained || cs.afterUndo.has || cs.afterUndo.pending !== 1)
+    fail('Kopiera sparas som ny IFC (kopian 3 m från den flyttade pelaren, i våningen) och Ctrl+Z tar bort kopian: ' + JSON.stringify(cs));
+
   // Zooma till modell i lagerhanteraren.
   const zm = await page.evaluate(() => { l3PalTab('layers'); l3SetPref('laySort', 'list'); l3LayersRender(); const b = document.querySelector('[data-l3l-zoom="f:F2"]'); if (!b) return null; const t0 = l3.orbit.target.clone(); b.click(); return true; });
   await page.waitForTimeout(700);
