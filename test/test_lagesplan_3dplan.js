@@ -12,7 +12,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return { view: [0, 0, 1000, 500], getViewport: ({ scale, offsetX, offsetY }) => vp(scale, offsetX || 0, offsetY || 0), render: ({ canvasContext: c, viewport: v }) => { c.fillStyle = '#fff'; c.fillRect(0, 0, v.width, v.height); return { promise: Promise.resolve(), cancel() {} }; } };
   } }) }) };`;
 const PP = [
-  { id: 'p1', group_id: 'G1', object_id: '1hZq3$Bq9Fxu8nZK0bW1aA', object_name: 'K10', activity: 'Gjutning pelare', area: 'Hus A', contractor: 'NCC', start_date: '2026-10-05', end_date: '2026-10-16', progress: 40 },
+  { id: 'p1', group_id: 'G1', object_id: '1hZq3$Bq9Fxu8nZK0bW1aA', object_name: 'K10', activity: 'Gjutning pelare', area: 'Hus A', contractor: 'NCC', start_date: '2026-10-05', end_date: '2026-10-16', progress: 40, baseline_start_date: '2026-10-08', baseline_end_date: '2026-10-19' },
   { id: 'p2', group_id: 'G1', object_id: '2hZq3$Bq9Fxu8nZK0bW1aA', object_name: 'K11', activity: 'Gjutning pelare', area: 'Hus A', contractor: 'NCC', start_date: '2026-10-06', end_date: '2026-10-18', progress: 20 },
   { id: 'p3', object_id: '3hZq3$Bq9Fxu8nZK0bW1aA', object_name: 'Tak', activity: 'Takmontage', area: 'Hus B', contractor: 'Peab', start_date: '2026-11-02', end_date: '2026-11-20', progress: 0 },
   { id: 'p4', object_id: '4hZq3$Bq9Fxu8nZK0bW1aA', object_name: 'Fasad', activity: 'Fasadmontage', area: 'Hus A', contractor: 'NCC', start_date: '2026-10-17', end_date: '2026-10-20', progress: 0, depends_on: ['p1'] },
@@ -30,7 +30,7 @@ const PP = [
     await page.route('https://api.github.com/**', r => {
       const f = decodeURIComponent(new URL(r.request().url()).pathname.replace('/repos/vfalk-NCC/4D-data/contents/', ''));
       if (r.request().method() !== 'GET') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha: 'x' } }) });
-      const data = { 'projects/p1/pp/plan_items.json': PP }[f];
+      const data = { 'projects/p1/pp/plan_items.json': PP, 'projects/p1/plan_milestones.json': [{ id: 'm1', name: 'Stomme klar', target_date: '2026-10-14', done: false }] }[f];
       r.fulfill(data ? { status: 200, contentType: 'application/json', body: JSON.stringify({ content: Buffer.from(JSON.stringify(data)).toString('base64'), sha: 's' }) } : { status: 404, body: '{}' });
     });
     await page.goto(`http://localhost:${PORT}/lagesplan.html?project=p1`); await page.waitForTimeout(900);
@@ -168,6 +168,45 @@ const PP = [
     });
     if (!film.saved || film.saved.size < 1000 || !/^video\//.test(film.saved.type) || !/^4D-film 2026-10-01 – 2026-10-21\.(mp4|webm)$/.test(film.saved.name) || film.days < 15 || film.date !== '2026-10-12')
       fail('Filmen: ' + JSON.stringify(film));
+    // Grafiken i filmen (2026-10-12): pågår nu, datumskylt (rullande vecka), milstolpe, förloppsmätare – valbara.
+    const fx = await page.evaluate(async () => {
+      const f = l3plPrefs().film; l3plSet('film', { ...f, from: '2026-10-01', to: '2026-10-21', title: true, fxNow: true, fxGlow: true, fxMiles: true, fxMeter: true });
+      const fx = await l3fxStart('2026-10-01', '2026-10-21');
+      const c = document.createElement('canvas'); c.width = 1920; c.height = 1080; const x = c.getContext('2d');
+      const texts = []; const ft0 = x.fillText.bind(x); x.fillText = (t, ...a) => { texts.push(String(t)); return ft0(t, ...a); };
+      ['2026-10-11', '2026-10-12', '2026-10-13', '2026-10-14'].forEach((d, i) => l3fxFrame(fx, d, i * 0.2));
+      l3fxDraw(x, 1920, 1080, '2026-10-14', 0.7, fx, 'Etapp 1', true);
+      const all = texts.join(' | ');
+      const weekRoll = fx.week.prev !== fx.week.cur;
+      // Klar aktivitet bockas av: Gjutning pelare slutar 18/10.
+      ['2026-10-17', '2026-10-18', '2026-10-19'].forEach((d, i) => l3fxFrame(fx, d, 1 + i * 0.2));
+      texts.length = 0; l3fxDraw(x, 1920, 1080, '2026-10-19', 1.5, fx, '', true); const done = texts.join(' | ');
+      // Lys upp: pågående aktiviteters IFC-objekt får ett pulserande lager i statusfärgen.
+      const geo = new THREE.BoxGeometry(1, 1, 1), mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial());
+      mesh.userData.l3b = { origIdx: geo.index.array, ranges: [{ guid: '4hZq3$Bq9Fxu8nZK0bW1aA', idxStart: 0, idxCount: geo.index.count }] };
+      const mdl = { id: 'mg', name: 'G.ifc', visible: true, meshes: [mesh] }; l3b.models.push(mdl);
+      const pe = l3pEnts; l3pEnts = m => (m === mdl ? new Map([['4hZq3$Bq9Fxu8nZK0bW1aA', [{ mesh, ri: 0 }]]]) : new Map());
+      const fxg = await l3fxStart('2026-10-01', '2026-10-21');
+      l3fxFrame(fxg, '2026-10-18', 0); const op0 = fxg.glow.length === 1 && mesh.children.length === 1 && mesh.children[0].material.opacity;
+      l3fxFrame(fxg, '2026-10-18', 0.35); const op1 = fxg.glow[0].material.opacity;
+      l3fxFrame(fxg, '2026-10-25', 0.5); const offGlow = fxg.glow.length === 0 && mesh.children.length === 0;
+      l3fxEnd(fxg); l3pEnts = pe; l3b.models.splice(l3b.models.indexOf(mdl), 1);
+      const glow = !!op0 && Math.abs(op1 - op0) > 0.05 && offGlow;
+      // Av: bara det som är valt ritas.
+      l3plSet('film', { ...l3plPrefs().film, fxNow: false, fxMeter: false, fxMiles: false, title: false });
+      const fx2 = await l3fxStart('2026-10-01', '2026-10-21'); l3fxFrame(fx2, '2026-10-14', 0.5); texts.length = 0; l3fxDraw(x, 1920, 1080, '2026-10-14', 0.5, fx2, '', true); const off = texts.length;
+      l3plSet('film', { ...l3plPrefs().film, fxNow: true, fxMeter: true, fxMiles: true, title: true });
+      // Uppspelning: lagret över 3D-vyn ritas och döljs efteråt.
+      l3fxHud(fx, '2026-10-14', 0.7, ''); const hud = !document.getElementById('v3FilmHud').classList.contains('hidden'); l3fxEnd(fx); const hudOff = document.getElementById('v3FilmHud').classList.contains('hidden');
+      return { all, weekRoll, done, off, hud, hudOff, glow, ahead: l3fxAhead(fx, Date.UTC(2026, 9, 12)), prog: Math.round(fx.prog(Date.UTC(2026, 9, 12)) * 100) };
+    });
+    const need = ['VECKA', '14 okt 2026', 'Etapp 1', 'PÅGÅR NU', 'Gjutning pelare', 'Projektet klart', 'Stomme klar', 'MILSTOLPE'];
+    const miss = need.filter(t => !fx.all.includes(t));
+    if (miss.length || !fx.weekRoll || !/före baslinjen/.test(fx.all) || !(fx.ahead > 0) || !/Klar/.test(fx.done) || fx.off !== 0 || !fx.glow || !fx.hud || !fx.hudOff) fail('Grafiken i filmen: ' + JSON.stringify({ miss, ...fx, all: fx.all.slice(0, 400) }));
+    // Valen finns i fliken.
+    const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlTitleOn'].every(id => document.getElementById(id)); });
+    if (!ui) fail('Valen för grafiken saknas i fliken');
+    console.log(`OK: filmens grafik – pågår nu (in/ut, bock), datumskylt med rullande vecka, milstolpe, förloppsmätare (${fx.prog} %, ${fx.ahead} dagar före baslinjen), valbara, lager vid uppspelning`);
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('OK: fliken 4D-planering – Powerproject som tavla och staplar, markera i 3D, vecka → datum, kameravyer, film som videofil');
   } finally { await browser.close(); server.close(); }
