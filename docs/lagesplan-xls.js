@@ -41,6 +41,11 @@ function xlsPhase(it) {
   return computeItemPhase(it, at, warn) || fallbackPhase(it);
 }
 let xlsRingPx = 5;
+/* Fyllda markeringar i stället för ringar (Victor 2026-10-12: "det syns inte så bra just nu"). Per webbläsare. */
+const XLS_FILL_KEY = "lagesplan-xlsfill";
+function xlsFilled() { try { return localStorage.getItem(XLS_FILL_KEY) === "1"; } catch (e) { return false; } }
+function setXlsFilled(on) { try { localStorage.setItem(XLS_FILL_KEY, on ? "1" : "0"); } catch (e) { /* privat läge */ } if (typeof renderZones === "function") renderZones(); }
+document.addEventListener("change", e => { if (e.target && e.target.classList && e.target.classList.contains("xls-fill")) setXlsFilled(e.target.checked); });
 /* Ringarna (anropas från renderZones med xlsCanvas). */
 function drawXls(ctx, fontPx) {
   if (!xlsActive() || !layerVisible("xls")) return;
@@ -50,9 +55,18 @@ function drawXls(ctx, fontPx) {
   const r = Math.max(2.5, (typeof objDotRadius === "function" ? objDotRadius(ctx, fontPx) : fontPx / 4) * 0.85);
   xlsRingPx = r;
   ctx.save();
+  const fill = xlsFilled();
   for (const o of list) {
     const color = phaseColor(xlsPhase(o.it)), [x, y] = toPx(o.pt);
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+    if (fill) {
+      // Fylld prick i statusfärgen med vit kant och en tunn mörk ytterkant (syns på både ljust och mörkt underlag).
+      ctx.fillStyle = color; ctx.fill();
+      ctx.lineWidth = Math.max(1, r * 0.28); ctx.strokeStyle = "#ffffff"; ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, r + Math.max(1, r * 0.28) * 0.75, 0, Math.PI * 2);
+      ctx.lineWidth = Math.max(0.8, r * 0.12); ctx.strokeStyle = shade(color, -0.5); ctx.stroke();
+      continue;
+    }
     ctx.lineWidth = Math.max(1.2, r * 0.45); ctx.strokeStyle = "#ffffff"; ctx.stroke(); // vit kant under – syns på mörkt underlag
     ctx.lineWidth = Math.max(1, r * 0.3); ctx.strokeStyle = color; ctx.stroke();
   }

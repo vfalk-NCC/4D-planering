@@ -70,6 +70,19 @@ const PP_ITEMS = [{ id: 'p1', object_name: 'Etapp 1', activity: 'Grundläggning'
       const r = await ring(id);
       if (r.ph !== want[id] || r.best > 45 || r.mid !== 0) fail(`Ringen ${id} (${want[id]}) i Excels statusfärg, tom i mitten: ` + JSON.stringify(r));
     }
+    // Fyllda markeringar (Victor 2026-10-12: "Lägg till alt. att trycka i fyllda markeringar"): valet under Lager-raden.
+    await page.evaluate(() => { renderLayerPanel(); const c = document.querySelector('#layerList [data-layer="xls"] .xls-fill'); c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); });
+    for (const id of ['x1', 'x2', 'x3']) {
+      const f = await page.evaluate(id => {
+        const o = xlsObjects().find(o => o.it.id === id), [x, y] = toPx(o.pt), ov = ovLast, d = $('xlsCanvas').getContext('2d').getImageData(Math.round((x - ov.x0) * ov.s), Math.round((y - ov.y0) * ov.s), 1, 1).data;
+        const want = phaseColor(xlsPhase(o.it)), W = [1, 3, 5].map(i => parseInt(want.slice(i, i + 2), 16));
+        return { a: d[3], diff: Math.abs(d[0] - W[0]) + Math.abs(d[1] - W[1]) + Math.abs(d[2] - W[2]), on: xlsFilled(), vis: layerVisible('xls') };
+      }, id);
+      if (!f.on || !f.vis || f.a < 200 || f.diff > 30) fail(`Fylld markering ${id} i statusfärgen: ` + JSON.stringify(f));
+    }
+    await page.evaluate(() => { const c = document.querySelector('#layerList [data-layer="xls"] .xls-fill'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); });
+    if (await page.evaluate(() => xlsFilled())) fail('Valet ska gå att slå av');
+    console.log('OK: fyllda markeringar för Excel-planeringen (valet under Lager)');
     // Hovra: aktiviteten och att den kommer från Excel.
     await page.evaluate(() => { const o = xlsObjects().find(o => o.it.id === 'x2'), [x, y] = toPx(o.pt), r = $('viewport').getBoundingClientRect(); view.tx = r.width / 2 - x * view.scale; view.ty = r.height / 2 - y * view.scale; applyView(); renderZones(); });
     const [hx, hy] = await page.evaluate(() => { const o = xlsObjects().find(o => o.it.id === 'x2'), [x, y] = toPx(o.pt), st = $('stage'), b = st.getBoundingClientRect(); return [b.left + x * b.width / st.offsetWidth, b.top + y * b.height / st.offsetHeight]; });
