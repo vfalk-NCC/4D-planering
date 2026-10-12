@@ -221,6 +221,12 @@ const IFC = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');", "FILE_
   await page.keyboard.press('Control+y'); await page.waitForTimeout(100);
   if ((await hid()) !== 2) fail('Ctrl+Y ska dölja den igen');
   await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+  // Ögat på gruppen släcker och tänder (Victor 2026-10-12).
+  await page.evaluate(() => l3gRenderTab());
+  await page.click('#v3PalGroups [data-geye]');
+  if ((await hid()) !== 2 || !(await page.$('#v3PalGroups [data-geye].off'))) fail('Ögat ska släcka gruppen');
+  await page.click('#v3PalGroups [data-geye]');
+  if ((await hid()) !== 0 || await page.$('#v3PalGroups [data-geye].off')) fail('Ögat ska tända gruppen igen');
   await page.click('#v3GBy');
   await page.waitForFunction(() => l3p.colorBy && l3p.colorBy.key === 'g:4d', null, { timeout: 10000 });
   const gcol = await page.evaluate(() => { const out = {}; l3b.models[0].meshes.forEach(mesh => { const c = mesh.geometry.getAttribute('color'); mesh.userData.l3b.ranges.forEach(r => { out[r.name] = '#' + new THREE.Color(c.getX(r.start), c.getY(r.start), c.getZ(r.start)).getHexString(); }); }); return { out, g: l3g.list[0].color }; });

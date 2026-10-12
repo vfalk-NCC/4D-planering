@@ -157,6 +157,18 @@ function l3gfVis(fid, show) {
   const ents = l3g.list.filter(g => (g.folder || null) === fid).flatMap(l3gEnts);
   if (!ents.length) { l3Status("Mappens grupper har inga objekt i de inlästa modellerna."); return; }
   const name = fid ? (l3g.folders.find(f => f.id === fid) || {}).name : "Utan mapp";
+  l3gVisEnts(ents, name, show);
+}
+/* Ögat på en grupp (Victor 2026-10-12: "en 'Öga'-ikon på alla grupper så att jag kan välja att släcka dom ungefär
+   som lager"). Släckt = alla gruppens objekt i scenen är dolda; Visa alla (U) och Ctrl+Z fungerar som vanligt. */
+const l3gEntsHidden = ents => ents.length > 0 && ents.every(e => e.mesh.userData.l3b.hidden.has(e.ri));
+function l3gVis(id) {
+  const g = l3g.list.find(x => x.id === id); if (!g) return;
+  const ents = l3gEnts(g);
+  if (!ents.length) { l3Status(`${g.name} har inga objekt i de inlästa modellerna.`); return; }
+  l3gVisEnts(ents, g.name, l3gEntsHidden(ents));
+}
+function l3gVisEnts(ents, name, show) {
   l3VisRecord(`${show ? "visa" : "dölj"} ${name}`, () => {
     const meshes = new Set();
     ents.forEach(e => { if (show) e.mesh.userData.l3b.hidden.delete(e.ri); else e.mesh.userData.l3b.hidden.add(e.ri); meshes.add(e.mesh); });
@@ -164,7 +176,7 @@ function l3gfVis(fid, show) {
     if (!show) l3bsSet(l3bs.sel.filter(e => !e.mesh.userData.l3b.hidden.has(e.ri)).map(e => ({ mesh: e.mesh, ri: e.ri })));
     l3UpdateHidden();
   });
-  l3Status(`${name}: ${show ? "visas" : "dold (Ctrl+Z ångrar)"}.`);
+  l3Status(`${name}: ${show ? "visas" : "släckt (Ctrl+Z ångrar)"}.`);
   l3gRenderTab();
 }
 
@@ -185,6 +197,7 @@ function l3gRenderTab() {
         <button type="button" class="v3-gr-n" data-gsel="${esc(g.id)}" title="Markera gruppens objekt (Skift lägger till)">${esc(g.name)}</button>
         <em title="${here} av ${tot} finns i de inlästa modellerna">${here === tot ? tot : `${here}/${tot}`}</em>
         ${mine ? `<span class="v3-gr-mine" title="${mine} av de markerade ligger i gruppen">${mine}✓</span>` : ""}
+        ${(() => { const hid = here > 0 && l3gEntsHidden(l3gEnts(g)); return `<button type="button" class="v3-ic v3-gr-eye ${hid ? "off" : ""}" data-geye="${esc(g.id)}" ${here ? "" : "disabled"} title="${!here ? "Inga objekt i de inlästa modellerna" : hid ? "Tänd gruppen" : "Släck gruppen"}">${hid ? I.eyeOff : I.eye}</button>`; })()}
         <button type="button" class="v3-ic" data-gmore="${esc(g.id)}" title="Fler val" aria-expanded="${open}">⋯</button>
       </div>
       ${open ? `<div class="v3-gr-acts">
@@ -231,6 +244,7 @@ function l3gBindTab(host) {
   host.querySelectorAll("[data-gout]").forEach(b => { b.onclick = () => l3gRemoveSel(b.dataset.gout); });
   host.querySelectorAll("[data-giso]").forEach(b => { b.onclick = () => { l3gSelect(b.dataset.giso); if (l3bs.sel.length) l3bsIsolate(); }; });
   host.querySelectorAll("[data-ghide]").forEach(b => { b.onclick = () => l3gHide(b.dataset.ghide); });
+  host.querySelectorAll("[data-geye]").forEach(b => { b.onclick = () => l3gVis(b.dataset.geye); });
   host.querySelectorAll("[data-gzoom]").forEach(b => { b.onclick = () => { l3gSelect(b.dataset.gzoom); l3bsZoom(); }; });
   host.querySelectorAll("[data-gren]").forEach(b => { b.onclick = () => l3gRename(b.dataset.gren); });
   host.querySelectorAll("[data-gdel]").forEach(b => { b.onclick = () => l3gDelete(b.dataset.gdel); });

@@ -108,13 +108,15 @@ async function l3orgCopy(id) {
 function l3orgHtml() {
   l3orgRestore();
   const esc = escHtml, I = L3_ICO, d = l3org.data;
-  const here = guids => { let k = 0; l3b.models.forEach(m => { const map = l3pEnts(m); guids.forEach(x => { if (map.has(x)) k++; }); }); return k; };
+  // Antal i scenen och om alla deras objekt är dolda (ögat).
+  const here = guids => { let k = 0, hid = true; l3b.models.forEach(m => { const map = l3pEnts(m); guids.forEach(x => { const es = map.get(x); if (es) { k++; if (hid && !es.every(e => e.mesh.userData.l3b.hidden.has(e.ri))) hid = false; } }); }); return [k, k > 0 && hid]; };
   const rowOf = (n, depth) => {
-    const all = l3orgAll(n), hk = here(all), shut = !l3org.shut.has("o:" + n.id) && n.kids.length ? true : false, open = l3org.open === n.id;
+    const all = l3orgAll(n), [hk, hid] = here(all), shut = !l3org.shut.has("o:" + n.id) && n.kids.length ? true : false, open = l3org.open === n.id;
     const fold = n.kids.length ? `<button type="button" class="v3-org-f" data-orgfold="${esc(n.id)}" aria-expanded="${!shut}"><i>›</i></button>` : `<span class="v3-org-f"></span>`;
     return `<div class="v3-gr v3-org ${open ? "open" : ""}" style="margin-left:${depth * 12}px"><div class="v3-gr-h">${fold}
         <button type="button" class="v3-gr-n" data-orgsel="${esc(n.id)}" title="Markera gruppens objekt (Skift lägger till)">${esc(n.name)}</button>
         <em title="${hk} av ${all.size} finns i de inlästa modellerna">${!all.size ? "0" : hk === all.size ? all.size : `${hk}/${all.size}`}</em>
+        <button type="button" class="v3-ic v3-gr-eye ${hid ? "off" : ""}" data-orgeye="${esc(n.id)}" ${hk ? "" : "disabled"} title="${!hk ? "Inga objekt i de inlästa modellerna" : hid ? "Tänd gruppen" : "Släck gruppen"}">${hid ? I.eyeOff : I.eye}</button>
         <button type="button" class="v3-ic" data-orgmore="${esc(n.id)}" title="Fler val" aria-expanded="${open}">⋯</button></div>
         ${open ? `<div class="v3-gr-acts"><button type="button" data-orgiso="${esc(n.id)}">${I.isolate} Visa bara</button><button type="button" data-orghide="${esc(n.id)}">${I.eyeOff} Dölj</button><button type="button" data-orgzoom="${esc(n.id)}">${I.focus} Zooma</button><button type="button" data-orgcopy="${esc(n.id)}" title="Som egen grupp: kan färgas och skrivas in som UDA i IFC">＋ Kopiera till egen grupp</button></div>` : ""}
       </div>` + (shut ? "" : n.kids.map(k => rowOf(k, depth + 1)).join(""));
@@ -138,6 +140,7 @@ function l3orgBind(host) {
   host.querySelectorAll("[data-orgmore]").forEach(b => { b.onclick = () => { l3org.open = l3org.open === b.dataset.orgmore ? null : b.dataset.orgmore; l3orgRender(); }; });
   host.querySelectorAll("[data-orgiso]").forEach(b => { b.onclick = () => { l3orgSelect(b.dataset.orgiso); if (l3bs.sel.length) l3bsIsolate(); }; });
   host.querySelectorAll("[data-orghide]").forEach(b => { b.onclick = () => l3orgHide(b.dataset.orghide); });
+  host.querySelectorAll("[data-orgeye]").forEach(b => { b.onclick = () => { const n = l3orgFind(b.dataset.orgeye); if (!n) return; const ents = l3orgEnts(l3orgAll(n)); if (!ents.length) { l3Status(`${n.name} har inga objekt i de inlästa modellerna.`); return; } l3gVisEnts(ents, n.name, l3gEntsHidden(ents)); }; });
   host.querySelectorAll("[data-orgzoom]").forEach(b => { b.onclick = () => { l3orgSelect(b.dataset.orgzoom); if (l3bs.sel.length) l3bsZoom(); }; });
   host.querySelectorAll("[data-orgcopy]").forEach(b => { b.onclick = () => l3orgCopy(b.dataset.orgcopy); });
 }

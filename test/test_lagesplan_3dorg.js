@@ -86,6 +86,7 @@ const G = i => ('2' + String(i).padStart(21, 'A')).slice(0, 22); // giltigt utse
     await page.waitForSelector('[data-orgsel="N1"]', { timeout: 5000 });
     const txt = await page.textContent('.v3-org-sec');
     if (!/Etapper/.test(txt) || !/Etapp 1/.test(txt) || !/Etapp 2/.test(txt)) fail('Trädet: ' + txt);
+    if ((await page.$$('[data-orgeye]')).length < 2) fail('Ögat ska finnas på Organizer-grupperna');
     // URL-kodade namn från Organizer avkodas (Victor 2026-10-12: "742%20-%20Bj%C3%A4lklag").
     const dec = await page.evaluate(() => { const t = l3orgTree({ id: 'TX', groups: [{ id: 'a', name: '742%20-%20Sikthall/742%20-%20Bj%C3%A4lklag%20%2F%20d%C3%B6rrar', guids: [] }, { id: 'b', name: 'Trasig%E0%A4', guids: [] }] }); const r = Array.isArray(t) ? t : t.roots; return JSON.stringify(r.map(n => [n.name, n.kids.map(k => k.name)])); });
     if (dec !== JSON.stringify([['742 - Sikthall', ['742 - Bjälklag / dörrar']], ['Trasig%E0%A4', []]])) fail('Avkodade namn: ' + dec);
