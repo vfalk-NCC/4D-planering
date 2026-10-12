@@ -315,9 +315,7 @@ function l3pSelectValue(x, additive) {
   const ents = [];
   x.parts.forEach(([m, guids]) => { const map = l3pEnts(m); guids.forEach(g => (map.get(g) || []).forEach(e => ents.push(e))); });
   const list = additive ? [...l3bs.sel.map(e => ({ mesh: e.mesh, ri: e.ri })), ...ents] : ents;
-  l3bsSet(list);
-  if (typeof l3RenderSide === "function") l3RenderSide();
-  l3Render();
+  l3bsSet(list); // ritar panelen och vyn
   l3Status(`${ents.length.toLocaleString("sv-SE")} objekt markerade: ${l3pKeyLabel(l3p.group.key)} = ${x.v === "\u0000" ? "(saknas)" : x.v || "(tomt)"}.`);
 }
 

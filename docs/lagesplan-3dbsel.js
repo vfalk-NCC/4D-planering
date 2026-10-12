@@ -24,15 +24,78 @@ function l3bsIdx(mesh, ri) {
 function l3bsKey(mesh, ri) { const r = mesh.userData.l3b.ranges[ri]; return (mesh.userData.l3b.model && mesh.userData.l3b.model.id || "") + "|" + (r.guid || `${mesh.uuid}:${ri}`); }
 
 /* Överlägget: ett per modellbit med alla markerade objekt i biten (tusentals markerade objekt – t.ex.
-   alla med ett visst egenskapsvärde – blir då några få ritanrop). Konturer bara upp till en gräns. */
+   alla med ett visst egenskapsvärde – blir då några få ritanrop). Konturer bara upp till en gräns.
+   Victor 2026-10-12: "När jag markerar t.ex 'Räcke' i egenskaper så tar det ganska många sekunder 20-30".
+   Fyllnaden visas direkt; konturerna räknas sedan i små portioner i bakgrunden (vyn går att använda under
+   tiden) och sparas per objekt, så att samma objekt markeras direkt nästa gång. */
 const L3BS_EDGE_MAX = 400000;
+const L3BS_EDGE_DOT = Math.cos(30 * Math.PI / 180);
 function l3bsDropOverlays() {
+  l3bs.gen = (l3bs.gen || 0) + 1; // avbryter pågående konturberäkning
   (l3bs.ov || []).forEach(o => {
     if (o.parent) o.parent.remove(o);
     if (o.userData.bselFill) o.geometry.deleteAttribute("position"); // punkterna tillhör biten – släpp bara indexet
     o.geometry.dispose(); o.material.dispose();
   });
   l3bs.ov = [];
+}
+/* Ett objekts konturer som par av punkt-index i biten (samma regel som three.js EdgesGeometry: kant mellan
+   ytor som möts i mer än 30°, eller kant som bara en yta har). Räknas en gång per objekt. */
+function l3bsObjEdges(mesh, ri) {
+  const u = mesh.userData.l3b;
+  if (!u.edges) u.edges = [];
+  if (u.edges[ri]) return u.edges[ri];
+  const [st, c] = l3bsIdx(mesh, ri), src = u.origIdx, p = mesh.geometry.getAttribute("position").array;
+  const canon = new Map(), ids = [0, 0, 0], real = [0, 0, 0], edges = new Map(), out = [];
+  for (let t = st; t + 2 < st + c; t += 3) {
+    for (let j = 0; j < 3; j++) {
+      const v = src[t + j]; real[j] = v;
+      const key = Math.round(p[v * 3] * 1e4) + "," + Math.round(p[v * 3 + 1] * 1e4) + "," + Math.round(p[v * 3 + 2] * 1e4);
+      let id = canon.get(key); if (id === undefined) { id = canon.size; canon.set(key, id); }
+      ids[j] = id;
+    }
+    if (ids[0] === ids[1] || ids[1] === ids[2] || ids[2] === ids[0]) continue; // utdragen triangel
+    const a = real[0] * 3, b = real[1] * 3, d = real[2] * 3;
+    const ux = p[b] - p[a], uy = p[b + 1] - p[a + 1], uz = p[b + 2] - p[a + 2], vx = p[d] - p[a], vy = p[d + 1] - p[a + 1], vz = p[d + 2] - p[a + 2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const L = Math.hypot(nx, ny, nz) || 1; nx /= L; ny /= L; nz /= L;
+    for (let j = 0; j < 3; j++) {
+      const i0 = ids[j], i1 = ids[(j + 1) % 3], k = i0 < i1 ? i0 * 4294967296 + i1 : i1 * 4294967296 + i0;
+      const e = edges.get(k);
+      if (e) { if (nx * e[2] + ny * e[3] + nz * e[4] <= L3BS_EDGE_DOT) out.push(e[0], e[1]); edges.delete(k); }
+      else edges.set(k, [real[j], real[(j + 1) % 3], nx, ny, nz]);
+    }
+  }
+  edges.forEach(e => out.push(e[0], e[1]));
+  return (u.edges[ri] = new Uint32Array(out));
+}
+function l3bsEdgeOverlay(mesh, list) {
+  let n = 0; list.forEach(a => { n += a.length; });
+  if (!n) return;
+  const idx = new Uint32Array(n); let o = 0; list.forEach(a => { idx.set(a, o); o += a.length; });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", mesh.geometry.getAttribute("position")); // delas med biten
+  g.setIndex(new THREE.BufferAttribute(idx, 1));
+  g.computeBoundingSphere();
+  const line = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: L3BS_COL, transparent: true, opacity: 0.95 }));
+  line.userData.bselFill = true; line.userData.bselEdge = true;
+  line.userData.noHit = true; line.userData.bsel = true; line.raycast = () => {}; line.renderOrder = 6;
+  mesh.add(line); l3bs.ov.push(line);
+}
+/* Konturerna i bakgrunden: ~12 ms åt gången, avbryts om markeringen ändras. */
+function l3bsEdgesLater(work) {
+  const gen = l3bs.gen;
+  let wi = 0, k = 0, acc = [];
+  const step = () => {
+    if (gen !== l3bs.gen) return;
+    const t0 = performance.now();
+    while (wi < work.length && performance.now() - t0 < 12) {
+      const [mesh, ris] = work[wi];
+      for (let n = 0; k < ris.length && n < 64; n++, k++) acc.push(l3bsObjEdges(mesh, ris[k]));
+      if (k >= ris.length) { l3bsEdgeOverlay(mesh, acc); acc = []; k = 0; wi++; l3Render(); }
+    }
+    if (wi < work.length) setTimeout(step, 0);
+  };
+  step();
 }
 function l3bsRebuild() {
   l3bsDropOverlays();
@@ -46,19 +109,24 @@ function l3bsRebuild() {
     if (!n) return;
     const idx = new Uint32Array(n); let o = 0;
     rs.forEach(([st, c]) => { idx.set(src.subarray(st, st + c), o); o += c; });
-    total += n / 3; parts.push([mesh, idx]);
+    total += n / 3; parts.push([mesh, idx, ris]);
   });
-  parts.forEach(([mesh, idx]) => {
+  const work = [];
+  parts.forEach(([mesh, idx, ris]) => {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", mesh.geometry.getAttribute("position")); // delas med biten
     g.setIndex(new THREE.BufferAttribute(idx, 1));
     g.computeBoundingSphere();
     const fill = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: L3BS_COL, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
     fill.userData.bselFill = true;
-    const objs = [fill];
-    if (total <= L3BS_EDGE_MAX) objs.push(new THREE.LineSegments(new THREE.EdgesGeometry(g, 30), new THREE.LineBasicMaterial({ color: L3BS_COL, transparent: true, opacity: 0.95 })));
-    objs.forEach(o => { o.userData.noHit = true; o.userData.bsel = true; o.raycast = () => {}; o.renderOrder = 6; mesh.add(o); l3bs.ov.push(o); });
+    fill.userData.noHit = true; fill.userData.bsel = true; fill.raycast = () => {}; fill.renderOrder = 6; mesh.add(fill); l3bs.ov.push(fill);
+    if (total <= L3BS_EDGE_MAX) work.push([mesh, ris]);
   });
+  if (!work.length) return;
+  // Redan uträknade (eller få) objekt: konturerna direkt. Annars i bakgrunden.
+  const ready = work.every(([mesh, ris]) => { const E = mesh.userData.l3b.edges; return ris.length <= 50 || (E && ris.every(ri => E[ri])); });
+  if (ready) work.forEach(([mesh, ris]) => l3bsEdgeOverlay(mesh, ris.map(ri => l3bsObjEdges(mesh, ri))));
+  else l3bsEdgesLater(work);
 }
 
 function l3bsSet(list, opts = {}) {
