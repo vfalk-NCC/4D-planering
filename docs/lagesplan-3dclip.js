@@ -96,7 +96,7 @@ function l3cSet(i, off) {
   const c = l3.clips[i]; if (!c) return;
   c.off = off; c.plane.constant = c.base - off;
   const d = document.getElementById("v3Clip");
-  if (d) { const r = d.querySelector(`[data-clipoff="${i}"]`), nb = d.querySelector(`[data-clipnum="${i}"]`); if (r) r.value = off; if (nb && document.activeElement !== nb) nb.value = l3ClipFmt(off); }
+  if (d) { const r = d.querySelector(`[data-clipoff="${i}"]`), nb = d.querySelector(`[data-clipnum="${i}"]`); if (r) { if (Math.abs(off) > +r.max) { const sp = l3ClipSpan(off); r.min = -sp; r.max = sp; } r.value = off; } if (nb && document.activeElement !== nb) nb.value = l3ClipFmt(off); }
   l3cShowPlane(l3c.drag ? c : null);
   l3Render();
 }

@@ -101,6 +101,11 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   await page.mouse.up(); await page.waitForTimeout(100);
   const after = await page.evaluate(() => ({ plane: !!l3c.plane, off: l3.clips[0].off, slider: Number(document.querySelector('#v3Clip [data-clipoff="0"]').value), lbl: document.querySelector('#view3d .v3-scissor span').textContent }));
   if (!mid.plane || after.plane || Math.abs(after.off) < 0.2 || Math.abs(after.slider - after.off) > 1e-6 || !/m$/.test(after.lbl)) fail('Dra i saxen: ' + JSON.stringify({ mid, after }));
+  // Reglaget räcker ±100 m, och längre om man skriver in ett större värde (Victor 2026-10-12).
+  const span = await page.evaluate(() => { const d = document.getElementById('v3Clip'), r = d.querySelector('[data-clipoff="0"]'), nb = d.querySelector('[data-clipnum="0"]'), off0 = l3.clips[0].off;
+    const max0 = +r.max; nb.value = '150'; nb.dispatchEvent(new Event('input')); const out = { max0, max1: +r.max, val: +r.value, off: l3.clips[0].off };
+    nb.value = String(off0).replace('.', ','); nb.dispatchEvent(new Event('input')); return out; });
+  if (span.max0 < 100 || span.max1 < 150 || span.val !== 150 || span.off !== 150) fail('Snittets reglage ±100 m och längre: ' + JSON.stringify(span));
   // Ner i bilden = planet sänks (Victor 2026-10-10: "när jag drar saxen nedåt så går den uppåt"), och saxen
   // ligger kvar där musen släpptes.
   const z1 = await page.evaluate(() => l3.clips[0].plane.coplanarPoint(new THREE.Vector3()).z);
