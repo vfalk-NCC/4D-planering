@@ -115,3 +115,30 @@ async function tcOrganizerFetch(tokenVal, project, viewer, fetchFn = fetch) {
   if (unresolved) log.push(`${unresolved} länkar kunde inte tolkas${sample ? ` (t.ex. "${String(sample).slice(0, 120)}")` : ""}.`);
   return { forest, base, trees: out, log, at: new Date().toISOString() };
 }
+
+/* Skriver till Organizer (Victor 2026-10-12: "Bygg så att tilläggen skrivs tillbaka till Organizer i TC").
+   Samma anrop som Trimbles SDK (Organizer#updateNode): PATCH …/forests/{f}/trees/{t}/nodes/{n} med { add } eller
+   { remove } – add lägger till länkar och låter alla befintliga vara kvar, remove tar bara bort de angivna.
+   Inget annat i noden (namn, övriga länkar) ändras. Länkarna har samma form som Organizer själv använder:
+   "frn:entity:" + objektets IFC-id (URL-kodat). */
+const tcOrgFrn = guid => "frn:entity:" + encodeURIComponent(String(guid));
+async function tcOrganizerLinks(tokenVal, project, req, fetchFn = fetch) {
+  if (!req || !req.forest || !req.tree || !req.node) throw new Error("Saknar Organizer-gruppen (hämta Organizer på nytt med ↻).");
+  const log = [], base = await tcOrgBase(tokenVal, project, log, fetchFn);
+  const url = `${base}forests/${encodeURIComponent(req.forest)}/trees/${encodeURIComponent(req.tree)}/nodes/${encodeURIComponent(req.node)}`;
+  const H = { Authorization: `Bearer ${tokenVal}`, "Content-Type": "application/json" };
+  let added = 0, removed = 0, count = null;
+  for (const [key, list] of [["add", (req.add || []).map(tcOrgFrn)], ["remove", (req.remove || []).map(tcOrgFrn)]]) {
+    for (let i = 0; i < list.length; i += 500) {
+      const part = list.slice(i, i + 500);
+      const res = await fetchFn(url, { method: "PATCH", headers: H, body: JSON.stringify({ [key]: part }) });
+      if (!res.ok) {
+        let d = ""; try { d = (await res.text()).slice(0, 200); } catch (e) { /* inget svar */ }
+        const e = new Error(`Organizer svarade ${res.status}${res.status === 403 ? " (saknar behörighet att ändra gruppen)" : ""}${d ? ": " + d : ""}`); e.done = { added, removed }; throw e;
+      }
+      try { const n = await res.json(); if (n && typeof n.count === "number") count = n.count; } catch (e) { /* tomt svar */ }
+      if (key === "add") added += part.length; else removed += part.length;
+    }
+  }
+  return { added, removed, count };
+}

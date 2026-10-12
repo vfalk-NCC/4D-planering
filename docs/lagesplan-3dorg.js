@@ -58,12 +58,45 @@ async function l3oaAddSel(node) {
     const c = arr.slice(); c[i] = stamp({ ...c[i], name: f.path, guids: [...new Set([...(c[i].guids || []), ...guids])] }); return c;
   }, `3D: ${guids.length} objekt till ${f.path} (Organizer)`);
   l3Status(`${guids.length} objekt lades i ${f.path}.`);
+  await l3oaSync(node);
+}
+/* Skickar tilläggen till Organizer i Trimble Connect (via 4D-planering). Det som har skickats står i a.synced;
+   bara det som inte redan är skickat går iväg. Utan kontakt väntar tilläggen och skickas med knappen senare. */
+const l3oaPending = a => { const s = new Set(a.synced || []); return (a.guids || []).filter(g => !s.has(g)); };
+async function l3oaSync(only) {
+  if (l3oa.syncing) return;
+  await l3oaLoad();
+  const todo = l3oa.list.filter(a => (!only || a.node === only) && l3oaPending(a).length);
+  if (!todo.length) return;
+  if (!l3org.data || !l3org.data.forest) { l3Status("Tilläggen sparades här. För att skriva dem till Organizer i Trimble Connect: hämta Organizer på nytt med ↻ först.", true); return; }
+  if (typeof bridgeOk === "function" && !bridgeOk()) { l3Status("Tilläggen sparades här och skickas till Organizer i Trimble Connect när lägesplanen är öppnad från 4D-planering (knappen Skicka under Grupper).", true); l3orgRender(); return; }
+  l3oa.syncing = true; l3orgRender();
+  let sent = 0, err = "";
+  for (const a of todo) {
+    const add = l3oaPending(a);
+    try {
+      const r = await askOpener("tcOrganizerLinks", { forest: l3org.data.forest, tree: a.tree, node: a.node, add }, 120000);
+      if (r && r.failed) { err = `${a.name}: ${r.failed}`; break; }
+      sent += add.length;
+      await l3oaWrite(arr => arr.map(x => x.node === a.node ? { ...x, synced: [...new Set([...(x.synced || []), ...add])] } : x), `3D: ${add.length} objekt skrivna till Organizer (${a.name})`);
+    } catch (e) { err = `${a.name}: ${e.message}`; break; }
+  }
+  l3oa.syncing = false; l3orgRender();
+  if (err) l3Status(`Kunde inte skriva till Organizer i Trimble Connect – ${err}. Tilläggen finns kvar här och kan skickas igen.`, true);
+  else if (sent) l3Status(`${sent} objekt skrivna till Organizer i Trimble Connect.`);
 }
 async function l3oaRemoveSel(node) {
   const rm = new Set(typeof l3gSelGuids === "function" ? l3gSelGuids() : []), a = l3oa.list.find(x => x.node === node);
   if (!a || !rm.size) return;
-  await l3oaWrite(arr => arr.map(x => x.node === node ? (typeof l3gStamp === "function" ? l3gStamp({ ...x, guids: (x.guids || []).filter(v => !rm.has(v)) }) : x) : x).filter(x => (x.guids || []).length), `3D: objekt ur ${a.name} (Organizer)`);
-  l3Status(`De markerade togs ur ${a.name}. (Objekt som ligger där i Organizer i Trimble Connect ändras inte härifrån.)`);
+  // Redan skrivna till Organizer: tas bort där också (bara just de länkarna).
+  const inTc = (a.synced || []).filter(g => rm.has(g));
+  if (inTc.length) {
+    if (!l3org.data || !l3org.data.forest || (typeof bridgeOk === "function" && !bridgeOk())) { l3Status("De markerade finns redan i Organizer i Trimble Connect – öppna lägesplanen från 4D-planering för att ta bort dem där.", true); return; }
+    const r = await askOpener("tcOrganizerLinks", { forest: l3org.data.forest, tree: a.tree, node, remove: inTc }, 120000).catch(e => ({ failed: e.message }));
+    if (r && r.failed) { l3Status(`Kunde inte ta bort ur Organizer i Trimble Connect: ${r.failed}`, true); return; }
+  }
+  await l3oaWrite(arr => arr.map(x => x.node === node ? (typeof l3gStamp === "function" ? l3gStamp({ ...x, guids: (x.guids || []).filter(v => !rm.has(v)) }) : x) : x).map(x => x.node === node ? { ...x, synced: (x.synced || []).filter(v => !rm.has(v)) } : x).filter(x => (x.guids || []).length), `3D: objekt ur ${a.name} (Organizer)`);
+  l3Status(`De markerade togs ur ${a.name}${inTc.length ? " – även i Organizer i Trimble Connect" : ""}. (Det som låg i gruppen i Organizer från början ändras inte härifrån.)`);
 }
 const l3orgKey = () => `lagesplan-org-${projectId}`;
 
@@ -80,7 +113,7 @@ async function l3orgFetch() {
     const r = await askOpener("tcOrganizer", {}, 180000);
     if (!r || r.failed) { l3org.err = (r && r.failed) || "Inget svar från Organizer."; l3org.log = (r && r.log) || []; }
     else {
-      l3org.data = { trees: r.trees || [], at: r.at || new Date().toISOString() }; l3org.log = r.log || [];
+      l3org.data = { forest: r.forest || null, trees: r.trees || [], at: r.at || new Date().toISOString() }; l3org.log = r.log || [];
       try { localStorage.setItem(l3orgKey(), JSON.stringify(l3org.data)); } catch (e) { /* för stor för webbläsarens minne – visas ändå nu */ }
       const n = l3org.data.trees.reduce((s, t) => s + t.groups.length, 0);
       l3Status(`Organizer: ${l3org.data.trees.length} ${l3org.data.trees.length === 1 ? "träd" : "träd"} med ${n} grupper hämtade från Trimble Connect.`);
@@ -174,7 +207,7 @@ function l3orgHtml() {
     const fold = n.kids.length ? `<button type="button" class="v3-org-f" data-orgfold="${esc(n.id)}" aria-expanded="${!shut}"><i>›</i></button>` : `<span class="v3-org-f"></span>`;
     return `<div class="v3-gr v3-org ${open ? "open" : ""}" style="margin-left:${depth * 12}px"><div class="v3-gr-h">${fold}
         <button type="button" class="v3-gr-n" data-orgsel="${esc(n.id)}" title="Markera gruppens objekt (Skift lägger till)">${esc(n.name)}</button>
-        ${n.added ? `<span class="v3-gr-mine" title="${n.added.length} objekt som du har lagt i gruppen här (finns inte i Organizer i Trimble Connect)">+${n.added.length}</span>` : ""}
+        ${n.added ? (() => { const a = l3oa.list.find(x => x.node === n.id), p = a ? l3oaPending(a).length : 0; return `<span class="v3-gr-mine ${p ? "pend" : ""}" title="${n.added.length} objekt som du har lagt i gruppen här${p ? ` – ${p} väntar på att skrivas till Organizer i Trimble Connect` : " – skrivna till Organizer i Trimble Connect"}">+${n.added.length}${p ? " ⏳" : " ✓"}</span>`; })() : ""}
         <em title="${hk} av ${all.size} finns i de inlästa modellerna">${!all.size ? "0" : hk === all.size ? all.size : `${hk}/${all.size}`}</em>
         <button type="button" class="v3-ic v3-gr-eye ${hid ? "off" : ""}" data-orgeye="${esc(n.id)}" ${hk ? "" : "disabled"} title="${!hk ? "Inga objekt i de inlästa modellerna" : hid ? "Tänd gruppen" : "Släck gruppen"}">${hid ? I.eyeOff : I.eye}</button>
         <button type="button" class="v3-ic" data-orgmore="${esc(n.id)}" title="Fler val" aria-expanded="${open}">⋯</button></div>
@@ -189,11 +222,14 @@ function l3orgHtml() {
   else if (d) body = `<div class="v3-pal-hint">Organizer har inga träd i det här projektet.</div>`;
   else if (!l3org.loading && !l3org.err) body = `<div class="v3-pal-hint">Tryck ↻ för att hämta indelningen du gjort i Organizer i Trimble Connect.</div>`;
   const err = l3org.err ? `<div class="v3-pal-hint bad">${esc(l3org.err)}</div>${l3org.log.length ? `<details class="v3-org-log"><summary>Vad som provades</summary><ul>${l3org.log.map(x => `<li>${esc(x)}</li>`).join("")}</ul></details>` : ""}` : "";
+  const pend = l3oa.list.reduce((k, a) => k + l3oaPending(a).length, 0);
+  const sync = pend ? `<div class="v3-org-sync"><span>${pend} tillagda objekt väntar på att skrivas till Organizer i Trimble Connect.</span><button type="button" id="v3OrgSync" ${l3oa.syncing ? "disabled" : ""}>${l3oa.syncing ? '<span class="pm-spin"></span> Skickar…' : "Skicka"}</button></div>` : "";
   const warn = !l3org.err && l3org.log.some(x => /kunde inte tolkas/.test(x)) ? `<details class="v3-org-log"><summary>Alla länkar kunde inte kopplas till objekt</summary><ul>${l3org.log.map(x => `<li>${esc(x)}</li>`).join("")}</ul></details>` : "";
-  return `<section class="v3-org-sec"><div class="v3-org-h"><b>Organizer i Trimble Connect</b>${d ? `<em title="Senast hämtad">${esc(String(d.at || "").slice(0, 16).replace("T", " "))}</em>` : ""}<button type="button" class="v3-ic" id="v3OrgGet" title="Hämta Organizer från Trimble Connect">${l3org.loading ? '<span class="pm-spin"></span>' : "↻"}</button></div>${err}${warn}${body}</section>`;
+  return `<section class="v3-org-sec"><div class="v3-org-h"><b>Organizer i Trimble Connect</b>${d ? `<em title="Senast hämtad">${esc(String(d.at || "").slice(0, 16).replace("T", " "))}</em>` : ""}<button type="button" class="v3-ic" id="v3OrgGet" title="Hämta Organizer från Trimble Connect">${l3org.loading ? '<span class="pm-spin"></span>' : "↻"}</button></div>${err}${sync}${warn}${body}</section>`;
 }
 function l3orgBind(host) {
   const gb = host.querySelector("#v3OrgGet"); if (gb) gb.onclick = () => l3orgFetch();
+  const sb = host.querySelector("#v3OrgSync"); if (sb) sb.onclick = () => l3oaSync();
   host.querySelectorAll("[data-orgtree]").forEach(b => { b.onclick = () => { const k = "t:" + b.dataset.orgtree; l3org.shut.has(k) ? l3org.shut.delete(k) : l3org.shut.add(k); l3orgRender(); }; });
   host.querySelectorAll("[data-orgfold]").forEach(b => { b.onclick = () => { const k = "o:" + b.dataset.orgfold; l3org.shut.has(k) ? l3org.shut.delete(k) : l3org.shut.add(k); l3orgRender(); }; });
   host.querySelectorAll("[data-orgsel]").forEach(b => { b.onclick = e => l3orgSelect(b.dataset.orgsel, e.shiftKey || e.ctrlKey || e.metaKey); });

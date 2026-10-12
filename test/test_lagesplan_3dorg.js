@@ -48,6 +48,18 @@ const G = i => ('2' + String(i).padStart(21, 'A')).slice(0, 22); // giltigt utse
     // URL-kodade länkar (Victor 2026-10-12: "frn:entity:0JmdHIIyk%2473aC9VINCuCq" = IFC-id med $).
     const enc = await p1.evaluate(() => [...tcOrgParseLinks(['frn:entity:0JmdHIIyk%2473aC9VINCuCq', 'frn:entity:%E0%A4'], new Set()).guids]);
     if (enc.join() !== '0JmdHIIyk$73aC9VINCuCq') fail('URL-kodade länkar: ' + JSON.stringify(enc));
+    // Skriva till Organizer (Victor 2026-10-12): PATCH med add/remove, i delar om 500, länkar som frn:entity:<IFC-id>.
+    const wr = await p1.evaluate(async () => {
+      const calls = [];
+      const fetchFn = async (url, o = {}) => { calls.push([o.method || 'GET', url, o.body ? JSON.parse(o.body) : null, o.headers && o.headers.Authorization]); return { ok: true, status: 200, json: async () => (o.method === 'PATCH' ? { count: 7 } : []) }; };
+      const add = Array.from({ length: 501 }, (_, i) => 'G' + String(i).padStart(20, '0') + '$');
+      const r = await tcOrganizerLinks('tok', { id: 'P1', location: 'europe' }, { forest: 'P1', tree: 'T1', node: 'N4', add, remove: ['0JmdHIIyk$73aC9VINCuCq'] }, fetchFn);
+      const p = calls.filter(c => c[0] === 'PATCH');
+      let err = null; try { await tcOrganizerLinks('tok', { id: 'P1', location: 'europe' }, { forest: 'P1', tree: 'T1', node: 'N4', add: ['x'] }, async () => ({ ok: false, status: 403, text: async () => 'nope', json: async () => ({}) })); } catch (e) { err = e.message; }
+      return { r, n: p.length, url: p[0][1], first: p[0][2].add.length, frn: p[0][2].add[0], rem: p[2] && p[2][2], auth: p[0][3], err };
+    });
+    if (wr.n !== 3 || !/org-api\.eu-west-1\.connect\.trimble\.com\/v1\/forests\/P1\/trees\/T1\/nodes\/N4$/.test(wr.url) || wr.first !== 500 || wr.frn !== 'frn:entity:G00000000000000000000%24' || JSON.stringify(wr.rem) !== JSON.stringify({ remove: ['frn:entity:0JmdHIIyk%2473aC9VINCuCq'] }) || wr.auth !== 'Bearer tok' || wr.r.added !== 501 || wr.r.removed !== 1 || wr.r.count !== 7 || !/403/.test(wr.err || ''))
+      fail('Skriva till Organizer: ' + JSON.stringify(wr));
     // Utan Organizer: tydligt fel med stegen.
     const r2 = await p1.evaluate(async () => { try { await tcOrganizerFetch('tok', { id: 'P9', location: 'europe' }, null, async () => ({ ok: false, status: 403, json: async () => ({}) })); return null; } catch (e) { return { m: e.message, log: e.log }; } });
     if (!r2 || !/Organizer/.test(r2.m) || !(r2.log.length >= 3)) fail('Fel med steg: ' + JSON.stringify(r2));
@@ -72,7 +84,7 @@ const G = i => ('2' + String(i).padStart(21, 'A')).slice(0, 22); // giltigt utse
       pdfCache.set('A', new Uint8Array([1]).buffer); items = []; positions = [];
       renderPlanSelect(); await openPlan('A');
       Object.defineProperty(window, 'opener', { value: { closed: false }, configurable: true, writable: true });
-      askOpener = async type => (type === 'tcOrganizer' ? tree : {});
+      window.__oaw = []; askOpener = async (type, x) => { if (type === 'tcOrganizerLinks') { window.__oaw.push(x); return { added: (x.add || []).length }; } return type === 'tcOrganizer' ? tree : {}; };
       open3d();
     }, r1.r);
     await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.renderer && typeof l3orgHtml === 'function', null, { timeout: 15000 });
@@ -113,10 +125,11 @@ const G = i => ('2' + String(i).padStart(21, 'A')).slice(0, 22); // giltigt utse
       l3PalTab('groups'); l3orgRender();
       const row = document.querySelector('[data-orgsel="N4"]').closest('.v3-gr-h').textContent;
       const r = { opt: /value="org:N4"/.test(html) && /<optgroup label="Etapper \(Organizer\)">/.test(html), list: l3oa.list.map(x => [x.node, x.guids]), own: n.own.includes(g3), plus: /\+1/.test(row), chip: /data-oaout="N4"/.test(l3gSelHtml()) };
-      await l3oaRemoveSel('N4'); r.after = l3oa.list.length; l3bs.sel = [];
+      r.synced = (l3oa.list[0] || {}).synced; r.sent = JSON.stringify(window.__oaw);
+      await l3oaRemoveSel('N4'); r.after = l3oa.list.length; r.sent2 = JSON.stringify(window.__oaw.slice(1)); l3bs.sel = [];
       return r;
     }, G(3));
-    if (!oa.opt || JSON.stringify(oa.list) !== JSON.stringify([['N4', [G(3)]]]) || !oa.own || !oa.plus || !oa.chip || oa.after !== 0) fail('Lägg i Organizer-grupp: ' + JSON.stringify(oa));
+    if (!oa.opt || JSON.stringify(oa.list) !== JSON.stringify([['N4', [G(3)]]]) || !oa.own || !oa.plus || !oa.chip || oa.after !== 0 || JSON.stringify(oa.synced) !== JSON.stringify([G(3)]) || oa.sent !== JSON.stringify([{ forest: 'P1', tree: 'T1', node: 'N4', add: [G(3)] }]) || oa.sent2 !== JSON.stringify([{ forest: 'P1', tree: 'T1', node: 'N4', remove: [G(3)] }])) fail('Lägg i Organizer-grupp (och skriv till TC): ' + JSON.stringify(oa));
     // Sparad i webbläsaren – finns kvar utan kontakt med TC.
     const kept = await page.evaluate(() => { l3org.data = null; l3org.loaded = false; l3orgRestore(); return l3org.data && l3org.data.trees.length; });
     if (kept !== 1) fail('Senaste hämtningen ska finnas kvar i webbläsaren');
