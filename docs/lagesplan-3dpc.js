@@ -429,6 +429,13 @@ function l3pcPick(e, px = 7) {
   const persp = !cam.isOrthographicCamera;
   const kAng = persp ? Math.tan(cam.fov * Math.PI / 360) * 2 / r.height * px : 0;
   const kOrtho = persp ? 0 : (cam.top - cam.bottom) / cam.zoom / r.height * px;
+  return l3pcPickRay(O, D, kAng, kOrtho);
+}
+/* Samma sökning längs en godtycklig stråle: toleransen är kAng · avståndet + kAbs (meter). Används också av
+   gå-läget för att hitta marken under fötterna. */
+function l3pcPickRay(O, D, kAng, kAbs) {
+  if (!l3 || !l3pc.clouds.some(c => c.visible)) return null;
+  const kOrtho = kAbs || 0;
   const gcl = l3.renderer.clippingPlanes || [];
   const inv = [1 / D.x, 1 / D.y, 1 / D.z];
   let best = null;
@@ -442,14 +449,14 @@ function l3pcPick(e, px = 7) {
       const g = p.geometry; if (!g.boundingSphere) g.computeBoundingSphere();
       const bs = g.boundingSphere, wx = bs.center.x - o[0], wy = bs.center.y - o[1], wz = bs.center.z - o[2];
       const t0 = wx * dx + wy * dy + wz * dz, d2 = wx * wx + wy * wy + wz * wz - t0 * t0;
-      const tolS = persp ? Math.max(0, t0 + bs.radius) * kAng : kOrtho;
+      const tolS = Math.max(0, t0 + bs.radius) * kAng + kOrtho;
       if (t0 < -bs.radius || d2 > (bs.radius + tolS) * (bs.radius + tolS)) return; // strålen missar rutan
       const ch = c.chunks[k]; if (!ch.cells) l3pcIndexChunk(c, k);
       ch.cells.forEach(cl => {
         // Strålen mot cellens låda (utökad med toleransen på lådans bortre avstånd).
         let tn = -Infinity, tf = Infinity;
         const far = Math.hypot(cl.max[0] - o[0], cl.max[1] - o[1], cl.max[2] - o[2]) + Math.hypot(cl.min[0] - o[0], cl.min[1] - o[1], cl.min[2] - o[2]);
-        const tol = persp ? far * kAng : kOrtho;
+        const tol = far * kAng + kOrtho;
         for (let ax = 0; ax < 3; ax++) {
           let t1 = (cl.min[ax] - tol - o[ax]) * inv[ax], t2 = (cl.max[ax] + tol - o[ax]) * inv[ax];
           if (!Number.isFinite(t1) || !Number.isFinite(t2)) { if (o[ax] < cl.min[ax] - tol || o[ax] > cl.max[ax] + tol) { tn = Infinity; break; } continue; }
@@ -466,7 +473,7 @@ function l3pcPick(e, px = 7) {
       for (let i = cl.a * 3; i < cl.b * 3; i += 3) {
         const qx = a[i] - o[0], qy = a[i + 1] - o[1], qz = a[i + 2] - o[2], t = qx * dx + qy * dy + qz * dz;
         if (t <= 0 || (best && t >= best.t)) continue;
-        const tol = persp ? t * kAng : kOrtho, pd = qx * qx + qy * qy + qz * qz - t * t;
+        const tol = t * kAng + kOrtho, pd = qx * qx + qy * qy + qz * qz - t * t;
         if (pd > tol * tol) continue;
         const w = new THREE.Vector3(a[i] + gp.x, a[i + 1] + gp.y, a[i + 2] + gp.z);
         if (planes.length && !planes.every(pl => pl.distanceToPoint(w) >= -1e-6)) continue;

@@ -173,6 +173,22 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     console.log(`OK: stort moln (3 milj.) – index ${big.tIdx} ms en gång, ${big.ms} ms per sökning, ${big.hits}/${big.n} träffar`);
     if (!snap.pick || !snap.snap || !snap.pivot || !snap.miss || !snap.off) fail('Fästa mot punktmolnet: ' + JSON.stringify(snap));
     console.log(`OK: fästa mot punkter i molnet – mått, rotationspunkt, av/på i Fäst-raden (${snap.ms} ms per sökning)`);
+    // Gå-läge (WASD): släpp ner kameran i molnet, gå framåt, titta med musen, följ marken, Esc avslutar.
+    {
+      await page.evaluate(() => { const c = l3pc.clouds[0], P = new THREE.Vector3(...c.info.center).sub(new THREE.Vector3(...l3.O)); l3wEnter(P); });
+      const w0 = await page.evaluate(() => ({ on: l3w.on, orbit: l3.orbit.enabled, hud: !!document.querySelector('#view3d .v3-walk:not(.hidden)'), p: l3.camera.position.toArray(), yaw: l3w.yaw }));
+      await page.keyboard.down('w'); await page.waitForTimeout(600); await page.keyboard.up('w'); await page.waitForTimeout(100);
+      const w1 = await page.evaluate(() => ({ p: l3.camera.position.toArray(), sel: l3.sel.size }));
+      const moved = Math.hypot(w1.p[0] - w0.p[0], w1.p[1] - w0.p[1]), dir = [(w1.p[0] - w0.p[0]) / moved, (w1.p[1] - w0.p[1]) / moved];
+      const box = await page.evaluate(() => { const r = l3.renderer.domElement.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+      await page.mouse.move(box[0], box[1]); await page.mouse.down(); await page.mouse.move(box[0] + 120, box[1] + 30, { steps: 5 }); await page.mouse.up();
+      const w2 = await page.evaluate(() => ({ yaw: l3w.yaw, pitch: l3w.pitch }));
+      await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+      const w3 = await page.evaluate(() => ({ on: l3w.on, orbit: l3.orbit.enabled, hud: !!document.querySelector('#view3d .v3-walk:not(.hidden)') }));
+      if (!w0.on || w0.orbit || !w0.hud || moved < 0.3 || Math.abs(dir[0] - Math.cos(w0.yaw)) > 0.05 || Math.abs(dir[1] - Math.sin(w0.yaw)) > 0.05 || !(w2.yaw < w0.yaw - 0.3) || !(w2.pitch < -0.05) || w3.on || !w3.orbit || w3.hud)
+        fail('Gå-läget: ' + JSON.stringify({ w0, w1, moved, dir, w2, w3 }));
+      console.log(`OK: gå-läge – W gick ${moved.toFixed(2)} m framåt, musen tittar runt, Esc avslutar`);
+    }
     await page.screenshot({ path: path.join(process.env.PLACE_TMP || '.', '3dpc-panel.png'), clip: { x: 0, y: 0, width: 560, height: 850 } });
     console.log('OK: punktmolnets visning – runda punkter, meter, täckning, höjdfilter, enfärgad/ljus, höjdjustering, återställ, förlopp i raden');
     // Cache: bort ur vyn och tillbaka utan Trimble Connect.

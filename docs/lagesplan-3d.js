@@ -178,6 +178,7 @@ async function open3d() {
   l3Resize(); l3Render();
 }
 function close3d() {
+  if (typeof l3w !== "undefined" && l3w.on) l3wExit(true);
   document.body.classList.remove("v3-open");
   if (typeof l3sLeave === "function") l3sLeave(); // 2D-lagren som de var i 2D
   const box = document.getElementById("view3d");
@@ -252,6 +253,7 @@ function l3Dom() {
           <button type="button" data-v3view="plan">Plan ↔ 3D <kbd>Ctrl+P</kbd></button>
           <label class="v3-chk v3-pop-row"><input type="checkbox" id="v3Ortho" ${P.ortho ? "checked" : ""} /> Parallell projektion</label>
           <button type="button" data-v3view="center">Rotationscentrum… <kbd>V</kbd></button>
+          <button type="button" data-v3view="walk" title="Släpp ner kameran i ögonhöjd och gå runt med W/A/S/D">Gå runt (WASD)…</button>
           <hr/>
           <div class="v3-pop-l">Sparade vyer</div>
           <div id="v3SavedViews"></div>
@@ -349,7 +351,7 @@ function l3Dom() {
   $3("v3PhotoBtn").onclick = () => { if (typeof l3phAdd === "function") l3phAdd(); };
   $3("v3ClipBtn").onclick = () => { if (l3.clips && l3.clips.length) l3RenderClipDlg(); l3StartClip(); };
   $3("v3LaunchBtn").onclick = e => { e.stopPropagation(); l3OpenLaunch(); };
-  box.querySelectorAll("[data-v3view]").forEach(b => { b.onclick = () => { l3HideMenus(); const v = b.dataset.v3view; if (v === "plan") l3TogglePlan(); else if (v === "center") l3StartV(); else l3View(v); }; });
+  box.querySelectorAll("[data-v3view]").forEach(b => { b.onclick = () => { l3HideMenus(); const v = b.dataset.v3view; if (v === "plan") l3TogglePlan(); else if (v === "center") l3StartV(); else if (v === "walk") l3wStart(); else l3View(v); }; });
   $3("v3Ortho").onchange = e => { l3SetProjection(e.target.checked); };
   const mouseHint = () => { const a = l3Prefs().autoRot !== false ? " kring punkten under markören" : " kring rotationscentrum (V)"; $3("v3MouseHint").textContent = l3Prefs().mouse === "standard" ? `Vänster = rotera${a}, Ctrl + vänster = markeringsfönster, höger/mitten = panorera, hjul = zooma mot markören. Skift + vänster = panorera.` : `Vänster = markera (dra en ruta), mitten = panorera, Ctrl + mitten = rotera${a}, hjul = zooma mot markören, höger = meny.`; };
   $3("v3AutoRot").onchange = e => { l3SetPref("autoRot", e.target.checked); mouseHint(); };
@@ -548,6 +550,7 @@ function l3Init(box) {
   window.addEventListener("resize", () => { if (l3 && !document.getElementById("view3d").classList.contains("hidden")) { l3Resize(); l3Render(); } });
   window.addEventListener("keydown", l3Key, true); // före lägesplanens kortkommandon (de stängs av i 3D)
   if (typeof l3NavInit === "function") l3NavInit();
+  if (typeof l3wInit === "function") l3wInit(); // gå-läget (WASD)
   if (typeof l3DialogsInit === "function") l3DialogsInit();
   if (typeof l3plInit === "function") l3plInit(); // fliken 4D-planering: tavlan som var öppen
   if (l3.prefs.ortho && typeof l3SetProjection === "function") l3SetProjection(true);
@@ -848,6 +851,7 @@ function l3ZoomSelected() {
   l3FlyTo(c, size * 1.6);
 }
 function l3View(v) {
+  if (typeof l3w !== "undefined" && l3w.on) l3wExit(true); // en standardvy avslutar gå-läget
   if (v === "sel") return l3ZoomSelected();
   if (v === "iso") return l3Frame(true);
   const b = l3SceneBox(), c = b.getCenter(new THREE.Vector3()), size = Math.max(10, b.getSize(new THREE.Vector3()).length());
@@ -962,6 +966,7 @@ function l3Tap(e) {
     l3LastTouchTap = { t, x: e.clientX, y: e.clientY };
     if (last && t - last.t < 350 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 30 && l3.tool === "select" && !l3.addType) { l3LastTouchTap = null; l3DoubleAt(e); return; }
   }
+  if (typeof l3w !== "undefined" && l3w.picking) return l3wTap(e); // gå-läget: var man ställer sig
   if (l3.phPick && typeof l3phPickTap === "function") return l3phPickTap(e); // fotot som läggs till
   if (l3.vPick) return l3VTap(e);
   if (typeof l3DlgPickTap === "function" && l3DlgPickTap(e)) return;
@@ -1448,6 +1453,7 @@ function l3Key(e) {
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
   // I 3D gäller bara 3D-vyns tangenter (lägesplanens genvägar och 2D-ångra ska inte reagera).
   e.stopImmediatePropagation();
+  if (typeof l3wKey === "function" && l3wKey(e)) return; // gå-läget (WASD) har tangenterna
   if (typeof l3HandleKey === "function" && l3HandleKey(e)) return; // drag i ett handtag pågår
   const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
   if (typeof l3KeyCustom === "function" && l3KeyCustom(e)) return; // egna kortkommandon gäller först
