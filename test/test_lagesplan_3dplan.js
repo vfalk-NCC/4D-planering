@@ -170,12 +170,14 @@ const PP = [
       fail('Filmen: ' + JSON.stringify(film));
     // Grafiken i filmen (2026-10-12): pågår nu, datumskylt (rullande vecka), milstolpe, förloppsmätare – valbara.
     const fx = await page.evaluate(async () => {
-      const f = l3plPrefs().film; l3plSet('film', { ...f, from: '2026-10-01', to: '2026-10-21', title: true, fxNow: true, fxGlow: true, fxMiles: true, fxMeter: true });
+      const f = l3plPrefs().film; l3plSet('film', { ...f, from: '2026-10-01', to: '2026-10-21', title: true, fxNow: true, fxGlow: true, fxMiles: true, fxMeter: true, fxBl: true });
       const fx = await l3fxStart('2026-10-01', '2026-10-21');
       const c = document.createElement('canvas'); c.width = 1920; c.height = 1080; const x = c.getContext('2d');
       const texts = []; const ft0 = x.fillText.bind(x); x.fillText = (t, ...a) => { texts.push(String(t)); return ft0(t, ...a); };
       ['2026-10-11', '2026-10-12', '2026-10-13', '2026-10-14'].forEach((d, i) => l3fxFrame(fx, d, i * 0.2));
-      l3fxDraw(x, 1920, 1080, '2026-10-14', 0.7, fx, 'Etapp 1', true);
+      l3fxFrame(fx, '2026-10-14', 0.7, Date.UTC(2026, 9, 14, 6)); l3fxDraw(x, 1920, 1080, '2026-10-14', 0.7, fx, 'Etapp 1', true);
+      // Procenten följer tiden inom dagen (sömlöst), inte bara dagen.
+      const pa = fx.prog(Date.UTC(2026, 9, 14, 6)), pb = fx.prog(Date.UTC(2026, 9, 14, 18)); const smooth = pb > pa;
       const all = texts.join(' | ');
       const weekRoll = fx.week.prev !== fx.week.cur;
       // Klar aktivitet bockas av: Gjutning pelare slutar 18/10.
@@ -198,13 +200,14 @@ const PP = [
       l3plSet('film', { ...l3plPrefs().film, fxNow: true, fxMeter: true, fxMiles: true, title: true });
       // Uppspelning: lagret över 3D-vyn ritas och döljs efteråt.
       l3fxHud(fx, '2026-10-14', 0.7, ''); const hud = !document.getElementById('v3FilmHud').classList.contains('hidden'); l3fxEnd(fx); const hudOff = document.getElementById('v3FilmHud').classList.contains('hidden');
-      return { all, weekRoll, done, off, hud, hudOff, glow, ahead: l3fxAhead(fx, Date.UTC(2026, 9, 12)), prog: Math.round(fx.prog(Date.UTC(2026, 9, 12)) * 100) };
+      const fxNoBl = await (async () => { l3plSet('film', { ...l3plPrefs().film, fxBl: false }); const f3 = await l3fxStart('2026-10-01', '2026-10-21'); l3fxFrame(f3, '2026-10-14', 0.5); texts.length = 0; l3fxDraw(x, 1920, 1080, '2026-10-14', 0.5, f3, '', true); return texts.join(' | '); })();
+      return { all, weekRoll, done, off, hud, hudOff, glow, smooth, noBl: !/baslinjen/.test(fxNoBl), ahead: l3fxAhead(fx, Date.UTC(2026, 9, 12)), prog: Math.round(fx.prog(Date.UTC(2026, 9, 12)) * 100) };
     });
-    const need = ['VECKA', '14 okt 2026', 'Etapp 1', 'PÅGÅR NU', 'Gjutning pelare', 'Projektet klart', 'Stomme klar', 'MILSTOLPE'];
+    const need = ['VECKA', '14 okt 2026', 'Etapp 1', 'PÅGÅR NU', 'Hus A', 'Gjutning pelare', 'PROJEKTET KLART', 'aktiviteter klara', 'Stomme klar', 'MILSTOLPE'];
     const miss = need.filter(t => !fx.all.includes(t));
-    if (miss.length || !fx.weekRoll || !/före baslinjen/.test(fx.all) || !(fx.ahead > 0) || !/Klar/.test(fx.done) || fx.off !== 0 || !fx.glow || !fx.hud || !fx.hudOff) fail('Grafiken i filmen: ' + JSON.stringify({ miss, ...fx, all: fx.all.slice(0, 400) }));
+    if (miss.length || !fx.weekRoll || !/före baslinjen/.test(fx.all) || !(fx.ahead > 0) || !/Klar/.test(fx.done) || fx.off !== 0 || !fx.glow || !fx.smooth || !fx.noBl || !fx.hud || !fx.hudOff) fail('Grafiken i filmen: ' + JSON.stringify({ miss, ...fx, all: fx.all.slice(0, 400) }));
     // Valen finns i fliken.
-    const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlTitleOn'].every(id => document.getElementById(id)); });
+    const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlFxBl', 'v3FlTitleOn'].every(id => document.getElementById(id)); });
     if (!ui) fail('Valen för grafiken saknas i fliken');
     console.log(`OK: filmens grafik – pågår nu (in/ut, bock), datumskylt med rullande vecka, milstolpe, förloppsmätare (${fx.prog} %, ${fx.ahead} dagar före baslinjen), valbara, lager vid uppspelning`);
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));

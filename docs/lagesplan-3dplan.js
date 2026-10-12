@@ -88,6 +88,7 @@ function l3plRenderTab() {
       <label class="v3-pl-chk" title="Objekten som hör till pågående aktiviteter pulserar svagt i statusfärgen"><input type="checkbox" id="v3FlFxGlow" ${f.fxGlow === false ? "" : "checked"} /> Lys upp det som pågår</label>
       <label class="v3-pl-chk" title="En rubrik mitt i bilden när filmen passerar en milstolpe (milstolparna i dashboarden)"><input type="checkbox" id="v3FlFxMiles" ${f.fxMiles === false ? "" : "checked"} /> Milstolpar</label>
       <label class="v3-pl-chk" title="Hur stor del av projektet som är klart och läget mot baslinjen, uppe till höger"><input type="checkbox" id="v3FlFxMeter" ${f.fxMeter === false ? "" : "checked"} /> Förloppsmätare</label>
+      <label class="v3-pl-chk v3-pl-sub2" title="Under förloppsmätaren: hur många dagar planen ligger före eller efter baslinjen"><input type="checkbox" id="v3FlFxBl" ${f.fxBl === true ? "checked" : ""} /> … med dagar mot baslinjen</label>
       <label class="v3-pl-chk"><input type="checkbox" id="v3FlPearls" ${f.pearls === false ? "" : "checked"} /> Tidslinje och aktiviteter i underkanten</label>
       </details>
       <input type="text" id="v3FlTitle" placeholder="Rubrik i filmen (valfri)" value="${esc(f.caption || "")}" />
@@ -101,8 +102,8 @@ function l3plRenderTab() {
   on("v3PlReload", () => { l3pl.rows = null; l3plLoad(true); l3plRenderTab(); });
   on("v3PlDock", () => l3plDockToggle());
   host.querySelectorAll("[data-plsel]").forEach(b => { b.onclick = () => l3plSelect(b.dataset.plsel); });
-  const save = () => { l3plSet("film", { ...l3plPrefs().film, from: host.querySelector("#v3FlFrom").value, to: host.querySelector("#v3FlTo").value, sec: Number(host.querySelector("#v3FlSec").value) || 20, res: host.querySelector("#v3FlRes").value, title: host.querySelector("#v3FlTitleOn").checked, pearls: host.querySelector("#v3FlPearls").checked, fxNow: host.querySelector("#v3FlFxNow").checked, fxGlow: host.querySelector("#v3FlFxGlow").checked, fxMiles: host.querySelector("#v3FlFxMiles").checked, fxMeter: host.querySelector("#v3FlFxMeter").checked, caption: host.querySelector("#v3FlTitle").value }); if (l3fsOn()) l3fsRender(); };
-  ["v3FlFrom", "v3FlTo", "v3FlSec", "v3FlRes", "v3FlTitleOn", "v3FlPearls", "v3FlTitle", "v3FlFxNow", "v3FlFxGlow", "v3FlFxMiles", "v3FlFxMeter"].forEach(id => on(id, save, "onchange"));
+  const save = () => { l3plSet("film", { ...l3plPrefs().film, from: host.querySelector("#v3FlFrom").value, to: host.querySelector("#v3FlTo").value, sec: Number(host.querySelector("#v3FlSec").value) || 20, res: host.querySelector("#v3FlRes").value, title: host.querySelector("#v3FlTitleOn").checked, pearls: host.querySelector("#v3FlPearls").checked, fxNow: host.querySelector("#v3FlFxNow").checked, fxGlow: host.querySelector("#v3FlFxGlow").checked, fxMiles: host.querySelector("#v3FlFxMiles").checked, fxMeter: host.querySelector("#v3FlFxMeter").checked, fxBl: host.querySelector("#v3FlFxBl").checked, caption: host.querySelector("#v3FlTitle").value }); if (l3fsOn()) l3fsRender(); };
+  ["v3FlFrom", "v3FlTo", "v3FlSec", "v3FlRes", "v3FlTitleOn", "v3FlPearls", "v3FlTitle", "v3FlFxNow", "v3FlFxGlow", "v3FlFxMiles", "v3FlFxMeter", "v3FlFxBl"].forEach(id => on(id, save, "onchange"));
   const fxd = host.querySelector(".v3-pl-fx"); if (fxd) fxd.ontoggle = () => l3plSet("fxOpen", fxd.open);
   on("v3FlStrip", () => { save(); l3fsToggle(); });
   // En sparad vy läggs där tidslinjens huvud står (annars på datumet i 3D).
@@ -198,7 +199,7 @@ async function l3plFilm(record) {
       const t = t0 + (t1 - t0) * (i / frames), d = l3plIso(new Date(Math.round(t / 86400000) * 86400000)), ft = i / fps;
       l3plSetDay(d);
       const c = l3plCamAt(keys, t); if (c) l3plCamApply(c);
-      if (fx) l3fxFrame(fx, d, ft);
+      if (fx) l3fxFrame(fx, d, ft, t);
       if (record) {
         R.render(l3.scene, l3.camera);
         ctx.drawImage(R.domElement, 0, 0, W, H);
