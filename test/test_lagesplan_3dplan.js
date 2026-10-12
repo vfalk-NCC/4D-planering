@@ -275,9 +275,10 @@ const PP = [
       const coupledBoth = seenG.includes('X1') && seenG.includes('1hZq3$Bq9Fxu8nZK0bW1aA');
       await pick('excel'); const ex = l3plLinkActs(false).map(a => a.name);
       await pick('pp'); const pp = l3plLinkActs(false).map(a => a.name);
-      return { both, ex, pp, xrow: !!xrow, dlg, coupledBoth };
+      const synth = l3plRealObj({ object_id: 'excel-abc' }) || l3plRealObj({ object_id: 'manuell-1' }) || !l3plRealObj({ object_id: 'X1' });
+      return { both, ex, pp, xrow: !!xrow, dlg, coupledBoth, synth };
     });
-    if (!lk.both.includes('Etablering bodar') || !lk.both.includes('Gjutning pelare') || lk.ex.join() !== 'Etablering bodar' || lk.pp.includes('Etablering bodar') || !lk.xrow || lk.dlg || !lk.coupledBoth) fail('4D-koppling PP/Excel/båda: ' + JSON.stringify(lk));
+    if (!lk.both.includes('Etablering bodar') || !lk.both.includes('Gjutning pelare') || lk.ex.join() !== 'Etablering bodar' || lk.pp.includes('Etablering bodar') || !lk.xrow || lk.dlg || !lk.coupledBoth || lk.synth) fail('4D-koppling PP/Excel/båda: ' + JSON.stringify(lk));
     console.log('OK: 4D-koppling – Powerproject, Excel eller båda; Excel-raderna skyddade mot redigering här');
     // Valen finns i fliken.
     const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlFxBl', 'v3FlFxLegend', 'v3FlAnimDef', 'v3PlLinkHost', 'v3FlTitleOn'].every(id => document.getElementById(id)); });

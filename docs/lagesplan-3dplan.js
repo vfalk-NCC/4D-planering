@@ -53,6 +53,8 @@ function l3plLinkActs(split) {
   return out.sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name, "sv", { numeric: true }));
 }
 /* En lapp per aktivitet (alla objekt i samma grupp blir en lapp, som på dashboardens tavla), eller en per objekt. */
+/* Riktig 3D-koppling: Excel-importens nya rader har en syntetisk object_id ("excel-…", "manuell-…") tills de kopplas. */
+function l3plRealObj(r) { const o = String((r && r.object_id) || ""); return !!o && !/^(excel|manuell)-/.test(o); }
 function l3plActs(split = false, rowsIn = null, pre = "") {
   const map = new Map();
   (rowsIn || l3pl.rows || []).forEach(r => {
@@ -69,7 +71,7 @@ function l3plActs(split = false, rowsIn = null, pre = "") {
     return { key, rows, name, objs, area: String(r.area || "").trim() || "(utan område)", contractor: String(r.contractor || "").trim(), start: s, end: e,
       progress: Math.round(rows.reduce((a, x) => a + (Number(x.progress) || 0), 0) / rows.length), temporary: rows.some(x => x.temporary === true),
       deps: [...new Set(rows.flatMap(x => (Array.isArray(x.depends_on) ? x.depends_on : []).map(String)))].filter(id => !rows.some(x => String(x.id) === id)),
-      bl: bs.length && be.length ? [bs[0].slice(0, 10), be[be.length - 1].slice(0, 10)] : null, coupled: rows.some(x => x.object_id) }; // kopplad = har objektets GUID (Excel-raderna har ofta inget model_id)
+      bl: bs.length && be.length ? [bs[0].slice(0, 10), be[be.length - 1].slice(0, 10)] : null, coupled: rows.some(l3plRealObj) }; // kopplad = har objektets GUID (Excel-raderna har ofta inget model_id)
   }).sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name, "sv", { numeric: true }));
 }
 const l3plDay = () => $("dateInput").value || todayIso();
