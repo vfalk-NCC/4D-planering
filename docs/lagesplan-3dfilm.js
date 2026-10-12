@@ -16,7 +16,7 @@ const L3PL_DAYMS = 86400000;
 const l3plShortIso = t => { const d = new Date(t); return `${d.getUTCDate()} ${L3PL_MON[d.getUTCMonth()]} ${d.getUTCFullYear()}`; };
 const l3fsOn = () => !!(l3plPrefs().film || {}).strip;
 function l3fsRange() {
-  const f = l3plPrefs().film || {}, acts = l3plActs(false);
+  const f = l3plPrefs().film || {}, acts = l3plFilmActs();
   const lo = f.from || (acts.length ? acts[0].start : l3plDay()), hi = f.to || (acts.length ? acts.reduce((m, a) => (a.end > m ? a.end : m), acts[0].end) : l3gaAdd(l3plDay(), 60));
   return [l3plDate(lo).getTime(), l3plDate(hi > lo ? hi : l3gaAdd(lo, 1)).getTime()];
 }
@@ -27,7 +27,7 @@ function l3fsToggle(on = !l3fsOn()) {
 }
 /* Pärlbandet: [{ a, x (0–1), row }] – högst tre rader, i startordning; det som inte får plats räknas. */
 function l3fsPearls(widthPx, t0, t1, charPx = 6.1) {
-  const acts = l3plActs(false).filter(a => l3plDate(a.end).getTime() >= t0 && l3plDate(a.start).getTime() <= t1);
+  const acts = l3plFilmActs().filter(a => l3plDate(a.end).getTime() >= t0 && l3plDate(a.start).getTime() <= t1);
   const ends = [-1e9, -1e9, -1e9], out = [];
   let hidden = 0;
   acts.forEach(a => {
@@ -46,6 +46,7 @@ function l3fsRender() {
   let el = document.getElementById("v3FilmStrip");
   if (!l3fsOn()) { if (el) el.remove(); return; }
   if (!l3pl.rows) { l3plLoad().then(l3fsRender); return; }
+  if (l3plFilmSrc() !== "pp" && !l3pl.xrows) { l3plLoadX().then(l3fsRender); return; }
   if (!el) {
     el = document.createElement("div"); el.id = "v3FilmStrip"; el.className = "v3-fs";
     host.appendChild(el);

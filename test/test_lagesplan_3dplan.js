@@ -30,7 +30,7 @@ const PP = [
     await page.route('https://api.github.com/**', r => {
       const f = decodeURIComponent(new URL(r.request().url()).pathname.replace('/repos/vfalk-NCC/4D-data/contents/', ''));
       if (r.request().method() !== 'GET') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha: 'x' } }) });
-      const data = { 'projects/p1/pp/plan_items.json': PP, 'projects/p1/plan_milestones.json': [{ id: 'm1', name: 'Stomme klar', target_date: '2026-10-14', done: false }] }[f];
+      const data = { 'projects/p1/pp/plan_items.json': PP, 'projects/p1/plan_items.json': [{ id: 'x1', object_id: 'X1', object_name: 'Bod', activity: 'Etablering bodar', area: 'Etablering', start_date: '2026-10-10', end_date: '2026-10-15' }], 'projects/p1/plan_milestones.json': [{ id: 'm1', name: 'Stomme klar', target_date: '2026-10-14', done: false }] }[f];
       r.fulfill(data ? { status: 200, contentType: 'application/json', body: JSON.stringify({ content: Buffer.from(JSON.stringify(data)).toString('base64'), sha: 's' }) } : { status: 404, body: '{}' });
     });
     await page.goto(`http://localhost:${PORT}/lagesplan.html?project=p1`); await page.waitForTimeout(900);
@@ -206,6 +206,17 @@ const PP = [
     const need = ['VECKA', '14 okt 2026', 'Etapp 1', 'PÅGÅR NU', 'Hus A', 'Gjutning pelare', 'PROJEKTET KLART', 'aktiviteter klara', 'Stomme klar', 'MILSTOLPE'];
     const miss = need.filter(t => !fx.all.includes(t));
     if (miss.length || !fx.weekRoll || !/före baslinjen/.test(fx.all) || !(fx.ahead > 0) || !/Klar/.test(fx.done) || fx.off !== 0 || !fx.glow || !fx.smooth || !fx.noBl || !fx.hud || !fx.hudOff) fail('Grafiken i filmen: ' + JSON.stringify({ miss, ...fx, all: fx.all.slice(0, 400) }));
+    // Filmens planering: Powerproject, Excel eller båda.
+    const src = await page.evaluate(async () => {
+      const set = v => l3plSet('film', { ...l3plPrefs().film, src: v });
+      set('excel'); await l3plLoadX(); const ex = l3plFilmActs().map(a => a.name);
+      set('both'); const both = l3plFilmActs(); const fxb = await l3fxStart('2026-10-01', '2026-10-21'); l3fxFrame(fxb, '2026-10-12', 0);
+      set('pp'); const pp = l3plFilmActs().map(a => a.name);
+      return { ex, both: both.map(a => a.name), bothArea: both.find(a => a.name === 'Etablering bodar').area, fxAreas: [...new Set(fxb.active.map(a => a.area))], pp, sel: (() => { l3PalTab('plan'); l3plRenderTab(); return !!document.getElementById('v3FlSrc'); })() };
+    });
+    if (src.ex.join() !== 'Etablering bodar' || !src.both.includes('Etablering bodar') || !src.both.includes('Gjutning pelare') || src.bothArea !== 'Excel · Etablering' || !src.fxAreas.includes('Excel · Etablering') || src.pp.includes('Etablering bodar') || !src.sel)
+      fail('Filmens planering (PP/Excel/båda): ' + JSON.stringify(src));
+    console.log('OK: filmens planering – Powerproject, Excel eller båda (Excel-områdena märkta)');
     // Valen finns i fliken.
     const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlFxBl', 'v3FlTitleOn'].every(id => document.getElementById(id)); });
     if (!ui) fail('Valen för grafiken saknas i fliken');

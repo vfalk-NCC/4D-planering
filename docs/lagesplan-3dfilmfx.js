@@ -23,7 +23,8 @@ function l3fxLoadMiles() {
 
 /* Förberedelse när filmen startar: aktiviteterna, förloppet per dag (nu och baslinjen) och milstolparna. */
 async function l3fxStart(from, to) {
-  const o = l3fxOpts(), acts = l3plActs().map(a => ({ ...a, t0: l3plDate(a.start).getTime(), t1: l3plDate(a.end).getTime() + L3FX_DAY, b0: a.bl ? l3plDate(a.bl[0]).getTime() : null, b1: a.bl ? l3plDate(a.bl[1]).getTime() + L3FX_DAY : null }));
+  if (l3plFilmSrc() !== "pp") await l3plLoadX(); // Excel-planeringen (eller båda)
+  const o = l3fxOpts(), acts = l3plFilmActs().map(a => ({ ...a, t0: l3plDate(a.start).getTime(), t1: l3plDate(a.end).getTime() + L3FX_DAY, b0: a.bl ? l3plDate(a.bl[0]).getTime() : null, b1: a.bl ? l3plDate(a.bl[1]).getTime() + L3FX_DAY : null }));
   const fx = { o, acts, seen: new Map(), gone: [], prev: new Set(), week: null, banner: null, passed: new Set(), glowKey: "", glow: [], miles: [] };
   if (o.miles) { try { fx.miles = (await l3fxLoadMiles()).filter(m => m.date >= from && m.date <= to); } catch (e) { fx.miles = []; } }
   // Förloppet: varje aktivitet väger efter sin längd. Baslinjen jämförs med samma aktiviteter (de som har en).

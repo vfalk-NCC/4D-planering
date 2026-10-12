@@ -25,12 +25,31 @@ function l3plLoad(force) {
     .then(() => { l3pl.loading = null; l3plRender(); return l3pl.rows; });
   return l3pl.loading;
 }
+/* Filmens planering (Victor 2026-10-12: "välja om den ska koppla till PP-planeringen eller excel-planeringen eller
+   båda samtidigt"): "pp", "excel" eller "both". Excel-planeringen läses ur projektets plan_items.json (den som redan
+   är inläst om lägesplanen öppnades med Excel). */
+const l3plFilmSrc = () => ((l3plPrefs().film || {}).src) || "pp";
+function l3plLoadX() {
+  if (l3pl.xrows) return Promise.resolve(l3pl.xrows);
+  if (typeof planSource !== "undefined" && planSource !== "pp" && Array.isArray(items) && items.length) { l3pl.xrows = items; return Promise.resolve(items); }
+  if (l3pl.xloading) return l3pl.xloading;
+  l3pl.xloading = ghReadJSON(token, `projects/${encodeURIComponent(projectId)}/plan_items.json`).then(a => (l3pl.xrows = Array.isArray(a) ? a : [])).catch(() => (l3pl.xrows = [])).finally(() => { l3pl.xloading = null; });
+  return l3pl.xloading;
+}
+/* Aktiviteterna för filmen (pärlbandet, tidslinjen, grafiken) efter valet ovan. Excel-aktiviteterna får "Excel · "
+   framför området när båda visas, så att de går att skilja åt. */
+function l3plFilmActs() {
+  const src = l3plFilmSrc(), out = [];
+  if (src !== "excel") out.push(...l3plActs(false));
+  if (src !== "pp") out.push(...l3plActs(false, l3pl.xrows || [], "x").map(a => (src === "both" ? { ...a, area: `Excel · ${a.area}` } : a)));
+  return out.sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name, "sv", { numeric: true }));
+}
 /* En lapp per aktivitet (alla objekt i samma grupp blir en lapp, som på dashboardens tavla), eller en per objekt. */
-function l3plActs(split = false) {
+function l3plActs(split = false, rowsIn = null, pre = "") {
   const map = new Map();
-  (l3pl.rows || []).forEach(r => {
+  (rowsIn || l3pl.rows || []).forEach(r => {
     if (!r.start_date || !r.end_date) return;
-    const k = split ? "i:" + r.id : r.group_id ? "g:" + r.group_id : r.source_key ? "s:" + r.source_key : "i:" + r.id;
+    const k = pre + (split ? "i:" + r.id : r.group_id ? "g:" + r.group_id : r.source_key ? "s:" + r.source_key : "i:" + r.id);
     if (!map.has(k)) map.set(k, []);
     map.get(k).push(r);
   });
@@ -80,6 +99,7 @@ function l3plRenderTab() {
         <label>Från<input type="date" id="v3FlFrom" value="${esc(f.from || range[0])}" /></label>
         <label>Till<input type="date" id="v3FlTo" value="${esc(f.to || range[1])}" /></label>
         <label>Längd (s)<input type="number" id="v3FlSec" min="3" max="600" value="${esc(String(f.sec || 20))}" /></label>
+        <label title="Vilken planering filmen följer: aktiviteterna i pärlbandet, Pågår nu, förloppet och glöden">Planering<select id="v3FlSrc">${[["pp", "Powerproject"], ["excel", "Excel (4-veckors)"], ["both", "Båda"]].map(([v, t]) => `<option value="${v}" ${l3plFilmSrc() === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
         <label>Upplösning<select id="v3FlRes">${[["720", "720p"], ["1080", "1080p (Full HD)"], ["1440", "1440p"]].map(([v, t]) => `<option value="${v}" ${String(f.res || "1080") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
       </div>
       <details class="v3-pl-fx" ${P.fxOpen === false ? "" : "open"}><summary>Grafik i filmen</summary>
@@ -102,7 +122,8 @@ function l3plRenderTab() {
   on("v3PlReload", () => { l3pl.rows = null; l3plLoad(true); l3plRenderTab(); });
   on("v3PlDock", () => l3plDockToggle());
   host.querySelectorAll("[data-plsel]").forEach(b => { b.onclick = () => l3plSelect(b.dataset.plsel); });
-  const save = () => { l3plSet("film", { ...l3plPrefs().film, from: host.querySelector("#v3FlFrom").value, to: host.querySelector("#v3FlTo").value, sec: Number(host.querySelector("#v3FlSec").value) || 20, res: host.querySelector("#v3FlRes").value, title: host.querySelector("#v3FlTitleOn").checked, pearls: host.querySelector("#v3FlPearls").checked, fxNow: host.querySelector("#v3FlFxNow").checked, fxGlow: host.querySelector("#v3FlFxGlow").checked, fxMiles: host.querySelector("#v3FlFxMiles").checked, fxMeter: host.querySelector("#v3FlFxMeter").checked, fxBl: host.querySelector("#v3FlFxBl").checked, caption: host.querySelector("#v3FlTitle").value }); if (l3fsOn()) l3fsRender(); };
+  const save = () => { l3plSet("film", { ...l3plPrefs().film, from: host.querySelector("#v3FlFrom").value, to: host.querySelector("#v3FlTo").value, sec: Number(host.querySelector("#v3FlSec").value) || 20, res: host.querySelector("#v3FlRes").value, src: host.querySelector("#v3FlSrc").value, title: host.querySelector("#v3FlTitleOn").checked, pearls: host.querySelector("#v3FlPearls").checked, fxNow: host.querySelector("#v3FlFxNow").checked, fxGlow: host.querySelector("#v3FlFxGlow").checked, fxMiles: host.querySelector("#v3FlFxMiles").checked, fxMeter: host.querySelector("#v3FlFxMeter").checked, fxBl: host.querySelector("#v3FlFxBl").checked, caption: host.querySelector("#v3FlTitle").value }); if (l3fsOn()) l3fsRender(); };
+  on("v3FlSrc", () => { save(); l3plLoadX().then(() => { if (l3fsOn()) l3fsRender(); }); }, "onchange");
   ["v3FlFrom", "v3FlTo", "v3FlSec", "v3FlRes", "v3FlTitleOn", "v3FlPearls", "v3FlTitle", "v3FlFxNow", "v3FlFxGlow", "v3FlFxMiles", "v3FlFxMeter", "v3FlFxBl"].forEach(id => on(id, save, "onchange"));
   const fxd = host.querySelector(".v3-pl-fx"); if (fxd) fxd.ontoggle = () => l3plSet("fxOpen", fxd.open);
   on("v3FlStrip", () => { save(); l3fsToggle(); });
