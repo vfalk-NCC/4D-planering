@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-12 10:13";
+const APP_VERSION = "2026-10-12 10:49";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -3010,12 +3010,13 @@ async function applyTimelineColors() {
   const byModel = {}; // modelId -> { planerad:[], pagaende:[], forsenad:[], klar:[], pausad:[] }
 
   // Temporära objekt (t.ex. en mobilkran) utanför sin tid får en egen grupp: dolda eller svaga.
-  const empty = () => ({ planerad: [], pagaende: [], forsenad: [], klar: [], pausad: [], tempoff: [] });
+  const empty = () => ({ planerad: [], pagaende: [], forsenad: [], klar: [], pausad: [], tempoff: [], tempon: [] });
   for (const it of items) {
     const phase = computeItemPhase(it, selectedDate, warningDays);
     if (!phase) continue;
     byModel[it.modelId] = byModel[it.modelId] || empty();
-    byModel[it.modelId][isTempOffAt(it, selectedDate) ? "tempoff" : phase].push(it.objectId);
+    // Temporära inom sin tid behåller sin riktiga färg (Victor 2026-10-12) – ingen statusfärg.
+    byModel[it.modelId][isTempOffAt(it, selectedDate) ? "tempoff" : it.temporary === true ? "tempon" : phase].push(it.objectId);
   }
 
   const colors = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
@@ -3025,6 +3026,7 @@ async function applyTimelineColors() {
     if (modelId === "null" || modelId === "undefined") continue; // ej kopplade (t.ex. bara manuell markering)
     const group = byModel[modelId];
     for (const phase of Object.keys(group)) {
+      if (phase === "tempon") { await colorResetGroup(modelId, group[phase]); continue; }
       await colorGroup(modelId, group[phase], colors[phase], opacities[phase]);
     }
   }
@@ -3061,6 +3063,12 @@ function tempOffOpacity() { const v = Number(settings.tempOffOpacity); return Nu
  * HELA gruppens färgsättning hoppas över - samma bugg som tidigare löstes
  * för markering i 3D-vyn (se selectItemsInModel).
  */
+async function colorResetGroup(modelId, externalIds) {
+  if (!externalIds.length) return;
+  const results = await convertToRuntimeIdsSafe(modelId, externalIds);
+  const valid = results.map(r => r.runtimeId).filter(id => id !== undefined && id !== null);
+  if (valid.length) await API.viewer.setObjectState({ modelObjectIds: [{ modelId, objectRuntimeIds: valid }] }, { color: "reset" });
+}
 async function visibleGroup(modelId, externalIds, visible) {
   if (!externalIds.length) return;
   const results = await convertToRuntimeIdsSafe(modelId, externalIds);

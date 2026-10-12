@@ -77,15 +77,15 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   // 3D: alfa per objekt på ett datum (sista färgen som sattes för objektet).
   const alphaAt = d => page.evaluate(async d => {
     window.__states = []; document.getElementById('timelineDate').value = d; await applyTimelineColors();
-    const out = {}; window.__states.forEach(({ sel, st }) => { if (!st || !st.color || typeof st.color !== 'object') return; sel.modelObjectIds.forEach(m => m.objectRuntimeIds.forEach(id => { out[id] = st.color.a; })); });
+    const out = {}; window.__states.forEach(({ sel, st }) => { if (!st || !st.color || !sel) return; sel.modelObjectIds.forEach(m => m.objectRuntimeIds.forEach(id => { out[id] = typeof st.color === 'object' ? st.color.a : st.color; })); });
     return out;
   }, d);
   let a = await alphaAt('2026-09-25');
   if (a[1] !== 0 || a[2] !== 255) fail('Före start: kranen dold, väggen synlig: ' + JSON.stringify(a));
   a = await alphaAt('2026-10-05');
-  if (a[1] !== 255 || a[3] !== 255) fail('Under sin tid: kranen och stämpen synliga: ' + JSON.stringify(a));
+  if (a[1] !== 'reset' || a[3] !== 'reset') fail('Under sin tid: kranen och stämpen med sin riktiga färg (ingen statusfärg): ' + JSON.stringify(a));
   a = await alphaAt('2026-10-10');
-  if (a[1] !== 255) fail('Slutdatum räknas med: ' + JSON.stringify(a));
+  if (a[1] !== 'reset') fail('Slutdatum räknas med: ' + JSON.stringify(a));
   if (a[3] !== 0) fail('Stämpen togs bort 2026-10-06 (verkligt avslut) – dold efter det: ' + JSON.stringify(a));
   a = await alphaAt('2026-10-11');
   if (a[1] !== 0 || a[2] !== 255) fail('Efter slut: kranen dold, väggen kvar: ' + JSON.stringify(a));

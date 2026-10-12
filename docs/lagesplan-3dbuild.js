@@ -543,7 +543,7 @@ function l3bRecolor() {
       if (r.guid && !r.itemId) r.itemId = byGuid.get(r.guid) || null; // kopplad efter att modellen lästes
       const row = r.itemId ? byId.get(r.itemId) : null;
       if (row && typeof rowTempOffAt === "function" && rowTempOffAt(row, at)) off.add(ri); // temporär utanför sin tid: syns inte
-      const c = r.itemId ? new THREE.Color(phaseColor(l3Phase(row))) : null;
+      const c = r.itemId && !(row && row.temporary === true) ? new THREE.Color(phaseColor(l3Phase(row))) : null; // temporära: sin riktiga färg (Victor 2026-10-12)
       const cb = typeof l3pColorFor === "function" ? l3pColorFor(m, r) : null; // Färga efter värde (Egenskaper)
       const tint = u.tint && u.tint.get(ri); // tillfällig färg (bara sessionen) går före allt
       const rgb = tint || cb || (c ? [c.r, c.g, c.b] : r.base);
