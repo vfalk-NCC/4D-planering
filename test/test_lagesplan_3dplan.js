@@ -279,6 +279,12 @@ const PP = [
       return { both, ex, pp, xrow: !!xrow, dlg, coupledBoth, synth };
     });
     if (!lk.both.includes('Etablering bodar') || !lk.both.includes('Gjutning pelare') || lk.ex.join() !== 'Etablering bodar' || lk.pp.includes('Etablering bodar') || !lk.xrow || lk.dlg || !lk.coupledBoth || lk.synth) fail('4D-koppling PP/Excel/båda: ' + JSON.stringify(lk));
+    // Pågår nu: rubriken bara sista ledet, områdesnamnet bort från raderna.
+    const hd = await page.evaluate(() => [l3fxAreaHead('Produktion / 743 Krosshall'), l3fxAreaHead('Excel · Produktion / 741 Sektionsfickor'), l3fxAreaHead('Hus A'),
+      l3fxActText({ name: '743 Krosshall', area: 'Produktion / 743 Krosshall', objs: ['743 Krosshall - Bergstag', '743 Krosshall – Extra sprängning'] }),
+      l3fxActText({ name: '741 Sektionsfickor SF2: Gjutning', area: 'Produktion / 741 Sektionsfickor', objs: [] })]);
+    if (hd.join('|') !== '743 Krosshall|Excel · 741 Sektionsfickor|Hus A|Bergstag, Extra sprängning|SF2: Gjutning') fail('Pågår nu, rubrik/rader: ' + JSON.stringify(hd));
+    else console.log('OK: Pågår nu – rubriken utan "Produktion /", raderna utan områdesnamnet');
     // 3D-färger i Powerproject-lägesplanen: Excel-kopplade objekt färgas också (Powerproject först), valbart.
     const cs = await page.evaluate(async () => {
       await l3plLoadX(); $('dateInput').value = '2026-10-12'; const ps0 = planSource, it0 = items; planSource = 'pp'; items = l3pl.rows;

@@ -295,17 +295,28 @@ function l3fxMeter(ctx, W, s, t, fx) {
    text på två rader, så små att alla aktiva får plats"): områdena som rubriker med sitt förlopp och under varje
    rubrik alla pågående aktiviteter – texten utan områdets namn, högst två rader, med en liten stapel. Texten
    krymps tills allt får plats; först om det ändå inte räcker bläddras områdena. */
+/* Områdets rubrik: bara sista ledet (Victor 2026-10-12: "ta bort Produktion ur rubrik") – "Produktion / 741 Sektionsfickor"
+   → "741 Sektionsfickor". "Excel · " behålls när båda planeringarna visas. */
+function l3fxAreaHead(area) {
+  const x = String(area || ""), pre = x.startsWith("Excel · ") ? "Excel · " : "", parts = x.slice(pre.length).split(/\s+\/\s+/).map(p => p.trim()).filter(Boolean);
+  return pre + (parts.length ? parts[parts.length - 1] : x.slice(pre.length).trim());
+}
 function l3fxActText(a) {
-  let n = String(a.name || "").trim(), ar = String(a.area || "").replace(/^Excel · /, "").trim();
-  if (ar) {
-    const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), code = (ar.match(/^\d+[A-Za-z]?/) || [""])[0];
-    n = n.replace(new RegExp("^\\s*" + esc(ar) + "\\s*[-–—:·,]?\\s*", "i"), "");
-    if (code) n = n.replace(new RegExp("^\\s*" + esc(code) + "\\b\\s*[-–—:·,]?\\s*"), "");
-  }
+  let n = String(a.name || "").trim();
+  const full = String(a.area || "").replace(/^Excel · /, "").trim(), ar = l3fxAreaHead(full).replace(/^Excel · /, "");
+  // Områdesnamnet först på raden tas bort ("743 Krosshall – Bergstag" → "Bergstag"): det står redan i rubriken.
+  const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), code = (ar.match(/^\d+[A-Za-z]?/) || [""])[0];
+  const strip = t => {
+    let v = String(t || "").trim();
+    [full, ar].filter(Boolean).forEach(z => { v = v.replace(new RegExp("^\\s*" + esc(z) + "\\s*[-–—:·,/]?\\s*", "i"), ""); });
+    if (code) v = v.replace(new RegExp("^\\s*" + esc(code) + "\\b\\s*[-–—:·,/]?\\s*"), "");
+    return v.trim();
+  };
+  n = strip(n);
   // Det som faktiskt pågår: från Powerproject är aktiviteten ofta bara sammanfattningsraden (= området) och
   // uppgifterna ligger i objektnamnen – de visas, med aktivitetens eget namn först om det säger något mer.
-  const same = !n || n.toLowerCase() === ar.toLowerCase();
-  const objs = (a.objs || []).filter(Boolean);
+  const same = !n || n.toLowerCase() === ar.toLowerCase() || n.toLowerCase() === full.toLowerCase();
+  const objs = (a.objs || []).map(o => strip(o) || o).filter(Boolean);
   const parts = [same ? "" : n, objs.length ? objs.join(", ") : ""].filter(Boolean);
   return parts.length ? parts.join(" – ") : (a.rows && a.rows[0] && a.rows[0].object_name) || a.name;
 }
@@ -376,7 +387,7 @@ function l3fxNow(ctx, W, H, s, iso, ft, fx, pearls, t) {
       ctx.fillStyle = col; l3fxRR(ctx, cx0 + pad, cy, 5 * s, gh, 2.5 * s); ctx.fill();
       const hx = cx0 + pad + 16 * s, hw = L.cw - 2 * pad - 26 * s, hfs = Math.round(19 * s * Math.max(0.75, L.k));
       ctx.font = `800 ${hfs}px system-ui, sans-serif`; ctx.fillStyle = "#fff";
-      let an = g.area; while (an.length > 3 && ctx.measureText(an).width > hw - 70 * s) an = an.slice(0, -2); if (an !== g.area) an = an.trim() + "…";
+      const ah = l3fxAreaHead(g.area); let an = ah; while (an.length > 3 && ctx.measureText(an).width > hw - 70 * s) an = an.slice(0, -2); if (an !== ah) an = an.trim() + "…";
       ctx.fillText(an, hx, cy + m.gHead * 0.4);
       ctx.textAlign = "right"; ctx.fillText(`${Math.floor(ap * 100)} %`, hx + hw, cy + m.gHead * 0.4); ctx.textAlign = "left";
       ctx.fillStyle = "rgba(255,255,255,.12)"; l3fxRR(ctx, hx, cy + m.gHead * 0.74, hw, 5 * s, 2.5 * s); ctx.fill();
