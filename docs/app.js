@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-12 10:07";
+const APP_VERSION = "2026-10-12 10:13";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -3028,6 +3028,19 @@ async function applyTimelineColors() {
       await colorGroup(modelId, group[phase], colors[phase], opacities[phase]);
     }
   }
+  // Dolda på riktigt (Victor 2026-10-12: "Den är inte dold trots att jag har ställt in så"): Trimble Connect döljer
+  // inte ett objekt som bara får färg med alfa 0. Temporära utanför sin tid släcks (när inställningen är "dolda"),
+  // inom sin tid tänds de igen. Bara temporära objekt rörs – annan synlighet (filter m.m.) står kvar.
+  try {
+    const hide = opacities.tempoff <= 0;
+    for (const modelId of Object.keys(byModel)) {
+      if (modelId === "null" || modelId === "undefined") continue;
+      const off = hide ? byModel[modelId].tempoff : [];
+      const on = items.filter(it => typeof it.temporary === "boolean" && it.modelId === modelId && !off.includes(it.objectId)).map(it => it.objectId);
+      await visibleGroup(modelId, off, false);
+      await visibleGroup(modelId, on, true);
+    }
+  } catch (e) { console.warn("Temporära objekt: synlighet", e); }
   if (typeof renderManualMarks === "function") renderManualMarks();
 }
 
@@ -3048,6 +3061,12 @@ function tempOffOpacity() { const v = Number(settings.tempOffOpacity); return Nu
  * HELA gruppens färgsättning hoppas över - samma bugg som tidigare löstes
  * för markering i 3D-vyn (se selectItemsInModel).
  */
+async function visibleGroup(modelId, externalIds, visible) {
+  if (!externalIds.length) return;
+  const results = await convertToRuntimeIdsSafe(modelId, externalIds);
+  const valid = results.map(r => r.runtimeId).filter(id => id !== undefined && id !== null);
+  if (valid.length) await API.viewer.setObjectState({ modelObjectIds: [{ modelId, objectRuntimeIds: valid }] }, { visible });
+}
 async function colorGroup(modelId, externalIds, colorHex, opacity) {
   if (externalIds.length === 0 || !colorHex) return;
   const results = await convertToRuntimeIdsSafe(modelId, externalIds);

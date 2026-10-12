@@ -89,6 +89,16 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   if (a[3] !== 0) fail('Stämpen togs bort 2026-10-06 (verkligt avslut) – dold efter det: ' + JSON.stringify(a));
   a = await alphaAt('2026-10-11');
   if (a[1] !== 0 || a[2] !== 255) fail('Efter slut: kranen dold, väggen kvar: ' + JSON.stringify(a));
+  // Släckta på riktigt (visible: false) utanför sin tid och tända igen inom den (Victor 2026-10-12).
+  const visAt = d => page.evaluate(async d => {
+    window.__states = []; document.getElementById('timelineDate').value = d; await applyTimelineColors();
+    const out = {}; window.__states.forEach(({ sel, st }) => { if (!st || typeof st.visible !== 'boolean' || !sel) return; sel.modelObjectIds.forEach(m => m.objectRuntimeIds.forEach(id => { out[id] = st.visible; })); });
+    return out;
+  }, d);
+  let v = await visAt('2026-09-25');
+  if (v[1] !== false || v[2] !== undefined) fail('Före start: kranen släckt (visible false), väggen orörd: ' + JSON.stringify(v));
+  v = await visAt('2026-10-05');
+  if (v[1] !== true || v[3] !== true) fail('Under sin tid: tända igen: ' + JSON.stringify(v));
   console.log('OK: temporära objekt syns i 3D bara mellan start och slut');
 
   // Inställning: svaga i stället för dolda.
