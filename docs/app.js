@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-12 11:10";
+const APP_VERSION = "2026-10-12 12:45";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -415,6 +415,26 @@ window.addEventListener("message", async e => {
       // Lägesplanens 3D-vy, fliken Grupper: indelningen i Organizer (tc-organizer.js). Fel skickas med stegen som provades.
       try { reply(await tcOrganizerFetch(await tcAccessToken(), await API.project.getProject(), API.viewer)); }
       catch (er) { reply({ failed: er.message, log: er.log || [] }); }
+    } else if (msg.type === "coupleObjects") {
+      // Lägesplanens 3D-vy (fliken 4D-planering): koppla 3D-objekt till en aktivitet – samma som Koppla till markering.
+      // Skydd: bara mot den planering som visas här, och bara en aktivitet som finns.
+      const want = msg.source === "pp" ? "pp" : "excel";
+      const item = items.find(it => String(it.id) === String(msg.itemId));
+      const objs = (Array.isArray(msg.objs) ? msg.objs : []).filter(o => o && o.modelId && o.objectId).map(o => ({ modelId: String(o.modelId), objectId: String(o.objectId) }));
+      if (want !== planSource) reply({ failed: `4D-planering visar ${planSource === "pp" ? "Powerproject" : "Excel-importen"} just nu – välj ${want === "pp" ? "Powerproject" : "Excel-import"} överst i 4D-planering och försök igen.` });
+      else if (!item) reply({ failed: "Hittar inte aktiviteten i 4D-planering – tryck ↻ där och försök igen." });
+      else if (!objs.length) reply({ failed: "Inga objekt att koppla." });
+      else {
+        const have = new Set([item, ...(typeof siblingsOf === "function" ? siblingsOf(item) : [])].map(x => String(x.objectId)));
+        const todo = objs.filter(o => !have.has(o.objectId));
+        if (todo.length) await coupleItemToModelObjects(item, todo);
+        const bad = items.find(it => String(it.id) === String(item.id) && it._saveError);
+        reply(bad ? { failed: bad._saveError } : { n: todo.length });
+      }
+    } else if (msg.type === "planChanged") {
+      // Lägesplanens 3D-vy har sparat i tidplanen: läs om (bara om samma planering visas här).
+      if ((msg.source === "pp" ? "pp" : "excel") === planSource && typeof refreshAllData === "function") { try { await refreshAllData(); } catch (er) { /* visas i 4D-planering */ } }
+      reply({});
     } else if (msg.type === "tcOrganizerLinks") {
       // Lägesplanens 3D-vy: lägg till/ta bort objekt i en Organizer-grupp (bara de angivna länkarna).
       try { reply(await tcOrganizerLinks(await tcAccessToken(), await API.project.getProject(), msg)); }

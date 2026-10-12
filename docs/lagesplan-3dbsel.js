@@ -315,6 +315,7 @@ function l3bsRenderSide(side) {
       ${typeof l3bmStart === "function" ? act("v3BsMove", I.move, "Flytta", "Flytta de markerade – sparas som en ny IFC-fil i Trimble Connect") : ""}
       ${typeof l3bmStart === "function" ? act("v3BsCopy", I.copy, "Kopiera", "Kopiera de markerade och dra kopian dit den ska – sparas som en ny IFC-fil i Trimble Connect, originalet står kvar") : ""}
       ${typeof l3bmIsCopy === "function" && l3bs.sel.some(l3bmIsCopy) ? act("v3BsDel", I.trash || I.x || "", "Radera", "Radera de markerade kopiorna (Delete) – originalobjekten i IFC-filen raderas inte") : ""}
+      ${typeof l3gaCouplePick === "function" ? act("v3BsCouple", L3GA_LINK, "Koppla", "Koppla de markerade till en aktivitet i 4D-planeringen (Powerproject) – du får se vad som sparas innan något ändras") : ""}
       ${typeof ifcSubset === "function" && typeof l3bmFetchIfc === "function" ? act("v3BsExport", I.upload, "IFC", `Exportera de ${n} markerade (med dina flyttar och grupper) som en egen IFC-fil i samma mapp i Trimble Connect – originalet rörs inte`) : ""}
       ${coupled.length ? act("v3BsJump", I.select, "4D", `Markera de ${coupled.length} kopplade aktiviteterna i 4D-planering och objekten i Trimble Connect`) : ""}
     </div>
@@ -331,6 +332,7 @@ function l3bsRenderSide(side) {
   on("v3BsIso", l3bsIsolate);
   on("v3BsMove", () => l3bmStart());
   on("v3BsCopy", () => l3bmStart({ copy: true }));
+  on("v3BsCouple", () => l3gaCouplePick());
   on("v3BsDel", () => l3bmCopyDelete());
   on("v3BsGroup", () => l3PalTab("props"));
   on("v3BsExport", async () => { const b = side.querySelector("#v3BsExport"); b.disabled = true; try { await l3bsExportIfc(); } catch (e) { /* visas i statusraden */ } if (b.isConnected) b.disabled = false; });

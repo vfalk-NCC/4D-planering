@@ -25,21 +25,24 @@ function l3plLoad(force) {
     .then(() => { l3pl.loading = null; l3plRender(); return l3pl.rows; });
   return l3pl.loading;
 }
-/* En lapp per aktivitet (alla objekt i samma grupp blir en lapp, som på dashboardens tavla). */
-function l3plActs() {
+/* En lapp per aktivitet (alla objekt i samma grupp blir en lapp, som på dashboardens tavla), eller en per objekt. */
+function l3plActs(split = false) {
   const map = new Map();
   (l3pl.rows || []).forEach(r => {
     if (!r.start_date || !r.end_date) return;
-    const k = r.group_id ? "g:" + r.group_id : "i:" + r.id;
+    const k = split ? "i:" + r.id : r.group_id ? "g:" + r.group_id : r.source_key ? "s:" + r.source_key : "i:" + r.id;
     if (!map.has(k)) map.set(k, []);
     map.get(k).push(r);
   });
   return [...map].map(([key, rows]) => {
-    const r = rows[0], s = rows.map(x => x.start_date).sort()[0], e = rows.map(x => x.end_date).sort().pop();
+    const r = rows[0], s = rows.map(x => x.start_date.slice(0, 10)).sort()[0], e = rows.map(x => x.end_date.slice(0, 10)).sort().pop();
     const name = String(r.activity || r.object_name || "Aktivitet").trim();
     const objs = [...new Set(rows.map(x => String(x.object_name || "").trim()).filter(n => n && n !== name))];
-    return { key, rows, name, objs, area: String(r.area || "").trim() || "(utan område)", contractor: String(r.contractor || "").trim(), start: s.slice(0, 10), end: e.slice(0, 10),
-      progress: Math.round(rows.reduce((a, x) => a + (Number(x.progress) || 0), 0) / rows.length), temporary: r.temporary === true };
+    const bs = rows.map(x => x.baseline_start_date).filter(Boolean).sort(), be = rows.map(x => x.baseline_end_date).filter(Boolean).sort();
+    return { key, rows, name, objs, area: String(r.area || "").trim() || "(utan område)", contractor: String(r.contractor || "").trim(), start: s, end: e,
+      progress: Math.round(rows.reduce((a, x) => a + (Number(x.progress) || 0), 0) / rows.length), temporary: rows.some(x => x.temporary === true),
+      deps: [...new Set(rows.flatMap(x => (Array.isArray(x.depends_on) ? x.depends_on : []).map(String)))].filter(id => !rows.some(x => String(x.id) === id)),
+      bl: bs.length && be.length ? [bs[0].slice(0, 10), be[be.length - 1].slice(0, 10)] : null, coupled: rows.some(x => x.model_id && x.object_id) };
   }).sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name, "sv", { numeric: true }));
 }
 const l3plDay = () => $("dateInput").value || todayIso();
@@ -104,8 +107,8 @@ function l3plRenderTab() {
   on("v3FlRec", () => { save(); l3plFilm(true); });
 }
 function l3plRender() { l3plRenderTab(); if (l3pl.dock) l3plDockRender(); }
-function l3plSelect(key) {
-  const a = l3plActs().find(x => x.key === key);
+function l3plSelect(key, split = false) {
+  const a = l3plActs(split).find(x => x.key === key) || l3plActs(!split).find(x => x.key === key);
   if (!a) return;
   const guids = new Set(a.rows.map(r => String(r.object_id || "")).filter(Boolean)), ents = [];
   if (typeof l3pEnts === "function") l3b.models.forEach(m => { const map = l3pEnts(m); guids.forEach(g => (map.get(g) || []).forEach(e => ents.push(e))); });
@@ -113,81 +116,7 @@ function l3plSelect(key) {
   else l3Status(`${a.name}: objekten finns inte i de inlästa modellerna.`, true);
 }
 
-/* ---- Tavlan och Gantten (panelen nederst) ---------------------------------------------------------- */
-function l3plDockToggle(on = !l3pl.dock) { l3pl.dock = on; l3plSet("dock", on); l3plDockRender(); l3plRenderTab(); }
-function l3plDockRender() {
-  const host = document.getElementById("v3Canvas");
-  if (!host) return;
-  let d = document.getElementById("v3PlanDock");
-  if (!l3pl.dock) { if (d) d.remove(); return; }
-  if (!d) {
-    d = document.createElement("div"); d.id = "v3PlanDock"; d.className = "v3-pldock";
-    d.style.height = (l3plPrefs().dockH || 300) + "px";
-    host.appendChild(d);
-    ["pointerdown", "wheel", "contextmenu", "dblclick", "click", "keydown"].forEach(t => d.addEventListener(t, e => e.stopPropagation()));
-  }
-  if (!l3pl.rows) { d.innerHTML = `<div class="v3-pal-hint" style="padding:12px"><span class="pm-spin"></span> Hämtar tidplanen…</div>`; l3plLoad(); return; }
-  const P = l3plPrefs(), view = P.view || "board", by = P.colorBy || "contractor", q = String(P.q || "").toLowerCase(), esc = escHtml, day = l3plDay();
-  let acts = l3plActs();
-  if (q) acts = acts.filter(a => `${a.name} ${a.objs.join(" ")} ${a.area} ${a.contractor}`.toLowerCase().includes(q));
-  const head = `<div class="v3-pldock-grip" title="Dra för att ändra höjden"></div><div class="v3-pldock-bar"><b>Powerproject</b>
-      <div class="v3-segs"><button type="button" data-plview="board" class="${view === "board" ? "on" : ""}">Tavla</button><button type="button" data-plview="bars" class="${view === "bars" ? "on" : ""}">Staplar</button></div>
-      <label>Färg <select id="v3PlBy"><option value="contractor" ${by === "contractor" ? "selected" : ""}>Entreprenör</option><option value="area" ${by === "area" ? "selected" : ""}>Område</option><option value="activity" ${by === "activity" ? "selected" : ""}>Aktivitet</option></select></label>
-      <input type="search" id="v3PlQ" placeholder="Sök…" value="${esc(P.q || "")}" />
-      <button type="button" id="v3PlToday" title="Till datumet i 3D">◎ ${esc(day)}</button>
-      <button type="button" class="v3-ic" id="v3PlClose" title="Stäng">✕</button></div>`;
-  if (!acts.length) { d.innerHTML = head + `<div class="v3-pal-hint" style="padding:12px">${l3pl.rows.length ? "Ingen aktivitet matchar." : "Ingen Powerproject-tidplan i projektet."}</div>`; l3plDockBind(d); return; }
-  const lo = acts.reduce((m, a) => (a.start < m ? a.start : m), acts[0].start), hi = acts.reduce((m, a) => (a.end > m ? a.end : m), acts[0].end);
-  const w0 = l3plMonday(lo), nWeeks = Math.max(1, Math.round((l3plMonday(hi) - w0) / 604800000) + 1), nDays = nWeeks * 7;
-  const dayOf = s => Math.round((l3plDate(s) - w0) / 86400000);
-  const colPx = view === "board" ? 154 : 70, dayPx = colPx / 7, todayD = dayOf(day);
-  const keyOf = a => (by === "area" ? a.area : by === "activity" ? a.name : a.contractor || "(ingen entreprenör)");
-  const keys = [...new Set(acts.map(keyOf))].sort((x, y) => x.localeCompare(y, "sv", { numeric: true }));
-  const weeks = Array.from({ length: nWeeks }, (_, i) => { const ws = new Date(w0); ws.setUTCDate(ws.getUTCDate() + i * 7); const we = new Date(ws); we.setUTCDate(we.getUTCDate() + 6);
-    const cur = todayD >= i * 7 && todayD < i * 7 + 7;
-    return `<button type="button" class="v3-pl-week${cur ? " cur" : ""}" data-plweek="${l3plIso(ws)}" title="Visa ${l3plIso(ws)} i 3D"><b>v.${l3plWeekNo(ws)}</b><span>${l3plShort(ws)} – ${l3plShort(we)}</span></button>`; }).join("");
-  const lanes = new Map(); acts.forEach(a => { if (!lanes.has(a.area)) lanes.set(a.area, []); lanes.get(a.area).push(a); });
-  const laneKeys = [...lanes.keys()].sort((x, y) => x.localeCompare(y, "sv", { numeric: true }));
-  const note = a => {
-    const c0 = Math.max(0, dayOf(a.start)), c1 = Math.min(nDays - 1, dayOf(a.end)), ph = zonePhase(a.rows, day), st = phaseColor(ph), c = l3plColor(by, keyOf(a), keys);
-    const label = a.objs.length ? `${a.objs.slice(0, 3).join(", ")}${a.objs.length > 3 ? " +" + (a.objs.length - 3) : ""} – ${a.name}` : a.name;
-    const tip = [label, a.area, a.contractor, `${a.start} – ${a.end}`, `${PHASE_LABELS[ph] || ph} · ${a.progress} %`, a.temporary ? "Temporär" : ""].filter(Boolean).join("\n");
-    if (view === "bars") return `<div class="v3-pl-bar${ph === "forsenad" ? " late" : ""}" data-plsel="${esc(a.key)}" title="${esc(tip)}" style="left:${c0 * dayPx}px;width:${Math.max(dayPx, (c1 - c0 + 1) * dayPx)}px;--st:${st};--bg:${c.bg};--bd:${c.bd};--ink:${c.ink}"><span class="v3-pl-bar-p" style="width:${a.progress}%"></span><span class="v3-pl-bar-t">${esc(label)}</span></div>`;
-    return `<div class="v3-pnote${ph === "forsenad" ? " late" : ""}${ph === "klar" ? " done" : ""}${a.temporary ? " temp" : ""}" data-plsel="${esc(a.key)}" title="${esc(tip)}" style="grid-column:${c0 + 1} / ${c1 + 2};--bg:${c.bg};--bd:${c.bd};--ink:${c.ink};--st:${st}">
-      <i style="background:${st}"></i><span class="t">${esc(label)}</span>${a.contractor && by !== "contractor" ? `<span class="s">${esc(a.contractor)}</span>` : ""}<span class="p" style="width:${a.progress}%;background:${st}"></span></div>`;
-  };
-  let body;
-  if (view === "bars") {
-    body = laneKeys.map(k => `<div class="v3-pl-lane"><div class="v3-pl-lane-h" title="${esc(k)}">${esc(k)} <small>${lanes.get(k).length}</small></div><div class="v3-pl-rows" style="width:${nDays * dayPx}px">${lanes.get(k).map(a => `<div class="v3-pl-row">${note(a)}</div>`).join("")}</div></div>`).join("");
-  } else {
-    body = laneKeys.map(k => `<div class="v3-pl-lane"><div class="v3-pl-lane-h" title="${esc(k)}">${esc(k)} <small>${lanes.get(k).length}</small></div><div class="v3-pl-grid-b" style="grid-template-columns:repeat(${nDays}, ${dayPx}px)">${lanes.get(k).map(note).join("")}</div></div>`).join("");
-  }
-  d.innerHTML = head + `<div class="v3-pl-scroll"><div class="v3-pl-board ${view}" style="--col:${colPx}px;--day:${dayPx}px;width:${150 + nDays * dayPx}px">
-      <div class="v3-pl-weeks"><div class="v3-pl-corner">Område</div><div class="v3-pl-wk" style="grid-template-columns:repeat(${nWeeks}, ${colPx}px)">${weeks}</div></div>
-      ${todayD >= 0 && todayD < nDays ? `<div class="v3-pl-today" style="left:${150 + (todayD + 0.5) * dayPx}px" title="${esc(day)}"></div>` : ""}
-      ${body}</div></div>`;
-  l3plDockBind(d);
-  // Första gången: till dagens vecka.
-  if (!d._scrolled && todayD > 0) { d._scrolled = true; const sc = d.querySelector(".v3-pl-scroll"); if (sc) sc.scrollLeft = Math.max(0, todayD * dayPx - 200); }
-}
-function l3plDockBind(d) {
-  const P = () => l3plPrefs();
-  d.querySelectorAll("[data-plview]").forEach(b => { b.onclick = () => { l3plSet("view", b.dataset.plview); l3plDockRender(); }; });
-  const by = d.querySelector("#v3PlBy"); if (by) by.onchange = () => { l3plSet("colorBy", by.value); l3plDockRender(); };
-  const q = d.querySelector("#v3PlQ"); if (q) q.oninput = () => { l3plSet("q", q.value); const pos = q.selectionStart; l3plDockRender(); const q2 = document.getElementById("v3PlQ"); if (q2) { q2.focus(); q2.setSelectionRange(pos, pos); } };
-  const x = d.querySelector("#v3PlClose"); if (x) x.onclick = () => l3plDockToggle(false);
-  const t = d.querySelector("#v3PlToday"); if (t) t.onclick = () => { d._scrolled = false; l3plDockRender(); };
-  d.querySelectorAll("[data-plsel]").forEach(n => { n.onclick = () => l3plSelect(n.dataset.plsel); });
-  d.querySelectorAll("[data-plweek]").forEach(b => { b.onclick = () => { $("dateInput").value = b.dataset.plweek; $("dateInput").dispatchEvent(new Event("change")); setTimeout(l3plDockRender, 50); }; });
-  const g = d.querySelector(".v3-pldock-grip");
-  if (g) g.onpointerdown = e => {
-    e.preventDefault(); const y0 = e.clientY, h0 = d.offsetHeight, host = document.getElementById("v3Canvas");
-    const mv = ev => { d.style.height = Math.max(120, Math.min(host.clientHeight - 60, h0 + (y0 - ev.clientY))) + "px"; };
-    const up = () => { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); l3plSet("dockH", d.offsetHeight); };
-    window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
-  };
-  void P;
-}
+/* Tavlan, Gantten och listan (panelen nederst) finns i lagesplan-3dgantt.js. */
 
 /* ---- Kameran ---------------------------------------------------------------------------------------- */
 const l3plKeys = () => (((l3plPrefs().keys || {})[l3ViewKey()]) || []).filter(k => k && k.date && k.p && k.t).sort((a, b) => a.date.localeCompare(b.date));

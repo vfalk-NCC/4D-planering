@@ -15,6 +15,7 @@ const PP = [
   { id: 'p1', group_id: 'G1', object_id: '1hZq3$Bq9Fxu8nZK0bW1aA', object_name: 'K10', activity: 'Gjutning pelare', area: 'Hus A', contractor: 'NCC', start_date: '2026-10-05', end_date: '2026-10-16', progress: 40 },
   { id: 'p2', group_id: 'G1', object_id: '2hZq3$Bq9Fxu8nZK0bW1aA', object_name: 'K11', activity: 'Gjutning pelare', area: 'Hus A', contractor: 'NCC', start_date: '2026-10-06', end_date: '2026-10-18', progress: 20 },
   { id: 'p3', object_id: '3hZq3$Bq9Fxu8nZK0bW1aA', object_name: 'Tak', activity: 'Takmontage', area: 'Hus B', contractor: 'Peab', start_date: '2026-11-02', end_date: '2026-11-20', progress: 0 },
+  { id: 'p4', object_id: '4hZq3$Bq9Fxu8nZK0bW1aA', object_name: 'Fasad', activity: 'Fasadmontage', area: 'Hus A', contractor: 'NCC', start_date: '2026-10-17', end_date: '2026-10-20', progress: 0, depends_on: ['p1'] },
 ];
 (async () => {
   const server = http.createServer((q, r) => fs.readFile(path.join(DOCS, decodeURIComponent(q.url.split('?')[0])), (e, d) => { if (e) { r.writeHead(404); r.end(); } else { r.writeHead(200, { 'Content-Type': q.url.includes('.js') ? 'application/javascript' : 'text/html' }); r.end(d); } })).listen(PORT);
@@ -48,13 +49,14 @@ const PP = [
     await page.click('[data-paltab="plan"]');
     await page.waitForSelector('#v3PalPlan #v3PlDock', { timeout: 8000 });
     const tab = await page.textContent('#v3PalPlan');
-    if (!/2 aktiviteter/.test(tab) || !/K10, K11 – Gjutning pelare/.test(tab)) fail('Fliken: tidplanen och det som pågår: ' + tab.replace(/\s+/g, ' ').slice(0, 300));
+    if (!/3 aktiviteter/.test(tab) || !/K10, K11 – Gjutning pelare/.test(tab)) fail('Fliken: tidplanen och det som pågår: ' + tab.replace(/\s+/g, ' ').slice(0, 300));
 
     // Tavlan: en lapp per aktivitet, banor per område, dagens vecka markerad.
     await page.click('#v3PlDock');
-    await page.waitForSelector('#v3PlanDock .v3-pnote');
+    await page.waitForSelector('#v3PlanDock .v3-pnote, #v3PlanDock .v3-ga-out');
+    await page.evaluate(() => { l3plSet('period', 'all'); l3plDockRender(); });
     const b = await page.evaluate(() => ({ notes: [...document.querySelectorAll('#v3PlanDock .v3-pnote .t')].map(n => n.textContent), lanes: [...document.querySelectorAll('#v3PlanDock .v3-pl-lane-h')].map(n => n.textContent.replace(/\s+/g, ' ').trim()), cur: (document.querySelector('#v3PlanDock .v3-pl-week.cur b') || {}).textContent }));
-    if (JSON.stringify(b.notes) !== JSON.stringify(['K10, K11 – Gjutning pelare', 'Tak – Takmontage']) || b.lanes.join('|') !== 'Hus A 1|Hus B 1' || b.cur !== 'v.42') fail('Tavlan: ' + JSON.stringify(b));
+    if (JSON.stringify(b.notes) !== JSON.stringify(['K10, K11: Gjutning pelare', 'Fasad: Fasadmontage', 'Tak: Takmontage']) || b.lanes.join('|') !== '▾Hus A2 st|▾Hus B1 st' || b.cur !== 'v.42') fail('Tavlan: ' + JSON.stringify(b));
     // Tryck på en lapp: markera i 3D (objekten finns i en låtsad modell).
     await page.evaluate(() => { window.__sel = null; const fake = { id: 'm1', name: 'B.ifc', visible: true }; l3b.models.push(fake); const ents = new Map([['1hZq3$Bq9Fxu8nZK0bW1aA', [{ g: 1 }]], ['2hZq3$Bq9Fxu8nZK0bW1aA', [{ g: 2 }]]]); l3pEnts = m => (m === fake ? ents : new Map()); l3bsSet = list => { window.__sel = list.map(e => e.g); }; l3bsZoom = () => {}; });
     await page.click('#v3PlanDock .v3-pnote');
@@ -65,8 +67,62 @@ const PP = [
     if (await page.evaluate(() => $('dateInput').value) !== '2026-11-02') fail('Veckan ska flytta datumet');
     // Staplar.
     await page.click('#v3PlanDock [data-plview="bars"]');
-    if ((await page.$$('#v3PlanDock .v3-pl-bar')).length !== 2) fail('Staplarna');
+    if ((await page.$$('#v3PlanDock .v3-pl-bar')).length !== 3) fail('Staplarna');
     await page.evaluate(() => { $('dateInput').value = '2026-10-12'; });
+
+    // Period 2 v: Tak (november) ligger utanför och räknas.
+    await page.click('#v3PlanDock [data-plview="board"]');
+    await page.click('#v3PlanDock [data-gaper="2w"]');
+    if (!/1 aktivitet utanför/.test(await page.textContent('#v3PlanDock .v3-ga-out'))) fail('Period 2 v ska dölja Tak');
+    await page.click('#v3PlanDock [data-gaper="all"]');
+    // Pilar: Tak väntar på pelarna.
+    await page.evaluate(() => l3plDockRender());
+    await page.waitForTimeout(150);
+    if ((await page.$$('#v3PlanDock .v3-ga-arrows > path')).length !== 1) fail('Pilen för beroendet: ' + await page.evaluate(() => JSON.stringify({ svg: (document.querySelector('#v3PlanDock .v3-ga-arrows') || {}).outerHTML, deps: l3plActs(false).map(a => [a.key, a.deps]), els: [...document.querySelectorAll('#v3PlanDock [data-plk]')].map(e => e.dataset.plk), P: l3gaP().arrows })));
+    // Dölj ett område med högerklick, visa alla igen.
+    await page.click('#v3PlanDock [data-galane="Hus B"] .v3-pl-lane-h', { button: 'right' });
+    await page.click('#v3GaMenu [data-i="0"]');
+    if ((await page.$$('#v3PlanDock .v3-pnote')).length !== 2 || !/1 av 2/.test(await page.textContent('#v3GaLanes'))) fail('Dölj området');
+    await page.click('#v3GaLanesAll');
+    // Redigerbar: dra Pelarna 3 dagar → rutan frågar, Avbryt sparar inget; Spara skriver och Tak skjuts med.
+    const puts = [];
+    page.on('request', r => { if (r.method() === 'PUT' && r.url().includes('pp/plan_items.json')) puts.push(JSON.parse(Buffer.from(JSON.parse(r.postData()).content, 'base64').toString())); });
+    await page.evaluate(() => { l3plSet('editable', true); l3plDockRender(); });
+    const drag = async () => { await page.evaluate(() => { l3plSet('full', true); l3plDockRender(); document.querySelector('#v3PlanDock .v3-pl-scroll').scrollTop = 0; }); const n = await page.$('#v3PlanDock [data-plk="g:G1"]'); const bb = await n.boundingBox(), dayPx = await page.evaluate(() => Number(document.querySelector('#v3PlanDock .v3-pl-board').dataset.daypx));
+      await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2); await page.mouse.down(); await page.mouse.move(bb.x + bb.width / 2 + dayPx * 3, bb.y + bb.height / 2, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(400); };
+    let asked = null; page.__uiDialogHandlers.push(d => { asked = d.message(); d.dismiss(); });
+    await drag();
+    if (!asked || !/Spara i 4D-planeringen/.test(asked) || puts.length) fail('Avbryt i rutan ska inte spara: ' + JSON.stringify({ asked, puts: puts.length }));
+    page.__uiDialogHandlers.length = 0; page.__uiDialogHandlers.push(d => { asked = d.message(); d.accept(); });
+    await page.evaluate(() => l3plDockRender());
+    await drag();
+    await page.waitForFunction(() => !l3ga.busy, null, { timeout: 10000 });
+    const saved = puts[0] || [];
+    const g = id => saved.find(r => r.id === id) || {};
+    if (g('p1').start_date !== '2026-10-08' || g('p1').end_date !== '2026-10-19' || g('p2').end_date !== '2026-10-21' || g('p4').start_date !== '2026-10-20' || g('p4').end_date !== '2026-10-23' || g('p3').start_date !== '2026-11-02' || !/Fasadmontage/.test(asked))
+      fail('Dra och spara (med det som väntar): ' + JSON.stringify({ asked, p1: g('p1'), p2: g('p2'), p3: g('p3'), p4: g('p4') }));
+    if (!(await page.evaluate(() => l3ga.undo.length === 1))) fail('Ångra ska finnas');
+    await page.evaluate(() => { l3plSet('editable', false); l3plSet('full', false); });
+    // Lista: filter och Visa filtrerat i 3D.
+    await page.evaluate(() => { l3plSet('view', 'list'); l3plDockRender(); });
+    await page.selectOption('#v3PlanDock [data-galf="contractor"]', 'Peab');
+    const li = await page.textContent('#v3PlanDock .v3-ga-fbtns span');
+    if (!/1 av 3/.test(li)) fail('Listans filter: ' + li);
+    await page.click('#v3PlanDock #v3GaClearF');
+    // Koppla: markerade 3D-objekt till Tak via 4D-planering (rutan frågar först).
+    const cpl = await page.evaluate(async () => {
+      const fake = { id: 'f:F1', name: 'B.ifc', visible: true, src: { fileId: 'F1' } }; l3b.models.push(fake);
+      const ents = new Map([['NEWGUID0000000000000001', [{ g: 9 }]], ['1hZq3$Bq9Fxu8nZK0bW1aA', [{ g: 1 }]]]); l3pEnts = m => (m === fake ? ents : new Map());
+      l3bs.sel = [{ mesh: { userData: { l3b: { model: fake, ranges: [{ guid: 'NEWGUID0000000000000001', name: 'Balk' }] } } }, ri: 0 }];
+      window.__oaw = []; Object.defineProperty(window, 'opener', { value: { closed: false }, configurable: true, writable: true });
+      askOpener = async (type, x) => { window.__oaw.push([type, x]); return {}; };
+      await l3gaCouple(l3plActs(false).find(a => a.name === 'Takmontage'));
+      l3b.models.pop(); l3bs.sel = [];
+      return window.__oaw.filter(x => x[0] === 'coupleObjects').map(x => x[1]);
+    });
+    if (cpl.length !== 1 || cpl[0].itemId !== 'p3' || cpl[0].source !== 'pp' || JSON.stringify(cpl[0].objs) !== JSON.stringify([{ modelId: 'F1', objectId: 'NEWGUID0000000000000001' }])) fail('Koppla: ' + JSON.stringify(cpl));
+    page.__uiDialogHandlers.length = 0;
+    await page.evaluate(() => { l3plSet('view', 'board'); l3plDockRender(); });
 
     // Kameravyer och kamerans väg mellan dem.
     const cam = await page.evaluate(() => {
