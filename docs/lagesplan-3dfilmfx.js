@@ -302,7 +302,12 @@ function l3fxActText(a) {
     n = n.replace(new RegExp("^\\s*" + esc(ar) + "\\s*[-–—:·,]?\\s*", "i"), "");
     if (code) n = n.replace(new RegExp("^\\s*" + esc(code) + "\\b\\s*[-–—:·,]?\\s*"), "");
   }
-  return n || a.name;
+  // Det som faktiskt pågår: från Powerproject är aktiviteten ofta bara sammanfattningsraden (= området) och
+  // uppgifterna ligger i objektnamnen – de visas, med aktivitetens eget namn först om det säger något mer.
+  const same = !n || n.toLowerCase() === ar.toLowerCase();
+  const objs = (a.objs || []).filter(Boolean);
+  const parts = [same ? "" : n, objs.length ? objs.join(", ") : ""].filter(Boolean);
+  return parts.length ? parts.join(" – ") : (a.rows && a.rows[0] && a.rows[0].object_name) || a.name;
 }
 function l3fxWrap(ctx, txt, maxW, lines = 2) {
   const words = String(txt).split(/\s+/).filter(Boolean), out = [];
