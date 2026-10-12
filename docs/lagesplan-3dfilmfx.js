@@ -324,75 +324,84 @@ function l3fxWrap(ctx, txt, maxW, lines = 2) {
   return out.slice(0, lines);
 }
 function l3fxNow(ctx, W, H, s, iso, ft, fx, pearls, t) {
+  // Alla pågående aktiviteter syns hela tiden (Victor 2026-10-12): likadana uppgifter i ett område slås ihop
+  // (×3), texten krymps, sedan en rad per uppgift och till sist två eller tre kolumner – ingen bläddring.
   const act = fx.active || [];
   const byArea = new Map();
   act.slice().sort((a, b) => a.t0 - b.t0 || a.name.localeCompare(b.name, "sv")).forEach(a => { if (!byArea.has(a.area)) byArea.set(a.area, { area: a.area, acts: [], done: [] }); byArea.get(a.area).acts.push(a); });
   fx.gone.forEach(g => { if (!byArea.has(g.a.area)) byArea.set(g.a.area, { area: g.a.area, acts: [], done: [], fading: g }); byArea.get(g.a.area).done.push(g); });
-  const groups = [...byArea.values()].sort((a, b) => a.area.localeCompare(b.area, "sv", { numeric: true }));
-  const w = 520 * s, pad = 14 * s, bottom = H - (pearls ? 104 : 28) * s, maxH = bottom - 190 * s;
-  // Mått vid skala k (texten krymper med k): rubrik, aktivitetsrader (1–2 rader text).
-  const M = k => ({ head: 50 * s, gHead: 50 * s * Math.max(0.75, k), fs: 15 * s * k, lh: 18 * s * k, rowPad: 8 * s * k, gap: 8 * s });
-  const textW = w - 2 * pad - 150 * s;
-  const measure = (k, list) => {
-    const m = M(k); ctx.font = `600 ${Math.round(m.fs)}px system-ui, sans-serif`;
-    let h = m.head;
-    list.forEach(g => { h += m.gHead + m.gap; [...g.acts, ...g.done.map(d => d.a)].forEach(a => { h += Math.max(1, l3fxWrap(ctx, l3fxActText(a), textW).length) * m.lh + m.rowPad; }); });
-    return h + 6 * s;
-  };
-  let k = 1, list = groups, page = 0, pages = 1;
-  while (k > 0.56 && measure(k, groups) > maxH) k -= 0.04;
-  if (measure(k, groups) > maxH) {
-    // Även med minsta texten räcker det inte: områdena delas på sidor som bläddras.
-    const pg = []; let cur = [], h0 = M(k).head;
-    groups.forEach(g => { const gh = measure(k, [g]) - M(k).head; if (cur.length && h0 + gh > maxH) { pg.push(cur); cur = []; h0 = M(k).head; } cur.push(g); h0 += gh; });
-    if (cur.length) pg.push(cur);
-    pages = pg.length; page = Math.floor(ft / 4) % pages; list = pg[page];
-  }
-  const m = M(k), h = groups.length ? measure(k, list) : m.head + 40 * s, x = W - 28 * s - w, y = bottom - h;
-  ctx.fillStyle = "rgba(15,23,42,.84)"; l3fxRR(ctx, x, y, w, h, 20 * s); ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,.08)"; ctx.lineWidth = 1.5 * s; l3fxRR(ctx, x + 0.75 * s, y + 0.75 * s, w - 1.5 * s, h - 1.5 * s, 20 * s); ctx.stroke();
-  ctx.fillStyle = "#22c55e"; ctx.beginPath(); ctx.arc(x + 28 * s, y + 26 * s, 5 * s * (0.8 + 0.2 * Math.sin(ft * 5)), 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#a5b4fc"; ctx.font = `700 ${Math.round(15 * s)}px system-ui, sans-serif`; ctx.fillText("PÅGÅR NU", x + 42 * s, y + 27 * s);
-  ctx.textAlign = "right"; ctx.fillStyle = "#cbd5e1"; ctx.font = `600 ${Math.round(14 * s)}px system-ui, sans-serif`;
-  ctx.fillText(act.length ? `${act.length} ${act.length === 1 ? "aktivitet" : "aktiviteter"}${pages > 1 ? `  ·  ${page + 1}/${pages}` : ""}` : "", x + w - 22 * s, y + 27 * s); ctx.textAlign = "left";
-  if (!groups.length) { ctx.fillStyle = "#94a3b8"; ctx.font = `500 ${Math.round(16 * s)}px system-ui, sans-serif`; ctx.fillText("Inga aktiviteter just nu", x + 26 * s, y + m.head + 14 * s); return; }
-  let cy = y + m.head;
-  list.forEach(g => {
-    const seen = Math.min(...(g.acts.length ? g.acts.map(a => fx.seen.get(a.key) ?? -9) : [-9]));
-    const inA = l3fxEase((ft - seen) / 0.5), outA = g.fading ? 1 - l3fxEase(((ft - g.fading.at) / 1.4 - 0.4) / 0.6) : 1;
-    const gh = measure(k, [g]) - m.head - 6 * s - m.gap;
-    ctx.save(); ctx.globalAlpha *= Math.min(inA, outA); ctx.translate((1 - inA) * 40 * s, 0);
-    ctx.fillStyle = "rgba(255,255,255,.05)"; l3fxRR(ctx, x + pad, cy, w - 2 * pad, gh, 12 * s); ctx.fill();
-    // Rubriken: området och dess förlopp.
-    const ap = fx.areaProg(g.area, t), col = g.acts.length ? phaseColor(zonePhase(g.acts[0].rows, iso)) : "#22c55e";
-    ctx.fillStyle = col; l3fxRR(ctx, x + pad, cy, 5 * s, gh, 2.5 * s); ctx.fill();
-    const hx = x + pad + 18 * s, hw = w - 2 * pad - 34 * s, hfs = Math.round(20 * s * Math.max(0.8, k));
-    ctx.font = `800 ${hfs}px system-ui, sans-serif`; ctx.fillStyle = "#fff";
-    let an = g.area; while (an.length > 3 && ctx.measureText(an).width > hw - 80 * s) an = an.slice(0, -2); if (an !== g.area) an = an.trim() + "…";
-    ctx.fillText(an, hx, cy + m.gHead * 0.4);
-    ctx.textAlign = "right"; ctx.fillText(`${Math.floor(ap * 100)} %`, hx + hw, cy + m.gHead * 0.4); ctx.textAlign = "left";
-    ctx.fillStyle = "rgba(255,255,255,.12)"; l3fxRR(ctx, hx, cy + m.gHead * 0.74, hw, 6 * s, 3 * s); ctx.fill();
-    ctx.fillStyle = col; l3fxRR(ctx, hx, cy + m.gHead * 0.74, Math.max(6 * s, hw * ap), 6 * s, 3 * s); ctx.fill();
-    // Aktiviteterna (liten text, högst två rader) med liten stapel och procent.
-    let ry = cy + m.gHead + 2 * s;
+  const groups = [...byArea.values()].sort((a, b) => a.area.localeCompare(b.area, "sv", { numeric: true })).map(g => {
+    const rows = new Map();
+    g.acts.forEach(a => { const tx = l3fxActText(a); if (!rows.has(tx)) rows.set(tx, { tx, acts: [], done: null }); rows.get(tx).acts.push(a); });
+    g.done.forEach(d => { const tx = l3fxActText(d.a); if (!rows.has(tx)) rows.set(tx, { tx, acts: [], done: d }); else if (!rows.get(tx).acts.length) rows.get(tx).done = d; });
+    return { ...g, rows: [...rows.values()] };
+  });
+  const bottom = H - (pearls ? 104 : 28) * s, maxH = bottom - 190 * s, gapC = 10 * s, pad = 14 * s;
+  const M = k => ({ head: 50 * s, gHead: 46 * s * Math.max(0.7, k), fs: 15 * s * k, lh: 17.5 * s * k, rowPad: 6 * s * k, gap: 7 * s });
+  const colW = cols => (cols === 1 ? 520 : cols === 2 ? 420 : 360) * s;
+  const lay = (k, lines, cols) => {
+    const m = M(k), cw = colW(cols), textW = cw - 2 * pad - 150 * s;
     ctx.font = `600 ${Math.round(m.fs)}px system-ui, sans-serif`;
-    [...g.acts.map(a => ({ a })), ...g.done.map(d => ({ a: d.a, done: d }))].forEach(({ a, done }) => {
-      const p = done ? 1 : Math.max(0, Math.min(1, (t - a.t0) / (a.t1 - a.t0))), rc = done ? "#22c55e" : phaseColor(zonePhase(a.rows, iso));
-      const lines = l3fxWrap(ctx, l3fxActText(a), textW), rh = lines.length * m.lh;
-      ctx.save(); if (done) ctx.globalAlpha *= 1 - l3fxEase(((ft - done.at) / 1.4 - 0.4) / 0.6);
-      ctx.fillStyle = rc; ctx.beginPath(); ctx.arc(hx + 5 * s, ry + m.lh / 2, 4.5 * s * Math.max(0.8, k), 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#e2e8f0"; lines.forEach((ln, li) => ctx.fillText(ln, hx + 16 * s, ry + m.lh / 2 + li * m.lh));
-      const sbw = 70 * s, sbx = hx + hw - sbw - 52 * s, by = ry + rh / 2 - 3 * s;
-      ctx.fillStyle = "rgba(255,255,255,.12)"; l3fxRR(ctx, sbx, by, sbw, 5 * s, 2.5 * s); ctx.fill();
-      ctx.fillStyle = rc; l3fxRR(ctx, sbx, by, Math.max(5 * s, sbw * p), 5 * s, 2.5 * s); ctx.fill();
-      ctx.textAlign = "right"; ctx.fillStyle = done ? "#86efac" : "#cbd5e1"; ctx.font = `700 ${Math.round(Math.max(12 * s, m.fs))}px system-ui, sans-serif`;
-      ctx.fillText(done ? "Klar" : `${Math.floor(p * 100)} %`, hx + hw, ry + rh / 2 + 1 * s); ctx.textAlign = "left";
-      ctx.font = `600 ${Math.round(m.fs)}px system-ui, sans-serif`;
+    const gh = groups.map(g => m.gHead + g.rows.reduce((h, r) => h + Math.max(1, l3fxWrap(ctx, r.tx + (r.acts.length > 1 ? ` ×${r.acts.length}` : ""), textW, lines).length) * m.lh + m.rowPad, 0) + 4 * s);
+    // Områdena fördelas på kolumnerna i ordning, så jämnt som möjligt.
+    const total = gh.reduce((a, b) => a + b + m.gap, 0), target = total / cols, colsOut = [[]]; let acc = 0;
+    gh.forEach((h, gi) => { if (acc > 0 && acc + h / 2 > target && colsOut.length < cols) { colsOut.push([]); acc = 0; } colsOut[colsOut.length - 1].push(gi); acc += h + m.gap; });
+    const colH = colsOut.map(c => c.reduce((a, gi) => a + gh[gi] + m.gap, 0));
+    return { m, k, lines, cols: colsOut, gh, cw, textW, h: m.head + Math.max(0, ...colH) + 6 * s };
+  };
+  let L = null;
+  for (const [lines, cols] of [[2, 1], [1, 1], [1, 2], [1, 3]]) {
+    for (let k = 1; k >= 0.5; k -= 0.05) { const l = lay(k, lines, cols); if (l.h <= maxH) { L = l; break; } }
+    if (L) break;
+  }
+  if (!L) L = lay(0.5, 1, 3);
+  const m = L.m, w = L.cols.length * L.cw + (L.cols.length - 1) * gapC, h = groups.length ? L.h : m.head + 40 * s, x = W - 28 * s - w, y = bottom - h;
+  ctx.fillStyle = "rgba(15,23,42,.84)"; l3fxRR(ctx, x - 6 * s, y, w + 12 * s, h, 20 * s); ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,.08)"; ctx.lineWidth = 1.5 * s; l3fxRR(ctx, x - 5.25 * s, y + 0.75 * s, w + 10.5 * s, h - 1.5 * s, 20 * s); ctx.stroke();
+  ctx.fillStyle = "#22c55e"; ctx.beginPath(); ctx.arc(x + 22 * s, y + 26 * s, 5 * s * (0.8 + 0.2 * Math.sin(ft * 5)), 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#a5b4fc"; ctx.font = `700 ${Math.round(15 * s)}px system-ui, sans-serif`; ctx.fillText("PÅGÅR NU", x + 36 * s, y + 27 * s);
+  ctx.textAlign = "right"; ctx.fillStyle = "#cbd5e1"; ctx.font = `600 ${Math.round(14 * s)}px system-ui, sans-serif`;
+  ctx.fillText(act.length ? `${act.length} ${act.length === 1 ? "aktivitet" : "aktiviteter"} · ${groups.filter(g => g.acts.length).length} områden` : "", x + w - 16 * s, y + 27 * s); ctx.textAlign = "left";
+  if (!groups.length) { ctx.fillStyle = "#94a3b8"; ctx.font = `500 ${Math.round(16 * s)}px system-ui, sans-serif`; ctx.fillText("Inga aktiviteter just nu", x + 20 * s, y + m.head + 14 * s); return; }
+  L.cols.forEach((col, ci) => {
+    let cy = y + m.head;
+    const cx0 = x + ci * (L.cw + gapC) - pad + 6 * s;
+    col.forEach(gi => {
+      const g = groups[gi], gh = L.gh[gi];
+      const seen = Math.min(...(g.acts.length ? g.acts.map(a => fx.seen.get(a.key) ?? -9) : [-9]));
+      const inA = l3fxEase((ft - seen) / 0.5), outA = g.fading ? 1 - l3fxEase(((ft - g.fading.at) / 1.4 - 0.4) / 0.6) : 1;
+      ctx.save(); ctx.globalAlpha *= Math.min(inA, outA); ctx.translate((1 - inA) * 30 * s, 0);
+      ctx.fillStyle = "rgba(255,255,255,.05)"; l3fxRR(ctx, cx0 + pad, cy, L.cw - 2 * pad + 4 * s, gh, 12 * s); ctx.fill();
+      const ap = fx.areaProg(g.area, t), col = g.acts.length ? phaseColor(zonePhase(g.acts[0].rows, iso)) : "#22c55e";
+      ctx.fillStyle = col; l3fxRR(ctx, cx0 + pad, cy, 5 * s, gh, 2.5 * s); ctx.fill();
+      const hx = cx0 + pad + 16 * s, hw = L.cw - 2 * pad - 26 * s, hfs = Math.round(19 * s * Math.max(0.75, L.k));
+      ctx.font = `800 ${hfs}px system-ui, sans-serif`; ctx.fillStyle = "#fff";
+      let an = g.area; while (an.length > 3 && ctx.measureText(an).width > hw - 70 * s) an = an.slice(0, -2); if (an !== g.area) an = an.trim() + "…";
+      ctx.fillText(an, hx, cy + m.gHead * 0.4);
+      ctx.textAlign = "right"; ctx.fillText(`${Math.floor(ap * 100)} %`, hx + hw, cy + m.gHead * 0.4); ctx.textAlign = "left";
+      ctx.fillStyle = "rgba(255,255,255,.12)"; l3fxRR(ctx, hx, cy + m.gHead * 0.74, hw, 5 * s, 2.5 * s); ctx.fill();
+      ctx.fillStyle = col; l3fxRR(ctx, hx, cy + m.gHead * 0.74, Math.max(5 * s, hw * ap), 5 * s, 2.5 * s); ctx.fill();
+      let ry = cy + m.gHead + 2 * s;
+      g.rows.forEach(r => {
+        const done = !r.acts.length && r.done, list = r.acts.length ? r.acts : [r.done.a];
+        const p = done ? 1 : list.reduce((sm, a) => sm + Math.max(0, Math.min(1, (t - a.t0) / (a.t1 - a.t0))), 0) / list.length;
+        const rc = done ? "#22c55e" : phaseColor(zonePhase(list[0].rows, iso));
+        ctx.font = `600 ${Math.round(m.fs)}px system-ui, sans-serif`;
+        const lines = l3fxWrap(ctx, r.tx + (r.acts.length > 1 ? ` ×${r.acts.length}` : ""), L.textW, L.lines), rh = lines.length * m.lh;
+        ctx.save(); if (done) ctx.globalAlpha *= 1 - l3fxEase(((ft - r.done.at) / 1.4 - 0.4) / 0.6);
+        ctx.fillStyle = rc; ctx.beginPath(); ctx.arc(hx + 4 * s, ry + m.lh / 2, Math.max(2.5 * s, 4.5 * s * L.k), 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#e2e8f0"; lines.forEach((ln, li) => ctx.fillText(ln, hx + 14 * s, ry + m.lh / 2 + li * m.lh));
+        const sbw = 64 * s, sbx = hx + hw - sbw - 48 * s, by = ry + rh / 2 - 2.5 * s;
+        ctx.fillStyle = "rgba(255,255,255,.12)"; l3fxRR(ctx, sbx, by, sbw, 5 * s, 2.5 * s); ctx.fill();
+        ctx.fillStyle = rc; l3fxRR(ctx, sbx, by, Math.max(5 * s, sbw * p), 5 * s, 2.5 * s); ctx.fill();
+        ctx.textAlign = "right"; ctx.fillStyle = done ? "#86efac" : "#cbd5e1"; ctx.font = `700 ${Math.round(Math.max(11 * s, m.fs))}px system-ui, sans-serif`;
+        ctx.fillText(done ? "Klar" : `${Math.floor(p * 100)} %`, hx + hw, ry + rh / 2 + 1 * s); ctx.textAlign = "left";
+        ctx.restore();
+        ry += rh + m.rowPad;
+      });
       ctx.restore();
-      ry += rh + m.rowPad;
+      cy += gh + m.gap;
     });
-    ctx.restore();
-    cy += gh + m.gap;
   });
 }
 /* Milstolpen: ett kort högt upp mitt i bilden – glider ner och tonas in, ljusskimmer över, tonas ut. */
