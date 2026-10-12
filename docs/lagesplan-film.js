@@ -272,11 +272,11 @@ function renderFilmOverlay(P, o) {
   if (o.zones) {
     const objects = layerVisible("objects") ? objectShapesInPdf() : null;
     let badges = [];
-    if (layerVisible("zones")) { ctx.save(); ctx.globalAlpha = layerOpacity("zones"); badges = drawZoneShapes(ctx, fontPx, objects, true); ctx.restore(); }
-    // Utskriftens PDF (o.vec, lagesplan-pdfvec.js): prickar och etiketter spelas in som vektorer i stället för bild.
-    const top = o.vec || ctx;
-    if (o.vec) o.vec.setTransform(P.S, 0, 0, P.S, -P.x0 * P.S, -P.y0 * P.S);
-    // (Med vektorer hamnar etableringen under prickarna – bilden ligger alltid under vektorerna.)
+    // Utskriftens PDF (lagesplan-pdfvec.js): zonerna (yta, mönster, kant) spelas in som vektorer under bilden
+    // (o.vecUnder), prickar och etiketter som vektorer ovanpå (o.vec). Bilden har då bara etableringen kvar.
+    const under = o.vecUnder || ctx, top = o.vec || ctx;
+    [o.vecUnder, o.vec].forEach(v => v && v.setTransform(P.S, 0, 0, P.S, -P.x0 * P.S, -P.y0 * P.S));
+    if (layerVisible("zones")) { under.save(); under.globalAlpha = layerOpacity("zones"); badges = drawZoneShapes(under, fontPx, objects, true); under.restore(); }
     if (o.vec && o.site) drawSiteLayers(ctx, fontPx);
     if (objects) { top.save(); top.globalAlpha = layerOpacity("objects"); drawObjects(top, objects, fontPx); drawObjectLabels(top, objects, fontPx); top.restore(); }
     if (!o.vec && o.site) drawSiteLayers(ctx, fontPx);

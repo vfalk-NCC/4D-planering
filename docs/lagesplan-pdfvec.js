@@ -9,7 +9,7 @@
 function pdfVecRecorder() {
   const items = [];
   const meas = document.createElement("canvas").getContext("2d");
-  const S = { m: [1, 0, 0, 1, 0, 0], fillStyle: "#000000", strokeStyle: "#000000", globalAlpha: 1, font: "10px sans-serif", textAlign: "start", textBaseline: "alphabetic", dash: [], lineWidth: 1, lineCap: "butt", lineJoin: "miter" };
+  const S = { m: [1, 0, 0, 1, 0, 0], fillStyle: "#000000", strokeStyle: "#000000", globalAlpha: 1, font: "10px sans-serif", textAlign: "start", textBaseline: "alphabetic", dash: [], lineWidth: 1, lineCap: "butt", lineJoin: "miter", clip: null };
   const stack = [];
   let subs = [], cur = null, last = null; // last: senaste punkten i bildens pixlar
   const T = p => applyAffine(S.m, p);
@@ -33,12 +33,13 @@ function pdfVecRecorder() {
     let sweep = a1 - a0;
     if (Math.abs(sweep) >= Math.PI * 2 - 1e-9) sweep = ccw ? -Math.PI * 2 : Math.PI * 2;
     else { if (!ccw && sweep < 0) sweep += Math.PI * 2; if (ccw && sweep > 0) sweep -= Math.PI * 2; }
-    const n = Math.max(4, Math.ceil(Math.abs(sweep) / (Math.PI * 2) * 72));
+    const full = Math.max(12, Math.min(72, Math.ceil(r * scaleOf() * 3))); // små prickar (mönster) behöver färre punkter
+    const n = Math.max(4, Math.ceil(Math.abs(sweep) / (Math.PI * 2) * full));
     const out = [];
     for (let i = 0; i <= n; i++) { const a = a0 + sweep * i / n; out.push(T([cx + r * Math.cos(a), cy + r * Math.sin(a)])); }
     return out;
   };
-  const copySubs = () => subs.filter(s => s.pts.length).map(s => ({ pts: s.pts.slice(), closed: s.closed }));
+  const copySubs = () => subs.filter(s => s.pts.length).map(s => ({ pts: s.pts.slice(), closed: s.closed, circle: s.circle }));
   const rec = {
     items,
     canvas: { width: 1e6, height: 1e6, id: "pdfvec", getBoundingClientRect: () => ({ width: 0, height: 0 }) },
@@ -76,7 +77,14 @@ function pdfVecRecorder() {
       this.moveTo(x + rr, y); this.arcTo(x + w, y, x + w, y + h, rr); this.arcTo(x + w, y + h, x, y + h, rr);
       this.arcTo(x, y + h, x, y, rr); this.arcTo(x, y, x + w, y, rr); this.closePath();
     },
-    arc(cx, cy, r, a0, a1, ccw) { const pts = arcPts(cx, cy, Math.abs(r), a0, a1, !!ccw); if (cur && cur.pts.length) pts.forEach(add); else { move(pts[0]); pts.slice(1).forEach(add); } },
+    arc(cx, cy, r, a0, a1, ccw) {
+      const pts = arcPts(cx, cy, Math.abs(r), a0, a1, !!ccw);
+      // Hel cirkel som egen delväg (prickar): märks så att den kan skrivas som en prick i PDF:en.
+      const fullC = Math.abs(a1 - a0) >= Math.PI * 2 - 1e-9 && Math.abs(S.m[0] - S.m[3]) < 1e-9 * Math.max(1, Math.abs(S.m[0])) && Math.abs(S.m[1] + S.m[2]) < 1e-9 * Math.max(1, Math.abs(S.m[1]) + 1);
+      const fresh = !cur || !cur.pts.length || (cur.pts.length === 1 && Math.hypot(cur.pts[0][0] - pts[0][0], cur.pts[0][1] - pts[0][1]) < 1e-6 * Math.max(1, Math.abs(r * scaleOf())));
+      if (fullC && fresh) { if (cur && cur.pts.length) subs.pop(); cur = { pts, closed: true, circle: { c: T([cx, cy]), r: Math.abs(r) * scaleOf() } }; subs.push(cur); cur = null; last = pts[pts.length - 1]; return; }
+      if (cur && cur.pts.length) pts.forEach(add); else { move(pts[0]); pts.slice(1).forEach(add); }
+    },
     ellipse(cx, cy, rx, ry, rot, a0, a1, ccw) { const m = S.m.slice(); this.translate(cx, cy); this.rotate(rot || 0); this.scale(rx || 1e-9, ry || 1e-9); this.arc(0, 0, 1, a0, a1, ccw); S.m = m; },
     arcTo(x1, y1, x2, y2, r) {
       // Rundat hörn som canvas: tangentpunkter mot båda linjerna och en båge mellan dem.
@@ -96,11 +104,13 @@ function pdfVecRecorder() {
     },
     quadraticCurveTo(cx, cy, x, y) { const p0 = last ? local(last) : [cx, cy]; for (let i = 1; i <= 12; i++) { const t = i / 12, u = 1 - t; add(T([u * u * p0[0] + 2 * u * t * cx + t * t * x, u * u * p0[1] + 2 * u * t * cy + t * t * y])); } },
     bezierCurveTo(ax, ay, bx, by, x, y) { const p0 = last ? local(last) : [ax, ay]; for (let i = 1; i <= 16; i++) { const t = i / 16, u = 1 - t; add(T([u * u * u * p0[0] + 3 * u * u * t * ax + 3 * u * t * t * bx + t * t * t * x, u * u * u * p0[1] + 3 * u * u * t * ay + 3 * u * t * t * by + t * t * t * y])); } },
-    fill() { const c = col(S.fillStyle), a = c.a * S.globalAlpha; const sp = copySubs(); if (a > 0.003 && sp.length) items.push({ t: "F", subs: sp, hex: c.hex, a }); },
-    stroke() { const c = col(S.strokeStyle), a = c.a * S.globalAlpha, k = scaleOf(); const sp = copySubs(); if (a > 0.003 && sp.length) items.push({ t: "S", subs: sp, hex: c.hex, a, lw: S.lineWidth * k, dash: S.dash.map(v => v * k), cap: S.lineCap, join: S.lineJoin }); },
+    fill() { const c = col(S.fillStyle), a = c.a * S.globalAlpha; const sp = copySubs(); if (a > 0.003 && sp.length) items.push({ t: "F", subs: sp, hex: c.hex, a, clip: S.clip }); },
+    stroke() { const c = col(S.strokeStyle), a = c.a * S.globalAlpha, k = scaleOf(); const sp = copySubs(); if (a > 0.003 && sp.length) items.push({ t: "S", subs: sp, hex: c.hex, a, lw: S.lineWidth * k, dash: S.dash.map(v => v * k), cap: S.lineCap, join: S.lineJoin, clip: S.clip }); },
     fillRect(x, y, w, h) { const sv = [subs, cur, last]; this.beginPath(); this.rect(x, y, w, h); this.fill(); [subs, cur, last] = sv; },
     strokeRect(x, y, w, h) { const sv = [subs, cur, last]; this.beginPath(); this.rect(x, y, w, h); this.stroke(); [subs, cur, last] = sv; },
-    clearRect() {}, clip() {}, drawImage() {}, putImageData() {},
+    // Klippning (t.ex. zonens mönster mot zonen): följer med varje del och sparas/återställs med save/restore.
+    clip() { const sp = copySubs().filter(x => x.pts.length > 2); if (sp.length) S.clip = (S.clip || []).concat([sp]); },
+    clearRect() {}, drawImage() {}, putImageData() {},
     createPattern() { return "rgba(0,0,0,0)"; }, createLinearGradient() { return { addColorStop() {} }; }, createRadialGradient() { return { addColorStop() {} }; },
     fillText(s, x, y) { text(s, x, y, "fill"); },
     strokeText(s, x, y) { text(s, x, y, "stroke"); },
@@ -113,7 +123,7 @@ function pdfVecRecorder() {
     const w = (meas.font = S.font, meas.measureText(s).width);
     const wt = (S.font.match(/(^|\s)(bold|[6-9]00)(\s|$)/) || [])[0];
     items.push({ t: "T", s, p: T([x, y]), rot: Math.atan2(S.m[1], S.m[0]), size: px * k, w: w * k, bold: !!wt, italic: /italic/.test(S.font),
-      align: { start: "left", left: "left", center: "center", right: "right", end: "right" }[S.textAlign] || "left", base: S.textBaseline, hex: c.hex, a, mode, lw: S.lineWidth * k, join: S.lineJoin });
+      align: { start: "left", left: "left", center: "center", right: "right", end: "right" }[S.textAlign] || "left", base: S.textBaseline, hex: c.hex, a, mode, lw: S.lineWidth * k, join: S.lineJoin, clip: S.clip });
   }
   return rec;
 }
@@ -142,14 +152,42 @@ function pdfVecEmit(doc, rec, T, clip) {
     });
     return any;
   };
+  // Inre klippning: ett eget grafikläge per klippyta (alla delar i rad med samma klippning delar det).
+  let curClip = null, aOut = 1;
+  const setClip = c => {
+    if (c === curClip) return;
+    if (curClip) { doc.restoreGraphicsState(); curA = aOut; }
+    curClip = c;
+    if (c) { aOut = curA; doc.saveGraphicsState(); c.forEach(sp => { if (pathOf(sp)) { doc.clip(); doc.discardPath(); } }); }
+  };
+  const bbox = subs => { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; subs.forEach(sp => sp.pts.forEach(q => { const [x, y] = P(q); if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; })); return [x0, y0, x1, y1]; };
+  const boxIn = ([x0, y0, x1, y1]) => x1 >= cx - 2 && x0 <= cx + cw + 2 && y1 >= cy - 2 && y0 <= cy + ch + 2;
   doc.saveGraphicsState();
   doc.rect(cx, cy, cw, ch, null); doc.clip(); doc.discardPath();
   try {
     for (const it of rec.items) {
       if (it.t === "F" || it.t === "S") {
-        if (!inClip(it.subs.flatMap(sp => sp.pts.map(P)))) continue;
+        if (!boxIn(bbox(it.subs))) continue;
+        setClip(it.clip || null);
         alpha(it.a);
-        if (it.t === "F") { doc.setFillColor(it.hex); if (pathOf(it.subs)) doc.fill(); continue; }
+        if (it.t === "F") {
+          // Prickar (hela cirklar) som streck utan längd med runda ändar: en prick ≈ 20 byte i stället för en kurva.
+          const dots = it.subs.filter(sp => sp.circle), rest = it.subs.filter(sp => !sp.circle);
+          if (dots.length) {
+            doc.setDrawColor(it.hex); doc.setLineCap("round");
+            const byR = new Map();
+            dots.forEach(sp => { const r = Math.round(sp.circle.r * s * 2 * 1000) / 1000; if (!byR.has(r)) byR.set(r, []); byR.get(r).push(P(sp.circle.c)); });
+            byR.forEach((list, d) => {
+              doc.setLineWidth(Math.max(0.02, d));
+              let n = 0;
+              list.forEach(([x, y]) => { if (x < cx - d || x > cx + cw + d || y < cy - d || y > cy + ch + d) return; doc.lines([[0.001, 0]], x - 0.0005, y, [1, 1], null, false); n++; });
+              if (n) doc.stroke();
+            });
+            doc.setLineCap("butt");
+          }
+          if (rest.length) { doc.setFillColor(it.hex); if (pathOf(rest)) doc.fill(); }
+          continue;
+        }
         doc.setDrawColor(it.hex); doc.setLineWidth(Math.max(0.02, it.lw * s));
         doc.setLineCap(it.cap === "round" ? "round" : it.cap === "square" ? "square" : "butt");
         doc.setLineJoin(it.join === "round" ? "round" : it.join === "bevel" ? "bevel" : "miter");
@@ -160,6 +198,7 @@ function pdfVecEmit(doc, rec, T, clip) {
       } else if (it.t === "T") {
         const p = P(it.p);
         if (!inClip([p])) continue;
+        setClip(it.clip || null);
         if (!PDFVEC_WINANSI.test(it.s)) { skipped.push(it); continue; }
         alpha(it.a);
         doc.setFont("helvetica", it.bold ? (it.italic ? "bolditalic" : "bold") : it.italic ? "italic" : "normal");
@@ -177,7 +216,7 @@ function pdfVecEmit(doc, rec, T, clip) {
         doc.text(it.s, p[0] + off * cs, p[1] + off * sn, opt);
       }
     }
-  } finally { alpha(1); doc.restoreGraphicsState(); doc.setLineJoin("miter"); doc.setLineCap("butt"); doc.setTextColor(0); }
+  } finally { setClip(null); alpha(1); doc.restoreGraphicsState(); doc.setLineJoin("miter"); doc.setLineCap("butt"); doc.setTextColor(0); }
   return skipped;
 }
 
@@ -186,7 +225,13 @@ function pdfVecReplay(ctx, rec) {
   if (!rec) return;
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
   const path = subs => { ctx.beginPath(); subs.forEach(sp => { sp.pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); if (sp.closed) ctx.closePath(); }); };
+  let curClip = null;
   for (const it of rec.items) {
+    if ((it.clip || null) !== curClip) {
+      if (curClip) ctx.restore();
+      curClip = it.clip || null;
+      if (curClip) { ctx.save(); curClip.forEach(sp => { path(sp); ctx.clip(); }); }
+    }
     ctx.globalAlpha = it.a;
     if (it.t === "F") { ctx.fillStyle = it.hex; path(it.subs); ctx.fill(); }
     else if (it.t === "S") { ctx.strokeStyle = it.hex; ctx.lineWidth = it.lw; ctx.lineCap = it.cap; ctx.lineJoin = it.join; ctx.setLineDash(it.dash || []); path(it.subs); ctx.stroke(); ctx.setLineDash([]); }
@@ -197,5 +242,6 @@ function pdfVecReplay(ctx, rec) {
       ctx.restore();
     }
   }
+  if (curClip) ctx.restore();
   ctx.restore();
 }

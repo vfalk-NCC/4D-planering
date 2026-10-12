@@ -452,15 +452,15 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
           if (![...g.keys].some(k => vis[k] && !k.startsWith("cad:"))) continue;
           keys.forEach(k => { ls(k).visible = vis[k] && g.keys.has(k) && !k.startsWith("cad:"); });
           P.overlay = newCanvas(pxW, pxH);
-          const vec = vecRec();
-          renderFilmOverlay(P, { cad: false, zones: true, site: true, vec });
-          P.layerOverlays.push({ name: g.name, canvas: P.overlay, vec });
+          const vec = vecRec(), vecUnder = vecRec();
+          renderFilmOverlay(P, { cad: false, zones: true, site: true, vec, vecUnder });
+          P.layerOverlays.push({ name: g.name, canvas: P.overlay, vec, vecUnder });
         }
         keys.forEach(k => { ls(k).visible = vis[k] && !(assigned.has(k) && !k.startsWith("cad:")); });
       }
       P.overlay = newCanvas(pxW, pxH);
-      P.overlayVec = vecRec();
-      renderFilmOverlay(P, { cad: !opts.vectorCad, zones: true, site: true, vec: P.overlayVec });
+      P.overlayVec = vecRec(); P.overlayVecUnder = vecRec();
+      renderFilmOverlay(P, { cad: !opts.vectorCad, zones: true, site: true, vec: P.overlayVec, vecUnder: P.overlayVecUnder });
     });
     if (!opts.vectorCad) ctx.drawImage(P.overlay, 0, 0);
   } finally { cadPrintOpts = null; }
@@ -1886,18 +1886,22 @@ async function exportPrintPdf() {
           mc.cad.forEach(c => { const nm = PL ? PL.nameOfKey("cad:" + c.rec.id) : null; if (!byName.has(nm)) byName.set(nm, []); byName.get(nm).push(c); });
           byName.forEach((list, nm) => inLayer([EL, nm], () => drawCadVectorsToPdf(doc, list, T, [x, y, w, h], w / FILM_W, PT_MM)));
         }
-        // Bilden (zonytor, etablering) och ovanpå den prickar och etiketter som vektorer. Går vektorerna
-        // inte att skriva läggs de som en bild ovanpå i stället (som förut).
-        const overlayPdf = (canvas, rec) => {
+        // Zonerna (yta, mönster, kant) som vektorer under bilden, bilden (etableringen) och prickar/etiketter som
+        // vektorer ovanpå. Går vektorerna inte att skriva läggs just de som bild i stället (som förut).
+        const overlayPdf = (canvas, under, top) => {
+          const vecs = rec => {
+            if (!rec || !rec.items.length) return;
+            let rest = null;
+            try { const sk = pdfVecEmit(doc, rec, [w / canvas.width, 0, 0, h / canvas.height, x, y], [x, y, w, h]); if (sk.length) rest = { items: sk }; }
+            catch (e) { console.warn("Zoner/etiketter som vektorer", e); rest = rec; }
+            if (rest) { const c2 = newCanvas(canvas.width, canvas.height); pdfVecReplay(c2.getContext("2d"), rest); doc.addImage(c2.toDataURL("image/png"), "PNG", x, y, w, h, undefined, "FAST"); }
+          };
+          vecs(under);
           doc.addImage(canvas.toDataURL("image/png"), "PNG", x, y, w, h, undefined, "FAST");
-          if (!rec || !rec.items.length) return;
-          let rest = null;
-          try { const sk = pdfVecEmit(doc, rec, [w / canvas.width, 0, 0, h / canvas.height, x, y], [x, y, w, h]); if (sk.length) rest = { items: sk }; }
-          catch (e) { console.warn("Etiketter som vektorer", e); rest = rec; }
-          if (rest) { const c2 = newCanvas(canvas.width, canvas.height); pdfVecReplay(c2.getContext("2d"), rest); doc.addImage(c2.toDataURL("image/png"), "PNG", x, y, w, h, undefined, "FAST"); }
+          vecs(top);
         };
-        if (mc.overlay) inLayer([EL], () => overlayPdf(mc.overlay, mc.P.overlayVec));
-        (mc.P.layerOverlays || []).forEach(o => inLayer([EL, o.name], () => overlayPdf(o.canvas, o.vec)));
+        if (mc.overlay) inLayer([EL], () => overlayPdf(mc.overlay, mc.P.overlayVecUnder, mc.P.overlayVec));
+        (mc.P.layerOverlays || []).forEach(o => inLayer([EL, o.name], () => overlayPdf(o.canvas, o.vecUnder, o.vec)));
         const mapOc = ocOpen(EL);
         if (el.border !== false) { doc.setDrawColor(0); doc.setLineWidth(0.35 * k); doc.rect(x, y, w, h); }
         if (el.label && el.label.show) {

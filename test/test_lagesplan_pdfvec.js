@@ -76,6 +76,39 @@ const JSPDF = [process.env.JSPDF, path.join(process.env.PLACE_TMP || '/nonexiste
     });
     if (Object.values(exp).some(v => v !== true)) fail('Exporten: ' + JSON.stringify(exp));
     console.log('OK: utskriftens PDF – prickar och etiketter skrivs som vektorer ovanpå bilden (reserv: bild)');
+    // 4) WBS-zonerna (yta, prickmönster, streckad kant) som vektorer: samma bild, prickarna som korta streck, klippta mot zonen.
+    const zl = await page.evaluate(() => {
+      viewport = { transform: [1, 0, 0, 1, 0, 0], width: 1000, height: 800, convertToPdfPoint: (x, y) => [x, y], convertToViewportPoint: (x, y) => [x, y] };
+      plan = { id: 'pl', name: 'P', zones: [
+        { id: 'z1', code: '742', name: 'Sikthall', polys: [[[10, 10], [300, 10], [300, 180], [10, 180]]], style: { fill: 'custom', fillColor: '#facc15', dash: 'dashed', pattern: 'dots' } },
+        { id: 'z2', code: '744', name: 'Fläkthus', polys: [[[320, 10], [520, 10], [420, 180]]], style: { fill: 'custom', fillColor: '#ef4444', dash: 'solid', pattern: 'hatch' } }], photos: [] };
+      const mk = () => { const c = document.createElement('canvas'); c.width = 560; c.height = 200; return c; };
+      const a = mk(); drawZoneShapes(a.getContext('2d'), 16, null, false);
+      const rec = pdfVecRecorder(); drawZoneShapes(rec, 16, null, false);
+      const b = mk(); pdfVecReplay(b.getContext('2d'), rec);
+      const da = a.getContext('2d').getImageData(0, 0, 560, 200).data, db = b.getContext('2d').getImageData(0, 0, 560, 200).data;
+      let diff = 0, ink = 0;
+      for (let i = 0; i < da.length; i += 4) { if (Math.abs(da[i + 3] - db[i + 3]) > 90 || (da[i + 3] > 60 && Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]) > 150)) diff++; if (da[i + 3] > 60) ink++; }
+      const dots = rec.items.filter(x => x.t === 'F').reduce((n, x) => n + x.subs.filter(sp => sp.circle).length, 0);
+      const clipped = rec.items.some(x => x.clip && x.t === 'S') && rec.items.some(x => x.clip && x.t === 'F');
+      const st = rec.items.filter(x => x.t === 'S' && !x.clip);
+      return { same: diff / Math.max(1, ink) < 0.06, ratio: +(diff / Math.max(1, ink)).toFixed(3), dots: dots > 100, clipped, dashed: st.some(x => x.dash.length === 2) };
+    });
+    if (!zl.same || !zl.dots || !zl.clipped || !zl.dashed) fail('Zonerna som vektorer: ' + JSON.stringify(zl));
+    console.log(`OK: WBS-zonerna som vektorer – yta, prickar, snedstreck (klippta mot zonen) och streckad kant (${(zl.ratio * 100).toFixed(1)} % avvikande pixlar)`);
+    if (JSPDF) {
+      const sz = await page.evaluate(() => {
+        const { jsPDF } = window.jspdf; const W = 280, H = 100, px = Math.round(W / 25.4 * 200), py = Math.round(H / 25.4 * 200), k = px / 560;
+        const draw = c => { c.save(); c.setTransform(k, 0, 0, k, 0, 0); drawZoneShapes(c, 16, null, false); c.restore(); };
+        const r = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [W, H], compress: true }); const cv = document.createElement('canvas'); cv.width = px; cv.height = py; draw(cv.getContext('2d'));
+        r.addImage(cv.toDataURL('image/png'), 'PNG', 0, 0, W, H, undefined, 'FAST');
+        const v = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [W, H], compress: true }); const rec = pdfVecRecorder(); draw(rec); pdfVecEmit(v, rec, [W / px, 0, 0, H / py, 0, 0], [0, 0, W, H]);
+        window.__zonePdf = new Uint8Array(v.output('arraybuffer'));
+        return { raster: r.output('arraybuffer').byteLength, vec: window.__zonePdf.byteLength };
+      });
+      if (sz.vec > sz.raster * 1.5) fail('Zonerna som vektorer blir för stora: ' + JSON.stringify(sz));
+      console.log(`OK: zonerna som vektorer ${Math.round(sz.vec / 1024)} kB mot ${Math.round(sz.raster / 1024)} kB som bild`);
+    }
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
   } catch (e) { console.log('FEL: ' + e.message); process.exitCode = 1; }
