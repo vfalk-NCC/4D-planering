@@ -87,15 +87,10 @@ function l3plRenderTab() {
   const now = acts.filter(a => a.start <= day && a.end >= day);
   const f = P.film || {}, keys = l3plKeys();
   const range = acts.length ? [acts[0].start, acts.reduce((m, a) => (a.end > m ? a.end : m), acts[0].end)] : [day, day];
-  host.innerHTML = `<div class="v3-pl-sec"><div class="v3-pl-h"><b>Powerproject-tidplanen</b><button type="button" class="v3-ic" id="v3PlReload" title="Läs om tidplanen">↻</button></div>
-      ${l3pl.err ? `<div class="v3-pal-hint bad">Kunde inte läsa tidplanen: ${esc(l3pl.err)}</div>` : !acts.length ? `<div class="v3-pal-hint">Ingen Powerproject-tidplan i projektet ännu (importeras i 4D-planering).</div>`
-        : `<div class="v3-pal-hint">${acts.length} aktiviteter · ${esc(range[0])} – ${esc(range[1])}</div>`}
-      ${typeof planSource !== "undefined" && planSource !== "pp" ? `<div class="v3-pal-hint">3D-färgerna följer Excel-planeringen (vald i 4D-planering). Öppna lägesplanen med Powerproject vald för att färga efter den här tidplanen.</div>` : ""}
-      <button type="button" class="v3-wide ${l3pl.dock ? "on" : ""}" id="v3PlDock">${l3pl.dock ? "Dölj tavlan" : "Visa tavlan och Gantten"}</button>
-      ${now.length ? `<div class="v3-pl-now"><div class="v3-pl-sub">Pågår ${esc(day)}</div>${now.slice(0, 12).map(a => `<button type="button" class="v3-pl-act" data-plsel="${esc(a.key)}" title="Markera aktivitetens objekt i 3D"><i style="background:${phaseColor(zonePhase(a.rows, day))}"></i><span>${esc(a.objs.length ? `${a.objs.slice(0, 2).join(", ")}${a.objs.length > 2 ? " +" + (a.objs.length - 2) : ""} – ${a.name}` : a.name)}</span></button>`).join("")}${now.length > 12 ? `<div class="v3-pal-hint">… och ${now.length - 12} till</div>` : ""}</div>` : ""}
-    </div>
-    <div class="v3-pl-sec"><div class="v3-pl-h"><b>🎬 Film</b></div>
-      <div class="v3-pl-grid">
+  // Tre hopfällbara grupper (Victor 2026-10-12): Film överst, 4D-koppling (listan) och Övrigt.
+  const open = { film: true, link: true, other: true, ...(P.secOpen || {}) };
+  const sec = (id, title, body, extra = "") => `<section class="v3-pl-sec v3-pl-fold ${open[id] ? "" : "shut"}" data-plsec="${id}"><div class="v3-pl-h"><button type="button" class="v3-pl-ft" data-plsect="${id}" aria-expanded="${!!open[id]}"><i>›</i><b>${title}</b></button>${extra}</div>${open[id] ? `<div class="v3-pl-body">${body}</div>` : ""}</section>`;
+  const filmBody = `      <div class="v3-pl-grid">
         <label>Från<input type="date" id="v3FlFrom" value="${esc(f.from || range[0])}" /></label>
         <label>Till<input type="date" id="v3FlTo" value="${esc(f.to || range[1])}" /></label>
         <label>Längd (s)<input type="number" id="v3FlSec" min="3" max="600" value="${esc(String(f.sec || 20))}" /></label>
@@ -110,27 +105,65 @@ function l3plRenderTab() {
       <label class="v3-pl-chk" title="Hur stor del av projektet som är klart och läget mot baslinjen, uppe till höger"><input type="checkbox" id="v3FlFxMeter" ${f.fxMeter === false ? "" : "checked"} /> Förloppsmätare</label>
       <label class="v3-pl-chk v3-pl-sub2" title="Under förloppsmätaren: hur många dagar planen ligger före eller efter baslinjen"><input type="checkbox" id="v3FlFxBl" ${f.fxBl === true ? "checked" : ""} /> … med dagar mot baslinjen</label>
       <label class="v3-pl-chk"><input type="checkbox" id="v3FlPearls" ${f.pearls === false ? "" : "checked"} /> Tidslinje och aktiviteter i underkanten</label>
+      <label class="v3-pl-chk" title="Vad färgerna betyder (Klar, Pågår, Försenad, Ej startad) – nere till vänster"><input type="checkbox" id="v3FlFxLegend" ${f.fxLegend === true ? "checked" : ""} /> Statusförklaring</label>
       </details>
+      ${l3plAnimHtml(f)}
       <input type="text" id="v3FlTitle" placeholder="Rubrik i filmen (valfri)" value="${esc(f.caption || "")}" />
       <button type="button" class="v3-wide ${l3fsOn() ? "on" : ""}" id="v3FlStrip" title="Tidslinje längst ner i 3D-fönstret med datum, aktiviteterna som ett pärlband och kameravyerna">${l3fsOn() ? "Dölj filmens tidslinje" : "🎬 Visa filmens tidslinje"}</button>
       <div class="v3-pal-hint">${keys.length ? `${keys.length} ${keys.length === 1 ? "kameravy" : "kameravyer"} (🎥 på tidslinjen). ` : ""}Dra på tidslinjen till ett datum, ställ in kameran och tryck <b>＋ Vy här</b>. Kameran glider mellan vyerna. Dra en 🎥 för att flytta den, högerklicka för att ta bort.</div>
       ${l3SavedViews().length ? `<select id="v3FlKeyView" class="v3-wide"><option value="">＋ Lägg en sparad vy på tidslinjen…</option>${l3SavedViews().map((v, i) => `<option value="${i}">${esc(v.name)}</option>`).join("")}</select>` : ""}
       <div class="v3-pl-btns"><button type="button" id="v3FlPreview" title="Spela upp i 3D-vyn utan att spela in">▶ Spela upp</button><button type="button" id="v3FlRec" class="v3-primary" title="Spela in och spara som videofil">⏺ Spela in</button></div>
-      <div class="v3-pal-hint" id="v3FlMsg">${typeof MediaRecorder === "undefined" ? "Webbläsaren kan inte spela in video." : ""}</div>
-    </div>`;
+      <div class="v3-pal-hint" id="v3FlMsg">${typeof MediaRecorder === "undefined" ? "Webbläsaren kan inte spela in video." : ""}</div>`;
+  const linkBody = open.link ? `<div id="v3PlLinkHost">${typeof l3gaListHtml === "function" ? l3gaListHtml(l3plActs(l3gaP().split), l3gaP()) : ""}</div>` : "";
+  const otherBody = `<div class="v3-pl-sub">Powerproject-tidplanen</div>
+      ${l3pl.err ? `<div class="v3-pal-hint bad">Kunde inte läsa tidplanen: ${esc(l3pl.err)}</div>` : !acts.length ? `<div class="v3-pal-hint">Ingen Powerproject-tidplan i projektet ännu (importeras i 4D-planering).</div>`
+        : `<div class="v3-pal-hint">${acts.length} aktiviteter · ${esc(range[0])} – ${esc(range[1])}</div>`}
+      ${typeof planSource !== "undefined" && planSource !== "pp" ? `<div class="v3-pal-hint">3D-färgerna följer Excel-planeringen (vald i 4D-planering). Öppna lägesplanen med Powerproject vald för att färga efter den här tidplanen.</div>` : ""}
+      <button type="button" class="v3-wide ${l3pl.dock ? "on" : ""}" id="v3PlDock">${l3pl.dock ? "Dölj tavlan" : "Visa tavlan och Gantten"}</button>
+      ${now.length ? `<div class="v3-pl-now"><div class="v3-pl-sub">Pågår ${esc(day)}</div>${now.slice(0, 12).map(a => `<button type="button" class="v3-pl-act" data-plsel="${esc(a.key)}" title="Markera aktivitetens objekt i 3D"><i style="background:${phaseColor(zonePhase(a.rows, day))}"></i><span>${esc(a.objs.length ? `${a.objs.slice(0, 2).join(", ")}${a.objs.length > 2 ? " +" + (a.objs.length - 2) : ""} – ${a.name}` : a.name)}</span></button>`).join("")}${now.length > 12 ? `<div class="v3-pal-hint">… och ${now.length - 12} till</div>` : ""}</div>` : ""}
+    `;
+  host.innerHTML = sec("film", "🎬 Film", filmBody) + sec("link", "4D-koppling", linkBody) + sec("other", "Övrigt", otherBody, `<button type="button" class="v3-ic" id="v3PlReload" title="Läs om tidplanen">↻</button>`);
+  host.querySelectorAll("[data-plsect]").forEach(b => { b.onclick = () => { const id = b.dataset.plsect; l3plSet("secOpen", { ...open, [id]: !open[id] }); l3plRenderTab(); }; });
+  const lh = host.querySelector("#v3PlLinkHost"); if (lh && typeof l3gaBind === "function") l3gaBind(lh, () => { l3plRenderTab(); if (l3pl.dock) l3plDockRender(); });
   const on = (id, fn, ev = "onclick") => { const el = host.querySelector("#" + id); if (el) el[ev] = fn; };
   on("v3PlReload", () => { l3pl.rows = null; l3plLoad(true); l3plRenderTab(); });
   on("v3PlDock", () => l3plDockToggle());
   host.querySelectorAll("[data-plsel]").forEach(b => { b.onclick = () => l3plSelect(b.dataset.plsel); });
-  const save = () => { l3plSet("film", { ...l3plPrefs().film, from: host.querySelector("#v3FlFrom").value, to: host.querySelector("#v3FlTo").value, sec: Number(host.querySelector("#v3FlSec").value) || 20, res: host.querySelector("#v3FlRes").value, src: host.querySelector("#v3FlSrc").value, title: host.querySelector("#v3FlTitleOn").checked, pearls: host.querySelector("#v3FlPearls").checked, fxNow: host.querySelector("#v3FlFxNow").checked, fxGlow: host.querySelector("#v3FlFxGlow").checked, fxMiles: host.querySelector("#v3FlFxMiles").checked, fxMeter: host.querySelector("#v3FlFxMeter").checked, fxBl: host.querySelector("#v3FlFxBl").checked, caption: host.querySelector("#v3FlTitle").value }); if (l3fsOn()) l3fsRender(); };
+  const save = () => { l3plSet("film", { ...l3plPrefs().film, from: host.querySelector("#v3FlFrom").value, to: host.querySelector("#v3FlTo").value, sec: Number(host.querySelector("#v3FlSec").value) || 20, res: host.querySelector("#v3FlRes").value, src: host.querySelector("#v3FlSrc").value, title: host.querySelector("#v3FlTitleOn").checked, pearls: host.querySelector("#v3FlPearls").checked, fxNow: host.querySelector("#v3FlFxNow").checked, fxGlow: host.querySelector("#v3FlFxGlow").checked, fxMiles: host.querySelector("#v3FlFxMiles").checked, fxMeter: host.querySelector("#v3FlFxMeter").checked, fxBl: host.querySelector("#v3FlFxBl").checked, fxLegend: host.querySelector("#v3FlFxLegend").checked, caption: host.querySelector("#v3FlTitle").value }); if (l3fsOn()) l3fsRender(); };
   on("v3FlSrc", () => { save(); l3plLoadX().then(() => { if (l3fsOn()) l3fsRender(); }); }, "onchange");
-  ["v3FlFrom", "v3FlTo", "v3FlSec", "v3FlRes", "v3FlTitleOn", "v3FlPearls", "v3FlTitle", "v3FlFxNow", "v3FlFxGlow", "v3FlFxMiles", "v3FlFxMeter", "v3FlFxBl"].forEach(id => on(id, save, "onchange"));
+  ["v3FlFrom", "v3FlTo", "v3FlSec", "v3FlRes", "v3FlTitleOn", "v3FlPearls", "v3FlTitle", "v3FlFxNow", "v3FlFxGlow", "v3FlFxMiles", "v3FlFxMeter", "v3FlFxBl", "v3FlFxLegend"].forEach(id => on(id, save, "onchange"));
+  l3plAnimBind(host);
   const fxd = host.querySelector(".v3-pl-fx"); if (fxd) fxd.ontoggle = () => l3plSet("fxOpen", fxd.open);
   on("v3FlStrip", () => { save(); l3fsToggle(); });
   // En sparad vy läggs där tidslinjens huvud står (annars på datumet i 3D).
   on("v3FlKeyView", e => { const v = l3SavedViews()[+e.target.value]; if (!v) return; const d = l3fs.t !== null && l3fsOn() ? l3plIso(new Date(Math.round(l3fs.t / 86400000) * 86400000)) : day; l3plKeyAdd({ p: v.p, t: v.t }, d, v.name); if (l3fsOn()) l3fsRender(); }, "onchange");
   on("v3FlPreview", () => { save(); l3plFilm(false); });
   on("v3FlRec", () => { save(); l3plFilm(true); });
+}
+/* Animering (Victor 2026-10-12: "välja på vilka aktiviteter jag vill ha de olika animationerna. Sätt standard till
+   som det är nu"): en standard för alla och ett val per aktivitet (namnet), t.ex. Gjutning = Växer upp. */
+const L3PL_ANIM = [["color", "Byter färg (som nu)"], ["grow", "Växer upp"], ["fade", "Tonas in"], ["drop", "Lyfts på plats"]];
+function l3plAnimHtml(f) {
+  const A = f.anim || {}, def = A.def || "color", by = A.by || {}, esc = escHtml;
+  const names = [...new Set(l3plFilmActs().map(a => a.name))].sort((x, y) => x.localeCompare(y, "sv", { numeric: true }));
+  const q = (l3pl.animQ || "").trim().toLowerCase(), list = names.filter(n => !q || n.toLowerCase().includes(q));
+  const sel = (id, v, withStd) => `<select ${id}>${withStd ? `<option value="">Standard</option>` : ""}${L3PL_ANIM.map(([k, t]) => `<option value="${k}" ${v === k ? "selected" : ""}>${t}</option>`).join("")}</select>`;
+  const nSet = Object.keys(by).filter(k => by[k]).length;
+  return `<details class="v3-pl-fx v3-pl-anim" ${l3pl.animOpen ? "open" : ""}><summary>Animering${nSet ? ` · ${nSet} egna` : ""}</summary>
+    <label class="v3-pl-arow v3-pl-adef" title="Standard för alla aktiviteter"><span>Alla</span>${sel('id="v3FlAnimDef"', def, false)}</label>
+    <div class="v3-pal-hint">Välj för enskilda aktiviteter (ett namn gäller alla dess objekt). Gäller IFC-objekt som är kopplade.</div>
+    ${names.length > 8 ? `<input type="search" id="v3FlAnimQ" class="v3-pp-q" placeholder="Sök aktivitet…" value="${esc(l3pl.animQ || "")}" />` : ""}
+    <div class="v3-pl-alist">${list.slice(0, 200).map(n => `<label class="v3-pl-arow ${by[n] ? "set" : ""}" title="${esc(n)}"><span>${esc(n)}</span>${sel(`data-anim="${esc(n)}"`, by[n] || "", true)}</label>`).join("") || `<div class="v3-pal-hint">Inga aktiviteter.</div>`}</div>
+    ${nSet ? `<button type="button" class="v3-link" id="v3FlAnimClr">Återställ alla till Standard</button>` : ""}
+  </details>`;
+}
+function l3plAnimBind(host) {
+  const f = () => l3plPrefs().film || {}, put = A => l3plSet("film", { ...f(), anim: A });
+  const d = host.querySelector(".v3-pl-anim"); if (d) d.ontoggle = () => { l3pl.animOpen = d.open; };
+  const def = host.querySelector("#v3FlAnimDef"); if (def) def.onchange = () => put({ ...(f().anim || {}), def: def.value });
+  host.querySelectorAll("[data-anim]").forEach(s2 => { s2.onchange = () => { const A = f().anim || {}, by = { ...(A.by || {}) }; if (s2.value) by[s2.dataset.anim] = s2.value; else delete by[s2.dataset.anim]; put({ ...A, by }); s2.closest(".v3-pl-arow").classList.toggle("set", !!s2.value); }; });
+  const q = host.querySelector("#v3FlAnimQ"); if (q) q.oninput = () => { l3pl.animQ = q.value; const pos = q.selectionStart; l3plRenderTab(); const n = document.getElementById("v3FlAnimQ"); if (n) { n.focus(); n.setSelectionRange(pos, pos); } };
+  const clr = host.querySelector("#v3FlAnimClr"); if (clr) clr.onclick = () => { put({ ...(f().anim || {}), by: {} }); l3plRenderTab(); };
 }
 function l3plRender() { l3plRenderTab(); if (l3pl.dock) l3plDockRender(); }
 function l3plSelect(key, split = false) {

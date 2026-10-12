@@ -217,13 +217,14 @@ function l3gaListHtml(acts, P) {
   </div>`;
 }
 
-function l3gaBind(d) {
-  const P = l3gaP(), set = (k, v) => { l3plSet(k, v); l3plDockRender(); };
+function l3gaBind(d, rr = l3plDockRender) {
+  // rr: ritar om där innehållet visas (panelen nederst eller listan 4D-koppling i vänstermenyn).
+  const P = l3gaP(), set = (k, v) => { l3plSet(k, v); rr(); };
   const on = (sel, ev, fn) => d.querySelectorAll(sel).forEach(el => { el[ev] = e => fn(el, e); });
   on("[data-plview]", "onclick", b => set("view", b.dataset.plview));
   on("#v3GaGroup", "onchange", s => set("groupBy", s.value));
   on("#v3PlBy", "onchange", s => set("colorBy", s.value));
-  on("#v3PlQ", "oninput", q => { l3plSet("q", q.value); const pos = q.selectionStart; l3plDockRender(); const q2 = document.getElementById("v3PlQ"); if (q2) { q2.focus(); q2.setSelectionRange(pos, pos); } });
+  on("#v3PlQ", "oninput", q => { l3plSet("q", q.value); const pos = q.selectionStart; rr(); const q2 = document.getElementById("v3PlQ"); if (q2) { q2.focus(); q2.setSelectionRange(pos, pos); } });
   on("#v3PlClose", "onclick", () => l3plDockToggle(false));
   on("#v3GaFull", "onclick", () => set("full", !P.full));
   on("#v3GaPrint", "onclick", () => l3gaPrint(d));
@@ -234,7 +235,7 @@ function l3gaBind(d) {
   [["#v3GaOne", "oneLine"], ["#v3GaFullTxt", "fullText"], ["#v3GaArrows", "arrows"], ["#v3GaSplit", "split"], ["#v3GaEdit", "editable"], ["#v3GaBl", "baseline"]].forEach(([s, k]) => on(s, "onchange", c => set(k, c.checked)));
   on("#v3GaLanes", "onclick", b => l3gaLanePicker(b));
   on("#v3GaLanesAll", "onclick", () => set("hidden", (P.hidden || []).filter(k => !k.startsWith(P.groupBy + ":"))));
-  on("[data-gafold]", "onclick", b => { const k = "c:" + b.dataset.gafold; l3ga.open.has(k) ? l3ga.open.delete(k) : l3ga.open.add(k); l3plDockRender(); });
+  on("[data-gafold]", "onclick", b => { const k = "c:" + b.dataset.gafold; l3ga.open.has(k) ? l3ga.open.delete(k) : l3ga.open.add(k); rr(); });
   on(".v3-pl-lane-h", "oncontextmenu", (h, e) => { e.preventDefault(); const k = h.closest("[data-galane]").dataset.galane; l3gaMenu(e, [[`Dölj ${k}`, () => set("hidden", [...new Set([...(P.hidden || []), P.groupBy + ":" + k])])], [`Visa bara ${k}`, () => set("hidden", [...(P.hidden || []).filter(x => !x.startsWith(P.groupBy + ":")), ...[...d.querySelectorAll("[data-galane]")].map(x => x.dataset.galane).filter(x => x !== k).map(x => P.groupBy + ":" + x)])]]); });
   on("[data-plweek]", "onclick", b => { $("dateInput").value = b.dataset.plweek; $("dateInput").dispatchEvent(new Event("change")); setTimeout(l3plDockRender, 50); });
   // Lappar, staplar och listrader.
@@ -248,7 +249,7 @@ function l3gaBind(d) {
   on("[data-galf]", "onchange", s => set("lf", { ...(P.lf || {}), [s.dataset.galf]: s.value }));
   on("[data-galc]", "onchange", c => set("lf", { ...(P.lf || {}), [c.dataset.galc]: c.checked }));
   on("#v3GaClearF", "onclick", () => set("lf", {}));
-  on("[data-galopen]", "onclick", b => { const k = "l:" + b.dataset.galopen; l3ga.open.has(k) ? l3ga.open.delete(k) : l3ga.open.add(k); l3plDockRender(); });
+  on("[data-galopen]", "onclick", b => { const k = "l:" + b.dataset.galopen; l3ga.open.has(k) ? l3ga.open.delete(k) : l3ga.open.add(k); rr(); });
   on("[data-gamark]", "onclick", b => { const acts = l3gaListFilter(l3plActs(P.split), P.lf || {}).filter(a => l3gaLaneKey(a, P.groupBy || "area") === b.dataset.gamark); l3gaSelectActs(acts, false, b.dataset.gamark); });
   on("#v3GaShow3d", "onclick", () => l3gaSelectActs(l3gaListFilter(l3plActs(P.split), P.lf || {}), true, "Filtrerat"));
   on("#v3GaShowCoupled", "onclick", () => l3gaSelectActs(l3plActs(P.split).filter(a => a.coupled), true, "Alla kopplade"));

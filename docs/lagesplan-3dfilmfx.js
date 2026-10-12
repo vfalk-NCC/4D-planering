@@ -10,7 +10,9 @@
    – Förloppsmätare: hur stor del av projektet som är klar (efter aktiviteternas längd); valbart läget mot baslinjen.
    Grafiken ritas i filmbilden när man spelar in och i ett lager över 3D-vyn när man spelar upp. */
 
-const l3fxOpts = () => { const f = l3plPrefs().film || {}; return { now: f.fxNow !== false, glow: f.fxGlow !== false, date: f.title !== false, miles: f.fxMiles !== false, meter: f.fxMeter !== false, bl: f.fxBl === true }; };
+const l3fxOpts = () => { const f = l3plPrefs().film || {}; return { now: f.fxNow !== false, glow: f.fxGlow !== false, date: f.title !== false, miles: f.fxMiles !== false, meter: f.fxMeter !== false, bl: f.fxBl === true, legend: f.fxLegend === true }; };
+/* Animeringen för en aktivitet: eget val (aktivitetens namn) eller standarden – från början "color" (bara färgen). */
+const l3fxAnimType = a => { const A = (l3plPrefs().film || {}).anim || {}; return (A.by || {})[a.name] || A.def || "color"; };
 const L3FX_DAY = 86400000;
 const l3fxEase = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 
@@ -41,6 +43,8 @@ async function l3fxStart(from, to) {
   fx.areaProg = (area, t) => { const e = fx.areas.get(area); return e ? e.acts.reduce((sm, a) => sm + part(t, a.t0, a.t1) * (a.t1 - a.t0), 0) / (e.W || 1) : 0; };
   if (fx.hasBl) { fx.blMin = Math.min(...withBl.map(a => a.b0)); fx.blMax = Math.max(...withBl.map(a => a.b1)); }
   fx.cache = new Map();
+  fx.anim = acts.map(a => ({ a, type: l3fxAnimType(a), parts: null, ov: [] })).filter(x => x.type !== "color");
+  fx.animMeshes = new Set();
   return fx;
 }
 /* Dagar före (+) eller efter (−) baslinjen: när nådde baslinjen samma förlopp som planen har nu? */
@@ -76,8 +80,54 @@ function l3fxFrame(fx, iso, ft, tms) {
   fx.miles.forEach(m => { if (m.date <= iso && !fx.passed.has(m.name + m.date)) { fx.passed.add(m.name + m.date); if (ft > 0.05) fx.banner = { m, at: ft }; } });
   if (fx.banner && ft - fx.banner.at > 2.8) fx.banner = null;
   if (fx.o.glow) l3fxGlow(fx, act, iso, ft);
+  if (fx.anim.length) l3fxAnimate(fx, t);
 }
-function l3fxGlowClear(fx) { (fx.glow || []).forEach(m => { if (m.parent) m.parent.remove(m); m.geometry.dispose(); m.material.dispose(); }); fx.glow = []; fx.glowKey = ""; }
+/* ---- Animering av IFC-objekten (växer upp, tonas in, lyfts på plats) ----------------------------------
+   Före aktiviteten syns objekten inte; under den ritas en kopia (samma hörn och färger) som animeras medan
+   originalet är dolt; efteråt syns originalet som vanligt. */
+function l3fxAnimParts(an) {
+  const byMesh = new Map(), guids = new Set(an.a.rows.map(r => String(r.object_id || "")).filter(Boolean));
+  if (typeof l3pEnts === "function") l3b.models.forEach(m => { if (!m.visible) return; const map = l3pEnts(m); guids.forEach(g => (map.get(g) || []).forEach(e => { if (!byMesh.has(e.mesh)) byMesh.set(e.mesh, []); byMesh.get(e.mesh).push(e.ri); })); });
+  an.parts = [...byMesh].map(([mesh, ris]) => {
+    const u = mesh.userData.l3b, pos = mesh.geometry.getAttribute("position");
+    let z0 = Infinity, z1 = -Infinity;
+    ris.forEach(ri => { const r = u.ranges[ri]; for (let i = r.start; i < r.start + r.count; i++) { const z = pos.getZ(i); if (z < z0) z0 = z; if (z > z1) z1 = z; } });
+    return { mesh, ris, z0, z1 };
+  });
+}
+function l3fxAnimOverlay(an, pt) {
+  const mesh = pt.mesh, src = mesh.userData.l3b.origIdx;
+  const rs = pt.ris.map(ri => l3bsIdx(mesh, ri)), n = rs.reduce((sm, r) => sm + r[1], 0); if (!n) return null;
+  const idx = new Uint32Array(n); let o = 0; rs.forEach(([st, c]) => { idx.set(src.subarray(st, st + c), o); o += c; });
+  const g = new THREE.BufferGeometry(); ["position", "normal", "color"].forEach(k => { const at = mesh.geometry.getAttribute(k); if (at) g.setAttribute(k, at); });
+  g.setIndex(new THREE.BufferAttribute(idx, 1)); g.computeBoundingSphere();
+  const ov = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: an.type === "fade", opacity: 1 }));
+  ov.userData.noHit = true; ov.raycast = () => {}; ov.userData.pt = pt; mesh.add(ov);
+  return ov;
+}
+function l3fxAnimate(fx, t) {
+  const off = new Map();
+  fx.anim.forEach(an => {
+    const a = an.a, st = t < a.t0 ? 0 : t < a.t1 ? 1 : 2;
+    if (st < 2) { if (!an.parts) l3fxAnimParts(an); an.parts.forEach(pt => { fx.animMeshes.add(pt.mesh); if (!off.has(pt.mesh)) off.set(pt.mesh, new Set()); pt.ris.forEach(ri => off.get(pt.mesh).add(ri)); }); }
+    if (st === 1) {
+      if (!an.ov.length) an.ov = an.parts.map(pt => l3fxAnimOverlay(an, pt)).filter(Boolean);
+      const p = Math.max(0, Math.min(1, (t - a.t0) / (a.t1 - a.t0)));
+      an.ov.forEach(ov => {
+        const pt = ov.userData.pt;
+        if (an.type === "grow") { const k = Math.max(0.02, l3fxEase(p)); ov.scale.z = k; ov.position.z = pt.z0 * (1 - k); }
+        else if (an.type === "fade") { ov.material.opacity = 0.08 + 0.92 * l3fxEase(p); ov.material.depthWrite = p > 0.95; }
+        else if (an.type === "drop") { const q = l3fxEase(Math.min(1, p / 0.35)), lift = Math.max(4, (pt.z1 - pt.z0) * 2); ov.position.z = (1 - q) * lift; }
+      });
+    } else if (an.ov.length) { l3fxAnimDrop(an); }
+  });
+  fx.animMeshes.forEach(mesh => {
+    const u = mesh.userData.l3b, want = off.get(mesh) || new Set(), was = u.animOff || new Set();
+    if (want.size !== was.size || [...want].some(ri => !was.has(ri))) { u.animOff = want; l3bApplyHidden(mesh); }
+  });
+}
+function l3fxAnimDrop(an) { an.ov.forEach(ov => { if (ov.parent) ov.parent.remove(ov); ov.geometry.attributes = {}; ov.geometry.dispose(); ov.material.dispose(); }); an.ov = []; }
+function l3fxGlowClear(fx) { (fx.glow || []).forEach(m => { if (m.parent) m.parent.remove(m); m.geometry.attributes = {}; m.geometry.dispose(); m.material.dispose(); }); fx.glow = []; fx.glowKey = ""; } // de delade hörnen lämnas orörda
 /* Pågående aktiviteters objekt (IFC, kopplade via objektens GUID) får ett pulserande lager i statusfärgen. */
 function l3fxGlow(fx, act, iso, ft) {
   const key = iso + "|" + act.map(a => a.key).join(",");
@@ -102,7 +152,11 @@ function l3fxGlow(fx, act, iso, ft) {
   const k = 0.18 + 0.32 * (0.5 + 0.5 * Math.sin(ft * Math.PI * 2 * 0.7));
   fx.glow.forEach(m => { m.material.opacity = k; });
 }
-function l3fxEnd(fx) { if (!fx) return; l3fxGlowClear(fx); const h = document.getElementById("v3FilmHud"); if (h) { h.getContext("2d").clearRect(0, 0, h.width, h.height); h.classList.add("hidden"); } }
+function l3fxEnd(fx) {
+  if (!fx) return;
+  (fx.anim || []).forEach(l3fxAnimDrop);
+  (fx.animMeshes || new Set()).forEach(mesh => { const u = mesh.userData.l3b; if (u.animOff && u.animOff.size) { u.animOff = new Set(); l3bApplyHidden(mesh); } });
+  l3fxGlowClear(fx); const h = document.getElementById("v3FilmHud"); if (h) { h.getContext("2d").clearRect(0, 0, h.width, h.height); h.classList.add("hidden"); } }
 
 /* ---- Grafiken i bilden ---------------------------------------------------------------------------------- */
 const l3fxRR = (ctx, x, y, w, h, r) => { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, r); else ctx.rect(x, y, w, h); };
@@ -113,6 +167,7 @@ function l3fxDraw(ctx, W, H, iso, ft, fx, caption, pearls) {
   if (o.date) l3fxDate(ctx, s, iso, ft, fx, caption);
   if (o.meter) l3fxMeter(ctx, W, s, t, fx);
   if (o.now) l3fxNow(ctx, W, H, s, iso, ft, fx, pearls, t);
+  if (o.legend) l3fxLegend(ctx, H, s, pearls);
   if (o.miles && fx.banner) l3fxBanner(ctx, W, s, ft, fx.banner);
   ctx.restore();
 }
@@ -240,6 +295,20 @@ function l3fxBanner(ctx, W, s, ft, b) {
   ctx.fillStyle = "#fff"; ctx.save(); ctx.translate(ix, 0); ctx.rotate(Math.PI / 4); const k = 12 * s * (0.9 + 0.1 * Math.sin(u * 6)); ctx.fillRect(-k, -k, 2 * k, 2 * k); ctx.restore();
   ctx.textAlign = "left"; ctx.fillStyle = "#c4b5fd"; ctx.font = `700 ${Math.round(15 * s)}px system-ui, sans-serif`; ctx.fillText(sub, ix + 52 * s, -24 * s);
   ctx.fillStyle = "#fff"; ctx.font = `800 ${Math.round(46 * s)}px system-ui, sans-serif`; ctx.fillText(b.m.name, ix + 50 * s, 16 * s);
+  ctx.restore();
+}
+/* Statusförklaringen nere till vänster: vad färgerna betyder. */
+function l3fxLegend(ctx, H, s, pearls) {
+  const rows = [["klar", "Klar"], ["pagaende", "Pågår"], ["forsenad", "Försenad"], ["planerad", "Ej startad"]];
+  const w = 210 * s, rh = 32 * s, h = 46 * s + rows.length * rh, x = 32 * s, y = H - (pearls ? 132 : 28) * s - h;
+  ctx.save(); ctx.textBaseline = "middle";
+  ctx.fillStyle = "rgba(15,23,42,.8)"; l3fxRR(ctx, x, y, w, h, 18 * s); ctx.fill();
+  ctx.fillStyle = "#a5b4fc"; ctx.font = `700 ${Math.round(14 * s)}px system-ui, sans-serif`; ctx.fillText("STATUS", x + 22 * s, y + 25 * s);
+  rows.forEach(([k, t], i) => {
+    const ry = y + 46 * s + i * rh + rh / 2 - 4 * s;
+    ctx.fillStyle = phaseColor(k); l3fxRR(ctx, x + 22 * s, ry - 9 * s, 18 * s, 18 * s, 5 * s); ctx.fill();
+    ctx.fillStyle = "#e2e8f0"; ctx.font = `600 ${Math.round(18 * s)}px system-ui, sans-serif`; ctx.fillText(t, x + 52 * s, ry + 1 * s);
+  });
   ctx.restore();
 }
 /* Uppspelning i 3D-vyn: grafiken i ett lager ovanpå (samma ritning som i filmen). */

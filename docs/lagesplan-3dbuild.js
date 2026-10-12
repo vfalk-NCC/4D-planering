@@ -573,7 +573,8 @@ function l3bHitInfo(h) {
 function l3bApplyHidden(mesh) {
   const u = mesh.userData.l3b, src = u.origIdx;
   let idx = src;
-  const off = u.tempOff || new Set(), alpha = u.alpha || new Map();
+  // tempOff: temporära utanför sin tid; animOff: filmens animering (lagesplan-3dfilmfx.js) ritar objektet själv.
+  const off = new Set([...(u.tempOff || []), ...(u.animOff || [])]), alpha = u.alpha || new Map();
   if (u.hidden.size || off.size || alpha.size) {
     const hid = new Uint8Array(mesh.geometry.getAttribute("position").count);
     // Genomskinliga (tillfällig opacitet) ritas i en egen bit ovanpå – inte i huvudbiten.
@@ -593,7 +594,7 @@ function l3bApplyAlpha(mesh) {
   (u.ghosts || []).forEach(g => { mesh.remove(g); g.geometry.attributes = {}; g.geometry.dispose(); g.material.dispose(); }); // de delade hörnen lämnas orörda
   u.ghosts = [];
   if (!u.alpha || !u.alpha.size) return;
-  const src = u.origIdx, n = mesh.geometry.getAttribute("position").count, gone = new Set([...u.hidden, ...(u.tempOff || [])]);
+  const src = u.origIdx, n = mesh.geometry.getAttribute("position").count, gone = new Set([...u.hidden, ...(u.tempOff || []), ...(u.animOff || [])]);
   const byA = new Map();
   u.alpha.forEach((a, ri) => { if (gone.has(ri)) return; if (!byA.has(a)) byA.set(a, []); byA.get(a).push(ri); });
   byA.forEach((ris, a) => {
