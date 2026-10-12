@@ -83,26 +83,23 @@ function l3plRenderTab() {
         <label>Upplösning<select id="v3FlRes">${[["720", "720p"], ["1080", "1080p (Full HD)"], ["1440", "1440p"]].map(([v, t]) => `<option value="${v}" ${String(f.res || "1080") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
       </div>
       <label class="v3-pl-chk"><input type="checkbox" id="v3FlTitleOn" ${f.title === false ? "" : "checked"} /> Datum och vecka i bilden</label>
+      <label class="v3-pl-chk"><input type="checkbox" id="v3FlPearls" ${f.pearls === false ? "" : "checked"} /> Tidslinje och aktiviteter i filmen</label>
       <input type="text" id="v3FlTitle" placeholder="Rubrik i filmen (valfri)" value="${esc(f.caption || "")}" />
-      <div class="v3-pl-sub">Kameravyer</div>
-      <div class="v3-pal-hint">Ställ in kameran och datumet, tryck ＋. Kameran glider mellan vyerna i datumordning. Utan vyer står kameran still.</div>
-      <div class="v3-pl-keys">${keys.map((k, i) => `<div class="v3-pl-key"><input type="date" value="${esc(k.date)}" data-flkd="${i}" title="Datumet då kameran ska vara här" /><button type="button" data-flkgo="${i}" title="Visa vyn">${esc(k.name || "Vy " + (i + 1))}</button><button type="button" class="v3-ic" data-flkx="${i}" title="Ta bort">✕</button></div>`).join("") || ""}</div>
-      <button type="button" class="v3-wide" id="v3FlKey">＋ Lägg till kameran som den står nu (${esc(day)})</button>
-      ${l3SavedViews().length ? `<select id="v3FlKeyView" class="v3-wide"><option value="">＋ Lägg till en sparad vy på ${esc(day)}…</option>${l3SavedViews().map((v, i) => `<option value="${i}">${esc(v.name)}</option>`).join("")}</select>` : ""}
-      <div class="v3-pl-btns"><button type="button" id="v3FlPreview" title="Spela upp i 3D-vyn utan att spela in">▶ Förhandsvisa</button><button type="button" id="v3FlRec" class="v3-primary" title="Spela in och spara som videofil">⏺ Spela in film</button></div>
+      <button type="button" class="v3-wide ${l3fsOn() ? "on" : ""}" id="v3FlStrip" title="Tidslinje längst ner i 3D-fönstret med datum, aktiviteterna som ett pärlband och kameravyerna">${l3fsOn() ? "Dölj filmens tidslinje" : "🎬 Visa filmens tidslinje"}</button>
+      <div class="v3-pal-hint">${keys.length ? `${keys.length} ${keys.length === 1 ? "kameravy" : "kameravyer"} (🎥 på tidslinjen). ` : ""}Dra på tidslinjen till ett datum, ställ in kameran och tryck <b>＋ Vy här</b>. Kameran glider mellan vyerna. Dra en 🎥 för att flytta den, högerklicka för att ta bort.</div>
+      ${l3SavedViews().length ? `<select id="v3FlKeyView" class="v3-wide"><option value="">＋ Lägg en sparad vy på tidslinjen…</option>${l3SavedViews().map((v, i) => `<option value="${i}">${esc(v.name)}</option>`).join("")}</select>` : ""}
+      <div class="v3-pl-btns"><button type="button" id="v3FlPreview" title="Spela upp i 3D-vyn utan att spela in">▶ Spela upp</button><button type="button" id="v3FlRec" class="v3-primary" title="Spela in och spara som videofil">⏺ Spela in</button></div>
       <div class="v3-pal-hint" id="v3FlMsg">${typeof MediaRecorder === "undefined" ? "Webbläsaren kan inte spela in video." : ""}</div>
     </div>`;
   const on = (id, fn, ev = "onclick") => { const el = host.querySelector("#" + id); if (el) el[ev] = fn; };
   on("v3PlReload", () => { l3pl.rows = null; l3plLoad(true); l3plRenderTab(); });
   on("v3PlDock", () => l3plDockToggle());
   host.querySelectorAll("[data-plsel]").forEach(b => { b.onclick = () => l3plSelect(b.dataset.plsel); });
-  const save = () => l3plSet("film", { ...l3plPrefs().film, from: host.querySelector("#v3FlFrom").value, to: host.querySelector("#v3FlTo").value, sec: Number(host.querySelector("#v3FlSec").value) || 20, res: host.querySelector("#v3FlRes").value, title: host.querySelector("#v3FlTitleOn").checked, caption: host.querySelector("#v3FlTitle").value });
-  ["v3FlFrom", "v3FlTo", "v3FlSec", "v3FlRes", "v3FlTitleOn", "v3FlTitle"].forEach(id => on(id, save, "onchange"));
-  on("v3FlKey", () => { l3plKeyAdd(l3plCam(), day, `Vy ${keys.length + 1}`); });
-  on("v3FlKeyView", e => { const v = l3SavedViews()[+e.target.value]; if (v) l3plKeyAdd({ p: v.p, t: v.t }, day, v.name); }, "onchange");
-  host.querySelectorAll("[data-flkd]").forEach(inp => { inp.onchange = () => { const k = l3plKeys(); k[+inp.dataset.flkd].date = inp.value; l3plKeysSet(k); }; });
-  host.querySelectorAll("[data-flkgo]").forEach(b => { b.onclick = () => { const k = l3plKeys()[+b.dataset.flkgo]; if (!k) return; l3plCamApply(k); $("dateInput").value = k.date; l3Render(); }; });
-  host.querySelectorAll("[data-flkx]").forEach(b => { b.onclick = () => { const k = l3plKeys(); k.splice(+b.dataset.flkx, 1); l3plKeysSet(k); }; });
+  const save = () => { l3plSet("film", { ...l3plPrefs().film, from: host.querySelector("#v3FlFrom").value, to: host.querySelector("#v3FlTo").value, sec: Number(host.querySelector("#v3FlSec").value) || 20, res: host.querySelector("#v3FlRes").value, title: host.querySelector("#v3FlTitleOn").checked, pearls: host.querySelector("#v3FlPearls").checked, caption: host.querySelector("#v3FlTitle").value }); if (l3fsOn()) l3fsRender(); };
+  ["v3FlFrom", "v3FlTo", "v3FlSec", "v3FlRes", "v3FlTitleOn", "v3FlPearls", "v3FlTitle"].forEach(id => on(id, save, "onchange"));
+  on("v3FlStrip", () => { save(); l3fsToggle(); });
+  // En sparad vy läggs där tidslinjens huvud står (annars på datumet i 3D).
+  on("v3FlKeyView", e => { const v = l3SavedViews()[+e.target.value]; if (!v) return; const d = l3fs.t !== null && l3fsOn() ? l3plIso(new Date(Math.round(l3fs.t / 86400000) * 86400000)) : day; l3plKeyAdd({ p: v.p, t: v.t }, d, v.name); if (l3fsOn()) l3fsRender(); }, "onchange");
   on("v3FlPreview", () => { save(); l3plFilm(false); });
   on("v3FlRec", () => { save(); l3plFilm(true); });
 }
@@ -171,7 +168,7 @@ async function l3plFilm(record) {
   const st = { stop: false };
   l3pl.rec = st;
   const setBtn = txt => { const b = document.getElementById(record ? "v3FlRec" : "v3FlPreview"); if (b) b.textContent = txt; };
-  setBtn("■ Stoppa");
+  setBtn("■ Stoppa"); const fsb = document.getElementById(record ? "v3FsRec" : "v3FsPlay"); if (fsb) fsb.textContent = "■";
   let cv = null, ctx = null, rec = null, chunks = [], mime = "";
   if (record) {
     cv = document.createElement("canvas"); cv.width = W; cv.height = H; ctx = cv.getContext("2d");
@@ -196,9 +193,11 @@ async function l3plFilm(record) {
         R.render(l3.scene, l3.camera);
         ctx.drawImage(R.domElement, 0, 0, W, H);
         if (title) l3plOverlay(ctx, W, H, d, caption);
+        if (typeof l3fsDrawFrame === "function" && f.pearls !== false) l3fsDrawFrame(ctx, W, H, d);
         st.frame();
       } else l3Render();
       if (msg) msg.textContent = `${record ? "Spelar in" : "Spelar upp"}: ${d} (${Math.round(i / frames * 100)} %)`;
+      if (typeof l3fsPlayhead === "function") { l3fs.t = t; l3fsPlayhead(t); }
       // Takten: bild i vid tiden i / fps (spelar in i realtid).
       const wait = start + (i + 1) * 1000 / fps - performance.now();
       await new Promise(r => setTimeout(r, Math.max(0, wait)));
@@ -209,7 +208,7 @@ async function l3plFilm(record) {
       R.setPixelRatio(pr0); l3Resize();
     }
     l3pl.rec = null;
-    setBtn(record ? "⏺ Spela in film" : "▶ Förhandsvisa");
+    setBtn(record ? "⏺ Spela in" : "▶ Spela upp"); { const b1 = document.getElementById("v3FsPlay"), b2 = document.getElementById("v3FsRec"); if (b1) b1.textContent = "▶"; if (b2) b2.textContent = "⏺"; }
     $("dateInput").value = day0; $("dateInput").dispatchEvent(new Event("change"));
     l3plSetDay(day0);
     if (!keys.length) l3plCamApply(cam0);
@@ -237,16 +236,13 @@ function l3plOverlay(ctx, W, H, d, caption) {
   ctx.fillStyle = "rgba(15,23,42,.72)"; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(32 * s, 32 * s, w, 76 * s, 14 * s) : ctx.rect(32 * s, 32 * s, w, 76 * s); ctx.fill();
   ctx.fillStyle = "#fff"; ctx.textBaseline = "middle"; ctx.fillText(lbl, 56 * s, 70 * s);
   if (caption) { ctx.font = `600 ${Math.round(28 * s)}px system-ui, sans-serif`; ctx.fillStyle = "rgba(15,23,42,.85)"; ctx.fillText(caption, 36 * s, 140 * s); }
-  // Tidslinjen.
-  const a = l3plDate(f.from || d).getTime(), b = l3plDate(f.to || d).getTime(), u = b > a ? (dt.getTime() - a) / (b - a) : 1;
-  ctx.fillStyle = "rgba(15,23,42,.25)"; ctx.fillRect(0, H - 10 * s, W, 10 * s);
-  ctx.fillStyle = "#6d5efc"; ctx.fillRect(0, H - 10 * s, W * Math.max(0, Math.min(1, u)), 10 * s);
   ctx.restore();
 }
 
 function l3plInit() {
   l3pl.dock = !!l3plPrefs().dock;
   if (l3pl.dock) l3plDockRender();
+  if (l3fsOn()) l3fsRender();
   if (l3Prefs().palTab === "plan") l3plRenderTab();
 }
 document.addEventListener("DOMContentLoaded", () => {

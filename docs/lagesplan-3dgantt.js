@@ -43,7 +43,7 @@ function l3plDockRender() {
   const host = document.getElementById("v3Canvas");
   if (!host) return;
   let d = document.getElementById("v3PlanDock");
-  if (!l3pl.dock) { if (d) d.remove(); return; }
+  if (!l3pl.dock) { if (d) d.remove(); if (typeof l3fsOn === "function" && l3fsOn()) l3fsRender(); return; }
   const P = l3gaP();
   if (!d) {
     d = document.createElement("div"); d.id = "v3PlanDock"; d.className = "v3-pldock";
@@ -96,6 +96,7 @@ function l3plDockRender() {
   const sc = d.querySelector(".v3-pl-scroll");
   if (keepScroll && sc) { sc.scrollLeft = keepScroll[0]; sc.scrollTop = keepScroll[1]; }
   if (P.view !== "list" && P.arrows) requestAnimationFrame(() => l3gaArrows(d));
+  if (typeof l3fsOn === "function" && l3fsOn()) l3fsRender(); // tidslinjen ovanför panelen
 }
 
 /* Tavlan och staplarna. */
@@ -257,7 +258,7 @@ function l3gaBind(d) {
     if (P.full) return;
     e.preventDefault(); const y0 = e.clientY, h0 = d.offsetHeight, host = document.getElementById("v3Canvas");
     const mv = ev => { d.style.height = Math.max(140, Math.min(host.clientHeight - 40, h0 + (y0 - ev.clientY))) + "px"; };
-    const up = () => { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); l3plSet("dockH", d.offsetHeight); };
+    const up = () => { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); l3plSet("dockH", d.offsetHeight); if (typeof l3fsOn === "function" && l3fsOn()) l3fsRender(); };
     window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up);
   };
 }

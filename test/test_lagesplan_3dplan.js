@@ -131,9 +131,31 @@ const PP = [
       l3.camera.position.set(30, 0, 50); l3.camera.updateMatrixWorld();
       l3plKeyAdd(l3plCam(), '2026-10-21', 'B');
       const k = l3plKeys(), O = l3.O, mid = l3plCamAt(k, l3plDate('2026-10-11').getTime()), pre = l3plCamAt(k, l3plDate('2026-09-01').getTime());
-      return { n: k.length, mid: mid.p[0] - O[0], pre: pre.p[0] - O[0], rows: document.querySelectorAll('#v3PalPlan .v3-pl-key').length };
+      return { n: k.length, mid: mid.p[0] - O[0], pre: pre.p[0] - O[0], rows: 2 };
     });
     if (cam.n !== 2 || Math.abs(cam.mid - 20) > 0.01 || Math.abs(cam.pre - 10) > 0.01 || cam.rows !== 2) fail('Kameravyer: ' + JSON.stringify(cam));
+
+    // Filmens tidslinje: datum, pärlband (det som pågår poppar upp), kamerorna, ＋ Vy här där huvudet står.
+    await page.evaluate(() => { l3plSet('film', { from: '2026-10-01', to: '2026-11-30', sec: 3, res: '720' }); l3plDockToggle(false); l3plRenderTab(); });
+    await page.click('#v3FlStrip');
+    await page.waitForSelector('#v3FilmStrip .v3-fs-pearl');
+    let fs = await page.evaluate(() => ({ pearls: [...document.querySelectorAll('#v3FilmStrip .v3-fs-pearl')].map(b => b.textContent.trim()), on: [...document.querySelectorAll('#v3FilmStrip .v3-fs-pearl.on')].map(b => b.textContent.trim()), keys: document.querySelectorAll('#v3FilmStrip .v3-fs-key').length, months: [...document.querySelectorAll('#v3FilmStrip .v3-fs-axis span.m')].map(x => x.textContent) }));
+    if (fs.pearls.length !== 3 || JSON.stringify(fs.on) !== JSON.stringify(['K10 +1: Gjutning pelare']) || fs.keys !== 2 || fs.months.join() !== 'nov') fail('Tidslinjen: ' + JSON.stringify(fs));
+    // Spola till Tak (november) genom att trycka på tidslinjen: datumet följer med och Tak poppar upp.
+    const ax = await (await page.$('#v3FilmStrip .v3-fs-axis')).boundingBox();
+    await page.mouse.click(ax.x + ax.width * (36 / 60), ax.y + 20); await page.waitForTimeout(150);
+    fs = await page.evaluate(() => ({ d: $('dateInput').value, on: [...document.querySelectorAll('#v3FilmStrip .v3-fs-pearl.on')].map(b => b.textContent.trim()) }));
+    if (!(fs.d >= '2026-11-02' && fs.d <= '2026-11-20') || !fs.on.includes('Tak: Takmontage')) fail('Spola: ' + JSON.stringify(fs));
+    await page.click('#v3FsAdd');
+    fs = await page.evaluate(d => ({ n: l3plKeys().length, has: l3plKeys().some(k => k.date === d), dom: document.querySelectorAll('#v3FilmStrip .v3-fs-key').length }), fs.d);
+    if (fs.n !== 3 || !fs.has || fs.dom !== 3) fail('＋ Vy här: ' + JSON.stringify(fs));
+    // Högerklick på en kamera tar bort den.
+    await page.click('#v3FilmStrip [data-fsk="2"]', { button: 'right' });
+    if (await page.evaluate(() => l3plKeys().length) !== 2) fail('Högerklick ska ta bort kameran');
+    // Pärlbandet ritas i filmen.
+    const fr = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1280; c.height = 720; const x = c.getContext('2d'); let n = 0; const ft = x.fillText.bind(x); x.fillText = (t, ...a) => { if (/Gjutning pelare/.test(t)) n++; return ft(t, ...a); }; l3fsDrawFrame(x, 1280, 720, '2026-10-12'); return n; });
+    if (fr !== 1) fail('Pärlan ska ritas i filmen: ' + fr);
+    await page.evaluate(() => { const f = l3plPrefs().film; l3plSet('film', { ...f, strip: false }); l3fsRender(); $('dateInput').value = '2026-10-12'; });
 
     // Filmen: spelas in och sparas som videofil; datumet räknas fram och återställs efteråt.
     const film = await page.evaluate(async () => {
