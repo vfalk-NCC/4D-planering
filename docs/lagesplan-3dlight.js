@@ -8,7 +8,9 @@
      kopian (de gamla delarna tas bort ur datalagret – inget i TC rörs).
    – iPhone/iPad (pekskärm) läser kopian i stället för IFC-filen: ingen web-ifc, ingen hämtning från TC. */
 
-const L3LT_PART = 20e6, L3LT_MAX = 300e6;
+// Delar om 4 MB (Victor 2026-10-12: "401 Bad credentials" på första delen med 20 MB – läsningen före och övriga
+// sparningar gick med samma token, så GitHub avvisade det stora anropet; 20 MB blir ~27 MB som base64).
+const L3LT_PART = 4e6, L3LT_MAX = 300e6;
 const l3ltPath = () => `projects/${encodeURIComponent(projectId)}/mobil3d.json`;
 const l3ltKey = w => (w.fileId ? "f:" + w.fileId : String(w.id || ""));
 // Samma token som resten av lägesplanen (den aktiva) – en äldre sparad i inställningarna gav "401 Bad credentials" (Victor 2026-10-12).
@@ -64,6 +66,10 @@ async function l3ltEnsure(w, m) {
   const cur = list.find(x => x.key === key);
   if (cur && cur.version === w.version) return; // finns redan
   l3lt.saving.add(key);
+  // En modell i taget (två modeller som sparas samtidigt krockar annars i datalagret).
+  const prev = l3lt.queue || Promise.resolve();
+  let release; l3lt.queue = new Promise(r => { release = r; });
+  await prev;
   try {
     l3StatusLive(`Sparar en lätt kopia av ${m.name} för mobilen…`);
     const gz = new Uint8Array(await l3ltGzip(l3ltEncode(m)));
@@ -83,7 +89,7 @@ async function l3ltEnsure(w, m) {
     if (old && old.parts) for (const p of old.parts) if (!parts.includes(p)) await ghDeleteBinary(l3ltTok(), p, "Ersatt lätt 3D-kopia");
     l3Status(`Lätt kopia av ${m.name} sparad för mobilen (${(gz.length / 1e6).toFixed(1).replace(".", ",")} MB, ${parts.length} ${parts.length === 1 ? "del" : "delar"}) – iPhone/iPad läser den i stället för IFC-filen.`);
   } catch (e) { console.warn("Lätt kopia för mobilen", e); l3Status(`Kunde inte spara den lätta kopian för mobilen: ${e.message}`, true); }
-  finally { l3lt.saving.delete(key); }
+  finally { l3lt.saving.delete(key); release(); }
 }
 
 /* ---- Läsa (mobilen) ------------------------------------------------------------------------------- */
