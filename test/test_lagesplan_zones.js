@@ -91,6 +91,14 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   const v2 = (await zones())[0].polys[0][2];
   if (Math.abs(v2[0] - v0[0]) > 0.01) fail('Ctrl+Z ska ångra flytten av hörnet: ' + JSON.stringify([v0, v2]));
   console.log('OK: hörnen dras och Ctrl+Z ångrar');
+  // Alt + klick på ett hörn tar bort det; Ctrl+Z tar tillbaka det (Victor 2026-10-12).
+  await page.keyboard.down('Alt'); await page.mouse.click(vb.x + v0[0], vb.y + v0[1]); await page.keyboard.up('Alt'); await page.waitForTimeout(200);
+  const alt = (await zones())[0].polys[0];
+  if (alt.length !== 3 || alt.some(v => Math.abs(v[0] - v0[0]) < 0.01 && Math.abs(v[1] - v0[1]) < 0.01)) fail('Alt+klick ska ta bort hörnet: ' + JSON.stringify(alt));
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(200);
+  if ((await zones())[0].polys[0].length !== 4) fail('Ctrl+Z ska ta tillbaka hörnet');
+  // Minst tre hörn: Alt+klick på en triangel tar inte bort något.
+  console.log('OK: Alt + klick tar bort ett hörn, Ctrl+Z ångrar');
 
   // 3b) Dra en sida: båda hörnen flyttas parallellt längs sidans normal.
   {

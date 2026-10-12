@@ -180,6 +180,8 @@ function zonesPointerDown(e) {
     return true;
   }
   const h = zoneVertexAt(e);
+  // Alt + klick på ett hörn tar bort det (Victor 2026-10-12: "radera punkter också genom att hålla inne alt").
+  if (h && e.altKey) { e.preventDefault(); zoneRemoveVertex(h); return true; }
   if (h) {
     e.preventDefault();
     zoneVDrag = { ...h, orig: JSON.stringify(plan.zones), moved: false, sx: e.clientX, sy: e.clientY };
@@ -247,7 +249,7 @@ window.addEventListener("mousemove", e => {
   // Pekaren över en sida/ett hörn på den markerade zonen.
   const vp = $("viewport");
   if (vp && plan && selectedZoneId && !zoneVDrag && !zoneLDrag && e.target.closest && e.target.closest("#viewport")) {
-    const edge = !zoneVertexAt(e) && zoneEdgeAt(e), c = zoneVertexAt(e) ? "move" : edge ? zoneEdgeCursor(edge) : "";
+    const vx = zoneVertexAt(e), edge = !vx && zoneEdgeAt(e), c = vx ? (e.altKey ? "not-allowed" : "move") : edge ? zoneEdgeCursor(edge) : ""; // Alt över ett hörn: klick tar bort det
     if (c) { vp.style.cursor = c; vp._zoneCur = true; }
     else if (vp._zoneCur) { vp.style.cursor = ""; vp._zoneCur = false; }
   }
@@ -452,13 +454,19 @@ document.addEventListener("DOMContentLoaded", () => {
       finishZonePoly(); return;
     }
     const h = zoneVertexAt(e);
-    if (!h) return;
-    const poly = h.zone.polys[h.pi];
-    if (poly.length <= 3) { setSaveStatus("En zon behöver minst tre hörn."); return; }
-    zoneSnapshot("Ta bort zonhörn");
-    poly.splice(h.vi, 1); renderZones(); schedulePlanSave();
+    if (h) zoneRemoveVertex(h);
   });
 });
+/* Tar bort ett hörn på den markerade zonen (dubbelklick eller Alt + klick). Ctrl+Z ångrar. */
+function zoneRemoveVertex(h) {
+  const poly = h.zone.polys[h.pi];
+  if (poly.length <= 3) { setSaveStatus("En zon behöver minst tre hörn."); return false; }
+  zoneSnapshot("Ta bort zonhörn");
+  poly.splice(h.vi, 1); h.zone._status = null;
+  renderZones(); schedulePlanSave();
+  setSaveStatus("Hörnet borttaget – Ctrl+Z ångrar.");
+  return true;
+}
 async function deleteSelectedZone(ask) {
   if (zonesLocked()) { setSaveStatus("🔒 Zonerna är låsta – lås upp dem för att ta bort en zon."); return; }
   // Raderingsskyddet (lagesplan-zoneguard.js): på från början, och man måste alltid skriva RADERA –
