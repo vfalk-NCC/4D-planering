@@ -68,14 +68,15 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
 
   // Lagerhanteraren: blocken fälls ihop och ut, även alla på en gång.
   await page.click('[data-paltab="layers"]');
-  await page.waitForSelector('#v3PalLayers [data-lsec-t="base"]');
-  await page.click('#v3PalLayers [data-lsec-t="base"]');
-  if (await page.$('#v3PalLayers [data-l3l="plan"]')) fail('Underlag ska fällas ihop');
+  await page.waitForSelector('#v3PalLayers [data-lsec-t="site2d"]');
+  await page.click('#v3PalLayers [data-lsec-t="site2d"]');
+  if (await page.$('#v3PalLayers [data-l3s="cad:c1"]')) fail('2D-lager ska fällas ihop');
+  await page.click('#v3PalLayers [data-lsec-t="site2d"]');
   await page.click('#v3LayFold');
-  const allShut = await page.evaluate(() => ['base', 'plan', 'site2d', 'models'].every(id => (l3Prefs().layClosed || []).includes(id)) && !document.querySelector('#v3PalLayers .v3-lsec-b'));
+  const allShut = await page.evaluate(() => ['site2d', 'models'].every(id => (l3Prefs().layClosed || []).includes(id)) && !document.querySelector('#v3PalLayers .v3-lsec-b'));
   if (!allShut) fail('Fäll ihop alla');
   await page.click('#v3LayFold');
-  if (!(await page.$('#v3PalLayers [data-l3l="plan"]')) || !(await page.$('#v3PalLayers [data-l3s="cad:c1"]'))) fail('Fäll ut alla');
+  if (!(await page.$('#v3PalLayers [data-lsub-t="models"]')) || !(await page.$('#v3PalLayers [data-l3s="cad:c1"]'))) fail('Fäll ut alla');
 
   // Sök i lagermenyn: bara det som matchar syns (även i ihopfällda block).
   await page.click('#v3PalLayers [data-lsec-t="site2d"]');

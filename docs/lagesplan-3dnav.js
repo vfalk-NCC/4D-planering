@@ -31,6 +31,36 @@ function l3NavInit() {
   tri.onclick = () => l3View("top");
   l3.orbit.addEventListener("change", l3DrawTriad);
   l3DrawTriad();
+  l3NavHelp();
+}
+/* Navigeringen synlig (Victor 2026-10-12: "se vilka knappar man använder för att navigera och navigera mer
+   intuitivt"): en liten knapp vid axelkorset fäller ut en ruta med musens och tangenternas funktioner för det
+   valda musschemat, och schemat kan bytas direkt där. Öppen första gången, sedan som man lämnade den. */
+const L3_NAV_ICO = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="3" width="12" height="18" rx="6"/><path d="M12 7v4"/></svg>';
+function l3NavHelp() {
+  const host = l3.renderer.domElement.parentElement;
+  let box = document.getElementById("v3NavHelp");
+  if (!box) { box = document.createElement("div"); box.id = "v3NavHelp"; box.className = "v3-navhelp"; host.appendChild(box); box.addEventListener("pointerdown", e => e.stopPropagation()); box.addEventListener("wheel", e => e.stopPropagation()); }
+  const P = l3Prefs(), open = P.navHelp !== false, tekla = l3IsTekla(), touch = l3IsTouch();
+  const r = (k, t) => `<div class="v3-nh-r"><span class="v3-nh-k">${k}</span><span>${t}</span></div>`;
+  const m = (b, x) => `<i class="v3-nh-m ${b}"></i>${x || ""}`;
+  const rows = touch ? [
+    r("1 finger", "Rotera kring punkten under fingret"), r("2 fingrar", "Panorera och nyp för att zooma"), r("Två tryck", "Flyg dit"), r("Håll kvar", "Meny")]
+    : [
+      ...(tekla ? [r(m("l") + "Klick / dra", "Markera · ruta"), r(m("m") + "Dra", "Panorera"), r("Ctrl/Skift + " + m("m") + "dra", "Rotera kring punkten")]
+        : [r(m("l") + "Dra", "Rotera kring punkten"), r(m("r") + "/" + m("m") + "Dra", "Panorera"), r("Ctrl + " + m("l") + "dra", "Markera med ruta")]),
+      r(m("w") + "Hjul", "Zooma mot markören"), r("Dubbelklick", "Flyg till punkten"),
+      r("<kbd>V</kbd>", "Rotationscentrum"), r("<kbd>F</kbd>", "Zooma till markerat"), r("<kbd>Ctrl</kbd>+<kbd>P</kbd>", "Plan ↔ 3D"),
+      r("<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>", `<button type="button" class="v3-link" data-nh="walk">Gå runt…</button>`)];
+  box.innerHTML = `<button type="button" class="v3-nh-b ${open ? "on" : ""}" data-nh="tog" title="${open ? "Dölj" : "Visa"} navigeringen">${L3_NAV_ICO}<span>Navigering</span></button>`
+    + (open ? `<div class="v3-nh-card">${touch ? "" : `<div class="v3-segs v3-nh-seg">${[["standard", "Standard"], ["tekla", "Som i Tekla"]].map(([k, l]) => `<button type="button" data-nh-mouse="${k}" class="${(tekla ? "tekla" : "standard") === k ? "on" : ""}">${l}</button>`).join("")}</div>`}${rows.join("")}</div>` : "");
+  box.querySelector('[data-nh="tog"]').onclick = () => { l3SetPref("navHelp", !open); l3NavHelp(); };
+  const w = box.querySelector('[data-nh="walk"]'); if (w) w.onclick = () => { if (typeof l3wStart === "function") l3wStart(); };
+  box.querySelectorAll("[data-nh-mouse]").forEach(b => { b.onclick = () => {
+    l3SetPref("mouse", b.dataset.nhMouse); l3ApplyMouse(); l3NavHelp();
+    document.querySelectorAll("[data-v3mouse]").forEach(x => x.classList.toggle("on", x.dataset.v3mouse === b.dataset.nhMouse));
+    l3Status(b.dataset.nhMouse === "tekla" ? "Mus som i Tekla: vänster markerar, mitten panorerar, Ctrl/Skift + mitten roterar." : "Mus Standard: vänster roterar, höger/mitten panorerar, Ctrl + vänster markerar.");
+  }; });
 }
 /* Pekskärm som huvudsaklig inmatning (iPad/iPhone): större handtag, inga tangentbordstips. */
 function l3IsTouch() { try { return matchMedia("(pointer: coarse)").matches; } catch (e) { return false; } }
@@ -73,7 +103,8 @@ function l3PanAnchor(e) {
   const pan = act === M.PAN || (act === M.ROTATE && (e.ctrlKey || e.metaKey || e.shiftKey) && l3.orbit.enabled);
   if (!pan) return;
   const cam = l3.camera, fwd = cam.getWorldDirection(new THREE.Vector3());
-  const hit = l3Ray(e, l3Surfaces())[0];
+  let hit = l3Ray(e, l3Surfaces())[0];
+  if (typeof l3pcNearer === "function") hit = l3pcNearer(e, hit); // panorera med punkten i molnet under markören
   let d = hit ? hit.point.clone().sub(cam.position).dot(fwd) : 0;
   if (!(d > 0.3)) { const c = l3SceneBox().getCenter(new THREE.Vector3()); d = Math.max(c.sub(cam.position).dot(fwd), l3.orbit.target.distanceTo(cam.position)); }
   if (!(d > 0.3)) return;
@@ -345,7 +376,8 @@ function l3Wheel(e) {
     const d = before.sub(after); cam.position.add(d); orbit.target.add(d);
   } else {
     // Punkten under markören (eller i målplanet) står kvar: kamera och mål skalas kring den.
-    const hit = l3Ray(e, l3Surfaces())[0];
+    let hit = l3Ray(e, l3Surfaces())[0];
+    if (typeof l3pcNearer === "function") hit = l3pcNearer(e, hit); // punktmolnet: zooma mot punkten under markören
     let P = hit ? hit.point : null;
     if (!P) {
       const rc = new THREE.Raycaster(); rc.setFromCamera(ndc, cam);

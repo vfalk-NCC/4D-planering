@@ -40,7 +40,7 @@ function l3lSetIdsVisible(ids, on) {
 /* Minimalistisk (Victor 2026-10-12: "sortera upp den här menyn … minimalistiskt och stilrent … jobba mycket med
    collapse och dropdown-menyer"): block och grupper fälls ihop, åtgärder ligger i små menyer (＋ och ⋯) och
    radernas knappar syns när musen är över raden. Inställningarna har ett eget block längst ner (ihopfällt). */
-const L3L_SECS = ["models", "base", "plan", "site2d", "settings"];
+const L3L_SECS = ["models", "site2d", "settings"];
 const l3lClosed = () => { const c = new Set(l3Prefs().layClosed || []); if (!l3Prefs().layAdv) c.add("settings"); return c; };
 function l3lSec(id, title, body, extra = "", count = null) {
   const shut = l3lClosed().has(id) && !(l3lay.q || "").trim();
@@ -72,25 +72,12 @@ function l3LayersRender() {
   if (!host || !l3 || host.classList.contains("hidden")) return; // ritas när fliken visas
   const P = l3Prefs(), esc = escHtml;
   const row = (attrs, on, label, extra = "", cls = "") => `<div class="v3-lr ${cls}"><button type="button" class="v3-eye ${on ? "on" : ""}" ${attrs} title="${on ? "Släck" : "Tänd"}">${l3lEye(on)}</button><span class="v3-lr-n" title="${esc(label)}">${label}</span>${extra}</div>`;
-  const types = l3lTypes(), etabOn = types.some(l3lTypeOn);
-  const objsOn = P.objs !== "hidden";
+  const types = l3lTypes();
   const allShut = L3L_SECS.filter(id => id !== "settings").every(id => l3lClosed().has(id));
   // Sök i lagermenyn (Victor 2026-10-10): filtrerar raderna, blocken visas utfällda medan man söker.
   const q = (l3lay.q || "").trim().toLowerCase();
   let h = `<div class="v3-lay-top"><input type="search" class="v3-pp-q" id="v3LayQ" placeholder="Sök lager, modell, DXF…" value="${esc(l3lay.q || "")}" /><button type="button" class="v3-ic v3-lay-foldb" id="v3LayFold" title="${allShut ? "Fäll ut alla block" : "Fäll ihop alla block"}">${L3L_FOLD_ICO(allShut)}</button></div><!--l3l-models-->`;
-  h += l3lSec("base", "Underlag", `${row('data-l3l="plan"', !!P.plan, "Ritning som mark", `<input type="range" class="v3-lr-op" data-l3l-op="plan" min="10" max="100" step="5" value="${P.planOp || 100}" title="Ritningens täckning i 3D" />`)}`);
-  h += l3lSec("plan", "Planering och etablering", `${row('data-l3l="objs"', objsOn, "Planerade objekt")}
-    ${row('data-l3l="etab"', etabOn, `Etablering <em>${placements.length}</em>`, "", "v3-lr-b")}
-    ${types.map(t => {
-      // Varje typ går att fälla ut till sina objekt (Victor 2026-10-10: fliken Objekt var "kaka på kaka").
-      const ex = l3lay.texp.has(t.type) || !!q;
-      return row(`data-l3l-type="${esc(t.type)}"`, l3lTypeOn(t), `<i class="v3-lr-dot" style="background:${esc(t.color)}"></i><b class="v3-lr-tsel" data-l3l-tsel="${esc(t.type)}" title="Markera alla ${esc(t.label)}">${esc(t.label)}</b> <em>${t.ids.length}</em>`, `<button type="button" class="v3-lr-texp" data-l3l-texp="${esc(t.type)}" aria-expanded="${ex}" title="${ex ? "Fäll ihop" : "Visa objekten"}"><i>›</i></button>`, "v3-lr-sub")
-        + (ex ? t.ids.map(id => { const p = placements.find(x => x.id === id); if (!p) return ""; const on = !l3.hidden.has(id); return `<div class="v3-lr v3-lr-obj ${l3.sel.has(id) ? "on" : ""}"><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3l-obj="${esc(id)}" title="${on ? "Dölj" : "Visa"}">${l3lEye(on)}</button><button type="button" class="v3-lr-n v3-lr-pick" data-l3l-osel="${esc(id)}" title="Klick: markera (Skift = flera) · Dubbelklick: zooma">${esc(p.name || t.label)}</button></div>`; }).join("") : "");
-    }).join("")}
-    ${typeof l3m !== "undefined" ? row('data-l3m-eye="1"', !(typeof l3mAllHidden === "function" && l3mAllHidden()), `Mått <em>${l3m.list.length}</em>`) : ""}
-    ${typeof l3k !== "undefined" ? row('data-l3k-eye="1"', !l3k.hidden, `Kommentarer <em>${l3k.list.filter(c => !c.done).length}${l3k.list.some(c => c.done) ? ` + ${l3k.list.filter(c => c.done).length} klara` : ""}</em>`) + row('data-l3k-signs="1"', l3kSigns(), "Som skyltar i 3D", "", "v3-lr-sub") : ""}
-    ${typeof l3ph !== "undefined" ? row('data-l3ph-eye="1"', l3phOn(), `Foton <em>${l3phList().length}</em>`, `<span class="v3-lr-acts"><button type="button" class="v3-lr-zoom" data-l3ph-add="1" title="Lägg till foto (GPS, annars tryck där det är taget)">＋</button></span>`) : ""}`,
-    l3lMenu("plan", "⋯", "Fler val", placements.length ? `<button type="button" id="v3LayCsv" title="Lista över etableringen som öppnas i Excel (namn, typ, mått, läge, 4D)">Exportera etableringen (Excel)</button>` : ""));
+  // Underlag (ritningen som mark) ligger under Visa; Planering och etablering togs bort (Victor 2026-10-12).
   if (typeof l3sHtml === "function") { const s2 = l3sHtml(row, l3lEye); if (s2) h += l3lSec("site2d", "2D-lager och DXF", s2.body, s2.extra); }
   let mh = "";
   const noTc = typeof bridgeOk === "function" && !bridgeOk();
@@ -130,7 +117,8 @@ function l3LayersRender() {
     + fld("Läsare", sel("v3LayEngine", [["webifc", "web-ifc + ifc-lite"], ["lite", "ifc-lite (exakta hål)"]], P.ifcEngine === "lite" ? "lite" : "webifc"), "web-ifc läser snabbt och ifc-lite tar de objekt web-ifc inte klarar. Med ifc-lite för hela modellen skärs hål exakt men modeller med många håltagningar läses långsammare – web-ifc tar över om ifc-lite inte klarar filen.")
     + `</div><div class="v3-set-g"><div class="v3-set-h">Prestanda</div>`
     + fld("Trianglar", sel("v3LayCap", [["", `Auto (${(l3bAutoTris() / 1e6).toFixed(0)} milj.)`], ...L3B_CAPS.map(c => [String(c), `${c} milj.`])], P.triCap || ""), "Högsta antal trianglar för alla modeller tillsammans. Högre visar mer av stora modeller men kräver mer minne – för högt kan få fliken att stängas på en dator med lite minne. Gäller modeller som läses in efter att du ändrat.")
-    + fld("Punkter per moln", sel("v3LayPcBudget", [["", `Auto (${typeof lowMemDevice !== "undefined" && lowMemDevice ? "1,5" : "6"} milj.)`], ["1000000", "1 milj."], ["3000000", "3 milj."], ["6000000", "6 milj."], ["10000000", "10 milj."], ["20000000", "20 milj."]], P.pcBudget || ""), "Högsta antal punkter per punktmoln. Hela molnet visas alltid – glesare med en lägre siffra. Högre kräver mer minne och grafikkort. Gäller moln som läses in efter att du ändrat.")
+    + fld("Punkter per moln", sel("v3LayPcBudget", [["", `Auto (${typeof lowMemDevice !== "undefined" && lowMemDevice ? "1,5" : "6"} milj.)`], ["1000000", "1 milj."], ["3000000", "3 milj."], ["6000000", "6 milj."], ["10000000", "10 milj."], ["20000000", "20 milj."], ["50000000", "50 milj."], ["100000000", "100 milj."], ["all", "Full upplösning"]], P.pcBudget || ""), "Högsta antal punkter per punktmoln. Hela molnet visas alltid – glesare med en lägre siffra. Full upplösning läser varje punkt (upp till vad datorns minne klarar); medan du rör vyn ritas en glesare kopia så att det går lätt. Gäller moln som läses in efter att du ändrat.")
+    + chk("v3LayPcLod", P.pcLod !== false, "Gles kopia vid rörelse", "smidigare i stora moln", "Medan kameran rör sig ritas ett jämnt utglesat moln (~2 milj. punkter); hela molnet när du stannar.")
     + `</div><div class="v3-set-g"><div class="v3-set-h">Mobil</div>`
     + chk("v3LayLight", P.mobileCopy !== false, "Lätt kopia för iPhone/iPad", "", "När datorn läst in en modell sparas en lätt kopia av geometrin (utan egenskaper) i datalagret – inte i Trimble Connect. iPhone/iPad läser den i stället för IFC-filen.")
     + `</div>`;
@@ -140,7 +128,10 @@ function l3LayersRender() {
   const sortNow = P.laySort || "list";
   const addItems = (noTc ? "" : `<button type="button" id="v3LayTcOn" title="De IFC-modeller som är tända i Trimble Connect just nu">Hämta tända modeller från Trimble Connect</button><button type="button" data-l3l-browse="1" title="Projektets mappar i Trimble Connect – IFC, DXF och punktmoln">Bläddra i Trimble Connect…</button>`)
     + `<button type="button" id="v3PcFile" title="LAS, LAZ, XYZ/PTS/TXT eller PLY från datorn (även över 2 GB)">Punktmoln från datorn…</button>`;
-  const modelsSec = l3lSec("models", "3D-modeller", `<div class="v3-segs v3-lay-sort"><button type="button" data-l3l-sort="list" class="${sortNow === "list" ? "on" : ""}" title="De modeller och punktmoln som är hämtade">Hämtade</button><button type="button" data-l3l-sort="tree" class="${sortNow === "tree" ? "on" : ""}" title="Projektets mappar i Trimble Connect">Trimble Connect</button></div>${mh}`, l3lMenu("models", "＋", "Lägg till modell eller punktmoln", addItems));
+  // Modellerna och punktmolnen visas direkt; Trimble Connects mappar nås via ＋ (Victor 2026-10-12: "Hämtade och
+  // trimble connect måste tonas ner … man kommer åt dom bara när man trycker på plusknappen").
+  const tcBar = sortNow === "tree" ? `<div class="v3-lay-tcbar"><button type="button" class="v3-link" data-l3l-sort="list" title="Tillbaka till modellerna">‹ Modeller</button><span>Trimble Connect</span></div>` : "";
+  const modelsSec = l3lSec("models", "3D-modeller", `${tcBar}${mh}`, l3lMenu("models", "＋", "Lägg till modell eller punktmoln", addItems));
   h = h.replace("<!--l3l-models-->", modelsSec);
   h += l3lSec("settings", "Inställningar", setH);
   host.innerHTML = h;
@@ -231,7 +222,12 @@ function l3LayersRender() {
   const vo = host.querySelector("#v3LayVoids");
   if (vo) vo.onchange = () => { l3SetPref("ifcVoids", vo.checked); l3Status(vo.checked ? "Urtag visas i modeller som läses in härefter (långsammare)." : "Urtag hoppas över i modeller som läses in härefter (snabbare)."); };
   const pcb = host.querySelector("#v3LayPcBudget");
-  if (pcb) pcb.onchange = () => { l3SetPref("pcBudget", pcb.value ? Number(pcb.value) : null); l3Status("Punkter per punktmoln ändrat – gäller moln som läses in efter detta (ta bort och läs in molnet igen)."); };
+  if (pcb) pcb.onchange = () => {
+    l3SetPref("pcBudget", pcb.value === "all" ? "all" : pcb.value ? Number(pcb.value) : null);
+    const all = pcb.value === "all";
+    l3Status(all ? `Full upplösning: varje punkt läses (högst ${l3pcMil(l3pcMaxPts())} punkter per moln efter datorns minne). Stora moln tar en stund att läsa och sparas inte i webbläsaren. Gäller moln som läses in härefter – tryck på molnets ⋯ → Läs in igen.` : "Punkter per punktmoln ändrat – gäller moln som läses in härefter (molnets ⋯ → Läs in igen).");
+  };
+  const lod = host.querySelector("#v3LayPcLod"); if (lod) lod.onchange = () => { l3SetPref("pcLod", lod.checked); l3Render(); };
   const cap = host.querySelector("#v3LayCap");
   if (cap) cap.onchange = () => {
     l3SetPref("triCap", cap.value ? Number(cap.value) : null);

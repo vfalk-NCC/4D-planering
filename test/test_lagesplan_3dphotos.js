@@ -81,10 +81,8 @@ const JPG = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP/////////////////////
     await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.renderer && typeof l3phToggle === 'function', null, { timeout: 15000 });
     await page.waitForTimeout(400);
     if (await page.evaluate(() => l3.groups.photos && l3.groups.photos.visible)) fail('Fotona ska vara släckta i 3D tills de tänds');
-    // Tänds under Lager.
-    await page.click('[data-paltab="layers"]').catch(() => {});
-    await page.waitForSelector('#v3PalLayers [data-l3ph-eye]', { timeout: 5000 });
-    await page.click('#v3PalLayers [data-l3ph-eye]');
+    // Tänds under Visa → Foton.
+    await page.click('#v3ShowBtn'); await page.click('#v3ShowPhotos'); await page.click('#v3ShowBtn');
     const st = await page.evaluate(() => {
       const g = l3.groups.photos, sp = id => g.children.find(o => o.isSprite && o.userData.photoId === id);
       const z = id => +(sp(id).position.z + l3.O[2]).toFixed(3);
@@ -130,7 +128,7 @@ const JPG = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP/////////////////////
     await page.evaluate(() => typeof planSaveNow === 'function' ? planSaveNow() : null).catch(() => {});
 
     // 6. Släck: markörerna och popupen försvinner.
-    await page.click('#v3PalLayers [data-l3ph-eye]');
+    await page.evaluate(() => { const c = document.getElementById('v3ShowPhotos'); c.checked = false; c.dispatchEvent(new Event('change')); });
     const off = await page.evaluate(() => ({ vis: l3.groups.photos.visible, pop: document.querySelector('#v3PhPop').classList.contains('hidden') }));
     if (off.vis || !off.pop) fail('Släcka: ' + JSON.stringify(off));
     console.log('OK: popup, våning, ytan, GPS-höjd, dra-handtag, Ctrl+Z och släck');

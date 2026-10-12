@@ -18,7 +18,10 @@ const l3pc = { clouds: [], busy: false, worker: null, loading: null };
 const L3PC_EXT = /\.(las|laz|xyz|pts|txt|ply|e57)$/i;
 const L3PC_DB = "lagesplan-pc-cache", L3PC_STORE = "clouds", L3PC_KEEP = 4;
 const l3pcKey = () => `lagesplan-pc-${projectId}`;
-const l3pcBudget = () => { const b = Number(l3Prefs().pcBudget); return b > 0 ? b : (typeof lowMemDevice !== "undefined" && lowMemDevice ? 1.5e6 : 6e6); };
+/* Punktbudget. "all" = full upplösning (Victor 2026-10-12: "ladda in punktmolnen i dess fulla upplösning"), med ett
+   tak efter datorns minne så att fliken inte kraschar: ~16 byte per punkt i minnet och lika mycket i grafikkortet. */
+const l3pcMaxPts = () => { const gb = (typeof navigator !== "undefined" && navigator.deviceMemory) || 8; return Math.round(Math.max(20e6, Math.min(250e6, gb * 1e9 / 45))); };
+const l3pcBudget = () => { const v = l3Prefs().pcBudget; if (v === "all") return l3pcMaxPts(); const b = Number(v); return b > 0 ? b : (typeof lowMemDevice !== "undefined" && lowMemDevice ? 1.5e6 : 6e6); };
 const l3pcSize = () => Number(l3Prefs().pcSize) || 2;
 const l3pcMode = () => l3Prefs().pcMode || "auto";
 const l3pcPref = (k, d) => { const v = l3Prefs()[k]; return v == null || v === "" ? d : v; };
@@ -134,13 +137,64 @@ function l3pcBuild(src, data) {
   });
   grp.userData.pc = c;
   l3.groups.pc.add(grp);
+  l3pcBuildLod(c);
+  if (typeof l3RenderSnapBar === "function") l3RenderSnapBar(); // Fäst-raden får knappen Moln
   l3pc.clouds.push(c);
   l3pcPlace(c);
   l3pcIndexIdle(c); // för att fästa mot punkterna
   return c;
 }
 /* Molnet ligger i modellens koordinater (som IFC och DXF) – flyttas med 3D-vyns origo (och sin höjdjustering). */
-function l3pcPlace(c) { c.group.position.set(c.info.center[0] - l3.O[0], c.info.center[1] - l3.O[1], c.info.center[2] - l3.O[2] + (c.dz || 0)); l3pcMatApply(c); }
+function l3pcPlace(c) { c.group.position.set(c.info.center[0] - l3.O[0], c.info.center[1] - l3.O[1], c.info.center[2] - l3.O[2] + (c.dz || 0)); if (c.lod) c.lod.position.copy(c.group.position); l3pcMatApply(c); }
+/* ---- Smidig navigering i stora moln (Victor 2026-10-12: "navigera bättre"): medan kameran rör sig ritas en
+   jämnt utglesad kopia (~2 milj. punkter per moln); när den stannat ritas hela molnet igen. Kopian är ~1/k av
+   minnet och följer färg, storlek och filter (samma material). -------------------------------------------- */
+const L3PC_LOD_PTS = 2e6;
+function l3pcBuildLod(c) {
+  const n = c.chunks.reduce((a, ch) => a + ch.pos.length / 3, 0);
+  if (n <= L3PC_LOD_PTS * 1.25) return;
+  const k = Math.ceil(n / L3PC_LOD_PTS), g = new THREE.Group();
+  g.name = "pc-lod"; g.visible = false; g.userData.noHit = true;
+  c.lodChunks = c.chunks.map(ch => {
+    const m = Math.floor(ch.pos.length / 3 / k), pos = new Float32Array(m * 3), rgb = ch.rgb ? new Uint8Array(m * 3) : null, inten = ch.inten ? new Uint8Array(m) : null;
+    // Slumpmässig förskjutning per steg så att inga rader/ränder syns i kopian.
+    let seed = 12345;
+    for (let j = 0; j < m; j++) {
+      seed = (seed * 1103515245 + 12345) >>> 0; const i = j * k + (seed % k);
+      pos[j * 3] = ch.pos[i * 3]; pos[j * 3 + 1] = ch.pos[i * 3 + 1]; pos[j * 3 + 2] = ch.pos[i * 3 + 2];
+      if (rgb) { rgb[j * 3] = ch.rgb[i * 3]; rgb[j * 3 + 1] = ch.rgb[i * 3 + 1]; rgb[j * 3 + 2] = ch.rgb[i * 3 + 2]; }
+      if (inten) inten[j] = ch.inten[i];
+    }
+    return { pos, rgb, inten };
+  });
+  c.lodChunks.forEach(ch => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(ch.pos, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, ch), 3, true));
+    geo.computeBoundingSphere();
+    const p = new THREE.Points(geo, c.mat); p.userData.noHit = true; p.raycast = () => {};
+    g.add(p);
+  });
+  c.lod = g; c.lodK = k;
+  l3.groups.pc.add(g);
+}
+let l3pcCam = null, l3pcStillT = 0, l3pcMoving = false;
+function l3pcSetMoving(on) {
+  l3pcMoving = on;
+  l3pc.clouds.forEach(c => { if (!c.lod) return; c.lod.visible = on && c.visible; c.group.children.forEach(p => { p.visible = !on; }); });
+}
+/* Anropas före varje bild: har kameran flyttats sedan förra bilden? */
+function l3pcFrame() {
+  if (!l3pc.clouds.some(c => c.lod && c.visible) || l3Prefs().pcLod === false) { if (l3pcMoving) l3pcSetMoving(false); return; }
+  const cam = l3.camera; cam.updateMatrixWorld();
+  const e = cam.matrixWorld.elements, key = e.map(v => v.toFixed(4)).join() + (cam.zoom || 1);
+  if (l3pcCam !== null && key !== l3pcCam) {
+    if (!l3pcMoving) l3pcSetMoving(true);
+    clearTimeout(l3pcStillT);
+    l3pcStillT = setTimeout(() => { l3pcSetMoving(false); l3Render(); }, 220);
+  }
+  l3pcCam = key;
+}
 /* Rund punkt: en liten cirkel som mask (alphaTest) – lika billig som fyrkanten. */
 let l3pcDisc = null;
 function l3pcDiscTex() {
@@ -171,14 +225,21 @@ function l3pcRemove(id) {
   const c = l3pc.clouds[i];
   c.group.children.forEach(p => p.geometry.dispose()); c.mat.dispose();
   if (c.group.parent) c.group.parent.remove(c.group);
+  if (c.lod) { c.lod.children.forEach(p => p.geometry.dispose()); if (c.lod.parent) c.lod.parent.remove(c.lod); }
   l3pc.clouds.splice(i, 1);
   l3Render();
 }
 function l3pcShow(id, on) {
   const c = l3pc.clouds.find(x => x.id === id); if (!c) return;
-  c.visible = on; c.group.visible = on; l3pcRemember(c.src, on); l3Render();
+  c.visible = on; c.group.visible = on; if (c.lod) c.lod.visible = on && l3pcMoving; l3pcRemember(c.src, on); l3Render();
 }
-function l3pcRecolor() { l3pc.clouds.forEach(c => c.group.children.forEach((p, k) => { p.geometry.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, c.chunks[k]), 3, true)); })); l3Render(); }
+function l3pcRecolor() {
+  l3pc.clouds.forEach(c => {
+    c.group.children.forEach((p, k) => { p.geometry.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, c.chunks[k]), 3, true)); });
+    if (c.lod) c.lod.children.forEach((p, k) => { p.geometry.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, c.lodChunks[k]), 3, true)); });
+  });
+  l3Render();
+}
 function l3pcResize() { l3pcApplyAll(); }
 /* Höjdjustering per moln (t.ex. när molnet ligger i ett annat höjdsystem än modellen) – sparas med molnet. */
 async function l3pcSetDz(id) {
@@ -225,12 +286,12 @@ async function l3pcLoad(src, getBytes, opts = {}) {
       data = await l3pcParse(bytes, src.name, f => prog("läser punkterna", 0.5 + f * 0.45));
       prog("bygger 3D", 0.96);
       how = data.info.format;
-      if (src.version || src.local) l3pcCachePut(src, data);
+      if ((src.version || src.local) && data.info.n <= 25e6) l3pcCachePut(src, data); // jättemoln sparas inte i webbläsaren (för stort)
     }
     l3pcBuild(src, data);
     l3pcRemember(src, true);
     const i = data.info;
-    l3Status(`☁ ${src.name}: ${l3pcMil(i.n).replace(/ p$/, "")} punkter visas${i.total > i.n ? ` av ${l3pcMil(i.total).replace(/ p$/, "")} (glesat jämnt för att 3D-vyn ska vara snabb – ändras under Lager → Avancerat)` : ""} – ${how}, ${((performance.now() - t0) / 1000).toFixed(1).replace(".", ",")} s.`);
+    l3Status(`☁ ${src.name}: ${l3pcMil(i.n).replace(/ p$/, "")} punkter visas${i.total > i.n ? ` av ${l3pcMil(i.total).replace(/ p$/, "")} (${l3Prefs().pcBudget === "all" ? "taket för datorns minne" : "glesat jämnt – full upplösning: Lager → Inställningar → Punkter per moln"})` : " (full upplösning)"} – ${how}, ${((performance.now() - t0) / 1000).toFixed(1).replace(".", ",")} s.`);
     if (opts.zoom !== false && !opts.cacheOnly) l3pcZoom(src.id);
   } catch (e) {
     l3Status(`Kunde inte visa punktmolnet ${src.name}: ${e.message}`, true);
@@ -272,7 +333,7 @@ function l3pcFromFile() {
       const f = l3pcInput.files[0]; l3pcInput.value = "";
       if (!f) return;
       if (/\.e57$/i.test(f.name)) { l3Status("E57 kan inte läsas här än – exportera molnet som LAZ eller LAS (t.ex. i Trimble Business Center, RealWorks eller CloudCompare).", true); return; }
-      const src = { id: `pc:l:${f.name}:${f.size}:${f.lastModified}`, name: f.name, version: `${f.size}-${f.lastModified}`, local: true };
+      const src = { id: `pc:l:${f.name}:${f.size}:${f.lastModified}`, name: f.name, version: `${f.size}-${f.lastModified}`, local: true, fileObj: f };
       l3pcLoad(src, async onP => { onP(1); return f; }); // filen själv: workern läser den bit för bit (även över 2 GB)
     };
   }
@@ -330,7 +391,7 @@ function l3pcMoreMenu(btn, id) {
   const c = l3pc.clouds.find(x => x.id === id); if (!c) return;
   const m = document.createElement("div"); m.className = "v3-pc-menu v3-ldd-m";
   const others = l3pc.clouds.some(x => x.id !== id && x.visible);
-  m.innerHTML = `<button type="button" data-a="zoom">Zooma till molnet</button><button type="button" data-a="solo" ${l3pc.clouds.length < 2 ? "disabled" : ""}>${others || l3pc.clouds.length < 2 ? "Visa bara detta moln" : "Tänd alla moln"}</button><button type="button" data-a="dz">Höjdjustering…${c.dz ? ` (${String(c.dz).replace(".", ",")} m)` : ""}</button><button type="button" data-a="info">Om molnet</button><hr /><button type="button" data-a="del" class="bad">Ta bort ur listan</button>`;
+  m.innerHTML = `<button type="button" data-a="zoom">Zooma till molnet</button><button type="button" data-a="solo" ${l3pc.clouds.length < 2 ? "disabled" : ""}>${others || l3pc.clouds.length < 2 ? "Visa bara detta moln" : "Tänd alla moln"}</button><button type="button" data-a="dz">Höjdjustering…${c.dz ? ` (${String(c.dz).replace(".", ",")} m)` : ""}</button><button type="button" data-a="reload" title="Med inställningen Punkter per moln som gäller nu (t.ex. full upplösning)">Läs in igen</button><button type="button" data-a="info">Om molnet</button><hr /><button type="button" data-a="del" class="bad">Ta bort ur listan</button>`;
   btn.closest(".v3-lr").after(m);
   m.onclick = e => {
     const a = e.target.closest("[data-a]"); if (!a) return; m.remove();
@@ -338,6 +399,11 @@ function l3pcMoreMenu(btn, id) {
     else if (a.dataset.a === "solo") l3pcSolo(id);
     else if (a.dataset.a === "dz") l3pcSetDz(id);
     else if (a.dataset.a === "del") l3pcForget(id);
+    else if (a.dataset.a === "reload") {
+      // Med den punktbudget som gäller nu; en fil från datorn läses igen ur samma fil (finns kvar tills sidan laddas om).
+      const src = { ...c.src }; l3pcRemove(id); l3pcRemember(src, true);
+      if (src.fileObj) l3pcLoad(src, async onP => { onP(1); return src.fileObj; }); else l3pcLoadRemembered(id);
+    }
     else if (a.dataset.a === "info") { const i = c.info, f = v => v.toFixed(2).replace(".", ","); l3Status(`☁ ${c.name}: ${i.format}, ${i.n.toLocaleString("sv-SE")} av ${i.total.toLocaleString("sv-SE")} punkter visas. ${i.rgb ? "Har färg. " : ""}${i.intensity ? "Har intensitet. " : ""}X ${f(i.min[0])}–${f(i.max[0])}, Y ${f(i.min[1])}–${f(i.max[1])}, Z ${f(i.min[2])}–${f(i.max[2])} m.`); }
   };
   setTimeout(() => { const off = e => { if (!m.contains(e.target)) { m.remove(); document.removeEventListener("mousedown", off, true); } }; document.addEventListener("mousedown", off, true); }, 0);

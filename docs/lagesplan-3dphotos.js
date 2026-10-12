@@ -244,6 +244,7 @@ function l3phHDown(e) {
 }
 function l3phToggle(on) {
   l3SetPref("photos3d", on == null ? !l3phOn() : !!on);
+  const cb = document.getElementById("v3ShowPhotos"); if (cb) cb.checked = l3phOn(); // Visa → Foton
   l3phBuild();
   if (typeof l3LayersRender === "function") l3LayersRender();
   if (l3phOn()) {

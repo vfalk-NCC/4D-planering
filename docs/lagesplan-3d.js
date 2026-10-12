@@ -263,7 +263,8 @@ function l3Dom() {
       <div class="v3-dd">
         <button type="button" id="v3ShowBtn" class="v3-ghost" title="Vad som visas">${I.eye}<span>Visa</span></button>
         <div class="v3-pop v3-show hidden" id="v3Show">
-          <label class="v3-chk"><input type="checkbox" id="v3ShowPlan" ${P.plan ? "checked" : ""} /> Planen (PDF) som mark</label>
+          <label class="v3-chk"><input type="checkbox" id="v3ShowPlan" ${P.plan ? "checked" : ""} /> Ritningen (PDF) som mark</label>
+          <label class="v3-pop-row v3-planop" title="Ritningens täckning i 3D">Täckning <input type="range" id="v3PlanOp" min="10" max="100" step="5" value="${P.planOp || 100}" /></label>
           <div class="v3-pop-l">Planerade objekt (lådor)</div>
           <div class="v3-segs" id="v3ObjMode">${[["solid", "Lådor"], ["ghost", "Genomskinliga"], ["edges", "Konturer"], ["hidden", "Dolda"]].map(([k, l]) => `<button type="button" data-v3objs="${k}" class="${P.objs === k ? "on" : ""}">${l}</button>`).join("")}</div>
           <div class="v3-pop-l">Etablering på datumet</div>
@@ -273,6 +274,7 @@ function l3Dom() {
           <div class="v3-pop-l">Övrigt</div>
           <label class="v3-chk"><input type="checkbox" id="v3LabelsChk" ${P.labels ? "checked" : ""} /> Namn på etableringen</label>
           <label class="v3-chk"><input type="checkbox" id="v3LegendChk" ${P.legend ? "checked" : ""} /> Statusförklaring</label>
+          <label class="v3-chk" title="Lägesplanens foton där de togs"><input type="checkbox" id="v3ShowPhotos" ${P.photos3d === true ? "checked" : ""} /> Foton</label>
           <label class="v3-chk"><input type="checkbox" id="v3PalChk" ${P.pal ? "checked" : ""} /> Panelen till vänster</label>
           <div class="v3-pop-l">Mus</div>
           <div class="v3-segs">${[["tekla", "Som i Tekla"], ["standard", "Standard"]].map(([k, l]) => `<button type="button" data-v3mouse="${k}" class="${(P.mouse || "tekla") === k ? "on" : ""}">${l}</button>`).join("")}</div>
@@ -290,6 +292,7 @@ function l3Dom() {
           <input type="search" id="v3PalSearch" placeholder="Sök…" />
           <div id="v3Lib"></div>
           <button type="button" id="v3GetModel" class="v3-wide" title="Hämta en 3D-modell från Sketchfab, projektets mappar i Trimble Connect eller en fil – den hamnar under Egna modeller">＋ Hämta modell…</button>
+          <button type="button" class="v3-link v3-lay-csv" id="v3LayCsv" title="Lista över etableringen som öppnas i Excel (namn, typ, mått, läge, 4D)">Exportera etableringen (Excel)</button>
           <div class="v3-pal-hint">Tryck på ett objekt här och sedan där det ska stå. Staket: tryck punkt för punkt och avsluta med Enter.</div>
         </div>
         <div id="v3PalLayers" class="v3-paltab v3-layers ${P.palTab === "layers" || P.palTab === "list" ? "" : "hidden"}"></div>
@@ -355,12 +358,15 @@ function l3Dom() {
   $3("v3Ortho").onchange = e => { l3SetProjection(e.target.checked); };
   const mouseHint = () => { const a = l3Prefs().autoRot !== false ? " kring punkten under markören" : " kring rotationscentrum (V)"; $3("v3MouseHint").textContent = l3Prefs().mouse === "standard" ? `Vänster = rotera${a}, Ctrl + vänster = markeringsfönster, höger/mitten = panorera, hjul = zooma mot markören. Skift + vänster = panorera.` : `Vänster = markera (dra en ruta), mitten = panorera, Ctrl + mitten = rotera${a}, hjul = zooma mot markören, höger = meny.`; };
   $3("v3AutoRot").onchange = e => { l3SetPref("autoRot", e.target.checked); mouseHint(); };
-  box.querySelectorAll("[data-v3mouse]").forEach(b => { b.onclick = () => { l3SetPref("mouse", b.dataset.v3mouse); box.querySelectorAll("[data-v3mouse]").forEach(x => x.classList.toggle("on", x === b)); if (l3) l3ApplyMouse(); mouseHint(); }; });
+  box.querySelectorAll("[data-v3mouse]").forEach(b => { b.onclick = () => { l3SetPref("mouse", b.dataset.v3mouse); box.querySelectorAll("[data-v3mouse]").forEach(x => x.classList.toggle("on", x === b)); if (l3) l3ApplyMouse(); mouseHint(); if (typeof l3NavHelp === "function") l3NavHelp(); }; });
   mouseHint();
+  $3("v3PlanOp").oninput = e => { l3SetPref("planOp", Number(e.target.value)); if (typeof l3lApplyPlanOp === "function") l3lApplyPlanOp(); l3Render(); };
   $3("v3ShowPlan").onchange = e => { l3SetPref("plan", e.target.checked); if (l3.planMesh) l3.planMesh.visible = e.target.checked; if (typeof l3LayersRender === "function") l3LayersRender(); l3Render(); };
   box.querySelectorAll("[data-v3e4d]").forEach(b => { b.onclick = () => { l3SetPref("etab4d", b.dataset.v3e4d); box.querySelectorAll("[data-v3e4d]").forEach(x => x.classList.toggle("on", x === b)); l3Etab4dAll(); }; });
   box.querySelectorAll("[data-v3objs]").forEach(b => { b.onclick = () => { l3SetPref("objs", b.dataset.v3objs); box.querySelectorAll("[data-v3objs]").forEach(x => x.classList.toggle("on", x === b)); l3BuildObjects(); l3Render(); }; });
   $3("v3LabelsChk").onchange = e => { l3SetPref("labels", e.target.checked); l3Render(); };
+  $3("v3LayCsv").onclick = () => l3ExportCsv();
+  $3("v3ShowPhotos").onchange = e => { if (typeof l3phToggle === "function") l3phToggle(e.target.checked); };
   $3("v3LegendChk").onchange = e => { l3SetPref("legend", e.target.checked); $3("v3Legend").classList.toggle("hidden", !e.target.checked); };
   const pal = on => { l3SetPref("pal", on); $3("v3Pal").classList.toggle("hidden", !on); $3("v3PalOpen").classList.toggle("hidden", on); $3("v3PalChk").checked = on; setTimeout(() => { l3Resize(); l3Render(); }, 0); };
   $3("v3PalChk").onchange = e => pal(e.target.checked);
@@ -596,6 +602,7 @@ function l3Render() {
     l3Raf = 0;
     l3.groups.sel.children.forEach(h => h.update && h.update());
     l3AdaptRes();
+    if (typeof l3pcFrame === "function") l3pcFrame(); // punktmolnen: lättare variant medan kameran rör sig
     l3.renderer.render(l3.scene, l3.camera);
     if (typeof l3Piv !== "undefined" && l3Piv && l3Piv.on) l3PivMark(true); // rotationspunkten i samma bild
     if (typeof l3mPlaceLabels === "function") l3mPlaceLabels(); // måtten som ligger kvar

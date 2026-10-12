@@ -196,20 +196,14 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   const lib2 = JSON.parse(store.get('projects/p1/plan_models.json').content);
   if (lib2.length !== 1 || lib2[0].id === 'old1' || (await page.evaluate(() => window.__calls.length)) !== tc0) fail('Bara biblioteksposten ska tas bort, inget i TC: ' + JSON.stringify(lib2));
 
-  // Lager: ritningen som mark, etableringen per typ och projektets modeller i mappar.
+  // Ritningen som mark (Visa-menyn) och projektets modeller i mappar (Lager → ＋ → Bläddra i Trimble Connect).
   await page.click('[data-paltab="layers"]');
-  await page.waitForSelector('#v3PalLayers [data-l3l="plan"]');
   const plan0 = await page.evaluate(() => l3Prefs().plan);
-  await page.click('#v3PalLayers [data-l3l="plan"]');
+  await page.evaluate(() => { const c = document.getElementById('v3ShowPlan'); c.checked = !c.checked; c.dispatchEvent(new Event('change')); });
   const st = await page.evaluate(() => [l3Prefs().plan, l3.planMesh ? l3.planMesh.visible : null]);
-  if (st[0] !== !plan0 || (st[1] !== null && st[1] !== !plan0)) fail('Ritningen ska tändas/släckas i Lager: ' + st);
-  const typeBtn = '#v3PalLayers [data-l3l-type^="model:"]';
-  await page.click(typeBtn);
-  if (await page.evaluate(() => l3.placeMeshes.get(placements[0].id).visible)) fail('Typen ska kunna släckas i Lager');
-  await page.click(typeBtn);
-  if (!(await page.evaluate(() => l3.placeMeshes.get(placements[0].id).visible))) fail('Typen ska kunna tändas igen');
-  // Fliken Trimble Connect mapp (Hämtade 3D-modeller är förvald).
-  await page.click('#v3PalLayers [data-l3l-sort="tree"]');
+  if (st[0] !== !plan0 || (st[1] !== null && st[1] !== !plan0)) fail('Ritningen ska tändas/släckas under Visa: ' + st);
+  await page.click('#v3PalLayers [data-ldd="models"]');
+  await page.click('#v3PalLayers [data-l3l-browse]');
   await page.waitForSelector('#v3PalLayers [data-l3l-dir="f1"]', { timeout: 5000 });
   await page.click('#v3PalLayers [data-l3l-dir="f1"]');
   await page.waitForSelector('#v3PalLayers [data-l3l-file="F2"]', { timeout: 5000 });
@@ -306,7 +300,7 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   if (process.env.SHOTL) { await page.evaluate(() => { const b = new THREE.Box3(); l3b.models.forEach(m => m.meshes.forEach(x => b.expandByObject(x))); const c = b.getCenter(new THREE.Vector3()); l3StopFly(); l3.orbit.target.copy(c); l3.camera.position.copy(c).add(new THREE.Vector3(-22, -30, 18)); l3.orbit.update(); l3Render(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOTL }); }
   await page.click('#v3PalLayers [data-l3l-file="F2"]');
   if (await page.evaluate(() => l3b.models.find(m => m.id === 'f:F2').visible)) fail('Ögat ska släcka modellen');
-  await page.click('#v3PalLayers [data-l3l-sort="list"]');
+  await page.click('#v3PalLayers [data-l3l-sort="list"]'); // ‹ Modeller
   if (!/Hus A\.ifc/.test(await page.textContent('#v3PalLayers'))) fail('Inlästa ska lista modellen');
   if (!(await page.evaluate(() => window.__calls.some(c => c[0] === 'tcFile' && c[1] === 'F2')))) fail('Modellen ska hämtas via 4D-planering');
   // Läst i en egen tråd och sparad i webbläsarens cache (samma version öppnas direkt nästa gång).

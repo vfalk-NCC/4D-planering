@@ -166,11 +166,20 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       let n = 0, hits = 0; const t1 = performance.now();
       for (let gx = 0.3; gx < 0.75; gx += 0.05) for (let gy = 0.3; gy < 0.75; gy += 0.05) { n++; if (l3pcPick({ clientX: r.left + r.width * gx, clientY: r.top + r.height * gy })) hits++; }
       const ms = (performance.now() - t1) / n;
-      l3pcRemove('pc:big');
-      return { tIdx: Math.round(tIdx), ms: +ms.toFixed(1), hits, n };
+      // Gles kopia medan kameran rör sig (~2 milj. punkter), hela molnet när den stannat.
+      let lodN = 0; c.lod.children.forEach(p => { lodN += p.geometry.getAttribute('position').count; });
+      l3pcFrame(); l3.camera.position.x += 3; l3.camera.updateMatrixWorld(); l3pcFrame();
+      const moving = c.lod.visible && c.group.children.every(p => !p.visible);
+      return new Promise(res => setTimeout(() => {
+        const still = !c.lod.visible && c.group.children.every(p => p.visible);
+        l3pcRemove('pc:big');
+        res({ tIdx: Math.round(tIdx), ms: +ms.toFixed(1), hits, n, lodN, moving, still, gone: !l3.groups.pc.children.some(g => g.name === 'pc-lod') });
+      }, 400));
     });
-    if (big.ms > 25 || big.hits < big.n * 0.5) fail('Fästa i stort moln: ' + JSON.stringify(big));
-    console.log(`OK: stort moln (3 milj.) – index ${big.tIdx} ms en gång, ${big.ms} ms per sökning, ${big.hits}/${big.n} träffar`);
+    const fb = await page.evaluate(() => { const old = l3Prefs().pcBudget; l3SetPref('pcBudget', 'all'); const b = l3pcBudget(); l3SetPref('pcBudget', old ?? null); return { b, max: l3pcMaxPts() }; });
+    if (fb.b !== fb.max || fb.b < 20e6) fail('Full upplösning: ' + JSON.stringify(fb));
+    if (big.ms > 25 || big.hits < big.n * 0.5 || big.lodN < 1.4e6 || big.lodN > 2.2e6 || !big.moving || !big.still || !big.gone) fail('Stort moln (fästa, gles kopia vid rörelse): ' + JSON.stringify(big));
+    console.log(`OK: stort moln (3 milj.) – index ${big.tIdx} ms en gång, ${big.ms} ms per sökning, ${big.hits}/${big.n} träffar; gles kopia ${(big.lodN / 1e6).toFixed(1)} milj. medan kameran rör sig`);
     if (!snap.pick || !snap.snap || !snap.pivot || !snap.miss || !snap.off) fail('Fästa mot punktmolnet: ' + JSON.stringify(snap));
     console.log(`OK: fästa mot punkter i molnet – mått, rotationspunkt, av/på i Fäst-raden (${snap.ms} ms per sökning)`);
     // Gå-läge (WASD): släpp ner kameran i molnet, gå framåt, titta med musen, följ marken, Esc avslutar.
@@ -189,7 +198,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
         fail('Gå-läget: ' + JSON.stringify({ w0, w1, moved, dir, w2, w3 }));
       console.log(`OK: gå-läge – W gick ${moved.toFixed(2)} m framåt, musen tittar runt, Esc avslutar`);
     }
-    await page.screenshot({ path: path.join(process.env.PLACE_TMP || '.', '3dpc-panel.png'), clip: { x: 0, y: 0, width: 560, height: 850 } });
+    await page.screenshot({ path: path.join(process.env.PLACE_TMP || '.', '3dpc-panel.png'), clip: { x: 0, y: 0, width: 1300, height: 850 } });
     console.log('OK: punktmolnets visning – runda punkter, meter, täckning, höjdfilter, enfärgad/ljus, höjdjustering, återställ, förlopp i raden');
     // Cache: bort ur vyn och tillbaka utan Trimble Connect.
     await page.waitForTimeout(500);
