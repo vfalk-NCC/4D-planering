@@ -555,7 +555,7 @@ function l3bRecolor() {
     if (off.size !== was.size || [...off].some(i => !was.has(i))) { u.tempOff = off; l3bApplyHidden(x); }
   }));
 }
-function l3bCoupledIds() { const s = new Set(); l3b.models.forEach(m => m.visible && m.ranges.forEach(r => { if (r.itemId) s.add(r.itemId); })); return s; }
+function l3bCoupledIds() { const s = new Set(); l3b.models.forEach(m => m.visible && (m.ranges || []).forEach(r => { if (r.itemId) s.add(r.itemId); })); return s; }
 /* Träff i byggnaden -> objektets uppgifter. */
 function l3bHitInfo(h) {
   if (h && h.object && h.object.userData.l3bMain) h = { ...h, object: h.object.userData.l3bMain };

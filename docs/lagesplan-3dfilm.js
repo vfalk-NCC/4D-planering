@@ -64,8 +64,10 @@ function l3fsRender() {
   // Veckorna så tätt det får plats (varannan/var fjärde vecka i långa filmer).
   const wkPx = W * 7 / Math.max(1, span), every = wkPx > 30 ? 1 : wkPx > 15 ? 2 : wkPx > 7 ? 4 : 0;
   if (every) { const w = l3plMonday(l3plIso(new Date(t0))); for (w.setUTCDate(w.getUTCDate() + 7); w.getTime() <= t1; w.setUTCDate(w.getUTCDate() + 7)) { const no = l3plWeekNo(w); ticks.push({ u: U(w.getTime()), t: every === 1 || no % every === 0 ? `v${no}` : "", m: false }); } }
-  const P = l3fsPearls(W, t0, t1);
-  l3fs.pearls = P.list;
+  // Aktiviteterna visas inte längre på tidslinjen (Victor 2026-10-12) – dagarna markeras i stället.
+  l3fs.pearls = [];
+  const dayPx = W * L3PL_DAYMS / Math.max(1, t1 - t0), days = [];
+  if (dayPx >= 3) { const dd = new Date(t0); dd.setUTCHours(0, 0, 0, 0); for (; dd.getTime() <= t1; dd.setUTCDate(dd.getUTCDate() + 1)) days.push({ u: U(dd.getTime()), we: dd.getUTCDay() === 6 || dd.getUTCDay() === 0 }); }
   el.innerHTML = `<div class="v3-fs-ctl">
       <button type="button" class="v3-fs-play" id="v3FsPlay" title="Spela upp filmen i 3D-vyn (■ stoppar och går till början)">${l3pl.rec ? "■" : "▶"}</button>
       <button type="button" class="v3-fs-pause" id="v3FsPause" title="Pausa (mellanslag)" ${l3pl.rec ? "" : "disabled"}>${l3pl.rec && l3pl.rec.paused ? "▶" : "⏸"}</button>
@@ -76,7 +78,7 @@ function l3fsRender() {
       <div class="v3-fs-range">${E(l3plShortIso(t0))} – ${E(l3plShortIso(t1))}</div>
     </div>
     <div class="v3-fs-track" id="v3FsTrack" style="--w:${W}px">
-      <div class="v3-fs-pearls">${P.list.map((p, i) => `<button type="button" class="v3-fs-pearl" data-fsp="${i}" style="left:${p.x}px;bottom:${4 + p.row * 21}px;max-width:${p.w}px;--st:${phaseColor(zonePhase(p.a.rows, l3plDay()))}" title="${E(`${p.label}\n${p.a.area} · ${p.a.start} – ${p.a.end}`)}"><i></i>${E(p.label)}</button>`).join("")}${P.hidden ? `<span class="v3-fs-more" title="Fler aktiviteter än som får plats – zooma in genom att korta filmens intervall">+${P.hidden}</span>` : ""}</div>
+      <div class="v3-fs-days">${days.map(d => `<i class="${d.we ? "we" : ""}" style="left:${(d.u * W).toFixed(1)}px;width:${Math.max(1, dayPx).toFixed(1)}px"></i>`).join("")}</div>
       <div class="v3-fs-axis">${ticks.map(k => `<span class="${k.m ? "m" : "w"}" style="left:${k.u * W}px">${E(k.t)}</span>`).join("")}
         ${keys.map((k, i) => `<button type="button" class="v3-fs-key" data-fsk="${i}" style="left:${U(l3plDate(k.date).getTime()) * W}px" title="${E(k.name || "Vy")} · ${E(k.date)} – tryck: gå dit · dra: flytta · högerklick: ta bort">🎥</button>`).join("")}
       </div>
@@ -149,7 +151,7 @@ function l3fsPlayhead(t, force) {
 }
 /* I filmen: tidslinjen med datum och pärlbandet längst ner i bilden. */
 function l3fsDrawFrame(ctx, W, H, iso) {
-  const s = H / 1080, [t0, t1] = l3fsRange(), barH = 120 * s, y0 = H - barH, pad = 40 * s, w = W - 2 * pad, U = t => pad + (t - t0) / (t1 - t0) * w;
+  const s = H / 1080, [t0, t1] = l3fsRange(), barH = 84 * s, y0 = H - barH, pad = 40 * s, w = W - 2 * pad, U = t => pad + (t - t0) / (t1 - t0) * w;
   const t = l3plDate(iso).getTime();
   ctx.save();
   const g = ctx.createLinearGradient(0, y0 - 30 * s, 0, H); g.addColorStop(0, "rgba(255,255,255,0)"); g.addColorStop(0.35, "rgba(255,255,255,.88)"); g.addColorStop(1, "rgba(255,255,255,.94)");
@@ -169,6 +171,18 @@ function l3fsDrawFrame(ctx, W, H, iso) {
     if (xb - xa > lw + 12 * s) { ctx.fillStyle = "#334155"; ctx.fillText(lbl, Math.max(xa + 6 * s, Math.min(xb - lw - 6 * s, (xa + xb) / 2 - lw / 2)), bandY + bandH / 2 + 1); }
     m = nx;
   }
+  // Dagarna (Victor 2026-10-12: "markeringar för dagar istället med snygg grafik"): ett litet streck per dag,
+  // helgerna som ljusa band; passerade dagar i lila, kommande grå.
+  const dayPx = L3PL_DAYMS / (t1 - t0) * w;
+  if (dayPx >= 2.5 * s) {
+    const dd = new Date(t0); dd.setUTCHours(0, 0, 0, 0);
+    for (; dd.getTime() <= t1; dd.setUTCDate(dd.getUTCDate() + 1)) {
+      const x = U(dd.getTime()), wd = dd.getUTCDay(), past = dd.getTime() <= t;
+      if ((wd === 6 || wd === 0) && dayPx >= 5 * s) { ctx.fillStyle = past ? "rgba(109,94,252,.10)" : "rgba(15,23,42,.05)"; ctx.fillRect(x, ay - 16 * s, dayPx, 16 * s); }
+      ctx.fillStyle = past ? "rgba(109,94,252,.75)" : "rgba(15,23,42,.22)";
+      const th = dayPx >= 9 * s ? 6 * s : 4 * s; ctx.fillRect(x - 0.6 * s, ay - th, 1.2 * s, th);
+    }
+  }
   // Veckorna: måndagarna; veckonummer när det finns plats (annars var annan/fjärde vecka).
   const wkPx = 7 * L3PL_DAYMS / (t1 - t0) * w, every = wkPx > 34 * s ? 1 : wkPx > 17 * s ? 2 : wkPx > 8 * s ? 4 : 0;
   if (every) {
@@ -184,22 +198,9 @@ function l3fsDrawFrame(ctx, W, H, iso) {
   ctx.textBaseline = "top";
   // Avklarad del och huvudet.
   ctx.strokeStyle = "#6d5efc"; ctx.lineWidth = 5 * s; ctx.beginPath(); ctx.moveTo(pad, ay); ctx.lineTo(U(t), ay); ctx.stroke();
+  ctx.fillStyle = "rgba(109,94,252,.25)"; ctx.beginPath(); ctx.arc(U(t), ay, 15 * s, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "#6d5efc"; ctx.beginPath(); ctx.arc(U(t), ay, 9 * s, 0, Math.PI * 2); ctx.fill();
-  // Pärlbandet: de som pågår poppar upp ovanför axeln.
-  ctx.font = `700 ${Math.round(17 * s)}px system-ui, sans-serif`; ctx.textBaseline = "middle";
-  const P = l3fsPearls(w, t0, t1, 9.2 * s).list.filter(p => p.a.start <= iso && p.a.end >= iso).slice(0, 8);
-  const ends = [];
-  P.forEach(p => {
-    const tw = Math.min(380 * s, ctx.measureText(p.label).width), bw = tw + 34 * s, bh = 30 * s;
-    let x = Math.min(W - pad - bw, Math.max(pad, pad + p.x)), row = ends.findIndex(e => e + 8 * s <= x); if (row < 0) { row = ends.length; if (row > 2) return; ends.push(0); }
-    ends[row] = x + bw;
-    const y = ay - 22 * s - (row + 1) * (bh + 6 * s), st = phaseColor(zonePhase(p.a.rows, iso));
-    ctx.fillStyle = "rgba(255,255,255,.97)"; ctx.strokeStyle = st; ctx.lineWidth = 2.5 * s;
-    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, bw, bh, bh / 2) : ctx.rect(x, y, bw, bh); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = st; ctx.beginPath(); ctx.arc(x + 15 * s, y + bh / 2, 6 * s, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#0f172a"; ctx.save(); ctx.beginPath(); ctx.rect(x, y, bw - 10 * s, bh); ctx.clip(); ctx.fillText(p.label, x + 27 * s, y + bh / 2 + 1); ctx.restore();
-    ctx.strokeStyle = st; ctx.lineWidth = 1.5 * s; ctx.beginPath(); ctx.moveTo(Math.max(x + 15 * s, Math.min(x + bw - 15 * s, pad + p.x)), y + bh); ctx.lineTo(pad + p.x, ay); ctx.stroke();
-  });
+  ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(U(t), ay, 3.5 * s, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
 }
 window.addEventListener("resize", () => { if (l3fsOn()) l3fsRender(); });

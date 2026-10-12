@@ -138,23 +138,24 @@ const PP = [
     // Filmens tidslinje: datum, pärlband (det som pågår poppar upp), kamerorna, ＋ Vy här där huvudet står.
     await page.evaluate(() => { l3plSet('film', { from: '2026-10-01', to: '2026-11-30', sec: 3, res: '720' }); l3plDockToggle(false); l3plRenderTab(); });
     await page.click('#v3FlStrip');
-    await page.waitForSelector('#v3FilmStrip .v3-fs-pearl');
-    let fs = await page.evaluate(() => ({ pearls: [...document.querySelectorAll('#v3FilmStrip .v3-fs-pearl')].map(b => b.textContent.trim()), on: [...document.querySelectorAll('#v3FilmStrip .v3-fs-pearl.on')].map(b => b.textContent.trim()), keys: document.querySelectorAll('#v3FilmStrip .v3-fs-key').length, months: [...document.querySelectorAll('#v3FilmStrip .v3-fs-axis span.m')].map(x => x.textContent) }));
-    if (fs.pearls.length !== 3 || JSON.stringify(fs.on) !== JSON.stringify(['K10 +1: Gjutning pelare']) || fs.keys !== 2 || fs.months.join() !== 'nov') fail('Tidslinjen: ' + JSON.stringify(fs));
+    await page.waitForSelector('#v3FilmStrip .v3-fs-days i');
+    let fs = await page.evaluate(() => ({ pearls: document.querySelectorAll('#v3FilmStrip .v3-fs-pearl').length, days: document.querySelectorAll('#v3FilmStrip .v3-fs-days i').length, we: document.querySelectorAll('#v3FilmStrip .v3-fs-days i.we').length, keys: document.querySelectorAll('#v3FilmStrip .v3-fs-key').length, months: [...document.querySelectorAll('#v3FilmStrip .v3-fs-axis span.m')].map(x => x.textContent) }));
+    // Inga aktiviteter på tidslinjen (2026-10-12) – en markering per dag (61 dagar, helgerna märkta).
+    if (fs.pearls || fs.days !== 61 || fs.we !== 18 || fs.keys !== 2 || fs.months.join() !== 'nov') fail('Tidslinjen: ' + JSON.stringify(fs));
     // Spola till Tak (november) genom att trycka på tidslinjen: datumet följer med och Tak poppar upp.
     const ax = await (await page.$('#v3FilmStrip .v3-fs-axis')).boundingBox();
     await page.mouse.click(ax.x + ax.width * (36 / 60), ax.y + 20); await page.waitForTimeout(150);
-    fs = await page.evaluate(() => ({ d: $('dateInput').value, on: [...document.querySelectorAll('#v3FilmStrip .v3-fs-pearl.on')].map(b => b.textContent.trim()) }));
-    if (!(fs.d >= '2026-11-02' && fs.d <= '2026-11-20') || !fs.on.includes('Tak: Takmontage')) fail('Spola: ' + JSON.stringify(fs));
+    fs = await page.evaluate(() => ({ d: $('dateInput').value }));
+    if (!(fs.d >= '2026-11-02' && fs.d <= '2026-11-20')) fail('Spola: ' + JSON.stringify(fs));
     await page.click('#v3FsAdd');
     fs = await page.evaluate(d => ({ n: l3plKeys().length, has: l3plKeys().some(k => k.date === d), dom: document.querySelectorAll('#v3FilmStrip .v3-fs-key').length }), fs.d);
     if (fs.n !== 3 || !fs.has || fs.dom !== 3) fail('＋ Vy här: ' + JSON.stringify(fs));
     // Högerklick på en kamera tar bort den.
     await page.click('#v3FilmStrip [data-fsk="2"]', { button: 'right' });
     if (await page.evaluate(() => l3plKeys().length) !== 2) fail('Högerklick ska ta bort kameran');
-    // Pärlbandet ritas i filmen.
-    const fr = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1280; c.height = 720; const x = c.getContext('2d'); let n = 0; const ft = x.fillText.bind(x); x.fillText = (t, ...a) => { if (/Gjutning pelare/.test(t)) n++; return ft(t, ...a); }; l3fsDrawFrame(x, 1280, 720, '2026-10-12'); return n; });
-    if (fr !== 1) fail('Pärlan ska ritas i filmen: ' + fr);
+    // I filmen: inga aktiviteter på tidslinjen, men veckonummer och månaden.
+    const fr = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1280; c.height = 720; const x = c.getContext('2d'); let n = 0, wk = 0; const ft = x.fillText.bind(x); x.fillText = (t, ...a) => { if (/Gjutning pelare/.test(t)) n++; if (/^v\d+$/.test(t)) wk++; return ft(t, ...a); }; l3fsDrawFrame(x, 1280, 720, '2026-10-12'); return n === 0 && wk >= 4 ? 1 : 0; });
+    if (fr !== 1) fail('Tidslinjen i filmen (inga aktiviteter, veckor): ' + fr);
     await page.evaluate(() => { const f = l3plPrefs().film; l3plSet('film', { ...f, strip: false }); l3fsRender(); $('dateInput').value = '2026-10-12'; });
 
     // Filmen: spelas in och sparas som videofil; datumet räknas fram och återställs efteråt.
@@ -206,6 +207,19 @@ const PP = [
       l3plSet('film', { ...l3plPrefs().film, anim: { def: 'color', by: {} }, fxLegend: true });
       const fxl = await l3fxStart('2026-10-01', '2026-10-21'); l3fxFrame(fxl, '2026-10-14', 0.5); texts.length = 0; l3fxDraw(x, 1920, 1080, '2026-10-14', 0.5, fxl, '', true); const legend = texts.includes('STATUS') && texts.includes('Ej startad');
       l3plSet('film', { ...l3plPrefs().film, fxLegend: false });
+      // Etablering i takt med tidplanen: tornkranen etableras 10/10 – tonas in, skylt, bommen svänger när det pågår.
+      const kr = { id: 'kr1', type: 'tornkran', name: 'Tornkran 1', x: l3.O[0] + 5, y: l3.O[1] + 5, z: 0, L: 4, B: 4, H: 30, R: 50, rot: 0, start: '2026-10-10' };
+      placements.push(kr); const kg = l3AddPlacementMesh(kr);
+      const fxe = await l3fxStart('2026-10-01', '2026-10-21');
+      const opa = () => kg.children[0].material.opacity, jib = () => kg.children[1].rotation.z;
+      l3fxFrame(fxe, '2026-10-05', 0, Date.UTC(2026, 9, 5)); const o0 = opa();
+      l3fxFrame(fxe, '2026-10-10', 1, Date.UTC(2026, 9, 10, 6)); const toast = fxe.toasts.some(x => /Tornkran 1 etableras/.test(x.txt)); const o1 = opa();
+      let j0 = jib(); for (let i = 0; i < 60; i++) l3fxFrame(fxe, '2026-10-14', 2 + i * 0.1, Date.UTC(2026, 9, 14, 12)); const o2 = opa(), j1 = jib();
+      texts.length = 0; l3fxDraw(x, 1920, 1080, '2026-10-14', 2.5, fxe, '', true); const sign = texts.some(t => /etableras/.test(t));
+      l3fxEnd(fxe); const restored = kg.children[1].rotation.z === 0;
+      placements.splice(placements.indexOf(kr), 1); l3.placeMeshes.delete('kr1'); kg.parent && kg.parent.remove(kg);
+      const etab = o0 < 0.3 && o1 < o2 && o2 > 0.95 && toast && Math.abs(j1 - j0) > 0.05 && restored;
+      window.__etab = { o0, o1, o2, toast, j0, j1, sign, restored };
       // Av: bara det som är valt ritas.
       l3plSet('film', { ...l3plPrefs().film, fxNow: false, fxMeter: false, fxMiles: false, title: false });
       const fx2 = await l3fxStart('2026-10-01', '2026-10-21'); l3fxFrame(fx2, '2026-10-14', 0.5); texts.length = 0; l3fxDraw(x, 1920, 1080, '2026-10-14', 0.5, fx2, '', true); const off = texts.length;
@@ -213,11 +227,11 @@ const PP = [
       // Uppspelning: lagret över 3D-vyn ritas och döljs efteråt.
       l3fxHud(fx, '2026-10-14', 0.7, ''); const hud = !document.getElementById('v3FilmHud').classList.contains('hidden'); l3fxEnd(fx); const hudOff = document.getElementById('v3FilmHud').classList.contains('hidden');
       const fxNoBl = await (async () => { l3plSet('film', { ...l3plPrefs().film, fxBl: false }); const f3 = await l3fxStart('2026-10-01', '2026-10-21'); l3fxFrame(f3, '2026-10-14', 0.5); texts.length = 0; l3fxDraw(x, 1920, 1080, '2026-10-14', 0.5, f3, '', true); return texts.join(' | '); })();
-      return { all, weekRoll, done, off, hud, hudOff, glow, anim, legend, smooth, noBl: !/baslinjen/.test(fxNoBl), ahead: l3fxAhead(fx, Date.UTC(2026, 9, 12)), prog: Math.round(fx.prog(Date.UTC(2026, 9, 12)) * 100) };
+      return { all, weekRoll, done, off, hud, hudOff, glow, anim, legend, etab, smooth, noBl: !/baslinjen/.test(fxNoBl), ahead: l3fxAhead(fx, Date.UTC(2026, 9, 12)), prog: Math.round(fx.prog(Date.UTC(2026, 9, 12)) * 100) };
     });
     const need = ['VECKA', '14 okt 2026', 'Etapp 1', 'PÅGÅR NU', 'Hus A', 'Gjutning pelare', 'PROJEKTET KLART', 'aktiviteter klara', 'Stomme klar', 'MILSTOLPE'];
     const miss = need.filter(t => !fx.all.includes(t));
-    if (miss.length || !fx.weekRoll || !/före baslinjen/.test(fx.all) || !(fx.ahead > 0) || !/Klar/.test(fx.done) || fx.off !== 0 || !fx.glow || !fx.anim || !fx.legend || !fx.smooth || !fx.noBl || !fx.hud || !fx.hudOff) fail('Grafiken i filmen: ' + JSON.stringify({ miss, ...fx, all: fx.all.slice(0, 100), a: await page.evaluate(() => window.__anim) }));
+    if (miss.length || !fx.weekRoll || !/före baslinjen/.test(fx.all) || !(fx.ahead > 0) || !/Klar/.test(fx.done) || fx.off !== 0 || !fx.glow || !fx.anim || !fx.legend || !fx.etab || !fx.smooth || !fx.noBl || !fx.hud || !fx.hudOff) fail('Grafiken i filmen: ' + JSON.stringify({ miss, ...fx, all: fx.all.slice(0, 100), a: await page.evaluate(() => window.__anim), e: await page.evaluate(() => window.__etab) }));
     // Paus (mellanslag/⏸): bilden och grafiken står kvar; ■ stoppar, går till filmens början och tar bort grafiken.
     const pz = await page.evaluate(async () => {
       l3plSet('film', { ...l3plPrefs().film, from: '2026-10-01', to: '2026-10-21', sec: 4, fxNow: true });

@@ -10,7 +10,7 @@
    – Förloppsmätare: hur stor del av projektet som är klar (efter aktiviteternas längd); valbart läget mot baslinjen.
    Grafiken ritas i filmbilden när man spelar in och i ett lager över 3D-vyn när man spelar upp. */
 
-const l3fxOpts = () => { const f = l3plPrefs().film || {}; return { now: f.fxNow !== false, glow: f.fxGlow !== false, date: f.title !== false, miles: f.fxMiles !== false, meter: f.fxMeter !== false, bl: f.fxBl === true, legend: f.fxLegend === true }; };
+const l3fxOpts = () => { const f = l3plPrefs().film || {}; return { now: f.fxNow !== false, glow: f.fxGlow !== false, date: f.title !== false, miles: f.fxMiles !== false, meter: f.fxMeter !== false, bl: f.fxBl === true, legend: f.fxLegend === true, etab: f.fxEtab !== false, crane: f.fxCrane !== false, signs: f.fxSigns !== false }; };
 /* Animeringen för en aktivitet: eget val (aktivitetens namn) eller standarden – från början "color" (bara färgen). */
 const l3fxAnimType = a => { const A = (l3plPrefs().film || {}).anim || {}; return (A.by || {})[a.name] || A.def || "color"; };
 const L3FX_DAY = 86400000;
@@ -43,6 +43,8 @@ async function l3fxStart(from, to) {
   fx.areaProg = (area, t) => { const e = fx.areas.get(area); return e ? e.acts.reduce((sm, a) => sm + part(t, a.t0, a.t1) * (a.t1 - a.t0), 0) / (e.W || 1) : 0; };
   if (fx.hasBl) { fx.blMin = Math.min(...withBl.map(a => a.b0)); fx.blMax = Math.max(...withBl.map(a => a.b1)); }
   fx.cache = new Map();
+  fx.span = Math.max(L3FX_DAY, l3plDate(to).getTime() - l3plDate(from).getTime());
+  fx.toasts = []; fx.etabT = null; fx.cranes = new Map();
   fx.anim = acts.map(a => ({ a, type: l3fxAnimType(a), parts: null, ov: [] })).filter(x => x.type !== "color");
   fx.animMeshes = new Set();
   return fx;
@@ -81,6 +83,79 @@ function l3fxFrame(fx, iso, ft, tms) {
   if (fx.banner && ft - fx.banner.at > 2.8) fx.banner = null;
   if (fx.o.glow) l3fxGlow(fx, act, iso, ft);
   if (fx.anim.length) l3fxAnimate(fx, t);
+  if (fx.o.etab) l3fxEtab(fx, t, ft);
+}
+/* ---- Etableringen i takt med tidplanen (Victor 2026-10-12) -----------------------------------------------
+   – Tonas in och glider ner på plats när den etableras, tonas ut när den avvecklas (i stället för att poppa).
+   – Tornkranar: bommen svänger lugnt medan aktiviteter pågår inom kranens räckvidd (eller i projektet om
+     aktiviteterna inte är kopplade till modellen).
+   – Skylt till vänster när något etableras eller avvecklas: "Tornkran 1 etableras". */
+function l3fxActCenter(fx, a) {
+  if (a._c !== undefined) return a._c;
+  const guids = new Set(a.rows.map(r => String(r.object_id || "")).filter(Boolean)), box = new THREE.Box3(), v = new THREE.Vector3();
+  if (guids.size && typeof l3pEnts === "function") l3b.models.forEach(m => { const map = l3pEnts(m); guids.forEach(g => (map.get(g) || []).forEach(e => {
+    const r = e.mesh.userData.l3b.ranges[e.ri], pos = e.mesh.geometry.getAttribute("position"); e.mesh.updateMatrixWorld();
+    const step = Math.max(1, Math.floor(r.count / 24)); for (let i = r.start; i < r.start + r.count; i += step) box.expandByPoint(v.fromBufferAttribute(pos, i).applyMatrix4(e.mesh.matrixWorld));
+  })); });
+  a._c = box.isEmpty() ? null : box.getCenter(new THREE.Vector3());
+  return a._c;
+}
+function l3fxEtab(fx, t, ft) {
+  if (typeof placements === "undefined" || !l3 || !l3.placeMeshes) return;
+  const fade = Math.max(L3FX_DAY * 0.6, fx.span / 40), ghost = (l3Prefs().etab4d || "ghost") === "ghost", prevT = fx.etabT;
+  // Ny dag: 3D-vyn har satt etableringens material på nytt (l3Etab4dAll) – toningen läggs på igen.
+  const dayKey = Math.floor(t / L3FX_DAY); if (dayKey !== fx.etabDay) { fx.etabDay = dayKey; placements.forEach(p => { const g = l3.placeMeshes.get(p.id); if (g) delete g.userData.fxF; }); }
+  placements.forEach(p => {
+    const g = l3.placeMeshes.get(p.id); if (!g) return;
+    const s0 = p.start ? l3plDate(p.start).getTime() : null, e0 = p.end ? l3plDate(p.end).getTime() + L3FX_DAY : null;
+    if (s0 == null && e0 == null && p.type !== "tornkran") return;
+    if (g.userData.fxZ == null) g.userData.fxZ = g.position.z;
+    fx.etabTouched = true;
+    // Hur mycket objektet "finns" (0–1) med mjuka övergångar vid start och slut.
+    const fin = s0 == null ? 1 : Math.max(0, Math.min(1, (t - s0) / fade)), fout = e0 == null ? 1 : Math.max(0, Math.min(1, (e0 - t) / fade)), f = Math.min(fin, fout);
+    if (ghost && (s0 != null || e0 != null) && g.userData.fxF !== f) {
+      g.userData.fxF = f;
+      g.traverse(o => { const m0 = o.userData && o.userData.mat0; if (!o.isMesh || !m0) return; const op = m0.o * (0.18 + 0.82 * l3fxEase(f)); o.material.transparent = op < 0.999 || m0.t; o.material.opacity = op; o.material.depthWrite = f > 0.98 ? m0.d : false; });
+      g.position.z = g.userData.fxZ + (1 - l3fxEase(fin)) * 3; // glider ner på plats
+    }
+    // Skyltar när det etableras / avvecklas.
+    if (fx.o.signs && prevT != null) {
+      const nm = p.name || (placeLib(p.type) || {}).label || "Etablering";
+      if (s0 != null && prevT < s0 && t >= s0) fx.toasts.push({ txt: `${nm} etableras`, col: "#22c55e", at: ft });
+      if (e0 != null && prevT < e0 && t >= e0) fx.toasts.push({ txt: `${nm} avvecklas`, col: "#f97316", at: ft });
+    }
+    // Tornkranens bom svänger när det pågår något inom räckvidden.
+    if (fx.o.crane && p.type === "tornkran" && g.children[1]) {
+      const R = Number(p.R) || 40, cx = p.x - l3.O[0], cy = p.y - l3.O[1];
+      const busy = (fx.active || []).some(a => { const c = l3fxActCenter(fx, a); return !c || Math.hypot(c.x - cx, c.y - cy) <= R + 5; }) && f > 0.98;
+      const st = fx.cranes.get(p.id) || { amp: 0, ph: (p.id.length * 1.37) % 6.28, j: g.children[1], j0: g.children[1].rotation.z };
+      st.amp += ((busy ? 0.65 : 0) - st.amp) * 0.04; fx.cranes.set(p.id, st);
+      st.j.rotation.z = st.j0 + st.amp * Math.sin(ft * 0.45 + st.ph);
+    }
+  });
+  fx.toasts = fx.toasts.filter(x => ft - x.at < 3);
+  fx.etabT = t;
+}
+function l3fxEtabEnd(fx) {
+  if (typeof placements === "undefined" || !l3 || !fx.etabTouched) return;
+  placements.forEach(p => { const g = l3.placeMeshes.get(p.id); if (!g) return; if (g.userData.fxZ != null) { g.position.z = g.userData.fxZ; delete g.userData.fxZ; } delete g.userData.fxF; });
+  (fx.cranes || new Map()).forEach(st => { st.j.rotation.z = st.j0; });
+  if (typeof l3Etab4dAll === "function") l3Etab4dAll();
+}
+/* Skyltarna till vänster (under datumskylten). */
+function l3fxToasts(ctx, s, ft, fx, top) {
+  let y = top;
+  fx.toasts.slice(-4).forEach(x => {
+    const u = ft - x.at, a = l3fxEase(u / 0.35) * (1 - l3fxEase((u - 2.4) / 0.6));
+    ctx.save(); ctx.globalAlpha = a; ctx.translate((1 - l3fxEase(u / 0.35)) * -30 * s, 0);
+    ctx.font = `700 ${Math.round(19 * s)}px system-ui, sans-serif`;
+    const w = ctx.measureText(x.txt).width + 62 * s, h = 46 * s;
+    ctx.fillStyle = "rgba(15,23,42,.82)"; l3fxRR(ctx, 32 * s, y, w, h, 14 * s); ctx.fill();
+    ctx.fillStyle = x.col; ctx.beginPath(); ctx.arc(32 * s + 24 * s, y + h / 2, 7 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#fff"; ctx.fillText(x.txt, 32 * s + 42 * s, y + h / 2 + 1 * s);
+    ctx.restore();
+    y += h + 8 * s;
+  });
 }
 /* ---- Animering av IFC-objekten (växer upp, tonas in, lyfts på plats) ----------------------------------
    Före aktiviteten syns objekten inte; under den ritas en kopia (samma hörn och färger) som animeras medan
@@ -154,6 +229,7 @@ function l3fxGlow(fx, act, iso, ft) {
 }
 function l3fxEnd(fx) {
   if (!fx) return;
+  if (fx.o && fx.o.etab) l3fxEtabEnd(fx);
   (fx.anim || []).forEach(l3fxAnimDrop);
   (fx.animMeshes || new Set()).forEach(mesh => { const u = mesh.userData.l3b; if (u.animOff && u.animOff.size) { u.animOff = new Set(); l3bApplyHidden(mesh); } });
   l3fxGlowClear(fx); const h = document.getElementById("v3FilmHud"); if (h) { h.getContext("2d").clearRect(0, 0, h.width, h.height); h.classList.add("hidden"); } }
@@ -168,6 +244,7 @@ function l3fxDraw(ctx, W, H, iso, ft, fx, caption, pearls) {
   if (o.meter) l3fxMeter(ctx, W, s, t, fx);
   if (o.now) l3fxNow(ctx, W, H, s, iso, ft, fx, pearls, t);
   if (o.legend) l3fxLegend(ctx, H, s, pearls);
+  if (o.etab && o.signs && fx.toasts && fx.toasts.length) l3fxToasts(ctx, s, ft, fx, (o.date ? (caption ? 196 : 160) : 32) * s);
   if (o.miles && fx.banner) l3fxBanner(ctx, W, s, ft, fx.banner);
   ctx.restore();
 }
@@ -214,63 +291,103 @@ function l3fxMeter(ctx, W, s, t, fx) {
   ctx.font = `600 ${Math.round(16 * s)}px system-ui, sans-serif`; ctx.fillStyle = "#cbd5e1"; ctx.fillText(sub, tx, top + 60 * s);
   if (bl) { ctx.fillStyle = ahead > 0 ? "#86efac" : ahead < 0 ? "#fca5a5" : "#cbd5e1"; ctx.fillText(bl, tx, top + 84 * s); }
 }
-/* Pågår nu: kort nere till höger, per område – rubrik med områdets förlopp och under den aktiviteterna som
-   betas av, var och en med en liten förloppsstapel. Procenten följer tiden bild för bild. */
+/* Pågår nu (Victor 2026-10-12: "743 Krosshall som rubrik, sedan pågående akt. under respektive rubrik … aktens
+   text på två rader, så små att alla aktiva får plats"): områdena som rubriker med sitt förlopp och under varje
+   rubrik alla pågående aktiviteter – texten utan områdets namn, högst två rader, med en liten stapel. Texten
+   krymps tills allt får plats; först om det ändå inte räcker bläddras områdena. */
+function l3fxActText(a) {
+  let n = String(a.name || "").trim(), ar = String(a.area || "").replace(/^Excel · /, "").trim();
+  if (ar) {
+    const esc = x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), code = (ar.match(/^\d+[A-Za-z]?/) || [""])[0];
+    n = n.replace(new RegExp("^\\s*" + esc(ar) + "\\s*[-–—:·,]?\\s*", "i"), "");
+    if (code) n = n.replace(new RegExp("^\\s*" + esc(code) + "\\b\\s*[-–—:·,]?\\s*"), "");
+  }
+  return n || a.name;
+}
+function l3fxWrap(ctx, txt, maxW, lines = 2) {
+  const words = String(txt).split(/\s+/).filter(Boolean), out = [];
+  let cur = "";
+  for (let i = 0; i < words.length; i++) {
+    const tryL = cur ? cur + " " + words[i] : words[i];
+    if (ctx.measureText(tryL).width <= maxW || !cur) { cur = tryL; continue; }
+    out.push(cur); cur = words[i];
+    if (out.length === lines - 1) { cur = words.slice(i).join(" "); break; }
+  }
+  if (cur) out.push(cur);
+  const last = out.length - 1;
+  if (last >= 0 && ctx.measureText(out[last]).width > maxW) { let t = out[last]; while (t.length > 2 && ctx.measureText(t + "…").width > maxW) t = t.slice(0, -1); out[last] = t.trim() + "…"; }
+  return out.slice(0, lines);
+}
 function l3fxNow(ctx, W, H, s, iso, ft, fx, pearls, t) {
-  const act = fx.active || [], fit = (txt, maxW) => { let n = txt; while (n.length > 3 && ctx.measureText(n).width > maxW) n = n.slice(0, -2); return n === txt ? n : n.trim() + "…"; };
-  // Områden: de som har något pågående, plus de där något just blev klart.
+  const act = fx.active || [];
   const byArea = new Map();
-  act.slice().sort((a, b) => b.t0 - a.t0).forEach(a => { if (!byArea.has(a.area)) byArea.set(a.area, { area: a.area, acts: [], done: [] }); byArea.get(a.area).acts.push(a); });
+  act.slice().sort((a, b) => a.t0 - b.t0 || a.name.localeCompare(b.name, "sv")).forEach(a => { if (!byArea.has(a.area)) byArea.set(a.area, { area: a.area, acts: [], done: [] }); byArea.get(a.area).acts.push(a); });
   fx.gone.forEach(g => { if (!byArea.has(g.a.area)) byArea.set(g.a.area, { area: g.a.area, acts: [], done: [], fading: g }); byArea.get(g.a.area).done.push(g); });
-  const groups = [...byArea.values()].sort((a, b) => b.acts.length - a.acts.length || a.area.localeCompare(b.area, "sv"));
-  const per = 3, pages = Math.max(1, Math.ceil(groups.length / per)), page = pages > 1 ? Math.floor(ft / 3.5) % pages : 0;
-  const show = groups.slice(page * per, page * per + per).map(g => ({ ...g, rows: [...g.acts.slice(0, 2).map(a => ({ a })), ...g.done.slice(-1).map(d => ({ a: d.a, done: d }))], more: Math.max(0, g.acts.length - 2) }));
-  const w = 560 * s, head = 54 * s, gH = 62 * s, rH = 40 * s, pad = 14 * s;
-  const h = head + show.reduce((sm, g) => sm + gH + g.rows.length * rH + (g.more ? 24 * s : 0) + 10 * s, 0) + (show.length ? 4 * s : 46 * s);
-  const x = W - 28 * s - w, y = H - (pearls ? 132 : 28) * s - h;
+  const groups = [...byArea.values()].sort((a, b) => a.area.localeCompare(b.area, "sv", { numeric: true }));
+  const w = 520 * s, pad = 14 * s, bottom = H - (pearls ? 104 : 28) * s, maxH = bottom - 190 * s;
+  // Mått vid skala k (texten krymper med k): rubrik, aktivitetsrader (1–2 rader text).
+  const M = k => ({ head: 50 * s, gHead: 50 * s * Math.max(0.75, k), fs: 15 * s * k, lh: 18 * s * k, rowPad: 8 * s * k, gap: 8 * s });
+  const textW = w - 2 * pad - 150 * s;
+  const measure = (k, list) => {
+    const m = M(k); ctx.font = `600 ${Math.round(m.fs)}px system-ui, sans-serif`;
+    let h = m.head;
+    list.forEach(g => { h += m.gHead + m.gap; [...g.acts, ...g.done.map(d => d.a)].forEach(a => { h += Math.max(1, l3fxWrap(ctx, l3fxActText(a), textW).length) * m.lh + m.rowPad; }); });
+    return h + 6 * s;
+  };
+  let k = 1, list = groups, page = 0, pages = 1;
+  while (k > 0.56 && measure(k, groups) > maxH) k -= 0.04;
+  if (measure(k, groups) > maxH) {
+    // Även med minsta texten räcker det inte: områdena delas på sidor som bläddras.
+    const pg = []; let cur = [], h0 = M(k).head;
+    groups.forEach(g => { const gh = measure(k, [g]) - M(k).head; if (cur.length && h0 + gh > maxH) { pg.push(cur); cur = []; h0 = M(k).head; } cur.push(g); h0 += gh; });
+    if (cur.length) pg.push(cur);
+    pages = pg.length; page = Math.floor(ft / 4) % pages; list = pg[page];
+  }
+  const m = M(k), h = groups.length ? measure(k, list) : m.head + 40 * s, x = W - 28 * s - w, y = bottom - h;
   ctx.fillStyle = "rgba(15,23,42,.84)"; l3fxRR(ctx, x, y, w, h, 20 * s); ctx.fill();
   ctx.strokeStyle = "rgba(255,255,255,.08)"; ctx.lineWidth = 1.5 * s; l3fxRR(ctx, x + 0.75 * s, y + 0.75 * s, w - 1.5 * s, h - 1.5 * s, 20 * s); ctx.stroke();
-  // Huvud: PÅGÅR NU · antal, sida.
-  ctx.fillStyle = "#22c55e"; ctx.beginPath(); ctx.arc(x + 28 * s, y + 28 * s, 5 * s * (0.8 + 0.2 * Math.sin(ft * 5)), 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#a5b4fc"; ctx.font = `700 ${Math.round(15 * s)}px system-ui, sans-serif`; ctx.fillText("PÅGÅR NU", x + 42 * s, y + 29 * s);
-  ctx.textAlign = "right"; ctx.fillStyle = "#cbd5e1"; ctx.font = `600 ${Math.round(15 * s)}px system-ui, sans-serif`;
-  ctx.fillText(act.length ? `${act.length} ${act.length === 1 ? "aktivitet" : "aktiviteter"} · ${groups.length} ${groups.length === 1 ? "område" : "områden"}${pages > 1 ? `  ${page + 1}/${pages}` : ""}` : "", x + w - 24 * s, y + 29 * s); ctx.textAlign = "left";
-  if (!show.length) { ctx.fillStyle = "#94a3b8"; ctx.font = `500 ${Math.round(17 * s)}px system-ui, sans-serif`; ctx.fillText("Inga aktiviteter just nu", x + 26 * s, y + head + 18 * s); return; }
-  let cy = y + head;
-  show.forEach(g => {
+  ctx.fillStyle = "#22c55e"; ctx.beginPath(); ctx.arc(x + 28 * s, y + 26 * s, 5 * s * (0.8 + 0.2 * Math.sin(ft * 5)), 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#a5b4fc"; ctx.font = `700 ${Math.round(15 * s)}px system-ui, sans-serif`; ctx.fillText("PÅGÅR NU", x + 42 * s, y + 27 * s);
+  ctx.textAlign = "right"; ctx.fillStyle = "#cbd5e1"; ctx.font = `600 ${Math.round(14 * s)}px system-ui, sans-serif`;
+  ctx.fillText(act.length ? `${act.length} ${act.length === 1 ? "aktivitet" : "aktiviteter"}${pages > 1 ? `  ·  ${page + 1}/${pages}` : ""}` : "", x + w - 22 * s, y + 27 * s); ctx.textAlign = "left";
+  if (!groups.length) { ctx.fillStyle = "#94a3b8"; ctx.font = `500 ${Math.round(16 * s)}px system-ui, sans-serif`; ctx.fillText("Inga aktiviteter just nu", x + 26 * s, y + m.head + 14 * s); return; }
+  let cy = y + m.head;
+  list.forEach(g => {
     const seen = Math.min(...(g.acts.length ? g.acts.map(a => fx.seen.get(a.key) ?? -9) : [-9]));
-    const inA = l3fxEase((ft - seen) / 0.5), outA = g.fading ? 1 - l3fxEase(((ft - g.fading.at) / 1.4 - 0.4) / 0.6) : 1, al = Math.min(inA, outA);
-    const gh = gH + g.rows.length * rH + (g.more ? 24 * s : 0);
-    ctx.save(); ctx.globalAlpha *= al; ctx.translate((1 - inA) * 40 * s, 0);
-    ctx.fillStyle = "rgba(255,255,255,.05)"; l3fxRR(ctx, x + pad, cy, w - 2 * pad, gh, 14 * s); ctx.fill();
-    // Rubrik: området och dess förlopp.
+    const inA = l3fxEase((ft - seen) / 0.5), outA = g.fading ? 1 - l3fxEase(((ft - g.fading.at) / 1.4 - 0.4) / 0.6) : 1;
+    const gh = measure(k, [g]) - m.head - 6 * s - m.gap;
+    ctx.save(); ctx.globalAlpha *= Math.min(inA, outA); ctx.translate((1 - inA) * 40 * s, 0);
+    ctx.fillStyle = "rgba(255,255,255,.05)"; l3fxRR(ctx, x + pad, cy, w - 2 * pad, gh, 12 * s); ctx.fill();
+    // Rubriken: området och dess förlopp.
     const ap = fx.areaProg(g.area, t), col = g.acts.length ? phaseColor(zonePhase(g.acts[0].rows, iso)) : "#22c55e";
     ctx.fillStyle = col; l3fxRR(ctx, x + pad, cy, 5 * s, gh, 2.5 * s); ctx.fill();
-    ctx.fillStyle = "#fff"; ctx.font = `800 ${Math.round(22 * s)}px system-ui, sans-serif`; ctx.fillText(fit(g.area, w - 190 * s), x + pad + 20 * s, cy + 22 * s);
-    ctx.textAlign = "right"; ctx.font = `800 ${Math.round(22 * s)}px system-ui, sans-serif`; ctx.fillText(`${Math.floor(ap * 100)} %`, x + w - pad - 18 * s, cy + 22 * s); ctx.textAlign = "left";
-    const bx = x + pad + 20 * s, bw = w - 2 * pad - 38 * s;
-    ctx.fillStyle = "rgba(255,255,255,.12)"; l3fxRR(ctx, bx, cy + 40 * s, bw, 8 * s, 4 * s); ctx.fill();
-    ctx.fillStyle = col; l3fxRR(ctx, bx, cy + 40 * s, Math.max(8 * s, bw * ap), 8 * s, 4 * s); ctx.fill();
-    // Aktiviteterna som betas av (liten text, liten stapel).
-    let ry = cy + gH;
-    g.rows.forEach(({ a, done }) => {
+    const hx = x + pad + 18 * s, hw = w - 2 * pad - 34 * s, hfs = Math.round(20 * s * Math.max(0.8, k));
+    ctx.font = `800 ${hfs}px system-ui, sans-serif`; ctx.fillStyle = "#fff";
+    let an = g.area; while (an.length > 3 && ctx.measureText(an).width > hw - 80 * s) an = an.slice(0, -2); if (an !== g.area) an = an.trim() + "…";
+    ctx.fillText(an, hx, cy + m.gHead * 0.4);
+    ctx.textAlign = "right"; ctx.fillText(`${Math.floor(ap * 100)} %`, hx + hw, cy + m.gHead * 0.4); ctx.textAlign = "left";
+    ctx.fillStyle = "rgba(255,255,255,.12)"; l3fxRR(ctx, hx, cy + m.gHead * 0.74, hw, 6 * s, 3 * s); ctx.fill();
+    ctx.fillStyle = col; l3fxRR(ctx, hx, cy + m.gHead * 0.74, Math.max(6 * s, hw * ap), 6 * s, 3 * s); ctx.fill();
+    // Aktiviteterna (liten text, högst två rader) med liten stapel och procent.
+    let ry = cy + m.gHead + 2 * s;
+    ctx.font = `600 ${Math.round(m.fs)}px system-ui, sans-serif`;
+    [...g.acts.map(a => ({ a })), ...g.done.map(d => ({ a: d.a, done: d }))].forEach(({ a, done }) => {
       const p = done ? 1 : Math.max(0, Math.min(1, (t - a.t0) / (a.t1 - a.t0))), rc = done ? "#22c55e" : phaseColor(zonePhase(a.rows, iso));
+      const lines = l3fxWrap(ctx, l3fxActText(a), textW), rh = lines.length * m.lh;
       ctx.save(); if (done) ctx.globalAlpha *= 1 - l3fxEase(((ft - done.at) / 1.4 - 0.4) / 0.6);
-      ctx.fillStyle = rc; ctx.beginPath(); ctx.arc(bx + 6 * s, ry + 11 * s, 5 * s, 0, Math.PI * 2); ctx.fill();
-      if (done) { ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 2 * s; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(bx + 3.5 * s, ry + 11 * s); ctx.lineTo(bx + 5.5 * s, ry + 13.5 * s); ctx.lineTo(bx + 9 * s, ry + 8.5 * s); ctx.stroke(); }
-      ctx.font = `600 ${Math.round(16 * s)}px system-ui, sans-serif`; ctx.fillStyle = "#e2e8f0";
-      const nm = a.objs && a.objs.length ? `${a.name} · ${a.objs.slice(0, 2).join(", ")}${a.objs.length > 2 ? " +" + (a.objs.length - 2) : ""}` : a.name;
-      ctx.fillText(fit(nm, bw - 150 * s), bx + 18 * s, ry + 11 * s);
-      const sbx = bx + bw - 120 * s, sbw = 72 * s;
-      ctx.fillStyle = "rgba(255,255,255,.12)"; l3fxRR(ctx, sbx, ry + 8 * s, sbw, 6 * s, 3 * s); ctx.fill();
-      ctx.fillStyle = rc; l3fxRR(ctx, sbx, ry + 8 * s, Math.max(6 * s, sbw * p), 6 * s, 3 * s); ctx.fill();
-      ctx.textAlign = "right"; ctx.font = `700 ${Math.round(15 * s)}px system-ui, sans-serif`; ctx.fillStyle = done ? "#86efac" : "#cbd5e1"; ctx.fillText(done ? "Klar" : `${Math.floor(p * 100)} %`, bx + bw, ry + 11 * s); ctx.textAlign = "left";
+      ctx.fillStyle = rc; ctx.beginPath(); ctx.arc(hx + 5 * s, ry + m.lh / 2, 4.5 * s * Math.max(0.8, k), 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#e2e8f0"; lines.forEach((ln, li) => ctx.fillText(ln, hx + 16 * s, ry + m.lh / 2 + li * m.lh));
+      const sbw = 70 * s, sbx = hx + hw - sbw - 52 * s, by = ry + rh / 2 - 3 * s;
+      ctx.fillStyle = "rgba(255,255,255,.12)"; l3fxRR(ctx, sbx, by, sbw, 5 * s, 2.5 * s); ctx.fill();
+      ctx.fillStyle = rc; l3fxRR(ctx, sbx, by, Math.max(5 * s, sbw * p), 5 * s, 2.5 * s); ctx.fill();
+      ctx.textAlign = "right"; ctx.fillStyle = done ? "#86efac" : "#cbd5e1"; ctx.font = `700 ${Math.round(Math.max(12 * s, m.fs))}px system-ui, sans-serif`;
+      ctx.fillText(done ? "Klar" : `${Math.floor(p * 100)} %`, hx + hw, ry + rh / 2 + 1 * s); ctx.textAlign = "left";
+      ctx.font = `600 ${Math.round(m.fs)}px system-ui, sans-serif`;
       ctx.restore();
-      ry += rH;
+      ry += rh + m.rowPad;
     });
-    if (g.more) { ctx.font = `500 ${Math.round(13 * s)}px system-ui, sans-serif`; ctx.fillStyle = "#94a3b8"; ctx.fillText(`+ ${g.more} till i området`, bx + 18 * s, ry + 4 * s); }
     ctx.restore();
-    cy += gh + 10 * s;
+    cy += gh + m.gap;
   });
 }
 /* Milstolpen: ett kort högt upp mitt i bilden – glider ner och tonas in, ljusskimmer över, tonas ut. */
@@ -300,7 +417,7 @@ function l3fxBanner(ctx, W, s, ft, b) {
 /* Statusförklaringen nere till vänster: vad färgerna betyder. */
 function l3fxLegend(ctx, H, s, pearls) {
   const rows = [["klar", "Klar"], ["pagaende", "Pågår"], ["forsenad", "Försenad"], ["planerad", "Ej startad"]];
-  const w = 210 * s, rh = 32 * s, h = 46 * s + rows.length * rh, x = 32 * s, y = H - (pearls ? 132 : 28) * s - h;
+  const w = 210 * s, rh = 32 * s, h = 46 * s + rows.length * rh, x = 32 * s, y = H - (pearls ? 104 : 28) * s - h;
   ctx.save(); ctx.textBaseline = "middle";
   ctx.fillStyle = "rgba(15,23,42,.8)"; l3fxRR(ctx, x, y, w, h, 18 * s); ctx.fill();
   ctx.fillStyle = "#a5b4fc"; ctx.font = `700 ${Math.round(14 * s)}px system-ui, sans-serif`; ctx.fillText("STATUS", x + 22 * s, y + 25 * s);
