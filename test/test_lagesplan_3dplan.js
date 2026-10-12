@@ -279,6 +279,23 @@ const PP = [
       return { both, ex, pp, xrow: !!xrow, dlg, coupledBoth, synth };
     });
     if (!lk.both.includes('Etablering bodar') || !lk.both.includes('Gjutning pelare') || lk.ex.join() !== 'Etablering bodar' || lk.pp.includes('Etablering bodar') || !lk.xrow || lk.dlg || !lk.coupledBoth || lk.synth) fail('4D-koppling PP/Excel/båda: ' + JSON.stringify(lk));
+    // 3D-färger i Powerproject-lägesplanen: Excel-kopplade objekt färgas också (Powerproject först), valbart.
+    const cs = await page.evaluate(async () => {
+      await l3plLoadX(); $('dateInput').value = '2026-10-12'; const ps0 = planSource, it0 = items; planSource = 'pp'; items = l3pl.rows;
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(new Array(18).fill(0), 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(new Array(18).fill(0), 3));
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial()), base = [0.85, 0.87, 0.9];
+      mesh.userData.l3b = { origIdx: [0, 1, 2, 3, 4, 5], hidden: new Set(), ranges: [{ guid: '1hZq3$Bq9Fxu8nZK0bW1aA', start: 0, count: 3, base }, { guid: 'X1', start: 3, count: 3, base }] };
+      const mdl = { id: 'mc', name: 'C.ifc', visible: true, meshes: [mesh] }; l3b.models.push(mdl);
+      const col = i => [...geo.getAttribute('color').array.slice(i * 9, i * 9 + 3)].map(v => Math.round(v * 100)).join();
+      const isBase = i => col(i) === base.map(v => Math.round(v * 100)).join();
+      const res = {};
+      for (const v of ['both', 'pp', 'excel']) { l3plSet('colorSrc', v); l3bRecolor(); res[v] = [isBase(0), isBase(1)]; }
+      l3plSet('secOpen', { film: false, link: false, other: true }); l3plRenderTab(); const sel = !!document.getElementById('v3PlColorSrc'); l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();
+      l3plSet('colorSrc', 'both'); l3bRecolor(); l3b.models.splice(l3b.models.indexOf(mdl), 1); planSource = ps0; items = it0;
+      return { ...res, sel, itemId: mesh.userData.l3b.ranges[0].itemId, xId: mesh.userData.l3b.ranges[1].itemId };
+    });
+    if (cs.both.join() !== 'false,false' || cs.pp.join() !== 'false,true' || cs.excel.join() !== 'true,false' || !cs.sel || cs.itemId !== 'p1' || cs.xId !== null) fail('3D-färger PP/Excel/båda: ' + JSON.stringify(cs));
+    else console.log('OK: 3D-färgerna i Powerproject-lägesplanen tar med Excel-kopplade objekt (båda/PP/Excel)');
     console.log('OK: 4D-koppling – Powerproject, Excel eller båda; Excel-raderna skyddade mot redigering här');
     // Valen finns i fliken.
     const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlFxBl', 'v3FlFxLegend', 'v3FlAnimDef', 'v3PlLinkHost', 'v3FlTitleOn'].every(id => document.getElementById(id)); });

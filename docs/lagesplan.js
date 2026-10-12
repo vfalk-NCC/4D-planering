@@ -834,6 +834,9 @@ async function refreshCoupled() {
     if (typeof populateFilterOptions === "function") populateFilterOptions();
     $("projectInfo").textContent = `Projekt ${projectId} · ${items.length} planerade objekt`;
     renderZones();
+    // 3D-färgerna läses om (båda planeringarna) om 3D-vyn är igång.
+    if (typeof l3pl !== "undefined") l3pl.xrows = null;
+    if (typeof l3bRecolor === "function" && typeof l3 !== "undefined" && l3) { l3bRecolor(); if (typeof l3Render === "function") l3Render(); }
     setBusy("");
     if (window.opener && !window.opener.closed && plan && plan.calib) await fetchPositions();
     else setSaveStatus(`Planeringen uppdaterad (${items.length} objekt). Nya positioner kan bara hämtas när 4D-planering är öppen i Trimble Connect.`);

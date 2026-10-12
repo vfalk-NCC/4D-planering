@@ -45,6 +45,8 @@ function l3plFilmActs() {
   return out.sort((a, b) => a.start.localeCompare(b.start) || a.name.localeCompare(b.name, "sv", { numeric: true }));
 }
 /* 4D-koppling (listan i vänstermenyn): Powerproject, Excel eller båda (Victor 2026-10-12). */
+/* 3D-färgernas planering när lägesplanen körs med Powerproject (med Excel vald är planeringen redan Excel). */
+const l3plColorSrc = () => (typeof planSource !== "undefined" && planSource !== "pp" ? "pp" : l3plPrefs().colorSrc || "both");
 const l3plLinkSrc = () => l3plPrefs().linkSrc || "pp";
 function l3plLinkActs(split) {
   const src = l3plLinkSrc(), out = [];
@@ -134,7 +136,8 @@ function l3plRenderTab() {
   const otherBody = `<div class="v3-pl-sub">Powerproject-tidplanen</div>
       ${l3pl.err ? `<div class="v3-pal-hint bad">Kunde inte läsa tidplanen: ${esc(l3pl.err)}</div>` : !acts.length ? `<div class="v3-pal-hint">Ingen Powerproject-tidplan i projektet ännu (importeras i 4D-planering).</div>`
         : `<div class="v3-pal-hint">${acts.length} aktiviteter · ${esc(range[0])} – ${esc(range[1])}</div>`}
-      ${typeof planSource !== "undefined" && planSource !== "pp" ? `<div class="v3-pal-hint">3D-färgerna följer Excel-planeringen (vald i 4D-planering). Öppna lägesplanen med Powerproject vald för att färga efter den här tidplanen.</div>` : ""}
+      ${typeof planSource !== "undefined" && planSource !== "pp" ? `<div class="v3-pal-hint">3D-färgerna följer Excel-planeringen (vald i 4D-planering). Öppna lägesplanen med Powerproject vald för att färga efter den här tidplanen.</div>`
+        : `<label class="v3-pl-crow" title="Vilken planering de kopplade IFC-objekten färgas efter. Båda: Powerproject först, Excel där objektet bara är kopplat i Excel-planeringen.">3D-färger<select id="v3PlColorSrc">${[["both", "Båda"], ["pp", "Powerproject"], ["excel", "Excel"]].map(([v, t]) => `<option value="${v}" ${l3plColorSrc() === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>`}
       <button type="button" class="v3-wide ${l3pl.dock ? "on" : ""}" id="v3PlDock">${l3pl.dock ? "Dölj tavlan" : "Visa tavlan och Gantten"}</button>
       ${now.length ? `<div class="v3-pl-now"><div class="v3-pl-sub">Pågår ${esc(day)}</div>${now.slice(0, 12).map(a => `<button type="button" class="v3-pl-act" data-plsel="${esc(a.key)}" title="Markera aktivitetens objekt i 3D"><i style="background:${phaseColor(zonePhase(a.rows, day))}"></i><span>${esc(a.objs.length ? `${a.objs.slice(0, 2).join(", ")}${a.objs.length > 2 ? " +" + (a.objs.length - 2) : ""} – ${a.name}` : a.name)}</span></button>`).join("")}${now.length > 12 ? `<div class="v3-pal-hint">… och ${now.length - 12} till</div>` : ""}</div>` : ""}
     `;
@@ -143,8 +146,9 @@ function l3plRenderTab() {
   const lh = host.querySelector("#v3PlLinkHost"); if (lh && typeof l3gaBind === "function") l3gaBind(lh, () => { l3plRenderTab(); if (l3pl.dock) l3plDockRender(); }, () => l3plLinkActs(l3gaP().split));
   const ls = host.querySelector("#v3PlLinkSrc"); if (ls) ls.onchange = () => { l3plSet("linkSrc", ls.value); if (ls.value !== "pp") l3plLoadX().then(() => l3plRenderTab()); else l3plRenderTab(); };
   const on = (id, fn, ev = "onclick") => { const el = host.querySelector("#" + id); if (el) el[ev] = fn; };
-  on("v3PlReload", () => { l3pl.rows = null; l3plLoad(true); l3plRenderTab(); });
+  on("v3PlReload", () => { l3pl.rows = null; l3pl.xrows = null; l3plLoad(true); l3plRenderTab(); if (typeof l3bRecolor === "function") l3bRecolor(); });
   on("v3PlDock", () => l3plDockToggle());
+  on("v3PlColorSrc", e => { l3plSet("colorSrc", e.target.value); if (typeof l3bRecolor === "function") { l3bRecolor(); if (typeof l3Render === "function") l3Render(); } }, "onchange");
   host.querySelectorAll("[data-plsel]").forEach(b => { b.onclick = () => l3plSelect(b.dataset.plsel); });
   const save = () => { l3plSet("film", { ...l3plPrefs().film, from: host.querySelector("#v3FlFrom").value, to: host.querySelector("#v3FlTo").value, sec: Number(host.querySelector("#v3FlSec").value) || 20, res: host.querySelector("#v3FlRes").value, src: host.querySelector("#v3FlSrc").value, title: host.querySelector("#v3FlTitleOn").checked, pearls: host.querySelector("#v3FlPearls").checked, fxNow: host.querySelector("#v3FlFxNow").checked, fxGlow: host.querySelector("#v3FlFxGlow").checked, fxMiles: host.querySelector("#v3FlFxMiles").checked, fxMeter: host.querySelector("#v3FlFxMeter").checked, fxBl: host.querySelector("#v3FlFxBl").checked, fxLegend: host.querySelector("#v3FlFxLegend").checked, fxEtab: host.querySelector("#v3FlFxEtab").checked, fxCrane: host.querySelector("#v3FlFxCrane").checked, fxSigns: host.querySelector("#v3FlFxSigns").checked, caption: host.querySelector("#v3FlTitle").value }); if (l3fsOn()) l3fsRender(); };
   on("v3FlSrc", () => { save(); l3plLoadX().then(() => { if (l3fsOn()) l3fsRender(); }); }, "onchange");
