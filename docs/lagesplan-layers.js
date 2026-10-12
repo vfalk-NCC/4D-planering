@@ -113,6 +113,7 @@ function applyLayerCss() {
   set("pdfCanvas", "pdf");
   set("zoneCanvas", "zones");
   set("objCanvas", "objects");
+  if ($("xlsCanvas")) { if (typeof xlsActive === "function" && xlsActive()) set("xlsCanvas", "xls"); else $("xlsCanvas").style.display = "none"; }
   if ($("labelCanvas")) set("labelCanvas", "objects");
   if (typeof renderObjHint === "function" && typeof plan !== "undefined" && plan) renderObjHint(layerVisible("objects") ? objectShapesInPdf() : null);
   $("orthoCanvas").style.display = hasOrtho ? "" : "none";
@@ -252,7 +253,7 @@ function layerMeta() {
   return { id: META_ID, type: "layermeta", names: { ...(m.names || {}) }, folders: (m.folders || []).map(f => ({ ...f })), folderOf: { ...(m.folderOf || {}) }, sortAz: !!m.sortAz, order: [...(m.order || [])], removedLayers: [...(m.removedLayers || [])], cadColors: { ...(m.cadColors || {}) } };
 }
 function saveLayerMeta(m) { return saveSiteItem(m, false, { record: false }); }
-const LAYER_DEFAULT_NAMES = { pdf: "Ritningen (PDF)", zones: "Zoner", objects: "Objekt", photos: "Foton" };
+const LAYER_DEFAULT_NAMES = { pdf: "Ritningen (PDF)", zones: "Zoner", objects: "Objekt", photos: "Foton", xls: "Excel-planeringen" };
 /* Namnet som syns i listan, för sortering A–Ö. */
 function layerSortName(key) {
   if (key.startsWith("ortho:")) { const o = siteItems.find(x => "ortho:" + x.id === key); return o ? o.name || "" : key; }
@@ -334,7 +335,7 @@ function setFolderVisible(id, on) {
 function defaultLayerOrder() {
   const cadKeys = typeof cads === "function" ? cads().map(r => "cad:" + r.id) : [];
   const pdfKeys = typeof pdfOverlayPlans === "function" ? pdfOverlayPlans().map(pdfOverlayKey) : [];
-  return ["photos", ...userLayers().map(l => "ul:" + l), "objects", "zones", ...cadKeys, "pdf", ...pdfKeys, ...orthosByDate().reverse().map(o => "ortho:" + o.id)];
+  return ["photos", ...userLayers().map(l => "ul:" + l), "objects", ...(typeof xlsActive === "function" && xlsActive() ? ["xls"] : []), "zones", ...cadKeys, "pdf", ...pdfKeys, ...orthosByDate().reverse().map(o => "ortho:" + o.id)];
 }
 function layerRowKeys() {
   const def = defaultLayerOrder(), have = new Set(def);
@@ -386,7 +387,7 @@ function applyLayerOrder() {
   const oz = (okOn.length ? okOn : ok).reduce((m, k) => Math.max(m, z(k)), 1);
   setZ($("orthoCanvas"), oz); setZ($("orthoCanvasB"), oz);
   setZ($("pdfCanvas"), z("pdf")); setZ($("pdfHiCanvas"), z("pdf"));
-  setZ($("zoneCanvas"), z("zones")); setZ($("objCanvas"), z("objects"));
+  setZ($("zoneCanvas"), z("zones")); setZ($("objCanvas"), z("objects")); setZ($("xlsCanvas"), z("xls"));
   setZ($("topCanvas"), n + 3);
   document.querySelectorAll("#stage canvas.pdfov, #stage canvas.pdfovhi, #stage canvas.cadfile").forEach(c => setZ(c, z(c.dataset.key)));
 }
@@ -1949,6 +1950,8 @@ function renderLayerPanel() {
   const objFams = typeof objListFamilies === "function" ? objListFamilies() : [], objOpen = objFams.length > 0 && layerState["ulopen:__objects"] === true;
   rowHtml.objects = opts => layerRow("objects", `${objFams.length ? `<button class="cad-toggle ul-toggle" data-ul="__objects" title="Visa aktiviteterna (3D-objekten) på planen">${objOpen ? "▾" : "▸"}</button>` : ""}${name("objects", "fx-name", "🔷")}${objFams.length ? ` <small>${objFams.length}</small>` : ""}`, opts)
     + (objFams.length ? objRowsHtml(objFams, { hidden: opts.hidden || !objOpen, inFolder: opts.inFolder }) : "");
+  // Excel-planeringen (bara med Powerproject vald, lagesplan-xls.js): ringar i Excels statusfärg.
+  if (typeof xlsActive === "function" && xlsActive()) rowHtml.xls = opts => layerRow("xls", `${name("xls", "fx-name", "📊")} <small title="Excel-objekt med position på arbetsytan">${xls.items ? xlsCount() : "…"}</small>`, opts);
   userLayers().forEach(l => {
     const n = siteItems.filter(x => isSiteObj(x) && layerOf(x) === l).length;
     const fixed = l === "Allmänt" || l === "Etablering"; // fast namn (byts som visningsnamn), men kan tas bort

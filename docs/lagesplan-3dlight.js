@@ -11,7 +11,8 @@
 const L3LT_PART = 20e6, L3LT_MAX = 300e6;
 const l3ltPath = () => `projects/${encodeURIComponent(projectId)}/mobil3d.json`;
 const l3ltKey = w => (w.fileId ? "f:" + w.fileId : String(w.id || ""));
-const l3ltTok = () => (typeof settings !== "undefined" && settings.githubToken) || (typeof token !== "undefined" ? token : null);
+// Samma token som resten av lägesplanen (den aktiva) – en äldre sparad i inställningarna gav "401 Bad credentials" (Victor 2026-10-12).
+const l3ltTok = () => (typeof token !== "undefined" && token) || (typeof settings !== "undefined" && settings.githubToken) || null;
 const l3lt = { list: null, pid: null, saving: new Set() };
 const l3ltOn = () => !(typeof l3Prefs === "function" && l3Prefs().mobileCopy === false);
 const l3ltUse = () => (typeof l3IsTouch === "function" && l3IsTouch()) || !!window.__l3UseLight;

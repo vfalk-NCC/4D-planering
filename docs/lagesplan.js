@@ -825,6 +825,7 @@ async function refreshCoupled() {
     setBusy("Hämtar planeringen…");
     const [its, pos, acts] = await Promise.all([ghReadJSON(token, dataPath("plan_items.json")), ghReadJSON(token, dataPath("plan_item_positions.json")).catch(() => positions), ghReadJSON(token, dataPath("plan_item_activities.json")).catch(() => subActs)]);
     items = its; positions = pos; subActs = acts; subCoupledCache = null;
+    if (typeof xls !== "undefined") { xls.items = null; xls.positions = null; xls.posPdf = null; } // Excel-planeringen läses om
     if (typeof invalidateVisible === "function") invalidateVisible(); else invalidatePositions();
     if (typeof populateFilterOptions === "function") populateFilterOptions();
     $("projectInfo").textContent = `Projekt ${projectId} · ${items.length} planerade objekt`;
@@ -1138,7 +1139,7 @@ function rerenderTextIfFixed() {
 }
 
 /* Canvaslagren i #stage, nedifrån och upp - se lagesplan-layers.js. */
-const STAGE_CANVASES = ["orthoCanvas", "pdfCanvas", "zoneCanvas", "objCanvas", "topCanvas"];
+const STAGE_CANVASES = ["orthoCanvas", "pdfCanvas", "zoneCanvas", "objCanvas", "xlsCanvas", "topCanvas"];
 
 /* Skarpa zoner, prickar och etablering vid inzoomning (Victors önskemål
    2026-10-02). Lagren ritades i ritningens upplösning (~5000 px) och blev
@@ -1185,8 +1186,9 @@ function renderZones() {
   const ctx = zc.getContext("2d");
   const ov = overlayRegion(); ovLast = ov;
   const cw = Math.max(1, Math.ceil(ov.w * ov.s)), ch = Math.max(1, Math.ceil(ov.h * ov.s));
-  ["zoneCanvas", "objCanvas", "topCanvas"].forEach(id => {
+  ["zoneCanvas", "objCanvas", "xlsCanvas", "topCanvas"].forEach(id => {
     const c = $(id);
+    if (!c) return;
     if (c.width !== cw || c.height !== ch) { c.width = cw; c.height = ch; }
     Object.assign(c.style, { left: `${ov.x0}px`, top: `${ov.y0}px`, width: `${ov.w}px`, height: `${ov.h}px` });
     const cx = c.getContext("2d");
@@ -1200,6 +1202,7 @@ function renderZones() {
   const objects = $("showObjects").checked ? objectShapesInPdf() : null;
   const badges = drawZoneShapes(ctx, fontPx, objects);
   if (objects) drawObjects(octx, objects, fontPx);
+  if ($("xlsCanvas") && typeof drawXls === "function") drawXls($("xlsCanvas").getContext("2d"), fontPx); // Excel-planeringen (PP)
   labelObjects = objects;
   renderScreenLabels();
   objRenderedScale = view.scale;
@@ -1621,6 +1624,8 @@ function showTip(e) {
   if (toolTip) { tip.innerHTML = toolTip; place(); return; }
   // Ett enskilt objekt under pekaren går före zonen det ligger i.
   const objs = objectsAt(pdfPt);
+  const xo = !objs.length && typeof xlsAt === "function" ? xlsAt(pdfPt) : [];
+  if (xo.length) { tip.innerHTML = xlsTipHtml(xo); place(); return; }
   if (objs.length) {
     tip.innerHTML = objectTipHtml(objs[0]) + (objs.length > 1
       ? `<div style="margin-top:6px;opacity:.75;">+ ${objs.length - 1} till här: ${objs.slice(1, 4).map(o => escHtml(o.it.object_name || o.it.activity || "")).join(", ")}${objs.length > 4 ? " …" : ""}</div>`
@@ -1827,6 +1832,7 @@ function composeImageNow(maxW, noHeader, part) {
     else if (k.startsWith("cad:") && !part && typeof drawCadForExport === "function" && plan && plan.calib) drawCadForExport(ctx, 0, head, kx, k.slice(4));
     else if (k === "zones" && inPart("zoneCanvas")) drawStage(zc);
     else if (k === "objects" && inPart("objCanvas")) drawStage($("objCanvas"));
+    else if (k === "xls" && $("xlsCanvas") && inPart("xlsCanvas") && getComputedStyle($("xlsCanvas")).display !== "none") drawStage($("xlsCanvas"));
   });
   if (inPart("topCanvas")) drawStage($("topCanvas"));
   if (noHeader) return out;

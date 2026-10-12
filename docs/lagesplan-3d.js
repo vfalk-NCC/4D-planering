@@ -119,7 +119,7 @@ function l3SetPref(k, v) {
 async function open3d() {
   if (!plan) { alert("Välj en arbetsyta först."); return; }
   if (!plan.calib) { alert("Arbetsytan behöver kalibreras mot 3D-modellen först (Zoner → Kalibrera mot 3D). Annars vet 3D-vyn inte var planen ligger."); return; }
-  if (!settings.githubToken && token) settings.githubToken = token;
+  if (token) settings.githubToken = token; // 3D-biblioteket och modellerna: alltid den aktiva token (en gammal sparad gav 401)
   const box = l3Dom();
   box.classList.remove("hidden");
   document.body.classList.add("v3-open"); // fältlägets flytande knappar och ark (iPhone) göms under 3D
