@@ -10,7 +10,7 @@
      (via 4D-planering, som har TC-behörigheten) och tänder/släcker den sedan.
    Panelerna till höger och vänster kan breddas genom att dra i kanten. */
 
-const L3L_EXT = /\.(ifc|ifczip|dxf)$/i; // DXF blir ett CAD-lager (lagesplan-3dsite.js)
+const L3L_EXT = /\.(ifc|ifczip|dxf|las|laz|xyz|pts|ply|e57)$/i; // DXF blir ett CAD-lager (lagesplan-3dsite.js), LAS/LAZ … punktmoln (lagesplan-3dpc.js)
 let l3lay = { folders: new Map(), open: new Set(), root: null, project: "", loading: new Set(), err: "", texp: new Set() };
 
 const l3lEye = on => `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${on
@@ -91,6 +91,7 @@ function l3LayersRender() {
       if (lt.length) mh += `<div class="v3-lg v3-lr-sub" style="margin-top:6px">Sparade för mobilen</div>` + lt.map(e => row(`data-l3l-lt="${esc(e.key)}"`, false, esc(e.name || "Modell"), (l3lay.loading.has(e.key) ? '<span class="pm-spin"></span>' : "") + `<em class="v3-lr-k">${e.bytes ? (e.bytes / 1e6).toFixed(0) + " MB" : ""}</em>`)).join("");
       else if (!all.length) mh += `<div class="v3-pal-hint">${l3lt.list ? "Inga modeller är sparade för mobilen än. Öppna modellen en gång i 3D-vyn på datorn (via 🗺️ i 4D-planering i Trimble Connect) – då sparas en lätt kopia som iPhone och iPad kan visa." : "Hämtar modellerna som är sparade för mobilen…"}</div>`;
     }
+    if (typeof l3pcHtml === "function") mh += l3pcHtml(row, esc);
   } else mh += l3lTreeHtml(l3lay.root, 0);
   if (!noTc) mh += `<button type="button" class="v3-wide" id="v3LayTcOn" title="De IFC-modeller som är tända i Trimble Connect just nu">Hämta tända modeller från TC…</button>`;
   mh += `<div id="v3LayBldgBox"></div>`;
@@ -98,6 +99,7 @@ function l3LayersRender() {
   mh += `<details class="v3-lay-adv" ${P.layAdv ? "open" : ""}><summary>Avancerat</summary><label class="v3-chk v3-lay-voids" title="Armering, inredning, installationer (rör, kanaler, el) och fästdon. Ofta en stor del av modellen – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayDetails" ${P.ifcDetails !== false ? "checked" : ""} /> Visa detaljer (installationer, fästdon, beslag) – av: snabbare</label><label class="v3-chk v3-lay-voids" title="Armeringsjärn och nät. Ofta tiotusentals objekt och det tyngsta i en byggmodell – kan göra att stora modeller inte orkar läsas in."><input type="checkbox" id="v3LayRebar" ${P.ifcRebar ? "checked" : ""} /> Visa armering – mycket långsammare</label><label class="v3-chk v3-lay-voids" title="Fönster- och dörrhål sågas ut ur väggar och bjälklag. Gör inläsningen av stora modeller många gånger långsammare – gäller modeller som läses in efter att du ändrat."><input type="checkbox" id="v3LayVoids" ${P.ifcVoids ? "checked" : ""} /> Visa urtag (hål i väggar) – långsammare</label>`
     + `<label class="v3-chk v3-lay-voids" title="När datorn läst in en modell sparas en lätt kopia av geometrin (utan egenskaper) i datalagret – inte i Trimble Connect. iPhone/iPad läser den i stället för IFC-filen."><input type="checkbox" id="v3LayLight" ${P.mobileCopy !== false ? "checked" : ""} /> Spara lätt kopia för mobilen</label>`
     + `<label class="v3-chk v3-lay-voids" title="web-ifc läser snabbt och ifc-lite tar de objekt web-ifc inte klarar. Med ifc-lite för hela modellen skärs hål exakt men modeller med många håltagningar läses långsammare – web-ifc tar över om ifc-lite inte klarar filen.">IFC-läsare <select id="v3LayEngine"><option value="webifc" ${P.ifcEngine !== "lite" ? "selected" : ""}>web-ifc + ifc-lite för det som saknas</option><option value="lite" ${P.ifcEngine === "lite" ? "selected" : ""}>ifc-lite för hela modellen</option></select></label>`
+    + `<label class="v3-chk v3-lay-voids" title="Högsta antal punkter per punktmoln. Hela molnet visas alltid – glesare med en lägre siffra. Högre kräver mer minne och grafikkort. Gäller moln som läses in efter att du ändrat.">Punkter per punktmoln <select id="v3LayPcBudget">${[["", `Auto (${typeof lowMemDevice !== "undefined" && lowMemDevice ? "1,5" : "6"} milj.)`], ["1000000", "1 miljon"], ["3000000", "3 miljoner"], ["6000000", "6 miljoner"], ["10000000", "10 miljoner"], ["20000000", "20 miljoner"]].map(([v, l]) => `<option value="${v}" ${String(P.pcBudget || "") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>`
     + `<label class="v3-chk v3-lay-voids" title="Högsta antal trianglar för alla modeller tillsammans. Högre visar mer av stora modeller men kräver mer minne – för högt kan få fliken att stängas på en dator med lite minne. Gäller modeller som läses in efter att du ändrat.">Tak för trianglar <select id="v3LayCap">${[["", `Auto (${(l3bAutoTris() / 1e6).toFixed(0)} milj.)`], ...L3B_CAPS.map(c => [String(c), `${c} miljoner`])].map(([v, l]) => `<option value="${v}" ${String(P.triCap || "") === v ? "selected" : ""}>${l}</option>`).join("")}</select></label></details>`;
   if (P.laySort === "tree" && !l3lay.root && noTc) mh += `<div class="v3-pal-hint">Lägesplanen har ingen kontakt med Trimble Connect här. På iPhone/iPad öppnas den i Safari, utan 4D-planering, så mapparna går bara att bläddra i på datorn. Modellerna som är sparade för mobilen finns under Hämtade 3D-modeller.</div>`;
   else if (l3lay.err && !noTc) mh += `<div class="v3-pal-hint bad">${esc(l3lay.err)}</div><button type="button" class="v3-wide" id="v3LayRetry">Försök igen</button>`;
@@ -136,6 +138,12 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3l-type]").forEach(b => { b.onclick = () => { const t = types.find(x => x.type === b.dataset.l3lType); if (t) { l3lSetIdsVisible(t.ids, !l3lTypeOn(t)); l3LayersRender(); } }; });
   host.querySelectorAll("[data-l3l-rem]").forEach(b => { b.onclick = () => l3lLoadRemembered(b.dataset.l3lRem); });
   host.querySelectorAll("[data-l3l-lt]").forEach(b => { b.onclick = () => l3lLoadLight(b.dataset.l3lLt); });
+  if (typeof l3pcBind === "function") l3pcBind(host);
+  host.querySelectorAll("[data-pc-tc]").forEach(b => { b.onclick = async () => {
+    const fid = b.dataset.pcTc, items = l3lay.folders.get(b.dataset.parent) || [], f = items.find(x => x.id === fid);
+    l3lay.loading.add("pc:" + fid); l3LayersRender();
+    try { await l3pcFromTc(fid, b.dataset.name, f, b.dataset.parent); } finally { l3lay.loading.delete("pc:" + fid); l3LayersRender(); }
+  }; });
   host.querySelectorAll("[data-l3l-forget]").forEach(b => { b.onclick = () => l3lForget(b.dataset.l3lForget); });
   host.querySelectorAll("[data-l3l-model]").forEach(b => { b.onclick = () => { const m = l3b.models.find(x => x.id === b.dataset.l3lModel); if (m) { l3bShow(m.id, !m.visible); l3RenderLegend(); l3Render(); l3LayersRender(); } }; });
   host.querySelectorAll("[data-l3l-zoom]").forEach(b => { b.onclick = () => l3lZoomModel(b.dataset.l3lZoom); });
@@ -174,6 +182,8 @@ function l3LayersRender() {
   };
   const vo = host.querySelector("#v3LayVoids");
   if (vo) vo.onchange = () => { l3SetPref("ifcVoids", vo.checked); l3Status(vo.checked ? "Urtag visas i modeller som läses in härefter (långsammare)." : "Urtag hoppas över i modeller som läses in härefter (snabbare)."); };
+  const pcb = host.querySelector("#v3LayPcBudget");
+  if (pcb) pcb.onchange = () => { l3SetPref("pcBudget", pcb.value ? Number(pcb.value) : null); l3Status("Punkter per punktmoln ändrat – gäller moln som läses in efter detta (ta bort och läs in molnet igen)."); };
   const cap = host.querySelector("#v3LayCap");
   if (cap) cap.onchange = () => {
     l3SetPref("triCap", cap.value ? Number(cap.value) : null);
@@ -201,6 +211,12 @@ function l3lTreeHtml(id, depth) {
     if (open) h += l3lTreeHtml(d.id, depth + 1);
   });
   files.forEach(f => {
+    // Punktmoln (samma LAS/LAZ/E57-filer som Reality Capture tar emot): tryck = läs in och visa.
+    if (typeof L3PC_EXT !== "undefined" && L3PC_EXT.test(f.name)) {
+      const c = l3pc.clouds.find(x => x.id === "pc:f:" + f.id), busy = l3lay.loading.has("pc:" + f.id), e57 = /\.e57$/i.test(f.name);
+      h += `<div class="v3-lr" ${pad}><button type="button" class="v3-eye ${c && c.visible ? "on" : ""}" data-pc-tc="${esc(f.id)}" data-name="${esc(f.name)}" data-parent="${esc(id)}" title="${e57 ? "E57 – exportera till LAZ/LAS för att visa här" : c ? (c.visible ? "Släck" : "Tänd") : "Läs in punktmolnet och visa"}">${busy ? '<span class="pm-spin"></span>' : l3lEye(!!(c && c.visible))}</button><span class="v3-lr-n" title="${esc(f.name)}">☁ ${esc(f.name)}</span>${c ? `<button type="button" class="v3-lr-zoom" data-pc-zoom="${esc(c.id)}" title="Zooma till molnet">${L3_ICO.focus}</button><em class="v3-lr-k">${l3pcMil(c.info.n)}</em>` : f.size ? `<em class="v3-lr-k">${typeof pmBytes === "function" ? pmBytes(f.size) : ""}${e57 ? " · E57" : ""}</em>` : ""}</div>`;
+      return;
+    }
     if (/\.dxf$/i.test(f.name)) {
       const cad = typeof cads === "function" ? cads().find(r => r.name === f.name.replace(/\.dxf$/i, "")) : null, on = cad && ls("cad:" + cad.id).visible;
       h += `<div class="v3-lr" ${pad}><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3l-dxf="${esc(f.id)}" data-name="${esc(f.name)}" data-cad="${cad ? esc(cad.id) : ""}" title="${cad ? (on ? "Släck" : "Tänd") : "Läs in som CAD-lager"}">${l3lEye(!!on)}</button><span class="v3-lr-n" title="${esc(f.name)}">${esc(f.name)}</span><em class="v3-lr-k">DXF</em></div>`;
@@ -209,7 +225,7 @@ function l3lTreeHtml(id, depth) {
     const m = l3b.models.find(x => x.id === "f:" + f.id), busy = l3lay.loading.has(f.id);
     h += `<div class="v3-lr" ${pad}><button type="button" class="v3-eye ${m && m.visible ? "on" : ""}" data-l3l-file="${esc(f.id)}" data-name="${esc(f.name)}" title="${m ? (m.visible ? "Släck" : "Tänd") : "Läs in och visa"}">${busy ? '<span class="pm-spin"></span>' : l3lEye(!!(m && m.visible))}</button><span class="v3-lr-n" title="${esc(f.name)}">${esc(f.name)}</span>${m ? `<button type="button" class="v3-lr-zoom" data-l3l-zoom="${esc(m.id)}" title="Zooma till modellen">${L3_ICO.focus}</button>` : ""}${m ? `<em class="v3-lr-k">${(m.tris / 1000).toFixed(0)}k</em>` : f.size ? `<em class="v3-lr-k">${typeof pmBytes === "function" ? pmBytes(f.size) : ""}</em>` : ""}</div>`;
   });
-  if (!dirs.length && !files.length && l3lay.folders.has(id)) h += `<div class="v3-pal-hint" ${pad}>Inga IFC- eller DXF-filer här.</div>`;
+  if (!dirs.length && !files.length && l3lay.folders.has(id)) h += `<div class="v3-pal-hint" ${pad}>Inga IFC-, DXF- eller punktmolnsfiler här.</div>`;
   return h;
 }
 async function l3lOpenDir(id) {

@@ -241,7 +241,7 @@ async function l3bRestore() {
   if (todo.length) { l3Toast(fresh.length ? "En nyare version av byggnaden finns i Trimble Connect – den läses in och ersätter den visade." : "Byggnaden läses in…"); await l3bLoad(todo, { replace: true }); }
 }
 /* Bitarna ligger relativt O när de lästes; flytta dem om origo bytts (annan arbetsyta). */
-function l3bPosition() { l3b.models.forEach(m => m.meshes.forEach(x => x.position.set(m.O[0] - l3.O[0], m.O[1] - l3.O[1], m.O[2] - l3.O[2]))); }
+function l3bPosition() { l3b.models.forEach(m => m.meshes.forEach(x => x.position.set(m.O[0] - l3.O[0], m.O[1] - l3.O[1], m.O[2] - l3.O[2]))); if (typeof l3pc !== "undefined") l3pc.clouds.forEach(l3pcPlace); }
 function l3bRebuild() { if (!l3b.models.length) return; l3b.models.forEach(m => m.meshes.forEach(x => { if (!x.parent) l3.groups.bldg.add(x); })); l3bPosition(); l3bRecolor(); }
 
 /* Cache i webbläsaren (IndexedDB) för lästa modeller, per modell och version (Victor 2026-10-09:

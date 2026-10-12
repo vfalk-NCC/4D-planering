@@ -162,6 +162,7 @@ async function open3d() {
     if (typeof l3bRebuild === "function") l3bRebuild();
     // Byggnaden som var tänd förra gången: direkt ur cachen (versionen kontrolleras i bakgrunden).
     if (typeof l3bRestore === "function" && !l3b.models.length && !l3b.busy) setTimeout(() => l3bRestore().catch(e => console.warn(e)), 0);
+    if (typeof l3pcRestore === "function" && !l3pc.clouds.length) setTimeout(() => l3pcRestore().catch(e => console.warn(e)), 0); // punktmolnen ur cachen
     l3BuildPlacements();
     l3Frame(false);
     l3RenderLib();
@@ -780,7 +781,7 @@ function l3AddPlacementMesh(p) { const g = l3PlacementGroup(p); l3.groups.places
 function l3SceneBox(onlySel) {
   const b = new THREE.Box3();
   if (onlySel) { l3.sel.forEach(id => { const g = l3.placeMeshes.get(id); if (g) b.expandByObject(g); }); return b; }
-  [l3.groups.objs, l3.groups.places, l3.groups.bldg].forEach(g => { if (g.children.length) b.expandByObject(g); });
+  [l3.groups.objs, l3.groups.places, l3.groups.bldg, l3.groups.pc].forEach(g => { if (g && g.children.length && g.visible !== false) b.expandByObject(g); });
   if (b.isEmpty() && l3.planMesh) b.expandByObject(l3.planMesh);
   if (b.isEmpty()) b.set(new THREE.Vector3(-50, -50, 0), new THREE.Vector3(50, 50, 10));
   return b;
