@@ -55,7 +55,9 @@ async function tcOrgPaged(url, H, fetchFn, max = 200) {
 function tcOrgParseLinks(links, modelIds) {
   const guids = new Set(), rt = new Map(), other = [];
   (links || []).forEach(l => {
-    const s = typeof l === "string" ? l : (l && (l.link || l.id || l.uri)) || "";
+    let s = typeof l === "string" ? l : (l && (l.link || l.id || l.uri)) || "";
+    // Länkarna kan vara URL-kodade ("frn:entity:0JmdHIIyk%2473aC9VINCuCq" = …k$73…, Victor 2026-10-12).
+    if (/%[0-9A-Fa-f]{2}/.test(s)) { try { s = decodeURIComponent(s); } catch (e) { s = String(s).replace(/%24/gi, "$"); } }
     const parts = String(s).split(/[:/|#?=&,;]+/).filter(Boolean);
     const g = parts.find(p => TC_GUID_RE.test(p));
     if (g) { guids.add(g); return; }

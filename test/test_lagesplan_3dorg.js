@@ -45,6 +45,9 @@ const G = i => ('2' + String(i).padStart(21, 'A')).slice(0, 22); // giltigt utse
     if (r1.r.forest !== 'P1' || t.length !== 1 || t[0].groups.length !== 4) fail('Träd och grupper: ' + JSON.stringify(r1.r).slice(0, 400));
     if (grp('N2').guids.join() !== [G(1), G(2)].join() || grp('N3').guids.length !== 2 || !/^R/.test(grp('N3').guids[0]) || grp('N4').guids.join() !== G(3)) fail('Länkarna → IFC-id: ' + JSON.stringify(t[0].groups));
     if (!r1.calls.some(c => c.includes('org-api.eu-west-1') && c.includes('[auth]')) || !r1.r.log.some(x => /kunde inte tolkas/.test(x) && /konstig/.test(x))) fail('Region, nyckel och logg: ' + JSON.stringify(r1));
+    // URL-kodade länkar (Victor 2026-10-12: "frn:entity:0JmdHIIyk%2473aC9VINCuCq" = IFC-id med $).
+    const enc = await p1.evaluate(() => [...tcOrgParseLinks(['frn:entity:0JmdHIIyk%2473aC9VINCuCq', 'frn:entity:%E0%A4'], new Set()).guids]);
+    if (enc.join() !== '0JmdHIIyk$73aC9VINCuCq') fail('URL-kodade länkar: ' + JSON.stringify(enc));
     // Utan Organizer: tydligt fel med stegen.
     const r2 = await p1.evaluate(async () => { try { await tcOrganizerFetch('tok', { id: 'P9', location: 'europe' }, null, async () => ({ ok: false, status: 403, json: async () => ({}) })); return null; } catch (e) { return { m: e.message, log: e.log }; } });
     if (!r2 || !/Organizer/.test(r2.m) || !(r2.log.length >= 3)) fail('Fel med steg: ' + JSON.stringify(r2));
