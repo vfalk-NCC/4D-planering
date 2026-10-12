@@ -205,6 +205,24 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   if (!qr.texts.includes('TIDPLAN P') || !qr.texts.includes('Skanna för detaljer')) fail('Rubrik (med platshållare) och underrubrik ska ritas: ' + JSON.stringify(qr.texts));
   await page.evaluate(() => { pr.tpl.elements = pr.tpl.elements.filter(e => e.id !== 'q1'); });
   console.log('OK: QR-kod i ram med egen rubrik, underrubrik, text och färg');
+  // QR-kodens utseende (Victor 2026-10-12: "blir så plottrig"): felkorrigering, stil, färg och skanningsmätare.
+  const qs = await page.evaluate(() => {
+    const seen = []; window.qrcode = (t, ec) => { seen.push(ec); const n = { L: 57, M: 69, Q: 81, H: 93 }[ec]; return { addData() {}, make() {}, getModuleCount: () => n, isDark: (r, c) => (r * 7 + c * 3) % 5 === 0 }; };
+    const el = { id: 'q2', type: 'qr', x: 20, y: 20, w: 40, h: 40, text: 'https://example.com/' + 'x'.repeat(200) };
+    pr.tpl.elements.push(el); setSel(['q2']); renderPrintProps();
+    const info0 = document.querySelector('#prProps .pr-qrinfo').textContent, cls0 = document.querySelector('#prProps .pr-qrinfo').className;
+    const ec = document.querySelector('#prProps [data-f="ec"]'); ec.value = 'L'; ec.dispatchEvent(new Event('change'));
+    const info1 = document.querySelector('#prProps .pr-qrinfo').textContent;
+    const st = document.querySelector('#prProps [data-f="qrStyle"]'); st.value = 'dots'; st.dispatchEvent(new Event('change'));
+    const calls = { arc: 0, fillRect: 0 }, fills = new Set();
+    const ctx = new Proxy({}, { get: (o, k) => k === 'measureText' ? (s => ({ width: 5 })) : (k in calls) ? ((...a) => { calls[k]++; }) : k === 'fill' ? (() => fills.add(o.fillStyle)) : (k === 'fillStyle' ? o.fillStyle : () => {}), set: (o, k, v) => { o[k] = v; return true; } });
+    el.qrColor = '#1e3a8a'; drawElement(ctx, el, pr.tpl, 4, 1, {});
+    pr.tpl.elements = pr.tpl.elements.filter(e => e.id !== 'q2'); delete window.qrcode;
+    return { seen: [...new Set(seen)], info0, cls0, info1, ec: el.ec, style: el.qrStyle, arcs: calls.arc, fills: [...fills] };
+  });
+  if (!qs.seen.includes('M') || !qs.seen.includes('L') || qs.ec !== 'L' || qs.style !== 'dots' || !/69×69/.test(qs.info0) || !/57×57/.test(qs.info1) || !/Välj felkorrigering L/.test(qs.info0) || /Välj felkorrigering L/.test(qs.info1) || !/kortare länk/.test(qs.info0) || !/bad|warn/.test(qs.cls0) || qs.arcs < 100 || !qs.fills.includes('#1e3a8a'))
+    fail('QR-kodens utseende: ' + JSON.stringify(qs));
+  console.log('OK: QR-koden – felkorrigering (färre rutor), mjuka rutor/prickar, färg och mätare för hur lätt den är att skanna');
   // Ritningshuvudet som kort: rader fylls i med fält i sidomenyn.
   const tb = await page.evaluate(() => {
     const el = { id: 't9', type: 'title', x: 300, y: 200, w: 85, h: 69, size: 7, ...TITLE_CARD_DEFAULTS };

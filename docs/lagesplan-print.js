@@ -309,15 +309,55 @@ async function uploadPrintImage(file) {
   return { path, ar: im.naturalWidth / im.naturalHeight || 1, name: file.name };
 }
 let qrReady = null;
-function qrMatrix(text) {
+/* ec = felkorrigering L/M/Q/H (Victor 2026-10-12: "QR-koden … blir så plottrig så man nästan inte kan scanna"):
+   L ger minst antal rutor (störst rutor) – bäst för långa länkar på papper. */
+function qrMatrix(text, ec) {
   if (!window.qrcode) { if (!qrReady) qrReady = loadScript(QR_URL).then(() => { if (pr) drawPrintPage(); }).catch(() => {}); return null; }
   try {
     if (qrcode.stringToBytesFuncs && qrcode.stringToBytesFuncs["UTF-8"]) qrcode.stringToBytes = qrcode.stringToBytesFuncs["UTF-8"];
-    const q = qrcode(0, "M"); q.addData(String(text || " ")); q.make();
+    const q = qrcode(0, ["L", "M", "Q", "H"].includes(ec) ? ec : "M"); q.addData(String(text || " ")); q.make();
     const n = q.getModuleCount(), m = [];
     for (let r = 0; r < n; r++) { m.push([]); for (let c = 0; c < n; c++) m[r].push(q.isDark(r, c)); }
     return m;
   } catch (e) { return null; }
+}
+
+/* Ritar QR-rutorna: "square" (vanliga rutor), "rounded" (mjuka rutor) eller "dots" (prickar). De tre stora
+   hörnmarkeringarna ritas alltid hela (rundade för de mjuka stilarna) – det är dem telefonen letar efter. */
+function drawQrModules(ctx, m, ox, oy, cell, style, color) {
+  const n = m.length, finder = (r, c) => (r < 7 && c < 7) || (r < 7 && c >= n - 7) || (r >= n - 7 && c < 7);
+  ctx.fillStyle = color || "#000";
+  const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+  const soft = style === "rounded" || style === "dots";
+  m.forEach((row, r) => row.forEach((d, c) => {
+    if (!d || (soft && finder(r, c))) return;
+    const x = ox + c * cell, y = oy + r * cell;
+    if (style === "dots") { ctx.beginPath(); ctx.arc(x + cell / 2, y + cell / 2, cell * 0.46, 0, Math.PI * 2); ctx.fill(); }
+    else if (style === "rounded") { rr(x + cell * 0.04, y + cell * 0.04, cell * 0.92, cell * 0.92, cell * 0.32); ctx.fill(); }
+    else ctx.fillRect(x, y, cell + 0.4, cell + 0.4);
+  }));
+  if (!soft) return;
+  // Hörnmarkeringarna: ring 7×7 och kärna 3×3, rundade.
+  [[0, 0], [0, n - 7], [n - 7, 0]].forEach(([r, c]) => {
+    const x = ox + c * cell, y = oy + r * cell;
+    rr(x, y, cell * 7, cell * 7, cell * 1.8); ctx.fill();
+    ctx.save(); ctx.fillStyle = "#ffffff"; rr(x + cell, y + cell, cell * 5, cell * 5, cell * 1.2); ctx.fill(); ctx.restore();
+    rr(x + cell * 2, y + cell * 2, cell * 3, cell * 3, cell * 0.9); ctx.fill();
+  });
+}
+function qrInfoHtml(el) {
+  const si = qrScanInfo(el);
+  if (!si) return "";
+  return `<b>${si.grade[1]}</b> – ${si.n}×${si.n} rutor, varje ruta ca ${si.mm.toFixed(2).replace(".", ",")} mm på papperet (minst 0,6 mm är lätt). ${si.grade[0] === "ok" ? "" : `${(el.ec || "M") !== "L" ? "Välj felkorrigering L, " : ""}gör QR-koden större${si.len > 80 ? ` eller använd en kortare länk (den här är ${si.len} tecken – en delningslänk från SharePoint/Teams eller Trimble Connect blir oftast kortare)` : ""}.`} Mörk färg på vit botten skannas bäst.`;
+}
+/* Hur lätt QR-koden är att skanna: rutans storlek på papperet (mm). */
+function qrScanInfo(el) {
+  const m = qrMatrix(el.text, el.ec);
+  if (!m) return null;
+  const n = m.length, side = el.frame ? Math.min(el.w * 0.86, el.h * 0.55) * 0.9 : Math.min(el.w, el.h) * n / (n + 4);
+  const mm = side / n, len = String(el.text || "").length;
+  const grade = mm >= 0.6 ? ["ok", "Lätt att skanna"] : mm >= 0.4 ? ["warn", "Går att skanna på nära håll"] : ["bad", "Svår att skanna"];
+  return { n, mm, len, grade };
 }
 
 // ---------------------------------------------------------------------
@@ -731,13 +771,12 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
     }
     case "qr": {
       if (el.frame) { drawQrCard(ctx, el, tpl, X, Y, W, H); break; }
-      const m = qrMatrix(el.text);
+      const m = qrMatrix(el.text, el.ec);
       ctx.fillStyle = "#fff"; ctx.fillRect(X, Y, W, H);
       if (!m) break;
       const n = m.length, q = 2, cell = Math.min(W, H) / (n + 2 * q);
       const ox = X + (W - cell * (n + 2 * q)) / 2 + cell * q, oy = Y + (H - cell * (n + 2 * q)) / 2 + cell * q;
-      ctx.fillStyle = "#000";
-      m.forEach((row, r) => row.forEach((d, c) => { if (d) ctx.fillRect(ox + c * cell, oy + r * cell, cell + 0.4, cell + 0.4); }));
+      drawQrModules(ctx, m, ox, oy, cell, el.qrStyle, el.qrColor);
       break;
     }
     case "legend": drawLegend(ctx, el, X, Y, W, H, pt); break;
@@ -766,11 +805,10 @@ function drawQrCard(ctx, el, tpl, X, Y, W, H) {
   const side = Math.max(10, Math.min(W - 2 * p, Y + H - y - footH - p * (footH ? 0.5 : 1)));
   const bx = X + (W - side) / 2;
   ctx.fillStyle = "#ffffff"; rr(bx, y, side, side, side * 0.03); ctx.fill();
-  const m = qrMatrix(el.text);
+  const m = qrMatrix(el.text, el.ec);
   if (m) {
     const n = m.length, cell = side * 0.9 / n, ox = bx + (side - cell * n) / 2, oy = y + (side - cell * n) / 2;
-    ctx.fillStyle = "#000";
-    m.forEach((row, r) => row.forEach((d, c) => { if (d) ctx.fillRect(ox + c * cell, oy + r * cell, cell + 0.4, cell + 0.4); }));
+    drawQrModules(ctx, m, ox, oy, cell, el.qrStyle, el.qrColor);
   }
   if (!footH) return;
   const fy = y + side + p * 0.45, fh = Y + H - fy - p * 0.5;
@@ -1511,7 +1549,15 @@ function renderPrintProps(onlyPos) {
       <button type="button" id="prTbAdd" style="margin-top:4px;">＋ Rad</button>
       <div class="hint">Platshållare: {plan} {datum} {idag} {skala} {format} {användare} {utskriven}</div>`;
   }
-  if (el.type === "qr") html += inp("text", "Länk eller text") + chk("frame", "<b>Ram med egen text</b>")
+  if (el.type === "qr") {
+    const si = qrScanInfo(el);
+    html += inp("text", "Länk eller text")
+      + `<div class="pr-grid4"><div style="grid-column:span 2;"><label title="Lägre = färre och större rutor. Högre = tål smuts och skador men blir plottrigare.">Felkorrigering</label><select data-f="ec">${[["L", "L – minst rutor (bäst för långa länkar)"], ["M", "M – standard"], ["Q", "Q – tål mer"], ["H", "H – tål mest (flest rutor)"]].map(([v, t]) => `<option value="${v}"${(el.ec || "M") === v ? " selected" : ""}>${t}</option>`).join("")}</select></div>
+        <div style="grid-column:span 2;"><label>Utseende</label><select data-f="qrStyle">${[["square", "Rutor"], ["rounded", "Mjuka rutor"], ["dots", "Prickar"]].map(([v, t]) => `<option value="${v}"${(el.qrStyle || "square") === v ? " selected" : ""}>${t}</option>`).join("")}</select></div>
+        ${color("qrColor", "QR-färg", false, "#000000")}</div>`
+      + `<div class="pr-qrinfo ${si ? si.grade[0] : ""}">${qrInfoHtml(el)}</div>`;
+  }
+  if (el.type === "qr") html += chk("frame", "<b>Ram med egen text</b>")
     + (el.frame ? inp("title", "Rubrik") + inp("subtitle", "Underrubrik") + inp("footer", "Text längst ner")
       + `<div class="pr-grid4">${color("frameColor", "Ramens färg", false, QR_CARD_DEFAULTS.frameColor)}</div>${chk("phone", "Mobil-ikon")}<div class="hint">Platshållare: {plan} {datum} {idag}</div>` : "");
   if (el.type === "rect" || el.type === "ellipse") html += `<div class="pr-grid4">${color("stroke", "Linje", true)}${num("lw", "Tjocklek", "0.05")}<div style="grid-column:span 2;"><label>Linjetyp</label><select data-f="dash">${[["solid", "Heldragen"], ["dashed", "Streckad"], ["dotted", "Prickad"]].map(([v, n]) => `<option value="${v}"${(el.dash || "solid") === v ? " selected" : ""}>${n}</option>`).join("")}</select></div>
@@ -1556,6 +1602,8 @@ function renderPrintProps(onlyPos) {
         else el.h = el.w;
         renderPrintProps();
       }
+      // QR: mätaren för hur lätt koden är att skanna följer med.
+      if (el.type === "qr" && ["text", "ec", "w", "h", "frame"].includes(f)) { const qi = document.querySelector("#prProps .pr-qrinfo"), si = qrScanInfo(el); if (qi) { qi.innerHTML = qrInfoHtml(el); qi.className = "pr-qrinfo " + (si ? si.grade[0] : ""); } }
       drawPrintPage();
     });
   });
