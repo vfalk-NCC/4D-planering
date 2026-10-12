@@ -10,6 +10,61 @@
      (t.ex. på iPhone/iPad). */
 
 const l3org = { data: null, loading: false, err: "", log: [], shut: new Set(), open: null, loaded: false };
+
+/* Egna objekt i Organizer-grupperna (Victor 2026-10-12: "Jag ska kunna sortera in mina grejor i WBS -
+   byggindelning mapparna också"). Sparas per projekt i projects/<id>/ifc_orgadds.json som
+   { node, tree, name, guids, updated_by, updated_at } – projektgemensamt som de egna grupperna. Organizer i
+   Trimble Connect ändras inte; tilläggen visas i samma träd och räknas med när gruppen markeras, släcks m.m. */
+const l3oa = { list: [], loaded: false, loading: null };
+const l3oaPath = () => `projects/${encodeURIComponent(projectId)}/ifc_orgadds.json`;
+function l3oaLoad() {
+  if (l3oa.loaded) return Promise.resolve(l3oa.list);
+  if (!l3oa.loading) l3oa.loading = ghReadJSON(token, l3oaPath()).then(a => { l3oa.list = Array.isArray(a) ? a : []; }).catch(e => { console.warn("Kunde inte läsa ifc_orgadds.json", e); })
+    .then(() => { l3oa.loaded = true; l3oa.loading = null; return l3oa.list; });
+  return l3oa.loading;
+}
+async function l3oaWrite(mut, msg) {
+  l3oa.list = mut(l3oa.list.slice());
+  l3oaChanged();
+  try {
+    const next = await ghWriteJSON(token, l3oaPath(), arr => mut(Array.isArray(arr) ? arr : []), msg);
+    if (Array.isArray(next)) l3oa.list = next;
+    if (typeof l3SaveState === "function") l3SaveState("ok", "Organizer-tilläggen sparade");
+  } catch (e) { l3Status("Kunde inte spara: " + e.message, true); }
+  l3oaChanged();
+}
+function l3oaChanged() { if (typeof l3RenderSide === "function") l3RenderSide(); l3orgRender(); }
+const l3oaOf = node => (l3oa.list.find(x => x.node === node) || {}).guids || [];
+/* Alla Organizer-grupper som platt lista (för Lägg i grupp): [{ id, tree, name, path, depth }]. */
+function l3orgFlat() {
+  l3orgRestore();
+  const out = [];
+  if (!l3org.data) return out;
+  l3org.data.trees.forEach(t => {
+    const walk = (n, depth, path) => { const p = path ? `${path} / ${n.name}` : n.name; out.push({ id: n.id, tree: t, name: n.name, path: p, depth }); n.kids.forEach(k => walk(k, depth + 1, p)); };
+    l3orgTree(t).forEach(n => walk(n, 0, ""));
+  });
+  return out;
+}
+async function l3oaAddSel(node) {
+  const guids = typeof l3gSelGuids === "function" ? l3gSelGuids() : [];
+  const f = l3orgFlat().find(x => x.id === node);
+  if (!f || !guids.length) return;
+  await l3oaLoad();
+  const stamp = x => (typeof l3gStamp === "function" ? l3gStamp(x) : x);
+  await l3oaWrite(arr => {
+    const i = arr.findIndex(x => x.node === node);
+    if (i < 0) return [...arr, stamp({ node, tree: f.tree.id, name: f.path, guids })];
+    const c = arr.slice(); c[i] = stamp({ ...c[i], name: f.path, guids: [...new Set([...(c[i].guids || []), ...guids])] }); return c;
+  }, `3D: ${guids.length} objekt till ${f.path} (Organizer)`);
+  l3Status(`${guids.length} objekt lades i ${f.path}.`);
+}
+async function l3oaRemoveSel(node) {
+  const rm = new Set(typeof l3gSelGuids === "function" ? l3gSelGuids() : []), a = l3oa.list.find(x => x.node === node);
+  if (!a || !rm.size) return;
+  await l3oaWrite(arr => arr.map(x => x.node === node ? (typeof l3gStamp === "function" ? l3gStamp({ ...x, guids: (x.guids || []).filter(v => !rm.has(v)) }) : x) : x).filter(x => (x.guids || []).length), `3D: objekt ur ${a.name} (Organizer)`);
+  l3Status(`De markerade togs ur ${a.name}. (Objekt som ligger där i Organizer i Trimble Connect ändras inte härifrån.)`);
+}
 const l3orgKey = () => `lagesplan-org-${projectId}`;
 
 function l3orgRestore() {
@@ -61,6 +116,9 @@ function l3orgTree(t) {
     };
     t.groups.forEach(g => { const path = String(g.name || "").split("/").map(s => s.trim()).filter(Boolean).join("/") || g.id; const n = at(path); n.id = g.id; n.own = n.own.concat(g.guids || []); });
   }
+  // Egna tillägg (l3oa) räknas in i sina grupper.
+  const addTo = n => { const a = l3oaOf(n.id); if (a.length) { n.added = a; n.own = n.own.concat(a); } n.kids.forEach(addTo); };
+  roots.forEach(addTo);
   const sortRec = list => { list.sort((a, b) => a.name.localeCompare(b.name, "sv", { numeric: true })); list.forEach(n => sortRec(n.kids)); };
   sortRec(roots);
   return roots;
@@ -107,6 +165,7 @@ async function l3orgCopy(id) {
 /* ---- I fliken Grupper -------------------------------------------------------------------------------- */
 function l3orgHtml() {
   l3orgRestore();
+  if (!l3oa.loaded) l3oaLoad().then(() => { if (l3oa.list.length) l3orgRender(); });
   const esc = escHtml, I = L3_ICO, d = l3org.data;
   // Antal i scenen och om alla deras objekt är dolda (ögat).
   const here = guids => { let k = 0, hid = true; l3b.models.forEach(m => { const map = l3pEnts(m); guids.forEach(x => { const es = map.get(x); if (es) { k++; if (hid && !es.every(e => e.mesh.userData.l3b.hidden.has(e.ri))) hid = false; } }); }); return [k, k > 0 && hid]; };
@@ -115,6 +174,7 @@ function l3orgHtml() {
     const fold = n.kids.length ? `<button type="button" class="v3-org-f" data-orgfold="${esc(n.id)}" aria-expanded="${!shut}"><i>›</i></button>` : `<span class="v3-org-f"></span>`;
     return `<div class="v3-gr v3-org ${open ? "open" : ""}" style="margin-left:${depth * 12}px"><div class="v3-gr-h">${fold}
         <button type="button" class="v3-gr-n" data-orgsel="${esc(n.id)}" title="Markera gruppens objekt (Skift lägger till)">${esc(n.name)}</button>
+        ${n.added ? `<span class="v3-gr-mine" title="${n.added.length} objekt som du har lagt i gruppen här (finns inte i Organizer i Trimble Connect)">+${n.added.length}</span>` : ""}
         <em title="${hk} av ${all.size} finns i de inlästa modellerna">${!all.size ? "0" : hk === all.size ? all.size : `${hk}/${all.size}`}</em>
         <button type="button" class="v3-ic v3-gr-eye ${hid ? "off" : ""}" data-orgeye="${esc(n.id)}" ${hk ? "" : "disabled"} title="${!hk ? "Inga objekt i de inlästa modellerna" : hid ? "Tänd gruppen" : "Släck gruppen"}">${hid ? I.eyeOff : I.eye}</button>
         <button type="button" class="v3-ic" data-orgmore="${esc(n.id)}" title="Fler val" aria-expanded="${open}">⋯</button></div>

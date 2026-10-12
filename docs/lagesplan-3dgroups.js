@@ -108,13 +108,24 @@ function l3gSelHtml() {
   guids.forEach(x => l3gOf(x).forEach(g => cnt.set(g, (cnt.get(g) || 0) + 1)));
   const chips = [...cnt].map(([g, n]) => `<span class="v3-gchip" style="--gc:${esc(g.color)}" title="${n} av de markerade ligger i ${esc(g.name)}"><i></i><button type="button" data-gsel="${esc(g.id)}">${esc(g.name)}${guids.length > 1 ? ` <em>${n}</em>` : ""}</button><button type="button" class="x" data-gout="${esc(g.id)}" title="Ta de markerade ur ${esc(g.name)}">✕</button></span>`).join("");
   const opts = l3g.list.filter(g => !(cnt.get(g) === guids.length)).map(g => `<option value="${esc(g.id)}">${esc(g.name)} (${(g.guids || []).length})</option>`).join("");
-  return `<div class="v3-grow"><span class="v3-glbl">Grupper</span>${chips}<select class="v3-gadd" id="v3GAdd" title="Lägg de markerade i en grupp"><option value="">＋ Lägg i grupp…</option><option value="__new">Ny grupp…</option>${opts}</select></div>`;
+  // Organizer-grupperna (Victor 2026-10-12): egna tillägg som chip (✕ tar ur) och träden i listan.
+  let ochips = "", oopts = "";
+  if (typeof l3orgFlat === "function") {
+    if (!l3oa.loaded) l3oaLoad().then(() => { if (l3bs.sel.length) l3RenderSide(); });
+    const flat = l3orgFlat(), gs = new Set(guids);
+    ochips = l3oa.list.map(a => [a, (a.guids || []).filter(x => gs.has(x)).length]).filter(([, k]) => k).map(([a, k]) => { const short = String(a.name).split(" / ").pop(); return `<span class="v3-gchip v3-gchip-org" style="--gc:#64748b" title="${k} av de markerade ligger i ${esc(a.name)} (Organizer, tillagt här)"><i></i><button type="button" data-orgsel="${esc(a.node)}">${esc(short)}${guids.length > 1 ? ` <em>${k}</em>` : ""}</button><button type="button" class="x" data-oaout="${esc(a.node)}" title="Ta de markerade ur ${esc(a.name)}">✕</button></span>`; }).join("");
+    const byTree = new Map(); flat.forEach(f => { if (!byTree.has(f.tree)) byTree.set(f.tree, []); byTree.get(f.tree).push(f); });
+    oopts = [...byTree].map(([t, fs]) => `<optgroup label="${esc(l3orgDec(t.name))} (Organizer)">${fs.map(f => `<option value="org:${esc(f.id)}">${"\u00a0\u00a0".repeat(f.depth)}${esc(f.name)}</option>`).join("")}</optgroup>`).join("");
+  }
+  return `<div class="v3-grow"><span class="v3-glbl">Grupper</span>${chips}${ochips}<select class="v3-gadd" id="v3GAdd" title="Lägg de markerade i en grupp – egen eller i Organizer"><option value="">＋ Lägg i grupp…</option><option value="__new">Ny grupp…</option>${opts ? `<optgroup label="Mina grupper">${opts}</optgroup>` : ""}${oopts}</select></div>`;
 }
 function l3gBindSel(side) {
   side.querySelectorAll("[data-gsel]").forEach(b => { b.onclick = e => l3gSelect(b.dataset.gsel, e.shiftKey); });
   side.querySelectorAll("[data-gout]").forEach(b => { b.onclick = () => l3gRemoveSel(b.dataset.gout); });
   const s = side.querySelector("#v3GAdd");
-  if (s) s.onchange = () => { const v = s.value; s.value = ""; if (v === "__new") l3gNew(); else if (v) l3gAdd(v); };
+  if (s) s.onchange = () => { const v = s.value; s.value = ""; if (v === "__new") l3gNew(); else if (v.startsWith("org:")) l3oaAddSel(v.slice(4)); else if (v) l3gAdd(v); };
+  side.querySelectorAll("[data-oaout]").forEach(b => { b.onclick = () => l3oaRemoveSel(b.dataset.oaout); });
+  side.querySelectorAll("[data-orgsel]").forEach(b => { b.onclick = e => { if (typeof l3orgSelect === "function") l3orgSelect(b.dataset.orgsel, e.shiftKey); }; });
 }
 /* ---- Mapparna -------------------------------------------------------------------------------------- */
 async function l3gfWrite(f, remove) {

@@ -101,6 +101,19 @@ const G = i => ('2' + String(i).padStart(21, 'A')).slice(0, 22); // giltigt utse
     await page.waitForFunction(() => l3g.list.some(g => g.name === 'Fundament'), null, { timeout: 5000 });
     const cp = await page.evaluate(() => l3g.list.find(g => g.name === 'Fundament').guids.length);
     if (cp !== 2) fail('Kopierad grupp: ' + cp);
+    // Egna objekt i Organizer-grupperna (Victor 2026-10-12): Lägg i grupp → Organizer, sparas i projektet, ✕ tar ur.
+    const oa = await page.evaluate(async g3 => {
+      l3bs.sel = [{ mesh: { userData: { l3b: { ranges: [{ guid: g3 }] } } }, ri: 0 }];
+      const html = l3gSelHtml();
+      await l3oaAddSel('N4');
+      const n = l3orgFind('N4');
+      l3PalTab('groups'); l3orgRender();
+      const row = document.querySelector('[data-orgsel="N4"]').closest('.v3-gr-h').textContent;
+      const r = { opt: /value="org:N4"/.test(html) && /<optgroup label="Etapper \(Organizer\)">/.test(html), list: l3oa.list.map(x => [x.node, x.guids]), own: n.own.includes(g3), plus: /\+1/.test(row), chip: /data-oaout="N4"/.test(l3gSelHtml()) };
+      await l3oaRemoveSel('N4'); r.after = l3oa.list.length; l3bs.sel = [];
+      return r;
+    }, G(3));
+    if (!oa.opt || JSON.stringify(oa.list) !== JSON.stringify([['N4', [G(3)]]]) || !oa.own || !oa.plus || !oa.chip || oa.after !== 0) fail('Lägg i Organizer-grupp: ' + JSON.stringify(oa));
     // Sparad i webbläsaren – finns kvar utan kontakt med TC.
     const kept = await page.evaluate(() => { l3org.data = null; l3org.loaded = false; l3orgRestore(); return l3org.data && l3org.data.trees.length; });
     if (kept !== 1) fail('Senaste hämtningen ska finnas kvar i webbläsaren');
