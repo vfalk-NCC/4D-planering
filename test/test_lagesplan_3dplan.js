@@ -279,6 +279,46 @@ const PP = [
       return { both, ex, pp, xrow: !!xrow, dlg, coupledBoth, synth };
     });
     if (!lk.both.includes('Etablering bodar') || !lk.both.includes('Gjutning pelare') || lk.ex.join() !== 'Etablering bodar' || lk.pp.includes('Etablering bodar') || !lk.xrow || lk.dlg || !lk.coupledBoth || lk.synth) fail('4D-koppling PP/Excel/båda: ' + JSON.stringify(lk));
+    // Animera placerade objekt på tidslinjen: ◆ Nyckel sparar läget på datumet, mjuk rörelse mellan nycklarna.
+    const an = await page.evaluate(async () => {
+      const O = l3.O, p = { id: 'an1', type: 'tornkran', name: 'Sketchfab-bil', x: O[0] + 5, y: O[1] + 5, z: 0, L: 4, B: 4, H: 10, R: 0, rot: 0 };
+      placements.push(p); const g = l3AddPlacementMesh(p); l3SelectIds(['an1']);
+      l3plSet('film', { ...l3plPrefs().film, strip: false }); l3fsToggle(true); await new Promise(r => setTimeout(r, 300));
+      const none = (l3.sel.clear(), l3animCapture('2026-10-10')); l3SelectIds(['an1']);
+      g.position.x = 5; g.rotation.z = 0; const n1 = l3animCapture('2026-10-10');
+      g.position.x = 15; g.rotation.z = Math.PI / 2; const n2 = l3animCapture('2026-10-20');
+      const D = iso => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10));
+      l3animApply(D('2026-10-15')); const mid = [g.position.x, Math.round(g.rotation.z * 180 / Math.PI)];
+      l3animApply(D('2026-10-01')); const before = g.position.x; l3animApply(D('2026-11-01')); const after = g.position.x;
+      l3fsRender(); const marks = document.querySelectorAll('#v3FilmStrip .v3-fs-ak').length;
+      const btn = !!document.getElementById('v3FsAKey'), saved = Array.isArray(p.anim) && p.anim.length === 2;
+      l3animMove('an1', '2026-10-20', '2026-10-22'); const moved = p.anim[1].date === '2026-10-22';
+      l3animRemove('an1', '2026-10-22'); const removed = p.anim.length === 1;
+      l3animReset(); const back = g.position.x === p.x - O[0];
+      l3fsToggle(false); placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(g); l3.placeMeshes.delete('an1');
+      return { none, n1, n2, mid, before, after, marks, btn, saved, moved, removed, back };
+    });
+    if (an.none !== 0 || an.n1 !== 1 || an.n2 !== 1 || Math.abs(an.mid[0] - 10) > 0.01 || an.mid[1] !== 45 || an.before !== 5 || an.after !== 15 || an.marks !== 2 || !an.btn || !an.saved || !an.moved || !an.removed || !an.back) fail('Objektanimering på tidslinjen: ' + JSON.stringify(an));
+    else console.log('OK: objektanimering – ◆ Nyckel på tidslinjen, mjuk rörelse och vridning mellan nycklarna, flytta/ta bort nyckel');
+    // Sparade filmer: intervall, grafik, kameravyer och objektens animering sparas under ett namn och läses in igen.
+    const hFilm = d => d.accept(d.type() === 'prompt' ? 'Testfilm' : undefined); page.__uiDialogHandlers.push(hFilm);
+    const sf = await page.evaluate(async () => {
+      const O = l3.O, p = { id: 'sf1', type: 'tornkran', name: 'Bil', x: O[0] + 2, y: O[1] + 2, z: 0, L: 2, B: 2, H: 5, R: 0, rot: 0, anim: [{ date: '2026-10-10', x: O[0] + 2, y: O[1] + 2, dz: 0, rot: 0 }, { date: '2026-10-20', x: O[0] + 9, y: O[1] + 2, dz: 0, rot: 90 }] };
+      placements.push(p); const g = l3AddPlacementMesh(p);
+      l3plSet('film', { ...l3plPrefs().film, sec: 33, fxMeter: false }); l3plKeysSet([{ date: '2026-10-12', name: 'Vy A', p: [1, 2, 3], t: [4, 5, 6] }]);
+      await l3plFilmSave(); const saved = l3plFilms().length === 1 && l3plFilms()[0].name === 'Testfilm' && l3plFilms()[0].keys.length === 1 && l3plFilms()[0].anim.sf1.length === 2 && l3plFilms()[0].film.sec === 33;
+      l3plSet('film', { ...l3plPrefs().film, sec: 5, fxMeter: true }); l3plKeysSet([]); delete p.anim;
+      await l3plFilmLoad('Testfilm');
+      const loaded = l3plPrefs().film.sec === 33 && l3plPrefs().film.fxMeter === false && l3plKeys().length === 1 && l3plKeys()[0].name === 'Vy A' && Array.isArray(p.anim) && p.anim.length === 2 && p.anim[1].rot === 90;
+      const ui = !!document.getElementById('v3FlSaved') && document.getElementById('v3FlSaved').value === 'Testfilm' && !!document.getElementById('v3FlSavedDel');
+      await l3plFilmDelete(); const gone = l3plFilms().length === 0;
+      l3plKeysSet([]); l3plSet('film', { ...l3plPrefs().film, sec: 20, fxMeter: true });
+      placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(g); l3.placeMeshes.delete('sf1');
+      return { saved, loaded, ui, gone };
+    });
+    page.__uiDialogHandlers.splice(page.__uiDialogHandlers.indexOf(hFilm), 1);
+    if (!sf.saved || !sf.loaded || !sf.ui || !sf.gone) fail('Sparade filmer: ' + JSON.stringify(sf));
+    else console.log('OK: sparade filmer – spara under namn, läs in (kameravyer och objektanimering följer med), ta bort');
     // Pågår nu: rubriken bara sista ledet, områdesnamnet bort från raderna.
     const hd = await page.evaluate(() => [l3fxAreaHead('Produktion / 743 Krosshall'), l3fxAreaHead('Excel · Produktion / 741 Sektionsfickor'), l3fxAreaHead('Hus A'),
       l3fxActText({ name: '743 Krosshall', area: 'Produktion / 743 Krosshall', objs: ['743 Krosshall - Bergstag', '743 Krosshall – Extra sprängning'] }),

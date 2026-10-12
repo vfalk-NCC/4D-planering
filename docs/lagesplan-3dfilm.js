@@ -21,6 +21,7 @@ function l3fsRange() {
   return [l3plDate(lo).getTime(), l3plDate(hi > lo ? hi : l3gaAdd(lo, 1)).getTime()];
 }
 function l3fsToggle(on = !l3fsOn()) {
+  if (!on && typeof l3animReset === "function") l3animReset(); // objekten tillbaka till sitt grundläge
   l3plSet("film", { ...(l3plPrefs().film || {}), strip: on });
   if (on && !l3pl.rows) l3plLoad().then(l3fsRender);
   l3fsRender(); l3plRenderTab();
@@ -55,7 +56,9 @@ function l3fsRender() {
   const dock = document.getElementById("v3PlanDock");
   el.style.bottom = (dock ? dock.offsetHeight : 0) + "px";
   const [t0, t1] = l3fsRange(), E = escHtml, keys = l3plKeys();
-  const W = Math.max(200, host.clientWidth - 220 - 24), U = t => (t - t0) / (t1 - t0);
+  const aks = typeof l3animAll === "function" ? l3animAll().flatMap(p => l3animKeys(p).map(k => ({ id: p.id, name: p.name || p.type, date: k.date }))) : [];
+  l3fs.aks = aks;
+  const W = Math.max(200, host.clientWidth - 274 - 24), U = t => (t - t0) / (t1 - t0);
   if (l3fs.t === null || l3fs.t < t0 || l3fs.t > t1) l3fs.t = Math.min(t1, Math.max(t0, l3plDate(l3plDay()).getTime()));
   // Datumen: månader (och veckor när intervallet är kort).
   const ticks = [], span = (t1 - t0) / 86400000;
@@ -72,7 +75,8 @@ function l3fsRender() {
       <button type="button" class="v3-fs-play" id="v3FsPlay" title="Spela upp filmen i 3D-vyn (■ stoppar och går till början)">${l3pl.rec ? "■" : "▶"}</button>
       <button type="button" class="v3-fs-pause" id="v3FsPause" title="Pausa (mellanslag)" ${l3pl.rec ? "" : "disabled"}>${l3pl.rec && l3pl.rec.paused ? "▶" : "⏸"}</button>
       <button type="button" class="v3-fs-rec" id="v3FsRec" title="Spela in filmen och spara som videofil">⏺</button>
-      <button type="button" class="v3-fs-add" id="v3FsAdd" title="Lägg kameran som den står nu på datumet där huvudet står (finns det redan en vy där uppdateras den)">＋ Vy här</button>
+      <button type="button" class="v3-fs-add" id="v3FsAdd" title="Lägg kameran som den står nu på datumet där huvudet står (finns det redan en vy där uppdateras den)">＋ Vy</button>
+      <button type="button" class="v3-fs-akey" id="v3FsAKey" title="Animera objekt: markera ett placerat objekt (t.ex. en hämtad modell), ställ in dess läge och tryck här – läget sparas på datumet där huvudet står. Flera nycklar = objektet rör sig mellan dem.">◆ Nyckel</button>
       <button type="button" class="v3-ic v3-fs-x" id="v3FsClose" title="Stäng tidslinjen">✕</button>
       <div class="v3-fs-date" id="v3FsDate"></div>
       <div class="v3-fs-range">${E(l3plShortIso(t0))} – ${E(l3plShortIso(t1))}</div>
@@ -80,6 +84,7 @@ function l3fsRender() {
     <div class="v3-fs-track" id="v3FsTrack" style="--w:${W}px">
       <div class="v3-fs-days">${days.map(d => `<i class="${d.we ? "we" : ""}" style="left:${(d.u * W).toFixed(1)}px;width:${Math.max(1, dayPx).toFixed(1)}px"></i>`).join("")}</div>
       <div class="v3-fs-axis">${ticks.map(k => `<span class="${k.m ? "m" : "w"}" style="left:${k.u * W}px">${E(k.t)}</span>`).join("")}
+        ${aks.map((a, i) => `<button type="button" class="v3-fs-ak" data-fsa="${i}" style="left:${U(l3animDate(a.date)) * W}px" title="${E(a.name)} · ${E(a.date)} – tryck: gå dit och markera · dra: flytta · högerklick: ta bort"></button>`).join("")}
         ${keys.map((k, i) => `<button type="button" class="v3-fs-key" data-fsk="${i}" style="left:${U(l3plDate(k.date).getTime()) * W}px" title="${E(k.name || "Vy")} · ${E(k.date)} – tryck: gå dit · dra: flytta · högerklick: ta bort">🎥</button>`).join("")}
       </div>
       <div class="v3-fs-head" id="v3FsHead"></div>
@@ -98,6 +103,26 @@ function l3fsBind(el, t0, t1, W) {
     l3plKeyAdd(l3plCam(), date, i >= 0 ? list[i].name : `Vy ${list.length + 1}`);
     l3fsRender();
   };
+  el.querySelector("#v3FsAKey").onclick = () => {
+    const date = l3plIso(new Date(Math.round(l3fs.t / 86400000) * 86400000));
+    if (typeof l3animCapture === "function" && l3animCapture(date)) l3fsRender();
+  };
+  // Objektens nycklar (◆): tryck = gå dit och markera objektet, dra = nytt datum, högerklick = ta bort.
+  el.querySelectorAll("[data-fsa]").forEach(b => {
+    const a = () => (l3fs.aks || [])[+b.dataset.fsa];
+    b.onpointerdown = e => {
+      e.preventDefault(); e.stopPropagation(); b.setPointerCapture && b.setPointerCapture(e.pointerId);
+      const x0 = e.clientX; let moved = false;
+      b.onpointermove = ev => { if (Math.abs(ev.clientX - x0) > 3) moved = true; if (moved) b.style.left = (Math.max(0, Math.min(1, (tOf(ev.clientX) - t0) / (t1 - t0))) * W) + "px"; };
+      b.onpointerup = ev => {
+        b.onpointermove = b.onpointerup = null;
+        const k = a(); if (!k) return;
+        if (moved) { const to = l3plIso(new Date(Math.round(tOf(ev.clientX) / 86400000) * 86400000)); l3animMove(k.id, k.date, to); l3fsRender(); l3Status(`Nyckeln flyttad till ${to}.`); }
+        else { l3fsSeek(l3animDate(k.date)); if (typeof l3SelectIds === "function") l3SelectIds([k.id]); }
+      };
+    };
+    b.oncontextmenu = e => { e.preventDefault(); const k = a(); if (!k) return; l3animRemove(k.id, k.date); l3fsRender(); l3Status(`Nyckeln ${k.date} borttagen.`); };
+  });
   // Spola: dra på tidslinjen.
   const axis = el.querySelector(".v3-fs-axis");
   axis.onpointerdown = e => {
@@ -134,6 +159,7 @@ function l3fsSeek(t) {
     const d = l3plIso(new Date(Math.round(l3fs.t / 86400000) * 86400000));
     l3plSetDay(d);
     const c = l3plCamAt(l3plKeys(), l3fs.t); if (c) l3plCamApply(c);
+    if (typeof l3animApply === "function") l3animApply(l3fs.t);
     l3Render();
   });
 }

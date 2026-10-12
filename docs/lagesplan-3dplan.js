@@ -123,6 +123,7 @@ function l3plRenderTab() {
       <label class="v3-pl-chk" title="Vad färgerna betyder (Klar, Pågår, Försenad, Ej startad) – nere till vänster"><input type="checkbox" id="v3FlFxLegend" ${f.fxLegend === true ? "checked" : ""} /> Statusförklaring</label>
       </details>
       ${l3plAnimHtml(f)}
+      <div class="v3-pl-saved"><select id="v3FlSaved" title="Sparade filmer: intervall, grafik, kameravyer och objektens animering"><option value="">${l3plFilms().length ? "Sparade filmer…" : "Inga sparade filmer"}</option>${l3plFilms().map(x => `<option value="${esc(x.name)}" ${l3pl.filmSel === x.name ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select><button type="button" id="v3FlSaveAs" title="Spara filmen som den ser ut nu (kameravyer och objektens animering ingår)">Spara film…</button>${l3pl.filmSel ? `<button type="button" id="v3FlSavedDel" title="Ta bort den sparade filmen">✕</button>` : ""}</div>
       <input type="text" id="v3FlTitle" placeholder="Rubrik i filmen (valfri)" value="${esc(f.caption || "")}" />
       <button type="button" class="v3-wide ${l3fsOn() ? "on" : ""}" id="v3FlStrip" title="Tidslinje längst ner i 3D-fönstret med datum, aktiviteterna som ett pärlband och kameravyerna">${l3fsOn() ? "Dölj filmens tidslinje" : "🎬 Visa filmens tidslinje"}</button>
       <div class="v3-pal-hint">${keys.length ? `${keys.length} ${keys.length === 1 ? "kameravy" : "kameravyer"} (🎥 på tidslinjen). ` : ""}Dra på tidslinjen till ett datum, ställ in kameran och tryck <b>＋ Vy här</b>. Kameran glider mellan vyerna. Dra en 🎥 för att flytta den, högerklicka för att ta bort.</div>
@@ -160,7 +161,51 @@ function l3plRenderTab() {
   on("v3FlKeyView", e => { const v = l3SavedViews()[+e.target.value]; if (!v) return; const d = l3fs.t !== null && l3fsOn() ? l3plIso(new Date(Math.round(l3fs.t / 86400000) * 86400000)) : day; l3plKeyAdd({ p: v.p, t: v.t }, d, v.name); if (l3fsOn()) l3fsRender(); }, "onchange");
   on("v3FlPreview", () => { save(); l3plFilm(false); }); // under uppspelning: ■ Stoppa (till filmens början)
   on("v3FlPause", () => l3plPause());
+  on("v3FlSaved", e => { if (e.target.value) l3plFilmLoad(e.target.value); else { l3pl.filmSel = ""; l3plRenderTab(); } }, "onchange");
+  on("v3FlSaveAs", () => l3plFilmSave());
+  on("v3FlSavedDel", () => l3plFilmDelete());
   on("v3FlRec", () => { save(); l3plFilm(true); });
+}
+/* Sparade filmer (Victor 2026-10-12: "spara mina animeringar och filmer som jag kan spara en vy"): ett namn på allt som
+   hör till filmen – intervall, grafik, aktivitetsanimering, kameravyer och objektens animering (nycklarna). Sparas
+   i webbläsaren per projekt, som de sparade vyerna; objektens egna nycklar ligger dessutom kvar på objekten. */
+const l3plFilms = () => (((l3plPrefs().films || {})[l3ViewKey()]) || []).filter(x => x && x.name);
+const l3plFilmsSet = list => { const all = { ...(l3plPrefs().films || {}) }; all[l3ViewKey()] = list.slice(0, 40); l3plSet("films", all); };
+function l3plFilmSnap(name) {
+  const f = { ...(l3plPrefs().film || {}) }; delete f.strip;
+  const anim = {}; (typeof l3animAll === "function" ? l3animAll() : []).forEach(p => { anim[p.id] = l3animKeys(p).map(k => ({ ...k })); });
+  return { name, at: new Date().toISOString(), film: JSON.parse(JSON.stringify(f)), keys: l3plKeys().map(k => ({ ...k })), anim };
+}
+async function l3plFilmSave() {
+  const list = l3plFilms(), sug = l3pl.filmSel && list.find(x => x.name === l3pl.filmSel) ? l3pl.filmSel : `Film ${list.length + 1}`;
+  const name = String((await uiPrompt("Spara filmen (intervall, grafik, kameravyer och objektens animering) som:", sug)) || "").trim().slice(0, 60);
+  if (!name) return;
+  const i = list.findIndex(x => x.name.toLowerCase() === name.toLowerCase());
+  if (i >= 0 && !(await uiConfirm(`Det finns redan en film som heter "${list[i].name}". Ersätta den med den nuvarande?`, { ok: "Ersätt" }))) return;
+  const snap = l3plFilmSnap(name);
+  if (i >= 0) list[i] = snap; else list.push(snap);
+  l3plFilmsSet(list); l3pl.filmSel = name; l3plRenderTab(); l3Status(`Filmen "${name}" sparad.`);
+}
+async function l3plFilmLoad(name) {
+  const snap = l3plFilms().find(x => x.name === name); if (!snap) { l3pl.filmSel = ""; return; }
+  if (!(await uiConfirm(`Läsa in filmen "${snap.name}"?\n\nFilmens inställningar, kameravyer och objektens animering ersätts med de sparade. Det som inte är sparat som film försvinner.`, { ok: "Läs in" }))) { l3plRenderTab(); return; }
+  const keep = (l3plPrefs().film || {}).strip;
+  l3plSet("film", { ...snap.film, strip: keep });
+  l3plKeysSet((snap.keys || []).map(k => ({ ...k })));
+  if (typeof placements !== "undefined") placements.forEach(p => {
+    const ks = (snap.anim || {})[p.id], had = Array.isArray(p.anim) && p.anim.length;
+    if (ks && ks.length) p.anim = ks.map(k => ({ ...k })); else if (had) delete p.anim; else return;
+    if (typeof placeTouch === "function") placeTouch(p);
+  });
+  l3pl.filmSel = snap.name;
+  if (typeof l3animReset === "function") l3animReset();
+  l3plRenderTab(); if (l3fsOn()) l3fsRender();
+  l3Status(`Filmen "${snap.name}" inläst.`);
+}
+async function l3plFilmDelete() {
+  const name = l3pl.filmSel; if (!name) return;
+  if (!(await uiConfirm(`Ta bort den sparade filmen "${name}"? Kameravyerna och objektens animering som just nu ligger i vyn rörs inte.`, { ok: "Ta bort" }))) return;
+  l3plFilmsSet(l3plFilms().filter(x => x.name !== name)); l3pl.filmSel = ""; l3plRenderTab(); l3Status(`Filmen "${name}" borttagen.`);
 }
 /* Animering (Victor 2026-10-12: "välja på vilka aktiviteter jag vill ha de olika animationerna. Sätt standard till
    som det är nu"): en standard för alla och ett val per aktivitet (namnet), t.ex. Gjutning = Växer upp. */
@@ -279,6 +324,7 @@ async function l3plFilm(record) {
       const t = t0 + (t1 - t0) * (i / frames), d = l3plIso(new Date(Math.round(t / 86400000) * 86400000)), ft = i / fps;
       l3plSetDay(d);
       const c = l3plCamAt(keys, t); if (c) l3plCamApply(c);
+      if (typeof l3animApply === "function") l3animApply(t);
       if (fx) l3fxFrame(fx, d, ft, t);
       if (record) {
         R.render(l3.scene, l3.camera);
