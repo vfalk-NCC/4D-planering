@@ -98,6 +98,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     await page.evaluate(() => { l3Frame(true); l3Render(); }); await page.waitForTimeout(400);
     await page.screenshot({ path: path.join(process.env.PLACE_TMP || '.', '3dpc.png') });
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
+    // Fil från datorn läses i bitar; för stor fil och oläsbar fil ger begripliga besked (Victor 2026-10-12).
+    const rf = await page.evaluate(async () => {
+      const ok = new Uint8Array(await l3pcReadFile(new File([new Uint8Array([1, 2, 3, 4, 5])], 'a.las'), () => {}));
+      const big = await l3pcReadFile({ size: 3e9, slice() { throw new Error('ska inte läsas'); } }, () => {}).catch(e => e.message);
+      const bad = await l3pcReadFile({ size: 10, slice() { return { arrayBuffer: () => Promise.reject(Object.assign(new Error('x'), { name: 'NotReadableError' })) }; } }, () => {}).catch(e => e.message);
+      return { ok: [...ok].join(), big, bad };
+    });
+    if (rf.ok !== '1,2,3,4,5' || !/3,0 GB/.test(rf.big) || !/OneDrive/.test(rf.bad)) fail('Läsa fil från datorn: ' + JSON.stringify(rf));
     console.log('OK: punktmoln i 3D – ur TC-mappen, tänd/släck, färg efter höjd, punktstorlek, cache');
   } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
