@@ -14,7 +14,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
 const XLS_ITEMS = [
   { id: 'x1', object_name: 'F1', activity: 'Gjutning fundament', start_date: '2026-09-01', end_date: '2026-09-05', status: 'klar', progress: 100, actual_end_date: '2026-09-05' },
   { id: 'x2', object_name: 'F2', activity: 'Gjutning fundament', start_date: '2026-10-08', end_date: '2026-10-20', progress: 30 },
-  { id: 'x3', object_name: 'F3', activity: 'Gjutning fundament', start_date: '2026-11-01', end_date: '2026-11-10' },
+  { id: 'x3', object_name: 'F3', activity: 'Gjutning fundament', area: 'Linje B', start_date: '2026-11-01', end_date: '2026-11-10' },
 ];
 const XLS_POS = [{ id: 'x1', x: 6512320, y: 150120, z0: 0, z1: 1 }, { id: 'x2', x: 6512350, y: 150120, z0: 0, z1: 1 }, { id: 'x3', x: 6512380, y: 150120, z0: 0, z1: 1 }];
 const PP_ITEMS = [{ id: 'p1', object_name: 'Etapp 1', activity: 'Grundläggning', start_date: '2026-09-01', end_date: '2026-12-01', progress: 20 }];
@@ -99,6 +99,19 @@ const PP_ITEMS = [{ id: 'p1', object_name: 'Etapp 1', activity: 'Grundläggning'
     await page.keyboard.press('Escape');
     await page.screenshot({ path: path.join(process.env.PLACE_TMP || '.', 'xls-labels.png') });
     console.log('OK: Excel-objektens namn visas som etiketter');
+    // Släcka områden och aktiviteter i Excel-lagret (Victor 2026-10-12).
+    await page.evaluate(() => renderLayerPanel());
+    await page.click('#layerList [data-layer="xls"] .ul-toggle');
+    await page.click('#layerList .xls-area[data-xls="a:Linje B"] .xls-eye');
+    let hs = await page.evaluate(() => ({ shown: xlsShown().map(o => o.it.id).join(), lbl: objLabelBoxes.map(b => b.text).filter(t => /^F\d/.test(t)).sort().join(), cnt: document.querySelector('#layerList [data-layer="xls"] small').textContent, off: document.querySelector('#layerList .xls-area[data-xls="a:Linje B"]').classList.contains('off') }));
+    if (hs.shown !== 'x1,x2' || /F3/.test(hs.lbl) || hs.cnt !== '2 av 3' || !hs.off) fail('Släck området Linje B: ' + JSON.stringify(hs));
+    await page.click('#layerList .xls-area[data-xls="a:(utan område)"] .ul-toggle');
+    await page.click('#layerList .xls-fam .xls-eye:not([disabled])');
+    hs = await page.evaluate(() => ({ shown: xlsShown().length, at: xlsAt(xlsObjects().find(o => o.it.id === 'x2').pt).length, kept: JSON.parse(localStorage.getItem(xlsHideKey())).length }));
+    if (hs.shown !== 0 || hs.at !== 0 || hs.kept !== 2) fail('Släck aktiviteten: ' + JSON.stringify(hs));
+    await page.evaluate(() => xlsSetHidden([...xlsHidden()], false));
+    if (await page.evaluate(() => xlsShown().length) !== 3) fail('Tänd igen');
+    console.log('OK: släcka områden och aktiviteter i Excel-lagret');
     await page.evaluate(() => { const c = document.querySelector('#layerList [data-layer="xls"] .lr-vis'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); });
     if (await page.evaluate(() => $('xlsCanvas').style.display) !== 'none') fail('Släckt lager ska döljas');
     if (await page.evaluate(() => objLabelBoxes.some(b => /^F\d/.test(b.text)))) fail('Släckt lager: inga Excel-namn');
