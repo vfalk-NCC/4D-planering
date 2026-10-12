@@ -677,9 +677,10 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
       if (c) ctx.drawImage(c, X, Y, W, H);
       else if (!opts.noMap) { ctx.fillStyle = "#eef2f7"; ctx.fillRect(X, Y, W, H); }
       // Förloppet (bara i editorn): en stapel med procent och vad som laddas, mitt i ramen.
+      // Förloppet visas diskret i kommandoraden (prCmdProgress); här bara en tunn linje överst i ramen.
       const pg = opts.editor && !opts.noMap ? mapProgress.get(el.id) : null;
-      if (pg) drawProgressBox(ctx, X, Y, W, H, pg.f, `Laddar ritningen – ${Math.round(pg.f * 100)} %`, pg.label || "");
-      else if (!c && !opts.noMap) { ctx.fillStyle = "#64748b"; ctx.font = `${pt(10)}px Helvetica, Arial`; ctx.textAlign = "center"; ctx.fillText("Ritningen ritas…", X + W / 2, Y + H / 2); }
+      if (pg) { ctx.fillStyle = "rgba(37,99,235,.75)"; ctx.fillRect(X, Y, Math.max(2, W * Math.max(0, Math.min(1, pg.f))), Math.max(2, 2 * (pr && pr.L ? pr.L.dpr : 1))); }
+      if (!c && !opts.noMap) { ctx.fillStyle = "#64748b"; ctx.font = `${pt(10)}px Helvetica, Arial`; ctx.textAlign = "center"; ctx.fillText("Ritningen ritas…", X + W / 2, Y + H / 2); }
       if (el.border !== false && !opts.noMap) { ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, 0.35 * k * u); ctx.strokeRect(X, Y, W, H); }
       if (el.label && el.label.show && !opts.noLabel) {
         const s = el.label.size || 9, lines = mapLabelLines(el);
@@ -1031,7 +1032,78 @@ function drawFrame(ctx, tpl, u, k, W, H) {
 // ---------------------------------------------------------------------
 // Editorn
 // ---------------------------------------------------------------------
-function setPrintStatus(t) { if ($("prStatus")) $("prStatus").textContent = t || ""; }
+/* Kommandorad i utskriftslayouten (Victor 2026-10-12: "en kommandorad likt jag har i 3d-editorn … så kan man
+   följa vad som har hänt", och laddningen när ritningen ritas om ska vara diskret i raden i stället för
+   över hela ritningen). Raden visar senaste händelsen, ▴/F2 fäller ut historiken och till höger syns
+   ett litet förlopp medan ritningar/bilder laddas samt markörens läge på bladet i mm. */
+const prLog = [];
+function prCmdShow(t, bad) {
+  const el = $("prCmdText"); if (!el) return;
+  el.textContent = t || "Klar."; el.classList.toggle("bad", !!bad);
+  el.title = `${t || ""}\n(klicka eller F2: historik)`.trim();
+}
+function prCmdLog(t, bad) {
+  if (!t) return;
+  prCmdShow(t, bad);
+  const last = prLog[prLog.length - 1];
+  if (last && last.text === t) { last.at = new Date(); last.n = (last.n || 1) + 1; }
+  else { prLog.push({ at: new Date(), text: String(t), bad: !!bad }); if (prLog.length > 500) prLog.splice(0, prLog.length - 500); }
+  prLogRender();
+}
+function setPrintStatus(t) {
+  if ($("prStatus")) $("prStatus").textContent = t || "";
+  if (t) prCmdLog(t, /^(Kunde inte|Fel|⚠)/.test(t));
+}
+function prLogRender() {
+  const box = $("prLog");
+  if (!box || box.classList.contains("hidden")) return;
+  const p2 = x => String(x).padStart(2, "0"), tm = d => `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+  const atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
+  box.innerHTML = `<div class="pr-log-h"><b>Historik</b><span>${prLog.length} rader</span><button type="button" data-log="copy" title="Kopiera historiken">Kopiera</button><button type="button" data-log="clear" title="Töm historiken">Töm</button><button type="button" class="pr-log-x" data-log="close" title="Stäng (F2)">✕</button></div>`
+    + (prLog.length ? prLog.map(x => `<div class="pr-log-r${x.bad ? " bad" : ""}"><time>${tm(x.at)}</time><span>${escHtml(x.text)}${x.n > 1 ? ` <em>×${x.n}</em>` : ""}</span></div>`).join("") : `<div class="pr-log-r"><span>Inget har hänt än.</span></div>`);
+  box.querySelector('[data-log="close"]').onclick = () => prLogToggle(false);
+  box.querySelector('[data-log="clear"]').onclick = () => { prLog.length = 0; prLogRender(); };
+  box.querySelector('[data-log="copy"]').onclick = () => { try { navigator.clipboard.writeText(prLog.map(x => `${tm(x.at)}  ${x.text}`).join("\n")); } catch (e) { /* inget urklipp */ } };
+  if (atEnd || !box.dataset.seen) { box.scrollTop = box.scrollHeight; box.dataset.seen = "1"; }
+}
+function prLogToggle(on) {
+  const box = $("prLog"), btn = $("prCmdMore");
+  if (!box) return;
+  const show = on === undefined ? box.classList.contains("hidden") : on;
+  box.classList.toggle("hidden", !show);
+  if (btn) btn.setAttribute("aria-expanded", show);
+  if (show) { delete box.dataset.seen; prLogRender(); }
+}
+/* Litet förlopp till höger i raden: alla ritningar och bilder som laddas just nu. Uppdateras högst en gång
+   per bildruta (anropas från drawPrintPage). När allt är klart loggas en rad med tiden det tog. */
+let prLoadStart = 0, prLoadWhat = "";
+function prCmdProgress() {
+  const box = $("prCmdProg"); if (!box) return;
+  const maps = [...mapProgress.values()], imgs = [...imgProgress.values()];
+  const n = maps.length + imgs.length;
+  if (!n) {
+    if (prLoadStart) {
+      const s = (performance.now() - prLoadStart) / 1000;
+      prCmdLog(`${prLoadWhat} klar${s >= 0.5 ? ` (${s.toLocaleString("sv-SE", { maximumFractionDigits: 1 })} s)` : ""}.`);
+      prLoadStart = 0;
+    }
+    box.classList.add("hidden"); return;
+  }
+  if (!prLoadStart) prLoadStart = performance.now();
+  prLoadWhat = maps.length ? (maps.length > 1 ? `${maps.length} ritningar` : "Ritningen") : (imgs.length > 1 ? `${imgs.length} bilder` : "Bilden");
+  const f = (maps.reduce((a, p) => a + (p.f || 0), 0) + imgs.reduce((a, v) => a + (v || 0), 0)) / n;
+  const label = (maps.find(p => p.label) || {}).label || "";
+  box.classList.remove("hidden");
+  $("prCmdProgText").textContent = `${prLoadWhat} ${Math.round(f * 100)} %${label ? " · " + label : ""}`;
+  $("prCmdProgFill").style.width = `${Math.max(2, Math.min(100, f * 100))}%`;
+  box.title = `Laddar ${prLoadWhat.toLowerCase()} – ${Math.round(f * 100)} %${label ? "\n" + label : ""}`;
+}
+function prCmdPos(e) {
+  const el = $("prCmdPos"); if (!el || !pr || !pr.L) return;
+  const [x, y] = prPoint(e), { W, H } = pageDims(), k = pageDims().k;
+  const inside = x >= 0 && y >= 0 && x <= W / k && y <= H / k;
+  el.textContent = inside ? `${(x * k).toFixed(1)} , ${(y * k).toFixed(1)} mm` : "";
+}
 function localStorageGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 const selEls = () => pr ? pr.tpl.elements.filter(e => pr.sels.includes(e.id)) : [];
 const primary = () => pr && pr.sels.length === 1 ? pr.tpl.elements.find(e => e.id === pr.sels[0]) : null;
@@ -1047,6 +1119,7 @@ async function openPrint() {
   mapPreviews.clear(); mapPending.clear();
   $("printModal").classList.remove("hidden");
   renderPrintPanel();
+  prCmdLog(`Utskriftslayout öppnad – mall "${pr.tpl.name || "Ny mall"}", ${pr.tpl.format}.`);
   requestAnimationFrame(drawPrintPage);
 }
 /* Äldre mallar: ritningar utan lagerval följer skärmen; ett gammalt urval (bara tänd/släckt per
@@ -1075,7 +1148,9 @@ async function closePrint() {
 function pageDims() { const f = PRINT_FORMATS[pr.tpl.format]; return { W: f.w, H: f.h, k: f.w / PAGE_A3[0] }; }
 function layoutPreview() {
   const c = $("prCanvas"), wrap = $("prCanvasWrap");
-  const r = wrap.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const r0 = wrap.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  const cmdH = $("prCmd") ? $("prCmd").offsetHeight : 0; // kommandoraden längst ner tar sin egen plats
+  const r = { width: r0.width, height: Math.max(50, r0.height - cmdH) };
   c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr);
   c.style.width = r.width + "px"; c.style.height = r.height + "px";
   const { W, H } = pageDims(), pad = 24 * dpr;
@@ -1087,6 +1162,7 @@ function layoutPreview() {
 }
 function drawPrintPage() {
   if (!pr) return;
+  prCmdProgress();
   const L = layoutPreview(), { c, u, ox, oy, dpr } = L;
   pr.L = L;
   const ctx = c.getContext("2d");
@@ -1138,8 +1214,8 @@ function prPoint(e) {
 }
 const gridMm = v => Math.round(v * 2) / 2;
 function pushUndo() { pr.undo.push(JSON.stringify(pr.tpl)); if (pr.undo.length > 80) pr.undo.shift(); pr.redo = []; pr.dirty = true; }
-function prUndo() { if (!pr.undo.length) return; prLayersDetach(); pr.redo.push(JSON.stringify(pr.tpl)); pr.tpl = JSON.parse(pr.undo.pop()); pr.sels = pr.sels.filter(id => pr.tpl.elements.some(e => e.id === id)); pr.dirty = true; renderPrintPanel(); drawPrintPage(); }
-function prRedo() { if (!pr.redo.length) return; prLayersDetach(); pr.undo.push(JSON.stringify(pr.tpl)); pr.tpl = JSON.parse(pr.redo.pop()); pr.sels = pr.sels.filter(id => pr.tpl.elements.some(e => e.id === id)); pr.dirty = true; renderPrintPanel(); drawPrintPage(); }
+function prUndo() { if (!pr.undo.length) return; prCmdLog("Ångra."); prLayersDetach(); pr.redo.push(JSON.stringify(pr.tpl)); pr.tpl = JSON.parse(pr.undo.pop()); pr.sels = pr.sels.filter(id => pr.tpl.elements.some(e => e.id === id)); pr.dirty = true; renderPrintPanel(); drawPrintPage(); }
+function prRedo() { if (!pr.redo.length) return; prCmdLog("Gör om."); prLayersDetach(); pr.undo.push(JSON.stringify(pr.tpl)); pr.tpl = JSON.parse(pr.redo.pop()); pr.sels = pr.sels.filter(id => pr.tpl.elements.some(e => e.id === id)); pr.dirty = true; renderPrintPanel(); drawPrintPage(); }
 
 /* Snäpplinjer: andra elements kanter/mittlinjer, bladets kanter, ramen och mitten. */
 function snapTargets(exclude) {
@@ -1280,7 +1356,7 @@ function prZoomAt(f, cx, cy) {
   pr.vx = ((pr.vx || 0) * dpr + nox - base.ox) / dpr; pr.vy = ((pr.vy || 0) * dpr + noy - base.oy) / dpr;
   drawPrintPage(); updatePrZoomUi();
 }
-function updatePrZoomUi() { const l = $("prZoomLbl"); if (l) l.textContent = Math.round((pr.zoom || 1) * 100) + " %"; }
+function updatePrZoomUi() { const l = $("prZoomLbl"), z = Math.round((pr.zoom || 1) * 100) + " %"; if (l) l.textContent = z; prCmdShow(`Zoom ${z}`); }
 function prWheel(e) {
   if (!pr) return;
   const one = primary();
@@ -1323,6 +1399,7 @@ function prKey(e) {
   if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
   const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
   const stop = () => { e.preventDefault(); e.stopPropagation(); };
+  if (e.key === "F2") { stop(); prLogToggle(); return; }
   if (mod && k === "z") { stop(); e.shiftKey ? prRedo() : prUndo(); return; }
   if (mod && k === "y") { stop(); prRedo(); return; }
   if (mod && k === "c") { stop(); copySel(false); return; }
@@ -1341,6 +1418,7 @@ function prKey(e) {
   if (mv) { stop(); if (selEls().some(x => x.locked)) return; pushUndo(); selEls().forEach(el => { el.x += mv[0]; el.y += mv[1]; }); renderPrintProps(true); drawPrintPage(); }
 }
 
+const PR_TYPE_NAMES = { text: "textruta", callout: "pratbubbla", map: "ritning", image: "bild", legend: "förklaring", table: "tabell", title: "ritningshuvud", scalebar: "skalstock", north: "norrpil", qr: "QR-kod", rect: "ruta", ellipse: "ellips", line: "linje", arrow: "pil" };
 function addEl(type) {
   const cx = PAGE_A3[0] / 2, cy = PAGE_A3[1] / 2;
   const firstMap = pr.tpl.elements.find(e => e.type === "map");
@@ -1365,14 +1443,15 @@ function addEl(type) {
   el.x = Math.max(0, Math.min(PAGE_A3[0] - el.w, cx - el.w / 2)); el.y = Math.max(0, Math.min(PAGE_A3[1] - Math.max(el.h, 1), cy - el.h / 2));
   pr.tpl.elements.push(el);
   setSel([el.id]);
+  prCmdLog(`Lade till ${PR_TYPE_NAMES[type] || type}.`);
   renderPrintPanel(); drawPrintPage();
   if (type === "image") $("prImgInput").click();
 }
-function deleteSel() { pushUndo(); const ids = pr.sels; pr.tpl.elements = pr.tpl.elements.filter(x => !ids.includes(x.id)); setSel([]); renderPrintPanel(); drawPrintPage(); }
+function deleteSel() { pushUndo(); const ids = pr.sels; prCmdLog(`${ids.length} element borttagna (Ctrl+Z ångrar).`); pr.tpl.elements = pr.tpl.elements.filter(x => !ids.includes(x.id)); setSel([]); renderPrintPanel(); drawPrintPage(); }
 function duplicateSel() {
   pushUndo();
   const copies = selEls().map(el => ({ ...JSON.parse(JSON.stringify(el)), id: ghNewId(), x: el.x + 5, y: el.y + 5 }));
-  pr.tpl.elements.push(...copies); setSel(copies.map(c => c.id)); renderPrintPanel(); drawPrintPage();
+  pr.tpl.elements.push(...copies); setSel(copies.map(c => c.id)); prCmdLog(`${copies.length} element duplicerade.`); renderPrintPanel(); drawPrintPage();
 }
 function orderSel(dir) {
   pushUndo();
@@ -1979,6 +2058,10 @@ function bindPrint() {
   zb("prZoomOut", () => prZoomAt(1 / 1.25, c.width / 2, c.height / 2));
   zb("prZoomFit", () => { pr.zoom = 1; pr.vx = pr.vy = 0; drawPrintPage(); updatePrZoomUi(); });
   window.addEventListener("keydown", prKey, true);
+  c.addEventListener("mousemove", prCmdPos);
+  c.addEventListener("mouseleave", () => { if ($("prCmdPos")) $("prCmdPos").textContent = ""; });
+  zb("prCmdMore", () => prLogToggle());
+  if ($("prCmdText")) $("prCmdText").onclick = () => prLogToggle();
   window.addEventListener("resize", () => { if (pr) drawPrintPage(); });
   bindPrSideResize();
   bindPrSections();
