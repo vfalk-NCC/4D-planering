@@ -582,12 +582,14 @@ function l3PalTab(t) {
   const pp = document.getElementById("v3PalProps"); if (pp) pp.classList.toggle("hidden", t !== "props");
   const pg = document.getElementById("v3PalGroups"); if (pg) pg.classList.toggle("hidden", t !== "groups");
   const pk = document.getElementById("v3PalComments"); if (pk) pk.classList.toggle("hidden", t !== "comments");
+  const pl = document.getElementById("v3PalPlan"); if (pl) pl.classList.toggle("hidden", t !== "plan");
   l3SetPref("palTab", t);
   if (t === "list") l3RenderObjList();
   if (t === "layers" && typeof l3LayersRender === "function") l3LayersRender();
   if (t === "props" && typeof l3pRenderTab === "function") l3pRenderTab();
   if (t === "groups" && typeof l3gRenderTab === "function") l3gRenderTab();
   if (t === "comments" && typeof l3kRenderTab === "function") l3kRenderTab();
+  if (t === "plan" && typeof l3plRenderTab === "function") l3plRenderTab();
 }
 
 /* ---- Egna kortkommandon (sparas i 3D-inställningarna, per webbläsare) ----------------------------- */

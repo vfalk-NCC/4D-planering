@@ -283,7 +283,7 @@ function l3Dom() {
     </div>
     <div class="v3-main">
       <div class="v3-pal ${P.pal ? "" : "hidden"}" id="v3Pal">
-        <div class="v3-pal-head"><div class="v3-segs v3-paltabs"><button type="button" data-paltab="layers" class="${P.palTab === "layers" || P.palTab === "list" ? "on" : ""}">Lager</button><button type="button" data-paltab="props" class="${P.palTab === "props" ? "on" : ""}" title="Gruppera och färga IFC-objekten efter egenskaper (UDA)">Egenskaper</button><button type="button" data-paltab="groups" class="${P.palTab === "groups" ? "on" : ""}" title="Dina egna grupper av IFC-objekt (t.ex. Bandgång 1)">Grupper</button><button type="button" data-paltab="comments" class="${P.palTab === "comments" ? "on" : ""}" title="Kommentarerna och måtten i 3D – sök, färg, mappar, export">Kommentarer &amp; mått</button><button type="button" data-paltab="add" class="${(P.palTab || "add") === "add" ? "on" : ""}" title="Färdiga objekt att placera ut – etablering, maskiner, säkerhet och egna modeller">3D-bibliotek</button></div><button type="button" id="v3PalClose" title="Dölj menyn (Ctrl+B)">‹</button></div>
+        <div class="v3-pal-head"><div class="v3-segs v3-paltabs"><button type="button" data-paltab="layers" class="${P.palTab === "layers" || P.palTab === "list" ? "on" : ""}">Lager</button><button type="button" data-paltab="props" class="${P.palTab === "props" ? "on" : ""}" title="Gruppera och färga IFC-objekten efter egenskaper (UDA)">Egenskaper</button><button type="button" data-paltab="groups" class="${P.palTab === "groups" ? "on" : ""}" title="Dina egna grupper av IFC-objekt (t.ex. Bandgång 1)">Grupper</button><button type="button" data-paltab="comments" class="${P.palTab === "comments" ? "on" : ""}" title="Kommentarerna och måtten i 3D – sök, färg, mappar, export">Kommentarer &amp; mått</button><button type="button" data-paltab="add" class="${(P.palTab || "add") === "add" ? "on" : ""}" title="Färdiga objekt att placera ut – etablering, maskiner, säkerhet och egna modeller">3D-bibliotek</button><button type="button" data-paltab="plan" class="${P.palTab === "plan" ? "on" : ""}" title="Powerproject-tidplanen: tavlan med lapparna, Gantt och film">4D-planering</button></div><button type="button" id="v3PalClose" title="Dölj menyn (Ctrl+B)">‹</button></div>
         <div id="v3PalAdd" class="v3-paltab ${(P.palTab || "add") === "add" ? "" : "hidden"}">
           <input type="search" id="v3PalSearch" placeholder="Sök…" />
           <div id="v3Lib"></div>
@@ -294,6 +294,7 @@ function l3Dom() {
         <div id="v3PalProps" class="v3-paltab v3-pprops ${P.palTab === "props" ? "" : "hidden"}"></div>
         <div id="v3PalGroups" class="v3-paltab v3-pgroups ${P.palTab === "groups" ? "" : "hidden"}"></div>
         <div id="v3PalComments" class="v3-paltab v3-pcomments ${P.palTab === "comments" ? "" : "hidden"}"></div>
+        <div id="v3PalPlan" class="v3-paltab v3-pplan ${P.palTab === "plan" ? "" : "hidden"}"></div>
         <div id="v3PalList" class="v3-paltab ${P.palTab === "list" ? "" : "hidden"}">
           <input type="search" id="v3ObjSearch" placeholder="Sök i etableringen…" />
           <div id="v3ObjList"></div>
@@ -548,6 +549,7 @@ function l3Init(box) {
   window.addEventListener("keydown", l3Key, true); // före lägesplanens kortkommandon (de stängs av i 3D)
   if (typeof l3NavInit === "function") l3NavInit();
   if (typeof l3DialogsInit === "function") l3DialogsInit();
+  if (typeof l3plInit === "function") l3plInit(); // fliken 4D-planering: tavlan som var öppen
   if (l3.prefs.ortho && typeof l3SetProjection === "function") l3SetProjection(true);
   // Datum (uppspelning m.m.) -> statusfärgerna följer med.
   setInterval(() => {
