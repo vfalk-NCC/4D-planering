@@ -1608,6 +1608,8 @@ function bindViewport() {
     // Högerklick på en prick: släck objektet/aktiviteten.
     const ptObjs = objectsAt(toPdf(stagePoint(e)));
     if (ptObjs.length) { e.preventDefault(); openObjMenu(ptObjs.flatMap(o => o.members || [o.it]), e); return; }
+    const xo = typeof xlsAt === "function" ? xlsAt(toPdf(stagePoint(e))) : [];
+    if (xo.length) { e.preventDefault(); xlsOpenMenu(xo, e); return; }
     if (!objLabelBoxes.length) return;
     const vr = vpEl.getBoundingClientRect(), x = e.clientX - vr.left, y = e.clientY - vr.top;
     const hit = objLabelBoxes.find(l => x >= l.box.x && x <= l.box.x + l.box.w && y >= l.box.y && y <= l.box.y + l.box.h);

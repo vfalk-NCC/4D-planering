@@ -57,7 +57,16 @@ function xlsSetHidden(keys, hide) {
 const xlsArea = it => String(it.area || "").trim() || "(utan område)";
 const xlsFamKey = it => it.group_id ? "g:" + it.group_id : "f:" + xlsArea(it) + "||" + String(it.activity || it.object_name || "").trim();
 const xlsFamName = it => String(it.activity || it.object_name || "Aktivitet").trim();
-const xlsIsHidden = it => { const h = xlsHidden(); return h.size > 0 && (h.has("a:" + xlsArea(it)) || h.has(xlsFamKey(it))); };
+/* Detaljerat namn (Victor 2026-10-12: "Jag måste ha mer detaljerad namn"): objektets namn + aktiviteten, och för en
+   grupp med flera objekt de första objektnamnen. */
+const xlsObjName = it => String(it.object_name || "").trim();
+function xlsFamLabel(rows) {
+  const act = xlsFamName(rows[0]), names = [...new Set(rows.map(xlsObjName).filter(n => n && n !== act))];
+  if (!names.length) return act;
+  const short = names.length > 3 ? `${names.slice(0, 3).join(", ")} +${names.length - 3}` : names.join(", ");
+  return `${short} – ${act}`;
+}
+const xlsIsHidden = it => { const h = xlsHidden(); return h.size > 0 && (h.has("a:" + xlsArea(it)) || h.has(xlsFamKey(it)) || h.has("i:" + it.id)); };
 /* De som syns (släckta borträknade). */
 const xlsShown = () => { const all = xlsObjects(); return xlsHidden().size ? all.filter(o => !xlsIsHidden(o.it)) : all; };
 /* Områdena med sina aktiviteter, för lagerlistan. */
@@ -78,10 +87,10 @@ function xlsRowsHtml(opts = {}) {
   return xlsTree().map(a => {
     const aOff = h.has("a:" + a.area), open = layerState["ulopen:__xls:" + a.area] === true, n = a.fams.reduce((s, f) => s + f.rows.length, 0);
     const famRows = open ? a.fams.map(f => {
-      const off = aOff || h.has(f.key), ph = zonePhase(f.rows, day);
+      const off = aOff || h.has(f.key), ph = zonePhase(f.rows, day), nOff = off ? 0 : f.rows.filter(it => h.has("i:" + it.id)).length, lbl = xlsFamLabel(f.rows);
       return `<div class="layer-row sub xls-row xls-fam${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}${off ? " off" : ""}" data-xls="${escHtml(f.key)}" style="padding-left:34px">
         <span class="oi-dot" style="background:${ph === "ingen" ? "#fff" : phaseColor(ph)}"></span>
-        <span class="ln" title="${escHtml([xlsFamName(f.it), a.area, `${f.rows.length} objekt`].join(" · "))}">${escHtml(xlsFamName(f.it))}${f.rows.length > 1 ? ` <small>${f.rows.length} obj.</small>` : ""}</span>
+        <span class="ln" title="${escHtml([xlsFamName(f.it), a.area, [...new Set(f.rows.map(xlsObjName).filter(Boolean))].join(", "), `${f.rows.length} objekt`].filter(Boolean).join(" · "))}">${escHtml(lbl)}${f.rows.length > 1 ? ` <small>${f.rows.length} obj.</small>` : ""}${nOff ? ` <small>(${nOff} släckta)</small>` : ""}</span>
         <button type="button" class="oi-eye xls-eye" ${aOff ? "disabled" : ""} title="${aOff ? "Området är släckt" : off ? "Tänd" : "Släck"}">${off ? "🙈" : "👁"}</button></div>`;
     }).join("") : "";
     return `<div class="layer-row sub xls-row xls-area${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}${aOff ? " off" : ""}" data-xls="${escHtml("a:" + a.area)}">
@@ -91,7 +100,12 @@ function xlsRowsHtml(opts = {}) {
   }).join("");
 }
 function bindXlsRows(el) {
-  el.querySelectorAll(".xls-row .xls-eye").forEach(b => { b.onclick = e => { e.stopPropagation(); const row = b.closest(".xls-row"); xlsSetHidden([row.dataset.xls], !row.classList.contains("off")); }; });
+  el.querySelectorAll(".xls-row .xls-eye").forEach(b => { b.onclick = e => {
+    e.stopPropagation(); const row = b.closest(".xls-row"), k = row.dataset.xls, hide = !row.classList.contains("off");
+    // Tända en aktivitet tänder också dess enskilt släckta objekt.
+    const extra = !hide && k[0] !== "a" ? xlsObjects().filter(o => xlsFamKey(o.it) === k).map(o => "i:" + o.it.id) : [];
+    xlsSetHidden([k, ...extra], hide);
+  }; });
 }
 document.addEventListener("DOMContentLoaded", () => {
   const orig = renderLayerPanel;
@@ -151,4 +165,25 @@ function xlsTipHtml(list) {
 function xlsLabelObjects() {
   if (!xlsActive() || !layerVisible("xls") || !xls.items) return [];
   return xlsShown().map(o => ({ it: o.it, center: o.pt, members: [o.it], xls: true }));
+}
+
+/* Högerklick på ett Excel-objekt på planen (Victor 2026-10-12: "kunna högerklicka och släcka i planen"). */
+function xlsOpenMenu(list, e) {
+  let m = $("labelMenu");
+  if (!m) { m = document.createElement("div"); m.id = "labelMenu"; m.className = "label-menu"; document.body.appendChild(m); document.addEventListener("mousedown", ev => { if (!ev.target.closest("#labelMenu")) m.classList.add("hidden"); }); }
+  const its = list.map(o => o.it), it = its[0], fk = xlsFamKey(it), area = xlsArea(it);
+  const famRows = xlsObjects().filter(o => xlsFamKey(o.it) === fk).map(o => o.it);
+  const one = its.length === 1 ? `${xlsObjName(it) || "objektet"}${xlsObjName(it) !== xlsFamName(it) ? " – " + xlsFamName(it) : ""}` : `${its.length} objekt här`;
+  const cut = s => (s.length > 34 ? s.slice(0, 33) + "…" : s);
+  m.innerHTML = `<div style="font-size:11px;opacity:.7;padding:4px 10px 2px;">📊 Excel-planeringen</div>`
+    + `<button type="button" data-x="obj">Släck ${escHtml(cut(one))}</button>`
+    + (famRows.length > its.length ? `<button type="button" data-x="fam">Släck hela aktiviteten ${escHtml(cut(xlsFamLabel(famRows)))} (${famRows.length} objekt)</button>` : "")
+    + `<button type="button" data-x="area">Släck området ${escHtml(cut(area))}</button>`;
+  m.style.left = Math.min(e.clientX, window.innerWidth - 300) + "px";
+  m.style.top = Math.min(e.clientY, window.innerHeight - 120) + "px";
+  m.classList.remove("hidden");
+  const on = (k, keys, msg) => { const b = m.querySelector(`[data-x="${k}"]`); if (b) b.onclick = () => { m.classList.add("hidden"); xlsSetHidden(keys, true); if (typeof setSaveStatus === "function") setSaveStatus(`📊 Släckt: ${msg}. Tänd igen under Lager → Excel-planeringen.`); }; };
+  on("obj", its.map(x => "i:" + x.id), one);
+  on("fam", [fk], xlsFamLabel(famRows));
+  on("area", ["a:" + area], area);
 }

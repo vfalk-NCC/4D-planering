@@ -111,6 +111,21 @@ const PP_ITEMS = [{ id: 'p1', object_name: 'Etapp 1', activity: 'Grundläggning'
     if (hs.shown !== 0 || hs.at !== 0 || hs.kept !== 2) fail('Släck aktiviteten: ' + JSON.stringify(hs));
     await page.evaluate(() => xlsSetHidden([...xlsHidden()], false));
     if (await page.evaluate(() => xlsShown().length) !== 3) fail('Tänd igen');
+    // Detaljerade namn och högerklick på planen (Victor 2026-10-12).
+    await page.evaluate(() => renderLayerPanel());
+    const famTxt = await page.evaluate(() => document.querySelector('#layerList .xls-fam .ln').textContent.replace(/\s+/g, ' ').trim());
+    if (!/^F1, F2 – Gjutning fundament/.test(famTxt)) fail('Detaljerat namn: ' + famTxt);
+    await page.evaluate(() => { const o = xlsObjects().find(o => o.it.id === 'x2'), [x, y] = toPx(o.pt), r = $('viewport').getBoundingClientRect(); view.tx = r.width / 2 - x * view.scale; view.ty = r.height / 2 - y * view.scale; applyView(); renderZones(); });
+    const [rx, ry] = await page.evaluate(() => { const o = xlsObjects().find(o => o.it.id === 'x2'), [x, y] = toPx(o.pt), st = $('stage'), b = st.getBoundingClientRect(); return [b.left + x * b.width / st.offsetWidth, b.top + y * b.height / st.offsetHeight]; });
+    await page.mouse.click(rx, ry, { button: 'right' });
+    const menu = await page.evaluate(() => { const m = $('labelMenu'); return m && !m.classList.contains('hidden') ? [...m.querySelectorAll('button')].map(b => b.textContent) : null; });
+    if (!menu || !/Släck F2 – Gjutning fundament/.test(menu[0]) || !menu.some(t => /hela aktiviteten F1, F2/.test(t)) || !menu.some(t => /området/.test(t))) fail('Högerklicksmenyn: ' + JSON.stringify(menu));
+    await page.click('#labelMenu [data-x="obj"]');
+    const after = await page.evaluate(() => ({ shown: xlsShown().map(o => o.it.id).join(), row: document.querySelector('#layerList .xls-fam .ln').textContent }));
+    if (after.shown !== 'x1,x3' || !/1 släckta/.test(after.row)) fail('Släck via högerklick: ' + JSON.stringify(after));
+    await page.click('#layerList .xls-fam .xls-eye'); // släck aktiviteten …
+    await page.click('#layerList .xls-fam .xls-eye'); // … och tänd igen: även det enskilt släckta
+    if (await page.evaluate(() => xlsShown().length) !== 3) fail('Tänd aktiviteten ska tända enskilt släckta');
     console.log('OK: släcka områden och aktiviteter i Excel-lagret');
     await page.evaluate(() => { const c = document.querySelector('#layerList [data-layer="xls"] .lr-vis'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); });
     if (await page.evaluate(() => $('xlsCanvas').style.display) !== 'none') fail('Släckt lager ska döljas');
