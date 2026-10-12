@@ -112,7 +112,7 @@ function l3plRenderTab() {
       <button type="button" class="v3-wide ${l3fsOn() ? "on" : ""}" id="v3FlStrip" title="Tidslinje längst ner i 3D-fönstret med datum, aktiviteterna som ett pärlband och kameravyerna">${l3fsOn() ? "Dölj filmens tidslinje" : "🎬 Visa filmens tidslinje"}</button>
       <div class="v3-pal-hint">${keys.length ? `${keys.length} ${keys.length === 1 ? "kameravy" : "kameravyer"} (🎥 på tidslinjen). ` : ""}Dra på tidslinjen till ett datum, ställ in kameran och tryck <b>＋ Vy här</b>. Kameran glider mellan vyerna. Dra en 🎥 för att flytta den, högerklicka för att ta bort.</div>
       ${l3SavedViews().length ? `<select id="v3FlKeyView" class="v3-wide"><option value="">＋ Lägg en sparad vy på tidslinjen…</option>${l3SavedViews().map((v, i) => `<option value="${i}">${esc(v.name)}</option>`).join("")}</select>` : ""}
-      <div class="v3-pl-btns"><button type="button" id="v3FlPreview" title="Spela upp i 3D-vyn utan att spela in">▶ Spela upp</button><button type="button" id="v3FlRec" class="v3-primary" title="Spela in och spara som videofil">⏺ Spela in</button></div>
+      <div class="v3-pl-btns"><button type="button" id="v3FlPreview" title="Spela upp i 3D-vyn utan att spela in">▶ Spela upp</button><button type="button" id="v3FlPause" title="Pausa och fortsätta (mellanslag) – grafiken står kvar som i filmen" ${l3pl.rec ? "" : "disabled"}>${l3pl.rec && l3pl.rec.paused ? "▶ Fortsätt" : "⏸ Paus"}</button><button type="button" id="v3FlRec" class="v3-primary" title="Spela in och spara som videofil">⏺ Spela in</button></div>
       <div class="v3-pal-hint" id="v3FlMsg">${typeof MediaRecorder === "undefined" ? "Webbläsaren kan inte spela in video." : ""}</div>`;
   const linkBody = open.link ? `<div id="v3PlLinkHost">${typeof l3gaListHtml === "function" ? l3gaListHtml(l3plActs(l3gaP().split), l3gaP()) : ""}</div>` : "";
   const otherBody = `<div class="v3-pl-sub">Powerproject-tidplanen</div>
@@ -137,7 +137,8 @@ function l3plRenderTab() {
   on("v3FlStrip", () => { save(); l3fsToggle(); });
   // En sparad vy läggs där tidslinjens huvud står (annars på datumet i 3D).
   on("v3FlKeyView", e => { const v = l3SavedViews()[+e.target.value]; if (!v) return; const d = l3fs.t !== null && l3fsOn() ? l3plIso(new Date(Math.round(l3fs.t / 86400000) * 86400000)) : day; l3plKeyAdd({ p: v.p, t: v.t }, d, v.name); if (l3fsOn()) l3fsRender(); }, "onchange");
-  on("v3FlPreview", () => { save(); l3plFilm(false); });
+  on("v3FlPreview", () => { save(); l3plFilm(false); }); // under uppspelning: ■ Stoppa (till filmens början)
+  on("v3FlPause", () => l3plPause());
   on("v3FlRec", () => { save(); l3plFilm(true); });
 }
 /* Animering (Victor 2026-10-12: "välja på vilka aktiviteter jag vill ha de olika animationerna. Sätt standard till
@@ -227,10 +228,13 @@ async function l3plFilm(record) {
   const t0 = l3plDate(from).getTime(), t1 = l3plDate(to).getTime(), keys = l3plKeys();
   const H = Number(f.res) || 1080, W = Math.round(H * 16 / 9);
   const day0 = $("dateInput").value, cam0 = l3plCam(), R = l3.renderer, pr0 = R.getPixelRatio();
-  const st = { stop: false };
+  const st = { stop: false, paused: false, record };
   l3pl.rec = st;
+  // Mellanslag ska pausa – inte "klicka" knappen som startade filmen.
+  if (document.activeElement && document.activeElement.blur && document.activeElement !== document.body) document.activeElement.blur();
   const setBtn = txt => { const b = document.getElementById(record ? "v3FlRec" : "v3FlPreview"); if (b) b.textContent = txt; };
   setBtn("■ Stoppa"); const fsb = document.getElementById(record ? "v3FsRec" : "v3FsPlay"); if (fsb) fsb.textContent = "■";
+  l3plPauseUi();
   let cv = null, ctx = null, rec = null, chunks = [], mime = "";
   if (record) {
     cv = document.createElement("canvas"); cv.width = W; cv.height = H; ctx = cv.getContext("2d");
@@ -238,7 +242,7 @@ async function l3plFilm(record) {
     const stream = cv.captureStream(0), track = stream.getVideoTracks()[0];
     rec = new MediaRecorder(stream, { ...(mime ? { mimeType: mime } : {}), videoBitsPerSecond: Math.round(W * H * fps * 0.12) });
     rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-    rec.start(1000);
+    rec.start(1000); st.mr = rec;
     st.frame = () => { if (track.requestFrame) track.requestFrame(); };
     // Full upplösning: renderaren ritar i filmens storlek medan den spelas in.
     R.setPixelRatio(1); R.setSize(W, H, false);
@@ -247,7 +251,7 @@ async function l3plFilm(record) {
   const title = f.title !== false, caption = String(f.caption || "").trim();
   // Grafiken (lagesplan-3dfilmfx.js): pågår nu, glöd, datumskylt, milstolpar, förloppsmätare – var och en valbar.
   const fx = typeof l3fxStart === "function" ? await l3fxStart(from, to).catch(() => null) : null;
-  const start = performance.now();
+  let start = performance.now();
   try {
     for (let i = 0; i <= frames && !st.stop; i++) {
       const t = t0 + (t1 - t0) * (i / frames), d = l3plIso(new Date(Math.round(t / 86400000) * 86400000)), ft = i / fps;
@@ -267,6 +271,13 @@ async function l3plFilm(record) {
       // Takten: bild i vid tiden i / fps (spelar in i realtid).
       const wait = start + (i + 1) * 1000 / fps - performance.now();
       await new Promise(r => setTimeout(r, Math.max(0, wait)));
+      // Paus (mellanslag eller ⏸): bilden och grafiken står kvar; tiden räknas om när den fortsätter.
+      if (st.paused && !st.stop) {
+        if (msg) msg.textContent = `Pausad: ${d} – mellanslag eller ▶ fortsätter.`;
+        const p0 = performance.now();
+        while (st.paused && !st.stop) await new Promise(r => setTimeout(r, 60));
+        start += performance.now() - p0;
+      }
     }
   } finally {
     if (fx) l3fxEnd(fx);
@@ -274,11 +285,15 @@ async function l3plFilm(record) {
       await new Promise(r => { rec.onstop = r; rec.stop(); });
       R.setPixelRatio(pr0); l3Resize();
     }
-    l3pl.rec = null;
+    l3pl.rec = null; l3plPauseUi();
     setBtn(record ? "⏺ Spela in" : "▶ Spela upp"); { const b1 = document.getElementById("v3FsPlay"), b2 = document.getElementById("v3FsRec"); if (b1) b1.textContent = "▶"; if (b2) b2.textContent = "⏺"; }
-    $("dateInput").value = day0; $("dateInput").dispatchEvent(new Event("change"));
-    l3plSetDay(day0);
-    if (!keys.length) l3plCamApply(cam0);
+    // Stoppad med ■: tillbaka till filmens början (utan grafik). Annars som innan filmen.
+    const back = st.stop && !record ? from : day0;
+    $("dateInput").value = back; $("dateInput").dispatchEvent(new Event("change"));
+    l3plSetDay(back);
+    if (st.stop && !record && keys.length) { const c0 = l3plCamAt(keys, t0); if (c0) l3plCamApply(c0); }
+    else if (!keys.length) l3plCamApply(cam0);
+    if (typeof l3fsPlayhead === "function" && st.stop && !record) { l3fs.t = t0; l3fsPlayhead(t0, true); }
     l3Render();
   }
   if (record) {
@@ -292,6 +307,20 @@ async function l3plFilm(record) {
   }
   if (msg) msg.textContent = st.stop ? "Avbruten." : "";
   return null;
+}
+/* Paus/fortsätt under uppspelning eller inspelning (inspelningen pausar också – pausen syns inte i videon). */
+function l3plPause(on) {
+  const st = l3pl.rec; if (!st) return false;
+  st.paused = on === undefined ? !st.paused : !!on;
+  if (st.mr) { try { if (st.paused && st.mr.state === "recording") st.mr.pause(); else if (!st.paused && st.mr.state === "paused") st.mr.resume(); } catch (e) { /* äldre webbläsare */ } }
+  l3plPauseUi();
+  l3Status(st.paused ? "Filmen är pausad – mellanslag fortsätter, ■ stoppar." : "Filmen fortsätter.");
+  return true;
+}
+function l3plPauseUi() {
+  const st = l3pl.rec, p = !!(st && st.paused);
+  const b = document.getElementById("v3FlPause"); if (b) { b.disabled = !st; b.textContent = p ? "▶ Fortsätt" : "⏸ Paus"; b.classList.toggle("on", p); }
+  const f = document.getElementById("v3FsPause"); if (f) { f.disabled = !st; f.textContent = p ? "▶" : "⏸"; f.title = p ? "Fortsätt (mellanslag)" : "Pausa (mellanslag)"; }
 }
 /* Datum, vecka och rubrik i filmen, och en tidslinje i underkanten. */
 function l3plOverlay(ctx, W, H, d, caption) {

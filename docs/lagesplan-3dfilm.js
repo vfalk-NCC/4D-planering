@@ -67,7 +67,8 @@ function l3fsRender() {
   const P = l3fsPearls(W, t0, t1);
   l3fs.pearls = P.list;
   el.innerHTML = `<div class="v3-fs-ctl">
-      <button type="button" class="v3-fs-play" id="v3FsPlay" title="Spela upp filmen i 3D-vyn">${l3pl.rec ? "■" : "▶"}</button>
+      <button type="button" class="v3-fs-play" id="v3FsPlay" title="Spela upp filmen i 3D-vyn (■ stoppar och går till början)">${l3pl.rec ? "■" : "▶"}</button>
+      <button type="button" class="v3-fs-pause" id="v3FsPause" title="Pausa (mellanslag)" ${l3pl.rec ? "" : "disabled"}>${l3pl.rec && l3pl.rec.paused ? "▶" : "⏸"}</button>
       <button type="button" class="v3-fs-rec" id="v3FsRec" title="Spela in filmen och spara som videofil">⏺</button>
       <button type="button" class="v3-fs-add" id="v3FsAdd" title="Lägg kameran som den står nu på datumet där huvudet står (finns det redan en vy där uppdateras den)">＋ Vy här</button>
       <button type="button" class="v3-ic v3-fs-x" id="v3FsClose" title="Stäng tidslinjen">✕</button>
@@ -88,6 +89,7 @@ function l3fsBind(el, t0, t1, W) {
   const track = el.querySelector("#v3FsTrack"), tOf = cx => { const r = track.getBoundingClientRect(); return t0 + Math.max(0, Math.min(1, (cx - r.left) / W)) * (t1 - t0); };
   el.querySelector("#v3FsClose").onclick = () => l3fsToggle(false);
   el.querySelector("#v3FsPlay").onclick = () => l3plFilm(false);
+  el.querySelector("#v3FsPause").onclick = () => l3plPause();
   el.querySelector("#v3FsRec").onclick = () => l3plFilm(true);
   el.querySelector("#v3FsAdd").onclick = () => {
     const date = l3plIso(new Date(Math.round(l3fs.t / 86400000) * 86400000)), list = l3plKeys(), i = list.findIndex(k => k.date === date);

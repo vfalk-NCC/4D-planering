@@ -1461,6 +1461,7 @@ function l3Key(e) {
   // I 3D gäller bara 3D-vyns tangenter (lägesplanens genvägar och 2D-ångra ska inte reagera).
   e.stopImmediatePropagation();
   if (typeof l3wKey === "function" && l3wKey(e)) return; // gå-läget (WASD) har tangenterna
+  if (e.key === " " && typeof l3pl !== "undefined" && l3pl.rec && !e.repeat) { e.preventDefault(); l3plPause(); return; } // filmen: mellanslag pausar
   if (typeof l3HandleKey === "function" && l3HandleKey(e)) return; // drag i ett handtag pågår
   const k = e.key.toLowerCase(), mod = e.ctrlKey || e.metaKey;
   if (typeof l3KeyCustom === "function" && l3KeyCustom(e)) return; // egna kortkommandon gäller först
