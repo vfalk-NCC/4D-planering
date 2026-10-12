@@ -52,7 +52,15 @@ function pdfVecRecorder() {
     get lineWidth() { return S.lineWidth; }, set lineWidth(v) { if (Number.isFinite(v) && v > 0) S.lineWidth = v; },
     get lineCap() { return S.lineCap; }, set lineCap(v) { S.lineCap = v; },
     get lineJoin() { return S.lineJoin; }, set lineJoin(v) { S.lineJoin = v; },
-    globalCompositeOperation: "source-over", filter: "none", shadowBlur: 0, shadowColor: "transparent", shadowOffsetX: 0, shadowOffsetY: 0, miterLimit: 10, lineDashOffset: 0, imageSmoothingEnabled: true,
+    // Sådant som inte blir vektorer (skugga, övertoning, mönster, blandningslägen, filter): elementet görs som bild i stället.
+    unsupported: false,
+    get shadowBlur() { return S.shadowBlur || 0; }, set shadowBlur(v) { S.shadowBlur = v; },
+    get shadowColor() { return S.shadowColor || "transparent"; }, set shadowColor(v) { S.shadowColor = v; },
+    get globalCompositeOperation() { return S.gco || "source-over"; }, set globalCompositeOperation(v) { S.gco = v; if (v !== "source-over") rec.unsupported = true; },
+    get filter() { return "none"; }, set filter(v) { if (v && v !== "none") rec.unsupported = true; },
+    get shadowOffsetX() { return S.shadowOffsetX || 0; }, set shadowOffsetX(v) { S.shadowOffsetX = v; },
+    get shadowOffsetY() { return S.shadowOffsetY || 0; }, set shadowOffsetY(v) { S.shadowOffsetY = v; },
+    miterLimit: 10, lineDashOffset: 0, imageSmoothingEnabled: true,
     save() { stack.push({ ...S, dash: S.dash.slice(), m: S.m.slice() }); },
     restore() { const s = stack.pop(); if (s) Object.assign(S, s); },
     setTransform(a, b, c, d, e, f) { S.m = typeof a === "object" && a ? [a.a, a.b, a.c, a.d, a.e, a.f] : [a, b, c, d, e, f]; },
@@ -104,23 +112,37 @@ function pdfVecRecorder() {
     },
     quadraticCurveTo(cx, cy, x, y) { const p0 = last ? local(last) : [cx, cy]; for (let i = 1; i <= 12; i++) { const t = i / 12, u = 1 - t; add(T([u * u * p0[0] + 2 * u * t * cx + t * t * x, u * u * p0[1] + 2 * u * t * cy + t * t * y])); } },
     bezierCurveTo(ax, ay, bx, by, x, y) { const p0 = last ? local(last) : [ax, ay]; for (let i = 1; i <= 16; i++) { const t = i / 16, u = 1 - t; add(T([u * u * u * p0[0] + 3 * u * u * t * ax + 3 * u * t * t * bx + t * t * t * x, u * u * u * p0[1] + 3 * u * u * t * ay + 3 * u * t * t * by + t * t * t * y])); } },
-    fill() { const c = col(S.fillStyle), a = c.a * S.globalAlpha; const sp = copySubs(); if (a > 0.003 && sp.length) items.push({ t: "F", subs: sp, hex: c.hex, a, clip: S.clip }); },
-    stroke() { const c = col(S.strokeStyle), a = c.a * S.globalAlpha, k = scaleOf(); const sp = copySubs(); if (a > 0.003 && sp.length) items.push({ t: "S", subs: sp, hex: c.hex, a, lw: S.lineWidth * k, dash: S.dash.map(v => v * k), cap: S.lineCap, join: S.lineJoin, clip: S.clip }); },
+    fill() { if (typeof S.fillStyle !== "string") rec.unsupported = true; shadowCheck(); const c = col(S.fillStyle), a = c.a * S.globalAlpha; const sp = copySubs(); if (a > 0.003 && sp.length) items.push({ t: "F", subs: sp, hex: c.hex, a, clip: S.clip }); },
+    stroke() { if (typeof S.strokeStyle !== "string") rec.unsupported = true; shadowCheck(); const c = col(S.strokeStyle), a = c.a * S.globalAlpha, k = scaleOf(); const sp = copySubs(); if (a > 0.003 && sp.length) items.push({ t: "S", subs: sp, hex: c.hex, a, lw: S.lineWidth * k, dash: S.dash.map(v => v * k), cap: S.lineCap, join: S.lineJoin, clip: S.clip }); },
     fillRect(x, y, w, h) { const sv = [subs, cur, last]; this.beginPath(); this.rect(x, y, w, h); this.fill(); [subs, cur, last] = sv; },
     strokeRect(x, y, w, h) { const sv = [subs, cur, last]; this.beginPath(); this.rect(x, y, w, h); this.stroke(); [subs, cur, last] = sv; },
     // Klippning (t.ex. zonens mönster mot zonen): följer med varje del och sparas/återställs med save/restore.
     clip() { const sp = copySubs().filter(x => x.pts.length > 2); if (sp.length) S.clip = (S.clip || []).concat([sp]); },
-    clearRect() {}, drawImage() {}, putImageData() {},
-    createPattern() { return "rgba(0,0,0,0)"; }, createLinearGradient() { return { addColorStop() {} }; }, createRadialGradient() { return { addColorStop() {} }; },
-    fillText(s, x, y) { text(s, x, y, "fill"); },
-    strokeText(s, x, y) { text(s, x, y, "stroke"); },
+    clearRect() {}, putImageData() { rec.unsupported = true; },
+    // Bilder (t.ex. loggan i ritningshuvudet): som bild i PDF:en, rak (vriden/skev = elementet som bild).
+    drawImage(img, a, b, c, d, e, f, g, h) {
+      if (!img) return;
+      const iw = img.naturalWidth || img.videoWidth || img.width, ih = img.naturalHeight || img.videoHeight || img.height;
+      let sx = 0, sy = 0, sw = iw, sh = ih, dx, dy, dw, dh;
+      if (e === undefined) { dx = a; dy = b; dw = c === undefined ? iw : c; dh = d === undefined ? ih : d; }
+      else { sx = a; sy = b; sw = c; sh = d; dx = e; dy = f; dw = g; dh = h; }
+      if (Math.abs(S.m[1]) > 1e-9 || Math.abs(S.m[2]) > 1e-9) { rec.unsupported = true; return; }
+      shadowCheck();
+      items.push({ t: "I", img, sx, sy, sw, sh, p0: T([dx, dy]), p1: T([dx + dw, dy + dh]), a: S.globalAlpha, clip: S.clip });
+    },
+    createPattern() { rec.unsupported = true; return "rgba(0,0,0,0)"; }, createLinearGradient() { rec.unsupported = true; return { addColorStop() {} }; }, createRadialGradient() { rec.unsupported = true; return { addColorStop() {} }; },
+    fillText(s, x, y, mw) { text(s, x, y, "fill", mw); },
+    strokeText(s, x, y, mw) { text(s, x, y, "stroke", mw); },
   };
-  function text(s, x, y, mode) {
+  function shadowCheck() { if ((S.shadowBlur || S.shadowOffsetX || S.shadowOffsetY) && col(S.shadowColor || "transparent").a > 0.01) rec.unsupported = true; }
+  function text(s, x, y, mode, maxW) {
     s = String(s ?? ""); if (!s.trim()) return;
     const c = col(mode === "fill" ? S.fillStyle : S.strokeStyle), a = c.a * S.globalAlpha;
     if (a < 0.003) return;
     const k = scaleOf(), px = parseFloat((S.font.match(/([\d.]+)px/) || [0, 10])[1]);
-    const w = (meas.font = S.font, meas.measureText(s).width);
+    shadowCheck();
+    let w = (meas.font = S.font, meas.measureText(s).width);
+    if (Number.isFinite(maxW) && maxW > 0 && w > maxW) w = maxW; // canvas trycker ihop texten – PDF:en krymper den
     const wt = (S.font.match(/(^|\s)(bold|[6-9]00)(\s|$)/) || [])[0];
     items.push({ t: "T", s, p: T([x, y]), rot: Math.atan2(S.m[1], S.m[0]), size: px * k, w: w * k, bold: !!wt, italic: /italic/.test(S.font),
       align: { start: "left", left: "left", center: "center", right: "right", end: "right" }[S.textAlign] || "left", base: S.textBaseline, hex: c.hex, a, mode, lw: S.lineWidth * k, join: S.lineJoin, clip: S.clip });
@@ -195,6 +217,15 @@ function pdfVecEmit(doc, rec, T, clip) {
         if (dash) doc.setLineDashPattern(dash.length % 2 ? dash.concat(dash) : dash, 0);
         if (pathOf(it.subs)) doc.stroke();
         if (dash) doc.setLineDashPattern([], 0);
+      } else if (it.t === "I") {
+        const a0 = P(it.p0), a1 = P(it.p1), x = Math.min(a0[0], a1[0]), y = Math.min(a0[1], a1[1]), w = Math.abs(a1[0] - a0[0]), h = Math.abs(a1[1] - a0[1]);
+        if (w < 0.01 || h < 0.01 || !boxIn([x, y, x + w, y + h])) continue;
+        setClip(it.clip || null); alpha(it.a);
+        // Bildens egen upplösning, högst ~400 dpi på papperet (som förut aldrig sämre än 300 dpi).
+        const kx = Math.min(1, w / 25.4 * 400 / Math.max(1, it.sw)), cw2 = Math.max(1, Math.round(it.sw * kx)), ch2 = Math.max(1, Math.round(it.sh * kx));
+        const cv = document.createElement("canvas"); cv.width = cw2; cv.height = ch2;
+        cv.getContext("2d").drawImage(it.img, it.sx, it.sy, it.sw, it.sh, 0, 0, cw2, ch2);
+        doc.addImage(cv.toDataURL("image/png"), "PNG", x, y, w, h, undefined, "FAST");
       } else if (it.t === "T") {
         const p = P(it.p);
         if (!inClip([p])) continue;
@@ -223,7 +254,7 @@ function pdfVecEmit(doc, rec, T, clip) {
 /* Reserv: samma inspelning ritad i en canvas (bildens pixlar). */
 function pdfVecReplay(ctx, rec) {
   if (!rec) return;
-  ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.save(); // i ctx:ens nuvarande koordinater (vanligen bildens pixlar)
   const path = subs => { ctx.beginPath(); subs.forEach(sp => { sp.pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); if (sp.closed) ctx.closePath(); }); };
   let curClip = null;
   for (const it of rec.items) {
@@ -233,6 +264,7 @@ function pdfVecReplay(ctx, rec) {
       if (curClip) { ctx.save(); curClip.forEach(sp => { path(sp); ctx.clip(); }); }
     }
     ctx.globalAlpha = it.a;
+    if (it.t === "I") { ctx.drawImage(it.img, it.sx, it.sy, it.sw, it.sh, it.p0[0], it.p0[1], it.p1[0] - it.p0[0], it.p1[1] - it.p0[1]); continue; }
     if (it.t === "F") { ctx.fillStyle = it.hex; path(it.subs); ctx.fill(); }
     else if (it.t === "S") { ctx.strokeStyle = it.hex; ctx.lineWidth = it.lw; ctx.lineCap = it.cap; ctx.lineJoin = it.join; ctx.setLineDash(it.dash || []); path(it.subs); ctx.stroke(); ctx.setLineDash([]); }
     else if (it.t === "T") {

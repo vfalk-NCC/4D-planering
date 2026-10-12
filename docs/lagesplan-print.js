@@ -1845,6 +1845,24 @@ async function exportPrintPdf() {
       drawElement(c.getContext("2d"), { ...el, x: 0, y: 0 }, tpl, u, k);
       return c;
     };
+    /* Ett element som vektorer (lagesplan-pdfvec.js): samma ritfunktion mot inspelaren, i 300 dpi-pixlar som
+       sedan skalas till mm. false = gick inte (t.ex. skugga eller övertoning) – då blir det en bild som förut. */
+    const vecEl = (el, spec) => {
+      if (typeof pdfVecRecorder !== "function") return false;
+      const uu = 300 / 25.4, rec = pdfVecRecorder();
+      let sp;
+      try { sp = spec(); sp.draw(rec, uu); } catch (e) { console.warn("Element som vektorer", el.type, e); return false; }
+      if (rec.unsupported || !rec.items.length) return false;
+      const T = [1 / uu, 0, 0, 1 / uu, sp.x, sp.y];
+      let sk;
+      try { sk = pdfVecEmit(doc, rec, T, [0, 0, W, H]); } catch (e) { console.warn("Element som vektorer", el.type, e); return false; }
+      if (sk.length) { // tecken som Helvetica saknar: just de texterna som bild
+        const bx = rec.items.filter(i => sk.includes(i)), c2 = newCanvas(Math.max(1, Math.ceil(Math.abs(el.w) * k * uu) + 40), Math.max(1, Math.ceil(Math.abs(el.h) * k * uu) + 40));
+        const cx3 = c2.getContext("2d"); cx3.translate(20, 20); pdfVecReplay(cx3, { items: bx });
+        doc.addImage(c2.toDataURL("image/png"), "PNG", sp.x - 20 / uu, sp.y - 20 / uu, c2.width / uu, c2.height / uu, undefined, "FAST");
+      }
+      return true;
+    };
     const maps = tpl.elements.filter(e => e.type === "map");
     // Ritnings-PDF:en som vektorer: UNDER/ÖVER-sidor som sätts ihop med pdf-lib.
     let vec = null;
@@ -1985,14 +2003,18 @@ async function exportPrintPdf() {
             doc.setFontSize(vf); doc.text(doc.splitTextToSize(val, cw - lf * PT_MM)[0] || "", cx + lf * PT_MM * 0.4, ry + rh - vf * PT_MM * 0.12, { baseline: "bottom" });
           });
         });
+      } else if (el.type === "arrow" && vecEl(el, () => { const b = arrowBounds(el); return { x: b.x * k, y: b.y * k, draw: (cx2, u2) => { cx2.translate(-b.x * k * u2, -b.y * k * u2); drawElement(cx2, el, tpl, u2, k); } }; })) {
+        // Pilen som vektorer (Victor 2026-10-12: "samma vektorgrej på allt") – med skugga/övertoning som bild nedan.
       } else if (el.type === "arrow") {
         // Pilen rastreras i 300 dpi i sin egen ruta (spets, tjocklek och skugga får plats).
         const b = arrowBounds(el), uu = 300 / 25.4;
         const c = newCanvas(Math.max(1, Math.ceil(b.w * k * uu)), Math.max(1, Math.ceil(b.h * k * uu))), cx = c.getContext("2d");
         cx.translate(-b.x * k * uu, -b.y * k * uu); drawElement(cx, el, tpl, uu, k);
         doc.addImage(c.toDataURL("image/png"), "PNG", b.x * k, b.y * k, b.w * k, b.h * k, undefined, "FAST");
+      } else if (vecEl(el, () => ({ x, y, draw: (cx2, u2) => drawElement(cx2, { ...el, x: 0, y: 0 }, tpl, u2, k) }))) {
+        // Förklaring, skalstock, norrpil, QR och ritningshuvudet som vektorer och riktig text.
       } else {
-        // Förklaring, skalstock, norrpil och QR: rastrerade i 300 dpi.
+        // Reserv: rastrerade i 300 dpi (skugga, övertoning eller något annat som inte blir vektorer).
         const c = rasterEl(el, 300);
         doc.addImage(c.toDataURL("image/png"), "PNG", Math.min(x, x + w), Math.min(y, y + h), Math.abs(w), Math.abs(h), undefined, "FAST");
       }

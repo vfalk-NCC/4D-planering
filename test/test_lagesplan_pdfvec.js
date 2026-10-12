@@ -109,6 +109,32 @@ const JSPDF = [process.env.JSPDF, path.join(process.env.PLACE_TMP || '/nonexiste
       if (sz.vec > sz.raster * 1.5) fail('Zonerna som vektorer blir för stora: ' + JSON.stringify(sz));
       console.log(`OK: zonerna som vektorer ${Math.round(sz.vec / 1024)} kB mot ${Math.round(sz.raster / 1024)} kB som bild`);
     }
+    // 5) Hela bladet (2026-10-12: "samma vektorgrej på allt"): förklaring, QR, skalstock, norrpil, ritningshuvud, pil
+    //    – samma bild som förut, och allt blir vektorer (skugga/övertoning blir bild).
+    const els = await page.evaluate(async () => {
+      plan.calib = { model: [[0, 0, 0], [100, 0, 0]], pdf: [[0, 0], [1000, 0]] };
+      await openPrint();
+      ['legend', 'qr', 'scalebar', 'north', 'title', 'arrow', 'text', 'callout', 'table'].forEach(t => { if (!pr.tpl.elements.some(e => e.type === t)) addEl(t); });
+      const qr = pr.tpl.elements.find(e => e.type === 'qr'); qr.text = 'https://example.com/ncc-field/projekt/12345?vy=ritningar';
+      const title = pr.tpl.elements.find(e => e.type === 'title'); title.style = 'card'; title.heading = 'INFORMATION';
+      const k = PRINT_FORMATS[pr.tpl.format].w / PAGE_A3[0], u = 300 / 25.4, out = {};
+      for (const el of pr.tpl.elements.filter(e => e.type !== 'map' && e.type !== 'image')) {
+        const w = Math.ceil(Math.abs(el.w) * k * u) + 2, h = Math.ceil(Math.max(Math.abs(el.h), 1) * k * u) + 2;
+        const a = document.createElement('canvas'); a.width = w; a.height = h; drawElement(a.getContext('2d'), { ...el, x: 0, y: 0 }, pr.tpl, u, k);
+        const rec = pdfVecRecorder(); drawElement(rec, { ...el, x: 0, y: 0 }, pr.tpl, u, k);
+        const b = document.createElement('canvas'); b.width = w; b.height = h; pdfVecReplay(b.getContext('2d'), rec);
+        const da = a.getContext('2d').getImageData(0, 0, w, h).data, db = b.getContext('2d').getImageData(0, 0, w, h).data;
+        let diff = 0, ink = 0;
+        for (let i = 0; i < da.length; i += 4) { if (da[i + 3] > 60) ink++; if (Math.abs(da[i + 3] - db[i + 3]) > 120 || (da[i + 3] > 60 && db[i + 3] > 60 && Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]) > 200)) diff++; }
+        out[el.type] = { items: rec.items.length, unsup: rec.unsupported, ratio: +(diff / Math.max(1, ink)).toFixed(3) };
+      }
+      const ar = pr.tpl.elements.find(e => e.type === 'arrow'); ar.shadow = true; const rs = pdfVecRecorder(); drawElement(rs, { ...ar }, pr.tpl, u, k); out.shadowFallback = rs.unsupported; ar.shadow = false;
+      pr.dirty = false; closePrint();
+      return out;
+    });
+    const bad = Object.entries(els).filter(([t, v]) => t !== 'shadowFallback' && (v.unsup || !v.items || v.ratio > (t === 'text' || t === 'callout' || t === 'table' ? 0.35 : 0.12)));
+    if (bad.length || !els.shadowFallback) fail('Bladets element som vektorer: ' + JSON.stringify(els));
+    console.log('OK: bladets element som vektorer – ' + Object.entries(els).filter(([t]) => t !== 'shadowFallback').map(([t, v]) => `${t} ${(v.ratio * 100).toFixed(0)} %`).join(', ') + ' avvikande pixlar; pil med skugga blir bild');
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
   } catch (e) { console.log('FEL: ' + e.message); process.exitCode = 1; }

@@ -317,7 +317,8 @@ const store = new Map([[`projects/${PID}/plan_items.json`, '[]'], [`projects/${P
   const seq = pdl.ops.join(' | ');
   const depth = pdl.ops.reduce((d, o) => d < 0 ? d : d + (/BDC$/.test(o) ? 1 : o === 'EMC' ? -1 : 0), 0);
   if (depth !== 0) fail('BDC/EMC ska vara balanserade: ' + seq);
-  if (!/\/OC \/L1 BDC \| IMG PNG \| EMC/.test(seq)) fail('Zonerna ska ligga i en egen bild i lager L1: ' + seq);
+  // Zonerna ritas som vektorer (2026-10-12) i lager L1 – låtsas-jsPDF:en här samlar bara bilder och operatorer.
+  if (!/\/OC \/L1 BDC \| (IMG PNG \| )?EMC/.test(seq)) fail('Zonerna ska ligga i lager L1: ' + seq);
   if (!/\/OC \/L2 BDC \| IMG PNG \| EMC/.test(seq)) fail('Ritningshuvudet ska ligga i lager L2: ' + seq);
   if (!pdl.ops.includes('SAVED')) fail('PDF:en ska sparas (även om lagren inte kunde läggas till här): ' + JSON.stringify(pdl.alerts));
   await page.evaluate(() => { pr.tpl.pdfLayers = { on: false, map: {}, off: [] }; pr.tpl.elements.forEach(e => delete e.pdfLayer); });
