@@ -189,8 +189,8 @@ function l3gaListFilter(acts, lf) {
     return true;
   });
 }
-function l3gaListHtml(acts, P) {
-  const E = escHtml, lf = P.lf || {}, day = l3plDay(), all = l3plActs(P.split);
+function l3gaListHtml(acts, P, allIn = null) {
+  const E = escHtml, lf = P.lf || {}, day = l3plDay(), all = allIn || l3plActs(P.split);
   const opts = (k, f) => [...new Set(all.map(f).filter(Boolean))].sort((x, y) => x.localeCompare(y, "sv", { numeric: true })).map(v => `<option value="${E(v)}" ${lf[k] === v ? "selected" : ""}>${E(v)}</option>`).join("");
   const list = l3gaListFilter(acts, lf);
   const groups = new Map(); list.forEach(a => { const k = l3gaLaneKey(a, P.groupBy || "area"); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(a); });
@@ -217,9 +217,9 @@ function l3gaListHtml(acts, P) {
   </div>`;
 }
 
-function l3gaBind(d, rr = l3plDockRender) {
+function l3gaBind(d, rr = l3plDockRender, actsFn = null) {
   // rr: ritar om där innehållet visas (panelen nederst eller listan 4D-koppling i vänstermenyn).
-  const P = l3gaP(), set = (k, v) => { l3plSet(k, v); rr(); };
+  const P = l3gaP(), A = actsFn || (() => l3plActs(P.split)), set = (k, v) => { l3plSet(k, v); rr(); };
   const on = (sel, ev, fn) => d.querySelectorAll(sel).forEach(el => { el[ev] = e => fn(el, e); });
   on("[data-plview]", "onclick", b => set("view", b.dataset.plview));
   on("#v3GaGroup", "onchange", s => set("groupBy", s.value));
@@ -241,8 +241,10 @@ function l3gaBind(d, rr = l3plDockRender) {
   // Lappar, staplar och listrader.
   d.querySelectorAll("[data-plk]").forEach(el => {
     el.onclick = e => { if (el._dragged) { el._dragged = false; return; } l3plSelect(el.dataset.plk, P.split); };
-    el.ondblclick = e => { e.preventDefault(); l3gaEdit(el.dataset.plk); };
-    el.oncontextmenu = e => { e.preventDefault(); l3gaNoteMenu(e, el.dataset.plk); };
+    // Excel-planeringens rader (nyckel "x…"): bara markera i 3D – de ändras i 4D-planering (skydd mot fel fil).
+    const xls = /^x/.test(el.dataset.plk);
+    el.ondblclick = e => { e.preventDefault(); if (xls) { l3Status("Excel-planeringen ändras i 4D-planering – här går den att markera i 3D.", true); return; } l3gaEdit(el.dataset.plk); };
+    el.oncontextmenu = e => { e.preventDefault(); if (xls) { l3gaMenu(e, [["Markera i 3D", () => l3plSelect(el.dataset.plk, P.split)]]); return; } l3gaNoteMenu(e, el.dataset.plk); };
     if (P.editable && !el.classList.contains("v3-ga-li")) el.onpointerdown = e => l3gaDragStart(e, el, d);
   });
   // Listan.
@@ -250,9 +252,9 @@ function l3gaBind(d, rr = l3plDockRender) {
   on("[data-galc]", "onchange", c => set("lf", { ...(P.lf || {}), [c.dataset.galc]: c.checked }));
   on("#v3GaClearF", "onclick", () => set("lf", {}));
   on("[data-galopen]", "onclick", b => { const k = "l:" + b.dataset.galopen; l3ga.open.has(k) ? l3ga.open.delete(k) : l3ga.open.add(k); rr(); });
-  on("[data-gamark]", "onclick", b => { const acts = l3gaListFilter(l3plActs(P.split), P.lf || {}).filter(a => l3gaLaneKey(a, P.groupBy || "area") === b.dataset.gamark); l3gaSelectActs(acts, false, b.dataset.gamark); });
-  on("#v3GaShow3d", "onclick", () => l3gaSelectActs(l3gaListFilter(l3plActs(P.split), P.lf || {}), true, "Filtrerat"));
-  on("#v3GaShowCoupled", "onclick", () => l3gaSelectActs(l3plActs(P.split).filter(a => a.coupled), true, "Alla kopplade"));
+  on("[data-gamark]", "onclick", b => { const acts = l3gaListFilter(A(), P.lf || {}).filter(a => l3gaLaneKey(a, P.groupBy || "area") === b.dataset.gamark); l3gaSelectActs(acts, false, b.dataset.gamark); });
+  on("#v3GaShow3d", "onclick", () => l3gaSelectActs(l3gaListFilter(A(), P.lf || {}), true, "Filtrerat"));
+  on("#v3GaShowCoupled", "onclick", () => l3gaSelectActs(A().filter(a => a.coupled), true, "Alla kopplade"));
   // Höjden.
   const g = d.querySelector(".v3-pldock-grip");
   if (g) g.onpointerdown = e => {

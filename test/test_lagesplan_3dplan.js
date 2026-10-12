@@ -258,6 +258,21 @@ const PP = [
     if (src.ex.join() !== 'Etablering bodar' || !src.both.includes('Etablering bodar') || !src.both.includes('Gjutning pelare') || src.bothArea !== 'Excel · Etablering' || !src.fxAreas.includes('Excel · Etablering') || src.pp.includes('Etablering bodar') || !src.sel)
       fail('Filmens planering (PP/Excel/båda): ' + JSON.stringify(src));
     console.log('OK: filmens planering – Powerproject, Excel eller båda (Excel-områdena märkta)');
+    // 4D-koppling (listan i vänstermenyn): Powerproject, Excel eller båda; Excel-rader går inte att redigera här.
+    const lk = await page.evaluate(async () => {
+      l3PalTab('plan'); l3plSet('secOpen', { film: true, link: true, other: true });
+      const names = () => { const P = l3gaP(); l3plSet('dock', P); return [...document.querySelectorAll('#v3PlLinkHost [data-galopen]')].map(b => b.textContent); };
+      const pick = async v => { const s = document.getElementById('v3PlLinkSrc'); s.value = v; s.dispatchEvent(new Event('change')); await new Promise(r => setTimeout(r, 200)); };
+      await pick('both'); const both = l3plLinkActs(false).map(a => a.name);
+      document.querySelectorAll('#v3PlLinkHost [data-galopen]').forEach(b => l3ga.open.add('l:' + b.dataset.galopen)); l3plRenderTab();
+      const xrow = document.querySelector('#v3PlLinkHost [data-plk^="x"]'); let dlg = false;
+      if (xrow) { xrow.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); dlg = !!document.querySelector('.v3-ga-dlg'); }
+      await pick('excel'); const ex = l3plLinkActs(false).map(a => a.name);
+      await pick('pp'); const pp = l3plLinkActs(false).map(a => a.name);
+      return { both, ex, pp, xrow: !!xrow, dlg };
+    });
+    if (!lk.both.includes('Etablering bodar') || !lk.both.includes('Gjutning pelare') || lk.ex.join() !== 'Etablering bodar' || lk.pp.includes('Etablering bodar') || !lk.xrow || lk.dlg) fail('4D-koppling PP/Excel/båda: ' + JSON.stringify(lk));
+    console.log('OK: 4D-koppling – Powerproject, Excel eller båda; Excel-raderna skyddade mot redigering här');
     // Valen finns i fliken.
     const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlFxBl', 'v3FlFxLegend', 'v3FlAnimDef', 'v3PlLinkHost', 'v3FlTitleOn'].every(id => document.getElementById(id)); });
     if (!ui) fail('Valen för grafiken saknas i fliken');
