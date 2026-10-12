@@ -21,9 +21,9 @@ function l3fsRange() {
   return [l3plDate(lo).getTime(), l3plDate(hi > lo ? hi : l3gaAdd(lo, 1)).getTime()];
 }
 function l3fsToggle(on = !l3fsOn()) {
-  if (!on && typeof l3animReset === "function") l3animReset(); // objekten tillbaka till sitt grundläge
   l3plSet("film", { ...(l3plPrefs().film || {}), strip: on });
   if (on && !l3pl.rows) l3plLoad().then(l3fsRender);
+  if (!on && typeof l3animReset === "function") l3animReset(); // objekten tillbaka till sitt grundläge
   l3fsRender(); l3plRenderTab();
 }
 /* Pärlbandet: [{ a, x (0–1), row }] – högst tre rader, i startordning; det som inte får plats räknas. */
@@ -45,7 +45,7 @@ function l3fsRender() {
   const host = document.getElementById("v3Canvas");
   if (!host) return;
   let el = document.getElementById("v3FilmStrip");
-  if (!l3fsOn()) { if (el) el.remove(); return; }
+  if (!l3fsOn()) { if (el) el.remove(); host.style.removeProperty("--v3-sb"); return; }
   if (!l3pl.rows) { l3plLoad().then(l3fsRender); return; }
   if (l3plFilmSrc() !== "pp" && !l3pl.xrows) { l3plLoadX().then(l3fsRender); return; }
   if (!el) {
@@ -56,8 +56,9 @@ function l3fsRender() {
   const dock = document.getElementById("v3PlanDock");
   el.style.bottom = (dock ? dock.offsetHeight : 0) + "px";
   const [t0, t1] = l3fsRange(), E = escHtml, keys = l3plKeys();
-  const aks = typeof l3animAll === "function" ? l3animAll().flatMap(p => l3animKeys(p).map(k => ({ id: p.id, name: p.name || p.type, date: k.date }))) : [];
+  const aks = typeof l3animAll === "function" ? l3animAll().flatMap(p => l3animKeys(p).map(k => ({ id: p.id, name: p.name || p.type, date: k.date, v: k.v }))) : [];
   l3fs.aks = aks;
+  const sel = typeof placements !== "undefined" && l3 ? [...l3.sel].map(id => placements.find(q => q.id === id)).filter(Boolean) : [], faceAll = sel.length > 0 && sel.every(q => q.animFace === true);
   const W = Math.max(200, host.clientWidth - 274 - 24), U = t => (t - t0) / (t1 - t0);
   if (l3fs.t === null || l3fs.t < t0 || l3fs.t > t1) l3fs.t = Math.min(t1, Math.max(t0, l3plDate(l3plDay()).getTime()));
   // Datumen: månader (och veckor när intervallet är kort).
@@ -80,17 +81,20 @@ function l3fsRender() {
       <button type="button" class="v3-ic v3-fs-x" id="v3FsClose" title="Stäng tidslinjen">✕</button>
       <div class="v3-fs-date" id="v3FsDate"></div>
       <div class="v3-fs-range">${E(l3plShortIso(t0))} – ${E(l3plShortIso(t1))}</div>
+      <div class="v3-fs-opts" title="Gäller ◆ Nyckel (objektanimering)"><label title="Objektet syns från den här nyckeln och framåt (till nästa nyckel). Avbockad = det försvinner."><input type="checkbox" id="v3FsVis" ${l3fs.vis === false ? "" : "checked"} /> Synlig</label><label title="Visa objektens rörelsebanor som streckade linjer (syns inte i uppspelning och film)"><input type="checkbox" id="v3FsPath" ${(l3plPrefs().film || {}).animPath === false ? "" : "checked"} /> Bana</label><label title="De markerade objekten vrids efter färdriktningen"><input type="checkbox" id="v3FsFace" ${faceAll ? "checked" : ""} /> Följ banan</label></div>
     </div>
     <div class="v3-fs-track" id="v3FsTrack" style="--w:${W}px">
       <div class="v3-fs-days">${days.map(d => `<i class="${d.we ? "we" : ""}" style="left:${(d.u * W).toFixed(1)}px;width:${Math.max(1, dayPx).toFixed(1)}px"></i>`).join("")}</div>
       <div class="v3-fs-axis">${ticks.map(k => `<span class="${k.m ? "m" : "w"}" style="left:${k.u * W}px">${E(k.t)}</span>`).join("")}
-        ${aks.map((a, i) => `<button type="button" class="v3-fs-ak" data-fsa="${i}" style="left:${U(l3animDate(a.date)) * W}px" title="${E(a.name)} · ${E(a.date)} – tryck: gå dit och markera · dra: flytta · högerklick: ta bort"></button>`).join("")}
+        ${aks.map((a, i) => `<button type="button" class="v3-fs-ak ${a.v === false ? "off" : ""}" data-fsa="${i}" style="left:${U(l3animDate(a.date)) * W}px" title="${E(a.name)} · ${E(a.date)}${a.v === false ? " (osynlig härifrån)" : ""} – tryck: gå dit och markera · dra: flytta · högerklick: ta bort"></button>`).join("")}
         ${keys.map((k, i) => `<button type="button" class="v3-fs-key" data-fsk="${i}" style="left:${U(l3plDate(k.date).getTime()) * W}px" title="${E(k.name || "Vy")} · ${E(k.date)} – tryck: gå dit · dra: flytta · högerklick: ta bort">🎥</button>`).join("")}
       </div>
       <div class="v3-fs-head" id="v3FsHead"></div>
     </div>`;
   l3fsBind(el, t0, t1, W);
   l3fsPlayhead(l3fs.t, true);
+  host.style.setProperty("--v3-sb", (el.offsetHeight + (dock ? dock.offsetHeight : 0)) + "px"); // hörnets reglage lyfts ovanför tidslinjen
+  if (typeof l3animPaths === "function") { l3animPaths(); l3Render(); }
 }
 function l3fsBind(el, t0, t1, W) {
   const track = el.querySelector("#v3FsTrack"), tOf = cx => { const r = track.getBoundingClientRect(); return t0 + Math.max(0, Math.min(1, (cx - r.left) / W)) * (t1 - t0); };
@@ -103,6 +107,9 @@ function l3fsBind(el, t0, t1, W) {
     l3plKeyAdd(l3plCam(), date, i >= 0 ? list[i].name : `Vy ${list.length + 1}`);
     l3fsRender();
   };
+  el.querySelector("#v3FsVis").onchange = e => { l3fs.vis = e.target.checked; };
+  el.querySelector("#v3FsPath").onchange = e => { l3plSet("film", { ...l3plPrefs().film, animPath: e.target.checked }); l3animPaths(); l3Render(); };
+  el.querySelector("#v3FsFace").onchange = e => { if (!l3animFaceSet(e.target.checked)) { e.target.checked = false; return; } l3animApply(l3fs.t); l3Render(); };
   el.querySelector("#v3FsAKey").onclick = () => {
     const date = l3plIso(new Date(Math.round(l3fs.t / 86400000) * 86400000));
     if (typeof l3animCapture === "function" && l3animCapture(date)) l3fsRender();
@@ -118,7 +125,7 @@ function l3fsBind(el, t0, t1, W) {
         b.onpointermove = b.onpointerup = null;
         const k = a(); if (!k) return;
         if (moved) { const to = l3plIso(new Date(Math.round(tOf(ev.clientX) / 86400000) * 86400000)); l3animMove(k.id, k.date, to); l3fsRender(); l3Status(`Nyckeln flyttad till ${to}.`); }
-        else { l3fsSeek(l3animDate(k.date)); if (typeof l3SelectIds === "function") l3SelectIds([k.id]); }
+        else { l3fsSeek(l3animDate(k.date)); if (typeof l3SelectIds === "function") l3SelectIds([k.id]); l3fsRender(); }
       };
     };
     b.oncontextmenu = e => { e.preventDefault(); const k = a(); if (!k) return; l3animRemove(k.id, k.date); l3fsRender(); l3Status(`Nyckeln ${k.date} borttagen.`); };

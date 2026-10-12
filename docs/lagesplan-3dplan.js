@@ -173,8 +173,8 @@ const l3plFilms = () => (((l3plPrefs().films || {})[l3ViewKey()]) || []).filter(
 const l3plFilmsSet = list => { const all = { ...(l3plPrefs().films || {}) }; all[l3ViewKey()] = list.slice(0, 40); l3plSet("films", all); };
 function l3plFilmSnap(name) {
   const f = { ...(l3plPrefs().film || {}) }; delete f.strip;
-  const anim = {}; (typeof l3animAll === "function" ? l3animAll() : []).forEach(p => { anim[p.id] = l3animKeys(p).map(k => ({ ...k })); });
-  return { name, at: new Date().toISOString(), film: JSON.parse(JSON.stringify(f)), keys: l3plKeys().map(k => ({ ...k })), anim };
+  const anim = {}, face = {}; (typeof l3animAll === "function" ? l3animAll() : []).forEach(p => { anim[p.id] = l3animKeys(p).map(k => ({ ...k })); if (p.animFace) face[p.id] = true; });
+  return { name, at: new Date().toISOString(), film: JSON.parse(JSON.stringify(f)), keys: l3plKeys().map(k => ({ ...k })), anim, face };
 }
 async function l3plFilmSave() {
   const list = l3plFilms(), sug = l3pl.filmSel && list.find(x => x.name === l3pl.filmSel) ? l3pl.filmSel : `Film ${list.length + 1}`;
@@ -194,7 +194,7 @@ async function l3plFilmLoad(name) {
   l3plKeysSet((snap.keys || []).map(k => ({ ...k })));
   if (typeof placements !== "undefined") placements.forEach(p => {
     const ks = (snap.anim || {})[p.id], had = Array.isArray(p.anim) && p.anim.length;
-    if (ks && ks.length) p.anim = ks.map(k => ({ ...k })); else if (had) delete p.anim; else return;
+    if (ks && ks.length) { p.anim = ks.map(k => ({ ...k })); if ((snap.face || {})[p.id]) p.animFace = true; else delete p.animFace; } else if (had) { delete p.anim; delete p.animFace; } else return;
     if (typeof placeTouch === "function") placeTouch(p);
   });
   l3pl.filmSel = snap.name;

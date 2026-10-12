@@ -300,6 +300,29 @@ const PP = [
     });
     if (an.none !== 0 || an.n1 !== 1 || an.n2 !== 1 || Math.abs(an.mid[0] - 10) > 0.01 || an.mid[1] !== 45 || an.before !== 5 || an.after !== 15 || an.marks !== 2 || !an.btn || !an.saved || !an.moved || !an.removed || !an.back) fail('Objektanimering på tidslinjen: ' + JSON.stringify(an));
     else console.log('OK: objektanimering – ◆ Nyckel på tidslinjen, mjuk rörelse och vridning mellan nycklarna, flytta/ta bort nyckel');
+    // Synlig mellan datum, rörelsebana och följ banan (vrids efter färdriktningen).
+    const vf = await page.evaluate(async () => {
+      const O = l3.O, p = { id: 'vf1', type: 'tornkran', name: 'Lastbil', x: O[0], y: O[1], z: 0, L: 2, B: 2, H: 3, R: 0, rot: 0 };
+      placements.push(p); const g = l3AddPlacementMesh(p); l3SelectIds(['vf1']);
+      l3plSet('film', { ...l3plPrefs().film, strip: false, animPath: true }); l3fsToggle(true); await new Promise(r => setTimeout(r, 300));
+      const D = iso => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)), at = (x, y, rot, date, vis) => { g.position.set(x - O[0], y - O[1], g.position.z); g.rotation.z = rot * Math.PI / 180; l3fs.vis = vis; return l3animCapture(date); };
+      at(O[0], O[1], 0, '2026-10-10', true); at(O[0] + 10, O[1], 0, '2026-10-20', true); at(O[0] + 10, O[1] + 10, 0, '2026-10-30', false); l3fs.vis = true;
+      l3fsRender(); const pathKids = l3.groups.anim ? l3.groups.anim.children.length : 0, marks = document.querySelectorAll('#v3FilmStrip .v3-fs-ak').length, off = document.querySelectorAll('#v3FilmStrip .v3-fs-ak.off').length;
+      const sb = parseFloat(document.getElementById('v3Canvas').style.getPropertyValue('--v3-sb')) || 0, lift = l3.triadEl && parseFloat(getComputedStyle(l3.triadEl).bottom) >= sb + 5 && sb > 40;
+      l3animApply(D('2026-10-15')); const vis1 = g.visible; l3animApply(D('2026-10-25')); const vis2 = g.visible; /* osynlig först från sista nyckeln */ l3animApply(D('2026-10-30')); const vis3 = g.visible;
+      const face0 = Math.round(g.rotation.z * 180 / Math.PI);
+      document.getElementById('v3FsFace').checked = true; document.getElementById('v3FsFace').dispatchEvent(new Event('change'));
+      const on = p.animFace === true;
+      l3animApply(D('2026-10-15')); const r1 = Math.round(g.rotation.z * 180 / Math.PI);
+      l3animApply(D('2026-10-25')); const r2 = Math.round(g.rotation.z * 180 / Math.PI);
+      l3animApply(D('2026-10-20')); const rk = Math.round(g.rotation.z * 180 / Math.PI);
+      document.getElementById('v3FsPath').checked = false; document.getElementById('v3FsPath').dispatchEvent(new Event('change')); const hidden = l3.groups.anim.visible === false;
+      l3animReset(); const back = g.visible === true;
+      l3fsToggle(false); placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(g); l3.placeMeshes.delete('vf1');
+      return { lift, sb, pathKids, marks, off, vis1, vis2, vis3, face0, on, r1, r2, rk, hidden, back };
+    });
+    if (!vf.lift || vf.pathKids !== 2 || vf.marks !== 3 || vf.off !== 1 || !vf.vis1 || !vf.vis2 || vf.vis3 || vf.face0 !== 0 || !vf.on || vf.r1 !== 0 || vf.r2 !== 90 || Math.abs(vf.rk - 45) > 1 || !vf.hidden || !vf.back) fail('Synlig/bana/följ banan: ' + JSON.stringify(vf));
+    else console.log('OK: objektanimering – synlig mellan datum, rörelsebana och följ banan (vrids efter färdriktningen)');
     // Sparade filmer: intervall, grafik, kameravyer och objektens animering sparas under ett namn och läses in igen.
     const hFilm = d => d.accept(d.type() === 'prompt' ? 'Testfilm' : undefined); page.__uiDialogHandlers.push(hFilm);
     const sf = await page.evaluate(async () => {
