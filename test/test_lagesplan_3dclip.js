@@ -55,6 +55,7 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   }, DXF('GRUND'));
   await page.click('#btn3d');
   await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.renderer, null, { timeout: 15000 });
+  await page.evaluate(() => { l3SetPref('navHelp', false); l3NavHelp(); }); // navigeringsrutan nere till vänster kan täcka högerklickspunkten
   // 2D-lagren är släckta när 3D öppnas – DXF:en tänds i 3D (som användaren gör under Lager).
   await page.waitForFunction(() => l3s.snap2d, null, { timeout: 10000 });
   await page.evaluate(() => { setLayersVisible(cads().map(r => 'cad:' + r.id), true); l3sRefresh(0); });

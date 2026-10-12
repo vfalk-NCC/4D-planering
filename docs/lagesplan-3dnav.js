@@ -41,7 +41,7 @@ function l3NavHelp() {
   const host = l3.renderer.domElement.parentElement;
   let box = document.getElementById("v3NavHelp");
   if (!box) { box = document.createElement("div"); box.id = "v3NavHelp"; box.className = "v3-navhelp"; host.appendChild(box); box.addEventListener("pointerdown", e => e.stopPropagation()); box.addEventListener("wheel", e => e.stopPropagation()); }
-  const P = l3Prefs(), open = P.navHelp !== false, tekla = l3IsTekla(), touch = l3IsTouch();
+  const P = l3Prefs(), open = P.navHelp === undefined ? !l3IsTouch() : P.navHelp !== false, tekla = l3IsTekla(), touch = l3IsTouch();
   const r = (k, t) => `<div class="v3-nh-r"><span class="v3-nh-k">${k}</span><span>${t}</span></div>`;
   const m = (b, x) => `<i class="v3-nh-m ${b}"></i>${x || ""}`;
   const rows = touch ? [
