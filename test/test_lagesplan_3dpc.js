@@ -53,6 +53,28 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     if (!e57.error || !/LAZ eller LAS/.test(e57.error)) fail('E57 ska ge ett tydligt besked: ' + JSON.stringify(e57));
     console.log('OK: workern läser LAS, LAZ (samma moln), XYZ och PLY, glesar ut till budgeten, E57 ger besked');
 
+    // 1b. Filer från datorn läses bit för bit direkt från disken (Victor 2026-10-12: "punktmoln på över 2gb"):
+    //     samma moln som när hela filen ligger i minnet – LAS, LAZ med ett block och LAZ med flera block (format 3 och 7).
+    const parseFile = (b64, name, budget) => page.evaluate(([b64, name, budget]) => new Promise((res, rej) => {
+      const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      const w = new Worker('pc-worker.js');
+      w.onmessage = ev => { if (ev.data.type === 'progress') return; w.terminate(); if (ev.data.type === 'error') return res({ error: ev.data.message });
+        const { info, chunks } = ev.data; let n = 0, sx = 0, rgbSum = 0; chunks.forEach(c => { n += c.pos.length / 3; for (let i = 0; i < c.pos.length; i += 3) sx += c.pos[i]; for (let i = 0; i < c.rgb.length; i++) rgbSum += c.rgb[i]; });
+        res({ info, n, chunks: chunks.length, sx: Math.round(sx * 100) / 100, rgbSum }); };
+      w.onerror = e => rej(new Error(e.message));
+      w.postMessage({ file: new File([u], name), name, budget });
+    }), [b64, name, budget]);
+    for (const f of ['simple.las', 'simple.laz', 'multichunk_f3.laz', 'multichunk_f7.laz']) {
+      const b64 = fs.readFileSync(path.join(__dirname, 'data', f)).toString('base64');
+      const mem = await parse(b64, f, 1e7), disk = await parseFile(b64, f, 1e7);
+      if (mem.error || disk.error || mem.n !== disk.n || mem.sx !== disk.sx || mem.rgbSum !== disk.rgbSum || !/i block/.test(disk.info.format))
+        fail(`${f}: filvägen ska ge samma moln: ` + JSON.stringify({ mem: { n: mem.n, sx: mem.sx, rgb: mem.rgbSum, e: mem.error }, disk: { n: disk.n, sx: disk.sx, rgb: disk.rgbSum, e: disk.error, f: disk.info && disk.info.format } }));
+      if (/multichunk/.test(f) && disk.n !== 123457) fail(`${f}: alla 123457 punkter`);
+      const sub2 = await parseFile(b64, f, 500);
+      if (sub2.error || !(sub2.n > 0 && sub2.n <= 700)) fail(`${f}: utglesning från disk: ` + JSON.stringify(sub2));
+    }
+    console.log('OK: filer från datorn läses bit för bit (LAS, LAZ med ett och flera block, punktformat 3 och 7) – samma moln');
+
     // 2. I 3D-vyn: från en fil, ur Trimble Connect-mappen, tänd/släck, färg, storlek, cache.
     const center = await page.evaluate(b64 => { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); window.__laz = u.buffer; return null; }, LAZ.toString('base64'));
     await page.evaluate(async () => {
@@ -98,14 +120,6 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     await page.evaluate(() => { l3Frame(true); l3Render(); }); await page.waitForTimeout(400);
     await page.screenshot({ path: path.join(process.env.PLACE_TMP || '.', '3dpc.png') });
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
-    // Fil från datorn läses i bitar; för stor fil och oläsbar fil ger begripliga besked (Victor 2026-10-12).
-    const rf = await page.evaluate(async () => {
-      const ok = new Uint8Array(await l3pcReadFile(new File([new Uint8Array([1, 2, 3, 4, 5])], 'a.las'), () => {}));
-      const big = await l3pcReadFile({ size: 3e9, slice() { throw new Error('ska inte läsas'); } }, () => {}).catch(e => e.message);
-      const bad = await l3pcReadFile({ size: 10, slice() { return { arrayBuffer: () => Promise.reject(Object.assign(new Error('x'), { name: 'NotReadableError' })) }; } }, () => {}).catch(e => e.message);
-      return { ok: [...ok].join(), big, bad };
-    });
-    if (rf.ok !== '1,2,3,4,5' || !/3,0 GB/.test(rf.big) || !/OneDrive/.test(rf.bad)) fail('Läsa fil från datorn: ' + JSON.stringify(rf));
     console.log('OK: punktmoln i 3D – ur TC-mappen, tänd/släck, färg efter höjd, punktstorlek, cache');
   } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

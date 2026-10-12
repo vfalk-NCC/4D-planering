@@ -71,7 +71,9 @@ function l3pcParse(bytes, name, onProgress) {
       if (d.type === "done") res(d); else rej(new Error(d.message || "Kunde inte läsa punktmolnet."));
     };
     w.onerror = e => { w.terminate(); rej(new Error(e.message || "Kunde inte läsa punktmolnet.")); };
-    w.postMessage({ bytes, name, budget: l3pcBudget() }, [bytes]);
+    // En fil från datorn (Blob) läses av workern direkt från disken, bit för bit – ingen kopia i minnet.
+    if (typeof Blob !== "undefined" && bytes instanceof Blob) w.postMessage({ file: bytes, name, budget: l3pcBudget() });
+    else w.postMessage({ bytes, name, budget: l3pcBudget() }, [bytes]);
   });
 }
 
@@ -195,30 +197,10 @@ function l3pcFromFile() {
       if (!f) return;
       if (/\.e57$/i.test(f.name)) { l3Status("E57 kan inte läsas här än – exportera molnet som LAZ eller LAS (t.ex. i Trimble Business Center, RealWorks eller CloudCompare).", true); return; }
       const src = { id: `pc:l:${f.name}:${f.size}:${f.lastModified}`, name: f.name, version: `${f.size}-${f.lastModified}`, local: true };
-      l3pcLoad(src, onP => l3pcReadFile(f, onP));
+      l3pcLoad(src, async onP => { onP(1); return f; }); // filen själv: workern läser den bit för bit (även över 2 GB)
     };
   }
   l3pcInput.click();
-}
-/* Läser en fil från datorn i bitar (Victor 2026-10-12: "Kunde inte visa punktmolnet NSV_Vitafors-full_261009.laz:
-   The requested file could not be read …"). Webbläsaren klarar inte filer över ~2 GB i ett stycke, och en fil i
-   OneDrive/SharePoint som bara finns "online" eller som ändras efter att den valts går inte att läsa – då ett
-   begripligt besked i stället för webbläsarens. */
-const L3PC_MAXFILE = 1.9e9;
-async function l3pcReadFile(f, onP) {
-  const gb = n => (n / 1e9).toFixed(1).replace(".", ",");
-  if (f.size > L3PC_MAXFILE) throw new Error(`filen är ${gb(f.size)} GB – webbläsaren kan inte läsa filer över ca 1,9 GB. Dela upp molnet eller exportera en glesare kopia (t.ex. i Trimble Business Center, RealWorks eller CloudCompare: Subsample/Tiles) och välj den.`);
-  const out = new Uint8Array(f.size), step = 64 * 1024 * 1024;
-  try {
-    for (let o = 0; o < f.size; o += step) {
-      out.set(new Uint8Array(await f.slice(o, Math.min(f.size, o + step)).arrayBuffer()), o);
-      onP(Math.min(1, (o + step) / f.size));
-    }
-  } catch (e) {
-    if (e && (e.name === "NotReadableError" || e.name === "NotFoundError")) throw new Error("webbläsaren fick inte läsa filen. Ligger den i OneDrive/SharePoint som \"endast online\" eller ändrades den efter att du valde den? Kopiera filen till en lokal mapp (t.ex. Skrivbordet) och välj den igen med ＋ Punktmoln från fil… – eller lägg den i Trimble Connect och tänd den under Trimble Connect mapp.");
-    throw e;
-  }
-  return out.buffer;
 }
 /* Vid öppning: de tända molnen direkt ur cachen (inte på iPhone/iPad – minnet; de tänds för hand). */
 async function l3pcRestore() {
