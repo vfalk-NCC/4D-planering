@@ -281,6 +281,17 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     await page.click(`#v3PalComments [data-afsolo="${f0.cur}"]`); await page.waitForTimeout(200);
     const solo = await page.evaluate(() => ({ signs: l3.groups.csigns.children.filter(o => o.isSprite).length, meas: document.querySelectorAll('.v3-meas-keep').length, hid: l3Prefs().annotHidden }));
     if (solo.signs !== 1 || solo.meas !== 1 || !solo.hid._) fail('Visa bara mappen: ' + JSON.stringify(solo));
+    // Fäll ut mappen: kommentaren och måttet syns i den och tänds/släcks styckvis (2026-10-12).
+    await page.click(`#v3PalComments [data-afexp="${f0.cur}"]`); await page.waitForTimeout(150);
+    const ins = await page.evaluate(() => [...document.querySelectorAll('#v3PalComments .v3-afi')].map(r => r.textContent.trim()));
+    if (ins.length !== 2 || !ins.some(t => /Avstånd 5 m/.test(t))) fail('Mappens innehåll: ' + JSON.stringify(ins));
+    const mid2 = await page.evaluate(() => l3m.list.find(m => m.text === '5 m').id);
+    await page.click(`#v3PalComments [data-afi-eye="${mid2}"]`); await page.waitForTimeout(150);
+    const one = await page.evaluate(() => ({ signs: l3.groups.csigns.children.filter(o => o.isSprite).length, meas: document.querySelectorAll('.v3-meas-keep').length, off: document.querySelectorAll('#v3PalComments .v3-afi.off').length }));
+    if (one.signs !== 1 || one.meas !== 0 || one.off !== 1) fail('Släck ett mått i mappen: ' + JSON.stringify(one));
+    await page.click(`#v3PalComments [data-afi-eye="${mid2}"]`); await page.waitForTimeout(150);
+    if ((await page.evaluate(() => document.querySelectorAll('.v3-meas-keep').length)) !== 1) fail('Tänd måttet igen');
+    await page.click(`#v3PalComments [data-afexp="${f0.cur}"]`);
     // Ta bort mappen: innehållet hamnar i Utan mapp.
     await page.evaluate(() => { window.__c = uiConfirm; uiConfirm = async () => true; });
     await page.click(`#v3PalComments [data-afdel="${f0.cur}"]`); await page.waitForTimeout(500);
