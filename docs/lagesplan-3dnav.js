@@ -52,9 +52,11 @@ function l3NavHelp() {
       r(m("w") + "Hjul", "Zooma mot markören"), r("Dubbelklick", "Flyg till punkten"),
       r("<kbd>V</kbd>", "Rotationscentrum"), r("<kbd>F</kbd>", "Zooma till markerat"), r("<kbd>Ctrl</kbd>+<kbd>P</kbd>", "Plan ↔ 3D"),
       r("<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>", `<button type="button" class="v3-link" data-nh="walk">Gå runt…</button>`)];
-  box.innerHTML = `<button type="button" class="v3-nh-b ${open ? "on" : ""}" data-nh="tog" title="${open ? "Dölj" : "Visa"} navigeringen">${L3_NAV_ICO}<span>Navigering</span></button>`
-    + (open ? `<div class="v3-nh-card">${touch ? "" : `<div class="v3-segs v3-nh-seg">${[["standard", "Standard"], ["tekla", "Som i Tekla"]].map(([k, l]) => `<button type="button" data-nh-mouse="${k}" class="${(tekla ? "tekla" : "standard") === k ? "on" : ""}">${l}</button>`).join("")}</div>`}${rows.join("")}</div>` : "");
-  box.querySelector('[data-nh="tog"]').onclick = () => { l3SetPref("navHelp", !open); l3NavHelp(); };
+  // Knappen sitter nederst i menyraden (Victor 2026-10-12): här bara rutan, med ✕ för att stänga.
+  box.innerHTML = (open ? `<div class="v3-nh-card"><button type="button" class="v3-nh-x" data-nh="tog" title="Dölj navigeringen">✕</button>${touch ? "" : `<div class="v3-segs v3-nh-seg">${[["standard", "Standard"], ["tekla", "Som i Tekla"]].map(([k, l]) => `<button type="button" data-nh-mouse="${k}" class="${(tekla ? "tekla" : "standard") === k ? "on" : ""}">${l}</button>`).join("")}</div>`}${rows.join("")}</div>` : "");
+  const tog = box.querySelector('[data-nh="tog"]'); if (tog) tog.onclick = () => { l3SetPref("navHelp", false); l3NavHelp(); };
+  const fb = document.getElementById("v3FtNav"); if (fb) { fb.classList.toggle("on", open); fb.setAttribute("aria-pressed", open); }
+  host.style.setProperty("--v3-nh", open && box.offsetHeight ? box.offsetHeight + 8 + "px" : "0px"); // förklaringen ligger ovanför rutan
   const w = box.querySelector('[data-nh="walk"]'); if (w) w.onclick = () => { if (typeof l3wStart === "function") l3wStart(); };
   box.querySelectorAll("[data-nh-mouse]").forEach(b => { b.onclick = () => {
     l3SetPref("mouse", b.dataset.nhMouse); l3ApplyMouse(); l3NavHelp();

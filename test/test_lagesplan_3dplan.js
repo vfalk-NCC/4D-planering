@@ -300,6 +300,21 @@ const PP = [
     });
     if (an.none !== 0 || an.n1 !== 1 || an.n2 !== 1 || Math.abs(an.mid[0] - 10) > 0.01 || an.mid[1] !== 45 || an.before !== 5 || an.after !== 15 || an.marks !== 2 || !an.btn || !an.saved || !an.moved || !an.removed || !an.back) fail('Objektanimering på tidslinjen: ' + JSON.stringify(an));
     else console.log('OK: objektanimering – ◆ Nyckel på tidslinjen, mjuk rörelse och vridning mellan nycklarna, flytta/ta bort nyckel');
+    // Nederkanten: knappar för Status och Navigering (ingen knapp längre över bilden).
+    const ft = await page.evaluate(() => {
+      const L = () => document.getElementById('v3Legend'), N = () => document.getElementById('v3NavHelp'), bl = document.getElementById('v3FtLegend'), bn = document.getElementById('v3FtNav');
+      if (!bl || !bn) return { missing: true };
+      l3SetPref('legend', true); l3SetPref('navHelp', true); l3NavHelp(); L().classList.remove('hidden');
+      const open0 = !!N().querySelector('.v3-nh-card') && bn.classList.contains('on') && !N().querySelector('.v3-nh-b');
+      bn.click(); const closed = !N().querySelector('.v3-nh-card') && !bn.classList.contains('on') && l3Prefs().navHelp === false;
+      bn.click(); const reopen = !!N().querySelector('.v3-nh-card') && bn.classList.contains('on');
+      N().querySelector('.v3-nh-x').click(); const xclose = !N().querySelector('.v3-nh-card') && !bn.classList.contains('on');
+      bl.click(); const legOff = L().classList.contains('hidden') && !bl.classList.contains('on') && l3Prefs().legend === false && document.getElementById('v3LegendChk').checked === false;
+      bl.click(); const legOn = !L().classList.contains('hidden') && bl.classList.contains('on');
+      bn.click(); return { open0, closed, reopen, xclose, legOff, legOn };
+    });
+    if (ft.missing || !ft.open0 || !ft.closed || !ft.reopen || !ft.xclose || !ft.legOff || !ft.legOn) fail('Status/Navigering i nederkanten: ' + JSON.stringify(ft));
+    else console.log('OK: knappar för Status och Navigering längst ner (navigeringsrutan utan egen knapp över bilden)');
     // Synlig mellan datum, rörelsebana och följ banan (vrids efter färdriktningen).
     const vf = await page.evaluate(async () => {
       const O = l3.O, p = { id: 'vf1', type: 'tornkran', name: 'Lastbil', x: O[0], y: O[1], z: 0, L: 2, B: 2, H: 3, R: 0, rot: 0 };

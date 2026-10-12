@@ -324,6 +324,7 @@ function l3Dom() {
       <span class="v3-status" id="v3Status"></span><a class="v3-status-link hidden" id="v3StatusLink" target="_blank" rel="noopener" title="Öppna mappen i Trimble Connect">Öppna i TC ↗</a>
       <label class="v3-chk" title="Objektet ställer sig på ytan under sig när du släpper handtagen"><input type="checkbox" id="v3Snap" ${P.snap ? "checked" : ""} /> Fäst mot ytor</label>
       <select id="v3Step" title="Steg för piltangenterna – och för handtagen medan Skift hålls ned (annars flyttar och vrider de fritt)">${[["0", "fritt"], ["0.1", "0,1 m · 5°"], ["0.5", "0,5 m · 15°"], ["1", "1 m · 45°"]].map(([v, l]) => `<option value="${v}" ${P.step === v ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <span class="v3-ft-tg"><button type="button" id="v3FtLegend" class="v3-ft-t ${P.legend ? "on" : ""}" aria-pressed="${!!P.legend}" title="Visa/dölj statusförklaringen (antal objekt per status)">Status</button><button type="button" id="v3FtNav" class="v3-ft-t ${P.navHelp !== false ? "on" : ""}" aria-pressed="${P.navHelp !== false}" title="Visa/dölj navigeringshjälpen (musens och tangenternas funktioner)">${typeof L3_NAV_ICO === "string" ? L3_NAV_ICO : ""}Navigering</button></span>
       <label class="v3-date" title="Datum för statusfärgerna (samma som i lägesplanen)">Datum <input type="date" id="v3Date" /></label>
       <span class="v3-coord" id="v3Coord"></span>
       <span class="v3-save" id="v3Save"></span>
@@ -367,7 +368,10 @@ function l3Dom() {
   $3("v3LabelsChk").onchange = e => { l3SetPref("labels", e.target.checked); l3Render(); };
   $3("v3LayCsv").onclick = () => l3ExportCsv();
   $3("v3ShowPhotos").onchange = e => { if (typeof l3phToggle === "function") l3phToggle(e.target.checked); };
-  $3("v3LegendChk").onchange = e => { l3SetPref("legend", e.target.checked); $3("v3Legend").classList.toggle("hidden", !e.target.checked); };
+  const legendShow = on => { l3SetPref("legend", on); $3("v3Legend").classList.toggle("hidden", !on); $3("v3LegendChk").checked = on; $3("v3FtLegend").classList.toggle("on", on); $3("v3FtLegend").setAttribute("aria-pressed", on); };
+  $3("v3LegendChk").onchange = e => legendShow(e.target.checked);
+  $3("v3FtLegend").onclick = () => legendShow(!l3Prefs().legend);
+  $3("v3FtNav").onclick = () => { l3SetPref("navHelp", l3Prefs().navHelp === false); if (typeof l3NavHelp === "function") l3NavHelp(); };
   const pal = on => { l3SetPref("pal", on); $3("v3Pal").classList.toggle("hidden", !on); $3("v3PalOpen").classList.toggle("hidden", on); $3("v3PalChk").checked = on; setTimeout(() => { l3Resize(); l3Render(); }, 0); };
   $3("v3PalChk").onchange = e => pal(e.target.checked);
   $3("v3PalClose").onclick = () => pal(false);

@@ -89,6 +89,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const tap = async (x, y, z, opts) => { const [px, py] = await at(x, y, z); await page.mouse.move(px, py); await page.waitForTimeout(60); if (opts && opts.shift) await page.keyboard.down('Shift'); await page.mouse.click(px, py, opts && opts.right ? { button: 'right' } : undefined); if (opts && opts.shift) await page.keyboard.up('Shift'); await page.waitForTimeout(120); };
   const top = () => page.evaluate(() => { l3StopFly(); const c = new THREE.Vector3(6512340 - l3.O[0], 150120 - l3.O[1], 0); l3.camera.position.set(c.x, c.y - 0.01, 90); l3.orbit.target.copy(c); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); });
   const S = () => page.evaluate(() => ({ n: placements.length, sel: [...l3.sel], list: placements.map(p => ({ ...p })) }));
+  await page.evaluate(() => { l3SetPref('navHelp', false); l3NavHelp(); }); // navigeringsrutan ligger nere till vänster och kan täcka tryckpunkterna
   await top();
 
   // Biblioteket: sök filtrerar.
