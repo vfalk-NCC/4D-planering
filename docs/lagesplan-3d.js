@@ -937,7 +937,7 @@ function l3Hover(e) {
     if (ev.buttons || l3.gizmo.dragging || (l3.gizmoR && l3.gizmoR.dragging) || l3.moving) return;
     if (l3.tool === "select" && !l3.addType) l3SetHover(l3PlaceAt(ev)); else l3SetHover(null);
     // Koordinaten under markören (verktygen visar fästpunkten själva).
-    const h = l3.lastSnap && l3.tool !== "select" ? { point: l3.lastSnap } : l3Ray(ev, l3Surfaces())[0];
+    const h = l3.lastSnap && l3.tool !== "select" ? { point: l3.lastSnap } : (typeof l3pcNearer === "function" ? l3pcNearer(ev, l3Ray(ev, l3Surfaces())[0]) : l3Ray(ev, l3Surfaces())[0]);
     const c = document.getElementById("v3Coord");
     if (h && c) {
       l3.lastPoint = h.point.clone();
@@ -951,7 +951,7 @@ function l3DoubleAt(e) {
   if (l3.tool !== "select" || l3.addType) return;
   const id = l3PlaceAt(e);
   if (id) { l3SelectIds([id]); l3View("sel"); }
-  else { const h = l3Ray(e, l3Surfaces())[0]; if (h) l3FlyTo(h.point, Math.max(8, l3.camera.position.distanceTo(h.point) * 0.45)); }
+  else { let h = l3Ray(e, l3Surfaces())[0]; if (typeof l3pcNearer === "function") h = l3pcNearer(e, h); if (h) l3FlyTo(h.point, Math.max(8, l3.camera.position.distanceTo(h.point) * 0.45)); }
 }
 let l3LastTouchTap = null;
 function l3Tap(e) {

@@ -10,13 +10,13 @@
    Ändringarna går via place3d.js (placeShift/placeRotateAbout, ångra, sparning). */
 
 const L3_AX = { x: { v: [1, 0, 0], col: "#dc2626", name: "på röd axel" }, y: { v: [0, 1, 0], col: "#16a34a", name: "på grön axel" }, z: { v: [0, 0, 1], col: "#2563eb", name: "på blå axel" } };
-const L3_SNAP = { perp: ["Vinkelrätt (kortaste vägen)", "#ea580c"], deg5: ["5°", "#7c3aed"], end: ["Ändpunkt", "#16a34a"], mid: ["Mittpunkt", "#06b6d4"], edge: ["På kant", "#dc2626"], face: ["På yta", "#2563eb"], ground: ["På marken", "#64748b"], grid: ["Rutnät", "#a855f7"] };
+const L3_SNAP = { perp: ["Vinkelrätt (kortaste vägen)", "#ea580c"], deg5: ["5°", "#7c3aed"], end: ["Ändpunkt", "#16a34a"], mid: ["Mittpunkt", "#06b6d4"], edge: ["På kant", "#dc2626"], face: ["På yta", "#2563eb"], ground: ["På marken", "#64748b"], grid: ["Rutnät", "#a855f7"], pc: ["Punkt i molnet", "#0891b2"] };
 /* Fästlägen (som Teklas fästverktygsrad): hörn, mittpunkter, kanter, axlar, orto, rutnät. */
-const L3_SNAP_DEF = { end: true, mid: true, edge: true, perp: true, axis: true, ortho: false, grid: false, gstep: 1 };
+const L3_SNAP_DEF = { end: true, mid: true, edge: true, perp: true, axis: true, ortho: false, grid: false, gstep: 1, pc: true };
 function l3Snaps() { return { ...L3_SNAP_DEF, ...(l3Prefs().snaps || {}) }; }
 function l3ToggleSnap(k) {
   const s = l3Snaps(); s[k] = !s[k]; l3SetPref("snaps", s); l3RenderSnapBar();
-  const names = { end: "Fäst mot hörn", mid: "Fäst mot mittpunkter", edge: "Fäst mot kanter", perp: "Vinkelrätt (kortaste vägen)", axis: "Fäst mot axlar", ortho: "Orto", grid: `Rutnät (${String(s.gstep).replace(".", ",")} m)` };
+  const names = { end: "Fäst mot hörn", mid: "Fäst mot mittpunkter", edge: "Fäst mot kanter", perp: "Vinkelrätt (kortaste vägen)", axis: "Fäst mot axlar", ortho: "Orto", grid: `Rutnät (${String(s.gstep).replace(".", ",")} m)`, pc: "Fäst mot punkter i punktmolnen" };
   l3Status(`${names[k]} ${s[k] ? "på" : "av"}.`);
 }
 function l3RenderSnapBar() {
@@ -26,7 +26,7 @@ function l3RenderSnapBar() {
   if (!bar) { bar = document.createElement("div"); bar.id = "v3SnapBar"; bar.className = "v3-snapbar"; host.appendChild(bar); bar.onclick = e => e.stopPropagation(); }
   const s = l3Snaps(), m = l3Prefs().measure || "dist";
   const b = (k, label, title) => `<button type="button" data-snapk="${k}" class="${s[k] ? "on" : ""}" title="${title}">${label}</button>`;
-  bar.innerHTML = `<span class="v3-snapbar-l">Fäst</span>${b("end", "Hörn", "Fäst mot hörn (ändpunkter)")}${b("mid", "Mitt", "Fäst mot mittpunkter på kanter")}${b("edge", "Kant", "Fäst mot närmaste punkt på en kant")}${b("perp", "Vinkelrätt", "Vinkelrätt: på en kant fäster punkten där linjen från förra punkten möter kanten i rät vinkel – kortaste vägen över ett objekt")}${b("axis", "Axlar", "Fäst mot röd/grön/blå axel från baspunkten")}${b("ortho", "Orto", "Orto (O): bara i X-, Y- eller Z-led")}${b("grid", "Rutnät", "Rutnät (G): fäst mot rutnätet på marken och ytor")}
+  bar.innerHTML = `<span class="v3-snapbar-l">Fäst</span>${b("end", "Hörn", "Fäst mot hörn (ändpunkter)")}${b("mid", "Mitt", "Fäst mot mittpunkter på kanter")}${b("edge", "Kant", "Fäst mot närmaste punkt på en kant")}${b("perp", "Vinkelrätt", "Vinkelrätt: på en kant fäster punkten där linjen från förra punkten möter kanten i rät vinkel – kortaste vägen över ett objekt")}${b("axis", "Axlar", "Fäst mot röd/grön/blå axel från baspunkten")}${b("ortho", "Orto", "Orto (O): bara i X-, Y- eller Z-led")}${b("grid", "Rutnät", "Rutnät (G): fäst mot rutnätet på marken och ytor")}${typeof l3pc !== "undefined" && l3pc.clouds.length ? b("pc", "Moln", "Fäst mot punkter i punktmolnen (mått, flytta, rotationspunkt)") : ""}
     <select id="v3GridStep" title="Rutnätets steg">${[0.1, 0.5, 1, 2, 5, 10].map(v => `<option value="${v}" ${Number(s.gstep) === v ? "selected" : ""}>${String(v).replace(".", ",")} m</option>`).join("")}</select>
     ${l3.tool === "move" ? `<span class="v3-snapbar-sep"></span><label class="v3-chk" title="Kopiera i stället för att flytta (tryck Ctrl)"><input type="checkbox" id="v3CopyMode" ${l3t.copyMode ? "checked" : ""} /> Kopia</label>` : ""}
     ${l3.tool === "measure" ? `<span class="v3-snapbar-sep"></span><div class="v3-segs">${[["point", "Punkt"], ["dist", "Avstånd"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : ""}`;
@@ -196,8 +196,12 @@ function l3EdgeSnap(e, S, hits, mx, my, exclude) {
 function l3SnapRaw(e, exclude) {
   const r = l3Rect(), mx = e.clientX - r.left, my = e.clientY - r.top, S = l3Snaps();
   const hits = l3Ray(e, l3Surfaces(exclude));
+  // Punktmolnet (lagesplan-3dpc.js): punkten används när den ligger framför ytan/kanten.
+  const pc = S.pc !== false && typeof l3pcPick === "function" ? l3pcPick(e) : null;
+  const camD = p => l3.camera.position.distanceTo(p);
   // Objektens riktiga kanter först (hörn > mittpunkt > längs kanten); annars som förut.
   const es = l3EdgeSnap(e, S, hits, mx, my, exclude);
+  if (pc && (!es || pc.distance < camD(es.point) - 0.05) && (!hits.length || pc.distance < hits[0].distance - 0.02)) return { point: pc.point, kind: "pc", placeId: null };
   // Objektet vars kant/hörn punkten fäste mot (kan vara ett grannobjekt intill markören).
   if (es) { const pid = (es.obj && l3PlaceIdOf(es.obj)) || (hits[0] ? l3PlaceIdOf(hits[0].object) : null); const { obj, ...rest } = es; return { ...rest, placeId: pid }; }
   if (hits.length) {

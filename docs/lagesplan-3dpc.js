@@ -136,6 +136,7 @@ function l3pcBuild(src, data) {
   l3.groups.pc.add(grp);
   l3pc.clouds.push(c);
   l3pcPlace(c);
+  l3pcIndexIdle(c); // för att fästa mot punkterna
   return c;
 }
 /* Molnet ligger i modellens koordinater (som IFC och DXF) – flyttas med 3D-vyns origo (och sin höjdjustering). */
@@ -368,3 +369,118 @@ function l3pcBind(host) {
   const rs = host.querySelector("#v3PcReset"); if (rs) rs.onclick = () => { ["pcSize", "pcAtten", "pcRound", "pcBright", "pcContrast", "pcOpacity", "pcZlo", "pcZhi", "pcMode"].forEach(k => l3SetPref(k, null)); l3pcApplyAll(); l3pcRecolor(); l3LayersRender(); };
   const fb = host.querySelector("#v3PcFile"); if (fb) fb.onclick = () => l3pcFromFile();
 }
+
+/* ---- Fästa mot punkter i molnet (Victor 2026-10-12: "snappa mot punkter i punktmolnen så att jag både kan lägga
+   mått och rotera runt punkterna") ----------------------------------------------------------------------------
+   Punkten närmast kameran som ligger inom några skärmpixlar från markörens stråle. Bara molnets rutor (kolumner)
+   som strålen passerar gås igenom; höjdfiltret och snitten gäller (bortfiltrerade punkter går inte att fästa mot).
+   Fästet av/på: Fäst-raden → Moln. */
+const l3pcSnapOn = () => l3Snaps().pc !== false;
+/* Index för att hitta punkter snabbt: varje ruta (kolumn) sorteras om i små celler (4×4 i plan × skikt i höjd,
+   ~1000 punkter per cell) så att cellerna ligger i följd i samma arrayer – inget extra minne för punkterna.
+   Byggs en gång per moln, ruta för ruta i bakgrunden när molnet visats (eller direkt vid första sökningen). */
+function l3pcIndexChunk(c, k) {
+  const ch = c.chunks[k], pos = ch.pos, n = pos.length / 3;
+  if (!n) { ch.cells = []; return; }
+  let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
+  for (let i = 0; i < pos.length; i += 3) { const x = pos[i], y = pos[i + 1], z = pos[i + 2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z; }
+  const NX = n > 4000 ? 4 : 1, NY = NX, NZ = Math.max(1, Math.min(64, Math.ceil(n / (NX * NY * 1000))));
+  const sx = (x1 - x0) / NX || 1, sy = (y1 - y0) / NY || 1, sz = (z1 - z0) / NZ || 1, NC = NX * NY * NZ;
+  const cid = new Uint16Array(n), cnt = new Uint32Array(NC + 1);
+  for (let i = 0; i < n; i++) {
+    const ix = Math.min(NX - 1, ((pos[i * 3] - x0) / sx) | 0), iy = Math.min(NY - 1, ((pos[i * 3 + 1] - y0) / sy) | 0), iz = Math.min(NZ - 1, ((pos[i * 3 + 2] - z0) / sz) | 0);
+    const id = (iz * NY + iy) * NX + ix; cid[i] = id; cnt[id + 1]++;
+  }
+  for (let q = 0; q < NC; q++) cnt[q + 1] += cnt[q];
+  const at = cnt.slice(0, NC), P = new Float32Array(pos.length), R = ch.rgb ? new Uint8Array(ch.rgb.length) : null, I = ch.inten ? new Uint8Array(ch.inten.length) : null;
+  for (let i = 0; i < n; i++) {
+    const d = at[cid[i]]++;
+    P[d * 3] = pos[i * 3]; P[d * 3 + 1] = pos[i * 3 + 1]; P[d * 3 + 2] = pos[i * 3 + 2];
+    if (R) { R[d * 3] = ch.rgb[i * 3]; R[d * 3 + 1] = ch.rgb[i * 3 + 1]; R[d * 3 + 2] = ch.rgb[i * 3 + 2]; }
+    if (I) I[d] = ch.inten[i];
+  }
+  pos.set(P); if (R) ch.rgb.set(R); if (I) ch.inten.set(I);
+  const cells = [];
+  for (let q = 0; q < NC; q++) {
+    const a = cnt[q], b = cnt[q + 1]; if (a === b) continue;
+    let mx = Infinity, my = Infinity, mz = Infinity, Mx = -Infinity, My = -Infinity, Mz = -Infinity;
+    for (let i = a * 3; i < b * 3; i += 3) { const x = pos[i], y = pos[i + 1], z = pos[i + 2]; if (x < mx) mx = x; if (x > Mx) Mx = x; if (y < my) my = y; if (y > My) My = y; if (z < mz) mz = z; if (z > Mz) Mz = z; }
+    cells.push({ a, b, min: [mx, my, mz], max: [Mx, My, Mz] });
+  }
+  ch.cells = cells;
+  // Grafikkortets kopia följer den nya ordningen (positionerna och färgerna).
+  const p = c.group.children[k];
+  if (p) { p.geometry.getAttribute("position").needsUpdate = true; p.geometry.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, ch), 3, true)); }
+}
+function l3pcIndex(c) { c.chunks.forEach((ch, k) => { if (!ch.cells) l3pcIndexChunk(c, k); }); }
+/* I bakgrunden, en ruta per ledig stund – sökningen är då snabb redan första gången. */
+function l3pcIndexIdle(c) {
+  let k = 0;
+  const step = () => { if (!l3pc.clouds.includes(c)) return; while (k < c.chunks.length && c.chunks[k].cells) k++; if (k >= c.chunks.length) { l3Render(); return; } l3pcIndexChunk(c, k++); (window.requestIdleCallback || setTimeout)(step); };
+  setTimeout(step, 300);
+}
+function l3pcPick(e, px = 7) {
+  if (!l3 || !l3pc.clouds.some(c => c.visible)) return null;
+  const r = l3.renderer.domElement.getBoundingClientRect(), cam = l3.camera;
+  const rc = new THREE.Raycaster();
+  rc.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), cam);
+  const O = rc.ray.origin, D = rc.ray.direction;
+  // Tolerans: perspektiv – vinkel per pixel (växer med avståndet); parallell – fast längd.
+  const persp = !cam.isOrthographicCamera;
+  const kAng = persp ? Math.tan(cam.fov * Math.PI / 360) * 2 / r.height * px : 0;
+  const kOrtho = persp ? 0 : (cam.top - cam.bottom) / cam.zoom / r.height * px;
+  const gcl = l3.renderer.clippingPlanes || [];
+  const inv = [1 / D.x, 1 / D.y, 1 / D.z];
+  let best = null;
+  for (const c of l3pc.clouds) {
+    if (!c.visible || !c.group.visible) continue;
+    const gp = c.group.position, o = [O.x - gp.x, O.y - gp.y, O.z - gp.z], dx = D.x, dy = D.y, dz = D.z;
+    const planes = [...gcl, ...(c.mat.clippingPlanes || [])];
+    // Cellerna som strålen (med toleransen) passerar, närmast först.
+    const cand = [];
+    c.group.children.forEach((p, k) => {
+      const g = p.geometry; if (!g.boundingSphere) g.computeBoundingSphere();
+      const bs = g.boundingSphere, wx = bs.center.x - o[0], wy = bs.center.y - o[1], wz = bs.center.z - o[2];
+      const t0 = wx * dx + wy * dy + wz * dz, d2 = wx * wx + wy * wy + wz * wz - t0 * t0;
+      const tolS = persp ? Math.max(0, t0 + bs.radius) * kAng : kOrtho;
+      if (t0 < -bs.radius || d2 > (bs.radius + tolS) * (bs.radius + tolS)) return; // strålen missar rutan
+      const ch = c.chunks[k]; if (!ch.cells) l3pcIndexChunk(c, k);
+      ch.cells.forEach(cl => {
+        // Strålen mot cellens låda (utökad med toleransen på lådans bortre avstånd).
+        let tn = -Infinity, tf = Infinity;
+        const far = Math.hypot(cl.max[0] - o[0], cl.max[1] - o[1], cl.max[2] - o[2]) + Math.hypot(cl.min[0] - o[0], cl.min[1] - o[1], cl.min[2] - o[2]);
+        const tol = persp ? far * kAng : kOrtho;
+        for (let ax = 0; ax < 3; ax++) {
+          let t1 = (cl.min[ax] - tol - o[ax]) * inv[ax], t2 = (cl.max[ax] + tol - o[ax]) * inv[ax];
+          if (!Number.isFinite(t1) || !Number.isFinite(t2)) { if (o[ax] < cl.min[ax] - tol || o[ax] > cl.max[ax] + tol) { tn = Infinity; break; } continue; }
+          if (t1 > t2) { const s2 = t1; t1 = t2; t2 = s2; }
+          if (t1 > tn) tn = t1; if (t2 < tf) tf = t2;
+        }
+        if (tn <= tf && tf > 0) cand.push({ t: Math.max(0, tn), a: cl.a, b: cl.b, pos: ch.pos });
+      });
+    });
+    cand.sort((x, y) => x.t - y.t);
+    for (const cl of cand) {
+      if (best && cl.t >= best.t) break; // resten ligger bakom den bästa träffen
+      const a = cl.pos;
+      for (let i = cl.a * 3; i < cl.b * 3; i += 3) {
+        const qx = a[i] - o[0], qy = a[i + 1] - o[1], qz = a[i + 2] - o[2], t = qx * dx + qy * dy + qz * dz;
+        if (t <= 0 || (best && t >= best.t)) continue;
+        const tol = persp ? t * kAng : kOrtho, pd = qx * qx + qy * qy + qz * qz - t * t;
+        if (pd > tol * tol) continue;
+        const w = new THREE.Vector3(a[i] + gp.x, a[i + 1] + gp.y, a[i + 2] + gp.z);
+        if (planes.length && !planes.every(pl => pl.distanceToPoint(w) >= -1e-6)) continue;
+        best = { t, point: w, cloud: c };
+      }
+    }
+  }
+  return best ? { point: best.point, kind: "pc", distance: best.t, cloud: best.cloud } : null;
+}
+/* Ytträffen eller molnets punkt – den som ligger närmast kameran (rotationspunkt, dubbelklick, koordinaten). */
+function l3pcNearer(e, hit) {
+  const pc = typeof l3pcPick === "function" ? l3pcPick(e) : null;
+  if (!pc) return hit || null;
+  if (hit && hit.distance != null && hit.distance <= pc.distance + 0.02) return hit;
+  return { point: pc.point, distance: pc.distance, pc: true };
+}
+

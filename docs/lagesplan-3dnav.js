@@ -251,7 +251,8 @@ function l3PinchEnd() {
 }
 /* Punkten under markören: närmaste yta, annars planet genom målpunkten vinkelrätt mot blicken. */
 function l3PivotPoint(e) {
-  const hit = l3Ray(e, l3Surfaces())[0];
+  let hit = l3Ray(e, l3Surfaces())[0];
+  if (typeof l3pcNearer === "function") hit = l3pcNearer(e, hit); // punkten i molnet om den ligger närmare
   if (hit) return hit.point.clone();
   const r = l3.renderer.domElement.getBoundingClientRect(), rc = new THREE.Raycaster();
   rc.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), l3.camera);

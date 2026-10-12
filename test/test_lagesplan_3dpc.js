@@ -135,6 +135,44 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     });
     if (Object.values(vis).some(v => v !== true)) fail('Visning av punktmolnet: ' + JSON.stringify(vis));
     await page.evaluate(() => { const c = l3pc.clouds[0]; c.dz = 0; c.src.dz = 0; l3pcPlace(c); l3pcRemember(c.src, true); document.querySelector('#v3PalLayers .v3-pc-view').open = true; });
+    // Fästa mot punkter i molnet: mått (fästpunkt "pc"), rotationspunkt och koordinat.
+    const snap = await page.evaluate(() => {
+      const c = l3pc.clouds[0]; l3pcZoom(c.id); l3.camera.position.copy(l3.orbit.target).add(new THREE.Vector3(0, -0.01, 1).multiplyScalar(200)); l3.camera.lookAt(l3.orbit.target); l3.orbit.update(); l3.camera.updateMatrixWorld();
+      const a = c.group.children[0].geometry.getAttribute('position').array, gp = c.group.position;
+      // Den högsta punkten (ingen annan framför den uppifrån).
+      let k = 0; for (let i = 0; i < a.length; i += 3) if (a[i + 2] > a[k + 2]) k = i;
+      const w = new THREE.Vector3(a[k] + gp.x, a[k + 1] + gp.y, a[k + 2] + gp.z), q = w.clone().project(l3.camera), r = l3.renderer.domElement.getBoundingClientRect();
+      const ev = { clientX: r.left + (q.x + 1) / 2 * r.width + 2, clientY: r.top + (1 - q.y) / 2 * r.height - 2, target: l3.renderer.domElement };
+      const pk = l3pcPick(ev), sn = l3SnapRaw(ev), pv = l3PivotPoint(ev);
+      const far = { clientX: r.left + 3, clientY: r.top + 3 };
+      const t0 = performance.now(); for (let i = 0; i < 20; i++) l3pcPick(ev); const ms = (performance.now() - t0) / 20;
+      const off = (() => { l3SetPref('snaps', { ...l3Snaps(), pc: false }); const x = l3SnapRaw(ev); l3SetPref('snaps', { ...l3Snaps(), pc: true }); return x; })();
+      return { pick: !!pk && pk.point.distanceTo(w) < 1e-6, snap: sn && sn.kind === 'pc' && sn.point.distanceTo(w) < 1e-6, pivot: pv.distanceTo(w) < 1e-6, miss: !l3pcPick(far), off: !off || off.kind !== 'pc', ms: +ms.toFixed(2) };
+    });
+    // Stort moln (3 milj. punkter, 64 rutor): sökningen ska vara snabb nog att göras vid varje musrörelse.
+    const big = await page.evaluate(() => {
+      const G = 8, per = 3e6 / 64, chunks = [];
+      let seed = 1; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      for (let cx = 0; cx < G; cx++) for (let cy = 0; cy < G; cy++) {
+        const pos = new Float32Array(per * 3), rgb = new Uint8Array(per * 3), inten = new Uint8Array(per);
+        for (let i = 0; i < per; i++) { const x = (cx + rnd()) * 25 - 100, y = (cy + rnd()) * 25 - 100; pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = rnd() < 0.5 ? 0 : rnd() * 30; }
+        chunks.push({ pos, rgb, inten });
+      }
+      const src = { id: 'pc:big', name: 'big.laz' }, info = { n: 3e6, total: 3e6, center: [l3.O[0] + 500, l3.O[1], l3.O[2]], min: [l3.O[0] + 400, l3.O[1] - 100, l3.O[2]], max: [l3.O[0] + 600, l3.O[1] + 100, l3.O[2] + 30], rgb: false, intensity: false, format: 'test' };
+      const c = l3pcBuild(src, { info, chunks });
+      const t0 = performance.now(); l3pcIndex(c); const tIdx = performance.now() - t0;
+      l3.camera.position.set(500 - 160, -160, 90); l3.orbit.target.set(500, 0, 5); l3.camera.lookAt(l3.orbit.target); l3.orbit.update(); l3.camera.updateMatrixWorld();
+      const r = l3.renderer.domElement.getBoundingClientRect();
+      let n = 0, hits = 0; const t1 = performance.now();
+      for (let gx = 0.3; gx < 0.75; gx += 0.05) for (let gy = 0.3; gy < 0.75; gy += 0.05) { n++; if (l3pcPick({ clientX: r.left + r.width * gx, clientY: r.top + r.height * gy })) hits++; }
+      const ms = (performance.now() - t1) / n;
+      l3pcRemove('pc:big');
+      return { tIdx: Math.round(tIdx), ms: +ms.toFixed(1), hits, n };
+    });
+    if (big.ms > 25 || big.hits < big.n * 0.5) fail('Fästa i stort moln: ' + JSON.stringify(big));
+    console.log(`OK: stort moln (3 milj.) – index ${big.tIdx} ms en gång, ${big.ms} ms per sökning, ${big.hits}/${big.n} träffar`);
+    if (!snap.pick || !snap.snap || !snap.pivot || !snap.miss || !snap.off) fail('Fästa mot punktmolnet: ' + JSON.stringify(snap));
+    console.log(`OK: fästa mot punkter i molnet – mått, rotationspunkt, av/på i Fäst-raden (${snap.ms} ms per sökning)`);
     await page.screenshot({ path: path.join(process.env.PLACE_TMP || '.', '3dpc-panel.png'), clip: { x: 0, y: 0, width: 560, height: 850 } });
     console.log('OK: punktmolnets visning – runda punkter, meter, täckning, höjdfilter, enfärgad/ljus, höjdjustering, återställ, förlopp i raden');
     // Cache: bort ur vyn och tillbaka utan Trimble Connect.
