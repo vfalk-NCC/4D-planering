@@ -430,6 +430,23 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   }, [ifc, cp.sel[0].guid]);
   if (!cs.opens || Math.abs(cs.orig[0] - 5) > 0.001 || Math.abs(cs.orig[1]) > 0.001 || Math.abs(cs.copy[0] - 5) > 0.001 || Math.abs(cs.copy[1] - 3) > 0.001 || !cs.contained || cs.afterUndo.has || cs.afterUndo.pending !== 1)
     fail('Kopiera sparas som ny IFC (kopian 3 m från den flyttade pelaren, i våningen) och Ctrl+Z tar bort kopian: ' + JSON.stringify(cs));
+  // Delete raderar markerade kopior (Victor 2026-10-12); originalet står kvar, Ctrl+Z tar tillbaka kopian.
+  const dl = await page.evaluate(() => {
+    const m = l3b.models.find(x => x.id === 'f:F2');
+    let ent = null; m.meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => { if (r.guid === '1hZq3$Bq9Fxu8nZK0bW1aA') ent = { mesh, ri }; }));
+    l3bsSet([ent]); l3bmStart({ copy: true });
+    const side = document.getElementById('v3Side'); side.querySelector('[data-bm="dy"]').value = '4'; l3bmApplyFields(side); l3bmAccept();
+    const ng = l3bs.sel[0].mesh.userData.l3b.ranges[l3bs.sel[0].ri].guid, p0 = l3bmPending('f:F2');
+    const btn = !!document.getElementById('v3BsDel');
+    const has = () => m.meshes.some(x => x.userData.l3b.ranges.some(q => q.guid === ng));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    const r = { btn, p0, gone: !has(), p1: l3bmPending('f:F2'), orig: m.meshes.some(x => x.userData.l3b.ranges.some(q => q.guid === '1hZq3$Bq9Fxu8nZK0bW1aA')) };
+    l3Undo(); r.back = has(); r.p2 = l3bmPending('f:F2');
+    // Originalet kan inte raderas.
+    l3bsSet([ent]); r.origDel = l3bmCopyDelete(); r.origKept = m.meshes.includes(ent.mesh);
+    return r;
+  });
+  if (!dl.btn || dl.p0 !== 2 || !dl.gone || dl.p1 !== 1 || !dl.orig || !dl.back || dl.p2 !== 2 || dl.origDel !== false || !dl.origKept) fail('Radera kopior med Delete: ' + JSON.stringify(dl));
 
   // Zooma till modell i lagerhanteraren.
   const zm = await page.evaluate(() => { l3PalTab('layers'); l3SetPref('laySort', 'list'); l3LayersRender(); const b = document.querySelector('[data-l3l-zoom="f:F2"]'); if (!b) return null; const t0 = l3.orbit.target.clone(); b.click(); return true; });

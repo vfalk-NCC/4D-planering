@@ -430,6 +430,71 @@ function l3bmCopyDetach(made) {
   if (typeof l3LayersRender === "function") l3LayersRender();
   l3Render();
 }
+/* Radera markerade kopior (Victor 2026-10-12: "Om jag har kopierat modeller vill jag också ha möjlighet att radera
+   dom med delete"). Bara kopior – originalobjekten i IFC-filen raderas inte härifrån. En bit där bara en del av
+   kopiorna raderas byts mot en ny bit med resten (flyttarna av de kvarvarande står kvar). Ctrl+Z ångrar. */
+function l3bmIsCopy(e) { return !!(e && e.mesh && e.mesh.userData.bcopy); }
+function l3bmCopyDelete(list = l3bs.sel) {
+  const copies = list.filter(l3bmIsCopy);
+  if (!copies.length) { l3Status("Bara kopior kan raderas – originalobjekten i IFC-filen raderas inte.", true); return false; }
+  const byMesh = new Map();
+  copies.forEach(e => { if (!byMesh.has(e.mesh)) byMesh.set(e.mesh, new Set()); byMesh.get(e.mesh).add(e.ri); });
+  const olds = [], news = [], stash = []; // stash: [ed, guid, copy-post, flytt]
+  byMesh.forEach((ris, mesh) => {
+    const u = mesh.userData.l3b, ed = l3bmEd(u.model);
+    u.ranges.forEach((r, ri) => { if (ris.has(ri)) stash.push([ed, r.guid, ed.copies.get(r.guid), ed.moves.get(r.guid)]); });
+    olds.push(mesh);
+    const keep = u.ranges.map((r, ri) => ri).filter(ri => !ris.has(ri));
+    if (keep.length) news.push(l3bmCopySubset(mesh, keep));
+  });
+  const del = () => { stash.forEach(([ed, g]) => { ed.copies.delete(g); ed.moves.delete(g); ed.dirty = l3bmCount(ed) > 0; }); l3bmSwap(olds, news); };
+  const back = () => { l3bmSwap(news, olds); stash.forEach(([ed, g, c, mv]) => { if (c) ed.copies.set(g, c); if (mv) ed.moves.set(g, mv); ed.dirty = l3bmCount(ed) > 0; }); };
+  l3bsSet([]);
+  del();
+  if (typeof l3VPush === "function") l3VPush(back, () => { l3bsSet([]); del(); }, "radera kopior");
+  const skipped = list.length - copies.length;
+  l3Status(`${copies.length} ${copies.length === 1 ? "kopia raderad" : "kopior raderade"}${skipped ? ` – ${skipped} originalobjekt står kvar (bara kopior kan raderas)` : ""} (Ctrl+Z ångrar).`);
+  if (typeof l3LayersRender === "function") l3LayersRender();
+  l3RenderSide(); l3Render();
+  return true;
+}
+/* Ny kopiebit med bara de angivna objekten (samma lägen och färger). */
+function l3bmCopySubset(mesh, ris) {
+  const u = mesh.userData.l3b, P = mesh.geometry.getAttribute("position").array, C = mesh.geometry.getAttribute("color").array, k8 = C instanceof Uint8Array;
+  let nv = 0, ni = 0; ris.forEach(ri => { nv += u.ranges[ri].count; ni += l3bsIdx(mesh, ri)[1]; });
+  const pos = new Float32Array(nv * 3), col = new Uint8Array(nv * 3), idx = new Uint32Array(ni), ranges = [];
+  let vo = 0, io = 0;
+  ris.forEach(ri => {
+    const r = u.ranges[ri], [s, n] = l3bsIdx(mesh, ri);
+    pos.set(P.subarray(r.start * 3, (r.start + r.count) * 3), vo * 3);
+    for (let i = 0; i < r.count * 3; i++) col[vo * 3 + i] = k8 ? C[r.start * 3 + i] : Math.round(C[r.start * 3 + i] * 255);
+    for (let i = 0; i < n; i++) idx[io + i] = u.origIdx[s + i] - r.start + vo;
+    ranges.push({ ...r, start: vo, count: r.count, idxStart: io, idxCount: n });
+    vo += r.count; io += n;
+  });
+  const m = l3bMeshFromArrays(pos, col, idx, ranges, u.model);
+  m.position.copy(mesh.position);
+  const keep = new Set(ranges.map(r => r.guid));
+  m.userData.bcopy = mesh.userData.bcopy.filter(([g]) => keep.has(g));
+  return m;
+}
+/* Byter bitar i modellen och scenen (utan att röra kopiornas och flyttarnas poster). */
+function l3bmSwap(out, inn) {
+  out.forEach(m => {
+    const u = m.userData.l3b, model = u.model, i = model.meshes.indexOf(m);
+    if (i >= 0) { model.meshes.splice(i, 1); const rs = new Set(u.ranges); model.ranges = model.ranges.filter(r => !rs.has(r)); model.tris = Math.max(0, (model.tris || 0) - u.origIdx.length / 3); }
+    if (m.parent) m.parent.remove(m);
+    model._pEnts = null;
+  });
+  inn.forEach(m => {
+    const u = m.userData.l3b, model = u.model;
+    if (!model.meshes.includes(m)) { model.meshes.push(m); model.ranges.push(...u.ranges); model.tris = (model.tris || 0) + u.origIdx.length / 3; }
+    m.visible = model.visible !== false;
+    l3.groups.bldg.add(m);
+    model._pEnts = null;
+  });
+  l3Render();
+}
 /* Skriver in kopiorna i IFC-texten. copies: Map(nytt guid -> { src: originalets guid, M: Matrix4 i modellens
    IFC-koordinater, meter, från originalets plats i filen }). Kopian får en egen rad med nytt id och egen placering
    (originalets placering · M); formen (Representation) delas med originalet. Kopian läggs in i samma relationer

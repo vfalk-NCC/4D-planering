@@ -1468,6 +1468,8 @@ function l3Key(e) {
     l3Status(locked.length ? `${ids.length - locked.length} mått borttagna – ${locked.length} låsta står kvar.` : `${ids.length === 1 ? "Måttet" : `${ids.length} mått`} borttaget (Ctrl+Z ångrar).`);
     return;
   }
+  // Delete raderar markerade kopior av modellobjekt (Victor 2026-10-12).
+  if ((e.key === "Delete" || e.key === "Backspace") && !l3.sel.size && typeof l3bs !== "undefined" && l3bs.sel.length && typeof l3bmCopyDelete === "function" && !(typeof l3bm !== "undefined" && l3bm.session)) { e.preventDefault(); l3bmCopyDelete(); return; }
   if (mod && k === "b" && l3PalToggle) { e.preventDefault(); l3PalToggle(); return; } // visa/dölj vänstermenyn
   if (typeof l3dKey === "function" && l3dKey(e)) return; // DXF-redigering
   if (typeof l3DialogKey === "function" && l3DialogKey(e)) return;
