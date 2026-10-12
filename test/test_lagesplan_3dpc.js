@@ -112,6 +112,31 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     await page.click('#v3PalLayers [data-pc-eye="pc:f:L1"]');
     const col = await page.evaluate(() => { const a = () => Array.from(l3pc.clouds[0].group.children[0].geometry.getAttribute('color').array.slice(0, 6)).join(); const rgb = a(); const s = document.getElementById('v3PcMode'); s.value = 'z'; s.dispatchEvent(new Event('change')); const z = a(); const r = document.getElementById('v3PcSize'); r.value = '4'; r.dispatchEvent(new Event('input')); return { rgb, z, size: l3pc.clouds[0].mat.size }; });
     if (col.rgb === col.z || col.size !== 4) fail('Färg efter höjd och punktstorlek: ' + JSON.stringify(col));
+    // Visning (2026-10-12): runda punkter, meter, täckning, höjdfilter, höjdjustering, enfärgad + ljus; förlopp i raden.
+    page.on('dialog', d => d.accept('2,5'));
+    const vis = await page.evaluate(async () => {
+      const c = l3pc.clouds[0], m = c.mat, out = {};
+      const sec = document.querySelector('#v3PalLayers .v3-pc-view'); sec.open = true;
+      document.querySelector('#v3PalLayers [data-pc-round="1"]').click();
+      out.round = !!c.mat.map && c.mat.alphaTest === 0.5;
+      const set = (id, v, ev = 'input') => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event(ev)); if (ev === 'input') e.dispatchEvent(new Event('change')); };
+      set('v3PcOpacity', 50); out.op = m.transparent && Math.abs(m.opacity - 0.5) < 1e-6 && !m.depthWrite;
+      set('v3PcZlo', 20); set('v3PcZhi', 70); out.clip = (m.clippingPlanes || []).length === 2 && l3.renderer.localClippingEnabled;
+      set('v3PcAtten', '1', 'change'); out.atten = m.sizeAttenuation === true && m.size < 1;
+      const a = () => Array.from(c.group.children[0].geometry.getAttribute('color').array.slice(0, 3)).join();
+      set('v3PcMode', 'solid', 'change'); const solid = a();
+      set('v3PcBright', 30); out.bright = a() !== solid && solid === '148,163,184';
+      await l3pcSetDz(c.id); out.dz = Math.abs(c.dz - 2.5) < 1e-9 && l3pcRemembered().find(x => x.id === c.id).dz === 2.5;
+      document.querySelector('#v3PcReset').click(); out.reset = !l3pc.clouds[0].mat.map && l3pc.clouds[0].mat.opacity === 1 && !l3pc.clouds[0].mat.clippingPlanes;
+      l3pcProgress({ id: 'x', name: 'stort.laz' }, 'läser punkterna', 0.42);
+      const ld = document.getElementById('v3PcLoad'); out.load = !!ld && /läser punkterna 42 %/.test(ld.textContent) && /stort\.laz – läser punkterna 42 %/.test(document.getElementById('v3Status').textContent);
+      l3pc.loading = null; l3LayersRender();
+      return out;
+    });
+    if (Object.values(vis).some(v => v !== true)) fail('Visning av punktmolnet: ' + JSON.stringify(vis));
+    await page.evaluate(() => { const c = l3pc.clouds[0]; c.dz = 0; c.src.dz = 0; l3pcPlace(c); l3pcRemember(c.src, true); document.querySelector('#v3PalLayers .v3-pc-view').open = true; });
+    await page.screenshot({ path: path.join(process.env.PLACE_TMP || '.', '3dpc-panel.png'), clip: { x: 0, y: 0, width: 560, height: 850 } });
+    console.log('OK: punktmolnets visning – runda punkter, meter, täckning, höjdfilter, enfärgad/ljus, höjdjustering, återställ, förlopp i raden');
     // Cache: bort ur vyn och tillbaka utan Trimble Connect.
     await page.waitForTimeout(500);
     await page.evaluate(async () => { l3pcRemove('pc:f:L1'); window.__calls = []; await l3pcRestore(); });
