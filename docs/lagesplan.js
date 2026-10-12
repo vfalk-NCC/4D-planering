@@ -1346,7 +1346,7 @@ function drawBadge(ctx, [x, y], text, color, fontPx, hollow, zs) {
   if (kind === "text") {
     ctx.lineJoin = "round"; ctx.lineWidth = Math.max(2, fontPx / 4); ctx.strokeStyle = "rgba(255,255,255,.95)";
     lines.forEach((l, i) => ctx.strokeText(l, 0, ty(i)));
-    ctx.fillStyle = shade(color, -0.45); lines.forEach((l, i) => ctx.fillText(l, 0, ty(i)));
+    ctx.fillStyle = (zs && zs.labelInk) || shade(color, -0.45); lines.forEach((l, i) => ctx.fillText(l, 0, ty(i)));
   } else {
     if (kind === "white") hollow = true;
     ctx.globalAlpha *= 0.95;
@@ -1357,7 +1357,8 @@ function drawBadge(ctx, [x, y], text, color, fontPx, hollow, zs) {
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = shade(color, -0.4);
     ctx.stroke();
-    ctx.fillStyle = hollow ? "#374151" : contrastText(color);
+    // Egen textfärg (Victor 2026-10-12: "byta textfärg i zonredigeringen"), annars svart/vit efter bakgrunden.
+    ctx.fillStyle = (zs && zs.labelInk) || (hollow ? "#374151" : contrastText(color));
     lines.forEach((l, i) => ctx.fillText(l, 0, ty(i)));
   }
   ctx.restore();

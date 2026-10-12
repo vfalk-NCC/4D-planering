@@ -650,6 +650,8 @@ function openZoneLabelPop(zid) {
       <div><label>Stil</label><select class="zl-kind">${[["pill", "Färgad bubbla"], ["white", "Vit bubbla"], ["text", "Bara text"], ["none", "Dold"]].map(([v, l]) => `<option value="${v}"${s.label === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>
     <label>Färg</label>
     <div class="zs-row"><input type="color" class="zl-color" value="${escHtml(s.labelColor || "#2563eb")}" title="Etikettens färg" /><span class="muted zl-colorv">${s.labelColor ? "Egen färg" : "Statusfärg"}</span><button type="button" class="zl-color-auto"${s.labelColor ? "" : " disabled"} title="Tillbaka till statusfärgen">↺ Statusfärg</button></div>
+    <label>Textfärg</label>
+    <div class="zs-row"><input type="color" class="zl-ink" value="${escHtml(s.labelInk || "#111827")}" title="Textens färg" /><span class="muted zl-inkv">${s.labelInk ? "Egen färg" : "Automatisk"}</span><button type="button" class="zl-ink-auto"${s.labelInk ? "" : " disabled"} title="Tillbaka till automatisk (svart eller vit efter bakgrunden)">↺ Automatisk</button></div>
     <label>Rotation</label>
     <div class="zs-row"><input type="range" class="zl-rot" min="-180" max="180" step="1" value="${rot}" /><input type="text" class="zl-rotv" inputmode="numeric" value="${rot}" style="width:48px;text-align:right;" /><span class="muted">°</span></div>
     <div class="zl-chips"><button type="button" data-rot="0">0°</button><button type="button" data-rot="90">90°</button><button type="button" data-rot="-90">−90°</button><button type="button" data-rot="long" title="Längs ytans längsta sida">↗ Längs zonen</button></div>
@@ -677,6 +679,9 @@ function openZoneLabelPop(zid) {
   const setColor = c => { set({ labelColor: c }); q(".zl-colorv").textContent = c ? "Egen färg" : "Statusfärg"; q(".zl-color-auto").disabled = !c; };
   q(".zl-color").oninput = () => { if (q(".zl-kind").value === "none") { q(".zl-kind").value = "pill"; set({ label: "pill" }); } setColor(q(".zl-color").value); };
   q(".zl-color-auto").onclick = () => setColor(null);
+  const setInk = c => { set({ labelInk: c }); q(".zl-inkv").textContent = c ? "Egen färg" : "Automatisk"; q(".zl-ink-auto").disabled = !c; };
+  q(".zl-ink").oninput = () => setInk(q(".zl-ink").value);
+  q(".zl-ink-auto").onclick = () => setInk(null);
   const setRot = v => { v = Math.max(-180, Math.min(180, Math.round(Number(v) || 0))); q(".zl-rot").value = v; q(".zl-rotv").value = v; set({ labelRot: v }); };
   q(".zl-rot").oninput = () => setRot(q(".zl-rot").value);
   q(".zl-rotv").onchange = () => setRot(String(q(".zl-rotv").value).replace(",", "."));
