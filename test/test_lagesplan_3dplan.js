@@ -267,11 +267,17 @@ const PP = [
       document.querySelectorAll('#v3PlLinkHost [data-galopen]').forEach(b => l3ga.open.add('l:' + b.dataset.galopen)); l3plRenderTab();
       const xrow = document.querySelector('#v3PlLinkHost [data-plk^="x"]'); let dlg = false;
       if (xrow) { xrow.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })); dlg = !!document.querySelector('.v3-ga-dlg'); }
+      // Visa alla kopplade med båda planerna: objekten från både Powerproject och Excel markeras.
+      const seenG = []; const pe = l3pEnts, bs = l3bsSet, iso = typeof l3bsIsolate === 'function' ? l3bsIsolate : null; const fm = { id: 'mk', visible: true }; l3b.models.push(fm);
+      l3pEnts = m => (m === fm ? { get: g => { seenG.push(g); return [{ g }]; } } : new Map()); l3bsSet = () => {}; if (iso) l3bsIsolate = () => {};
+      document.getElementById('v3GaShowCoupled').click();
+      l3pEnts = pe; l3bsSet = bs; if (iso) l3bsIsolate = iso; l3b.models.splice(l3b.models.indexOf(fm), 1);
+      const coupledBoth = seenG.includes('X1') && seenG.includes('1hZq3$Bq9Fxu8nZK0bW1aA');
       await pick('excel'); const ex = l3plLinkActs(false).map(a => a.name);
       await pick('pp'); const pp = l3plLinkActs(false).map(a => a.name);
-      return { both, ex, pp, xrow: !!xrow, dlg };
+      return { both, ex, pp, xrow: !!xrow, dlg, coupledBoth };
     });
-    if (!lk.both.includes('Etablering bodar') || !lk.both.includes('Gjutning pelare') || lk.ex.join() !== 'Etablering bodar' || lk.pp.includes('Etablering bodar') || !lk.xrow || lk.dlg) fail('4D-koppling PP/Excel/båda: ' + JSON.stringify(lk));
+    if (!lk.both.includes('Etablering bodar') || !lk.both.includes('Gjutning pelare') || lk.ex.join() !== 'Etablering bodar' || lk.pp.includes('Etablering bodar') || !lk.xrow || lk.dlg || !lk.coupledBoth) fail('4D-koppling PP/Excel/båda: ' + JSON.stringify(lk));
     console.log('OK: 4D-koppling – Powerproject, Excel eller båda; Excel-raderna skyddade mot redigering här');
     // Valen finns i fliken.
     const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlFxBl', 'v3FlFxLegend', 'v3FlAnimDef', 'v3PlLinkHost', 'v3FlTitleOn'].every(id => document.getElementById(id)); });
