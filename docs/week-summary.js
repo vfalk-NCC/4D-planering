@@ -235,8 +235,8 @@ function renderWeekSummary() {
   const chosen = wsAreasGet().filter(a => areas.includes(a)), on = new Set(chosen);
   q(".ws-area-btn").textContent = !chosen.length ? "Alla områden ▾" : chosen.length === 1 ? `${chosen[0]} ▾` : `${chosen.length} områden ▾`;
   q(".ws-area-btn").title = chosen.length ? chosen.join("\n") : "Kryssa i vilka områden sammanfattningen gäller";
-  q(".ws-area-pop").innerHTML = `<label class="ws-area-all"><input type="checkbox" data-all ${chosen.length ? "" : "checked"}> Alla områden</label>`
-    + areas.map(a => `<label><input type="checkbox" data-area="${escapeHtml(a)}" ${on.has(a) ? "checked" : ""}> ${escapeHtml(a)}</label>`).join("");
+  q(".ws-area-pop").innerHTML = `<label class="ws-area-all"><input type="checkbox" data-all ${chosen.length ? "" : "checked"}><span>Alla områden</span></label>`
+    + areas.map(a => `<label><input type="checkbox" data-area="${escapeHtml(a)}" ${on.has(a) ? "checked" : ""}><span>${escapeHtml(a)}</span></label>`).join("");
   q(".ws-contr").innerHTML = opt("", "Alla entreprenörer", wsState.contractor) + uniq(it => it.contractor).map(c => opt(c, c, wsState.contractor)).join("");
   const blGet = typeof ppBlGet === "function" ? ppBlGet : (o, id) => (id === "main" && o.baselineStartDate && o.baselineEndDate ? [o.baselineStartDate, o.baselineEndDate] : null);
   const blIds = ["main", ...new Set(items.flatMap(it => Object.keys(it.baselines || {})))].filter(id => items.some(it => blGet(it, id)));

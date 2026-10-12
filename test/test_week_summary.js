@@ -113,6 +113,8 @@ put('plan_items.json', rows); put('plan_item_activities.json', []); put('plan_it
   await page.click('#weekSumDialog .ws-now'); await page.waitForTimeout(150);
   // Kryssrutor för områden (Victor 2026-10-12): bara Linje K, sedan Alla igen.
   await page.click('#weekSumDialog .ws-area-btn');
+  const lay = await page.evaluate(() => { const l = document.querySelector('#weekSumDialog .ws-area-pop label:nth-child(2)'), i = l.querySelector('input').getBoundingClientRect(), t = l.querySelector('span').getBoundingClientRect(); return { iw: i.width, ix: i.left, tx: t.left, lx: l.getBoundingClientRect().left, align: getComputedStyle(l.querySelector('span')).textAlign }; });
+  if (lay.iw > 24 || lay.tx < lay.ix || lay.ix - lay.lx > 12) fail('Kryssrutan ska stå till vänster om texten: ' + JSON.stringify(lay));
   await page.check('#weekSumDialog .ws-area-pop input[data-area="Linje K"]'); await page.waitForTimeout(150);
   t = await body();
   if (t.includes('Grovbetong') || !t.includes('Schakt linje K') || !/Linje K ▾/.test(await page.textContent('#weekSumDialog .ws-area-btn'))) fail('Områden med kryss:\n' + t);
