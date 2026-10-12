@@ -212,7 +212,7 @@ function l3gRenderTab() {
   };
   const rows = hasF ? l3g.folders.slice().sort((a, b) => a.name.localeCompare(b.name, "sv", { numeric: true })).map(f => sec(f.id, f.name)).join("") + sec(null, "Utan mapp") : list.map(rowOf).join("");
   const colorOn = l3p.colorBy && l3p.colorBy.key === "g:4d";
-  host.innerHTML = `<div class="v3-gnew-row"><button type="button" class="v3-gnew" id="v3GNew" ${n ? "" : "disabled"} title="${n ? "Ny grupp av de markerade objekten" : "Markera objekt i byggnaden först (tryck, Skift, ruta eller Flera)"}">＋ Ny grupp av markerade${n ? ` (${n})` : ""}</button><button type="button" id="v3GfNew" title="Ny mapp för grupperna – dra sedan grupper dit">＋ Ny mapp</button></div>
+  host.innerHTML = (typeof l3orgHtml === "function" ? l3orgHtml() : "") + `<div class="v3-gnew-row"><button type="button" class="v3-gnew" id="v3GNew" ${n ? "" : "disabled"} title="${n ? "Ny grupp av de markerade objekten" : "Markera objekt i byggnaden först (tryck, Skift, ruta eller Flera)"}">＋ Ny grupp av markerade${n ? ` (${n})` : ""}</button><button type="button" id="v3GfNew" title="Ny mapp för grupperna – dra sedan grupper dit">＋ Ny mapp</button></div>
     ${l3g.list.length > 6 ? `<input type="search" class="v3-pp-q" id="v3GQ" placeholder="Sök grupp…" value="${esc(l3gUi.q)}" />` : ""}
     <div class="v3-grs">${rows || `<div class="v3-pal-hint">${l3g.list.length ? "Ingen grupp matchar." : "Inga grupper än. Markera objekt och skapa en grupp, t.ex. Bandgång 1 – den sparas i projektet och kan skrivas in som en egenskap (UDA) i IFC:n."}</div>`}</div>
     ${l3g.list.length ? `<div class="v3-grp-acts">
@@ -222,6 +222,7 @@ function l3gRenderTab() {
   l3gBindTab(host);
 }
 function l3gBindTab(host) {
+  if (typeof l3orgBind === "function") l3orgBind(host);
   const q = host.querySelector("#v3GQ");
   if (q) q.oninput = () => { l3gUi.q = q.value; const pos = q.selectionStart; l3gRenderTab(); const q2 = document.getElementById("v3GQ"); if (q2) { q2.focus(); q2.setSelectionRange(pos, pos); } };
   host.querySelectorAll("[data-gsel]").forEach(b => { b.onclick = e => l3gSelect(b.dataset.gsel, e.shiftKey || e.ctrlKey || e.metaKey); });

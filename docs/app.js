@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-12 08:11";
+const APP_VERSION = "2026-10-12 09:00";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -411,6 +411,10 @@ window.addEventListener("message", async e => {
       showLagesplanBanner("", 0);
       const buf = bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength ? bytes.buffer : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
       reply({ name: spec.name, placement: spec.placement || null, bytes: buf }, [buf]);
+    } else if (msg.type === "tcOrganizer") {
+      // Lägesplanens 3D-vy, fliken Grupper: indelningen i Organizer (tc-organizer.js). Fel skickas med stegen som provades.
+      try { reply(await tcOrganizerFetch(await tcAccessToken(), await API.project.getProject(), API.viewer)); }
+      catch (er) { reply({ failed: er.message, log: er.log || [] }); }
     } else if (msg.type === "tcFolder") {
       // Hämta modell i lägesplanens 3D-vy: bläddra i projektets mappar i TC.
       reply(await tcFolderItems(msg.folderId || null));
