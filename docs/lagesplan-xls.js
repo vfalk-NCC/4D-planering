@@ -72,3 +72,8 @@ function xlsTipHtml(list) {
     + `<div><span style="display:inline-block;width:9px;height:9px;border-radius:50%;border:2px solid ${phaseColor(ph)};margin-right:4px;vertical-align:-1px;"></span>${escHtml(PHASE_LABELS[ph] || ph)} · ${d(it.start_date)} – ${d(it.end_date)}${Number.isFinite(Number(it.progress)) && it.progress !== "" && it.progress != null ? ` · ${Math.round(Number(it.progress))} %` : ""}</div>`
     + (list.length > 1 ? `<div style="margin-top:6px;opacity:.75;">+ ${list.length - 1} till här</div>` : "");
 }
+/* Namnen (samma etiketter som objekten, "Visa namn"): Excel-objekten som { it, center, xls }. */
+function xlsLabelObjects() {
+  if (!xlsActive() || !layerVisible("xls") || !xls.items) return [];
+  return xlsObjects().map(o => ({ it: o.it, center: o.pt, members: [o.it], xls: true }));
+}

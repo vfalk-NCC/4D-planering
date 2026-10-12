@@ -79,8 +79,16 @@ const PP_ITEMS = [{ id: 'p1', object_name: 'Etapp 1', activity: 'Grundläggning'
     // Exporten tar med ringarna; släckt lager syns inte och följer inte med.
     const px = () => page.evaluate(() => { const o = xlsObjects().find(o => o.it.id === 'x3'), cv = composeImage(null, true), k = cv.width / $('pdfCanvas').width, [x, y] = toPx(o.pt), r = Math.ceil(xlsRingPx * k) + 3, d = cv.getContext('2d').getImageData(Math.round(x * k) - r, Math.round(y * k) - r, 2 * r, 2 * r).data, want = phaseColor('planerad'); let n = 0; const W = [1, 3, 5].map(i => parseInt(want.slice(i, i + 2), 16)); for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - W[0]) < 12 && Math.abs(d[i + 1] - W[1]) < 12 && Math.abs(d[i + 2] - W[2]) < 12) n++; return n; });
     if (!((await px()) > 3)) fail('Exporten ska ta med Excel-ringarna');
+    // Namnen (Visa namn): Excel-objektens etiketter syns också (Victor 2026-10-12: "Nu visas inte 3D-namnen från Excel-planeringen").
+    const lbl = await page.evaluate(() => { localStorage.setItem('lagesplan-objlabels', '1'); fitView(); renderZones(); return objLabelBoxes.map(b => b.text).sort().join(); });
+    if (!/F1/.test(lbl) || !/F2/.test(lbl) || !/F3/.test(lbl)) fail('Excel-objektens namn ska synas: ' + lbl);
+    await page.evaluate(() => { const b = objLabelBoxes.find(x => x.text === 'F2'); openLabelMenu(b, { clientX: 300, clientY: 300, preventDefault() {} }); });
+    await page.keyboard.press('Escape');
+    await page.screenshot({ path: path.join(process.env.PLACE_TMP || '.', 'xls-labels.png') });
+    console.log('OK: Excel-objektens namn visas som etiketter');
     await page.evaluate(() => { const c = document.querySelector('#layerList [data-layer="xls"] .lr-vis'); c.checked = false; c.dispatchEvent(new Event('change', { bubbles: true })); });
     if (await page.evaluate(() => $('xlsCanvas').style.display) !== 'none') fail('Släckt lager ska döljas');
+    if (await page.evaluate(() => objLabelBoxes.some(b => /^F\d/.test(b.text)))) fail('Släckt lager: inga Excel-namn');
     if ((await px()) > 0) fail('Släckt lager ska inte följa med i exporten');
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('OK: Excel-planeringen i PP-lägesplanen – ringar i Excels statusfärg, hovring, tänd/släck, export');

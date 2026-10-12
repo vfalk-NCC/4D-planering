@@ -672,9 +672,13 @@ function drawObjectLabels(ctx, objects, fontPx, scr) {
     }
     ctx.fillStyle = "rgba(255,255,255,0.93)";
     ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, fs / 10);
+    // Namn från Excel-planeringen (ringarna i PP-lägesplanen): streckad ram.
+    const xlsOnly = shown.length && shown.every(x => x.xls);
+    if (xlsOnly) ctx.setLineDash([fs * 0.35, fs * 0.22]);
     ctx.beginPath();
     if (ctx.roundRect) ctx.roundRect(box.x, box.y, box.w, box.h, h / 3); else ctx.rect(box.x, box.y, box.w, box.h);
     ctx.fill(); ctx.stroke();
+    if (xlsOnly) ctx.setLineDash([]);
     ctx.fillStyle = "#111827";
     ctx.fillText(text, box.x + pad, box.y + box.h / 2);
   }
@@ -1124,12 +1128,15 @@ function renderScreenLabels() {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, c.width, c.height);
   objLabelBoxes = [];
-  if (!plan || !viewport || !labelObjects || !labelObjects.length || !objLabelsOn()) return;
+  // Excel-planeringens namn också (Victor 2026-10-12: "Nu visas inte 3D-namnen från Excel-planeringen").
+  const xo = typeof xlsLabelObjects === "function" ? xlsLabelObjects() : [];
+  const all = xo.length ? [...(labelObjects || []), ...xo] : labelObjects;
+  if (!plan || !viewport || !all || !all.length || !objLabelsOn()) return;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const map = p => stageToScreen(toPx(p));
   // Prickens radie på skärmen just nu (prickarna ritas om först när zoomen stannat).
   const r = Math.max(3, objMinPx * view.scale);
-  drawObjectLabels(ctx, labelObjects, planFontPx(), { map, fs: 11 * objLabelSize() / 100, r, w, h });
+  drawObjectLabels(ctx, all, planFontPx(), { map, fs: 11 * objLabelSize() / 100, r, w, h });
 }
 function renderScreenLabelsSoon() { if (!labelRaf) labelRaf = requestAnimationFrame(() => { labelRaf = 0; renderScreenLabels(); }); }
 let textRaf = 0;
