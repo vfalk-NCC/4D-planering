@@ -108,6 +108,27 @@ const JPG = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP/////////////////////
     if (lb.txt.length !== 3 || !lb.txt.some(t => /11 okt 2026/.test(t) && /Med GPS/.test(t)) || lb.has !== 3 || !lb.dateOnly || !lb.off || !lb.sec || lb.rows !== 3 || !lb.last || !lb.shut || !/Foton/.test(lb.head)) fail('Datum/kommentar vid fotona och Foton-listan: ' + JSON.stringify(lb));
     console.log('OK: datum + kommentar vid fotomarkörerna (valbart) och Foton som hopfällbar lista under Kommentarer & mått');
 
+    // Miniatyrer, Ctrl/Skift-markering och mappar (som kommentarer och mått) för fotona.
+    const fo = await page.evaluate(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms)), click = (id, o = {}) => document.querySelector(`[data-phgo="${id}"]`).dispatchEvent(new MouseEvent('click', { bubbles: true, ...o }));
+      l3a.plan = plan.id; l3a.loaded = true; l3a.folders = [{ id: 'fA', plan: plan.id, name: 'Område A' }];
+      l3PalTab('comments'); l3kRenderTab(); document.getElementById('v3PhSec').scrollIntoView({ block: 'start' }); await wait(1500);
+      const thumbs = document.querySelectorAll('#v3PhSec .v3-ph-th').length, loaded = document.querySelectorAll('#v3PhSec .v3-ph-th.ok').length, bad = document.querySelectorAll('#v3PhSec .v3-ph-th.bad').length, vis = [...document.querySelectorAll('#v3PhSec .v3-ph-th')].map(i => { const r = i.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.height)]; }), q = l3phThumbQ.wait.length + '/' + l3phThumbQ.run, ghr = typeof ghReadBinaryUrl;
+      click('g', { ctrlKey: true }); const one = l3phUi.sel.size === 1 && document.querySelectorAll('#v3PhSec .v3-kc.sel').length === 1;
+      click('h', { shiftKey: true }); const range = l3phUi.sel.size === 3; // g, n, h i listans ordning
+      const mvOpt = !!document.querySelector('#v3PhMove option[value="fA"]');
+      const mv = document.getElementById('v3PhMove'); mv.value = 'fA'; mv.dispatchEvent(new Event('change')); await wait(300);
+      const moved = photos().every(p => p.folder === 'fA');
+      const counted = /3 foton/.test(document.querySelector('#v3PalComments .v3-af-n em').textContent) || [...document.querySelectorAll('#v3PalComments .v3-af-n em')].some(e => /3 foton/.test(e.textContent));
+      const n0 = l3.groups.photos.children.filter(o => o.isSprite).length;
+      l3aToggle('fA'); await wait(100); const n1 = l3.groups.photos.children.filter(o => o.isSprite).length, dim = document.querySelectorAll('#v3PhSec .v3-phr.off').length;
+      l3aToggle('fA'); await wait(100); const n2 = l3.groups.photos.children.filter(o => o.isSprite).length;
+      l3phUi.sel.clear(); await l3aMove(photos(), null); const back = photos().every(p => !p.folder);
+      return { thumbs, loaded, bad, vis, q, ghr, one, range, mvOpt, moved, counted, n0, n1, n2, dim, back };
+    });
+    if (fo.thumbs !== 3 || fo.loaded < 1 || !fo.one || !fo.range || !fo.mvOpt || !fo.moved || !fo.counted || fo.n0 !== 3 || fo.n1 !== 0 || fo.n2 !== 3 || fo.dim !== 3 || !fo.back) fail('Foton: miniatyrer, Ctrl/Skift, mappar: ' + JSON.stringify(fo));
+    console.log('OK: foton med miniatyrer, Ctrl/Skift-markering och mappar som tänds och släcks');
+
     // Gå-läge: tryck på fotoikonen och titta på bilden.
     const wp = await page.evaluate(async () => {
       l3wInit(); l3SetPref('walkFollow', false); l3SetPref('navHelp', false); l3NavHelp(); l3phClose();
@@ -134,6 +155,41 @@ const JPG = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP/////////////////////
     if (!/Med GPS/.test(pop.t) || !/42,50 m/.test(pop.t) || !/GPS-höjd/.test(pop.t) || !/90° \(öster\)/.test(pop.t)) fail('Popupen: ' + pop.t);
     await page.waitForFunction(() => document.querySelector('#v3PhPop .v3-ph-img').getAttribute('src'), null, { timeout: 5000 });
     await page.screenshot({ path: path.join(OUT, '3dphotos.png') });
+
+    // Fotot i helskärm: zooma (hjul, knappar, dubbelklick), dra, stäng.
+    const bg = await page.evaluate(async () => {
+      document.querySelector('#v3PhPop .v3-ph-img').click(); await new Promise(r => setTimeout(r, 200));
+      const big = document.querySelector('.v3-phbig'); if (!big) return { open: false };
+      const stage = big.querySelector('.v3-phbig-stage'), img = big.querySelector('img'), sc = () => { const m = /scale\(([\d.]+)\)/.exec(img.style.transform); return m ? +m[1] : 1; };
+      const r = stage.getBoundingClientRect(), o = { bubbles: true, cancelable: true, clientX: r.left + r.width / 2 + 40, clientY: r.top + r.height / 2 };
+      const s0 = sc(); stage.dispatchEvent(new WheelEvent('wheel', { ...o, deltaY: -100 })); const s1 = sc(); stage.dispatchEvent(new WheelEvent('wheel', { ...o, deltaY: -100 })); const s2 = sc();
+      const zoomed = big.classList.contains('zoomed'); big.querySelector('[data-z="out"]').click(); const s3 = sc();
+      big.querySelector('[data-z="fit"]').click(); const s4 = sc();
+      stage.dispatchEvent(new MouseEvent('dblclick', o)); const s5 = sc(); stage.dispatchEvent(new MouseEvent('dblclick', o)); const s6 = sc();
+      big.querySelector('[data-z="in"]').click(); const s7 = sc();
+      big.focus(); return { open: true, s0, s1, s2, s3, s4, s5, s6, s7, zoomed };
+    });
+    bg.active = await page.evaluate(() => { const a = document.activeElement; return a ? a.className + '|' + a.tagName : null; }); await page.keyboard.press('Escape'); await page.waitForTimeout(150); bg.closed = !(await page.locator('.v3-phbig').count());
+    if (!bg.open || bg.s0 !== 1 || !(bg.s1 > 1.2) || !(bg.s2 > bg.s1) || !bg.zoomed || !(bg.s3 < bg.s2) || bg.s4 !== 1 || !(bg.s5 > 2.5) || bg.s6 !== 1 || !(bg.s7 > 1.4) || !bg.closed) fail('Fotot i helskärm ska gå att zooma: ' + JSON.stringify(bg));
+    console.log('OK: fotot i helskärm – zooma med hjul/knappar/dubbelklick, anpassa, Esc stänger');
+
+    // Ändra namn, datum och mapp i fotomenyn; datumet överst och texten radbruten i etiketten vid markören.
+    const ed = await page.evaluate(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms));
+      l3a.plan = plan.id; l3a.loaded = true; l3a.folders = [{ id: 'fE', plan: plan.id, name: 'Område E' }];
+      document.querySelector('#v3PhPop [data-ph="edit"]').click(); await wait(50);
+      const fields = !!document.getElementById('v3PhCap') && !!document.getElementById('v3PhDate') && !!document.querySelector('#v3PhFolder option[value="fE"]');
+      document.getElementById('v3PhCap').value = 'J15 byggställning, norra gaveln och trapphuset'; document.getElementById('v3PhDate').value = '2026-10-05'; document.getElementById('v3PhFolder').value = 'fE';
+      document.querySelector('#v3PhPop [data-ph="save"]').click(); await wait(150);
+      const ph = photos().find(p => p.id === 'g'), head = document.querySelector('#v3PhPop').textContent;
+      const lab = [...document.querySelectorAll('.v3-phl')].find(e => /5 okt 2026/.test(e.textContent)), cs = lab && getComputedStyle(lab);
+      const stack = lab && lab.firstElementChild.tagName === 'B' && lab.querySelector('span') && cs.display === 'flex' && cs.flexDirection === 'column' && lab.querySelector('span').getBoundingClientRect().top >= lab.querySelector('b').getBoundingClientRect().bottom - 1;
+      const edit0 = !document.getElementById('v3PhCap');
+      return { fields, cap: ph.caption, date: ph.date, folder: ph.folder, head: /J15 byggställning/.test(head) && /5 okt|2026-10-05/.test(head) && /Område E/.test(head), stack: !!stack, edit0 };
+    });
+    if (!ed.fields || ed.cap !== 'J15 byggställning, norra gaveln och trapphuset' || ed.date !== '2026-10-05' || ed.folder !== 'fE' || !ed.head || !ed.stack || !ed.edit0) fail('Ändra foto (namn, datum, mapp) och etikett: ' + JSON.stringify(ed));
+    console.log('OK: foton – ändra namn, datum och mapp i fotomenyn; datum överst och radbruten text vid markören');
+    await page.evaluate(() => { updatePhoto('g', { caption: 'Med GPS', date: '2026-10-11', folder: null }); });
 
     // 4. ▲ Våning → 45,5 m (sparas med fotot), Ctrl+Z → GPS-höjden igen, Ställ på ytan → 6,6 m, GPS-höjd → tillbaka.
     const zOf = () => page.evaluate(() => { const p = photos().find(x => x.id === 'g'); return [p.z === undefined ? null : p.z, +(l3.groups.photos.children.find(o => o.isSprite && o.userData.photoId === 'g').position.z + l3.O[2]).toFixed(2)]; });

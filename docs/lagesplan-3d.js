@@ -1474,6 +1474,13 @@ function l3Key(e) {
   if (!l3 || !box || box.classList.contains("hidden")) return;
   const tag = e.target && e.target.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  // Fotot i helskärm är öppet: Esc stänger det, övriga tangenter går till fotot (+ − 0 zoomar) och inte till 3D-vyn.
+  if (typeof l3ph !== "undefined" && l3ph.big) {
+    e.stopImmediatePropagation();
+    if (e.key === "Escape") { e.preventDefault(); l3ph.big.remove(); l3ph.big = null; }
+    else if (l3ph.big.onkeydown) l3ph.big.onkeydown(e);
+    return;
+  }
   // I 3D gäller bara 3D-vyns tangenter (lägesplanens genvägar och 2D-ångra ska inte reagera).
   e.stopImmediatePropagation();
   if (typeof l3wKey === "function" && l3wKey(e)) return; // gå-läget (WASD) har tangenterna

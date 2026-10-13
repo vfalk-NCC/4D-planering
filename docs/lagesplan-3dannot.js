@@ -9,6 +9,10 @@
    – Tar man bort en mapp hamnar innehållet i "Utan mapp" – inget försvinner. */
 
 const l3a = { folders: [], loaded: false, plan: null, cur: null };
+/* Foton ligger i samma mappar (Victor 2026-10-13: "lägga i mappar som kan tändas och släckas"): fotot har folder (sparas
+   med arbetsytan) och släcks per person på samma sätt som kommentarer och mått. */
+const l3aPhotos = () => (typeof photos === "function" ? photos() : []);
+const l3aAllItems = () => [...l3k.list, ...l3m.list, ...l3aPhotos()];
 const l3aPath = () => `projects/${encodeURIComponent(projectId)}/plan_annotfolders.json`;
 const l3aKey = id => id || "_";
 const l3aHiddenMap = () => (typeof l3Prefs === "function" && l3Prefs().annotHidden) || {};
@@ -18,9 +22,10 @@ const l3aItemHidden = () => (typeof l3Prefs === "function" && l3Prefs().annotIte
 function l3aOn(x) { return !l3aHiddenMap()[l3aKey(x && x.folder)] && !(x && l3aItemHidden()[x.id]); }
 function l3aItemToggle(id) { const h = { ...l3aItemHidden() }; if (h[id]) delete h[id]; else h[id] = true; l3SetPref("annotItemHidden", h); l3aRefresh(); }
 /* Allt i en mapp tänds styckvis igen (mappens öga tänder också det som släckts en och en). */
-function l3aItemsShow(folderId) { const h = { ...l3aItemHidden() }; [...l3k.list, ...l3m.list].filter(x => (x.folder || null) === folderId).forEach(x => delete h[x.id]); l3SetPref("annotItemHidden", h); }
+function l3aItemsShow(folderId) { const h = { ...l3aItemHidden() }; l3aAllItems().filter(x => (x.folder || null) === folderId).forEach(x => delete h[x.id]); l3SetPref("annotItemHidden", h); }
 function l3aZoomItem(x) {
   if (!x) return;
+  if (x.path && l3aPhotos().some(p => p.id === x.id)) { if (typeof l3phGo === "function") l3phGo(x.id); return; }
   if (l3k.list.includes(x)) { l3k.hidden = false; l3FlyTo(new THREE.Vector3(x.pos[0] - l3.O[0], x.pos[1] - l3.O[1], x.pos[2] - l3.O[2]), 18); return; }
   if (x.hid) x.hid = false;
   const b3 = new THREE.Box3(); (x.pts || []).forEach(p => b3.expandByPoint(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2])));
@@ -44,6 +49,7 @@ async function l3aWrite(f, remove) {
 function l3aRefresh() {
   if (typeof l3kDraw === "function") l3kDraw(); // ritar också om fliken
   if (typeof l3mDraw === "function") l3mDraw();
+  if (typeof l3phBuild === "function" && l3 && l3.groups.photos) l3phBuild(); // fotona i tända mappar
   if (typeof l3kRenderTab === "function") l3kRenderTab();
 }
 function l3aSetHidden(map) { l3SetPref("annotHidden", map); l3aRefresh(); }
@@ -71,16 +77,17 @@ async function l3aRename(id) {
 }
 async function l3aDelete(id) {
   const f = l3a.folders.find(x => x.id === id); if (!f) return;
-  const nk = l3k.list.filter(c => c.folder === id), nm = l3m.list.filter(m => m.folder === id);
-  if (!(await uiConfirm(`Ta bort mappen "${f.name}"?${nk.length + nm.length ? ` Det som ligger i den (${nk.length} kommentarer, ${nm.length} mått) flyttas till Utan mapp.` : ""}`))) return;
+  const nk = l3k.list.filter(c => c.folder === id), nm = l3m.list.filter(m => m.folder === id), np = l3aPhotos().filter(p => p.folder === id);
+  if (!(await uiConfirm(`Ta bort mappen "${f.name}"?${nk.length + nm.length + np.length ? ` Det som ligger i den (${nk.length} kommentarer, ${nm.length} mått, ${np.length} foton) flyttas till Utan mapp.` : ""}`))) return;
   l3a.folders = l3a.folders.filter(x => x !== f);
   if (l3a.cur === id) l3a.cur = null;
-  await l3aMove([...nk, ...nm], null, true);
+  await l3aMove([...nk, ...nm, ...np], null, true);
   await l3aWrite(f, true);
 }
 /* Flytta kommentarer och mått till en mapp (null = Utan mapp). Sparas i en skrivning per fil. */
 async function l3aMove(items, folderId, quiet) {
-  const ks = items.filter(x => l3k.list.includes(x)), ms = items.filter(x => l3m.list.includes(x));
+  const ks = items.filter(x => l3k.list.includes(x)), ms = items.filter(x => l3m.list.includes(x)), ps = items.filter(x => x && x.path && l3aPhotos().some(p => p.id === x.id));
+  ps.forEach(p => { if (typeof updatePhoto === "function") updatePhoto(p.id, { folder: folderId || null }); }); // sparas med arbetsytan
   ks.forEach(c => { c.folder = folderId || null; });
   ms.forEach(m => { m.folder = folderId || null; });
   l3aRefresh();
@@ -89,28 +96,30 @@ async function l3aMove(items, folderId, quiet) {
     const msv = ms.filter(m => m.saved).map(({ saved, hid, ...x }) => x);
     if (msv.length) await ghWriteJSON(token, l3mPath(), arr => { const ids = new Set(msv.map(m => m.id)); return [...(Array.isArray(arr) ? arr : []).filter(x => !ids.has(x.id)), ...msv]; }, `3D: ${msv.length} mått till mapp`);
   } catch (e) { l3Status("Kunde inte spara flytten: " + e.message, true); return; }
-  if (!quiet) l3Status(`${ks.length ? `${ks.length} kommentarer` : ""}${ks.length && ms.length ? " och " : ""}${ms.length ? `${ms.length} mått` : ""} flyttade till ${folderId ? `"${l3aFolderName(folderId)}"` : "Utan mapp"}.`);
+  if (!quiet) l3Status(`${[ks.length ? `${ks.length} kommentarer` : "", ms.length ? `${ms.length} mått` : "", ps.length ? `${ps.length} foton` : ""].filter(Boolean).join(", ")} flyttade till ${folderId ? `"${l3aFolderName(folderId)}"` : "Utan mapp"}.`);
 }
 /* De markerade i listorna (kommentarer och mått). */
 function l3aSelected() {
   const ks = typeof l3kUi !== "undefined" ? l3k.list.filter(c => l3kUi.sel.has(c.id)) : [];
   const ms = l3m.sel ? l3m.list.filter(m => l3m.sel.has(m.id)) : [];
-  return [...ks, ...ms];
+  const ps = typeof l3phUi !== "undefined" ? l3aPhotos().filter(p => l3phUi.sel.has(p.id)) : [];
+  return [...ks, ...ms, ...ps];
 }
 
 function l3aHtml() {
   const esc = escHtml, I = L3_ICO, hid = l3aHiddenMap();
-  const count = id => ({ k: l3k.list.filter(c => (c.folder || null) === id).length, m: l3m.list.filter(m => (m.folder || null) === id).length });
+  const count = id => ({ k: l3k.list.filter(c => (c.folder || null) === id).length, m: l3m.list.filter(m => (m.folder || null) === id).length, p: l3aPhotos().filter(p => (p.folder || null) === id).length });
   const ih = l3aItemHidden(), openSet = new Set(l3Prefs().afOpen || []);
   // Innehållet i en utfälld mapp: kommentarer och mått med eget öga; klick zoomar dit.
   const items = id => {
     const ks = l3k.list.map((c, i) => ({ x: c, nr: i + 1, k: true })).filter(({ x }) => (x.folder || null) === id);
     const ms = l3m.list.filter(m => (m.folder || null) === id).map(m => ({ x: m, k: false }));
-    if (!ks.length && !ms.length) return `<div class="v3-afi-empty">Tom mapp – dra in kommentarer eller mått hit.</div>`;
-    return [...ks, ...ms].map(({ x, nr, k: isK }) => {
+    const ps = l3aPhotos().filter(p => (p.folder || null) === id).map(p => ({ x: p, k: false, ph: true }));
+    if (!ks.length && !ms.length && !ps.length) return `<div class="v3-afi-empty">Tom mapp – dra in kommentarer, mått eller foton hit.</div>`;
+    return [...ks, ...ms, ...ps].map(({ x, nr, k: isK, ph }) => {
       const on = !ih[x.id] && !hid[l3aKey(id)];
-      const dot = isK ? `<i class="v3-afi-dot" style="background:${typeof l3kCol === "function" ? l3kCol(x) : "#f97316"}">${nr}</i>` : `<i class="v3-afi-dot m" style="${x.color ? `background:${esc(x.color)}` : ""}">⟷</i>`;
-      const label = isK ? String(x.text || "Kommentar").split("\n")[0] : `${(typeof L3M_KIND !== "undefined" && L3M_KIND[x.kind]) || "Mått"} ${x.text || ""}`;
+      const dot = ph ? `<i class="v3-afi-dot ph">&#128247;</i>` : isK ? `<i class="v3-afi-dot" style="background:${typeof l3kCol === "function" ? l3kCol(x) : "#f97316"}">${nr}</i>` : `<i class="v3-afi-dot m" style="${x.color ? `background:${esc(x.color)}` : ""}">⟷</i>`;
+      const label = ph ? `${typeof l3phDateTxt === "function" ? l3phDateTxt(x) : x.date || ""} ${x.caption || "Foto"}` : isK ? String(x.text || "Kommentar").split("\n")[0] : `${(typeof L3M_KIND !== "undefined" && L3M_KIND[x.kind]) || "Mått"} ${x.text || ""}`;
       return `<div class="v3-afi ${on ? "" : "off"} ${isK && x.done ? "done" : ""}"><button type="button" class="v3-eye ${on ? "on" : ""}" data-afi-eye="${esc(x.id)}" title="${ih[x.id] ? "Tänd" : "Släck"} – bara den här">${typeof l3lEye === "function" ? l3lEye(!ih[x.id]) : ""}</button>${dot}<button type="button" class="v3-afi-n" data-afi-go="${esc(x.id)}" title="Zooma dit">${esc(label.slice(0, 90))}</button></div>`;
     }).join("");
   };
@@ -119,7 +128,7 @@ function l3aHtml() {
     return `<div class="v3-af ${on ? "" : "off"} ${cur ? "cur" : ""}">
       <button type="button" class="v3-af-exp" data-afexp="${k}" aria-expanded="${ex}" title="${ex ? "Fäll ihop" : "Visa innehållet"}"><i>›</i></button>
       <label class="v3-af-chk" title="${on ? "Visas i 3D – bocka ur för att dölja mappens kommentarer och mått" : "Dold – bocka i för att visa mappens kommentarer och mått"}"><input type="checkbox" data-afeye="${k}" ${on ? "checked" : ""} /></label>
-      <button type="button" class="v3-af-n" data-afcur="${k}" title="${cur ? "Nya kommentarer och mått hamnar här" : "Klicka: nya kommentarer och mått hamnar här"}"><b>${esc(name)}</b><em>${n.k} kommentarer · ${n.m} mått${cur ? " · nya hamnar här" : ""}</em></button>
+      <button type="button" class="v3-af-n" data-afcur="${k}" title="${cur ? "Nya kommentarer och mått hamnar här" : "Klicka: nya kommentarer och mått hamnar här"}"><b>${esc(name)}</b><em>${n.k} kommentarer · ${n.m} mått${n.p ? ` · ${n.p} foton` : ""}${cur ? " · nya hamnar här" : ""}</em></button>
       <button type="button" class="v3-ic" data-afsolo="${k}" title="Visa bara den här mappen">◎</button>
       ${own ? `<button type="button" class="v3-ic" data-afren="${k}" title="Byt namn">${I.edit}</button><button type="button" class="v3-ic" data-afdel="${k}" title="Ta bort mappen (innehållet flyttas till Utan mapp)">${I.trash}</button>` : ""}
     </div>${ex ? `<div class="v3-afi-list">${items(id)}</div>` : ""}`;
@@ -135,12 +144,12 @@ function l3aBind(host) {
   host.querySelectorAll("[data-afeye]").forEach(b => { b.onchange = () => l3aToggle(id(b.dataset.afeye)); b.onclick = e => e.stopPropagation(); });
   host.querySelectorAll("[data-afsolo]").forEach(b => { b.onclick = () => l3aSolo(id(b.dataset.afsolo)); });
   host.querySelectorAll("[data-afexp]").forEach(b => { b.onclick = () => { const s2 = new Set(l3Prefs().afOpen || []), k = b.dataset.afexp; if (s2.has(k)) s2.delete(k); else s2.add(k); l3SetPref("afOpen", [...s2]); l3kRenderTab(); }; });
-  const anyItem = iid => l3k.list.find(c => c.id === iid) || l3m.list.find(m => m.id === iid);
+  const anyItem = iid => l3k.list.find(c => c.id === iid) || l3m.list.find(m => m.id === iid) || l3aPhotos().find(p => p.id === iid);
   host.querySelectorAll("[data-afi-eye]").forEach(b => { b.onclick = () => {
     const x = anyItem(b.dataset.afiEye); if (!x) return;
     // Släckt mapp: att tända en sak i den tänder mappen men släcker de andra i den (bara den här syns).
     const fk = l3aKey(x.folder || null), h = { ...l3aHiddenMap() };
-    if (h[fk]) { delete h[fk]; const ih2 = { ...l3aItemHidden() }; [...l3k.list, ...l3m.list].filter(y => (y.folder || null) === (x.folder || null)).forEach(y => { if (y !== x) ih2[y.id] = true; else delete ih2[y.id]; }); l3SetPref("annotItemHidden", ih2); l3aSetHidden(h); return; }
+    if (h[fk]) { delete h[fk]; const ih2 = { ...l3aItemHidden() }; l3aAllItems().filter(y => (y.folder || null) === (x.folder || null)).forEach(y => { if (y !== x) ih2[y.id] = true; else delete ih2[y.id]; }); l3SetPref("annotItemHidden", ih2); l3aSetHidden(h); return; }
     if (x.hid) x.hid = false;
     l3aItemToggle(x.id);
   }; });
@@ -166,19 +175,20 @@ function l3aDragBind(host) {
   const rows = [
     ...[...host.querySelectorAll("[data-kcgo]")].map(b => ({ b, item: () => l3k.list.find(c => c.id === b.dataset.kcgo), kind: "k" })),
     ...[...host.querySelectorAll("[data-mzoom]")].map(b => ({ b, item: () => l3m.list.find(m => m.id === b.dataset.mzoom), kind: "m" })),
+    ...[...host.querySelectorAll("[data-phgo]")].map(b => ({ b, item: () => l3aPhotos().find(p => p.id === b.dataset.phgo), kind: "p" })),
   ];
   rows.forEach(({ b, item, kind }) => l3DndBind(b, () => {
     const it = item(); if (!it) return null;
     // Raden är markerad: alla markerade följer med; annars bara den.
     const sel = l3aSelected(), items = sel.includes(it) ? sel : [it];
     const pal = b.closest(".v3-paltab") || document.body, ids = new Set(items.map(x => x.id));
-    const nk = items.filter(x => l3k.list.includes(x)).length, nm = items.length - nk;
+    const nk = items.filter(x => l3k.list.includes(x)).length, np = items.filter(x => x.path).length, nm = items.length - nk - np;
     return {
       items, pal,
-      color: kind === "k" ? (typeof l3kCol === "function" ? l3kCol(it) : "#f97316") : "#dc2626",
-      title: kind === "k" ? String(it.text || "Kommentar").split("\n")[0] : `${(typeof L3M_KIND !== "undefined" && L3M_KIND[it.kind]) || "Mått"} ${it.text}`,
-      sub: items.length > 1 ? `${nk ? `${nk} kommentarer` : ""}${nk && nm ? " + " : ""}${nm ? `${nm} mått` : ""}` : "Släpp på en mapp",
-      src: [...pal.querySelectorAll("[data-kcgo],[data-mzoom]")].filter(x => ids.has(x.dataset.kcgo || x.dataset.mzoom)).map(x => x.closest(".v3-kc")),
+      color: kind === "k" ? (typeof l3kCol === "function" ? l3kCol(it) : "#f97316") : kind === "p" ? "#0284c7" : "#dc2626",
+      title: kind === "p" ? `${typeof l3phDateTxt === "function" ? l3phDateTxt(it) : ""} ${it.caption || "Foto"}`.trim() : kind === "k" ? String(it.text || "Kommentar").split("\n")[0] : `${(typeof L3M_KIND !== "undefined" && L3M_KIND[it.kind]) || "Mått"} ${it.text}`,
+      sub: items.length > 1 ? [nk ? `${nk} kommentarer` : "", nm ? `${nm} mått` : "", np ? `${np} foton` : ""].filter(Boolean).join(" + ") : "Släpp på en mapp",
+      src: [...pal.querySelectorAll("[data-kcgo],[data-mzoom],[data-phgo]")].filter(x => ids.has(x.dataset.kcgo || x.dataset.mzoom || x.dataset.phgo)).map(x => x.closest(".v3-kc")),
       targets: [...pal.querySelectorAll(".v3-af"), ...pal.querySelectorAll("#v3AfNew")],
       name: t => (t.id === "v3AfNew" ? "Ny mapp…" : (t.querySelector(".v3-af-n b") || {}).textContent),
       drop: async t => {

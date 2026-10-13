@@ -11,8 +11,11 @@
 
 const L3PH_EYE = 1.6, L3PH_STOREY = 3;
 const l3ph = { open: null, drag: null, h: null, big: null, pts: [], labels: [] };
+const l3phUi = { sel: new Set(), anchor: null }; // markerade foton i listan (Ctrl/Skift-klick)
 const l3phOn = () => l3Prefs().photos3d === true;
 const l3phList = () => (typeof visiblePhotos === "function" ? visiblePhotos() : typeof photos === "function" ? photos() : []);
+/* Fotona i tända mappar (en släckt mapp eller ett släckt foto syns inte i 3D). */
+const l3phOnList = () => l3phList().filter(ph => typeof l3aOn !== "function" || l3aOn(ph));
 const l3phR2 = v => Math.round(v * 100) / 100;
 
 /* Ytan rakt under (x, y) i 3D-vyns koordinater: översta träffen, annars ritningens höjd. */
@@ -63,7 +66,7 @@ function l3phBuild() {
   l3ph.pts = [];
   if (!grp.visible) { l3phClose(); l3phHandlePlace(); l3phLabels(); return; }
   const tex = l3phIconTex();
-  l3phList().forEach(ph => {
+  l3phOnList().forEach(ph => {
     const { p, ground } = l3phPos(ph), sel = l3ph.open && l3ph.open.id === ph.id;
     l3ph.pts.push({ ph, p: p.clone() });
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: false }));
@@ -108,7 +111,7 @@ function l3phLabels() {
   l3ph.pts.forEach(({ ph, p }) => {
     const el = document.createElement("div"), cap = String(ph.caption || "").trim();
     el.className = "v3-phl" + (cap ? " has" : "");
-    el.innerHTML = `<b>${esc(l3phDateTxt(ph))}</b>${mode === "all" && cap ? `<span>${esc(cap.length > 36 ? cap.slice(0, 35) + "…" : cap)}</span>` : cap ? `<i title="${esc(cap)}"></i>` : ""}`;
+    el.innerHTML = `<b>${esc(l3phDateTxt(ph))}</b>${mode === "all" && cap ? `<span>${esc(cap.length > 90 ? cap.slice(0, 89) + "…" : cap)}</span>` : cap ? `<i title="${esc(cap)}"></i>` : ""}`;
     el.title = `${ph.caption || "Foto"} · ${l3phDateTxt(ph)}${ph.by ? " · " + ph.by : ""}`;
     el.onpointerdown = e => e.stopPropagation(); el.onclick = e => { e.stopPropagation(); l3phOpen(ph); };
     host.appendChild(el); l3ph.labels.push({ el, p });
@@ -116,7 +119,7 @@ function l3phLabels() {
   l3phLabelsPlace();
 }
 function l3phLabelsPlace() {
-  (l3ph.labels || []).forEach(({ el, p }) => { const q = l3ToScreen(p); el.style.display = q.behind ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px"; });
+  (l3ph.labels || []).forEach(({ el, p }) => { const q = l3ToScreen(p); el.style.display = q.behind ? "none" : "flex"; el.style.left = q.x + "px"; el.style.top = q.y + "px"; });
 }
 /* Tryck på en markör (anropas i 3D-vyns tryck före objekten). */
 function l3phTap(e) {
@@ -164,7 +167,11 @@ function l3phRenderPop() {
   const hasAlt = ph.gps && Number.isFinite(ph.gps.alt), dir = ph.gps && Number.isFinite(ph.gps.dir) ? ph.gps.dir : null;
   const num = v => String(l3phR2(v).toFixed(2)).replace(".", ",").replace("-", "−");
   const keepSrc = pop.querySelector(".v3-ph-img") && pop.querySelector(".v3-ph-img").getAttribute("src");
-  pop.innerHTML = `<div class="v3-cpop-h"><i class="v3-ph-ic"></i><div><b>${esc(ph.caption || "Foto")}</b><div class="v3-cpop-m">${esc(ph.date || "")}${ph.by ? " · " + esc(ph.by) : ""}</div></div><button type="button" class="v3-ghost v3-ph-x" data-ph="close" title="Stäng">✕</button></div>
+  pop.innerHTML = `<div class="v3-cpop-h"><i class="v3-ph-ic"></i><div><b>${esc(ph.caption || "Foto")}</b><div class="v3-cpop-m">${esc(ph.date || "")}${ph.by ? " · " + esc(ph.by) : ""}${typeof l3aFolderName === "function" && l3aFolderName(ph.folder) ? " · " + esc(l3aFolderName(ph.folder)) : ""}</div></div><button type="button" class="v3-ghost v3-ph-x" data-ph="edit" title="Ändra namn, datum och mapp">✎</button><button type="button" class="v3-ghost v3-ph-x" data-ph="close" title="Stäng">✕</button></div>
+    ${l3ph.edit ? `<div class="v3-ph-edit"><label>Namn / kommentar<input type="text" id="v3PhCap" value="${esc(ph.caption || "")}" placeholder="Beskrivning, t.ex. J15 byggställning" /></label>
+      <label>Datum<input type="date" id="v3PhDate" value="${esc(/^\d{4}-\d{2}-\d{2}/.test(ph.date || "") ? ph.date.slice(0, 10) : "")}" /></label>
+      <label>Mapp<select id="v3PhFolder"><option value="">Utan mapp</option>${(typeof l3a !== "undefined" ? l3a.folders : []).map(f => `<option value="${esc(f.id)}" ${ph.folder === f.id ? "selected" : ""}>${esc(f.name)}</option>`).join("")}</select></label>
+      <div class="v3-ph-btns"><button type="button" class="v3-primary" data-ph="save">Spara</button><button type="button" data-ph="cancel">Avbryt</button></div></div>` : ""}
     <img class="v3-ph-img ${keepSrc ? "" : "load"}" alt="" ${keepSrc ? `src="${esc(keepSrc)}"` : ""} title="Tryck för att visa större" />
     <div class="v3-ph-meta"><div><b>Höjd</b> ${num(abs)} m <span>(${num(above)} m över ytan)</span></div><div class="v3-ph-src">${esc(l3phSrcText(ph, src))}</div>
     ${dir != null ? `<div><b>Riktning</b> ${Math.round(dir)}° (${l3phCompass(dir)})</div>` : ""}</div>
@@ -173,14 +180,30 @@ function l3phRenderPop() {
     ${hasAlt && src !== "gps" ? `<button type="button" data-ph="gps" title="Tillbaka till fotots GPS-höjd (${num(ph.gps.alt)} m)">GPS-höjd</button>` : ""}</div>
     <div class="v3-pal-hint">Dra ↕-handtaget vid markören för att ändra höjden (Skift: jämna 10 cm).</div>`;
   pop.querySelector(".v3-ph-img").onclick = () => l3phBig();
+  pop.querySelectorAll(".v3-ph-edit input").forEach(i => { i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") l3phSaveEdit(ph); else if (e.key === "Escape") { l3ph.edit = false; l3phRenderPop(); } }; });
   pop.querySelectorAll("[data-ph]").forEach(b => { b.onclick = () => {
     const a = b.dataset.ph, cur = l3phPos(ph);
     if (a === "close") return l3phClose();
+    if (a === "edit") { l3ph.edit = !l3ph.edit; l3phRenderPop(); const c = document.getElementById("v3PhCap"); if (c) { c.focus(); c.select(); } return; }
+    if (a === "cancel") { l3ph.edit = false; return l3phRenderPop(); }
+    if (a === "save") return l3phSaveEdit(ph);
     if (a === "up" || a === "down") return l3phSetZ(ph, l3phR2(cur.p.z + l3.O[2] + (a === "up" ? L3PH_STOREY : -L3PH_STOREY)), a === "up" ? "en våning upp" : "en våning ner");
     if (a === "ground") return l3phSetZ(ph, l3phR2(cur.ground + L3PH_EYE + l3.O[2]), "på ytan");
     if (a === "gps") return l3phSetZ(ph, null, "GPS-höjden");
   }; });
   l3phPlacePop();
+}
+/* Ändra fotots namn (kommentar), datum och mapp – sparas med arbetsytan, som i 2D. Enter sparar, Esc avbryter. */
+function l3phSaveEdit(ph) {
+  const cap = (document.getElementById("v3PhCap") || {}).value, date = (document.getElementById("v3PhDate") || {}).value, folder = (document.getElementById("v3PhFolder") || {}).value;
+  const patch = { caption: String(cap || "").trim(), folder: folder || null };
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date || "")) patch.date = date;
+  const next = typeof updatePhoto === "function" ? updatePhoto(ph.id, patch) : null;
+  l3ph.edit = false;
+  if (next) l3ph.open = next;
+  l3phBuild(); l3phRenderPop();
+  if (typeof l3kRenderTab === "function") l3kRenderTab();
+  l3Status(`Fotot heter nu "${(next && next.caption) || "Foto"}".`);
 }
 function l3phPlacePop() {
   const pop = document.getElementById("v3PhPop"), ph = l3ph.open;
@@ -192,20 +215,52 @@ function l3phPlacePop() {
   pop.classList.toggle("far", !!q.behind);
 }
 function l3phClose() {
+  l3ph.edit = false;
   const pop = document.getElementById("v3PhPop");
   if (pop) pop.classList.add("hidden");
   const was = l3ph.open; l3ph.open = null;
   if (l3ph.big) { l3ph.big.remove(); l3ph.big = null; }
   if (was && l3 && l3.groups.photos) l3phBuild();
 }
-/* Bilden större, ovanpå 3D-vyn (tryck eller Esc stänger). */
+/* Bilden i helskärm, ovanpå 3D-vyn: zooma med hjul eller nyp (Victor 2026-10-13: "det ska gå att zooma i fotot också"),
+   dra för att flytta, dubbelklick = zooma in/ut, knapparna ＋ − ↺ och ✕; Esc eller ett tryck utanför bilden stänger. */
 function l3phBig() {
-  const ph = l3ph.open, img = document.querySelector("#v3PhPop .v3-ph-img");
-  if (!ph || !img || !img.getAttribute("src")) return;
+  const ph = l3ph.open, img0 = document.querySelector("#v3PhPop .v3-ph-img");
+  if (!ph || !img0 || !img0.getAttribute("src")) return;
   const d = document.createElement("div"); d.className = "v3-phbig"; d.tabIndex = -1;
-  d.innerHTML = `<img alt="" src="${escHtml(img.getAttribute("src"))}" /><div>${escHtml(ph.caption || "Foto")} · ${escHtml(ph.date || "")}</div>`;
+  d.innerHTML = `<div class="v3-phbig-stage"><img alt="" draggable="false" src="${escHtml(img0.getAttribute("src"))}" /></div>
+    <div class="v3-phbig-cap">${escHtml(ph.caption || "Foto")} · ${escHtml(ph.date || "")}</div>
+    <div class="v3-phbig-tools"><button type="button" data-z="in" title="Zooma in">＋</button><button type="button" data-z="out" title="Zooma ut">−</button><button type="button" data-z="fit" title="Anpassa till rutan (dubbelklick)">↺</button><button type="button" data-z="x" title="Stäng (Esc)">✕</button></div>`;
+  const stage = d.querySelector(".v3-phbig-stage"), img = d.querySelector("img"), S = { s: 1, x: 0, y: 0 };
   const close = () => { d.remove(); if (l3ph.big === d) l3ph.big = null; };
-  d.onclick = close; d.onpointerdown = e => e.stopPropagation(); d.onkeydown = e => { e.stopPropagation(); if (e.key === "Escape") close(); };
+  const apply = () => {
+    const r = stage.getBoundingClientRect(), w = img.offsetWidth * S.s, h = img.offsetHeight * S.s, mx = Math.max(0, (w - r.width) / 2), my = Math.max(0, (h - r.height) / 2);
+    S.x = Math.max(-mx, Math.min(mx, S.x)); S.y = Math.max(-my, Math.min(my, S.y)); // bilden lämnar inte rutan helt
+    img.style.transform = `translate(${S.x}px, ${S.y}px) scale(${S.s})`;
+    d.classList.toggle("zoomed", S.s > 1.001);
+  };
+  // Zoom kring en punkt (px, py relativt rutans mitt): punkten under markören stannar kvar.
+  const zoomAt = (f, px, py) => { const s2 = Math.max(1, Math.min(12, S.s * f)), k = s2 / S.s; S.x = px - (px - S.x) * k; S.y = py - (py - S.y) * k; S.s = s2; if (s2 === 1) { S.x = 0; S.y = 0; } apply(); };
+  const rel = e => { const r = stage.getBoundingClientRect(); return [e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2]; };
+  stage.addEventListener("wheel", e => { e.preventDefault(); e.stopPropagation(); const [px, py] = rel(e); zoomAt(e.deltaY < 0 ? 1.25 : 0.8, px, py); }, { passive: false });
+  stage.addEventListener("dblclick", e => { e.preventDefault(); const [px, py] = rel(e); if (S.s > 1.001) { S.s = 1; S.x = S.y = 0; apply(); } else zoomAt(3, px, py); });
+  // Dra (en pekare) och nyp (två pekare).
+  const P = new Map(); let pinch = null, moved = false;
+  stage.addEventListener("pointerdown", e => { e.stopPropagation(); P.set(e.pointerId, [e.clientX, e.clientY]); moved = false; try { stage.setPointerCapture(e.pointerId); } catch (er) { /* */ } if (P.size === 2) { const [a, b] = [...P.values()]; pinch = Math.hypot(a[0] - b[0], a[1] - b[1]); } });
+  stage.addEventListener("pointermove", e => {
+    if (!P.has(e.pointerId)) return;
+    const prev = P.get(e.pointerId); P.set(e.pointerId, [e.clientX, e.clientY]);
+    if (P.size === 2 && pinch) { const [a, b] = [...P.values()], dist = Math.hypot(a[0] - b[0], a[1] - b[1]), r = stage.getBoundingClientRect(); zoomAt(dist / pinch, (a[0] + b[0]) / 2 - r.left - r.width / 2, (a[1] + b[1]) / 2 - r.top - r.height / 2); pinch = dist; moved = true; return; }
+    if (P.size === 1 && S.s > 1.001) { S.x += e.clientX - prev[0]; S.y += e.clientY - prev[1]; if (Math.hypot(e.clientX - prev[0], e.clientY - prev[1]) > 0) moved = true; apply(); }
+  });
+  const end = e => { P.delete(e.pointerId); if (P.size < 2) pinch = null; };
+  stage.addEventListener("pointerup", end); stage.addEventListener("pointercancel", end);
+  // Ett tryck utanför bilden (inte efter att ha dragit/zoomat) stänger.
+  stage.addEventListener("click", e => { if (moved) { moved = false; return; } if (e.target === stage && S.s <= 1.001) close(); });
+  d.querySelectorAll("[data-z]").forEach(b => { b.onclick = e => { e.stopPropagation(); const k = b.dataset.z; if (k === "x") return close(); if (k === "fit") { S.s = 1; S.x = S.y = 0; apply(); } else zoomAt(k === "in" ? 1.5 : 1 / 1.5, 0, 0); }; });
+  d.onpointerdown = e => e.stopPropagation();
+  d.onkeydown = e => { e.stopPropagation(); if (e.key === "Escape") close(); else if (e.key === "+" || e.key === "=") zoomAt(1.5, 0, 0); else if (e.key === "-") zoomAt(1 / 1.5, 0, 0); else if (e.key === "0") { S.s = 1; S.x = S.y = 0; apply(); } };
+  img.addEventListener("load", apply);
   document.getElementById("view3d").appendChild(d); d.focus(); l3ph.big = d;
 }
 /* Ny höjd (absolut, modellens z) – null = tillbaka till GPS-höjden/ytan. Ctrl+Z ångrar. */
@@ -286,26 +341,62 @@ function l3phToggle(on) {
 /* Popup och handtag följer kameran (anropas efter varje bild i l3Render). */
 function l3phPlace() { l3phLabelsPlace(); if (l3ph.open) { l3phHandlePlace(); l3phPlacePop(); } }
 
-/* ---- Foton som lista under Kommentarer & mått (hopfällbar) ------------------------------------------------------ */
+/* ---- Foton som lista under Kommentarer & mått (hopfällbar) ------------------------------------------------------
+   Miniatyrer (Victor 2026-10-13), Ctrl/Skift-klick för att markera flera, dra in i mapparna (samma mappar som
+   kommentarer och mått – de tänds och släcks där) och "Flytta markerade". Klick: zooma till fotot och visa det. */
 function l3phTabHtml() {
-  const esc = escHtml, I = typeof L3_ICO !== "undefined" ? L3_ICO : {}, list = l3phList(), shut = l3Prefs().phListShut === true, on = l3phOn(), mode = l3phLblMode();
+  const esc = escHtml, list = l3phList(), shut = l3Prefs().phListShut === true, on = l3phOn(), mode = l3phLblMode();
+  [...l3phUi.sel].forEach(id => { if (!list.some(p => p.id === id)) l3phUi.sel.delete(id); });
+  const nSel = l3phUi.sel.size, folders = typeof l3a !== "undefined" ? l3a.folders : [];
   const rows = list.map(ph => {
     const hasAlt = ph.gps && Number.isFinite(ph.gps.alt), src = Number.isFinite(ph.z) ? "höjd satt för hand" : hasAlt ? `GPS-höjd ${String(l3phR2(ph.gps.alt)).replace(".", ",")} m` : "ingen höjd i fotot";
-    return `<div class="v3-kc"><button type="button" class="v3-kc-b v3-kc-m" data-phgo="${esc(ph.id)}" title="Zooma till fotot och visa det"><b>${esc(l3phDateTxt(ph) || "Foto")}</b><em>${esc(String(ph.caption || "").slice(0, 90) || "utan kommentar")} · ${esc(src)}</em></button></div>`;
+    const fn = typeof l3aFolderName === "function" ? l3aFolderName(ph.folder) : "", vis = typeof l3aOn !== "function" || l3aOn(ph);
+    return `<div class="v3-kc v3-phr ${l3phUi.sel.has(ph.id) ? "sel" : ""} ${vis ? "" : "off"}"><img class="v3-ph-th" data-phth="${esc(ph.id)}" alt="" width="64" height="48" />
+      <button type="button" class="v3-kc-b v3-kc-m" data-phgo="${esc(ph.id)}" title="Klick: zooma till fotot och visa det · Ctrl+klick: välj flera · Skift+klick: välj flera i rad · dra in i en mapp"><b>${esc(l3phDateTxt(ph) || "Foto")}</b><em>${esc(String(ph.caption || "").slice(0, 90) || "utan kommentar")} · ${esc(src)}${fn ? "" : ""}</em>${fn ? `<em><span class="v3-fchip">${esc(fn)}</span></em>` : ""}</button><button type="button" class="v3-ic" data-phedit="${esc(ph.id)}" title="Ändra namn, datum och mapp">${typeof L3_ICO !== "undefined" && L3_ICO.edit ? L3_ICO.edit : "✎"}</button></div>`;
   }).join("");
-  return `<section class="v3-msec" id="v3PhSec"><button type="button" class="v3-msec-h" id="v3PhHead" aria-expanded="${!shut}"><i>›</i>Foton <span>${list.length}</span></button>
+  return `<section class="v3-msec" id="v3PhSec"><button type="button" class="v3-msec-h" id="v3PhHead" aria-expanded="${!shut}"><i>›</i>Foton <span>${list.length}${nSel ? ` · ${nSel} markerade` : ""}</span></button>
     ${shut ? "" : `<div class="v3-kc-opts"><label class="v3-chk"><input type="checkbox" id="v3PhShow" ${on ? "checked" : ""} /> Visa i 3D</label>
       <select id="v3PhLbl" title="Text vid fotona i 3D">${[["all", "Datum + kommentar"], ["date", "Bara datum"], ["off", "Ingen text"]].map(([k, l]) => `<option value="${k}" ${mode === k ? "selected" : ""}>${l}</option>`).join("")}</select>
       <button type="button" class="v3-ghost" id="v3PhAdd" title="Lägg till foton i 3D">＋ Foto…</button></div>
+      ${list.length ? `<div class="v3-kc-opts"><button type="button" class="v3-ghost" id="v3PhAll">${nSel === list.length ? "Avmarkera alla" : "Markera alla"}</button>${nSel ? `<button type="button" class="v3-ghost" id="v3PhClr">Avmarkera (${nSel})</button><select id="v3PhMove" title="Flytta de markerade fotona till en mapp"><option value="">Flytta ${nSel} till mapp…</option>${folders.map(f => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("")}<option value="_">Utan mapp</option></select>` : ""}</div>` : ""}
       <div class="v3-kc-list">${rows || `<div class="v3-pal-hint">Inga foton på den här arbetsytan (eller så är de filtrerade bort i 2D).</div>`}</div>`}</section>`;
 }
+/* Miniatyrerna hämtas när raden syns (högst tre åt gången) och delar cache med fotofönstret. */
+const l3phThumbQ = { run: 0, wait: [] };
+function l3phThumb(img) {
+  const id = img.dataset.phth, ph = l3phList().find(p => p.id === id); if (!ph) return;
+  const set = u => { if (img.isConnected) { img.src = u; img.classList.add("ok"); } };
+  if (typeof photoUrlCache !== "undefined" && photoUrlCache.has(id)) return set(photoUrlCache.get(id));
+  l3phThumbQ.wait.push(async () => {
+    try { const u = await ghReadBinaryUrl(token, ph.path); if (typeof photoUrlCache !== "undefined") photoUrlCache.set(id, u); set(u); } catch (e) { img.classList.add("bad"); }
+  });
+  l3phThumbPump();
+}
+function l3phThumbPump() {
+  while (l3phThumbQ.run < 3 && l3phThumbQ.wait.length) { const f = l3phThumbQ.wait.shift(); l3phThumbQ.run++; f().finally(() => { l3phThumbQ.run--; l3phThumbPump(); }); }
+}
 function l3phBindTab(host) {
-  const q = s => host.querySelector(s);
-  const head = q("#v3PhHead"); if (head) head.onclick = () => { l3SetPref("phListShut", !(l3Prefs().phListShut === true)); if (typeof l3kRenderTab === "function") l3kRenderTab(); };
+  const q = s => host.querySelector(s), re = () => { if (typeof l3kRenderTab === "function") l3kRenderTab(); };
+  const head = q("#v3PhHead"); if (head) head.onclick = () => { l3SetPref("phListShut", !(l3Prefs().phListShut === true)); re(); };
   const show = q("#v3PhShow"); if (show) show.onchange = () => { l3phToggle(show.checked); };
   const lbl = q("#v3PhLbl"); if (lbl) lbl.onchange = () => { l3SetPref("photoLbl", lbl.value); l3phLabels(); l3Render(); };
   const add = q("#v3PhAdd"); if (add) add.onclick = () => l3phAdd();
-  host.querySelectorAll("[data-phgo]").forEach(b => { b.onclick = () => l3phGo(b.dataset.phgo); });
+  const order = [...host.querySelectorAll("[data-phgo]")].map(b => b.dataset.phgo);
+  host.querySelectorAll("[data-phgo]").forEach(b => { b.onclick = e => {
+    const id = b.dataset.phgo;
+    if (e.ctrlKey || e.metaKey) { if (l3phUi.sel.has(id)) l3phUi.sel.delete(id); else l3phUi.sel.add(id); l3phUi.anchor = id; re(); return; }
+    if (e.shiftKey && l3phUi.anchor && order.includes(l3phUi.anchor)) {
+      const a = order.indexOf(l3phUi.anchor), z = order.indexOf(id); order.slice(Math.min(a, z), Math.max(a, z) + 1).forEach(x => l3phUi.sel.add(x)); re(); return;
+    }
+    l3phUi.anchor = id; l3phGo(id);
+  }; });
+  host.querySelectorAll("[data-phedit]").forEach(b => { b.onclick = e => { e.stopPropagation(); l3phGo(b.dataset.phedit); l3ph.edit = true; l3phRenderPop(); const c = document.getElementById("v3PhCap"); if (c) { c.focus(); c.select(); } }; });
+  const all = q("#v3PhAll"); if (all) all.onclick = () => { if (l3phUi.sel.size === order.length) l3phUi.sel.clear(); else order.forEach(x => l3phUi.sel.add(x)); re(); };
+  const clr = q("#v3PhClr"); if (clr) clr.onclick = () => { l3phUi.sel.clear(); re(); };
+  const mv = q("#v3PhMove"); if (mv) mv.onchange = () => { if (!mv.value) return; const ids = new Set(l3phUi.sel); l3aMove(l3phList().filter(p => ids.has(p.id)), mv.value === "_" ? null : mv.value); };
+  const imgs = [...host.querySelectorAll("img[data-phth]")];
+  if (typeof IntersectionObserver === "function") { const io = new IntersectionObserver(es => es.forEach(en => { if (en.isIntersecting) { io.unobserve(en.target); l3phThumb(en.target); } }), { root: null, rootMargin: "120px" }); imgs.forEach(i => io.observe(i)); }
+  else imgs.forEach(l3phThumb);
 }
 /* Zooma till fotots markör och öppna fotot. */
 function l3phGo(id) {
