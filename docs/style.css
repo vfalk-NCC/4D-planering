@@ -1291,3 +1291,18 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .pp-areas .pp-groups { flex-direction: row; flex-wrap: wrap; gap: 4px 6px; }
 .pp-areas .pp-chip { border: 1px solid #d1d5db; border-radius: 999px; padding: 2px 8px; background: #fff; }
 .pp-areas .pp-chip:has(input:checked) { border-color: #2563eb; background: #eff6ff; }
+.pp-area-l2 { margin: 4px 0 6px; }
+.pp-area-l2h { font-size: 12.5px; display: flex; gap: 6px; align-items: baseline; margin: 0 0 2px; }
+.pp-area-l2h input { width: auto; margin: 0; }
+.pp-areas .pp-area-l2 > .pp-groups { margin-left: 18px; }
+
+.pp-areas { max-height: 340px; }
+.pp-area-h { font-weight: 600; font-size: 12px; margin: 4px 0 2px; }
+.pp-tn { font-size: 12.5px; }
+.pp-tn > summary { cursor: pointer; display: flex; align-items: center; gap: 5px; padding: 1px 0; }
+.pp-tn input { width: auto; margin: 0; flex: none; }
+.pp-tn-name { flex: none; }
+.pp-tn-kids { margin-left: 16px; border-left: 1px dotted #cbd5e1; padding-left: 6px; }
+.pp-tn-leaf { display: flex; align-items: center; gap: 5px; padding: 1px 0; }
+.pp-tn-sp { display: inline-block; width: 12px; flex: none; }
+.pp-tn .hint { margin: 0; }

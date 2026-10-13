@@ -136,15 +136,18 @@ async function makePp(variant) {
   await page.uncheck('#ppOptions [data-ppg="50"]');
   const rs1 = await page.innerText('#ppResSum');
   if (!/1 aktivitet har resurser · 320 timmar · 1 resurs \(R012 Betongarbetare 320 h\)/.test(rs1)) fail('Resurserna ska följa de valda delarna: ' + rs1);
-  // Områden: raden under översta raden, ikryssade hämtas in (Victor 2026-10-13).
+  // Områden som i Powerproject: träd med kryssruta och nedfällning på varje rad (Victor 2026-10-13).
   await page.evaluate(() => { document.getElementById('ppAreasBox').open = true; });
-  const ar = await page.evaluate(() => [...document.querySelectorAll('#ppAreas [data-ppa]')].map(c => c.dataset.ppn + (c.checked ? '+' : '-')));
-  if (JSON.stringify(ar) !== '["Projekttidplan||PRODUKTION+"]') fail('Områdena: ' + JSON.stringify(ar));
-  await page.uncheck('#ppAreas [data-ppa]');
+  const tree = () => page.evaluate(() => [...document.querySelectorAll('#ppAreas [data-ppa]')].map(c => c.dataset.ppa + (c.indeterminate ? '~' : c.checked ? '+' : '-')));
+  if (JSON.stringify(await tree()) !== '["Projekttidplan||PRODUKTION+","Projekttidplan||PRODUKTION||742 Sikthall+"]') fail('Områdesträdet: ' + JSON.stringify(await tree()));
+  await page.evaluate(() => document.querySelectorAll('#ppAreas details').forEach(d => { d.open = true; }));
+  await page.uncheck('#ppAreas [data-ppa="Projekttidplan||PRODUKTION"]'); // raden väljer bort allt under sig
+  if (JSON.stringify(await tree()) !== '["Projekttidplan||PRODUKTION-","Projekttidplan||PRODUKTION||742 Sikthall-"]') fail('Raden ska avmarkera allt under: ' + JSON.stringify(await tree()));
   if (!/Inga resurser/.test(await page.innerText('#ppResSum'))) fail('Resurserna ska följa de valda områdena: ' + await page.innerText('#ppResSum'));
   await page.click('#btnPpPreview'); await page.waitForTimeout(200);
   if (!/Inga aktiviteter i de valda delarna/.test(await page.innerText('#ppStatus')) || await page.isVisible('#planImportPreviewDialog')) fail('Inget område valt = inget att importera');
-  await page.check('#ppAreas [data-ppa]');
+  await page.check('#ppAreas [data-ppa="Projekttidplan||PRODUKTION||742 Sikthall"]');
+  if (JSON.stringify(await tree()) !== '["Projekttidplan||PRODUKTION+","Projekttidplan||PRODUKTION||742 Sikthall+"]') fail('Underraden tillbaka: ' + JSON.stringify(await tree()));
   await page.evaluate(() => { document.querySelector('.pp-more').open = true; });
   const pickLib = (sel, re) => page.$eval(sel, (el, src) => { const o = [...el.options].find(x => new RegExp(src).test(x.text)); el.value = o.value; el.dispatchEvent(new Event('change', { bubbles: true })); }, re);
   await pickLib('#ppAreaLib', '^3\\.5 Zoner'); await pickLib('#ppContractorLib', '^1\\. Utförs av');
