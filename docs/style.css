@@ -1270,3 +1270,14 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .pm-bar b { display: block; height: 100%; border-radius: 999px; background: #1d4ed8; transition: width .2s; }
 .pm-bar.ind b { position: absolute; animation: pmInd 1.2s ease-in-out infinite; }
 @keyframes pmInd { from { left: -35%; } to { left: 100%; } }
+
+.pp-inplan { margin: 4px 0 8px 26px; font-size: 12px; }
+.pp-inplan-h { margin: 0 0 3px; }
+.pp-inplan-row { display: flex; align-items: center; gap: 10px; padding: 2px 0; }
+.pp-inplan-del { color: #b91c1c; }
+
+.pp-bl-parts { margin: 4px 0 6px; }
+.pp-bl-parts .pp-l { display: block; font-size: 12px; margin-bottom: 2px; }
+.pp-bl-parts .pp-groups { flex-direction: row; flex-wrap: wrap; gap: 4px 6px; }
+.pp-bl-parts .pp-chip { border: 1px solid #d1d5db; border-radius: 999px; padding: 2px 8px; background: #fff; }
+.pp-bl-parts .pp-chip:has(input:checked) { border-color: #2563eb; background: #eff6ff; }

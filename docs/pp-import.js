@@ -236,6 +236,7 @@ function renderPpOptions() {
     <div class="pp-step"><span class="pp-n">1</span><div class="pp-step-body"><b>Delar</b>
       <div class="pp-groups">${pp.groups.map(g => `<label class="check pp-chip" title="${fmt(g.start)} – ${fmt(g.end)}"><input type="checkbox" data-ppg="${g.id}"${groupOn(g) ? " checked" : ""} /> ${escapeHtml(g.name)} <span class="hint">${g.count} st · ${fmt(g.start).slice(-4)}${fmt(g.end).slice(-4) !== fmt(g.start).slice(-4) ? "–" + fmt(g.end).slice(-4) : ""}</span></label>`).join("")}</div>
     </div></div>
+    <div id="ppInPlan" class="pp-inplan"></div>
     <div class="pp-step"><span class="pp-n">2</span><div class="pp-step-body"><b>Resurser</b>
       <div class="pp-groups"><label class="check pp-chip"><input type="checkbox" id="ppResources"${saved.res === false ? "" : " checked"} /> Ta med resurser <span class="hint">resurs, antal och timmar per aktivitet</span></label></div>
       <div class="hint" id="ppResSum"></div>
@@ -265,6 +266,7 @@ function renderPpOptions() {
   document.getElementById("ppResources").addEventListener("change", resSum);
   document.getElementById("ppAreaLib").onchange = sums;
   document.getElementById("ppContractorLib").onchange = sums;
+  renderPpInPlan();
   box.classList.remove("hidden");
   document.getElementById("btnPpPreview").onclick = () => ppPreview();
   const remember = () => {
@@ -473,7 +475,8 @@ function ppApplyBaselineMode(parsed, exOfP, tid, opts) {
     const ix = ppBaselineIndex(blFile), tById = new Map(((ppParsed && ppParsed.tasks) || []).map(t => [t.id, t]));
     let hit = 0;
     parsed.forEach(p => {
-      const b = ppBaselineTask(ix, tById.get(p.ppId) || { id: p.ppId, guid: p.ppGuid });
+      let b = ppBaselineTask(ix, tById.get(p.ppId) || { id: p.ppId, guid: p.ppGuid });
+      if (b && opts.parts && !opts.parts.has(b.topName)) b = null; // delen är inte vald – ingen baseline
       ppBlSet(p, tid, b ? [b.start, b.end] : null);
       if (b) hit++;
     });
@@ -483,7 +486,7 @@ function ppApplyBaselineMode(parsed, exOfP, tid, opts) {
   }
   if (mode === "current") {
     let n = 0;
-    parsed.forEach(p => { const v = p.startDate && p.endDate ? [p.startDate, p.endDate] : null; ppBlSet(p, tid, v); if (v) n++; });
+    parsed.forEach(p => { const v = p.startDate && p.endDate && (!opts.parts || opts.parts.has(ppPartOfKey(p.sourceKey))) ? [p.startDate, p.endDate] : null; ppBlSet(p, tid, v); if (v) n++; });
     const label = `Tidplanen ${ppFmtDate(at.slice(0, 10))}`;
     return { text: `Tidplanen som gäller nu blir baseline – ${n} aktiviteter.`, meta: { mode, label, file: (typeof lastPlanImport !== "undefined" && lastPlanImport && lastPlanImport.file) || null, set_at: at, by } };
   }
@@ -609,6 +612,7 @@ function renderPpBlPanel() {
           <option value="none">Ta bort den här baselinen</option>
         </select>
       </div>
+      <div id="ppBlParts" class="pp-bl-parts hidden"></div>
       <div class="pp-baseline-file" id="ppBlFileRow"><input type="file" id="ppBlFile" accept=".ppb,.pp" /> <span class="hint" id="ppBlFileInfo"></span></div>
       <div class="row"><button type="button" id="btnPpBlPreview" class="primary">Förhandsgranska baseline</button><span class="hint">Inget sparas förrän du bekräftar.</span></div>
       <div class="row"><button type="button" id="btnPpBlUndo" class="link-btn hidden"></button></div>`;
@@ -621,18 +625,20 @@ function renderPpBlPanel() {
       if (isNew) tname.focus();
     };
     document.getElementById("ppBlRename").onclick = () => { tname.classList.toggle("hidden"); if (!tname.classList.contains("hidden")) tname.focus(); };
-    src.onchange = () => document.getElementById("ppBlFileRow").classList.toggle("hidden", src.value !== "file");
+    src.onchange = () => { document.getElementById("ppBlFileRow").classList.toggle("hidden", src.value !== "file"); renderPpBlParts(); };
     const bfile = document.getElementById("ppBlFile"), binfo = document.getElementById("ppBlFileInfo");
     bfile.onchange = async () => {
-      ppBlFileParsed = null; binfo.innerText = "";
+      ppBlFileParsed = null; ppBlPartsOff = null; binfo.innerText = ""; renderPpBlParts();
       const f = bfile.files && bfile.files[0];
       if (!f) return;
       binfo.innerText = "Läser…";
       try {
         ppBlFileParsed = await parsePowerproject(await f.arrayBuffer(), f.name);
+        ppBlPartsOff = null;
         ppBlFileParsed.savedAt = f.lastModified ? new Date(f.lastModified).toISOString() : null;
         const ix = ppBaselineIndex(ppBlFileParsed), mine = ppBlItems();
         const hit = mine.filter(it => ppBaselineTask(ix, { id: ppIdOfItem(it), guid: it.ppGuid })).length;
+        renderPpBlParts();
         binfo.innerText = `${ppBlFileParsed.tasks.length} aktiviteter i filen – ${hit} av ${mine.length} i planeringen känns igen`;
       } catch (e) { ppBlFileParsed = null; binfo.innerText = "Kunde inte läsa filen: " + e.message; }
     };
@@ -669,6 +675,33 @@ function ppBlIsSet(id) {
 }
 const ppIdOfItem = it => { const m = /\|\|(\d+)$/.exec(it.sourceKey || ""); return m ? Number(m[1]) : null; };
 /* Powerproject-aktiviteterna i planeringen (en per aktivitet – objekten i den följer med vid sparning). */
+/* Delen (översta raden) en Powerproject-aktivitet hör till: "PP <del>||<id>". */
+const ppPartOfKey = k => { const m = /^PP (.*)\|\|\d+$/.exec(String(k || "")); return m ? m[1] : ""; };
+/* Delar i baseline-importen (Victor 2026-10-13: samma val av delar som vid importen av tidplanen): bara de
+   valda delarna får baseline – övriga får ingen. Valet kommer ihåg vilka som valdes bort vid tidplanens import. */
+let ppBlPartsOff = null;
+function ppBlPartNames() {
+  const mode = document.getElementById("ppBlSource") ? document.getElementById("ppBlSource").value : "file";
+  if (mode === "file" && ppBlFileParsed) return ppBlFileParsed.groups.map(g => g.name);
+  return [...new Set(ppBlItems().map(it => ppPartOfKey(it.sourceKey)).filter(Boolean))];
+}
+function renderPpBlParts() {
+  const box = document.getElementById("ppBlParts");
+  if (!box) return;
+  const mode = document.getElementById("ppBlSource").value;
+  const names = mode === "file" || mode === "current" ? ppBlPartNames() : [];
+  if (!ppBlPartsOff) ppBlPartsOff = new Set(ppSavedOpts().off || []);
+  box.classList.toggle("hidden", names.length < 2);
+  box.innerHTML = names.length < 2 ? "" : `<b class="pp-l">Delar</b><div class="pp-groups">${names.map(n => `<label class="check pp-chip"><input type="checkbox" data-blpart="${escapeHtml(n)}"${ppBlPartsOff.has(n) ? "" : " checked"} /> ${escapeHtml(n)}</label>`).join("")}</div>`;
+  box.querySelectorAll("[data-blpart]").forEach(c => { c.onchange = () => { if (c.checked) ppBlPartsOff.delete(c.dataset.blpart); else ppBlPartsOff.add(c.dataset.blpart); }; });
+}
+/* De valda delarna (Set av namn), eller null när alla delar gäller. */
+function ppBlPartsSel() {
+  const box = document.getElementById("ppBlParts");
+  if (!box || box.classList.contains("hidden")) return null;
+  const all = [...box.querySelectorAll("[data-blpart]")];
+  return all.every(c => c.checked) ? null : new Set(all.filter(c => c.checked).map(c => c.dataset.blpart));
+}
 const ppBlItems = () => items.filter(it => it.origin !== "manuell" && /^PP .*\|\|\d+$/.test(it.sourceKey || ""));
 function ppBlPreview() {
   const status = document.getElementById("ppBlStatus");
@@ -684,7 +717,9 @@ function ppBlPreview() {
   const seen = new Set(), acts = rows.filter(it => !seen.has(it.sourceKey) && seen.add(it.sourceKey));
   const pseudo = acts.map(it => ({ ...it, ppId: ppIdOfItem(it), ppGuid: it.ppGuid || null, _it: it }));
   let r;
-  try { r = ppApplyBaseline(pseudo, p => p._it, { target, name, mode, isNew, file: mode === "file" ? ppBlFileParsed : null }); }
+  const parts = mode === "file" || mode === "current" ? ppBlPartsSel() : null;
+  if (parts && !parts.size) { status.innerText = "Välj minst en del."; return; }
+  try { r = ppApplyBaseline(pseudo, p => p._it, { target, name, mode, isNew, parts, file: mode === "file" ? ppBlFileParsed : null }); }
   catch (e) { status.innerText = e.message; return; }
   if (mode === "keep") {
     const by = (typeof settings !== "undefined" && settings.userName) || null;
@@ -757,3 +792,53 @@ document.addEventListener("DOMContentLoaded", () => {
   if (f) f.onchange = () => { ppParsed = null; renderPpOptions(); if (f.files && f.files[0]) ppRead(); };
   document.querySelectorAll("#planSourceBar [data-src]").forEach(b => { b.onclick = () => setPlanSource(b.dataset.src); });
 });
+
+/* Delar som redan ligger i planeringen (Victor 2026-10-13: "Det är skräp i dom, hur får jag bort dom?"):
+   en urkryssad del importeras inte, men det den redan har lagt in ligger kvar – här kan den tas bort,
+   efter en bekräftelse som visar vad som följer med (3D-kopplingar, kommentarer). */
+function ppInPlanItems(g) {
+  const pre = `PP ${g.name}||`;
+  return (typeof items !== "undefined" ? items : []).filter(it => it.sourceKey && String(it.sourceKey).startsWith(pre));
+}
+function renderPpInPlan() {
+  const box = document.getElementById("ppInPlan");
+  if (!box || !ppParsed) return;
+  const rows = ppParsed.groups.map(g => ({ g, its: ppInPlanItems(g) })).filter(x => x.its.length);
+  box.innerHTML = rows.length ? `<div class="hint pp-inplan-h">Redan inlagda i planeringen – ta bort en hel del om den bara innehåller skräp:</div>` + rows.map(({ g, its }) => {
+    const cpl = its.filter(it => it.modelId).length;
+    return `<div class="pp-inplan-row"><span><b>${escapeHtml(g.name)}</b> <span class="hint">${its.length} akt.${cpl ? ` · ${cpl} 3D-kopplade` : ""}</span></span><button type="button" class="link-btn pp-inplan-del" data-ppdel="${g.id}" title="Tar bort alla aktiviteter från den här delen ur planeringen">🗑 Ta bort ur planeringen</button></div>`;
+  }).join("") : "";
+  box.querySelectorAll("[data-ppdel]").forEach(b => { b.onclick = () => ppRemovePart(ppParsed.groups.find(g => String(g.id) === b.dataset.ppdel)); });
+}
+async function ppRemovePart(g) {
+  if (!g) return;
+  const its = ppInPlanItems(g), status = document.getElementById("ppStatus");
+  if (!its.length) { renderPpInPlan(); return; }
+  const cpl = its.filter(it => it.modelId).length;
+  const ids = new Set(its.map(it => it.id));
+  const nComments = [...ids].reduce((n, id) => n + ((typeof commentCounts !== "undefined" && commentCounts.get(id)) || 0), 0);
+  const ask = (t, o) => (typeof uiConfirm === "function" ? uiConfirm(t, o) : Promise.resolve(confirm(t)));
+  if (!(await ask(`Ta bort "${g.name}" ur planeringen?\n\n${its.length} aktiviteter tas bort${cpl ? `, varav ${cpl} är kopplade till 3D-objekt (kopplingen försvinner – själva 3D-modellen rörs inte)` : ""}${nComments ? `. ${nComments} kommentarer följer med` : ""}.\n\nÖvriga delar och Powerproject-filen rörs inte. Det finns kvar i säkerhetskopian om du ångrar dig.`, { ok: "Ta bort", danger: true }))) return;
+  if (cpl && !(await ask(`Är du helt säker? ${cpl} 3D-kopplingar i "${g.name}" tas bort.`, { ok: "Ja, ta bort", danger: true }))) return;
+  try {
+    if (status) status.innerText = `Tar bort "${g.name}"…`;
+    await ghWriteJSON(settings.githubToken, itemsPath(),
+      arr => (Array.isArray(arr) ? arr : []).filter(r => !ids.has(r.id)).map(r => stripDependencyRef2(r, ids)),
+      `Powerproject: tog bort delen ${g.name} (${its.length} akt.)`);
+    await deleteCommentsForItems([...ids]); await deleteActivitiesForItems([...ids]);
+    await refreshItems();
+    if (typeof buildFilterOptions === "function") buildFilterOptions();
+    if (typeof renderItemList === "function") renderItemList();
+    if (typeof initTimelineRange === "function") initTimelineRange();
+    // Delen ska inte komma tillbaka vid nästa import: kryssa ur den.
+    const c = document.querySelector(`[data-ppg="${g.id}"]`); if (c && c.checked) { c.checked = false; c.dispatchEvent(new Event("change")); }
+    if (status) status.innerText = `"${g.name}" är borttagen ur planeringen (${its.length} aktiviteter).`;
+  } catch (e) {
+    console.error("Kunde inte ta bort delen", e);
+    if (status) status.innerText = "Kunde inte ta bort: " + e.message;
+  }
+  renderPpInPlan();
+}
+function stripDependencyRef2(r, ids) {
+  return Array.isArray(r.depends_on) && r.depends_on.some(d => ids.has(d)) ? { ...r, depends_on: r.depends_on.filter(d => !ids.has(d)) } : r;
+}

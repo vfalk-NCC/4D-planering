@@ -194,6 +194,26 @@ async function makePp(variant) {
   if (prev3.create !== 0 || pp3.length !== 4 || !g3 || g3.model_id !== 'm1' || !/^PP Projekttidplan rev B\|\|/.test(g3.source_key)) fail('Omdöpt översta rad ska inte ge nya aktiviteter: ' + JSON.stringify({ prev3, n: pp3.length, g3 }));
   console.log('OK: omdöpt översta rad i Powerproject – aktiviteterna känns igen på id, kopplingen kvar');
 
+  // Ta bort en hel del ur planeringen (Building: skräp som lagts in tidigare) – med bekräftelse, övriga delar orörda.
+  const ppRows = get('pp/plan_items.json');
+  put('pp/plan_items.json', [...ppRows, { ...ppRows[0], id: 'bld1', object_id: 'pp-bld1', object_name: 'Skräp 1', source_key: 'PP Building||901', model_id: null, depends_on: [] }, { ...ppRows[0], id: 'bld2', object_id: 'pp-bld2', object_name: 'Skräp 2', source_key: 'PP Building||902', model_id: null, depends_on: ['bld1'] }]);
+  await page.evaluate(() => refreshItems({ fresh: true }));
+  await page.setInputFiles('#ppFile', { name: 'Huvudtidplan v4.pp', mimeType: 'application/octet-stream', buffer: await makePp(1) });
+  await page.waitForSelector('#ppInPlan [data-ppdel]', { timeout: 15000 });
+  const inplan = await page.innerText('#ppInPlan');
+  if (!/Building/.test(inplan) || !/2 akt\./.test(inplan) || /Projekttidplan/.test(inplan) && false) fail('Redan inlagda delar ska listas: ' + inplan);
+  let dlg = [];
+  page.removeAllListeners('dialog'); page.on('dialog', d => { dlg.push(d.message()); d.dismiss(); });
+  await page.click('#ppInPlan [data-ppdel]'); await page.waitForTimeout(400);
+  if (dlg.length !== 1 || !/2 aktiviteter tas bort/.test(dlg[0])) fail('Bekräftelsen ska säga hur många: ' + JSON.stringify(dlg));
+  if (get('pp/plan_items.json').length !== ppRows.length + 2) fail('Avbryt ska inte ta bort något');
+  page.removeAllListeners('dialog'); page.on('dialog', d => d.accept());
+  await page.click('#ppInPlan [data-ppdel]'); await page.waitForTimeout(1800);
+  const left = get('pp/plan_items.json');
+  if (left.length !== ppRows.length || left.some(r => /^PP Building/.test(r.source_key || ''))) fail('Delen ska vara borttagen, övriga kvar: ' + left.length);
+  if (await page.isVisible('#ppInPlan [data-ppdel]')) fail('Delen ska försvinna ur listan');
+  console.log('OK: en hel del kan tas bort ur planeringen (med bekräftelse), övriga delar orörda');
+
   // Blocket Baseline: huvudbaselinen från en .ppb (förhandsgranskas), sedan borttagen.
   const blk = async (setup, guard) => {
     await page.evaluate(() => { document.querySelector('.main-tabs [data-tab="tools"]').click(); });
@@ -209,6 +229,12 @@ async function makePp(variant) {
   const bsum = await blk(async () => {
     await page.setInputFiles('#ppBlFile', { name: 'Huvudtidplan BL1.ppb', mimeType: 'application/octet-stream', buffer: await makePp(2) });
     await page.waitForFunction(() => /känns igen/.test(document.getElementById('ppBlFileInfo').innerText), null, { timeout: 15000 });
+    // Delar även i baseline-importen: samma val som vid tidplanens import (Building bortvald), minst en måste vara vald.
+    const bp = await page.evaluate(() => [...document.querySelectorAll('#ppBlParts [data-blpart]')].map(c => c.dataset.blpart + (c.checked ? '+' : '-')));
+    if (JSON.stringify(bp) !== '["Projekttidplan+","Building-"]') fail('Delarna i baseline-importen: ' + JSON.stringify(bp));
+    await page.uncheck('#ppBlParts [data-blpart="Projekttidplan"]'); await page.click('#btnPpBlPreview'); await page.waitForTimeout(150);
+    if (!/Välj minst en del/.test(await page.innerText('#ppBlStatus')) || await page.isVisible('#ppBlDialog')) fail('Ingen del vald ska stoppas');
+    await page.check('#ppBlParts [data-blpart="Projekttidplan"]');
   });
   if (!/Huvudtidplan BL1\.ppb – 4 av 4/.test(bsum) || !/0 ligger senare än baseline · 1 tidigare · 3 oförändrade/.test(bsum) || !/Mest tidigarelagda:[\s\S]*-28 d Gjutning bottenplatta/.test(bsum)) fail('Förhandsgranskningen av baseline: ' + bsum);
   let g4 = get('pp/plan_items.json').find(r => r.id === g.id), bm4 = get('pp/plan_baseline.json'), reg = get('pp/plan_baselines.json');
