@@ -383,10 +383,15 @@ function l3gaPush(targetIds, plan) {
   }
   return plan;
 }
-/* Dubbelklick: namn, datum och framdrift. */
+/* Dubbelklick: namn, datum och framdrift – samma fält som i dashboardens redigeringsdialog (Victor 2026-10-13: "Dom ska
+   vara exakt lika"): Temporär, Rivning, Egen färg efter slut och Objekt i aktiviteten (✕ tar bort ett objekt). */
 function l3gaEdit(key) {
   const a = l3plActs(l3gaP().split).find(x => x.key === key); if (!a) return;
   const E = escHtml, w = document.createElement("div");
+  const members = a.rows.slice();
+  const temp0 = a.rows.some(r => r.temporary === true), demo0 = a.rows.some(r => r.demolition === true);
+  const dm = a.rows.find(r => /^#[0-9a-f]{6}$/i.test(String(r.done_color || "")) || (r.done_opacity != null && r.done_opacity !== "" && Number.isFinite(Number(r.done_opacity))));
+  const doneCol0 = dm && /^#[0-9a-f]{6}$/i.test(String(dm.done_color || "")) ? dm.done_color : "", doneOp0 = dm && dm.done_opacity != null && dm.done_opacity !== "" && Number.isFinite(Number(dm.done_opacity)) ? Math.max(0, Math.min(100, Number(dm.done_opacity))) : 30;
   w.className = "ui-dlg-wrap v3-ga-dlg-wrap";
   w.innerHTML = `<div class="ui-dlg v3-ga-dlg" role="dialog" aria-modal="true"><div class="ui-dlg-main">
     <div class="ui-dlg-title">Redigera aktiviteten</div>
@@ -394,37 +399,117 @@ function l3gaEdit(key) {
     <label>Aktivitet<input type="text" data-f="name" value="${E(a.name)}" /></label>
     <div class="v3-ga-dlg-2"><label>Start<input type="date" data-f="start" value="${E(a.start)}" /></label><label>Slut<input type="date" data-f="end" value="${E(a.end)}" /></label></div>
     <label>Framdrift (%)<input type="number" min="0" max="100" data-f="progress" value="${a.progress}" /></label>
+    ${a.rows.length > 1 ? `<details class="v3-ga-objs"><summary>Objekt i aktiviteten <span class="v3-pal-hint v3-ga-objs-n">(${a.rows.length})</span></summary><div class="v3-ga-objs-list"></div><div class="v3-pal-hint">✕ tar bort bara det objektet ur aktiviteten – aktiviteten och de andra objekten finns kvar.</div></details>` : ""}
+    <details class="v3-ga-adv"${temp0 || demo0 || doneCol0 ? " open" : ""}><summary>Avancerat (temporär, rivning, färg efter slut)</summary>
+      <label class="v3-pl-chk" title="T.ex. en mobilkran, stämp eller tillfällig vägg: syns i 3D bara från start till slut och försvinner sedan"><input type="checkbox" data-f="temp" ${temp0 ? "checked" : ""} /> <span><b>Temporär</b> – syns i 3D bara mellan start och slut (t.ex. mobilkran)</span></label>
+      <label class="v3-pl-chk" title="Rivning: objektet syns hela tiden före start, färgas som vanligt under aktiviteten och försvinner efter slut"><input type="checkbox" data-f="demo" ${demo0 ? "checked" : ""} /> <span><b>Rivning</b> – syns även före start, försvinner efter slut</span></label>
+      <label class="v3-pl-chk" title="Efter slutdatum visas objektet i den här färgen och genomskinligheten i 3D-tidslinjen – så att man ser arbeten innanför färdiga delar"><input type="checkbox" data-f="donechk" ${doneCol0 || doneOp0 !== 30 ? "checked" : ""} /> <span><b>Egen färg efter slut</b> – <input type="color" data-f="donecol" value="${doneCol0 || "#3fb950"}" /> opacitet <input type="range" data-f="doneop" min="0" max="100" step="5" value="${doneOp0}" /> <b class="v3-ga-doneval">${doneOp0}</b> %</span></label>
+    </details>
     <label class="v3-pl-chk"><input type="checkbox" data-f="deps" checked /> Flytta det som väntar på den</label>
     <div class="ui-dlg-btns"><button type="button" class="ui-dlg-cancel">Avbryt</button><button type="button" class="ui-dlg-ok primary">Fortsätt…</button></div></div></div>`;
   document.body.appendChild(w); requestAnimationFrame(() => w.classList.add("in"));
   const close = () => { w.classList.add("out"); setTimeout(() => w.remove(), 120); };
   const f = k => w.querySelector(`[data-f="${k}"]`);
-  w.querySelector(".ui-dlg-cancel").onclick = close;
-  w.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Escape") close(); });
+  // Fönstret får aldrig hamna utanför bilden: höjden begränsas och resten rullar.
+  const fit = () => { const m = w.querySelector(".ui-dlg-main"); if (m) { m.style.maxHeight = `${Math.max(240, window.innerHeight - 24)}px`; m.style.overflowY = "auto"; } };
+  fit(); window.addEventListener("resize", fit); w.addEventListener("toggle", fit, true);
+  f("doneop").oninput = e => { w.querySelector(".v3-ga-doneval").textContent = e.target.value; f("donechk").checked = true; };
+  f("donecol").oninput = () => { f("donechk").checked = true; };
+  f("temp").onchange = e => { if (e.target.checked) f("demo").checked = false; };
+  f("demo").onchange = e => { if (e.target.checked) f("temp").checked = false; };
+  const renderObjs = () => {
+    const list = w.querySelector(".v3-ga-objs-list"); if (!list) return;
+    if (members.length < 2) { const sec = w.querySelector(".v3-ga-objs"); if (sec) sec.remove(); return; }
+    list.innerHTML = members.map(m => { const coupled = l3plRealObj(m); return `<div class="v3-ga-obj" data-mid="${E(String(m.id))}" title="${coupled ? "Klicka för att markera och zooma till objektet i 3D" : ""}"><span class="v3-ga-obj-name" title="${E(String(m.object_id || ""))}">${E(m.object_name || m.object_id || "Objekt")}${coupled ? ` <span class="v3-pal-hint">· ${E(String(m.object_id || "").slice(-6))} · 3D-kopplad</span>` : ""}</span><button type="button" class="v3-ga-obj-x" data-mid="${E(String(m.id))}" title="Ta bort objektet ur aktiviteten" aria-label="Ta bort objektet">✕</button></div>`; }).join("");
+    w.querySelector(".v3-ga-objs-n").textContent = `(${members.length})`;
+    const pick = m => { list.querySelectorAll(".v3-ga-obj").forEach(r => r.classList.toggle("on", r.dataset.mid === String(m.id))); const ents = l3plEntsOf({ rows: [m] }); if (ents.length) { l3bsSet(ents); if (typeof l3bsZoom === "function") l3bsZoom(); } else l3Status("Objektet finns inte i de inlästa modellerna.", true); };
+    list.querySelectorAll(".v3-ga-obj").forEach(row => { row.onclick = e => { if (e.target.closest(".v3-ga-obj-x")) return; const m = members.find(x => String(x.id) === row.dataset.mid); if (m) pick(m); }; });
+    list.querySelectorAll(".v3-ga-obj-x").forEach(b => { b.onclick = async () => {
+      const m = members.find(x => String(x.id) === b.dataset.mid); if (!m) return;
+      pick(m); // visa vilket objekt det gäller innan frågan
+      if (await l3gaRemoveRow(a, m, members.length)) { const i = members.indexOf(m); if (i >= 0) members.splice(i, 1); renderObjs(); }
+    }; });
+  };
+  renderObjs();
+  w.querySelector(".ui-dlg-cancel").onclick = () => { window.removeEventListener("resize", fit); close(); };
+  w.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Escape") { window.removeEventListener("resize", fit); close(); } });
   w.querySelector(".ui-dlg-ok").onclick = async () => {
     const name = f("name").value.trim(), s = f("start").value, en = f("end").value, pr = Math.max(0, Math.min(100, Math.round(Number(f("progress").value) || 0))), deps = f("deps").checked;
     if (!name || !s || !en || en < s) { l3Status("Fyll i namn och ett slutdatum som inte ligger före start.", true); return; }
+    const temp = f("temp").checked, demo = f("demo").checked, doneOn = f("donechk").checked, doneCol = f("donecol").value, doneOp = Number(f("doneop").value);
+    window.removeEventListener("resize", fit);
     close();
+    const rows = members;
     let plan = new Map();
     if (s !== a.start) plan = l3gaPlanFor(a, "move", l3gaDays(a.start, s), deps);
     if (en !== l3gaAdd(a.end, s !== a.start ? l3gaDays(a.start, s) : 0)) {
-      const a2 = { ...a, rows: a.rows.map(r => ({ ...r, ...(plan.get(String(r.id)) || {}) })), start: s, end: l3gaAdd(a.end, l3gaDays(a.start, s)) };
+      const a2 = { ...a, rows: rows.map(r => ({ ...r, ...(plan.get(String(r.id)) || {}) })), start: s, end: l3gaAdd(a.end, l3gaDays(a.start, s)) };
       const p2 = l3gaPlanFor(a2, "right", l3gaDays(a2.end, en), deps);
       p2.forEach((v, k) => plan.set(k, v));
     }
-    a.rows.forEach(r => {
+    rows.forEach(r => {
       const c = { ...(plan.get(String(r.id)) || {}) };
       if (name !== a.name) c.activity = name;
       if (pr !== a.progress) c.progress = pr;
+      if (temp !== (r.temporary === true)) c.temporary = temp;
+      if (demo !== (r.demolition === true)) c.demolition = demo;
+      const curCol = /^#[0-9a-f]{6}$/i.test(String(r.done_color || "")) ? r.done_color.toLowerCase() : null, curOp = r.done_opacity != null && r.done_opacity !== "" && Number.isFinite(Number(r.done_opacity)) ? Number(r.done_opacity) : null;
+      if (doneOn) { if (curCol !== doneCol.toLowerCase()) c.done_color = doneCol; if (curOp !== doneOp) c.done_opacity = doneOp; }
+      else { if (curCol !== null) c.done_color = null; if (curOp !== null) c.done_opacity = null; }
       if (Object.keys(c).length) plan.set(String(r.id), c);
     });
     if (!plan.size) { l3Status("Inget ändrades."); return; }
     await l3gaCommit(plan, `Redigera ${a.name}`);
   };
 }
+/* Ta bort ETT objekt ur en aktivitet (✕ i redigeringsdialogen). Frågar först, kontrollerar att ingen annan hunnit ändra raden
+   och kan ångras med Ångra. Aktiviteten och de andra objekten finns kvar. */
+async function l3gaRemoveRow(a, m, n) {
+  if (l3ga.busy) { l3Status("Väntar på förra sparningen…", true); return false; }
+  const nm = m.object_name || m.object_id || "objektet";
+  const ok = await uiConfirm(`Ta bort "${nm}" ur aktiviteten "${a.name}"?\n\nAktiviteten finns kvar med de ${n - 1} andra objekten.${l3plRealObj(m) ? "\n⚠ Objektets 3D-koppling försvinner." : ""}\n⚠ Objektet kommer från Powerproject-filen och kommer tillbaka vid nästa import.\n\nRaden tas bort ur Powerproject-tidplanen i Trimble Connect-projektets 4D-planering – det syns för alla. Kan ångras här efteråt.`, { ok: "Ta bort objektet" });
+  if (!ok) { l3Status("Inget togs bort."); return false; }
+  l3ga.busy = true;
+  const key = "gasave";
+  try {
+    if (typeof busyProgress === "function") busyProgress(key, "Sparar i 4D-planeringen…", 0.3);
+    const fresh = await ghReadJSON(token, l3gaPath("plan_items.json"), { fresh: true });
+    const theirs = (Array.isArray(fresh) ? fresh : []).find(r => String(r.id) === String(m.id));
+    if (!theirs || JSON.stringify(theirs) !== JSON.stringify(m)) {
+      l3pl.rows = fresh; l3plRender();
+      uiAlert("Inget togs bort – raden har ändrats eller tagits bort av någon annan sedan tidplanen lästes. Tidplanen är nu omläst – försök igen.");
+      return false;
+    }
+    await ghWriteJSON(token, l3gaPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).filter(r => String(r.id) !== String(m.id)), `Ta bort objekt ur ${a.name} (3D-vyn)`);
+    l3pl.rows = (l3pl.rows || []).filter(r => String(r.id) !== String(m.id));
+    if (typeof planSource !== "undefined" && planSource === "pp" && Array.isArray(items)) { items = items.filter(r => String(r.id) !== String(m.id)); if (typeof l3bRecolor === "function") l3bRecolor(); if (typeof l3BuildObjects === "function") l3BuildObjects(); if (typeof renderZones === "function") renderZones(); }
+    l3ga.undo.push({ label: `Ta bort ${nm} ur ${a.name}`, removed: [{ ...m }] }); if (l3ga.undo.length > 40) l3ga.undo.shift(); l3ga.redo = [];
+    if (typeof bridgeOk === "function" && bridgeOk()) askOpener("planChanged", { source: "pp" }, 20000).catch(() => {});
+    l3Status(`${nm} borttaget ur ${a.name}.`);
+    l3plRender();
+    return true;
+  } catch (e) {
+    uiAlert(`Kunde inte spara i 4D-planeringen: ${e.message}\n\nInget har ändrats.`);
+    l3pl.rows = null; l3plLoad(true);
+    return false;
+  } finally { l3ga.busy = false; if (typeof busyProgress === "function") busyProgress(key, "", null); }
+}
+/* Ångra ett borttaget objekt: raden läggs tillbaka (om den inte redan finns). */
+async function l3gaRestoreRows(rows) {
+  if (l3ga.busy) return false;
+  l3ga.busy = true;
+  try {
+    await ghWriteJSON(token, l3gaPath("plan_items.json"), arr => { const a = Array.isArray(arr) ? arr : []; const have = new Set(a.map(r => String(r.id))); return [...a, ...rows.filter(r => !have.has(String(r.id)))]; }, `Ångra borttagning (3D-vyn, ${rows.length} rad)`);
+    l3pl.rows = null; await l3plLoad(true);
+    if (typeof planSource !== "undefined" && planSource === "pp") { try { const fr = await ghReadJSON(token, dataPath("plan_items.json"), { fresh: true }); if (Array.isArray(fr)) { items = fr; if (typeof l3bRecolor === "function") l3bRecolor(); if (typeof renderZones === "function") renderZones(); } } catch (e) { /* uppdateras vid nästa läsning */ } }
+    if (typeof bridgeOk === "function" && bridgeOk()) askOpener("planChanged", { source: "pp" }, 20000).catch(() => {});
+    return true;
+  } catch (e) { uiAlert(`Kunde inte ångra: ${e.message}`); return false; } finally { l3ga.busy = false; }
+}
 
 /* ---- Spara (med skydd) ---------------------------------------------------------------------------- */
-const L3GA_FIELDS = { start_date: "start", end_date: "slut", activity: "namn", progress: "framdrift" };
+const L3GA_FIELDS = { start_date: "start", end_date: "slut", activity: "namn", progress: "framdrift", temporary: "temporär", demolition: "rivning", done_color: "färg efter slut", done_opacity: "opacitet efter slut" };
+const L3GA_GUARD = Object.keys(L3GA_FIELDS);
 function l3gaDescribe(plan) {
   const byAct = new Map(), acts = l3plActs(false), keyOfRow = new Map(); acts.forEach(a => a.rows.forEach(r => keyOfRow.set(String(r.id), a)));
   plan.forEach((c, id) => { const a = keyOfRow.get(String(id)); if (a && !byAct.has(a.key)) byAct.set(a.key, { a, c }); });
@@ -433,6 +518,9 @@ function l3gaDescribe(plan) {
     if (c.start_date || c.end_date) { const ns = a.rows.map(r => (plan.get(String(r.id)) || {}).start_date || r.start_date.slice(0, 10)).sort()[0], ne = a.rows.map(r => (plan.get(String(r.id)) || {}).end_date || r.end_date.slice(0, 10)).sort().pop(); parts.push(`${a.start} – ${a.end} → ${ns} – ${ne}`); }
     if (c.activity !== undefined) parts.push(`namn → "${c.activity}"`);
     if (c.progress !== undefined) parts.push(`framdrift ${a.progress} % → ${c.progress} %`);
+    if (c.temporary !== undefined) parts.push(c.temporary ? "blir temporär" : "inte längre temporär");
+    if (c.demolition !== undefined) parts.push(c.demolition ? "blir rivning" : "inte längre rivning");
+    if (c.done_color !== undefined || c.done_opacity !== undefined) parts.push(c.done_color === null && c.done_opacity === null ? "egen färg efter slut tas bort" : `egen färg efter slut ${c.done_color || ""} ${c.done_opacity != null ? c.done_opacity + " %" : ""}`.trim());
     return `• ${a.name}${a.area ? " (" + a.area + ")" : ""}: ${parts.join(", ")}`;
   });
   return { n: byAct.size, rows: plan.size, text: lines.join("\n") + (byAct.size > 6 ? `\n… och ${byAct.size - 6} aktiviteter till` : "") };
@@ -449,7 +537,7 @@ async function l3gaCommit(plan, label, opts = {}) {
     // Skydd: har någon annan ändrat samma rader sedan de lästes sparas inget.
     const fresh = await ghReadJSON(token, l3gaPath("plan_items.json"), { fresh: true });
     const fById = new Map((Array.isArray(fresh) ? fresh : []).map(r => [String(r.id), r]));
-    const changed = [...plan.keys()].filter(id => { const mine = l3gaRow(id), theirs = fById.get(id); return !theirs || !mine || ["start_date", "end_date", "activity", "progress"].some(k => String(theirs[k] ?? "") !== String(mine[k] ?? "")); });
+    const changed = [...plan.keys()].filter(id => { const mine = l3gaRow(id), theirs = fById.get(id); return !theirs || !mine || L3GA_GUARD.some(k => String(theirs[k] ?? "") !== String(mine[k] ?? "")); });
     if (changed.length) {
       l3pl.rows = fresh; l3plRender();
       uiAlert(`Inget sparades – någon annan har ändrat ${changed.length === 1 ? "aktiviteten" : changed.length + " av raderna"} sedan tidplanen lästes. Tidplanen är nu omläst – försök igen.`);
@@ -484,6 +572,12 @@ async function l3gaCommit(plan, label, opts = {}) {
 async function l3gaUndo(redo) {
   const from = redo ? l3ga.redo : l3ga.undo, to = redo ? l3ga.undo : l3ga.redo, st = from[from.length - 1];
   if (!st) return;
+  if (st.removed) { // borttaget objekt: ångra = lägg tillbaka raden, gör om = ta bort igen
+    if (redo) { const ids = new Set(st.removed.map(r => String(r.id))); if (!(await uiConfirm(`Ta bort objektet igen?\n\n${st.label}`, { ok: "Ta bort" }))) return; l3ga.busy = true; try { await ghWriteJSON(token, l3gaPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).filter(r => !ids.has(String(r.id))), `Gör om: ${st.label} (3D-vyn)`); l3pl.rows = null; await l3plLoad(true); from.pop(); to.push(st); l3plDockRender(); } catch (e) { uiAlert(`Kunde inte spara: ${e.message}`); } finally { l3ga.busy = false; } return; }
+    if (!(await uiConfirm(`Lägg tillbaka objektet i 4D-planeringen?\n\n${st.label}`, { ok: "Ångra och spara" }))) return;
+    if (await l3gaRestoreRows(st.removed)) { from.pop(); to.push(st); l3plDockRender(); }
+    return;
+  }
   const plan = redo ? st.after : st.before;
   if (await l3gaCommit(plan, `${redo ? "Gör om" : "Ångra"}: ${st.label}`, { undo: true })) { from.pop(); to.push(st); l3plDockRender(); }
 }

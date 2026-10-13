@@ -29,6 +29,7 @@ const PP = [
     await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS }));
     await page.route('https://api.github.com/**', r => {
       const f = decodeURIComponent(new URL(r.request().url()).pathname.replace('/repos/vfalk-NCC/4D-data/contents/', ''));
+      if (global.__mockWrite && r.request().method() === 'PUT' && f === 'projects/p1/pp/plan_items.json') { try { const nw = JSON.parse(Buffer.from(JSON.parse(r.request().postData()).content, 'base64').toString()); PP.splice(0, PP.length, ...nw); } catch (e) { /* ignoreras */ } }
       if (r.request().method() !== 'GET') return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha: 'x' } }) });
       const data = { 'projects/p1/pp/plan_items.json': PP, 'projects/p1/plan_items.json': [{ id: 'x1', object_id: 'X1', object_name: 'Bod', activity: 'Etablering bodar', area: 'Etablering', start_date: '2026-10-10', end_date: '2026-10-15' }], 'projects/p1/plan_milestones.json': [{ id: 'm1', name: 'Stomme klar', target_date: '2026-10-14', done: false }] }[f];
       r.fulfill(data ? { status: 200, contentType: 'application/json', body: JSON.stringify({ content: Buffer.from(JSON.stringify(data)).toString('base64'), sha: 's' }) } : { status: 404, body: '{}' });
@@ -123,6 +124,31 @@ const PP = [
     if (cpl.length !== 1 || cpl[0].itemId !== 'p3' || cpl[0].source !== 'pp' || JSON.stringify(cpl[0].objs) !== JSON.stringify([{ modelId: 'F1', objectId: 'NEWGUID0000000000000001' }])) fail('Koppla: ' + JSON.stringify(cpl));
     page.__uiDialogHandlers.length = 0;
     await page.evaluate(() => { l3plSet('view', 'board'); l3plDockRender(); });
+    // Redigeringsdialogen som i dashboarden: Temporär/Rivning/Egen färg efter slut, och ✕ för ett objekt.
+    {
+      const n0 = puts.length; let ask2 = null; const PP0 = JSON.parse(JSON.stringify(PP)); global.__mockWrite = true;
+      page.__uiDialogHandlers.push(d => { ask2 = d.message(); d.accept(); });
+      const dl = await page.evaluate(() => { l3gaEdit('g:G1'); const w = document.querySelector('.v3-ga-dlg'); return { objs: w.querySelectorAll('.v3-ga-obj').length, adv: !!w.querySelector('[data-f="temp"]') && !!w.querySelector('[data-f="demo"]') && !!w.querySelector('[data-f="donechk"]'), maxH: w.querySelector('.ui-dlg-main').style.maxHeight }; });
+      if (dl.objs !== 2 || !dl.adv || !dl.maxH) fail('Redigeringsdialogen saknar fält: ' + JSON.stringify(dl));
+      await page.evaluate(() => { const w = document.querySelector('.v3-ga-dlg'); w.querySelector('[data-f="temp"]').click(); const c = w.querySelector('[data-f="donecol"]'); c.value = '#ff0000'; c.dispatchEvent(new Event('input')); const o = w.querySelector('[data-f="doneop"]'); o.value = '55'; o.dispatchEvent(new Event('input')); w.querySelector('.ui-dlg-ok').click(); });
+      await page.waitForFunction(() => !l3ga.busy && document.querySelectorAll('.v3-ga-dlg').length === 0, null, { timeout: 10000 }).catch(async e => fail('Efter Spara: ' + JSON.stringify(await page.evaluate(() => ({ busy: l3ga.busy, dlg: document.querySelectorAll('.v3-ga-dlg').length, st: (document.getElementById('v3Status') || {}).textContent })))));
+      await page.waitForTimeout(500);
+      const sv = (puts[n0] || []).filter(r => r.group_id === 'G1');
+      if (puts.length !== n0 + 1 || !sv.length || !sv.every(r => r.temporary === true && r.done_color === '#ff0000' && r.done_opacity === 55) || !/temporär/.test(ask2 || '') || !/färg efter slut/.test(ask2 || '')) fail('Spara Temporär/färg efter slut: ' + JSON.stringify({ n0, n: puts.length, sv, ask2 }));
+      // Rivning och Temporär utesluter varandra.
+      const ex = await page.evaluate(() => { l3gaEdit('g:G1'); const w = document.querySelector('.v3-ga-dlg'); const t = w.querySelector('[data-f="temp"]').checked; w.querySelector('[data-f="demo"]').click(); const r = { wasTemp: t, temp: w.querySelector('[data-f="temp"]').checked, demo: w.querySelector('[data-f="demo"]').checked }; w.querySelector('.ui-dlg-cancel').click(); return r; });
+      if (!ex.wasTemp || ex.temp || !ex.demo) fail('Temporär/Rivning utesluter varandra: ' + JSON.stringify(ex));
+      // ✕: frågar, tar bort bara det objektet.
+      const n1 = puts.length; ask2 = null;
+      await page.evaluate(() => { l3gaEdit('g:G1'); document.querySelector('.v3-ga-obj-x[data-mid="p2"]').click(); });
+      await page.waitForFunction(() => !l3ga.busy && l3ga.undo.some(u => u.removed), null, { timeout: 6000 }).catch(async e => fail('Efter ✕: ' + JSON.stringify({ ask2, st: await page.evaluate(() => ({ busy: l3ga.busy, undo: l3ga.undo.length, alert: [...document.querySelectorAll('.ui-dlg-body,.ui-dlg-title')].map(x => x.textContent) })) })));
+      const rm = puts[n1] || [];
+      if (puts.length !== n1 + 1 || rm.some(r => r.id === 'p2') || !rm.some(r => r.id === 'p1') || !/Ta bort/.test(ask2 || '')) fail('Ta bort ett objekt ur aktiviteten: ' + JSON.stringify({ n1, n: puts.length, ids: rm.map(r => r.id), ask2 }));
+      await page.evaluate(() => { const w = document.querySelector('.v3-ga-dlg'); if (w) w.querySelector('.ui-dlg-cancel').click(); });
+      global.__mockWrite = false; PP.splice(0, PP.length, ...PP0); await page.evaluate(() => { l3ga.undo.length = 0; l3pl.rows = null; return l3plLoad(true); });
+      console.log('OK: redigeringsdialogen – Temporär, Rivning, Egen färg efter slut och ✕ ta bort objekt (med frågeruta)');
+      page.__uiDialogHandlers.length = 0;
+    }
 
     // Kameravyer och kamerans väg mellan dem.
     const cam = await page.evaluate(() => {
