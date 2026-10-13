@@ -103,7 +103,7 @@ function l3PdfToModel(px, py) {
 // Inställningar (per webbläsare)
 // ---------------------------------------------------------------------
 const L3_PREFS_KEY = "lagesplan-3d-prefs";
-const L3_PREFS_DEFAULT = { plan: true, objs: "solid", labels: true, legend: true, snap: true, step: "0.5", pal: true, mouse: "tekla", ortho: false, autoRot: true };
+const L3_PREFS_DEFAULT = { plan: true, objs: "solid", labels: true, legend: true, snap: true, step: "0.5", pal: true, mouse: "tekla", ortho: false, autoRot: true, actOutline: false };
 function l3Prefs() {
   if (l3 && l3.prefs) return l3.prefs;
   try { return { ...L3_PREFS_DEFAULT, ...JSON.parse(localStorage.getItem(L3_PREFS_KEY) || "{}") }; } catch (e) { return { ...L3_PREFS_DEFAULT }; }
@@ -780,6 +780,7 @@ function l3BuildPlacements() {
   l3.gizmo.detach();
   l3Clear(l3.groups.places); l3.placeMeshes.clear();
   placements.forEach(p => { const g = l3PlacementGroup(p); if (l3.hidden && l3.hidden.has(p.id)) g.visible = false; l3.groups.places.add(g); l3.placeMeshes.set(p.id, g); });
+  if (typeof l3actSchedule === "function") l3actSchedule();
   l3SelectIds([...l3.sel].filter(id => l3.placeMeshes.has(id)));
   if (typeof l3StorageBuild === "function") l3StorageBuild();
   l3RenderObjList();

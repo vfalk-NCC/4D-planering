@@ -471,6 +471,21 @@ const PP = [
     if (cs.both.join() !== 'false,false' || cs.pp.join() !== 'false,true' || cs.excel.join() !== 'true,false' || !cs.sel || cs.itemId !== 'p1' || cs.xId !== null) fail('3D-färger PP/Excel/båda: ' + JSON.stringify(cs));
     else console.log('OK: 3D-färgerna i Powerproject-lägesplanen tar med Excel-kopplade objekt (båda/PP/Excel)');
     console.log('OK: 4D-koppling – Powerproject, Excel eller båda; Excel-raderna skyddade mot redigering här');
+    // Pågående objekt: gul kontur (val under 4D-planering), av = borta.
+    const act = await page.evaluate(async () => {
+      const orig = window.l3actActive; window.l3actActive = () => true; // alla kopplade räknas som pågående i testet
+      placements = [{ id: 'tp1', type: 'bod', name: 'Bod', x: 6512340, y: 150105, z: 0, L: 8, B: 3, H: 2.7, rot: 0, dz: 0, color: '#f59e0b', itemId: 'p1' }]; l3BuildPlacements();
+      l3SetPref('actOutline', true); l3actRebuild();
+      await new Promise(r => setTimeout(r, 900));
+      const dbg = { models: l3b.models.map(m => [m.visible, m.meshes.length, m.meshes.map(x => !!(x.userData.l3b && x.userData.l3b.ranges && x.userData.l3b.ranges.length) + ':' + x.visible)]), cnt: l3act.count, prefs: l3Prefs().actOutline, edges: typeof l3bsObjEdges };
+      const on = l3act.ov.length, lines = l3act.ov.every(o => o.isLineSegments && o.parent), col = l3act.ov[0] && l3act.ov[0].material.color.getHex();
+      l3SetPref('actOutline', false); l3actRebuild();
+      const off = l3act.ov.length;
+      window.l3actActive = orig;
+      return { on, lines, col, off, dbg };
+    });
+    if (!(act.on > 0) || !act.lines || act.col !== 0xffc400 || act.off !== 0) fail('Pågående objekt – gul kontur: ' + JSON.stringify(act));
+    console.log('OK: pågående objekt får en gul kontur (val), av = borta');
     // Valen finns i fliken.
     const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlFxBl', 'v3FlFxLegend', 'v3FlAnimDef', 'v3PlLinkHost', 'v3FlTitleOn'].every(id => document.getElementById(id)); });
     if (!ui) fail('Valen för grafiken saknas i fliken');

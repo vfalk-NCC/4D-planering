@@ -532,6 +532,7 @@ async function l3bParse(bytes, placement, maxTris) {
 }
 /* Statusfärg för kopplade objekt vid datumet i lägesplanen. */
 function l3bRecolor() {
+  if (typeof l3actSchedule === "function") l3actSchedule();
   if (!l3 || !l3b.models.length) return;
   const byId = new Map((items || []).map(r => [r.id, r]));
   // Alla rader per objekt: ett objekt kan vara kopplat till flera aktiviteter (t.ex. Excel-planeringens
