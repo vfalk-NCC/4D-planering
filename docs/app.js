@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-13 10:58";
+const APP_VERSION = "2026-10-13 11:26";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -1704,7 +1704,7 @@ function fillLinkForm(existing) {
     : existing ? `Redigera ${existing.objectName || existing.activity || "aktivitet"}`
     : `Koppla ${lastSelection.length} objekt`;
   const more = document.getElementById("formMore");
-  if (more) more.open = !!(existing && (existing.contractor || (existing.dependsOn || []).length || existing.actualStartDate || existing.actualEndDate || Number.isFinite(existing.estimatedHours)));
+  if (more) more.open = !!(existing && (existing.contractor || (existing.dependsOn || []).length || existing.actualStartDate || existing.actualEndDate || existing.temporary === true || existing.demolition === true || Number.isFinite(existing.estimatedHours)));
   const dup = document.getElementById("btnDuplicateActivity");
   if (dup) dup.classList.toggle("hidden", !(existing && lastEditedItemId === existing.id));
   const note = document.getElementById("newActivityNote");
@@ -1725,6 +1725,9 @@ function fillLinkForm(existing) {
   document.getElementById("fActualStart").value = existing ? existing.actualStartDate || "" : "";
   document.getElementById("fActualEnd").value = existing ? existing.actualEndDate || "" : "";
   document.getElementById("fTemporary").checked = !!(existing && existing.temporary === true);
+  document.getElementById("fDemolition").checked = !!(existing && existing.demolition === true);
+  document.getElementById("fTemporary").onchange = e => { if (e.target.checked) document.getElementById("fDemolition").checked = false; };
+  document.getElementById("fDemolition").onchange = e => { if (e.target.checked) document.getElementById("fTemporary").checked = false; };
   // Fäll ut "Verklig start/avslut"-sektionen automatiskt om det redan finns
   // data där (annars skulle man tro fälten var tomma när de bara är dolda),
   // annars börjar den hopfälld så formuläret känns kompakt i vanliga fallet.
@@ -2012,7 +2015,8 @@ function buildLinkPayloadFromForm() {
     progress: Number(document.getElementById("fProgress").value) || 0,
     estimatedHours: document.getElementById("fEstimatedHours").value !== "" ? Number(document.getElementById("fEstimatedHours").value) : null,
     dependsOn: [...linkFormDependsOn],
-    temporary: document.getElementById("fTemporary").checked
+    temporary: document.getElementById("fTemporary").checked,
+    demolition: document.getElementById("fDemolition").checked
   };
 }
 
@@ -2442,7 +2446,7 @@ function onSaveLink() {
    aktivitet samma framdrift, status och verkliga start/avslut. Ändras något
    av dem på ett objekt följer resten av aktiviteten med. Datumen (start/slut)
    är däremot fortfarande per objekt, så 3D-färgerna följer delaktiviteterna. */
-const ACTIVITY_WIDE_FIELDS = ["progress", "status", "actualStartDate", "actualEndDate", "temporary"];
+const ACTIVITY_WIDE_FIELDS = ["progress", "status", "actualStartDate", "actualEndDate", "temporary", "demolition"];
 function spreadActivityWideFields(records) {
   const inBatch = new Map(records.map(r => [r.id, r]));
   const extra = new Map();
@@ -3063,7 +3067,7 @@ async function applyTimelineColors() {
     for (const modelId of Object.keys(byModel)) {
       if (modelId === "null" || modelId === "undefined") continue;
       const off = hide ? byModel[modelId].tempoff : [];
-      const on = items.filter(it => typeof it.temporary === "boolean" && it.modelId === modelId && !off.includes(it.objectId)).map(it => it.objectId);
+      const on = items.filter(it => (typeof it.temporary === "boolean" || it.demolition === true) && it.modelId === modelId && !off.includes(it.objectId)).map(it => it.objectId);
       await visibleGroup(modelId, off, false);
       await visibleGroup(modelId, on, true);
     }
@@ -3074,9 +3078,10 @@ async function applyTimelineColors() {
 /* Temporär (t.ex. mobilkran, stämp): finns bara från startdatum till och med slutdatum. Slutet är det
    verkliga avslutet om det finns (kranen åkte tidigare/senare), annars planerat slut. */
 function isTempOffAt(it, dateStr) {
-  if (!it || it.temporary !== true || !dateStr) return false;
+  if (!it || (it.temporary !== true && it.demolition !== true) || !dateStr) return false;
   const end = it.actualEndDate || it.endDate;
-  return !!((it.startDate && dateStr < it.startDate) || (end && dateStr > end));
+  // Rivning: syns hela tiden före start och försvinner först efter slut (Victor 2026-10-13).
+  return !!((it.temporary === true && it.startDate && dateStr < it.startDate) || (end && dateStr > end));
 }
 /* Opaciteten för temporära objekt utanför sin tid (Inställningar): 0 = dolda. */
 function tempOffOpacity() { const v = Number(settings.tempOffOpacity); return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0; }
@@ -5646,6 +5651,7 @@ function toRow(it) {
     // Temporär (Victor 2026-10-09, t.ex. mobilkran): syns i 3D bara mellan start och slut. Skrivs bara när
     // det är satt (true/false) – saknas fältet behålls filens värde vid sparningen.
     ...(typeof it.temporary === "boolean" ? { temporary: it.temporary } : {}),
+    ...(typeof it.demolition === "boolean" ? { demolition: it.demolition } : {}),
     updated_at: new Date().toISOString()
   };
 }
@@ -5702,6 +5708,7 @@ function fromRowStored(row) {
     excelSheet: row.excel_sheet || null,
     excelMap: Array.isArray(row.excel_map) ? row.excel_map : null,
     temporary: typeof row.temporary === "boolean" ? row.temporary : undefined,
+    demolition: typeof row.demolition === "boolean" ? row.demolition : undefined,
     updatedAt: row.updated_at
   };
 }

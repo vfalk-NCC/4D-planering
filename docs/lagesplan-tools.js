@@ -54,9 +54,9 @@ function visibleItems() {
 let visibleCacheAt = null;
 /* Temporär rad (plan_items: temporary) utanför sin tid: före start eller efter (verkligt) slut. */
 function rowTempOffAt(r, at) {
-  if (!r || r.temporary !== true || !at) return false;
+  if (!r || (r.temporary !== true && r.demolition !== true) || !at) return false;
   const end = r.actual_end_date || r.end_date;
-  return !!((r.start_date && at < r.start_date) || (end && at > end));
+  return !!((r.temporary === true && r.start_date && at < r.start_date) || (end && at > end)); // rivning: syns före start
 }
 function invalidateVisible() { visibleCache = null; invalidatePositions(); }
 function onFilterChanged() {

@@ -111,7 +111,7 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   // Formuläret: kryssa i Temporär på väggen och spara; kryssa ur på kranen.
   await page.evaluate(() => editItemFromList(items.find(i => i.id === 'n'))); await page.waitForTimeout(300);
   if (await page.isChecked('#fTemporary')) fail('Väggen är inte temporär');
-  await page.check('#fTemporary'); await page.click('#btnSaveLink'); await page.waitForTimeout(1200);
+  await page.evaluate(() => { document.getElementById('formMore').open = true; }); await page.check('#fTemporary'); await page.click('#btnSaveLink'); await page.waitForTimeout(1200);
   if (get('plan_items.json').find(r => r.id === 'n').temporary !== true) fail('Temporär sparades inte');
   await page.evaluate(() => editItemFromList(items.find(i => i.id === 'k'))); await page.waitForTimeout(300);
   if (!(await page.isChecked('#fTemporary'))) fail('Kranen ska vara ikryssad');
@@ -122,6 +122,20 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   a = await alphaAt('2026-10-20');
   if (a[1] !== 255 || a[2] !== 0) fail('Efter ändringen: kranen kvar, väggen dold efter sitt slut: ' + JSON.stringify(a));
   console.log('OK: Temporär i formuläret sparas (och kan tas bort)');
+
+  // Rivning: syns före start, försvinner efter slut; kryss i formuläret sparas och utesluter Temporär.
+  const dem = await page.evaluate(() => {
+    const it = { temporary: false, demolition: true, startDate: '2026-10-10', endDate: '2026-10-20' };
+    return ['2026-10-01', '2026-10-15', '2026-10-21'].map(d => isTempOffAt(it, d));
+  });
+  if (dem[0] !== false || dem[1] !== false || dem[2] !== true) fail('Rivning ska synas före start och döljas efter slut: ' + JSON.stringify(dem));
+  await page.evaluate(() => editItemFromList(items.find(i => i.id === 'n'))); await page.waitForTimeout(300);
+  await page.evaluate(() => { document.getElementById('formMore').open = true; }); await page.check('#fDemolition');
+  if (await page.isChecked('#fTemporary')) fail('Rivning ska stänga av Temporär');
+  await page.click('#btnSaveLink'); await page.waitForTimeout(1200);
+  const rn = get('plan_items.json').find(r => r.id === 'n');
+  if (rn.demolition !== true || rn.temporary !== false) fail('Rivning sparades inte: ' + JSON.stringify([rn.demolition, rn.temporary]));
+  console.log('OK: Rivning syns före start, döljs efter slut och sparas');
 
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_temporary');
