@@ -1281,3 +1281,13 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .pp-bl-parts .pp-groups { flex-direction: row; flex-wrap: wrap; gap: 4px 6px; }
 .pp-bl-parts .pp-chip { border: 1px solid #d1d5db; border-radius: 999px; padding: 2px 8px; background: #fff; }
 .pp-bl-parts .pp-chip:has(input:checked) { border-color: #2563eb; background: #eff6ff; }
+
+.pp-areas-box { margin: 6px 0 8px 0; }
+.pp-areas-box > summary { cursor: pointer; font-size: 13px; }
+.pp-areas-tools { margin: 4px 0 4px 26px; font-size: 12px; }
+.pp-areas { margin-left: 26px; max-height: 260px; overflow: auto; }
+.pp-area-part + .pp-area-part { margin-top: 6px; }
+.pp-area-h { margin: 0 0 2px; font-weight: 600; }
+.pp-areas .pp-groups { flex-direction: row; flex-wrap: wrap; gap: 4px 6px; }
+.pp-areas .pp-chip { border: 1px solid #d1d5db; border-radius: 999px; padding: 2px 8px; background: #fff; }
+.pp-areas .pp-chip:has(input:checked) { border-color: #2563eb; background: #eff6ff; }

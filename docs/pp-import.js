@@ -170,7 +170,7 @@ async function parsePowerproject(buf, fileName) {
 /* Raderna i samma form som Excel-tolkningen (parsePlanWorkbookRows), så att förhandsgranskningen och
    sparningen är desamma. opts: { groups: Set(id), areaLib, contractorLib }. */
 function ppToParsedItems(pp, opts) {
-  const picked = pp.tasks.filter(t => opts.groups.has(t.top));
+  const picked = pp.tasks.filter(t => opts.groups.has(t.top) && (!opts.areas || opts.areas.has(ppAreaKey(t))));
   const keyOf = t => `PP ${t.topName}||${t.id}`;
   const keyById = new Map(picked.map(t => [t.id, keyOf(t)]));
   const preds = new Map();
@@ -204,11 +204,17 @@ function ppOptionsFromUi() {
   const groups = new Set([...document.querySelectorAll("#ppOptions [data-ppg]")].filter(c => c.checked).map(c => Number(c.dataset.ppg)));
   const a = document.getElementById("ppAreaLib").value, c = document.getElementById("ppContractorLib").value;
   const r = document.getElementById("ppResources");
-  return { groups, areaLib: a ? Number(a) : null, contractorLib: c ? Number(c) : null, resources: r ? r.checked : true };
+  // Områden (Victor 2026-10-13): bara de ikryssade (inom valda delar). null = alla.
+  const boxes = [...document.querySelectorAll("#ppOptions [data-ppa]")];
+  const areas = boxes.length && boxes.some(c => !c.checked) ? new Set(boxes.filter(c => c.checked).map(c => c.dataset.ppa)) : null;
+  return { groups, areas, areaLib: a ? Number(a) : null, contractorLib: c ? Number(c) : null, resources: r ? r.checked : true };
 }
+/* Området en aktivitet hör till i urvalet: raden närmast under översta raden (t.ex. PRODUKTION, PROJEKTERING). */
+const ppAreaName = t => (t.path.length > 1 && t.path[1]) || "(utan område)";
+const ppAreaKey = t => `${t.top}|${ppAreaName(t)}`;
 /* Resurserna i de valda delarna (Victor 2026-10-08: "det står inget om resurser vid importfönstret"). */
-function ppResourceSummary(pp, groups) {
-  const tasks = pp.tasks.filter(t => groups.has(t.top) && t.resources && t.resources.length);
+function ppResourceSummary(pp, groups, areas) {
+  const tasks = pp.tasks.filter(t => groups.has(t.top) && (!areas || areas.has(ppAreaKey(t))) && t.resources && t.resources.length);
   const byName = new Map();
   let hours = 0;
   tasks.forEach(t => t.resources.forEach(r => { hours += Number(r.hours) || 0; byName.set(r.name, (byName.get(r.name) || 0) + (Number(r.hours) || 0)); }));
@@ -237,6 +243,10 @@ function renderPpOptions() {
       <div class="pp-groups">${pp.groups.map(g => `<label class="check pp-chip" title="${fmt(g.start)} – ${fmt(g.end)}"><input type="checkbox" data-ppg="${g.id}"${groupOn(g) ? " checked" : ""} /> ${escapeHtml(g.name)} <span class="hint">${g.count} st · ${fmt(g.start).slice(-4)}${fmt(g.end).slice(-4) !== fmt(g.start).slice(-4) ? "–" + fmt(g.end).slice(-4) : ""}</span></label>`).join("")}</div>
     </div></div>
     <div id="ppInPlan" class="pp-inplan"></div>
+    <details class="pp-areas-box" id="ppAreasBox"><summary><span class="pp-n">＋</span> <b>Områden</b> <span class="hint" id="ppAreasSum"></span></summary>
+      <div class="pp-areas-tools"><button type="button" class="link-btn" id="ppAreasAll">Välj alla</button> · <button type="button" class="link-btn" id="ppAreasNone">Välj inga</button> <span class="hint">Bara ikryssade områden hämtas in från de valda delarna.</span></div>
+      <div id="ppAreas" class="pp-areas"></div>
+    </details>
     <div class="pp-step"><span class="pp-n">2</span><div class="pp-step-body"><b>Resurser</b>
       <div class="pp-groups"><label class="check pp-chip"><input type="checkbox" id="ppResources"${saved.res === false ? "" : " checked"} /> Ta med resurser <span class="hint">resurs, antal och timmar per aktivitet</span></label></div>
       <div class="hint" id="ppResSum"></div>
@@ -254,15 +264,38 @@ function renderPpOptions() {
     document.getElementById("ppContrSum").textContent = libName(document.getElementById("ppContractorLib").value) || "ingen";
   };
   sums();
+  // Områden: raden under översta raden, per vald del. Bortvalda kommer ihåg (per del och namn).
+  const areaOff = new Set(saved.offAreas || []);
+  const renderAreas = () => {
+    const wrap = document.getElementById("ppAreas");
+    wrap.querySelectorAll("[data-ppa]").forEach(c => { const k = c.dataset.ppn; if (c.checked) areaOff.delete(k); else areaOff.add(k); });
+    const on = pp.groups.filter(g => box.querySelector(`[data-ppg="${g.id}"]`).checked);
+    wrap.innerHTML = on.map(g => {
+      const m = new Map();
+      pp.tasks.filter(t => t.top === g.id).forEach(t => m.set(ppAreaName(t), (m.get(ppAreaName(t)) || 0) + 1));
+      const list = [...m].sort((a, b) => b[1] - a[1]);
+      return `<div class="pp-area-part">${on.length > 1 ? `<div class="hint pp-area-h">${escapeHtml(g.name)}</div>` : ""}<div class="pp-groups">${list.map(([n, c]) => `<label class="check pp-chip"><input type="checkbox" data-ppa="${g.id}|${escapeHtml(n)}" data-ppn="${escapeHtml(g.name + "||" + n)}"${areaOff.has(g.name + "||" + n) ? "" : " checked"} /> ${escapeHtml(n)} <span class="hint">${c} st</span></label>`).join("")}</div></div>`;
+    }).join("");
+    wrap.querySelectorAll("[data-ppa]").forEach(c => { c.onchange = () => { areaSum(); resSum(); remember(); }; });
+    areaSum();
+  };
+  const areaSum = () => {
+    const all = [...document.querySelectorAll("#ppAreas [data-ppa]")], n = all.filter(c => c.checked).length;
+    const el = document.getElementById("ppAreasSum");
+    if (el) el.textContent = all.length ? (n === all.length ? `alla ${n} valda` : `${n} av ${all.length} valda`) : "";
+  };
   const resSum = () => {
     const el = document.getElementById("ppResSum"), on = document.getElementById("ppResources").checked;
     const groups = new Set(pp.groups.filter(g => box.querySelector(`[data-ppg="${g.id}"]`).checked).map(g => g.id));
-    const r = ppResourceSummary(pp, groups);
+    const bx = [...document.querySelectorAll("#ppAreas [data-ppa]")];
+    const r = ppResourceSummary(pp, groups, bx.some(c => !c.checked) ? new Set(bx.filter(c => c.checked).map(c => c.dataset.ppa)) : null);
     el.innerHTML = !r.tasks ? "Inga resurser inlagda i Powerproject för de valda delarna – resurser som redan finns i 4D behålls."
       : `${on ? "" : "<b>Tas inte med</b> – "}${r.tasks} ${r.tasks === 1 ? "aktivitet" : "aktiviteter"} har resurser · ${Math.round(r.hours).toLocaleString("sv-SE")} timmar · ${r.names.length} ${r.names.length === 1 ? "resurs" : "resurser"}${r.names.length ? ` (${r.top.slice(0, 3).map(([n, h]) => `${escapeHtml(n)} ${Math.round(h).toLocaleString("sv-SE")} h`).join(", ")}${r.names.length > 3 ? " …" : ""})` : ""}.${on ? " Aktiviteter utan resurser i Powerproject behåller sina." : " Resurserna i 4D lämnas orörda."}`;
   };
-  resSum();
-  box.querySelectorAll("[data-ppg]").forEach(c => c.addEventListener("change", resSum));
+  renderAreas(); resSum();
+  box.querySelectorAll("[data-ppg]").forEach(c => c.addEventListener("change", () => { renderAreas(); resSum(); }));
+  document.getElementById("ppAreasAll").onclick = () => { document.querySelectorAll("#ppAreas [data-ppa]").forEach(c => { c.checked = true; }); areaSum(); resSum(); remember(); };
+  document.getElementById("ppAreasNone").onclick = () => { document.querySelectorAll("#ppAreas [data-ppa]").forEach(c => { c.checked = false; }); areaSum(); resSum(); remember(); };
   document.getElementById("ppResources").addEventListener("change", resSum);
   document.getElementById("ppAreaLib").onchange = sums;
   document.getElementById("ppContractorLib").onchange = sums;
@@ -271,7 +304,8 @@ function renderPpOptions() {
   document.getElementById("btnPpPreview").onclick = () => ppPreview();
   const remember = () => {
     const off = pp.groups.filter(g => !box.querySelector(`[data-ppg="${g.id}"]`).checked).map(g => g.name);
-    try { localStorage.setItem(ppOptsKey(), JSON.stringify({ off, area: libName(document.getElementById("ppAreaLib").value) || null, contr: libName(document.getElementById("ppContractorLib").value) || null, res: document.getElementById("ppResources").checked })); } catch (e) {}
+    document.querySelectorAll("#ppAreas [data-ppa]").forEach(c => { if (c.checked) areaOff.delete(c.dataset.ppn); else areaOff.add(c.dataset.ppn); });
+    try { localStorage.setItem(ppOptsKey(), JSON.stringify({ offAreas: [...areaOff], off, area: libName(document.getElementById("ppAreaLib").value) || null, contr: libName(document.getElementById("ppContractorLib").value) || null, res: document.getElementById("ppResources").checked })); } catch (e) {}
   };
   box.querySelectorAll("[data-ppg]").forEach(c => { c.onchange = remember; });
   document.getElementById("ppAreaLib").addEventListener("change", remember);
@@ -530,7 +564,7 @@ function ppPreview() {
   planImportDiff = buildPlanImportDiff(parsed);
   planImportDiff.baseline = bl;
   // Resurserna i förhandsgranskningen.
-  const rs = ppResourceSummary(ppParsed, opts.groups);
+  const rs = ppResourceSummary(ppParsed, opts.groups, opts.areas);
   if (bl) {
     const rtxt = opts.resources === false ? "Resurser: tas inte med – resurserna i 4D lämnas orörda."
       : rs.tasks ? `Resurser: ${rs.tasks} ${rs.tasks === 1 ? "aktivitet" : "aktiviteter"} får resurs, antal och timmar (${Math.round(rs.hours).toLocaleString("sv-SE")} h, ${rs.names.length} ${rs.names.length === 1 ? "resurs" : "resurser"}). Aktiviteter utan resurser i Powerproject behåller sina.`
