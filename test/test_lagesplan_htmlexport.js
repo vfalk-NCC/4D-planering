@@ -75,6 +75,40 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
     if (!(three.meshes >= 2) || three.tex !== 1 || three.names !== 'Bod A,Kran 1') fail('3D i filen: ' + JSON.stringify(three));
     await v.waitForTimeout(400);
     await v.screenshot({ path: path.join(OUT, 'hx-3d.png') });
+    // Tillval: tidslinjen med aktiviteterna bakom objekten (Victor 2026-10-13).
+    gh.set('projects/p1/plan_placements.json', JSON.stringify(JSON.parse(gh.get('projects/p1/plan_placements.json')).map(p => ({ ...p, itemId: p.id === 'k1' ? 'a1' : 'a2' }))));
+    await page.evaluate(() => {
+      items = [{ id: 'a1', object_name: 'Kran-uppställning', activity: 'Kran', start_date: '2026-10-10', end_date: '2026-10-14', progress: 0, temporary: true },
+        { id: 'a2', object_name: 'Bod', activity: 'Bod', start_date: '2026-10-01', end_date: '2026-10-20', progress: 0 }];
+      placements.find(p => p.id === 'k1').itemId = 'a1'; placements.find(p => p.id === 'b1').itemId = 'a2';
+      document.getElementById('hxTimeline').checked = true;
+    });
+    const dl2 = page.waitForEvent('download', { timeout: 60000 });
+    const res2 = await page.evaluate(() => exportOfflineHtml());
+    await dl2;
+    if (!res2 || !res2.html || !/id="tl"/.test(res2.html)) fail('Exporten med tidslinje saknar tidslinjen');
+    const file2 = path.join(OUT, 'hx-export-tl.html'); fs.writeFileSync(file2, res2.html);
+    const v2 = await ctx2.newPage(); const err3 = []; v2.on('pageerror', e => err3.push(e.message));
+    await v2.goto('file://' + file2);
+    await v2.click('.tabs button[data-t="3"]');
+    await v2.waitForFunction(() => window.__hx3 && document.getElementById('tl').dataset.on, null, { timeout: 20000 }).catch(e => { throw new Error('Tidslinjen startade inte: ' + err3.join(' | ')); });
+    const draws = () => v2.evaluate(() => { const r = {}; window.__hx3.scene.traverse(o => { if (o.isMesh && o.userData.names && o.userData.names.length && !o.material.map) { const nm = o.userData.names[0][2]; r[nm + (o.material.transparent ? ' (klar)' : '')] = o.geometry.drawRange.count; } }); return r; });
+    const at = async day => { await v2.evaluate(d => { const sl = document.getElementById('tlSl'); sl.value = d; sl.dispatchEvent(new Event('input')); }, day); await v2.waitForTimeout(200); };
+    await at(4);  // 2026-10-05: kranen inte startad (dold), boden pågår
+    let dr = await draws();
+    if (!(dr['Kran 1'] === 0 && dr['Bod A'] > 0)) fail('Före kranens start ska den vara dold: ' + JSON.stringify(dr));
+    await at(11); // 2026-10-12: kranen finns
+    dr = await draws();
+    if (!(dr['Kran 1'] > 0)) fail('Under sin tid ska kranen synas: ' + JSON.stringify(dr));
+    await at(17); // 2026-10-18: kranen borta efter slut
+    dr = await draws();
+    if (dr['Kran 1'] !== 0) fail('Efter slut ska den temporära kranen vara borta: ' + JSON.stringify(dr));
+    if (!(await v2.isVisible('#tl')) || !/klara · \d+ pågår/.test(await v2.innerText('#tlSum'))) fail('Tidslinjens fält saknas');
+    await v2.click('.tabs button[data-t="2"]'); if (await v2.isVisible('#tl')) fail('Tidslinjen visas bara i 3D');
+    if (err3.length) fail('Fel i filen med tidslinje: ' + err3.join(' | '));
+    // Utan tillvalet är filen oförändrad (ingen tidslinje).
+    if (/id="tl"/.test(res.html)) fail('Utan tillvalet ska filen inte ha någon tidslinje');
+    console.log('OK htmlexport med tidslinje');
     if (ext) fail('Filen försökte hämta ' + ext + ' resurser utifrån');
     if (err2.length) fail('Fel i den exporterade filen: ' + err2.join(' | '));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));

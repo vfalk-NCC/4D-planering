@@ -8,6 +8,22 @@
 
 const HX_BIG_TRIS = 2500000;
 
+/* Tidslinjen som tillval (Victor 2026-10-13): aktiviteten bakom varje objekt följer med i filen, så att visaren kan visa
+   läget ett valfritt datum. hxReg är null utan tillvalet. */
+let hxReg = null;
+function hxSchedIdx(itemId) {
+  if (!hxReg || !itemId) return -1;
+  if (hxReg.map.has(itemId)) return hxReg.map.get(itemId);
+  const r = (typeof items !== "undefined" ? items : []).find(x => x.id === itemId);
+  let k = -1;
+  if (r && r.start_date) {
+    const o = Number(r.done_opacity);
+    k = hxReg.list.push({ s: r.start_date, e: r.end_date || r.start_date, a: r.actual_end_date || "", p: Number(r.progress) || 0, t: r.temporary === true ? 1 : 0, d: r.demolition === true ? 1 : 0, c: /^#[0-9a-f]{6}$/i.test(String(r.done_color || "")) ? r.done_color : "", o: r.done_opacity != null && r.done_opacity !== "" && Number.isFinite(o) ? o : -1, n: r.object_name || r.activity || "" }) - 1;
+  }
+  hxReg.map.set(itemId, k);
+  return k;
+}
+
 /* 3D-scenen som delar: [{ pos: Float32 (världen, relativt O), col: Uint8 (rgb per hörn), idx: Uint32, op, names: [[start, count, namn]] }] */
 function hxCollect(withBldg) {
   const parts = [], v = new THREE.Vector3(), c = new THREE.Color();
@@ -31,21 +47,21 @@ function hxCollect(withBldg) {
   };
   if (withBldg && typeof l3b !== "undefined") l3.groups.bldg.traverse(o => {
     if (!o.isMesh || !o.userData.l3b || o.userData.l3bMain || !l3VisibleChain(o)) return;
-    add(o, o.userData.l3b.ranges.map(r => [r.start, r.count, r.name || ""]));
+    add(o, o.userData.l3b.ranges.map(r => hxReg ? [r.start, r.count, r.name || "", hxSchedIdx(r.itemId)] : [r.start, r.count, r.name || ""]));
   });
   l3.placeMeshes.forEach((grp, id) => {
     if (!l3VisibleChain(grp)) return;
     const p = placements.find(x => x.id === id), nm = p ? p.name || ((placeLib(p.type) || {}).label || "") : "";
-    grp.traverse(o => { if (o.isMesh && !o.userData.selEdge && !o.userData.noHit && l3VisibleChain(o)) add(o, [[0, o.geometry.getAttribute("position").count, nm]]); });
+    grp.traverse(o => { if (o.isMesh && !o.userData.selEdge && !o.userData.noHit && l3VisibleChain(o)) add(o, [hxReg ? [0, o.geometry.getAttribute("position").count, nm, hxSchedIdx(p && p.itemId)] : [0, o.geometry.getAttribute("position").count, nm]]); });
   });
   if (l3.objMesh && l3VisibleChain(l3.objMesh) && l3.objMesh.isMesh) add(l3.objMesh, []);
   return parts;
 }
 /* Packas: rubrik (JSON) + binärt, gzip, base64. */
-async function hxPack(parts, ground) {
+async function hxPack(parts, ground, extra) {
   const body = []; let off = 0;
   const put = arr => { const pad = (4 - off % 4) % 4; if (pad) { body.push(new Uint8Array(pad)); off += pad; } const u = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength); body.push(u); const at = off; off += u.byteLength; return at; };
-  const meta = { parts: [], ground: null };
+  const meta = { parts: [], ground: null, ...(extra || {}) };
   parts.forEach(p => {
     const n = p.pos.length / 3, mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
     for (let i = 0; i < p.pos.length; i += 3) for (let a = 0; a < 3; a++) { const x = p.pos[i + a]; if (x < mn[a]) mn[a] = x; if (x > mx[a]) mx[a] = x; }
@@ -60,7 +76,7 @@ async function hxPack(parts, ground) {
   new DataView(pre.buffer).setUint32(0, 0x31584834, true); new DataView(pre.buffer).setUint32(4, head.length, true); pre.set(head, 8);
   const gz = new Uint8Array(await new Response(new Blob([pre, ...body]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer());
   let s = ""; for (let i = 0; i < gz.length; i += 0x8000) s += String.fromCharCode.apply(null, gz.subarray(i, i + 0x8000));
-  return { b64: btoa(s), bytes: gz.length };
+  return { b64: btoa(s), bytes: gz.length, hasTl: !!(extra && extra.sched) };
 }
 async function hxText(path) { const r = await fetch(path); if (!r.ok) throw new Error("Kunde inte läsa " + path); return (await r.text()).replace(/<\/script/gi, "<\\/script"); }
 const hxEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
@@ -75,6 +91,8 @@ async function exportOfflineHtml() {
     const cv = composeImage(4096, true);
     const img2d = cv.toDataURL("image/jpeg", 0.88);
     let pack = null, ground = null, tris = 0, note = "";
+    const withTl = !!($("hxTimeline") && $("hxTimeline").checked);
+    hxReg = withTl ? { list: [], map: new Map() } : null;
     if (plan.calib && typeof open3d === "function") {
       if (!was3d) {
         busyProgress(key, "Fristående HTML: 3D-scenen", 0.15);
@@ -91,14 +109,21 @@ async function exportOfflineHtml() {
       const parts = hxCollect(withBldg);
       parts.forEach(p => { tris += p.idx.length / 3; });
       if (l3.planMesh) { const g = l3.planMesh.geometry; l3.planMesh.updateMatrixWorld(true); const P = g.getAttribute("position"), v = new THREE.Vector3(), pos = []; for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i).applyMatrix4(l3.planMesh.matrixWorld); pos.push(v.x, v.y, v.z); } ground = { pos, uv: Array.from(g.getAttribute("uv").array), idx: Array.from(g.index.array) }; }
-      pack = await hxPack(parts, ground);
+      let tlMeta = null;
+      if (hxReg && hxReg.list.length) {
+        const hex = ph => "#" + new THREE.Color(phaseColor(ph)).getHexString();
+        const ds = hxReg.list.flatMap(x => [x.s, x.e, x.a]).filter(Boolean).sort(), today = todayIso();
+        tlMeta = { sched: hxReg.list, tl: { c: { pagaende: hex("pagaende"), klar: hex("klar"), planerad: hex("planerad") }, o: 0.3, min: ds[0], max: ds[ds.length - 1], today } };
+      } else if (withTl) note = (note ? note + " " : "") + "Tidslinjen: inga objekt har en kopplad aktivitet – den är inte med.";
+      hxReg = null;
+      pack = await hxPack(parts, ground, tlMeta);
       if (!was3d && typeof close3d === "function") close3d();
     } else note = "Arbetsytan är inte kalibrerad mot 3D-modellen – bara lägesplanen är med.";
     busyProgress(key, "Fristående HTML: visaren", 0.8);
     const three = await hxText("vendor/three/three.min.js"), orbit = await hxText("vendor/three/OrbitControls.js");
     const date = ($("dateInput") && $("dateInput").value) || todayIso();
     const title = `Lägesplan – ${plan.name || ""}`;
-    const info = { title, plan: plan.name || "", date, by: (settings && settings.userName) || "", at: new Date().toISOString().slice(0, 16).replace("T", " "), note, tris };
+    const info = { title, plan: plan.name || "", date, by: (settings && settings.userName) || "", at: new Date().toISOString().slice(0, 16).replace("T", " "), note, tris, tl: !!(pack && pack.hasTl) };
     const html = hxHtml(info, img2d, pack ? pack.b64 : "", three, orbit);
     const name = `${title} ${date}.html`.replace(/[\\/:*?"<>|]/g, "-");
     const blob = new Blob([html], { type: "text/html" });
@@ -133,11 +158,14 @@ main{position:absolute;top:57px;left:0;right:0;bottom:0;overflow:hidden}
 .hint{position:absolute;left:12px;bottom:12px;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--mut)}
 #tip{position:absolute;display:none;background:#111827;color:#fff;font-size:12px;padding:4px 8px;border-radius:6px;pointer-events:none;transform:translate(-50%,-140%)}
 .fit{position:absolute;right:12px;bottom:12px;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px;font:inherit;cursor:pointer}
+#tl{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:none;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;max-width:94%;background:#fff;border:1px solid var(--line);border-radius:12px;padding:7px 12px;box-shadow:0 6px 20px rgba(0,0,0,.14);font-size:12px}
+#tl button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 10px;font:inherit;cursor:pointer}#tl input[type=range]{accent-color:#f59e0b}#tl .d{font-weight:700;min-width:96px;text-align:center}#tl .sm{color:var(--mut)}#tl label{display:flex;align-items:center;gap:5px;color:var(--mut)}
 .note{position:absolute;right:12px;top:12px;max-width:320px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;border-radius:8px;padding:6px 10px;font-size:12px}
 </style></head><body>
 <header><h1>${hxEsc(info.title)}</h1><span class="m">Datum ${hxEsc(info.date)} · exporterad ${hxEsc(info.at)}${info.by ? " av " + hxEsc(info.by) : ""}</span>
 <div class="tabs"><button class="on" data-t="2">2D lägesplan</button>${b64 ? `<button data-t="3">3D</button>` : ""}</div></header>
 <main><div id="v2"><img id="img" alt="Lägesplan" src="${img2d}"></div><div id="v3"><div id="tip"></div></div>
+${info.tl ? `<div id="tl"><button id="tlPlay" title="Spela upp">▶</button><input type="range" id="tlSl" min="0" max="1" value="0" style="width:min(380px,48vw)"><span class="d" id="tlD"></span><button id="tlToday">Idag</button><label>Klart <input type="range" id="tlOp" min="0" max="100" step="5" value="30" style="width:80px"><span id="tlOpV">30</span>%</label><label><input type="checkbox" id="tlFut"> Kommande</label><span class="sm" id="tlSum"></span></div>` : ""}
 <div class="hint" id="hint">Dra för att flytta · hjul eller nyp för att zooma</div><button class="fit" id="fit">Visa allt</button>${info.note ? `<div class="note">${hxEsc(info.note)}</div>` : ""}</main>
 <script>${three}</script><script>${orbit}</script>
 <script>
@@ -160,23 +188,73 @@ var r3=null;
 document.querySelectorAll('.tabs button').forEach(function(b){b.onclick=function(){tab=b.dataset.t;document.querySelectorAll('.tabs button').forEach(function(o){o.classList.toggle('on',o===b);});
  v2.style.display=tab==='2'?'block':'none';v3.style.display=tab==='3'?'block':'none';
  hint.textContent=tab==='2'?'Dra för att flytta · hjul eller nyp för att zooma':'Vänster: rotera · höger/två fingrar: flytta · hjul/nyp: zooma · tryck: namn';
- if(tab==='3'){if(!r3)init3();else r3.resize();}};});
+ if(tab==='3'){if(!r3)init3();else r3.resize();}var tlb=document.getElementById('tl');if(tlb){if(tab==='2')tlb.style.display='none';else if(tlb.dataset.on)tlb.style.display='flex';}};});
 document.getElementById('fit').onclick=function(){if(tab==='2')fit2();else if(r3)r3.fit();};
 window.addEventListener('resize',function(){if(tab==='2')fit2();else if(r3)r3.resize();});
 async function unpack(){var bin=atob(D),u=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
  var buf=await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();var dv=new DataView(buf),hl=dv.getUint32(4,true);
  var meta=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,8,hl)));return {meta:meta,buf:buf,base:8+hl+((4-(8+hl)%4)%4)};}
+function timeline(m,P,S,meshes,draw){
+ var T=m.tl,SC=m.sched,tl=document.getElementById('tl');
+ function hex(h){var c=new THREE.Color(h);return [c.r*255,c.g*255,c.b*255];}
+ var COL={pagaende:hex(T.c.pagaende),klar:hex(T.c.klar),planerad:hex(T.c.planerad)},future=false,doneOp=T.o,asof=T.today;
+ function day(iso){return Math.round(Date.parse(iso+'T00:00:00Z')/86400000);}
+ function iso(n){return new Date(n*86400000).toISOString().slice(0,10);}
+ var d0=day(T.min),d1=day(T.max);if(asof<T.min)asof=T.min;if(asof>T.max)asof=T.max;
+ P.forEach(function(q){var ns=q.p.names;if(!ns.some(function(r){return r.length>3&&r[3]>=0;})){q.tl=false;return;}
+  q.tl=true;var n=q.p.n,g=q.g,vr=new Int32Array(n).fill(-1);
+  ns.forEach(function(r,i){for(var v=r[0];v<r[0]+r[1]&&v<n;v++)vr[v]=i;});
+  var idx=g.index.array,nt=idx.length/3,rc=new Int32Array(ns.length+1),tr=new Int32Array(nt),t,b;
+  for(t=0;t<nt;t++){b=vr[idx[t*3]]+1;tr[t]=b;rc[b]++;}
+  var off=new Int32Array(ns.length+2);for(var i=0;i<=ns.length;i++)off[i+1]=off[i]+rc[i];
+  var cur=off.slice(),sorted=new idx.constructor(idx.length);
+  for(t=0;t<nt;t++){b=tr[t];var o=cur[b]++*3;sorted[o]=idx[t*3];sorted[o+1]=idx[t*3+1];sorted[o+2]=idx[t*3+2];}
+  q.off=off;q.sorted=sorted;
+  var g2=new THREE.BufferGeometry();g2.setAttribute('position',g.getAttribute('position'));g2.setAttribute('color',g.getAttribute('color'));
+  g2.setIndex(new THREE.BufferAttribute(new idx.constructor(idx.length),1));
+  var m2=new THREE.Mesh(g2,new THREE.MeshPhongMaterial({vertexColors:true,flatShading:true,shininess:0,specular:0x000000,side:THREE.DoubleSide,transparent:true,opacity:doneOp,depthWrite:false}));
+  m2.userData.names=ns;S.add(m2);q.g2=g2;q.m2=m2;meshes.push(m2);});
+ /* 0 = dold, 1 = vanlig (färg), 2 = klar (genomskinlig) */
+ function stateOf(s,d){var end=(s.a&&s.a>s.e)?s.a:s.e,tEnd=s.a||s.e;
+  if(s.t&&(d<s.s||d>tEnd))return [0];
+  if(s.d&&d>tEnd)return [0];
+  if(d>end)return [2,s.c?hex(s.c):COL.klar];
+  if(d>=s.s)return [1,COL.pagaende];
+  return (s.d||future)?[1,COL.planerad]:[0];}
+ var sum=document.getElementById('tlSum');
+ function apply(){var d=asof,cnt={done:0,going:0,soon:0};
+  SC.forEach(function(s){var end=(s.a&&s.a>s.e)?s.a:s.e;if(d>end)cnt.done++;else if(d>=s.s)cnt.going++;else cnt.soon++;});
+  sum.textContent=cnt.done+' klara · '+cnt.going+' pågår · '+cnt.soon+' kvar';
+  P.forEach(function(q){if(!q.tl)return;var ns=q.p.names,col=q.g.getAttribute('color'),arr=col.array,i1=q.g.index.array,i2=q.g2.index.array,n1=0,n2=0,o=q.off,srt=q.sorted;
+   i1.set(srt.subarray(o[0]*3,o[1]*3),n1);n1+=(o[1]-o[0])*3;
+   for(var i=0;i<ns.length;i++){var r=ns[i],k=r.length>3?r[3]:-1,a=o[i+1]*3,b=o[i+2]*3;
+    if(k<0){i1.set(srt.subarray(a,b),n1);n1+=b-a;continue;}
+    var st=stateOf(SC[k],d);if(st[0]===0)continue;
+    var rgb=st[1];for(var v=r[0];v<r[0]+r[1]&&v<q.p.n;v++){arr[v*3]=rgb[0];arr[v*3+1]=rgb[1];arr[v*3+2]=rgb[2];}
+    if(st[0]===2){i2.set(srt.subarray(a,b),n2);n2+=b-a;}else{i1.set(srt.subarray(a,b),n1);n1+=b-a;}}
+   col.needsUpdate=true;q.g.index.needsUpdate=true;q.g2.index.needsUpdate=true;q.g.setDrawRange(0,n1);q.g2.setDrawRange(0,n2);q.m2.material.opacity=doneOp;});
+  document.getElementById('tlD').textContent=asof;document.getElementById('tlSl').value=day(asof)-d0;draw();}
+ var pend=0;function later(){if(pend)return;pend=requestAnimationFrame(function(){pend=0;apply();});}
+ var sl=document.getElementById('tlSl');sl.max=Math.max(1,d1-d0);
+ sl.oninput=function(){asof=iso(d0+Number(sl.value));later();};
+ document.getElementById('tlToday').onclick=function(){asof=T.today<T.min?T.min:T.today>T.max?T.max:T.today;apply();};
+ document.getElementById('tlOp').oninput=function(){doneOp=this.value/100;document.getElementById('tlOpV').textContent=this.value;later();};
+ document.getElementById('tlFut').onchange=function(){future=this.checked;apply();};
+ var timer=null,pb=document.getElementById('tlPlay');
+ pb.onclick=function(){if(timer){clearInterval(timer);timer=null;pb.textContent='▶';return;}
+  if(day(asof)>=d1)asof=T.min;pb.textContent='⏸';timer=setInterval(function(){if(day(asof)>=d1){clearInterval(timer);timer=null;pb.textContent='▶';return;}asof=iso(day(asof)+1);apply();},160);};
+ tl.dataset.on='1';tl.style.display='flex';apply();}
 async function init3(){
  var R=new THREE.WebGLRenderer({antialias:true});R.setPixelRatio(Math.min(2,window.devicePixelRatio||1));v3.appendChild(R.domElement);
  var S=new THREE.Scene();S.background=new THREE.Color(0xf7f8fa);var C=new THREE.PerspectiveCamera(50,1,0.1,50000);C.up.set(0,0,1);
  S.add(new THREE.HemisphereLight(0xffffff,0xd9d6cf,0.5));var sun=new THREE.DirectionalLight(0xffffff,0.62);sun.position.set(-0.5,-0.8,1.2);S.add(sun);var fl=new THREE.DirectionalLight(0xffffff,0.18);fl.position.set(0.7,0.6,0.25);S.add(fl);
  var O=new THREE.OrbitControls(C,R.domElement);O.screenSpacePanning=true;
- var d=await unpack(),m=d.meta,buf=d.buf,base=d.base,box=new THREE.Box3(),meshes=[];
+ var d=await unpack(),m=d.meta,buf=d.buf,base=d.base,box=new THREE.Box3(),meshes=[],P=[];
  m.parts.forEach(function(p){var q=new Uint16Array(buf,base+p.pos,p.n*3),pos=new Float32Array(p.n*3);for(var i=0;i<pos.length;i+=3)for(var a=0;a<3;a++)pos[i+a]=p.mn[a]+q[i+a]/65535*p.sz[a];
   var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));g.setAttribute('color',new THREE.BufferAttribute(new Uint8Array(buf.slice(base+p.col,base+p.col+p.n*3)),3,true));
   g.setIndex(new THREE.BufferAttribute(p.i16?new Uint16Array(buf.slice(base+p.idx,base+p.idx+p.ni*2)):new Uint32Array(buf.slice(base+p.idx,base+p.idx+p.ni*4)),1));g.computeBoundingSphere();g.computeBoundingBox();
   var mat=new THREE.MeshPhongMaterial({vertexColors:true,flatShading:true,shininess:0,specular:0x000000,side:THREE.DoubleSide,transparent:p.op<1,opacity:p.op,depthWrite:p.op>=1});
-  var me=new THREE.Mesh(g,mat);me.userData.names=p.names;S.add(me);meshes.push(me);box.union(g.boundingBox);});
+  var me=new THREE.Mesh(g,mat);me.userData.names=p.names;S.add(me);meshes.push(me);P.push({me:me,g:g,p:p});box.union(g.boundingBox);});
  if(m.ground){var gg=new THREE.BufferGeometry();gg.setAttribute('position',new THREE.Float32BufferAttribute(m.ground.pos,3));gg.setAttribute('uv',new THREE.Float32BufferAttribute(m.ground.uv,2));gg.setIndex(m.ground.idx);
   var tx=new THREE.Texture(img);tx.needsUpdate=true;tx.anisotropy=8;
   var gm=new THREE.Mesh(gg,new THREE.MeshBasicMaterial({map:tx,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1}));S.add(gm);gg.computeBoundingBox();if(box.isEmpty())box.copy(gg.boundingBox);}
@@ -190,6 +268,7 @@ async function init3(){
   rc.setFromCamera(new THREE.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),C);var h=rc.intersectObjects(meshes,false)[0],nm='';
   if(h&&h.face){var ns=h.object.userData.names||[],vi=h.face.a;for(var i=0;i<ns.length;i++)if(vi>=ns[i][0]&&vi<ns[i][0]+ns[i][1]){nm=ns[i][2];break;}}
   if(nm){tip.textContent=nm;tip.style.left=(e.clientX-r.left)+'px';tip.style.top=(e.clientY-r.top)+'px';tip.style.display='block';}else tip.style.display='none';});
+ if(m.sched&&m.sched.length)timeline(m,P,S,meshes,draw);
  r3={resize:resize,fit:fit};resize();fit();window.__hx3={meshes:meshes.length,scene:S};
 }
 })();
