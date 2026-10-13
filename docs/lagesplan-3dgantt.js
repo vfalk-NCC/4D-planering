@@ -84,6 +84,7 @@ function l3plDockRender() {
       ${P.view !== "list" ? `<label class="v3-ga-tg" title="Dra i lappar/staplar för att flytta dem eller ändra start och slut – sparas i 4D-planeringen efter att du godkänt"><input type="checkbox" id="v3GaEdit" ${P.editable ? "checked" : ""}/> Redigerbar</label>
       <label class="v3-ga-tg"><input type="checkbox" id="v3GaBl" ${P.baseline ? "checked" : ""}/> Baseline</label>` : ""}
     </div>
+    ${typeof l3gmBarHtml === "function" ? l3gmBarHtml(acts) : ""}
     ${P.editable && P.view !== "list" ? `<div class="v3-ga-hint">✏️ Redigerbart: dra en lapp för att flytta den, eller dess vänster-/högerkant för start/slut. Det som väntar på den flyttas med – håll <b>Shift</b> för att bara flytta den. Dubbelklicka för att redigera, högerklicka för fler val. Inget sparas utan att du godkänner det.</div>` : ""}
     <div class="v3-pldock-bar v3-ga-legend">${["planerad", "pagaende", "forsenad", "klar", "pausad"].map(k => `<span><i style="background:${phaseColor(k)}"></i>${E(PHASE_LABELS[k] || k)}</span>`).join("")}
       <span class="v3-ga-sep"></span>${colorKeys.slice(0, 14).map(k => { const c = l3plColor(P.colorBy, k, colorKeys); return `<span class="v3-ga-chip" style="--bg:${c.bg};--bd:${c.bd};--ink:${c.ink}">${E(k)}</span>`; }).join("")}${colorKeys.length > 14 ? `<span>+${colorKeys.length - 14}</span>` : ""}
@@ -96,6 +97,7 @@ function l3plDockRender() {
   const sc = d.querySelector(".v3-pl-scroll");
   if (keepScroll && sc) { sc.scrollLeft = keepScroll[0]; sc.scrollTop = keepScroll[1]; }
   if (P.view !== "list" && P.arrows) requestAnimationFrame(() => l3gaArrows(d));
+  if (P.view !== "list" && typeof l3gmAddScrub === "function") l3gmAddScrub();
   if (typeof l3fsOn === "function" && l3fsOn()) l3fsRender(); // tidslinjen ovanför panelen
 }
 
@@ -221,6 +223,7 @@ function l3gaBind(d, rr = l3plDockRender, actsFn = null) {
   // rr: ritar om där innehållet visas (panelen nederst eller listan 4D-koppling i vänstermenyn).
   const P = l3gaP(), A = actsFn || (() => l3plActs(P.split)), set = (k, v) => { l3plSet(k, v); rr(); };
   const on = (sel, ev, fn) => d.querySelectorAll(sel).forEach(el => { el[ev] = e => fn(el, e); });
+  if (d.id === "v3PlanDock" && typeof l3gmBind === "function") l3gmBind(d); // 3D-lägen, tidslinje m.m. (lagesplan-3dmode.js)
   on("[data-plview]", "onclick", b => set("view", b.dataset.plview));
   on("#v3GaGroup", "onchange", s => set("groupBy", s.value));
   on("#v3PlBy", "onchange", s => set("colorBy", s.value));

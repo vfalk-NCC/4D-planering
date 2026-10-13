@@ -549,9 +549,10 @@ function l3bRecolor() {
     else if (typeof l3plLoadX === "function" && !l3b.xWait) { l3b.xWait = true; l3plLoadX().then(() => { l3b.xWait = false; l3bRecolor(); if (typeof l3Render === "function") l3Render(); }); }
   }
   const at = $("dateInput").value || todayIso();
+  if (typeof l3gmBegin === "function") l3gmBegin();
   l3b.models.forEach(m => m.meshes.forEach(x => {
     const col = x.geometry.getAttribute("color"), d = col.array, u = x.userData.l3b, K = d instanceof Uint8Array ? 255 : 1; // byte eller tal 0–1
-    const off = new Set();
+    const off = new Set(), gA = new Map();
     u.ranges.forEach((r, ri) => {
       // Slås upp på nytt varje gång: kopplad efter att modellen lästes, eller planeringen har lästs om.
       const pRows = (r.guid && byGuid.get(r.guid)) || (r.itemId && byId.has(r.itemId) ? [byId.get(r.itemId)] : []);
@@ -559,18 +560,23 @@ function l3bRecolor() {
       const xRows = (xGuid && r.guid && xGuid.get(r.guid)) || [];
       const rows = csrc === "excel" ? xRows : pRows.length ? pRows : xRows;
       if (rows.length && typeof rowTempOffAt === "function" && rows.every(x => rowTempOffAt(x, at))) off.add(ri); // temporär utanför sin tid: syns inte
+      // Ganttens 3D-läge (lagesplan-3dmode.js): Kopplade / Okopplade / Tid – null i läget Alla.
+      const gm = typeof l3gmRange === "function" ? l3gmRange(rows, at, { mesh: x, ri }) : null;
+      if (gm) { if (gm.off) off.add(ri); else if (gm.alpha != null) gA.set(ri, gm.alpha); }
       const live = rows.filter(x => x.temporary !== true); // temporära: sin riktiga färg (Victor 2026-10-12)
       const c = live.length ? new THREE.Color(phaseColor(live.length > 1 && typeof zonePhase === "function" ? zonePhase(live, at) : l3Phase(live[0]))) : null;
       const cb = typeof l3pColorFor === "function" ? l3pColorFor(m, r) : null; // Färga efter värde (Egenskaper)
       const tint = u.tint && u.tint.get(ri); // tillfällig färg (bara sessionen) går före allt
-      const rgb = tint || cb || (c ? [c.r, c.g, c.b] : r.base);
+      const rgb = tint || cb || (gm && gm.rgb) || (c ? [c.r, c.g, c.b] : r.base);
       const c0 = K === 255 ? Math.round(rgb[0] * 255) : rgb[0], c1 = K === 255 ? Math.round(rgb[1] * 255) : rgb[1], c2 = K === 255 ? Math.round(rgb[2] * 255) : rgb[2];
       for (let i = r.start; i < r.start + r.count; i++) { d[i * 3] = c0; d[i * 3 + 1] = c1; d[i * 3 + 2] = c2; }
     });
     col.needsUpdate = true;
-    const was = u.tempOff || new Set();
-    if (off.size !== was.size || [...off].some(i => !was.has(i))) { u.tempOff = off; l3bApplyHidden(x); }
+    const was = u.tempOff || new Set(), wasA = u.gAlpha || new Map();
+    const aSame = gA.size === wasA.size && [...gA].every(([i, v]) => wasA.get(i) === v);
+    if (off.size !== was.size || [...off].some(i => !was.has(i)) || !aSame) { u.tempOff = off; u.gAlpha = gA; l3bApplyHidden(x); }
   }));
+  if (typeof l3gmEnd === "function") l3gmEnd();
 }
 function l3bCoupledIds() { const s = new Set(); l3b.models.forEach(m => m.visible && (m.ranges || []).forEach(r => { if (r.itemId) s.add(r.itemId); })); return s; }
 /* Träff i byggnaden -> objektets uppgifter. */
@@ -591,7 +597,7 @@ function l3bApplyHidden(mesh) {
   const u = mesh.userData.l3b, src = u.origIdx;
   let idx = src;
   // tempOff: temporära utanför sin tid; animOff: filmens animering (lagesplan-3dfilmfx.js) ritar objektet själv.
-  const off = new Set([...(u.tempOff || []), ...(u.animOff || [])]), alpha = u.alpha || new Map();
+  const off = new Set([...(u.tempOff || []), ...(u.animOff || [])]), alpha = new Map([...(u.gAlpha || []), ...(u.alpha || [])]);
   if (u.hidden.size || off.size || alpha.size) {
     const hid = new Uint8Array(mesh.geometry.getAttribute("position").count);
     // Genomskinliga (tillfällig opacitet) ritas i en egen bit ovanpå – inte i huvudbiten.
@@ -610,10 +616,11 @@ function l3bApplyAlpha(mesh) {
   const u = mesh.userData.l3b;
   (u.ghosts || []).forEach(g => { mesh.remove(g); g.geometry.attributes = {}; g.geometry.dispose(); g.material.dispose(); }); // de delade hörnen lämnas orörda
   u.ghosts = [];
-  if (!u.alpha || !u.alpha.size) return;
+  const alphaAll = new Map([...(u.gAlpha || []), ...(u.alpha || [])]); // gAlpha: klara objekt i Ganttens Tid-läge
+  if (!alphaAll.size) return;
   const src = u.origIdx, n = mesh.geometry.getAttribute("position").count, gone = new Set([...u.hidden, ...(u.tempOff || []), ...(u.animOff || [])]);
   const byA = new Map();
-  u.alpha.forEach((a, ri) => { if (gone.has(ri)) return; if (!byA.has(a)) byA.set(a, []); byA.get(a).push(ri); });
+  alphaAll.forEach((a, ri) => { if (gone.has(ri)) return; if (!byA.has(a)) byA.set(a, []); byA.get(a).push(ri); });
   byA.forEach((ris, a) => {
     const on = new Uint8Array(n);
     ris.forEach(ri => { const r = u.ranges[ri]; on.fill(1, r.start, r.start + r.count); });

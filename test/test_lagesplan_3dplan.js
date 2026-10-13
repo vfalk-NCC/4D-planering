@@ -136,7 +136,7 @@ const PP = [
       const sv = (puts[n0] || []).filter(r => r.group_id === 'G1');
       if (puts.length !== n0 + 1 || !sv.length || !sv.every(r => r.temporary === true && r.done_color === '#ff0000' && r.done_opacity === 55) || !/temporär/.test(ask2 || '') || !/färg efter slut/.test(ask2 || '')) fail('Spara Temporär/färg efter slut: ' + JSON.stringify({ n0, n: puts.length, sv, ask2 }));
       // Rivning och Temporär utesluter varandra.
-      const ex = await page.evaluate(() => { l3gaEdit('g:G1'); const w = document.querySelector('.v3-ga-dlg'); const t = w.querySelector('[data-f="temp"]').checked; w.querySelector('[data-f="demo"]').click(); const r = { wasTemp: t, temp: w.querySelector('[data-f="temp"]').checked, demo: w.querySelector('[data-f="demo"]').checked }; w.querySelector('.ui-dlg-cancel').click(); return r; });
+      const ex = await page.evaluate(() => { l3gaEdit('g:G1'); const w = document.querySelector('.v3-ga-dlg'); const t = w.querySelector('[data-f="temp"]').checked; w.querySelector('[data-f="demo"]').click(); const r = { wasTemp: t, temp: w.querySelector('[data-f="temp"]').checked, demo: w.querySelector('[data-f="demo"]').checked }; w.querySelector('.ui-dlg-cancel').click(); return r; }); await page.waitForFunction(() => !document.querySelector('.v3-ga-dlg-wrap'));
       if (!ex.wasTemp || ex.temp || !ex.demo) fail('Temporär/Rivning utesluter varandra: ' + JSON.stringify(ex));
       // ✕: frågar, tar bort bara det objektet.
       const n1 = puts.length; ask2 = null;
@@ -144,7 +144,7 @@ const PP = [
       await page.waitForFunction(() => !l3ga.busy && l3ga.undo.some(u => u.removed), null, { timeout: 6000 }).catch(async e => fail('Efter ✕: ' + JSON.stringify({ ask2, st: await page.evaluate(() => ({ busy: l3ga.busy, undo: l3ga.undo.length, alert: [...document.querySelectorAll('.ui-dlg-body,.ui-dlg-title')].map(x => x.textContent) })) })));
       const rm = puts[n1] || [];
       if (puts.length !== n1 + 1 || rm.some(r => r.id === 'p2') || !rm.some(r => r.id === 'p1') || !/Ta bort/.test(ask2 || '')) fail('Ta bort ett objekt ur aktiviteten: ' + JSON.stringify({ n1, n: puts.length, ids: rm.map(r => r.id), ask2 }));
-      await page.evaluate(() => { const w = document.querySelector('.v3-ga-dlg'); if (w) w.querySelector('.ui-dlg-cancel').click(); });
+      await page.evaluate(() => document.querySelectorAll('.v3-ga-dlg').forEach(w => w.querySelector('.ui-dlg-cancel').click())); await page.waitForFunction(() => !document.querySelector('.v3-ga-dlg-wrap'));
       global.__mockWrite = false; PP.splice(0, PP.length, ...PP0); await page.evaluate(() => { l3ga.undo.length = 0; l3pl.rows = null; return l3plLoad(true); });
       console.log('OK: redigeringsdialogen – Temporär, Rivning, Egen färg efter slut och ✕ ta bort objekt (med frågeruta)');
       page.__uiDialogHandlers.length = 0;
@@ -496,6 +496,54 @@ const PP = [
     });
     if (cs.both.join() !== 'false,false' || cs.pp.join() !== 'false,true' || cs.excel.join() !== 'true,false' || !cs.sel || cs.itemId !== 'p1' || cs.xId !== null) fail('3D-färger PP/Excel/båda: ' + JSON.stringify(cs));
     else console.log('OK: 3D-färgerna i Powerproject-lägesplanen tar med Excel-kopplade objekt (båda/PP/Excel)');
+    // Ganttens 3D-lägen som i dashboarden: Alla / Kopplade / Okopplade / Tid (regler, färger, klart-opacitet, pulsering, markera pågående).
+    const gm = await page.evaluate(async () => {
+      await l3plLoadX(); const ps0 = planSource, it0 = items; planSource = 'pp'; items = l3pl.rows; l3plSet('colorSrc', 'pp'); l3plSet('gm', {});
+      const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(new Array(27).fill(0), 3)); geo.setAttribute('color', new THREE.Float32BufferAttribute(new Array(27).fill(0), 3));
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial()), base = [0.85, 0.87, 0.9];
+      mesh.userData.l3b = { origIdx: [0, 1, 2, 3, 4, 5, 6, 7, 8], hidden: new Set(), ranges: [{ guid: '1hZq3$Bq9Fxu8nZK0bW1aA', start: 0, count: 3, base }, { guid: '2hZq3$Bq9Fxu8nZK0bW1aA', start: 3, count: 3, base }, { guid: 'ZZZ', start: 6, count: 3, base }] };
+      const mdl = { id: 'mg', name: 'G.ifc', visible: true, meshes: [mesh] }; l3b.models.push(mdl);
+      const u = mesh.userData.l3b, off = () => [...(u.tempOff || [])].sort().join(), rgb = i => [...geo.getAttribute('color').array.slice(i * 9, i * 9 + 3)].map(v => Math.round(v * 255));
+      const hex = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+      const R = {};
+      l3plSetDay('2026-10-12'); l3bRecolor();
+      R.all = off();
+      l3gmSetMode('isolate', true); R.iso = off();
+      l3gmSetMode('hide', true); R.hide = off();
+      l3gmSetMode('off', true); R.back = off();
+      l3gmSetMode('time', true); l3plSetDay('2026-10-12'); l3bRecolor();
+      R.t1 = { off: off(), col: rgb(0), want: hex(phaseColor('pagaende')), act: l3gm.act.length };
+      const pr0 = l3pl.rows.map(r => r.progress); l3pl.rows.forEach(r => { r.progress = 0; }); l3plSetDay('2026-10-01'); l3bRecolor(); R.t0 = off();               // före start (0 %), Kommande av: släckt
+      l3gmSet('future', true); l3bRecolor(); R.tf = { off: off(), col: rgb(0), want: hex(phaseColor('planerad')) };
+      // Klart: opacitet från Klart-reglaget, eller objektets egen färg/opacitet efter slut.
+      l3pl.rows.forEach((r, i) => { r.progress = pr0[i]; });
+      const rows = l3pl.rows; const p1 = rows.find(r => r.id === 'p1'), p2 = rows.find(r => r.id === 'p2'); const sv = [p1.progress, p2.progress];
+      p1.progress = 100; p2.progress = 100; l3plSetDay('2026-11-30'); l3gmSet('doneOp', 30); l3bRecolor();
+      R.done = { off: off(), alpha: [...(u.gAlpha || [])].map(([i, a]) => i + ':' + a).join(), ghosts: (u.ghosts || []).length };
+      p1.done_color = '#ff0000'; p1.done_opacity = 55; l3bRecolor(); R.own = { col: rgb(0), alpha: u.gAlpha.get(0) }; delete p1.done_color; delete p1.done_opacity;
+      l3gmSet('doneOp', 0); l3bRecolor(); R.zero = off();
+      l3gmSet('doneOp', 30); p1.progress = sv[0]; p2.progress = sv[1];
+      // Pulsera + Markera pågående
+      l3plSetDay('2026-10-12'); l3gmSet('pulse', true); l3gmSet('selAct', true); window.__sel = null; l3bRecolor();
+      R.sel = (window.__sel || []).length; // l3bsSet är ersatt av en provfunktion längre upp
+      const c1 = rgb(0).join(); await new Promise(r => setTimeout(r, 450)); const c2 = rgb(0).join(); await new Promise(r => setTimeout(r, 450)); const c3 = rgb(0).join();
+      R.pulse = [c1, c2, c3].some(c => c !== c1) && !!l3gm.pulseIv;
+      l3gmSet('pulse', false); l3gmSet('selAct', false); l3gmPulseStop();
+      // Gränssnittet: raden, tidsraden, dragstrecket
+      const dock0 = l3pl.dock, view0 = l3plPrefs().view; if (!l3pl.dock) l3plDockToggle(true); l3plSet('view', 'board'); l3plDockRender();
+      R.ui = { seg: document.querySelectorAll('#v3GmSeg [data-gmode]').length, time: !!document.getElementById('v3GmTime'), scrub: !!document.querySelector('#v3PlanDock .v3-gscrub'), cols: document.querySelectorAll('#v3GmTime [data-tcol]').length, sum: document.getElementById('v3GmSum').textContent, btns: ['v3GaRefresh', 'v3GaLoadModels', 'v3GaPpExport'].every(id => !!document.getElementById(id)) };
+      const sl = document.getElementById('v3GmSlider'); sl.value = Number(sl.value) + 3; sl.dispatchEvent(new Event('input')); R.slid = $('dateInput').value;
+      const col = document.querySelector('#v3GmTime [data-tcol="pagaende"]'); col.value = '#00ff00'; col.dispatchEvent(new Event('input')); R.colSet = settings.statusColors.pagaende; settings.statusColors.pagaende = '#f5a623'; // tillbaka
+      l3gmSetMode('off', true); R.gone = !document.getElementById('v3GmTime') && !document.querySelector('.v3-gscrub');
+      if (!dock0) l3plDockToggle(false); l3plSet('view', view0 || 'board');
+      l3b.models.splice(l3b.models.indexOf(mdl), 1); planSource = ps0; items = it0; l3plSet('colorSrc', 'both'); l3plSet('gm', {}); l3bRecolor();
+      return R;
+    });
+    if (gm.all !== '' || gm.iso !== '2' || gm.hide !== '0,1' || gm.back !== '' || gm.t1.off !== '2' || gm.t1.col.join() !== gm.t1.want.join() || gm.t1.act < 1 || gm.t0 !== '0,1,2' || gm.tf.off !== '2' || gm.tf.col.join() !== gm.tf.want.join()
+      || gm.done.off !== '2' || !/^0:0\.3,1:0\.3$/.test(gm.done.alpha) || gm.own.col.join() !== '255,0,0' || gm.own.alpha !== 0.55 || gm.zero !== '0,1,2' || gm.sel < 1 || !gm.pulse
+      || gm.ui.seg !== 4 || !gm.ui.time || !gm.ui.scrub || gm.ui.cols !== 4 || !/klara .* pågår .* försenade .* kvar/.test(gm.ui.sum) || !gm.ui.btns || gm.slid <= '2026-10-12' || gm.colSet !== '#00ff00' || !gm.gone)
+      fail('Ganttens 3D-lägen: ' + JSON.stringify(gm));
+    else console.log('OK: Ganttens 3D-lägen – Alla/Kopplade/Okopplade/Tid, Klart-opacitet, egen färg efter slut, pulsera, markera pågående, tidsrad och dragstreck');
     console.log('OK: 4D-koppling – Powerproject, Excel eller båda; Excel-raderna skyddade mot redigering här');
     // Pågående objekt: gul kontur (val under 4D-planering), av = borta.
     const act = await page.evaluate(async () => {
