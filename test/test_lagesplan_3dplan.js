@@ -544,6 +544,41 @@ const PP = [
       || gm.ui.seg !== 4 || !gm.ui.time || !gm.ui.scrub || gm.ui.cols !== 4 || !/klara .* pågår .* försenade .* kvar/.test(gm.ui.sum) || !gm.ui.btns || gm.slid <= '2026-10-12' || gm.colSet !== '#00ff00' || !gm.gone)
       fail('Ganttens 3D-lägen: ' + JSON.stringify(gm));
     else console.log('OK: Ganttens 3D-lägen – Alla/Kopplade/Okopplade/Tid, Klart-opacitet, egen färg efter slut, pulsera, markera pågående, tidsrad och dragstreck');
+    // Export till Powerproject (MS Project-XML) och Läs in modeller – som i dashboardens Gantt.
+    const px = await page.evaluate(async () => {
+      const R = {}; let blobText = null, name = null; const dl0 = downloadBlob; downloadBlob = (b, n) => { name = n; b.text().then(t => { blobText = t; }); };
+      l3gaPpExport(); const w = document.querySelector('.v3-ga-dlg');
+      R.scopes = [...w.querySelectorAll('input[name=ppxScope]')].map(i => i.value + (i.disabled ? '-' : '+')).join();
+      w.querySelector('input[value=all]').click(); w.querySelector('#ppxPreds').click(); R.links = w.querySelector('#ppxLinks').textContent;
+      w.querySelector('.ppx-go').click(); await new Promise(r => setTimeout(r, 300)); downloadBlob = dl0;
+      R.name = name; R.xml = blobText || '';
+      // Läs in modeller: bara de som saknas, via listan från TC.
+      l3pl.rows[0].model_id = 'M-1'; l3pl.rows[1].model_id = 'M-2';
+      const ask0 = askOpener, bl0 = l3bLoad; let loaded = null;
+      askOpener = async (t) => (t === 'ifcModelsList' ? { models: [{ id: 'M-1', name: 'A.ifc', version: 'v1' }] } : {}); l3bLoad = async list => { loaded = list.map(x => x.id); };
+      await l3gmLoadModels(null);
+      askOpener = ask0; l3bLoad = bl0; delete l3pl.rows[0].model_id; delete l3pl.rows[1].model_id;
+      R.loaded = loaded;
+      return R;
+    });
+    if (px.scopes !== 'own-,marked-,shown+,all+' || !/aktiviteter/.test(px.links) || px.name !== '4D-aktiviteter ' + new Date().toISOString().slice(0, 10) + '.xml' && !/^4D-aktiviteter \d{4}-\d\d-\d\d\.xml$/.test(px.name || '')
+      || !px.xml.includes('<Project xmlns="http://schemas.microsoft.com/project">') || !px.xml.includes('Fasadmontage') || !px.xml.includes('<PredecessorLink>') || !px.xml.includes('<Summary>1</Summary>') || !px.xml.includes('Hus A') || JSON.stringify(px.loaded) !== '["M-1"]')
+      fail('Export till Powerproject / Läs in modeller: ' + JSON.stringify({ ...px, xml: px.xml.slice(0, 300) }));
+    else console.log('OK: Export till Powerproject (XML med områden, aktiviteter och beroenden) och Läs in modeller');
+    // Ctrl-klick på flera aktiviteter: markeras tillsammans, raden "N markerade", Esc rensar.
+    const mu = await page.evaluate(async () => {
+      const dock0 = l3pl.dock; if (!l3pl.dock) l3plDockToggle(true); l3plSet('view', 'board'); l3plDockRender(); window.__sel = null;
+      const els = [...document.querySelectorAll('#v3PlanDock [data-plk]')].slice(0, 2); const R = { avail: els.length, dlg: [...document.querySelectorAll('.ui-dlg-wrap')].map(w => w.className) }; const ee0 = l3plEntsOf; l3plEntsOf = () => [{ g: 1 }];
+      els.forEach(el => el.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })));
+      R.size = l3pl.multi.size; R.marked = document.querySelectorAll('#v3PlanDock .v3-multisel').length; R.bar = (document.getElementById('v3MultiN') || {}).textContent;
+      R.sel = (window.__sel || []).length;
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      R.after = { size: l3pl.multi.size, bar: !!document.getElementById('v3MultiBar') };
+      l3plEntsOf = ee0; if (!dock0) l3plDockToggle(false);
+      return R;
+    });
+    if (mu.avail < 2 || mu.size !== 2 || mu.marked !== 2 || mu.bar !== '2 markerade' || mu.sel < 1 || mu.after.size !== 0 || mu.after.bar) fail('Ctrl-markering av flera aktiviteter: ' + JSON.stringify(mu));
+    else console.log('OK: Ctrl-klick på flera aktiviteter – markeras tillsammans, "N markerade"-rad, Esc rensar');
     console.log('OK: 4D-koppling – Powerproject, Excel eller båda; Excel-raderna skyddade mot redigering här');
     // Pågående objekt: gul kontur (val under 4D-planering), av = borta.
     const act = await page.evaluate(async () => {

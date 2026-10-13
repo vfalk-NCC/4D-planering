@@ -250,7 +250,7 @@ function l3plEntsOf(a) {
 l3pl.multi = new Set(); // Ctrl-markerade aktiviteter i tavlan/Gantten
 function l3plMarkMulti() { document.querySelectorAll("[data-plk]").forEach(el => el.classList.toggle("v3-multisel", l3pl.multi.has(el.dataset.plk))); }
 function l3plSelect(key, split = false) {
-  if (l3pl.multi.size) { l3pl.multi.clear(); l3plMarkMulti(); }
+  if (l3pl.multi.size) { l3pl.multi.clear(); l3plMarkMulti(); l3plMultiBar(); }
   const a = l3plActOf(key, split);
   if (!a) return;
   const ents = l3plEntsOf(a);
@@ -261,12 +261,36 @@ function l3plSelect(key, split = false) {
 function l3plSelectMulti(key, split = false) {
   if (l3pl.multi.has(key)) l3pl.multi.delete(key); else l3pl.multi.add(key);
   l3plMarkMulti();
-  const ents = []; let names = 0;
-  l3pl.multi.forEach(k => { const a = l3plActOf(k, split); if (a) { names++; ents.push(...l3plEntsOf(a)); } });
+  l3plMultiBar();
+  const ents = l3plMultiEnts(split);
   if (!l3pl.multi.size) { l3bsSet([]); l3Status("Markeringen rensad."); return; }
-  if (ents.length) { l3bsSet(ents); if (typeof l3bsZoom === "function") l3bsZoom(); l3Status(`${names} aktiviteter markerade (${ents.length} objekt) – Ctrl-klicka fler eller klicka utan Ctrl för en.`); }
+  if (ents.length) { l3bsSet(ents); if (typeof l3bsZoom === "function") l3bsZoom(); l3Status(`${l3pl.multi.size} aktiviteter markerade (${ents.length} objekt) – Ctrl-klicka fler eller klicka utan Ctrl för en.`); }
   else l3Status("Objekten finns inte i de inlästa modellerna.", true);
 }
+function l3plMultiEnts(split = false) { const ents = []; l3pl.multi.forEach(k => { const a = l3plActOf(k, split); if (a) ents.push(...l3plEntsOf(a)); }); return ents; }
+/* Raden "N markerade – Visa i 3D / Bara dessa / ✕" (som i dashboardens Gantt). */
+function l3plMultiBar() {
+  let bar = document.getElementById("v3MultiBar");
+  if (!l3pl.multi.size) { if (bar) bar.remove(); return; }
+  if (!bar) {
+    bar = document.createElement("div"); bar.id = "v3MultiBar"; bar.className = "v3-multibar";
+    bar.innerHTML = `<b id="v3MultiN"></b><button type="button" data-mb="show" title="Markera och zooma i 3D">Visa i 3D</button><button type="button" data-mb="only" title="Släck allt utom de markerade">Bara dessa</button><button type="button" data-mb="clear" title="Rensa (Esc)">✕</button>`;
+    (document.getElementById("v3Canvas") || document.body).appendChild(bar);
+    ["pointerdown", "click", "dblclick", "contextmenu"].forEach(t => bar.addEventListener(t, e => e.stopPropagation()));
+    bar.onclick = e => {
+      const b = e.target.closest("[data-mb]"); if (!b) return;
+      const sp = typeof l3gaP === "function" ? l3gaP().split : false;
+      if (b.dataset.mb === "clear") { l3plMultiClear(); return; }
+      const ents = l3plMultiEnts(sp);
+      if (!ents.length) { l3Status("De markerade är inte kopplade till modellen.", true); return; }
+      l3bsSet(ents);
+      if (b.dataset.mb === "only" && typeof l3bsIsolate === "function") l3bsIsolate(); else if (typeof l3bsZoom === "function") l3bsZoom();
+    };
+  }
+  document.getElementById("v3MultiN").textContent = `${l3pl.multi.size} markerade`;
+}
+function l3plMultiClear() { l3pl.multi.clear(); l3plMarkMulti(); l3plMultiBar(); l3bsSet([]); l3Status("Markeringen rensad."); }
+window.addEventListener("keydown", e => { if (e.key === "Escape" && l3pl.multi.size && ![...document.querySelectorAll(".ui-dlg-wrap, .v3-gm-pop")].some(w => !w.classList.contains("out"))) l3plMultiClear(); }, true);
 
 /* Tavlan, Gantten och listan (panelen nederst) finns i lagesplan-3dgantt.js. */
 

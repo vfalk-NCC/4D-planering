@@ -317,3 +317,25 @@ function l3gmPlaceScrub() {
   sc.style.display = day < 0 ? "none" : "";
   const d = sc.querySelector(".v3-gscrub-d"); if (d) d.textContent = l3gaWd(l3plDay());
 }
+
+/* ---- Läs in modeller ---------------------------------------------------------------------------------- */
+/* "Läs in modeller" (som i dashboardens Gantt): läser in alla modeller som aktiviteterna är kopplade till och som inte redan
+   visas i 3D-vyn. Listan över modeller kommer från Trimble Connect via 4D-planering (de som är tända där). */
+async function l3gmLoadModels(btn) {
+  const ids = [...new Set([...(l3pl.rows || []), ...(Array.isArray(items) ? items : [])].map(r => r.model_id).filter(Boolean))];
+  if (!ids.length) { l3Status("Inget är kopplat till en modell.", true); return; }
+  if (typeof bridgeOk === "function" && !bridgeOk()) { uiAlert("Modellerna hämtas via 4D-planering i Trimble Connect. Öppna lägesplanen med kartknappen i 4D-planering (på datorn) och försök igen."); return; }
+  const old = btn ? btn.textContent : ""; if (btn) { btn.disabled = true; btn.textContent = "Läser in…"; }
+  try {
+    const list = (await askOpener("ifcModelsList", {}, 20000)).models || [];
+    const have = new Set(l3b.models.map(m => m.id));
+    const byId = new Map(list.map(m => [m.id, m]));
+    const todo = [], already = ids.filter(id => have.has(id)).length;
+    let missing = 0;
+    ids.forEach(id => { if (have.has(id)) return; const m = byId.get(id); if (m) todo.push({ id: m.id, name: m.name, version: m.version || "" }); else missing++; });
+    if (todo.length) { await l3bLoad(todo); if (typeof l3RenderLegend === "function") l3RenderLegend(); if (typeof l3Render === "function") l3Render(); }
+    l3Status(`${todo.length} inlästa${already ? `, ${already} fanns` : ""}${missing ? `, ${missing} hittades inte (tänd dem i Trimble Connect)` : ""}`, !!missing && !todo.length);
+    if (todo.length && l3gm.mode !== "off") l3gmApply(true); // nya modeller → räkna om läget
+  } catch (e) { uiAlert(`Kunde inte läsa in modellerna: ${e.message}`); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+}
