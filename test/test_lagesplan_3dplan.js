@@ -300,6 +300,76 @@ const PP = [
     });
     if (an.none !== 0 || an.n1 !== 1 || an.n2 !== 1 || Math.abs(an.mid[0] - 10) > 0.01 || an.mid[1] !== 45 || an.before !== 5 || an.after !== 15 || an.marks !== 2 || !an.btn || !an.saved || !an.moved || !an.removed || !an.back) fail('Objektanimering på tidslinjen: ' + JSON.stringify(an));
     else console.log('OK: objektanimering – ◆ Nyckel på tidslinjen, mjuk rörelse och vridning mellan nycklarna, flytta/ta bort nyckel');
+    // Smart mått: bredd, höjd och objektets volym med ett tryck.
+    const sm = await page.evaluate(async () => {
+      const O = l3.O, p = { id: 'smt1', type: 'container', name: 'Container', x: O[0] + 40, y: O[1] + 40, z: 0, L: 6.06, B: 2.44, H: 2.59, R: 0, rot: 0 };
+      placements.push(p); const g = l3AddPlacementMesh(p); g.updateMatrixWorld(true);
+      const bb = new THREE.Box3().setFromObject(g), c = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3());
+      l3StopFly(); l3.camera.position.set(c.x, bb.min.y - 22, c.z + 1); l3.orbit.target.set(c.x, c.y, c.z); l3.orbit.update(); l3.camera.updateMatrixWorld(); l3Render();
+      const q = l3ToScreen(new THREE.Vector3(c.x + sz.x * 0.1, bb.min.y, c.z - sz.z * 0.1)), r = l3.renderer.domElement.getBoundingClientRect();
+      l3SetTool('measure'); l3SetPref('measure', 'smart'); l3RenderSnapBar(); const seg = !!document.querySelector('[data-mmode="smart"]');
+      const n0 = l3m.list.length; l3SmartMeasure({ clientX: r.left + q.x, clientY: r.top + q.y, button: 0 }); const added = l3m.list.slice(n0);
+      const dist = added.filter(m => m.kind === 'dist'), vol = added.find(m => m.kind === 'objvol');
+      const val = m => parseFloat(String(m.text).replace(',', '.')), W = dist[0] && val(dist[0]), H = dist[1] && val(dist[1]);
+      const ok = added.length === 3 && Math.abs(W - sz.x) < 0.02 && Math.abs(H - sz.z) < 0.02 && dist[0].note === 'Bredd' && dist[1].note === 'Höjd' && vol && vol.dims && Math.abs(vol.dims[2] - sz.y) < 0.02 && val(vol) > 0.5 * sz.x * sz.y * sz.z && val(vol) <= sz.x * sz.y * sz.z * 1.03;
+      const tab = (l3mTabHtml().match(/Objektvolym/g) || []).length === 1, info = l3mInfo(vol).rows.some(([k]) => k === 'Måttbox (B×H×D)');
+      l3m.list.splice(n0); l3mDraw(); l3SetTool('select'); placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(g); l3.placeMeshes.delete('smt1');
+      return { seg, ok, tab, info, W, H, sz: [sz.x, sz.y, sz.z], vol: vol && vol.text, n: added.length };
+    });
+    if (!sm.seg || !sm.ok || !sm.tab || !sm.info) fail('Smart mått: ' + JSON.stringify(sm));
+    else console.log('OK: smart mått – bredd, höjd och objektets volym med ett tryck');
+    // Raderade mått lämnar inga handtag (orange prickar) kvar; måttlistan visar inga objektnamn.
+    const mh = await page.evaluate(() => {
+      l3SetTool('select'); const m = l3mAdd('dist', [new THREE.Vector3(1, 1, 0), new THREE.Vector3(3, 1, 0)], '2 m', [{ name: 'Foundation Slab:Concrete', kind: 'ifc' }, { name: 'Foundation Slab:Concrete', kind: 'ifc' }]);
+      const compact = !l3mTabHtml().includes('Foundation Slab') && l3mInfo(m).rows.some(([k, v]) => /Foundation Slab/.test(v));
+      l3m.sel.clear(); l3m.sel.add(m.id); l3mDraw(); const shown = document.querySelectorAll('.v3-mhandle').length;
+      l3mRemove(m.id); const left = document.querySelectorAll('.v3-mhandle').length;
+      const m2 = l3mAdd('dist', [new THREE.Vector3(1, 1, 0), new THREE.Vector3(3, 1, 0)], '2 m', []); l3m.sel.clear(); l3m.sel.add(m2.id); l3mDraw(); const shown2 = document.querySelectorAll('.v3-mhandle').length;
+      l3m.list = l3m.list.filter(x => x.id !== m2.id); l3mDraw(); const left2 = document.querySelectorAll('.v3-mhandle').length; // även om måttet försvinner på annat sätt
+      return { compact, shown, left, shown2, left2 };
+    });
+    if (!mh.compact || mh.shown !== 2 || mh.left !== 0 || mh.shown2 !== 2 || mh.left2 !== 0) fail('Mått: handtag kvar efter radering / objektnamn i listan: ' + JSON.stringify(mh));
+    else console.log('OK: raderade mått lämnar inga handtag kvar, måttlistan utan objektnamn');
+    // Kortkommandon: även standardgenvägar går att ta bort och återställa.
+    const kc = await page.evaluate(async () => {
+      l3SetPref('keys', {}); l3OpenLaunch(); const q = document.getElementById('v3LaunchQ'); q.value = 'Vrid'; q.dispatchEvent(new Event('input'));
+      const row = () => [...document.querySelectorAll('.v3-launch-r')].find(r => r.textContent.includes('Vrid') && !r.textContent.includes('Vrid ')) || document.querySelector('.v3-launch-r');
+      const hadX = !!row().querySelector('[data-lx]'); row().querySelector('[data-lx]').click();
+      const off = l3KeysOwn()['Vrid'] === '' && !!row().querySelector('[data-lr]') && !!row().querySelector('kbd.off');
+      const tool0 = l3.tool, ev = new KeyboardEvent('keydown', { key: 'q', code: 'KeyQ', bubbles: true, cancelable: true }); const swallowed = l3KeyCustom(ev) === true;
+      row().querySelector('[data-lr]').click(); const back = l3KeysOwn()['Vrid'] === undefined && !!row().querySelector('[data-lx]') && l3KeyCustom(new KeyboardEvent('keydown', { key: 'q', code: 'KeyQ' })) === false;
+      l3DlgClose('v3Launch'); l3SetPref('keys', {});
+      return { hadX, off, swallowed, back, tool0 };
+    });
+    if (!kc.hadX || !kc.off || !kc.swallowed || !kc.back) fail('Ta bort/återställ standardgenväg: ' + JSON.stringify(kc));
+    else console.log('OK: standardgenvägar går att ta bort och återställa i snabbsök');
+    // Gå-läge: E rakt upp, Q rakt ner, tangenterna fastnar inte, M/mät fungerar, tangenterna syns i rutan.
+    const wk = await page.evaluate(async () => {
+      l3wInit(); const wait = ms => new Promise(r => setTimeout(r, ms)), key = (t, code, extra = {}, tgt = document.body) => tgt.dispatchEvent(new KeyboardEvent(t, { code, key: code.replace('Key', '').toLowerCase(), bubbles: true, cancelable: true, ...extra }));
+      l3SetPref('walkFollow', true); l3SetPref('navHelp', false); l3NavHelp();
+      l3wEnter(new THREE.Vector3(0, 0, l3GroundZ())); await wait(300);
+      const p0 = l3.camera.position.clone();
+      key('keydown', 'KeyE'); await wait(500); key('keyup', 'KeyE'); const p1 = l3.camera.position.clone();
+      key('keydown', 'KeyQ'); await wait(400); key('keyup', 'KeyQ'); const p2 = l3.camera.position.clone();
+      const up = p1.z - p0.z > 0.3 && Math.hypot(p1.x - p0.x, p1.y - p0.y) < 1e-6, down = p2.z < p1.z - 0.2 && Math.hypot(p2.x - p1.x, p2.y - p1.y) < 1e-6;
+      // Fokus på en kryssruta i rutan: WASD ska ändå gå (förut "låste" det sig).
+      const cb = document.getElementById('v3WalkFollow'); cb.focus(); const q0 = l3.camera.position.clone();
+      key('keydown', 'KeyW', {}, cb); await wait(400); key('keyup', 'KeyW', {}, cb); const moved = l3.camera.position.distanceTo(q0) > 0.2;
+      // Ctrl+W (flik) och Ctrl+S ska inte tolkas som gång.
+      const q1 = l3.camera.position.clone(); key('keydown', 'KeyW', { ctrlKey: true }); await wait(250); key('keyup', 'KeyW', { ctrlKey: true }); const ctrlOk = l3.camera.position.distanceTo(q1) < 1e-6;
+      // Tangent som släpps i ett skrivfält fastnar inte; fokus i skrivfält rensar tangenterna.
+      key('keydown', 'KeyD'); const inp = document.createElement('input'); inp.type = 'text'; document.body.appendChild(inp); inp.focus(); await wait(50); const cleared = l3w.keys.size === 0; key('keyup', 'KeyD', {}, inp); inp.remove();
+      const hud = document.querySelector('.v3-walk'), keysShown = hud && ['W', 'A', 'S', 'D', 'E', 'Q', 'Skift', 'C', 'M', 'Esc'].every(k => [...hud.querySelectorAll('kbd')].some(x => x.textContent === k));
+      // Mäta medan man går: tryck på marken två gånger med Mät-verktyget.
+      document.activeElement.blur(); l3SetTool('measure'); l3SetPref('measure', 'dist'); const n0 = l3m.list.length, cv = l3.renderer.domElement, r = cv.getBoundingClientRect();
+      const tap = (x, y) => { const o = { pointerId: 5, pointerType: 'mouse', button: 0, buttons: 1, bubbles: true, cancelable: true, clientX: r.left + x, clientY: r.top + y }; cv.dispatchEvent(new PointerEvent('pointerdown', o)); cv.dispatchEvent(new PointerEvent('pointerup', { ...o, buttons: 0 })); };
+      tap(r.width * 0.4, r.height * 0.85); tap(r.width * 0.6, r.height * 0.85); await wait(100);
+      const measured = l3m.list.length === n0 + 1 && l3m.list[l3m.list.length - 1].kind === 'dist';
+      l3m.list.splice(n0); l3mDraw(); l3SetTool('select'); l3wExit(true);
+      return { up, down, moved, ctrlOk, cleared, keysShown, measured, dz: [p1.z - p0.z, p2.z - p1.z] };
+    });
+    if (!wk.up || !wk.down || !wk.moved || !wk.ctrlOk || !wk.cleared || !wk.keysShown || !wk.measured) fail('Gå-läge (E/Q, fastnade tangenter, mäta, tangentlista): ' + JSON.stringify(wk));
+    else console.log('OK: gå-läge – E rakt upp, Q rakt ner, tangenterna fastnar inte, mäta fungerar, tangentlistan syns');
     // Nederkanten: knappar för Status och Navigering (ingen knapp längre över bilden).
     const ft = await page.evaluate(() => {
       const L = () => document.getElementById('v3Legend'), N = () => document.getElementById('v3NavHelp'), bl = document.getElementById('v3FtLegend'), bn = document.getElementById('v3FtNav');

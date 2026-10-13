@@ -2,13 +2,18 @@
    styr med WASD").
 
    Vyer → Gå runt (WASD)…: tryck där du vill stå – kameran släpps ner i ögonhöjd (1,7 m) och tittar åt samma håll
-   som förut. W/S framåt/bakåt, A/D åt sidan, Q/E ner/upp, Skift springer, Ctrl smyger, piltangenterna vrider;
+   som förut. W/S framåt/bakåt, A/D åt sidan, Q ner / E upp (rakt lodrätt), Skift springer, C smyger, piltangenterna vrider;
    dra med musen för att titta runt, hjulet ändrar farten. "Följ marken": kameran följer golv, mark, modeller
    och punktmoln under fötterna (trappsteg upp till 0,6 m). Esc eller ✕ avslutar – vyn blir vanlig 3D där du står.
    Bara perspektiv (parallell projektion stängs av medan man går). */
 
-const l3w = { on: false, picking: false, keys: new Set(), yaw: 0, pitch: 0, speed: 1.4, eye: 1.7, raf: 0, last: 0, drag: null, hud: null };
-const L3W_KEYS = new Set(["w", "a", "s", "d", "q", "e", "arrowup", "arrowdown", "arrowleft", "arrowright", "shift", "control"]);
+const l3w = { on: false, picking: false, keys: new Set(), yaw: 0, pitch: 0, speed: 1.4, eye: 1.7, gz: null, raf: 0, last: 0, drag: null, hud: null };
+const L3W_KEYS = new Set(["w", "a", "s", "d", "q", "e", "c", "arrowup", "arrowdown", "arrowleft", "arrowright", "shift"]);
+/* Fysisk tangent först (WASD fungerar likadant på alla tangentbordslayouter), annars tecknet. */
+const L3W_CODE = { KeyW: "w", KeyA: "a", KeyS: "s", KeyD: "d", KeyQ: "q", KeyE: "e", KeyC: "c", ArrowUp: "arrowup", ArrowDown: "arrowdown", ArrowLeft: "arrowleft", ArrowRight: "arrowright", ShiftLeft: "shift", ShiftRight: "shift" };
+const l3wKeyName = e => L3W_CODE[e.code] || String(e.key || "").toLowerCase();
+/* Skrivfält (inte kryssrutor/knappar): där ska tangenterna skriva, inte gå. */
+const l3wTyping = t => !!t && (t.isContentEditable || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || (t.tagName === "INPUT" && !/^(checkbox|radio|button|range|submit|reset|color|file)$/i.test(t.type || "text")));
 const l3wFollow = () => l3Prefs().walkFollow !== false;
 
 function l3wStart() {
@@ -35,13 +40,13 @@ function l3wEnter(P) {
   const d = l3.camera.getWorldDirection(new THREE.Vector3());
   l3w.yaw = Math.atan2(d.y, d.x); l3w.pitch = 0;
   if (!Number.isFinite(l3w.yaw) || Math.hypot(d.x, d.y) < 1e-3) l3w.yaw = Math.PI / 2; // rakt uppifrån: titta norrut
-  l3w.on = true; l3w.keys.clear();
+  l3w.on = true; l3w.keys.clear(); l3w.gz = P.z;
   l3w.prevFov = l3.camera.fov; l3.camera.fov = 70; l3.camera.near = 0.05; l3.camera.updateProjectionMatrix();
   l3.orbit.enabled = false;
   l3.camera.position.set(P.x, P.y, P.z + l3w.eye);
   document.body.classList.add("v3-walking");
   l3wHud(true); l3wApply();
-  l3Status("Gå runt: W/A/S/D går, dra med musen för att titta, Q/E ner/upp, Skift springer, hjulet ändrar farten. Esc avslutar.");
+  l3Status("Gå runt: W/A/S/D går, dra med musen för att titta, Q ner, E upp, Skift springer, M mäter, hjulet ändrar farten. Esc avslutar.");
   l3wLoop();
 }
 function l3wExit(quiet) {
@@ -71,7 +76,8 @@ function l3wApply() {
 }
 /* Marken under fötterna: modeller, etablering, ritningen och punktmolnen – högst 0,6 m upp (trappsteg). */
 function l3wGround(pos) {
-  const from = new THREE.Vector3(pos.x, pos.y, pos.z - l3w.eye + 0.6), down = new THREE.Vector3(0, 0, -1);
+  // Utgår från markens senast kända höjd (inte ögonhöjden): Q/E ändrar ögonhöjden utan att markspaningen tappar marken.
+  const from = new THREE.Vector3(pos.x, pos.y, (l3w.gz != null ? l3w.gz : pos.z - l3w.eye) + 0.6), down = new THREE.Vector3(0, 0, -1);
   const rc = new THREE.Raycaster(from, down, 0, 60); rc.firstHitOnly = true;
   const h = rc.intersectObjects(l3Surfaces(), true).find(x => x.object.visible && !x.object.userData.noHit && x.object.type !== "LineSegments" && x.object.type !== "Line" && l3VisibleChain(x.object) && l3NotClipped(x.point));
   let z = h ? h.point.z : null;
@@ -81,8 +87,13 @@ function l3wGround(pos) {
 }
 function l3wLoop() {
   l3w.last = performance.now();
+  // Ett fel i en bild (t.ex. markspaningen) får aldrig stoppa slingan – då "låste sig" WASD tills man startade om gåendet.
   const step = t => {
     if (!l3w.on) return;
+    try { frame(t); } catch (err) { if (!l3w.warned) { l3w.warned = true; console.warn("Gå-läget: fel i en bild", err); } }
+    if (l3w.on) l3w.raf = requestAnimationFrame(step);
+  };
+  const frame = t => {
     const dt = Math.min(0.1, (t - l3w.last) / 1000); l3w.last = t;
     const K = l3w.keys, cam = l3.camera;
     let moved = false;
@@ -91,20 +102,23 @@ function l3wLoop() {
     if (turn) { l3w.yaw += turn * dt * Math.PI / 2; moved = true; }
     if (look) { l3w.pitch = Math.max(-1.5, Math.min(1.5, l3w.pitch + look * dt * Math.PI / 4)); moved = true; }
     const f = (K.has("w") ? 1 : 0) - (K.has("s") ? 1 : 0), sd = (K.has("d") ? 1 : 0) - (K.has("a") ? 1 : 0), up = (K.has("e") ? 1 : 0) - (K.has("q") ? 1 : 0);
-    const v = l3w.speed * (K.has("shift") ? 3 : 1) * (K.has("control") ? 0.3 : 1);
+    const v = l3w.speed * (K.has("shift") ? 3 : 1) * (K.has("c") ? 0.3 : 1);
     if (f || sd) {
       const fw = new THREE.Vector3(Math.cos(l3w.yaw), Math.sin(l3w.yaw), 0), rt = new THREE.Vector3(Math.sin(l3w.yaw), -Math.cos(l3w.yaw), 0);
       const m = fw.multiplyScalar(f).add(rt.multiplyScalar(sd)); if (m.lengthSq() > 1) m.normalize();
       cam.position.addScaledVector(m, v * dt); moved = true;
     }
-    if (up) { if (l3wFollow()) l3w.eye = Math.max(0.3, Math.min(200, l3w.eye + up * v * dt)); else cam.position.z += up * v * dt; moved = true; }
+    // Q/E: rakt lodrätt (inte dit man tittar). Med Följ marken ändras ögonhöjden över marken (0,3–200 m).
+    if (up) {
+      cam.position.z += up * v * dt; moved = true;
+      if (l3wFollow()) { const base = l3w.gz != null ? l3w.gz : cam.position.z - l3w.eye; l3w.eye = Math.max(0.3, Math.min(200, cam.position.z - base)); cam.position.z = base + l3w.eye; }
+    }
     if (l3wFollow() && (moved || !l3w.settled)) {
-      const g = l3wGround(cam.position);
-      if (g != null) { const want = g + l3w.eye, dz = want - cam.position.z; cam.position.z += Math.abs(dz) < 0.005 ? dz : dz * Math.min(1, dt * 12); l3w.settled = Math.abs(dz) < 0.005; if (!l3w.settled) moved = true; }
-      else l3w.settled = true;
+      const g = up ? null : l3wGround(cam.position); // under Q/E står höjden still mot marken
+      if (g != null) { l3w.gz = g; const want = g + l3w.eye, dz = want - cam.position.z; cam.position.z += Math.abs(dz) < 0.005 ? dz : dz * Math.min(1, dt * 12); l3w.settled = Math.abs(dz) < 0.005; if (!l3w.settled) moved = true; }
+      else l3w.settled = !!up || g == null;
     }
     if (moved) l3wApply();
-    l3w.raf = requestAnimationFrame(step);
   };
   cancelAnimationFrame(l3w.raf); l3w.settled = false;
   l3w.raf = requestAnimationFrame(step);
@@ -113,21 +127,35 @@ function l3wLoop() {
 /* ---- Tangenter och mus (före 3D-vyns vanliga hantering) ---------------------------------------------- */
 function l3wKey(e) {
   if (!l3w.on && !l3w.picking) return false;
-  const tag = e.target && e.target.tagName;
-  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return false;
-  const k = e.key.toLowerCase();
-  if (e.type === "keydown" && k === "escape") { e.preventDefault(); if (l3w.picking) { l3w.picking = false; l3.renderer.domElement.style.cursor = ""; l3Status("Avbrutet."); } else l3wExit(); return true; }
+  const k = l3wKeyName(e), typing = l3wTyping(e.target);
+  // Släpp alltid: en tangent som släpps i ett skrivfält (eller efter fokusbyte) får inte fastna som nedtryckt.
+  if (e.type === "keyup") { if (L3W_KEYS.has(k)) l3w.keys.delete(k); if (!e.shiftKey) l3w.keys.delete("shift"); return !typing && l3w.on && L3W_KEYS.has(k); }
+  if (typing) return false;
+  if (k === "escape") {
+    e.preventDefault();
+    if (l3w.picking) { l3w.picking = false; l3.renderer.domElement.style.cursor = ""; l3Status("Avbrutet."); }
+    else if (l3.tool === "measure" && typeof l3t !== "undefined" && l3t.step) { if (typeof l3ToolCancel === "function") l3ToolCancel(); l3Status("Måttet avbrutet."); } // Esc avbryter först ett påbörjat mått
+    else l3wExit();
+    return true;
+  }
   if (!l3w.on) return false;
-  if (!L3W_KEYS.has(k)) return false;
+  if (e.ctrlKey || e.metaKey || e.altKey) return false; // genvägar (Ctrl+S m.fl.) lämnas åt webbläsaren
+  if (e.shiftKey) l3w.keys.add("shift"); else l3w.keys.delete("shift");
+  if (!L3W_KEYS.has(k) || k === "shift") return false;
   e.preventDefault();
-  if (e.type === "keydown") l3w.keys.add(k); else l3w.keys.delete(k);
+  l3w.keys.add(k);
   return true;
 }
 function l3wInit() {
   if (l3w.inited) return; l3w.inited = true;
   const on3d = () => l3 && !document.getElementById("view3d").classList.contains("hidden");
   ["keydown", "keyup"].forEach(t => window.addEventListener(t, e => { if (on3d() && l3wKey(e)) e.stopImmediatePropagation(); }, true));
-  window.addEventListener("blur", () => l3w.keys.clear());
+  // Inga fastnade tangenter: fönstret tappar fokus, fliken döljs, ett skrivfält får fokus eller menyn öppnas.
+  const clearKeys = () => { l3w.keys.clear(); l3w.drag = null; };
+  window.addEventListener("blur", clearKeys);
+  document.addEventListener("visibilitychange", clearKeys);
+  window.addEventListener("focusin", e => { if (l3wTyping(e.target)) clearKeys(); });
+  window.addEventListener("contextmenu", clearKeys, true);
   const canvasEv = e => l3 && e.target === l3.renderer.domElement && l3w.on;
   window.addEventListener("pointerdown", e => {
     if (!canvasEv(e)) return;
@@ -143,7 +171,13 @@ function l3wInit() {
     l3w.pitch = Math.max(-1.5, Math.min(1.5, l3w.drag.pitch - (e.clientY - l3w.drag.y) * s));
     l3wApply();
   }, true);
-  window.addEventListener("pointerup", e => { if (l3w.on && l3w.drag && e.pointerId === l3w.drag.id) { e.stopPropagation(); l3w.drag = null; } }, true);
+  window.addEventListener("pointerup", e => {
+    if (!(l3w.on && l3w.drag && e.pointerId === l3w.drag.id)) return;
+    e.stopPropagation();
+    const d = l3w.drag; l3w.drag = null;
+    // Tryck (inte dra) med Mät-verktyget: punkten läggs ut som vanligt – mäta går också medan man går.
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6 && e.button !== 2 && l3.tool === "measure") { l3Tap(e); l3Render(); }
+  }, true);
   ["dblclick", "contextmenu"].forEach(t => window.addEventListener(t, e => { if (canvasEv(e)) { e.stopPropagation(); e.preventDefault(); } }, true));
   window.addEventListener("wheel", e => {
     if (!canvasEv(e)) return;
@@ -163,14 +197,18 @@ function l3wHud(show) {
     h.addEventListener("pointerdown", e => e.stopPropagation());
   }
   h.classList.remove("hidden");
-  h.innerHTML = `<b>Gå runt</b><span class="v3-walk-k"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> gå · <kbd>Q</kbd><kbd>E</kbd> ner/upp · <kbd>Skift</kbd> spring · dra = titta</span>
+  h.innerHTML = `<b>Gå runt</b><span class="v3-walk-k"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> gå · <kbd>E</kbd> upp · <kbd>Q</kbd> ner · <kbd>Skift</kbd> spring · <kbd>C</kbd> smyg · <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> titta · dra = titta · hjul = fart · <kbd>M</kbd> mät · <kbd>Esc</kbd> ut</span>
     <span class="v3-walk-v" title="Farten – ändras med mushjulet"><button type="button" data-w="slow">−</button><em id="v3WalkSpeed"></em><button type="button" data-w="fast">＋</button></span>
+    <button type="button" class="v3-walk-m ${l3.tool === "measure" ? "on" : ""}" data-w="meas" title="Mät medan du går (M): tryck punkterna i bilden – dra för att titta">Mät</button>
     <label class="v3-chk" title="Kameran följer golv, mark, modeller och punktmoln under fötterna"><input type="checkbox" id="v3WalkFollow" ${l3wFollow() ? "checked" : ""} /> Följ marken</label>
     <button type="button" class="v3-x" data-w="exit" title="Avsluta (Esc)">✕</button>`;
+  // Fokus hos rutans knappar får aldrig stjäla tangenterna.
+  h.querySelectorAll("button, input").forEach(b => b.addEventListener("click", () => { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); }));
+  h.querySelector('[data-w="meas"]').onclick = e => { if (typeof l3SetTool === "function") l3SetTool(l3.tool === "measure" ? "select" : "measure"); e.currentTarget.classList.toggle("on", l3.tool === "measure"); };
   h.querySelector('[data-w="exit"]').onclick = () => l3wExit();
   h.querySelector('[data-w="slow"]').onclick = () => { l3w.speed = Math.max(0.2, l3w.speed / 1.5); l3wHudUpdate(); };
   h.querySelector('[data-w="fast"]').onclick = () => { l3w.speed = Math.min(40, l3w.speed * 1.5); l3wHudUpdate(); };
-  h.querySelector("#v3WalkFollow").onchange = e => { l3SetPref("walkFollow", e.target.checked); l3w.settled = false; };
+  h.querySelector("#v3WalkFollow").onchange = e => { l3SetPref("walkFollow", e.target.checked); l3w.settled = false; l3w.gz = null; };
   l3wHudUpdate();
 }
 function l3wHudUpdate() {

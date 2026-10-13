@@ -169,7 +169,7 @@ function l3kPlace() {
 
 /* ---- Popupen ------------------------------------------------------------------------------------- */
 function l3kOpen(c, edit) {
-  l3k.open = c;
+  l3k.open = c; l3k.editMode = !!edit && c !== l3k.draft;
   let pop = document.getElementById("v3CPop");
   if (!pop) { pop = document.createElement("div"); pop.id = "v3CPop"; pop.className = "v3-cpop"; l3.renderer.domElement.parentElement.appendChild(pop); pop.onpointerdown = e => e.stopPropagation(); pop.onclick = e => e.stopPropagation(); pop.onkeydown = e => e.stopPropagation(); }
   const esc = escHtml, isNew = c === l3k.draft, t = c.target || {};
@@ -184,7 +184,7 @@ function l3kOpen(c, edit) {
         ${(c.replies || []).map(r => `<div class="v3-cmsg reply"><div class="v3-cpop-meta">${esc(r.by || "")} · ${esc(l3kDate(r.at))}</div><p>${esc(r.text).replace(/\n/g, "<br>")}</p></div>`).join("")}
       </div>
       <textarea id="v3CReply" rows="2" placeholder="Svara…"></textarea>
-      <div class="v3-cpop-f"><button type="button" class="bad" data-k="del" title="Ta bort kommentaren">${L3_ICO.trash}</button><button type="button" data-k="edit" title="Ändra texten">${L3_ICO.edit}</button><button type="button" data-k="done">${c.done ? "Öppna igen" : "Klar ✓"}</button><button type="button" class="pri" data-k="reply">Svara</button></div>`}`;
+      <div class="v3-cpop-f"><button type="button" class="bad" data-k="del" title="Ta bort kommentaren">${L3_ICO.trash}</button><button type="button" data-k="edit" title="Ändra texten och läget (handtagen för att flytta kommentaren visas)">${L3_ICO.edit}</button><button type="button" data-k="done">${c.done ? "Öppna igen" : "Klar ✓"}</button><button type="button" class="pri" data-k="reply">Svara</button></div>`}`;
   pop.classList.remove("hidden");
   const on = (k, fn) => { const b = pop.querySelector(`[data-k="${k}"]`); if (b) b.onclick = fn; };
   on("close", l3kClose); on("cancel", l3kClose);
@@ -223,7 +223,7 @@ function l3kOpen(c, edit) {
 function l3kClose() {
   const pop = document.getElementById("v3CPop");
   if (pop) pop.classList.add("hidden");
-  l3k.open = null; l3k.draft = null;
+  l3k.open = null; l3k.draft = null; l3k.editMode = false;
   l3kDraw();
 }
 /* ---- Handtag (Victor 2026-10-10: "ett handtag på insättningspunkten för kommentaren så att jag kan flytta
@@ -240,9 +240,10 @@ function l3kActive() {
   const a = l3kActive0();
   return a && (typeof l3aOn !== "function" || l3aOn(a)) ? a : null;
 }
+/* Handtagen visas först när redigeringen av kommentaren öppnats (Victor 2026-10-13: "inte alltid se handtagen när jag
+   markerat en kommentar") – ✎ i kommentarens ruta. Bara markerad/öppnad kommentar har inga handtag. */
 function l3kActive0() {
-  if (l3k.open && l3k.open !== l3k.draft && l3k.list.includes(l3k.open)) return l3k.open;
-  if (typeof l3kUi !== "undefined" && l3kUi.sel.size === 1) return l3k.list.find(c => l3kUi.sel.has(c.id)) || null;
+  if (l3k.open && l3k.editMode && l3k.open !== l3k.draft && l3k.list.includes(l3k.open)) return l3k.open;
   return null;
 }
 function l3kHandlesPlace() {

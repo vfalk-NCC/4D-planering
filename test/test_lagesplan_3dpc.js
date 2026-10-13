@@ -168,17 +168,22 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       const ms = (performance.now() - t1) / n;
       // Gles kopia medan kameran rör sig (~2 milj. punkter), hela molnet när den stannat.
       let lodN = 0; c.lod.children.forEach(p => { lodN += p.geometry.getAttribute('position').count; });
-      l3pcFrame(); l3.camera.position.x += 3; l3.camera.updateMatrixWorld(); l3pcFrame();
-      const moving = c.lod.visible && c.group.children.every(p => !p.visible);
-      return new Promise(res => setTimeout(() => {
-        const still = !c.lod.visible && c.group.children.every(p => p.visible);
+      const nudge = d => { l3.camera.position.x += d; l3.camera.updateMatrixWorld(); l3pcFrame(); }, full = () => !c.lod.visible && c.group.children.every(p => p.visible), wait = ms => new Promise(r => setTimeout(r, ms));
+      return (async () => {
+        l3pcFrame(); await wait(300);
+        // En pytteliten knuff och en kort rörelse (under ~90 ms) glesar inte ut molnet.
+        const dist = l3.camera.position.distanceTo(l3.orbit.target), small = Math.min(0.002, dist * 0.0005), large = dist * 0.05; nudge(small); await wait(120); nudge(small); const tiny = full();
+        nudge(large); const brief = full(); // stor förändring men ännu inte uthållig
+        await wait(120); nudge(large); const moving = c.lod.visible && c.group.children.every(p => !p.visible); // uthållig rörelse: gles kopia
+        await wait(400); const still = full();
+        const sizeBig = c.lodMat && c.lodMat.size >= c.mat.size; // kopians punkter är minst lika stora (fyller ytor)
         l3pcRemove('pc:big');
-        res({ tIdx: Math.round(tIdx), ms: +ms.toFixed(1), hits, n, lodN, moving, still, gone: !l3.groups.pc.children.some(g => g.name === 'pc-lod') });
-      }, 400));
+        return { tIdx: Math.round(tIdx), ms: +ms.toFixed(1), hits, n, lodN, moving, still, tiny, brief, sizeBig, gone: !l3.groups.pc.children.some(g => g.name === 'pc-lod') };
+      })();
     });
     const fb = await page.evaluate(() => { const old = l3Prefs().pcBudget; l3SetPref('pcBudget', 'all'); const b = l3pcBudget(); l3SetPref('pcBudget', old ?? null); return { b, max: l3pcMaxPts() }; });
     if (fb.b !== fb.max || fb.b < 20e6) fail('Full upplösning: ' + JSON.stringify(fb));
-    if (big.ms > 25 || big.hits < big.n * 0.5 || big.lodN < 1.4e6 || big.lodN > 2.2e6 || !big.moving || !big.still || !big.gone) fail('Stort moln (fästa, gles kopia vid rörelse): ' + JSON.stringify(big));
+    if (big.ms > 25 || big.hits < big.n * 0.5 || big.lodN < 1.4e6 || big.lodN > 2.2e6 || !big.moving || !big.still || !big.tiny || !big.brief || !big.sizeBig || !big.gone) fail('Stort moln (fästa, gles kopia vid rörelse): ' + JSON.stringify(big));
     console.log(`OK: stort moln (3 milj.) – index ${big.tIdx} ms en gång, ${big.ms} ms per sökning, ${big.hits}/${big.n} träffar; gles kopia ${(big.lodN / 1e6).toFixed(1)} milj. medan kameran rör sig`);
     if (!snap.pick || !snap.snap || !snap.pivot || !snap.miss || !snap.off) fail('Fästa mot punktmolnet: ' + JSON.stringify(snap));
     console.log(`OK: fästa mot punkter i molnet – mått, rotationspunkt, av/på i Fäst-raden (${snap.ms} ms per sökning)`);

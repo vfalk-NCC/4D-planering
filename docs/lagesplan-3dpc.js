@@ -172,27 +172,46 @@ function l3pcBuildLod(c) {
     geo.setAttribute("position", new THREE.BufferAttribute(ch.pos, 3));
     geo.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, ch), 3, true));
     geo.computeBoundingSphere();
-    const p = new THREE.Points(geo, c.mat); p.userData.noHit = true; p.raycast = () => {};
+    const p = new THREE.Points(geo, c.lodMat || (c.lodMat = c.mat.clone())); p.userData.noHit = true; p.raycast = () => {};
     g.add(p);
   });
   c.lod = g; c.lodK = k;
+  l3pcLodMatApply(c);
   l3.groups.pc.add(g);
 }
-let l3pcCam = null, l3pcStillT = 0, l3pcMoving = false;
+/* Den utglesade kopian ritas med större punkter (Victor 2026-10-13: "glesar ut punktmolnet direkt man rör sig") så att
+   ytor fortfarande läses som ytor medan kameran rör sig – lika många punkter, bara fyllnaden ökar. */
+function l3pcLodMatApply(c) {
+  const L = c.lodMat; if (!L) return;
+  const m = c.mat, f = Math.min(2.4, 0.62 * Math.sqrt(c.lodK || 1));
+  L.sizeAttenuation = m.sizeAttenuation; L.size = m.size * Math.max(1, f);
+  L.map = m.map; L.alphaTest = m.alphaTest; L.transparent = m.transparent; L.opacity = m.opacity; L.depthWrite = m.depthWrite; L.clippingPlanes = m.clippingPlanes;
+  L.needsUpdate = true;
+}
+let l3pcCam = null, l3pcStillT = 0, l3pcMoving = false, l3pcAnchor = null, l3pcSince = 0;
 function l3pcSetMoving(on) {
   l3pcMoving = on;
   l3pc.clouds.forEach(c => { if (!c.lod) return; c.lod.visible = on && c.visible; c.group.children.forEach(p => { p.visible = !on; }); });
 }
-/* Anropas före varje bild: har kameran flyttats sedan förra bilden? */
+/* Anropas före varje bild: rör sig kameran på riktigt? En liten knuff (en pytteliten flytt eller vridning) räknas inte:
+   det krävs en märkbar förändring mot där kameran stod stilla OCH att den håller i sig en kort stund (~90 ms) innan
+   den utglesade kopian tar över. Då ser man hela molnet vid små justeringar. */
 function l3pcFrame() {
-  if (!l3pc.clouds.some(c => c.lod && c.visible) || l3Prefs().pcLod === false) { if (l3pcMoving) l3pcSetMoving(false); return; }
+  if (!l3pc.clouds.some(c => c.lod && c.visible) || l3Prefs().pcLod === false) { if (l3pcMoving) l3pcSetMoving(false); l3pcAnchor = null; return; }
   const cam = l3.camera; cam.updateMatrixWorld();
-  const e = cam.matrixWorld.elements, key = e.map(v => v.toFixed(4)).join() + (cam.zoom || 1);
+  const e = cam.matrixWorld.elements, key = e.map(v => v.toFixed(4)).join() + (cam.zoom || 1), now = performance.now();
+  const pos = new THREE.Vector3(e[12], e[13], e[14]), fwd = new THREE.Vector3(-e[8], -e[9], -e[10]), zoom = cam.zoom || 1;
+  if (!l3pcAnchor) l3pcAnchor = { pos, fwd, zoom };
   if (l3pcCam !== null && key !== l3pcCam) {
-    if (!l3pcMoving) l3pcSetMoving(true);
-    clearTimeout(l3pcStillT);
-    l3pcStillT = setTimeout(() => { l3pcSetMoving(false); l3Render(); }, 220);
-  }
+    const A = l3pcAnchor, dist = Math.max(1, pos.distanceTo(l3.orbit.target));
+    const big = pos.distanceTo(A.pos) > Math.max(0.03, dist * 0.008) || Math.acos(Math.min(1, Math.max(-1, fwd.dot(A.fwd)))) > 0.012 || Math.abs(zoom / A.zoom - 1) > 0.02;
+    if (l3pcMoving || big) {
+      if (!l3pcSince) l3pcSince = now;
+      if (!l3pcMoving && now - l3pcSince > 90) l3pcSetMoving(true);
+      clearTimeout(l3pcStillT);
+      l3pcStillT = setTimeout(() => { l3pcSince = 0; l3pcAnchor = null; l3pcSetMoving(false); l3Render(); }, 220);
+    }
+  } else if (l3pcCam !== null && !l3pcMoving) l3pcSince = 0;
   l3pcCam = key;
 }
 /* Rund punkt: en liten cirkel som mask (alphaTest) – lika billig som fyrkanten. */
@@ -217,6 +236,7 @@ function l3pcMatApply(c) {
     l3.renderer.localClippingEnabled = true;
   } else m.clippingPlanes = null;
   m.needsUpdate = true;
+  l3pcLodMatApply(c);
 }
 function l3pcApplyAll() { l3pc.clouds.forEach(l3pcMatApply); l3Render(); }
 function l3pcRemove(id) {

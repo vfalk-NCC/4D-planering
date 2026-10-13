@@ -213,6 +213,9 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   {
     const kid = await page.evaluate(() => l3k.list[0].id);
     await page.click(`#v3PalComments [data-kcgo="${kid}"]`); await page.waitForTimeout(1200);
+    // Handtagen syns inte bara för att kommentaren är markerad/öppen – först när redigeringen öppnats (✎).
+    if (!(await page.evaluate(() => { const e = document.querySelector('.v3-khandle.xy'); return !e || getComputedStyle(e).display === 'none'; }))) fail('Handtagen ska inte synas innan redigeringen öppnats');
+    await page.evaluate(() => document.querySelector('#v3CPop [data-k="edit"]').click()); await page.waitForTimeout(300); await page.evaluate(() => document.activeElement && document.activeElement.blur());
     if (await page.evaluate(() => (l3.camera.getWorldDirection(new THREE.Vector3()).z < -0.97) && getComputedStyle(document.querySelector('.v3-khandle.z')).display !== 'none')) fail('Höjdhandtaget ska döljas rakt uppifrån');
     await page.evaluate(() => { const c = l3k.list[0], P = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2] + 1); l3StopFly(); l3.orbit.target.copy(P); l3.camera.position.copy(P).add(new THREE.Vector3(-6, -14, 8)); l3.orbit.update(); l3Render(); });
     await page.waitForTimeout(300);
@@ -246,7 +249,7 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     await page.keyboard.press('Control+z'); await page.waitForTimeout(200);
     const back = await page.evaluate(() => l3k.list[0].pos.slice());
     if (Math.abs(back[0] - h0.pos[0]) > 1e-6 || Math.abs(back[1] - h0.pos[1]) > 1e-6) fail('Ctrl+Z ska ångra flytten: ' + JSON.stringify({ back, was: h0.pos }));
-    await page.evaluate(() => { l3kUi.sel.clear(); l3kRenderTab(); l3Render(); });
+    await page.evaluate(() => { l3kClose(); l3kUi.sel.clear(); l3kRenderTab(); l3Render(); });
   }
   // Mappar för kommentarer och mått: tänd/släck, visa bara, nya hamnar i vald mapp, flytta markerade.
   {

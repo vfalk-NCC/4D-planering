@@ -538,10 +538,13 @@ function l3OpenLaunch() {
     hit = cmds.filter(c => words.every(w => c.label.toLowerCase().includes(w))).slice(0, 12);
     idx = Math.min(idx, Math.max(0, hit.length - 1));
     const nOwn = Object.keys(own).length;
-    d.querySelector("#v3LaunchList").innerHTML = (hit.map((c, i) => `<div class="v3-launch-r ${i === idx ? "on" : ""}"><button type="button" data-li="${i}" class="v3-launch-b" ${c.ok() ? "" : "disabled"}><span>${escHtml(c.label)}</span>${capture === c.label ? `<kbd class="cap">Tryck tangenterna… (Esc avbryter, Delete tar bort)</kbd>` : own[c.label] ? `<kbd class="own" title="Ditt eget kortkommando${c.keys ? ` (standard: ${escHtml(c.keys)})` : ""}">${escHtml(own[c.label])}</kbd>` : c.keys ? `<kbd>${escHtml(c.keys)}</kbd>` : ""}</button><button type="button" class="v3-ic v3-launch-k" data-lk="${i}" title="Eget kortkommando för ${escHtml(c.label)}">⌨</button></div>`).join("") || `<div class="v3-pal-hint">Inget kommando matchar.</div>`)
+    d.querySelector("#v3LaunchList").innerHTML = (hit.map((c, i) => `<div class="v3-launch-r ${i === idx ? "on" : ""}"><button type="button" data-li="${i}" class="v3-launch-b" ${c.ok() ? "" : "disabled"}><span>${escHtml(c.label)}</span>${capture === c.label ? `<kbd class="cap">Tryck tangenterna… (Esc avbryter, Delete tar bort)</kbd>` : own[c.label] === "" ? `<kbd class="off" title="Genvägen är borttagen${c.keys ? ` (standard var ${escHtml(c.keys)})` : ""}">ingen</kbd>` : own[c.label] ? `<kbd class="own" title="Ditt eget kortkommando${c.keys ? ` (standard: ${escHtml(c.keys)})` : ""}">${escHtml(own[c.label])}</kbd>` : c.keys ? `<kbd>${escHtml(c.keys)}</kbd>` : ""}</button><button type="button" class="v3-ic v3-launch-k" data-lk="${i}" title="Eget kortkommando för ${escHtml(c.label)}">⌨</button>${own[c.label] === "" ? `<button type="button" class="v3-ic v3-launch-k" data-lr="${i}" title="Återställ standardgenvägen${c.keys ? ` (${escHtml(c.keys)})` : ""}">↺</button>` : own[c.label] || c.keys ? `<button type="button" class="v3-ic v3-launch-k" data-lx="${i}" title="Ta bort kortkommandot (även standardgenvägen)">✕</button>` : `<span class="v3-launch-k"></span>`}</div>`).join("") || `<div class="v3-pal-hint">Inget kommando matchar.</div>`)
       + `<div class="v3-launch-foot">⌨ = välj eget kortkommando${nOwn ? ` · ${nOwn} egna <button type="button" class="v3-link" id="v3KeysReset">Återställ alla</button>` : ""}</div>`;
     d.querySelectorAll("[data-li]").forEach(b => { b.onclick = () => run(+b.dataset.li); });
     d.querySelectorAll("[data-lk]").forEach(b => { b.onclick = () => { capture = hit[+b.dataset.lk].label; render(); q.focus(); }; });
+    // Ta bort ett kortkommando – även ett som följer med programmet (standardgenvägen stängs av) – eller återställ det.
+    d.querySelectorAll("[data-lx]").forEach(b => { b.onclick = () => { const c = hit[+b.dataset.lx], o = { ...l3KeysOwn() }; if (c.keys) o[c.label] = ""; else delete o[c.label]; l3SetPref("keys", o); render(); l3Status(`${c.label}: kortkommandot borttaget.`); }; });
+    d.querySelectorAll("[data-lr]").forEach(b => { b.onclick = () => { const c = hit[+b.dataset.lr], o = { ...l3KeysOwn() }; delete o[c.label]; l3SetPref("keys", o); render(); l3Status(`${c.label}: standardgenvägen återställd${c.keys ? ` (${c.keys})` : ""}.`); }; });
     const rs = d.querySelector("#v3KeysReset"); if (rs) rs.onclick = () => { l3SetPref("keys", {}); render(); l3Status("Egna kortkommandon borttagna – standard gäller."); };
   };
   const run = i => { const c = hit[i]; if (!c || !c.ok()) return; l3DlgClose("v3Launch"); c.run(); };
@@ -554,10 +557,10 @@ function l3OpenLaunch() {
       const label = capture; capture = null;
       if (e.key === "Escape") { render(); return; }
       const own = { ...l3KeysOwn() };
-      if (e.key === "Delete" || e.key === "Backspace") { delete own[label]; l3SetPref("keys", own); render(); l3Status(`${label}: eget kortkommando borttaget.`); return; }
+      if (e.key === "Delete" || e.key === "Backspace") { const c0 = cmds.find(c => c.label === label); if (c0 && c0.keys) own[label] = ""; else delete own[label]; l3SetPref("keys", own); render(); l3Status(`${label}: kortkommandot borttaget.`); return; }
       const combo = l3KeyCombo(e);
       if (!combo || combo === "Enter" || combo === "Tab") { render(); return; }
-      const was = Object.keys(own).find(k => own[k] === combo && k !== label);
+      const was = Object.keys(own).find(k => own[k] && own[k] === combo && k !== label);
       if (was) delete own[was];
       own[label] = combo; l3SetPref("keys", own); render();
       const builtin = cmds.find(c => c.keys === combo && c.label !== label);
@@ -606,8 +609,13 @@ function l3KeyCombo(e) {
 function l3KeyCustom(e) {
   const own = l3KeysOwn(), labels = Object.keys(own);
   if (!labels.length) return false;
-  const combo = l3KeyCombo(e), label = labels.find(l => own[l] === combo);
-  if (!label) return false;
+  const combo = l3KeyCombo(e), label = labels.find(l => own[l] && own[l] === combo);
+  if (!label) {
+    // Borttagen standardgenväg (eget värde ""): tangenten gör ingenting – om inte ett annat kommando fått den.
+    const off = combo && labels.some(l => own[l] === "" && (l3Commands().find(x => x.label === l) || {}).keys === combo);
+    if (off) { e.preventDefault(); return true; }
+    return false;
+  }
   const c = l3Commands().find(x => x.label === label);
   if (!c) return false;
   e.preventDefault();

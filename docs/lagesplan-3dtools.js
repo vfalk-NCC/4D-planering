@@ -29,14 +29,14 @@ function l3RenderSnapBar() {
   bar.innerHTML = `<span class="v3-snapbar-l">Fäst</span>${b("end", "Hörn", "Fäst mot hörn (ändpunkter)")}${b("mid", "Mitt", "Fäst mot mittpunkter på kanter")}${b("edge", "Kant", "Fäst mot närmaste punkt på en kant")}${b("perp", "Vinkelrätt", "Vinkelrätt: på en kant fäster punkten där linjen från förra punkten möter kanten i rät vinkel – kortaste vägen över ett objekt")}${b("axis", "Axlar", "Fäst mot röd/grön/blå axel från baspunkten")}${b("ortho", "Orto", "Orto (O): bara i X-, Y- eller Z-led")}${b("grid", "Rutnät", "Rutnät (G): fäst mot rutnätet på marken och ytor")}${typeof l3pc !== "undefined" && l3pc.clouds.length ? b("pc", "Moln", "Fäst mot punkter i punktmolnen (mått, flytta, rotationspunkt)") : ""}
     <select id="v3GridStep" title="Rutnätets steg">${[0.1, 0.5, 1, 2, 5, 10].map(v => `<option value="${v}" ${Number(s.gstep) === v ? "selected" : ""}>${String(v).replace(".", ",")} m</option>`).join("")}</select>
     ${l3.tool === "move" ? `<span class="v3-snapbar-sep"></span><label class="v3-chk" title="Kopiera i stället för att flytta (tryck Ctrl)"><input type="checkbox" id="v3CopyMode" ${l3t.copyMode ? "checked" : ""} /> Kopia</label>` : ""}
-    ${l3.tool === "measure" ? `<span class="v3-snapbar-sep"></span><div class="v3-segs">${[["point", "Punkt"], ["dist", "Avstånd"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : ""}`;
+    ${l3.tool === "measure" ? `<span class="v3-snapbar-sep"></span><div class="v3-segs">${[["smart", "Smart"], ["point", "Punkt"], ["dist", "Avstånd"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : ""}`;
   if (typeof l3mBindBar === "function") l3mBindBar(bar);
   bar.querySelectorAll("[data-snapk]").forEach(x => { x.onclick = () => l3ToggleSnap(x.dataset.snapk); });
   bar.querySelector("#v3GridStep").onchange = e => { const v = { ...l3Snaps(), gstep: Number(e.target.value) }; l3SetPref("snaps", v); };
   const cm = bar.querySelector("#v3CopyMode"); if (cm) cm.onchange = () => { l3t.copyMode = cm.checked; l3Status(cm.checked ? "Kopierar: punkten du trycker härnäst får en kopia." : "Flyttar."); };
   bar.querySelectorAll("[data-mmode]").forEach(x => { x.onclick = () => { l3SetPref("measure", x.dataset.mmode); l3ToolCancel(); l3RenderSnapBar(); l3Status(L3_MEAS_START[x.dataset.mmode]); }; });
 }
-const L3_MEAS_START = { point: "Mät punkt: tryck på en punkt – X, Y och Z visas och ligger kvar.", volume: "Mät volym: tryck basytans hörn (som Yta), avsluta med Enter eller första punkten – sedan höjden: skriv den eller tryck på en plan yta i modellen.", dist: "Mät avstånd: tryck på första punkten.", poly: "Mät polylinje: tryck punkt för punkt längs vägen. Avsluta med Enter, dubbeltryck eller tryck på sista punkten igen.", angle: "Mät vinkel: tryck på första punkten, sedan hörnet (vinkelns spets) och sist den andra punkten.", area: "Mät yta: tryck hörnen i tur och ordning. Avsluta med Enter eller tryck på första punkten igen." };
+const L3_MEAS_START = { smart: "Smart mått: tryck på ett objekt – bredd, höjd och volym sätts ut direkt (på en vågrät yta: längd och bredd).", point: "Mät punkt: tryck på en punkt – X, Y och Z visas och ligger kvar.", volume: "Mät volym: tryck basytans hörn (som Yta), avsluta med Enter eller första punkten – sedan höjden: skriv den eller tryck på en plan yta i modellen.", dist: "Mät avstånd: tryck på första punkten.", poly: "Mät polylinje: tryck punkt för punkt längs vägen. Avsluta med Enter, dubbeltryck eller tryck på sista punkten igen.", angle: "Mät vinkel: tryck på första punkten, sedan hörnet (vinkelns spets) och sist den andra punkten.", area: "Mät yta: tryck hörnen i tur och ordning. Avsluta med Enter eller tryck på första punkten igen." };
 let l3t = { step: 0, lock: null, vcb: "", last: null };
 let l3HoverRaf = 0;
 
@@ -404,7 +404,9 @@ function l3ToolHover(e) {
       l3TmpLine(l3t.base, s.point, s.kind === "axis" ? L3_AX[s.axis].col : "#111827", s.kind !== "axis");
       l3ShowVcb("Avstånd", l3Fmt(delta.length()) + " m");
     }
-  } else if (t === "measure" && (l3t.volPick || l3Prefs().measure === "point")) {
+  } else if (t === "measure" && l3Prefs().measure === "smart") {
+    l3ShowMarker(null); // Smart mått: trycket gäller hela objektet, ingen fästpunkt
+    } else if (t === "measure" && (l3t.volPick || l3Prefs().measure === "point")) {
     const s = l3Snap(e); l3ShowMarker(s);
     if (s && l3t.volPick) { const h = s.point.z - l3t.volPick.z0; l3ShowVcb("Höjd", l3Fmt(h) + " m · " + l3Fmt(Math.abs(l3t.volPick.area * h)) + " m³"); }
     if (s && !l3t.volPick) l3ShowVcb("Z", l3Fmt(s.point.z + l3.O[2], 2) + " m");
@@ -475,6 +477,8 @@ function l3ToolTap(e) {
   const t = l3.tool, st = l3t.step;
   // Volym: höjden från en yta i modellen (efter att basytan ritats).
   if (t === "measure" && l3t.volPick) { const s = l3Snap(e); if (s) l3VolFinish(l3t.volPick, s.point.z - l3t.volPick.z0, true); return true; }
+  // Smart (Victor 2026-10-13): bredd, höjd och volym på objektet med ett tryck.
+  if (t === "measure" && l3Prefs().measure === "smart") { if (typeof l3SmartMeasure === "function") l3SmartMeasure(e); return true; }
   // Punkt (Victor 2026-10-10: "alternativet Punkt som ger mig xyz").
   if (t === "measure" && l3Prefs().measure === "point") {
     const s = l3Snap(e); if (!s) return true;
