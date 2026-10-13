@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-13 12:02";
+const APP_VERSION = "2026-10-13 12:47";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -5652,6 +5652,9 @@ function toRow(it) {
     // det är satt (true/false) – saknas fältet behålls filens värde vid sparningen.
     ...(typeof it.temporary === "boolean" ? { temporary: it.temporary } : {}),
     ...(typeof it.demolition === "boolean" ? { demolition: it.demolition } : {}),
+    // Egen färg/opacitet efter slut (sätts i dashboarden) – bevaras så att en sparning här inte tappar den.
+    ...(it.doneColor ? { done_color: it.doneColor } : {}),
+    ...(Number.isFinite(it.doneOpacity) ? { done_opacity: it.doneOpacity } : {}),
     updated_at: new Date().toISOString()
   };
 }
@@ -5709,6 +5712,8 @@ function fromRowStored(row) {
     excelMap: Array.isArray(row.excel_map) ? row.excel_map : null,
     temporary: typeof row.temporary === "boolean" ? row.temporary : undefined,
     demolition: typeof row.demolition === "boolean" ? row.demolition : undefined,
+    doneColor: row.done_color || null,
+    doneOpacity: row.done_opacity !== undefined && row.done_opacity !== null && row.done_opacity !== "" && Number.isFinite(Number(row.done_opacity)) ? Number(row.done_opacity) : null,
     updatedAt: row.updated_at
   };
 }
