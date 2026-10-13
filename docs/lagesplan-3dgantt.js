@@ -240,7 +240,8 @@ function l3gaBind(d, rr = l3plDockRender, actsFn = null) {
   on("[data-plweek]", "onclick", b => { $("dateInput").value = b.dataset.plweek; $("dateInput").dispatchEvent(new Event("change")); setTimeout(l3plDockRender, 50); });
   // Lappar, staplar och listrader.
   d.querySelectorAll("[data-plk]").forEach(el => {
-    el.onclick = e => { if (el._dragged) { el._dragged = false; return; } l3plSelect(el.dataset.plk, P.split); };
+    el.classList.toggle("v3-multisel", l3pl.multi && l3pl.multi.has(el.dataset.plk));
+    el.onclick = e => { if (el._dragged) { el._dragged = false; return; } if (e.ctrlKey || e.metaKey) { e.preventDefault(); l3plSelectMulti(el.dataset.plk, P.split); return; } l3plSelect(el.dataset.plk, P.split); };
     // Excel-planeringens rader (nyckel "x…"): bara markera i 3D – de ändras i 4D-planering (skydd mot fel fil).
     const xls = /^x/.test(el.dataset.plk);
     el.ondblclick = e => { e.preventDefault(); if (xls) { l3Status("Excel-planeringen ändras i 4D-planering – här går den att markera i 3D.", true); return; } l3gaEdit(el.dataset.plk); };

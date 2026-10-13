@@ -486,6 +486,23 @@ const PP = [
     });
     if (!(act.on > 0) || !act.lines || act.col !== 0xffc400 || act.off !== 0) fail('Pågående objekt – gul kontur: ' + JSON.stringify(act));
     console.log('OK: pågående objekt får en gul kontur (val), av = borta');
+    // Info-bubblor i 3D-editorn: ett kort per aktivitet med namn, datum, framdrift, område och aktivitet.
+    const bub = await page.evaluate(async () => {
+      const row = items.find(r => r.start_date) || (items.push({ id: 'zz1', object_name: 'Test', start_date: '2026-10-01', end_date: '2026-10-09' }), items[items.length - 1]);
+      placements = [{ id: 'tp1', type: 'bod', name: 'Bod', x: 6512340, y: 150105, z: 0, L: 8, B: 3, H: 2.7, rot: 0, dz: 0, color: '#f59e0b', itemId: row.id }]; l3BuildPlacements();
+      row.progress = 40; row.area = 'PRODUKTION / 741 Hus'; row.activity = 'Betong';
+      l3SetPref('bubScope', 'all'); l3SetPref('bubOn', true); l3bub.sig = ''; l3RenderLabels();
+      await new Promise(r => setTimeout(r, 300));
+      let err = ''; try { l3bubRebuild(); } catch (e) { err = String(e && e.stack || e).slice(0, 300); }
+      const n0 = l3bub.anchors.length, a0 = l3bub.anchors[0];
+      if (a0) { l3.camera.position.set(a0.v.x + 12, a0.v.y - 12, a0.v.z + 9); l3.camera.up.set(0, 0, 1); l3.camera.lookAt(a0.v); l3.camera.updateMatrixWorld(true); l3.camera.updateProjectionMatrix(); l3bub.sig = ''; l3RenderLabels(); }
+      const el = document.querySelector('#v3Bubbles .v3-bub'); const txt = el ? el.innerText : '';
+      l3SetPref('bubScope', 'marked'); l3bub.sig = ''; l3RenderLabels(); const marked = document.querySelectorAll('#v3Bubbles .v3-bub').length;
+      l3SetPref('bubOn', false); l3RenderLabels(); const off = document.querySelectorAll('#v3Bubbles .v3-bub').length;
+      return { txt, marked, off, n: n0, err, dbg0: { pm: l3.placeMeshes.size, vis: [...l3.placeMeshes.values()].map(g => g.visible), pl: placements.length, row: { id: row.id, sd: row.start_date }, scope: l3bubCfg().scope, on: l3bubOn(), temp: typeof rowTempOffAt === 'function' && rowTempOffAt(row, $('dateInput').value || todayIso()) } };
+    });
+    if (!/40 %/.test(bub.txt) || !/PRODUKTION \/ 741 Hus/.test(bub.txt) || !/Betong/.test(bub.txt) || bub.marked !== 0 || bub.off !== 0) fail('Info-bubblor i 3D-editorn: ' + JSON.stringify(bub));
+    console.log('OK: info-bubblor i 3D-editorn – namn, datum, framdrift, område, aktivitet; urval; av');
     // Valen finns i fliken.
     const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlFxBl', 'v3FlFxLegend', 'v3FlAnimDef', 'v3PlLinkHost', 'v3FlTitleOn'].every(id => document.getElementById(id)); });
     if (!ui) fail('Valen för grafiken saknas i fliken');

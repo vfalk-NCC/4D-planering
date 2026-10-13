@@ -139,6 +139,7 @@ function l3plRenderTab() {
         : `<div class="v3-pal-hint">${acts.length} aktiviteter · ${esc(range[0])} – ${esc(range[1])}</div>`}
       ${typeof planSource !== "undefined" && planSource !== "pp" ? `<div class="v3-pal-hint">3D-färgerna följer Excel-planeringen (vald i 4D-planering). Öppna lägesplanen med Powerproject vald för att färga efter den här tidplanen.</div>`
         : `<label class="v3-pl-crow" title="Vilken planering de kopplade IFC-objekten färgas efter. Båda: Powerproject först, Excel där objektet bara är kopplat i Excel-planeringen.">3D-färger<select id="v3PlColorSrc">${[["both", "Båda"], ["pp", "Powerproject"], ["excel", "Excel"]].map(([v, t]) => `<option value="${v}" ${l3plColorSrc() === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>`}
+      <label class="v3-pl-crow" title="En tydlig bubbla vid varje aktivitets objekt med namn, datum, framdrift, område och aktivitet – samma som i 4D-dashboarden.">Info-bubblor<span><input type="checkbox" id="v3PlBub" ${l3Prefs().bubOn ? "checked" : ""} /> <select id="v3PlBubScope" title="Vilka som får bubbla">${[["auto", "Markerade, annars pågående"], ["marked", "Bara markerade"], ["active", "Pågående och försenade"], ["all", "Alla"]].map(([v, t]) => `<option value="${v}" ${(l3Prefs().bubScope || "auto") === v ? "selected" : ""}>${t}</option>`).join("")}</select></span></label>
       <label class="v3-pl-crow" title="Objekt vars aktivitet pågår (eller är försenad) vid valt datum får en tydlig gul kontur – utan att du behöver markera något.">Pågående objekt<span><input type="checkbox" id="v3PlActive" ${l3Prefs().actOutline ? "checked" : ""} /> gul kontur</span></label>
       <button type="button" class="v3-wide ${l3pl.dock ? "on" : ""}" id="v3PlDock">${l3pl.dock ? "Dölj tavlan" : "Visa tavlan och Gantten"}</button>
       ${now.length ? `<div class="v3-pl-now"><div class="v3-pl-sub">Pågår ${esc(day)}</div>${now.slice(0, 12).map(a => `<button type="button" class="v3-pl-act" data-plsel="${esc(a.key)}" title="Markera aktivitetens objekt i 3D"><i style="background:${phaseColor(zonePhase(a.rows, day))}"></i><span>${esc(a.objs.length ? `${a.objs.slice(0, 2).join(", ")}${a.objs.length > 2 ? " +" + (a.objs.length - 2) : ""} – ${a.name}` : a.name)}</span></button>`).join("")}${now.length > 12 ? `<div class="v3-pal-hint">… och ${now.length - 12} till</div>` : ""}</div>` : ""}
@@ -150,6 +151,8 @@ function l3plRenderTab() {
   const on = (id, fn, ev = "onclick") => { const el = host.querySelector("#" + id); if (el) el[ev] = fn; };
   on("v3PlReload", () => { l3pl.rows = null; l3pl.xrows = null; l3plLoad(true); l3plRenderTab(); if (typeof l3bRecolor === "function") l3bRecolor(); });
   on("v3PlDock", () => l3plDockToggle());
+  on("v3PlBub", e => { l3SetPref("bubOn", !!e.target.checked); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }, "onchange");
+  on("v3PlBubScope", e => { l3SetPref("bubScope", e.target.value); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }, "onchange");
   on("v3PlActive", e => { l3SetPref("actOutline", !!e.target.checked); if (typeof l3actRebuild === "function") l3actRebuild(); }, "onchange");
   on("v3PlColorSrc", e => { l3plSet("colorSrc", e.target.value); if (typeof l3bRecolor === "function") { l3bRecolor(); if (typeof l3Render === "function") l3Render(); } }, "onchange");
   host.querySelectorAll("[data-plsel]").forEach(b => { b.onclick = () => l3plSelect(b.dataset.plsel); });
@@ -235,14 +238,34 @@ function l3plAnimBind(host) {
   const clr = host.querySelector("#v3FlAnimClr"); if (clr) clr.onclick = () => { put({ ...(f().anim || {}), by: {} }); l3plRenderTab(); };
 }
 function l3plRender() { l3plRenderTab(); if (l3pl.dock) l3plDockRender(); }
-function l3plSelect(key, split = false) {
-  const a = l3plActs(split).find(x => x.key === key) || l3plActs(!split).find(x => x.key === key)
+function l3plActOf(key, split) {
+  return l3plActs(split).find(x => x.key === key) || l3plActs(!split).find(x => x.key === key)
     || (l3pl.xrows ? (l3plActs(split, l3pl.xrows, "x").find(x => x.key === key) || l3plActs(!split, l3pl.xrows, "x").find(x => x.key === key)) : null);
-  if (!a) return;
+}
+function l3plEntsOf(a) {
   const guids = new Set(a.rows.map(r => String(r.object_id || "")).filter(Boolean)), ents = [];
   if (typeof l3pEnts === "function") l3b.models.forEach(m => { const map = l3pEnts(m); guids.forEach(g => (map.get(g) || []).forEach(e => ents.push(e))); });
+  return ents;
+}
+l3pl.multi = new Set(); // Ctrl-markerade aktiviteter i tavlan/Gantten
+function l3plMarkMulti() { document.querySelectorAll("[data-plk]").forEach(el => el.classList.toggle("v3-multisel", l3pl.multi.has(el.dataset.plk))); }
+function l3plSelect(key, split = false) {
+  if (l3pl.multi.size) { l3pl.multi.clear(); l3plMarkMulti(); }
+  const a = l3plActOf(key, split);
+  if (!a) return;
+  const ents = l3plEntsOf(a);
   if (ents.length) { l3bsSet(ents); if (typeof l3bsZoom === "function") l3bsZoom(); l3Status(`${a.name}: ${ents.length} objekt markerade.`); }
   else l3Status(`${a.name}: objekten finns inte i de inlästa modellerna.`, true);
+}
+/* Ctrl/Cmd-klick (som i dashboarden): flera aktiviteter markeras samtidigt i 3D och visas tillsammans. */
+function l3plSelectMulti(key, split = false) {
+  if (l3pl.multi.has(key)) l3pl.multi.delete(key); else l3pl.multi.add(key);
+  l3plMarkMulti();
+  const ents = []; let names = 0;
+  l3pl.multi.forEach(k => { const a = l3plActOf(k, split); if (a) { names++; ents.push(...l3plEntsOf(a)); } });
+  if (!l3pl.multi.size) { l3bsSet([]); l3Status("Markeringen rensad."); return; }
+  if (ents.length) { l3bsSet(ents); if (typeof l3bsZoom === "function") l3bsZoom(); l3Status(`${names} aktiviteter markerade (${ents.length} objekt) – Ctrl-klicka fler eller klicka utan Ctrl för en.`); }
+  else l3Status("Objekten finns inte i de inlästa modellerna.", true);
 }
 
 /* Tavlan, Gantten och listan (panelen nederst) finns i lagesplan-3dgantt.js. */
