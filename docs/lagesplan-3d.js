@@ -892,9 +892,11 @@ function l3PlaceAt(e) {
   return o ? o.userData.placeId : null;
 }
 /* Markerar ids (etableringsobjekt). Handtagen visas när ett objekt är markerat i Välj. */
-function l3SelectIds(ids) {
+/* opts.keepIfc: Ctrl/Skift-klick lägger till etableringsobjektet utan att släppa markerade IFC-objekt
+   (Victor 2026-10-13: markera fundament och pelare tillsammans och exportera). Vanligt klick: en sorts i taget. */
+function l3SelectIds(ids, opts = {}) {
   l3.sel = new Set(ids.filter(id => placements.some(p => p.id === id)));
-  if (l3.sel.size && typeof l3bsClear === "function") l3bsClear(); // en sorts markering i taget
+  if (l3.sel.size && !opts.keepIfc && typeof l3bsClear === "function") l3bsClear();
   placeActiveId = l3.sel.size ? [...l3.sel][l3.sel.size - 1] : null;
   l3RefreshSel();
   l3RenderSide();
@@ -990,7 +992,7 @@ function l3Tap(e) {
   if (typeof l3phTap === "function" && l3phTap(e)) return; // fotomarkör
   const id = l3PlaceAt(e);
   if (id) {
-    if (e.shiftKey || e.ctrlKey || e.metaKey || l3.multi) { const s = new Set(l3.sel); if (s.has(id)) s.delete(id); else s.add(id); l3SelectIds([...s]); }
+    if (e.shiftKey || e.ctrlKey || e.metaKey || l3.multi) { const s = new Set(l3.sel); if (s.has(id)) s.delete(id); else s.add(id); l3SelectIds([...s], { keepIfc: true }); }
     else l3SelectIds([id]);
     return;
   }
@@ -1189,16 +1191,18 @@ function l3OpenCtx(x, y, e) {
   const id = l3PlaceAt(e);
   if (id && !l3.sel.has(id)) l3SelectIds([id]);
   const hit = l3Ray(e, l3Surfaces())[0], at = hit ? hit.point.clone() : null;
-  const has = l3.sel.size > 0, n = l3.sel.size;
+  const has = l3.sel.size > 0, n = l3.sel.size, nIfc = typeof l3bs !== "undefined" ? l3bs.sel.length : 0;
+  const expItem = n || nIfc ? [["exp", "Exportera markerade som IFC…", ""], null] : []; // placerade och/eller IFC-objekt, tillsammans
   const objHit = !has && hit && (hit.object === l3.objMesh || (hit.object.userData && hit.object.userData.l3b)) ? hit : null;
   const items = has ? [
     ["move", "Flytta punkt till punkt", "M"], ["rotate", "Vrid", "Q"], n === 1 ? ["align", "Rikta kant mot kant", "A"] : null,
     ["cspec", "Kopiera special…", ""], ["mspec", "Flytta special…", ""], null,
     ["dup", "Duplicera", "Ctrl+D"], ["copy", "Kopiera", "Ctrl+C"], ["drop", "Ställ på ytan", ""], ["similar", "Markera alla av samma typ", ""], ["focus", "Zooma hit", "F"], null,
     ["hide", "Dölj", "H"], ["iso", "Visa bara markerade", "I"], null,
+    ...expItem,
     ["del", n === 1 ? "Ta bort" : `Ta bort ${n} objekt`, "Del"],
     ...(typeof l3kNew === "function" && at ? [null, ["comment", "Kommentar här…", ""]] : []),
-  ] : [...(typeof l3kNew === "function" && at ? [["comment", "Kommentar här…", ""], null] : []), ...(objHit ? [["hideobj", "Dölj objektet", ""], ["info", "Visa uppgifter", ""], null] : []), ["paste", "Klistra in här", "Ctrl+V"], ["showall", "Visa alla", "U"], ["fit", "Visa allt", "Home"], ["top", "Uppifrån", ""], ["clip", "Snitt här", ""]];
+  ] : [...expItem, ...(typeof l3kNew === "function" && at ? [["comment", "Kommentar här…", ""], null] : []), ...(objHit ? [["hideobj", "Dölj objektet", ""], ["info", "Visa uppgifter", ""], null] : []), ["paste", "Klistra in här", "Ctrl+V"], ["showall", "Visa alla", "U"], ["fit", "Visa allt", "Home"], ["top", "Uppifrån", ""], ["clip", "Snitt här", ""]];
   ctx.innerHTML = items.map(it => it ? `<button type="button" data-ctx="${it[0]}" ${it[0] === "paste" && !(l3.clip && l3.clip.length) ? "disabled" : ""} class="${it[0] === "del" ? "v3-danger" : ""}"><span>${it[1]}</span><kbd>${it[2]}</kbd></button>` : "<hr/>").join("");
   const r = document.getElementById("v3Canvas").getBoundingClientRect();
   ctx.classList.remove("hidden");
@@ -1215,6 +1219,7 @@ function l3OpenCtx(x, y, e) {
     else if (k === "hide") l3HideSel(); else if (k === "iso") l3Isolate(); else if (k === "showall") l3ShowAll();
     else if (k === "hideobj") l3HideHit(objHit); else if (k === "info") l3ShowHitInfo(objHit);
     else if (k === "comment") l3kNew(at, hit);
+    else if (k === "exp") l3ExportSelected();
     else if (k === "clip" && hit && hit.face) { const nrm = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize(); if (nrm.dot(l3.camera.position.clone().sub(hit.point)) < 0) nrm.negate(); l3AddClip(nrm.negate(), hit.point.clone()); }
   }; });
 }
@@ -1233,6 +1238,12 @@ function l3RenderSide(liveOnly) {
   if (typeof l3ss !== "undefined" && l3ss.sel) {
     if (list.length || (typeof l3bs !== "undefined" && l3bs.sel.length)) l3ssSelect(null, true);
     else { side.classList.remove("hidden"); l3ssRenderSide(side); return; }
+  }
+  // Blandad markering (IFC-objekt + etablering): en gemensam panel med Exportera.
+  if (list.length && typeof l3bs !== "undefined" && l3bs.sel.length && typeof l3RenderMixedSide === "function") {
+    const key = "mixed:" + l3bs.sel.map(e => e.key).join(",") + "|" + list.map(p => p.id).join(",");
+    if (!(liveOnly && side.dataset.id === key)) l3RenderMixedSide(side, list);
+    return;
   }
   // Objekt i byggnaden (IFC) markerade: deras panel.
   if (!list.length && typeof l3bs !== "undefined" && l3bs.sel.length) {

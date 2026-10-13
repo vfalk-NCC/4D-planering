@@ -158,7 +158,7 @@ function l3bsTap(h, additive) {
     const cur = l3bs.sel.map(x => ({ mesh: x.mesh, ri: x.ri }));
     const i = l3bs.sel.findIndex(x => x.key === key);
     if (i >= 0) cur.splice(i, 1); else cur.push(e);
-    l3bsSet(cur);
+    l3bsSet(cur, { keepPlaces: true }); // Ctrl/Skift: etableringsobjekt som redan är markerade finns kvar (blandad markering)
   } else l3bsSet([e]);
   return true;
 }
@@ -380,4 +380,45 @@ async function l3bsExportIfc() {
     l3Status("Kunde inte exportera: " + e.message, true);
     throw e;
   }
+}
+
+/* ---- Blandad markering: IFC-objekt + etableringsobjekt tillsammans (Victor 2026-10-13: "hålla in CTRL och klicka på
+   fundament och sedan pelaren och sedan högerklicka och välja exportera markerade som IFC") ----------------------------
+   Ctrl/Skift-klick lägger till i markeringen oavsett sort; vanligt klick byter ut den. Exporten skapar nya filer i
+   Trimble Connect (aldrig över något befintligt): en IFC per modell med de markerade IFC-objekten (kopior och flyttar med)
+   och en IFC med de markerade etableringsobjekten. */
+function l3RenderMixedSide(side, list) {
+  const n = l3bs.sel.length, key = "mixed:" + l3bs.sel.map(e => e.key).join(",") + "|" + list.map(p => p.id).join(",");
+  side.dataset.id = key;
+  side.classList.remove("hidden");
+  const names = list.slice(0, 4).map(p => escHtml(p.name || (placeLib(p.type) || {}).label || p.type)).join(", ") + (list.length > 4 ? ` +${list.length - 4}` : "");
+  side.innerHTML = `<div class="v3-side-h"><b>${n} IFC-objekt + ${list.length} etableringsobjekt markerade</b><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3MixClear" title="Avmarkera allt (Esc)">✕</button></div>
+    <div class="v3-sub">${escHtml(l3bs.sel.slice(0, 3).map(e => (e.mesh.userData.l3b.ranges[e.ri] || {}).name || "Objekt").join(", "))}${n > 3 ? ` +${n - 3}` : ""} · ${names}</div>
+    <div class="v3-btns"><button type="button" class="v3-primary" id="v3MixExport" title="De markerade som nya IFC-filer i Trimble Connect – originalen rörs inte">${L3_ICO.upload || ""}Exportera markerade som IFC…</button>
+      <button type="button" id="v3MixZoom" title="Zooma till de markerade (F)">${L3_ICO.focus || ""}Zooma</button></div>
+    <div class="v3-pal-hint">Ctrl/Skift + klick lägger till eller tar bort objekt (IFC-objekt och etablering i samma markering). Högerklick → Exportera markerade som IFC.</div>`;
+  const on = (id, fn) => { const b = side.querySelector("#" + id); if (b) b.onclick = fn; };
+  on("v3MixExport", () => l3ExportSelected());
+  on("v3MixZoom", () => { if (typeof l3View === "function") l3View("sel"); });
+  on("v3MixClear", () => { l3SelectIds([]); if (typeof l3bsClear === "function") l3bsClear(); });
+}
+async function l3ExportSelected() {
+  const nIfc = l3bs.sel.length, pids = [...l3.sel].filter(id => placements.some(p => p.id === id));
+  if (!nIfc && !pids.length) { l3Status("Inget är markerat – markera objekten (Ctrl+klick för flera) och försök igen.", true); return; }
+  const parts = [];
+  if (nIfc) parts.push(`${nIfc} IFC-objekt ur modellen (en ny IFC-fil per modell, med dina flyttar och kopior)`);
+  if (pids.length) parts.push(`${pids.length} etableringsobjekt (en ny IFC-fil)`);
+  if (!(await uiConfirm(`Exportera de markerade som IFC i Trimble Connect?\n\n• ${parts.join("\n• ")}\n\nDet blir nya filer med datum och klockslag i namnet – inget befintligt skrivs över.`, { ok: "Exportera" }))) { l3Status("Inget exporterades."); return; }
+  const done = [], fail = [];
+  if (nIfc) { try { const r = await l3bsExportIfc(); (r || []).forEach(x => done.push(x.name)); } catch (e) { fail.push("IFC-objekten: " + e.message); } }
+  if (pids.length) {
+    try {
+      l3Status(`Exporterar ${pids.length} etableringsobjekt som IFC i Trimble Connect…`);
+      if (typeof placeSaveNow === "function") await placeSaveNow();
+      const r = await askOpener("placeSaveIfc", { ids: pids }, 0);
+      if (r && r.n) (r.files || [r.name]).filter(Boolean).forEach(x => done.push(x)); else fail.push("Etableringsobjekten: ingenting att spara (saknar form).");
+    } catch (e) { fail.push("Etableringsobjekten: " + e.message); }
+  }
+  const msg = done.length ? `✓ Exporterat som nya IFC-filer i Trimble Connect: ${done.join(", ")}.${fail.length ? ` Men: ${fail.join(" ")}` : ""}` : `Kunde inte exportera. ${fail.join(" ")}`;
+  l3Status(msg, !done.length || !!fail.length); if (done.length) l3Toast(msg);
 }

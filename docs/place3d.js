@@ -428,9 +428,10 @@ function placePrismMesh(doc, poly, z0, z1, o) {
   return doc.E(`IFCTRIANGULATEDFACESET(${pl},$,.T.,(${faces.map(f => `(${f.join(",")})`).join(",")}),$)`);
 }
 function placeItemOf(p) { return p.itemId && typeof items !== "undefined" ? items.find(x => x.id === p.itemId) || null : null; }
-function buildPlacementsIfc(projName) {
+function buildPlacementsIfc(projName, only) {
   // Egna IFC-modeller blir egna filer (se placeModelIfcFiles); GLB-modeller följer med här.
   const list = placements.filter(p => {
+    if (only && !only.has(p.id)) return false; // Exportera markerade: bara urvalet
     const l = placeLib(p.type) || {};
     if (l.isModel) return !!(l.model && l.model.kind === "mesh" && typeof placeMeshReady === "function" && placeMeshReady(l.model.id));
     return placeParts(p).length;
@@ -474,18 +475,21 @@ function buildPlacementsIfc(projName) {
   });
   return { text: doc.finish(elems, `Etablering ${projName || ""}.ifc`), n: list.length };
 }
-async function placeSaveIfc() {
+/* opts.ids: bara de markerade placeringarna (Exportera markerade som IFC i 3D-vyn) – en ny fil med urvalet; ingen 4D-koppling
+   och inget tänds/släcks i TC. Utan opts: alla placeringar som förut. */
+async function placeSaveIfc(opts = {}) {
+  const only = Array.isArray(opts.ids) && opts.ids.length ? new Set(opts.ids) : null;
   await placeSaveNow();
   let projName = "";
   try { projName = ((await API.project.getProject()) || {}).name || ""; } catch (e) { /* utan namn */ }
   // Egna modeller: GLB-geometrin hämtas in, IFC-modellerna blir egna (flyttade) filer.
   if (typeof placeModelsPrepare === "function") await placeModelsPrepare();
-  const r = buildPlacementsIfc(projName);
+  const r = buildPlacementsIfc(projName, only);
   const stamp = placeStamp();
-  const extra = typeof placeModelIfcFiles === "function" ? await placeModelIfcFiles(stamp) : [];
+  const extra = typeof placeModelIfcFiles === "function" ? await placeModelIfcFiles(stamp, only) : [];
   if (!r && !extra.length) { alert("Det finns inga placerade objekt att spara. Välj ett objekt och tryck i modellen."); return null; }
   // Ny fil varje gång (datum + klockslag) – en tidigare export skrivs aldrig över.
-  const name = `Etablering ${projName || "4D-planering"} ${stamp}.ifc`.replace(/[\\/:*?"<>|]/g, "-");
+  const name = `Etablering${only ? ` urval ${only.size} objekt` : ""} ${projName || "4D-planering"} ${stamp}.ifc`.replace(/[\\/:*?"<>|]/g, "-");
   const files = [...(r ? [new File([new TextEncoder().encode(r.text)], name, { type: "application/x-step" })] : []), ...extra];
   const n = (r ? r.n : 0) + extra.length;
   setPlaceStatus(`Sparar ${n} objekt som IFC i Trimble Connect…`);
@@ -503,10 +507,10 @@ async function placeSaveIfc() {
     return { n, name, tc: null, error: e.message };
   }
   const at = new Date().toISOString();
-  placements.forEach(p => { if (placeIsNew(p)) { p.ifc_at = at; placeDirty.add(p.id); } });
+  placements.forEach(p => { if (placeIsNew(p) && (!only || only.has(p.id))) { p.ifc_at = at; placeDirty.add(p.id); } });
   await placeSaveNow();
-  const etabId = r ? placeUploadedId(upRes, name) : null;
-  const shown = await placeShowUploaded(upRes);
+  const etabId = r && !only ? placeUploadedId(upRes, name) : null;
+  const shown = only ? false : await placeShowUploaded(upRes);
   const coupled = r && etabId ? await placeCouple4D(etabId) : { n: 0 };
   setPlaceStatus(`✓ ${n} objekt sparade i mappen "${PLACE_TC_FOLDER}" (${files.map(f => f.name).join(", ")}).${shown ? " Den nya filen visas i 3D-vyn och den förra är släckt." : " Öppna filen i 3D-vyn för att se dem."}${coupled.n ? ` ${coupled.n} ${coupled.n === 1 ? "objekt kopplat" : "objekt kopplade"} till sina aktiviteter (4D).` : ""}`);
   renderPlacePanel(); placeRedraw();

@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-13 09:27";
+const APP_VERSION = "2026-10-13 09:35";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -457,7 +457,7 @@ window.addEventListener("message", async e => {
       if (typeof placeSaveIfc !== "function") throw new Error("Placera i 3D finns inte i den här versionen av 4D-planering.");
       if (placeDirty.size || placeDeleted.size) await placeSaveNow();
       await place3dLoad({ fresh: true });
-      const r = await placeSaveIfc();
+      const r = await placeSaveIfc(Array.isArray(msg.ids) && msg.ids.length ? { ids: msg.ids.map(String) } : {});
       reply(r || { n: 0 });
     } else if (msg.type === "positions") {
       reply(await lagesplanPositions());

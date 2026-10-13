@@ -332,6 +332,37 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   await page.click('#v3PalLayers [data-l3l-forget="f:F9"]'); await page.waitForTimeout(150);
   if (await page.$('#v3PalLayers [data-l3l-rem="f:F9"]') || await page.evaluate(() => l3bRememberedAll().some(w => w.id === 'f:F9')) || (await page.evaluate(() => window.__calls.length)) !== tcF) fail('Soptunnan ska ta bort modellen ur Hämtade (utan anrop till TC)');
 
+  // Blandad markering: fundament (IFC-objekt) + pelare (etablering) med Ctrl-klick, högerklick → Exportera markerade som IFC.
+  {
+    const hExp = d => d.accept(); page.__uiDialogHandlers.push(hExp);
+    const mx = await page.evaluate(async () => {
+      const m = l3b.models.find(x => x.id === 'f:F2'); m.visible = true; m.meshes.forEach(x => { x.visible = true; });
+      let ent = null; m.meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => { if (/K10/.test(r.name)) ent = { mesh, ri }; }));
+      const O = l3.O, p = { id: 'mx1', type: 'container', name: 'Pelare', x: O[0] + 60, y: O[1] + 60, z: 0, L: 1, B: 1, H: 5, R: 0, rot: 0 };
+      placements.push(p); const g = l3AddPlacementMesh(p);
+      l3SelectIds([]); l3bsSet([ent]);
+      const side0 = l3bs.sel.length === 1;
+      l3SelectIds(['mx1'], { keepIfc: true }); // Ctrl-klick på pelaren: fundamentet ska ligga kvar
+      const both = l3bs.sel.length === 1 && l3.sel.has('mx1');
+      const panel = /1 IFC-objekt \+ 1 etableringsobjekt/.test(document.getElementById('v3Side').textContent) && !!document.getElementById('v3MixExport');
+      l3bsSet([ent, ent], { keepPlaces: true }); const keep = l3.sel.has('mx1') && l3bs.sel.length === 1; // Ctrl-klick på IFC-objekt behåller etableringen
+      l3SelectIds(['mx1']); const plain = l3bs.sel.length === 0 && l3.sel.has('mx1'); // vanligt klick byter ut
+      l3SelectIds(['mx1'], { keepIfc: true }); l3bsSet([ent], { keepPlaces: true });
+      // Högerklicksmenyn har Exportera markerade som IFC…
+      const r = document.getElementById('v3Canvas').getBoundingClientRect(); l3OpenCtx(r.left + 300, r.top + 200, { clientX: r.left + 5, clientY: r.top + 5 });
+      const menu = !!document.querySelector('#v3Ctx [data-ctx="exp"]');
+      const calls = []; const oIfc = l3bsExportIfc, oAsk = askOpener, oSave = typeof placeSaveNow === 'function' ? placeSaveNow : null;
+      l3bsExportIfc = async () => { calls.push(['ifc', l3bs.sel.length]); return [{ name: 'Modell urval.ifc' }]; };
+      askOpener = async (type, extra, t, pr) => { if (type === 'placeSaveIfc') { calls.push(['place', extra.ids.join()]); return { n: extra.ids.length, files: ['Etablering urval.ifc'] }; } return oAsk(type, extra, t, pr); };
+      document.querySelector('#v3Ctx [data-ctx="exp"]').click(); for (let i = 0; i < 60 && calls.length < 2; i++) await new Promise(r => setTimeout(r, 50));
+      l3bsExportIfc = oIfc; askOpener = oAsk;
+      l3bsSet([]); l3SelectIds([]); placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(g); l3.placeMeshes.delete('mx1');
+      return { side0, both, panel, keep, plain, menu, calls };
+    });
+    page.__uiDialogHandlers.splice(page.__uiDialogHandlers.indexOf(hExp), 1);
+    if (!mx.side0 || !mx.both || !mx.panel || !mx.keep || !mx.plain || !mx.menu || JSON.stringify(mx.calls) !== JSON.stringify([['ifc', 1], ['place', 'mx1']])) fail('Blandad markering och export (IFC + etablering): ' + JSON.stringify(mx));
+    else console.log('OK: Ctrl-klick markerar IFC-objekt och etablering tillsammans; högerklick → Exportera markerade som IFC (en ny fil per källa)');
+  }
   // Flytta ett objekt i IFC:n och spara som ny fil i samma mapp i TC (Victor 2026-10-10).
   const mv = await page.evaluate(async () => {
     const m = l3b.models.find(x => x.id === 'f:F2'); m.visible = true; m.meshes.forEach(x => { x.visible = true; });

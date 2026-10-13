@@ -668,11 +668,11 @@ function placeMeshEnsure(id) {
   return placeMeshLoading.get(id);
 }
 /* En flyttad IFC-fil per ny/ändrad placering av en IFC-modell. */
-async function placeModelIfcFiles(stamp = placeStamp()) {
+async function placeModelIfcFiles(stamp = placeStamp(), only = null) {
   const out = [];
   for (const p of placements) {
     const a = String(p.type).startsWith("model:") ? placeAssetOf(p.type.slice(6)) : null;
-    if (!a || a.kind !== "ifc" || !placeIsNew(p)) continue;
+    if (!a || a.kind !== "ifc" || (only ? !only.has(p.id) : !placeIsNew(p))) continue; // urval: även redan sparade
     let text = placeIfcCache.get(a.id);
     if (!text) { text = await pmReadAssetFile(a); placeIfcCache.set(a.id, text); }
     const name = `${p.name || a.name} ${stamp}.ifc`.replace(/[\\/:*?"<>|]/g, "-");

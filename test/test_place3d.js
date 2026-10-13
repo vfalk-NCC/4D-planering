@@ -237,6 +237,15 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   if (!(await page.locator('#placeStatus').innerText()).includes('kopplat till sina aktiviteter')) fail('Statusen ska berätta om 4D-kopplingen');
   if (up[1].name === up[0].name || !/ \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(up[1].name)) fail('Varje sparning ska bli en ny fil med datum och klockslag: ' + up[0].name + ' / ' + up[1].name);
 
+  // Exportera markerade (Victor 2026-10-13): bara urvalet, en ny fil, varken 4D-koppling eller tänd/släckt i TC rörs.
+  {
+    const ids = await page.evaluate(() => placements.filter(p => p.type === 'bod').map(p => p.id));
+    const tog0 = await page.evaluate(() => window.__toggled.length), n0 = get('plan_items.json').length;
+    await page.evaluate(ids => placeSaveIfc({ ids }), ids); await wait(800);
+    const up3 = await page.evaluate(() => window.__up);
+    if (up3.length !== 3 || !/ urval 1 objekt /.test(up3[2].name) || proxies(up3[2].text).length !== 1 || up3[2].name === up3[1].name) fail('Exportera markerade: en ny fil med bara urvalet: ' + JSON.stringify(up3.map(u => u.name)));
+    if ((await page.evaluate(() => window.__toggled.length)) !== tog0 || get('plan_items.json').length !== n0) fail('Exportera markerade ska inte tända/släcka modeller eller ändra 4D-kopplingar');
+  }
   // 3D-vyn i lägesplanen har sparat: 4D-planering läser om etableringen (meddelande från samma origin).
   const ext = get('plan_placements.json'); ext.push({ id: 'fran3d', type: 'container', name: 'Från 3D', x: 5, y: 5, z: 0, L: 6, B: 2.4, H: 2.6, rot: 0, dz: 0 }); put('plan_placements.json', ext);
   const rep = await page.evaluate(() => new Promise(res => {
