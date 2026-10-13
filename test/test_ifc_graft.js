@@ -50,9 +50,9 @@ const add = placeDoc();
   console.log('OK: IFC2X3 – etableringsobjektet som IfcFacetedBrep med ägarhistorik och stilar');
 }
 { // Kan inte: ingen plats / okänt schema
-  const a = S.ifcGraft(IFC('IFC4', '$', false), add), b = S.ifcGraft(IFC('IFC4X3', '$'), add), c = S.ifcGraft(IFC('IFC2X3', '$').replace(/#2=IFCOWNERHISTORY[^\n]*\n/, '').replace(/,#2,/g, ',$,'), add);
+  const a = S.ifcGraft(IFC('IFC4', '$', false), add), b = S.ifcGraft(IFC('IFC9', '$'), add), c = S.ifcGraft(IFC('IFC2X3', '$').replace(/#2=IFCOWNERHISTORY[^\n]*\n/, '').replace(/,#2,/g, ',$,'), add);
   if (a.text || !/plats/.test(a.why)) fail('Utan plats ska det inte gå: ' + JSON.stringify(a.why));
-  if (b.text || !/schema/.test(b.why)) fail('Okänt schema (IFC4X3) ska inte gå: ' + JSON.stringify(b.why));
+  if (b.text || !/schema/.test(b.why)) fail('Okänt schema ska inte gå: ' + JSON.stringify(b.why));
   if (c.text) fail('IFC2X3 utan ägarhistorik ska inte gå');
   console.log('OK: utan plats / ägarhistorik sparas det i separata filer (ingen trasig fil)');
 }
