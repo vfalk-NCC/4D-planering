@@ -347,21 +347,27 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
       const panel = /1 IFC-objekt \+ 1 etableringsobjekt/.test(document.getElementById('v3Side').textContent) && !!document.getElementById('v3MixExport');
       l3bsSet([ent, ent], { keepPlaces: true }); const keep = l3.sel.has('mx1') && l3bs.sel.length === 1; // Ctrl-klick på IFC-objekt behåller etableringen
       l3SelectIds(['mx1']); const plain = l3bs.sel.length === 0 && l3.sel.has('mx1'); // vanligt klick byter ut
+      { const r0 = document.getElementById('v3Canvas').getBoundingClientRect(); l3OpenCtx(r0.left + 300, r0.top + 200, { clientX: r0.left + 5, clientY: r0.top + 5 }); } var menuSingle = !!document.querySelector('#v3Ctx [data-ctx="exp"]'); l3HideMenus();
       l3SelectIds(['mx1'], { keepIfc: true }); l3bsSet([ent], { keepPlaces: true });
       // Högerklicksmenyn har Exportera markerade som IFC…
       const r = document.getElementById('v3Canvas').getBoundingClientRect(); l3OpenCtx(r.left + 300, r.top + 200, { clientX: r.left + 5, clientY: r.top + 5 });
       const menu = !!document.querySelector('#v3Ctx [data-ctx="exp"]');
-      const calls = []; const oIfc = l3bsExportIfc, oAsk = askOpener, oSave = typeof placeSaveNow === 'function' ? placeSaveNow : null;
-      l3bsExportIfc = async () => { calls.push(['ifc', l3bs.sel.length]); return [{ name: 'Modell urval.ifc' }]; };
-      askOpener = async (type, extra, t, pr) => { if (type === 'placeSaveIfc') { calls.push(['place', extra.ids.join()]); return { n: extra.ids.length, files: ['Etablering urval.ifc'] }; } return oAsk(type, extra, t, pr); };
+      const calls = []; const oIfc = l3bsExportIfc, oAsk = askOpener;
+      let merge = true;
+      l3bsExportIfc = async opts => { calls.push(['ifc', l3bs.sel.length, opts && opts.graft || null]); const r = [{ name: 'Modell urval.ifc' }]; if (merge && opts && opts.graft) r.merged = 1; else if (opts && opts.graft) r.graftWhy = 'ingen plats'; return r; };
+      askOpener = async (type, extra, t, pr) => { if (type === 'placeIfcText') { calls.push(['text', extra.ids.join()]); return { text: 'GRAFT', n: extra.ids.length }; } if (type === 'placeSaveIfc') { calls.push(['place', extra.ids.join()]); return { n: extra.ids.length, files: ['Etablering urval.ifc'] }; } return oAsk(type, extra, t, pr); };
       document.querySelector('#v3Ctx [data-ctx="exp"]').click(); for (let i = 0; i < 60 && calls.length < 2; i++) await new Promise(r => setTimeout(r, 50));
+      const merged = JSON.stringify(calls); // allt i EN fil: text → IFC-export med etableringen inlagd, ingen egen etableringsfil
+      // Går det inte att lägga in (t.ex. ingen plats): etableringen sparas som en egen fil.
+      calls.length = 0; merge = false; l3bsSet([ent], { keepPlaces: true }); l3SelectIds(['mx1'], { keepIfc: true });
+      await l3ExportSelected(); const fallback = JSON.stringify(calls);
       l3bsExportIfc = oIfc; askOpener = oAsk;
       l3bsSet([]); l3SelectIds([]); placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(g); l3.placeMeshes.delete('mx1');
-      return { side0, both, panel, keep, plain, menu, calls };
+      return { side0, both, panel, keep, plain, menuSingle, menu, merged, fallback };
     });
     page.__uiDialogHandlers.splice(page.__uiDialogHandlers.indexOf(hExp), 1);
-    if (!mx.side0 || !mx.both || !mx.panel || !mx.keep || !mx.plain || !mx.menu || JSON.stringify(mx.calls) !== JSON.stringify([['ifc', 1], ['place', 'mx1']])) fail('Blandad markering och export (IFC + etablering): ' + JSON.stringify(mx));
-    else console.log('OK: Ctrl-klick markerar IFC-objekt och etablering tillsammans; högerklick → Exportera markerade som IFC (en ny fil per källa)');
+    if (!mx.side0 || !mx.both || !mx.panel || !mx.keep || !mx.plain || !mx.menuSingle || !mx.menu || mx.merged !== JSON.stringify([['text', 'mx1'], ['ifc', 1, 'GRAFT']]) || mx.fallback !== JSON.stringify([['text', 'mx1'], ['ifc', 1, 'GRAFT'], ['place', 'mx1']])) fail('Blandad markering och export (IFC + etablering): ' + JSON.stringify(mx));
+    else console.log('OK: Ctrl-klick markerar IFC-objekt och etablering tillsammans; högerklick → Exportera markerade som IFC (allt i en fil, egen fil för etableringen om det inte går)');
   }
   // Flytta ett objekt i IFC:n och spara som ny fil i samma mapp i TC (Victor 2026-10-10).
   const mv = await page.evaluate(async () => {
@@ -416,6 +422,26 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   }, ifc);
   if (!/^Hus A urval 1 objekt \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(ex.name) || ex.folderId !== 'f1' || ex.guids.length !== 1 || Math.abs(ex.pelare - 5) > 0.001)
     fail('Exportera markerade: bara pelaren, flyttad 5 m, ny fil i samma mapp: ' + JSON.stringify(ex));
+
+  // Exportera markerade tillsammans med en etableringspelare: EN IFC-fil med båda (Victor 2026-10-13).
+  await page.evaluate(() => { window.__up = null; l3RenderSide(); });
+  const gr = await page.evaluate(async () => {
+    const doc = ifcDoc('Test', 'Etablering'), E = doc.E, pts = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0], [0, 0, 3], [1, 0, 3], [1, 1, 3], [0, 1, 3]];
+    const pl = E(`IFCCARTESIANPOINTLIST3D((${pts.map(ifcPt).join(',')}))`), faces = [[1, 3, 2], [1, 4, 3], [5, 6, 7], [5, 7, 8], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 4, 8], [3, 8, 7], [4, 1, 5], [4, 5, 8]];
+    const mesh = E(`IFCTRIANGULATEDFACESET(${pl},$,.T.,(${faces.map(f => `(${f.join(',')})`).join(',')}),$)`);
+    const el = E(`IFCBUILDINGELEMENTPROXY('3GRAFTxxxxxxxxxxxxxxxx',$,'Egen låda 3','Placerad','Container',${doc.place([6512330, 150120, 5])},${doc.shape(mesh, 'Tessellation')},'x',.NOTDEFINED.)`);
+    const text = doc.finish([el], 'Etablering.ifc');
+    const m = l3b.models.find(x => x.id === 'f:F2'); let ent = null; m.meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => { if (r.guid === '1hZq3$Bq9Fxu8nZK0bW1aA') ent = { mesh, ri }; }));
+    l3SelectIds([]); l3bsSet([ent]);
+    const r = await l3bsExportIfc({ graft: text });
+    return { merged: r.merged || 0, why: r.graftWhy || null, name: r[0] && r[0].name };
+  });
+  if (gr.merged) {
+    await page.waitForFunction(() => window.__up, null, { timeout: 30000 });
+    const mg = await page.evaluate(async () => { const t = window.__up.text, P = ifcParse(t), ids = new Set(P.ids); let bad = 0; P.ids.forEach((id, k) => ifcRefs(t.slice(P.starts[k], P.ends[k])).forEach(r => { if (!ids.has(r)) bad++; })); return { name: window.__up.name, bad, dup: P.ids.length - ids.size, hasPelare: t.includes("1hZq3$Bq9Fxu8nZK0bW1aA"), hasGraft: t.includes('3GRAFTxxxxxxxxxxxxxxxx') }; });
+    if (!/urval 1 objekt \+ 1 etablering/.test(mg.name) || mg.bad || mg.dup || !mg.hasPelare || !mg.hasGraft) fail('En fil med IFC-objekt + etablering: ' + JSON.stringify(mg));
+    console.log('OK: exporterade markerade – IFC-objekt och etablering i EN ny IFC-fil (inga trasiga referenser)');
+  } else console.log('OK (reserv): testfilen går inte att utöka (' + gr.why + ') – etableringen sparas då som egen fil');
 
   // Kopiera (Victor 2026-10-12): kopian 3 m i Y, originalet kvar; sparas som ny fil med kopian som nytt objekt
   // i samma våning. Ctrl+Z tar bort kopian.

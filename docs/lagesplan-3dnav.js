@@ -484,13 +484,38 @@ function l3SaveView(name) {
   const O = l3.O, cam = l3.camera, W = v => [0, 1, 2].map(i => Math.round((v.getComponent(i) + O[i]) * 1000) / 1000);
   const v = {
     name, p: W(cam.position), t: W(l3.orbit.target), ortho: !!cam.isOrthographicCamera, zoom: cam.zoom,
-    clips: (l3.clips || []).map(c => { const pt = c.plane.coplanarPoint(new THREE.Vector3()); return { n: c.plane.normal.toArray(), p: W(pt), label: c.label }; }),
+    clips: (l3.clips || []).map(c => { const pt = c.plane.coplanarPoint(new THREE.Vector3()); return { n: c.plane.normal.toArray(), p: W(pt), label: c.label, off: Math.round((Number(c.off) || 0) * 1000) / 1000, base: c.base, a: c.anchor ? W(c.anchor) : undefined }; }),
+    ...l3ViewState(),
   };
   const i = list.findIndex(x => x.name.toLowerCase() === name.toLowerCase());
   if (i >= 0) list[i] = v; else list.push(v);
   l3StoreViews(list.slice(-30));
   l3RenderSavedViews();
   l3Status(i >= 0 ? `Vyn "${name}" uppdaterad.` : `Vyn "${name}" sparad – finns under Vyer.`);
+}
+/* Det som sparas med en vy förutom kameran (Victor 2026-10-13: "när jag sparar en vy ska den spara saxarnas position
+   också … samma gäller mått osv"): vilka mått, kommentarer, foton och punktmoln som syns, och vilka objekt som är dolda.
+   Äldre vyer utan de här fälten rör inte det som syns. */
+function l3ViewState() {
+  const st = {};
+  if (typeof l3m !== "undefined") st.meas = l3m.list.filter(m => !m.hid).map(m => m.id);
+  if (typeof l3k !== "undefined") st.kHidden = !!l3k.hidden;
+  if (typeof l3phOn === "function") st.photos = !!l3phOn();
+  if (typeof l3pc !== "undefined") st.clouds = l3pc.clouds.map(c => [c.id, !!c.visible]);
+  const g = [];
+  if (typeof l3b !== "undefined") l3b.models.forEach(m => m.meshes.forEach(x => { const u = x.userData.l3b; if (u && u.hidden) u.hidden.forEach(ri => { const r = u.ranges[ri]; if (r && r.guid) g.push(r.guid); }); }));
+  st.hid = { place: [...(l3.hidden || [])], objs: [...(l3.hiddenObjs || [])], guids: g.slice(0, 20000) };
+  return st;
+}
+function l3ViewApplyState(v) {
+  if (Array.isArray(v.meas) && typeof l3m !== "undefined") { const on = new Set(v.meas); l3m.list.forEach(m => { m.hid = !on.has(m.id); }); l3mDraw(); if (typeof l3mRenderBar === "function") l3mRenderBar(); }
+  if (typeof v.kHidden === "boolean" && typeof l3k !== "undefined" && l3k.hidden !== v.kHidden) { l3kToggle(); }
+  if (typeof v.photos === "boolean" && typeof l3phOn === "function" && l3phOn() !== v.photos) l3phToggle(v.photos);
+  if (Array.isArray(v.clouds) && typeof l3pc !== "undefined") v.clouds.forEach(([id, on]) => { const c = l3pc.clouds.find(x => x.id === id); if (c && c.visible !== on) l3pcShow(id, on); });
+  if (v.hid && typeof l3VisApply === "function") {
+    const want = new Set(v.hid.guids || []), meshes = typeof l3b !== "undefined" ? l3b.models.flatMap(m => m.meshes.map(x => { const u = x.userData.l3b; return [x, u ? Uint32Array.from(u.ranges.map((r, i) => (r.guid && want.has(r.guid) ? i : -1)).filter(i => i >= 0)) : []]; })) : [];
+    l3VisApply({ hidden: v.hid.place || [], hiddenObjs: v.hid.objs || [], isolated: false, bldg: l3.groups.bldg.visible, obj: l3.objMesh ? l3.objMesh.visible : true, meshes });
+  }
 }
 function l3GoView(i) {
   const v = l3SavedViews()[i];
@@ -501,7 +526,8 @@ function l3GoView(i) {
   const T = S(v.t), P = S(v.p), dir = P.clone().sub(T);
   const dist = v.ortho ? L3_ORTHO_H / (Math.max(1e-4, v.zoom || 1) * 2 * Math.tan(THREE.MathUtils.degToRad(25))) : dir.length();
   // Snitten i vyn.
-  l3.clips = (v.clips || []).map(c => { const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(...c.n), S(c.p)); return { plane, base: plane.constant, off: 0, label: c.label || "Snitt" }; });
+  l3.clips = (v.clips || []).map(c => { const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(new THREE.Vector3(...c.n), S(c.p)); return { plane, base: Number.isFinite(c.base) ? c.base : plane.constant, off: Number.isFinite(c.off) ? c.off : 0, anchor: c.a ? S(c.a) : undefined, label: c.label || "Snitt" }; });
+  l3ViewApplyState(v);
   // Snittfönstret öppnas inte av sig självt (Victor 2026-10-10) – saxarna i bilden flyttar snitten; är det öppet uppdateras det.
   l3ApplyClips(); if (!l3.clips.length) l3DlgClose("v3Clip"); else if (document.getElementById("v3Clip") && !document.getElementById("v3Clip").classList.contains("hidden")) l3RenderClipDlg();
   l3FlyTo(T, dist, dir, 450);
@@ -512,7 +538,7 @@ function l3RenderSavedViews() {
   const host = document.getElementById("v3SavedViews");
   if (!host) return;
   const list = l3SavedViews();
-  host.innerHTML = list.length ? list.map((v, i) => `<div class="v3-sv"><button type="button" data-svgo="${i}" title="Gå till vyn">${escHtml(v.name)}${v.clips && v.clips.length ? ` <em>· ${v.clips.length} snitt</em>` : ""}</button><button type="button" class="v3-sv-x" data-svdel="${i}" title="Ta bort vyn">✕</button></div>`).join("") : `<div class="v3-pop-hint">Inga sparade vyer än.</div>`;
+  host.innerHTML = list.length ? list.map((v, i) => `<div class="v3-sv"><button type="button" data-svgo="${i}" title="Gå till vyn${v.meas ? " – kameran, snitt, mått, kommentarer, foton och dolda objekt som när vyn sparades" : ""}">${escHtml(v.name)}${v.clips && v.clips.length ? ` <em>· ${v.clips.length} snitt</em>` : ""}${v.meas && v.meas.length ? ` <em>· ${v.meas.length} mått</em>` : ""}</button><button type="button" class="v3-sv-x" data-svdel="${i}" title="Ta bort vyn">✕</button></div>`).join("") : `<div class="v3-pop-hint">Inga sparade vyer än.</div>`;
   host.querySelectorAll("[data-svgo]").forEach(b => { b.onclick = () => { l3HideMenus(); l3GoView(+b.dataset.svgo); }; });
   host.querySelectorAll("[data-svdel]").forEach(b => { b.onclick = e => { e.stopPropagation(); l3DelView(+b.dataset.svdel); }; });
 }

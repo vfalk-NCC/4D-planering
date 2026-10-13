@@ -188,7 +188,18 @@ function l3pcLodMatApply(c) {
   L.map = m.map; L.alphaTest = m.alphaTest; L.transparent = m.transparent; L.opacity = m.opacity; L.depthWrite = m.depthWrite; L.clippingPlanes = m.clippingPlanes;
   L.needsUpdate = true;
 }
-let l3pcCam = null, l3pcStillT = 0, l3pcMoving = false, l3pcAnchor = null, l3pcSince = 0;
+let l3pcCam = null, l3pcStillT = 0, l3pcMoving = false, l3pcAnchor = null, l3pcSince = 0, l3pcHolds = 0;
+/* Hur länge kameran ska stå still innan hela molnet ritas igen (Victor 2026-10-13: "det hackar när den justerar hela
+   tiden" när man tittar runt bland detaljer): inställbart, normalt 0,45 s – korta pauser mellan rörelser växlar inte. */
+const l3pcStillMs = () => { const v = Number(l3Prefs().pcStill); return v >= 100 && v <= 5000 ? v : 450; };
+function l3pcRelease() { if (l3pcHolds > 0) return; l3pcSince = 0; l3pcAnchor = null; l3pcSetMoving(false); l3Render(); }
+/* Håll den glesa kopian medan något annat dras (handtag, kommentar, mått, foto, objekt): kameran står still men
+   molnet ska inte tynga flytten. Släpps när draget är slut (efter en kort stund). Anropas parvis: true … false. */
+function l3pcHold(on) {
+  if (!l3pc.clouds.some(c => c.lod && c.visible) || l3Prefs().pcLod === false) return;
+  if (on) { l3pcHolds++; clearTimeout(l3pcStillT); if (!l3pcMoving) l3pcSetMoving(true); l3Render(); }
+  else { l3pcHolds = Math.max(0, l3pcHolds - 1); if (!l3pcHolds) { clearTimeout(l3pcStillT); l3pcStillT = setTimeout(l3pcRelease, 250); } }
+}
 function l3pcSetMoving(on) {
   l3pcMoving = on;
   l3pc.clouds.forEach(c => { if (!c.lod) return; c.lod.visible = on && c.visible; c.group.children.forEach(p => { p.visible = !on; }); });
@@ -209,7 +220,7 @@ function l3pcFrame() {
       if (!l3pcSince) l3pcSince = now;
       if (!l3pcMoving && now - l3pcSince > 90) l3pcSetMoving(true);
       clearTimeout(l3pcStillT);
-      l3pcStillT = setTimeout(() => { l3pcSince = 0; l3pcAnchor = null; l3pcSetMoving(false); l3Render(); }, 220);
+      l3pcStillT = setTimeout(l3pcRelease, l3pcStillMs());
     }
   } else if (l3pcCam !== null && !l3pcMoving) l3pcSince = 0;
   l3pcCam = key;
@@ -577,3 +588,15 @@ function l3pcNearer(e, hit) {
   return { point: pc.point, distance: pc.distance, pc: true };
 }
 
+
+/* Dra i handtag, kommentar-/måttetiketter och fotohöjd: den glesa kopian ritas medan man drar (kameran står still men
+   molnet tynger annars flytten). Gizmot (flytta/vrid objekt) kopplas av 3D-vyn via l3pcHold. */
+(function () {
+  const SEL = ".v3-khandle, .v3-mhandle, .v3-phh, .v3-meas, .v3-cpin, .v3-gh";
+  window.addEventListener("pointerdown", e => {
+    if (!e.target || !e.target.closest || !e.target.closest(SEL) || typeof l3pcHold !== "function") return;
+    l3pcHold(true);
+    const end = () => { window.removeEventListener("pointerup", end, true); window.removeEventListener("pointercancel", end, true); l3pcHold(false); };
+    window.addEventListener("pointerup", end, true); window.addEventListener("pointercancel", end, true);
+  }, true);
+})();

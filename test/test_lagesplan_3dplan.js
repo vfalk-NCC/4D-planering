@@ -300,6 +300,25 @@ const PP = [
     });
     if (an.none !== 0 || an.n1 !== 1 || an.n2 !== 1 || Math.abs(an.mid[0] - 10) > 0.01 || an.mid[1] !== 45 || an.before !== 5 || an.after !== 15 || an.marks !== 2 || !an.btn || !an.saved || !an.moved || !an.removed || !an.back) fail('Objektanimering på tidslinjen: ' + JSON.stringify(an));
     else console.log('OK: objektanimering – ◆ Nyckel på tidslinjen, mjuk rörelse och vridning mellan nycklarna, flytta/ta bort nyckel');
+    // Sparade vyer: snitt (med läge), mått, kommentarer och dolda objekt ingår.
+    const vw = await page.evaluate(async () => {
+      const O = l3.O, p = { id: 'svw1', type: 'container', name: 'Dold', x: O[0] + 70, y: O[1] + 70, z: 0, L: 2, B: 2, H: 2, R: 0, rot: 0 };
+      placements.push(p); const g = l3AddPlacementMesh(p);
+      const m = l3mAdd('dist', [new THREE.Vector3(1, 1, 0), new THREE.Vector3(3, 1, 0)], '2 m', []);
+      l3AddClip(new THREE.Vector3(0, 0, -1), new THREE.Vector3(0, 0, 2)); l3.clips[0].off = 2.5; l3.hidden.add('svw1'); g.visible = false;
+      l3SaveView('TestVy'); const idx = l3SavedViews().findIndex(v => v.name === 'TestVy'), sv = l3SavedViews()[idx];
+      const saved = sv.clips.length === 1 && sv.clips[0].off === 2.5 && sv.meas.includes(m.id) && sv.hid.place.includes('svw1');
+      // Ändra allt, hoppa tillbaka till vyn.
+      m.hid = true; l3.clips = []; l3ApplyClips(); l3.hidden.delete('svw1'); g.visible = true;
+      const m2 = l3mAdd('dist', [new THREE.Vector3(5, 5, 0), new THREE.Vector3(6, 5, 0)], '1 m', []); // nytt mått efter sparandet
+      l3GoView(idx); await new Promise(r => setTimeout(r, 100));
+      const back = l3.clips.length === 1 && l3.clips[0].off === 2.5 && !m.hid && m2.hid === true && l3.hidden.has('svw1') && g.visible === false && Math.abs(l3.renderer.clippingPlanes.length - 1) === 0;
+      // Cleanup
+      l3DelView(idx); l3m.list = l3m.list.filter(x => x.id !== m.id && x.id !== m2.id); l3mDraw(); l3.clips = []; l3ApplyClips(); l3.hidden.delete('svw1'); placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(g); l3.placeMeshes.delete('svw1');
+      return { saved, back, nClips: sv.clips.length };
+    });
+    if (!vw.saved || !vw.back) fail('Sparad vy (snitt, mått, dolda objekt): ' + JSON.stringify(vw));
+    else console.log('OK: sparade vyer tar med snitten (med läge), måtten och dolda objekt – hoppar man till en vy byts allt');
     // Smart mått: bredd, höjd och objektets volym med ett tryck.
     const sm = await page.evaluate(async () => {
       const O = l3.O, p = { id: 'smt1', type: 'container', name: 'Container', x: O[0] + 40, y: O[1] + 40, z: 0, L: 6.06, B: 2.44, H: 2.59, R: 0, rot: 0 };
@@ -309,14 +328,15 @@ const PP = [
       const q = l3ToScreen(new THREE.Vector3(c.x + sz.x * 0.1, bb.min.y, c.z - sz.z * 0.1)), r = l3.renderer.domElement.getBoundingClientRect();
       l3SetTool('measure'); l3SetPref('measure', 'smart'); l3RenderSnapBar(); const seg = !!document.querySelector('[data-mmode="smart"]');
       const n0 = l3m.list.length; l3SmartMeasure({ clientX: r.left + q.x, clientY: r.top + q.y, button: 0 }); const added = l3m.list.slice(n0);
-      const dist = added.filter(m => m.kind === 'dist'), vol = added.find(m => m.kind === 'objvol');
+      const dist = added.filter(m => m.kind === 'dist' && /^(Bredd|Höjd|Längd)$/.test(m.note || '')), vol = added.find(m => m.kind === 'objvol');
       const val = m => parseFloat(String(m.text).replace(',', '.')), W = dist[0] && val(dist[0]), H = dist[1] && val(dist[1]);
-      const ok = added.length === 3 && Math.abs(W - sz.x) < 0.02 && Math.abs(H - sz.z) < 0.02 && dist[0].note === 'Bredd' && dist[1].note === 'Höjd' && vol && vol.dims && Math.abs(vol.dims[2] - sz.y) < 0.02 && val(vol) > 0.5 * sz.x * sz.y * sz.z && val(vol) <= sz.x * sz.y * sz.z * 1.03;
+      const down = added.find(m => /^Ner till/.test(m.note || '')); const ok = added.length >= 3 && !!down && Math.abs(W - sz.x) < 0.02 && Math.abs(H - sz.z) < 0.02 && dist[0].note === 'Bredd' && dist[1].note === 'Höjd' && vol && vol.dims && Math.abs(vol.dims[2] - sz.y) < 0.02 && val(vol) > 0.5 * sz.x * sz.y * sz.z && val(vol) <= sz.x * sz.y * sz.z * 1.03;
       const tab = (l3mTabHtml().match(/Objektvolym/g) || []).length === 1, info = l3mInfo(vol).rows.some(([k]) => k === 'Måttbox (B×H×D)');
+      const nx = document.querySelectorAll('.v3-meas-x').length, before = l3m.list.length; document.querySelector('.v3-meas-x').click(); const xRemoved = l3m.list.length === before - 1 && nx >= added.length; // litet kryss efter varje mått
       l3m.list.splice(n0); l3mDraw(); l3SetTool('select'); placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(g); l3.placeMeshes.delete('smt1');
-      return { seg, ok, tab, info, W, H, sz: [sz.x, sz.y, sz.z], vol: vol && vol.text, n: added.length };
+      return { seg, ok, tab, info, xRemoved, W, H, sz: [sz.x, sz.y, sz.z], vol: vol && vol.text, n: added.length };
     });
-    if (!sm.seg || !sm.ok || !sm.tab || !sm.info) fail('Smart mått: ' + JSON.stringify(sm));
+    if (!sm.seg || !sm.ok || !sm.tab || !sm.info || !sm.xRemoved) fail('Smart mått: ' + JSON.stringify(sm));
     else console.log('OK: smart mått – bredd, höjd och objektets volym med ett tryck');
     // Raderade mått lämnar inga handtag (orange prickar) kvar; måttlistan visar inga objektnamn.
     const mh = await page.evaluate(() => {

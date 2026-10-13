@@ -377,9 +377,105 @@ async function exportSelectionIfc() {
   }
 }
 
+/* ---- En fil med både IFC-objekten och etableringsobjekten (Victor 2026-10-13: "Kan du slå ihop dem till en IFC-fil?") ----
+   Etableringsobjekten (IfcBuildingElementProxy med egenskaper, skrivna av ifcDoc/buildPlacementsIfc i IFC4) sätts in i
+   den utplockade IFC-filen: samma plats (IfcSite), samma geometrikontext, samma ägarhistorik och enheter. Nya id:n efter
+   filens största, så inget befintligt rörs. Filens längdenhet (mm/cm/m) räknas om för punkterna. IFC2X3-filer får
+   etableringsobjekten som IfcFacetedBrep (IFC4-formen IfcTriangulatedFaceSet finns inte där). Går det inte (ingen plats,
+   okänt schema eller enhet) returneras text: null och en orsak – anroparen sparar då separata filer. */
+function ifcGraft(baseText, addText) {
+  const P = ifcParse(baseText), A = ifcParse(addText), T = P.text, U = A.text;
+  const sch = /FILE_SCHEMA\s*\(\s*\(\s*'([^']+)'/i.exec(P.header);
+  const schema = sch ? sch[1].toUpperCase() : "", v2x3 = /^IFC2X3/.test(schema), v4 = /^IFC4/.test(schema);
+  if (!v2x3 && !v4) return { text: null, why: `IFC-schemat ${schema || "okänt"} går inte att utöka` };
+  const argsB = k => ifcSplitArgs(T.slice(P.starts[k], P.ends[k])), argsA = k => ifcSplitArgs(U.slice(A.starts[k], A.ends[k]));
+  let site = null, sitePl = null, body = null, model = null, owner = null, unit = null, maxId = 0;
+  for (let k = 0; k < P.ids.length; k++) {
+    if (P.ids[k] > maxId) maxId = P.ids[k];
+    const t = P.types[k];
+    if (t === "IFCSITE" && site === null) { site = P.ids[k]; sitePl = ifcRef1(argsB(k)[5]); }
+    else if (t === "IFCGEOMETRICREPRESENTATIONSUBCONTEXT" && body === null && /^'Body'$/i.test(argsB(k)[0])) body = P.ids[k];
+    else if (t === "IFCGEOMETRICREPRESENTATIONCONTEXT" && model === null) model = P.ids[k];
+    else if (t === "IFCOWNERHISTORY" && owner === null) owner = P.ids[k];
+    else if (t === "IFCSIUNIT" && unit === null) { const a = argsB(k); if (a[1] === ".LENGTHUNIT.") unit = a[2] === "$" ? 1 : ({ ".MILLI.": 1000, ".CENTI.": 100, ".DECI.": 10, ".KILO.": 0.001 })[a[2]] || null; }
+  }
+  const ctx = body !== null ? body : model;
+  if (site === null || sitePl === null) return { text: null, why: "den utplockade filen har ingen plats (IfcSite) att lägga etableringsobjekten på" };
+  if (ctx === null) return { text: null, why: "filen saknar geometrikontext" };
+  if (unit === null) return { text: null, why: "filens längdenhet kunde inte läsas" };
+  if (v2x3 && owner === null) return { text: null, why: "IFC2X3-filen saknar ägarhistorik" };
+  // Ankarna i etableringsfilen (ifcDoc): delkontext, plats, platsens placering; allt före första IfcRelAggregates är grundstruktur.
+  let bodyA = null, siteA = null, siteplA = null, aggA = null;
+  for (let k = 0; k < A.ids.length && aggA === null; k++) {
+    const t = A.types[k];
+    if (t === "IFCGEOMETRICREPRESENTATIONSUBCONTEXT" && bodyA === null) bodyA = A.ids[k];
+    else if (t === "IFCSITE" && siteA === null) { siteA = A.ids[k]; siteplA = ifcRef1(argsA(k)[5]); }
+    else if (t === "IFCRELAGGREGATES") aggA = A.ids[k];
+  }
+  if (bodyA === null || siteA === null || aggA === null) return { text: null, why: "etableringsfilen har oväntad struktur" };
+  let maxA = 0; A.ids.forEach(id => { if (id > maxA) maxA = id; });
+  const base = maxId - aggA, map = n => (n === bodyA ? ctx : n === siteA ? site : n === siteplA ? sitePl : n > aggA ? n + base : null);
+  let extra = maxA + base; // senaste id som är tilldelat; extra-entiteter får nästa
+  const remap = str => {
+    let out = "", inStr = false;
+    for (let i = 0; i < str.length; i++) {
+      const c = str.charCodeAt(i);
+      if (c === 39) inStr = !inStr;
+      if (!inStr && c === 35) {
+        let j = i + 1, v = 0, d;
+        while ((d = str.charCodeAt(j)) >= 48 && d <= 57) { v = v * 10 + (d - 48); j++; }
+        const m = map(v);
+        if (m === null) throw new Error(`Etableringsfilen pekar på #${v} i grundstrukturen`);
+        out += "#" + m; i = j - 1; continue;
+      }
+      out += str[i];
+    }
+    return out;
+  };
+  const fmt = v => { const r = Math.round(v * 1000) / 1000, t = String(r); return /[.eE]/.test(t) ? t : t + "."; };
+  const scale = str => str.replace(/-?\d+\.?\d*(?:E[+-]?\d+)?/gi, x => fmt(parseFloat(x) * unit));
+  const lines = [], rooted = /^'[0-9A-Za-z_$]{22}'$/;
+  let proxies = 0;
+  const addLine = (id, type, args) => lines.push(`#${id}=${type}(${args});`);
+  const newE = (type, args) => { extra++; addLine(extra, type, args); return extra; };
+  try {
+    for (let k = 0; k < A.ids.length; k++) {
+      const id = A.ids[k]; if (id <= aggA) continue;
+      const type = A.types[k], nid = id + base;
+      let a = argsA(k);
+      if (v2x3 && type === "IFCCARTESIANPOINTLIST3D") continue; // blir egna punkter vid IfcTriangulatedFaceSet
+      if (type === "IFCCARTESIANPOINT") a = [scale(a[0])];
+      if (type === "IFCCARTESIANPOINTLIST3D" && unit !== 1) a = [scale(a[0])];
+      if (v2x3 && type === "IFCTRIANGULATEDFACESET") {
+        // IFC4 → IFC2X3: punkter + trianglar blir IfcFacetedBrep.
+        const pl = A.index.get(ifcRef1(a[0])), plArgs = argsA(pl)[0], pts = [];
+        plArgs.replace(/\(([^()]+)\)/g, (_, tr) => { pts.push(tr.split(",").map(x => parseFloat(x) * unit)); return ""; });
+        const ids = pts.map(q => newE("IFCCARTESIANPOINT", `(${q.map(fmt).join(",")})`)), faces = [];
+        a[3].replace(/\((\d+),(\d+),(\d+)\)/g, (_, i, j, l) => {
+          const loop = newE("IFCPOLYLOOP", `(#${ids[i - 1]},#${ids[j - 1]},#${ids[l - 1]})`), bound = newE("IFCFACEOUTERBOUND", `#${loop},.T.`);
+          faces.push(newE("IFCFACE", `(#${bound})`)); return "";
+        });
+        const shell = newE("IFCCLOSEDSHELL", `(${faces.map(f => "#" + f).join(",")})`);
+        addLine(nid, "IFCFACETEDBREP", `#${shell}`);
+        continue;
+      }
+      if (v2x3 && type === "IFCSURFACESTYLESHADING") { addLine(nid, "IFCSURFACESTYLERENDERING", `${remap(a[0])},${a[1] || "0."},$,$,$,$,$,$,.NOTDEFINED.`); continue; }
+      if (v2x3 && type === "IFCSTYLEDITEM") { const st = remap(a[1]).replace(/^\(|\)$/g, ""), psa = newE("IFCPRESENTATIONSTYLEASSIGNMENT", `(${st})`); addLine(nid, type, `${remap(a[0])},(#${psa}),$`); continue; }
+      if (v2x3 && type === "IFCSHAPEREPRESENTATION") a = a.map(x => (x === "'Tessellation'" ? "'Brep'" : x));
+      if (v2x3 && type === "IFCBUILDINGELEMENTPROXY") a[a.length - 1] = "$";
+      if (type === "IFCBUILDINGELEMENTPROXY") proxies++;
+      const out = a.map(x => remap(x));
+      if (owner !== null && out.length > 1 && out[1] === "$" && rooted.test(out[0])) out[1] = "#" + owner; // ägarhistorik (krävs i IFC2X3) – i filens egen numrering
+      addLine(nid, type, out.join(","));
+    }
+  } catch (e) { return { text: null, why: e.message }; }
+  const text = T.slice(0, P.tailStart) + lines.join("\r\n") + "\r\n" + T.slice(P.tailStart);
+  return { text, added: proxies, schema, unit };
+}
+
 if (typeof document !== "undefined") document.addEventListener("DOMContentLoaded", () => {
   // Knappen ligger i sidhuvudet bredvid ångra/gör om (Victor 2026-10-07).
   const b = document.getElementById("btnExportSelIfcTop");
   if (b) b.onclick = () => { exportSelectionIfc(); };
 });
-if (typeof module !== "undefined") module.exports = { ifcSubset, ifcParse, ifcSplitArgs, ifcRefs, ifcBytesToStr, ifcStrToBytes };
+if (typeof module !== "undefined") module.exports = { ifcSubset, ifcParse, ifcSplitArgs, ifcRefs, ifcBytesToStr, ifcStrToBytes, ifcGraft };

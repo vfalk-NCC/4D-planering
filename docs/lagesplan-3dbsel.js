@@ -346,7 +346,7 @@ function l3bsRenderSide(side) {
    jag har markerat"): per modell hämtas originalet, alla flyttar i modellen skrivs in och de markerade
    plockas ut med ifcSubset (geometri, placering, färger, egenskaper, våning). Sparas som en ny fil i
    samma mapp i Trimble Connect – aldrig över en befintlig. */
-async function l3bsExportIfc() {
+async function l3bsExportIfc(opts = {}) {
   const byModel = new Map();
   l3bs.sel.forEach(e => {
     const u = e.mesh.userData.l3b, g = u.ranges[e.ri].guid;
@@ -363,9 +363,14 @@ async function l3bsExportIfc() {
       const res = await l3bmFetchIfc(m, f => busyProgress(key, `${lbl}: hämtar originalet`, f0 + fw * 0.5 * f));
       busyProgress(key, `${lbl}: plockar ut`, f0 + fw * 0.55);
       await new Promise(r => setTimeout(r, 20));
-      const name = l3bmFileName(m, `urval ${guids.size} objekt`);
+      let name = l3bmFileName(m, `urval ${guids.size} objekt`);
       const sub = ifcSubset(res.text, [...guids], { fileName: name });
       if (!sub.text) throw new Error(`Hittade inga av de markerade objekten i ${m.name}.`);
+      // Etableringsobjekten (opts.graft = deras IFC-text) läggs in i den första filen: allt i en fil.
+      if (i === 0 && opts.graft && typeof ifcGraft === "function") {
+        const g = ifcGraft(sub.text, opts.graft);
+        if (g.text) { sub.text = g.text; out.merged = g.added; name = l3bmFileName(m, `urval ${guids.size} objekt + ${g.added} etablering`); } else out.graftWhy = g.why;
+      }
       busyProgress(key, `${lbl}: laddar upp`, f0 + fw * 0.75);
       const up = await l3bmUpload(m, l3bmStrBytes(sub.text), name);
       out.push({ name, folder: up && up.folder, found: sub.found.length, missing: sub.missing.length });
@@ -406,16 +411,29 @@ async function l3ExportSelected() {
   const nIfc = l3bs.sel.length, pids = [...l3.sel].filter(id => placements.some(p => p.id === id));
   if (!nIfc && !pids.length) { l3Status("Inget är markerat – markera objekten (Ctrl+klick för flera) och försök igen.", true); return; }
   const parts = [];
-  if (nIfc) parts.push(`${nIfc} IFC-objekt ur modellen (en ny IFC-fil per modell, med dina flyttar och kopior)`);
-  if (pids.length) parts.push(`${pids.length} etableringsobjekt (en ny IFC-fil)`);
+  if (nIfc && pids.length) parts.push(`${nIfc} IFC-objekt ur modellen och ${pids.length} etableringsobjekt – tillsammans i EN ny IFC-fil (IFC-objekten med dina flyttar och kopior)`);
+  else if (nIfc) parts.push(`${nIfc} IFC-objekt ur modellen (en ny IFC-fil per modell, med dina flyttar och kopior)`);
+  else parts.push(`${pids.length} etableringsobjekt (en ny IFC-fil)`);
   if (!(await uiConfirm(`Exportera de markerade som IFC i Trimble Connect?\n\n• ${parts.join("\n• ")}\n\nDet blir nya filer med datum och klockslag i namnet – inget befintligt skrivs över.`, { ok: "Exportera" }))) { l3Status("Inget exporterades."); return; }
   const done = [], fail = [];
-  if (nIfc) { try { const r = await l3bsExportIfc(); (r || []).forEach(x => done.push(x.name)); } catch (e) { fail.push("IFC-objekten: " + e.message); } }
-  if (pids.length) {
+  let graft = null, pending = pids.slice();
+  if (nIfc && pids.length) { // etableringsobjekten som IFC-text, att lägga in i IFC-filen
+    try { l3Status("Förbereder etableringsobjekten…"); if (typeof placeSaveNow === "function") await placeSaveNow(); const r = await askOpener("placeIfcText", { ids: pids }, 120000); graft = r && r.text ? r.text : null; if (!graft) l3Status("Etableringsobjekten har ingen form att lägga in i filen – de sparas separat.", true); }
+    catch (e) { fail.push("Etableringsobjekten kunde inte förberedas för en gemensam fil: " + e.message); }
+  }
+  if (nIfc) {
     try {
-      l3Status(`Exporterar ${pids.length} etableringsobjekt som IFC i Trimble Connect…`);
+      const r = await l3bsExportIfc(graft ? { graft } : {});
+      (r || []).forEach(x => done.push(x.name));
+      if (graft && r && r.merged) pending = []; // sitter nu i IFC-filen
+      else if (graft) fail.push(`Etableringsobjekten kunde inte läggas in i IFC-filen (${r && r.graftWhy ? r.graftWhy : "okänd orsak"}) – de sparas som en egen fil.`);
+    } catch (e) { fail.push("IFC-objekten: " + e.message); pending = pids.slice(); if (!graft) pending = pids.slice(); }
+  }
+  if (pending.length && !(nIfc && !done.length && fail.length)) {
+    try {
+      l3Status(`Exporterar ${pending.length} etableringsobjekt som IFC i Trimble Connect…`);
       if (typeof placeSaveNow === "function") await placeSaveNow();
-      const r = await askOpener("placeSaveIfc", { ids: pids }, 0);
+      const r = await askOpener("placeSaveIfc", { ids: pending }, 0);
       if (r && r.n) (r.files || [r.name]).filter(Boolean).forEach(x => done.push(x)); else fail.push("Etableringsobjekten: ingenting att spara (saknar form).");
     } catch (e) { fail.push("Etableringsobjekten: " + e.message); }
   }

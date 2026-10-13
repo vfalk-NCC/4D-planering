@@ -316,10 +316,12 @@ function l3RenderMultiSide(side, list) {
 // ---------------------------------------------------------------------
 function l3HideSel() { return l3VisRecord("dölj", l3HideSel0); }
 function l3HideSel0() {
-  if (!l3.sel.size && typeof l3bs !== "undefined" && l3bs.sel.length) { l3bsHide(); return; }
+  const nIfc = typeof l3bs !== "undefined" ? l3bs.sel.length : 0;
+  if (!l3.sel.size && nIfc) { l3bsHide(); return; }
   if (!l3.sel.size) { l3Status("Markera det som ska döljas (H), eller högerklicka på en låda/ett objekt i byggnaden."); return; }
   l3.sel.forEach(id => { l3.hidden.add(id); const g = l3.placeMeshes.get(id); if (g) g.visible = false; });
   const n = l3.sel.size; l3SelectIds([]); l3UpdateHidden();
+  if (nIfc && typeof l3bsHide0 === "function") l3bsHide0(); // blandad markering: IFC-objekten döljs också
   l3Toast(`${n} objekt dolda.`, "Visa alla", l3ShowAll);
 }
 function l3Isolate() { return l3VisRecord("visa bara markerade", l3Isolate0); }

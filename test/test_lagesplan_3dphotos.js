@@ -94,6 +94,35 @@ const JPG = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP/////////////////////
     if (!st.vis || st.n !== 3 || st.zg !== 42.5 || st.zn !== 6.6 || st.zh !== 10 || st.cones !== 1 || JSON.stringify(st.dir) !== '[1,0,0]' || st.pref !== true) fail('Markörerna i 3D: ' + JSON.stringify(st));
     console.log('OK: GPS-höjd rakt av, på ytan utan GPS, för hand; riktningen som en kon (öster)');
 
+    // Datum och kommentar vid markören; Foton som hopfällbar lista under Kommentarer & mått.
+    const lb = await page.evaluate(async () => {
+      const L = [...document.querySelectorAll('.v3-phl')], txt = L.map(e => e.textContent), has = L.filter(e => e.classList.contains('has')).length;
+      l3SetPref('photoLbl', 'date'); l3phLabels(); const dateOnly = [...document.querySelectorAll('.v3-phl')].every(e => !e.querySelector('span')) && document.querySelectorAll('.v3-phl i').length === 3;
+      l3SetPref('photoLbl', 'off'); l3phLabels(); const off = document.querySelectorAll('.v3-phl').length === 0;
+      l3SetPref('photoLbl', 'all'); l3phLabels();
+      l3PalTab('comments'); await new Promise(r => setTimeout(r, 400)); l3kRenderTab(); await new Promise(r => setTimeout(r, 200));
+      const sec = document.getElementById('v3PhSec'), rows = document.querySelectorAll('#v3PhSec [data-phgo]').length, last = document.querySelector('#v3PalComments').lastElementChild === sec || [...document.querySelectorAll('#v3PalComments section')].pop() === sec;
+      document.getElementById('v3PhHead').click(); const shut = !document.querySelector('#v3PhSec [data-phgo]'); document.getElementById('v3PhHead').click();
+      return { txt, has, dateOnly, off, sec: !!sec, rows, last, shut, head: document.getElementById('v3PhHead').textContent };
+    });
+    if (lb.txt.length !== 3 || !lb.txt.some(t => /11 okt 2026/.test(t) && /Med GPS/.test(t)) || lb.has !== 3 || !lb.dateOnly || !lb.off || !lb.sec || lb.rows !== 3 || !lb.last || !lb.shut || !/Foton/.test(lb.head)) fail('Datum/kommentar vid fotona och Foton-listan: ' + JSON.stringify(lb));
+    console.log('OK: datum + kommentar vid fotomarkörerna (valbart) och Foton som hopfällbar lista under Kommentarer & mått');
+
+    // Gå-läge: tryck på fotoikonen och titta på bilden.
+    const wp = await page.evaluate(async () => {
+      l3wInit(); l3SetPref('walkFollow', false); l3SetPref('navHelp', false); l3NavHelp(); l3phClose();
+      const sp = l3.groups.photos.children.find(o => o.isSprite && o.userData.photoId === 'g'), S = sp.position.clone();
+      l3wEnter(new THREE.Vector3(S.x, S.y - 6, S.z - l3w.eye)); l3w.yaw = Math.PI / 2; l3w.pitch = 0; l3wApply(); await new Promise(r => setTimeout(r, 150));
+      const q = l3ToScreen(S), r = l3.renderer.domElement.getBoundingClientRect(), cv = l3.renderer.domElement;
+      const o = { pointerId: 7, pointerType: 'mouse', button: 0, buttons: 1, bubbles: true, cancelable: true, clientX: r.left + q.x, clientY: r.top + q.y };
+      cv.dispatchEvent(new PointerEvent('pointerdown', o)); cv.dispatchEvent(new PointerEvent('pointerup', { ...o, buttons: 0 })); await new Promise(r => setTimeout(r, 200));
+      const opened = !!l3ph.open && l3ph.open.id === 'g' && !document.getElementById('v3PhPop').classList.contains('hidden');
+      l3phClose(); l3wExit(true); l3SetPref('walkFollow', true);
+      return { opened, onScreen: !q.behind };
+    });
+    if (!wp.onScreen || !wp.opened) fail('Fotoikon i gå-läget ska öppna bilden: ' + JSON.stringify(wp));
+    console.log('OK: gå-läget – tryck på fotoikonen öppnar bilden');
+
     // 3. Tryck på markören: fotot med höjd och källa.
     const scr = id => page.evaluate(id => { const r = l3.renderer.domElement.getBoundingClientRect(), s = l3.groups.photos.children.find(o => o.isSprite && o.userData.photoId === id), q = l3ToScreen(s.position.clone()); return [r.left + q.x, r.top + q.y]; }, id);
     await page.evaluate(() => { l3View('s'); });

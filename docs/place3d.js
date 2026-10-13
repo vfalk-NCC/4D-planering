@@ -517,6 +517,17 @@ async function placeSaveIfc(opts = {}) {
   return { n, name, files: files.map(f => f.name), coupled: coupled.n };
 }
 
+/* Urvalet av etableringsobjekt som IFC4-text, för att läggas in i en annan IFC-fil (Exportera markerade tillsammans med
+   IFC-objekt, se ifcGraft). { text, n }: text = null om inget av dem har någon form (egna IFC-modeller blir egna filer). */
+async function placeIfcTextFor(ids) {
+  await placeSaveNow();
+  let projName = "";
+  try { projName = ((await API.project.getProject()) || {}).name || ""; } catch (e) { /* utan namn */ }
+  if (typeof placeModelsPrepare === "function") await placeModelsPrepare();
+  const only = new Set((ids || []).map(String));
+  const r = only.size ? buildPlacementsIfc(projName, only) : null;
+  return { text: r ? r.text : null, n: r ? r.n : 0 };
+}
 /* Trimble Connect-id för en uppladdad fil (från files/fs/commit), eller null. */
 function placeUploadedId(upRes, name) {
   const f = upRes && Array.isArray(upRes.files) ? upRes.files.find(x => x.name === name) : null;

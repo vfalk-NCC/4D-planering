@@ -175,8 +175,12 @@ function l3wInit() {
     if (!(l3w.on && l3w.drag && e.pointerId === l3w.drag.id)) return;
     e.stopPropagation();
     const d = l3w.drag; l3w.drag = null;
-    // Tryck (inte dra) med Mät-verktyget: punkten läggs ut som vanligt – mäta går också medan man går.
-    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6 && e.button !== 2 && l3.tool === "measure") { l3Tap(e); l3Render(); }
+    // Tryck (inte dra) gäller som vanligt medan man går (Victor 2026-10-13): mäta, trycka på en fotoikon och titta på bilden,
+    // markera objekt (H döljer dem). Högerklick (utan att dra) öppnar högerklicksmenyn: Dölj, Exportera m.m.
+    if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) {
+      if (e.button === 2) { if (typeof l3OpenCtx === "function") l3OpenCtx(e.clientX, e.clientY, e); }
+      else { l3Tap(e); l3Render(); }
+    }
   }, true);
   ["dblclick", "contextmenu"].forEach(t => window.addEventListener(t, e => { if (canvasEv(e)) { e.stopPropagation(); e.preventDefault(); } }, true));
   window.addEventListener("wheel", e => {

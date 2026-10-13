@@ -119,6 +119,7 @@ function l3LayersRender() {
     + fld("Trianglar", sel("v3LayCap", [["", `Auto (${(l3bAutoTris() / 1e6).toFixed(0)} milj.)`], ...L3B_CAPS.map(c => [String(c), `${c} milj.`])], P.triCap || ""), "Högsta antal trianglar för alla modeller tillsammans. Högre visar mer av stora modeller men kräver mer minne – för högt kan få fliken att stängas på en dator med lite minne. Gäller modeller som läses in efter att du ändrat.")
     + fld("Punkter per moln", sel("v3LayPcBudget", [["", `Auto (${typeof lowMemDevice !== "undefined" && lowMemDevice ? "1,5" : "6"} milj.)`], ["1000000", "1 milj."], ["3000000", "3 milj."], ["6000000", "6 milj."], ["10000000", "10 milj."], ["20000000", "20 milj."], ["50000000", "50 milj."], ["100000000", "100 milj."], ["all", "Full upplösning"]], P.pcBudget || ""), "Högsta antal punkter per punktmoln. Hela molnet visas alltid – glesare med en lägre siffra. Full upplösning läser varje punkt (upp till vad datorns minne klarar); medan du rör vyn ritas en glesare kopia så att det går lätt. Gäller moln som läses in efter att du ändrat.")
     + chk("v3LayPcLod", P.pcLod !== false, "Gles kopia vid rörelse", "smidigare i stora moln", "Medan kameran rör sig ritas ett jämnt utglesat moln (~2 milj. punkter); hela molnet när du stannar.")
+    + fld("Skarp efter", sel("v3LayPcStill", [["250", "0,25 s (snabbt)"], ["450", "0,45 s (normal)"], ["800", "0,8 s (lugn)"], ["1500", "1,5 s (mycket lugn)"]], String(P.pcStill || 450)), "Hur länge kameran ska stå still innan hela molnet ritas igen. Längre tid = mindre hackigt när du tittar runt bland detaljer, men det tar längre tid innan molnet blir skarpt.")
     + `</div><div class="v3-set-g"><div class="v3-set-h">Mobil</div>`
     + chk("v3LayLight", P.mobileCopy !== false, "Lätt kopia för iPhone/iPad", "", "När datorn läst in en modell sparas en lätt kopia av geometrin (utan egenskaper) i datalagret – inte i Trimble Connect. iPhone/iPad läser den i stället för IFC-filen.")
     + `</div>`;
@@ -227,6 +228,7 @@ function l3LayersRender() {
     const all = pcb.value === "all";
     l3Status(all ? `Full upplösning: varje punkt läses (högst ${l3pcMil(l3pcMaxPts())} punkter per moln efter datorns minne). Stora moln tar en stund att läsa och sparas inte i webbläsaren. Gäller moln som läses in härefter – tryck på molnets ⋯ → Läs in igen.` : "Punkter per punktmoln ändrat – gäller moln som läses in härefter (molnets ⋯ → Läs in igen).");
   };
+  const still = host.querySelector("#v3LayPcStill"); if (still) still.onchange = () => { l3SetPref("pcStill", Number(still.value) || 450); };
   const lod = host.querySelector("#v3LayPcLod"); if (lod) lod.onchange = () => { l3SetPref("pcLod", lod.checked); l3Render(); };
   const cap = host.querySelector("#v3LayCap");
   if (cap) cap.onchange = () => {

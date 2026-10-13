@@ -508,6 +508,7 @@ function l3Init(box) {
   orbit.addEventListener("start", l3StopFly); // egen kamerarörelse avbryter en pågående övergång
   gizmo.addEventListener("change", l3Render);
   gizmo.addEventListener("dragging-changed", e => { orbit.enabled = !e.value; });
+  gizmo.addEventListener("dragging-changed", ev => { if (typeof l3pcHold === "function") l3pcHold(!!ev.value); }); // punktmolnet gles medan objekt flyttas/vrids
   gizmo.addEventListener("mouseDown", () => { if (gizmo.object && gizmo.object.userData.bmove) return; if (typeof placeSnapshot === "function") placeSnapshot(); l3.dragStart = l3GroupState(); });
   gizmo.addEventListener("objectChange", () => { if (gizmo.object && gizmo.object.userData.bmove) { if (typeof l3bmGizmoChange === "function") l3bmGizmoChange(); return; } l3FromGizmo(); });
   gizmo.addEventListener("mouseUp", l3DragEnd);

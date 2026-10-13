@@ -126,6 +126,8 @@ function l3mDraw() {
     el.ondblclick = e => { e.stopPropagation(); if (l3mCanOff(m) && m.off && !m.locked) l3mSetOff(m, 0, m.off); };
     if (m.locked) { el.classList.remove("drag"); el.classList.add("locked"); el.title = "Låst mått – lås upp det i listan Mått för att ändra det."; }
     el.textContent = l3mLabel(m); el.dataset.mid = m.id;
+    // Litet, subtilt kryss efter måttet (Victor 2026-10-13: de automatiska måtten ska gå att kryssa bort ett i taget).
+    if (!m.locked) { const x = document.createElement("i"); x.className = "v3-meas-x"; x.title = "Ta bort måttet"; x.setAttribute("role", "button"); x.onpointerdown = ev => ev.stopPropagation(); x.onclick = ev => { ev.stopPropagation(); ev.preventDefault(); l3mRemove(m.id); }; el.appendChild(x); }
     if (own != null && !sel) el.style.background = m.color;
     host.appendChild(el);
     l3m.labels.set(m.id, el); el._at = at;
@@ -670,7 +672,17 @@ function l3SmartGeom(h) {
   const tris = [];
   if (idx) { for (let i = 0; i + 2 < idx.length; i += 3) if (idx[i] >= lo && idx[i] < hi) tris.push([idx[i] - lo, idx[i + 1] - lo, idx[i + 2] - lo]); }
   else for (let i = lo; i + 2 < hi; i += 3) tris.push([i - lo, i + 1 - lo, i + 2 - lo]);
-  return { V, tris, name };
+  return { V, tris, name, mesh, lo, hi };
+}
+/* Närmaste annat objekt rakt upp/ner från en punkt (objektet man tryckte på räknas inte): träffen eller null. */
+function l3SmartRay(from, dir, g) {
+  const rc = new THREE.Raycaster(from, dir, 0, 200), targets = typeof l3Surfaces === "function" ? l3Surfaces() : [];
+  return rc.intersectObjects(targets, true).find(h => {
+    const o = h.object.userData && h.object.userData.l3bMain ? h.object.userData.l3bMain : h.object;
+    if (!h.object.visible || h.object.userData.noHit || h.object.type === "LineSegments" || h.object.type === "Line" || (typeof l3VisibleChain === "function" && !l3VisibleChain(h.object)) || (typeof l3NotClipped === "function" && !l3NotClipped(h.point))) return false;
+    if (o === g.mesh && (!h.face || (h.face.a >= g.lo && h.face.a < g.hi))) return false; // objektet självt
+    return true;
+  }) || null;
 }
 function l3SmartMeasure(e) {
   const hits = typeof l3Ray === "function" ? l3Ray(e, l3Surfaces()) : [], h = hits.find(x => x.face && x.object.isMesh);
@@ -708,8 +720,14 @@ function l3SmartMeasure(e) {
   if (typeof l3ClearMeasure === "function") l3ClearMeasure();
   const m1 = l3mAdd("dist", [A1, A2], `${f(W)} m`, [obj, obj]), m2 = l3mAdd("dist", [B1, B2], `${f(H)} m`, [obj, obj]), m3 = l3mAdd("objvol", [P.clone()], `${l3Fmt(vol, 3)} m³`, [obj]);
   m1.note = wl; m1.showNote = true; m2.note = hl; m2.showNote = true;
+  // Fri höjd upp och ner från tryckpunkten till närmaste andra objekt (Victor 2026-10-13: "mått enligt grön och gul pil").
+  [["Upp", 1], ["Ner", -1]].forEach(([lbl, sgn]) => {
+    const from = P.clone().add(new THREE.Vector3(0, 0, 0.01 * sgn)), h2 = l3SmartRay(from, new THREE.Vector3(0, 0, sgn), g);
+    if (!h2 || h2.distance < 0.03) return;
+    const mm = l3mAdd("dist", [P.clone(), h2.point.clone()], `${f(h2.distance + 0.01)} m`, [obj, null]); mm.note = `${lbl} till närmaste objekt`; mm.showNote = true;
+  });
   m3.dims = [W, H, D].map(x => Math.round(x * 1000) / 1000); m3.note = `${f(W)} × ${f(H)} × ${f(D)} m`; m3.showNote = true; m3.how = how;
   l3mDraw(); if (typeof l3mRenderBar === "function") l3mRenderBar();
-  l3Status(`Smart mått på ${nm}: ${wl.toLowerCase()} ${f(W)} m · ${hl.toLowerCase()} ${f(H)} m · djup ${f(D)} m · volym ${l3Fmt(vol, 3)} m³ (${how}). Tryck på nästa objekt.`);
+  l3Status(`Smart mått på ${nm}: ${wl.toLowerCase()} ${f(W)} m · ${hl.toLowerCase()} ${f(H)} m · djup ${f(D)} m · volym ${l3Fmt(vol, 3)} m³ (${how}). Kryssa bort ett mått med × efter måttet. Tryck på nästa objekt.`);
   l3Render();
 }

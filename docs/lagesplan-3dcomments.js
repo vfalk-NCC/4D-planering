@@ -362,8 +362,10 @@ function l3kRenderTab() {
     ${l3k.list.length ? `<div class="v3-grp-acts"><button type="button" id="v3KIfcSel" ${nSel ? "" : "disabled"} title="De markerade kommentarerna (Ctrl+klick / Skift+klick i listan) som 3D-skyltar i en ny IFC-fil i Trimble Connect">${I.upload} Exportera markerade${nSel ? ` (${nSel})` : ""}</button>${nSel ? `<button type="button" id="v3KSelClr" title="Avmarkera alla">Avmarkera</button>` : ""}<button type="button" id="v3KIfc" title="Alla kommentarer som syns i listan som riktiga 3D-skyltar (skylt, stolpe, 3D-text och egenskaper) i en ny IFC-fil i Trimble Connect – vända mot vyn du har nu">${I.upload} Exportera alla som 3D-skyltar</button></div>` : ""}
     <div class="v3-pal-hint">${open} öppna${done ? ` · ${done} klara` : ""}. Högerklick i 3D → Kommentar här… skapar en ny.</div>
     </div>
-    ${typeof l3mTabHtml === "function" ? l3mTabHtml() : ""}`;
+    ${typeof l3mTabHtml === "function" ? l3mTabHtml() : ""}
+    ${typeof l3phTabHtml === "function" ? l3phTabHtml() : ""}`;
   if (typeof l3mBindTab === "function") l3mBindTab(host);
+  if (typeof l3phBindTab === "function") l3phBindTab(host);
   if (typeof l3aBind === "function") l3aBind(host);
   const kh = host.querySelector("#v3KListHead"); if (kh) kh.onclick = () => { l3SetPref("kListShut", !l3Prefs().kListShut); l3kRenderTab(); };
   const q = host.querySelector("#v3KQ");

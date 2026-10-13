@@ -4,13 +4,13 @@
    – Lagret Foton (Lager → Planering och etablering) visar lägesplanens foton där de togs, som i 2D (samma
      zon- och datumfilter).
    – Höjden: inställd för hand (ph.z) → fotots GPS-höjd rakt av (EXIF/iPhonens höjd över havet) → annars på ytan
-     under punkten (marken eller modellen) + ögonhöjd. En tunn stolpe ner till ytan visar hur högt det är.
+     under punkten (ritningens nivå) + ögonhöjd – aldrig automatiskt på en modells yta. En tunn stolpe ner till ytan visar hur högt det är.
    – Riktningen (EXIF-kompassen) visas som en genomskinlig kon åt det håll kameran pekade.
    – Tryck på markören: fotot med höjd och riktning. Höjden går att dra (handtaget), stega en våning (±3 m),
      ställa på ytan eller sätta tillbaka till GPS-höjden. Sparas med fotot (plan.photos), Ctrl+Z ångrar. */
 
 const L3PH_EYE = 1.6, L3PH_STOREY = 3;
-const l3ph = { open: null, drag: null, h: null, big: null };
+const l3ph = { open: null, drag: null, h: null, big: null, pts: [], labels: [] };
 const l3phOn = () => l3Prefs().photos3d === true;
 const l3phList = () => (typeof visiblePhotos === "function" ? visiblePhotos() : typeof photos === "function" ? photos() : []);
 const l3phR2 = v => Math.round(v * 100) / 100;
@@ -28,7 +28,9 @@ function l3phPos(ph) {
   const alt = ph.gps && Number.isFinite(ph.gps.alt) ? ph.gps.alt : null;
   if (Number.isFinite(ph.z)) return { p: new THREE.Vector3(x, y, ph.z - l3.O[2]), ground, src: "hand" };
   if (alt != null) return { p: new THREE.Vector3(x, y, alt - l3.O[2]), ground, src: "gps" };
-  return { p: new THREE.Vector3(x, y, ground + L3PH_EYE), ground, src: "yta" };
+  // Utan EXIF-höjd: ritningens nivå + ögonhöjd – inte ytan under punkten (där hamnade fotot på taket av en byggnad).
+  const planZ = plan && plan.calib ? (plan.calib.model[0][2] || 0) - l3.O[2] : ground;
+  return { p: new THREE.Vector3(x, y, planZ + L3PH_EYE), ground, src: "yta" };
 }
 /* Kompassriktning (grader från norr, medurs) → riktning i modellen (x = öst, y = norr). */
 const l3phDir = deg => new THREE.Vector3(Math.sin(deg * Math.PI / 180), Math.cos(deg * Math.PI / 180), 0);
@@ -58,10 +60,12 @@ function l3phBuild() {
   // Ikonens textur delas av alla markörer – den tas inte bort när markörerna byggs om.
   while (grp.children.length) { const c = grp.children.pop(); if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }
   grp.visible = l3phOn() && !!(plan && plan.calib);
-  if (!grp.visible) { l3phClose(); l3phHandlePlace(); return; }
+  l3ph.pts = [];
+  if (!grp.visible) { l3phClose(); l3phHandlePlace(); l3phLabels(); return; }
   const tex = l3phIconTex();
   l3phList().forEach(ph => {
     const { p, ground } = l3phPos(ph), sel = l3ph.open && l3ph.open.id === ph.id;
+    l3ph.pts.push({ ph, p: p.clone() });
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: false }));
     const s = sel ? 0.075 : 0.055; sp.scale.set(s, s, 1); sp.position.copy(p); sp.renderOrder = 7; // syns alltid, som en kartnål (stolpen visar var den står)
     sp.userData.photoId = ph.id; sp.userData.noHit = true;
@@ -86,7 +90,33 @@ function l3phBuild() {
     }
   });
   l3phHandlePlace();
+  l3phLabels();
   l3Render();
+}
+/* Datum (och fotots kommentar) vid markören (Victor 2026-10-13: "addera datumet på något snyggt sätt och om jag har lagt
+   en kommentar på fotot"): en liten etikett under ikonen – valbart: datum + kommentar, bara datum eller ingen. */
+const L3PH_MON = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+function l3phDateTxt(ph) {
+  const m = /^(\d{4})-(\d\d)-(\d\d)/.exec(String(ph.date || ""));
+  return m ? `${+m[3]} ${L3PH_MON[+m[2] - 1] || ""} ${m[1]}` : String(ph.date || "");
+}
+const l3phLblMode = () => { const v = l3Prefs().photoLbl; return v === "date" || v === "off" ? v : "all"; };
+function l3phLabels() {
+  (l3ph.labels || []).forEach(x => x.el.remove()); l3ph.labels = [];
+  if (!l3 || !l3phOn() || !l3.groups.photos || !l3.groups.photos.visible || l3phLblMode() === "off") return;
+  const host = l3.renderer.domElement.parentElement, mode = l3phLblMode(), esc = escHtml;
+  l3ph.pts.forEach(({ ph, p }) => {
+    const el = document.createElement("div"), cap = String(ph.caption || "").trim();
+    el.className = "v3-phl" + (cap ? " has" : "");
+    el.innerHTML = `<b>${esc(l3phDateTxt(ph))}</b>${mode === "all" && cap ? `<span>${esc(cap.length > 36 ? cap.slice(0, 35) + "…" : cap)}</span>` : cap ? `<i title="${esc(cap)}"></i>` : ""}`;
+    el.title = `${ph.caption || "Foto"} · ${l3phDateTxt(ph)}${ph.by ? " · " + ph.by : ""}`;
+    el.onpointerdown = e => e.stopPropagation(); el.onclick = e => { e.stopPropagation(); l3phOpen(ph); };
+    host.appendChild(el); l3ph.labels.push({ el, p });
+  });
+  l3phLabelsPlace();
+}
+function l3phLabelsPlace() {
+  (l3ph.labels || []).forEach(({ el, p }) => { const q = l3ToScreen(p); el.style.display = q.behind ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px"; });
 }
 /* Tryck på en markör (anropas i 3D-vyns tryck före objekten). */
 function l3phTap(e) {
@@ -107,7 +137,7 @@ function l3phTap(e) {
 /* ---- Popupen ------------------------------------------------------------------------------------- */
 const l3phSrcText = (ph, src) => src === "hand" ? "inställd för hand"
   : src === "gps" ? `GPS-höjd${Number.isFinite(ph.gps.altAcc) ? ` ±${String(ph.gps.altAcc).replace(".", ",")} m` : " (osäker, ofta några meter)"}`
-  : "på ytan + ögonhöjd – fotot saknar GPS-höjd";
+  : "ritningens nivå + ögonhöjd – fotot saknar GPS-höjd (ställ på ytan eller dra höjden)";
 const L3PH_COMPASS = ["norr", "nordost", "öster", "sydost", "söder", "sydväst", "väster", "nordväst"];
 const l3phCompass = d => L3PH_COMPASS[Math.round(d / 45) % 8];
 function l3phOpen(ph) {
@@ -254,7 +284,37 @@ function l3phToggle(on) {
   }
 }
 /* Popup och handtag följer kameran (anropas efter varje bild i l3Render). */
-function l3phPlace() { if (l3ph.open) { l3phHandlePlace(); l3phPlacePop(); } }
+function l3phPlace() { l3phLabelsPlace(); if (l3ph.open) { l3phHandlePlace(); l3phPlacePop(); } }
+
+/* ---- Foton som lista under Kommentarer & mått (hopfällbar) ------------------------------------------------------ */
+function l3phTabHtml() {
+  const esc = escHtml, I = typeof L3_ICO !== "undefined" ? L3_ICO : {}, list = l3phList(), shut = l3Prefs().phListShut === true, on = l3phOn(), mode = l3phLblMode();
+  const rows = list.map(ph => {
+    const hasAlt = ph.gps && Number.isFinite(ph.gps.alt), src = Number.isFinite(ph.z) ? "höjd satt för hand" : hasAlt ? `GPS-höjd ${String(l3phR2(ph.gps.alt)).replace(".", ",")} m` : "ingen höjd i fotot";
+    return `<div class="v3-kc"><button type="button" class="v3-kc-b v3-kc-m" data-phgo="${esc(ph.id)}" title="Zooma till fotot och visa det"><b>${esc(l3phDateTxt(ph) || "Foto")}</b><em>${esc(String(ph.caption || "").slice(0, 90) || "utan kommentar")} · ${esc(src)}</em></button></div>`;
+  }).join("");
+  return `<section class="v3-msec" id="v3PhSec"><button type="button" class="v3-msec-h" id="v3PhHead" aria-expanded="${!shut}"><i>›</i>Foton <span>${list.length}</span></button>
+    ${shut ? "" : `<div class="v3-kc-opts"><label class="v3-chk"><input type="checkbox" id="v3PhShow" ${on ? "checked" : ""} /> Visa i 3D</label>
+      <select id="v3PhLbl" title="Text vid fotona i 3D">${[["all", "Datum + kommentar"], ["date", "Bara datum"], ["off", "Ingen text"]].map(([k, l]) => `<option value="${k}" ${mode === k ? "selected" : ""}>${l}</option>`).join("")}</select>
+      <button type="button" class="v3-ghost" id="v3PhAdd" title="Lägg till foton i 3D">＋ Foto…</button></div>
+      <div class="v3-kc-list">${rows || `<div class="v3-pal-hint">Inga foton på den här arbetsytan (eller så är de filtrerade bort i 2D).</div>`}</div>`}</section>`;
+}
+function l3phBindTab(host) {
+  const q = s => host.querySelector(s);
+  const head = q("#v3PhHead"); if (head) head.onclick = () => { l3SetPref("phListShut", !(l3Prefs().phListShut === true)); if (typeof l3kRenderTab === "function") l3kRenderTab(); };
+  const show = q("#v3PhShow"); if (show) show.onchange = () => { l3phToggle(show.checked); };
+  const lbl = q("#v3PhLbl"); if (lbl) lbl.onchange = () => { l3SetPref("photoLbl", lbl.value); l3phLabels(); l3Render(); };
+  const add = q("#v3PhAdd"); if (add) add.onclick = () => l3phAdd();
+  host.querySelectorAll("[data-phgo]").forEach(b => { b.onclick = () => l3phGo(b.dataset.phgo); });
+}
+/* Zooma till fotots markör och öppna fotot. */
+function l3phGo(id) {
+  const ph = l3phList().find(x => x.id === id); if (!ph) return;
+  if (!l3phOn()) l3phToggle(true);
+  const { p } = l3phPos(ph);
+  if (typeof l3FlyTo === "function") l3FlyTo(p.clone(), 14, null, 450);
+  l3phOpen(ph);
+}
 
 /* ---- Lägg till foto i 3D (Victor 2026-10-11: "Hittar ingen knapp för att ladda upp foton i 3d-vyn") -------------
    📷 Foto i verktygsraden (⋯ Mer på iPhone), ＋ vid Foton under Lager eller "Lägg till foto…" i sökningen.
