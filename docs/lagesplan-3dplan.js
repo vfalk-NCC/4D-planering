@@ -99,51 +99,57 @@ function l3plRenderTab() {
   const now = acts.filter(a => a.start <= day && a.end >= day);
   const f = P.film || {}, keys = l3plKeys();
   const range = acts.length ? [acts[0].start, acts.reduce((m, a) => (a.end > m ? a.end : m), acts[0].end)] : [day, day];
-  // Tre hopfällbara grupper (Victor 2026-10-12): Film överst, 4D-koppling (listan) och Övrigt.
-  const open = { film: true, link: true, other: true, ...(P.secOpen || {}) };
-  const sec = (id, title, body, extra = "") => `<section class="v3-pl-sec v3-pl-fold ${open[id] ? "" : "shut"}" data-plsec="${id}"><div class="v3-pl-h"><button type="button" class="v3-pl-ft" data-plsect="${id}" aria-expanded="${!!open[id]}"><i>›</i><b>${title}</b></button>${extra}</div>${open[id] ? `<div class="v3-pl-body">${body}</div>` : ""}</section>`;
-  const filmBody = `      <div class="v3-pl-grid">
+  // Som i 4D-dashboarden (Victor 2026-10-14): grå hopfällbara paneler med versalrubrik och ＋/− samt vita kort inuti.
+  const open = { film: true, link: false, other: true, ...(P.secOpen || {}) };
+  const sec = (id, title, body, extra = "") => `<section class="v3-panel ${open[id] ? "" : "shut"}" data-plsec="${id}"><div class="v3-panel-h"><b>${title}</b>${extra}<button type="button" class="v3-panel-t" data-plsect="${id}" aria-expanded="${!!open[id]}" title="${open[id] ? "Fäll ihop" : "Fäll ut"}">${open[id] ? "−" : "+"}</button></div>${open[id] ? `<div class="v3-panel-b">${body}</div>` : ""}</section>`;
+  const card = (title, body, cls = "") => `<section class="v3-card ${cls}"><div class="v3-card-h">${title}</div>${body}</section>`;
+  const chip = (id, on, label, tip, sub) => `<label class="v3-chip ${sub ? "sub" : ""}" title="${esc(tip)}"><input type="checkbox" id="${id}" ${on ? "checked" : ""} /><span>${label}</span></label>`;
+  const filmBar = `<div class="v3-pl-btns v3-pl-bar"><button type="button" id="v3FlPreview" title="Spela upp i 3D-vyn utan att spela in">▶ Spela upp</button><button type="button" id="v3FlPause" title="Pausa och fortsätta (mellanslag) – grafiken står kvar som i filmen" ${l3pl.rec ? "" : "disabled"}>${l3pl.rec && l3pl.rec.paused ? "▶ Fortsätt" : "⏸ Paus"}</button><button type="button" id="v3FlRec" class="v3-primary" title="Spela in och spara som videofil">⏺ Spela in</button></div>`;
+  const filmBody = `
+      ${card("Tidsintervall", `<div class="v3-pl-grid">
         <label>Från<input type="date" id="v3FlFrom" value="${esc(f.from || range[0])}" /></label>
         <label>Till<input type="date" id="v3FlTo" value="${esc(f.to || range[1])}" /></label>
         <label>Längd (s)<input type="number" id="v3FlSec" min="3" max="600" value="${esc(String(f.sec || 20))}" /></label>
-        <label title="Vilken planering filmen följer: aktiviteterna i pärlbandet, Pågår nu, förloppet och glöden">Planering<select id="v3FlSrc">${[["pp", "Powerproject"], ["excel", "Excel (4-veckors)"], ["both", "Båda"]].map(([v, t]) => `<option value="${v}" ${l3plFilmSrc() === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
         <label>Upplösning<select id="v3FlRes">${[["720", "720p"], ["1080", "1080p (Full HD)"], ["1440", "1440p"]].map(([v, t]) => `<option value="${v}" ${String(f.res || "1080") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
-      </div>
-      <details class="v3-pl-fx" ${P.fxOpen === false ? "" : "open"}><summary>Grafik i filmen</summary>
-      <label class="v3-pl-chk" title="Vecka (rullar vid veckobyte) och datum uppe till vänster"><input type="checkbox" id="v3FlTitleOn" ${f.title === false ? "" : "checked"} /> Datumskylt</label>
-      <label class="v3-pl-chk" title="Kort nere till höger med aktiviteterna som pågår och deras förlopp – nya glider in, klara bockas av"><input type="checkbox" id="v3FlFxNow" ${f.fxNow === false ? "" : "checked"} /> Pågår nu-ruta</label>
-      <label class="v3-pl-chk" title="Objekten som hör till pågående aktiviteter pulserar svagt i statusfärgen"><input type="checkbox" id="v3FlFxGlow" ${f.fxGlow === false ? "" : "checked"} /> Lys upp det som pågår</label>
-      <label class="v3-pl-chk" title="En rubrik mitt i bilden när filmen passerar en milstolpe (milstolparna i dashboarden)"><input type="checkbox" id="v3FlFxMiles" ${f.fxMiles === false ? "" : "checked"} /> Milstolpar</label>
-      <label class="v3-pl-chk" title="Hur stor del av projektet som är klart och läget mot baslinjen, uppe till höger"><input type="checkbox" id="v3FlFxMeter" ${f.fxMeter === false ? "" : "checked"} /> Förloppsmätare</label>
-      <label class="v3-pl-chk v3-pl-sub2" title="Under förloppsmätaren: hur många dagar planen ligger före eller efter baslinjen"><input type="checkbox" id="v3FlFxBl" ${f.fxBl === true ? "checked" : ""} /> … med dagar mot baslinjen</label>
-      <label class="v3-pl-chk"><input type="checkbox" id="v3FlPearls" ${f.pearls === false ? "" : "checked"} /> Tidslinje med dagar, veckor och månader</label>
-      <label class="v3-pl-chk" title="Etableringen tonas in och glider på plats när den etableras och tonas ut när den avvecklas"><input type="checkbox" id="v3FlFxEtab" ${f.fxEtab === false ? "" : "checked"} /> Etablering i takt med tidplanen</label>
-      <label class="v3-pl-chk v3-pl-sub2" title="Tornkranens bom svänger medan aktiviteter pågår inom kranens räckvidd"><input type="checkbox" id="v3FlFxCrane" ${f.fxCrane === false ? "" : "checked"} /> … kranarna arbetar</label>
-      <label class="v3-pl-chk v3-pl-sub2" title="Skylt till vänster: \"Tornkran 1 etableras\", \"Bodar avvecklas\""><input type="checkbox" id="v3FlFxSigns" ${f.fxSigns === false ? "" : "checked"} /> … skyltar när något etableras eller avvecklas</label>
-      <label class="v3-pl-chk" title="Vad färgerna betyder (Klar, Pågår, Försenad, Ej startad) – nere till vänster"><input type="checkbox" id="v3FlFxLegend" ${f.fxLegend === true ? "checked" : ""} /> Statusförklaring</label>
-      </details>
+        <label class="wide" title="Vilken planering filmen följer: aktiviteterna i pärlbandet, Pågår nu, förloppet och glöden">Planering<select id="v3FlSrc">${[["pp", "Powerproject"], ["excel", "Excel (4-veckors)"], ["both", "Båda"]].map(([v, t]) => `<option value="${v}" ${l3plFilmSrc() === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      </div>`)}
+      ${card("Grafik i filmen", `<div class="v3-chips">
+      ${chip("v3FlTitleOn", f.title !== false, "Datumskylt", "Vecka (rullar vid veckobyte) och datum uppe till vänster")}
+      ${chip("v3FlFxNow", f.fxNow !== false, "Pågår nu", "Kort nere till höger med aktiviteterna som pågår och deras förlopp – nya glider in, klara bockas av")}
+      ${chip("v3FlFxGlow", f.fxGlow !== false, "Glöd", "Objekten som hör till pågående aktiviteter pulserar svagt i statusfärgen")}
+      ${chip("v3FlFxMiles", f.fxMiles !== false, "Milstolpar", "En rubrik mitt i bilden när filmen passerar en milstolpe (milstolparna i dashboarden)")}
+      ${chip("v3FlFxMeter", f.fxMeter !== false, "Förlopp", "Hur stor del av projektet som är klart och läget mot baslinjen, uppe till höger")}
+      ${chip("v3FlFxBl", f.fxBl === true, "± dagar mot baslinje", "Under förloppsmätaren: hur många dagar planen ligger före eller efter baslinjen", true)}
+      ${chip("v3FlPearls", f.pearls !== false, "Tidslinje", "Tidslinje med dagar, veckor och månader")}
+      ${chip("v3FlFxEtab", f.fxEtab !== false, "Etablering", "Etableringen tonas in och glider på plats när den etableras och tonas ut när den avvecklas")}
+      ${chip("v3FlFxCrane", f.fxCrane !== false, "Kranar arbetar", "Tornkranens bom svänger medan aktiviteter pågår inom kranens räckvidd", true)}
+      ${chip("v3FlFxSigns", f.fxSigns !== false, "Etableringsskyltar", "Skylt till vänster: \"Tornkran 1 etableras\", \"Bodar avvecklas\"", true)}
+      ${chip("v3FlFxLegend", f.fxLegend === true, "Statusförklaring", "Vad färgerna betyder (Klar, Pågår, Försenad, Ej startad) – nere till vänster")}
+      </div>`)}
       ${l3plAnimHtml(f)}
-      <div class="v3-pl-saved"><select id="v3FlSaved" title="Sparade filmer: intervall, grafik, kameravyer och objektens animering"><option value="">${l3plFilms().length ? "Sparade filmer…" : "Inga sparade filmer"}</option>${l3plFilms().map(x => `<option value="${esc(x.name)}" ${l3pl.filmSel === x.name ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select><button type="button" id="v3FlSaveAs" title="Spara filmen som den ser ut nu (kameravyer och objektens animering ingår)">Spara film…</button>${l3pl.filmSel ? `<button type="button" id="v3FlSavedDel" title="Ta bort den sparade filmen">✕</button>` : ""}</div>
-      <input type="text" id="v3FlTitle" placeholder="Rubrik i filmen (valfri)" value="${esc(f.caption || "")}" />
-      <button type="button" class="v3-wide ${l3fsOn() ? "on" : ""}" id="v3FlStrip" title="Tidslinje längst ner i 3D-fönstret med datum, aktiviteterna som ett pärlband och kameravyerna">${l3fsOn() ? "Dölj filmens tidslinje" : "🎬 Visa filmens tidslinje"}</button>
-      <div class="v3-pal-hint">${keys.length ? `${keys.length} ${keys.length === 1 ? "kameravy" : "kameravyer"} (🎥 på tidslinjen). ` : ""}Dra på tidslinjen till ett datum, ställ in kameran och tryck <b>＋ Vy här</b>. Kameran glider mellan vyerna. Dra en 🎥 för att flytta den, högerklicka för att ta bort.</div>
-      ${l3SavedViews().length ? `<select id="v3FlKeyView" class="v3-wide"><option value="">＋ Lägg en sparad vy på tidslinjen…</option>${l3SavedViews().map((v, i) => `<option value="${i}">${esc(v.name)}</option>`).join("")}</select>` : ""}
-      <div class="v3-pl-btns"><button type="button" id="v3FlPreview" title="Spela upp i 3D-vyn utan att spela in">▶ Spela upp</button><button type="button" id="v3FlPause" title="Pausa och fortsätta (mellanslag) – grafiken står kvar som i filmen" ${l3pl.rec ? "" : "disabled"}>${l3pl.rec && l3pl.rec.paused ? "▶ Fortsätt" : "⏸ Paus"}</button><button type="button" id="v3FlRec" class="v3-primary" title="Spela in och spara som videofil">⏺ Spela in</button></div>
-      <div class="v3-pal-hint" id="v3FlMsg">${typeof MediaRecorder === "undefined" ? "Webbläsaren kan inte spela in video." : ""}</div>`;
+      ${card("Kameravyer", `<button type="button" class="v3-wide ${l3fsOn() ? "on" : ""}" id="v3FlStrip" title="Tidslinje längst ner i 3D-fönstret med datum, aktiviteterna som ett pärlband och kameravyerna">${l3fsOn() ? "Dölj filmens tidslinje" : "🎬 Visa filmens tidslinje"}</button>
+      <div class="v3-pal-hint">${keys.length ? `<b>${keys.length}</b> ${keys.length === 1 ? "kameravy" : "kameravyer"} (🎥). ` : ""}Dra på tidslinjen till ett datum, ställ in kameran och tryck <b>＋ Vy här</b>. Dra en 🎥 för att flytta den, högerklicka för att ta bort.</div>
+      ${l3SavedViews().length ? `<select id="v3FlKeyView" class="v3-wide"><option value="">＋ Lägg en sparad vy på tidslinjen…</option>${l3SavedViews().map((v, i) => `<option value="${i}">${esc(v.name)}</option>`).join("")}</select>` : ""}`)}
+      ${card("Spara", `<div class="v3-pl-saved"><select id="v3FlSaved" title="Sparade filmer: intervall, grafik, kameravyer och objektens animering"><option value="">${l3plFilms().length ? "Sparade filmer…" : "Inga sparade filmer"}</option>${l3plFilms().map(x => `<option value="${esc(x.name)}" ${l3pl.filmSel === x.name ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select><button type="button" id="v3FlSaveAs" title="Spara filmen som den ser ut nu (kameravyer och objektens animering ingår)">Spara…</button>${l3pl.filmSel ? `<button type="button" id="v3FlSavedDel" title="Ta bort den sparade filmen">✕</button>` : ""}</div>
+      <input type="text" id="v3FlTitle" placeholder="Rubrik i filmen (valfri)" value="${esc(f.caption || "")}" />`)}
+      <div class="v3-pal-hint" id="v3FlMsg">${typeof MediaRecorder === "undefined" ? "Webbläsaren kan inte spela in video." : ""}</div>
+      ${filmBar}`;
   if (open.link && l3plLinkSrc() !== "pp" && !l3pl.xrows) { l3plLoadX().then(() => l3plRenderTab()); }
   const linkActs = open.link ? l3plLinkActs(l3gaP().split) : [];
   const linkSel = `<select id="v3PlLinkSrc" class="v3-pl-srcsel" title="Vilken planering listan visar">${[["pp", "Powerproject"], ["excel", "Excel"], ["both", "Båda"]].map(([v, t]) => `<option value="${v}" ${l3plLinkSrc() === v ? "selected" : ""}>${t}</option>`).join("")}</select>`;
   const linkBody = open.link ? `<div id="v3PlLinkHost">${typeof l3gaListHtml === "function" ? l3gaListHtml(linkActs, l3gaP(), linkActs) : ""}</div>` : "";
-  const otherBody = `<div class="v3-pl-sub">Powerproject-tidplanen</div>
+  const otherBody = `<div class="v3-card-h">Powerproject-tidplanen</div>
       ${l3pl.err ? `<div class="v3-pal-hint bad">Kunde inte läsa tidplanen: ${esc(l3pl.err)}</div>` : !acts.length ? `<div class="v3-pal-hint">Ingen Powerproject-tidplan i projektet ännu (importeras i 4D-planering).</div>`
         : `<div class="v3-pal-hint">${acts.length} aktiviteter · ${esc(range[0])} – ${esc(range[1])}</div>`}
       ${typeof planSource !== "undefined" && planSource !== "pp" ? `<div class="v3-pal-hint">3D-färgerna följer Excel-planeringen (vald i 4D-planering). Öppna lägesplanen med Powerproject vald för att färga efter den här tidplanen.</div>`
         : `<label class="v3-pl-crow" title="Vilken planering de kopplade IFC-objekten färgas efter. Båda: Powerproject först, Excel där objektet bara är kopplat i Excel-planeringen.">3D-färger<select id="v3PlColorSrc">${[["both", "Båda"], ["pp", "Powerproject"], ["excel", "Excel"]].map(([v, t]) => `<option value="${v}" ${l3plColorSrc() === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>`}
       <label class="v3-pl-crow" title="En tydlig bubbla vid varje aktivitets objekt med namn, datum, framdrift, område och aktivitet – samma som i 4D-dashboarden.">Info-bubblor<span><input type="checkbox" id="v3PlBub" ${l3Prefs().bubOn ? "checked" : ""} /> <select id="v3PlBubScope" title="Vilka som får bubbla">${[["auto", "Pågående + markerade"], ["marked", "Bara markerade"], ["active", "Pågående och försenade"], ["all", "Alla"]].map(([v, t]) => `<option value="${v}" ${(l3Prefs().bubScope || "auto") === v ? "selected" : ""}>${t}</option>`).join("")}</select></span></label>
+      <label class="v3-pl-crow" title="Framdriften i bubblorna: räknas fram efter datum och aktivitetens längd (som Pågår nu i filmen), eller så som den står i tidplanen.">Framdrift<select id="v3PlBubProg">${[["calc", "Räknas efter datum"], ["plan", "Från tidplanen"]].map(([v, t]) => `<option value="${v}" ${(l3Prefs().bubProg || "calc") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      <label class="v3-pl-crow" title="Det som inte startat visas i kommande-färgen (annars dolt). Gäller 3D-läget Tid – samma val som i tidsraden.">Kommande<span><input type="checkbox" id="v3PlFuture" ${typeof l3gmCfg === "function" && l3gmCfg().future ? "checked" : ""} /> visa</span></label>
       <label class="v3-pl-crow" title="Objekt vars aktivitet pågår (eller är försenad) vid valt datum får en tydlig gul kontur – utan att du behöver markera något.">Pågående objekt<span><input type="checkbox" id="v3PlActive" ${l3Prefs().actOutline ? "checked" : ""} /> gul kontur</span></label>
       <button type="button" class="v3-wide ${l3pl.dock ? "on" : ""}" id="v3PlDock">${l3pl.dock ? "Dölj tavlan" : "Visa tavlan och Gantten"}</button>
     `;
-  host.innerHTML = sec("film", "🎬 Film", filmBody) + sec("link", "4D-koppling", linkBody, linkSel) + sec("other", "Övrigt", otherBody, `<button type="button" class="v3-ic" id="v3PlReload" title="Läs om tidplanen">↻</button>`);
+  host.innerHTML = sec("film", "Film", filmBody) + sec("link", "4D-koppling", linkBody, linkSel) + sec("other", "Övrigt", otherBody, `<button type="button" class="v3-ic" id="v3PlReload" title="Läs om tidplanen">↻</button>`);
   host.querySelectorAll("[data-plsect]").forEach(b => { b.onclick = () => { const id = b.dataset.plsect; l3plSet("secOpen", { ...open, [id]: !open[id] }); l3plRenderTab(); }; });
   const lh = host.querySelector("#v3PlLinkHost"); if (lh && typeof l3gaBind === "function") l3gaBind(lh, () => { l3plRenderTab(); if (l3pl.dock) l3plDockRender(); }, () => l3plLinkActs(l3gaP().split));
   const ls = host.querySelector("#v3PlLinkSrc"); if (ls) ls.onchange = () => { l3plSet("linkSrc", ls.value); if (ls.value !== "pp") l3plLoadX().then(() => l3plRenderTab()); else l3plRenderTab(); };
@@ -152,14 +158,15 @@ function l3plRenderTab() {
   on("v3PlDock", () => l3plDockToggle());
   on("v3PlBub", e => { l3SetPref("bubOn", !!e.target.checked); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }, "onchange");
   on("v3PlBubScope", e => { l3SetPref("bubScope", e.target.value); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }, "onchange");
+  on("v3PlBubProg", e => { l3SetPref("bubProg", e.target.value); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }, "onchange");
+  on("v3PlFuture", e => { l3gmSet("future", e.target.checked); if (typeof l3gmApply === "function") l3gmApply(true); if (typeof l3gmSync === "function") l3gmSync(); }, "onchange");
   on("v3PlActive", e => { l3SetPref("actOutline", !!e.target.checked); if (typeof l3actRebuild === "function") l3actRebuild(); }, "onchange");
   on("v3PlColorSrc", e => { l3plSet("colorSrc", e.target.value); if (typeof l3bRecolor === "function") { l3bRecolor(); if (typeof l3Render === "function") l3Render(); } }, "onchange");
   host.querySelectorAll("[data-plsel]").forEach(b => { b.onclick = () => l3plSelect(b.dataset.plsel); });
-  const save = () => { l3plSet("film", { ...l3plPrefs().film, from: host.querySelector("#v3FlFrom").value, to: host.querySelector("#v3FlTo").value, sec: Number(host.querySelector("#v3FlSec").value) || 20, res: host.querySelector("#v3FlRes").value, src: host.querySelector("#v3FlSrc").value, title: host.querySelector("#v3FlTitleOn").checked, pearls: host.querySelector("#v3FlPearls").checked, fxNow: host.querySelector("#v3FlFxNow").checked, fxGlow: host.querySelector("#v3FlFxGlow").checked, fxMiles: host.querySelector("#v3FlFxMiles").checked, fxMeter: host.querySelector("#v3FlFxMeter").checked, fxBl: host.querySelector("#v3FlFxBl").checked, fxLegend: host.querySelector("#v3FlFxLegend").checked, fxEtab: host.querySelector("#v3FlFxEtab").checked, fxCrane: host.querySelector("#v3FlFxCrane").checked, fxSigns: host.querySelector("#v3FlFxSigns").checked, caption: host.querySelector("#v3FlTitle").value }); if (l3fsOn()) l3fsRender(); };
+  const save = () => { if (!host.querySelector("#v3FlFrom")) return; l3plSet("film", { ...l3plPrefs().film, from: host.querySelector("#v3FlFrom").value, to: host.querySelector("#v3FlTo").value, sec: Number(host.querySelector("#v3FlSec").value) || 20, res: host.querySelector("#v3FlRes").value, src: host.querySelector("#v3FlSrc").value, title: host.querySelector("#v3FlTitleOn").checked, pearls: host.querySelector("#v3FlPearls").checked, fxNow: host.querySelector("#v3FlFxNow").checked, fxGlow: host.querySelector("#v3FlFxGlow").checked, fxMiles: host.querySelector("#v3FlFxMiles").checked, fxMeter: host.querySelector("#v3FlFxMeter").checked, fxBl: host.querySelector("#v3FlFxBl").checked, fxLegend: host.querySelector("#v3FlFxLegend").checked, fxEtab: host.querySelector("#v3FlFxEtab").checked, fxCrane: host.querySelector("#v3FlFxCrane").checked, fxSigns: host.querySelector("#v3FlFxSigns").checked, caption: host.querySelector("#v3FlTitle").value }); if (l3fsOn()) l3fsRender(); };
   on("v3FlSrc", () => { save(); l3plLoadX().then(() => { if (l3fsOn()) l3fsRender(); }); }, "onchange");
   ["v3FlFrom", "v3FlTo", "v3FlSec", "v3FlRes", "v3FlTitleOn", "v3FlPearls", "v3FlTitle", "v3FlFxNow", "v3FlFxGlow", "v3FlFxMiles", "v3FlFxMeter", "v3FlFxBl", "v3FlFxLegend", "v3FlFxEtab", "v3FlFxCrane", "v3FlFxSigns"].forEach(id => on(id, save, "onchange"));
   l3plAnimBind(host);
-  const fxd = host.querySelector(".v3-pl-fx"); if (fxd) fxd.ontoggle = () => l3plSet("fxOpen", fxd.open);
   on("v3FlStrip", () => { save(); l3fsToggle(); });
   // En sparad vy läggs där tidslinjens huvud står (annars på datumet i 3D).
   on("v3FlKeyView", e => { const v = l3SavedViews()[+e.target.value]; if (!v) return; const d = l3fs.t !== null && l3fsOn() ? l3plIso(new Date(Math.round(l3fs.t / 86400000) * 86400000)) : day; l3plKeyAdd({ p: v.p, t: v.t }, d, v.name); if (l3fsOn()) l3fsRender(); }, "onchange");

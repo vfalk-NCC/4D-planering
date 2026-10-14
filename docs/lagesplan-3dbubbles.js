@@ -51,17 +51,18 @@ function l3bubRebuild() {
 }
 function l3bubSig() {
   const cfg = l3bubCfg(), p = l3Prefs();
-  return [$("dateInput").value, [...l3.sel].join(","), typeof l3bs !== "undefined" ? l3bs.sel.length : 0, items.length, placements.length, typeof l3b !== "undefined" ? l3b.models.length + ":" + l3b.models.reduce((a, m) => a + (m.visible ? 1 : 0), 0) : 0, cfg.scope, cfg.max, p.bubOn, l3.placeMeshes ? l3.placeMeshes.size : 0].join("|");
+  return [$("dateInput").value, [...l3.sel].join(","), typeof l3bs !== "undefined" ? l3bs.sel.length : 0, items.length, placements.length, typeof l3b !== "undefined" ? l3b.models.length + ":" + l3b.models.reduce((a, m) => a + (m.visible ? 1 : 0), 0) : 0, cfg.scope, cfg.max, p.bubOn, p.bubProg, l3.placeMeshes ? l3.placeMeshes.size : 0].join("|");
 }
-/* Framdrift vid det visade datumet: 0 % vid start → verklig framdrift i dag → 100 % vid slut (linjärt), så att siffran rör sig när man drar i tidslinjen. */
+/* Framdrift i bubblan (val i Övrigt): "calc" = räknas fram efter datum, linjärt över aktivitetens längd (0 % vid start, 100 % vid slut – som Pågår nu i filmen)
+   så att siffran rör sig när man drar i tidslinjen; "plan" = framdriften som står i tidplanen. */
 function l3bubProgAt(r, at) {
+  const p = Math.max(0, Math.min(100, Math.round(Number(r.progress) || 0)));
+  if ((l3Prefs().bubProg || "calc") === "plan") return p;
   const d = x => (x ? Date.parse(String(x).slice(0, 10) + "T00:00:00Z") / 864e5 : NaN);
-  const s = d(r.actual_start_date || r.start_date), e = d(r.actual_end_date || r.end_date), t = d(at), n = d(todayIso()), p = Math.max(0, Math.min(100, Number(r.progress) || 0));
-  if (![s, e, t, n].every(Number.isFinite)) return p;
-  if (r.actual_end_date || p >= 100) return t >= e ? 100 : Math.round(100 * Math.max(0, t - s) / Math.max(1, e - s));
+  const s = d(r.start_date), e = d(r.end_date), t = d(at);
+  if (![s, e, t].every(Number.isFinite)) return p;
   if (t >= e) return 100; if (t <= s) return 0;
-  if (t <= n) return Math.round(n > s ? p * (t - s) / (n - s) : p);
-  return Math.round(e > n ? p + (100 - p) * (t - n) / (e - n) : p);
+  return Math.round(100 * (t - s) / Math.max(1, e - s));
 }
 function l3bubLines(r, f) {
   const fd = d => (d ? shortDate(d) : ""), L = [];
