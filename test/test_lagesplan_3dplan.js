@@ -138,6 +138,20 @@ const PP = [
       // Rivning och Temporär utesluter varandra.
       const ex = await page.evaluate(() => { l3gaEdit('g:G1'); const w = document.querySelector('.v3-ga-dlg'); const t = w.querySelector('[data-f="temp"]').checked; w.querySelector('[data-f="demo"]').click(); const r = { wasTemp: t, temp: w.querySelector('[data-f="temp"]').checked, demo: w.querySelector('[data-f="demo"]').checked }; w.querySelector('.ui-dlg-cancel').click(); return r; }); await page.waitForFunction(() => !document.querySelector('.v3-ga-dlg-wrap'));
       if (!ex.wasTemp || ex.temp || !ex.demo) fail('Temporär/Rivning utesluter varandra: ' + JSON.stringify(ex));
+      // Ctrl-klick väljer flera objekt i listan (knapp för att ta bort alla valda); markering i modellen följs i listan.
+      const ms = await page.evaluate(async () => {
+        l3gaEdit('g:G1'); const w = document.querySelector('.v3-ga-dlg'), rows = [...w.querySelectorAll('.v3-ga-obj')];
+        rows[0].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })); rows[1].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
+        const n = w.querySelectorAll('.v3-ga-obj.msel').length, bar = (w.querySelector('.v3-ga-objs-bar') || {}).textContent || '', pe = getComputedStyle(document.querySelector('.v3-ga-dlg-wrap')).pointerEvents;
+        rows[1].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })); const n2 = w.querySelectorAll('.v3-ga-obj.msel').length;
+        rows[0].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })); const bar0 = w.querySelector('.v3-ga-objs-bar').style.display;
+        const origEnts = window.l3plEntsOf; window.l3plEntsOf = a => a.rows.map(r => ({ mesh: { uuid: 'u' + r.id }, ri: 0 })); const m1 = l3pl.rows.find(r => r.id === 'p1'), ents = l3plEntsOf({ rows: [m1] }); let syncOn = null;
+        if (ents.length) { l3bs.sel = [ents[0]]; await new Promise(r => setTimeout(r, 450)); syncOn = w.querySelector('.v3-ga-obj[data-mid="p1"]').classList.contains('on') && !w.querySelector('.v3-ga-obj[data-mid="p2"]').classList.contains('on'); l3bs.sel = []; }
+        window.l3plEntsOf = origEnts; w.querySelector('.ui-dlg-cancel').click(); return { n, bar, pe, n2, bar0, syncOn };
+      });
+      await page.waitForFunction(() => !document.querySelector('.v3-ga-dlg-wrap'));
+      if (process.env.DBG) console.log('MS', JSON.stringify(ms));
+      if (ms.n !== 2 || !/2 valda/.test(ms.bar) || ms.pe !== 'none' || ms.n2 !== 1 || ms.bar0 !== 'none' || ms.syncOn !== true) fail('Flera objekt i aktiviteten (ctrl-klick) / markering följs: ' + JSON.stringify(ms));
       // ✕: frågar, tar bort bara det objektet.
       const n1 = puts.length; ask2 = null;
       await page.evaluate(() => { l3gaEdit('g:G1'); document.querySelector('.v3-ga-obj-x[data-mid="p2"]').click(); });
@@ -651,9 +665,11 @@ const PP = [
       const saved = ((l3plPrefs().film.anim || {}).by || {})['k:' + act.key];
       const fa = l3plFilmActs().find(x => x.key === act.key), t0 = fa ? l3fxAnimType(fa) : null;
       l3gaEdit(act.key); await new Promise(r => setTimeout(r, 50)); const again = document.querySelector('.v3-ga-dlg [data-f="anim"]').value; document.querySelector('.v3-ga-dlg .ui-dlg-cancel').click();
-      return { card, def, saved, t0, again };
+      // Förhandsvisning utanför filmen: valet ger en animering som byggs för det dragna datumet.
+      l3fsAnimPreview(); await new Promise(r => setTimeout(r, 400)); const prev = !!l3fs.fx && l3fs.fx.anim.some(x => x.type === 'grow' && x.a.key === act.key);
+      return { card, def, saved, t0, again, prev };
     });
-    if (anx.noSel || anx.card || !anx.def || anx.saved !== 'grow' || (anx.t0 !== null && anx.t0 !== 'grow') || anx.again !== 'grow') fail('Animering per aktivitet i redigeringsdialogen: ' + JSON.stringify(anx));
+    if (anx.noSel || anx.card || !anx.def || anx.saved !== 'grow' || (anx.t0 !== null && anx.t0 !== 'grow') || anx.again !== 'grow' || !anx.prev) fail('Animering per aktivitet i redigeringsdialogen: ' + JSON.stringify(anx));
     else console.log('OK: animering – väljs per aktivitet i redigeringsdialogen (Animering-kortet borttaget), standard kvar under Film');
     // Filter överst i vänstermenyn (sticky) och Följa tidplan.
     const fl = await page.evaluate(() => {

@@ -24,6 +24,7 @@ function l3fsToggle(on = !l3fsOn()) {
   l3plSet("film", { ...(l3plPrefs().film || {}), strip: on });
   if (on && !l3pl.rows) l3plLoad().then(l3fsRender);
   if (!on && typeof l3animReset === "function") l3animReset(); // objekten tillbaka till sitt grundläge
+  if (!on) l3fsAnimEnd();
   l3fsRender(); l3plRenderTab();
 }
 /* Pärlbandet: [{ a, x (0–1), row }] – högst tre rader, i startordning; det som inte får plats räknas. */
@@ -156,6 +157,21 @@ function l3fsBind(el, t0, t1, W) {
   });
   el.querySelectorAll("[data-fsp]").forEach(b => { b.onclick = () => { const p = l3fs.pearls[+b.dataset.fsp]; if (p) l3plSelect(p.a.key); }; });
 }
+/* Förhandsvisning av objektens animering medan man drar i tidslinjen/datumet (annars syns den bara i filmen). Samma kod som i filmen
+   (l3fxAnimate); byggs om när valen, intervallet eller planeringen ändras. */
+function l3fsAnimOn() { const A = (l3plPrefs().film || {}).anim || {}; return (A.def && A.def !== "color") || Object.values(A.by || {}).some(v => v && v !== "color"); }
+function l3fsAnimEnd() { if (l3fs.fx) { try { l3fxEnd(l3fs.fx); } catch (e) { /* */ } } l3fs.fx = null; l3fs.fxSig = ""; l3fs.fxBusy = false; }
+function l3fsAnimPreview(tIn) {
+  if (typeof l3fxStart !== "function" || typeof l3fxAnimate !== "function" || (typeof l3pl !== "undefined" && l3pl.rec) || !l3pl.rows) return;
+  if (!l3fsAnimOn() && !l3fs.fx) return;
+  const t = Number.isFinite(tIn) ? tIn : l3plDate(l3plDay()).getTime() + 43200000;
+  const [t0, t1] = l3fsRange(), f = l3plPrefs().film || {}, sig = JSON.stringify([f.anim, t0, t1, l3plFilmSrc(), (l3pl.rows || []).length]);
+  if (l3fs.fx && l3fs.fxSig === sig) { l3fxAnimate(l3fs.fx, t); if (typeof l3Render === "function") l3Render(); return; }
+  if (l3fs.fxBusy) { l3fs.fxPend = t; return; }
+  l3fsAnimEnd(); if (!l3fsAnimOn()) return;
+  l3fs.fxBusy = true;
+  l3fxStart(l3plIso(new Date(t0)), l3plIso(new Date(t1))).then(fx => { l3fs.fxBusy = false; l3fs.fx = fx; l3fs.fxSig = sig; l3fxAnimate(fx, Number.isFinite(l3fs.fxPend) ? l3fs.fxPend : t); l3fs.fxPend = null; if (typeof l3Render === "function") l3Render(); }).catch(() => { l3fs.fxBusy = false; });
+}
 /* Spolar: datumet och kameran (mellan vyerna) – ritas en gång per bildruta. */
 function l3fsSeek(t) {
   l3fs.t = t;
@@ -167,6 +183,7 @@ function l3fsSeek(t) {
     l3plSetDay(d);
     const c = l3plCamAt(l3plKeys(), l3fs.t); if (c) l3plCamApply(c);
     if (typeof l3animApply === "function") l3animApply(l3fs.t);
+    l3fsAnimPreview(l3fs.t);
     l3Render();
   });
 }

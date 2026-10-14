@@ -234,7 +234,7 @@ function l3plAnimHtml(f) {
 function l3plAnimBind(host) {
   const f = () => l3plPrefs().film || {}, put = A => l3plSet("film", { ...f(), anim: A });
   const d = host.querySelector(".v3-pl-anim"); if (d) d.ontoggle = () => { l3pl.animOpen = d.open; };
-  const def = host.querySelector("#v3FlAnimDef"); if (def) def.onchange = () => put({ ...(f().anim || {}), def: def.value });
+  const def = host.querySelector("#v3FlAnimDef"); if (def) def.onchange = () => { put({ ...(f().anim || {}), def: def.value }); if (typeof l3fsAnimPreview === "function") l3fsAnimPreview(); };
   host.querySelectorAll("[data-anim]").forEach(s2 => { s2.onchange = () => { const A = f().anim || {}, by = { ...(A.by || {}) }; if (s2.value) by[s2.dataset.anim] = s2.value; else delete by[s2.dataset.anim]; put({ ...A, by }); s2.closest(".v3-pl-arow").classList.toggle("set", !!s2.value); }; });
   host.querySelectorAll("[data-animsel]").forEach(b => { const go = () => { host.querySelectorAll(".v3-pl-asel.on").forEach(x => x.classList.remove("on")); b.classList.add("on"); l3plSelect(b.dataset.animsel); }; b.onclick = go; b.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } }; });
   host.querySelectorAll("[data-animk]").forEach(s2 => { s2.onchange = () => { const A = f().anim || {}, by = { ...(A.by || {}) }, k = "k:" + s2.dataset.animk; if (s2.value) by[k] = s2.value; else delete by[k]; put({ ...A, by }); l3plRenderTab(); }; });
@@ -371,6 +371,7 @@ async function l3plFilm(record) {
   }
   const title = f.title !== false, caption = String(f.caption || "").trim();
   // Grafiken (lagesplan-3dfilmfx.js): pågår nu, glöd, datumskylt, milstolpar, förloppsmätare – var och en valbar.
+  if (typeof l3fsAnimEnd === "function") l3fsAnimEnd(); // förhandsvisningen av animeringen lämnar plats åt filmens egen
   const fx = typeof l3fxStart === "function" ? await l3fxStart(from, to).catch(() => null) : null;
   let start = performance.now();
   try {

@@ -396,7 +396,9 @@ function l3gaEdit(key) {
   const a = l3plActs(l3gaP().split).find(x => x.key === key); if (!a) return;
   const E = escHtml, w = document.createElement("div");
   const members = a.rows.slice();
-  const anim0 = ((((l3plPrefs().film || {}).anim) || {}).by || {})["k:" + a.key] || "";
+  // Filmen använder alltid aktiviteterna ihopslagna (en per aktivitet) – nyckeln är den även när Gantten visar en lapp per objekt.
+  const fkey = ((l3plActs(false).find(x => x.rows.some(r => String(r.id) === String(a.rows[0].id)))) || a).key;
+  const anim0 = ((((l3plPrefs().film || {}).anim) || {}).by || {})["k:" + fkey] || "";
   const temp0 = a.rows.some(r => r.temporary === true), demo0 = a.rows.some(r => r.demolition === true);
   const dm = a.rows.find(r => /^#[0-9a-f]{6}$/i.test(String(r.done_color || "")) || (r.done_opacity != null && r.done_opacity !== "" && Number.isFinite(Number(r.done_opacity))));
   const doneCol0 = dm && /^#[0-9a-f]{6}$/i.test(String(dm.done_color || "")) ? dm.done_color : "", doneOp0 = dm && dm.done_opacity != null && dm.done_opacity !== "" && Number.isFinite(Number(dm.done_opacity)) ? Math.max(0, Math.min(100, Number(dm.done_opacity))) : 30;
@@ -432,14 +434,42 @@ function l3gaEdit(key) {
     list.innerHTML = members.map(m => { const coupled = l3plRealObj(m); return `<div class="v3-ga-obj" data-mid="${E(String(m.id))}" title="${coupled ? "Klicka för att markera och zooma till objektet i 3D" : ""}"><span class="v3-ga-obj-name" title="${E(String(m.object_id || ""))}">${E(m.object_name || m.object_id || "Objekt")}${coupled ? ` <span class="v3-pal-hint">· ${E(String(m.object_id || "").slice(-6))} · 3D-kopplad</span>` : ""}</span><button type="button" class="v3-ga-obj-x" data-mid="${E(String(m.id))}" title="Ta bort objektet ur aktiviteten" aria-label="Ta bort objektet">✕</button></div>`; }).join("");
     w.querySelector(".v3-ga-objs-n").textContent = `(${members.length})`;
     const pick = m => { list.querySelectorAll(".v3-ga-obj").forEach(r => r.classList.toggle("on", r.dataset.mid === String(m.id))); const ents = l3plEntsOf({ rows: [m] }); if (ents.length) { l3bsSet(ents); if (typeof l3bsZoom === "function") l3bsZoom(); } else l3Status("Objektet finns inte i de inlästa modellerna.", true); };
-    list.querySelectorAll(".v3-ga-obj").forEach(row => { row.onclick = e => { if (e.target.closest(".v3-ga-obj-x")) return; const m = members.find(x => String(x.id) === row.dataset.mid); if (m) pick(m); }; });
+    // Ctrl/Cmd-klick: välj flera objekt (Skift: ett område); ✕ (eller knappen) tar bort alla valda på en gång.
+    const msel = new Set(); let lastI = -1;
+    const bar = () => { let b = w.querySelector(".v3-ga-objs-bar"); if (!b) { b = document.createElement("div"); b.className = "v3-ga-objs-bar"; list.after(b); } b.innerHTML = msel.size ? `<span>${msel.size} valda</span><button type="button" class="v3-ga-objs-del">✕ Ta bort ${msel.size}</button><button type="button" class="v3-ga-objs-none">Avmarkera</button>` : ""; b.style.display = msel.size ? "" : "none";
+      const d = b.querySelector(".v3-ga-objs-del"); if (d) d.onclick = () => removeSel(); const nn = b.querySelector(".v3-ga-objs-none"); if (nn) nn.onclick = () => { msel.clear(); paint(); }; };
+    const paint = () => { list.querySelectorAll(".v3-ga-obj").forEach(r => r.classList.toggle("msel", msel.has(r.dataset.mid))); bar(); };
+    const removeSel = async () => {
+      const ms = members.filter(x => msel.has(String(x.id))); if (!ms.length) return;
+      if (await l3gaRemoveRow(a, ms, members.length)) { ms.forEach(m => { const i = members.indexOf(m); if (i >= 0) members.splice(i, 1); }); msel.clear(); renderObjs(); }
+    };
+    const rowsEls = () => [...list.querySelectorAll(".v3-ga-obj")];
+    rowsEls().forEach((row, i) => { row.onclick = e => {
+      if (e.target.closest(".v3-ga-obj-x")) return;
+      const id = row.dataset.mid, m = members.find(x => String(x.id) === id); if (!m) return;
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); if (msel.has(id)) msel.delete(id); else msel.add(id); lastI = i; paint(); const ms = members.filter(x => msel.has(String(x.id))), ents = l3plEntsOf({ rows: ms }); if (ents.length) l3bsSet(ents); return; }
+      if (e.shiftKey && lastI >= 0) { e.preventDefault(); const [x0, x1] = [Math.min(lastI, i), Math.max(lastI, i)]; rowsEls().slice(x0, x1 + 1).forEach(r => msel.add(r.dataset.mid)); paint(); const ms = members.filter(x => msel.has(String(x.id))), ents = l3plEntsOf({ rows: ms }); if (ents.length) l3bsSet(ents); return; }
+      msel.clear(); lastI = i; paint(); pick(m);
+    }; });
     list.querySelectorAll(".v3-ga-obj-x").forEach(b => { b.onclick = async () => {
       const m = members.find(x => String(x.id) === b.dataset.mid); if (!m) return;
+      if (msel.has(String(m.id)) && msel.size > 1) { removeSel(); return; } // ✕ på ett valt objekt: alla valda
       pick(m); // visa vilket objekt det gäller innan frågan
-      if (await l3gaRemoveRow(a, m, members.length)) { const i = members.indexOf(m); if (i >= 0) members.splice(i, 1); renderObjs(); }
+      if (await l3gaRemoveRow(a, m, members.length)) { const i = members.indexOf(m); if (i >= 0) members.splice(i, 1); msel.delete(String(m.id)); renderObjs(); }
     }; });
+    paint();
   };
   renderObjs();
+  // Markeras objekt i modellen markeras de i listan (och rullas fram) – så att man ser vilka i aktiviteten det gäller.
+  { let last = ""; const keyOf = e => `${e.mesh && e.mesh.uuid}:${e.ri}`;
+    const sync = () => {
+      if (!w.isConnected) { clearInterval(iv); return; }
+      const sel = new Set((typeof l3bs !== "undefined" ? l3bs.sel : []).map(keyOf)), sig = [...sel].sort().join("|"); if (sig === last) return; last = sig;
+      const list = w.querySelector(".v3-ga-objs-list"); if (!list) return; let firstEl = null;
+      list.querySelectorAll(".v3-ga-obj").forEach(r => { const m = members.find(x => String(x.id) === r.dataset.mid), hit = !!m && sel.size > 0 && l3plEntsOf({ rows: [m] }).some(e => sel.has(keyOf(e))); r.classList.toggle("on", hit); if (hit && !firstEl) firstEl = r; });
+      if (firstEl) { const det = w.querySelector(".v3-ga-objs"); if (det && !det.open) det.open = true; firstEl.scrollIntoView({ block: "nearest" }); }
+    };
+    const iv = setInterval(sync, 250); w.addEventListener("remove", () => clearInterval(iv)); }
   w.querySelector(".ui-dlg-cancel").onclick = () => { window.removeEventListener("resize", fit); close(); };
   w.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Escape") { window.removeEventListener("resize", fit); close(); } });
   w.querySelector(".ui-dlg-ok").onclick = async () => {
@@ -469,33 +499,36 @@ function l3gaEdit(key) {
     });
     // Animeringen i filmen är en inställning i webbläsaren (inte en rad i tidplanen): sparas på aktivitetens nyckel.
     const an = f("anim").value;
-    if (an !== anim0) { const f0 = l3plPrefs().film || {}, A = f0.anim || {}, by = { ...(A.by || {}) }; if (an) by["k:" + a.key] = an; else delete by["k:" + a.key]; l3plSet("film", { ...f0, anim: { ...A, by } }); if (!plan.size) { l3Status(`Animeringen för "${a.name}" sparad.`); if (typeof l3plRenderTab === "function") l3plRenderTab(); } }
+    if (an !== anim0) { const f0 = l3plPrefs().film || {}, A = f0.anim || {}, by = { ...(A.by || {}) }; if (an) by["k:" + fkey] = an; else delete by["k:" + fkey]; l3plSet("film", { ...f0, anim: { ...A, by } }); if (typeof l3fsAnimPreview === "function") l3fsAnimPreview(); if (!plan.size) { l3Status(`Animeringen för "${a.name}" sparad.`); if (typeof l3plRenderTab === "function") l3plRenderTab(); } }
     if (!plan.size) { if (an === anim0) l3Status("Inget ändrades."); return; }
     await l3gaCommit(plan, `Redigera ${a.name}`);
   };
 }
 /* Ta bort ETT objekt ur en aktivitet (✕ i redigeringsdialogen). Frågar först, kontrollerar att ingen annan hunnit ändra raden
    och kan ångras med Ångra. Aktiviteten och de andra objekten finns kvar. */
-async function l3gaRemoveRow(a, m, n) {
+async function l3gaRemoveRow(a, mIn, n) {
+  const ms = Array.isArray(mIn) ? mIn : [mIn], m = ms[0], many = ms.length > 1;
+  if (ms.length >= n) { l3Status("Minst ett objekt måste vara kvar i aktiviteten – ta bort hela aktiviteten i stället.", true); return false; }
   if (l3ga.busy) { l3Status("Väntar på förra sparningen…", true); return false; }
-  const nm = m.object_name || m.object_id || "objektet";
-  const ok = await uiConfirm(`Ta bort "${nm}" ur aktiviteten "${a.name}"?\n\nAktiviteten finns kvar med de ${n - 1} andra objekten.${l3plRealObj(m) ? "\n⚠ Objektets 3D-koppling försvinner." : ""}\n⚠ Objektet kommer från Powerproject-filen och kommer tillbaka vid nästa import.\n\nRaden tas bort ur Powerproject-tidplanen i Trimble Connect-projektets 4D-planering – det syns för alla. Kan ångras här efteråt.`, { ok: "Ta bort objektet" });
+  const nm = many ? `${ms.length} objekt` : (m.object_name || m.object_id || "objektet");
+  const ok = await uiConfirm(`Ta bort "${nm}" ur aktiviteten "${a.name}"?\n\nAktiviteten finns kvar med de ${n - ms.length} andra objekten.${ms.some(x => l3plRealObj(x)) ? (many ? "\n⚠ Objektens 3D-kopplingar försvinner." : "\n⚠ Objektets 3D-koppling försvinner.") : ""}${many ? "\n\n" + ms.slice(0, 8).map(x => "• " + (x.object_name || x.object_id || "Objekt")).join("\n") + (ms.length > 8 ? `\n… och ${ms.length - 8} till` : "") : ""}\n⚠ ${many ? "Objekten kommer" : "Objektet kommer"} från Powerproject-filen och kommer tillbaka vid nästa import.\n\nRaden tas bort ur Powerproject-tidplanen i Trimble Connect-projektets 4D-planering – det syns för alla. Kan ångras här efteråt.`, { ok: many ? `Ta bort ${ms.length} objekt` : "Ta bort objektet" });
   if (!ok) { l3Status("Inget togs bort."); return false; }
   l3ga.busy = true;
   const key = "gasave";
   try {
     if (typeof busyProgress === "function") busyProgress(key, "Sparar i 4D-planeringen…", 0.3);
+    const ids = new Set(ms.map(x => String(x.id)));
     const fresh = await ghReadJSON(token, l3gaPath("plan_items.json"), { fresh: true });
-    const theirs = (Array.isArray(fresh) ? fresh : []).find(r => String(r.id) === String(m.id));
-    if (!theirs || JSON.stringify(theirs) !== JSON.stringify(m)) {
+    const cur = Array.isArray(fresh) ? fresh : [];
+    if (!ms.every(x => { const th = cur.find(r => String(r.id) === String(x.id)); return th && JSON.stringify(th) === JSON.stringify(x); })) {
       l3pl.rows = fresh; l3plRender();
       uiAlert("Inget togs bort – raden har ändrats eller tagits bort av någon annan sedan tidplanen lästes. Tidplanen är nu omläst – försök igen.");
       return false;
     }
-    await ghWriteJSON(token, l3gaPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).filter(r => String(r.id) !== String(m.id)), `Ta bort objekt ur ${a.name} (3D-vyn)`);
-    l3pl.rows = (l3pl.rows || []).filter(r => String(r.id) !== String(m.id));
-    if (typeof planSource !== "undefined" && planSource === "pp" && Array.isArray(items)) { items = items.filter(r => String(r.id) !== String(m.id)); if (typeof l3bRecolor === "function") l3bRecolor(); if (typeof l3BuildObjects === "function") l3BuildObjects(); if (typeof renderZones === "function") renderZones(); }
-    l3ga.undo.push({ label: `Ta bort ${nm} ur ${a.name}`, removed: [{ ...m }] }); if (l3ga.undo.length > 40) l3ga.undo.shift(); l3ga.redo = [];
+    await ghWriteJSON(token, l3gaPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).filter(r => !ids.has(String(r.id))), `Ta bort ${ms.length} objekt ur ${a.name} (3D-vyn)`);
+    l3pl.rows = (l3pl.rows || []).filter(r => !ids.has(String(r.id)));
+    if (typeof planSource !== "undefined" && planSource === "pp" && Array.isArray(items)) { items = items.filter(r => !ids.has(String(r.id))); if (typeof l3bRecolor === "function") l3bRecolor(); if (typeof l3BuildObjects === "function") l3BuildObjects(); if (typeof renderZones === "function") renderZones(); }
+    l3ga.undo.push({ label: `Ta bort ${nm} ur ${a.name}`, removed: ms.map(x => ({ ...x })) }); if (l3ga.undo.length > 40) l3ga.undo.shift(); l3ga.redo = [];
     if (typeof bridgeOk === "function" && bridgeOk()) askOpener("planChanged", { source: "pp" }, 20000).catch(() => {});
     l3Status(`${nm} borttaget ur ${a.name}.`);
     l3plRender();
