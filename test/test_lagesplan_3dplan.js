@@ -702,6 +702,9 @@ const PP = [
       });
       if (!hb.before.row2 || !hb.before.search || !hb.before.hide || hb.hidden.row2 || hb.hidden.search || !hb.hidden.hide || !hb.hidden.close || hb.hidden.txt !== 'Visa knappar' || !hb.hidden.cls || !hb.back.row2 || !hb.back.search) fail('Dölj knappar på Gantten: ' + JSON.stringify(hb));
       console.log('OK: Dölj knappar på Gantten i 3D-editorn'); }
+    { const wd = await page.evaluate(() => { l3plSet('period', '4w'); l3plDockRender(); const d = document.getElementById('v3PlanDock'), b = d.querySelector('.v3-pl-board'); return { dock: d.clientWidth, board: b ? b.scrollWidth : 0 }; });
+      if (!wd.board || wd.board < wd.dock - 70 || wd.board > wd.dock + 10) fail('Gantten ska täcka hela bredden: ' + JSON.stringify(wd));
+      console.log('OK: Gantten fyller hela bredden i 3D-editorn (' + wd.board + ' av ' + wd.dock + ' px)'); }
     // Filter överst i vänstermenyn (sticky) och Följa tidplan.
     const fl = await page.evaluate(() => {
       l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();

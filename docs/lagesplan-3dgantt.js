@@ -109,7 +109,9 @@ function l3gaTimelineHtml(acts, P, colorKeys) {
   const E = escHtml, day = l3plDay(), [ds, de] = l3gaDomain(acts, P);
   const w0 = l3plMonday(ds), nWeeks = Math.max(1, Math.round((l3plMonday(de) - w0) / 604800000) + 1), nDays = nWeeks * 7, w0i = l3plIso(w0);
   const dayOf = s => l3gaDays(w0i, s);
-  const board = P.view === "board", colPx = board ? 190 : 84, dayPx = colPx / 7, todayD = dayOf(day), HEAD = 170;
+  // Gantten täcker hela bredden (Victor 2026-10-14): veckokolumnerna sträcks ut så att tidslinjen fyller panelen – aldrig smalare än förut.
+  const board = P.view === "board", HEAD = 170, dockW = (document.getElementById("v3PlanDock") || {}).clientWidth || 0;
+  const colPx = Math.max(board ? 190 : 84, dockW ? Math.floor((dockW - HEAD - 28) / nWeeks) : 0), dayPx = colPx / 7, todayD = dayOf(day);
   const vis = acts.filter(a => a.start <= l3gaAdd(w0i, nDays - 1) && a.end >= w0i);
   const outside = acts.length - vis.length;
   const lanes = new Map();

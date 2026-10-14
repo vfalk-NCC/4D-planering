@@ -468,3 +468,5 @@ document.addEventListener("DOMContentLoaded", () => {
   // Datumet ändras (uppspelning, reglaget): tavlan följer med.
   const di = $("dateInput"); if (di) di.addEventListener("change", () => { if (l3pl.dock && !l3pl.rec) l3plDockRender(); });
 });
+/* Gantten fyller bredden även när fönstret ändrar storlek. */
+{ let t = 0; window.addEventListener("resize", () => { clearTimeout(t); t = setTimeout(() => { if (typeof l3pl !== "undefined" && l3pl.dock && !l3pl.rec) l3plDockRender(); }, 200); }); }
