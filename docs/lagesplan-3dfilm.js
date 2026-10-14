@@ -77,6 +77,7 @@ function l3fsRender() {
       <button type="button" class="v3-fs-play" id="v3FsPlay" title="Spela upp filmen i 3D-vyn (■ stoppar och går till början)">${l3pl.rec ? "■" : "▶"}</button>
       <button type="button" class="v3-fs-pause" id="v3FsPause" title="Pausa (mellanslag)" ${l3pl.rec ? "" : "disabled"}>${l3pl.rec && l3pl.rec.paused ? "▶" : "⏸"}</button>
       <button type="button" class="v3-fs-rec" id="v3FsRec" title="Spela in filmen och spara som videofil">⏺</button>
+      <button type="button" class="v3-fs-photo" id="v3FsPhoto" title="Ta ett foto i hög upplösning (4K) av det du ser i 3D-vyn – sparas som PNG" aria-label="Ta foto"><svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l1.6-2.2h6.8L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/></svg></button>
       <button type="button" class="v3-fs-add" id="v3FsAdd" title="Lägg kameran som den står nu på datumet där huvudet står (finns det redan en vy där uppdateras den)">＋ Vy</button>
       <button type="button" class="v3-fs-akey" id="v3FsAKey" title="Animera objekt: markera ett placerat objekt (t.ex. en hämtad modell), ställ in dess läge och tryck här – läget sparas på datumet där huvudet står. Flera nycklar = objektet rör sig mellan dem.">◆ Nyckel</button>
       <button type="button" class="v3-ic v3-fs-x" id="v3FsClose" title="Stäng tidslinjen">✕</button>
@@ -103,6 +104,7 @@ function l3fsBind(el, t0, t1, W) {
   el.querySelector("#v3FsPlay").onclick = () => l3plFilm(false);
   el.querySelector("#v3FsPause").onclick = () => l3plPause();
   el.querySelector("#v3FsRec").onclick = () => l3plFilm(true);
+  el.querySelector("#v3FsPhoto").onclick = () => l3plPhoto();
   el.querySelector("#v3FsAdd").onclick = () => {
     const date = l3plIso(new Date(Math.round(l3fs.t / 86400000) * 86400000)), list = l3plKeys(), i = list.findIndex(k => k.date === date);
     l3plKeyAdd(l3plCam(), date, i >= 0 ? list[i].name : `Vy ${list.length + 1}`);
@@ -156,6 +158,30 @@ function l3fsBind(el, t0, t1, W) {
     b.oncontextmenu = e => { e.preventDefault(); const list = l3plKeys(), k = list.splice(+b.dataset.fsk, 1)[0]; l3plKeysSet(list); l3fsRender(); if (k) l3Status(`Kameravyn ${k.date} borttagen.`); };
   });
   el.querySelectorAll("[data-fsp]").forEach(b => { b.onclick = () => { const p = l3fs.pearls[+b.dataset.fsp]; if (p) l3plSelect(p.a.key); }; });
+}
+/* Foto: en högupplöst stillbild (4K) av det man ser i 3D-vyn – samma vinkel och bildförhållande, med bubblor och datumskylt om de är på. Sparas som PNG. */
+async function l3plPhoto() {
+  if (typeof l3pl !== "undefined" && l3pl.rec) { l3Status("Vänta tills filmen är klar innan du tar ett foto.", true); return; }
+  const R = l3.renderer, rect = R.domElement.getBoundingClientRect(); if (!rect.width || !rect.height) return;
+  const maxT = (R.capabilities && R.capabilities.maxTextureSize) || 4096, LONG = Math.max(1280, Math.min(3840, maxT)), asp = rect.width / rect.height;
+  const W = asp >= 1 ? LONG : Math.round(LONG * asp), H = asp >= 1 ? Math.round(LONG / asp) : LONG;
+  const f = l3plPrefs().film || {}, d = $("dateInput").value || todayIso(), pr0 = R.getPixelRatio();
+  l3Status("Tar foto…");
+  let blob = null;
+  try {
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const ctx = cv.getContext("2d");
+    R.setPixelRatio(1); R.setSize(W, H, false);
+    const cam = l3.camera; if (cam.isOrthographicCamera) { const h = cam.top - cam.bottom; cam.left = -h * W / H / 2; cam.right = h * W / H / 2; } else cam.aspect = W / H; cam.updateProjectionMatrix();
+    R.render(l3.scene, l3.camera);
+    ctx.drawImage(R.domElement, 0, 0, W, H);
+    if (typeof l3bubOn === "function" && l3bubOn() && typeof l3fxBubbles === "function") { try { l3fxBubbles(ctx, W, H, H / 1080); } catch (e) { console.warn("Bubblor i fotot", e); } }
+    if (f.title !== false && typeof l3plOverlay === "function") { try { l3plOverlay(ctx, W, H, d, String(f.caption || "").trim()); } catch (e) { console.warn("Datumskylt i fotot", e); } }
+    blob = await new Promise(res => cv.toBlob(res, "image/png"));
+  } catch (e) { l3Status("Kunde inte ta foto: " + (e && e.message || e), true); }
+  finally { R.setPixelRatio(pr0); l3Resize(); if (typeof l3Render === "function") l3Render(); }
+  if (!blob) return;
+  const name = `4D-foto ${d}.png`, url = URL.createObjectURL(blob), a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 8000);
+  l3Status(`Foto sparat: ${name} (${W}×${H} px, ${(blob.size / 1e6).toFixed(1).replace(".", ",")} MB).`);
 }
 /* Förhandsvisning av objektens animering medan man drar i tidslinjen/datumet (annars syns den bara i filmen). Samma kod som i filmen
    (l3fxAnimate); byggs om när valen, intervallet eller planeringen ändras. */

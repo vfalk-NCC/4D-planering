@@ -681,6 +681,14 @@ const PP = [
     });
     if (sc.pr.before !== 'pagaende' || sc.pr.early !== 'planerad' || sc.pr.after !== 'klar' || Math.round(sc.c0[0]) !== 1 || Math.round(sc.c1[2]) !== 1 || !sc.off || sc.off.phase !== 'scale' || sc.none !== null) fail('Följ datum / Färgskala: ' + JSON.stringify(sc));
     else console.log('OK: Följ datum (strikt) och Färgskala efter datum med egna färger');
+    // Foto: kameraknappen bredvid inspelningsknappen sparar en högupplöst PNG av 3D-vyn.
+    { await page.evaluate(() => { l3plSet('film', { ...l3plPrefs().film, strip: true }); l3fsRender(); });
+      const btn = await page.$('#v3FsPhoto'); if (!btn) fail('Kameraknappen saknas bredvid inspelningsknappen');
+      const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 20000 }), page.evaluate(() => document.getElementById('v3FsPhoto').click())]);
+      const path = await dl.path(), fsm = require('fs'), buf = fsm.readFileSync(path), w = buf.readUInt32BE(16), h = buf.readUInt32BE(20);
+      if (buf.slice(1, 4).toString() !== 'PNG' || Math.max(w, h) < 1280) fail('Fotot ska vara en PNG i hög upplösning: ' + JSON.stringify({ w, h, name: dl.suggestedFilename() }));
+      console.log('OK: kameraknappen tar ett foto i hög upplösning (' + w + '×' + h + ' PNG)');
+      await page.evaluate(() => { l3plSet('film', { ...l3plPrefs().film, strip: false }); l3fsRender(); }); }
     // Filter överst i vänstermenyn (sticky) och Följa tidplan.
     const fl = await page.evaluate(() => {
       l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();
