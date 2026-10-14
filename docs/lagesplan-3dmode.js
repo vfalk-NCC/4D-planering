@@ -12,7 +12,7 @@
 const L3GM_PRESETS = { gul: ["", "#fff7c2", "Gul (standard)"], rod: ["#e5484d", "#ffd6d6", "Röd ↔ ljusröd"], vit: ["#111827", "#ffffff", "Mörk ↔ vit"], bla: ["#2563eb", "#bfdbfe", "Blå ↔ ljusblå"], gron: ["#16a34a", "#bbf7d0", "Grön ↔ ljusgrön"], orange: ["#f5a623", "#e5484d", "Orange ↔ röd"] };
 const L3GM_PCFG0 = { preset: "gul", a: "", b: "#fff7c2", period: 1.5, style: "mjuk", amp: 85 };
 const l3gm = { mode: "off", timer: null, pulseIv: null, pulseT0: 0, act: [], next: [], sig: "", selSig: "", selOwn: false, info: "", raf: 0 };
-const l3gmCfg = () => ({ future: false, doneOp: 30, from: "", to: "", pulse: false, selAct: false, ...(l3plPrefs().gm || {}), pcfg: { ...L3GM_PCFG0, ...((l3plPrefs().gm || {}).pcfg || {}) } });
+const l3gmCfg = () => ({ future: false, doneOp: 30, ops: {}, from: "", to: "", pulse: false, selAct: false, ...(l3plPrefs().gm || {}), pcfg: { ...L3GM_PCFG0, ...((l3plPrefs().gm || {}).pcfg || {}) } });
 const l3gmSet = (k, v) => l3plSet("gm", { ...(l3plPrefs().gm || {}), [k]: v });
 const l3gmHex = h => { const n = parseInt(String(h).replace("#", ""), 16) || 0; return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
 
@@ -65,7 +65,9 @@ function l3gmRange(rows, at, ctx) {
     return { off: false, rgb: l3gmHex(col).map(v => v / 255), alpha: op >= 100 ? null : op / 100, phase: g };
   }
   if (g === "pagaende" && ctx) l3gm.next.push(ctx);
-  return { off: false, rgb: l3gmHex(phaseColor(g)).map(v => v / 255), alpha: null, phase: g };
+  const op = (C.ops || {})[g] === undefined ? 100 : Number((C.ops || {})[g]); // opacitet per status (0 = osynligt) – som i dashboarden
+  if (op <= 0) return { off: true };
+  return { off: false, rgb: l3gmHex(phaseColor(g)).map(v => v / 255), alpha: op >= 100 ? null : op / 100, phase: g };
 }
 /* l3bRecolor: före och efter varvet över alla objekt. */
 function l3gmBegin() { l3gm.next = []; }
@@ -224,21 +226,17 @@ function l3gmBarHtml(acts) {
     <button type="button" id="v3GaPpExport" title="Exportera aktiviteterna till en Powerproject-fil (MS Project XML) – bygger på en mall från Powerproject">Exportera till Powerproject</button>`;
   let time = "";
   if (m === "time") {
-    const cols = [["pagaende", "Färg: pågående"], ["forsenad", "Färg: försenad (har börjat men mindre än 1 % framdrift)"], ["klar", "Färg: klart"], ["planerad", "Färg: kommande"]];
     time = `<div class="v3-pldock-bar v3-gm-time" id="v3GmTime">
       <button type="button" id="v3GmPlay" title="Spela upp">${l3gm.timer ? "⏸" : "▶"}</button>
+      <button type="button" id="v3GmPrev" class="v3-gm-step" title="Backa en dag" aria-label="Backa en dag">‹</button>
       <input type="range" id="v3GmSlider" class="v3-gm-slider" min="0" max="${r ? Math.max(1, l3gaDays(r[0], r[1])) : 1}" value="${r ? Math.min(Math.max(0, l3gaDays(r[0], at)), Math.max(1, l3gaDays(r[0], r[1]))) : 0}" aria-label="Datum" />
+      <button type="button" id="v3GmNext" class="v3-gm-step" title="Fram en dag" aria-label="Fram en dag">›</button>
       <input type="date" id="v3GmDate" value="${E(at)}" aria-label="Datum" />
       <button type="button" id="v3GmToday" title="Till idag">Idag</button>
       <label class="v3-ga-tg" title="Tidslinjens start">Från <input type="date" id="v3GmFrom" value="${E(C.from || (r ? r[0] : ""))}" /></label>
       <label class="v3-ga-tg" title="Tidslinjens slut">Till <input type="date" id="v3GmTo" value="${E(C.to || (r ? r[1] : ""))}" /></label>
       <button type="button" id="v3GmAuto" title="Hela spannet">Auto</button>
-      <span class="v3-gm-cols">${cols.map(([k, t]) => `<input type="color" data-tcol="${k}" title="${E(t)}" aria-label="${E(t)}" value="${E(phaseColor(k))}" />`).join("")}</span>
-      <label class="v3-ga-tg" title="Hur synligt färdigt arbete är (0 = osynligt)">Klart <input type="range" id="v3GmDoneOp" min="0" max="100" step="5" value="${C.doneOp}" /> <b id="v3GmDoneOpVal">${C.doneOp}</b>%</label>
-      <label class="v3-ga-tg" title="Visa det som inte startat, i kommande-färgen"><input type="checkbox" id="v3GmFuture" ${C.future ? "checked" : ""} /> Kommande</label>
-      <label class="v3-ga-tg" title="Pågående objekt pulserar (ljust gult) i 3D – så ser du direkt vad som händer nu"><input type="checkbox" id="v3GmPulse" ${C.pulse ? "checked" : ""} /> Pulsera pågående</label>
-      <button type="button" id="v3GmPulseCfg" title="Färger, hastighet, stil och styrka för pulsen">▾</button>
-      <label class="v3-ga-tg" title="Markera de pågående objekten i 3D – de lyses upp. Ett klick i modellen byter markering."><input type="checkbox" id="v3GmSelAct" ${C.selAct ? "checked" : ""} /> Markera pågående</label>
+      <button type="button" id="v3GmMenuBtn" aria-haspopup="true" title="Färger, opacitet, Kommande, Pulsera och Markera pågående">Färger &amp; visning ▾</button>
       <span id="v3GmSum" class="v3-gm-sum"></span><span id="v3GmInfo" class="v3-gm-sum">${E(l3gmInfoText())}</span>
     </div>`;
   }
@@ -256,25 +254,14 @@ function l3gmBind(d) {
   di.onchange = () => { if (di.value) l3gmSetDay(di.value, { now: true }); };
   q("#v3GmToday").onclick = () => l3gmSetDay(todayIso(), { now: true });
   q("#v3GmPlay").onclick = l3gmPlay;
+  const step = n => { const r = l3gmRange2(); if (!r) return; l3gmStopPlay(); l3gmSetDay(l3gaAdd(l3plDay(), n), { now: true }); };
+  q("#v3GmPrev").onclick = () => step(-1); q("#v3GmNext").onclick = () => step(1);
   const fi = q("#v3GmFrom"), ti = q("#v3GmTo");
   const ranged = () => { const r = l3gmRange2(); if (r) { const cur = l3plDay(); if (cur < r[0] || cur > r[1]) l3gmSetDay(cur < r[0] ? r[0] : r[1], { now: true }); } l3plDockRender(); };
   fi.onchange = () => { l3gmSet("from", fi.value || ""); ranged(); };
   ti.onchange = () => { l3gmSet("to", ti.value || ""); ranged(); };
   q("#v3GmAuto").onclick = () => { l3gmSet("from", ""); l3gmSet("to", ""); ranged(); };
-  d.querySelectorAll("[data-tcol]").forEach(inp => {
-    inp.oninput = () => {
-      settings.statusColors = { ...(settings.statusColors || {}), [inp.dataset.tcol]: inp.value };
-      try { window.localStorage.setItem("4dplan-settings", JSON.stringify(settings)); } catch (e) { /* sparas inte */ }
-      l3gmApply(); if (typeof paintLegendDots === "function") paintLegendDots();
-      clearTimeout(l3gm.legendT); l3gm.legendT = setTimeout(() => l3plDockRender(), 250);
-    };
-  });
-  const dop = q("#v3GmDoneOp"), dopv = q("#v3GmDoneOpVal");
-  dop.oninput = () => { dopv.textContent = dop.value; l3gmSet("doneOp", Number(dop.value)); l3gmApply(); };
-  q("#v3GmFuture").onchange = e => { l3gmSet("future", e.target.checked); l3gmApply(true); l3gmSync(); };
-  q("#v3GmPulse").onchange = e => { l3gmSet("pulse", e.target.checked); if (e.target.checked) l3gmPulseSync(); else { l3gmPulseStop(); l3gmApply(true); } };
-  const pc = q("#v3GmPulseCfg"); if (pc) pc.onclick = () => l3gmPulseCfgOpen(pc);
-  q("#v3GmSelAct").onchange = e => { l3gmSet("selAct", e.target.checked); l3gm.selSig = ""; l3gmSelSync(); };
+  const mb = q("#v3GmMenuBtn"); if (mb) mb.onclick = e => { e.stopPropagation(); l3gmMenuOpen(mb); };
   l3gmSync();
 }
 /* Uppdatera: läser om tidplanen (snurrar medan det pågår). */
@@ -343,4 +330,39 @@ async function l3gmLoadModels(btn) {
     if (todo.length && l3gm.mode !== "off") l3gmApply(true); // nya modeller → räkna om läget
   } catch (e) { uiAlert(`Kunde inte läsa in modellerna: ${e.message}`); }
   finally { if (btn) { btn.disabled = false; btn.textContent = old; } }
+}
+
+/* Färger & visning i en rullgardin (som i dashboarden): färg och opacitet per status, Klart, Kommande, Pulsera pågående och Markera pågående. */
+function l3gmMenuOpen(anchor) {
+  const old = document.getElementById("v3GmMenu"); if (old) { old.remove(); return; }
+  const C = l3gmCfg(), E = escHtml, ops = C.ops || {}, op = k => (ops[k] === undefined ? 100 : ops[k]);
+  const pop = document.createElement("div"); pop.id = "v3GmMenu"; pop.className = "v3-gm-pop v3-gm-menu";
+  const row = (k, t, title) => `<span>${t}</span><input type="color" data-tcol="${k}" title="${E(title)}" aria-label="${E(title)}" value="${E(phaseColor(k))}" />${k === "klar" ? `<span class="v3-gm-doneop"><input type="range" id="v3GmDoneOp" min="0" max="100" step="5" value="${C.doneOp}" aria-label="Opacitet klart" /> <b id="v3GmDoneOpVal">${C.doneOp}</b>%</span>` : `<input type="range" data-topc="${k}" min="0" max="100" step="5" value="${op(k)}" aria-label="Opacitet ${E(t)}" />`}`;
+  pop.innerHTML = `<div class="v3-gm-pop-t">Färger och opacitet</div>
+    <div class="v3-gm-grid"><span></span><span class="v3-gm-gh">Färg</span><span class="v3-gm-gh">Opacitet (0 = osynligt)</span>
+      ${row("pagaende", "Pågående", "Färg: pågående")}${row("forsenad", "Försenad", "Färg: försenad (har börjat men mindre än 1 % framdrift)")}${row("klar", "Klart", "Färg: klart")}${row("planerad", "Kommande", "Färg: kommande")}</div>
+    <div class="v3-gm-pop-t">Visning</div>
+    <label class="v3-ga-tg" title="Visa det som inte startat, i kommande-färgen"><input type="checkbox" id="v3GmFuture" ${C.future ? "checked" : ""} /> Kommande</label>
+    <label class="v3-ga-tg" title="Pågående objekt pulserar (ljust gult) i 3D – så ser du direkt vad som händer nu"><input type="checkbox" id="v3GmPulse" ${C.pulse ? "checked" : ""} /> Pulsera pågående <button type="button" id="v3GmPulseCfg" title="Färger, hastighet, stil och styrka för pulsen">▾</button></label>
+    <label class="v3-ga-tg" title="Markera de pågående objekten i 3D – de lyses upp. Ett klick i modellen byter markering."><input type="checkbox" id="v3GmSelAct" ${C.selAct ? "checked" : ""} /> Markera pågående</label>`;
+  document.body.appendChild(pop);
+  const r = anchor.getBoundingClientRect(); pop.style.left = `${Math.max(8, Math.min(window.innerWidth - 340, r.left))}px`; pop.style.bottom = `${Math.max(8, window.innerHeight - r.top + 6)}px`; pop.style.width = "330px";
+  ["pointerdown", "click", "keydown", "wheel"].forEach(t => pop.addEventListener(t, e => { e.stopPropagation(); if (t === "keydown" && e.key === "Escape") pop.remove(); }));
+  const off = e => { if (pop.contains(e.target) || anchor.contains(e.target) || e.target.closest("#v3GmPulsePop")) return; pop.remove(); window.removeEventListener("pointerdown", off, true); };
+  setTimeout(() => window.addEventListener("pointerdown", off, true), 0);
+  const q = s => pop.querySelector(s);
+  pop.querySelectorAll("[data-tcol]").forEach(inp => {
+    inp.oninput = () => {
+      settings.statusColors = { ...(settings.statusColors || {}), [inp.dataset.tcol]: inp.value };
+      try { window.localStorage.setItem("4dplan-settings", JSON.stringify(settings)); } catch (e) { /* sparas inte */ }
+      l3gmApply(); if (typeof paintLegendDots === "function") paintLegendDots();
+      clearTimeout(l3gm.legendT); l3gm.legendT = setTimeout(() => l3plDockRender(), 250);
+    };
+  });
+  pop.querySelectorAll("[data-topc]").forEach(inp => { inp.oninput = () => { l3gmSet("ops", { ...(l3gmCfg().ops || {}), [inp.dataset.topc]: Number(inp.value) }); l3gmApply(); }; });
+  q("#v3GmDoneOp").oninput = e => { q("#v3GmDoneOpVal").textContent = e.target.value; l3gmSet("doneOp", Number(e.target.value)); l3gmApply(); };
+  q("#v3GmFuture").onchange = e => { l3gmSet("future", e.target.checked); l3gmApply(true); l3gmSync(); };
+  q("#v3GmPulse").onchange = e => { l3gmSet("pulse", e.target.checked); if (e.target.checked) l3gmPulseSync(); else { l3gmPulseStop(); l3gmApply(true); } };
+  q("#v3GmPulseCfg").onclick = e => { e.preventDefault(); l3gmPulseCfgOpen(e.currentTarget); };
+  q("#v3GmSelAct").onchange = e => { l3gmSet("selAct", e.target.checked); l3gm.selSig = ""; l3gmSelSync(); };
 }

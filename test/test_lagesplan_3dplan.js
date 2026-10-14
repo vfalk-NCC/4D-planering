@@ -531,9 +531,11 @@ const PP = [
       l3gmSet('pulse', false); l3gmSet('selAct', false); l3gmPulseStop();
       // Gränssnittet: raden, tidsraden, dragstrecket
       const dock0 = l3pl.dock, view0 = l3plPrefs().view; if (!l3pl.dock) l3plDockToggle(true); l3plSet('view', 'board'); l3plDockRender();
-      R.ui = { seg: document.querySelectorAll('#v3GmSeg [data-gmode]').length, time: !!document.getElementById('v3GmTime'), scrub: !!document.querySelector('#v3PlanDock .v3-gscrub'), cols: document.querySelectorAll('#v3GmTime [data-tcol]').length, sum: document.getElementById('v3GmSum').textContent, btns: ['v3GaRefresh', 'v3GaLoadModels', 'v3GaPpExport'].every(id => !!document.getElementById(id)) };
+      R.ui = { seg: document.querySelectorAll('#v3GmSeg [data-gmode]').length, time: !!document.getElementById('v3GmTime'), scrub: !!document.querySelector('#v3PlanDock .v3-gscrub'), cols: (() => { l3gmMenuOpen(document.getElementById('v3GmMenuBtn')); const n = document.querySelectorAll('#v3GmMenu [data-tcol]').length; document.getElementById('v3GmMenu').remove(); return n; })(), step: !!document.getElementById('v3GmPrev') && !!document.getElementById('v3GmNext'), sum: document.getElementById('v3GmSum').textContent, btns: ['v3GaRefresh', 'v3GaLoadModels', 'v3GaPpExport'].every(id => !!document.getElementById(id)) };
       const sl = document.getElementById('v3GmSlider'); sl.value = Number(sl.value) + 3; sl.dispatchEvent(new Event('input')); R.slid = $('dateInput').value;
-      const col = document.querySelector('#v3GmTime [data-tcol="pagaende"]'); col.value = '#00ff00'; col.dispatchEvent(new Event('input')); R.colSet = settings.statusColors.pagaende; settings.statusColors.pagaende = '#f5a623'; // tillbaka
+      l3gmMenuOpen(document.getElementById('v3GmMenuBtn')); const col = document.querySelector('#v3GmMenu [data-tcol="pagaende"]'); col.value = '#00ff00'; col.dispatchEvent(new Event('input')); R.colSet = settings.statusColors.pagaende; settings.statusColors.pagaende = '#f5a623'; // tillbaka
+      { const d0 = $('dateInput').value; document.getElementById('v3GmNext').click(); const d1 = $('dateInput').value; document.getElementById('v3GmPrev').click(); R.stepd = [d0, d1, $('dateInput').value]; }
+      { const op = document.querySelector('#v3GmMenu [data-topc="pagaende"]'); op.value = 50; op.dispatchEvent(new Event('input')); R.op50 = l3gmCfg().ops.pagaende; op.value = 0; op.dispatchEvent(new Event('input')); R.op0 = l3gmRange([l3pl.rows.find(r => r.id === 'p1')], '2026-10-12', null); op.value = 100; op.dispatchEvent(new Event('input')); document.getElementById('v3GmMenu').remove(); }
       l3gmSetMode('off', true); R.gone = !document.getElementById('v3GmTime') && !document.querySelector('.v3-gscrub');
       if (!dock0) l3plDockToggle(false); l3plSet('view', view0 || 'board');
       l3b.models.splice(l3b.models.indexOf(mdl), 1); planSource = ps0; items = it0; l3plSet('colorSrc', 'both'); l3plSet('gm', {}); l3bRecolor();
@@ -541,7 +543,7 @@ const PP = [
     });
     if (gm.all !== '' || gm.iso !== '2' || gm.hide !== '0,1' || gm.back !== '' || gm.t1.off !== '2' || gm.t1.col.join() !== gm.t1.want.join() || gm.t1.act < 1 || gm.t0 !== '0,1,2' || gm.tf.off !== '2' || gm.tf.col.join() !== gm.tf.want.join()
       || gm.done.off !== '2' || !/^0:0\.3,1:0\.3$/.test(gm.done.alpha) || gm.own.col.join() !== '255,0,0' || gm.own.alpha !== 0.55 || gm.zero !== '0,1,2' || gm.sel < 1 || !gm.pulse
-      || gm.ui.seg !== 4 || !gm.ui.time || !gm.ui.scrub || gm.ui.cols !== 4 || !/klara .* pågår .* försenade .* kvar/.test(gm.ui.sum) || !gm.ui.btns || gm.slid <= '2026-10-12' || gm.colSet !== '#00ff00' || !gm.gone)
+      || gm.ui.seg !== 4 || !gm.ui.time || !gm.ui.scrub || gm.ui.cols !== 4 || !gm.ui.step || !gm.stepd || gm.stepd[1] !== new Date(Date.parse(gm.stepd[0]) + 86400000).toISOString().slice(0, 10) || gm.stepd[2] !== gm.stepd[0] || gm.op50 !== 50 || !gm.op0 || gm.op0.off !== true || !/klara .* pågår .* försenade .* kvar/.test(gm.ui.sum) || !gm.ui.btns || gm.slid <= '2026-10-12' || gm.colSet !== '#00ff00' || !gm.gone)
       fail('Ganttens 3D-lägen: ' + JSON.stringify(gm));
     else console.log('OK: Ganttens 3D-lägen – Alla/Kopplade/Okopplade/Tid, Klart-opacitet, egen färg efter slut, pulsera, markera pågående, tidsrad och dragstreck');
     // Export till Powerproject (MS Project-XML) och Läs in modeller – som i dashboardens Gantt.
