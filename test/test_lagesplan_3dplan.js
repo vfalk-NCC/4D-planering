@@ -725,6 +725,20 @@ const PP = [
       if (!sv.saved || sv.date !== '2026-10-12' || sv.mode !== 'time' || !sv.bub || sv.prog !== 'plan' || sv.sec !== 41 || sv.col !== '#12ab34' || sv.views !== 0 || !sv.cleared || Math.abs(sv.camNow[0] - sv.camSaved[0]) > 1.5) fail('Startvy: ' + JSON.stringify(sv));
       console.log('OK: startvy – kamera, datum, 3D-läge, visningsval och färger läggs tillbaka (och kan tas bort)');
       page.__uiDialogHandlers.length = 0; }
+    // Dra i veckoraden (alltid synlig) = flytta datumet var som helst i Gantten; procenten ligger i statusraden, handtaget följer med.
+    { await page.evaluate(async () => { if (!l3pl.dock) l3plDockToggle(true); l3plSet('period', '4w'); l3gmSetMode('time', true); l3plDockRender(); await new Promise(r => setTimeout(r, 300)); });
+      const geo = await page.evaluate(() => { const b = document.querySelector('#v3PlanDock .v3-pl-board'), w = b.querySelector('.v3-pl-weeks').getBoundingClientRect(); return { x: w.left, y: w.top + w.height / 2, head: parseFloat(getComputedStyle(b).getPropertyValue('--head')) || 170, dpx: Number(b.dataset.daypx), w0: b.dataset.w0, d0: l3plDay() }; });
+      await page.evaluate(([x, y]) => { const wk = document.querySelector('#v3PlanDock .v3-pl-weeks'), ev = (t, cx) => wk.dispatchEvent(new PointerEvent(t, { bubbles: true, cancelable: true, clientX: cx, clientY: y, pointerId: 1, button: 0 })); ev('pointerdown', x); ev('pointermove', x + 3); ev('pointerup', x + 3); }, [geo.x + geo.head + 9.5 * geo.dpx, geo.y]); await page.waitForTimeout(300);
+      const after = await page.evaluate(() => ({ bound: !!document.querySelector('#v3PlanDock .v3-pl-weeks').onpointerdown, mode: l3gm.mode, scrub: !!document.querySelector('#v3PlanDock .v3-gscrub'), d: l3plDay(), sticky: getComputedStyle(document.querySelector('#v3PlanDock .v3-gscrub-h')).position, pc: document.querySelectorAll('#v3PlanDock .v3-pnote .pc').length }));
+      const exp = await page.evaluate(([w0, n]) => l3gaAdd(w0, n), [geo.w0, 9]);
+      if (after.d !== exp || after.sticky !== 'sticky' || after.pc) fail('Dra i veckoraden / handtaget: ' + JSON.stringify({ geo, after, exp }));
+      console.log('OK: veckoraden går att dra i (datumet följer), handtaget är sticky och procenten krockar inte med titeln');
+      await page.evaluate(() => { l3gmSetMode('off', true); }); }
+    // Bubblor för klickade (markerade) objekt visar år och område; de automatiska för pågående är oförändrade.
+    { const bl = await page.evaluate(() => { const r = { start_date: '2026-10-09', end_date: '2026-10-17', area: 'PRODUKTION / 741 Hus', object_name: 'X', progress: 10 }, f = { name: true, date: true, progress: true, area: false, activity: false };
+        return { mk: l3bubLines(r, f, true), au: l3bubLines(r, f, false) }; });
+      if (!/2026/.test(bl.mk.date) || bl.mk.date.split('2026').length !== 3 || bl.mk.area !== 'PRODUKTION / 741 Hus' || /2026/.test(bl.au.date) || bl.au.area) fail('Bubblor för markerade objekt (år + område): ' + JSON.stringify(bl));
+      console.log('OK: bubblor för klickade objekt visar år och område, de automatiska är oförändrade'); }
     // Filter överst i vänstermenyn (sticky) och Följa tidplan.
     const fl = await page.evaluate(() => {
       l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();

@@ -261,7 +261,7 @@ function l3fxBubbles(ctx, W, H, s) {
   const placed = [];
   ctx.save(); ctx.textBaseline = "top";
   vis.forEach(({ a, q }) => {
-    const ax = (q.x + 1) / 2 * W, ay = (1 - q.y) / 2 * H, L = l3bubLines(a.row, cfg.f);
+    const ax = (q.x + 1) / 2 * W, ay = (1 - q.y) / 2 * H, L = l3bubLines(a.row, cfg.f, false);
     const lines = []; if (L.name) lines.push({ t: L.name, f: `700 ${13 * k}px system-ui, sans-serif`, c: "#0f172a" });
     if (L.date) lines.push({ t: L.date, f: `500 ${11 * k}px system-ui, sans-serif`, c: "#64748b" });
     if (L.area) lines.push({ t: L.area, f: `500 ${11 * k}px system-ui, sans-serif`, c: "#475569" });

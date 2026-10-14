@@ -47,7 +47,7 @@ function l3bubRebuild(scopeOverride) {
     // Bubblan sitter vid objektens gemensamma överkant (mitt i gruppen i sida, högst upp).
     const n = g.pts.length, v = new THREE.Vector3();
     g.pts.forEach(p => v.add(p)); v.divideScalar(n); v.z = Math.max(...g.pts.map(p => p.z));
-    return { row: g.row, v, n };
+    return { row: g.row, v, n, marked: markedKeys.has(k) };
   });
   l3bub.total = list.length; l3bub.cap = cfg.max;
 }
@@ -66,10 +66,11 @@ function l3bubProgAt(r, at) {
   if (t >= e) return 100; if (t <= s) return 0;
   return Math.round(100 * (t - s) / Math.max(1, e - s));
 }
-function l3bubLines(r, f) {
-  const fd = d => (d ? shortDate(d) : ""), L = [];
+function l3bubLines(r, f, marked) {
+  // Markerade (klickade) objekt får också år och område i bubblan; de automatiska för pågående är oförändrade.
+  const yr = d => String(d || "").slice(0, 4), fd = d => (d ? (marked ? `${shortDate(d)} ${yr(d)}` : shortDate(d)) : "");
   const end = r.actual_end_date && r.actual_end_date > (r.end_date || "") ? r.actual_end_date : r.end_date || r.start_date;
-  return { name: f.name ? (r.object_name || r.activity || "Aktivitet") : "", date: f.date ? `${fd(r.start_date)} – ${fd(end)}` : "", progress: f.progress ? Math.max(0, Math.min(100, l3bubProgAt(r, $("dateInput").value || todayIso()))) : null, area: f.area ? r.area || "" : "", activity: f.activity && r.activity && r.activity !== r.object_name ? r.activity : "" };
+  return { name: f.name ? (r.object_name || r.activity || "Aktivitet") : "", date: f.date || marked ? `${fd(r.start_date)} – ${fd(end)}` : "", progress: f.progress ? Math.max(0, Math.min(100, l3bubProgAt(r, $("dateInput").value || todayIso()))) : null, area: f.area || marked ? r.area || "" : "", activity: f.activity && r.activity && r.activity !== r.object_name ? r.activity : "" };
 }
 /* Små kort (ca 150 px) med en tydlig ledlinje och en prick på objektet. Korten placeras vid sidan av/ovanför varandra så att de inte täcker
    varandra, och ligger så lågt som möjligt – modellen bakom ska synas. */
@@ -87,18 +88,18 @@ function l3bubRender() {
     .filter(o => o.q.z < 1 && o.q.x > -1.05 && o.q.x < 1.05 && o.q.y > -1.05 && o.q.y < 1.05).sort((x, y) => x.d - y.d).slice(0, cfg.max);
   const placed = []; let cards = "", lines = "";
   vis.forEach(({ a, q }) => {
-    const ax = (q.x + 1) / 2 * r.width, ay = (1 - q.y) / 2 * r.height; // objektets punkt på skärmen
-    const L = l3bubLines(a.row, cfg.f), h = l3bubHeight(L);
+    const w = a.marked ? 196 : W; const ax = (q.x + 1) / 2 * r.width, ay = (1 - q.y) / 2 * r.height; // objektets punkt på skärmen
+    const L = l3bubLines(a.row, cfg.f, a.marked), h = l3bubHeight(L);
     // Kandidater: rakt ovanför, sedan åt sidorna och högre upp – första som inte krockar med ett redan placerat kort.
-    const cands = []; for (let k = 0; k < 6; k++) for (const dx of [0, 0.62 * W, -0.62 * W, 1.24 * W, -1.24 * W]) cands.push([dx, -(22 + k * (h + 4))]);
+    const cands = []; for (let k = 0; k < 6; k++) for (const dx of [0, 0.62 * w, -0.62 * w, 1.24 * w, -1.24 * w]) cands.push([dx, -(22 + k * (h + 4))]);
     let pos = cands[0];
-    for (const c of cands) { const cx = ax + c[0], by = ay + c[1]; if (!placed.some(p => Math.abs(p.x - cx) < W + 4 && p.y - p.h - 3 < by && by - h - 3 < p.y)) { pos = c; break; } }
-    const cx = Math.max(W / 2 + 4, Math.min(r.width - W / 2 - 4, ax + pos[0])), by = Math.max(h + 4, ay + pos[1]);
+    for (const c of cands) { const cx = ax + c[0], by = ay + c[1]; if (!placed.some(p => Math.abs(p.x - cx) < w + 4 && p.y - p.h - 3 < by && by - h - 3 < p.y)) { pos = c; break; } }
+    const cx = Math.max(w / 2 + 4, Math.min(r.width - w / 2 - 4, ax + pos[0])), by = Math.max(h + 4, ay + pos[1]);
     placed.push({ x: cx, y: by, h });
-    const ph = l3Phase(a.row), col = phaseColor(ph), tipX = Math.max(cx - W / 2 + 10, Math.min(cx + W / 2 - 10, ax));
+    const ph = l3Phase(a.row), col = phaseColor(ph), tipX = Math.max(cx - w / 2 + 10, Math.min(cx + w / 2 - 10, ax));
     // Ledlinjen från kortets underkant till objektet, med en prick på objektet.
     lines += `<line x1="${tipX.toFixed(1)}" y1="${by.toFixed(1)}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".85"/><line x1="${tipX.toFixed(1)}" y1="${by.toFixed(1)}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="${col}" stroke-width="2" stroke-linecap="round"/><circle cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="5.5" fill="#fff"/><circle cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="3.6" fill="${col}"/>`;
-    cards += `<div class="v3-bub" style="left:${cx.toFixed(0)}px;top:${by.toFixed(0)}px;--bc:${col}"><div class="v3-bub-c">${L.name ? `<b>${escHtml(L.name)}</b>` : ""}${L.date ? `<span class="d">${escHtml(L.date)}</span>` : ""}${L.progress !== null ? `<span class="pr"><span class="p"><i style="width:${L.progress}%"></i></span><span class="pv">${L.progress} %${ph === "forsenad" ? " · försenad" : ""}</span></span>` : ""}${L.area ? `<span class="a">${escHtml(L.area)}</span>` : ""}${L.activity ? `<span class="ac">${escHtml(L.activity)}</span>` : ""}</div></div>`;
+    cards += `<div class="v3-bub" style="left:${cx.toFixed(0)}px;top:${by.toFixed(0)}px;--bc:${col};${a.marked ? "width:196px;" : ""}"><div class="v3-bub-c">${L.name ? `<b>${escHtml(L.name)}</b>` : ""}${L.date ? `<span class="d">${escHtml(L.date)}</span>` : ""}${L.progress !== null ? `<span class="pr"><span class="p"><i style="width:${L.progress}%"></i></span><span class="pv">${L.progress} %${ph === "forsenad" ? " · försenad" : ""}</span></span>` : ""}${L.area ? `<span class="a">${escHtml(L.area)}</span>` : ""}${L.activity ? `<span class="ac">${escHtml(L.activity)}</span>` : ""}</div></div>`;
   });
   const html = `<svg class="v3-bub-svg" width="${r.width.toFixed(0)}" height="${r.height.toFixed(0)}">${lines}</svg>${cards}`;
   if (host.dataset.h !== html) { host.innerHTML = html; host.dataset.h = html; }

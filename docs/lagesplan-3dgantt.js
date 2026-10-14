@@ -139,7 +139,7 @@ function l3gaTimelineHtml(acts, P, colorKeys) {
     const span = Math.max(c1 - c0 + 1, P.oneLine ? 1 : Math.min(nDays - c0, 5)); // korta lappar: plats för texten
     return `<div class="v3-pnote${P.oneLine ? " one" : ""}${P.fullText ? " full" : ""}${cls}" ${attrs} style="grid-column:${c0 + 1} / ${c0 + span + 1};--real:${(c1 - c0 + 1) * dayPx}px;--bg:${c.bg};--bd:${c.bd};--ink:${c.ink};--st:${st}">
       ${P.oneLine ? `<i style="background:${st}"></i><span class="t">${E(label)}</span>${link}${sub ? `<span class="s">${E(sub)}</span>` : ""}<span class="d">${E(dates)}</span>`
-        : `<div class="t">${E(label)}${link}</div>${sub ? `<div class="s">${E(sub)}</div>` : ""}<div class="m"><span><i style="background:${st}"></i>${E(PHASE_LABELS[ph] || ph)}</span><span>${E(dates)}</span></div><div class="pg"><span style="width:${a.progress}%;background:${st}"></span></div>${a.progress ? `<span class="pc">${a.progress} %</span>` : ""}`}
+        : `<div class="t">${E(label)}${link}</div>${sub ? `<div class="s">${E(sub)}</div>` : ""}<div class="m"><span><i style="background:${st}"></i>${E(PHASE_LABELS[ph] || ph)}${a.progress ? ` · <b class="pcb">${a.progress} %</b>` : ""}</span><span>${E(dates)}</span></div><div class="pg"><span style="width:${a.progress}%;background:${st}"></span></div>`}
       <span class="p" style="width:${a.progress}%;background:${st}"></span>${bl}<i class="v3-ga-h l"></i><i class="v3-ga-h r"></i></div>`;
   };
   const laneHtml = k => {

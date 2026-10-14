@@ -324,6 +324,16 @@ function l3gmAddScrub() {
   };
   const end = e => { if (!drag) return; drag = false; sc.classList.remove("drag"); try { sc.releasePointerCapture(e.pointerId); } catch (x) { /* */ } l3gmApply(true); l3plDockRender(); };
   sc.onpointerup = end; sc.onpointercancel = end;
+  // Dra var som helst i veckoraden (alltid synlig överst) – då följer datumet med oavsett var i Gantten man tittar.
+  const wk = g.board.querySelector(".v3-pl-weeks");
+  if (wk) {
+    let wd = false;
+    wk.style.cursor = "ew-resize"; wk.style.touchAction = "none";
+    wk.onpointerdown = e => { if (e.button !== undefined && e.button !== 0) return; e.preventDefault(); wd = true; try { wk.setPointerCapture(e.pointerId); } catch (x) { /* */ } l3gmStopPlay(); sc.classList.add("drag"); l3gmSetDay(dateAt(e.clientX)); };
+    wk.onpointermove = e => { if (!wd) return; const scr = gScroll(), cr = scr.getBoundingClientRect(); if (e.clientX > cr.right - 40) scr.scrollLeft += 14; else if (e.clientX < cr.left + g.head + 30) scr.scrollLeft -= 14; l3gmSetDay(dateAt(e.clientX)); };
+    const wend = e => { if (!wd) return; wd = false; sc.classList.remove("drag"); try { wk.releasePointerCapture(e.pointerId); } catch (x) { /* */ } l3gmApply(true); l3plDockRender(); };
+    wk.onpointerup = wend; wk.onpointercancel = wend;
+  }
   function gScroll() { return document.querySelector("#v3PlanDock .v3-pl-scroll") || g.board; }
   l3gmPlaceScrub();
 }
