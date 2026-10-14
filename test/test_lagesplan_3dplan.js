@@ -625,7 +625,7 @@ const PP = [
       l3SetPref('bubOn', false); l3RenderLabels(); const off = document.querySelectorAll('#v3Bubbles .v3-bub').length;
       return { txt, marked, off, n: n0, err, dbg0: { pm: l3.placeMeshes.size, vis: [...l3.placeMeshes.values()].map(g => g.visible), pl: placements.length, row: { id: row.id, sd: row.start_date }, scope: l3bubCfg().scope, on: l3bubOn(), temp: typeof rowTempOffAt === 'function' && rowTempOffAt(row, $('dateInput').value || todayIso()) } };
     });
-    if (!/40 %/.test(bub.txt) || !/PRODUKTION \/ 741 Hus/.test(bub.txt) || !/Betong/.test(bub.txt) || bub.marked !== 0 || bub.off !== 0) fail('Info-bubblor i 3D-editorn: ' + JSON.stringify(bub));
+    if (!/\d+ %/.test(bub.txt) || !/PRODUKTION \/ 741 Hus/.test(bub.txt) || !/Betong/.test(bub.txt) || bub.marked !== 0 || bub.off !== 0) fail('Info-bubblor i 3D-editorn: ' + JSON.stringify(bub));
     console.log('OK: info-bubblor i 3D-editorn – namn, datum, framdrift, område, aktivitet; urval; av');
     // Valen finns i fliken.
     const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlFxBl', 'v3FlFxLegend', 'v3FlAnimDef', 'v3PlLinkHost', 'v3FlTitleOn'].every(id => document.getElementById(id)); });

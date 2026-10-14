@@ -37,8 +37,9 @@ function l3bubRebuild() {
   l3.sel.forEach(id => { const p = placements.find(x => x.id === id); const r = p && p.itemId && byId.get(p.itemId); if (r) markedKeys.add(l3bubKey(r)); });
   (typeof l3bs !== "undefined" ? l3bs.sel : []).forEach(e => { const r0 = e.mesh.userData.l3b.ranges[e.ri], r = r0 && r0.itemId && byId.get(r0.itemId); if (r) markedKeys.add(l3bubKey(r)); });
   const at = $("dateInput").value || todayIso();
-  let scope = cfg.scope; if (scope === "auto") scope = markedKeys.size ? "marked" : "active";
-  let list = [...groups.entries()].filter(([k, g]) => scope === "all" || (scope === "marked" ? markedKeys.has(k) : ["pagaende", "forsenad"].includes(l3Phase(g.row))));
+  // Auto: aktiviteter som är aktiva (pågående/försenade) vid datumet, plus markerade. Följer tidslinjen när man drar.
+  const scope = cfg.scope, isAct = g => ["pagaende", "forsenad"].includes(l3Phase(g.row));
+  let list = [...groups.entries()].filter(([k, g]) => scope === "all" || (scope === "marked" ? markedKeys.has(k) : scope === "active" ? isAct(g) : (isAct(g) || markedKeys.has(k))));
   list = list.filter(([, g]) => !(typeof rowTempOffAt === "function" && rowTempOffAt(g.row, at)));
   l3bub.anchors = list.map(([k, g]) => {
     // Bubblan sitter vid objektens gemensamma överkant (mitt i gruppen i sida, högst upp).
@@ -52,10 +53,20 @@ function l3bubSig() {
   const cfg = l3bubCfg(), p = l3Prefs();
   return [$("dateInput").value, [...l3.sel].join(","), typeof l3bs !== "undefined" ? l3bs.sel.length : 0, items.length, placements.length, typeof l3b !== "undefined" ? l3b.models.length + ":" + l3b.models.reduce((a, m) => a + (m.visible ? 1 : 0), 0) : 0, cfg.scope, cfg.max, p.bubOn, l3.placeMeshes ? l3.placeMeshes.size : 0].join("|");
 }
+/* Framdrift vid det visade datumet: 0 % vid start → verklig framdrift i dag → 100 % vid slut (linjärt), så att siffran rör sig när man drar i tidslinjen. */
+function l3bubProgAt(r, at) {
+  const d = x => (x ? Date.parse(String(x).slice(0, 10) + "T00:00:00Z") / 864e5 : NaN);
+  const s = d(r.actual_start_date || r.start_date), e = d(r.actual_end_date || r.end_date), t = d(at), n = d(todayIso()), p = Math.max(0, Math.min(100, Number(r.progress) || 0));
+  if (![s, e, t, n].every(Number.isFinite)) return p;
+  if (r.actual_end_date || p >= 100) return t >= e ? 100 : Math.round(100 * Math.max(0, t - s) / Math.max(1, e - s));
+  if (t >= e) return 100; if (t <= s) return 0;
+  if (t <= n) return Math.round(n > s ? p * (t - s) / (n - s) : p);
+  return Math.round(e > n ? p + (100 - p) * (t - n) / (e - n) : p);
+}
 function l3bubLines(r, f) {
   const fd = d => (d ? shortDate(d) : ""), L = [];
   const end = r.actual_end_date && r.actual_end_date > (r.end_date || "") ? r.actual_end_date : r.end_date || r.start_date;
-  return { name: f.name ? (r.object_name || r.activity || "Aktivitet") : "", date: f.date ? `${fd(r.start_date)} – ${fd(end)}` : "", progress: f.progress ? Math.max(0, Math.min(100, Math.round(Number(r.progress) || 0))) : null, area: f.area ? r.area || "" : "", activity: f.activity && r.activity && r.activity !== r.object_name ? r.activity : "" };
+  return { name: f.name ? (r.object_name || r.activity || "Aktivitet") : "", date: f.date ? `${fd(r.start_date)} – ${fd(end)}` : "", progress: f.progress ? Math.max(0, Math.min(100, l3bubProgAt(r, $("dateInput").value || todayIso()))) : null, area: f.area ? r.area || "" : "", activity: f.activity && r.activity && r.activity !== r.object_name ? r.activity : "" };
 }
 /* Små kort (ca 150 px) med en tydlig ledlinje och en prick på objektet. Korten placeras vid sidan av/ovanför varandra så att de inte täcker
    varandra, och ligger så lågt som möjligt – modellen bakom ska synas. */
