@@ -739,6 +739,19 @@ const PP = [
         return { mk: l3bubLines(r, f, true), au: l3bubLines(r, f, false) }; });
       if (!/2026/.test(bl.mk.date) || bl.mk.date.split('2026').length !== 3 || bl.mk.area !== 'PRODUKTION / 741 Hus' || /2026/.test(bl.au.date) || bl.au.area) fail('Bubblor för markerade objekt (år + område): ' + JSON.stringify(bl));
       console.log('OK: bubblor för klickade objekt visar år och område, de automatiska är oförändrade'); }
+    // Markerar man objekt (klara, pågående eller kommande) kommer alltid en bubbla – även med automatiska bubblor avstängda.
+    { const mk = await page.evaluate(async () => {
+        l3SetPref('bubOn', false); l3bub.sig = '';
+        const p = placements.find(x => x.itemId) || null; if (!p) return { noPlacement: true };
+        const row = items.find(r => r.id === p.itemId); const e0 = row.end_date; row.end_date = '2026-10-01'; // slutdatumet passerat: markerad ska ändå visas
+        l3.sel = new Set([p.id]); l3bub.sig = ''; l3RenderLabels();
+        const n = document.querySelectorAll('#v3Bubbles .v3-bub').length, txt = (document.querySelector('#v3Bubbles .v3-bub') || {}).innerText || '';
+        l3.sel = new Set(); l3bub.sig = ''; l3RenderLabels(); const none = document.querySelectorAll('#v3Bubbles .v3-bub').length; row.end_date = e0;
+        return { n, txt, none };
+      });
+      if (process.env.DBG) console.log('MK', JSON.stringify(mk));
+      if (!mk.noPlacement && (mk.n < 1 || !/20\d\d/.test(mk.txt) || mk.none !== 0)) fail('Bubbla vid markering: ' + JSON.stringify(mk));
+      console.log('OK: markerade objekt får alltid en bubbla (även med automatiska av och efter slutdatum)'); }
     // Filter överst i vänstermenyn (sticky) och Följa tidplan.
     const fl = await page.evaluate(() => {
       l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();

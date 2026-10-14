@@ -41,7 +41,7 @@ function l3bubRebuild(scopeOverride) {
   const scope = scopeOverride || cfg.scope, isAct = g => ["pagaende", "forsenad"].includes(l3Phase(g.row));
   let list = [...groups.entries()].filter(([k, g]) => scope === "all" || (scope === "marked" ? markedKeys.has(k) : scope === "active" ? isAct(g) : (isAct(g) || markedKeys.has(k))));
   // Passerat slutdatum: bubblan försvinner (verkligt slut om det finns och är senare).
-  list = list.filter(([, g]) => { const r = g.row, e = String(r.actual_end_date && r.actual_end_date > (r.end_date || "") ? r.actual_end_date : r.end_date || "").slice(0, 10); return !(e && at > e); });
+  list = list.filter(([k, g]) => { if (markedKeys.has(k)) return true; const r = g.row, e = String(r.actual_end_date && r.actual_end_date > (r.end_date || "") ? r.actual_end_date : r.end_date || "").slice(0, 10); return !(e && at > e); });
   list = list.filter(([, g]) => !(typeof rowTempOffAt === "function" && rowTempOffAt(g.row, at)));
   l3bub.anchors = list.map(([k, g]) => {
     // Bubblan sitter vid objektens gemensamma överkant (mitt i gruppen i sida, högst upp).
@@ -78,14 +78,14 @@ const L3BUB_W = 150;
 function l3bubHeight(L) { return 8 + Math.min(2, Math.ceil((L.name || "").length / 24)) * 13 + (L.date ? 13 : 0) + (L.progress !== null ? 14 : 0) + (L.area ? 13 : 0) + (L.activity ? 13 : 0); }
 function l3bubRender() {
   let host = document.getElementById("v3Bubbles");
-  const on = l3bubOn();
-  if (!host) { const lab = document.getElementById("v3Labels"); if (!lab || !on) return; host = document.createElement("div"); host.id = "v3Bubbles"; host.className = "v3-bubbles"; lab.parentNode.insertBefore(host, lab.nextSibling); }
+  const auto = l3bubOn(), on = true; // klickade/markerade objekt får alltid en bubbla, även när de automatiska är avstängda
+  if (!host) { const lab = document.getElementById("v3Labels"); if (!lab) return; host = document.createElement("div"); host.id = "v3Bubbles"; host.className = "v3-bubbles"; lab.parentNode.insertBefore(host, lab.nextSibling); }
   if (on && typeof l3pl !== "undefined" && l3pl.rec && (l3plPrefs().film || {}).fxBubbles === true) { if (host.innerHTML) host.innerHTML = ""; host.dataset.h = ""; return; } // under filmen ritas bubblorna i filmens bild
   if (!on || !l3) { if (host.innerHTML) host.innerHTML = ""; l3bub.sig = ""; return; }
-  const sig = l3bubSig(); if (sig !== l3bub.sig) { l3bub.sig = sig; l3bubRebuild(); }
+  const sig = l3bubSig() + "|" + auto; if (sig !== l3bub.sig) { l3bub.sig = sig; l3bubRebuild(auto ? undefined : "marked"); }
   const r = l3.renderer.domElement.getBoundingClientRect(), cam = l3.camera.position, cfg = l3bubCfg(), W = L3BUB_W;
   const vis = l3bub.anchors.map(a => { const q = a.v.clone().project(l3.camera); return { a, q, d: a.v.distanceTo(cam) }; })
-    .filter(o => o.q.z < 1 && o.q.x > -1.05 && o.q.x < 1.05 && o.q.y > -1.05 && o.q.y < 1.05).sort((x, y) => x.d - y.d).slice(0, cfg.max);
+    .filter(o => o.q.z < 1 && o.q.x > -1.05 && o.q.x < 1.05 && o.q.y > -1.05 && o.q.y < 1.05).sort((x, y) => (x.a.marked ? 0 : 1) - (y.a.marked ? 0 : 1) || x.d - y.d).slice(0, cfg.max);
   const placed = []; let cards = "", lines = "";
   vis.forEach(({ a, q }) => {
     const w = a.marked ? 196 : W; const ax = (q.x + 1) / 2 * r.width, ay = (1 - q.y) / 2 * r.height; // objektets punkt på skärmen
