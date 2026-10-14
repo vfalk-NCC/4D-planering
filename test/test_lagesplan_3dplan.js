@@ -50,7 +50,7 @@ const PP = [
     await page.click('[data-paltab="plan"]');
     await page.waitForSelector('#v3PalPlan #v3PlDock', { timeout: 8000 });
     const tab = await page.textContent('#v3PalPlan');
-    if (!/3 aktiviteter/.test(tab) || !/K10, K11 – Gjutning pelare/.test(tab)) fail('Fliken: tidplanen och det som pågår: ' + tab.replace(/\s+/g, ' ').slice(0, 300));
+    if (!/3 aktiviteter/.test(tab) || /Pågår 20\d\d-/.test(tab)) fail('Fliken: tidplanen visas men listan Pågår <datum> är borttagen: ' + tab.replace(/\s+/g, ' ').slice(0, 300));
 
     // Tavlan: en lapp per aktivitet, banor per område, dagens vecka markerad.
     await page.click('#v3PlDock');
@@ -581,6 +581,19 @@ const PP = [
     });
     if (mu.avail < 2 || mu.size !== 2 || mu.marked !== 2 || mu.bar !== '2 markerade' || mu.sel < 1 || mu.after.size !== 0 || mu.after.bar) fail('Ctrl-markering av flera aktiviteter: ' + JSON.stringify(mu));
     else console.log('OK: Ctrl-klick på flera aktiviteter – markeras tillsammans, "N markerade"-rad, Esc rensar');
+    // Reglaget i fotraden (alltid tillgängligt): flyttar datumet, ‹ › en dag.
+    const fsl = await page.evaluate(async () => {
+      const sl = document.getElementById('v3DSlider'); if (!sl) return { none: true };
+      const d0 = $('dateInput').value; l3SyncDate(); const max = Number(sl.max);
+      sl.value = Math.min(max, Number(sl.value) + 5); sl.dispatchEvent(new Event('input')); await new Promise(r => setTimeout(r, 250)); sl.dispatchEvent(new Event('change')); await new Promise(r => setTimeout(r, 150));
+      const d1 = $('dateInput').value; document.getElementById('v3DNext').click(); await new Promise(r => setTimeout(r, 100)); const d2 = $('dateInput').value;
+      document.getElementById('v3DPrev').click(); document.getElementById('v3DPrev').click(); const d3 = $('dateInput').value;
+      $('dateInput').value = d0; $('dateInput').dispatchEvent(new Event('change')); l3SyncDate();
+      return { d0, d1, d2, d3, max };
+    });
+    const dd = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 86400000);
+    if (fsl.none || dd(fsl.d0, fsl.d1) < 1 || dd(fsl.d1, fsl.d2) !== 1 || dd(fsl.d2, fsl.d3) !== -2) fail('Tidsreglaget i fotraden: ' + JSON.stringify(fsl));
+    else console.log('OK: tidsreglaget i fotraden – alltid tillgängligt, ‹ › en dag');
     console.log('OK: 4D-koppling – Powerproject, Excel eller båda; Excel-raderna skyddade mot redigering här');
     // Pågående objekt: gul kontur (val under 4D-planering), av = borta.
     const act = await page.evaluate(async () => {
@@ -602,7 +615,7 @@ const PP = [
       const row = items.find(r => r.start_date) || (items.push({ id: 'zz1', object_name: 'Test', start_date: '2026-10-01', end_date: '2026-10-09' }), items[items.length - 1]);
       placements = [{ id: 'tp1', type: 'bod', name: 'Bod', x: 6512340, y: 150105, z: 0, L: 8, B: 3, H: 2.7, rot: 0, dz: 0, color: '#f59e0b', itemId: row.id }]; l3BuildPlacements();
       row.progress = 40; row.area = 'PRODUKTION / 741 Hus'; row.activity = 'Betong';
-      l3SetPref('bubScope', 'all'); l3SetPref('bubOn', true); l3bub.sig = ''; l3RenderLabels();
+      l3SetPref('bubFields', { area: true, activity: true }); l3SetPref('bubScope', 'all'); l3SetPref('bubOn', true); l3bub.sig = ''; l3RenderLabels();
       await new Promise(r => setTimeout(r, 300));
       let err = ''; try { l3bubRebuild(); } catch (e) { err = String(e && e.stack || e).slice(0, 300); }
       const n0 = l3bub.anchors.length, a0 = l3bub.anchors[0];

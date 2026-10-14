@@ -326,6 +326,7 @@ function l3Dom() {
       <select id="v3Step" title="Steg för piltangenterna – och för handtagen medan Skift hålls ned (annars flyttar och vrider de fritt)">${[["0", "fritt"], ["0.1", "0,1 m · 5°"], ["0.5", "0,5 m · 15°"], ["1", "1 m · 45°"]].map(([v, l]) => `<option value="${v}" ${P.step === v ? "selected" : ""}>${l}</option>`).join("")}</select>
       <span class="v3-ft-tg"><button type="button" id="v3FtLegend" class="v3-ft-t ${P.legend ? "on" : ""}" aria-pressed="${!!P.legend}" title="Visa/dölj statusförklaringen (antal objekt per status)">Status</button><button type="button" id="v3FtNav" class="v3-ft-t ${P.navHelp !== false ? "on" : ""}" aria-pressed="${P.navHelp !== false}" title="Visa/dölj navigeringshjälpen (musens och tangenternas funktioner)">${typeof L3_NAV_ICO === "string" ? L3_NAV_ICO : ""}Navigering</button></span>
       <label class="v3-date" title="Datum för statusfärgerna (samma som i lägesplanen)">Datum <input type="date" id="v3Date" /></label>
+      <span class="v3-dsl" title="Tidsreglage – alltid tillgängligt. ‹ › flyttar en dag."><button type="button" id="v3DPrev" aria-label="Backa en dag">‹</button><input type="range" id="v3DSlider" min="0" max="1" value="0" aria-label="Datum" /><button type="button" id="v3DNext" aria-label="Fram en dag">›</button></span>
       <span class="v3-coord" id="v3Coord"></span>
       <span class="v3-save" id="v3Save"></span>
     </div>`;
@@ -339,6 +340,12 @@ function l3Dom() {
   box.querySelectorAll("[data-v3tool]").forEach(b => { b.onclick = () => { if (typeof l3SetTool === "function") l3SetTool(b.dataset.v3tool); }; });
   $3("v3Step").onchange = () => { l3SetPref("step", $3("v3Step").value); l3ApplyStep(); };
   $3("v3Snap").onchange = () => l3SetPref("snap", $3("v3Snap").checked);
+  /* Reglaget i fotraden (Victor 2026-10-14: "en slider längst ner … som alltid är tillgänglig"): tidplanens spann, annars ±90 dagar. */
+  { const sl = $3("v3DSlider"); let raf = 0;
+    sl.oninput = () => { const r = l3DateRange(), d = l3DateAdd(r[0], Number(sl.value)); $3("v3Date").value = d; cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { if (typeof l3plSetDay === "function") l3plSetDay(d); else { $("dateInput").value = d; } if (typeof l3gmSync === "function" && typeof l3gm !== "undefined" && l3gm.mode === "time") { l3gmApply(true); l3gmSync(); } l3Render(); }); };
+    sl.onchange = () => { $("dateInput").dispatchEvent(new Event("change")); };
+    const step = n => { $("dateInput").value = l3DateAdd($("dateInput").value || todayIso(), n); $("dateInput").dispatchEvent(new Event("change")); };
+    $3("v3DPrev").onclick = () => step(-1); $3("v3DNext").onclick = () => step(1); }
   $3("v3Date").onchange = () => { const v = $3("v3Date").value; if (!v) return; $("dateInput").value = v; $("dateInput").dispatchEvent(new Event("change")); };
   $3("v3Undo").onclick = l3Undo;
   $3("v3Redo").onclick = l3Redo;
@@ -574,7 +581,19 @@ function l3Init(box) {
     if (d !== l3.date) { l3BuildObjects(); if (typeof l3bRecolor === "function") l3bRecolor(); l3Etab4dAll(); if (typeof l3StorageBuild === "function") l3StorageBuild(); }
   }, 700);
 }
-function l3SyncDate() { const el = document.getElementById("v3Date"); if (el && document.activeElement !== el && el.value !== $("dateInput").value) el.value = $("dateInput").value; }
+const l3DateAdd = (iso, n) => { const d = new Date(String(iso).slice(0, 10) + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const l3DateDays = (a, b) => Math.round((Date.parse(String(b).slice(0, 10) + "T00:00:00Z") - Date.parse(String(a).slice(0, 10) + "T00:00:00Z")) / 86400000);
+function l3DateRange() {
+  const cur = $("dateInput").value || todayIso();
+  let r = null; try { if (typeof l3gmRange2 === "function") r = l3gmRange2(); } catch (e) { r = null; }
+  if (!r || !r[0] || !r[1] || r[1] <= r[0]) r = [l3DateAdd(cur, -90), l3DateAdd(cur, 90)];
+  if (cur < r[0]) r[0] = cur; if (cur > r[1]) r[1] = cur; // datumet ligger alltid inom reglaget
+  return r;
+}
+function l3SyncDate() {
+  const el = document.getElementById("v3Date"); if (el && document.activeElement !== el && el.value !== $("dateInput").value) el.value = $("dateInput").value;
+  const sl = document.getElementById("v3DSlider"); if (sl && document.activeElement !== sl) { const r = l3DateRange(); sl.max = Math.max(1, l3DateDays(r[0], r[1])); sl.value = Math.max(0, l3DateDays(r[0], $("dateInput").value || todayIso())); }
+}
 function l3Resize() {
   if (!l3) return;
   if (typeof l3BarFit === "function") l3BarFit();

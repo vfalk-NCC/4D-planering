@@ -6,7 +6,7 @@
 const L3BUB_FIELDS = [["name", "Namn"], ["date", "Datum"], ["progress", "Framdrift"], ["area", "Område"], ["activity", "Aktivitet"]];
 const l3bub = { anchors: [], sig: "" };
 const l3bubOn = () => !!l3Prefs().bubOn;
-const l3bubCfg = () => { const p = l3Prefs(); return { scope: p.bubScope || "auto", max: Math.max(1, Math.min(100, Number(p.bubMax) || 30)), f: { name: true, date: true, progress: true, area: true, activity: true, ...(p.bubFields || {}) } }; };
+const l3bubCfg = () => { const p = l3Prefs(); return { scope: p.bubScope || "auto", max: Math.max(1, Math.min(100, Number(p.bubMax) || 15)), f: { name: true, date: true, progress: true, area: false, activity: false, ...(p.bubFields || {}) } }; };
 /* Aktivitetsnyckel som i dashboarden: group_id, annars source_key, annars egen rad. */
 const l3bubKey = r => r.group_id ? `g:${r.group_id}` : r.source_key ? `s:${r.source_key}` : `i:${r.id}`;
 
@@ -57,23 +57,34 @@ function l3bubLines(r, f) {
   const end = r.actual_end_date && r.actual_end_date > (r.end_date || "") ? r.actual_end_date : r.end_date || r.start_date;
   return { name: f.name ? (r.object_name || r.activity || "Aktivitet") : "", date: f.date ? `${fd(r.start_date)} – ${fd(end)}` : "", progress: f.progress ? Math.max(0, Math.min(100, Math.round(Number(r.progress) || 0))) : null, area: f.area ? r.area || "" : "", activity: f.activity && r.activity && r.activity !== r.object_name ? r.activity : "" };
 }
+/* Små kort (ca 150 px) med en tydlig ledlinje och en prick på objektet. Korten placeras vid sidan av/ovanför varandra så att de inte täcker
+   varandra, och ligger så lågt som möjligt – modellen bakom ska synas. */
+const L3BUB_W = 150;
+function l3bubHeight(L) { return 8 + Math.min(2, Math.ceil((L.name || "").length / 24)) * 13 + (L.date ? 13 : 0) + (L.progress !== null ? 14 : 0) + (L.area ? 13 : 0) + (L.activity ? 13 : 0); }
 function l3bubRender() {
   let host = document.getElementById("v3Bubbles");
   const on = l3bubOn();
   if (!host) { const lab = document.getElementById("v3Labels"); if (!lab || !on) return; host = document.createElement("div"); host.id = "v3Bubbles"; host.className = "v3-bubbles"; lab.parentNode.insertBefore(host, lab.nextSibling); }
   if (!on || !l3) { if (host.innerHTML) host.innerHTML = ""; l3bub.sig = ""; return; }
   const sig = l3bubSig(); if (sig !== l3bub.sig) { l3bub.sig = sig; l3bubRebuild(); }
-  const r = l3.renderer.domElement.getBoundingClientRect(), cam = l3.camera.position, cfg = l3bubCfg();
+  const r = l3.renderer.domElement.getBoundingClientRect(), cam = l3.camera.position, cfg = l3bubCfg(), W = L3BUB_W;
   const vis = l3bub.anchors.map(a => { const q = a.v.clone().project(l3.camera); return { a, q, d: a.v.distanceTo(cam) }; })
     .filter(o => o.q.z < 1 && o.q.x > -1.05 && o.q.x < 1.05 && o.q.y > -1.05 && o.q.y < 1.05).sort((x, y) => x.d - y.d).slice(0, cfg.max);
-  const placed = []; let html = "";
+  const placed = []; let cards = "", lines = "";
   vis.forEach(({ a, q }) => {
-    const x = (q.x + 1) / 2 * r.width; let y = (1 - q.y) / 2 * r.height - 16;
-    const L = l3bubLines(a.row, cfg.f), h = 18 + (L.date ? 14 : 0) + (L.progress !== null ? 14 : 0) + (L.area ? 14 : 0) + (L.activity ? 14 : 0), w = 190;
-    for (let tries = 0; tries < 8 && placed.some(p => Math.abs(p.x - x) < w && Math.abs(p.y - y) < h + 4); tries++) y -= h + 6; // lägg överst på varandra utan att täcka
-    placed.push({ x, y });
-    const ph = l3Phase(a.row), col = phaseColor(ph);
-    html += `<div class="v3-bub" style="left:${x.toFixed(0)}px;top:${y.toFixed(0)}px;--bc:${col}"><div class="v3-bub-c">${L.name ? `<b>${escHtml(L.name)}</b>` : ""}${L.date ? `<span class="d">${escHtml(L.date)}</span>` : ""}${L.progress !== null ? `<span class="p"><i style="width:${L.progress}%"></i></span><span class="pv">${L.progress} %${ph === "forsenad" ? " · försenad" : ""}</span>` : ""}${L.area ? `<span class="a">${escHtml(L.area)}</span>` : ""}${L.activity ? `<span class="ac">${escHtml(L.activity)}</span>` : ""}</div><i class="v3-bub-tip"></i></div>`;
+    const ax = (q.x + 1) / 2 * r.width, ay = (1 - q.y) / 2 * r.height; // objektets punkt på skärmen
+    const L = l3bubLines(a.row, cfg.f), h = l3bubHeight(L);
+    // Kandidater: rakt ovanför, sedan åt sidorna och högre upp – första som inte krockar med ett redan placerat kort.
+    const cands = []; for (let k = 0; k < 6; k++) for (const dx of [0, 0.62 * W, -0.62 * W, 1.24 * W, -1.24 * W]) cands.push([dx, -(22 + k * (h + 4))]);
+    let pos = cands[0];
+    for (const c of cands) { const cx = ax + c[0], by = ay + c[1]; if (!placed.some(p => Math.abs(p.x - cx) < W + 4 && p.y - p.h - 3 < by && by - h - 3 < p.y)) { pos = c; break; } }
+    const cx = Math.max(W / 2 + 4, Math.min(r.width - W / 2 - 4, ax + pos[0])), by = Math.max(h + 4, ay + pos[1]);
+    placed.push({ x: cx, y: by, h });
+    const ph = l3Phase(a.row), col = phaseColor(ph), tipX = Math.max(cx - W / 2 + 10, Math.min(cx + W / 2 - 10, ax));
+    // Ledlinjen från kortets underkant till objektet, med en prick på objektet.
+    lines += `<line x1="${tipX.toFixed(1)}" y1="${by.toFixed(1)}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".85"/><line x1="${tipX.toFixed(1)}" y1="${by.toFixed(1)}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="${col}" stroke-width="2" stroke-linecap="round"/><circle cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="5.5" fill="#fff"/><circle cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="3.6" fill="${col}"/>`;
+    cards += `<div class="v3-bub" style="left:${cx.toFixed(0)}px;top:${by.toFixed(0)}px;--bc:${col}"><div class="v3-bub-c">${L.name ? `<b>${escHtml(L.name)}</b>` : ""}${L.date ? `<span class="d">${escHtml(L.date)}</span>` : ""}${L.progress !== null ? `<span class="pr"><span class="p"><i style="width:${L.progress}%"></i></span><span class="pv">${L.progress} %${ph === "forsenad" ? " · försenad" : ""}</span></span>` : ""}${L.area ? `<span class="a">${escHtml(L.area)}</span>` : ""}${L.activity ? `<span class="ac">${escHtml(L.activity)}</span>` : ""}</div></div>`;
   });
+  const html = `<svg class="v3-bub-svg" width="${r.width.toFixed(0)}" height="${r.height.toFixed(0)}">${lines}</svg>${cards}`;
   if (host.dataset.h !== html) { host.innerHTML = html; host.dataset.h = html; }
 }
