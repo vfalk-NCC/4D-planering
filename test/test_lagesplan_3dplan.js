@@ -630,6 +630,19 @@ const PP = [
     // Valen finns i fliken.
     const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlFxBl', 'v3FlFxLegend', 'v3FlAnimDef', 'v3PlLinkHost', 'v3FlTitleOn'].every(id => document.getElementById(id)); });
     if (!ui) fail('Valen för grafiken saknas i fliken');
+    // Animering: fäll ut ett område (▸) och välj för en enskild aktivitet – går före områdets val.
+    const anx = await page.evaluate(async () => {
+      l3PalTab('plan'); l3plSet('film', { ...l3plPrefs().film, anim: {} }); l3pl.animOpen = true; l3plRenderTab();
+      const x = document.querySelector('[data-animx]'); if (!x) return { none: true };
+      const name = x.dataset.animx; x.click(); await new Promise(r => setTimeout(r, 50));
+      const area = document.querySelector(`[data-anim="${name}"]`); const optsA = [...area.options].map(o => o.value).filter(Boolean); area.value = optsA[0]; area.dispatchEvent(new Event('change'));
+      const acts = l3plFilmActs().filter(a => a.name === name); const sub = document.querySelector('[data-animk]'); if (!sub) return { noSub: true, name };
+      const optsK = [...sub.options].map(o => o.value).filter(v => v && v !== optsA[0]); sub.value = optsK[0]; sub.dispatchEvent(new Event('change'));
+      const key = sub.dataset.animk, a0 = acts.find(a => a.key === key), a1 = acts.find(a => a.key !== key);
+      return { name, area: optsA[0], own: optsK[0], t0: l3fxAnimType(a0), t1: a1 ? l3fxAnimType(a1) : null, n: acts.length, summary: document.querySelector('.v3-pl-anim summary').textContent };
+    });
+    if (anx.none || anx.noSub || anx.t0 !== anx.own || (anx.t1 !== null && anx.t1 !== anx.area) || !/2 egna/.test(anx.summary)) fail('Animering per aktivitet: ' + JSON.stringify(anx));
+    else console.log('OK: animering – område eller enskild aktivitet (▸ fäller ut), aktivitetens val går före områdets');
     console.log(`OK: filmens grafik – pågår nu (in/ut, bock), datumskylt med rullande vecka, milstolpe, förloppsmätare (${fx.prog} %, ${fx.ahead} dagar före baslinjen), valbara, lager vid uppspelning`);
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('OK: fliken 4D-planering – Powerproject som tavla och staplar, markera i 3D, vecka → datum, kameravyer, film som videofil');

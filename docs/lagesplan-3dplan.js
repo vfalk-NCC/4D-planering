@@ -215,16 +215,23 @@ async function l3plFilmDelete() {
    som det är nu"): en standard för alla och ett val per aktivitet (namnet), t.ex. Gjutning = Växer upp. */
 const L3PL_ANIM = [["color", "Byter färg (som nu)"], ["grow", "Växer upp"], ["fade", "Tonas in"], ["drop", "Lyfts på plats"]];
 function l3plAnimHtml(f) {
-  const A = f.anim || {}, def = A.def || "color", by = A.by || {}, esc = escHtml;
-  const names = [...new Set(l3plFilmActs().map(a => a.name))].sort((x, y) => x.localeCompare(y, "sv", { numeric: true }));
+  const A = f.anim || {}, def = A.def || "color", by = A.by || {}, esc = escHtml, filmActs = l3plFilmActs();
+  const names = [...new Set(filmActs.map(a => a.name))].sort((x, y) => x.localeCompare(y, "sv", { numeric: true }));
   const q = (l3pl.animQ || "").trim().toLowerCase(), list = names.filter(n => !q || n.toLowerCase().includes(q));
   const sel = (id, v, withStd) => `<select ${id}>${withStd ? `<option value="">Standard</option>` : ""}${L3PL_ANIM.map(([k, t]) => `<option value="${k}" ${v === k ? "selected" : ""}>${t}</option>`).join("")}</select>`;
   const nSet = Object.keys(by).filter(k => by[k]).length;
+  l3pl.animX = l3pl.animX || new Set();
+  // Varje område/namn kan fällas ut (▸) till enskilda aktiviteter med egen animering (går före områdets val).
+  const acts = n => filmActs.filter(a => a.name === n).sort((x, y) => x.start.localeCompare(y.start));
+  const actLabel = a => (a.objs.length ? `${a.objs.slice(0, 2).join(", ")}${a.objs.length > 2 ? " +" + (a.objs.length - 2) : ""}` : a.name) + ` · ${a.start.slice(5)}–${a.end.slice(5)}`;
+  const rowFor = n => { const open = l3pl.animX.has(n), ks = acts(n), nOwn = ks.filter(a => by["k:" + a.key]).length;
+    return `<div class="v3-pl-agrp"><label class="v3-pl-arow ${by[n] ? "set" : ""}" title="${esc(n)}"><button type="button" class="v3-pl-ax" data-animx="${esc(n)}" aria-expanded="${open}" title="Visa enskilda aktiviteter">${open ? "▾" : "▸"}</button><span>${esc(n)}${nOwn ? ` <em>· ${nOwn} egna</em>` : ""}</span>${sel(`data-anim="${esc(n)}"`, by[n] || "", true)}</label>
+      ${open ? ks.map(a => `<label class="v3-pl-arow v3-pl-asub ${by["k:" + a.key] ? "set" : ""}" title="${esc(actLabel(a))}"><span>${esc(actLabel(a))}</span>${sel(`data-animk="${esc(a.key)}"`, by["k:" + a.key] || "", true)}</label>`).join("") : ""}</div>`; };
   return `<details class="v3-pl-fx v3-pl-anim" ${l3pl.animOpen ? "open" : ""}><summary>Animering${nSet ? ` · ${nSet} egna` : ""}</summary>
     <label class="v3-pl-arow v3-pl-adef" title="Standard för alla aktiviteter"><span>Alla</span>${sel('id="v3FlAnimDef"', def, false)}</label>
-    <div class="v3-pal-hint">Välj för enskilda aktiviteter (ett namn gäller alla dess objekt). Gäller IFC-objekt som är kopplade.</div>
-    ${names.length > 8 ? `<input type="search" id="v3FlAnimQ" class="v3-pp-q" placeholder="Sök aktivitet…" value="${esc(l3pl.animQ || "")}" />` : ""}
-    <div class="v3-pl-alist">${list.slice(0, 200).map(n => `<label class="v3-pl-arow ${by[n] ? "set" : ""}" title="${esc(n)}"><span>${esc(n)}</span>${sel(`data-anim="${esc(n)}"`, by[n] || "", true)}</label>`).join("") || `<div class="v3-pal-hint">Inga aktiviteter.</div>`}</div>
+    <div class="v3-pal-hint">Välj för ett område (gäller alla dess aktiviteter) eller fäll ut ▸ och välj för enskilda aktiviteter – de går före områdets val. Gäller IFC-objekt som är kopplade.</div>
+    ${names.length > 8 ? `<input type="search" id="v3FlAnimQ" class="v3-pp-q" placeholder="Sök område…" value="${esc(l3pl.animQ || "")}" />` : ""}
+    <div class="v3-pl-alist">${list.slice(0, 200).map(rowFor).join("") || `<div class="v3-pal-hint">Inga aktiviteter.</div>`}</div>
     ${nSet ? `<button type="button" class="v3-link" id="v3FlAnimClr">Återställ alla till Standard</button>` : ""}
   </details>`;
 }
@@ -233,6 +240,8 @@ function l3plAnimBind(host) {
   const d = host.querySelector(".v3-pl-anim"); if (d) d.ontoggle = () => { l3pl.animOpen = d.open; };
   const def = host.querySelector("#v3FlAnimDef"); if (def) def.onchange = () => put({ ...(f().anim || {}), def: def.value });
   host.querySelectorAll("[data-anim]").forEach(s2 => { s2.onchange = () => { const A = f().anim || {}, by = { ...(A.by || {}) }; if (s2.value) by[s2.dataset.anim] = s2.value; else delete by[s2.dataset.anim]; put({ ...A, by }); s2.closest(".v3-pl-arow").classList.toggle("set", !!s2.value); }; });
+  host.querySelectorAll("[data-animk]").forEach(s2 => { s2.onchange = () => { const A = f().anim || {}, by = { ...(A.by || {}) }, k = "k:" + s2.dataset.animk; if (s2.value) by[k] = s2.value; else delete by[k]; put({ ...A, by }); l3plRenderTab(); }; });
+  host.querySelectorAll("[data-animx]").forEach(b => { b.onclick = e => { e.preventDefault(); l3pl.animX = l3pl.animX || new Set(); const n = b.dataset.animx; if (l3pl.animX.has(n)) l3pl.animX.delete(n); else l3pl.animX.add(n); l3pl.animOpen = true; l3plRenderTab(); }; });
   const q = host.querySelector("#v3FlAnimQ"); if (q) q.oninput = () => { l3pl.animQ = q.value; const pos = q.selectionStart; l3plRenderTab(); const n = document.getElementById("v3FlAnimQ"); if (n) { n.focus(); n.setSelectionRange(pos, pos); } };
   const clr = host.querySelector("#v3FlAnimClr"); if (clr) clr.onclick = () => { put({ ...(f().anim || {}), by: {} }); l3plRenderTab(); };
 }

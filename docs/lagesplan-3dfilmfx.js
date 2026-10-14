@@ -12,7 +12,7 @@
 
 const l3fxOpts = () => { const f = l3plPrefs().film || {}; return { now: f.fxNow !== false, glow: f.fxGlow !== false, date: f.title !== false, miles: f.fxMiles !== false, meter: f.fxMeter !== false, bl: f.fxBl === true, legend: f.fxLegend === true, etab: f.fxEtab !== false, crane: f.fxCrane !== false, signs: f.fxSigns !== false }; };
 /* Animeringen för en aktivitet: eget val (aktivitetens namn) eller standarden – från början "color" (bara färgen). */
-const l3fxAnimType = a => { const A = (l3plPrefs().film || {}).anim || {}; return (A.by || {})[a.name] || A.def || "color"; };
+const l3fxAnimType = a => { const A = (l3plPrefs().film || {}).anim || {}, by = A.by || {}; return by["k:" + a.key] || by[a.name] || A.def || "color"; }; // enskild aktivitet (k:<nyckel>) går före namnet/området
 const L3FX_DAY = 86400000;
 const l3fxEase = u => { u = Math.max(0, Math.min(1, u)); return u * u * (3 - 2 * u); };
 
