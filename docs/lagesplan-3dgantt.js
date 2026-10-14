@@ -396,6 +396,7 @@ function l3gaEdit(key) {
   const a = l3plActs(l3gaP().split).find(x => x.key === key); if (!a) return;
   const E = escHtml, w = document.createElement("div");
   const members = a.rows.slice();
+  const anim0 = ((((l3plPrefs().film || {}).anim) || {}).by || {})["k:" + a.key] || "";
   const temp0 = a.rows.some(r => r.temporary === true), demo0 = a.rows.some(r => r.demolition === true);
   const dm = a.rows.find(r => /^#[0-9a-f]{6}$/i.test(String(r.done_color || "")) || (r.done_opacity != null && r.done_opacity !== "" && Number.isFinite(Number(r.done_opacity))));
   const doneCol0 = dm && /^#[0-9a-f]{6}$/i.test(String(dm.done_color || "")) ? dm.done_color : "", doneOp0 = dm && dm.done_opacity != null && dm.done_opacity !== "" && Number.isFinite(Number(dm.done_opacity)) ? Math.max(0, Math.min(100, Number(dm.done_opacity))) : 30;
@@ -406,6 +407,7 @@ function l3gaEdit(key) {
     <label>Aktivitet<input type="text" data-f="name" value="${E(a.name)}" /></label>
     <div class="v3-ga-dlg-2"><label>Start<input type="date" data-f="start" value="${E(a.start)}" /></label><label>Slut<input type="date" data-f="end" value="${E(a.end)}" /></label></div>
     <label>Framdrift (%)<input type="number" min="0" max="100" data-f="progress" value="${a.progress}" /></label>
+    <label title="Hur objekten visas i filmen (3D-editorns film). Standard = valet för alla aktiviteter under Film.">Animering i filmen<select data-f="anim"><option value="">Standard</option>${(typeof L3PL_ANIM !== "undefined" ? L3PL_ANIM : []).map(([k, t]) => `<option value="${k}" ${anim0 === k ? "selected" : ""}>${E(t)}</option>`).join("")}</select></label>
     ${a.rows.length > 1 ? `<details class="v3-ga-objs"><summary>Objekt i aktiviteten <span class="v3-pal-hint v3-ga-objs-n">(${a.rows.length})</span></summary><div class="v3-ga-objs-list"></div><div class="v3-pal-hint">✕ tar bort bara det objektet ur aktiviteten – aktiviteten och de andra objekten finns kvar.</div></details>` : ""}
     <details class="v3-ga-adv"${temp0 || demo0 || doneCol0 ? " open" : ""}><summary>Avancerat (temporär, rivning, färg efter slut)</summary>
       <label class="v3-pl-chk" title="T.ex. en mobilkran, stämp eller tillfällig vägg: syns i 3D bara från start till slut och försvinner sedan"><input type="checkbox" data-f="temp" ${temp0 ? "checked" : ""} /> <span><b>Temporär</b> – syns i 3D bara mellan start och slut (t.ex. mobilkran)</span></label>
@@ -465,7 +467,10 @@ function l3gaEdit(key) {
       else { if (curCol !== null) c.done_color = null; if (curOp !== null) c.done_opacity = null; }
       if (Object.keys(c).length) plan.set(String(r.id), c);
     });
-    if (!plan.size) { l3Status("Inget ändrades."); return; }
+    // Animeringen i filmen är en inställning i webbläsaren (inte en rad i tidplanen): sparas på aktivitetens nyckel.
+    const an = f("anim").value;
+    if (an !== anim0) { const f0 = l3plPrefs().film || {}, A = f0.anim || {}, by = { ...(A.by || {}) }; if (an) by["k:" + a.key] = an; else delete by["k:" + a.key]; l3plSet("film", { ...f0, anim: { ...A, by } }); if (!plan.size) { l3Status(`Animeringen för "${a.name}" sparad.`); if (typeof l3plRenderTab === "function") l3plRenderTab(); } }
+    if (!plan.size) { if (an === anim0) l3Status("Inget ändrades."); return; }
     await l3gaCommit(plan, `Redigera ${a.name}`);
   };
 }

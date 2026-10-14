@@ -227,25 +227,9 @@ async function l3plFilmDelete() {
    som det är nu"): en standard för alla och ett val per aktivitet (namnet), t.ex. Gjutning = Växer upp. */
 const L3PL_ANIM = [["color", "Byter färg (som nu)"], ["grow", "Växer upp"], ["fade", "Tonas in"], ["drop", "Lyfts på plats"]];
 function l3plAnimHtml(f) {
-  const A = f.anim || {}, def = A.def || "color", by = A.by || {}, esc = escHtml, filmActs = l3plFilmActs();
-  const names = [...new Set(filmActs.map(a => a.name))].sort((x, y) => x.localeCompare(y, "sv", { numeric: true }));
-  const q = (l3pl.animQ || "").trim().toLowerCase(), list = names.filter(n => !q || n.toLowerCase().includes(q));
-  const sel = (id, v, withStd) => `<select ${id}>${withStd ? `<option value="">Standard</option>` : ""}${L3PL_ANIM.map(([k, t]) => `<option value="${k}" ${v === k ? "selected" : ""}>${t}</option>`).join("")}</select>`;
-  const nSet = Object.keys(by).filter(k => by[k]).length;
-  l3pl.animX = l3pl.animX || new Set();
-  // Varje område/namn kan fällas ut (▸) till enskilda aktiviteter med egen animering (går före områdets val).
-  const acts = n => filmActs.filter(a => a.name === n).sort((x, y) => x.start.localeCompare(y.start));
-  const actLabel = a => (a.objs.length ? `${a.objs.slice(0, 2).join(", ")}${a.objs.length > 2 ? " +" + (a.objs.length - 2) : ""}` : a.name) + ` · ${a.start.slice(5)}–${a.end.slice(5)}`;
-  const rowFor = n => { const open = l3pl.animX.has(n), ks = acts(n), nOwn = ks.filter(a => by["k:" + a.key]).length;
-    return `<div class="v3-pl-agrp"><label class="v3-pl-arow ${by[n] ? "set" : ""}" title="${esc(n)}"><button type="button" class="v3-pl-ax" data-animx="${esc(n)}" aria-expanded="${open}" title="Visa enskilda aktiviteter">${open ? "▾" : "▸"}</button><span>${esc(n)}${nOwn ? ` <em>· ${nOwn} egna</em>` : ""}</span>${sel(`data-anim="${esc(n)}"`, by[n] || "", true)}</label>
-      ${open ? ks.map(a => `<div class="v3-pl-arow v3-pl-asub ${by["k:" + a.key] ? "set" : ""}"><span class="v3-pl-asel" data-animsel="${esc(a.key)}" title="${esc(actLabel(a))} – tryck för att markera aktivitetens objekt i modellen" role="button" tabindex="0">${esc(actLabel(a))}</span>${sel(`data-animk="${esc(a.key)}"`, by["k:" + a.key] || "", true)}</div>`).join("") : ""}</div>`; };
-  return `<details class="v3-pl-fx v3-pl-anim" ${l3pl.animOpen ? "open" : ""}><summary>Animering${nSet ? ` · ${nSet} egna` : ""}</summary>
-    <label class="v3-pl-arow v3-pl-adef" title="Standard för alla aktiviteter"><span>Alla</span>${sel('id="v3FlAnimDef"', def, false)}</label>
-    <div class="v3-pal-hint">Välj för ett område (gäller alla dess aktiviteter) eller fäll ut ▸ och välj för enskilda aktiviteter – de går före områdets val. Gäller IFC-objekt som är kopplade.</div>
-    ${names.length > 8 ? `<input type="search" id="v3FlAnimQ" class="v3-pp-q" placeholder="Sök område…" value="${esc(l3pl.animQ || "")}" />` : ""}
-    <div class="v3-pl-alist">${list.slice(0, 200).map(rowFor).join("") || `<div class="v3-pal-hint">Inga aktiviteter.</div>`}</div>
-    ${nSet ? `<button type="button" class="v3-link" id="v3FlAnimClr">Återställ alla till Standard</button>` : ""}
-  </details>`;
+  // Animeringen per aktivitet väljs i aktivitetens redigeringsdialog (4D-koppling → dubbelklick). Här bara standarden.
+  const A = f.anim || {}, def = A.def || "color", nOwn = Object.keys(A.by || {}).filter(k => (A.by || {})[k]).length;
+  return `<div class="v3-card"><div class="v3-card-h">Objektens animering</div><label class="v3-pl-crow" title="Hur objekten visas i filmen när deras aktivitet startar. Ändra för en enskild aktivitet: dubbelklicka den under 4D-koppling → Animering i filmen."><span>Standard</span><select id="v3FlAnimDef">${L3PL_ANIM.map(([k, t]) => `<option value="${k}" ${def === k ? "selected" : ""}>${t}</option>`).join("")}</select></label><div class="v3-pal-hint">${nOwn ? `${nOwn} aktivitet${nOwn === 1 ? "" : "er"} har eget val. ` : ""}Per aktivitet: dubbelklicka den under 4D-koppling.</div></div>`;
 }
 function l3plAnimBind(host) {
   const f = () => l3plPrefs().film || {}, put = A => l3plSet("film", { ...f(), anim: A });

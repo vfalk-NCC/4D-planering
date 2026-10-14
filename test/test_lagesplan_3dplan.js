@@ -641,19 +641,20 @@ const PP = [
     // Valen finns i fliken.
     const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlFxBl', 'v3FlFxLegend', 'v3FlAnimDef', 'v3PlLinkHost', 'v3FlTitleOn'].every(id => document.getElementById(id)); });
     if (!ui) fail('Valen för grafiken saknas i fliken');
-    // Animering: fäll ut ett område (▸) och välj för en enskild aktivitet – går före områdets val.
+    // Animering per aktivitet väljs i aktivitetens redigeringsdialog (ersätter Animering-kortet); standarden finns kvar i Film.
     const anx = await page.evaluate(async () => {
-      l3PalTab('plan'); l3plSet('film', { ...l3plPrefs().film, anim: {} }); l3pl.animOpen = true; l3plRenderTab();
-      const x = document.querySelector('[data-animx]'); if (!x) return { none: true };
-      const name = x.dataset.animx; x.click(); await new Promise(r => setTimeout(r, 50));
-      const area = document.querySelector(`[data-anim="${name}"]`); const optsA = [...area.options].map(o => o.value).filter(Boolean); area.value = optsA[0]; area.dispatchEvent(new Event('change'));
-      const acts = l3plFilmActs().filter(a => a.name === name); const sub = document.querySelector('[data-animk]'); if (!sub) return { noSub: true, name };
-      const optsK = [...sub.options].map(o => o.value).filter(v => v && v !== optsA[0]); sub.value = optsK[0]; sub.dispatchEvent(new Event('change'));
-      const key = sub.dataset.animk, a0 = acts.find(a => a.key === key), a1 = acts.find(a => a.key !== key);
-      return { name, area: optsA[0], own: optsK[0], t0: l3fxAnimType(a0), t1: a1 ? l3fxAnimType(a1) : null, n: acts.length, summary: document.querySelector('.v3-pl-anim summary').textContent };
+      l3PalTab('plan'); l3plSet('film', { ...l3plPrefs().film, anim: {} }); l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();
+      const card = !!document.querySelector('.v3-pl-anim, [data-animx]'), def = !!document.getElementById('v3FlAnimDef');
+      const act = l3plActs(l3gaP().split)[0]; l3gaEdit(act.key); await new Promise(r => setTimeout(r, 50));
+      const sel = document.querySelector('.v3-ga-dlg [data-f="anim"]'); if (!sel) return { noSel: true, card, def };
+      sel.value = 'grow'; document.querySelector('.v3-ga-dlg .ui-dlg-ok').click(); await new Promise(r => setTimeout(r, 300));
+      const saved = ((l3plPrefs().film.anim || {}).by || {})['k:' + act.key];
+      const fa = l3plFilmActs().find(x => x.key === act.key), t0 = fa ? l3fxAnimType(fa) : null;
+      l3gaEdit(act.key); await new Promise(r => setTimeout(r, 50)); const again = document.querySelector('.v3-ga-dlg [data-f="anim"]').value; document.querySelector('.v3-ga-dlg .ui-dlg-cancel').click();
+      return { card, def, saved, t0, again };
     });
-    if (anx.none || anx.noSub || anx.t0 !== anx.own || (anx.t1 !== null && anx.t1 !== anx.area) || !/2 egna/.test(anx.summary)) fail('Animering per aktivitet: ' + JSON.stringify(anx));
-    else console.log('OK: animering – område eller enskild aktivitet (▸ fäller ut), aktivitetens val går före områdets');
+    if (anx.noSel || anx.card || !anx.def || anx.saved !== 'grow' || (anx.t0 !== null && anx.t0 !== 'grow') || anx.again !== 'grow') fail('Animering per aktivitet i redigeringsdialogen: ' + JSON.stringify(anx));
+    else console.log('OK: animering – väljs per aktivitet i redigeringsdialogen (Animering-kortet borttaget), standard kvar under Film');
     // Filter överst i vänstermenyn (sticky) och Följa tidplan.
     const fl = await page.evaluate(() => {
       l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();
@@ -669,10 +670,6 @@ const PP = [
     });
     if (!fl.first || !fl.sticky || !fl.on || !fl.off || !fl.opt) fail('Filter överst / Följa tidplan: ' + JSON.stringify(fl));
     else console.log('OK: filtren ligger överst i vänstermenyn (sticky) och Följa tidplan slår på/av Tid för det filtret släpper igenom');
-    // Tryck på en aktivitet i listan = markera dess objekt i modellen.
-    const asel = await page.evaluate(() => { const b = document.querySelector('[data-animsel]'); if (!b) return { none: true }; const orig = window.l3plSelect; let got = null; window.l3plSelect = k => { got = k; }; b.click(); window.l3plSelect = orig; return { got, key: b.dataset.animsel, on: b.classList.contains('on') }; });
-    if (asel.none || !asel.got || asel.got !== asel.key || !asel.on) fail('Aktiviteten i animeringslistan ska markeras i modellen: ' + JSON.stringify(asel));
-    else console.log('OK: tryck på en aktivitet i animeringslistan markerar den i modellen');
     console.log(`OK: filmens grafik – pågår nu (in/ut, bock), datumskylt med rullande vecka, milstolpe, förloppsmätare (${fx.prog} %, ${fx.ahead} dagar före baslinjen), valbara, lager vid uppspelning`);
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('OK: fliken 4D-planering – Powerproject som tavla och staplar, markera i 3D, vecka → datum, kameravyer, film som videofil');
