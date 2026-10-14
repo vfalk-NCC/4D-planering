@@ -62,7 +62,7 @@ function l3plDockRender() {
   const hid = new Set((P.hidden || []).filter(k => k.startsWith(P.groupBy + ":")).map(k => k.slice(P.groupBy.length + 1)));
   const colorKeys = [...new Set(l3plActs(P.split).map(a => l3gaColorKey(a, P.colorBy)))].sort((x, y) => x.localeCompare(y, "sv", { numeric: true }));
   const bar = `<div class="v3-pldock-grip" title="Dra för att ändra höjden"></div>
-    <div class="v3-pldock-bar">
+    <div class="v3-pldock-bar v3-ga-row1">
       <div class="v3-segs"><button type="button" data-plview="bars" class="${P.view === "bars" ? "on" : ""}">Staplar</button><button type="button" data-plview="board" class="${P.view === "board" ? "on" : ""}">Tavla</button><button type="button" data-plview="list" class="${P.view === "list" ? "on" : ""}">Lista</button></div>
       <label>Gruppera <select id="v3GaGroup">${[["area", "Område"], ["contractor", "Entreprenör"], ["activity", "Aktivitet"], ["", "Ingen"]].map(([v, t]) => `<option value="${v}" ${P.groupBy === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
       <label>Färga efter <select id="v3PlBy">${[["contractor", "Entreprenör"], ["area", "Område"], ["activity", "Aktivitet"]].map(([v, t]) => `<option value="${v}" ${P.colorBy === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
@@ -71,6 +71,7 @@ function l3plDockRender() {
       <button type="button" id="v3GaRedo" ${l3ga.redo.length ? "" : "disabled"} title="${l3ga.redo.length ? "Gör om: " + E(l3ga.redo[l3ga.redo.length - 1].label) : "Inget att göra om"}">↷ Gör om</button>
       <button type="button" id="v3GaFull" title="${P.full ? "Tillbaka till panelen" : "Hela 3D-ytan"}">${P.full ? "⤓ Panel" : "⛶ Helskärm"}</button>
       <button type="button" id="v3GaPrint" title="Skriv ut tavlan eller Gantten">🖨 Skriv ut</button>
+      <button type="button" id="v3GaHide" class="v3-ga-hide ${P.hideBtns ? "on" : ""}" aria-pressed="${!!P.hideBtns}" title="${P.hideBtns ? "Visa alla knappar och filter igen" : "Dölj knapparna så att Gantten får mer plats – tidsraden finns kvar"}">${P.hideBtns ? "Visa knappar" : "Dölj knappar"}</button>
       <button type="button" class="v3-ic" id="v3PlClose" title="Stäng">✕</button>
     </div>
     <div class="v3-pldock-bar v3-ga-row2">
@@ -90,8 +91,10 @@ function l3plDockRender() {
       <span class="v3-ga-sep"></span>${colorKeys.slice(0, 14).map(k => { const c = l3plColor(P.colorBy, k, colorKeys); return `<span class="v3-ga-chip" style="--bg:${c.bg};--bd:${c.bd};--ink:${c.ink}">${E(k)}</span>`; }).join("")}${colorKeys.length > 14 ? `<span>+${colorKeys.length - 14}</span>` : ""}
       ${P.groupBy ? `<button type="button" id="v3GaLanes" class="v3-ga-lanes">${({ area: "Områden", contractor: "Entreprenörer", activity: "Aktiviteter" })[P.groupBy]}: ${lanesAll.length - lanesAll.filter(k => hid.has(k)).length} av ${lanesAll.length} visas ▾</button>${hid.size ? `<button type="button" id="v3GaLanesAll" class="v3-link">Visa alla</button>` : ""}` : ""}
     </div>`;
+  d.classList.toggle("v3-hidebtns", !!P.hideBtns);
   if (!acts.length) { d.innerHTML = bar + `<div class="v3-pal-hint" style="padding:12px">${l3pl.rows.length ? "Ingen aktivitet matchar." : "Ingen Powerproject-tidplan i projektet."}</div>`; l3gaBind(d); return; }
   const shown = acts.filter(a => !hid.has(l3gaLaneKey(a, P.groupBy)));
+  d.classList.toggle("v3-hidebtns", !!P.hideBtns);
   d.innerHTML = bar + `<div class="v3-pl-scroll">${P.view === "list" ? l3gaListHtml(shown, P) : l3gaTimelineHtml(shown, P, colorKeys)}</div>`;
   l3gaBind(d);
   const sc = d.querySelector(".v3-pl-scroll");
@@ -233,6 +236,7 @@ function l3gaBind(d, rr = l3plDockRender, actsFn = null) {
   on("#v3PlQ", "oninput", q => { l3plSet("q", q.value); const pos = q.selectionStart; rr(); const q2 = document.getElementById("v3PlQ"); if (q2) { q2.focus(); q2.setSelectionRange(pos, pos); } });
   on("#v3PlClose", "onclick", () => l3plDockToggle(false));
   on("#v3GaFull", "onclick", () => set("full", !P.full));
+  on("#v3GaHide", "onclick", () => set("hideBtns", !P.hideBtns));
   on("#v3GaPrint", "onclick", () => l3gaPrint(d));
   on("#v3GaUndo", "onclick", () => l3gaUndo(false));
   on("#v3GaRedo", "onclick", () => l3gaUndo(true));

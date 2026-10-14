@@ -689,6 +689,19 @@ const PP = [
       if (buf.slice(1, 4).toString() !== 'PNG' || Math.max(w, h) < 1280) fail('Fotot ska vara en PNG i hög upplösning: ' + JSON.stringify({ w, h, name: dl.suggestedFilename() }));
       console.log('OK: kameraknappen tar ett foto i hög upplösning (' + w + '×' + h + ' PNG)');
       await page.evaluate(() => { l3plSet('film', { ...l3plPrefs().film, strip: false }); l3fsRender(); }); }
+    // Dölj knappar på Gantten (3D-editorn): bara tidsraden och knappen för att visa dem igen finns kvar.
+    { const hb = await page.evaluate(async () => {
+        if (!l3pl.dock) l3plDockToggle(true); await new Promise(r => setTimeout(r, 200));
+        const vis = sel => { const e = document.querySelector('#v3PlanDock ' + sel); return !!e && getComputedStyle(e).display !== 'none' && e.offsetParent !== null; };
+        const before = { row2: vis('.v3-ga-row2'), search: vis('#v3PlQ'), hide: vis('#v3GaHide') };
+        document.getElementById('v3GaHide').click(); await new Promise(r => setTimeout(r, 200));
+        const hidden = { row2: vis('.v3-ga-row2'), search: vis('#v3PlQ'), hide: vis('#v3GaHide'), close: vis('#v3PlClose'), txt: document.getElementById('v3GaHide').textContent, cls: document.getElementById('v3PlanDock').classList.contains('v3-hidebtns') };
+        document.getElementById('v3GaHide').click(); await new Promise(r => setTimeout(r, 200));
+        const back = { row2: vis('.v3-ga-row2'), search: vis('#v3PlQ') };
+        return { before, hidden, back };
+      });
+      if (!hb.before.row2 || !hb.before.search || !hb.before.hide || hb.hidden.row2 || hb.hidden.search || !hb.hidden.hide || !hb.hidden.close || hb.hidden.txt !== 'Visa knappar' || !hb.hidden.cls || !hb.back.row2 || !hb.back.search) fail('Dölj knappar på Gantten: ' + JSON.stringify(hb));
+      console.log('OK: Dölj knappar på Gantten i 3D-editorn'); }
     // Filter överst i vänstermenyn (sticky) och Följa tidplan.
     const fl = await page.evaluate(() => {
       l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();
