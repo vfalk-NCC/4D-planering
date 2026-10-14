@@ -22,10 +22,9 @@ function l3gmPhaseRow(m, d) {
   const ae = m.actual_end_date ? String(m.actual_end_date).slice(0, 10) : "", as = m.actual_start_date ? String(m.actual_start_date).slice(0, 10) : "";
   const done = !!ae || prog >= 100 || m.status === "klar";
   if (done && (ae || end) && (ae || end) < d) return "klar";
-  // Påbörjad som i computeItemPhase: framdrift minst 1 % = igång från verklig start (annars planerad start, eller i dag om starten ligger framåt).
-  // Ett datum före det är "planerad", även om aktiviteten har framdrift nu (objekt ska inte synas före tidslinjen nått dem).
-  const today = todayIso();
-  let aStart = null; if (prog >= 1) aStart = as && as <= today ? as : (start && start < today ? start : today);
+  // Påbörjad som i computeItemPhase: framdrift minst 1 % = igång från verklig start, annars planerad start (verkligt datum/idag spelar ingen roll).
+  // Ett datum före det är "planerad" (objekt ska inte synas före tidslinjen nått dem).
+  const aStart = prog >= 1 ? (as || start || null) : null;
   const started = !!aStart && aStart <= d;
   if (start && start > d && !started) return "planerad";
   if (end && end < d) return done ? "klar" : "forsenad";
@@ -98,8 +97,8 @@ function l3gmSetMode(mode, quiet) {
   l3gmStopPlay(); l3gmPulseStop();
   l3gm.mode = mode;
   if (mode === "time") {
-    const r = l3gmRange2(), t = l3plIso(new Date(Date.now() - new Date().getTimezoneOffset() * 60000));
-    if (r) l3plSetDay(t >= r[0] && t <= r[1] ? t : r[0]);
+    const r = l3gmRange2(); // börjar där tidslinjen börjar (inte dagens datum)
+    if (r && !(l3plDay() >= r[0] && l3plDay() <= r[1])) l3plSetDay(r[0]);
   }
   l3gmApply(true);
   l3plDockRender();

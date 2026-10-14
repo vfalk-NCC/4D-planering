@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-14 12:15";
+const APP_VERSION = "2026-10-14 12:42";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -2978,7 +2978,7 @@ function onTogglePlay() {
  * Returnerar null om objektet saknar startdatum (kan då inte fasberäknas -
  * hoppas över, precis som innan).
  */
-function computeItemPhase(item, atDateStr, warningDays) {
+function computeItemPhase(item, atDateStr, warningDays, pure) { // pure: tidslinjen – verkligt datum (i dag) spelar ingen roll
   if (!item.startDate) return null;
   const at = new Date(atDateStr);
   const start = new Date(item.startDate);
@@ -2995,7 +2995,7 @@ function computeItemPhase(item, atDateStr, warningDays) {
   // Klar kan inte ha avslutats i framtiden (Victors rapport 2026-10-01, F28:
   // klar 100 % men slutdatum 17/10 i Excel blev gul i 3D till dess). Ligger
   // avslutet efter i dag räknas det som i dag.
-  if (actualEnd && (item.status === "klar" || (Number(item.progress) || 0) >= 100)) {
+  if (!pure && actualEnd && (item.status === "klar" || (Number(item.progress) || 0) >= 100)) {
     const today = new Date(new Date().toISOString().slice(0, 10));
     if (actualEnd > today) actualEnd = today;
   }
@@ -3015,7 +3015,8 @@ function computeItemPhase(item, atDateStr, warningDays) {
   // Har startdatumet passerat utan framdrift är den försenad.
   const hasProgress = (Number(item.progress) || 0) >= 1;
   let actualStart = hasProgress && item.actualStartDate ? new Date(item.actualStartDate) : null;
-  if (hasProgress) {
+  if (hasProgress && pure) actualStart = actualStart || start;
+  else if (hasProgress) {
     const today = new Date(new Date().toISOString().slice(0, 10));
     if (!actualStart || actualStart > today) actualStart = actualStart && actualStart < today ? actualStart : (start < today ? start : today);
   }
@@ -3044,7 +3045,7 @@ async function applyTimelineColors() {
   // Temporära objekt (t.ex. en mobilkran) utanför sin tid får en egen grupp: dolda eller svaga.
   const empty = () => ({ planerad: [], pagaende: [], forsenad: [], klar: [], pausad: [], tempoff: [], tempon: [] });
   for (const it of items) {
-    const phase = computeItemPhase(it, selectedDate, warningDays);
+    const phase = computeItemPhase(it, selectedDate, warningDays, true); // tidslinjen: verkligt datum spelar ingen roll
     if (!phase) continue;
     byModel[it.modelId] = byModel[it.modelId] || empty();
     // Temporära inom sin tid behåller sin riktiga färg (Victor 2026-10-12) – ingen statusfärg.

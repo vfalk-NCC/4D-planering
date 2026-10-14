@@ -315,22 +315,14 @@ function computeItemPhase(row, atDateStr, warningDays) {
   const plannedEnd = row.end_date ? new Date(row.end_date) : null;
   let actualEnd = row.actual_end_date ? new Date(row.actual_end_date) : null;
   if (!actualEnd && (row.status === "klar" || (Number(row.progress) || 0) >= 100)) actualEnd = plannedEnd || start;
-  // Klar kan inte ha avslutats i framtiden: avslut efter i dag räknas som i dag (samma som 4D-planering).
-  if (actualEnd && (row.status === "klar" || (Number(row.progress) || 0) >= 100)) {
-    const today = new Date(new Date().toISOString().slice(0, 10));
-    if (actualEnd > today) actualEnd = today;
-  }
   if (actualEnd && actualEnd <= at) return "klar";
   if (row.status === "pausad") return "pausad";
-  // Framdrift över 0 % = påbörjad (senast i dag), även före planerad start – samma som 4D-planering.
+  // Framdrift minst 1 % = påbörjad.
   // Bara framdrift (minst 1 %) gör en aktivitet pågående; startdatum passerat
   // utan framdrift = försenad (Victor 2026-10-02, samma som 4D-planering).
   const hasProgress = (Number(row.progress) || 0) >= 1;
-  let actualStart = hasProgress && row.actual_start_date ? new Date(row.actual_start_date) : null;
-  if (hasProgress) {
-    const today = new Date(new Date().toISOString().slice(0, 10));
-    if (!actualStart || actualStart > today) actualStart = actualStart && actualStart < today ? actualStart : (start < today ? start : today);
-  }
+  // Verkligt datum (i dag) spelar ingen roll i lägesplanen: påbörjad från verklig start, annars planerad start.
+  const actualStart = hasProgress ? (row.actual_start_date ? new Date(row.actual_start_date) : start) : null;
   const started = actualStart && actualStart <= at;
   if (at < start && !started) return "planerad";
   if (plannedEnd && at > plannedEnd) return "forsenad";
