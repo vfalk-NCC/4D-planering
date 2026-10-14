@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-14 10:08";
+const APP_VERSION = "2026-10-14 10:48";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -3650,6 +3650,7 @@ async function importPlanFromBuffer(buf, fileName, inbox) {
       status.innerText = "Hittade inga aktivitetsrader att importera i filen.";
       return;
     }
+    try { await refreshItems({ fresh: true }); } catch (e) { console.warn("Kunde inte läsa om planeringen före importen", e); } // så att objekt som tagits bort i en annan flik/dashboarden inte finns kvar i jämförelsen
     planImportDiff = buildPlanImportDiff(parsedItems);
     planImportDiff.fileName = fileName;
     planImportDiff.inbox = inbox || null;
@@ -4072,7 +4073,11 @@ async function commitPlanImport(diff) {
   const depKeysById = new Map(); // rad-id -> föregångarnas source_key (Powerproject-länkarna)
   const incomingRows = diff.matched.flatMap(({ parsed: p0, existing, extras, status, keep }) => {
     const p = keep ? planImportApplyKeep(p0, keep) : p0;
-    const members = [existing, ...(extras || [])];
+    // Rader som tagits bort sedan förhandsgranskningen (t.ex. objekt borttagna ur aktiviteten i dashboarden) kommer inte tillbaka.
+    const stillThere = new Set(before.map(r => r.id));
+    const live = [existing, ...(extras || [])].filter(m => m && stillThere.has(m.id));
+    if (existing && !live.length) return []; // hela aktiviteten borttagen sedan förhandsgranskningen: skapas inte på nytt av en gammal jämförelse
+    const members = existing ? live : [existing];
     // Aktivitet med flera objekt där vissa objekt bara hör till vissa
     // delaktiviteter: behåll den kopplingen (matchat på delaktivitetens
     // namn) - varje objekt får bara sina faser, och datum från dem.

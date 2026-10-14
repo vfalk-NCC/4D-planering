@@ -40,6 +40,8 @@ function l3bubRebuild() {
   // Auto: aktiviteter som är aktiva (pågående/försenade) vid datumet, plus markerade. Följer tidslinjen när man drar.
   const scope = cfg.scope, isAct = g => ["pagaende", "forsenad"].includes(l3Phase(g.row));
   let list = [...groups.entries()].filter(([k, g]) => scope === "all" || (scope === "marked" ? markedKeys.has(k) : scope === "active" ? isAct(g) : (isAct(g) || markedKeys.has(k))));
+  // Passerat slutdatum: bubblan försvinner (verkligt slut om det finns och är senare).
+  list = list.filter(([, g]) => { const r = g.row, e = String(r.actual_end_date && r.actual_end_date > (r.end_date || "") ? r.actual_end_date : r.end_date || "").slice(0, 10); return !(e && at > e); });
   list = list.filter(([, g]) => !(typeof rowTempOffAt === "function" && rowTempOffAt(g.row, at)));
   l3bub.anchors = list.map(([k, g]) => {
     // Bubblan sitter vid objektens gemensamma överkant (mitt i gruppen i sida, högst upp).
