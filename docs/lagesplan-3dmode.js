@@ -19,12 +19,17 @@ const l3gmHex = h => { const n = parseInt(String(h).replace("#", ""), 16) || 0; 
 /* Läget för en rad vid ett datum – samma regler som dashboardens ganttPhaseAt. */
 function l3gmPhaseRow(m, d) {
   const prog = Number(m.progress) || 0, end = m.end_date ? String(m.end_date).slice(0, 10) : "", start = m.start_date ? String(m.start_date).slice(0, 10) : "";
-  const ae = m.actual_end_date ? String(m.actual_end_date).slice(0, 10) : "";
+  const ae = m.actual_end_date ? String(m.actual_end_date).slice(0, 10) : "", as = m.actual_start_date ? String(m.actual_start_date).slice(0, 10) : "";
   const done = !!ae || prog >= 100 || m.status === "klar";
   if (done && (ae || end) && (ae || end) < d) return "klar";
-  if (start && start > d && prog < 1) return "planerad";
+  // Påbörjad som i computeItemPhase: framdrift minst 1 % = igång från verklig start (annars planerad start, eller i dag om starten ligger framåt).
+  // Ett datum före det är "planerad", även om aktiviteten har framdrift nu (objekt ska inte synas före tidslinjen nått dem).
+  const today = todayIso();
+  let aStart = null; if (prog >= 1) aStart = as && as <= today ? as : (start && start < today ? start : today);
+  const started = !!aStart && aStart <= d;
+  if (start && start > d && !started) return "planerad";
   if (end && end < d) return done ? "klar" : "forsenad";
-  return prog >= 1 ? "pagaende" : "forsenad";
+  return started ? "pagaende" : "forsenad";
 }
 /* En rads läge i Tid-läget, inkl. Temporär/Rivning: "dold" = syns inte alls vid datumet. */
 function l3gmRowPhase(m, d, future) {
