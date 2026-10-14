@@ -41,7 +41,7 @@ function l3bubRebuild(scopeOverride) {
   const scope = scopeOverride || cfg.scope, isAct = g => ["pagaende", "forsenad"].includes(l3Phase(g.row));
   let list = [...groups.entries()].filter(([k, g]) => scope === "all" || (scope === "marked" ? markedKeys.has(k) : scope === "active" ? isAct(g) : (isAct(g) || markedKeys.has(k))));
   // Passerat slutdatum: bubblan försvinner (verkligt slut om det finns och är senare).
-  list = list.filter(([k, g]) => { if (markedKeys.has(k)) return true; const r = g.row, e = String(r.actual_end_date && r.actual_end_date > (r.end_date || "") ? r.actual_end_date : r.end_date || "").slice(0, 10); return !(e && at > e); });
+  list = list.filter(([k, g]) => { if (markedKeys.has(k)) return true; if (g.row.temporary === true && g.row.bubble_off === true) return false; const r = g.row, e = String(r.actual_end_date && r.actual_end_date > (r.end_date || "") ? r.actual_end_date : r.end_date || "").slice(0, 10); return !(e && at > e); });
   list = list.filter(([k, g]) => markedKeys.has(k) || !(typeof rowTempOffAt === "function" && rowTempOffAt(g.row, at))); // markerade visas oavsett status
   l3bub.anchors = list.map(([k, g]) => {
     // Bubblan sitter vid objektens gemensamma överkant (mitt i gruppen i sida, högst upp).

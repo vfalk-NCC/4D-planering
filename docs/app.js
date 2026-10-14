@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-14 15:46";
+const APP_VERSION = "2026-10-14 15:58";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -1725,6 +1725,7 @@ function fillLinkForm(existing) {
   document.getElementById("fActualStart").value = existing ? existing.actualStartDate || "" : "";
   document.getElementById("fActualEnd").value = existing ? existing.actualEndDate || "" : "";
   document.getElementById("fTemporary").checked = !!(existing && existing.temporary === true);
+  { const bt = document.getElementById("fBubbleTemp"); bt.checked = !(existing && existing.bubbleOff === true); bt.dataset.was = existing && existing.bubbleOff === true ? "off" : ""; }
   document.getElementById("fDemolition").checked = !!(existing && existing.demolition === true);
   document.getElementById("fTemporary").onchange = e => { if (e.target.checked) document.getElementById("fDemolition").checked = false; };
   document.getElementById("fDemolition").onchange = e => { if (e.target.checked) document.getElementById("fTemporary").checked = false; };
@@ -2016,7 +2017,9 @@ function buildLinkPayloadFromForm() {
     estimatedHours: document.getElementById("fEstimatedHours").value !== "" ? Number(document.getElementById("fEstimatedHours").value) : null,
     dependsOn: [...linkFormDependsOn],
     temporary: document.getElementById("fTemporary").checked,
-    demolition: document.getElementById("fDemolition").checked
+    demolition: document.getElementById("fDemolition").checked,
+    // true = ingen bubbla; omarkerad förut och nu markerad = false; annars lämnas fältet orört (ingen onödig ändring)
+    bubbleOff: !document.getElementById("fBubbleTemp").checked ? true : (document.getElementById("fBubbleTemp").dataset.was === "off" ? false : undefined)
   };
 }
 
@@ -4140,6 +4143,7 @@ async function commitPlanImport(diff) {
       excelMap: p.excelMap || null,
       // Egna val som inte finns i tidplanen (Temporär, Rivning, Egen färg efter slut) ska överleva en ny import.
       temporary: existing ? existing.temporary : undefined,
+      bubbleOff: existing ? existing.bubbleOff : undefined,
       demolition: existing ? existing.demolition : undefined,
       doneColor: existing ? existing.doneColor : null,
       doneOpacity: existing ? existing.doneOpacity : null,
@@ -5669,6 +5673,7 @@ function toRow(it) {
     // Temporär (Victor 2026-10-09, t.ex. mobilkran): syns i 3D bara mellan start och slut. Skrivs bara när
     // det är satt (true/false) – saknas fältet behålls filens värde vid sparningen.
     ...(typeof it.temporary === "boolean" ? { temporary: it.temporary } : {}),
+    ...(typeof it.bubbleOff === "boolean" ? { bubble_off: it.bubbleOff } : {}),
     ...(typeof it.demolition === "boolean" ? { demolition: it.demolition } : {}),
     // Egen färg/opacitet efter slut (sätts i dashboarden) – bevaras så att en sparning här inte tappar den.
     ...(it.doneColor ? { done_color: it.doneColor } : {}),
@@ -5729,6 +5734,7 @@ function fromRowStored(row) {
     excelSheet: row.excel_sheet || null,
     excelMap: Array.isArray(row.excel_map) ? row.excel_map : null,
     temporary: typeof row.temporary === "boolean" ? row.temporary : undefined,
+    bubbleOff: typeof row.bubble_off === "boolean" ? row.bubble_off : undefined,
     demolition: typeof row.demolition === "boolean" ? row.demolition : undefined,
     doneColor: row.done_color || null,
     doneOpacity: row.done_opacity !== undefined && row.done_opacity !== null && row.done_opacity !== "" && Number.isFinite(Number(row.done_opacity)) ? Number(row.done_opacity) : null,

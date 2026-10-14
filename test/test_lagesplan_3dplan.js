@@ -764,6 +764,13 @@ const PP = [
     { const ab = await page.evaluate(() => { l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab(); const b = document.querySelector('#v3PalPlan .v3-pl-actbar'), f = document.getElementById('v3PlFBar'); const r = b.getBoundingClientRect(), fr = f.getBoundingClientRect(); return { pos: getComputedStyle(b).position, below: r.top >= fr.bottom - 1 }; });
       if (ab.pos !== 'static' || !ab.below) fail('Filmknapparna ligger ovanpå menyn: ' + JSON.stringify(ab));
       console.log('OK: filmknapparna ligger i flödet och inte ovanpå menyn'); }
+    // Bubbla för temporära objekt kan stängas av (kryssruta i redigeringen); klickade objekt får bubbla ändå.
+    { const tb = await page.evaluate(() => { const row = items.find(r => r.start_date) , keep = [row.temporary, row.bubble_off, row.start_date, row.end_date]; row.temporary = true; row.bubble_off = false; row.start_date = '2026-10-01'; row.end_date = '2026-12-31'; l3SetPref('bubScope', 'all'); l3SetPref('bubOn', true);
+        const cnt = () => { l3bub.sig = ''; l3bubRebuild(); return l3bub.anchors.filter(a => a.row.id === row.id).length; };
+        const on = cnt(); row.bubble_off = true; const off = cnt(); row.temporary = false; const normal = cnt();
+        [row.temporary, row.bubble_off, row.start_date, row.end_date] = keep; l3SetPref('bubScope', 'auto'); l3SetPref('bubOn', false); l3bub.sig = ''; return { on, off, normal }; });
+      if (tb.on < 1 || tb.off !== 0 || tb.normal < 1) fail('Bubbla för temporära objekt av/på: ' + JSON.stringify(tb));
+      console.log('OK: bubblan kan stängas av för temporära objekt (kryssruta i redigeringen)'); }
     // Filter överst i vänstermenyn (sticky) och Följa tidplan.
     const fl = await page.evaluate(async () => {
       l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();

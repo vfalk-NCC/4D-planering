@@ -444,6 +444,7 @@ function l3gaEdit(key) {
     ${a.rows.length > 1 ? `<details class="v3-ga-objs"><summary>Objekt i aktiviteten <span class="v3-pal-hint v3-ga-objs-n">(${a.rows.length})</span></summary><div class="v3-ga-objs-list"></div><div class="v3-pal-hint">✕ tar bort bara det objektet ur aktiviteten – aktiviteten och de andra objekten finns kvar.</div></details>` : ""}
     <details class="v3-ga-adv"${temp0 || demo0 || doneCol0 ? " open" : ""}><summary>Avancerat (temporär, rivning, färg efter slut)</summary>
       <label class="v3-pl-chk" title="T.ex. en mobilkran, stämp eller tillfällig vägg: syns i 3D bara från start till slut och försvinner sedan"><input type="checkbox" data-f="temp" ${temp0 ? "checked" : ""} /> <span><b>Temporär</b> – syns i 3D bara mellan start och slut (t.ex. mobilkran)</span></label>
+      <label class="v3-pl-chk v3-pl-sub2" title="Av = ingen bubbla med info för det här temporära objektet (t.ex. långvariga mobilkranar). Klickar du på objektet visas bubblan ändå."><input type="checkbox" data-f="tbub" ${a.rows.some(r => r.bubble_off === true) ? "" : "checked"} /> <span>Visa bubbla med info för det temporära objektet</span></label>
       <label class="v3-pl-chk" title="Rivning: objektet syns hela tiden före start, färgas som vanligt under aktiviteten och försvinner efter slut"><input type="checkbox" data-f="demo" ${demo0 ? "checked" : ""} /> <span><b>Rivning</b> – syns även före start, försvinner efter slut</span></label>
       <label class="v3-pl-chk" title="Efter slutdatum visas objektet i den här färgen och genomskinligheten i 3D-tidslinjen – så att man ser arbeten innanför färdiga delar"><input type="checkbox" data-f="donechk" ${doneCol0 || doneOp0 !== 30 ? "checked" : ""} /> <span><b>Egen färg efter slut</b> – <input type="color" data-f="donecol" value="${doneCol0 || "#3fb950"}" /> opacitet <input type="range" data-f="doneop" min="0" max="100" step="5" value="${doneOp0}" /> <b class="v3-ga-doneval">${doneOp0}</b> %</span></label>
     </details>
@@ -506,7 +507,7 @@ function l3gaEdit(key) {
   w.querySelector(".ui-dlg-ok").onclick = async () => {
     const name = f("name").value.trim(), s = f("start").value, en = f("end").value, pr = Math.max(0, Math.min(100, Math.round(Number(f("progress").value) || 0))), deps = f("deps").checked;
     if (!name || !s || !en || en < s) { l3Status("Fyll i namn och ett slutdatum som inte ligger före start.", true); return; }
-    const temp = f("temp").checked, demo = f("demo").checked, doneOn = f("donechk").checked, doneCol = f("donecol").value, doneOp = Number(f("doneop").value);
+    const temp = f("temp").checked, tbub = f("tbub").checked, demo = f("demo").checked, doneOn = f("donechk").checked, doneCol = f("donecol").value, doneOp = Number(f("doneop").value);
     window.removeEventListener("resize", fit);
     close();
     const rows = members;
@@ -522,6 +523,7 @@ function l3gaEdit(key) {
       if (name !== a.name) c.activity = name;
       if (pr !== a.progress) c.progress = pr;
       if (temp !== (r.temporary === true)) c.temporary = temp;
+      if (tbub === (r.bubble_off === true)) c.bubble_off = !tbub; // sparas bara när det ändras
       if (demo !== (r.demolition === true)) c.demolition = demo;
       const curCol = /^#[0-9a-f]{6}$/i.test(String(r.done_color || "")) ? r.done_color.toLowerCase() : null, curOp = r.done_opacity != null && r.done_opacity !== "" && Number.isFinite(Number(r.done_opacity)) ? Number(r.done_opacity) : null;
       if (doneOn) { if (curCol !== doneCol.toLowerCase()) c.done_color = doneCol; if (curOp !== doneOp) c.done_opacity = doneOp; }
