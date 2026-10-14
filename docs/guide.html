@@ -66,6 +66,10 @@
     <a href="#lagesplan">3. Lägesplan</a>
     <a href="#dag">4. Dagsplanering</a>
     <a href="#utskrift">5. Utskrift</a>
+    <a href="#editor3d">6. 3D-editorn</a>
+    <a href="#gantt3d">7. Gantt i 3D</a>
+    <a href="#pp">8. Powerproject &amp; Temporär</a>
+    <a href="#alla">9. Alla funktioner</a>
   </nav>
 </header>
 <main>
@@ -80,6 +84,10 @@
     <a class="card" href="#lagesplan"><b>3. Lägesplan</b><span>Ritning med zoner, 3D-objekt, etablering och DXF – status per zon.</span></a>
     <a class="card" href="#dag"><b>4. Dagsplanering</b><span>Lag, leveranser och lyft per dag. Krockar, väder och dagblad.</span></a>
     <a class="card" href="#utskrift"><b>5. Utskrift</b><span>A1/A3-ritningsblad med ritningshuvud, förklaring, QR och symboler.</span></a>
+    <a class="card" href="#editor3d"><b>6. 3D-editorn</b><span>Lägesplanen i 3D: byggnaden från TC, etablering, mått, snitt, film och HTML-export.</span></a>
+    <a class="card" href="#gantt3d"><b>7. Gantt i 3D</b><span>Tavla/Gantt/Lista, 3D-lägen, tidslinje med dragstreck, bubblor och Powerproject-export.</span></a>
+    <a class="card" href="#pp"><b>8. Powerproject &amp; Temporär</b><span>Importera tidplanen, temporära objekt, rivning och egen färg efter slut.</span></a>
+    <a class="card" href="#alla"><b>9. Alla funktioner</b><span>En översikt med var du hittar allt.</span></a>
   </div>
   <h3>Första gången</h3>
   <ol class="steps">
@@ -251,9 +259,112 @@
   <div class="pager"><a href="#dag">← 4. Dagsplanering</a><a href="#start">Start ↑</a></div>
 </section>
 
+<!-- ======================= 6. 3D-EDITORN ======================= -->
+<section id="s-editor3d">
+  <h2>6. 3D-editorn (Lägesplan i 3D)</h2>
+  <p class="lead">Öppna lägesplanen (kartikonen i sidhuvudet) och tryck <span class="btn">3D</span>. Där visas ritningen som mark, byggnaden från Trimble Connect, etableringen och de planerade objekten i statusfärg vid valt datum.</p>
+  <h3>Komma igång</h3>
+  <ol class="steps">
+    <li><b>Läs in byggnaden</b>Under <i>Lager → Trimble Connect</i> (eller <i>Läs in modeller</i> i Gantt-raden): välj de IFC-modeller som är tända i TC. De läses i din webbläsare och sparas i cachen så att nästa öppning går snabbt. Objekt som är kopplade i planeringen färgas efter status vid datumet, övriga ligger ljusa som bakgrund.</li>
+    <li><b>Välj datum</b>Datumet (och reglaget) styr färgerna. Med ▶ spelas tiden upp.</li>
+    <li><b>Navigera</b>Visa → Mus: <i>Tekla</i> (vänster = markera/dra ruta, mitten = panorera, Ctrl/Skift + mitten = rotera, hjulet zoomar mot markören) eller <i>Standard</i> (vänster = rotera). Vyer: standardvyer, fokus på markering och <i>Gå runt</i> (WASD, ögonhöjd 1,7 m).</li>
+  </ol>
+  <h3>Markera och ändra</h3>
+  <ul>
+    <li><b>Markera</b>: klick, Skift/Ctrl lägger till, dra en ruta (vänster→höger = det som är helt inne, höger→vänster = allt som rutan nuddar). Esc avmarkerar. Panelen till höger visar namn, modell, IFC-id, alla egenskaper (Psets/UDA) och mängder, med sök och gruppering.</li>
+    <li><b>Färg och genomskinlighet</b>: färgrutan överst i högerpanelen ändrar färg/opacitet på de markerade (bara i sessionen). Ctrl+Z ångrar.</li>
+    <li><b>Flytta och spara som ny IFC</b>: flytta markerade IFC-objekt (X/Y/Z, vridning) och spara som en <b>ny fil</b> i TC – originalet skrivs aldrig över.</li>
+    <li><b>Grupper</b>: spara markerade objekt som egna grupper (t.ex. Bandgång 1) som kan exporteras som UDA i IFC. Fliken <i>Grupper</i> visar också Organizer-träden från TC.</li>
+    <li><b>Verktyg som i SketchUp/Tekla</b>: Flytta, Vrid, Rikta, Mät (avstånd, vinkel, yta, volym, punkt, polylinje) med fästpunkter (ändpunkt, mittpunkt, kant, yta), kopiera special, handtag för längd/bredd/höjd på etablering, kollisionskontroll.</li>
+    <li><b>Snitt (saxen)</b>: dra saxen i bilden för att flytta snittet; dubbelklick vänder det.</li>
+    <li><b>Kommentarer och mått</b>: högerklick → <i>Kommentar här…</i>. Kommentarer och mått kan läggas i mappar som tänds/släcks. Mått ligger kvar och kan sparas.</li>
+  </ul>
+  <h3>Lager</h3>
+  <ul>
+    <li><b>Underlag</b> (ritningen som mark), <b>DXF</b> (skarpa linjer per CAD-lager, redigerbara), <b>2D-lagrens innehåll</b> (zoner, noteringar, etablering, foton), <b>punktmoln</b> (LAS/LAZ/XYZ/PLY från TC-mapp eller fil), <b>fotomarkörer</b> med GPS-höjd.</li>
+    <li>Fliken <b>3D-bibliotek</b>: etablering, maskiner, säkerhet och egna modeller i mappar som du drar objekt mellan. Objekt placeras med riktig geometri och sparas automatiskt.</li>
+  </ul>
+  <h3>Film och export</h3>
+  <ul>
+    <li><b>Film</b> (fliken 4D-planering → Film): välj intervall, längd och upplösning. Kameravyer läggs på datum (kameran glider), objekt kan animeras med ◆ Nyckel. Grafik: datumskylt, Pågår nu, förloppsmätare, milstolpar, tidslinje. Spara som video på datorn.</li>
+    <li><b>Info-bubblor</b>: ett kort per aktivitet vid dess objekt (namn, datum, framdrift, område, aktivitet). Slå på under <i>4D-planering</i> (Bubblor).</li>
+    <li><b>Pågående: kontur</b>: gul kontur på objekt vars aktivitet pågår vid datumet.</li>
+    <li><b>HTML-export</b>: lägesplanen och 3D i <b>en fil</b> som öppnas offline hos någon utan TC – med valfri tidslinje.</li>
+  </ul>
+  <div class="tip">Allt du ändrar sparas bara efter att du godkänt det i en ruta som visar exakt vad som sparas. Inget skrivs över i Trimble Connect – nya filer får nya namn.</div>
+  <div class="pager"><a href="#utskrift">← 5. Utskrift</a><a href="#gantt3d">7. Gantt i 3D →</a></div>
+</section>
+
+<!-- ======================= 7. GANTT I 3D ======================= -->
+<section id="s-gantt3d">
+  <h2>7. Gantt och tidslinje i 3D-editorn</h2>
+  <p class="lead">Fliken <b>4D-planering</b> i 3D-editorn visar Powerproject-tidplanen som <i>Tavla</i>, <i>Staplar</i> (Gantt) eller <i>Lista</i> – med samma funktioner som i 4D-dashboardens Gantt.</p>
+  <h3>3D-lägen (raden ovanför Gantten)</h3>
+  <table>
+    <tr><th>Alla</th><td>Modellen rörs inte – allt visas med statusfärger vid datumet.</td></tr>
+    <tr><th>Kopplade</th><td>Bara det som är kopplat till tidplanen visas.</td></tr>
+    <tr><th>Okopplade</th><td>Det kopplade döljs – bara det okopplade visas.</td></tr>
+    <tr><th>⏱ Tid</th><td>Läget ett visst datum: det som inte startat är släckt (om inte <i>Kommande</i> är ikryssad), pågående/försenat/klart i egna färger. Klara objekt kan få egen opacitet och färg.</td></tr>
+  </table>
+  <h3>Tidsraden (⏱ Tid)</h3>
+  <ul>
+    <li><b>Dragstrecket</b> ligger över Gantten – dra det för att se framdriften. Spelaren ▶, reglaget, datumet, <i>Idag</i>, <i>Från/Till/Auto</i>.</li>
+    <li><b>Färger</b> för pågående, försenad, klart och kommande; <b>Klart</b>-reglaget styr hur synligt färdigt arbete är.</li>
+    <li><b>Pulsera pågående</b> (▾ ställer in färger, hastighet, stil och styrka) och <b>Markera pågående</b>.</li>
+    <li><b>Fasreglerna</b>: pågående kräver minst 1 % framdrift, annars är aktiviteten försenad. Före planerad start är den planerad. Temporär syns bara mellan start och slut; Rivning syns före start och försvinner efter slut.</li>
+  </ul>
+  <h3>Markera, redigera, exportera</h3>
+  <ul>
+    <li><b>Ctrl-klick</b> på flera aktiviteter markerar dem tillsammans (rad: <i>Visa i 3D</i> / <i>Bara dessa</i> / ✕, Esc rensar).</li>
+    <li><b>Redigerbar</b>: dra lappar/staplar, dubbelklicka för att redigera. Dialogen har Temporär, Rivning, <i>Egen färg efter slut</i> och <i>Objekt i aktiviteten</i> (klick markerar och zoomar, ✕ tar bort ett objekt). Allt sparas först efter en bekräftelse – och går att ångra.</li>
+    <li><b>Uppdatera</b> läser om tidplanen. <b>Läs in modeller</b> läser in alla modeller som aktiviteterna är kopplade till.</li>
+    <li><b>Exportera till Powerproject</b>: en MS Project-XML (med din Powerproject-mall) av egna aktiviteter, markerade, de som visas eller alla – med beroenden om du vill.</li>
+  </ul>
+  <div class="warn">I Trimble Connect-vyn har dashboardens Gantt företräde: medan den styr 3D-vyn (Kopplade/Okopplade/Tid) skriver 4D-planering inget automatiskt till modellen, och reglaget i 4D-planering flyttar dashboardens datum.</div>
+  <div class="pager"><a href="#editor3d">← 6. 3D-editorn</a><a href="#pp">8. Powerproject →</a></div>
+</section>
+
+<!-- ======================= 8. POWERPROJECT & TEMPORÄR ======================= -->
+<section id="s-pp">
+  <h2>8. Powerproject och Temporär</h2>
+  <h3>Importera tidplanen från Powerproject</h3>
+  <ol class="steps">
+    <li><b>Välj Powerproject</b>Överst: <span class="btn">📅 Powerproject</span>. Tidplanen är en egen planering (sparas i <code>projects/&lt;id&gt;/pp/</code>) och blandas aldrig med Excel.</li>
+    <li><b>Import &amp; verktyg → Powerproject</b>Välj <code>.pp</code>-filen. Du får ett <b>områdesträd</b> som i Powerproject med rullgardin och kryssruta – bocka de nivåer du vill ta in. Samma gäller en baseline-fil (<code>.ppb</code>): välj samma delar.</li>
+    <li><b>Ta bort delar</b>I listan <i>I planen</i> tar du bort delar du inte vill ha (skräp, hjälpnivåer) med ✕.</li>
+    <li><b>Resurser</b>Antal och timmar per aktivitet följer med och kan redigeras (Avancerat) och visas som resurskurva i dashboarden.</li>
+  </ol>
+  <h3>Temporär, Rivning och egen färg</h3>
+  <ul>
+    <li><b>Temporär</b> (t.ex. mobilkran): syns i 3D bara från start till slut. Utanför tiden är objektet dolt eller svagt (inställning).</li>
+    <li><b>Rivning</b>: syns före start, färgas under aktiviteten och försvinner efter slut.</li>
+    <li><b>Egen färg efter slut</b>: efter slutdatum visas objektet i vald färg och opacitet – så att man ser arbeten innanför färdiga delar.</li>
+  </ul>
+  <h3>Exportera nya aktiviteter till Powerproject</h3>
+  <p>Planera i Gantten och exportera dina egna aktiviteter som en MS Project-XML. Powerproject godtar bara en fil byggd på en mall från Powerproject: exportera en liten tidplan därifrån (<i>Exportera till Microsoft Project® XML</i>) och välj den som mall i exportdialogen. Din Powerproject-fil ändras aldrig.</p>
+  <div class="pager"><a href="#gantt3d">← 7. Gantt i 3D</a><a href="#alla">9. Alla funktioner →</a></div>
+</section>
+
+<!-- ======================= 9. ALLA FUNKTIONER ======================= -->
+<section id="s-alla">
+  <h2>9. Alla funktioner – översikt</h2>
+  <p class="lead">Var du hittar vad. Detaljer finns i avsnitten ovan och i README.</p>
+  <table>
+    <tr><th>Planera (sidopanelen)</th><td>Koppla objekt till område, aktivitet, entreprenör, status och datum; gruppera/sortera listan; <i>Välj alla</i> i grupp; <i>Visa namn i 3D</i>; hitta objekt via koordinat; ångra/gör om.</td></tr>
+    <tr><th>Tidslinje</th><td>Datum + slider + ▶, färger och opacitet per status, uppspelningshastighet, eget intervall. Färgar modellen i TC.</td></tr>
+    <tr><th>Import &amp; verktyg</th><td>Excel-import/export, 4-veckorsplanering (Excel), Powerproject-import, säkerhetskopior, filter (område/aktivitet/entreprenör/status) och <i>kommande veckor</i>.</td></tr>
+    <tr><th>Lägesplan 2D</th><td>PDF-ritning med zoner (hitta/rita), kalibrering mot 3D, status och framdrift per zon, datum, foton, ortofoto, DXF, etablering, noteringar, dagsplanering (lag, leveranser, lyft), A1/A3-utskrift, spara som bild.</td></tr>
+    <tr><th>Lägesplan 3D</th><td>Byggnaden från TC, etablering/3D-bibliotek, markera/mät/snitt/flytta, Lager, punktmoln, foton, kommentarer, grupper, film, bubblor, HTML-export.</td></tr>
+    <tr><th>Gantt i 3D</th><td>Tavla/Staplar/Lista, 3D-lägen, tidsrad med dragstreck, pulsering, Ctrl-markering, redigering, Powerproject-export, Läs in modeller, Uppdatera.</td></tr>
+    <tr><th>Powerproject</th><td>Importera <code>.pp</code>/<code>.ppb</code> med områdesträd; Temporär, Rivning, egen färg efter slut; export av nya aktiviteter.</td></tr>
+    <tr><th>Dashboarden</th><td>Se <i>4D-dashboardens</i> egen guide. Dashboardens Gantt har företräde i TC:s 3D-vy.</td></tr>
+  </table>
+  <div class="pager"><a href="#pp">← 8. Powerproject</a><a href="#start">Start ↑</a></div>
+</section>
+
 </main>
 <script>
-  const ids = ["start", "importera", "koppla", "lagesplan", "dag", "utskrift"];
+  const ids = ["start", "importera", "koppla", "lagesplan", "dag", "utskrift", "editor3d", "gantt3d", "pp", "alla"];
   function show() {
     const id = ids.includes(location.hash.slice(1)) ? location.hash.slice(1) : "start";
     ids.forEach(s => document.getElementById("s-" + s).classList.toggle("on", s === id));

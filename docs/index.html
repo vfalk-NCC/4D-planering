@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261014054701" />
-<script src="error-guard.js?v=20261014054701"></script>
+<link rel="stylesheet" href="style.css?v=20261014065256" />
+<script src="error-guard.js?v=20261014065256"></script>
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261014054701"></script>
-<script src="plan-excel-comments.js?v=20261014054701"></script>
+<script src="plan-excel-parser.js?v=20261014065256"></script>
+<script src="plan-excel-comments.js?v=20261014065256"></script>
 </head>
 <body>
 
@@ -25,6 +25,24 @@
   <div id="app">
 
     <!-- ===== Header ===== -->
+    <details id="appGuide" class="app-guide">
+      <summary><span class="app-guide-ic">📚</span> Guide – alla funktioner <span class="app-guide-sub">(klicka för att öppna)</span></summary>
+      <div class="app-guide-body">
+        <p>Kort översikt. <a href="guide.html" target="_blank" rel="noopener">Öppna hela guiden →</a></p>
+        <ul>
+          <li><b>Koppla &amp; planera</b> (<i>Planera</i>): markera objekt i 3D → fyll i område, aktivitet, entreprenör, status och datum → <i>Spara</i>. Gruppera och sortera listan, <i>Välj alla</i> i en grupp, <i>Visa namn i 3D</i>, hitta objekt via koordinat. <a href="guide.html#koppla" target="_blank" rel="noopener">Guide</a></li>
+          <li><b>Tidslinje</b> (<i>Tidslinje</i>): datum + slider + ▶ färgar modellen i TC: planerad, pågående, försenad, klar. Färger, opacitet och hastighet i ⚙. Pågående kräver minst 1 % framdrift. <a href="guide.html#start" target="_blank" rel="noopener">Guide</a></li>
+          <li><b>Import &amp; export</b> (<i>Import &amp; verktyg</i>): Excel (enkel tabell + 4-veckorsplanering), export till Excel, <b>Powerproject</b> (<code>.pp</code>/<code>.ppb</code> med områdesträd), säkerhetskopior före varje import. <a href="guide.html#importera" target="_blank" rel="noopener">Guide</a></li>
+          <li><b>Filter</b>: område, aktivitet, entreprenör, status och <i>kommande veckor</i> isolerar matchande objekt i modellen.</li>
+          <li><b>Temporär · Rivning · Egen färg efter slut</b>: under <i>Avancerat</i> på aktiviteten – t.ex. mobilkran som bara syns mellan start och slut. <a href="guide.html#pp" target="_blank" rel="noopener">Guide</a></li>
+          <li><b>🗺️ Lägesplan 2D</b> (kartikonen): PDF-ritning med zoner, kalibrering mot 3D, status per zon, DXF, foton, dagsplanering (lag, leveranser, lyft), A1/A3-utskrift. <a href="guide.html#lagesplan" target="_blank" rel="noopener">Guide</a></li>
+          <li><b>Lägesplan 3D</b> (knappen <i>3D</i> i lägesplanen): byggnaden från TC, etablering, mått, snitt, markera/flytta IFC, punktmoln, film, bubblor, HTML-export. <a href="guide.html#editor3d" target="_blank" rel="noopener">Guide</a></li>
+          <li><b>Gantt i 3D</b> (fliken <i>4D-planering</i> i 3D): tavla/staplar/lista, 3D-lägen Alla · Kopplade · Okopplade · ⏱ Tid, dragstreck över Gantten, pulsera/markera pågående, Powerproject-export. <a href="guide.html#gantt3d" target="_blank" rel="noopener">Guide</a></li>
+          <li><b>Samspel med 4D-dashboarden</b>: dashboardens Gantt har företräde i TC:s 3D-vy – medan den styr (Kopplade/Okopplade/Tid) skriver 4D-planering inget automatiskt till modellen, och reglaget här flyttar dashboardens datum.</li>
+          <li><b>Ångra</b>: <kbd>Ctrl</kbd>+<kbd>Z</kbd> eller ↶. <b>Hjälp</b>: <b>?</b> i sidhuvudet.</li>
+        </ul>
+      </div>
+    </details>
     <header>
       <div class="header-brand">
         <span class="ncc-mark" title="NCC">NCC</span>
@@ -709,26 +727,26 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261014054701"></script>
-  <script src="excel-link.js?v=20261014054701"></script>
-  <script src="dashboard-link.js?v=20261014054701"></script>
-  <script src="app.js?v=20261014054701"></script>
-  <script src="manual-markings.js?v=20261014054701"></script>
-  <script src="ifc-writer.js?v=20261014054701"></script>
-  <script src="pp-import.js?v=20261014054701"></script>
-  <script src="ifc-subset.js?v=20261014054701"></script>
-  <script src="tc-organizer.js?v=20261014054701"></script>
-  <script src="week-summary.js?v=20261014054701"></script>
-  <script src="ifc-mesh.js?v=20261014054701"></script>
-  <script src="place-models.js?v=20261014054701"></script>
-  <script src="tc-livemove.js?v=20261014054701"></script>
-  <script src="place3d.js?v=20261014054701"></script>
-  <script src="volume-ifc.js?v=20261014054701"></script>
-  <script src="sub-activity-list.js?v=20261014054701"></script>
-  <script src="activity-remove.js?v=20261014054701"></script>
-  <script src="dup-check.js?v=20261014054701"></script>
-  <script src="ui-shell.js?v=20261014054701"></script>
-  <script src="undo.js?v=20261014054701"></script>
-  <script src="planning-keys.js?v=20261014054701"></script>
+  <script src="github-storage.js?v=20261014065256"></script>
+  <script src="excel-link.js?v=20261014065256"></script>
+  <script src="dashboard-link.js?v=20261014065256"></script>
+  <script src="app.js?v=20261014065256"></script>
+  <script src="manual-markings.js?v=20261014065256"></script>
+  <script src="ifc-writer.js?v=20261014065256"></script>
+  <script src="pp-import.js?v=20261014065256"></script>
+  <script src="ifc-subset.js?v=20261014065256"></script>
+  <script src="tc-organizer.js?v=20261014065256"></script>
+  <script src="week-summary.js?v=20261014065256"></script>
+  <script src="ifc-mesh.js?v=20261014065256"></script>
+  <script src="place-models.js?v=20261014065256"></script>
+  <script src="tc-livemove.js?v=20261014065256"></script>
+  <script src="place3d.js?v=20261014065256"></script>
+  <script src="volume-ifc.js?v=20261014065256"></script>
+  <script src="sub-activity-list.js?v=20261014065256"></script>
+  <script src="activity-remove.js?v=20261014065256"></script>
+  <script src="dup-check.js?v=20261014065256"></script>
+  <script src="ui-shell.js?v=20261014065256"></script>
+  <script src="undo.js?v=20261014065256"></script>
+  <script src="planning-keys.js?v=20261014065256"></script>
 </body>
 </html>

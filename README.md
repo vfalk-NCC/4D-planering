@@ -4,6 +4,21 @@ Ett insticksprogram (Extension) för visuell produktionsplanering i
 Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
 (https://developer.trimble.com/docs/connect/workspace-api/).
 
+## Snabbguide – alla funktioner
+
+Samma översikt finns överst i appen (📚 *Guide – alla funktioner*) och i en längre guide (`docs/guide.html`, knappen **?** i sidhuvudet). Detaljer finns i avsnitten längre ner.
+
+| Område | Funktioner |
+| --- | --- |
+| **Planera** | Koppla markerade objekt till område, aktivitet, entreprenör, status och datum; gruppera/sortera listan; Välj alla i grupp; Visa namn i 3D; hitta objekt via koordinat; ångra/gör om |
+| **Tidslinje** | Datum + slider + ▶ färgar modellen i TC (planerad, pågående, försenad, klar); färger, opacitet och hastighet; eget intervall |
+| **Import & export** | Excel-import/export, 4-veckorsplanering (Excel), **Powerproject** (`.pp`/`.ppb` med områdesträd, delar kan tas bort), säkerhetskopior |
+| **Avancerat per aktivitet** | **Temporär**, **Rivning**, **Egen färg efter slut** (färg + opacitet), resurser |
+| **Lägesplan 2D** | PDF-ritning med zoner, kalibrering mot 3D, status/framdrift per zon, datum, DXF, foton, etablering, noteringar, dagsplanering, A1/A3-utskrift |
+| **Lägesplan 3D (editorn)** | Byggnaden från TC, etablering/3D-bibliotek, markera/mät/snitt/flytta IFC, Lager, punktmoln, foton, kommentarer, grupper, film, bubblor, HTML-export |
+| **Gantt i 3D** | Tavla/Staplar/Lista, 3D-lägen Alla · Kopplade · Okopplade · ⏱ Tid, dragstreck, pulsera/markera pågående, Ctrl-markering, redigering, Powerproject-export |
+| **Samspel** | 4D-dashboardens Gantt har företräde i TC:s 3D-vy mot 4D-planering |
+
 ## Vad det gör
 
 - Du markerar objekt i modellen och kopplar dem till område, aktivitet,
@@ -211,6 +226,50 @@ Trimble Connect 3D-visaren. Byggt på **Trimble Connect Workspace API**
     har påbörjats. Procenten är framdriften viktad på uppskattade timmar.
   - **Datum**: datum och slider visar läget vid valfri tidpunkt.
   - **📷 Spara som bild**: exporterar en PNG med datum och förklaring.
+
+## Lägesplan 2D – så använder du den
+
+Öppna med kartikonen i sidhuvudet (lägesplanen är en egen flik som pratar med 4D-planering – låt 4D-planering vara öppen i TC).
+1. **Ny plan från PDF**: ladda upp ritningen. Zoner hittas automatiskt (🔍 *Hitta zoner*, färgade rutor/annotations med kodtext som PM 10) eller ritas för hand (▭ *Rita zon*).
+2. **Kalibrera mot 3D** (📐): klicka två punkter i PDF:en och samma två i modellen, sedan 📍 *Hämta positioner*. Då kopplas objekt till zoner efter läge. *Nivå* (Z från–till) begränsar våningar. 🎯 *Markera i 3D* markerar zonens objekt.
+3. **Status per zon**: *försenad* om något objekt är försenat, *klar* om allt är klart, annars *pågående*. Procenten är viktad på uppskattade timmar. Datum och slider visar läget vid valfri tidpunkt.
+4. **Lager**: DXF-underlag (skarpa linjer, kan redigeras), ortofoto, foton (med datum/zon-filter), etablering, noteringar och andra PDF:er – tänds/släcks per lager.
+5. **Dagsplanering**: lag, leveranser och lyft per dag, krockkontroll, väder och dagblad.
+6. **Utskrift**: A1/A3-ritningsblad med ritningshuvud, förklaring, QR och symboler (vektorer). *Spara som bild* ger en PNG med datum och förklaring.
+
+## Lägesplan 3D (editorn) – så använder du den
+
+Tryck **3D** i lägesplanen. Ritningen blir mark, de planerade objekten visas i statusfärg vid valt datum och byggnaden kan läsas in från TC.
+- **Byggnaden**: *Lager → Trimble Connect* (eller *Läs in modeller* i Gantt-raden) läser de IFC-modeller som är tända i TC. De cachas i webbläsaren; kopplade objekt (GUID) färgas efter status vid datumet. iPad/iPhone använder en lätt geometrikopia i datalagret.
+- **Navigera**: musschema *Tekla* (vänster markerar/drar ruta, mitten panorerar, Ctrl/Skift + mitten roterar) eller *Standard*. Standardvyer, fokus på markering, **Gå runt** (WASD i ögonhöjd), snitt med dragbar sax.
+- **Markera**: klick, Skift/Ctrl, ruta (vänster→höger = helt inne, höger→vänster = nuddar). Högerpanelen visar alla egenskaper (Psets/UDA), mängder, koppling till planeringen; *färg/genomskinlighet* på de markerade (bara i sessionen).
+- **Verktyg**: Flytta, Vrid, Rikta, Mät (avstånd, vinkel, yta, volym, punkt, polylinje) med fästpunkter; kopiera special; handtag för längd/bredd/höjd; kollisionskontroll; kommentarer (högerklick) och mått i mappar.
+- **Flytta IFC-objekt** och **spara som ny IFC** i TC – originalet skrivs aldrig över. **Grupper** av IFC-objekt (egna eller Organizer från TC) kan skrivas som UDA.
+- **3D-bibliotek** (etablering, maskiner, säkerhet, egna modeller i mappar), **punktmoln** (LAS/LAZ/XYZ/PLY), **fotomarkörer** med GPS-höjd.
+- **Film**: fliken *4D-planering → Film* – intervall, längd, upplösning, kameravyer på datum, ◆ Nyckel för objektanimering, grafik (datumskylt, Pågår nu, glöd, milstolpar, förloppsmätare, tidslinje). Sparas som video på datorn.
+- **Info-bubblor**: HTML-kort per aktivitet vid dess objekt (namn, datum, framdrift, område, aktivitet). **Pågående: kontur** ger gul kontur på aktiva objekt.
+- **HTML-export**: lägesplanen och 3D i en fil för offline-visning, valfritt med tidslinje.
+- **Skydd**: allt som sparas visar först en ruta med exakt vad som ändras; i TC skrivs inget över (nya filer får nya namn).
+
+## Gantt och tidslinje i 3D-editorn
+
+Fliken **4D-planering** i 3D visar Powerproject-tidplanen som *Tavla*, *Staplar* eller *Lista* – med samma funktioner som i 4D-dashboardens Gantt:
+- **3D-lägen**: *Alla · Kopplade · Okopplade · ⏱ Tid*. I Tid-läget är det som inte startat släckt (*Kommande* visar det), pågående/försenat/klart har egna färger och klart kan ha egen opacitet.
+- **Tidsrad**: dragstreck över Gantten, ▶, reglage, datum, *Idag*, *Från/Till/Auto*, färger, *Klart*-opacitet, *Pulsera pågående* (▾), *Markera pågående*, sammanfattning.
+- **Ctrl-klick** på flera aktiviteter: *Visa i 3D* / *Bara dessa* / ✕ (Esc rensar).
+- **Redigerbar**: dra lappar/staplar, dubbelklicka. Dialogen har **Temporär**, **Rivning**, **Egen färg efter slut** och **Objekt i aktiviteten** (klick markerar/zoomar, ✕ tar bort ett objekt). Sparas först efter bekräftelse och kan ångras.
+- **Uppdatera**, **Läs in modeller** och **Exportera till Powerproject** (MS Project-XML med din Powerproject-mall).
+- **Fasreglerna** är desamma som i dashboarden och 4D-planering: pågående kräver minst 1 % framdrift (annars försenad); före planerad start är aktiviteten planerad; Temporär syns bara mellan start och slut; Rivning syns före start och försvinner efter slut.
+
+## Powerproject, Temporär och Rivning
+
+- **Importera**: välj *📅 Powerproject* överst, sedan *Import & verktyg → Powerproject*. Du får ett **områdesträd** som i Powerproject (rullgardin + kryssruta per nivå). Samma val görs för en baseline-fil (`.ppb`). Delar som inte ska med tas bort i listan *I planen* (✕).
+- **Temporär** (t.ex. mobilkran, stämp): syns i 3D bara mellan start och slut; utanför tiden dold eller svag (⚙). **Rivning**: syns före start, färgas under aktiviteten, försvinner efter slut. **Egen färg efter slut**: färg och opacitet efter slutdatum, så att arbeten innanför färdiga delar syns.
+- **Exportera nya aktiviteter**: i Gantten → *Exportera till Powerproject* (se ovan).
+
+## Samspel med 4D-dashboarden
+
+Dashboardens Gantt har högsta prioritet i TC:s 3D-vy. Medan den styr (Kopplade, Okopplade eller Tid) skriver 4D-planering **inget** automatiskt till modellen (tidslinjens färger, temporära objekts synlighet, återställningar, rensning av markeringen) och visar raden *Dashboardens Gantt styr 3D-vyn*. 4D-planeringens tidslinjereglage flyttar då dashboardens datum i Tid-läget, och dashboardens datum visas här. Släpper dashboarden tar 4D-planering över igen. Kommunikationen sker via `BroadcastChannel "4d-gantt-link"` (filen `docs/dashboard-link.js`) och kräver att båda ligger på samma adress.
 
 ## Arkitektur
 

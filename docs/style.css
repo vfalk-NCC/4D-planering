@@ -1306,3 +1306,13 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .pp-tn-leaf { display: flex; align-items: center; gap: 5px; padding: 1px 0; }
 .pp-tn-sp { display: inline-block; width: 12px; flex: none; }
 .pp-tn .hint { margin: 0; }
+
+/* Guide längst upp */
+.app-guide { margin: 6px 8px 8px; border: 1px solid #c7d2fe; border-radius: 10px; background: #eef2ff; font-size: 13px; }
+.app-guide > summary { cursor: pointer; list-style: none; padding: 8px 12px; font-weight: 700; color: #1e3a8a; display: flex; align-items: center; gap: 8px; }
+.app-guide > summary::-webkit-details-marker { display: none; }
+.app-guide[open] > summary { border-bottom: 1px solid #c7d2fe; }
+.app-guide-sub { font-weight: 400; color: #64748b; font-size: 12px; }
+.app-guide-body { padding: 8px 14px 10px; max-height: 60vh; overflow-y: auto; }
+.app-guide-body ul { margin: 6px 0 0; padding-left: 18px; } .app-guide-body li { margin: 5px 0; line-height: 1.45; }
+.app-guide-body a { color: #1d4ed8; }
