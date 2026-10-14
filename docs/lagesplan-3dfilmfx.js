@@ -10,7 +10,7 @@
    – Förloppsmätare: hur stor del av projektet som är klar (efter aktiviteternas längd); valbart läget mot baslinjen.
    Grafiken ritas i filmbilden när man spelar in och i ett lager över 3D-vyn när man spelar upp. */
 
-const l3fxOpts = () => { const f = l3plPrefs().film || {}; return { now: f.fxNow !== false, glow: f.fxGlow !== false, date: f.title !== false, miles: f.fxMiles !== false, meter: f.fxMeter !== false, bl: f.fxBl === true, legend: f.fxLegend === true, etab: f.fxEtab !== false, crane: f.fxCrane !== false, signs: f.fxSigns !== false }; };
+const l3fxOpts = () => { const f = l3plPrefs().film || {}; return { now: f.fxNow !== false, glow: f.fxGlow !== false, date: f.title !== false, miles: f.fxMiles !== false, meter: f.fxMeter !== false, bl: f.fxBl === true, legend: f.fxLegend === true, bub: f.fxBubbles === true, etab: f.fxEtab !== false, crane: f.fxCrane !== false, signs: f.fxSigns !== false }; };
 /* Animeringen för en aktivitet: eget val (aktivitetens namn) eller standarden – från början "color" (bara färgen). */
 const l3fxAnimType = a => { const A = (l3plPrefs().film || {}).anim || {}, by = A.by || {}; return by["k:" + a.key] || by[a.name] || A.def || "color"; }; // enskild aktivitet (k:<nyckel>) går före namnet/området
 const L3FX_DAY = 86400000;
@@ -243,10 +243,53 @@ function l3fxDraw(ctx, W, H, iso, ft, fx, caption, pearls) {
   if (o.date) l3fxDate(ctx, s, iso, ft, fx, caption);
   if (o.meter) l3fxMeter(ctx, W, s, t, fx);
   if (o.now) l3fxNow(ctx, W, H, s, iso, ft, fx, pearls, t);
+  if (o.bub) l3fxBubbles(ctx, W, H, s);
   if (o.legend) l3fxLegend(ctx, H, s, pearls);
   if (o.etab && o.signs && fx.toasts && fx.toasts.length) l3fxToasts(ctx, s, ft, fx, (o.date ? (caption ? 196 : 160) : 32) * s);
   if (o.miles && fx.banner) l3fxBanner(ctx, W, s, ft, fx.banner);
   ctx.restore();
+}
+/* Bubblorna i filmen (Victor 2026-10-14): samma urval och innehåll som bubblorna i 3D-vyn – de aktiva aktiviteterna vid datumet, med
+   framdrift som räknas fram efter datum – ritade i bilden med ledlinje till objektet. Kameran är den som ritar bilden (samma bildförhållande). */
+function l3fxBubbles(ctx, W, H, s) {
+  if (typeof l3bubRebuild !== "function" || !l3 || !l3.camera) return;
+  const cfg = l3bubCfg(); l3bubRebuild(cfg.scope === "all" ? "all" : "active");
+  const k = 1.25 * s, CW = 168 * k, cam = l3.camera.position;
+  const vis = l3bub.anchors.map(a => { const q = a.v.clone().project(l3.camera); return { a, q, d: a.v.distanceTo(cam) }; })
+    .filter(o => o.q.z < 1 && o.q.x > -1 && o.q.x < 1 && o.q.y > -1 && o.q.y < 1).sort((x, y) => x.d - y.d).slice(0, cfg.max);
+  const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+  const placed = [];
+  ctx.save(); ctx.textBaseline = "top";
+  vis.forEach(({ a, q }) => {
+    const ax = (q.x + 1) / 2 * W, ay = (1 - q.y) / 2 * H, L = l3bubLines(a.row, cfg.f);
+    const lines = []; if (L.name) lines.push({ t: L.name, f: `700 ${13 * k}px system-ui, sans-serif`, c: "#0f172a" });
+    if (L.date) lines.push({ t: L.date, f: `500 ${11 * k}px system-ui, sans-serif`, c: "#64748b" });
+    if (L.area) lines.push({ t: L.area, f: `500 ${11 * k}px system-ui, sans-serif`, c: "#475569" });
+    if (L.activity) lines.push({ t: L.activity, f: `500 ${11 * k}px system-ui, sans-serif`, c: "#475569" });
+    const lh = 16 * k, h = 12 * k + lines.length * lh + (L.progress !== null ? 16 * k : 0);
+    const cands = []; for (let j = 0; j < 6; j++) for (const dx of [0, 0.62 * CW, -0.62 * CW, 1.24 * CW, -1.24 * CW]) cands.push([dx, -(26 * k + j * (h + 6 * k))]);
+    let pos = cands[0];
+    for (const c of cands) { const cx = ax + c[0], by = ay + c[1]; if (!placed.some(p => Math.abs(p.x - cx) < CW + 6 * k && p.y - p.h - 4 * k < by && by - h - 4 * k < p.y)) { pos = c; break; } }
+    const cx = Math.max(CW / 2 + 6 * k, Math.min(W - CW / 2 - 6 * k, ax + pos[0])), by = Math.max(h + 6 * k, ay + pos[1]);
+    placed.push({ x: cx, y: by, h });
+    const ph = l3Phase(a.row), col = phaseColor(ph), tipX = Math.max(cx - CW / 2 + 12 * k, Math.min(cx + CW / 2 - 12 * k, ax));
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 5 * k; ctx.beginPath(); ctx.moveTo(tipX, by); ctx.lineTo(ax, ay); ctx.stroke();
+    ctx.strokeStyle = col; ctx.lineWidth = 2.4 * k; ctx.beginPath(); ctx.moveTo(tipX, by); ctx.lineTo(ax, ay); ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ax, ay, 6.5 * k, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(ax, ay, 4.3 * k, 0, Math.PI * 2); ctx.fill();
+    const x0 = cx - CW / 2, y0 = by - h;
+    ctx.shadowColor = "rgba(15,23,42,.35)"; ctx.shadowBlur = 10 * k; ctx.shadowOffsetY = 2 * k; ctx.fillStyle = "rgba(255,255,255,.96)"; rr(x0, y0, CW, h, 8 * k); ctx.fill(); ctx.shadowColor = "transparent";
+    ctx.fillStyle = col; rr(x0, y0, 5 * k, h, 2.5 * k); ctx.fill();
+    let y = y0 + 7 * k; const tx = x0 + 12 * k, maxW = CW - 20 * k;
+    lines.forEach(l => { ctx.font = l.f; ctx.fillStyle = l.c; let t = l.t; while (t.length > 1 && ctx.measureText(t).width > maxW) t = t.slice(0, -2) + "…"; ctx.fillText(t, tx, y); y += lh; });
+    if (L.progress !== null) {
+      const bw = CW - 66 * k; ctx.fillStyle = "#e2e8f0"; rr(tx, y + 4 * k, bw, 6 * k, 3 * k); ctx.fill();
+      if (L.progress > 0) { ctx.fillStyle = col; rr(tx, y + 4 * k, Math.max(6 * k, bw * L.progress / 100), 6 * k, 3 * k); ctx.fill(); }
+      ctx.font = `700 ${11 * k}px system-ui, sans-serif`; ctx.fillStyle = "#0f172a"; ctx.fillText(`${L.progress} %`, tx + bw + 6 * k, y + 1 * k);
+    }
+  });
+  ctx.restore();
+  l3bub.sig = ""; // 3D-vyns egna bubblor räknas om med sitt urval
 }
 /* Datumskylten: VECKA + numret (rullar vid veckobyte) och datumet. */
 function l3fxDate(ctx, s, iso, ft, fx, caption) {

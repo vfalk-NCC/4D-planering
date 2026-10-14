@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-14 10:52";
+const APP_VERSION = "2026-10-14 11:12";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt

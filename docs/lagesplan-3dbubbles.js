@@ -21,7 +21,7 @@ function l3bubRangeAnchor(mesh, ri) {
   mesh.updateMatrixWorld(true);
   return new THREE.Vector3(r._bb[0], r._bb[1], r._bb[2]).applyMatrix4(mesh.matrixWorld);
 }
-function l3bubRebuild() {
+function l3bubRebuild(scopeOverride) {
   const byId = new Map((items || []).map(r => [r.id, r])), cfg = l3bubCfg();
   const groups = new Map(); // aktivitetsnyckel -> { row, pts: [Vector3] }
   const add = (itemId, v) => { const r = byId.get(itemId); if (!r || !r.start_date || !v) return; const k = l3bubKey(r); (groups.get(k) || groups.set(k, { row: r, pts: [] }).get(k)).pts.push(v); };
@@ -38,7 +38,7 @@ function l3bubRebuild() {
   (typeof l3bs !== "undefined" ? l3bs.sel : []).forEach(e => { const r0 = e.mesh.userData.l3b.ranges[e.ri], r = r0 && r0.itemId && byId.get(r0.itemId); if (r) markedKeys.add(l3bubKey(r)); });
   const at = $("dateInput").value || todayIso();
   // Auto: aktiviteter som är aktiva (pågående/försenade) vid datumet, plus markerade. Följer tidslinjen när man drar.
-  const scope = cfg.scope, isAct = g => ["pagaende", "forsenad"].includes(l3Phase(g.row));
+  const scope = scopeOverride || cfg.scope, isAct = g => ["pagaende", "forsenad"].includes(l3Phase(g.row));
   let list = [...groups.entries()].filter(([k, g]) => scope === "all" || (scope === "marked" ? markedKeys.has(k) : scope === "active" ? isAct(g) : (isAct(g) || markedKeys.has(k))));
   // Passerat slutdatum: bubblan försvinner (verkligt slut om det finns och är senare).
   list = list.filter(([, g]) => { const r = g.row, e = String(r.actual_end_date && r.actual_end_date > (r.end_date || "") ? r.actual_end_date : r.end_date || "").slice(0, 10); return !(e && at > e); });
@@ -79,6 +79,7 @@ function l3bubRender() {
   let host = document.getElementById("v3Bubbles");
   const on = l3bubOn();
   if (!host) { const lab = document.getElementById("v3Labels"); if (!lab || !on) return; host = document.createElement("div"); host.id = "v3Bubbles"; host.className = "v3-bubbles"; lab.parentNode.insertBefore(host, lab.nextSibling); }
+  if (on && typeof l3pl !== "undefined" && l3pl.rec && (l3plPrefs().film || {}).fxBubbles === true) { if (host.innerHTML) host.innerHTML = ""; host.dataset.h = ""; return; } // under filmen ritas bubblorna i filmens bild
   if (!on || !l3) { if (host.innerHTML) host.innerHTML = ""; l3bub.sig = ""; return; }
   const sig = l3bubSig(); if (sig !== l3bub.sig) { l3bub.sig = sig; l3bubRebuild(); }
   const r = l3.renderer.domElement.getBoundingClientRect(), cam = l3.camera.position, cfg = l3bubCfg(), W = L3BUB_W;

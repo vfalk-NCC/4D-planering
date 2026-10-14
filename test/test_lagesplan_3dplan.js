@@ -628,6 +628,16 @@ const PP = [
     });
     if (!/\d+ %/.test(bub.txt) || !/PRODUKTION \/ 741 Hus/.test(bub.txt) || !/Betong/.test(bub.txt) || bub.marked !== 0 || bub.off !== 0 || bub.past !== 0) fail('Info-bubblor i 3D-editorn: ' + JSON.stringify(bub));
     console.log('OK: info-bubblor i 3D-editorn – namn, datum, framdrift, område, aktivitet; urval; av');
+    // Bubblorna som val i filmens grafik: ritas i filmbilden (canvas) med kort och ledlinje.
+    const fb = await page.evaluate(() => {
+      l3plSet('film', { ...l3plPrefs().film, fxBubbles: true }); const o = l3fxOpts().bub;
+      const cv = document.createElement('canvas'); cv.width = 1280; cv.height = 720; const ctx = cv.getContext('2d');
+      l3fxBubbles(ctx, 1280, 720, 720 / 1080); const d = ctx.getImageData(0, 0, 1280, 720).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+      l3plRenderTab(); const chip = !!document.getElementById('v3FlFxBub'); l3plSet('film', { ...l3plPrefs().film, fxBubbles: false });
+      return { o, n, chip };
+    });
+    if (!fb.o || fb.n < 500 || !fb.chip) fail('Bubblor i filmens grafik: ' + JSON.stringify(fb));
+    console.log('OK: bubblor som val under Grafik i filmen – ritas i filmbilden');
     // Valen finns i fliken.
     const ui = await page.evaluate(() => { l3PalTab('plan'); l3plRenderTab(); return ['v3FlFxNow', 'v3FlFxGlow', 'v3FlFxMiles', 'v3FlFxMeter', 'v3FlFxBl', 'v3FlFxLegend', 'v3FlAnimDef', 'v3PlLinkHost', 'v3FlTitleOn'].every(id => document.getElementById(id)); });
     if (!ui) fail('Valen för grafiken saknas i fliken');
@@ -644,6 +654,10 @@ const PP = [
     });
     if (anx.none || anx.noSub || anx.t0 !== anx.own || (anx.t1 !== null && anx.t1 !== anx.area) || !/2 egna/.test(anx.summary)) fail('Animering per aktivitet: ' + JSON.stringify(anx));
     else console.log('OK: animering – område eller enskild aktivitet (▸ fäller ut), aktivitetens val går före områdets');
+    // Tryck på en aktivitet i listan = markera dess objekt i modellen.
+    const asel = await page.evaluate(() => { const b = document.querySelector('[data-animsel]'); if (!b) return { none: true }; const orig = window.l3plSelect; let got = null; window.l3plSelect = k => { got = k; }; b.click(); window.l3plSelect = orig; return { got, key: b.dataset.animsel, on: b.classList.contains('on') }; });
+    if (asel.none || !asel.got || asel.got !== asel.key || !asel.on) fail('Aktiviteten i animeringslistan ska markeras i modellen: ' + JSON.stringify(asel));
+    else console.log('OK: tryck på en aktivitet i animeringslistan markerar den i modellen');
     console.log(`OK: filmens grafik – pågår nu (in/ut, bock), datumskylt med rullande vecka, milstolpe, förloppsmätare (${fx.prog} %, ${fx.ahead} dagar före baslinjen), valbara, lager vid uppspelning`);
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('OK: fliken 4D-planering – Powerproject som tavla och staplar, markera i 3D, vecka → datum, kameravyer, film som videofil');
