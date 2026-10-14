@@ -54,6 +54,8 @@ function l3gmRange(rows, at, ctx) {
   if (m === "isolate") return { off: !rows.length };
   if (m === "hide") return { off: rows.length > 0 };
   if (!rows.length) return { off: true };
+  // Följa tidplan: bara aktiviteterna som filtren släpper igenom visas (och då kronologiskt, som i Tid).
+  if (m === "time" && l3gm.follow && !rows.some(r => l3gm.follow.has(r.id))) return { off: true };
   const C = l3gmCfg(), ph = rows.map(r => l3gmRowPhase(r, at, C.future)).filter(p => p !== "dold");
   if (!ph.length) return { off: true };
   if (rows.every(r => r.temporary === true)) return { off: false, rgb: null, alpha: null, phase: "temp" }; // temporär mellan start och slut: modellens originalfärg, ingen status/puls
@@ -71,7 +73,11 @@ function l3gmRange(rows, at, ctx) {
   return { off: false, rgb: l3gmHex(phaseColor(g)).map(v => v / 255), alpha: op >= 100 ? null : op / 100, phase: g };
 }
 /* l3bRecolor: före och efter varvet över alla objekt. */
-function l3gmBegin() { l3gm.next = []; }
+function l3gmBegin() {
+  l3gm.next = [];
+  l3gm.follow = null; // Följa tidplan + filter: raderna som filtren släpper igenom
+  try { const P = l3gaP(); if (P.follow && l3gm.mode === "time" && Object.values(P.lf || {}).some(Boolean)) l3gm.follow = new Set(l3gaListFilter(l3plLinkActs(P.split), P.lf).flatMap(a => a.rows.map(r => r.id))); } catch (e) { l3gm.follow = null; }
+}
 function l3gmEnd() {
   l3gm.act = l3gm.next; l3gm.next = [];
   l3gmPulseSync(); l3gmSelSync();

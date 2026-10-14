@@ -654,6 +654,21 @@ const PP = [
     });
     if (anx.none || anx.noSub || anx.t0 !== anx.own || (anx.t1 !== null && anx.t1 !== anx.area) || !/2 egna/.test(anx.summary)) fail('Animering per aktivitet: ' + JSON.stringify(anx));
     else console.log('OK: animering – område eller enskild aktivitet (▸ fäller ut), aktivitetens val går före områdets');
+    // Filter överst i vänstermenyn (sticky) och Följa tidplan.
+    const fl = await page.evaluate(() => {
+      l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();
+      const fb = document.getElementById('v3PlFBar'), host = document.getElementById('v3PalPlan');
+      const first = host.firstElementChild === fb, sticky = fb && getComputedStyle(fb).position === 'sticky';
+      const sel = fb.querySelector('[data-galf="area"]'), opt = [...sel.options].map(o => o.value).filter(Boolean)[0];
+      sel.value = opt; sel.dispatchEvent(new Event('change'));
+      const f1 = document.getElementById('v3GaFollow'); f1.click(); const on = l3gaP().follow === true && l3gm.mode === 'time';
+      const fol = l3gm.follow instanceof Set || l3gm.follow === null;
+      document.getElementById('v3GaFollow').click(); const off = !l3gaP().follow && l3gm.mode === 'off';
+      document.getElementById('v3GaClearF').click();
+      return { first, sticky, on, off, fol, opt };
+    });
+    if (!fl.first || !fl.sticky || !fl.on || !fl.off || !fl.opt) fail('Filter överst / Följa tidplan: ' + JSON.stringify(fl));
+    else console.log('OK: filtren ligger överst i vänstermenyn (sticky) och Följa tidplan slår på/av Tid för det filtret släpper igenom');
     // Tryck på en aktivitet i listan = markera dess objekt i modellen.
     const asel = await page.evaluate(() => { const b = document.querySelector('[data-animsel]'); if (!b) return { none: true }; const orig = window.l3plSelect; let got = null; window.l3plSelect = k => { got = k; }; b.click(); window.l3plSelect = orig; return { got, key: b.dataset.animsel, on: b.classList.contains('on') }; });
     if (asel.none || !asel.got || asel.got !== asel.key || !asel.on) fail('Aktiviteten i animeringslistan ska markeras i modellen: ' + JSON.stringify(asel));

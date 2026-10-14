@@ -138,7 +138,10 @@ function l3plRenderTab() {
   if (open.link && l3plLinkSrc() !== "pp" && !l3pl.xrows) { l3plLoadX().then(() => l3plRenderTab()); }
   const linkActs = open.link ? l3plLinkActs(l3gaP().split) : [];
   const linkSel = `<select id="v3PlLinkSrc" class="v3-pl-srcsel" title="Vilken planering listan visar">${[["pp", "Powerproject"], ["excel", "Excel"], ["both", "Båda"]].map(([v, t]) => `<option value="${v}" ${l3plLinkSrc() === v ? "selected" : ""}>${t}</option>`).join("")}</select>`;
-  const linkBody = open.link ? `<div class="v3-pl-linkh"><span>Planering</span>${linkSel}</div><div id="v3PlLinkHost">${typeof l3gaListHtml === "function" ? l3gaListHtml(linkActs, l3gaP(), linkActs) : ""}</div>` : "";
+  const linkBody = open.link ? `<div class="v3-pl-linkh"><span>Planering</span>${linkSel}</div><div id="v3PlLinkHost">${typeof l3gaListHtml === "function" ? l3gaListHtml(linkActs, l3gaP(), linkActs, true) : ""}</div>` : "";
+  // Filtren överst i vänstermenyn, alltid synliga (sticky) – gäller listan 4D-koppling.
+  const fAll = l3plLinkActs(l3gaP().split);
+  const filterBar = typeof l3gaListHtml === "function" ? `<div class="v3-pl-fbar" id="v3PlFBar">${l3gaListHtml(fAll, l3gaP(), fAll, "only")}</div>` : "";
   const otherBody = `<div class="v3-card-h">Powerproject-tidplanen</div>
       ${l3pl.err ? `<div class="v3-pal-hint bad">Kunde inte läsa tidplanen: ${esc(l3pl.err)}</div>` : !acts.length ? `<div class="v3-pal-hint">Ingen Powerproject-tidplan i projektet ännu (importeras i 4D-planering).</div>`
         : `<div class="v3-pal-hint">${acts.length} aktiviteter · ${esc(range[0])} – ${esc(range[1])}</div>`}
@@ -150,9 +153,10 @@ function l3plRenderTab() {
       <label class="v3-pl-crow" title="Objekt vars aktivitet pågår (eller är försenad) vid valt datum får en tydlig gul kontur – utan att du behöver markera något."><span>Pågående objekt</span><span class="v3-pl-ctl"><input type="checkbox" id="v3PlActive" ${l3Prefs().actOutline ? "checked" : ""} /> Gul kontur</span></label>
       <button type="button" class="v3-wide ${l3pl.dock ? "on" : ""}" id="v3PlDock">${l3pl.dock ? "Dölj tavlan" : "Visa tavlan och Gantten"}</button>
     `;
-  host.innerHTML = sec("film", "Film", filmBody) + sec("link", "4D-koppling", linkBody) + sec("other", "Övrigt", otherBody, `<button type="button" class="v3-ic" id="v3PlReload" title="Läs om tidplanen">↻</button>`);
+  host.innerHTML = filterBar + sec("film", "Film", filmBody) + sec("link", "4D-koppling", linkBody) + sec("other", "Övrigt", otherBody, `<button type="button" class="v3-ic" id="v3PlReload" title="Läs om tidplanen">↻</button>`);
   host.querySelectorAll("[data-plsect]").forEach(b => { b.onclick = () => { const id = b.dataset.plsect; l3plSet("secOpen", { ...open, [id]: !open[id] }); l3plRenderTab(); }; });
   const lh = host.querySelector("#v3PlLinkHost"); if (lh && typeof l3gaBind === "function") l3gaBind(lh, () => { l3plRenderTab(); if (l3pl.dock) l3plDockRender(); }, () => l3plLinkActs(l3gaP().split));
+  const fb = host.querySelector("#v3PlFBar"); if (fb && typeof l3gaBind === "function") l3gaBind(fb, () => { l3plRenderTab(); if (l3pl.dock) l3plDockRender(); }, () => l3plLinkActs(l3gaP().split));
   const ls = host.querySelector("#v3PlLinkSrc"); if (ls) ls.onchange = () => { l3plSet("linkSrc", ls.value); if (ls.value !== "pp") l3plLoadX().then(() => l3plRenderTab()); else l3plRenderTab(); };
   const on = (id, fn, ev = "onclick") => { const el = host.querySelector("#" + id); if (el) el[ev] = fn; };
   on("v3PlReload", () => { l3pl.rows = null; l3pl.xrows = null; l3plLoad(true); l3plRenderTab(); if (typeof l3bRecolor === "function") l3bRecolor(); });

@@ -191,12 +191,23 @@ function l3gaListFilter(acts, lf) {
     return true;
   });
 }
-function l3gaListHtml(acts, P, allIn = null) {
+function l3gaListHtml(acts, P, allIn = null, noF = false) {
   const E = escHtml, lf = P.lf || {}, day = l3plDay(), all = allIn || l3plActs(P.split);
   const opts = (k, f) => [...new Set(all.map(f).filter(Boolean))].sort((x, y) => x.localeCompare(y, "sv", { numeric: true })).map(v => `<option value="${E(v)}" ${lf[k] === v ? "selected" : ""}>${E(v)}</option>`).join("");
   const list = l3gaListFilter(acts, lf);
+  const sel1 = (k, ttl, optsHtml) => `<select data-galf="${k}" title="${ttl}" class="${lf[k] ? "set" : ""}"><option value="">${ttl}</option>${optsHtml}</select>`;
+  const nF = Object.keys(lf).filter(k => lf[k]).length;
+  const filtersHtml = () => `<div class="v3-ga-filters v3-ga-fc">
+      <div class="v3-fc-r3">${sel1("area", "Område", opts("area", a => a.area))}${sel1("activity", "Aktivitet", opts("activity", a => a.name))}${sel1("contractor", "Entreprenör", opts("contractor", a => a.contractor))}</div>
+      <div class="v3-fc-r2">${sel1("status", "Status", ["planerad", "pagaende", "forsenad", "klar", "pausad"].map(k => `<option value="${k}" ${lf.status === k ? "selected" : ""}>${E(PHASE_LABELS[k] || k)}</option>`).join(""))}${sel1("within", "Startar inom", [["7", "1 vecka"], ["14", "2 veckor"], ["28", "4 veckor"]].map(([v, t]) => `<option value="${v}" ${lf.within === v ? "selected" : ""}>${t}</option>`).join(""))}<button type="button" class="v3-fc-follow ${P.follow ? "on" : ""}" id="v3GaFollow" title="Följa tidplan: Tid-läget gäller bara det som filtren släpper igenom – de objekten dyker upp kronologiskt enligt tidplanen, allt annat döljs. Listan sorteras efter startdatum." aria-pressed="${!!P.follow}">⏱ Följa tidplan</button><button type="button" class="v3-fc-clr" id="v3GaClearF" title="Rensa filtren" ${nF ? "" : "disabled"}>✕${nF ? " " + nF : ""}</button></div>
+      <details class="v3-fc-more"><summary>Fler val · ${list.length} av ${all.length}</summary><div class="v3-ga-checks">${[["hideDone", "Dölj klara"], ["onlyDone", "Endast klara"], ["today", "Endast idag"], ["uncoupled", "Endast ej kopplade"]].map(([k, t]) => `<label><input type="checkbox" data-galc="${k}" ${lf[k] ? "checked" : ""} /> ${t}</label>`).join("")}</div>
+      <div class="v3-ga-fbtns"><button type="button" class="v3-primary" id="v3GaShow3d">Visa filtrerat i 3D</button><button type="button" id="v3GaShowCoupled">Visa alla kopplade</button><span>${list.length} av ${all.length}</span></div></details>
+    </div>`;
+  if (noF === "only") return filtersHtml();
   const groups = new Map(); list.forEach(a => { const k = l3gaLaneKey(a, P.groupBy || "area"); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(a); });
-  const keys = [...groups.keys()].sort((x, y) => x.localeCompare(y, "sv", { numeric: true }));
+  const first = k => groups.get(k).reduce((m, a) => (a.start < m ? a.start : m), "9999");
+  if (P.follow) groups.forEach(g => g.sort((x, y) => (x.start + x.end).localeCompare(y.start + y.end))); // Följa tidplan: kronologiskt
+  const keys = [...groups.keys()].sort(P.follow ? (x, y) => first(x).localeCompare(first(y)) || x.localeCompare(y, "sv", { numeric: true }) : (x, y) => x.localeCompare(y, "sv", { numeric: true }));
   const chip = ph => `<span class="v3-ga-st" style="--st:${phaseColor(ph)}">${E(PHASE_LABELS[ph] || ph)}</span>`;
   const row = a => { const ph = zonePhase(a.rows, day), label = a.objs.length ? `${a.objs.slice(0, 3).join(", ")}${a.objs.length > 3 ? " +" + (a.objs.length - 3) : ""}: ${a.name}` : a.name;
     return `<div class="v3-ga-li" data-plk="${E(a.key)}" title="Klicka: markera i 3D · Dubbelklicka: redigera · Högerklicka: fler val">
@@ -205,15 +216,7 @@ function l3gaListHtml(acts, P, allIn = null) {
       <div class="v3-ga-li-s">${E(a.start)} → ${E(a.end)} · Framdrift ${a.progress} %${a.rows.length > 1 ? ` · ${a.rows.length} objekt` : ""}</div>
       <div class="v3-ga-li-r">${chip(ph)}</div><div class="v3-ga-li-pg"><span style="width:${a.progress}%;background:${phaseColor(ph)}"></span></div></div>`; };
   return `<div class="v3-ga-list">
-    <div class="v3-ga-filters">
-      <label>Område<select data-galf="area"><option value="">Alla</option>${opts("area", a => a.area)}</select></label>
-      <label>Aktivitet<select data-galf="activity"><option value="">Alla</option>${opts("activity", a => a.name)}</select></label>
-      <label>Entreprenör<select data-galf="contractor"><option value="">Alla</option>${opts("contractor", a => a.contractor)}</select></label>
-      <label>Status<select data-galf="status"><option value="">Alla</option>${["planerad", "pagaende", "forsenad", "klar", "pausad"].map(k => `<option value="${k}" ${lf.status === k ? "selected" : ""}>${E(PHASE_LABELS[k] || k)}</option>`).join("")}</select></label>
-      <label>Startar inom<select data-galf="within"><option value="">Visa allt</option>${[["7", "1 vecka"], ["14", "2 veckor"], ["28", "4 veckor"]].map(([v, t]) => `<option value="${v}" ${lf.within === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
-      <div class="v3-ga-checks">${[["hideDone", "Dölj klara"], ["onlyDone", "Endast klara"], ["today", "Endast idag"], ["uncoupled", "Endast ej kopplade"]].map(([k, t]) => `<label><input type="checkbox" data-galc="${k}" ${lf[k] ? "checked" : ""}/> ${t}</label>`).join("")}</div>
-      <div class="v3-ga-fbtns"><button type="button" class="v3-primary" id="v3GaShow3d">Visa filtrerat i 3D</button><button type="button" id="v3GaShowCoupled">Visa alla kopplade</button><button type="button" id="v3GaClearF">Rensa filter</button><span>${list.length} av ${all.length}</span></div>
-    </div>
+    ${noF ? "" : filtersHtml()}
     ${keys.map(k => { const g = groups.get(k), open = l3ga.open.has("l:" + k);
       return `<div class="v3-ga-grp"><div class="v3-ga-grp-h"><button type="button" data-galopen="${E(k)}">${open ? "▼" : "▶"} ${E(k)} (${g.length})</button><button type="button" class="v3-ga-mark" data-gamark="${E(k)}">Markera gruppen</button></div>${open ? g.map(row).join("") : ""}</div>`; }).join("") || `<div class="v3-pal-hint">Inget matchar filtret.</div>`}
   </div>`;
@@ -255,6 +258,7 @@ function l3gaBind(d, rr = l3plDockRender, actsFn = null) {
   on("[data-galf]", "onchange", s => set("lf", { ...(P.lf || {}), [s.dataset.galf]: s.value }));
   on("[data-galc]", "onchange", c => set("lf", { ...(P.lf || {}), [c.dataset.galc]: c.checked }));
   on("#v3GaClearF", "onclick", () => set("lf", {}));
+  on("#v3GaFollow", "onclick", () => { const v = !P.follow; l3plSet("follow", v); if (typeof l3gmSetMode === "function") l3gmSetMode(v ? "time" : "off", true); if (typeof l3Status === "function") l3Status(v ? "Följer tidplanen: bara det filtret släpper igenom visas, kronologiskt (Tid)." : "Följer inte tidplanen längre – hela modellen visas igen."); rr(); });
   on("[data-galopen]", "onclick", b => { const k = "l:" + b.dataset.galopen; l3ga.open.has(k) ? l3ga.open.delete(k) : l3ga.open.add(k); rr(); });
   on("[data-gamark]", "onclick", b => { const acts = l3gaListFilter(A(), P.lf || {}).filter(a => l3gaLaneKey(a, P.groupBy || "area") === b.dataset.gamark); l3gaSelectActs(acts, false, b.dataset.gamark); });
   on("#v3GaShow3d", "onclick", () => l3gaSelectActs(l3gaListFilter(A(), P.lf || {}), true, "Filtrerat"));
