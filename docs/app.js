@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-13 21:11";
+const APP_VERSION = "2026-10-14 07:33";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -1273,7 +1273,7 @@ function armCoupleMode(item) {
   // buggar det" – samma redan kopplade objekt hamnade många gånger i listan).
   // Ingen spärr behövs: en tom markering ändrar ingenting i listan, och ett
   // snabbt klick direkt efteråt ska räknas.
-  if (API && API.viewer) API.viewer.setSelection({ modelObjectIds: [] }, "set").catch(() => {});
+  if (API && API.viewer && !(typeof dashboardOwns === "function" && dashboardOwns())) API.viewer.setSelection({ modelObjectIds: [] }, "set").catch(() => {});
 }
 
 function cancelCoupleMode() {
@@ -2919,6 +2919,7 @@ function onSliderMove() {
   const newDate = new Date(start);
   newDate.setDate(newDate.getDate() + Number(slider.value));
   document.getElementById("timelineDate").value = newDate.toISOString().slice(0, 10);
+  if (typeof dashLinkSend === "function") dashLinkSend(document.getElementById("timelineDate").value);
   applyTimelineColors();
 }
 
@@ -2928,6 +2929,7 @@ function onDateInputChange() {
   if (start && cur) {
     document.getElementById("timelineSlider").value = daysBetween(start, cur);
   }
+  if (typeof dashLinkSend === "function") dashLinkSend(cur);
   applyTimelineColors();
 }
 
@@ -3032,6 +3034,7 @@ function computeItemPhase(item, atDateStr, warningDays) {
  * samma färger som badgen i listan använder, se computeItemPhase().
  */
 async function applyTimelineColors() {
+  if (typeof dashboardOwns === "function" && dashboardOwns()) return; // dashboardens Gantt styr 3D-vyn (dashboard-link.js)
   const selectedDate = document.getElementById("timelineDate").value;
   if (!selectedDate || items.length === 0) return;
 
@@ -3454,7 +3457,7 @@ async function clearFilter() {
   ["hideCompleted", "showOnlyCompleted", "todayOnly", "uncoupledOnly"].forEach(id => { document.getElementById(id).checked = false; });
   document.getElementById("filterMsg").innerText = "";
   renderItemList();
-  await API.viewer.setObjectState(undefined, { visible: "reset" });
+  if (!(typeof dashboardOwns === "function" && dashboardOwns())) await API.viewer.setObjectState(undefined, { visible: "reset" });
   applyTimelineColors();
 }
 
