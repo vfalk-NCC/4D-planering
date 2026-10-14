@@ -254,14 +254,14 @@ function l3fxDraw(ctx, W, H, iso, ft, fx, caption, pearls) {
 function l3fxBubbles(ctx, W, H, s) {
   if (typeof l3bubRebuild !== "function" || !l3 || !l3.camera) return;
   const cfg = l3bubCfg(); l3bubRebuild(cfg.scope === "all" ? "all" : "active");
-  const k = 1.25 * s, CW = 168 * k, cam = l3.camera.position;
+  const k = 1.25 * s, CW = 200 * k, cam = l3.camera.position;
   const vis = l3bub.anchors.map(a => { const q = a.v.clone().project(l3.camera); return { a, q, d: a.v.distanceTo(cam) }; })
     .filter(o => o.q.z < 1 && o.q.x > -1 && o.q.x < 1 && o.q.y > -1 && o.q.y < 1).sort((x, y) => x.d - y.d).slice(0, cfg.max);
   const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
   const placed = [];
   ctx.save(); ctx.textBaseline = "top";
   vis.forEach(({ a, q }) => {
-    const ax = (q.x + 1) / 2 * W, ay = (1 - q.y) / 2 * H, L = l3bubLines(a.row, cfg.f, false);
+    const ax = (q.x + 1) / 2 * W, ay = (1 - q.y) / 2 * H, L = l3bubLines(a.row, cfg.f, true);
     const lines = []; if (L.name) lines.push({ t: L.name, f: `700 ${13 * k}px system-ui, sans-serif`, c: "#0f172a" });
     if (L.date) lines.push({ t: L.date, f: `500 ${11 * k}px system-ui, sans-serif`, c: "#64748b" });
     if (L.area) lines.push({ t: L.area, f: `500 ${11 * k}px system-ui, sans-serif`, c: "#475569" });

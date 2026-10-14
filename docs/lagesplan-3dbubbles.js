@@ -42,7 +42,7 @@ function l3bubRebuild(scopeOverride) {
   let list = [...groups.entries()].filter(([k, g]) => scope === "all" || (scope === "marked" ? markedKeys.has(k) : scope === "active" ? isAct(g) : (isAct(g) || markedKeys.has(k))));
   // Passerat slutdatum: bubblan försvinner (verkligt slut om det finns och är senare).
   list = list.filter(([k, g]) => { if (markedKeys.has(k)) return true; const r = g.row, e = String(r.actual_end_date && r.actual_end_date > (r.end_date || "") ? r.actual_end_date : r.end_date || "").slice(0, 10); return !(e && at > e); });
-  list = list.filter(([, g]) => !(typeof rowTempOffAt === "function" && rowTempOffAt(g.row, at)));
+  list = list.filter(([k, g]) => markedKeys.has(k) || !(typeof rowTempOffAt === "function" && rowTempOffAt(g.row, at))); // markerade visas oavsett status
   l3bub.anchors = list.map(([k, g]) => {
     // Bubblan sitter vid objektens gemensamma överkant (mitt i gruppen i sida, högst upp).
     const n = g.pts.length, v = new THREE.Vector3();
@@ -53,7 +53,7 @@ function l3bubRebuild(scopeOverride) {
 }
 function l3bubSig() {
   const cfg = l3bubCfg(), p = l3Prefs();
-  return [$("dateInput").value, [...l3.sel].join(","), typeof l3bs !== "undefined" ? l3bs.sel.length : 0, items.length, placements.length, typeof l3b !== "undefined" ? l3b.models.length + ":" + l3b.models.reduce((a, m) => a + (m.visible ? 1 : 0), 0) : 0, cfg.scope, cfg.max, p.bubOn, p.bubProg, l3.placeMeshes ? l3.placeMeshes.size : 0].join("|");
+  return [$("dateInput").value, [...l3.sel].join(","), typeof l3bs !== "undefined" ? l3bs.sel.map(e => e.key || "").join(",") : 0, items.length, placements.length, typeof l3b !== "undefined" ? l3b.models.length + ":" + l3b.models.reduce((a, m) => a + (m.visible ? 1 : 0), 0) : 0, cfg.scope, cfg.max, p.bubOn, p.bubProg, l3.placeMeshes ? l3.placeMeshes.size : 0].join("|");
 }
 /* Framdrift i bubblan (val i Övrigt): "calc" = räknas fram efter datum, linjärt över aktivitetens längd (0 % vid start, 100 % vid slut – som Pågår nu i filmen)
    så att siffran rör sig när man drar i tidslinjen; "plan" = framdriften som står i tidplanen. */
@@ -74,7 +74,7 @@ function l3bubLines(r, f, marked) {
 }
 /* Små kort (ca 150 px) med en tydlig ledlinje och en prick på objektet. Korten placeras vid sidan av/ovanför varandra så att de inte täcker
    varandra, och ligger så lågt som möjligt – modellen bakom ska synas. */
-const L3BUB_W = 150;
+const L3BUB_W = 150, L3BUB_WIDE = 196;
 function l3bubHeight(L) { return 8 + Math.min(2, Math.ceil((L.name || "").length / 24)) * 13 + (L.date ? 13 : 0) + (L.progress !== null ? 14 : 0) + (L.area ? 13 : 0) + (L.activity ? 13 : 0); }
 function l3bubRender() {
   let host = document.getElementById("v3Bubbles");
@@ -88,8 +88,8 @@ function l3bubRender() {
     .filter(o => o.q.z < 1 && o.q.x > -1.05 && o.q.x < 1.05 && o.q.y > -1.05 && o.q.y < 1.05).sort((x, y) => (x.a.marked ? 0 : 1) - (y.a.marked ? 0 : 1) || x.d - y.d).slice(0, cfg.max);
   const placed = []; let cards = "", lines = "";
   vis.forEach(({ a, q }) => {
-    const w = a.marked ? 196 : W; const ax = (q.x + 1) / 2 * r.width, ay = (1 - q.y) / 2 * r.height; // objektets punkt på skärmen
-    const L = l3bubLines(a.row, cfg.f, a.marked), h = l3bubHeight(L);
+    const w = L3BUB_WIDE; const ax = (q.x + 1) / 2 * r.width, ay = (1 - q.y) / 2 * r.height; // objektets punkt på skärmen
+    const L = l3bubLines(a.row, cfg.f, true), h = l3bubHeight(L); // alla bubblor (automatiska och klickade) med år och område
     // Kandidater: rakt ovanför, sedan åt sidorna och högre upp – första som inte krockar med ett redan placerat kort.
     const cands = []; for (let k = 0; k < 6; k++) for (const dx of [0, 0.62 * w, -0.62 * w, 1.24 * w, -1.24 * w]) cands.push([dx, -(22 + k * (h + 4))]);
     let pos = cands[0];
@@ -99,7 +99,7 @@ function l3bubRender() {
     const ph = l3Phase(a.row), col = phaseColor(ph), tipX = Math.max(cx - w / 2 + 10, Math.min(cx + w / 2 - 10, ax));
     // Ledlinjen från kortets underkant till objektet, med en prick på objektet.
     lines += `<line x1="${tipX.toFixed(1)}" y1="${by.toFixed(1)}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".85"/><line x1="${tipX.toFixed(1)}" y1="${by.toFixed(1)}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="${col}" stroke-width="2" stroke-linecap="round"/><circle cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="5.5" fill="#fff"/><circle cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="3.6" fill="${col}"/>`;
-    cards += `<div class="v3-bub" style="left:${cx.toFixed(0)}px;top:${by.toFixed(0)}px;--bc:${col};${a.marked ? "width:196px;" : ""}"><div class="v3-bub-c">${L.name ? `<b>${escHtml(L.name)}</b>` : ""}${L.date ? `<span class="d">${escHtml(L.date)}</span>` : ""}${L.progress !== null ? `<span class="pr"><span class="p"><i style="width:${L.progress}%"></i></span><span class="pv">${L.progress} %${ph === "forsenad" ? " · försenad" : ""}</span></span>` : ""}${L.area ? `<span class="a">${escHtml(L.area)}</span>` : ""}${L.activity ? `<span class="ac">${escHtml(L.activity)}</span>` : ""}</div></div>`;
+    cards += `<div class="v3-bub" style="left:${cx.toFixed(0)}px;top:${by.toFixed(0)}px;--bc:${col};width:${L3BUB_WIDE}px;"><div class="v3-bub-c">${L.name ? `<b>${escHtml(L.name)}</b>` : ""}${L.date ? `<span class="d">${escHtml(L.date)}</span>` : ""}${L.progress !== null ? `<span class="pr"><span class="p"><i style="width:${L.progress}%"></i></span><span class="pv">${L.progress} %${ph === "forsenad" ? " · försenad" : ""}</span></span>` : ""}${L.area ? `<span class="a">${escHtml(L.area)}</span>` : ""}${L.activity ? `<span class="ac">${escHtml(L.activity)}</span>` : ""}</div></div>`;
   });
   const html = `<svg class="v3-bub-svg" width="${r.width.toFixed(0)}" height="${r.height.toFixed(0)}">${lines}</svg>${cards}`;
   if (host.dataset.h !== html) { host.innerHTML = html; host.dataset.h = html; }

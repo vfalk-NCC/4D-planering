@@ -90,7 +90,7 @@ function l3gmBegin() {
   l3gm.scale = null; // Färgskala efter datum: tidig → sen mellan två valfria färger
   if (C0.scale) { const ds = (l3pl.rows || []).map(r => (C0.scaleBy === "end" ? r.end_date : r.start_date)).filter(Boolean).map(x => Date.parse(String(x).slice(0, 10) + "T00:00:00Z")).filter(Number.isFinite); if (ds.length) l3gm.scale = { by: C0.scaleBy === "end" ? "end" : "start", t0: Math.min(...ds), t1: Math.max(...ds), a: l3gmHex(C0.scaleA).map(v => v / 255), b: l3gmHex(C0.scaleB).map(v => v / 255) }; }
   l3gm.follow = null; // Följa tidplan + filter: raderna som filtren släpper igenom
-  try { const P = l3gaP(); if (P.follow && l3gm.mode === "time" && Object.values(P.lf || {}).some(Boolean)) l3gm.follow = new Set(l3gaListFilter(l3plLinkActs(P.split), P.lf).flatMap(a => a.rows.map(r => r.id))); } catch (e) { l3gm.follow = null; }
+  try { const P = l3gaP(); if (P.follow && l3gm.mode === "time" && Object.values(P.lf || {}).some(v => (Array.isArray(v) ? v.length : v))) l3gm.follow = new Set(l3gaListFilter(l3plLinkActs(P.split), P.lf).flatMap(a => a.rows.map(r => r.id))); } catch (e) { l3gm.follow = null; }
 }
 function l3gmEnd() {
   l3gm.act = l3gm.next; l3gm.next = [];

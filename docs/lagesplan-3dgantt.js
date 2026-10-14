@@ -184,9 +184,10 @@ function l3gaListFilter(acts, lf) {
   const day = l3plDay();
   return acts.filter(a => {
     const ph = zonePhase(a.rows, day);
-    if (lf.area && a.area !== lf.area) return false;
-    if (lf.activity && a.name !== lf.activity) return false;
-    if (lf.contractor && a.contractor !== lf.contractor) return false;
+    const L = v => (Array.isArray(v) ? v : v ? [v] : []); // flera val (kryssrutor); äldre sparade val är en enda text
+    if (L(lf.area).length && !L(lf.area).includes(a.area)) return false;
+    if (L(lf.activity).length && !L(lf.activity).includes(a.name)) return false;
+    if (L(lf.contractor).length && !L(lf.contractor).includes(a.contractor)) return false;
     if (lf.status && ph !== lf.status) return false;
     if (lf.within && !(a.start >= day && a.start <= l3gaAdd(day, Number(lf.within)))) return false;
     if (lf.hideDone && ph === "klar") return false;
@@ -201,12 +202,14 @@ function l3gaListHtml(acts, P, allIn = null, noF = false) {
   const opts = (k, f) => [...new Set(all.map(f).filter(Boolean))].sort((x, y) => x.localeCompare(y, "sv", { numeric: true })).map(v => `<option value="${E(v)}" ${lf[k] === v ? "selected" : ""}>${E(v)}</option>`).join("");
   const list = l3gaListFilter(acts, lf);
   const sel1 = (k, ttl, optsHtml) => `<select data-galf="${k}" title="${ttl}" class="${lf[k] ? "set" : ""}"><option value="">${ttl}</option>${optsHtml}</select>`;
-  const nF = Object.keys(lf).filter(k => lf[k]).length;
+  const Lv = v => (Array.isArray(v) ? v : v ? [v] : []);
+  const multi = (k, all1, many) => { const n = Lv(lf[k]).length; return `<button type="button" class="v3-fc-multi ${n ? "set" : ""}" data-galm="${k}" title="${n ? Lv(lf[k]).map(E).join(" · ") : all1}">${E(n === 0 ? all1 : n === 1 ? Lv(lf[k])[0] : `${n} ${many}`)} ▾</button>`; };
+  const nF = Object.keys(lf).filter(k => Lv(lf[k]).length || (typeof lf[k] === "boolean" && lf[k])).length;
   const filtersHtml = () => `<div class="v3-ga-filters v3-ga-fc">
-      <div class="v3-fc-r3">${sel1("area", "Område", opts("area", a => a.area))}${sel1("activity", "Aktivitet", opts("activity", a => a.name))}${sel1("contractor", "Entreprenör", opts("contractor", a => a.contractor))}</div>
+      <div class="v3-fc-r3">${multi("area", "Alla områden", "områden")}${multi("activity", "Alla aktiviteter", "aktiviteter")}${multi("contractor", "Alla entreprenörer", "entreprenörer")}</div>
       <div class="v3-fc-r2">${sel1("status", "Status", ["planerad", "pagaende", "forsenad", "klar", "pausad"].map(k => `<option value="${k}" ${lf.status === k ? "selected" : ""}>${E(PHASE_LABELS[k] || k)}</option>`).join(""))}${sel1("within", "Startar inom", [["7", "1 vecka"], ["14", "2 veckor"], ["28", "4 veckor"]].map(([v, t]) => `<option value="${v}" ${lf.within === v ? "selected" : ""}>${t}</option>`).join(""))}<button type="button" class="v3-fc-follow ${P.follow ? "on" : ""}" id="v3GaFollow" title="Följa tidplan: Tid-läget gäller bara det som filtren släpper igenom – de objekten dyker upp kronologiskt enligt tidplanen, allt annat döljs. Listan sorteras efter startdatum." aria-pressed="${!!P.follow}">⏱ Följa tidplan</button><button type="button" class="v3-fc-clr" id="v3GaClearF" title="Rensa filtren" ${nF ? "" : "disabled"}>✕${nF ? " " + nF : ""}</button></div>
-      <details class="v3-fc-more"><summary>Fler val · ${list.length} av ${all.length}</summary><div class="v3-ga-checks">${[["hideDone", "Dölj klara"], ["onlyDone", "Endast klara"], ["today", "Endast idag"], ["uncoupled", "Endast ej kopplade"]].map(([k, t]) => `<label><input type="checkbox" data-galc="${k}" ${lf[k] ? "checked" : ""} /> ${t}</label>`).join("")}</div>
-      <div class="v3-ga-fbtns"><button type="button" class="v3-primary" id="v3GaShow3d">Visa filtrerat i 3D</button><button type="button" id="v3GaShowCoupled">Visa alla kopplade</button><span>${list.length} av ${all.length}</span></div></details>
+      <div class="v3-fc-r4 v3-ga-fbtns"><button type="button" class="v3-primary" id="v3GaShow3d">Visa filtrerat i 3D</button><button type="button" id="v3GaShowCoupled">Visa alla kopplade</button><span>${list.length} av ${all.length}</span></div>
+      <details class="v3-fc-more"><summary>Fler val</summary><div class="v3-ga-checks">${[["hideDone", "Dölj klara"], ["onlyDone", "Endast klara"], ["today", "Endast idag"], ["uncoupled", "Endast ej kopplade"]].map(([k, t]) => `<label><input type="checkbox" data-galc="${k}" ${lf[k] ? "checked" : ""} /> ${t}</label>`).join("")}</div></details>
     </div>`;
   if (noF === "only") return filtersHtml();
   const groups = new Map(); list.forEach(a => { const k = l3gaLaneKey(a, P.groupBy || "area"); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(a); });
@@ -227,6 +230,27 @@ function l3gaListHtml(acts, P, allIn = null, noF = false) {
   </div>`;
 }
 
+/* Flervalslista med kryssrutor för Område/Aktivitet/Entreprenör (sök, Alla). Ändringarna sparas direkt i filtret och ritar om. */
+function l3gaMultiPop(btn, key, A, rr) {
+  const old = document.getElementById("v3GaMultiPop"); if (old) { const same = old.dataset.k === key; old.remove(); document.removeEventListener("pointerdown", l3gaMultiOff, true); if (same) return; }
+  const E = escHtml, field = { area: a => a.area, activity: a => a.name, contractor: a => a.contractor }[key], title = { area: "område", activity: "aktivitet", contractor: "entreprenör" }[key];
+  const pop = document.createElement("div"); pop.id = "v3GaMultiPop"; pop.className = "v3-gm-pop v3-ga-multipop"; pop.dataset.k = key;
+  pop.innerHTML = `<input type="search" class="v3-ga-mq" placeholder="Sök ${title}…" /><div class="v3-ga-macts"><button type="button" data-ma="all">Alla (rensa)</button><button type="button" data-ma="match" class="hidden">Välj träffarna</button></div><div class="v3-ga-mlist"></div>`;
+  document.body.appendChild(pop);
+  const r = btn.getBoundingClientRect(); pop.style.left = `${Math.max(6, Math.min(r.left, innerWidth - 330))}px`; pop.style.top = `${r.bottom + 4}px`; pop.style.maxHeight = `${Math.max(200, innerHeight - r.bottom - 16)}px`;
+  const cur = () => { const v = (l3gaP().lf || {})[key]; return new Set(Array.isArray(v) ? v : v ? [v] : []); };
+  const options = () => [...new Set(A().map(field).filter(Boolean))].sort((x, y) => x.localeCompare(y, "sv", { numeric: true }));
+  const q = pop.querySelector(".v3-ga-mq");
+  const fill = () => { const f = q.value.trim().toLowerCase(), sel = cur(), opts = options().filter(o => !f || o.toLowerCase().includes(f)); pop.querySelector('[data-ma="match"]').classList.toggle("hidden", !f);
+    pop.querySelector(".v3-ga-mlist").innerHTML = opts.map(o => `<label class="v3-ga-mrow" title="${E(o)}"><input type="checkbox" data-v="${E(o)}" ${sel.has(o) ? "checked" : ""} /><span>${E(o)}</span></label>`).join("") || `<div class="v3-pal-hint">Inga träffar.</div>`; };
+  const put = set => { const lf = { ...(l3gaP().lf || {}) }; if (set.size) lf[key] = [...set]; else delete lf[key]; l3plSet("lf", lf); rr(); fill(); };
+  q.oninput = fill;
+  pop.querySelector(".v3-ga-macts").onclick = e => { const b = e.target.closest("[data-ma]"); if (!b) return; if (b.dataset.ma === "all") put(new Set()); else { const f = q.value.trim().toLowerCase(); put(new Set([...cur(), ...options().filter(o => o.toLowerCase().includes(f))])); } };
+  pop.querySelector(".v3-ga-mlist").onchange = e => { const c = e.target.closest("input[data-v]"); if (!c) return; const s = cur(); if (c.checked) s.add(c.dataset.v); else s.delete(c.dataset.v); put(s); };
+  ["pointerdown", "click", "keydown", "wheel"].forEach(t => pop.addEventListener(t, e => { e.stopPropagation(); if (t === "keydown" && e.key === "Escape") { pop.remove(); document.removeEventListener("pointerdown", l3gaMultiOff, true); } }));
+  fill(); setTimeout(() => document.addEventListener("pointerdown", l3gaMultiOff, true), 0); q.focus();
+}
+function l3gaMultiOff(e) { const p = document.getElementById("v3GaMultiPop"); if (!p || p.contains(e.target) || e.target.closest("[data-galm]")) return; p.remove(); document.removeEventListener("pointerdown", l3gaMultiOff, true); }
 function l3gaBind(d, rr = l3plDockRender, actsFn = null) {
   // rr: ritar om där innehållet visas (panelen nederst eller listan 4D-koppling i vänstermenyn).
   const P = l3gaP(), A = actsFn || (() => l3plActs(P.split)), set = (k, v) => { l3plSet(k, v); rr(); };
@@ -261,6 +285,7 @@ function l3gaBind(d, rr = l3plDockRender, actsFn = null) {
     if (P.editable && !el.classList.contains("v3-ga-li")) el.onpointerdown = e => l3gaDragStart(e, el, d);
   });
   // Listan.
+  on("[data-galm]", "onclick", (b, e) => { e.stopPropagation(); l3gaMultiPop(b, b.dataset.galm, A, rr); });
   on("[data-galf]", "onchange", s => set("lf", { ...(P.lf || {}), [s.dataset.galf]: s.value }));
   on("[data-galc]", "onchange", c => set("lf", { ...(P.lf || {}), [c.dataset.galc]: c.checked }));
   on("#v3GaClearF", "onclick", () => set("lf", {}));

@@ -106,7 +106,8 @@ const PP = [
     await page.evaluate(() => { l3plSet('editable', false); l3plSet('full', false); });
     // Lista: filter och Visa filtrerat i 3D.
     await page.evaluate(() => { l3plSet('view', 'list'); l3plDockRender(); });
-    await page.selectOption('#v3PlanDock [data-galf="contractor"]', 'Peab');
+    await page.click('#v3PlanDock [data-galm="contractor"]'); await page.check('#v3GaMultiPop .v3-ga-mrow:has-text("Peab") input'); await page.waitForTimeout(200);
+    await page.evaluate(() => { const p = document.getElementById('v3GaMultiPop'); if (p) p.remove(); });
     const li = await page.textContent('#v3PlanDock .v3-ga-fbtns span');
     if (!/1 av 3/.test(li)) fail('Listans filter: ' + li);
     await page.click('#v3PlanDock #v3GaClearF');
@@ -737,7 +738,7 @@ const PP = [
     // Bubblor för klickade (markerade) objekt visar år och område; de automatiska för pågående är oförändrade.
     { const bl = await page.evaluate(() => { const r = { start_date: '2026-10-09', end_date: '2026-10-17', area: 'PRODUKTION / 741 Hus', object_name: 'X', progress: 10 }, f = { name: true, date: true, progress: true, area: false, activity: false };
         return { mk: l3bubLines(r, f, true), au: l3bubLines(r, f, false) }; });
-      if (!/2026/.test(bl.mk.date) || bl.mk.date.split('2026').length !== 3 || bl.mk.area !== 'PRODUKTION / 741 Hus' || /2026/.test(bl.au.date) || bl.au.area) fail('Bubblor för markerade objekt (år + område): ' + JSON.stringify(bl));
+      if (!/2026/.test(bl.mk.date) || bl.mk.date.split('2026').length !== 3 || bl.mk.area !== 'PRODUKTION / 741 Hus' || /2026/.test(bl.au.date) || bl.au.area) fail('Bubblor: l3bubLines med marked=true ska ge år + område: ' + JSON.stringify(bl));
       console.log('OK: bubblor för klickade objekt visar år och område, de automatiska är oförändrade'); }
     // Markerar man objekt (klara, pågående eller kommande) kommer alltid en bubbla – även med automatiska bubblor avstängda.
     { const mk = await page.evaluate(async () => {
@@ -752,19 +753,38 @@ const PP = [
       if (process.env.DBG) console.log('MK', JSON.stringify(mk));
       if (!mk.noPlacement && (mk.n < 1 || !/20\d\d/.test(mk.txt) || mk.none !== 0)) fail('Bubbla vid markering: ' + JSON.stringify(mk));
       console.log('OK: markerade objekt får alltid en bubbla (även med automatiska av och efter slutdatum)'); }
+    // Byter man markerat objekt (lika många markerade) ska bubblan följa med utan att man trycker Esc emellan.
+    { const sg = await page.evaluate(() => { const keep = l3bs.sel; l3bs.sel = [{ mesh: { uuid: 'm' }, ri: 1, key: 'm:1' }]; const a = l3bubSig(); l3bs.sel = [{ mesh: { uuid: 'm' }, ri: 2, key: 'm:2' }]; const b = l3bubSig(); l3bs.sel = keep; return a !== b; });
+      if (!sg) fail('Bubblan ska följa med när man markerar ett annat objekt (signaturen ändras)');
+      console.log('OK: byte av markerat objekt uppdaterar bubblan direkt (utan Esc)'); }
+    // Filmknapparna (Spela upp/Paus/Spela in) ligger i flödet i Film-panelen – inte ovanpå menyn (klasskrock med Gantt-staplarna).
+    { const ab = await page.evaluate(() => { l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab(); const b = document.querySelector('#v3PalPlan .v3-pl-actbar'), f = document.getElementById('v3PlFBar'); const r = b.getBoundingClientRect(), fr = f.getBoundingClientRect(); return { pos: getComputedStyle(b).position, below: r.top >= fr.bottom - 1 }; });
+      if (ab.pos !== 'static' || !ab.below) fail('Filmknapparna ligger ovanpå menyn: ' + JSON.stringify(ab));
+      console.log('OK: filmknapparna ligger i flödet och inte ovanpå menyn'); }
     // Filter överst i vänstermenyn (sticky) och Följa tidplan.
-    const fl = await page.evaluate(() => {
+    const fl = await page.evaluate(async () => {
       l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();
       const fb = document.getElementById('v3PlFBar'), host = document.getElementById('v3PalPlan');
       const first = host.firstElementChild === fb, sticky = fb && getComputedStyle(fb).position === 'sticky';
-      const sel = fb.querySelector('[data-galf="area"]'), opt = [...sel.options].map(o => o.value).filter(Boolean)[0];
-      sel.value = opt; sel.dispatchEvent(new Event('change'));
+      // Område: flervalslista med kryssrutor; "Alla (rensa)" och ✕ tar tillbaka allt; "Visa filtrerat i 3D" är alltid synlig.
+      const vis3d = (() => { const b = fb.querySelector('#v3GaShow3d'); return !!b && b.offsetParent !== null; })();
+      fb.querySelector('[data-galm="area"]').click(); await new Promise(r => setTimeout(r, 100));
+      const cbs = [...document.querySelectorAll('#v3GaMultiPop input[data-v]')], opt = cbs[0] && cbs[0].dataset.v; cbs[0].checked = true; cbs[0].dispatchEvent(new Event('change', { bubbles: true })); await new Promise(r => setTimeout(r, 150));
+      const lfOn = (l3gaP().lf || {}).area, shown = l3gaListFilter(l3plLinkActs(false), l3gaP().lf).length, allN = l3plLinkActs(false).length;
+      document.querySelector('#v3GaMultiPop [data-ma="all"]').click(); await new Promise(r => setTimeout(r, 150));
+      const cleared = !((l3gaP().lf || {}).area || []).length, backAll = l3gaListFilter(l3plLinkActs(false), l3gaP().lf).length === allN;
+      document.getElementById('v3GaMultiPop') && document.getElementById('v3GaMultiPop').remove();
+      fb.querySelector('[data-galm="area"]').click(); await new Promise(r => setTimeout(r, 100)); for (let i = 0; i < 2; i++) { const c = document.querySelectorAll('#v3GaMultiPop input[data-v]')[i]; if (c) { c.checked = true; c.dispatchEvent(new Event('change', { bubbles: true })); await new Promise(r => setTimeout(r, 150)); } }
+      const two = ((l3gaP().lf || {}).area || []).length; document.getElementById('v3GaMultiPop').remove(); document.getElementById('v3GaClearF').click(); await new Promise(r => setTimeout(r, 150));
+      const multiOk = { vis3d, lfOn, shown, allN, cleared, backAll, two, clr: !((l3gaP().lf || {}).area || []).length };
+      const multiBad = !vis3d || !opt || !(Array.isArray(lfOn) && lfOn.length === 1) || !cleared || !backAll || (cbs.length > 1 && two !== 2) || !multiOk.clr; window.__multi = multiOk;
       const f1 = document.getElementById('v3GaFollow'); f1.click(); const on = l3gaP().follow === true && l3gm.mode === 'time';
       const fol = l3gm.follow instanceof Set || l3gm.follow === null;
       document.getElementById('v3GaFollow').click(); const off = !l3gaP().follow && l3gm.mode === 'off';
       document.getElementById('v3GaClearF').click();
-      return { first, sticky, on, off, fol, opt };
+      return { first, sticky, on, off, fol, opt, multiBad, multi: multiOk };
     });
+    if (fl.multiBad) fail('Flerval med kryssrutor (Område): ' + JSON.stringify(fl.multi));
     if (!fl.first || !fl.sticky || !fl.on || !fl.off || !fl.opt) fail('Filter överst / Följa tidplan: ' + JSON.stringify(fl));
     else console.log('OK: filtren ligger överst i vänstermenyn (sticky) och Följa tidplan slår på/av Tid för det filtret släpper igenom');
     console.log(`OK: filmens grafik – pågår nu (in/ut, bock), datumskylt med rullande vecka, milstolpe, förloppsmätare (${fx.prog} %, ${fx.ahead} dagar före baslinjen), valbara, lager vid uppspelning`);
