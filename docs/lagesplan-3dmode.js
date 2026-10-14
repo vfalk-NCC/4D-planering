@@ -11,13 +11,19 @@
 
 const L3GM_PRESETS = { gul: ["", "#fff7c2", "Gul (standard)"], rod: ["#e5484d", "#ffd6d6", "Röd ↔ ljusröd"], vit: ["#111827", "#ffffff", "Mörk ↔ vit"], bla: ["#2563eb", "#bfdbfe", "Blå ↔ ljusblå"], gron: ["#16a34a", "#bbf7d0", "Grön ↔ ljusgrön"], orange: ["#f5a623", "#e5484d", "Orange ↔ röd"] };
 const L3GM_PCFG0 = { preset: "gul", a: "", b: "#fff7c2", period: 1.5, style: "mjuk", amp: 85 };
-const l3gm = { mode: "off", timer: null, pulseIv: null, pulseT0: 0, act: [], next: [], sig: "", selSig: "", selOwn: false, info: "", raf: 0 };
-const l3gmCfg = () => ({ future: false, doneOp: 30, ops: {}, from: "", to: "", pulse: false, selAct: false, ...(l3plPrefs().gm || {}), pcfg: { ...L3GM_PCFG0, ...((l3plPrefs().gm || {}).pcfg || {}) } });
+const l3gm = { scale: null, strict: false, mode: "off", timer: null, pulseIv: null, pulseT0: 0, act: [], next: [], sig: "", selSig: "", selOwn: false, info: "", raf: 0 };
+const l3gmCfg = () => ({ scale: false, scaleBy: "start", scaleA: "#2563eb", scaleB: "#dc2626", strict: false, future: false, doneOp: 30, ops: {}, from: "", to: "", pulse: false, selAct: false, ...(l3plPrefs().gm || {}), pcfg: { ...L3GM_PCFG0, ...((l3plPrefs().gm || {}).pcfg || {}) } });
 const l3gmSet = (k, v) => l3plSet("gm", { ...(l3plPrefs().gm || {}), [k]: v });
 const l3gmHex = h => { const n = parseInt(String(h).replace("#", ""), 16) || 0; return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
 
 /* Läget för en rad vid ett datum – samma regler som dashboardens ganttPhaseAt. */
 function l3gmPhaseRow(m, d) {
+  if (l3gm.strict) { // Följ datum: bara start- och slutdatum, framdriften (procent) och status ignoreras
+    const s = m.start_date ? String(m.start_date).slice(0, 10) : "", e = m.end_date ? String(m.end_date).slice(0, 10) : "";
+    if (s && d < s) return "planerad";
+    if (e && d > e) return "klar";
+    return "pagaende";
+  }
   const prog = Number(m.progress) || 0, end = m.end_date ? String(m.end_date).slice(0, 10) : "", start = m.start_date ? String(m.start_date).slice(0, 10) : "";
   const ae = m.actual_end_date ? String(m.actual_end_date).slice(0, 10) : "", as = m.actual_start_date ? String(m.actual_start_date).slice(0, 10) : "";
   const done = !!ae || prog >= 100 || m.status === "klar";
@@ -47,9 +53,16 @@ function l3gmGroup(phases) {
   return "planerad";
 }
 /* Anropas av l3bRecolor för varje objekt: null = som vanligt (läget Alla), annars { off, rgb, alpha, phase }. */
+/* Färgskalan: färgen efter radernas start- eller slutdatum (tidig → sen). */
+function l3gmScaleRgb(rows) {
+  const S = l3gm.scale; if (!S) return null;
+  const ds = rows.map(r => (S.by === "end" ? r.end_date : r.start_date)).filter(Boolean).map(x => Date.parse(String(x).slice(0, 10) + "T00:00:00Z")).filter(Number.isFinite); if (!ds.length) return null;
+  const t = S.t1 > S.t0 ? Math.max(0, Math.min(1, ((S.by === "end" ? Math.max(...ds) : Math.min(...ds)) - S.t0) / (S.t1 - S.t0))) : 0;
+  return S.a.map((v, i) => v + (S.b[i] - v) * t);
+}
 function l3gmRange(rows, at, ctx) {
   const m = l3gm.mode;
-  if (m === "off") return null;
+  if (m === "off") { const c = l3gm.scale && rows.length ? l3gmScaleRgb(rows) : null; return c ? { off: false, rgb: c, alpha: null, phase: "scale" } : null; }
   if (m === "isolate") return { off: !rows.length };
   if (m === "hide") return { off: rows.length > 0 };
   if (!rows.length) return { off: true };
@@ -69,11 +82,13 @@ function l3gmRange(rows, at, ctx) {
   if (g === "pagaende" && ctx) l3gm.next.push(ctx);
   const op = (C.ops || {})[g] === undefined ? 100 : Number((C.ops || {})[g]); // opacitet per status (0 = osynligt) – som i dashboarden
   if (op <= 0) return { off: true };
-  return { off: false, rgb: l3gmHex(phaseColor(g)).map(v => v / 255), alpha: op >= 100 ? null : op / 100, phase: g };
+  return { off: false, rgb: (l3gm.scale && l3gmScaleRgb(rows)) || l3gmHex(phaseColor(g)).map(v => v / 255), alpha: op >= 100 ? null : op / 100, phase: g };
 }
 /* l3bRecolor: före och efter varvet över alla objekt. */
 function l3gmBegin() {
-  l3gm.next = [];
+  l3gm.next = []; const C0 = l3gmCfg(); l3gm.strict = !!C0.strict;
+  l3gm.scale = null; // Färgskala efter datum: tidig → sen mellan två valfria färger
+  if (C0.scale) { const ds = (l3pl.rows || []).map(r => (C0.scaleBy === "end" ? r.end_date : r.start_date)).filter(Boolean).map(x => Date.parse(String(x).slice(0, 10) + "T00:00:00Z")).filter(Number.isFinite); if (ds.length) l3gm.scale = { by: C0.scaleBy === "end" ? "end" : "start", t0: Math.min(...ds), t1: Math.max(...ds), a: l3gmHex(C0.scaleA).map(v => v / 255), b: l3gmHex(C0.scaleB).map(v => v / 255) }; }
   l3gm.follow = null; // Följa tidplan + filter: raderna som filtren släpper igenom
   try { const P = l3gaP(); if (P.follow && l3gm.mode === "time" && Object.values(P.lf || {}).some(Boolean)) l3gm.follow = new Set(l3gaListFilter(l3plLinkActs(P.split), P.lf).flatMap(a => a.rows.map(r => r.id))); } catch (e) { l3gm.follow = null; }
 }
@@ -228,6 +243,7 @@ function l3gmBarHtml(acts) {
   const m = l3gm.mode, E = escHtml, C = l3gmCfg(), r = l3gmRange2(), at = l3plDay();
   const seg = `<div class="v3-segs" id="v3GmSeg" role="group" aria-label="3D"><span class="v3-ga-lbl">3D</span>${[["off", "Alla", "Rör inte modellen"], ["isolate", "Kopplade", "Bara det som är kopplat till schemat"], ["hide", "Okopplade", "Dölj kopplade – visa bara det okopplade"], ["time", "⏱ Tid", "Tidslinje: se läget ett visst datum"]].map(([v, t, ti]) => `<button type="button" data-gmode="${v}" class="${m === v ? "on" : ""}" aria-pressed="${m === v}" title="${ti}">${t}</button>`).join("")}</div>`;
   const tools = `<button type="button" id="v3GaRefresh" class="v3-gm-refresh" title="Läs om tidplanen från 4D-planeringen">${L3GM_REFRESH}<span>Uppdatera</span></button>
+    <button type="button" id="v3GmScaleBtn" class="v3-gm-strict ${C.scale ? "on" : ""}" aria-haspopup="true" title="Färgskala efter datum: objekten färgas från tidig till sen start (eller slut) mellan två färger du väljer">Färgskala ▾</button>
     <button type="button" id="v3GaLoadModels" title="Läs in alla modeller som aktiviteterna är kopplade till">Läs in modeller</button>
     <button type="button" id="v3GaPpExport" title="Exportera aktiviteterna till en Powerproject-fil (MS Project XML) – bygger på en mall från Powerproject">Exportera till Powerproject</button>`;
   let time = "";
@@ -242,6 +258,7 @@ function l3gmBarHtml(acts) {
       <label class="v3-ga-tg" title="Tidslinjens start">Från <input type="date" id="v3GmFrom" value="${E(C.from || (r ? r[0] : ""))}" /></label>
       <label class="v3-ga-tg" title="Tidslinjens slut">Till <input type="date" id="v3GmTo" value="${E(C.to || (r ? r[1] : ""))}" /></label>
       <button type="button" id="v3GmAuto" title="Hela spannet">Auto</button>
+      <button type="button" id="v3GmStrict" class="v3-gm-strict ${C.strict ? "on" : ""}" aria-pressed="${!!C.strict}" title="Följ datum: färgen följer strikt start- och slutdatumen (planerad före start, pågående mellan, klar efter slut) och struntar i framdriften i procent">Följ datum</button>
       <button type="button" id="v3GmMenuBtn" aria-haspopup="true" title="Färger, opacitet, Kommande, Pulsera och Markera pågående">Färger &amp; visning ▾</button>
       <span id="v3GmSum" class="v3-gm-sum"></span><span id="v3GmInfo" class="v3-gm-sum">${E(l3gmInfoText())}</span>
     </div>`;
@@ -267,6 +284,8 @@ function l3gmBind(d) {
   fi.onchange = () => { l3gmSet("from", fi.value || ""); ranged(); };
   ti.onchange = () => { l3gmSet("to", ti.value || ""); ranged(); };
   q("#v3GmAuto").onclick = () => { l3gmSet("from", ""); l3gmSet("to", ""); ranged(); };
+  const scb = q("#v3GmScaleBtn"); if (scb) scb.onclick = e => { e.stopPropagation(); l3gmScaleMenu(scb); };
+  const sb = q("#v3GmStrict"); if (sb) sb.onclick = () => { const v = !l3gmCfg().strict; l3gmSet("strict", v); l3gm.strict = v; l3gmApply(true); l3plDockRender(); l3Status(v ? "Följer datumen strikt – framdriften i procent ignoreras." : "Följer framdriften igen."); };
   const mb = q("#v3GmMenuBtn"); if (mb) mb.onclick = e => { e.stopPropagation(); l3gmMenuOpen(mb); };
   l3gmSync();
 }
@@ -339,6 +358,24 @@ async function l3gmLoadModels(btn) {
 }
 
 /* Färger & visning i en rullgardin (som i dashboarden): färg och opacitet per status, Klart, Kommande, Pulsera pågående och Markera pågående. */
+function l3gmScaleMenu(anchor) {
+  const old = document.getElementById("v3GmScaleMenu"); if (old) { old.remove(); return; }
+  const C = l3gmCfg(), pop = document.createElement("div"); pop.id = "v3GmScaleMenu"; pop.className = "v3-gm-pop v3-gm-menu";
+  pop.innerHTML = `<div class="v3-gm-pop-t">Färgskala efter datum</div>
+    <label class="v3-ga-tg"><input type="checkbox" id="v3GsOn" ${C.scale ? "checked" : ""} /> Färga objekten efter datum</label>
+    <div class="v3-gm-grid" style="grid-template-columns:auto 1fr"><span>Efter</span><select id="v3GsBy"><option value="start" ${C.scaleBy !== "end" ? "selected" : ""}>Startdatum</option><option value="end" ${C.scaleBy === "end" ? "selected" : ""}>Slutdatum</option></select>
+      <span>Tidigast</span><input type="color" id="v3GsA" value="${escHtml(C.scaleA)}" /><span>Senast</span><input type="color" id="v3GsB" value="${escHtml(C.scaleB)}" /></div>
+    <div id="v3GsBar" style="height:10px;border-radius:5px;margin:6px 0 2px;background:linear-gradient(90deg,${escHtml(C.scaleA)},${escHtml(C.scaleB)})"></div>
+    <div class="v3-pal-hint">Egen färg efter slut (aktivitetens redigering) går före. Gäller alla 3D-lägen utom Kopplade/Okopplade.</div>`;
+  document.body.appendChild(pop);
+  const r = anchor.getBoundingClientRect(); pop.style.left = `${Math.max(8, Math.min(window.innerWidth - 300, r.left))}px`; pop.style.bottom = `${Math.max(8, window.innerHeight - r.top + 6)}px`; pop.style.width = "280px";
+  ["pointerdown", "click", "keydown", "wheel"].forEach(t => pop.addEventListener(t, e => { e.stopPropagation(); if (t === "keydown" && e.key === "Escape") pop.remove(); }));
+  const off = e => { if (pop.contains(e.target) || anchor.contains(e.target)) return; pop.remove(); window.removeEventListener("pointerdown", off, true); };
+  setTimeout(() => window.addEventListener("pointerdown", off, true), 0);
+  const q = s => pop.querySelector(s), bar = () => { q("#v3GsBar").style.background = `linear-gradient(90deg,${q("#v3GsA").value},${q("#v3GsB").value})`; anchor.classList.toggle("on", q("#v3GsOn").checked); };
+  const apply = () => { l3gmSet("scale", q("#v3GsOn").checked); l3gmSet("scaleBy", q("#v3GsBy").value); l3gmSet("scaleA", q("#v3GsA").value); l3gmSet("scaleB", q("#v3GsB").value); bar(); l3gmApply(true); };
+  ["#v3GsOn", "#v3GsBy"].forEach(id => { q(id).onchange = apply; }); ["#v3GsA", "#v3GsB"].forEach(id => { q(id).oninput = apply; });
+}
 function l3gmMenuOpen(anchor) {
   const old = document.getElementById("v3GmMenu"); if (old) { old.remove(); return; }
   const C = l3gmCfg(), E = escHtml, ops = C.ops || {}, op = k => (ops[k] === undefined ? 100 : ops[k]);

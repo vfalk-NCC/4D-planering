@@ -671,6 +671,16 @@ const PP = [
     });
     if (anx.noSel || anx.card || !anx.def || anx.saved !== 'grow' || (anx.t0 !== null && anx.t0 !== 'grow') || anx.again !== 'grow' || !anx.prev) fail('Animering per aktivitet i redigeringsdialogen: ' + JSON.stringify(anx));
     else console.log('OK: animering – väljs per aktivitet i redigeringsdialogen (Animering-kortet borttaget), standard kvar under Film');
+    // Följ datum (strikt) och Färgskala efter datum (egna färger).
+    const sc = await page.evaluate(() => {
+      const rows = l3pl.rows.filter(r => r.start_date).slice().sort((a, b) => a.start_date.localeCompare(b.start_date)), lo = rows[0], hi = rows[rows.length - 1];
+      l3gmSet('strict', true); l3gmBegin(); const pr = { before: l3gmPhaseRow({ start_date: '2026-10-05', end_date: '2026-10-09', progress: 100, status: 'klar' }, '2026-10-07'), early: l3gmPhaseRow({ start_date: '2026-10-05', end_date: '2026-10-09', progress: 0 }, '2026-10-04'), after: l3gmPhaseRow({ start_date: '2026-10-05', end_date: '2026-10-09', progress: 0 }, '2026-10-10') };
+      l3gmSet('strict', false); l3gmSet('scale', true); l3gmSet('scaleBy', 'start'); l3gmSet('scaleA', '#ff0000'); l3gmSet('scaleB', '#0000ff'); l3gmBegin();
+      const c0 = l3gmScaleRgb([lo]), c1 = l3gmScaleRgb([hi]); const mode = l3gm.mode; l3gm.mode = 'off'; const off = l3gmRange([lo], '2026-10-12', null); l3gm.mode = mode;
+      l3gmSet('scale', false); l3gmBegin(); return { pr, c0, c1, off, none: l3gm.scale };
+    });
+    if (sc.pr.before !== 'pagaende' || sc.pr.early !== 'planerad' || sc.pr.after !== 'klar' || Math.round(sc.c0[0]) !== 1 || Math.round(sc.c1[2]) !== 1 || !sc.off || sc.off.phase !== 'scale' || sc.none !== null) fail('Följ datum / Färgskala: ' + JSON.stringify(sc));
+    else console.log('OK: Följ datum (strikt) och Färgskala efter datum med egna färger');
     // Filter överst i vänstermenyn (sticky) och Följa tidplan.
     const fl = await page.evaluate(() => {
       l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();
