@@ -104,7 +104,7 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   if (await page.$('#dashLinkBanner')) fail('Banderollen ska försvinna');
   // 6) Dashboarden försvinner (ingen puls): efter en stund äger den inte längre.
   await send({ t: 'state', mode: 'time', date: '2026-10-08' }); await page.waitForTimeout(200);
-  await page.evaluate(() => { dashLink.at = Date.now() - 20000; });
+  await page.evaluate(() => { dashLink.at = Date.now() - 90000; });
   if (await page.evaluate(() => dashboardOwns())) fail('Utan puls från dashboarden ska den inte längre äga 3D-vyn');
   // 7) Hello: 4D-planering frågar efter läget när den startar.
   console.log('OK: dashboardens Gantt har företräde – 4D-planering skriver inget till 3D-vyn medan den styr, reglaget flyttar dashboardens datum, och tar över igen när dashboarden släpper');

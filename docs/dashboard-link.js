@@ -11,7 +11,7 @@
 
 const dashLink = { mode: "off", date: "", at: 0, ch: null, wasOwned: false };
 /* True när dashboardens Gantt styr 3D-vyn (och har hörts av de senaste sekunderna). */
-function dashboardOwns() { return dashLink.mode !== "off" && Date.now() - dashLink.at < 9000; }
+function dashboardOwns() { return dashLink.mode !== "off" && Date.now() - dashLink.at < 60000; }
 function dashLinkBanner() {
   const own = dashboardOwns();
   let el = document.getElementById("dashLinkBanner");

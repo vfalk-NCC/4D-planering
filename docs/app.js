@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-14 10:48";
+const APP_VERSION = "2026-10-14 10:52";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -3048,7 +3048,10 @@ async function applyTimelineColors() {
     if (!phase) continue;
     byModel[it.modelId] = byModel[it.modelId] || empty();
     // Temporära inom sin tid behåller sin riktiga färg (Victor 2026-10-12) – ingen statusfärg.
-    byModel[it.modelId][isTempOffAt(it, selectedDate) ? "tempoff" : it.temporary === true ? "tempon" : phase].push(it.objectId);
+    // Egen färg/opacitet efter slut (dashboarden) ligger överst i hierarkin: klara objekt får den i stället för statusfärgen.
+    let gk = isTempOffAt(it, selectedDate) ? "tempoff" : it.temporary === true ? "tempon" : phase;
+    if (gk === "klar" && (/^#[0-9a-f]{6}$/i.test(it.doneColor || "") || Number.isFinite(it.doneOpacity))) gk = `klar|${/^#[0-9a-f]{6}$/i.test(it.doneColor || "") ? it.doneColor : ""}|${Number.isFinite(it.doneOpacity) ? it.doneOpacity : ""}`;
+    (byModel[it.modelId][gk] = byModel[it.modelId][gk] || []).push(it.objectId);
   }
 
   const colors = { ...DEFAULT_STATUS_COLORS, ...(settings.statusColors || {}) };
@@ -3059,6 +3062,7 @@ async function applyTimelineColors() {
     const group = byModel[modelId];
     for (const phase of Object.keys(group)) {
       if (phase === "tempon") { await colorResetGroup(modelId, group[phase]); continue; }
+      if (phase.startsWith("klar|")) { const [, hx, op] = phase.split("|"); await colorGroup(modelId, group[phase], hx || colors.klar, op === "" ? opacities.klar : Math.max(0, Math.min(100, Number(op))) / 100); continue; }
       await colorGroup(modelId, group[phase], colors[phase], opacities[phase]);
     }
   }
