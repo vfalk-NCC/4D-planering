@@ -120,6 +120,7 @@ async function open3d() {
   if (!plan) { alert("Välj en arbetsyta först."); return; }
   if (!plan.calib) { alert("Arbetsytan behöver kalibreras mot 3D-modellen först (Zoner → Kalibrera mot 3D). Annars vet 3D-vyn inte var planen ligger."); return; }
   if (token) settings.githubToken = token; // 3D-biblioteket och modellerna: alltid den aktiva token (en gammal sparad gav 401)
+  if (typeof l3StartApplyPrefs === "function") l3StartApplyPrefs(); // startvyns visningsval före gränssnittet byggs
   const box = l3Dom();
   box.classList.remove("hidden");
   document.body.classList.add("v3-open"); // fältlägets flytande knappar och ark (iPhone) göms under 3D
@@ -172,6 +173,7 @@ async function open3d() {
     // Var tiden gick (syns i historiken, F2) – så att det går att se vad som är långsamt.
     const sec = x => (x / 1000).toFixed(1).replace(".", ",") + " s";
     console.info("3D öppnad", tm);
+    if (typeof l3StartApply === "function") l3StartApply();
     l3Status(`3D-vyn öppnad på ${sec(performance.now() - T0)} (${Object.entries(tm).map(([k, v]) => `${k} ${sec(v)}`).join(", ")}).`);
     l3Status(`${positions.length ? positions.length + " planerade objekt" : "Inga objektpositioner – hämta dem under Zoner, eller visa byggnaden (Visa → Byggnad)"} · ${placements.length} etableringsobjekt. Tryck på ett objekt för att välja det – högerklicka eller håll inne för fler val.`);
   } catch (e) { l3Status("3D-vyn kunde inte öppnas: " + e.message, true); console.error(e); }
@@ -258,6 +260,10 @@ function l3Dom() {
           <div class="v3-pop-l">Sparade vyer</div>
           <div id="v3SavedViews"></div>
           <div class="v3-sv-new"><input type="text" id="v3SvName" placeholder="Namn, t.ex. Infart" maxlength="40" /><button type="button" id="v3SvSave" title="Spara kameran, projektionen och snitten">Spara vy</button></div>
+          <hr/>
+          <div class="v3-pop-l">Startvy</div>
+          <div class="v3-sv-new"><button type="button" id="v3SvStart" title="Sparar exakt det du ser och har ikryssat nu: kamera, snitt, vad som syns, datum, 3D-läge, tidplan, färger, bubblor, film och Gantt – och lägger tillbaka det varje gång 3D-editorn öppnas">Spara som startvy</button><button type="button" id="v3SvStartClr" title="Ta bort startvyn">Ta bort</button></div>
+          <div class="v3-pal-hint" id="v3SvStartInfo"></div>
         </div>
       </div>
       <div class="v3-dd">
@@ -354,6 +360,7 @@ function l3Dom() {
   dd("v3ViewsBtn", "v3Views");
   const svSave = () => { const inp = $3("v3SvName"); l3SaveView(inp.value); inp.value = ""; };
   $3("v3SvSave").onclick = svSave;
+  $3("v3SvStart").onclick = () => l3StartSave(); $3("v3SvStartClr").onclick = () => l3StartClear(); l3StartInfo();
   $3("v3ObjCsv").onclick = () => l3ExportCsv();
   $3("v3SvName").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); svSave(); } else if (e.key === "Escape") { e.preventDefault(); e.target.blur(); l3HideMenus(); } };
   l3RenderSavedViews(); dd("v3ShowBtn", "v3Show"); dd("v3EditBtn", "v3Edit");

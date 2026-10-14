@@ -705,6 +705,26 @@ const PP = [
     { const wd = await page.evaluate(() => { l3plSet('period', '4w'); l3plDockRender(); const d = document.getElementById('v3PlanDock'), b = d.querySelector('.v3-pl-board'); return { dock: d.clientWidth, board: b ? b.scrollWidth : 0 }; });
       if (!wd.board || wd.board < wd.dock - 70 || wd.board > wd.dock + 10) fail('Gantten ska täcka hela bredden: ' + JSON.stringify(wd));
       console.log('OK: Gantten fyller hela bredden i 3D-editorn (' + wd.board + ' av ' + wd.dock + ' px)'); }
+    // Startvy: exakt det som är ikryssat/inställt när man sparar läggs tillbaka (kamera, datum, 3D-läge, visningsval, färger).
+    { page.__uiDialogHandlers.push(d => d.accept());
+      const sv = await page.evaluate(async () => {
+        l3plSetDay('2026-10-12'); l3gmSetMode('time', true); l3SetPref('bubOn', true); l3SetPref('bubProg', 'plan'); l3plSet('film', { ...l3plPrefs().film, sec: 41 });
+        settings.statusColors = { ...(settings.statusColors || {}), pagaende: '#12ab34' };
+        l3.camera.position.set(l3.camera.position.x + 3, l3.camera.position.y + 3, l3.camera.position.z + 2); l3.orbit.update();
+        const camSaved = l3.camera.position.toArray().map(v => Math.round(v * 100) / 100);
+        await l3StartSave(); const saved = !!l3StartGet() && !!document.getElementById('v3SvStart');
+        // Ändra allt, "öppna om" och kontrollera att startvyn lägger tillbaka det.
+        l3gmSetMode('off', true); l3plSetDay('2026-10-20'); l3SetPref('bubOn', false); l3SetPref('bubProg', 'calc'); l3plSet('film', { ...l3plPrefs().film, sec: 7 }); settings.statusColors.pagaende = '#000000';
+        l3.camera.position.set(1, 2, 3); l3.orbit.update();
+        window.__l3StartPrefs = false; window.__l3StartApplied = false;
+        l3StartApplyPrefs(); await l3StartApply(); await new Promise(r => setTimeout(r, 900));
+        const camNow = l3.camera.position.toArray().map(v => Math.round(v * 100) / 100);
+        const r = { saved, date: $('dateInput').value, mode: l3gm.mode, bub: l3Prefs().bubOn, prog: l3Prefs().bubProg, sec: l3plPrefs().film.sec, col: settings.statusColors.pagaende, camSaved, camNow, views: l3SavedViews().filter(v => v.name === 'Startvy').length };
+        l3StartClear(); r.cleared = !l3StartGet(); return r;
+      });
+      if (!sv.saved || sv.date !== '2026-10-12' || sv.mode !== 'time' || !sv.bub || sv.prog !== 'plan' || sv.sec !== 41 || sv.col !== '#12ab34' || sv.views !== 0 || !sv.cleared || Math.abs(sv.camNow[0] - sv.camSaved[0]) > 1.5) fail('Startvy: ' + JSON.stringify(sv));
+      console.log('OK: startvy – kamera, datum, 3D-läge, visningsval och färger läggs tillbaka (och kan tas bort)');
+      page.__uiDialogHandlers.length = 0; }
     // Filter överst i vänstermenyn (sticky) och Följa tidplan.
     const fl = await page.evaluate(() => {
       l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();

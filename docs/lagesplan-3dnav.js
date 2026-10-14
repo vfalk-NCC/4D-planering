@@ -477,16 +477,19 @@ function l3DrawTriad() {
 function l3ViewKey() { return typeof projectId !== "undefined" && projectId ? String(projectId) : "_"; }
 function l3SavedViews() { return ((l3Prefs().views || {})[l3ViewKey()] || []).filter(v => v && v.t && v.p); }
 function l3StoreViews(list) { const all = { ...(l3Prefs().views || {}) }; all[l3ViewKey()] = list; l3SetPref("views", all); }
-function l3SaveView(name) {
-  name = String(name || "").trim();
-  const list = l3SavedViews();
-  if (!name) name = `Vy ${list.length + 1}`;
+function l3MakeView(name) {
   const O = l3.O, cam = l3.camera, W = v => [0, 1, 2].map(i => Math.round((v.getComponent(i) + O[i]) * 1000) / 1000);
-  const v = {
+  return {
     name, p: W(cam.position), t: W(l3.orbit.target), ortho: !!cam.isOrthographicCamera, zoom: cam.zoom,
     clips: (l3.clips || []).map(c => { const pt = c.plane.coplanarPoint(new THREE.Vector3()); return { n: c.plane.normal.toArray(), p: W(pt), label: c.label, off: Math.round((Number(c.off) || 0) * 1000) / 1000, base: c.base, a: c.anchor ? W(c.anchor) : undefined }; }),
     ...l3ViewState(),
   };
+}
+function l3SaveView(name) {
+  name = String(name || "").trim();
+  const list = l3SavedViews();
+  if (!name) name = `Vy ${list.length + 1}`;
+  const v = l3MakeView(name);
   const i = list.findIndex(x => x.name.toLowerCase() === name.toLowerCase());
   if (i >= 0) list[i] = v; else list.push(v);
   l3StoreViews(list.slice(-30));
@@ -642,4 +645,52 @@ function l3MoreRender() {
     r.onclick = e => { e.stopPropagation(); pop.classList.add("hidden"); b.click(); };
     pop.appendChild(r);
   });
+}
+
+/* ---- Startvy (Victor 2026-10-14): exakt det som är ikryssat och inställt när man sparar läggs tillbaka varje gång 3D-editorn öppnas ----
+   Kamera, snitt och vad som syns (som en sparad vy) + visningsval (ritning, objekt, bubblor …), 3D-läget (Alla/Tid …), datum,
+   tidplan (Powerproject/Excel), färger och färgskala, film- och Gantt-inställningar, vänsterflik och om Gantten är öppen. */
+const L3_START_PREFS = ["plan", "objs", "labels", "legend", "pal", "bubOn", "bubScope", "bubMax", "bubProg", "bubFields", "actOutline", "ortho"];
+const L3_START_PLAN_SKIP = ["films", "keys"]; // sparade filmer och kameranycklar är egna listor
+function l3StartGet() { const m = l3Prefs().startView || {}; return m[l3ViewKey()] || null; }
+function l3StartSnapshot() {
+  const P = l3Prefs(), pp = l3plPrefs(), prefs = {}, plan = {};
+  L3_START_PREFS.forEach(k => { if (P[k] !== undefined) prefs[k] = JSON.parse(JSON.stringify(P[k])); });
+  Object.keys(pp).forEach(k => { if (!L3_START_PLAN_SKIP.includes(k)) plan[k] = JSON.parse(JSON.stringify(pp[k])); });
+  const tab = document.querySelector("[data-paltab].on, [data-paltab].active"), cfg = typeof l3gmCfg === "function" ? l3gmCfg() : null;
+  return { at: new Date().toISOString(), v: l3MakeView("Startvy"), prefs, plan, date: $("dateInput").value || "", mode: typeof l3gm !== "undefined" ? l3gm.mode : "off", dock: !!(typeof l3pl !== "undefined" && l3pl.dock), tab: tab ? tab.dataset.paltab : "", colors: settings.statusColors ? { ...settings.statusColors } : null, opacities: settings.statusOpacities ? { ...settings.statusOpacities } : null, cfg: cfg ? { future: cfg.future, strict: cfg.strict, scale: cfg.scale } : null };
+}
+async function l3StartSave() {
+  const old = l3StartGet();
+  if (old && !(await uiConfirm(`Det finns redan en startvy (sparad ${old.at.slice(0, 16).replace("T", " ")}). Ersätta den med det du ser nu?`, { ok: "Ersätt startvyn" }))) return;
+  const all = { ...(l3Prefs().startView || {}) }; all[l3ViewKey()] = l3StartSnapshot(); l3SetPref("startView", all);
+  l3StartInfo(); l3Status("Startvyn sparad – den läggs tillbaka varje gång 3D-editorn öppnas.");
+}
+function l3StartClear() { const all = { ...(l3Prefs().startView || {}) }; delete all[l3ViewKey()]; l3SetPref("startView", all); l3StartInfo(); l3Status("Startvyn borttagen."); }
+function l3StartInfo() { const el = document.getElementById("v3SvStartInfo"), s = l3StartGet(); if (el) el.textContent = s ? `Startvy sparad ${s.at.slice(0, 16).replace("T", " ")}${s.date ? " · datum " + s.date : ""}${s.mode && s.mode !== "off" ? " · läge " + s.mode : ""}` : "Ingen startvy – 3D öppnas som du lämnade det."; const c = document.getElementById("v3SvStartClr"); if (c) c.disabled = !s; }
+/* Före gränssnittet byggs: visningsvalen och tidplansvalen läggs tillbaka så att rutorna visar dem. */
+function l3StartApplyPrefs() {
+  const s = l3StartGet(); if (!s || window.__l3StartPrefs) return; window.__l3StartPrefs = true;
+  Object.entries(s.prefs || {}).forEach(([k, v]) => l3SetPref(k, v));
+  const pp = { ...l3plPrefs() }; Object.entries(s.plan || {}).forEach(([k, v]) => { pp[k] = v; }); l3SetPref("plan", pp);
+  if (s.colors) { settings.statusColors = { ...s.colors }; if (s.opacities) settings.statusOpacities = { ...s.opacities }; try { localStorage.setItem("4dplan-settings", JSON.stringify(settings)); } catch (e) { /* */ } }
+}
+/* Efter att scenen byggts: kamera, snitt, synlighet, datum, 3D-läge, Gantten och vänsterfliken. */
+async function l3StartApply() {
+  const s = l3StartGet(); if (!s || window.__l3StartApplied) return; window.__l3StartApplied = true;
+  try {
+    if (s.date) { $("dateInput").value = s.date; $("dateInput").dispatchEvent(new Event("change")); if (typeof l3SyncDate === "function") l3SyncDate(); }
+    if (typeof l3plLoad === "function" && typeof l3pl !== "undefined" && !l3pl.rows) { try { await l3plLoad(); } catch (e) { /* tidplanen saknas */ } }
+    if (s.mode && s.mode !== "off" && typeof l3gmSetMode === "function") { l3gmSetMode(s.mode, true); if (s.date && typeof l3plSetDay === "function") l3plSetDay(s.date); }
+    if (s.tab && typeof l3PalTab === "function") l3PalTab(s.tab);
+    if (s.dock && typeof l3plDockToggle === "function" && !l3pl.dock) l3plDockToggle(true);
+    if (typeof l3plRenderTab === "function") l3plRenderTab();
+    // Kamera, snitt och synlighet som en sparad vy (utan att lägga den i listan).
+    const list = (l3Prefs().views || {})[l3ViewKey()] || [], v = { ...s.v, name: "Startvy" };
+    const all = { ...(l3Prefs().views || {}) }; all[l3ViewKey()] = [...list, v]; l3.prefs = { ...l3Prefs(), views: all };
+    const idx = l3SavedViews().length - 1; l3GoView(idx);
+    all[l3ViewKey()] = list; l3.prefs = { ...l3Prefs(), views: all }; // tillfälliga vyn bort igen (sparas aldrig)
+    if (typeof l3gmApply === "function") l3gmApply(true);
+    l3Status("Startvyn är inläst.");
+  } catch (e) { console.warn("Startvyn", e); }
 }
