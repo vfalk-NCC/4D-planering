@@ -179,7 +179,7 @@ async function makePp(variant) {
   // 4) Ny version: omdöpt och flyttad aktivitet känns igen (samma id, kopplingen kvar). Valen är sparade.
   await page.evaluate(id => { items.find(x => x.id === id).modelId = 'm1'; }, g.id);
   // Glapp satt i dashboarden (Victor 2026-10-07) ska överleva importen – bara för kopplingar som finns kvar.
-  await page.evaluate(async ([id, sid]) => { await ghWriteJSON(settings.githubToken, itemsPath(), arr => arr.map(r => r.id === id ? { ...r, model_id: 'm1', object_id: '77', dep_lags: { [sid]: 2, borta: 5 } } : r), 'koppla'); await refreshItems(); }, [g.id, sc.id]);
+  await page.evaluate(async ([id, sid]) => { await ghWriteJSON(settings.githubToken, itemsPath(), arr => arr.map(r => r.id === id ? { ...r, model_id: 'm1', object_id: '77', temporary: true, demolition: false, done_color: '#123456', done_opacity: 40, dep_lags: { [sid]: 2, borta: 5 } } : r), 'koppla'); await refreshItems(); }, [g.id, sc.id]);
   await page.setInputFiles('#ppFile', { name: 'Huvudtidplan v2.pp', mimeType: 'application/octet-stream', buffer: await makePp(2) });
   await page.evaluate(() => document.getElementById('ppOptions').classList.add('hidden')); await page.click('#btnPpRead'); await page.waitForSelector('#ppOptions:not(.hidden)');
   const o2 = await page.evaluate(() => ({ building: document.querySelector('#ppOptions [data-ppg="50"]').checked, area: document.getElementById('ppAreaLib').selectedOptions[0].text }));
@@ -195,6 +195,7 @@ async function makePp(variant) {
   if (pp2.length !== 4 || !g2 || g2.object_name !== 'Gjutning bottenplatta etapp 1' || g2.start_date !== '2026-11-02' || g2.model_id !== 'm1' || g2.object_id !== '77') fail('En ny version ska uppdatera samma aktivitet och behålla 3D-kopplingen: ' + JSON.stringify(g2));
   if (g2.baseline_start_date) fail('Importen ska inte sätta baseline: ' + JSON.stringify(g2));
   if (JSON.stringify(g2.dep_lags) !== JSON.stringify({ [sc.id]: 2 })) fail('Glappet ska följa med kopplingen: ' + JSON.stringify(g2.dep_lags));
+  if (g2.temporary !== true || g2.demolition !== false || g2.done_color !== '#123456' || g2.done_opacity !== 40) fail('Temporär, Rivning och Egen färg efter slut ska överleva en ny import: ' + JSON.stringify(g2));
   console.log('OK: ny version av tidplanen – samma aktiviteter uppdateras (namn, datum), 3D-kopplingen kvar; valen sparade');
   // Översta raden omdöpt i Powerproject: aktiviteterna känns ändå igen på sitt id.
   await page.setInputFiles('#ppFile', { name: 'Huvudtidplan v3.pp', mimeType: 'application/octet-stream', buffer: await makePp(3) });

@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-14 10:01";
+const APP_VERSION = "2026-10-14 10:08";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -4128,6 +4128,11 @@ async function commitPlanImport(diff) {
       baselines: p.baselines !== undefined ? p.baselines : (existing ? existing.baselines : null),
       excelSheet: p.sheet || null,
       excelMap: p.excelMap || null,
+      // Egna val som inte finns i tidplanen (Temporär, Rivning, Egen färg efter slut) ska överleva en ny import.
+      temporary: existing ? existing.temporary : undefined,
+      demolition: existing ? existing.demolition : undefined,
+      doneColor: existing ? existing.doneColor : null,
+      doneOpacity: existing ? existing.doneOpacity : null,
     });
     if (Array.isArray(p.dependsOnKeys)) depKeysById.set(id, p.dependsOnKeys);
     if (phases.length > 0) {
