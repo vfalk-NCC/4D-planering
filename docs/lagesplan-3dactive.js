@@ -15,7 +15,7 @@ function l3actClear() {
 }
 function l3actSchedule() { clearTimeout(l3act.timer); l3act.timer = setTimeout(l3actRebuild, 250); }
 function l3actActive(r, at) {
-  if (!r) return false;
+  if (!r || r.temporary === true) return false; // temporära objekt har sin egen färg och ska inte vara gulmarkerade hela tiden
   if (typeof rowTempOffAt === "function" && rowTempOffAt(r, at)) return false;
   const ph = l3Phase(r);
   return ph === "pagaende" || ph === "forsenad";

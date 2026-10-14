@@ -625,6 +625,9 @@ const PP = [
     });
     if (!(act.on > 0) || !act.lines || act.col !== 0xffc400 || act.off !== 0) fail('Pågående objekt – gul kontur: ' + JSON.stringify(act));
     console.log('OK: pågående objekt får en gul kontur (val), av = borta');
+    { const tmp = await page.evaluate(() => { const r = { id: 'tx', start_date: '2026-10-01', end_date: '2026-12-31', progress: 10, temporary: true }; return { temp: l3actActive(r, '2026-10-12'), normal: l3actActive({ ...r, temporary: false }, '2026-10-12') }; });
+      if (tmp.temp !== false || tmp.normal !== true) fail('Gul kontur ska inte gälla temporära objekt: ' + JSON.stringify(tmp));
+      console.log('OK: gul kontur gäller inte temporära objekt'); }
     // Info-bubblor i 3D-editorn: ett kort per aktivitet med namn, datum, framdrift, område och aktivitet.
     const bub = await page.evaluate(async () => {
       const row = items.find(r => r.start_date) || (items.push({ id: 'zz1', object_name: 'Test', start_date: '2026-10-01', end_date: '2026-10-09' }), items[items.length - 1]);
