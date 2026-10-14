@@ -56,6 +56,7 @@ function l3gmRange(rows, at, ctx) {
   if (!rows.length) return { off: true };
   const C = l3gmCfg(), ph = rows.map(r => l3gmRowPhase(r, at, C.future)).filter(p => p !== "dold");
   if (!ph.length) return { off: true };
+  if (rows.every(r => r.temporary === true)) return { off: false, rgb: null, alpha: null, phase: "temp" }; // temporär mellan start och slut: modellens originalfärg, ingen status/puls
   const g = l3gmGroup(ph);
   if (g === "klar") {
     const dr = rows.find(r => /^#[0-9a-f]{6}$/i.test(String(r.done_color || "")) || (r.done_opacity != null && r.done_opacity !== "" && Number.isFinite(Number(r.done_opacity))));

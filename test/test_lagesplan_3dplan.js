@@ -286,7 +286,7 @@ const PP = [
     console.log('OK: filmens planering – Powerproject, Excel eller båda (Excel-områdena märkta)');
     // 4D-koppling (listan i vänstermenyn): Powerproject, Excel eller båda; Excel-rader går inte att redigera här.
     const lk = await page.evaluate(async () => {
-      l3PalTab('plan'); l3plSet('secOpen', { film: true, link: true, other: true });
+      l3PalTab('plan'); l3plSet('secOpen', { film: true, link: true, other: true }); l3plRenderTab();
       const names = () => { const P = l3gaP(); l3plSet('dock', P); return [...document.querySelectorAll('#v3PlLinkHost [data-galopen]')].map(b => b.textContent); };
       const pick = async v => { const s = document.getElementById('v3PlLinkSrc'); s.value = v; s.dispatchEvent(new Event('change')); await new Promise(r => setTimeout(r, 200)); };
       await pick('both'); const both = l3plLinkActs(false).map(a => a.name);
