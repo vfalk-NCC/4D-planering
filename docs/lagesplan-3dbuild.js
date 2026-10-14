@@ -577,7 +577,7 @@ function l3bRecolor() {
     if (off.size !== was.size || [...off].some(i => !was.has(i)) || !aSame) { u.tempOff = off; u.gAlpha = gA; l3bApplyHidden(x); }
   }));
   if (typeof l3gmEnd === "function") l3gmEnd();
-  if (typeof l3fsAnimPreview === "function") l3fsAnimPreview(); // objektens animering följer datumet även utanför filmen
+  if (typeof l3fsAnimPreview === "function") { try { l3fsAnimPreview(); } catch (e) { console.warn("Animering", e); } } // objektens animering följer datumet även utanför filmen
 }
 function l3bCoupledIds() { const s = new Set(); l3b.models.forEach(m => m.visible && (m.ranges || []).forEach(r => { if (r.itemId) s.add(r.itemId); })); return s; }
 /* Träff i byggnaden -> objektets uppgifter. */

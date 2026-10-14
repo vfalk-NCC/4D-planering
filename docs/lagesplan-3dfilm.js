@@ -165,12 +165,12 @@ function l3fsAnimPreview(tIn) {
   if (typeof l3fxStart !== "function" || typeof l3fxAnimate !== "function" || (typeof l3pl !== "undefined" && l3pl.rec) || !l3pl.rows) return;
   if (!l3fsAnimOn() && !l3fs.fx) return;
   const t = Number.isFinite(tIn) ? tIn : l3plDate(l3plDay()).getTime() + 43200000;
-  const [t0, t1] = l3fsRange(), f = l3plPrefs().film || {}, sig = JSON.stringify([f.anim, t0, t1, l3plFilmSrc(), (l3pl.rows || []).length]);
-  if (l3fs.fx && l3fs.fxSig === sig) { l3fxAnimate(l3fs.fx, t); if (typeof l3Render === "function") l3Render(); return; }
+  const [t0, t1] = l3fsRange(), f = l3plPrefs().film || {}, msig = typeof l3b !== "undefined" ? l3b.models.map(m => `${m.id}:${m.visible ? 1 : 0}:${(m.meshes || []).length}`).join(",") : "", sig = JSON.stringify([f.anim, t0, t1, l3plFilmSrc(), (l3pl.rows || []).length, msig]); // modellerna med: objekten hittas först när de är inlästa
+  if (l3fs.fx && l3fs.fxSig === sig) { try { l3fxAnimate(l3fs.fx, t); } catch (e) { console.warn("Animeringens förhandsvisning", e); } if (typeof l3Render === "function") l3Render(); return; }
   if (l3fs.fxBusy) { l3fs.fxPend = t; return; }
   l3fsAnimEnd(); if (!l3fsAnimOn()) return;
   l3fs.fxBusy = true;
-  l3fxStart(l3plIso(new Date(t0)), l3plIso(new Date(t1))).then(fx => { l3fs.fxBusy = false; l3fs.fx = fx; l3fs.fxSig = sig; l3fxAnimate(fx, Number.isFinite(l3fs.fxPend) ? l3fs.fxPend : t); l3fs.fxPend = null; if (typeof l3Render === "function") l3Render(); }).catch(() => { l3fs.fxBusy = false; });
+  l3fxStart(l3plIso(new Date(t0)), l3plIso(new Date(t1))).then(fx => { l3fs.fxBusy = false; l3fs.fx = fx; l3fs.fxSig = sig; try { l3fxAnimate(fx, Number.isFinite(l3fs.fxPend) ? l3fs.fxPend : t); } catch (e) { console.warn("Animeringens förhandsvisning", e); } l3fs.fxPend = null; if (typeof l3Render === "function") l3Render(); }).catch(() => { l3fs.fxBusy = false; });
 }
 /* Spolar: datumet och kameran (mellan vyerna) – ritas en gång per bildruta. */
 function l3fsSeek(t) {
