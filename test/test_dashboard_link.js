@@ -106,6 +106,15 @@ put('plan_markups.json', [{ id: 'm', itemId: 'mk', shape: 'line', pts: [[0, 0, 0
   await send({ t: 'state', mode: 'time', date: '2026-10-08' }); await page.waitForTimeout(200);
   await page.evaluate(() => { dashLink.at = Date.now() - 90000; });
   if (await page.evaluate(() => dashboardOwns())) fail('Utan puls från dashboarden ska den inte längre äga 3D-vyn');
+  // 6b) 3D-editorn öppnad från dashboarden: förfrågningarna vidarebefordras hit och svaren går tillbaka över kanalen.
+  await peer.evaluate(() => { window.__got.length = 0; });
+  await send({ t: 'relay', id: 'r1', msg: { lagesplan: true, type: 'planChanged', source: 'pp', reqId: 7 } }); await page.waitForTimeout(600);
+  const rel = await peer.evaluate(() => window.__got.filter(m => m.t === 'relayReply'));
+  if (!rel.length || rel[0].id !== 'r1') fail('Relä till 3D-editorn: ' + JSON.stringify(rel));
+  await send({ t: 'relay', id: 'r2', msg: { lagesplan: true, type: 'ifcModelsList', reqId: 8 } }); await page.waitForTimeout(800);
+  const rel2 = await peer.evaluate(() => window.__got.filter(m => m.t === 'relayReply' && m.id === 'r2'));
+  if (!rel2.length) fail('Relä av ifcModelsList ska ge ett svar (även med fel): ' + JSON.stringify(rel2));
+  console.log('OK: 3D-editorn öppnad från dashboarden – förfrågningar vidarebefordras till 4D-planering och svaren kommer tillbaka');
   // 7) Hello: 4D-planering frågar efter läget när den startar.
   console.log('OK: dashboardens Gantt har företräde – 4D-planering skriver inget till 3D-vyn medan den styr, reglaget flyttar dashboardens datum, och tar över igen när dashboarden släpper');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));

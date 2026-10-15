@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-14 15:58";
+const APP_VERSION = "2026-10-15 07:49";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -374,12 +374,9 @@ function showLagesplanBanner(text, hideAfterMs) {
   if (text && hideAfterMs) lagesplanBannerTimer = setTimeout(() => { el.style.display = "none"; }, hideAfterMs);
 }
 
-window.addEventListener("message", async e => {
-  if (e.origin !== location.origin || !e.data || !e.data.lagesplan || !e.source) return;
-  const msg = e.data;
-  // Stora filer (IFC) flyttas till lägesplanen utan att kopieras (transfer); progress = hämtningens procent.
-  const reply = (payload, transfer) => e.source.postMessage({ lagesplanReply: true, reqId: msg.reqId, ...payload }, location.origin, transfer || []);
-  const progress = (f, got, total) => { try { e.source.postMessage({ lagesplanProgress: true, reqId: msg.reqId, f, got: got || 0, total: total || 0 }, location.origin); } catch (er) { /* fönstret stängt */ } };
+/* Lägesplanens 3D-vy (och, via 4D-dashboardens knapp, samma fönster öppnat därifrån) pratar med den här sidan: en förfrågan i taget
+   som får svar med reply(...). lagesplanHandle används både av fönstermeddelanden och av vidarebefordran från dashboarden. */
+async function lagesplanHandle(msg, reply, progress) {
   try {
     if (msg.type === "hello") {
       reply({ settings, projectId, planSource });
@@ -481,6 +478,14 @@ window.addEventListener("message", async e => {
   } catch (err) {
     reply({ error: err.message || String(err) });
   }
+}
+window.addEventListener("message", e => {
+  if (e.origin !== location.origin || !e.data || !e.data.lagesplan || !e.source) return;
+  const msg = e.data;
+  // Stora filer (IFC) flyttas till lägesplanen utan att kopieras (transfer); progress = hämtningens procent.
+  const reply = (payload, transfer) => e.source.postMessage({ lagesplanReply: true, reqId: msg.reqId, ...payload }, location.origin, transfer || []);
+  const progress = (f, got, total) => { try { e.source.postMessage({ lagesplanProgress: true, reqId: msg.reqId, f, got: got || 0, total: total || 0 }, location.origin); } catch (er) { /* fönstret stängt */ } };
+  lagesplanHandle(msg, reply, progress);
 });
 
 /* ---------------------------------------------------------------------

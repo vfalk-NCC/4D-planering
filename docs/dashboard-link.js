@@ -40,7 +40,17 @@ function dashLinkSend(date) { if (dashLink.ch && dashboardOwns() && dashLink.mod
 try {
   if (typeof BroadcastChannel !== "undefined") {
     dashLink.ch = new BroadcastChannel("4d-gantt-link");
-    dashLink.ch.onmessage = e => { const m = e.data || {}; if (m.t === "state") dashLinkOnState(m); };
+    dashLink.ch.onmessage = e => {
+      const m = e.data || {};
+      if (m.t === "state") dashLinkOnState(m);
+      // 4D-dashboardens knapp öppnar lägesplanens 3D-editor och skickar dess förfrågningar hit (TC-modeller, filer, koppling …).
+      else if (m.t === "relay" && m.msg && typeof lagesplanHandle === "function") {
+        const id = m.id;
+        lagesplanHandle(m.msg,
+          (payload, transfer) => { try { dashLink.ch.postMessage({ t: "relayReply", id, payload }); } catch (er) { try { dashLink.ch.postMessage({ t: "relayReply", id, payload: { error: "Svaret gick inte att skicka: " + er.message } }); } catch (e2) { /* */ } } },
+          (f, got, total) => { try { dashLink.ch.postMessage({ t: "relayProgress", id, f, got: got || 0, total: total || 0 }); } catch (er) { /* */ } });
+      }
+    };
     dashLink.ch.postMessage({ t: "hello" }); // dashboarden svarar med sitt läge
   }
 } catch (e) { /* utan kanal: som förut */ }
