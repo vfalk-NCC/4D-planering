@@ -1322,3 +1322,9 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .lm-namerow .lm-chk { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-size: 12px; white-space: nowrap; }
 .lm-namerow input[type="text"] { flex: 1 1 180px; min-width: 120px; padding: 5px 8px; border: 1px solid var(--border, #cfd6e0); border-radius: 6px; font: inherit; }
 .lm-namerow input[type="text"]:disabled { background: #f1f5f9; color: #94a3b8; }
+
+/* Eget namn på filen som sparas (Placera i 3D) */
+.place-namerow { align-items: center; gap: 8px; flex-wrap: wrap; }
+.place-namerow .place-chk { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-size: 12px; white-space: nowrap; }
+.place-namerow input[type="text"] { flex: 1 1 180px; min-width: 120px; padding: 5px 8px; border: 1px solid var(--border, #cfd6e0); border-radius: 6px; font: inherit; }
+.place-namerow input[type="text"]:disabled { background: #f1f5f9; color: #94a3b8; }

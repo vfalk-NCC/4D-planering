@@ -477,6 +477,12 @@ function buildPlacementsIfc(projName, only) {
 }
 /* opts.ids: bara de markerade placeringarna (Exportera markerade som IFC i 3D-vyn) – en ny fil med urvalet; ingen 4D-koppling
    och inget tänds/släcks i TC. Utan opts: alla placeringar som förut. */
+/* Namnet på den sparade filen: autonamn eller eget (rutorna under Spara-knappen; sparas här så att de överlever omritning av panelen). */
+const placeNameOpt = { custom: false, text: "", stamp: true, local: false };
+function placeNameHtml() {
+  const o = placeNameOpt, ch = v => v ? " checked" : "";
+  return `<div class="row place-namerow"><label class="place-chk" title="Av = autonamn (Etablering + projekt + datum och klockslag). På = skriv ett eget namn på filen."><input type="checkbox" id="placeNameOn"${ch(o.custom)}> Eget namn</label><input type="text" id="placeNameTxt" placeholder="Skriv eget namn på filen…" maxlength="80" autocomplete="off" value="${String(o.text).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}"${o.custom ? "" : " disabled"}><label class="place-chk" title="Lägger datum och klockslag sist i namnet så att filen alltid blir ny"><input type="checkbox" id="placeNameStamp"${ch(o.stamp)}${o.custom ? "" : " disabled"}> + datum &amp; klockslag</label><label class="place-chk" title="Hämtar också en kopia av filen till datorn"><input type="checkbox" id="placeLocal"${ch(o.local)}> Spara även på datorn</label></div>`;
+}
 async function placeSaveIfc(opts = {}) {
   const only = Array.isArray(opts.ids) && opts.ids.length ? new Set(opts.ids) : null;
   await placeSaveNow();
@@ -488,9 +494,13 @@ async function placeSaveIfc(opts = {}) {
   const stamp = placeStamp();
   const extra = typeof placeModelIfcFiles === "function" ? await placeModelIfcFiles(stamp, only) : [];
   if (!r && !extra.length) { alert("Det finns inga placerade objekt att spara. Välj ett objekt och tryck i modellen."); return null; }
-  // Ny fil varje gång (datum + klockslag) – en tidigare export skrivs aldrig över.
-  const name = `Etablering${only ? ` urval ${only.size} objekt` : ""} ${projName || "4D-planering"} ${stamp}.ifc`.replace(/[\\/:*?"<>|]/g, "-");
+  // Ny fil varje gång (datum + klockslag) – en tidigare export skrivs aldrig över. Eget namn (rutan i panelen) gäller helhetsexporten.
+  const nm = placeNameOpt, custom = !only && nm.custom && String(nm.text || "").replace(/\.ifc$/i, "").trim();
+  if (!only && nm.custom && !custom) { setPlaceStatus("Skriv ett eget namn – eller bocka ur Eget namn för autonamn.", true); return null; }
+  if (custom && !nm.stamp && !confirm(`Du har valt ett eget namn utan datum och klockslag ("${custom}.ifc").\n\nFinns det redan en fil med exakt det namnet i "${PLACE_TC_FOLDER}" blir den nya filen en NY VERSION av den filen i Trimble Connect.\n\nFortsätta ändå?`)) return null;
+  const name = (custom ? `${custom}${nm.stamp ? " " + stamp : ""}.ifc` : `Etablering${only ? ` urval ${only.size} objekt` : ""} ${projName || "4D-planering"} ${stamp}.ifc`).replace(/[\\/:*?"<>|]/g, "-");
   const files = [...(r ? [new File([new TextEncoder().encode(r.text)], name, { type: "application/x-step" })] : []), ...extra];
+  if (nm.local && !only) files.forEach(f => { try { const url = URL.createObjectURL(f), a = document.createElement("a"); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); } catch (e) { /* ingen kopia på datorn */ } });
   const n = (r ? r.n : 0) + extra.length;
   setPlaceStatus(`Sparar ${n} objekt som IFC i Trimble Connect…`);
   let upRes = null;
@@ -715,6 +725,7 @@ function renderPlacePanel() {
     <div class="place-list">${placeListHtml()}</div>
     <div class="row"><button type="button" id="placeUndo" ${placeUndoStack.length ? "" : "disabled"}>↶ Ångra</button>
       <button type="button" id="placeSaveIfc" class="primary" ${placements.length ? "" : "disabled"}>${placeSaveLabel()}</button></div>
+    ${placeNameHtml()}
     <div class="hint">Sparas i mappen "${PLACE_TC_FOLDER}". Varje sparning blir en ny fil med datum och klockslag – tidigare filer skrivs inte över.</div>`;
   bindPlacePanel(box, act);
 }
@@ -726,6 +737,11 @@ function bindPlacePanel(box, act) {
   on("placeFenceDone", () => { placeMode = null; renderPlacePanel(); placeRedraw(); });
   on("placeUndo", placeUndo);
   on("placeOpenBrowser", () => { if (typeof placeBrowserToggle === "function") placeBrowserToggle(true); });
+  { const g = id => box.querySelector("#" + id), onCb = g("placeNameOn"), txt = g("placeNameTxt"), st = g("placeNameStamp"), loc = g("placeLocal");
+    if (onCb) onCb.onchange = () => { placeNameOpt.custom = onCb.checked; if (txt) txt.disabled = !onCb.checked; if (st) st.disabled = !onCb.checked; if (onCb.checked && txt) txt.focus(); };
+    if (txt) { txt.oninput = () => { placeNameOpt.text = txt.value; }; txt.onkeydown = e => e.stopPropagation(); }
+    if (st) st.onchange = () => { placeNameOpt.stamp = st.checked; };
+    if (loc) loc.onchange = () => { placeNameOpt.local = loc.checked; }; }
   on("placeSaveIfc", () => { placeSaveIfc().catch(e => setPlaceStatus("Kunde inte spara som IFC: " + e.message, true)); });
   if (!act) return;
   const change = (fn, live) => { if (!live) placeSnapshot(); fn(act); placeTouch(act); placeRedraw(); };

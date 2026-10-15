@@ -256,6 +256,17 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   if (rep.error || !(await page.evaluate(() => placements.some(p => p.id === 'fran3d')))) fail('placementsChanged ska läsa om etableringen: ' + JSON.stringify(rep));
   if (!(await page.locator('.place-row', { hasText: 'Från 3D' }).count())) fail('Listan ska visa objektet från 3D-vyn');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
+  // Eget namn på filen (rutorna under Spara-knappen; överlever omritning av panelen).
+  await page.check('#placeNameOn'); await page.fill('#placeNameTxt', 'Min etablering: v3');
+  await page.evaluate(() => renderPlacePanel()); // omritning ska behålla valen
+  if ((await page.inputValue('#placeNameTxt')) !== 'Min etablering: v3' || !(await page.isChecked('#placeNameOn'))) fail('Eget namn ska finnas kvar efter omritning');
+  await page.click('#placeSaveIfc'); await wait(1500);
+  up = await page.evaluate(() => window.__up);
+  if (!/^Min etablering- v3 \d{4}-\d\d-\d\d kl [\d.]+\.ifc$/.test(up[up.length - 1].name)) fail("Eget namn med datum: " + up[up.length - 1].name);
+  await page.uncheck('#placeNameOn');
+  await page.click('#placeSaveIfc'); await wait(1500);
+  up = await page.evaluate(() => window.__up);
+  if (!/^Etablering .* kl [\d.]+\.ifc$/.test(up[up.length - 1].name)) fail("Autonamn när Eget namn är av: " + up[up.length - 1].name);
   console.log('OK test_place3d');
   await browser.close(); server.close();
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
