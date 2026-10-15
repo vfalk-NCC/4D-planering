@@ -152,6 +152,19 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   if (!near(await center(), [c5[0] + 1, c5[1], c5[2]])) fail('Piltangent: ' + await center());
   if (!(await page.locator('#lmState').innerText()).includes('vriden 90')) fail('Läget ska sammanfattas: ' + await page.locator('#lmState').innerText());
 
+  // Eget namn på kopian: autonamn som standard, eget namn med/utan datum.
+  { const names = await page.evaluate(() => {
+      const r = [lmFileName('Pall')]; document.getElementById('lmNameOn').click();
+      document.getElementById('lmNameTxt').value = 'Min kopia: v2.ifc'; r.push(lmFileName('Pall'));
+      document.getElementById('lmNameStamp').click(); r.push(lmFileName('Pall'));
+      r.push(document.getElementById('lmNameTxt').disabled);
+      document.getElementById('lmNameStamp').click(); document.getElementById('lmNameOn').click(); r.push(lmFileName('Pall'), document.getElementById('lmNameTxt').disabled);
+      return r; });
+    if (!/^Pall flyttad \d{4}-\d\d-\d\d kl [\d.]+\.ifc$/.test(names[0])) fail('Autonamn: ' + names[0]);
+    if (!/^Min kopia- v2 \d{4}-\d\d-\d\d kl [\d.]+\.ifc$/.test(names[1])) fail('Eget namn med datum: ' + names[1]);
+    if (names[2] !== 'Min kopia- v2.ifc' || names[3] !== false) fail('Eget namn utan datum: ' + names[2]);
+    if (!/^Pall flyttad /.test(names[4]) || names[5] !== true) fail('Tillbaka till autonamn: ' + names[4]); }
+
   // Spara läget: flyttad IFC som ny fil – samma läge som TC visade.
   const shownC = await center();
   const shownPl = await page.evaluate(() => __pl());

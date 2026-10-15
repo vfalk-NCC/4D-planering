@@ -169,11 +169,23 @@ function lmIfcApply(text, pl) {
   out = out.replace(/(\n|^)DATA;\s*\r?\n/, m => m + add.join("\r\n") + "\r\n");
   return out;
 }
+/* Namn på den sparade kopian: autonamn (som förut) eller eget namn, med eller utan datum/klockslag sist. */
+function lmNameOpts() {
+  const g = id => document.getElementById(id);
+  return { custom: !!(g("lmNameOn") && g("lmNameOn").checked), text: String((g("lmNameTxt") && g("lmNameTxt").value) || "").replace(/\.ifc(zip)?$/i, "").trim(), stamp: !g("lmNameStamp") || g("lmNameStamp").checked, local: !!(g("lmLocal") && g("lmLocal").checked) };
+}
+function lmFileName(base) {
+  const o = lmNameOpts(), clean = s => s.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim();
+  if (o.custom && o.text) return clean(o.stamp ? `${o.text} ${placeStamp()}` : o.text) + ".ifc";
+  return clean(`${base} flyttad ${placeStamp()}`) + ".ifc";
+}
 async function lmSave() {
   if (!lm.modelId) return;
   const name = String(lm.name || "");
   if (!/\.ifc(zip)?$/i.test(name)) { lmMsg("Läget kan bara sparas för IFC-filer.", true); return; }
   if (!confirm(`Spara läget för "${name}"?\n\nModellen hämtas från Trimble Connect, flyttas till det nya läget och sparas som en NY fil i mappen "${LM_FOLDER}". Den gamla filen lämnas orörd men släcks i 3D-vyn.`)) return;
+  { const nm = lmNameOpts(); if (nm.custom && !nm.text) { lmMsg("Skriv ett eget namn – eller bocka ur Eget namn för autonamn.", true); return; }
+    if (nm.custom && !nm.stamp && !confirm(`Du har valt ett eget namn utan datum och klockslag ("${lmFileName(name.replace(/\.ifc(zip)?$/i, ""))}").\n\nFinns det redan en fil med exakt det namnet i "${LM_FOLDER}" blir den nya filen en NY VERSION av den filen i Trimble Connect.\n\nFortsätta ändå?`)) return; }
   const btn = document.getElementById("lmSave"); if (btn) btn.disabled = true;
   try {
     lmMsg("Hämtar modellen från Trimble Connect…");
@@ -181,9 +193,11 @@ async function lmSave() {
     const text = typeof ifcBytesToStr === "function" ? ifcBytesToStr(raw) : new TextDecoder().decode(raw);
     const moved = lmIfcApply(text, lm.cur);
     const base = name.replace(/\.ifc(zip)?$/i, "").replace(/ flyttad \d{4}-\d\d-\d\d kl [\d.]+$/, "");
-    const fname = `${base} flyttad ${placeStamp()}.ifc`.replace(/[\\/:*?"<>|]/g, "-");
+    const fname = lmFileName(base);
     lmMsg("Sparar den flyttade filen…");
-    const up = await tcUploadFiles([new File([typeof ifcStrToBytes === "function" ? ifcStrToBytes(moved) : new TextEncoder().encode(moved)], fname, { type: "application/x-step" })], LM_FOLDER);
+    const outFile = new File([typeof ifcStrToBytes === "function" ? ifcStrToBytes(moved) : new TextEncoder().encode(moved)], fname, { type: "application/x-step" });
+    const up = await tcUploadFiles([outFile], LM_FOLDER);
+    if (lmNameOpts().local) { try { const u = URL.createObjectURL(outFile), a = document.createElement("a"); a.href = u; a.download = fname; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 5000); } catch (e) { /* ingen kopia på datorn */ } }
     const newId = typeof placeUploadedId === "function" ? placeUploadedId(up, fname) : null;
     // Den gamla tillbaka till sitt ursprungliga läge och släckt, den nya tänd.
     try { await API.viewer.placeModel(lm.modelId, lmClone(lm.start)); } catch (e) { /* ingen fara */ }
@@ -232,6 +246,8 @@ function lmBind() {
   on("lmUndo", lmUndo);
   on("lmReset", lmReset);
   on("lmSave", lmSave);
+  { const onCb = document.getElementById("lmNameOn"), txt = document.getElementById("lmNameTxt"), st = document.getElementById("lmNameStamp");
+    if (onCb && txt) onCb.onchange = () => { txt.disabled = !onCb.checked; if (st) st.disabled = !onCb.checked; if (onCb.checked) txt.focus(); }; }
   on("lmDone", () => { lm = { ...lm, modelId: null, pick: null, pts: [] }; lmMsg(""); lmRender(); lmDrawMarks(); });
 }
 document.addEventListener("DOMContentLoaded", lmBind);

@@ -1316,3 +1316,9 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .app-guide-body { padding: 8px 14px 10px; max-height: 60vh; overflow-y: auto; }
 .app-guide-body ul { margin: 6px 0 0; padding-left: 18px; } .app-guide-body li { margin: 5px 0; line-height: 1.45; }
 .app-guide-body a { color: #1d4ed8; }
+
+/* Eget namn på den sparade kopian (Flytta och vrid modell live) */
+.lm-namerow { align-items: center; gap: 8px; flex-wrap: wrap; }
+.lm-namerow .lm-chk { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-size: 12px; white-space: nowrap; }
+.lm-namerow input[type="text"] { flex: 1 1 180px; min-width: 120px; padding: 5px 8px; border: 1px solid var(--border, #cfd6e0); border-radius: 6px; font: inherit; }
+.lm-namerow input[type="text"]:disabled { background: #f1f5f9; color: #94a3b8; }

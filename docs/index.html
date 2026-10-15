@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <title>4D-planering</title>
-<link rel="stylesheet" href="style.css?v=20261015054909" />
-<script src="error-guard.js?v=20261015054909"></script>
+<link rel="stylesheet" href="style.css?v=20261015082606" />
+<script src="error-guard.js?v=20261015082606"></script>
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="plan-excel-parser.js?v=20261015054909"></script>
-<script src="plan-excel-comments.js?v=20261015054909"></script>
+<script src="plan-excel-parser.js?v=20261015082606"></script>
+<script src="plan-excel-comments.js?v=20261015082606"></script>
 </head>
 <body>
 
@@ -376,6 +376,7 @@
         <div class="hint" id="lmState"></div>
         <div class="row"><button type="button" id="lmUndo">↶ Ångra</button><button type="button" id="lmReset">Återställ</button><button type="button" id="lmDone">Klar</button></div>
         <div class="row"><button type="button" id="lmSave" class="primary" title="Gör läget permanent och synligt för alla: en flyttad kopia av IFC-filen sparas som ny fil">Spara läget som ny IFC-fil</button></div>
+        <div class="row lm-namerow"><label class="lm-chk" title="Av = autonamn (modellens namn + flyttad + datum och klockslag). På = skriv ett eget namn på kopian."><input type="checkbox" id="lmNameOn"> Eget namn</label><input type="text" id="lmNameTxt" placeholder="Skriv eget namn på kopian…" maxlength="80" autocomplete="off" disabled><label class="lm-chk" title="Lägger datum och klockslag sist i namnet så att filen alltid blir ny"><input type="checkbox" id="lmNameStamp" checked disabled> + datum &amp; klockslag</label><label class="lm-chk" title="Hämtar också en kopia av den flyttade IFC-filen till datorn"><input type="checkbox" id="lmLocal"> Spara även på datorn</label></div>
         <div class="hint">Piltangenterna flyttar, Page Up/Down höjer/sänker, , och . vrider (Skift = 10 gånger längre). <b>Spara läget</b> gör flytten permanent och synlig för alla: en flyttad kopia sparas som ny fil i "4D Etablering" – den gamla filen lämnas orörd.</div>
       </div>
     </section>
@@ -731,26 +732,26 @@
     </div>
   </div>
 
-  <script src="github-storage.js?v=20261015054909"></script>
-  <script src="excel-link.js?v=20261015054909"></script>
-  <script src="dashboard-link.js?v=20261015054909"></script>
-  <script src="app.js?v=20261015054909"></script>
-  <script src="manual-markings.js?v=20261015054909"></script>
-  <script src="ifc-writer.js?v=20261015054909"></script>
-  <script src="pp-import.js?v=20261015054909"></script>
-  <script src="ifc-subset.js?v=20261015054909"></script>
-  <script src="tc-organizer.js?v=20261015054909"></script>
-  <script src="week-summary.js?v=20261015054909"></script>
-  <script src="ifc-mesh.js?v=20261015054909"></script>
-  <script src="place-models.js?v=20261015054909"></script>
-  <script src="tc-livemove.js?v=20261015054909"></script>
-  <script src="place3d.js?v=20261015054909"></script>
-  <script src="volume-ifc.js?v=20261015054909"></script>
-  <script src="sub-activity-list.js?v=20261015054909"></script>
-  <script src="activity-remove.js?v=20261015054909"></script>
-  <script src="dup-check.js?v=20261015054909"></script>
-  <script src="ui-shell.js?v=20261015054909"></script>
-  <script src="undo.js?v=20261015054909"></script>
-  <script src="planning-keys.js?v=20261015054909"></script>
+  <script src="github-storage.js?v=20261015082606"></script>
+  <script src="excel-link.js?v=20261015082606"></script>
+  <script src="dashboard-link.js?v=20261015082606"></script>
+  <script src="app.js?v=20261015082606"></script>
+  <script src="manual-markings.js?v=20261015082606"></script>
+  <script src="ifc-writer.js?v=20261015082606"></script>
+  <script src="pp-import.js?v=20261015082606"></script>
+  <script src="ifc-subset.js?v=20261015082606"></script>
+  <script src="tc-organizer.js?v=20261015082606"></script>
+  <script src="week-summary.js?v=20261015082606"></script>
+  <script src="ifc-mesh.js?v=20261015082606"></script>
+  <script src="place-models.js?v=20261015082606"></script>
+  <script src="tc-livemove.js?v=20261015082606"></script>
+  <script src="place3d.js?v=20261015082606"></script>
+  <script src="volume-ifc.js?v=20261015082606"></script>
+  <script src="sub-activity-list.js?v=20261015082606"></script>
+  <script src="activity-remove.js?v=20261015082606"></script>
+  <script src="dup-check.js?v=20261015082606"></script>
+  <script src="ui-shell.js?v=20261015082606"></script>
+  <script src="undo.js?v=20261015082606"></script>
+  <script src="planning-keys.js?v=20261015082606"></script>
 </body>
 </html>
