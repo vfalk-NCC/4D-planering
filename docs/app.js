@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-15 10:29";
+const APP_VERSION = "2026-10-16 09:12";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -5404,6 +5404,14 @@ const RESET_FILES = ["plan_items", "plan_item_activities", "plan_item_comments",
 const projectFilePath = name => RESET_FILES.includes(name) ? `${planDir()}/${name}.json` : `projects/${encodeURIComponent(projectId)}/${name}.json`;
 const backupIndexPath = () => `${planDir()}/backups/index.json`;
 
+let BACKUP_SPLIT_CHARS = 20e6;
+/* Läser en säkerhetskopia, även när datafilerna ligger som delfiler (record.parts). */
+async function loadBackup(path) {
+  const { data } = await ghGetFile(settings.githubToken, path);
+  if (!data || !data.files) throw new Error("Säkerhetskopian saknar data.");
+  if (data.parts) for (const [name, pp] of Object.entries(data.parts)) { const r = await ghGetFile(settings.githubToken, pp); data.files[name] = r.data === null ? [] : r.data; }
+  return data;
+}
 async function createBackup(reason) {
   if (!isBackendConfigured()) throw new Error("Ingen databas ansluten.");
   const files = {};
@@ -5422,6 +5430,19 @@ async function createBackup(reason) {
     comments: Array.isArray(files.plan_item_comments) ? files.plan_item_comments.length : 0
   };
   const record = { id, created_at: now.toISOString(), reason, by: settings.userName || null, counts, files };
+  // GitHub tar inte emot filer över ~50 MB i ett anrop (422 "file is too large", Victor 2026-10-16): är kopian stor läggs varje datafil
+  // som en egen delfil i en mapp bredvid, och huvudfilen pekar på dem (record.parts). Små kopior är oförändrade (en fil).
+  const texts = {}; let total = 0;
+  for (const [name, data] of Object.entries(files)) { texts[name] = JSON.stringify(data); total += texts[name].length; }
+  if (total > BACKUP_SPLIT_CHARS) {
+    const dir = `${planDir()}/backups/${stamp}-${id.slice(0, 8)}`; record.parts = {}; record.files = {};
+    for (const [name, txt] of Object.entries(texts)) {
+      if (txt.length < BACKUP_SPLIT_CHARS / 20) { record.files[name] = files[name]; continue; }
+      const pp = `${dir}/${name}.json`;
+      await ghPutFile(settings.githubToken, pp, ghUtf8ToB64(txt), null, `Säkerhetskopia: ${reason} (${name})`);
+      record.parts[name] = pp;
+    }
+  }
   await ghPutFile(settings.githubToken, path, ghUtf8ToB64(JSON.stringify(record)), null, `Säkerhetskopia: ${reason}`);
   await ghWriteJSON(settings.githubToken, backupIndexPath(),
     arr => [...arr, { id, path, created_at: record.created_at, reason, by: record.by, counts }],
@@ -5452,7 +5473,7 @@ async function renderBackupList() {
   el.querySelectorAll('[data-action="download-backup"]').forEach(btn => {
     btn.onclick = async () => {
       try {
-        const { data } = await ghGetFile(settings.githubToken, btn.dataset.path);
+        const data = await loadBackup(btn.dataset.path);
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" }));
         a.download = btn.dataset.path.split("/").pop();
@@ -5469,8 +5490,7 @@ async function restoreBackup(path, when) {
   if (!confirm(`Återställa projektets data till läget ${when}?\n\nAllt som gjorts efter det (kopplingar, ändringar, kommentarer) ersätts. En säkerhetskopia av nuvarande läge tas först, så det går att ångra.`)) return;
   if (!confirm("Är du helt säker? Klicka OK för att återställa.")) return;
   try {
-    const { data } = await ghGetFile(settings.githubToken, path);
-    if (!data || !data.files) throw new Error("Säkerhetskopian saknar data.");
+    const data = await loadBackup(path);
     await createBackup(`Före återställning till ${when}`);
     for (const [name, content] of Object.entries(data.files)) {
       await ghWriteJSON(settings.githubToken, projectFilePath(name), () => content, `Återställ ${name} till ${when}`);

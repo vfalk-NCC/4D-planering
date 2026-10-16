@@ -97,6 +97,18 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', [{ id: 'c1'
   if (await page.locator('#backupList .backup-row').count() !== 1) fail('historiken ska visa kopian');
   console.log('OK: manuell säkerhetskopia syns i historiken i inställningarna');
 
+  // 4b) Stor säkerhetskopia delas i delfiler (GitHub vägrar filer över ~50 MB: 422)
+  { const idxKey = `projects/${PID}/backups/index.json`, snap = new Map(store);
+    await page.evaluate(async () => { BACKUP_SPLIT_CHARS = 100; try { window.__big = await createBackup('delat test'); } finally { BACKUP_SPLIT_CHARS = 20e6; } });
+    const rec = await page.evaluate(() => window.__big);
+    if (!rec.parts || !Object.keys(rec.parts).includes('plan_items')) fail('stor kopia ska ha delfiler: ' + JSON.stringify(Object.keys(rec.parts || {})));
+    const partKey = `projects/${PID}/` + rec.parts.plan_items.split(`projects/${PID}/`).pop();
+    if (!store.has(partKey) && ![...store.keys()].some(k => k.includes('/backups/') && k.endsWith('/plan_items.json'))) fail('delfilen ska finnas');
+    const back = await page.evaluate(async p => { const d = await loadBackup(p); return d.files.plan_items.length; }, get('backups/index.json').slice(-1)[0].path);
+    if (back !== 2) fail('återläsning av delad kopia ska ge 2 objekt, fick ' + back);
+    store.clear(); snap.forEach((v, k) => store.set(k, v)); }
+  console.log('OK: stor säkerhetskopia delas i delfiler');
+
   // 5) Nollställ (dubbel bekräftelse) - tar kopia först
   await page.locator('.danger-zone summary').click();
   await page.click('#btnResetPlanning'); await page.waitForTimeout(1500);
