@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-16 09:56";
+const APP_VERSION = "2026-10-16 11:05";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -5703,6 +5703,8 @@ function toRow(it) {
     // Egen färg/opacitet efter slut (sätts i dashboarden) – bevaras så att en sparning här inte tappar den.
     ...(it.doneColor ? { done_color: it.doneColor } : {}),
     ...(Number.isFinite(it.doneOpacity) ? { done_opacity: it.doneOpacity } : {}),
+    // Följer en annan aktivitet (sätts i dashboarden) – bevaras så att en sparning här inte tappar länken.
+    ...(it.follows ? { follows: it.follows } : {}),
     updated_at: new Date().toISOString()
   };
 }
@@ -5762,9 +5764,49 @@ function fromRowStored(row) {
     bubbleOff: typeof row.bubble_off === "boolean" ? row.bubble_off : undefined,
     demolition: typeof row.demolition === "boolean" ? row.demolition : undefined,
     doneColor: row.done_color || null,
+    follows: row.follows && typeof row.follows === "object" && !Array.isArray(row.follows) && (row.follows.id || row.follows.key) ? row.follows : null,
     doneOpacity: row.done_opacity !== undefined && row.done_opacity !== null && row.done_opacity !== "" && Number.isFinite(Number(row.done_opacity)) ? Number(row.done_opacity) : null,
     updatedAt: row.updated_at
   };
+}
+
+/* Följer en annan aktivitet (Victor 2026-10-16, sätts i dashboarden): en egen aktivitet, t.ex. en mobilkran, får samma period/start/slut som
+   Powerproject-aktiviteten den följer – även efter en ny import (raderna behåller sina id:n, länken pekar på id och source_key). */
+function followSpanOf(f, selfId) {
+  const own = String(selfId), byId = f.id ? items.find(x => String(x.id) === String(f.id)) : null;
+  let members = null;
+  if (byId && String(byId.id) !== own) members = (byId.groupId || byId.sourceKey) ? items.filter(x => (byId.groupId && x.groupId === byId.groupId) || (byId.sourceKey && x.sourceKey === byId.sourceKey)) : [byId];
+  else if (f.key) members = items.filter(x => x.sourceKey === f.key);
+  members = (members || []).filter(x => String(x.id) !== own && x.startDate && x.endDate);
+  if (!members.length) return null;
+  return { start: members.map(x => x.startDate).sort()[0], end: members.map(x => x.endDate).sort().pop() };
+}
+async function applyFollowLinks() {
+  if (!items.some(it => it.follows)) return 0;
+  const add = (d, n) => { const x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+  const diff = (a, b) => Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 86400000);
+  const changed = new Map();
+  for (let pass = 0; pass < 4; pass++) {
+    let any = false;
+    items.forEach(it => {
+      const f = it.follows; if (!f || !it.startDate || !it.endDate) return;
+      const t = followSpanOf(f, it.id); if (!t) return;
+      const dur = diff(it.startDate, it.endDate), mode = f.mode === "start" || f.mode === "end" ? f.mode : "span", d0 = Math.round(Number(f.d0) || 0), d1 = Math.round(Number(f.d1) || 0);
+      let st, en;
+      if (mode === "end") { en = add(t.end, d1); st = add(en, -dur); }
+      else if (mode === "start") { st = add(t.start, d0); en = add(st, dur); }
+      else { st = add(t.start, d0); en = add(t.end, d1); if (en < st) en = st; }
+      if (st !== it.startDate || en !== it.endDate) { it.startDate = st; it.endDate = en; changed.set(String(it.id), { st, en }); any = true; }
+    });
+    if (!any) break;
+  }
+  if (!changed.size) return 0;
+  try {
+    const now = new Date().toISOString();
+    await ghWriteJSON(settings.githubToken, itemsPath(), arr => arr.map(r => { const n = changed.get(String(r.id)); return n ? { ...r, start_date: n.st, end_date: n.en, updated_at: now } : r; }), `Aktiviteter följde med sin aktivitet (${changed.size} st)`);
+  } catch (e) { console.warn("Kunde inte spara följda aktiviteter (försöker igen vid nästa hämtning)", e); }
+  if (typeof renderItemList === "function") renderItemList();
+  return changed.size;
 }
 
 async function refreshItems(opts = {}) {
@@ -5777,6 +5819,7 @@ async function refreshItems(opts = {}) {
     const [rows] = await Promise.all([ghReadJSON(settings.githubToken, itemsPath(), opts), loadLastPlanImport(opts)]);
     items = rows.map(fromRow);
     itemsTotalCount = items.length;
+    applyFollowLinks().catch(e => console.warn("Följa aktivitet", e));
     // Ny planering skickad från Excel? (högst en gång i minuten)
     if (typeof checkExcelInbox === "function" && planSource === "excel") { renderExcelLinkHelp(); checkExcelInbox(); }
     if (typeof ppBlPanelRefresh === "function" && planSource === "pp") ppBlPanelRefresh();
