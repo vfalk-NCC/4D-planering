@@ -126,6 +126,39 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       return out;
     });
     if (!nl.nyAv || !nl.gammalPa || !nl.followOrort) fail('Nya lager ska vara av i utskriften: ' + JSON.stringify(nl));
+    // Passa in via 2 punkter i bilden + 2 i 3D: sektionslinjen och höjderna kommer från 3D-punkterna.
+    const fit = await page.evaluate(async () => {
+      const e = pr.tpl.elements.find(x => x.type === 'section'); e.x = 0; e.y = 0; e.w = 200; e.h = 100; e.src = 'pdf'; e.img = { path: 'x.png', ar: 2 };
+      secWizard(e);
+      const ok1 = secPick.wiz && secPick.cal === 'a';
+      // klick i ritningen (inpassad i rutan) på A och B
+      const top = 7 * pageDims().k * PT_MM * 2, bh = 100 - top, iw = Math.min(200, bh * 2), ih = iw / 2, ix = (200 - iw) / 2, iy = top + (bh - ih) / 2;
+      secPickClick(ix + 0.1 * iw, iy + 0.9 * ih); const mid = secPick.cal === 'b';
+      const opened = [];
+      window.secStart3d = async () => { opened.push(1); };
+      secPickClick(ix + 0.9 * iw, iy + 0.1 * ih);
+      const cal0 = JSON.parse(JSON.stringify(e.cal));
+      const bad = secFit(e, { x: 10, y: 20, z: 5 }, { x: 10, y: 20, z: 9 }, () => {}); // samma plats i sidled
+      const good = secFit(e, { x: 6512346, y: 150100, z: 0 }, { x: 6512354, y: 150100, z: 4 }, () => {});
+      const r = secImgRect(secCal(e));
+      return { ok1, mid, opened: opened.length, cal0: !!cal0.a && !!cal0.b, bad, good, p1: e.p1, p2: e.p2, cal: e.cal, r, L: secLen(e) };
+    });
+    if (!fit.ok1 || !fit.mid || fit.opened !== 1 || !fit.cal0 || fit.bad !== false || fit.good !== true) fail('Inpassning (steg 1): ' + JSON.stringify(fit));
+    // A (u=0, z=0) ligger vid bildandel 0.1; bildens bredd är 8/0.8 = 10 m -> u0 = -1, u1 = 9 -> linjen från x=6512345 till 6512355.
+    if (Math.abs(fit.p1[0] - 6512345) > 0.02 || Math.abs(fit.p2[0] - 6512355) > 0.02 || Math.abs(fit.p1[1] - 150100) > 0.02 || Math.abs(fit.L - 10) > 0.02 || Math.abs(fit.cal.a.u - 1) > 0.02 || Math.abs(fit.cal.b.u - 9) > 0.02 || fit.cal.b.z !== 4) fail('Inpassning (steg 2): ' + JSON.stringify(fit));
+    // 3D-steget: två klick i modellen (fästpunkten stubbas) ger linjen, 3D-vyn lämnas kvar öppen här och tipsrutan försvinner.
+    const t3 = await page.evaluate(async () => {
+      const e = pr.tpl.elements.find(x => x.type === 'section'); e.p1 = e.p2 = null; e.src = 'pdf';
+      e.cal = { a: { fx: 0.1, fy: 0.9, u: 0, z: 0 }, b: { fx: 0.9, fy: 0.1, u: 0, z: 0 } };
+      const pts = [new THREE.Vector3(-4, 0, 0), new THREE.Vector3(4, 0, 4)]; let i = 0;
+      const keep = window.l3Snap; window.l3Snap = () => ({ point: pts[i++] });
+      sec3d.el = e; sec3d.pts = []; sec3d.opened = false; secHint3d();
+      const hint = !!document.getElementById('secHint3d') && /punkt A/.test(document.getElementById('secHint3d').textContent);
+      const a = secPick3dTap({}); const hintB = /punkt B/.test(document.getElementById('secHint3d').textContent); const b = secPick3dTap({});
+      window.l3Snap = keep; await new Promise(r => setTimeout(r, 300));
+      return { hint, a, hintB, b, gone: !document.getElementById('secHint3d'), p1: e.p1, built: secData.has(e.id), L: secLen(e) };
+    });
+    if (!t3.hint || !t3.a || !t3.hintB || !t3.b || !t3.gone || !t3.p1 || Math.abs(t3.L - 10) > 0.02 || !t3.built) fail('3D-steget: ' + JSON.stringify(t3));
     // PDF som källa: sidan görs om till en PNG (pdf.js är stubbad i testet -> bara kontroll att funktionen finns och att PDF avvisas för andra element).
     if (await page.evaluate(() => typeof pdfToImageFile !== 'function' || !document.getElementById('prImgInput').accept.includes('pdf'))) fail('PDF ska kunna väljas som sektionsritning');
     // PDF: elementet ska ritas som vektorer, inte som en bild.

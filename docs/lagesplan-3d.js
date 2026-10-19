@@ -1007,6 +1007,7 @@ function l3Tap(e) {
     l3LastTouchTap = { t, x: e.clientX, y: e.clientY };
     if (last && t - last.t < 350 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 30 && l3.tool === "select" && !l3.addType) { l3LastTouchTap = null; l3DoubleAt(e); return; }
   }
+  if (typeof secPick3dTap === "function" && secPick3dTap(e)) return; // sektionsritning i utskriftslayouten: punkt A/B i modellen
   if (typeof l3w !== "undefined" && l3w.picking) return l3wTap(e); // gå-läget: var man ställer sig
   if (l3.phPick && typeof l3phPickTap === "function") return l3phPickTap(e); // fotot som läggs till
   if (l3.vPick) return l3VTap(e);

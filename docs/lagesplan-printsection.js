@@ -15,7 +15,8 @@
 const SEC_DEF = { src: "ifc", p1: null, p2: null, side: 1, depth: 4, scale: 0, zlo: null, zhi: null, q: "", nq: "", title: "SEKTION A–A", color: "#334155", lw: 0.18, status: true,
   bub: { on: true, mode: "active", prog: "entered", size: 36, max: 12, fields: { name: true, date: true, progress: true } } };
 const secData = new Map();               // elementets id -> { sig, groups: Map(nyckel -> polylinjer [u,z mm]), anchors, L, zlo, zhi }
-const secPick = { el: null, pts: [], cal: null };    // "Välj i ritning": väntar på två klick på en ritning
+const secPick = { el: null, pts: [], cal: null, wiz: false };
+const sec3d = { el: null, pts: [], opened: false };   // steg 2: punkterna A och B klickas i 3D-modellen    // "Välj i ritning": väntar på två klick på en ritning
 const SEC_MAX_SEGS = 400000;
 const secKey = r => (r.group_id ? `g:${r.group_id}` : r.source_key ? `s:${r.source_key}` : `i:${r.id}`);
 const secBub = el => ({ ...SEC_DEF.bub, ...(el.bub || {}), fields: { ...SEC_DEF.bub.fields, ...((el.bub || {}).fields || {}) } });
@@ -159,7 +160,12 @@ function drawPrSection(ctx, el, X, Y, W, H, pt, mm) {
   const pdfIm = el.src === "pdf" && el.img && el.img.path ? printImage(el.img.path) : null, cal = secCal(el);
   if (el.src === "pdf" && pdfIm && !cal) { // ritningen väntar på sina två passpunkter – visa den inpassad
     const ar = (pdfIm.naturalWidth || pdfIm.width) / (pdfIm.naturalHeight || pdfIm.height) || 1, bw = W, bh = Y + H - top; let iw = bw, ih = bw / ar; if (ih > bh) { ih = bh; iw = bh * ar; }
-    ctx.drawImage(pdfIm, X + (bw - iw) / 2, top + (bh - ih) / 2, iw, ih);
+    const ix = X + (bw - iw) / 2, iy = top + (bh - ih) / 2;
+    ctx.drawImage(pdfIm, ix, iy, iw, ih);
+    ["a", "b"].forEach(k => { const p = el.cal && el.cal[k]; if (!p || p.fx === undefined) return; const r = Math.max(3, mm * 1.3);
+      ctx.strokeStyle = "#dc2626"; ctx.fillStyle = "#dc2626"; ctx.lineWidth = Math.max(1, mm * 0.3); ctx.beginPath(); ctx.arc(ix + p.fx * iw, iy + p.fy * ih, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ix + p.fx * iw - r * 1.6, iy + p.fy * ih); ctx.lineTo(ix + p.fx * iw + r * 1.6, iy + p.fy * ih); ctx.moveTo(ix + p.fx * iw, iy + p.fy * ih - r * 1.6); ctx.lineTo(ix + p.fx * iw, iy + p.fy * ih + r * 1.6); ctx.stroke();
+      ctx.font = `bold ${fs * 1.3}px Helvetica, Arial`; ctx.textAlign = "left"; ctx.fillText(k.toUpperCase(), ix + p.fx * iw + r * 1.2, iy + p.fy * ih - r * 1.2); });
     ctx.fillStyle = "#b45309"; ctx.font = `bold ${fs}px Helvetica, Arial`; ctx.textAlign = "left"; ctx.fillText("Passa in ritningen: sätt punkt A och B i panelen", X + mm, Y + H - fs);
     ctx.restore(); return;
   }
@@ -278,6 +284,8 @@ function secPickClick(mx, my) {
     const fx = (mx - (el.x + (bw - iw) / 2)) / iw, fy = (my - (top + (bh - ih) / 2)) / ih;
     if (fx < 0 || fx > 1 || fy < 0 || fy > 1) { prCmdLog("Klicka på själva ritningen."); return true; }
     pushUndo(); el.cal = { ...(el.cal || {}) }; el.cal[secPick.cal] = { ...(el.cal[secPick.cal] || { u: 0, z: 0 }), fx: Math.round(fx * 1e4) / 1e4, fy: Math.round(fy * 1e4) / 1e4 };
+    if (secPick.wiz && secPick.cal === "a") { secPick.cal = "b"; prCmdLog("Punkt A satt – klicka nu punkt B (en annan punkt, helst längre bort både i sida och höjd)."); drawPrintPage(); return true; }
+    if (secPick.wiz) { secPick.el = null; secPick.cal = null; secPick.wiz = false; drawPrintPage(); secStart3d(el); return true; }
     secPick.el = null; secPick.cal = null; prCmdLog("Punkten satt – skriv in dess läge (u, z) i panelen."); renderPrintProps(); drawPrintPage(); return true;
   }
   const maps = pr.tpl.elements.filter(e => e.type === "map");
@@ -296,9 +304,80 @@ function secPdfHtml(el) {
     return `<div class="pr-grid4"><div style="grid-column:span 2;"><button type="button" class="btn small" data-calpick="${k}">${secPick.cal === k ? "Klicka på ritningen …" : (set ? "✔ " : "") + "📍 Punkt " + lab + " i bilden"}</button></div>
       <div><label>${lab}: längs m</label><input type="number" step="0.1" data-cal="${k}.u" value="${p.u ?? ""}" /></div><div><label>${lab}: höjd m</label><input type="number" step="0.1" data-cal="${k}.z" value="${p.z ?? ""}" /></div></div>`; };
   return `<div class="hint">Din egen sektionsritning (PDF eller bild) läggs i sektionens koordinater: markera två kända punkter i bilden (t.ex. två bjälklagskanter) och skriv in var de ligger – längs sektionslinjen och i höjd. Bubblorna fästs sedan vid IFC-objekten.</div>
-    <div class="pr-row"><button type="button" class="btn small" id="secImg">${el.img && el.img.path ? "🖼 Byt PDF/bild" : "🖼 Välj PDF/bild"}</button></div>${pt("a", "A")}${pt("b", "B")}
+    <div class="pr-row"><button type="button" class="btn small" id="secImg">${el.img && el.img.path ? "🖼 Byt PDF/bild" : "🖼 Välj PDF/bild"}</button></div>
+    <div class="pr-row"><button type="button" class="btn small primary" id="secWiz" ${el.img && el.img.path ? "" : "disabled"}>📍 Passa in: 2 punkter i ritningen + 2 i 3D</button></div>
+    <div class="hint">${secCal(el) ? "✔ Ritningen är inpassad – sektionslinjen och höjderna kommer från de två 3D-punkterna." : "Klicka två tydliga punkter i ritningen (t.ex. en grundkant nere och en takkant uppe, helt skilda i både sida och höjd), sedan samma två punkter i 3D-modellen. Då placeras ritningen exakt och sektionslinjen sätts av sig själv."}</div>
+    <details class="pr-adv"><summary>Mata in passpunkterna för hand</summary>${pt("a", "A")}${pt("b", "B")}</details>
     <div class="pr-grid4"><div><label>Ritningens täckning %</label><input type="number" step="10" min="10" max="100" data-sf="imgAlphaPct" value="${Math.round((Number(el.imgAlpha) || 1) * 100)}" /></div></div>
     <label class="check"><input type="checkbox" data-f="lines" ${el.lines === false ? "" : "checked"} /> Visa även IFC-snittet ovanpå</label>`;
+}
+/* Passa in ritningen i två steg (Victor 2026-10-19): två punkter i ritningen, sedan samma två punkter i 3D-modellen.
+   Punkternas 3D-lägen ger allt: sektionslinjen går genom A och B i planen (och förlängs till ritningens bredd), och höjderna
+   kommer från modellens Z. Punkterna ska skilja sig både i sida och höjd (t.ex. en grundkant nere och en takkant uppe). */
+function secWizard(el) {
+  if (!(el.img && el.img.path)) { alert("Välj en PDF eller bild först."); return; }
+  pushUndo(); el.cal = null; secPick.el = el; secPick.cal = "a"; secPick.wiz = true; secPick.pts = [];
+  prCmdLog("Steg 1 av 2: klicka punkt A i sektionsritningen (en tydlig punkt du också kan peka ut i 3D-modellen).");
+  renderPrintProps(); drawPrintPage();
+}
+async function secStart3d(el) {
+  const was3d = !!(document.getElementById("view3d") && !document.getElementById("view3d").classList.contains("hidden") && typeof l3 !== "undefined" && l3 && l3.scene);
+  prCmdLog("Steg 2 av 2: öppnar 3D – klicka samma punkter A och B i modellen.");
+  try { if (!was3d) await open3d(); } catch (e) { alert("Kunde inte öppna 3D: " + e.message); return; }
+  if (typeof l3 === "undefined" || !l3 || !l3.scene) return;
+  sec3d.el = el; sec3d.pts = []; sec3d.opened = !was3d;
+  secHint3d();
+}
+function secHint3d() {
+  const box = document.getElementById("view3d"); if (!box || !sec3d.el) return;
+  let h = document.getElementById("secHint3d");
+  if (!h) { h = document.createElement("div"); h.id = "secHint3d"; h.style.cssText = "position:absolute;left:10px;top:54px;z-index:50;width:280px;background:#fff;border:2px solid #f97316;border-radius:12px;box-shadow:0 10px 30px rgba(15,23,42,.3);padding:8px 10px;font:13px/1.35 Helvetica,Arial,sans-serif;color:#0f172a;"; box.appendChild(h); }
+  const el = sec3d.el, im = el.img && printImage(el.img.path), n = sec3d.pts.length, nm = n ? "B" : "A";
+  const dot = (k, p) => (p ? `<span style="position:absolute;left:${p.fx * 100}%;top:${p.fy * 100}%;transform:translate(-50%,-50%);width:14px;height:14px;border:2px solid #dc2626;border-radius:50%;background:${k === nm ? "#dc2626" : "transparent"};"></span><b style="position:absolute;left:${p.fx * 100}%;top:${p.fy * 100}%;margin:-22px 0 0 8px;color:#dc2626;">${k.toUpperCase()}</b>` : "");
+  h.innerHTML = `<b>Passa in sektionsritningen – klicka punkt ${nm} i 3D</b><div style="margin:4px 0;">Samma punkt som ${nm} i ritningen${n ? ` (A: höjd ${sec3d.pts[0].z.toFixed(2)} m)` : ""}. Snäpper mot hörn och kanter.</div>
+    ${im ? `<div style="position:relative;line-height:0;"><img src="${im.src}" style="width:100%;border:1px solid #cbd5e1;" alt="">${dot("a", el.cal && el.cal.a)}${dot("b", el.cal && el.cal.b)}</div>` : ""}
+    <div style="margin-top:6px;"><button type="button" id="secHintCancel" style="padding:4px 10px;">Avbryt</button></div>`;
+  h.querySelector("#secHintCancel").onclick = () => secEnd3d(false);
+  if (typeof l3Status === "function") l3Status(`Klicka punkt ${nm} i modellen (samma som ${nm} i ritningen).`);
+  const cv = l3.renderer && l3.renderer.domElement; if (cv) cv.style.cursor = "crosshair";
+}
+function secEnd3d(done) {
+  const h = document.getElementById("secHint3d"); if (h) h.remove();
+  const el = sec3d.el, opened = sec3d.opened; sec3d.el = null; sec3d.pts = [];
+  if (typeof l3 !== "undefined" && l3 && l3.renderer) l3.renderer.domElement.style.cursor = "";
+  if (opened && typeof close3d === "function") close3d();
+  if (!done && el) prCmdLog("Avbröt inpassningen.");
+  if (pr) { renderPrintProps(); drawPrintPage(); }
+}
+/* Kopplat till 3D-vyns klickhantering (lagesplan-3d.js): true = klicket är hanterat. */
+function secPick3dTap(e) {
+  if (!sec3d.el || typeof l3Snap !== "function") return false;
+  const s = l3Snap(e); if (!s) return true;
+  const P = s.point, pt = { x: P.x + l3.O[0], y: P.y + l3.O[1], z: P.z + l3.O[2] };
+  sec3d.pts.push(pt);
+  if (sec3d.pts.length < 2) { secHint3d(); return true; }
+  const el = sec3d.el;
+  if (!secFit(el, sec3d.pts[0], sec3d.pts[1], msg => { if (typeof l3Status === "function") l3Status(msg); })) { sec3d.pts.pop(); secHint3d(); return true; }
+  secEnd3d(true);
+  secBuild(el, { open: false, say: t => prCmdLog(t) }).then(() => { if (pr) { renderPrintProps(); drawPrintPage(); } });
+  return true;
+}
+/* Ritningens passpunkter (cal.a/b har bildandelar) + de två 3D-punkterna -> sektionslinje och cal. Returnerar false med ett meddelande om punkterna inte duger. */
+function secFit(el, A, B, say) {
+  const c = el.cal; if (!c || !c.a || !c.b) { say && say("Passpunkterna i ritningen saknas."); return false; }
+  const dx = B.x - A.x, dy = B.y - A.y, D = Math.hypot(dx, dy), dz = B.z - A.z;
+  if (D < 0.1) { say && say("Punkterna A och B ligger på samma ställe i sidled – välj en B som ligger längre längs sektionen."); return false; }
+  if (Math.abs(dz) < 0.1) { say && say("Punkterna A och B har samma höjd – välj en B högre eller lägre än A."); return false; }
+  if (Math.abs(c.b.fx - c.a.fx) < 0.01 || Math.abs(c.b.fy - c.a.fy) < 0.01) { say && say("Punkterna i ritningen ligger för nära varandra i sida eller höjd – gör om dem."); return false; }
+  // Riktning: u ska växa åt höger i bilden (annars speglas den), så linjen går mot B om B ligger till höger om A i bilden, annars från B mot A.
+  const sg = c.b.fx > c.a.fx ? 1 : -1, ux = dx / D * sg, uy = dy / D * sg;
+  const cal = { a: { fx: c.a.fx, fy: c.a.fy, u: 0, z: A.z }, b: { fx: c.b.fx, fy: c.b.fy, u: sg * D, z: B.z } };
+  const r = secImgRect(cal);
+  el.p1 = [Math.round((A.x + ux * r.u0) * 100) / 100, Math.round((A.y + uy * r.u0) * 100) / 100];
+  el.p2 = [Math.round((A.x + ux * r.u1) * 100) / 100, Math.round((A.y + uy * r.u1) * 100) / 100];
+  cal.a.u -= r.u0; cal.b.u -= r.u0;   // u räknas från sektionslinjens start
+  el.cal = cal; el.src = "pdf"; secData.delete(el.id);
+  return true;
 }
 /* Sidopanelen. */
 function prSectionHtml(el) {
@@ -344,6 +423,7 @@ function prSectionBind(box, el) {
   const pick = box.querySelector("#secPick"); if (pick) pick.onclick = () => { secPick.el = secPick.el === el ? null : el; secPick.pts = []; prCmdLog(secPick.el ? "Klicka på ritningen där sektionen börjar." : "Avbröt."); renderPrintProps(); };
   box.querySelectorAll("[data-calpick]").forEach(b => { b.onclick = () => { if (!(el.img && el.img.path)) { alert("Välj en PDF eller bild först."); return; } secPick.el = secPick.cal === b.dataset.calpick ? null : el; secPick.cal = secPick.el ? b.dataset.calpick : null; secPick.pts = []; prCmdLog(secPick.el ? "Klicka på punkten i sektionsritningen." : "Avbröt."); renderPrintProps(); }; });
   box.querySelectorAll("[data-cal]").forEach(i => i.addEventListener("change", () => { pushUndo(); const [k, f] = i.dataset.cal.split("."); el.cal = { ...(el.cal || {}) }; el.cal[k] = { ...(el.cal[k] || {}) }; el.cal[k][f] = i.value === "" ? undefined : Number(String(i.value).replace(",", ".")); drawPrintPage(); }));
+  const wiz = box.querySelector("#secWiz"); if (wiz) wiz.onclick = () => secWizard(el);
   const simg = box.querySelector("#secImg"); if (simg) simg.onclick = () => $("prImgInput").click();
   const flip = box.querySelector("#secFlip"); if (flip) flip.onclick = () => { pushUndo(); el.side = el.side === -1 ? 1 : -1; lineChanged(); };
   const upd = box.querySelector("#secUpdate");
