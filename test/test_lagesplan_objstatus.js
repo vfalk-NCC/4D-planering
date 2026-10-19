@@ -69,6 +69,32 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
     if (res.ej.p !== 0 || res.ej.ae !== null || res.undo !== 'klar') fail('Ej påbörjad/ångra: ' + JSON.stringify(res));
     const s1 = saved.find(r => r.id === 'i1'), s2 = saved.find(r => r.id === 'i2');
     if (s1.status !== 'klar' || s1.progress !== 100 || s2.status !== 'pausad' || s2.progress !== 40) fail('Sparat i plan_items.json: ' + JSON.stringify(saved));
+    // Dra en ruta: alla prickar i rutan får status; ny prick: kopierar aktivitet/datum från närmaste och sparas med position.
+    await page.evaluate(() => {
+      positions = [{ id: 'i1', x: 6512330, y: 150100, z0: 0, z1: 2 }, { id: 'i2', x: 6512360, y: 150100, z0: 0, z1: 2 }]; invalidatePositions();
+      items.forEach(r => { r.status = 'planerad'; r.progress = 0; r.actual_end_date = null; });
+      renderZones();
+    });
+    const box = await page.evaluate(async () => {
+      const shapes = objectShapesInPdf() || []; const n0 = shapes.length;
+      objStatusBox(toPx([0, -400]), toPx([1000, 400]), { clientX: 200, clientY: 200 });
+      if (!$('labelMenu')) return { n0, nomenu: true, st: document.getElementById('saveStatus') && document.getElementById('saveStatus').textContent, shapes: shapes.map(o => o.center) };
+      const m = $('labelMenu'); const vis = m && !m.classList.contains('hidden') && /2 objekt i rutan/.test(m.textContent);
+      m.querySelector('[data-ost="klar"]').click(); await new Promise(r => setTimeout(r, 400));
+      return { n0, vis, st: items.map(r => r.status) };
+    });
+    if (box.n0 < 1 || !box.vis || box.st.join() !== 'klar,klar') fail('Status i ruta: ' + JSON.stringify(box));
+    const add = await page.evaluate(async () => {
+      window.uiPrompt = async () => 'F20';
+      const n = items.length; await objAddDot(modelToPdf(6512340, 150100));
+      const r = items[items.length - 1];
+      return { added: items.length === n + 1, name: r.object_name, act: r.activity, grp: r.group_id, st: r.status, pos: positions.some(p => p.id === r.id), id: r.id };
+    });
+    if (!add.added || add.name !== 'F20' || add.act !== 'Pålning' || add.grp !== 'g1' || add.st !== 'planerad' || !add.pos) fail('Ny prick: ' + JSON.stringify(add));
+    const sIt = JSON.parse(gh.get('projects/p1/plan_items.json')), sPos = JSON.parse(gh.get('projects/p1/plan_item_positions.json') || '[]');
+    if (!sIt.some(r => r.id === add.id && r.origin === 'manuell') || !sPos.some(p => p.id === add.id)) fail('Ny prick sparad i data: ' + JSON.stringify({ sIt: sIt.length, sPos: sPos.length }));
+    await page.evaluate(() => objStatusUndo()); await page.waitForTimeout(300);
+    if (JSON.parse(gh.get('projects/p1/plan_items.json')).some(r => r.id === add.id) || await page.evaluate(() => items.some(r => r.object_name === 'F20'))) fail('Ångra ska ta bort den nya pricken');
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
   } finally { await browser.close(); server.close(); }

@@ -1559,6 +1559,8 @@ function bindViewport() {
     if (typeof zonesPointerDown === "function" && zonesPointerDown(e)) return;
     // Upplåsta objektmarkeringar dras (lagesplan-objmarks.js).
     if (typeof objMarkPointerDown === "function" && objMarkPointerDown(e)) return;
+    // Prickverktyg (lagesplan-objstatus.js): dra en ruta och sätt status, eller klicka för en ny prick.
+    if (typeof objTool !== "undefined" && objTool && e.button === 0 && plan && plan.calib) { e.preventDefault(); drag = objTool === "status" ? { statusBox: true, start: stagePoint(e) } : { addDot: true, start: stagePoint(e), x: e.clientX, y: e.clientY }; return; }
     // Alt + dra: släck alla objekt inom rutan.
     if (e.altKey && e.button === 0 && plan && plan.calib) { e.preventDefault(); drag = { hideBox: true, start: stagePoint(e) }; return; }
     // Noteringar/etablering: flytta, ändra form och rotera (lagesplan-layers.js).
@@ -1567,7 +1569,7 @@ function bindViewport() {
     drag = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, moved: false };
   });
   window.addEventListener("mousemove", e => {
-    if (drag && (drag.draw || drag.hideBox)) { drawRubber(drag.start, stagePoint(e)); return; }
+    if (drag && (drag.draw || drag.hideBox || drag.statusBox)) { drawRubber(drag.start, stagePoint(e)); return; }
     if (drag) {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
@@ -1583,6 +1585,8 @@ function bindViewport() {
     const d = drag; drag = null;
     if (d.draw) { finishDraw(d.start, stagePoint(e)); return; }
     if (d.hideBox) { hideObjectsInBox(d.start, stagePoint(e)); return; }
+    if (d.statusBox) { objStatusBox(d.start, stagePoint(e), e); return; }
+    if (d.addDot) { if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) < 6) objAddDot(toPdf(d.start)); return; }
     if (!d.moved && calib && calib.waitPdf && e.target.closest && e.target.closest("#viewport")) {
       calib.waitPdf = false;
       calib.pdf.push(toPdf(stagePoint(e)));
