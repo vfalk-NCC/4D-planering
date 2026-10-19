@@ -305,6 +305,19 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       return { p, bx, inside: p && p[0] >= bx[0] - 1e-6 && p[0] <= bx[1] + 1e-6 && p[1] >= bx[2] - 1e-6 && p[1] <= bx[3] + 1e-6, drawnInside: u1 <= bx[1] + 0.01 && z1 <= bx[3] + 0.01 };
     });
     if (!cl.p || !cl.inside || !cl.drawnInside) fail('Punkten ska hållas på objektet: ' + JSON.stringify(cl));
+    // Bubblans färg: egen per bubbla och gemensam; ingen 3D-popup kvar.
+    const colr = await page.evaluate(() => {
+      const e = pr.tpl.elements.find(x => x.type === 'section'); e.bub = { ...secBub(e), mode: 'all', on: true, off: {}, pos: {}, anc: {}, cfg: {} }; secData.delete(e.id);
+      return secBuild(e, { open: false }).then(() => {
+        const k = secData.get(e.id).anchors[0].key; secSel.el = e.id; secSel.key = k; setSel([e.id]); renderPrintProps();
+        const used = []; const c = document.createElement('canvas'); c.width = 2000; c.height = 1000; const g = c.getContext('2d'); const fr = g.fillRect.bind(g);
+        g.fillRect = (...a) => { used.push(g.fillStyle); return fr(...a); };
+        const pc = document.querySelector('[data-bccolor]'); pc.value = '#ff00aa'; pc.dispatchEvent(new Event('input')); drawElement(g, e, pr.tpl, 10, 1); const own = used.includes('#ff00aa');
+        used.length = 0; const gc = document.querySelector('[data-sbcolor]'); gc.value = '#00aa55'; gc.dispatchEvent(new Event('input')); e.bub.cfg = {}; drawElement(g, e, pr.tpl, 10, 1); const glob = used.includes('#00aa55');
+        return { own, glob, mini: !!document.querySelector('#secMini') || typeof secMini3d !== 'undefined' };
+      });
+    });
+    if (!colr.own || !colr.glob || colr.mini) fail('Bubblans färg / 3D-popup borttagen: ' + JSON.stringify(colr));
     // PDF: elementet ska ritas som vektorer, inte som en bild.
     const pdf = await page.evaluate(async () => {
       const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'ifc'; e.ifcAlpha = 1; e.bub = { ...secBub(e), off: {}, pos: {}, mode: 'active' }; e.p1 = [6512346, 150100]; e.p2 = [6512354, 150100]; secData.delete(e.id); await secBuild(e, { open: false });

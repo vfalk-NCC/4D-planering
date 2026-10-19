@@ -293,7 +293,7 @@ function drawPrSection(ctx, el, X, Y, W, H, pt, mm) {
     // Per bubbla (klicka på den): egen bredd, textstorlek och vilka rader som visas.
     const bc = (cfg.cfg || {})[a.key] || {}, f2 = { ...cfg.fields, ...(bc.fields || {}) }, sc = Math.max(0.5, Math.min(3, Number(bc.sc) || 1));
     const fs = fs0 * sc, cw = Math.max(12, Number(bc.w) || 0) * (bc.w ? mm : 0) || cw0, ch = fs * (f2.name ? 3.1 : 1.2) + (f2.date ? fs * 1.3 : 0) + (f2.progress ? fs * 1.6 : 0) + fs * 0.8;
-    const anc0 = (cfg.anc || {})[a.key], anc = anc0 && secClampAnc(a, anc0[0], anc0[1]), ax = anc ? px(anc[0]) : px(a.u), ay = anc ? py(anc[1]) : py(Math.min(a.z, zTop)), L = secCardLines(a, { ...cfg, fields: f2 }), c = phaseColor(secPhase(a.row));
+    const anc0 = (cfg.anc || {})[a.key], anc = anc0 && secClampAnc(a, anc0[0], anc0[1]), ax = anc ? px(anc[0]) : px(a.u), ay = anc ? py(anc[1]) : py(Math.min(a.z, zTop)), L = secCardLines(a, { ...cfg, fields: f2 }), c = bc.color || cfg.color || phaseColor(secPhase(a.row));
     let cx = Math.max(X, Math.min(X + W - cw, ax - cw / 2)), cy = top + mm * 0.5;
     for (let r = 0; r < Math.max(1, rows); r++) { cy = top + mm * 0.5 + r * (ch + mm * 1.5); if (!placed.some(p => p.y === cy && cx < p.x + cw + mm * 0.5 && cx + cw + mm * 0.5 > p.x)) break; }
     // Hamnar kortet över ett annat i alla rader: skjut det åt sidan tills det får plats.
@@ -432,29 +432,6 @@ function secBubDown(mx, my, e) {
   }
   return false;
 }
-/* 3D-vyn som en liten ruta bredvid layouten (så att båda syns): öppnas, flyttas till hörnet och följer storleken. */
-async function secMini3d(on) {
-  const box = document.getElementById("view3d");
-  if (on === false) { document.body.classList.remove("v3-mini"); if (box && !box.classList.contains("hidden") && typeof close3d === "function") close3d(); return; }
-  const open = !!(box && !box.classList.contains("hidden"));
-  document.body.classList.add("v3-mini");
-  try { if (!open) await open3d(); } catch (e) { document.body.classList.remove("v3-mini"); alert("Kunde inte öppna 3D: " + e.message); return; }
-  secMiniSetup();
-}
-function secMiniSetup() {
-  const box = document.getElementById("view3d"); if (!box) return;
-  if (!document.getElementById("secMiniCss")) {
-    const st = document.createElement("style"); st.id = "secMiniCss";
-    st.textContent = `body.v3-mini #view3d { position: fixed !important; inset: auto 12px 12px auto !important; width: min(48vw, 780px); height: min(60vh, 600px); min-width: 320px; min-height: 240px; z-index: 96 !important; border: 2px solid #2563eb; border-radius: 12px; box-shadow: 0 18px 50px rgba(15,23,42,.45); overflow: hidden; resize: both; }
-      body.v3-mini #view3d .secmini-bar { position: absolute; left: 0; right: 0; top: 0; height: 0; z-index: 60; }
-      body.v3-mini #secMiniBtn { position: absolute; right: 8px; top: 8px; z-index: 61; }`;
-    document.head.appendChild(st);
-  }
-  if (!box._secRO && window.ResizeObserver) { box._secRO = new ResizeObserver(() => { if (document.body.classList.contains("v3-mini") && typeof l3Resize === "function" && typeof l3 !== "undefined" && l3) { l3Resize(); if (typeof l3Render === "function") l3Render(); } }); box._secRO.observe(box); }
-  if (!document.getElementById("secMiniBtn")) { const b = document.createElement("button"); b.id = "secMiniBtn"; b.type = "button"; b.textContent = "✕ Stäng 3D-rutan"; b.style.cssText = "padding:4px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;cursor:pointer;font-size:12px;"; b.onclick = () => secMini3d(false); box.appendChild(b); }
-  if (typeof l3Resize === "function" && typeof l3 !== "undefined" && l3) setTimeout(() => { l3Resize(); if (typeof l3Render === "function") l3Render(); }, 50);
-}
-
 /* Klick på ritningen i layouten under "Välj i ritning": sidans mm -> modellens koordinater (m). */
 function secPageToModel(map, x, y) {
   const tplK = typeof pageDims === "function" ? pageDims().k : 1;
@@ -510,14 +487,14 @@ function secWizard(el) {
 async function secStart3d(el) {
   const was3d = !!(document.getElementById("view3d") && !document.getElementById("view3d").classList.contains("hidden") && typeof l3 !== "undefined" && l3 && l3.scene);
   prCmdLog("Steg 2 av 2: öppnar 3D – klicka samma punkter A och B i modellen.");
-  try { if (!was3d) await secMini3d(true); } catch (e) { alert("Kunde inte öppna 3D: " + e.message); return; }
+  try { if (!was3d) await open3d(); } catch (e) { alert("Kunde inte öppna 3D: " + e.message); return; }
   if (typeof l3 === "undefined" || !l3 || !l3.scene) return;
   sec3d.el = el; sec3d.pts = []; sec3d.opened = !was3d;
   secHint3d();
 }
 async function secPickZ(el, f) {
   const was3d = !!(document.getElementById("view3d") && !document.getElementById("view3d").classList.contains("hidden") && typeof l3 !== "undefined" && l3 && l3.scene);
-  try { if (!was3d) await secMini3d(true); } catch (e) { alert("Kunde inte öppna 3D: " + e.message); return; }
+  try { if (!was3d) await open3d(); } catch (e) { alert("Kunde inte öppna 3D: " + e.message); return; }
   if (typeof l3 === "undefined" || !l3 || !l3.scene) return;
   sec3d.el = el; sec3d.pts = []; sec3d.opened = !was3d; sec3d.mode = f; secHint3d();
 }
@@ -549,7 +526,7 @@ function secEnd3d(done) {
   const h = document.getElementById("secHint3d"); if (h) h.remove();
   const el = sec3d.el, opened = sec3d.opened; sec3d.el = null; sec3d.pts = [];
   if (typeof l3 !== "undefined" && l3 && l3.renderer) l3.renderer.domElement.style.cursor = "";
-  if (opened) { document.body.classList.remove("v3-mini"); if (typeof close3d === "function") close3d(); }
+  if (opened && typeof close3d === "function") close3d();
   if (!done && el) prCmdLog("Avbröt inpassningen.");
   if (pr) { renderPrintProps(); drawPrintPage(); }
 }
@@ -628,6 +605,7 @@ function secSelHtml(el, b, data) {
   return `<div style="border:1.5px solid #2563eb;border-radius:10px;padding:8px;margin:6px 0 10px;background:#eff6ff;">
     <div style="font-size:12.5px;font-weight:700;margin-bottom:4px;">Vald bubbla: ${escHtml(a.row.object_name || a.row.activity || "Aktivitet")}</div>
     <div class="sec-g2"><div><label>Bredd (mm)</label><input type="number" step="2" min="12" data-bc="w" value="${wNow}" /></div><div><label>Textstorlek (%)</label><input type="number" step="10" min="50" max="300" data-bc="sc" value="${sc}" /></div></div>
+    <div class="sec-row"><label style="margin:0;">Färg</label><input type="color" data-bccolor value="${escHtml(c.color || b.color || "#2563eb")}" /><button type="button" id="secBcStatusColor"${c.color ? "" : " disabled"}>Efter status</button></div>
     <div class="sec-chips"><label class="check"><input type="checkbox" data-bcf="name" ${f.name ? "checked" : ""} /> Namn</label><label class="check"><input type="checkbox" data-bcf="date" ${f.date ? "checked" : ""} /> Datum</label><label class="check"><input type="checkbox" data-bcf="progress" ${f.progress ? "checked" : ""} /> Framdrift</label></div>
     <div class="sec-row"><button type="button" id="secBcHide">Släck bubblan</button><button type="button" id="secBcReset">Återställ den</button><button type="button" id="secBcDone">Klar</button></div>
     <div class="sec-note" style="margin:0;">Dra kortet för att flytta, dra i hörnet nere till höger för att ändra bredd, dra pricken vid objektet för att flytta insättningspunkten.</div></div>`;
@@ -666,6 +644,7 @@ function prSectionHtml(el) {
       <div class="sec-g2"><div><label>Vilka</label><select data-sb="mode">${opt("running", b.mode, "Bara pågående")}${opt("active", b.mode, "Pågående + försenade")}${opt("all", b.mode, "Alla bakom snittet")}${opt("sel", b.mode, "Markerade i 3D")}</select></div>
         <div><label>Framdrift</label><select data-sb="prog">${opt("entered", b.prog, "Inskriven")}${opt("plan", b.prog, "Uträknad efter datum")}</select></div>
         <div><label>Kortbredd (mm)</label><input type="number" step="2" data-sb="size" value="${b.size}" /></div><div><label>Högst antal</label><input type="number" step="1" data-sb="max" value="${b.max}" /></div></div>
+      <div class="sec-row"><label style="margin:0;">Bubblornas färg</label><input type="color" data-sbcolor value="${esc(b.color || "#2563eb")}" /><button type="button" id="secBubStatusColor"${b.color ? "" : " disabled"}>Efter status</button></div>
       <div class="sec-chips"><label class="check"><input type="checkbox" data-sbf="name" ${b.fields.name ? "checked" : ""} /> Namn</label><label class="check"><input type="checkbox" data-sbf="date" ${b.fields.date ? "checked" : ""} /> Datum</label><label class="check"><input type="checkbox" data-sbf="progress" ${b.fields.progress ? "checked" : ""} /> Framdrift</label></div>
       ${secBubListHtml(el, data)}
       <div class="sec-note">Klicka på ett kort för att få alternativ för just den bubblan. "Försenad" = startdatum passerat utan registrerad framdrift. Statusen gäller utskriftens datum.</div>
@@ -677,7 +656,7 @@ function prSectionHtml(el) {
       ${pdf ? `<label>Beskärning (%)</label><div class="sec-g2">${["l", "t", "r", "b"].map((k, i) => `<div><label>${["Vänster", "Överkant", "Höger", "Underkant"][i]}</label><input type="number" step="1" min="0" max="95" data-crop="${k}" value="${Math.round((((el.crop || {})[k]) || 0) * 100)}" /></div>`).join("")}</div>
       <label>Passpunkter för hand</label>${["a", "b"].map(k => { const p = (el.cal || {})[k] || {}; return `<div class="sec-g2"><div><label>${k.toUpperCase()}: längs (m)</label><input type="number" step="0.1" data-cal="${k}.u" value="${p.u ?? ""}" /></div><div><label>${k.toUpperCase()}: höjd (m)</label><input type="number" step="0.1" data-cal="${k}.z" value="${p.z ?? ""}" /></div></div>`; }).join("")}` : ""}
     </details>
-    <div class="sec-act"><button type="button" id="secUpdate" title="Läs in byggnaden igen och räkna om">🔄 Läs in igen</button><button type="button" id="secMini" title="3D i en liten ruta bredvid layouten">🪟 3D bredvid</button></div>
+    <div class="sec-act"><button type="button" id="secUpdate" title="Läs in byggnaden igen och räkna om">🔄 Läs in igen</button></div>
     <div class="sec-note" id="secInfo">${data ? `${data.segs.toLocaleString("sv-SE")} segment, ${data.anchors.length} aktiviteter bakom snittet. ` : "Inte beräknad än. "}Räknas om av sig själv när du ändrar något. Det som ligger utanför bladet skrivs inte ut.</div>`;
 }
 function prSectionBind(box, el) {
@@ -708,13 +687,17 @@ function prSectionBind(box, el) {
   const simg = box.querySelector("#secImg"); if (simg) simg.onclick = () => $("prImgInput").click();
   box.querySelectorAll("[data-secoff]").forEach(i => i.addEventListener("change", () => { pushUndo(); el.bub = secBub(el); el.bub.off = { ...el.bub.off }; if (i.checked) delete el.bub.off[i.dataset.secoff]; else el.bub.off[i.dataset.secoff] = true; drawPrintPage(); }));
   const brs = box.querySelector("#secBubReset"); if (brs) brs.onclick = () => { pushUndo(); el.bub = secBub(el); el.bub.pos = {}; el.bub.off = {}; el.bub.anc = {}; el.bub.cfg = {}; renderPrintProps(); drawPrintPage(); };
-  const mini = box.querySelector("#secMini"); if (mini) mini.onclick = () => secMini3d(!document.body.classList.contains("v3-mini"));
   const cr = box.querySelector("#secCrop"); if (cr) cr.onclick = () => { secPick.crop = !secPick.crop; secPick.el = secPick.crop ? el : null; secPick.cal = null; secPick.wiz = false; secPick.pts = []; prCmdLog(secPick.crop ? "Klicka ett hörn av det du vill visa, sedan motsatta hörnet." : "Avbröt."); renderPrintProps(); };
   const crr = box.querySelector("#secCropReset"); if (crr) crr.onclick = () => { pushUndo(); el.crop = null; renderPrintProps(); drawPrintPage(); };
   box.querySelectorAll("[data-crop]").forEach(i => i.addEventListener("change", () => { pushUndo(); el.crop = { ...(el.crop || {}) }; el.crop[i.dataset.crop] = Math.max(0, Math.min(95, Number(i.value) || 0)) / 100; drawPrintPage(); renderPrintProps(); }));
   const bcSet = (f, v) => { pushUndo(); el.bub = secBub(el); const k = secSel.key; el.bub.cfg = { ...el.bub.cfg, [k]: { ...(el.bub.cfg[k] || {}), [f]: v } }; drawPrintPage(); };
   box.querySelectorAll("[data-bc]").forEach(i => i.addEventListener("change", () => bcSet(i.dataset.bc, i.dataset.bc === "sc" ? Math.max(0.5, Math.min(3, (Number(i.value) || 100) / 100)) : Math.max(12, Number(i.value) || 36))));
   box.querySelectorAll("[data-bcf]").forEach(i => i.addEventListener("change", () => { const k = secSel.key, cur = ((secBub(el).cfg[k] || {}).fields) || {}; bcSet("fields", { ...cur, [i.dataset.bcf]: i.checked }); }));
+  const sbc = box.querySelector("[data-sbcolor]"); if (sbc) { sbc.addEventListener("input", () => { el.bub = secBub(el); el.bub.color = sbc.value; drawPrintPage(); }); sbc.addEventListener("change", () => { pushUndo(); renderPrintProps(); }); }
+  const sbs = box.querySelector("#secBubStatusColor"); if (sbs) sbs.onclick = () => { pushUndo(); el.bub = secBub(el); delete el.bub.color; renderPrintProps(); drawPrintPage(); };
+  const bcc = box.querySelector("[data-bccolor]"); if (bcc) bcc.addEventListener("input", () => { const k = secSel.key; el.bub = secBub(el); el.bub.cfg = { ...el.bub.cfg, [k]: { ...(el.bub.cfg[k] || {}), color: bcc.value } }; drawPrintPage(); });
+  if (bcc) bcc.addEventListener("change", () => { pushUndo(); renderPrintProps(); });
+  const bcs = box.querySelector("#secBcStatusColor"); if (bcs) bcs.onclick = () => { pushUndo(); const k = secSel.key; el.bub = secBub(el); const n = { ...(el.bub.cfg[k] || {}) }; delete n.color; el.bub.cfg = { ...el.bub.cfg, [k]: n }; renderPrintProps(); drawPrintPage(); };
   const bh = box.querySelector("#secBcHide"); if (bh) bh.onclick = () => { pushUndo(); el.bub = secBub(el); el.bub.off = { ...el.bub.off, [secSel.key]: true }; secSel.key = null; renderPrintProps(); drawPrintPage(); };
   const br = box.querySelector("#secBcReset"); if (br) br.onclick = () => { pushUndo(); el.bub = secBub(el); const k = secSel.key, rm = o => { const n = { ...o }; delete n[k]; return n; }; el.bub.cfg = rm(el.bub.cfg); el.bub.pos = rm(el.bub.pos); el.bub.anc = rm(el.bub.anc); renderPrintProps(); drawPrintPage(); };
   const bd = box.querySelector("#secBcDone"); if (bd) bd.onclick = () => { secSel.key = null; renderPrintProps(); drawPrintPage(); };
