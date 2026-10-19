@@ -2258,12 +2258,13 @@ function objMenuHtml(its) {
   const fams = new Set(its.map(objFamKey));
   const act = String(it.activity || "").trim();
   const famCount = items.filter(x => fams.has(objFamKey(x))).length;
-  return `<button type="button" data-o="obj">Släck ${escHtml(names.slice(0, 2).join(", ") || "objektet")}${its.length > 1 ? ` (${its.length} objekt här)` : ""}</button>` +
+  return (typeof objStatusMenuHtml === "function" ? objStatusMenuHtml(its) : "") + `<button type="button" data-o="obj">Släck ${escHtml(names.slice(0, 2).join(", ") || "objektet")}${its.length > 1 ? ` (${its.length} objekt här)` : ""}</button>` +
     (famCount > its.length ? `<button type="button" data-o="fam">Släck hela aktiviteten ${escHtml(famName(it))} (${famCount} objekt)</button>` : "") +
     (act ? `<button type="button" data-o="act">Släck alla med aktiviteten ${escHtml(act.length > 28 ? act.slice(0, 27) + "…" : act)}</button>` : "") +
     `<button type="button" data-o="only">Visa bara ${escHtml(famName(it))}</button>`;
 }
 function bindObjMenu(m, its) {
+  if (typeof objStatusBind === "function") objStatusBind(m, its);
   const close = () => m.classList.add("hidden");
   const h = () => objHidden();
   const on = (k, fn) => { const b = m.querySelector(`[data-o="${k}"]`); if (b) b.onclick = () => { close(); fn(); }; };
@@ -2281,7 +2282,7 @@ function openObjMenu(its, e) {
   if (!m) { openLabelMenu({ ids: [], text: "", act: "", box: {} }, e); m = $("labelMenu"); }
   m.innerHTML = objMenuHtml(its);
   m.style.left = Math.min(e.clientX, window.innerWidth - 300) + "px";
-  m.style.top = Math.min(e.clientY, window.innerHeight - 160) + "px";
+  m.style.top = Math.min(e.clientY, window.innerHeight - 300) + "px";
   m.classList.remove("hidden");
   bindObjMenu(m, its);
 }
