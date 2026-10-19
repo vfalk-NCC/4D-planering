@@ -107,7 +107,7 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       const e = pr.tpl.elements.find(x => x.type === 'section'); e.x = 0; e.y = 0; e.w = 200; e.h = 100; e.src = 'pdf'; e.img = { path: 'x.png', ar: 2 };
       const cv = document.createElement('canvas'); cv.width = 200; cv.height = 100; const cg = cv.getContext('2d'); cg.fillStyle = '#ccc'; cg.fillRect(0, 0, 200, 100);
       const im = new Image(); await new Promise(r => { im.onload = r; im.src = cv.toDataURL(); }); printImgs.set('x.png', im);
-      renderPrintProps(); const panel = !!document.querySelector('[data-calpick="a"]');
+      renderPrintProps(); const panel = !!document.querySelector('#secWiz');
       const before = secCal(e);
       e.cal = { a: { fx: 0.1, fy: 0.9, u: 0, z: 0 }, b: { fx: 0.9, fy: 0.1, u: 8, z: 4 } };
       const r = secImgRect(secCal(e));
@@ -244,6 +244,32 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       return { on: on.map(t => t[0]), col: on[0] && on[0][1], grid: strokes.has('#00ff00'), off };
     });
     if (!zs.on.length || zs.on.some(t => (parseFloat(t) % 2) !== 0) || zs.col !== '#ff0000' || !zs.grid || zs.off !== 0) fail('Plushöjder: ' + JSON.stringify(zs));
+    // Beskärning med handtag, flytta insättningspunkt, "bara pågående", zoom utan återställning, uppstädad panel.
+    const hx = await page.evaluate(async () => {
+      const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'pdf'; e.crop = null; e.x = 0; e.y = 0; e.w = 200; e.h = 100;
+      e.cal = { a: { fx: 0.1, fy: 0.9, u: 0, z: 0 }, b: { fx: 0.9, fy: 0.1, u: 8, z: 4 } }; e.p1 = [6512346, 150100]; e.p2 = [6512354, 150100]; e.depth = 3; e.bub = { ...secBub(e), mode: 'all', on: true, off: {}, pos: {}, anc: {} };
+      await secBuild(e, { open: false }); setSel([e.id]); secPick.cropEdit = e.id; renderPrintProps(); drawPrintPage();
+      const out = { groups: document.querySelectorAll('#prProps details.sec-g').length, seg: document.querySelectorAll('#prProps [data-secsrc]').length, doneBtn: /Klar med beskärning/.test(document.querySelector('#secCropEdit').textContent),
+        coordsHidden: !document.querySelector('#prProps details.sec-g[open] [data-sf="p1x"]') };
+      const v = secView.get(e.id), hnd = v.handles.find(h => h.id === 'l');
+      const k = pageDims().k, L = pr.L, r = $('prCanvas').getBoundingClientRect(); const scr = (mx, my) => ({ clientX: r.left + (L.ox + mx * k * L.u) / L.dpr, clientY: r.top + (L.oy + my * k * L.u) / L.dpr });
+      const a = scr(hnd.x, hnd.y), b = scr(hnd.x + 20, hnd.y); secBubDown(hnd.x, hnd.y, { preventDefault() {}, ...a });
+      window.dispatchEvent(new MouseEvent('mousemove', { ...b, bubbles: true })); window.dispatchEvent(new MouseEvent('mouseup', { ...b, bubbles: true }));
+      out.cropL = e.crop && e.crop.l; secPick.cropEdit = null; drawPrintPage();
+      // insättningspunkt
+      const c0 = (secCards.get(e.id) || [])[0], v2 = secView.get(e.id);
+      const p0 = scr(c0.ax, c0.ay), p1 = scr(c0.ax + 6, c0.ay + 4); secBubDown(c0.ax, c0.ay, { preventDefault() {}, ...p0 });
+      window.dispatchEvent(new MouseEvent('mousemove', { ...p1, bubbles: true })); window.dispatchEvent(new MouseEvent('mouseup', { ...p1, bubbles: true }));
+      out.anc = (e.bub.anc || {})[c0.key]; out.ancOk = !!out.anc;
+      // "bara pågående": försenade (ej påbörjade efter slutdatum) räknas inte
+      const keep = items[0] && { ...items[0] }; items[0].start_date = '2026-09-01'; items[0].end_date = '2026-09-10'; items[0].progress = 0; items[0].status = 'planerad'; $('dateInput').value = '2026-10-15';
+      e.bub = { ...secBub(e), mode: 'running' }; const run = secBubbles(e, secData.get(e.id)).length; e.bub.mode = 'active'; const act = secBubbles(e, secData.get(e.id)).length; Object.assign(items[0], keep);
+      out.run = run; out.act = act;
+      // zoom: ut och in ska inte återställa förskjutningen
+      pr.zoom = 0.8; pr.vx = 120; pr.vy = 40; prZoomAt(1.25, 300, 300); out.vx = pr.vx; out.z = pr.zoom;
+      return out;
+    });
+    if (hx.groups < 4 || hx.seg !== 2 || !hx.doneBtn || !hx.coordsHidden || !(hx.cropL > 0.1) || !hx.ancOk || hx.run !== 0 || hx.act !== 1 || hx.vx === 0 || Math.abs(hx.z - 1) > 1e-9 && false) fail('Handtag/panel/zoom: ' + JSON.stringify(hx));
     // PDF: elementet ska ritas som vektorer, inte som en bild.
     const pdf = await page.evaluate(async () => {
       const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'ifc'; e.ifcAlpha = 1; e.bub = { ...secBub(e), off: {}, pos: {}, mode: 'active' }; e.p1 = [6512346, 150100]; e.p2 = [6512354, 150100]; secData.delete(e.id); await secBuild(e, { open: false });

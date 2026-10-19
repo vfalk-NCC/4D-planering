@@ -13,15 +13,15 @@
    Det beräknade snittet ligger bara i minnet (secData) – sparas inte i mallen. "Uppdatera sektion" räknar om det. */
 
 const SEC_DEF = { src: "ifc", p1: null, p2: null, side: 1, depth: 4, scale: 0, zlo: null, zhi: null, q: "", nq: "", title: "SEKTION A–A", color: "#334155", lw: 0.18, status: true,
-  bub: { on: true, off: {}, pos: {}, mode: "active", prog: "entered", size: 36, max: 12, fields: { name: true, date: true, progress: true } } };
+  bub: { on: true, off: {}, pos: {}, anc: {}, mode: "active", prog: "entered", size: 36, max: 12, fields: { name: true, date: true, progress: true } } };
 const secView = new Map();               // elementets id -> senaste ritvyn (för att klicka ut beskärningen)
 const secCards = new Map();               // elementets id -> [{ key, x, y, w, h }] bubblornas rutor (bladets mm) – för att kunna flytta dem
 const secData = new Map();               // elementets id -> { sig, groups: Map(nyckel -> polylinjer [u,z mm]), anchors, L, zlo, zhi }
-const secPick = { el: null, pts: [], cal: null, wiz: false, crop: false };
+const secPick = { el: null, pts: [], cal: null, wiz: false, crop: false, cropEdit: null };
 const sec3d = { el: null, pts: [], opened: false, mode: null, msg: "" };   // steg 2: punkterna A och B klickas i 3D-modellen    // "Välj i ritning": väntar på två klick på en ritning
 const SEC_MAX_SEGS = 400000;
 const secKey = r => (r.group_id ? `g:${r.group_id}` : r.source_key ? `s:${r.source_key}` : `i:${r.id}`);
-const secBub = el => ({ ...SEC_DEF.bub, off: {}, pos: {}, ...(el.bub || {}), fields: { ...SEC_DEF.bub.fields, ...((el.bub || {}).fields || {}) } });
+const secBub = el => ({ ...SEC_DEF.bub, off: {}, pos: {}, anc: {}, ...(el.bub || {}), fields: { ...SEC_DEF.bub.fields, ...((el.bub || {}).fields || {}) } });
 const secLen = el => (el.p1 && el.p2 ? Math.hypot(el.p2[0] - el.p1[0], el.p2[1] - el.p1[1]) : 0);
 const secAt = () => ($("dateInput") && $("dateInput").value) || (typeof todayIso === "function" ? todayIso() : "");
 
@@ -160,7 +160,8 @@ function secBubbles(el, data) {
     ((typeof l3bs !== "undefined" && l3bs.sel) || []).forEach(s => { const r0 = s.mesh && s.mesh.userData.l3b.ranges[s.ri], r = r0 && r0.itemId && byId.get(r0.itemId); if (r) marked.add(secKey(r)); });
   }
   let list = data.anchors.filter(a => a.row && a.row.start_date && !(cfg.off || {})[a.key]);
-  if (cfg.mode === "active") list = list.filter(a => ["pagaende", "forsenad"].includes(secPhase(a.row)));
+  if (cfg.mode === "running") list = list.filter(a => secPhase(a.row) === "pagaende");
+  else if (cfg.mode === "active") list = list.filter(a => ["pagaende", "forsenad"].includes(secPhase(a.row)));
   else if (cfg.mode === "sel") list = list.filter(a => marked.has(a.key));
   return list.sort((a, b) => a.u - b.u).slice(0, Math.max(1, Number(cfg.max) || 12));
 }
@@ -207,7 +208,7 @@ function drawPrSection(ctx, el, X, Y, W, H, pt, mm) {
   let uLo = 0, uHi = data.L, zlo = data.zlo, zTop = data.zhi, imRect = null;
   let crop = null, full = null;
   if (pdfIm && cal) {
-    full = secImgRect(cal); crop = secCrop(el);
+    full = secImgRect(cal); crop = secPick.cropEdit === el.id ? null : secCrop(el);   // under beskärningen visas hela ritningen
     const w = full.u1 - full.u0, h = full.z1 - full.z0;
     imRect = crop ? { u0: full.u0 + crop.l * w, u1: full.u1 - crop.r * w, z1: full.z1 - crop.t * h, z0: full.z0 + crop.b * h } : full;
     if (crop) { uLo = imRect.u0; uHi = imRect.u1; zlo = imRect.z0; zTop = imRect.z1; }   // beskuren: bara den delen visas (även IFC-snittet klipps till den)
@@ -244,14 +245,14 @@ function drawPrSection(ctx, el, X, Y, W, H, pt, mm) {
   // Bubblorna: kort i bandet, ledlinje till objektets överkant.
   const placed = [], boxes = [];
   cards.forEach((a, i) => {
-    const ax = px(a.u), ay = py(Math.min(a.z, zTop)), L = secCardLines(a, cfg), c = phaseColor(secPhase(a.row));
+    const anc = (cfg.anc || {})[a.key], ax = anc ? px(anc[0]) : px(a.u), ay = anc ? py(anc[1]) : py(Math.min(a.z, zTop)), L = secCardLines(a, cfg), c = phaseColor(secPhase(a.row));
     let cx = Math.max(X, Math.min(X + W - cw, ax - cw / 2)), cy = top + mm * 0.5;
     for (let r = 0; r < Math.max(1, rows); r++) { cy = top + mm * 0.5 + r * (ch + mm * 1.5); if (!placed.some(p => p.y === cy && cx < p.x + cw + mm * 0.5 && cx + cw + mm * 0.5 > p.x)) break; }
     // Hamnar kortet över ett annat i alla rader: skjut det åt sidan tills det får plats.
     for (let g = 0; g < 40 && placed.some(p => p.y === cy && cx < p.x + cw + mm * 0.5 && cx + cw + mm * 0.5 > p.x); g++) { cx += cw + mm; if (cx + cw > X + W) { cx = X; cy += ch + mm * 1.5; } }
     const man = (cfg.pos || {})[a.key];
     if (man && man.length === 2) { cx = X + man[0] * mm; cy = Y + man[1] * mm; } else placed.push({ x: cx, y: cy });
-    boxes.push({ key: a.key, x: cx / mm, y: cy / mm, w: cw / mm, h: ch / mm });
+    boxes.push({ key: a.key, x: cx / mm, y: cy / mm, w: cw / mm, h: ch / mm, ax: ax / mm, ay: ay / mm });
     const tipX = Math.max(cx + cw * 0.08, Math.min(cx + cw * 0.92, ax));
     ctx.strokeStyle = "#ffffff"; ctx.lineWidth = Math.max(1, mm * 0.5); ctx.beginPath(); ctx.moveTo(tipX, cy + ch); ctx.lineTo(ax, ay); ctx.stroke();
     ctx.strokeStyle = c; ctx.lineWidth = Math.max(0.6, mm * 0.2); ctx.beginPath(); ctx.moveTo(tipX, cy + ch); ctx.lineTo(ax, ay); ctx.stroke();
@@ -269,6 +270,17 @@ function drawPrSection(ctx, el, X, Y, W, H, pt, mm) {
     }
   });
   secCards.set(el.id, boxes);
+  if (secPick.cropEdit === el.id && full) { // beskärningsläge: det som faller utanför tonas ned, ramen har handtag
+    const cr = secCrop(el) || { l: 0, r: 0, t: 0, b: 0 }, w = full.u1 - full.u0, h = full.z1 - full.z0;
+    const X0 = px(full.u0 + cr.l * w), X1 = px(full.u1 - cr.r * w), Y0 = py(full.z1 - cr.t * h), Y1 = py(full.z0 + cr.b * h), FX0 = px(full.u0), FX1 = px(full.u1), FY0 = py(full.z1), FY1 = py(full.z0);
+    ctx.fillStyle = "rgba(255,255,255,.7)";
+    ctx.fillRect(FX0, FY0, FX1 - FX0, Y0 - FY0); ctx.fillRect(FX0, Y1, FX1 - FX0, FY1 - Y1); ctx.fillRect(FX0, Y0, X0 - FX0, Y1 - Y0); ctx.fillRect(X1, Y0, FX1 - X1, Y1 - Y0);
+    ctx.strokeStyle = "#2563eb"; ctx.lineWidth = Math.max(1, mm * 0.35); ctx.setLineDash([mm * 1.5, mm]); ctx.strokeRect(X0, Y0, X1 - X0, Y1 - Y0); ctx.setLineDash([]);
+    const hs = [["tl", X0, Y0], ["t", (X0 + X1) / 2, Y0], ["tr", X1, Y0], ["r", X1, (Y0 + Y1) / 2], ["br", X1, Y1], ["b", (X0 + X1) / 2, Y1], ["bl", X0, Y1], ["l", X0, (Y0 + Y1) / 2]];
+    const r = Math.max(2.5, mm * 1.2); ctx.fillStyle = "#fff"; ctx.lineWidth = Math.max(1, mm * 0.3);
+    hs.forEach(([, hx, hy]) => { ctx.beginPath(); ctx.rect(hx - r, hy - r, r * 2, r * 2); ctx.fill(); ctx.stroke(); });
+    const v0 = secView.get(el.id); if (v0) v0.handles = hs.map(([id, hx, hy]) => ({ id, x: hx / mm, y: hy / mm }));
+  } else { const v0 = secView.get(el.id); if (v0) v0.handles = null; }
   // Skala och sektionslinjens ändar.
   ctx.fillStyle = "#475569"; ctx.font = `${fs * 0.9}px Helvetica, Arial`; ctx.textAlign = "left";
   const N = Math.round(1000 / (s / mm));
@@ -311,8 +323,42 @@ function secWrap(ctx, text, w, maxLines) {
 }
 
 /* Flytta bubblorna med musen i layouten (och dubbelklick släcker en bubbla). Returnerar true när klicket tillhör en bubbla. */
+function secCropDown(mx, my, e) {
+  if (!pr || !secPick.cropEdit) return false;
+  const el = pr.tpl.elements.find(x => x.id === secPick.cropEdit), v = el && secView.get(el.id);
+  if (!el || !v || !v.handles || !v.full) return false;
+  const hit = v.handles.find(h => Math.abs(h.x - mx) < 2.6 && Math.abs(h.y - my) < 2.6);
+  if (!hit) return false;
+  pushUndo(); const F = v.full, w = F.u1 - F.u0, hh = F.z1 - F.z0, c0 = { l: 0, r: 0, t: 0, b: 0, ...(el.crop || {}) };
+  const toUZ = (x, y) => [v.uLo + (x * v.mm - v.x0) / v.s, v.zlo + (v.yBase - y * v.mm) / v.s];
+  const cl = x => Math.max(0, Math.min(0.95, x));
+  const move = ev => {
+    const [px2, py2] = prPoint(ev), [u, z] = toUZ(px2, py2), c = { ...c0 };
+    if (hit.id.includes("l")) c.l = cl((u - F.u0) / w);
+    if (hit.id.includes("r")) c.r = cl((F.u1 - u) / w);
+    if (hit.id.includes("t")) c.t = cl((F.z1 - z) / hh);
+    if (hit.id.includes("b")) c.b = cl((z - F.z0) / hh);
+    if (c.l + c.r > 0.95) { if (hit.id.includes("l")) c.l = 0.95 - c.r; else c.r = 0.95 - c.l; }
+    if (c.t + c.b > 0.95) { if (hit.id.includes("t")) c.t = 0.95 - c.b; else c.b = 0.95 - c.t; }
+    el.crop = Object.fromEntries(Object.entries(c).map(([k, x]) => [k, Math.round(x * 1e4) / 1e4])); drawPrintPage();
+  };
+  const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); renderPrintProps(); };
+  window.addEventListener("mousemove", move); window.addEventListener("mouseup", up); e.preventDefault(); return true;
+}
 function secBubDown(mx, my, e) {
   if (!pr) return false;
+  if (secCropDown(mx, my, e)) return true;
+  // Bubblans insättningspunkt (pricken vid objektet) kan dras.
+  for (const el of pr.tpl.elements.slice().reverse()) {
+    if (el.type !== "section" || el.locked) continue;
+    const v = secView.get(el.id), hit = v && (secCards.get(el.id) || []).find(b => b.ax !== undefined && Math.hypot(b.ax - mx, b.ay - my) < 2.2);
+    if (!hit) continue;
+    if (!pr.sels.includes(el.id) || pr.sels.length !== 1) { setSel([el.id]); renderPrintProps(); }
+    pushUndo(); el.bub = secBub(el); let moved = false;
+    const move = ev => { const [px2, py2] = prPoint(ev); moved = true; el.bub.anc = { ...el.bub.anc, [hit.key]: [Math.round((v.uLo + (px2 * v.mm - v.x0) / v.s) * 100) / 100, Math.round((v.zlo + (v.yBase - py2 * v.mm) / v.s) * 100) / 100] }; drawPrintPage(); };
+    const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); if (!moved) pr.undo.pop(); else prCmdLog("Flyttade bubblans insättningspunkt."); };
+    window.addEventListener("mousemove", move); window.addEventListener("mouseup", up); e.preventDefault(); return true;
+  }
   for (const el of pr.tpl.elements.slice().reverse()) {
     if (el.type !== "section" || el.locked) continue;
     const hit = (secCards.get(el.id) || []).find(b => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h);
@@ -399,20 +445,7 @@ function secPickClick(mx, my) {
   return true;
 }
 
-function secPdfHtml(el) {
-  const c = el.cal || {}, pt = (k, lab) => { const p = c[k] || {}, set = p.fx !== undefined;
-    return `<div class="pr-grid4"><div style="grid-column:span 2;"><button type="button" class="btn small" data-calpick="${k}">${secPick.cal === k ? "Klicka på ritningen …" : (set ? "✔ " : "") + "📍 Punkt " + lab + " i bilden"}</button></div>
-      <div><label>${lab}: längs m</label><input type="number" step="0.1" data-cal="${k}.u" value="${p.u ?? ""}" /></div><div><label>${lab}: höjd m</label><input type="number" step="0.1" data-cal="${k}.z" value="${p.z ?? ""}" /></div></div>`; };
-  return `<div class="hint">Din egen sektionsritning (PDF eller bild) läggs i sektionens koordinater: markera två kända punkter i bilden (t.ex. två bjälklagskanter) och skriv in var de ligger – längs sektionslinjen och i höjd. Bubblorna fästs sedan vid IFC-objekten.</div>
-    <div class="pr-row"><button type="button" class="btn small" id="secImg">${el.img && el.img.path ? "🖼 Byt PDF/bild" : "🖼 Välj PDF/bild"}</button></div>
-    <div class="pr-row"><button type="button" class="btn small primary" id="secWiz" ${el.img && el.img.path ? "" : "disabled"}>📍 Passa in: 2 punkter i ritningen + 2 i 3D</button></div>
-    <div class="hint">${secCal(el) ? "✔ Ritningen är inpassad – sektionslinjen och höjderna kommer från de två 3D-punkterna." : "Klicka två tydliga punkter i ritningen en bit från varandra i sidled (t.ex. två pelar- eller väggkanter), sedan samma två punkter i 3D-modellen. Då placeras ritningen exakt och sektionslinjen sätts av sig själv."}</div>
-    <details class="pr-adv"><summary>Mata in passpunkterna för hand</summary>${pt("a", "A")}${pt("b", "B")}</details>
-    <div class="pr-grid4"><div><label>Ritningens täckning %</label><input type="number" step="10" min="10" max="100" data-sf="imgAlphaPct" value="${Math.round((Number(el.imgAlpha) || 1) * 100)}" /></div></div>
-    <div class="pr-row"><button type="button" class="btn small" id="secCrop">${secPick.crop ? "Klicka två hörn …" : "✂ Beskär ritningen"}</button> <button type="button" class="btn small" id="secCropReset"${secCrop(el) ? "" : " disabled"}>Visa hela</button></div>
-    <div class="pr-grid4">${["l", "t", "r", "b"].map((k, i) => `<div><label>${["Vänster", "Överkant", "Höger", "Underkant"][i]} %</label><input type="number" step="1" min="0" max="95" data-crop="${k}" value="${Math.round((((el.crop || {})[k]) || 0) * 100)}" /></div>`).join("")}</div>
-    <label class="check"><input type="checkbox" data-f="lines" ${el.lines === false ? "" : "checked"} /> Visa även IFC-snittet ovanpå</label>`;
-}
+/* Sidopanelen – grupperad och uppstädad: Ritning, Snitt, Utseende, Bubblor och Avancerat (koordinater m.m. göms tills de behövs). */
 /* Passa in ritningen i två steg (Victor 2026-10-19): två punkter i ritningen, sedan samma två punkter i 3D-modellen.
    Punkternas 3D-lägen ger allt: sektionslinjen går genom A och B i planen (och förlängs till ritningens bredd), och höjderna
    kommer från modellens Z. B behöver bara ligga en bit bort i sidled från A; skiljer de sig tydligt i höjd används den för höjdskalan, annars samma skala som i sidled. */
@@ -509,55 +542,87 @@ function secFit(el, A, B, say) {
   el.cal = cal; el.src = "pdf"; secData.delete(el.id);
   return true;
 }
+const SEC_CSS = `#prProps .sec-seg { display: flex; gap: 2px; padding: 2px; background: #f1f5f9; border-radius: 10px; margin: 4px 0 8px; }
+  #prProps .sec-seg button { flex: 1; height: auto; min-height: 0; padding: 6px 8px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; font-size: 12.5px; color: #475569; cursor: pointer; }
+  #prProps .sec-seg button.on { background: #fff; color: #0f172a; font-weight: 600; box-shadow: 0 1px 3px rgba(15,23,42,.18); }
+  #prProps details.sec-g { border-top: 1px solid #e5e7eb; padding: 6px 0 2px; margin-top: 6px; }
+  #prProps details.sec-g > summary { cursor: pointer; list-style: none; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #64748b; padding: 4px 0; }
+  #prProps details.sec-g > summary::-webkit-details-marker { display: none; }
+  #prProps details.sec-g > summary::before { content: "▸"; display: inline-block; width: 14px; transition: transform .12s; }
+  #prProps details.sec-g[open] > summary::before { transform: rotate(90deg); }
+  #prProps .sec-row { display: flex; gap: 6px; align-items: center; margin: 6px 0; flex-wrap: wrap; }
+  #prProps .sec-row > .grow { flex: 1; min-width: 0; }
+  #prProps .sec-row button { height: 30px; padding: 0 10px; font-size: 12.5px; }
+  #prProps .sec-note { font-size: 11.5px; color: #64748b; margin: 4px 0; line-height: 1.4; }
+  #prProps .sec-ok { color: #15803d; } #prProps .sec-warn { color: #b45309; }
+  #prProps .sec-sl { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; } #prProps .sec-sl > span:first-child { flex: 0 0 96px; color: #475569; } #prProps .sec-sl input[type=range] { flex: 1; min-width: 0; } #prProps .sec-sl b { width: 36px; text-align: right; font-weight: 600; }
+  #prProps .sec-g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; } #prProps .sec-g2 label { font-size: 11.5px; margin: 0 0 2px; }
+  #prProps .sec-chips { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0; }
+  #prProps .sec-act { display: flex; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #e5e7eb; } #prProps .sec-act button { flex: 1; height: 32px; }`;
+function secStyle() { if (document.getElementById("secCss")) return; const st = document.createElement("style"); st.id = "secCss"; st.textContent = SEC_CSS; document.head.appendChild(st); }
 function secBubListHtml(el, data) {
   if (!data || !data.anchors.length) return "";
   const b = secBub(el), list = data.anchors.filter(a => a.row).sort((x, y) => (x.row.object_name || "").localeCompare(y.row.object_name || "", "sv", { numeric: true })).slice(0, 80);
   const shown = new Set(secBubbles(el, data).map(a => a.key));
-  return `<details class="pr-adv"><summary>Bubblor (${shown.size} av ${list.length})</summary>
-    <div class="pr-tcols" style="max-height:180px;overflow:auto;display:block;">${list.map(a => `<label class="check" style="display:block;"><input type="checkbox" data-secoff="${escHtml(a.key)}" ${b.off[a.key] ? "" : "checked"} /> ${escHtml(a.row.object_name || a.row.activity || "Aktivitet")}${shown.has(a.key) ? "" : " <small>(visas inte nu)</small>"}</label>`).join("")}</div>
-    <div class="pr-row"><button type="button" class="btn small" id="secBubReset">Återställ placeringen</button></div></details>`;
+  return `<details class="sec-sub"><summary class="sec-note" style="cursor:pointer;">Välj enskilda bubblor (${shown.size} av ${list.length} visas)</summary>
+    <div style="max-height:170px;overflow:auto;">${list.map(a => `<label class="check" style="display:block;font-size:12px;"><input type="checkbox" data-secoff="${escHtml(a.key)}" ${b.off[a.key] ? "" : "checked"} /> ${escHtml(a.row.object_name || a.row.activity || "Aktivitet")}${shown.has(a.key) ? "" : " <small>(filtrerad)</small>"}</label>`).join("")}</div>
+    <div class="sec-row"><button type="button" id="secBubReset">Återställ placering och släckta</button></div></details>`;
 }
-/* Sidopanelen. */
 function prSectionHtml(el) {
-  const esc = escHtml, b = secBub(el), data = secData.get(el.id), p1 = el.p1 || ["", ""], p2 = el.p2 || ["", ""];
-  const num = (f, lab, step, v) => `<div><label>${lab}</label><input type="number" step="${step}" data-sf="${f}" value="${v === null || v === undefined ? "" : v}" /></div>`;
+  secStyle();
+  const esc = escHtml, b = secBub(el), data = secData.get(el.id), pdf = el.src === "pdf", cal = secCal(el), L = secLen(el), cropOn = !!secCrop(el);
+  const num = (f, lab, step, v, ph = "") => `<div><label>${lab}</label><input type="number" step="${step}" data-sf="${f}" value="${v === null || v === undefined ? "" : v}" placeholder="${ph}" /></div>`;
   const opt = (v, cur, lab) => `<option value="${v}"${cur === v ? " selected" : ""}>${lab}</option>`;
-  return `<div class="hint">Sektionen skär de inlästa IFC-modellerna lodrätt längs en linje i planen. Bubblorna visar aktiviteterna bakom snittet.</div>
+  const sl = (f, lab, v) => `<div class="sec-sl"><span>${lab}</span><input type="range" min="5" max="100" step="5" data-sf="${f}" value="${v}" /><b>${v} %</b></div>`;
+  const zp = (f, lab, v) => `<div><label>${lab}</label><div style="display:flex;gap:4px;"><input type="number" step="0.1" data-sf="${f}" value="${v ?? ""}" placeholder="hela" style="flex:1;min-width:0;" /><button type="button" data-zpick="${f}" title="Klicka höjden i 3D-modellen" style="width:32px;padding:0;">📍</button></div></div>`;
+  const imgBlock = !pdf ? "" : `<div class="sec-row"><span class="grow sec-note" style="margin:0;">${el.img && el.img.path ? "🖼 " + esc(String(el.img.path).split("/").pop()) : "Ingen ritning vald"}</span><button type="button" id="secImg">${el.img && el.img.path ? "Byt PDF/bild" : "Välj PDF/bild"}</button></div>
+    ${el.img && el.img.path ? `<div class="sec-row"><button type="button" class="primary grow" id="secWiz">📍 Passa in mot modellen</button></div>
+      <div class="sec-note ${cal ? "sec-ok" : "sec-warn"}">${cal ? "✔ Inpassad – linjen och höjderna kommer från de två 3D-punkterna." : "Klicka två punkter i ritningen och samma två i 3D-modellen."}</div>
+      ${cal ? `<div class="sec-row"><button type="button" id="secCropEdit" class="${secPick.cropEdit === el.id ? "primary" : ""}">${secPick.cropEdit === el.id ? "✓ Klar med beskärning" : "✂ Beskär med handtag"}</button><button type="button" id="secCropReset"${cropOn ? "" : " disabled"}>Visa hela</button></div>` : ""}
+      ${sl("imgAlphaPct", "Ritningens täckning", Math.round((Number(el.imgAlpha) || 1) * 100))}
+      <label class="check"><input type="checkbox" data-f="lines" ${el.lines === false ? "" : "checked"} /> Visa IFC-snittet ovanpå</label>` : ""}`;
+  return `<div class="sec-seg" role="group"><button type="button" data-secsrc="ifc" class="${pdf ? "" : "on"}">Snitt ur IFC</button><button type="button" data-secsrc="pdf" class="${pdf ? "on" : ""}">Egen ritning + bubblor</button></div>
     <label>Rubrik</label><input type="text" data-f="title" value="${esc(el.title || "")}" />
-    <div class="pr-row"><label class="check"><input type="radio" name="secsrc" data-sf="src" value="ifc" ${el.src === "pdf" ? "" : "checked"} /> Snitt ur IFC</label> <label class="check"><input type="radio" name="secsrc" data-sf="src" value="pdf" ${el.src === "pdf" ? "checked" : ""} /> Egen sektionsritning (PDF eller bild) + bubblor</label></div>
-    ${el.src === "pdf" ? secPdfHtml(el) : ""}
-    <label>Sektionslinje (modellens koordinater, m)</label>
-    <div class="pr-grid4">${num("p1x", "Start X", "0.01", p1[0])}${num("p1y", "Start Y", "0.01", p1[1])}${num("p2x", "Slut X", "0.01", p2[0])}${num("p2y", "Slut Y", "0.01", p2[1])}</div>
-    <div class="pr-row"><button type="button" class="btn small" id="secPick">${secPick.el === el ? "Klicka två punkter på ritningen …" : "📍 Välj i ritning"}</button> <button type="button" class="btn small" id="secFlip" title="Byt riktning – vilken sida av linjen man tittar mot">↔ Vänd</button></div>
-    <label>Skär mellan höjderna (modellens Z, m – t.ex. 412 till 424)</label>
-    <div class="pr-grid4"><div style="grid-column:span 2;"><label>Från</label><div class="pr-row"><input type="number" step="0.1" data-sf="zlo" value="${el.zlo ?? ""}" placeholder="hela" style="flex:1;min-width:0;" /><button type="button" class="btn small" data-zpick="zlo" title="Klicka höjden i 3D-modellen">📍</button></div></div>
-      <div style="grid-column:span 2;"><label>Till</label><div class="pr-row"><input type="number" step="0.1" data-sf="zhi" value="${el.zhi ?? ""}" placeholder="hela" style="flex:1;min-width:0;" /><button type="button" class="btn small" data-zpick="zhi" title="Klicka höjden i 3D-modellen">📍</button></div></div></div>
-    <div class="hint">Bara det som ligger mellan höjderna skärs och får bubblor. Tomt = hela byggnaden. ${data ? `Byggnaden i snittet: ${data.zlo.toFixed(1)}–${data.zhi.toFixed(1)} m.` : ""}</div>
-    <label>Visa objekt (för bubblorna) före och bakom snittet</label>
-    <div class="pr-grid4">${num("front", "Före snittet m", "0.5", el.front ?? 0)}${num("depth", "Bakom snittet m", "0.5", el.depth ?? SEC_DEF.depth)}${num("scale", "Skala 1:", "10", el.scale || "")}</div>
-    <div class="hint">Skala tom = passa i rutan. Före/bakom räknas från snittplanet.</div>
-    <div class="pr-grid4"><div><label>IFC-snittet täckning %</label><input type="number" step="10" min="5" max="100" data-sf="ifcAlphaPct" value="${Math.round((Number(el.ifcAlpha) || 1) * 100)}" /></div></div>
-    <div class="pr-grid4"><div style="grid-column:span 2;"><label>Visa bara objekt med namn</label><input type="text" data-sf="q" value="${esc(el.q || "")}" /></div><div style="grid-column:span 2;"><label>Dölj objekt med namn</label><input type="text" data-sf="nq" value="${esc(el.nq || "")}" /></div></div>
-    <div class="pr-grid4"><div><label>Linjefärg</label><input type="color" data-f="color" value="${esc(el.color || SEC_DEF.color)}" /></div><div><label>Linjetjocklek mm</label><input type="number" step="0.05" data-f="lw" data-num="1" value="${el.lw || SEC_DEF.lw}" /></div></div>
-    <label>Plushöjder (höjdskalan)</label>
-    <div class="pr-grid4"><div><label>Var … m</label><input type="number" step="0.5" min="0" data-f="zstep" data-num="1" value="${el.zstep || ""}" placeholder="auto" /></div><div><label>Text</label><input type="color" data-f="zcolor" value="${esc(el.zcolor || "#64748b")}" /></div><div><label>Linje</label><input type="color" data-f="zgrid" value="${esc(el.zgrid || "#e2e8f0")}" /></div></div>
-    <label class="check"><input type="checkbox" data-f="zshow" ${el.zshow === false ? "" : "checked"} /> Visa höjdskalan</label>
-    <label class="check"><input type="checkbox" data-f="status" ${el.status === false ? "" : "checked"} /> Färga snittet efter status</label>
-    <label>Bubblor (framdrift)</label>
-    <label class="check"><input type="checkbox" data-sb="on" ${b.on ? "checked" : ""} /> Visa bubblor</label>
-    <div class="pr-grid4"><div style="grid-column:span 2;"><label>Vilka</label><select data-sb="mode">${opt("active", b.mode, "Pågående och försenade")}${opt("all", b.mode, "Alla bakom snittet")}${opt("sel", b.mode, "Markerade i 3D")}</select></div>
-      <div style="grid-column:span 2;"><label>Framdrift</label><select data-sb="prog">${opt("entered", b.prog, "Inskriven (tidplanen)")}${opt("plan", b.prog, "Uträknad efter datum")}</select></div></div>
-    <div class="pr-grid4"><div><label>Kortbredd mm</label><input type="number" step="2" data-sb="size" value="${b.size}" /></div><div><label>Högst</label><input type="number" step="1" data-sb="max" value="${b.max}" /></div></div>
-    <div class="pr-tcols"><label class="check"><input type="checkbox" data-sbf="name" ${b.fields.name ? "checked" : ""} /> Namn</label><label class="check"><input type="checkbox" data-sbf="date" ${b.fields.date ? "checked" : ""} /> Datum</label><label class="check"><input type="checkbox" data-sbf="progress" ${b.fields.progress ? "checked" : ""} /> Framdrift</label></div>
-    ${secBubListHtml(el, data)}
-    <div class="pr-row"><button type="button" class="btn small primary" id="secUpdate">🔄 Läs in byggnaden igen</button> <button type="button" class="btn small" id="secMini">🪟 3D bredvid</button></div>
-    <div class="hint">Sektionen räknas om av sig själv när du ändrar linje, höjder, djup eller filter. Dra en bubbla för att flytta den, dubbelklicka för att släcka den. Allt utanför bladet är arbetsyta och skrivs inte ut.</div>
-    <div class="hint" id="secInfo">${data ? `${data.segs.toLocaleString("sv-SE")} segment, ${data.anchors.length} aktiviteter bakom snittet.` : "Sektionen är inte beräknad än."} Datum för statusen: utskriftens datum.</div>`;
+    ${pdf ? `<details class="sec-g" open><summary>Ritning</summary>${imgBlock}</details>` : ""}
+    <details class="sec-g" open><summary>Snitt</summary>
+      <div class="sec-row"><button type="button" id="secPick">${secPick.el === el && !secPick.cal && !secPick.crop ? "Klicka två punkter …" : "📍 Linje i planen"}</button><button type="button" id="secFlip" title="Byt sida – vilket håll man tittar mot">↔ Vänd</button><span class="sec-note" style="margin:0;">${L > 0 ? `Längd ${L.toFixed(1)} m` : "Ingen linje än"}</span></div>
+      <div class="sec-g2">${zp("zlo", "Från höjd (m)", el.zlo)}${zp("zhi", "Till höjd (m)", el.zhi)}${num("front", "Före snittet (m)", "0.5", el.front ?? 0)}${num("depth", "Bakom snittet (m)", "0.5", el.depth ?? SEC_DEF.depth)}${num("scale", "Skala 1:", "10", el.scale || "", "passa")}</div>
+      <div class="sec-note">Höjder tomma = hela byggnaden${data ? ` (${data.zlo.toFixed(1)}–${data.zhi.toFixed(1)} m)` : ""}. Före/bakom styr vilka objekt som får bubblor.</div>
+    </details>
+    <details class="sec-g"><summary>Utseende</summary>
+      ${sl("ifcAlphaPct", "IFC-snittet täckning", Math.round((Number(el.ifcAlpha) || 1) * 100))}
+      <div class="sec-g2"><div><label>Linjefärg</label><input type="color" data-f="color" value="${esc(el.color || SEC_DEF.color)}" /></div><div><label>Tjocklek (mm)</label><input type="number" step="0.05" data-f="lw" data-num="1" value="${el.lw || SEC_DEF.lw}" /></div>
+        <div><label>Plushöjder var (m)</label><input type="number" step="0.5" min="0" data-f="zstep" data-num="1" value="${el.zstep || ""}" placeholder="auto" /></div><div class="sec-chips" style="align-items:end;"><label class="check"><input type="checkbox" data-f="zshow" ${el.zshow === false ? "" : "checked"} /> Visa skalan</label></div>
+        <div><label>Skalans text</label><input type="color" data-f="zcolor" value="${esc(el.zcolor || "#64748b")}" /></div><div><label>Skalans linje</label><input type="color" data-f="zgrid" value="${esc(el.zgrid || "#e2e8f0")}" /></div></div>
+      <label class="check"><input type="checkbox" data-f="status" ${el.status === false ? "" : "checked"} /> Färga snittet efter status</label>
+    </details>
+    <details class="sec-g" open><summary>Bubblor</summary>
+      <label class="check"><input type="checkbox" data-sb="on" ${b.on ? "checked" : ""} /> Visa bubblor</label>
+      <div class="sec-g2"><div><label>Vilka</label><select data-sb="mode">${opt("running", b.mode, "Bara pågående")}${opt("active", b.mode, "Pågående + försenade")}${opt("all", b.mode, "Alla bakom snittet")}${opt("sel", b.mode, "Markerade i 3D")}</select></div>
+        <div><label>Framdrift</label><select data-sb="prog">${opt("entered", b.prog, "Inskriven")}${opt("plan", b.prog, "Uträknad efter datum")}</select></div>
+        <div><label>Kortbredd (mm)</label><input type="number" step="2" data-sb="size" value="${b.size}" /></div><div><label>Högst antal</label><input type="number" step="1" data-sb="max" value="${b.max}" /></div></div>
+      <div class="sec-chips"><label class="check"><input type="checkbox" data-sbf="name" ${b.fields.name ? "checked" : ""} /> Namn</label><label class="check"><input type="checkbox" data-sbf="date" ${b.fields.date ? "checked" : ""} /> Datum</label><label class="check"><input type="checkbox" data-sbf="progress" ${b.fields.progress ? "checked" : ""} /> Framdrift</label></div>
+      ${secBubListHtml(el, data)}
+      <div class="sec-note">Dra ett kort eller dess prick för att flytta, dubbelklicka på kortet för att släcka det. "Försenad" = startdatum passerat utan registrerad framdrift. Statusen gäller utskriftens datum.</div>
+    </details>
+    <details class="sec-g"><summary>Avancerat</summary>
+      <label>Sektionslinje (modellens koordinater, m)</label>
+      <div class="sec-g2">${num("p1x", "Start X", "0.01", (el.p1 || [])[0])}${num("p1y", "Start Y", "0.01", (el.p1 || [])[1])}${num("p2x", "Slut X", "0.01", (el.p2 || [])[0])}${num("p2y", "Slut Y", "0.01", (el.p2 || [])[1])}</div>
+      <div class="sec-g2"><div><label>Visa bara namn</label><input type="text" data-sf="q" value="${esc(el.q || "")}" /></div><div><label>Dölj namn</label><input type="text" data-sf="nq" value="${esc(el.nq || "")}" /></div></div>
+      ${pdf ? `<label>Beskärning (%)</label><div class="sec-g2">${["l", "t", "r", "b"].map((k, i) => `<div><label>${["Vänster", "Överkant", "Höger", "Underkant"][i]}</label><input type="number" step="1" min="0" max="95" data-crop="${k}" value="${Math.round((((el.crop || {})[k]) || 0) * 100)}" /></div>`).join("")}</div>
+      <label>Passpunkter för hand</label>${["a", "b"].map(k => { const p = (el.cal || {})[k] || {}; return `<div class="sec-g2"><div><label>${k.toUpperCase()}: längs (m)</label><input type="number" step="0.1" data-cal="${k}.u" value="${p.u ?? ""}" /></div><div><label>${k.toUpperCase()}: höjd (m)</label><input type="number" step="0.1" data-cal="${k}.z" value="${p.z ?? ""}" /></div></div>`; }).join("")}` : ""}
+    </details>
+    <div class="sec-act"><button type="button" id="secUpdate" title="Läs in byggnaden igen och räkna om">🔄 Läs in igen</button><button type="button" id="secMini" title="3D i en liten ruta bredvid layouten">🪟 3D bredvid</button></div>
+    <div class="sec-note" id="secInfo">${data ? `${data.segs.toLocaleString("sv-SE")} segment, ${data.anchors.length} aktiviteter bakom snittet. ` : "Inte beräknad än. "}Räknas om av sig själv när du ändrar något. Det som ligger utanför bladet skrivs inte ut.</div>`;
 }
 function prSectionBind(box, el) {
   const redraw = () => { drawPrintPage(); };
   const lineChanged = () => { secAuto(el); redraw(); };
+  box.querySelectorAll("[data-secsrc]").forEach(bt => { bt.onclick = () => { if ((el.src || "ifc") === bt.dataset.secsrc) return; pushUndo(); el.src = bt.dataset.secsrc; renderPrintProps(); drawPrintPage(); }; });
+  const cre = box.querySelector("#secCropEdit"); if (cre) cre.onclick = () => { secPick.cropEdit = secPick.cropEdit === el.id ? null : el.id; secPick.el = null; secPick.crop = false; prCmdLog(secPick.cropEdit ? "Dra i handtagen runt ritningen för att beskära. Tryck Klar när du är nöjd." : "Beskärningen klar."); renderPrintProps(); drawPrintPage(); };
+  box.querySelectorAll('input[type="range"][data-sf]').forEach(r => r.addEventListener("input", () => { const f = r.dataset.sf, v = (Number(r.value) || 100) / 100; if (f === "ifcAlphaPct") el.ifcAlpha = Math.max(0.05, v); else el.imgAlpha = Math.max(0.05, v); const bb = r.parentNode.querySelector("b"); if (bb) bb.textContent = r.value + " %"; drawPrintPage(); }));
   box.querySelectorAll("[data-sf]").forEach(i => i.addEventListener("change", () => {
+    if (i.type === "range") return;
     if (i.type === "radio" && !i.checked) return;
     pushUndo(); const f = i.dataset.sf, v = i.value;
     if (f === "src") { el.src = v; renderPrintProps(); drawPrintPage(); return; }
@@ -577,7 +642,7 @@ function prSectionBind(box, el) {
   const wiz = box.querySelector("#secWiz"); if (wiz) wiz.onclick = () => secWizard(el);
   const simg = box.querySelector("#secImg"); if (simg) simg.onclick = () => $("prImgInput").click();
   box.querySelectorAll("[data-secoff]").forEach(i => i.addEventListener("change", () => { pushUndo(); el.bub = secBub(el); el.bub.off = { ...el.bub.off }; if (i.checked) delete el.bub.off[i.dataset.secoff]; else el.bub.off[i.dataset.secoff] = true; drawPrintPage(); }));
-  const brs = box.querySelector("#secBubReset"); if (brs) brs.onclick = () => { pushUndo(); el.bub = secBub(el); el.bub.pos = {}; el.bub.off = {}; renderPrintProps(); drawPrintPage(); };
+  const brs = box.querySelector("#secBubReset"); if (brs) brs.onclick = () => { pushUndo(); el.bub = secBub(el); el.bub.pos = {}; el.bub.off = {}; el.bub.anc = {}; renderPrintProps(); drawPrintPage(); };
   const mini = box.querySelector("#secMini"); if (mini) mini.onclick = () => secMini3d(!document.body.classList.contains("v3-mini"));
   const cr = box.querySelector("#secCrop"); if (cr) cr.onclick = () => { secPick.crop = !secPick.crop; secPick.el = secPick.crop ? el : null; secPick.cal = null; secPick.wiz = false; secPick.pts = []; prCmdLog(secPick.crop ? "Klicka ett hörn av det du vill visa, sedan motsatta hörnet." : "Avbröt."); renderPrintProps(); };
   const crr = box.querySelector("#secCropReset"); if (crr) crr.onclick = () => { pushUndo(); el.crop = null; renderPrintProps(); drawPrintPage(); };

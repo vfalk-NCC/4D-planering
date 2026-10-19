@@ -1387,7 +1387,6 @@ function prMouseUp() {
 function prZoomAt(f, cx, cy) {
   const L = pr.L || layoutPreview(), dpr = L.dpr;
   const z0 = pr.zoom || 1, z1 = Math.max(0.3, Math.min(12, z0 * f));
-  if (z1 === 1) { pr.zoom = 1; pr.vx = pr.vy = 0; drawPrintPage(); updatePrZoomUi(); return; }
   // Punkten under muspekaren ligger kvar: (cx - ox) skalas med z1/z0.
   const ox = L.ox, oy = L.oy, nox = cx - (cx - ox) * z1 / z0, noy = cy - (cy - oy) * z1 / z0;
   pr.zoom = z1;
