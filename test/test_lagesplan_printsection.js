@@ -270,6 +270,9 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       return out;
     });
     if (hx.groups < 4 || hx.seg !== 2 || !hx.doneBtn || !hx.coordsHidden || !(hx.cropL > 0.1) || !hx.ancOk || hx.run !== 0 || hx.act !== 1 || hx.vx === 0 || Math.abs(hx.z - 1) > 1e-9 && false) fail('Handtag/panel/zoom: ' + JSON.stringify(hx));
+    // Kopplingsrapport: aktiviteter vars objekt saknas i 3D-vyn grupperas per område.
+    const cp = await page.evaluate(() => { items.push({ id: 'zz1', object_id: 'GUID-X', area: '741 Sektionsfickor', start_date: '2026-10-01' }, { id: 'zz2', object_id: 'GUID-Y', area: '741 Sektionsfickor', start_date: '2026-10-01' }); const r = l3bCouplingReport(); const t = l3bCouplingText(); items.splice(-2); return { missing: r.missing, top: r.top, t }; });
+    if (cp.missing !== 2 || !/741 Sektionsfickor \(2\)/.test(cp.top[0]) || !/inte i 3D-vyn/.test(cp.t)) fail('Kopplingsrapport: ' + JSON.stringify(cp));
     // PDF: elementet ska ritas som vektorer, inte som en bild.
     const pdf = await page.evaluate(async () => {
       const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'ifc'; e.ifcAlpha = 1; e.bub = { ...secBub(e), off: {}, pos: {}, mode: 'active' }; e.p1 = [6512346, 150100]; e.p2 = [6512354, 150100]; secData.delete(e.id); await secBuild(e, { open: false });

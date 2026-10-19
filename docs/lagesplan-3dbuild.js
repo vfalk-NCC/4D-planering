@@ -183,6 +183,7 @@ async function l3bLoad(list, opts = {}) {
     const extra = [times.join(" · "), skippedAll ? `${skippedAll.toLocaleString("sv-SE")} objekt visas inte (${l3bDetails() ? "armering" : "armering, installationer och andra detaljer"}) – Lager → Avancerat` : ""].filter(Boolean).join(". ");
     if (l3b.models.length) l3Status(`Byggnaden visas (${l3b.models.length} ${l3b.models.length === 1 ? "modell" : "modeller"}, ${(total / 1000).toFixed(0)}k trianglar). ${n} objekt är kopplade och färgas efter status.${extra ? " " + extra + "." : ""}`);
     if (first && l3b.models.length) l3Frame(true);
+    { const cr = l3bCouplingText(); if (cr) { console.info("Koppling:", l3bCouplingReport()); if (typeof l3Toast === "function") l3Toast(cr + "."); } }
   } catch (e) { l3Status("Kunde inte visa byggnaden: " + (e && e.message ? e.message : e), true); }
   busyProgress("bldg", "", null);
   l3b.busy = false;
@@ -579,6 +580,22 @@ function l3bRecolor() {
   if (typeof l3gmEnd === "function") l3gmEnd();
   if (typeof l3fsAnimPreview === "function") { try { l3fsAnimPreview(); } catch (e) { console.warn("Animering", e); } } // objektens animering följer datumet även utanför filmen
 }
+/* Varför färgas inte allt? Aktiviteter med kopplat objekt (object_id) som inte finns i 3D-vyn – grupperade per område – och möjliga orsaker.
+   (Victor 2026-10-19: "jag ser inte sektionsfickornas framdrift i 3D-editorn trots att jag ser den i TC".) */
+function l3bCouplingReport() {
+  const have = new Set(); let capped = 0, ranges = 0;
+  (typeof l3b === "undefined" ? [] : l3b.models).forEach(m => { if (m.capped) capped++; (m.ranges || []).forEach(r => { ranges++; if (r.guid) have.add(String(r.guid)); }); });
+  const cand = (items || []).filter(r => r.object_id && !String(r.object_id).startsWith("manual-") && r.start_date);
+  const missing = cand.filter(r => !have.has(String(r.object_id))), byArea = new Map();
+  missing.forEach(r => { const a = String(r.area || "").trim() || "(utan område)"; byArea.set(a, (byArea.get(a) || 0) + 1); });
+  const top = [...byArea.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([a, n]) => `${a} (${n})`);
+  return { coupled: cand.length - missing.length, total: cand.length, missing: missing.length, top, capped, ranges, loaded: l3b.models.length };
+}
+function l3bCouplingText() {
+  const r = l3bCouplingReport();
+  if (!r.total || !r.missing) return "";
+  return `${r.missing} av ${r.total} kopplade objekt i planeringen finns inte i 3D-vyn (${r.top.join(", ")}). Möjliga orsaker: modellen är inte vald under Lager → Byggnad, objektets typ hoppas över (armering/installationer – Lager → Avancerat), taket för trianglar nåddes${r.capped ? " (det gjorde det)" : ""}, eller objektet har ett annat IFC-id här än i TC`;
+}
 function l3bCoupledIds() { const s = new Set(); l3b.models.forEach(m => m.visible && (m.ranges || []).forEach(r => { if (r.itemId) s.add(r.itemId); })); return s; }
 /* Träff i byggnaden -> objektets uppgifter. */
 function l3bHitInfo(h) {
@@ -590,7 +607,7 @@ function l3bHitInfo(h) {
   while (lo <= hi) { const mid = (lo + hi) >> 1; if (R[mid].start <= v) { r = R[mid]; lo = mid + 1; } else hi = mid - 1; }
   if (!r || v >= r.start + r.count) return null;
   const model = l3b.models.find(m => m === u.model);
-  return { itemId: r.itemId, name: r.name || "Objekt i modellen", extra: [["Modell", model ? model.name : ""], ["IFC-id", r.guid || ""]] };
+  return { itemId: r.itemId, name: r.name || "Objekt i modellen", extra: [["Modell", model ? model.name : ""], ["IFC-id", r.guid || ""], ["Koppling", r.itemId ? "✔ kopplad till en aktivitet (färgas efter status)" : "✘ ingen aktivitet har det här IFC-id:t – färgas inte"]] };
 }
 
 /* Dölja enskilda objekt i byggnaden: indexlistan byggs om utan objektets trianglar. */
