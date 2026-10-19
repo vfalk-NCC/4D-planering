@@ -13,7 +13,7 @@
    Det beräknade snittet ligger bara i minnet (secData) – sparas inte i mallen. "Uppdatera sektion" räknar om det. */
 
 const SEC_DEF = { src: "ifc", p1: null, p2: null, side: 1, depth: 4, scale: 0, zlo: null, zhi: null, q: "", nq: "", title: "SEKTION A–A", color: "#334155", lw: 0.18, status: true,
-  bub: { on: true, off: {}, pos: {}, anc: {}, mode: "active", prog: "entered", size: 36, max: 12, fields: { name: true, date: true, progress: true } } };
+  bub: { on: true, off: {}, pos: {}, anc: {}, mode: "running", prog: "entered", size: 36, max: 12, fields: { name: true, date: true, progress: true } } };
 const secView = new Map();               // elementets id -> senaste ritvyn (för att klicka ut beskärningen)
 const secCards = new Map();               // elementets id -> [{ key, x, y, w, h }] bubblornas rutor (bladets mm) – för att kunna flytta dem
 const secData = new Map();               // elementets id -> { sig, groups: Map(nyckel -> polylinjer [u,z mm]), anchors, L, zlo, zhi }
