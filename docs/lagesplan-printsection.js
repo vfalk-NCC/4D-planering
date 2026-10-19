@@ -16,7 +16,7 @@ const SEC_DEF = { src: "ifc", p1: null, p2: null, side: 1, depth: 4, scale: 0, z
   bub: { on: true, mode: "active", prog: "entered", size: 36, max: 12, fields: { name: true, date: true, progress: true } } };
 const secData = new Map();               // elementets id -> { sig, groups: Map(nyckel -> polylinjer [u,z mm]), anchors, L, zlo, zhi }
 const secPick = { el: null, pts: [], cal: null, wiz: false };
-const sec3d = { el: null, pts: [], opened: false };   // steg 2: punkterna A och B klickas i 3D-modellen    // "Välj i ritning": väntar på två klick på en ritning
+const sec3d = { el: null, pts: [], opened: false, mode: null };   // steg 2: punkterna A och B klickas i 3D-modellen    // "Välj i ritning": väntar på två klick på en ritning
 const SEC_MAX_SEGS = 400000;
 const secKey = r => (r.group_id ? `g:${r.group_id}` : r.source_key ? `s:${r.source_key}` : `i:${r.id}`);
 const secBub = el => ({ ...SEC_DEF.bub, ...(el.bub || {}), fields: { ...SEC_DEF.bub.fields, ...((el.bub || {}).fields || {}) } });
@@ -67,10 +67,10 @@ function secCompute(el) {
       const row = r.itemId ? byId.get(r.itemId) : null; keyOf[i] = row ? secKey(row) : "";
       if (row && !skip[i]) {
         // Objektets utsträckning i (u, v, z) – bubblan fäster där det syns bakom snittet.
-        let u0 = 1e18, u1 = -1e18, v0 = 1e18, v1 = -1e18, z1 = -1e18;
+        let u0 = 1e18, u1 = -1e18, v0 = 1e18, v1 = -1e18, z1 = -1e18, z0 = 1e18;
         const end = Math.min(n, r.start + r.count);
-        for (let v = r.start; v < end; v++) { if (U[v] < u0) u0 = U[v]; if (U[v] > u1) u1 = U[v]; if (V[v] < v0) v0 = V[v]; if (V[v] > v1) v1 = V[v]; if (Z[v] > z1) z1 = Z[v]; }
-        if (end > r.start && u1 >= 0 && u0 <= L && v1 >= 0 && v0 <= depth && z1 >= zlo) {
+        for (let v = r.start; v < end; v++) { if (U[v] < u0) u0 = U[v]; if (U[v] > u1) u1 = U[v]; if (V[v] < v0) v0 = V[v]; if (V[v] > v1) v1 = V[v]; if (Z[v] > z1) z1 = Z[v]; if (Z[v] < z0) z0 = Z[v]; }
+        if (end > r.start && u1 >= 0 && u0 <= L && v1 >= 0 && v0 <= depth && z1 >= zlo && z0 <= zhi) {
           const a = anchorBy.get(keyOf[i]) || anchorBy.set(keyOf[i], { row, us: [], zTop: -1e18, n: 0 }).get(keyOf[i]);
           a.us.push(Math.max(0, Math.min(L, (u0 + u1) / 2))); a.zTop = Math.max(a.zTop, Math.min(z1, zhi)); a.n++;
         }
@@ -328,8 +328,23 @@ async function secStart3d(el) {
   sec3d.el = el; sec3d.pts = []; sec3d.opened = !was3d;
   secHint3d();
 }
+async function secPickZ(el, f) {
+  const was3d = !!(document.getElementById("view3d") && !document.getElementById("view3d").classList.contains("hidden") && typeof l3 !== "undefined" && l3 && l3.scene);
+  try { if (!was3d) await open3d(); } catch (e) { alert("Kunde inte öppna 3D: " + e.message); return; }
+  if (typeof l3 === "undefined" || !l3 || !l3.scene) return;
+  sec3d.el = el; sec3d.pts = []; sec3d.opened = !was3d; sec3d.mode = f; secHint3d();
+}
 function secHint3d() {
   const box = document.getElementById("view3d"); if (!box || !sec3d.el) return;
+  if (sec3d.mode) {
+    let h = document.getElementById("secHint3d");
+    if (!h) { h = document.createElement("div"); h.id = "secHint3d"; h.style.cssText = "position:absolute;left:10px;top:54px;z-index:50;width:280px;background:#fff;border:2px solid #f97316;border-radius:12px;box-shadow:0 10px 30px rgba(15,23,42,.3);padding:8px 10px;font:13px/1.35 Helvetica,Arial,sans-serif;color:#0f172a;"; box.appendChild(h); }
+    h.innerHTML = `<b>Klicka ${sec3d.mode === "zlo" ? "nedre" : "övre"} gränsen i modellen</b><div style="margin:4px 0;">Höjden (Z) där du klickar används för sektionen. Snäpper mot hörn och kanter.</div><button type="button" id="secHintCancel" style="padding:4px 10px;">Avbryt</button>`;
+    h.querySelector("#secHintCancel").onclick = () => { sec3d.mode = null; secEnd3d(false); };
+    if (typeof l3Status === "function") l3Status("Klicka där sektionen ska " + (sec3d.mode === "zlo" ? "börja nertill" : "sluta upptill") + ".");
+    const cv0 = l3.renderer && l3.renderer.domElement; if (cv0) cv0.style.cursor = "crosshair";
+    return;
+  }
   let h = document.getElementById("secHint3d");
   if (!h) { h = document.createElement("div"); h.id = "secHint3d"; h.style.cssText = "position:absolute;left:10px;top:54px;z-index:50;width:280px;background:#fff;border:2px solid #f97316;border-radius:12px;box-shadow:0 10px 30px rgba(15,23,42,.3);padding:8px 10px;font:13px/1.35 Helvetica,Arial,sans-serif;color:#0f172a;"; box.appendChild(h); }
   const el = sec3d.el, im = el.img && printImage(el.img.path), n = sec3d.pts.length, nm = n ? "B" : "A";
@@ -354,6 +369,11 @@ function secPick3dTap(e) {
   if (!sec3d.el || typeof l3Snap !== "function") return false;
   const s = l3Snap(e); if (!s) return true;
   const P = s.point, pt = { x: P.x + l3.O[0], y: P.y + l3.O[1], z: P.z + l3.O[2] };
+  if (sec3d.mode) { // höjd (Från/Till) = Z där man klickar
+    const el = sec3d.el, f = sec3d.mode; pushUndo(); el[f] = Math.round(pt.z * 100) / 100; sec3d.mode = null; secData.delete(el.id); secEnd3d(true);
+    secBuild(el, { open: false, say: t => prCmdLog(t) }).then(() => { if (pr) { renderPrintProps(); drawPrintPage(); } });
+    return true;
+  }
   sec3d.pts.push(pt);
   if (sec3d.pts.length < 2) { secHint3d(); return true; }
   const el = sec3d.el;
@@ -391,8 +411,12 @@ function prSectionHtml(el) {
     <label>Sektionslinje (modellens koordinater, m)</label>
     <div class="pr-grid4">${num("p1x", "Start X", "0.01", p1[0])}${num("p1y", "Start Y", "0.01", p1[1])}${num("p2x", "Slut X", "0.01", p2[0])}${num("p2y", "Slut Y", "0.01", p2[1])}</div>
     <div class="pr-row"><button type="button" class="btn small" id="secPick">${secPick.el === el ? "Klicka två punkter på ritningen …" : "📍 Välj i ritning"}</button> <button type="button" class="btn small" id="secFlip" title="Byt riktning – vilken sida av linjen man tittar mot">↔ Vänd</button></div>
-    <div class="pr-grid4">${num("depth", "Djup bakom m", "0.5", el.depth ?? SEC_DEF.depth)}${num("scale", "Skala 1:", "10", el.scale || "")}${num("zlo", "Från höjd m", "0.5", el.zlo ?? "")}${num("zhi", "Till höjd m", "0.5", el.zhi ?? "")}</div>
-    <div class="hint">Skala tom = passa i rutan. Höjder tomma = hela byggnaden.</div>
+    <label>Skär mellan höjderna (modellens Z, m – t.ex. 412 till 424)</label>
+    <div class="pr-grid4"><div style="grid-column:span 2;"><label>Från</label><div class="pr-row"><input type="number" step="0.1" data-sf="zlo" value="${el.zlo ?? ""}" placeholder="hela" style="flex:1;min-width:0;" /><button type="button" class="btn small" data-zpick="zlo" title="Klicka höjden i 3D-modellen">📍</button></div></div>
+      <div style="grid-column:span 2;"><label>Till</label><div class="pr-row"><input type="number" step="0.1" data-sf="zhi" value="${el.zhi ?? ""}" placeholder="hela" style="flex:1;min-width:0;" /><button type="button" class="btn small" data-zpick="zhi" title="Klicka höjden i 3D-modellen">📍</button></div></div></div>
+    <div class="hint">Bara det som ligger mellan höjderna skärs och får bubblor. Tomt = hela byggnaden. ${data ? `Byggnaden i snittet: ${data.zlo.toFixed(1)}–${data.zhi.toFixed(1)} m.` : ""}</div>
+    <div class="pr-grid4">${num("depth", "Djup bakom m", "0.5", el.depth ?? SEC_DEF.depth)}${num("scale", "Skala 1:", "10", el.scale || "")}</div>
+    <div class="hint">Skala tom = passa i rutan.</div>
     <div class="pr-grid4"><div style="grid-column:span 2;"><label>Visa bara objekt med namn</label><input type="text" data-sf="q" value="${esc(el.q || "")}" /></div><div style="grid-column:span 2;"><label>Dölj objekt med namn</label><input type="text" data-sf="nq" value="${esc(el.nq || "")}" /></div></div>
     <div class="pr-grid4"><div><label>Linjefärg</label><input type="color" data-f="color" value="${esc(el.color || SEC_DEF.color)}" /></div><div><label>Linjetjocklek mm</label><input type="number" step="0.05" data-f="lw" data-num="1" value="${el.lw || SEC_DEF.lw}" /></div></div>
     <label class="check"><input type="checkbox" data-f="status" ${el.status === false ? "" : "checked"} /> Färga snittet efter status</label>
@@ -423,6 +447,7 @@ function prSectionBind(box, el) {
   const pick = box.querySelector("#secPick"); if (pick) pick.onclick = () => { secPick.el = secPick.el === el ? null : el; secPick.pts = []; prCmdLog(secPick.el ? "Klicka på ritningen där sektionen börjar." : "Avbröt."); renderPrintProps(); };
   box.querySelectorAll("[data-calpick]").forEach(b => { b.onclick = () => { if (!(el.img && el.img.path)) { alert("Välj en PDF eller bild först."); return; } secPick.el = secPick.cal === b.dataset.calpick ? null : el; secPick.cal = secPick.el ? b.dataset.calpick : null; secPick.pts = []; prCmdLog(secPick.el ? "Klicka på punkten i sektionsritningen." : "Avbröt."); renderPrintProps(); }; });
   box.querySelectorAll("[data-cal]").forEach(i => i.addEventListener("change", () => { pushUndo(); const [k, f] = i.dataset.cal.split("."); el.cal = { ...(el.cal || {}) }; el.cal[k] = { ...(el.cal[k] || {}) }; el.cal[k][f] = i.value === "" ? undefined : Number(String(i.value).replace(",", ".")); drawPrintPage(); }));
+  box.querySelectorAll("[data-zpick]").forEach(b => { b.onclick = () => secPickZ(el, b.dataset.zpick); });
   const wiz = box.querySelector("#secWiz"); if (wiz) wiz.onclick = () => secWizard(el);
   const simg = box.querySelector("#secImg"); if (simg) simg.onclick = () => $("prImgInput").click();
   const flip = box.querySelector("#secFlip"); if (flip) flip.onclick = () => { pushUndo(); el.side = el.side === -1 ? 1 : -1; lineChanged(); };

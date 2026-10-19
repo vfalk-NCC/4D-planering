@@ -159,6 +159,16 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       return { hint, a, hintB, b, gone: !document.getElementById('secHint3d'), p1: e.p1, built: secData.has(e.id), L: secLen(e) };
     });
     if (!t3.hint || !t3.a || !t3.hintB || !t3.b || !t3.gone || !t3.p1 || Math.abs(t3.L - 10) > 0.02 || !t3.built) fail('3D-steget: ' + JSON.stringify(t3));
+    // Höjdspann: bara mellan Från och Till skärs (lådan går -1..1 m), och höjden kan klickas i 3D.
+    const zr = await page.evaluate(async () => {
+      const e = pr.tpl.elements.find(x => x.type === 'section'); e.zlo = 0.2; e.zhi = 0.8; secData.delete(e.id); await secBuild(e, { open: false });
+      const d = secData.get(e.id); const out = { lo: Math.round(d.zlo * 100) / 100, hi: Math.round(d.zhi * 100) / 100 };
+      const keep = window.l3Snap; window.l3Snap = () => ({ point: new THREE.Vector3(0, 0, 0.5) });
+      sec3d.el = e; sec3d.mode = 'zhi'; sec3d.pts = []; sec3d.opened = false; secHint3d(); secPick3dTap({}); window.l3Snap = keep;
+      out.picked = e.zhi; out.panel = !!(renderPrintProps(), document.querySelector('[data-zpick="zlo"]'));
+      e.zlo = null; e.zhi = null; return out;
+    });
+    if (zr.lo !== 0.2 || zr.hi !== 0.8 || zr.picked !== 0.5 || !zr.panel) fail('Höjdspann: ' + JSON.stringify(zr));
     // PDF som källa: sidan görs om till en PNG (pdf.js är stubbad i testet -> bara kontroll att funktionen finns och att PDF avvisas för andra element).
     if (await page.evaluate(() => typeof pdfToImageFile !== 'function' || !document.getElementById('prImgInput').accept.includes('pdf'))) fail('PDF ska kunna väljas som sektionsritning');
     // PDF: elementet ska ritas som vektorer, inte som en bild.
