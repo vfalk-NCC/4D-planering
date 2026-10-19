@@ -109,6 +109,30 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
     // Utan tillvalet är filen oförändrad (ingen tidslinje).
     if (/id="tl"/.test(res.html)) fail('Utan tillvalet ska filen inte ha någon tidslinje');
     console.log('OK htmlexport med tidslinje');
+    // Punktmoln + aktuell vy (Victor 2026-10-19): med 3D öppen följer molnet, kameran och snittplanet med.
+    await page.evaluate(async () => {
+      if (document.getElementById('view3d').classList.contains('hidden')) await open3d();
+      const g = new THREE.Group(), geo = new THREE.BufferGeometry(), N = 2000, pos = new Float32Array(N * 3), col = new Uint8Array(N * 3);
+      for (let i = 0; i < N; i++) { pos[i * 3] = (i % 50) * 0.5; pos[i * 3 + 1] = Math.floor(i / 50) * 0.5; pos[i * 3 + 2] = (i % 7) * 0.3; col[i * 3] = 255; col[i * 3 + 1] = i % 255; col[i * 3 + 2] = 40; }
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3, true));
+      const mat = new THREE.PointsMaterial({ size: 3, sizeAttenuation: false, vertexColors: true }), pts = new THREE.Points(geo, mat); g.add(pts); l3.scene.add(g);
+      l3pc.clouds.push({ id: 'T', name: 'Testmoln', visible: true, group: g, mat, chunks: [], info: { center: [0, 0, 0], min: [0, 0, 0], max: [1, 1, 1] } });
+      l3.camera.position.set(12, -30, 20); l3.orbit.target.set(10, 10, 1); l3.camera.updateMatrixWorld(); l3.renderer.clippingPlanes = [new THREE.Plane(new THREE.Vector3(0, 0, -1), 50)];
+    });
+    const dl3 = page.waitForEvent('download', { timeout: 60000 });
+    const res3 = await page.evaluate(() => exportOfflineHtml());
+    await dl3;
+    if (!res3 || !res3.html) fail('Export med punktmoln gav inget');
+    const file3 = path.join(OUT, 'hx-export-pc.html'); fs.writeFileSync(file3, res3.html);
+    const v3 = await ctx2.newPage(); const err4 = []; v3.on('pageerror', e => err4.push(e.message));
+    await v3.goto('file://' + file3); await v3.click('.tabs button[data-t="3"]'); await v3.waitForFunction(() => window.__hx3, null, { timeout: 20000 });
+    const pc = await v3.evaluate(() => { let pts = 0, n = 0; window.__hx3.scene.traverse(o => { if (o.isPoints) { pts++; n += o.geometry.getAttribute('position').count; } }); return { clouds: window.__hx3.clouds, pts, n }; });
+    if (pc.clouds !== 1 || pc.pts !== 1 || pc.n !== 2000) fail('Punktmolnet ska följa med i filen: ' + JSON.stringify(pc));
+    const camv = await v3.evaluate(() => { const c = window.__hx3.cam; return c ? [c.position.x, c.position.y, c.position.z].map(x => Math.round(x)) : null; });
+    if (!camv || camv.join() !== '12,-30,20') fail('Kameran ska vara som i editorn: ' + JSON.stringify(camv));
+    if (err4.length) fail('Fel i filen med punktmoln: ' + err4.join(' | '));
+    console.log('OK htmlexport med punktmoln och aktuell vy');
+    await page.evaluate(() => { l3pc.clouds.length = 0; l3.renderer.clippingPlanes = []; });
     if (ext) fail('Filen försökte hämta ' + ext + ' resurser utifrån');
     if (err2.length) fail('Fel i den exporterade filen: ' + err2.join(' | '));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));

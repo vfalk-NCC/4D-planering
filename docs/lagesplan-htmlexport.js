@@ -57,8 +57,48 @@ function hxCollect(withBldg) {
   if (l3.objMesh && l3VisibleChain(l3.objMesh) && l3.objMesh.isMesh) add(l3.objMesh, []);
   return parts;
 }
+/* Punktmolnen som syns i 3D-vyn (Victor 2026-10-19: "exportera aktuell vy med exakt de här inställningarna inklusive punktmoln"):
+   punkterna med sina färger precis som de ritas nu (färgläge, höjdfilter m.m. ligger redan i färgerna) och molnets punktstorlek,
+   rundhet och genomskinlighet. Är det fler än HX_PC_CAP punkter glesas de ut jämnt, lika mycket i alla moln. */
+const HX_PC_CAP = 3e6;
+function hxCloudCount() {
+  if (typeof l3pc === "undefined") return 0;
+  let n = 0; l3pc.clouds.forEach(c => { if (c.visible && c.group && c.group.visible && l3VisibleChain(c.group)) c.group.children.forEach(o => { if (o.isPoints && o.visible !== false) n += o.geometry.getAttribute("position").count; }); });
+  return n;
+}
+function hxCollectClouds(cap) {
+  const out = [], total = hxCloudCount(), k = Math.max(1, Math.ceil(total / cap)), v = new THREE.Vector3();
+  if (!total) return out;
+  l3.scene.updateMatrixWorld(true);
+  l3pc.clouds.forEach(c => {
+    if (!(c.visible && c.group && c.group.visible && l3VisibleChain(c.group))) return;
+    const pts = [];
+    c.group.children.forEach(o => { if (!o.isPoints || o.visible === false) return; const P = o.geometry.getAttribute("position"), C = o.geometry.getAttribute("color"); if (!P) return; for (let i = 0; i < P.count; i += k) pts.push([o, P, C, i]); });
+    if (!pts.length) return;
+    const pos = new Float32Array(pts.length * 3), col = new Uint8Array(pts.length * 3);
+    pts.forEach(([o, P, C, i], j) => {
+      v.fromBufferAttribute(P, i).applyMatrix4(o.matrixWorld); pos[j * 3] = v.x; pos[j * 3 + 1] = v.y; pos[j * 3 + 2] = v.z;
+      if (C) { const m = C.normalized || C.array instanceof Uint8Array ? 1 : 255; col[j * 3] = Math.min(255, C.getX(i) * m * (C.normalized ? 255 : 1)); col[j * 3 + 1] = Math.min(255, C.getY(i) * m * (C.normalized ? 255 : 1)); col[j * 3 + 2] = Math.min(255, C.getZ(i) * m * (C.normalized ? 255 : 1)); }
+      else { col[j * 3] = col[j * 3 + 1] = col[j * 3 + 2] = 200; }
+    });
+    const mt = c.mat || {};
+    out.push({ pos, col, name: c.name || "", size: mt.size || 2, atten: !!mt.sizeAttenuation, round: !!mt.map, op: mt.transparent ? mt.opacity : 1, k });
+  });
+  return out;
+}
+/* Vyn som den är just nu: kamera (läge, mål, bildvinkel), snittplan och bakgrund – så att filen öppnas i samma vy. */
+function hxViewState() {
+  const cam = l3.camera, t = l3.orbit.target, v = {
+    cam: { p: [cam.position.x, cam.position.y, cam.position.z], t: [t.x, t.y, t.z], fov: cam.isPerspectiveCamera ? cam.fov : 0, ortho: !!cam.isOrthographicCamera, zoom: cam.zoom || 1 },
+    clip: (l3.renderer.clippingPlanes || []).map(pl => ({ n: [pl.normal.x, pl.normal.y, pl.normal.z], c: pl.constant })),
+    bg: l3.scene.background && l3.scene.background.isColor ? "#" + l3.scene.background.getHexString() : null
+  };
+  if (cam.isOrthographicCamera) v.cam.dist = cam.position.distanceTo(t);
+  return v;
+}
+
 /* Packas: rubrik (JSON) + binärt, gzip, base64. */
-async function hxPack(parts, ground, extra) {
+async function hxPack(parts, ground, extra, clouds) {
   const body = []; let off = 0;
   const put = arr => { const pad = (4 - off % 4) % 4; if (pad) { body.push(new Uint8Array(pad)); off += pad; } const u = new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength); body.push(u); const at = off; off += u.byteLength; return at; };
   const meta = { parts: [], ground: null, ...(extra || {}) };
@@ -69,6 +109,14 @@ async function hxPack(parts, ground, extra) {
     for (let i = 0; i < p.pos.length; i += 3) for (let a = 0; a < 3; a++) q[i + a] = Math.round((p.pos[i + a] - mn[a]) / sz[a] * 65535);
     const i16 = n < 65536;
     meta.parts.push({ n, ni: p.idx.length, mn, sz, i16, op: p.op, names: p.names, pos: put(q), col: put(p.col), idx: put(i16 ? Uint16Array.from(p.idx) : p.idx) });
+  });
+  meta.clouds = [];
+  (clouds || []).forEach(p => {
+    const n = p.pos.length / 3, mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    for (let i = 0; i < p.pos.length; i += 3) for (let a = 0; a < 3; a++) { const x = p.pos[i + a]; if (x < mn[a]) mn[a] = x; if (x > mx[a]) mx[a] = x; }
+    const sz = mx.map((x, a) => Math.max(1e-6, x - mn[a])), q = new Uint16Array(p.pos.length);
+    for (let i = 0; i < p.pos.length; i += 3) for (let a = 0; a < 3; a++) q[i + a] = Math.round((p.pos[i + a] - mn[a]) / sz[a] * 65535);
+    meta.clouds.push({ n, mn, sz, name: p.name, size: p.size, atten: p.atten, round: p.round, op: p.op, pos: put(q), col: put(p.col) });
   });
   if (ground) meta.ground = { pos: Array.from(ground.pos), uv: Array.from(ground.uv), idx: Array.from(ground.idx) };
   const head = new TextEncoder().encode(JSON.stringify(meta));
@@ -105,6 +153,15 @@ async function exportOfflineHtml() {
       let withBldg = bldgTris > 0;
       if (bldgTris > HX_BIG_TRIS) withBldg = await uiConfirm(`Byggnaden har ${(bldgTris / 1e6).toFixed(1).replace(".", ",")} miljoner trianglar – filen kan bli stor (ungefär ${Math.round(bldgTris * 9 / 1e6)} MB) och tung att öppna på en svag dator. Ta med byggnaden?`, { ok: "Ta med", cancel: "Utan byggnaden" });
       if (!withBldg && bldgTris) note = "Byggnaden är inte med i den här filen.";
+      let clouds = [], cloudNote = "";
+      const nPts = hxCloudCount();
+      if (nPts > 0) {
+        clouds = hxCollectClouds(HX_PC_CAP);
+        const kept = clouds.reduce((a, c) => a + c.pos.length / 3, 0);
+        cloudNote = kept < nPts ? `Punktmolnet är utglesat till ${(kept / 1e6).toFixed(1).replace(".", ",")} av ${(nPts / 1e6).toFixed(1).replace(".", ",")} miljoner punkter.` : "";
+      }
+      const view = was3d ? hxViewState() : null;
+      if (cloudNote) note = (note ? note + " " : "") + cloudNote;
       busyProgress(key, "Fristående HTML: packar 3D", 0.4);
       const parts = hxCollect(withBldg);
       parts.forEach(p => { tris += p.idx.length / 3; });
@@ -116,7 +173,7 @@ async function exportOfflineHtml() {
         tlMeta = { sched: hxReg.list, tl: { c: { pagaende: hex("pagaende"), klar: hex("klar"), planerad: hex("planerad") }, o: 0.3, min: ds[0], max: ds[ds.length - 1], today } };
       } else if (withTl) note = (note ? note + " " : "") + "Tidslinjen: inga objekt har en kopplad aktivitet – den är inte med.";
       hxReg = null;
-      pack = await hxPack(parts, ground, tlMeta);
+      pack = await hxPack(parts, ground, Object.assign({}, tlMeta || {}, view ? { view } : {}), clouds);
       if (!was3d && typeof close3d === "function") close3d();
     } else note = "Arbetsytan är inte kalibrerad mot 3D-modellen – bara lägesplanen är med.";
     busyProgress(key, "Fristående HTML: visaren", 0.8);
@@ -255,6 +312,12 @@ async function init3(){
   g.setIndex(new THREE.BufferAttribute(p.i16?new Uint16Array(buf.slice(base+p.idx,base+p.idx+p.ni*2)):new Uint32Array(buf.slice(base+p.idx,base+p.idx+p.ni*4)),1));g.computeBoundingSphere();g.computeBoundingBox();
   var mat=new THREE.MeshPhongMaterial({vertexColors:true,flatShading:true,shininess:0,specular:0x000000,side:THREE.DoubleSide,transparent:p.op<1,opacity:p.op,depthWrite:p.op>=1});
   var me=new THREE.Mesh(g,mat);me.userData.names=p.names;S.add(me);meshes.push(me);P.push({me:me,g:g,p:p});box.union(g.boundingBox);});
+  function disc(){var cv=document.createElement('canvas');cv.width=cv.height=64;var x=cv.getContext('2d');x.beginPath();x.arc(32,32,30,0,7);x.fillStyle='#fff';x.fill();return new THREE.CanvasTexture(cv);}
+ (m.clouds||[]).forEach(function(c){var q=new Uint16Array(buf,base+c.pos,c.n*3),pos=new Float32Array(c.n*3);for(var i=0;i<pos.length;i+=3)for(var a=0;a<3;a++)pos[i+a]=c.mn[a]+q[i+a]/65535*c.sz[a];
+  var g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));g.setAttribute('color',new THREE.BufferAttribute(new Uint8Array(buf.slice(base+c.col,base+c.col+c.n*3)),3,true));g.computeBoundingBox();
+  var pm=new THREE.PointsMaterial({size:c.size,sizeAttenuation:c.atten,vertexColors:true,transparent:c.op<1,opacity:c.op,depthWrite:c.op>=1});
+  if(c.round){pm.map=disc();pm.alphaTest=0.5;}
+  var pt=new THREE.Points(g,pm);pt.raycast=function(){};S.add(pt);box.union(g.boundingBox);});
  if(m.ground){var gg=new THREE.BufferGeometry();gg.setAttribute('position',new THREE.Float32BufferAttribute(m.ground.pos,3));gg.setAttribute('uv',new THREE.Float32BufferAttribute(m.ground.uv,2));gg.setIndex(m.ground.idx);
   var tx=new THREE.Texture(img);tx.needsUpdate=true;tx.anisotropy=8;
   var gm=new THREE.Mesh(gg,new THREE.MeshBasicMaterial({map:tx,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1}));S.add(gm);gg.computeBoundingBox();if(box.isEmpty())box.copy(gg.boundingBox);}
@@ -269,7 +332,12 @@ async function init3(){
   if(h&&h.face){var ns=h.object.userData.names||[],vi=h.face.a;for(var i=0;i<ns.length;i++)if(vi>=ns[i][0]&&vi<ns[i][0]+ns[i][1]){nm=ns[i][2];break;}}
   if(nm){tip.textContent=nm;tip.style.left=(e.clientX-r.left)+'px';tip.style.top=(e.clientY-r.top)+'px';tip.style.display='block';}else tip.style.display='none';});
  if(m.sched&&m.sched.length)timeline(m,P,S,meshes,draw);
- r3={resize:resize,fit:fit};resize();fit();window.__hx3={meshes:meshes.length,scene:S};
+ function applyView(V){if(!V||!V.cam)return;var c=V.cam;O.target.set(c.t[0],c.t[1],c.t[2]);C.position.set(c.p[0],c.p[1],c.p[2]);if(c.fov)C.fov=c.fov;
+  if(c.ortho){var dr=C.position.clone().sub(O.target).normalize();C.position.copy(O.target).add(dr.multiplyScalar(c.dist||C.position.distanceTo(O.target)));}
+  C.updateProjectionMatrix();O.update();
+  if(V.clip&&V.clip.length)R.clippingPlanes=V.clip.map(function(p){return new THREE.Plane(new THREE.Vector3(p.n[0],p.n[1],p.n[2]),p.c);});
+  if(V.bg)S.background=new THREE.Color(V.bg);draw();}
+ r3={resize:resize,fit:fit};resize();fit();if(m.view)applyView(m.view);window.__hx3={meshes:meshes.length,clouds:(m.clouds||[]).length,scene:S,cam:C};
 }
 })();
 </script></body></html>`;
