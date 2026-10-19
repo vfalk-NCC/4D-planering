@@ -180,11 +180,73 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       return { same, msg, ok, w: r.u1 - r.u0, h: r.z1 - r.z0, zA: r.z1 - 0.8 * (r.z1 - r.z0) };
     });
     if (uni.same !== false || !uni.msg || !uni.ok || Math.abs(uni.w - 10) > 0.01 || Math.abs(uni.h - 5) > 0.01 || Math.abs(uni.zA - 412) > 0.01) fail('Lika höjd: ' + JSON.stringify(uni));
+    // Realtid, före/bakom, opacitet, flytta/släcka bubblor, arbetsyta utanför bladet.
+    const rt = await page.evaluate(async () => {
+      const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'ifc'; e.x = 0; e.y = 0; e.w = 200; e.h = 100; e.zlo = null; e.zhi = null;
+      e.p1 = [6512346, 150100]; e.p2 = [6512354, 150100]; e.depth = 3; e.front = 0; e.bub = { ...secBub(e), mode: 'all', on: true };
+      await secBuild(e, { open: false }); const d0 = secData.get(e.id); const n0 = d0.anchors.length;
+      e.p2 = [6512352, 150100]; secAuto(e, 10); await new Promise(r => setTimeout(r, 400));
+      const L = secData.get(e.id).L;                         // räknades om utan knapptryck
+      e.p1 = [6512346, 150100.5]; e.p2 = [6512354, 150100.5]; e.depth = 0; e.front = 0; secAuto(e, 10); await new Promise(r => setTimeout(r, 400));
+      const behind = secData.get(e.id).anchors.length;        // lådan går y -1..1 relativt origo: linjen y=+0.5 ligger i den, bakom (v>0) finns objektet
+      e.front = 5; e.side = -1; secAuto(e, 10); await new Promise(r => setTimeout(r, 400));
+      const flipped = secData.get(e.id).anchors.length; e.side = 1; e.depth = 3; secAuto(e, 10); await new Promise(r => setTimeout(r, 400));
+      const c = document.createElement('canvas'); c.width = 2000; c.height = 1000; const g = c.getContext('2d'); let alphas = [];
+      Object.defineProperty(g, 'globalAlpha', { set(v) { alphas.push(v); }, get() { return 1; } }); e.ifcAlpha = 0.4; drawElement(g, e, pr.tpl, 10, 1);
+      const boxes = secCards.get(e.id) || [];
+      // flytta bubblan via musen i layouten
+      setSel([e.id]); const b0 = boxes[0]; const k = pageDims().k; const L2 = pr.L, r = $('prCanvas').getBoundingClientRect();
+      const scr = (mx, my) => ({ clientX: r.left + (L2.ox + mx * k * L2.u) / L2.dpr, clientY: r.top + (L2.oy + my * k * L2.u) / L2.dpr });
+      const a1 = scr(b0.x + 2, b0.y + 2), a2 = scr(b0.x + 22, b0.y + 12);
+      secBubDown(b0.x + 2, b0.y + 2, { preventDefault() {}, ...a1 });
+      window.dispatchEvent(new MouseEvent('mousemove', { ...a2, bubbles: true })); window.dispatchEvent(new MouseEvent('mouseup', { ...a2, bubbles: true }));
+      const pos = (e.bub.pos || {})[b0.key];
+      // dubbelklick släcker
+      drawPrintPage(); const b1 = (secCards.get(e.id) || [])[0];
+      secBubDown(b1.x + 2, b1.y + 2, { preventDefault() {} }); secBubDown(b1.x + 2, b1.y + 2, { preventDefault() {} });
+      const off = !!e.bub.off[b0.key];
+      // utanför bladet: ingen utskrift
+      const eo = { id: 'zz', type: 'rect', x: 500, y: 10, w: 30, h: 20, stroke: '#000000', fill: '', lw: 0.35 }; pr.tpl.elements.push(eo);
+      return { n0, L, behind, flipped, alphaUsed: alphas.includes(0.4), moved: !!pos && Math.abs(pos[0] - (b0.x - e.x) - 20) < 1.5, off, offPage: prOffPage(eo), onPage: !prOffPage(e) };
+    });
+    if (rt.n0 < 1 || Math.abs(rt.L - 6) > 0.02 || rt.behind < 1 || !rt.alphaUsed || !rt.moved || !rt.off || !rt.offPage || !rt.onPage) fail('Realtid/bubblor/arbetsyta: ' + JSON.stringify(rt));
+    // PDF: det utanför bladet följer inte med.
+    const pdf2 = await page.evaluate(async () => {
+      const calls = []; window.jspdf = { jsPDF: function () { return new Proxy({}, { get: (t, k) => k === 'splitTextToSize' ? (s => [String(s)]) : k === 'output' ? (() => new ArrayBuffer(8)) : k === 'getTextWidth' ? (s => String(s).length) : ((...a) => { calls.push(k + ' ' + JSON.stringify(a).slice(0, 60)); }) }); } };
+      const keep = pr.tpl.elements.slice(); pr.tpl.elements = pr.tpl.elements.filter(x => x.id === 'zz'); pr.tpl.frame = { on: false };
+      await exportPrintPdf(); const rects = calls.filter(c => /^(rect|line|roundedRect) /.test(c)).length; pr.tpl.elements = keep; return rects;
+    });
+    if (pdf2 !== 0) fail('Element utanför bladet ska inte skrivas ut: ' + pdf2);
     // PDF som källa: sidan görs om till en PNG (pdf.js är stubbad i testet -> bara kontroll att funktionen finns och att PDF avvisas för andra element).
     if (await page.evaluate(() => typeof pdfToImageFile !== 'function' || !document.getElementById('prImgInput').accept.includes('pdf'))) fail('PDF ska kunna väljas som sektionsritning');
+    // Beskär ritningen: två hörn -> andelar; vyn begränsas till den delen och bilden ritas med källutsnitt.
+    const crp = await page.evaluate(async () => {
+      const e = pr.tpl.elements.find(x => x.type === 'section'); e.x = 0; e.y = 0; e.w = 200; e.h = 100; e.src = 'pdf'; e.img = { path: 'x.png', ar: 2 }; e.crop = null;
+      e.cal = { a: { fx: 0.1, fy: 0.9, u: 0, z: 0 }, b: { fx: 0.9, fy: 0.1, u: 8, z: 4 } };
+      const c = document.createElement('canvas'); c.width = 2000; c.height = 1000; const g = c.getContext('2d'); drawElement(g, e, pr.tpl, 10, 1);
+      const v = secView.get(e.id), F = v.full;               // helbild: u -1..9, z -0.5..4.5
+      secPick.el = e; secPick.crop = true; secPick.pts = [];
+      const at = (u, z) => [(v.x0 + (u - v.uLo) * v.s) / v.mm, (v.yBase - (z - v.zlo) * v.s) / v.mm];
+      secPickClick(...at(2, 1)); secPickClick(...at(6, 3));
+      const cr = secCrop(e);
+      let src = null; const di = g.drawImage.bind(g); g.drawImage = (...a) => { if (a.length === 9) src = a.slice(1, 5).map(x => Math.round(x)); return di(...a); };
+      drawElement(g, e, pr.tpl, 10, 1); const v2 = secView.get(e.id);
+      return { cr, uLo: Math.round(v2.uLo * 100) / 100, zlo: Math.round(v2.zlo * 100) / 100, src, F };
+    });
+    if (!crp.cr || Math.abs(crp.cr.l - 0.3) > 0.01 || Math.abs(crp.cr.r - 0.3) > 0.01 || Math.abs(crp.cr.t - 0.3) > 0.01 || Math.abs(crp.cr.b - 0.3) > 0.01 || Math.abs(crp.uLo - 2) > 0.02 || Math.abs(crp.zlo - 1) > 0.02 || !crp.src) fail('Beskärning: ' + JSON.stringify(crp));
+    // Plushöjder: eget avstånd, färger och av/på.
+    const zs = await page.evaluate(() => {
+      const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'pdf'; e.crop = null; e.zstep = 2; e.zcolor = '#ff0000'; e.zgrid = '#00ff00';
+      const c = document.createElement('canvas'); c.width = 2000; c.height = 1000; const g = c.getContext('2d'); const txt = [], strokes = new Set(); const ft = g.fillText.bind(g);
+      g.fillText = (t, ...a) => { if (/^[+-]\d/.test(t)) txt.push([t, g.fillStyle]); return ft(t, ...a); };
+      const st = g.stroke.bind(g); g.stroke = () => { strokes.add(g.strokeStyle); return st(); };
+      drawElement(g, e, pr.tpl, 10, 1); const on = txt.slice(); txt.length = 0; e.zshow = false; drawElement(g, e, pr.tpl, 10, 1); const off = txt.length; e.zshow = true; e.zstep = 0;
+      return { on: on.map(t => t[0]), col: on[0] && on[0][1], grid: strokes.has('#00ff00'), off };
+    });
+    if (!zs.on.length || zs.on.some(t => (parseFloat(t) % 2) !== 0) || zs.col !== '#ff0000' || !zs.grid || zs.off !== 0) fail('Plushöjder: ' + JSON.stringify(zs));
     // PDF: elementet ska ritas som vektorer, inte som en bild.
     const pdf = await page.evaluate(async () => {
-      const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'ifc'; e.p1 = [6512346, 150100]; e.p2 = [6512354, 150100]; secData.delete(e.id); await secBuild(e, { open: false });
+      const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'ifc'; e.ifcAlpha = 1; e.bub = { ...secBub(e), off: {}, pos: {}, mode: 'active' }; e.p1 = [6512346, 150100]; e.p2 = [6512354, 150100]; secData.delete(e.id); await secBuild(e, { open: false });
       pr.tpl.elements = [e]; pr.tpl.frame = { on: false };
       const calls = [];
       window.jspdf = { jsPDF: function () { return new Proxy({}, { get: (t, k) => k === 'splitTextToSize' ? (s => [String(s)]) : k === 'output' ? (() => new ArrayBuffer(8)) : k === 'getTextWidth' ? (s => String(s).length) : ((...a) => { calls.push(k + ' ' + JSON.stringify(a).slice(0, 80)); }) }); } };

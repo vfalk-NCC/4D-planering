@@ -376,6 +376,7 @@ async function buildPrintDxf(tpl, progress = () => {}, mode = "sheet") {
   let done = 0;
   const total = maps.length + 1;
   for (const el of tpl.elements) {
+    if (typeof prOffPage === "function" && prOffPage(el)) continue; // arbetsyta utanför bladet
     if (el.type === "map") {
       progress(done / total, `Ritning ${maps.indexOf(el) + 1} av ${maps.length}`);
       const { ents } = await printDxfMapEnts(el, tpl, k);

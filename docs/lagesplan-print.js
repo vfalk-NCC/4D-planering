@@ -1189,6 +1189,11 @@ function layoutPreview() {
   const u = Math.min((c.width - 2 * pad) / W, (c.height - pad - top) / H) * z;
   return { c, u, ox: (c.width - W * u) / 2 + ((pr && pr.vx) || 0) * dpr, oy: top + (c.height - pad - top - H * u) / 2 + ((pr && pr.vy) || 0) * dpr, dpr };
 }
+/* Ett element som ligger helt utanför bladet är arbetsyta – det följer inte med i utskrift, PDF eller DXF. */
+function prOffPage(el) {
+  const b = elBox(el);
+  return b.x >= PAGE_A3[0] || b.y >= PAGE_A3[1] || b.x + b.w <= 0 || b.y + b.h <= 0;
+}
 function drawPrintPage() {
   if (!pr) return;
   prCmdProgress();
@@ -1202,9 +1207,12 @@ function drawPrintPage() {
   ctx.shadowColor = "rgba(0,0,0,.25)"; ctx.shadowBlur = 18 * dpr; ctx.fillStyle = "#fff"; ctx.fillRect(ox, oy, W * u, H * u);
   ctx.restore();
   ctx.save(); ctx.translate(ox, oy);
-  ctx.beginPath(); ctx.rect(0, 0, W * u, H * u); ctx.clip();
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W * u, H * u); ctx.clip();
   drawFrame(ctx, pr.tpl, u, k, W * u, H * u);
+  ctx.restore();
+  // Elementen ritas även utanför bladet (arbetsyta för detaljer m.m.) – det som ligger helt utanför bladet skrivs inte ut.
   pr.tpl.elements.forEach(el => drawElement(ctx, el, pr.tpl, u, k, { editor: true }));
+  pr.tpl.elements.filter(prOffPage).forEach(el => { const b = elBox(el); ctx.save(); ctx.setLineDash([4 * dpr, 3 * dpr]); ctx.strokeStyle = "rgba(100,116,139,.8)"; ctx.lineWidth = 1 * dpr; ctx.strokeRect(b.x * k * u, b.y * k * u, b.w * k * u, b.h * k * u); ctx.fillStyle = "rgba(71,85,105,.9)"; ctx.font = `${10 * dpr}px Arial`; ctx.textAlign = "left"; ctx.textBaseline = "bottom"; ctx.fillText("Utanför bladet – skrivs inte ut", b.x * k * u, b.y * k * u - 2 * dpr); ctx.restore(); });
   // Hjälplinjer vid snäppning
   ctx.strokeStyle = "#ec4899"; ctx.lineWidth = 1 * dpr; ctx.setLineDash([4 * dpr, 3 * dpr]);
   (pr.guides || []).forEach(g => { ctx.beginPath(); if (g.x != null) { ctx.moveTo(g.x * k * u, 0); ctx.lineTo(g.x * k * u, H * u); } else { ctx.moveTo(0, g.y * k * u); ctx.lineTo(W * u, g.y * k * u); } ctx.stroke(); });
@@ -1271,7 +1279,8 @@ function prMouseDown(e) {
   // Flytta vyn i layouten: mittenknappen eller Mellanslag + dra.
   if (e.button === 1 || prSpace) { e.preventDefault(); pr.drag = { kind: "view", sx: e.clientX, sy: e.clientY, vx: pr.vx || 0, vy: pr.vy || 0 }; return; }
   const [mx, my] = prPoint(e);
-  if (typeof secPickClick === "function" && secPickClick(mx, my)) { e.preventDefault(); return; } // Sektion: välj linjen i en ritning
+  if (typeof secPickClick === "function" && secPickClick(mx, my)) { e.preventDefault(); return; }
+  if (typeof secBubDown === "function" && secBubDown(mx, my, e)) return; // sektionens bubblor: dra, dubbelklicka // Sektion: välj linjen i en ritning
   const { k } = pageDims(), u = pr.L.u;
   const one = primary();
   // Panorera ritningen
@@ -1377,7 +1386,7 @@ function prMouseUp() {
 /* Zooma layouten kring en punkt på skärmen (canvas-px), eller till hela bladet. */
 function prZoomAt(f, cx, cy) {
   const L = pr.L || layoutPreview(), dpr = L.dpr;
-  const z0 = pr.zoom || 1, z1 = Math.max(1, Math.min(12, z0 * f));
+  const z0 = pr.zoom || 1, z1 = Math.max(0.3, Math.min(12, z0 * f));
   if (z1 === 1) { pr.zoom = 1; pr.vx = pr.vy = 0; drawPrintPage(); updatePrZoomUi(); return; }
   // Punkten under muspekaren ligger kvar: (cx - ox) skalas med z1/z0.
   const ox = L.ox, oy = L.oy, nox = cx - (cx - ox) * z1 / z0, noy = cy - (cy - oy) * z1 / z0;
@@ -1907,6 +1916,7 @@ async function exportPrintPdf() {
     const ocClose = n => { for (let i = 0; i < n; i++) doc.internal.write("EMC"); };
     const inLayer = (names, fn) => { const n = names.reduce((a, nm) => a + ocOpen(nm), 0); try { return fn(); } finally { ocClose(n); } };
     for (const el of tpl.elements) {
+      if (prOffPage(el)) continue; // arbetsyta utanför bladet
       const x = el.x * k, y = el.y * k, w = el.w * k, h = el.h * k;
       // Ritningsytan märks del för del (vektor-PDF:en byter sida mitt i), övriga element i sin helhet.
       const elOc = el.type === "map" ? 0 : ocOpen(el.pdfLayer);
