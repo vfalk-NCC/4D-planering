@@ -169,6 +169,17 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       e.zlo = null; e.zhi = null; return out;
     });
     if (zr.lo !== 0.2 || zr.hi !== 0.8 || zr.picked !== 0.5 || !zr.panel) fail('Höjdspann: ' + JSON.stringify(zr));
+    // Lika höjd på A och B: höjdskalan följer sidled (ritning i skala) – ingen blockering. Samma lodlinje avvisas med ett meddelande.
+    const uni = await page.evaluate(() => {
+      const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'pdf'; e.img = { path: 'x.png', ar: 2 };
+      e.cal = { a: { fx: 0.1, fy: 0.8, u: 0, z: 0 }, b: { fx: 0.9, fy: 0.8, u: 0, z: 0 } };
+      let msg = ''; const same = secFit(e, { x: 5, y: 5, z: 0 }, { x: 5, y: 5, z: 3 }, m => { msg = m; });
+      e.cal = { a: { fx: 0.1, fy: 0.8, u: 0, z: 0 }, b: { fx: 0.9, fy: 0.8, u: 0, z: 0 } };
+      const ok = secFit(e, { x: 100, y: 200, z: 412 }, { x: 108, y: 200, z: 412 }, () => {});
+      const r = secImgRect(secCal(e));
+      return { same, msg, ok, w: r.u1 - r.u0, h: r.z1 - r.z0, zA: r.z1 - 0.8 * (r.z1 - r.z0) };
+    });
+    if (uni.same !== false || !uni.msg || !uni.ok || Math.abs(uni.w - 10) > 0.01 || Math.abs(uni.h - 5) > 0.01 || Math.abs(uni.zA - 412) > 0.01) fail('Lika höjd: ' + JSON.stringify(uni));
     // PDF som källa: sidan görs om till en PNG (pdf.js är stubbad i testet -> bara kontroll att funktionen finns och att PDF avvisas för andra element).
     if (await page.evaluate(() => typeof pdfToImageFile !== 'function' || !document.getElementById('prImgInput').accept.includes('pdf'))) fail('PDF ska kunna väljas som sektionsritning');
     // PDF: elementet ska ritas som vektorer, inte som en bild.

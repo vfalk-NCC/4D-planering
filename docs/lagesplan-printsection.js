@@ -16,7 +16,7 @@ const SEC_DEF = { src: "ifc", p1: null, p2: null, side: 1, depth: 4, scale: 0, z
   bub: { on: true, mode: "active", prog: "entered", size: 36, max: 12, fields: { name: true, date: true, progress: true } } };
 const secData = new Map();               // elementets id -> { sig, groups: Map(nyckel -> polylinjer [u,z mm]), anchors, L, zlo, zhi }
 const secPick = { el: null, pts: [], cal: null, wiz: false };
-const sec3d = { el: null, pts: [], opened: false, mode: null };   // steg 2: punkterna A och B klickas i 3D-modellen    // "Välj i ritning": väntar på två klick på en ritning
+const sec3d = { el: null, pts: [], opened: false, mode: null, msg: "" };   // steg 2: punkterna A och B klickas i 3D-modellen    // "Välj i ritning": väntar på två klick på en ritning
 const SEC_MAX_SEGS = 400000;
 const secKey = r => (r.group_id ? `g:${r.group_id}` : r.source_key ? `s:${r.source_key}` : `i:${r.id}`);
 const secBub = el => ({ ...SEC_DEF.bub, ...(el.bub || {}), fields: { ...SEC_DEF.bub.fields, ...((el.bub || {}).fields || {}) } });
@@ -245,12 +245,14 @@ function drawPrSection(ctx, el, X, Y, W, H, pt, mm) {
 /* Egen sektionsritning (bild): två passpunkter A och B – bildens andel (fx, fy; fy nedåt) <-> sektionens u (m längs linjen) och z (m). */
 function secCal(el) {
   const c = el.cal; if (!c || !c.a || !c.b) return null;
-  const f = v => Number(v); if (![c.a.fx, c.a.fy, c.a.u, c.a.z, c.b.fx, c.b.fy, c.b.u, c.b.z].every(v => Number.isFinite(f(v)))) return null;
-  if (Math.abs(c.b.fx - c.a.fx) < 1e-4 || Math.abs(c.b.fy - c.a.fy) < 1e-4 || c.b.u === c.a.u || c.b.z === c.a.z) return null;
+  const f = v => Number(v), uni = Number(c.ar) > 0;   // uni: lika skala i sida och höjd (ritningens bildförhållande ar) – B behöver bara skilja sig i sida
+  if (![c.a.fx, c.a.fy, c.a.u, c.a.z, c.b.fx, c.b.u].every(v => Number.isFinite(f(v)))) return null;
+  if (Math.abs(c.b.fx - c.a.fx) < 1e-4 || c.b.u === c.a.u) return null;
+  if (!uni && (![c.b.fy, c.b.z].every(v => Number.isFinite(f(v))) || Math.abs(c.b.fy - c.a.fy) < 1e-4 || c.b.z === c.a.z)) return null;
   return c;
 }
 function secImgRect(c) {
-  const mu = (c.b.u - c.a.u) / (c.b.fx - c.a.fx), mz = (c.b.z - c.a.z) / (c.a.fy - c.b.fy);   // meter per bildbredd / bildhöjd
+  const mu = (c.b.u - c.a.u) / (c.b.fx - c.a.fx), mz = Number(c.ar) > 0 ? mu / c.ar : (c.b.z - c.a.z) / (c.a.fy - c.b.fy);   // meter per bildbredd / bildhöjd
   const u0 = c.a.u - c.a.fx * mu, u1 = u0 + mu, z1 = c.a.z + c.a.fy * mz, z0 = z1 - mz;
   return { u0: Math.min(u0, u1), u1: Math.max(u0, u1), z0: Math.min(z0, z1), z1: Math.max(z0, z1) };
 }
@@ -306,14 +308,14 @@ function secPdfHtml(el) {
   return `<div class="hint">Din egen sektionsritning (PDF eller bild) läggs i sektionens koordinater: markera två kända punkter i bilden (t.ex. två bjälklagskanter) och skriv in var de ligger – längs sektionslinjen och i höjd. Bubblorna fästs sedan vid IFC-objekten.</div>
     <div class="pr-row"><button type="button" class="btn small" id="secImg">${el.img && el.img.path ? "🖼 Byt PDF/bild" : "🖼 Välj PDF/bild"}</button></div>
     <div class="pr-row"><button type="button" class="btn small primary" id="secWiz" ${el.img && el.img.path ? "" : "disabled"}>📍 Passa in: 2 punkter i ritningen + 2 i 3D</button></div>
-    <div class="hint">${secCal(el) ? "✔ Ritningen är inpassad – sektionslinjen och höjderna kommer från de två 3D-punkterna." : "Klicka två tydliga punkter i ritningen (t.ex. en grundkant nere och en takkant uppe, helt skilda i både sida och höjd), sedan samma två punkter i 3D-modellen. Då placeras ritningen exakt och sektionslinjen sätts av sig själv."}</div>
+    <div class="hint">${secCal(el) ? "✔ Ritningen är inpassad – sektionslinjen och höjderna kommer från de två 3D-punkterna." : "Klicka två tydliga punkter i ritningen en bit från varandra i sidled (t.ex. två pelar- eller väggkanter), sedan samma två punkter i 3D-modellen. Då placeras ritningen exakt och sektionslinjen sätts av sig själv."}</div>
     <details class="pr-adv"><summary>Mata in passpunkterna för hand</summary>${pt("a", "A")}${pt("b", "B")}</details>
     <div class="pr-grid4"><div><label>Ritningens täckning %</label><input type="number" step="10" min="10" max="100" data-sf="imgAlphaPct" value="${Math.round((Number(el.imgAlpha) || 1) * 100)}" /></div></div>
     <label class="check"><input type="checkbox" data-f="lines" ${el.lines === false ? "" : "checked"} /> Visa även IFC-snittet ovanpå</label>`;
 }
 /* Passa in ritningen i två steg (Victor 2026-10-19): två punkter i ritningen, sedan samma två punkter i 3D-modellen.
    Punkternas 3D-lägen ger allt: sektionslinjen går genom A och B i planen (och förlängs till ritningens bredd), och höjderna
-   kommer från modellens Z. Punkterna ska skilja sig både i sida och höjd (t.ex. en grundkant nere och en takkant uppe). */
+   kommer från modellens Z. B behöver bara ligga en bit bort i sidled från A; skiljer de sig tydligt i höjd används den för höjdskalan, annars samma skala som i sidled. */
 function secWizard(el) {
   if (!(el.img && el.img.path)) { alert("Välj en PDF eller bild först."); return; }
   pushUndo(); el.cal = null; secPick.el = el; secPick.cal = "a"; secPick.wiz = true; secPick.pts = [];
@@ -334,7 +336,8 @@ async function secPickZ(el, f) {
   if (typeof l3 === "undefined" || !l3 || !l3.scene) return;
   sec3d.el = el; sec3d.pts = []; sec3d.opened = !was3d; sec3d.mode = f; secHint3d();
 }
-function secHint3d() {
+function secHint3d(keepMsg) {
+  if (!keepMsg) sec3d.msg = "";
   const box = document.getElementById("view3d"); if (!box || !sec3d.el) return;
   if (sec3d.mode) {
     let h = document.getElementById("secHint3d");
@@ -350,10 +353,11 @@ function secHint3d() {
   const el = sec3d.el, im = el.img && printImage(el.img.path), n = sec3d.pts.length, nm = n ? "B" : "A";
   const dot = (k, p) => (p ? `<span style="position:absolute;left:${p.fx * 100}%;top:${p.fy * 100}%;transform:translate(-50%,-50%);width:14px;height:14px;border:2px solid #dc2626;border-radius:50%;background:${k === nm ? "#dc2626" : "transparent"};"></span><b style="position:absolute;left:${p.fx * 100}%;top:${p.fy * 100}%;margin:-22px 0 0 8px;color:#dc2626;">${k.toUpperCase()}</b>` : "");
   h.innerHTML = `<b>Passa in sektionsritningen – klicka punkt ${nm} i 3D</b><div style="margin:4px 0;">Samma punkt som ${nm} i ritningen${n ? ` (A: höjd ${sec3d.pts[0].z.toFixed(2)} m)` : ""}. Snäpper mot hörn och kanter.</div>
+    ${sec3d.msg ? `<div style="margin:4px 0;padding:5px 7px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;">${sec3d.msg}</div>` : ""}
     ${im ? `<div style="position:relative;line-height:0;"><img src="${im.src}" style="width:100%;border:1px solid #cbd5e1;" alt="">${dot("a", el.cal && el.cal.a)}${dot("b", el.cal && el.cal.b)}</div>` : ""}
     <div style="margin-top:6px;"><button type="button" id="secHintCancel" style="padding:4px 10px;">Avbryt</button></div>`;
   h.querySelector("#secHintCancel").onclick = () => secEnd3d(false);
-  if (typeof l3Status === "function") l3Status(`Klicka punkt ${nm} i modellen (samma som ${nm} i ritningen).`);
+  if (typeof l3Status === "function" && !sec3d.msg) l3Status(`Klicka punkt ${nm} i modellen (samma som ${nm} i ritningen).`);
   const cv = l3.renderer && l3.renderer.domElement; if (cv) cv.style.cursor = "crosshair";
 }
 function secEnd3d(done) {
@@ -377,7 +381,8 @@ function secPick3dTap(e) {
   sec3d.pts.push(pt);
   if (sec3d.pts.length < 2) { secHint3d(); return true; }
   const el = sec3d.el;
-  if (!secFit(el, sec3d.pts[0], sec3d.pts[1], msg => { if (typeof l3Status === "function") l3Status(msg); })) { sec3d.pts.pop(); secHint3d(); return true; }
+  if (!secFit(el, sec3d.pts[0], sec3d.pts[1], msg => { sec3d.msg = msg; if (typeof l3Status === "function") l3Status(msg); })) { sec3d.pts.pop(); secHint3d(true); return true; }
+  sec3d.msg = "";
   secEnd3d(true);
   secBuild(el, { open: false, say: t => prCmdLog(t) }).then(() => { if (pr) { renderPrintProps(); drawPrintPage(); } });
   return true;
@@ -386,12 +391,17 @@ function secPick3dTap(e) {
 function secFit(el, A, B, say) {
   const c = el.cal; if (!c || !c.a || !c.b) { say && say("Passpunkterna i ritningen saknas."); return false; }
   const dx = B.x - A.x, dy = B.y - A.y, D = Math.hypot(dx, dy), dz = B.z - A.z;
-  if (D < 0.1) { say && say("Punkterna A och B ligger på samma ställe i sidled – välj en B som ligger längre längs sektionen."); return false; }
-  if (Math.abs(dz) < 0.1) { say && say("Punkterna A och B har samma höjd – välj en B högre eller lägre än A."); return false; }
-  if (Math.abs(c.b.fx - c.a.fx) < 0.01 || Math.abs(c.b.fy - c.a.fy) < 0.01) { say && say("Punkterna i ritningen ligger för nära varandra i sida eller höjd – gör om dem."); return false; }
+  if (D < 0.1) { say && say("A och B ligger på samma ställe i sidled (modellens X/Y). Klicka B längre längs sektionen – inte på samma lodlinje som A."); return false; }
+  if (Math.abs(c.b.fx - c.a.fx) < 0.01) { say && say("Punkterna i ritningen ligger för nära varandra i sidled – gör om dem."); return false; }
+  // Höjdskalan: från A och B:s höjder om de skiljer sig tydligt (både i ritningen och i modellen), annars samma skala som i sidled (en ritning är i skala).
+  const dfy = Math.abs(c.b.fy - c.a.fy), im = el.img && el.img.path && printImage(el.img.path);
+  const ar = Number(el.img && el.img.ar) || (im ? (im.naturalWidth || im.width) / (im.naturalHeight || im.height) : 0);
+  const uni = !(Math.abs(dz) >= 0.5 && dfy >= 0.05) && ar > 0;
+  if (!uni && (Math.abs(dz) < 0.1 || dfy < 0.01)) { say && say("Kan inte avgöra höjdskalan – välj en B som ligger högre eller lägre än A."); return false; }
   // Riktning: u ska växa åt höger i bilden (annars speglas den), så linjen går mot B om B ligger till höger om A i bilden, annars från B mot A.
   const sg = c.b.fx > c.a.fx ? 1 : -1, ux = dx / D * sg, uy = dy / D * sg;
   const cal = { a: { fx: c.a.fx, fy: c.a.fy, u: 0, z: A.z }, b: { fx: c.b.fx, fy: c.b.fy, u: sg * D, z: B.z } };
+  if (uni) cal.ar = ar;
   const r = secImgRect(cal);
   el.p1 = [Math.round((A.x + ux * r.u0) * 100) / 100, Math.round((A.y + uy * r.u0) * 100) / 100];
   el.p2 = [Math.round((A.x + ux * r.u1) * 100) / 100, Math.round((A.y + uy * r.u1) * 100) / 100];
