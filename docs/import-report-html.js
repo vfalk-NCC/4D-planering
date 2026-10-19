@@ -1,0 +1,63 @@
+/* Importgranskningen som en snygg, fristående HTML-sida (Victor 2026-10-16: "mer lättläst än Excel").
+   Byggs av samma data som Excel-rapporten (se exportPlanImportReport): sammanfattning, nya datum (största först), ändrad framdrift,
+   flyttade utan uppdaterad framdrift, ny status, namnbyten, nya objekt och det som inte finns kvar. Filen fungerar utan internet,
+   går att söka/filtrera och skrivs ut snyggt. */
+function planImportReportHtml(fileName, sheets) {
+  const S = Object.fromEntries(sheets.map(([n, rows]) => [n, rows]));
+  const esc = v => String(v ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const MON = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+  const fd = iso => /^\d{4}-\d{2}-\d{2}/.test(String(iso || "")) ? `${+iso.slice(8, 10)} ${MON[+iso.slice(5, 7) - 1]} ${iso.slice(2, 4)}` : "–";
+  const dd = (a, b) => (/^\d{4}-\d{2}-\d{2}/.test(a || "") && /^\d{4}-\d{2}-\d{2}/.test(b || "")) ? Math.round((Date.parse(b.slice(0, 10)) - Date.parse(a.slice(0, 10))) / 864e5) : 0;
+  const sg = n => (n > 0 ? "+" : n < 0 ? "−" : "±") + Math.abs(n) + " d";
+  const upd = (S["Uppdateras"] || []).filter(r => r["Ändrat"] !== "Ingen ändring");
+  const sum = Object.fromEntries((S["Sammanfattning"] || []).map(r => [r["Vad"], r["Antal"]]));
+  // Datum: störst förskjutning först (start eller slut, den som flyttat mest).
+  const dateRows = upd.filter(r => r["Start före"] !== r["Start efter"] || r["Slut före"] !== r["Slut efter"]).map(r => {
+    const ds = dd(r["Start före"], r["Start efter"]), de = dd(r["Slut före"], r["Slut efter"]);
+    return { r, ds, de, d: Math.abs(ds) >= Math.abs(de) ? ds : de };
+  }).sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
+  const later = dateRows.filter(x => x.d > 0).length, earlier = dateRows.filter(x => x.d < 0).length;
+  const progRows = upd.filter(r => String(r["Framdrift % före"]) !== String(r["Framdrift % efter"])).sort((a, b) => (Number(b["Framdrift % efter"]) - Number(b["Framdrift % före"])) - (Number(a["Framdrift % efter"]) - Number(a["Framdrift % före"])));
+  const stuck = dateRows.filter(x => x.d > 0 && String(x.r["Framdrift % före"]) === String(x.r["Framdrift % efter"]) && Number(x.r["Framdrift % efter"]) > 0 && Number(x.r["Framdrift % efter"]) < 100);
+  const statRows = upd.filter(r => (r["Status före"] || "") !== (r["Status efter"] || ""));
+  const ren = S["Namnbyten"] || [], nya = S["Nya"] || [], gone = S["Finns inte kvar"] || [];
+  const areas = [...new Set([...upd, ...nya, ...gone].map(r => r["Område"]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "sv", { numeric: true }));
+  const bar = p => { const v = Math.max(0, Math.min(100, Number(p) || 0)); return `<span class="bar"><i style="width:${v}%"></i></span>`; };
+  const area = a => `<span class="area">${esc(String(a || "").split(" / ").pop())}</span>`;
+  const sect = (id, icon, title, n, body, open = true) => `<details class="sec" id="${id}"${open ? " open" : ""}><summary><span class="ic">${icon}</span><h2>${esc(title)}</h2><span class="cnt">${n}</span></summary>${n ? body : `<p class="none">Inget.</p>`}</details>`;
+  const table = (head, rows) => `<div class="tw"><table><thead><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+  const tr = (cells, area0) => `<tr data-area="${esc(area0 || "")}">${cells.map(c => `<td>${c}</td>`).join("")}</tr>`;
+  const card = (n, label, cls = "") => `<div class="card ${cls}"><b>${esc(n)}</b><span>${esc(label)}</span></div>`;
+  const chip = (d) => `<span class="chip ${d > 0 ? "late" : d < 0 ? "early" : ""}">${sg(d)}</span>`;
+  const body = [];
+  body.push(sect("datum", "📅", "Nya datum – största förskjutning först", dateRows.length, table(["Förskjutning", "Aktivitet", "Område", "Start", "Slut"], dateRows.map(({ r, ds, de, d }) => tr([chip(d), `<b>${esc(r["Kod/namn"])}</b>`, area(r["Område"]), `${fd(r["Start före"])} → <b>${fd(r["Start efter"])}</b>${ds ? ` <small>${sg(ds)}</small>` : ""}`, `${fd(r["Slut före"])} → <b>${fd(r["Slut efter"])}</b>${de ? ` <small>${sg(de)}</small>` : ""}`], r["Område"]))), dateRows.length <= 60));
+  body.push(sect("framdrift", "📈", "Ändrad framdrift", progRows.length, table(["Aktivitet", "Område", "Före", "Efter", ""], progRows.map(r => { const a = Number(r["Framdrift % före"]) || 0, b = Number(r["Framdrift % efter"]) || 0; return tr([`<b>${esc(r["Kod/namn"])}</b>${b >= 100 && a < 100 ? ` <span class="tag ok">blir klar</span>` : a === 0 && b > 0 ? ` <span class="tag">påbörjad</span>` : ""}`, area(r["Område"]), `${a} %`, `<b>${b} %</b>`, bar(b)], r["Område"]); }))));
+  body.push(sect("stilla", "⚠", "Flyttade utan uppdaterad framdrift – värt att kolla", stuck.length, `<p class="note">Påbörjade aktiviteter vars datum flyttats men där framdriften står still.</p>` + table(["Förskjutning", "Aktivitet", "Område", "Framdrift"], stuck.map(({ r, d }) => tr([chip(d), `<b>${esc(r["Kod/namn"])}</b>`, area(r["Område"]), `${esc(r["Framdrift % efter"])} %`], r["Område"])))));
+  body.push(sect("status", "🚦", "Ny status", statRows.length, table(["Aktivitet", "Område", "Före", "Efter"], statRows.map(r => tr([`<b>${esc(r["Kod/namn"])}</b>`, area(r["Område"]), esc(r["Status före"]), `<b>${esc(r["Status efter"])}</b>`], r["Område"])))));
+  body.push(sect("namn", "✏️", "Nytt namn eller område", ren.length, table(["Kod", "Område", "Gammalt namn", "Nytt namn", "3D-kopplade"], ren.map(r => tr([esc(r["Kod"]), area(r["Område"]), esc(r["Gammalt namn"]), `<b>${esc(r["Nytt namn"])}</b>`, esc(r["Kopplade 3D-objekt"])], r["Område"]))), ren.length <= 30));
+  body.push(sect("nya", "✨", "Nya objekt", nya.length, table(["Aktivitet", "Område", "Start", "Slut", "Framdrift"], nya.map(r => tr([`<b>${esc(r["Kod/namn"])}</b>${r["Aktivitet"] ? ` <small>${esc(r["Aktivitet"])}</small>` : ""}`, area(r["Område"]), fd(r["Start"]), fd(r["Slut"]), `${esc(r["Framdrift %"])} %`], r["Område"]))), nya.length <= 40));
+  body.push(sect("borta", "🗑", "Finns inte kvar i filen", gone.length, table(["Tas bort", "Aktivitet", "Område", "3D-kopplad"], gone.map(r => tr([r["Tas bort"] === "Ja" ? `<span class="tag bad">Ja</span>` : `<span class="tag">Nej</span>`, `<b>${esc(r["Namn"])}</b>`, area(r["Område"]), esc(r["3D-kopplade"] ?? r["3D-kopplad"] ?? "")], r["Område"]))), gone.length <= 40));
+  const nav = [["datum", "Datum", dateRows.length], ["framdrift", "Framdrift", progRows.length], ["stilla", "Utan framdrift", stuck.length], ["status", "Status", statRows.length], ["namn", "Namn", ren.length], ["nya", "Nya", nya.length], ["borta", "Borttagna", gone.length]].filter(x => x[2]).map(([id, t, n]) => `<a href="#${id}">${t} <em>${n}</em></a>`).join("");
+  const css = `:root{--bg:#f3f5f9;--card:#fff;--ink:#0f172a;--mut:#64748b;--line:#e2e8f0;--acc:#2563eb;--late:#dc2626;--early:#16a34a}@media(prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#131c2e;--ink:#e5ebf5;--mut:#94a3b8;--line:#243049;--acc:#60a5fa;--late:#f87171;--early:#4ade80}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}.wrap{max-width:1180px;margin:0 auto;padding:20px 16px 60px}h1{margin:0;font-size:22px}.sub{color:var(--mut);margin:2px 0 14px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0 16px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px}.card b{display:block;font-size:24px;line-height:1.1}.card span{color:var(--mut);font-size:12.5px}.card.warn b{color:var(--late)}.card.good b{color:var(--early)}
+.bar2{position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-bottom:1px solid var(--line);margin-bottom:12px}.bar2 a{color:var(--ink);text-decoration:none;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12.5px}.bar2 a em{font-style:normal;color:var(--mut);margin-left:4px}.bar2 a:hover{border-color:var(--acc)}
+.bar2 input,.bar2 select{font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}.bar2 .sp{flex:1}
+details.sec{background:var(--card);border:1px solid var(--line);border-radius:12px;margin:0 0 12px;overflow:hidden}details.sec>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px}details.sec>summary::-webkit-details-marker{display:none}details.sec>summary::after{content:"▾";margin-left:auto;color:var(--mut)}details.sec:not([open])>summary::after{content:"▸"}
+h2{margin:0;font-size:16px}.ic{font-size:18px}.cnt{background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:1px 9px;font-size:12px;color:var(--mut)}.note{color:var(--mut);margin:0 16px 8px}.none{color:var(--mut);margin:0 16px 14px}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%}th{position:sticky;top:0;text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);background:var(--card);padding:6px 12px;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}td{padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top}tr:last-child td{border-bottom:0}tbody tr:hover{background:color-mix(in srgb,var(--acc) 6%,transparent)}small{color:var(--mut)}
+.chip{display:inline-block;min-width:64px;text-align:center;border-radius:999px;padding:2px 8px;font-weight:700;font-size:12.5px;background:var(--bg);border:1px solid var(--line)}.chip.late{color:var(--late);border-color:color-mix(in srgb,var(--late) 40%,transparent);background:color-mix(in srgb,var(--late) 10%,transparent)}.chip.early{color:var(--early);border-color:color-mix(in srgb,var(--early) 40%,transparent);background:color-mix(in srgb,var(--early) 10%,transparent)}
+.area{display:inline-block;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-size:12px;color:var(--mut);white-space:nowrap}.tag{display:inline-block;border-radius:6px;padding:0 6px;font-size:11px;font-weight:700;background:var(--bg);border:1px solid var(--line);color:var(--mut);margin-left:4px}.tag.ok{color:var(--early)}.tag.bad{color:var(--late)}
+.bar{display:inline-block;width:110px;height:7px;border-radius:4px;background:var(--line);vertical-align:middle;overflow:hidden}.bar i{display:block;height:100%;background:var(--acc)}
+tr.hide{display:none}@media print{.bar2{display:none}body{background:#fff}details.sec{break-inside:avoid-page}details.sec:not([open])>*:not(summary){display:block}}`;
+  const js = `(function(){var q=document.getElementById('q'),a=document.getElementById('a');function f(){var t=q.value.toLowerCase(),v=a.value;document.querySelectorAll('tbody tr').forEach(function(r){var ok=(!t||r.textContent.toLowerCase().indexOf(t)>-1)&&(!v||r.getAttribute('data-area')===v);r.classList.toggle('hide',!ok)})}q.oninput=f;a.onchange=f})();`;
+  const when = new Date().toLocaleString("sv-SE");
+  const maxShift = dateRows.length ? dateRows[0].d : 0;
+  return `<!doctype html><html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Importgranskning ${esc(fileName)}</title><style>${css}</style></head><body><div class="wrap">
+<h1>Importgranskning</h1><div class="sub">${esc(fileName)} · förhandsgranskad ${esc(when)} · inget är importerat än om du läser detta före importen</div>
+<div class="cards">${card(sum["Nya objekt"] ?? nya.length, "nya objekt")}${card(sum["Uppdateras"] ?? upd.length, "uppdateras")}${card(dateRows.length, `nya datum (${later} senare, ${earlier} tidigare)`, later ? "warn" : "")}${card(progRows.length, "ändrad framdrift", "good")}${card(stuck.length, "flyttade utan framdrift", stuck.length ? "warn" : "")}${card(sum["Finns inte kvar i filen"] ?? gone.length, "finns inte kvar", gone.length ? "warn" : "")}${card(sum["Objekt totalt i filen"] ?? "", "objekt i filen")}</div>
+${maxShift ? `<p class="note" style="margin-left:0">Störst förskjutning: <b>${sg(maxShift)}</b> – ${esc(dateRows[0].r["Kod/namn"])}.</p>` : ""}
+<div class="bar2">${nav}<span class="sp"></span><input id="q" type="search" placeholder="Sök i tabellerna …"><select id="a"><option value="">Alla områden</option>${areas.map(x => `<option value="${esc(x)}">${esc(String(x).split(" / ").pop())}</option>`).join("")}</select></div>
+${body.join("\n")}
+</div><script>${js}</script></body></html>`;
+}

@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-16 11:05";
+const APP_VERSION = "2026-10-19 07:15";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -776,6 +776,8 @@ function bindUI() {
   document.getElementById("btnConfirmPlanImport").onclick = onConfirmPlanImport;
   document.getElementById("btnCancelPlanImport").onclick = () => { planImportDiff = null; toggle("planImportPreviewDialog", false); };
   document.getElementById("btnPlanImportReport").onclick = () => { if (planImportDiff) exportPlanImportReport(planImportDiff); };
+  { const hb = document.getElementById("btnPlanImportReportHtml"); if (hb) hb.onclick = () => { if (planImportDiff) exportPlanImportReport(planImportDiff, { xlsx: false, html: true }); }; }
+  { const sv = document.getElementById("planImportSaveReport"); if (sv) { try { sv.checked = localStorage.getItem("4dplan-import-save-report") !== "0"; } catch (e) { /* */ } sv.onchange = () => { try { localStorage.setItem("4dplan-import-save-report", sv.checked ? "1" : "0"); } catch (e) { /* */ } }; } }
   document.getElementById("btnCancelCoupleMode").onclick = cancelCoupleMode;
   document.getElementById("btnSaveCoupleMode").onclick = onSaveCoupleMode;
 
@@ -3953,7 +3955,7 @@ const planImportRemoveIds = diff => new Set(diff.removedExisting.filter(it => di
    en flik per kategori, och för det som uppdateras exakt vad som ändras
    (före → efter), så man kan filtrera/sortera och gå igenom allt innan man
    importerar skarpt. Påverkar inget – det är bara en rapport. */
-function exportPlanImportReport(diff) {
+function exportPlanImportReport(diff, opts = {}) {
   const fileName = diff.fileName || (document.getElementById("planExcelFile").files[0] || {}).name || "Excel";
   const subNames = it => (activitiesByItemId.get(it.id) || []).map(r => r.name).filter(Boolean).join(", ");
   const coupledCount = list => list.filter(it => it && it.modelId).length;
@@ -4015,6 +4017,13 @@ function exportPlanImportReport(diff) {
     ["Nya", diff.toCreate.map(m => { const p = m.parsed; return { "Kod/namn": p.objectName, "Område": p.area, "Aktivitet": p.activity || "", "Typ": p.elementType || "", "Start": p.startDate || "", "Slut": p.endDate || "", "Framdrift %": p.progress, "Delaktiviteter": (p.subActivities || []).map(sa => sa.name).join(", ") }; })],
     ["Finns inte kvar", diff.removedExisting.map(it => ({ "Tas bort": diff.removeKeys && diff.removeKeys.has(it.sourceKey) ? "Ja" : "Nej", "Namn": it.objectName || "", "Område": it.area || "", "Aktivitet": it.activity || "", "Typ": it.elementType || "", "3D-kopplad": yes(it.modelId), "Kommentarer": commentCounts.get(it.id) || 0, "Källnyckel": it.sourceKey || "" }))],
   ];
+  const stamp = new Date().toISOString().slice(0, 10), baseName = `Importgranskning ${fileName.replace(/\.[^.]+$/, "")} ${stamp}`;
+  if (opts.html && typeof planImportReportHtml === "function") {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([planImportReportHtml(fileName, sheets)], { type: "text/html;charset=utf-8" }));
+    a.download = `${baseName}.html`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  if (opts.xlsx === false) return;
   const wb = XLSX.utils.book_new();
   sheets.forEach(([name, rows]) => {
     const ws = rows.length ? XLSX.utils.json_to_sheet(rows) : XLSX.utils.aoa_to_sheet([["(inga)"]]);
@@ -4025,8 +4034,7 @@ function exportPlanImportReport(diff) {
     }
     XLSX.utils.book_append_sheet(wb, ws, name);
   });
-  const stamp = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `Importgranskning ${fileName.replace(/\.[^.]+$/, "")} ${stamp}.xlsx`);
+  XLSX.writeFile(wb, `${baseName}.xlsx`);
 }
 
 /** Klick på "Importera skarpt" i förhandsgranskningen. */
@@ -4041,6 +4049,8 @@ async function onConfirmPlanImport() {
   btn.disabled = true;
   confirmMsgEl.innerText = "Importerar...";
   try {
+    // Rapporten (Excel + HTML) sparas före importen, medan förhandsgranskningen ännu finns kvar.
+    { const sv = document.getElementById("planImportSaveReport"); if (sv && sv.checked) { try { exportPlanImportReport(planImportDiff, { html: true }); } catch (e) { console.warn("Kunde inte spara importrapporten", e); } } }
     await commitPlanImport(planImportDiff);
     const count = planImportDiff.parsedItems.length, removed = planImportRemoveIds(planImportDiff).size, nc = planImportDiff.commentsAdded || 0;
     planImportDiff = null;
