@@ -290,6 +290,21 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       return { w: cfg.w, sc: cfg.sc, bw: box && Math.round(box.w), noDate: !txt.some(t => /–/.test(t) && /\d/.test(t) && !/Skala|längd/.test(t)), ok, segs: after && after.segs === before.segs, anch: after && after.anchors.length === before.anchors.length && !!after.anchors[0].row, lines: after && [...after.groups.values()].reduce((a, x) => a + x.length, 0) === [...before.groups.values()].reduce((a, x) => a + x.length, 0) };
     });
     if (bo.w !== 60 || bo.sc !== 1.5 || bo.bw !== 60 || !bo.noDate || !bo.ok || !bo.segs || !bo.anch || !bo.lines) fail('Bubbla/persistens: ' + JSON.stringify(bo));
+    // Insättningspunkten kan aldrig dras bort från objektet: hålls inom objektets utsträckning.
+    const cl = await page.evaluate(async () => {
+      const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'ifc'; e.p1 = [6512346, 150100]; e.p2 = [6512354, 150100]; e.depth = 3; e.bub = { ...secBub(e), mode: 'all', on: true, off: {}, pos: {}, anc: {}, cfg: {} };
+      secData.delete(e.id); await secBuild(e, { open: false }); drawPrintPage(); setSel([e.id]);
+      const d = secData.get(e.id), an = d.anchors[0], c0 = secCards.get(e.id)[0]; const k = pageDims().k, L = pr.L, r = $('prCanvas').getBoundingClientRect();
+      const scr = (mx, my) => ({ clientX: r.left + (L.ox + mx * k * L.u) / L.dpr, clientY: r.top + (L.oy + my * k * L.u) / L.dpr });
+      const a = scr(c0.ax, c0.ay), b = scr(c0.ax + 400, c0.ay - 300);
+      secBubDown(c0.ax, c0.ay, { preventDefault() {}, ...a }); window.dispatchEvent(new MouseEvent('mousemove', { ...b, bubbles: true })); window.dispatchEvent(new MouseEvent('mouseup', { ...b, bubbles: true }));
+      const p = e.bub.anc[an.key]; const bx = an.box;
+      // en gammal/manipulerad lagrad punkt långt utanför ritas ändå på objektet
+      e.bub.anc[an.key] = [999, 999]; drawPrintPage(); const v = secView.get(e.id), c1 = secCards.get(e.id)[0];
+      const u1 = v.uLo + (c1.ax * v.mm - v.x0) / v.s, z1 = v.zlo + (v.yBase - c1.ay * v.mm) / v.s;
+      return { p, bx, inside: p && p[0] >= bx[0] - 1e-6 && p[0] <= bx[1] + 1e-6 && p[1] >= bx[2] - 1e-6 && p[1] <= bx[3] + 1e-6, drawnInside: u1 <= bx[1] + 0.01 && z1 <= bx[3] + 0.01 };
+    });
+    if (!cl.p || !cl.inside || !cl.drawnInside) fail('Punkten ska hållas på objektet: ' + JSON.stringify(cl));
     // PDF: elementet ska ritas som vektorer, inte som en bild.
     const pdf = await page.evaluate(async () => {
       const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'ifc'; e.ifcAlpha = 1; e.bub = { ...secBub(e), off: {}, pos: {}, mode: 'active' }; e.p1 = [6512346, 150100]; e.p2 = [6512354, 150100]; secData.delete(e.id); await secBuild(e, { open: false });

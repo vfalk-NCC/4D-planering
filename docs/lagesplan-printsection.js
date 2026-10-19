@@ -74,8 +74,9 @@ function secCompute(el) {
         const end = Math.min(n, r.start + r.count);
         for (let v = r.start; v < end; v++) { if (U[v] < u0) u0 = U[v]; if (U[v] > u1) u1 = U[v]; if (V[v] < v0) v0 = V[v]; if (V[v] > v1) v1 = V[v]; if (Z[v] > z1) z1 = Z[v]; if (Z[v] < z0) z0 = Z[v]; }
         if (end > r.start && u1 >= 0 && u0 <= L && v1 >= -front && v0 <= depth && z1 >= zlo && z0 <= zhi) {
-          const a = anchorBy.get(keyOf[i]) || anchorBy.set(keyOf[i], { row, us: [], zTop: -1e18, n: 0 }).get(keyOf[i]);
+          const a = anchorBy.get(keyOf[i]) || anchorBy.set(keyOf[i], { row, us: [], zTop: -1e18, n: 0, box: [1e18, -1e18, 1e18, -1e18] }).get(keyOf[i]);
           a.us.push(Math.max(0, Math.min(L, (u0 + u1) / 2))); a.zTop = Math.max(a.zTop, Math.min(z1, zhi)); a.n++;
+          a.box = [Math.min(a.box[0], Math.max(0, u0)), Math.max(a.box[1], Math.min(L, u1)), Math.min(a.box[2], Math.max(z0, zlo)), Math.max(a.box[3], Math.min(z1, zhi))]; // objektets utsträckning (u, z) – bubblans punkt hålls inom den
         }
       }
     });
@@ -104,7 +105,7 @@ function secCompute(el) {
   }));
   const groups = new Map();
   segsBy.forEach((segs, key) => groups.set(key, ifc2dChain(segs)));
-  const anchors = [...anchorBy.entries()].map(([key, a]) => ({ key, row: a.row, u: a.us.reduce((s, v) => s + v, 0) / a.us.length, z: a.zTop, n: a.n })).filter(a => isFinite(a.z));
+  const anchors = [...anchorBy.entries()].map(([key, a]) => ({ key, row: a.row, u: a.us.reduce((s, v) => s + v, 0) / a.us.length, z: a.zTop, n: a.n, box: a.box })).filter(a => isFinite(a.z));
   if (!isFinite(zMin)) { zMin = 0; zMax = 3; }
   return { groups, anchors, L, zlo: zMin, zhi: zMax, segs: total, capped, sig: secSig(el) };
 }
@@ -150,7 +151,7 @@ async function secPersist(el, res) {
     const db = await secIdb(); if (!db) return;
     const r1 = v => Math.round(v * 10) / 10;
     const rec = { sig: secSig(el), L: res.L, zlo: res.zlo, zhi: res.zhi, segs: res.segs, capped: res.capped, at: Date.now(),
-      groups: [...res.groups.entries()].map(([k, lines]) => [k, lines.map(p => p.map(r1))]), anchors: res.anchors.map(a => ({ key: a.key, u: a.u, z: a.z, n: a.n })) };
+      groups: [...res.groups.entries()].map(([k, lines]) => [k, lines.map(p => p.map(r1))]), anchors: res.anchors.map(a => ({ key: a.key, u: a.u, z: a.z, n: a.n, box: a.box })), v: 2 };
     await new Promise((ok, no) => { const t = db.transaction("sec", "readwrite"); t.objectStore("sec").put(rec, secKeyOf(el)); t.oncomplete = ok; t.onerror = () => no(t.error); });
   } catch (e) { /* utan lagring: räknas om nästa gång */ }
 }
@@ -160,7 +161,7 @@ async function secRestore(el) {
     if (secData.has(el.id) || !el.p1 || !el.p2) return false;
     const db = await secIdb(); if (!db) return false;
     const rec = await new Promise((ok, no) => { const q = db.transaction("sec").objectStore("sec").get(secKeyOf(el)); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); });
-    if (!rec || rec.sig !== secSig(el) || secData.has(el.id)) return false;
+    if (!rec || rec.v !== 2 || rec.sig !== secSig(el) || secData.has(el.id)) return false;
     const anchors = rec.anchors.map(a => ({ ...a, row: secRow(a.key) })).filter(a => a.row);
     secData.set(el.id, { groups: new Map(rec.groups), anchors, L: rec.L, zlo: rec.zlo, zhi: rec.zhi, segs: rec.segs, capped: rec.capped, restored: rec.at, sig: rec.sig });
     if (pr && pr.tpl.elements.includes(el)) { drawPrintPage(); const info = document.getElementById("secInfo"); if (info) info.textContent = `Sparad sektion återställd (${new Date(rec.at).toLocaleString("sv-SE")}). Läs in igen om byggnaden har ändrats.`; }
@@ -206,6 +207,8 @@ function secBubbles(el, data) {
   return list.sort((a, b) => a.u - b.u).slice(0, Math.max(1, Number(cfg.max) || 12));
 }
 
+/* Insättningspunkten ska alltid ligga på objektet: hålls inom dess utsträckning i sektionen. */
+const secClampAnc = (a, u, z) => { const b = a && a.box; return b && b[0] <= b[1] ? [Math.max(b[0], Math.min(b[1], u)), Math.max(b[2], Math.min(b[3], z))] : [u, z]; };
 const secFmt = d => (d ? (typeof shortDate === "function" ? shortDate(d) : d) : "");
 function secCardLines(a, cfg) {
   const r = a.row, end = r.actual_end_date && r.actual_end_date > (r.end_date || "") ? r.actual_end_date : r.end_date || r.start_date;
@@ -290,7 +293,7 @@ function drawPrSection(ctx, el, X, Y, W, H, pt, mm) {
     // Per bubbla (klicka på den): egen bredd, textstorlek och vilka rader som visas.
     const bc = (cfg.cfg || {})[a.key] || {}, f2 = { ...cfg.fields, ...(bc.fields || {}) }, sc = Math.max(0.5, Math.min(3, Number(bc.sc) || 1));
     const fs = fs0 * sc, cw = Math.max(12, Number(bc.w) || 0) * (bc.w ? mm : 0) || cw0, ch = fs * (f2.name ? 3.1 : 1.2) + (f2.date ? fs * 1.3 : 0) + (f2.progress ? fs * 1.6 : 0) + fs * 0.8;
-    const anc = (cfg.anc || {})[a.key], ax = anc ? px(anc[0]) : px(a.u), ay = anc ? py(anc[1]) : py(Math.min(a.z, zTop)), L = secCardLines(a, { ...cfg, fields: f2 }), c = phaseColor(secPhase(a.row));
+    const anc0 = (cfg.anc || {})[a.key], anc = anc0 && secClampAnc(a, anc0[0], anc0[1]), ax = anc ? px(anc[0]) : px(a.u), ay = anc ? py(anc[1]) : py(Math.min(a.z, zTop)), L = secCardLines(a, { ...cfg, fields: f2 }), c = phaseColor(secPhase(a.row));
     let cx = Math.max(X, Math.min(X + W - cw, ax - cw / 2)), cy = top + mm * 0.5;
     for (let r = 0; r < Math.max(1, rows); r++) { cy = top + mm * 0.5 + r * (ch + mm * 1.5); if (!placed.some(p => p.y === cy && cx < p.x + cw + mm * 0.5 && cx + cw + mm * 0.5 > p.x)) break; }
     // Hamnar kortet över ett annat i alla rader: skjut det åt sidan tills det får plats.
@@ -401,7 +404,8 @@ function secBubDown(mx, my, e) {
     if (!hit) continue;
     if (!pr.sels.includes(el.id) || pr.sels.length !== 1) { setSel([el.id]); renderPrintProps(); }
     pushUndo(); el.bub = secBub(el); let moved = false;
-    const move = ev => { const [px2, py2] = prPoint(ev); moved = true; el.bub.anc = { ...el.bub.anc, [hit.key]: [Math.round((v.uLo + (px2 * v.mm - v.x0) / v.s) * 100) / 100, Math.round((v.zlo + (v.yBase - py2 * v.mm) / v.s) * 100) / 100] }; drawPrintPage(); };
+    const an = (secData.get(el.id) || { anchors: [] }).anchors.find(x => x.key === hit.key);
+    const move = ev => { const [px2, py2] = prPoint(ev); moved = true; const [cu, cz] = secClampAnc(an, v.uLo + (px2 * v.mm - v.x0) / v.s, v.zlo + (v.yBase - py2 * v.mm) / v.s); el.bub.anc = { ...el.bub.anc, [hit.key]: [Math.round(cu * 100) / 100, Math.round(cz * 100) / 100] }; drawPrintPage(); };
     const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); if (!moved) pr.undo.pop(); else prCmdLog("Flyttade bubblans insättningspunkt."); };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up); e.preventDefault(); return true;
   }
