@@ -204,12 +204,12 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       // dubbelklick släcker
       drawPrintPage(); const b1 = (secCards.get(e.id) || [])[0];
       secBubDown(b1.x + 2, b1.y + 2, { preventDefault() {} }); secBubDown(b1.x + 2, b1.y + 2, { preventDefault() {} });
-      const off = !!e.bub.off[b0.key];
+      const off = !!e.bub.off[b0.key]; const selected = secSel.key === b0.key && secSel.el === e.id; const panelOpt = !!document.querySelector('#secBcHide');
       // utanför bladet: ingen utskrift
       const eo = { id: 'zz', type: 'rect', x: 500, y: 10, w: 30, h: 20, stroke: '#000000', fill: '', lw: 0.35 }; pr.tpl.elements.push(eo);
-      return { n0, L, behind, flipped, alphaUsed: alphas.includes(0.4), moved: !!pos && Math.abs(pos[0] - (b0.x - e.x) - 20) < 1.5, off, offPage: prOffPage(eo), onPage: !prOffPage(e) };
+      return { n0, L, behind, flipped, alphaUsed: alphas.includes(0.4), moved: !!pos && Math.abs(pos[0] - (b0.x - e.x) - 20) < 1.5, off, selected, panelOpt, offPage: prOffPage(eo), onPage: !prOffPage(e) };
     });
-    if (rt.n0 < 1 || Math.abs(rt.L - 6) > 0.02 || rt.behind < 1 || !rt.alphaUsed || !rt.moved || !rt.off || !rt.offPage || !rt.onPage) fail('Realtid/bubblor/arbetsyta: ' + JSON.stringify(rt));
+    if (rt.n0 < 1 || Math.abs(rt.L - 6) > 0.02 || rt.behind < 1 || !rt.alphaUsed || !rt.moved || rt.off || !rt.selected || !rt.panelOpt || !rt.offPage || !rt.onPage) fail('Realtid/bubblor/arbetsyta: ' + JSON.stringify(rt));
     // PDF: det utanför bladet följer inte med.
     const pdf2 = await page.evaluate(async () => {
       const calls = []; window.jspdf = { jsPDF: function () { return new Proxy({}, { get: (t, k) => k === 'splitTextToSize' ? (s => [String(s)]) : k === 'output' ? (() => new ArrayBuffer(8)) : k === 'getTextWidth' ? (s => String(s).length) : ((...a) => { calls.push(k + ' ' + JSON.stringify(a).slice(0, 60)); }) }); } };
@@ -273,6 +273,23 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
     // Kopplingsrapport: aktiviteter vars objekt saknas i 3D-vyn grupperas per område.
     const cp = await page.evaluate(() => { items.push({ id: 'zz1', object_id: 'GUID-X', area: '741 Sektionsfickor', start_date: '2026-10-01' }, { id: 'zz2', object_id: 'GUID-Y', area: '741 Sektionsfickor', start_date: '2026-10-01' }); const r = l3bCouplingReport(); const t = l3bCouplingText(); items.splice(-2); return { missing: r.missing, top: r.top, t }; });
     if (cp.missing !== 2 || !/741 Sektionsfickor \(2\)/.test(cp.top[0]) || !/inte i 3D-vyn/.test(cp.t)) fail('Kopplingsrapport: ' + JSON.stringify(cp));
+    // Bubbla: egna alternativ (bredd, textstorlek) och sparat snitt som ligger kvar.
+    const bo = await page.evaluate(async () => {
+      const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'ifc'; e.zlo = null; e.zhi = null; e.p1 = [6512346, 150100]; e.p2 = [6512354, 150100]; e.depth = 3; e.front = 0; e.crop = null;
+      e.bub = { ...secBub(e), mode: 'all', on: true, off: {}, pos: {}, anc: {}, cfg: {} };
+      secData.delete(e.id); await secBuild(e, { open: false }); await new Promise(r => setTimeout(r, 300));
+      const k = secData.get(e.id).anchors[0].key; secSel.el = e.id; secSel.key = k; setSel([e.id]); renderPrintProps();
+      const w = document.querySelector('[data-bc="w"]'); w.value = '60'; w.dispatchEvent(new Event('change'));
+      const sc = document.querySelector('[data-bc="sc"]'); sc.value = '150'; sc.dispatchEvent(new Event('change'));
+      const f = document.querySelector('[data-bcf="date"]'); f.checked = false; f.dispatchEvent(new Event('change'));
+      const c = document.createElement('canvas'); c.width = 2000; c.height = 1000; const g = c.getContext('2d'); const txt = []; const ft = g.fillText.bind(g); g.fillText = (t, ...a) => { txt.push(t); return ft(t, ...a); };
+      drawElement(g, e, pr.tpl, 10, 1); const box = (secCards.get(e.id) || [])[0];
+      const cfg = e.bub.cfg[k];
+      // persistens: ta bort ur minnet, återställ ur databasen
+      const before = secData.get(e.id); secData.delete(e.id); secTried.delete(e.id); const ok = await secRestore(e); const after = secData.get(e.id);
+      return { w: cfg.w, sc: cfg.sc, bw: box && Math.round(box.w), noDate: !txt.some(t => /–/.test(t) && /\d/.test(t) && !/Skala|längd/.test(t)), ok, segs: after && after.segs === before.segs, anch: after && after.anchors.length === before.anchors.length && !!after.anchors[0].row, lines: after && [...after.groups.values()].reduce((a, x) => a + x.length, 0) === [...before.groups.values()].reduce((a, x) => a + x.length, 0) };
+    });
+    if (bo.w !== 60 || bo.sc !== 1.5 || bo.bw !== 60 || !bo.noDate || !bo.ok || !bo.segs || !bo.anch || !bo.lines) fail('Bubbla/persistens: ' + JSON.stringify(bo));
     // PDF: elementet ska ritas som vektorer, inte som en bild.
     const pdf = await page.evaluate(async () => {
       const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'ifc'; e.ifcAlpha = 1; e.bub = { ...secBub(e), off: {}, pos: {}, mode: 'active' }; e.p1 = [6512346, 150100]; e.p2 = [6512354, 150100]; secData.delete(e.id); await secBuild(e, { open: false });

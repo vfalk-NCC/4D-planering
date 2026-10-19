@@ -15,13 +15,14 @@
 const SEC_DEF = { src: "ifc", p1: null, p2: null, side: 1, depth: 4, scale: 0, zlo: null, zhi: null, q: "", nq: "", title: "SEKTION A–A", color: "#334155", lw: 0.18, status: true,
   bub: { on: true, off: {}, pos: {}, anc: {}, mode: "running", prog: "entered", size: 36, max: 12, fields: { name: true, date: true, progress: true } } };
 const secView = new Map();               // elementets id -> senaste ritvyn (för att klicka ut beskärningen)
+const secSel = { el: null, key: null };  // vald bubbla (klick) – alternativen visas i panelen
 const secCards = new Map();               // elementets id -> [{ key, x, y, w, h }] bubblornas rutor (bladets mm) – för att kunna flytta dem
 const secData = new Map();               // elementets id -> { sig, groups: Map(nyckel -> polylinjer [u,z mm]), anchors, L, zlo, zhi }
 const secPick = { el: null, pts: [], cal: null, wiz: false, crop: false, cropEdit: null };
 const sec3d = { el: null, pts: [], opened: false, mode: null, msg: "" };   // steg 2: punkterna A och B klickas i 3D-modellen    // "Välj i ritning": väntar på två klick på en ritning
 const SEC_MAX_SEGS = 400000;
 const secKey = r => (r.group_id ? `g:${r.group_id}` : r.source_key ? `s:${r.source_key}` : `i:${r.id}`);
-const secBub = el => ({ ...SEC_DEF.bub, off: {}, pos: {}, anc: {}, ...(el.bub || {}), fields: { ...SEC_DEF.bub.fields, ...((el.bub || {}).fields || {}) } });
+const secBub = el => ({ ...SEC_DEF.bub, off: {}, pos: {}, anc: {}, cfg: {}, ...(el.bub || {}), fields: { ...SEC_DEF.bub.fields, ...((el.bub || {}).fields || {}) } });
 const secLen = el => (el.p1 && el.p2 ? Math.hypot(el.p2[0] - el.p1[0], el.p2[1] - el.p1[1]) : 0);
 const secAt = () => ($("dateInput") && $("dateInput").value) || (typeof todayIso === "function" ? todayIso() : "");
 
@@ -105,7 +106,7 @@ function secCompute(el) {
   segsBy.forEach((segs, key) => groups.set(key, ifc2dChain(segs)));
   const anchors = [...anchorBy.entries()].map(([key, a]) => ({ key, row: a.row, u: a.us.reduce((s, v) => s + v, 0) / a.us.length, z: a.zTop, n: a.n })).filter(a => isFinite(a.z));
   if (!isFinite(zMin)) { zMin = 0; zMax = 3; }
-  return { groups, anchors, L, zlo: zMin, zhi: zMax, segs: total, capped };
+  return { groups, anchors, L, zlo: zMin, zhi: zMax, segs: total, capped, sig: secSig(el) };
 }
 
 /* Se till att byggnaden är inläst (öppnar 3D om det behövs) och räkna om snittet för elementet. */
@@ -124,12 +125,50 @@ async function secBuild(el, o = {}) {
     await new Promise(r => setTimeout(r, 20));
     const res = secCompute(el);
     if (!res) { say("Kunde inte skära – kontrollera sektionslinjen."); return false; }
-    secData.set(el.id, res);
+    secData.set(el.id, res); secPersist(el, res);
     say(`${res.segs.toLocaleString("sv-SE")} linjesegment, ${res.anchors.length} aktiviteter bakom snittet${res.capped ? " – avkortat, filtrera för att få med allt" : ""}.`);
     return true;
   } catch (e) { say("Kunde inte skapa sektionen: " + e.message); console.warn("Sektion", e); return false; }
   finally { if (!was3d && o.open !== false && typeof close3d === "function" && document.getElementById("view3d") && !document.getElementById("view3d").classList.contains("hidden")) close3d(); }
 }
+
+/* Det beräknade snittet ligger kvar (Victor 2026-10-19: "man måste läsa in det på nytt varje gång man öppnar utskriftslayouten"): sparas i webbläsarens
+   lokala databas (IndexedDB) per projekt, mall och element, tillsammans med de inställningar det räknades med. Passar inställningarna inte längre
+   (linje, höjder, djup, sida, filter) används det inte. Ligger lokalt i den här webbläsaren – inte i 4D-data. */
+const secTried = new Set();
+const secSig = el => JSON.stringify([el.p1, el.p2, el.side === -1 ? -1 : 1, Number(el.depth) || 0, Number(el.front) || 0, el.zlo ?? null, el.zhi ?? null, (el.q || "").trim(), (el.nq || "").trim()]);
+const secKeyOf = el => `${typeof projectId !== "undefined" ? projectId : ""}|${pr && pr.tpl ? pr.tpl.id || "" : ""}|${el.id}`;
+function secIdb() {
+  if (secIdb.p) return secIdb.p;
+  secIdb.p = new Promise((res, rej) => {
+    try { const r = indexedDB.open("lagesplan-sections", 1); r.onupgradeneeded = () => r.result.createObjectStore("sec"); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); } catch (e) { rej(e); }
+  }).catch(() => null);
+  return secIdb.p;
+}
+async function secPersist(el, res) {
+  try {
+    const db = await secIdb(); if (!db) return;
+    const r1 = v => Math.round(v * 10) / 10;
+    const rec = { sig: secSig(el), L: res.L, zlo: res.zlo, zhi: res.zhi, segs: res.segs, capped: res.capped, at: Date.now(),
+      groups: [...res.groups.entries()].map(([k, lines]) => [k, lines.map(p => p.map(r1))]), anchors: res.anchors.map(a => ({ key: a.key, u: a.u, z: a.z, n: a.n })) };
+    await new Promise((ok, no) => { const t = db.transaction("sec", "readwrite"); t.objectStore("sec").put(rec, secKeyOf(el)); t.oncomplete = ok; t.onerror = () => no(t.error); });
+  } catch (e) { /* utan lagring: räknas om nästa gång */ }
+}
+async function secRestore(el) {
+  secTried.add(el.id);
+  try {
+    if (secData.has(el.id) || !el.p1 || !el.p2) return false;
+    const db = await secIdb(); if (!db) return false;
+    const rec = await new Promise((ok, no) => { const q = db.transaction("sec").objectStore("sec").get(secKeyOf(el)); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); });
+    if (!rec || rec.sig !== secSig(el) || secData.has(el.id)) return false;
+    const anchors = rec.anchors.map(a => ({ ...a, row: secRow(a.key) })).filter(a => a.row);
+    secData.set(el.id, { groups: new Map(rec.groups), anchors, L: rec.L, zlo: rec.zlo, zhi: rec.zhi, segs: rec.segs, capped: rec.capped, restored: rec.at, sig: rec.sig });
+    if (pr && pr.tpl.elements.includes(el)) { drawPrintPage(); const info = document.getElementById("secInfo"); if (info) info.textContent = `Sparad sektion återställd (${new Date(rec.at).toLocaleString("sv-SE")}). Läs in igen om byggnaden har ändrats.`; }
+    return true;
+  } catch (e) { return false; }
+}
+/* För export m.m.: det som finns sparat, annars (om byggnaden är inläst) en ny beräkning. */
+async function secEnsureData(el) { if (secData.has(el.id)) return true; if (await secRestore(el)) return true; return secModelsReady() ? secBuild(el, { open: false }) : false; }
 
 /* Realtid: ändras linjen, höjderna, djupet, sidan eller filtren räknas sektionen om av sig själv (efter en kort paus) – utan att öppna 3D.
    Den gamla bilden ligger kvar tills den nya är klar. Är byggnaden inte inläst tas den gamla bort (den stämmer inte längre). */
@@ -137,6 +176,7 @@ const secAutoT = new Map();
 function secModelsReady() { return typeof l3b !== "undefined" && typeof l3 !== "undefined" && !!l3 && !!l3.O && l3b.models.some(m => m.visible); }
 function secAuto(el, delay = 250) {
   clearTimeout(secAutoT.get(el.id));
+  { const d0 = secData.get(el.id); if (d0 && d0.sig === secSig(el)) return; } // inget som påverkar snittet har ändrats (t.ex. bara skalan)
   if (!el.p1 || !el.p2 || secLen(el) < 0.05) { secData.delete(el.id); return; }
   if (!secModelsReady()) { secData.delete(el.id); return; }
   secAutoT.set(el.id, setTimeout(async () => {
@@ -144,7 +184,7 @@ function secAuto(el, delay = 250) {
     const res = secCompute(el);
     if (!res || !pr || !pr.tpl.elements.includes(el)) return;
     if (tok !== JSON.stringify([el.p1, el.p2, el.side, el.depth, el.front, el.zlo, el.zhi, el.q, el.nq])) return;
-    secData.set(el.id, res); secRow.n = -1;
+    secData.set(el.id, res); secRow.n = -1; secPersist(el, res);
     const info = document.getElementById("secInfo"); if (info) info.textContent = `${res.segs.toLocaleString("sv-SE")} segment, ${res.anchors.length} aktiviteter bakom snittet.`;
     drawPrintPage();
   }, delay));
@@ -191,6 +231,7 @@ function drawPrSection(ctx, el, X, Y, W, H, pt, mm) {
     ctx.fillStyle = "#b45309"; ctx.font = `bold ${fs}px Helvetica, Arial`; ctx.textAlign = "left"; ctx.fillText("Passa in ritningen: sätt punkt A och B i panelen", X + mm, Y + H - fs);
     ctx.restore(); return;
   }
+  if (!data && !secTried.has(el.id) && el.p1 && el.p2) secRestore(el);
   if (!data && pdfIm && cal) { const r0 = secImgRect(cal); data = { groups: new Map(), anchors: [], L: secLen(el) || r0.u1, zlo: r0.z0, zhi: r0.z1, segs: 0 }; } // ritningen visas även innan IFC-snittet är beräknat
   if (!data) {
     ctx.fillStyle = "#f8fafc"; ctx.fillRect(X, top, W, Y + H - top); ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = Math.max(1, mm * 0.2); ctx.setLineDash([mm * 2, mm * 1.5]); ctx.strokeRect(X, top, W, Y + H - top); ctx.setLineDash([]);
@@ -244,8 +285,12 @@ function drawPrSection(ctx, el, X, Y, W, H, pt, mm) {
   ctx.restore();
   // Bubblorna: kort i bandet, ledlinje till objektets överkant.
   const placed = [], boxes = [];
+  const cw0 = cw, fs0 = fs;
   cards.forEach((a, i) => {
-    const anc = (cfg.anc || {})[a.key], ax = anc ? px(anc[0]) : px(a.u), ay = anc ? py(anc[1]) : py(Math.min(a.z, zTop)), L = secCardLines(a, cfg), c = phaseColor(secPhase(a.row));
+    // Per bubbla (klicka på den): egen bredd, textstorlek och vilka rader som visas.
+    const bc = (cfg.cfg || {})[a.key] || {}, f2 = { ...cfg.fields, ...(bc.fields || {}) }, sc = Math.max(0.5, Math.min(3, Number(bc.sc) || 1));
+    const fs = fs0 * sc, cw = Math.max(12, Number(bc.w) || 0) * (bc.w ? mm : 0) || cw0, ch = fs * (f2.name ? 3.1 : 1.2) + (f2.date ? fs * 1.3 : 0) + (f2.progress ? fs * 1.6 : 0) + fs * 0.8;
+    const anc = (cfg.anc || {})[a.key], ax = anc ? px(anc[0]) : px(a.u), ay = anc ? py(anc[1]) : py(Math.min(a.z, zTop)), L = secCardLines(a, { ...cfg, fields: f2 }), c = phaseColor(secPhase(a.row));
     let cx = Math.max(X, Math.min(X + W - cw, ax - cw / 2)), cy = top + mm * 0.5;
     for (let r = 0; r < Math.max(1, rows); r++) { cy = top + mm * 0.5 + r * (ch + mm * 1.5); if (!placed.some(p => p.y === cy && cx < p.x + cw + mm * 0.5 && cx + cw + mm * 0.5 > p.x)) break; }
     // Hamnar kortet över ett annat i alla rader: skjut det åt sidan tills det får plats.
@@ -259,6 +304,7 @@ function drawPrSection(ctx, el, X, Y, W, H, pt, mm) {
     ctx.fillStyle = c; ctx.beginPath(); ctx.arc(ax, ay, Math.max(1.2, mm * 0.7), 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#ffffff"; ctx.fillRect(cx, cy, cw, ch); ctx.strokeStyle = "#94a3b8"; ctx.lineWidth = Math.max(0.5, mm * 0.1); ctx.strokeRect(cx, cy, cw, ch);
     ctx.fillStyle = c; ctx.fillRect(cx, cy, mm * 1.2, ch);
+    if (secSel.el === el.id && secSel.key === a.key) { ctx.strokeStyle = "#2563eb"; ctx.lineWidth = Math.max(1, mm * 0.35); ctx.setLineDash([mm * 1.2, mm * 0.8]); ctx.strokeRect(cx - mm * 0.4, cy - mm * 0.4, cw + mm * 0.8, ch + mm * 0.8); ctx.setLineDash([]); ctx.fillStyle = "#fff"; const hr = Math.max(2, mm * 1); ctx.fillRect(cx + cw - hr, cy + ch - hr, hr * 2, hr * 2); ctx.strokeRect(cx + cw - hr, cy + ch - hr, hr * 2, hr * 2); }
     let ty = cy + fs * 0.9; const tx = cx + mm * 2.2, tw = cw - mm * 3;
     ctx.textAlign = "left"; ctx.fillStyle = "#111827";
     if (L.name) { ctx.font = `bold ${fs}px Helvetica, Arial`; secWrap(ctx, L.name, tw, 2).forEach(t => { ctx.fillText(t, tx, ty); ty += fs * 1.05; }); ty += fs * 0.15; }
@@ -363,18 +409,20 @@ function secBubDown(mx, my, e) {
     if (el.type !== "section" || el.locked) continue;
     const hit = (secCards.get(el.id) || []).find(b => mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h);
     if (!hit) continue;
-    const now = Date.now(), dbl = secBubDown.last && secBubDown.last.key === hit.key && now - secBubDown.last.t < 380;
-    secBubDown.last = { key: hit.key, t: now };
-    if (!pr.sels.includes(el.id) || pr.sels.length !== 1) { setSel([el.id]); renderPrintProps(); }
-    pushUndo(); el.bub = secBub(el);
-    if (dbl) { el.bub.off = { ...el.bub.off, [hit.key]: true }; prCmdLog("Bubblan släckt (tänd igen under Bubblor i panelen)."); renderPrintProps(); drawPrintPage(); return true; }
-    const start = [mx, my], orig = [hit.x - el.x, hit.y - el.y]; let moved = false;
+    const was = secSel.el === el.id && secSel.key === hit.key;
+    secSel.el = el.id; secSel.key = hit.key;
+    if (!pr.sels.includes(el.id) || pr.sels.length !== 1) setSel([el.id]);
+    renderPrintProps(); drawPrintPage();
+    pushUndo(); el.bub = secBub(el); el.bub.cfg = { ...el.bub.cfg };
+    const v = secView.get(el.id), resize = was && Math.hypot(hit.x + hit.w - mx, hit.y + hit.h - my) < 2.6;
+    const start = [mx, my], orig = [hit.x - el.x, hit.y - el.y], w0 = hit.w; let moved = false;
     const move = ev => {
       const [px2, py2] = prPoint(ev); if (!moved && Math.abs(px2 - start[0]) + Math.abs(py2 - start[1]) < 0.4) return; moved = true;
-      el.bub.pos = { ...el.bub.pos, [hit.key]: [Math.round((orig[0] + px2 - start[0]) * 100) / 100, Math.round((orig[1] + py2 - start[1]) * 100) / 100] };
+      if (resize) { el.bub.cfg[hit.key] = { ...(el.bub.cfg[hit.key] || {}), w: Math.max(12, Math.round((w0 + px2 - start[0]) * 10) / 10) }; }
+      else el.bub.pos = { ...el.bub.pos, [hit.key]: [Math.round((orig[0] + px2 - start[0]) * 100) / 100, Math.round((orig[1] + py2 - start[1]) * 100) / 100] };
       drawPrintPage();
     };
-    const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); if (!moved) pr.undo.pop(); else { prCmdLog("Flyttade bubblan."); renderPrintProps(); } };
+    const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); if (!moved) pr.undo.pop(); else { prCmdLog(resize ? "Ändrade bubblans bredd." : "Flyttade bubblan."); renderPrintProps(); } };
     window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
     e.preventDefault(); return true;
   }
@@ -568,6 +616,18 @@ function secBubListHtml(el, data) {
     <div style="max-height:170px;overflow:auto;">${list.map(a => `<label class="check" style="display:block;font-size:12px;"><input type="checkbox" data-secoff="${escHtml(a.key)}" ${b.off[a.key] ? "" : "checked"} /> ${escHtml(a.row.object_name || a.row.activity || "Aktivitet")}${shown.has(a.key) ? "" : " <small>(filtrerad)</small>"}</label>`).join("")}</div>
     <div class="sec-row"><button type="button" id="secBubReset">Återställ placering och släckta</button></div></details>`;
 }
+/* Vald bubbla (klick på ett kort): egna alternativ – bredd, textstorlek, vilka rader, släck, återställ. */
+function secSelHtml(el, b, data) {
+  if (secSel.el !== el.id || !secSel.key) return "";
+  const a = data && data.anchors.find(x => x.key === secSel.key); if (!a || !a.row) return "";
+  const c = b.cfg[secSel.key] || {}, f = { ...b.fields, ...(c.fields || {}) }, wNow = Number(c.w) || b.size, sc = Math.round((Number(c.sc) || 1) * 100);
+  return `<div style="border:1.5px solid #2563eb;border-radius:10px;padding:8px;margin:6px 0 10px;background:#eff6ff;">
+    <div style="font-size:12.5px;font-weight:700;margin-bottom:4px;">Vald bubbla: ${escHtml(a.row.object_name || a.row.activity || "Aktivitet")}</div>
+    <div class="sec-g2"><div><label>Bredd (mm)</label><input type="number" step="2" min="12" data-bc="w" value="${wNow}" /></div><div><label>Textstorlek (%)</label><input type="number" step="10" min="50" max="300" data-bc="sc" value="${sc}" /></div></div>
+    <div class="sec-chips"><label class="check"><input type="checkbox" data-bcf="name" ${f.name ? "checked" : ""} /> Namn</label><label class="check"><input type="checkbox" data-bcf="date" ${f.date ? "checked" : ""} /> Datum</label><label class="check"><input type="checkbox" data-bcf="progress" ${f.progress ? "checked" : ""} /> Framdrift</label></div>
+    <div class="sec-row"><button type="button" id="secBcHide">Släck bubblan</button><button type="button" id="secBcReset">Återställ den</button><button type="button" id="secBcDone">Klar</button></div>
+    <div class="sec-note" style="margin:0;">Dra kortet för att flytta, dra i hörnet nere till höger för att ändra bredd, dra pricken vid objektet för att flytta insättningspunkten.</div></div>`;
+}
 function prSectionHtml(el) {
   secStyle();
   const esc = escHtml, b = secBub(el), data = secData.get(el.id), pdf = el.src === "pdf", cal = secCal(el), L = secLen(el), cropOn = !!secCrop(el);
@@ -597,13 +657,14 @@ function prSectionHtml(el) {
       <label class="check"><input type="checkbox" data-f="status" ${el.status === false ? "" : "checked"} /> Färga snittet efter status</label>
     </details>
     <details class="sec-g" open><summary>Bubblor</summary>
+      ${secSelHtml(el, b, data)}
       <label class="check"><input type="checkbox" data-sb="on" ${b.on ? "checked" : ""} /> Visa bubblor</label>
       <div class="sec-g2"><div><label>Vilka</label><select data-sb="mode">${opt("running", b.mode, "Bara pågående")}${opt("active", b.mode, "Pågående + försenade")}${opt("all", b.mode, "Alla bakom snittet")}${opt("sel", b.mode, "Markerade i 3D")}</select></div>
         <div><label>Framdrift</label><select data-sb="prog">${opt("entered", b.prog, "Inskriven")}${opt("plan", b.prog, "Uträknad efter datum")}</select></div>
         <div><label>Kortbredd (mm)</label><input type="number" step="2" data-sb="size" value="${b.size}" /></div><div><label>Högst antal</label><input type="number" step="1" data-sb="max" value="${b.max}" /></div></div>
       <div class="sec-chips"><label class="check"><input type="checkbox" data-sbf="name" ${b.fields.name ? "checked" : ""} /> Namn</label><label class="check"><input type="checkbox" data-sbf="date" ${b.fields.date ? "checked" : ""} /> Datum</label><label class="check"><input type="checkbox" data-sbf="progress" ${b.fields.progress ? "checked" : ""} /> Framdrift</label></div>
       ${secBubListHtml(el, data)}
-      <div class="sec-note">Dra ett kort eller dess prick för att flytta, dubbelklicka på kortet för att släcka det. "Försenad" = startdatum passerat utan registrerad framdrift. Statusen gäller utskriftens datum.</div>
+      <div class="sec-note">Klicka på ett kort för att få alternativ för just den bubblan. "Försenad" = startdatum passerat utan registrerad framdrift. Statusen gäller utskriftens datum.</div>
     </details>
     <details class="sec-g"><summary>Avancerat</summary>
       <label>Sektionslinje (modellens koordinater, m)</label>
@@ -642,11 +703,17 @@ function prSectionBind(box, el) {
   const wiz = box.querySelector("#secWiz"); if (wiz) wiz.onclick = () => secWizard(el);
   const simg = box.querySelector("#secImg"); if (simg) simg.onclick = () => $("prImgInput").click();
   box.querySelectorAll("[data-secoff]").forEach(i => i.addEventListener("change", () => { pushUndo(); el.bub = secBub(el); el.bub.off = { ...el.bub.off }; if (i.checked) delete el.bub.off[i.dataset.secoff]; else el.bub.off[i.dataset.secoff] = true; drawPrintPage(); }));
-  const brs = box.querySelector("#secBubReset"); if (brs) brs.onclick = () => { pushUndo(); el.bub = secBub(el); el.bub.pos = {}; el.bub.off = {}; el.bub.anc = {}; renderPrintProps(); drawPrintPage(); };
+  const brs = box.querySelector("#secBubReset"); if (brs) brs.onclick = () => { pushUndo(); el.bub = secBub(el); el.bub.pos = {}; el.bub.off = {}; el.bub.anc = {}; el.bub.cfg = {}; renderPrintProps(); drawPrintPage(); };
   const mini = box.querySelector("#secMini"); if (mini) mini.onclick = () => secMini3d(!document.body.classList.contains("v3-mini"));
   const cr = box.querySelector("#secCrop"); if (cr) cr.onclick = () => { secPick.crop = !secPick.crop; secPick.el = secPick.crop ? el : null; secPick.cal = null; secPick.wiz = false; secPick.pts = []; prCmdLog(secPick.crop ? "Klicka ett hörn av det du vill visa, sedan motsatta hörnet." : "Avbröt."); renderPrintProps(); };
   const crr = box.querySelector("#secCropReset"); if (crr) crr.onclick = () => { pushUndo(); el.crop = null; renderPrintProps(); drawPrintPage(); };
   box.querySelectorAll("[data-crop]").forEach(i => i.addEventListener("change", () => { pushUndo(); el.crop = { ...(el.crop || {}) }; el.crop[i.dataset.crop] = Math.max(0, Math.min(95, Number(i.value) || 0)) / 100; drawPrintPage(); renderPrintProps(); }));
+  const bcSet = (f, v) => { pushUndo(); el.bub = secBub(el); const k = secSel.key; el.bub.cfg = { ...el.bub.cfg, [k]: { ...(el.bub.cfg[k] || {}), [f]: v } }; drawPrintPage(); };
+  box.querySelectorAll("[data-bc]").forEach(i => i.addEventListener("change", () => bcSet(i.dataset.bc, i.dataset.bc === "sc" ? Math.max(0.5, Math.min(3, (Number(i.value) || 100) / 100)) : Math.max(12, Number(i.value) || 36))));
+  box.querySelectorAll("[data-bcf]").forEach(i => i.addEventListener("change", () => { const k = secSel.key, cur = ((secBub(el).cfg[k] || {}).fields) || {}; bcSet("fields", { ...cur, [i.dataset.bcf]: i.checked }); }));
+  const bh = box.querySelector("#secBcHide"); if (bh) bh.onclick = () => { pushUndo(); el.bub = secBub(el); el.bub.off = { ...el.bub.off, [secSel.key]: true }; secSel.key = null; renderPrintProps(); drawPrintPage(); };
+  const br = box.querySelector("#secBcReset"); if (br) br.onclick = () => { pushUndo(); el.bub = secBub(el); const k = secSel.key, rm = o => { const n = { ...o }; delete n[k]; return n; }; el.bub.cfg = rm(el.bub.cfg); el.bub.pos = rm(el.bub.pos); el.bub.anc = rm(el.bub.anc); renderPrintProps(); drawPrintPage(); };
+  const bd = box.querySelector("#secBcDone"); if (bd) bd.onclick = () => { secSel.key = null; renderPrintProps(); drawPrintPage(); };
   const flip = box.querySelector("#secFlip"); if (flip) flip.onclick = () => { pushUndo(); el.side = el.side === -1 ? 1 : -1; lineChanged(); };
   const upd = box.querySelector("#secUpdate");
   if (upd) upd.onclick = async () => {

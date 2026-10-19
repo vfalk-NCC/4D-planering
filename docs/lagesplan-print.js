@@ -1874,7 +1874,7 @@ async function exportPrintPdf() {
     if (tpl.elements.some(e => e.type === "qr")) { await loadScript(QR_URL).catch(() => {}); }
     // Loggan i ritningshuvudet måste vara hämtad innan kortet rastreras.
     // Sektioner: räknas om om byggnaden redan är inläst (öppnar inte 3D mitt i exporten).
-    for (const e of tpl.elements) if (e.type === "section" && e.p1 && e.p2 && typeof secBuild === "function" && !secData.has(e.id)) await secBuild(e, { open: false });
+    for (const e of tpl.elements) if (e.type === "section" && e.p1 && e.p2 && typeof secEnsureData === "function" && !secData.has(e.id)) await secEnsureData(e);
     for (const e of tpl.elements) if (e.type === "title" && e.logo && !printImage(e.logo)) await printImgs.get(e.logo);
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: [W, H], compress: true });
