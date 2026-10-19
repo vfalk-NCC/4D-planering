@@ -295,8 +295,8 @@ function secPdfHtml(el) {
   const c = el.cal || {}, pt = (k, lab) => { const p = c[k] || {}, set = p.fx !== undefined;
     return `<div class="pr-grid4"><div style="grid-column:span 2;"><button type="button" class="btn small" data-calpick="${k}">${secPick.cal === k ? "Klicka på ritningen …" : (set ? "✔ " : "") + "📍 Punkt " + lab + " i bilden"}</button></div>
       <div><label>${lab}: längs m</label><input type="number" step="0.1" data-cal="${k}.u" value="${p.u ?? ""}" /></div><div><label>${lab}: höjd m</label><input type="number" step="0.1" data-cal="${k}.z" value="${p.z ?? ""}" /></div></div>`; };
-  return `<div class="hint">Din egen sektionsritning (bild/PDF-utsnitt som PNG/JPG) läggs i sektionens koordinater: markera två kända punkter i bilden (t.ex. två bjälklagskanter) och skriv in var de ligger – längs sektionslinjen och i höjd. Bubblorna fästs sedan vid IFC-objekten.</div>
-    <div class="pr-row"><button type="button" class="btn small" id="secImg">${el.img && el.img.path ? "🖼 Byt bild" : "🖼 Välj bild"}</button></div>${pt("a", "A")}${pt("b", "B")}
+  return `<div class="hint">Din egen sektionsritning (PDF eller bild) läggs i sektionens koordinater: markera två kända punkter i bilden (t.ex. två bjälklagskanter) och skriv in var de ligger – längs sektionslinjen och i höjd. Bubblorna fästs sedan vid IFC-objekten.</div>
+    <div class="pr-row"><button type="button" class="btn small" id="secImg">${el.img && el.img.path ? "🖼 Byt PDF/bild" : "🖼 Välj PDF/bild"}</button></div>${pt("a", "A")}${pt("b", "B")}
     <div class="pr-grid4"><div><label>Ritningens täckning %</label><input type="number" step="10" min="10" max="100" data-sf="imgAlphaPct" value="${Math.round((Number(el.imgAlpha) || 1) * 100)}" /></div></div>
     <label class="check"><input type="checkbox" data-f="lines" ${el.lines === false ? "" : "checked"} /> Visa även IFC-snittet ovanpå</label>`;
 }
@@ -307,7 +307,7 @@ function prSectionHtml(el) {
   const opt = (v, cur, lab) => `<option value="${v}"${cur === v ? " selected" : ""}>${lab}</option>`;
   return `<div class="hint">Sektionen skär de inlästa IFC-modellerna lodrätt längs en linje i planen. Bubblorna visar aktiviteterna bakom snittet.</div>
     <label>Rubrik</label><input type="text" data-f="title" value="${esc(el.title || "")}" />
-    <div class="pr-row"><label class="check"><input type="radio" name="secsrc" data-sf="src" value="ifc" ${el.src === "pdf" ? "" : "checked"} /> Snitt ur IFC</label> <label class="check"><input type="radio" name="secsrc" data-sf="src" value="pdf" ${el.src === "pdf" ? "checked" : ""} /> Egen sektionsritning (bild) + bubblor</label></div>
+    <div class="pr-row"><label class="check"><input type="radio" name="secsrc" data-sf="src" value="ifc" ${el.src === "pdf" ? "" : "checked"} /> Snitt ur IFC</label> <label class="check"><input type="radio" name="secsrc" data-sf="src" value="pdf" ${el.src === "pdf" ? "checked" : ""} /> Egen sektionsritning (PDF eller bild) + bubblor</label></div>
     ${el.src === "pdf" ? secPdfHtml(el) : ""}
     <label>Sektionslinje (modellens koordinater, m)</label>
     <div class="pr-grid4">${num("p1x", "Start X", "0.01", p1[0])}${num("p1y", "Start Y", "0.01", p1[1])}${num("p2x", "Slut X", "0.01", p2[0])}${num("p2y", "Slut Y", "0.01", p2[1])}</div>
@@ -342,7 +342,7 @@ function prSectionBind(box, el) {
   box.querySelectorAll("[data-sb]").forEach(i => i.addEventListener("change", () => { pushUndo(); el.bub = secBub(el); const f = i.dataset.sb; el.bub[f] = i.type === "checkbox" ? i.checked : (f === "size" || f === "max") ? Number(i.value) || SEC_DEF.bub[f] : i.value; redraw(); }));
   box.querySelectorAll("[data-sbf]").forEach(i => i.addEventListener("change", () => { pushUndo(); el.bub = secBub(el); el.bub.fields[i.dataset.sbf] = i.checked; redraw(); }));
   const pick = box.querySelector("#secPick"); if (pick) pick.onclick = () => { secPick.el = secPick.el === el ? null : el; secPick.pts = []; prCmdLog(secPick.el ? "Klicka på ritningen där sektionen börjar." : "Avbröt."); renderPrintProps(); };
-  box.querySelectorAll("[data-calpick]").forEach(b => { b.onclick = () => { if (!(el.img && el.img.path)) { alert("Välj en bild först."); return; } secPick.el = secPick.cal === b.dataset.calpick ? null : el; secPick.cal = secPick.el ? b.dataset.calpick : null; secPick.pts = []; prCmdLog(secPick.el ? "Klicka på punkten i sektionsritningen." : "Avbröt."); renderPrintProps(); }; });
+  box.querySelectorAll("[data-calpick]").forEach(b => { b.onclick = () => { if (!(el.img && el.img.path)) { alert("Välj en PDF eller bild först."); return; } secPick.el = secPick.cal === b.dataset.calpick ? null : el; secPick.cal = secPick.el ? b.dataset.calpick : null; secPick.pts = []; prCmdLog(secPick.el ? "Klicka på punkten i sektionsritningen." : "Avbröt."); renderPrintProps(); }; });
   box.querySelectorAll("[data-cal]").forEach(i => i.addEventListener("change", () => { pushUndo(); const [k, f] = i.dataset.cal.split("."); el.cal = { ...(el.cal || {}) }; el.cal[k] = { ...(el.cal[k] || {}) }; el.cal[k][f] = i.value === "" ? undefined : Number(String(i.value).replace(",", ".")); drawPrintPage(); }));
   const simg = box.querySelector("#secImg"); if (simg) simg.onclick = () => $("prImgInput").click();
   const flip = box.querySelector("#secFlip"); if (flip) flip.onclick = () => { pushUndo(); el.side = el.side === -1 ? 1 : -1; lineChanged(); };

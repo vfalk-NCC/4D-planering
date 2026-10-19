@@ -116,6 +116,8 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       return { panel, before, r, imgs, err, d: !!secData.get(e.id) };
     });
     if (!cal.panel || cal.before !== null || Math.abs(cal.r.u1 - cal.r.u0 - 10) > 0.01 || Math.abs(cal.r.z1 - cal.r.z0 - 5) > 0.01 || cal.imgs !== 1) fail('Egen sektionsritning: ' + JSON.stringify(cal));
+    // PDF som källa: sidan görs om till en PNG (pdf.js är stubbad i testet -> bara kontroll att funktionen finns och att PDF avvisas för andra element).
+    if (await page.evaluate(() => typeof pdfToImageFile !== 'function' || !document.getElementById('prImgInput').accept.includes('pdf'))) fail('PDF ska kunna väljas som sektionsritning');
     // PDF: elementet ska ritas som vektorer, inte som en bild.
     const pdf = await page.evaluate(async () => {
       const e = pr.tpl.elements.find(x => x.type === 'section'); e.src = 'ifc'; e.p1 = [6512346, 150100]; e.p2 = [6512354, 150100]; secData.delete(e.id); await secBuild(e, { open: false });

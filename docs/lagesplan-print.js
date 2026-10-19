@@ -299,6 +299,20 @@ function applyCropResize(el, old) {
   const im = printImage(el.path);
   if (im) printImageSource(el, im);
 }
+/* PDF-sida -> PNG (skarp, högst ca 3600 px bred) så att den kan läggas som bild på bladet, t.ex. som sektionsritning. */
+async function pdfToImageFile(file) {
+  if (typeof pdfjsLib === "undefined") throw new Error("PDF-läsaren är inte laddad");
+  setPrintStatus("Läser PDF…");
+  const doc = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  let n = 1;
+  if (doc.numPages > 1) { const a = prompt(`PDF:en har ${doc.numPages} sidor. Vilken sida är sektionen?`, "1"); n = Math.max(1, Math.min(doc.numPages, parseInt(a, 10) || 1)); }
+  const page = await doc.getPage(n), v1 = page.getViewport({ scale: 1 }), sc = Math.min(4, 3600 / Math.max(v1.width, v1.height));
+  const vp = page.getViewport({ scale: sc }), c = document.createElement("canvas"); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+  await page.render({ canvasContext: g, viewport: vp }).promise;
+  const blob = await new Promise((res, rej) => c.toBlob(b => (b ? res(b) : rej(new Error("Kunde inte göra bild av PDF-sidan"))), "image/png"));
+  return new File([blob], file.name.replace(/\.pdf$/i, "") + `_s${n}.png`, { type: "image/png" });
+}
 async function uploadPrintImage(file) {
   const ext = (file.name.match(/\.(png|jpe?g|webp|svg)$/i) || [0, "png"])[1].toLowerCase();
   const path = dataPath(`print/${ghNewId()}.${ext}`);
@@ -2083,10 +2097,11 @@ function bindPrint() {
   document.querySelectorAll("#prAdd [data-ico]").forEach(i => { i.innerHTML = PR_ICONS[i.dataset.ico] || ""; });
   document.querySelectorAll("#prAdd [data-add]").forEach(b => { b.onclick = () => addEl(b.dataset.add); });
   $("prImgInput").onchange = async e => {
-    const f = e.target.files[0]; e.target.value = "";
+    let f = e.target.files[0]; e.target.value = "";
     const el = primary();
     if (!f || !el || (el.type !== "image" && el.type !== "title" && el.type !== "section")) return;
     try {
+      if (/\.pdf$/i.test(f.name) || f.type === "application/pdf") { if (el.type !== "section") { alert("PDF kan bara användas som sektionsritning."); return; } f = await pdfToImageFile(f); }
       const r = await uploadPrintImage(f);
       // Logga i ritningshuvudet.
       if (el.type === "title") { pushUndo(); el.logo = r.path; renderPrintPanel(); drawPrintPage(); return; }
