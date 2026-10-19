@@ -101,12 +101,19 @@ function viewLayerState(v) {
   });
   return st;
 }
+/* Nya handlingar (ortofoton, DXF-ritningar, PDF-underlag) som importerats efter att ritningens lagerurval sparades är släckta på bladet
+   (Victor 2026-10-19) – de tänds för hand under ritningens lager. Gäller ritningar med eget urval; "följ skärmen" visar det skärmen visar. */
+function prHideNewLayers(st) {
+  if (!st || typeof st !== "object" || typeof printLayerList !== "function" || !siteLoaded) return st;
+  printLayerList().forEach(l => { if (!l.sub && /^(ortho:|cad:|pdfp:)/.test(l.key) && !st[l.key]) st[l.key] = { visible: false, opacity: 100 }; });
+  return st;
+}
 /* Lagerläget som ritningen ritas med. */
 function vpLayerState(el) {
-  if (prLayerHold && prLayerHold.el === el) return layerState; // panelen visar just den här ritningen
+  if (prLayerHold && prLayerHold.el === el) return prHideNewLayers(layerState); // panelen visar just den här ritningen
   const m = vpMode(el);
   if (m === "view") return viewLayerState(vpView(el));
-  if (m === "own") return el.layers.state;
+  if (m === "own") return prHideNewLayers(el.layers.state);
   return prScreenState();
 }
 const vpLayersKey = el => vpMode(el) + ":" + JSON.stringify(vpLayerState(el));
@@ -155,6 +162,7 @@ function prLayersAttach(el, host) {
     const screen = layerState;
     prLayerHold = { el, screen, home, nodes: [...home.children].filter(n => n.tagName !== "SUMMARY"), parked: true };
     layerState = JSON.parse(JSON.stringify((el.layers && el.layers.state) || screen));
+    if (el.layers && el.layers.state) prHideNewLayers(layerState);
     prLayerRefresh();
   }
   prLayerHold.nodes.forEach(n => host.appendChild(n));

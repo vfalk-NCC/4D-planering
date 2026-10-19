@@ -116,6 +116,16 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       return { panel, before, r, imgs, err, d: !!secData.get(e.id) };
     });
     if (!cal.panel || cal.before !== null || Math.abs(cal.r.u1 - cal.r.u0 - 10) > 0.01 || Math.abs(cal.r.z1 - cal.r.z0 - 5) > 0.01 || cal.imgs !== 1) fail('Egen sektionsritning: ' + JSON.stringify(cal));
+    // Nya handlingar är släckta i ritningar med eget lagerurval, men en uttryckligen tänd/släckt behåller sitt läge.
+    const nl = await page.evaluate(() => {
+      ifc2dRecs.push({ id: 'zz', type: 'cad', virtual: true, name: 'Ny DXF', layers: [], factor: 1, stats: {} }, { id: 'yy', type: 'cad', virtual: true, name: 'Gammal DXF', layers: [], factor: 1, stats: {} });
+      const m = { id: 'm9', type: 'map', layers: { follow: false, state: { 'cad:yy': { visible: true, opacity: 100 } } } };
+      const st = vpLayerState(m); const fm = { id: 'm8', type: 'map', layers: { follow: true } };
+      const out = { nyAv: st['cad:zz'] && st['cad:zz'].visible === false, gammalPa: st['cad:yy'].visible === true, followOrort: !!vpLayerState(fm) };
+      ifc2dRecs.splice(0);
+      return out;
+    });
+    if (!nl.nyAv || !nl.gammalPa || !nl.followOrort) fail('Nya lager ska vara av i utskriften: ' + JSON.stringify(nl));
     // PDF som källa: sidan görs om till en PNG (pdf.js är stubbad i testet -> bara kontroll att funktionen finns och att PDF avvisas för andra element).
     if (await page.evaluate(() => typeof pdfToImageFile !== 'function' || !document.getElementById('prImgInput').accept.includes('pdf'))) fail('PDF ska kunna väljas som sektionsritning');
     // PDF: elementet ska ritas som vektorer, inte som en bild.
