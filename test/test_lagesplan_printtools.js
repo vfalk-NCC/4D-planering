@@ -184,7 +184,7 @@ const PORT = 8990;
       const { oy, dpr, c } = pr.L, pageTop = c.getBoundingClientRect().top + oy / dpr;
       return { n: btns.length, icons: btns.every(x => x.querySelector('svg') && x.textContent.trim() && x.title), types: btns.every(x => ELEMENT_TYPES[x.dataset.add]), clear: b.getBoundingClientRect().bottom <= pageTop, oldGone: !document.querySelector('.pr-side .tool-grid') };
     });
-    if (bar.n !== 14 || !bar.icons || !bar.types || !bar.clear || !bar.oldGone) fail('Verktygsraden: ' + JSON.stringify(bar));
+    if (bar.n !== 15 || !bar.icons || !bar.types || !bar.clear || !bar.oldGone) fail('Verktygsraden: ' + JSON.stringify(bar));
     console.log('OK: verktygsraden överst – 14 verktyg med ikon, namn och förklaring, täcker inte bladet');
     // 8) Kommandoraden: senaste händelsen, historik (F2), diskret förlopp i raden i stället för rutan över ritningen.
     const cmd = await page.evaluate(async () => {

@@ -28,6 +28,7 @@ const ELEMENT_TYPES = {
   ellipse: { label: "Ellips", icon: "◯" },
   callout: { label: "Pratbubbla", icon: "💬" },
   table: { label: "Tabell", icon: "▤" },
+  section: { label: "Sektion", icon: "▭" },
 };
 /* Enhetliga linjeikoner (verktygsraden och panelens rubrik). */
 const PR_ICONS = Object.fromEntries(Object.entries({
@@ -44,6 +45,7 @@ const PR_ICONS = Object.fromEntries(Object.entries({
   ellipse: '<ellipse cx="12" cy="12" rx="9" ry="6.5"/>',
   line: '<path d="M5 19 19 5"/>',
   arrow: '<path d="M4 12h15M13.5 6.5 19 12l-5.5 5.5"/>',
+  section: '<path d="M3 20h18M5 20V9l7-5 7 5v11M9 20v-6h6v6"/><path d="M3 12h3M18 12h3" stroke-dasharray="2 1.5"/>',
   table: '<rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 9.5h18M3 14h18M9 9.5V19M15 9.5V19"/>'
 }).map(([k, v]) => [k, `<svg class="pr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${v}</svg>`]));
 const NORTH_STYLES = { rose4: "Stjärna", classic: "Klassisk halvpil", rose8: "Kompassros", minimal: "Minimal", compass: "Bussola", feather: "Pil med fjäder" };
@@ -786,6 +788,7 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
     }
     case "legend": drawLegend(ctx, el, X, Y, W, H, pt); break;
     case "table": if (typeof drawPrTable === "function") drawPrTable(ctx, el, X, Y, W, H, pt); break; // lagesplan-printtable.js
+    case "section": if (typeof drawPrSection === "function") drawPrSection(ctx, el, X, Y, W, H, pt, k * u); break; // lagesplan-printsection.js
     case "title": if (el.style === "card") drawTitleCard(ctx, el, tpl, X, Y, W, H, pt); else drawTitleBlock(ctx, el, tpl, X, Y, W, H, pt, k, u); break;
   }
   ctx.restore();
@@ -1246,6 +1249,7 @@ function prMouseDown(e) {
   // Flytta vyn i layouten: mittenknappen eller Mellanslag + dra.
   if (e.button === 1 || prSpace) { e.preventDefault(); pr.drag = { kind: "view", sx: e.clientX, sy: e.clientY, vx: pr.vx || 0, vy: pr.vy || 0 }; return; }
   const [mx, my] = prPoint(e);
+  if (typeof secPickClick === "function" && secPickClick(mx, my)) { e.preventDefault(); return; } // Sektion: välj linjen i en ritning
   const { k } = pageDims(), u = pr.L.u;
   const one = primary();
   // Panorera ritningen
@@ -1422,7 +1426,7 @@ function prKey(e) {
   if (mv) { stop(); if (selEls().some(x => x.locked)) return; pushUndo(); selEls().forEach(el => { el.x += mv[0]; el.y += mv[1]; }); renderPrintProps(true); drawPrintPage(); }
 }
 
-const PR_TYPE_NAMES = { text: "textruta", callout: "pratbubbla", map: "ritning", image: "bild", legend: "förklaring", table: "tabell", title: "ritningshuvud", scalebar: "skalstock", north: "norrpil", qr: "QR-kod", rect: "ruta", ellipse: "ellips", line: "linje", arrow: "pil" };
+const PR_TYPE_NAMES = { text: "textruta", callout: "pratbubbla", map: "ritning", image: "bild", legend: "förklaring", table: "tabell", section: "sektion", title: "ritningshuvud", scalebar: "skalstock", north: "norrpil", qr: "QR-kod", rect: "ruta", ellipse: "ellips", line: "linje", arrow: "pil" };
 function addEl(type) {
   const cx = PAGE_A3[0] / 2, cy = PAGE_A3[1] / 2;
   const firstMap = pr.tpl.elements.find(e => e.type === "map");
@@ -1439,6 +1443,7 @@ function addEl(type) {
     line: { stroke: "#000000", lw: 0.35, w: 60, h: 0 },
     ellipse: { stroke: "#dc2626", lw: 0.7, fill: "", fillOpacity: 100, dash: "solid", w: 40, h: 25 },
     table: { ...(typeof PT_DEF !== "undefined" ? PT_DEF : {}), title: "ETABLERING", w: 130, h: 60 },
+    section: { ...(typeof SEC_DEF !== "undefined" ? JSON.parse(JSON.stringify(SEC_DEF)) : {}), w: 200, h: 110 },
     callout: { text: "Text", size: 9, color: "#111827", fill: "#ffffff", stroke: "#1f2937", lw: 0.35, radius: 2, pad: 2, align: "center", valign: "middle", w: 50, h: 18, tx: 62, ty: 34 },
     arrow: { style: "modern", shape: "straight", stroke: "#dc2626", lw: 2.2, head: 100, bend: 40, dash: "solid", outline: "#000000", w: 50, h: -15 },
   }[type];
@@ -1663,7 +1668,9 @@ function renderPrintProps(onlyPos) {
       <div class="pr-grid4">${color("color", "Färg")}</div>${mapSel()}<div class="hint">Vrids efter ritningens riktning mot norr.</div>`;
   if (el.type === "scalebar") html += mapSel() + `<div class="hint">Följer ritningens skala.</div>`;
   if (el.type === "table" && typeof prTableHtml === "function") html += prTableHtml(el);
+  if (el.type === "section" && typeof prSectionHtml === "function") html += prSectionHtml(el);
   box.innerHTML = html;
+  if (el.type === "section" && typeof prSectionBind === "function") prSectionBind(box, el);
   if (el.type === "table" && typeof prTableBind === "function") prTableBind(box, el);
   box.querySelectorAll("[data-f]").forEach(i => {
     if (i.classList.contains("pr-nocolor")) { i.onclick = () => { pushUndo(); el[i.dataset.f] = ""; renderPrintPanel(); drawPrintPage(); }; return; }
@@ -1836,6 +1843,8 @@ async function exportPrintPdf() {
     await loadScript(JSPDF_URL);
     if (tpl.elements.some(e => e.type === "qr")) { await loadScript(QR_URL).catch(() => {}); }
     // Loggan i ritningshuvudet måste vara hämtad innan kortet rastreras.
+    // Sektioner: räknas om om byggnaden redan är inläst (öppnar inte 3D mitt i exporten).
+    for (const e of tpl.elements) if (e.type === "section" && e.p1 && e.p2 && typeof secBuild === "function" && !secData.has(e.id)) await secBuild(e, { open: false });
     for (const e of tpl.elements) if (e.type === "title" && e.logo && !printImage(e.logo)) await printImgs.get(e.logo);
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: [W, H], compress: true });
@@ -2076,11 +2085,12 @@ function bindPrint() {
   $("prImgInput").onchange = async e => {
     const f = e.target.files[0]; e.target.value = "";
     const el = primary();
-    if (!f || !el || (el.type !== "image" && el.type !== "title")) return;
+    if (!f || !el || (el.type !== "image" && el.type !== "title" && el.type !== "section")) return;
     try {
       const r = await uploadPrintImage(f);
       // Logga i ritningshuvudet.
       if (el.type === "title") { pushUndo(); el.logo = r.path; renderPrintPanel(); drawPrintPage(); return; }
+      if (el.type === "section") { pushUndo(); el.img = { path: r.path, ar: r.ar }; el.cal = null; renderPrintPanel(); drawPrintPage(); return; }
       pushUndo(); el.path = r.path; el.ar = r.ar; el.h = Math.round(el.w / r.ar * 10) / 10;
       renderPrintPanel(); drawPrintPage();
     } catch (err) { alert("Kunde inte ladda upp bilden: " + err.message); setPrintStatus(""); }
