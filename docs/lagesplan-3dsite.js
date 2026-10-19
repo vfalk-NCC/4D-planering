@@ -70,7 +70,7 @@ function l3sCadMesh(r, g, gr) {
 async function l3sBuildCad() {
   if (!l3 || typeof cads !== "function" || !plan || !plan.calib) return;
   const grp = l3sGroup("cad");
-  const want = cads().filter(r => ls("cad:" + r.id).visible);
+  const want = cads().filter(r => !r.virtual && ls("cad:" + r.id).visible);
   if (want.some(r => !cadGeom.has(r.id))) await ensureCadGeoms(want);
   const z = l3sZ() + 0.03, live = new Set();
   want.forEach(r => {
@@ -309,7 +309,7 @@ function l3sDxfIndex(r) {
 }
 function l3sDxfSnap(e, S) {
   if (!l3 || typeof cads !== "function" || !plan || !plan.calib) return null;
-  const recs = cads().filter(r => ls("cad:" + r.id).visible && cadGeom.has(r.id) && !(typeof l3d !== "undefined" && l3d.rec && l3d.rec.id === r.id));
+  const recs = cads().filter(r => !r.virtual && ls("cad:" + r.id).visible && cadGeom.has(r.id) && !(typeof l3d !== "undefined" && l3d.rec && l3d.rec.id === r.id));
   const editing = typeof l3d !== "undefined" && l3d.rec ? l3d.ents.filter(x => !x.del && l3dLayerOn(x.layer)) : null;
   if (!recs.length && !editing) return null;
   const R = l3.renderer.domElement.getBoundingClientRect(), mx = e.clientX - R.left, my = e.clientY - R.top, z = l3sZ() + 0.03;

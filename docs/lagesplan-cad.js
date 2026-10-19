@@ -268,7 +268,7 @@ function dxfToGeometry(dxf) {
 // ---------------------------------------------------------------------
 // Import och lagring
 // ---------------------------------------------------------------------
-const cads = () => siteItems.filter(x => x.type === "cad");
+const cads = () => siteItems.filter(x => x.type === "cad").concat(typeof ifc2dRecs !== "undefined" ? ifc2dRecs : []); // + IFC-snittet (virtuellt, lagesplan-ifc2d.js)
 const cadGeom = new Map(); // id -> { origin, groups: [{ l, c, path: Path2D, segs, texts }] }
 /* Enheter att pröva/välja: meter per ritningsenhet. */
 const CAD_UNITS = [{ f: 1, n: "meter" }, { f: 0.1, n: "decimeter" }, { f: 0.01, n: "centimeter" }, { f: 0.001, n: "millimeter" }, { f: 0.0254, n: "tum" }, { f: 0.3048, n: "fot" }];
@@ -408,6 +408,7 @@ async function ensureCadGeoms(list, conc = 6, onEach = null) {
 /* Skala om en inlagd ritning till en annan enhet (t.ex. om den hamnat fel
    för att filen var i mm). Geometrin räknas om och sparas på nytt. */
 async function rescaleCad(rec, newFactor) {
+  if (rec.virtual) return;
   const k = newFactor / (rec.factor || 1);
   if (!Number.isFinite(k) || Math.abs(k - 1) < 1e-9) return;
   setBusy(`Skalar om ${rec.name} till ${unitName(newFactor)}…`);
@@ -439,6 +440,7 @@ async function rescaleCad(rec, newFactor) {
   } finally { setBusy(""); }
 }
 async function deleteCad(rec) {
+  if (rec.virtual) { if (typeof ifc2dClear === "function") ifc2dClear(); return; }
   if (!await uiConfirm(`Ta bort CAD-ritningen "${rec.name}" från lägesplanen?`)) return;
   cadGeom.delete(rec.id);
   await saveSiteItem(rec, true, { record: false });

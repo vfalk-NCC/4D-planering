@@ -28,7 +28,7 @@ function cadApplyShift(rec, g) {
 /* DXF:en under markören (inom 8 px från en linje), eller null. */
 function l3ssCadAt(e) {
   if (!l3 || typeof cads !== "function" || !plan || !plan.calib || typeof l3sDxfIndex !== "function") return null;
-  const recs = cads().filter(r => ls("cad:" + r.id).visible && cadGeom.has(r.id) && !(typeof l3d !== "undefined" && l3d.rec && l3d.rec.id === r.id));
+  const recs = cads().filter(r => !r.virtual && ls("cad:" + r.id).visible && cadGeom.has(r.id) && !(typeof l3d !== "undefined" && l3d.rec && l3d.rec.id === r.id));
   if (!recs.length) return null;
   const R = l3.renderer.domElement.getBoundingClientRect(), mx = e.clientX - R.left, my = e.clientY - R.top;
   let best = null;

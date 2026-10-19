@@ -486,6 +486,7 @@ async function loadSiteLayers() {
   renderZones();
 }
 async function saveSiteItem(rec, remove = false, opts = {}) {
+  if (rec && rec.virtual) { const i = typeof ifc2dRecs !== "undefined" ? ifc2dRecs.findIndex(x => x.id === rec.id) : -1; if (i >= 0 && !remove) ifc2dRecs[i] = rec; renderLayerPanel(); return; } // IFC-snittet sparas inte i 4D-data
   const prev = "prev" in opts ? opts.prev : (siteItems.find(x => x.id === rec.id) || null);
   if (opts.record !== false && rec.type !== "ortho" && rec.type !== "layer") {
     if (typeof lastUndoTarget !== "undefined") lastUndoTarget = "site";
