@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-19 23:29";
+const APP_VERSION = "2026-10-20 18:56";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -5880,7 +5880,7 @@ async function logProgressHistory(beforeRows, afterRows) {
   await ghWriteJSON(
     settings.githubToken,
     progressHistoryPath(),
-    (arr) => [...arr, ...toLog],
+    (arr) => histAppendMerged(arr, toLog),
     "Logga framdriftshistorik"
   );
 }
@@ -5918,7 +5918,7 @@ async function logBaselineHistory(beforeRows, afterRows) {
   await ghWriteJSON(
     settings.githubToken,
     baselineHistoryPath(),
-    (arr) => [...arr, ...toLog],
+    (arr) => histAppendMerged(arr, toLog),
     "Logga baseline-historik"
   );
 }

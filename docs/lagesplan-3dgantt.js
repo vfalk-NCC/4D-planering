@@ -626,7 +626,7 @@ async function l3gaCommit(plan, label, opts = {}) {
     await ghWriteJSON(token, l3gaPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => { const c = plan.get(String(r.id)); return c ? { ...r, ...c, updated_at: now } : r; }), `${label} (3D-vyn, ${plan.size} rader)`);
     const dated = [...plan].filter(([, c]) => c.start_date || c.end_date);
     if (dated.length) {
-      try { await ghWriteJSON(token, l3gaPath("plan_item_baseline_history.json"), arr => [...(Array.isArray(arr) ? arr : []), ...dated.map(([id, c]) => ({ id: ghNewId(), plan_item_id: id, project_id: projectId, start_date: c.start_date || l3gaRow(id).start_date, end_date: c.end_date || l3gaRow(id).end_date, recorded_at: now }))], "Logga baseline-historik (omplanering i 3D-vyn)"); }
+      try { await ghWriteJSON(token, l3gaPath("plan_item_baseline_history.json"), arr => { const add = dated.map(([id, c]) => ({ id: ghNewId(), plan_item_id: id, project_id: projectId, start_date: c.start_date || l3gaRow(id).start_date, end_date: c.end_date || l3gaRow(id).end_date, recorded_at: now })), cur = Array.isArray(arr) ? arr : []; return typeof histAppendMerged === "function" ? histAppendMerged(cur, add) : [...cur, ...add]; }, "Logga baseline-historik (omplanering i 3D-vyn)"); }
       catch (e) { console.warn("Baseline-historik", e); }
     }
     // Lokalt: tidplanen här, planeringen i lägesplanen (om Powerproject är vald) och 3D-färgerna.

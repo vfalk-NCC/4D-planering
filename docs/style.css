@@ -1328,3 +1328,6 @@ body.tab-design .plan-source { background: #f5f3ff; }
 .place-namerow .place-chk { display: inline-flex; align-items: center; gap: 4px; margin: 0; font-size: 12px; white-space: nowrap; }
 .place-namerow input[type="text"] { flex: 1 1 180px; min-width: 120px; padding: 5px 8px; border: 1px solid var(--border, #cfd6e0); border-radius: 6px; font: inherit; }
 .place-namerow input[type="text"]:disabled { background: #f1f5f9; color: #94a3b8; }
+
+.dm-box { display: flex; flex-direction: column; gap: 10px; } .dm-sec { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--border, #d1d5db); border-radius: 8px; }
+.dm-sec label, .dm-c { font-size: 12px; display: flex; align-items: center; gap: 6px; } .dm-t { width: 100%; font-size: 12px; border-collapse: collapse; } .dm-t td { padding: 2px 4px; border-bottom: 1px solid #e5e7eb; } .dm-t td:last-child { text-align: right; white-space: nowrap; }
