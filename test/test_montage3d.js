@@ -32,6 +32,16 @@ const SRC = process.env.MONTAGE_HTML || path.join(__dirname, 'data', 'montage_da
     const lit = await p2.evaluate(() => { const cv = document.getElementById('cv3'), c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height; const g = c.getContext('2d'); g.drawImage(cv, 0, 0); const d = g.getImageData(0, 0, c.width, c.height).data; let k = 0; for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - d[0]) + Math.abs(d[i + 1] - d[1]) + Math.abs(d[i + 2] - d[2]) > 40) k++; return k; });
     if (lit < 300) fail('geometrin ritas: ' + lit);
     if (process.env.SHOT) await p2.screenshot({ path: '/tmp/m3d.png' });
+    // saknade modeller (t.ex. kranar sparade som egna Etablering-IFC:er) läses in tillfälligt från TC
+    { const r2 = await page.evaluate(async html => {
+        const D = mpExtract(html).data; D.steps[1].obj[0].mi = 'ZZ'; D.steps[1].obj[0].mn = 'Etablering kran 2.ifc'; D.steps[1].obj[1].mi = 'YY'; D.steps[1].obj[1].mn = 'Ej tänd.ifc';
+        const need = [...mpNeededModels(D, window.l3b.models)].map(x => x.join('|'));
+        window.askOpener = async () => ({ models: [{ id: 'ZZ', name: 'Etablering kran 2.ifc', version: 'v1' }] }); let loaded = null; window.l3bLoad = async list => { loaded = list; window.l3b.models.push({ id: 'ZZ', name: 'Etablering kran 2.ifc', _pEnts: new Map() }); };
+        const ens = await mpEnsureModels(D, async names => names.length === 1);
+        return { need, ens, loaded };
+      }, html);
+      if (r2.need.join() !== 'ZZ|Etablering kran 2.ifc,YY|Ej tänd.ifc') fail('saknade modeller hittas: ' + JSON.stringify(r2));
+      if (r2.ens.added.join() !== 'ZZ' || r2.ens.unavailable.join() !== 'Ej tänd.ifc' || !r2.loaded || r2.loaded[0].id !== 'ZZ') fail('saknad modell läses in från TC, otänd rapporteras: ' + JSON.stringify(r2)); }
     if (e2.length || errs.length) fail('JS-fel: ' + e2.concat(errs).join(' | '));
     console.log('OK test_montage3d', out.bytes, 'byte geometri');
   } finally { await browser.close(); }

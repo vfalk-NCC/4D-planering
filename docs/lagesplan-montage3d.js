@@ -88,9 +88,29 @@ async function mpBuild(html, opts) {
   return { html: html.slice(0, ex.start) + json + html.slice(ex.end), found: got.length, missing, total, ambiguous, gone, tris, bytes: geo.bytes };
 }
 
+/* Modeller som montageordningen använder men som inte är inlästa i 3D-editorn (t.ex. kranar som sparats som egna "Etablering …"-IFC:er): id -> namn. */
+function mpNeededModels(D, models) {
+  const have = (models || []).map(m => ({ id: String(m.id), name: String(m.name || "").toLowerCase() })), need = new Map();
+  D.steps.forEach(st => (st.obj || []).forEach(ob => { if (!ob.mi) return; const mi = String(ob.mi); if (have.some(m => m.id === mi || (ob.mn && m.name === String(ob.mn).toLowerCase()))) return; if (!need.has(mi)) need.set(mi, ob.mn || mi); }));
+  return need;
+}
+/* Läser in de saknade modellerna tillfälligt från Trimble Connect (de som är tända där). Returnerar { added: [id], unavailable: [namn] }. */
+async function mpEnsureModels(D, confirmFn) {
+  const need = mpNeededModels(D, typeof l3b !== "undefined" ? l3b.models : []), out = { added: [], unavailable: [], declined: false };
+  if (!need.size) return out;
+  let tc = []; try { tc = (await askOpener("ifcModelsList", {}, 20000)).models || []; } catch (e) { tc = []; }
+  const lit = [...need].map(([id, name]) => tc.find(m => String(m.id) === id)).filter(Boolean);
+  need.forEach((name, id) => { if (!lit.some(m => String(m.id) === id)) out.unavailable.push(name); });
+  if (!lit.length) return out;
+  if (confirmFn && !(await confirmFn(lit.map(m => m.name)))) { out.declined = true; out.unavailable.push(...lit.map(m => m.name)); return out; }
+  await l3bLoad(lit.map(m => ({ id: m.id, name: m.name, version: m.version || "" })), {});
+  lit.forEach(m => { if (l3b.models.some(x => String(x.id) === String(m.id))) out.added.push(String(m.id)); else out.unavailable.push(m.name); });
+  return out;
+}
+
 /* Gränssnittet: välj dashboardens HTML-fil, bygg och ladda ner. */
 async function exportMontage3d() {
-  const key = "mp3d";
+  const key = "mp3d"; let added = [];
   try {
     if (typeof l3b === "undefined" || !l3b.models.length) { alert("Läs in byggnadens IFC-modell i 3D-vyn först (Lager → 3D-modeller), så att objektens riktiga form finns att hämta."); return null; }
     const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".html,text/html";
@@ -98,9 +118,14 @@ async function exportMontage3d() {
     if (!file) return null;
     busyProgress(key, "Montage-HTML: läser filen", 0.1);
     const text = await file.text();
+    { const ex0 = mpExtract(text); if (ex0) {
+      busyProgress(key, "Montage-HTML: kontrollerar modellerna", 0.2);
+      const ens = await mpEnsureModels(ex0.data, names => uiConfirm(`Modeller som behövs i montageordningen\n\nDessa är inte inlästa i 3D-editorn:\n${names.map(n => "• " + n).join("\n")}\n\nLäs in dem tillfälligt från Trimble Connect? De tas bort igen efter exporten.`, { ok: "Läs in" }));
+      added = ens.added; if (ens.unavailable.length) uiToast(`Hittar inte i Trimble Connect (måste vara tända där): ${ens.unavailable.slice(0, 4).join(", ")}`, { ms: 9000 }); } }
     busyProgress(key, "Montage-HTML: hämtar objektens form", 0.4);
     const r = await mpBuild(text, { maxTris: 3e6, confirm: n => uiConfirm(`Objekten har ${(n / 1e6).toFixed(1).replace(".", ",")} miljoner trianglar – filen kan bli stor. Fortsätta?`) });
     busyProgress(key, "", null);
+    added.forEach(id => { try { l3bForget(id); } catch (e) { /* */ } }); // tillfälligt inlästa modeller tas bort igen
     if (r.cancelled) return null;
     if (!r.html) { alert(`Inga av de ${r.total} objekten hittades i de inlästa modellerna. Kontrollera att rätt IFC-modell är inläst (och tänd) i 3D-vyn.`); return null; }
     const base = file.name.replace(/\.html?$/i, ""), name = `${base}_3D.html`, blob = new Blob([r.html], { type: "text/html" });
@@ -111,6 +136,7 @@ async function exportMontage3d() {
     return { name, ...r, html: window.__mpKeep ? r.html : undefined };
   } catch (e) {
     busyProgress(key, "", null);
+    added.forEach(id => { try { l3bForget(id); } catch (x) { /* */ } });
     alert("Kunde inte skapa montage-HTML: " + e.message);
     return null;
   }
