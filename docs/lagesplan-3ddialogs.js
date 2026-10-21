@@ -516,7 +516,7 @@ function l3Commands() {
     ["Fäst mot hörn av/på", "", () => l3ToggleSnap("end")], ["Fäst mot mittpunkter av/på", "", () => l3ToggleSnap("mid")], ["Fäst mot kanter av/på", "", () => l3ToggleSnap("edge")],
     ["Fäst mot axlar av/på", "", () => l3ToggleSnap("axis")], ["Orto av/på", "O", () => l3ToggleSnap("ortho")], ["Rutnät av/på", "G", () => l3ToggleSnap("grid")],
     ["Objektlistan (Lager → Etablering)", "", () => l3PalTab("layers")], ["Exportera lista (Excel/CSV)", "", l3ExportCsv], ["3D-biblioteket", "", () => l3PalTab("add")],
-    ["Spara som IFC i Trimble Connect", "", l3SaveIfc], ["Exportera som HTML (offline, 2D + 3D)", "", () => exportOfflineHtml()], ["Hjälp och kortkommandon", "?", () => document.getElementById("v3HelpBtn").click()], ["Tillbaka till 2D", "", close3d],
+    ["Spara som IFC i Trimble Connect", "", l3SaveIfc], ["Exportera som HTML (offline, 2D + 3D)", "", () => exportOfflineHtml()], ["Montage-HTML med riktig geometri (från 4D-dashboarden)…", "", () => exportMontage3d()], ["Hjälp och kortkommandon", "?", () => document.getElementById("v3HelpBtn").click()], ["Tillbaka till 2D", "", close3d],
   ];
   C.push(["Spara vy…", "", () => { document.getElementById("v3ViewsBtn").click(); setTimeout(() => document.getElementById("v3SvName").focus(), 0); }]);
   l3SavedViews().forEach((v, i) => C.push([`Gå till vy: ${v.name}`, "", () => l3GoView(i)]));
