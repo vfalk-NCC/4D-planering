@@ -51,6 +51,14 @@ async function mpPack(list) {
   return { d: btoa(s), o, bytes: gz.length };
 }
 
+/* Varför ett objekt saknas: finns modellen inläst, hur många objekt med IFC-id har den och vad är första id:t – hjälper att se om id:na inte stämmer. */
+function mpWhy(ob, perModel, models) {
+  const pm = perModel.find(m => m.id === String(ob.mi)) || perModel.find(m => ob.mn && m.name === String(ob.mn).toLowerCase());
+  if (!pm) return "modellen är inte inläst i 3D-editorn";
+  const mod = models.find(m => String(m.id) === pm.id), meshes = mod && mod.meshes ? mod.meshes.length : 0, n = pm.map.size, first = [...pm.map.keys()][0] || "";
+  return `modellen är inläst (${n} objekt med IFC-id, ${meshes} bitar) men id ${ob.g} finns inte i den${first ? "; exempel på id i modellen: " + first : ""}`;
+}
+
 /* Själva byggandet (utan gränssnitt, så att det går att testa): html in -> { html, found, missing, tris, bytes }. */
 async function mpBuild(html, opts) {
   const ex = mpExtract(html);
@@ -68,7 +76,7 @@ async function mpBuild(html, opts) {
   const got = [], gone = []; let missing = 0, total = 0, ambiguous = 0;
   D.steps.forEach((st, i) => (st.obj || []).forEach((ob, k) => {
     total++; const ents = entsFor(ob), mesh = ents && ents.length ? mpObjectMesh(ents) : null;
-    if (!mesh) { missing++; ob.b = null; if (gone.length < 6) gone.push(`${i + 1}. ${st.n}: ${ob.n || ob.g}${ob.mn ? " (" + ob.mn + ")" : ""}`); return; }
+    if (!mesh) { missing++; ob.b = null; if (gone.length < 6) gone.push(`${i + 1}. ${st.n}: ${ob.n || ob.g}${ob.mn ? " (" + ob.mn + ")" : ""} – ${mpWhy(ob, perModel, models)}`); return; }
     got.push({ key: i + ":" + k, ob, ...mesh });
   }));
   if (!got.length) return { html: null, found: 0, missing, total, ambiguous, gone, tris: 0, bytes: 0 };
