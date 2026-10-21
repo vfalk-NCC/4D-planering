@@ -399,6 +399,11 @@ async function lagesplanHandle(msg, reply, progress) {
       const list = (ms || []).filter(m => (!m.state || m.state === "loaded") && /\.ifc(zip)?$/i.test(m.name || ""))
         .map(m => ({ id: m.id, name: m.name, etab: /^Etablering /.test(m.name || ""), version: m.versionId || m.version || "" }));
       reply({ models: list });
+    } else if (msg.type === "ifcModelPlacement") {
+      // Lägesplanens 3D-vy: TC:s placering (flytt och vridning) av en modell som är tänd i TC, hittad på filnamnet – för IFC-filer som hämtas ur mapparna.
+      const ms = await API.viewer.getModels(), nm = String(msg.name || "").toLowerCase();
+      const spec = (ms || []).find(m => String(m.name || "").toLowerCase() === nm);
+      reply({ matched: !!spec, placement: (spec && spec.placement) || null });
     } else if (msg.type === "ifcModelData") {
       const ms = await API.viewer.getModels();
       const spec = (ms || []).find(m => m.id === msg.modelId);

@@ -79,7 +79,7 @@ async function l3bLoad(list, opts = {}) {
       busyProgress("bldg", lbl, i / list.length);
       // Redan inläst tidigare (samma version): direkt från webbläsarens cache, utan hämtning och läsning.
       const tC0 = Date.now();
-      const cached = await l3bCacheGet(w);
+      const cached = opts.noCache ? null : await l3bCacheGet(w);
       if (cached) {
         const tC1 = Date.now();
         const m = l3bFromCache(cached);
@@ -138,15 +138,24 @@ async function l3bLoad(list, opts = {}) {
         else r = w.fileId ? { ...(await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, dl)), name: w.name, placement: null } : await askOpener("ifcModelData", { modelId: w.id }, 0, dl);
       }
       finally { clearInterval(tick); }
+      // IFC-fil ur en mapp: TC:s placering (flytt/vridning) hämtas från samma modell om den är tänd i TC, plus egen justering (Placera…).
+      let basePl = r.placement || null, plNote = "";
+      if (!basePl && w.fileId) {
+        if (w.pl && !opts.freshPlace) basePl = w.pl;
+        else { try { const q = await askOpener("ifcModelPlacement", { name: w.name, fileId: w.fileId }, 12000); basePl = q && q.placement || null; plNote = q && q.matched ? (basePl ? "placering hämtad från Trimble Connect" : "tänd i TC men utan placering") : "modellen är inte tänd i TC – ingen placering hämtad (använd Placera… om den är flyttad där)"; } catch (e) { plNote = "kunde inte hämta placeringen från TC"; } }
+      }
+      w.pl = basePl;
+      const usePl = l3bPlaceCompose(basePl, w.adj);
+      if (plNote) times.push(`${r.name || w.name}: ${plNote}`);
       const tDl = Date.now() - tDl0, tRd0 = Date.now();
       l3Status(r.local ? `${r.name || w.name}: ${l3bMb(r.bytes.byteLength)} MB ur webbläsarens kopia (ingen hämtning från TC).` : `Hämtade ${r.name || w.name}: ${l3bMb(r.bytes ? r.bytes.byteLength : gotMb)} MB på ${(tDl / 1000).toFixed(1)} s.`);
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 0.6));
       l3Status(`Läser ${r.name || w.name} (${i + 1} av ${list.length})…`);
       await new Promise(res => setTimeout(res, 30));
       const lblRead = `Läser ${r.name || w.name}`;
-      if (typeof l3pKeepRaw === "function" && !r.local) l3pKeepRaw(w, r.bytes, r.placement || null); // för egenskaper, spara och exportera
+      if (typeof l3pKeepRaw === "function" && !r.local) l3pKeepRaw(w, r.bytes, basePl); // för egenskaper, spara och exportera
       let m;
-      try { m = await l3bParseAny(r.bytes, r.placement, l3bMaxTris() - total, f => busyProgress("bldg", lblRead, part(0, 0.6 + 0.4 * f)), ms => { hideOld(); ms.forEach(x => l3.groups.bldg.add(x)); l3Render(); }); }
+      try { m = await l3bParseAny(r.bytes, usePl, l3bMaxTris() - total, f => busyProgress("bldg", lblRead, part(0, 0.6 + 0.4 * f)), ms => { hideOld(); ms.forEach(x => l3.groups.bldg.add(x)); l3Render(); }); }
       catch (err) { if (old) { old.meshes.forEach(x => { x.visible = true; }); old.visible = true; } throw err; } // den gamla syns igen
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 1));
       times.push(`${m.name || r.name || w.name}: ${r.local ? "ur webbläsarens kopia" : `hämtning ${(tDl / 1000).toFixed(1)} s`}, läsning ${((Date.now() - tRd0) / 1000).toFixed(1)} s${m.engine === "ifc-lite" ? " med ifc-lite" : m.parts > 1 ? ` (${m.parts} trådar)` : ""}${m.recovered ? `, ${m.recovered.toLocaleString("sv-SE")} objekt lästa med ifc-lite (web-ifc klarade dem inte)` : ""}`);
@@ -209,7 +218,7 @@ function l3bRemembered() { return l3bRememberedAll().filter(x => x.on !== false)
 function l3bRemember(w, on) {
   if (!w || !w.id) return;
   const list = l3bRememberedAll().filter(x => x.id !== w.id);
-  list.push({ id: w.id, fileId: w.fileId || null, name: w.name || "", version: w.version || "", parentId: w.parentId || null, on: !!on });
+  list.push({ id: w.id, fileId: w.fileId || null, name: w.name || "", version: w.version || "", parentId: w.parentId || null, pl: w.pl || null, adj: w.adj || null, on: !!on });
   try { localStorage.setItem(l3bRememberKey(), JSON.stringify(list.slice(-30))); } catch (e) { /* privat läge */ }
 }
 /* Soptunnan: bort ur listan och ur vyn. Bara här i webbläsaren – inget i Trimble Connect ändras. */
@@ -258,7 +267,8 @@ function l3bDb() {
     q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
   });
 }
-const l3bCacheKey = w => (w && w.version ? `v2|${projectId}|${w.fileId ? "f:" + w.fileId : w.id}|${w.version}|${l3bVoids() ? "u" : "s"}${l3bDetails() ? "d" : ""}${l3bRebar() ? "r" : ""}${l3bEngine() === "lite" ? "L" : ""}` : null);
+const l3bPlaceSig = w => { if (!w || !(w.fileId || w.adj)) return ""; const s = JSON.stringify([w.pl || null, w.adj || null]); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return "|p" + (h >>> 0).toString(36); };
+const l3bCacheKey = w => (w && w.version ? `v2|${projectId}|${w.fileId ? "f:" + w.fileId : w.id}|${w.version}${l3bPlaceSig(w)}|${l3bVoids() ? "u" : "s"}${l3bDetails() ? "d" : ""}${l3bRebar() ? "r" : ""}${l3bEngine() === "lite" ? "L" : ""}` : null);
 async function l3bCacheGet(w) {
   const key = l3bCacheKey(w);
   if (!key) return null;

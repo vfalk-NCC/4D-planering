@@ -89,7 +89,7 @@ function l3LayersRender() {
     const all = [...ms.map(m => ({ m, name: m.name })), ...rest.map(w => ({ w, name: w.name || "Modell" }))].sort((a, b) => String(a.name).localeCompare(String(b.name), "sv", { numeric: true }));
     const del = id => `<button type="button" class="v3-lr-zoom v3-lr-del" data-l3l-forget="${esc(id)}" title="Ta bort från Hämtade 3D-modeller (inget i Trimble Connect ändras)">${L3_ICO.trash}</button>`;
     mh += all.length ? all.map(({ m, w, name }) => m
-      ? row(`data-l3l-model="${esc(m.id)}"`, m.visible, esc(name), (pend(m) ? `<button type="button" class="v3-lr-save" data-l3l-save="${esc(m.id)}" title="Spara flyttarna som en ny IFC-fil i Trimble Connect">Spara ${pend(m)}</button>` : `<em class="v3-lr-k" title="${m.tris.toLocaleString("sv-SE")} trianglar">${(m.tris / 1000).toFixed(0)}k</em>`) + `<span class="v3-lr-acts"><button type="button" class="v3-lr-zoom" data-l3l-zoom="${esc(m.id)}" title="Zooma till modellen">${L3_ICO.focus}</button>${del(m.id)}</span>`)
+      ? row(`data-l3l-model="${esc(m.id)}"`, m.visible, esc(name), (pend(m) ? `<button type="button" class="v3-lr-save" data-l3l-save="${esc(m.id)}" title="Spara flyttarna som en ny IFC-fil i Trimble Connect">Spara ${pend(m)}</button>` : `<em class="v3-lr-k" title="${m.tris.toLocaleString("sv-SE")} trianglar">${(m.tris / 1000).toFixed(0)}k</em>`) + `<span class="v3-lr-acts"><button type="button" class="v3-lr-zoom" data-l3l-place="${esc(m.id)}" title="Placera modellen (flytta/vrid, samma placering som i Trimble Connect)">↔</button><button type="button" class="v3-lr-zoom" data-l3l-zoom="${esc(m.id)}" title="Zooma till modellen">${L3_ICO.focus}</button>${del(m.id)}</span>`)
       : row(`data-l3l-rem="${esc(w.id)}"`, false, esc(name), (l3lay.loading.has(w.id) ? '<span class="pm-spin"></span>' : "") + `<span class="v3-lr-acts">${del(w.id)}</span>`)).join("")
       : (noTc ? "" : `<div class="v3-pal-hint">Inga modeller är hämtade än. Lägg till med ＋ ovan.</div>`);
     // Utan kontakt med Trimble Connect (iPhone/iPad – lägesplanen öppnas i Safari, utan 4D-planering): de modeller
@@ -187,6 +187,7 @@ function l3LayersRender() {
   }; });
   host.querySelectorAll("[data-l3l-forget]").forEach(b => { b.onclick = () => l3lForget(b.dataset.l3lForget); });
   host.querySelectorAll("[data-l3l-model]").forEach(b => { b.onclick = () => { const m = l3b.models.find(x => x.id === b.dataset.l3lModel); if (m) { l3bShow(m.id, !m.visible); l3RenderLegend(); l3Render(); l3LayersRender(); } }; });
+  host.querySelectorAll("[data-l3l-place]").forEach(b => { b.onclick = e => { e.stopPropagation(); l3bPlaceDialog(b.dataset.l3lPlace); }; });
   host.querySelectorAll("[data-l3l-zoom]").forEach(b => { b.onclick = () => l3lZoomModel(b.dataset.l3lZoom); });
   host.querySelectorAll("[data-l3l-save]").forEach(b => { b.onclick = async () => { b.disabled = true; try { await l3bmSave(b.dataset.l3lSave); } catch (e) { /* statusraden */ } l3LayersRender(); }; });
   host.querySelectorAll("[data-l3l-sort]").forEach(b => { b.onclick = () => { l3SetPref("laySort", b.dataset.l3lSort); l3LayersRender(); }; });
