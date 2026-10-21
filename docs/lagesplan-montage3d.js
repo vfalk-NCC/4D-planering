@@ -22,10 +22,13 @@ function mpObjectMesh(ents) {
     const u = mesh.userData.l3b, r = u.ranges[ri], P = mesh.geometry.getAttribute("position").array, src = u.origIdx || (mesh.geometry.index && mesh.geometry.index.array);
     if (!src) return;
     const [is, ic] = typeof l3bsIdx === "function" ? l3bsIdx(mesh, ri) : [0, src.length];
+    // Bitens läge i scenen (matrixWorld): varje modell ligger förskjuten mot arbetsytans origo (modellens O mot l3.O) – utan den hamnar modeller på olika höjd/läge mot varandra.
+    if (mesh.updateWorldMatrix) mesh.updateWorldMatrix(true, false);
+    const E = mesh.matrixWorld && mesh.matrixWorld.elements;
     const m = new Map();
     for (let k = is; k + 2 < is + ic; k += 3) {
       const tri = [src[k], src[k + 1], src[k + 2]];
-      tri.forEach(v => { if (!m.has(v)) { m.set(v, pos.length / 3); pos.push(P[v * 3], P[v * 3 + 1], P[v * 3 + 2]); } idx.push(m.get(v)); });
+      tri.forEach(v => { if (!m.has(v)) { m.set(v, pos.length / 3); const x = P[v * 3], y = P[v * 3 + 1], z = P[v * 3 + 2]; if (E) pos.push(E[0] * x + E[4] * y + E[8] * z + E[12], E[1] * x + E[5] * y + E[9] * z + E[13], E[2] * x + E[6] * y + E[10] * z + E[14]); else pos.push(x, y, z); } idx.push(m.get(v)); });
     }
   });
   return idx.length ? { pos: Float32Array.from(pos), idx: Uint32Array.from(idx) } : null;

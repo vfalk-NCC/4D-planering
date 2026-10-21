@@ -17,11 +17,13 @@ const SRC = process.env.MONTAGE_HTML || path.join(__dirname, 'data', 'montage_da
         [[0, 1, 3, 0, 3, 2], [4, 6, 7, 4, 7, 5], [0, 4, 5, 0, 5, 1], [2, 3, 7, 2, 7, 6], [0, 2, 6, 0, 6, 4], [1, 5, 7, 1, 7, 3]].forEach(f => i.push(...f)); return { p, i }; };
       const mk = (guid, c) => { const g = { getAttribute: () => ({ array: Float32Array.from(c.p) }), index: null }; return { guid, mesh: { geometry: g, userData: { l3b: { ranges: [{ start: 0, count: c.p.length / 3, idxStart: 0, idxCount: c.i.length, guid }], origIdx: Uint32Array.from(c.i) } } } }; };
       const ents = ['G1', 'G2', 'G3', 'G4'].map((g, k) => mk(g, cube(1000 + k * 3, 2000, 10 + (k % 2) * 2, 2)));
+      ents[3].mesh.matrixWorld = { elements: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 15, 1] }; // G4: modellen ligger 15 m högre i scenen
       window.l3b = { models: [{ _pEnts: new Map(ents.map(e => [e.guid, [{ mesh: e.mesh, ri: 0 }]])) }] };
       window.l3pEnts = m => m._pEnts; window.l3bsIdx = (mesh, ri) => { const r = mesh.userData.l3b.ranges[ri]; return [r.idxStart, r.idxCount]; };
-      const r = await mpBuild(html, {}); return { found: r.found, missing: r.missing, total: r.total, tris: r.tris, bytes: r.bytes, html: r.html };
+      const r = await mpBuild(html, {}); const D = JSON.parse(r.html.slice(r.html.lastIndexOf(')({') + 2, r.html.lastIndexOf(');</script>'))); const zs = []; D.steps.forEach(s => (s.obj || []).forEach(o => { if (o.g && o.b) zs[o.g] = o.b[2]; })); return { found: r.found, missing: r.missing, total: r.total, tris: r.tris, bytes: r.bytes, html: r.html, zs: { G1: zs.G1, G4: zs.G4 } };
     }, html);
     if (out.found !== 4 || out.missing !== 1 || out.total !== 5 || out.tris !== 48) fail('träffar: ' + JSON.stringify({ ...out, html: undefined }));
+    if (Math.abs(out.zs.G4 - out.zs.G1 - 15 - 2) > 0.01 && Math.abs(out.zs.G4 - out.zs.G1 - 15) > 0.01) fail('modellens läge i scenen (matrixWorld) följer med: ' + JSON.stringify(out.zs));
     const o2 = path.join(process.env.PLACE_TMP || __dirname, '..', '.tmp'); fs.mkdirSync(o2, { recursive: true }); fs.writeFileSync(path.join(o2, 'montage3d.html'), out.html);
     const p2 = await browser.newPage({ viewport: { width: 1500, height: 1000 } }); const e2 = []; p2.on('pageerror', e => e2.push(e.message)); await p2.setContent(out.html); await p2.waitForSelector('#cv3'); await p2.waitForTimeout(900);
     const n = await p2.evaluate(() => window.__v3 && window.__v3.state().N); if (n !== 4) fail('3D-vyn har 4 objekt med geometri: ' + n);
