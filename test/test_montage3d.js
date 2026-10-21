@@ -32,6 +32,13 @@ const SRC = process.env.MONTAGE_HTML || path.join(__dirname, 'data', 'montage_da
     const lit = await p2.evaluate(() => { const cv = document.getElementById('cv3'), c = document.createElement('canvas'); c.width = cv.width; c.height = cv.height; const g = c.getContext('2d'); g.drawImage(cv, 0, 0); const d = g.getImageData(0, 0, c.width, c.height).data; let k = 0; for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - d[0]) + Math.abs(d[i + 1] - d[1]) + Math.abs(d[i + 2] - d[2]) > 40) k++; return k; });
     if (lit < 300) fail('geometrin ritas: ' + lit);
     if (process.env.SHOT) await p2.screenshot({ path: '/tmp/m3d.png' });
+    // modell med ett enda objekt vars id TC ger ett annat id: objektet används ändå
+    { const r3 = await page.evaluate(async html => {
+        const e = (() => { const p = [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1], i = [0, 1, 2, 0, 2, 3, 1, 2, 3, 0, 1, 3]; return { guid: 'IFCGUID', mesh: { geometry: { getAttribute: () => ({ array: Float32Array.from(p) }), index: null }, userData: { l3b: { ranges: [{ idxStart: 0, idxCount: 12, guid: 'IFCGUID' }], origIdx: Uint32Array.from(i) } } } }; })();
+        const keep = window.l3b; window.l3b = { models: [{ id: 'T9', name: 'Kran 9.ifc', _pEnts: new Map([['IFCGUID', [{ mesh: e.mesh, ri: 0 }]]]) }] };
+        const ex = mpExtract(html), D = ex.data; D.steps.forEach(s => { s.obj = []; }); D.steps[0].obj = [{ g: 'TCUNIKT', mi: 'T9', mn: 'Kran 9.ifc', n: 'Objekt', t: '', p: [], f: {}, a: [] }];
+        const res = await mpBuild(html.slice(0, ex.start) + JSON.stringify(D) + html.slice(ex.end), {}); window.l3b = keep; return { found: res.found, missing: res.missing }; }, html);
+      if (r3.found !== 1 || r3.missing !== 0) fail('enda objektet i modellen används trots annat id: ' + JSON.stringify(r3)); }
     // saknade modeller (t.ex. kranar sparade som egna Etablering-IFC:er) läses in tillfälligt från TC
     { const r2 = await page.evaluate(async html => {
         const D = mpExtract(html).data; D.steps[1].obj[0].mi = 'ZZ'; D.steps[1].obj[0].mn = 'Etablering kran 2.ifc'; D.steps[1].obj[1].mi = 'YY'; D.steps[1].obj[1].mn = 'Ej tänd.ifc';

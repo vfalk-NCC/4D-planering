@@ -70,6 +70,8 @@ async function mpBuild(html, opts) {
     const g = String(ob.g || ""); if (!g) return null;
     let c = ob.mi ? perModel.filter(m => m.id === String(ob.mi)) : []; if (!c.length && ob.mn) c = perModel.filter(m => m.name && m.name === String(ob.mn).toLowerCase());
     if (c.length === 1 && c[0].map.has(g)) return c[0].map.get(g);
+    // Trimble Connect kan ge objekt i flera filer med samma IFC-id andra id:n (fyra Etablering-filer med samma kran): har modellen bara ett enda objekt är det objektet.
+    if (c.length === 1 && c[0].map.size === 1) return [...c[0].map.values()][0];
     const has = perModel.filter(m => m.map.has(g)); if (!has.length) return null; if (has.length > 1) ambiguous++;
     return has[0].map.get(g);
   };
