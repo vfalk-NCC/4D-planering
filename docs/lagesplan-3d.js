@@ -310,6 +310,7 @@ function l3Dom() {
           <input type="search" id="v3ObjSearch" placeholder="Sök i etableringen…" />
           <div id="v3ObjList"></div>
           <button type="button" id="v3ObjCsv" class="v3-wide" title="Lista över etableringen som öppnas i Excel (namn, typ, mått, läge, 4D)">Exportera lista (Excel/CSV)</button>
+          <button type="button" id="v3MontageBtn" class="v3-wide" title="Välj montageordningen du exporterat från 4D-dashboarden (Exportera → HTML). Du får en fil där 3D-vyn visar objektens riktiga form. Byggnadens IFC måste vara inläst (Lager → Modeller).">Montage-HTML med riktig geometri…</button>
           <div class="v3-pal-hint">Klicka = markera (Skift = flera), dubbelklick = zooma, ögat = dölj/visa, gruppnamnet = markera hela gruppen.</div>
         </div>
       </div>
@@ -396,7 +397,7 @@ function l3Dom() {
   $3("v3ObjSearch").oninput = () => l3RenderObjList();
   box.querySelectorAll("[data-paltab]").forEach(b => { b.onclick = () => l3PalTab(b.dataset.paltab); });
   $3("v3BldgBtn").onclick = () => { if (typeof l3bOpenDialog === "function") l3bOpenDialog(); };
-  $3("v3SaveIfc").onclick = l3SaveIfc;
+  $3("v3SaveIfc").onclick = l3SaveIfc; $3("v3MontageBtn").onclick = () => exportMontage3d();
   $3("v3HelpBtn").onclick = e => { e.stopPropagation(); const h = $3("v3Help"); const open = h.classList.contains("hidden"); l3HideMenus(); if (open) { h.innerHTML = l3HelpHtml(); h.classList.remove("hidden"); } };
   box.addEventListener("click", () => l3HideMenus());
   return box;
