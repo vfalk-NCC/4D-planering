@@ -36,12 +36,12 @@ const SRC = process.env.MONTAGE_HTML || path.join(__dirname, 'data', 'montage_da
     { const r2 = await page.evaluate(async html => {
         const D = mpExtract(html).data; D.steps[1].obj[0].mi = 'ZZ'; D.steps[1].obj[0].mn = 'Etablering kran 2.ifc'; D.steps[1].obj[1].mi = 'YY'; D.steps[1].obj[1].mn = 'Ej tänd.ifc';
         const need = [...mpNeededModels(D, window.l3b.models)].map(x => x.join('|'));
-        window.askOpener = async () => ({ models: [{ id: 'ZZ', name: 'Etablering kran 2.ifc', version: 'v1' }] }); let loaded = null; window.l3bLoad = async list => { loaded = list; window.l3b.models.push({ id: 'ZZ', name: 'Etablering kran 2.ifc', _pEnts: new Map() }); };
-        const ens = await mpEnsureModels(D, async names => names.length === 1);
+        window.askOpener = async (type, p) => type === 'tcFolder' ? (p.folderId ? { folderId: 'F2', items: [{ id: 'file9', name: 'Ej tänd.ifc', type: 'file', versionId: 'v7' }] } : { folderId: 'ROOT', items: [{ id: 'F2', name: '4D Etablering', type: 'folder' }] }) : ({ models: [{ id: 'ZZ', name: 'Etablering kran 2.ifc', version: 'v1' }] }); let loaded = []; window.l3bLoad = async list => { loaded.push(list[0]); window.l3b.models.push({ id: list[0].id, name: list[0].name, _pEnts: new Map() }); };
+        const ens = await mpEnsureModels(D, async names => names.length === 2);
         return { need, ens, loaded };
       }, html);
       if (r2.need.join() !== 'ZZ|Etablering kran 2.ifc,YY|Ej tänd.ifc') fail('saknade modeller hittas: ' + JSON.stringify(r2));
-      if (r2.ens.added.join() !== 'ZZ' || r2.ens.unavailable.join() !== 'Ej tänd.ifc' || !r2.loaded || r2.loaded[0].id !== 'ZZ') fail('saknad modell läses in från TC, otänd rapporteras: ' + JSON.stringify(r2)); }
+      if (r2.ens.added.join() !== 'ZZ,f:file9' || r2.ens.unavailable.length || r2.loaded.length !== 2 || r2.loaded[1].fileId !== 'file9') fail('saknad modell läses in från TC (tänd eller fil i mapp): ' + JSON.stringify(r2)); }
     if (e2.length || errs.length) fail('JS-fel: ' + e2.concat(errs).join(' | '));
     console.log('OK test_montage3d', out.bytes, 'byte geometri');
   } finally { await browser.close(); }

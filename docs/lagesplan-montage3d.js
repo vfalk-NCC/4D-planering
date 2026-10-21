@@ -94,17 +94,34 @@ function mpNeededModels(D, models) {
   D.steps.forEach(st => (st.obj || []).forEach(ob => { if (!ob.mi) return; const mi = String(ob.mi); if (have.some(m => m.id === mi || (ob.mn && m.name === String(ob.mn).toLowerCase()))) return; if (!need.has(mi)) need.set(mi, ob.mn || mi); }));
   return need;
 }
-/* Läser in de saknade modellerna tillfälligt från Trimble Connect (de som är tända där). Returnerar { added: [id], unavailable: [namn] }. */
+/* Letar upp en IFC-fil i projektets mappar i Trimble Connect på filnamnet (rotmappen och några nivåer ner). */
+async function mpFindFile(name) {
+  const want = String(name || "").toLowerCase(); if (!want) return null;
+  const queue = [{ id: null, depth: 0 }]; let seen = 0;
+  while (queue.length && seen++ < 40) {
+    const { id, depth } = queue.shift(); let r; try { r = await askOpener("tcFolder", { folderId: id }, 30000); } catch (e) { continue; }
+    const items = (r && r.items) || [], hit = items.find(x => x.type === "file" && String(x.name).toLowerCase() === want);
+    if (hit) return { ...hit, parentId: (r && r.folderId) || id };
+    if (depth < 3) items.filter(x => x.type === "folder").forEach(f => queue.push({ id: f.id, depth: depth + 1 }));
+  }
+  return null;
+}
+/* Läser in de saknade modellerna tillfälligt: först de som är tända i TC (på id eller namn), annars filen ur projektets mappar. Returnerar { added: [id], unavailable: [namn] }. */
 async function mpEnsureModels(D, confirmFn) {
   const need = mpNeededModels(D, typeof l3b !== "undefined" ? l3b.models : []), out = { added: [], unavailable: [], declined: false };
   if (!need.size) return out;
   let tc = []; try { tc = (await askOpener("ifcModelsList", {}, 20000)).models || []; } catch (e) { tc = []; }
-  const lit = [...need].map(([id, name]) => tc.find(m => String(m.id) === id)).filter(Boolean);
-  need.forEach((name, id) => { if (!lit.some(m => String(m.id) === id)) out.unavailable.push(name); });
-  if (!lit.length) return out;
-  if (confirmFn && !(await confirmFn(lit.map(m => m.name)))) { out.declined = true; out.unavailable.push(...lit.map(m => m.name)); return out; }
-  await l3bLoad(lit.map(m => ({ id: m.id, name: m.name, version: m.version || "" })), {});
-  lit.forEach(m => { if (l3b.models.some(x => String(x.id) === String(m.id))) out.added.push(String(m.id)); else out.unavailable.push(m.name); });
+  const plan = [];
+  for (const [id, name] of need) {
+    const lit = tc.find(m => String(m.id) === id) || tc.find(m => m.name && String(m.name).toLowerCase() === String(name).toLowerCase());
+    if (lit) { plan.push({ name: lit.name, w: { id: lit.id, name: lit.name, version: lit.version || "" } }); continue; }
+    const f = await mpFindFile(name);
+    if (f) plan.push({ name: f.name, w: { id: "f:" + f.id, fileId: f.id, name: f.name, parentId: f.parentId || null, version: f.versionId || (f.modified ? String(f.modified) : "") } });
+    else out.unavailable.push(name);
+  }
+  if (!plan.length) return out;
+  if (confirmFn && !(await confirmFn(plan.map(x => x.name)))) { out.declined = true; out.unavailable.push(...plan.map(x => x.name)); return out; }
+  for (const x of plan) { await l3bLoad([x.w], {}); if (l3b.models.some(m => String(m.id) === String(x.w.id))) out.added.push(String(x.w.id)); else out.unavailable.push(x.name); }
   return out;
 }
 
@@ -121,7 +138,7 @@ async function exportMontage3d() {
     { const ex0 = mpExtract(text); if (ex0) {
       busyProgress(key, "Montage-HTML: kontrollerar modellerna", 0.2);
       const ens = await mpEnsureModels(ex0.data, names => uiConfirm(`Modeller som behövs i montageordningen\n\nDessa är inte inlästa i 3D-editorn:\n${names.map(n => "• " + n).join("\n")}\n\nLäs in dem tillfälligt från Trimble Connect? De tas bort igen efter exporten.`, { ok: "Läs in" }));
-      added = ens.added; if (ens.unavailable.length) uiToast(`Hittar inte i Trimble Connect (måste vara tända där): ${ens.unavailable.slice(0, 4).join(", ")}`, { ms: 9000 }); } }
+      added = ens.added; if (ens.unavailable.length && !ens.declined) await uiAlert(`Modeller som inte kunde läsas in\n\nDessa hittades inte i Trimble Connect (varken tända eller som fil i projektets mappar), så deras objekt kommer inte med i 3D-vyn:\n${ens.unavailable.map(n => "• " + n).join("\n")}`); } }
     busyProgress(key, "Montage-HTML: hämtar objektens form", 0.4);
     const r = await mpBuild(text, { maxTris: 3e6, confirm: n => uiConfirm(`Objekten har ${(n / 1e6).toFixed(1).replace(".", ",")} miljoner trianglar – filen kan bli stor. Fortsätta?`) });
     busyProgress(key, "", null);
