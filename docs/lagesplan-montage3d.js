@@ -55,15 +55,23 @@ async function mpPack(list) {
 async function mpBuild(html, opts) {
   const ex = mpExtract(html);
   if (!ex) throw new Error("Det här är inte en montageordning från 4D-dashboarden (Exportera -> HTML).");
-  const D = ex.data, models = (typeof l3b !== "undefined" ? l3b.models : []) || [], byGuid = new Map();
-  models.forEach(m => { const map = typeof l3pEnts === "function" ? l3pEnts(m) : new Map(); map.forEach((v, g) => { const a = byGuid.get(g) || []; v.forEach(e => { if (!e.mesh.userData.bcopy) a.push(e); }); byGuid.set(g, a); }); });
-  const got = []; let missing = 0, total = 0;
+  const D = ex.data, models = (typeof l3b !== "undefined" ? l3b.models : []) || [], perModel = [];
+  // Per modell: IFC-id -> bitar. Samma objekt-id kan finnas i flera IFC-filer (t.ex. fyra kranar som är kopior av samma modell) – då hämtas formen ur rätt fil (modell-id, annars modellnamn) och inte ur alla.
+  models.forEach(m => { const map = typeof l3pEnts === "function" ? l3pEnts(m) : new Map(), mm = new Map(); map.forEach((v, g) => { const a = v.filter(e => !e.mesh.userData.bcopy); if (a.length) mm.set(g, a); }); perModel.push({ id: String(m.id), name: String(m.name || "").toLowerCase(), map: mm }); });
+  const entsFor = ob => {
+    const g = String(ob.g || ""); if (!g) return null;
+    let c = ob.mi ? perModel.filter(m => m.id === String(ob.mi)) : []; if (!c.length && ob.mn) c = perModel.filter(m => m.name && m.name === String(ob.mn).toLowerCase());
+    if (c.length === 1) return c[0].map.get(g) || null;
+    const has = perModel.filter(m => m.map.has(g)); if (!has.length) return null; if (has.length > 1) ambiguous++;
+    return has[0].map.get(g);
+  };
+  const got = []; let missing = 0, total = 0, ambiguous = 0;
   D.steps.forEach((st, i) => (st.obj || []).forEach((ob, k) => {
-    total++; const ents = ob.g ? byGuid.get(String(ob.g)) : null, mesh = ents && ents.length ? mpObjectMesh(ents) : null;
+    total++; const ents = entsFor(ob), mesh = ents && ents.length ? mpObjectMesh(ents) : null;
     if (!mesh) { missing++; ob.b = null; return; }
     got.push({ key: i + ":" + k, ob, ...mesh });
   }));
-  if (!got.length) return { html: null, found: 0, missing, total, tris: 0, bytes: 0 };
+  if (!got.length) return { html: null, found: 0, missing, total, ambiguous, tris: 0, bytes: 0 };
   // gemensam origo så att talen blir små; lådan (b) följer med för kameran och fokus
   const o = [Infinity, Infinity, Infinity];
   got.forEach(g => { for (let i = 0; i < g.pos.length; i += 3) for (let a = 0; a < 3; a++) if (g.pos[i + a] < o[a]) o[a] = g.pos[i + a]; });
@@ -73,11 +81,11 @@ async function mpBuild(html, opts) {
     for (let i = 0; i < g.pos.length; i += 3) for (let a = 0; a < 3; a++) { g.pos[i + a] -= o[a]; const x = g.pos[i + a]; if (x < mn[a]) mn[a] = x; if (x > mx[a]) mx[a] = x; }
     g.ob.b = [mn[0], mn[1], mn[2], mx[0], mx[1], mx[2]].map(v => Math.round(v * 1000) / 1000); tris += g.idx.length / 3;
   });
-  if (opts && opts.maxTris && tris > opts.maxTris && opts.confirm && !(await opts.confirm(tris))) return { html: null, found: got.length, missing, total, tris, bytes: 0, cancelled: true };
+  if (opts && opts.maxTris && tris > opts.maxTris && opts.confirm && !(await opts.confirm(tris))) return { html: null, found: got.length, missing, total, ambiguous, tris, bytes: 0, cancelled: true };
   const geo = await mpPack(got);
   D.geo = { d: geo.d, o: geo.o }; D.has3d = true;
   const json = JSON.stringify(D).replace(/</g, "\\u003c");
-  return { html: html.slice(0, ex.start) + json + html.slice(ex.end), found: got.length, missing, total, tris, bytes: geo.bytes };
+  return { html: html.slice(0, ex.start) + json + html.slice(ex.end), found: got.length, missing, total, ambiguous, tris, bytes: geo.bytes };
 }
 
 /* Gränssnittet: välj dashboardens HTML-fil, bygg och ladda ner. */
@@ -97,7 +105,7 @@ async function exportMontage3d() {
     if (!r.html) { alert(`Inga av de ${r.total} objekten hittades i de inlästa modellerna. Kontrollera att rätt IFC-modell är inläst (och tänd) i 3D-vyn.`); return null; }
     const base = file.name.replace(/\.html?$/i, ""), name = `${base}_3D.html`, blob = new Blob([r.html], { type: "text/html" });
     downloadBlob(blob, name);
-    const msg = `✓ ${name} (${(blob.size / 1e6).toFixed(1).replace(".", ",")} MB): ${r.found} av ${r.total} objekt med riktig geometri${r.missing ? `, ${r.missing} hittades inte i modellerna (visas inte i 3D)` : ""}.`;
+    const msg = `✓ ${name} (${(blob.size / 1e6).toFixed(1).replace(".", ",")} MB): ${r.found} av ${r.total} objekt med riktig geometri${r.missing ? `, ${r.missing} hittades inte i modellerna (visas inte i 3D)` : ""}${r.ambiguous ? `. OBS: ${r.ambiguous} objekt finns i flera inlästa modeller och kunde inte hänföras till rätt fil – exportera om från dashboarden så följer modellen med` : ""}.`;
     if (typeof setSaveStatus === "function") setSaveStatus(msg);
     if (typeof l3Status === "function") l3Status(msg);
     return { name, ...r, html: window.__mpKeep ? r.html : undefined };
