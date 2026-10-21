@@ -3,6 +3,8 @@
    där 3D-vyn ritar den riktiga geometrin i stället för lådor. Bara objekt som ingår i montageordningen följer med, så filen blir liten.
    Geometrin packas som 16-bitars positioner per objekt, gzip och base64 (samma idé som den fristående HTML-exporten). */
 
+const MP_BUILD = "montagekod 4 (ett-objekts-regel)"; // visas i statusraden så att man ser vilken version som körs
+
 /* Dashboardens fil: ...<script>(function msModernRuntime(D){...})({...data...});</script></body>. Hittar datat och var det börjar och slutar. */
 function mpExtract(html) {
   const end = html.lastIndexOf(");</script>");
@@ -157,7 +159,7 @@ async function exportMontage3d() {
     if (!r.html) { alert(`Inga av de ${r.total} objekten hittades i de inlästa modellerna. Kontrollera att rätt IFC-modell är inläst (och tänd) i 3D-vyn.`); return null; }
     const base = file.name.replace(/\.html?$/i, ""), name = `${base}_3D.html`, blob = new Blob([r.html], { type: "text/html" });
     downloadBlob(blob, name);
-    const msg = `✓ ${name} (${(blob.size / 1e6).toFixed(1).replace(".", ",")} MB): ${r.found} av ${r.total} objekt med riktig geometri${r.missing ? `, ${r.missing} hittades inte i modellerna (visas inte i 3D): ${(r.gone || []).join("; ")}` : ""}${r.ambiguous ? `. OBS: ${r.ambiguous} objekt finns i flera inlästa modeller och kunde inte hänföras till rätt fil – exportera om från dashboarden så följer modellen med` : ""}.`;
+    const msg = `✓ ${name} (${(blob.size / 1e6).toFixed(1).replace(".", ",")} MB): ${r.found} av ${r.total} objekt med riktig geometri [${MP_BUILD}]${r.missing ? `, ${r.missing} hittades inte i modellerna (visas inte i 3D): ${(r.gone || []).join("; ")}` : ""}${r.ambiguous ? `. OBS: ${r.ambiguous} objekt finns i flera inlästa modeller och kunde inte hänföras till rätt fil – exportera om från dashboarden så följer modellen med` : ""}.`;
     if (typeof setSaveStatus === "function") setSaveStatus(msg);
     if (typeof l3Status === "function") l3Status(msg);
     return { name, ...r, html: window.__mpKeep ? r.html : undefined };
