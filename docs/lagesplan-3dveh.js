@@ -13,11 +13,23 @@ function l3vRam(parent, oa, ob, mats, rb, rr) {
   return () => { oa.getWorldPosition(va); ob.getWorldPosition(vb); const a = parent.worldToLocal(va.clone()), b = parent.worldToLocal(vb.clone()), mid = a.clone().lerp(b, 0.58); l3vSeg(barrel, a, mid); l3vSeg(rod, mid, b); };
 }
 const l3vAnchor = (parent, x, y, z) => { const o = new THREE.Object3D(); o.position.set(x, y, z); parent.add(o); return o; };
-function l3vLabel(w, h) {
-  const c = document.createElement("canvas"); c.width = 256; c.height = 128; const t = new THREE.CanvasTexture(c), sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false, depthWrite: false })); sp.scale.set(w, h, 1); sp.renderOrder = 9; sp.userData.noHit = true;
-  sp.userData.set = (txt, col) => { if (sp.userData.txt === txt + col) return; sp.userData.txt = txt + col; const g = c.getContext("2d"); g.clearRect(0, 0, 256, 128); g.fillStyle = "rgba(15,23,42,.72)"; if (g.roundRect) { g.beginPath(); g.roundRect(8, 24, 240, 80, 18); g.fill(); } else g.fillRect(8, 24, 240, 80); g.fillStyle = col || "#fff"; g.font = "700 54px system-ui, Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(txt, 128, 66); t.needsUpdate = true; };
+function l3vLabel(w, h) { // etikett som anpassar piller och text efter innehållet (w/h = storlek för en 2:1-etikett; duken är 4:1 så att längre text ryms)
+  const c = document.createElement("canvas"); c.width = 512; c.height = 128; const t = new THREE.CanvasTexture(c), sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false, depthWrite: false })); sp.scale.set(w * 2, h, 1); sp.renderOrder = 9; sp.userData.noHit = true;
+  sp.userData.set = (txt, col) => {
+    if (sp.userData.txt === txt + col) return; sp.userData.txt = txt + col; const g = c.getContext("2d"); g.clearRect(0, 0, 512, 128);
+    let fs = 54; g.font = `700 ${fs}px system-ui, Arial, sans-serif`; const tw = g.measureText(txt).width; if (tw > 440) { fs = Math.floor(fs * 440 / tw); g.font = `700 ${fs}px system-ui, Arial, sans-serif`; }
+    const pw = Math.min(500, g.measureText(txt).width + 44), px = (512 - pw) / 2; g.fillStyle = "rgba(10,18,36,.82)"; g.strokeStyle = col || "#fff"; g.lineWidth = 3;
+    g.beginPath(); if (g.roundRect) g.roundRect(px, 24, pw, 80, 40); else g.rect(px, 24, pw, 80); g.fill(); g.globalAlpha = 0.7; g.stroke(); g.globalAlpha = 1;
+    g.fillStyle = col || "#fff"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(txt, 256, 66); t.needsUpdate = true;
+  };
   return sp;
 }
+/* Radiegrafik: mjuk färgfyllning (ljusare mot kanten), glödande ringar som pulserar och en stråle från kranens mitt ut till lastpunkten. */
+function l3vGlowTex(rgb) {
+  const c = document.createElement("canvas"); c.width = c.height = 256; const g = c.getContext("2d"), gr = g.createRadialGradient(128, 128, 0, 128, 128, 128);
+  gr.addColorStop(0, `rgba(${rgb},0)`); gr.addColorStop(0.6, `rgba(${rgb},0.1)`); gr.addColorStop(0.93, `rgba(${rgb},0.42)`); gr.addColorStop(1, `rgba(${rgb},0)`); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); return new THREE.CanvasTexture(c);
+}
+const l3vAdd = (col, op) => new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: op, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
 const l3vFmt = (v, d = 1) => (Math.round(v * 10 ** d) / 10 ** d).toFixed(d).replace(".", ",");
 function l3vMark(g) { g.traverse(o => { o.userData.noHit = true; if (!o.isSprite) o.renderOrder = 5; }); return g; }
 
@@ -56,8 +68,9 @@ function l3vCrane() {
   // ---- radie på marken
   const rg = new THREE.Group(); rg.position.set(-1.3, 0, 0.05); g.add(rg); const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }), labs = [];
   for (let r = 5; r <= 40; r += 5) { const m = new THREE.Mesh(new THREE.RingGeometry(r - 0.04, r + 0.04, 120), ringMat); rg.add(m); const lb = l3vLabel(2.6, 1.3); lb.userData.set(r + " m", "#cbd5e1"); lb.position.set(r * Math.cos(0.9), r * Math.sin(0.9), 0.4); rg.add(lb); labs.push(lb); }
-  const rcur = new THREE.Mesh(new THREE.RingGeometry(0.975, 1, 160), new THREE.MeshBasicMaterial({ color: 0xff7a00, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })), rdisc = new THREE.Mesh(new THREE.CircleGeometry(1, 96), new THREE.MeshBasicMaterial({ color: 0xff7a00, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false })), rmax = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 160), new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
-  rg.add(rcur, rdisc, rmax); const rlab = l3vLabel(3.4, 1.7), mlab = l3vLabel(3.4, 1.7); rg.add(rlab, mlab); rg.traverse(o => { o.userData.noIfc = true; });
+  const rcur = new THREE.Mesh(new THREE.RingGeometry(0.975, 1, 160), l3vAdd(0xff8a1a, 0.95)), rglow = new THREE.Mesh(new THREE.RingGeometry(0.93, 1.05, 160), l3vAdd(0xff6a00, 0.3)), rdisc = new THREE.Mesh(new THREE.CircleGeometry(1, 96), new THREE.MeshBasicMaterial({ map: l3vGlowTex("255,122,0"), transparent: true, side: THREE.DoubleSide, depthWrite: false })), rmax = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 160), l3vAdd(0x38bdf8, 0.85)), mglow = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.04, 160), l3vAdd(0x0ea5e9, 0.22));
+  const beam = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.22), l3vAdd(0xffb040, 0.55)), tip = new THREE.Mesh(new THREE.CircleGeometry(0.55, 24), l3vAdd(0xffd08a, 0.9)); beam.position.z = 0.02; tip.position.z = 0.03;
+  rg.add(rcur, rglow, rdisc, rmax, mglow, beam, tip); const rlab = l3vLabel(4.6, 2.3), mlab = l3vLabel(4.6, 2.3); rg.add(rlab, mlab); rg.traverse(o => { o.userData.noIfc = true; });
   l3vMark(g);
   const geo = c => { const ext = Math.max(0, Math.min(1, c.ext)), ang = c.ang, s2 = 1 + 7.6 * ext, s3 = s2 + 1 + 7.0 * ext, s4 = s3 + 1 + 6.4 * ext, L = s4 + 7.4, tx = -0.8 + L * Math.cos(ang), tz = 1.9 + L * Math.sin(ang), R = -0.8 + L * Math.cos(ang) + 1.3 - 1.3; const Lmax = 24 + 7.4 + 1, Rmax = -0.8 + 31.4 * Math.cos(ang); return { s: [0, s2, s3, s4], L, tx, tz, R: Math.max(0, R), Rmax: Math.max(0, Rmax), H: 1.3 + tz }; };
   const update = st => {
@@ -67,7 +80,7 @@ function l3vCrane() {
     cab.rotation.y = -c.ang * 0.35; wheels.forEach(w => { w.g.rotation.y = -(st.travel || 0) / w.r; });
     const drop = Math.max(0.6, Math.min(c.hook, q.tz + 1.3 - 0.35)); hk.position.set(q.tx, 0, q.tz); cable.scale.z = drop; cable.position.z = -drop / 2; blk.position.z = -drop - 0.1; blk.rotation.z = Math.sin((st.t || 0) * 1.3) * 0.03 * Math.min(1, Math.abs(c.slewV || 0) * 3);
     g.updateMatrixWorld(true); ramUpd();
-    const show = !!st.showRadius && o > 0.02; rg.visible = show; if (show) { rg.rotation.z = 0; rcur.scale.set(q.R, q.R, 1); rdisc.scale.set(q.R, q.R, 1); rmax.scale.set(q.Rmax, q.Rmax, 1); rcur.visible = rdisc.visible = q.R > 0.3; rlab.position.set((q.R + 1.4) * Math.cos(c.slew), (q.R + 1.4) * Math.sin(c.slew), 0.6); rlab.userData.set("Radie " + l3vFmt(q.R) + " m", "#ffb45a"); mlab.position.set((q.Rmax + 1.4) * Math.cos(c.slew + 0.5), (q.Rmax + 1.4) * Math.sin(c.slew + 0.5), 0.6); mlab.userData.set("Max " + l3vFmt(q.Rmax) + " m", "#7dd3fc"); mlab.visible = q.Rmax > q.R + 2; rmax.visible = q.Rmax > q.R + 0.5; }
+    const show = !!st.showRadius && o > 0.02; rg.visible = show; if (show) { rg.rotation.z = 0; rcur.scale.set(q.R, q.R, 1); rglow.scale.set(q.R, q.R, 1); rdisc.scale.set(q.R, q.R, 1); rmax.scale.set(q.Rmax, q.Rmax, 1); mglow.scale.set(q.Rmax, q.Rmax, 1); rcur.visible = rglow.visible = rdisc.visible = beam.visible = tip.visible = q.R > 0.3; const pu = Math.sin((st.t || 0) * 3); rglow.material.opacity = 0.3 + 0.14 * pu; mglow.material.opacity = 0.2 + 0.08 * pu; beam.scale.set(q.R, 1, 1); beam.position.set(q.R / 2 * Math.cos(c.slew), q.R / 2 * Math.sin(c.slew), 0.02); beam.rotation.z = c.slew; tip.position.set(q.R * Math.cos(c.slew), q.R * Math.sin(c.slew), 0.03); tip.scale.setScalar(1 + 0.18 * pu); rlab.position.set((q.R + 1.4) * Math.cos(c.slew), (q.R + 1.4) * Math.sin(c.slew), 0.6); rlab.userData.set("Radie " + l3vFmt(q.R) + " m", "#ffb45a"); mlab.position.set((q.Rmax + 1.4) * Math.cos(c.slew + 0.5), (q.Rmax + 1.4) * Math.sin(c.slew + 0.5), 0.6); mlab.userData.set("Max " + l3vFmt(q.Rmax) + " m", "#7dd3fc"); mlab.visible = q.Rmax > q.R + 2; rmax.visible = mglow.visible = q.Rmax > q.R + 0.5; }
     st.info = [["Radie", l3vFmt(q.R) + " m"], ["Lyfthöjd (bomspets)", l3vFmt(q.H) + " m"], ["Krokhöjd", l3vFmt(Math.max(0, q.H - drop)) + " m"], ["Bomlängd", l3vFmt(q.L) + " m"], ["Bomvinkel", Math.round(c.ang * 180 / Math.PI) + "°"], ["Största radie vid vinkeln", l3vFmt(q.Rmax) + " m"], ["Stödben", o > 0.98 ? "utfällda" : o < 0.02 ? "inne" : Math.round(o * 100) + " %"]];
   };
   return { g, update, geo, ranges: { ang: [0.03, 1.4], ext: [0, 1], hook: [0.8, 40] } };
