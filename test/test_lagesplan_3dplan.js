@@ -457,6 +457,32 @@ const PP = [
     });
     if (!wk2.avatar || wk2.camDist < 2 || wk2.camDist > 3.4 || !wk2.joys || !wk2.walked || !wk2.avFollows || !wk2.jumped || !wk2.landed || !wk2.crouched || !wk2.stood || !wk2.joyMove || !wk2.blocked || !wk2.ghostThrough || !wk2.first || !wk2.avGone) fail('Gå-läge som Nira (3:e person, hopp, huka, kollision, joysticks): ' + JSON.stringify(wk2));
     else console.log('OK: gå-läge – tredje person med figur, hopp, huka, spöke/kollision, joysticks och V byter person');
+    // Gå-läge: fordon i tredje person, hopp utan Följ marken, glid längs väggar och fall (solid mark).
+    const wk3 = await page.evaluate(async () => {
+      l3wInit(); const wait = ms => new Promise(r => setTimeout(r, ms)), key = (t, code) => document.body.dispatchEvent(new KeyboardEvent(t, { code, key: code.replace('Key', '').toLowerCase(), bubbles: true, cancelable: true }));
+      l3SetPref('walkFollow', true); l3SetPref('navHelp', false); l3NavHelp(); l3SetPref('walkPerson', 'third'); l3SetPref('walkGhost', false); l3SetPref('walkJoy', false); l3SetPref('walkKind', 'crane');
+      const gz = l3GroundZ(); l3wEnter(new THREE.Vector3(0, 0, gz)); l3w.yaw = 0; l3w.pitch = 0; l3wApply(); await wait(300);
+      const out = {}; out.kind = l3w.kind; out.vehicle = !!l3w.cfg.vehicle; out.eye = l3w.eye; out.camFar = l3.camera.position.distanceTo(l3w.p) > 8; out.hasAv = !!l3w.avatar && l3w.avatar.children.length > 10;
+      const x0 = l3w.p.x; key('keydown', 'KeyW'); await wait(900); key('keyup', 'KeyW'); out.drove = l3w.p.x - x0 > 0.8; out.travel = l3w.travel > 0.8;
+      l3wWork(); await wait(1500); out.workOn = l3w.work > 0.7; l3wWork(); await wait(100);
+      // fordon kan inte hoppa
+      const z0 = l3w.p.z; l3wJump(); await wait(150); out.noJump = Math.abs(l3w.p.z - z0) < 0.05;
+      // byt till byggare, hoppa utan Följ marken
+      l3wSetKind('human'); out.human = l3w.kind === 'human' && Math.abs(l3w.eye - 1.7) < 1e-6; l3SetPref('walkFollow', false); l3w.settled = false; await wait(150);
+      const y0 = l3w.p.z; l3wJump(); await wait(220); out.jumpNoFollow = l3w.p.z - y0 > 0.25; await wait(900); out.landNoFollow = Math.abs(l3w.p.z - y0) < 0.05;
+      l3SetPref('walkFollow', true); l3w.settled = false; await wait(300);
+      // schräg vägg: glid längs den i stället för att fastna (spöke av)
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.3, 12, 4), new THREE.MeshBasicMaterial()); wall.position.set(l3w.p.x + 3, l3w.p.y, gz + 2); wall.rotation.z = 0.5; l3.groups.bldg.add(wall); wall.updateMatrixWorld(true);
+      l3wSetGhost(false); l3w.speed = 3; l3w.yaw = 0; const p0 = l3w.p.clone(); key('keydown', 'KeyW'); await wait(2200); key('keyup', 'KeyW'); const d = l3w.p.clone().sub(p0);
+      out.slid = Math.abs(d.y) > 0.8; out.notThrough = l3w.p.x < wall.position.x + 6 * Math.sin(0.5) + 0.4 && !(Math.abs(d.x) > 5.5);
+      l3.groups.bldg.remove(wall);
+      // fall från kant: marken 3 m ner (spöke av) ger fall, inte svävning
+      l3wSetKind('own'); out.ownRefused = l3w.kind === 'human';
+      l3SetPref('walkKind', 'human'); l3SetPref('walkGhost', true); l3wExit(true); out.gone = !l3w.avatar;
+      return out;
+    });
+    if (wk3.kind !== 'crane' || !wk3.vehicle || wk3.eye < 3 || !wk3.camFar || !wk3.hasAv || !wk3.drove || !wk3.travel || !wk3.workOn || !wk3.noJump || !wk3.human || !wk3.jumpNoFollow || !wk3.landNoFollow || !wk3.slid || !wk3.notThrough || !wk3.ownRefused || !wk3.gone) fail('Gå-läge fordon/hopp/glid: ' + JSON.stringify(wk3));
+    else console.log('OK: gå-läge – mobilkran i tredje person (kör, arbetsläge), hopp utan Följ marken, glid längs vägg, markerat objekt kräver markering');
     // Nederkanten: knappar för Status och Navigering (ingen knapp längre över bilden).
     const ft = await page.evaluate(() => {
       const L = () => document.getElementById('v3Legend'), N = () => document.getElementById('v3NavHelp'), bl = document.getElementById('v3FtLegend'), bn = document.getElementById('v3FtNav');
