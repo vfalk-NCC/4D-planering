@@ -547,7 +547,7 @@ const PP = [
       const set = (sel, v) => { const i = document.querySelector(sel); i.value = v; i.dispatchEvent(new Event('change', { bubbles: true })); };
       set('[data-n="len"]', 20); for (let i = 0; i < 40; i++) { await wait(500); const q = parseFloat(String(((l3w.info || []).find(x => x[0] === 'Bomlängd') || [])[1]).replace(',', '.')); if (Math.abs(q - 20) < 0.3) break; } await wait(300); const len = parseFloat((l3w.info.find(x => x[0] === 'Bomlängd') || [])[1].replace(',', '.')); out.len = len;
       set('[data-n="rad"]', 12); for (let i = 0; i < 40; i++) { await wait(500); const q = parseFloat(String(((l3w.info || []).find(x => x[0] === 'Radie') || [])[1]).replace(',', '.')); if (Math.abs(q - 12) < 0.3) break; } await wait(300); const rad = parseFloat((l3w.info.find(x => x[0] === 'Radie') || [])[1].replace(',', '.')); out.rad = rad;
-      set('[data-n="slew"]', 45); await wait(1800); out.slew = Math.abs(l3w.ctl.slew - Math.PI / 4) < 0.05;
+      set('[data-n="slew"]', 45); for (let i = 0; i < 40 && Math.abs(l3w.ctl.slew - Math.PI / 4) >= 0.05; i++) await wait(500); await wait(100); out.slew = Math.abs(l3w.ctl.slew - Math.PI / 4) < 0.05;
       // lås
       const gBefore = l3w.avatar; l3wLock(); out.locked = l3w.locked.length === 1 && !l3w.on && !!gBefore.parent && !!document.querySelector('.v3-lockp'); out.panelGone = !document.querySelector('.v3-ctl:not(.hidden)');
       const snap = JSON.stringify(l3w.locked[0].ctl); await wait(400); out.frozen = snap === JSON.stringify(l3w.locked[0].ctl);

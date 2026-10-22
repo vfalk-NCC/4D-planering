@@ -54,6 +54,7 @@ function l3wEnter(P) {
 }
 function l3wExit(quiet) {
   if (!l3w.on) { l3w.picking = false; return; }
+  if (typeof l3liftRelease === "function") l3liftRelease(true);
   l3w.on = false; l3w.keys.clear(); l3w.drag = null; l3wAvatarRemove(); l3wJoyShow(false); if (l3w.ctlEl) l3w.ctlEl.classList.add("hidden");
   if (l3w.p) { l3.camera.position.copy(l3w.p); l3.camera.updateMatrixWorld(); }
   cancelAnimationFrame(l3w.raf); l3w.raf = 0;
@@ -97,7 +98,7 @@ function l3wAvatarUpdate() {
   const g = l3w.av.g, P = l3w.p, cf = l3w.cfg, follow = l3wFollow(), ft = follow && l3w.gz != null ? l3w.gz + l3w.jz : P.z - l3w.eye;
   g.position.set(P.x, P.y, ft); g.rotation.z = l3w.heading + (l3w.kind === "own" ? 0 : 0);
   const sc = cf.vehicle ? 1 : Math.max(0.5, Math.min(2, l3w.eye / 1.7)); g.scale.set(sc, sc, sc);
-  { const st = { moving: l3w.moving, phase: l3w.phase, speed: l3w.curV, crouch: l3w.crouch, jz: l3w.jz, work: l3w.work, t: l3w.t, travel: l3w.travel, ctl: l3w.ctl, showRadius: l3w.showRadius && l3w.workOn }; l3w.av.update(st); l3w.info = st.info || null; }
+  { const st = { moving: l3w.moving, phase: l3w.phase, speed: l3w.curV, crouch: l3w.crouch, jz: l3w.jz, work: l3w.work, t: l3w.t, travel: l3w.travel, ctl: l3w.ctl, showRadius: l3w.showRadius && l3w.workOn }; l3w.av.update(st); l3w.info = st.info || null; if (typeof l3liftUpdate === "function") l3liftUpdate(); }
 }
 function l3wAvatarRemove() {
   const g = l3w.avatar; l3w.avatar = null; l3w.av = null; if (!g) return;
@@ -107,6 +108,7 @@ function l3wAvatarRemove() {
 function l3wSetKind(k) {
   if (!L3C_CFG[k]) k = "human"; if (k === "own" && !(l3.sel && l3.sel.size)) { l3Status("Markera ett placerat objekt (t.ex. en kran från biblioteket) först – då kan du vara det.", true); return; }
   if (k === "glb" && !l3glb.root) { l3glbEnsure().then(ok => { if (ok) l3wSetKind("glb"); else { l3wHud(true); l3Status("Ingen figur vald – du är kvar som förut.", true); } }); return; }
+  if (typeof l3liftRelease === "function") l3liftRelease(true);
   l3wAvatarRemove(); l3w.kind = k; l3w.camMul = 1; l3w.cfg = L3C_CFG[k]; l3SetPref("walkKind", k);
   if (l3w.cfg.vehicle) { l3w.person = "third"; l3w.eye = l3w.cfg.eye; } else l3w.eye = 1.7; l3w.crouchTog = false; l3w.settled = false; l3w.gz = null; l3w.workOn = false; l3w.work = 0; l3wCtlReset(); l3wCtlPanel();
   l3wApply(); l3wHud(true); l3wJoyShow(l3w.joy); l3Status(`Du är nu ${(L3C_KINDS.find(x => x[0] === k) || ["", k])[1].toLowerCase()}${k === "own" ? " (kopia av det markerade objektet)" : ""}.`);
@@ -239,7 +241,7 @@ function l3wCtlStep(dt, K) {
   return ch;
 }
 const L3W_CTLF = {
-  crane: [["slew", "Sväng", -180, 180, 1, "°"], ["ang", "Bomvinkel", 2, 80, 1, "°"], ["ext", "Utskjut", 0, 100, 1, "%"], ["hook", "Lina", 1, 40, 0.1, "m"]],
+  crane: [["slew", "Sväng", -180, 180, 1, "°"], ["ang", "Bomvinkel", 2, 80, 1, "°"], ["ext", "Utskjut", 0, 100, 1, "%"], ["hook", "Lina", 1, 65, 0.1, "m"]],
   excavator: [["slew", "Sväng", -180, 180, 1, "°"], ["boom", "Bom", -9, 57, 1, "°"], ["stick", "Skaft", 20, 132, 1, "°"], ["bucket", "Skopa", -20, 103, 1, "°"]],
 };
 const L3W_TO = { slew: v => v * Math.PI / 180, ang: v => v * Math.PI / 180, ext: v => v / 100, hook: v => v, boom: v => v * Math.PI / 180, stick: v => v * Math.PI / 180, bucket: v => v * Math.PI / 180 };
@@ -253,19 +255,19 @@ function l3wCraneSolve(kind, val) {
 }
 function l3wCtlPanel() {
   const on = l3w.on && l3w.workOn && (l3w.kind === "crane" || l3w.kind === "excavator"); let p = l3w.ctlEl;
-  if (!on) { if (p) p.classList.add("hidden"); return; }
+  if (!on || !l3w.ctlT) { if (p) p.classList.add("hidden"); return; }
   if (!p) {
     p = document.createElement("div"); p.className = "v3-ctl"; l3w.ctlEl = p; document.getElementById("v3Canvas").appendChild(p);
     ["pointerdown", "pointerup", "wheel", "click", "dblclick", "contextmenu", "keydown", "keyup"].forEach(t => p.addEventListener(t, e => e.stopPropagation()));
     p.addEventListener("input", e => { const t = e.target, k = t.dataset.c; if (!k || !l3w.ctlT) return; l3w.auto = false; l3w.ctlT[k] = L3W_TO[k](Number(t.value)); l3wApply(); });
     p.addEventListener("change", e => { const t = e.target, k = t.dataset.n; if (!k || !l3w.ctlT) return; const v = Number(String(t.value).replace(",", ".")); if (!isFinite(v)) { l3wCtlRefresh(true); return; } l3w.auto = false; if (L3W_TO[k]) { const f = (L3W_CTLF[l3w.kind] || []).find(x => x[0] === k); l3w.ctlT[k] = L3W_TO[k](f ? Math.max(f[2], Math.min(f[3], v)) : v); } else l3wCraneSolve(k, v); l3wApply(); l3wCtlRefresh(true); });
-    p.addEventListener("click", e => { const b = e.target.closest("[data-cb]"); if (!b) return; const k = b.dataset.cb; if (k === "out") { l3w.ctlT.out = l3w.ctlT.out > 0.5 ? 0 : 1; if (l3w.ctlT.out) { l3w.ctlT.ang = Math.max(l3w.ctlT.ang, 1.0); l3w.ctlT.ext = Math.max(l3w.ctlT.ext, 0.35); } else { l3w.ctlT.ang = 0.05; l3w.ctlT.ext = 0; l3w.ctlT.slew = 0; l3w.ctlT.hook = 3; } } else if (k === "auto") { l3w.auto = !l3w.auto; l3w.autoT = 0; } else if (k === "rad") { l3w.showRadius = !l3w.showRadius; l3SetPref("walkRadius", l3w.showRadius); } else if (k === "lock") { l3wLock(); return; } l3wCtlPanel(); l3wApply(); });
+    p.addEventListener("click", e => { const b = e.target.closest("[data-cb]"); if (!b) return; const k = b.dataset.cb; if (k === "out") { l3w.ctlT.out = l3w.ctlT.out > 0.5 ? 0 : 1; if (l3w.ctlT.out) { l3w.ctlT.ang = Math.max(l3w.ctlT.ang, 1.0); l3w.ctlT.ext = Math.max(l3w.ctlT.ext, 0.35); } else { l3w.ctlT.ang = 0.05; l3w.ctlT.ext = 0; l3w.ctlT.slew = 0; l3w.ctlT.hook = 3; } } else if (k === "auto") { l3w.auto = !l3w.auto; l3w.autoT = 0; } else if (k === "rad") { l3w.showRadius = !l3w.showRadius; l3SetPref("walkRadius", l3w.showRadius); } else if (k === "grab") { l3liftGrab(); l3wCtlPanel(); return; } else if (k === "yl") { l3liftYaw(Math.PI / 12); return; } else if (k === "yr") { l3liftYaw(-Math.PI / 12); return; } else if (k === "lock") { l3wLock(); return; } l3wCtlPanel(); l3wApply(); });
     p.addEventListener("change", e => { if (e.target.dataset.cb === "rad") { l3w.showRadius = e.target.checked; l3SetPref("walkRadius", l3w.showRadius); l3wApply(); } });
   }
   p.classList.remove("hidden"); const T = l3w.ctlT, sl = ([k, lab, min, max, step, unit]) => `<label><span>${lab}</span><input type="range" data-c="${k}" min="${min}" max="${max}" step="${step}" value="${L3W_FROM[k](T[k])}"><span class="v3-num"><input type="number" data-n="${k}" min="${min}" max="${max}" step="${step}"><i>${unit}</i></span></label>`;
   const num = (k, lab, unit) => `<label class="v3-ctl-n"><span>${lab}</span><span class="v3-num"><input type="number" data-n="${k}" step="0.1" min="0"><i>${unit}</i></span></label>`;
   const sliders = L3W_CTLF[l3w.kind].map(sl).join("");
-  if (l3w.kind === "crane") p.innerHTML = `<b>Kranpanel · Mobilkran</b><button type="button" data-cb="out" class="${T.out > 0.5 ? "on" : ""}" title="Fäller ut stödbenen och reser bommen (X). Bommen måste vara nere för att ta in dem igen.">${T.out > 0.5 ? "Ta in stödben och bom" : "Fäll ut stödben och res bom"}</button>${sliders}<div class="v3-ctl-g"><small>Skriv in ett mått så räknas bomvinkel och utskjut ut:</small>${num("len", "Bomlängd", "m")}${num("rad", "Radie", "m")}${num("hgt", "Lyfthöjd", "m")}</div><div class="v3-ctl-r" id="v3CtlInfo"></div><label class="v3-chk"><input type="checkbox" data-cb="rad" ${l3w.showRadius ? "checked" : ""}> Visa radie på marken</label><button type="button" data-cb="lock" title="Låser kranen i det här läget och lämnar körningen – du kan sedan flyga runt, titta i plan och valfri vy och exportera den som IFC">📌 Lås här och flyg runt</button><small>Pilar: sväng och bomvinkel · + / −: utskjut · [ ]: lina</small>`;
+  if (l3w.kind === "crane") p.innerHTML = `<b>Kranpanel · Mobilkran</b><button type="button" data-cb="out" class="${T.out > 0.5 ? "on" : ""}" title="Fäller ut stödbenen och reser bommen (X). Bommen måste vara nere för att ta in dem igen.">${T.out > 0.5 ? "Ta in stödben och bom" : "Fäll ut stödben och res bom"}</button>${sliders}<div class="v3-ctl-g"><small>Skriv in ett mått så räknas bomvinkel och utskjut ut:</small>${num("len", "Bomlängd", "m")}${num("rad", "Radie", "m")}${num("hgt", "Lyfthöjd", "m")}</div><div class="v3-ctl-lift"><button type="button" data-cb="grab" title="Sänk kroken ner mot ett objekt i modellen (eller markera objekt först) och haka i det. Tryck igen för att sätta ner det (H)">${l3lift.s ? "⏬ Sätt ner lasten (H)" : "🪝 Haka i objekt (H)"}</button><button type="button" data-cb="yl" title="Vrid lasten (,)">↺</button><button type="button" data-cb="yr" title="Vrid lasten (.)">↻</button></div><div class="v3-ctl-r" id="v3CtlInfo"></div><label class="v3-chk"><input type="checkbox" data-cb="rad" ${l3w.showRadius ? "checked" : ""}> Visa radie på marken</label><button type="button" data-cb="lock" title="Låser kranen i det här läget och lämnar körningen – du kan sedan flyga runt, titta i plan och valfri vy och exportera den som IFC">📌 Lås här och flyg runt</button><small>Pilar: sväng och bomvinkel · + / −: utskjut · [ ]: lina</small>`;
   else p.innerHTML = `<b>Reglage · Grävmaskin</b><button type="button" data-cb="auto" class="${l3w.auto ? "on" : ""}">${l3w.auto ? "Stoppa grävning" : "Gräv automatiskt"}</button>${sliders}<div class="v3-ctl-r" id="v3CtlInfo"></div><label class="v3-chk"><input type="checkbox" data-cb="rad" ${l3w.showRadius ? "checked" : ""}> Visa räckvidd på marken</label><button type="button" data-cb="lock" title="Låser maskinen i det här läget och lämnar körningen – sedan kan du flyga runt och exportera den som IFC">📌 Lås här och flyg runt</button><small>Pilar: sväng och bom · + / −: skaft · [ ]: skopa</small>`;
   l3wCtlRefresh(true);
 }
@@ -273,13 +275,14 @@ function l3wCtlRefresh(force) {
   const p = l3w.ctlEl, now = performance.now(); if (!p || p.classList.contains("hidden") || (!force && now - l3w.ctlTick < 140)) return; l3w.ctlTick = now;
   const T = l3w.ctlT, c = l3w.ctl, put = (sel, v) => { const i = p.querySelector(sel); if (i && document.activeElement !== i) i.value = v; };
   (L3W_CTLF[l3w.kind] || []).forEach(([k, , , , step]) => { put(`[data-c="${k}"]`, L3W_FROM[k](T[k])); const v = L3W_FROM[k](c[k]); put(`[data-n="${k}"]`, step < 1 ? v.toFixed(1) : Math.round(v)); });
-  if (l3w.kind === "crane") { const get = lab => { const x = (l3w.info || []).find(q => q[0] === lab); return x ? parseFloat(String(x[1]).replace(",", ".")) : ""; }; put('[data-n="len"]', get("Bomlängd")); put('[data-n="rad"]', get("Radie")); put('[data-n="hgt"]', get("Lyfthöjd (bomspets)")); const b = p.querySelector('[data-cb="out"]'); if (b) { b.classList.toggle("on", T.out > 0.5); b.textContent = T.out > 0.5 ? "Ta in stödben och bom" : "Fäll ut stödben och res bom"; } }
+  if (l3w.kind === "crane") { const get = lab => { const x = (l3w.info || []).find(q => q[0] === lab); return x ? parseFloat(String(x[1]).replace(",", ".")) : ""; }; put('[data-n="len"]', get("Bomlängd")); put('[data-n="rad"]', get("Radie")); put('[data-n="hgt"]', get("Lyfthöjd (bomspets)")); const gb = p.querySelector('[data-cb="grab"]'); if (gb) gb.textContent = l3lift.s ? "⏬ Sätt ner lasten (H)" : "🪝 Haka i objekt (H)"; const b = p.querySelector('[data-cb="out"]'); if (b) { b.classList.toggle("on", T.out > 0.5); b.textContent = T.out > 0.5 ? "Ta in stödben och bom" : "Fäll ut stödben och res bom"; } }
   else { const b = p.querySelector('[data-cb="auto"]'); if (b) { b.classList.toggle("on", l3w.auto); b.textContent = l3w.auto ? "Stoppa grävning" : "Gräv automatiskt"; } }
   const inf = p.querySelector("#v3CtlInfo"); if (inf && l3w.info) inf.innerHTML = l3w.info.map(([a, b]) => `<div><span>${a}</span><b>${b}</b></div>`).join("");
 }
 /* ---- Lås fordonet och flyg runt (Victor 2026-10-22) ---------------------------------------------------------------------------------------- */
 /* Fordonet blir kvar i scenen i exakt det läge det har, du lämnar körningen och kan vrida, flyga och titta i plan eller valfri vy. Härifrån går det att exportera som IFC. */
 function l3wLock() {
+  if (typeof l3lift !== "undefined" && l3lift.s) { l3Status("Sätt ner lasten först (H).", true); return; }
   if (!l3w.on || !l3w.av) { l3Status("Det finns inget fordon att låsa – välj en figur i 3:e person först.", true); return; }
   l3wApply(); const g = l3w.av.g, P = l3w.p.clone(), title = (L3C_KINDS.find(x => x[0] === l3w.kind) || ["", "Fordon"])[1];
   l3w.lockN = (l3w.lockN || 0) + 1; const item = { id: "lv" + Date.now().toString(36), kind: l3w.kind, title, name: `${title} ${l3w.lockN}`, g, ctl: l3w.ctl ? { ...l3w.ctl } : null, info: (l3w.info || []).map(x => x.slice()), pos: P, gz: l3w.gz, heading: l3w.heading, eye: l3w.eye, own: l3w.ownRot, showRadius: !!(l3w.showRadius && l3w.workOn) };
@@ -363,6 +366,8 @@ function l3wKey(e) {
   if (e.shiftKey) l3w.keys.add("shift"); else l3w.keys.delete("shift");
   if (k === "v" && !e.repeat) { e.preventDefault(); l3wSetPerson(l3w.person === "third" ? "first" : "third"); return true; }
   if (k === "x" && !e.repeat) { e.preventDefault(); l3wWork(); return true; }
+  if (k === "h" && !e.repeat && l3w.kind === "crane") { e.preventDefault(); l3liftGrab(); return true; }
+  if ((k === "," || k === ".") && l3w.kind === "crane" && l3lift.s) { e.preventDefault(); l3liftYaw(k === "," ? Math.PI / 12 : -Math.PI / 12); return true; }
   if (k === "f" && !e.repeat) { e.preventDefault(); l3wFullscreen(); return true; }
   if (k === "g" && !e.repeat) { e.preventDefault(); l3wSetGhost(!l3w.ghost); return true; }
   if (k === "k" && !e.repeat) { e.preventDefault(); l3wCommentStart(); return true; }

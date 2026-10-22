@@ -56,6 +56,7 @@ function l3bmStart(opts = {}) {
   l3.groups.bldg.add(G);
   G.updateMatrix();
   l3bm.session = { ents, G, start: G.matrix.clone(), c: c.clone(), hideBy, copy };
+  if (opts.crane) { l3bm.session.crane = true; l3Render(); return; } // kranen bär lasten (lagesplan-3dlift.js): inga handtag
   l3.gizmo.attach(G); l3.gizmo.setMode("translate"); l3.gizmo.showX = l3.gizmo.showY = l3.gizmo.showZ = true;
   l3bmRenderSide();
   l3Status(copy ? `Kopiera ${ents.length} objekt: dra kopian dit den ska med handtagen eller skriv in hur långt. Klar lägger in kopian, Avbryt ångrar.`

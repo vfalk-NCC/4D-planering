@@ -369,6 +369,30 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
     if (!mx.side0 || !mx.both || !mx.panel || !mx.keep || !mx.plain || !mx.menuSingle || !mx.menu || mx.merged !== JSON.stringify([['text', 'mx1'], ['ifc', 1, 'GRAFT']]) || mx.fallback !== JSON.stringify([['text', 'mx1'], ['ifc', 1, 'GRAFT'], ['place', 'mx1']])) fail('Blandad markering och export (IFC + etablering): ' + JSON.stringify(mx));
     else console.log('OK: Ctrl-klick markerar IFC-objekt och etablering tillsammans; högerklick → Exportera markerade som IFC (allt i en fil, egen fil för etableringen om det inte går)');
   }
+  // Mobilkranen lyfter ett objekt ur modellen: haka i, bär (pendlar efter kroken), sätt ner = flytt som kan ångras.
+  const lift1 = await page.evaluate(async () => {
+    const wait = ms => new Promise(r => setTimeout(r, ms)), out = {};
+    const m = l3b.models.find(x => x.id === 'f:F2'); m.visible = true; m.meshes.forEach(x => { x.visible = true; });
+    let ent = null; m.meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => { if (/K10/.test(r.name)) ent = { mesh, ri }; }));
+    const P = ent.mesh.geometry.getAttribute('position'), r = ent.mesh.userData.l3b.ranges[ent.ri], x0 = P.getX(r.start), z0 = P.getZ(r.start);
+    const box = new THREE.Box3(), v = new THREE.Vector3(); ent.mesh.updateMatrixWorld(true); for (let i = r.start; i < r.start + r.count; i++) box.expandByPoint(v.set(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(ent.mesh.matrixWorld));
+    const top = box.getCenter(new THREE.Vector3()); top.z = box.max.z + 0.3;
+    const hook = new THREE.Object3D(); l3.scene.add(hook); hook.position.copy(top).add(new THREE.Vector3(0, 0, 0.55));
+    const avG = new THREE.Group(); l3.scene.add(avG);
+    Object.assign(l3w, { on: true, kind: 'crane', workOn: true, av: { g: avG, hookObj: hook }, info: [] });
+    l3bsSet([]); l3liftGrab(); out.session = !!(l3lift.s && l3bm.session && l3bm.session.crane); out.gizmo = !l3.gizmo.object;
+    const move = async (dx, ms) => { hook.position.x += dx; for (let i = 0; i < ms / 40; i++) { l3liftUpdate(); await wait(40); } };
+    await move(0, 200); await move(12, 1400); out.carried = Math.abs(l3bm.session.G.position.x - hook.position.x) < 1.2;
+    out.info = (l3w.info || []).some(q => q[0] === 'Last'); l3liftYaw(Math.PI / 2); await move(0, 800); out.yaw = Math.abs(l3bm.session.G.rotation.z - Math.PI / 2) < 0.15;
+    l3liftRelease(); out.released = !l3lift.s && !l3bm.session && !l3lift.rig;
+    const cx = (() => { const b2 = new THREE.Box3(); ent.mesh.updateMatrixWorld(true); for (let i = r.start; i < r.start + r.count; i++) b2.expandByPoint(v.set(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(ent.mesh.matrixWorld)); return b2.getCenter(new THREE.Vector3()); })();
+    out.moved = Math.abs(cx.x - (top.x + 12)) < 1.2; out.pending = l3bmPending('f:F2');
+    l3Undo(); const bu = new THREE.Box3(); ent.mesh.updateMatrixWorld(true); for (let i = r.start; i < r.start + r.count; i++) bu.expandByPoint(v.set(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(ent.mesh.matrixWorld)); out.undone = Math.abs(bu.getCenter(new THREE.Vector3()).x - top.x) < 0.05 && l3bmPending('f:F2') === 0;
+    l3.scene.remove(hook); l3.scene.remove(avG); l3w.on = false; l3w.av = null; l3w.workOn = false; l3w.kind = 'human'; l3bsSet([]);
+    return out;
+  });
+  if (!lift1.session || !lift1.gizmo || !lift1.carried || !lift1.info || !lift1.yaw || !lift1.released || !lift1.moved || lift1.pending < 1 || !lift1.undone) fail('Kranen lyfter objekt: ' + JSON.stringify(lift1));
+  else console.log('OK: mobilkranen hakar i ett objekt ur modellen, bär det efter kroken, vrider och sätter ner det (flytt som går att ångra)');
   // Flytta ett objekt i IFC:n och spara som ny fil i samma mapp i TC (Victor 2026-10-10).
   const mv = await page.evaluate(async () => {
     const m = l3b.models.find(x => x.id === 'f:F2'); m.visible = true; m.meshes.forEach(x => { x.visible = true; });
