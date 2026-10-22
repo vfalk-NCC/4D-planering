@@ -256,6 +256,7 @@ function l3Dom() {
           <label class="v3-chk v3-pop-row"><input type="checkbox" id="v3Ortho" ${P.ortho ? "checked" : ""} /> Parallell projektion</label>
           <button type="button" data-v3view="center">Rotationscentrum… <kbd>V</kbd></button>
           <button type="button" data-v3view="walk" title="Släpp ner kameran i ögonhöjd och gå runt med W/A/S/D">Gå runt (WASD)…</button>
+          <button type="button" data-v3view="mont" title="Planera och spela upp en montageordning här i editorn och exportera den som HTML – utan Trimble Connect">Montageordning…</button>
           <hr/>
           <div class="v3-pop-l">Sparade vyer</div>
           <div id="v3SavedViews"></div>
@@ -370,7 +371,7 @@ function l3Dom() {
   $3("v3PhotoBtn").onclick = () => { if (typeof l3phAdd === "function") l3phAdd(); };
   $3("v3ClipBtn").onclick = () => { if (l3.clips && l3.clips.length) l3RenderClipDlg(); l3StartClip(); };
   $3("v3LaunchBtn").onclick = e => { e.stopPropagation(); l3OpenLaunch(); };
-  box.querySelectorAll("[data-v3view]").forEach(b => { b.onclick = () => { l3HideMenus(); const v = b.dataset.v3view; if (v === "plan") l3TogglePlan(); else if (v === "center") l3StartV(); else if (v === "walk") l3wStart(); else l3View(v); }; });
+  box.querySelectorAll("[data-v3view]").forEach(b => { b.onclick = () => { l3HideMenus(); const v = b.dataset.v3view; if (v === "plan") l3TogglePlan(); else if (v === "center") l3StartV(); else if (v === "walk") l3wStart(); else if (v === "mont") l3mtToggle(true); else l3View(v); }; });
   $3("v3Ortho").onchange = e => { l3SetProjection(e.target.checked); };
   const mouseHint = () => { const a = l3Prefs().autoRot !== false ? " kring punkten under markören" : " kring rotationscentrum (V)"; $3("v3MouseHint").textContent = l3Prefs().mouse === "standard" ? `Vänster = rotera${a}, Ctrl + vänster = markeringsfönster, höger/mitten = panorera, hjul = zooma mot markören. Skift + vänster = panorera.` : `Vänster = markera (dra en ruta), mitten = panorera, Ctrl + mitten = rotera${a}, hjul = zooma mot markören, höger = meny.`; };
   $3("v3AutoRot").onchange = e => { l3SetPref("autoRot", e.target.checked); mouseHint(); };
