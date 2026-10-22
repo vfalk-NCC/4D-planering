@@ -782,11 +782,8 @@ function l3PlacementGroup(p) {
     // Biblioteksobjekt: delarna räknade för en kopia i origo (ovriden), staket relativt första punkten.
     const local = { ...p, x: 0, y: 0, z: 0, dz: 0, rot: 0 };
     if (p.pts) local.pts = p.pts.map(q => [q[0] - p.x, q[1] - p.y, (q[2] || 0) - (Number(p.z) || 0)]);
-    if ((lib.crew || lib.smart) && typeof crewMergeGroups === "function") { // bemanningen: delarna sammanslagna per färg (ett nät i stället för tusentals)
-      crewMergeGroups(placeParts(local, 48), [0, 0, 0]).forEach(G => {
-        if (!G.unlit) { const m0 = add(crewGroupGeometry(G), G.color, G.transp || 0); if (G.reach) m0.userData.noHit = true; return; }
-        const m = new THREE.Mesh(crewGroupGeometry(G), new THREE.MeshBasicMaterial({ color: new THREE.Color(G.color), side: THREE.DoubleSide })); m.userData.placeId = p.id; grp.add(m);
-      });
+    if ((lib.crew || lib.smart) && typeof smEditorBuild === "function") { // bemanningen och de smarta objekten: PBR-material och texturskyltar (place-smart.js)
+      smEditorBuild(p, grp, placeParts(local, 48));
     } else placeParts(local, 48).forEach(pt => { const m = add(pt.tris ? crewTrisGeometry(pt.tris, [0, 0, 0]) : prism(pt.poly, pt.z0, pt.z1), pt.color || p.color || lib.color || "#888888", pt.transp || 0); if (pt.role === "reach") m.userData.noHit = true; }); // räckvidden går inte att träffa (fästa, ställa på, markera)
     if (lib.fence && (p.pts || []).length === 1) add(prism([[-0.05, -0.05], [0.05, -0.05], [0.05, 0.05], [-0.05, 0.05]], 0, Number(p.H) || 2), p.color || lib.color, 0);
   }
@@ -829,7 +826,7 @@ function l3RebuildAsset(assetId) {
 }
 function l3RebuildOne(p) {
   const old = l3.placeMeshes.get(p.id);
-  if (old) { if (l3.gizmo.object === old) l3.gizmo.detach(); l3.groups.places.remove(old); old.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+  if (old) { if (l3.gizmo.object === old) l3.gizmo.detach(); l3.groups.places.remove(old); old.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); }
   const g = l3PlacementGroup(p); l3.groups.places.add(g); l3.placeMeshes.set(p.id, g);
   if (l3.hidden && l3.hidden.has(p.id)) g.visible = false;
   l3RefreshSel();
@@ -952,7 +949,7 @@ function l3SelDeco(g, on) {
   const meshes = []; g.traverse(o => { if (o.isMesh && !o.userData.selEdge) meshes.push(o); });
   meshes.forEach(o => {
     if (o.material && o.material.emissive) o.material.emissive.setHex(on ? L3_SEL_TINT : 0x000000);
-    if (on && !o.userData.selEdges && o.geometry) {
+    if (on && !o.userData.selEdges && !o.userData.noEdges && o.geometry) {
       const e = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 30), new THREE.LineBasicMaterial({ color: L3_SEL_COL, transparent: true, opacity: .9 }));
       e.renderOrder = 6; e.userData.selEdge = true; e.raycast = () => {};
       o.add(e); o.userData.selEdges = e;

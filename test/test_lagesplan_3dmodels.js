@@ -378,7 +378,7 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
     const O = l3.O, p = placeNew(t, [O[0] + 40, O[1] + 40, 0]); out.defaults = p.count === 4 && p.comment === '' && p.name === 'Bemanning Procyon 1'.replace(' 1', '') + ' ' + p.name.split(' ').pop() || /^Bemanning Procyon/.test(p.name);
     placements.push(p); placeTouch(p); l3AddPlacementMesh(p); l3SelectIds([p.id]); await wait(100);
     const side = document.getElementById('v3Side'); out.panel = !!side.querySelector('[data-crew="inc"]') && !!side.querySelector('[data-crew="comment"]');
-    const n0 = placeParts(p).filter(x => !x.tris).length; side.querySelector('[data-crew="inc"]').click(); await wait(100); const n1 = placeParts(p).filter(x => !x.tris).length; out.inc = p.count === 5 && n1 > n0;
+    const nv = () => placeParts(p).reduce((a, x) => a + (x.tris ? x.tris.faces.length : 1), 0), n0 = nv(); side.querySelector('[data-crew="inc"]').click(); await wait(100); const n1 = nv(); out.inc = p.count === 5 && n1 > n0;
     document.querySelector('#v3Side [data-crew="inc5"]').click(); await wait(100); out.inc5 = p.count === 10; document.querySelector('#v3Side [data-crew="dec"]').click(); await wait(100); out.dec = p.count === 9;
     const ta = document.querySelector('#v3Side [data-crew="comment"]'); ta.value = 'Armerar plattan, skift 1'; ta.dispatchEvent(new Event('change', { bubbles: true })); await wait(100); out.comment = p.comment === 'Armerar plattan, skift 1' && placeParts(p).some(x => x.tris && x.tris.faces.length > 100);
     out.mesh = l3.placeMeshes.get(p.id).children.length >= 3 && p.L > 2.4;

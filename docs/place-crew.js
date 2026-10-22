@@ -71,49 +71,78 @@ function crewWrap(text, max) {
   words.forEach(w => { while (w.length > max) { if (cur) { lines.push(cur); cur = ""; } lines.push(w.slice(0, max)); w = w.slice(max); } if ((cur + " " + w).trim().length > max) { lines.push(cur); cur = w; } else cur = (cur + " " + w).trim(); });
   if (cur) lines.push(cur); return lines.slice(0, 5);
 }
-/* Gubben: lowpoly-hjälte (stövlar, bälte, reflexväst, axelskydd, hjälm med skärm, skyddsglasögon). */
-const CREW_STYLES = [["a", "Lowpoly-hjälte"]];
-const crewStyleOf = () => "a";
-function crewPerson(style, add, P, col, hs) {
-  const R = (a0, a1, b0, b1) => [[a0, b0], [a1, b0], [a1, b1], [a0, b1]].map(([a, b]) => P(a, b)), O = (r, n, ox = 0, oy = 0) => Array.from({ length: n }, (_, i) => { const t = Math.PI / n + i * 2 * Math.PI / n; return P(ox + r * Math.cos(t), oy + r * Math.sin(t)); }), Z = v => v * hs;
-  const SK = "#e8b98f", PANTS = "#3b4252", BOOT = "#2a2118", SHIRT = "#35507d", GLOVE = "#2c3036", REF = "#f3f4f6";
-  // a: lowpoly-hjälte
-  add(R(-0.09, 0.16, -0.17, -0.01), 0, Z(0.11), BOOT); add(R(-0.09, 0.16, 0.01, 0.17), 0, Z(0.11), BOOT);
-  add(R(-0.065, 0.075, -0.15, -0.03), Z(0.11), Z(0.86), PANTS); add(R(-0.065, 0.075, 0.03, 0.15), Z(0.11), Z(0.86), PANTS);
-  add(R(-0.12, 0.12, -0.21, 0.21), Z(0.84), Z(0.94), "#2b2f3a"); add(R(-0.05, 0.05, 0.2, 0.27), Z(0.86), Z(1.0), "#5b4630");
-  add(R(-0.125, 0.125, -0.2, 0.2), Z(0.94), Z(1.2), col); add(R(-0.14, 0.14, -0.24, 0.24), Z(1.2), Z(1.42), col); add(R(-0.13, 0.13, -0.205, 0.205), Z(1.02), Z(1.09), REF); add(R(-0.145, 0.145, -0.245, 0.245), Z(1.28), Z(1.34), REF);
-  add(R(-0.075, 0.075, -0.35, -0.2), Z(1.3), Z(1.42), col); add(R(-0.075, 0.075, 0.2, 0.35), Z(1.3), Z(1.42), col);
-  add(R(-0.05, 0.05, -0.33, -0.24), Z(0.9), Z(1.32), SHIRT); add(R(-0.05, 0.05, 0.24, 0.33), Z(0.9), Z(1.32), SHIRT); add(R(-0.058, 0.058, -0.34, -0.23), Z(0.8), Z(0.9), GLOVE); add(R(-0.058, 0.058, 0.23, 0.34), Z(0.8), Z(0.9), GLOVE);
-  add(O(0.055, 10), Z(1.42), Z(1.48), SK); add(O(0.115, 12), Z(1.46), Z(1.66), SK); add(R(0.085, 0.125, -0.1, 0.1), Z(1.54), Z(1.6), "#1f2a37");
-  add(O(0.14, 12), Z(1.62), Z(1.72), col); add(O(0.115, 12), Z(1.72), Z(1.78), col); add(R(0.1, 0.23, -0.12, 0.12), Z(1.62), Z(1.65), col);
+/* Gubben (Victor 2026-10-23: "samma detaljnivå som mobilkranen"): byggare i arbetskläder byggd av riktiga former (TK i place-geo.js) – rundade ben och armar, kängor med sula, bälte med
+   verktygsficka och radio, reflexväst med band, händer i handskar, huvud med näsa, öron, ögon och skyddsglasögon samt skyddshjälm med skärm i entreprenörens färg.
+   lod 2 (≤ 12 personer) = full detalj, 1 (≤ 40) = medel, 0 (fler) = enkel – så att stora kluster inte blir tunga. Varje gubbe får lite egen hållning, hudton och längd. */
+const CREW_SKIN = ["#e3b28a", "#c98f66", "#8d5a3c", "#f0c9a3"], CREW_SHIRT = ["#3b5b8c", "#4a5d46", "#5b4a6e", "#3f4c5a"];
+function crewPerson(ctx, col, cx, cy, yaw, hs, i, lod) {
+  const c = Math.cos(yaw), s = Math.sin(yaw), P = (a, b) => [cx + a * c - b * s, cy + a * s + b * c], Z = v => v * hs, skin = CREW_SKIN[i % 4], shirt = CREW_SHIRT[(i * 3) % 4];
+  const PANTS = "#39424f", BOOT = "#2a2119", SOLE = "#14100c", REF = "#e9eef3", DARK = "#2a2e34", GLASS = "#18222e";
+  const bevel = lod === 2 ? 0.035 : lod === 1 ? 0.025 : 0, sg = lod === 2 ? [12, 7] : lod === 1 ? [8, 5] : [6, 4], lg = lod === 2 ? 10 : lod === 1 ? 7 : 5;
+  const swing = (((i * 37) % 7) - 3) * 0.035, step = (i % 3 === 1) ? 0.07 : 0, lean = (i % 5 === 2) ? 0.06 : 0;
+  const bx = (color, a, b, zz, sa, sb, sz, rot, bv, o) => { const [X, Y] = P(a, b); ctx.box(color, X, Y, Z(zz), sa, sb, Z(sz), rot ? [yaw + (rot[0] || 0), rot[1] || 0, rot[2] || 0] : [yaw, 0, 0], bv == null ? bevel : bv, o); };
+  const cy2 = (color, a, b, zz, r0, r1, len, rot, seg) => { const [X, Y] = P(a, b); ctx.cyl(color, "z", X, Y, Z(zz), r0, r1, Z(len), seg || lg, rot ? [yaw + (rot[0] || 0), rot[1] || 0, rot[2] || 0] : [yaw, 0, 0]); };
+  const sp = (color, a, b, zz, rx, ry, rz, rot, o) => { const [X, Y] = P(a, b); ctx.sph(color, X, Y, Z(zz), rx, ry, rz, sg[0], sg[1], rot ? [yaw + (rot[0] || 0), rot[1] || 0, rot[2] || 0] : [yaw, 0, 0], o); };
+  // ---- ben och kängor (steg: ena benet lite framför)
+  [[-1, 0], [1, step]].forEach(([sd, fw]) => { const b = sd * 0.1, a = fw;
+    bx(BOOT, a + 0.05, b, 0.075, 0.29, 0.135, 0.15, null, lod ? 0.04 : 0); if (lod) bx(SOLE, a + 0.055, b, 0.012, 0.3, 0.13, 0.026, null, 0);
+    if (lod === 2) sp(BOOT, a + 0.165, b, 0.06, 0.07, 0.062, 0.05);
+    cy2(PANTS, a, b, 0.33, 0.058, 0.07, 0.42, [0, fw ? -0.12 : 0, 0]); cy2(PANTS, a, b, 0.7, 0.07, 0.09, 0.42, [0, fw ? 0.12 : 0, 0]);
+    if (lod === 2) { sp(PANTS, a + 0.01, b, 0.5, 0.074, 0.074, 0.074); sp("#465163", a + 0.068, b, 0.52, 0.026, 0.055, 0.066); } // knä + knäskydd
+  });
+  // ---- höft, bälte, verktygsficka
+  bx(PANTS, 0, 0, 0.9, 0.24, 0.35, 0.2, null, lod ? 0.05 : 0); bx("#2b2f3a", 0, 0, 0.99, 0.25, 0.365, 0.05, null, lod ? 0.015 : 0); if (lod) { bx("#b8bcc2", 0.128, 0, 0.99, 0.012, 0.05, 0.035, null, 0, { metal: 0.85, rough: 0.3 }); bx("#5b4630", -0.01, 0.2, 0.88, 0.085, 0.07, 0.15, null, 0.02); }
+  if (lod === 2) { bx("#5b4630", 0.04, -0.2, 0.9, 0.075, 0.06, 0.13, null, 0.02); }
+  // ---- överkropp: elliptisk bål (tröja + reflexväst med band), axlar, radio
+  { const [X, Y] = P(0, 0), rot = [yaw + lean * 0.5, lean, 0], e = (color, z0, rx0, ry0, rx1, ry1, len, o) => ctx.ecyl(color, X, Y, Z(z0 + len / 2), rx0, ry0, rx1, ry1, Z(len), lod === 2 ? 14 : lod === 1 ? 10 : 6, rot, o);
+    e(shirt, 0.92, 0.1, 0.165, 0.118, 0.205, 0.5); sp(shirt, -0.005, 0, 1.4, 0.115, 0.215, 0.075, [0, 0, 0]);
+    e(col, 0.94, 0.108, 0.176, 0.126, 0.214, 0.43, { shin: 30 }); [-1, 1].forEach(sd => bx(col, 0.0, sd * 0.115, 1.395, 0.1, 0.075, 0.07, [0, 0, sd * 0.2], lod ? 0.025 : 0, { shin: 30 }));
+    if (lod) { [1.03, 1.255].forEach(zz => e(REF, zz, 0.116, 0.186, 0.12, 0.192, 0.04, { metal: 0.7, rough: 0.35 })); }
+    if (lod === 2) { [-1, 1].forEach(sd => { bx(REF, 0.118, sd * 0.088, 1.2, 0.01, 0.05, 0.3, [0, lean, 0], 0, { metal: 0.7, rough: 0.35 }); bx(REF, -0.118, sd * 0.088, 1.2, 0.01, 0.05, 0.3, [0, lean, 0], 0, { metal: 0.7, rough: 0.35 }); }); bx(DARK, 0.128, 0.115, 1.3, 0.045, 0.07, 0.11, null, 0.012); bx("#8a929b", 0.14, 0.115, 1.355, 0.008, 0.008, 0.07, null, 0); bx("#f2c230", 0.126, -0.1, 1.31, 0.012, 0.07, 0.05, null, 0.004); } }
+  // ---- armar med händer i handskar
+  [-1, 1].forEach(sd => { const b = sd * 0.24, sw = sd * swing;
+    sp(shirt, 0, b, 1.37, 0.062, 0.062, 0.062);
+    if (lod) { cy2(shirt, 0.0, b + sd * 0.02, 1.2, 0.044, 0.056, 0.3, [sw, 0, sd * 0.13]); sp(shirt, 0.01, b + sd * 0.03, 1.06, 0.047, 0.047, 0.047); cy2(shirt, 0.04, b + sd * 0.045, 0.93, 0.04, 0.046, 0.28, [sw, -0.28, sd * 0.07]);
+      cy2("#f2c230", 0.085, b + sd * 0.055, 0.815, 0.046, 0.046, 0.03, [sw, -0.28, sd * 0.07]); sp(DARK, 0.1, b + sd * 0.055, 0.78, 0.05, 0.045, 0.062); if (lod === 2) sp(DARK, 0.135, b + sd * 0.04, 0.8, 0.02, 0.017, 0.032); }
+    else { bx(shirt, 0.02, b + sd * 0.02, 1.07, 0.09, 0.09, 0.6, [0, -0.1, 0], 0); bx(DARK, 0.06, b + sd * 0.04, 0.75, 0.09, 0.09, 0.1, null, 0); } });
+  // ---- hals, huvud, ansikte
+  cy2(skin, 0.0, 0, 1.47, 0.048, 0.054, 0.09); sp(skin, 0.012, 0, 1.56, 0.1, 0.088, 0.112);
+  if (lod) { sp(skin, 0.098, 0, 1.545, 0.022, 0.02, 0.026); [-1, 1].forEach(sd => sp(skin, -0.005, sd * 0.09, 1.55, 0.018, 0.012, 0.03)); }
+  if (lod === 2) { [-1, 1].forEach(sd => { sp("#f4f1ec", 0.088, sd * 0.036, 1.575, 0.013, 0.016, 0.018); sp("#1c1713", 0.099, sd * 0.036, 1.575, 0.007, 0.008, 0.009); bx("#3b2a1e", 0.092, sd * 0.036, 1.6, 0.01, 0.04, 0.01, null, 0); }); bx("#7a4a3a", 0.098, 0, 1.51, 0.008, 0.04, 0.008, null, 0); }
+  if (lod) bx(GLASS, 0.094, 0, 1.575, 0.03, 0.17, 0.038, null, 0.012, { transp: 0.35, shin: 120, metal: 0.4, rough: 0.15 });
+  // ---- skyddshjälm med skärm (entreprenörens färg)
+  { const [X, Y] = P(0.005, 0), dome = [[0.118, 0], [0.128, 0.025], [0.125, 0.065], [0.108, 0.1], [0.075, 0.12], [0.03, 0.132], [0.0, 0.134]];
+    ctx.lathe(col, dome, X, Y, Z(1.605), lod === 2 ? 16 : lod === 1 ? 10 : 7, [yaw, 0, 0], { shin: 90 }); if (lod) { bx(col, 0.13, 0, 1.612, 0.1, 0.17, 0.014, [0, 0.12, 0], 0.005, { shin: 90 }); bx("#e9eef3", 0.0, 0, 1.742, 0.2, 0.034, 0.012, null, 0.004, { shin: 90 }); }
+    if (lod === 2) { bx("#20262c", -0.115, 0, 1.64, 0.03, 0.07, 0.04, null, 0.01); [-1, 1].forEach(sd => bx("#20262c", 0.0, sd * 0.088, 1.585, 0.01, 0.01, 0.07, [0, 0, sd * 0.35], 0)); } }
 }
 /* Delarna för placeringen p (i världskoordinater som övriga placeringar; z = underkant). */
 function crewParts(p, z) {
-  const lib = placeLib(p.type) || {}, col = p.color || lib.color || crewColor(lib.contractor), n = crewCount(p), { slots, R } = crewLayout(p), parts = [], style = crewStyleOf(p);
-  const W = (a, b) => placeToWorld(p, a, b), add = (pl, z0, z1, color, extra) => parts.push({ poly: pl, z0: z + z0, z1: z + z1, role: "body", transp: 0, color, ...(extra || {}) });
-  slots.forEach(([cx, cy], i) => {
-    const yaw = ((i * 137.5) % 360) * Math.PI / 180 * (i ? 0.35 : 0.2), c = Math.cos(yaw), s = Math.sin(yaw), hs = 0.96 + ((i * 53) % 9) / 100;
-    crewPerson(style, (pl, z0, z1, color) => add(pl, z0, z1, color), (a, b) => W(cx + a * c - b * s, cy + a * s + b * c), col, hs);
-  });
-  // skylt: stående kort (smCard i place-smart.js): färgat huvud "Entreprenör: X", "Antal YA" med stort tal, Område och Aktivitet (egen text eller vald aktivitet)
-  smCard({ parts, W, add, z }, { title: `ENTREPRENÖR: ${String(lib.contractor || "Bemanning")}`, color: col, left: ["ANTAL YA", String(n)], rows: [["Område", crewArea(p)], ["Aktivitet", crewActivity(p)], ...(smDateText(p) ? [["Datum", smDateText(p)]] : [])], zb: 2.45, b0: -(R + 0.2) });
-  return parts;
+  const lib = placeLib(p.type) || {}, col = p.color || lib.color || crewColor(lib.contractor), n = crewCount(p), { slots, R } = crewLayout(p), ctx = smMakeCtx(p, z, col), lod = n <= 12 ? 2 : n <= 40 ? 1 : 0;
+  slots.forEach(([cx, cy], i) => { const yaw = -Math.PI / 2 + ((((i * 137.5) % 360) - 180) * Math.PI / 180) * 0.22, hs = 0.96 + ((i * 53) % 9) / 100; crewPerson(ctx, col, cx, cy, yaw, hs, i, lod); });
+  smCard(ctx, { title: `Entreprenör: ${String(lib.contractor || "Bemanning")}`, icon: "hat", color: col, left: ["Antal YA", String(n)], rows: [["Område", crewArea(p)], ["Aktivitet", crewActivity(p)], ...(smDateText(p) ? [["Datum", smDateText(p)]] : [])], zb: 2.45, b0: -(R + 0.2) });
+  return ctx.flush();
 }
 /* Slår ihop alla delar med samma färg (och ur-belysning-flagga) till en enda trianglelista (pts relativt o, ytor 1-baserade): tusentals prismor blir några få nät. */
 function crewMergeGroups(parts, o) {
   const m = new Map();
   parts.forEach(pt => {
-    const k = (pt.color || "#888888") + "|" + (pt.unlit ? 1 : 0) + "|" + (pt.transp || 0) + "|" + (pt.role === "reach" ? 1 : 0), G = m.get(k) || m.set(k, { color: pt.color || "#888888", unlit: !!pt.unlit, transp: pt.transp || 0, reach: pt.role === "reach", pts: [], faces: [] }).get(k), base = G.pts.length;
-    if (pt.tris) { pt.tris.pts.forEach(q => G.pts.push([q[0] - o[0], q[1] - o[1], q[2] - o[2]])); pt.tris.faces.forEach(f => G.faces.push([f[0] + base, f[1] + base, f[2] + base])); return; }
+    if (pt.sign) return; const mt = pt.mat || {};
+    const k = (pt.color || "#888888") + "|" + (pt.unlit ? 1 : 0) + "|" + (pt.transp || 0) + "|" + (pt.role === "reach" ? 1 : 0) + "|" + (mt.shin == null ? "" : mt.shin) + "|" + (mt.metal == null ? "" : mt.metal) + "|" + (mt.rough == null ? "" : mt.rough), G = m.get(k) || m.set(k, { color: pt.color || "#888888", unlit: !!pt.unlit, transp: pt.transp || 0, reach: pt.role === "reach", mat: mt, pts: [], faces: [], sg: [] }).get(k), base = G.pts.length;
+    if (pt.tris) { pt.tris.pts.forEach(q => G.pts.push([q[0] - o[0], q[1] - o[1], q[2] - o[2]])); pt.tris.faces.forEach((f, i) => { G.faces.push([f[0] + base, f[1] + base, f[2] + base]); G.sg.push(pt.tris.sg ? pt.tris.sg[i] : 0); }); return; }
     const n = pt.poly.length; pt.poly.forEach(q => G.pts.push([q[0] - o[0], q[1] - o[1], pt.z0 - o[2]])); pt.poly.forEach(q => G.pts.push([q[0] - o[0], q[1] - o[1], pt.z1 - o[2]]));
-    for (let k2 = 1; k2 + 1 < n; k2++) G.faces.push([base + 1, base + k2 + 2, base + k2 + 1], [base + n + 1, base + n + k2 + 1, base + n + k2 + 2]);
-    for (let i = 0; i < n; i++) { const j = (i + 1) % n; G.faces.push([base + i + 1, base + j + 1, base + j + n + 1], [base + i + 1, base + j + n + 1, base + i + n + 1]); }
+    const fp = f => { G.faces.push(f); G.sg.push(0); };
+    for (let k2 = 1; k2 + 1 < n; k2++) { fp([base + 1, base + k2 + 2, base + k2 + 1]); fp([base + n + 1, base + n + k2 + 1, base + n + k2 + 2]); }
+    for (let i = 0; i < n; i++) { const j = (i + 1) % n; fp([base + i + 1, base + j + 1, base + j + n + 1]); fp([base + i + 1, base + j + n + 1, base + i + n + 1]); }
   });
   return [...m.values()];
 }
-function crewGroupGeometry(G) { // platt skuggning (ingen delning av hörn mellan ytor)
-  const pos = new Float32Array(G.faces.length * 9); G.faces.forEach((f, i) => f.forEach((v, j) => { const P = G.pts[v - 1]; pos[i * 9 + j * 3] = P[0]; pos[i * 9 + j * 3 + 1] = P[1]; pos[i * 9 + j * 3 + 2] = P[2]; }));
-  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
+function crewGroupGeometry(G) { // platta ytor för skarpa kanter, mjuka normaler där formen är rund (sg > 0)
+  const nF = G.faces.length, pos = new Float32Array(nF * 9), nor = new Float32Array(nF * 9), acc = new Map(), fn = new Float32Array(nF * 3);
+  G.faces.forEach((f, i) => { const A = G.pts[f[0] - 1], B = G.pts[f[1] - 1], C = G.pts[f[2] - 1]; for (let j = 0; j < 3; j++) { const P = G.pts[f[j] - 1]; pos[i * 9 + j * 3] = P[0]; pos[i * 9 + j * 3 + 1] = P[1]; pos[i * 9 + j * 3 + 2] = P[2]; }
+    const ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2], vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2]; let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; fn[i * 3] = nx; fn[i * 3 + 1] = ny; fn[i * 3 + 2] = nz;
+    if (G.sg[i]) f.forEach(v => { let a2 = acc.get(v); if (!a2) acc.set(v, a2 = [0, 0, 0]); a2[0] += nx; a2[1] += ny; a2[2] += nz; }); });
+  G.faces.forEach((f, i) => { for (let j = 0; j < 3; j++) { let n = G.sg[i] ? acc.get(f[j]) : [fn[i * 3], fn[i * 3 + 1], fn[i * 3 + 2]]; const l = Math.hypot(n[0], n[1], n[2]) || 1; nor[i * 9 + j * 3] = n[0] / l; nor[i * 9 + j * 3 + 1] = n[1] / l; nor[i * 9 + j * 3 + 2] = n[2] / l; } });
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setAttribute("normal", new THREE.BufferAttribute(nor, 3)); return g;
 }
 /* Panelen i 3D-editorn: entreprenör, antal (med knappar) och kommentar. onChange(p) ritar om. */
 function crewActOptions(p, cur) {
