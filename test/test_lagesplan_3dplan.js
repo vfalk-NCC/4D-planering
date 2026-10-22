@@ -435,7 +435,7 @@ const PP = [
     const wk2 = await page.evaluate(async () => {
       l3wInit(); const wait = ms => new Promise(r => setTimeout(r, ms)), key = (t, code) => document.body.dispatchEvent(new KeyboardEvent(t, { code, key: code.replace('Key', '').toLowerCase(), bubbles: true, cancelable: true }));
       l3SetPref('walkFollow', true); l3SetPref('navHelp', false); l3NavHelp(); l3SetPref('walkPerson', 'third'); l3SetPref('walkGhost', true); l3SetPref('walkJoy', true);
-      const gz = l3GroundZ(); l3wEnter(new THREE.Vector3(0, 0, gz)); l3w.yaw = 0; l3w.pitch = 0; l3wApply(); await wait(300);
+      const gz = l3GroundZ(); l3wEnter(new THREE.Vector3(0, 0, gz)); l3w.yaw = 0; l3w.heading = 0; l3w.pitch = 0; l3wApply(); await wait(300);
       const out = {};
       out.avatar = !!l3w.avatar && !!l3w.avatar.parent; out.camDist = l3.camera.position.distanceTo(l3w.p); out.joys = !!document.querySelector('.v3-joys:not(.hidden)');
       const a0 = l3w.p.clone(); key('keydown', 'KeyW'); await wait(500); key('keyup', 'KeyW'); out.walked = l3w.p.x - a0.x > 0.3; out.avFollows = Math.abs(l3w.avatar.position.x - l3w.p.x) < 1e-6 && Math.abs(l3w.avatar.position.y - l3w.p.y) < 1e-6;
@@ -461,7 +461,7 @@ const PP = [
     const wk3 = await page.evaluate(async () => {
       l3wInit(); const wait = ms => new Promise(r => setTimeout(r, ms)), key = (t, code) => document.body.dispatchEvent(new KeyboardEvent(t, { code, key: code.replace('Key', '').toLowerCase(), bubbles: true, cancelable: true }));
       l3SetPref('walkFollow', true); l3SetPref('navHelp', false); l3NavHelp(); l3SetPref('walkPerson', 'third'); l3SetPref('walkGhost', false); l3SetPref('walkJoy', false); l3SetPref('walkKind', 'crane');
-      const gz = l3GroundZ(); l3wEnter(new THREE.Vector3(0, 0, gz)); l3w.yaw = 0; l3w.pitch = 0; l3wApply(); await wait(300);
+      const gz = l3GroundZ(); l3wEnter(new THREE.Vector3(0, 0, gz)); l3w.yaw = 0; l3w.heading = 0; l3w.pitch = 0; l3wApply(); await wait(300);
       const out = {}; out.kind = l3w.kind; out.vehicle = !!l3w.cfg.vehicle; out.eye = l3w.eye; out.camFar = l3.camera.position.distanceTo(l3w.p) > 8; out.hasAv = !!l3w.avatar && l3w.avatar.children.length > 10;
       const x0 = l3w.p.x; key('keydown', 'KeyW'); await wait(900); key('keyup', 'KeyW'); out.drove = l3w.p.x - x0 > 0.8; out.travel = l3w.travel > 0.8;
       l3wWork(); await wait(1500); out.workOn = l3w.work > 0.7; l3wWork(); await wait(100);
@@ -483,6 +483,46 @@ const PP = [
     });
     if (wk3.kind !== 'crane' || !wk3.vehicle || wk3.eye < 3 || !wk3.camFar || !wk3.hasAv || !wk3.drove || !wk3.travel || !wk3.workOn || !wk3.noJump || !wk3.human || !wk3.jumpNoFollow || !wk3.landNoFollow || !wk3.slid || !wk3.notThrough || !wk3.ownRefused || !wk3.gone) fail('Gå-läge fordon/hopp/glid: ' + JSON.stringify(wk3));
     else console.log('OK: gå-läge – mobilkran i tredje person (kör, arbetsläge), hopp utan Följ marken, glid längs vägg, markerat objekt kräver markering');
+    // Mobilkran och grävmaskin: stödben, bom, radie, kranpanel och reglage.
+    const wk4 = await page.evaluate(async () => {
+      l3wInit(); const wait = ms => new Promise(r => setTimeout(r, ms)), key = (t, code) => document.body.dispatchEvent(new KeyboardEvent(t, { code, key: code, bubbles: true, cancelable: true }));
+      l3SetPref('walkFollow', true); l3SetPref('navHelp', false); l3NavHelp(); l3SetPref('walkPerson', 'third'); l3SetPref('walkGhost', true); l3SetPref('walkJoy', false); l3SetPref('walkKind', 'crane'); l3SetPref('walkRadius', true);
+      const gz = l3GroundZ(); l3wEnter(new THREE.Vector3(0, 0, gz)); l3w.yaw = 0; l3w.heading = 0; l3w.pitch = 0; l3wApply(); await wait(300); const out = {};
+      out.ctl0 = JSON.stringify(l3w.ctl); out.panelHidden = !document.querySelector('.v3-ctl:not(.hidden)');
+      l3wWork(); out.panel = !!document.querySelector('.v3-ctl:not(.hidden)'); await wait(5200); const c = l3w.ctl;
+      out.out = c.out; out.ang = c.ang; out.ext = c.ext; out.info = (l3w.info || []).map(x => x[0] + ':' + x[1]).join('|'); out.rings = l3w.avatar.children.some(ch => ch.type === 'Group' && ch.children.length > 10 && ch.visible);
+      // utan stödben åker man inte, med stödben ute blockeras körning
+      const x0 = l3w.p.x; key('keydown', 'KeyW'); await wait(500); key('keyup', 'KeyW'); out.blocked = Math.abs(l3w.p.x - x0) < 0.05;
+      // reglage: pil upp höjer bommen, sväng, utskjut med +, lina med ]
+      const a0 = l3w.ctlT.ang, s0 = l3w.ctlT.slew, e0 = l3w.ctlT.ext; key('keydown', 'ArrowDown'); await wait(500); key('keyup', 'ArrowDown'); out.angDown = l3w.ctlT.ang < a0 - 0.1;
+      key('keydown', 'ArrowLeft'); await wait(600); key('keyup', 'ArrowLeft'); out.slew = l3w.ctlT.slew > s0 + 0.2; key('keydown', 'Equal'); await wait(600); key('keyup', 'Equal'); out.extUp = l3w.ctlT.ext > e0 + 0.05;
+      await wait(1200); const R1 = (l3w.info.find(x => x[0] === 'Radie') || [])[1]; out.R1 = R1;
+      // sliders: sätt bomvinkel via panelen
+      const sl = document.querySelector('.v3-ctl [data-c="ang"]'); sl.value = 30; sl.dispatchEvent(new Event('input', { bubbles: true })); await wait(2500); out.sliderAng = Math.abs(l3w.ctl.ang - 30 * Math.PI / 180) < 0.08; const R2 = (l3w.info.find(x => x[0] === 'Radie') || [])[1]; out.radiusGrows = parseFloat(String(R2).replace(',', '.')) > parseFloat(String(R1).replace(',', '.'));
+      // ta in: stödben och bom
+      l3wWork(); await wait(7000); out.stowed = l3w.ctl.out < 0.02 && l3w.ctl.ang < 0.1 && l3w.ctl.ext < 0.02;
+      // grävmaskin
+      l3wSetKind('excavator'); l3wWork(); const e1 = JSON.stringify(l3w.ctl); out.excPanel = !!document.querySelector('.v3-ctl:not(.hidden) [data-cb="auto"]'); document.querySelector('.v3-ctl [data-cb="auto"]').click(); await wait(2500); out.dig = JSON.stringify(l3w.ctl) !== e1 && l3w.auto; out.reach = (l3w.info || []).some(x => /Räckvidd/.test(x[0]));
+      l3wSetKind('human'); out.hidden = !document.querySelector('.v3-ctl:not(.hidden)'); l3SetPref('walkKind', 'human'); l3wExit(true); return out;
+    });
+    if (!wk4.panelHidden || !wk4.panel || wk4.out < 0.97 || wk4.ang < 0.9 || wk4.ext < 0.25 || !wk4.rings || !/Radie/.test(wk4.info) || !wk4.blocked || !wk4.angDown || !wk4.slew || !wk4.extUp || !wk4.sliderAng || !wk4.radiusGrows || !wk4.stowed || !wk4.excPanel || !wk4.dig || !wk4.reach || !wk4.hidden) fail('Mobilkran/grävmaskin (stödben, bom, radie, panel, reglage): ' + JSON.stringify(wk4));
+    else console.log('OK: mobilkran – stödben ut, bom upp, radie och höjd, kranpanel och tangenter, stödben in; grävmaskin – reglage och automatisk grävning');
+    // Normal styrning i tredje person: W/S längs figurens riktning, A/D svänger – oberoende av hur vyn vridits.
+    const wk5 = await page.evaluate(async () => {
+      l3wInit(); const wait = ms => new Promise(r => setTimeout(r, ms)), key = (t, code) => document.body.dispatchEvent(new KeyboardEvent(t, { code, key: code.replace('Key', '').toLowerCase(), bubbles: true, cancelable: true }));
+      l3SetPref('walkFollow', true); l3SetPref('navHelp', false); l3NavHelp(); l3SetPref('walkPerson', 'third'); l3SetPref('walkGhost', true); l3SetPref('walkJoy', false); l3SetPref('walkKind', 'human');
+      const gz = l3GroundZ(); l3wEnter(new THREE.Vector3(0, 0, gz)); l3w.heading = 0; l3w.yaw = Math.PI / 2; l3w.pitch = 0; l3wApply(); l3w.lastLook = performance.now() + 60000; await wait(200); const out = {};
+      const p0 = l3w.p.clone(); key('keydown', 'KeyW'); await wait(500); key('keyup', 'KeyW'); const d1 = l3w.p.clone().sub(p0); out.fwdOwn = d1.x > 0.4 && Math.abs(d1.y) < 0.05; // vyn tittar åt +y men figuren går åt +x
+      const h0 = l3w.heading; key('keydown', 'KeyD'); await wait(500); key('keyup', 'KeyD'); out.turnsRight = l3w.heading < h0 - 0.5; out.stayedPut = l3w.p.distanceTo(p0.clone().add(d1)) < 0.05; // A/D svänger utan att gå sidledes
+      const p1 = l3w.p.clone(), hh = l3w.heading; key('keydown', 'KeyS'); await wait(400); key('keyup', 'KeyS'); const d2 = l3w.p.clone().sub(p1); out.backOwn = d2.x * -Math.cos(hh) + d2.y * -Math.sin(hh) > 0.15 === false || (d2.x * Math.cos(hh) + d2.y * Math.sin(hh)) < -0.15;
+      // kameran följer efter när man styr och inte tittat själv
+      l3w.lastLook = 0; l3w.yaw = Math.PI; key('keydown', 'KeyW'); await wait(1500); key('keyup', 'KeyW'); const wrap = a => Math.atan2(Math.sin(a), Math.cos(a)); out.camFollows = Math.abs(wrap(l3w.heading - l3w.yaw)) < 0.5;
+      // första person: blicken styr fortfarande (strafe)
+      l3wSetPerson('first'); l3w.yaw = Math.PI / 2; l3w.pitch = 0; const q0 = l3.camera.position.clone(); key('keydown', 'KeyW'); await wait(500); key('keyup', 'KeyW'); const d3 = l3.camera.position.clone().sub(q0); out.firstView = d3.y > 0.4 && Math.abs(d3.x) < 0.1;
+      l3SetPref('walkPerson', 'first'); l3wExit(true); return out;
+    });
+    if (!wk5.fwdOwn || !wk5.turnsRight || !wk5.stayedPut || !wk5.camFollows || !wk5.firstView) fail('Normal styrning i tredje person: ' + JSON.stringify(wk5));
+    else console.log('OK: tredje person – normal styrning (W/S längs egen riktning, A/D svänger), kameran följer efter, första person styr efter blicken');
     // Nederkanten: knappar för Status och Navigering (ingen knapp längre över bilden).
     const ft = await page.evaluate(() => {
       const L = () => document.getElementById('v3Legend'), N = () => document.getElementById('v3NavHelp'), bl = document.getElementById('v3FtLegend'), bn = document.getElementById('v3FtNav');
