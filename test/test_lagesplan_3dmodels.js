@@ -382,11 +382,40 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
     document.querySelector('#v3Side [data-crew="inc5"]').click(); await wait(100); out.inc5 = p.count === 10; document.querySelector('#v3Side [data-crew="dec"]').click(); await wait(100); out.dec = p.count === 9;
     const ta = document.querySelector('#v3Side [data-crew="comment"]'); ta.value = 'Armerar plattan, skift 1'; ta.dispatchEvent(new Event('change', { bubbles: true })); await wait(100); out.comment = p.comment === 'Armerar plattan, skift 1' && placeParts(p).some(x => x.tris && x.tris.faces.length > 100);
     out.mesh = l3.placeMeshes.get(p.id).children.length >= 3 && p.L > 2.4;
+    { const keep = window.l3plActs; window.l3plActs = () => [{ key: 'k1', name: 'Linje I - H gjutning', area: 'PRODUKTION / 741 Sektionsfickor', contractor: 'Procyon', start: '2026-10-19', end: '2026-10-23' }, { key: 'k2', name: 'Armering plattor', area: 'PRODUKTION / 742A Krönlinje J', contractor: 'Betongteknik', start: '2026-10-20', end: '2026-10-21' }];
+      const inp = document.querySelector('#v3Side [data-crew="act"]'); out.comboIn = !!inp; inp.focus(); await wait(80); out.comboList = !!document.querySelector('.v3-cb-list') && document.querySelectorAll('.v3-cb-it').length === 2 && /Linje I - H gjutning/.test(document.querySelector('.v3-cb-list').textContent) && /Entreprenörens aktiviteter/.test(document.querySelector('.v3-cb-list').textContent);
+      inp.value = 'armering'; inp.dispatchEvent(new Event('input', { bubbles: true })); await wait(60); out.comboFilter = document.querySelectorAll('.v3-cb-it').length === 1;
+      inp.value = 'linje'; inp.dispatchEvent(new Event('input', { bubbles: true })); await wait(60); document.querySelector('.v3-cb-it').dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); await wait(150);
+      out.comboPick = p.actName === 'Linje I - H gjutning' && p.actKey === 'k1' && crewArea({ ...p, area: '' }) === '741 - Sektionsfickor'; window.l3plActs = keep; p.actName = p.actKey = p.actArea = null; }
+    { const ta = document.querySelector('#v3Side [data-crew="comment"]'); ta.value = 'Live text'; ta.dispatchEvent(new Event('input', { bubbles: true })); out.live = p.comment === 'Live text'; await wait(350); ta.value = 'Armerar plattan, skift 1'; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.dispatchEvent(new Event('change', { bubbles: true })); await wait(100); const [cp] = placeCopies(p, 1, 3, true); out.copyKeeps = cp.comment === 'Armerar plattan, skift 1' && cp.count === p.count && cp.start === p.start; }
     p.comment = ''; p.itemId = 'crewx'; out.actFromItem = crewActivity(p) === 'X' && placeParts(p).some(x => x.tris); p.comment = 'Armerar plattan, skift 1'; p.itemId = null;
     const ifc = buildPlacementsIfc('T', new Set([p.id])); out.ifc = !!ifc && /IFCTRIANGULATEDFACESET/.test(ifc.text) && /Antal personer/.test(ifc.text) && /Armerar plattan, skift 1/.test(ifc.text) && /Procyon/.test(ifc.text);
     placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(l3.placeMeshes.get(p.id)); l3.placeMeshes.delete(p.id); l3SelectIds([]); items.pop(); items.pop();
     return out; });
   if (!Object.values(crew).every(v => v === true)) fail('Bemanning: ' + JSON.stringify(crew)); else console.log('OK: bemanning – gubbar per entreprenör i kluster, antal på knappar, kommentar-skylt och med i IFC');
+  // Smarta objekt: alla typer bygger delar, ligger i rätt mapp i biblioteket, redigeras i panelen och följer med i IFC.
+  const sm = await page.evaluate(async () => {
+    const out = {}, wait = ms => new Promise(r => setTimeout(r, ms)), O = l3.O, keys = smKeys();
+    out.n = keys.length >= 20; out.folders = ['Logistik', 'Lyft & montage', 'Risk & säkerhet', 'Kvalitet & uppföljning', 'Personal'].every(g => L3LIB_BUILTIN.includes(g));
+    out.menu = keys.every(k => l3libItems().some(it => it.k === 'sm:' + k)) && l3libFolderOf('sm:lyftkort') === 'g:Lyft & montage' && l3libFolderOf('sm:leverans') === 'g:Logistik' && l3libFolderOf('sm:avvikelse') === 'g:Kvalitet & uppföljning' && l3libFolderOf('sm:riskzon') === 'g:Risk & säkerhet';
+    const bad = []; keys.forEach(k => { try { const p = placeNew('sm:' + k, [O[0] + 50, O[1] + 50, 0]); if (placeLib(p.type).fence) { p.pts = [[p.x, p.y, 0], [p.x + 6, p.y + 3, 0]]; } const parts = placeParts(p); if (!parts.length) bad.push(k + ':tom'); const g = l3PlacementGroup(p); if (!g.children.length) bad.push(k + ':ingen mesh'); } catch (e) { bad.push(k + ':' + e.message); } });
+    out.build = bad.length === 0 ? true : bad.join(',');
+    const p = placeNew('sm:avvikelse', [O[0] + 60, O[1] + 60, 0]); out.init = p.f && p.f.status === 'Öppen' && /^Avvikelse/.test(p.name);
+    placements.push(p); placeTouch(p); l3AddPlacementMesh(p); l3SelectIds([p.id]); await wait(120);
+    const side = document.getElementById('v3Side'); out.panel = !!side.querySelector('[data-smf="rubrik"]') && !!side.querySelector('[data-smf="status"]');
+    const st = side.querySelector('[data-smf="status"]'); st.value = 'Åtgärdad'; st.dispatchEvent(new Event('change', { bubbles: true })); await wait(100); out.edit = p.f.status === 'Åtgärdad' && placeParts(p).some(x => x.color === '#22c55e');
+    const ifc = buildPlacementsIfc('T', new Set([p.id])); out.ifc = !!ifc && /IFCTRIANGULATEDFACESET/.test(ifc.text) && /Avvikelse \/ fr/.test(ifc.text) && /Status/.test(ifc.text);
+    placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(l3.placeMeshes.get(p.id)); l3.placeMeshes.delete(p.id); l3SelectIds([]);
+    out.datum = smDateText({ start: '2026-10-19' }) === 'mån 19 okt 2026' && smDateText({ start: '2026-10-19', end: '2026-10-23' }) === 'mån 19 okt – fre 23 okt 2026' && smDateText({}) === '' && smDateFieldsHtml({}).includes('data-gd="start"');
+    { const pd = placeNew('sm:riskzon', [O[0] + 70, O[1] + 70, 0]); pd.start = '2026-10-19'; pd.end = '2026-10-23'; out.datumSkylt = placeParts(pd).filter(x => x.tris).length >= 3; const t0 = placeParts({ ...pd, start: '', end: '' }).filter(x => x.tris).reduce((a2, x) => a2 + x.tris.faces.length, 0), t1 = placeParts(pd).filter(x => x.tris).reduce((a2, x) => a2 + x.tris.faces.length, 0); out.datumMer = t1 > t0; }
+    { const oP = uiPrompt, oA = askOpener, calls = []; uiPrompt = async (t, def) => { calls.push(['prompt', def]); return 'Mitt IFC-namn'; }; askOpener = async (type, extra) => { calls.push([type, extra && extra.fileName]); return { n: 2, files: ['x.ifc'] }; };
+      await l3SaveIfc(); out.nameAsked = calls.length >= 2 && calls[0][0] === 'prompt' && /^Etablering/.test(calls[0][1]) && calls.some(c => c[0] === 'placeSaveIfc' && c[1] === 'Mitt IFC-namn');
+      calls.length = 0; uiPrompt = async () => null; await l3SaveIfc(); out.nameCancel = !calls.some(c => c[0] === 'placeSaveIfc'); uiPrompt = oP; askOpener = oA; }
+    // sammanställning av bemanning
+    items.push({ id: 'smx', contractor: 'Wikströms', area: 'PRODUKTION / 741 Sektionsfickor', activity: 'A' }); const c1 = placeNew(crewType('Wikströms'), [O[0] + 1, O[1] + 1, 0]); c1.itemId = 'smx'; c1.count = 6; placements.push(c1);
+    const rows = crewReportRows(); out.report = rows.length === 1 && rows[0].n === 6 && rows[0].area === '741 - Sektionsfickor' && rows[0].co === 'Wikströms'; placements.splice(placements.indexOf(c1), 1); items.pop();
+    return out; });
+  if (!Object.values(sm).every(v => v === true)) fail('Smarta objekt: ' + JSON.stringify(sm)); else console.log('OK: smarta objekt – mappar i biblioteket, alla typer bygger, panel med fält och IFC, sammanställning av bemanning');
   // Mobilkranen lyfter ett objekt ur modellen: haka i, bär (pendlar efter kroken), sätt ner = flytt som kan ångras.
   const lift1 = await page.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), out = {};

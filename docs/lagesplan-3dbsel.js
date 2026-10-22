@@ -433,7 +433,9 @@ async function l3ExportSelected() {
     try {
       l3Status(`Exporterar ${pending.length} etableringsobjekt som IFC i Trimble Connect…`);
       if (typeof placeSaveNow === "function") await placeSaveNow();
-      const r = await askOpener("placeSaveIfc", { ids: pending }, 0);
+      const fileName = await uiPrompt("Namn på IFC-filen med etableringsobjekten (datum och klockslag läggs till):", "Etablering urval " + pending.length + " objekt", { ok: "Exportera" });
+      if (fileName == null) throw new Error("exporten avbröts (inget namn angavs).");
+      const r = await askOpener("placeSaveIfc", { ids: pending, fileName: String(fileName).trim() }, 0);
       if (r && r.n) (r.files || [r.name]).filter(Boolean).forEach(x => done.push(x)); else fail.push("Etableringsobjekten: ingenting att spara (saknar form).");
     } catch (e) { fail.push("Etableringsobjekten: " + e.message); }
   }

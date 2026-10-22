@@ -782,9 +782,9 @@ function l3PlacementGroup(p) {
     // Biblioteksobjekt: delarna räknade för en kopia i origo (ovriden), staket relativt första punkten.
     const local = { ...p, x: 0, y: 0, z: 0, dz: 0, rot: 0 };
     if (p.pts) local.pts = p.pts.map(q => [q[0] - p.x, q[1] - p.y, (q[2] || 0) - (Number(p.z) || 0)]);
-    if (lib.crew && typeof crewMergeGroups === "function") { // bemanningen: delarna sammanslagna per färg (ett nät i stället för tusentals)
+    if ((lib.crew || lib.smart) && typeof crewMergeGroups === "function") { // bemanningen: delarna sammanslagna per färg (ett nät i stället för tusentals)
       crewMergeGroups(placeParts(local, 48), [0, 0, 0]).forEach(G => {
-        if (!G.unlit) { add(crewGroupGeometry(G), G.color, 0); return; }
+        if (!G.unlit) { const m0 = add(crewGroupGeometry(G), G.color, G.transp || 0); if (G.reach) m0.userData.noHit = true; return; }
         const m = new THREE.Mesh(crewGroupGeometry(G), new THREE.MeshBasicMaterial({ color: new THREE.Color(G.color), side: THREE.DoubleSide })); m.userData.placeId = p.id; grp.add(m);
       });
     } else placeParts(local, 48).forEach(pt => { const m = add(pt.tris ? crewTrisGeometry(pt.tris, [0, 0, 0]) : prism(pt.poly, pt.z0, pt.z1), pt.color || p.color || lib.color || "#888888", pt.transp || 0); if (pt.role === "reach") m.userData.noHit = true; }); // räckvidden går inte att träffa (fästa, ställa på, markera)
@@ -1060,6 +1060,7 @@ function l3AddAt(e) {
   }
   placeSnapshot();
   const p = placeNew(l3.addType, pt);
+  { const lb = placeLib(p.type) || {}; if ((lb.crew || lb.smart) && !p.start) { const day = ($("dateInput") || {}).value || (typeof todayIso === "function" ? todayIso() : ""); if (day) { p.start = day; p.end = day; } } } // datumet det gäller förifylls med dagens/valda datum (ändras i panelen)
   placements.push(p); placeTouch(p);
   l3AddPlacementMesh(p);
   if (fence) { l3.fenceId = p.id; l3Status("Staket: tryck nästa punkt – Enter eller Esc när du är klar."); }
@@ -1315,7 +1316,7 @@ function l3RenderSide(liveOnly) {
     <div class="v3-grid">${f("x", "X")}${f("y", "Y")}${f("zAbs", "Z underkant", "0.01", placeBaseZ(p))}${f("dz", "Över ytan")}${lib.fence ? "" : f("rot", "Vridning", "1", p.rot, "°")}</div>
     <div class="v3-sub v3-ztop" title="Modellens koordinater: SWEREF 99 20 15 och modellens höjdsystem">${l3ZText(p)}</div>
     ${lib.fence ? "" : `<div class="v3-handles"><span>Handtag</span><button type="button" data-v3mode="translate" title="Pilar för att flytta (W)">↔ Flytta</button><button type="button" data-v3mode="rotate" title="Ring för att vrida (E)">⟳ Vrid</button></div>`}
-    ${lib.crew && typeof crewSideHtml === "function" ? crewSideHtml(p) : ""}
+    ${lib.crew && typeof crewSideHtml === "function" ? crewSideHtml(p) : ""}${lib.smart && typeof smartSideHtml === "function" ? smartSideHtml(p) : ""}
     <div class="v3-sec">Mått</div>
     <div class="v3-grid">${lib.isModel ? (A && A.kind === "mesh" ? f("mH", "Höjd", "0.1", mH) : `<div class="v3-sub">${typeof placeModelDims === "function" ? escHtml(placeModelDims(p)) : ""}</div>`) : lib.fence ? f("H", "Höjd") : f("L", "Längd") + f("B", "Bredd") + f("H", "Höjd")}
       ${lib.R ? f("R", "Räckvidd", "1") : ""}${!lib.isModel ? `<label><span>Färg</span><input type="color" data-v3f="color" value="${col}" /></label>` : ""}</div>
@@ -1354,6 +1355,7 @@ function l3RenderSide(liveOnly) {
       if (k === "itemId" || k === "color") { side.dataset.id = ""; l3RenderSide(); }
     };
   });
+  if (lib.smart && typeof smartBindSide === "function") smartBindSide(side, p, () => { l3RebuildOne(p); l3Changed(); side.dataset.id = ""; l3RenderSide(); });
   if (lib.crew && typeof crewBindSide === "function") crewBindSide(side, p, () => { l3RebuildOne(p); l3Changed(); side.dataset.id = ""; const act = document.activeElement; l3RenderSide(); });
   side.querySelectorAll("[data-v3mode]").forEach(b => { b.classList.toggle("on", b.dataset.v3mode === l3.gizmo.mode); b.onclick = () => l3Mode(b.dataset.v3mode); });
   side.querySelector("#v3Drop").onclick = l3DropSel;
@@ -1604,7 +1606,9 @@ async function l3SaveIfc() {
   l3Status("Sparar etableringen och skapar IFC i Trimble Connect…");
   try {
     await placeSaveNow();
-    const r = await askOpener("placeSaveIfc", {}, 0);
+    const fileName = await uiPrompt("Namn på IFC-filen (datum och klockslag läggs till så att inget skrivs över):", "Etablering " + (typeof projectName !== "undefined" && projectName ? projectName : ""), { ok: "Spara i Trimble Connect" });
+    if (fileName == null) { l3Status("Sparandet avbröts."); b.disabled = false; return; }
+    const r = await askOpener("placeSaveIfc", { fileName: String(fileName).trim() }, 0);
     const msg = r && r.n ? `✓ ${r.n} objekt sparade som IFC i Trimble Connect${r.files ? ` (${r.files.join(", ")})` : ""}.` : "Inget att spara.";
     l3Status(msg); l3Toast(msg);
   } catch (e) { l3Status("Kunde inte spara som IFC: " + e.message, true); }

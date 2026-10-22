@@ -459,7 +459,7 @@ async function lagesplanHandle(msg, reply, progress) {
       if (typeof placeSaveIfc !== "function") throw new Error("Placera i 3D finns inte i den här versionen av 4D-planering.");
       if (placeDirty.size || placeDeleted.size) await placeSaveNow();
       await place3dLoad({ fresh: true });
-      const r = await placeSaveIfc(Array.isArray(msg.ids) && msg.ids.length ? { ids: msg.ids.map(String) } : {});
+      const r = await placeSaveIfc({ ...(Array.isArray(msg.ids) && msg.ids.length ? { ids: msg.ids.map(String) } : {}), ...(msg.fileName ? { fileName: String(msg.fileName) } : {}) });
       reply(r || { n: 0 });
     } else if (msg.type === "placeIfcText") {
       if (typeof placeIfcTextFor !== "function") throw new Error("Placera i 3D finns inte i den här versionen av 4D-planering.");

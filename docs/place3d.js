@@ -28,6 +28,7 @@ const PLACE_LIB = {
 function placeLib(type) {
   if (PLACE_LIB[type]) return PLACE_LIB[type];
   if (String(type || "").startsWith("crew:") && typeof crewLib === "function") return crewLib(type);
+  if (String(type || "").startsWith("sm:") && typeof smartLib === "function") return smartLib(type);
   if (String(type || "").startsWith("model:")) {
     const a = typeof placeAssetOf === "function" ? placeAssetOf(type.slice(6)) : null;
     return { group: "Egna modeller", label: a ? a.name : "Modell (saknas)", color: "#64748b", model: a || null, isModel: true };
@@ -93,6 +94,7 @@ function placeParts(p, ringN = 48) {
   const L = Math.max(0.01, Number(p.L) || 0), B = Math.max(0.01, Number(p.B) || 0), lib = placeLib(p.type) || {};
   const tr = Number(lib.transp) || 0;
   if (lib.crew && typeof crewParts === "function") return crewParts(p, z);
+  if (lib.smart && typeof smartParts === "function") return smartParts(p, z);
   if (lib.isModel) {
     // Egen modell: förhandsvisningen är modellens omslutande låda.
     const a = lib.model;
@@ -338,6 +340,7 @@ function placeNew(type, pt) {
     L: lib.L || 0, B: lib.B || 0, H: lib.H, R: lib.R || 0, rot: 0, dz: 0, color: lib.color,
     created_at: new Date().toISOString(), by: settings.userName || null };
   if (lib.fence) p.pts = [[p.x, p.y, p.z]];
+  if (lib.smart && typeof smartInit === "function") smartInit(p);
   if (lib.crew) { p.count = 4; p.comment = ""; if (typeof crewSync === "function") crewSync(p); }
   if (lib.isModel) { p.scale = (lib.model && lib.model.scale) || 1; p.L = 0; p.B = 0; p.H = 0; p.color = "#64748b"; }
   return p;
@@ -453,9 +456,9 @@ function buildPlacementsIfc(projName, only) {
     const it = placeItemOf(p);
     const start = p.start || (it && it.startDate) || "", end = p.end || (it && it.endDate) || "";
     const mk = (role, name, salt) => {
-      const meshes = lib.isModel ? (role === "body" ? placeModelMeshes(doc, p, o) : []) : lib.crew && typeof crewMergeGroups === "function" ? (role === "body" ? crewMergeGroups(parts, o).map(G => {
+      const meshes = lib.isModel ? (role === "body" ? placeModelMeshes(doc, p, o) : []) : (lib.crew || lib.smart) && typeof crewMergeGroups === "function" ? (role === "body" ? crewMergeGroups(parts, o).map(G => {
         const pl = E(`IFCCARTESIANPOINTLIST3D((${G.pts.map(ifcPt).join(",")}))`), m = E(`IFCTRIANGULATEDFACESET(${pl},$,.T.,(${G.faces.map(f => `(${f.join(",")})`).join(",")}),$)`);
-        E(`IFCSTYLEDITEM(${m},(${doc.style(`${G.color}:0`, G.color, lib.label, 0)}),$)`); return m; }) : []) : parts.filter(pt => pt.role === role).map(pt => {
+        E(`IFCSTYLEDITEM(${m},(${doc.style(`${G.color}:${G.transp}`, G.color, lib.label, G.transp)}),$)`); return m; }) : []) : parts.filter(pt => pt.role === role).map(pt => {
         const m = pt.tris ? placeTrisMesh(doc, pt.tris, o) : placePrismMesh(doc, pt.poly, pt.z0, pt.z1, o);
         const col = pt.color || p.color || lib.color || "#888888";
         E(`IFCSTYLEDITEM(${m},(${doc.style(`${col}:${pt.transp}`, col, lib.label, pt.transp)}),$)`);
@@ -473,7 +476,8 @@ function buildPlacementsIfc(projName, only) {
       props.push(["Modell", a.name || ""], ["Källa", a.source || ""], ["Upphov", a.author || ""], ["Licens", a.license || ""], ["Länk", a.url || ""],
         ["Skala", k], ["Vridning grader", Number(p.rot) || 0], ["Bredd m", placeR3((b.max[0] - b.min[0]) * k)], ["Djup m", placeR3((b.max[1] - b.min[1]) * k)]);
       p = { ...p, H: (b.max[2] - b.min[2]) * k };
-    } else if (lib.crew) props.push(["Entreprenör", lib.contractor || ""], ["Antal personer (YA)", Number(p.count) || 1], ["Område", typeof crewArea === "function" ? crewArea(p) : ""], ["Aktivitet på skylten", typeof crewActivity === "function" ? crewActivity(p) : ""], ["Kommentar", p.comment || ""], ["Vridning grader", Number(p.rot) || 0]);
+    } else if (lib.smart) props.push(...smartProps(p), ["Längd m", placeR3(Number(p.L) || 0)], ["Bredd m", placeR3(Number(p.B) || 0)], ["Vridning grader", Number(p.rot) || 0]);
+    else if (lib.crew) props.push(["Entreprenör", lib.contractor || ""], ["Antal personer (YA)", Number(p.count) || 1], ["Gäller datum", typeof smDateText === "function" ? smDateText(p) : ""], ["Område", typeof crewArea === "function" ? crewArea(p) : ""], ["Aktivitet på skylten", typeof crewActivity === "function" ? crewActivity(p) : ""], ["Kommentar", p.comment || ""], ["Vridning grader", Number(p.rot) || 0]);
     else if (!lib.fence) props.push(["Längd m", placeR3(Number(p.L) || 0)], ["Bredd m", placeR3(Number(p.B) || 0)], ["Vridning grader", Number(p.rot) || 0]);
     else props.push(["Längd m", placeR3(parts.reduce((s, pt) => s + Math.hypot(pt.poly[1][0] - pt.poly[0][0], pt.poly[1][1] - pt.poly[0][1]), 0))]);
     props.push(["Höjd m", placeR3(Number(p.H) || 0)]);
@@ -508,7 +512,8 @@ async function placeSaveIfc(opts = {}) {
   const nm = placeNameOpt, custom = !only && nm.custom && String(nm.text || "").replace(/\.ifc$/i, "").trim();
   if (!only && nm.custom && !custom) { setPlaceStatus("Skriv ett eget namn – eller bocka ur Eget namn för autonamn.", true); return null; }
   if (custom && !nm.stamp && !confirm(`Du har valt ett eget namn utan datum och klockslag ("${custom}.ifc").\n\nFinns det redan en fil med exakt det namnet i "${PLACE_TC_FOLDER}" blir den nya filen en NY VERSION av den filen i Trimble Connect.\n\nFortsätta ändå?`)) return null;
-  const name = (custom ? `${custom}${nm.stamp ? " " + stamp : ""}.ifc` : `Etablering${only ? ` urval ${only.size} objekt` : ""} ${projName || "4D-planering"} ${stamp}.ifc`).replace(/[\\/:*?"<>|]/g, "-");
+  const given = String(opts.fileName || "").replace(/\.ifc$/i, "").trim(); // namnet från dialogen i 3D-editorn
+  const name = (given ? `${given} ${stamp}.ifc` : custom ? `${custom}${nm.stamp ? " " + stamp : ""}.ifc` : `Etablering${only ? ` urval ${only.size} objekt` : ""} ${projName || "4D-planering"} ${stamp}.ifc`).replace(/[\\/:*?"<>|]/g, "-");
   const files = [...(r ? [new File([new TextEncoder().encode(r.text)], name, { type: "application/x-step" })] : []), ...extra];
   if (nm.local && !only) files.forEach(f => { try { const url = URL.createObjectURL(f), a = document.createElement("a"); a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 30000); } catch (e) { /* ingen kopia på datorn */ } });
   const n = (r ? r.n : 0) + extra.length;

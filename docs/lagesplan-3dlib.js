@@ -12,7 +12,8 @@
 
 const l3lib = { folders: [], map: {}, loaded: false, loading: null, pid: null };
 const l3libPath = () => `projects/${encodeURIComponent(projectId)}/plan_libfolders.json`;
-const L3LIB_BUILTIN = ["Etablering", "Maskiner", "Säkerhet", "Personal", "Egna modeller"];
+const L3LIB_CLOSED0 = ["g:Logistik", "g:Lyft & montage", "g:Risk & säkerhet", "g:Kvalitet & uppföljning"]; // nya smarta mappar är hopfällda från början
+const L3LIB_BUILTIN = ["Etablering", "Maskiner", "Säkerhet", "Personal", "Logistik", "Lyft & montage", "Risk & säkerhet", "Kvalitet & uppföljning", "Egna modeller"];
 
 function l3libLoad() {
   if (l3lib.pid !== projectId) { l3lib.pid = projectId; l3lib.loaded = false; l3lib.loading = null; l3lib.folders = []; l3lib.map = {}; }
@@ -40,7 +41,7 @@ function l3libFolders() {
   const own = l3lib.folders.filter(f => !String(f.id).startsWith("g:")).sort((a, b) => a.name.localeCompare(b.name, "sv", { numeric: true }));
   return [...fixed, ...own];
 }
-const l3libDefault = type => "g:" + (String(type).startsWith("model:") ? "Egna modeller" : String(type).startsWith("crew:") ? "Personal" : ((PLACE_LIB[type] || {}).group || "Etablering"));
+const l3libDefault = type => "g:" + (String(type).startsWith("model:") ? "Egna modeller" : String(type).startsWith("crew:") ? "Personal" : String(type).startsWith("sm:") && typeof smartLib === "function" ? smartLib(type).group : ((PLACE_LIB[type] || {}).group || "Etablering"));
 function l3libFolderOf(type) {
   const f = l3lib.map[type];
   return f && (String(f).startsWith("g:") || l3lib.folders.some(x => x.id === f)) ? f : l3libDefault(type);
@@ -51,6 +52,7 @@ function l3libItems() {
   return [
     ...Object.entries(PLACE_LIB).map(([k, l]) => ({ k, label: l.label, color: l.color, own: false })),
     ...(typeof crewContractors === "function" ? [...crewContractors(), ""].map(c => ({ k: crewType(c), label: c ? "Bemanning " + c : "Bemanning (ingen entreprenör)", color: crewColor(c), own: false })) : []),
+    ...(typeof smKeys === "function" ? smKeys().map(k => ({ k: "sm:" + k, label: SM[k].label, color: SM[k].color, own: false })) : []),
     ...assets.map(a => ({ k: `model:${a.id}`, label: a.name, color: a.kind === "ifc" ? "#0e7490" : "#64748b", own: true, a })),
   ];
 }
@@ -137,7 +139,7 @@ function l3RenderLib() {
   const q = ((document.getElementById("v3PalSearch") || {}).value || "").trim().toLowerCase();
   const esc = escHtml, I = L3_ICO, items = l3libItems();
   // Mapparna fälls ihop/ut med ett klick på rubriken; valet sparas. Vid sökning visas alla träffar.
-  const closed = new Set(l3Prefs().palClosed || []);
+  const closed = new Set(l3Prefs().palClosed || L3LIB_CLOSED0);
   const html = l3libFolders().map(f => {
     const all = items.filter(it => l3libFolderOf(it.k) === f.id), list = all.filter(it => !q || it.label.toLowerCase().includes(q));
     if (q && !list.length) return "";
@@ -153,7 +155,7 @@ function l3RenderLib() {
   }).join("");
   el.innerHTML = (html || `<div class="v3-pal-hint">Inget matchar "${esc(q)}".</div>`) + `<button type="button" class="v3-lf-new" id="v3LibNew" title="Ny mapp i biblioteket – dra sedan objekt dit">＋ Ny mapp</button>`;
   el.querySelectorAll("[data-v3grp]").forEach(b => { b.onclick = () => {
-    const g = b.dataset.v3grp, set = new Set(l3Prefs().palClosed || []);
+    const g = b.dataset.v3grp, set = new Set(l3Prefs().palClosed || L3LIB_CLOSED0);
     if (b.getAttribute("aria-expanded") === "true") set.add(g); else set.delete(g);
     l3SetPref("palClosed", [...set]); l3RenderLib();
   }; });

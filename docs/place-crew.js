@@ -27,11 +27,13 @@ function crewSlots(n) {
 const crewDash = a => String(a || "").trim().replace(/^(\d{3}\w{0,2})\s+(?!-\s)(?=\S)/, "$1 - ");
 function crewArea(p) { // Område på skylten: eget (t.ex. "741 - Sektionsfickor"), annars den valda aktivitetens område
   const own = String(p.area || "").trim(); if (own) return crewDash(own);
+  if (p.actArea) return crewDash(p.actArea);
   const it = p.itemId && typeof items !== "undefined" ? items.find(x => x.id === p.itemId) : null; return it ? crewDash(String(it.area || "").split(" / ").pop()) : "";
 }
 function crewAreaChoices() { const s = new Set(); (typeof items !== "undefined" ? items : []).forEach(r => { const a = crewDash(String(r.area || "").split(" / ").pop()); if (a) s.add(a); }); return [...s].sort((a, b) => a.localeCompare(b, "sv", { numeric: true })); }
 function crewActivity(p) { // Aktivitet på skylten: egen text, annars den valda aktiviteten (4D)
   const own = String(p.comment || "").trim(); if (own) return own;
+  if (p.actName) return String(p.actName).trim();
   const it = p.itemId && typeof items !== "undefined" ? items.find(x => x.id === p.itemId) : null; return it ? String(it.activity || it.object_name || it.objectName || "").trim() : "";
 }
 const crewCount = p => Math.max(1, Math.min(CREW_MAX, Math.round(Number(p.count) || 1)));
@@ -85,31 +87,15 @@ function crewParts(p, z) {
     const yaw = ((i * 137.5) % 360) * Math.PI / 180 * (i ? 0.35 : 0.2), c = Math.cos(yaw), s = Math.sin(yaw), hs = 0.96 + ((i * 53) % 9) / 100;
     crewPerson(style, (pl, z0, z1, color) => add(pl, z0, z1, color), (a, b) => W(cx + a * c - b * s, cy + a * s + b * c), col, hs);
   });
-  // skylt: stående kort (ur belysning, alltid läsbart) – färgat huvud "Entreprenör: X", "Antal YA" med stort tal och "Aktivitet" med egen text eller vald aktivitet; stolpar, vänd mot lokala −b
-  const cname = String(lib.contractor || "Bemanning"), act = crewActivity(p), TW = { loc: [], faces: [] }, TG = { loc: [], faces: [] }, TD = { loc: [], faces: [] }, wd = s2 => ifcTextStrokes(s2).width / 6;
-  const head = `ENTREPRENÖR: ${cname}`.toUpperCase(), hs0 = 0.22, colW = 0.95, vs = 0.2, lh = 0.3, area = crewArea(p), areaLines = area ? crewWrap(area, 30).map(x => x.toUpperCase()) : [], actLines = act ? crewWrap(act, 30).map(x => x.toUpperCase()) : [];
-  const blk = ls => 0.13 + 0.08 + vs + (Math.max(1, ls.length) - 1) * lh + 0.2, need = Math.max(wd(head) * hs0 + 0.4, colW + 0.5 + Math.max(2.0, ...areaLines.map(l => wd(l) * vs + 0.1), ...actLines.map(l => wd(l) * vs + 0.1)));
-  const w2 = Math.max(1.7, need / 2), hdr = 0.52, bodyH = Math.max(1.02, 0.12 + blk(areaLines) + blk(actLines) + 0.04), hh = hdr + bodyH, b0 = -(R + 0.2), zb = 2.45, rect = (a0, a1, b1, b2) => [[a0, b1], [a1, b1], [a1, b2], [a0, b2]].map(([a, b]) => W(a, b));
-  add(rect(-w2 + 0.15, -w2 + 0.23, b0 - 0.03, b0 + 0.01), 0, zb + 0.02, "#6b7280"); add(rect(w2 - 0.23, w2 - 0.15, b0 - 0.03, b0 + 0.01), 0, zb + 0.02, "#6b7280");   // stolpar
-  add(rect(-w2 - 0.05, w2 + 0.05, b0 - 0.005, b0 + 0.04), zb - 0.05, zb + hh + 0.05, "#cbd5e1", { unlit: true });                                                  // kant bakom
-  add(rect(-w2, w2, b0 - 0.03, b0 + 0.01), zb, zb + hh, "#ffffff", { unlit: true });                                                                                  // kortet
-  add(rect(-w2, w2, b0 - 0.035, b0 + 0.012), zb + bodyH, zb + hh, col, { unlit: true });                                                                              // färgat huvud
-  add(rect(-w2 + colW + 0.25, -w2 + colW + 0.27, b0 - 0.035, b0 + 0.012), zb + 0.15, zb + bodyH - 0.12, "#d1d5db", { unlit: true });                                  // skiljelinje
-  const bT = b0 - 0.05, ax = -w2 + 0.2, rx = -w2 + colW + 0.45; let y = zb + bodyH - 0.12;
-  crewText(TW, head, hs0, ax, zb + bodyH + (hdr - hs0) / 2, bT, "l", true);                                                                                            // "ENTREPRENÖR: X" (vit)
-  crewText(TG, "ANTAL YA", 0.13, ax, zb + bodyH - 0.3, bT, "l", false); crewText(TD, String(n), 0.44, ax, zb + bodyH - 0.86, bT, "l", true);                            // antal
-  [["OMRÅDE", areaLines], ["AKTIVITET", actLines]].forEach(([lab, ls]) => { const lb = y - 0.13; crewText(TG, lab, 0.13, rx, lb, bT, "l", false);
-    if (ls.length) ls.forEach((l, i) => crewText(TD, l, vs, rx, lb - 0.08 - vs - i * lh, bT, "l", i === 0 && ls.length === 1)); else crewText(TG, "–", 0.2, rx, lb - 0.08 - vs, bT, "l", false); y -= blk(ls); });
-  [[TW, "#ffffff"], [TG, "#6b7280"], [TD, "#111827"]].forEach(([T2, color]) => { if (!T2.faces.length) return;
-    const pts2 = T2.loc.map(([a, b2, zz]) => { const w = W(a, b2); return [w[0], w[1], z + zz]; }), xs = pts2.map(q => q[0]), ys = pts2.map(q => q[1]), zs = pts2.map(q => q[2]);
-    parts.push({ tris: { pts: pts2, faces: T2.faces }, poly: [[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)], [Math.min(...xs), Math.max(...ys)]], z0: Math.min(...zs), z1: Math.max(...zs), role: "body", transp: 0, color, unlit: true }); });
+  // skylt: stående kort (smCard i place-smart.js): färgat huvud "Entreprenör: X", "Antal YA" med stort tal, Område och Aktivitet (egen text eller vald aktivitet)
+  smCard({ parts, W, add, z }, { title: `ENTREPRENÖR: ${String(lib.contractor || "Bemanning")}`, color: col, left: ["ANTAL YA", String(n)], rows: [["Område", crewArea(p)], ["Aktivitet", crewActivity(p)], ...(smDateText(p) ? [["Datum", smDateText(p)]] : [])], zb: 2.45, b0: -(R + 0.2) });
   return parts;
 }
 /* Slår ihop alla delar med samma färg (och ur-belysning-flagga) till en enda trianglelista (pts relativt o, ytor 1-baserade): tusentals prismor blir några få nät. */
 function crewMergeGroups(parts, o) {
   const m = new Map();
   parts.forEach(pt => {
-    const k = (pt.color || "#888888") + "|" + (pt.unlit ? 1 : 0), G = m.get(k) || m.set(k, { color: pt.color || "#888888", unlit: !!pt.unlit, pts: [], faces: [] }).get(k), base = G.pts.length;
+    const k = (pt.color || "#888888") + "|" + (pt.unlit ? 1 : 0) + "|" + (pt.transp || 0) + "|" + (pt.role === "reach" ? 1 : 0), G = m.get(k) || m.set(k, { color: pt.color || "#888888", unlit: !!pt.unlit, transp: pt.transp || 0, reach: pt.role === "reach", pts: [], faces: [] }).get(k), base = G.pts.length;
     if (pt.tris) { pt.tris.pts.forEach(q => G.pts.push([q[0] - o[0], q[1] - o[1], q[2] - o[2]])); pt.tris.faces.forEach(f => G.faces.push([f[0] + base, f[1] + base, f[2] + base])); return; }
     const n = pt.poly.length; pt.poly.forEach(q => G.pts.push([q[0] - o[0], q[1] - o[1], pt.z0 - o[2]])); pt.poly.forEach(q => G.pts.push([q[0] - o[0], q[1] - o[1], pt.z1 - o[2]]));
     for (let k2 = 1; k2 + 1 < n; k2++) G.faces.push([base + 1, base + k2 + 2, base + k2 + 1], [base + n + 1, base + n + k2 + 1, base + n + k2 + 2]);
@@ -132,17 +118,26 @@ function crewSideHtml(p) {
   return `<div class="v3-sec">Bemanning</div>
     <label class="v3-field"><span>Entreprenör</span><select data-crew="contractor">${opts}</select></label>
     <div class="v3-crew-n"><span>Antal personer</span><button type="button" data-crew="dec" title="En person färre">−</button><input type="text" inputmode="numeric" data-crew="count" value="${crewCount(p)}" /><button type="button" data-crew="inc" title="En person till">＋</button><button type="button" data-crew="inc5" title="Fem till">＋5</button></div>
-    <label class="v3-field"><span>Område (fyll i, t.ex. 741 - Sektionsfickor)</span><input type="text" data-crew="area" list="v3CrewAreas" maxlength="60" value="${esc(p.area || "")}" placeholder="${esc(crewArea({ itemId: p.itemId }) || "741 - Sektionsfickor")}" /><datalist id="v3CrewAreas">${crewAreaChoices().slice(0, 300).map(a => `<option value="${esc(a)}">`).join("")}</datalist></label>
-    <label class="v3-field"><span>Aktivitet (väljs ur schemat)</span><select data-crew="act"><option value="">– ingen vald –</option>${crewActOptions(p, cur)}</select></label>
+    ${typeof smDateFieldsHtml === "function" ? smDateFieldsHtml(p) : ""}
+    <button type="button" class="v3-wide" data-crew="report" title="Alla bemanningar per område och entreprenör med summa YA, som tabell och CSV">Σ Sammanställ bemanning…</button>
+    <label class="v3-field"><span>Område (välj eller skriv, t.ex. 741 - Sektionsfickor)</span><input type="text" class="v3-cb" data-crew="area" autocomplete="off" maxlength="60" value="${esc(p.area || "")}" placeholder="${esc(crewArea({ actArea: p.actArea, itemId: p.itemId }) || "741 - Sektionsfickor")}" /></label>
+    <label class="v3-field"><span>Aktivitet i Gantten (sök, t.ex. Linje I - H gjutning)</span><input type="text" class="v3-cb" data-crew="act" autocomplete="off" value="${esc(p.actName || "")}" placeholder="Sök aktivitet …" />${p.actName ? `<button type="button" class="v3-cb-x" data-crew="actclear" title="Ta bort vald aktivitet">✕ ta bort</button>` : ""}</label>
     <label class="v3-field"><span>Egen text (visas som Aktivitet på skylten – tom = vald aktivitet)</span><textarea data-crew="comment" rows="2" maxlength="140" placeholder="T.ex. Armerar plattan, skift 1">${esc(p.comment || "")}</textarea></label>`;
 }
 function crewBindSide(side, p, redraw) {
+  let lt = 0; const live = () => { clearTimeout(lt); lt = setTimeout(() => { crewSync(p); placeTouch(p); if (typeof l3RebuildOne === "function") { l3RebuildOne(p); if (typeof l3Changed === "function") l3Changed(); } }, 250); }; // skriver man i ett fält ritas skylten om direkt och inget går förlorat vid kopiering
   const apply = fn => { placeSnapshot(); fn(); crewSync(p); placeTouch(p); redraw(); const c = side.querySelector('[data-crew="count"]'); if (c) c.value = crewCount(p); };
   const q = k => side.querySelector(`[data-crew="${k}"]`);
   q("inc").onclick = () => apply(() => { p.count = Math.min(CREW_MAX, crewCount(p) + 1); }); q("inc5").onclick = () => apply(() => { p.count = Math.min(CREW_MAX, crewCount(p) + 5); }); q("dec").onclick = () => apply(() => { p.count = Math.max(1, crewCount(p) - 1); });
   q("count").onchange = e => apply(() => { p.count = Math.max(1, Math.min(CREW_MAX, parseInt(e.target.value, 10) || 1)); });
-  q("act").onchange = e => apply(() => { const id = e.target.value; p.itemId = id || null; const r = id && typeof items !== "undefined" ? items.find(x => x.id === id) : null; if (r) { p.start = r.start_date || r.startDate || p.start || ""; p.end = r.end_date || r.endDate || p.end || ""; } });
+  { const cur = (placeLib(p.type) || {}).contractor || ""; if (typeof smComboBind === "function") {
+      smComboBind(q("act"), () => smActItems(cur), it => apply(() => { p.actKey = it.v; p.actName = it.t; p.actArea = String((it.a && it.a.area) || "").split(" / ").pop(); }), null);
+      smComboBind(q("area"), () => smAreaItems(), it => apply(() => { p.area = it.t; }), v => { p.area = v.slice(0, 60); live(); }); }
+    const cl = side.querySelector('[data-crew="actclear"]'); if (cl) cl.onclick = () => apply(() => { p.actKey = p.actName = p.actArea = null; p.itemId = p.itemId; }); }
+  if (typeof smDateBind === "function") smDateBind(side, p, redraw);
+  q("report").onclick = () => crewReportOpen();
   q("area").onchange = e => apply(() => { p.area = String(e.target.value || "").trim().slice(0, 60); });
+  q("comment").addEventListener("input", e => { p.comment = String(e.target.value || "").slice(0, 140); live(); });
   q("comment").onchange = e => apply(() => { p.comment = String(e.target.value || "").slice(0, 140); });
   q("contractor").onchange = e => apply(() => { const c = e.target.value; const was = crewColor((placeLib(p.type) || {}).contractor); p.type = crewType(c); if (!p.color || p.color === was) p.color = crewColor(c); if (/^Bemanning/.test(p.name || "")) p.name = placeNextName(crewLib(p.type).label); });
 }
@@ -150,4 +145,22 @@ function crewBindSide(side, p, redraw) {
 function crewTrisGeometry(tr, sub) {
   const pos = new Float32Array(tr.faces.length * 9); tr.faces.forEach((f, i) => f.forEach((v, j) => { const P = tr.pts[v - 1]; pos[i * 9 + j * 3] = P[0] - sub[0]; pos[i * 9 + j * 3 + 1] = P[1] - sub[1]; pos[i * 9 + j * 3 + 2] = P[2] - sub[2]; }));
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.computeVertexNormals(); return g;
+}
+
+/* Sammanställning: alla bemanningar per område och entreprenör med summa YA (tabell + CSV). */
+function crewReportRows() {
+  return placements.filter(p => crewIsType(p.type)).map(p => { const lib = placeLib(p.type) || {}; return { area: crewArea(p) || "(inget område)", co: lib.contractor || "(ingen entreprenör)", n: crewCount(p), act: crewActivity(p), start: p.start || "", end: p.end || "", name: p.name || "" }; })
+    .sort((a, b) => a.area.localeCompare(b.area, "sv", { numeric: true }) || a.co.localeCompare(b.co, "sv"));
+}
+function crewReportOpen() {
+  const rows = crewReportRows(), esc = typeof escHtml === "function" ? escHtml : s => String(s), tot = rows.reduce((a, r) => a + r.n, 0), byA = new Map(), byC = new Map();
+  rows.forEach(r => { byA.set(r.area, (byA.get(r.area) || 0) + r.n); byC.set(r.co, (byC.get(r.co) || 0) + r.n); });
+  const html = rows.length ? `<div class="v3-rep"><p><b>${tot}</b> YA på ${rows.length} placeringar.</p>
+    <table class="v3-rt"><thead><tr><th>Område</th><th>Entreprenör</th><th>YA</th><th>Aktivitet</th><th>Period</th></tr></thead><tbody>${rows.map(r => `<tr><td>${esc(r.area)}</td><td>${esc(r.co)}</td><td class="n">${r.n}</td><td>${esc(r.act)}</td><td>${esc([r.start, r.end].filter(Boolean).join(" – "))}</td></tr>`).join("")}</tbody></table>
+    <h4>Per område</h4><table class="v3-rt">${[...byA].map(([a, n]) => `<tr><td>${esc(a)}</td><td class="n">${n}</td></tr>`).join("")}</table>
+    <h4>Per entreprenör</h4><table class="v3-rt">${[...byC].map(([a, n]) => `<tr><td>${esc(a)}</td><td class="n">${n}</td></tr>`).join("")}</table>
+    <p><button type="button" id="v3CrewCsv" class="v3-wide">Ladda ner CSV</button></p></div>` : `<p>Inga bemanningar är placerade än.</p>`;
+  const d = typeof l3Dlg === "function" ? l3Dlg("v3CrewRep", "Bemanning – sammanställning", html, {}) : null; if (!d) return rows;
+  const b = d.querySelector("#v3CrewCsv"); if (b) b.onclick = () => { const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"', L = [["Område", "Entreprenör", "YA", "Aktivitet", "Start", "Slut"], ...rows.map(r => [r.area, r.co, r.n, r.act, r.start, r.end])]; downloadBlob(new Blob(["\ufeff" + L.map(l => l.map(q).join(";")).join("\n")], { type: "text/csv;charset=utf-8" }), "bemanning_sammanstallning.csv"); };
+  return rows;
 }
