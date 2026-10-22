@@ -540,7 +540,7 @@ const PP = [
       const gBefore = l3w.avatar; l3wLock(); out.locked = l3w.locked.length === 1 && !l3w.on && !!gBefore.parent && !!document.querySelector('.v3-lockp'); out.panelGone = !document.querySelector('.v3-ctl:not(.hidden)');
       const snap = JSON.stringify(l3w.locked[0].ctl); await wait(400); out.frozen = snap === JSON.stringify(l3w.locked[0].ctl);
       // IFC
-      const r = await l3vIfcExport(l3w.locked[0], false); out.ifc = !!r && /\.ifc$/.test(r.name) && r.tris > 500; const txt = r && r.text || ''; out.ifcHas = /IFCTRIANGULATEDFACESET/.test(txt) && /IFCSTYLEDITEM/.test(txt) && /IFCBUILDINGELEMENTPROXY\('[^']+',\$,'Mobilkran 1'/.test(txt) && txt.includes('Bom\\X2\\00E4\\X0\\ngd'); out.parts = r && r.parts;
+      const r = await l3vIfcExport(l3w.locked[0], false); out.ifc = !!r && /\.ifc$/.test(r.name) && r.tris > 500; const txt = r && r.text || ''; out.ifcHas = /IFCTRIANGULATEDFACESET/.test(txt) && /IFCSTYLEDITEM/.test(txt) && /IFCBUILDINGELEMENTPROXY\('[^']+',\$,'Mobilkran 1'/.test(txt) && txt.includes('Boml\\X2\\00E4\\X0\\ngd'); out.parts = r && r.parts;
       // flyg runt: orbit är på igen, kameran är fri; styr igen återtar
       out.orbit = l3.orbit.enabled === true; l3wLockResume(l3w.locked[0].id); out.resumed = l3w.on && l3w.kind === 'crane' && Math.abs(l3w.ctl.slew - Math.PI / 4) < 0.05 && l3w.workOn && l3w.locked.length === 0;
       l3wLock(); l3wLockRemove(l3w.locked[0].id); out.removed = !l3w.locked.length && !document.querySelector('.v3-lockp');
