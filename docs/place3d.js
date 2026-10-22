@@ -473,7 +473,7 @@ function buildPlacementsIfc(projName, only) {
       props.push(["Modell", a.name || ""], ["Källa", a.source || ""], ["Upphov", a.author || ""], ["Licens", a.license || ""], ["Länk", a.url || ""],
         ["Skala", k], ["Vridning grader", Number(p.rot) || 0], ["Bredd m", placeR3((b.max[0] - b.min[0]) * k)], ["Djup m", placeR3((b.max[1] - b.min[1]) * k)]);
       p = { ...p, H: (b.max[2] - b.min[2]) * k };
-    } else if (lib.crew) props.push(["Entreprenör", lib.contractor || ""], ["Antal personer (YA)", Number(p.count) || 1], ["Aktivitet på skylten", typeof crewActivity === "function" ? crewActivity(p) : ""], ["Kommentar", p.comment || ""], ["Vridning grader", Number(p.rot) || 0]);
+    } else if (lib.crew) props.push(["Entreprenör", lib.contractor || ""], ["Antal personer (YA)", Number(p.count) || 1], ["Område", typeof crewArea === "function" ? crewArea(p) : ""], ["Aktivitet på skylten", typeof crewActivity === "function" ? crewActivity(p) : ""], ["Kommentar", p.comment || ""], ["Vridning grader", Number(p.rot) || 0]);
     else if (!lib.fence) props.push(["Längd m", placeR3(Number(p.L) || 0)], ["Bredd m", placeR3(Number(p.B) || 0)], ["Vridning grader", Number(p.rot) || 0]);
     else props.push(["Längd m", placeR3(parts.reduce((s, pt) => s + Math.hypot(pt.poly[1][0] - pt.poly[0][0], pt.poly[1][1] - pt.poly[0][1]), 0))]);
     props.push(["Höjd m", placeR3(Number(p.H) || 0)]);

@@ -24,6 +24,12 @@ function crewSlots(n) {
   while (out.length < n) { if (ring === 0) out.push([0, 0]); else { const k = 6 * ring, r = 0.8 * ring, off = ring % 2 ? 0 : Math.PI / k; for (let i = 0; i < k && out.length < n; i++) { const t = off + 2 * Math.PI * i / k; out.push([r * Math.cos(t), r * Math.sin(t)]); } } ring++; }
   return { slots: out, R: 0.8 * Math.max(0, ring - 1) + 0.45 };
 }
+const crewDash = a => String(a || "").trim().replace(/^(\d{3}\w{0,2})\s+(?!-\s)(?=\S)/, "$1 - ");
+function crewArea(p) { // Område på skylten: eget (t.ex. "741 - Sektionsfickor"), annars den valda aktivitetens område
+  const own = String(p.area || "").trim(); if (own) return crewDash(own);
+  const it = p.itemId && typeof items !== "undefined" ? items.find(x => x.id === p.itemId) : null; return it ? crewDash(String(it.area || "").split(" / ").pop()) : "";
+}
+function crewAreaChoices() { const s = new Set(); (typeof items !== "undefined" ? items : []).forEach(r => { const a = crewDash(String(r.area || "").split(" / ").pop()); if (a) s.add(a); }); return [...s].sort((a, b) => a.localeCompare(b, "sv", { numeric: true })); }
 function crewActivity(p) { // Aktivitet på skylten: egen text, annars den valda aktiviteten (4D)
   const own = String(p.comment || "").trim(); if (own) return own;
   const it = p.itemId && typeof items !== "undefined" ? items.find(x => x.id === p.itemId) : null; return it ? String(it.activity || it.object_name || it.objectName || "").trim() : "";
@@ -31,15 +37,23 @@ function crewActivity(p) { // Aktivitet på skylten: egen text, annars den valda
 const crewCount = p => Math.max(1, Math.min(CREW_MAX, Math.round(Number(p.count) || 1)));
 function crewSync(p) { const R = crewSlots(crewCount(p)).R; p.L = p.B = Math.round(R * 2 * 10) / 10; p.H = 1.8; }
 /* En raka list i planet (a = längs skylten, z = upp) med tjocklek t i b-led: 8 hörn, 12 trianglar. */
-function crewBar(T, a0, z0, a1, z1, w, t, b) {
-  const da = a1 - a0, dz = z1 - z0, L = Math.hypot(da, dz) || 1, ua = da / L, uz = dz / L, na = -uz, nz = ua, e = w / 2, base = T.loc.length;
-  [[a0 - ua * e, z0 - uz * e], [a1 + ua * e, z1 + uz * e]].forEach(([pa, pz]) => { [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sb]) => T.loc.push([pa + na * e * sx, b + sb * t / 2, pz + nz * e * sx])); });
+function crewBar(T, a0, z0, a1, z1, w, t, b, ext) {
+  const da = a1 - a0, dz = z1 - z0, L = Math.hypot(da, dz) || 1, ua = da / L, uz = dz / L, na = -uz, nz = ua, e = w / 2, x = ext == null ? e : ext, base = T.loc.length;
+  [[a0 - ua * x, z0 - uz * x], [a1 + ua * x, z1 + uz * x]].forEach(([pa, pz]) => { [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sb]) => T.loc.push([pa + na * e * sx, b + sb * t / 2, pz + nz * e * sx])); });
   const q = [[0, 1, 2, 3], [7, 6, 5, 4], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]]; q.forEach(f => T.faces.push([base + f[0] + 1, base + f[1] + 1, base + f[2] + 1], [base + f[0] + 1, base + f[2] + 1, base + f[3] + 1]));
+}
+/* Rund "prick" (10-hörnig skiva) i skyltens plan – ger runda ändar och mjuka böjar där strecken möts. */
+function crewDot(T, a, z, d, t, b) {
+  const n = 10, base = T.loc.length, r = d / 2;
+  for (let i = 0; i < n; i++) { const th = i * 2 * Math.PI / n; T.loc.push([a + r * Math.cos(th), b - t / 2, z + r * Math.sin(th)]); }
+  for (let i = 0; i < n; i++) { const th = i * 2 * Math.PI / n; T.loc.push([a + r * Math.cos(th), b + t / 2, z + r * Math.sin(th)]); }
+  for (let k = 1; k + 1 < n; k++) T.faces.push([base + 1, base + k + 2, base + k + 1], [base + n + 1, base + n + k + 1, base + n + k + 2]);
+  for (let i = 0; i < n; i++) { const j = (i + 1) % n; T.faces.push([base + i + 1, base + j + 1, base + j + n + 1], [base + i + 1, base + j + n + 1, base + i + n + 1]); }
 }
 /* Text som streck (IFC-skrivarens streckfont, versaler/siffror) stående på skylten. Returnerar bredden. */
 function crewText(T, text, size, a, z, b, align, bold) {
   const t = ifcTextStrokes(text), k = size / 6, w = t.width * k, a0 = align === "c" ? a - w / 2 : align === "r" ? a - w : a, th = Math.max(0.025, size * (bold ? 0.21 : 0.15));
-  t.strokes.forEach(pl => { if (pl.length === 1) crewBar(T, a0 + pl[0][0] * k, z + pl[0][1] * k, a0 + pl[0][0] * k + 0.001, z + pl[0][1] * k, th, th * 0.8, b); for (let i = 0; i + 1 < pl.length; i++) crewBar(T, a0 + pl[i][0] * k, z + pl[i][1] * k, a0 + pl[i + 1][0] * k, z + pl[i + 1][1] * k, th, th * 0.8, b); });
+  t.strokes.forEach(pl => { for (let i = 0; i + 1 < pl.length; i++) crewBar(T, a0 + pl[i][0] * k, z + pl[i][1] * k, a0 + pl[i + 1][0] * k, z + pl[i + 1][1] * k, th, th * 0.8, b, 0); pl.forEach(q => crewDot(T, a0 + q[0] * k, z + q[1] * k, th, th * 0.8, b)); });
   return w;
 }
 function crewWrap(text, max) {
@@ -73,19 +87,19 @@ function crewParts(p, z) {
   });
   // skylt: stående kort (ur belysning, alltid läsbart) – färgat huvud "Entreprenör: X", "Antal YA" med stort tal och "Aktivitet" med egen text eller vald aktivitet; stolpar, vänd mot lokala −b
   const cname = String(lib.contractor || "Bemanning"), act = crewActivity(p), TW = { loc: [], faces: [] }, TG = { loc: [], faces: [] }, TD = { loc: [], faces: [] }, wd = s2 => ifcTextStrokes(s2).width / 6;
-  const head = `ENTREPRENÖR: ${cname}`.toUpperCase(), hs0 = 0.22, colW = 0.95, actLines = act ? crewWrap(act, 30).map(x => x.toUpperCase()) : [], vs = 0.2, lh = 0.3;
-  const need = Math.max(wd(head) * hs0 + 0.4, colW + 0.5 + Math.max(2.0, ...actLines.map(l => wd(l) * vs + 0.1)));
-  const w2 = Math.max(1.7, need / 2), hdr = 0.52, rows = Math.max(1, actLines.length), bodyH = Math.max(1.02, 0.42 + rows * lh + 0.12), hh = hdr + bodyH, b0 = -(R + 0.2), zb = 2.45, rect = (a0, a1, b1, b2) => [[a0, b1], [a1, b1], [a1, b2], [a0, b2]].map(([a, b]) => W(a, b));
+  const head = `ENTREPRENÖR: ${cname}`.toUpperCase(), hs0 = 0.22, colW = 0.95, vs = 0.2, lh = 0.3, area = crewArea(p), areaLines = area ? crewWrap(area, 30).map(x => x.toUpperCase()) : [], actLines = act ? crewWrap(act, 30).map(x => x.toUpperCase()) : [];
+  const blk = ls => 0.13 + 0.08 + vs + (Math.max(1, ls.length) - 1) * lh + 0.2, need = Math.max(wd(head) * hs0 + 0.4, colW + 0.5 + Math.max(2.0, ...areaLines.map(l => wd(l) * vs + 0.1), ...actLines.map(l => wd(l) * vs + 0.1)));
+  const w2 = Math.max(1.7, need / 2), hdr = 0.52, bodyH = Math.max(1.02, 0.12 + blk(areaLines) + blk(actLines) + 0.04), hh = hdr + bodyH, b0 = -(R + 0.2), zb = 2.45, rect = (a0, a1, b1, b2) => [[a0, b1], [a1, b1], [a1, b2], [a0, b2]].map(([a, b]) => W(a, b));
   add(rect(-w2 + 0.15, -w2 + 0.23, b0 - 0.03, b0 + 0.01), 0, zb + 0.02, "#6b7280"); add(rect(w2 - 0.23, w2 - 0.15, b0 - 0.03, b0 + 0.01), 0, zb + 0.02, "#6b7280");   // stolpar
-  add(rect(-w2 - 0.05, w2 + 0.05, b0 - 0.005, b0 + 0.04), zb - 0.05, zb + hh + 0.05, "#cbd5e1", { unlit: true });                                                  // skugga/kant bakom
+  add(rect(-w2 - 0.05, w2 + 0.05, b0 - 0.005, b0 + 0.04), zb - 0.05, zb + hh + 0.05, "#cbd5e1", { unlit: true });                                                  // kant bakom
   add(rect(-w2, w2, b0 - 0.03, b0 + 0.01), zb, zb + hh, "#ffffff", { unlit: true });                                                                                  // kortet
   add(rect(-w2, w2, b0 - 0.035, b0 + 0.012), zb + bodyH, zb + hh, col, { unlit: true });                                                                              // färgat huvud
-  add(rect(-w2 + colW + 0.25, -w2 + colW + 0.27, b0 - 0.035, b0 + 0.012), zb + 0.15, zb + bodyH - 0.12, "#d1d5db", { unlit: true });                                    // skiljelinje
-  const bT = b0 - 0.05, ax = -w2 + 0.2;
+  add(rect(-w2 + colW + 0.25, -w2 + colW + 0.27, b0 - 0.035, b0 + 0.012), zb + 0.15, zb + bodyH - 0.12, "#d1d5db", { unlit: true });                                  // skiljelinje
+  const bT = b0 - 0.05, ax = -w2 + 0.2, rx = -w2 + colW + 0.45; let y = zb + bodyH - 0.12;
   crewText(TW, head, hs0, ax, zb + bodyH + (hdr - hs0) / 2, bT, "l", true);                                                                                            // "ENTREPRENÖR: X" (vit)
   crewText(TG, "ANTAL YA", 0.13, ax, zb + bodyH - 0.3, bT, "l", false); crewText(TD, String(n), 0.44, ax, zb + bodyH - 0.86, bT, "l", true);                            // antal
-  const rx = -w2 + colW + 0.45; crewText(TG, "AKTIVITET", 0.13, rx, zb + bodyH - 0.3, bT, "l", false);
-  if (actLines.length) actLines.forEach((l, i) => crewText(TD, l, vs, rx, zb + bodyH - 0.3 - 0.2 - (i + 1) * lh + 0.2, bT, "l", i === 0 && actLines.length === 1)); else crewText(TG, "–", 0.2, rx, zb + bodyH - 0.62, bT, "l", false);
+  [["OMRÅDE", areaLines], ["AKTIVITET", actLines]].forEach(([lab, ls]) => { const lb = y - 0.13; crewText(TG, lab, 0.13, rx, lb, bT, "l", false);
+    if (ls.length) ls.forEach((l, i) => crewText(TD, l, vs, rx, lb - 0.08 - vs - i * lh, bT, "l", i === 0 && ls.length === 1)); else crewText(TG, "–", 0.2, rx, lb - 0.08 - vs, bT, "l", false); y -= blk(ls); });
   [[TW, "#ffffff"], [TG, "#6b7280"], [TD, "#111827"]].forEach(([T2, color]) => { if (!T2.faces.length) return;
     const pts2 = T2.loc.map(([a, b2, zz]) => { const w = W(a, b2); return [w[0], w[1], z + zz]; }), xs = pts2.map(q => q[0]), ys = pts2.map(q => q[1]), zs = pts2.map(q => q[2]);
     parts.push({ tris: { pts: pts2, faces: T2.faces }, poly: [[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)], [Math.min(...xs), Math.max(...ys)]], z0: Math.min(...zs), z1: Math.max(...zs), role: "body", transp: 0, color, unlit: true }); });
@@ -118,6 +132,7 @@ function crewSideHtml(p) {
   return `<div class="v3-sec">Bemanning</div>
     <label class="v3-field"><span>Entreprenör</span><select data-crew="contractor">${opts}</select></label>
     <div class="v3-crew-n"><span>Antal personer</span><button type="button" data-crew="dec" title="En person färre">−</button><input type="text" inputmode="numeric" data-crew="count" value="${crewCount(p)}" /><button type="button" data-crew="inc" title="En person till">＋</button><button type="button" data-crew="inc5" title="Fem till">＋5</button></div>
+    <label class="v3-field"><span>Område (fyll i, t.ex. 741 - Sektionsfickor)</span><input type="text" data-crew="area" list="v3CrewAreas" maxlength="60" value="${esc(p.area || "")}" placeholder="${esc(crewArea({ itemId: p.itemId }) || "741 - Sektionsfickor")}" /><datalist id="v3CrewAreas">${crewAreaChoices().slice(0, 300).map(a => `<option value="${esc(a)}">`).join("")}</datalist></label>
     <label class="v3-field"><span>Aktivitet (väljs ur schemat)</span><select data-crew="act"><option value="">– ingen vald –</option>${crewActOptions(p, cur)}</select></label>
     <label class="v3-field"><span>Egen text (visas som Aktivitet på skylten – tom = vald aktivitet)</span><textarea data-crew="comment" rows="2" maxlength="140" placeholder="T.ex. Armerar plattan, skift 1">${esc(p.comment || "")}</textarea></label>`;
 }
@@ -127,6 +142,7 @@ function crewBindSide(side, p, redraw) {
   q("inc").onclick = () => apply(() => { p.count = Math.min(CREW_MAX, crewCount(p) + 1); }); q("inc5").onclick = () => apply(() => { p.count = Math.min(CREW_MAX, crewCount(p) + 5); }); q("dec").onclick = () => apply(() => { p.count = Math.max(1, crewCount(p) - 1); });
   q("count").onchange = e => apply(() => { p.count = Math.max(1, Math.min(CREW_MAX, parseInt(e.target.value, 10) || 1)); });
   q("act").onchange = e => apply(() => { const id = e.target.value; p.itemId = id || null; const r = id && typeof items !== "undefined" ? items.find(x => x.id === id) : null; if (r) { p.start = r.start_date || r.startDate || p.start || ""; p.end = r.end_date || r.endDate || p.end || ""; } });
+  q("area").onchange = e => apply(() => { p.area = String(e.target.value || "").trim().slice(0, 60); });
   q("comment").onchange = e => apply(() => { p.comment = String(e.target.value || "").slice(0, 140); });
   q("contractor").onchange = e => apply(() => { const c = e.target.value; const was = crewColor((placeLib(p.type) || {}).contractor); p.type = crewType(c); if (!p.color || p.color === was) p.color = crewColor(c); if (/^Bemanning/.test(p.name || "")) p.name = placeNextName(crewLib(p.type).label); });
 }

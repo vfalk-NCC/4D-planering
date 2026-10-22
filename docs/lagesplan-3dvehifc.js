@@ -30,24 +30,28 @@ function l3vIfcMeshes(root, O) {
 function l3vGeoGroups() {
   const groups = new Map(); const grp = (hex, tr = 0) => { const k = hex + "|" + tr; return groups.get(k) || groups.set(k, { hex, tr, pts: [], faces: [] }).get(k); }; return { groups, grp };
 }
-function l3vIfcSeg(G, a, b, w, h) { // rak list (a→b) med rektangulärt tvärsnitt w×h, plan i xy-ledd; lite förlängd i ändarna så att böjar sluter tätt
+function l3vIfcSeg(G, a, b, w, h, ext) { // rak list (a→b) med rektangulärt tvärsnitt w×h, plan i xy-ledd; lite förlängd i ändarna så att böjar sluter tätt
   const d = new THREE.Vector3().subVectors(b, a); const L = d.length(); if (L < 1e-6) return; d.multiplyScalar(1 / L);
   const up = Math.abs(d.z) > 0.95 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, 1), n = new THREE.Vector3().crossVectors(up, d).normalize(), u = new THREE.Vector3().crossVectors(d, n).normalize(), e = w / 2;
-  const a2 = a.clone().addScaledVector(d, -e), b2 = b.clone().addScaledVector(d, e), base = G.pts.length;
+  const x = ext == null ? e : ext, a2 = a.clone().addScaledVector(d, -x), b2 = b.clone().addScaledVector(d, x), base = G.pts.length;
   [a2, b2].forEach(P => { [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy]) => G.pts.push(P.clone().addScaledVector(n, sx * w / 2).addScaledVector(u, sy * h / 2).toArray())); });
   [[0, 1, 2, 3], [7, 6, 5, 4], [0, 4, 5, 1], [1, 5, 6, 2], [2, 6, 7, 3], [3, 7, 4, 0]].forEach(q => { G.faces.push([base + q[0] + 1, base + q[1] + 1, base + q[2] + 1], [base + q[0] + 1, base + q[2] + 1, base + q[3] + 1]); });
 }
-function l3vRing(G, c, r, wd, th, n = 120) { // platt ring (annulus) med tjocklek th, i planet z = c.z
+function l3vRing(G, c, r, wd, th, n = 144) { // platt ring (annulus) med tjocklek th, i planet z = c.z
   const base = G.pts.length, ri = Math.max(0.01, r - wd / 2), ro = r + wd / 2;
   for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2, cs = Math.cos(a), sn = Math.sin(a); [[ri, 0], [ro, 0], [ri, th], [ro, th]].forEach(([rr, z]) => G.pts.push([c.x + cs * rr, c.y + sn * rr, c.z + z])); }
   for (let i = 0; i < n; i++) { const j = (i + 1) % n, q = k => base + k * 4 + 1, A = q(i), B = q(j); // [0]=in-bot [1]=out-bot [2]=in-top [3]=out-top
     G.faces.push([A + 2, A + 3, B + 3], [A + 2, B + 3, B + 2], [A, B + 1, A + 1], [A, B, B + 1], [A + 1, B + 1, B + 3], [A + 1, B + 3, A + 3], [A, A + 2, B + 2], [A, B + 2, B]); }
 }
-function l3vDisc(G, c, r, n = 96) { const base = G.pts.length; G.pts.push([c.x, c.y, c.z]); for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; G.pts.push([c.x + Math.cos(a) * r, c.y + Math.sin(a) * r, c.z]); } for (let i = 0; i < n; i++) { const j = (i + 1) % n; G.faces.push([base + 1, base + 2 + i, base + 2 + j], [base + 1, base + 2 + j, base + 2 + i]); } }
+function l3vDisc(G, c, r, n = 128) { const base = G.pts.length; G.pts.push([c.x, c.y, c.z]); for (let i = 0; i < n; i++) { const a = i / n * Math.PI * 2; G.pts.push([c.x + Math.cos(a) * r, c.y + Math.sin(a) * r, c.z]); } for (let i = 0; i < n; i++) { const j = (i + 1) % n; G.faces.push([base + 1, base + 2 + i, base + 2 + j], [base + 1, base + 2 + j, base + 2 + i]); } }
 /* Text som streck (ifcTextStrokes: versaler/siffror, 4×6 enheter) liggande på marken. anchor = baslinjens vänster-/mittpunkt, size = texthöjd (m), align "l"|"c". Returnerar bredden. */
+function l3vDot(G, x, y, z, d, h) { // rund prick (10-hörnig) för runda ändar och mjuka böjar i texten
+  const n = 10, base = G.pts.length, r = d / 2; for (let i = 0; i < n; i++) { const t = i * 2 * Math.PI / n; G.pts.push([x + r * Math.cos(t), y + r * Math.sin(t), z - h / 2]); } for (let i = 0; i < n; i++) { const t = i * 2 * Math.PI / n; G.pts.push([x + r * Math.cos(t), y + r * Math.sin(t), z + h / 2]); }
+  for (let k = 1; k + 1 < n; k++) G.faces.push([base + 1, base + k + 2, base + k + 1], [base + n + 1, base + n + k + 1, base + n + k + 2]); for (let i = 0; i < n; i++) { const j = (i + 1) % n; G.faces.push([base + i + 1, base + j + 1, base + j + n + 1], [base + i + 1, base + j + n + 1, base + i + n + 1]); }
+}
 function l3vText(G, text, size, x, y, z, align) {
   const t = ifcTextStrokes(text), k = size / 6, w = t.width * k, x0 = align === "c" ? x - w / 2 : x, th = Math.max(0.03, size * 0.14);
-  t.strokes.forEach(pl => { for (let i = 0; i + 1 < pl.length; i++) l3vIfcSeg(G, new THREE.Vector3(x0 + pl[i][0] * k, y + pl[i][1] * k, z), new THREE.Vector3(x0 + pl[i + 1][0] * k, y + pl[i + 1][1] * k, z), th, th * 0.7); if (pl.length === 1) l3vIfcSeg(G, new THREE.Vector3(x0 + pl[0][0] * k, y + pl[0][1] * k, z), new THREE.Vector3(x0 + pl[0][0] * k + 0.001, y + pl[0][1] * k, z), th, th * 0.7); });
+  t.strokes.forEach(pl => { for (let i = 0; i + 1 < pl.length; i++) l3vIfcSeg(G, new THREE.Vector3(x0 + pl[i][0] * k, y + pl[i][1] * k, z), new THREE.Vector3(x0 + pl[i + 1][0] * k, y + pl[i + 1][1] * k, z), th, th * 0.7, 0); pl.forEach(q => l3vDot(G, x0 + q[0] * k, y + q[1] * k, z, th, th * 0.7)); });
   return w;
 }
 const l3vUp = s => String(s).toUpperCase();
@@ -57,15 +61,15 @@ function l3vRadiusParts(item, O) {
   const { groups, grp } = l3vGeoGroups(), f1 = v => (Math.round(v * 10) / 10).toString().replace(".", ","), c0 = new THREE.Vector3(cen.x, cen.y, ZR), outer = Math.min(rad.maxRing, Math.ceil(Math.max(rad.R, rad.Rmax || 0, rad.step) / rad.step) * rad.step);
   const hexTxt = "#0f2a55", hexRing = "#cbd5e1", hexCur = "#" + (rad.hex || 0xff8a1a).toString(16).padStart(6, "0"), hexMax = "#1fb6ff", hexBoard = "#f4f7fb", hexTitle = "#c2410c";
   // avståndsringar med mått
-  for (let r = rad.step; r <= outer + 1e-6; r += rad.step) { l3vRing(grp(hexRing), c0, r, 0.1, 0.02, Math.max(48, Math.round(r * 5))); const a = 0.9 + hdg; l3vText(grp(hexTxt), `${r} M`, Math.max(0.7, rad.step * 0.16), cen.x + r * Math.cos(a) + 0.2, cen.y + r * Math.sin(a) - 0.3, ZR + 0.01, "l"); }
+  for (let r = rad.step; r <= outer + 1e-6; r += rad.step) { l3vRing(grp(hexRing), c0, r, 0.1, 0.02, Math.max(96, Math.round(r * 8))); const a = 0.9 + hdg; l3vText(grp(hexTxt), `${r} M`, Math.max(0.7, rad.step * 0.16), cen.x + r * Math.cos(a) + 0.2, cen.y + r * Math.sin(a) - 0.3, ZR + 0.01, "l"); }
   if (rad.R > 0.3) {
-    l3vDisc(grp(hexCur, 0.82), new THREE.Vector3(cen.x, cen.y, ZR - 0.01), rad.R); l3vRing(grp(hexCur), c0, rad.R, 0.3, 0.05, Math.max(72, Math.round(rad.R * 5)));
+    l3vDisc(grp(hexCur, 0.82), new THREE.Vector3(cen.x, cen.y, ZR - 0.01), rad.R); l3vRing(grp(hexCur), c0, rad.R, 0.3, 0.05, Math.max(144, Math.round(rad.R * 8)));
     const tip = new THREE.Vector3(cen.x + rad.R * Math.cos(sl), cen.y + rad.R * Math.sin(sl), ZR + 0.02); l3vIfcSeg(grp("#ffb040"), new THREE.Vector3(cen.x, cen.y, ZR + 0.02), tip, 0.25, 0.06); l3vRing(grp("#ffd08a"), tip, 0.4, 0.5, 0.06, 24);
     const lab = `${l3vUp(rad.name)} ${f1(rad.R)} M`, sz = Math.max(1.0, Math.min(2.4, rad.R * 0.09)), lx = cen.x + (rad.R + 1.2) * Math.cos(sl), ly = cen.y + (rad.R + 1.2) * Math.sin(sl);
     l3vText(grp("#ffffff"), lab, sz, lx + 0.06, ly - 0.06, ZR + 0.02, "c"); l3vText(grp("#0f172a"), lab, sz, lx, ly, ZR + 0.06, "c");
   }
   if (rad.Rmax > rad.R + 0.5) {
-    l3vRing(grp(hexMax), c0, rad.Rmax, 0.25, 0.04, Math.max(96, Math.round(rad.Rmax * 4))); const a = sl + 0.5, lab = `${l3vUp(rad.mname || "MAX")} ${f1(rad.Rmax)} M`, sz = Math.max(1.0, Math.min(2.4, rad.Rmax * 0.07));
+    l3vRing(grp(hexMax), c0, rad.Rmax, 0.25, 0.04, Math.max(160, Math.round(rad.Rmax * 6))); const a = sl + 0.5, lab = `${l3vUp(rad.mname || "MAX")} ${f1(rad.Rmax)} M`, sz = Math.max(1.0, Math.min(2.4, rad.Rmax * 0.07));
     l3vText(grp("#ffffff"), lab, sz, cen.x + (rad.Rmax + 1.4) * Math.cos(a) + 0.06, cen.y + (rad.Rmax + 1.4) * Math.sin(a) - 0.06, ZR + 0.02, "c"); l3vText(grp("#0b3b66"), lab, sz, cen.x + (rad.Rmax + 1.4) * Math.cos(a), cen.y + (rad.Rmax + 1.4) * Math.sin(a), ZR + 0.06, "c");
   }
   // infotavla: alla värden som i kranpanelen, på en ljus platta utanför yttersta ringen på motsatt sida

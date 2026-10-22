@@ -10,7 +10,7 @@ const IFC_STROKE = 0.14; // streckbredd för 3D-texten (del av texthöjden)
 const IFC_GLYPHS = (() => {
   // Ellipsbåge: mitt (cx, cy), radier (rx, ry), från a0 till a1 grader (moturs om a1 > a0).
   const arc = (cx, cy, rx, ry, a0, a1, n) => {
-    n = n || Math.max(3, Math.round(Math.abs(a1 - a0) / 22.5));
+    n = Math.max(4, Math.round((n || Math.max(3, Math.abs(a1 - a0) / 22.5)) * 2.2)); // tätare delning = rundare bokstäver och siffror (Victor 2026-10-22: "jobba på rundheten")
     const out = [];
     for (let k = 0; k <= n; k++) { const a = (a0 + (a1 - a0) * k / n) * Math.PI / 180; out.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)]); }
     return out;
