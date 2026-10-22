@@ -153,16 +153,22 @@ const smFmtD = v => String(Math.round(v * 10) / 10).replace(".", ",");
 function crewSideHtml(p) {
   const esc = typeof escHtml === "function" ? escHtml : s => String(s), lib = placeLib(p.type) || {}, cs = crewContractors(), cur = lib.contractor || "";
   const opts = [...new Set([cur, ...cs])].filter(x => x !== undefined).map(c => `<option value="${esc(c)}"${c === cur ? " selected" : ""}>${esc(c || "(ingen entreprenör)")}</option>`).join("");
+  const n = crewCount(p), d0 = p.start || "", d1 = p.end || "", dt = d0 ? (d1 && d1 !== d0 ? d0 + " → " + d1 : d0) : "inget datum", col = p.color || (typeof crewColor === "function" ? crewColor(cur) : "#2563eb");
   return `<div class="v3-sec">Bemanning</div>
-    <label class="v3-field"><span>Entreprenör</span><select data-crew="contractor">${opts}</select></label>
-    <label class="v3-field v3-crew-sp"><span>Spridning (diameter): <b data-crew="spreadv">${smFmtD(p.spread || crewAutoDiam(p))}</b> m${p.spread ? "" : " (auto)"}</span><input type="range" min="1" max="40" step="0.5" data-crew="spread" value="${p.spread || crewAutoDiam(p)}" /></label>
-    <div class="v3-btns"><button type="button" data-crew="dragon" class="${crewDrag.on && crewDrag.id === p.id ? "on" : ""}" title="Slå på och dra gubbarna med musen på marken. Esc stänger av.">✋ Flytta gubbar (dra)</button><button type="button" data-crew="resetpos" title="Ordna om gubbarna automatiskt i ringar">Ordna om</button></div>
-    <div class="v3-crew-n"><span>Antal personer</span><button type="button" data-crew="dec" title="En person färre">−</button><input type="text" inputmode="numeric" data-crew="count" value="${crewCount(p)}" /><button type="button" data-crew="inc" title="En person till">＋</button><button type="button" data-crew="inc5" title="Fem till">＋5</button></div>
-    ${typeof smDateFieldsHtml === "function" ? smDateFieldsHtml(p) : ""}
-    <button type="button" class="v3-wide" data-crew="report" title="Alla bemanningar per område och entreprenör med summa YA, som tabell och CSV">Σ Sammanställ bemanning…</button>
-    <label class="v3-field"><span>Område (välj eller skriv, t.ex. 741 - Sektionsfickor)</span><input type="text" class="v3-cb" data-crew="area" autocomplete="off" maxlength="60" value="${esc(p.area || "")}" placeholder="${esc(crewArea({ actArea: p.actArea, itemId: p.itemId }) || "741 - Sektionsfickor")}" /></label>
-    <label class="v3-field"><span>Aktivitet i Gantten (sök, t.ex. Linje I - H gjutning)</span><input type="text" class="v3-cb" data-crew="act" autocomplete="off" value="${esc(p.actName || "")}" placeholder="Sök aktivitet …" />${p.actName ? `<button type="button" class="v3-cb-x" data-crew="actclear" title="Ta bort vald aktivitet">✕ ta bort</button>` : ""}</label>
-    <label class="v3-field"><span>Egen text (visas som Aktivitet på skylten – tom = vald aktivitet)</span><textarea data-crew="comment" rows="2" maxlength="140" placeholder="T.ex. Armerar plattan, skift 1">${esc(p.comment || "")}</textarea></label>`;
+    <div class="v3-cw-head"><i style="background:${esc(col)}"></i><div><b>${esc(cur || "Bemanning")}</b><small data-crew="sum">${n} ${n === 1 ? "person" : "personer"} · ${esc(dt)}</small></div></div>
+    <div class="v3-cw-card"><h4>Antal personer</h4>
+      <div class="v3-crew-n"><button type="button" data-crew="dec" title="En person färre">−</button><input type="text" inputmode="numeric" data-crew="count" value="${n}" aria-label="Antal personer" /><button type="button" data-crew="inc" title="En person till">＋</button><button type="button" data-crew="inc5" class="v3-crew-5" title="Fem till">＋5</button></div>
+      <label class="v3-field v3-crew-sp"><span>Spridning (diameter) <b class="v3-cw-badge" data-crew="spreadv">${smFmtD(p.spread || crewAutoDiam(p))}</b> m${p.spread ? "" : " (auto)"}</span><input type="range" min="1" max="40" step="0.5" data-crew="spread" value="${p.spread || crewAutoDiam(p)}" /></label>
+      <div class="v3-btns"><button type="button" data-crew="dragon" class="${crewDrag.on && crewDrag.id === p.id ? "on" : ""}" title="Slå på och dra gubbarna med musen på marken. Esc stänger av.">✋ Flytta gubbar (dra)</button><button type="button" data-crew="resetpos" title="Ordna om gubbarna automatiskt i ringar">Ordna om</button></div>
+    </div>
+    <div class="v3-cw-card"><h4>Skylt</h4>
+      <label class="v3-field"><span>Entreprenör</span><select data-crew="contractor">${opts}</select></label>
+      <label class="v3-field"><span>Område (välj eller skriv, t.ex. 741 - Sektionsfickor)</span><input type="text" class="v3-cb" data-crew="area" autocomplete="off" maxlength="60" value="${esc(p.area || "")}" placeholder="${esc(crewArea({ actArea: p.actArea, itemId: p.itemId }) || "741 - Sektionsfickor")}" /></label>
+      <label class="v3-field"><span>Aktivitet i Gantten (sök, t.ex. Linje I - H gjutning)</span><input type="text" class="v3-cb" data-crew="act" autocomplete="off" value="${esc(p.actName || "")}" placeholder="Sök aktivitet …" />${p.actName ? `<button type="button" class="v3-cb-x" data-crew="actclear" title="Ta bort vald aktivitet">✕ ta bort</button>` : ""}</label>
+      <label class="v3-field"><span>Egen text (visas som Aktivitet på skylten – tom = vald aktivitet)</span><textarea data-crew="comment" rows="2" maxlength="140" placeholder="T.ex. Armerar plattan, skift 1">${esc(p.comment || "")}</textarea></label>
+    </div>
+    <div class="v3-cw-card"><h4>Datum</h4>${typeof smDateFieldsHtml === "function" ? smDateFieldsHtml(p) : ""}</div>
+    <button type="button" class="v3-wide" data-crew="report" title="Alla bemanningar per område och entreprenör med summa YA, som tabell och CSV">Σ Sammanställ bemanning…</button>`;
 }
 function crewBindSide(side, p, redraw) {
   let lt = 0; const live = () => { clearTimeout(lt); lt = setTimeout(() => { crewSync(p); placeTouch(p); if (typeof l3RebuildOne === "function") { l3RebuildOne(p); if (typeof l3Changed === "function") l3Changed(); } }, 250); }; // skriver man i ett fält ritas skylten om direkt och inget går förlorat vid kopiering
