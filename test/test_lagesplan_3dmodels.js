@@ -427,6 +427,11 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
     { const oP = uiPrompt, oA = askOpener, calls = []; uiPrompt = async (t, def) => { calls.push(['prompt', def]); return 'Mitt IFC-namn'; }; askOpener = async (type, extra) => { calls.push([type, extra && extra.fileName]); return { n: 2, files: ['x.ifc'] }; };
       await l3SaveIfc(); out.nameAsked = calls.length >= 2 && calls[0][0] === 'prompt' && /^Etablering/.test(calls[0][1]) && calls.some(c => c[0] === 'placeSaveIfc' && c[1] === 'Mitt IFC-namn');
       calls.length = 0; uiPrompt = async () => null; await l3SaveIfc(); out.nameCancel = !calls.some(c => c[0] === 'placeSaveIfc'); uiPrompt = oP; askOpener = oA; }
+    { const oP = uiPrompt, oA = askOpener, got = {}; const q = placeNew('sm:riskzon', [O[0] + 90, O[1] + 90, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]); await wait(80);
+      uiPrompt = async (t, def) => { got.def = def; return 'Bara en'; }; askOpener = async (type, extra) => { got.ex = extra; return { n: 1, files: ['y.ifc'] }; };
+      got.label = document.querySelector('#v3SaveIfc span').textContent; await l3SaveIfc();
+      out.oneAtATime = got.label === 'Spara markerad som IFC' && got.def === q.name && got.ex && got.ex.ids && got.ex.ids.length === 1 && got.ex.ids[0] === q.id && got.ex.fileName === 'Bara en';
+      uiPrompt = oP; askOpener = oA; placements.splice(placements.indexOf(q), 1); l3.groups.places.remove(l3.placeMeshes.get(q.id)); l3.placeMeshes.delete(q.id); l3SelectIds([]); await wait(60); out.allLabel = document.querySelector('#v3SaveIfc span').textContent === 'Spara som IFC i TC'; }
     // sammanställning av bemanning
     items.push({ id: 'smx', contractor: 'Wikströms', area: 'PRODUKTION / 741 Sektionsfickor', activity: 'A' }); const c1 = placeNew(crewType('Wikströms'), [O[0] + 1, O[1] + 1, 0]); c1.itemId = 'smx'; c1.count = 6; placements.push(c1);
     const rows = crewReportRows(); out.report = rows.length === 1 && rows[0].n === 6 && rows[0].area === '741 - Sektionsfickor' && rows[0].co === 'Wikströms'; placements.splice(placements.indexOf(c1), 1); items.pop();

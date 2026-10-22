@@ -958,8 +958,15 @@ function l3SelDeco(g, on) {
     }
   });
 }
+/* Knappen "Spara som IFC" sparar bara det markerade etableringsobjektet/bemanningen (ett i taget); utan markering sparas allt. */
+function l3SaveBtnLabel() {
+  const b = document.getElementById("v3SaveIfc"), sp = b && b.querySelector("span"); if (!sp || !l3) return;
+  const n = l3.sel ? l3.sel.size : 0; sp.textContent = n ? (n === 1 ? "Spara markerad som IFC" : `Spara ${n} markerade som IFC`) : "Spara som IFC i TC";
+  b.title = n ? "Sparar bara det markerade som IFC i Trimble Connect. Ingen markering = allt." : "Hela etableringen som IFC i Trimble Connect (markera ett objekt för att spara bara det)";
+}
 function l3RefreshSel() {
   if (!l3) return;
+  l3SaveBtnLabel();
   l3Clear(l3.groups.sel);
   (l3.selDeco || new Set()).forEach(id => { if (!l3.sel.has(id)) l3SelDeco(l3.placeMeshes.get(id), false); });
   l3.selDeco = new Set(l3.sel);
@@ -1603,9 +1610,11 @@ async function l3SaveIfc() {
   l3Status("Sparar etableringen och skapar IFC i Trimble Connect…");
   try {
     await placeSaveNow();
-    const fileName = await uiPrompt("Namn på IFC-filen (datum och klockslag läggs till så att inget skrivs över):", "Etablering " + (typeof projectName !== "undefined" && projectName ? projectName : ""), { ok: "Spara i Trimble Connect" });
+    const ids = [...l3.sel].filter(id => placements.some(p => p.id === id)), one = ids.length === 1 ? placements.find(p => p.id === ids[0]) : null;
+    const dflt = one ? one.name : ids.length ? `Etablering urval ${ids.length} objekt` : "Etablering " + (typeof projectName !== "undefined" && projectName ? projectName : "");
+    const fileName = await uiPrompt(ids.length ? "Namn på IFC-filen med det markerade (datum och klockslag läggs till):" : "Namn på IFC-filen (datum och klockslag läggs till så att inget skrivs över):", dflt, { ok: "Spara i Trimble Connect" });
     if (fileName == null) { l3Status("Sparandet avbröts."); b.disabled = false; return; }
-    const r = await askOpener("placeSaveIfc", { fileName: String(fileName).trim() }, 0);
+    const r = await askOpener("placeSaveIfc", ids.length ? { ids, fileName: String(fileName).trim() } : { fileName: String(fileName).trim() }, 0);
     const msg = r && r.n ? `✓ ${r.n} objekt sparade som IFC i Trimble Connect${r.files ? ` (${r.files.join(", ")})` : ""}.` : "Inget att spara.";
     l3Status(msg); l3Toast(msg);
   } catch (e) { l3Status("Kunde inte spara som IFC: " + e.message, true); }
