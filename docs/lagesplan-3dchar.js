@@ -6,7 +6,7 @@
 const L3C_KINDS = [["human", "Byggare"], ["crane", "Mobilkran"], ["excavator", "Grävmaskin"], ["truck", "Lastbil"], ["loader", "Hjullastare"], ["own", "Markerat objekt"], ["glb", "Egen figur (GLB)"]];
 const L3C_CFG = {
   human: { steer: 3.0, eye: 1.7, camD: 3.2, camUp: 0.25, speedMul: 1, turn: 14, radius: 0.3, step: 0.6 },
-  crane: { steer: 0.9, eye: 3.6, camD: 20, camUp: 3.6, speedMul: 3.6, turn: 1.0, radius: 1.7, step: 0.35, vehicle: true },
+  crane: { steer: 0.9, eye: 3.6, camD: 26, camUp: 4.5, speedMul: 3.6, turn: 1.0, radius: 1.7, step: 0.35, vehicle: true },
   excavator: { steer: 1.3, eye: 2.6, camD: 11, camUp: 2.2, speedMul: 1.6, turn: 1.3, radius: 1.8, step: 0.35, vehicle: true },
   truck: { steer: 1.0, eye: 2.8, camD: 13, camUp: 2.4, speedMul: 4, turn: 1.2, radius: 1.6, step: 0.35, vehicle: true },
   loader: { steer: 1.3, eye: 2.7, camD: 11, camUp: 2.2, speedMul: 3, turn: 1.5, radius: 1.6, step: 0.4, vehicle: true },

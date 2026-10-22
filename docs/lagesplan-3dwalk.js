@@ -244,10 +244,10 @@ const L3W_CTLF = {
 };
 const L3W_TO = { slew: v => v * Math.PI / 180, ang: v => v * Math.PI / 180, ext: v => v / 100, hook: v => v, boom: v => v * Math.PI / 180, stick: v => v * Math.PI / 180, bucket: v => v * Math.PI / 180 };
 const L3W_FROM = { slew: v => v * 180 / Math.PI, ang: v => v * 180 / Math.PI, ext: v => v * 100, hook: v => v, boom: v => v * 180 / Math.PI, stick: v => v * 180 / Math.PI, bucket: v => v * 180 / Math.PI };
-/* Kranens mått som går att skriva in: bomlängd, radie och lyfthöjd (löses ut till utskjut och bomvinkel). Bomlängd = 10,4 + 21 · utskjut (m). */
+/* Kranens mått som går att skriva in: bomlängd, radie och lyfthöjd (löses ut till utskjut och bomvinkel). Bomlängd = 19,4 + 41,4 · utskjut (m); största radie 60 m. */
 function l3wCraneSolve(kind, val) {
-  const T = l3w.ctlT, c = l3w.ctl, L = 10.4 + 21 * c.ext; if (!(val >= 0)) return;
-  if (kind === "len") T.ext = l3wClamp((val - 10.4) / 21, [0, 1]);
+  const T = l3w.ctlT, c = l3w.ctl, L = 19.4 + 41.4 * c.ext; if (!(val >= 0)) return;
+  if (kind === "len") T.ext = l3wClamp((val - 19.4) / 41.4, [0, 1]);
   else if (kind === "rad") T.ang = l3wClamp(Math.acos(Math.max(-1, Math.min(1, (val + 0.8) / L))), [0.03, 1.4]);
   else if (kind === "hgt") T.ang = l3wClamp(Math.asin(Math.max(-1, Math.min(1, (val - 3.2) / L))), [0.03, 1.4]);
 }
