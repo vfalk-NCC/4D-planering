@@ -64,9 +64,19 @@ function l3liftUpdate() {
 /* ---- Lastdiagram: lastens vikt mot kranens förmåga vid aktuell radie --------------------------------------------------------------------------- */
 /* Exempeldiagram för en mobilkran i 200-tonsklassen (ton vid radie, full motvikt, stödben utfällda). Byt mot kranens riktiga diagram i rutan "Lastdiagram" i kranpanelen. */
 const L3L_DEF = "3:220\n5:160\n8:110\n10:95\n12:80\n16:62\n20:50\n25:38\n30:29\n35:23\n40:18\n45:14\n50:11\n55:8.5\n60:6.5";
+/* Kranklasser med exempeldiagram (ton vid radie, full motvikt, stödben ute). Värdena är typiska för storleksklassen och INTE en tillverkares lastdiagram – välj "Egen" och skriv in kranens riktiga. */
+const L3L_MODELS = [
+  { id: "m60", name: "Mobilkran 60 t (exempel)", chart: "3:60\n4:50\n5:42\n6:36\n8:28\n10:22\n12:17.5\n14:14\n16:11.5\n18:9.5\n20:8\n24:5.8\n28:4.2\n32:3\n36:2.2" },
+  { id: "m100", name: "Mobilkran 100 t (exempel)", chart: "3:100\n5:78\n8:55\n10:44\n12:36\n16:26\n20:19\n24:14\n28:10.5\n32:8\n36:6\n40:4.5\n44:3.3" },
+  { id: "m160", name: "Mobilkran 160 t (exempel)", chart: "3:160\n5:120\n8:84\n10:68\n12:56\n16:42\n20:32\n25:23\n30:17\n35:12.5\n40:9.5\n45:7\n50:5.2" },
+  { id: "m220", name: "Mobilkran 220 t (exempel)", chart: L3L_DEF },
+  { id: "m300", name: "Mobilkran 300 t (exempel)", chart: "3:300\n5:230\n8:165\n10:135\n12:112\n16:84\n20:66\n25:50\n30:39\n35:31\n40:25\n50:17\n60:11.5" },
+  { id: "m400", name: "Mobilkran 400 t (exempel)", chart: "3:400\n5:310\n8:225\n10:185\n12:155\n16:118\n20:92\n25:70\n30:55\n35:44\n40:36\n50:24\n60:16" },
+];
+const l3lModelId = () => { try { const m = l3Prefs().craneModel; return m === "own" || L3L_MODELS.some(x => x.id === m) ? m : "m220"; } catch (e) { return "m220"; } };
+function l3lChartText() { const id = l3lModelId(); if (id === "own") { try { return l3Prefs().craneChart || L3L_DEF; } catch (e) { return L3L_DEF; } } return (L3L_MODELS.find(x => x.id === id) || L3L_MODELS[3]).chart; }
 function l3lChart() {
-  let txt = L3L_DEF; try { const p = typeof l3Prefs === "function" ? l3Prefs().craneChart : ""; if (p) txt = p; } catch (e) { /* standard */ }
-  const pts = String(txt).split(/\n+/).map(l => l.trim().split(/[:;\s]+/).map(x => parseFloat(x.replace(",", ".")))).filter(a => a.length >= 2 && a[0] >= 0 && a[1] >= 0).map(a => [a[0], a[1]]).sort((a, b) => a[0] - b[0]);
+  const pts = String(l3lChartText()).split(/\n+/).map(l => l.trim().split(/[:;\s]+/).map(x => parseFloat(x.replace(",", ".")))).filter(a => a.length >= 2 && a[0] >= 0 && a[1] >= 0).map(a => [a[0], a[1]]).sort((a, b) => a[0] - b[0]);
   return pts.length >= 2 ? pts : l3lChartDefault();
 }
 const l3lChartDefault = () => L3L_DEF.split("\n").map(l => l.split(":").map(Number));
@@ -100,6 +110,8 @@ function l3liftChartSvg() {
   return `<svg viewBox="0 0 ${W} ${H}" class="v3-lc"><polygon points="${area}" fill="rgba(80,160,255,.18)"/>${g}<polyline points="${line}" fill="none" stroke="#5aa7ff" stroke-width="1.6"/><line x1="${X(R)}" x2="${X(R)}" y1="${T}" y2="${H - B}" stroke="#ff8a1a" stroke-dasharray="3 2"/>${t > 0 ? `<circle cx="${X(R)}" cy="${Y(Math.min(cmax, t))}" r="4.5" fill="${col}" stroke="#fff" stroke-width="1.2"/>` : ""}<text x="${W - 6}" y="${T + 8}" text-anchor="end" class="u">ton / radie (m)</text></svg>`;
 }
 function l3liftPanelRefresh(p) {
+  const ms = p.querySelector('[data-ld="model"]'); if (ms && document.activeElement !== ms && ms.value !== l3lModelId()) ms.value = l3lModelId();
+  { const ta = p.querySelector('[data-ld="chart"]'); if (ta) { ta.readOnly = l3lModelId() !== "own"; if (document.activeElement !== ta && ta.value !== l3lChartText()) ta.value = l3lChartText(); } }
   const w = p.querySelector('[data-ld="w"]'); if (w && document.activeElement !== w) w.value = l3lift.loadT ? Math.round(l3lift.loadT * 10) / 10 : "";
   const u = p.querySelector("#v3CtlUtil"); if (u) { const ut = l3lift.util, pc = Math.min(100, Math.round(ut * 100)); u.innerHTML = `<div class="v3-ub"><i style="width:${pc}%;background:${ut > 1 ? "#ff4d4d" : ut > 0.8 ? "#ffb020" : "#2ee66b"}"></i></div><small>${ut > 0 ? (ut > 1 ? "⚠ ÖVERLAST " : "Utnyttjande ") + Math.round(ut * 100) + " %" : "Skriv in lastens vikt (eller haka i ett objekt) för att se utnyttjandet"}</small>${l3liftChartSvg()}`; }
   const rc = p.querySelector('[data-cb="rec"]'); if (rc) rc.textContent = l3lift.rec ? `⏹ Stoppa (${Math.round((performance.now() - l3lift.rec.t0) / 1000)} s)` : "⏺ Spela in";
@@ -108,7 +120,8 @@ function l3liftPanelRefresh(p) {
 function l3liftPanelChange(e) {
   const t = e.target, k = t.dataset && t.dataset.ld; if (!k) return;
   if (k === "w") { const v = parseFloat(String(t.value).replace(",", ".")); l3lift.loadT = isFinite(v) && v > 0 ? v : 0; l3lift.loadAuto = false; }
-  else if (k === "chart") { const v = String(t.value || "").trim(); l3SetPref("craneChart", v === L3L_DEF ? "" : v); }
+  else if (k === "chart") { const v = String(t.value || "").trim(); l3SetPref("craneChart", v); l3SetPref("craneModel", "own"); }
+  else if (k === "model") { const v = t.value; if (v === "own" && l3lModelId() !== "own") l3SetPref("craneChart", l3lChartText()); l3SetPref("craneModel", v); const p = l3w.ctlEl, ta = p && p.querySelector('[data-ld="chart"]'); if (ta) ta.value = l3lChartText(); }
   l3wCtlRefresh(true);
 }
 
