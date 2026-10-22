@@ -453,7 +453,9 @@ function buildPlacementsIfc(projName, only) {
     const it = placeItemOf(p);
     const start = p.start || (it && it.startDate) || "", end = p.end || (it && it.endDate) || "";
     const mk = (role, name, salt) => {
-      const meshes = lib.isModel ? (role === "body" ? placeModelMeshes(doc, p, o) : []) : parts.filter(pt => pt.role === role).map(pt => {
+      const meshes = lib.isModel ? (role === "body" ? placeModelMeshes(doc, p, o) : []) : lib.crew && typeof crewMergeGroups === "function" ? (role === "body" ? crewMergeGroups(parts, o).map(G => {
+        const pl = E(`IFCCARTESIANPOINTLIST3D((${G.pts.map(ifcPt).join(",")}))`), m = E(`IFCTRIANGULATEDFACESET(${pl},$,.T.,(${G.faces.map(f => `(${f.join(",")})`).join(",")}),$)`);
+        E(`IFCSTYLEDITEM(${m},(${doc.style(`${G.color}:0`, G.color, lib.label, 0)}),$)`); return m; }) : []) : parts.filter(pt => pt.role === role).map(pt => {
         const m = pt.tris ? placeTrisMesh(doc, pt.tris, o) : placePrismMesh(doc, pt.poly, pt.z0, pt.z1, o);
         const col = pt.color || p.color || lib.color || "#888888";
         E(`IFCSTYLEDITEM(${m},(${doc.style(`${col}:${pt.transp}`, col, lib.label, pt.transp)}),$)`);

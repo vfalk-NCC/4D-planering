@@ -782,7 +782,12 @@ function l3PlacementGroup(p) {
     // Biblioteksobjekt: delarna räknade för en kopia i origo (ovriden), staket relativt första punkten.
     const local = { ...p, x: 0, y: 0, z: 0, dz: 0, rot: 0 };
     if (p.pts) local.pts = p.pts.map(q => [q[0] - p.x, q[1] - p.y, (q[2] || 0) - (Number(p.z) || 0)]);
-    placeParts(local, 48).forEach(pt => { const m = add(pt.tris ? crewTrisGeometry(pt.tris, [0, 0, 0]) : prism(pt.poly, pt.z0, pt.z1), pt.color || p.color || lib.color || "#888888", pt.transp || 0); if (pt.role === "reach") m.userData.noHit = true; }); // räckvidden går inte att träffa (fästa, ställa på, markera)
+    if (lib.crew && typeof crewMergeGroups === "function") { // bemanningen: delarna sammanslagna per färg (ett nät i stället för tusentals)
+      crewMergeGroups(placeParts(local, 48), [0, 0, 0]).forEach(G => {
+        if (!G.unlit) { add(crewGroupGeometry(G), G.color, 0); return; }
+        const m = new THREE.Mesh(crewGroupGeometry(G), new THREE.MeshBasicMaterial({ color: new THREE.Color(G.color), side: THREE.DoubleSide })); m.userData.placeId = p.id; grp.add(m);
+      });
+    } else placeParts(local, 48).forEach(pt => { const m = add(pt.tris ? crewTrisGeometry(pt.tris, [0, 0, 0]) : prism(pt.poly, pt.z0, pt.z1), pt.color || p.color || lib.color || "#888888", pt.transp || 0); if (pt.role === "reach") m.userData.noHit = true; }); // räckvidden går inte att träffa (fästa, ställa på, markera)
     if (lib.fence && (p.pts || []).length === 1) add(prism([[-0.05, -0.05], [0.05, -0.05], [0.05, 0.05], [-0.05, 0.05]], 0, Number(p.H) || 2), p.color || lib.color, 0);
   }
   grp.position.set(p.x - l3.O[0], p.y - l3.O[1], z - l3.O[2]);
