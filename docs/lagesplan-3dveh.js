@@ -57,7 +57,7 @@ function l3vCrane() {
   const rg = new THREE.Group(); rg.position.set(-1.3, 0, 0.05); g.add(rg); const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }), labs = [];
   for (let r = 5; r <= 40; r += 5) { const m = new THREE.Mesh(new THREE.RingGeometry(r - 0.04, r + 0.04, 120), ringMat); rg.add(m); const lb = l3vLabel(2.6, 1.3); lb.userData.set(r + " m", "#cbd5e1"); lb.position.set(r * Math.cos(0.9), r * Math.sin(0.9), 0.4); rg.add(lb); labs.push(lb); }
   const rcur = new THREE.Mesh(new THREE.RingGeometry(0.975, 1, 160), new THREE.MeshBasicMaterial({ color: 0xff7a00, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })), rdisc = new THREE.Mesh(new THREE.CircleGeometry(1, 96), new THREE.MeshBasicMaterial({ color: 0xff7a00, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false })), rmax = new THREE.Mesh(new THREE.RingGeometry(0.985, 1, 160), new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
-  rg.add(rcur, rdisc, rmax); const rlab = l3vLabel(3.4, 1.7), mlab = l3vLabel(3.4, 1.7); rg.add(rlab, mlab);
+  rg.add(rcur, rdisc, rmax); const rlab = l3vLabel(3.4, 1.7), mlab = l3vLabel(3.4, 1.7); rg.add(rlab, mlab); rg.traverse(o => { o.userData.noIfc = true; });
   l3vMark(g);
   const geo = c => { const ext = Math.max(0, Math.min(1, c.ext)), ang = c.ang, s2 = 1 + 7.6 * ext, s3 = s2 + 1 + 7.0 * ext, s4 = s3 + 1 + 6.4 * ext, L = s4 + 7.4, tx = -0.8 + L * Math.cos(ang), tz = 1.9 + L * Math.sin(ang), R = -0.8 + L * Math.cos(ang) + 1.3 - 1.3; const Lmax = 24 + 7.4 + 1, Rmax = -0.8 + 31.4 * Math.cos(ang); return { s: [0, s2, s3, s4], L, tx, tz, R: Math.max(0, R), Rmax: Math.max(0, Rmax), H: 1.3 + tz }; };
   const update = st => {
@@ -105,9 +105,11 @@ function l3vExcavator() {
   const jt = l3vCylY(0.36, K2); jt.scale.y = 0.7; jt.position.copy(A); bm.add(jt); const fp = l3vCylY(0.34, K2); fp.scale.y = 0.7; bm.add(fp);
   const sk = new THREE.Group(); sk.position.copy(E); bm.add(sk); const stick = B(2.9, 0.42, 0.52, Y, 1.35, 0, 0); sk.add(stick, B(0.5, 0.5, 0.6, K2, 0, 0, 0), B(0.4, 0.46, 0.3, K2, 2.85, 0, 0));
   const bk = new THREE.Group(); bk.position.set(2.9, 0, 0); sk.add(bk);
-  bk.add(B(1.1, 1.25, 0.07, K2, 0.55, 0, -0.6), B(0.07, 1.25, 0.95, K2, 0.06, 0, -0.14), B(1.1, 0.07, 0.95, K2, 0.52, 0.6, -0.14), B(1.1, 0.07, 0.95, K2, 0.52, -0.6, -0.14), B(0.4, 1.2, 0.1, K, 0.1, 0, 0.35));
-  [-0.5, -0.25, 0, 0.25, 0.5].forEach(y => { const th = B(0.32, 0.11, 0.1, steel, 1.2, y, -0.6); th.rotation.y = 0.25; bk.add(th); });
-  const tip = l3vAnchor(bk, 1.3, 0, -0.64);
+  // skopan: den ryggade (konvexa) sidan sitter mot skaftet och öppningen med tänderna vetter mot maskinen när man kröker in (positiv vinkel)
+  const fr = B(0.72, 1.25, 0.07, K2, 1.04, 0, -0.29); fr.rotation.y = 1.17;
+  bk.add(B(0.95, 1.25, 0.07, K2, 0.52, 0, 0.04), fr, B(0.07, 1.25, 0.3, K2, 0.04, 0, -0.12), B(1.15, 0.06, 0.78, K2, 0.62, 0.62, -0.28), B(1.15, 0.06, 0.78, K2, 0.62, -0.62, -0.28), B(0.4, 1.2, 0.1, K, 0.1, 0, 0.35));
+  [-0.5, -0.25, 0, 0.25, 0.5].forEach(y => { const th = B(0.12, 0.1, 0.32, steel, 1.2, y, -0.68); th.rotation.y = 0.45; bk.add(th); });
+  const tip = l3vAnchor(bk, 1.26, 0, -0.78);
   // ---- hydraulcylindrar (två för bommen)
   const rams = [];
   [-0.3, 0.3].forEach(y => rams.push(l3vRam(tur, l3vAnchor(tur, 0.55, y, 0.38), l3vAnchor(bm, 1.57, y, 0.1), [K2, steel], 0.14, 0.085)));
@@ -116,7 +118,7 @@ function l3vExcavator() {
   // ---- radie
   const rg = new THREE.Group(); rg.position.set(0, 0, 0.05); g.add(rg); const ringMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false });
   for (let r = 2; r <= 12; r += 2) { const m = new THREE.Mesh(new THREE.RingGeometry(r - 0.03, r + 0.03, 96), ringMat); rg.add(m); const lb = l3vLabel(1.2, 0.6); lb.userData.set(r + " m", "#cbd5e1"); lb.position.set(r * Math.cos(2.3), r * Math.sin(2.3), 0.3); rg.add(lb); }
-  const rcur = new THREE.Mesh(new THREE.RingGeometry(0.97, 1, 120), new THREE.MeshBasicMaterial({ color: 0xff7a00, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })); rg.add(rcur); const rlab = l3vLabel(2.4, 1.2); rg.add(rlab);
+  const rcur = new THREE.Mesh(new THREE.RingGeometry(0.97, 1, 120), new THREE.MeshBasicMaterial({ color: 0xff7a00, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })); rg.add(rcur); const rlab = l3vLabel(2.4, 1.2); rg.add(rlab); rg.traverse(o => { o.userData.noIfc = true; });
   l3vMark(g);
   const tv = L3V_V0(), tv2 = L3V_V0();
   const update = st => {

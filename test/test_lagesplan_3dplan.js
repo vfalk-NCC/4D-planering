@@ -523,6 +523,31 @@ const PP = [
     });
     if (!wk5.fwdOwn || !wk5.turnsRight || !wk5.stayedPut || !wk5.camFollows || !wk5.firstView) fail('Normal styrning i tredje person: ' + JSON.stringify(wk5));
     else console.log('OK: tredje person – normal styrning (W/S längs egen riktning, A/D svänger), kameran följer efter, första person styr efter blicken');
+    // Inskrivna mått, lås fordonet, flyg runt och exportera som IFC; zoom i tredje person.
+    const wk6 = await page.evaluate(async () => {
+      l3wInit(); const wait = ms => new Promise(r => setTimeout(r, ms)); window.__vehKeep = true; window.__dl = null; const keepDl = window.downloadBlob; window.downloadBlob = (b, n) => { window.__dl = { b, n }; };
+      l3SetPref('walkFollow', true); l3SetPref('navHelp', false); l3NavHelp(); l3SetPref('walkPerson', 'third'); l3SetPref('walkGhost', true); l3SetPref('walkJoy', false); l3SetPref('walkKind', 'crane'); l3SetPref('walkRadius', true);
+      const gz = l3GroundZ(); l3wEnter(new THREE.Vector3(0, 0, gz)); l3w.yaw = 0; l3w.heading = 0; l3w.pitch = 0; l3wApply(); await wait(300); const out = {};
+      // zooma ut i tredje person med hjulet
+      const d0 = l3.camera.position.distanceTo(l3w.p); for (let i = 0; i < 4; i++) l3.renderer.domElement.dispatchEvent(new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true })); await wait(100); const d1 = l3.camera.position.distanceTo(l3w.p); out.zoomOut = d1 > d0 * 1.4; l3w.camMul = 1; l3wApply();
+      l3wWork(); await wait(5200);
+      // skriv in mått: bomlängd 20 m, radie 12 m
+      const set = (sel, v) => { const i = document.querySelector(sel); i.value = v; i.dispatchEvent(new Event('change', { bubbles: true })); };
+      set('[data-n="len"]', 20); await wait(3500); const len = parseFloat((l3w.info.find(x => x[0] === 'Bomlängd') || [])[1].replace(',', '.')); out.len = len;
+      set('[data-n="rad"]', 12); await wait(3500); const rad = parseFloat((l3w.info.find(x => x[0] === 'Radie') || [])[1].replace(',', '.')); out.rad = rad;
+      set('[data-n="slew"]', 45); await wait(1800); out.slew = Math.abs(l3w.ctl.slew - Math.PI / 4) < 0.05;
+      // lås
+      const gBefore = l3w.avatar; l3wLock(); out.locked = l3w.locked.length === 1 && !l3w.on && !!gBefore.parent && !!document.querySelector('.v3-lockp'); out.panelGone = !document.querySelector('.v3-ctl:not(.hidden)');
+      const snap = JSON.stringify(l3w.locked[0].ctl); await wait(400); out.frozen = snap === JSON.stringify(l3w.locked[0].ctl);
+      // IFC
+      const r = await l3vIfcExport(l3w.locked[0], false); out.ifc = !!r && /\.ifc$/.test(r.name) && r.tris > 500; const txt = r && r.text || ''; out.ifcHas = /IFCTRIANGULATEDFACESET/.test(txt) && /IFCSTYLEDITEM/.test(txt) && /IFCBUILDINGELEMENTPROXY\('[^']+',\$,'Mobilkran 1'/.test(txt) && txt.includes('Bom\\X2\\00E4\\X0\\ngd'); out.parts = r && r.parts;
+      // flyg runt: orbit är på igen, kameran är fri; styr igen återtar
+      out.orbit = l3.orbit.enabled === true; l3wLockResume(l3w.locked[0].id); out.resumed = l3w.on && l3w.kind === 'crane' && Math.abs(l3w.ctl.slew - Math.PI / 4) < 0.05 && l3w.workOn && l3w.locked.length === 0;
+      l3wLock(); l3wLockRemove(l3w.locked[0].id); out.removed = !l3w.locked.length && !document.querySelector('.v3-lockp');
+      window.downloadBlob = keepDl; l3SetPref('walkKind', 'human'); l3SetPref('walkPerson', 'first'); l3wExit(true); return out;
+    });
+    if (!wk6.zoomOut || Math.abs(wk6.len - 20) > 0.6 || Math.abs(wk6.rad - 12) > 0.8 || !wk6.slew || !wk6.locked || !wk6.panelGone || !wk6.frozen || !wk6.ifc || !wk6.ifcHas || !wk6.orbit || !wk6.resumed || !wk6.removed) fail('Inskrivna mått, lås, IFC, zoom: ' + JSON.stringify(wk6));
+    else console.log('OK: zoom i 3:e person, inskrivna mått (bomlängd/radie/sväng), lås och flyg runt, IFC-export av exakta läget, styr igen');
     // Nederkanten: knappar för Status och Navigering (ingen knapp längre över bilden).
     const ft = await page.evaluate(() => {
       const L = () => document.getElementById('v3Legend'), N = () => document.getElementById('v3NavHelp'), bl = document.getElementById('v3FtLegend'), bn = document.getElementById('v3FtNav');
