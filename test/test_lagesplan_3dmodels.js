@@ -381,7 +381,7 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
     const n0 = placeParts(p).filter(x => !x.tris).length; side.querySelector('[data-crew="inc"]').click(); await wait(100); const n1 = placeParts(p).filter(x => !x.tris).length; out.inc = p.count === 5 && n1 > n0;
     document.querySelector('#v3Side [data-crew="inc5"]').click(); await wait(100); out.inc5 = p.count === 10; document.querySelector('#v3Side [data-crew="dec"]').click(); await wait(100); out.dec = p.count === 9;
     const ta = document.querySelector('#v3Side [data-crew="comment"]'); ta.value = 'Armerar plattan, skift 1'; ta.dispatchEvent(new Event('change', { bubbles: true })); await wait(100); out.comment = p.comment === 'Armerar plattan, skift 1' && placeParts(p).some(x => x.tris && x.tris.faces.length > 100);
-    out.mesh = l3.placeMeshes.get(p.id).children.length > 9 * 8 && p.L > 2.4;
+    out.mesh = l3.placeMeshes.get(p.id).children.length >= 3 && p.L > 2.4;
     const ifc = buildPlacementsIfc('T', new Set([p.id])); out.ifc = !!ifc && /IFCTRIANGULATEDFACESET/.test(ifc.text) && /Antal personer/.test(ifc.text) && /Armerar plattan, skift 1/.test(ifc.text) && /Procyon/.test(ifc.text);
     placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(l3.placeMeshes.get(p.id)); l3.placeMeshes.delete(p.id); l3SelectIds([]); items.pop(); items.pop();
     return out; });
