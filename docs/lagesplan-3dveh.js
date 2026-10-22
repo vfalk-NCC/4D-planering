@@ -24,7 +24,7 @@ function l3vMark(g) { g.traverse(o => { o.userData.noHit = true; if (!o.isSprite
 /* ---- Mobilkran ------------------------------------------------------------------------------------------------------------------------------ */
 function l3vCrane() {
   const g = new THREE.Group(), Y = l3cPh(0xf4b400, 45), Y2 = l3cPh(0xd49a00, 35), K = l3cPh(0x2a2e34, 20), K2 = l3cPh(0x474c54, 25), Gy = l3cPh(0x8a9099, 40), Rd = l3cPh(0xc4281c, 35), tire = l3cPh(0x161616, 4), hub = l3cPh(0xb4b9c0, 70), steel = l3cPh(0xcfd4da, 90);
-  const glass = new THREE.MeshPhongMaterial({ color: 0x2f4a66, shininess: 120, specular: 0xffffff, transparent: true, opacity: 0.88 }), lamp = new THREE.MeshBasicMaterial({ color: 0xfff2b0 }), amber = new THREE.MeshBasicMaterial({ color: 0xff9a1a });
+  const glass = l3cGlass(0x2f4a66), lamp = new THREE.MeshBasicMaterial({ color: 0xfff2b0 }), amber = new THREE.MeshBasicMaterial({ color: 0xff9a1a });
   const B = l3cBox;
   // ---- bärare (chassi, hytt, hjul, stödbenshus)
   g.add(B(10.8, 1.1, 0.5, K, 0.2, 0, 1.0), B(8.8, 0.1, 0.55, Y, 0, 1.12, 1.02), B(8.8, 0.1, 0.55, Y, 0, -1.12, 1.02), B(1.5, 0.35, 0.5, Gy, 0.6, 1.3, 0.95), B(1.5, 0.35, 0.5, Gy, 0.6, -1.3, 0.95), B(1.1, 0.5, 0.45, K2, -0.8, 1.3, 0.95));
@@ -76,7 +76,7 @@ function l3vCrane() {
 /* ---- Grävmaskin ----------------------------------------------------------------------------------------------------------------------------- */
 function l3vExcavator() {
   const g = new THREE.Group(), Y = l3cPh(0xf5b400, 45), Y2 = l3cPh(0xd49a00, 35), K = l3cPh(0x2a2e34, 20), K2 = l3cPh(0x474c54, 25), steel = l3cPh(0xb9bfc7, 90), shoeM = l3cPh(0x1d1f22, 6), roll = l3cPh(0x3a3e45, 25);
-  const glass = new THREE.MeshPhongMaterial({ color: 0x2f4a66, shininess: 120, specular: 0xffffff, transparent: true, opacity: 0.88 }), amber = new THREE.MeshBasicMaterial({ color: 0xff9a1a }), B = l3cBox;
+  const glass = l3cGlass(0x2f4a66), amber = new THREE.MeshBasicMaterial({ color: 0xff9a1a }), B = l3cBox;
   // ---- larver: ram, hjul, rullar och skor som rullar runt
   const shoeGeo = new THREE.BoxGeometry(0.22, 0.78, 0.07), trackSides = [];
   const Ls = 3.45, Rr = 0.46, loop = 2 * Ls + 2 * Math.PI * Rr, NS = Math.round(loop / 0.25), pitch = loop / NS;

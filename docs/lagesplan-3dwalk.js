@@ -102,10 +102,11 @@ function l3wAvatarUpdate() {
 function l3wAvatarRemove() {
   const g = l3w.avatar; l3w.avatar = null; l3w.av = null; if (!g) return;
   if (g.parent) g.parent.remove(g);
-  g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m.map) m.map.dispose(); m.dispose(); }); } });
+  g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m.userData && m.userData.shared) return; if (m.map) m.map.dispose(); m.dispose(); }); } });
 }
 function l3wSetKind(k) {
   if (!L3C_CFG[k]) k = "human"; if (k === "own" && !(l3.sel && l3.sel.size)) { l3Status("Markera ett placerat objekt (t.ex. en kran från biblioteket) först – då kan du vara det.", true); return; }
+  if (k === "glb" && !l3glb.root) { l3glbEnsure().then(ok => { if (ok) l3wSetKind("glb"); else { l3wHud(true); l3Status("Ingen figur vald – du är kvar som förut.", true); } }); return; }
   l3wAvatarRemove(); l3w.kind = k; l3w.camMul = 1; l3w.cfg = L3C_CFG[k]; l3SetPref("walkKind", k);
   if (l3w.cfg.vehicle) { l3w.person = "third"; l3w.eye = l3w.cfg.eye; } else l3w.eye = 1.7; l3w.crouchTog = false; l3w.settled = false; l3w.gz = null; l3w.workOn = false; l3w.work = 0; l3wCtlReset(); l3wCtlPanel();
   l3wApply(); l3wHud(true); l3wJoyShow(l3w.joy); l3Status(`Du är nu ${(L3C_KINDS.find(x => x[0] === k) || ["", k])[1].toLowerCase()}${k === "own" ? " (kopia av det markerade objektet)" : ""}.`);
@@ -289,7 +290,7 @@ function l3wLock() {
 }
 function l3wLockRemove(id, keepGroup) {
   const i = l3w.locked.findIndex(x => x.id === id); if (i < 0) return null; const it = l3w.locked.splice(i, 1)[0];
-  if (!keepGroup) { const g = it.g; if (g.parent) g.parent.remove(g); g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m.map) m.map.dispose(); m.dispose(); }); }); }
+  if (!keepGroup) { const g = it.g; if (g.parent) g.parent.remove(g); g.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m.userData && m.userData.shared) return; if (m.map) m.map.dispose(); m.dispose(); }); }); }
   l3wLockPanel(); l3Render(); return it;
 }
 function l3wLockResume(id) {
@@ -426,7 +427,7 @@ function l3wHud(show) {
     h.addEventListener("pointerdown", e => e.stopPropagation());
   }
   h.classList.remove("hidden");
-  h.innerHTML = `<b>Gå runt</b><span class="v3-walk-p" title="Första person: du ser genom ögonen. Tredje person: kameran följer bakom en figur (V byter)"><button type="button" data-w="p1" class="${l3w.person !== "third" ? "on" : ""}">1:a person</button><button type="button" data-w="p3" class="${l3w.person === "third" ? "on" : ""}">3:e person</button></span><select class="v3-walk-kind" data-w="kind" title="Vem eller vad du är i tredje person: byggare, mobilkran, grävmaskin, lastbil, hjullastare eller en kopia av det markerade objektet">${L3C_KINDS.map(([k, n]) => `<option value="${k}"${l3w.kind === k ? " selected" : ""}>${n}</option>`).join("")}</select>${l3w.cfg && l3w.cfg.vehicle ? `<button type="button" class="v3-walk-m ${l3w.workOn ? "on" : ""}" data-w="work" title="Arbetsläge: kranarm upp, grävande arm, tippat flak (X)">Arbeta</button>` : ""}${l3w.kind === "own" ? `<button type="button" class="v3-walk-m" data-w="rot" title="Vrid objektet ett kvarts varv (vilken sida som är framåt)">Vrid</button>` : ""}<span class="v3-walk-k"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> gå · <kbd>E</kbd> upp · <kbd>Q</kbd> ner · <kbd>Skift</kbd> spring · <kbd>C</kbd> huka · <kbd>Mellanslag</kbd> hopp · <kbd>V</kbd> person · <kbd>G</kbd> spöke · <kbd>X</kbd> arbeta · <kbd>F</kbd> helskärm · <kbd>K</kbd> kommentar · <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> titta · dra = titta · hjul = zooma (3:e person) / fart (1:a, Skift)  · <kbd>M</kbd> mät · <kbd>Esc</kbd> ut</span>
+  h.innerHTML = `<b>Gå runt</b><span class="v3-walk-p" title="Första person: du ser genom ögonen. Tredje person: kameran följer bakom en figur (V byter)"><button type="button" data-w="p1" class="${l3w.person !== "third" ? "on" : ""}">1:a person</button><button type="button" data-w="p3" class="${l3w.person === "third" ? "on" : ""}">3:e person</button></span><select class="v3-walk-kind" data-w="kind" title="Vem eller vad du är i tredje person: byggare, mobilkran, grävmaskin, lastbil, hjullastare eller en kopia av det markerade objektet">${L3C_KINDS.map(([k, n]) => `<option value="${k}"${l3w.kind === k ? " selected" : ""}>${n}</option>`).join("")}</select>${l3w.cfg && l3w.cfg.vehicle ? `<button type="button" class="v3-walk-m ${l3w.workOn ? "on" : ""}" data-w="work" title="Arbetsläge: kranarm upp, grävande arm, tippat flak (X)">Arbeta</button>` : ""}${l3w.kind === "own" || l3w.kind === "glb" ? `<button type="button" class="v3-walk-m" data-w="rot" title="Vrid objektet ett kvarts varv (vilken sida som är framåt)">Vrid</button>` : ""}<span class="v3-walk-k"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> gå · <kbd>E</kbd> upp · <kbd>Q</kbd> ner · <kbd>Skift</kbd> spring · <kbd>C</kbd> huka · <kbd>Mellanslag</kbd> hopp · <kbd>V</kbd> person · <kbd>G</kbd> spöke · <kbd>X</kbd> arbeta · <kbd>F</kbd> helskärm · <kbd>K</kbd> kommentar · <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> titta · dra = titta · hjul = zooma (3:e person) / fart (1:a, Skift)  · <kbd>M</kbd> mät · <kbd>Esc</kbd> ut</span>
     <span class="v3-walk-v" title="Farten – ändras med mushjulet"><button type="button" data-w="slow">−</button><em id="v3WalkSpeed"></em><button type="button" data-w="fast">＋</button></span>
     <button type="button" class="v3-walk-m ${l3.tool === "measure" ? "on" : ""}" data-w="meas" title="Mät medan du går (M): tryck punkterna i bilden – dra för att titta">Mät</button>
     <button type="button" class="v3-walk-m ${l3w.ghost ? "on" : ""}" data-w="ghost" title="Spöke på: du går igenom väggar och föremål. Av: de stoppar dig (G)">Spöke</button>

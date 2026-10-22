@@ -473,7 +473,7 @@ const PP = [
       l3SetPref('walkFollow', true); l3w.settled = false; await wait(300);
       // schräg vägg: glid längs den i stället för att fastna (spöke av)
       const wall = new THREE.Mesh(new THREE.BoxGeometry(0.3, 12, 4), new THREE.MeshBasicMaterial()); wall.position.set(l3w.p.x + 3, l3w.p.y, gz + 2); wall.rotation.z = 0.5; l3.groups.bldg.add(wall); wall.updateMatrixWorld(true);
-      l3wSetGhost(false); l3w.speed = 3; l3w.yaw = 0; const p0 = l3w.p.clone(); key('keydown', 'KeyW'); await wait(2200); key('keyup', 'KeyW'); const d = l3w.p.clone().sub(p0);
+      l3wSetGhost(false); l3w.speed = 3; l3w.yaw = 0; const p0 = l3w.p.clone(); key('keydown', 'KeyW'); for (let i = 0; i < 14 && Math.abs(l3w.p.y - p0.y) <= 0.9; i++) await wait(500); key('keyup', 'KeyW'); const d = l3w.p.clone().sub(p0);
       out.slid = Math.abs(d.y) > 0.8; out.notThrough = l3w.p.x < wall.position.x + 6 * Math.sin(0.5) + 0.4 && !(Math.abs(d.x) > 5.5);
       l3.groups.bldg.remove(wall);
       // fall från kant: marken 3 m ner (spöke av) ger fall, inte svävning
@@ -489,7 +489,7 @@ const PP = [
       l3SetPref('walkFollow', true); l3SetPref('navHelp', false); l3NavHelp(); l3SetPref('walkPerson', 'third'); l3SetPref('walkGhost', true); l3SetPref('walkJoy', false); l3SetPref('walkKind', 'crane'); l3SetPref('walkRadius', true);
       const gz = l3GroundZ(); l3wEnter(new THREE.Vector3(0, 0, gz)); l3w.yaw = 0; l3w.heading = 0; l3w.pitch = 0; l3wApply(); await wait(300); const out = {};
       out.ctl0 = JSON.stringify(l3w.ctl); out.panelHidden = !document.querySelector('.v3-ctl:not(.hidden)');
-      l3wWork(); out.panel = !!document.querySelector('.v3-ctl:not(.hidden)'); await wait(5200); const c = l3w.ctl;
+      l3wWork(); out.panel = !!document.querySelector('.v3-ctl:not(.hidden)'); for (let i = 0; i < 40 && !(l3w.ctl.out >= 0.97 && l3w.ctl.ang >= 0.9 && l3w.ctl.ext >= 0.25); i++) await wait(500); const c = l3w.ctl;
       out.out = c.out; out.ang = c.ang; out.ext = c.ext; out.info = (l3w.info || []).map(x => x[0] + ':' + x[1]).join('|'); out.rings = l3w.avatar.children.some(ch => ch.type === 'Group' && ch.children.length > 10 && ch.visible);
       // utan stödben åker man inte, med stödben ute blockeras körning
       const x0 = l3w.p.x; key('keydown', 'KeyW'); await wait(500); key('keyup', 'KeyW'); out.blocked = Math.abs(l3w.p.x - x0) < 0.05;
@@ -500,13 +500,25 @@ const PP = [
       // sliders: sätt bomvinkel via panelen
       const sl = document.querySelector('.v3-ctl [data-c="ang"]'); sl.value = 30; sl.dispatchEvent(new Event('input', { bubbles: true })); await wait(2500); out.sliderAng = Math.abs(l3w.ctl.ang - 30 * Math.PI / 180) < 0.08; const R2 = (l3w.info.find(x => x[0] === 'Radie') || [])[1]; out.radiusGrows = parseFloat(String(R2).replace(',', '.')) > parseFloat(String(R1).replace(',', '.'));
       // ta in: stödben och bom
-      l3wWork(); await wait(7000); out.stowed = l3w.ctl.out < 0.02 && l3w.ctl.ang < 0.1 && l3w.ctl.ext < 0.02;
+      l3wWork(); for (let i = 0; i < 60 && !(l3w.ctl.out < 0.02 && l3w.ctl.ang < 0.1 && l3w.ctl.ext < 0.02); i++) await wait(500); out.stowed = l3w.ctl.out < 0.02 && l3w.ctl.ang < 0.1 && l3w.ctl.ext < 0.02;
       // grävmaskin
       l3wSetKind('excavator'); l3wWork(); const e1 = JSON.stringify(l3w.ctl); out.excPanel = !!document.querySelector('.v3-ctl:not(.hidden) [data-cb="auto"]'); document.querySelector('.v3-ctl [data-cb="auto"]').click(); await wait(2500); out.dig = JSON.stringify(l3w.ctl) !== e1 && l3w.auto; out.reach = (l3w.info || []).some(x => /Räckvidd/.test(x[0]));
       l3wSetKind('human'); out.hidden = !document.querySelector('.v3-ctl:not(.hidden)'); l3SetPref('walkKind', 'human'); l3wExit(true); return out;
     });
     if (!wk4.panelHidden || !wk4.panel || wk4.out < 0.97 || wk4.ang < 0.9 || wk4.ext < 0.25 || !wk4.rings || !/Radie/.test(wk4.info) || !wk4.blocked || !wk4.angDown || !wk4.slew || !wk4.extUp || !wk4.sliderAng || !wk4.radiusGrows || !wk4.stowed || !wk4.excPanel || !wk4.dig || !wk4.reach || !wk4.hidden) fail('Mobilkran/grävmaskin (stödben, bom, radie, panel, reglage): ' + JSON.stringify(wk4));
     else console.log('OK: mobilkran – stödben ut, bom upp, radie och höjd, kranpanel och tangenter, stödben in; grävmaskin – reglage och automatisk grävning');
+    // Verktygshjul: håll Tab, dra åt ett håll, släpp – verktyget byts; ◎-knappen öppnar det som klickmeny.
+    const wh = await page.evaluate(async () => {
+      const wait = ms => new Promise(r => setTimeout(r, ms)), out = {}; if (typeof l3wExit === 'function' && l3w.on) l3wExit(); await wait(200);
+      const cx = 600, cy = 400, mv = (x, y) => window.dispatchEvent(new PointerEvent('pointermove', { clientX: x, clientY: y, bubbles: true }));
+      mv(cx, cy); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })); await wait(100); out.open = !!document.querySelector('.l3wh') && document.querySelectorAll('.l3wh-it').length >= 10;
+      mv(cx + 60, cy - 104); await wait(50); out.on = (document.querySelector('.l3wh-it.on') || {}).dataset && document.querySelector('.l3wh-it.on').dataset.k;
+      window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Tab', bubbles: true })); await wait(100); out.closed = !document.querySelector('.l3wh'); out.tool = l3.tool;
+      document.querySelector('[data-v3tool="select"]').click(); document.getElementById('v3WheelBtn').click(); await wait(100); out.btnOpen = !!document.querySelector('.l3wh');
+      document.querySelector('.l3wh-it[data-k="measure"]').click(); await wait(100); out.btnPick = l3.tool === 'measure' && !document.querySelector('.l3wh'); document.querySelector('[data-v3tool="select"]').click();
+      return out; });
+    if (!wh.open || wh.on !== 'move' || !wh.closed || wh.tool !== 'move' || !wh.btnOpen || !wh.btnPick) fail('Verktygshjul: ' + JSON.stringify(wh));
+    else console.log('OK: verktygshjul i 3D-editorn – håll Tab, dra åt ett håll och släpp; ◎-knappen som klickmeny');
     // Normal styrning i tredje person: W/S längs figurens riktning, A/D svänger – oberoende av hur vyn vridits.
     const wk5 = await page.evaluate(async () => {
       l3wInit(); const wait = ms => new Promise(r => setTimeout(r, ms)), key = (t, code) => document.body.dispatchEvent(new KeyboardEvent(t, { code, key: code.replace('Key', '').toLowerCase(), bubbles: true, cancelable: true }));

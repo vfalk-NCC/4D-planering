@@ -9,9 +9,9 @@ function l3vIfcMeshes(root, O) {
   const groups = new Map(), v = new THREE.Vector3(), m = new THREE.Matrix4(), im = new THREE.Matrix4();
   const visible = o => { for (let p = o; p && p !== root.parent; p = p.parent) if (p.visible === false) return false; return true; };
   root.traverse(o => {
-    if (!o.isMesh || o.userData.noIfc || !visible(o) || !o.geometry) return; const mat = Array.isArray(o.material) ? o.material[0] : o.material; if (!mat || mat.map) return;
+    if (!o.isMesh || o.userData.noIfc || o.userData.shadow || !visible(o) || !o.geometry) return; const mat = Array.isArray(o.material) ? o.material[0] : o.material; if (!mat || mat.map) return;
     const c = mat.color ? "#" + mat.color.getHexString() : "#999999", tr = mat.transparent && mat.opacity < 1 ? Math.round((1 - mat.opacity) * 100) / 100 : 0, key = c + "|" + tr;
-    const pos = o.geometry.getAttribute("position"), idx = o.geometry.index; if (!pos) return;
+    const geo = o.userData.ifcGeo || o.geometry, pos = geo.getAttribute("position"), idx = geo.index; if (!pos) return;
     const grp = groups.get(key) || groups.set(key, { hex: c, tr, pts: [], faces: [] }).get(key), n = o.isInstancedMesh ? o.count : 1;
     for (let k = 0; k < n; k++) {
       if (o.isInstancedMesh) { o.getMatrixAt(k, im); m.multiplyMatrices(o.matrixWorld, im); } else m.copy(o.matrixWorld);
