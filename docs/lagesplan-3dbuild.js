@@ -621,17 +621,37 @@ function l3bHitInfo(h) {
 }
 
 /* Dölja enskilda objekt i byggnaden: indexlistan byggs om utan objektets trianglar. */
+/* Snabb indexlista: objektens trianglar ligger sammanhängande i bitens ursprungliga index, så de synliga objektens delar kopieras som block (typed array .set) i stället för
+   att gå igenom alla trianglar en och en. Montageordningen (och andra lägen) som släcker/tonar objekt för varje steg blev annars segare än Trimble Connect. null om ordningen inte stämmer. */
+function l3bSlices(mesh) {
+  const u = mesh.userData.l3b; if (u.slices !== undefined) return u.slices;
+  const src = u.origIdx; if (!src || !src.subarray) return (u.slices = null);
+  const arr = []; let sum = 0; u.ranges.forEach((r, ri) => { const [is, ic] = l3bsIdx(mesh, ri); if (ic > 0) { arr.push([ri, is, ic]); sum += ic; } });
+  arr.sort((a, b) => a[1] - b[1]); let ok = sum === src.length; for (let k = 1; ok && k < arr.length; k++) if (arr[k][1] < arr[k - 1][1] + arr[k - 1][2]) ok = false;
+  return (u.slices = ok ? arr : null);
+}
+function l3bSliceIdx(mesh, pick) {
+  const sl = l3bSlices(mesh); if (!sl) return null; const src = mesh.userData.l3b.origIdx; let n = 0;
+  for (const x of sl) if (pick(x[0])) n += x[2];
+  const out = mesh.geometry.getAttribute("position").count > 65535 ? new Uint32Array(n) : new Uint16Array(n); let o = 0;
+  for (const x of sl) if (pick(x[0])) { out.set(src.subarray(x[1], x[1] + x[2]), o); o += x[2]; }
+  return out;
+}
 function l3bApplyHidden(mesh) {
   const u = mesh.userData.l3b, src = u.origIdx;
   let idx = src;
-  // tempOff: temporära utanför sin tid; animOff: filmens animering (lagesplan-3dfilmfx.js) ritar objektet själv.
-  const off = new Set([...(u.tempOff || []), ...(u.animOff || [])]), alpha = new Map([...(u.gAlpha || []), ...(u.alpha || [])]);
-  if (u.hidden.size || off.size || alpha.size) {
-    const hid = new Uint8Array(mesh.geometry.getAttribute("position").count);
-    // Genomskinliga (tillfällig opacitet) ritas i en egen bit ovanpå – inte i huvudbiten.
-    [...u.hidden, ...off, ...alpha.keys()].forEach(ri => { const r = u.ranges[ri]; hid.fill(1, r.start, r.start + r.count); });
-    idx = [];
-    for (let i = 0; i + 2 < src.length; i += 3) if (!hid[src[i]]) idx.push(src[i], src[i + 1], src[i + 2]);
+  // tempOff: temporära utanför sin tid; animOff: filmens animering (lagesplan-3dfilmfx.js) ritar objektet själv; mtHide: släckta i Montageordningen.
+  const off = new Set([...(u.tempOff || []), ...(u.animOff || [])]), alpha = new Map([...(u.gAlpha || []), ...(u.alpha || [])]), mt = u.mtHide || new Set();
+  if (u.hidden.size || off.size || alpha.size || mt.size) {
+    const gone = new Set([...u.hidden, ...off, ...alpha.keys(), ...mt]), fast = l3bSliceIdx(mesh, ri => !gone.has(ri));
+    if (fast) idx = fast;
+    else {
+      const hid = new Uint8Array(mesh.geometry.getAttribute("position").count);
+      // Genomskinliga (tillfällig opacitet) ritas i en egen bit ovanpå – inte i huvudbiten.
+      [...gone].forEach(ri => { const r = u.ranges[ri]; hid.fill(1, r.start, r.start + r.count); });
+      idx = [];
+      for (let i = 0; i + 2 < src.length; i += 3) if (!hid[src[i]]) idx.push(src[i], src[i + 1], src[i + 2]);
+    }
   }
   // Alltid en kopia: det rumsliga indexet (BVH) ordnar om indexlistan, origIdx måste vara orörd.
   mesh.geometry.setIndex(mesh.geometry.getAttribute("position").count > 65535 ? new THREE.Uint32BufferAttribute(idx === src ? src.slice() : idx, 1) : new THREE.Uint16BufferAttribute(idx === src ? src.slice() : idx, 1));
@@ -646,14 +666,12 @@ function l3bApplyAlpha(mesh) {
   u.ghosts = [];
   const alphaAll = new Map([...(u.gAlpha || []), ...(u.alpha || [])]); // gAlpha: klara objekt i Ganttens Tid-läge
   if (!alphaAll.size) return;
-  const src = u.origIdx, n = mesh.geometry.getAttribute("position").count, gone = new Set([...u.hidden, ...(u.tempOff || []), ...(u.animOff || [])]);
+  const src = u.origIdx, n = mesh.geometry.getAttribute("position").count, gone = new Set([...u.hidden, ...(u.tempOff || []), ...(u.animOff || []), ...(u.mtHide || [])]);
   const byA = new Map();
   alphaAll.forEach((a, ri) => { if (gone.has(ri)) return; if (!byA.has(a)) byA.set(a, []); byA.get(a).push(ri); });
   byA.forEach((ris, a) => {
-    const on = new Uint8Array(n);
-    ris.forEach(ri => { const r = u.ranges[ri]; on.fill(1, r.start, r.start + r.count); });
-    const idx = [];
-    for (let i = 0; i + 2 < src.length; i += 3) if (on[src[i]]) idx.push(src[i], src[i + 1], src[i + 2]);
+    const want = new Set(ris); let idx = l3bSliceIdx(mesh, ri => want.has(ri));
+    if (!idx) { const on = new Uint8Array(n); ris.forEach(ri => { const r = u.ranges[ri]; on.fill(1, r.start, r.start + r.count); }); idx = []; for (let i = 0; i + 2 < src.length; i += 3) if (on[src[i]]) idx.push(src[i], src[i + 1], src[i + 2]); }
     if (!idx.length) return;
     const g = new THREE.BufferGeometry();
     ["position", "color", "normal"].forEach(k => { const at = mesh.geometry.getAttribute(k); if (at) g.setAttribute(k, at); });

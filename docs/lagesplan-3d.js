@@ -75,6 +75,7 @@ let l3BvhBusy = false;
 function l3BvhSchedule(mesh) {
   if (!mesh || !mesh.geometry || !THREE.BufferGeometry.prototype.computeBoundsTree) return;
   if (mesh.geometry.boundsTree) mesh.geometry.disposeBoundsTree();
+  if (typeof l3mtBvhDefer === "function" && l3mtBvhDefer(mesh)) return; // Montageordningen: det rumsliga indexet byggs först när uppspelningen/reglaget stannat
   if (!l3BvhQueue.includes(mesh)) l3BvhQueue.push(mesh);
   if (l3BvhBusy) return;
   l3BvhBusy = true;
