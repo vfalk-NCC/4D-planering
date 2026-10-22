@@ -48,9 +48,9 @@ function l3cRim(m) {
   m.customProgramCacheKey = () => "l3crim";
 }
 function l3cPh(c, shin, o) {
-  o = o || {}; const env = l3cEnv(), key = c + "|" + shin + "|" + (o.metal == null ? "" : o.metal) + "|" + (env ? 1 : 0); let m = l3cMats.get(key); if (m) return m;
+  o = o || {}; const env = l3cEnv(), key = c + "|" + shin + "|" + (o.metal == null ? "" : o.metal) + "|" + (o.flat ? "f" : "") + "|" + (env ? 1 : 0); let m = l3cMats.get(key); if (m) return m;
   const sh = shin == null ? 25 : shin, metal = o.metal != null ? o.metal : sh >= 80 ? 0.7 : 0.04, rough = o.rough != null ? o.rough : Math.max(0.2, 1 - Math.min(0.85, sh / 120));
-  m = new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: metal, envMap: env, envMapIntensity: metal > 0.3 ? 1.1 : 0.55 }); m.userData.shared = true; l3cRim(m); l3cMats.set(key, m); return m;
+  m = new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: metal, envMap: env, envMapIntensity: metal > 0.3 ? 1.1 : 0.55, flatShading: !!o.flat }); m.userData.shared = true; l3cRim(m); l3cMats.set(key, m); return m;
 }
 const l3cGlass = c => { const env = l3cEnv(), key = "g|" + c + "|" + (env ? 1 : 0); let m = l3cMats.get(key); if (m) return m; m = new THREE.MeshStandardMaterial({ color: c, roughness: 0.06, metalness: 0.85, envMap: env, envMapIntensity: 1.6, transparent: true, opacity: 0.9 }); m.userData.shared = true; l3cMats.set(key, m); return m; };
 /* Mjuk kontaktskugga under figuren (en nedtonad ellips) – ger "stående på marken"-känslan. */
@@ -80,46 +80,40 @@ const l3cGrp = (x, y, z) => { const g = new THREE.Group(); g.position.set(x, y, 
 
 /* ---- Byggare ------------------------------------------------------------------------------------------------------------------------------- */
 const l3cCap = (r, len, mat) => { const geo = new THREE.CapsuleGeometry(r, Math.max(0.001, len - 2 * r), 6, 14); geo.rotateX(Math.PI / 2); geo.translate(0, 0, -len / 2); return new THREE.Mesh(geo, mat); }; // kapsel som hänger nedåt från origo
+/* Byggaren i "lowpoly"-stil (Quaternius-lik): kraftiga former, platta fasetter, stort huvud, få men tydliga detaljer. */
+const l3cLp = (c, shin, o) => l3cPh(c, shin, { flat: true, rough: 0.8, ...o });
+const l3cBx = (w, d, h, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, d, h), mat); m.position.set(x, y, z); return m; };
+const l3cIco = (sx, sy, sz, mat, x, y, z, det) => { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(1, det == null ? 1 : det), mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); return m; };
+const l3cTube = (rt, rb, h, mat, seg, sx, sy, z) => { const geo = new THREE.CylinderGeometry(rt, rb, h, seg || 8); geo.rotateX(Math.PI / 2); const m = new THREE.Mesh(geo, mat); m.scale.set(sx || 1, sy || 1, 1); m.position.z = z || 0; return m; }; // axel Z, centrerad
 function l3cHuman() {
-  const g = new THREE.Group(), skin = l3cPh(0xd9a982, 10), skinD = l3cPh(0xc79670, 8), pants = l3cPh(0x4a4338, 6), pantsD = l3cPh(0x2f2a24, 6), boot = l3cPh(0x2b2723, 40), sole = l3cPh(0x8d6b3b, 4), shirt = l3cPh(0x20252b, 6), vest = l3cPh(0xff6a10, 55), refl = l3cPh(0xdfe3e8, 100, { metal: 0.9, rough: 0.28 }), helm = l3cPh(0xffd21a, 100), glove = l3cPh(0x2f3439, 12), gloveY = l3cPh(0xf1c40f, 10), dark = l3cPh(0x16181b, 5), belt = l3cPh(0x2a2118, 10), hair = l3cPh(0x3a2d22, 4), white = l3cPh(0xf4f4f4, 10), glasses = l3cGlass(0xbfdcf0);
+  const g = new THREE.Group(), skin = l3cLp(0xf0b58c, 8), pants = l3cLp(0x3b4252, 6), boot = l3cLp(0x6b4a2b, 14), sole = l3cLp(0x26221f, 4), shirt = l3cLp(0x35507d, 6), vest = l3cLp(0xff6b12, 30), refl = l3cPh(0xe9ecef, 100, { metal: 0.85, rough: 0.3, flat: true }), helm = l3cLp(0xffd21a, 70), glove = l3cLp(0x2c3036, 10), cuff = l3cLp(0xffc800, 10), dark = l3cLp(0x15171a, 5), belt = l3cLp(0x4a3524, 8), hair = l3cLp(0x4a3320, 4), white = l3cLp(0xf6f6f6, 10), glasses = l3cGlass(0x9fd0ee);
   const HZ = 0.945, hips = l3cGrp(0, 0, HZ); g.add(hips);
   const leg = side => {
-    const hip = l3cGrp(0, side * 0.098, 0); hip.add(l3cCap(0.103, 0.46, pants), l3cSph(0.106, 0.106, 0.106, pants, 0, 0, 0), l3cBox(0.14, 0.05, 0.16, pantsD, 0.0, side * 0.075, -0.2), l3cBox(0.04, 0.12, 0.012, pantsD, 0.06, 0, -0.22));
-    const knee = l3cGrp(0, 0, -0.44); hip.add(knee); knee.add(l3cSph(0.078, 0.078, 0.078, pants, 0, 0, 0), l3cCap(0.076, 0.42, pants), l3cBox(0.035, 0.1, 0.12, pantsD, 0.066, 0, -0.01), l3cBox(0.12, 0.12, 0.02, pantsD, 0.0, 0, -0.38));
-    const foot = l3cGrp(0, 0, -0.4); knee.add(foot); foot.add(l3cBox(0.26, 0.1, 0.11, boot, 0.06, 0, -0.04), l3cSph(0.075, 0.052, 0.055, boot, 0.175, 0, -0.045), l3cBox(0.29, 0.112, 0.032, sole, 0.067, 0, -0.098), l3cBox(0.04, 0.09, 0.13, boot, -0.04, 0, 0.0), l3cBox(0.12, 0.06, 0.012, l3cPh(0x1b1816, 10), 0.095, 0, 0.018));
+    const hip = l3cGrp(0, side * 0.105, 0); hip.add(l3cTube(0.118, 0.092, 0.46, pants, 7, 1, 1, -0.22), l3cIco(0.118, 0.118, 0.118, pants, 0, 0, 0));
+    const knee = l3cGrp(0, 0, -0.44); hip.add(knee); knee.add(l3cIco(0.094, 0.094, 0.094, pants, 0, 0, 0), l3cTube(0.09, 0.072, 0.4, pants, 7, 1, 1, -0.2), l3cBx(0.03, 0.12, 0.13, pants, 0.075, 0, -0.02));
+    const foot = l3cGrp(0, 0, -0.4); knee.add(foot); foot.add(l3cTube(0.08, 0.085, 0.12, boot, 7, 1, 1, 0.0), l3cBx(0.32, 0.15, 0.11, boot, 0.07, 0, -0.045), l3cIco(0.075, 0.07, 0.05, boot, 0.2, 0, -0.045), l3cBx(0.33, 0.145, 0.035, sole, 0.075, 0, -0.1));
     hips.add(hip); return { hip, knee, foot };
   }, L = leg(1), R = leg(-1);
-  hips.add(l3cBox(0.2, 0.34, 0.15, pants, 0, 0, 0.05), l3cBox(0.215, 0.35, 0.034, belt, 0, 0, 0.115), l3cBox(0.07, 0.12, 0.14, belt, 0, -0.18, 0.03), l3cBox(0.04, 0.05, 0.03, l3cPh(0xb8bcc2, 90), 0.108, 0, 0.115));
+  hips.add(l3cBx(0.24, 0.36, 0.17, pants, 0, 0, 0.04), l3cBx(0.255, 0.375, 0.05, belt, 0, 0, 0.12), l3cBx(0.05, 0.06, 0.05, refl, 0.13, 0, 0.12), l3cBx(0.08, 0.1, 0.13, belt, 0.02, -0.2, 0.04), l3cBx(0.08, 0.1, 0.13, belt, 0.02, 0.2, 0.04));
   const spine = l3cGrp(0, 0, 0.06); hips.add(spine);
-  spine.add(l3cSph(0.13, 0.225, 0.305, shirt, 0, 0, 0.3), l3cSph(0.142, 0.238, 0.285, vest, 0, 0, 0.315), l3cSph(0.1, 0.27, 0.1, shirt, -0.005, 0, 0.5));
-  const ring = z => { const t = new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.0115, 8, 30), refl); t.scale.set(0.64, 1, 1); t.position.set(0, 0, z); return t; };
-  spine.add(ring(0.155), ring(0.305));
-  [-1, 1].forEach(s => [1, -1].forEach(f => { const b = l3cBox(0.01, 0.046, 0.21, refl, f * 0.108, s * 0.092, 0.31); spine.add(b); }));
-  spine.add(l3cBox(0.008, 0.012, 0.5, dark, 0.121, 0, 0.3), l3cBox(0.01, 0.07, 0.05, vest, 0.115, 0.1, 0.22), l3cBox(0.01, 0.07, 0.05, vest, 0.115, -0.1, 0.22)); // blixtlås och fickor
+  spine.add(l3cTube(0.19, 0.145, 0.5, shirt, 8, 0.85, 1.35, 0.31), l3cTube(0.205, 0.158, 0.46, vest, 8, 0.88, 1.35, 0.31), l3cTube(0.1, 0.105, 0.06, white, 8, 1, 1, 0.595));
+  const band = z => { const t = l3cTube(0.2, 0.2, 0.05, refl, 8, 0.9, 1.37, z); return t; };
+  spine.add(band(0.17), band(0.36), l3cBx(0.01, 0.07, 0.07, dark, 0.19, 0.14, 0.27), l3cBx(0.1, 0.06, 0.04, dark, 0.19, 0.0, 0.44)); // reflexband, ficka, radio
   const logoMat = () => new THREE.MeshBasicMaterial({ map: l3cLogoTex(true), transparent: true });
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(0.17, 0.0638), logoMat()); back.position.set(-0.1345, 0, 0.37); l3cFace(back, -1, 0, 0); spine.add(back);
-  const chest = new THREE.Mesh(new THREE.PlaneGeometry(0.068, 0.0255), logoMat()); chest.position.set(0.1255, 0.08, 0.42); l3cFace(chest, 1, 0, 0); spine.add(chest);
-  spine.add(l3cCap(0.052, 0.1, skin).translateZ(0.64), l3cBox(0.1, 0.13, 0.04, shirt, 0.0, 0, 0.585));
-  const head = l3cGrp(0.012, 0, 0.725); head.scale.setScalar(1.25); spine.add(head);
-  head.add(l3cSph(0.098, 0.082, 0.114, skin, 0, 0, 0), l3cSph(0.07, 0.066, 0.05, skinD, 0.035, 0, -0.07));
-  [-1, 1].forEach(s => {
-    head.add(l3cSph(0.02, 0.013, 0.032, skin, -0.005, s * 0.082, -0.005), l3cSph(0.013, 0.014, 0.014, white, 0.086, s * 0.035, 0.016), l3cSph(0.0075, 0.0085, 0.0085, dark, 0.094, s * 0.035, 0.016), l3cBox(0.008, 0.036, 0.008, hair, 0.09, s * 0.036, 0.04), l3cBox(0.06, 0.012, 0.05, hair, -0.01, s * 0.085, 0.02));
-    head.add(l3cBox(0.012, 0.004, 0.004, glasses, 0.0, s * 0.092, 0.018), l3cBox(0.09, 0.004, 0.004, dark, 0.05, s * 0.09, 0.018));
-  });
-  head.add(l3cSph(0.018, 0.015, 0.024, skin, 0.098, 0, -0.012), l3cBox(0.008, 0.044, 0.007, l3cPh(0x7d4d3a, 5), 0.092, 0, -0.058), l3cBox(0.012, 0.15, 0.04, glasses, 0.097, 0, 0.014));
-  head.add(l3cSph(0.1, 0.085, 0.07, hair, -0.014, 0, 0.0));
-  const hemi = (r, mat) => { const geo = new THREE.SphereGeometry(r, 28, 16, 0, Math.PI * 2, 0, Math.PI / 2); geo.rotateX(Math.PI / 2); return new THREE.Mesh(geo, mat); };
-  const hat = hemi(1, helm); hat.scale.set(0.125, 0.111, 0.103); hat.position.set(0, 0, 0.04); head.add(hat);
-  const brim = hemi(1, helm); brim.scale.set(0.155, 0.12, 0.014); brim.position.set(0.048, 0, 0.042); head.add(brim);
-  const peak = l3cBox(0.07, 0.12, 0.012, helm, 0.15, 0, 0.034); peak.rotation.y = 0.18; head.add(peak);
-  head.add(l3cBox(0.2, 0.026, 0.015, helm, 0, 0, 0.14), l3cBox(0.2, 0.012, 0.01, l3cPh(0xe3b400, 60), 0, 0.045, 0.125), l3cBox(0.2, 0.012, 0.01, l3cPh(0xe3b400, 60), 0, -0.045, 0.125));
-  const band = new THREE.Mesh(new THREE.TorusGeometry(0.108, 0.008, 8, 28), l3cPh(0x202428, 30)); band.scale.set(1.05, 0.93, 1); band.position.set(-0.002, 0, 0.032); head.add(band); head.add(l3cBox(0.03, 0.07, 0.04, dark, -0.12, 0, 0.03));
-  [-1, 1].forEach(s => { const st = new THREE.Mesh(new THREE.PlaneGeometry(0.075, 0.0281), new THREE.MeshBasicMaterial({ map: l3cLogoTex(true), transparent: true })); st.position.set(0.0, s * 0.1127, 0.083); l3cFace(st, 0, s, 0); head.add(st); const strap = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.0035, 6, 14, Math.PI * 0.8), dark); strap.rotation.x = Math.PI / 2; strap.rotation.z = Math.PI * 0.1; strap.position.set(0.0, s * 0.082, -0.01); head.add(strap); });
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.075), logoMat()); back.position.set(-0.2, 0, 0.5); l3cFace(back, -1, 0, 0); spine.add(back);
+  const chest = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.0375), logoMat()); chest.position.set(0.178, 0.1, 0.5); l3cFace(chest, 1, 0, 0); spine.add(chest);
+  const head = l3cGrp(0.015, 0, 0.8); head.scale.setScalar(1.3); spine.add(head);
+  head.add(l3cIco(0.135, 0.125, 0.14, skin, 0, 0, 0), l3cIco(0.03, 0.03, 0.035, skin, 0.13, 0, -0.02), l3cIco(0.12, 0.115, 0.07, hair, -0.03, 0, 0.0, 0));
+  [-1, 1].forEach(s => { head.add(l3cIco(0.02, 0.016, 0.03, white, 0.118, s * 0.05, 0.02, 0), l3cIco(0.011, 0.012, 0.016, dark, 0.132, s * 0.05, 0.02, 0), l3cIco(0.025, 0.02, 0.035, skin, -0.0, s * 0.13, -0.01, 0), l3cBx(0.01, 0.045, 0.008, hair, 0.125, s * 0.05, 0.055)); });
+  head.add(l3cBx(0.01, 0.17, 0.04, glasses, 0.128, 0, 0.02), l3cBx(0.012, 0.05, 0.008, dark, 0.13, 0, -0.06));
+  const hat = new THREE.Mesh((() => { const geo = new THREE.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2); geo.rotateX(Math.PI / 2); return geo; })(), helm); hat.scale.set(0.16, 0.15, 0.135); hat.position.set(0, 0, 0.035); head.add(hat);
+  const brim = l3cTube(0.18, 0.18, 0.02, helm, 10, 1.02, 0.95, 0.04); brim.position.x = 0.03; head.add(brim);
+  const peak = l3cBx(0.1, 0.17, 0.014, helm, 0.175, 0, 0.04); peak.rotation.y = 0.14; head.add(peak); head.add(l3cBx(0.24, 0.035, 0.03, helm, 0, 0, 0.165), l3cBx(0.03, 0.035, 0.03, dark, 0.02, 0, 0.19));
+  [-1, 1].forEach(s => { const st = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.0375), logoMat()); st.position.set(0.0, s * 0.153, 0.095); l3cFace(st, 0, s, 0); head.add(st); });
   const arm = side => {
-    const sh = l3cGrp(0, side * 0.235, 0.52); spine.add(sh); sh.add(l3cSph(0.078, 0.07, 0.078, vest, 0, 0, 0.005), l3cCap(0.06, 0.29, shirt));
-    const el = l3cGrp(0, 0, -0.28); sh.add(el); el.add(l3cSph(0.052, 0.052, 0.052, shirt, 0, 0, 0), l3cCap(0.048, 0.27, shirt), l3cBox(0.09, 0.09, 0.025, refl, 0, 0, -0.2), l3cBox(0.088, 0.088, 0.02, shirt, 0, 0, -0.255));
-    const hand = l3cGrp(0, 0, -0.275); el.add(hand); hand.add(l3cBox(0.05, 0.085, 0.07, glove, 0.005, 0, -0.04), l3cBox(0.052, 0.088, 0.03, gloveY, 0.005, 0, -0.005), l3cSph(0.022, 0.016, 0.03, glove, 0.035, side * -0.018, -0.045));
-    [-0.03, -0.01, 0.01, 0.03].forEach(y => hand.add(l3cBox(0.02, 0.018, 0.06, glove, 0.012, y, -0.1)));
+    const sh = l3cGrp(0, side * 0.27, 0.54); spine.add(sh); sh.add(l3cIco(0.092, 0.085, 0.085, vest, 0, 0, 0.0), l3cTube(0.078, 0.064, 0.3, shirt, 7, 1, 1, -0.14));
+    const el = l3cGrp(0, 0, -0.28); sh.add(el); el.add(l3cIco(0.066, 0.066, 0.066, shirt, 0, 0, 0), l3cTube(0.065, 0.055, 0.27, shirt, 7, 1, 1, -0.135), l3cTube(0.058, 0.058, 0.04, refl, 8, 1, 1, -0.2));
+    const hand = l3cGrp(0, 0, -0.275); el.add(hand); hand.add(l3cTube(0.064, 0.058, 0.035, cuff, 8, 1, 1, 0.0), l3cIco(0.07, 0.06, 0.08, glove, 0.005, 0, -0.065), l3cIco(0.022, 0.02, 0.035, glove, 0.045, side * -0.02, -0.05, 0));
     return { sh, el };
   }, AL = arm(1), AR = arm(-1);
   l3cMark(g);
