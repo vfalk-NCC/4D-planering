@@ -431,6 +431,32 @@ const PP = [
     });
     if (!wk.up || !wk.down || !wk.moved || !wk.ctrlOk || !wk.cleared || !wk.keysShown || !wk.measured) fail('Gå-läge (E/Q, fastnade tangenter, mäta, tangentlista): ' + JSON.stringify(wk));
     else console.log('OK: gå-läge – E rakt upp, Q rakt ner, tangenterna fastnar inte, mäta fungerar, tangentlistan syns');
+    // Gå-läge som i Nira: tredje person med figur, hopp, huka, spöke/kollision, joysticks.
+    const wk2 = await page.evaluate(async () => {
+      l3wInit(); const wait = ms => new Promise(r => setTimeout(r, ms)), key = (t, code) => document.body.dispatchEvent(new KeyboardEvent(t, { code, key: code.replace('Key', '').toLowerCase(), bubbles: true, cancelable: true }));
+      l3SetPref('walkFollow', true); l3SetPref('navHelp', false); l3NavHelp(); l3SetPref('walkPerson', 'third'); l3SetPref('walkGhost', true); l3SetPref('walkJoy', true);
+      const gz = l3GroundZ(); l3wEnter(new THREE.Vector3(0, 0, gz)); l3w.yaw = 0; l3w.pitch = 0; l3wApply(); await wait(300);
+      const out = {};
+      out.avatar = !!l3w.avatar && !!l3w.avatar.parent; out.camDist = l3.camera.position.distanceTo(l3w.p); out.joys = !!document.querySelector('.v3-joys:not(.hidden)');
+      const a0 = l3w.p.clone(); key('keydown', 'KeyW'); await wait(500); key('keyup', 'KeyW'); out.walked = l3w.p.x - a0.x > 0.3; out.avFollows = Math.abs(l3w.avatar.position.x - l3w.p.x) < 1e-6 && Math.abs(l3w.avatar.position.y - l3w.p.y) < 1e-6;
+      // hopp
+      const z0 = l3w.p.z; l3wJump(); await wait(220); out.jumped = l3w.p.z - z0 > 0.25; await wait(900); out.landed = Math.abs(l3w.p.z - z0) < 0.05 && l3w.jz === 0;
+      // huka
+      key('keydown', 'KeyC'); await wait(500); out.crouched = z0 - l3w.p.z > 0.4; key('keyup', 'KeyC'); await wait(500); out.stood = Math.abs(l3w.p.z - z0) < 0.05;
+      // joystick (framåt = upp på spaken)
+      const j0 = l3w.p.x; l3w.jm.y = -1; await wait(400); l3w.jm.y = 0; out.joyMove = l3w.p.x - j0 > 0.3;
+      // kollision: en vägg framför; spöke på går igenom, spöke av stoppas
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.2, 8, 4), new THREE.MeshBasicMaterial()); wall.position.set(l3w.p.x + 2.5, l3w.p.y, gz + 2); l3.groups.bldg.add(wall); wall.updateMatrixWorld(true);
+      l3wSetGhost(false); l3w.speed = 4; key('keydown', 'KeyW'); await wait(1500); key('keyup', 'KeyW'); out.blockedX = l3w.p.x; out.wallX = wall.position.x; out.blocked = l3w.p.x < wall.position.x - 0.15;
+      l3wSetGhost(true); key('keydown', 'KeyW'); await wait(1500); key('keyup', 'KeyW'); out.ghostThrough = l3w.p.x > wall.position.x + 0.2;
+      l3.groups.bldg.remove(wall);
+      // byt person med V
+      key('keydown', 'KeyV'); await wait(200); key('keyup', 'KeyV'); out.first = l3w.person === 'first' && !l3w.avatar && l3.camera.position.distanceTo(l3w.p) < 1e-6;
+      l3SetPref('walkPerson', 'first'); l3SetPref('walkJoy', false); l3SetPref('walkGhost', true); l3wExit(true); out.avGone = !l3w.avatar && !!document.querySelector('.v3-joys.hidden');
+      return out;
+    });
+    if (!wk2.avatar || wk2.camDist < 2 || wk2.camDist > 3.4 || !wk2.joys || !wk2.walked || !wk2.avFollows || !wk2.jumped || !wk2.landed || !wk2.crouched || !wk2.stood || !wk2.joyMove || !wk2.blocked || !wk2.ghostThrough || !wk2.first || !wk2.avGone) fail('Gå-läge som Nira (3:e person, hopp, huka, kollision, joysticks): ' + JSON.stringify(wk2));
+    else console.log('OK: gå-läge – tredje person med figur, hopp, huka, spöke/kollision, joysticks och V byter person');
     // Nederkanten: knappar för Status och Navigering (ingen knapp längre över bilden).
     const ft = await page.evaluate(() => {
       const L = () => document.getElementById('v3Legend'), N = () => document.getElementById('v3NavHelp'), bl = document.getElementById('v3FtLegend'), bn = document.getElementById('v3FtNav');
