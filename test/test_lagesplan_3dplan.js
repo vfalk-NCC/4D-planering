@@ -552,13 +552,13 @@ const PP = [
       const gBefore = l3w.avatar; l3wLock(); out.locked = l3w.locked.length === 1 && !l3w.on && !!gBefore.parent && !!document.querySelector('.v3-lockp'); out.panelGone = !document.querySelector('.v3-ctl:not(.hidden)');
       const snap = JSON.stringify(l3w.locked[0].ctl); await wait(400); out.frozen = snap === JSON.stringify(l3w.locked[0].ctl);
       // IFC
-      const r = await l3vIfcExport(l3w.locked[0], false); out.ifc = !!r && /\.ifc$/.test(r.name) && r.tris > 500; const txt = r && r.text || ''; out.ifcHas = /IFCTRIANGULATEDFACESET/.test(txt) && /IFCSTYLEDITEM/.test(txt) && /IFCBUILDINGELEMENTPROXY\('[^']+',\$,'Mobilkran 1'/.test(txt) && txt.includes('Boml\\X2\\00E4\\X0\\ngd'); out.parts = r && r.parts;
+      const r = await l3vIfcExport(l3w.locked[0], false); out.ifc = !!r && /\.ifc$/.test(r.name) && r.tris > 500; const txt = r && r.text || ''; out.radie = !!r && r.radie === true && (txt.match(/IFCBUILDINGELEMENTPROXY\(/g) || []).length === 2 && /Radie \(m\)/.test(txt) && r.tris > 3000; out.ifcHas = /IFCTRIANGULATEDFACESET/.test(txt) && /IFCSTYLEDITEM/.test(txt) && /IFCBUILDINGELEMENTPROXY\('[^']+',\$,'Mobilkran 1'/.test(txt) && txt.includes('Boml\\X2\\00E4\\X0\\ngd'); out.parts = r && r.parts;
       // flyg runt: orbit är på igen, kameran är fri; styr igen återtar
       out.orbit = l3.orbit.enabled === true; l3wLockResume(l3w.locked[0].id); out.resumed = l3w.on && l3w.kind === 'crane' && Math.abs(l3w.ctl.slew - Math.PI / 4) < 0.05 && l3w.workOn && l3w.locked.length === 0;
       l3wLock(); l3wLockRemove(l3w.locked[0].id); out.removed = !l3w.locked.length && !document.querySelector('.v3-lockp');
       window.downloadBlob = keepDl; l3SetPref('walkKind', 'human'); l3SetPref('walkPerson', 'first'); l3wExit(true); return out;
     });
-    if (!wk6.zoomOut || Math.abs(wk6.len - 20) > 0.6 || Math.abs(wk6.rad - 12) > 0.8 || !wk6.slew || !wk6.locked || !wk6.panelGone || !wk6.frozen || !wk6.ifc || !wk6.ifcHas || !wk6.orbit || !wk6.resumed || !wk6.removed) fail('Inskrivna mått, lås, IFC, zoom: ' + JSON.stringify(wk6));
+    if (!wk6.zoomOut || Math.abs(wk6.len - 20) > 0.6 || Math.abs(wk6.rad - 12) > 0.8 || !wk6.slew || !wk6.locked || !wk6.panelGone || !wk6.frozen || !wk6.ifc || !wk6.radie || !wk6.ifcHas || !wk6.orbit || !wk6.resumed || !wk6.removed) fail('Inskrivna mått, lås, IFC, zoom: ' + JSON.stringify(wk6));
     else console.log('OK: zoom i 3:e person, inskrivna mått (bomlängd/radie/sväng), lås och flyg runt, IFC-export av exakta läget, styr igen');
     // Nederkanten: knappar för Status och Navigering (ingen knapp längre över bilden).
     const ft = await page.evaluate(() => {

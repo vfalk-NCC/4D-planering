@@ -388,10 +388,24 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
     const cx = (() => { const b2 = new THREE.Box3(); ent.mesh.updateMatrixWorld(true); for (let i = r.start; i < r.start + r.count; i++) b2.expandByPoint(v.set(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(ent.mesh.matrixWorld)); return b2.getCenter(new THREE.Vector3()); })();
     out.moved = Math.abs(cx.x - (top.x + 12)) < 1.2; out.pending = l3bmPending('f:F2');
     l3Undo(); const bu = new THREE.Box3(); ent.mesh.updateMatrixWorld(true); for (let i = r.start; i < r.start + r.count; i++) bu.expandByPoint(v.set(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(ent.mesh.matrixWorld)); out.undone = Math.abs(bu.getCenter(new THREE.Vector3()).x - top.x) < 0.05 && l3bmPending('f:F2') === 0;
+    // lastdiagram: utnyttjande och överlast
+    l3w.info = [['Radie', '20,0 m']]; l3lift.loadT = 30; l3liftLoadInfo(); out.util = Math.abs(l3lift.util - 0.6) < 0.02 && l3w.info.some(q => q[0] === 'Utnyttjande' && /60 %/.test(q[1]));
+    l3lift.loadT = 80; l3liftLoadInfo(); out.over = l3lift.util > 1 && l3w.info.some(q => /ÖVERLAST/.test(q[1])); l3lift.loadT = 0; l3lift.warned = false;
+    // spela in och spela upp: objektet lyfts, flyttas, sätts ner; uppspelningen återställer och gör om det
+    l3w.ctl = { slew: 0, ang: 0.5, ext: 0, hook: 3, out: 1 }; l3w.ctlT = { ...l3w.ctl }; l3w.p = new THREE.Vector3(); l3w.heading = 0; l3w.keys = new Set(); hook.position.copy(top).add(new THREE.Vector3(0, 0, 0.55));
+    const tick = async ms => { for (let i = 0; i < ms / 40; i++) { l3liftTick(); await wait(40); } };
+    const centerX = () => { const b2 = new THREE.Box3(); ent.mesh.updateMatrixWorld(true); for (let i = r.start; i < r.start + r.count; i++) b2.expandByPoint(v.set(P.getX(i), P.getY(i), P.getZ(i)).applyMatrix4(ent.mesh.matrixWorld)); return b2.getCenter(new THREE.Vector3()).x; };
+    l3liftRecToggle(); out.rec = !!l3lift.rec; await tick(300); l3bsSet([]); l3liftGrab(); await tick(300); hook.position.x += 8; l3w.ctl.slew += 0.3; await tick(1000); l3liftRelease(); await tick(200); l3liftRecToggle();
+    out.recd = !!l3lift.recd && l3lift.recd.samples.length > 8 && l3lift.recd.ev.some(e => e.type === 'grab') && l3lift.recd.ev.some(e => e.type === 'release') && !!l3lift.tracePts && l3lift.tracePts.length > 5;
+    const cx1 = centerX(); l3liftPlay(); out.reset = Math.abs(centerX() - top.x) < 0.05 && !!l3lift.play;
+    for (let i = 0; i < 250 && l3lift.play; i++) { l3liftTick(); await wait(40); } await tick(200);
+    out.played = !l3lift.play && Math.abs(centerX() - cx1) < 1.5; out.cx = [cx1, centerX()];
+    l3liftTraceClear(); l3lift.recd = null; for (let i = 0; i < 3; i++) l3Undo();
+    l3w.ctlT = null; if (l3w.ctlEl) { l3w.ctlEl.remove(); l3w.ctlEl = null; }
     l3.scene.remove(hook); l3.scene.remove(avG); l3w.on = false; l3w.av = null; l3w.workOn = false; l3w.kind = 'human'; l3bsSet([]);
     return out;
   });
-  if (!lift1.session || !lift1.gizmo || !lift1.carried || !lift1.info || !lift1.yaw || !lift1.released || !lift1.moved || lift1.pending < 1 || !lift1.undone) fail('Kranen lyfter objekt: ' + JSON.stringify(lift1));
+  if (!lift1.session || !lift1.gizmo || !lift1.carried || !lift1.info || !lift1.yaw || !lift1.released || !lift1.moved || lift1.pending < 1 || !lift1.undone || !lift1.util || !lift1.over || !lift1.rec || !lift1.recd || !lift1.reset || !lift1.played) fail('Kranen lyfter objekt: ' + JSON.stringify(lift1));
   else console.log('OK: mobilkranen hakar i ett objekt ur modellen, bär det efter kroken, vrider och sätter ner det (flytt som går att ångra)');
   // Flytta ett objekt i IFC:n och spara som ny fil i samma mapp i TC (Victor 2026-10-10).
   const mv = await page.evaluate(async () => {
