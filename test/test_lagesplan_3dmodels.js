@@ -388,6 +388,22 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
       inp.value = 'linje'; inp.dispatchEvent(new Event('input', { bubbles: true })); await wait(60); document.querySelector('.v3-cb-it').dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); await wait(150);
       out.comboPick = p.actName === 'Linje I - H gjutning' && p.actKey === 'k1' && crewArea({ ...p, area: '' }) === '741 - Sektionsfickor'; window.l3plActs = keep; p.actName = p.actKey = p.actArea = null; }
     { const ta = document.querySelector('#v3Side [data-crew="comment"]'); ta.value = 'Live text'; ta.dispatchEvent(new Event('input', { bubbles: true })); out.live = p.comment === 'Live text'; await wait(350); ta.value = 'Armerar plattan, skift 1'; ta.dispatchEvent(new Event('input', { bubbles: true })); ta.dispatchEvent(new Event('change', { bubbles: true })); await wait(100); const [cp] = placeCopies(p, 1, 3, true); out.copyKeeps = cp.comment === 'Armerar plattan, skift 1' && cp.count === p.count && cp.start === p.start; }
+    { // spridning (slider) och handflyttade gubbar (drag and drop)
+      p.count = 7; p.spread = null; p.pos = null; const auto = crewLayout(p); p.spread = 10; const lay = crewLayout(p), mx = Math.max(...lay.slots.map(([x, y]) => Math.hypot(x, y)));
+      out.spread = Math.abs(mx - 4.65) < 0.05 && lay.R > auto.R; crewSync(p); out.spreadDims = p.L > 9;
+      p.pos = [null, [1.5, -2]]; const l2 = crewLayout(p); out.manual = l2.slots[1][0] === 1.5 && l2.slots[1][1] === -2 && l2.slots[0][0] === lay.slots[0][0]; p.pos = null; p.spread = 5; crewSync(p);
+      const sl = document.querySelector('#v3Side [data-crew="spread"]'); out.slider = !!sl && !!document.querySelector('#v3Side [data-crew="dragon"]');
+      sl.value = 12; sl.dispatchEvent(new Event('input', { bubbles: true })); sl.dispatchEvent(new Event('change', { bubbles: true })); await wait(350); out.sliderSet = p.spread === 12 && p.L > 11;
+      // dra en gubbe
+      l3SelectIds([p.id]); await wait(100); document.querySelector('#v3Side [data-crew="dragon"]').click(); await wait(100); out.dragOn = crewDrag.on && crewDrag.id === p.id;
+      const g0 = l3.placeMeshes.get(p.id); g0.updateMatrixWorld(true); const lay3 = crewLayout(p), tgt = lay3.slots[2], wp = new THREE.Vector3(tgt[0], tgt[1], 1.0).applyMatrix4(g0.matrixWorld);
+      l3.camera.position.set(wp.x, wp.y - 14, wp.z + 9); l3.camera.lookAt(wp.x, wp.y, wp.z); l3.camera.updateMatrixWorld(true); l3.camera.updateProjectionMatrix(); if (l3.orbit) { l3.orbit.target.set(wp.x, wp.y, wp.z); l3.orbit.update(); } l3Render();
+      const cv = l3.renderer.domElement, r = cv.getBoundingClientRect(), pr = (v) => { const q = v.clone().project(l3.camera); return [r.left + (q.x + 1) / 2 * r.width, r.top + (1 - q.y) / 2 * r.height]; }, a0 = pr(wp);
+      cv.dispatchEvent(new PointerEvent('pointerdown', { clientX: a0[0], clientY: a0[1], button: 0, bubbles: true, cancelable: true })); out.dragStart = crewDrag.i === 2;
+      const to = pr(new THREE.Vector3(wp.x + 2, wp.y + 1, wp.z)); window.dispatchEvent(new PointerEvent('pointermove', { clientX: to[0], clientY: to[1], bubbles: true })); await wait(100); window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true })); await wait(150);
+      out.dragMoved = Array.isArray(p.pos) && !!p.pos[2] && Math.hypot(p.pos[2][0] - tgt[0], p.pos[2][1] - tgt[1]) > 1.2; out.dragKept = Array.isArray(p.pos) && p.pos[0] && Math.abs(p.pos[0][0] - lay3.slots[0][0]) < 0.01;
+      const cp = placeCopies(p, 1, 3, true)[0]; out.copyLayout = Array.isArray(cp.pos) && cp.pos[2][0] === p.pos[2][0] && cp.spread === p.spread;
+      crewDragSet(false); out.dragOff = !crewDrag.on; p.pos = null; p.spread = null; p.count = 5; crewSync(p); }
     p.comment = ''; p.itemId = 'crewx'; out.actFromItem = crewActivity(p) === 'X' && placeParts(p).some(x => x.tris); p.comment = 'Armerar plattan, skift 1'; p.itemId = null;
     const ifc = buildPlacementsIfc('T', new Set([p.id])); out.ifc = !!ifc && /IFCTRIANGULATEDFACESET/.test(ifc.text) && /Antal personer/.test(ifc.text) && /Armerar plattan, skift 1/.test(ifc.text) && /Procyon/.test(ifc.text);
     placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(l3.placeMeshes.get(p.id)); l3.placeMeshes.delete(p.id); l3SelectIds([]); items.pop(); items.pop();

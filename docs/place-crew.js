@@ -37,7 +37,15 @@ function crewActivity(p) { // Aktivitet på skylten: egen text, annars den valda
   const it = p.itemId && typeof items !== "undefined" ? items.find(x => x.id === p.itemId) : null; return it ? String(it.activity || it.object_name || it.objectName || "").trim() : "";
 }
 const crewCount = p => Math.max(1, Math.min(CREW_MAX, Math.round(Number(p.count) || 1)));
-function crewSync(p) { const R = crewSlots(crewCount(p)).R; p.L = p.B = Math.round(R * 2 * 10) / 10; p.H = 1.8; }
+/* Platserna för placeringen: ringar (auto), skalade till vald spridning (diameter, m) och med eventuella handflyttade gubbar (p.pos[i] = [a, b]) ovanpå. R = klustrets radie. */
+function crewLayout(p) {
+  const base = crewSlots(crewCount(p)); let slots = base.slots.map(q => q.slice()); const sp = Number(p.spread) || 0;
+  if (sp > 0) { const cur = Math.max(0.01, base.R - 0.45), k = cur > 0.02 ? Math.max(0.2, sp / 2 - 0.35) / cur : 1; slots = slots.map(([a, b]) => [a * k, b * k]); }
+  const pos = Array.isArray(p.pos) ? p.pos : []; slots = slots.map((q, i) => (pos[i] && isFinite(pos[i][0]) && isFinite(pos[i][1]) ? [Number(pos[i][0]), Number(pos[i][1])] : q));
+  return { slots, R: Math.max(0.45, ...slots.map(([a, b]) => Math.hypot(a, b) + 0.45)) };
+}
+const crewAutoDiam = p => { const R = crewSlots(crewCount(p)).R; return Math.round((R * 2 - 0.7) * 2) / 2; };
+function crewSync(p) { const R = crewLayout(p).R; p.L = p.B = Math.round(R * 2 * 10) / 10; p.H = 1.8; }
 /* En raka list i planet (a = längs skylten, z = upp) med tjocklek t i b-led: 8 hörn, 12 trianglar. */
 function crewBar(T, a0, z0, a1, z1, w, t, b, ext) {
   const da = a1 - a0, dz = z1 - z0, L = Math.hypot(da, dz) || 1, ua = da / L, uz = dz / L, na = -uz, nz = ua, e = w / 2, x = ext == null ? e : ext, base = T.loc.length;
@@ -81,7 +89,7 @@ function crewPerson(style, add, P, col, hs) {
 }
 /* Delarna för placeringen p (i världskoordinater som övriga placeringar; z = underkant). */
 function crewParts(p, z) {
-  const lib = placeLib(p.type) || {}, col = p.color || lib.color || crewColor(lib.contractor), n = crewCount(p), { slots, R } = crewSlots(n), parts = [], style = crewStyleOf(p);
+  const lib = placeLib(p.type) || {}, col = p.color || lib.color || crewColor(lib.contractor), n = crewCount(p), { slots, R } = crewLayout(p), parts = [], style = crewStyleOf(p);
   const W = (a, b) => placeToWorld(p, a, b), add = (pl, z0, z1, color, extra) => parts.push({ poly: pl, z0: z + z0, z1: z + z1, role: "body", transp: 0, color, ...(extra || {}) });
   slots.forEach(([cx, cy], i) => {
     const yaw = ((i * 137.5) % 360) * Math.PI / 180 * (i ? 0.35 : 0.2), c = Math.cos(yaw), s = Math.sin(yaw), hs = 0.96 + ((i * 53) % 9) / 100;
@@ -112,11 +120,14 @@ function crewActOptions(p, cur) {
   const esc = typeof escHtml === "function" ? escHtml : s => String(s), all = (typeof items !== "undefined" ? items : []).filter(r => r.activity || r.object_name || r.objectName), mine = all.filter(r => (r.contractor || "") === cur), list = (mine.length ? mine : all).slice(0, 400), seen = new Set();
   return list.filter(r => { const k = (r.activity || r.object_name || r.objectName) + "|" + (r.start_date || r.startDate || ""); if (seen.has(k) && r.id !== p.itemId) return false; seen.add(k); return true; }).map(r => `<option value="${esc(r.id)}"${r.id === p.itemId ? " selected" : ""}>${esc(r.activity || r.object_name || r.objectName)}${(r.start_date || r.startDate) ? ` (${r.start_date || r.startDate} – ${r.end_date || r.endDate || ""})` : ""}</option>`).join("");
 }
+const smFmtD = v => String(Math.round(v * 10) / 10).replace(".", ",");
 function crewSideHtml(p) {
   const esc = typeof escHtml === "function" ? escHtml : s => String(s), lib = placeLib(p.type) || {}, cs = crewContractors(), cur = lib.contractor || "";
   const opts = [...new Set([cur, ...cs])].filter(x => x !== undefined).map(c => `<option value="${esc(c)}"${c === cur ? " selected" : ""}>${esc(c || "(ingen entreprenör)")}</option>`).join("");
   return `<div class="v3-sec">Bemanning</div>
     <label class="v3-field"><span>Entreprenör</span><select data-crew="contractor">${opts}</select></label>
+    <label class="v3-field v3-crew-sp"><span>Spridning (diameter): <b data-crew="spreadv">${smFmtD(p.spread || crewAutoDiam(p))}</b> m${p.spread ? "" : " (auto)"}</span><input type="range" min="1" max="40" step="0.5" data-crew="spread" value="${p.spread || crewAutoDiam(p)}" /></label>
+    <div class="v3-btns"><button type="button" data-crew="dragon" class="${crewDrag.on && crewDrag.id === p.id ? "on" : ""}" title="Slå på och dra gubbarna med musen på marken. Esc stänger av.">✋ Flytta gubbar (dra)</button><button type="button" data-crew="resetpos" title="Ordna om gubbarna automatiskt i ringar">Ordna om</button></div>
     <div class="v3-crew-n"><span>Antal personer</span><button type="button" data-crew="dec" title="En person färre">−</button><input type="text" inputmode="numeric" data-crew="count" value="${crewCount(p)}" /><button type="button" data-crew="inc" title="En person till">＋</button><button type="button" data-crew="inc5" title="Fem till">＋5</button></div>
     ${typeof smDateFieldsHtml === "function" ? smDateFieldsHtml(p) : ""}
     <button type="button" class="v3-wide" data-crew="report" title="Alla bemanningar per område och entreprenör med summa YA, som tabell och CSV">Σ Sammanställ bemanning…</button>
@@ -135,6 +146,11 @@ function crewBindSide(side, p, redraw) {
       smComboBind(q("area"), () => smAreaItems(), it => apply(() => { p.area = it.t; }), v => { p.area = v.slice(0, 60); live(); }); }
     const cl = side.querySelector('[data-crew="actclear"]'); if (cl) cl.onclick = () => apply(() => { p.actKey = p.actName = p.actArea = null; p.itemId = p.itemId; }); }
   if (typeof smDateBind === "function") smDateBind(side, p, redraw);
+  { const sp = q("spread"), sv = q("spreadv"); let snap = false; sp.onpointerdown = () => { if (!snap) { placeSnapshot(); snap = true; } };
+    sp.oninput = () => { p.spread = Number(sp.value); p.pos = null; if (sv) sv.textContent = smFmtD(p.spread); live(); }; sp.onchange = () => { snap = false; crewSync(p); placeTouch(p); redraw(); }; }
+  q("dragon").onclick = () => { crewDragSet(!(crewDrag.on && crewDrag.id === p.id), p); redraw(); };
+  q("resetpos").onclick = () => apply(() => { p.pos = null; p.spread = null; });
+  if (crewDrag.on && crewDrag.id !== p.id) crewDragSet(false);
   q("report").onclick = () => crewReportOpen();
   q("area").onchange = e => apply(() => { p.area = String(e.target.value || "").trim().slice(0, 60); });
   q("comment").addEventListener("input", e => { p.comment = String(e.target.value || "").slice(0, 140); live(); });
@@ -163,4 +179,36 @@ function crewReportOpen() {
   const d = typeof l3Dlg === "function" ? l3Dlg("v3CrewRep", "Bemanning – sammanställning", html, {}) : null; if (!d) return rows;
   const b = d.querySelector("#v3CrewCsv"); if (b) b.onclick = () => { const q = v => '"' + String(v == null ? "" : v).replace(/"/g, '""') + '"', L = [["Område", "Entreprenör", "YA", "Aktivitet", "Start", "Slut"], ...rows.map(r => [r.area, r.co, r.n, r.act, r.start, r.end])]; downloadBlob(new Blob(["\ufeff" + L.map(l => l.map(q).join(";")).join("\n")], { type: "text/csv;charset=utf-8" }), "bemanning_sammanstallning.csv"); };
   return rows;
+}
+
+/* ---- Dra gubbarna för hand (3D-editorn): slå på "Flytta gubbar", ta tag i en gubbe och dra den på marken; släpp = sparas som p.pos ----------------------------------------------- */
+const crewDrag = { on: false, id: null, i: -1, z: 0, installed: false, raf: 0 };
+function crewDragSet(on, p) {
+  crewDrag.on = !!on; crewDrag.id = on && p ? p.id : null; crewDrag.i = -1; if (typeof l3 === "undefined" || !l3) return;
+  try { l3.renderer.domElement.style.cursor = on ? "grab" : ""; } catch (e) { /* */ }
+  if (on) { crewDragInstall(); if (typeof l3Status === "function") l3Status("Dra en gubbe med musen för att flytta den på marken. Dra i tomma ytan för att flytta vyn som vanligt. Esc stänger av."); }
+}
+function crewDragRay(e) {
+  const r = l3.renderer.domElement.getBoundingClientRect(), v = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), rc = new THREE.Raycaster(); rc.setFromCamera(v, l3.camera); return rc;
+}
+function crewDragInstall() {
+  if (crewDrag.installed) return; crewDrag.installed = true; const host = l3.renderer.domElement.parentElement || l3.renderer.domElement;
+  host.addEventListener("pointerdown", e => {
+    if (!crewDrag.on || e.button !== 0 || e.target !== l3.renderer.domElement) return; const p = placements.find(x => x.id === crewDrag.id), grp = p && l3.placeMeshes.get(p.id); if (!grp) return;
+    grp.updateMatrixWorld(true); const hit = crewDragRay(e).intersectObject(grp, true).find(h => h.object.visible && h.object.type === "Mesh"); if (!hit) return;
+    const lp = grp.worldToLocal(hit.point.clone()), lay = crewLayout(p); let bi = -1, bd = 0.75; lay.slots.forEach(([a, b], i) => { const d = Math.hypot(a - lp.x, b - lp.y); if (d < bd) { bd = d; bi = i; } }); if (bi < 0) return;
+    e.stopImmediatePropagation(); e.stopPropagation(); e.preventDefault(); placeSnapshot(); crewDrag.i = bi; crewDrag.z = hit.point.z; crewDrag.moved = false; if (l3.orbit) l3.orbit.enabled = false;
+    const n = crewCount(p); p.pos = Array.from({ length: n }, (_, i) => (Array.isArray(p.pos) && p.pos[i]) || null); lay.slots.forEach((q, i) => { if (!p.pos[i]) p.pos[i] = [q[0], q[1]]; }); l3.renderer.domElement.style.cursor = "grabbing";
+  }, true);
+  window.addEventListener("pointermove", e => {
+    if (crewDrag.i < 0) return; const p = placements.find(x => x.id === crewDrag.id), grp = p && l3.placeMeshes.get(p.id); if (!p || !grp) return;
+    const pt = new THREE.Vector3(); if (!crewDragRay(e).ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -crewDrag.z), pt)) return; grp.updateMatrixWorld(true); const lp = grp.worldToLocal(pt);
+    p.pos[crewDrag.i] = [Math.round(lp.x * 100) / 100, Math.round(lp.y * 100) / 100]; crewDrag.moved = true; e.stopPropagation();
+    if (!crewDrag.raf) crewDrag.raf = requestAnimationFrame(() => { crewDrag.raf = 0; crewSync(p); l3RebuildOne(p); if (typeof l3Render === "function") l3Render(); });
+  }, true);
+  window.addEventListener("pointerup", () => {
+    if (crewDrag.i < 0) return; const p = placements.find(x => x.id === crewDrag.id); crewDrag.i = -1; if (l3.orbit) l3.orbit.enabled = true; l3.renderer.domElement.style.cursor = crewDrag.on ? "grab" : "";
+    if (p && crewDrag.moved) { crewSync(p); placeTouch(p); l3RebuildOne(p); if (typeof l3Changed === "function") l3Changed(); if (typeof l3RenderSide === "function") { const sd = document.getElementById("v3Side"); if (sd) sd.dataset.id = ""; l3RenderSide(); } }
+  }, true);
+  window.addEventListener("keydown", e => { if (e.key === "Escape" && crewDrag.on) { crewDragSet(false); const sd = document.getElementById("v3Side"); if (sd) sd.dataset.id = ""; if (typeof l3RenderSide === "function") l3RenderSide(); e.stopPropagation(); } }, true);
 }
