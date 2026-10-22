@@ -369,6 +369,23 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
     if (!mx.side0 || !mx.both || !mx.panel || !mx.keep || !mx.plain || !mx.menuSingle || !mx.menu || mx.merged !== JSON.stringify([['text', 'mx1'], ['ifc', 1, 'GRAFT']]) || mx.fallback !== JSON.stringify([['text', 'mx1'], ['ifc', 1, 'GRAFT'], ['place', 'mx1']])) fail('Blandad markering och export (IFC + etablering): ' + JSON.stringify(mx));
     else console.log('OK: Ctrl-klick markerar IFC-objekt och etablering tillsammans; högerklick → Exportera markerade som IFC (allt i en fil, egen fil för etableringen om det inte går)');
   }
+  // Bemanning: gubbar per entreprenör i kluster, antal på knappar, kommentar som skylt – och med i IFC.
+  const crew = await page.evaluate(async () => {
+    const out = {}, wait = ms => new Promise(r => setTimeout(r, ms));
+    items.push({ id: 'crewx', contractor: 'Procyon', area: 'A', activity: 'X', start_date: '2026-10-19', end_date: '2026-10-30' }); items.push({ id: 'crewy', contractor: 'Betongteknik', area: 'A', activity: 'Y', start_date: '2026-10-19', end_date: '2026-10-30' });
+    const cs = crewContractors(); out.cs = cs.includes('Procyon') && cs.includes('Betongteknik'); const t = crewType('Procyon'), lib = placeLib(t); out.lib = !!lib.crew && lib.group === 'Personal' && lib.contractor === 'Procyon' && crewColor('Procyon') !== crewColor('Betongteknik');
+    out.menu = l3libItems().some(it => it.k === t) && l3libFolderOf(t) === 'g:Personal';
+    const O = l3.O, p = placeNew(t, [O[0] + 40, O[1] + 40, 0]); out.defaults = p.count === 4 && p.comment === '' && p.name === 'Bemanning Procyon 1'.replace(' 1', '') + ' ' + p.name.split(' ').pop() || /^Bemanning Procyon/.test(p.name);
+    placements.push(p); placeTouch(p); l3AddPlacementMesh(p); l3SelectIds([p.id]); await wait(100);
+    const side = document.getElementById('v3Side'); out.panel = !!side.querySelector('[data-crew="inc"]') && !!side.querySelector('[data-crew="comment"]');
+    const n0 = placeParts(p).filter(x => !x.tris).length; side.querySelector('[data-crew="inc"]').click(); await wait(100); const n1 = placeParts(p).filter(x => !x.tris).length; out.inc = p.count === 5 && n1 > n0;
+    document.querySelector('#v3Side [data-crew="inc5"]').click(); await wait(100); out.inc5 = p.count === 10; document.querySelector('#v3Side [data-crew="dec"]').click(); await wait(100); out.dec = p.count === 9;
+    const ta = document.querySelector('#v3Side [data-crew="comment"]'); ta.value = 'Armerar plattan, skift 1'; ta.dispatchEvent(new Event('change', { bubbles: true })); await wait(100); out.comment = p.comment === 'Armerar plattan, skift 1' && placeParts(p).some(x => x.tris && x.tris.faces.length > 100);
+    out.mesh = l3.placeMeshes.get(p.id).children.length > 9 * 8 && p.L > 2.4;
+    const ifc = buildPlacementsIfc('T', new Set([p.id])); out.ifc = !!ifc && /IFCTRIANGULATEDFACESET/.test(ifc.text) && /Antal personer/.test(ifc.text) && /Armerar plattan, skift 1/.test(ifc.text) && /Procyon/.test(ifc.text);
+    placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(l3.placeMeshes.get(p.id)); l3.placeMeshes.delete(p.id); l3SelectIds([]); items.pop(); items.pop();
+    return out; });
+  if (!Object.values(crew).every(v => v === true)) fail('Bemanning: ' + JSON.stringify(crew)); else console.log('OK: bemanning – gubbar per entreprenör i kluster, antal på knappar, kommentar-skylt och med i IFC');
   // Mobilkranen lyfter ett objekt ur modellen: haka i, bär (pendlar efter kroken), sätt ner = flytt som kan ångras.
   const lift1 = await page.evaluate(async () => {
     const wait = ms => new Promise(r => setTimeout(r, ms)), out = {};

@@ -27,6 +27,7 @@ const PLACE_LIB = {
 /* Biblioteksposten för en typ – även egna modeller ("model:<id>", se place-models.js). */
 function placeLib(type) {
   if (PLACE_LIB[type]) return PLACE_LIB[type];
+  if (String(type || "").startsWith("crew:") && typeof crewLib === "function") return crewLib(type);
   if (String(type || "").startsWith("model:")) {
     const a = typeof placeAssetOf === "function" ? placeAssetOf(type.slice(6)) : null;
     return { group: "Egna modeller", label: a ? a.name : "Modell (saknas)", color: "#64748b", model: a || null, isModel: true };
@@ -91,6 +92,7 @@ function placeParts(p, ringN = 48) {
   const z = (Number(p.z) || 0) + (Number(p.dz) || 0), H = Math.max(0.01, Number(p.H) || 0);
   const L = Math.max(0.01, Number(p.L) || 0), B = Math.max(0.01, Number(p.B) || 0), lib = placeLib(p.type) || {};
   const tr = Number(lib.transp) || 0;
+  if (lib.crew && typeof crewParts === "function") return crewParts(p, z);
   if (lib.isModel) {
     // Egen modell: förhandsvisningen är modellens omslutande låda.
     const a = lib.model;
@@ -336,6 +338,7 @@ function placeNew(type, pt) {
     L: lib.L || 0, B: lib.B || 0, H: lib.H, R: lib.R || 0, rot: 0, dz: 0, color: lib.color,
     created_at: new Date().toISOString(), by: settings.userName || null };
   if (lib.fence) p.pts = [[p.x, p.y, p.z]];
+  if (lib.crew) { p.count = 4; p.comment = ""; if (typeof crewSync === "function") crewSync(p); }
   if (lib.isModel) { p.scale = (lib.model && lib.model.scale) || 1; p.L = 0; p.B = 0; p.H = 0; p.color = "#64748b"; }
   return p;
 }
@@ -427,6 +430,10 @@ function placePrismMesh(doc, poly, z0, z1, o) {
   const pl = doc.E(`IFCCARTESIANPOINTLIST3D((${pts.map(ifcPt).join(",")}))`);
   return doc.E(`IFCTRIANGULATEDFACESET(${pl},$,.T.,(${faces.map(f => `(${f.join(",")})`).join(",")}),$)`);
 }
+function placeTrisMesh(doc, tr, o) {
+  const pl = doc.E(`IFCCARTESIANPOINTLIST3D((${tr.pts.map(q => ifcPt([q[0] - o[0], q[1] - o[1], q[2] - o[2]])).join(",")}))`);
+  return doc.E(`IFCTRIANGULATEDFACESET(${pl},$,.T.,(${tr.faces.map(f => `(${f.join(",")})`).join(",")}),$)`);
+}
 function placeItemOf(p) { return p.itemId && typeof items !== "undefined" ? items.find(x => x.id === p.itemId) || null : null; }
 function buildPlacementsIfc(projName, only) {
   // Egna IFC-modeller blir egna filer (se placeModelIfcFiles); GLB-modeller följer med här.
@@ -447,8 +454,8 @@ function buildPlacementsIfc(projName, only) {
     const start = p.start || (it && it.startDate) || "", end = p.end || (it && it.endDate) || "";
     const mk = (role, name, salt) => {
       const meshes = lib.isModel ? (role === "body" ? placeModelMeshes(doc, p, o) : []) : parts.filter(pt => pt.role === role).map(pt => {
-        const m = placePrismMesh(doc, pt.poly, pt.z0, pt.z1, o);
-        const col = p.color || lib.color || "#888888";
+        const m = pt.tris ? placeTrisMesh(doc, pt.tris, o) : placePrismMesh(doc, pt.poly, pt.z0, pt.z1, o);
+        const col = pt.color || p.color || lib.color || "#888888";
         E(`IFCSTYLEDITEM(${m},(${doc.style(`${col}:${pt.transp}`, col, lib.label, pt.transp)}),$)`);
         return m;
       });
@@ -464,7 +471,8 @@ function buildPlacementsIfc(projName, only) {
       props.push(["Modell", a.name || ""], ["Källa", a.source || ""], ["Upphov", a.author || ""], ["Licens", a.license || ""], ["Länk", a.url || ""],
         ["Skala", k], ["Vridning grader", Number(p.rot) || 0], ["Bredd m", placeR3((b.max[0] - b.min[0]) * k)], ["Djup m", placeR3((b.max[1] - b.min[1]) * k)]);
       p = { ...p, H: (b.max[2] - b.min[2]) * k };
-    } else if (!lib.fence) props.push(["Längd m", placeR3(Number(p.L) || 0)], ["Bredd m", placeR3(Number(p.B) || 0)], ["Vridning grader", Number(p.rot) || 0]);
+    } else if (lib.crew) props.push(["Entreprenör", lib.contractor || ""], ["Antal personer", Number(p.count) || 1], ["Kommentar", p.comment || ""], ["Vridning grader", Number(p.rot) || 0]);
+    else if (!lib.fence) props.push(["Längd m", placeR3(Number(p.L) || 0)], ["Bredd m", placeR3(Number(p.B) || 0)], ["Vridning grader", Number(p.rot) || 0]);
     else props.push(["Längd m", placeR3(parts.reduce((s, pt) => s + Math.hypot(pt.poly[1][0] - pt.poly[0][0], pt.poly[1][1] - pt.poly[0][1]), 0))]);
     props.push(["Höjd m", placeR3(Number(p.H) || 0)]);
     if (Number(p.R) > 0) props.push(["Räckvidd m", placeR3(Number(p.R))]);

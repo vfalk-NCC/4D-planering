@@ -12,7 +12,7 @@
 
 const l3lib = { folders: [], map: {}, loaded: false, loading: null, pid: null };
 const l3libPath = () => `projects/${encodeURIComponent(projectId)}/plan_libfolders.json`;
-const L3LIB_BUILTIN = ["Etablering", "Maskiner", "Säkerhet", "Egna modeller"];
+const L3LIB_BUILTIN = ["Etablering", "Maskiner", "Säkerhet", "Personal", "Egna modeller"];
 
 function l3libLoad() {
   if (l3lib.pid !== projectId) { l3lib.pid = projectId; l3lib.loaded = false; l3lib.loading = null; l3lib.folders = []; l3lib.map = {}; }
@@ -40,7 +40,7 @@ function l3libFolders() {
   const own = l3lib.folders.filter(f => !String(f.id).startsWith("g:")).sort((a, b) => a.name.localeCompare(b.name, "sv", { numeric: true }));
   return [...fixed, ...own];
 }
-const l3libDefault = type => "g:" + (String(type).startsWith("model:") ? "Egna modeller" : ((PLACE_LIB[type] || {}).group || "Etablering"));
+const l3libDefault = type => "g:" + (String(type).startsWith("model:") ? "Egna modeller" : String(type).startsWith("crew:") ? "Personal" : ((PLACE_LIB[type] || {}).group || "Etablering"));
 function l3libFolderOf(type) {
   const f = l3lib.map[type];
   return f && (String(f).startsWith("g:") || l3lib.folders.some(x => x.id === f)) ? f : l3libDefault(type);
@@ -50,6 +50,7 @@ function l3libItems() {
   const assets = typeof placeAssets !== "undefined" ? placeAssets : [];
   return [
     ...Object.entries(PLACE_LIB).map(([k, l]) => ({ k, label: l.label, color: l.color, own: false })),
+    ...(typeof crewContractors === "function" ? [...crewContractors(), ""].map(c => ({ k: crewType(c), label: c ? "Bemanning " + c : "Bemanning (ingen entreprenör)", color: crewColor(c), own: false })) : []),
     ...assets.map(a => ({ k: `model:${a.id}`, label: a.name, color: a.kind === "ifc" ? "#0e7490" : "#64748b", own: true, a })),
   ];
 }

@@ -782,7 +782,7 @@ function l3PlacementGroup(p) {
     // Biblioteksobjekt: delarna räknade för en kopia i origo (ovriden), staket relativt första punkten.
     const local = { ...p, x: 0, y: 0, z: 0, dz: 0, rot: 0 };
     if (p.pts) local.pts = p.pts.map(q => [q[0] - p.x, q[1] - p.y, (q[2] || 0) - (Number(p.z) || 0)]);
-    placeParts(local, 48).forEach(pt => { const m = add(prism(pt.poly, pt.z0, pt.z1), p.color || lib.color || "#888888", pt.transp || 0); if (pt.role === "reach") m.userData.noHit = true; }); // räckvidden går inte att träffa (fästa, ställa på, markera)
+    placeParts(local, 48).forEach(pt => { const m = add(pt.tris ? crewTrisGeometry(pt.tris, [0, 0, 0]) : prism(pt.poly, pt.z0, pt.z1), pt.color || p.color || lib.color || "#888888", pt.transp || 0); if (pt.role === "reach") m.userData.noHit = true; }); // räckvidden går inte att träffa (fästa, ställa på, markera)
     if (lib.fence && (p.pts || []).length === 1) add(prism([[-0.05, -0.05], [0.05, -0.05], [0.05, 0.05], [-0.05, 0.05]], 0, Number(p.H) || 2), p.color || lib.color, 0);
   }
   grp.position.set(p.x - l3.O[0], p.y - l3.O[1], z - l3.O[2]);
@@ -1310,6 +1310,7 @@ function l3RenderSide(liveOnly) {
     <div class="v3-grid">${f("x", "X")}${f("y", "Y")}${f("zAbs", "Z underkant", "0.01", placeBaseZ(p))}${f("dz", "Över ytan")}${lib.fence ? "" : f("rot", "Vridning", "1", p.rot, "°")}</div>
     <div class="v3-sub v3-ztop" title="Modellens koordinater: SWEREF 99 20 15 och modellens höjdsystem">${l3ZText(p)}</div>
     ${lib.fence ? "" : `<div class="v3-handles"><span>Handtag</span><button type="button" data-v3mode="translate" title="Pilar för att flytta (W)">↔ Flytta</button><button type="button" data-v3mode="rotate" title="Ring för att vrida (E)">⟳ Vrid</button></div>`}
+    ${lib.crew && typeof crewSideHtml === "function" ? crewSideHtml(p) : ""}
     <div class="v3-sec">Mått</div>
     <div class="v3-grid">${lib.isModel ? (A && A.kind === "mesh" ? f("mH", "Höjd", "0.1", mH) : `<div class="v3-sub">${typeof placeModelDims === "function" ? escHtml(placeModelDims(p)) : ""}</div>`) : lib.fence ? f("H", "Höjd") : f("L", "Längd") + f("B", "Bredd") + f("H", "Höjd")}
       ${lib.R ? f("R", "Räckvidd", "1") : ""}${!lib.isModel ? `<label><span>Färg</span><input type="color" data-v3f="color" value="${col}" /></label>` : ""}</div>
@@ -1348,6 +1349,7 @@ function l3RenderSide(liveOnly) {
       if (k === "itemId" || k === "color") { side.dataset.id = ""; l3RenderSide(); }
     };
   });
+  if (lib.crew && typeof crewBindSide === "function") crewBindSide(side, p, () => { l3RebuildOne(p); l3Changed(); side.dataset.id = ""; const act = document.activeElement; l3RenderSide(); });
   side.querySelectorAll("[data-v3mode]").forEach(b => { b.classList.toggle("on", b.dataset.v3mode === l3.gizmo.mode); b.onclick = () => l3Mode(b.dataset.v3mode); });
   side.querySelector("#v3Drop").onclick = l3DropSel;
   side.querySelector("#v3Copy").onclick = l3DuplicateSel;
