@@ -213,13 +213,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (await page.isVisible('.v3-touchbar')) fail('Inga knappar när inget pågår');
 
   // --- Lägga till från biblioteket: panelen fälls ihop, tryck i 3D.
+  await page.evaluate(() => l3SelectIds([])); // egenskapsarket ligger inte över modellen när man lägger till
   await page.tap('#v3PalOpen'); await page.waitForTimeout(150);
   if (!(await page.isVisible('#v3Pal'))) fail('＋ Lägg till ska öppna biblioteket');
   const n0 = await page.evaluate(() => placements.length);
   await page.tap('#v3Lib [data-v3add="container"]'); await page.waitForTimeout(150);
   if (await page.isVisible('#v3Pal')) fail('Biblioteket ska fällas ihop när man valt objekt');
   if (!(await page.isVisible('.v3-touchbar [data-tb="cancel"]'))) fail('Avbryt ska synas när man lägger till');
-  await top(); [x, y] = await at(6512345, 150125, 0); await tap(x, y);
+  await top(); [x, y] = await at(6512356, 150112, 0); await tap(x, y);
   if (await page.evaluate(() => placements.length) !== n0 + 1) fail('Tryck i 3D ska lägga till containern');
 
   // --- Dialoger som ark nedtill.

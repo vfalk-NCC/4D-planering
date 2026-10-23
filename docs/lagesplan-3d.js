@@ -402,10 +402,11 @@ function l3Dom() {
   $3("v3SaveIfc").onclick = l3SaveIfc; $3("v3MontageBtn").onclick = () => exportMontage3d();
   $3("v3HelpBtn").onclick = e => { e.stopPropagation(); const h = $3("v3Help"); const open = h.classList.contains("hidden"); l3HideMenus(); if (open) { h.innerHTML = l3HelpHtml(); h.classList.remove("hidden"); } };
   box.addEventListener("click", () => l3HideMenus());
+  if (typeof l3UiInit === "function") l3UiInit(box); // UI-lyftet: lås, flyttbara paneler, vykub, snabbfält (lagesplan-3dui.js)
   return box;
 }
 function l3HideMenus() {
-  ["v3Views", "v3Show", "v3Edit", "v3Ctx", "v3Help", "v3MorePop"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("hidden"); });
+  ["v3Views", "v3Show", "v3Edit", "v3Ctx", "v3Help", "v3MorePop", "v3UiPop"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("hidden"); });
 }
 /* Statusraden med historik (Victor 2026-10-10: "expandera den raden ungefär som i autocad så att jag kan
    se på vad som skett tidigare"). l3Status skriver och sparar i historiken; l3StatusLive skriver bara

@@ -237,7 +237,8 @@ function l3gaMultiPop(btn, key, A, rr) {
   const pop = document.createElement("div"); pop.id = "v3GaMultiPop"; pop.className = "v3-gm-pop v3-ga-multipop"; pop.dataset.k = key;
   pop.innerHTML = `<input type="search" class="v3-ga-mq" placeholder="Sök ${title}…" /><div class="v3-ga-macts"><button type="button" data-ma="all">Alla (rensa)</button><button type="button" data-ma="match" class="hidden">Välj träffarna</button></div><div class="v3-ga-mlist"></div>`;
   document.body.appendChild(pop);
-  const r = btn.getBoundingClientRect(); pop.style.left = `${Math.max(6, Math.min(r.left, innerWidth - 330))}px`; pop.style.top = `${r.bottom + 4}px`; pop.style.maxHeight = `${Math.max(200, innerHeight - r.bottom - 16)}px`;
+  const r = btn.getBoundingClientRect(); pop.style.left = `${Math.max(6, Math.min(r.left, innerWidth - 330))}px`; if (innerHeight - r.bottom < 260 && r.top > innerHeight - r.bottom) { pop.style.bottom = `${innerHeight - r.top + 4}px`; pop.style.maxHeight = `${Math.max(200, r.top - 16)}px`; } // ingen plats under: öppnas ovanför knappen
+  else { pop.style.top = `${r.bottom + 4}px`; pop.style.maxHeight = `${Math.max(200, innerHeight - r.bottom - 16)}px`; }
   const cur = () => { const v = (l3gaP().lf || {})[key]; return new Set(Array.isArray(v) ? v : v ? [v] : []); };
   const options = () => [...new Set(A().map(field).filter(Boolean))].sort((x, y) => x.localeCompare(y, "sv", { numeric: true }));
   const q = pop.querySelector(".v3-ga-mq");

@@ -32,6 +32,7 @@ function l3NavInit() {
   l3.orbit.addEventListener("change", l3DrawTriad);
   l3DrawTriad();
   l3NavHelp();
+  if (typeof l3UiLate === "function") l3UiLate();
 }
 /* Navigeringen synlig (Victor 2026-10-12: "se vilka knappar man använder för att navigera och navigera mer
    intuitivt"): en liten knapp vid axelkorset fäller ut en ruta med musens och tangenternas funktioner för det
@@ -41,7 +42,7 @@ function l3NavHelp() {
   const host = l3.renderer.domElement.parentElement;
   let box = document.getElementById("v3NavHelp");
   if (!box) { box = document.createElement("div"); box.id = "v3NavHelp"; box.className = "v3-navhelp"; host.appendChild(box); box.addEventListener("pointerdown", e => e.stopPropagation()); box.addEventListener("wheel", e => e.stopPropagation()); }
-  const P = l3Prefs(), open = P.navHelp === undefined ? !l3IsTouch() : P.navHelp !== false, tekla = l3IsTekla(), touch = l3IsTouch();
+  const P = l3Prefs(), open = P.navHelp === undefined ? false : P.navHelp !== false, tekla = l3IsTekla(), touch = l3IsTouch();
   const r = (k, t) => `<div class="v3-nh-r"><span class="v3-nh-k">${k}</span><span>${t}</span></div>`;
   const m = (b, x) => `<i class="v3-nh-m ${b}"></i>${x || ""}`;
   const rows = touch ? [
