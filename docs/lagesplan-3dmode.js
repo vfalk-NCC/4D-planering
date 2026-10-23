@@ -245,7 +245,7 @@ function l3gmBarHtml(acts) {
   const tools = `<button type="button" id="v3GaRefresh" class="v3-gm-refresh" title="Läs om tidplanen från 4D-planeringen">${L3GM_REFRESH}<span>Uppdatera</span></button>
     <button type="button" id="v3GmScaleBtn" class="v3-gm-strict ${C.scale ? "on" : ""}" aria-haspopup="true" title="Färgskala efter datum: objekten färgas från tidig till sen start (eller slut) mellan två färger du väljer">Färgskala ▾</button>
     <button type="button" id="v3GaLoadModels" title="Läs in alla modeller som aktiviteterna är kopplade till">Läs in modeller</button>
-    <button type="button" id="v3GaPpExport" title="Exportera aktiviteterna till en Powerproject-fil (MS Project XML) – bygger på en mall från Powerproject">Exportera till Powerproject</button>`;
+    <button type="button" id="v3GaPpExport" title="Exportera aktiviteterna till en Powerproject-fil (MS Project XML) – bygger på en mall från Powerproject">Exportera till PP</button>`;
   let time = "";
   if (m === "time") {
     time = `<div class="v3-pldock-bar v3-gm-time" id="v3GmTime">

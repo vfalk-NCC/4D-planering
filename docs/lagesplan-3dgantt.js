@@ -37,6 +37,12 @@ function l3gaDomain(acts, P) {
 const l3gaLaneKey = (a, by) => (by === "contractor" ? a.contractor || "(ingen entreprenör)" : by === "activity" ? a.name : by === "area" ? a.area : "Alla");
 const l3gaColorKey = (a, by) => (by === "area" ? a.area : by === "activity" ? a.name : a.contractor || "(ingen entreprenör)");
 
+const L3GA_ICO = (() => { const f = d => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`; return {
+  bars: f('<path d="M4 6h9M7 12h12M4 18h8"/>'), board: f('<rect x="3.5" y="4" width="7" height="16" rx="2"/><rect x="13.5" y="4" width="7" height="10" rx="2"/>'), list: f('<path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/>'),
+  undo: f('<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>'), redo: f('<path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/>'),
+  print: f('<path d="M6 9V3h12v6M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/>'),
+  full: f('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'), shrink: f('<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>'),
+  up: f('<path d="M6 15l6-6 6 6"/>'), down: f('<path d="M6 9l6 6 6-6"/>'), x: f('<path d="M6 6l12 12M18 6L6 18"/>'), sliders: f('<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>') }; })();
 /* ---- Panelen ------------------------------------------------------------------------------------ */
 function l3plDockToggle(on = !l3pl.dock) { l3pl.dock = on; l3plSet("dock", on); l3plDockRender(); l3plRenderTab(); }
 function l3plDockRender() {
@@ -51,7 +57,7 @@ function l3plDockRender() {
     ["pointerdown", "wheel", "contextmenu", "dblclick", "click", "keydown"].forEach(t => d.addEventListener(t, e => e.stopPropagation()));
   }
   d.classList.toggle("full", !!P.full);
-  d.style.height = P.full ? "" : (P.dockH || 320) + "px";
+  d.style.height = P.full ? "" : (P.dockH || 400) + "px";
   if (!l3pl.rows) { d.innerHTML = `<div class="v3-pal-hint" style="padding:12px"><span class="pm-spin"></span> Hämtar tidplanen…</div>`; l3plLoad(); return; }
   const sc0 = d.querySelector(".v3-pl-scroll"), keepScroll = sc0 ? [sc0.scrollLeft, sc0.scrollTop] : null;
   const E = escHtml, day = l3plDay();
@@ -63,27 +69,33 @@ function l3plDockRender() {
   const colorKeys = [...new Set(l3plActs(P.split).map(a => l3gaColorKey(a, P.colorBy)))].sort((x, y) => x.localeCompare(y, "sv", { numeric: true }));
   const bar = `<div class="v3-pldock-grip" title="Dra för att ändra höjden"></div>
     <div class="v3-pldock-bar v3-ga-row1">
-      <div class="v3-segs"><button type="button" data-plview="bars" class="${P.view === "bars" ? "on" : ""}">Staplar</button><button type="button" data-plview="board" class="${P.view === "board" ? "on" : ""}">Tavla</button><button type="button" data-plview="list" class="${P.view === "list" ? "on" : ""}">Lista</button></div>
-      <label>Gruppera <select id="v3GaGroup">${[["area", "Område"], ["contractor", "Entreprenör"], ["activity", "Aktivitet"], ["", "Ingen"]].map(([v, t]) => `<option value="${v}" ${P.groupBy === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
-      <label>Färga efter <select id="v3PlBy">${[["contractor", "Entreprenör"], ["area", "Område"], ["activity", "Aktivitet"]].map(([v, t]) => `<option value="${v}" ${P.colorBy === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      <div class="v3-segs v3-ga-views">${[["bars", "Staplar", "bars"], ["board", "Tavla", "board"], ["list", "Lista", "list"]].map(([v, t, ic]) => `<button type="button" data-plview="${v}" class="${P.view === v ? "on" : ""}">${L3GA_ICO[ic]}<span>${t}</span></button>`).join("")}</div>
       <input type="search" id="v3PlQ" placeholder="Sök område eller aktivitet…" value="${E(P.q || "")}" />
-      <button type="button" id="v3GaUndo" ${l3ga.undo.length ? "" : "disabled"} title="${l3ga.undo.length ? "Ångra: " + E(l3ga.undo[l3ga.undo.length - 1].label) : "Inget att ångra"}">↶ Ångra</button>
-      <button type="button" id="v3GaRedo" ${l3ga.redo.length ? "" : "disabled"} title="${l3ga.redo.length ? "Gör om: " + E(l3ga.redo[l3ga.redo.length - 1].label) : "Inget att göra om"}">↷ Gör om</button>
-      <button type="button" id="v3GaFull" title="${P.full ? "Tillbaka till panelen" : "Hela 3D-ytan"}">${P.full ? "⤓ Panel" : "⛶ Helskärm"}</button>
-      <button type="button" id="v3GaPrint" title="Skriv ut tavlan eller Gantten">🖨 Skriv ut</button>
-      <button type="button" id="v3GaHide" class="v3-ga-hide ${P.hideBtns ? "on" : ""}" aria-pressed="${!!P.hideBtns}" title="${P.hideBtns ? "Visa alla knappar och filter igen" : "Dölj knapparna så att Gantten får mer plats – tidsraden finns kvar"}">${P.hideBtns ? "Visa knappar" : "Dölj knappar"}</button>
-      <button type="button" class="v3-ic" id="v3PlClose" title="Stäng">✕</button>
+      <button type="button" class="v3-ga-ib" id="v3GaUndo" ${l3ga.undo.length ? "" : "disabled"} title="${l3ga.undo.length ? "Ångra: " + E(l3ga.undo[l3ga.undo.length - 1].label) : "Inget att ångra"}" aria-label="Ångra">${L3GA_ICO.undo}</button>
+      <button type="button" class="v3-ga-ib" id="v3GaRedo" ${l3ga.redo.length ? "" : "disabled"} title="${l3ga.redo.length ? "Gör om: " + E(l3ga.redo[l3ga.redo.length - 1].label) : "Inget att göra om"}" aria-label="Gör om">${L3GA_ICO.redo}</button>
+      <button type="button" class="v3-ga-ib" id="v3GaPrint" title="Skriv ut tavlan eller Gantten" aria-label="Skriv ut">${L3GA_ICO.print}</button>
+      <button type="button" class="v3-ga-ib" id="v3GaFull" title="${P.full ? "Tillbaka till panelen" : "Hela 3D-ytan"}" aria-label="${P.full ? "Panel" : "Helskärm"}">${P.full ? L3GA_ICO.shrink : L3GA_ICO.full}</button>
+      <button type="button" class="v3-ga-ib v3-ga-hide ${P.hideBtns ? "on" : ""}" id="v3GaHide" aria-pressed="${!!P.hideBtns}" aria-label="${P.hideBtns ? "Visa knappar" : "Dölj knappar"}" title="${P.hideBtns ? "Visa alla knappar och filter igen" : "Dölj knapparna så att Gantten får mer plats – tidsraden finns kvar"}">${P.hideBtns ? L3GA_ICO.down : L3GA_ICO.up}</button>
+      <button type="button" class="v3-ga-ib v3-ic" id="v3PlClose" title="Stäng" aria-label="Stäng">${L3GA_ICO.x}</button>
     </div>
     <div class="v3-pldock-bar v3-ga-row2">
-      <span class="v3-ga-lbl">Period</span>
-      <div class="v3-segs">${[["2w", "2 v"], ["4w", "4 v"], ["3m", "3 mån"], ["all", "Allt"]].map(([v, t]) => `<button type="button" data-gaper="${v}" class="${P.period === v ? "on" : ""}">${t}</button>`).join("")}</div>
-      <input type="date" id="v3GaFrom" value="${E(l3gaDomain(acts, P)[0])}" /> – <input type="date" id="v3GaTo" value="${E(l3gaDomain(acts, P)[1])}" /><button type="button" id="v3GaApply">Använd</button>
-      ${P.view !== "list" ? `<label class="v3-ga-tg"><input type="checkbox" id="v3GaOne" ${P.oneLine ? "checked" : ""}/> En rad</label>
-      <label class="v3-ga-tg"><input type="checkbox" id="v3GaFullTxt" ${P.fullText ? "checked" : ""}/> Hela texten</label>
-      <label class="v3-ga-tg"><input type="checkbox" id="v3GaArrows" ${P.arrows ? "checked" : ""}/> Pilar</label>` : ""}
-      <label class="v3-ga-tg"><input type="checkbox" id="v3GaSplit" ${P.split ? "checked" : ""}/> En lapp per objekt</label>
-      ${P.view !== "list" ? `<label class="v3-ga-tg" title="Dra i lappar/staplar för att flytta dem eller ändra start och slut – sparas i 4D-planeringen efter att du godkänt"><input type="checkbox" id="v3GaEdit" ${P.editable ? "checked" : ""}/> Redigerbar</label>
-      <label class="v3-ga-tg"><input type="checkbox" id="v3GaBl" ${P.baseline ? "checked" : ""}/> Baseline</label>` : ""}
+      <label class="v3-ga-sel"><span>Gruppera</span><select id="v3GaGroup">${[["area", "Område"], ["contractor", "Entreprenör"], ["activity", "Aktivitet"], ["", "Ingen"]].map(([v, t]) => `<option value="${v}" ${P.groupBy === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      <label class="v3-ga-sel"><span>Färga</span><select id="v3PlBy">${[["contractor", "Entreprenör"], ["area", "Område"], ["activity", "Aktivitet"]].map(([v, t]) => `<option value="${v}" ${P.colorBy === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      <span class="v3-ga-vsep"></span>
+      <div class="v3-segs v3-ga-per">${[["2w", "2 v"], ["4w", "4 v"], ["3m", "3 mån"], ["all", "Allt"]].map(([v, t]) => `<button type="button" data-gaper="${v}" class="${P.period === v ? "on" : ""}">${t}</button>`).join("")}</div>
+      <span class="v3-ga-dates"><input type="date" id="v3GaFrom" value="${E(l3gaDomain(acts, P)[0])}" aria-label="Från" /><i>–</i><input type="date" id="v3GaTo" value="${E(l3gaDomain(acts, P)[1])}" aria-label="Till" /><button type="button" id="v3GaApply">Använd</button></span>
+      <span class="v3-grow"></span>
+      <button type="button" id="v3GaViewBtn" class="v3-ga-viewbtn ${l3ga.viewOpen ? "on" : ""}" aria-haspopup="true" aria-expanded="${!!l3ga.viewOpen}" title="Hur Gantten visas: en rad, hela texten, pilar, redigerbar …">${L3GA_ICO.sliders}<span>Visning</span></button>
+      <div class="v3-ga-viewpop ${l3ga.viewOpen ? "" : "hidden"}" id="v3GaViewPop">
+        <div class="v3-ga-vp-t">Visning</div>
+        ${P.view !== "list" ? `<label class="v3-ga-tg"><input type="checkbox" id="v3GaOne" ${P.oneLine ? "checked" : ""}/><span>En rad</span></label>
+        <label class="v3-ga-tg"><input type="checkbox" id="v3GaFullTxt" ${P.fullText ? "checked" : ""}/><span>Hela texten</span></label>
+        <label class="v3-ga-tg"><input type="checkbox" id="v3GaArrows" ${P.arrows ? "checked" : ""}/><span>Pilar mellan aktiviteter</span></label>` : ""}
+        <label class="v3-ga-tg"><input type="checkbox" id="v3GaSplit" ${P.split ? "checked" : ""}/><span>En lapp per objekt</span></label>
+        ${P.view !== "list" ? `<div class="v3-ga-vp-t">Redigera</div>
+        <label class="v3-ga-tg" title="Dra i lappar/staplar för att flytta dem eller ändra start och slut – sparas i 4D-planeringen efter att du godkänt"><input type="checkbox" id="v3GaEdit" ${P.editable ? "checked" : ""}/><span>Redigerbar</span></label>
+        <label class="v3-ga-tg"><input type="checkbox" id="v3GaBl" ${P.baseline ? "checked" : ""}/><span>Visa baseline</span></label>` : ""}
+      </div>
     </div>
     ${typeof l3gmBarHtml === "function" ? l3gmBarHtml(acts) : ""}
     ${P.editable && P.view !== "list" ? `<div class="v3-ga-hint">✏️ Redigerbart: dra en lapp för att flytta den, eller dess vänster-/högerkant för start/slut. Det som väntar på den flyttas med – håll <b>Shift</b> för att bara flytta den. Dubbelklicka för att redigera, högerklicka för fler val. Inget sparas utan att du godkänner det.</div>` : ""}
@@ -252,6 +264,14 @@ function l3gaMultiPop(btn, key, A, rr) {
   fill(); setTimeout(() => document.addEventListener("pointerdown", l3gaMultiOff, true), 0); q.focus();
 }
 function l3gaMultiOff(e) { const p = document.getElementById("v3GaMultiPop"); if (!p || p.contains(e.target) || e.target.closest("[data-galm]")) return; p.remove(); document.removeEventListener("pointerdown", l3gaMultiOff, true); }
+/* Visning-menyn: de sex växlarna i en flytande ruta under knappen (ritas om tillsammans med panelen och hålls öppen). */
+function l3gaViewPop(d, open) {
+  const pop = d.querySelector("#v3GaViewPop"), btn = d.querySelector("#v3GaViewBtn"); l3ga.viewOpen = !!open; if (!pop || !btn) return;
+  pop.classList.toggle("hidden", !open); btn.classList.toggle("on", !!open); btn.setAttribute("aria-expanded", !!open);
+  document.removeEventListener("pointerdown", l3gaViewOff, true);
+  if (open) { const r = btn.getBoundingClientRect(), w = 250; pop.style.width = w + "px"; pop.style.left = Math.max(8, Math.min(innerWidth - w - 8, r.right - w)) + "px"; const h = pop.offsetHeight; pop.style.top = (r.top - h - 8 > 8 ? r.top - h - 8 : r.bottom + 8) + "px"; setTimeout(() => document.addEventListener("pointerdown", l3gaViewOff, true), 0); }
+}
+function l3gaViewOff(e) { if (e.target.closest && e.target.closest("#v3GaViewPop,#v3GaViewBtn")) return; const d = document.getElementById("v3PlanDock"); if (d) l3gaViewPop(d, false); else { l3ga.viewOpen = false; document.removeEventListener("pointerdown", l3gaViewOff, true); } }
 function l3gaBind(d, rr = l3plDockRender, actsFn = null) {
   // rr: ritar om där innehållet visas (panelen nederst eller listan 4D-koppling i vänstermenyn).
   const P = l3gaP(), A = actsFn || (() => l3plActs(P.split)), set = (k, v) => { l3plSet(k, v); rr(); };
@@ -264,6 +284,8 @@ function l3gaBind(d, rr = l3plDockRender, actsFn = null) {
   on("#v3PlClose", "onclick", () => l3plDockToggle(false));
   on("#v3GaFull", "onclick", () => set("full", !P.full));
   on("#v3GaHide", "onclick", () => set("hideBtns", !P.hideBtns));
+  on("#v3GaViewBtn", "onclick", (b, e) => { e.stopPropagation(); l3gaViewPop(d, !l3ga.viewOpen); });
+  if (l3ga.viewOpen) l3gaViewPop(d, true);
   on("#v3GaPrint", "onclick", () => l3gaPrint(d));
   on("#v3GaUndo", "onclick", () => l3gaUndo(false));
   on("#v3GaRedo", "onclick", () => l3gaUndo(true));

@@ -49,6 +49,7 @@ const PP = [
     if (tabs[tabs.indexOf('add') + 1] !== 'plan') fail('Fliken 4D-planering ska ligga bredvid 3D-bibliotek: ' + tabs);
     await page.click('[data-paltab="plan"]');
     await page.waitForSelector('#v3PalPlan #v3PlDock', { timeout: 8000 });
+    await page.evaluate(() => { l3plSet('secOpen', { film: true, link: false, other: true }); l3plRenderTab(); }); // Film och Övrigt är hopfällda från start
     const tab = await page.textContent('#v3PalPlan');
     if (!/3 aktiviteter/.test(tab) || /Pågår 20\d\d-/.test(tab)) fail('Fliken: tidplanen visas men listan Pågår <datum> är borttagen: ' + tab.replace(/\s+/g, ' ').slice(0, 300));
 
@@ -828,7 +829,7 @@ const PP = [
         const vis = sel => { const e = document.querySelector('#v3PlanDock ' + sel); return !!e && getComputedStyle(e).display !== 'none' && e.offsetParent !== null; };
         const before = { row2: vis('.v3-ga-row2'), search: vis('#v3PlQ'), hide: vis('#v3GaHide') };
         document.getElementById('v3GaHide').click(); await new Promise(r => setTimeout(r, 200));
-        const hidden = { row2: vis('.v3-ga-row2'), search: vis('#v3PlQ'), hide: vis('#v3GaHide'), close: vis('#v3PlClose'), txt: document.getElementById('v3GaHide').textContent, cls: document.getElementById('v3PlanDock').classList.contains('v3-hidebtns') };
+        const hidden = { row2: vis('.v3-ga-row2'), search: vis('#v3PlQ'), hide: vis('#v3GaHide'), close: vis('#v3PlClose'), txt: document.getElementById('v3GaHide').getAttribute('aria-label'), cls: document.getElementById('v3PlanDock').classList.contains('v3-hidebtns') };
         document.getElementById('v3GaHide').click(); await new Promise(r => setTimeout(r, 200));
         const back = { row2: vis('.v3-ga-row2'), search: vis('#v3PlQ') };
         return { before, hidden, back };

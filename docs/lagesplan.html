@@ -10,9 +10,9 @@
 <meta name="theme-color" content="#ffffff" />
 <link rel="apple-touch-icon" href="icons/lagesplan-180.png" />
 <title>Lägesplan – 4D-planering</title>
-<script src="error-guard.js?v=20261023204156"></script>
+<script src="error-guard.js?v=20261023213029"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="github-storage.js?v=20261023204156"></script>
+<script src="github-storage.js?v=20261023213029"></script>
 <style>
   /* Beskär bild med musen (lagesplan-imgcrop.js) */
   #imgCropModal { position: fixed; inset: 0; z-index: 1100; background: rgba(15,23,42,.55); display: flex; align-items: center; justify-content: center; }
@@ -2241,8 +2241,8 @@
   #view3d .v3-pl-key button:not(.v3-ic) { flex: 1; min-width: 0; text-align: left; font: inherit; font-size: 11.5px; border: 1px solid #e2e8f0; background: #fff; border-radius: 6px; padding: 3px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
   #view3d .v3-pl-btns { display: flex; flex-wrap: wrap; gap: 6px; } #view3d .v3-pl-btns button { flex: 1 1 90px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: inherit; font-size: 12px; font-weight: 600; padding: 6px 8px; border-radius: 8px; border: 1px solid #d7dde6; background: #fff; cursor: pointer; }
   #view3d .v3-pl-btns button.v3-primary { background: #2f7bff; border-color: #2f7bff; color: #fff; }
-  #view3d .v3-pldock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; background: #f6f4ef; border-top: 1px solid #ddd6c8; box-shadow: 0 -8px 24px rgba(15,23,42,.12); display: flex; flex-direction: column; min-height: 120px; }
-  #view3d .v3-pldock-grip { height: 7px; cursor: ns-resize; flex: 0 0 auto; background: linear-gradient(#ddd6c8, #ddd6c8) center / 44px 3px no-repeat; }
+  #view3d .v3-pldock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 6; background: #f4f7fc; border-top: 1px solid #d5deea; box-shadow: 0 -8px 24px rgba(15,23,42,.12); display: flex; flex-direction: column; min-height: 120px; }
+  #view3d .v3-pldock-grip { height: 7px; cursor: ns-resize; flex: 0 0 auto; background: linear-gradient(#d5deea, #d5deea) center / 44px 3px no-repeat; }
   #view3d .v3-pldock-bar { display: flex; align-items: center; gap: 8px; padding: 2px 10px 6px; font-size: 12px; flex-wrap: wrap; }
   #view3d .v3-pldock-bar label { display: flex; align-items: center; gap: 4px; margin: 0; font-size: 11.5px; color: #475569; }
   #view3d .v3-pldock-bar select, #view3d .v3-pldock-bar input { font: inherit; font-size: 11.5px; padding: 3px 6px; border: 1px solid #d7dde6; border-radius: 6px; width: auto; }
@@ -2250,20 +2250,20 @@
   #view3d .v3-pldock-bar .v3-ic { margin-left: auto; }
   #view3d .v3-pl-scroll { flex: 1; overflow: auto; }
   #view3d .v3-pl-board { position: relative; }
-  #view3d .v3-pl-weeks { display: flex; position: sticky; top: 0; z-index: 3; background: #f6f4ef; border-bottom: 1px solid #ddd6c8; }
-  #view3d .v3-pl-corner { flex: 0 0 150px; position: sticky; left: 0; z-index: 4; background: #f6f4ef; font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; padding: 8px 10px; }
+  #view3d .v3-pl-weeks { display: flex; position: sticky; top: 0; z-index: 3; background: #f4f7fc; border-bottom: 1px solid #d5deea; }
+  #view3d .v3-pl-corner { flex: 0 0 150px; position: sticky; left: 0; z-index: 4; background: #f4f7fc; font-size: 10px; font-weight: 700; color: #64748b; text-transform: uppercase; padding: 8px 10px; }
   #view3d .v3-pl-wk { display: grid; }
-  #view3d .v3-pl-week { border: 0; border-left: 1px solid #e4ded2; background: none; text-align: left; padding: 5px 8px; font: inherit; font-size: 10px; color: #64748b; display: flex; flex-direction: column; cursor: pointer; }
+  #view3d .v3-pl-week { border: 0; border-left: 1px solid #dde5f0; background: none; text-align: left; padding: 5px 8px; font: inherit; font-size: 10px; color: #64748b; display: flex; flex-direction: column; cursor: pointer; }
   #view3d .v3-pl-week b { font-size: 12px; color: #1f2328; } #view3d .v3-pl-week:hover { background: rgba(47,123,255,.08); }
   #view3d .v3-pl-week.cur { background: #e3ecfe; } #view3d .v3-pl-week.cur b { color: #1e3a8a; }
   #view3d .v3-pl-today { position: absolute; top: 0; bottom: 0; width: 2px; background: #2f7bff; z-index: 2; pointer-events: none; opacity: .7; }
-  #view3d .v3-pl-lane { display: flex; border-bottom: 1px solid #e4ded2; min-height: 44px; }
-  #view3d .v3-pl-lane-h { flex: 0 0 150px; position: sticky; left: 0; z-index: 2; background: #fffdf8; border-right: 3px solid #e4ded2; padding: 8px 10px; font-size: 11px; font-weight: 700; line-height: 1.25; word-break: break-word; }
+  #view3d .v3-pl-lane { display: flex; border-bottom: 1px solid #dde5f0; min-height: 44px; }
+  #view3d .v3-pl-lane-h { flex: 0 0 150px; position: sticky; left: 0; z-index: 2; background: #fffdf8; border-right: 3px solid #dde5f0; padding: 8px 10px; font-size: 11px; font-weight: 700; line-height: 1.25; word-break: break-word; }
   #view3d .v3-pl-lane-h small { font-weight: 400; opacity: .7; }
   #view3d .v3-pl-grid-b { display: grid; grid-auto-flow: row dense; grid-auto-rows: minmax(34px, auto); gap: 6px 0; padding: 6px 0; align-content: start;
     background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(var(--col) - 1px), #d9d1c1 calc(var(--col) - 1px), #d9d1c1 var(--col)); }
   #view3d .v3-pnote { margin: 0 2px; background: var(--bg); border-left: 5px solid var(--st); border-radius: 2px 2px 8px 2px; padding: 6px 8px 8px; color: #1f2328; box-shadow: 0 1px 1px rgba(0,0,0,.08), 0 4px 10px -2px rgba(0,0,0,.12); position: relative; min-width: 0; cursor: pointer; overflow: visible; transition: transform .12s, box-shadow .12s; }
-  #view3d .v3-pnote::after { content: ""; position: absolute; right: 0; bottom: 0; width: 10px; height: 10px; background: linear-gradient(135deg, var(--bd) 50%, #f6f4ef 50%); border-radius: 0 0 8px 0; opacity: .7; }
+  #view3d .v3-pnote::after { content: ""; position: absolute; right: 0; bottom: 0; width: 10px; height: 10px; background: linear-gradient(135deg, var(--bd) 50%, #f4f7fc 50%); border-radius: 0 0 8px 0; opacity: .7; }
   #view3d .v3-pnote:hover { transform: translateY(-1px); box-shadow: 0 2px 3px rgba(0,0,0,.1), 0 10px 18px -4px rgba(0,0,0,.18); z-index: 2; }
   #view3d .v3-pnote .t { font-size: 11px; font-weight: 700; color: var(--ink); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
   #view3d .v3-pnote.full .t { -webkit-line-clamp: unset; display: block; }
@@ -2290,7 +2290,7 @@
   #view3d .v3-ga-arrows { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1; overflow: visible; }
   #view3d .v3-ga-arrows path { fill: none; stroke: #64748b; stroke-width: 1.3; opacity: .55; stroke-dasharray: 4 3; }
   #view3d .v3-ga-arrows path.hot { stroke: #2f7bff; opacity: 1; stroke-width: 2; stroke-dasharray: none; }
-  #view3d .v3-pl-rows { position: relative; padding: 4px 0; background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(var(--col) - 1px), #e4ded2 calc(var(--col) - 1px), #e4ded2 var(--col)); }
+  #view3d .v3-pl-rows { position: relative; padding: 4px 0; background-image: repeating-linear-gradient(to right, transparent 0, transparent calc(var(--col) - 1px), #dde5f0 calc(var(--col) - 1px), #dde5f0 var(--col)); }
   #view3d .v3-pl-row { position: relative; height: 22px; }
   #view3d .v3-pl-bar { position: absolute; top: 3px; height: 16px; border-radius: 4px; background: var(--bg); border: 1px solid var(--bd); border-left: 4px solid var(--st); cursor: pointer; overflow: visible; display: flex; align-items: center; }
   #view3d .v3-pl-bar.late { box-shadow: 0 0 0 1.5px #e5484d; }
@@ -2305,24 +2305,24 @@
   #view3d .v3-ga-hint { margin: 0 10px 6px; padding: 6px 9px; border-radius: 8px; background: #fff7e6; color: #7c4a03; font-size: 11px; }
   #view3d .v3-ga-legend { font-size: 10.5px; color: #475569; gap: 6px; }
   #view3d .v3-ga-legend > span { display: inline-flex; align-items: center; gap: 3px; } #view3d .v3-ga-legend i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  #view3d .v3-ga-sep { width: 1px; height: 14px; background: #ddd6c8; }
+  #view3d .v3-ga-sep { width: 1px; height: 14px; background: #d5deea; }
   #view3d .v3-ga-chip { background: var(--bg); border: 1px solid var(--bd); color: var(--ink); border-radius: 6px; padding: 1px 7px; font-weight: 600; }
   #view3d .v3-ga-lanes { font: inherit; font-size: 11px; padding: 2px 9px; border: 1px solid #d7dde6; border-radius: 999px; background: #fff; cursor: pointer; }
   #view3d .v3-ga-out { padding: 4px 12px; font-size: 11px; color: #64748b; }
-  #view3d .v3-pl-lane-h { background: var(--bg, #fffdf8); border-right-color: var(--bd, #e4ded2); color: var(--ink, #1f2328); display: flex; flex-direction: column; gap: 2px; }
+  #view3d .v3-pl-lane-h { background: var(--bg, #fffdf8); border-right-color: var(--bd, #dde5f0); color: var(--ink, #1f2328); display: flex; flex-direction: column; gap: 2px; }
   #view3d .v3-pl-lane-h span { font-size: 11px; font-weight: 700; } #view3d .v3-pl-lane-h small { font-size: 10px; font-weight: 400; opacity: .75; }
   #view3d .v3-ga-fold { border: 0; background: none; padding: 0; font-size: 11px; cursor: pointer; align-self: flex-start; color: inherit; }
   #view3d .v3-pl-lane.shut { min-height: 0; } #view3d .v3-pl-shut { flex: 1; }
   #view3d .v3-pl-weeks .v3-pl-corner { flex-basis: var(--head, 150px); } #view3d .v3-pl-lane-h { flex-basis: var(--head, 150px); }
   #view3d .v3-pl-row { height: 26px; } #view3d .v3-pl-bar { height: 19px; }
   #view3d .v3-ga-list { padding: 8px 12px 16px; display: flex; flex-direction: column; gap: 4px; max-width: 1100px; }
-  #view3d .v3-ga-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 10px; background: #fff; border: 1px solid #e4ded2; border-radius: 10px; padding: 10px; margin-bottom: 6px; }
+  #view3d .v3-ga-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px 10px; background: #fff; border: 1px solid #dde5f0; border-radius: 10px; padding: 10px; margin-bottom: 6px; }
   #view3d .v3-ga-filters label { display: flex; flex-direction: column; gap: 2px; font-size: 10.5px; color: #64748b; margin: 0; }
   #view3d .v3-ga-filters select { font: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid #d7dde6; border-radius: 6px; width: 100%; }
   #view3d .v3-ga-checks { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 14px; } #view3d .v3-ga-checks label { flex-direction: row; align-items: center; gap: 4px; font-size: 11.5px; color: #1f2328; } #view3d .v3-ga-checks input { width: auto; margin: 0; }
   #view3d .v3-ga-fbtns { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; } #view3d .v3-ga-fbtns button { font: inherit; font-size: 12px; padding: 5px 10px; border: 1px solid #d7dde6; border-radius: 7px; background: #fff; cursor: pointer; }
   #view3d .v3-ga-fbtns button.v3-primary { background: #2563eb; border-color: #2563eb; color: #fff; } #view3d .v3-ga-fbtns span { margin-left: auto; font-size: 11px; color: #64748b; }
-  #view3d .v3-ga-grp { background: #fff; border: 1px solid #ece6da; border-radius: 8px; }
+  #view3d .v3-ga-grp { background: #fff; border: 1px solid #e3e9f2; border-radius: 8px; }
   #view3d .v3-ga-grp-h { display: flex; align-items: center; justify-content: space-between; padding: 4px 8px; }
   #view3d .v3-ga-grp-h > button:first-child { border: 0; background: none; font: inherit; font-size: 11.5px; font-weight: 700; text-transform: uppercase; color: #334155; cursor: pointer; text-align: left; }
   #view3d .v3-ga-mark { font: inherit; font-size: 11px; padding: 2px 8px; border: 1px solid #d7dde6; border-radius: 6px; background: #fff; cursor: pointer; }
@@ -2530,7 +2530,7 @@
   #view3d .v3-walk-v em { font-style: normal; font-variant-numeric: tabular-nums; color: #fff; }
   #view3d .v3-walk .v3-chk { color: #e2e8f0; margin: 0; }
   #view3d .v3-walk .v3-x { color: #fff; background: rgba(255,255,255,.12); border: 0; width: 24px; height: 24px; border-radius: 6px; cursor: pointer; }
-  #view3d .v3-mtdock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; background: #f6f4ef; border-top: 1px solid #ddd6c8; box-shadow: 0 -8px 24px rgba(15,23,42,.14); display: flex; flex-direction: column; height: 330px; font: 12px system-ui, sans-serif; color: #1f2937; }
+  #view3d .v3-mtdock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; background: #f4f7fc; border-top: 1px solid #d5deea; box-shadow: 0 -8px 24px rgba(15,23,42,.14); display: flex; flex-direction: column; height: 330px; font: 12px system-ui, sans-serif; color: #1f2937; }
   #view3d .v3-mt-bar, #view3d .v3-mt-play { display: flex; align-items: center; gap: 8px; padding: 6px 12px; flex-wrap: wrap; }
   #view3d .v3-mt-bar { border-bottom: 1px solid #e6e0d3; } #view3d .v3-mt-bar .sp { flex: 1; } #view3d .v3-mt-msg { color: #64748b; max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #view3d .v3-mtdock button { border: 1px solid #d8d1c2; background: #fff; border-radius: 8px; padding: 3px 10px; cursor: pointer; font: inherit; } #view3d .v3-mtdock button:hover { border-color: #2f7bff; }
@@ -2561,7 +2561,7 @@
   #view3d .v3-mt-visbar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 2px 12px 6px; border-bottom: 1px solid #e6e0d3; } #view3d .v3-mt-vis { display: inline-flex; align-items: center; gap: 4px; } #view3d .v3-mt-vis i { font-style: normal; color: #64748b; } #view3d .v3-mt-vis input[type=color] { width: 26px; height: 22px; padding: 0; border: 1px solid #d8d1c2; border-radius: 6px; background: none; } #view3d .v3-mt-vis input[type=range] { width: 64px; }
   #view3d .v3-mt-body.gv { grid-template-columns: minmax(0, 1fr) 320px; } #view3d .v3-mt-edwrap { overflow: auto; min-height: 0; }
   #view3d .v3-mt-gantt { overflow: auto; position: relative; padding: 0 0 6px; border-right: 1px solid #e6e0d3; background: #fbfaf6; }
-  #view3d .g-wrap { position: relative; } #view3d .g-h { position: sticky; top: 0; z-index: 3; height: 40px; background: #f3efe5; border-bottom: 1px solid #ddd6c8; } #view3d .g-h span { position: absolute; white-space: nowrap; font-size: 11px; color: #64748b; padding-left: 3px; border-left: 1px solid #d8d1c2; } #view3d .g-m span { top: 2px; font-weight: 600; color: #475569; } #view3d .g-w span { top: 22px; }
+  #view3d .g-wrap { position: relative; } #view3d .g-h { position: sticky; top: 0; z-index: 3; height: 40px; background: #f3efe5; border-bottom: 1px solid #d5deea; } #view3d .g-h span { position: absolute; white-space: nowrap; font-size: 11px; color: #64748b; padding-left: 3px; border-left: 1px solid #d8d1c2; } #view3d .g-m span { top: 2px; font-weight: 600; color: #475569; } #view3d .g-w span { top: 22px; }
   #view3d .g-body { position: relative; } #view3d .g-r { height: 26px; position: relative; border-bottom: 1px solid #efe9db; } #view3d .g-bar { position: absolute; top: 4px; height: 18px; border-radius: 6px; background: #93c5fd; color: #0f172a; font-size: 11px; line-height: 18px; padding: 0 6px; cursor: grab; overflow: hidden; white-space: nowrap; user-select: none; touch-action: none; box-shadow: 0 0 0 1px rgba(15,23,42,.15) inset; }
   #view3d .g-bar.done { background: #b9bfc8; } #view3d .g-bar.curp { background: #f59e0b; } #view3d .g-bar.fut { background: #bfdbfe; } #view3d .g-bar.on { outline: 2px solid #2f7bff; } #view3d .g-bar.tmp { background-image: repeating-linear-gradient(45deg, rgba(255,255,255,.45) 0 5px, transparent 5px 10px); }
   #view3d .g-rz { position: absolute; right: 0; top: 0; bottom: 0; width: 7px; cursor: ew-resize; background: rgba(15,23,42,.18); }
@@ -2950,6 +2950,201 @@
 
 #view3d.v3-nordic .v3-bar > :not(.v3-grow) { flex-shrink: 0; }
 @media (max-width: 1150px) { #view3d.v3-nordic.v3-has-sel .v3-legend { bottom: 76px; } }
+/* ---- Panelinnehåll: gemensam stil för Lager, Egenskaper, Grupper, Kommentarer & mått, 3D-bibliotek och 4D-planering ---- */
+#view3d.v3-nordic .v3-pal { padding: 10px 10px 12px; gap: 8px; }
+#view3d.v3-nordic .v3-pal::-webkit-scrollbar, #view3d.v3-nordic .v3-side::-webkit-scrollbar, #view3d.v3-nordic .v3-pl-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+#view3d.v3-nordic .v3-pal::-webkit-scrollbar-thumb, #view3d.v3-nordic .v3-side::-webkit-scrollbar-thumb, #view3d.v3-nordic .v3-pl-scroll::-webkit-scrollbar-thumb { background: rgba(47,123,255,.22); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+/* sökfält som piller med lupp */
+#view3d.v3-nordic .v3-pal input[type=search], #view3d.v3-nordic .v3-pldock input[type=search] {
+  height: 34px; padding: 0 12px 0 34px; border: 1px solid rgba(36,72,140,.12); border-radius: 999px; background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E") 11px 50% / 16px no-repeat;
+  font-size: 12.5px; transition: border-color .15s, box-shadow .2s; -webkit-appearance: none; appearance: none; width: 100%; box-sizing: border-box; }
+#view3d.v3-nordic .v3-pal input[type=search]:focus, #view3d.v3-nordic .v3-pldock input[type=search]:focus { outline: 0; border-color: var(--n-acc); box-shadow: 0 0 0 4px rgba(47,123,255,.14), 0 4px 14px rgba(47,123,255,.12); }
+#view3d.v3-nordic .v3-pal select, #view3d.v3-nordic .v3-pldock select { height: 32px; border: 1px solid rgba(36,72,140,.12); border-radius: 10px; background-color: #fff; font-size: 12px; padding: 0 8px; transition: border-color .15s, box-shadow .2s; }
+#view3d.v3-nordic .v3-pal select:focus, #view3d.v3-nordic .v3-pldock select:focus, #view3d.v3-nordic .v3-pal input[type=date]:focus, #view3d.v3-nordic .v3-pldock input[type=date]:focus, #view3d.v3-nordic .v3-pal input[type=number]:focus { outline: 0; border-color: var(--n-acc); box-shadow: 0 0 0 4px rgba(47,123,255,.14); }
+#view3d.v3-nordic .v3-pal input[type=date], #view3d.v3-nordic .v3-pal input[type=number], #view3d.v3-nordic .v3-pal input[type=text] { height: 32px; border: 1px solid rgba(36,72,140,.12); border-radius: 10px; font-size: 12px; box-sizing: border-box; }
+/* sektionsrubriker */
+#view3d.v3-nordic .v3-lsec { border: 0; padding: 0; margin: 0 0 6px; background: rgba(255,255,255,.62); border-radius: 14px; box-shadow: 0 0 0 1px rgba(36,72,140,.07); }
+#view3d.v3-nordic .v3-lsec-h { margin: 0; padding: 4px 6px 4px 8px; }
+#view3d.v3-nordic .v3-lsec-t, #view3d.v3-nordic .v3-msec-h { font-size: 10.5px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: #5d7089; transition: color .15s; }
+#view3d.v3-nordic .v3-lsec-t:hover, #view3d.v3-nordic .v3-msec-h:hover { color: var(--n-acc); }
+#view3d.v3-nordic .v3-lsec-b { padding: 0 8px 8px; }
+#view3d.v3-nordic .v3-lsec-t i, #view3d.v3-nordic .v3-msec-h i, #view3d.v3-nordic .v3-lsub-t i { color: #9fb0c6; transition: transform .2s cubic-bezier(.3,1.4,.5,1), color .15s; }
+#view3d.v3-nordic .v3-lsec-t[aria-expanded="true"] i, #view3d.v3-nordic .v3-msec-h[aria-expanded="true"] i, #view3d.v3-nordic .v3-lsub-t[aria-expanded="true"] i { color: var(--n-acc); }
+#view3d.v3-nordic .v3-lsub-t { font-size: 12px; font-weight: 700; color: #33465e; }
+#view3d.v3-nordic .v3-lsub-t em, #view3d.v3-nordic .v3-msec-h span, #view3d.v3-nordic .v3-pal-g em { font-style: normal; font-size: 10px; font-weight: 700; color: #6b86ad; background: rgba(47,123,255,.1); border-radius: 999px; padding: 1px 7px; letter-spacing: 0; }
+#view3d.v3-nordic .v3-msec, #view3d.v3-nordic .v3-afold { background: rgba(255,255,255,.62); border-radius: 14px; box-shadow: 0 0 0 1px rgba(36,72,140,.07); padding: 6px 10px 8px; margin: 0 0 6px; }
+#view3d.v3-nordic .v3-afold-h { gap: 6px; }
+#view3d.v3-nordic .v3-org-sec { border: 0; border-radius: 14px; background: linear-gradient(135deg, rgba(47,123,255,.08), rgba(90,167,255,.05)); box-shadow: 0 0 0 1px rgba(47,123,255,.14); padding: 10px 12px; }
+#view3d.v3-nordic .v3-org-h b { font-size: 12.5px; color: #26425f; }
+/* rader */
+#view3d.v3-nordic .v3-lr { border-radius: 10px; transition: background .12s; }
+#view3d.v3-nordic .v3-lr:hover, #view3d.v3-nordic #v3Lib button:hover { background: rgba(47,123,255,.08); }
+#view3d.v3-nordic .v3-kc-list { border: 0; border-radius: 12px; background: #fff; box-shadow: 0 0 0 1px rgba(36,72,140,.08); }
+#view3d.v3-nordic .v3-af.cur { background: rgba(47,123,255,.07); box-shadow: inset 3px 0 0 var(--n-acc); }
+/* tomma lägen och noteringar */
+#view3d.v3-nordic .v3-pal-hint { font-size: 11.5px; line-height: 1.45; color: #6b7c93; padding: 6px 4px; }
+#view3d.v3-nordic .v3-lsub-b > .v3-pal-hint:only-child, #view3d.v3-nordic .v3-kc-list > .v3-pal-hint:only-child, #view3d.v3-nordic .v3-grs > .v3-pal-hint:only-child, #view3d.v3-nordic .v3-pp-body > .v3-pal-hint:only-child, #view3d.v3-nordic .v3-msec > .v3-pal-hint:only-of-type {
+  display: block; text-align: center; padding: 14px 12px 12px; margin: 2px 0; border: 1.5px dashed rgba(47,123,255,.25); border-radius: 14px; background: rgba(47,123,255,.035); color: #6b7c93; }
+#view3d.v3-nordic .v3-kc-list > .v3-pal-hint:only-child { border-width: 0; }
+#view3d.v3-nordic .v3-pp-body > .v3-pal-hint:only-child::before, #view3d.v3-nordic .v3-grs > .v3-pal-hint:only-child::before, #view3d.v3-nordic .v3-lsub-b > .v3-pal-hint:only-child::before {
+  content: ""; display: block; width: 30px; height: 30px; margin: 0 auto 6px; border-radius: 10px; background: rgba(47,123,255,.12) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%232f7bff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l8 4.5v9L12 21l-8-4.5v-9z'/%3E%3Cpath d='M12 12l8-4.5M12 12v9M12 12L4 7.5'/%3E%3C/svg%3E") center / 18px no-repeat; }
+/* knappar */
+#view3d.v3-nordic .v3-wide, #view3d.v3-nordic .v3-pal .v3-ghost, #view3d.v3-nordic .v3-afold-h button#v3AfNew, #view3d.v3-nordic .v3-org-sec .v3-ic[title]:not(.ui-ic-only), #view3d.v3-nordic .v3-pal button[id$="New"] {
+  border: 1px solid rgba(47,123,255,.25); background: rgba(47,123,255,.06); color: #2764c9; border-radius: 11px; font-weight: 600; transition: transform .15s cubic-bezier(.3,1.4,.5,1), background .15s, box-shadow .2s; }
+#view3d.v3-nordic .v3-wide:hover, #view3d.v3-nordic .v3-pal .v3-ghost:hover, #view3d.v3-nordic .v3-afold-h button#v3AfNew:hover { background: rgba(47,123,255,.13); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(47,123,255,.18); }
+#view3d.v3-nordic .v3-link { color: var(--n-acc); font-weight: 600; }
+/* växlare: "Visa i 3D", "Som skyltar" … som piller */
+#view3d.v3-nordic .v3-kc-opts { gap: 6px; }
+#view3d.v3-nordic .v3-kc-opts .v3-chk, #view3d.v3-nordic .v3-fc-more .v3-ga-checks label {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px 4px 8px; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px rgba(36,72,140,.12); font-size: 11.5px; font-weight: 600; color: #52637a; cursor: pointer; transition: background .15s, box-shadow .2s, color .15s; }
+#view3d.v3-nordic .v3-kc-opts .v3-chk:has(input:checked), #view3d.v3-nordic .v3-fc-more .v3-ga-checks label:has(input:checked) { background: rgba(47,123,255,.11); box-shadow: 0 0 0 1px rgba(47,123,255,.45), 0 0 12px rgba(47,123,255,.15); color: #2764c9; }
+/* biblioteket: rutnät med brickor */
+#view3d.v3-nordic .v3-pal-items { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 4px 2px 8px; }
+#view3d.v3-nordic #v3Lib .v3-li { min-width: 0; }
+#view3d.v3-nordic #v3Lib .v3-li > button { height: 44px; padding: 6px 8px; border: 1px solid rgba(36,72,140,.09); border-radius: 12px; background: #fff; box-shadow: 0 2px 6px rgba(30,60,120,.05); gap: 8px; font-size: 11.5px; font-weight: 600; color: #33465e; transition: transform .15s cubic-bezier(.3,1.4,.5,1), box-shadow .2s, border-color .15s, background .15s; }
+#view3d.v3-nordic #v3Lib .v3-li > button:hover { transform: translateY(-2px); border-color: rgba(47,123,255,.4); box-shadow: 0 8px 20px rgba(47,123,255,.2); background: #fff; }
+#view3d.v3-nordic #v3Lib .v3-li > button span { white-space: normal; line-height: 1.15; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+#view3d.v3-nordic #v3Lib .v3-li > button i { width: 20px; height: 20px; border-radius: 7px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.1), 0 2px 6px rgba(0,0,0,.12); }
+#view3d.v3-nordic #v3Lib .v3-li > button.on { background: linear-gradient(135deg, rgba(47,123,255,.14), rgba(90,167,255,.1)); border-color: var(--n-acc); box-shadow: 0 0 0 3px rgba(47,123,255,.12), 0 8px 20px rgba(47,123,255,.2); }
+#view3d.v3-nordic #v3Lib .v3-lf { margin-top: 8px; padding: 0 2px; }
+#view3d.v3-nordic .v3-pal-g { font-size: 10.5px; letter-spacing: .09em; color: #5d7089; }
+/* 4D-planering: filter */
+#view3d.v3-nordic #v3PlFBar { background: rgba(255,255,255,.7); border-radius: 14px; box-shadow: 0 0 0 1px rgba(36,72,140,.07); padding: 8px; }
+#view3d.v3-nordic .v3-fc-r3 { display: flex; flex-direction: column; gap: 5px; }
+#view3d.v3-nordic .v3-fc-multi { display: flex; width: 100%; height: 32px; align-items: center; justify-content: space-between; padding: 0 12px; border: 1px solid rgba(36,72,140,.12); border-radius: 10px; background: #fff; font-size: 12px; font-weight: 600; color: #33465e; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+#view3d.v3-nordic .v3-fc-multi.on, #view3d.v3-nordic .v3-fc-multi.active { border-color: var(--n-acc); background: rgba(47,123,255,.08); color: #2764c9; }
+#view3d.v3-nordic .v3-fc-r2 { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 5px; }
+#view3d.v3-nordic .v3-fc-r2 > select { width: 100%; min-width: 0; }
+#view3d.v3-nordic .v3-fc-follow { grid-column: 1 / 2; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; border-radius: 10px; border: 1px solid rgba(36,72,140,.12); background: #fff; font-size: 12px; font-weight: 700; }
+#view3d.v3-nordic .v3-fc-follow[aria-pressed="true"] { background: linear-gradient(135deg, var(--n-acc), var(--n-acc2)); color: #fff; border-color: transparent; box-shadow: var(--n-glow); }
+#view3d.v3-nordic .v3-fc-clr { grid-column: 2 / 3; height: 32px; border-radius: 10px; }
+#view3d.v3-nordic .v3-fc-r4 { display: grid !important; grid-template-columns: 1.2fr 1fr; gap: 5px; margin-top: 6px; align-items: stretch; }
+#view3d.v3-nordic .v3-fc-r4 > span { grid-column: 1 / -1; margin: 0; text-align: right; font-size: 10.5px; color: #8093ab; }
+#view3d.v3-nordic .v3-fc-r4 button { height: 34px; border-radius: 11px; font-size: 11.5px; font-weight: 700; padding: 0 6px; line-height: 1.15; }
+#view3d.v3-nordic .v3-fc-more summary { cursor: pointer; font-size: 11px; font-weight: 700; color: #6b86ad; padding: 6px 2px 2px; list-style: none; }
+#view3d.v3-nordic .v3-fc-more .v3-ga-checks { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0; }
+/* 4D-planering: kort och brickor */
+#view3d.v3-nordic .v3-panel { border: 0; border-radius: 16px; background: rgba(255,255,255,.62); box-shadow: 0 0 0 1px rgba(36,72,140,.07), 0 8px 24px rgba(30,60,120,.06); overflow: hidden; }
+#view3d.v3-nordic .v3-panel-h { padding: 10px 12px; background: linear-gradient(90deg, rgba(47,123,255,.07), transparent); }
+#view3d.v3-nordic .v3-panel-h b { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: #3f5a7a; }
+#view3d.v3-nordic .v3-panel-t { width: 26px; height: 26px; border-radius: 9px; border: 0; background: rgba(47,123,255,.1); color: var(--n-acc); font-weight: 700; transition: background .15s, transform .15s; }
+#view3d.v3-nordic .v3-panel-t:hover { background: rgba(47,123,255,.2); transform: scale(1.08); }
+#view3d.v3-nordic .v3-card { border: 0; border-radius: 13px; background: #fff; box-shadow: 0 0 0 1px rgba(36,72,140,.08); }
+#view3d.v3-nordic .v3-card-h { font-size: 10px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: #6b86ad; }
+#view3d.v3-nordic .v3-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+#view3d.v3-nordic .v3-chip { position: relative; display: inline-flex; width: auto; height: auto; border-radius: 999px; box-shadow: none; flex: 0 0 auto; }
+#view3d.v3-nordic .v3-chip input { position: absolute; opacity: 0; pointer-events: none; }
+#view3d.v3-nordic .v3-chip span { display: inline-flex; align-items: center; height: 26px; padding: 0 11px; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px rgba(36,72,140,.14); font-size: 11.5px; font-weight: 600; color: #52637a; cursor: pointer; transition: background .15s, box-shadow .2s, color .15s, transform .15s; }
+#view3d.v3-nordic .v3-chip span:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(47,123,255,.4), 0 4px 12px rgba(47,123,255,.15); }
+#view3d.v3-nordic .v3-chip input:checked + span { background: linear-gradient(135deg, var(--n-acc), var(--n-acc2)); color: #fff; box-shadow: 0 0 0 1px rgba(47,123,255,.5), 0 4px 14px rgba(47,123,255,.3); }
+#view3d.v3-nordic .v3-chip.sub input:checked + span { background: rgba(47,123,255,.12); color: #2764c9; box-shadow: 0 0 0 1px rgba(47,123,255,.4); }
+#view3d.v3-nordic .v3-pl-grid label { font-size: 10.5px; font-weight: 600; color: #6b7c93; gap: 3px; }
+
+/* finjusteringar efter granskning */
+#view3d.v3-nordic #v3PalSearch { padding: 0 12px 0 34px; height: 34px; }
+#view3d.v3-nordic #v3Lib .v3-li > button { height: 42px; padding: 5px 7px; gap: 6px; font-size: 11px; }
+#view3d.v3-nordic #v3Lib .v3-li > button i { width: 16px; height: 16px; border-radius: 6px; }
+#view3d.v3-nordic .v3-lsec-h { padding: 6px 8px 4px 10px; }
+#view3d.v3-nordic .v3-fc-r2 > select { grid-column: 1 / -1; }
+#view3d.v3-nordic .v3-fc-r2 { grid-template-columns: 1fr 34px; }
+#view3d.v3-nordic .v3-fc-follow { grid-column: 1 / 2; }
+#view3d.v3-nordic .v3-fc-clr { grid-column: 2 / 3; width: 34px; padding: 0; }
+#view3d.v3-nordic .v3-fc-r4 { grid-template-columns: 1fr !important; }
+#view3d.v3-nordic .v3-fc-r4 button { height: 34px; white-space: normal; }
+#view3d.v3-nordic .v3-kc-opts .v3-chk input, #view3d.v3-nordic .v3-fc-more .v3-ga-checks input { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
+#view3d.v3-nordic .v3-kc-opts .v3-chk, #view3d.v3-nordic .v3-fc-more .v3-ga-checks label { position: relative; padding: 5px 11px; }
+#view3d.v3-nordic .v3-kc-opts .v3-chk:has(input:checked)::before { content: "✓"; font-size: 10px; margin-right: -2px; }
+#view3d.v3-nordic .v3-ksec-h { margin-top: 8px; }
+#view3d.v3-nordic .v3-pal-title { padding-bottom: 2px; }
+
+/* ---- Gantt-dockan ---- */
+#view3d.v3-nordic .v3-pldock { left: 10px; right: 10px; bottom: 10px; border: 1px solid var(--n-line); border-radius: 22px; background: rgba(255,255,255,.95); box-shadow: 0 -12px 44px rgba(30,60,120,.18), 0 2px 8px rgba(30,60,120,.08); overflow: hidden; animation: n-dock .3s cubic-bezier(.2,1,.3,1) both; }
+@keyframes n-dock { from { opacity: 0; } to { opacity: 1; } } /* bara opacitet: transform skulle göra dockan till hållare för fixed-menyerna i den */
+#view3d.v3-nordic .v3-pldock.full { top: 10px; }
+#view3d.v3-nordic .v3-pldock-grip { height: 14px; background: linear-gradient(rgba(47,123,255,.25), rgba(47,123,255,.25)) center / 48px 4px no-repeat; border-radius: 4px; transition: background-color .15s; }
+#view3d.v3-nordic .v3-pldock-grip:hover { background: linear-gradient(var(--n-acc), var(--n-acc)) center / 64px 4px no-repeat; }
+#view3d.v3-nordic .v3-pldock-bar { padding: 2px 14px 8px; gap: 8px; }
+#view3d.v3-nordic .v3-ga-row1 { flex-wrap: nowrap; align-items: center; padding-top: 0; }
+#view3d.v3-nordic .v3-ga-row1 input[type=search] { flex: 1 1 200px; width: auto; max-width: 440px; min-width: 120px; height: 34px; }
+#view3d.v3-nordic .v3-ga-views button { height: 32px; min-width: 0; padding: 0 12px; gap: 6px; display: inline-flex; align-items: center; border-radius: 12px; font-size: 12px; font-weight: 600; color: #52637a; border: 0; background: transparent; cursor: pointer; transition: background .15s, color .15s, box-shadow .2s; }
+#view3d.v3-nordic .v3-ga-views button:hover { background: rgba(47,123,255,.09); color: var(--n-acc); }
+#view3d.v3-nordic .v3-ga-views button.on { background: linear-gradient(135deg, var(--n-acc), var(--n-acc2)); color: #fff; box-shadow: var(--n-glow); }
+#view3d.v3-nordic .v3-ga-ib { width: 34px; height: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 0 !important; border-radius: 11px !important; background: transparent !important; color: #52637a; cursor: pointer; transition: background .15s, color .15s, transform .15s cubic-bezier(.3,1.5,.5,1), box-shadow .2s; flex: 0 0 auto; }
+#view3d.v3-nordic .v3-ga-ib:hover:not(:disabled) { background: rgba(47,123,255,.1) !important; color: var(--n-acc); transform: translateY(-1px); }
+#view3d.v3-nordic .v3-ga-ib:disabled { opacity: .3; cursor: default; }
+#view3d.v3-nordic .v3-ga-ib.on { background: rgba(47,123,255,.14) !important; color: var(--n-acc); box-shadow: 0 0 0 1px rgba(47,123,255,.4), 0 0 12px rgba(47,123,255,.25); }
+#view3d.v3-nordic #v3PlClose:hover { background: #fee2e2 !important; color: #dc2626; }
+#view3d.v3-nordic .v3-ga-row1 #v3GaUndo { margin-left: auto; }
+#view3d.v3-nordic .v3-ga-row2 { flex-wrap: wrap; row-gap: 6px; align-items: center; }
+#view3d.v3-nordic .v3-ga-sel { display: inline-flex; align-items: center; gap: 0; height: 32px; padding: 0 0 0 11px; border-radius: 11px; background: #fff; box-shadow: 0 0 0 1px rgba(36,72,140,.12); }
+#view3d.v3-nordic .v3-ga-sel span { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #7d8fa8; margin-right: 2px; }
+#view3d.v3-nordic .v3-ga-sel select { border: 0; box-shadow: none; background-color: transparent; font-weight: 700; color: #26425f; height: 30px; }
+#view3d.v3-nordic .v3-ga-vsep { width: 1px; height: 22px; background: rgba(36,72,140,.14); }
+#view3d.v3-nordic .v3-ga-per button { height: 28px; min-width: 0; padding: 0 10px; font-size: 11.5px; font-weight: 700; }
+#view3d.v3-nordic .v3-ga-dates { display: inline-flex; align-items: center; gap: 4px; }
+#view3d.v3-nordic .v3-ga-dates i { font-style: normal; color: #94a3b8; }
+#view3d.v3-nordic .v3-ga-dates input[type=date] { width: 124px; height: 30px; padding: 0 6px; border-radius: 10px; font-size: 11.5px; }
+#view3d.v3-nordic .v3-ga-dates button { height: 30px; padding: 0 12px; border-radius: 10px; border: 1px solid rgba(47,123,255,.3); background: rgba(47,123,255,.07); color: #2764c9; font-size: 11.5px; font-weight: 700; cursor: pointer; transition: background .15s, box-shadow .2s; }
+#view3d.v3-nordic .v3-ga-dates button:hover { background: rgba(47,123,255,.16); box-shadow: 0 4px 12px rgba(47,123,255,.2); }
+#view3d.v3-nordic .v3-ga-viewbtn { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 999px; border: 0; background: #fff; box-shadow: 0 0 0 1px rgba(36,72,140,.14); color: #3a4b63; font-size: 12px; font-weight: 700; cursor: pointer; transition: background .15s, box-shadow .2s, color .15s; }
+#view3d.v3-nordic .v3-ga-viewbtn:hover, #view3d.v3-nordic .v3-ga-viewbtn.on { background: rgba(47,123,255,.1); box-shadow: 0 0 0 1px rgba(47,123,255,.45), 0 0 14px rgba(47,123,255,.18); color: var(--n-acc); }
+#view3d.v3-nordic .v3-ga-viewpop { position: fixed; z-index: 3300; padding: 10px 12px 12px; border-radius: 18px; background: rgba(255,255,255,.97); border: 1px solid var(--n-line); box-shadow: 0 24px 60px rgba(20,50,110,.28), 0 2px 8px rgba(20,50,110,.08); display: flex; flex-direction: column; gap: 2px; animation: n-pop .18s cubic-bezier(.2,1.1,.3,1) both; transform-origin: 90% 100%; }
+#view3d.v3-nordic .v3-ga-viewpop.hidden { display: none; }
+#view3d.v3-nordic .v3-ga-vp-t { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #7d8fa8; padding: 6px 2px 4px; }
+#view3d.v3-nordic .v3-ga-viewpop .v3-ga-tg { display: flex; align-items: center; justify-content: space-between; flex-direction: row-reverse; gap: 12px; padding: 7px 4px 7px 8px; border: 0; border-radius: 10px; background: transparent; font-size: 12.5px; font-weight: 600; color: #33465e; cursor: pointer; transition: background .12s; }
+#view3d.v3-nordic .v3-ga-viewpop .v3-ga-tg:hover { background: rgba(47,123,255,.07); }
+#view3d.v3-nordic .v3-ga-viewpop .v3-ga-tg input { -webkit-appearance: none; appearance: none; position: relative; flex: 0 0 auto; width: 36px; height: 21px; margin: 0; border-radius: 999px; background: #cbd5e1; cursor: pointer; transition: background .2s, box-shadow .2s; }
+#view3d.v3-nordic .v3-ga-viewpop .v3-ga-tg input::after { content: ""; position: absolute; left: 3px; top: 3px; width: 15px; height: 15px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .22s cubic-bezier(.3,1.5,.5,1); }
+#view3d.v3-nordic .v3-ga-viewpop .v3-ga-tg input:checked { background: linear-gradient(135deg, var(--n-acc), var(--n-acc2)); box-shadow: 0 0 12px rgba(47,123,255,.45); }
+#view3d.v3-nordic .v3-ga-viewpop .v3-ga-tg input:checked::after { transform: translateX(15px); }
+/* 3D-läge och verktyg */
+#view3d.v3-nordic .v3-gm-row { padding: 0 14px 8px; gap: 8px; }
+#view3d.v3-nordic .v3-gm-row #v3GmSeg { padding: 3px 3px 3px 10px; align-items: center; }
+#view3d.v3-nordic .v3-gm-row #v3GmSeg button { height: 28px; padding: 0 11px; font-size: 11.5px; font-weight: 700; }
+#view3d.v3-nordic .v3-ga-lbl { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: #7d8fa8; margin-right: 4px; }
+#view3d.v3-nordic .v3-gm-row > button, #view3d.v3-nordic .v3-gm-time > button:not(.v3-gm-step) { height: 30px; padding: 0 12px; border-radius: 10px; border: 0; background: rgba(47,123,255,.07); color: #2764c9; font-size: 11.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: background .15s, transform .15s cubic-bezier(.3,1.5,.5,1), box-shadow .2s; }
+#view3d.v3-nordic .v3-gm-row > button:hover, #view3d.v3-nordic .v3-gm-time > button:hover { background: rgba(47,123,255,.15); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(47,123,255,.18); }
+#view3d.v3-nordic .v3-gm-row > button.on, #view3d.v3-nordic .v3-gm-strict.on { background: linear-gradient(135deg, var(--n-acc), var(--n-acc2)) !important; color: #fff !important; box-shadow: var(--n-glow); }
+#view3d.v3-nordic .v3-gm-time { background: rgba(47,123,255,.045); border-top: 1px solid rgba(47,123,255,.1); padding: 8px 14px; }
+#view3d.v3-nordic .v3-gm-time input[type=date] { height: 30px; border-radius: 10px; }
+#view3d.v3-nordic .v3-gm-step { width: 28px; height: 28px; padding: 0 !important; border-radius: 50% !important; font-size: 17px; }
+/* statusrad */
+#view3d.v3-nordic .v3-ga-legend { padding: 4px 14px 8px; gap: 6px; font-size: 11px; color: #52637a; flex-wrap: wrap; }
+#view3d.v3-nordic .v3-ga-legend > span:not(.v3-ga-sep):not(.v3-ga-chip) { padding: 2px 9px 2px 7px; border-radius: 999px; background: rgba(36,72,140,.05); font-weight: 600; }
+#view3d.v3-nordic .v3-ga-chip { border-radius: 999px; padding: 2px 10px; font-weight: 700; }
+#view3d.v3-nordic .v3-ga-lanes { height: 26px; padding: 0 12px; border: 0; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px rgba(36,72,140,.14); font-weight: 700; color: #3a4b63; margin-left: auto; transition: box-shadow .2s; }
+#view3d.v3-nordic .v3-ga-lanes:hover { box-shadow: 0 0 0 1px rgba(47,123,255,.45), 0 0 12px rgba(47,123,255,.18); }
+#view3d.v3-nordic .v3-ga-hint { border-radius: 12px; }
+#view3d.v3-nordic .v3-hidebtns .v3-ga-row1 > *:not(#v3GaHide):not(#v3GaFull):not(#v3PlClose) { display: none; }
+#view3d.v3-nordic .v3-hidebtns .v3-ga-row1 #v3GaHide { margin-left: auto; }
+
+/* 4D-planering: filmknappar, filter i dockan */
+#view3d.v3-nordic .v3-pl-actbar { display: grid !important; grid-template-columns: 1fr 1fr; gap: 6px; }
+#view3d.v3-nordic .v3-pl-actbar button { height: 36px; border-radius: 12px; border: 0; background: rgba(47,123,255,.08); color: #2764c9; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; transition: transform .15s cubic-bezier(.3,1.5,.5,1), background .15s, box-shadow .2s; }
+#view3d.v3-nordic .v3-pl-actbar button:hover:not(:disabled) { background: rgba(47,123,255,.16); transform: translateY(-1px); box-shadow: 0 6px 16px rgba(47,123,255,.2); }
+#view3d.v3-nordic .v3-pl-actbar button:disabled { opacity: .4; }
+#view3d.v3-nordic .v3-pl-actbar #v3FlRec { grid-column: 1 / -1; height: 40px; background: linear-gradient(135deg, #ef4444, #f97316); color: #fff; box-shadow: 0 6px 20px rgba(239,68,68,.35); }
+#view3d.v3-nordic .v3-pl-actbar #v3FlRec:hover:not(:disabled) { background: linear-gradient(135deg, #dc2626, #ea580c); box-shadow: 0 10px 26px rgba(239,68,68,.5); }
+#view3d.v3-nordic #v3PlanDock .v3-ga-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 14px 8px; padding: 8px 10px; border-radius: 14px; background: rgba(47,123,255,.04); box-shadow: 0 0 0 1px rgba(36,72,140,.07); }
+#view3d.v3-nordic #v3PlanDock .v3-fc-r3, #view3d.v3-nordic #v3PlanDock .v3-fc-r2 { display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px; margin: 0; }
+#view3d.v3-nordic #v3PlanDock .v3-fc-multi { width: auto; min-width: 150px; }
+#view3d.v3-nordic #v3PlanDock .v3-fc-r2 > select { width: auto; min-width: 130px; }
+#view3d.v3-nordic #v3PlanDock .v3-fc-r4 { display: flex !important; margin: 0; gap: 6px; margin-left: auto; align-items: center; }
+#view3d.v3-nordic #v3PlanDock .v3-fc-r4 > span { margin-left: 6px; }
+#view3d.v3-nordic #v3PlanDock .v3-fc-r4 button { padding: 0 14px; white-space: nowrap; }
+
+#view3d.v3-nordic .v3-pl-top { margin: 0 0 8px; }
+#view3d.v3-nordic .v3-pl-sum { margin-top: 6px; text-align: center; font-size: 11px; color: #7d8fa8; }
+#view3d.v3-nordic .v3-pl-sum b { color: var(--n-acc); }
+#view3d.v3-nordic .v3-pl-ganttbtn { display: flex; width: 100%; height: 40px; align-items: center; justify-content: center; gap: 8px; border-radius: 13px; font-size: 12.5px; }
+#view3d.v3-nordic .v3-pl-ganttbtn.on { background: linear-gradient(135deg, var(--n-acc), var(--n-acc2)); color: #fff; border-color: transparent; box-shadow: var(--n-glow); }
+
+#view3d.v3-nordic .v3-pl-grid input[type=date] { padding: 0 4px 0 6px; font-size: 11px; }
+#view3d.v3-nordic .v3-pl-grid { gap: 6px; }
+#view3d.v3-nordic .v3-af-all { padding: 3px 10px 3px 6px; border-radius: 999px; background: #fff; box-shadow: 0 0 0 1px rgba(36,72,140,.12); font-size: 11px; font-weight: 600; color: #52637a; display: inline-flex; align-items: center; gap: 5px; }
+#view3d.v3-nordic .v3-af-n { overflow: hidden; min-width: 0; }
+#view3d.v3-nordic .v3-af-n em { white-space: normal; overflow-wrap: anywhere; }
+#view3d.v3-nordic .v3-af > .v3-ic, #view3d.v3-nordic .v3-af > .v3-af-chk, #view3d.v3-nordic .v3-af > .v3-af-exp { flex: 0 0 auto; }
 /* ---- Mobil: ingen flytt, kompakt ---- */
 @media (max-width: 700px) {
   #view3d.v3-nordic .v3-bar { margin: 6px 6px 4px; border-radius: 16px; gap: 4px; }
@@ -3553,109 +3748,109 @@
     </div>
   </main>
 </div>
-<script src="lagesplan-merge.js?v=20261023204156"></script>
-<script src="ui-icons.js?v=20261023204156"></script>
-<script src="ui-dialog.js?v=20261023204156"></script>
-<script src="lagesplan-ui.js?v=20261023204156"></script>
-<script src="lagesplan.js?v=20261023204156"></script>
-<script src="lagesplan-tools.js?v=20261023204156"></script>
-<script src="lagesplan-layers.js?v=20261023204156"></script>
-<script src="lagesplan-xls.js?v=20261023204156"></script>
-<script src="lagesplan-storage.js?v=20261023204156"></script>
-<script src="lagesplan-pdfoverlay.js?v=20261023204156"></script>
-<script src="lagesplan-pdfunder.js?v=20261023204156"></script>
-<script src="lagesplan-views.js?v=20261023204156"></script>
-<script src="lagesplan-film.js?v=20261023204156"></script>
-<script src="lagesplan-cad.js?v=20261023204156"></script>
-<script src="lagesplan-ifc2d.js?v=20261023204156"></script>
-<script src="lagesplan-vecpdf.js?v=20261023204156"></script>
-<script src="lagesplan-pdfvec.js?v=20261023204156"></script>
-<script src="lagesplan-print.js?v=20261023204156"></script>
-<script src="lagesplan-arrows.js?v=20261023204156"></script>
-<script src="lagesplan-printshapes.js?v=20261023204156"></script>
-<script src="lagesplan-objstatus.js?v=20261023204156"></script>
-<script src="lagesplan-printsection.js?v=20261023204156"></script>
-<script src="lagesplan-printtable.js?v=20261023204156"></script>
-<script src="lagesplan-printctx.js?v=20261023204156"></script>
-<script src="lagesplan-printdxf.js?v=20261023204156"></script>
-<script src="lagesplan-imgcrop.js?v=20261023204156"></script>
-<script src="lagesplan-printlib.js?v=20261023204156"></script>
-<script src="lagesplan-pdflayers.js?v=20261023204156"></script>
-<script src="vendor/polygon-clipping.umd.min.js?v=20261023204156"></script>
-<script src="lagesplan-objmarks.js?v=20261023204156"></script>
-<script src="lagesplan-objlist.js?v=20261023204156"></script>
-<script src="lagesplan-zones.js?v=20261023204156"></script>
-<script src="lagesplan-wbs.js?v=20261023204156"></script>
-<script src="lagesplan-zonesets.js?v=20261023204156"></script>
-<script src="lagesplan-zoneguard.js?v=20261023204156"></script>
-<script src="lagesplan-zoneexport.js?v=20261023204156"></script>
-<script src="lagesplan-itemlink.js?v=20261023204156"></script>
-<script src="lagesplan-dxfexport.js?v=20261023204156"></script>
-<script src="ifc-writer.js?v=20261023204156"></script>
-<script src="lagesplan-ifcexport.js?v=20261023204156"></script>
-<script src="lagesplan-zonecad.js?v=20261023204156"></script>
-<script src="lagesplan-siteifc.js?v=20261023204156"></script>
-<script src="lagesplan-daily.js?v=20261023204156"></script>
-<script src="lagesplan-gps.js?v=20261023204156"></script>
-<script src="lagesplan-weather.js?v=20261023204156"></script>
-<script src="lagesplan-touch.js?v=20261023204156"></script>
-<script src="lagesplan-drawer.js?v=20261023204156"></script>
-<script src="lagesplan-gpslive.js?v=20261023204156"></script>
-<script src="place3d.js?v=20261023204156"></script>
-<script src="ifc-mesh.js?v=20261023204156"></script>
-<script src="place-models.js?v=20261023204156"></script>
-<script src="lagesplan-3dbuild.js?v=20261023204156"></script>
-<script src="lagesplan-3dlight.js?v=20261023204156"></script>
-<script src="lagesplan-3dpc.js?v=20261023204156"></script>
-<script src="lagesplan-3dbsel.js?v=20261023204156"></script>
-<script src="lagesplan-3dtint.js?v=20261023204156"></script>
-<script src="lagesplan-3dbmove.js?v=20261023204156"></script>
-<script src="ifc-subset.js?v=20261023204156"></script>
-<script src="lagesplan-3dprops.js?v=20261023204156"></script>
-<script src="lagesplan-3dgroups.js?v=20261023204156"></script>
-<script src="lagesplan-3dorg.js?v=20261023204156"></script>
-<script src="lagesplan-3danim.js?v=20261023204156"></script>
-<script src="lagesplan-3dactive.js?v=20261023204156"></script>
-<script src="lagesplan-3dbubbles.js?v=20261023204156"></script>
-<script src="lagesplan-3dfilm.js?v=20261023204156"></script>
-<script src="lagesplan-3dfilmfx.js?v=20261023204156"></script>
-<script src="lagesplan-3dgantt.js?v=20261023204156"></script>
-<script src="lagesplan-3dmode.js?v=20261023204156"></script>
-<script src="lagesplan-ppexport.js?v=20261023204156"></script>
-<script src="lagesplan-3dplan.js?v=20261023204156"></script>
-<script src="lagesplan-3dsite.js?v=20261023204156"></script>
-<script src="lagesplan-3dsitesel.js?v=20261023204156"></script>
-<script src="lagesplan-3ddxf.js?v=20261023204156"></script>
-<script src="lagesplan-3dmeasure.js?v=20261023204156"></script>
-<script src="lagesplan-3dclip.js?v=20261023204156"></script>
-<script src="lagesplan-3dphotos.js?v=20261023204156"></script>
-<script src="lagesplan-3dcomments.js?v=20261023204156"></script>
-<script src="lagesplan-3dannot.js?v=20261023204156"></script>
-<script src="lagesplan-3dlib.js?v=20261023204156"></script>
-<script src="lagesplan-htmlexport.js?v=20261023204156"></script>
-<script src="lagesplan-3dplace.js?v=20261023204156"></script>
-<script src="lagesplan-montage3d.js?v=20261023204156"></script>
-<script src="montage-report-modern.js?v=20261023204156"></script>
-<script src="lagesplan-3dmont.js?v=20261023204156"></script>
-<script src="lagesplan-3dlayers.js?v=20261023204156"></script>
-<script src="lagesplan-3dnav.js?v=20261023204156"></script>
-<script src="lagesplan-3dui.js?v=20261023204156"></script>
-<script src="lagesplan-3dchar.js?v=20261023204156"></script>
-<script src="lagesplan-3dglb.js?v=20261023204156"></script>
-<script src="lagesplan-3dlift.js?v=20261023204156"></script>
-<script src="place-geo.js?v=20261023204156"></script>
-<script src="place-smart.js?v=20261023204156"></script>
-<script src="place-smart-objs.js?v=20261023204156"></script>
-<script src="place-crew.js?v=20261023204156"></script>
-<script src="lagesplan-3dwheel.js?v=20261023204156"></script>
-<script src="lagesplan-3dveh.js?v=20261023204156"></script>
-<script src="lagesplan-3dvehifc.js?v=20261023204156"></script>
-<script src="lagesplan-3dwalk.js?v=20261023204156"></script>
-<script src="lagesplan-3ddialogs.js?v=20261023204156"></script>
-<script src="lagesplan-3dclash.js?v=20261023204156"></script>
-<script src="lagesplan-3dhandles.js?v=20261023204156"></script>
-<script src="lagesplan-3dtools.js?v=20261023204156"></script>
-<script src="lagesplan-3d.js?v=20261023204156"></script>
-<script src="lagesplan-keys.js?v=20261023204156"></script>
+<script src="lagesplan-merge.js?v=20261023213029"></script>
+<script src="ui-icons.js?v=20261023213029"></script>
+<script src="ui-dialog.js?v=20261023213029"></script>
+<script src="lagesplan-ui.js?v=20261023213029"></script>
+<script src="lagesplan.js?v=20261023213029"></script>
+<script src="lagesplan-tools.js?v=20261023213029"></script>
+<script src="lagesplan-layers.js?v=20261023213029"></script>
+<script src="lagesplan-xls.js?v=20261023213029"></script>
+<script src="lagesplan-storage.js?v=20261023213029"></script>
+<script src="lagesplan-pdfoverlay.js?v=20261023213029"></script>
+<script src="lagesplan-pdfunder.js?v=20261023213029"></script>
+<script src="lagesplan-views.js?v=20261023213029"></script>
+<script src="lagesplan-film.js?v=20261023213029"></script>
+<script src="lagesplan-cad.js?v=20261023213029"></script>
+<script src="lagesplan-ifc2d.js?v=20261023213029"></script>
+<script src="lagesplan-vecpdf.js?v=20261023213029"></script>
+<script src="lagesplan-pdfvec.js?v=20261023213029"></script>
+<script src="lagesplan-print.js?v=20261023213029"></script>
+<script src="lagesplan-arrows.js?v=20261023213029"></script>
+<script src="lagesplan-printshapes.js?v=20261023213029"></script>
+<script src="lagesplan-objstatus.js?v=20261023213029"></script>
+<script src="lagesplan-printsection.js?v=20261023213029"></script>
+<script src="lagesplan-printtable.js?v=20261023213029"></script>
+<script src="lagesplan-printctx.js?v=20261023213029"></script>
+<script src="lagesplan-printdxf.js?v=20261023213029"></script>
+<script src="lagesplan-imgcrop.js?v=20261023213029"></script>
+<script src="lagesplan-printlib.js?v=20261023213029"></script>
+<script src="lagesplan-pdflayers.js?v=20261023213029"></script>
+<script src="vendor/polygon-clipping.umd.min.js?v=20261023213029"></script>
+<script src="lagesplan-objmarks.js?v=20261023213029"></script>
+<script src="lagesplan-objlist.js?v=20261023213029"></script>
+<script src="lagesplan-zones.js?v=20261023213029"></script>
+<script src="lagesplan-wbs.js?v=20261023213029"></script>
+<script src="lagesplan-zonesets.js?v=20261023213029"></script>
+<script src="lagesplan-zoneguard.js?v=20261023213029"></script>
+<script src="lagesplan-zoneexport.js?v=20261023213029"></script>
+<script src="lagesplan-itemlink.js?v=20261023213029"></script>
+<script src="lagesplan-dxfexport.js?v=20261023213029"></script>
+<script src="ifc-writer.js?v=20261023213029"></script>
+<script src="lagesplan-ifcexport.js?v=20261023213029"></script>
+<script src="lagesplan-zonecad.js?v=20261023213029"></script>
+<script src="lagesplan-siteifc.js?v=20261023213029"></script>
+<script src="lagesplan-daily.js?v=20261023213029"></script>
+<script src="lagesplan-gps.js?v=20261023213029"></script>
+<script src="lagesplan-weather.js?v=20261023213029"></script>
+<script src="lagesplan-touch.js?v=20261023213029"></script>
+<script src="lagesplan-drawer.js?v=20261023213029"></script>
+<script src="lagesplan-gpslive.js?v=20261023213029"></script>
+<script src="place3d.js?v=20261023213029"></script>
+<script src="ifc-mesh.js?v=20261023213029"></script>
+<script src="place-models.js?v=20261023213029"></script>
+<script src="lagesplan-3dbuild.js?v=20261023213029"></script>
+<script src="lagesplan-3dlight.js?v=20261023213029"></script>
+<script src="lagesplan-3dpc.js?v=20261023213029"></script>
+<script src="lagesplan-3dbsel.js?v=20261023213029"></script>
+<script src="lagesplan-3dtint.js?v=20261023213029"></script>
+<script src="lagesplan-3dbmove.js?v=20261023213029"></script>
+<script src="ifc-subset.js?v=20261023213029"></script>
+<script src="lagesplan-3dprops.js?v=20261023213029"></script>
+<script src="lagesplan-3dgroups.js?v=20261023213029"></script>
+<script src="lagesplan-3dorg.js?v=20261023213029"></script>
+<script src="lagesplan-3danim.js?v=20261023213029"></script>
+<script src="lagesplan-3dactive.js?v=20261023213029"></script>
+<script src="lagesplan-3dbubbles.js?v=20261023213029"></script>
+<script src="lagesplan-3dfilm.js?v=20261023213029"></script>
+<script src="lagesplan-3dfilmfx.js?v=20261023213029"></script>
+<script src="lagesplan-3dgantt.js?v=20261023213029"></script>
+<script src="lagesplan-3dmode.js?v=20261023213029"></script>
+<script src="lagesplan-ppexport.js?v=20261023213029"></script>
+<script src="lagesplan-3dplan.js?v=20261023213029"></script>
+<script src="lagesplan-3dsite.js?v=20261023213029"></script>
+<script src="lagesplan-3dsitesel.js?v=20261023213029"></script>
+<script src="lagesplan-3ddxf.js?v=20261023213029"></script>
+<script src="lagesplan-3dmeasure.js?v=20261023213029"></script>
+<script src="lagesplan-3dclip.js?v=20261023213029"></script>
+<script src="lagesplan-3dphotos.js?v=20261023213029"></script>
+<script src="lagesplan-3dcomments.js?v=20261023213029"></script>
+<script src="lagesplan-3dannot.js?v=20261023213029"></script>
+<script src="lagesplan-3dlib.js?v=20261023213029"></script>
+<script src="lagesplan-htmlexport.js?v=20261023213029"></script>
+<script src="lagesplan-3dplace.js?v=20261023213029"></script>
+<script src="lagesplan-montage3d.js?v=20261023213029"></script>
+<script src="montage-report-modern.js?v=20261023213029"></script>
+<script src="lagesplan-3dmont.js?v=20261023213029"></script>
+<script src="lagesplan-3dlayers.js?v=20261023213029"></script>
+<script src="lagesplan-3dnav.js?v=20261023213029"></script>
+<script src="lagesplan-3dui.js?v=20261023213029"></script>
+<script src="lagesplan-3dchar.js?v=20261023213029"></script>
+<script src="lagesplan-3dglb.js?v=20261023213029"></script>
+<script src="lagesplan-3dlift.js?v=20261023213029"></script>
+<script src="place-geo.js?v=20261023213029"></script>
+<script src="place-smart.js?v=20261023213029"></script>
+<script src="place-smart-objs.js?v=20261023213029"></script>
+<script src="place-crew.js?v=20261023213029"></script>
+<script src="lagesplan-3dwheel.js?v=20261023213029"></script>
+<script src="lagesplan-3dveh.js?v=20261023213029"></script>
+<script src="lagesplan-3dvehifc.js?v=20261023213029"></script>
+<script src="lagesplan-3dwalk.js?v=20261023213029"></script>
+<script src="lagesplan-3ddialogs.js?v=20261023213029"></script>
+<script src="lagesplan-3dclash.js?v=20261023213029"></script>
+<script src="lagesplan-3dhandles.js?v=20261023213029"></script>
+<script src="lagesplan-3dtools.js?v=20261023213029"></script>
+<script src="lagesplan-3d.js?v=20261023213029"></script>
+<script src="lagesplan-keys.js?v=20261023213029"></script>
 </body>
 </html>
