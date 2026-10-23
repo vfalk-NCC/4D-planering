@@ -32,6 +32,13 @@ fn text(p: *const u8, n: usize) -> String { String::from_utf8_lossy(bytes(p, n))
         Err(e) => { -(put(&e) as i32) }
     }
 }
+/// Lägger till ännu en IFC-fil i modellen (federerad modell). Namnet visas i trädet.
+#[no_mangle] pub extern "C" fn model_add(p: *const u8, n: usize, np: *const u8, nn: usize) -> i32 {
+    let s = st(); let name = text(np, nn);
+    if s.model.is_none() { s.model = Some(Model::empty()); }
+    let m = s.model.as_mut().unwrap();
+    match m.add(bytes(p, n), &name) { Ok(_) => { if s.origin.is_none() && !m.objs.is_empty() { s.origin = Some(m.origin); } let old = s.hidden.len(); s.hidden.resize(m.objs.len(), 0); let _ = old; 0 } Err(e) => -(put(&e) as i32) }
+}
 #[no_mangle] pub extern "C" fn model_summary() -> u32 { match &st().model { Some(m) => put(&m.summary()), None => put("{}") } }
 #[no_mangle] pub extern "C" fn model_objects() -> u32 { match &st().model { Some(m) => put(&m.objects_json()), None => put("{}") } }
 #[no_mangle] pub extern "C" fn model_object(oi: u32) -> u32 { match &st().model { Some(m) if (oi as usize) < m.objs.len() => put(&m.object_json(oi as usize)), _ => put("{}") } }
@@ -73,7 +80,9 @@ fn text(p: *const u8, n: usize) -> String { String::from_utf8_lossy(bytes(p, n))
     let t = text(p, n); match &mut st().model { Some(m) => match m.set_prop(prop, &t) { Ok(()) => 0, Err(e) => -(put(&e) as i32) }, None => 1 }
 }
 #[no_mangle] pub extern "C" fn model_edits() -> u32 { st().model.as_ref().map(|m| m.step.patches.len() as u32).unwrap_or(0) }
-#[no_mangle] pub extern "C" fn model_export() -> u32 { match &st().model { Some(m) => { let b = m.step.write(); let o = &mut st().out; o.clear(); o.extend_from_slice(&b); o.len() as u32 } None => 0 } }
+#[no_mangle] pub extern "C" fn model_export(src: u32) -> u32 { match &st().model { Some(m) => { let b = m.step.write_source(src as usize); let o = &mut st().out; o.clear(); o.extend_from_slice(&b); o.len() as u32 } None => 0 } }
+/// Vilka källfiler har ändrats (JSON-lista med nummer).
+#[no_mangle] pub extern "C" fn model_edited_sources() -> u32 { match &st().model { Some(m) => { let v = m.step.edited_sources(); put(&format!("[{}]", v.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(","))) } None => put("[]") } }
 
 /// Läser ett punktmoln (XYZ/CSV, PLY, LAS). `max` = högsta antal punkter som behålls. 0 = ok.
 #[no_mangle] pub extern "C" fn cloud_load(p: *const u8, n: usize, np: *const u8, nn: usize, max: u32) -> i32 {
@@ -105,3 +114,9 @@ fn text(p: *const u8, n: usize) -> String { String::from_utf8_lossy(bytes(p, n))
     let (a, b) = (rd(pa, na), rd(pb, nb));
     match &st().model { Some(m) => put(&m.clash(&a, &b, min_depth)), None => put("[]") }
 }
+
+/// Konturkanter för hela modellen som (x,y,z,objekt)-par; antal byte i retur.
+#[no_mangle] pub extern "C" fn model_all_edges(max_edges: u32) -> u32 { match &st().model { Some(m) => { let e = m.all_edges(max_edges as usize); let o = &mut st().out; o.clear(); o.extend_from_slice(&e); o.len() as u32 } None => 0 } }
+
+/// Tömmer modellen (punktmolnet behålls, och därmed koordinatursprunget).
+#[no_mangle] pub extern "C" fn model_clear() { let s = st(); s.model = None; s.hidden.clear(); if s.cloud.is_none() { s.origin = None; } }

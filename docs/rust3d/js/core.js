@@ -85,3 +85,8 @@ export function prompt2(title, label, value = '', ok = 'OK') {
     const inp = dlg.el.querySelector('#pmI'); inp.focus(); inp.select(); const done = v => { dlg.close(); res(v); }; dlg.el.querySelector('#pmOk').onclick = () => done(inp.value); inp.onkeydown = e => { if (e.key === 'Enter') done(inp.value); if (e.key === 'Escape') done(null); };
     $('dialog').addEventListener('click', e => { if (e.target === $('dialog')) res(null); }, { once: true }); });
 }
+
+export function choice(title, label, opts) {
+  return new Promise(res => { const d = dialog(title, `<p>${esc(label)}</p><div class="row">${opts.map((o, i) => `<button class="btn ${i === opts.length - 1 ? 'primary' : ''}" data-o="${i}">${esc(o)}</button>`).join('')}</div>`); let done = false; const fin = v => { if (!done) { done = true; res(v); } };
+    d.el.querySelectorAll('[data-o]').forEach(b => b.onclick = () => { d.close(); fin(opts[+b.dataset.o]); }); $('dialog').addEventListener('click', e => { if (e.target === $('dialog')) fin(null); }, { once: true }); });
+}

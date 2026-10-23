@@ -22,11 +22,12 @@ impl V {
     pub fn refs(&self) -> Vec<u32> { self.list().iter().filter_map(|v| v.rf()).collect() }
 }
 
-pub struct Ent { pub id: u32, pub ty: u32, pub s: u32, pub e: u32, pub complex: bool }
+pub struct Ent { pub id: u32, pub ty: u32, pub s: u32, pub e: u32, pub complex: bool, pub src: u8 }
 
 pub struct Step {
     pub data: Vec<u8>,
-    pub header: Vec<u8>,
+    pub headers: Vec<Vec<u8>>, // en rubrik per källfil
+    pub bases: Vec<u32>,       // id-förskjutning per källfil (så att flera IFC-filer kan ligga i samma modell)
     pub ents: Vec<Ent>,
     pub types: Vec<String>,
     pub by_id: Vec<u32>, // id -> ents-index + 1
@@ -57,49 +58,47 @@ fn match_paren(d: &[u8], mut i: usize) -> Option<usize> {
 }
 
 impl Step {
-    pub fn parse(bytes: &[u8]) -> Result<Step, String> {
+    pub fn empty() -> Step { Step { data: Vec::new(), headers: Vec::new(), bases: Vec::new(), ents: Vec::new(), types: vec![String::new()], by_id: vec![0], patches: HashMap::new(), type_ix: HashMap::from([(String::new(), 0)]) } }
+    pub fn parse(bytes: &[u8]) -> Result<Step, String> { let mut s = Step::empty(); s.add_source(bytes)?; Ok(s) }
+    /// Lägger till en IFC-fil: entiteterna får id + förskjutning, argumenten tolkas med samma förskjutning.
+    pub fn add_source(&mut self, bytes: &[u8]) -> Result<usize, String> {
         let start = find(bytes, b"DATA;").ok_or("Hittar ingen DATA-sektion – är det en IFC-fil (STEP)?")?;
-        let header = bytes[..start + 5].to_vec();
-        let d = bytes[start + 5..].to_vec();
-        let mut ents = Vec::new();
-        let mut types: Vec<String> = vec![String::new()];
-        let mut type_ix: HashMap<String, u32> = HashMap::new();
-        type_ix.insert(String::new(), 0);
-        let mut max_id = 0u32;
-        let mut i = 0usize;
+        let header = bytes[..start + 5].to_vec(); let d = &bytes[start + 5..];
+        let src = self.headers.len(); if src > 200 { return Err("För många modeller".into()); }
+        let base = (self.by_id.len() as u32).saturating_sub(1); let dbase = self.data.len() as u32;
+        let mut ents = Vec::new(); let mut max_id = 0u32; let mut i = 0usize;
         loop {
-            i = skip_ws(&d, i);
+            i = skip_ws(d, i);
             if i >= d.len() { break; }
             if d[i] != b'#' {
-                // ENDSEC; eller annat – klart när vi ser ENDSEC
                 if d[i..].starts_with(b"ENDSEC") { break; }
-                // hoppa till nästa ';'
                 while i < d.len() && d[i] != b';' { i += 1; }
                 i += 1; continue;
             }
             i += 1;
             let mut id = 0u32;
             while i < d.len() && d[i].is_ascii_digit() { id = id.wrapping_mul(10).wrapping_add((d[i] - b'0') as u32); i += 1; }
-            i = skip_ws(&d, i);
+            i = skip_ws(d, i);
             if i >= d.len() || d[i] != b'=' { return Err(format!("Oväntat tecken efter #{}", id)); }
-            i = skip_ws(&d, i + 1);
+            i = skip_ws(d, i + 1);
             let ts = i;
             while i < d.len() && d[i] != b'(' && !(d[i] as char).is_ascii_whitespace() { i += 1; }
             let tname = std::str::from_utf8(&d[ts..i]).unwrap_or("").to_ascii_uppercase();
-            i = skip_ws(&d, i);
+            i = skip_ws(d, i);
             if i >= d.len() || d[i] != b'(' { return Err(format!("Saknar argument för #{}", id)); }
-            let close = match_paren(&d, i).ok_or_else(|| format!("Oavslutad entitet #{}", id))?;
+            let close = match_paren(d, i).ok_or_else(|| format!("Oavslutad entitet #{}", id))?;
             let complex = tname.is_empty();
-            let tix = match type_ix.get(&tname) { Some(t) => *t, None => { let t = types.len() as u32; types.push(tname.clone()); type_ix.insert(tname, t); t } };
-            ents.push(Ent { id, ty: tix, s: (i + 1) as u32, e: close as u32, complex });
+            let tix = match self.type_ix.get(&tname) { Some(t) => *t, None => { let t = self.types.len() as u32; self.types.push(tname.clone()); self.type_ix.insert(tname, t); t } };
+            ents.push(Ent { id: id + base, ty: tix, s: dbase + (i + 1) as u32, e: dbase + close as u32, complex, src: src as u8 });
             if id > max_id { max_id = id; }
             i = close + 1;
             while i < d.len() && d[i] != b';' { i += 1; }
             i += 1;
         }
-        let mut by_id = vec![0u32; max_id as usize + 1];
-        for (k, e) in ents.iter().enumerate() { by_id[e.id as usize] = k as u32 + 1; }
-        Ok(Step { data: d, header, ents, types, by_id, patches: HashMap::new(), type_ix })
+        self.data.extend_from_slice(d); self.headers.push(header); self.bases.push(base);
+        let new_len = (base + max_id + 1) as usize; if self.by_id.len() < new_len { self.by_id.resize(new_len, 0); }
+        for e in ents { let k = self.ents.len() as u32; self.by_id[e.id as usize] = k + 1; self.ents.push(e); }
+        Ok(src)
     }
 
     pub fn idx(&self, id: u32) -> Option<usize> {
@@ -116,7 +115,7 @@ impl Step {
     pub fn arg_ref(&self, k: usize, ix: usize) -> Option<u32> {
         let t = self.args_text(k).as_bytes(); let (mut depth, mut i, mut n) = (0i32, 0usize, 0usize);
         while i < t.len() {
-            if n == ix { while i < t.len() && t[i] == b' ' { i += 1; } if i < t.len() && t[i] == b'#' { let mut v = 0u32; i += 1; while i < t.len() && t[i].is_ascii_digit() { v = v.wrapping_mul(10).wrapping_add((t[i] - b'0') as u32); i += 1; } return Some(v); } return None; }
+            if n == ix { while i < t.len() && t[i] == b' ' { i += 1; } if i < t.len() && t[i] == b'#' { let mut v = 0u32; i += 1; while i < t.len() && t[i].is_ascii_digit() { v = v.wrapping_mul(10).wrapping_add((t[i] - b'0') as u32); i += 1; } return Some(v + self.bases[self.ents[k].src as usize]); } return None; }
             match t[i] {
                 b'\'' => { i += 1; while i < t.len() { if t[i] == b'\'' { if i + 1 < t.len() && t[i + 1] == b'\'' { i += 2; continue; } break; } i += 1; } }
                 b'(' => depth += 1, b')' => depth -= 1,
@@ -127,7 +126,7 @@ impl Step {
         }
         None
     }
-    pub fn args(&self, id: u32) -> Vec<V> { match self.idx(id) { Some(k) => parse_args(self.args_text(k).as_bytes()), None => vec![] } }
+    pub fn args(&self, id: u32) -> Vec<V> { match self.idx(id) { Some(k) => parse_args_base(self.args_text(k).as_bytes(), self.bases[self.ents[k].src as usize]), None => vec![] } }
 
     /// Byte-intervall för varje argument på översta nivån (för att byta ett enskilt argument i texten).
     pub fn arg_spans(&self, id: u32) -> Vec<(usize, usize)> {
@@ -159,39 +158,42 @@ impl Step {
         true
     }
 
-    pub fn write(&self) -> Vec<u8> {
-        let mut o = Vec::with_capacity(self.data.len() + self.header.len() + 64);
-        o.extend_from_slice(&self.header); o.push(b'\n');
-        for (k, e) in self.ents.iter().enumerate() {
-            let a = self.args_text(k);
-            let line = if e.complex { format!("#{}=({});\n", e.id, a) } else { format!("#{}={}({});\n", e.id, self.types[e.ty as usize], a) };
-            o.extend_from_slice(line.as_bytes());
-        }
-        o.extend_from_slice(b"ENDSEC;\nEND-ISO-10303-21;\n");
-        o
+    pub fn write(&self) -> Vec<u8> { self.write_source(0) }
+    /// Skriver en av källfilerna med sin ursprungliga numrering (patchar inräknade).
+    pub fn write_source(&self, src: usize) -> Vec<u8> {
+        let mut o = Vec::with_capacity(self.data.len() + 64); let base = self.bases.get(src).copied().unwrap_or(0);
+        o.extend_from_slice(self.headers.get(src).map(|h| h.as_slice()).unwrap_or(b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;")); o.push(b'\n');
+        for (k, e) in self.ents.iter().enumerate() { if e.src as usize != src { continue; }
+            let a = self.args_text(k); let id = e.id - base;
+            let line = if e.complex { format!("#{}=({});\n", id, a) } else { format!("#{}={}({});\n", id, self.types[e.ty as usize], a) };
+            o.extend_from_slice(line.as_bytes()); }
+        o.extend_from_slice(b"ENDSEC;\nEND-ISO-10303-21;\n"); o
     }
+    /// Vilka källfiler har ändringar?
+    pub fn edited_sources(&self) -> Vec<usize> { let mut v: Vec<usize> = self.patches.keys().filter_map(|id| self.idx(*id)).map(|k| self.ents[k].src as usize).collect(); v.sort(); v.dedup(); v }
 }
 
 fn find(h: &[u8], n: &[u8]) -> Option<usize> { h.windows(n.len()).position(|w| w == n) }
 
-pub fn parse_args(t: &[u8]) -> Vec<V> {
+pub fn parse_args(t: &[u8]) -> Vec<V> { parse_args_base(t, 0) }
+pub fn parse_args_base(t: &[u8], base: u32) -> Vec<V> {
     let mut i = 0usize; let mut out = Vec::new();
     loop {
         while i < t.len() && (t[i] as char).is_ascii_whitespace() { i += 1; }
         if i >= t.len() { break; }
-        out.push(value(t, &mut i));
+        out.push(value(t, &mut i, base));
         while i < t.len() && (t[i] as char).is_ascii_whitespace() { i += 1; }
         if i < t.len() && t[i] == b',' { i += 1; } else { break; }
     }
     out
 }
 
-fn value(t: &[u8], i: &mut usize) -> V {
+fn value(t: &[u8], i: &mut usize, base: u32) -> V {
     while *i < t.len() && (t[*i] as char).is_ascii_whitespace() { *i += 1; }
     if *i >= t.len() { return V::Null; }
     match t[*i] {
         b'$' | b'*' => { *i += 1; V::Null }
-        b'#' => { *i += 1; let mut n = 0u32; while *i < t.len() && t[*i].is_ascii_digit() { n = n.wrapping_mul(10).wrapping_add((t[*i] - b'0') as u32); *i += 1; } V::Ref(n) }
+        b'#' => { *i += 1; let mut n = 0u32; while *i < t.len() && t[*i].is_ascii_digit() { n = n.wrapping_mul(10).wrapping_add((t[*i] - b'0') as u32); *i += 1; } V::Ref(n + base) }
         b'\'' => {
             *i += 1; let mut s = Vec::new();
             while *i < t.len() { if t[*i] == b'\'' { if *i + 1 < t.len() && t[*i + 1] == b'\'' { s.push(b'\''); *i += 2; continue; } *i += 1; break; } s.push(t[*i]); *i += 1; }
@@ -204,7 +206,7 @@ fn value(t: &[u8], i: &mut usize) -> V {
                 while *i < t.len() && (t[*i] as char).is_ascii_whitespace() { *i += 1; }
                 if *i >= t.len() { break; }
                 if t[*i] == b')' { *i += 1; break; }
-                l.push(value(t, i));
+                l.push(value(t, i, base));
                 while *i < t.len() && (t[*i] as char).is_ascii_whitespace() { *i += 1; }
                 if *i < t.len() && t[*i] == b',' { *i += 1; }
             }
@@ -223,7 +225,7 @@ fn value(t: &[u8], i: &mut usize) -> V {
             if *i == st { *i += 1; return V::Null; }
             while *i < t.len() && (t[*i] as char).is_ascii_whitespace() { *i += 1; }
             if *i < t.len() && t[*i] == b'(' {
-                if let V::List(l) = value(t, i) { return V::Typed(name, l); }
+                if let V::List(l) = value(t, i, base) { return V::Typed(name, l); }
             }
             V::Enum(name)
         }

@@ -4,11 +4,11 @@ use crate::ifc;
 use crate::step::{encode_str, Step, V};
 use std::collections::HashMap;
 
-pub struct Obj { pub id: u32, pub class: u32, pub guid: String, pub name: String, pub cont: u32, pub bmin: [f32; 3], pub bmax: [f32; 3], pub tris: u32 }
+pub struct Obj { pub src: u8, pub id: u32, pub class: u32, pub guid: String, pub name: String, pub cont: u32, pub bmin: [f32; 3], pub bmax: [f32; 3], pub tris: u32 }
 pub struct Cont { pub name: String, pub class: String }
 
 pub struct Model {
-    pub step: Step, pub objs: Vec<Obj>, pub verts: Vec<u8>, pub n_opaque: u32, pub origin: [f64; 3], pub scale: f64,
+    pub step: Step, pub objs: Vec<Obj>, pub verts: Vec<u8>, pub opq: Vec<u8>, pub trn: Vec<u8>, pub n_opaque: u32, pub origin: [f64; 3], pub origin_set: bool, pub scale: f64, pub sources: Vec<String>,
     pub classes: Vec<String>, pub containers: Vec<Cont>, pub defs: HashMap<u32, Vec<u32>>, pub hay: Vec<String>,
     pub skipped: Vec<(String, u32)>, pub bvh: Bvh, pub by_id: HashMap<u32, u32>, pub tri_by_obj: Vec<Vec<u32>>,
 }
@@ -31,51 +31,59 @@ fn vtext(v: &V) -> String {
 fn vkind(v: &V) -> String { match v { V::Typed(t, _) => t.clone(), V::Str(_) => "STRING".into(), V::Num(_) => "NUMBER".into(), _ => String::new() } }
 
 impl Model {
-    pub fn load(bytes: &[u8]) -> Result<Model, String> {
-        let step = Step::parse(bytes)?;
-        let built = ifc::build(&step);
-        let mut classes: Vec<String> = Vec::new(); let mut cix: HashMap<String, u32> = HashMap::new();
-        let mut objs = Vec::with_capacity(built.objs.len());
+    pub fn empty() -> Model {
+        Model { step: Step::empty(), objs: vec![], verts: vec![], opq: vec![], trn: vec![], n_opaque: 0, origin: [0.0; 3], origin_set: false, scale: 1.0, sources: vec![], classes: vec![], containers: vec![Cont { name: "(utan våning)".into(), class: String::new() }], defs: HashMap::new(), hay: vec![], skipped: vec![], bvh: Bvh::build(vec![]), by_id: HashMap::new(), tri_by_obj: vec![] }
+    }
+    pub fn load(bytes: &[u8]) -> Result<Model, String> { let mut m = Model::empty(); m.add(bytes, "")?; Ok(m) }
+
+    /// Lägger till en IFC-fil i modellen (flera modeller kan ligga tillsammans). Returnerar källans nummer.
+    pub fn add(&mut self, bytes: &[u8], name: &str) -> Result<usize, String> {
+        let first = self.step.ents.len(); let src = self.step.add_source(bytes)?;
+        let obj_base = self.objs.len() as u32; let built = ifc::build(&self.step, first, obj_base, if self.origin_set { Some(self.origin) } else { None });
+        if !self.origin_set { if let Some(o) = built.origin { self.origin = o; self.origin_set = true; } }
+        self.scale = built.scale;
+        let step = &self.step;
+        let mut cix: HashMap<String, u32> = self.classes.iter().enumerate().map(|(i, c)| (c.clone(), i as u32)).collect();
         for r in &built.objs {
             let ty = step.type_of(r.id).to_string();
-            let ci = *cix.entry(ty.clone()).or_insert_with(|| { classes.push(ty.clone()); classes.len() as u32 - 1 });
+            let ci = match cix.get(&ty) { Some(c) => *c, None => { self.classes.push(ty.clone()); let c = self.classes.len() as u32 - 1; cix.insert(ty, c); c } };
             let a = step.args(r.id);
             let name = a.get(2).and_then(|v| v.str()).unwrap_or("").to_string(); let guid = a.get(0).and_then(|v| v.str()).unwrap_or("").to_string();
-            objs.push(Obj { id: r.id, class: ci, guid, name, cont: 0, bmin: r.bmin, bmax: r.bmax, tris: r.tris });
+            self.by_id.insert(r.id, self.objs.len() as u32);
+            self.objs.push(Obj { src: src as u8, id: r.id, class: ci, guid, name, cont: 0, bmin: r.bmin, bmax: r.bmax, tris: r.tris });
         }
-        let by_id: HashMap<u32, u32> = objs.iter().enumerate().map(|(i, o)| (o.id, i as u32)).collect();
-        // rumsindelning
-        let mut containers: Vec<Cont> = vec![Cont { name: "(utan våning)".into(), class: String::new() }];
+        // rumsindelning (bara den nya filens relationer)
         let mut cmap: HashMap<u32, u32> = HashMap::new();
-        for e in step.ents.iter().filter(|e| step.types[e.ty as usize] == "IFCRELCONTAINEDINSPATIALSTRUCTURE") {
+        for e in step.ents[first..].iter().filter(|e| step.types[e.ty as usize] == "IFCRELCONTAINEDINSPATIALSTRUCTURE") {
             let a = step.args(e.id); let st = match a.get(5).and_then(|v| v.rf()) { Some(s) => s, None => continue };
-            let ci = *cmap.entry(st).or_insert_with(|| { let sa = step.args(st); containers.push(Cont { name: sa.get(2).and_then(|v| v.str()).unwrap_or("").to_string(), class: step.type_of(st).to_string() }); containers.len() as u32 - 1 });
-            for r in a.get(4).map(|v| v.refs()).unwrap_or_default() { if let Some(&oi) = by_id.get(&r) { objs[oi as usize].cont = ci; } }
+            let ci = match cmap.get(&st) { Some(c) => *c, None => { let sa = step.args(st); self.containers.push(Cont { name: sa.get(2).and_then(|v| v.str()).unwrap_or("").to_string(), class: step.type_of(st).to_string() }); let c = self.containers.len() as u32 - 1; cmap.insert(st, c); c } };
+            for r in a.get(4).map(|v| v.refs()).unwrap_or_default() { if let Some(&oi) = self.by_id.get(&r) { self.objs[oi as usize].cont = ci; } }
         }
         let mut parent: HashMap<u32, u32> = HashMap::new();
-        for e in step.ents.iter().filter(|e| step.types[e.ty as usize] == "IFCRELAGGREGATES") {
+        for e in step.ents[first..].iter().filter(|e| step.types[e.ty as usize] == "IFCRELAGGREGATES") {
             let a = step.args(e.id); if let Some(p) = a.get(4).and_then(|v| v.rf()) { for r in a.get(5).map(|v| v.refs()).unwrap_or_default() { parent.insert(r, p); } }
         }
-        for oi in 0..objs.len() { if objs[oi].cont == 0 { let mut p = objs[oi].id; for _ in 0..6 { match parent.get(&p) { Some(&q) => { p = q; if let Some(&k) = by_id.get(&q) { if objs[k as usize].cont != 0 { objs[oi].cont = objs[k as usize].cont; break; } } if let Some(&ci) = cmap.get(&q) { objs[oi].cont = ci; break; } } None => break } } } }
+        for oi in obj_base as usize..self.objs.len() { if self.objs[oi].cont == 0 { let mut p = self.objs[oi].id; for _ in 0..6 { match parent.get(&p) { Some(&q) => { p = q; if let Some(&k) = self.by_id.get(&q) { if self.objs[k as usize].cont != 0 { self.objs[oi].cont = self.objs[k as usize].cont; break; } } if let Some(&ci) = cmap.get(&q) { self.objs[oi].cont = ci; break; } } None => break } } } }
         // egenskapsmängder
-        let mut defs: HashMap<u32, Vec<u32>> = HashMap::new();
-        for e in step.ents.iter() {
+        for e in step.ents[first..].iter() {
             let t = &step.types[e.ty as usize];
-            if t == "IFCRELDEFINESBYPROPERTIES" { let a = step.args(e.id); if let Some(d) = a.get(5).and_then(|v| v.rf()) { for r in a.get(4).map(|v| v.refs()).unwrap_or_default() { defs.entry(r).or_default().push(d); } } }
-            else if t == "IFCRELDEFINESBYTYPE" { let a = step.args(e.id); if let Some(ty) = a.get(5).and_then(|v| v.rf()) { let ta = step.args(ty); let sets = ta.get(5).map(|v| v.refs()).unwrap_or_default(); for r in a.get(4).map(|v| v.refs()).unwrap_or_default() { for s in &sets { defs.entry(r).or_default().push(*s); } } } }
+            if t == "IFCRELDEFINESBYPROPERTIES" { let a = step.args(e.id); if let Some(d) = a.get(5).and_then(|v| v.rf()) { for r in a.get(4).map(|v| v.refs()).unwrap_or_default() { self.defs.entry(r).or_default().push(d); } } }
+            else if t == "IFCRELDEFINESBYTYPE" { let a = step.args(e.id); if let Some(ty) = a.get(5).and_then(|v| v.rf()) { let ta = step.args(ty); let sets = ta.get(5).map(|v| v.refs()).unwrap_or_default(); for r in a.get(4).map(|v| v.refs()).unwrap_or_default() { for s in &sets { self.defs.entry(r).or_default().push(*s); } } } }
         }
         // geometri
-        let mut verts = built.opaque; let n_opaque = (verts.len() / 20) as u32; verts.extend_from_slice(&built.transp);
-        let mut tris: Vec<[P; 3]> = Vec::with_capacity(verts.len() / 60);
+        self.opq.extend_from_slice(&built.opaque); self.trn.extend_from_slice(&built.transp);
+        self.verts.clear(); self.verts.extend_from_slice(&self.opq); self.verts.extend_from_slice(&self.trn); self.n_opaque = (self.opq.len() / 20) as u32;
+        let verts = &self.verts; let mut tris: Vec<[P; 3]> = Vec::with_capacity(verts.len() / 60);
         let rd = |o: usize| f32::from_le_bytes([verts[o], verts[o + 1], verts[o + 2], verts[o + 3]]);
         for t in 0..verts.len() / 60 { let mut tr = [[0.0f32; 3]; 3]; for k in 0..3 { let o = (t * 3 + k) * 20; tr[k] = [rd(o), rd(o + 4), rd(o + 8)]; } tris.push(tr); }
-        let bvh = Bvh::build(tris);
-        let mut skipped: Vec<(String, u32)> = built.skipped.into_iter().collect(); skipped.sort_by(|a, b| b.1.cmp(&a.1));
-        let mut tri_by_obj: Vec<Vec<u32>> = vec![Vec::new(); objs.len()];
-        for t in 0..(verts.len() / 60) { let o = (t * 3) * 20 + 16; let oi = u32::from_le_bytes([verts[o], verts[o + 1], verts[o + 2], verts[o + 3]]) as usize; if oi < tri_by_obj.len() { tri_by_obj[oi].push(t as u32); } }
-        let mut m = Model { step, objs, verts, n_opaque, origin: built.origin.unwrap_or([0.0; 3]), scale: built.scale, classes, containers, defs, hay: vec![], skipped, bvh, by_id, tri_by_obj };
-        m.build_hay();
-        Ok(m)
+        self.bvh = Bvh::build(tris);
+        let mut tbo: Vec<Vec<u32>> = vec![Vec::new(); self.objs.len()];
+        for t in 0..(verts.len() / 60) { let o = (t * 3) * 20 + 16; let oi = u32::from_le_bytes([verts[o], verts[o + 1], verts[o + 2], verts[o + 3]]) as usize; if oi < tbo.len() { tbo[oi].push(t as u32); } }
+        self.tri_by_obj = tbo;
+        for (k, v) in built.skipped { match self.skipped.iter_mut().find(|x| x.0 == k) { Some(x) => x.1 += v, None => self.skipped.push((k, v)) } } self.skipped.sort_by(|a, b| b.1.cmp(&a.1));
+        self.sources.push(name.to_string());
+        let n0 = self.hay.len(); self.hay.resize(self.objs.len(), String::new()); for oi in n0..self.objs.len() { self.rebuild_one(oi); }
+        Ok(src)
     }
 
     fn pset_rows(&self, oi: usize) -> Vec<(String, Vec<(u32, String, String, String, bool)>)> {
@@ -132,10 +140,10 @@ impl Model {
     pub fn objects_json(&self) -> String {
         let mut s = String::from("{\"classes\":[");
         for (i, c) in self.classes.iter().enumerate() { if i > 0 { s.push(','); } esc(c, &mut s); }
-        s.push_str("],\"containers\":[");
+        s.push_str("],\"sources\":["); for (i, n) in self.sources.iter().enumerate() { if i > 0 { s.push(','); } esc(n, &mut s); } s.push_str("],\"containers\":[");
         for (i, c) in self.containers.iter().enumerate() { if i > 0 { s.push(','); } s.push('['); esc(&c.name, &mut s); s.push(','); esc(&c.class, &mut s); s.push(']'); }
         s.push_str("],\"objs\":[");
-        for (i, o) in self.objs.iter().enumerate() { if i > 0 { s.push(','); } s.push_str(&format!("[{},{},{},", o.id, o.class, o.cont)); esc(&o.name, &mut s); s.push(','); esc(&o.guid, &mut s); s.push(']'); }
+        for (i, o) in self.objs.iter().enumerate() { if i > 0 { s.push(','); } s.push_str(&format!("[{},{},{},", o.id, o.class, o.cont)); esc(&o.name, &mut s); s.push(','); esc(&o.guid, &mut s); s.push_str(&format!(",{}]", o.src)); }
         s.push_str("]}"); s
     }
 
@@ -213,6 +221,13 @@ impl Model {
         }
         let mut out = Vec::new(); let cos_lim = 0.9;
         for (_, (a, b, ns)) in map { let keep = ns.len() == 1 || ns.len() > 2 || dot3(ns[0], ns[1]) < cos_lim; if keep { out.extend_from_slice(&[a[0], a[1], a[2], b[0], b[1], b[2]]); if out.len() > 6 * 60000 { break; } } }
+        out
+    }
+
+    /// Skarpa kanter för hela modellen (för ritning av konturlinjer): (x, y, z, objekt) per ändpunkt, 16 byte.
+    pub fn all_edges(&self, max_edges: usize) -> Vec<u8> {
+        let mut out: Vec<u8> = Vec::new(); let mut n = 0usize;
+        for oi in 0..self.objs.len() { let e = self.feature_edges(oi); for c in e.chunks(6) { if c.len() < 6 { break; } for k in 0..2 { for j in 0..3 { out.extend_from_slice(&c[k * 3 + j].to_le_bytes()); } out.extend_from_slice(&(oi as u32).to_le_bytes()); } n += 1; if n >= max_edges { return out; } } }
         out
     }
 
@@ -294,3 +309,18 @@ mod tests {
     }
 }
 mod serde_like { pub struct V; }
+
+#[cfg(test)]
+mod multi {
+    use super::*;
+    #[test]
+    fn flera_modeller_i_samma_modell() {
+        let one = { let mut t = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#10=IFCCARTESIANPOINT((0.,0.,0.));\n#11=IFCAXIS2PLACEMENT3D(#10,$,$);\n#13=IFCCARTESIANPOINT((0.,0.));\n#14=IFCAXIS2PLACEMENT2D(#13,$);\n#15=IFCRECTANGLEPROFILEDEF(.AREA.,$,#14,2.,1.);\n#16=IFCDIRECTION((0.,0.,1.));\n#17=IFCEXTRUDEDAREASOLID(#15,#11,#16,3.);\n#18=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#17));\n#19=IFCPRODUCTDEFINITIONSHAPE($,$,(#18));\n#20=IFCLOCALPLACEMENT($,#11);\n#21=IFCWALL('GUID1',$,'Vägg',$,$,#20,#19,$);\n"); t.push_str("ENDSEC;\nEND-ISO-10303-21;"); t };
+        let mut m = Model::load(one.as_bytes()).unwrap(); assert_eq!(m.objs.len(), 1);
+        m.add(one.as_bytes(), "B").unwrap(); assert_eq!(m.objs.len(), 2); assert_eq!(m.sources.len(), 2); assert_eq!(m.objs[1].src, 1); assert_ne!(m.objs[0].id, m.objs[1].id);
+        assert_eq!(m.verts.len() / 60, 24, "två lådor à 12 trianglar"); assert_eq!(m.tri_by_obj[0].len(), 12); assert_eq!(m.tri_by_obj[1].len(), 12);
+        assert!(m.set_attr(1, 2, "Ändrad"), "namn i andra modellen"); assert_eq!(m.step.edited_sources(), vec![1]);
+        let out = String::from_utf8(m.step.write_source(1)).unwrap(); assert!(out.contains("#21=IFCWALL('GUID1',$,'\\X2\\00C4\\X0\\ndrad'") && out.contains("#20=IFCLOCALPLACEMENT($,#11)"), "{}", out);
+        let again = Model::load(out.as_bytes()).unwrap(); assert_eq!(again.objs[0].name, "Ändrad"); assert_eq!(m.objs[0].name, "Vägg");
+    }
+}

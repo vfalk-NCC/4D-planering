@@ -25,17 +25,17 @@ function renderTree(host) {
   const T = host.querySelector('#tree'); if (!S.loaded) { T.innerHTML = '<div class="hint">Ingen modell öppen.</div>'; return; }
   if (UI.found) { renderFound(T); return; }
   UI.rows.clear();
-  const byCat = UI.group === 'cat';
-  const gkey = oi => byCat ? categoryOf(S.classes[S.objClass[oi]]) : S.objCont[oi];
+  const byCat = UI.group === 'cat', bySrc = UI.group === 'src';
+  const gkey = oi => byCat ? categoryOf(S.classes[S.objClass[oi]]) : bySrc ? S.objSrc[oi] : S.objCont[oi];
   const groups = new Map(); for (let i = 0; i < S.nObj; i++) { const k = gkey(i); let g = groups.get(k); if (!g) groups.set(k, g = new Map()); let l = g.get(S.objClass[i]); if (!l) g.set(S.objClass[i], l = []); l.push(i); }
   const all = Array.from({ length: S.nObj }, (_, i) => i);
   const root = node({ label: S.fileName.replace(/\.ifc$/i, '') || 'Modell', count: S.nObj, icon: 'cube', items: () => all, open: true, depth: 0 }); root.classList.add('l0'); T.append(root);
   const rk = document.createElement('div'); rk.className = 'kids'; T.append(rk);
   root.querySelector('.car').onclick = ev => { ev.stopPropagation(); root.classList.toggle('open'); rk.hidden = !root.classList.contains('open'); };
-  const order = [...groups.keys()].sort((a, b) => byCat ? (['Byggnadsdelar', 'Stålkonstruktion', 'Prefab', 'Installationer', 'Terräng & mark', 'Övrigt'].indexOf(a) - ['Byggnadsdelar', 'Stålkonstruktion', 'Prefab', 'Installationer', 'Terräng & mark', 'Övrigt'].indexOf(b)) : (a === 0) - (b === 0) || S.conts[a][0].localeCompare(S.conts[b][0], 'sv', { numeric: true }));
+  const order = [...groups.keys()].sort((a, b) => bySrc ? a - b : byCat ? (['Byggnadsdelar', 'Stålkonstruktion', 'Prefab', 'Installationer', 'Terräng & mark', 'Övrigt'].indexOf(a) - ['Byggnadsdelar', 'Stålkonstruktion', 'Prefab', 'Installationer', 'Terräng & mark', 'Övrigt'].indexOf(b)) : (a === 0) - (b === 0) || S.conts[a][0].localeCompare(S.conts[b][0], 'sv', { numeric: true }));
   for (const k of order) {
-    const g = groups.get(k), list = [...g.values()].flat(), label = byCat ? k : S.conts[k][0];
-    const gn = node({ label, count: list.length, icon: byCat ? catIcon(k) : 'layers', items: () => list, open: order.length <= 5, depth: 1 }); const kids = document.createElement('div'); kids.className = 'kids'; kids.hidden = !gn.classList.contains('open');
+    const g = groups.get(k), list = [...g.values()].flat(), label = byCat ? k : bySrc ? (S.sources[k] || 'Modell').replace(/\.ifc$/i, '') : S.conts[k][0];
+    const gn = node({ label, count: list.length, icon: byCat ? catIcon(k) : bySrc ? 'cube' : 'layers', items: () => list, open: order.length <= 5, depth: 1 }); const kids = document.createElement('div'); kids.className = 'kids'; kids.hidden = !gn.classList.contains('open');
     for (const [cls, cl] of [...g.entries()].sort((a, b) => b[1].length - a[1].length)) {
       const cn = node({ label: nice(S.classes[cls]), count: cl.length, icon: classIcon(S.classes[cls]), items: () => cl, open: false, depth: 2, sw: S.colorBy === 'class' ? palette(cls) : null }); const ck = document.createElement('div'); ck.className = 'kids'; ck.hidden = true; cn._ck = ck; cn._cl = cl;
       cn.querySelector('.car').onclick = ev => { ev.stopPropagation(); toggleClass(cn, ck, cl); }; kids.append(cn, ck);
@@ -74,12 +74,16 @@ function renderFilter(host) {
   if (!S.loaded) { host.innerHTML = '<div class="hint">Ingen modell öppen.</div>'; return; }
   const cnt = new Map(); for (let i = 0; i < S.nObj; i++) cnt.set(S.objClass[i], (cnt.get(S.objClass[i]) || 0) + 1);
   const ccount = new Map(); for (let i = 0; i < S.nObj; i++) ccount.set(S.objCont[i], (ccount.get(S.objCont[i]) || 0) + 1);
-  host.innerHTML = `<div class="card"><h4>Gruppera trädet</h4><div class="seg" id="fGrp"><button data-g="cat" class="${UI.group === 'cat' ? 'on' : ''}">Kategori</button><button data-g="cont" class="${UI.group === 'cont' ? 'on' : ''}">Våning</button></div></div>
+  host.innerHTML = `<div class="card"><h4>Modeller</h4><div id="fSrc"></div><div class="row"><button class="btn sm" id="fAdd">${ic('plus')} Lägg till modell…</button>${A.tcAvailable && A.tcAvailable() ? `<button class="btn sm" id="fTc">${ic('tc')} Från Trimble Connect…</button><button class="btn sm" id="fEt">${ic('layers')} Etablering</button>` : ''}</div></div><div class="card"><h4>Gruppera trädet</h4><div class="seg" id="fGrp"><button data-g="cat" class="${UI.group === 'cat' ? 'on' : ''}">Kategori</button><button data-g="cont" class="${UI.group === 'cont' ? 'on' : ''}">Våning</button><button data-g="src" class="${UI.group === 'src' ? 'on' : ''}">Modell</button></div></div>
   <div class="card"><h4>Färglägg</h4><div class="seg" id="fCol"><button data-c="orig" class="${S.colorBy === 'orig' ? 'on' : ''}">Ursprung</button><button data-c="class" class="${S.colorBy === 'class' ? 'on' : ''}">Klass</button><button data-c="cont" class="${S.colorBy === 'cont' ? 'on' : ''}">Våning</button></div>
+  <label class="chk"><input type="checkbox" id="fEdges" ${S.edgesOn !== false ? 'checked' : ''}> Visa kanter</label>
   <label class="chk"><input type="checkbox" id="fGhost" ${S.ghost ? 'checked' : ''}> Tona ned övriga vid markering (G)</label></div>
   <div class="card"><h4>Klasser</h4><div id="fCls"></div></div><div class="card"><h4>Våningar</h4><div id="fCont"></div></div>`;
+  const sl = host.querySelector('#fSrc'); (S.sources || []).forEach((nm, i) => { const ids = []; for (let k = 0; k < S.nObj; k++) if (S.objSrc[k] === i) ids.push(k); const any = ids.some(k => S.shown[k]); const r = document.createElement('div'); r.className = 'tn'; r.innerHTML = `<span class="gi">${ic('cube')}</span><span class="lab"></span><span class="cnt">${ids.length.toLocaleString('sv')}</span><button class="eye ${any ? '' : 'off'}" title="Visa/dölj">${ic(any ? 'eye' : 'eyeoff')}</button><button class="eye" title="Ta bort modellen" style="opacity:1">${ic('close')}</button>`; r.querySelector('.lab').textContent = nm.replace(/\.ifc$/i, ''); r.onclick = () => A.selectMany(ids); const bt = r.querySelectorAll('button'); bt[0].onclick = ev => { ev.stopPropagation(); A.setVis(ids, !any, (any ? 'Dölj ' : 'Visa ') + nm); setTimeout(renderLeftModel, 0); }; bt[1].onclick = ev => { ev.stopPropagation(); A.removeSource(i); }; sl.append(r); });
+  host.querySelector('#fAdd').onclick = () => { $('file').accept = '.ifc'; $('file').click(); }; const ft = host.querySelector('#fTc'); if (ft) ft.onclick = () => A.openFromTC(); const fe = host.querySelector('#fEt'); if (fe) fe.onclick = () => A.addEtablering();
   host.querySelector('#fGrp').onclick = e => { const b = e.target.closest('button'); if (b) { UI.group = b.dataset.g; renderLeftModel(); } };
   host.querySelector('#fCol').onclick = e => { const b = e.target.closest('button'); if (b) A.colorBy(b.dataset.c); renderLeftModel(); };
+  host.querySelector('#fEdges').onchange = e => { S.edgesOn = e.target.checked; redraw(); };
   host.querySelector('#fGhost').onchange = e => { S.ghost = e.target.checked; refreshFlags(); };
   const mk = (box, entries, items) => entries.forEach(([label, n, list]) => { const l = document.createElement('label'); l.className = 'chk'; const any = list.some(oi => S.shown[oi]); l.innerHTML = `<input type="checkbox" ${any ? 'checked' : ''}><span style="flex:1"></span><small class="muted">${n}</small>`; l.querySelector('span').textContent = label; l.querySelector('input').onchange = e => A.setVis(list, e.target.checked, (e.target.checked ? 'Visa ' : 'Dölj ') + label); box.append(l); });
   const byC = new Map(), byK = new Map(); for (let i = 0; i < S.nObj; i++) { (byC.get(S.objClass[i]) || byC.set(S.objClass[i], []).get(S.objClass[i])).push(i); (byK.get(S.objCont[i]) || byK.set(S.objCont[i], []).get(S.objCont[i])).push(i); }

@@ -8,7 +8,9 @@ export const RADIAL0 = ['select', 'measure', 'comment', 'section', 'hide', 'info
 const RLAB = { select: ['Välj', 'select'], measure: ['Mät', 'ruler'], comment: ['Kommentera', 'comment'], section: ['Sektion', 'section'], hide: ['Visa/dölj', 'eyeoff'], info: ['Inspektera', 'info'], view: ['Spara vy', 'view'], focus: ['Fokusera', 'focus'] };
 export const radialItems = () => store.get('radial', RADIAL0);
 
-const ptrs = new Map(); let drag = null, mmbTimer = 0, radial = null;
+const ptrs = new Map(); let drag = null, mmbTimer = 0, radial = null, movT = 0;
+/* Under rörelse hoppar vi över konturlinjerna i mycket stora modeller så att vyn känns lätt. */
+function moving() { S.moving = true; clearTimeout(movT); movT = setTimeout(() => { S.moving = false; redraw(); }, 170); }
 const stageEl = $('stage');
 const rectOf = () => stageEl.getBoundingClientRect();
 
@@ -76,7 +78,7 @@ canvas.addEventListener('pointermove', e => {
   if (drag.menu) { radialMove(e.clientX, e.clientY); return; }
   if (!drag.moved && Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) > 4) { drag.moved = true; clearTimeout(mmbTimer); }
   if (!drag.moved) return;
-  const vp = drag.vp, c = vp.cam;
+  moving(); const vp = drag.vp, c = vp.cam;
   if (drag.zoomWin) { drag.rect = [drag.sx, drag.sy, e.clientX, e.clientY]; drawZoomRect(drag.rect); return; }
   const panning = drag.btn === 2 || drag.shift || (drag.btn === 1 && e.shiftKey) || (c.ortho && vp.kind !== 'persp');
   if (panning) pan(vp, dx, dy);
@@ -104,7 +106,7 @@ function zoomToRect(vp, r) {
   const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, lx = (cx - b.left) * S.dpr - vp.rect.x, ly = (cy - b.top) * S.dpr - vp.rect.y, p = cursorPoint(vp, lx, ly), f = Math.max(0.05, (x1 - x0) / (vp.rect.w / S.dpr));
   const c = vp.cam; animateTo(vp, { tx: p[0], ty: p[1], tz: p[2], dist: Math.max(0.3, c.dist * f), half: Math.max(0.3, c.half * f) }, 380);
 }
-canvas.addEventListener('wheel', e => { e.preventDefault(); const q = vpAt(e.clientX, e.clientY); zoomAt(q.vp, q.x, q.y, Math.exp(e.deltaY * (e.ctrlKey ? 0.012 : 0.0013))); }, { passive: false });
+canvas.addEventListener('wheel', e => { e.preventDefault(); moving(); const q = vpAt(e.clientX, e.clientY); zoomAt(q.vp, q.x, q.y, Math.exp(e.deltaY * (e.ctrlKey ? 0.012 : 0.0013))); }, { passive: false });
 canvas.addEventListener('dblclick', e => { const q = vpAt(e.clientX, e.clientY), h = S.loaded ? pick(q.vp, q.x, q.y) : null; if (h) { A.selectOnly(h.oi); fitSel(380); } else fitAll(380); });
 canvas.addEventListener('auxclick', e => e.preventDefault());
 let hoverRaf = 0;

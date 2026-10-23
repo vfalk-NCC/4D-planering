@@ -465,7 +465,7 @@ async function lagesplanHandle(msg, reply, progress) {
       if (typeof placeIfcTextFor !== "function") throw new Error("Placera i 3D finns inte i den här versionen av 4D-planering.");
       if (placeDirty.size || placeDeleted.size) await placeSaveNow();
       await place3dLoad({ fresh: true });
-      reply(await placeIfcTextFor(Array.isArray(msg.ids) ? msg.ids.map(String) : []));
+      reply(await placeIfcTextFor(msg.all ? placements.map(p => String(p.id)) : (Array.isArray(msg.ids) ? msg.ids.map(String) : [])));
     } else if (msg.type === "positions") {
       reply(await lagesplanPositions());
     } else if (msg.type === "select") {

@@ -65,21 +65,27 @@ precision highp float; in vec3 vW; uniform vec3 uC; uniform float uR; uniform ve
 float grid(vec2 p, float s){ vec2 g = abs(fract(p / s - 0.5) - 0.5) / (fwidth(p / s) * 1.0); return 1.0 - min(min(g.x, g.y), 1.0); }
 void main(){ float d = length(vW.xy - uC.xy) / uR; float fade = 1.0 - smoothstep(0.15, 1.0, d);
   float a = max(grid(vW.xy, 1.0) * 0.16, grid(vW.xy, 10.0) * 0.34) * fade; o = vec4(uCol, a); }`;
+const EVS = `#version 300 es
+layout(location=0) in vec3 aPos; layout(location=1) in uint aId; uniform mat4 uVP; uniform sampler2D uState; out vec3 vP;
+void main(){ ivec4 s = ivec4(texelFetch(uState, ivec2(int(aId) & 2047, int(aId) >> 11), 0) * 255.0 + 0.5); vP = aPos; gl_Position = (s.r & 1) != 0 ? vec4(2.0, 2.0, 2.0, 1.0) : uVP * vec4(aPos, 1.0); gl_Position.z -= 0.00006 * gl_Position.w; }`;
+const EFS = `#version 300 es
+precision highp float; in vec3 vP; uniform vec4 uClip; uniform int uClipOn; uniform vec4 uCol; out vec4 o;
+void main(){ if (uClipOn == 1 && dot(vP, uClip.xyz) > uClip.w) discard; o = uCol; }`;
 function prog(vs, fs) {
   const mk = (t, s) => { const sh = gl.createShader(t); gl.shaderSource(sh, s); gl.compileShader(sh); if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh)); return sh; };
   const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
   if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p)); return p;
 }
-let P1, P2, P3, quad;
+let P1, P2, P3, P4, quad;
 const U = (p, n) => gl.getUniformLocation(p, n);
 export function initGL() {
   if (!gl) throw new Error('Webbläsaren saknar WebGL2.');
-  P1 = prog(VS, FS); P2 = prog(PVS, PFS); P3 = prog(GVS, GFS);
+  P1 = prog(VS, FS); P2 = prog(PVS, PFS); P3 = prog(GVS, GFS); P4 = prog(EVS, EFS);
   quad = gl.createVertexArray(); gl.bindVertexArray(quad); const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, 1, 1, -1, -1, 1, 1, -1, 1]), gl.STATIC_DRAW); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.bindVertexArray(null);
 }
 
 /* ---------- Modell i GPU ---------- */
-export const G = { vbo: null, vao: null, nVerts: 0, nOpaque: 0, stateTex: null, stateData: null, stateRows: 1, stateDirty: false };
+export const G = { evbo: null, evao: null, nEdges: 0, vbo: null, vao: null, nVerts: 0, nOpaque: 0, stateTex: null, stateData: null, stateRows: 1, stateDirty: false };
 export function uploadModel() {
   const E = R.E; G.nVerts = E.model_verts_count(); G.nOpaque = E.model_opaque_count();
   if (G.vbo) gl.deleteBuffer(G.vbo); if (G.vao) gl.deleteVertexArray(G.vao);
@@ -88,6 +94,10 @@ export function uploadModel() {
   gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 20, 0);
   gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.UNSIGNED_BYTE, true, 20, 12);
   gl.enableVertexAttribArray(2); gl.vertexAttribIPointer(2, 1, gl.UNSIGNED_INT, 20, 16); gl.bindVertexArray(null);
+  // konturkanter för hela modellen
+  if (G.evbo) gl.deleteBuffer(G.evbo); if (G.evao) gl.deleteVertexArray(G.evao); const n = E.model_all_edges(1500000); G.nEdges = n / 16;
+  G.evao = gl.createVertexArray(); gl.bindVertexArray(G.evao); G.evbo = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, G.evbo); gl.bufferData(gl.ARRAY_BUFFER, u8(E.out_ptr(), n), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 16, 0); gl.enableVertexAttribArray(1); gl.vertexAttribIPointer(1, 1, gl.UNSIGNED_INT, 16, 12); gl.bindVertexArray(null);
 }
 export function buildStateTex() {
   const rows = Math.max(1, Math.ceil(S.nObj / SW)); G.stateData = new Uint8Array(SW * rows * 4); G.stateRows = rows;
@@ -134,6 +144,7 @@ function mkOrtho(kind) {
 function centerOf() { const b = S.sum.bbox; return { tx: (b[0] + b[3]) / 2, ty: (b[1] + b[4]) / 2, tz: (b[2] + b[5]) / 2 }; }
 export function sizeViewports() {
   const W = S.w, H = S.h, g = Math.round(6 * S.dpr), n = V.vps.length;
+  if (!n) return;
   if (n === 1) V.vps[0].rect = { x: 0, y: 0, w: W, h: H };
   else if (n === 2) { const a = Math.round(W * 0.56); V.vps[0].rect = { x: 0, y: 0, w: a - g / 2, h: H }; V.vps[1].rect = { x: a + g / 2, y: 0, w: W - a - g / 2, h: H }; }
   else { const a = Math.round(W * 0.6), h2 = Math.round(H / 3); V.vps[0].rect = { x: 0, y: 0, w: a - g / 2, h: H }; [1, 2, 3].forEach((i, k) => V.vps[i].rect = { x: a + g / 2, y: k * h2 + (k ? g / 2 : 0), w: W - a - g / 2, h: k === 2 ? H - 2 * h2 - g / 2 : h2 - (k ? g / 2 : 0) - (k === 0 ? g / 2 : 0) }); }
@@ -213,6 +224,7 @@ function drawScene(vp, o) {
     gl.useProgram(P1); gl.uniformMatrix4fv(U(P1, 'uVP'), false, vp.vp); gl.uniform3fv(U(P1, 'uCam'), vp.eye); gl.uniform4fv(U(P1, 'uClip'), cl); gl.uniform1i(U(P1, 'uClipOn'), clipOn); gl.uniform1f(U(P1, 'uGhost'), 0.1); gl.uniform3fv(U(P1, 'uAcc'), acc); gl.uniform1f(U(P1, 'uMini'), o.mini ? 1 : 0);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, G.stateTex); gl.uniform1i(U(P1, 'uState'), 0);
     gl.bindVertexArray(G.vao); gl.disable(gl.BLEND); gl.depthMask(true); gl.drawArrays(gl.TRIANGLES, 0, G.nOpaque);
+    if (S.edgesOn !== false && G.nEdges && !o.mini && !(S.moving && G.nEdges > 250000)) { gl.useProgram(P4); gl.uniformMatrix4fv(U(P4, 'uVP'), false, vp.vp); gl.uniform4fv(U(P4, 'uClip'), cl); gl.uniform1i(U(P4, 'uClipOn'), clipOn); gl.uniform4fv(U(P4, 'uCol'), dark ? [0.82, 0.88, 1, 0.3] : [0.1, 0.13, 0.2, 0.5]); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, G.stateTex); gl.uniform1i(U(P4, 'uState'), 0); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); gl.bindVertexArray(G.evao); gl.drawArrays(gl.LINES, 0, G.nEdges * 2); gl.bindVertexArray(null); gl.depthMask(true); gl.disable(gl.BLEND); gl.useProgram(P1); }
     if (G.nVerts > G.nOpaque) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false); gl.drawArrays(gl.TRIANGLES, G.nOpaque, G.nVerts - G.nOpaque); gl.depthMask(true); gl.disable(gl.BLEND); }
     gl.bindVertexArray(null);
   }

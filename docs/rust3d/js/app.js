@@ -1,7 +1,8 @@
 /* 3D-editor (Rust/WebAssembly) – start, verktyg, markering, historik, vyer och kommentarer. */
-import { $, S, A, R, bus, emit, on, redraw, ic, hydrate, esc, nice, classIcon, outJson, outText, callStr, withBytes, busy, toast, tick, store, dialog, prompt2, fmtD, fmtN, dist3, bootEngine, td } from './core.js';
+import { $, S, A, R, choice, bus, emit, on, redraw, ic, hydrate, esc, nice, classIcon, outJson, outText, callStr, withBytes, busy, toast, tick, store, dialog, prompt2, fmtD, fmtN, dist3, bootEngine, td, outBytes } from './core.js';
 import { initGL, resize, draw, uploadModel, buildStateTex, refreshFlags, setVisible, setFlag, V, resetViews, layoutViewports, fitAll, fitSel, fitBox, selBox, boxOf, project, camState, animateTo, setupSection, levelElev, canvas, G, stdView } from './view.js';
 import { runAction, keys, KEYS0, RADIAL0, radialItems, snap, zoomCenter } from './input.js';
+import { categoryOf } from './core.js';
 import { UI, renderLeftModel, renderRight, refreshTreeVis, markTree, revealObj } from './panels.js';
 import './features.js';
 
@@ -17,29 +18,54 @@ function histUi() {
 }
 $('bUndo').onclick = () => A.undo(); $('bRedo').onclick = () => A.redo(); $('bHist').onclick = () => { $('hist').hidden = !$('hist').hidden; histUi(); };
 
-/* ---------- Laddning ---------- */
-async function loadIfc(buf, name) {
-  busy('Rust läser ' + name + ' …'); await tick(); const t0 = performance.now(), bytes = new Uint8Array(buf), E = R.E;
-  const rc = withBytes(bytes, (p, n) => E.model_load(p, n));
-  if (rc !== 0) { busy(''); toast('Kunde inte läsa filen: ' + outText(-rc), 7000); return false; }
-  const tRust = performance.now() - t0, sum = outJson(E.model_summary()), ol = outJson(E.model_objects());
-  Object.assign(S, { sum, classes: ol.classes, conts: ol.containers, nObj: sum.objects, origin: sum.origin, fileName: name });
-  S.radius = Math.max(1, Math.hypot(sum.bbox[3] - sum.bbox[0], sum.bbox[4] - sum.bbox[1], sum.bbox[5] - sum.bbox[2]) / 2);
-  S.objIds = ol.objs.map(o => o[0]); S.objClass = ol.objs.map(o => o[1]); S.objCont = ol.objs.map(o => o[2]); S.objName = ol.objs.map(o => o[3]); S.objGuid = ol.objs.map(o => o[4]);
-  S.guidIx = new Map(S.objGuid.map((g, i) => [g, i])); boxOf.clear(); V.edgeCache.clear(); S.sel.clear(); S.hover = -1; S.measures = []; S.mPick = null; S.override.clear(); S.ghostAll = null; S.shown = new Uint8Array(sum.objects).fill(1); S.edits = 0; S.colorBy = 'orig';
-  H.stack.length = 0; H.idx = 0; histUi(); S.fileKey = name + '|' + sum.objects; S.comments = store.get('cm:' + S.fileKey, []); S.views = store.get('vw:' + S.fileKey, []);
-  uploadModel(); buildStateTex(); resetViews(); S.loaded = true; layoutViewports(V.layout === '3d' ? '3d' : V.layout); fitAll(0); setupSection(); S.section.on = false;
-  UI.cache.set('qty', outJson(E.model_quantities())); UI.found = null; $('empty').hidden = true; $('projName').textContent = name.replace(/\.ifc$/i, ''); $('cProj').textContent = name.replace(/\.ifc$/i, '');
-  fillLevels(); S.mini = true; $('minimap').hidden = false; refreshFlags(); setTab(S.tab === 'model' ? 'model' : S.tab, true); renderRight(); afterSel(true); emit('loaded');
-  $('hSt').textContent = `${sum.objects.toLocaleString('sv')} objekt · ${sum.tris.toLocaleString('sv')} trianglar`; $('hPerf').textContent = `Rust läste ${(bytes.length / 1e6).toFixed(1)} MB på ${tRust.toFixed(0)} ms`;
-  busy(''); if (sum.skipped.length) toast('Geometri som inte stöds än hoppades över: ' + sum.skipped.slice(0, 4).map(s => `${s[0].replace(/^IFC/, '')} ×${s[1]}`).join(', '), 6500); return true;
+/* ---------- Laddning (en eller flera IFC-filer i samma modell) ---------- */
+S.srcBuf = [];
+async function loadIfc(buf, name, opt = {}) {
+  const add = !!opt.add && S.loaded; busy('Rust läser ' + name + ' …'); await tick(); const t0 = performance.now(), bytes = new Uint8Array(buf), E = R.E;
+  if (!add) { E.model_clear(); S.srcBuf = []; }
+  const rc = callStr((np, nn) => withBytes(bytes, (p, n) => E.model_add(p, n, np, nn)), name);
+  if (rc !== 0) { busy(''); toast('Kunde inte läsa filen: ' + outText(-rc), 7000); if (!add) { S.loaded = false; } return false; }
+  S.srcBuf.push({ name, bytes }); const tRust = performance.now() - t0; fillFromRust(add); busy('');
+  $('hPerf').textContent = `Rust läste ${(bytes.length / 1e6).toFixed(1)} MB på ${tRust.toFixed(0)} ms`; const sum = S.sum;
+  if (sum.skipped.length) toast('Geometri som inte stöds än hoppades över: ' + sum.skipped.slice(0, 4).map(s => `${s[0].replace(/^IFC/, '')} ×${s[1]}`).join(', '), 6500); return true;
 }
 A.loadIfc = loadIfc;
+function fillFromRust(add) {
+  const E = R.E, sum = outJson(E.model_summary()), ol = outJson(E.model_objects()), old = S.shown;
+  Object.assign(S, { sum, classes: ol.classes, conts: ol.containers, sources: ol.sources, nObj: sum.objects, origin: sum.origin, fileName: S.srcBuf[0].name });
+  S.radius = Math.max(1, Math.hypot(sum.bbox[3] - sum.bbox[0], sum.bbox[4] - sum.bbox[1], sum.bbox[5] - sum.bbox[2]) / 2);
+  S.objIds = ol.objs.map(o => o[0]); S.objClass = ol.objs.map(o => o[1]); S.objCont = ol.objs.map(o => o[2]); S.objName = ol.objs.map(o => o[3]); S.objGuid = ol.objs.map(o => o[4]); S.objSrc = ol.objs.map(o => o[5]);
+  S.guidIx = new Map(S.objGuid.map((g, i) => [g, i])); S.shown = new Uint8Array(sum.objects).fill(1); if (add && old) S.shown.set(old.subarray(0, Math.min(old.length, S.shown.length)));
+  if (!add) { boxOf.clear(); V.edgeCache.clear(); S.sel.clear(); S.hover = -1; S.measures = []; S.mPick = null; S.override.clear(); S.ghostAll = null; S.edits = 0; S.colorBy = 'orig'; H.stack.length = 0; H.idx = 0; histUi(); S.fileKey = S.srcBuf[0].name + '|' + sum.objects; S.comments = store.get('cm:' + S.fileKey, []); S.views = store.get('vw:' + S.fileKey, []); }
+  uploadModel(); buildStateTex(); if (!add) resetViews(); S.loaded = true; if (!add) layoutViewports(V.layout);
+  for (let i = 0; i < S.nObj; i++) if (!S.shown[i]) { G.stateData[i * 4] |= 1; E.model_set_visible(i, 0); } G.stateDirty = true;
+  fitAll(0); if (!add) { setupSection(); S.section.on = false; } UI.cache.set('qty', outJson(E.model_quantities())); UI.found = null; $('empty').hidden = true;
+  const nm = S.srcBuf[0].name.replace(/\.ifc$/i, ''); $('projName').textContent = nm + (S.srcBuf.length > 1 ? ` + ${S.srcBuf.length - 1}` : ''); $('cProj').textContent = nm;
+  fillLevels(); S.mini = true; $('minimap').hidden = false; refreshFlags(); setTab(S.tab, true); renderRight(); afterSel(true); emit('loaded');
+  $('hSt').textContent = `${sum.objects.toLocaleString('sv')} objekt · ${sum.tris.toLocaleString('sv')} trianglar${S.srcBuf.length > 1 ? ' · ' + S.srcBuf.length + ' modeller' : ''}`;
+}
+/* Tar bort en modell ur den gemensamma modellen: allt läses in på nytt utan den (osparade ändringar går förlorade). */
+A.removeSource = async i => {
+  if (S.srcBuf.length < 2) { S.srcBuf = []; R.E.model_clear(); S.loaded = false; S.nObj = 0; location.reload(); return; }
+  if (S.edits && !(await choice('Ta bort modell', 'Du har osparade ändringar. De går förlorade när modellen tas bort – exportera först om du vill behålla dem.', ['Avbryt', 'Ta bort ändå']) === 'Ta bort ändå')) return;
+  const keep = S.srcBuf.filter((_, k) => k !== i); busy('Läser om modellerna …'); await tick(); R.E.model_clear(); S.srcBuf = [];
+  for (const k of keep) { callStr((np, nn) => withBytes(k.bytes, (p, n) => R.E.model_add(p, n, np, nn)), k.name); S.srcBuf.push(k); } fillFromRust(false); busy('');
+};
+A.addEtablering = async () => {
+  try { busy('Hämtar etableringen från 4D-planering …'); const r = await A.ask('placeIfcText', { all: true }, 120000); busy(''); if (!r.text || !r.n) return toast('Det finns ingen etablering att visa i det här projektet.', 4000);
+    const bytes = new TextEncoder().encode(r.text); const ex = S.srcBuf.findIndex(s => s.name === 'Etablering'); if (ex >= 0) await A.removeSource(ex); await loadIfc(bytes.buffer, 'Etablering', { add: S.loaded }); toast(`Etablering: ${r.n} objekt (redigeras i lägesplanens 3D-vy)`, 4500);
+  } catch (e) { busy(''); toast(e.message, 6000); }
+};
 function fillLevels() {
   const sel = $('mmLevel'), lv = []; const seen = new Set(); for (let i = 0; i < S.nObj; i++) { const c = S.objCont[i]; if (!seen.has(c) && c !== 0) { seen.add(c); lv.push([c, levelElev(c)]); } } lv.sort((a, b) => a[1] - b[1]);
   sel.innerHTML = '<option value="-1">Alla</option>' + lv.map(([c, z]) => `<option value="${c}">${esc(S.conts[c][0])}</option>`).join(''); S.miniLevel = -1; sel.onchange = () => { S.miniLevel = +sel.value; redraw(); };
 }
-async function openFile(f) { const buf = await f.arrayBuffer(), n = f.name.toLowerCase(); if (/\.(xyz|txt|csv|ply|las|laz)$/.test(n)) await A.loadCloud(buf, f.name); else await loadIfc(buf, f.name); }
+async function openFile(f) {
+  const buf = await f.arrayBuffer(), n = f.name.toLowerCase();
+  if (/\.(xyz|txt|csv|ply|las|laz)$/.test(n)) { await A.loadCloud(buf, f.name); return; }
+  let add = false; if (S.loaded) { const r = await choice('Öppna modell', 'Det finns redan en modell öppen. Vill du ersätta den eller lägga till den nya i samma vy?', ['Ersätt', 'Lägg till']); if (r == null) return; add = r === 'Lägg till'; }
+  await loadIfc(buf, f.name, { add });
+}
 A.openFile = openFile;
 
 /* ---------- Markering ---------- */
@@ -172,11 +198,13 @@ A.editProp = (oi, prop, oldV, newV, inp) => {
   S.edits = R.E.model_edits(); $('bExport').disabled = !S.edits; emit('edited'); exec('Ändra egenskap', () => { set(newV); renderRight(); }, () => { set(oldV); renderRight(); }); renderRight();
 };
 A.exportIfc = async () => {
-  const name = await prompt2('Exportera IFC', 'Filnamn', (S.fileName || 'modell').replace(/\.ifc$/i, '') + ' (ändrad)', 'Exportera'); if (name == null) return; const n = R.E.model_export(); const bytes = new Uint8Array(R.E.memory.buffer, R.E.out_ptr(), n).slice();
-  if (A.saveToTC && A.tcAvailable && A.tcAvailable()) { const r = await dialogChoice('Spara', 'Var ska filen sparas?', ['Dator', 'Trimble Connect']); if (r === 'Trimble Connect') { await A.saveToTC(bytes, name.replace(/\.ifc$/i, '') + '.ifc'); return; } }
-  dl(new Blob([bytes], { type: 'application/x-step' }), name.replace(/\.ifc$/i, '') + '.ifc'); toast('Ny IFC-fil sparad med dina ändringar');
+  const E = R.E, ed = outJson(E.model_edited_sources()); if (!ed.length) return toast('Det finns inga ändringar att spara.');
+  const files = ed.map(src => { const n = E.model_export(src); return { name: S.srcBuf[src].name.replace(/\.ifc$/i, '') + ' (ändrad)', bytes: outBytes(n) }; });
+  if (files.length === 1) { const name = await prompt2('Exportera IFC', 'Filnamn', files[0].name, 'Exportera'); if (name == null) return; files[0].name = name; }
+  let toTC = false; if (A.tcAvailable && A.tcAvailable()) { const r = await choice('Spara', 'Var ska ' + (files.length > 1 ? 'filerna' : 'filen') + ' sparas?', ['Dator', 'Trimble Connect']); if (r == null) return; toTC = r === 'Trimble Connect'; }
+  for (const f of files) { const fn = f.name.replace(/\.ifc$/i, '') + '.ifc'; if (toTC) await A.saveToTC(f.bytes, fn); else dl(new Blob([f.bytes], { type: 'application/x-step' }), fn); }
+  if (!toTC) toast(files.length > 1 ? `${files.length} IFC-filer sparade med dina ändringar` : 'Ny IFC-fil sparad med dina ändringar');
 };
-function dialogChoice(title, label, opts) { return new Promise(res => { const d = dialog(title, `<p>${esc(label)}</p><div class="row">${opts.map((o, i) => `<button class="btn ${i ? 'primary' : ''}" data-o="${i}">${esc(o)}</button>`).join('')}</div>`); d.el.querySelectorAll('[data-o]').forEach(b => b.onclick = () => { d.close(); res(opts[+b.dataset.o]); }); $('dialog').addEventListener('click', e => { if (e.target === $('dialog')) res(null); }, { once: true }); }); }
 $('bExport').onclick = () => A.exportIfc(); $('bOpen').onclick = () => { if (A.tcAvailable && A.tcAvailable()) return A.openFromTC(); $('file').click(); };
 
 /* ---------- Flikar, paneler, tema ---------- */
@@ -200,6 +228,20 @@ const th = store.get('theme', null); if (th) document.documentElement.dataset.th
 $('bFull').onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else $('stage').requestFullscreen && $('stage').requestFullscreen(); };
 $('vMode').onchange = e => { layoutViewports(e.target.value === '3d' ? '3d' : e.target.value); };
 $('mmBig').onclick = () => $('minimap').classList.toggle('big');
+
+/* ---------- Arbetsytor (sparade layouter) ---------- */
+const WS0 = [{ name: 'Modellkontroll', tab: 'clash', vMode: 'split', left: true, right: true, ghost: true, colorBy: 'class' }, { name: 'Stålmontage', tab: 'plan', vMode: '3d', left: true, right: false, ghost: false, colorBy: 'orig', only: 'Stålkonstruktion' },
+  { name: 'Prefab', tab: 'plan', vMode: '3d', left: true, right: true, ghost: false, colorBy: 'cont' }, { name: 'Mängdning', tab: 'qty', vMode: '3d', left: true, right: false, ghost: false, colorBy: 'class' }];
+function applyWs(w) {
+  const app = $('app'); app.classList.toggle('noleft', !w.left); app.classList.toggle('noright', !w.right); S.userClosedRight = !w.right; $('vMode').value = w.vMode; layoutViewports(w.vMode === '3d' ? '3d' : w.vMode); S.ghost = !!w.ghost; S.colorBy = w.colorBy || 'orig';
+  if (w.only && S.loaded) { const keep = [], hide = []; for (let i = 0; i < S.nObj; i++) (categoryOf(S.classes[S.objClass[i]]) === w.only ? keep : hide).push(i); if (hide.length && keep.length) A.setVis(hide, false, 'Arbetsyta ' + w.name); }
+  setTab(w.tab); refreshFlags(); setTimeout(resize, 260); toast('Arbetsyta: ' + w.name, 1800);
+}
+$('bWs').onclick = () => {
+  const mine = store.get('ws', []), all = [...WS0, ...mine]; const d = dialog('Arbetsytor', `<p class="muted" style="margin-top:0">Spara hur du vill ha editorn (flik, vyer, paneler, färgning) och byt snabbt mellan uppgifter.</p>${all.map((w, i) => `<div class="fl-it" data-i="${i}"><div style="flex:1"><b>${esc(w.name)}</b><small>${esc({ model: 'Modell', clash: 'Kollisionskontroll', plan: 'Tidplan', qty: 'Mängdning', drawings: 'Ritningar', docs: 'Dokument' }[w.tab])} · ${w.vMode === '3d' ? 'enkel vy' : w.vMode === 'split' ? 'delad vy' : 'flera paneler'}${w.only ? ' · bara ' + esc(w.only.toLowerCase()) : ''}</small></div>${i >= WS0.length ? `<button class="x" data-del="${i - WS0.length}" title="Ta bort">${ic('trash')}</button>` : ''}</div>`).join('')}<div class="row"><button class="btn primary" id="wsSave">${ic('plus')} Spara aktuell layout…</button></div>`);
+  d.el.querySelectorAll('.fl-it').forEach(el => el.onclick = ev => { const del = ev.target.closest('[data-del]'); if (del) { mine.splice(+del.dataset.del, 1); store.set('ws', mine); d.close(); $('bWs').click(); return; } d.close(); applyWs(all[+el.dataset.i]); });
+  d.el.querySelector('#wsSave').onclick = async () => { d.close(); const name = await prompt2('Spara arbetsyta', 'Namn', 'Min arbetsyta', 'Spara'); if (!name) return; const app = $('app'); mine.push({ name, tab: S.tab, vMode: V.layout, left: !app.classList.contains('noleft'), right: !app.classList.contains('noright'), ghost: S.ghost, colorBy: S.colorBy }); store.set('ws', mine); toast('Arbetsyta sparad: ' + name); };
+};
 
 /* ---------- Hjälp och inställningar ---------- */
 $('bHelp').onclick = () => dialog('Navigering och genvägar', `<table class="qt" style="font-size:13.5px"><tr><th>Handling</th><th style="text-align:left">Beteende</th></tr>
@@ -227,6 +269,7 @@ const stage = $('stage'); ['dragenter', 'dragover'].forEach(t => stage.addEventL
 stage.addEventListener('drop', async e => { const f = e.dataTransfer.files[0]; if (f) await openFile(f); });
 $('btnSample').onclick = async () => { busy('Hämtar exempel …'); const r = await fetch('sample.ifc'); await loadIfc(await r.arrayBuffer(), 'Exempelbyggnad.ifc'); };
 $('btnTC').onclick = () => A.openFromTC();
+new ResizeObserver(() => resize()).observe($('stage'));
 window.addEventListener('message', async e => { const m = e.data; if (!m || m.type !== 'rust3d-open' || !m.buffer) return; if (m.kind === 'cloud') await A.loadCloud(m.buffer, m.name || 'moln.xyz'); else await loadIfc(m.buffer, m.name || 'modell.ifc'); });
 const mkBtn = () => { }; void mkBtn;
 $('avatar').textContent = S.user.initials;

@@ -15,7 +15,9 @@ kontakt med 4D-planering och Trimble Connect).
 - **Kontextuell verktygsrad** (anpassas efter markering/verktyg).
 
 ## Funktioner
-- **IFC** läses av Rust: extruderade profiler, triangulerade/polygonala ytnät, facetterad brep, mappade instanser, förenklade booleska resultat, placeringskedjor, enheter, färger/transparens. Egenskaper, kvantiteter och våningar. Redigera namn, beskrivning, taggnr och egenskapsvärden och **spara en ny IFC** (till datorn eller Trimble Connect).
+- **IFC** läses av Rust: extruderade profiler (rektangel, cirkel, I/L/T/U/C/Z, rör/ihåliga, valfria konturer med hål, sammansatta kurvor med cirkelbågar), roterade profiler, rör/armering (`IFCSWEPTDISKSOLID`), CSG-block/cylinder, triangulerade/polygonala ytnät, facetterad och plan avancerad brep, mappade instanser, förenklade booleska resultat, placeringskedjor, enheter (mm/m/fot) och vinkelenheter, färger/transparens. Konturlinjer ritas för hela modellen. Egenskaper, kvantiteter och våningar. Redigera namn, beskrivning, taggnr och egenskapsvärden och **spara en ny IFC** (till datorn eller Trimble Connect).
+- **Flera modeller i samma vy** (federerad modell): lägg till IFC-filer, gruppera trädet per modell, dölj/visa/ta bort modell, ändringar sparas per källfil. **Etablering** från 4D-planering kan läggas in som egen modell.
+- **Arbetsytor:** fyra färdiga (Modellkontroll, Stålmontage, Prefab, Mängdning) och egna sparade layouter (flik, vyer, paneler, färgning).
 - **Mängdning:** yta, volym och antal per klass/våning/kategori (synligt/markerat/allt), CSV. Volymen är exakt för slutna objekt.
 - **Kollisionskontroll:** hårda krockar mellan två grupper (BVH + triangel–triangel i Rust). Övriga objekt tonas ned, problemobjekten markeras, status/ansvarig/kommentar per kollision, CSV.
 - **Punktmoln** (XYZ/CSV, PLY, LAS): utglesning, höjdfärg och **avvikelse mot modellen** med statistik.
@@ -32,6 +34,8 @@ cargo run --release --example bench -- fil.ifc    # tidtagning
 node tools/gen_ifc.js 3 test.ifc moln.xyz         # syntetisk modell + punktmoln
 node ../test/test_rust3d.js                       # webbläsartest av editorn
 node ../test/test_rust3d_bridge.js                # test av bryggan mot (simulerade) 4D-planering/TC
+node ../test/test_rust3d_extra.js                 # arbetsytor, pekskärm, mörkt tema, stor modell
+node ../test/test_rust3d_realifc.js               # riktig IFC-fil (hämtas, hoppas över utan nätverk)
 ```
 
 ## Mätvärden (syntetisk modell 11,4 MB, 18 600 objekt, 220 000 trianglar)
