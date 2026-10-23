@@ -2,7 +2,7 @@
 
 En ny 3D-editor där **Rust gör det tunga och webbläsaren ritar**. Designen följer konceptet "Designkoncept 3D editor"
 (ljust, luftigt, glasliknande paneler, blå accent, modellen i centrum). Den ligger bredvid den vanliga 3D-editorn i
-lägesplanen, som är orörd. Öppna `…/rust3d/` eller knappen **Rust-editor** i lägesplanens 3D-vy (då får editorn
+lägesplanen, som är orörd. Öppna `…/rust3d/`, knappen **Öppna 3D-editor (Rust, labb)** i 4D-planering eller länken i lägesplanens hjälp (då får editorn
 kontakt med 4D-planering och Trimble Connect).
 
 ## Gränssnittet (docs/rust3d)

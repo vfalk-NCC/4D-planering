@@ -844,6 +844,8 @@ function bindUI() {
   document.getElementById("btnStatusPlan").onclick = () => openLagesplanWindow("");
   const b3d = document.getElementById("btnOpen3d");
   if (b3d) b3d.onclick = () => openLagesplanWindow("&view=3d");
+  const bRust = document.getElementById("btnOpenRust");
+  if (bRust) bRust.onclick = () => { const w = window.open("rust3d/index.html" + (projectId ? "?project=" + encodeURIComponent(projectId) : ""), "rust3d-editor"); if (w) w.focus(); };
   /* Lägesplanen (view=3d: direkt i 3D-vyn). */
   function openLagesplanWindow(extra) {
     if (!projectId) { alert("Projektet är inte laddat än."); return; }
