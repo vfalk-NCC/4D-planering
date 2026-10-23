@@ -171,7 +171,7 @@ function l3RenderLib() {
     l3.addType = l3.addType === k ? null : k;
     // Smal skärm: biblioteket ligger över modellen – fäll ihop det så att man kan trycka i 3D.
     if (l3.addType && window.innerWidth < 700) { const pal = document.getElementById("v3Pal"), po = document.getElementById("v3PalOpen"); if (pal && po) { pal.classList.add("hidden"); po.classList.remove("hidden"); } }
-    l3Status(l3.addType ? ((placeLib(k) || {}).fence ? "Staket: tryck första punkten." : "Tryck där objektet ska stå (marken eller ett objekt). Esc avbryter.") : "");
+    l3Status(l3.addType ? ((placeLib(k) || {}).fence ? "Tryck första punkten, sedan nästa – Enter när du är klar." : "Tryck där objektet ska stå (marken eller ett objekt). Esc avbryter.") : "");
     l3RenderLib();
   }; });
   // Dra ett objekt till en annan mapp (samma grafik som för grupper, kommentarer och mått).

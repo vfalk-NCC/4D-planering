@@ -79,9 +79,28 @@ TK.ring = (r0, r1, z0, z1, seg = 48) => {
   return { pts, faces };
 };
 /* Plan polygon [[x,y]…] (moturs) utdragen mellan z0 och z1. */
+/* Triangulering av en (eventuellt konkav) polygon i planet: returnerar index-trippler [i,j,k] (0-baserade, moturs om polygonen är moturs). Konvexa polygoner ger en solfjäder. */
+TK.area2 = poly => { let a = 0; for (let i = 0; i < poly.length; i++) { const p = poly[i], q = poly[(i + 1) % poly.length]; a += p[0] * q[1] - q[0] * p[1]; } return a / 2; };
+TK.tri2 = poly => {
+  const n = poly.length; if (n < 3) return []; const ccw = TK.area2(poly) >= 0, idx = Array.from({ length: n }, (_, i) => i); if (!ccw) idx.reverse();
+  const cr = (a, b, c) => (poly[b][0] - poly[a][0]) * (poly[c][1] - poly[a][1]) - (poly[b][1] - poly[a][1]) * (poly[c][0] - poly[a][0]);
+  let convex = true; for (let i = 0; i < n; i++) if (cr(idx[i], idx[(i + 1) % n], idx[(i + 2) % n]) < -1e-12) { convex = false; break; }
+  const out = []; if (convex) { for (let k = 1; k + 1 < n; k++) out.push([idx[0], idx[k], idx[k + 1]]); return out; }
+  let guard = 0; while (idx.length > 3 && guard++ < n * n + 8) {
+    const m = idx.length; let found = false;
+    for (let i = 0; i < m; i++) { const a = idx[(i + m - 1) % m], b = idx[i], c = idx[(i + 1) % m]; if (cr(a, b, c) <= 1e-12) continue; let ok = true;
+      for (const j of idx) { if (j === a || j === b || j === c) continue; const q = poly[j]; if ((q[0] === poly[a][0] && q[1] === poly[a][1]) || (q[0] === poly[b][0] && q[1] === poly[b][1]) || (q[0] === poly[c][0] && q[1] === poly[c][1])) continue;
+        const d1 = cr(a, b, j), d2 = cr(b, c, j), d3 = cr(c, a, j); if (d1 >= 0 && d2 >= 0 && d3 >= 0) { ok = false; break; } }
+      if (ok) { out.push([a, b, c]); idx.splice(i, 1); found = true; break; } }
+    if (!found) break;
+  }
+  if (idx.length >= 3) for (let k = 1; k + 1 < idx.length; k++) out.push([idx[0], idx[k], idx[k + 1]]);
+  return out;
+};
 TK.prism = (poly, z0, z1) => {
+  if (TK.area2(poly) < 0) poly = poly.slice().reverse();
   const n = poly.length, pts = [...poly.map(q => [q[0], q[1], z0]), ...poly.map(q => [q[0], q[1], z1])], faces = [];
-  for (let k = 1; k + 1 < n; k++) faces.push([1, k + 2, k + 1], [n + 1, n + k + 1, n + k + 2]);
+  TK.tri2(poly).forEach(([a, b, c]) => faces.push([a + 1, c + 1, b + 1], [n + a + 1, n + b + 1, n + c + 1]));
   for (let i = 0; i < n; i++) { const j = (i + 1) % n; faces.push([i + 1, j + 1, j + n + 1], [i + 1, j + n + 1, i + n + 1]); }
   return { pts, faces };
 };

@@ -221,7 +221,7 @@ function l3HandleUp(cancel) {
   if (!H.moved) { l3Status(""); return; } // bara ett tryck
   {
     placeTouch(p); l3Changed();
-    l3Status(H.h.key === "pt" ? `Staket: ${p.pts.length} punkter.` : `${l3HandleLabel[H.h.key]} ${String(p[H.h.key]).replace(".", ",")} m.`);
+    l3Status(H.h.key === "pt" ? `${(placeLib(p.type) || {}).label || "Staket"}: ${p.pts.length} punkter.` : `${l3HandleLabel[H.h.key]} ${String(p[H.h.key]).replace(".", ",")} m.`);
   }
   l3RebuildOne(p); l3HandlesBuild(); l3RenderSide();
 }

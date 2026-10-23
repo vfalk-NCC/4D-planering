@@ -10,6 +10,44 @@ function smWheel(c, x, y, r, w, rim) {
   for (let i = 0; i < 8; i++) { const t = i * Math.PI / 4; c.sph("#d5dbe1", x + Math.cos(t) * r * 0.38, y + s * w * 0.52, r + Math.sin(t) * r * 0.38, 0.028, 0.02, 0.028, 6, 4, null, SMM); }
 }
 function smStripe(c, a0, a1, y, z, th, col) { c.box(col, (a0 + a1) / 2, y, z, Math.abs(a1 - a0), 0.012, th, null, 0); }
+/* ---- Gjutetapp: form, kantreglar, armering (synliga stänger i objektet) och mängder ---- */
+const GJ_FORM_FIELDS = free => (free ? [["radie", "Hörnradie (m)", "num", 0]] : [["form", "Form", ["Rektangel", "L-form", "T-form", "U-form"], "Rektangel"], ["cutL", "Utskärning längd (m)", "num", 4], ["cutB", "Utskärning bredd (m)", "num", 3], ["radie", "Hörnradie (m)", "num", 0]]);
+const GJ_ARM_FIELDS = () => [["arm", "Armering", ["Visa", "Dölj"], "Visa"], ["uD", "Undre nät Ø (mm)", "num", 12], ["uS", "Undre nät c/c (mm)", "num", 150], ["oD", "Övre nät Ø (mm, 0 = inget)", "num", 0], ["oS", "Övre nät c/c (mm)", "num", 150], ["tak", "Täckskikt (mm)", "num", 40], ["ang", "Armeringens riktning (°)", "num", 0]];
+const GJ_INFO_FIELDS = () => [["vol", "Volym (m³, 0 = ur formen)", "num", 0], ["kval", "Kvalitet", "text", "C30/37"], ["pump", "Pumpplats", "text", ""], ["start", "Starttid", "text", "07:00"], ["bil", "m³ per bil", "num", 8], ["kap", "Pumpkapacitet (m³/h)", "num", 30]];
+function gjutPoly(p) {
+  const L = p.L / 2, B = p.B / 2, f = smF(p, "form", "Rektangel"), cl = Math.max(0.5, Math.min(smN(p, "cutL", 4), p.L - 1)), cb = Math.max(0.5, Math.min(smN(p, "cutB", 3), p.B - 1));
+  let P = [[-L, -B], [L, -B], [L, B], [-L, B]];
+  if (f === "L-form") P = [[-L, -B], [L, -B], [L, B - cb], [L - cl, B - cb], [L - cl, B], [-L, B]];
+  else if (f === "U-form") P = [[-L, -B], [L, -B], [L, B], [cl / 2, B], [cl / 2, B - cb], [-cl / 2, B - cb], [-cl / 2, B], [-L, B]];
+  else if (f === "T-form") P = [[-L + cl, -B], [L - cl, -B], [L - cl, B - cb], [L, B - cb], [L, B], [-L, B], [-L, B - cb], [-L + cl, B - cb]];
+  return smFillet(P.map(q => [q[0], q[1], 0]), smN(p, "radie", 0), true).map(q => [q[0], q[1]]);
+}
+/* Skär en polygon med parallella linjer (riktning ang, delning s): [[a, b], …] linjesegment inne i polygonen, krympta med täckskiktet. */
+function gjutScan(poly, ang, s, cover) {
+  const ca = Math.cos(-ang), sa = Math.sin(-ang), R = poly.map(([x, y]) => [x * ca - y * sa, x * sa + y * ca]), ys = R.map(q => q[1]), y0 = Math.min(...ys) + cover, y1 = Math.max(...ys) - cover, out = [], back = (x, y) => [x * Math.cos(ang) - y * Math.sin(ang), x * Math.sin(ang) + y * Math.cos(ang)];
+  for (let y = y0; y <= y1 + 1e-6; y += s) { const xs = []; for (let i = 0; i < R.length; i++) { const a = R[i], b = R[(i + 1) % R.length]; if ((a[1] <= y && b[1] > y) || (b[1] <= y && a[1] > y)) xs.push(a[0] + (y - a[1]) / (b[1] - a[1]) * (b[0] - a[0])); } xs.sort((m, n) => m - n); for (let k = 0; k + 1 < xs.length; k += 2) { const x0 = xs[k] + cover, x1 = xs[k + 1] - cover; if (x1 - x0 > 0.1) out.push([back(x0, y), back(x1, y)]); } }
+  return out;
+}
+function gjutBuild(p, c, poly, zb, free) {
+  const H = Math.max(0.05, Number(p.H) || 0.25), xs = poly.map(q => q[0]), ys = poly.map(q => q[1]), minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys), area = Math.abs(TK.area2(poly));
+  const v = smN(p, "vol", 0) > 0 ? smN(p, "vol", 0) : area * H, bilar = Math.ceil(v / Math.max(1, smN(p, "bil", 8))), tim = v / Math.max(1, smN(p, "kap", 30));
+  c.prism("#9aa4b2", poly, zb, zb + H, { transp: 0.55, rough: 0.9 });                                                                                                   // betongen (genomskinlig så att armeringen syns)
+  const ccw = TK.area2(poly) >= 0, n = poly.length;                                                                                                                      // kantreglar (formsida) längs hela konturen
+  for (let i = 0; i < n; i++) { const a = poly[i], b = poly[(i + 1) % n], dx = b[0] - a[0], dy = b[1] - a[1], dd = Math.hypot(dx, dy); if (dd < 0.02) continue; const nx = (ccw ? dy : -dy) / dd * 0.1, ny = (ccw ? -dx : dx) / dd * 0.1; c.prism("#475569", [[a[0], a[1]], [b[0], b[1]], [b[0] + nx, b[1] + ny], [a[0] + nx, a[1] + ny]], zb - 0.02, zb + H + 0.1); }
+  let kg = 0, txt = "";
+  if (smF(p, "arm", "Visa") !== "Dölj") {
+    const cover = Math.max(0.01, smN(p, "tak", 40) / 1000), ang = smN(p, "ang", 0) * Math.PI / 180, layers = [];
+    const uD = smN(p, "uD", 12), uS = Math.max(50, smN(p, "uS", 150)), oD = smN(p, "oD", 0), oS = Math.max(50, smN(p, "oS", 150));
+    if (uD > 0) layers.push([uD, uS, cover + uD / 2000, cover + uD * 1.5 / 1000]); if (oD > 0) layers.push([oD, oS, H - cover - oD * 1.5 / 1000, H - cover - oD / 2000]);
+    layers.forEach(([d, sMM, z1, z2], li) => { let s = sMM / 1000; const side = Math.max(maxX - minX, maxY - minY); if (side / s > 70) s = side / 70; // för många stänger: visa glesare (mängden räknas ändå med riktig delning)
+      [[ang, z1], [ang + Math.PI / 2, z2]].forEach(([a, z]) => { gjutScan(poly, a, s, cover).forEach(([q0, q1]) => c.rod(li ? "#2563eb" : "#475569", [q0[0], q0[1], zb + z], [q1[0], q1[1], zb + z], d / 2000, d / 2000, 6, { metal: 0.85, rough: 0.35, shin: 90 }));
+        gjutScan(poly, a, sMM / 1000, cover).forEach(([q0, q1]) => { kg += Math.hypot(q1[0] - q0[0], q1[1] - q0[1]) * d * d / 162; }); }); });
+    txt = layers.map(([d, sMM], li) => `${li ? "Övre" : "Undre"} Ø${d} c/c${sMM}`).join(" · ");
+  }
+  const mx = (minX + maxX) / 2, my = (minY + maxY) / 2, ar = Math.min(2.4, Math.max(0.8, (maxX - minX) * 0.16));
+  c.prism("#f59e0b", [[-1.6, -0.35], [0.4, -0.35], [0.4, -0.8], [1.8, 0], [0.4, 0.8], [0.4, 0.35], [-1.6, 0.35]].map(([x, y]) => [mx + x * ar / 1.8, my + y * ar / 1.8]), zb + H + 0.01, zb + H + 0.03, { unlit: true });  // gjutriktning
+  c.card({ title: "Gjutetapp", icon: "box", color: "#475569", left: ["m³", smFmt(v, 1)], rows: [["Kvalitet", smF(p, "kval")], ["Pumpplats / start", [smF(p, "pump"), smF(p, "start")].filter(Boolean).join(" · ")], ["Bilar / pumptid", `ca ${bilar} bilar · ${smFmt(tim, 1)} h`], ...(txt ? [["Armering", txt], ["Stål", `${smFmt(kg, 0)} kg · ${smFmt(kg / Math.max(0.1, v), 0)} kg/m³`]] : [])], b0: minY - 0.4, zb: 2.45 + zb });
+}
 const SM = {
   leverans: { group: "Logistik", label: "Leverans / upplag", color: "#f59e0b", L: 2.4, B: 1.2, H: 1.1, icon: "box", fields: [["innehall", "Innehåll", "text", "HD/F pelare ×12"], ["lev", "Leverantör", "text", ""], ["datum", "Leveransdatum", "date", ""], ["status", "Status", ["Beställd", "På väg", "Levererad"], "Beställd"]],
     build(p, c) { const L = p.L / 2, B = p.B / 2, st = smF(p, "status", "Beställd"), sc = SM_ST[st] || "#f59e0b", H = Math.max(0.5, p.H);
@@ -19,15 +57,11 @@ const SM = {
       [-0.55, 0.05, 0.6].forEach(a => { c.box("#e5e7eb", a * L, 0, 0.15 + H / 2 - 0.02, 0.05, p.B - 0.12, H - 0.06, null, 0.012); c.box("#e5e7eb", a * L, 0, 0.15 + H / 2 - 0.02, 0.052, p.B - 0.14, H - 0.04, null, 0.012); });  // sträckband
       c.box("#f3f4f6", L - 0.3, -B - 0.002, 0.15 + H * 0.6, 0.34, 0.01, 0.22, null, 0, SMLIT);                                                                  // fraktsedel
       c.card({ title: "Leverans: " + st, icon: "truck", color: sc, rows: [["Innehåll", smF(p, "innehall")], ["Leverantör", smF(p, "lev")], ["Datum", smF(p, "datum")]], b0: -(B + 0.3) }); } },
-  gjutetapp: { group: "Logistik", label: "Gjutetapp", color: "#64748b", L: 12, B: 8, H: 0.15, icon: "box", fields: [["vol", "Volym (m³)", "num", 40], ["kval", "Kvalitet", "text", "C30/37"], ["pump", "Pumpplats", "text", ""], ["start", "Starttid", "text", "07:00"], ["bil", "m³ per bil", "num", 8], ["kap", "Pumpkapacitet (m³/h)", "num", 30]],
-    build(p, c) { const L = p.L / 2, B = p.B / 2, v = smN(p, "vol", 0), bilar = Math.ceil(v / Math.max(1, smN(p, "bil", 8))), tim = v / Math.max(1, smN(p, "kap", 30));
-      c.box("#9aa4b2", 0, 0, p.H / 2, p.L, p.B, p.H, null, 0.02, { transp: 0.55, rough: 0.9 });
-      [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([a, b], i) => { const nx = (i % 2 === 0) ? 1 : 0; }); // kantreglar (formsida)
-      c.box("#475569", 0, -B, 0.12, p.L + 0.16, 0.1, 0.24, null, 0.02); c.box("#475569", 0, B, 0.12, p.L + 0.16, 0.1, 0.24, null, 0.02); c.box("#475569", -L, 0, 0.12, 0.1, p.B + 0.16, 0.24, null, 0.02); c.box("#475569", L, 0, 0.12, 0.1, p.B + 0.16, 0.24, null, 0.02);
-      for (let a = -L + 1.5; a < L - 0.5; a += 1.5) c.box("#cbd5e1", a, 0, p.H + 0.004, 0.03, p.B - 0.2, 0.008, null, 0, { transp: 0.3 });                           // rutnät (armering)
-      for (let b = -B + 1.5; b < B - 0.5; b += 1.5) c.box("#cbd5e1", 0, b, p.H + 0.004, p.L - 0.2, 0.03, 0.008, null, 0, { transp: 0.3 });
-      c.prism("#f59e0b", [[-1.6, -0.35], [0.4, -0.35], [0.4, -0.8], [1.8, 0], [0.4, 0.8], [0.4, 0.35], [-1.6, 0.35]], p.H + 0.01, p.H + 0.03, { unlit: true });  // gjutriktning
-      c.card({ title: "Gjutetapp", icon: "box", color: "#475569", left: ["m³", smFmt(v, 1)], rows: [["Kvalitet", smF(p, "kval")], ["Pumpplats / start", [smF(p, "pump"), smF(p, "start")].filter(Boolean).join(" · ")], ["Bilar / pumptid", `ca ${bilar} bilar · ${smFmt(tim, 1)} h`]], b0: -(B + 0.3) }); } },
+  gjutetapp: { group: "Logistik", label: "Gjutetapp", color: "#64748b", L: 12, B: 8, H: 0.25, icon: "box", fields: [...GJ_FORM_FIELDS(false), ...GJ_ARM_FIELDS(), ...GJ_INFO_FIELDS()],
+    build(p, c) { gjutBuild(p, c, gjutPoly(p), 0, false); } },
+  gjutform: { group: "Logistik", label: "Gjutetapp (fri form)", color: "#64748b", path: true, H: 0.25, icon: "box", fields: [...GJ_FORM_FIELDS(true), ...GJ_ARM_FIELDS(), ...GJ_INFO_FIELDS()],
+    build(p, c) { const P = p.pts || [], ox = Number(p.x) || 0, oy = Number(p.y) || 0; if (P.length < 3) { P.forEach(q => c.cyl("#f59e0b", "z", q[0] - ox, q[1] - oy, 0.5, 0.12, 0.12, 1, 10)); return; }
+      gjutBuild(p, c, smFillet(P.map(q => [q[0] - ox, q[1] - oy, 0]), smN(p, "radie", 0), true).map(q => [q[0], q[1]]), (P[0][2] || 0) + (Number(p.dz) || 0) - c.z, true); } },
   lyftkort: { group: "Lyft & montage", label: "Lyftkort", color: "#eab308", L: 1.8, B: 1.8, H: 1.2, icon: "crane", fields: [["obj", "Objekt som lyfts", "text", ""], ["vikt", "Vikt (ton)", "num", 10], ["kran", "Kran", "kran", ""], ["rad", "Radie (m)", "num", 20], ["status", "Status", ["Planerad", "Klar"], "Planerad"]],
     build(p, c) { const vikt = smN(p, "vikt", 0), rad = smN(p, "rad", 0), kran = smF(p, "kran", SM_KRAN()[3] || ""); let util = null, hex = "#eab308";
       if (typeof l3lCap === "function" && typeof L3L_MODELS !== "undefined") { const m = L3L_MODELS.find(x => x.name === kran) || L3L_MODELS[3], ch = String(m.chart).split("\n").map(l => l.split(":").map(Number)); const cap = l3lCap(rad, ch); util = vikt > 0 ? (cap > 0 ? vikt / cap : 9.99) : 0; hex = util > 1 ? "#ef4444" : util > 0.8 ? "#f59e0b" : "#22c55e"; }
@@ -68,8 +102,8 @@ const SM = {
       c.card({ title: "Samlingsplats", icon: "flag", color: "#16a34a", left: ["Pers", String(smN(p, "kap", 0))], rows: [["Ansvarig", smF(p, "ans")]], b0: -(B + 0.35) }); } },
   utrymning: { group: "Risk & säkerhet", label: "Utrymningsväg", color: "#22c55e", path: true, H: 0.05, icon: "flag", fields: [["bredd", "Bredd (m)", "num", 1.2], ["till", "Leder till", "text", "Samlingsplats"]],
     build(p, c) { const w = smN(p, "bredd", 1.2) / 2; c.path(w, "#16a34a", 0.04, true); const P = p.pts || []; if (P.length) c.cardAt(P[0], { title: "Utrymningsväg", icon: "flag", color: "#16a34a", rows: [["Leder till", smF(p, "till")], ["Bredd", smFmt(w * 2, 1) + " m"]], b0: -1.0, zb: 2.2 }); } },
-  transport: { group: "Logistik", label: "Transportväg", color: "#475569", path: true, H: 0.04, icon: "truck", fields: [["bredd", "Bredd (m)", "num", 4.5], ["last", "Max last (ton)", "num", 40], ["rikt", "Trafik", ["Dubbelriktad", "Enkelriktad"], "Dubbelriktad"]],
-    build(p, c) { const w = smN(p, "bredd", 4.5) / 2; c.path(w, "#64748b", 0.04, false); const P = p.pts || []; if (P.length) c.cardAt(P[0], { title: "Transportväg", icon: "truck", color: "#334155", rows: [["Bredd / last", `${smFmt(w * 2, 1)} m · ${smN(p, "last", 0)} t`], ["Trafik", smF(p, "rikt")]], b0: -1.5, zb: 2.2 }); } },
+  transport: { group: "Logistik", label: "Transportväg", color: "#475569", path: true, H: 0.04, icon: "truck", fields: [["bredd", "Bredd (m)", "num", 4.5], ["radie", "Hörnradie (m)", "num", 8], ["last", "Max last (ton)", "num", 40], ["rikt", "Trafik", ["Dubbelriktad", "Enkelriktad"], "Dubbelriktad"]],
+    build(p, c) { const w = smN(p, "bredd", 4.5) / 2; c.path(w, "#64748b", 0.04, p.f && p.f.rikt === "Enkelriktad", smN(p, "radie", 8)); const P = p.pts || []; if (P.length) c.cardAt(P[0], { title: "Transportväg", icon: "truck", color: "#334155", rows: [["Bredd / last", `${smFmt(w * 2, 1)} m · ${smN(p, "last", 0)} t`], ["Trafik", smF(p, "rikt")]], b0: -1.5, zb: 2.2 }); } },
   avvikelse: { group: "Kvalitet & uppföljning", label: "Avvikelse / fråga", color: "#ef4444", L: 0.5, B: 0.5, H: 1.5, icon: "warn", fields: [["rubrik", "Rubrik", "text", ""], ["besk", "Beskrivning", "text", ""], ["ans", "Ansvarig", "text", ""], ["status", "Status", ["Öppen", "Pågår", "Åtgärdad"], "Öppen"], ["datum", "Datum", "date", ""]],
     build(p, c) { const st = smF(p, "status", "Öppen"), sc = SM_ST[st]; smPin(c, sc, "!"); c.card({ title: "Avvikelse: " + st, icon: "warn", color: sc, rows: [["Rubrik", smF(p, "rubrik")], ["Beskrivning", smF(p, "besk")], ["Ansvarig / datum", [smF(p, "ans"), smF(p, "datum")].filter(Boolean).join(" · ")]], zb: 2.0, b0: -0.5 }); } },
   egenkontroll: { group: "Kvalitet & uppföljning", label: "Egenkontroll", color: "#22c55e", L: 0.5, B: 0.5, H: 1.5, icon: "check", fields: [["obj", "Objekt", "text", ""], ["klara", "Klara kontrollpunkter", "num", 0], ["tot", "Totalt antal", "num", 10], ["ans", "Kontrollant", "text", ""]],

@@ -129,9 +129,10 @@ function crewMergeGroups(parts, o) {
     if (pt.sign) return; const mt = pt.mat || {};
     const k = (pt.color || "#888888") + "|" + (pt.unlit ? 1 : 0) + "|" + (pt.transp || 0) + "|" + (pt.role === "reach" ? 1 : 0) + "|" + (mt.shin == null ? "" : mt.shin) + "|" + (mt.metal == null ? "" : mt.metal) + "|" + (mt.rough == null ? "" : mt.rough), G = m.get(k) || m.set(k, { color: pt.color || "#888888", unlit: !!pt.unlit, transp: pt.transp || 0, reach: pt.role === "reach", mat: mt, pts: [], faces: [], sg: [] }).get(k), base = G.pts.length;
     if (pt.tris) { pt.tris.pts.forEach(q => G.pts.push([q[0] - o[0], q[1] - o[1], q[2] - o[2]])); pt.tris.faces.forEach((f, i) => { G.faces.push([f[0] + base, f[1] + base, f[2] + base]); G.sg.push(pt.tris.sg ? pt.tris.sg[i] : 0); }); return; }
-    const n = pt.poly.length; pt.poly.forEach(q => G.pts.push([q[0] - o[0], q[1] - o[1], pt.z0 - o[2]])); pt.poly.forEach(q => G.pts.push([q[0] - o[0], q[1] - o[1], pt.z1 - o[2]]));
+    let poly = pt.poly; if (typeof TK !== "undefined" && TK.area2(poly) < 0) poly = poly.slice().reverse(); const n = poly.length; poly.forEach(q => G.pts.push([q[0] - o[0], q[1] - o[1], pt.z0 - o[2]])); poly.forEach(q => G.pts.push([q[0] - o[0], q[1] - o[1], pt.z1 - o[2]]));
     const fp = f => { G.faces.push(f); G.sg.push(0); };
-    for (let k2 = 1; k2 + 1 < n; k2++) { fp([base + 1, base + k2 + 2, base + k2 + 1]); fp([base + n + 1, base + n + k2 + 1, base + n + k2 + 2]); }
+    if (typeof TK !== "undefined") TK.tri2(poly).forEach(([a, b2, c2]) => { fp([base + a + 1, base + c2 + 1, base + b2 + 1]); fp([base + n + a + 1, base + n + b2 + 1, base + n + c2 + 1]); });
+    else for (let k2 = 1; k2 + 1 < n; k2++) { fp([base + 1, base + k2 + 2, base + k2 + 1]); fp([base + n + 1, base + n + k2 + 1, base + n + k2 + 2]); }
     for (let i = 0; i < n; i++) { const j = (i + 1) % n; fp([base + i + 1, base + j + 1, base + j + n + 1]); fp([base + i + 1, base + j + n + 1, base + i + n + 1]); }
   });
   return [...m.values()];

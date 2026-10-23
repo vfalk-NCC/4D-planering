@@ -60,6 +60,21 @@ function smartLib(type) {
 const smIsType = t => String(t || "").startsWith("sm:");
 function smartInit(p) { const d = SM[String(p.type).slice(3)]; if (!d) return; p.f = {}; (d.fields || []).forEach(([k, , , def]) => { p.f[k] = def; }); }
 /* Byggkontexten: lokala hjälpare (plan i objektets egna axlar a/b, z uppåt) och formsamlingar (TK, place-geo.js) per färg/material som slås ihop vid flush(). */
+/* Rundar hörnen i en punktlista (x,y,z) med cirkelbågar med radie r. Radien krymper där segmenten är för korta. closed = sluten kontur. */
+function smFillet(P, r, closed) {
+  const pts = []; P.forEach(q => { const l = pts[pts.length - 1]; if (!l || Math.hypot(q[0] - l[0], q[1] - l[1]) > 0.005) pts.push([q[0], q[1], q[2] || 0]); });
+  if (closed && pts.length > 2 && Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1]) < 0.005) pts.pop();
+  if (!(r > 0.01) || pts.length < 3) return pts; const n = pts.length, out = [];
+  for (let i = 0; i < n; i++) {
+    const b = pts[i]; if (!closed && (i === 0 || i === n - 1)) { out.push(b); continue; }
+    const a = pts[(i + n - 1) % n], c = pts[(i + 1) % n], ux = a[0] - b[0], uy = a[1] - b[1], vx = c[0] - b[0], vy = c[1] - b[1], lu = Math.hypot(ux, uy), lv = Math.hypot(vx, vy); if (lu < 1e-6 || lv < 1e-6) { out.push(b); continue; }
+    const nux = ux / lu, nuy = uy / lu, nvx = vx / lv, nvy = vy / lv, cs = Math.max(-1, Math.min(1, nux * nvx + nuy * nvy)), th = Math.acos(cs); if (th > Math.PI - 0.02 || th < 0.02) { out.push(b); continue; }
+    const lim = 0.5 * Math.min(lu, lv) * (closed || (i > 1 && i < n - 2) ? 1 : 2), t = Math.min(r / Math.tan(th / 2), lim), re = t * Math.tan(th / 2), bis = Math.hypot(nux + nvx, nuy + nvy), cx = b[0] + (nux + nvx) / bis * re / Math.sin(th / 2), cy = b[1] + (nuy + nvy) / bis * re / Math.sin(th / 2);
+    const s = [b[0] + nux * t, b[1] + nuy * t], e = [b[0] + nvx * t, b[1] + nvy * t]; let a0 = Math.atan2(s[1] - cy, s[0] - cx), a1 = Math.atan2(e[1] - cy, e[0] - cx), da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+    const steps = Math.max(3, Math.ceil(Math.abs(da) / (Math.PI / 14))); for (let k = 0; k <= steps; k++) { const ang = a0 + da * k / steps; out.push([cx + Math.cos(ang) * re, cy + Math.sin(ang) * re, b[2]]); }
+  }
+  return out;
+}
 function smMakeCtx(p, z, col) {
   const parts = [], Ts = new Map(), W = (a, b) => placeToWorld(p, a, b);
   const add = (pl, z0, z1, color, extra) => parts.push({ poly: pl, z0: z + z0, z1: z + z1, role: "body", transp: 0, color: color || col, ...(extra || {}) });
@@ -86,16 +101,24 @@ function smartParts(p, z) {
   ctx.cardAt = (pt, s) => { const c2 = { ...ctx, W: (a, b) => [pt[0] + a, pt[1] + b], z: (Number(pt[2]) || 0) + (Number(p.dz) || 0) }; c2.add = (pl, z0, z1, color, extra) => parts.push({ poly: pl, z0: c2.z + z0, z1: c2.z + z1, role: "body", transp: 0, color: color || col, ...(extra || {}) }); smCard(c2, ctx.withDate(s)); };
   ctx.pin = hex => { add(ctx.oct(0.2, 10), 0, 0.06, "#374151"); add(ctx.rect(-0.03, 0.03, -0.03, 0.03), 0.06, 1.2, "#9ca3af"); add(ctx.oct(0.22, 10), 1.2, 1.32, hex); add(ctx.oct(0.17, 10), 1.32, 1.42, hex); add(ctx.oct(0.1, 8), 1.42, 1.48, hex); };
   ctx.reach = (r, color) => parts.push({ poly: Array.from({ length: 64 }, (_, i) => W(r * Math.cos(i * 2 * Math.PI / 64), r * Math.sin(i * 2 * Math.PI / 64))), z0: ctx.z, z1: ctx.z + 0.04, role: "reach", transp: 0.8, color });
-  ctx.path = (w, color, h, arrows) => { const P = p.pts || []; for (let i = 1; i < P.length; i++) { const a = P[i - 1], b = P[i], dd = Math.hypot(b[0] - a[0], b[1] - a[1]); if (dd < 0.01) continue; const ux = (b[0] - a[0]) / dd, uy = (b[1] - a[1]) / dd, z0 = Math.min(a[2] || 0, b[2] || 0) + (Number(p.dz) || 0);
-      parts.push({ poly: [[a[0] + uy * w, a[1] - ux * w], [b[0] + uy * w, b[1] - ux * w], [b[0] - uy * w, b[1] + ux * w], [a[0] - uy * w, a[1] + ux * w]], z0, z1: z0 + h, role: "body", transp: 0.25, color });
-      if (arrows) for (let s = 1.5; s < dd - 0.8; s += 3) { const cx = a[0] + ux * s, cy = a[1] + uy * s, q = Math.min(w * 0.7, 0.5); parts.push({ poly: [[cx + ux * q, cy + uy * q], [cx - ux * q * 0.6 + uy * q, cy - uy * q * 0.6 - ux * q], [cx - ux * q * 0.2, cy - uy * q * 0.2], [cx - ux * q * 0.6 - uy * q, cy - uy * q * 0.6 + ux * q]], z0: z0 + h, z1: z0 + h + 0.02, role: "body", transp: 0, color: "#ffffff" }); }
-      else if (w > 0.8) { const dash = Math.min(w * 0.06, 0.12); for (let s = 0.5; s < dd - 1; s += 3) parts.push({ poly: [[a[0] + ux * s + uy * dash, a[1] + uy * s - ux * dash], [a[0] + ux * (s + 1.5) + uy * dash, a[1] + uy * (s + 1.5) - ux * dash], [a[0] + ux * (s + 1.5) - uy * dash, a[1] + uy * (s + 1.5) + ux * dash], [a[0] + ux * s - uy * dash, a[1] + uy * s + ux * dash]], z0: z0 + h, z1: z0 + h + 0.02, role: "body", transp: 0, color: "#fde047" }); } } };
+  /* Väg/band längs punkterna: hörnen rundas med radie (cirkelbågar) och bandet ritas sömlöst (geringsskarvar), så att inga rektanglar klipps i hörnen. */
+  ctx.path = (w, color, h, arrows, radius) => {
+    const Q = smFillet(p.pts || [], Number(radius) || 0, false); if (Q.length < 2) return; const dz = Number(p.dz) || 0, n = Q.length, nrm = [];
+    for (let i = 0; i < n - 1; i++) { const dd = Math.hypot(Q[i + 1][0] - Q[i][0], Q[i + 1][1] - Q[i][1]) || 1; nrm.push([-(Q[i + 1][1] - Q[i][1]) / dd, (Q[i + 1][0] - Q[i][0]) / dd]); }
+    const off = Q.map((q, i) => { const n1 = nrm[Math.max(0, i - 1)], n2 = nrm[Math.min(n - 2, i)]; let mx = n1[0] + n2[0], my = n1[1] + n2[1]; const ml = Math.hypot(mx, my); if (ml < 1e-6) return [n2[0] * w, n2[1] * w]; mx /= ml; my /= ml; const k = Math.min(2.2, 1 / Math.max(0.3, mx * n2[0] + my * n2[1])); return [mx * w * k, my * w * k]; });
+    let len = 0; const cum = [0];
+    for (let i = 0; i < n - 1; i++) { const a = Q[i], b = Q[i + 1], z0 = Math.min(a[2] || 0, b[2] || 0) + dz; len += Math.hypot(b[0] - a[0], b[1] - a[1]); cum.push(len);
+      parts.push({ poly: [[a[0] + off[i][0], a[1] + off[i][1]], [b[0] + off[i + 1][0], b[1] + off[i + 1][1]], [b[0] - off[i + 1][0], b[1] - off[i + 1][1]], [a[0] - off[i][0], a[1] - off[i][1]]], z0, z1: z0 + h, role: "body", transp: 0.25, color }); }
+    const at = s => { let i = 1; while (i < n - 1 && cum[i] < s) i++; const t = (s - cum[i - 1]) / Math.max(1e-9, cum[i] - cum[i - 1]), a = Q[i - 1], b = Q[i], dd = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return { x: a[0] + (b[0] - a[0]) * t, y: a[1] + (b[1] - a[1]) * t, ux: (b[0] - a[0]) / dd, uy: (b[1] - a[1]) / dd, z: Math.min(a[2] || 0, b[2] || 0) + dz }; };
+    if (arrows) for (let s = 1.5; s < len - 0.8; s += 3) { const o = at(s), q = Math.min(w * 0.7, 0.5), z0 = o.z + h; parts.push({ poly: [[o.x + o.ux * q, o.y + o.uy * q], [o.x - o.ux * q * 0.6 + o.uy * q, o.y - o.uy * q * 0.6 - o.ux * q], [o.x - o.ux * q * 0.2, o.y - o.uy * q * 0.2], [o.x - o.ux * q * 0.6 - o.uy * q, o.y - o.uy * q * 0.6 + o.ux * q]], z0, z1: z0 + 0.02, role: "body", transp: 0, color: "#ffffff" }); }
+    else if (w > 0.8) { const dash = Math.min(w * 0.06, 0.12); for (let s = 0.5; s < len - 1; s += 3) { const a0 = at(s), a1 = at(Math.min(len, s + 1.5)), z0 = a0.z + h; parts.push({ poly: [[a0.x + a0.uy * dash, a0.y - a0.ux * dash], [a1.x + a1.uy * dash, a1.y - a1.ux * dash], [a1.x - a1.uy * dash, a1.y + a1.ux * dash], [a0.x - a0.uy * dash, a0.y + a0.ux * dash]], z0, z1: z0 + 0.02, role: "body", transp: 0, color: "#fde047" }); } }
+  };
   d.build(p, ctx); ctx.flush(); return parts;
 }
 function smartProps(p) {
   const d = SM[String(p.type).slice(3)]; if (!d) return []; const out = [["Objekttyp", d.label], ["Gäller datum", smDateText(p)]];
   (d.fields || []).forEach(([k, lab]) => { out.push([lab, smF(p, k)]); });
-  if (p.type === "sm:gjutetapp") { const v = smN(p, "vol", 0); out.push(["Antal bilar (ca)", Math.ceil(v / Math.max(1, smN(p, "bil", 8)))], ["Pumptid timmar (ca)", Math.round(v / Math.max(1, smN(p, "kap", 30)) * 10) / 10]); }
+  if (p.type === "sm:gjutetapp" || p.type === "sm:gjutform") { const v = smN(p, "vol", 0); out.push(["Antal bilar (ca)", Math.ceil(v / Math.max(1, smN(p, "bil", 8)))], ["Pumptid timmar (ca)", Math.round(v / Math.max(1, smN(p, "kap", 30)) * 10) / 10]); }
   return out;
 }
 /* ---- Panel i 3D-editorn ----------------------------------------------------------------------------------------------------------------------- */

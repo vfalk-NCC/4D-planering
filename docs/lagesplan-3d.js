@@ -301,7 +301,7 @@ function l3Dom() {
           <div id="v3Lib"></div>
           <button type="button" id="v3GetModel" class="v3-wide" title="Hämta en 3D-modell från Sketchfab, projektets mappar i Trimble Connect eller en fil – den hamnar under Egna modeller">＋ Hämta modell…</button>
           <button type="button" class="v3-link v3-lay-csv" id="v3LayCsv" title="Lista över etableringen som öppnas i Excel (namn, typ, mått, läge, 4D)">Exportera etableringen (Excel)</button>
-          <div class="v3-pal-hint">Tryck på ett objekt här och sedan där det ska stå. Staket: tryck punkt för punkt och avsluta med Enter.</div>
+          <div class="v3-pal-hint">Tryck på ett objekt här och sedan där det ska stå. Staket, vägar och fria former: tryck punkt för punkt och avsluta med Enter.</div>
         </div>
         <div id="v3PalLayers" class="v3-paltab v3-layers ${P.palTab === "layers" || P.palTab === "list" ? "" : "hidden"}"></div>
         <div id="v3PalProps" class="v3-paltab v3-pprops ${P.palTab === "props" ? "" : "hidden"}"></div>
@@ -1061,14 +1061,14 @@ function l3AddAt(e) {
   const fence = (placeLib(l3.addType) || {}).fence;
   if (fence && l3.fenceId) {
     const p = placements.find(x => x.id === l3.fenceId);
-    if (p) { placeSnapshot(); p.pts.push(pt.map(placeR3)); placeTouch(p); l3RebuildOne(p); l3Changed(); l3Status(`Staket: ${p.pts.length} punkter. Tryck nästa punkt – Enter eller Esc när du är klar.`); return; }
+    if (p) { placeSnapshot(); p.pts.push(pt.map(placeR3)); placeTouch(p); l3RebuildOne(p); l3Changed(); l3Status(`${(placeLib(p.type) || {}).label || "Staket"}: ${p.pts.length} punkter. Tryck nästa punkt – Enter eller Esc när du är klar.`); return; }
   }
   placeSnapshot();
   const p = placeNew(l3.addType, pt);
   { const lb = placeLib(p.type) || {}; if ((lb.crew || lb.smart) && !p.start) { const day = ($("dateInput") || {}).value || (typeof todayIso === "function" ? todayIso() : ""); if (day) { p.start = day; p.end = day; } } } // datumet det gäller förifylls med dagens/valda datum (ändras i panelen)
   placements.push(p); placeTouch(p);
   l3AddPlacementMesh(p);
-  if (fence) { l3.fenceId = p.id; l3Status("Staket: tryck nästa punkt – Enter eller Esc när du är klar."); }
+  if (fence) { l3.fenceId = p.id; l3Status(`${(placeLib(p.type) || {}).label || "Staket"}: tryck nästa punkt – Enter eller Esc när du är klar.`); }
   else { l3.addType = null; l3Status(`${p.name} tillagd. Dra i handtagen eller använd Flytta/Vrid för att justera.`); }
   l3RenderLib(); l3SelectIds([p.id]); l3Changed();
 }
@@ -1560,7 +1560,7 @@ function l3Key(e) {
   if (typeof l3DialogKey === "function" && l3DialogKey(e)) return;
   if (l3.vPick && e.key === "Escape") { l3.vPick = false; l3.renderer.domElement.style.cursor = ""; l3Status(""); return; }
   if (typeof l3ToolKey === "function" && l3ToolKey(e)) return;
-  if (e.key === "Enter" && l3.fenceId) { l3EndAdd(); l3Status("Staketet är klart."); return; }
+  if (e.key === "Enter" && l3.fenceId) { l3EndAdd(); l3Status("Klart."); return; }
   if (e.key === "Escape" && typeof l3bm !== "undefined" && l3bm.session) { l3bmCancel(); return; }
   if (e.key === "Escape" && l3.phPick && typeof l3phPickCancel === "function") { l3phPickCancel(); return; }
   if (e.key === "Escape") { l3HideMenus(); l3HideInfo(); if (l3.addType) { l3EndAdd(); l3Status(""); } else { l3SelectIds([]); if (typeof l3bsClear === "function") l3bsClear(); } return; }
