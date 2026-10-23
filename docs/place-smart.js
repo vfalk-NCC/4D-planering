@@ -18,7 +18,11 @@ const SM_ST = { Beställd: "#f59e0b", "På väg": "#3b82f6", Levererad: "#22c55e
 
 /* ---- Skylten ---------------------------------------------------------------------------------------------------------------------------------- */
 /* Geometrin (vit platta, färgat huvud, stolpar, text som streck) går till IFC. I 3D-editorn ersätts texten av en skarp textur med riktig typografi (smSignMesh) – samma mått och samma rader. */
+/* Skylt (kort). s.yaw = vridning i grader runt skyltens mitt, s.at = [a, b] egen plats (fri placering). s.plan = { at:[a,b], yaw } ritar i stället en liggande kopia på marken som läses uppifrån (planvy). */
 function smCard(ctx, s) {
+  if (s.plan) return smCardFlat(ctx, s);
+  if (s.yaw || s.at) { const W0 = ctx.W, b00 = s.b0 == null ? -1.2 : s.b0, cy = Math.cos((s.yaw || 0) * Math.PI / 180), sy = Math.sin((s.yaw || 0) * Math.PI / 180), pa = s.at ? s.at[0] : 0, pb = s.at ? s.at[1] : b00;
+    ctx = { ...ctx, W: (a, b) => { const da = a, db = b - b00; return W0(pa + da * cy - db * sy, pb + da * sy + db * cy); } }; ctx.rect = (a0, a1, b0, b1) => [[a0, b0], [a1, b0], [a1, b1], [a0, b1]].map(([a, b]) => ctx.W(a, b)); }
   const { parts, W, add, z } = ctx, TW = { loc: [], faces: [] }, TG = { loc: [], faces: [] }, TD = { loc: [], faces: [] }, wd = t => ifcTextStrokes(t).width / 6;
   const head = String(s.title).toUpperCase(), hs0 = 0.22, colW = s.left ? 0.95 : 0, vs = 0.2, lh = 0.3, rows = (s.rows || []).filter(r => r && r[1] !== undefined).map(([lab, val, o]) => [String(lab).toUpperCase(), (String(val || "").trim() ? crewWrap(String(val), 30) : []), o || {}]);
   const blk = ls => 0.13 + 0.08 + vs + (Math.max(1, ls.length) - 1) * lh + 0.2, barH = s.bar ? 0.34 : 0;
@@ -44,6 +48,25 @@ function smCard(ctx, s) {
   const c0 = W(0, b0 - 0.05), ea = W(1, 0), eb = W(0, 0), cp = rect(-w2, w2, b0 - 0.05, b0 - 0.04);
   parts.push({ sign: { title: String(s.title), color: s.color || "#2563eb", icon: s.icon || "", left: s.left || null, rows: lay, bar: barSpec, w: w2 * 2, h: hh, hdr, bodyH, colW, zb, z, cx: c0[0], cy: c0[1], ax: ea[0] - eb[0], ay: ea[1] - eb[1], ts: hs0, vs, w2, footer: s.footer || "" }, poly: cp, z0: z + zb, z1: z + zb + hh, role: "sign", transp: 0, color: "#ffffff" });
 }
+/* Liggande skylt: byggs som en vanlig skylt i ett eget system och vrids sedan ned på marken (texten riktad uppåt i planen). */
+function smCardFlat(ctx, s) {
+  const tmp = { parts: [], p: ctx.p, col: ctx.col, z: 0, W: (a, b) => [a, b], rect: (a0, a1, b0, b1) => [[a0, b0], [a1, b0], [a1, b1], [a0, b1]] };
+  tmp.add = (pl, z0, z1, color, extra) => tmp.parts.push({ poly: pl, z0, z1, role: "body", transp: 0, color: color || ctx.col, ...(extra || {}) });
+  smCard(tmp, { ...s, plan: null, at: null, yaw: 0, b0: 0, zb: 0 });
+  const pl = s.plan, yaw = (pl.yaw || 0) * Math.PI / 180, cy = Math.cos(yaw), sy = Math.sin(yaw), at = pl.at || [0, 0], zg = 0.03;
+  let hh = 0; tmp.parts.forEach(q => { if (q.sign) hh = q.sign.h; }); const zc = hh / 2;
+  const F = (a, b, zz) => { const X = a, Y = zz - zc, Z = zg - b; return { x: at[0] + X * cy - Y * sy, y: at[1] + X * sy + Y * cy, z: Z }; };
+  const bak = (a, b, zz) => { const f = F(a, b, zz), w = ctx.W(f.x, f.y); return [w[0], w[1], ctx.z + f.z]; };
+  tmp.parts.forEach(q => {
+    if (q.sign) { const c0 = F(0, 0, zc + zc), cc = ctx.W(F(0, 0, zc).x, F(0, 0, zc).y), e1 = ctx.W(F(1, 0, zc).x, F(1, 0, zc).y); parts_push(ctx, { ...q, sign: { ...q.sign, flat: true, cx: cc[0], cy: cc[1], ax: e1[0] - cc[0], ay: e1[1] - cc[1], z: ctx.z + zg + 0.01, zb: 0 }, poly: [cc, cc, cc, cc].map(x => x.slice()), z0: ctx.z + zg, z1: ctx.z + zg + 0.01 }); void c0; return; }
+    if (q.tris) { ctx.parts.push({ ...q, tris: { pts: q.tris.pts.map(([a, b, zz]) => bak(a, b, zz)), faces: q.tris.faces, sg: q.tris.sg }, poly: undefined }); const L = ctx.parts[ctx.parts.length - 1], xs = L.tris.pts.map(v => v[0]), ys = L.tris.pts.map(v => v[1]), zs = L.tris.pts.map(v => v[2]); L.poly = [[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)], [Math.min(...xs), Math.max(...ys)]]; L.z0 = Math.min(...zs); L.z1 = Math.max(...zs); return; }
+    // prisma: rektangel i (a, b) × [z0, z1] → rektangel i (a, z) × tjocklek i b
+    const as = q.poly.map(v => v[0]), bs = q.poly.map(v => v[1]), a0 = Math.min(...as), a1 = Math.max(...as), b0 = Math.min(...bs), b1 = Math.max(...bs);
+    const poly = [[a0, q.z0], [a1, q.z0], [a1, q.z1], [a0, q.z1]].map(([a, zz]) => { const f = F(a, 0, zz), w = ctx.W(f.x, f.y); return w; });
+    const zlo = ctx.z + zg - b1, zhi = ctx.z + zg - b0; ctx.parts.push({ ...q, poly, z0: zlo, z1: Math.max(zhi, zlo + 0.004) });
+  });
+}
+function parts_push(ctx, part) { ctx.parts.push(part); }
 /* Fri text (stor, mitt i en skiva): används av vägskyltar och höjdpunkter. */
 function smText(ctx, text, size, a, zc, b, color, bold) {
   const T = { loc: [], faces: [] }; crewText(T, String(text).toUpperCase(), size, a, zc - size / 2, b, "c", bold); if (!T.faces.length) return;
@@ -209,8 +232,8 @@ function smSignCanvas(sp) {
 function smSignMesh(p, sp) {
   const { cv, m } = smSignCanvas(sp), tex = new THREE.CanvasTexture(cv); tex.anisotropy = 8; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.encoding = THREE.sRGBEncoding;
   const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.FrontSide, depthWrite: false, toneMapped: false }), w = sp.w + 2 * m, h = sp.h + 2 * m, mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
-  const X = new THREE.Vector3(sp.ax, sp.ay, 0).normalize(), Yv = new THREE.Vector3(0, 0, 1), Zv = new THREE.Vector3().crossVectors(X, Yv); mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Yv, Zv));
-  mesh.position.set(sp.cx, sp.cy, sp.z + sp.zb + sp.h / 2); mesh.renderOrder = 4; mesh.userData.placeId = p.id; mesh.userData.mat0 = { t: true, o: 1, d: false }; mesh.userData.isSign = true; return mesh;
+  const X = new THREE.Vector3(sp.ax, sp.ay, 0).normalize(), Yv = sp.flat ? new THREE.Vector3(-X.y, X.x, 0) : new THREE.Vector3(0, 0, 1), Zv = new THREE.Vector3().crossVectors(X, Yv); mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Yv, Zv));
+  mesh.position.set(sp.cx, sp.cy, sp.flat ? sp.z : sp.z + sp.zb + sp.h / 2); mesh.renderOrder = 4; mesh.userData.placeId = p.id; mesh.userData.mat0 = { t: true, o: 1, d: false }; mesh.userData.isSign = true; mesh.userData.flat = !!sp.flat; return mesh;
 }
 /* Gruppen för en bemanning/ett smart objekt i 3D-editorn (anropas av l3PlacementGroup). */
 function smEditorBuild(p, grp, parts) {

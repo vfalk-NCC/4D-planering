@@ -404,6 +404,15 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
       out.dragMoved = Array.isArray(p.pos) && !!p.pos[2] && Math.hypot(p.pos[2][0] - tgt[0], p.pos[2][1] - tgt[1]) > 1.2; out.dragKept = Array.isArray(p.pos) && p.pos[0] && Math.abs(p.pos[0][0] - lay3.slots[0][0]) < 0.01;
       const cp = placeCopies(p, 1, 3, true)[0]; out.copyLayout = Array.isArray(cp.pos) && cp.pos[2][0] === p.pos[2][0] && cp.spread === p.spread;
       crewDragSet(false); out.dragOff = !crewDrag.on; p.pos = null; p.spread = null; p.count = 5; crewSync(p); }
+    { // skylten: vridning med standard, fri placering och extra plan-skylt
+      const sg = () => placeParts(p).filter(x => x.sign), n0 = sg().length;
+      try { localStorage.removeItem(CREW_SIGN_KEY); } catch (e) {}
+      p.signYaw = null; p.signPos = null; p.signPlan = false; const base = JSON.stringify(sg().map(x => x.poly || x.tris || x.sign && x.sign.at || 0)).length;
+      crewSignDefaultSet(30); out.signDef = crewSignYaw(p) === 30; p.signYaw = 90; out.signOwn = crewSignYaw(p) === 90; p.signYaw = null;
+      p.signPos = [2, -6]; out.signFree = placeParts(p).length > 0; p.signPos = null;
+      p.signPlan = true; out.signPlan = placeParts(p).length > 0 && placeParts(p).length >= n0; p.signPlan = false;
+      const cp2 = placeCopies(p, 1, 3, true)[0]; out.signCopy = cp2.signYaw === p.signYaw && cp2.signPlan === p.signPlan;
+      try { localStorage.removeItem(CREW_SIGN_KEY); } catch (e) {} }
     p.comment = ''; p.itemId = 'crewx'; out.actFromItem = crewActivity(p) === 'X' && placeParts(p).some(x => x.tris); p.comment = 'Armerar plattan, skift 1'; p.itemId = null;
     const ifc = buildPlacementsIfc('T', new Set([p.id])); out.ifc = !!ifc && /IFCTRIANGULATEDFACESET/.test(ifc.text) && /Antal personer/.test(ifc.text) && /Armerar plattan, skift 1/.test(ifc.text) && /Procyon/.test(ifc.text);
     placements.splice(placements.indexOf(p), 1); l3.groups.places.remove(l3.placeMeshes.get(p.id)); l3.placeMeshes.delete(p.id); l3SelectIds([]); items.pop(); items.pop();

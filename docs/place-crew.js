@@ -116,10 +116,17 @@ function crewPerson(ctx, col, cx, cy, yaw, hs, i, lod) {
     if (lod === 2) { bx("#20262c", -0.115, 0, 1.64, 0.03, 0.07, 0.04, null, 0.01); [-1, 1].forEach(sd => bx("#20262c", 0.0, sd * 0.088, 1.585, 0.01, 0.01, 0.07, [0, 0, sd * 0.35], 0)); } }
 }
 /* Delarna för placeringen p (i världskoordinater som övriga placeringar; z = underkant). */
+/* Skyltens vridning (grader): egen om den är satt, annars standarden som sparats för alla bemanningar. */
+const CREW_SIGN_KEY = "4dplan-crew-sign-yaw";
+function crewSignDefault() { try { const v = parseFloat(localStorage.getItem(CREW_SIGN_KEY)); return isFinite(v) ? v : 0; } catch (e) { return 0; } }
+function crewSignDefaultSet(v) { try { localStorage.setItem(CREW_SIGN_KEY, String(v)); } catch (e) { /* privat läge */ } }
+const crewSignYaw = p => (p.signYaw != null && isFinite(Number(p.signYaw)) ? Number(p.signYaw) : crewSignDefault());
 function crewParts(p, z) {
   const lib = placeLib(p.type) || {}, col = p.color || lib.color || crewColor(lib.contractor), n = crewCount(p), { slots, R } = crewLayout(p), ctx = smMakeCtx(p, z, col), lod = n <= 12 ? 2 : n <= 40 ? 1 : 0;
   slots.forEach(([cx, cy], i) => { const yaw = -Math.PI / 2 + ((((i * 137.5) % 360) - 180) * Math.PI / 180) * 0.22, hs = 0.96 + ((i * 53) % 9) / 100; crewPerson(ctx, col, cx, cy, yaw, hs, i, lod); });
-  smCard(ctx, { title: `Entreprenör: ${String(lib.contractor || "Bemanning")}`, icon: "hat", color: col, left: ["Antal YA", String(n)], rows: [["Område", crewArea(p)], ["Aktivitet", crewActivity(p)], ...(smDateText(p) ? [["Datum", smDateText(p)]] : [])], zb: 2.45, b0: -(R + 0.2) });
+  const spec = { title: `Entreprenör: ${String(lib.contractor || "Bemanning")}`, icon: "hat", color: col, left: ["Antal YA", String(n)], rows: [["Område", crewArea(p)], ["Aktivitet", crewActivity(p)], ...(smDateText(p) ? [["Datum", smDateText(p)]] : [])], zb: 2.45, b0: -(R + 0.2) };
+  smCard(ctx, { ...spec, yaw: crewSignYaw(p), at: Array.isArray(p.signPos) && isFinite(p.signPos[0]) && isFinite(p.signPos[1]) ? [Number(p.signPos[0]), Number(p.signPos[1])] : null });
+  if (p.signPlan) smCard(ctx, { ...spec, plan: { at: Array.isArray(p.planPos) && isFinite(p.planPos[0]) ? [Number(p.planPos[0]), Number(p.planPos[1])] : [0, -(R + 2.6)], yaw: Number(p.planYaw) || 0 } });
   return ctx.flush();
 }
 /* Slår ihop alla delar med samma färg (och ur-belysning-flagga) till en enda trianglelista (pts relativt o, ytor 1-baserade): tusentals prismor blir några få nät. */
@@ -160,13 +167,22 @@ function crewSideHtml(p) {
     <div class="v3-cw-card"><h4>Antal personer</h4>
       <div class="v3-crew-n"><button type="button" data-crew="dec" title="En person färre">−</button><input type="text" inputmode="numeric" data-crew="count" value="${n}" aria-label="Antal personer" /><button type="button" data-crew="inc" title="En person till">＋</button><button type="button" data-crew="inc5" class="v3-crew-5" title="Fem till">＋5</button></div>
       <label class="v3-field v3-crew-sp"><span>Spridning (diameter) <b class="v3-cw-badge" data-crew="spreadv">${smFmtD(p.spread || crewAutoDiam(p))}</b> m${p.spread ? "" : " (auto)"}</span><input type="range" min="1" max="40" step="0.5" data-crew="spread" value="${p.spread || crewAutoDiam(p)}" /></label>
-      <div class="v3-btns"><button type="button" data-crew="dragon" class="${crewDrag.on && crewDrag.id === p.id ? "on" : ""}" title="Slå på och dra gubbarna med musen på marken. Esc stänger av.">✋ Flytta gubbar (dra)</button><button type="button" data-crew="resetpos" title="Ordna om gubbarna automatiskt i ringar">Ordna om</button></div>
+      <div class="v3-btns"><button type="button" data-crew="dragon" class="${crewDrag.on && crewDrag.id === p.id ? "on" : ""}" title="Slå på och dra gubbarna med musen på marken. Esc stänger av.">✋ Flytta gubbar/skylt (dra)</button><button type="button" data-crew="resetpos" title="Ordna om gubbarna automatiskt i ringar">Ordna om</button></div>
     </div>
     <div class="v3-cw-card"><h4>Skylt</h4>
       <label class="v3-field"><span>Entreprenör</span><select data-crew="contractor">${opts}</select></label>
       <label class="v3-field"><span>Område (välj eller skriv, t.ex. 741 - Sektionsfickor)</span><input type="text" class="v3-cb" data-crew="area" autocomplete="off" maxlength="60" value="${esc(p.area || "")}" placeholder="${esc(crewArea({ actArea: p.actArea, itemId: p.itemId }) || "741 - Sektionsfickor")}" /></label>
       <label class="v3-field"><span>Aktivitet i Gantten (sök, t.ex. Linje I - H gjutning)</span><input type="text" class="v3-cb" data-crew="act" autocomplete="off" value="${esc(p.actName || "")}" placeholder="Sök aktivitet …" />${p.actName ? `<button type="button" class="v3-cb-x" data-crew="actclear" title="Ta bort vald aktivitet">✕ ta bort</button>` : ""}</label>
       <label class="v3-field"><span>Egen text (visas som Aktivitet på skylten – tom = vald aktivitet)</span><textarea data-crew="comment" rows="2" maxlength="140" placeholder="T.ex. Armerar plattan, skift 1">${esc(p.comment || "")}</textarea></label>
+    </div>
+    <div class="v3-cw-card"><h4>Skyltens läge</h4>
+      <label class="v3-field v3-crew-sp"><span>Vridning <b class="v3-cw-badge" data-crew="syv">${Math.round(crewSignYaw(p))}°</b>${p.signYaw == null ? " (standard)" : ""}</span><input type="range" min="-180" max="180" step="5" data-crew="syaw" value="${Math.round(crewSignYaw(p))}" /></label>
+      <div class="v3-btns"><button type="button" data-crew="sy" data-v="0">0°</button><button type="button" data-crew="sy" data-v="90">90°</button><button type="button" data-crew="sy" data-v="-90">−90°</button><button type="button" data-crew="sy" data-v="180">180°</button></div>
+      <div class="v3-btns"><button type="button" data-crew="sydef" title="Alla nya och alla bemanningar utan egen vridning får samma riktning">★ Spara som standard</button><button type="button" data-crew="syall" title="Sätter standarden och nollställer egen vridning på alla bemanningar">Använd på alla</button></div>
+      <div class="v3-btns"><button type="button" data-crew="signreset" title="Skylten tillbaka framför gruppen, standardvridning">Återställ skylten</button></div>
+      <label class="chk"><input type="checkbox" data-crew="plan" ${p.signPlan ? "checked" : ""}> Extra skylt i planvy (liggande, läses uppifrån)</label>
+      ${p.signPlan ? `<label class="v3-field v3-crew-sp"><span>Planvyskyltens vridning <b class="v3-cw-badge" data-crew="pyv">${Math.round(Number(p.planYaw) || 0)}°</b></span><input type="range" min="-180" max="180" step="5" data-crew="pyaw" value="${Math.round(Number(p.planYaw) || 0)}" /></label>` : ""}
+      <div class="muted" style="font-size:11.5px">Dra skylten med "Flytta gubbar (dra)" påslaget för fri placering.</div>
     </div>
     <div class="v3-cw-card"><h4>Datum</h4>${typeof smDateFieldsHtml === "function" ? smDateFieldsHtml(p) : ""}</div>
     <button type="button" class="v3-wide" data-crew="report" title="Alla bemanningar per område och entreprenör med summa YA, som tabell och CSV">Σ Sammanställ bemanning…</button>`;
@@ -187,6 +203,14 @@ function crewBindSide(side, p, redraw) {
   q("dragon").onclick = () => { crewDragSet(!(crewDrag.on && crewDrag.id === p.id), p); redraw(); };
   q("resetpos").onclick = () => apply(() => { p.pos = null; p.spread = null; });
   if (crewDrag.on && crewDrag.id !== p.id) crewDragSet(false);
+  { const sy = q("syaw"), sv = q("syv"); let snap = false; sy.onpointerdown = () => { if (!snap) { placeSnapshot(); snap = true; } };
+    sy.oninput = () => { p.signYaw = Number(sy.value); if (sv) sv.textContent = Math.round(p.signYaw) + "°"; live(); }; sy.onchange = () => { snap = false; placeTouch(p); redraw(); };
+    side.querySelectorAll('[data-crew="sy"]').forEach(b => b.onclick = () => apply(() => { p.signYaw = Number(b.dataset.v); }));
+    q("sydef").onclick = () => { crewSignDefaultSet(crewSignYaw(p)); if (typeof l3Toast === "function") l3Toast(`Standard: skyltarna vrids ${Math.round(crewSignYaw(p))}° (gäller alla utan egen vridning)`); redraw(); if (typeof l3RebuildAll === "function") l3RebuildAll(); };
+    q("syall").onclick = () => { placeSnapshot(); crewSignDefaultSet(crewSignYaw(p)); placements.filter(x => crewIsType(x.type)).forEach(x => { x.signYaw = null; placeTouch(x); if (typeof l3RebuildOne === "function") l3RebuildOne(x); }); if (typeof l3Changed === "function") l3Changed(); if (typeof l3Toast === "function") l3Toast("Alla bemanningsskyltar har nu samma vridning"); redraw(); };
+    q("signreset").onclick = () => apply(() => { p.signYaw = null; p.signPos = null; p.planPos = null; p.planYaw = 0; });
+    q("plan").onchange = e => apply(() => { p.signPlan = !!e.target.checked; });
+    const py = q("pyaw"); if (py) { py.oninput = () => { p.planYaw = Number(py.value); const pv = q("pyv"); if (pv) pv.textContent = Math.round(p.planYaw) + "°"; live(); }; py.onchange = () => { placeTouch(p); redraw(); }; } }
   q("report").onclick = () => crewReportOpen();
   q("area").onchange = e => apply(() => { p.area = String(e.target.value || "").trim().slice(0, 60); });
   q("comment").addEventListener("input", e => { p.comment = String(e.target.value || "").slice(0, 140); live(); });
@@ -222,7 +246,7 @@ const crewDrag = { on: false, id: null, i: -1, z: 0, installed: false, raf: 0 };
 function crewDragSet(on, p) {
   crewDrag.on = !!on; crewDrag.id = on && p ? p.id : null; crewDrag.i = -1; if (typeof l3 === "undefined" || !l3) return;
   try { l3.renderer.domElement.style.cursor = on ? "grab" : ""; } catch (e) { /* */ }
-  if (on) { crewDragInstall(); if (typeof l3Status === "function") l3Status("Dra en gubbe med musen för att flytta den på marken. Dra i tomma ytan för att flytta vyn som vanligt. Esc stänger av."); }
+  if (on) { crewDragInstall(); if (typeof l3Status === "function") l3Status("Dra en gubbe eller skylten med musen för att flytta den på marken. Dra i tomma ytan för att flytta vyn som vanligt. Esc stänger av."); }
 }
 function crewDragRay(e) {
   const r = l3.renderer.domElement.getBoundingClientRect(), v = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), rc = new THREE.Raycaster(); rc.setFromCamera(v, l3.camera); return rc;
@@ -232,14 +256,19 @@ function crewDragInstall() {
   host.addEventListener("pointerdown", e => {
     if (!crewDrag.on || e.button !== 0 || e.target !== l3.renderer.domElement) return; const p = placements.find(x => x.id === crewDrag.id), grp = p && l3.placeMeshes.get(p.id); if (!grp) return;
     grp.updateMatrixWorld(true); const hit = crewDragRay(e).intersectObject(grp, true).find(h => h.object.visible && h.object.type === "Mesh"); if (!hit) return;
-    const lp = grp.worldToLocal(hit.point.clone()), lay = crewLayout(p); let bi = -1, bd = 0.75; lay.slots.forEach(([a, b], i) => { const d = Math.hypot(a - lp.x, b - lp.y); if (d < bd) { bd = d; bi = i; } }); if (bi < 0) return;
+    const lp = grp.worldToLocal(hit.point.clone()), lay = crewLayout(p);
+    if (hit.object.userData && hit.object.userData.isSign) { // dra skylten (den stående eller planvyskylten) fritt på marken
+      const flat = !!hit.object.userData.flat, cur = flat ? (Array.isArray(p.planPos) && isFinite(p.planPos[0]) ? p.planPos : [0, -(lay.R + 2.6)]) : (Array.isArray(p.signPos) && isFinite(p.signPos[0]) ? p.signPos : [0, -(lay.R + 0.2)]);
+      e.stopImmediatePropagation(); e.stopPropagation(); e.preventDefault(); placeSnapshot(); crewDrag.i = 0; crewDrag.sign = flat ? "plan" : "sign"; crewDrag.off = [cur[0] - lp.x, cur[1] - lp.y]; crewDrag.z = hit.point.z; crewDrag.moved = false; if (l3.orbit) l3.orbit.enabled = false; l3.renderer.domElement.style.cursor = "grabbing"; return; }
+    crewDrag.sign = null; let bi = -1, bd = 0.75; lay.slots.forEach(([a, b], i) => { const d = Math.hypot(a - lp.x, b - lp.y); if (d < bd) { bd = d; bi = i; } }); if (bi < 0) return;
     e.stopImmediatePropagation(); e.stopPropagation(); e.preventDefault(); placeSnapshot(); crewDrag.i = bi; crewDrag.z = hit.point.z; crewDrag.moved = false; if (l3.orbit) l3.orbit.enabled = false;
     const n = crewCount(p); p.pos = Array.from({ length: n }, (_, i) => (Array.isArray(p.pos) && p.pos[i]) || null); lay.slots.forEach((q, i) => { if (!p.pos[i]) p.pos[i] = [q[0], q[1]]; }); l3.renderer.domElement.style.cursor = "grabbing";
   }, true);
   window.addEventListener("pointermove", e => {
     if (crewDrag.i < 0) return; const p = placements.find(x => x.id === crewDrag.id), grp = p && l3.placeMeshes.get(p.id); if (!p || !grp) return;
     const pt = new THREE.Vector3(); if (!crewDragRay(e).ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -crewDrag.z), pt)) return; grp.updateMatrixWorld(true); const lp = grp.worldToLocal(pt);
-    p.pos[crewDrag.i] = [Math.round(lp.x * 100) / 100, Math.round(lp.y * 100) / 100]; crewDrag.moved = true; e.stopPropagation();
+    if (crewDrag.sign) { const v = [Math.round((lp.x + crewDrag.off[0]) * 100) / 100, Math.round((lp.y + crewDrag.off[1]) * 100) / 100]; if (crewDrag.sign === "plan") p.planPos = v; else p.signPos = v; }
+    else p.pos[crewDrag.i] = [Math.round(lp.x * 100) / 100, Math.round(lp.y * 100) / 100]; crewDrag.moved = true; e.stopPropagation();
     if (!crewDrag.raf) crewDrag.raf = requestAnimationFrame(() => { crewDrag.raf = 0; crewSync(p); l3RebuildOne(p); if (typeof l3Render === "function") l3Render(); });
   }, true);
   window.addEventListener("pointerup", () => {
