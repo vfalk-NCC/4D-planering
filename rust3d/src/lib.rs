@@ -94,3 +94,14 @@ fn text(p: *const u8, n: usize) -> String { String::from_utf8_lossy(bytes(p, n))
     match (&mut s.cloud, &s.model) { (Some(c), Some(m)) => { let j = c.compute_deviation(&m.bvh, maxd, tol); put(&j) } _ => { let mut j = String::new(); esc("Läs in både en modell och ett punktmoln först", &mut j); put(&format!("{{\"error\":{}}}", j)) } }
 }
 #[no_mangle] pub extern "C" fn clear_all() { let s = st(); s.model = None; s.cloud = None; s.origin = None; s.hidden.clear(); }
+
+#[no_mangle] pub extern "C" fn model_edges(oi: u32) -> u32 {
+    match &st().model { Some(m) if (oi as usize) < m.objs.len() => { let e = m.feature_edges(oi as usize); let o = &mut st().out; o.clear(); for v in e { o.extend_from_slice(&v.to_le_bytes()); } o.len() as u32 } _ => 0 }
+}
+#[no_mangle] pub extern "C" fn model_quantities() -> u32 { match &st().model { Some(m) => put(&m.quantities_json()), None => put("[]") } }
+/// Kollision mellan två grupper (u32-listor i minnet). Samma pekare = mot sig själv.
+#[no_mangle] pub extern "C" fn model_clash(pa: *const u8, na: usize, pb: *const u8, nb: usize, min_depth: f32) -> u32 {
+    let rd = |p: *const u8, n: usize| -> Vec<u32> { bytes(p, n * 4).chunks(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect() };
+    let (a, b) = (rd(pa, na), rd(pb, nb));
+    match &st().model { Some(m) => put(&m.clash(&a, &b, min_depth)), None => put("[]") }
+}

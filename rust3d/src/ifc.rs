@@ -195,11 +195,16 @@ impl<'a> B<'a> {
         let dir = a.get(2).and_then(|v| v.rf()).map(|r| self.dir(r)).unwrap_or([0.0, 0.0, 1.0]);
         let depth = a.get(3).and_then(|v| v.num()).unwrap_or(0.0) * self.scale;
         let d = [dir[0] * depth, dir[1] * depth, dir[2] * depth];
+        let mut ring = ring; let area: f64 = (0..ring.len()).map(|i| { let j = (i + 1) % ring.len(); ring[i][0] * ring[j][1] - ring[j][0] * ring[i][1] }).sum();
+        if area < 0.0 { ring.reverse(); } // moturs, så att ytorna får utåtriktade normaler (behövs för volymberäkning)
+        let flip = d[2] < 0.0;
         let mw = m.mul(&pos); let n = ring.len();
         let bot: Vec<P3> = ring.iter().map(|p| mw.apply([p[0], p[1], 0.0])).collect();
         let top: Vec<P3> = ring.iter().map(|p| mw.apply([p[0] + d[0], p[1] + d[1], d[2]])).collect();
-        for t in ear_clip(&ring) { self.tri(bot[t[0]], bot[t[1]], bot[t[2]]); self.tri(top[t[0]], top[t[1]], top[t[2]]); }
-        for i in 0..n { let j = (i + 1) % n; self.tri(bot[i], bot[j], top[j]); self.tri(bot[i], top[j], top[i]); }
+        for t in ear_clip(&ring) {
+            if !flip { self.tri(bot[t[0]], bot[t[2]], bot[t[1]]); self.tri(top[t[0]], top[t[1]], top[t[2]]); } else { self.tri(bot[t[0]], bot[t[1]], bot[t[2]]); self.tri(top[t[0]], top[t[2]], top[t[1]]); }
+        }
+        for i in 0..n { let j = (i + 1) % n; if !flip { self.tri(bot[i], bot[j], top[j]); self.tri(bot[i], top[j], top[i]); } else { self.tri(bot[i], top[j], bot[j]); self.tri(bot[i], top[i], top[j]); } }
     }
     fn pointlist3(&self, id: u32) -> Vec<P3> {
         let a = self.a(id);
