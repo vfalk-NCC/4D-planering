@@ -84,6 +84,7 @@ self.onmessage = async ev => {
     // GUID och namn ur texten (snabbt); saknas något används web-ifc för just det objektet.
     let names0 = null;
     try { if (mine && names) names0 = scanNames(u8, new Set(mine)); } catch (e) { names0 = null; }
+    let meta = null; try { if (mine) meta = scanMeta(u8, new Set(mine)); } catch (e) { meta = null; }   // klass + lager per objekt (Lager i modell & ritning)
     const total = mine ? mine.length : 0, tList = Date.now() - t0 - tOpen;
     const pl = placement || { position: { x: 0, y: 0, z: 0 }, refDirection: { x: 1, y: 0, z: 0 } };
     const rd = pl.refDirection || { x: 1, y: 0, z: 0 }, rl = Math.hypot(rd.x, rd.y) || 1, cs = rd.x / rl, sn = rd.y / rl;
@@ -159,7 +160,7 @@ self.onmessage = async ev => {
       const Nn = objNrm.view();
       for (let k = 0; k < P.length; k += 3) { cell.pos.push3(P[k], P[k + 1], P[k + 2]); cell.col.push3(C[k], C[k + 1], C[k + 2]); cell.nrm.push3(Nn[k], Nn[k + 1], Nn[k + 2]); }
       for (let k = 0; k < I.length; k++) cell.idx.push(I[k] + start);
-      cell.ranges.push({ start, count: nv, idxStart, idxCount: I.length, guid, name, base: baseCol || [0.85, 0.87, 0.9] });
+      { const mt = meta && meta.get(mesh.expressID); cell.ranges.push({ start, count: nv, idxStart, idxCount: I.length, guid, name, base: baseCol || [0.85, 0.87, 0.9], ...(mt ? { cls: mt[0], lay: mt[1] } : {}) }); }
       cell.tris += otris;
       if (cell.tris > chunkTris) flushCell(cell);
       const now = Date.now();

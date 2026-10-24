@@ -76,6 +76,11 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     const q = l3ToScreen(v), R = l3.renderer.domElement.getBoundingClientRect(), ev = { clientX: R.left + q.x, clientY: R.top + q.y }; l3OpenCtx(ev.clientX, ev.clientY, ev); const pop = document.getElementById('v3Pop'); const t = pop ? pop.textContent : ''; l3PopClose(); return t; });
   if (!/Markera ritningen/.test(cx) || !/Zooma hit/.test(cx) || !/Byt färg/.test(cx)) fail('Högerklick på 3D-ritning: ' + cx);
   console.log('OK: högerklick på en 3D-ritning i modellen – markera, zooma, byt färg, redigera');
+  const l2 = await page.evaluate(async () => { l3PalTab('layers'); await new Promise(r => setTimeout(r, 300)); l3LayersRender(); const rec = cads().find(x => x.name === 'tre'); const eyes = [...document.querySelectorAll('[data-lycadeye]')].filter(b => b.dataset.lycadeye.startsWith(rec.id + '|')), cols = document.querySelectorAll('[data-lycadcol]').length;
+    const first = eyes[0], nm = first.dataset.lycadeye.split('|')[1]; first.click(); await new Promise(r => setTimeout(r, 200)); const off = !cadLayerOn(rec, nm); l3LayersRender(); const dim = !!document.querySelector('.v3-ly-r.off');
+    document.querySelector('[data-lycadeye="' + rec.id + '|' + nm + '"]').click(); await new Promise(r => setTimeout(r, 200)); return { n: eyes.length, cols, off, dim, on: cadLayerOn(rec, nm) }; });
+  if (!l2.n || !l2.cols || !l2.off || !l2.dim || !l2.on) fail('2D-lager i Lager i modell & ritning: ' + JSON.stringify(l2));
+  console.log('OK: Lager i modell & ritning – 2D-lagren i tända DXF-filer kan släckas och färgas');
   const ifc = await page.evaluate(() => { const rr = buildSiteIfc(); return rr && { n: rr.cad.recs, segs: rr.cad.segs, faces: rr.cad.faces, poly: /IFCPOLYLINE\(/.test(rr.text), faceset: /IFCTRIANGULATEDFACESET/.test(rr.text), red: /IFCCOLOURRGB\([^)]*1\.,\s*0\.,\s*0\./.test(rr.text) }; });
   if (!ifc || ifc.n !== 1 || ifc.segs < 3 || ifc.faces < 1 || ifc.poly || !ifc.faceset) fail('IFC av 3D-ritning: ' + JSON.stringify(ifc));
   console.log('OK: 3D-ritning som IFC – ' + ifc.segs + ' linjer som solida stavar, ' + ifc.faces + ' ytor, inga IFC-linjer');

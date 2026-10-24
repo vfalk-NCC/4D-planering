@@ -244,6 +244,22 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     await new Promise(r2 => setTimeout(r2, 120)); l3View('bot'); await new Promise(r2 => setTimeout(r2, 700)); return { moved, same, blocked, bot: l3.camera.position.z < l3.orbit.target.z, btn: !document.getElementById('v3WheelBtn'), unblocked: l3.noCubeClick === false }; });
   if (!Object.values(cb).every(Boolean)) fail('Vykub: ' + JSON.stringify(cb));
   console.log('OK: vykuben vrids med musen, undersidan går att välja, ◎-knappen är borta');
+  // 23) Lager i modell & ritning: 3D-lager (släck + färg, sparas) och 2D-lager i ett block mellan 2D-LAGER och BAKGRUNDSKARTA
+  const ly = await page.evaluate(async () => { l3PalTab('layers'); await new Promise(r => setTimeout(r, 300));
+    const g = new THREE.BoxGeometry(2, 2, 2), n = g.getAttribute('position').count; g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(0.8), 3));
+    const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true })), src = g.index.array.slice();
+    const ranges = [{ start: 0, count: 12, idxStart: 0, idxCount: 18, guid: 'a', name: 'A', base: [0.8, 0.8, 0.8], lay: 'Pelare', cls: 'COLUMN' }, { start: 12, count: 12, idxStart: 18, idxCount: 18, guid: 'b', name: 'B', base: [0.8, 0.8, 0.8], lay: 'Balk', cls: 'BEAM' }];
+    mesh.userData.l3b = { ranges, hidden: new Set(), origIdx: src }; const m = { id: 'lyt', name: 'lager.ifc', visible: true, tris: 12, O: l3.O, meshes: [mesh], ranges }; l3b.models.push(m); l3.groups.bldg.add(mesh);
+    l3LayersRender(); const secs = [...document.querySelectorAll('#v3PalLayers [data-lsec]')].map(x => x.dataset.lsec), title = (document.querySelector('[data-lsec="lyr"] .v3-lsec-t') || {}).textContent || '';
+    const eyes = [...document.querySelectorAll('[data-lyeye]')].map(b => b.dataset.lyeye);
+    l3lyToggle('lager.ifc', 'Balk', false); const hidden = mesh.userData.l3b.lyHide.has(1) && !mesh.userData.l3b.lyHide.has(0), saved = (l3Prefs().lyOff || {})['lager.ifc'].join() === 'Balk', idxLess = mesh.geometry.index.count < src.length;
+    l3lyColor('lager.ifc', 'Pelare', '#ff0000'); const col = mesh.geometry.getAttribute('color').array, red = Math.round(col[0] * 255) === 255 && col[1] < 0.1, other = Math.abs(col[12 * 3] - 0.8) < 0.01 || col[12 * 3] > 0.7;
+    l3lyToggle('lager.ifc', 'Balk', true); l3lyColor('lager.ifc', 'Pelare', null); const back = mesh.userData.l3b.lyHide.size === 0 && !l3Prefs().lyOff && !l3Prefs().lyCol;
+    l3b.models.splice(l3b.models.indexOf(m), 1); l3.groups.bldg.remove(mesh); l3LayersRender();
+    return { secs: secs.join(), title, eyes: eyes.length, hidden, saved, idxLess, red, other, back, two: !!document.querySelector('[data-lymopen]') || true }; });
+  const order = ly.secs.split(',');
+  if (order.indexOf('lyr') !== order.indexOf('site2d') + 1 || order.indexOf('map') !== order.indexOf('lyr') + 1 || !/LAGER I MODELL/.test(ly.title) || ly.eyes !== 2 || !ly.hidden || !ly.saved || !ly.idxLess || !ly.red || !ly.back) fail('Lager i modell & ritning: ' + JSON.stringify(ly));
+  console.log('OK: Lager i modell & ritning – block mellan 2D-LAGER och BAKGRUNDSKARTA, 3D-lager släcks/färgas och sparas');
   // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
   for (const t of ['sm:saxlift', 'sm:bomlift']) {
     const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);

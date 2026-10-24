@@ -66,7 +66,7 @@ self.onmessage = async ev => {
       (FIRST.has(t) ? first : rest).push(k);
     }
     const order = first.concat(rest, late), mine = order.map(k => jobs[k * 3]);
-    const names0 = scanNames(u8, new Set(mine));
+    const names0 = scanNames(u8, new Set(mine)); let meta = null; try { meta = scanMeta(u8, new Set(mine)); } catch (e) { meta = null; }
     const rtc = pre.rtcOffset || [0, 0, 0], R = [Number(rtc[0]) || 0, Number(rtc[1]) || 0, Number(rtc[2]) || 0];
     const pl = placement || { position: { x: 0, y: 0, z: 0 }, refDirection: { x: 1, y: 0, z: 0 } };
     const rd = pl.refDirection || { x: 1, y: 0, z: 0 }, rl = Math.hypot(rd.x, rd.y) || 1, cs = rd.x / rl, sn = rd.y / rl;
@@ -119,7 +119,7 @@ self.onmessage = async ev => {
         for (let k = 0; k < pos.length; k += 3) { cell.pos.push3(pos[k], pos[k + 1], pos[k + 2]); cell.col.push3(r8, g8, b8); cell.nrm.push3(nrm[k], nrm[k + 1], nrm[k + 2]); }
         for (let k = 0; k < idx.length; k++) cell.idx.push(idx[k] + o);
       });
-      cell.ranges.push({ start, count: nv, idxStart, idxCount: cell.idx.length - idxStart, guid, name, base: baseCol || [0.85, 0.87, 0.9] });
+      { const mt = meta && meta.get(e); cell.ranges.push({ start, count: nv, idxStart, idxCount: cell.idx.length - idxStart, guid, name, base: baseCol || [0.85, 0.87, 0.9], ...(mt ? { cls: mt[0], lay: mt[1] } : {}) }); }
       cell.tris += otris;
       if (cell.tris > chunkTris) flushCell(cell);
     };

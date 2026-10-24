@@ -40,7 +40,7 @@ function l3lSetIdsVisible(ids, on) {
 /* Minimalistisk (Victor 2026-10-12: "sortera upp den här menyn … minimalistiskt och stilrent … jobba mycket med
    collapse och dropdown-menyer"): block och grupper fälls ihop, åtgärder ligger i små menyer (＋ och ⋯) och
    radernas knappar syns när musen är över raden. Inställningarna har ett eget block längst ner (ihopfällt). */
-const L3L_SECS = ["models", "site2d", "map", "settings"];
+const L3L_SECS = ["models", "site2d", "lyr", "map", "settings"];
 const l3lClosed = () => { const c = new Set(l3Prefs().layClosed || []); if (!l3Prefs().layAdv) c.add("settings"); return c; };
 /* Samlingsswitchar i Lager (Victor 2026-10-24): släcker/tänder alla 3D-modeller, alla punktmoln, eller alla 2D-lager + ritningen på en gång. Tänder man igen
    kommer det som var tänt förut tillbaka (är inget minnt tänds allt). */
@@ -113,6 +113,7 @@ function l3LayersRender() {
   let h = `<div class="v3-lay-top"><input type="search" class="v3-pp-q" id="v3LayQ" placeholder="Sök lager, modell, DXF…" value="${esc(l3lay.q || "")}" /><button type="button" class="v3-ic v3-lay-foldb" id="v3LayFold" title="${allShut ? "Fäll ut alla block" : "Fäll ihop alla block"}">${L3L_FOLD_ICO(allShut)}</button></div><!--l3l-models-->`;
   // Underlag (ritningen som mark) ligger under Visa; Planering och etablering togs bort (Victor 2026-10-12).
   if (typeof l3sHtml === "function") { const s2 = l3sHtml(row, l3lEye); if (s2) h += l3lSec("site2d", "2D-LAGER", s2.body, l3lSw("twoD", "Tänd/släck alla 2D-lager, DXF och ritningen (PDF)") + (s2.extra || "")); }
+  if (typeof l3lyHtml === "function") { const ly = l3lyHtml(l3lEye, esc); h += l3lSec("lyr", "LAGER I MODELL &amp; RITNING", ly.body, "", ly.n || null); }
   let mh = "";
   const noTc = typeof bridgeOk === "function" && !bridgeOk();
   if ((P.laySort || "list") === "list") {
@@ -241,6 +242,7 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3l-dxf]").forEach(b => { b.onclick = () => { if (b.dataset.cad) { const k = "cad:" + b.dataset.cad; setLayersVisible([k], !ls(k).visible); l3sRefresh(0); l3LayersRender(); } else l3sDxfFromTc(b.dataset.l3lDxf, b.dataset.name); }; });
   if (typeof l3sBind === "function") l3sBind(host);
   if (typeof l3mapBind === "function") l3mapBind(host);
+  if (typeof l3lyBind === "function") l3lyBind(host);
   const op = host.querySelector('[data-l3l-op="plan"]');
   if (op) op.oninput = () => { l3SetPref("planOp", Number(op.value)); l3lApplyPlanOp(); l3Render(); };
   const de = host.querySelector("#v3LayDetails");

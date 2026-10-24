@@ -251,7 +251,7 @@ async function l3bRestore() {
   if (todo.length) { l3Toast(fresh.length ? "En nyare version av byggnaden finns i Trimble Connect – den läses in och ersätter den visade." : "Byggnaden läses in…"); await l3bLoad(todo, { replace: true }); }
 }
 /* Bitarna ligger relativt O när de lästes; flytta dem om origo bytts (annan arbetsyta). */
-function l3bPosition() { l3b.models.forEach(m => m.meshes.forEach(x => x.position.set(m.O[0] - l3.O[0], m.O[1] - l3.O[1], m.O[2] - l3.O[2]))); if (typeof l3pc !== "undefined") l3pc.clouds.forEach(l3pcPlace); l3bViewApply(); }
+function l3bPosition() { l3b.models.forEach(m => m.meshes.forEach(x => x.position.set(m.O[0] - l3.O[0], m.O[1] - l3.O[1], m.O[2] - l3.O[2]))); if (typeof l3pc !== "undefined") l3pc.clouds.forEach(l3pcPlace); l3bViewApply(); if (typeof l3lyApply === "function") l3lyApply(); }
 /* Visning av IFC-modellerna (Lager → 3D-modeller → ⚙): kanter, täckning och enfärgad grå. Kanterna byggs bara för mindre modeller (≤ 1,2 milj. trianglar). */
 const L3B_EDGE_MAX = 1.2e6;
 function l3bViewApply(force) {
@@ -292,7 +292,7 @@ function l3bDb() {
   });
 }
 const l3bPlaceSig = w => { if (!w || !(w.fileId || w.adj)) return ""; const s = JSON.stringify([w.pl || null, w.adj || null]); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return "|p" + (h >>> 0).toString(36); };
-const l3bCacheKey = w => (w && w.version ? `v2|${projectId}|${w.fileId ? "f:" + w.fileId : w.id}|${w.version}${l3bPlaceSig(w)}|${l3bVoids() ? "u" : "s"}${l3bDetails() ? "d" : ""}${l3bRebar() ? "r" : ""}${l3bEngine() === "lite" ? "L" : ""}` : null);
+const l3bCacheKey = w => (w && w.version ? `v3|${projectId}|${w.fileId ? "f:" + w.fileId : w.id}|${w.version}${l3bPlaceSig(w)}|${l3bVoids() ? "u" : "s"}${l3bDetails() ? "d" : ""}${l3bRebar() ? "r" : ""}${l3bEngine() === "lite" ? "L" : ""}` : null);
 async function l3bCacheGet(w) {
   const key = l3bCacheKey(w);
   if (!key) return null;
@@ -310,7 +310,7 @@ async function l3bCachePut(w, m) {
     const db = await l3bDb();
     const rec = { key, name: m.name, O: m.O, tris: m.tris, at: Date.now(), colV: 2,
       chunks: m.meshes.filter(x => !x.userData.bcopy).map(x => ({ pos: x.geometry.getAttribute("position").array, col: x.geometry.getAttribute("color").array, idx: x.userData.l3b.origIdx, nrm: l3bNrm8(x.geometry),
-        ranges: x.userData.l3b.ranges.map(r => ({ start: r.start, count: r.count, idxStart: r.idxStart, idxCount: r.idxCount, guid: r.guid, name: r.name, base: r.base })) })) };
+        ranges: x.userData.l3b.ranges.map(r => ({ start: r.start, count: r.count, idxStart: r.idxStart, idxCount: r.idxCount, guid: r.guid, name: r.name, base: r.base, cls: r.cls, lay: r.lay })) })) };
     const st = db.transaction(L3B_STORE, "readwrite").objectStore(L3B_STORE);
     st.put(rec, key);
     // Rensa: behåll de senaste L3B_KEEP.
@@ -665,7 +665,7 @@ function l3bApplyHidden(mesh) {
   const u = mesh.userData.l3b, src = u.origIdx;
   let idx = src;
   // tempOff: temporära utanför sin tid; animOff: filmens animering (lagesplan-3dfilmfx.js) ritar objektet själv; mtHide: släckta i Montageordningen.
-  const off = new Set([...(u.tempOff || []), ...(u.animOff || [])]), alpha = new Map([...(u.gAlpha || []), ...(u.alpha || [])]), mt = u.mtHide || new Set();
+  const off = new Set([...(u.tempOff || []), ...(u.animOff || [])]), alpha = new Map([...(u.gAlpha || []), ...(u.alpha || [])]), mt = new Set([...(u.mtHide || []), ...(u.lyHide || [])]);
   if (u.hidden.size || off.size || alpha.size || mt.size) {
     const gone = new Set([...u.hidden, ...off, ...alpha.keys(), ...mt]), fast = l3bSliceIdx(mesh, ri => !gone.has(ri));
     if (fast) idx = fast;
