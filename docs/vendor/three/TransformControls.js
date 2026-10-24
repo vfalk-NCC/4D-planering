@@ -664,7 +664,8 @@
 	const _identityQuaternion = new THREE.Quaternion();
 	const _dirVector = new THREE.Vector3();
 	const _tempMatrix = new THREE.Matrix4();
-	const _unitX = new THREE.Vector3( 1, 0, 0 );
+	const _white = new THREE.Color( 0xffffff );
+		const _unitX = new THREE.Vector3( 1, 0, 0 );
 	const _unitY = new THREE.Vector3( 0, 1, 0 );
 	const _unitZ = new THREE.Vector3( 0, 0, 1 );
 	const _v1 = new THREE.Vector3();
@@ -699,7 +700,7 @@
 
 			const matInvisible = gizmoMaterial.clone();
 			const matCube = gizmoMaterial.clone();
-			matCube.color.setHex( 0x2f6bff ); // 4D-planering: kub i mitten
+			matCube.color.setHex( 0xf1f6ff ); // 4D-planering: vit kula i mitten
 			matInvisible.opacity = 0.15;
 			const matHelper = gizmoLineMaterial.clone();
 			matHelper.opacity = 0.5;
@@ -765,7 +766,7 @@
 				Y: [[ new THREE.Mesh( arrowGeometry, matGreen ), [ 0, 0.46, 0 ]], [ new THREE.Mesh( lineGeometry2, matGreen ) ]],
 				Z: [[ new THREE.Mesh( arrowGeometry, matBlue ), [ 0, 0, 0.46 ], [ Math.PI / 2, 0, 0 ]], [ new THREE.Mesh( lineGeometry2, matBlue ), null, [ Math.PI / 2, 0, 0 ]]],
 				XYZ: [[ new THREE.Mesh( new THREE.SphereGeometry( 0.035, 16, 12 ), matWhiteTransparent.clone() ), [ 0, 0, 0 ]]],
-				KUB: [[ new THREE.Mesh( new THREE.BoxGeometry( 0.07, 0.07, 0.07 ), matCube ), [ 0, 0, 0 ]]],
+				KUB: [[ new THREE.Mesh( new THREE.SphereGeometry( 0.05, 24, 16 ), matCube ), [ 0, 0, 0 ]]],
 				XY: [[ new THREE.Mesh( new THREE.BoxGeometry( 0.15, 0.15, 0.01 ), matBlueTransparent.clone() ), [ 0.15, 0.15, 0 ]]],
 				YZ: [[ new THREE.Mesh( new THREE.BoxGeometry( 0.15, 0.15, 0.01 ), matRedTransparent.clone() ), [ 0, 0.15, 0.15 ], [ 0, Math.PI / 2, 0 ]]],
 				XZ: [[ new THREE.Mesh( new THREE.BoxGeometry( 0.15, 0.15, 0.01 ), matGreenTransparent.clone() ), [ 0.15, 0, 0.15 ], [ - Math.PI / 2, 0, 0 ]]]
@@ -1183,7 +1184,7 @@
 
 					if ( handle.name === this.axis ) {
 
-						handle.material.color.setHex( 0xffff00 );
+						handle.material.color.copy( handle.material._color ).lerp( _white, 0.5 ); // 4D-planering: aktiv axel = ljusare ton av sin egen färg
 						handle.material.opacity = 1.0;
 
 					} else if ( this.axis.split( '' ).some( function ( a ) {
@@ -1192,7 +1193,7 @@
 
 					} ) ) {
 
-						handle.material.color.setHex( 0xffff00 );
+						handle.material.color.copy( handle.material._color ).lerp( _white, 0.5 );
 						handle.material.opacity = 1.0;
 
 					}

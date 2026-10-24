@@ -4,8 +4,8 @@
    – steg för förflyttning och vridning (fast, utan att hålla Skift),
    – riktningslås: rörelsen låses längs en vinkel (0° = öster, 90° = norr) – med en tunn hjälplinje i vyn,
    – exakt förflyttning: skriv ett avstånd och flytta objektet så långt längs den låsta riktningen. */
-const l3gz = { open: false, axis: "free", space: "world", dist: 0, ang: 0, lock: null, el: null, guide: null };
-const L3GZ_DIST = [0, 0.05, 0.1, 0.25, 0.5, 1], L3GZ_ANG = [0, 1, 5, 15, 45, 90];
+const l3gz = { open: false, more: false, axis: "free", space: "world", dist: 0, ang: 0, lock: null, el: null, guide: null };
+const L3GZ_DIST = [0, 0.01, 0.1, 0.25, 0.5, 1], L3GZ_ANG = [0, 1, 5, 15, 45, 90];
 const l3gzF = v => v === 0 ? "Fritt" : v < 2 && v !== 1 ? String(v).replace(".", ",") + " m" : v === 1 ? "1 m" : v + "°";
 
 function l3GzLoad() {
@@ -15,7 +15,7 @@ function l3GzLoad() {
 function l3GzApply() {
   if (!l3 || !l3.gizmo) return;
   const g = l3.gizmo, rot = g.mode === "rotate", a = l3gz.axis, lock = l3gz.lock != null;
-  if (!rot) { g.showX = lock || a === "free" || a === "x"; g.showY = lock || a === "free" || a === "y"; g.showZ = !lock && (a === "free" || a === "z"); }
+  if (!rot) { g.showX = lock || a === "free" || a === "x" || a === "plan"; g.showY = lock || a === "free" || a === "y" || a === "plan"; g.showZ = !lock && (a === "free" || a === "z"); }
   g.setSpace(l3gz.space === "local" && !rot && !lock ? "local" : "world");
   l3ApplyStep(); l3GzGuide(); l3GzLabel(); l3Render();
 }
@@ -54,7 +54,7 @@ function l3GzDir() {
 function l3GzLabel() {
   const t = document.getElementById("v3GzT"); if (!t) return; const rot = l3.gizmo.mode === "rotate", bits = [rot ? "Vrid" : "Flytta"];
   if (rot) bits.push(l3gz.ang ? l3gz.ang + "°-steg" : "fritt");
-  else if (l3gz.lock != null) bits.push("låst " + Math.round(l3gz.lock * 10) / 10 + "°"); else if (l3gz.axis !== "free") bits.push((l3gz.axis === "z" ? "höjd" : l3gz.axis.toUpperCase()) + "-låst"); else bits.push(l3gz.space === "local" ? "objektets axlar" : "fritt");
+  else if (l3gz.lock != null) bits.push("låst " + Math.round(l3gz.lock * 10) / 10 + "°"); else if (l3gz.axis === "plan") bits.push("i planet"); else if (l3gz.axis !== "free") bits.push((l3gz.axis === "z" ? "höjd" : l3gz.axis.toUpperCase()) + "-låst"); else bits.push(l3gz.space === "local" ? "objektets axlar" : "fritt");
   if (!rot && l3gz.dist) bits.push(l3gzF(l3gz.dist));
   t.textContent = bits.join(" · "); const b = document.getElementById("v3GzB"); if (b) b.dataset.mode = rot ? "rot" : "mv";
 }
@@ -80,31 +80,47 @@ function l3GzDom() {
   el.querySelector("#v3GzB").onclick = () => { l3gz.open = !l3gz.open; l3GzPopHtml(); };
   l3gz.el = el; return el;
 }
+const L3GZ_ICO = {
+  free: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>',
+  arr: c => `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V5"/><path d="M6.5 10.5 12 5l5.5 5.5" fill="${c}"/></svg>`,
+  plan: '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="3.5"/></svg>',
+  move: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>',
+  rot: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg>'
+};
 function l3GzPopHtml() {
   const pop = document.getElementById("v3GzP"); if (!pop) return; pop.classList.toggle("hidden", !l3gz.open); document.getElementById("v3GzB").classList.toggle("on", l3gz.open);
   if (!l3gz.open) return;
   const rot = l3.gizmo.mode === "rotate", seg = (id, items, cur, fmt) => `<div class="v3-gz-seg" data-gz="${id}">${items.map(v => `<button type="button" data-v="${v}" class="${String(cur) === String(v) ? "on" : ""}">${fmt ? fmt(v) : v}</button>`).join("")}</div>`;
   const has = l3gz.lock != null, dirDeg = has ? l3gz.lock : "", dir = l3GzDir();
+  const tile = (k, ico, lab, col) => `<button type="button" class="v3-gz-t ${l3gz.axis === k && !has ? "on" : ""}" data-gztile="${k}" title="${lab}" style="--tc:${col}">${ico}<span>${lab}</span></button>`;
+  const copy = l3gx.copy;
   pop.innerHTML = `
-    <div class="v3-gz-r"><span>Läge</span>${seg("mode", ["translate", "rotate"], l3.gizmo.mode, v => v === "translate" ? "Flytta" : "Vrid")}</div>
-    ${rot ? "" : `<div class="v3-gz-r"><span>Lås axel</span>${seg("axis", ["free", "x", "y", "z"], l3gz.axis, v => ({ free: "Fri", x: "X", y: "Y", z: "Höjd" }[v]))}</div>
-    <div class="v3-gz-r"><span>Rymd</span>${seg("space", ["world", "local"], l3gz.space, v => v === "world" ? "Värld" : "Objekt")}</div>`}
-    <div class="v3-gz-r"><span>${rot ? "Vinkelsteg" : "Steg"}</span>${rot ? seg("ang", L3GZ_ANG, l3gz.ang, v => v ? v + "°" : "Fritt") : seg("dist", L3GZ_DIST, l3gz.dist, v => v ? String(v).replace(".", ",") : "Fritt")}</div>
-    ${rot ? "" : `<div class="v3-gz-r v3-gz-dir"><span>Lås riktning</span><div class="v3-gz-in"><input type="number" step="1" id="v3GzDeg" placeholder="av" value="${dirDeg}" /><em>°</em><button type="button" data-gz="d0" title="Öster">0°</button><button type="button" data-gz="d45">45°</button><button type="button" data-gz="d90" title="Norr">90°</button><button type="button" data-gz="dobj" title="Objektets egen riktning">Objekt</button><button type="button" data-gz="doff" title="Ta bort låset">✕</button></div></div>
-    <div class="v3-gz-r v3-gz-ex"><span>Flytta exakt</span><div class="v3-gz-in"><button type="button" data-gz="mv-" title="Flytta bakåt">−</button><input type="number" step="0.01" id="v3GzDist" value="1" /><em>m</em><button type="button" data-gz="mv+" title="Flytta framåt">+</button></div></div>
-    <div class="v3-gz-h">${dir ? "Rörelsen följer " + (l3gz.lock != null ? "den låsta riktningen" : l3gz.axis !== "free" ? "vald axel" : "objektets axlar") + "." : "Fri rörelse. Håll Skift för att flytta i steg."}</div>`}
-    <button type="button" class="v3-gz-reset" data-gz="reset">Återställ</button>`;
-  { const cb = document.getElementById("v3GzB").getBoundingClientRect(), host = l3.renderer.domElement.getBoundingClientRect(), room = host.bottom - cb.bottom; if (room < pop.offsetHeight + 40) { pop.style.top = "auto"; pop.style.bottom = "32px"; } else { pop.style.top = "32px"; pop.style.bottom = "auto"; } if (cb.left + 300 > host.right) pop.style.left = (host.right - cb.left - 304) + "px"; else pop.style.left = "0"; }
+    <div class="v3-gz-hd"><div class="v3-gz-modes">${["translate", "rotate"].map(m => `<button type="button" data-gzmode="${m}" class="${l3.gizmo.mode === m ? "on" : ""}">${m === "translate" ? L3GZ_ICO.move + "Flytta" : L3GZ_ICO.rot + "Vrid"}</button>`).join("")}</div><button type="button" class="v3-gz-x" data-gz="close" title="Stäng" aria-label="Stäng">✕</button></div>
+    ${rot ? "" : `<div class="v3-gz-tiles">${tile("free", L3GZ_ICO.free, "Fri", "#2f7bff")}${tile("x", L3GZ_ICO.arr("#ef4444"), "X", "#ef4444")}${tile("y", L3GZ_ICO.arr("#22c55e"), "Y", "#22c55e")}${tile("z", L3GZ_ICO.arr("#3b82f6"), "Höjd", "#3b82f6")}${tile("plan", L3GZ_ICO.plan, "Plan", "#64748b")}</div>`}
+    <div class="v3-gz-lab">${rot ? "Vinkelsteg" : "Stegstorlek"}</div>
+    ${rot ? seg("ang", L3GZ_ANG, l3gz.ang, v => v ? v + "°" : "Fritt") : seg("dist", L3GZ_DIST, l3gz.dist, v => v ? String(v).replace(".", ",") : "Fritt")}
+    <label class="v3-gz-sw" title="Det du drar blir en kopia – originalet ligger kvar. Du kan också hålla Ctrl när du börjar dra."><span>Kopiera vid flytt</span><span class="v3-lay-sw"><input type="checkbox" role="switch" id="v3GxCopy" ${copy ? "checked" : ""} /><i></i></span></label>
+    <details class="v3-gz-more" ${l3gz.more ? "open" : ""}><summary>Fler alternativ</summary><div id="v3GzMore">
+      ${rot ? "" : `<div class="v3-gz-r"><span>Rymd</span>${seg("space", ["world", "local"], l3gz.space, v => v === "world" ? "Värld" : "Objekt")}</div>
+      <div class="v3-gz-r v3-gz-dir"><span>Lås riktning</span><div class="v3-gz-in"><input type="number" step="1" id="v3GzDeg" placeholder="av" value="${dirDeg}" /><em>°</em><button type="button" data-gz="d0" title="Öster">0°</button><button type="button" data-gz="d45">45°</button><button type="button" data-gz="d90" title="Norr">90°</button><button type="button" data-gz="dobj" title="Objektets egen riktning">Objekt</button><button type="button" data-gz="doff" title="Lås upp riktningen">✕</button></div></div>
+      <div class="v3-gz-r v3-gz-ex"><span>Flytta exakt</span><div class="v3-gz-in"><button type="button" data-gz="mv-" title="Flytta bakåt">−</button><input type="number" step="0.01" id="v3GzDist" value="1" /><em>m</em><button type="button" data-gz="mv+" title="Flytta framåt">+</button></div></div>
+      <div class="v3-gz-h">${dir ? "Rörelsen följer " + (has ? "den låsta riktningen" : l3gz.axis !== "free" ? "vald axel" : "objektets axlar") + "." : "Håll Skift för att flytta i steg."}</div>`}
+      <button type="button" class="v3-gz-reset" data-gz="reset">Återställ</button></div></details>`;
+  { const cb = document.getElementById("v3GzB").getBoundingClientRect(), host = l3.renderer.domElement.getBoundingClientRect(), room = host.bottom - cb.bottom; if (room < pop.offsetHeight + 40) { pop.style.top = "auto"; pop.style.bottom = "32px"; } else { pop.style.top = "32px"; pop.style.bottom = "auto"; } if (cb.left + 340 > host.right) pop.style.left = (host.right - cb.left - 344) + "px"; else pop.style.left = "0"; }
   pop.querySelectorAll("[data-gz]").forEach(el => {
     const k = el.dataset.gz;
     if (el.classList.contains("v3-gz-seg")) el.querySelectorAll("button").forEach(b => { b.onclick = () => l3GzSet(k, b.dataset.v); });
     else if (el.tagName === "BUTTON") el.onclick = () => l3GzAct(k);
   });
+  pop.querySelectorAll("[data-gztile]").forEach(b => { b.onclick = () => l3GzSet("axis", b.dataset.gztile); });
+  pop.querySelectorAll("[data-gzmode]").forEach(b => { b.onclick = () => l3GzSet("mode", b.dataset.gzmode); });
+  const cp = pop.querySelector("#v3GxCopy"); if (cp) cp.onchange = () => { l3gx.copy = cp.checked; };
+  const mo = pop.querySelector(".v3-gz-more"); if (mo) mo.ontoggle = () => { l3gz.more = mo.open; };
   const deg = pop.querySelector("#v3GzDeg"); if (deg) deg.onchange = () => { const v = deg.value === "" ? null : Number(deg.value); l3GzLock(v); };
 }
 function l3GzLock(deg) { l3gz.lock = deg == null || !isFinite(deg) ? null : ((Math.round(deg * 10) / 10 % 360) + 360) % 360; if (l3gz.lock != null) l3gz.axis = "free"; l3GzApply(); l3GzPopHtml(); }
 function l3GzSet(k, v) {
-  if (k === "mode") { l3Mode(v); } else if (k === "axis") { l3gz.axis = v; if (v !== "free") l3gz.lock = null; }
+  if (k === "mode") { l3Mode(v); l3gz.axis = "free"; } else if (k === "axis") { l3gz.axis = v; if (v !== "free") l3gz.lock = null; }
   else if (k === "space") { l3gz.space = v; l3SetPref("gzSpace", v); }
   else if (k === "dist") { l3gz.dist = Number(v) || 0; l3SetPref("gzDist", l3gz.dist || null); }
   else if (k === "ang") { l3gz.ang = Number(v) || 0; l3SetPref("gzAng", l3gz.ang || null); }
@@ -114,6 +130,7 @@ function l3GzAct(k) {
   const o = l3.gizmo.object;
   if (k === "d0") l3GzLock(0); else if (k === "d45") l3GzLock(45); else if (k === "d90") l3GzLock(90); else if (k === "doff") l3GzLock(null);
   else if (k === "dobj") l3GzLock(o ? Math.round(((o.rotation.z * 180 / Math.PI) % 360 + 360) % 360 * 10) / 10 : 0);
+  else if (k === "close") { l3gz.open = false; l3GzPopHtml(); }
   else if (k === "reset") { l3gz.axis = "free"; l3gz.lock = null; l3gz.space = "world"; l3gz.dist = 0; l3gz.ang = 0; ["gzDist", "gzAng", "gzSpace"].forEach(x => l3SetPref(x, null)); l3GzApply(); l3GzPopHtml(); }
   else if (k === "mv+" || k === "mv-") {
     const d = Number(String((document.getElementById("v3GzDist") || {}).value).replace(",", ".")) || 0, dir = l3GzDir() || (o ? [Math.cos(o.rotation.z), Math.sin(o.rotation.z), 0] : [1, 0, 0]), s = k === "mv+" ? 1 : -1;

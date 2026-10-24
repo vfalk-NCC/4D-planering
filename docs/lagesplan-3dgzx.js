@@ -63,13 +63,27 @@ function l3gxDropCopies() {
 }
 function l3gxMoved() { const s = l3.dragStart, g = l3.gizmo.object; return !s || !g || Math.abs(s.x - g.position.x) > 1e-4 || Math.abs(s.y - g.position.y) > 1e-4 || Math.abs(s.z - g.position.z) > 1e-4 || Math.abs(s.r - g.rotation.z) > 1e-6; }
 
+/* ---- Verktygstips vid markören: vad handtaget under den gör ---- */
+const L3GX_TIPS = { X: ["Flytta längs X-axeln", "Dra för att flytta åt öst/väst"], Y: ["Flytta längs Y-axeln", "Dra för att flytta åt norr/söder"], Z: ["Flytta i höjd", "Dra uppåt eller nedåt"], XY: ["Flytta i planet", "Dra för att flytta fritt i sidled"], XYZ: ["Flytta fritt", "Dra för att flytta åt alla håll"], E: ["Vrid runt lodaxeln", "Dra runt ringen – Skift ger steg"] };
+function l3gxTip(axis, ring) {
+  const host = l3.renderer.domElement.parentElement; let el = document.getElementById("v3GzTip"); if (!el) { el = document.createElement("div"); el.id = "v3GzTip"; el.className = "v3-gz-tip"; host.appendChild(el); }
+  if (!axis || l3.gizmo.dragging || (l3.gizmoR && l3.gizmoR.dragging)) { el.style.display = "none"; return; }
+  const rot = ring || l3.gizmo.mode === "rotate", t = rot ? L3GX_TIPS.E : (L3GX_TIPS[axis] || null); if (!t) { el.style.display = "none"; return; }
+  const copy = !rot && !l3gx.copy ? "Håll Ctrl för att kopiera" : t[1];
+  el.innerHTML = `<b>${t[0]}</b><span>${rot ? t[1] : copy}</span>`; const r = host.getBoundingClientRect(), p = l3gx.ptr || { x: r.width / 2, y: r.height / 2 };
+  el.style.left = Math.min(r.width - 200, Math.max(8, p.x + 16)) + "px"; el.style.top = Math.max(8, p.y - 64) + "px"; el.style.display = "block";
+}
+
 /* ---- Snurrande pilar på vridringen ---- */
 function l3gxDecor() {
   if (l3gx.decor) return l3gx.decor;
-  const grp = new THREE.Group(), mat = new THREE.MeshBasicMaterial({ color: 0x4f9bff, depthTest: false, depthWrite: false, transparent: true, opacity: 0.95, toneMapped: false });
+  const grp = new THREE.Group(), spin = new THREE.Group(), mat = new THREE.MeshBasicMaterial({ color: 0x4f9bff, depthTest: false, depthWrite: false, transparent: true, opacity: 0.95, toneMapped: false });
   const tip = new THREE.LatheGeometry([[0.0001, 0], [0.026, 0.006], [0.043, 0.028], [0.043, 0.056], [0.026, 0.088], [0.0001, 0.122]].map(q => new THREE.Vector2(q[0], q[1])), 20); tip.translate(0, -0.06, 0);
   for (let k = 0; k < 3; k++) { const a = new THREE.Group(); a.rotation.z = k * Math.PI * 2 / 3; const m = new THREE.Mesh(tip, mat); m.position.set(0.5, 0, 0); m.renderOrder = 11; m.raycast = () => {}; a.add(m);
-    const tail = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.009, 6, 18, Math.PI / 5), new THREE.MeshBasicMaterial({ color: 0x4f9bff, depthTest: false, depthWrite: false, transparent: true, opacity: 0.5, toneMapped: false })); tail.rotation.z = -Math.PI / 5; tail.renderOrder = 11; tail.raycast = () => {}; a.add(tail); grp.add(a); }
+    const tail = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.009, 6, 18, Math.PI / 5), new THREE.MeshBasicMaterial({ color: 0x4f9bff, depthTest: false, depthWrite: false, transparent: true, opacity: 0.5, toneMapped: false })); tail.rotation.z = -Math.PI / 5; tail.renderOrder = 11; tail.raycast = () => {}; a.add(tail); spin.add(a); }
+  grp.add(spin); grp.userData.spin = spin;
+  const dm = new THREE.MeshBasicMaterial({ color: 0x3b82f6, depthTest: false, depthWrite: false, transparent: true, opacity: 0.95, toneMapped: false });
+  for (let k = 0; k < 4; k++) { const a = Math.PI / 4 + k * Math.PI / 2, d = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.05), dm); d.position.set(0.5 * Math.cos(a), 0.5 * Math.sin(a), 0); d.rotation.z = a; d.renderOrder = 11; d.raycast = () => {}; grp.add(d); }   // diskreta handtag på ringen
   const halo = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.022, 8, 128), new THREE.MeshBasicMaterial({ color: 0x60a5fa, depthTest: false, depthWrite: false, transparent: true, opacity: 0.14, toneMapped: false })); halo.renderOrder = 10; halo.raycast = () => {}; grp.add(halo);
   grp.userData.noHit = true; grp.visible = false; l3.scene.add(grp); l3gx.decor = grp; return grp;
 }
@@ -86,7 +100,7 @@ function l3gxDecorUpdate() {
 function l3gxTick(now) {
   if (!l3 || !l3.gizmo) { l3gx.raf = 0; return; }
   if (!l3gx.t0) l3gx.t0 = now;
-  const spin = l3gxDecorUpdate(); l3gx.decor.rotation.z = -((now - l3gx.t0) / 1000) * 0.9;   // medsols ... pilarna visar vridriktningen
+  const spin = l3gxDecorUpdate(); l3gx.decor.userData.spin.rotation.z = -((now - l3gx.t0) / 1000) * 0.9;   // medsols ... pilarna visar vridriktningen
   l3gx.raw(); if (spin && now - (l3gx.lastRender || 0) >= 0) { l3gx.lastRender = now; l3gx.raf = requestAnimationFrame(l3gxTick); } else l3gx.raf = 0;
 }
 function l3gxKick() { if (!l3gx.raf && l3gx.raw) l3gx.raf = requestAnimationFrame(l3gxTick); }
@@ -101,8 +115,8 @@ function l3gxPopRow() {
 (function () {
   if (typeof l3FromGizmo === "function") { const f = l3FromGizmo; l3FromGizmo = function () { if (L3GX_MULTI()) { try { l3GzConstrain(); l3GzReadout(); } catch (e) { /* bara visning */ } l3gxApply(); return; } return f.apply(this, arguments); }; }
   if (typeof l3DragEnd === "function") { const f = l3DragEnd; l3DragEnd = function () { if (l3gx.made.length && !l3gxMoved()) l3gxDropCopies(); if (L3GX_MULTI()) { if (l3gxMoved()) l3gxEnd(); else l3gxPlacePivot(); return; } const cp = l3gx.copied; const r = f.apply(this, arguments); if (cp) { l3Status(cp + (cp === 1 ? ' kopia lämnades kvar' : ' kopior lämnades kvar') + ' på ursprungsplatsen.'); l3gx.copied = 0; } return r; }; }
-  if (typeof l3RefreshSel === "function") { const f = l3RefreshSel; l3RefreshSel = function () { const r = f.apply(this, arguments); try { if (!l3gx.bound && l3 && l3.gizmo) { l3gx.bound = true; [l3.gizmo, l3.gizmoR].forEach(g => g && g.addEventListener("mouseDown", l3gxCopyOnStart)); } l3gxAttach(); } catch (e) { console.warn(e); } return r; }; }
+  if (typeof l3RefreshSel === "function") { const f = l3RefreshSel; l3RefreshSel = function () { const r = f.apply(this, arguments); try { if (!l3gx.bound && l3 && l3.gizmo) { l3gx.bound = true; [l3.gizmo, l3.gizmoR].forEach(g => g && g.addEventListener("mouseDown", l3gxCopyOnStart)); l3.gizmo.addEventListener("axis-changed", e => l3gxTip(e.value, false)); if (l3.gizmoR) l3.gizmoR.addEventListener("axis-changed", e => l3gxTip(e.value, true)); [l3.gizmo, l3.gizmoR].forEach(g => g && g.addEventListener("mouseDown", () => l3gxTip(null))); l3.renderer.domElement.addEventListener("pointermove", e => { const r = l3.renderer.domElement.parentElement.getBoundingClientRect(); l3gx.ptr = { x: e.clientX - r.left, y: e.clientY - r.top }; const t = document.getElementById("v3GzTip"); if (t && t.style.display === "block") { t.style.left = Math.min(r.width - 200, Math.max(8, l3gx.ptr.x + 16)) + "px"; t.style.top = Math.max(8, l3gx.ptr.y - 64) + "px"; } }); } l3gxAttach(); } catch (e) { console.warn(e); } return r; }; }
   if (typeof l3Mode === "function") { const f = l3Mode; l3Mode = function (m) { f(m); if (l3.gizmo) l3.gizmo.size = m === "rotate" ? 0.8 : 0.62; l3gxKick(); }; }
-  if (typeof l3GzPopHtml === "function") { const f = l3GzPopHtml; l3GzPopHtml = function () { const r = f.apply(this, arguments); l3gxPopRow(); return r; }; }
+  if (typeof l3GzPopHtml === "function") { const f = l3GzPopHtml; l3GzPopHtml = function () { return f.apply(this, arguments); }; }
   if (typeof l3Render === "function") { const f = l3Render; l3gx.raw = f; l3Render = function () { let on = false; try { on = l3gxDecorUpdate(); } catch (e) { /* bara visning */ } const r = f.apply(this, arguments); if (on && !l3gx.raf) { l3gx.t0 = 0; l3gxKick(); } return r; }; }
 })();

@@ -241,6 +241,7 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3l-forget]").forEach(b => { b.onclick = () => l3lForget(b.dataset.l3lForget); });
   host.querySelectorAll("[data-l3l-model]").forEach(b => { b.onclick = () => { const m = l3b.models.find(x => x.id === b.dataset.l3lModel); if (m) { l3bShow(m.id, !m.visible); l3RenderLegend(); l3Render(); l3LayersRender(); } }; });
   host.querySelectorAll("[data-l3l-place]").forEach(b => { b.onclick = e => { e.stopPropagation(); l3bPlaceDialog(b.dataset.l3lPlace); }; });
+  host.querySelectorAll("[data-l3l-dxfdel]").forEach(b => { b.onclick = async () => { const r = cads().find(x => x.id === b.dataset.l3lDxfdel); if (!r) return; await deleteCad(r); l3sRefresh(0); l3LayersRender(); }; });
   host.querySelectorAll("[data-l3l-dxfzoom]").forEach(b => { b.onclick = () => l3sZoomCad(b.dataset.l3lDxfzoom); });
   host.querySelectorAll("[data-l3l-zoom]").forEach(b => { b.onclick = () => l3lZoomModel(b.dataset.l3lZoom); });
   host.querySelectorAll("[data-l3l-save]").forEach(b => { b.onclick = async () => { b.disabled = true; try { await l3bmSave(b.dataset.l3lSave); } catch (e) { /* statusraden */ } l3LayersRender(); }; });
@@ -332,7 +333,7 @@ function l3lTreeHtml(id, depth) {
     }
     if (/\.(dxf|dwg)$/i.test(f.name)) {
       const cad = typeof cads === "function" ? cads().find(r => r.name === f.name.replace(/\.(dxf|dwg)$/i, "")) : null, on = cad && ls("cad:" + cad.id).visible;
-      h += `<div class="v3-lr" ${pad}><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3l-dxf="${esc(f.id)}" data-name="${esc(f.name)}" data-cad="${cad ? esc(cad.id) : ""}" title="${cad ? (on ? "Släck" : "Tänd") : "Läs in som CAD-lager" + (/\.dwg$/i.test(f.name) ? " (DWG, experimentellt)" : "")}">${l3lEye(!!on)}</button><span class="v3-lr-n" title="${esc(f.name)}">${esc(f.name)}</span>${cad ? `<button type="button" class="v3-lr-zoom" data-l3l-dxfzoom="${esc(cad.id)}" title="Zooma till ritningen">${L3_ICO.focus}</button>` : ""}<em class="v3-lr-k">DXF</em></div>`;
+      h += `<div class="v3-lr" ${pad}><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3l-dxf="${esc(f.id)}" data-name="${esc(f.name)}" data-cad="${cad ? esc(cad.id) : ""}" title="${cad ? (on ? "Släck" : "Tänd") : "Läs in som CAD-lager" + (/\.dwg$/i.test(f.name) ? " (DWG, experimentellt)" : "")}">${l3lEye(!!on)}</button><span class="v3-lr-n" title="${esc(f.name)}">${esc(f.name)}</span>${cad ? `<button type="button" class="v3-lr-zoom" data-l3l-dxfzoom="${esc(cad.id)}" title="Zooma till ritningen">${L3_ICO.focus}</button><button type="button" class="v3-lr-zoom v3-lr-del" data-l3l-dxfdel="${esc(cad.id)}" title="Ta bort den inlästa ritningen från lägesplanen (originalet i Trimble Connect rörs inte)">${L3_ICO.trash}</button>` : ""}<em class="v3-lr-k">DXF</em></div>`;
       return;
     }
     const m = l3b.models.find(x => x.id === "f:" + f.id), busy = l3lay.loading.has(f.id);

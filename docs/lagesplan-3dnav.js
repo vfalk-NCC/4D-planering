@@ -426,7 +426,7 @@ function l3SetProjection(ortho) {
     cam.far = Math.max(20000, d * 40); cam.near = Math.max(0.05, d / 2000);
   }
   cam.updateProjectionMatrix();
-  l3.camera = cam; orbit.object = cam; l3.gizmo.camera = cam;
+  l3.camera = cam; orbit.object = cam; l3.gizmo.camera = cam; if (l3.gizmoR) l3.gizmoR.camera = cam;
   orbit.update();
   l3SetPref("ortho", !!ortho);
   const cb = document.getElementById("v3Ortho"); if (cb) cb.checked = !!ortho;
