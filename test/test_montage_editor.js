@@ -52,6 +52,16 @@ const D = f => fs.readFileSync(path.join(__dirname, '..', 'docs', f), 'utf8');
       l3mtToggle(true); await new Promise(r => setTimeout(r, 100)); out.dock = !!document.getElementById('v3MontDock'); out.rows = document.querySelectorAll('.v3-mt-row').length; out.warn = [...document.querySelectorAll('.v3-mt-row .o')].map(x => x.textContent).join('|');
       // spara delas med dashboarden: samma fil
       l3mt.dirty = true; await l3mtSave(); out.saved = (store.f || []).length === 1 && store.f[0].id === 'S1';
+      // objektstatus: monterad/skadad/försenad, kommentar, filter, CSV och färg i modellen
+      l3mt.view = 'obj'; l3mtRender(); await new Promise(r => setTimeout(r, 60)); const C0 = l3mtCache(), rows0 = l3mtObjRows(C0);
+      out.objRows = rows0.length; out.objUi = !!document.querySelector('.v3-mt-tbl') && document.querySelectorAll('.v3-mt-tbl tr.or').length === rows0.length && !!document.querySelector('.v3-mt-chips');
+      l3mt.osel = new Set([rows0[0].key, rows0[1].key]); l3mtMarkSet([...l3mt.osel], { m: 1 }); l3mtMarkSet([rows0[2].key], { s: 1 }); l3mtMarkSet([rows0[3].key], { f: 1 });
+      const N = l3mtCounts(rows0); out.counts = [N.m, N.s, N.f].join(); const colOf = k => { const e = rows0[k].ents[0]; const a = e.mesh.geometry.getAttribute('color').array, r = e.mesh.userData.l3b.ranges[e.ri]; return [a[r.start * 3], a[r.start * 3 + 1], a[r.start * 3 + 2]].map(v => Math.round(v * 100)).join(); };
+      out.paintM = colOf(0); out.paintS = colOf(2); out.paintF = colOf(3);
+      l3mt.of = 'dam'; out.fDam = l3mtObjFilter(rows0).length; l3mt.of = 'ok'; out.fOk = l3mtObjFilter(rows0).length; l3mt.of = 'all';
+      document.getElementById('mtObjBody') && (l3mt.q = rows0[1].id.toLowerCase(), out.search = l3mtObjFilter(rows0).length); l3mt.q = '';
+      l3mtMarks()[rows0[1].key].c = 'Skadad på kant'; l3mtMarkSet([rows0[1].key], { m: 0 }); out.keepCmt = !!l3mtMarks()[rows0[1].key] && !l3mtMarks()[rows0[1].key].m;
+      out.prog = l3mtProg(C0).includes('monterade'); window.__csv = null; const od = window.downloadBlob; window.downloadBlob = (b, n) => { window.__csv = { b, n }; }; l3mtCsv(); window.downloadBlob = od; out.csv = !!window.__csv && /\.csv$/.test(window.__csv.n) && (await window.__csv.b.text()).includes('Skadad på kant'); l3mtRestore(); out.restoredMarks = true;
       // export
       await l3mtExport(); out.msg = l3mt.msg; const dl = window.__dl; out.name = dl && dl.n; const html = dl ? await dl.b.text() : ''; out.len = html.length;
       const mpx = mpExtract(html), Dd = mpx && mpx.data; out.steps = Dd && Dd.steps.length; out.geo = !!(Dd && Dd.geo && Dd.geo.d); out.has3d = !!(Dd && Dd.has3d);
@@ -64,6 +74,7 @@ const D = f => fs.readFileSync(path.join(__dirname, '..', 'docs', f), 'utf8');
     if (!res.paint || !res.hide || !res.incremental || !res.restored2 || !res.height || !res.gantt || !res.ganttDrag) fail('färg i buffert, släck kommande, stegvis uppdatering, höjd och gantt: ' + JSON.stringify({ paint: res.paint, hide: res.hide, inc: res.incremental, rest: res.restored2, h: res.height, g: res.gantt, d: res.ganttDrag }));
     if (res.tg !== 'G1,G4') fail('markering blir objekt: ' + res.tg);
     if (!res.dock || res.rows !== 3 || !/1\/2|FINNSEJ|2\/2/.test(res.warn + '|')) fail('panelen: ' + JSON.stringify(res));
+    if (!res.objUi || res.counts !== '2,1,1' || !/^(?!.*NaN)/.test(res.paintM) || res.paintM === res.paintS || res.paintS === res.paintF || res.fDam !== 1 || res.fOk !== 2 || res.search !== 1 || !res.keepCmt || !res.prog || !res.csv) fail('objektstatus: ' + JSON.stringify({ rows: res.objRows, ui: res.objUi, counts: res.counts, m: res.paintM, s: res.paintS, f: res.paintF, dam: res.fDam, ok: res.fOk, q: res.search, cmt: res.keepCmt, prog: res.prog, csv: res.csv }));
     if (!res.saved) fail('sekvensen sparas i 4D-datas fil'); if (!/_3D\.html$/.test(res.name || '')) fail('exporten blev inte 3D-fil: ' + JSON.stringify(res));
     if (res.steps !== 3 || !res.geo || !res.has3d || res.found !== '2,1,1' || res.deps !== ',0,') fail('exportens innehåll: ' + JSON.stringify(res));
     if (!res.f || res.f.m !== 'P-G1' || res.f.l !== 3000 || res.f.t !== 1.5 || res.f.p !== 'Fas 1') fail('egenskaperna följer med: ' + JSON.stringify(res.f)); if (!res.img) fail('bild per steg');

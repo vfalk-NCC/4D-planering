@@ -911,8 +911,8 @@ function l3View(v) {
   if (v === "sel") return l3ZoomSelected();
   if (v === "iso") return l3Frame(true);
   const b = l3SceneBox(), c = b.getCenter(new THREE.Vector3()), size = Math.max(10, b.getSize(new THREE.Vector3()).length());
-  const dirs = { top: [0, -0.0001, 1], n: [0, 1, 0.35], s: [0, -1, 0.35], e: [1, 0, 0.35], w: [-1, 0, 0.35] };
-  l3FlyTo(c, size * (v === "top" ? 1.1 : 0.9), new THREE.Vector3(...dirs[v]));
+  const dirs = { top: [0, -0.0001, 1], bot: [0, -0.0001, -1], n: [0, 1, 0.35], s: [0, -1, 0.35], e: [1, 0, 0.35], w: [-1, 0, 0.35] };
+  l3FlyTo(c, size * (v === "top" || v === "bot" ? 1.1 : 0.9), new THREE.Vector3(...dirs[v]));
 }
 
 // ---------------------------------------------------------------------

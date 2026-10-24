@@ -103,7 +103,19 @@ function l3UiInit(box) {
   const faces = [["top", "TOPP", [0, 0, 1], [0, 1, 0]], ["bot", "UNDER", [0, 0, -1], [0, 1, 0]], ["n", "N", [0, 1, 0], [0, 0, 1]], ["s", "S", [0, -1, 0], [0, 0, 1]], ["e", "Ö", [1, 0, 0], [0, 0, 1]], ["w", "V", [-1, 0, 0], [0, 0, 1]]];
   l3ui.faces = faces.map(([k, t, n, v]) => { const f = mk("button", null, "v3-cube-f f-" + k, t); f.type = "button"; f.dataset.face = k; f.dataset.tip = k === "top" ? "Uppifrån" : k === "bot" ? "" : "Från " + { n: "norr", s: "söder", e: "öster", w: "väster" }[k]; cube.querySelector("#v3CubeC").appendChild(f); return { f, n, v }; });
   cube.addEventListener("pointerdown", e => { if (l3UiGet().locked) e.stopPropagation(); });
-  cube.querySelector("#v3CubeC").onclick = e => { const f = e.target.closest("[data-face]"); if (!f || !l3UiGet().locked) return; const k = f.dataset.face; if (k === "bot") return; l3View(k); };
+  // Kuben går att vrida med musen (dra på den) så att sidorna som inte syns kan tryckas på (Victor 2026-10-24)
+  { let dr = null;
+    cube.addEventListener("pointerdown", e => { if (e.button !== 0 || !l3UiGet().locked || e.target.closest(".v3-cube-home")) return; dr = { x: e.clientX, y: e.clientY, moved: false, id: e.pointerId }; });
+    window.addEventListener("pointermove", e => {
+      if (!dr || !l3 || !l3.camera) return; const dx = e.clientX - dr.x, dy = e.clientY - dr.y;
+      if (!dr.moved && Math.hypot(dx, dy) < 4) return; if (!dr.moved) { dr.moved = true; try { cube.setPointerCapture(dr.id); } catch (x) { /* */ } l3.noCubeClick = true; }
+      dr.x = e.clientX; dr.y = e.clientY; const t = l3.orbit.target, p = l3.camera.position.clone().sub(t), Z = new THREE.Vector3(0, 0, 1);
+      p.applyAxisAngle(Z, -dx * 0.012); const ax = new THREE.Vector3().crossVectors(p, Z); if (ax.lengthSq() > 1e-9) { ax.normalize(); const q = p.clone().applyAxisAngle(ax, -dy * 0.012), ang = Math.acos(Math.max(-1, Math.min(1, q.clone().normalize().z))); if (ang > 0.04 && ang < Math.PI - 0.04) p.copy(q); }
+      l3StopFly && l3StopFly(); l3.camera.position.copy(t).add(p); l3.camera.lookAt(t); l3.orbit.update(); l3Render(); e.preventDefault();
+    });
+    window.addEventListener("pointerup", () => { if (dr && dr.moved) setTimeout(() => { l3.noCubeClick = false; }, 60); dr = null; });
+  }
+  cube.querySelector("#v3CubeC").onclick = e => { const f = e.target.closest("[data-face]"); if (!f || !l3UiGet().locked) return; const k = f.dataset.face; if (l3.noCubeClick) return; l3View(k); };
   const home = mk("button", null, "v3-cube-home", L3UI_ICO.iso.replace(/18/g, "14")); home.type = "button"; home.dataset.tip = "3D-översikt"; home.onclick = () => { if (l3UiGet().locked) l3View("iso"); };
   cube.appendChild(home);
   canvas.appendChild(cube);

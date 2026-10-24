@@ -1,5 +1,5 @@
 /* Verktygshjul i 3D-editorn (Victor 2026-10-22: "ett sånt hjul som i PDF-hubben där jag kommer åt verktygen snabbt").
-   Håll Tab: hjulet dyker upp vid musen – dra åt ett håll och släpp Tab. Eller tryck på ◎ nere till höger och klicka på ett verktyg. Esc stänger.
+   Håll Tab: hjulet dyker upp vid musen – dra åt ett håll och släpp Tab. Esc stänger.
    Varje val klickar på den vanliga knappen (samma funktion som i verktygsraden). */
 const L3WH = [
   ["select", "↖", "Välj", '[data-v3tool="select"]'], ["move", "✥", "Flytta", '[data-v3tool="move"]'], ["rotate", "⟳", "Vrid", '[data-v3tool="rotate"]'], ["align", "⇥", "Rikta", '[data-v3tool="align"]'],
@@ -39,6 +39,6 @@ document.addEventListener("click", e => {
   if (l3wh.el && l3wh.click) { const it = e.target.closest && e.target.closest(".l3wh-it"); l3whClose(!!it, it && it.dataset.k); e.stopPropagation(); }
 }, true);
 (function l3whBtn() {
-  const add = () => { const b = document.getElementById("view3d"); if (!b) return false; if (!document.getElementById("v3WheelBtn")) { const x = document.createElement("button"); x.type = "button"; x.id = "v3WheelBtn"; x.title = "Verktygshjul (håll Tab)"; x.textContent = "◎"; b.appendChild(x); } return true; };
+  const add = () => { const b = document.getElementById("view3d"); if (!b) return false; { const old = document.getElementById("v3WheelBtn"); if (old) old.remove(); } return true; };   // ◎-knappen är borttagen (Victor 2026-10-24: finns på mushjulet) – hjulet nås med Tab
   if (!add()) { const iv = setInterval(() => { if (add()) clearInterval(iv); }, 800); setTimeout(() => clearInterval(iv), 120000); }
 })();

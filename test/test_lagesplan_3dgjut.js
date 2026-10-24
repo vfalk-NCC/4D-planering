@@ -237,6 +237,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const lockBtn = document.querySelector('#v3Ctx [data-ctx="lock"]'); return { t1, closed, t2, lock: !!lockBtn && /Lås/.test(lockBtn.textContent) }; });
   if (!/Fäll|Tänd|Släck/.test(rc.t1) || !rc.closed || !/Tänd|Släck/.test(rc.t2) || !rc.lock) fail('Högerklick i menyer/modell: ' + JSON.stringify(rc));
   console.log('OK: högerklick – rubriker och rader i Lager får egna menyer, etableringsobjekt får Lås på plats');
+  // 22) Vykuben går att vrida (dra) och undersidan går att trycka på; ◎-knappen är borttagen
+  const cb = await page.evaluate(async () => { const cube = document.getElementById('v3Cube'), c = document.querySelector('#v3CubeC'); const p0 = l3.camera.position.clone(), t = l3.orbit.target.clone();
+    const ev = (el, type, x, y) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, pointerId: 1 }));
+    const r = cube.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2; ev(c, 'pointerdown', x, y); ev(window, 'pointermove', x + 40, y + 6); ev(window, 'pointermove', x + 80, y + 12); const moved = l3.camera.position.distanceTo(p0) > 0.01, same = Math.abs(l3.camera.position.distanceTo(t) - p0.distanceTo(t)) < 1e-3; const blocked = l3.noCubeClick === true; ev(window, 'pointerup', x + 80, y + 12);
+    await new Promise(r2 => setTimeout(r2, 120)); l3View('bot'); await new Promise(r2 => setTimeout(r2, 700)); return { moved, same, blocked, bot: l3.camera.position.z < l3.orbit.target.z, btn: !document.getElementById('v3WheelBtn'), unblocked: l3.noCubeClick === false }; });
+  if (!Object.values(cb).every(Boolean)) fail('Vykub: ' + JSON.stringify(cb));
+  console.log('OK: vykuben vrids med musen, undersidan går att välja, ◎-knappen är borta');
   // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
   for (const t of ['sm:saxlift', 'sm:bomlift']) {
     const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);

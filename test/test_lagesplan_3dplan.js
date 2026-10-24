@@ -515,7 +515,7 @@ const PP = [
       mv(cx, cy); window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true })); await wait(100); out.open = !!document.querySelector('.l3wh') && document.querySelectorAll('.l3wh-it').length >= 10;
       mv(cx + 60, cy - 104); await wait(50); out.on = (document.querySelector('.l3wh-it.on') || {}).dataset && document.querySelector('.l3wh-it.on').dataset.k;
       window.dispatchEvent(new KeyboardEvent('keyup', { key: 'Tab', bubbles: true })); await wait(100); out.closed = !document.querySelector('.l3wh'); out.tool = l3.tool;
-      document.querySelector('[data-v3tool="select"]').click(); document.getElementById('v3WheelBtn').click(); await wait(100); out.btnOpen = !!document.querySelector('.l3wh');
+      document.querySelector('[data-v3tool="select"]').click(); l3whOpen(300, 300, true); await wait(100); out.btnOpen = !!document.querySelector('.l3wh');
       document.querySelector('.l3wh-it[data-k="measure"]').click(); await wait(100); out.btnPick = l3.tool === 'measure' && !document.querySelector('.l3wh'); document.querySelector('[data-v3tool="select"]').click();
       return out; });
     if (!wh.open || wh.on !== 'move' || !wh.closed || wh.tool !== 'move' || !wh.btnOpen || !wh.btnPick) fail('Verktygshjul: ' + JSON.stringify(wh));
