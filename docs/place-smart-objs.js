@@ -159,15 +159,18 @@ function mkHull(P) { P = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); i
 function mkCuts(p, poly, base, th) {
   const toL = mkToLocal(p), out = [], z1 = base + th, xs = poly.map(q => q[0]), ys = poly.map(q => q[1]), bb = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
   const near = pl => pl.some(q => q[0] >= bb[0] - 0.5 && q[0] <= bb[2] + 0.5 && q[1] >= bb[1] - 0.5 && q[1] <= bb[3] + 0.5) || (Math.min(...pl.map(q => q[0])) <= bb[2] && Math.max(...pl.map(q => q[0])) >= bb[0] && Math.min(...pl.map(q => q[1])) <= bb[3] && Math.max(...pl.map(q => q[1])) >= bb[1]);
-  (typeof placements !== "undefined" ? placements : []).forEach(q => { if (q === p || q.id === p.id || !q.L || !q.B) return; const lib = typeof placeLib === "function" ? placeLib(q.type) : null; if (lib && lib.fence) return; if (/^sm:(makadam|makadamfri|riskzon|gjutform)$/.test(String(q.type))) return;
-    const H = Number(q.H) || 0, zq = (Number(q.z) || 0) + (Number(q.dz) || 0); if (H < 0.1 || zq >= z1 - 0.01 || zq + H <= base + 0.01) return;
+  (typeof placements !== "undefined" ? placements : []).forEach(q => { if (q === p || q.id === p.id) return; const lib = typeof placeLib === "function" ? placeLib(q.type) : null;
+    // Gjutetapp i fri form (och andra ytor ritade punkt för punkt) räknas med sin egen kontur; övriga objekt som lådor med läge och vridning.
+    if (String(q.type) === "sm:gjutform" && (q.pts || []).length >= 3) { const H = Number(q.H) || 0.25, zq = ((q.pts[0] || [])[2] || 0) + (Number(q.dz) || 0); if (zq > z1 + 0.05 || zq + H <= base + 0.01) return; const pl = q.pts.map(pt => toL(pt[0], pt[1])); if (near(pl)) out.push({ poly: pl, name: q.name || "Gjutetapp (fri form)" }); return; }
+    if (!q.L || !q.B) return; if (lib && lib.fence) return; if (/^sm:(makadam|makadamfri|riskzon|gjutform)$/.test(String(q.type))) return;
+    const H = Number(q.H) || 0, zq = (Number(q.z) || 0) + (Number(q.dz) || 0); if (H < 0.1 || zq > z1 + 0.05 || zq + H <= base + 0.01) return;   // objekt som står i eller på gruset (underkant högst vid ytan) räknas
     const t = (Number(q.rot) || 0) * Math.PI / 180, c = Math.cos(t), s = Math.sin(t), L = q.L / 2, B = q.B / 2, pl = [[-L, -B], [L, -B], [L, B], [-L, B]].map(([a, b]) => toL(q.x + a * c - b * s, q.y + a * s + b * c)); if (near(pl)) out.push({ poly: pl, name: q.name || q.type }); });
   if (typeof l3b !== "undefined" && typeof l3 !== "undefined" && l3 && l3.O && typeof l3bsBoxes === "function") { const O = l3.O, wx0 = bb[0], wy0 = bb[1]; let wb = null;   // IFC-modellerna
     const toW = p.type === "sm:makadamfri" ? (a, b) => [a + (Number(p.x) || 0), b + (Number(p.y) || 0)] : (a, b) => { const t = (Number(p.rot) || 0) * Math.PI / 180; return [p.x + a * Math.cos(t) - b * Math.sin(t), p.y + a * Math.sin(t) + b * Math.cos(t)]; };
     const cw = [[bb[0], bb[1]], [bb[2], bb[1]], [bb[2], bb[3]], [bb[0], bb[3]]].map(([a, b]) => toW(a, b)); wb = [Math.min(...cw.map(q => q[0])) - 0.3, Math.min(...cw.map(q => q[1])) - 0.3, Math.max(...cw.map(q => q[0])) + 0.3, Math.max(...cw.map(q => q[1])) + 0.3];
     l3b.models.forEach(m => { if (!m.visible || !m.meshes) return; m.meshes.forEach(mesh => { const u = mesh.userData.l3b; if (!u || !u.ranges) return; const boxes = l3bsBoxes(mesh), pos = mesh.geometry.getAttribute("position").array, mo = mesh.position || { x: 0, y: 0, z: 0 };
       for (let i = 0; i < u.ranges.length && out.length < 400; i++) { if (u.hidden && u.hidden.has(i)) continue; const k = i * 6, x0 = boxes[k] + mo.x + O[0], y0 = boxes[k + 1] + mo.y + O[1], z0 = boxes[k + 2] + mo.z + O[2], x1 = boxes[k + 3] + mo.x + O[0], y1 = boxes[k + 4] + mo.y + O[1], z1b = boxes[k + 5] + mo.z + O[2];
-        if (x1 < wb[0] || x0 > wb[2] || y1 < wb[1] || y0 > wb[3] || z0 >= z1 - 0.01 || z1b <= base + 0.01) continue;
+        if (x1 < wb[0] || x0 > wb[2] || y1 < wb[1] || y0 > wb[3] || z0 > z1 + 0.05 || z1b <= base + 0.01) continue;
         const r = u.ranges[i], pts = []; for (let v = r.start; v < r.start + r.count; v += Math.max(1, Math.floor(r.count / 400))) pts.push(toL(pos[v * 3] + mo.x + O[0], pos[v * 3 + 1] + mo.y + O[1])); const h = mkHull(pts); if (h.length >= 3) out.push({ poly: h, name: r.name || "IFC-objekt" }); } }); }); }
   return out;
 }
