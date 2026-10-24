@@ -87,14 +87,39 @@ function l3pcParse(bytes, name, onProgress) {
 }
 
 /* ---- Visning --------------------------------------------------------------------------------------- */
-const L3PC_RAMP = [[0, [43, 131, 186]], [0.25, [171, 221, 164]], [0.5, [255, 255, 191]], [0.75, [253, 174, 97]], [1, [215, 25, 28]]];
-function l3pcRamp(t) {
+/* Färgskalor för höjd (Victor 2026-10-24): några färdiga, som i bra punktmolnsprogram – Turbo ("regnbåge"), Viridis, terräng, blå→röd, grått och "över/under"
+   (blått under nollnivån, vitt vid den, rött över – bra för att se om något ligger över eller under en given höjd). */
+const L3PC_RAMPS = {
+  turbo: ["Regnbåge", [[0, [48, 18, 59]], [0.13, [70, 107, 227]], [0.25, [40, 170, 235]], [0.38, [27, 229, 181]], [0.5, [110, 254, 98]], [0.63, [200, 239, 52]], [0.75, [250, 186, 57]], [0.88, [239, 95, 18]], [1, [122, 4, 3]]]],
+  blared: ["Blå → röd", [[0, [43, 131, 186]], [0.25, [171, 221, 164]], [0.5, [255, 255, 191]], [0.75, [253, 174, 97]], [1, [215, 25, 28]]]],
+  viridis: ["Viridis", [[0, [68, 1, 84]], [0.25, [59, 82, 139]], [0.5, [33, 145, 140]], [0.75, [94, 201, 98]], [1, [253, 231, 37]]]],
+  terrain: ["Terräng", [[0, [0, 100, 60]], [0.25, [90, 160, 70]], [0.5, [220, 210, 120]], [0.75, [170, 120, 80]], [1, [245, 245, 245]]]],
+  grey: ["Grått", [[0, [30, 34, 40]], [1, [236, 238, 240]]]],
+  diverg: ["Över / under nollnivån", [[0, [37, 99, 235]], [0.5, [245, 245, 245]], [1, [220, 38, 38]]]],
+};
+function l3pcRamp(t, name) {
+  const R = (L3PC_RAMPS[name || "blared"] || L3PC_RAMPS.blared)[1];
   t = Math.max(0, Math.min(1, t));
-  for (let i = 1; i < L3PC_RAMP.length; i++) if (t <= L3PC_RAMP[i][0]) {
-    const [a, A] = L3PC_RAMP[i - 1], [b, B] = L3PC_RAMP[i], k = (t - a) / (b - a || 1);
+  for (let i = 1; i < R.length; i++) if (t <= R[i][0]) {
+    const [a, A] = R[i - 1], [b, B] = R[i], k = (t - a) / (b - a || 1);
     return [0, 1, 2].map(c => Math.round(A[c] + (B[c] - A[c]) * k));
   }
-  return L3PC_RAMP[L3PC_RAMP.length - 1][1];
+  return R[R.length - 1][1];
+}
+/* Höjdfärgningens inställningar för ett moln: nollnivå (Z0, m), steg (0 = jämn skala), skala och intervall relativt Z0. Höjder i modellens höjdsystem (inkl. höjdjustering). */
+function l3pcZParams(c) {
+  const dz = c.dz || 0, mn = c.info.min[2] + dz, mx = c.info.max[2] + dz, P = l3Prefs();
+  const z0 = P.pcZ0 != null && P.pcZ0 !== "" && isFinite(Number(P.pcZ0)) ? Number(P.pcZ0) : mn;
+  let lo = P.pcZFrom != null && P.pcZFrom !== "" && isFinite(Number(P.pcZFrom)) ? Number(P.pcZFrom) : mn - z0, hi = P.pcZTo != null && P.pcZTo !== "" && isFinite(Number(P.pcZTo)) ? Number(P.pcZTo) : mx - z0;
+  if (hi <= lo + 1e-6) hi = lo + 1;
+  const step = Math.max(0, Number(P.pcZStep) || 0), ramp = L3PC_RAMPS[P.pcZRamp] ? P.pcZRamp : "blared";
+  return { dz, mn, mx, z0, lo, hi, step, ramp };
+}
+/* Skalans värde 0–1 för en höjd v över Z0 (stegvis i band som ligger på hela steg från Z0). */
+function l3pcZT(v, Z) {
+  if (Z.ramp === "diverg") { const S = Math.max(Math.abs(Z.lo), Math.abs(Z.hi), 1e-6), vv = Z.step > 0 ? (Math.floor(v / Z.step) + 0.5) * Z.step : v; return 0.5 + Math.max(-0.5, Math.min(0.5, vv / (2 * S))); }
+  if (Z.step > 0) { const iLo = Math.floor(Z.lo / Z.step), iHi = Math.max(iLo, Math.floor((Z.hi - 1e-9) / Z.step)), n = iHi - iLo + 1, i = Math.max(iLo, Math.min(iHi, Math.floor(v / Z.step))); return n > 1 ? (i - iLo) / (n - 1) : 0.5; }
+  return Math.max(0, Math.min(1, (v - Z.lo) / (Z.hi - Z.lo)));
 }
 /* Färgen per punkt: molnets egen färg, intensitet (grå) eller höjd (blå → röd). */
 function l3pcColors(c, ch) {
@@ -117,9 +142,8 @@ function l3pcColorsBase(c, ch) {
   if (mode === "rgb") return ch.rgb;
   const n = ch.inten.length, out = new Uint8Array(n * 3);
   if (mode === "int") { for (let i = 0; i < n; i++) { const v = 40 + ch.inten[i] * 0.84; out[i * 3] = out[i * 3 + 1] = out[i * 3 + 2] = v; } return out; }
-  const z0 = c.info.min[2] - c.info.center[2], dz = Math.max(1e-6, c.info.max[2] - c.info.min[2]);
-  const lut = []; for (let k = 0; k < 256; k++) lut.push(l3pcRamp(k / 255));
-  for (let i = 0; i < n; i++) { const q = lut[Math.max(0, Math.min(255, Math.round((ch.pos[i * 3 + 2] - z0) / dz * 255)))]; out[i * 3] = q[0]; out[i * 3 + 1] = q[1]; out[i * 3 + 2] = q[2]; }
+  const Z = l3pcZParams(c), cz = c.info.center[2] + Z.dz, lut = []; for (let k = 0; k < 256; k++) lut.push(l3pcRamp(k / 255, Z.ramp));
+  for (let i = 0; i < n; i++) { const q = lut[Math.max(0, Math.min(255, Math.round(l3pcZT(ch.pos[i * 3 + 2] + cz - Z.z0, Z) * 255)))]; out[i * 3] = q[0]; out[i * 3 + 1] = q[1]; out[i * 3 + 2] = q[2]; }
   return out;
 }
 function l3pcBuild(src, data) {
@@ -139,6 +163,7 @@ function l3pcBuild(src, data) {
   l3.groups.pc.add(grp);
   if (typeof l3RenderSnapBar === "function") l3RenderSnapBar(); // Fäst-raden får knappen Moln
   l3pc.clouds.push(c);
+  setTimeout(l3pcLegend, 0);
   l3pcPlace(c);
   l3pcIndexIdle(c); // för att fästa mot punkterna
   return c;
@@ -196,6 +221,40 @@ function l3pcDraw(vis, budget) {
     items.forEach(it => { const k = Math.min(it.n, Math.max(it.k, 2000)); it.p.geometry.setDrawRange(0, k); drawn.set(it.c, drawn.get(it.c) + k); }); }
   // Punktstorleken följer glesheten: färre punkter → lite större, så att ytor inte faller sönder.
   vis.forEach(c => { const base = c.mat.userData.base || c.mat.size, f = budget == null ? 1 : Math.min(2.2, Math.sqrt(c.nTot / Math.max(1, drawn.get(c) || 1)) * 0.75); c.mat.size = base * Math.max(1, f); });
+}
+/* Teckenförklaring för höjdfärgerna (över bilden, till vänster): band med intervall när steg är valt, annars en skala med några höjder. */
+function l3pcLegend() {
+  const host = document.getElementById("v3Canvas"); if (!host) return;
+  let el = document.getElementById("v3PcLegend");
+  const c = l3pc.clouds.find(x => x.visible), mode = l3pcMode(), on = c && (mode === "z" || (mode === "auto" && !c.info.rgb && !c.info.intensity));
+  if (!on) { if (el) el.classList.add("hidden"); return; }
+  if (!el) { el = document.createElement("div"); el.id = "v3PcLegend"; el.className = "v3-pcleg"; host.appendChild(el); ["pointerdown", "wheel", "contextmenu", "dblclick"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); }
+  const Z = l3pcZParams(c), f = v => (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(Math.round(v * 100) / 100).toLocaleString("sv-SE"), css = t => { const q = l3pcRamp(t, Z.ramp); return `rgb(${q[0]},${q[1]},${q[2]})`; };
+  let body = "";
+  if (Z.step > 0) {
+    const iLo = Math.floor(Z.lo / Z.step), iHi = Math.max(iLo, Math.floor((Z.hi - 1e-9) / Z.step)), n = iHi - iLo + 1, every = Math.max(1, Math.ceil(n / 14));
+    for (let i = iHi; i >= iLo; i -= 1) { if ((iHi - i) % every) continue; const t = Z.ramp === "diverg" ? l3pcZT((i + 0.5) * Z.step, Z) : n > 1 ? (i - iLo) / (n - 1) : 0.5; body += `<div class="v3-pcl-r"><i style="background:${css(t)}"></i><span>${f(i * Z.step)} – ${f((i + 1) * Z.step)} m</span></div>`; }
+  } else {
+    const stops = Array.from({ length: 9 }, (_, k) => css(1 - k / 8)).join(","), lab = [Z.hi, Z.lo + (Z.hi - Z.lo) * 0.75, Z.lo + (Z.hi - Z.lo) * 0.5, Z.lo + (Z.hi - Z.lo) * 0.25, Z.lo];
+    body = `<div class="v3-pcl-g"><i style="background:linear-gradient(${stops})"></i><span>${lab.map(v => `<b>${f(v)} m</b>`).join("")}</span></div>`;
+  }
+  el.innerHTML = `<div class="v3-pcl-h">Höjd över nollnivån <em>Z0 = ${(Math.round(Z.z0 * 100) / 100).toLocaleString("sv-SE")} m</em></div>${body}`;
+  el.classList.remove("hidden");
+}
+/* Välj nollnivån (Z0) genom att trycka på en punkt i molnet eller på en yta i modellen. */
+function l3pcPickZ() {
+  const dom = l3.renderer.domElement; l3Status("Tryck på en punkt eller yta för att sätta nollnivån (Z0). Esc avbryter.");
+  dom.style.cursor = "crosshair";
+  const done = () => { dom.style.cursor = ""; dom.removeEventListener("pointerdown", down, true); window.removeEventListener("keydown", key, true); };
+  const key = e => { if (e.key === "Escape") { e.stopPropagation(); done(); l3Status("Avbrutet."); } };
+  const down = e => {
+    if (e.button !== 0) return; e.stopPropagation(); e.preventDefault();
+    const p = l3pcPick(e), h = p ? null : l3Ray(e, l3Surfaces())[0], z = p ? p.point.z + l3.O[2] : h ? h.point.z + l3.O[2] : null;
+    if (z == null) { l3Status("Ingen punkt här – försök igen (Esc avbryter).", true); return; }
+    done(); l3SetPref("pcZ0", Math.round(z * 100) / 100); l3pcRecolor(); l3Status(`Nollnivå Z0 = ${(Math.round(z * 100) / 100).toLocaleString("sv-SE")} m.`);
+    const el = document.getElementById("v3PcZ0"); if (el) el.value = String(Math.round(z * 100) / 100);
+  };
+  dom.addEventListener("pointerdown", down, true); window.addEventListener("keydown", key, true);
 }
 /* ---- Djupskuggning (Eye-Dome Lighting, som i Trimble Connect/Potree): scenen ritas till en bildyta med djup och ett efterpass mörkar
    pixlar som ligger bakom sina grannar. Då får tätt packade punkter konturer och form i stället för en platt färgmatta. Bara när ett moln
@@ -272,6 +331,7 @@ function l3pcMatApply(c) {
 }
 function l3pcApplyAll() { l3pc.clouds.forEach(l3pcMatApply); l3Render(); }
 function l3pcRemove(id) {
+  setTimeout(l3pcLegend, 0);
   const i = l3pc.clouds.findIndex(c => c.id === id);
   if (i < 0) return;
   const c = l3pc.clouds[i];
@@ -282,9 +342,10 @@ function l3pcRemove(id) {
 }
 function l3pcShow(id, on) {
   const c = l3pc.clouds.find(x => x.id === id); if (!c) return;
-  c.visible = on; c.group.visible = on; l3pcRemember(c.src, on); l3Render();
+  c.visible = on; c.group.visible = on; l3pcRemember(c.src, on); l3pcLegend(); l3Render();
 }
 function l3pcRecolor() {
+  l3pcLegend();
   l3pc.clouds.forEach(c => {
     c.group.children.forEach((p, k) => { p.geometry.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, c.chunks[k]), 3, true)); });
   });
@@ -422,14 +483,20 @@ function l3pcHtml(row, esc) {
 }
 /* Visning av punktmolnen: en liten rullgardin bredvid ＋ i blockhuvudet (Victor 2026-10-24). Reglage direkt, switchar för på/av, inget som ritar om listan. */
 function l3pcSettingsHtml() {
-  const P = l3Prefs(), mode = l3pcMode(), esc = escHtml, lo = Number(l3pcPref("pcZlo", 0)), hi = Number(l3pcPref("pcZhi", 100)), edl = Number(l3pcPref("pcEdl", 60));
+  const P = l3Prefs(), mode = l3pcMode(), esc = escHtml, Zp = l3pc.clouds[0] ? l3pcZParams(l3pc.clouds[0]) : { mn: 0, lo: 0, hi: 1, ramp: "blared" }, lo = Number(l3pcPref("pcZlo", 0)), hi = Number(l3pcPref("pcZhi", 100)), edl = Number(l3pcPref("pcEdl", 60));
   const c0 = l3pc.clouds[0], zAt = t => c0 ? (c0.info.min[2] + (c0.info.max[2] - c0.info.min[2]) * t / 100 + (c0.dz || 0)).toFixed(1).replace(".", ",") : String(t);
   const sw = (id, on, label, hint) => `<label class="v3-pcs-r v3-pcs-sw" title="${esc(hint || "")}"><span>${label}</span><span class="v3-lay-sw"><input type="checkbox" id="${id}" role="switch" ${on ? "checked" : ""} /><i></i></span></label>`;
   const rng = (id, label, min, max, step, val, out, hint) => `<label class="v3-pcs-r v3-pcs-g" title="${esc(hint || "")}"><span>${label}</span><output>${out}</output><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}" /></label>`;
-  const modes = [["auto", "Automatiskt"], ["rgb", "Molnets färg"], ["int", "Intensitet"], ["z", "Höjd"], ["solid", "Enfärgad"]];
+  const modes = [["auto", "Automatiskt"], ["rgb", "Molnets färg"], ["int", "Intensitet"], ["z", "Höjd (färgskala)"], ["solid", "Enfärgad"]];
   return `<div class="v3-pcs" data-keep="1">
     <div class="v3-pcs-r v3-pcs-c"><span>Färg</span><select id="v3PcMode">${modes.map(([k, l]) => `<option value="${k}" ${mode === k ? "selected" : ""}>${l}</option>`).join("")}</select><input type="color" id="v3PcColor" value="${esc(l3pcPref("pcColor", "#94a3b8"))}" title="Färg" class="${mode === "solid" ? "" : "hidden"}" /></div>
-    ${rng("v3PcSize", "Punktstorlek", 0.5, 8, 0.5, l3pcSize(), String(l3pcSize()).replace(".", ","))}
+    <div class="v3-pcz ${mode === "z" ? "" : "hidden"}" id="v3PcZbox">
+      <label class="v3-pcs-r v3-pcz-r" title="Höjden som skalan utgår från. Tryck 'Välj punkt' och peka i modellen, eller skriv ett värde."><span>Nollnivå</span><input type="number" step="0.01" id="v3PcZ0" placeholder="${(Math.round(Zp.mn * 100) / 100)}" value="${P.pcZ0 != null && P.pcZ0 !== "" ? P.pcZ0 : ""}" /><em>m</em><button type="button" id="v3PcZpick" data-keep="1" title="Tryck på en punkt eller yta i 3D-vyn">Välj punkt</button></label>
+      <label class="v3-pcs-r v3-pcz-r" title="Jämn skala eller band: ett färgband per intervall, räknat från nollnivån (t.ex. 1 m, 2 m …)"><span>Färgsteg</span><select id="v3PcZStep">${[[0, "Jämn skala"], [0.1, "0,1 m"], [0.25, "0,25 m"], [0.5, "0,5 m"], [1, "1 m"], [2, "2 m"], [5, "5 m"], [10, "10 m"]].map(([v, l]) => `<option value="${v}" ${Number(P.pcZStep || 0) === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+      <label class="v3-pcs-r v3-pcz-r"><span>Skala</span><select id="v3PcZRamp">${Object.entries(L3PC_RAMPS).map(([k, v]) => `<option value="${k}" ${Zp.ramp === k ? "selected" : ""}>${v[0]}</option>`).join("")}</select></label>
+      <label class="v3-pcs-r v3-pcz-r" title="Intervall som skalan täcker, relativt nollnivån. Tomt = hela molnet. Punkter utanför får ändfärgen."><span>Från – till</span><input type="number" step="0.1" id="v3PcZFrom" placeholder="${Math.round(Zp.lo * 10) / 10}" value="${P.pcZFrom != null && P.pcZFrom !== "" ? P.pcZFrom : ""}" /><input type="number" step="0.1" id="v3PcZTo" placeholder="${Math.round(Zp.hi * 10) / 10}" value="${P.pcZTo != null && P.pcZTo !== "" ? P.pcZTo : ""}" /><em>m</em></label>
+    </div>
+    ${rng("v3PcSize", "Punktstorlek", 0.5, 20, 0.5, l3pcSize(), String(l3pcSize()).replace(".", ","))}
     ${sw("v3PcRound", P.pcRound !== false, "Runda punkter")}
     ${sw("v3PcAtten", !!P.pcAtten, "Storlek i meter", "Av: lika stora på skärmen. På: växer när du zoomar in, som riktiga ytor.")}
     ${sw("v3PcEdlOn", edl > 0, "Djupskuggning", "Mörkar punkter som ligger bakom sina grannar (som i Trimble Connect) så att former och kanter syns.")}
@@ -482,14 +549,18 @@ function l3pcBind(host) {
     const z = () => { let lo = Number(zl.value), hi = Number(zh.value); if (lo > hi - 1) { if (document.activeElement === zl) lo = hi - 1; else hi = lo + 1; zl.value = lo; zh.value = hi; } l3SetPref("pcZlo", lo); l3SetPref("pcZhi", hi); const o = zh.closest(".v3-pcs-r").querySelector("output"); if (o) o.textContent = `${zAt(lo)}–${zAt(hi)} m`; l3pcApplyAll(); };
     zl.oninput = z; zh.oninput = z;
   }
-  const md = host.querySelector("#v3PcMode"); if (md) md.onchange = () => { l3SetPref("pcMode", md.value); const c = host.querySelector("#v3PcColor"); if (c) c.classList.toggle("hidden", md.value !== "solid"); l3pcRecolor(); };
+  const zv = (id, key) => { const el = host.querySelector("#" + id); if (el) el.onchange = () => { l3SetPref(key, el.value === "" ? null : Number(el.value)); l3pcRecolor(); }; };
+  zv("v3PcZ0", "pcZ0"); zv("v3PcZFrom", "pcZFrom"); zv("v3PcZTo", "pcZTo"); zv("v3PcZStep", "pcZStep");
+  { const r = host.querySelector("#v3PcZRamp"); if (r) r.onchange = () => { l3SetPref("pcZRamp", r.value); l3pcRecolor(); }; }
+  { const pk = host.querySelector("#v3PcZpick"); if (pk) pk.onclick = e => { e.stopPropagation(); const m = pk.closest(".v3-ldd-m"); if (m) m.classList.add("hidden"); l3pcPickZ(); }; }
+  const md = host.querySelector("#v3PcMode"); if (md) md.onchange = () => { l3SetPref("pcMode", md.value); { const zb = host.querySelector("#v3PcZbox"); if (zb) zb.classList.toggle("hidden", md.value !== "z"); } const c = host.querySelector("#v3PcColor"); if (c) c.classList.toggle("hidden", md.value !== "solid"); l3pcRecolor(); };
   const pc = host.querySelector("#v3PcColor"); if (pc) pc.oninput = () => { l3SetPref("pcColor", pc.value); l3pcRecolor(); };
   const sw = (id, fn) => { const el = host.querySelector("#" + id); if (el) el.onchange = () => fn(el.checked); };
   sw("v3PcAtten", on => { l3SetPref("pcAtten", on); l3pcApplyAll(); });
   sw("v3PcRound", on => { l3SetPref("pcRound", on); l3pcApplyAll(); });
   sw("v3PcLod", on => { l3SetPref("pcLod", on); l3Render(); });
   sw("v3PcEdlOn", on => { const r = host.querySelector("#v3PcEdl"); l3SetPref("pcEdl", on ? Number(r && r.value) || 60 : 0); l3Render(); });
-  const rs = host.querySelector("#v3PcReset"); if (rs) rs.onclick = () => { ["pcSize", "pcEdl", "pcAtten", "pcRound", "pcLod", "pcBright", "pcOpacity", "pcZlo", "pcZhi", "pcMode"].forEach(k => l3SetPref(k, null)); l3pcApplyAll(); l3pcRecolor(); l3Render(); };
+  const rs = host.querySelector("#v3PcReset"); if (rs) rs.onclick = () => { ["pcSize", "pcEdl", "pcAtten", "pcRound", "pcLod", "pcBright", "pcOpacity", "pcZlo", "pcZhi", "pcMode", "pcZ0", "pcZFrom", "pcZTo", "pcZStep", "pcZRamp"].forEach(k => l3SetPref(k, null)); l3pcApplyAll(); l3pcRecolor(); l3Render(); };
   const fb = host.querySelector("#v3PcFile"); if (fb) fb.onclick = () => l3pcFromFile();
 }
 

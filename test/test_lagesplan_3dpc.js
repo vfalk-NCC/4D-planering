@@ -134,6 +134,19 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       return out;
     });
     if (Object.values(vis).some(v => v !== true)) fail('Visning av punktmolnet: ' + JSON.stringify(vis));
+    // Höjdfärgning: nollnivå, färgsteg (band från Z0), skala och teckenförklaring
+    const hz = await page.evaluate(async () => {
+      const c = l3pc.clouds[0], P = () => l3Prefs(), cols = () => { const a = c.group.children[0].geometry.getAttribute('color').array, set = new Set(); for (let i = 0; i < a.length; i += 3) set.add(a[i] + ',' + a[i + 1] + ',' + a[i + 2]); return set.size; };
+      l3SetPref('pcMode', 'z'); l3SetPref('pcZStep', 0); l3SetPref('pcZ0', null); l3pcRecolor(); const smooth = cols();
+      const zr = c.info.max[2] - c.info.min[2], st = Math.max(0.01, Math.round(zr / 3 * 100) / 100);
+      l3SetPref('pcZStep', st); l3pcRecolor(); const bands = cols(), legBands = document.querySelectorAll('#v3PcLegend .v3-pcl-r').length;
+      l3SetPref('pcZRamp', 'diverg'); l3SetPref('pcZ0', c.info.min[2] + zr / 2); l3pcRecolor(); const dv = cols();
+      l3SetPref('pcZStep', 0); l3pcRecolor(); const leg = !!document.querySelector('#v3PcLegend .v3-pcl-g') && !document.getElementById('v3PcLegend').classList.contains('hidden');
+      const Z = l3pcZParams(c); l3SetPref('pcMode', null); l3SetPref('pcZStep', null); l3SetPref('pcZRamp', null); l3SetPref('pcZ0', null); l3pcRecolor();
+      return { smooth, bands, legBands, dv, leg, z0: Z.z0 > c.info.min[2], zr };
+    });
+    if (!(hz.smooth > hz.bands) || hz.bands < 2 || hz.bands > 6 || hz.legBands < 2 || hz.dv < 2 || !hz.leg || !hz.z0) fail('Höjdfärgning: ' + JSON.stringify(hz));
+    console.log('OK: höjdfärgning – nollnivå, färgsteg i band, skalor och teckenförklaring (' + hz.smooth + ' nyanser jämn, ' + hz.bands + ' band)');
     await page.evaluate(() => { const c = l3pc.clouds[0]; c.dz = 0; c.src.dz = 0; l3pcPlace(c); l3pcRemember(c.src, true); });
     // Fästa mot punkter i molnet: mått (fästpunkt "pc"), rotationspunkt och koordinat.
     const snap = await page.evaluate(() => {

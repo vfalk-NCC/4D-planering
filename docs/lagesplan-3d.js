@@ -283,6 +283,8 @@ function l3Dom() {
           <label class="v3-chk"><input type="checkbox" id="v3LabelsChk" ${P.labels ? "checked" : ""} /> Namn på etableringen</label>
           <label class="v3-chk"><input type="checkbox" id="v3LegendChk" ${P.legend ? "checked" : ""} /> Statusförklaring</label>
           <label class="v3-chk" title="Lägesplanens foton där de togs"><input type="checkbox" id="v3ShowPhotos" ${P.photos3d === true ? "checked" : ""} /> Foton</label>
+          <div class="v3-pop-l">Bakgrund</div>
+          <div class="v3-bgrow"><input type="color" id="v3BgCol" value="${/^#[0-9a-f]{6}$/i.test(P.bgColor || "") ? P.bgColor : "#f7f8fa"}" title="Bakgrundsfärg – tryck för färghjulet" /><span class="v3-bgsw">${[["#f7f8fa", "Ljus"], ["#e2e8f0", "Grå"], ["#94a3b8", "Mellan"], ["#334155", "Mörk"], ["#0b1220", "Svart"], ["#cfe8ff", "Himmel"]].map(([c, t]) => `<button type="button" data-bg="${c}" title="${t}" style="background:${c}"></button>`).join("")}</span><button type="button" class="v3-link" id="v3BgReset">Standard</button></div>
           <label class="v3-chk"><input type="checkbox" id="v3PalChk" ${P.pal ? "checked" : ""} /> Panelen till vänster</label>
           <div class="v3-pop-l">Mus</div>
           <div class="v3-segs">${[["tekla", "Som i Tekla"], ["standard", "Standard"]].map(([k, l]) => `<button type="button" data-v3mouse="${k}" class="${(P.mouse || "tekla") === k ? "on" : ""}">${l}</button>`).join("")}</div>
@@ -388,6 +390,12 @@ function l3Dom() {
   $3("v3ShowPhotos").onchange = e => { if (typeof l3phToggle === "function") l3phToggle(e.target.checked); };
   const legendShow = on => { l3SetPref("legend", on); $3("v3Legend").classList.toggle("hidden", !on); $3("v3LegendChk").checked = on; $3("v3FtLegend").classList.toggle("on", on); $3("v3FtLegend").setAttribute("aria-pressed", on); };
   $3("v3LegendChk").onchange = e => legendShow(e.target.checked);
+  { // Bakgrundsfärg (färghjul + färdiga)
+    const bg = c => { l3SetPref("bgColor", c || null); if (l3 && l3.scene) l3.scene.background = new THREE.Color(c || 0xf7f8fa); const i = $3("v3BgCol"); if (i) i.value = c || "#f7f8fa"; l3Render(); };
+    $3("v3BgCol").oninput = e => bg(e.target.value);
+    document.querySelectorAll("[data-bg]").forEach(b => { b.onclick = () => bg(b.dataset.bg); });
+    $3("v3BgReset").onclick = () => bg(null);
+  }
   $3("v3FtLegend").onclick = () => legendShow(!l3Prefs().legend);
   $3("v3FtNav").onclick = () => { l3SetPref("navHelp", l3Prefs().navHelp === false); if (typeof l3NavHelp === "function") l3NavHelp(); };
   const pal = on => { l3SetPref("pal", on); $3("v3Pal").classList.toggle("hidden", !on); $3("v3PalOpen").classList.toggle("hidden", on); $3("v3PalChk").checked = on; setTimeout(() => { l3Resize(); l3Render(); }, 0); };
@@ -509,7 +517,7 @@ function l3Init(box) {
   // Neutral, nästan vit bakgrund och ljus som i Trimble Connect (Victor 2026-10-10: "min vy känns nästan
   // dimmig"): svagt neutralt allmänljus, tydligt solljus och ett svagt motljus. Uppåtvända ytor får högst
   // ~100 % ljus så att mörka färger (svarta tak) förblir mörka; sidorna får olika ljus och läses som kroppar.
-  scene.background = new THREE.Color(0xf7f8fa);
+  scene.background = new THREE.Color(/^#[0-9a-f]{6}$/i.test(l3Prefs().bgColor || "") ? l3Prefs().bgColor : 0xf7f8fa);
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 20000);
   camera.up.set(0, 0, 1);
   scene.add(new THREE.HemisphereLight(0xffffff, 0xd9d6cf, 0.5));

@@ -212,6 +212,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return { locked, btnOn, stay1, warn, noDrag, copyFree, un, moved }; });
   if (!Object.values(lk).every(Boolean)) fail('Lås på plats: ' + JSON.stringify(lk));
   console.log('OK: lås på plats – låsta objekt flyttas inte, varning med Lås upp, kopior olåsta');
+  // 19) Bakgrundsfärg med färghjul och färdiga färger
+  const bgc = await page.evaluate(() => { const i = document.getElementById('v3BgCol'); i.value = '#334155'; i.dispatchEvent(new Event('input', { bubbles: true })); const a = l3.scene.background.getHexString(), saved = l3Prefs().bgColor;
+    document.querySelector('[data-bg="#cfe8ff"]').click(); const b = l3.scene.background.getHexString(); document.getElementById('v3BgReset').click(); return { a, saved, b, c: l3.scene.background.getHexString() }; });
+  if (bgc.a !== '334155' || bgc.saved !== '#334155' || bgc.b !== 'cfe8ff' || bgc.c !== 'f7f8fa') fail('Bakgrundsfärg: ' + JSON.stringify(bgc));
+  console.log('OK: bakgrundsfärg – färghjul, färdiga färger och standard');
   // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
   for (const t of ['sm:saxlift', 'sm:bomlift']) {
     const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);
