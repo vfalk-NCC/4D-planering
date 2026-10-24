@@ -239,7 +239,7 @@ function l3sHtml(row, eye) {
   const keyRow = (k, depth) => {
     if (k === "pdf") return ""; // ritningen har egen rad (Underlag)
     const on = !!ls(k).visible, cad = k.startsWith("cad:") ? siteItems.find(x => "cad:" + x.id === k) : null, open = cad && l3s.open.has(k);
-    let h = `<div class="v3-lr ${depth ? "v3-lr-sub" : ""}"><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3s="${esc(k)}" title="${on ? "Släck" : "Tänd"}">${eye(on)}</button><span class="v3-lr-n" title="${esc(l3sName(k))}">${esc(l3sName(k))}</span>${cad ? `<button type="button" class="v3-lr-x" data-l3s-open="${esc(k)}" aria-expanded="${!!open}" title="CAD-lagren i ritningen">${cad.layers.length} lager ${open ? "▴" : "▾"}</button><button type="button" class="v3-lr-zoom" data-l3s-zoom="${esc(cad.id)}" title="Zooma till ritningen">${L3_ICO.focus}</button>${typeof l3dStart === "function" ? `<button type="button" class="v3-lr-zoom" data-l3s-edit="${esc(cad.id)}" title="Redigera DXF:en – välj, flytta, ta bort och rita linjer">${L3_ICO.edit}</button>` : ""}` : ""}</div>`;
+    let h = `<div class="v3-lr ${depth ? "v3-lr-sub" : ""}"><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3s="${esc(k)}" title="${on ? "Släck" : "Tänd"}">${eye(on)}</button><span class="v3-lr-n" title="${esc(l3sName(k))}">${esc(l3sName(k))}</span>${!cad ? `<button type="button" class="v3-lr-zoom" data-l3s-zoomany="1" title="Zooma till planens yta">${L3_ICO.focus}</button>` : ""}${cad ? `<button type="button" class="v3-lr-x" data-l3s-open="${esc(k)}" aria-expanded="${!!open}" title="CAD-lagren i ritningen">${cad.layers.length} lager ${open ? "▴" : "▾"}</button><button type="button" class="v3-lr-zoom" data-l3s-zoom="${esc(cad.id)}" title="Zooma till ritningen">${L3_ICO.focus}</button>${typeof l3dStart === "function" ? `<button type="button" class="v3-lr-zoom" data-l3s-edit="${esc(cad.id)}" title="Redigera DXF:en – välj, flytta, ta bort och rita linjer">${L3_ICO.edit}</button>` : ""}` : ""}</div>`;
     if (open) h += cad.layers.map(l => { const lk = `cadl:${cad.id}:${l.name}`, lon = !!ls(lk).visible; return `<div class="v3-lr v3-lr-sub2"><button type="button" class="v3-eye ${lon ? "on" : ""}" data-l3s="${esc(lk)}">${eye(lon)}</button><i class="v3-lr-dot" style="background:${esc(cadLayerColor(cad, l.name, l.color))}"></i><span class="v3-lr-n" title="${esc(l.name)}">${esc(l.name)}</span><em class="v3-lr-k">${l.n || ""}</em></div>`; }).join("");
     return h;
   };
@@ -262,6 +262,7 @@ function l3sBind(host) {
   host.querySelectorAll("[data-l3s-folder]").forEach(b => { b.onclick = () => { const e = layerDisplayEntries().find(x => x.folder && x.folder.id === b.dataset.l3sFolder); if (!e) return; const kids = e.kids.filter(k => k !== "pdf"); setLayersVisible(kids, !kids.some(k => ls(k).visible)); l3sRefresh(0); l3LayersRender(); }; });
   host.querySelectorAll("[data-l3s-fold]").forEach(b => { b.onclick = () => { const id = b.dataset.l3sFold; l3s.fold = l3s.fold || new Set(); if (l3s.fold.has("*")) { if (l3s.fold.has("+" + id)) l3s.fold.delete("+" + id); else l3s.fold.add("+" + id); } else if (l3s.fold.has(id)) l3s.fold.delete(id); else l3s.fold.add(id); l3LayersRender(); }; });
   host.querySelectorAll("[data-l3s-zoom]").forEach(b => { b.onclick = () => l3sZoomCad(b.dataset.l3sZoom); });
+  host.querySelectorAll("[data-l3s-zoomany]").forEach(b => { b.onclick = () => l3sZoomPdf(true); });
   host.querySelectorAll("[data-l3s-zoompdf]").forEach(b => { b.onclick = () => l3sZoomPdf(); });
   host.querySelectorAll("[data-l3s-pdf]").forEach(b => { b.onclick = () => { const c = document.getElementById("v3ShowPlan"); if (c) { c.checked = !c.checked; c.dispatchEvent(new Event("change")); } l3LayersRender(); }; });
   host.querySelectorAll("[data-l3s-edit]").forEach(b => { b.onclick = () => l3dStart(b.dataset.l3sEdit); });
@@ -365,9 +366,9 @@ async function l3sZoomCad(id) {
   for (let i = 0; i < 50; i++) { const b = l3sCadBox(id); if (!b.isEmpty()) return l3sFlyFlat(b, r ? r.name : "ritningen"); await new Promise(res => setTimeout(res, 150)); }
   l3Status("Ritningen har inget att visa ännu.", true);
 }
-function l3sZoomPdf() {
+function l3sZoomPdf(keep) {
   if (!l3 || !l3.planMesh) return;
-  const c = document.getElementById("v3ShowPlan"); if (c && !c.checked) { c.checked = true; c.dispatchEvent(new Event("change")); l3LayersRender(); }
+  const c = document.getElementById("v3ShowPlan"); if (!keep && c && !c.checked) { c.checked = true; c.dispatchEvent(new Event("change")); l3LayersRender(); }
   const b = new THREE.Box3().setFromObject(l3.planMesh); if (b.isEmpty()) return;
   l3sFlyFlat(b, "ritningen");
 }

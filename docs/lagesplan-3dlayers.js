@@ -42,6 +42,33 @@ function l3lSetIdsVisible(ids, on) {
    radernas knappar syns när musen är över raden. Inställningarna har ett eget block längst ner (ihopfällt). */
 const L3L_SECS = ["models", "site2d", "settings"];
 const l3lClosed = () => { const c = new Set(l3Prefs().layClosed || []); if (!l3Prefs().layAdv) c.add("settings"); return c; };
+/* Samlingsswitchar i Lager (Victor 2026-10-24): släcker/tänder alla 3D-modeller, alla punktmoln, eller alla 2D-lager + ritningen på en gång. Tänder man igen
+   kommer det som var tänt förut tillbaka (är inget minnt tänds allt). */
+function l3lMasterOn(kind) {
+  if (kind === "models") return l3b.models.some(m => m.visible);
+  if (kind === "pc") return typeof l3pc !== "undefined" && l3pc.clouds.some(c => c.visible);
+  const keys = l3lTwoDKeys(); return keys.some(k => ls(k).visible) || (l3Prefs().plan !== false && !!(l3 && l3.planMesh));
+}
+function l3lTwoDKeys() { if (typeof layerDisplayEntries !== "function") return []; const out = []; layerDisplayEntries().forEach(e => { if (e.folder) e.kids.forEach(k => { if (k !== "pdf") out.push(k); }); else if (e.key !== "pdf") out.push(e.key); }); return out; }
+function l3lSw(kind, title) {
+  const on = l3lMasterOn(kind);
+  return `<label class="v3-lay-sw" title="${title}"><input type="checkbox" data-lsw="${kind}" ${on ? "checked" : ""} role="switch" aria-label="${title}" /><i></i></label>`;
+}
+function l3lMaster(kind, on) {
+  l3lay.mem = l3lay.mem || {};
+  if (kind === "models") { if (!on) { l3lay.mem.models = l3b.models.filter(m => m.visible).map(m => m.id); l3b.models.forEach(m => { if (m.visible) l3bShow(m.id, false); }); } else { const ids = (l3lay.mem.models || []).filter(id => l3b.models.some(m => m.id === id)); (ids.length ? ids : l3b.models.map(m => m.id)).forEach(id => l3bShow(id, true)); } if (typeof l3RenderLegend === "function") l3RenderLegend(); }
+  else if (kind === "pc") { if (!on) { l3lay.mem.pc = l3pc.clouds.filter(c => c.visible).map(c => c.id); l3pc.clouds.forEach(c => { if (c.visible) l3pcShow(c.id, false); }); } else { const ids = (l3lay.mem.pc || []).filter(id => l3pc.clouds.some(c => c.id === id)); (ids.length ? ids : l3pc.clouds.map(c => c.id)).forEach(id => l3pcShow(id, true)); } }
+  else { const keys = l3lTwoDKeys(), cb = document.getElementById("v3ShowPlan"), setPlan = v => { if (cb && cb.checked !== v) { cb.checked = v; cb.dispatchEvent(new Event("change")); } else if (l3.planMesh) { l3SetPref("plan", v); l3.planMesh.visible = v; } };
+    if (!on) { l3lay.mem.twoD = keys.filter(k => ls(k).visible); l3lay.mem.plan = l3Prefs().plan !== false; setLayersVisible(keys, false); setPlan(false); } else { const ks = (l3lay.mem.twoD || []).filter(k => keys.includes(k)); setLayersVisible(ks.length ? ks : keys, true); setPlan(l3lay.mem.plan !== false); } if (typeof l3sRefresh === "function") l3sRefresh(0); }
+  l3Render(); l3LayersRender();
+}
+/* Klick på en modells namn: markera den och låt dess objekt glöda i blått (puls och sedan ett svagt sken) tills man väljer något annat. */
+function l3lGlow(id) {
+  if (!l3b) return; const off = !id || l3lay.glow === id; l3lay.glow = off ? null : id; cancelAnimationFrame(l3lay.glowRaf || 0);
+  const mats = []; l3b.models.forEach(m => m.meshes.forEach(x => { const mt = x.material; if (!mt || !mt.emissive) return; const on = !off && m.id === id; mt.emissive.set(on ? 0x2f7bff : 0x000000); mt.emissiveIntensity = on ? 0.3 : 0; if (on) mats.push(mt); (x.userData.l3b && x.userData.l3b.ghosts || []).forEach(g => { if (g.material && g.material.emissive) { g.material.emissive.set(on ? 0x2f7bff : 0); g.material.emissiveIntensity = on ? 0.3 : 0; } }); }));
+  if (!off && mats.length) { const t0 = performance.now(), step = now => { const k = Math.min(1, (now - t0) / 1400), v = 0.3 + 0.7 * Math.sin(k * Math.PI) * (1 - k * 0.2); mats.forEach(mt => { mt.emissiveIntensity = v; }); l3Render(); if (k < 1 && l3lay.glow === id) l3lay.glowRaf = requestAnimationFrame(step); else mats.forEach(mt => { mt.emissiveIntensity = 0.28; }); }; l3lay.glowRaf = requestAnimationFrame(step); const m = l3b.models.find(x => x.id === id); if (m && typeof l3Status === "function") l3Status(`${m.name} är markerad.`); } else l3Render();
+  l3LayersRender();
+}
 function l3lSec(id, title, body, extra = "", count = null) {
   const shut = l3lClosed().has(id) && !(l3lay.q || "").trim();
   return `<section class="v3-lsec ${shut ? "shut" : ""}" data-lsec="${id}"><div class="v3-lg v3-lsec-h"><button type="button" class="v3-lsec-t" data-lsec-t="${id}" aria-expanded="${!shut}"><i>›</i>${title}${count != null ? ` <em class="v3-lsec-n">${count}</em>` : ""}</button>${extra}</div>${shut ? "" : `<div class="v3-lsec-b">${body}</div>`}</section>`;
@@ -78,7 +105,7 @@ function l3LayersRender() {
   const q = (l3lay.q || "").trim().toLowerCase();
   let h = `<div class="v3-lay-top"><input type="search" class="v3-pp-q" id="v3LayQ" placeholder="Sök lager, modell, DXF…" value="${esc(l3lay.q || "")}" /><button type="button" class="v3-ic v3-lay-foldb" id="v3LayFold" title="${allShut ? "Fäll ut alla block" : "Fäll ihop alla block"}">${L3L_FOLD_ICO(allShut)}</button></div><!--l3l-models-->`;
   // Underlag (ritningen som mark) ligger under Visa; Planering och etablering togs bort (Victor 2026-10-12).
-  if (typeof l3sHtml === "function") { const s2 = l3sHtml(row, l3lEye); if (s2) h += l3lSec("site2d", "2D-lager och DXF", s2.body, s2.extra); }
+  if (typeof l3sHtml === "function") { const s2 = l3sHtml(row, l3lEye); if (s2) h += l3lSec("site2d", "2D-lager och DXF", s2.body, l3lSw("twoD", "Tänd/släck alla 2D-lager, DXF och ritningen (PDF)") + (s2.extra || "")); }
   let mh = "";
   const noTc = typeof bridgeOk === "function" && !bridgeOk();
   if ((P.laySort || "list") === "list") {
@@ -103,7 +130,7 @@ function l3LayersRender() {
     }
     // Grupperna Modeller och Punktmoln (hopfällbara).
     const nm = all.length;
-    mh = l3lSub("models", "Modeller", nm, mh) + (typeof l3pcHtml === "function" ? l3lSub("pc", "Punktmoln", l3pcCount() || null, l3pcHtml(row, esc), l3lMenu("pc", "＋", "Lägg till punktmoln", (noTc ? "" : `<button type="button" data-l3l-browse="1" title="Projektets mappar i Trimble Connect – välj en LAS/LAZ/E57-fil">Från Trimble Connect…</button>`) + `<button type="button" data-pcfile2="1" title="LAS, LAZ, XYZ/PTS/TXT eller PLY från datorn (även över 2 GB)">Från datorn…</button>`)) : "");
+    mh = l3lSub("models", "Modeller", nm, mh) + (typeof l3pcHtml === "function" ? l3lSub("pc", "Punktmoln", l3pcCount() || null, l3pcHtml(row, esc), l3lSw("pc", "Tänd/släck alla punktmoln") + l3lMenu("pc", "＋", "Lägg till punktmoln", (noTc ? "" : `<button type="button" data-l3l-browse="1" title="Projektets mappar i Trimble Connect – välj en LAS/LAZ/E57-fil">Från Trimble Connect…</button>`) + `<button type="button" data-pcfile2="1" title="LAS, LAZ, XYZ/PTS/TXT eller PLY från datorn (även över 2 GB)">Från datorn…</button>`)) : "");
   } else mh += l3lTreeHtml(l3lay.root, 0);
   mh += `<div id="v3LayBldgBox"></div>`;
   // Inställningar (sällan ändrade) i ett eget block längst ner – grupperade, korta namn, förklaring vid hovring.
@@ -132,7 +159,7 @@ function l3LayersRender() {
   // Modellerna och punktmolnen visas direkt; Trimble Connects mappar nås via ＋ (Victor 2026-10-12: "Hämtade och
   // trimble connect måste tonas ner … man kommer åt dom bara när man trycker på plusknappen").
   const tcBar = sortNow === "tree" ? `<div class="v3-lay-tcbar"><button type="button" class="v3-link" data-l3l-sort="list" title="Tillbaka till modellerna">‹ Modeller</button><span>Trimble Connect</span></div>` : "";
-  const modelsSec = l3lSec("models", "3D-modeller", `${tcBar}${mh}`, l3lMenu("models", "＋", "Lägg till modell eller punktmoln", addItems));
+  const modelsSec = l3lSec("models", "3D-modeller", `${tcBar}${mh}`, l3lSw("models", "Tänd/släck alla 3D-modeller") + l3lMenu("models", "＋", "Lägg till modell eller punktmoln", addItems));
   h = h.replace("<!--l3l-models-->", modelsSec);
   h += l3lSec("settings", "Inställningar", setH);
   host.innerHTML = h;
@@ -148,6 +175,8 @@ function l3LayersRender() {
     if (id === "settings") { l3SetPref("layAdv", !l3Prefs().layAdv); l3LayersRender(); return; }
     const c = new Set(l3Prefs().layClosed || []); if (c.has(id)) c.delete(id); else c.add(id); l3SetPref("layClosed", [...c]); l3LayersRender();
   }; });
+  host.querySelectorAll("[data-lsw]").forEach(c => { c.onclick = e => e.stopPropagation(); c.onchange = () => l3lMaster(c.dataset.lsw, c.checked); });
+  host.querySelectorAll("[data-l3l-model]").forEach(b => { const n = b.closest(".v3-lr") && b.closest(".v3-lr").querySelector(".v3-lr-n"); if (n) { n.classList.add("v3-lr-pick2"); n.onclick = () => l3lGlow(b.dataset.l3lModel); b.closest(".v3-lr").classList.toggle("glow", l3lay.glow === b.dataset.l3lModel); } });
   host.querySelectorAll("[data-pcfile2]").forEach(b => { b.onclick = () => { if (typeof l3pcFromFile === "function") l3pcFromFile(); }; });
   host.querySelectorAll("[data-lsub-t]").forEach(b => { b.onclick = () => { const c = new Set(l3Prefs().layClosed || []), k = "sub:" + b.dataset.lsubT; if (c.has(k)) c.delete(k); else c.add(k); l3SetPref("layClosed", [...c]); l3LayersRender(); }; });
   host.querySelectorAll("[data-l3l-browse]").forEach(b => { b.onclick = () => { l3SetPref("laySort", "tree"); const c = new Set(l3Prefs().layClosed || []); c.delete("models"); l3SetPref("layClosed", [...c]); l3LayersRender(); }; });

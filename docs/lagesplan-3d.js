@@ -932,6 +932,7 @@ function l3PlaceAt(e) {
 /* opts.keepIfc: Ctrl/Skift-klick lägger till etableringsobjektet utan att släppa markerade IFC-objekt
    (Victor 2026-10-13: markera fundament och pelare tillsammans och exportera). Vanligt klick: en sorts i taget. */
 function l3SelectIds(ids, opts = {}) {
+  if (ids.length && typeof l3lay !== "undefined" && l3lay.glow && typeof l3lGlow === "function") l3lGlow(null); // modellens sken släcks när man markerar något
   l3.sel = new Set(ids.filter(id => placements.some(p => p.id === id)));
   if (l3.sel.size && !opts.keepIfc && typeof l3bsClear === "function") l3bsClear();
   placeActiveId = l3.sel.size ? [...l3.sel][l3.sel.size - 1] : null;

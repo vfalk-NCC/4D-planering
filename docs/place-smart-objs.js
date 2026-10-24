@@ -12,10 +12,11 @@ function smWheel(c, x, y, r, w, rim) {
 function smStripe(c, a0, a1, y, z, th, col) { c.box(col, (a0 + a1) / 2, y, z, Math.abs(a1 - a0), 0.012, th, null, 0); }
 /* ---- Gjutetapp: form, kantreglar, armering (synliga stänger i objektet) och mängder ---- */
 const GJ_D = [["0", "Inget"], ["8", "Ø8"], ["10", "Ø10"], ["12", "Ø12"], ["16", "Ø16"], ["20", "Ø20"], ["25", "Ø25"]], GJ_S = [["100", "c/c 100"], ["150", "c/c 150"], ["200", "c/c 200"], ["250", "c/c 250"], ["300", "c/c 300"]];
-const GJ_FORM_FIELDS = free => (free ? [["radie", "Hörnradie", "range", 0, { min: 0, max: 4, step: 0.25, unit: "m" }]] : [["form", "Form", ["Rektangel", "L-form", "T-form", "U-form"], "Rektangel", { seg: true }], ["cutL", "Utskärning, längd", "range", 4, { min: 0.5, max: 24, step: 0.5, unit: "m" }], ["cutB", "Utskärning, bredd", "range", 3, { min: 0.5, max: 16, step: 0.5, unit: "m" }], ["radie", "Hörnradie", "range", 0, { min: 0, max: 4, step: 0.25, unit: "m" }]]);
+const GJ_REG = [["45x95", "45 × 95 mm"], ["45x125", "45 × 125 mm"], ["45x145", "45 × 145 mm"], ["70x145", "70 × 145 mm"], ["95x95", "95 × 95 mm"]], GJ_WOOD = [["riv", "Formen", ["Kvar", "Riven"], "Kvar", { seg: true }], ["ark", "Arbetsyta runt formen", "range", 1, { min: 0, max: 6, step: 0.25, unit: "m" }], ["reg", "Regel till stöttor och snedstag", GJ_REG, "45x125"]];
+const GJ_FORM_FIELDS = free => (free ? [["radie", "Hörnradie", "range", 0, { min: 0, max: 4, step: 0.25, unit: "m" }], ...GJ_WOOD] : [["form", "Form", ["Rektangel", "L-form", "T-form", "U-form"], "Rektangel", { seg: true }], ["cutL", "Utskärning, längd", "range", 4, { min: 0.5, max: 24, step: 0.5, unit: "m" }], ["cutB", "Utskärning, bredd", "range", 3, { min: 0.5, max: 16, step: 0.5, unit: "m" }], ["radie", "Hörnradie", "range", 0, { min: 0, max: 4, step: 0.25, unit: "m" }], ...GJ_WOOD]);
 const GJ_ARM_FIELDS = () => [["arm", "Armering", ["Visa", "Dölj"], "Visa", { seg: true }], ["uD", "Undre nät", GJ_D, "12"], ["uS", "Undre nät, delning", GJ_S, "150"], ["oD", "Övre nät", GJ_D, "0"], ["oS", "Övre nät, delning", GJ_S, "150"], ["tak", "Täckskikt", [["30", "30 mm"], ["40", "40 mm"], ["50", "50 mm"], ["60", "60 mm"]], "40"], ["ang", "Armeringens riktning", [["0", "0°"], ["45", "45°"], ["90", "90°"]], "0", { seg: true }]];
 const GJ_INFO_FIELDS = () => [["tillagg", "Tillägg för spill", "range", 0, { min: 0, max: 15, step: 1, unit: "%" }], ["kval", "Kvalitet", [["C25/30", "C25/30"], ["C30/37", "C30/37"], ["C32/40", "C32/40"], ["C35/45", "C35/45"], ["C40/50", "C40/50"]], "C30/37"], ["pump", "Pumpplats", "text", ""], ["start", "Starttid", "time", "07:00"], ["bil", "Betongbil", [["6", "6 m³"], ["7", "7 m³"], ["8", "8 m³"], ["9", "9 m³"], ["10", "10 m³"]], "8"], ["kap", "Pump", [["20", "20 m³/h"], ["30", "30 m³/h"], ["40", "40 m³/h"], ["60", "60 m³/h"], ["80", "80 m³/h"]], "30"], ["_prof", "Underkant (berg)", "gjprof"], ["_calc", "Beräknat från formen", "calc"]];
-const GJ_GROUPS = [["Form", ["form", "cutL", "cutB", "radie", "_prof"]], ["Armering", ["arm", "uD", "uS", "oD", "oS", "tak", "ang"]], ["Betong och pump", ["kval", "tillagg", "pump", "start", "bil", "kap"]], ["Beräknat", ["_calc"]]];
+const GJ_GROUPS = [["Form", ["form", "cutL", "cutB", "radie", "_prof", "riv", "reg", "ark"]], ["Armering", ["arm", "uD", "uS", "oD", "oS", "tak", "ang"]], ["Betong och pump", ["kval", "tillagg", "pump", "start", "bil", "kap"]], ["Beräknat", ["_calc"]]];
 function gjutPoly(p) {
   const L = p.L / 2, B = p.B / 2, f = smF(p, "form", "Rektangel"), cl = Math.max(0.5, Math.min(smN(p, "cutL", 4), p.L - 1)), cb = Math.max(0.5, Math.min(smN(p, "cutB", 3), p.B - 1));
   let P = [[-L, -B], [L, -B], [L, B], [-L, B]];
@@ -47,7 +48,7 @@ function gjutProfCtx(poly, H, prof) {
   return { minX, maxX, W, N, dx, strips, zbS, vol, tmin, tmax };
 }
 /* Betongen som ett slutet skal: plan ovansida, väggar längs konturen ner till botten och en bottenyta som följer profilen (med steg mellan lamellerna). */
-function gjutConcreteSolid(c, poly, H, PC, zb) {
+function gjutConcreteSolid(c, poly, H, PC, zb, opaque) {
   const pts = [], faces = [], P = (x, y, z) => pts.push([x, y, z]), n = poly.length, ccw = TK.area2(poly) >= 0;
   const tri = (a, b, d, nx, ny, nz) => { const A = pts[a - 1], B = pts[b - 1], C = pts[d - 1], ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2], vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2]; faces.push(((uy * vz - uz * vy) * nx + (uz * vx - ux * vz) * ny + (ux * vy - uy * vx) * nz) >= 0 ? [a, b, d] : [a, d, b]); };
   const quad = (p0, p1, p2, p3, nm) => { const b0 = pts.length; [p0, p1, p2, p3].forEach(q => P(q[0], q[1], q[2])); tri(b0 + 1, b0 + 2, b0 + 3, nm[0], nm[1], nm[2]); tri(b0 + 1, b0 + 3, b0 + 4, nm[0], nm[1], nm[2]); };
@@ -57,11 +58,11 @@ function gjutConcreteSolid(c, poly, H, PC, zb) {
     for (let j = 0; j + 1 < ts.length; j++) { const t0 = ts[j], t1 = ts[j + 1]; if (t1 - t0 < 1e-6) continue; const x0 = a[0] + dx * t0, y0 = a[1] + dy * t0, x1 = a[0] + dx * t1, y1 = a[1] + dy * t1, z = PC.zbS((x0 + x1) / 2); quad([x0, y0, z], [x1, y1, z], [x1, y1, H], [x0, y0, H], [nx, ny, 0]); } }
   PC.strips.forEach((s, i) => { s.iv.forEach(([y0, y1]) => quad([s.xa, y0, s.zb], [s.xb, y0, s.zb], [s.xb, y1, s.zb], [s.xa, y1, s.zb], [0, 0, -1]));
     const nx = PC.strips[i + 1]; if (nx) s.iv.forEach(([y0, y1]) => nx.iv.forEach(([v0, v1]) => { const lo = Math.max(y0, v0), hi = Math.min(y1, v1); if (hi - lo > 1e-6 && Math.abs(s.zb - nx.zb) > 1e-6) quad([s.xb, lo, Math.min(s.zb, nx.zb)], [s.xb, hi, Math.min(s.zb, nx.zb)], [s.xb, hi, Math.max(s.zb, nx.zb)], [s.xb, lo, Math.max(s.zb, nx.zb)], [s.zb < nx.zb ? 1 : -1, 0, 0]); })); });
-  return TK.add(c.T("#9aa4b2", { transp: 0.55, rough: 0.9 }), { pts, faces }, 0, 0, zb);
+  return TK.add(c.T(opaque ? "#a8aeb6" : "#9aa4b2", { transp: opaque ? 0 : 0.55, rough: 0.9 }), { pts, faces }, 0, 0, zb);
 }
 function gjutStats(p, poly) {
-  const H = Math.max(0.05, Number(p.H) || 0.25), area = Math.abs(TK.area2(poly)), n = poly.length; let per = 0; for (let i = 0; i < n; i++) per += Math.hypot(poly[(i + 1) % n][0] - poly[i][0], poly[(i + 1) % n][1] - poly[i][1]);
-  const prof = gjutProfGet(p), PC = prof ? gjutProfCtx(poly, H, prof) : null, vol = (PC ? PC.vol : area * H) * (1 + smN(p, "tillagg", 0) / 100), bilar = Math.ceil(vol / Math.max(1, smN(p, "bil", 8))), tim = vol / Math.max(1, smN(p, "kap", 30)), claim = area + per * GJ_CLAIM + Math.PI * GJ_CLAIM * GJ_CLAIM;
+  const clD = Math.max(0, smN(p, "ark", GJ_CLAIM)), H = Math.max(0.05, Number(p.H) || 0.25), area = Math.abs(TK.area2(poly)), n = poly.length; let per = 0; for (let i = 0; i < n; i++) per += Math.hypot(poly[(i + 1) % n][0] - poly[i][0], poly[(i + 1) % n][1] - poly[i][1]);
+  const prof = gjutProfGet(p), PC = prof ? gjutProfCtx(poly, H, prof) : null, vol = (PC ? PC.vol : area * H) * (1 + smN(p, "tillagg", 0) / 100), bilar = Math.ceil(vol / Math.max(1, smN(p, "bil", 8))), tim = vol / Math.max(1, smN(p, "kap", 30)), claim = area + per * clD + Math.PI * clD * clD;
   let kg = 0, txt = ""; const layers = [];
   if (smF(p, "arm", "Visa") !== "Dölj") {
     const cover = Math.max(0.01, smN(p, "tak", 40) / 1000), ang = smN(p, "ang", 0) * Math.PI / 180, uD = smN(p, "uD", 12), uS = Math.max(50, smN(p, "uS", 150)), oD = smN(p, "oD", 0), oS = Math.max(50, smN(p, "oS", 150));
@@ -82,31 +83,45 @@ function gjutCuts(p) {
 }
 function gjutBuild(p, c, poly, zb, free) {
   const st = gjutStats(p, poly), H = st.H, xs = poly.map(q => q[0]), ys = poly.map(q => q[1]), minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys), v = st.vol;
-  if (st.PC) gjutConcreteSolid(c, poly, H, st.PC, zb); else c.prism("#9aa4b2", poly, zb, zb + H, { transp: 0.55, rough: 0.9 });                                         // betongen (genomskinlig så att armeringen syns); med bottenprofil följer botten berget
+  const riven = smF(p, "riv", "Kvar") === "Riven", RG = String(smF(p, "reg", "45x125")).split("x").map(Number), rw = (RG[0] || 45) / 1000, rh = (RG[1] || 125) / 1000;
+  if (st.PC) gjutConcreteSolid(c, poly, H, st.PC, zb, riven); else c.prism(riven ? "#a8aeb6" : "#9aa4b2", poly, zb, zb + H, { transp: riven ? 0 : 0.55, rough: 0.9 });                                         // betongen (genomskinlig så att armeringen syns); med bottenprofil följer botten berget
   const ccw = TK.area2(poly) >= 0, n = poly.length, WOOD = "#c9a15f", WOOD2 = "#a9824a", nrm = i => { const a = poly[i], b = poly[(i + 1) % n], dx = b[0] - a[0], dy = b[1] - a[1], dd = Math.hypot(dx, dy) || 1; return [(ccw ? dy : -dy) / dd, (ccw ? -dx : dx) / dd, dd]; };
-  // formsidan: träregel runt hela konturen, stöttor var meter med snedstag ut mot marken och ett toppträ
-  for (let i = 0; i < n; i++) { const a = poly[i], b = poly[(i + 1) % n], [nx, ny, dd] = nrm(i); if (dd < 0.02) continue;
+  // formsidan: formbräda (tjocklek = regelns bredd), stöttor av regel (standard 45 × 125 mm, högkant mot formen) var meter med snedstag av samma regel ca 45° ut mot marken, toppregel – bort när formen är riven
+  const stag = Math.max(0.5, (H + 0.3) * 0.95);
+  if (!riven) for (let i = 0; i < n; i++) { const a = poly[i], b = poly[(i + 1) % n], [nx, ny, dd] = nrm(i); if (dd < 0.02) continue;
     { const m = st.PC ? Math.max(1, Math.ceil(dd / 0.5)) : 1; for (let j = 0; j < m; j++) { const t0 = j / m, t1 = (j + 1) / m, ax0 = a[0] + (b[0] - a[0]) * t0, ay0 = a[1] + (b[1] - a[1]) * t0, ax1 = a[0] + (b[0] - a[0]) * t1, ay1 = a[1] + (b[1] - a[1]) * t1, zlo = st.PC ? st.PC.zbS((ax0 + ax1) / 2) : 0;
-      c.prism(WOOD, [[ax0, ay0], [ax1, ay1], [ax1 + nx * 0.05, ay1 + ny * 0.05], [ax0 + nx * 0.05, ay0 + ny * 0.05]], zb + zlo - 0.02, zb + H + 0.1, { rough: 0.85 }); } }
-    const k = Math.max(1, Math.round(dd / 1.0));
-    for (let j = 0; j <= k; j++) { const t = j / k, x = a[0] + (b[0] - a[0]) * t + nx * 0.09, y = a[1] + (b[1] - a[1]) * t + ny * 0.09; if (j === k && dd > 0.5) continue; const hs = 0.035;
-      const zlo = st.PC ? st.PC.zbS(x) : 0;
-      c.prism(WOOD2, [[x - hs, y - hs], [x + hs, y - hs], [x + hs, y + hs], [x - hs, y + hs]], zb + zlo - 0.12, zb + H + 0.32, { rough: 0.85 });
-      c.rod(WOOD2, [x, y, zb + H + 0.24], [x + nx * 0.62, y + ny * 0.62, zb + zlo - 0.04], 0.022, 0.022, 6, { rough: 0.85 }); }
-    c.prism(WOOD, [[a[0] + nx * 0.05, a[1] + ny * 0.05], [b[0] + nx * 0.05, b[1] + ny * 0.05], [b[0] + nx * 0.13, b[1] + ny * 0.13], [a[0] + nx * 0.13, a[1] + ny * 0.13]], zb + H + 0.1, zb + H + 0.14, { rough: 0.85 }); }
+      c.prism(WOOD, [[ax0, ay0], [ax1, ay1], [ax1 + nx * rw, ay1 + ny * rw], [ax0 + nx * rw, ay0 + ny * rw]], zb + zlo - 0.02, zb + H + 0.1, { rough: 0.85 }); } }
+    const k = Math.max(1, Math.round(dd / 1.0)), tx = (b[0] - a[0]) / dd, ty = (b[1] - a[1]) / dd;
+    for (let j = 0; j <= k; j++) { const t = j / k, x = a[0] + (b[0] - a[0]) * t + nx * (rw + rh / 2), y = a[1] + (b[1] - a[1]) * t + ny * (rw + rh / 2); if (j === k && dd > 0.5) continue; const zlo = st.PC ? st.PC.zbS(x) : 0, hw = rw / 2, hd = rh / 2;   // regeln står med den höga sidan vinkelrätt mot formen
+      c.prism(WOOD2, [[x - tx * hw - nx * hd, y - ty * hw - ny * hd], [x + tx * hw - nx * hd, y + ty * hw - ny * hd], [x + tx * hw + nx * hd, y + ty * hw + ny * hd], [x - tx * hw + nx * hd, y - ty * hw + ny * hd]], zb + zlo - 0.12, zb + H + 0.32, { rough: 0.85 });
+      c.beam(WOOD2, [x + nx * hd, y + ny * hd, zb + H + 0.22], [x + nx * (hd + stag), y + ny * (hd + stag), zb + zlo - 0.02], rw, rh, { rough: 0.85 });                          // snedstag: samma regel, lutad ut från stöttan
+      { const fx = x + nx * (hd + stag), fy = y + ny * (hd + stag), fz = zb + zlo; c.box(WOOD, fx, fy, fz + 0.015, 0.5, rh + 0.05, 0.03, Math.atan2(ty, tx), 0, { rough: 0.9 });   // markreglar under snedstagets fot
+        c.rod("#475569", [fx, fy, fz + 0.03], [fx, fy, fz - 0.28], 0.012, 0.012, 6, { metal: 0.8, rough: 0.4 }); }                                                                   // stålpinne som fäster foten
+      if (H > 0.4 && j < k) { const mz = zb + zlo + (H + 0.3) * 0.45; c.rod("#94a3b8", [x - nx * (rw + 0.02), y - ny * (rw + 0.02), mz], [x + nx * (hd * 2 + 0.03), y + ny * (hd * 2 + 0.03), mz], 0.007, 0.007, 6, { metal: 0.85, rough: 0.35 }); }   // formstag (genomgående bult)
+    }
+    c.prism(WOOD, [[a[0] + nx * rw, a[1] + ny * rw], [b[0] + nx * rw, b[1] + ny * rw], [b[0] + nx * (rw + rh), b[1] + ny * (rw + rh)], [a[0] + nx * (rw + rh), a[1] + ny * (rw + rh)]], zb + H + 0.1, zb + H + 0.1 + rw, { rough: 0.85 }); }
   // markanspråk: orange kontur 1 m utanför formen (och en mjuk fyllning längs kanten), så att man ser hur mycket mark etappen tar
-  const D = GJ_CLAIM, off = i => { const [nx, ny] = nrm(i); return [nx * D, ny * D]; }, band = (p0, p1, w) => { const dx = p1[0] - p0[0], dy = p1[1] - p0[1], dd = Math.hypot(dx, dy); if (dd < 0.01) return; const ux = -dy / dd * w / 2, uy = dx / dd * w / 2; c.prism("#f97316", [[p0[0] + ux, p0[1] + uy], [p1[0] + ux, p1[1] + uy], [p1[0] - ux, p1[1] - uy], [p0[0] - ux, p0[1] - uy]], zb + 0.004, zb + 0.012, { unlit: true, deco: true }); };
-  for (let i = 0; i < n; i++) { const a = poly[i], b = poly[(i + 1) % n], o = off(i), on = off((i + 1) % n), a2 = [a[0] + o[0], a[1] + o[1]], b2 = [b[0] + o[0], b[1] + o[1]];
-    const L = Math.hypot(b2[0] - a2[0], b2[1] - a2[1]); for (let t = 0; t < L; t += 0.5) { const q0 = [a2[0] + (b2[0] - a2[0]) * t / L, a2[1] + (b2[1] - a2[1]) * t / L], q1 = [a2[0] + (b2[0] - a2[0]) * Math.min(L, t + 0.3) / L, a2[1] + (b2[1] - a2[1]) * Math.min(L, t + 0.3) / L]; band(q0, q1, 0.07); }   // streckad kontur
-    band(b2, [b[0] + on[0], b[1] + on[1]], 0.07); }                                                                                                                       // hörnförbindelse
+  const D = Math.max(0, smN(p, "ark", GJ_CLAIM)), off = i => { const [nx, ny] = nrm(i); return [nx * D, ny * D]; }, band = (p0, p1, w, col, tr) => { const dx = p1[0] - p0[0], dy = p1[1] - p0[1], dd = Math.hypot(dx, dy); if (dd < 0.01) return; const ux = -dy / dd * w / 2, uy = dx / dd * w / 2; c.prism(col || "#f97316", [[p0[0] + ux, p0[1] + uy], [p1[0] + ux, p1[1] + uy], [p1[0] - ux, p1[1] - uy], [p0[0] - ux, p0[1] - uy]], zb + 0.004 + (tr ? 0 : 0.004), zb + 0.012 + (tr ? 0 : 0.004), { unlit: true, deco: true, ...(tr ? { transp: tr } : {}) }); };
+  if (!riven && D > 0.01) for (let i = 0; i < n; i++) { const a = poly[i], b = poly[(i + 1) % n], o = off(i), on = off((i + 1) % n), a2 = [a[0] + o[0], a[1] + o[1]], b2 = [b[0] + o[0], b[1] + o[1]];
+    c.prism("#fb923c", [[a[0], a[1]], [b[0], b[1]], [b2[0], b2[1]], [a2[0], a2[1]]], zb + 0.002, zb + 0.006, { unlit: true, deco: true, transp: 0.82 });                             // mjuk fyllning av arbetsytan
+    band(a2, b2, 0.34, "#f97316", 0.8); band(a2, b2, 0.14, "#fdba74", 0.45);                                                                                                           // glow runt kontur
+    const L = Math.hypot(b2[0] - a2[0], b2[1] - a2[1]); for (let t = 0; t < L; t += 0.5) { const q0 = [a2[0] + (b2[0] - a2[0]) * t / L, a2[1] + (b2[1] - a2[1]) * t / L], q1 = [a2[0] + (b2[0] - a2[0]) * Math.min(L, t + 0.3) / L, a2[1] + (b2[1] - a2[1]) * Math.min(L, t + 0.3) / L]; band(q0, q1, 0.09, "#ea580c", 0); }   // kraftig streckad kontur
+    band(b2, [b[0] + on[0], b[1] + on[1]], 0.09, "#ea580c", 0); }
   let kg = st.kg; const txt = st.txt;
   if (st.layers.length) {
     const cover = Math.max(0.01, smN(p, "tak", 40) / 1000), ang = smN(p, "ang", 0) * Math.PI / 180;
     st.layers.forEach(([d, sMM, z1, z2], li) => { let s = sMM / 1000; const side = Math.max(maxX - minX, maxY - minY); if (side / s > 70) s = side / 70; // för många stänger: visa glesare (mängden räknas ändå med riktig delning)
-      [[ang, z1], [ang + Math.PI / 2, z2]].forEach(([a, z]) => gjutScan(poly, a, s, cover).forEach(([q0, q1]) => { const mat = { metal: 0.85, rough: 0.35, shin: 90 }, colr = li ? "#2563eb" : "#475569";
-        if (!st.PC || li) return c.rod(colr, [q0[0], q0[1], zb + z], [q1[0], q1[1], zb + z], d / 2000, d / 2000, 6, mat);
+      const mat = { metal: 0.85, rough: 0.35, shin: 90 }, colr = li ? "#3b82f6" : "#64748b", rr = Math.max(d / 2000, 0.005), A = gjutScan(poly, ang, s, cover), B = gjutScan(poly, ang + Math.PI / 2, s, cover);   // nät: båda riktningarna, stavar syns minst 10 mm
+      const bar = (q0, q1, z) => { if (!st.PC || li) return c.rod(colr, [q0[0], q0[1], zb + z], [q1[0], q1[1], zb + z], rr, rr, 6, mat);
         const len = Math.hypot(q1[0] - q0[0], q1[1] - q0[1]), m = Math.max(1, Math.ceil(len / 0.5));                                                                                   // undre nätet följer berget
-        for (let j = 0; j < m; j++) { const t0 = j / m, t1 = (j + 1) / m, x0 = q0[0] + (q1[0] - q0[0]) * t0, y0 = q0[1] + (q1[1] - q0[1]) * t0, x1 = q0[0] + (q1[0] - q0[0]) * t1, y1 = q0[1] + (q1[1] - q0[1]) * t1, zz = Math.max(z, st.PC.zbS((x0 + x1) / 2) + cover + d * 1.5 / 1000); if (zz < H - cover) c.rod(colr, [x0, y0, zb + zz], [x1, y1, zb + zz], d / 2000, d / 2000, 6, mat); } })); });
+        for (let j = 0; j < m; j++) { const t0 = j / m, t1 = (j + 1) / m, x0 = q0[0] + (q1[0] - q0[0]) * t0, y0 = q0[1] + (q1[1] - q0[1]) * t0, x1 = q0[0] + (q1[0] - q0[0]) * t1, y1 = q0[1] + (q1[1] - q0[1]) * t1, zz = Math.max(z, st.PC.zbS((x0 + x1) / 2) + cover + d * 1.5 / 1000); if (zz < H - cover) c.rod(colr, [x0, y0, zb + zz], [x1, y1, zb + zz], rr, rr, 6, mat); } };
+      A.forEach(([q0, q1]) => bar(q0, q1, z1)); B.forEach(([q0, q1]) => bar(q0, q1, z2));
+      const X = [];                                                                                                                    // skärningspunkter = svetsar/bindtråd, så att det läses som ett nät
+      A.forEach(([a0, a1]) => B.forEach(([b0, b1]) => { const r = [a1[0] - a0[0], a1[1] - a0[1]], q = [b1[0] - b0[0], b1[1] - b0[1]], den = r[0] * q[1] - r[1] * q[0]; if (Math.abs(den) < 1e-9) return; const w = [b0[0] - a0[0], b0[1] - a0[1]], t = (w[0] * q[1] - w[1] * q[0]) / den, u = (w[0] * r[1] - w[1] * r[0]) / den; if (t >= 0 && t <= 1 && u >= 0 && u <= 1) X.push([a0[0] + r[0] * t, a0[1] + r[1] * t]); }));
+      const stp = Math.max(1, Math.ceil(X.length / 380)), zm = zb + (z1 + z2) / 2, ds = Math.max(d * 2.4 / 1000, 0.016);
+      X.forEach((q, i) => { if (i % stp) return; if (!st.PC || li) c.box(li ? "#1d4ed8" : "#334155", q[0], q[1], (st.PC && !li) ? Math.max(zm, zb + st.PC.zbS(q[0]) + cover + d * 2 / 1000) : zm, ds, ds, Math.abs(z2 - z1) + rr * 2, ang, 0, { seg: 1 }); });
+      if (!li && !st.PC) X.forEach((q, i) => { if (i % (stp * 3) || z1 < 0.03) return; c.box("#9ca3af", q[0], q[1], zb + (z1 - rr) / 2, 0.035, 0.035, z1 - rr, ang + 0.4, 0, { seg: 1 }); });   // distansbockar under nätet
+    });
   }
   const mx = (minX + maxX) / 2, my = (minY + maxY) / 2, ar = Math.min(2.4, Math.max(0.8, (maxX - minX) * 0.16));
   c.prism("#f59e0b", [[-1.6, -0.35], [0.4, -0.35], [0.4, -0.8], [1.8, 0], [0.4, 0.8], [0.4, 0.35], [-1.6, 0.35]].map(([x, y]) => [mx + x * ar / 1.8, my + y * ar / 1.8]), zb + H + 0.01, zb + H + 0.03, { unlit: true, deco: true });  // gjutriktning

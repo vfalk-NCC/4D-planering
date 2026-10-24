@@ -167,6 +167,23 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => l3PalTab('layers')); await sleep(300);
   if (!(await page.locator('#v3PalLayers [data-ldd="pc"]').count())) fail('Plustecken vid Punktmoln i Lager saknas');
   console.log('OK: ställning byggs dynamiskt efter höjd/längd; plustecken vid Punktmoln i Lager');
+  // 13) Lager: samlingsswitchar och modellens sken
+  const lg = await page.evaluate(async () => { const mk = id => { const geo = new THREE.BoxGeometry(1, 1, 1), mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial()); mesh.userData.l3b = { origIdx: geo.index.array, hidden: new Set(), ranges: [] }; l3.scene.add(mesh); return { id, name: id + '.ifc', visible: true, meshes: [mesh], tris: 12 }; };
+    const a = mk('ma'), b = mk('mb'); b.visible = false; b.meshes[0].visible = false; l3b.models.push(a, b); l3PalTab('layers'); await new Promise(r => setTimeout(r, 250)); const r = {};
+    r.sw = ['models', 'pc', 'twoD'].every(k => !!document.querySelector(`#v3PalLayers [data-lsw="${k}"]`)); r.on0 = l3lMasterOn('models');
+    l3lMaster('models', false); r.off = !a.visible && !a.meshes[0].visible && !l3lMasterOn('models'); l3lMaster('models', true); r.back = a.visible && !b.visible;     // bara det som var tänt kommer tillbaka
+    l3lGlow('ma'); r.glow = a.meshes[0].material.emissive.getHex() === 0x2f7bff && b.meshes[0].material.emissive.getHex() === 0 && l3lay.glow === 'ma'; l3lGlow(null); r.glowOff = a.meshes[0].material.emissive.getHex() === 0 && !l3lay.glow;
+    l3b.models.splice(l3b.models.indexOf(a), 1); l3b.models.splice(l3b.models.indexOf(b), 1); l3.scene.remove(a.meshes[0], b.meshes[0]); return r; });
+  if (!lg.sw || !lg.on0 || !lg.off || !lg.back || !lg.glow || !lg.glowOff) fail('Lager-switchar/sken: ' + JSON.stringify(lg));
+  console.log('OK: Lager – switchar för modeller/punktmoln/2D och sken kring vald modell');
+  // 14) Formen: regeldimension (45×125 som standard, valbar) och riven form (bara betongen syns)
+  const fw = await page.evaluate(() => { const O = l3.O, q = placeNew('sm:gjutetapp', [O[0] + 300, O[1] + 300, 0]); placements.push(q); placeTouch(q);
+    const wood = ps => ps.filter(x => x.color === '#c9a15f' || x.color === '#a9824a').length, conc = ps => ps.filter(x => x.color === '#9aa4b2' || x.color === '#a8aeb6');
+    const a = placeParts(q), r = { f0: { reg: q.f.reg, riv: q.f.riv }, wood: wood(a), concT: conc(a).map(x => x.transp) };
+    const dim = (reg) => { q.f.reg = reg; const ps = placeParts(q).filter(x => x.tris && x.color === '#a9824a'); const xs = ps.flatMap(x => x.tris.pts.map(v => v[2])); return ps.length; };
+    r.hasStakes = dim('45x125') > 0; q.f.riv = 'Riven'; const b = placeParts(q); r.woodRiv = wood(b); r.concRiv = conc(b).map(x => x.transp); r.claimRiv = b.filter(x => x.color === '#f97316').length; r.hasFields = SM.gjutetapp.fields.some(f => f[0] === 'riv') && SM.gjutetapp.fields.some(f => f[0] === 'reg'); return r; });
+  if (fw.f0.reg !== '45x125' || !fw.wood || !fw.hasStakes || fw.woodRiv !== 0 || fw.claimRiv !== 0 || !fw.concRiv.every(t => !t) || !fw.hasFields) fail('Form/regel/riven: ' + JSON.stringify(fw));
+  console.log('OK: gjutetapp – regeldimension 45×125 (valbar) och riven form där betongen syns');
   // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
   for (const t of ['sm:saxlift', 'sm:bomlift']) {
     const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);
