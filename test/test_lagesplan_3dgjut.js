@@ -218,6 +218,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3SelectIds([]); l3SelectIds([a.id, b.id]); l3.gizmo.setMode('rotate'); await new Promise(r2 => setTimeout(r2, 200)); r.decor = !!l3gx.decor && l3gx.decor.visible; return r; });
   if (!mm.pivot || !mm.pill || Math.abs(mm.moved[0] - 3) > 0.01 || Math.abs(mm.moved[1] - 3) > 0.01 || !mm.noCopy || mm.copies !== 2 || Math.abs(mm.ay - 2) > 0.01 || !mm.decor) fail('Flytthandtag för flera objekt, kopiera vid flytt och snurrande ring: ' + JSON.stringify(mm));
   console.log('OK: flera markerade objekt flyttas tillsammans med handtaget, kopiera vid flytt lämnar kopior, vridringen har pilar');
+  const exc = await page.evaluate(async () => { const O = l3.O, ids = []; for (let i = 0; i < 4; i++) { const q = placeNew('lada', [O[0] + 2200 + i * 3, O[1] + 2200 + (i % 2) * 40, 0]); q.L = 2; q.B = 2; q.H = 1; placements.push(q); placeTouch(q); l3AddPlacementMesh(q); ids.push(q.id); }
+    l3SelectIds(ids); l3xStart(); l3xPlay(false); l3x.t = 1.5; l3xApply(); const c = l3xCentre(l3xEase(l3x.t)), t = l3.orbit.target; const r = { d: c.distanceTo(t) }; l3xStop(); return r; });
+  if (!(exc.d < 0.01)) fail('Rotationscentrum ska följa de utsprängda delarna: ' + JSON.stringify(exc));
+  console.log('OK: rotationscentrum följer de utsprängda delarna');
   const mk2 = await page.evaluate(async () => { const O = l3.O, q = placeNew('sm:makadam', [O[0] + 1100, O[1] + 1100, 0]); q.L = 10; q.B = 10; placements.push(q); placeTouch(q); l3AddPlacementMesh(q); const f = placeNew('lada', [q.x + 1, q.y, 0]); f.L = 2; f.B = 2; f.H = 1; f.z = 0; placements.push(f); placeTouch(f); l3AddPlacementMesh(f); l3SelectIds([f.id]); await new Promise(r => setTimeout(r, 300));
     const sg = () => { const s = placeParts(q).find(x => x.sign); return JSON.stringify(s && s.sign && s.sign.rows || ''); }; const r = { a: sg() };
     const o = l3.gizmo.object; o.position.x += 12; l3.gizmo.dispatchEvent({ type: 'objectChange' }); l3.gizmo.dispatchEvent({ type: 'mouseUp' }); await new Promise(r2 => setTimeout(r2, 400)); r.b = sg();
