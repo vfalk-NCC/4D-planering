@@ -147,10 +147,10 @@ function l3RenderLib() {
     const open = q || !closed.has(f.id) || list.some(it => l3 && l3.addType === it.k);
     const placed = l3libPlaced(f.id), on = placed.some(p => !(l3.hidden && l3.hidden.has(p.id)));
     return `<div class="v3-lf" data-lfid="${esc(f.id)}">
-      <label class="v3-af-chk" title="${placed.length ? `${on ? "Släck" : "Tänd"} mappens ${placed.length} placerade objekt i 3D` : "Inga placerade objekt i mappen"}"><input type="checkbox" data-lfvis="${esc(f.id)}" ${on || !placed.length ? "checked" : ""} ${placed.length ? "" : "disabled"} /></label>
       <button type="button" class="v3-pal-g" data-v3grp="${esc(f.id)}" aria-expanded="${!!open}"><span>${esc(f.name)}</span><em>${all.length}</em></button>
       <button type="button" class="v3-lf-ic" data-lfren="${esc(f.id)}" title="Byt namn">${I.edit}</button>
       ${f.fixed ? "" : `<button type="button" class="v3-lf-ic" data-lfdel="${esc(f.id)}" title="Ta bort mappen (objekten flyttas tillbaka)">${I.trash}</button>`}
+      <label class="v3-lay-sw v3-lf-sw" title="${placed.length ? `${on ? "Släck" : "Tänd"} mappens ${placed.length} placerade objekt i 3D` : "Inga placerade objekt i mappen"}"><input type="checkbox" role="switch" data-lfvis="${esc(f.id)}" ${on || !placed.length ? "checked" : ""} ${placed.length ? "" : "disabled"} aria-label="Tänd/släck mappens placerade objekt" /><i></i></label>
     </div>` + (open ? `<div class="v3-pal-items">` + (list.map(it => `<div class="v3-li"><button type="button" data-v3add="${esc(it.k)}" class="${l3 && l3.addType === it.k ? "on" : ""}" title="${esc(it.label)} – tryck och sedan i 3D. Dra till en annan mapp för att flytta."><i style="background:${it.color}"></i><span>${esc(it.label)}</span></button>${it.own ? `<button type="button" class="v3-li-x" data-v3libdel="${esc(it.a.id)}" title="Ta bort ur biblioteket (inget i Trimble Connect tas bort)">${I.trash}</button>` : ""}</div>`).join("") || `<div class="v3-pal-hint">Dra objekt hit.</div>`) + `</div>` : "");
   }).join("");
   el.innerHTML = (html || `<div class="v3-pal-hint">Inget matchar "${esc(q)}".</div>`) + `<button type="button" class="v3-lf-new" id="v3LibNew" title="Ny mapp i biblioteket – dra sedan objekt dit">＋ Ny mapp</button>`;
