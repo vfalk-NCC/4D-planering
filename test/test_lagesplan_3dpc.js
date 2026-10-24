@@ -118,7 +118,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       const c = l3pc.clouds[0], m = c.mat, out = {};
       const sec = document.querySelector('#v3PalLayers .v3-pc-view'); sec.open = true;
       document.querySelector('#v3PalLayers [data-pc-round="1"]').click();
-      out.round = !!c.mat.map && c.mat.alphaTest === 0.5;
+      out.round = c.mat.userData.soft === true && !c.mat.map;
       const set = (id, v, ev = 'input') => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event(ev)); if (ev === 'input') e.dispatchEvent(new Event('change')); };
       set('v3PcOpacity', 50); out.op = m.transparent && Math.abs(m.opacity - 0.5) < 1e-6 && !m.depthWrite;
       set('v3PcZlo', 20); set('v3PcZhi', 70); out.clip = (m.clippingPlanes || []).length === 2 && l3.renderer.localClippingEnabled;

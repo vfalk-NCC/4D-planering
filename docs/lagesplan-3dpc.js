@@ -22,7 +22,7 @@ const l3pcKey = () => `lagesplan-pc-${projectId}`;
    tak efter datorns minne så att fliken inte kraschar: ~16 byte per punkt i minnet och lika mycket i grafikkortet. */
 const l3pcMaxPts = () => { const gb = (typeof navigator !== "undefined" && navigator.deviceMemory) || 8; return Math.round(Math.max(20e6, Math.min(250e6, gb * 1e9 / 45))); };
 const l3pcBudget = () => { const v = l3Prefs().pcBudget; if (v === "all") return l3pcMaxPts(); const b = Number(v); return b > 0 ? b : (typeof lowMemDevice !== "undefined" && lowMemDevice ? 1.5e6 : 6e6); };
-const l3pcSize = () => Number(l3Prefs().pcSize) || 2;
+const l3pcSize = () => Number(l3Prefs().pcSize) || 2.5;
 const l3pcMode = () => l3Prefs().pcMode || "auto";
 const l3pcPref = (k, d) => { const v = l3Prefs()[k]; return v == null || v === "" ? d : v; };
 const l3pcMil = n => (n < 100000 ? Math.round(n).toLocaleString("sv-SE") + " p" : (n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(".", ",") + " milj.");
@@ -184,6 +184,7 @@ function l3pcBuildLod(c) {
 function l3pcLodMatApply(c) {
   const L = c.lodMat; if (!L) return;
   const m = c.mat, f = Math.min(2.4, 0.62 * Math.sqrt(c.lodK || 1));
+  L.onBeforeCompile = m.onBeforeCompile; L.customProgramCacheKey = m.customProgramCacheKey; L.userData.soft = m.userData.soft;
   L.sizeAttenuation = m.sizeAttenuation; L.size = m.size * Math.max(1, f);
   L.map = m.map; L.alphaTest = m.alphaTest; L.transparent = m.transparent; L.opacity = m.opacity; L.depthWrite = m.depthWrite; L.clippingPlanes = m.clippingPlanes;
   L.needsUpdate = true;
@@ -233,12 +234,25 @@ function l3pcDiscTex() {
   const x = cv.getContext("2d"); x.fillStyle = "#fff"; x.beginPath(); x.arc(32, 32, 30, 0, Math.PI * 2); x.fill();
   l3pcDisc = new THREE.CanvasTexture(cv); return l3pcDisc;
 }
+/* Mjuka runda splats (som i Trimble Connect): cirkelmask utan kantflimmer och lätt skuggning mot kanten, så att tätt packade punkter
+   flyter ihop till en yta i stället för att ge en rasterbild. Görs i punktmaterialets shader – lika billigt som fyrkanten. */
+function l3pcSoft(m, on) {
+  if (!!m.userData.soft === on && m.onBeforeCompile) return;
+  m.userData.soft = on;
+  m.onBeforeCompile = on ? sh => {
+    sh.fragmentShader = sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
+      float pcD = length(gl_PointCoord - vec2(0.5)); if (pcD > 0.5) discard;
+      diffuseColor.rgb *= 1.0 - 0.28 * smoothstep(0.2, 0.5, pcD);`);
+  } : () => {};
+  m.customProgramCacheKey = () => on ? "pcsoft" : "pcsq";
+  m.needsUpdate = true;
+}
 /* Visningen i grafikkortet: storlek (pixlar eller meter), form, genomskinlighet och höjdfiltret. */
 function l3pcMatApply(c) {
-  const m = c.mat, atten = !!l3Prefs().pcAtten, round = !!l3Prefs().pcRound, op = Number(l3pcPref("pcOpacity", 100)) / 100;
+  const m = c.mat, atten = !!l3Prefs().pcAtten, round = l3Prefs().pcRound !== false, op = Number(l3pcPref("pcOpacity", 100)) / 100;
   m.sizeAttenuation = atten;
   m.size = atten ? l3pcSize() * 0.02 : l3pcSize(); // i meter: 2 → 4 cm
-  m.map = round ? l3pcDiscTex() : null; m.alphaTest = round ? 0.5 : 0;
+  m.map = null; m.alphaTest = 0; l3pcSoft(m, round);
   m.transparent = op < 0.999; m.opacity = op; m.depthWrite = op >= 0.999;
   const lo = Number(l3pcPref("pcZlo", 0)), hi = Number(l3pcPref("pcZhi", 100));
   if (lo > 0 || hi < 100) {
@@ -407,7 +421,7 @@ function l3pcHtml(row, esc) {
       <label>Färg</label><div class="v3-pc-f">${sel("v3PcMode", [["auto", "Automatiskt"], ["rgb", "Molnets färg"], ["int", "Intensitet"], ["z", "Höjd"], ["solid", "Enfärgad"]], mode)}${mode === "solid" ? `<input type="color" id="v3PcColor" value="${esc(l3pcPref("pcColor", "#94a3b8"))}" title="Färg" />` : ""}</div>
       <label title="Punkternas storlek">Storlek</label><div class="v3-pc-f"><input type="range" id="v3PcSize" min="0.5" max="8" step="0.5" value="${l3pcSize()}" /><output>${String(l3pcSize()).replace(".", ",")}</output></div>
       <label title="I skärmen: lika stora på alla avstånd. I meter: växer när du zoomar in, som riktiga ytor.">Skala</label><div class="v3-pc-f">${sel("v3PcAtten", [["", "Pixlar"], ["1", "Meter"]], P.pcAtten ? "1" : "")}</div>
-      <label>Form</label><div class="v3-pc-f"><div class="v3-segs v3-pc-seg"><button type="button" data-pc-round="" class="${P.pcRound ? "" : "on"}">■ Fyrkant</button><button type="button" data-pc-round="1" class="${P.pcRound ? "on" : ""}">● Rund</button></div></div>
+      <label>Form</label><div class="v3-pc-f"><div class="v3-segs v3-pc-seg"><button type="button" data-pc-round="" class="${P.pcRound !== false ? "" : "on"}">■ Fyrkant</button><button type="button" data-pc-round="1" class="${P.pcRound !== false ? "on" : ""}">● Rund</button></div></div>
       <label>Ljus</label><div class="v3-pc-f"><input type="range" id="v3PcBright" min="-50" max="50" step="5" value="${l3pcPref("pcBright", 0)}" /><output>${l3pcPref("pcBright", 0)}</output></div>
       <label>Kontrast</label><div class="v3-pc-f"><input type="range" id="v3PcContrast" min="50" max="200" step="10" value="${l3pcPref("pcContrast", 100)}" /><output>${l3pcPref("pcContrast", 100)} %</output></div>
       <label title="Genomskinlighet – se modellen genom molnet">Täckning</label><div class="v3-pc-f"><input type="range" id="v3PcOpacity" min="10" max="100" step="5" value="${l3pcPref("pcOpacity", 100)}" /><output>${l3pcPref("pcOpacity", 100)} %</output></div>
