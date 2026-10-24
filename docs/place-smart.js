@@ -104,7 +104,7 @@ function smMakeCtx(p, z, col) {
   const ctx = { parts, W, add, z, p, col,
     rect: (a0, a1, b0, b1) => [[a0, b0], [a1, b0], [a1, b1], [a0, b1]].map(([a, b]) => W(a, b)),
     oct: (r, n = 8, ox = 0, oy = 0) => Array.from({ length: n }, (_, i) => { const t = Math.PI / n + i * 2 * Math.PI / n; return W(ox + r * Math.cos(t), oy + r * Math.sin(t)); }),
-    T: (color, o) => { o = o || {}; const k = color + "|" + (o.unlit ? 1 : 0) + "|" + (o.transp || 0) + "|" + (o.role || "") + "|" + (o.shin == null ? "" : o.shin) + "|" + (o.metal == null ? "" : o.metal) + "|" + (o.rough == null ? "" : o.rough); if (!Ts.has(k)) Ts.set(k, TK.new({ color, ...o })); return Ts.get(k); },
+    T: (color, o) => { o = o || {}; const k = color + "|" + (o.unlit ? 1 : 0) + "|" + (o.transp || 0) + "|" + (o.role || "") + "|" + (o.shin == null ? "" : o.shin) + "|" + (o.metal == null ? "" : o.metal) + "|" + (o.rough == null ? "" : o.rough) + "|" + (o.deco ? 1 : 0); if (!Ts.has(k)) Ts.set(k, TK.new({ color, ...o })); return Ts.get(k); },
     box: (color, cx, cy, cz, sx, sy, sz, rot, b, o) => TK.add(ctx.T(color, o), TK.box(sx, sy, sz, b || 0, (o && o.seg) || 2), cx, cy, cz, rot),
     cyl: (color, axis, cx, cy, cz, r0, r1, len, seg, rot, o) => TK.add(ctx.T(color, o), TK.cyl(axis, r0, r1, len, seg || 12), cx, cy, cz, rot),
     sph: (color, cx, cy, cz, rx, ry, rz, seg, rings, rot, o) => TK.add(ctx.T(color, o), TK.sphere(rx, ry, rz, seg || 12, rings || 7), cx, cy, cz, rot),
@@ -118,7 +118,7 @@ function smMakeCtx(p, z, col) {
       const g = { pts, faces: [[1, 3, 2], [1, 4, 3], [5, 6, 7], [5, 7, 8], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 4, 8], [3, 8, 7], [4, 1, 5], [4, 5, 8]] }; if (TK.volume(g) < 0) g.faces = g.faces.map(f => [f[0], f[2], f[1]]); return TK.add(ctx.T(color, o), g, 0, 0, 0); },
     card: s => smCard(ctx, ctx.withDate(s)), withDate: s => s,
     flush: () => { Ts.forEach(T => { if (!T.faces.length) return; const pts = T.loc.map(([a, b, zz]) => { const w = W(a, b); return [w[0], w[1], z + zz]; }), xs = pts.map(q => q[0]), ys = pts.map(q => q[1]), zs = pts.map(q => q[2]);
-      parts.push({ tris: { pts, faces: T.faces, sg: T.sg }, poly: [[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)], [Math.min(...xs), Math.max(...ys)]], z0: Math.min(...zs), z1: Math.max(...zs), role: T.role || "body", transp: T.transp || 0, color: T.color, unlit: !!T.unlit, mat: { shin: T.shin, metal: T.metal, rough: T.rough } }); }); Ts.clear(); return parts; } };
+      parts.push({ tris: { pts, faces: T.faces, sg: T.sg }, poly: [[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)], [Math.min(...xs), Math.max(...ys)]], z0: Math.min(...zs), z1: Math.max(...zs), role: T.role || "body", transp: T.transp || 0, color: T.color, unlit: !!T.unlit, deco: !!T.deco, mat: { shin: T.shin, metal: T.metal, rough: T.rough } }); }); Ts.clear(); return parts; } };
   return ctx;
 }
 function smartParts(p, z) {
@@ -137,8 +137,8 @@ function smartParts(p, z) {
     for (let i = 0; i < n - 1; i++) { const a = Q[i], b = Q[i + 1], z0 = Math.min(a[2] || 0, b[2] || 0) + dz; len += Math.hypot(b[0] - a[0], b[1] - a[1]); cum.push(len);
       parts.push({ poly: [[a[0] + off[i][0], a[1] + off[i][1]], [b[0] + off[i + 1][0], b[1] + off[i + 1][1]], [b[0] - off[i + 1][0], b[1] - off[i + 1][1]], [a[0] - off[i][0], a[1] - off[i][1]]], z0, z1: z0 + h, role: "body", transp: 0.25, color }); }
     const at = s => { let i = 1; while (i < n - 1 && cum[i] < s) i++; const t = (s - cum[i - 1]) / Math.max(1e-9, cum[i] - cum[i - 1]), a = Q[i - 1], b = Q[i], dd = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return { x: a[0] + (b[0] - a[0]) * t, y: a[1] + (b[1] - a[1]) * t, ux: (b[0] - a[0]) / dd, uy: (b[1] - a[1]) / dd, z: Math.min(a[2] || 0, b[2] || 0) + dz }; };
-    if (arrows) for (let s = 1.5; s < len - 0.8; s += 3) { const o = at(s), q = Math.min(w * 0.7, 0.5), z0 = o.z + h; parts.push({ poly: [[o.x + o.ux * q, o.y + o.uy * q], [o.x - o.ux * q * 0.6 + o.uy * q, o.y - o.uy * q * 0.6 - o.ux * q], [o.x - o.ux * q * 0.2, o.y - o.uy * q * 0.2], [o.x - o.ux * q * 0.6 - o.uy * q, o.y - o.uy * q * 0.6 + o.ux * q]], z0, z1: z0 + 0.02, role: "body", transp: 0, color: "#ffffff" }); }
-    else if (w > 0.8) { const dash = Math.min(w * 0.06, 0.12); for (let s = 0.5; s < len - 1; s += 3) { const a0 = at(s), a1 = at(Math.min(len, s + 1.5)), z0 = a0.z + h; parts.push({ poly: [[a0.x + a0.uy * dash, a0.y - a0.ux * dash], [a1.x + a1.uy * dash, a1.y - a1.ux * dash], [a1.x - a1.uy * dash, a1.y + a1.ux * dash], [a0.x - a0.uy * dash, a0.y + a0.ux * dash]], z0, z1: z0 + 0.02, role: "body", transp: 0, color: "#fde047" }); } }
+    if (arrows) for (let s = 1.5; s < len - 0.8; s += 3) { const o = at(s), q = Math.min(w * 0.7, 0.5), z0 = o.z + h; parts.push({ poly: [[o.x + o.ux * q, o.y + o.uy * q], [o.x - o.ux * q * 0.6 + o.uy * q, o.y - o.uy * q * 0.6 - o.ux * q], [o.x - o.ux * q * 0.2, o.y - o.uy * q * 0.2], [o.x - o.ux * q * 0.6 - o.uy * q, o.y - o.uy * q * 0.6 + o.ux * q]], z0, z1: z0 + 0.02, role: "body", deco: true, transp: 0, color: "#ffffff" }); }
+    else if (w > 0.8) { const dash = Math.min(w * 0.06, 0.12); for (let s = 0.5; s < len - 1; s += 3) { const a0 = at(s), a1 = at(Math.min(len, s + 1.5)), z0 = a0.z + h; parts.push({ poly: [[a0.x + a0.uy * dash, a0.y - a0.ux * dash], [a1.x + a1.uy * dash, a1.y - a1.ux * dash], [a1.x - a1.uy * dash, a1.y + a1.ux * dash], [a0.x - a0.uy * dash, a0.y + a0.ux * dash]], z0, z1: z0 + 0.02, role: "body", deco: true, transp: 0, color: "#fde047" }); } }
   };
   d.build(p, ctx); ctx.flush(); return parts;
 }

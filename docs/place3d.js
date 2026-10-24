@@ -451,7 +451,7 @@ function buildPlacementsIfc(projName, only) {
   const elems = [];
   list.forEach(p => {
     const lib = placeLib(p.type) || { label: p.type };
-    const parts = placeParts(p);
+    const parts = placeParts(p).filter(pt => !pt.deco); // markeringar (streck, pilar, markanspråk) hör till 3D-editorn – de blev tusentals kanter i Trimble Connect
     const o = [Math.round(p.x), Math.round(p.y), placeR3((Number(p.z) || 0) + (Number(p.dz) || 0))];
     const it = placeItemOf(p);
     const start = p.start || (it && it.startDate) || "", end = p.end || (it && it.endDate) || "";
@@ -484,7 +484,7 @@ function buildPlacementsIfc(projName, only) {
     if (Number(p.R) > 0) props.push(["Räckvidd m", placeR3(Number(p.R))]);
     props.push(["Start", start], ["Slut", end], ["Aktivitet", it ? (it.objectName || it.activity || "") : ""], ["4D-ID", p.itemId || ""], ["Placerad av", p.by || ""], ["Placerings-ID", p.id]);
     if (el) doc.props(el, props);
-    const reach = mk("reach", `${p.name || lib.label} – räckvidd`, "reach");
+    const reach = placeNameOpt.reach ? mk("reach", `${p.name || lib.label} – räckvidd`, "reach") : null; // räckviddsringar följer bara med om man bockar i det
     if (reach) doc.props(reach, [["Typ", `${lib.label} räckvidd`], ["Räckvidd m", placeR3(Number(p.R) || 0)], ["Start", start], ["Slut", end], ["Placerings-ID", p.id]]);
   });
   return { text: doc.finish(elems, `Etablering ${projName || ""}.ifc`), n: list.length };
@@ -492,10 +492,10 @@ function buildPlacementsIfc(projName, only) {
 /* opts.ids: bara de markerade placeringarna (Exportera markerade som IFC i 3D-vyn) – en ny fil med urvalet; ingen 4D-koppling
    och inget tänds/släcks i TC. Utan opts: alla placeringar som förut. */
 /* Namnet på den sparade filen: autonamn eller eget (rutorna under Spara-knappen; sparas här så att de överlever omritning av panelen). */
-const placeNameOpt = { custom: false, text: "", stamp: true, local: false };
+const placeNameOpt = { custom: false, text: "", stamp: true, local: false, reach: false };
 function placeNameHtml() {
   const o = placeNameOpt, ch = v => v ? " checked" : "";
-  return `<div class="row place-namerow"><label class="place-chk" title="Av = autonamn (Etablering + projekt + datum och klockslag). På = skriv ett eget namn på filen."><input type="checkbox" id="placeNameOn"${ch(o.custom)}> Eget namn</label><input type="text" id="placeNameTxt" placeholder="Skriv eget namn på filen…" maxlength="80" autocomplete="off" value="${String(o.text).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}"${o.custom ? "" : " disabled"}><label class="place-chk" title="Lägger datum och klockslag sist i namnet så att filen alltid blir ny"><input type="checkbox" id="placeNameStamp"${ch(o.stamp)}${o.custom ? "" : " disabled"}> + datum &amp; klockslag</label><label class="place-chk" title="Hämtar också en kopia av filen till datorn"><input type="checkbox" id="placeLocal"${ch(o.local)}> Spara även på datorn</label></div>`;
+  return `<div class="row place-namerow"><label class="place-chk" title="Av = autonamn (Etablering + projekt + datum och klockslag). På = skriv ett eget namn på filen."><input type="checkbox" id="placeNameOn"${ch(o.custom)}> Eget namn</label><input type="text" id="placeNameTxt" placeholder="Skriv eget namn på filen…" maxlength="80" autocomplete="off" value="${String(o.text).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}"${o.custom ? "" : " disabled"}><label class="place-chk" title="Lägger datum och klockslag sist i namnet så att filen alltid blir ny"><input type="checkbox" id="placeNameStamp"${ch(o.stamp)}${o.custom ? "" : " disabled"}> + datum &amp; klockslag</label><label class="place-chk" title="Hämtar också en kopia av filen till datorn"><input type="checkbox" id="placeLocal"${ch(o.local)}> Spara även på datorn</label><label class="place-chk" title="Av (rekommenderat): räckviddsringar och körvägsstreck följer inte med i IFC:n – de blir bara linjer som tynger Trimble Connect"><input type="checkbox" id="placeReach"${ch(o.reach)}> Med räckviddsringar</label></div>`;
 }
 async function placeSaveIfc(opts = {}) {
   const only = Array.isArray(opts.ids) && opts.ids.length ? new Set(opts.ids) : null;
@@ -756,7 +756,7 @@ function bindPlacePanel(box, act) {
     if (onCb) onCb.onchange = () => { placeNameOpt.custom = onCb.checked; if (txt) txt.disabled = !onCb.checked; if (st) st.disabled = !onCb.checked; if (onCb.checked && txt) txt.focus(); };
     if (txt) { txt.oninput = () => { placeNameOpt.text = txt.value; }; txt.onkeydown = e => e.stopPropagation(); }
     if (st) st.onchange = () => { placeNameOpt.stamp = st.checked; };
-    if (loc) loc.onchange = () => { placeNameOpt.local = loc.checked; }; }
+    if (loc) loc.onchange = () => { placeNameOpt.local = loc.checked; }; const rc = g("placeReach"); if (rc) rc.onchange = () => { placeNameOpt.reach = rc.checked; }; }
   on("placeSaveIfc", () => { placeSaveIfc().catch(e => setPlaceStatus("Kunde inte spara som IFC: " + e.message, true)); });
   if (!act) return;
   const change = (fn, live) => { if (!live) placeSnapshot(); fn(act); placeTouch(act); placeRedraw(); };

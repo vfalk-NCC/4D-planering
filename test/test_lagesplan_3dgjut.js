@@ -129,6 +129,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3b.models.pop(); r.parts = placeParts(q).length; r.calc = mkCalc(q).map(x => x.join(' ')).join(' | '); r.fr = SM.makadam.fields.some(x => x[0] === 'fr') && SM.makadam.fields.some(x => x[0] === 'H'); return r; });
   if (mkr.gross !== 100 || mkr.net0 !== 100 || Math.abs(mkr.vol0 - 30) > 1e-6 || mkr.cuts1 !== 1 || Math.abs(mkr.net1 - 96) > 1e-6 || Math.abs(mkr.vol1 - 28.8) > 1e-6 || mkr.cutsAbove !== 0 || mkr.noCut !== 100 || mkr.cuts3 !== 2 || Math.abs(mkr.net3 - 87) > 1e-6 || !/Fundament/.test(mkr.names) || mkr.parts < 3 || !mkr.fr) fail('Makadam: ' + JSON.stringify(mkr));
   console.log('OK: makadam – fraktion/tjocklek, avdrag för placerade och IFC-objekt i gruset, verklig volym (' + mkr.calc.slice(0, 90) + '…)');
+  // 9) IFC till Trimble Connect: inga räckviddsringar eller streck/pilar som tusentals kanter (valbart: med räckviddsringar)
+  const ifc = await page.evaluate(() => { const O = l3.O, k = placeNew('tornkran', [O[0] + 60, O[1] + 60, 0]); k.R = 40; placements.push(k); placeTouch(k);
+    const v = placeNew('sm:transport', [O[0] + 70, O[1] + 70, 0]); v.pts = [[v.x, v.y, 0], [v.x + 30, v.y, 0], [v.x + 50, v.y + 20, 0]]; placements.push(v); placeTouch(v);
+    const g = placeNew('sm:gjutetapp', [O[0] + 90, O[1] + 90, 0]); placements.push(g); placeTouch(g);
+    const only = new Set([k.id, v.id, g.id]); placeNameOpt.reach = false; const a = buildPlacementsIfc('T', only).text; placeNameOpt.reach = true; const b = buildPlacementsIfc('T', only).text; placeNameOpt.reach = false;
+    const deco = [placeParts(v), placeParts(g)].map(ps => ps.filter(x => x.deco).length); return { noReach: (a.match(/IFCBUILDINGELEMENTPROXY/g) || []).length === 3, withReach: (b.match(/IFCBUILDINGELEMENTPROXY/g) || []).length === 4, deco, small: a.length < b.length + 1, len: a.length }; });
+  if (!ifc.noReach || !ifc.withReach || !ifc.deco[0] || !ifc.deco[1]) fail('IFC utan räckviddsringar/streck: ' + JSON.stringify(ifc));
+  console.log('OK: IFC till Trimble Connect – inga räckviddsringar eller markeringsstreck (valbart)');
   // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
   for (const t of ['sm:saxlift', 'sm:bomlift']) {
     const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);
