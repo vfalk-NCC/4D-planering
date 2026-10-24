@@ -13,7 +13,7 @@
 const l3lib = { folders: [], map: {}, loaded: false, loading: null, pid: null };
 const l3libPath = () => `projects/${encodeURIComponent(projectId)}/plan_libfolders.json`;
 const L3LIB_CLOSED0 = ["g:Logistik", "g:Lyft & montage", "g:Risk & säkerhet", "g:Kvalitet & uppföljning"]; // nya smarta mappar är hopfällda från början
-const L3LIB_BUILTIN = ["Etablering", "Maskiner", "Säkerhet", "Personal", "Logistik", "Lyft & montage", "Risk & säkerhet", "Kvalitet & uppföljning", "Egna modeller"];
+const L3LIB_BUILTIN = ["Etablering", "Mark & schakt", "Maskiner", "Säkerhet", "Personal", "Logistik", "Lyft & montage", "Risk & säkerhet", "Kvalitet & uppföljning", "Egna modeller"];
 
 function l3libLoad() {
   if (l3lib.pid !== projectId) { l3lib.pid = projectId; l3lib.loaded = false; l3lib.loading = null; l3lib.folders = []; l3lib.map = {}; }
@@ -50,7 +50,7 @@ function l3libFolderOf(type) {
 function l3libItems() {
   const assets = typeof placeAssets !== "undefined" ? placeAssets : [];
   return [
-    ...Object.entries(PLACE_LIB).map(([k, l]) => ({ k, label: l.label, color: l.color, own: false })),
+    ...Object.entries(PLACE_LIB).filter(([, l]) => !l.hidden).map(([k, l]) => ({ k, label: l.label, color: l.color, own: false })),
     ...(typeof crewContractors === "function" ? [...crewContractors(), ""].map(c => ({ k: crewType(c), label: c ? "Bemanning " + c : "Bemanning (ingen entreprenör)", color: crewColor(c), own: false })) : []),
     ...(typeof smKeys === "function" ? smKeys().map(k => ({ k: "sm:" + k, label: SM[k].label, color: SM[k].color, own: false })) : []),
     ...assets.map(a => ({ k: `model:${a.id}`, label: a.name, color: a.kind === "ifc" ? "#0e7490" : "#64748b", own: true, a })),

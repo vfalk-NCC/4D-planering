@@ -20,8 +20,8 @@ const PLACE_LIB = {
   lada:      { group: "Etablering", label: "Egen låda",  L: 2,    B: 2,    H: 2,    color: "#7c3aed" },
   tornkran:  { group: "Maskiner",   label: "Tornkran",   L: 1.6,  B: 1.6,  H: 40,   R: 50, color: "#facc15" },
   mobilkran: { group: "Maskiner",   label: "Mobilkran",  L: 12,   B: 2.8,  H: 3.5,  R: 30, color: "#dc2626" },
-  staket:    { group: "Säkerhet",   label: "Staket",     H: 2,    fence: true, color: "#16a34a" },
-  barriar:   { group: "Säkerhet",   label: "Barriär",    L: 4,    B: 0.5,  H: 0.8,  color: "#9ca3af" },
+  staket:    { group: "Säkerhet",   label: "Staket",     H: 2,    fence: true, color: "#16a34a", hidden: true },
+  barriar:   { group: "Säkerhet",   label: "Barriär",    L: 4,    B: 0.5,  H: 0.8,  color: "#9ca3af", hidden: true },
 };
 
 /* Biblioteksposten för en typ – även egna modeller ("model:<id>", se place-models.js). */

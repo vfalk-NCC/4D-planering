@@ -4,7 +4,7 @@
    och allt läggs tillbaka när man stänger. */
 
 const l3x = { on: false, t: 0, amount: 1.5, mode: "radial", items: [], tmp: [], hid: [], raf: 0, play: false, dir: 1, loop: true, sel: null, el: null, last: 0 };
-const L3X_MAX = 3000;
+const L3X_MAX = 20000;
 
 /* Delar som tillhör markerade IFC-objekt som egna trianglar (icke-indexerade) – en per objekt. */
 function l3xExtract(mesh, ris) {
@@ -35,7 +35,7 @@ function l3xLayout() {
     else if (mode === "lager") it.off.set(0, 0, (it.c.z - C.z) * A * 1.2 + (zmax > zmin ? 0 : (k - its.length / 2) * 0.5 * A));
     else { const ax = mode === "x" ? "x" : mode === "y" ? "y" : "z"; it.off.set(0, 0, 0); it.off[ax] = d[ax] * A * 1.2 + (Math.abs(d[ax]) < 0.05 ? (k - its.length / 2) * 0.3 * A : 0); } });
 }
-const l3xEase = t => 1 - Math.pow(1 - t, 3);
+const l3xEase = t => (t <= 1 ? 1 - Math.pow(1 - t, 3) : t); // över 100 % fortsätter de rakt ut (1 + extra)
 function l3xApply() {
   const k = l3xEase(l3x.t);
   l3x.items.forEach(it => { if (it.kind === "place") it.obj.position.copy(it.pos0).addScaledVector(it.off, k); else { it.obj.matrix.copy(it.base); const e = it.obj.matrix.elements; e[12] += it.off.x * k; e[13] += it.off.y * k; e[14] += it.off.z * k; it.obj.matrixWorldNeedsUpdate = true; } });
@@ -78,8 +78,8 @@ function l3xPanel(show) {
   const modes = [["radial", "Radiellt"], ["lager", "Lager"], ["x", "X"], ["y", "Y"], ["z", "Z"]];
   el.innerHTML = `<div class="v3-x-h"><b>Spränga</b><span>${l3x.items.length} objekt</span><button type="button" id="v3XClose" class="v3-x-x" aria-label="Klar" title="Klar – lägg tillbaka allt (Esc)">✕</button></div>
     <div class="v3-segs v3-x-modes">${modes.map(([k, t]) => `<button type="button" data-xm="${k}" class="${l3x.mode === k ? "on" : ""}">${t}</button>`).join("")}</div>
-    <div class="v3-x-row"><button type="button" id="v3XPlay" class="v3-x-play ${l3x.play ? "on" : ""}" aria-label="Spela" title="Spela ut och in">▶</button><input type="range" id="v3XSlider" min="0" max="100" value="${Math.round(l3x.t * 100)}" aria-label="Sprängning" /><b id="v3XVal">${Math.round(l3x.t * 100)} %</b></div>
-    <div class="v3-x-row v3-x-row2"><label>Avstånd <input type="range" id="v3XAmt" min="0.3" max="4" step="0.1" value="${l3x.amount}" /></label><label class="v3-chk"><input type="checkbox" id="v3XLoop" ${l3x.loop ? "checked" : ""} /> Loop</label></div>`;
+    <div class="v3-x-row"><button type="button" id="v3XPlay" class="v3-x-play ${l3x.play ? "on" : ""}" aria-label="Spela" title="Spela ut och in">▶</button><input type="range" id="v3XSlider" min="0" max="500" value="${Math.round(l3x.t * 100)}" aria-label="Sprängning" /><b id="v3XVal">${Math.round(l3x.t * 100)} %</b></div>
+    <div class="v3-x-row v3-x-row2"><label>Avstånd <input type="range" id="v3XAmt" min="0.3" max="20" step="0.1" value="${l3x.amount}" /></label><label class="v3-chk"><input type="checkbox" id="v3XLoop" ${l3x.loop ? "checked" : ""} /> Loop</label></div>`;
   el.querySelector("#v3XClose").onclick = l3xStop; el.querySelector("#v3XPlay").onclick = () => l3xPlay(!l3x.play);
   el.querySelectorAll("[data-xm]").forEach(b => b.onclick = () => { l3x.mode = b.dataset.xm; el.querySelectorAll("[data-xm]").forEach(x => x.classList.toggle("on", x === b)); l3xLayout(); l3xApply(); });
   const sl = el.querySelector("#v3XSlider"); sl.oninput = () => { l3x.drag = true; l3xPlay(false); l3x.t = sl.value / 100; l3xApply(); }; sl.onchange = () => { l3x.drag = false; };
