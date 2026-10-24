@@ -566,9 +566,9 @@ function l3bRecolor() {
     const off = new Set(), gA = new Map();
     u.ranges.forEach((r, ri) => {
       // Slås upp på nytt varje gång: kopplad efter att modellen lästes, eller planeringen har lästs om.
-      const pRows = (r.guid && byGuid.get(r.guid)) || (r.itemId && byId.has(r.itemId) ? [byId.get(r.itemId)] : []);
+      const pRows = l3b.orig ? [] : (r.guid && byGuid.get(r.guid)) || (r.itemId && byId.has(r.itemId) ? [byId.get(r.itemId)] : []); // l3b.orig: Original-läget (Återställ) – ingen koppling till tidplanen
       r.itemId = pRows.length ? pRows[0].id : null;
-      const xRows = (xGuid && r.guid && xGuid.get(r.guid)) || [];
+      const xRows = l3b.orig ? [] : (xGuid && r.guid && xGuid.get(r.guid)) || [];
       const rows = csrc === "excel" ? xRows : pRows.length ? pRows : xRows;
       if (rows.length && typeof rowTempOffAt === "function" && rows.every(x => rowTempOffAt(x, at))) off.add(ri); // temporär utanför sin tid: syns inte
       // Ganttens 3D-läge (lagesplan-3dmode.js): Kopplade / Okopplade / Tid – null i läget Alla.
@@ -576,7 +576,7 @@ function l3bRecolor() {
       if (gm) { if (gm.off) off.add(ri); else if (gm.alpha != null) gA.set(ri, gm.alpha); }
       const live = rows.filter(x => x.temporary !== true); // temporära: sin riktiga färg (Victor 2026-10-12)
       const c = live.length ? new THREE.Color(phaseColor(live.length > 1 && typeof zonePhase === "function" ? zonePhase(live, at) : l3Phase(live[0]))) : null;
-      const cb = typeof l3pColorFor === "function" ? l3pColorFor(m, r) : null; // Färga efter värde (Egenskaper)
+      const cb = !l3b.orig && typeof l3pColorFor === "function" ? l3pColorFor(m, r) : null; // Färga efter värde (Egenskaper)
       const tint = u.tint && u.tint.get(ri); // tillfällig färg (bara sessionen) går före allt
       const rgb = tint || cb || (gm && gm.rgb) || (c ? [c.r, c.g, c.b] : r.base);
       const c0 = K === 255 ? Math.round(rgb[0] * 255) : rgb[0], c1 = K === 255 ? Math.round(rgb[1] * 255) : rgb[1], c2 = K === 255 ? Math.round(rgb[2] * 255) : rgb[2];

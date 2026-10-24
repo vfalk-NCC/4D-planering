@@ -145,19 +145,30 @@ function smartProps(p) {
   return out;
 }
 /* ---- Panel i 3D-editorn ----------------------------------------------------------------------------------------------------------------------- */
+/* Fälttyper: "text", "num", "date", "time", lista (val), "kran", "range" (reglage: { min, max, step, unit }), lista med { seg: true } (knappar) och "calc" (beräknade värden ur objektets calc(p)).
+   Listor får vara [värde, text]-par; ett sparat värde som inte finns i listan läggs till som eget val. */
 function smartSideHtml(p) {
   const d = SM[String(p.type).slice(3)]; if (!d || !(d.fields || []).length) return "";
   const esc = typeof escHtml === "function" ? escHtml : s => String(s);
-  const row = ([k, lab, type]) => { const v = smF(p, k); const o = Array.isArray(type) ? type : type === "kran" ? SM_KRAN() : null;
-    if (o) return `<label class="v3-field"><span>${esc(lab)}</span><select data-smf="${k}">${type === "kran" ? `<option value="">–</option>` : ""}${o.map(x => `<option${x === v ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>`;
-    return `<label class="v3-field"><span>${esc(lab)}</span><input type="${type === "date" ? "date" : "text"}" data-smf="${k}" ${type === "num" ? 'inputmode="decimal"' : ""} value="${esc(v)}" /></label>`; };
-  return `<div class="v3-sec">${esc(d.label)}</div>${d.fields.map(row).join("")}${smDateFieldsHtml(p)}`;
+  const row = ([k, lab, type, def, o]) => { const v = smF(p, k, def == null ? "" : def); o = o || {};
+    if (type === "calc") { const rows = typeof d.calc === "function" ? d.calc(p) : []; return `<div class="v3-sm-calc"><div class="v3-sm-calc-h">${esc(lab)}</div>${rows.map(([a, b2]) => `<div><span>${esc(a)}</span><b>${esc(b2)}</b></div>`).join("")}</div>`; }
+    if (type === "range") { const n = smN(p, k, Number(def) || 0), u = o.unit || ""; return `<label class="v3-field v3-sm-range"><span>${esc(lab)} <b data-smv="${k}">${esc(smFmt(n, 2))} ${esc(u)}</b></span><input type="range" data-smf="${k}" min="${o.min}" max="${o.max}" step="${o.step || 1}" value="${n}" data-u="${esc(u)}" /></label>`; }
+    const list = Array.isArray(type) ? type : type === "kran" ? SM_KRAN() : null;
+    if (list) { let items = list.map(x => Array.isArray(x) ? x : [x, x]); if (v !== "" && type !== "kran" && !items.some(x => String(x[0]) === String(v))) items = [...items, [v, String(v)]];
+      if (o.seg && type !== "kran") return `<div class="v3-field"><span>${esc(lab)}</span><div class="v3-segs v3-sm-seg" data-smseg="${k}">${items.map(([val, t]) => `<button type="button" data-v="${esc(val)}" class="${String(val) === String(v) ? "on" : ""}">${esc(t)}</button>`).join("")}</div></div>`;
+      return `<label class="v3-field"><span>${esc(lab)}</span><select data-smf="${k}">${type === "kran" ? `<option value="">–</option>` : ""}${items.map(([val, t]) => `<option value="${esc(val)}"${String(val) === String(v) ? " selected" : ""}>${esc(t)}</option>`).join("")}</select></label>`; }
+    return `<label class="v3-field"><span>${esc(lab)}</span><input type="${type === "date" ? "date" : type === "time" ? "time" : "text"}" data-smf="${k}" ${type === "num" ? 'inputmode="decimal"' : ""} value="${esc(v)}" /></label>`; };
+  const g = (t, a) => `<div class="v3-sec">${esc(t)}</div>${a}`;
+  return d.groups ? d.groups.map(([t, ks]) => g(t, ks.map(k => d.fields.find(f => f[0] === k)).filter(Boolean).map(row).join(""))).join("") + smDateFieldsHtml(p)
+    : `<div class="v3-sec">${esc(d.label)}</div>${d.fields.map(row).join("")}${smDateFieldsHtml(p)}`;
 }
 function smartBindSide(side, p, redraw) {
   const d = SM[String(p.type).slice(3)]; if (!d) return;
   smDateBind(side, p, redraw);
-  let lt = 0; side.querySelectorAll("[data-smf]").forEach(el => { el.onchange = () => { placeSnapshot(); p.f = p.f || {}; p.f[el.dataset.smf] = el.value; placeTouch(p); redraw(); };
-    if (el.tagName === "INPUT") el.addEventListener("input", () => { p.f = p.f || {}; p.f[el.dataset.smf] = el.value; clearTimeout(lt); lt = setTimeout(() => { placeTouch(p); if (typeof l3RebuildOne === "function") { l3RebuildOne(p); if (typeof l3Changed === "function") l3Changed(); } }, 250); }); });
+  const live = (k, v) => { p.f = p.f || {}; p.f[k] = v; };
+  side.querySelectorAll("[data-smseg]").forEach(g => g.querySelectorAll("button").forEach(b => { b.onclick = () => { placeSnapshot(); live(g.dataset.smseg, b.dataset.v); placeTouch(p); redraw(); }; }));
+  let lt = 0; side.querySelectorAll("[data-smf]").forEach(el => { el.onchange = () => { placeSnapshot(); live(el.dataset.smf, el.value); placeTouch(p); redraw(); };
+    if (el.tagName === "INPUT") el.addEventListener("input", () => { live(el.dataset.smf, el.value); if (el.type === "range") { const bd = side.querySelector(`[data-smv="${el.dataset.smf}"]`); if (bd) bd.textContent = smFmt(Number(el.value), 2) + " " + (el.dataset.u || ""); } clearTimeout(lt); lt = setTimeout(() => { placeTouch(p); if (typeof l3RebuildOne === "function") { l3RebuildOne(p); if (typeof l3Changed === "function") l3Changed(); } }, el.type === "range" ? 60 : 250); }); });
 }
 
 /* ---- Snygg rullista (sök + val) i stället för vanlig <select>/<datalist> (Victor 2026-10-22: "dropdown ska vara snyggare") ------------------------------------------------ */

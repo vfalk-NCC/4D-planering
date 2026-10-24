@@ -25,14 +25,29 @@ function l3RenderSnapBar() {
   let bar = document.getElementById("v3SnapBar");
   if (!bar) { bar = document.createElement("div"); bar.id = "v3SnapBar"; bar.className = "v3-snapbar"; host.appendChild(bar); bar.onclick = e => e.stopPropagation(); }
   const s = l3Snaps(), m = l3Prefs().measure || "dist";
-  const b = (k, label, title) => `<button type="button" data-snapk="${k}" class="${s[k] ? "on" : ""}" title="${title}">${label}</button>`;
-  bar.innerHTML = `<span class="v3-snapbar-l">Fäst</span>${b("end", "Hörn", "Fäst mot hörn (ändpunkter)")}${b("mid", "Mitt", "Fäst mot mittpunkter på kanter")}${b("edge", "Kant", "Fäst mot närmaste punkt på en kant")}${b("perp", "Vinkelrätt", "Vinkelrätt: på en kant fäster punkten där linjen från förra punkten möter kanten i rät vinkel – kortaste vägen över ett objekt")}${b("axis", "Axlar", "Fäst mot röd/grön/blå axel från baspunkten")}${b("ortho", "Orto", "Orto (O): bara i X-, Y- eller Z-led")}${b("grid", "Rutnät", "Rutnät (G): fäst mot rutnätet på marken och ytor")}${typeof l3pc !== "undefined" && l3pc.clouds.length ? b("pc", "Moln", "Fäst mot punkter i punktmolnen (mått, flytta, rotationspunkt)") : ""}
-    <select id="v3GridStep" title="Rutnätets steg">${[0.1, 0.5, 1, 2, 5, 10].map(v => `<option value="${v}" ${Number(s.gstep) === v ? "selected" : ""}>${String(v).replace(".", ",")} m</option>`).join("")}</select>
-    ${l3.tool === "move" ? `<span class="v3-snapbar-sep"></span><label class="v3-chk" title="Kopiera i stället för att flytta (tryck Ctrl)"><input type="checkbox" id="v3CopyMode" ${l3t.copyMode ? "checked" : ""} /> Kopia</label>` : ""}
-    ${l3.tool === "measure" ? `<span class="v3-snapbar-sep"></span><div class="v3-segs">${[["smart", "Smart"], ["point", "Punkt"], ["dist", "Avstånd"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : ""}`;
+  // Fäst-menyn ligger i kommandoraden längst ner, bredvid "Fäst mot ytor" (Victor 2026-10-24); här uppe finns bara det verktygen behöver (Kopia, mätlägen).
+  const rows = [["end", "Hörn", "Fäst mot hörn (ändpunkter)"], ["mid", "Mitt", "Fäst mot mittpunkter på kanter"], ["edge", "Kant", "Fäst mot närmaste punkt på en kant"], ["perp", "Vinkelrätt", "Vinkelrätt: på en kant fäster punkten där linjen från förra punkten möter kanten i rät vinkel – kortaste vägen över ett objekt"], ["axis", "Axlar", "Fäst mot röd/grön/blå axel från baspunkten"], ["ortho", "Orto", "Orto (O): bara i X-, Y- eller Z-led"], ["grid", "Rutnät", "Rutnät (G): fäst mot rutnätet på marken och ytor"]];
+  if (typeof l3pc !== "undefined" && l3pc.clouds.length) rows.push(["pc", "Punktmoln", "Fäst mot punkter i punktmolnen (mått, flytta, rotationspunkt)"]);
+  const foot = document.querySelector("#view3d .v3-foot"), lab = document.getElementById("v3Snap");
+  if (foot && lab && !document.getElementById("v3SnapBtn")) {
+    const dd = document.createElement("div"); dd.className = "v3-dd v3-snapdd";
+    dd.innerHTML = `<button type="button" id="v3SnapBtn" class="v3-snapbtn" aria-haspopup="true" aria-expanded="false" title="Vad markören fäster mot när du flyttar, mäter och ritar"></button><div class="v3-pop v3-snappop hidden" id="v3SnapPop"></div>`;
+    lab.closest("label").after(dd);
+    const btn = dd.querySelector("#v3SnapBtn"), pop = dd.querySelector("#v3SnapPop");
+    btn.onclick = e => { e.stopPropagation(); const open = pop.classList.contains("hidden"); l3HideMenus(); pop.classList.toggle("hidden", !open); btn.setAttribute("aria-expanded", open); };
+    pop.onclick = e => e.stopPropagation();
+  }
+  const pop = document.getElementById("v3SnapPop"), sb = document.getElementById("v3SnapBtn");
+  if (sb) sb.innerHTML = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg><span>Fäst</span><em>${rows.filter(r => s[r[0]]).length}</em><i>▴</i>`;
+  if (pop) {
+    pop.innerHTML = `<div class="v3-pop-l">Fäst mot</div>` + rows.map(([k, label, title]) => `<button type="button" data-snapk="${k}" class="v3-snaprow ${s[k] ? "on" : ""}" title="${title}" role="switch" aria-checked="${!!s[k]}"><span>${label}</span><i></i></button>${k === "grid" ? `<label class="v3-snapstep">Steg <select id="v3GridStep" title="Rutnätets steg">${[0.1, 0.5, 1, 2, 5, 10].map(v => `<option value="${v}" ${Number(s.gstep) === v ? "selected" : ""}>${String(v).replace(".", ",")} m</option>`).join("")}</select></label>` : ""}`).join("");
+  }
+  const tool = (l3.tool === "move" ? `<label class="v3-chk" title="Kopiera i stället för att flytta (tryck Ctrl)"><input type="checkbox" id="v3CopyMode" ${l3t.copyMode ? "checked" : ""} /> Kopia</label>` : "")
+    + (l3.tool === "measure" ? `<div class="v3-segs">${[["smart", "Smart"], ["point", "Punkt"], ["dist", "Avstånd"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : "");
+  bar.innerHTML = tool; bar.style.display = tool ? "" : "none";
   if (typeof l3mBindBar === "function") l3mBindBar(bar);
-  bar.querySelectorAll("[data-snapk]").forEach(x => { x.onclick = () => l3ToggleSnap(x.dataset.snapk); });
-  bar.querySelector("#v3GridStep").onchange = e => { const v = { ...l3Snaps(), gstep: Number(e.target.value) }; l3SetPref("snaps", v); };
+  if (pop) pop.querySelectorAll("[data-snapk]").forEach(x => { x.onclick = () => l3ToggleSnap(x.dataset.snapk); });
+  if (pop) pop.querySelector("#v3GridStep").onchange = e => { const v = { ...l3Snaps(), gstep: Number(e.target.value) }; l3SetPref("snaps", v); };
   const cm = bar.querySelector("#v3CopyMode"); if (cm) cm.onchange = () => { l3t.copyMode = cm.checked; l3Status(cm.checked ? "Kopierar: punkten du trycker härnäst får en kopia." : "Flyttar."); };
   bar.querySelectorAll("[data-mmode]").forEach(x => { x.onclick = () => { l3SetPref("measure", x.dataset.mmode); l3ToolCancel(); l3RenderSnapBar(); l3Status(L3_MEAS_START[x.dataset.mmode]); }; });
 }

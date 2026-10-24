@@ -109,6 +109,7 @@ function l3gmApply(now) {
 function l3gmSetMode(mode, quiet) {
   if (mode === l3gm.mode && mode !== "off") return;
   const prev = l3gm.mode;
+  if (mode !== "off" && typeof l3b !== "undefined" && l3b.orig && typeof l3Original === "function") l3Original(false); // ett 3D-läge i Gantten avslutar Originalvyn
   l3gmStopPlay(); l3gmPulseStop();
   l3gm.mode = mode;
   if (mode === "time") {

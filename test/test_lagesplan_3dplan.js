@@ -658,6 +658,9 @@ const PP = [
       l3gmSetMode('off', true); R.back = off();
       l3gmSetMode('time', true); l3plSetDay('2026-10-12'); l3bRecolor();
       R.t1 = { off: off(), col: rgb(0), want: hex(phaseColor('pagaende')), act: l3gm.act.length };
+      // Återställ: Originalvyn – modellens egna färger, inget dolt, läget Alla; ✕ tillbaka ger 4D-färgerna igen.
+      l3Original(true); R.orig = { col: rgb(0), off: off(), mode: l3gm.mode, flag: l3b.orig, pill: !!document.getElementById('v3OrigPill') }; l3Original(false); R.origBack = { col: rgb(0), flag: l3b.orig, pill: !!document.getElementById('v3OrigPill') };
+      l3gmSetMode('time', true); l3plSetDay('2026-10-12'); l3bRecolor();
       const pr0 = l3pl.rows.map(r => r.progress); l3pl.rows.forEach(r => { r.progress = 0; }); l3plSetDay('2026-10-01'); l3bRecolor(); R.t0 = off();               // före start (0 %), Kommande av: släckt
       l3gmSet('future', true); l3bRecolor(); R.tf = { off: off(), col: rgb(0), want: hex(phaseColor('planerad')) };
       // Klart: opacitet från Klart-reglaget, eller objektets egen färg/opacitet efter slut.
@@ -686,6 +689,7 @@ const PP = [
       l3b.models.splice(l3b.models.indexOf(mdl), 1); planSource = ps0; items = it0; l3plSet('colorSrc', 'both'); l3plSet('gm', {}); l3bRecolor();
       return R;
     });
+    if (gm.orig.col.join() !== [217, 222, 229].join() || gm.orig.off !== '' || gm.orig.mode !== 'off' || !gm.orig.flag || !gm.orig.pill || gm.origBack.flag || gm.origBack.pill || gm.origBack.col.join() === [217, 222, 229].join()) fail('Återställ till original: ' + JSON.stringify([gm.orig, gm.origBack]));
     if (gm.all !== '' || gm.iso !== '2' || gm.hide !== '0,1' || gm.back !== '' || gm.t1.off !== '2' || gm.t1.col.join() !== gm.t1.want.join() || gm.t1.act < 1 || gm.t0 !== '0,1,2' || gm.tf.off !== '2' || gm.tf.col.join() !== gm.tf.want.join()
       || gm.done.off !== '2' || !/^0:0\.3,1:0\.3$/.test(gm.done.alpha) || gm.own.col.join() !== '255,0,0' || gm.own.alpha !== 0.55 || gm.zero !== '0,1,2' || gm.sel < 1 || !gm.pulse
       || gm.ui.seg !== 4 || !gm.ui.time || !gm.ui.scrub || gm.ui.cols !== 4 || !gm.ui.step || !gm.stepd || gm.stepd[1] !== new Date(Date.parse(gm.stepd[0]) + 86400000).toISOString().slice(0, 10) || gm.stepd[2] !== gm.stepd[0] || gm.op50 !== 50 || !gm.op0 || gm.op0.off !== true || !/klara .* pågår .* försenade .* kvar/.test(gm.ui.sum) || !gm.ui.btns || gm.slid <= '2026-10-12' || gm.colSet !== '#00ff00' || !gm.gone)

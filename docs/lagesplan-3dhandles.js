@@ -32,11 +32,14 @@ function l3HandleDefs(p) {
     { key: "B", sign: -1, dir: v.clone().negate(), pos: mid.clone().addScaledVector(v, -B / 2), title: "Dra för att ändra bredden" },
     { key: "H", sign: 1, dir: new THREE.Vector3(0, 0, 1), pos: c.clone().add(new THREE.Vector3(0, 0, H)), title: "Dra för att ändra höjden" },
   ];
+  if (p.type === "sm:gjutetapp" && typeof gjutCuts === "function") { // utskärningen (L/T/U-form) dras direkt i modellen (Victor 2026-10-24)
+    const g = gjutCuts(p); g.corners.forEach(cn => out.push({ key: "cut", form: g.form, sx: cn[0], pos: c.clone().addScaledVector(u, cn[1]).addScaledVector(v, cn[2]).add(new THREE.Vector3(0, 0, H)), title: "Dra för att ändra utskärningens mått" }));
+  }
   const R = Number(p.R) || 0;
   if (lib.R != null && R > 0) out.push({ key: "R", sign: 1, dir: v.clone(), pos: c.clone().addScaledVector(v, R).add(new THREE.Vector3(0, 0, 0.05)), title: "Dra för att ändra räckvidden" });
   return out;
 }
-const l3HandleLabel = { L: "Längd", B: "Bredd", H: "Höjd", R: "Räckvidd" };
+const l3HandleLabel = { L: "Längd", B: "Bredd", H: "Höjd", R: "Räckvidd", cut: "Utskärning" };
 
 /* Bygger handtagen för markeringen (anropas när markeringen eller objektet ändras). */
 function l3HandlesBuild() {
@@ -160,6 +163,16 @@ function l3HandleApply(e) {
     if (h.i === 0) { p.x = p.pts[0][0]; p.y = p.pts[0][1]; p.z = p.pts[0][2]; }
     const prev = p.pts[h.i - 1], next = p.pts[h.i + 1], f = v => v.toLocaleString("sv-SE", { maximumFractionDigits: 2 });
     label = [prev, next].filter(Boolean).map(q => f(Math.hypot(q[0] - p.pts[h.i][0], q[1] - p.pts[h.i][1])) + " m").join(" · ") || "Punkt";
+  } else if (h.key === "cut") {
+    // Utskärningens inre hörn följer markören i planet (fäster mot steget med Skift): längd och bredd ändras tillsammans.
+    const ray = l3MouseRay(e), pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -H.base.z), q = new THREE.Vector3();
+    if (!ray.intersectPlane(pl, q)) return;
+    const t = (Number(p.rot) || 0) * Math.PI / 180, cx = p.x - O[0], cy = p.y - O[1], dx = q.x - cx, dy = q.y - cy, lx = dx * Math.cos(t) + dy * Math.sin(t), ly = -dx * Math.sin(t) + dy * Math.cos(t);
+    const Lh = p.L / 2, Bh = p.B / 2; let cl = h.form === "U-form" ? 2 * Math.abs(lx) : Lh - (h.form === "T-form" ? Math.abs(lx) : lx), cb = Bh - ly;
+    const rd = v => placeR3(step ? Math.round(v / step) * step : Math.round(v * 20) / 20);
+    cl = Math.max(0.5, Math.min(rd(cl), p.L - 1)); cb = Math.max(0.5, Math.min(rd(cb), p.B - 1));
+    p.f = p.f || {}; p.f.cutL = String(cl); p.f.cutB = String(cb);
+    label = `Utskärning ${cl.toLocaleString("sv-SE", { maximumFractionDigits: 2 })} × ${cb.toLocaleString("sv-SE", { maximumFractionDigits: 2 })} m`;
   } else {
     // Närmaste punkt på handtagets axel till markörens stråle; fäst mot riktiga punkter på andra objekt.
     let t = l3AxisParam(e, H.base, h.dir);
@@ -221,7 +234,7 @@ function l3HandleUp(cancel) {
   if (!H.moved) { l3Status(""); return; } // bara ett tryck
   {
     placeTouch(p); l3Changed();
-    l3Status(H.h.key === "pt" ? `${(placeLib(p.type) || {}).label || "Staket"}: ${p.pts.length} punkter.` : `${l3HandleLabel[H.h.key]} ${String(p[H.h.key]).replace(".", ",")} m.`);
+    l3Status(H.h.key === "cut" ? "Utskärningen ändrad." : H.h.key === "pt" ? `${(placeLib(p.type) || {}).label || "Staket"}: ${p.pts.length} punkter.` : `${l3HandleLabel[H.h.key]} ${String(p[H.h.key]).replace(".", ",")} m.`);
   }
   l3RebuildOne(p); l3HandlesBuild(); l3RenderSide();
 }

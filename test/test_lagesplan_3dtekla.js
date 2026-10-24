@@ -261,6 +261,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // --- Fästlägen: Hörn av -> ingen ändpunkt; rutnät 1 m.
   await top();
   await page.keyboard.press('t');
+  await page.click('#v3SnapBtn'); // Fäst-menyn i kommandoraden
   await page.click('[data-snapk="end"]');
   const [hx, hy] = await at(6512338, 150111, 2, -3, 3); await page.mouse.move(hx, hy); await page.waitForTimeout(120);
   if ((await page.evaluate(() => document.querySelector('.v3-snap').textContent)).startsWith('Ändpunkt')) fail('Hörn av: ingen ändpunkt');

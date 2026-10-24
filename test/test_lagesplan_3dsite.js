@@ -108,6 +108,16 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   // Lager: 2D-lagren med DXF:en och dess CAD-lager; tänd/släck är samma som i 2D.
   await page.click('[data-paltab="layers"]');
   await page.waitForSelector('#v3PalLayers [data-l3s="cad:c1"]');
+  // Zooma till ritningen: DXF-raden och PDF-raden flyger kameran till respektive utsträckning (lutad uppifrån).
+  { await page.evaluate(() => { l3StopFly(); l3.camera.position.set(l3.orbit.target.x + 400, l3.orbit.target.y - 400, 300); l3.orbit.update(); });
+    await page.click('#v3PalLayers [data-l3s-zoom="cad:c1"]'.replace('cad:c1', 'c1')); await page.waitForTimeout(900);
+    const z = await page.evaluate(() => { const b = l3sCadBox('c1'), c = b.getCenter(new THREE.Vector3()); return { d: Math.hypot(l3.orbit.target.x - c.x, l3.orbit.target.y - c.y), up: l3.camera.position.z - l3.orbit.target.z, w: l3.camera.position.distanceTo(l3.orbit.target), sz: b.getSize(new THREE.Vector3()).length() }; });
+    if (z.d > 1 || z.up < z.w * 0.8 || z.w > z.sz * 3) fail('Zooma till DXF: ' + JSON.stringify(z));
+    await page.evaluate(() => { l3StopFly(); l3.camera.position.set(l3.orbit.target.x + 400, l3.orbit.target.y - 400, 300); l3.orbit.update(); });
+    await page.click('#v3PalLayers [data-l3s-zoompdf]'); await page.waitForTimeout(900);
+    const zp = await page.evaluate(() => { const c = new THREE.Box3().setFromObject(l3.planMesh).getCenter(new THREE.Vector3()); return Math.hypot(l3.orbit.target.x - c.x, l3.orbit.target.y - c.y); });
+    if (zp > 1) fail('Zooma till PDF-ritningen: ' + zp);
+    console.log('OK: zooma till ritning – DXF-raden och PDF-raden i Lager'); }
   await page.click('#v3PalLayers [data-l3s-open="cad:c1"]');
   await page.click('#v3PalLayers [data-l3s="cadl:c1:MÅTT"]');
   await page.waitForTimeout(250);

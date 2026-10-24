@@ -406,7 +406,7 @@ function l3Dom() {
   return box;
 }
 function l3HideMenus() {
-  ["v3Views", "v3Show", "v3Edit", "v3Ctx", "v3Help", "v3MorePop", "v3UiPop"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("hidden"); });
+  ["v3Views", "v3Show", "v3Edit", "v3Ctx", "v3Help", "v3MorePop", "v3UiPop", "v3SnapPop"].forEach(id => { const el = document.getElementById(id); if (el) el.classList.add("hidden"); });
 }
 /* Statusraden med historik (Victor 2026-10-10: "expandera den raden ungefär som i autocad så att jag kan
    se på vad som skett tidigare"). l3Status skriver och sparar i historiken; l3StatusLive skriver bara

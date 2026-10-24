@@ -22,6 +22,7 @@ const L3UI_ICO = {
   dup: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
   hide: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10.6 5.1A9.6 9.6 0 0 1 12 5c5 0 8.5 4.2 9.5 7a11 11 0 0 1-2.6 3.8M6.5 6.6A11.5 11.5 0 0 0 2.5 12C3.5 14.8 7 19 12 19c1.4 0 2.7-.3 3.8-.8"/></svg>',
   iso: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>',
+  reset: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>',
   del: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>'
 };
 const L3UI_PRESETS = {
@@ -60,6 +61,8 @@ function l3UiInit(box) {
   const layBtn = mk("button", "v3UiLayBtn", "v3-ghost", L3UI_ICO.layout + "<span>Layout</span>"); layBtn.type = "button"; layBtn.title = "Arbetsytor och layout";
   const layPop = mk("div", "v3UiPop", "v3-pop v3-ui-pop hidden"); lay.append(layBtn, layPop);
   bar.insertBefore(lay, launch); bar.insertBefore(lockBtn, lay);
+  const orig = mk("button", "v3Original", "v3-ghost v3-ui-orig", L3UI_ICO.reset + "<span>Original</span>"); orig.type = "button"; orig.title = "Återställ – visa alla modeller i original, utan koppling till tidplan, färger eller filter";
+  bar.insertBefore(orig, bar.querySelector("#v3Fit")); orig.onclick = () => l3Original(!(typeof l3b !== "undefined" && l3b.orig));
   lockBtn.onclick = () => l3UiSetLocked(!l3UiGet().locked);
   layBtn.onclick = e => { e.stopPropagation(); const open = layPop.classList.contains("hidden"); l3HideMenus(); if (open) { l3UiPopRender(); layPop.classList.remove("hidden"); } };
   layPop.onclick = e => e.stopPropagation();
@@ -122,11 +125,11 @@ function l3UiLate() {
   if (!l3ui || l3ui.late) return; l3ui.late = true;
   l3.orbit.addEventListener("change", l3UiCube);
   l3UiCube();
-  // radialmenyn: ett kort tryck med mittenknappen (utan drag)
-  const el = l3.renderer.domElement;
-  let md = null;
-  el.addEventListener("pointerdown", e => { if (e.button === 1 && l3UiGet().locked) md = { x: e.clientX, y: e.clientY, t: performance.now() }; else md = null; }, true);
-  window.addEventListener("pointerup", e => { if (!md || e.button !== 1) return; const d = Math.hypot(e.clientX - md.x, e.clientY - md.y), dt = performance.now() - md.t; md = null; if (d < 5 && dt < 320) l3UiRadial(e.clientX, e.clientY); }, true);
+  // radialmenyn: håll mittenknappen stilla en sekund så kommer den fram vid markören (Victor 2026-10-24)
+  const el = l3.renderer.domElement; let md = null; const mdOff = () => { if (md) { clearTimeout(md.t); md = null; } };
+  el.addEventListener("pointerdown", e => { mdOff(); if (e.button !== 1 || !l3UiGet().locked) return; const x = e.clientX, y = e.clientY; md = { x, y, t: setTimeout(() => { md = null; l3UiRadial(x, y); }, 1000) }; }, true);
+  window.addEventListener("pointermove", e => { if (md && Math.hypot(e.clientX - md.x, e.clientY - md.y) > 4) mdOff(); }, true);
+  window.addEventListener("pointerup", e => { if (e.button === 1) mdOff(); }, true);
   window.addEventListener("keydown", e => { if (e.key === "Escape" && l3ui.radial) { l3UiRadialClose(); e.stopPropagation(); } }, true);
 }
 
@@ -326,4 +329,39 @@ function l3UiTabs(box) {
     b.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${L3UI_TABS[k] || L3UI_TABS.layers}</svg>`; });
   const sync = () => { const on = tabs.find(b => b.classList.contains("on")); const n = on ? on.dataset.name : ""; if (title.textContent !== n) { title.textContent = n; title.classList.remove("pop"); void title.offsetWidth; title.classList.add("pop"); } };
   const mo = new MutationObserver(sync); tabs.forEach(b => mo.observe(b, { attributes: true, attributeFilter: ["class"] })); sync();
+}
+
+/* Återställ till original (Victor 2026-10-24: "så att jag ser alla modeller i original utan någon koppling till tidplan eller liknande"):
+   alla modeller visas med sina egna färger – inget dolt, inget färgat efter status, egenskap, färgskala eller tillfälligt, ingen
+   Gantt-filtrering och inga bubblor/konturer. Läget ligger kvar tills man trycker ✕ i pillret (då gäller 4D-färgerna igen). */
+function l3Original(on) {
+  if (!l3 || typeof l3b === "undefined") return;
+  if (!on) { l3b.orig = false; if (typeof l3bRecolor === "function") l3bRecolor(); l3Render(); l3UiOrigPill(); if (typeof l3Status === "function") l3Status("Tillbaka till 4D-färgerna."); return; }
+  l3b.orig = true;
+  try {
+    if (typeof l3gmSetMode === "function" && l3gm.mode !== "off") l3gmSetMode("off", true);
+    if (typeof l3gmSet === "function") { l3gmSet("scale", false); l3gmSet("pulse", false); l3gmSet("selAct", false); }
+    if (typeof l3pColorOff === "function" && l3p.colorBy) l3p.colorBy = null;
+    l3b.models.forEach(m => m.meshes.forEach(x => { const u = x.userData.l3b; if (u.tint) u.tint.clear(); if (u.alpha) u.alpha.clear(); }));
+    if (typeof l3plSet === "function") { l3plSet("lf", {}); }
+    if (typeof l3SetPref === "function") { l3SetPref("bubOn", false); l3SetPref("actOutline", false); }
+    if (typeof l3ShowAll0 === "function") l3ShowAll0();
+    l3b.models.forEach(m => { if (!m.visible && typeof l3bShow === "function") l3bShow(m.id, true); m.meshes.forEach(x => { if (typeof l3bApplyHidden === "function") l3bApplyHidden(x); }); });
+    if (typeof l3bsClear === "function") l3bsClear();
+    if (typeof l3plDockRender === "function") l3plDockRender();
+    if (typeof l3plRenderTab === "function") l3plRenderTab();
+    if (typeof l3RenderLabels === "function") l3RenderLabels();
+  } catch (e) { console.warn("Återställ", e); }
+  if (typeof l3bRecolor === "function") l3bRecolor();
+  if (typeof l3RenderLegend === "function") l3RenderLegend();
+  l3Render(); l3UiOrigPill();
+  if (typeof l3Status === "function") l3Status("Alla modeller visas i original – utan tidplan, färger eller filter.");
+}
+function l3UiOrigPill() {
+  if (!l3ui) return; let p = l3ui.canvas.querySelector("#v3OrigPill");
+  const on = !!(typeof l3b !== "undefined" && l3b.orig);
+  const btn = l3ui.box.querySelector("#v3Original"); if (btn) btn.classList.toggle("on", on);
+  if (!on) { if (p) p.remove(); return; }
+  if (!p) { p = document.createElement("div"); p.id = "v3OrigPill"; p.className = "v3-orig-pill"; l3ui.canvas.appendChild(p); p.addEventListener("pointerdown", e => e.stopPropagation()); p.onclick = e => { if (e.target.closest("[data-orig-off]")) l3Original(false); }; }
+  p.innerHTML = `<span class="v3-ui-dot"></span><b>Originalvy</b><span class="v3-ui-sub">modellerna utan tidplan och filter</span><button type="button" data-orig-off="1" aria-label="Tillbaka till 4D-färgerna" title="Tillbaka till 4D-färgerna">✕</button>`;
 }
