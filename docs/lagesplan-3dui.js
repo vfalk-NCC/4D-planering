@@ -23,6 +23,7 @@ const L3UI_ICO = {
   hide: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18M10.6 5.1A9.6 9.6 0 0 1 12 5c5 0 8.5 4.2 9.5 7a11 11 0 0 1-2.6 3.8M6.5 6.6A11.5 11.5 0 0 0 2.5 12C3.5 14.8 7 19 12 19c1.4 0 2.7-.3 3.8-.8"/></svg>',
   iso: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>',
   reset: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>',
+  boom: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="6" height="6" rx="1.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>',
   del: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>'
 };
 const L3UI_PRESETS = {
@@ -81,6 +82,7 @@ function l3UiInit(box) {
      <button type="button" data-cb="c:dup" data-tip="Duplicera">${L3UI_ICO.dup}</button>
      <button type="button" data-cb="c:hide" data-tip="Dölj">${L3UI_ICO.hide}</button>
      <button type="button" data-cb="c:iso" data-tip="Visa bara dessa">${L3UI_ICO.iso}</button>
+     <button type="button" data-cb="x:open" data-tip="Spränga isär">${L3UI_ICO.boom}</button>
      <button type="button" data-cb="v:sel" data-tip="Zooma hit">${L3UI_ICO.fit.replace(/22/g, "18")}</button>
      <i></i>
      <button type="button" data-cb="c:del" data-tip="Ta bort" class="v3-cb-del">${L3UI_ICO.del}</button>`);
@@ -90,6 +92,7 @@ function l3UiInit(box) {
     const b = e.target.closest("[data-cb]"); if (!b) return; const [k, v] = b.dataset.cb.split(":");
     if (k === "t") { const t = box.querySelector(`[data-v3tool="${v}"]`); if (t) t.click(); }
     else if (k === "c") { const c = box.querySelector(`[data-v3cmd="${v}"]`); if (c) c.click(); }
+    else if (k === "x") { if (typeof l3xStart === "function") l3xStart(); }
     else if (k === "v") { const c = box.querySelector(`[data-v3view="${v}"]`); if (c) c.click(); }
   };
   const cube = mk("div", "v3Cube", "v3-cube", `<div class="v3-cube-s"><div class="v3-cube-c" id="v3CubeC"></div></div>`);
@@ -153,8 +156,8 @@ function l3UiCube() {
 function l3UiTick() {
   if (!l3ui || !l3 || !l3ui.box || l3ui.box.classList.contains("hidden")) return;
   const bar = l3ui.canvas.querySelector("#v3CtxBar"); if (!bar) return;
-  const n = l3.sel ? l3.sel.size : 0, show = n > 0 && l3UiGet().locked;
-  bar.classList.toggle("hidden", !show); l3ui.box.classList.toggle("v3-has-sel", show);
+  const nP = l3.sel ? l3.sel.size : 0, nI = typeof l3bs !== "undefined" ? l3bs.sel.length : 0, n = nP + nI, show = n > 0 && l3UiGet().locked && !(typeof l3x !== "undefined" && l3x.on);
+  bar.classList.toggle("hidden", !show); bar.dataset.ifc = nP ? "" : "1"; l3ui.box.classList.toggle("v3-has-sel", show);
   const c = bar.querySelector("#v3CbN"); if (c) c.textContent = n > 1 ? n + " valda" : "1 vald";
 }
 

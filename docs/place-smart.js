@@ -125,7 +125,8 @@ function smartParts(p, z) {
   const d = SM[String(p.type).slice(3)]; if (!d) return [];
   const lib = placeLib(p.type) || {}, col = p.color || lib.color || d.color, ctx = smMakeCtx(p, z, col), dt = smDateText(p), parts = ctx.parts, add = ctx.add, W = ctx.W;
   ctx.withDate = s => dt ? { ...s, rows: [...(s.rows || []), ["Gäller", dt]] } : s;
-  ctx.cardAt = (pt, s) => { const c2 = { ...ctx, W: (a, b) => [pt[0] + a, pt[1] + b], z: (Number(pt[2]) || 0) + (Number(p.dz) || 0) }; c2.add = (pl, z0, z1, color, extra) => parts.push({ poly: pl, z0: c2.z + z0, z1: c2.z + z1, role: "body", transp: 0, color: color || col, ...(extra || {}) }); smCard(c2, ctx.withDate(s)); };
+  ctx.card = s => { smCard(ctx, ctx.withDate(smSignSpec(p, s))); if (p.signPlan) smCard(ctx, ctx.withDate({ ...s, plan: { at: Array.isArray(p.planPos) && isFinite(p.planPos[0]) ? [Number(p.planPos[0]), Number(p.planPos[1])] : [0, (s.b0 == null ? -1.2 : s.b0) - 2.4], yaw: Number(p.planYaw) || 0 } })); };
+  ctx.cardAt = (pt, s) => { const c2 = { ...ctx, W: (a, b) => [pt[0] + a, pt[1] + b], z: (Number(pt[2]) || 0) + (Number(p.dz) || 0) }; c2.add = (pl, z0, z1, color, extra) => parts.push({ poly: pl, z0: c2.z + z0, z1: c2.z + z1, role: "body", transp: 0, color: color || col, ...(extra || {}) }); smCard(c2, ctx.withDate({ ...smSignSpec(p, s), at: s.at || null })); };
   ctx.pin = hex => { add(ctx.oct(0.2, 10), 0, 0.06, "#374151"); add(ctx.rect(-0.03, 0.03, -0.03, 0.03), 0.06, 1.2, "#9ca3af"); add(ctx.oct(0.22, 10), 1.2, 1.32, hex); add(ctx.oct(0.17, 10), 1.32, 1.42, hex); add(ctx.oct(0.1, 8), 1.42, 1.48, hex); };
   ctx.reach = (r, color) => parts.push({ poly: Array.from({ length: 64 }, (_, i) => W(r * Math.cos(i * 2 * Math.PI / 64), r * Math.sin(i * 2 * Math.PI / 64))), z0: ctx.z, z1: ctx.z + 0.04, role: "reach", transp: 0.8, color });
   /* Väg/band längs punkterna: hörnen rundas med radie (cirkelbågar) och bandet ritas sömlöst (geringsskarvar), så att inga rektanglar klipps i hörnen. */
@@ -151,6 +152,36 @@ function smartProps(p) {
 /* ---- Panel i 3D-editorn ----------------------------------------------------------------------------------------------------------------------- */
 /* Fälttyper: "text", "num", "date", "time", lista (val), "kran", "range" (reglage: { min, max, step, unit }), lista med { seg: true } (knappar) och "calc" (beräknade värden ur objektets calc(p)).
    Listor får vara [värde, text]-par; ett sparat värde som inte finns i listan läggs till som eget val. */
+/* ---- Skylten för sig (Victor 2026-10-24: "alla skyltar ska gå att justera för sig – rotation och höjd oberoende av objektet") ----
+   Fält på objektet: signYaw (vridning, tom = standarden som gäller alla), signZ (höjd över objektets underkant, tom = objektets egen), signPos ([a, b] fri plats), signPlan/planPos/planYaw (extra liggande skylt). */
+const SM_SIGN_AUTO = new Map(); // objektets egen skylthöjd, för reglagets utgångsläge
+const smSignPos = p => (Array.isArray(p.signPos) && isFinite(p.signPos[0]) && isFinite(p.signPos[1]) ? [Number(p.signPos[0]), Number(p.signPos[1])] : null);
+const smSignZ = p => (p.signZ != null && p.signZ !== "" && isFinite(Number(p.signZ)) ? Number(p.signZ) : null);
+function smSignSpec(p, s) { const z0 = s.zb == null ? 2.45 : s.zb; SM_SIGN_AUTO.set(p.id, z0); const sz = smSignZ(p); return { ...s, zb: sz == null ? z0 : sz, yaw: (typeof crewSignYaw === "function" ? crewSignYaw(p) : Number(p.signYaw) || 0), at: smSignPos(p) || s.at || null }; }
+function smSignHtml(p) {
+  const esc = typeof escHtml === "function" ? escHtml : s => String(s), yaw = typeof crewSignYaw === "function" ? crewSignYaw(p) : Number(p.signYaw) || 0, z = smSignZ(p), auto = SM_SIGN_AUTO.get(p.id) == null ? 2.45 : SM_SIGN_AUTO.get(p.id), zv = z == null ? auto : z;
+  return `<div class="v3-sec">Skylt</div><div class="v3-sm-sign">
+    <label class="v3-field v3-sm-range"><span>Vridning <b data-sgv="yaw">${Math.round(yaw)}°</b>${p.signYaw == null ? " (standard)" : ""}</span><input type="range" min="-180" max="180" step="5" data-sg="yaw" value="${Math.round(yaw)}" /></label>
+    <div class="v3-segs v3-sm-seg">${[[0, "0°"], [90, "90°"], [-90, "−90°"], [180, "180°"]].map(([v, t]) => `<button type="button" data-sg="yawset" data-v="${v}">${t}</button>`).join("")}</div>
+    <label class="v3-field v3-sm-range"><span>Höjd <b data-sgv="z">${esc(smFmt(zv, 1))} m</b>${z == null ? " (auto)" : ""}</span><input type="range" min="0.3" max="30" step="0.1" data-sg="z" value="${zv}" /></label>
+    <div class="v3-gj-btns"><button type="button" class="v3-wide" data-sg="def" title="Alla skyltar utan egen vridning får samma riktning">★ Standard</button><button type="button" class="v3-wide" data-sg="reset" title="Skylten tillbaka: standardvridning och objektets egen höjd">Återställ</button></div>
+    <label class="chk"><input type="checkbox" data-sg="plan" ${p.signPlan ? "checked" : ""}> Extra skylt i planvy (liggande)</label>
+    ${p.signPlan ? `<label class="v3-field v3-sm-range"><span>Planvyskyltens vridning <b data-sgv="pyaw">${Math.round(Number(p.planYaw) || 0)}°</b></span><input type="range" min="-180" max="180" step="5" data-sg="pyaw" value="${Math.round(Number(p.planYaw) || 0)}" /></label>` : ""}</div>`;
+}
+function smSignBind(side, p, redraw) {
+  const live = (() => { let t = 0; return () => { clearTimeout(t); t = setTimeout(() => { placeTouch(p); if (typeof l3RebuildOne === "function") { l3RebuildOne(p); if (typeof l3Changed === "function") l3Changed(); } }, 60); }; })();
+  const badge = (k, txt) => { const b = side.querySelector(`[data-sgv="${k}"]`); if (b) b.textContent = txt; };
+  const apply = fn => { placeSnapshot(); fn(); placeTouch(p); redraw(); if (typeof l3RebuildOne === "function") l3RebuildOne(p); if (typeof l3Changed === "function") l3Changed(); };
+  side.querySelectorAll("[data-sg]").forEach(el => { const k = el.dataset.sg;
+    if (k === "yaw") { el.oninput = () => { p.signYaw = Number(el.value); badge("yaw", Math.round(p.signYaw) + "°"); live(); }; el.onchange = () => { redraw(); }; }
+    else if (k === "z") { el.oninput = () => { p.signZ = Number(el.value); badge("z", smFmt(p.signZ, 1) + " m"); live(); }; el.onchange = () => { redraw(); }; }
+    else if (k === "pyaw") { el.oninput = () => { p.planYaw = Number(el.value); badge("pyaw", Math.round(p.planYaw) + "°"); live(); }; }
+    else if (k === "yawset") el.onclick = () => apply(() => { p.signYaw = Number(el.dataset.v); });
+    else if (k === "def") el.onclick = () => { if (typeof crewSignDefaultSet === "function") crewSignDefaultSet(typeof crewSignYaw === "function" ? crewSignYaw(p) : 0); if (typeof l3Toast === "function") l3Toast("Standard: skyltarna vrids " + Math.round(typeof crewSignYaw === "function" ? crewSignYaw(p) : 0) + "° (gäller alla utan egen vridning)"); redraw(); };
+    else if (k === "reset") el.onclick = () => apply(() => { p.signYaw = null; p.signZ = null; p.signPos = null; p.planPos = null; p.planYaw = 0; });
+    else if (k === "plan") el.onchange = () => apply(() => { p.signPlan = el.checked; });
+  });
+}
 function smartSideHtml(p) {
   const d = SM[String(p.type).slice(3)]; if (!d || !(d.fields || []).length) return "";
   const esc = typeof escHtml === "function" ? escHtml : s => String(s);
@@ -164,12 +195,12 @@ function smartSideHtml(p) {
       return `<label class="v3-field"><span>${esc(lab)}</span><select data-smf="${k}">${type === "kran" ? `<option value="">–</option>` : ""}${items.map(([val, t]) => `<option value="${esc(val)}"${String(val) === String(v) ? " selected" : ""}>${esc(t)}</option>`).join("")}</select></label>`; }
     return `<label class="v3-field"><span>${esc(lab)}</span><input type="${type === "date" ? "date" : type === "time" ? "time" : "text"}" data-smf="${k}" ${type === "num" ? 'inputmode="decimal"' : ""} value="${esc(v)}" /></label>`; };
   const g = (t, a) => `<div class="v3-sec">${esc(t)}</div>${a}`;
-  return d.groups ? d.groups.map(([t, ks]) => g(t, ks.map(k => d.fields.find(f => f[0] === k)).filter(Boolean).map(row).join(""))).join("") + smDateFieldsHtml(p)
-    : `<div class="v3-sec">${esc(d.label)}</div>${d.fields.map(row).join("")}${smDateFieldsHtml(p)}`;
+  return (d.groups ? d.groups.map(([t, ks]) => g(t, ks.map(k => d.fields.find(f => f[0] === k)).filter(Boolean).map(row).join(""))).join("")
+    : `<div class="v3-sec">${esc(d.label)}</div>${d.fields.map(row).join("")}`) + smSignHtml(p) + smDateFieldsHtml(p);
 }
 function smartBindSide(side, p, redraw) {
   const d = SM[String(p.type).slice(3)]; if (!d) return;
-  smDateBind(side, p, redraw);
+  smDateBind(side, p, redraw); smSignBind(side, p, redraw);
   const live = (k, v) => { p.f = p.f || {}; p.f[k] = v; };
   side.querySelectorAll("[data-gjdraw]").forEach(b => { b.onclick = () => { if (typeof l3gpStart === "function") l3gpStart(p); }; });
   side.querySelectorAll("[data-gjclear]").forEach(b => { b.onclick = () => { if (typeof l3gpClear === "function") l3gpClear(p); }; });

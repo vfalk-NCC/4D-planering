@@ -137,6 +137,29 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const deco = [placeParts(v), placeParts(g)].map(ps => ps.filter(x => x.deco).length); return { noReach: (a.match(/IFCBUILDINGELEMENTPROXY/g) || []).length === 3, withReach: (b.match(/IFCBUILDINGELEMENTPROXY/g) || []).length === 4, deco, small: a.length < b.length + 1, len: a.length }; });
   if (!ifc.noReach || !ifc.withReach || !ifc.deco[0] || !ifc.deco[1]) fail('IFC utan räckviddsringar/streck: ' + JSON.stringify(ifc));
   console.log('OK: IFC till Trimble Connect – inga räckviddsringar eller markeringsstreck (valbart)');
+  // 10) Skylten för sig: vridning och höjd oberoende av objektet (alla smarta objekt och bemanning)
+  const sg = await page.evaluate(async () => { const O = l3.O, res = {};
+    for (const t of ['sm:gjutetapp', 'sm:saxlift', 'sm:transport']) { const q = placeNew(t, [O[0] + 100, O[1] + 100, 0]); if (placeLib(q.type).fence) q.pts = [[q.x, q.y, 0], [q.x + 20, q.y, 0]]; placements.push(q); placeTouch(q);
+      const sign = () => placeParts(q).find(x => x.sign).sign, a = sign(); localStorage.removeItem(CREW_SIGN_KEY); q.signYaw = 90; const b = sign(); q.signYaw = null; q.signZ = 6; const c2 = sign(); q.signZ = null;
+      res[t] = { yawChanged: Math.abs(b.ax - a.ax) + Math.abs(b.ay - a.ay) > 0.5, zSet: c2.zb === 6, auto: a.zb !== 6 }; l3AddPlacementMesh(q); l3SelectIds([q.id]); await new Promise(r => setTimeout(r, 250)); res[t].panel = !!document.querySelector('#v3Side [data-sg="yaw"]') && !!document.querySelector('#v3Side [data-sg="z"]'); }
+    const cw = placeNew('crew:', [O[0] + 110, O[1] + 110, 0]); placements.push(cw); placeTouch(cw); const s0 = placeParts(cw).find(x => x.sign).sign; cw.signZ = 5; res.crew = { zSet: placeParts(cw).find(x => x.sign).sign.zb === 5 && s0.zb !== 5 }; return res; });
+  for (const [k, v] of Object.entries(sg)) if (!(k === 'crew' ? v.zSet : v.yawChanged && v.zSet && v.auto && v.panel)) fail('Skylt för sig (' + k + '): ' + JSON.stringify(sg));
+  console.log('OK: skyltens vridning och höjd justeras för sig på alla objekt (smarta objekt och bemanning)');
+  // 11) Spränga: etableringsobjekt flyttas isär, IFC-delar plockas ut, allt läggs tillbaka
+  const ex = await page.evaluate(async () => { const O = l3.O, r = {}, mkp = (dx, dy) => { const q = placeNew('lada', [O[0] + 200 + dx, O[1] + 200 + dy, 0]); q.L = 2; q.B = 2; q.H = 1; placements.push(q); placeTouch(q); l3AddPlacementMesh(q); return q; };
+    const a = mkp(-6, 0), b = mkp(6, 0), c = mkp(0, 6);
+    const geo = new THREE.BoxGeometry(2, 2, 2), n = geo.getAttribute('position').count, cols = new Float32Array(n * 3).fill(0.8); geo.setAttribute('color', new THREE.BufferAttribute(cols, 3)); geo.translate(a.x - O[0], a.y - O[1] - 8, 1);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true })); const idx = new Uint32Array(geo.index.array); mesh.userData.l3b = { origIdx: idx, hidden: new Set(), ranges: [{ start: 0, count: n, name: 'Pelare' }] }; l3.scene.add(mesh); l3b.models.push({ id: 'xm', name: 'X.ifc', visible: true, meshes: [mesh] });
+    const base = [a, b, c].map(q => l3.placeMeshes.get(q.id).position.clone()); l3bsSet([{ mesh, ri: 0 }]); l3SelectIds([a.id, b.id, c.id], { keepIfc: true }); await new Promise(rs => setTimeout(rs, 100));
+    l3xStart(); r.dbg = [l3.sel.size, l3bs.sel.length, document.getElementById('v3Status').textContent]; r.on = l3x.on; if (!l3x.on) return r; r.items = l3x.items.length; r.tmp = l3x.tmp.length; r.hidden = mesh.userData.l3b.animOff.has(0); r.panel = !!document.getElementById('v3Explode');
+    l3xPlay(false); l3x.t = 1; l3xApply(); const g = [a, b, c].map(q => l3.placeMeshes.get(q.id)), cx = (base[0].x + base[1].x + base[2].x) / 3;
+    r.moved = g.map((o, i) => o.position.distanceTo(base[i]) > 2); r.awayB = g[1].position.x - base[1].x > 1 && g[0].position.x - base[0].x < -1;
+    l3x.mode = 'lager'; l3xLayout(); l3xApply(); r.lager = g.every((o, i) => Math.abs(o.position.x - base[i].x) < 1e-6);
+    l3x.mode = 'radial'; l3x.amount = 3; l3xLayout(); l3xApply(); r.farther = g[1].position.x - base[1].x > 3;
+    l3xStop(); r.back = g.every((o, i) => o.position.distanceTo(base[i]) < 1e-9); r.restored = !mesh.userData.l3b.animOff.has(0) && !document.getElementById('v3Explode') && !l3x.on; r.sel = l3.sel.size === 3;
+    l3b.models.pop(); l3.scene.remove(mesh); return r; });
+  if (!ex.on || ex.items !== 4 || ex.tmp !== 1 || !ex.hidden || !ex.panel || !ex.moved.every(Boolean) || !ex.awayB || !ex.lager || !ex.farther || !ex.back || !ex.restored || !ex.sel) fail('Spränga: ' + JSON.stringify(ex));
+  console.log('OK: spränga markerade objekt – radiellt/lager/axel, IFC-delar utplockade, reglage, allt läggs tillbaka');
   // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
   for (const t of ['sm:saxlift', 'sm:bomlift']) {
     const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);

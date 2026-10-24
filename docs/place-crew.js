@@ -124,7 +124,7 @@ const crewSignYaw = p => (p.signYaw != null && isFinite(Number(p.signYaw)) ? Num
 function crewParts(p, z) {
   const lib = placeLib(p.type) || {}, col = p.color || lib.color || crewColor(lib.contractor), n = crewCount(p), { slots, R } = crewLayout(p), ctx = smMakeCtx(p, z, col), lod = n <= 12 ? 2 : n <= 40 ? 1 : 0;
   slots.forEach(([cx, cy], i) => { const yaw = -Math.PI / 2 + ((((i * 137.5) % 360) - 180) * Math.PI / 180) * 0.22, hs = 0.96 + ((i * 53) % 9) / 100; crewPerson(ctx, col, cx, cy, yaw, hs, i, lod); });
-  const spec = { title: `Entreprenör: ${String(lib.contractor || "Bemanning")}`, icon: "hat", color: col, left: ["Antal YA", String(n)], rows: [["Område", crewArea(p)], ["Aktivitet", crewActivity(p)], ...(smDateText(p) ? [["Datum", smDateText(p)]] : [])], zb: 2.45, b0: -(R + 0.2) };
+  const spec = { title: `Entreprenör: ${String(lib.contractor || "Bemanning")}`, icon: "hat", color: col, left: ["Antal YA", String(n)], rows: [["Område", crewArea(p)], ["Aktivitet", crewActivity(p)], ...(smDateText(p) ? [["Datum", smDateText(p)]] : [])], zb: smSignZ(p) == null ? 2.45 : smSignZ(p), b0: -(R + 0.2) };
   smCard(ctx, { ...spec, yaw: crewSignYaw(p), at: Array.isArray(p.signPos) && isFinite(p.signPos[0]) && isFinite(p.signPos[1]) ? [Number(p.signPos[0]), Number(p.signPos[1])] : null });
   if (p.signPlan) smCard(ctx, { ...spec, plan: { at: Array.isArray(p.planPos) && isFinite(p.planPos[0]) ? [Number(p.planPos[0]), Number(p.planPos[1])] : [0, -(R + 2.6)], yaw: Number(p.planYaw) || 0 } });
   return ctx.flush();
@@ -177,6 +177,7 @@ function crewSideHtml(p) {
     </div>
     <div class="v3-cw-card"><h4>Skyltens läge</h4>
       <label class="v3-field v3-crew-sp"><span>Vridning <b class="v3-cw-badge" data-crew="syv">${Math.round(crewSignYaw(p))}°</b>${p.signYaw == null ? " (standard)" : ""}</span><input type="range" min="-180" max="180" step="5" data-crew="syaw" value="${Math.round(crewSignYaw(p))}" /></label>
+      <label class="v3-field v3-crew-sp"><span>Höjd <b class="v3-cw-badge" data-crew="szv">${smFmt(smSignZ(p) == null ? 2.45 : smSignZ(p), 1)} m</b></span><input type="range" min="0.3" max="30" step="0.1" data-crew="sz" value="${smSignZ(p) == null ? 2.45 : smSignZ(p)}" /></label>
       <div class="v3-btns"><button type="button" data-crew="sy" data-v="0">0°</button><button type="button" data-crew="sy" data-v="90">90°</button><button type="button" data-crew="sy" data-v="-90">−90°</button><button type="button" data-crew="sy" data-v="180">180°</button></div>
       <div class="v3-btns"><button type="button" data-crew="sydef" title="Alla nya och alla bemanningar utan egen vridning får samma riktning">★ Spara som standard</button><button type="button" data-crew="syall" title="Sätter standarden och nollställer egen vridning på alla bemanningar">Använd på alla</button></div>
       <div class="v3-btns"><button type="button" data-crew="signreset" title="Skylten tillbaka framför gruppen, standardvridning">Återställ skylten</button></div>
@@ -208,7 +209,8 @@ function crewBindSide(side, p, redraw) {
     side.querySelectorAll('[data-crew="sy"]').forEach(b => b.onclick = () => apply(() => { p.signYaw = Number(b.dataset.v); }));
     q("sydef").onclick = () => { crewSignDefaultSet(crewSignYaw(p)); if (typeof l3Toast === "function") l3Toast(`Standard: skyltarna vrids ${Math.round(crewSignYaw(p))}° (gäller alla utan egen vridning)`); redraw(); if (typeof l3RebuildAll === "function") l3RebuildAll(); };
     q("syall").onclick = () => { placeSnapshot(); crewSignDefaultSet(crewSignYaw(p)); placements.filter(x => crewIsType(x.type)).forEach(x => { x.signYaw = null; placeTouch(x); if (typeof l3RebuildOne === "function") l3RebuildOne(x); }); if (typeof l3Changed === "function") l3Changed(); if (typeof l3Toast === "function") l3Toast("Alla bemanningsskyltar har nu samma vridning"); redraw(); };
-    q("signreset").onclick = () => apply(() => { p.signYaw = null; p.signPos = null; p.planPos = null; p.planYaw = 0; });
+    q("signreset").onclick = () => apply(() => { p.signYaw = null; p.signZ = null; p.signPos = null; p.planPos = null; p.planYaw = 0; });
+  { const sz = q("sz"), sv2 = q("szv"); if (sz) { let snp = false; sz.onpointerdown = () => { if (!snp) { placeSnapshot(); snp = true; } }; sz.oninput = () => { p.signZ = Number(sz.value); if (sv2) sv2.textContent = smFmt(p.signZ, 1) + " m"; live(); }; sz.onchange = () => { snp = false; placeTouch(p); redraw(); }; } }
     q("plan").onchange = e => apply(() => { p.signPlan = !!e.target.checked; });
     const py = q("pyaw"); if (py) { py.oninput = () => { p.planYaw = Number(py.value); const pv = q("pyv"); if (pv) pv.textContent = Math.round(p.planYaw) + "°"; live(); }; py.onchange = () => { placeTouch(p); redraw(); }; } }
   q("report").onclick = () => crewReportOpen();
