@@ -97,6 +97,60 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await sleep(1300); if (await page.locator('.v3-radial').count()) fail('Rör man musen avbryts håll-menyn');
   await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 1, pointerId: 8 })));
   console.log('OK: radialmenyn öppnas vid markören efter en sekunds håll utan rörelse');
+  // 7) Underkant mot berg: ritad profil klipper formen, volymen minskar och armeringen/träformen följer
+  await mk('Rektangel'); await sleep(300);
+  const pr = await page.evaluate(() => { const p = window.__g; p.H = 1; const flat = gjutStats(p, gjutPoly(p));
+    const raw = []; for (let i = 0; i <= 60; i++) { const x = -p.L / 2 + p.L * i / 60; raw.push([x, 0.25 + 0.35 * Math.sin(i / 6) - 0.4 * (i > 40 ? 1 : 0)]); }
+    l3gpCommit(p, raw); const st = gjutStats(p, gjutPoly(p)), parts = placeParts(p); let ok = true; try { l3PlacementGroup(p); } catch (e) { ok = String(e); }
+    return { flatVol: flat.vol, vol: st.vol, tmin: st.PC && st.PC.tmin, tmax: st.PC && st.PC.tmax, prof: p.f.prof.split(';').length, parts: parts.length, ok, calc: gjutCalc(p, gjutPoly(p)).map(r => r.join(' ')).join(' | ') }; });
+  if (!(pr.vol < pr.flatVol - 1) || !(pr.tmax > pr.tmin + 0.3) || pr.prof < 4 || pr.prof > 40 || pr.ok !== true || !/följer berget/.test(pr.calc)) fail('Bottenprofil: ' + JSON.stringify(pr));
+  await sleep(300); const ui = await page.evaluate(() => ({ draw: !!document.querySelector('#v3Side [data-gjdraw]'), clr: !!document.querySelector('#v3Side [data-gjclear]') })); if (!ui.draw || !ui.clr) fail('Panelens knappar Rita/Rensa: ' + JSON.stringify(ui));
+  await page.evaluate(() => l3gpClear(window.__g)); if ((await page.evaluate(() => gjutProfGet(window.__g))) !== null) fail('Rensa ger rak botten');
+  // frihandsritning med riktiga pekarhändelser på sidan närmast kameran
+  await page.evaluate(() => { const p = window.__g, O = l3.O; l3StopFly(); const c = new THREE.Vector3(p.x - O[0], p.y - O[1], 0.5); l3.camera.position.set(c.x, c.y - 22, 6); l3.orbit.target.copy(c); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); l3gpStart(p); });
+  const pts = await page.evaluate(() => { const G = l3gp.g, r = l3.renderer.domElement.getBoundingClientRect(), out = []; for (let i = 0; i <= 24; i++) { const x = G.minX + (G.maxX - G.minX) * i / 24, w = l3gpWorld(G, x, 0.35 + 0.2 * Math.sin(i / 3), G.minY).project(l3.camera); out.push([r.left + (w.x + 1) / 2 * r.width, r.top + (1 - w.y) / 2 * r.height]); } return out; });
+  await page.evaluate(([a]) => l3.renderer.domElement.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, clientX: a[0], clientY: a[1], pointerId: 11 })), [pts[0]]);
+  for (const q of pts.slice(1)) await page.evaluate(([a]) => window.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: a[0], clientY: a[1], pointerId: 11 })), [q]);
+  await page.evaluate(([a]) => window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, clientX: a[0], clientY: a[1], pointerId: 11 })), [pts[pts.length - 1]]);
+  await sleep(300); const dr = await page.evaluate(() => { const pf = gjutProfGet(window.__g); return pf ? { n: pf.length, zs: pf.map(q => q[1]) } : null; });
+  if (!dr || dr.n < 3 || Math.max(...dr.zs) - Math.min(...dr.zs) < 0.15) fail('Frihandsritad underkant: ' + JSON.stringify(dr));
+  console.log('OK: gjutetapp – underkant mot berg (profil, volym, ritning med frihand, rensa)');
+  // 8) Makadam: fraktion och tjocklek; objekt "i" gruset (placerade och IFC) dras av så att volymen blir verklig
+  const mkr = await page.evaluate(async () => { const O = l3.O, q = placeNew('sm:makadam', [O[0] + 40, O[1] + 40, 0]); q.L = 10; q.B = 10; q.H = 0.3; q.rot = 0; placements.push(q); placeTouch(q); l3AddPlacementMesh(q);
+    const r = {}; const s0 = mkShape(q); r.gross = s0.gross; r.net0 = s0.net; r.vol0 = mkStats(q, s0).vol;
+    const f = placeNew('sm:lada' in SM ? 'lada' : 'lada', [q.x + 1, q.y + 1, 0]); f.L = 2; f.B = 2; f.H = 1; f.z = 0; placements.push(f); placeTouch(f); l3AddPlacementMesh(f);
+    const s1 = mkShape(q); r.net1 = s1.net; r.cuts1 = s1.cuts.length; r.vol1 = mkStats(q, s1).vol;
+    f.z = 0.5; const s2 = mkShape(q); r.cutsAbove = s2.cuts.length; f.z = 0;                                           // ovanför gruset: ingen avdrag
+    q.f = { ...(q.f || {}), avdrag: 'Nej' }; r.noCut = mkShape(q).net; q.f.avdrag = 'Ja';
+    // IFC-objekt: ett fundament i en inläst modell (AABB 3 × 3 m) 1 m från mitten
+    const geo = new THREE.BufferGeometry(), x0 = q.x - O[0] - 3, y0 = q.y - O[1] - 3, v = []; [[0, 0, 0], [3, 0, 0], [3, 3, 0], [0, 3, 0], [0, 0, 1], [3, 0, 1], [3, 3, 1], [0, 3, 1]].forEach(([a, b, c2]) => v.push(x0 + a, y0 + b, c2 - O[2]));
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3)); const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial()); mesh.userData.l3b = { ranges: [{ start: 0, count: 8, name: 'Fundament' }], hidden: new Set() };
+    l3b.models.push({ id: 'mk', name: 'F.ifc', visible: true, meshes: [mesh] }); const s3 = mkShape(q); r.cuts3 = s3.cuts.length; r.net3 = s3.net; r.names = s3.cuts.map(c2 => c2.name).join();
+    l3b.models.pop(); r.parts = placeParts(q).length; r.calc = mkCalc(q).map(x => x.join(' ')).join(' | '); r.fr = SM.makadam.fields.some(x => x[0] === 'fr') && SM.makadam.fields.some(x => x[0] === 'H'); return r; });
+  if (mkr.gross !== 100 || mkr.net0 !== 100 || Math.abs(mkr.vol0 - 30) > 1e-6 || mkr.cuts1 !== 1 || Math.abs(mkr.net1 - 96) > 1e-6 || Math.abs(mkr.vol1 - 28.8) > 1e-6 || mkr.cutsAbove !== 0 || mkr.noCut !== 100 || mkr.cuts3 !== 2 || Math.abs(mkr.net3 - 87) > 1e-6 || !/Fundament/.test(mkr.names) || mkr.parts < 3 || !mkr.fr) fail('Makadam: ' + JSON.stringify(mkr));
+  console.log('OK: makadam – fraktion/tjocklek, avdrag för placerade och IFC-objekt i gruset, verklig volym (' + mkr.calc.slice(0, 90) + '…)');
+  // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
+  for (const t of ['sm:saxlift', 'sm:bomlift']) {
+    const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);
+      const top = H => { q.H = H; const ps = placeParts(q).filter(x => !x.sign && !x.card); return Math.max(...ps.map(x => x.z1)); };
+      const a = top(6), b = top(12), hs = l3HandleDefs(q).filter(h => h.key === 'H').length; return { a, b, hs, slider: !!document.querySelector('#v3Side input[data-smd="H"]') }; }, t);
+    await sleep(300);
+    if (!(r.b > r.a + 4) || r.hs !== 1) fail(t + ' – höjden styr geometrin och har ett höjdhandtag: ' + JSON.stringify(r));
+  }
+  const sl = await page.evaluate(() => { l3SelectIds([placements[placements.length - 1].id]); return new Promise(res => setTimeout(() => res(!!document.querySelector('#v3Side input[data-smd="H"]')), 400)); });
+  if (!sl) fail('Reglaget för plattformens höjd saknas');
+  await page.evaluate(() => { const el = document.querySelector('#v3Side input[data-smd="H"]'); el.value = 20; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); });
+  await sleep(300); if ((await page.evaluate(() => placements[placements.length - 1].H)) !== 20) fail('Reglaget ska sätta höjden');
+  console.log('OK: saxlift och bomlift – höjden styr modellen, reglage och höjdhandtag');
+  // 6) Switchen för placerade objekt
+  await page.evaluate(() => l3PalTab('add')); await sleep(200);
+  if (!(await page.isVisible('#v3PlacedSw')) && !(await page.isVisible('.v3-lib-sw'))) fail('Switchen saknas överst i biblioteket');
+  await page.evaluate(() => { const sw = document.getElementById('v3PlacedSw'); sw.checked = false; sw.dispatchEvent(new Event('change')); }); await sleep(200);
+  let sv = await page.evaluate(() => ({ vis: l3.groups.places.visible, sel: l3.sel.size, t: document.getElementById('v3PlacedSwT').textContent, pref: l3Prefs().placedOn }));
+  if (sv.vis !== false || sv.sel !== 0 || sv.t !== 'Släckta' || sv.pref !== false) fail('Släck placerade: ' + JSON.stringify(sv));
+  await page.evaluate(() => { const sw = document.getElementById('v3PlacedSw'); sw.checked = true; sw.dispatchEvent(new Event('change')); }); await sleep(150);
+  if ((await page.evaluate(() => l3.groups.places.visible)) !== true) fail('Tänd placerade');
+  console.log('OK: switch för placerade objekt i 3D-biblioteket');
   const real = errors.filter(e => !/setPointerCapture/.test(e)); if (real.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_3dgjut');
   await browser.close(); server.close();

@@ -14,8 +14,8 @@ function smStripe(c, a0, a1, y, z, th, col) { c.box(col, (a0 + a1) / 2, y, z, Ma
 const GJ_D = [["0", "Inget"], ["8", "Ø8"], ["10", "Ø10"], ["12", "Ø12"], ["16", "Ø16"], ["20", "Ø20"], ["25", "Ø25"]], GJ_S = [["100", "c/c 100"], ["150", "c/c 150"], ["200", "c/c 200"], ["250", "c/c 250"], ["300", "c/c 300"]];
 const GJ_FORM_FIELDS = free => (free ? [["radie", "Hörnradie", "range", 0, { min: 0, max: 4, step: 0.25, unit: "m" }]] : [["form", "Form", ["Rektangel", "L-form", "T-form", "U-form"], "Rektangel", { seg: true }], ["cutL", "Utskärning, längd", "range", 4, { min: 0.5, max: 24, step: 0.5, unit: "m" }], ["cutB", "Utskärning, bredd", "range", 3, { min: 0.5, max: 16, step: 0.5, unit: "m" }], ["radie", "Hörnradie", "range", 0, { min: 0, max: 4, step: 0.25, unit: "m" }]]);
 const GJ_ARM_FIELDS = () => [["arm", "Armering", ["Visa", "Dölj"], "Visa", { seg: true }], ["uD", "Undre nät", GJ_D, "12"], ["uS", "Undre nät, delning", GJ_S, "150"], ["oD", "Övre nät", GJ_D, "0"], ["oS", "Övre nät, delning", GJ_S, "150"], ["tak", "Täckskikt", [["30", "30 mm"], ["40", "40 mm"], ["50", "50 mm"], ["60", "60 mm"]], "40"], ["ang", "Armeringens riktning", [["0", "0°"], ["45", "45°"], ["90", "90°"]], "0", { seg: true }]];
-const GJ_INFO_FIELDS = () => [["tillagg", "Tillägg för spill", "range", 0, { min: 0, max: 15, step: 1, unit: "%" }], ["kval", "Kvalitet", [["C25/30", "C25/30"], ["C30/37", "C30/37"], ["C32/40", "C32/40"], ["C35/45", "C35/45"], ["C40/50", "C40/50"]], "C30/37"], ["pump", "Pumpplats", "text", ""], ["start", "Starttid", "time", "07:00"], ["bil", "Betongbil", [["6", "6 m³"], ["7", "7 m³"], ["8", "8 m³"], ["9", "9 m³"], ["10", "10 m³"]], "8"], ["kap", "Pump", [["20", "20 m³/h"], ["30", "30 m³/h"], ["40", "40 m³/h"], ["60", "60 m³/h"], ["80", "80 m³/h"]], "30"], ["_calc", "Beräknat från formen", "calc"]];
-const GJ_GROUPS = [["Form", ["form", "cutL", "cutB", "radie"]], ["Armering", ["arm", "uD", "uS", "oD", "oS", "tak", "ang"]], ["Betong och pump", ["kval", "tillagg", "pump", "start", "bil", "kap"]], ["Beräknat", ["_calc"]]];
+const GJ_INFO_FIELDS = () => [["tillagg", "Tillägg för spill", "range", 0, { min: 0, max: 15, step: 1, unit: "%" }], ["kval", "Kvalitet", [["C25/30", "C25/30"], ["C30/37", "C30/37"], ["C32/40", "C32/40"], ["C35/45", "C35/45"], ["C40/50", "C40/50"]], "C30/37"], ["pump", "Pumpplats", "text", ""], ["start", "Starttid", "time", "07:00"], ["bil", "Betongbil", [["6", "6 m³"], ["7", "7 m³"], ["8", "8 m³"], ["9", "9 m³"], ["10", "10 m³"]], "8"], ["kap", "Pump", [["20", "20 m³/h"], ["30", "30 m³/h"], ["40", "40 m³/h"], ["60", "60 m³/h"], ["80", "80 m³/h"]], "30"], ["_prof", "Underkant (berg)", "gjprof"], ["_calc", "Beräknat från formen", "calc"]];
+const GJ_GROUPS = [["Form", ["form", "cutL", "cutB", "radie", "_prof"]], ["Armering", ["arm", "uD", "uS", "oD", "oS", "tak", "ang"]], ["Betong och pump", ["kval", "tillagg", "pump", "start", "bil", "kap"]], ["Beräknat", ["_calc"]]];
 function gjutPoly(p) {
   const L = p.L / 2, B = p.B / 2, f = smF(p, "form", "Rektangel"), cl = Math.max(0.5, Math.min(smN(p, "cutL", 4), p.L - 1)), cb = Math.max(0.5, Math.min(smN(p, "cutB", 3), p.B - 1));
   let P = [[-L, -B], [L, -B], [L, B], [-L, B]];
@@ -32,9 +32,36 @@ function gjutScan(poly, ang, s, cover) {
 }
 /* Mängder ur formen (Victor 2026-10-24: "kubiken borde räkna ut sig själv"): yta, volym (yta × tjocklek + spillpåslag), stål, bilar, pumptid och markanspråk (formen + 1 m arbetsyta runt om). */
 const GJ_CLAIM = 1.0;
+/* Bottenprofilen (berg): sparad som "t:z;t:z …" i p.f.prof – t 0–1 längs formens x-led, z = botten över plattans nivå (negativt = djupare). Ritas fritt i modellen. */
+function gjutProfGet(p) { const t = smF(p, "prof", ""); if (!t) return null; const a = String(t).split(";").map(q => q.split(":").map(Number)).filter(q => q.length === 2 && isFinite(q[0]) && isFinite(q[1])).sort((m, n) => m[0] - n[0]); return a.length >= 2 ? a : null; }
+function gjutProfAt(prof, t) { if (!prof) return 0; if (t <= prof[0][0]) return prof[0][1]; for (let i = 1; i < prof.length; i++) if (t <= prof[i][0]) { const a = prof[i - 1], b = prof[i], k = (t - a[0]) / Math.max(1e-9, b[0] - a[0]); return a[1] + (b[1] - a[1]) * k; } return prof[prof.length - 1][1]; }
+/* Formen i lameller längs x: varje lamell har sina y-intervall (inne i polygonen) och sin botten. zbS(x) = bottnen för den lamell x ligger i. */
+function gjutProfCtx(poly, H, prof) {
+  const xs = poly.map(q => q[0]), minX = Math.min(...xs), maxX = Math.max(...xs), W = Math.max(0.01, maxX - minX), N = Math.max(10, Math.min(90, Math.ceil(W / 0.2))), dx = W / N, n = poly.length, strips = [];
+  const zbAt = xc => Math.max(-3, Math.min(H - 0.05, gjutProfAt(prof, (xc - minX) / W)));
+  for (let i = 0; i < N; i++) { const xa = minX + i * dx, xb = xa + dx, xc = xa + dx / 2, ys = [];
+    for (let k = 0; k < n; k++) { const a = poly[k], b = poly[(k + 1) % n]; if ((a[0] <= xc && b[0] > xc) || (b[0] <= xc && a[0] > xc)) ys.push(a[1] + (xc - a[0]) / (b[0] - a[0]) * (b[1] - a[1])); }
+    ys.sort((m, q) => m - q); const iv = []; for (let k = 0; k + 1 < ys.length; k += 2) iv.push([ys[k], ys[k + 1]]); strips.push({ xa, xb, xc, iv, zb: zbAt(xc) }); }
+  const zbS = x => strips[Math.max(0, Math.min(N - 1, Math.floor((x - minX) / dx)))].zb;
+  let vol = 0, tmin = Infinity, tmax = -Infinity; strips.forEach(s => s.iv.forEach(([y0, y1]) => { vol += dx * (y1 - y0) * (H - s.zb); tmin = Math.min(tmin, H - s.zb); tmax = Math.max(tmax, H - s.zb); }));
+  return { minX, maxX, W, N, dx, strips, zbS, vol, tmin, tmax };
+}
+/* Betongen som ett slutet skal: plan ovansida, väggar längs konturen ner till botten och en bottenyta som följer profilen (med steg mellan lamellerna). */
+function gjutConcreteSolid(c, poly, H, PC, zb) {
+  const pts = [], faces = [], P = (x, y, z) => pts.push([x, y, z]), n = poly.length, ccw = TK.area2(poly) >= 0;
+  const tri = (a, b, d, nx, ny, nz) => { const A = pts[a - 1], B = pts[b - 1], C = pts[d - 1], ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2], vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2]; faces.push(((uy * vz - uz * vy) * nx + (uz * vx - ux * vz) * ny + (ux * vy - uy * vx) * nz) >= 0 ? [a, b, d] : [a, d, b]); };
+  const quad = (p0, p1, p2, p3, nm) => { const b0 = pts.length; [p0, p1, p2, p3].forEach(q => P(q[0], q[1], q[2])); tri(b0 + 1, b0 + 2, b0 + 3, nm[0], nm[1], nm[2]); tri(b0 + 1, b0 + 3, b0 + 4, nm[0], nm[1], nm[2]); };
+  poly.forEach(q => P(q[0], q[1], H)); TK.tri2(poly).forEach(t => tri(t[0] + 1, t[1] + 1, t[2] + 1, 0, 0, 1));
+  for (let i = 0; i < n; i++) { const a = poly[i], b = poly[(i + 1) % n], dx = b[0] - a[0], dy = b[1] - a[1], dd = Math.hypot(dx, dy); if (dd < 1e-6) continue; const nx = (ccw ? dy : -dy) / dd, ny = (ccw ? -dx : dx) / dd, ts = [0, 1];
+    for (let k = 1; k < PC.N; k++) { const xk = PC.minX + k * PC.dx; if ((a[0] < xk && b[0] > xk) || (b[0] < xk && a[0] > xk)) ts.push((xk - a[0]) / dx); } ts.sort((m, q) => m - q);
+    for (let j = 0; j + 1 < ts.length; j++) { const t0 = ts[j], t1 = ts[j + 1]; if (t1 - t0 < 1e-6) continue; const x0 = a[0] + dx * t0, y0 = a[1] + dy * t0, x1 = a[0] + dx * t1, y1 = a[1] + dy * t1, z = PC.zbS((x0 + x1) / 2); quad([x0, y0, z], [x1, y1, z], [x1, y1, H], [x0, y0, H], [nx, ny, 0]); } }
+  PC.strips.forEach((s, i) => { s.iv.forEach(([y0, y1]) => quad([s.xa, y0, s.zb], [s.xb, y0, s.zb], [s.xb, y1, s.zb], [s.xa, y1, s.zb], [0, 0, -1]));
+    const nx = PC.strips[i + 1]; if (nx) s.iv.forEach(([y0, y1]) => nx.iv.forEach(([v0, v1]) => { const lo = Math.max(y0, v0), hi = Math.min(y1, v1); if (hi - lo > 1e-6 && Math.abs(s.zb - nx.zb) > 1e-6) quad([s.xb, lo, Math.min(s.zb, nx.zb)], [s.xb, hi, Math.min(s.zb, nx.zb)], [s.xb, hi, Math.max(s.zb, nx.zb)], [s.xb, lo, Math.max(s.zb, nx.zb)], [s.zb < nx.zb ? 1 : -1, 0, 0]); })); });
+  return TK.add(c.T("#9aa4b2", { transp: 0.55, rough: 0.9 }), { pts, faces }, 0, 0, zb);
+}
 function gjutStats(p, poly) {
   const H = Math.max(0.05, Number(p.H) || 0.25), area = Math.abs(TK.area2(poly)), n = poly.length; let per = 0; for (let i = 0; i < n; i++) per += Math.hypot(poly[(i + 1) % n][0] - poly[i][0], poly[(i + 1) % n][1] - poly[i][1]);
-  const vol = area * H * (1 + smN(p, "tillagg", 0) / 100), bilar = Math.ceil(vol / Math.max(1, smN(p, "bil", 8))), tim = vol / Math.max(1, smN(p, "kap", 30)), claim = area + per * GJ_CLAIM + Math.PI * GJ_CLAIM * GJ_CLAIM;
+  const prof = gjutProfGet(p), PC = prof ? gjutProfCtx(poly, H, prof) : null, vol = (PC ? PC.vol : area * H) * (1 + smN(p, "tillagg", 0) / 100), bilar = Math.ceil(vol / Math.max(1, smN(p, "bil", 8))), tim = vol / Math.max(1, smN(p, "kap", 30)), claim = area + per * GJ_CLAIM + Math.PI * GJ_CLAIM * GJ_CLAIM;
   let kg = 0, txt = ""; const layers = [];
   if (smF(p, "arm", "Visa") !== "Dölj") {
     const cover = Math.max(0.01, smN(p, "tak", 40) / 1000), ang = smN(p, "ang", 0) * Math.PI / 180, uD = smN(p, "uD", 12), uS = Math.max(50, smN(p, "uS", 150)), oD = smN(p, "oD", 0), oS = Math.max(50, smN(p, "oS", 150));
@@ -42,9 +69,9 @@ function gjutStats(p, poly) {
     layers.forEach(([d, sMM, z1, z2]) => [[ang, z1], [ang + Math.PI / 2, z2]].forEach(([a]) => gjutScan(poly, a, sMM / 1000, cover).forEach(([q0, q1]) => { kg += Math.hypot(q1[0] - q0[0], q1[1] - q0[1]) * d * d / 162; })));
     txt = layers.map(([d, sMM], li) => `${li ? "Övre" : "Undre"} Ø${d} c/c${sMM}`).join(" · ");
   }
-  return { H, area, per, vol, bilar, tim, claim, kg, txt, layers };
+  return { H, area, per, vol, bilar, tim, claim, kg, txt, layers, prof, PC };
 }
-const gjutCalc = (p, poly) => { const t = gjutStats(p, poly); return [["Yta", smFmt(t.area, 1) + " m²"], ["Tjocklek", smFmt(t.H * 1000, 0) + " mm"], ["Volym", smFmt(t.vol, 1) + " m³"], ["Betongbilar", `ca ${t.bilar} st · ${smFmt(t.tim, 1)} h`], ...(t.txt ? [["Armering", smFmt(t.kg, 0) + " kg · " + smFmt(t.kg / Math.max(0.1, t.vol), 0) + " kg/m³"]] : []), ["Markanspråk", "ca " + smFmt(t.claim, 0) + " m² (med 1 m runt om)"]]; };
+const gjutCalc = (p, poly) => { const t = gjutStats(p, poly); return [["Yta", smFmt(t.area, 1) + " m²"], t.PC ? ["Tjocklek", smFmt(t.PC.tmin * 1000, 0) + "–" + smFmt(t.PC.tmax * 1000, 0) + " mm (följer berget)"] : ["Tjocklek", smFmt(t.H * 1000, 0) + " mm"], ["Volym", smFmt(t.vol, 1) + " m³"], ["Betongbilar", `ca ${t.bilar} st · ${smFmt(t.tim, 1)} h`], ...(t.txt ? [["Armering", smFmt(t.kg, 0) + " kg · " + smFmt(t.kg / Math.max(0.1, t.vol), 0) + " kg/m³"]] : []), ["Markanspråk", "ca " + smFmt(t.claim, 0) + " m² (med 1 m runt om)"]]; };
 /* Utskärningens hörn (lokalt, relativt mitten) för handtagen: [tecken, x, y] – L-form ett hörn, T- och U-form två. */
 function gjutCuts(p) {
   const L = p.L / 2, B = p.B / 2, f = smF(p, "form", "Rektangel"), cl = Math.max(0.5, Math.min(smN(p, "cutL", 4), p.L - 1)), cb = Math.max(0.5, Math.min(smN(p, "cutB", 3), p.B - 1)), corners = [];
@@ -55,15 +82,17 @@ function gjutCuts(p) {
 }
 function gjutBuild(p, c, poly, zb, free) {
   const st = gjutStats(p, poly), H = st.H, xs = poly.map(q => q[0]), ys = poly.map(q => q[1]), minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys), v = st.vol;
-  c.prism("#9aa4b2", poly, zb, zb + H, { transp: 0.55, rough: 0.9 });                                                                                                   // betongen (genomskinlig så att armeringen syns)
+  if (st.PC) gjutConcreteSolid(c, poly, H, st.PC, zb); else c.prism("#9aa4b2", poly, zb, zb + H, { transp: 0.55, rough: 0.9 });                                         // betongen (genomskinlig så att armeringen syns); med bottenprofil följer botten berget
   const ccw = TK.area2(poly) >= 0, n = poly.length, WOOD = "#c9a15f", WOOD2 = "#a9824a", nrm = i => { const a = poly[i], b = poly[(i + 1) % n], dx = b[0] - a[0], dy = b[1] - a[1], dd = Math.hypot(dx, dy) || 1; return [(ccw ? dy : -dy) / dd, (ccw ? -dx : dx) / dd, dd]; };
   // formsidan: träregel runt hela konturen, stöttor var meter med snedstag ut mot marken och ett toppträ
   for (let i = 0; i < n; i++) { const a = poly[i], b = poly[(i + 1) % n], [nx, ny, dd] = nrm(i); if (dd < 0.02) continue;
-    c.prism(WOOD, [[a[0], a[1]], [b[0], b[1]], [b[0] + nx * 0.05, b[1] + ny * 0.05], [a[0] + nx * 0.05, a[1] + ny * 0.05]], zb - 0.02, zb + H + 0.1, { rough: 0.85 });
+    { const m = st.PC ? Math.max(1, Math.ceil(dd / 0.5)) : 1; for (let j = 0; j < m; j++) { const t0 = j / m, t1 = (j + 1) / m, ax0 = a[0] + (b[0] - a[0]) * t0, ay0 = a[1] + (b[1] - a[1]) * t0, ax1 = a[0] + (b[0] - a[0]) * t1, ay1 = a[1] + (b[1] - a[1]) * t1, zlo = st.PC ? st.PC.zbS((ax0 + ax1) / 2) : 0;
+      c.prism(WOOD, [[ax0, ay0], [ax1, ay1], [ax1 + nx * 0.05, ay1 + ny * 0.05], [ax0 + nx * 0.05, ay0 + ny * 0.05]], zb + zlo - 0.02, zb + H + 0.1, { rough: 0.85 }); } }
     const k = Math.max(1, Math.round(dd / 1.0));
     for (let j = 0; j <= k; j++) { const t = j / k, x = a[0] + (b[0] - a[0]) * t + nx * 0.09, y = a[1] + (b[1] - a[1]) * t + ny * 0.09; if (j === k && dd > 0.5) continue; const hs = 0.035;
-      c.prism(WOOD2, [[x - hs, y - hs], [x + hs, y - hs], [x + hs, y + hs], [x - hs, y + hs]], zb - 0.12, zb + H + 0.32, { rough: 0.85 });
-      c.rod(WOOD2, [x, y, zb + H + 0.24], [x + nx * 0.62, y + ny * 0.62, zb - 0.04], 0.022, 0.022, 6, { rough: 0.85 }); }
+      const zlo = st.PC ? st.PC.zbS(x) : 0;
+      c.prism(WOOD2, [[x - hs, y - hs], [x + hs, y - hs], [x + hs, y + hs], [x - hs, y + hs]], zb + zlo - 0.12, zb + H + 0.32, { rough: 0.85 });
+      c.rod(WOOD2, [x, y, zb + H + 0.24], [x + nx * 0.62, y + ny * 0.62, zb + zlo - 0.04], 0.022, 0.022, 6, { rough: 0.85 }); }
     c.prism(WOOD, [[a[0] + nx * 0.05, a[1] + ny * 0.05], [b[0] + nx * 0.05, b[1] + ny * 0.05], [b[0] + nx * 0.13, b[1] + ny * 0.13], [a[0] + nx * 0.13, a[1] + ny * 0.13]], zb + H + 0.1, zb + H + 0.14, { rough: 0.85 }); }
   // markanspråk: orange kontur 1 m utanför formen (och en mjuk fyllning längs kanten), så att man ser hur mycket mark etappen tar
   const D = GJ_CLAIM, off = i => { const [nx, ny] = nrm(i); return [nx * D, ny * D]; }, band = (p0, p1, w) => { const dx = p1[0] - p0[0], dy = p1[1] - p0[1], dd = Math.hypot(dx, dy); if (dd < 0.01) return; const ux = -dy / dd * w / 2, uy = dx / dd * w / 2; c.prism("#f97316", [[p0[0] + ux, p0[1] + uy], [p1[0] + ux, p1[1] + uy], [p1[0] - ux, p1[1] - uy], [p0[0] - ux, p0[1] - uy]], zb + 0.004, zb + 0.012, { unlit: true }); };
@@ -74,11 +103,60 @@ function gjutBuild(p, c, poly, zb, free) {
   if (st.layers.length) {
     const cover = Math.max(0.01, smN(p, "tak", 40) / 1000), ang = smN(p, "ang", 0) * Math.PI / 180;
     st.layers.forEach(([d, sMM, z1, z2], li) => { let s = sMM / 1000; const side = Math.max(maxX - minX, maxY - minY); if (side / s > 70) s = side / 70; // för många stänger: visa glesare (mängden räknas ändå med riktig delning)
-      [[ang, z1], [ang + Math.PI / 2, z2]].forEach(([a, z]) => gjutScan(poly, a, s, cover).forEach(([q0, q1]) => c.rod(li ? "#2563eb" : "#475569", [q0[0], q0[1], zb + z], [q1[0], q1[1], zb + z], d / 2000, d / 2000, 6, { metal: 0.85, rough: 0.35, shin: 90 }))); });
+      [[ang, z1], [ang + Math.PI / 2, z2]].forEach(([a, z]) => gjutScan(poly, a, s, cover).forEach(([q0, q1]) => { const mat = { metal: 0.85, rough: 0.35, shin: 90 }, colr = li ? "#2563eb" : "#475569";
+        if (!st.PC || li) return c.rod(colr, [q0[0], q0[1], zb + z], [q1[0], q1[1], zb + z], d / 2000, d / 2000, 6, mat);
+        const len = Math.hypot(q1[0] - q0[0], q1[1] - q0[1]), m = Math.max(1, Math.ceil(len / 0.5));                                                                                   // undre nätet följer berget
+        for (let j = 0; j < m; j++) { const t0 = j / m, t1 = (j + 1) / m, x0 = q0[0] + (q1[0] - q0[0]) * t0, y0 = q0[1] + (q1[1] - q0[1]) * t0, x1 = q0[0] + (q1[0] - q0[0]) * t1, y1 = q0[1] + (q1[1] - q0[1]) * t1, zz = Math.max(z, st.PC.zbS((x0 + x1) / 2) + cover + d * 1.5 / 1000); if (zz < H - cover) c.rod(colr, [x0, y0, zb + zz], [x1, y1, zb + zz], d / 2000, d / 2000, 6, mat); } })); });
   }
   const mx = (minX + maxX) / 2, my = (minY + maxY) / 2, ar = Math.min(2.4, Math.max(0.8, (maxX - minX) * 0.16));
   c.prism("#f59e0b", [[-1.6, -0.35], [0.4, -0.35], [0.4, -0.8], [1.8, 0], [0.4, 0.8], [0.4, 0.35], [-1.6, 0.35]].map(([x, y]) => [mx + x * ar / 1.8, my + y * ar / 1.8]), zb + H + 0.01, zb + H + 0.03, { unlit: true });  // gjutriktning
   c.card({ title: String(p.name || "Gjutetapp"), icon: "box", color: "#475569", left: ["m³", smFmt(v, 1)], rows: [["Kvalitet", smF(p, "kval", "C30/37")], ["Pumpplats / start", [smF(p, "pump"), smF(p, "start", "07:00")].filter(Boolean).join(" · ")], ["Bilar / pumptid", `ca ${st.bilar} bilar · ${smFmt(st.tim, 1)} h`], ...(txt ? [["Armering", txt], ["Stål", `${smFmt(kg, 0)} kg · ${smFmt(kg / Math.max(0.1, v), 0)} kg/m³`]] : []), ["Markanspråk", `ca ${smFmt(st.claim, 0)} m²`]], b0: minY - 1.6, zb: 2.45 + zb });
+}
+/* ---- Makadam: yta, fraktion och tjocklek; objekt som står "i" gruset (fundament, bodar, IFC-objekt) dras av så att volymen blir verklig (Victor 2026-10-24) ---- */
+const MK_FR = [["0–16", "0–16 mm"], ["0–32", "0–32 mm (bärlager)"], ["0–63", "0–63 mm"], ["4–8", "4–8 mm (dränering)"], ["8–16", "8–16 mm (dränering)"], ["16–32", "16–32 mm (dränering)"], ["32–64", "32–64 mm (dränering)"]];
+const MK_DENS = { "0–16": 2.1, "0–32": 2.15, "0–63": 2.2, "4–8": 1.5, "8–16": 1.55, "16–32": 1.6, "32–64": 1.65 }, MK_COL = { "0–16": "#8f897f", "0–32": "#827c72", "0–63": "#756f66", "4–8": "#9d978c", "8–16": "#8c867b", "16–32": "#7e786e", "32–64": "#6f695f" };
+const MK_FIELDS = (free) => [["H", "Tjocklek", "range", 0.3, { min: 0.05, max: 1.5, step: 0.05, unit: "m", dim: true }], ["fr", "Fraktion", MK_FR, "0–32"], ["pack", "Packningsmån (lös massa)", "range", 15, { min: 0, max: 30, step: 1, unit: "%" }], ["avdrag", "Dra av objekt i makadamen", ["Ja", "Nej"], "Ja", { seg: true }], ...(free ? [["radie", "Hörnradie", "range", 0, { min: 0, max: 4, step: 0.25, unit: "m" }]] : []), ["_calc", "Beräknat", "calc"]];
+const mkBase = p => (p.type === "sm:makadamfri" ? (((p.pts || [])[0] || [])[2] || 0) : (Number(p.z) || 0)) + (Number(p.dz) || 0);
+function mkPoly(p) { if (p.type === "sm:makadamfri") { const P = p.pts || [], ox = Number(p.x) || 0, oy = Number(p.y) || 0; return P.length < 3 ? null : smFillet(P.map(q => [q[0] - ox, q[1] - oy, 0]), smN(p, "radie", 0), true).map(q => [q[0], q[1]]); } const L = p.L / 2, B = p.B / 2; return [[-L, -B], [L, -B], [L, B], [-L, B]]; }
+const mkToLocal = p => { if (p.type === "sm:makadamfri") { const ox = Number(p.x) || 0, oy = Number(p.y) || 0; return (X, Y) => [X - ox, Y - oy]; } const t = (Number(p.rot) || 0) * Math.PI / 180, c = Math.cos(t), s = Math.sin(t); return (X, Y) => { const dx = X - p.x, dy = Y - p.y; return [dx * c + dy * s, -dx * s + dy * c]; }; };
+function mkHull(P) { P = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (P.length < 3) return P; const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = []; for (const q of P) { while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); } for (let i = P.length - 1; i >= 0; i--) { const q = P[i]; while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); } return lo.slice(0, -1).concat(up.slice(0, -1)); }
+/* Objekt som skär makadamlagret: placerade objekt (låda med läge och vridning) och objekt i inlästa IFC-modeller (fotavtryck = konvex yta av deras hörn). Returnerar polygoner i makadamens lokala system. */
+function mkCuts(p, poly, base, th) {
+  const toL = mkToLocal(p), out = [], z1 = base + th, xs = poly.map(q => q[0]), ys = poly.map(q => q[1]), bb = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+  const near = pl => pl.some(q => q[0] >= bb[0] - 0.5 && q[0] <= bb[2] + 0.5 && q[1] >= bb[1] - 0.5 && q[1] <= bb[3] + 0.5) || (Math.min(...pl.map(q => q[0])) <= bb[2] && Math.max(...pl.map(q => q[0])) >= bb[0] && Math.min(...pl.map(q => q[1])) <= bb[3] && Math.max(...pl.map(q => q[1])) >= bb[1]);
+  (typeof placements !== "undefined" ? placements : []).forEach(q => { if (q === p || q.id === p.id || !q.L || !q.B) return; const lib = typeof placeLib === "function" ? placeLib(q.type) : null; if (lib && lib.fence) return; if (/^sm:(makadam|makadamfri|riskzon|gjutform)$/.test(String(q.type))) return;
+    const H = Number(q.H) || 0, zq = (Number(q.z) || 0) + (Number(q.dz) || 0); if (H < 0.1 || zq >= z1 - 0.01 || zq + H <= base + 0.01) return;
+    const t = (Number(q.rot) || 0) * Math.PI / 180, c = Math.cos(t), s = Math.sin(t), L = q.L / 2, B = q.B / 2, pl = [[-L, -B], [L, -B], [L, B], [-L, B]].map(([a, b]) => toL(q.x + a * c - b * s, q.y + a * s + b * c)); if (near(pl)) out.push({ poly: pl, name: q.name || q.type }); });
+  if (typeof l3b !== "undefined" && typeof l3 !== "undefined" && l3 && l3.O && typeof l3bsBoxes === "function") { const O = l3.O, wx0 = bb[0], wy0 = bb[1]; let wb = null;   // IFC-modellerna
+    const toW = p.type === "sm:makadamfri" ? (a, b) => [a + (Number(p.x) || 0), b + (Number(p.y) || 0)] : (a, b) => { const t = (Number(p.rot) || 0) * Math.PI / 180; return [p.x + a * Math.cos(t) - b * Math.sin(t), p.y + a * Math.sin(t) + b * Math.cos(t)]; };
+    const cw = [[bb[0], bb[1]], [bb[2], bb[1]], [bb[2], bb[3]], [bb[0], bb[3]]].map(([a, b]) => toW(a, b)); wb = [Math.min(...cw.map(q => q[0])) - 0.3, Math.min(...cw.map(q => q[1])) - 0.3, Math.max(...cw.map(q => q[0])) + 0.3, Math.max(...cw.map(q => q[1])) + 0.3];
+    l3b.models.forEach(m => { if (!m.visible || !m.meshes) return; m.meshes.forEach(mesh => { const u = mesh.userData.l3b; if (!u || !u.ranges) return; const boxes = l3bsBoxes(mesh), pos = mesh.geometry.getAttribute("position").array, mo = mesh.position || { x: 0, y: 0, z: 0 };
+      for (let i = 0; i < u.ranges.length && out.length < 400; i++) { if (u.hidden && u.hidden.has(i)) continue; const k = i * 6, x0 = boxes[k] + mo.x + O[0], y0 = boxes[k + 1] + mo.y + O[1], z0 = boxes[k + 2] + mo.z + O[2], x1 = boxes[k + 3] + mo.x + O[0], y1 = boxes[k + 4] + mo.y + O[1], z1b = boxes[k + 5] + mo.z + O[2];
+        if (x1 < wb[0] || x0 > wb[2] || y1 < wb[1] || y0 > wb[3] || z0 >= z1 - 0.01 || z1b <= base + 0.01) continue;
+        const r = u.ranges[i], pts = []; for (let v = r.start; v < r.start + r.count; v += Math.max(1, Math.floor(r.count / 400))) pts.push(toL(pos[v * 3] + mo.x + O[0], pos[v * 3 + 1] + mo.y + O[1])); const h = mkHull(pts); if (h.length >= 3) out.push({ poly: h, name: r.name || "IFC-objekt" }); } }); }); }
+  return out;
+}
+/* Makadamen minus avdragen: { outer/holes via polygon-clipping, area, gross, cuts }. */
+function mkShape(p) {
+  const poly = mkPoly(p); if (!poly) return null; const th = Math.max(0.05, Number(p.H) || 0.3), base = mkBase(p), ring = r => r.map(q => [q[0], q[1]]), area = r => { let a = 0; for (let i = 0; i < r.length; i++) { const A = r[i], B = r[(i + 1) % r.length]; a += A[0] * B[1] - B[0] * A[1]; } return Math.abs(a) / 2; };
+  const gross = area(poly), use = smF(p, "avdrag", "Ja") !== "Nej" && typeof polygonClipping !== "undefined", cuts = use ? mkCuts(p, poly, base, th) : []; let mp = [[ring(poly)]];
+  if (cuts.length) { try { mp = polygonClipping.difference([ring(poly)], ...cuts.map(c => [ring(c.poly)])); } catch (e) { mp = [[ring(poly)]]; } }
+  const closed = r => (r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]) ? r.slice(0, -1) : r; let net = 0; mp.forEach(pg => pg.forEach((r, i) => { const rr = closed(r); net += (i ? -1 : 1) * area(rr); }));
+  return { poly, th, base, gross, net: Math.max(0, net), mp, cuts, cutArea: Math.max(0, gross - net) };
+}
+function mkStats(p, sh) { const dens = MK_DENS[smF(p, "fr", "0–32")] || 2.1, vol = sh.net * sh.th, lose = vol * (1 + smN(p, "pack", 15) / 100); return { vol, lose, ton: vol * dens, dens }; }
+const mkCalc = p => { const sh = mkShape(p); if (!sh) return []; const st = mkStats(p, sh); return [["Yta", smFmt(sh.gross, 1) + " m²"], ["Avdrag", sh.cuts.length ? `${sh.cuts.length} objekt · −${smFmt(sh.cutArea, 1)} m²` : "inga"], ["Netto yta", smFmt(sh.net, 1) + " m²"], ["Volym packad", smFmt(st.vol, 1) + " m³"], ["Att beställa", smFmt(st.lose, 1) + " m³ lös"], ["Vikt", "ca " + smFmt(st.ton, 0) + " ton"]]; };
+function mkBuild(p, c) {
+  const sh = mkShape(p); if (!sh) { (p.pts || []).forEach(q => c.cyl("#f59e0b", "z", q[0] - (Number(p.x) || 0), q[1] - (Number(p.y) || 0), 0.5, 0.12, 0.12, 1, 10)); return; }
+  const fr = smF(p, "fr", "0–32"), col = MK_COL[fr] || "#aaa49a", zb = p.type === "sm:makadamfri" ? sh.base - c.z : 0, th = sh.th, st = mkStats(p, sh), rings = []; sh.mp.forEach(pg => pg.forEach(r => rings.push((r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]) ? r.slice(0, -1) : r)));
+  const xs = sh.poly.map(q => q[0]), minX = Math.min(...xs), maxX = Math.max(...xs), N = Math.max(8, Math.min(140, Math.ceil((maxX - minX) / 0.15))), dx = (maxX - minX) / N; let prev = null, run = null; const runs = [];
+  for (let i = 0; i < N; i++) { const xc = minX + (i + 0.5) * dx, ys = []; rings.forEach(r => { for (let k = 0; k < r.length; k++) { const a = r[k], b = r[(k + 1) % r.length]; if ((a[0] <= xc && b[0] > xc) || (b[0] <= xc && a[0] > xc)) ys.push(a[1] + (xc - a[0]) / (b[0] - a[0]) * (b[1] - a[1])); } }); ys.sort((m, q) => m - q);
+    const iv = []; for (let k = 0; k + 1 < ys.length; k += 2) if (ys[k + 1] - ys[k] > 0.01) iv.push([ys[k], ys[k + 1]]); const key = iv.map(q => q[0].toFixed(2) + "," + q[1].toFixed(2)).join("|");
+    if (run && key === run.key) run.xb = minX + (i + 1) * dx; else { if (run) runs.push(run); run = { key, iv, xa: minX + i * dx, xb: minX + (i + 1) * dx }; } } if (run) runs.push(run);
+  runs.forEach(r => r.iv.forEach(([y0, y1]) => c.prism(col, [[r.xa, y0], [r.xb, y0], [r.xb, y1], [r.xa, y1]], zb, zb + th, { rough: 1 })));
+  // avdragen markeras med en tunn mörk kontur ovanpå (så att man ser vad som sparats ut)
+  sh.cuts.forEach(cu => { const pl = cu.poly; for (let i = 0; i < pl.length; i++) { const a = pl[i], b = pl[(i + 1) % pl.length], dxx = b[0] - a[0], dyy = b[1] - a[1], dd = Math.hypot(dxx, dyy); if (dd < 0.05) continue; const ux = -dyy / dd * 0.02, uy = dxx / dd * 0.02; c.prism("#475569", [[a[0] + ux, a[1] + uy], [b[0] + ux, b[1] + uy], [b[0] - ux, b[1] - uy], [a[0] - ux, a[1] - uy]], zb + th, zb + th + 0.012, { unlit: true }); } });
+  c.card({ title: String(p.name || "Makadam"), icon: "box", color: "#78716c", left: ["m³", smFmt(st.vol, 1)], rows: [["Fraktion", fr + " mm"], ["Tjocklek", smFmt(th * 1000, 0) + " mm"], ["Yta netto", smFmt(sh.net, 1) + " m²" + (sh.cuts.length ? ` (−${sh.cuts.length} objekt)` : "")], ["Beställ / vikt", `${smFmt(st.lose, 1)} m³ lös · ca ${smFmt(st.ton, 0)} ton`]], b0: Math.min(...sh.poly.map(q => q[1])) - 1.2, zb: 2.2 + zb });
 }
 const SM = {
   leverans: { group: "Logistik", label: "Leverans / upplag", color: "#f59e0b", L: 2.4, B: 1.2, H: 1.1, icon: "box", fields: [["innehall", "Innehåll", "text", "HD/F pelare ×12"], ["lev", "Leverantör", "text", ""], ["datum", "Leveransdatum", "date", ""], ["status", "Status", ["Beställd", "På väg", "Levererad"], "Beställd"]],
@@ -108,16 +186,54 @@ const SM = {
       [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sa, sb]) => { const x = sa * (L - 1.4), y = sb * (B - 1.4); c.box("#c2410c", x, y, p.H + 0.06, 1.6, 1.6, 0.12, null, 0.03); c.box("#f97316", x, y, p.H + 0.13, 1.45, 1.45, 0.03, null, 0.015, SMLIT); c.box("#7c2d12", x, y, p.H + 0.15, 0.9, 0.09, 0.02, null, 0, SMLIT); c.box("#7c2d12", x, y, p.H + 0.15, 0.09, 0.9, 0.02, null, 0, SMLIT); });
       for (let i = -L + 0.6; i < L - 0.3; i += 1.2) { c.box("#f8fafc", i, -B + 0.15, p.H + 0.012, 0.6, 0.12, 0.012, null, 0, SMLIT); c.box("#f8fafc", i, B - 0.15, p.H + 0.012, 0.6, 0.12, 0.012, null, 0, SMLIT); }  // kantband
       c.card({ title: "Kranplats", icon: "crane", color: "#ea580c", rows: [["Kran", smF(p, "kran") || "–"], ["Max stödbenskraft", smN(p, "bel", 0) + " kN"], ["Underlag", smF(p, "grund")]], b0: -(B + 0.3) }); } },
-  saxlift: { group: "Lyft & montage", label: "Skylift / saxlift", color: "#16a34a", L: 2.6, B: 1.2, H: 6, icon: "crane", fields: [["hojd", "Arbetshöjd (m)", "num", 8], ["anv", "Används av", "text", ""]],
-    build(p, c) { const wh = Math.max(3, smN(p, "hojd", 8)), top = Math.max(1.3, wh - 1.8 + 0.1), L = p.L / 2, B = p.B / 2, col = "#f59e0b";
-      c.box(col, 0, 0, 0.5, p.L, p.B, 0.5, null, 0.08, { shin: 50 }); c.box("#1f2937", 0, 0, 0.2, p.L - 0.1, p.B - 0.1, 0.16, null, 0.04); [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([a, b]) => smWheel(c, a * (L - 0.45), b * (B + 0.02), 0.3, 0.22));
-      c.box("#111827", L - 0.02, 0, 0.5, 0.04, B * 1.5, 0.32, null, 0.01); c.box("#dc2626", L + 0.01, 0.45, 0.65, 0.03, 0.12, 0.05, null, 0, SMLIT);
-      const n = Math.max(2, Math.round(top / 1.0)), seg = (top - 0.78) / n;                                                                                    // sax: korsade armar
-      for (let i = 0; i < n; i++) { const z0 = 0.78 + i * seg, z1 = z0 + seg, ax = L * 0.62; [-1, 1].forEach(sd => { c.rod("#9ca3af", [-ax, sd * B * 0.55, z0], [ax, sd * B * 0.55, z1], 0.06, 0.06, 6, SMM); c.rod("#9ca3af", [ax, sd * B * 0.55, z0], [-ax, sd * B * 0.55, z1], 0.06, 0.06, 6, SMM); }); c.cyl("#374151", "y", 0, 0, (z0 + z1) / 2, 0.06, 0.06, B * 1.2, 8); }
-      const zt = 0.78 + top; c.box("#9ca3af", 0, 0, zt + 0.05, p.L, p.B, 0.1, null, 0.03, SMM); c.box("#4b5563", 0, 0, zt + 0.11, p.L - 0.1, p.B - 0.1, 0.02, null, 0, { rough: 0.9 });
-      [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([a, b]) => c.cyl(SM_YEL, "z", a * (L - 0.04), b * (B - 0.04), zt + 0.62, 0.025, 0.025, 1.05, 8)); [0.55, 1.0].forEach(h => { c.box(SM_YEL, 0, -B + 0.04, zt + h, p.L - 0.04, 0.045, 0.045, null, 0.01); c.box(SM_YEL, 0, B - 0.04, zt + h, p.L - 0.04, 0.045, 0.045, null, 0.01); c.box(SM_YEL, -L + 0.04, 0, zt + h, 0.045, p.B - 0.04, 0.045, null, 0.01); c.box(SM_YEL, L - 0.04, 0, zt + h, 0.045, p.B - 0.04, 0.045, null, 0.01); });
-      c.box("#374151", L - 0.5, 0, zt + 0.55, 0.28, 0.4, 0.45, null, 0.03); c.box("#2563eb", L - 0.35, 0, zt + 0.62, 0.02, 0.28, 0.2, null, 0, SMLIT);
-      if (smF(p, "anv") || true) c.card({ title: "Lift " + smFmt(wh, 0) + " m", icon: "crane", color: "#d97706", rows: smF(p, "anv") ? [["Används av", smF(p, "anv")]] : [["Arbetshöjd", smFmt(wh, 1) + " m"]], zb: zt + 1.7, b0: -(B + 0.5) }); } },
+  makadam: { group: "Mark & schakt", label: "Makadam", color: "#a8a29e", L: 12, B: 8, H: 0.3, icon: "box", fields: MK_FIELDS(false), calc: mkCalc, build: mkBuild },
+  makadamfri: { group: "Mark & schakt", label: "Makadam (fri form)", color: "#a8a29e", path: true, H: 0.3, icon: "box", fields: MK_FIELDS(true), calc: mkCalc, build: mkBuild },
+  saxlift: { group: "Lyft & montage", label: "Skylift / saxlift", color: "#16a34a", L: 2.6, B: 1.2, H: 6, icon: "crane", fields: [["H", "Plattformens höjd", "range", 6, { min: 1.2, max: 20, step: 0.5, unit: "m", dim: true }], ["anv", "Används av", "text", ""]],
+    build(p, c) { const L = p.L / 2, B = p.B / 2, top = Math.max(1.2, Math.min(22, Number(p.H) || 6)), col = p.color || "#16a34a", STEEL = "#6f7d8c", PIN = "#3b4552", z0 = 0.66;
+      // chassi med kåpor, hjul, blinkers, stege och batterilucka
+      c.box("#2b3138", 0, 0, 0.3, p.L, p.B, 0.3, null, 0.05, { rough: 0.7 }); c.box(col, 0, 0, 0.5, p.L - 0.1, p.B - 0.06, 0.28, null, 0.09, { shin: 70 }); c.box("#e5e7eb", 0, 0, 0.665, p.L - 0.16, p.B - 0.14, 0.03, null, 0.02, { rough: 0.5 });
+      [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([a, b]) => smWheel(c, a * (L - 0.5), b * (B + 0.0), 0.3, 0.2)); c.box("#111827", L - 0.015, 0, 0.5, 0.03, B * 1.4, 0.3, null, 0.01); c.box("#f8fafc", -L + 0.012, 0, 0.5, 0.025, B * 0.9, 0.12, null, 0.01, SMLIT);
+      c.cyl("#f59e0b", "z", L - 0.3, B - 0.2, 0.72, 0.07, 0.07, 0.1, 12, null, SMLIT); c.cyl("#fbbf24", "z", L - 0.3, B - 0.2, 0.8, 0.05, 0.05, 0.06, 12, null, SMLIT);
+      [-1, 1].forEach(sd => c.rod("#cbd5e1", [-L - 0.1, sd * 0.22, 0.12], [-L - 0.1, sd * 0.22, 0.62], 0.018, 0.018, 6, SMM)); for (let h = 0.2; h < 0.6; h += 0.14) c.rod("#cbd5e1", [-L - 0.1, -0.22, h], [-L - 0.1, 0.22, h], 0.014, 0.014, 6, SMM);
+      // sax: balkpar som korsar varandra, med leder, tvärrör och hydraulcylinder – antalet nivåer följer höjden
+      const zt = top, span = Math.max(0.5, zt - z0 - 0.1), n = Math.max(2, Math.min(12, Math.round(span / 1.0))), seg = span / n, ax = L * 0.72;
+      for (let i = 0; i < n; i++) { const za = z0 + i * seg, zb = za + seg;
+        [-1, 1].forEach(sd => { const y = sd * (B * 0.62); c.beam(STEEL, [-ax, y, za], [ax, y, zb], 0.09, 0.13, SMM); c.beam(STEEL, [ax, y, za], [-ax, y, zb], 0.09, 0.13, SMM); c.cyl(PIN, "y", 0, y, (za + zb) / 2, 0.065, 0.065, 0.16, 10, null, SMM); });
+        c.cyl(PIN, "y", 0, 0, (za + zb) / 2, 0.05, 0.05, B * 1.3, 8, null, SMM); [-1, 1].forEach(sx => c.cyl(PIN, "y", sx * ax, 0, zb, 0.05, 0.05, B * 1.3, 8, null, SMM)); }
+      [-1, 1].forEach(sx => c.cyl(PIN, "y", sx * ax, 0, z0, 0.05, 0.05, B * 1.3, 8, null, SMM));
+      c.rod("#9aa4b0", [-ax * 0.95, 0, z0 + 0.1], [0, 0, z0 + seg * 0.55], 0.075, 0.075, 12, SMM); c.rod("#d1d5db", [-ax * 0.2, 0, z0 + seg * 0.4], [0, 0, z0 + seg * 0.55], 0.045, 0.045, 10, SMM);
+      // plattform: bottenplatta, utskjutande däck, ledstänger, sparkplåt, grind med kätting, manöverlåda med nödstopp
+      c.box("#8d96a1", 0, 0, zt - 0.05, p.L, p.B, 0.1, null, 0.03, SMM); c.box("#4b5563", 0, 0, zt + 0.005, p.L - 0.12, p.B - 0.1, 0.02, null, 0, { rough: 0.9 }); c.box("#a7b0ba", L + 0.34, 0, zt - 0.06, 0.62, p.B - 0.1, 0.06, null, 0.02, SMM);
+      const post = (x, y) => c.cyl(col, "z", x, y, zt + 0.55, 0.025, 0.025, 1.1, 8, null, SMM), rail = (a, b, h) => c.rod(col, [a[0], a[1], zt + h], [b[0], b[1], zt + h], 0.022, 0.022, 8, SMM);
+      const C = [[-L + 0.03, -B + 0.03], [L + 0.62, -B + 0.03], [L + 0.62, B - 0.03], [-L + 0.03, B - 0.03]]; C.forEach(q => post(q[0], q[1])); [0.55, 1.08].forEach(h => { for (let i = 0; i < 4; i++) { if (i === 3 && h === 0.55) continue; rail(C[i], C[(i + 1) % 4], h); } });
+      post((L + 0.62 + -L) / 2 + 0.3, -B + 0.03); post((L + 0.62 + -L) / 2 + 0.3, B - 0.03);
+      for (let i = 0; i < 4; i++) { const a = C[i], b = C[(i + 1) % 4], dx = b[0] - a[0], dy = b[1] - a[1], dd = Math.hypot(dx, dy); c.beam("#cbd5e1", [a[0], a[1], zt + 0.1], [b[0], b[1], zt + 0.1], 0.012, 0.14, SMM); }
+      c.rod("#6b7280", [-L + 0.03, -B * 0.35, zt + 0.95], [-L + 0.03, B * 0.35, zt + 0.5], 0.01, 0.01, 4); c.box("#374151", L * 0.2, -B + 0.07, zt + 0.82, 0.3, 0.14, 0.22, null, 0.02); c.cyl("#dc2626", "y", L * 0.2 - 0.07, -B + 0.15, zt + 0.9, 0.03, 0.03, 0.03, 10, null, SMLIT); c.cyl("#111827", "z", L * 0.2 + 0.05, -B + 0.07, zt + 0.98, 0.012, 0.012, 0.1, 8);
+      c.card({ title: "Lift " + smFmt(top + 1.8, 0) + " m", icon: "crane", color: "#d97706", rows: smF(p, "anv") ? [["Används av", smF(p, "anv")], ["Plattformshöjd", smFmt(top, 1) + " m"]] : [["Arbetshöjd", smFmt(top + 1.8, 1) + " m"], ["Plattformshöjd", smFmt(top, 1) + " m"]], zb: zt + 1.7, b0: -(B + 0.6) }); } },
+  bomlift: { group: "Lyft & montage", label: "Bomlift", color: "#f59e0b", L: 3.2, B: 1.9, H: 12, icon: "crane", fields: [["H", "Plattformens höjd", "range", 12, { min: 3, max: 40, step: 0.5, unit: "m", dim: true }], ["utskjut", "Utskjut från centrum", "range", 0, { min: 0, max: 30, step: 0.5, unit: "m" }], ["anv", "Används av", "text", ""]],
+    build(p, c) { const L = p.L / 2, B = p.B / 2, top = Math.max(3, Math.min(45, Number(p.H) || 12)), col = p.color || "#f59e0b", STEEL = "#cbd5e1", DARK = "#1f2937", PIN = "#4b5563", RED = "#dc2626", tz = 0.95;
+      // chassi, bandhjul/hjul, stödben, vridkrans och motviktskåpa
+      c.box("#2b3138", 0, 0, 0.45, p.L, p.B * 0.78, 0.4, null, 0.07, { rough: 0.7 }); [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([a, b]) => smWheel(c, a * (L - 0.55), b * (B * 0.78 / 2 + 0.12), 0.42, 0.34));
+      [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([a, b]) => { const x = a * (L - 0.15), y = b * (B * 0.78 / 2 + 0.5); c.rod("#f59e0b", [a * (L - 0.45), b * B * 0.3, 0.55], [x, y, 0.32], 0.045, 0.045, 8); c.box("#374151", x, y, 0.04, 0.34, 0.34, 0.08, null, 0.02); c.cyl("#9ca3af", "z", x, y, 0.2, 0.04, 0.04, 0.28, 8, null, SMM); });
+      c.cyl(col, "z", -0.1, 0, 0.78, 0.82, 0.82, 0.3, 28, null, { shin: 70 }); c.cyl("#d1d5db", "z", -0.1, 0, 0.94, 0.6, 0.6, 0.04, 24, null, SMM); c.box(col, -L * 0.78, 0, 0.98, 0.9, p.B * 0.72, 0.55, null, 0.1, { shin: 70 }); c.box("#111827", -L * 0.78 - 0.455, 0, 0.98, 0.02, p.B * 0.5, 0.2, null, 0.01);
+      c.cyl("#f59e0b", "z", -L * 0.78, B * 0.28, 1.34, 0.07, 0.07, 0.1, 12, null, SMLIT);
+      // bomgeometri ur höjd och utskjut: nedre bom (brant), vågrät led, övre bom (sluttande) och korgen
+      const px = -0.3, delta = Math.max(1.2, top - tz - 0.9), a1 = 78 * Math.PI / 180, a3 = 46 * Math.PI / 180, dz1 = delta * 0.58, dz3 = delta - dz1, x1 = dz1 / Math.tan(a1), x3 = dz3 / Math.tan(a3), R = smN(p, "utskjut", 0) || Math.max(x1 + x3 + 0.6, top * 0.32), l2 = Math.max(0.35, R - x1 - x3);
+      const P0 = [px, 0, tz], P1 = [px + x1, 0, tz + dz1], P2 = [P1[0] + l2, 0, P1[2]], P3 = [P2[0] + x3, 0, P2[2] + dz3], lerp = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+      c.box("#6b7280", px, 0, tz + 0.1, 0.5, 0.62, 0.25, null, 0.04, SMM);                                                                                                // tornfäste
+      c.beam(col, P0, lerp(P0, P1, 0.62), 0.5, 0.46, { shin: 70 }); c.beam("#e5e7eb", lerp(P0, P1, 0.55), P1, 0.4, 0.36, { shin: 70 });                                 // nedre bom, två sektioner
+      c.cyl(PIN, "y", P1[0], 0, P1[2], 0.24, 0.24, 0.58, 16, null, SMM);                                                                                                   // led
+      c.beam(col, P1, lerp(P1, P2, 0.6), 0.42, 0.4, { shin: 70 }); c.beam("#e5e7eb", lerp(P1, P2, 0.5), P2, 0.34, 0.32, { shin: 70 }); c.cyl(PIN, "y", P2[0], 0, P2[2], 0.2, 0.2, 0.5, 16, null, SMM);  // vågrät arm
+      c.beam(col, P2, lerp(P2, P3, 0.55), 0.38, 0.36, { shin: 70 }); c.beam("#e5e7eb", lerp(P2, P3, 0.5), P3, 0.3, 0.28, { shin: 70 });                                // övre bom
+      c.rod("#d1d5db", lerp(P0, P1, 0.18).map((v, i) => i === 1 ? -0.34 : v), [px - 0.5, -0.34, tz - 0.05], 0.06, 0.06, 10, SMM); c.rod("#9aa4b0", lerp(P0, P1, 0.18).map((v, i) => i === 1 ? -0.34 : v), [px - 0.5, -0.34, tz - 0.05], 0.09, 0.09, 10, SMM);   // lyftcylinder
+      c.rod("#d1d5db", lerp(P1, P2, 0.1).map((v, i) => i === 1 ? 0.3 : v), lerp(P2, P3, 0.3).map((v, i) => i === 1 ? 0.3 : v), 0.035, 0.035, 8, SMM);
+      // korg i änden av övre bomen: hängare, golv, ledstänger, grind, manöverlåda
+      const bx = P3[0] + 0.3, zt = top; c.cyl(PIN, "y", P3[0], 0, P3[2], 0.12, 0.12, 0.4, 12, null, SMM); c.beam("#6b7280", [P3[0], 0, P3[2]], [bx - 0.35, 0, zt + 0.5], 0.1, 0.08, SMM); c.beam("#6b7280", [bx - 0.35, 0, zt + 0.5], [bx - 0.35, 0, zt], 0.1, 0.08, SMM);
+      c.box("#8d96a1", bx, 0, zt - 0.05, 1.5, 0.9, 0.1, null, 0.03, SMM); c.box("#4b5563", bx, 0, zt + 0.005, 1.4, 0.8, 0.02, null, 0, { rough: 0.9 });
+      const C = [[bx - 0.72, -0.43], [bx + 0.72, -0.43], [bx + 0.72, 0.43], [bx - 0.72, 0.43]], post = q => c.cyl(col, "z", q[0], q[1], zt + 0.55, 0.025, 0.025, 1.1, 8, null, SMM); C.forEach(post); [0.55, 1.08].forEach(h => { for (let i = 0; i < 4; i++) { if (i === 3 && h === 0.55) continue; c.rod(col, [C[i][0], C[i][1], zt + h], [C[(i + 1) % 4][0], C[(i + 1) % 4][1], zt + h], 0.022, 0.022, 8, SMM); } });
+      for (let i = 0; i < 4; i++) c.beam("#cbd5e1", [C[i][0], C[i][1], zt + 0.1], [C[(i + 1) % 4][0], C[(i + 1) % 4][1], zt + 0.1], 0.012, 0.14, SMM);
+      c.box("#374151", bx + 0.55, -0.4, zt + 0.82, 0.3, 0.14, 0.22, null, 0.02); c.cyl(RED, "y", bx + 0.5, -0.33, zt + 0.9, 0.03, 0.03, 0.03, 10, null, SMLIT);
+      c.card({ title: "Bomlift " + smFmt(top + 1.8, 0) + " m", icon: "crane", color: "#d97706", rows: smF(p, "anv") ? [["Används av", smF(p, "anv")], ["Plattformshöjd", smFmt(top, 1) + " m"], ["Utskjut", smFmt(R, 1) + " m"]] : [["Arbetshöjd", smFmt(top + 1.8, 1) + " m"], ["Plattformshöjd", smFmt(top, 1) + " m"], ["Utskjut", smFmt(R, 1) + " m"]], zb: top + 1.9, b0: -(B + 0.6) }); } },
   riskzon: { group: "Risk & säkerhet", label: "Riskzon", color: "#ef4444", L: 10, B: 6, H: 0.08, icon: "warn", fields: [["risk", "Risk", "text", "Lyft över arbetsplats"], ["atg", "Åtgärd / regel", "text", "Inget tillträde under lyft"], ["ans", "Ansvarig", "text", ""]],
     build(p, c) { const L = p.L / 2, B = p.B / 2;
       c.box("#ef4444", 0, 0, p.H / 2, p.L, p.B, p.H, null, 0.01, { transp: 0.68, unlit: true });

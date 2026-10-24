@@ -297,6 +297,7 @@ function l3Dom() {
       <div class="v3-pal ${P.pal ? "" : "hidden"}" id="v3Pal">
         <div class="v3-pal-head"><div class="v3-segs v3-paltabs"><button type="button" data-paltab="layers" class="${P.palTab === "layers" || P.palTab === "list" ? "on" : ""}">Lager</button><button type="button" data-paltab="props" class="${P.palTab === "props" ? "on" : ""}" title="Gruppera och färga IFC-objekten efter egenskaper (UDA)">Egenskaper</button><button type="button" data-paltab="groups" class="${P.palTab === "groups" ? "on" : ""}" title="Dina egna grupper av IFC-objekt (t.ex. Bandgång 1)">Grupper</button><button type="button" data-paltab="comments" class="${P.palTab === "comments" ? "on" : ""}" title="Kommentarerna och måtten i 3D – sök, färg, mappar, export">Kommentarer &amp; mått</button><button type="button" data-paltab="add" class="${(P.palTab || "add") === "add" ? "on" : ""}" title="Färdiga objekt att placera ut – etablering, maskiner, säkerhet och egna modeller">3D-bibliotek</button><button type="button" data-paltab="plan" class="${P.palTab === "plan" ? "on" : ""}" title="Powerproject-tidplanen: tavlan med lapparna, Gantt och film">4D-planering</button></div><button type="button" id="v3PalClose" title="Dölj menyn (Ctrl+B)">‹</button></div>
         <div id="v3PalAdd" class="v3-paltab ${(P.palTab || "add") === "add" ? "" : "hidden"}">
+          <label class="v3-lib-sw" title="Släck eller tänd alla objekt du placerat (staket, bodar, kranar, bemanning …) – inget raderas"><span class="v3-lib-sw-t"><b>Placerade objekt</b><em id="v3PlacedSwT">Visas</em></span><input type="checkbox" id="v3PlacedSw" role="switch" ${P.placedOn === false ? "" : "checked"} /><i class="v3-lib-sw-k"></i></label>
           <input type="search" id="v3PalSearch" placeholder="Sök…" />
           <div id="v3Lib"></div>
           <button type="button" id="v3GetModel" class="v3-wide" title="Hämta en 3D-modell från Sketchfab, projektets mappar i Trimble Connect eller en fil – den hamnar under Egna modeller">＋ Hämta modell…</button>
@@ -833,6 +834,7 @@ function l3RebuildOne(p) {
   if (l3.hidden && l3.hidden.has(p.id)) g.visible = false;
   l3RefreshSel();
   l3Render();
+  if (typeof l3MkRefresh === "function") l3MkRefresh(p); // makadamen räknar om avdragen när ett objekt i den flyttas
 }
 function l3AddPlacementMesh(p) { const g = l3PlacementGroup(p); l3.groups.places.add(g); l3.placeMeshes.set(p.id, g); l3RenderObjList(); return g; }
 
@@ -1423,7 +1425,7 @@ function l3RenderLabels() {
   if (!l3Prefs().labels || !l3.placeMeshes.size) { host.innerHTML = ""; return; }
   const r = l3.renderer.domElement.getBoundingClientRect(), cam = l3.camera.position;
   const list = placements.map(p => {
-    const g = l3.placeMeshes.get(p.id); if (!g || !g.visible) return null; // dolda (H/I) har ingen etikett
+    const g = l3.placeMeshes.get(p.id); if (!g || !g.visible || l3.groups.places.visible === false) return null; // dolda (H/I) och släckta placerade objekt har ingen etikett
     const v = new THREE.Vector3(g.position.x, g.position.y, g.position.z + l3PlaceHeight(p) + 0.6);
     return { p, v, d: v.distanceTo(cam) };
   }).filter(Boolean).sort((a, b) => a.d - b.d).slice(0, 80);

@@ -103,6 +103,7 @@ function l3UiInit(box) {
   l3UiItems().forEach((el, i) => { el.dataset.i0 = i; });
   l3UiTips();
   l3UiTabs(box);
+  { const sw = box.querySelector("#v3PlacedSw"); if (sw) sw.onchange = () => l3PlacedShow(sw.checked); }
   // Flytt av knappar och rutor (när upplåst) – före allt annat så att inget klick går igenom
   // verktygstips: ett flytande tips som aldrig klipps av raden
   { const tb = mk("div", null, "v3-tipbox"); box.appendChild(tb); let tm = 0;
@@ -123,6 +124,7 @@ function l3UiInit(box) {
 /* Efter att renderaren finns: vykuben följer kameran. */
 function l3UiLate() {
   if (!l3ui || l3ui.late) return; l3ui.late = true;
+  l3PlacedShow(l3Prefs().placedOn !== false, true);
   l3.orbit.addEventListener("change", l3UiCube);
   l3UiCube();
   // radialmenyn: håll mittenknappen stilla en sekund så kommer den fram vid markören (Victor 2026-10-24)
@@ -364,4 +366,15 @@ function l3UiOrigPill() {
   if (!on) { if (p) p.remove(); return; }
   if (!p) { p = document.createElement("div"); p.id = "v3OrigPill"; p.className = "v3-orig-pill"; l3ui.canvas.appendChild(p); p.addEventListener("pointerdown", e => e.stopPropagation()); p.onclick = e => { if (e.target.closest("[data-orig-off]")) l3Original(false); }; }
   p.innerHTML = `<span class="v3-ui-dot"></span><b>Originalvy</b><span class="v3-ui-sub">modellerna utan tidplan och filter</span><button type="button" data-orig-off="1" aria-label="Tillbaka till 4D-färgerna" title="Tillbaka till 4D-färgerna">✕</button>`;
+}
+
+/* Switchen överst i 3D-biblioteket (Victor 2026-10-24): släcker/tänder alla placerade objekt på en gång. Inget raderas eller ändras; släckta objekt går inte att markera. */
+function l3PlacedShow(on, quiet) {
+  if (!l3 || !l3.groups || !l3.groups.places) return;
+  l3.groups.places.visible = !!on; l3SetPref("placedOn", !!on);
+  const sw = document.getElementById("v3PlacedSw"), t = document.getElementById("v3PlacedSwT"); if (sw) sw.checked = !!on; if (t) t.textContent = on ? "Visas" : "Släckta";
+  if (!on && l3.sel && l3.sel.size) l3SelectIds([]);
+  if (typeof l3RenderLabels === "function") l3RenderLabels();
+  if (typeof l3Render === "function") l3Render();
+  if (!quiet && typeof l3Status === "function") l3Status(on ? "Placerade objekt visas." : "Placerade objekt är släckta – tänd dem igen med switchen i 3D-biblioteket.");
 }

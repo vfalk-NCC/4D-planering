@@ -112,6 +112,10 @@ function smMakeCtx(p, z, col) {
     lathe: (color, profile, cx, cy, cz, seg, rot, o) => TK.add(ctx.T(color, o), TK.lathe(profile, seg || 14), cx, cy, cz, rot),
     rod: (color, a, b, r0, r1, seg, o) => TK.add(ctx.T(color, o), TK.rod(a, b, r0, r1 == null ? r0 : r1, seg || 8), 0, 0, 0),
     prism: (color, poly, z0, z1, o) => TK.add(ctx.T(color, o), TK.prism(poly, z0, z1), 0, 0, 0),
+    /* Rektangulär balk (bredd w sidled, höjd h vinkelrätt) mellan två punkter – för bommar, saxarmar och tvärstag. */
+    beam: (color, a, b, w, h, o) => { const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L = Math.hypot(d[0], d[1], d[2]) || 1e-6, n = d.map(v => v / L); let sd = [-n[1], n[0], 0]; const sl = Math.hypot(sd[0], sd[1]); sd = sl < 1e-6 ? [0, 1, 0] : [sd[0] / sl, sd[1] / sl, 0];
+      const u = [n[1] * sd[2] - n[2] * sd[1], n[2] * sd[0] - n[0] * sd[2], n[0] * sd[1] - n[1] * sd[0]], pts = []; [a, b].forEach(P => [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([i, j]) => pts.push([P[0] + sd[0] * i * w / 2 + u[0] * j * h / 2, P[1] + sd[1] * i * w / 2 + u[1] * j * h / 2, P[2] + sd[2] * i * w / 2 + u[2] * j * h / 2])));
+      const g = { pts, faces: [[1, 3, 2], [1, 4, 3], [5, 6, 7], [5, 7, 8], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 4, 8], [3, 8, 7], [4, 1, 5], [4, 5, 8]] }; if (TK.volume(g) < 0) g.faces = g.faces.map(f => [f[0], f[2], f[1]]); return TK.add(ctx.T(color, o), g, 0, 0, 0); },
     card: s => smCard(ctx, ctx.withDate(s)), withDate: s => s,
     flush: () => { Ts.forEach(T => { if (!T.faces.length) return; const pts = T.loc.map(([a, b, zz]) => { const w = W(a, b); return [w[0], w[1], z + zz]; }), xs = pts.map(q => q[0]), ys = pts.map(q => q[1]), zs = pts.map(q => q[2]);
       parts.push({ tris: { pts, faces: T.faces, sg: T.sg }, poly: [[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)], [Math.min(...xs), Math.max(...ys)]], z0: Math.min(...zs), z1: Math.max(...zs), role: T.role || "body", transp: T.transp || 0, color: T.color, unlit: !!T.unlit, mat: { shin: T.shin, metal: T.metal, rough: T.rough } }); }); Ts.clear(); return parts; } };
@@ -151,8 +155,9 @@ function smartSideHtml(p) {
   const d = SM[String(p.type).slice(3)]; if (!d || !(d.fields || []).length) return "";
   const esc = typeof escHtml === "function" ? escHtml : s => String(s);
   const row = ([k, lab, type, def, o]) => { const v = smF(p, k, def == null ? "" : def); o = o || {};
+    if (type === "gjprof") { const has = !!(typeof gjutProfGet === "function" && gjutProfGet(p)); return `<div class="v3-field v3-gj-prof"><span>${esc(lab)}</span><div class="v3-gj-btns"><button type="button" data-gjdraw="1" class="v3-wide">${has ? "Rita om med frihand" : "Rita med frihand"}</button>${has ? `<button type="button" data-gjclear="1" class="v3-wide">Rensa</button>` : ""}</div><small>${has ? "Botten följer din linje." : "Rita längs sidan i modellen – formen skärs efter linjen (t.ex. mot berg)."}</small></div>`; }
     if (type === "calc") { const rows = typeof d.calc === "function" ? d.calc(p) : []; return `<div class="v3-sm-calc"><div class="v3-sm-calc-h">${esc(lab)}</div>${rows.map(([a, b2]) => `<div><span>${esc(a)}</span><b>${esc(b2)}</b></div>`).join("")}</div>`; }
-    if (type === "range") { const n = smN(p, k, Number(def) || 0), u = o.unit || ""; return `<label class="v3-field v3-sm-range"><span>${esc(lab)} <b data-smv="${k}">${esc(smFmt(n, 2))} ${esc(u)}</b></span><input type="range" data-smf="${k}" min="${o.min}" max="${o.max}" step="${o.step || 1}" value="${n}" data-u="${esc(u)}" /></label>`; }
+    if (type === "range") { const n = o.dim ? (Number(p[k]) || Number(def) || 0) : smN(p, k, Number(def) || 0), u = o.unit || ""; return `<label class="v3-field v3-sm-range"><span>${esc(lab)} <b data-smv="${k}">${esc(smFmt(n, 2))} ${esc(u)}</b></span><input type="range" ${o.dim ? "data-smd" : "data-smf"}="${k}" min="${o.min}" max="${o.max}" step="${o.step || 1}" value="${n}" data-u="${esc(u)}" /></label>`; }
     const list = Array.isArray(type) ? type : type === "kran" ? SM_KRAN() : null;
     if (list) { let items = list.map(x => Array.isArray(x) ? x : [x, x]); if (v !== "" && type !== "kran" && !items.some(x => String(x[0]) === String(v))) items = [...items, [v, String(v)]];
       if (o.seg && type !== "kran") return `<div class="v3-field"><span>${esc(lab)}</span><div class="v3-segs v3-sm-seg" data-smseg="${k}">${items.map(([val, t]) => `<button type="button" data-v="${esc(val)}" class="${String(val) === String(v) ? "on" : ""}">${esc(t)}</button>`).join("")}</div></div>`;
@@ -166,7 +171,11 @@ function smartBindSide(side, p, redraw) {
   const d = SM[String(p.type).slice(3)]; if (!d) return;
   smDateBind(side, p, redraw);
   const live = (k, v) => { p.f = p.f || {}; p.f[k] = v; };
+  side.querySelectorAll("[data-gjdraw]").forEach(b => { b.onclick = () => { if (typeof l3gpStart === "function") l3gpStart(p); }; });
+  side.querySelectorAll("[data-gjclear]").forEach(b => { b.onclick = () => { if (typeof l3gpClear === "function") l3gpClear(p); }; });
   side.querySelectorAll("[data-smseg]").forEach(g => g.querySelectorAll("button").forEach(b => { b.onclick = () => { placeSnapshot(); live(g.dataset.smseg, b.dataset.v); placeTouch(p); redraw(); }; }));
+  side.querySelectorAll("[data-smd]").forEach(el => { const k = el.dataset.smd, upd = () => { const bd = side.querySelector(`[data-smv="${k}"]`); if (bd) bd.textContent = smFmt(Number(el.value), 2) + " " + (el.dataset.u || ""); };
+    el.oninput = () => { p[k] = Number(el.value); upd(); if (typeof l3RebuildOne === "function") { l3RebuildOne(p); } }; el.onchange = () => { placeSnapshot(); p[k] = Number(el.value); placeTouch(p); redraw(); if (typeof l3Changed === "function") l3Changed(); }; });
   let lt = 0; side.querySelectorAll("[data-smf]").forEach(el => { el.onchange = () => { placeSnapshot(); live(el.dataset.smf, el.value); placeTouch(p); redraw(); };
     if (el.tagName === "INPUT") el.addEventListener("input", () => { live(el.dataset.smf, el.value); if (el.type === "range") { const bd = side.querySelector(`[data-smv="${el.dataset.smf}"]`); if (bd) bd.textContent = smFmt(Number(el.value), 2) + " " + (el.dataset.u || ""); } clearTimeout(lt); lt = setTimeout(() => { placeTouch(p); if (typeof l3RebuildOne === "function") { l3RebuildOne(p); if (typeof l3Changed === "function") l3Changed(); } }, el.type === "range" ? 60 : 250); }); });
 }
