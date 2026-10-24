@@ -773,8 +773,11 @@ function l3PlacementGroup(p) {
   grp.userData.placeId = p.id;
   const lib = placeLib(p.type) || {};
   const z = (Number(p.z) || 0) + (Number(p.dz) || 0);
+  const op = Math.min(1, Math.max(0.05, Number(p.opacity) || 1)), tint = p.color && lib.color && !lib.isModel && String(p.color).toLowerCase() !== String(lib.color).toLowerCase() ? new THREE.Color(p.color) : null;
   const add = (geo, color, transp) => {
-    const mat = new THREE.MeshLambertMaterial({ color: new THREE.Color(color), transparent: transp > 0, opacity: 1 - (transp || 0), depthWrite: !(transp > 0.5), side: THREE.DoubleSide });
+    let c = new THREE.Color(color);
+    if (tint && !(transp > 0)) { const hs = {}, hp = {}; tint.getHSL(hs); c.getHSL(hp); if (hp.l > 0.16 && hp.l < 0.92 && !(hp.s < 0.08 && (hp.l < 0.3 || hp.l > 0.8))) c.setHSL(hs.h, hs.s, hp.l); }   // färgväljaren färgar hela objektet men behåller delarnas ljushet (däck, glas och vitt står kvar)
+    const mat = new THREE.MeshLambertMaterial({ color: c, transparent: transp > 0 || op < 1, opacity: (1 - (transp || 0)) * op, depthWrite: !(transp > 0.5 || op < 0.6), side: THREE.DoubleSide });
     const m = new THREE.Mesh(geo, mat); m.userData.placeId = p.id; m.userData.mat0 = { t: mat.transparent, o: mat.opacity, d: mat.depthWrite }; grp.add(m); return m;
   };
   const prism = (poly, z0, z1) => {
@@ -1369,7 +1372,9 @@ function l3RenderSide(liveOnly) {
     ${lib.crew && typeof crewSideHtml === "function" ? crewSideHtml(p) : ""}${lib.smart && typeof smartSideHtml === "function" ? smartSideHtml(p) : ""}
     <div class="v3-sec">Mått</div>
     <div class="v3-grid">${lib.isModel ? (A && A.kind === "mesh" ? f("mH", "Höjd", "0.1", mH) : `<div class="v3-sub">${typeof placeModelDims === "function" ? escHtml(placeModelDims(p)) : ""}</div>`) : lib.fence ? f("H", "Höjd") : f("L", "Längd") + f("B", "Bredd") + f("H", "Höjd")}
-      ${lib.R ? f("R", "Räckvidd", "1") : ""}${!lib.isModel ? `<label><span>Färg</span><input type="color" data-v3f="color" value="${col}" /></label>` : ""}</div>
+      ${lib.R ? f("R", "Räckvidd", "1") : ""}</div>
+    ${!lib.isModel ? `<div class="v3-sec">Utseende</div><div class="v3-look"><label class="v3-look-c"><span>Färg</span><input type="color" data-v3f="color" value="${col}" /></label>
+      <label class="v3-look-o"><span>Genomskinlighet <b data-v3ov>${Math.round((1 - (Number(p.opacity) || 1)) * 100)} %</b></span><input type="range" min="0" max="90" step="5" data-v3o value="${Math.round((1 - (Number(p.opacity) || 1)) * 100)}" /></label></div>` : ""}
     <div class="v3-sec">4D</div>
     <label class="v3-field"><span>Aktivitet</span><select data-v3f="itemId"><option value="">– ingen –</option>${itemOpts.map(r => `<option value="${escHtml(r.id)}" ${r.id === p.itemId ? "selected" : ""}>${escHtml(r.object_name || r.activity || r.id)}${r.start_date ? ` (${r.start_date} – ${r.end_date || ""})` : ""}</option>`).join("")}</select></label>
     <div class="v3-grid">${["start", "end"].map(k => `<label><span>${k === "start" ? "Start" : "Slut"}</span><input type="date" data-v3f="${k}" value="${p[k] || ""}" /></label>`).join("")}</div>
@@ -1379,6 +1384,10 @@ function l3RenderSide(liveOnly) {
       <button type="button" id="v3Del" class="v3-danger" title="Ta bort (Delete) – kan ångras">${L3_ICO.trash}Ta bort</button>
       <button type="button" id="v3SpCopy" title="Kopiera i rad, runt en punkt eller speglat">Kopiera special</button>
       <button type="button" id="v3SpMove" title="Flytta exakt dX/dY/dZ, vrid kring en punkt eller spegla">Flytta special</button></div>`;
+  { let lt = 0; const live = () => { clearTimeout(lt); lt = setTimeout(() => { placeTouch(p); l3RebuildOne(p); l3Changed(); }, 60); };
+    const ci = side.querySelector('[data-v3f="color"]'), oi = side.querySelector("[data-v3o]");
+    if (ci) ci.oninput = () => { if (!ci._snap) { placeSnapshot(); ci._snap = true; } p.color = ci.value; const chip = side.querySelector(".v3-chip"); if (chip) chip.style.background = ci.value; live(); };
+    if (oi) oi.oninput = () => { if (!oi._snap) { placeSnapshot(); oi._snap = true; } p.opacity = Math.round((1 - Number(oi.value) / 100) * 100) / 100; if (p.opacity >= 1) delete p.opacity; const b = side.querySelector("[data-v3ov]"); if (b) b.textContent = oi.value + " %"; live(); }; }
   side.querySelectorAll("[data-v3f]").forEach(inp => {
     const k = inp.dataset.v3f;
     inp.onchange = () => {

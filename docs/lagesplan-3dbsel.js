@@ -97,6 +97,20 @@ function l3bsEdgesLater(work) {
   };
   step();
 }
+/* Yttre glöd runt de markerade IFC-objekten: samma stencil-mask + inverterade skal som för placerade objekt (l3SelDeco). */
+function l3bsHalo(mesh, g) {
+  const pos = g.getAttribute("position"), idx = g.index; if (!pos || !idx || typeof L3_HALO_MAT !== "function") return;
+  const key = i => Math.round(pos.getX(i) * 500) + "," + Math.round(pos.getY(i) * 500) + "," + Math.round(pos.getZ(i) * 500), acc = new Map(), ia = idx.array, kk = new Array(ia.length);
+  for (let t = 0; t + 2 < ia.length; t += 3) {
+    const a = ia[t], b = ia[t + 1], c = ia[t + 2], ux = pos.getX(b) - pos.getX(a), uy = pos.getY(b) - pos.getY(a), uz = pos.getZ(b) - pos.getZ(a), vx = pos.getX(c) - pos.getX(a), vy = pos.getY(c) - pos.getY(a), vz = pos.getZ(c) - pos.getZ(a), nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (let k = 0; k < 3; k++) { const q = key(ia[t + k]); kk[t + k] = q; const v = acc.get(q); if (v) { v[0] += nx; v[1] += ny; v[2] += nz; } else acc.set(q, [nx, ny, nz]); }
+  }
+  const nor = new Float32Array(pos.count * 3);
+  for (let i = 0; i < ia.length; i++) { const v = acc.get(kk[i]), l = Math.hypot(v[0], v[1], v[2]) || 1, o = ia[i] * 3; nor[o] = v[0] / l; nor[o + 1] = v[1] / l; nor[o + 2] = v[2] / l; }
+  const hg = new THREE.BufferGeometry(); hg.setAttribute("position", pos); hg.setAttribute("normal", new THREE.BufferAttribute(nor, 3)); hg.setIndex(idx); hg.computeBoundingSphere();
+  const h = new THREE.Mesh(hg, L3_HALO_MAT()), m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp }));
+  [h, m].forEach(x => { x.userData.noHit = true; x.userData.bsel = true; x.userData.selHalo = true; x.userData.bselFill = true; x.raycast = () => {}; x.frustumCulled = false; mesh.add(x); l3bs.ov.push(x); }); h.renderOrder = 7; m.renderOrder = 6;
+}
 function l3bsRebuild() {
   l3bsDropOverlays();
   const byMesh = new Map();
@@ -118,9 +132,11 @@ function l3bsRebuild() {
     g.setIndex(new THREE.BufferAttribute(idx, 1));
     g.computeBoundingSphere();
     const fill = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: L3BS_COL, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    fill.material.opacity = 0.16;   // lätt ton; den tydliga markeringen är den yttre glöden nedan
+    l3bsHalo(mesh, g);
     fill.userData.bselFill = true;
     fill.userData.noHit = true; fill.userData.bsel = true; fill.raycast = () => {}; fill.renderOrder = 6; mesh.add(fill); l3bs.ov.push(fill);
-    if (total <= L3BS_EDGE_MAX) work.push([mesh, ris]);
+    if (false && total <= L3BS_EDGE_MAX) work.push([mesh, ris]);   // alla kanter ritas inte längre: bara en yttre kontur (som för övriga objekt)
   });
   if (!work.length) return;
   // Redan uträknade (eller få) objekt: konturerna direkt. Annars i bakgrunden.

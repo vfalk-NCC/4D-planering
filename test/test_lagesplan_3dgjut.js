@@ -202,6 +202,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const p = placeNew('sm:stomhd', [O[0] + 1500, O[1] + 1500 + 0.36, 0]); l3fSnapNew(p); r.hd = [p.x - O[0] - 1500, p.dz, p.y - O[1] - 1500]; return r; });
   if (Math.abs(fr.gapX - 6) > 0.01 || Math.abs(fr.gapY) > 0.01 || !fr.types) fail('Stomme: delarna ska snappa ände mot ände: ' + JSON.stringify(fr));
   console.log('OK: stomme – stålprofiler, håldäck och betongdelar snappar mot varandra (' + JSON.stringify(fr.hd) + ')');
+  const look = await page.evaluate(async () => { const O = l3.O, q = placeNew('sm:stomhd', [O[0] + 1700, O[1] + 1700, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]); await new Promise(r => setTimeout(r, 300));
+    const side = document.getElementById('v3Side'), ci = side.querySelector('[data-v3f="color"]'), oi = side.querySelector('[data-v3o]'); const r = { has: !!ci && !!oi };
+    ci.value = '#ff0000'; ci.dispatchEvent(new Event('input')); oi.value = '50'; oi.dispatchEvent(new Event('input')); await new Promise(r2 => setTimeout(r2, 300));
+    const g = l3.placeMeshes.get(q.id), ms = []; g.traverse(o => { if (o.isMesh && o.material && o.material.color && !o.userData.selHalo) ms.push(o.material); });
+    r.ops = ms.map(m => [m.opacity, m.transparent]); r.po = q.opacity; r.ver = String(l3PlacementGroup).includes('tint'); r.red = ms.some(m => m.color.r > 0.5 && m.color.g < 0.2); r.op = ms.some(m => Math.abs(m.opacity - 0.5) < 0.01); r.saved = q.color === '#ff0000' && q.opacity === 0.5; return r; });
+  if (!look.has || !look.red || !look.op || !look.saved) fail('Färg och genomskinlighet i samma meny ska påverka objektet: ' + JSON.stringify(look));
+  console.log('OK: färgväljare och genomskinlighet i samma meny påverkar objektet');
   const mk2 = await page.evaluate(async () => { const O = l3.O, q = placeNew('sm:makadam', [O[0] + 1100, O[1] + 1100, 0]); q.L = 10; q.B = 10; placements.push(q); placeTouch(q); l3AddPlacementMesh(q); const f = placeNew('lada', [q.x + 1, q.y, 0]); f.L = 2; f.B = 2; f.H = 1; f.z = 0; placements.push(f); placeTouch(f); l3AddPlacementMesh(f); l3SelectIds([f.id]); await new Promise(r => setTimeout(r, 300));
     const sg = () => { const s = placeParts(q).find(x => x.sign); return JSON.stringify(s && s.sign && s.sign.rows || ''); }; const r = { a: sg() };
     const o = l3.gizmo.object; o.position.x += 12; l3.gizmo.dispatchEvent({ type: 'objectChange' }); l3.gizmo.dispatchEvent({ type: 'mouseUp' }); await new Promise(r2 => setTimeout(r2, 400)); r.b = sg();

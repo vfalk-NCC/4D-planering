@@ -136,9 +136,9 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   const zs = await page.evaluate(() => ({ dz: placements[0].dz, z: placements[0].z, base: placeBaseZ(placements[0]), txt: document.querySelector('#v3Side .v3-ztop').textContent, csv: l3CsvRows()[1].join(';') }));
   if (zs.base !== 12.5 || !/Z 12,500 \(underkant\) – 15,000 \(överkant\)/.test(zs.txt) || !/12,5;15/.test(zs.csv)) fail('Z ska visas och gå att ändra: ' + JSON.stringify({ z0, ...zs }));
 
-  // Tydlig markering: lila konturer på det markerade objektet.
-  const edges = await page.evaluate(() => { let n = 0; l3.placeMeshes.get(placements[0].id).traverse(o => { if (o.userData.selEdge) n++; }); return n; });
-  if (!edges) fail('Det markerade objektet ska få konturer');
+  // Tydlig markering: en yttre glöd (inte kanter) runt hela det markerade objektet, även för biblioteksmodeller.
+  const edges = await page.evaluate(() => { let n = 0; l3.placeMeshes.get(placements[0].id).traverse(o => { if (o.userData.selHalo && o.isMesh) n++; }); return n; });
+  if (!edges) fail("Det markerade objektet ska få en yttre kontur");
   // Högerpanelen kan breddas.
   const rs = await page.locator('#view3d .v3-rs-right').boundingBox();
   const w0 = await page.evaluate(() => document.getElementById('v3Side').getBoundingClientRect().width);

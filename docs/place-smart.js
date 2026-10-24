@@ -334,12 +334,14 @@ function smSignMesh(p, sp) {
 }
 /* Gruppen för en bemanning/ett smart objekt i 3D-editorn (anropas av l3PlacementGroup). */
 function smEditorBuild(p, grp, parts) {
-  const env = typeof l3cEnv === "function" ? l3cEnv() : null;
+  const env = typeof l3cEnv === "function" ? l3cEnv() : null, lib0 = placeLib(p.type) || {}, op = Math.min(1, Math.max(0.05, Number(p.opacity) || 1)), tint = p.color && lib0.color && String(p.color).toLowerCase() !== String(lib0.color).toLowerCase() ? new THREE.Color(p.color) : null;
   crewMergeGroups(parts.filter(x => !x.card), [0, 0, 0]).forEach(G => {
     const geo = crewGroupGeometry(G), mt = G.mat || {}; let mat;
-    if (G.unlit) mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(G.color), side: THREE.DoubleSide, transparent: G.transp > 0, opacity: 1 - (G.transp || 0), depthWrite: !(G.transp > 0.5) });
+    if (tint && !(G.transp > 0)) { const c = new THREE.Color(G.color), hs = {}, hp = {}; tint.getHSL(hs); c.getHSL(hp); if (hp.l > 0.16 && hp.l < 0.92 && !(hp.s < 0.08 && (hp.l < 0.3 || hp.l > 0.8))) { c.setHSL(hs.h, hs.s, hp.l); G = { ...G, color: "#" + c.getHexString() }; } }   // färgväljaren färgar hela objektet men behåller delarnas ljushet
+    const tr = (G.transp || 0), opx = (1 - tr) * op, trn = G.transp > 0 || op < 1, dw = !(G.transp > 0.5 || op < 0.6);
+    if (G.unlit) mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(G.color), side: THREE.DoubleSide, transparent: trn, opacity: opx, depthWrite: dw });
     else { const shin = mt.shin == null ? 25 : mt.shin, metal = mt.metal == null ? (shin >= 80 ? 0.5 : 0.03) : mt.metal, rough = mt.rough == null ? Math.max(0.25, 1 - Math.min(0.8, shin / 130)) : mt.rough;
-      mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(G.color), roughness: rough, metalness: metal, envMap: env, envMapIntensity: metal > 0.3 ? 1 : 0.5, side: THREE.DoubleSide, transparent: G.transp > 0, opacity: 1 - (G.transp || 0), depthWrite: !(G.transp > 0.5) }); if (typeof l3cRim === "function") l3cRim(mat); }
+      mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(G.color), roughness: rough, metalness: metal, envMap: env, envMapIntensity: metal > 0.3 ? 1 : 0.5, side: THREE.DoubleSide, transparent: trn, opacity: opx, depthWrite: dw }); if (typeof l3cRim === "function") l3cRim(mat); }
     const m = new THREE.Mesh(geo, mat); m.userData.placeId = p.id; m.userData.mat0 = { t: mat.transparent, o: mat.opacity, d: mat.depthWrite }; m.userData.noEdges = true; if (G.reach) m.userData.noHit = true; grp.add(m);
   });
   parts.filter(x => x.sign).forEach(x => { const m = smSignMesh(p, x.sign); m.userData.noEdges = true; grp.add(m); });
