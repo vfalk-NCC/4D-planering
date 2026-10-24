@@ -88,7 +88,7 @@ function l3lMenusBind(host) {
   const closeAll = () => [...host.querySelectorAll(".v3-ldd-m"), ...document.querySelectorAll("#view3d > .v3-ldd-m")].forEach(m => { m.classList.add("hidden"); const b = host.querySelector(`[data-ldd="${m.dataset.lddM}"]`); if (b) b.setAttribute("aria-expanded", "false"); });
   host.querySelectorAll("[data-ldd]").forEach(b => { b.onclick = e => {
     e.stopPropagation();
-    const m = host.querySelector(`[data-ldd-m="${b.dataset.ldd}"]`), open = m.classList.contains("hidden");
+    const m = host.querySelector(`[data-ldd-m="${b.dataset.ldd}"]`) || document.querySelector(`#view3d > [data-ldd-m="${b.dataset.ldd}"]`); if (!m) return; const open = m.classList.contains("hidden");
     closeAll(); m.classList.toggle("hidden", !open); b.setAttribute("aria-expanded", open);
     if (open && m.dataset.lddM === "pcset") {   // stora inställningsmenyn: fast läge, inom panelens bredd
       const hr = host.getBoundingClientRect(), br = b.getBoundingClientRect(), w = Math.min(300, hr.width - 12);

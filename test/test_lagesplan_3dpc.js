@@ -134,6 +134,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       return out;
     });
     if (Object.values(vis).some(v => v !== true)) fail('Visning av punktmolnet: ' + JSON.stringify(vis));
+    { const errs = []; const h = e => errs.push(e.message); page.on('pageerror', h);   // menyn som flyttats ut ur panelen ska gå att öppna och stänga om och om igen
+      await page.evaluate(() => l3LayersRender());
+      for (let i = 0; i < 4; i++) { await page.click('#v3PalLayers [data-ldd="pcset"]'); await page.waitForTimeout(80); }
+      const shown = await page.evaluate(() => { const m = document.querySelector('[data-ldd-m="pcset"]'); return !!m && !m.classList.contains('hidden'); });
+      page.off('pageerror', h); await page.evaluate(() => { document.querySelectorAll('[data-ldd-m]').forEach(m => m.classList.add('hidden')); });
+      if (errs.length) fail('Menyn i Lager kastade fel: ' + errs.join(' | ')); console.log('OK: inställningsmenyn öppnas/stängs flera gånger utan fel' + (shown ? '' : ' (stängd)')); }
     // Höjdfärgning: nollnivå, färgsteg (band från Z0), skala och teckenförklaring
     const hz = await page.evaluate(async () => {
       const c = l3pc.clouds[0], P = () => l3Prefs(), cols = () => { const a = c.group.children[0].geometry.getAttribute('color').array, set = new Set(); for (let i = 0; i < a.length; i += 3) set.add(a[i] + ',' + a[i + 1] + ',' + a[i + 2]); return set.size; };
