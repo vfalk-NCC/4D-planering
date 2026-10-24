@@ -3363,6 +3363,9 @@ details.sec[open] > summary { border-bottom: 0; margin: 0 -2px 10px; }
 /* Flytt-/vridhandtagets pill och rullgardin */
 #view3d .v3-gz { position: absolute; z-index: 7; font-size: 12px; }
 #view3d .v3-gz.hidden { display: none; }
+#view3d .v3-gz-b .v3-gz-i2 { display: none; } #view3d .v3-gz-b[data-mode="rot"] .v3-gz-i1 { display: none; } #view3d .v3-gz-b[data-mode="rot"] .v3-gz-i2 { display: inline; }
+#view3d .v3-gz-rd { position: absolute; z-index: 8; display: none; pointer-events: none; padding: 5px 10px 6px; border-radius: 10px; background: rgba(15,23,42,.86); color: #fff; font-size: 11px; line-height: 1.25; box-shadow: 0 6px 18px rgba(15,23,42,.35); white-space: nowrap; }
+#view3d .v3-gz-rd b { display: block; font-size: 15px; font-weight: 700; letter-spacing: .01em; } #view3d .v3-gz-rd span { color: #cbd5e1; font-variant-numeric: tabular-nums; }
 #view3d .v3-gz-b { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 9px 0 8px; border: 1px solid rgba(148,163,184,.55); border-radius: 999px; background: rgba(255,255,255,.82); backdrop-filter: blur(6px); color: #334155; font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(15,23,42,.12); transition: box-shadow .15s, background .15s; }
 #view3d .v3-gz-b:hover, #view3d .v3-gz-b.on { background: #fff; box-shadow: 0 0 0 1px rgba(47,123,255,.5), 0 4px 14px rgba(47,123,255,.2); color: #1d4ed8; }
 #view3d .v3-gz-c { width: 6px; height: 6px; border-right: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: rotate(45deg) translateY(-2px); margin-left: 1px; opacity: .6; }
@@ -3378,10 +3381,10 @@ details.sec[open] > summary { border-bottom: 0; margin: 0 -2px 10px; }
 #view3d .v3-gz-h { color: #94a3b8; font-size: 11px; margin: 2px 0 6px; }
 #view3d .v3-gz-reset { border: 0; background: none; color: #64748b; font-size: 11.5px; cursor: pointer; text-decoration: underline; padding: 0; }
 /* Dragpilar (längd/bredd/höjd/räckvidd): en slank pil åt det håll handtaget drar */
-#view3d .v3-hd.v3-hd-arr { width: 26px; height: 26px; margin: -13px 0 0 -13px; padding: 0; border: 0; background: none; box-shadow: none; border-radius: 0; transform-origin: 50% 50%; }
-#view3d .v3-hd.v3-hd-arr svg { display: block; width: 26px; height: 26px; overflow: visible; filter: drop-shadow(0 1px 1.5px rgba(15,23,42,.45)); }
+#view3d .v3-hd.v3-hd-arr { width: 20px; height: 20px; margin: -10px 0 0 -10px; opacity: .55; transition: opacity .12s, transform .12s; padding: 0; border: 0; background: none; box-shadow: none; border-radius: 0; transform-origin: 50% 50%; }
+#view3d .v3-hd.v3-hd-arr svg { display: block; width: 20px; height: 20px; overflow: visible; filter: drop-shadow(0 1px 1.5px rgba(15,23,42,.45)); }
 #view3d .v3-hd.v3-hd-arr path { fill: #f59e0b; stroke: #fff; stroke-width: 1.4; stroke-linejoin: round; transition: fill .12s; }
-#view3d .v3-hd.v3-hd-arr:hover, #view3d .v3-hd.v3-hd-arr.on { background: none; }
+#view3d .v3-hd.v3-hd-arr:hover, #view3d .v3-hd.v3-hd-arr.on { background: none; opacity: 1; }
 #view3d .v3-hd.v3-hd-arr:hover path, #view3d .v3-hd.v3-hd-arr.on path { fill: #ea580c; }
 #view3d .v3-hd.v3-hd-R.v3-hd-arr path { fill: #ef4444; } #view3d .v3-hd.v3-hd-R.v3-hd-arr:hover path { fill: #b91c1c; }
 </style>

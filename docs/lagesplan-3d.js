@@ -551,7 +551,7 @@ function l3Init(box) {
   // flytta"): en blå ring runt flyttpilarna vrider kring lodaxeln. Ett andra handtag i vridläge, bara Z,
   // som följer det första (samma objekt, samma händelser).
   const ring = new THREE.TransformControls(camera, renderer.domElement);
-  ring.setSpace("world"); ring.setMode("rotate"); ring.showX = false; ring.showY = false; ring.showZ = true; ring.size = 0.98;
+  ring.setSpace("world"); ring.setMode("rotate"); ring.showX = false; ring.showY = false; ring.showZ = true; ring.size = 0.8;
   scene.add(ring);
   ["change", "dragging-changed", "mouseDown", "objectChange", "mouseUp"].forEach(t => (gizmo._listeners && gizmo._listeners[t] || []).slice().forEach(fn => ring.addEventListener(t, fn)));
   l3.gizmoR = ring;
@@ -972,18 +972,28 @@ function l3Select(id) { l3SelectIds(id ? [id] : []); }
    Konturerna och ramen döljs bakom annat (Victor 2026-10-10: "Modellerna ska inte bli genomskinliga och
    visa dolda delar när jag markerar dom") – annars är det svårt att passa in t.ex. lyftkranar. Konturerna sitter på själva objektet och följer med handtagen. */
 const L3_SEL_COL = 0x6d5efc, L3_SEL_TINT = 0x2f5fe0;   // markering = bara sken på objektet (ingen ram/bounding box)
+/* Markering = en mjuk blå glöd runt objektets kontur (inverterat skal som skjuts ut längs normalerna). Objektet behåller sin egen färg. */
+const L3_HALO_MAT = () => new THREE.ShaderMaterial({ side: THREE.BackSide, transparent: true, depthWrite: false, uniforms: { w: { value: 0.008 }, col: { value: new THREE.Color(0x3b8bff) } },
+  vertexShader: "uniform float w; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vec3 n = normalize(normalMatrix * normal); mv.xyz += n * (-mv.z) * w; gl_Position = projectionMatrix * mv; }",
+  fragmentShader: "uniform vec3 col; void main(){ gl_FragColor = vec4(col, 0.9); }" });
+function l3HaloGeo(geo) {
+  if (geo.userData.halo) return geo.userData.halo;
+  const pos = geo.getAttribute("position"), nor = geo.getAttribute("normal"); if (!pos || !nor || pos.count > 150000) return geo;
+  const key = i => Math.round(pos.getX(i) * 1000) + "," + Math.round(pos.getY(i) * 1000) + "," + Math.round(pos.getZ(i) * 1000), acc = new Map();
+  for (let i = 0; i < pos.count; i++) { const k = key(i), a = acc.get(k) || [0, 0, 0]; a[0] += nor.getX(i); a[1] += nor.getY(i); a[2] += nor.getZ(i); acc.set(k, a); }
+  const arr = new Float32Array(pos.count * 3); for (let i = 0; i < pos.count; i++) { const a = acc.get(key(i)), l = Math.hypot(a[0], a[1], a[2]) || 1; arr[i * 3] = a[0] / l; arr[i * 3 + 1] = a[1] / l; arr[i * 3 + 2] = a[2] / l; }
+  const h = new THREE.BufferGeometry(); h.setAttribute("position", pos); h.setAttribute("normal", new THREE.BufferAttribute(arr, 3)); if (geo.index) h.setIndex(geo.index);
+  geo.userData.halo = h; return h;
+}
 function l3SelDeco(g, on) {
   if (!g) return;
-  const meshes = []; g.traverse(o => { if (o.isMesh && !o.userData.selEdge) meshes.push(o); });
+  const meshes = []; g.traverse(o => { if (o.isMesh && !o.userData.selHalo && !o.userData.selEdge) meshes.push(o); });
   meshes.forEach(o => {
-    if (o.material && o.material.emissive) { if (on && o.material.color) o.material.emissive.copy(o.material.color).multiplyScalar(0.42).lerp(new THREE.Color(L3_SEL_TINT), 0.18); else o.material.emissive.setHex(0x000000); }   // sken i objektets egen färg
-    if (false && on && !o.userData.selEdges && !o.userData.noEdges && o.geometry) {
-      const e = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 30), new THREE.LineBasicMaterial({ color: L3_SEL_COL, transparent: true, opacity: .9 }));
-      e.renderOrder = 6; e.userData.selEdge = true; e.raycast = () => {};
-      o.add(e); o.userData.selEdges = e;
-    } else if (!on && o.userData.selEdges) {
-      const e = o.userData.selEdges; o.remove(e); e.geometry.dispose(); e.material.dispose(); delete o.userData.selEdges;
-    }
+    if (o.material && o.material.emissive && !on) o.material.emissive.setHex(0x000000);
+    if (on && !o.userData.selHalo2 && !o.userData.isSign && !o.userData.noHalo && o.geometry && o.geometry.getAttribute("normal") && o.visible) {
+      const h = new THREE.Mesh(l3HaloGeo(o.geometry), L3_HALO_MAT()); h.userData.selHalo = true; h.renderOrder = 7; h.raycast = () => {}; h.frustumCulled = false;
+      o.add(h); o.userData.selHalo2 = h;
+    } else if (!on && o.userData.selHalo2) { const h = o.userData.selHalo2; o.remove(h); h.material.dispose(); delete o.userData.selHalo2; }
   });
 }
 /* Knappen "Spara som IFC" sparar bara det markerade etableringsobjektet/bemanningen (ett i taget); utan markering sparas allt. */
@@ -1006,7 +1016,7 @@ function l3RefreshSel() {
 }
 function l3SetHover(id) {
   if (!l3 || l3.hoverId === id) return;
-  const set = (pid, on) => { const g = pid && l3.placeMeshes.get(pid); if (g) g.traverse(o => { if (o.isMesh && !o.userData.selEdge && o.material && o.material.emissive) o.material.emissive.setHex(on ? 0x3b3b1a : l3.sel.has(pid) ? L3_SEL_TINT : 0x000000); }); };
+  const set = (pid, on) => { const g = pid && l3.placeMeshes.get(pid); if (g) g.traverse(o => { if (o.isMesh && !o.userData.selEdge && o.material && o.material.emissive) o.material.emissive.setHex(on ? 0x3b3b1a : 0x000000); }); };
   set(l3.hoverId, false); l3.hoverId = id; set(id, true);
   l3.renderer.domElement.style.cursor = id ? "pointer" : "";
   l3Render();

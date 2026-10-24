@@ -170,3 +170,23 @@ Object.assign(SM, {
     fields: [["typ", "Material", Object.keys(BD_PALL), "Gips (13 mm)"], ["hojd", "Höjd", "range", 0.9, { min: 0.2, max: 2.4, step: 0.05, unit: "m" }], ["antal", "Antal pallar", "range", 1, { min: 1, max: 12, step: 1, unit: "st" }], ["plast", "Plastad", ["Ja", "Nej"], "Ja", { seg: true }]],
     groups: [["Pall", ["typ", "hojd", "antal", "plast"]]] },
 });
+
+/* Lutning och rull: varje byggdel kan läggas ned, ställas på högkant eller stå som pelare (Victor: "använda profilerna … styckvis för att modellera med").
+   Delarna vrids runt sin mittpunkt och lyfts så att den lägsta punkten ligger på marken (eller underkanten Z). */
+function bdTilted(build) {
+  return function (p, c) {
+    build(p, c); const pitch = smN(p, "lutning", 0), roll = smN(p, "rull", 0); if (!pitch && !roll) return;
+    const orig = c.flush, R = TK.rot(0, -pitch * Math.PI / 180, roll * Math.PI / 180);
+    c.flush = function () {
+      let zmin = Infinity; const rot = ([x, y, z]) => [R[0][0] * x + R[0][1] * y + R[0][2] * z, R[1][0] * x + R[1][1] * y + R[1][2] * z, R[2][0] * x + R[2][1] * y + R[2][2] * z];
+      c.Ts.forEach(T => { if (T.deco) return; T.loc = T.loc.map(rot); T.loc.forEach(q => { if (q[2] < zmin) zmin = q[2]; }); });
+      c.Ts.forEach(T => { if (T.deco) T.loc = T.loc.map(rot); if (isFinite(zmin)) T.loc.forEach(q => { q[2] -= zmin; }); });
+      return orig.apply(this, arguments);
+    };
+  };
+}
+["stalprofil", "haldack", "betongelement", "virke", "armering", "rorbunt"].forEach(k => {
+  const d = SM[k]; if (!d) return; d.build = bdTilted(d.build);
+  d.fields.splice(Math.max(0, d.fields.findIndex(f => f[0] === "_calc")), 0, ["lutning", "Lutning (90° = stående)", "range", 0, { min: -90, max: 90, step: 5, unit: "°" }], ["rull", "Vridning runt längdaxeln", "range", 0, { min: -180, max: 180, step: 5, unit: "°" }]);
+  if (d.groups) { const g = d.groups.find(x => x[0] === "Data"); const at = g ? d.groups.indexOf(g) : d.groups.length; d.groups.splice(at, 0, ["Läge (lutning)", ["lutning", "rull"], "fold"]); }
+});

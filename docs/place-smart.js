@@ -105,7 +105,7 @@ function smFillet(P, r, closed) {
 function smMakeCtx(p, z, col) {
   const parts = [], Ts = new Map(), W = (a, b) => placeToWorld(p, a, b);
   const add = (pl, z0, z1, color, extra) => parts.push({ poly: pl, z0: z + z0, z1: z + z1, role: "body", transp: 0, color: color || col, ...(extra || {}) });
-  const ctx = { parts, W, add, z, p, col,
+  const ctx = { parts, W, add, z, p, col, Ts,
     rect: (a0, a1, b0, b1) => [[a0, b0], [a1, b0], [a1, b1], [a0, b1]].map(([a, b]) => W(a, b)),
     oct: (r, n = 8, ox = 0, oy = 0) => Array.from({ length: n }, (_, i) => { const t = Math.PI / n + i * 2 * Math.PI / n; return W(ox + r * Math.cos(t), oy + r * Math.sin(t)); }),
     T: (color, o) => { o = o || {}; const k = color + "|" + (o.unlit ? 1 : 0) + "|" + (o.transp || 0) + "|" + (o.role || "") + "|" + (o.shin == null ? "" : o.shin) + "|" + (o.metal == null ? "" : o.metal) + "|" + (o.rough == null ? "" : o.rough) + "|" + (o.deco ? 1 : 0); if (!Ts.has(k)) Ts.set(k, TK.new({ color, ...o })); return Ts.get(k); },

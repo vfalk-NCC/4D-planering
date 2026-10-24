@@ -52,17 +52,30 @@ function l3GzDir() {
   return null;
 }
 function l3GzLabel() {
-  const t = document.getElementById("v3GzT"); if (!t) return;
-  const bits = []; if (l3.gizmo.mode === "rotate") bits.push("Vrid"); else if (l3gz.lock != null) bits.push(Math.round(l3gz.lock * 10) / 10 + "°"); else if (l3gz.axis !== "free") bits.push(l3gz.axis === "z" ? "Höjd" : l3gz.axis.toUpperCase()); else bits.push("Fri");
-  if (l3gz.dist && l3.gizmo.mode !== "rotate") bits.push(l3gzF(l3gz.dist)); if (l3gz.ang && l3.gizmo.mode === "rotate") bits.push(l3gz.ang + "°");
-  t.textContent = bits.join(" · ");
+  const t = document.getElementById("v3GzT"); if (!t) return; const rot = l3.gizmo.mode === "rotate", bits = [rot ? "Vrid" : "Flytta"];
+  if (rot) bits.push(l3gz.ang ? l3gz.ang + "°-steg" : "fritt");
+  else if (l3gz.lock != null) bits.push("låst " + Math.round(l3gz.lock * 10) / 10 + "°"); else if (l3gz.axis !== "free") bits.push((l3gz.axis === "z" ? "höjd" : l3gz.axis.toUpperCase()) + "-låst"); else bits.push(l3gz.space === "local" ? "objektets axlar" : "fritt");
+  if (!rot && l3gz.dist) bits.push(l3gzF(l3gz.dist));
+  t.textContent = bits.join(" · "); const b = document.getElementById("v3GzB"); if (b) b.dataset.mode = rot ? "rot" : "mv";
 }
+/* Liten avläsning vid markören medan man drar: hur långt/vilken vinkel man är från startläget. */
+function l3GzReadout() {
+  if (!l3 || !l3.gizmo || !l3.dragStart) return; const o = l3.gizmo.object; if (!o) return;
+  const host = l3.renderer.domElement.parentElement; let el = document.getElementById("v3GzRd"); if (!el) { el = document.createElement("div"); el.id = "v3GzRd"; el.className = "v3-gz-rd"; host.appendChild(el); }
+  const s = l3.dragStart, f = v => (Math.round(v * 100) / 100).toLocaleString("sv-SE"), sg = v => (v >= 0 ? "+" : "−") + f(Math.abs(v));
+  let txt;
+  if (l3.gizmo.mode === "rotate") { let d = (o.rotation.z - s.r) * 180 / Math.PI; d = ((d + 540) % 360) - 180; txt = `<b>${sg(Math.round(d * 10) / 10)}°</b><span>${Math.round((((o.rotation.z * 180 / Math.PI) % 360) + 360) % 360)}° totalt</span>`; }
+  else { const dx = o.position.x - s.x, dy = o.position.y - s.y, dz = o.position.z - s.z, d = Math.hypot(dx, dy, dz); txt = `<b>${f(d)} m</b><span>X ${sg(dx)} · Y ${sg(dy)}${Math.abs(dz) > 1e-3 ? " · H " + sg(dz) : ""}</span>`; }
+  el.innerHTML = txt; const q = o.position.clone().project(l3.camera), r = l3.renderer.domElement;
+  el.style.left = Math.min(r.clientWidth - 150, Math.max(8, (q.x + 1) / 2 * r.clientWidth + 40)) + "px"; el.style.top = Math.max(8, (1 - q.y) / 2 * r.clientHeight - 64) + "px"; el.style.display = "block";
+}
+function l3GzReadoutHide() { const el = document.getElementById("v3GzRd"); if (el) el.style.display = "none"; }
 
 /* ---- Pillen och rullgardinen ---- */
 function l3GzDom() {
   if (l3gz.el && l3gz.el.isConnected) return l3gz.el;
   const host = l3.renderer.domElement.parentElement, el = document.createElement("div"); el.className = "v3-gz hidden"; el.id = "v3Gz";
-  el.innerHTML = `<button type="button" class="v3-gz-b" id="v3GzB" title="Inställningar för flytt och vridning: lås axel eller vinkel, steg, exakt förflyttning"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg><span id="v3GzT">Fri</span><i class="v3-gz-c"></i></button><div class="v3-gz-p hidden" id="v3GzP"></div>`;
+  el.innerHTML = `<button type="button" class="v3-gz-b" id="v3GzB" title="Inställningar för flytt och vridning: lås axel eller vinkel, steg, exakt förflyttning"><svg class="v3-gz-i1" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg><svg class="v3-gz-i2" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg><span id="v3GzT">Fri</span><i class="v3-gz-c"></i></button><div class="v3-gz-p hidden" id="v3GzP"></div>`;
   host.appendChild(el); ["pointerdown", "wheel", "contextmenu", "dblclick", "click", "keydown"].forEach(t => el.addEventListener(t, e => e.stopPropagation()));
   el.querySelector("#v3GzB").onclick = () => { l3gz.open = !l3gz.open; l3GzPopHtml(); };
   l3gz.el = el; return el;
@@ -111,6 +124,7 @@ function l3GzAct(k) {
 /* Pillen följer handtaget på skärmen (anropas efter varje bild). */
 function l3GzPlace() {
   if (!l3 || !l3.gizmo) return; const el = l3GzDom(), o = l3.gizmo.object;
+  if (!l3.gizmo.dragging && !(l3.gizmoR && l3.gizmoR.dragging)) l3GzReadoutHide();
   const show = !!o && !o.userData.bmove && !l3.gizmo.dragging && !(l3.gizmoR && l3.gizmoR.dragging) && !l3.dlgPick && !l3.clipPick && !l3.vPick;
   el.classList.toggle("hidden", !show); if (!show) { if (l3gz.guide) l3gz.guide.visible = !!o && !l3.gizmo.dragging; return; }
   const q = o.position.clone().project(l3.camera), r = l3.renderer.domElement; if (q.z > 1) { el.classList.add("hidden"); return; }
@@ -122,7 +136,7 @@ function l3GzPlace() {
 /* Kopplingar in i editorn: steg, läge, urval och rendering. */
 (function () {
   if (typeof l3ApplyStep === "function") { l3ApplyStep = function () { if (!l3) return; l3GzStep(); }; }
-  if (typeof l3FromGizmo === "function") { const f = l3FromGizmo; l3FromGizmo = function () { l3GzConstrain(); return f(); }; }
+  if (typeof l3FromGizmo === "function") { const f = l3FromGizmo; l3FromGizmo = function () { l3GzConstrain(); try { l3GzReadout(); } catch (e) { /* bara visning */ } return f(); }; }
   if (typeof l3Mode === "function") { const f = l3Mode; l3Mode = function (m) { f(m); l3GzApply(); }; }
   if (typeof l3Render === "function") { const f = l3Render; l3Render = function () { f.apply(this, arguments); try { l3GzPlace(); } catch (e) { /* bara visning */ } }; }
   if (typeof l3RefreshSel === "function") { const f = l3RefreshSel; l3RefreshSel = function () { const r = f.apply(this, arguments); if (l3 && l3.gizmo && !l3.gizmo.object && l3gz.open) { l3gz.open = false; l3GzPopHtml(); } l3GzGuide(); l3GzLoad(); l3GzApply(); return r; }; }
