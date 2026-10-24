@@ -423,7 +423,7 @@ async function addDxfFile(file, opts = {}) {
     const sk = /\.dwg$/i.test(file.name) ? Object.entries(dwgSkipped) : []; if (sk.length) setTimeout(() => setSaveStatus(`DWG: ${sk.map(([t, c]) => c + " " + t).join(", ")} kunde inte läsas och ritas inte (t.ex. solider och snitt/fyllningar). Allt annat är med.`), 400);
     await saveSiteItem(rec, false, { record: false });
     buildCadSnap(); renderCad();
-    setSaveStatus(`📐 ${rec.name}: ${rec.stats.lines} linjer, ${rec.stats.texts} texter i ${rec.layers.length} lager.${unitNote ? " " + unitNote : ""}`);
+    setSaveStatus(`📐 ${rec.name}: ${rec.stats.lines} linjer, ${rec.stats.texts} texter${rec.stats.faces ? ", " + rec.stats.faces + " ytor" : ""} i ${rec.layers.length} lager. ${has3d ? "3D-form bevarad (höjder från filen)." : "Inga höjder i filen – ritningen är platt (2D)."}${unitNote ? " " + unitNote : ""}`);
     if (!opts.noTc && $("cadToTc") && $("cadToTc").checked) { // noTc: filen kom från Trimble Connect
       if (!window.opener || window.opener.closed) setSaveStatus("⚠ Originalet kunde inte sparas i Trimble Connect – öppna lägesplanen via 🗺️ i 4D-planering.");
       else askOpener("tcUpload", { folder: "Lägesplan", files: [file] }, 10 * 60 * 1000)
