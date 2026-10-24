@@ -286,7 +286,7 @@ function staketBuild(p, c) {
         bar(a, b, 0.1 + hb / 2, hb - 0.04, 0.008, "#9aa5b1", { transp: 0.6, rough: 0.6 });                                            // nätet som genomskinlig yta
         for (let r = 1; r <= 7; r++) c.rod("#8a95a2", up(a, 0.1 + hb * r / 8), up(b, 0.1 + hb * r / 8), 0.006, 0.006, 4, SMM);
         c.beam(STE, up(a, 0.1), up(b, H - 0.05), 0.02, 0.02, SMM);                                                                        // diagonal
-        if (k === 0 || true) { const q = a; c.box("#7b8794", q[0], q[1], q[2] + 0.07, 0.72, 0.22, 0.14, [0, 0, ang], 0.025, { rough: 0.9 }); nPost++; }
+        if (k === 0 || true) { const q = a; c.box("#7b8794", q[0], q[1], q[2] + 0.07, 0.72, 0.22, 0.14, [ang, 0, 0], 0.025, { rough: 0.9 }); nPost++; }
       } else if (typ === SM_FENCE_TYPES[1]) {                             // nätstaket (orange byggnät på stolpar)
         post(a, H, "#6b7280", 0.022); nPost++; bar(a, b, H * 0.55 + 0.05, H * 0.9, 0.006, A, { transp: 0.5, rough: 1 }); c.rod("#374151", up(a, H - 0.02), up(b, H - 0.02), 0.012, 0.012, 4, SMM);
       } else if (typ === SM_FENCE_TYPES[2]) {                             // trapetsplåt: profilerade plåtar på stolpar med täckbleck
@@ -297,15 +297,15 @@ function staketBuild(p, c) {
         post(a, H, "#6b5a45", 0.05); nPost++; bar(a, b, H * 0.25, 0.08, 0.05, "#7a6a55", { rough: 0.95 }); bar(a, b, H * 0.8, 0.08, 0.05, "#7a6a55", { rough: 0.95 });
         const m = Math.max(2, Math.round(fl / 0.12)); for (let r = 0; r < m; r++) { const q = lerp(a, b, (r + 0.5) / m), side = (r % 2 ? 1 : -1) * 0.025; const q0 = [q[0] - ux * fl / m * 0.48 + nx * side, q[1] - uy * fl / m * 0.48 + ny * side, q[2]], q1 = [q[0] + ux * fl / m * 0.48 + nx * side, q[1] + uy * fl / m * 0.48 + ny * side, q[2]]; c.beam(A, up(q0, H / 2 + 0.03), up(q1, H / 2 + 0.03), 0.018, H - 0.06, { rough: 0.95 }); }
       } else if (typ === SM_FENCE_TYPES[4]) {                             // kantskydd: stolpar på fotplåt, tre ledare och sparkbräda
-        post(a, H, STE, 0.025); nPost++; c.box("#6b7280", a[0], a[1], a[2] + 0.006, 0.16, 0.16, 0.012, [0, 0, ang], 0.002, SMM);
+        post(a, H, STE, 0.025); nPost++; c.box("#6b7280", a[0], a[1], a[2] + 0.006, 0.16, 0.16, 0.012, [ang, 0, 0], 0.002, SMM);
         bar(a, b, H, 0.05, 0.05, A, { metal: 0.3, rough: 0.5 }); bar(a, b, H * 0.55, 0.045, 0.045, STE, SMM); bar(a, b, 0.09, 0.15, 0.025, "#c9a15f", { rough: 0.9 });
         c.beam("#dc2626", up(lerp(a, b, 0.25), H - 0.005), up(lerp(a, b, 0.5), H - 0.005), 0.052, 0.052, SMLIT);                              // röd/gul markering
       } else {                                                           // vägräcke: W-profil på C-stolpar med reflexer
-        c.box("#aab2bc", a[0], a[1], a[2] + (H - 0.1) / 2, 0.06, 0.1, H - 0.1, [0, 0, ang], 0.01, SMM); nPost++;
+        c.box("#aab2bc", a[0], a[1], a[2] + (H - 0.1) / 2, 0.06, 0.1, H - 0.1, [ang, 0, 0], 0.01, SMM); nPost++;
         bar(a, b, H - 0.05, 0.1, 0.03, STE, SMM); bar(a, b, H - 0.15, 0.08, 0.05, "#a4adb8", SMM); bar(a, b, H - 0.25, 0.1, 0.03, STE, SMM);
-        c.box("#f8fafc", a[0] + nx * 0.04 + ux * fl / 2, a[1] + ny * 0.04 + uy * fl / 2, a[2] + H - 0.15, 0.1, 0.012, 0.07, [0, 0, ang], 0, SMLIT);
+        c.box("#f8fafc", a[0] + nx * 0.04 + ux * fl / 2, a[1] + ny * 0.04 + uy * fl / 2, a[2] + H - 0.15, 0.1, 0.012, 0.07, [ang, 0, 0], 0, SMLIT);
       } }
-    if (i === P.length - 2) { const q = b0; if (typ === SM_FENCE_TYPES[0]) c.box("#7b8794", q[0], q[1], q[2] + 0.07, 0.72, 0.22, 0.14, [0, 0, ang], 0.025, { rough: 0.9 }); else if (typ === SM_FENCE_TYPES[5]) c.box("#aab2bc", q[0], q[1], q[2] + (H - 0.1) / 2, 0.06, 0.1, H - 0.1, [0, 0, ang], 0.01, SMM); else post(q, H, typ === SM_FENCE_TYPES[3] ? "#6b5a45" : STE, typ === SM_FENCE_TYPES[3] ? 0.05 : 0.027); }
+    if (i === P.length - 2) { const q = b0; if (typ === SM_FENCE_TYPES[0]) c.box("#7b8794", q[0], q[1], q[2] + 0.07, 0.72, 0.22, 0.14, [ang, 0, 0], 0.025, { rough: 0.9 }); else if (typ === SM_FENCE_TYPES[5]) c.box("#aab2bc", q[0], q[1], q[2] + (H - 0.1) / 2, 0.06, 0.1, H - 0.1, [ang, 0, 0], 0.01, SMM); else post(q, H, typ === SM_FENCE_TYPES[3] ? "#6b5a45" : STE, typ === SM_FENCE_TYPES[3] ? 0.05 : 0.027); }
   }
 }
 const staketCalc = p => { const P = p.pts || []; let l = 0; for (let i = 1; i < P.length; i++) l += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); const typ = smF(p, "typ", SM_FENCE_TYPES[0]), pw = { [SM_FENCE_TYPES[0]]: 3.5, [SM_FENCE_TYPES[1]]: 3, [SM_FENCE_TYPES[2]]: 2, [SM_FENCE_TYPES[3]]: 2.4, [SM_FENCE_TYPES[4]]: 2, [SM_FENCE_TYPES[5]]: 4 }[typ] || 3; return [["Längd", smFmt(l, 1) + " m"], ["Fält", `${Math.max(0, Math.round(l / pw))} st à ${pw} m`], ["Yta", smFmt(l * (Number(p.H) || 2), 0) + " m²"]]; };
@@ -333,8 +333,8 @@ function barriarBuild(p, c) {
   for (let i = 0; i < n; i++) { const x0 = -L / 2 + i * w + 0.01, x1 = x0 + w - 0.02, xm = (x0 + x1) / 2;
     smProfileExtrude(c, col, prof, x0, x1, { rough: typ === SM_BARR_TYPES[0] ? 0.95 : 0.55 });
     if (typ === SM_BARR_TYPES[0]) { [x0 + 0.05, x1 - 0.05].forEach(x => [-1, 1].forEach(sy => c.box("#8b8f94", x, sy * 0.115, H - 0.12, 0.1, 0.01, 0.09, null, 0, SMM)));   // lyfthål
-      c.box("#d9dce0", xm, 0, 0.012, w * 0.9, 0.34, 0.024, null, 0, { rough: 1 }); [-1, 1].forEach(sy => c.box("#fbbf24", xm, sy * 0.19, H * 0.62, w * 0.5, 0.012, 0.07, [0.3 * -sy, 0, 0], 0, SMLIT));   // reflex
-    } else { [-1, 1].forEach(sy => { c.box("#f8fafc", xm, sy * 0.265, H * 0.52, w * 0.34, 0.012, H * 0.2, [-sy * 0.17, 0, 0], 0, { rough: 0.5 }); }); c.cyl("#1f2937", "z", x1 - 0.2, 0, H + 0.005, 0.045, 0.045, 0.02, 10, null, SMM);   // vita fält + påfyllningslock
+      c.box("#d9dce0", xm, 0, 0.012, w * 0.9, 0.34, 0.024, null, 0, { rough: 1 }); [-1, 1].forEach(sy => c.box("#fbbf24", xm, sy * 0.19, H * 0.62, w * 0.5, 0.012, 0.07, [0, 0, 0.3 * -sy], 0, SMLIT));   // reflex
+    } else { [-1, 1].forEach(sy => { c.box("#f8fafc", xm, sy * 0.265, H * 0.52, w * 0.34, 0.012, H * 0.2, [0, 0, -sy * 0.17], 0, { rough: 0.5 }); }); c.cyl("#1f2937", "z", x1 - 0.2, 0, H + 0.005, 0.045, 0.045, 0.02, 10, null, SMM);   // vita fält + påfyllningslock
       c.box("#1f2937", xm, 0, H * 0.35, w * 0.3, 0.7, 0.1, null, 0.02, SMM); }
     if (lamp && (i === 0 || i === n - 1)) { const x = i === 0 ? x0 + 0.2 : x1 - 0.2; c.cyl("#f59e0b", "z", x, 0, H + 0.12, 0.07, 0.07, 0.14, 12, null, { unlit: true }); c.cyl("#374151", "z", x, 0, H + 0.03, 0.08, 0.08, 0.06, 12, null, SMM); } }
 }

@@ -148,11 +148,31 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       const zr = c.info.max[2] - c.info.min[2], st = Math.max(0.01, Math.round(zr / 3 * 100) / 100);
       l3SetPref('pcZStep', st); l3pcRecolor(); const bands = cols(), legBands = document.querySelectorAll('#v3PcLegend .v3-pcl-r').length;
       l3SetPref('pcZRamp', 'diverg'); l3SetPref('pcZ0', c.info.min[2] + zr / 2); l3pcRecolor(); const dv = cols();
-      l3SetPref('pcZStep', 0); l3pcRecolor(); const leg = !!document.querySelector('#v3PcLegend .v3-pcl-g') && !document.getElementById('v3PcLegend').classList.contains('hidden');
-      const Z = l3pcZParams(c); l3SetPref('pcMode', null); l3SetPref('pcZStep', null); l3SetPref('pcZRamp', null); l3SetPref('pcZ0', null); l3pcRecolor();
-      return { smooth, bands, legBands, dv, leg, z0: Z.z0 > c.info.min[2], zr };
+      l3SetPref('pcZStep', 0); l3pcRecolor(); const leg = document.querySelectorAll('#v3PcLegend .v3-pcl-r').length >= 2 && !document.getElementById('v3PcLegend').classList.contains('hidden');
+      const Z = l3pcZParams(c);
+      // Egna färgband: gränser i m ö.h., egna färger, texter i zonerna, ändra färg och nivå i teckenförklaringen
+      l3SetPref('pcZRamp', null); l3SetPref('pcZStep', 0); l3SetPref('pcZ0', null); const m0 = c.info.min[2] + (c.dz || 0), b = [m0 + zr / 3, m0 + 2 * zr / 3];
+      l3pcZCustomSet(b, ['#ff0000', '#00ff00', '#0000ff']); const custom = cols(), nLab = c.zlab ? c.zlab.children.length : 0, rows = document.querySelectorAll('#v3PcLegend .v3-pcl-r').length;
+      const ci = document.querySelector('#v3PcLegend .v3-pcl-c'); ci.value = '#ffff00'; ci.dispatchEvent(new Event('change')); const top = l3pcZCustom().c[2];
+      const ni = document.querySelector('#v3PcLegend .v3-pcl-n[data-bi="0"]'); ni.value = String(b[0] + 0.1); ni.dispatchEvent(new Event('change')); const moved = Math.abs(l3pcZCustom().b[0] - (b[0] + 0.1)) < 0.01;
+      const abs = document.querySelector('#v3PcLegend .v3-pcl-h em').textContent; l3pcZCustomSet(null); l3SetPref('pcZLabels', false); l3pcZLabels(); const labOff = !c.zlab; l3SetPref('pcZLabels', null);
+      l3SetPref('pcMode', null); l3SetPref('pcZStep', null); l3SetPref('pcZRamp', null); l3SetPref('pcZ0', null); l3pcRecolor();
+      return { smooth, bands, legBands, dv, leg, z0: Z.z0 === 0 || Z.z0 > c.info.min[2], zr, custom, nLab, rows, top, moved, abs, labOff };
     });
-    if (!(hz.smooth > hz.bands) || hz.bands < 2 || hz.bands > 6 || hz.legBands < 2 || hz.dv < 2 || !hz.leg || !hz.z0) fail('Höjdfärgning: ' + JSON.stringify(hz));
+    if (!(hz.smooth > hz.bands) || hz.bands < 2 || hz.bands > 6 || hz.legBands < 2 || hz.dv < 2 || !hz.leg || !hz.z0 || hz.custom !== 3 || hz.nLab !== 3 || hz.rows !== 3 || hz.top !== '#ffff00' || !hz.moved || !/Plushöjd/.test(hz.abs) || !hz.labOff) fail('Höjdfärgning: ' + JSON.stringify(hz));
+    // Differentialanalys mot en 3D-modell (vågrät yta mitt i molnets höjdspann) och volym i ett uppritat område
+    const df = await page.evaluate(async () => {
+      const c = l3pc.clouds[0], mid = (c.info.min[2] + c.info.max[2]) / 2 + (c.dz || 0), O = l3.O, w = c.info.max[0] - c.info.min[0], h = c.info.max[1] - c.info.min[1];
+      const geo = new THREE.PlaneGeometry(w * 1.2, h * 1.2); const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial()); mesh.position.set(c.info.center[0] - O[0], c.info.center[1] - O[1], mid - O[2]); mesh.updateMatrixWorld(true);
+      l3b.models.push({ id: 'dfref', name: 'Referens', visible: true, meshes: [mesh], tris: 2, ranges: [] }); l3SetPref('pcDRef', 'md:dfref'); l3SetPref('pcDCell', 1);
+      await l3dfRun(); const st = l3df.stats, a = l3pc.clouds[0].chunkPts[0].geometry.getAttribute('color').array, set = new Set(); for (let i = 0; i < a.length; i += 3) set.add(a[i] + ',' + a[i + 1] + ',' + a[i + 2]);
+      const foot = document.getElementById('v3PcLegend').textContent, mode = l3pcMode();
+      const P = [[c.info.min[0], c.info.min[1], mid], [c.info.max[0], c.info.min[1], mid], [c.info.max[0], c.info.max[1], mid], [c.info.min[0], c.info.max[1], mid]]; l3dfV.pts = P; l3dfV.mode = 'level'; l3dfV.level = mid; l3dfVolCalc(); const R = l3dfV.res;
+      l3dfV.mode = 'plane'; l3dfVolCalc(); const R2 = l3dfV.res; l3dfV.res = null; l3dfVolEnd(); l3dfOff(); l3b.models.pop();
+      return { st, colors: set.size, foot, mode, area: R && R.area, wh: w * h, vol: R && R.fill + R.cut, planeVol: R2 && R2.fill + R2.cut, offMode: l3pcMode() };
+    });
+    if (!df.st || !(df.st.fill > 0) || !(df.st.cut > 0) || df.colors < 2 || df.mode !== 'diff' || !/Fyllning/.test(df.foot) || !/Schakt/.test(df.foot) || !(df.area > 0) || !(df.vol > 0) || !(df.planeVol >= 0) || df.offMode === 'diff') fail('Differentialanalys/volym: ' + JSON.stringify(df));
+    console.log('OK: differentialanalys mot modell (fyllning/schakt, färgade skillnader) och volym i uppritat område');
     console.log('OK: höjdfärgning – nollnivå, färgsteg i band, skalor och teckenförklaring (' + hz.smooth + ' nyanser jämn, ' + hz.bands + ' band)');
     await page.evaluate(() => { const c = l3pc.clouds[0]; c.dz = 0; c.src.dz = 0; l3pcPlace(c); l3pcRemember(c.src, true); });
     // Fästa mot punkter i molnet: mått (fästpunkt "pc"), rotationspunkt och koordinat.
@@ -232,6 +252,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const re = await page.evaluate(() => ({ n: l3pc.clouds.length, tc: window.__calls.includes('tcFile') }));
     if (re.n !== 1 || re.tc) fail('Ur webbläsarens cache utan att hämta från TC: ' + JSON.stringify(re));
     await page.evaluate(() => { l3Frame(true); l3Render(); }); await page.waitForTimeout(400);
+    if (process.env.SHOTZ) { await page.evaluate(() => { const c = l3pc.clouds[0]; l3SetPref('pcMode', 'z'); l3SetPref('pcZStep', 0.5); l3pcRecolor(); }); await page.waitForTimeout(500); await page.screenshot({ path: process.env.SHOTZ }); }
     await page.screenshot({ path: path.join(process.env.PLACE_TMP || '.', '3dpc.png') });
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('OK: punktmoln i 3D – ur TC-mappen, tänd/släck, färg efter höjd, punktstorlek, cache');
