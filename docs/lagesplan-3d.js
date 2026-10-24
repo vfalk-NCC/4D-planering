@@ -973,7 +973,7 @@ function l3Select(id) { l3SelectIds(id ? [id] : []); }
    visa dolda delar när jag markerar dom") – annars är det svårt att passa in t.ex. lyftkranar. Konturerna sitter på själva objektet och följer med handtagen. */
 const L3_SEL_COL = 0x6d5efc, L3_SEL_TINT = 0x2f5fe0;   // markering = bara sken på objektet (ingen ram/bounding box)
 /* Markering = en mjuk blå glöd runt objektets kontur (inverterat skal som skjuts ut längs normalerna). Objektet behåller sin egen färg. */
-const L3_HALO_MAT = () => new THREE.ShaderMaterial({ side: THREE.BackSide, transparent: true, depthWrite: false, uniforms: { w: { value: 0.008 }, col: { value: new THREE.Color(0x3b8bff) } },
+const L3_HALO_MAT = () => new THREE.ShaderMaterial({ side: THREE.BackSide, transparent: true, depthWrite: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp, uniforms: { w: { value: 0.008 }, col: { value: new THREE.Color(0x3b8bff) } },
   vertexShader: "uniform float w; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vec3 n = normalize(normalMatrix * normal); mv.xyz += n * (-mv.z) * w; gl_Position = projectionMatrix * mv; }",
   fragmentShader: "uniform vec3 col; void main(){ gl_FragColor = vec4(col, 0.9); }" });
 function l3HaloGeo(geo) {
@@ -991,9 +991,11 @@ function l3SelDeco(g, on) {
   meshes.forEach(o => {
     if (o.material && o.material.emissive && !on) o.material.emissive.setHex(0x000000);
     if (on && !o.userData.selHalo2 && !o.userData.isSign && !o.userData.noHalo && o.geometry && o.geometry.getAttribute("normal") && o.visible) {
-      const h = new THREE.Mesh(l3HaloGeo(o.geometry), L3_HALO_MAT()); h.userData.selHalo = true; h.renderOrder = 7; h.raycast = () => {}; h.frustumCulled = false;
-      o.add(h); o.userData.selHalo2 = h;
-    } else if (!on && o.userData.selHalo2) { const h = o.userData.selHalo2; o.remove(h); h.material.dispose(); delete o.userData.selHalo2; }
+      // Bara en yttre kontur runt hela objektet: delarna stämplar en mask (stencil) och glöden ritas bara utanför den.
+      const grp = new THREE.Group(), h = new THREE.Mesh(l3HaloGeo(o.geometry), L3_HALO_MAT()), m = new THREE.Mesh(o.geometry, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp }));
+      [h, m].forEach(x => { x.userData.selHalo = true; x.raycast = () => {}; x.frustumCulled = false; }); h.renderOrder = 7; m.renderOrder = 6; grp.add(m, h); grp.userData.selHalo = true;
+      o.add(grp); o.userData.selHalo2 = grp;
+    } else if (!on && o.userData.selHalo2) { const h = o.userData.selHalo2; o.remove(h); h.traverse(x => { if (x.material) x.material.dispose(); }); delete o.userData.selHalo2; }
   });
 }
 /* Knappen "Spara som IFC" sparar bara det markerade etableringsobjektet/bemanningen (ett i taget); utan markering sparas allt. */
@@ -1103,6 +1105,7 @@ function l3AddAt(e) {
   placeSnapshot();
   const p = placeNew(l3.addType, pt);
   { const lb = placeLib(p.type) || {}; if ((lb.crew || lb.smart) && !p.start) { const day = ($("dateInput") || {}).value || (typeof todayIso === "function" ? todayIso() : ""); if (day) { p.start = day; p.end = day; } } } // datumet det gäller förifylls med dagens/valda datum (ändras i panelen)
+  if (typeof l3fSnapNew === "function") l3fSnapNew(p);
   placements.push(p); placeTouch(p);
   l3AddPlacementMesh(p);
   if (fence) { l3.fenceId = p.id; l3Status(`${(placeLib(p.type) || {}).label || "Staket"}: tryck nästa punkt – Enter eller Esc när du är klar.`); }
@@ -1164,7 +1167,7 @@ function l3DragEnd() {
   const s = l3.dragStart, moved = s && (Math.abs(s.x - g.position.x) > 1e-4 || Math.abs(s.y - g.position.y) > 1e-4);
   if (s && !moved && Math.abs(s.z - g.position.z) < 1e-4 && Math.abs(s.r - g.rotation.z) < 1e-6) { placeUndoStack.pop(); return; } // bara ett klick på handtaget
   // Fäst mot ytan: efter en flytt i plan ställer sig objektet på det som ligger under det.
-  if (moved && l3.gizmo.mode === "translate" && document.getElementById("v3Snap").checked && Math.abs(s.z - g.position.z) < 1e-4) l3DropToSurface(p, g);
+  if (moved && l3.gizmo.mode === "translate" && !/^sm:stom/.test(String(p.type)) && document.getElementById("v3Snap").checked && Math.abs(s.z - g.position.z) < 1e-4) l3DropToSurface(p, g);
   placeTouch(p); if (typeof l3MkRefresh === "function") l3MkRefresh(p); l3Changed(); l3RenderSide();
 }
 /* Ställer objektet på ytan rakt under dess mitt (plan, planerade objekt, byggnaden eller annan etablering). */

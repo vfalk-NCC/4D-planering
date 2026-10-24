@@ -175,7 +175,7 @@ Object.assign(SM, {
    Delarna vrids runt sin mittpunkt och lyfts så att den lägsta punkten ligger på marken (eller underkanten Z). */
 function bdTilted(build) {
   return function (p, c) {
-    build(p, c); const pitch = smN(p, "lutning", 0), roll = smN(p, "rull", 0); if (!pitch && !roll) return;
+    build(p, c); const pitch = (smF(p, "stand", "") === "Stående" ? 90 : 0) + smN(p, "lutning", 0), roll = smN(p, "rull", 0); if (!pitch && !roll) return;
     const orig = c.flush, R = TK.rot(0, -pitch * Math.PI / 180, roll * Math.PI / 180);
     c.flush = function () {
       let zmin = Infinity; const rot = ([x, y, z]) => [R[0][0] * x + R[0][1] * y + R[0][2] * z, R[1][0] * x + R[1][1] * y + R[1][2] * z, R[2][0] * x + R[2][1] * y + R[2][2] * z];
