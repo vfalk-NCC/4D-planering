@@ -190,6 +190,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return { a, b, field: !!(smDef(q).fields.find(f => f[0] === 'ut')), angRange: smDef(placeNew('sm:gjutetapp', [O[0], O[1], 0])).fields.find(f => f[0] === 'ang')[2] === 'range' }; });
   if (Math.abs(ut.a - 16) > 0.01 || Math.abs(ut.b - 25) > 0.01 || !ut.field || !ut.angRange) fail('Utstick/vinkel: ' + JSON.stringify(ut));
   console.log('OK: fri gjutform – utstick från punkterna (4×4 → 5×5 m vid 0,5 m) och armeringens vinkel som reglage');
+  // 16) Stödben (snedstag): vinkel och utstick ställs i panelen
+  const sb = await page.evaluate(() => { const O = l3.O, q = placeNew('sm:gjutetapp', [O[0] + 340, O[1] + 340, 0]); placements.push(q); q.H = 0.6;
+    const ext = () => { const ps = placeParts(q).filter(x => x.tris && x.color === '#a9824a'); const ys = ps.flatMap(x => x.tris.pts.map(v => v[1])); return Math.max(...ys) - Math.min(...ys); };
+    q.f = q.f || {}; q.f.sv = 30; const a = ext(); q.f.sv = 60; const b = ext(); q.f.su = 2.5; const c = ext(); return { a, b, c, fields: ['sv', 'su'].every(k => smDef(q).fields.some(f => f[0] === k)) }; });
+  if (!sb.fields || !(sb.b > sb.a + 0.3) || !(sb.c > sb.b + 0.3)) fail('Stödben vinkel/utstick: ' + JSON.stringify(sb));
+  console.log('OK: stödben – vinkel och utstick styr snedstagen');
   // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
   for (const t of ['sm:saxlift', 'sm:bomlift']) {
     const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);

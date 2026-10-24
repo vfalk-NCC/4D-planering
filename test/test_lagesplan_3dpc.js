@@ -127,6 +127,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       set('v3PcMode', 'solid', 'change'); const solid = a();
       set('v3PcBright', 30); out.bright = a() !== solid && solid === '148,163,184';
       await l3pcSetDz(c.id); out.dz = Math.abs(c.dz - 2.5) < 1e-9 && l3pcRemembered().find(x => x.id === c.id).dz === 2.5;
+      l3SetPref('pcEdl', 60); l3pcRenderScene(); out.edl = !!l3pcE && Number(l3Prefs().pcEdl) === 60; l3pcRenderScene();
       document.querySelector('#v3PcReset').click(); out.reset = !l3pc.clouds[0].mat.map && l3pc.clouds[0].mat.opacity === 1 && !l3pc.clouds[0].mat.clippingPlanes;
       l3pcProgress({ id: 'x', name: 'stort.laz' }, 'läser punkterna', 0.42);
       const ld = document.getElementById('v3PcLoad'); out.load = !!ld && /läser punkterna 42 %/.test(ld.textContent) && /stort\.laz – läser punkterna 42 %/.test(document.getElementById('v3Status').textContent);

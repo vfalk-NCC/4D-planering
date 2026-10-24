@@ -640,7 +640,7 @@ function l3Render() {
     l3.groups.sel.children.forEach(h => h.update && h.update());
     l3AdaptRes();
     if (typeof l3pcFrame === "function") l3pcFrame(); // punktmolnen: lättare variant medan kameran rör sig
-    l3.renderer.render(l3.scene, l3.camera);
+    if (typeof l3pcRenderScene === "function") l3pcRenderScene(); else l3.renderer.render(l3.scene, l3.camera);
     if (typeof l3Piv !== "undefined" && l3Piv && l3Piv.on) l3PivMark(true); // rotationspunkten i samma bild
     if (typeof l3mPlaceLabels === "function") l3mPlaceLabels(); // måtten som ligger kvar
     if (typeof l3cPlace === "function") l3cPlace(); // saxarna på snitten
@@ -865,7 +865,7 @@ function l3FlyTo(target, dist, dir, ms = 450, keepZoom = false) {
     cam.position.lerpVectors(p0, toPos, e); orbit.target.lerpVectors(t0, target, e);
     if (ortho) { cam.zoom = z0 + (z1 - z0) * e; cam.updateProjectionMatrix(); }
     orbit.update();
-    l3.renderer.render(l3.scene, l3.camera); l3RenderLabels();
+    if (typeof l3pcRenderScene === "function") l3pcRenderScene(); else l3.renderer.render(l3.scene, l3.camera); l3RenderLabels();
     if (k < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);

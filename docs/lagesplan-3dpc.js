@@ -226,6 +226,42 @@ function l3pcFrame() {
   } else if (l3pcCam !== null && !l3pcMoving) l3pcSince = 0;
   l3pcCam = key;
 }
+/* ---- Djupskuggning (Eye-Dome Lighting, som i Trimble Connect/Potree): scenen ritas till en bildyta med djup och ett efterpass mörkar
+   pixlar som ligger bakom sina grannar. Då får tätt packade punkter konturer och form i stället för en platt färgmatta. Bara när ett moln
+   är tänt och styrkan (Djupskuggning i punktmolnspanelen) är över 0; annars ritas scenen direkt som förut. ---- */
+let l3pcE = null;
+const l3pcEdlOn = () => Number(l3pcPref("pcEdl", 60)) > 0 && l3pc.clouds.some(c => c.visible);
+function l3pcEdlInit(r) {
+  const size = r.getDrawingBufferSize(new THREE.Vector2());
+  const rt = new THREE.WebGLRenderTarget(size.x, size.y, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, samples: r.capabilities.isWebGL2 ? 4 : 0 });
+  rt.depthTexture = new THREE.DepthTexture(size.x, size.y); rt.depthTexture.type = THREE.UnsignedIntType;
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { tC: { value: rt.texture }, tD: { value: rt.depthTexture }, px: { value: new THREE.Vector2(1 / size.x, 1 / size.y) }, near: { value: 0.1 }, far: { value: 1000 }, ortho: { value: 0 }, str: { value: 1 }, rad: { value: 1.4 } },
+    vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+    fragmentShader: `uniform sampler2D tC, tD; uniform vec2 px; uniform float near, far, ortho, str, rad; varying vec2 vUv;
+      float lin(vec2 uv){ float d = texture2D(tD, uv).x; if (d >= 0.99999) return -1.0; if (ortho > 0.5) return near + d * (far - near); return near * far / (far - d * (far - near)); }
+      void main(){ vec4 c = texture2D(tC, vUv); float z = lin(vUv); if (z < 0.0) { gl_FragColor = c; return; }
+        float o = 0.0; vec2 q[8]; q[0]=vec2(1.,0.); q[1]=vec2(-1.,0.); q[2]=vec2(0.,1.); q[3]=vec2(0.,-1.); q[4]=vec2(.7,.7); q[5]=vec2(-.7,.7); q[6]=vec2(.7,-.7); q[7]=vec2(-.7,-.7);
+        for (int i = 0; i < 8; i++) { float n = lin(vUv + q[i] * px * rad); if (n < 0.0) continue; o += max(0.0, log2(z) - log2(n)); }
+        float sh = exp(-o * 90.0 * str); gl_FragColor = vec4(c.rgb * sh, c.a); }`,
+    depthTest: false, depthWrite: false
+  });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), mat); quad.frustumCulled = false;
+  const sc = new THREE.Scene(); sc.add(quad);
+  return { rt, mat, sc, cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), w: size.x, h: size.y };
+}
+function l3pcRenderScene() {
+  const r = l3.renderer;
+  if (!l3pcEdlOn()) { r.render(l3.scene, l3.camera); return; }
+  try {
+    const size = r.getDrawingBufferSize(new THREE.Vector2());
+    if (!l3pcE) l3pcE = l3pcEdlInit(r);
+    if (l3pcE.w !== size.x || l3pcE.h !== size.y) { l3pcE.rt.setSize(size.x, size.y); l3pcE.w = size.x; l3pcE.h = size.y; l3pcE.mat.uniforms.px.value.set(1 / size.x, 1 / size.y); }
+    const cam = l3.camera, u = l3pcE.mat.uniforms; u.near.value = cam.near; u.far.value = cam.far; u.ortho.value = cam.isOrthographicCamera ? 1 : 0; u.str.value = Number(l3pcPref("pcEdl", 60)) / 100;
+    r.setRenderTarget(l3pcE.rt); r.clear(); r.render(l3.scene, cam); r.setRenderTarget(null); r.clear();
+    r.render(l3pcE.sc, l3pcE.cam);
+  } catch (e) { r.setRenderTarget(null); l3pcE = null; l3Prefs().pcEdl = 0; r.render(l3.scene, l3.camera); }
+}
 /* Rund punkt: en liten cirkel som mask (alphaTest) – lika billig som fyrkanten. */
 let l3pcDisc = null;
 function l3pcDiscTex() {
@@ -422,6 +458,7 @@ function l3pcHtml(row, esc) {
       <label title="Punkternas storlek">Storlek</label><div class="v3-pc-f"><input type="range" id="v3PcSize" min="0.5" max="8" step="0.5" value="${l3pcSize()}" /><output>${String(l3pcSize()).replace(".", ",")}</output></div>
       <label title="I skärmen: lika stora på alla avstånd. I meter: växer när du zoomar in, som riktiga ytor.">Skala</label><div class="v3-pc-f">${sel("v3PcAtten", [["", "Pixlar"], ["1", "Meter"]], P.pcAtten ? "1" : "")}</div>
       <label>Form</label><div class="v3-pc-f"><div class="v3-segs v3-pc-seg"><button type="button" data-pc-round="" class="${P.pcRound !== false ? "" : "on"}">■ Fyrkant</button><button type="button" data-pc-round="1" class="${P.pcRound !== false ? "on" : ""}">● Rund</button></div></div>
+      <label title="Mörkar punkter som ligger bakom sina grannar (som i Trimble Connect) så att former och kanter syns">Djupskuggning</label><div class="v3-pc-f"><input type="range" id="v3PcEdl" min="0" max="100" step="5" value="${l3pcPref("pcEdl", 60)}" /><output>${l3pcPref("pcEdl", 60)} %</output></div>
       <label>Ljus</label><div class="v3-pc-f"><input type="range" id="v3PcBright" min="-50" max="50" step="5" value="${l3pcPref("pcBright", 0)}" /><output>${l3pcPref("pcBright", 0)}</output></div>
       <label>Kontrast</label><div class="v3-pc-f"><input type="range" id="v3PcContrast" min="50" max="200" step="10" value="${l3pcPref("pcContrast", 100)}" /><output>${l3pcPref("pcContrast", 100)} %</output></div>
       <label title="Genomskinlighet – se modellen genom molnet">Täckning</label><div class="v3-pc-f"><input type="range" id="v3PcOpacity" min="10" max="100" step="5" value="${l3pcPref("pcOpacity", 100)}" /><output>${l3pcPref("pcOpacity", 100)} %</output></div>
@@ -463,6 +500,7 @@ function l3pcBind(host) {
   // Omfärgning (ljus/kontrast) först när reglaget släpps – grafikkortsinställningarna direkt medan man drar.
   const live = (id, key, fn, txt) => { const el = host.querySelector("#" + id); if (!el) return; el.oninput = () => { l3SetPref(key, Number(el.value)); out(el, txt(el.value)); fn(false); }; el.onchange = () => fn(true); };
   live("v3PcSize", "pcSize", () => l3pcApplyAll(), v => String(v).replace(".", ","));
+  live("v3PcEdl", "pcEdl", () => l3Render(), v => v + " %");
   live("v3PcOpacity", "pcOpacity", () => l3pcApplyAll(), v => v + " %");
   live("v3PcBright", "pcBright", end => end && l3pcRecolor(), v => v);
   live("v3PcContrast", "pcContrast", end => end && l3pcRecolor(), v => v + " %");
@@ -477,7 +515,7 @@ function l3pcBind(host) {
   const at = host.querySelector("#v3PcAtten"); if (at) at.onchange = () => { l3SetPref("pcAtten", !!at.value); l3pcApplyAll(); };
   host.querySelectorAll("[data-pc-round]").forEach(b => { b.onclick = () => { l3SetPref("pcRound", !!b.dataset.pcRound); l3pcApplyAll(); l3LayersRender(); }; });
   const vw = host.querySelector(".v3-pc-view"); if (vw) vw.ontoggle = () => l3SetPref("pcViewOpen", vw.open);
-  const rs = host.querySelector("#v3PcReset"); if (rs) rs.onclick = () => { ["pcSize", "pcAtten", "pcRound", "pcBright", "pcContrast", "pcOpacity", "pcZlo", "pcZhi", "pcMode"].forEach(k => l3SetPref(k, null)); l3pcApplyAll(); l3pcRecolor(); l3LayersRender(); };
+  const rs = host.querySelector("#v3PcReset"); if (rs) rs.onclick = () => { ["pcSize", "pcEdl", "pcAtten", "pcRound", "pcBright", "pcContrast", "pcOpacity", "pcZlo", "pcZhi", "pcMode"].forEach(k => l3SetPref(k, null)); l3pcApplyAll(); l3pcRecolor(); l3LayersRender(); };
   const fb = host.querySelector("#v3PcFile"); if (fb) fb.onclick = () => l3pcFromFile();
 }
 
