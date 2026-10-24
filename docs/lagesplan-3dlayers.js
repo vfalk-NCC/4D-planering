@@ -81,6 +81,7 @@ function l3lSub(id, title, count, body, extra = "") {
 /* Liten rullgardinsmeny i ett blockhuvud: knappen (＋ eller ⋯) och menyn (alltid i DOM, dold). */
 function l3lMenu(id, label, title, items) {
   if (!items) return "";
+  if (label === "＋") label = UI_PLUS;
   return `<span class="v3-ldd"><button type="button" class="v3-ldd-b" data-ldd="${id}" title="${title}" aria-haspopup="menu" aria-expanded="false">${label}</button><span class="v3-ldd-m hidden" role="menu" data-ldd-m="${id}">${items}</span></span>`;
 }
 function l3lMenusBind(host) {

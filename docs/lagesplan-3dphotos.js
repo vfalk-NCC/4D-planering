@@ -230,7 +230,7 @@ function l3phBig() {
   const d = document.createElement("div"); d.className = "v3-phbig"; d.tabIndex = -1;
   d.innerHTML = `<div class="v3-phbig-stage"><img alt="" draggable="false" src="${escHtml(img0.getAttribute("src"))}" /></div>
     <div class="v3-phbig-cap">${escHtml(ph.caption || "Foto")} · ${escHtml(ph.date || "")}</div>
-    <div class="v3-phbig-tools"><button type="button" data-z="in" title="Zooma in">＋</button><button type="button" data-z="out" title="Zooma ut">−</button><button type="button" data-z="fit" title="Anpassa till rutan (dubbelklick)">↺</button><button type="button" data-z="x" title="Stäng (Esc)">✕</button></div>`;
+    <div class="v3-phbig-tools"><button type="button" data-z="in" title="Zooma in">${UI_PLUS}</button><button type="button" data-z="out" title="Zooma ut">−</button><button type="button" data-z="fit" title="Anpassa till rutan (dubbelklick)">↺</button><button type="button" data-z="x" title="Stäng (Esc)">✕</button></div>`;
   const stage = d.querySelector(".v3-phbig-stage"), img = d.querySelector("img"), S = { s: 1, x: 0, y: 0 };
   const close = () => { d.remove(); if (l3ph.big === d) l3ph.big = null; };
   const apply = () => {

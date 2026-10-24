@@ -119,6 +119,9 @@ const UI_EMOJI = {
 };
 const UI_EMOJI_RE = new RegExp("^(\\s*)(" + Object.keys(UI_EMOJI).sort((a, b) => b.length - a.length).map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")\\uFE0F?(?:\\s+|$)", "u");
 
+/* Plustecken som ikon (SVG): "＋" som text sitter aldrig mitt i en knapp, glyfen har egna marginaler. */
+const UI_PLUS = '<svg class="ui-plus" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>';
+const UI_MINUS = '<svg class="ui-plus" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14"/></svg>';
 function uiIcon(name, cls = "") {
   const p = UI_ICON_PATHS[name];
   return p ? `<svg class="ui-ic${cls ? " " + cls : ""}" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>` : "";

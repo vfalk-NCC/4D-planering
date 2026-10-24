@@ -165,7 +165,7 @@ function crewSideHtml(p) {
   return `<div class="v3-sec">Bemanning</div>
     <div class="v3-cw-head"><i style="background:${esc(col)}"></i><div><b>${esc(cur || "Bemanning")}</b><small data-crew="sum">${n} ${n === 1 ? "person" : "personer"} · ${esc(dt)}</small></div></div>
     <div class="v3-cw-card"><h4>Antal personer</h4>
-      <div class="v3-crew-n"><button type="button" data-crew="dec" title="En person färre">−</button><input type="text" inputmode="numeric" data-crew="count" value="${n}" aria-label="Antal personer" /><button type="button" data-crew="inc" title="En person till">＋</button><button type="button" data-crew="inc5" class="v3-crew-5" title="Fem till">＋5</button></div>
+      <div class="v3-crew-n"><button type="button" data-crew="dec" title="En person färre">${UI_MINUS}</button><input type="text" inputmode="numeric" data-crew="count" value="${n}" aria-label="Antal personer" /><button type="button" data-crew="inc" title="En person till">${UI_PLUS}</button><button type="button" data-crew="inc5" class="v3-crew-5" title="Fem till">＋5</button></div>
       <label class="v3-field v3-crew-sp"><span>Spridning (diameter) <b class="v3-cw-badge" data-crew="spreadv">${smFmtD(p.spread || crewAutoDiam(p))}</b> m${p.spread ? "" : " (auto)"}</span><input type="range" min="1" max="40" step="0.5" data-crew="spread" value="${p.spread || crewAutoDiam(p)}" /></label>
       <div class="v3-btns"><button type="button" data-crew="dragon" class="${crewDrag.on && crewDrag.id === p.id ? "on" : ""}" title="Slå på och dra gubbarna med musen på marken. Esc stänger av.">✋ Flytta gubbar/skylt (dra)</button><button type="button" data-crew="resetpos" title="Ordna om gubbarna automatiskt i ringar">Ordna om</button></div>
     </div>
