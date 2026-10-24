@@ -6,7 +6,7 @@ Allt sparas på datorn (arbetsyta, placerade objekt, bibliotek, inställningar).
 
 ## Få tag på .exe-filen (ingen installation av utvecklingsverktyg behövs)
 1. Gå till **Actions → "Bygg skrivbordsprogram"** i GitHub-repot och tryck **Run workflow** (eller skapa en tagg som börjar på `desktop-v`).
-2. När bygget är klart (några minuter) finns **installationsprogrammet** (`3D-editor-Lagesplan-<version>-nsis.exe`) och en **portabel .exe** (kräver ingen installation)
+2. När bygget är klart (några minuter) finns **installationsprogrammet** (`3D-editor-Lagesplan-<version>-installer.exe`) och en **portabel .exe** (kräver ingen installation)
    under *Artifacts* (och under *Releases* om bygget kördes från en tagg).
 
 ## Bygga själv

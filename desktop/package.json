@@ -19,12 +19,40 @@
   "build": {
     "appId": "se.ncc.lagesplan3d",
     "productName": "3D-editor Lägesplan",
-    "files": ["main.js", "server.js", "package.json", "app/**/*"],
-    "directories": { "output": "dist" },
-    "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }, { "target": "portable", "arch": ["x64"] }],
-      "artifactName": "3D-editor-Lagesplan-${version}-${target}.${ext}"
+    "files": [
+      "main.js",
+      "server.js",
+      "package.json",
+      "app/**/*"
+    ],
+    "directories": {
+      "output": "dist"
     },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true, "perMachine": false, "createDesktopShortcut": true }
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "artifactName": "3D-editor-Lagesplan-${version}-installer.${ext}"
+    },
+    "portable": {
+      "artifactName": "3D-editor-Lagesplan-${version}-portable.${ext}"
+    }
   }
 }
