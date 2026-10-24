@@ -284,7 +284,9 @@ function l3Dom() {
           <label class="v3-chk"><input type="checkbox" id="v3LegendChk" ${P.legend ? "checked" : ""} /> Statusförklaring</label>
           <label class="v3-chk" title="Lägesplanens foton där de togs"><input type="checkbox" id="v3ShowPhotos" ${P.photos3d === true ? "checked" : ""} /> Foton</label>
           <div class="v3-pop-l">Bakgrund</div>
-          <div class="v3-bgrow"><input type="color" id="v3BgCol" value="${/^#[0-9a-f]{6}$/i.test(P.bgColor || "") ? P.bgColor : "#f7f8fa"}" title="Bakgrundsfärg – tryck för färghjulet" /><span class="v3-bgsw">${[["#f7f8fa", "Ljus"], ["#e2e8f0", "Grå"], ["#94a3b8", "Mellan"], ["#334155", "Mörk"], ["#0b1220", "Svart"], ["#cfe8ff", "Himmel"]].map(([c, t]) => `<button type="button" data-bg="${c}" title="${t}" style="background:${c}"></button>`).join("")}</span><button type="button" class="v3-link" id="v3BgReset">Standard</button></div>
+          <div class="v3-bgrow"><input type="color" id="v3BgCol" value="${/^#[0-9a-f]{6}$/i.test(P.bgColor || "") ? P.bgColor : "#f7f8fa"}" title="Bakgrundsfärg (överkant vid gradient) – tryck för färghjulet" /><input type="color" id="v3BgCol2" class="${P.bgGrad ? "" : "hidden"}" value="${/^#[0-9a-f]{6}$/i.test(P.bgColor2 || "") ? P.bgColor2 : "#dfe7ef"}" title="Nederkant av gradienten" /><span class="v3-bgsw">${[["#f7f8fa", "Ljus"], ["#e2e8f0", "Grå"], ["#94a3b8", "Mellan"], ["#334155", "Mörk"], ["#0b1220", "Svart"], ["#cfe8ff", "Himmel"]].map(([c, t]) => `<button type="button" data-bg="${c}" title="${t}" style="background:${c}"></button>`).join("")}</span><button type="button" class="v3-link" id="v3BgReset">Standard</button></div>
+          <label class="v3-lay-sw-row" title="Färgövergång uppifrån och ned, som i Tekla"><span>Gradient (som i Tekla)</span><span class="v3-lay-sw"><input type="checkbox" role="switch" id="v3BgGrad" ${P.bgGrad ? "checked" : ""} /><i></i></span></label>
+          <div class="v3-bgrow v3-bggr ${P.bgGrad ? "" : "hidden"}" id="v3BgGrRow"><span class="v3-bgsw">${[["#6d8bb0", "#dfe7ef", "Tekla"], ["#7fb2e5", "#eaf3fb", "Himmel"], ["#cbd5e1", "#f8fafc", "Ljusgrå"], ["#0b1220", "#3b4a63", "Natt"], ["#1e293b", "#94a3b8", "Skiffer"], ["#e0d2b4", "#faf6ec", "Sand"]].map(([a, b, t]) => `<button type="button" data-bgg="${a},${b}" title="${t}" style="background:linear-gradient(${a},${b})"></button>`).join("")}</span></div>
           <label class="v3-chk"><input type="checkbox" id="v3PalChk" ${P.pal ? "checked" : ""} /> Panelen till vänster</label>
           <div class="v3-pop-l">Mus</div>
           <div class="v3-segs">${[["tekla", "Som i Tekla"], ["standard", "Standard"]].map(([k, l]) => `<button type="button" data-v3mouse="${k}" class="${(P.mouse || "tekla") === k ? "on" : ""}">${l}</button>`).join("")}</div>
@@ -391,11 +393,15 @@ function l3Dom() {
   $3("v3ShowPhotos").onchange = e => { if (typeof l3phToggle === "function") l3phToggle(e.target.checked); };
   const legendShow = on => { l3SetPref("legend", on); $3("v3Legend").classList.toggle("hidden", !on); $3("v3LegendChk").checked = on; $3("v3FtLegend").classList.toggle("on", on); $3("v3FtLegend").setAttribute("aria-pressed", on); };
   $3("v3LegendChk").onchange = e => legendShow(e.target.checked);
-  { // Bakgrundsfärg (färghjul + färdiga)
-    const bg = c => { l3SetPref("bgColor", c || null); if (l3 && l3.scene) l3.scene.background = new THREE.Color(c || 0xf7f8fa); const i = $3("v3BgCol"); if (i) i.value = c || "#f7f8fa"; l3Render(); };
+  { // Bakgrundsfärg (färghjul + färdiga) och gradient uppifrån och ned (som i Tekla)
+    const col2 = () => { const i = $3("v3BgCol2"), r = $3("v3BgGrRow"), g = !!l3Prefs().bgGrad; if (i) i.classList.toggle("hidden", !g); if (r) r.classList.toggle("hidden", !g); };
+    const bg = c => { l3SetPref("bgColor", c || null); const i = $3("v3BgCol"); if (i) i.value = c || "#f7f8fa"; l3ApplyBg(); };
     $3("v3BgCol").oninput = e => bg(e.target.value);
+    $3("v3BgCol2").oninput = e => { l3SetPref("bgColor2", e.target.value); l3ApplyBg(); };
     document.querySelectorAll("[data-bg]").forEach(b => { b.onclick = () => bg(b.dataset.bg); });
-    $3("v3BgReset").onclick = () => bg(null);
+    document.querySelectorAll("[data-bgg]").forEach(b => { b.onclick = () => { const [a, c2] = b.dataset.bgg.split(","); l3SetPref("bgGrad", true); l3SetPref("bgColor", a); l3SetPref("bgColor2", c2); $3("v3BgCol").value = a; $3("v3BgCol2").value = c2; const g = $3("v3BgGrad"); if (g) g.checked = true; col2(); l3ApplyBg(); }; });
+    $3("v3BgGrad").onchange = e => { l3SetPref("bgGrad", e.target.checked); col2(); l3ApplyBg(); };
+    $3("v3BgReset").onclick = () => { l3SetPref("bgGrad", null); l3SetPref("bgColor2", null); const g = $3("v3BgGrad"); if (g) g.checked = false; col2(); bg(null); };
   }
   $3("v3FtLegend").onclick = () => legendShow(!l3Prefs().legend);
   $3("v3FtNav").onclick = () => { l3SetPref("navHelp", l3Prefs().navHelp === false); if (typeof l3NavHelp === "function") l3NavHelp(); };
@@ -518,7 +524,7 @@ function l3Init(box) {
   // Neutral, nästan vit bakgrund och ljus som i Trimble Connect (Victor 2026-10-10: "min vy känns nästan
   // dimmig"): svagt neutralt allmänljus, tydligt solljus och ett svagt motljus. Uppåtvända ytor får högst
   // ~100 % ljus så att mörka färger (svarta tak) förblir mörka; sidorna får olika ljus och läses som kroppar.
-  scene.background = new THREE.Color(/^#[0-9a-f]{6}$/i.test(l3Prefs().bgColor || "") ? l3Prefs().bgColor : 0xf7f8fa);
+  l3ApplyBg(scene, renderer);
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 20000);
   camera.up.set(0, 0, 1);
   scene.add(new THREE.HemisphereLight(0xffffff, 0xd9d6cf, 0.5));
@@ -641,6 +647,14 @@ function l3AdaptRes() {
   if (low < base - 0.01 && r.getPixelRatio() !== low) r.setPixelRatio(low);
   clearTimeout(l3CamLast.hiT);
   l3CamLast.hiT = setTimeout(() => { if (l3 && r.getPixelRatio() !== base) { r.setPixelRatio(base); l3Render(); } }, 200);
+}
+/* Bakgrunden: en färg, eller en gradient uppifrån och ned (bakgrundsbild som fyller vyn). */
+function l3ApplyBg(scene, rend) {
+  const fresh = !!scene; scene = scene || (l3 && l3.scene); if (!scene) return; rend = rend || (l3 && l3.renderer); const P = l3Prefs(), ok = h => /^#[0-9a-f]{6}$/i.test(h || ""), top = ok(P.bgColor) ? P.bgColor : "#f7f8fa";
+  if (P.bgGrad) { const bot = ok(P.bgColor2) ? P.bgColor2 : "#dfe7ef", cv = document.createElement("canvas"); cv.width = 2; cv.height = 256; const g = cv.getContext("2d"), gr = g.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, top); gr.addColorStop(1, bot); g.fillStyle = gr; g.fillRect(0, 0, 2, 256);
+    const tex = new THREE.CanvasTexture(cv); tex.minFilter = tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false; tex.encoding = (rend && rend.outputEncoding) || THREE.LinearEncoding; if (scene.background && scene.background.isTexture) scene.background.dispose(); scene.background = tex; }
+  else { if (scene.background && scene.background.isTexture) scene.background.dispose(); scene.background = new THREE.Color(top); }
+  if (!fresh && l3 && l3.renderer) l3Render();
 }
 function l3Render() {
   if (!l3 || l3Raf) return;
@@ -957,13 +971,13 @@ function l3Select(id) { l3SelectIds(id ? [id] : []); }
 /* Tydlig markering (Victor 2026-10-09): objektet tonas lila, får lila konturer och en lila ram runt sig.
    Konturerna och ramen döljs bakom annat (Victor 2026-10-10: "Modellerna ska inte bli genomskinliga och
    visa dolda delar när jag markerar dom") – annars är det svårt att passa in t.ex. lyftkranar. Konturerna sitter på själva objektet och följer med handtagen. */
-const L3_SEL_COL = 0x6d5efc, L3_SEL_TINT = 0x2b1d8f;
+const L3_SEL_COL = 0x6d5efc, L3_SEL_TINT = 0x2f5fe0;   // markering = bara sken på objektet (ingen ram/bounding box)
 function l3SelDeco(g, on) {
   if (!g) return;
   const meshes = []; g.traverse(o => { if (o.isMesh && !o.userData.selEdge) meshes.push(o); });
   meshes.forEach(o => {
     if (o.material && o.material.emissive) o.material.emissive.setHex(on ? L3_SEL_TINT : 0x000000);
-    if (on && !o.userData.selEdges && !o.userData.noEdges && o.geometry) {
+    if (false && on && !o.userData.selEdges && !o.userData.noEdges && o.geometry) {
       const e = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 30), new THREE.LineBasicMaterial({ color: L3_SEL_COL, transparent: true, opacity: .9 }));
       e.renderOrder = 6; e.userData.selEdge = true; e.raycast = () => {};
       o.add(e); o.userData.selEdges = e;
@@ -984,7 +998,7 @@ function l3RefreshSel() {
   l3Clear(l3.groups.sel);
   (l3.selDeco || new Set()).forEach(id => { if (!l3.sel.has(id)) l3SelDeco(l3.placeMeshes.get(id), false); });
   l3.selDeco = new Set(l3.sel);
-  l3.sel.forEach(id => { const g = l3.placeMeshes.get(id); if (g) { l3SelDeco(g, true); const h = new THREE.BoxHelper(g, L3_SEL_COL); h.material.transparent = true; h.material.opacity = .55; h.renderOrder = 5; l3.groups.sel.add(h); } });
+  l3.sel.forEach(id => { const g = l3.placeMeshes.get(id); if (g) { l3SelDeco(g, true); } });
   const one = l3.sel.size === 1 && (l3.tool || "select") === "select" ? l3.placeMeshes.get([...l3.sel][0]) : null;
   if (one) { if (l3.gizmo.object !== one) l3.gizmo.attach(one); } else if (!(l3.gizmo.object && l3.gizmo.object.userData.bmove)) l3.gizmo.detach(); // IFC-flytt behåller handtagen
   if (one) l3Mode(l3.gizmo.mode || "translate");
