@@ -123,6 +123,7 @@ function l3UiInit(box) {
   l3UiTips();
   l3UiTabs(box);
   { const sw = box.querySelector("#v3PlacedSw"); if (sw) sw.onchange = () => l3PlacedShow(sw.checked); }
+  { const sw = box.querySelector("#v3SignSw"); if (sw) sw.onchange = () => { l3SetPref("signsOff", !sw.checked); const t = document.getElementById("v3SignSwT"); if (t) t.textContent = sw.checked ? "Visas" : "Släckta"; placements.forEach(q => { try { l3RebuildOne(q); } catch (e) { /* */ } }); l3Render(); }; }
   // Flytt av knappar och rutor (när upplåst) – före allt annat så att inget klick går igenom
   // verktygstips: ett flytande tips som aldrig klipps av raden
   { const tb = mk("div", null, "v3-tipbox"); box.appendChild(tb); let tm = 0;

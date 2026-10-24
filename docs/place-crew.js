@@ -176,6 +176,7 @@ function crewSideHtml(p) {
       <label class="v3-field"><span>Egen text (visas som Aktivitet på skylten – tom = vald aktivitet)</span><textarea data-crew="comment" rows="2" maxlength="140" placeholder="T.ex. Armerar plattan, skift 1">${esc(p.comment || "")}</textarea></label>
     </div>
     <div class="v3-cw-card"><h4>Skyltens läge</h4>
+      <label class="v3-lay-sw-row"><span>Visa skylt</span><span class="v3-lay-sw"><input type="checkbox" role="switch" data-crew="signshow" ${p.signOff === true ? "" : "checked"} /><i></i></span></label>
       <label class="v3-field v3-crew-sp"><span>Vridning <b class="v3-cw-badge" data-crew="syv">${Math.round(crewSignYaw(p))}°</b>${p.signYaw == null ? " (standard)" : ""}</span><input type="range" min="-180" max="180" step="5" data-crew="syaw" value="${Math.round(crewSignYaw(p))}" /></label>
       <label class="v3-field v3-crew-sp"><span>Höjd <b class="v3-cw-badge" data-crew="szv">${smFmt(smSignZ(p) == null ? 2.45 : smSignZ(p), 1)} m</b></span><input type="range" min="0.3" max="30" step="0.1" data-crew="sz" value="${smSignZ(p) == null ? 2.45 : smSignZ(p)}" /></label>
       <div class="v3-btns"><button type="button" data-crew="sy" data-v="0">0°</button><button type="button" data-crew="sy" data-v="90">90°</button><button type="button" data-crew="sy" data-v="-90">−90°</button><button type="button" data-crew="sy" data-v="180">180°</button></div>
@@ -209,6 +210,7 @@ function crewBindSide(side, p, redraw) {
     side.querySelectorAll('[data-crew="sy"]').forEach(b => b.onclick = () => apply(() => { p.signYaw = Number(b.dataset.v); }));
     q("sydef").onclick = () => { crewSignDefaultSet(crewSignYaw(p)); if (typeof l3Toast === "function") l3Toast(`Standard: skyltarna vrids ${Math.round(crewSignYaw(p))}° (gäller alla utan egen vridning)`); redraw(); if (typeof l3RebuildAll === "function") l3RebuildAll(); };
     q("syall").onclick = () => { placeSnapshot(); crewSignDefaultSet(crewSignYaw(p)); placements.filter(x => crewIsType(x.type)).forEach(x => { x.signYaw = null; placeTouch(x); if (typeof l3RebuildOne === "function") l3RebuildOne(x); }); if (typeof l3Changed === "function") l3Changed(); if (typeof l3Toast === "function") l3Toast("Alla bemanningsskyltar har nu samma vridning"); redraw(); };
+    { const sh = q("signshow"); if (sh) sh.onchange = () => apply(() => { p.signOff = !sh.checked; }); }
     q("signreset").onclick = () => apply(() => { p.signYaw = null; p.signZ = null; p.signPos = null; p.planPos = null; p.planYaw = 0; });
   { const sz = q("sz"), sv2 = q("szv"); if (sz) { let snp = false; sz.onpointerdown = () => { if (!snp) { placeSnapshot(); snp = true; } }; sz.oninput = () => { p.signZ = Number(sz.value); if (sv2) sv2.textContent = smFmt(p.signZ, 1) + " m"; live(); }; sz.onchange = () => { snp = false; placeTouch(p); redraw(); }; } }
     q("plan").onchange = e => apply(() => { p.signPlan = !!e.target.checked; });

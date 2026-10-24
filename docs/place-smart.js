@@ -19,7 +19,9 @@ const SM_ST = { Beställd: "#f59e0b", "På väg": "#3b82f6", Levererad: "#22c55e
 /* ---- Skylten ---------------------------------------------------------------------------------------------------------------------------------- */
 /* Geometrin (vit platta, färgat huvud, stolpar, text som streck) går till IFC. I 3D-editorn ersätts texten av en skarp textur med riktig typografi (smSignMesh) – samma mått och samma rader. */
 /* Skylt (kort). s.yaw = vridning i grader runt skyltens mitt, s.at = [a, b] egen plats (fri placering). s.plan = { at:[a,b], yaw } ritar i stället en liggande kopia på marken som läses uppifrån (planvy). */
+const smSignsOff = p => !!p && (p.signOff === true || (typeof l3Prefs === "function" && l3Prefs().signsOff === true));   // skyltarna kan släckas för ett objekt eller för alla
 function smCard(ctx, s) {
+  if (ctx && smSignsOff(ctx.p)) return;
   if (s.plan) return smCardFlat(ctx, s);
   if (s.yaw || s.at) { const W0 = ctx.W, b00 = s.b0 == null ? -1.2 : s.b0, cy = Math.cos((s.yaw || 0) * Math.PI / 180), sy = Math.sin((s.yaw || 0) * Math.PI / 180), pa = s.at ? s.at[0] : 0, pb = s.at ? s.at[1] : b00;
     ctx = { ...ctx, W: (a, b) => { const da = a, db = b - b00; return W0(pa + da * cy - db * sy, pb + da * sy + db * cy); } }; ctx.rect = (a0, a1, b0, b1) => [[a0, b0], [a1, b0], [a1, b1], [a0, b1]].map(([a, b]) => ctx.W(a, b)); }
@@ -198,6 +200,7 @@ function smSignHtml(p) {
     <div class="v3-segs v3-sm-seg">${[[0, "0°"], [90, "90°"], [-90, "−90°"], [180, "180°"]].map(([v, t]) => `<button type="button" data-sg="yawset" data-v="${v}">${t}</button>`).join("")}</div>
     <label class="v3-field v3-sm-range"><span>Höjd <b data-sgv="z">${esc(smFmt(zv, 1))} m</b>${z == null ? " (auto)" : ""}</span><input type="range" min="0.3" max="30" step="0.1" data-sg="z" value="${zv}" /></label>
     <div class="v3-gj-btns"><button type="button" class="v3-wide" data-sg="def" title="Alla skyltar utan egen vridning får samma riktning">★ Standard</button><button type="button" class="v3-wide" data-sg="reset" title="Skylten tillbaka: standardvridning och objektets egen höjd">Återställ</button></div>
+    <label class="v3-lay-sw-row" title="Släck skylten på det här objektet (påverkar inte IFC-exporten av själva objektet)"><span>Visa skylt</span><span class="v3-lay-sw"><input type="checkbox" role="switch" data-sg="show" ${p.signOff === true ? "" : "checked"} /><i></i></span></label>
     <div class="v3-gj-btns"><button type="button" class="v3-wide ${smSignDrag.on && smSignDrag.id === p.id ? "on" : ""}" data-sg="drag" title="Dra skylten fritt på marken med musen (Esc avslutar)">${smSignDrag.on && smSignDrag.id === p.id ? "Klar – sluta dra" : "Flytta skylten fritt (dra)"}</button></div>
     <div class="v3-sm-seg2"><label class="v3-field"><span>Sidled (a) m</span><input type="number" step="0.1" data-sg="pa" value="${(smSignPos(p) || [0, 0])[0]}" /></label><label class="v3-field"><span>Framåt (b) m</span><input type="number" step="0.1" data-sg="pb" value="${(smSignPos(p) || [0, SM_SIGN_B0.get(p.id) == null ? -1.2 : SM_SIGN_B0.get(p.id)])[1]}" /></label></div>
     <label class="chk"><input type="checkbox" data-sg="plan" ${p.signPlan ? "checked" : ""}> Extra skylt i planvy (liggande)</label>
@@ -216,6 +219,7 @@ function smSignBind(side, p, redraw) {
     else if (k === "reset") el.onclick = () => apply(() => { p.signYaw = null; p.signZ = null; p.signPos = null; p.planPos = null; p.planYaw = 0; });
     else if (k === "drag") el.onclick = () => { smSignDragSet(!(smSignDrag.on && smSignDrag.id === p.id), p); const sd = document.getElementById("v3Side"); if (sd) sd.dataset.id = ""; if (typeof l3RenderSide === "function") l3RenderSide(); };
     else if (k === "pa" || k === "pb") el.onchange = () => apply(() => { const cur = smSignPos(p) || [0, SM_SIGN_B0.get(p.id) == null ? -1.2 : SM_SIGN_B0.get(p.id)], v = Number(String(el.value).replace(",", ".")); if (isFinite(v)) { cur[k === "pa" ? 0 : 1] = v; p.signPos = [cur[0], cur[1]]; } });
+    else if (k === "show") el.onchange = () => apply(() => { p.signOff = !el.checked; });
     else if (k === "plan") el.onchange = () => apply(() => { p.signPlan = el.checked; });
   });
 }
