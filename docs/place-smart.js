@@ -129,7 +129,7 @@ function smartParts(p, z) {
   const lib = placeLib(p.type) || {}, col = p.color || lib.color || d.color, ctx = smMakeCtx(p, z, col), dt = smDateText(p), parts = ctx.parts, add = ctx.add, W = ctx.W;
   ctx.withDate = s => dt ? { ...s, rows: [...(s.rows || []), ["Gäller", dt]] } : s;
   ctx.card = s => { smCard(ctx, ctx.withDate(smSignSpec(p, s))); if (p.signPlan) smCard(ctx, ctx.withDate({ ...s, plan: { at: Array.isArray(p.planPos) && isFinite(p.planPos[0]) ? [Number(p.planPos[0]), Number(p.planPos[1])] : [0, (s.b0 == null ? -1.2 : s.b0) - 2.4], yaw: Number(p.planYaw) || 0 } })); };
-  ctx.cardAt = (pt, s) => { const c2 = { ...ctx, W: (a, b) => [pt[0] + a, pt[1] + b], z: (Number(pt[2]) || 0) + (Number(p.dz) || 0) }; c2.add = (pl, z0, z1, color, extra) => parts.push({ poly: pl, z0: c2.z + z0, z1: c2.z + z1, role: "body", transp: 0, color: color || col, ...(extra || {}) }); smCard(c2, ctx.withDate({ ...smSignSpec(p, s), at: s.at || null })); };
+  ctx.cardAt = (pt, s) => { const c2 = { ...ctx, W: (a, b) => [pt[0] + a, pt[1] + b], z: (Number(pt[2]) || 0) + (Number(p.dz) || 0) }; c2.add = (pl, z0, z1, color, extra) => parts.push({ poly: pl, z0: c2.z + z0, z1: c2.z + z1, role: "body", transp: 0, color: color || col, ...(extra || {}) }); smCard(c2, ctx.withDate(smSignSpec(p, s))); };
   ctx.pin = hex => { add(ctx.oct(0.2, 10), 0, 0.06, "#374151"); add(ctx.rect(-0.03, 0.03, -0.03, 0.03), 0.06, 1.2, "#9ca3af"); add(ctx.oct(0.22, 10), 1.2, 1.32, hex); add(ctx.oct(0.17, 10), 1.32, 1.42, hex); add(ctx.oct(0.1, 8), 1.42, 1.48, hex); };
   ctx.reach = (r, color) => parts.push({ poly: Array.from({ length: 64 }, (_, i) => W(r * Math.cos(i * 2 * Math.PI / 64), r * Math.sin(i * 2 * Math.PI / 64))), z0: ctx.z, z1: ctx.z + 0.04, role: "reach", transp: 0.8, color });
   /* Väg/band längs punkterna: hörnen rundas med radie (cirkelbågar) och bandet ritas sömlöst (geringsskarvar), så att inga rektanglar klipps i hörnen. */
@@ -157,10 +157,40 @@ function smartProps(p) {
    Listor får vara [värde, text]-par; ett sparat värde som inte finns i listan läggs till som eget val. */
 /* ---- Skylten för sig (Victor 2026-10-24: "alla skyltar ska gå att justera för sig – rotation och höjd oberoende av objektet") ----
    Fält på objektet: signYaw (vridning, tom = standarden som gäller alla), signZ (höjd över objektets underkant, tom = objektets egen), signPos ([a, b] fri plats), signPlan/planPos/planYaw (extra liggande skylt). */
+const SM_SIGN_B0 = new Map(); // skyltens egen utgångsplats (b), för fri placering
 const SM_SIGN_AUTO = new Map(); // objektets egen skylthöjd, för reglagets utgångsläge
 const smSignPos = p => (Array.isArray(p.signPos) && isFinite(p.signPos[0]) && isFinite(p.signPos[1]) ? [Number(p.signPos[0]), Number(p.signPos[1])] : null);
 const smSignZ = p => (p.signZ != null && p.signZ !== "" && isFinite(Number(p.signZ)) ? Number(p.signZ) : null);
-function smSignSpec(p, s) { const z0 = s.zb == null ? 2.45 : s.zb; SM_SIGN_AUTO.set(p.id, z0); const sz = smSignZ(p); return { ...s, zb: sz == null ? z0 : sz, yaw: (typeof crewSignYaw === "function" ? crewSignYaw(p) : Number(p.signYaw) || 0), at: smSignPos(p) || s.at || null }; }
+function smSignSpec(p, s) { const z0 = s.zb == null ? 2.45 : s.zb; SM_SIGN_AUTO.set(p.id, z0); SM_SIGN_B0.set(p.id, s.b0 == null ? -1.2 : s.b0); const sz = smSignZ(p); return { ...s, zb: sz == null ? z0 : sz, yaw: (typeof crewSignYaw === "function" ? crewSignYaw(p) : Number(p.signYaw) || 0), at: smSignPos(p) || s.at || null }; }
+/* Dra skylten fritt (alla smarta objekt utom bemanning, som har egen dragning): släpp = p.signPos sparas. */
+const smSignDrag = { on: false, id: null, active: false, installed: false, raf: 0 };
+function smSignDragSet(on, p) {
+  smSignDrag.on = !!on; smSignDrag.id = on && p ? p.id : null; smSignDrag.active = false; if (typeof l3 === "undefined" || !l3) return;
+  try { l3.renderer.domElement.style.cursor = on ? "grab" : ""; } catch (e) { /* */ }
+  if (on) { smSignDragInstall(); if (typeof l3Status === "function") l3Status("Dra skylten med musen för att flytta den på marken. Dra i tomma ytan för att flytta vyn. Esc avslutar."); }
+}
+function smSignDragInstall() {
+  if (smSignDrag.installed) return; smSignDrag.installed = true; const el = l3.renderer.domElement, host = el.parentElement || el, D = smSignDrag;
+  const ray = e => { const r = el.getBoundingClientRect(), v = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), rc = new THREE.Raycaster(); rc.setFromCamera(v, l3.camera); return rc; };
+  const cur = p => smSignPos(p) || [0, SM_SIGN_B0.get(p.id) == null ? -1.2 : SM_SIGN_B0.get(p.id)];
+  host.addEventListener("pointerdown", e => {
+    if (!D.on || e.button !== 0 || e.target !== el) return; const p = placements.find(x => x.id === D.id), grp = p && l3.placeMeshes.get(p.id); if (!grp) return;
+    grp.updateMatrixWorld(true); const hit = ray(e).intersectObject(grp, true).find(h => h.object.visible && h.object.userData && h.object.userData.isSign && !h.object.userData.flat); if (!hit) return;
+    e.stopImmediatePropagation(); e.stopPropagation(); e.preventDefault(); placeSnapshot(); const lp = grp.worldToLocal(hit.point.clone()), c = cur(p);
+    D.active = true; D.moved = false; D.z = hit.point.z; D.start = [lp.x, lp.y]; D.at0 = [c[0], c[1]]; if (l3.orbit) l3.orbit.enabled = false; el.style.cursor = "grabbing";
+  }, true);
+  window.addEventListener("pointermove", e => {
+    if (!D.active) return; const p = placements.find(x => x.id === D.id), grp = p && l3.placeMeshes.get(p.id); if (!p || !grp) return;
+    const pt = new THREE.Vector3(); if (!ray(e).ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -D.z), pt)) return; grp.updateMatrixWorld(true); const lp = grp.worldToLocal(pt);
+    p.signPos = [Math.round((D.at0[0] + lp.x - D.start[0]) * 100) / 100, Math.round((D.at0[1] + lp.y - D.start[1]) * 100) / 100]; D.moved = true; e.stopPropagation();
+    if (!D.raf) D.raf = requestAnimationFrame(() => { D.raf = 0; if (typeof l3RebuildOne === "function") l3RebuildOne(p); if (typeof l3Render === "function") l3Render(); });
+  }, true);
+  window.addEventListener("pointerup", () => {
+    if (!D.active) return; const p = placements.find(x => x.id === D.id); D.active = false; if (l3.orbit) l3.orbit.enabled = true; el.style.cursor = D.on ? "grab" : "";
+    if (p && D.moved) { placeTouch(p); if (typeof l3RebuildOne === "function") l3RebuildOne(p); if (typeof l3Changed === "function") l3Changed(); if (typeof l3RenderSide === "function") { const sd = document.getElementById("v3Side"); if (sd) sd.dataset.id = ""; l3RenderSide(); } }
+  }, true);
+  window.addEventListener("keydown", e => { if (e.key === "Escape" && D.on) { smSignDragSet(false); const sd = document.getElementById("v3Side"); if (sd) sd.dataset.id = ""; if (typeof l3RenderSide === "function") l3RenderSide(); e.stopPropagation(); } }, true);
+}
 function smSignHtml(p) {
   const esc = typeof escHtml === "function" ? escHtml : s => String(s), yaw = typeof crewSignYaw === "function" ? crewSignYaw(p) : Number(p.signYaw) || 0, z = smSignZ(p), auto = SM_SIGN_AUTO.get(p.id) == null ? 2.45 : SM_SIGN_AUTO.get(p.id), zv = z == null ? auto : z;
   return `<div class="v3-sec">Skylt</div><div class="v3-sm-sign">
@@ -168,6 +198,8 @@ function smSignHtml(p) {
     <div class="v3-segs v3-sm-seg">${[[0, "0°"], [90, "90°"], [-90, "−90°"], [180, "180°"]].map(([v, t]) => `<button type="button" data-sg="yawset" data-v="${v}">${t}</button>`).join("")}</div>
     <label class="v3-field v3-sm-range"><span>Höjd <b data-sgv="z">${esc(smFmt(zv, 1))} m</b>${z == null ? " (auto)" : ""}</span><input type="range" min="0.3" max="30" step="0.1" data-sg="z" value="${zv}" /></label>
     <div class="v3-gj-btns"><button type="button" class="v3-wide" data-sg="def" title="Alla skyltar utan egen vridning får samma riktning">★ Standard</button><button type="button" class="v3-wide" data-sg="reset" title="Skylten tillbaka: standardvridning och objektets egen höjd">Återställ</button></div>
+    <div class="v3-gj-btns"><button type="button" class="v3-wide ${smSignDrag.on && smSignDrag.id === p.id ? "on" : ""}" data-sg="drag" title="Dra skylten fritt på marken med musen (Esc avslutar)">${smSignDrag.on && smSignDrag.id === p.id ? "Klar – sluta dra" : "Flytta skylten fritt (dra)"}</button></div>
+    <div class="v3-sm-seg2"><label class="v3-field"><span>Sidled (a) m</span><input type="number" step="0.1" data-sg="pa" value="${(smSignPos(p) || [0, 0])[0]}" /></label><label class="v3-field"><span>Framåt (b) m</span><input type="number" step="0.1" data-sg="pb" value="${(smSignPos(p) || [0, SM_SIGN_B0.get(p.id) == null ? -1.2 : SM_SIGN_B0.get(p.id)])[1]}" /></label></div>
     <label class="chk"><input type="checkbox" data-sg="plan" ${p.signPlan ? "checked" : ""}> Extra skylt i planvy (liggande)</label>
     ${p.signPlan ? `<label class="v3-field v3-sm-range"><span>Planvyskyltens vridning <b data-sgv="pyaw">${Math.round(Number(p.planYaw) || 0)}°</b></span><input type="range" min="-180" max="180" step="5" data-sg="pyaw" value="${Math.round(Number(p.planYaw) || 0)}" /></label>` : ""}</div>`;
 }
@@ -182,6 +214,8 @@ function smSignBind(side, p, redraw) {
     else if (k === "yawset") el.onclick = () => apply(() => { p.signYaw = Number(el.dataset.v); });
     else if (k === "def") el.onclick = () => { if (typeof crewSignDefaultSet === "function") crewSignDefaultSet(typeof crewSignYaw === "function" ? crewSignYaw(p) : 0); if (typeof l3Toast === "function") l3Toast("Standard: skyltarna vrids " + Math.round(typeof crewSignYaw === "function" ? crewSignYaw(p) : 0) + "° (gäller alla utan egen vridning)"); redraw(); };
     else if (k === "reset") el.onclick = () => apply(() => { p.signYaw = null; p.signZ = null; p.signPos = null; p.planPos = null; p.planYaw = 0; });
+    else if (k === "drag") el.onclick = () => { smSignDragSet(!(smSignDrag.on && smSignDrag.id === p.id), p); const sd = document.getElementById("v3Side"); if (sd) sd.dataset.id = ""; if (typeof l3RenderSide === "function") l3RenderSide(); };
+    else if (k === "pa" || k === "pb") el.onchange = () => apply(() => { const cur = smSignPos(p) || [0, SM_SIGN_B0.get(p.id) == null ? -1.2 : SM_SIGN_B0.get(p.id)], v = Number(String(el.value).replace(",", ".")); if (isFinite(v)) { cur[k === "pa" ? 0 : 1] = v; p.signPos = [cur[0], cur[1]]; } });
     else if (k === "plan") el.onchange = () => apply(() => { p.signPlan = el.checked; });
   });
 }
