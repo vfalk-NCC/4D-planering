@@ -6,7 +6,7 @@
 const l3gp = { id: null, pts: [], down: false, line: null, frame: null, g: null, face: 0 };
 
 function l3gpPoly(p) {
-  if (p.type === "sm:gjutform") { const P = p.pts || [], ox = Number(p.x) || 0, oy = Number(p.y) || 0; return P.length < 3 ? null : smFillet(P.map(q => [q[0] - ox, q[1] - oy, 0]), smN(p, "radie", 0), true).map(q => [q[0], q[1]]); }
+  if (p.type === "sm:gjutform") return gjutFreePoly(p);
   return gjutPoly(p);
 }
 /* Formens läge i scenen: mitt, riktningsvektorer (x längs formen, y vinkelrätt), plattans bas-z. */

@@ -255,7 +255,7 @@ function l3sHtml(row, eye) {
   return { extra: "", body: `
     ${pdfRow}
     ${h ? `<div class="v3-pal-hint">Släckta när 3D öppnas – tänd det du vill se på marken. 2D-läget påverkas inte.</div>${h}` : `<div class="v3-pal-hint">Inga 2D-lager.</div>`}
-    <button type="button" class="v3-wide" id="v3SDxf" title="Läs in en DXF – den hamnar på rätt plats via modellens koordinater och blir ett CAD-lager i lägesplanen (även i 2D)">＋ Läs in DXF…</button><input type="file" id="v3SDxfIn" accept=".dxf" multiple hidden />` };
+    <button type="button" class="v3-wide" id="v3SDxf" title="Läs in en DXF – den hamnar på rätt plats via modellens koordinater och blir ett CAD-lager i lägesplanen (även i 2D)">＋ Läs in DXF…</button><input type="file" id="v3SDxfIn" accept=".dxf,.dwg" multiple hidden />` };
 }
 function l3sBind(host) {
   host.querySelectorAll("[data-l3s]").forEach(b => { b.onclick = () => { const k = b.dataset.l3s; setLayersVisible([k], !ls(k).visible); l3sRefresh(0); l3LayersRender(); }; });

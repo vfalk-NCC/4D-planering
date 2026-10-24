@@ -10,7 +10,7 @@
      (via 4D-planering, som har TC-behörigheten) och tänder/släcker den sedan.
    Panelerna till höger och vänster kan breddas genom att dra i kanten. */
 
-const L3L_EXT = /\.(ifc|ifczip|dxf|las|laz|xyz|pts|ply|e57)$/i; // DXF blir ett CAD-lager (lagesplan-3dsite.js), LAS/LAZ … punktmoln (lagesplan-3dpc.js)
+const L3L_EXT = /\.(ifc|ifczip|dxf|dwg|las|laz|xyz|pts|ply|e57)$/i; // DXF blir ett CAD-lager (lagesplan-3dsite.js), LAS/LAZ … punktmoln (lagesplan-3dpc.js)
 let l3lay = { folders: new Map(), open: new Set(), root: null, project: "", loading: new Set(), err: "", texp: new Set() };
 
 const l3lEye = on => `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${on
@@ -295,9 +295,9 @@ function l3lTreeHtml(id, depth) {
       h += `<div class="v3-lr" ${pad}><button type="button" class="v3-eye ${c && c.visible ? "on" : ""}" data-pc-tc="${esc(f.id)}" data-name="${esc(f.name)}" data-parent="${esc(id)}" title="${e57 ? "E57 – exportera till LAZ/LAS för att visa här" : c ? (c.visible ? "Släck" : "Tänd") : "Läs in punktmolnet och visa"}">${busy ? '<span class="pm-spin"></span>' : l3lEye(!!(c && c.visible))}</button><span class="v3-lr-n" title="${esc(f.name)}">☁ ${esc(f.name)}</span>${c ? `<button type="button" class="v3-lr-zoom" data-pc-zoom="${esc(c.id)}" title="Zooma till molnet">${L3_ICO.focus}</button><em class="v3-lr-k">${l3pcMil(c.info.n)}</em>` : f.size ? `<em class="v3-lr-k">${typeof pmBytes === "function" ? pmBytes(f.size) : ""}${e57 ? " · E57" : ""}</em>` : ""}</div>`;
       return;
     }
-    if (/\.dxf$/i.test(f.name)) {
-      const cad = typeof cads === "function" ? cads().find(r => r.name === f.name.replace(/\.dxf$/i, "")) : null, on = cad && ls("cad:" + cad.id).visible;
-      h += `<div class="v3-lr" ${pad}><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3l-dxf="${esc(f.id)}" data-name="${esc(f.name)}" data-cad="${cad ? esc(cad.id) : ""}" title="${cad ? (on ? "Släck" : "Tänd") : "Läs in som CAD-lager"}">${l3lEye(!!on)}</button><span class="v3-lr-n" title="${esc(f.name)}">${esc(f.name)}</span>${cad ? `<button type="button" class="v3-lr-zoom" data-l3l-dxfzoom="${esc(cad.id)}" title="Zooma till ritningen">${L3_ICO.focus}</button>` : ""}<em class="v3-lr-k">DXF</em></div>`;
+    if (/\.(dxf|dwg)$/i.test(f.name)) {
+      const cad = typeof cads === "function" ? cads().find(r => r.name === f.name.replace(/\.(dxf|dwg)$/i, "")) : null, on = cad && ls("cad:" + cad.id).visible;
+      h += `<div class="v3-lr" ${pad}><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3l-dxf="${esc(f.id)}" data-name="${esc(f.name)}" data-cad="${cad ? esc(cad.id) : ""}" title="${cad ? (on ? "Släck" : "Tänd") : "Läs in som CAD-lager" + (/\.dwg$/i.test(f.name) ? " (DWG, experimentellt)" : "")}">${l3lEye(!!on)}</button><span class="v3-lr-n" title="${esc(f.name)}">${esc(f.name)}</span>${cad ? `<button type="button" class="v3-lr-zoom" data-l3l-dxfzoom="${esc(cad.id)}" title="Zooma till ritningen">${L3_ICO.focus}</button>` : ""}<em class="v3-lr-k">DXF</em></div>`;
       return;
     }
     const m = l3b.models.find(x => x.id === "f:" + f.id), busy = l3lay.loading.has(f.id);

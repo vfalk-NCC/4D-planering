@@ -275,11 +275,39 @@ const CAD_UNITS = [{ f: 1, n: "meter" }, { f: 0.1, n: "decimeter" }, { f: 0.01, 
 const unitName = f => (CAD_UNITS.find(u => Math.abs(u.f - f) < 1e-12) || { n: f + " m" }).n;
 const INSUNITS_M = { 1: 0.0254, 2: 0.3048, 4: 0.001, 5: 0.01, 6: 1, 14: 0.1 };
 
+/* ---- DWG (experimentellt, Victor 2026-10-24): läses i webbläsaren med libredwg-web (WASM, hämtas första gången) och görs om till en
+   enkel ASCII-DXF (linjer, polylinjer, cirklar, bågar, texter, lager) som sedan går samma väg som en vanlig DXF. Block (INSERT) hoppas över. */
+const DWG_LIB_URL = "https://cdn.jsdelivr.net/npm/@mlightcad/libredwg-web/dist/libredwg-web.js";
+let dwgLib = null;
+async function dwgToDxfText(buf) {
+  if (!dwgLib) { const mod = await import(DWG_LIB_URL); const LD = mod.LibreDwg || (mod.default && mod.default.LibreDwg); if (!LD) throw new Error("DWG-läsaren (libredwg-web) kunde inte laddas."); dwgLib = await LD.create(); }
+  const data = dwgLib.dwg_read_data(buf, 0);
+  if (!data) throw new Error("Filen kunde inte tolkas som DWG.");
+  const db = dwgLib.convert(data); try { dwgLib.dwg_free(data); } catch (e) {}
+  const o = [], g = (c, v) => o.push(String(c), String(v)), n = v => (isFinite(Number(v)) ? Number(v) : 0), P = (q, a = 10) => { q = q || {}; g(a, n(q.x)); g(a + 10, n(q.y)); g(a + 20, n(q.z)); };
+  const lay = (db.tables && db.tables.LAYER && db.tables.LAYER.entries) || [];
+  g(0, "SECTION"); g(2, "HEADER"); g(9, "$INSUNITS"); g(70, (db.header && db.header.INSUNITS) || 0); g(0, "ENDSEC");
+  g(0, "SECTION"); g(2, "TABLES"); g(0, "TABLE"); g(2, "LAYER"); g(70, lay.length);
+  lay.forEach(l => { g(0, "LAYER"); g(2, l.name || "0"); g(70, 0); g(62, Math.abs(n(l.colorIndex)) || 7); g(6, "CONTINUOUS"); });
+  g(0, "ENDTAB"); g(0, "ENDSEC"); g(0, "SECTION"); g(2, "ENTITIES");
+  (db.entities || []).forEach(e => {
+    const t = String(e.type || "").toUpperCase(), L = () => g(8, e.layer || "0");
+    if (t === "LINE") { g(0, "LINE"); L(); P(e.startPoint, 10); P(e.endPoint, 11); }
+    else if (t === "LWPOLYLINE" || t === "POLYLINE" || t === "POLYLINE2D" || t === "POLYLINE3D") { const V = e.vertices || []; if (V.length < 2) return; g(0, "LWPOLYLINE"); L(); g(90, V.length); g(70, (n(e.flag) & 1) || e.closed ? 1 : 0); V.forEach(v => { g(10, n(v.x)); g(20, n(v.y)); if (v.bulge) g(42, n(v.bulge)); }); }
+    else if (t === "CIRCLE") { g(0, "CIRCLE"); L(); P(e.center, 10); g(40, n(e.radius)); }
+    else if (t === "ARC") { g(0, "ARC"); L(); P(e.center, 10); g(40, n(e.radius)); g(50, n(e.startAngle) * 180 / Math.PI); g(51, n(e.endAngle) * 180 / Math.PI); }
+    else if (t === "TEXT" || t === "MTEXT") { const tx = String(e.text || e.textString || "").replace(/\\P/g, " ").replace(/[\r\n]+/g, " "); if (!tx) return; g(0, t); L(); P(e.startPoint || e.insertionPoint, 10); g(40, n(e.textHeight || e.height) || 1); g(1, tx); g(50, n(e.rotation) * 180 / Math.PI); }
+  });
+  g(0, "ENDSEC"); g(0, "EOF");
+  if (o.length < 40) throw new Error("Hittade inget ritningsinnehåll i DWG-filen.");
+  return o.join("\n") + "\n";
+}
+
 /* Flera filer i taget: läses och laddas upp en i taget. */
 async function addDxfFiles(files, opts = {}) {
-  const list = files.filter(f => /\.dxf$/i.test(f.name));
+  const list = files.filter(f => /\.(dxf|dwg)$/i.test(f.name));
   const skipped = files.length - list.length;
-  if (!list.length) { alert("Välj en eller flera DXF-filer. En DWG sparas som DXF i AutoCAD (Spara som → DXF) eller med ODA File Converter."); return; }
+  if (!list.length) { alert("Välj en eller flera DXF- eller DWG-filer (DWG är experimentellt)."); return; }
   if (!plan || !plan.calib) { alert("Kalibrera planen mot 3D (📐) först – CAD-ritningen placeras via modellens koordinater."); return; }
   const done = [];
   for (let i = 0; i < list.length; i++) {
@@ -294,7 +322,8 @@ async function addDxfFile(file, opts = {}) {
   if (!plan || !plan.calib) { alert("Kalibrera planen mot 3D (📐) först – CAD-ritningen placeras via modellens koordinater."); return false; }
   setBusy(`${cadBatch}Läser ${file.name}…`);
   try {
-    const buf = await file.arrayBuffer();
+    let buf = await file.arrayBuffer();
+    if (/\.dwg$/i.test(file.name)) { setBusy(`${cadBatch}Läser DWG ${file.name} (experimentellt)…`); try { buf = new TextEncoder().encode(await dwgToDxfText(buf)).buffer; } catch (e) { throw new Error("DWG: " + e.message + " Spara annars som DXF i CAD-programmet."); } }
     if (new TextDecoder().decode(buf.slice(0, 22)).startsWith("AutoCAD Binary DXF")) throw new Error("Binär DXF stöds inte – spara som ASCII-DXF.");
     await new Promise(r => setTimeout(r, 20));
     const dxf = parseDxf(decodeDxfText(buf));
@@ -345,7 +374,7 @@ async function addDxfFile(file, opts = {}) {
     await ghUploadBinary(token, path, new Blob([gz], { type: "application/gzip" }), `Lägesplan: CAD ${file.name}`);
     const counts = {};
     geo.forEach(g => { counts[g.layer] = (counts[g.layer] || 0) + 1; });
-    const rec = { id, type: "cad", name: file.name.replace(/\.dxf$/i, ""), path, factor, origin, unitNote: unitNote || null,
+    const rec = { id, type: "cad", name: file.name.replace(/\.(dxf|dwg)$/i, ""), path, factor, origin, unitNote: unitNote || null,
       layers: layerNames.map(n => ({ name: n, color: (dxf.layers[n] || {}).color || "#000000", n: counts[n], off: !!(dxf.layers[n] || {}).off })),
       stats: { lines: geo.filter(g => g.pts).length, texts: geo.filter(g => g.text).length, kb: Math.round(gz.length / 1024) },
       colorMode: "orig", color: "#1d4ed8", weight: 1, created_at: new Date().toISOString(), by: settings.userName || null };

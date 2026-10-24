@@ -184,6 +184,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     r.hasStakes = dim('45x125') > 0; q.f.riv = 'Riven'; const b = placeParts(q); r.woodRiv = wood(b); r.concRiv = conc(b).map(x => x.transp); r.claimRiv = b.filter(x => x.color === '#f97316').length; r.hasFields = SM.gjutetapp.fields.some(f => f[0] === 'riv') && SM.gjutetapp.fields.some(f => f[0] === 'reg'); return r; });
   if (fw.f0.reg !== '45x125' || !fw.wood || !fw.hasStakes || fw.woodRiv !== 0 || fw.claimRiv !== 0 || !fw.concRiv.every(t => !t) || !fw.hasFields) fail('Form/regel/riven: ' + JSON.stringify(fw));
   console.log('OK: gjutetapp – regeldimension 45×125 (valbar) och riven form där betongen syns');
+  // 15) Fri form: utstick från punkterna (betong och form går ut lika långt åt alla håll) + armeringens vinkel som reglage
+  const ut = await page.evaluate(() => { const O = l3.O, q = placeNew('sm:gjutform', [O[0] + 330, O[1] + 330, 0]); q.pts = [[O[0] + 330, O[1] + 330, 0], [O[0] + 334, O[1] + 330, 0], [O[0] + 334, O[1] + 334, 0], [O[0] + 330, O[1] + 334, 0]]; q.x = O[0] + 330; q.y = O[1] + 330; placements.push(q); q.f = q.f || {};
+    const a = Math.abs(TK.area2(gjutFreePoly(q))); q.f.ut = 0.5; const b = Math.abs(TK.area2(gjutFreePoly(q))); q.f.ut = 0;
+    return { a, b, field: !!(smDef(q).fields.find(f => f[0] === 'ut')), angRange: smDef(placeNew('sm:gjutetapp', [O[0], O[1], 0])).fields.find(f => f[0] === 'ang')[2] === 'range' }; });
+  if (Math.abs(ut.a - 16) > 0.01 || Math.abs(ut.b - 25) > 0.01 || !ut.field || !ut.angRange) fail('Utstick/vinkel: ' + JSON.stringify(ut));
+  console.log('OK: fri gjutform – utstick från punkterna (4×4 → 5×5 m vid 0,5 m) och armeringens vinkel som reglage');
   // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
   for (const t of ['sm:saxlift', 'sm:bomlift']) {
     const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);
