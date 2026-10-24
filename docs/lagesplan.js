@@ -57,7 +57,7 @@ const ZONE_ALPHA = 0.5;
 const $ = id => document.getElementById(id);
 
 // ---- Tillstånd ----
-let projectId = new URLSearchParams(location.search).get("project");
+let projectId = new URLSearchParams(location.search).get("project") || (/[?&]fristaende=1/.test(location.search) || window.__STANDALONE === true ? "lokal" : null);
 let settings = {};
 let token = null;
 // Manuell token (anges under nyckelknappen) – sparas separat och går före
@@ -94,7 +94,7 @@ function bridgeWin() {
   try { if (bridgeSrc && !bridgeSrc.closed) return bridgeSrc; } catch (e) { /* stängd */ }
   return null;
 }
-const bridgeOk = () => !!bridgeWin();
+const bridgeOk = () => !window.STANDALONE && !!bridgeWin();
 /* Kopplingen kom tillbaka efter start: 3D-vyns mappar i Trimble Connect kan läsas igen. */
 function bridgeReconnected() {
   if (typeof l3lay !== "undefined" && l3lay) { l3lay.err = ""; l3lay.rootTried = false; }
@@ -125,9 +125,11 @@ function tcUniqueName(name) {
   return n;
 }
 function askOpener(type, extra = {}, timeoutMs = 10000, onProgress = null) {
+  // Filer som öppnats från datorn (id "lokal-…") läses lokalt – utan Trimble Connect (standalone.js).
+  if (type === "tcFile" && typeof lokalFilBytes === "function" && String(extra.fileId || "").startsWith("lokal-")) return lokalFilBytes(extra.fileId).then(bytes => ({ bytes }));
   return new Promise((resolve, reject) => {
     const op = bridgeWin();
-    if (!op) return reject(new Error("4D-planering är inte öppen. Öppna lägesplanen via 🗺️-knappen i 4D-planering (i Trimble Connect) och låt den vara öppen."));
+    if (!op) return reject(new Error(window.STANDALONE ? "Den här funktionen kräver Trimble Connect och finns inte i fristående läge." : "4D-planering är inte öppen. Öppna lägesplanen via 🗺️-knappen i 4D-planering (i Trimble Connect) och låt den vara öppen."));
     const reqId = ++bridgeSeq;
     const timer = timeoutMs ? setTimeout(() => { bridgeWait.delete(reqId); reject(new Error("Inget svar från 4D-planering. Är den fortfarande öppen i Trimble Connect?")); }, timeoutMs) : null;
     if (onProgress) bridgeProg.set(reqId, onProgress);

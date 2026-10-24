@@ -162,7 +162,7 @@ function l3LayersRender() {
   // 3D-modeller överst (Victor 2026-10-10): flikarna Hämtade 3D-modeller (de inlästa) och Trimble Connect mapp.
   const sortNow = P.laySort || "list";
   const addItems = (noTc ? "" : `<button type="button" id="v3LayTcOn" title="De IFC-modeller som är tända i Trimble Connect just nu">Hämta tända modeller från Trimble Connect</button><button type="button" data-l3l-browse="1" title="Projektets mappar i Trimble Connect – IFC, DXF och punktmoln">Bläddra i Trimble Connect…</button>`)
-    + `<button type="button" id="v3PcFile" title="LAS, LAZ, XYZ/PTS/TXT eller PLY från datorn (även över 2 GB)">Punktmoln från datorn…</button>`;
+    + `<button type="button" id="v3IfcLocal" title="IFC-fil från datorn – utan Trimble Connect">IFC från datorn…</button><button type="button" id="v3PcFile" title="LAS, LAZ, XYZ/PTS/TXT eller PLY från datorn (även över 2 GB)">Punktmoln från datorn…</button>`;
   // Modellerna och punktmolnen visas direkt; Trimble Connects mappar nås via ＋ (Victor 2026-10-12: "Hämtade och
   // trimble connect måste tonas ner … man kommer åt dom bara när man trycker på plusknappen").
   const tcBar = sortNow === "tree" && bk === "models" ? l3lTreeBar("models") : "";
@@ -200,6 +200,7 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3l-model]").forEach(b => { const n = b.closest(".v3-lr") && b.closest(".v3-lr").querySelector(".v3-lr-n"); if (n) { n.classList.add("v3-lr-pick2"); n.onclick = () => l3lGlow(b.dataset.l3lModel); b.closest(".v3-lr").classList.toggle("glow", l3lay.glow === b.dataset.l3lModel); } });
   host.querySelectorAll("[data-pcfile2]").forEach(b => { b.onclick = () => { if (typeof l3pcFromFile === "function") l3pcFromFile(); }; });
   host.querySelectorAll("[data-lsub-t]").forEach(b => { b.onclick = () => { const c = new Set(l3Prefs().layClosed || []), k = "sub:" + b.dataset.lsubT; if (c.has(k)) c.delete(k); else c.add(k); l3SetPref("layClosed", [...c]); l3LayersRender(); }; });
+  { const b = host.querySelector("#v3IfcLocal"); if (b) b.onclick = () => { if (typeof lokalFilVal === "function") lokalFilVal(".ifc,.ifczip", true, f => lokalFilOppna(f)); }; }
   host.querySelectorAll("[data-l3l-pickdxf]").forEach(b => { b.onclick = () => { const i = host.querySelector("#v3SDxfIn"); if (i) i.click(); }; });
   host.querySelectorAll("[data-l3l-browse]").forEach(b => { b.onclick = () => { const k = b.dataset.l3lBrowse === "1" ? "models" : b.dataset.l3lBrowse; l3SetPref("laySort", "tree"); l3SetPref("layBrowse", k); const c = new Set(l3Prefs().layClosed || []); c.delete(k); l3SetPref("layClosed", [...c]); l3LayersRender(); }; });
   l3lMenusBind(host);

@@ -1,0 +1,29 @@
+name: Bygg skrivbordsprogram
+on:
+  workflow_dispatch:
+  push:
+    tags: ["desktop-v*"]
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Installera
+        working-directory: desktop
+        run: npm install
+      - name: Bygg .exe
+        working-directory: desktop
+        run: npm run dist
+      - name: Ladda upp
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3D-editor-Lagesplan-windows
+          path: desktop/dist/*.exe
+      - name: Skapa release (taggar)
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: desktop/dist/*.exe
