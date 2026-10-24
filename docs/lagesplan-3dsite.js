@@ -54,10 +54,11 @@ function l3sCadMesh(r, g, gr) {
   gr.raw.forEach(a => { n += Math.max(0, a.length / 2 - 1); });
   const pos = new Float32Array(n * 6), ox = g.origin[0] - l3.O[0], oy = g.origin[1] - l3.O[1];
   let k = 0;
-  gr.raw.forEach(a => {
+  gr.raw.forEach((a, pi) => {
+    const zz = gr.z && gr.z[pi];   // 3D-ritning: höjd per punkt (mm)
     for (let j = 2; j < a.length; j += 2) {
-      pos[k++] = ox + a[j - 2] / 1000; pos[k++] = oy + a[j - 1] / 1000; pos[k++] = 0;
-      pos[k++] = ox + a[j] / 1000; pos[k++] = oy + a[j + 1] / 1000; pos[k++] = 0;
+      pos[k++] = ox + a[j - 2] / 1000; pos[k++] = oy + a[j - 1] / 1000; pos[k++] = zz ? zz[j / 2 - 1] / 1000 : 0;
+      pos[k++] = ox + a[j] / 1000; pos[k++] = oy + a[j + 1] / 1000; pos[k++] = zz ? zz[j / 2] / 1000 : 0;
     }
   });
   const geo = new THREE.BufferGeometry();
@@ -66,6 +67,17 @@ function l3sCadMesh(r, g, gr) {
   const obj = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x111827, transparent: true }));
   obj.userData.noHit = true; obj.raycast = () => {}; obj.renderOrder = 2;
   return obj;
+}
+/* Ytor (3DFACE, MESH) ur en 3D-ritning: trianglar med ritningens färg, synliga från båda hållen. */
+function l3sCadFaces(r, g, gr) {
+  const T = []; gr.f.forEach(a => { for (let j = 0; j + 8 < a.length; j += 9) T.push(a[j], a[j + 1], a[j + 2], a[j + 3], a[j + 4], a[j + 5], a[j + 6], a[j + 7], a[j + 8]); });
+  if (!T.length) return null;
+  const ox = g.origin[0] - l3.O[0], oy = g.origin[1] - l3.O[1], pos = new Float32Array(T.length);
+  for (let j = 0; j < T.length; j += 3) { pos[j] = ox + T[j] / 1000; pos[j + 1] = oy + T[j + 1] / 1000; pos[j + 2] = T[j + 2] / 1000; }
+  const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(pos, 3)); geo.computeVertexNormals(); geo.computeBoundingSphere();
+  const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: 0x94a3b8, side: THREE.DoubleSide, transparent: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
+  m.userData.noHit = true; m.raycast = () => {}; m.renderOrder = 1;
+  return m;
 }
 async function l3sBuildCad() {
   if (!l3 || typeof cads !== "function" || !plan || !plan.calib) return;
@@ -78,11 +90,16 @@ async function l3sBuildCad() {
     if (typeof l3d !== "undefined" && l3d.rec && l3d.rec.id === r.id) return; // redigeras – ritas av lagesplan-3ddxf.js
     const names = r.layers.map(l => l.name), op = layerOpacity("cad:" + r.id);
     g.groups.forEach((gr, gi) => {
+      if (gr.f && gr.f.length) {
+        const fk = r.id + "|" + gi + "|f"; let fo = l3s.cad.get(fk);
+        if (!fo) { fo = l3sCadFaces(r, g, gr); if (fo) { fo.userData.cadId = r.id; l3s.cad.set(fk, fo); grp.add(fo); } }
+        if (fo) { fo.position.z = r.stats && r.stats.has3d ? -l3.O[2] + (Number(r.z3) || 0) : z + (Number(r.z3) || 0); fo.visible = cadLayerOn(r, names[gr.l]); fo.material.color.set(cadLayerColor(r, names[gr.l], gr.c)); fo.material.opacity = op; live.add(fk); }
+      }
       if (!gr.raw || !gr.raw.length) return;
       const key = r.id + "|" + gi;
       let obj = l3s.cad.get(key);
       if (!obj) { obj = l3sCadMesh(r, g, gr); obj.userData.cadId = r.id; l3s.cad.set(key, obj); grp.add(obj); }
-      obj.position.z = z + (Number(r.z3) || 0); // höjd i 3D satt i panelen (lagesplan-3dsitesel.js)
+      obj.position.z = r.stats && r.stats.has3d ? -l3.O[2] + (Number(r.z3) || 0) : z + (Number(r.z3) || 0); // höjd i 3D satt i panelen (lagesplan-3dsitesel.js); 3D-ritning: höjderna är egna
       obj.visible = cadLayerOn(r, names[gr.l]);
       obj.material.color.set(cadLayerColor(r, names[gr.l], gr.c));
       obj.material.opacity = op;

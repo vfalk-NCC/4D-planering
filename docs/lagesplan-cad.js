@@ -85,7 +85,7 @@ function parseDxf(text) {
         const e = readEntity();
         const name = (e.g.find(p => p[0] === 2) || [0, ""])[1].trim();
         const bx = parseFloat((e.g.find(p => p[0] === 10) || [0, 0])[1]) || 0, by = parseFloat((e.g.find(p => p[0] === 20) || [0, 0])[1]) || 0;
-        curBlock = { name, base: [bx, by], ents: [] };
+        curBlock = { name, base: [bx, by], baseZ: parseFloat((e.g.find(p => p[0] === 30) || [0, 0])[1]) || 0, ents: [] };
         blocks[name] = curBlock;
         continue;
       }
@@ -150,9 +150,9 @@ function dxfToGeometry(dxf) {
     }
     return p;
   };
-  const walk = (ents, M, inhLayer, inhColor, depth) => {
+  const walk = (ents, M, inhLayer, inhColor, depth, Zt = [1, 0]) => {
     if (depth > 8) return;
-    const T = (x, y) => [M[0] * x + M[2] * y + M[4], M[1] * x + M[3] * y + M[5]];
+    const T = (x, y) => [M[0] * x + M[2] * y + M[4], M[1] * x + M[3] * y + M[5]], Z = z => Zt[0] * z + Zt[1];
     const scaleM = Math.sqrt(Math.abs(M[0] * M[3] - M[1] * M[2])) || 1;
     for (const e of ents) {
       let layer = (get(e, 8, "0") || "0").trim();
@@ -160,9 +160,12 @@ function dxfToGeometry(dxf) {
       const color = colorOf(e, layer, inhColor);
       // OCS spegling (extrusion 0,0,-1)
       const mir = num(e, 230, 1) < 0 ? -1 : 1;
-      const line = (pts, closed) => { if (pts.length >= 4) out.push({ layer, color, pts, closed }); };
+      // zs = höjd per punkt (3D). Utan zs (och utan block-höjd) är linjen platt som förut.
+      const zconst = z => (z || Zt[1] || Zt[0] !== 1 ? z : 0);
+      const line = (pts, closed, zs) => { if (pts.length >= 4) out.push({ layer, color, pts, closed, ...(zs && zs.some(v => v) ? { zs } : {}) }); };
+      const flat = (pts, z) => Array(pts.length / 2).fill(Z(z || 0));
       switch (e.type) {
-        case "LINE": line([...T(num(e, 10), num(e, 20)), ...T(num(e, 11), num(e, 21))]); break;
+        case "LINE": line([...T(num(e, 10), num(e, 20)), ...T(num(e, 11), num(e, 21))], false, [Z(num(e, 30)), Z(num(e, 31))]); break;
         case "LWPOLYLINE": {
           const xs = all(e, 10), ys = all(e, 20);
           const bul = []; let vi = -1;
@@ -173,26 +176,26 @@ function dxfToGeometry(dxf) {
           const p = T(V[0][0], V[0][1]);
           const segs = closed ? V.length : V.length - 1;
           for (let k = 0; k < segs; k++) { const a = V[k], b = V[(k + 1) % V.length]; bulgeSeg(a[0], a[1], b[0], b[1], bul[k] * mir, T, p); }
-          line(p, closed);
+          line(p, closed, flat(p, num(e, 38)));
           break;
         }
         case "POLYLINE": {
           const flags = parseInt(get(e, 70, "0"), 10);
           if (flags & 16 || flags & 64) break; // nät
-          const V = (e.verts || []).map(v => [num(v, 10) * mir, num(v, 20), num(v, 42) * mir]);
+          const V = (e.verts || []).map(v => [num(v, 10) * mir, num(v, 20), num(v, 42) * mir, num(v, 30)]);
           if (!V.length) break;
           const closed = (flags & 1) === 1;
-          const p = T(V[0][0], V[0][1]);
+          const p = T(V[0][0], V[0][1]), zs = [Z(V[0][3])];
           const segs = closed ? V.length : V.length - 1;
-          for (let k = 0; k < segs; k++) { const a = V[k], b = V[(k + 1) % V.length]; bulgeSeg(a[0], a[1], b[0], b[1], a[2], T, p); }
-          line(p, closed);
+          for (let k = 0; k < segs; k++) { const a = V[k], b = V[(k + 1) % V.length], n0 = p.length / 2; bulgeSeg(a[0], a[1], b[0], b[1], a[2], T, p); const m = p.length / 2 - n0; for (let j = 1; j <= m; j++) zs.push(Z(a[3] + (b[3] - a[3]) * j / m)); }
+          line(p, closed, zs);
           break;
         }
-        case "CIRCLE": line(arcPts(num(e, 10) * mir, num(e, 20), num(e, 40), 0, 360, T), true); break;
+        case "CIRCLE": { const p = arcPts(num(e, 10) * mir, num(e, 20), num(e, 40), 0, 360, T); line(p, true, flat(p, num(e, 30))); break; }
         case "ARC": {
           let a0 = num(e, 50), a1 = num(e, 51);
           if (mir < 0) { [a0, a1] = [180 - a1, 180 - a0]; }
-          line(arcPts(num(e, 10) * mir, num(e, 20), num(e, 40), a0, a1, T));
+          { const p = arcPts(num(e, 10) * mir, num(e, 20), num(e, 40), a0, a1, T); line(p, false, flat(p, num(e, 30))); }
           break;
         }
         case "ELLIPSE": {
@@ -201,20 +204,27 @@ function dxfToGeometry(dxf) {
           const n = Math.max(16, Math.ceil((t1 - t0) / (Math.PI / 36)));
           const p = [];
           for (let k = 0; k <= n; k++) { const t = t0 + (t1 - t0) * k / n; p.push(...T(cx + mx * Math.cos(t) - my * ratio * Math.sin(t), cy + my * Math.cos(t) + mx * ratio * Math.sin(t))); }
-          line(p);
+          line(p, false, flat(p, num(e, 30)));
           break;
         }
         case "SPLINE": {
-          const fx = all(e, 11), fy = all(e, 21);
-          if (fx.length >= 2) { line(fx.flatMap((x, k) => T(x, fy[k]))); break; }
-          const cx = all(e, 10), cy = all(e, 20);
-          line(bspline(cx.map((x, k) => [x, cy[k]]), parseInt(get(e, 71, "3"), 10), all(e, 40), T));
+          const fx = all(e, 11), fy = all(e, 21), fz = all(e, 31);
+          const zAlong = (p, zz) => { const m = p.length / 2; if (!zz.length || zz.every(v => v === zz[0])) return flat(p, zz[0] || 0); return Array.from({ length: m }, (_, k) => { const u = m > 1 ? k / (m - 1) * (zz.length - 1) : 0, i0 = Math.floor(u), i1 = Math.min(zz.length - 1, i0 + 1); return Z(zz[i0] + (zz[i1] - zz[i0]) * (u - i0)); }); };
+          if (fx.length >= 2) { const p = fx.flatMap((x, k) => T(x, fy[k])); line(p, false, zAlong(p, fz)); break; }
+          const cx = all(e, 10), cy = all(e, 20), cz = all(e, 30);
+          const p = bspline(cx.map((x, k) => [x, cy[k]]), parseInt(get(e, 71, "3"), 10), all(e, 40), T);
+          line(p, false, zAlong(p, cz));
           break;
         }
         case "LEADER": { const xs = all(e, 10), ys = all(e, 20); line(xs.flatMap((x, k) => T(x, ys[k]))); break; }
         case "SOLID": case "TRACE": case "3DFACE": {
-          const q = [[num(e, 10), num(e, 20)], [num(e, 11), num(e, 21)], [num(e, 13, num(e, 12)), num(e, 23, num(e, 22))], [num(e, 12), num(e, 22)]];
-          line(q.flatMap(v => T(v[0], v[1])), true);
+          const q = [[num(e, 10), num(e, 20), num(e, 30)], [num(e, 11), num(e, 21), num(e, 31)], [num(e, 13, num(e, 12)), num(e, 23, num(e, 22)), num(e, 33, num(e, 32))], [num(e, 12), num(e, 22), num(e, 32)]];
+          const ring = e.type === "3DFACE" ? [q[0], q[1], q[3], q[2]] : q;   // 3DFACE: hörn 1-2-3-4 i ordning; SOLID/TRACE: 1-2-4-3
+          const pts = ring.flatMap(v => T(v[0], v[1])), zs = ring.map(v => Z(v[2]));
+          line(pts, true, zs);
+          const W = ring.map((v, k) => [pts[k * 2], pts[k * 2 + 1], zs[k]]), tri = (a, b, c) => [...a, ...b, ...c];
+          const same = (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+          out.push({ layer, color, tris: same(W[2], W[3]) ? tri(W[0], W[1], W[2]) : [...tri(W[0], W[1], W[2]), ...tri(W[0], W[2], W[3])] });
           break;
         }
         case "TEXT": case "ATTRIB": case "MTEXT": {
@@ -243,8 +253,8 @@ function dxfToGeometry(dxf) {
         case "INSERT": case "DIMENSION": {
           const b = dxf.blocks[(get(e, 2, "") || "").trim()];
           if (!b) break;
-          if (e.type === "DIMENSION") { walk(b.ents, M, layer, color, depth + 1); break; }
-          const sx = num(e, 41, 1) * mir, sy = num(e, 42, 1), r = num(e, 50) * Math.PI / 180;
+          if (e.type === "DIMENSION") { walk(b.ents, M, layer, color, depth + 1, Zt); break; }
+          const sx = num(e, 41, 1) * mir, sy = num(e, 42, 1), sz = num(e, 43, 1), r = num(e, 50) * Math.PI / 180, iz = num(e, 30);
           const ix = num(e, 10) * mir, iy = num(e, 20);
           const cols = Math.max(1, parseInt(get(e, 70, "1"), 10)), rows = Math.max(1, parseInt(get(e, 71, "1"), 10));
           const cs = num(e, 44), rs = num(e, 45);
@@ -254,14 +264,14 @@ function dxfToGeometry(dxf) {
             const L = [Math.cos(r) * sx, Math.sin(r) * sx, -Math.sin(r) * sy, Math.cos(r) * sy, 0, 0];
             L[4] = ix + Math.cos(r) * ox - Math.sin(r) * oy - (L[0] * b.base[0] + L[2] * b.base[1]);
             L[5] = iy + Math.sin(r) * ox + Math.cos(r) * oy - (L[1] * b.base[0] + L[3] * b.base[1]);
-            walk(b.ents, mulAffine(M, L), layer, color, depth + 1);
+            walk(b.ents, mulAffine(M, L), layer, color, depth + 1, [Zt[0] * sz, Zt[0] * (iz - sz * (b.baseZ || 0)) + Zt[1]]);
           }
           break;
         }
       }
     }
   };
-  walk(dxf.entities, [1, 0, 0, 1, 0, 0], null, null, 0);
+  walk(dxf.entities, [1, 0, 0, 1, 0, 0], null, null, 0, [1, 0]);
   return out;
 }
 
@@ -279,25 +289,45 @@ const INSUNITS_M = { 1: 0.0254, 2: 0.3048, 4: 0.001, 5: 0.01, 6: 1, 14: 0.1 };
    enkel ASCII-DXF (linjer, polylinjer, cirklar, bågar, texter, lager) som sedan går samma väg som en vanlig DXF. Block (INSERT) hoppas över. */
 const DWG_LIB_URL = "https://cdn.jsdelivr.net/npm/@mlightcad/libredwg-web/dist/libredwg-web.js";
 let dwgLib = null;
+let dwgSkipped = {};
 async function dwgToDxfText(buf) {
   if (!dwgLib) { const mod = await import(DWG_LIB_URL); const LD = mod.LibreDwg || (mod.default && mod.default.LibreDwg); if (!LD) throw new Error("DWG-läsaren (libredwg-web) kunde inte laddas."); dwgLib = await LD.create(); }
   const data = dwgLib.dwg_read_data(buf, 0);
   if (!data) throw new Error("Filen kunde inte tolkas som DWG.");
   const db = dwgLib.convert(data); try { dwgLib.dwg_free(data); } catch (e) {}
+  dwgSkipped = {};
   const o = [], g = (c, v) => o.push(String(c), String(v)), n = v => (isFinite(Number(v)) ? Number(v) : 0), P = (q, a = 10) => { q = q || {}; g(a, n(q.x)); g(a + 10, n(q.y)); g(a + 20, n(q.z)); };
   const lay = (db.tables && db.tables.LAYER && db.tables.LAYER.entries) || [];
   g(0, "SECTION"); g(2, "HEADER"); g(9, "$INSUNITS"); g(70, (db.header && db.header.INSUNITS) || 0); g(0, "ENDSEC");
   g(0, "SECTION"); g(2, "TABLES"); g(0, "TABLE"); g(2, "LAYER"); g(70, lay.length);
-  lay.forEach(l => { g(0, "LAYER"); g(2, l.name || "0"); g(70, 0); g(62, Math.abs(n(l.colorIndex)) || 7); g(6, "CONTINUOUS"); });
-  g(0, "ENDTAB"); g(0, "ENDSEC"); g(0, "SECTION"); g(2, "ENTITIES");
-  (db.entities || []).forEach(e => {
-    const t = String(e.type || "").toUpperCase(), L = () => g(8, e.layer || "0");
-    if (t === "LINE") { g(0, "LINE"); L(); P(e.startPoint, 10); P(e.endPoint, 11); }
-    else if (t === "LWPOLYLINE" || t === "POLYLINE" || t === "POLYLINE2D" || t === "POLYLINE3D") { const V = e.vertices || []; if (V.length < 2) return; g(0, "LWPOLYLINE"); L(); g(90, V.length); g(70, (n(e.flag) & 1) || e.closed ? 1 : 0); V.forEach(v => { g(10, n(v.x)); g(20, n(v.y)); if (v.bulge) g(42, n(v.bulge)); }); }
-    else if (t === "CIRCLE") { g(0, "CIRCLE"); L(); P(e.center, 10); g(40, n(e.radius)); }
-    else if (t === "ARC") { g(0, "ARC"); L(); P(e.center, 10); g(40, n(e.radius)); g(50, n(e.startAngle) * 180 / Math.PI); g(51, n(e.endAngle) * 180 / Math.PI); }
-    else if (t === "TEXT" || t === "MTEXT") { const tx = String(e.text || e.textString || "").replace(/\\P/g, " ").replace(/[\r\n]+/g, " "); if (!tx) return; g(0, t); L(); P(e.startPoint || e.insertionPoint, 10); g(40, n(e.textHeight || e.height) || 1); g(1, tx); g(50, n(e.rotation) * 180 / Math.PI); }
-  });
+  lay.forEach(l => { g(0, "LAYER"); g(2, l.name || "0"); g(70, 0); g(62, (l.off || l.frozen ? -1 : 1) * (Math.abs(n(l.colorIndex)) || 7)); if (typeof l.color === "number" && l.color > 255 && l.color <= 0xffffff) g(420, l.color); g(6, "CONTINUOUS"); });
+  g(0, "ENDTAB"); g(0, "ENDSEC");
+  // Entiteter i 3D: z följer med (linjer, polylinjer, cirklar, bågar, ellipser, splines, 3DFACE, MESH) och block (INSERT) skrivs ut med sina skalor och höjder.
+  const head = (type, e) => { g(0, type); g(8, e.layer || "0"); const ci = n(e.colorIndex); if (e.colorIndex != null && ci !== 256 && ci !== 0) g(62, ci); if (typeof e.color === "number" && e.color > 255 && e.color <= 0xffffff) g(420, e.color); };
+  const face = (e, a, b, c, d, flag) => { head("3DFACE", e); P(a, 10); P(b, 11); P(c, 12); P(d || c, 13); g(70, flag || 0); };
+  const writeEnt = e => {
+    const t = String(e.type || "").toUpperCase();
+    if (t === "LINE") { head("LINE", e); P(e.startPoint, 10); P(e.endPoint, 11); }
+    else if (t === "LWPOLYLINE") { const V = e.vertices || []; if (V.length < 2) return; head("LWPOLYLINE", e); g(90, V.length); g(70, (n(e.flag) & 1) || e.closed ? 1 : 0); g(38, n(e.elevation)); V.forEach(v => { g(10, n(v.x)); g(20, n(v.y)); if (v.bulge) g(42, n(v.bulge)); }); }
+    else if (t === "POLYLINE" || t === "POLYLINE2D" || t === "POLYLINE3D" || t === "3DPOLYLINE") { const V = e.vertices || []; if (V.length < 2) return; head("POLYLINE", e); g(66, 1); g(70, ((n(e.flag) & 1) || e.closed ? 1 : 0) | (t === "POLYLINE2D" || t === "POLYLINE" ? 0 : 8)); g(10, 0); g(20, 0); g(30, 0);
+      V.forEach(v => { g(0, "VERTEX"); g(8, e.layer || "0"); g(10, n(v.x)); g(20, n(v.y)); g(30, n(v.z)); if (v.bulge) g(42, n(v.bulge)); g(70, t === "POLYLINE2D" || t === "POLYLINE" ? 0 : 32); }); g(0, "SEQEND"); g(8, e.layer || "0"); }
+    else if (t === "CIRCLE") { head("CIRCLE", e); P(e.center, 10); g(40, n(e.radius)); }
+    else if (t === "ARC") { head("ARC", e); P(e.center, 10); g(40, n(e.radius)); g(50, n(e.startAngle) * 180 / Math.PI); g(51, n(e.endAngle) * 180 / Math.PI); }
+    else if (t === "ELLIPSE") { head("ELLIPSE", e); P(e.center, 10); P(e.majorAxisEndPoint || e.majorAxis, 11); g(40, n(e.axisRatio) || 1); g(41, n(e.startAngle)); g(42, e.endAngle == null ? Math.PI * 2 : n(e.endAngle)); }
+    else if (t === "SPLINE") { const C = e.controlPoints || [], F = e.fitPoints || []; if (C.length < 2 && F.length < 2) return; head("SPLINE", e); g(70, n(e.flag) || 8); g(71, n(e.degree) || 3); const K = e.knots || []; g(72, K.length); g(73, C.length); g(74, F.length); K.forEach(k => g(40, n(k))); C.forEach(q => P(q, 10)); F.forEach(q => P(q, 11)); }
+    else if (t === "3DFACE") { const c = [e.corner1 || e.firstCorner || (e.points || [])[0], e.corner2 || e.secondCorner || (e.points || [])[1], e.corner3 || e.thirdCorner || (e.points || [])[2], e.corner4 || e.fourthCorner || (e.points || [])[3]]; if (!c[0] || !c[1] || !c[2]) return; face(e, c[0], c[1], c[2], c[3], n(e.flag || e.edgeFlags)); }
+    else if (t === "MESH" || t === "POLYFACE") { const V = e.vertices || [], F = e.faces || []; F.forEach(f => { let I = Array.isArray(f) ? f : (f.indices || f.vertices || []); if (I.length > 3 && I[0] === I.length - 1) I = I.slice(1); for (let k = 1; k + 1 < I.length; k++) { const a = V[I[0]], b = V[I[k]], c = V[I[k + 1]]; if (a && b && c) face(e, a, b, c, c, 6); } }); }
+    else if (t === "TEXT" || t === "MTEXT") { const tx = String(e.text || e.textString || "").replace(/\\P/g, " ").replace(/[\r\n]+/g, " "); if (!tx) return; head(t, e); P(e.startPoint || e.insertionPoint, 10); g(40, n(e.textHeight || e.height) || 1); g(1, tx); g(50, n(e.rotation) * 180 / Math.PI); }
+    else if (t === "INSERT") { const nm = e.name || e.blockName; if (!nm) return; head("INSERT", e); g(2, nm); P(e.insertionPoint, 10); g(41, e.xScale == null ? 1 : n(e.xScale)); g(42, e.yScale == null ? 1 : n(e.yScale)); g(43, e.zScale == null ? 1 : n(e.zScale)); g(50, n(e.rotation) * 180 / Math.PI); if (e.columnCount > 1) { g(70, n(e.columnCount)); g(44, n(e.columnSpacing)); } if (e.rowCount > 1) { g(71, n(e.rowCount)); g(45, n(e.rowSpacing)); } }
+    else if (t === "DIMENSION") { const nm = e.name || e.blockName; if (nm) { head("DIMENSION", e); g(2, nm); } }
+    else if (t) dwgSkipped[t] = (dwgSkipped[t] || 0) + 1;
+  };
+  const BR = (db.tables && db.tables.BLOCK_RECORD && db.tables.BLOCK_RECORD.entries) || [];
+  g(0, "SECTION"); g(2, "BLOCKS");
+  BR.forEach(b => { const nm = b.name; if (!nm || /^\*(Model_Space|Paper_Space)/i.test(nm) || !(b.entities || []).length) return; g(0, "BLOCK"); g(8, "0"); g(2, nm); g(70, 0); P(b.basePoint || b.origin, 10); g(3, nm); (b.entities || []).forEach(writeEnt); g(0, "ENDBLK"); g(8, "0"); });
+  g(0, "ENDSEC");
+  g(0, "SECTION"); g(2, "ENTITIES");
+  (db.entities || []).forEach(writeEnt);
   g(0, "ENDSEC"); g(0, "EOF");
   if (o.length < 40) throw new Error("Hittade inget ritningsinnehåll i DWG-filen.");
   return o.join("\n") + "\n";
@@ -353,19 +383,27 @@ async function addDxfFile(file, opts = {}) {
     const q = v => Math.round(v * factor * 1000);
     const ox = origin[0] * 1000, oy = origin[1] * 1000;
     const layerNames = [...new Set(geo.map(g => g.layer))].sort((a, b) => a.localeCompare(b, "sv"));
-    const byKey = new Map();
+    const byKey = new Map(); let zMin = Infinity, has3d = false;
+    const qz = v => { const m = Math.round(v * factor * 1000); if (m < zMin) zMin = m; if (m) has3d = true; return m; };
     geo.forEach(g => {
       const k = layerNames.indexOf(g.layer) + "|" + g.color;
-      if (!byKey.has(k)) byKey.set(k, { l: layerNames.indexOf(g.layer), c: g.color, p: [], t: [] });
+      if (!byKey.has(k)) byKey.set(k, { l: layerNames.indexOf(g.layer), c: g.color, p: [], t: [], z: [], f: [] });
       const grp = byKey.get(k);
       if (g.pts) {
         const a = [];
         for (let j = 0; j < g.pts.length; j += 2) a.push(q(g.pts[j]) - ox, q(g.pts[j + 1]) - oy);
         if (g.closed) a.push(a[0], a[1]);
         grp.p.push(a);
+        if (g.zs) { const z = g.zs.map(qz); if (g.closed) z.push(z[0]); grp.z.push(z); } else grp.z.push(null);   // höjd per punkt (3D) – platta linjer = null
+      } else if (g.tris) {
+        const a = []; for (let j = 0; j < g.tris.length; j += 3) a.push(q(g.tris[j]) - ox, q(g.tris[j + 1]) - oy, qz(g.tris[j + 2]));
+        grp.f.push(a);
       } else grp.t.push([q(g.x) - ox, q(g.y) - oy, Math.round(g.h * factor * 1000), Math.round(g.rot * 10) / 10, g.text, g.align[0] + g.valign[0]]);
     });
-    const data = { v: 1, origin, groups: [...byKey.values()] };
+    const groups3 = [...byKey.values()].map(gr => { if (!has3d) { delete gr.z; delete gr.f; } else { if (gr.z.every(v => v === null)) delete gr.z; if (!gr.f.length) delete gr.f; } return gr; });
+    const data = { v: 1, origin, groups: groups3 };
+    // 3D-ritning (t.ex. DWG med höjder): lägsta punkten läggs på planens nivå om höjderna ligger långt därifrån.
+    let z3 = 0; if (has3d) { const m = zMin / 1000, ref = plan.calib.model[0][2] || 0; if (Math.abs(m - ref) > 30) { z3 = Math.round((ref - m) * 100) / 100; unitNote = (unitNote ? unitNote + " " : "") + `Höjderna i filen börjar på ${Math.round(m * 10) / 10} m – ritningen sänktes ${Math.abs(z3)} m så att den ligger vid planens nivå.`; } }
     setBusy(`${cadBatch}Laddar upp ${file.name}…`);
     await loadScript(PAKO_URL);
     const gz = pako.gzip(JSON.stringify(data));
@@ -376,11 +414,13 @@ async function addDxfFile(file, opts = {}) {
     geo.forEach(g => { counts[g.layer] = (counts[g.layer] || 0) + 1; });
     const rec = { id, type: "cad", name: file.name.replace(/\.(dxf|dwg)$/i, ""), path, factor, origin, unitNote: unitNote || null,
       layers: layerNames.map(n => ({ name: n, color: (dxf.layers[n] || {}).color || "#000000", n: counts[n], off: !!(dxf.layers[n] || {}).off })),
-      stats: { lines: geo.filter(g => g.pts).length, texts: geo.filter(g => g.text).length, kb: Math.round(gz.length / 1024) },
+      stats: { lines: geo.filter(g => g.pts).length, texts: geo.filter(g => g.text).length, faces: geo.filter(g => g.tris).length, kb: Math.round(gz.length / 1024), ...(has3d ? { has3d: true } : {}) },
+      ...(has3d && z3 ? { z3 } : {}),
       colorMode: "orig", color: "#1d4ed8", weight: 1, created_at: new Date().toISOString(), by: settings.userName || null };
     rec.layers.forEach(l => { if (l.off) ls(`cadl:${id}:${l.name}`).visible = false; });
     ls("cad:" + id).visible = true; saveLayerState();
     cadGeom.set(id, buildCadGeom(data));
+    const sk = /\.dwg$/i.test(file.name) ? Object.entries(dwgSkipped) : []; if (sk.length) setTimeout(() => setSaveStatus(`DWG: ${sk.map(([t, c]) => c + " " + t).join(", ")} kunde inte läsas och ritas inte (t.ex. solider och snitt/fyllningar). Allt annat är med.`), 400);
     await saveSiteItem(rec, false, { record: false });
     buildCadSnap(); renderCad();
     setSaveStatus(`📐 ${rec.name}: ${rec.stats.lines} linjer, ${rec.stats.texts} texter i ${rec.layers.length} lager.${unitNote ? " " + unitNote : ""}`);
@@ -405,7 +445,7 @@ function buildCadGeom(data) {
       const path = new Path2D();
       let segs = 0;
       g.p.forEach(a => { path.moveTo(a[0], a[1]); for (let j = 2; j < a.length; j += 2) path.lineTo(a[j], a[j + 1]); segs += a.length / 2 - 1; });
-      return { l: g.l, c: g.c, path, raw: g.p, texts: g.t, segs };
+      return { l: g.l, c: g.c, path, raw: g.p, texts: g.t, segs, z: g.z || null, f: g.f || null };
     }),
   };
 }
@@ -449,6 +489,8 @@ async function rescaleCad(rec, newFactor) {
     const data = { v: 1, origin: no, groups: g.groups.map(gr => ({
       l: gr.l, c: gr.c,
       p: gr.raw.map(a => a.map((v, i) => i % 2 ? ty(v) : tx(v))),
+      ...(gr.z ? { z: gr.z.map(a => a && a.map(v => Math.round(v * k))) } : {}),
+      ...(gr.f ? { f: gr.f.map(a => a.map((v, i) => i % 3 === 0 ? tx(v) : i % 3 === 1 ? ty(v) : Math.round(v * k))) } : {}),
       t: gr.texts.map(([x, y, h, rot, str, al]) => [tx(x), ty(y), Math.round(h * k), rot, str, al]),
     })) };
     const m1 = plan && plan.calib ? plan.calib.model[0] : null;

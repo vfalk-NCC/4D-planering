@@ -24,7 +24,7 @@ function smCard(ctx, s) {
   if (s.yaw || s.at) { const W0 = ctx.W, b00 = s.b0 == null ? -1.2 : s.b0, cy = Math.cos((s.yaw || 0) * Math.PI / 180), sy = Math.sin((s.yaw || 0) * Math.PI / 180), pa = s.at ? s.at[0] : 0, pb = s.at ? s.at[1] : b00;
     ctx = { ...ctx, W: (a, b) => { const da = a, db = b - b00; return W0(pa + da * cy - db * sy, pb + da * sy + db * cy); } }; ctx.rect = (a0, a1, b0, b1) => [[a0, b0], [a1, b0], [a1, b1], [a0, b1]].map(([a, b]) => ctx.W(a, b)); }
   const { parts, W, add, z } = ctx, TW = { loc: [], faces: [] }, TG = { loc: [], faces: [] }, TD = { loc: [], faces: [] }, wd = t => ifcTextStrokes(t).width / 6;
-  const head = String(s.title).toUpperCase(), hs0 = 0.22, colW = s.left ? 0.95 : 0, vs = 0.2, lh = 0.3, rows = (s.rows || []).filter(r => r && r[1] !== undefined).map(([lab, val, o]) => [String(lab).toUpperCase(), (String(val || "").trim() ? crewWrap(String(val), 30) : []), o || {}]);
+  const head = String(s.title).toUpperCase(), hs0 = 0.22, colW = s.left ? Math.max(0.95, wd(String(s.left[1])) * 0.44 + 0.3) : 0, vs = 0.2, lh = 0.3, rows = (s.rows || []).filter(r => r && r[1] !== undefined).map(([lab, val, o]) => [String(lab).toUpperCase(), (String(val || "").trim() ? crewWrap(String(val), 30) : []), o || {}]);
   const blk = ls => 0.13 + 0.08 + vs + (Math.max(1, ls.length) - 1) * lh + 0.2, barH = s.bar ? 0.34 : 0;
   const need = Math.max(wd(head) * hs0 + 0.4 + (s.icon ? 0.45 : 0), colW + 0.5 + Math.max(2.0, ...rows.flatMap(r => r[1].map(l => wd(l.toUpperCase()) * vs + 0.1))));
   const w2 = Math.max(1.7, need / 2), hdr = 0.52, bodyH = Math.max(1.02, 0.12 + rows.reduce((a, r) => a + blk(r[1]), 0) + barH + 0.04), hh = hdr + bodyH, zb = s.zb == null ? 2.45 : s.zb, b0 = s.b0 == null ? -1.2 : s.b0;
@@ -107,12 +107,13 @@ function smMakeCtx(p, z, col) {
     rect: (a0, a1, b0, b1) => [[a0, b0], [a1, b0], [a1, b1], [a0, b1]].map(([a, b]) => W(a, b)),
     oct: (r, n = 8, ox = 0, oy = 0) => Array.from({ length: n }, (_, i) => { const t = Math.PI / n + i * 2 * Math.PI / n; return W(ox + r * Math.cos(t), oy + r * Math.sin(t)); }),
     T: (color, o) => { o = o || {}; const k = color + "|" + (o.unlit ? 1 : 0) + "|" + (o.transp || 0) + "|" + (o.role || "") + "|" + (o.shin == null ? "" : o.shin) + "|" + (o.metal == null ? "" : o.metal) + "|" + (o.rough == null ? "" : o.rough) + "|" + (o.deco ? 1 : 0); if (!Ts.has(k)) Ts.set(k, TK.new({ color, ...o })); return Ts.get(k); },
-    box: (color, cx, cy, cz, sx, sy, sz, rot, b, o) => TK.add(ctx.T(color, o), TK.box(sx, sy, sz, b || 0, (o && o.seg) || 2), cx, cy, cz, rot),
+    box: (color, cx, cy, cz, sx, sy, sz, rot, b, o) => TK.add(ctx.T(color, Math.min(sx, sy, sz) < 0.06 && [sx, sy, sz].sort((a, b) => a - b)[1] < 0.06 ? { ...(o || {}), deco: true } : o), TK.box(sx, sy, sz, b || 0, (o && o.seg) || 2), cx, cy, cz, rot),
     cyl: (color, axis, cx, cy, cz, r0, r1, len, seg, rot, o) => TK.add(ctx.T(color, o), TK.cyl(axis, r0, r1, len, seg || 12), cx, cy, cz, rot),
     sph: (color, cx, cy, cz, rx, ry, rz, seg, rings, rot, o) => TK.add(ctx.T(color, o), TK.sphere(rx, ry, rz, seg || 12, rings || 7), cx, cy, cz, rot),
     ecyl: (color, cx, cy, cz, rx0, ry0, rx1, ry1, len, seg, rot, o) => TK.add(ctx.T(color, o), TK.ecyl(rx0, ry0, rx1, ry1, len, seg || 12), cx, cy, cz, rot),
     lathe: (color, profile, cx, cy, cz, seg, rot, o) => TK.add(ctx.T(color, o), TK.lathe(profile, seg || 14), cx, cy, cz, rot),
-    rod: (color, a, b, r0, r1, seg, o) => TK.add(ctx.T(color, o), TK.rod(a, b, r0, r1 == null ? r0 : r1, seg || 8), 0, 0, 0),
+    rod: (color, a, b, r0, r1, seg, o) => TK.add(ctx.T(color, Math.max(r0, r1 == null ? r0 : r1) < 0.02 ? { ...(o || {}), deco: true } : o),   // smala stänger blir linjer i Trimble Connect – de följer inte med i IFC
+      TK.rod(a, b, r0, r1 == null ? r0 : r1, seg || 8), 0, 0, 0),
     prism: (color, poly, z0, z1, o) => TK.add(ctx.T(color, o), TK.prism(poly, z0, z1), 0, 0, 0),
     /* Rektangulär balk (bredd w sidled, höjd h vinkelrätt) mellan två punkter – för bommar, saxarmar och tvärstag. */
     beam: (color, a, b, w, h, o) => { const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], L = Math.hypot(d[0], d[1], d[2]) || 1e-6, n = d.map(v => v / L); let sd = [-n[1], n[0], 0]; const sl = Math.hypot(sd[0], sd[1]); sd = sl < 1e-6 ? [0, 1, 0] : [sd[0] / sl, sd[1] / sl, 0];

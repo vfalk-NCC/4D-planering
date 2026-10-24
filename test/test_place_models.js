@@ -32,7 +32,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('dialog', d => d.accept());
-  await page.addInitScript(() => {
+  await page.addInitScript(() => { try { localStorage.setItem("tcLinePreview", "1"); } catch (e) {}
     localStorage.setItem('4dplan-unlocked', '1');
     localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't', userName: 'Victor' }));
   });

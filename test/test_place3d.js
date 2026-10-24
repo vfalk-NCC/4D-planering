@@ -32,7 +32,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('dialog', d => d.accept());
-  await page.addInitScript(() => {
+  await page.addInitScript(() => { try { localStorage.setItem("tcLinePreview", "1"); } catch (e) {}
     localStorage.setItem('4dplan-unlocked', '1');
     localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't', userName: 'Victor' }));
   });
@@ -210,7 +210,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
 
   // IFC: uppladdning fångas.
   await page.evaluate(() => { window.__up = []; window.__fid = 0; window.tcUploadFiles = async (files, folder) => { const out = []; for (const f of files) { window.__up.push({ name: f.name, folder, text: await f.text() }); out.push({ name: f.name, res: { id: 'file-' + (++window.__fid) } }); } return { uploaded: files.length, files: out }; }; });
-  await page.click('#placeSaveIfc'); await wait(1500);
+  await page.evaluate(() => { placeNameOpt.reach = true; }); await page.click('#placeSaveIfc'); await wait(1500);
   let up = await page.evaluate(() => window.__up);
   if (up.length !== 1 || up[0].folder !== '4D Etablering' || !up[0].name.endsWith('.ifc')) fail('IFC ska laddas upp till 4D Etablering: ' + JSON.stringify(up.map(u => [u.name, u.folder])));
   const proxies = t => (t.match(/IFCBUILDINGELEMENTPROXY\('([^']+)'/g) || []).map(x => x.slice(26, 48)).sort();
