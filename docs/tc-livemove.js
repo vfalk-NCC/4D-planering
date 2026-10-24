@@ -135,7 +135,7 @@ function lmEvent(event, data) {
 /* Vridpunkten (blått kryss) och tryckta punkter (röda kryss) – några få linjer. */
 async function lmDrawMarks() {
   if (typeof API === "undefined" || !API || !API.markup) return;
-  if (typeof tcLinePreviewOn === "function" && !tcLinePreviewOn()) { const o0 = lm.markIds; lm.markIds = []; if (o0.length && typeof clearMarkupIds === "function") await clearMarkupIds(o0); return; }
+  { const o0 = lm.markIds; lm.markIds = []; if (o0.length && typeof clearMarkupIds === "function") await clearMarkupIds(o0); return; }   // inga linjer i TC (Victor 2026-10-24)
   const old = lm.markIds; lm.markIds = [];
   const lines = [], mm = p => ({ positionX: p.x * 1000, positionY: p.y * 1000, positionZ: p.z * 1000 });
   const cross = (p, color, s) => { lines.push({ start: mm(lmV(p.x - s, p.y, p.z)), end: mm(lmV(p.x + s, p.y, p.z)), color }, { start: mm(lmV(p.x, p.y - s, p.z)), end: mm(lmV(p.x, p.y + s, p.z)), color }, { start: mm(p), end: mm(lmV(p.x, p.y, p.z + s * 2)), color }); };

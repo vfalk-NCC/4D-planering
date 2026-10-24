@@ -64,8 +64,8 @@ function placePath() { return `projects/${encodeURIComponent(projectId)}/plan_pl
    lägesplanen har sparat ändringar). */
 async function place3dLoad(opts = {}) {
   if (!projectId) return;
-  try { placements = (await ghReadJSON(settings.githubToken, placePath(), opts.fresh ? { fresh: true } : undefined)) || []; }
-  catch (e) { placements = []; console.warn("Kunde inte läsa plan_placements.json", e); }
+  // Blocket läser inte längre in det som gjorts i 3D-editorn (Victor 2026-10-24) – det visar bara objekt som placeras här. Sparningen slår ihop med filen (ändrar inget annat).
+  if (!placeLoaded) placements = [];
   if (typeof placeAssetsLoad === "function") await placeAssetsLoad(opts);
   placeLoaded = true; placeDirty.clear(); placeDeleted.clear(); placeUndoStack = []; placeRedoStack = [];
   if (!placements.some(p => p.id === placeActiveId)) placeActiveId = null;
@@ -189,8 +189,9 @@ function placePreviewLines() {
   return lines;
 }
 async function placeDrawNow() {
+  // Inga linjer i Trimble Connects vy (Victor 2026-10-24): de gjorde TC trögt. Förhandsvisningen i TC är borttagen; bara det som låg kvar rensas.
   if (typeof API === "undefined" || !API || !API.markup) return;
-  if (!tcLinePreviewOn()) { const old0 = placeShownIds; placeShownIds = []; ++placeDrawSeq; if (old0.length) await clearMarkupIds(old0); return; }
+  { const old0 = placeShownIds; placeShownIds = []; ++placeDrawSeq; if (old0.length) await clearMarkupIds(old0); return; }
   const am = placeActive() && (placeLib(placeActive().type) || {}).model;
   if (am && !am._meshFailed && (am.kind === "ifc" ? !(am.meshPath && am.outline) : !am.outline) && typeof placeEnsureOutline === "function") placeEnsureOutline(am);
   const seq = ++placeDrawSeq;
@@ -495,11 +496,9 @@ function buildPlacementsIfc(projName, only) {
    och inget tänds/släcks i TC. Utan opts: alla placeringar som förut. */
 /* Namnet på den sparade filen: autonamn eller eget (rutorna under Spara-knappen; sparas här så att de överlever omritning av panelen). */
 const placeNameOpt = { custom: false, text: "", stamp: true, local: false, reach: false };
-/* Linjer i Trimble Connects vy (förhandsvisning, vridpunkter) är AV som standard – de gör TC trögt (Victor 2026-10-24: "jag vill inte att det någonsin ritas linjer som kan störa modellen"). Slås på med en ruta. */
-function tcLinePreviewOn() { try { return localStorage.getItem("tcLinePreview") === "1"; } catch (e) { return false; } }
 function placeNameHtml() {
   const o = placeNameOpt, ch = v => v ? " checked" : "";
-  return `<div class="row place-namerow"><label class="place-chk" title="Av = autonamn (Etablering + projekt + datum och klockslag). På = skriv ett eget namn på filen."><input type="checkbox" id="placeNameOn"${ch(o.custom)}> Eget namn</label><input type="text" id="placeNameTxt" placeholder="Skriv eget namn på filen…" maxlength="80" autocomplete="off" value="${String(o.text).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}"${o.custom ? "" : " disabled"}><label class="place-chk" title="Lägger datum och klockslag sist i namnet så att filen alltid blir ny"><input type="checkbox" id="placeNameStamp"${ch(o.stamp)}${o.custom ? "" : " disabled"}> + datum &amp; klockslag</label><label class="place-chk" title="Hämtar också en kopia av filen till datorn"><input type="checkbox" id="placeLocal"${ch(o.local)}> Spara även på datorn</label><label class="place-chk" title="Av (rekommenderat): räckviddsringar och körvägsstreck följer inte med i IFC:n – de blir bara linjer som tynger Trimble Connect"><input type="checkbox" id="placeReach"${ch(o.reach)}> Med räckviddsringar</label></div><div class="row"><label class="place-chk" title="Ritar linjer i Trimble Connects vy medan du placerar. Linjerna gör TC trögt, så det är av som standard – placeringen och sparningen fungerar ändå."><input type="checkbox" id="placeLinePrev"${tcLinePreviewOn() ? " checked" : ""}> Förhandsvisa med linjer i TC (kan göra TC trögt)</label></div>`;
+  return `<div class="row place-namerow"><label class="place-chk" title="Av = autonamn (Etablering + projekt + datum och klockslag). På = skriv ett eget namn på filen."><input type="checkbox" id="placeNameOn"${ch(o.custom)}> Eget namn</label><input type="text" id="placeNameTxt" placeholder="Skriv eget namn på filen…" maxlength="80" autocomplete="off" value="${String(o.text).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;")}"${o.custom ? "" : " disabled"}><label class="place-chk" title="Lägger datum och klockslag sist i namnet så att filen alltid blir ny"><input type="checkbox" id="placeNameStamp"${ch(o.stamp)}${o.custom ? "" : " disabled"}> + datum &amp; klockslag</label><label class="place-chk" title="Hämtar också en kopia av filen till datorn"><input type="checkbox" id="placeLocal"${ch(o.local)}> Spara även på datorn</label><label class="place-chk" title="Av (rekommenderat): räckviddsringar och körvägsstreck följer inte med i IFC:n – de blir bara linjer som tynger Trimble Connect"><input type="checkbox" id="placeReach"${ch(o.reach)}> Med räckviddsringar</label></div>`;
 }
 async function placeSaveIfc(opts = {}) {
   const only = Array.isArray(opts.ids) && opts.ids.length ? new Set(opts.ids) : null;
@@ -760,7 +759,7 @@ function bindPlacePanel(box, act) {
     if (onCb) onCb.onchange = () => { placeNameOpt.custom = onCb.checked; if (txt) txt.disabled = !onCb.checked; if (st) st.disabled = !onCb.checked; if (onCb.checked && txt) txt.focus(); };
     if (txt) { txt.oninput = () => { placeNameOpt.text = txt.value; }; txt.onkeydown = e => e.stopPropagation(); }
     if (st) st.onchange = () => { placeNameOpt.stamp = st.checked; };
-    if (loc) loc.onchange = () => { placeNameOpt.local = loc.checked; }; const rc = g("placeReach"); if (rc) rc.onchange = () => { placeNameOpt.reach = rc.checked; }; const lp = g("placeLinePrev"); if (lp) lp.onchange = () => { try { localStorage.setItem("tcLinePreview", lp.checked ? "1" : "0"); } catch (e) {} placeRedraw(); }; }
+    if (loc) loc.onchange = () => { placeNameOpt.local = loc.checked; }; const rc = g("placeReach"); if (rc) rc.onchange = () => { placeNameOpt.reach = rc.checked; };  }
   on("placeSaveIfc", () => { placeSaveIfc().catch(e => setPlaceStatus("Kunde inte spara som IFC: " + e.message, true)); });
   if (!act) return;
   const change = (fn, live) => { if (!live) placeSnapshot(); fn(act); placeTouch(act); placeRedraw(); };

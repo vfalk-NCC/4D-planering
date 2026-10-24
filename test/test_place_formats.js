@@ -32,7 +32,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('dialog', d => d.accept());
-  await page.addInitScript(() => { try { localStorage.setItem("tcLinePreview", "1"); } catch (e) {}
+  await page.addInitScript(() => { 
     localStorage.setItem('4dplan-unlocked', '1');
     localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't', userName: 'Victor' }));
   });
@@ -69,7 +69,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   });
   const fail = m => { throw new Error(m); };
   const pick = (x, y, z) => page.evaluate(([x, y, z]) => window.__cb('viewer.onPicked', { data: { position: { x, y, z }, modelId: 'm1', objectRuntimeId: 1 } }), [x, y, z]);
-  const shown = () => page.evaluate(() => [...window.__markups.values()]);
+  const shown = () => page.evaluate(() => placePreviewLines());   // förhandsvisningens linjer räknas fortfarande fram men ritas inte i TC
   await page.goto(`http://localhost:${PORT}/index.html`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(500);
 

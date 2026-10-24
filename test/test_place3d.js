@@ -32,7 +32,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('dialog', d => d.accept());
-  await page.addInitScript(() => { try { localStorage.setItem("tcLinePreview", "1"); } catch (e) {}
+  await page.addInitScript(() => { 
     localStorage.setItem('4dplan-unlocked', '1');
     localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't', userName: 'Victor' }));
   });
@@ -69,7 +69,7 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   });
   const fail = m => { throw new Error(m); };
   const pick = (x, y, z) => page.evaluate(([x, y, z]) => window.__cb('viewer.onPicked', { data: { position: { x, y, z }, modelId: 'm1', objectRuntimeId: 1 } }), [x, y, z]);
-  const shown = () => page.evaluate(() => [...window.__markups.values()]);
+  const shown = () => page.evaluate(() => placePreviewLines());   // förhandsvisningens linjer räknas fortfarande fram men ritas inte i TC
   await page.goto(`http://localhost:${PORT}/index.html`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(500);
 
@@ -246,15 +246,16 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
     if (up3.length !== 3 || !/ urval 1 objekt /.test(up3[2].name) || proxies(up3[2].text).length !== 1 || up3[2].name === up3[1].name) fail('Exportera markerade: en ny fil med bara urvalet: ' + JSON.stringify(up3.map(u => u.name)));
     if ((await page.evaluate(() => window.__toggled.length)) !== tog0 || get('plan_items.json').length !== n0) fail('Exportera markerade ska inte tända/släcka modeller eller ändra 4D-kopplingar');
   }
-  // 3D-vyn i lägesplanen har sparat: 4D-planering läser om etableringen (meddelande från samma origin).
+  // 3D-vyn i lägesplanen har sparat: blocket läser INTE in det (Victor 2026-10-24) och ritar inga linjer i TC.
   const ext = get('plan_placements.json'); ext.push({ id: 'fran3d', type: 'container', name: 'Från 3D', x: 5, y: 5, z: 0, L: 6, B: 2.4, H: 2.6, rot: 0, dz: 0 }); put('plan_placements.json', ext);
   const rep = await page.evaluate(() => new Promise(res => {
     window.addEventListener('message', e => { if (e.data && e.data.lagesplanReply && e.data.reqId === 77) res(e.data); });
     window.postMessage({ lagesplan: true, type: 'placementsChanged', reqId: 77 }, location.origin);
   }));
   await wait(300);
-  if (rep.error || !(await page.evaluate(() => placements.some(p => p.id === 'fran3d')))) fail('placementsChanged ska läsa om etableringen: ' + JSON.stringify(rep));
-  if (!(await page.locator('.place-row', { hasText: 'Från 3D' }).count())) fail('Listan ska visa objektet från 3D-vyn');
+  if (rep.error || (await page.evaluate(() => placements.some(p => p.id === 'fran3d')))) fail('Blocket ska inte läsa in det som gjorts i 3D-editorn: ' + JSON.stringify(rep));
+  if (await page.locator('.place-row', { hasText: 'Från 3D' }).count()) fail('Listan ska inte visa objekt från 3D-vyn');
+  if ((await page.evaluate(() => window.__markups.size)) !== 0) fail('Inga linjer ska ritas i Trimble Connect');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   // Eget namn på filen (rutorna under Spara-knappen; överlever omritning av panelen).
   await page.check('#placeNameOn'); await page.fill('#placeNameTxt', 'Min etablering: v3');
