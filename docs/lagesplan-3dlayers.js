@@ -40,7 +40,7 @@ function l3lSetIdsVisible(ids, on) {
 /* Minimalistisk (Victor 2026-10-12: "sortera upp den här menyn … minimalistiskt och stilrent … jobba mycket med
    collapse och dropdown-menyer"): block och grupper fälls ihop, åtgärder ligger i små menyer (＋ och ⋯) och
    radernas knappar syns när musen är över raden. Inställningarna har ett eget block längst ner (ihopfällt). */
-const L3L_SECS = ["models", "site2d", "settings"];
+const L3L_SECS = ["models", "site2d", "map", "settings"];
 const l3lClosed = () => { const c = new Set(l3Prefs().layClosed || []); if (!l3Prefs().layAdv) c.add("settings"); return c; };
 /* Samlingsswitchar i Lager (Victor 2026-10-24): släcker/tänder alla 3D-modeller, alla punktmoln, eller alla 2D-lager + ritningen på en gång. Tänder man igen
    kommer det som var tänt förut tillbaka (är inget minnt tänds allt). */
@@ -90,7 +90,7 @@ function l3lMenusBind(host) {
     e.stopPropagation();
     const m = host.querySelector(`[data-ldd-m="${b.dataset.ldd}"]`) || document.querySelector(`#view3d > [data-ldd-m="${b.dataset.ldd}"]`); if (!m) return; const open = m.classList.contains("hidden");
     closeAll(); m.classList.toggle("hidden", !open); b.setAttribute("aria-expanded", open);
-    if (open && m.dataset.lddM === "pcset") {   // stora inställningsmenyn: fast läge, inom panelens bredd
+    if (open && (m.dataset.lddM === "pcset" || m.dataset.lddM === "mapset")) {   // stora inställningsmenyn: fast läge, inom panelens bredd
       const hr = host.getBoundingClientRect(), br = b.getBoundingClientRect(), w = Math.min(300, hr.width - 12);
       const v3 = document.getElementById("view3d"); if (v3 && m.parentElement !== v3) v3.appendChild(m);   // utanför panelen så att inget klipper den
       m.style.position = "fixed"; m.style.width = w + "px"; m.style.minWidth = "0"; m.style.right = "auto"; m.style.left = Math.max(hr.left + 6, Math.min(br.right - w, hr.right - w - 6)) + "px"; m.style.top = br.bottom + 6 + "px"; m.style.maxHeight = Math.max(200, window.innerHeight - br.bottom - 20) + "px"; m.style.overflowY = "auto";
@@ -165,6 +165,7 @@ function l3LayersRender() {
   const tcBar = sortNow === "tree" ? `<div class="v3-lay-tcbar"><button type="button" class="v3-link" data-l3l-sort="list" title="Tillbaka till modellerna">‹ Modeller</button><span>Trimble Connect</span></div>` : "";
   const modelsSec = l3lSec("models", "3D-modeller", `${tcBar}${mh}`, l3lSw("models", "Tänd/släck alla 3D-modeller") + l3lMenu("models", "＋", "Lägg till modell eller punktmoln", addItems));
   h = h.replace("<!--l3l-models-->", modelsSec);
+  if (typeof l3mapBody === "function") h += l3lSec("map", "BAKGRUNDSKARTA", l3mapBody(), `<label class="v3-lay-sw" title="Visa karta/satellit under modellerna"><input type="checkbox" data-lmapsw="1" ${l3Prefs().mapOn === true ? "checked" : ""} role="switch" aria-label="Bakgrundskarta" /><i></i></label>` + l3lMenu("mapset", '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>', "Inställningar för kartan", l3mapSettingsHtml()));
   h += l3lSec("settings", "Inställningar", setH);
   host.innerHTML = h;
   if (q) {
@@ -231,6 +232,7 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3l-dxf]").forEach(b => { const n = b.closest(".v3-lr") && b.closest(".v3-lr").querySelector(".v3-lr-n"); if (n && b.dataset.cad) { n.classList.add("v3-lr-pick2"); n.onclick = () => { l3ssSelect({ kind: "cad", id: b.dataset.cad }); l3ssFlash({ kind: "cad", id: b.dataset.cad }); }; } });
   host.querySelectorAll("[data-l3l-dxf]").forEach(b => { b.onclick = () => { if (b.dataset.cad) { const k = "cad:" + b.dataset.cad; setLayersVisible([k], !ls(k).visible); l3sRefresh(0); l3LayersRender(); } else l3sDxfFromTc(b.dataset.l3lDxf, b.dataset.name); }; });
   if (typeof l3sBind === "function") l3sBind(host);
+  if (typeof l3mapBind === "function") l3mapBind(host);
   const op = host.querySelector('[data-l3l-op="plan"]');
   if (op) op.oninput = () => { l3SetPref("planOp", Number(op.value)); l3lApplyPlanOp(); l3Render(); };
   const de = host.querySelector("#v3LayDetails");

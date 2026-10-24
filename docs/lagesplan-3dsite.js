@@ -241,6 +241,7 @@ function l3sRefresh(delay = 120) {
   // Ny arbetsyta (annat origo): linjerna byggs om.
   const sig = (plan && plan.id) + "|" + l3.O.join(",");
   if (l3s.sig !== sig) { l3s.sig = sig; if (l3.groups.cad) l3Clear(l3.groups.cad); l3s.cad.clear(); l3s.text = new Map(); if (typeof l3d !== "undefined") { l3d.mesh = l3d.selMesh = l3d.selPts = l3d.prev = null; } }
+  if (typeof l3mapRefresh === "function") l3mapRefresh(false);
   clearTimeout(l3s.timer);
   l3s.timer = setTimeout(() => { l3sBuildCad().catch(e => console.warn("CAD i 3D", e)); l3sBuildGround().catch(e => console.warn("2D-lager i 3D", e)); }, delay);
 }
