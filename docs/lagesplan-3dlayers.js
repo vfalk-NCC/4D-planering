@@ -112,11 +112,13 @@ function l3LayersRender() {
   const q = (l3lay.q || "").trim().toLowerCase();
   let h = `<div class="v3-lay-top"><input type="search" class="v3-pp-q" id="v3LayQ" placeholder="Sök lager, modell, DXF…" value="${esc(l3lay.q || "")}" /><button type="button" class="v3-ic v3-lay-foldb" id="v3LayFold" title="${allShut ? "Fäll ut alla block" : "Fäll ihop alla block"}">${L3L_FOLD_ICO(allShut)}</button></div><!--l3l-models-->`;
   // Underlag (ritningen som mark) ligger under Visa; Planering och etablering togs bort (Victor 2026-10-12).
-  if (typeof l3sHtml === "function") { const s2 = l3sHtml(row, l3lEye); if (s2) h += l3lSec("site2d", "2D-MODELLER", s2.body, l3lSw("twoD", "Tänd/släck alla 2D-lager, DXF och ritningen (PDF)") + (s2.extra || "")); }
+  const noTc0 = typeof bridgeOk === "function" && !bridgeOk();
+  if (typeof l3sHtml === "function") { const s2 = l3sHtml(row, l3lEye); if (s2) h += l3lSec("site2d", "2D-MODELLER", "<!--l3l-tb-site2d-->" + s2.body, l3lMenu("site2d", "＋", "Lägg till 2D-underlag", (noTc0 ? "" : `<button type="button" data-l3l-browse="site2d" title="Projektets mappar i Trimble Connect – välj en DXF eller DWG">Bläddra i Trimble Connect…</button>`) + `<button type="button" data-l3l-pickdxf="1" title="DXF från datorn">DXF från datorn…</button>`) + l3lSw("twoD", "Tänd/släck alla 2D-lager, DXF och ritningen (PDF)") + (s2.extra || "")); }
   if (typeof l3lyHtml === "function") { const ly = l3lyHtml(l3lEye, esc); h += l3lSec("lyr", "LAGER I MODELL &amp; RITNING", ly.body, "", ly.n || null); }
   let mh = "";
   const noTc = typeof bridgeOk === "function" && !bridgeOk();
-  if ((P.laySort || "list") === "list") {
+  const browse = P.laySort === "tree", bk = P.layBrowse || "models"; l3lay.kind = browse ? bk : null;
+  if (!browse || bk !== "models") {
     const ms = l3b.models.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), "sv", { numeric: true }));
     const pend = m => (typeof l3bmPending === "function" ? l3bmPending(m.id) : 0);
     // Även släckta, sparade modeller som inte är inlästa i den här sessionen står kvar (läses in när de tänds).
@@ -139,8 +141,9 @@ function l3LayersRender() {
     // Grupperna Modeller och Punktmoln (hopfällbara).
     const nm = all.length;
     mh = l3lSub("models", "Modeller", nm, mh);
-    l3lay.pcExtra = typeof l3pcHtml === "function" ? ((typeof l3pcSettingsHtml === "function" ? l3lMenu("pcset", '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>', "Visning av punktmoln", l3pcSettingsHtml()) : "") + l3lMenu("pc", "＋", "Lägg till punktmoln", (noTc ? "" : `<button type="button" data-l3l-browse="1" title="Projektets mappar i Trimble Connect – välj en LAS/LAZ/E57-fil">Från Trimble Connect…</button>`) + `<button type="button" data-pcfile2="1" title="LAS, LAZ, XYZ/PTS/TXT eller PLY från datorn (även över 2 GB)">Från datorn…</button>`) + l3lSw("pc", "Tänd/släck alla punktmoln")) : "";
+    l3lay.pcExtra = typeof l3pcHtml === "function" ? ((typeof l3pcSettingsHtml === "function" ? l3lMenu("pcset", '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>', "Visning av punktmoln", l3pcSettingsHtml()) : "") + l3lMenu("pc", "＋", "Lägg till punktmoln", (noTc ? "" : `<button type="button" data-l3l-browse="pc" title="Projektets mappar i Trimble Connect – välj en LAS/LAZ/E57-fil">Från Trimble Connect…</button>`) + `<button type="button" data-pcfile2="1" title="LAS, LAZ, XYZ/PTS/TXT eller PLY från datorn (även över 2 GB)">Från datorn…</button>`) + l3lSw("pc", "Tänd/släck alla punktmoln")) : "";
   } else mh += l3lTreeHtml(l3lay.root, 0);
+  let tb = browse && bk !== "models" ? l3lTreeBar(bk) + l3lTreeHtml(l3lay.root, 0) : "";
   mh += `<div id="v3LayBldgBox"></div>`;
   // Inställningar (sällan ändrade) i ett eget block längst ner – grupperade, korta namn, förklaring vid hovring.
   const sel = (id, opts, v) => `<select id="${id}">${opts.map(([k, l]) => `<option value="${k}" ${String(v) === k ? "selected" : ""}>${l}</option>`).join("")}</select>`;
@@ -152,15 +155,17 @@ function l3LayersRender() {
     + `</div><div class="v3-set-g"><div class="v3-set-h">Mobil</div>`
     + chk("v3LayLight", P.mobileCopy !== false, "Lätt kopia för iPhone/iPad", "", "När datorn läst in en modell sparas en lätt kopia av geometrin (utan egenskaper) i datalagret – inte i Trimble Connect. iPhone/iPad läser den i stället för IFC-filen.")
     + `</div>`;
+  const mhPre = mh;
   if (P.laySort === "tree" && !l3lay.root && noTc) mh += `<div class="v3-pal-hint">Lägesplanen har ingen kontakt med Trimble Connect här. På iPhone/iPad öppnas den i Safari, utan 4D-planering, så mapparna går bara att bläddra i på datorn. Modellerna som är sparade för mobilen finns under Hämtade 3D-modeller.</div>`;
   else if (l3lay.err && !noTc) mh += `<div class="v3-pal-hint bad">${esc(l3lay.err)}</div><button type="button" class="v3-wide" id="v3LayRetry">Försök igen</button>`;
+  if (browse && bk !== "models") { tb += mh.slice(mhPre.length); mh = mhPre; }
   // 3D-modeller överst (Victor 2026-10-10): flikarna Hämtade 3D-modeller (de inlästa) och Trimble Connect mapp.
   const sortNow = P.laySort || "list";
   const addItems = (noTc ? "" : `<button type="button" id="v3LayTcOn" title="De IFC-modeller som är tända i Trimble Connect just nu">Hämta tända modeller från Trimble Connect</button><button type="button" data-l3l-browse="1" title="Projektets mappar i Trimble Connect – IFC, DXF och punktmoln">Bläddra i Trimble Connect…</button>`)
     + `<button type="button" id="v3PcFile" title="LAS, LAZ, XYZ/PTS/TXT eller PLY från datorn (även över 2 GB)">Punktmoln från datorn…</button>`;
   // Modellerna och punktmolnen visas direkt; Trimble Connects mappar nås via ＋ (Victor 2026-10-12: "Hämtade och
   // trimble connect måste tonas ner … man kommer åt dom bara när man trycker på plusknappen").
-  const tcBar = sortNow === "tree" ? `<div class="v3-lay-tcbar"><button type="button" class="v3-link" data-l3l-sort="list" title="Tillbaka till modellerna">‹ Modeller</button><span>Trimble Connect</span></div>` : "";
+  const tcBar = sortNow === "tree" && bk === "models" ? l3lTreeBar("models") : "";
   const mdlMenu = `<div class="v3-pcs" data-keep="1">
     <div class="v3-set-h">Visning</div>
     ${chk("v3MdlEdges", !!P.mdlEdges, "Kanter", "markerar konturer", "Ritar kanterna på modellerna (inte vid släta ytor). Bara för mindre modeller – stora blir för tunga.")}
@@ -174,8 +179,8 @@ function l3LayersRender() {
     ${chk("v3LayVoids", !!P.ifcVoids, "Urtag", "hål i väggar, långsammare", "Fönster- och dörrhål sågas ut ur väggar och bjälklag. Gör inläsningen av stora modeller många gånger långsammare – gäller modeller som läses in efter att du ändrat.")}
     <button type="button" class="v3-link" id="v3MdlReset">Återställ visningen</button></div>`;
   const modelsSec = l3lSec("models", "3D-modeller", `${tcBar}${mh}`, l3lMenu("mdlset", '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>', "Visning av 3D-modeller", mdlMenu) + l3lMenu("models", "＋", "Lägg till modell eller punktmoln", addItems) + l3lSw("models", "Tänd/släck alla 3D-modeller"));
-  const pcSec = typeof l3pcHtml === "function" ? l3lSec("pc", "PUNKTMOLN", l3pcHtml(row, esc), l3lay.pcExtra || "", l3pcCount() || null) : "";
-  h = h.replace("<!--l3l-models-->", modelsSec + pcSec);
+  const pcSec = typeof l3pcHtml === "function" ? l3lSec("pc", "PUNKTMOLN", (bk === "pc" ? tb : "") + l3pcHtml(row, esc), l3lay.pcExtra || "", l3pcCount() || null) : "";
+  h = h.replace("<!--l3l-models-->", modelsSec + pcSec).replace("<!--l3l-tb-site2d-->", bk === "site2d" ? tb : "");
   if (typeof l3mapBody === "function") h += l3lSec("map", "BAKGRUNDSKARTA", l3mapBody(), l3lMenu("mapset", '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>', "Inställningar för kartan", l3mapSettingsHtml()) + `<label class="v3-lay-sw" title="Visa karta/satellit under modellerna"><input type="checkbox" data-lmapsw="1" ${l3Prefs().mapOn === true ? "checked" : ""} role="switch" aria-label="Bakgrundskarta" /><i></i></label>`);
   h += l3lSec("settings", "Inställningar", setH);
   host.innerHTML = h;
@@ -195,7 +200,8 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3l-model]").forEach(b => { const n = b.closest(".v3-lr") && b.closest(".v3-lr").querySelector(".v3-lr-n"); if (n) { n.classList.add("v3-lr-pick2"); n.onclick = () => l3lGlow(b.dataset.l3lModel); b.closest(".v3-lr").classList.toggle("glow", l3lay.glow === b.dataset.l3lModel); } });
   host.querySelectorAll("[data-pcfile2]").forEach(b => { b.onclick = () => { if (typeof l3pcFromFile === "function") l3pcFromFile(); }; });
   host.querySelectorAll("[data-lsub-t]").forEach(b => { b.onclick = () => { const c = new Set(l3Prefs().layClosed || []), k = "sub:" + b.dataset.lsubT; if (c.has(k)) c.delete(k); else c.add(k); l3SetPref("layClosed", [...c]); l3LayersRender(); }; });
-  host.querySelectorAll("[data-l3l-browse]").forEach(b => { b.onclick = () => { l3SetPref("laySort", "tree"); const c = new Set(l3Prefs().layClosed || []); c.delete("models"); l3SetPref("layClosed", [...c]); l3LayersRender(); }; });
+  host.querySelectorAll("[data-l3l-pickdxf]").forEach(b => { b.onclick = () => { const i = host.querySelector("#v3SDxfIn"); if (i) i.click(); }; });
+  host.querySelectorAll("[data-l3l-browse]").forEach(b => { b.onclick = () => { const k = b.dataset.l3lBrowse === "1" ? "models" : b.dataset.l3lBrowse; l3SetPref("laySort", "tree"); l3SetPref("layBrowse", k); const c = new Set(l3Prefs().layClosed || []); c.delete(k); l3SetPref("layClosed", [...c]); l3LayersRender(); }; });
   l3lMenusBind(host);
   const fold = host.querySelector("#v3LayFold");
   if (fold) fold.onclick = () => {
@@ -300,11 +306,15 @@ function l3LayersRender() {
 }
 
 /* Mappträdet: mappar fälls ut/ihop, IFC-filer har ett öga. */
+function l3lTreeBar(kind) {
+  const t = { pc: "punktmoln (LAS, LAZ, E57 …)", site2d: "DXF och DWG", models: "" }[kind] || "";
+  return `<div class="v3-lay-tcbar"><button type="button" class="v3-link" data-l3l-sort="list" title="Tillbaka">‹ Tillbaka</button><span>Trimble Connect${t ? " – " + t : ""}</span></div>`;
+}
 function l3lTreeHtml(id, depth) {
   const esc = escHtml;
   if (!id) return l3lay.loading.has("root") ? `<div class="v3-pal-hint">Hämtar projektets mappar…</div>` : "";
   const items = l3lay.folders.get(id) || [];
-  const dirs = items.filter(x => x.type === "folder"), files = items.filter(x => x.type === "file" && L3L_EXT.test(x.name));
+  const dirs = items.filter(x => x.type === "folder"), files = items.filter(x => x.type === "file" && L3L_EXT.test(x.name) && (!l3lay.kind || l3lay.kind === "models" || (l3lay.kind === "pc" ? /\.(las|laz|xyz|pts|ply|e57)$/i : /\.(dxf|dwg)$/i).test(x.name)));
   const pad = `style="padding-left:${4 + depth * 12}px"`;
   let h = "";
   dirs.forEach(d => {

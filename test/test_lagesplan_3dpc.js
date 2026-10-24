@@ -94,7 +94,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     await page.evaluate(() => { open3d(); });
     await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.renderer && typeof l3pcLoad === 'function', null, { timeout: 15000 });
     // Lager → Trimble Connect mapp: molnfilen syns och läses in med ett tryck.
-    await page.evaluate(() => { l3PalTab('layers'); l3SetPref('laySort', 'tree'); l3LayersRender(); });
+    await page.evaluate(() => { l3PalTab('layers'); l3LayersRender(); });
+    await page.click('#v3PalLayers [data-ldd="pc"]'); await page.click('#v3PalLayers [data-l3l-browse="pc"]');
     await page.waitForSelector('#v3PalLayers [data-l3l-dir="d1"]', { timeout: 5000 });
     await page.click('#v3PalLayers [data-l3l-dir="d1"]');
     await page.waitForSelector('#v3PalLayers [data-pc-tc="L1"]', { timeout: 5000 });

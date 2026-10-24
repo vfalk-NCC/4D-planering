@@ -145,11 +145,12 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
 
   // DXF ur projektets mappar i Trimble Connect: syns i trädet och läses in (laddas inte upp igen).
   // Fliken Trimble Connect mapp (Hämtade 3D-modeller är förvald).
-  await page.evaluate(() => { l3SetPref('laySort', 'tree'); l3LayersRender(); }); // ＋ → Bläddra i Trimble Connect
+  await page.evaluate(() => { l3LayersRender(); }); await page.click('#v3PalLayers [data-ldd="site2d"]'); await page.click('#v3PalLayers [data-l3l-browse="site2d"]'); // 2D-MODELLER ＋ → Bläddra i Trimble Connect
   await page.waitForSelector('#v3PalLayers [data-l3l-dir="f1"]', { timeout: 5000 });
   await page.click('#v3PalLayers [data-l3l-dir="f1"]');
   await page.waitForSelector('#v3PalLayers [data-l3l-dxf="D1"]', { timeout: 5000 });
   if (await page.$('#v3PalLayers [data-l3l-file="P1"], #v3PalLayers [data-l3l-dxf="P1"]')) fail('PDF ska inte listas bland modellerna');
+  if (await page.$('#v3PalLayers [data-pc-tc], #v3PalLayers [data-l3l-file]')) fail('2D-bläddringen ska bara visa DXF/DWG');
   await page.click('#v3PalLayers [data-l3l-dxf="D1"]');
   await page.waitForFunction(() => cads().some(r => r.name === 'Grund'), null, { timeout: 15000 });
   await page.waitForTimeout(300);
