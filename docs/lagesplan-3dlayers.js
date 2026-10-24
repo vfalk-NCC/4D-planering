@@ -103,7 +103,7 @@ function l3LayersRender() {
     }
     // Grupperna Modeller och Punktmoln (hopfällbara).
     const nm = all.length;
-    mh = l3lSub("models", "Modeller", nm, mh) + (typeof l3pcHtml === "function" ? l3lSub("pc", "Punktmoln", l3pcCount() || null, l3pcHtml(row, esc)) : "");
+    mh = l3lSub("models", "Modeller", nm, mh) + (typeof l3pcHtml === "function" ? l3lSub("pc", "Punktmoln", l3pcCount() || null, l3pcHtml(row, esc), l3lMenu("pc", "＋", "Lägg till punktmoln", (noTc ? "" : `<button type="button" data-l3l-browse="1" title="Projektets mappar i Trimble Connect – välj en LAS/LAZ/E57-fil">Från Trimble Connect…</button>`) + `<button type="button" data-pcfile2="1" title="LAS, LAZ, XYZ/PTS/TXT eller PLY från datorn (även över 2 GB)">Från datorn…</button>`)) : "");
   } else mh += l3lTreeHtml(l3lay.root, 0);
   mh += `<div id="v3LayBldgBox"></div>`;
   // Inställningar (sällan ändrade) i ett eget block längst ner – grupperade, korta namn, förklaring vid hovring.
@@ -148,6 +148,7 @@ function l3LayersRender() {
     if (id === "settings") { l3SetPref("layAdv", !l3Prefs().layAdv); l3LayersRender(); return; }
     const c = new Set(l3Prefs().layClosed || []); if (c.has(id)) c.delete(id); else c.add(id); l3SetPref("layClosed", [...c]); l3LayersRender();
   }; });
+  host.querySelectorAll("[data-pcfile2]").forEach(b => { b.onclick = () => { if (typeof l3pcFromFile === "function") l3pcFromFile(); }; });
   host.querySelectorAll("[data-lsub-t]").forEach(b => { b.onclick = () => { const c = new Set(l3Prefs().layClosed || []), k = "sub:" + b.dataset.lsubT; if (c.has(k)) c.delete(k); else c.add(k); l3SetPref("layClosed", [...c]); l3LayersRender(); }; });
   host.querySelectorAll("[data-l3l-browse]").forEach(b => { b.onclick = () => { l3SetPref("laySort", "tree"); const c = new Set(l3Prefs().layClosed || []); c.delete("models"); l3SetPref("layClosed", [...c]); l3LayersRender(); }; });
   l3lMenusBind(host);

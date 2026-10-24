@@ -16,7 +16,7 @@ const PLACE_LIB = {
   bod:       { group: "Etablering", label: "Bod",        L: 8.4,  B: 3,    H: 2.7,  color: "#f59e0b" },
   container: { group: "Etablering", label: "Container",  L: 6.06, B: 2.44, H: 2.59, color: "#2563eb" },
   upplag:    { group: "Etablering", label: "Upplag",     L: 10,   B: 5,    H: 0.3,  color: "#a16207" },
-  stallning: { group: "Etablering", label: "Ställning",  L: 10,   B: 0.75, H: 10,   color: "#eab308", transp: 0.5 },
+  stallning: { group: "Etablering", label: "Ställning",  L: 10,   B: 0.75, H: 10,   color: "#eab308", smart: true, smartKey: "stallning" },
   lada:      { group: "Etablering", label: "Egen låda",  L: 2,    B: 2,    H: 2,    color: "#7c3aed" },
   tornkran:  { group: "Maskiner",   label: "Tornkran",   L: 1.6,  B: 1.6,  H: 40,   R: 50, color: "#facc15" },
   mobilkran: { group: "Maskiner",   label: "Mobilkran",  L: 12,   B: 2.8,  H: 3.5,  R: 30, color: "#dc2626" },

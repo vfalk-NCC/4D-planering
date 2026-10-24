@@ -75,13 +75,15 @@ function smText(ctx, text, size, a, zc, b, color, bold) {
 }
 
 /* ---- Typerna ---------------------------------------------------------------------------------------------------------------------------------- */
-const smKeys = () => Object.keys(SM);
+const smKeys = () => Object.keys(SM).filter(k => !SM[k].hidden);
+const smKeyOf = p => (String(p.type).startsWith("sm:") ? String(p.type).slice(3) : (typeof PLACE_LIB !== "undefined" && PLACE_LIB[p.type] && PLACE_LIB[p.type].smartKey) || "");
+const smDef = p => SM[smKeyOf(p)];
 function smartLib(type) {
   const k = String(type).slice(3), d = SM[k]; if (!d) return { group: "Etablering", label: "Smart objekt (saknas)", color: "#64748b", smart: true, key: k, L: 1, B: 1, H: 1 };
   return { group: d.group, label: d.label, color: d.color, smart: true, key: k, L: d.L || 0, B: d.B || 0, H: d.H || 1, R: d.R || 0, fence: !!d.path, title: d.label };
 }
 const smIsType = t => String(t || "").startsWith("sm:");
-function smartInit(p) { const d = SM[String(p.type).slice(3)]; if (!d) return; p.f = {}; (d.fields || []).forEach(([k, , , def]) => { p.f[k] = def; }); }
+function smartInit(p) { const d = smDef(p); if (!d) return; p.f = {}; (d.fields || []).forEach(([k, , , def]) => { p.f[k] = def; }); }
 /* Byggkontexten: lokala hjälpare (plan i objektets egna axlar a/b, z uppåt) och formsamlingar (TK, place-geo.js) per färg/material som slås ihop vid flush(). */
 /* Rundar hörnen i en punktlista (x,y,z) med cirkelbågar med radie r. Radien krymper där segmenten är för korta. closed = sluten kontur. */
 function smFillet(P, r, closed) {
@@ -122,7 +124,7 @@ function smMakeCtx(p, z, col) {
   return ctx;
 }
 function smartParts(p, z) {
-  const d = SM[String(p.type).slice(3)]; if (!d) return [];
+  const d = smDef(p); if (!d) return [];
   const lib = placeLib(p.type) || {}, col = p.color || lib.color || d.color, ctx = smMakeCtx(p, z, col), dt = smDateText(p), parts = ctx.parts, add = ctx.add, W = ctx.W;
   ctx.withDate = s => dt ? { ...s, rows: [...(s.rows || []), ["Gäller", dt]] } : s;
   ctx.card = s => { smCard(ctx, ctx.withDate(smSignSpec(p, s))); if (p.signPlan) smCard(ctx, ctx.withDate({ ...s, plan: { at: Array.isArray(p.planPos) && isFinite(p.planPos[0]) ? [Number(p.planPos[0]), Number(p.planPos[1])] : [0, (s.b0 == null ? -1.2 : s.b0) - 2.4], yaw: Number(p.planYaw) || 0 } })); };
@@ -144,7 +146,7 @@ function smartParts(p, z) {
   d.build(p, ctx); ctx.flush(); return parts;
 }
 function smartProps(p) {
-  const d = SM[String(p.type).slice(3)]; if (!d) return []; const out = [["Objekttyp", d.label], ["Gäller datum", smDateText(p)]];
+  const d = smDef(p); if (!d) return []; const out = [["Objekttyp", d.label], ["Gäller datum", smDateText(p)]];
   (d.fields || []).forEach(([k, lab]) => { out.push([lab, smF(p, k)]); });
   if (p.type === "sm:gjutetapp" || p.type === "sm:gjutform") { const v = smN(p, "vol", 0); out.push(["Antal bilar (ca)", Math.ceil(v / Math.max(1, smN(p, "bil", 8)))], ["Pumptid timmar (ca)", Math.round(v / Math.max(1, smN(p, "kap", 30)) * 10) / 10]); }
   return out;
@@ -183,7 +185,7 @@ function smSignBind(side, p, redraw) {
   });
 }
 function smartSideHtml(p) {
-  const d = SM[String(p.type).slice(3)]; if (!d || !(d.fields || []).length) return "";
+  const d = smDef(p); if (!d || !(d.fields || []).length) return "";
   const esc = typeof escHtml === "function" ? escHtml : s => String(s);
   const row = ([k, lab, type, def, o]) => { const v = smF(p, k, def == null ? "" : def); o = o || {};
     if (type === "gjprof") { const has = !!(typeof gjutProfGet === "function" && gjutProfGet(p)); return `<div class="v3-field v3-gj-prof"><span>${esc(lab)}</span><div class="v3-gj-btns"><button type="button" data-gjdraw="1" class="v3-wide">${has ? "Rita om med frihand" : "Rita med frihand"}</button>${has ? `<button type="button" data-gjclear="1" class="v3-wide">Rensa</button>` : ""}</div><small>${has ? "Botten följer din linje." : "Rita längs sidan i modellen – formen skärs efter linjen (t.ex. mot berg)."}</small></div>`; }
@@ -199,7 +201,7 @@ function smartSideHtml(p) {
     : `<div class="v3-sec">${esc(d.label)}</div>${d.fields.map(row).join("")}`) + smSignHtml(p) + smDateFieldsHtml(p);
 }
 function smartBindSide(side, p, redraw) {
-  const d = SM[String(p.type).slice(3)]; if (!d) return;
+  const d = smDef(p); if (!d) return;
   smDateBind(side, p, redraw); smSignBind(side, p, redraw);
   const live = (k, v) => { p.f = p.f || {}; p.f[k] = v; };
   side.querySelectorAll("[data-gjdraw]").forEach(b => { b.onclick = () => { if (typeof l3gpStart === "function") l3gpStart(p); }; });

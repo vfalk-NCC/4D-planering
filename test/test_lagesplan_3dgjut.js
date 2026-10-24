@@ -160,6 +160,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3b.models.pop(); l3.scene.remove(mesh); return r; });
   if (!ex.on || ex.items !== 4 || ex.tmp !== 1 || !ex.hidden || !ex.panel || !ex.moved.every(Boolean) || !ex.awayB || !ex.lager || !ex.farther || !ex.back || !ex.restored || !ex.sel) fail('Spränga: ' + JSON.stringify(ex));
   console.log('OK: spränga markerade objekt – radiellt/lager/axel, IFC-delar utplockade, reglage, allt läggs tillbaka');
+  // 12) Ställning: dynamisk uppbyggnad efter höjd och längd; punktmolnsmenyns plus i Lager
+  const stl = await page.evaluate(() => { const O = l3.O, q = placeNew('stallning', [O[0] + 150, O[1] + 150, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); const n = h => { q.H = h; q.L = 10; const ps = placeParts(q); return { n: ps.length, top: Math.max(...ps.filter(x => !x.sign && !x.card).map(x => x.z1)) }; };
+    const a = n(6), b = n(20); q.H = 20; q.L = 20; const c2 = placeParts(q).length; return { a, b, c2, lib: !!placeLib('stallning').smart, fields: SM.stallning.fields.length, hidden: !smKeys().includes('stallning') }; });
+  if (!(stl.b.top > stl.a.top + 10) || !(stl.c2 > stl.b.n || stl.c2 >= 1) || !stl.lib || stl.fields < 8 || !stl.hidden) fail('Ställning: ' + JSON.stringify(stl));
+  await page.evaluate(() => l3PalTab('layers')); await sleep(300);
+  if (!(await page.locator('#v3PalLayers [data-ldd="pc"]').count())) fail('Plustecken vid Punktmoln i Lager saknas');
+  console.log('OK: ställning byggs dynamiskt efter höjd/längd; plustecken vid Punktmoln i Lager');
   // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
   for (const t of ['sm:saxlift', 'sm:bomlift']) {
     const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);

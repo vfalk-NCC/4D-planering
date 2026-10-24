@@ -158,6 +158,43 @@ function mkBuild(p, c) {
   sh.cuts.forEach(cu => { const pl = cu.poly; for (let i = 0; i < pl.length; i++) { const a = pl[i], b = pl[(i + 1) % pl.length], dxx = b[0] - a[0], dyy = b[1] - a[1], dd = Math.hypot(dxx, dyy); if (dd < 0.05) continue; const ux = -dyy / dd * 0.02, uy = dxx / dd * 0.02; c.prism("#475569", [[a[0] + ux, a[1] + uy], [b[0] + ux, b[1] + uy], [b[0] - ux, b[1] - uy], [a[0] - ux, a[1] - uy]], zb + th, zb + th + 0.012, { unlit: true, deco: true }); } });
   c.card({ title: String(p.name || "Makadam"), icon: "box", color: "#78716c", left: ["m³", smFmt(st.vol, 1)], rows: [["Fraktion", fr + " mm"], ["Tjocklek", smFmt(th * 1000, 0) + " mm"], ["Yta netto", smFmt(sh.net, 1) + " m²" + (sh.cuts.length ? ` (−${sh.cuts.length} objekt)` : "")], ["Beställ / vikt", `${smFmt(st.lose, 1)} m³ lös · ca ${smFmt(st.ton, 0)} ton`]], b0: Math.min(...sh.poly.map(q => q[1])) - 1.2, zb: 2.2 + zb });
 }
+/* ---- Ställning: modulställning (Layher-lik) som anpassar sig efter höjd, längd och bredd – stolpar med rosetter, regelverk, plattformar, räcken, sparkplåt, diagonaler, trapptorn, förankring och skyddsnät (Victor 2026-10-24) ---- */
+function stallningBuild(p, c) {
+  const L = Math.max(2, Number(p.L) || 10), B = Math.max(0.6, Number(p.B) || 0.75), H = Math.max(1.5, Number(p.H) || 10), fack = Math.max(0.7, smN(p, "fack", 2.57)), vh = Math.max(1, smN(p, "vh", 2)), STE = "#c9d0d8", STE2 = "#aeb7c1", DECK = "#8d97a3", WOOD = "#c9a15f", acc = p.color || "#eab308";
+  const nb = Math.max(1, Math.round(L / fack)), bay = L / nb, nl = Math.max(1, Math.round(H / vh)), lh = H / nl, x0 = -L / 2, yF = -B / 2, yB = B / 2, plat = smF(p, "plats", "alla"), skydd = smF(p, "skydd", "Nät"), trapp = smF(p, "trapp", "Ja") !== "Nej", ank = smF(p, "ank", "Ja") !== "Nej";
+  const hasDeck = k => k >= 1 && (plat === "alla" || (plat === "var2" && k % 2 === 0) || (plat === "topp" && k === nl)), rod = (a, b, r, col) => c.rod(col || STE, a, b, r, r, 6, SMM), X = i => x0 + i * bay;
+  let nStd = 0, nLed = 0, nDeck = 0;
+  // stolpar med fotplatta, ställbar fot och rosett vid varje våning
+  for (let i = 0; i <= nb; i++) [yF, yB].forEach(y => { nStd++; c.rod(STE, [X(i), y, 0.1], [X(i), y, H + 1.05], 0.024, 0.024, 8, SMM);
+    c.box("#6b7280", X(i), y, 0.005, 0.16, 0.16, 0.01, null, 0.004, SMM); c.cyl("#dc2626", "z", X(i), y, 0.06, 0.018, 0.018, 0.12, 8, null, SMM);
+    for (let k = 0; k <= nl; k++) c.cyl("#9aa4b0", "z", X(i), y, k * lh + (k === 0 ? 0.2 : 0), 0.058, 0.058, 0.01, 12, null, SMM); });
+  // regelverk: längsgående rör (fram och bak) och tvärgående rör vid varje våning, räcken på fasadsidan, sparkplåt, diagonaler
+  for (let k = 0; k <= nl; k++) { const z = k === 0 ? 0.2 : k * lh;
+    for (let i = 0; i < nb; i++) { [yF, yB].forEach(y => { rod([X(i), y, z], [X(i + 1), y, z], 0.02); nLed++; }); }
+    for (let i = 0; i <= nb; i++) rod([X(i), yF, z], [X(i), yB, z], 0.02, STE2);
+    if (hasDeck(k)) {
+      for (let i = 0; i < nb; i++) { c.box(DECK, (X(i) + X(i + 1)) / 2, 0, z + 0.025, bay - 0.04, B - 0.06, 0.04, null, 0.006, { metal: 0.6, rough: 0.5 }); nDeck++;
+        for (let r = 1; r < 4; r++) c.box("#7a8591", (X(i) + X(i + 1)) / 2, -B / 2 + 0.03 + (B - 0.12) * r / 4, z + 0.048, bay - 0.1, 0.012, 0.006, null, 0, SMM);                      // räfflor i plåten
+        c.box(WOOD, (X(i) + X(i + 1)) / 2, yF - 0.01, z + 0.16, bay - 0.04, 0.025, 0.15, null, 0.004, { rough: 0.9 }); c.box(WOOD, (X(i) + X(i + 1)) / 2, yB + 0.01, z + 0.16, bay - 0.04, 0.025, 0.15, null, 0.004, { rough: 0.9 }); }                // sparkplåt
+      [0.5, 1.0].forEach((h, hi) => { for (let i = 0; i < nb; i++) { rod([X(i), yF, z + h], [X(i + 1), yF, z + h], 0.02, hi ? acc : STE); rod([X(i), yB, z + h], [X(i + 1), yB, z + h], 0.02, hi ? acc : STE); }
+        rod([x0, yF, z + h], [x0, yB, z + h], 0.02, hi ? acc : STE); rod([-x0, yF, z + h], [-x0, yB, z + h], 0.02, hi ? acc : STE); });                                          // sidoräcken i ändarna
+    }
+  }
+  const top = H; for (let i = 0; i < nb; i++) { [yF, yB].forEach(y => { rod([X(i), y, top + 0.5], [X(i + 1), y, top + 0.5], 0.02, STE); rod([X(i), y, top + 1.0], [X(i + 1), y, top + 1.0], 0.02, acc); }); }
+  rod([x0, yF, top + 0.5], [x0, yB, top + 0.5], 0.02); rod([-x0, yF, top + 0.5], [-x0, yB, top + 0.5], 0.02); rod([x0, yF, top + 1.0], [x0, yB, top + 1.0], 0.02, acc); rod([-x0, yF, top + 1.0], [-x0, yB, top + 1.0], 0.02, acc);
+  for (let k = 0; k < nl; k++) { const z0 = (k === 0 ? 0.2 : k * lh), z1 = (k + 1) * lh; for (let i = 0; i < nb; i++) if ((i + k) % 2 === 0) { const a = (i + k) % 4 === 0; rod([a ? X(i) : X(i + 1), yF, z0], [a ? X(i + 1) : X(i), yF, z1], 0.014, STE2); } rod([x0, yF, z0], [x0, yB, z1], 0.014, STE2); rod([-x0, yB, z0], [-x0, yF, z1], 0.014, STE2); }        // diagonalstag
+  // trapptorn i sista fältet: trappstegen växlar sida varje våning
+  if (trapp && nl > 0) for (let k = 0; k < nl; k++) { if (!hasDeck(k) && k > 0) continue; const z0 = (k === 0 ? 0.2 : k * lh), a0 = X(nb - 1) + 0.15, a1 = X(nb) - 0.15, up = k % 2 === 0, xs = up ? [a0, a1] : [a1, a0], ys = (up ? yF : yB) + (up ? 0.12 : -0.12);
+    [-0.06, 0.06].forEach(dy => rod([xs[0], ys + dy, z0], [xs[1], ys + dy, z0 + lh], 0.014, STE)); const nst = 7; for (let s2 = 0; s2 < nst; s2++) { const t = (s2 + 0.5) / nst; c.box("#9aa4ae", xs[0] + (xs[1] - xs[0]) * t, ys, z0 + lh * t, Math.abs(xs[1] - xs[0]) / nst * 0.8, 0.22, 0.012, null, 0.002, SMM); } }
+  // förankring mot väggen (baksidan) var 4:e meter
+  if (ank) for (let k = 2; k <= nl; k += 2) for (let i = 0; i <= nb; i += 2) { const z = k * lh; rod([X(i), yB, z], [X(i), yB + 0.5, z], 0.016, "#6b7280"); c.box("#6b7280", X(i), yB + 0.5, z, 0.14, 0.012, 0.14, null, 0.003, SMM); }
+  // skyddsnät/presenning/plank på fasadsidan
+  if (skydd === "Nät") c.box("#16a34a", 0, yF - 0.05, H / 2 + 0.5, L + 0.05, 0.01, H + 1, null, 0, { transp: 0.55, rough: 1 });
+  else if (skydd === "Presenning") c.box("#e5e7eb", 0, yF - 0.05, H / 2 + 0.5, L + 0.05, 0.012, H + 1, null, 0, { transp: 0.25, rough: 1 });
+  else if (skydd === "Plank") for (let k = 1; k <= nl; k++) c.box(WOOD, 0, yF - 0.04, k * lh + 0.75, L, 0.02, 0.18, null, 0.003, { rough: 0.9 });
+  c.card({ title: String(p.name || "Ställning"), icon: "box", color: "#475569", left: ["m", smFmt(H, 1)], rows: [["Höjd × längd", `${smFmt(H, 1)} × ${smFmt(L, 1)} m`], ["Våningar / fack", `${nl} st · ${nb} st`], ["Fasadyta", `${smFmt(L * H, 0)} m²`], ["Skydd", skydd]], b0: yF - 0.9, zb: H + 1.4 });
+}
+const stallningCalc = p => { const L = Math.max(2, Number(p.L) || 10), H = Math.max(1.5, Number(p.H) || 10), fack = Math.max(0.7, smN(p, "fack", 2.57)), vh = Math.max(1, smN(p, "vh", 2)), nb = Math.max(1, Math.round(L / fack)), nl = Math.max(1, Math.round(H / vh)); return [["Fack", `${nb} st à ${smFmt(L / nb, 2)} m`], ["Våningar", `${nl} st à ${smFmt(H / nl, 2)} m`], ["Stolpar", `${(nb + 1) * 2} st`], ["Fasadyta", smFmt(L * H, 0) + " m²"]]; };
 const SM = {
   leverans: { group: "Logistik", label: "Leverans / upplag", color: "#f59e0b", L: 2.4, B: 1.2, H: 1.1, icon: "box", fields: [["innehall", "Innehåll", "text", "HD/F pelare ×12"], ["lev", "Leverantör", "text", ""], ["datum", "Leveransdatum", "date", ""], ["status", "Status", ["Beställd", "På väg", "Levererad"], "Beställd"]],
     build(p, c) { const L = p.L / 2, B = p.B / 2, st = smF(p, "status", "Beställd"), sc = SM_ST[st] || "#f59e0b", H = Math.max(0.5, p.H);
@@ -186,6 +223,8 @@ const SM = {
       [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sa, sb]) => { const x = sa * (L - 1.4), y = sb * (B - 1.4); c.box("#c2410c", x, y, p.H + 0.06, 1.6, 1.6, 0.12, null, 0.03); c.box("#f97316", x, y, p.H + 0.13, 1.45, 1.45, 0.03, null, 0.015, SMLIT); c.box("#7c2d12", x, y, p.H + 0.15, 0.9, 0.09, 0.02, null, 0, SMLIT); c.box("#7c2d12", x, y, p.H + 0.15, 0.09, 0.9, 0.02, null, 0, SMLIT); });
       for (let i = -L + 0.6; i < L - 0.3; i += 1.2) { c.box("#f8fafc", i, -B + 0.15, p.H + 0.012, 0.6, 0.12, 0.012, null, 0, SMLIT); c.box("#f8fafc", i, B - 0.15, p.H + 0.012, 0.6, 0.12, 0.012, null, 0, SMLIT); }  // kantband
       c.card({ title: "Kranplats", icon: "crane", color: "#ea580c", rows: [["Kran", smF(p, "kran") || "–"], ["Max stödbenskraft", smN(p, "bel", 0) + " kN"], ["Underlag", smF(p, "grund")]], b0: -(B + 0.3) }); } },
+  stallning: { hidden: true, group: "Etablering", label: "Ställning", color: "#eab308", L: 10, B: 0.75, H: 10, icon: "box", calc: stallningCalc, build: stallningBuild,
+    fields: [["H", "Höjd", "range", 10, { min: 2, max: 40, step: 0.5, unit: "m", dim: true }], ["L", "Längd", "range", 10, { min: 2, max: 60, step: 0.5, unit: "m", dim: true }], ["B", "Bredd (djup)", "range", 0.75, { min: 0.6, max: 2, step: 0.05, unit: "m", dim: true }], ["fack", "Fackbredd", [["1.57", "1,57 m"], ["2.07", "2,07 m"], ["2.57", "2,57 m"], ["3.07", "3,07 m"]], "2.57"], ["vh", "Våningshöjd", [["1.5", "1,5 m"], ["2", "2,0 m"], ["2.5", "2,5 m"]], "2"], ["plats", "Arbetsplan", [["alla", "Alla våningar"], ["var2", "Varannan"], ["topp", "Bara överst"]], "alla"], ["skydd", "Skydd på fasaden", [["Inget", "Inget"], ["Nät", "Nät"], ["Presenning", "Presenning"], ["Plank", "Plank"]], "Nät", { seg: true }], ["trapp", "Trapptorn", ["Ja", "Nej"], "Ja", { seg: true }], ["ank", "Förankring mot vägg", ["Ja", "Nej"], "Ja", { seg: true }], ["_calc", "Beräknat", "calc"]] },
   makadam: { group: "Mark & schakt", label: "Makadam", color: "#a8a29e", L: 12, B: 8, H: 0.3, icon: "box", fields: MK_FIELDS(false), calc: mkCalc, build: mkBuild },
   makadamfri: { group: "Mark & schakt", label: "Makadam (fri form)", color: "#a8a29e", path: true, H: 0.3, icon: "box", fields: MK_FIELDS(true), calc: mkCalc, build: mkBuild },
   saxlift: { group: "Lyft & montage", label: "Skylift / saxlift", color: "#16a34a", L: 2.6, B: 1.2, H: 6, icon: "crane", fields: [["H", "Plattformens höjd", "range", 6, { min: 1.2, max: 20, step: 0.5, unit: "m", dim: true }], ["anv", "Används av", "text", ""]],

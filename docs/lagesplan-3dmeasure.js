@@ -388,10 +388,7 @@ function l3mTabHtml() {
     ${open ? `${n ? `<div class="v3-kc-list">${l3m.list.map((m, i) => { const inf = l3mInfo(m), ex = l3m.exp.has(m.id); return `<div class="v3-mr ${ex ? "ex" : ""}">
       <div class="v3-kc ${l3m.sel.has(m.id) ? "sel" : ""} ${typeof l3aOn !== "function" || l3aOn(m) ? "" : "off"}">${m.kind === "volume" ? `<label class="v3-mdot v3-mcol ${m.saved ? "saved" : ""}" style="${m.color ? `background:${esc(m.color)}` : ""}" title="Volymens färg – klicka för att välja (${m.saved ? "sparad i projektet" : "inte sparad"})"><input type="color" data-mcol="${esc(m.id)}" value="${esc(m.color || (m.saved ? "#2563eb" : "#dc2626"))}" /></label>` : `<i class="v3-mdot ${m.saved ? "saved" : ""}" title="${m.saved ? "Sparad i projektet" : "Inte sparad"}"></i>`}
         <button type="button" class="v3-kc-b v3-kc-m" data-mzoom="${esc(m.id)}" title="Klick: zooma till måttet · Ctrl+klick: välj flera · Skift+klick: välj flera i rad"><b>${L3M_KIND[m.kind] || ""} ${esc(m.text).replace(/ (m²?|°)$/, "&nbsp;$1")}</b>${m.folder && typeof l3aFolderName === "function" && l3aFolderName(m.folder) ? `<em><span class="v3-fchip">${esc(l3aFolderName(m.folder))}</span></em>` : ""}${m.note ? `<em class="v3-mnote">${m.showNote ? "" : "(dold) "}${esc(m.note)}</em>` : ""}<em>${esc(inf.sub)}</em></button>
-        <button type="button" class="v3-ic" data-mexp="${esc(m.id)}" title="${ex ? "Dölj detaljerna" : "Visa alla detaljer"}" aria-expanded="${ex}">${ex ? "▴" : "▾"}</button>
-        <button type="button" class="v3-ic" data-mcopy="${esc(m.id)}" title="Kopiera måttet med alla detaljer">${I.copy || "⧉"}</button>
-        <button type="button" class="v3-ic ${m.locked ? "on" : ""}" data-mlock="${esc(m.id)}" title="${m.locked ? "Låst – tryck för att låsa upp" : "Lås måttet (går inte att flytta eller ta bort)"}" aria-pressed="${!!m.locked}">${m.locked ? L3M_LOCK : L3M_UNLOCK}</button>
-        <button type="button" class="v3-ic" data-mdel="${esc(m.id)}" title="${m.locked ? "Låst – lås upp för att ta bort" : "Ta bort måttet"}" ${m.locked ? "disabled" : ""}>${I.trash}</button></div>
+        ${m.locked ? `<span class="v3-mlockmark" title="Låst – högerklicka för att låsa upp">${L3M_LOCK}</span>` : ""}<button type="button" class="v3-ic" data-mmenu="${esc(m.id)}" title="Alternativ (eller högerklicka på måttet): ta bort, lås, kommentar, kopiera …" aria-haspopup="menu">⋯</button></div>
       ${ex ? `<div class="v3-mnoteed"><input type="text" data-mnote="${esc(m.id)}" value="${esc(m.note || "")}" placeholder="Kommentar till måttet, t.ex. Mått mellan fundament" maxlength="120" />
         <label class="v3-chk" title="Visa kommentaren efter måttet i 3D: ${esc(m.text)} – kommentar"><input type="checkbox" data-mshow="${esc(m.id)}" ${m.showNote ? "checked" : ""} ${m.note ? "" : "disabled"} /> Visa i 3D</label></div>
       <dl class="v3-mdl">${inf.rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : ""}</div>`; }).join("")}</div>` : `<div class="v3-pal-hint">Inga mått än. Mät med Mät (M) – avstånd, vinkel eller yta – så hamnar de här.</div>`}
@@ -427,10 +424,9 @@ function l3mBindTab(host) {
     };
     x.onfocus = () => { const m = l3m.list.find(q => q.id === x.dataset.mcol); x.dataset.was = (m && m.color) || ""; };
   });
-  host.querySelectorAll("[data-mdel]").forEach(x => { x.onclick = e => { e.stopPropagation(); l3mRemove(x.dataset.mdel); }; });
-  host.querySelectorAll("[data-mexp]").forEach(x => { x.onclick = e => { e.stopPropagation(); const id = x.dataset.mexp; l3m.exp.has(id) ? l3m.exp.delete(id) : l3m.exp.add(id); l3kRenderTab(); }; });
+  host.querySelectorAll("[data-mmenu]").forEach(x => { x.onclick = e => { e.stopPropagation(); const m = l3m.list.find(y => y.id === x.dataset.mmenu), r = x.getBoundingClientRect(); if (m) l3mCtxMenu(r.left, r.bottom + 2, m); }; });
+  host.querySelectorAll(".v3-mr").forEach(row => { row.oncontextmenu = e => { const z = row.querySelector("[data-mzoom]"), m = z && l3m.list.find(y => y.id === z.dataset.mzoom); if (!m) return; e.preventDefault(); e.stopPropagation(); l3mCtxMenu(e.clientX, e.clientY, m); }; });
   const copy = t => { try { navigator.clipboard.writeText(t).then(() => l3Toast("Kopierat."), () => l3Status("Kunde inte kopiera.", true)); } catch (err) { l3Status("Kunde inte kopiera.", true); } };
-  host.querySelectorAll("[data-mcopy]").forEach(x => { x.onclick = e => { e.stopPropagation(); const m = l3m.list.find(y => y.id === x.dataset.mcopy); if (m) copy(l3mCopyText([m])); }; });
   const ids = l3m.list.map(m => m.id);
   host.querySelectorAll("[data-mzoom]").forEach(x => { x.onclick = e => { e.stopPropagation(); const m = l3m.list.find(y => y.id === x.dataset.mzoom); if (!m) return;
     // Som kommentarerna: Ctrl+klick väljer flera, Skift+klick ett intervall, vanligt klick zoomar.
@@ -441,7 +437,6 @@ function l3mBindTab(host) {
   on("#v3MeasSave", () => l3mSave());
   on("#v3MeasLockAll", () => l3mLock(l3m.list, true));
   on("#v3MeasUnlockAll", () => l3mLock(l3m.list, false));
-  host.querySelectorAll("[data-mlock]").forEach(x => { x.onclick = e => { e.stopPropagation(); const m = l3m.list.find(y => y.id === x.dataset.mlock); if (m) l3mLock([m], !m.locked); }; });
   on("#v3MeasNotesOn", () => l3mNotesAll(true));
   on("#v3MeasNotesOff", () => l3mNotesAll(false));
   on("#v3MeasSelClr", () => { l3m.sel.clear(); l3m.anchor = null; l3kRenderTab(); l3mDraw(); });
@@ -730,4 +725,36 @@ function l3SmartMeasure(e) {
   l3mDraw(); if (typeof l3mRenderBar === "function") l3mRenderBar();
   l3Status(`Smart mått på ${nm}: ${wl.toLowerCase()} ${f(W)} m · ${hl.toLowerCase()} ${f(H)} m · djup ${f(D)} m · volym ${l3Fmt(vol, 3)} m³ (${how}). Kryssa bort ett mått med × efter måttet. Tryck på nästa objekt.`);
   l3Render();
+}
+
+/* Högerklicksmenyn för mått (Victor 2026-10-24: "istället för så mycket knappar … högerknappen och få fram en meny med alla alternativ"): gäller alla markerade mått om det
+   högerklickade ingår i markeringen, annars bara det måttet. */
+function l3mCtxMenu(x, y, m) {
+  if (!(l3m.sel.size > 1 && l3m.sel.has(m.id))) { l3m.sel.clear(); l3m.sel.add(m.id); l3m.anchor = m.id; l3mDraw(); }
+  const set = l3m.list.filter(q => l3m.sel.has(q.id)), one = set.length === 1, allLocked = set.every(q => q.locked), anyLocked = set.some(q => q.locked), anyNote = set.some(q => q.note), allShown = set.every(q => q.showNote), allHid = set.every(q => q.hid), unsaved = set.filter(q => !q.saved);
+  const folders = (typeof l3a !== "undefined" && l3a.folders) ? l3a.folders : [], n = set.length, t = one ? "måttet" : `${n} mått`;
+  const items = [
+    ...(one ? [["zoom", "Zooma till", "F"], ["exp", l3m.exp.has(m.id) ? "Dölj detaljerna" : "Visa alla detaljer", ""], ["note", "Redigera kommentar…", ""], null] : []),
+    ...(anyNote ? [["shownote", allShown ? `Dölj måttkommentar${one ? "" : "er"} i 3D` : `Visa måttkommentar${one ? "" : "er"} i 3D`, ""]] : []),
+    ["hid", allHid ? `Visa ${t} i 3D` : `Dölj ${t} i 3D`, ""], ["copy", `Kopiera ${t}`, ""], null,
+    ["lock", allLocked ? `Lås upp ${t}` : `Lås ${t}`, ""], ...(unsaved.length ? [["save", `Spara i projektet${unsaved.length > 1 ? ` (${unsaved.length})` : ""}`, ""]] : []),
+    ...(folders.length ? [null, ...folders.map(f => [`folder:${f.id}`, `Flytta till mappen ${f.name}`, ""]), ["folder:", "Flytta till Utan mapp", ""]] : []), null,
+    ["del", anyLocked ? `Ta bort ${t} (låst)` : `Ta bort ${t}`, "Del", anyLocked],
+  ];
+  const ctx = document.getElementById("v3Ctx"); if (!ctx) return; l3HideMenus();
+  ctx.innerHTML = items.map(it => it ? `<button type="button" data-mctx="${it[0]}" ${it[3] ? "disabled" : ""} class="${it[0] === "del" ? "v3-danger" : ""}"><span>${it[1]}</span><kbd>${it[2]}</kbd></button>` : "<hr/>").join("");
+  const r = document.getElementById("v3Canvas").getBoundingClientRect(); ctx.classList.remove("hidden"); const w = ctx.offsetWidth, h = ctx.offsetHeight;
+  ctx.style.left = Math.max(4, Math.min(x - r.left, r.width - w - 6)) + "px"; ctx.style.top = Math.max(4, Math.min(y - r.top, r.height - h - 6)) + "px";
+  const copy = txt => { try { navigator.clipboard.writeText(txt).then(() => l3Toast("Kopierat."), () => l3Status("Kunde inte kopiera.", true)); } catch (err) { l3Status("Kunde inte kopiera.", true); } };
+  ctx.querySelectorAll("[data-mctx]").forEach(b => { b.onclick = ev => { ev.stopPropagation(); l3HideMenus(); const k = b.dataset.mctx;
+    if (k === "zoom") { const z = document.querySelector(`[data-mzoom="${m.id}"]`); if (z) z.click(); }
+    else if (k === "exp") { l3m.exp.has(m.id) ? l3m.exp.delete(m.id) : l3m.exp.add(m.id); l3kRenderTab(); }
+    else if (k === "note") { l3m.exp.add(m.id); l3kRenderTab(); setTimeout(() => { const i = document.querySelector(`[data-mnote="${m.id}"]`); if (i) { i.focus(); i.select(); } }, 60); }
+    else if (k === "shownote") { const on = !allShown; set.forEach(q => { if (q.note) { q.showNote = on; l3mChanged(q); } }); }
+    else if (k === "hid") { const hide = !allHid; set.forEach(q => { q.hid = hide; }); l3mDraw(); l3kRenderTab(); }
+    else if (k === "copy") copy(l3mCopyText(set));
+    else if (k === "lock") l3mLock(set, !allLocked);
+    else if (k === "save") l3mSave(unsaved);
+    else if (k.startsWith("folder:")) { if (typeof l3aMove === "function") l3aMove(set, k.slice(7) || null); }
+    else if (k === "del") set.filter(q => !q.locked).forEach(q => l3mRemove(q.id)); }; });
 }
