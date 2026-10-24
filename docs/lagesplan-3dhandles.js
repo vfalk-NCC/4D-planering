@@ -8,6 +8,19 @@
 
 let l3H = null; // pågående drag: { p, h, start, snap, moved }
 
+/* Stödben på gjutformen: ett litet × på varje snedstag – tryck för att ta bort det (sparas som p.f.sbx = "kant.stöd,…"; rensa fältet för att få tillbaka). */
+function l3SbHandles(p) {
+  if ((p.type !== "sm:gjutetapp" && p.type !== "sm:gjutform") || typeof gjutStuds !== "function") return [];
+  const O = l3.O, free = p.type === "sm:gjutform", poly = free ? gjutFreePoly(p) : gjutPoly(p); if (!poly) return [];
+  const gone = new Set(String((p.f || {}).sbx || "").split(",").filter(Boolean)), t = (Number(p.rot) || 0) * Math.PI / 180, cs = Math.cos(t), sn = Math.sin(t), dz = Number(p.dz) || 0;
+  const z0 = free ? ((p.pts || [])[0] || [])[2] || 0 : Number(p.z) || 0;
+  return gjutStuds(p, poly, free).filter(s => !gone.has(s.id)).map(s => ({ key: "sb", sid: s.id, title: "Tryck för att ta bort stödbenet", pos: new THREE.Vector3((free ? p.x + s.x : p.x + s.x * cs - s.y * sn) - O[0], (free ? p.y + s.y : p.y + s.x * sn + s.y * cs) - O[1], z0 + dz + s.z - O[2]) }));
+}
+function l3SbRemove(id, sid) {
+  const p = placements.find(x => x.id === id); if (!p) return;
+  placeSnapshot(); p.f = p.f || {}; p.f.sbx = [...String(p.f.sbx || "").split(",").filter(Boolean), sid].join(",");
+  placeTouch(p); l3RebuildOne(p); l3HandlesBuild(); l3Changed(); l3RenderSide(); l3Status("Stödbenet borttaget (ångra med Ctrl+Z).");
+}
 function l3HandleDefs(p) {
   const lib = placeLib(p.type) || {};
   const O = l3.O, z0 = (Number(p.z) || 0) + (Number(p.dz) || 0) - O[2];
@@ -19,7 +32,7 @@ function l3HandleDefs(p) {
       if (Math.hypot(b[0] - a[0], b[1] - a[1]) < 0.3) continue;
       out.push({ key: "ins", i, pos: new THREE.Vector3((a[0] + b[0]) / 2 - O[0], (a[1] + b[1]) / 2 - O[1], ((a[2] || 0) + (b[2] || 0)) / 2 + (Number(p.dz) || 0) - O[2]), title: "Dra för att lägga till en punkt här." });
     }
-    return out;
+    return out.concat(l3SbHandles(p));
   }
   if (lib.isModel) return [];
   const t = (Number(p.rot) || 0) * Math.PI / 180, u = new THREE.Vector3(Math.cos(t), Math.sin(t), 0), v = new THREE.Vector3(-Math.sin(t), Math.cos(t), 0);
@@ -37,9 +50,9 @@ function l3HandleDefs(p) {
   }
   const R = Number(p.R) || 0;
   if (lib.R != null && R > 0) out.push({ key: "R", sign: 1, dir: v.clone(), pos: c.clone().addScaledVector(v, R).add(new THREE.Vector3(0, 0, 0.05)), title: "Dra för att ändra räckvidden" });
-  return out;
+  return out.concat(l3SbHandles(p));
 }
-const l3HandleLabel = { L: "Längd", B: "Bredd", H: "Höjd", R: "Räckvidd", cut: "Utskärning" };
+const l3HandleLabel = { L: "Längd", B: "Bredd", H: "Höjd", R: "Räckvidd", cut: "Utskärning", sb: "Stödben" };
 
 /* Bygger handtagen för markeringen (anropas när markeringen eller objektet ändras). */
 function l3HandlesBuild() {
@@ -101,6 +114,7 @@ function l3HandleDown(e, id, k) {
   if (!p) return;
   let h = l3HandleDefs(p)[k];
   if (!h) return;
+  if (h.key === "sb") { l3SbRemove(id, h.sid); return; }
   // Dubbeltryck på en punkt = ta bort den (egen räkning: handtagen kan ha byggts om mellan trycken).
   const now = Date.now(), last = l3HandleDown.last;
   l3HandleDown.last = { id, k, t: now };

@@ -196,6 +196,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     q.f = q.f || {}; q.f.sv = 30; const a = ext(); q.f.sv = 60; const b = ext(); q.f.su = 2.5; const c = ext(); return { a, b, c, fields: ['sv', 'su'].every(k => smDef(q).fields.some(f => f[0] === k)) }; });
   if (!sb.fields || !(sb.b > sb.a + 0.3) || !(sb.c > sb.b + 0.3)) fail('Stödben vinkel/utstick: ' + JSON.stringify(sb));
   console.log('OK: stödben – vinkel och utstick styr snedstagen');
+  // 17) Enskilda stödben går att ta bort med ett tryck på × i modellen
+  const sr = await page.evaluate(() => { const O = l3.O, q = placeNew('sm:gjutetapp', [O[0] + 350, O[1] + 350, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);
+    const nb = () => placeParts(q).filter(x => x.tris && x.color === '#a9824a').reduce((a, x) => a + x.tris.pts.length, 0), h0 = l3HandleDefs(q).filter(h => h.key === 'sb'), n0 = nb();
+    l3SbRemove(q.id, h0[0].sid); const h1 = l3HandleDefs(q).filter(h => h.key === 'sb'); return { h0: h0.length, h1: h1.length, n0, n1: nb(), sbx: q.f.sbx, el: document.querySelectorAll('.v3-hd-sb').length }; });
+  if (!(sr.h0 > 4) || sr.h1 !== sr.h0 - 1 || !(sr.n1 < sr.n0) || !sr.sbx) fail('Ta bort stödben: ' + JSON.stringify(sr));
+  console.log('OK: stödben – tryck på × tar bort ett enskilt stödben');
   // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
   for (const t of ['sm:saxlift', 'sm:bomlift']) {
     const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);
