@@ -36,9 +36,18 @@ function l3xLayout() {
     else { const ax = mode === "x" ? "x" : mode === "y" ? "y" : "z"; it.off.set(0, 0, 0); it.off[ax] = d[ax] * A * 1.2 + (Math.abs(d[ax]) < 0.05 ? (k - its.length / 2) * 0.3 * A : 0); } });
 }
 const l3xEase = t => (t <= 1 ? 1 - Math.pow(1 - t, 3) : t); // över 100 % fortsätter de rakt ut (1 + extra)
+/* Rotationscentrum följer de utsprängda delarna (Victor: "går det att fixa att rotera runt delarna som skjutits isär?"):
+   vid start hamnar centrum mitt i delarna, och sedan flyttas både centrum och kamera lika mycket när delarna glider isär – bilden står still men musrotationen går runt de utsprängda delarna. */
+function l3xCentre(k) { const b = new THREE.Box3(); l3x.items.forEach(it => b.expandByPoint(it.c.clone().addScaledVector(it.off, k))); return b.isEmpty() ? null : b.getCenter(new THREE.Vector3()); }
+function l3xFollow(k) {
+  if (!l3.orbit || !l3x.items.length) return; const c = l3xCentre(k); if (!c) return;
+  if (!l3x.cen) { l3x.cen = l3xCentre(0); l3x.tgt0 = l3.orbit.target.clone(); l3.orbit.target.copy(l3x.cen); }   // första gången: centrum mitt i delarna (kameran står kvar)
+  const d = c.clone().sub(l3x.cen); if (d.lengthSq() > 1e-10) { l3.camera.position.add(d); l3.orbit.target.add(d); l3x.cen.copy(c); l3.orbit.update(); }
+}
 function l3xApply() {
   const k = l3xEase(l3x.t);
   l3x.items.forEach(it => { if (it.kind === "place") it.obj.position.copy(it.pos0).addScaledVector(it.off, k); else { it.obj.matrix.copy(it.base); const e = it.obj.matrix.elements; e[12] += it.off.x * k; e[13] += it.off.y * k; e[14] += it.off.z * k; it.obj.matrixWorldNeedsUpdate = true; } });
+  l3xFollow(k);
   const s = document.getElementById("v3XSlider"), v = document.getElementById("v3XVal"); if (s && !l3x.drag) s.value = (l3x.t * 100).toFixed(1); if (v) v.textContent = Math.round(l3x.t * 100) + " %";
   l3Render();
 }
@@ -59,7 +68,7 @@ function l3xStop() {
   l3x.items.forEach(it => { if (it.kind === "place") it.obj.position.copy(it.pos0); });
   const meshes = new Set(); l3x.hid.forEach(([m, ri]) => { m.userData.l3b.animOff.delete(ri); meshes.add(m); }); l3x.tmp.forEach(m => { if (m.parent) m.parent.remove(m); m.geometry.dispose(); m.material.dispose(); });
   meshes.forEach(m => l3bApplyHidden(m));
-  const sel = l3x.sel; l3x.on = false; l3x.items = []; l3x.tmp = []; l3x.hid = []; l3xPanel(false);
+  const sel = l3x.sel; l3x.cen = null; l3x.on = false; l3x.items = []; l3x.tmp = []; l3x.hid = []; l3xPanel(false);
   if (sel && sel.bs.length && typeof l3bsSet === "function") l3bsSet(sel.bs); if (sel && sel.ids.length) l3SelectIds(sel.ids, { keepIfc: true });
   l3Render(); l3Status("Sprängningen avslutad – allt är på plats.");
 }

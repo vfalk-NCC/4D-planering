@@ -698,6 +698,8 @@
 			// Make unique material for each axis/color
 
 			const matInvisible = gizmoMaterial.clone();
+			const matCube = gizmoMaterial.clone();
+			matCube.color.setHex( 0x2f6bff ); // 4D-planering: kub i mitten
 			matInvisible.opacity = 0.15;
 			const matHelper = gizmoLineMaterial.clone();
 			matHelper.opacity = 0.5;
@@ -728,17 +730,17 @@
 
 			// reusable geometry
 
-			const arrowGeometry = new THREE.CylinderGeometry( 0, 0.03, 0.1, 20 ); // 4D-planering: smal pilspets (subtilt handtag)
-			arrowGeometry.translate( 0, 0.05, 0 );
+			// 4D-planering: droppformad pilspets (rund bas, spetsig topp) – mjuk, modern
+			const arrowGeometry = new THREE.LatheGeometry( [[ 0.0001, 0 ], [ 0.02, 0.006 ], [ 0.034, 0.024 ], [ 0.035, 0.044 ], [ 0.027, 0.066 ], [ 0.015, 0.09 ], [ 0.005, 0.108 ], [ 0.0001, 0.118 ]].map( p => new THREE.Vector2( p[ 0 ], p[ 1 ] ) ), 24 );
 			const scaleHandleGeometry = new THREE.BoxGeometry( 0.08, 0.08, 0.08 );
 			scaleHandleGeometry.translate( 0, 0.04, 0 );
 			const lineGeometry = new THREE.BufferGeometry();
 			lineGeometry.setAttribute( 'position', new THREE.Float32BufferAttribute( [ 0, 0, 0, 1, 0, 0 ], 3 ) );
-			const lineGeometry2 = new THREE.CylinderGeometry( 0.0055, 0.0055, 0.5, 10 ); // 4D-planering: tunn, rund
+			const lineGeometry2 = new THREE.CylinderGeometry( 0.011, 0.011, 0.5, 12 ); // 4D-planering: tydligare, rund axel
 			lineGeometry2.translate( 0, 0.25, 0 );
 			function CircleGeometry( radius, arc ) {
 
-				const geometry = new THREE.TorusGeometry( radius, 0.0055, 8, 96, arc * Math.PI * 2 ); // 4D-planering: tunn ring
+				const geometry = new THREE.TorusGeometry( radius, 0.0045, 8, 128, arc * Math.PI * 2 ); // 4D-planering: tunn, genomskinlig ring
 				geometry.rotateY( Math.PI / 2 );
 				geometry.rotateX( Math.PI / 2 );
 				return geometry;
@@ -759,10 +761,11 @@
 
 			const gizmoTranslate = {
 				// 4D-planering: en pil per axel (linje + spets), ingen lös spets på andra sidan.
-				X: [[ new THREE.Mesh( arrowGeometry, matRed ), [ 0.5, 0, 0 ], [ 0, 0, - Math.PI / 2 ]], [ new THREE.Mesh( lineGeometry2, matRed ), [ 0, 0, 0 ], [ 0, 0, - Math.PI / 2 ]]],
-				Y: [[ new THREE.Mesh( arrowGeometry, matGreen ), [ 0, 0.5, 0 ]], [ new THREE.Mesh( lineGeometry2, matGreen ) ]],
-				Z: [[ new THREE.Mesh( arrowGeometry, matBlue ), [ 0, 0, 0.5 ], [ Math.PI / 2, 0, 0 ]], [ new THREE.Mesh( lineGeometry2, matBlue ), null, [ Math.PI / 2, 0, 0 ]]],
+				X: [[ new THREE.Mesh( arrowGeometry, matRed ), [ 0.46, 0, 0 ], [ 0, 0, - Math.PI / 2 ]], [ new THREE.Mesh( lineGeometry2, matRed ), [ 0, 0, 0 ], [ 0, 0, - Math.PI / 2 ]]],
+				Y: [[ new THREE.Mesh( arrowGeometry, matGreen ), [ 0, 0.46, 0 ]], [ new THREE.Mesh( lineGeometry2, matGreen ) ]],
+				Z: [[ new THREE.Mesh( arrowGeometry, matBlue ), [ 0, 0, 0.46 ], [ Math.PI / 2, 0, 0 ]], [ new THREE.Mesh( lineGeometry2, matBlue ), null, [ Math.PI / 2, 0, 0 ]]],
 				XYZ: [[ new THREE.Mesh( new THREE.SphereGeometry( 0.035, 16, 12 ), matWhiteTransparent.clone() ), [ 0, 0, 0 ]]],
+				KUB: [[ new THREE.Mesh( new THREE.BoxGeometry( 0.07, 0.07, 0.07 ), matCube ), [ 0, 0, 0 ]]],
 				XY: [[ new THREE.Mesh( new THREE.BoxGeometry( 0.15, 0.15, 0.01 ), matBlueTransparent.clone() ), [ 0.15, 0.15, 0 ]]],
 				YZ: [[ new THREE.Mesh( new THREE.BoxGeometry( 0.15, 0.15, 0.01 ), matRedTransparent.clone() ), [ 0, 0.15, 0.15 ], [ 0, Math.PI / 2, 0 ]]],
 				XZ: [[ new THREE.Mesh( new THREE.BoxGeometry( 0.15, 0.15, 0.01 ), matGreenTransparent.clone() ), [ 0.15, 0, 0.15 ], [ - Math.PI / 2, 0, 0 ]]]
