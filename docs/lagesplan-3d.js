@@ -533,7 +533,7 @@ function l3Init(box) {
   const orbit = new THREE.OrbitControls(camera, renderer.domElement);
   orbit.enableDamping = false; orbit.screenSpacePanning = true; orbit.maxPolarAngle = Math.PI - 0.002; // hela vägen runt, även underifrån (Victor 2026-10-10)
   const gizmo = new THREE.TransformControls(camera, renderer.domElement);
-  gizmo.setSpace("world"); gizmo.size = 0.9;
+  gizmo.setSpace("world"); gizmo.size = 0.62;
   scene.add(gizmo);
   const groups = { plan: new THREE.Group(), objs: new THREE.Group(), bldg: new THREE.Group(), places: new THREE.Group(), sel: new THREE.Group(), meas: new THREE.Group(), tmp: new THREE.Group() };
   Object.values(groups).forEach(g => scene.add(g));
@@ -551,7 +551,7 @@ function l3Init(box) {
   // flytta"): en blå ring runt flyttpilarna vrider kring lodaxeln. Ett andra handtag i vridläge, bara Z,
   // som följer det första (samma objekt, samma händelser).
   const ring = new THREE.TransformControls(camera, renderer.domElement);
-  ring.setSpace("world"); ring.setMode("rotate"); ring.showX = false; ring.showY = false; ring.showZ = true; ring.size = 1.45;
+  ring.setSpace("world"); ring.setMode("rotate"); ring.showX = false; ring.showY = false; ring.showZ = true; ring.size = 0.98;
   scene.add(ring);
   ["change", "dragging-changed", "mouseDown", "objectChange", "mouseUp"].forEach(t => (gizmo._listeners && gizmo._listeners[t] || []).slice().forEach(fn => ring.addEventListener(t, fn)));
   l3.gizmoR = ring;
@@ -976,7 +976,7 @@ function l3SelDeco(g, on) {
   if (!g) return;
   const meshes = []; g.traverse(o => { if (o.isMesh && !o.userData.selEdge) meshes.push(o); });
   meshes.forEach(o => {
-    if (o.material && o.material.emissive) o.material.emissive.setHex(on ? L3_SEL_TINT : 0x000000);
+    if (o.material && o.material.emissive) { if (on && o.material.color) o.material.emissive.copy(o.material.color).multiplyScalar(0.42).lerp(new THREE.Color(L3_SEL_TINT), 0.18); else o.material.emissive.setHex(0x000000); }   // sken i objektets egen färg
     if (false && on && !o.userData.selEdges && !o.userData.noEdges && o.geometry) {
       const e = new THREE.LineSegments(new THREE.EdgesGeometry(o.geometry, 30), new THREE.LineBasicMaterial({ color: L3_SEL_COL, transparent: true, opacity: .9 }));
       e.renderOrder = 6; e.userData.selEdge = true; e.raycast = () => {};
@@ -1145,6 +1145,7 @@ function l3FromGizmo() {
   p.x = nx; p.y = ny;
   p.dz = placeR3(nz - (Number(p.z) || 0));
   if (!(placeLib(p.type) || {}).fence) p.rot = Math.round((((g.rotation.z * 180 / Math.PI) % 360) + 360) % 360 * 10) / 10;
+  if (typeof l3MkRefresh === "function") l3MkRefresh(p);   // makadamens avdrag och skylt följer med medan objektet dras
   l3RenderSide(true);
 }
 function l3DragEnd() {

@@ -226,7 +226,8 @@ function smSignBind(side, p, redraw) {
 function smartSideHtml(p) {
   const d = smDef(p); if (!d || !(d.fields || []).length) return "";
   const esc = typeof escHtml === "function" ? escHtml : s => String(s);
-  const row = ([k, lab, type, def, o]) => { const v = smF(p, k, def == null ? "" : def); o = o || {};
+  const row = ([k, lab, type, def, o]) => { if (typeof type === "function") type = type(p);   // lista som beror på andra fält (t.ex. profilserie → dimensioner)
+    const v = smF(p, k, def == null ? "" : def); o = o || {};
     if (type === "gjprof") { const has = !!(typeof gjutProfGet === "function" && gjutProfGet(p)); return `<div class="v3-field v3-gj-prof"><span>${esc(lab)}</span><div class="v3-gj-btns"><button type="button" data-gjdraw="1" class="v3-wide">${has ? "Rita om med frihand" : "Rita med frihand"}</button>${has ? `<button type="button" data-gjclear="1" class="v3-wide">Rensa</button>` : ""}</div><small>${has ? "Botten följer din linje." : "Rita längs sidan i modellen – formen skärs efter linjen (t.ex. mot berg)."}</small></div>`; }
     if (type === "calc") { const rows = typeof d.calc === "function" ? d.calc(p) : []; return `<div class="v3-sm-calc"><div class="v3-sm-calc-h">${esc(lab)}</div>${rows.map(([a, b2]) => `<div><span>${esc(a)}</span><b>${esc(b2)}</b></div>`).join("")}</div>`; }
     if (type === "range") { const n = o.dim ? (Number(p[k]) || Number(def) || 0) : smN(p, k, Number(def) || 0), u = o.unit || ""; return `<label class="v3-field v3-sm-range"><span>${esc(lab)} <b data-smv="${k}">${esc(smFmt(n, 2))} ${esc(u)}</b></span><input type="range" ${o.dim ? "data-smd" : "data-smf"}="${k}" min="${o.min}" max="${o.max}" step="${o.step || 1}" value="${n}" data-u="${esc(u)}" /></label>`; }

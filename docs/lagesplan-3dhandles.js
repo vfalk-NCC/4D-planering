@@ -69,6 +69,7 @@ function l3HandlesBuild() {
     el.className = `v3-hd v3-hd-${h.key}`;
     el.title = h.title; el.dataset.k = k;
     if (h.key === "ins") el.textContent = "+";
+    if (h.dir && (h.key === "L" || h.key === "B" || h.key === "H" || h.key === "R")) { el.classList.add("v3-hd-arr"); el.innerHTML = '<svg viewBox="0 0 26 26"><path d="M3 10.5h10V5.2c0-.8.9-1.2 1.5-.7l8.4 7.8c.4.4.4 1 0 1.4l-8.4 7.8c-.6.5-1.5.1-1.5-.7v-5.3H3a1 1 0 0 1-1-1v-3.5a1 1 0 0 1 1-1z"/></svg>'; }
     el.onpointerdown = e => l3HandleDown(e, p.id, k);
     if (h.key === "pt") {
       el.ondblclick = e => e.stopPropagation(); // hanteras i l3HandleDown
@@ -100,6 +101,10 @@ function l3HandlesPos() {
     if (q.z > 1 || !l3NotClipped(h.pos)) { el.style.display = "none"; return; }
     el.style.display = "";
     el.style.left = ((q.x + 1) / 2 * r.clientWidth) + "px"; el.style.top = ((1 - q.y) / 2 * r.clientHeight) + "px";
+    if (h.dir && el.classList.contains("v3-hd-arr")) {   // pilen pekar åt det håll handtaget drar (på skärmen)
+      const q1 = h.pos.clone().addScaledVector(h.dir, 0.6).project(l3.camera), dx = (q1.x - q.x) * r.clientWidth / 2, dy = -(q1.y - q.y) * r.clientHeight / 2;
+      if (Math.hypot(dx, dy) > 2) el.style.transform = `rotate(${Math.atan2(dy, dx)}rad)${el.classList.contains("on") ? " scale(1.15)" : ""}`;
+    }
     el.classList.toggle("on", !!(l3H && l3H.k === +el.dataset.k));
   });
 }

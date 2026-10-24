@@ -69,5 +69,6 @@ function l3gpClear(p) { placeSnapshot(); if (p.f) delete p.f.prof; placeTouch(p)
 let l3mkT = 0;
 function l3MkRefresh(p) {
   if (!p || /^sm:makadam/.test(String(p.type)) || !placements.some(q => /^sm:makadam/.test(String(q.type)))) return;
-  clearTimeout(l3mkT); l3mkT = setTimeout(() => { placements.filter(q => /^sm:makadam/.test(String(q.type))).forEach(q => { try { l3RebuildOne(q); } catch (e) { console.warn(e); } }); if (typeof l3RenderSide === "function") l3RenderSide(true); }, 200);
+  if (l3mkT) return;   // strypning (inte fördröjning): uppdateras löpande medan objektet dras
+  l3mkT = setTimeout(() => { l3mkT = 0; placements.filter(q => /^sm:makadam/.test(String(q.type))).forEach(q => { try { l3RebuildOne(q); } catch (e) { console.warn(e); } }); if (typeof l3Render === "function") l3Render(); if (typeof l3RenderSide === "function") l3RenderSide(true); }, 80);
 }

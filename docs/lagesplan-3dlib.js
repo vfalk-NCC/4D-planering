@@ -13,7 +13,7 @@
 const l3lib = { folders: [], map: {}, loaded: false, loading: null, pid: null };
 const l3libPath = () => `projects/${encodeURIComponent(projectId)}/plan_libfolders.json`;
 const L3LIB_CLOSED0 = ["g:Logistik", "g:Lyft & montage", "g:Risk & säkerhet", "g:Kvalitet & uppföljning"]; // nya smarta mappar är hopfällda från början
-const L3LIB_BUILTIN = ["Etablering", "Mark & schakt", "Maskiner", "Säkerhet", "Personal", "Logistik", "Lyft & montage", "Risk & säkerhet", "Kvalitet & uppföljning", "Egna modeller"];
+const L3LIB_BUILTIN = ["Etablering", "Byggdelar", "Mark & schakt", "Maskiner", "Säkerhet", "Personal", "Logistik", "Lyft & montage", "Risk & säkerhet", "Kvalitet & uppföljning", "Egna modeller"];
 
 function l3libLoad() {
   if (l3lib.pid !== projectId) { l3lib.pid = projectId; l3lib.loaded = false; l3lib.loading = null; l3lib.folders = []; l3lib.map = {}; }
