@@ -147,7 +147,7 @@ async function open3d() {
     const pPlan = l3BuildPlan().then(() => lap("mark", t));
     step("Hämtar etableringen…", 0.98);
     const t2 = performance.now();
-    if (typeof place3dLoad === "function") await place3dLoad({ fresh: true });
+    if (typeof place3dLoad === "function") await place3dLoad({ fresh: true, editor: true });
     lap("etablering", t2);
     const t3 = performance.now();
     step("Förbereder modellerna…", 0.99);

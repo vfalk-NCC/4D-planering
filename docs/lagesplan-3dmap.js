@@ -78,22 +78,22 @@ async function l3mapBuild() {
   if (!l3 || !plan || !plan.calib || typeof geodeticToGrid !== "function") return;
   const on = l3Prefs().mapOn === true, seq = ++l3map.seq;
   if (!l3map.group) { l3map.group = new THREE.Group(); l3map.group.name = "map"; l3map.group.renderOrder = -2; l3.scene.add(l3map.group); l3.groups.map = l3map.group; }
-  const src = l3mapP("mapSrc", "osm"), R = Number(l3mapP("mapR", 1)) * 1000, terrain = l3mapP("mapTerrain", false) === true, ex = Number(l3mapP("mapEx", 1)), op = Number(l3mapP("mapOp", 100)) / 100, dzU = Number(l3mapP("mapDz", 0)) || 0;
+  const src = l3mapP("mapSrc", "osm"), R = Number(l3mapP("mapR", 1)) * 1000, terrain = l3mapP("mapTerrain", false) === true, ex = Number(l3mapP("mapEx", 1)), op = Number(l3mapP("mapOp", 100)) / 100, dzU = Number(l3mapP("mapDz", 0)) || 0, det = Number(l3mapP("mapDet", 0)) || 0;
   const zone = l3mapZone(), tpl = src === "custom" ? l3mapP("mapUrl", "") : (L3MAP_SRC[src] || L3MAP_SRC.osm)[1], maxZ = (L3MAP_SRC[src] || L3MAP_SRC.osm)[3], useTerr = terrain || src === "hill";
-  const sig = [on, src, R, useTerr, ex, op, dzU, zone && zone.name, tpl, l3.O.join(","), plan.id].join("|");
+  const sig = [on, src, R, useTerr, ex, op, dzU, det, zone && zone.name, tpl, l3.O.join(","), plan.id].join("|");
   if (sig === l3map.sig) return; l3map.sig = sig;
   l3Clear(l3map.group); l3map.group.visible = on;
   const lic = document.getElementById("v3MapLic"); if (!on) { if (lic) lic.classList.add("hidden"); l3map.busy = ""; l3Render(); if (typeof l3LayersRender === "function") l3LayersRender(); return; }
   if (!zone || (src !== "hill" && !tpl)) { l3map.busy = "Ange en kartadress under kugghjulet"; return; }
   const O = l3.O, ref = [O[0], O[1]], corners = [[-R, -R], [R, -R], [R, R], [-R, R]].map(([dx, dy]) => l3mapModelToGeo(ref[0] + dx, ref[1] + dy, zone));
   const lats = corners.map(c => c[0]), lons = corners.map(c => c[1]), la0 = Math.min(...lats), la1 = Math.max(...lats), lo0 = Math.min(...lons), lo1 = Math.max(...lons);
-  let z = maxZ, tx0, tx1, ty0, ty1; for (; z > 3; z--) { tx0 = Math.floor(l3mapTx(lo0, z)); tx1 = Math.floor(l3mapTx(lo1, z)); ty0 = Math.floor(l3mapTy(la1, z)); ty1 = Math.floor(l3mapTy(la0, z)); if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) <= 36) break; }
+  let z = maxZ, tx0, tx1, ty0, ty1; for (; z > 3; z--) { tx0 = Math.floor(l3mapTx(lo0, z)); tx1 = Math.floor(l3mapTx(lo1, z)); ty0 = Math.floor(l3mapTy(la1, z)); ty1 = Math.floor(l3mapTy(la0, z)); if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) <= ([36, 100, 220][det] || 36)) break; }
   const list = []; for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) list.push([tx, ty]);
   const zd = Math.min(13, z), segs = useTerr ? 12 : 2, demNeeded = new Set(), geo = list.map(([tx, ty]) => { const v = []; for (let j = 0; j <= segs; j++) for (let i = 0; i <= segs; i++) { const lat = l3mapLat(ty + j / segs, z), lon = l3mapLon(tx + i / segs, z); v.push([lat, lon]); if (useTerr) demNeeded.add(Math.floor(l3mapTx(lon, zd)) + "/" + Math.floor(l3mapTy(lat, zd))); } return v; });
   l3map.busy = `Hämtar karta (${list.length} plattor)…`; if (typeof l3LayersRender === "function") l3LayersRender();
   const tiles = new Map(); if (useTerr) await Promise.all([...demNeeded].map(async k => { const [a, b] = k.split("/").map(Number), t = await l3mapDemTile(zd, a, b); if (t) tiles.set(zd + "/" + k, t); }));
   if (seq !== l3map.seq) return;
-  let ok = 0, fail = 0; const z0 = l3sZ();
+  let ok = 0, fail = 0; const z0 = l3sZ(); let elevO = null; if (useTerr) { const g0 = l3mapModelToGeo(O[0], O[1], zone); elevO = l3mapElev(tiles, zd, g0[0], g0[1]); }
   await Promise.all(list.map(async ([tx, ty], idx) => {
     const tex = src === "hill" ? l3mapHillTex(tiles, zd, z, tx, ty) : await new Promise(res => new THREE.TextureLoader().setCrossOrigin("anonymous").load(tpl.replace("{z}", z).replace("{x}", tx).replace("{y}", ty), t => res(t), undefined, () => res(null)));
     if (seq !== l3map.seq) return; if (!tex) { fail++; return; }
@@ -106,7 +106,7 @@ async function l3mapBuild() {
     m.userData.noHit = true; m.raycast = () => {}; m.renderOrder = -2; l3map.group.add(m); ok++;
   }));
   if (seq !== l3map.seq) return;
-  l3map.busy = fail && !ok ? "Kunde inte hämta kartplattorna (nätverk eller adress)" : ""; l3map.stats = { z, tiles: list.length, ok, fail, terrain: useTerr };
+  l3map.busy = fail && !ok ? "Kunde inte hämta kartplattorna (nätverk eller adress)" : ""; l3map.stats = { z, tiles: list.length, ok, fail, terrain: useTerr, elevO, ex };
   let el = document.getElementById("v3MapLic"); const host = document.getElementById("v3Canvas");
   if (host) { if (!el) { el = document.createElement("div"); el.id = "v3MapLic"; el.className = "v3-maplic"; host.appendChild(el); } el.textContent = (src === "custom" ? "Egen karta" : (L3MAP_SRC[src] || [])[2]) + (useTerr ? " · höjder: AWS Terrain Tiles" : ""); el.classList.toggle("hidden", !ok); }
   if (fail && ok) l3Status(`Kartan: ${fail} av ${list.length} plattor kunde inte hämtas.`, true);
@@ -125,11 +125,13 @@ function l3mapSettingsHtml() {
     <label class="v3-pcs-r v3-pcz-r ${src === "custom" ? "" : "hidden"}" id="v3MapUrlR"><span>Adress</span><input type="text" id="v3MapUrl" placeholder="https://…/{z}/{x}/{y}.png" value="${esc(l3mapP("mapUrl", ""))}" /></label>
     ${sel("v3MapR", [[0.5, "0,5 km"], [1, "1 km"], [2, "2 km"], [3, "3 km"], [5, "5 km"]], l3mapP("mapR", 1), "Område (radie)")}
     ${sw("v3MapTerr", terr || src === "hill", "Följ markhöjden", "Lyfter kartan efter höjddata (grov, ca 10–30 m). Lantmäteriets laserskannade 1–2 m-modell kräver konto hos Lantmäteriet.")}
+    ${sel("v3MapDet", [[0, "Normal"], [1, "Hög (fler plattor)"], [2, "Högsta (många plattor, tungt)"]], l3mapP("mapDet", 0), "Detaljnivå")}
     ${rng("v3MapEx", "Höjdöverdrift", 1, 5, 0.5, l3mapP("mapEx", 1), l3mapP("mapEx", 1) + "×")}
     ${rng("v3MapOp", "Täckning", 20, 100, 5, l3mapP("mapOp", 100), l3mapP("mapOp", 100) + " %")}
     <label class="v3-pcs-r v3-pcz-r"><span>Höjdjustering</span><input type="number" step="0.5" id="v3MapDz" value="${l3mapP("mapDz", 0)}" /><em>m</em></label>
+    <button type="button" class="v3-link" id="v3MapFit" title="Sänker eller lyfter kartan så att marken ligger vid arbetsytans nollnivå i origo">Passa höjd mot arbetsytan</button>
     ${sel("v3MapZone", (typeof SWEREF_ZONES !== "undefined" ? SWEREF_ZONES : []).map(z => [z.name, z.name]), l3mapP("mapZone", "SWEREF 99 20 15"), "Koordinatsystem")}
-    <div class="v3-pal-hint">Kartan placeras med SWEREF-koordinaterna. Terrängen är grov – för exakta höjder: läs in punktmoln eller DXF/IFC.</div></div>`;
+    <div class="v3-pal-hint">Kartan placeras med SWEREF-koordinaterna. Höjddata (AWS Terrain Tiles) är grova, ca 10–30 m rutnät, och är inte kalibrerade mot RH2000 – avvikelser på flera decimeter kan finnas. Använd Passa höjd, eller läs in punktmoln eller DXF/IFC för exakta höjder.</div></div>`;
 }
 function l3mapBody() {
   const st = l3map.stats, on = l3Prefs().mapOn === true;
@@ -146,6 +148,8 @@ function l3mapBind(host) {
   bind("v3MapTerr", el => { el.onchange = () => set("mapTerrain", el.checked); });
   bind("v3MapEx", el => { el.oninput = () => { const o = el.parentElement.querySelector("output"); if (o) o.textContent = el.value + "×"; }; el.onchange = () => set("mapEx", Number(el.value)); });
   bind("v3MapOp", el => { el.oninput = () => { const o = el.parentElement.querySelector("output"); if (o) o.textContent = el.value + " %"; }; el.onchange = () => set("mapOp", Number(el.value)); });
+  bind("v3MapDet", el => { el.onchange = () => set("mapDet", Number(el.value)); });
+  bind("v3MapFit", el => { el.onclick = () => { const st = l3map.stats; if (!st || st.elevO == null) { l3Status("Tänd Följ markhöjden och vänta tills kartan visats först.", true); return; } const dz = Math.round(-(st.elevO - l3.O[2]) * (st.ex || 1) * 10) / 10 + 0.2 * 0; set("mapDz", dz); const d = document.getElementById("v3MapDz"); if (d) d.value = dz; l3Status("Kartans höjd justerad " + dz + " m mot arbetsytan."); }; });
   bind("v3MapDz", el => { el.onchange = () => set("mapDz", Number(el.value) || 0); });
   bind("v3MapZone", el => { el.onchange = () => set("mapZone", el.value); });
 }

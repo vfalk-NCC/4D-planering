@@ -64,8 +64,11 @@ function placePath() { return `projects/${encodeURIComponent(projectId)}/plan_pl
    lägesplanen har sparat ändringar). */
 async function place3dLoad(opts = {}) {
   if (!projectId) return;
-  // Blocket läser inte längre in det som gjorts i 3D-editorn (Victor 2026-10-24) – det visar bara objekt som placeras här. Sparningen slår ihop med filen (ändrar inget annat).
-  if (!placeLoaded) placements = [];
+  // Blocket i 4D-planering läser inte in det som gjorts i 3D-editorn (Victor 2026-10-24) – det visar bara objekt som placeras där. Sparningen slår ihop med filen (ändrar inget annat). 3D-editorn (opts.editor) läser som förut.
+  if (opts.editor) {
+    try { placements = (await ghReadJSON(settings.githubToken, placePath(), opts.fresh ? { fresh: true } : undefined)) || []; }
+    catch (e) { placements = []; console.warn("Kunde inte läsa plan_placements.json", e); }
+  } else if (!placeLoaded) placements = [];
   if (typeof placeAssetsLoad === "function") await placeAssetsLoad(opts);
   placeLoaded = true; placeDirty.clear(); placeDeleted.clear(); placeUndoStack = []; placeRedoStack = [];
   if (!placements.some(p => p.id === placeActiveId)) placeActiveId = null;

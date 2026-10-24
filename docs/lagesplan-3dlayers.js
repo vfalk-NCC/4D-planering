@@ -40,7 +40,7 @@ function l3lSetIdsVisible(ids, on) {
 /* Minimalistisk (Victor 2026-10-12: "sortera upp den här menyn … minimalistiskt och stilrent … jobba mycket med
    collapse och dropdown-menyer"): block och grupper fälls ihop, åtgärder ligger i små menyer (＋ och ⋯) och
    radernas knappar syns när musen är över raden. Inställningarna har ett eget block längst ner (ihopfällt). */
-const L3L_SECS = ["models", "site2d", "lyr", "map", "settings"];
+const L3L_SECS = ["models", "pc", "site2d", "lyr", "map", "settings"];
 const l3lClosed = () => { const c = new Set(l3Prefs().layClosed || []); if (!l3Prefs().layAdv) c.add("settings"); return c; };
 /* Samlingsswitchar i Lager (Victor 2026-10-24): släcker/tänder alla 3D-modeller, alla punktmoln, eller alla 2D-lager + ritningen på en gång. Tänder man igen
    kommer det som var tänt förut tillbaka (är inget minnt tänds allt). */
@@ -112,7 +112,7 @@ function l3LayersRender() {
   const q = (l3lay.q || "").trim().toLowerCase();
   let h = `<div class="v3-lay-top"><input type="search" class="v3-pp-q" id="v3LayQ" placeholder="Sök lager, modell, DXF…" value="${esc(l3lay.q || "")}" /><button type="button" class="v3-ic v3-lay-foldb" id="v3LayFold" title="${allShut ? "Fäll ut alla block" : "Fäll ihop alla block"}">${L3L_FOLD_ICO(allShut)}</button></div><!--l3l-models-->`;
   // Underlag (ritningen som mark) ligger under Visa; Planering och etablering togs bort (Victor 2026-10-12).
-  if (typeof l3sHtml === "function") { const s2 = l3sHtml(row, l3lEye); if (s2) h += l3lSec("site2d", "2D-LAGER", s2.body, l3lSw("twoD", "Tänd/släck alla 2D-lager, DXF och ritningen (PDF)") + (s2.extra || "")); }
+  if (typeof l3sHtml === "function") { const s2 = l3sHtml(row, l3lEye); if (s2) h += l3lSec("site2d", "2D-MODELLER", s2.body, l3lSw("twoD", "Tänd/släck alla 2D-lager, DXF och ritningen (PDF)") + (s2.extra || "")); }
   if (typeof l3lyHtml === "function") { const ly = l3lyHtml(l3lEye, esc); h += l3lSec("lyr", "LAGER I MODELL &amp; RITNING", ly.body, "", ly.n || null); }
   let mh = "";
   const noTc = typeof bridgeOk === "function" && !bridgeOk();
@@ -138,7 +138,8 @@ function l3LayersRender() {
     }
     // Grupperna Modeller och Punktmoln (hopfällbara).
     const nm = all.length;
-    mh = l3lSub("models", "Modeller", nm, mh) + (typeof l3pcHtml === "function" ? l3lSub("pc", "Punktmoln", l3pcCount() || null, l3pcHtml(row, esc), (typeof l3pcSettingsHtml === "function" ? l3lMenu("pcset", '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>', "Visning av punktmoln", l3pcSettingsHtml()) : "") + l3lMenu("pc", "＋", "Lägg till punktmoln", (noTc ? "" : `<button type="button" data-l3l-browse="1" title="Projektets mappar i Trimble Connect – välj en LAS/LAZ/E57-fil">Från Trimble Connect…</button>`) + `<button type="button" data-pcfile2="1" title="LAS, LAZ, XYZ/PTS/TXT eller PLY från datorn (även över 2 GB)">Från datorn…</button>`) + l3lSw("pc", "Tänd/släck alla punktmoln")) : "");
+    mh = l3lSub("models", "Modeller", nm, mh);
+    l3lay.pcExtra = typeof l3pcHtml === "function" ? ((typeof l3pcSettingsHtml === "function" ? l3lMenu("pcset", '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>', "Visning av punktmoln", l3pcSettingsHtml()) : "") + l3lMenu("pc", "＋", "Lägg till punktmoln", (noTc ? "" : `<button type="button" data-l3l-browse="1" title="Projektets mappar i Trimble Connect – välj en LAS/LAZ/E57-fil">Från Trimble Connect…</button>`) + `<button type="button" data-pcfile2="1" title="LAS, LAZ, XYZ/PTS/TXT eller PLY från datorn (även över 2 GB)">Från datorn…</button>`) + l3lSw("pc", "Tänd/släck alla punktmoln")) : "";
   } else mh += l3lTreeHtml(l3lay.root, 0);
   mh += `<div id="v3LayBldgBox"></div>`;
   // Inställningar (sällan ändrade) i ett eget block längst ner – grupperade, korta namn, förklaring vid hovring.
@@ -173,7 +174,8 @@ function l3LayersRender() {
     ${chk("v3LayVoids", !!P.ifcVoids, "Urtag", "hål i väggar, långsammare", "Fönster- och dörrhål sågas ut ur väggar och bjälklag. Gör inläsningen av stora modeller många gånger långsammare – gäller modeller som läses in efter att du ändrat.")}
     <button type="button" class="v3-link" id="v3MdlReset">Återställ visningen</button></div>`;
   const modelsSec = l3lSec("models", "3D-modeller", `${tcBar}${mh}`, l3lMenu("mdlset", '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>', "Visning av 3D-modeller", mdlMenu) + l3lMenu("models", "＋", "Lägg till modell eller punktmoln", addItems) + l3lSw("models", "Tänd/släck alla 3D-modeller"));
-  h = h.replace("<!--l3l-models-->", modelsSec);
+  const pcSec = typeof l3pcHtml === "function" ? l3lSec("pc", "PUNKTMOLN", l3pcHtml(row, esc), l3lay.pcExtra || "", l3pcCount() || null) : "";
+  h = h.replace("<!--l3l-models-->", modelsSec + pcSec);
   if (typeof l3mapBody === "function") h += l3lSec("map", "BAKGRUNDSKARTA", l3mapBody(), l3lMenu("mapset", '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>', "Inställningar för kartan", l3mapSettingsHtml()) + `<label class="v3-lay-sw" title="Visa karta/satellit under modellerna"><input type="checkbox" data-lmapsw="1" ${l3Prefs().mapOn === true ? "checked" : ""} role="switch" aria-label="Bakgrundskarta" /><i></i></label>`);
   h += l3lSec("settings", "Inställningar", setH);
   host.innerHTML = h;

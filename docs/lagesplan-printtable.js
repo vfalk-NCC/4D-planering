@@ -153,7 +153,7 @@ function prTableBind(box, el) {
   if (s) s.addEventListener("change", () => {
     el.hide = {}; el.title = el.title || PT_SRC[el.src].label.toUpperCase();
     // Etableringen i 3D hämtas först när den behövs.
-    if (el.src === "place" && typeof place3dLoad === "function" && typeof placements !== "undefined" && !placements.length) place3dLoad().then(() => { drawPrintPage(); renderPrintProps(); }).catch(() => {});
+    if (el.src === "place" && typeof place3dLoad === "function" && typeof placements !== "undefined" && !placements.length) place3dLoad({ editor: true }).then(() => { drawPrintPage(); renderPrintProps(); }).catch(() => {});
     setTimeout(renderPrintProps, 0);
   });
 }
