@@ -1244,6 +1244,7 @@ function l3OpenCtx(x, y, e) {
   const ctx = document.getElementById("v3Ctx");
   if (!ctx || !l3) return;
   l3HideMenus();
+  if (typeof l3CtxAlt === "function" && l3CtxAlt(x, y, e)) return;   // byggnadsdel, punktmoln, ritning eller PDF under markören (lagesplan-3dctx.js)
   const id = l3PlaceAt(e);
   if (id && !l3.sel.has(id)) l3SelectIds([id]);
   const hit = l3Ray(e, l3Surfaces())[0], at = hit ? hit.point.clone() : null;
@@ -1253,7 +1254,7 @@ function l3OpenCtx(x, y, e) {
   const items = has ? [
     ["move", "Flytta punkt till punkt", "M"], ["rotate", "Vrid", "Q"], n === 1 ? ["align", "Rikta kant mot kant", "A"] : null,
     ["cspec", "Kopiera special…", ""], ["mspec", "Flytta special…", ""], null,
-    ["dup", "Duplicera", "Ctrl+D"], ["copy", "Kopiera", "Ctrl+C"], ["drop", "Ställ på ytan", ""], ["similar", "Markera alla av samma typ", ""], ["focus", "Zooma hit", "F"], null,
+    ["dup", "Duplicera", "Ctrl+D"], ["copy", "Kopiera", "Ctrl+C"], ["lock", typeof l3LockState === "function" && l3LockState() === 1 ? "Lås upp" : "Lås på plats", ""], ["drop", "Ställ på ytan", ""], ["similar", "Markera alla av samma typ", ""], ["focus", "Zooma hit", "F"], null,
     ["hide", "Dölj", "H"], ["iso", "Visa bara markerade", "I"], null,
     ...expItem,
     ["del", n === 1 ? "Ta bort" : `Ta bort ${n} objekt`, "Del"],
@@ -1268,6 +1269,7 @@ function l3OpenCtx(x, y, e) {
     ev.stopPropagation(); l3HideMenus();
     const k = b.dataset.ctx;
     if (k === "move" || k === "rotate" || k === "align") l3SetTool(k);
+    else if (k === "lock") l3LockToggle();
     else if (k === "dup") l3DuplicateSel(); else if (k === "copy") l3CopySel(); else if (k === "drop") l3DropSel();
     else if (k === "focus") l3View("sel"); else if (k === "del") l3DeleteSel();
     else if (k === "paste") l3Paste(at); else if (k === "fit") l3Frame(true); else if (k === "top") l3View("top");

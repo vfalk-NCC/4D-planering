@@ -228,6 +228,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3b.models.splice(l3b.models.indexOf(m), 1); l3.groups.bldg.remove(mesh); return r; });
   if (!Object.values(mv).every(Boolean)) fail('3D-modeller visning: ' + JSON.stringify(mv));
   console.log('OK: 3D-modeller – kanter, täckning och enfärgad grå i en rullgardin (kugghjul vid ＋)');
+  // 21) Högerklick överallt: menyrader/rubriker i Lager och markerade etableringsobjekt (med Lås)
+  const rc = await page.evaluate(async () => { l3PalTab('layers'); await new Promise(r => setTimeout(r, 300)); l3LayersRender();
+    const h = document.querySelector('#v3PalLayers .v3-lsec-h'); h.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 120, clientY: 160 }));
+    const p1 = document.getElementById('v3Pop'), t1 = p1 ? p1.textContent : ''; const first = p1 && p1.querySelector('button'); if (first) first.click(); const closed = !document.getElementById('v3Pop');
+    const row = [...document.querySelectorAll('#v3PalLayers .v3-lr')].find(r => r.querySelector('.v3-eye')); row.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 140, clientY: 200 })); const p2 = document.getElementById('v3Pop'), t2 = p2 ? p2.textContent : ''; l3PopClose();
+    const O = l3.O, q = placeNew('sm:gjutetapp', [O[0] + 370, O[1] + 370, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]); l3OpenCtx(300, 300, { clientX: 300, clientY: 300 });
+    const lockBtn = document.querySelector('#v3Ctx [data-ctx="lock"]'); return { t1, closed, t2, lock: !!lockBtn && /Lås/.test(lockBtn.textContent) }; });
+  if (!/Fäll|Tänd|Släck/.test(rc.t1) || !rc.closed || !/Tänd|Släck/.test(rc.t2) || !rc.lock) fail('Högerklick i menyer/modell: ' + JSON.stringify(rc));
+  console.log('OK: högerklick – rubriker och rader i Lager får egna menyer, etableringsobjekt får Lås på plats');
   // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
   for (const t of ['sm:saxlift', 'sm:bomlift']) {
     const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);

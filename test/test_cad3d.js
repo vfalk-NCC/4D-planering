@@ -72,6 +72,10 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     const q = l3ToScreen(v), R = l3.renderer.domElement.getBoundingClientRect(); const hit = l3ssCadAt({ clientX: R.left + q.x, clientY: R.top + q.y }), miss = l3ssCadAt({ clientX: R.left + 3, clientY: R.top + 3 }); return { hit: hit && hit.id === r.id, miss: !miss }; });
   if (!pick.hit || !pick.miss) fail('Markera 3D-ritning med klick i bilden: ' + JSON.stringify(pick));
   console.log('OK: 3D-ritningen markeras med ett klick på en linje (även på hög höjd)');
+  const cx = await page.evaluate(() => { const r = cads().find(x => x.name === 'tre'), o = [...l3s.cad.values()].find(q => q.userData.cadId === r.id && q.isLineSegments); o.updateMatrixWorld(); const p = o.geometry.attributes.position, v = new THREE.Vector3((p.getX(0) + p.getX(1)) / 2, (p.getY(0) + p.getY(1)) / 2, (p.getZ(0) + p.getZ(1)) / 2).applyMatrix4(o.matrixWorld);
+    const q = l3ToScreen(v), R = l3.renderer.domElement.getBoundingClientRect(), ev = { clientX: R.left + q.x, clientY: R.top + q.y }; l3OpenCtx(ev.clientX, ev.clientY, ev); const pop = document.getElementById('v3Pop'); const t = pop ? pop.textContent : ''; l3PopClose(); return t; });
+  if (!/Markera ritningen/.test(cx) || !/Zooma hit/.test(cx) || !/Byt färg/.test(cx)) fail('Högerklick på 3D-ritning: ' + cx);
+  console.log('OK: högerklick på en 3D-ritning i modellen – markera, zooma, byt färg, redigera');
   const ifc = await page.evaluate(() => { const rr = buildSiteIfc(); return rr && { n: rr.cad.recs, segs: rr.cad.segs, faces: rr.cad.faces, poly: /IFCPOLYLINE\(/.test(rr.text), faceset: /IFCTRIANGULATEDFACESET/.test(rr.text), red: /IFCCOLOURRGB\([^)]*1\.,\s*0\.,\s*0\./.test(rr.text) }; });
   if (!ifc || ifc.n !== 1 || ifc.segs < 3 || ifc.faces < 1 || ifc.poly || !ifc.faceset) fail('IFC av 3D-ritning: ' + JSON.stringify(ifc));
   console.log('OK: 3D-ritning som IFC – ' + ifc.segs + ' linjer som solida stavar, ' + ifc.faces + ' ytor, inga IFC-linjer');
