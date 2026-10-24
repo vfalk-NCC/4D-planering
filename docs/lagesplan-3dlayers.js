@@ -224,6 +224,7 @@ function l3LayersRender() {
   host.querySelectorAll("[data-l3l-sort]").forEach(b => { b.onclick = () => { l3SetPref("laySort", b.dataset.l3lSort); l3LayersRender(); }; });
   host.querySelectorAll("[data-l3l-dir]").forEach(b => { b.onclick = () => l3lOpenDir(b.dataset.l3lDir); });
   host.querySelectorAll("[data-l3l-file]").forEach(b => { b.onclick = () => l3lFile(b.dataset.l3lFile, b.dataset.name); });
+  host.querySelectorAll("[data-l3l-dxf]").forEach(b => { const n = b.closest(".v3-lr") && b.closest(".v3-lr").querySelector(".v3-lr-n"); if (n && b.dataset.cad) { n.classList.add("v3-lr-pick2"); n.onclick = () => { l3ssSelect({ kind: "cad", id: b.dataset.cad }); l3ssFlash({ kind: "cad", id: b.dataset.cad }); }; } });
   host.querySelectorAll("[data-l3l-dxf]").forEach(b => { b.onclick = () => { if (b.dataset.cad) { const k = "cad:" + b.dataset.cad; setLayersVisible([k], !ls(k).visible); l3sRefresh(0); l3LayersRender(); } else l3sDxfFromTc(b.dataset.l3lDxf, b.dataset.name); }; });
   if (typeof l3sBind === "function") l3sBind(host);
   const op = host.querySelector('[data-l3l-op="plan"]');

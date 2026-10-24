@@ -33,6 +33,19 @@ function l3ssCadAt(e) {
   const R = l3.renderer.domElement.getBoundingClientRect(), mx = e.clientX - R.left, my = e.clientY - R.top;
   let best = null;
   recs.forEach(r => {
+    if (r.stats && r.stats.has3d) {   // 3D-ritning: träff i bilden (linjer inom 8 px, ytor via stråle)
+      const W = R.width, H = R.height, v = new THREE.Vector3(); let bd = Infinity;
+      const proj = (o, x, y, z) => { v.set(x, y, z).applyMatrix4(o.matrixWorld).project(l3.camera); return [(v.x + 1) / 2 * W, (1 - v.y) / 2 * H, v.z]; };
+      l3s.cad.forEach(o => {
+        if (o.userData.cadId !== r.id || !o.visible) return; o.updateMatrixWorld();
+        if (o.isLineSegments) { const p = o.geometry.attributes.position;
+          for (let i = 0; i + 1 < p.count; i += 2) { const A = proj(o, p.getX(i), p.getY(i), p.getZ(i)), B = proj(o, p.getX(i + 1), p.getY(i + 1), p.getZ(i + 1)); if (A[2] > 1 || B[2] > 1) continue;
+            const dx = B[0] - A[0], dy = B[1] - A[1], l2 = dx * dx + dy * dy, t = l2 ? Math.max(0, Math.min(1, ((mx - A[0]) * dx + (my - A[1]) * dy) / l2)) : 0, d = Math.hypot(A[0] + t * dx - mx, A[1] + t * dy - my); if (d < bd) bd = d; } }
+        else if (o.isMesh) { const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(mx / W * 2 - 1, -(my / H) * 2 + 1), l3.camera); const hits = []; THREE.Mesh.prototype.raycast.call(o, rc, hits); if (hits.length) bd = Math.min(bd, 6); }
+      });
+      if (bd < 8 && (!best || bd / 8 < best.d)) best = { d: bd / 8, r };
+      return;
+    }
     const z = l3sZ() + 0.03 + (Number(r.z3) || 0);
     const rc = new THREE.Raycaster(); rc.setFromCamera(new THREE.Vector2(mx / R.width * 2 - 1, -(my / R.height) * 2 + 1), l3.camera);
     const gp = rc.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -z), new THREE.Vector3());
@@ -59,11 +72,24 @@ function l3ssTap(e, hadSel) {
   return false;
 }
 function l3ssSelect(sel, quiet) {
-  l3ss.sel = sel;
+  l3ss.sel = sel; l3ss.noGlow = null;
   if (sel) { if (typeof l3SelectIds === "function" && l3.sel.size) l3SelectIds([]); if (typeof l3bsClear === "function" && l3bs.sel.length) l3bsClear(); }
   l3ssHighlight();
   if (!quiet && typeof l3RenderSide === "function") l3RenderSide();
   if (sel) l3Status(sel.kind === "cad" ? `DXF markerad: ${(l3ssRec() || {}).name || ""}. Esc avmarkerar.` : "Arbetsytans ritning (PDF) markerad. Esc avmarkerar.");
+}
+/* Ljussken runt det markerade (från sidomenyn): en orange ruta runt ritningen/PDF:en som tonar ut. */
+function l3ssFlash(sel) {
+  if (!l3 || !sel) return;
+  const box = new THREE.Box3();
+  if (sel.kind === "cad") { if (typeof l3s !== "undefined" && l3s.cad) l3s.cad.forEach(o => { if (o.userData.cadId === sel.id && o.visible) box.expandByObject(o); }); }
+  else if (l3.planMesh) box.expandByObject(l3.planMesh);
+  if (box.isEmpty()) return;
+  const pad = Math.max(1, box.getSize(new THREE.Vector3()).length() * 0.01); box.expandByScalar(pad);
+  const h = new THREE.Box3Helper(box, 0xf59e0b); h.material.transparent = true; h.material.depthTest = false; h.renderOrder = 14; h.userData.noHit = true; h.raycast = () => {};
+  l3.scene.add(h); const t0 = performance.now();
+  const step = now => { const k = Math.min(1, (now - t0) / 1800); h.material.opacity = (1 - k) * (0.6 + 0.4 * Math.abs(Math.cos(k * Math.PI * 4))); l3Render(); if (k < 1) requestAnimationFrame(step); else { l3.scene.remove(h); h.geometry.dispose(); h.material.dispose(); l3Render(); } };
+  requestAnimationFrame(step);
 }
 const l3ssRec = () => (l3ss.sel && l3ss.sel.kind === "cad" && typeof cads === "function" ? cads().find(r => r.id === l3ss.sel.id) || null : null);
 /* Markeringen syns: DXF:ens linjer orange, PDF:en med en orange ram. Anropas också när linjerna byggts om. */
@@ -71,7 +97,7 @@ function l3ssHighlight() {
   if (!l3) return;
   if (l3ss.ring) { l3ss.ring.parent && l3ss.ring.parent.remove(l3ss.ring); l3ss.ring.geometry.dispose(); l3ss.ring.material.dispose(); l3ss.ring = null; }
   if (typeof l3s !== "undefined" && l3s.cad) l3s.cad.forEach(obj => {
-    const on = l3ss.sel && l3ss.sel.kind === "cad" && obj.userData.cadId === l3ss.sel.id;
+    const on = l3ss.sel && l3ss.sel.kind === "cad" && obj.userData.cadId === l3ss.sel.id && l3ss.noGlow !== l3ss.sel.id;
     if (on) { if (!obj.userData.l3ssCol) obj.userData.l3ssCol = obj.material.color.getHex(); obj.material.color.set(0xf59e0b); }
     else if (obj.userData.l3ssCol != null) { obj.material.color.setHex(obj.userData.l3ssCol); obj.userData.l3ssCol = null; }
   });
@@ -111,6 +137,7 @@ function l3ssRenderSide(side) {
       </div>
       <table class="v3-info-t">${row("Fil", r.name + ".dxf")}${row("Lager", `${on} av ${r.layers.length} tända`)}${r.stats ? row("Innehåll", `${(r.stats.lines || 0).toLocaleString("sv-SE")} linjer${r.stats.texts ? `, ${r.stats.texts.toLocaleString("sv-SE")} texter` : ""}`) : ""}${typeof unitName === "function" && r.factor ? row("Enhet", unitName(r.factor)) : ""}${b ? row("Storlek", `${l3ssFmt(b.x1 - b.x0)} × ${l3ssFmt(b.y1 - b.y0)} m`) + row("Mitt (X / Y)", `${l3ssFmt((b.x0 + b.x1) / 2)} / ${l3ssFmt((b.y0 + b.y1) / 2)}`) : ""}${r.added_by || r.by ? row("Tillagd av", r.added_by || r.by) : ""}</table>
       <div class="v3-ss-op"><span>Synlighet</span><input type="range" id="v3SsOp" min="10" max="100" step="5" value="${Math.round(layerOpacity(key) * 100)}" /><b>${Math.round(layerOpacity(key) * 100)} %</b></div>
+      <div class="v3-ss-op"><span>Färg</span><div class="v3-segs"><button type="button" data-ssc="orig" class="${r.colorMode === "mono" ? "" : "on"}">Original</button><button type="button" data-ssc="mono" class="${r.colorMode === "mono" ? "on" : ""}">Enfärgad</button></div><input type="color" id="v3SsCol" value="${esc(r.color || "#1d4ed8")}" title="Färg på hela ritningen" /></div>
       <div class="v3-ss-h">Läge <em>förskjutning i plan gäller både 2D och 3D</em></div>
       <div class="v3-grid">${f("dx", "Flytta X", l3ssFmt(sh[0]), "m", "Förskjutning österut/västerut från DXF:ens egna koordinater")}${f("dy", "Flytta Y", l3ssFmt(sh[1]), "m", "Förskjutning norrut/söderut")}${f("z3", "Höjd i 3D", l3ssFmt(Number(r.z3) || 0), "m", "Lyft linjerna över marken – bara i 3D")}</div>
       <div class="v3-grp-acts"><button type="button" id="v3SsApply">Verkställ läget</button><button type="button" id="v3SsReset" ${sh[0] || sh[1] || r.z3 ? "" : "disabled"}>Tillbaka till DXF:ens läge</button></div>`;
@@ -119,6 +146,9 @@ function l3ssRenderSide(side) {
     on2("v3SsZoom", () => { if (b) { const c = new THREE.Vector3((b.x0 + b.x1) / 2 - l3.O[0], (b.y0 + b.y1) / 2 - l3.O[1], l3sZ()); l3FlyTo(c, Math.max(10, Math.hypot(b.x1 - b.x0, b.y1 - b.y0) * 0.9)); } });
     on2("v3SsHide", () => { setLayersVisible([key], false); l3ssSelect(null); l3sRefresh(0); if (typeof l3LayersRender === "function") l3LayersRender(); });
     on2("v3SsEdit", () => { const id = r.id; l3ssSelect(null, true); l3dStart(id); });
+    const setCol = patch => { const rec = cads().find(x => x.id === r.id) || r; Object.assign(rec, patch); l3ss.noGlow = rec.id; l3sRefresh(0); l3s.cad.forEach(o => { if (o.userData.cadId === rec.id) o.userData.l3ssCol = null; }); l3ssHighlight(); if (typeof scheduleCadRender === "function") scheduleCadRender(); clearTimeout(setCol.t); setCol.t = setTimeout(() => { if (typeof saveSiteItem === "function") saveSiteItem(rec, false, { record: false }).catch(e => l3Status("Kunde inte spara färgen: " + e.message, true)); }, 500); };
+    side.querySelectorAll("[data-ssc]").forEach(b => { b.onclick = () => { setCol({ colorMode: b.dataset.ssc, color: side.querySelector("#v3SsCol").value }); side.querySelectorAll("[data-ssc]").forEach(x => x.classList.toggle("on", x === b)); }; });
+    const col = side.querySelector("#v3SsCol"); col.oninput = () => { setCol({ colorMode: "mono", color: col.value }); side.querySelectorAll("[data-ssc]").forEach(x => x.classList.toggle("on", x.dataset.ssc === "mono")); };
     const op = side.querySelector("#v3SsOp");
     op.oninput = () => { ls(key).opacity = Number(op.value); op.nextElementSibling.textContent = op.value + " %"; l3sRefresh(0); };
     op.onchange = () => { if (typeof saveLayerState === "function") saveLayerState(); if (typeof scheduleCadRender === "function") scheduleCadRender(); };

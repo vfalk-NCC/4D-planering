@@ -61,6 +61,20 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     return { lines: lines.length, mesh: mesh.length, hi: Math.max(...zr.map(x => x[1])) + l3.O[2], lo: Math.min(...zr.map(x => x[0])) + l3.O[2] }; });
   if (!v.lines || !v.mesh || Math.abs(v.hi - 24) > 0.2 || Math.abs(v.lo - 1) > 1.5 && Math.abs(v.lo - 0) > 1.5) fail('3D-ritning i 3D-editorn: ' + JSON.stringify(v));
   console.log('OK: 3D-ritning i 3D-editorn – linjer och ytor på sina höjder (' + v.lo.toFixed(1) + '–' + v.hi.toFixed(1) + ' m)');
+  // Färg: markera ritningen (sidomenyn) och byt färg; IFC-export med solida stavar och ytor, inga linjer
+  const col = await page.evaluate(async () => { const r = cads().find(x => x.name === 'tre'); l3ssSelect({ kind: 'cad', id: r.id }); l3ssFlash({ kind: 'cad', id: r.id }); await new Promise(res => setTimeout(res, 200));
+    const hasCol = !!document.querySelector('#v3Side #v3SsCol'); const inp = document.querySelector('#v3SsCol'); inp.value = '#ff0000'; inp.dispatchEvent(new Event('input', { bubbles: true })); await new Promise(res => setTimeout(res, 200));
+    const lines = [...l3s.cad.values()].filter(o => o.userData.cadId === r.id && o.isLineSegments); return { hasCol, mode: r.colorMode, c: r.color, hex: lines.map(o => o.material.color.getHexString()), sel: !!l3ss.sel }; });
+  if (!col.hasCol || col.mode !== 'mono' || col.c !== '#ff0000' || !col.hex.every(h => h === 'ff0000')) fail('Färg på 3D-ritning: ' + JSON.stringify(col));
+  console.log('OK: 3D-ritning – markeras (sidomenyn/sken), färg kan bytas');
+
+  const pick = await page.evaluate(() => { const r = cads().find(x => x.name === 'tre'), o = [...l3s.cad.values()].find(q => q.userData.cadId === r.id && q.isLineSegments); o.updateMatrixWorld(); const p = o.geometry.attributes.position, v = new THREE.Vector3((p.getX(0) + p.getX(1)) / 2, (p.getY(0) + p.getY(1)) / 2, (p.getZ(0) + p.getZ(1)) / 2).applyMatrix4(o.matrixWorld);
+    const q = l3ToScreen(v), R = l3.renderer.domElement.getBoundingClientRect(); const hit = l3ssCadAt({ clientX: R.left + q.x, clientY: R.top + q.y }), miss = l3ssCadAt({ clientX: R.left + 3, clientY: R.top + 3 }); return { hit: hit && hit.id === r.id, miss: !miss }; });
+  if (!pick.hit || !pick.miss) fail('Markera 3D-ritning med klick i bilden: ' + JSON.stringify(pick));
+  console.log('OK: 3D-ritningen markeras med ett klick på en linje (även på hög höjd)');
+  const ifc = await page.evaluate(() => { const rr = buildSiteIfc(); return rr && { n: rr.cad.recs, segs: rr.cad.segs, faces: rr.cad.faces, poly: /IFCPOLYLINE\(/.test(rr.text), faceset: /IFCTRIANGULATEDFACESET/.test(rr.text), red: /IFCCOLOURRGB\([^)]*1\.,\s*0\.,\s*0\./.test(rr.text) }; });
+  if (!ifc || ifc.n !== 1 || ifc.segs < 3 || ifc.faces < 1 || ifc.poly || !ifc.faceset) fail('IFC av 3D-ritning: ' + JSON.stringify(ifc));
+  console.log('OK: 3D-ritning som IFC – ' + ifc.segs + ' linjer som solida stavar, ' + ifc.faces + ' ytor, inga IFC-linjer');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close(); console.log('OK test_cad3d');
 })().catch(e => { console.error('FEL: ' + e.message); process.exit(1); });

@@ -40,10 +40,44 @@ function siteIfcSign(doc, { center, z, w, hgt, rx, ry, color, label, lines, text
   return { plate, meshes };
 }
 
+/* ---- 3D-ritningar (DWG/DXF med höjder) som IFC (Victor 2026-10-24): linjer blir SOLIDA fyrkantsstavar (6 cm) – aldrig IFC-linjer, som gör Trimble Connect trögt –
+   ytor (3DFACE/MESH) blir trianglar. Ett element per CAD-lager, i lagrets färg som den visas i 3D-vyn. Högst SITE_IFC_CAD_MAX linjer totalt. ---- */
+const SITE_IFC_CAD_W = 0.03, SITE_IFC_CAD_MAX = 30000;
+const siteIfcCadList = () => (typeof cads === "function" ? cads().filter(r => !r.virtual && r.stats && r.stats.has3d && ls("cad:" + r.id).visible && cadGeom.has(r.id)) : []);
+function siteIfcCad(doc, elems) {
+  const E = doc.E, out = { recs: 0, segs: 0, faces: 0, cut: 0 };
+  const recs = siteIfcCadList(), total = recs.reduce((a, r) => a + cadGeom.get(r.id).groups.reduce((b, gr) => b + (gr.raw || []).reduce((c, a2) => c + Math.max(0, a2.length / 2 - 1), 0), 0), 0), every = Math.max(1, Math.ceil(total / SITE_IFC_CAD_MAX));
+  recs.forEach(r => {
+    const g = cadGeom.get(r.id), names = r.layers.map(l => l.name), zoff = -0 + (Number(r.z3) || 0), o = [Math.round(g.origin[0]), Math.round(g.origin[1]), 0]; let used = false;
+    g.groups.forEach((gr, gi) => {
+      if (!cadLayerOn(r, names[gr.l])) return;
+      const pts = [], faces = [], vtx = (x, y, z) => { pts.push([x, y, z]); return pts.length; }; let nS = 0, nF = 0, k = 0;
+      (gr.raw || []).forEach((a, pi) => { const zz = gr.z && gr.z[pi];
+        for (let j = 2; j < a.length; j += 2) { if ((k++ % every) !== 0) { out.cut++; continue; }
+          const A = [g.origin[0] - o[0] + a[j - 2] / 1000, g.origin[1] - o[1] + a[j - 1] / 1000, (zz ? zz[j / 2 - 1] / 1000 : 0) + zoff], B = [g.origin[0] - o[0] + a[j] / 1000, g.origin[1] - o[1] + a[j + 1] / 1000, (zz ? zz[j / 2] / 1000 : 0) + zoff];
+          const d = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], L = Math.hypot(...d); if (L < 0.01) continue; const u0 = d.map(v => v / L), ref = Math.abs(u0[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
+          let n1 = [u0[1] * ref[2] - u0[2] * ref[1], u0[2] * ref[0] - u0[0] * ref[2], u0[0] * ref[1] - u0[1] * ref[0]]; const l1 = Math.hypot(...n1); n1 = n1.map(v => v / l1 * SITE_IFC_CAD_W);
+          const n2 = [u0[1] * n1[2] - u0[2] * n1[1], u0[2] * n1[0] - u0[0] * n1[2], u0[0] * n1[1] - u0[1] * n1[0]].map(v => v);
+          const c = [[-1, -1], [1, -1], [1, 1], [-1, 1]], i0 = pts.length + 1;
+          [A, B].forEach(P => c.forEach(([s1, s2]) => vtx(P[0] + n1[0] * s1 + n2[0] * s2, P[1] + n1[1] * s1 + n2[1] * s2, P[2] + n1[2] * s1 + n2[2] * s2)));
+          for (let q = 0; q < 4; q++) { const q2 = (q + 1) % 4; faces.push([i0 + q, i0 + q2, i0 + 4 + q2], [i0 + q, i0 + 4 + q2, i0 + 4 + q]); }
+          faces.push([i0, i0 + 2, i0 + 1], [i0, i0 + 3, i0 + 2], [i0 + 4, i0 + 5, i0 + 6], [i0 + 4, i0 + 6, i0 + 7]); nS++; } });
+      (gr.f || []).forEach(a => { for (let j = 0; j + 8 < a.length; j += 9) { const i0 = pts.length + 1; for (let q = 0; q < 3; q++) vtx(g.origin[0] - o[0] + a[j + q * 3] / 1000, g.origin[1] - o[1] + a[j + q * 3 + 1] / 1000, a[j + q * 3 + 2] / 1000 + zoff); faces.push([i0, i0 + 1, i0 + 2], [i0, i0 + 2, i0 + 1]); nF++; } });
+      if (!faces.length) return;
+      const color = cadLayerColor(r, names[gr.l], gr.c) || "#64748b", pl = E(`IFCCARTESIANPOINTLIST3D((${pts.map(ifcPt).join(",")}))`), m = E(`IFCTRIANGULATEDFACESET(${pl},$,.F.,(${faces.map(q => `(${q.join(",")})`).join(",")}),$)`);
+      E(`IFCSTYLEDITEM(${m},(${doc.style("cad-" + color, color, "Ritning")}),$)`);
+      const el = doc.proxy(`${r.name} – ${names[gr.l]}`, "Ritning", "4D-ritning", doc.place(o), doc.shape(m, "Tessellation"), r.id);
+      elems.push(el); doc.props(el, [["Fil", r.name], ["CAD-lager", names[gr.l]], ["Linjer", nS], ["Ytor", nF], ["Höjd justerad", zoff ? `${zoff} m` : "nej"]]);
+      out.segs += nS; out.faces += nF; used = true; });
+    if (used) out.recs++;
+  });
+  return out;
+}
+
 /* Bygger IFC-filen. Returnerar { text, crews, notes, z0, levelSet } eller null. */
 function buildSiteIfc() {
-  const list = siteIfcItems();
-  if (!list.length) return null;
+  const list = siteIfcItems(), cadList = siteIfcCadList();
+  if (!list.length && !cadList.length) return null;
   const z0 = (typeof zoneCadTopZ === "function" ? zoneCadTopZ() : null) ?? 0;
   const at = $("dateInput").value || todayIso();
   const doc = ifcDoc("4D-planering – " + (plan ? plan.name : ""), "UE-lag och noteringar från Lägesplan " + at), E = doc.E;
@@ -111,16 +145,22 @@ function buildSiteIfc() {
       notes++;
     }
   });
-  return { text: doc.finish(elems, `Lag och noteringar ${plan ? plan.name : ""} ${at}.ifc`), crews, notes, z0, levelSet: typeof zoneCadTopZ === "function" && zoneCadTopZ() != null };
+  const cad = siteIfcCad(doc, elems);
+  return { text: doc.finish(elems, `Lag och noteringar ${plan ? plan.name : ""} ${at}.ifc`), crews, notes, cad, z0, levelSet: typeof zoneCadTopZ === "function" && zoneCadTopZ() != null };
 }
 
 function exportSiteIfc() {
   if (!plan) return;
   if (!plan.calib) { alert("Kalibrera arbetsytan mot 3D först – lagen och noteringarna exporteras i modellens koordinater."); return; }
+  return exportSiteIfc2();
+}
+async function exportSiteIfc2() {
+  const need = typeof cads === "function" ? cads().filter(r => !r.virtual && r.stats && r.stats.has3d && ls("cad:" + r.id).visible && !cadGeom.has(r.id)) : [];
+  if (need.length && typeof ensureCadGeoms === "function") await ensureCadGeoms(need);
   const r = buildSiteIfc();
-  if (!r) { alert("Inga UE-lag eller noteringar syns på planen för det här datumet (tänd lagren Dagsplanering/Allmänt eller byt datum)."); return; }
+  if (!r) { alert("Inga UE-lag, noteringar eller tända 3D-ritningar för det här datumet (tänd lagren Dagsplanering/Allmänt/3D-ritningen eller byt datum)."); return; }
   const lvl = r.levelSet ? `på +${(Math.round(r.z0 * 100) / 100).toFixed(2)}` : "på +0 (ingen maxhöjd kalibrerad)";
-  const what = [r.crews ? `${r.crews} lag` : "", r.notes ? `${r.notes} noteringar` : ""].filter(Boolean).join(" och ");
+  const what = [r.crews ? `${r.crews} lag` : "", r.notes ? `${r.notes} noteringar` : "", r.cad && r.cad.recs ? `${r.cad.recs} 3D-ritning${r.cad.recs > 1 ? "ar" : ""} (${r.cad.segs} linjer som solida stavar, ${r.cad.faces} ytor${r.cad.cut ? `, ${r.cad.cut} linjer uteslutna för att hålla filen lätt` : ""})` : ""].filter(Boolean).join(", ");
   return zoneCadSave(new TextEncoder().encode(r.text), `Lag och noteringar ${plan.name} ${$("dateInput").value}.ifc`, "application/x-step", `${what} exporterade som IFC ${lvl}`);
 }
 
