@@ -376,8 +376,9 @@ function l3ToolCancel() {
 /* Ändringen genomförs på placeringarna (meter i modellens system) och ritas om – ett steg i ångra. */
 function l3Commit(fn) {
   const objs = l3t.objs || [];
-  const list = objs.map(o => placements.find(x => x.id === o.id)).filter(Boolean);
+  let list = objs.map(o => placements.find(x => x.id === o.id)).filter(Boolean);
   if (!list.length) return;
+  if (list.some(p => p.locked)) { l3Restore(objs); l3LockWarn(list); list = list.filter(p => !p.locked); if (!list.length) { if (typeof l3ToolCancel === "function") l3ToolCancel(); return; } }
   l3Restore(objs);
   placeSnapshot();
   list.forEach(p => { fn(p); placeTouch(p); l3RebuildOne(p); });
@@ -697,7 +698,7 @@ function l3MakeCopies(src, offs) {
   const made = [];
   offs.forEach(o => src.forEach(id => {
     const p = placements.find(x => x.id === id); if (!p) return;
-    const c = JSON.parse(JSON.stringify(p));
+    const c = JSON.parse(JSON.stringify(p)); delete c.locked;
     Object.assign(c, { id: ghNewId(), created_at: new Date().toISOString(), by: settings.userName || null });
     delete c.ifc_at;
     c.name = placeNextName(p.name);

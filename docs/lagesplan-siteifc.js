@@ -160,7 +160,7 @@ async function exportSiteIfc2() {
   const r = buildSiteIfc();
   if (!r) { alert("Inga UE-lag, noteringar eller tända 3D-ritningar för det här datumet (tänd lagren Dagsplanering/Allmänt/3D-ritningen eller byt datum)."); return; }
   const lvl = r.levelSet ? `på +${(Math.round(r.z0 * 100) / 100).toFixed(2)}` : "på +0 (ingen maxhöjd kalibrerad)";
-  const what = [r.crews ? `${r.crews} lag` : "", r.notes ? `${r.notes} noteringar` : "", r.cad && r.cad.recs ? `${r.cad.recs} 3D-ritning${r.cad.recs > 1 ? "ar" : ""} (${r.cad.segs} linjer som solida stavar, ${r.cad.faces} ytor${r.cad.cut ? `, ${r.cad.cut} linjer uteslutna för att hålla filen lätt` : ""})` : ""].filter(Boolean).join(", ");
+  const what = [r.crews ? `${r.crews} lag` : "", r.notes ? `${r.notes} noteringar` : "", r.cad && r.cad.recs ? `${r.cad.recs} 3D-ritning${r.cad.recs > 1 ? "ar" : ""} (${r.cad.segs} linjer som solida stavar, ${r.cad.faces} ytor${r.cad.cut ? `, ${r.cad.cut} linjer uteslutna för att hålla filen lätt` : ""})` : ""].filter(Boolean).join(" och ");
   return zoneCadSave(new TextEncoder().encode(r.text), `Lag och noteringar ${plan.name} ${$("dateInput").value}.ifc`, "application/x-step", `${what} exporterade som IFC ${lvl}`);
 }
 

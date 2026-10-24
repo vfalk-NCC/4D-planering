@@ -114,6 +114,7 @@ function l3HandleDown(e, id, k) {
   if (!p) return;
   let h = l3HandleDefs(p)[k];
   if (!h) return;
+  if (p.locked && typeof l3LockWarn === "function") { l3LockWarn([p]); return; }
   if (h.key === "sb") { l3SbRemove(id, h.sid); return; }
   // Dubbeltryck på en punkt = ta bort den (egen räkning: handtagen kan ha byggts om mellan trycken).
   const now = Date.now(), last = l3HandleDown.last;

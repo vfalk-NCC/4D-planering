@@ -302,7 +302,7 @@ function placeCopies(p, n, step, along = true) {
   const base = p.name.replace(/\s+\d+$/, "");
   const out = [];
   for (let i = 1; i <= n; i++) {
-    const c = JSON.parse(JSON.stringify(p));
+    const c = JSON.parse(JSON.stringify(p)); delete c.locked;
     Object.assign(c, { id: ghNewId(), created_at: new Date().toISOString(), by: settings.userName || null });
     delete c.ifc_at;
     c.name = placeNextName(base, out.map(o => o.name));
@@ -316,6 +316,7 @@ let placeNudgeAt = 0;
 function placeNudge(dx, dy, dz, drot) {
   const act = placeActive();
   if (!act) return;
+  if (act.locked) { setPlaceStatus("Objektet är låst på sin plats – lås upp det i 3D-editorn innan du flyttar det.", true); return; }
   if (Date.now() - placeNudgeAt > 1200) placeSnapshot();
   placeNudgeAt = Date.now();
   placeShift(act, dx, dy, dz);

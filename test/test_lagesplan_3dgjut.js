@@ -202,6 +202,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3SbRemove(q.id, h0[0].sid); const h1 = l3HandleDefs(q).filter(h => h.key === 'sb'); return { h0: h0.length, h1: h1.length, n0, n1: nb(), sbx: q.f.sbx, el: document.querySelectorAll('.v3-hd-sb').length }; });
   if (!(sr.h0 > 4) || sr.h1 !== sr.h0 - 1 || !(sr.n1 < sr.n0) || !sr.sbx) fail('Ta bort stödben: ' + JSON.stringify(sr));
   console.log('OK: stödben – tryck på × tar bort ett enskilt stödben');
+  // 18) Lås på plats: låsta objekt går inte att flytta (piltangenter, handtag), en liten varning visas, kopior blir olåsta
+  const lk = await page.evaluate(async () => { const O = l3.O, q = placeNew('sm:gjutetapp', [O[0] + 360, O[1] + 360, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]); await new Promise(r => setTimeout(r, 200));
+    const x0 = q.x; l3LockToggle(); const locked = !!q.locked, btnOn = !!document.querySelector('#v3SideLock.on');
+    l3NudgeSel(1, 0, 0, 0); const stay1 = q.x === x0, warn = !!document.querySelector('#v3LockWarn.show');
+    l3HandleDown({ button: 0, preventDefault() {}, stopPropagation() {} }, q.id, 0); const noDrag = !l3H;
+    const cp = placeCopies(q, 1, 3, true)[0]; const copyFree = !cp.locked;
+    document.querySelector('#v3LockWarn [data-lw="1"]').click(); const un = !q.locked; l3NudgeSel(1, 0, 0, 0); const moved = q.x !== x0;
+    return { locked, btnOn, stay1, warn, noDrag, copyFree, un, moved }; });
+  if (!Object.values(lk).every(Boolean)) fail('Lås på plats: ' + JSON.stringify(lk));
+  console.log('OK: lås på plats – låsta objekt flyttas inte, varning med Lås upp, kopior olåsta');
   // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
   for (const t of ['sm:saxlift', 'sm:bomlift']) {
     const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);

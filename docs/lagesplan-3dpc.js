@@ -418,23 +418,27 @@ function l3pcHtml(row, esc) {
   const L = l3pc.loading;
   if (L) h += `<div class="v3-lr v3-pc-loading"><span class="pm-spin"></span><span class="v3-lr-n" title="${esc(L.name)}">${esc(L.name)}</span><span class="v3-pc-load" id="v3PcLoad"><span class="v3-pc-bar"><i style="width:${Math.max(2, Math.round(L.f * 100))}%"></i></span><em>${esc(L.phase)} ${Math.round(L.f * 100)} %</em></span></div>`;
   if (!rows.length && !L) h += `<div class="v3-pal-hint">Inga punktmoln. Lägg till med ＋ ovan – från datorn eller ur en mapp i Trimble Connect.</div>`;
-  if (l3pc.clouds.length) {
-    const P = l3Prefs(), mode = l3pcMode(), lo = Number(l3pcPref("pcZlo", 0)), hi = Number(l3pcPref("pcZhi", 100));
-    const c0 = l3pc.clouds[0], zAt = t => (c0.info.min[2] + (c0.info.max[2] - c0.info.min[2]) * t / 100 + (c0.dz || 0)).toFixed(1).replace(".", ",");
-    const sel = (id, opts, v) => `<select id="${id}">${opts.map(([k, l]) => `<option value="${k}" ${String(v) === k ? "selected" : ""}>${l}</option>`).join("")}</select>`;
-    h += `<details class="v3-sub v3-pc-view" ${P.pcViewOpen ? "open" : ""}><summary>Visning</summary><div class="v3-pc-grid">
-      <label>Färg</label><div class="v3-pc-f">${sel("v3PcMode", [["auto", "Automatiskt"], ["rgb", "Molnets färg"], ["int", "Intensitet"], ["z", "Höjd"], ["solid", "Enfärgad"]], mode)}${mode === "solid" ? `<input type="color" id="v3PcColor" value="${esc(l3pcPref("pcColor", "#94a3b8"))}" title="Färg" />` : ""}</div>
-      <label title="Punkternas storlek">Storlek</label><div class="v3-pc-f"><input type="range" id="v3PcSize" min="0.5" max="8" step="0.5" value="${l3pcSize()}" /><output>${String(l3pcSize()).replace(".", ",")}</output></div>
-      <label title="I skärmen: lika stora på alla avstånd. I meter: växer när du zoomar in, som riktiga ytor.">Skala</label><div class="v3-pc-f">${sel("v3PcAtten", [["", "Pixlar"], ["1", "Meter"]], P.pcAtten ? "1" : "")}</div>
-      <label>Form</label><div class="v3-pc-f"><div class="v3-segs v3-pc-seg"><button type="button" data-pc-round="" class="${P.pcRound !== false ? "" : "on"}">■ Fyrkant</button><button type="button" data-pc-round="1" class="${P.pcRound !== false ? "on" : ""}">● Rund</button></div></div>
-      <label title="Mörkar punkter som ligger bakom sina grannar (som i Trimble Connect) så att former och kanter syns">Djupskuggning</label><div class="v3-pc-f"><input type="range" id="v3PcEdl" min="0" max="100" step="5" value="${l3pcPref("pcEdl", 60)}" /><output>${l3pcPref("pcEdl", 60)} %</output></div>
-      <label>Ljus</label><div class="v3-pc-f"><input type="range" id="v3PcBright" min="-50" max="50" step="5" value="${l3pcPref("pcBright", 0)}" /><output>${l3pcPref("pcBright", 0)}</output></div>
-      <label>Kontrast</label><div class="v3-pc-f"><input type="range" id="v3PcContrast" min="50" max="200" step="10" value="${l3pcPref("pcContrast", 100)}" /><output>${l3pcPref("pcContrast", 100)} %</output></div>
-      <label title="Genomskinlighet – se modellen genom molnet">Täckning</label><div class="v3-pc-f"><input type="range" id="v3PcOpacity" min="10" max="100" step="5" value="${l3pcPref("pcOpacity", 100)}" /><output>${l3pcPref("pcOpacity", 100)} %</output></div>
-      <label title="Visa bara ett skikt av molnet – t.ex. ta bort taket eller marken">Höjd</label><div class="v3-pc-f v3-pc-z"><input type="range" id="v3PcZlo" min="0" max="100" step="1" value="${lo}" /><input type="range" id="v3PcZhi" min="0" max="100" step="1" value="${hi}" /><output>${zAt(lo)}–${zAt(hi)} m</output></div>
-    </div><button type="button" class="v3-link" id="v3PcReset">Återställ visningen</button></details>`;
-  }
   return h;
+}
+/* Visning av punktmolnen: en liten rullgardin bredvid ＋ i blockhuvudet (Victor 2026-10-24). Reglage direkt, switchar för på/av, inget som ritar om listan. */
+function l3pcSettingsHtml() {
+  const P = l3Prefs(), mode = l3pcMode(), esc = escHtml, lo = Number(l3pcPref("pcZlo", 0)), hi = Number(l3pcPref("pcZhi", 100)), edl = Number(l3pcPref("pcEdl", 60));
+  const c0 = l3pc.clouds[0], zAt = t => c0 ? (c0.info.min[2] + (c0.info.max[2] - c0.info.min[2]) * t / 100 + (c0.dz || 0)).toFixed(1).replace(".", ",") : String(t);
+  const sw = (id, on, label, hint) => `<label class="v3-pcs-r v3-pcs-sw" title="${esc(hint || "")}"><span>${label}</span><span class="v3-lay-sw"><input type="checkbox" id="${id}" role="switch" ${on ? "checked" : ""} /><i></i></span></label>`;
+  const rng = (id, label, min, max, step, val, out, hint) => `<label class="v3-pcs-r v3-pcs-g" title="${esc(hint || "")}"><span>${label}</span><output>${out}</output><input type="range" id="${id}" min="${min}" max="${max}" step="${step}" value="${val}" /></label>`;
+  const modes = [["auto", "Automatiskt"], ["rgb", "Molnets färg"], ["int", "Intensitet"], ["z", "Höjd"], ["solid", "Enfärgad"]];
+  return `<div class="v3-pcs" data-keep="1">
+    <div class="v3-pcs-r v3-pcs-c"><span>Färg</span><select id="v3PcMode">${modes.map(([k, l]) => `<option value="${k}" ${mode === k ? "selected" : ""}>${l}</option>`).join("")}</select><input type="color" id="v3PcColor" value="${esc(l3pcPref("pcColor", "#94a3b8"))}" title="Färg" class="${mode === "solid" ? "" : "hidden"}" /></div>
+    ${rng("v3PcSize", "Punktstorlek", 0.5, 8, 0.5, l3pcSize(), String(l3pcSize()).replace(".", ","))}
+    ${sw("v3PcRound", P.pcRound !== false, "Runda punkter")}
+    ${sw("v3PcAtten", !!P.pcAtten, "Storlek i meter", "Av: lika stora på skärmen. På: växer när du zoomar in, som riktiga ytor.")}
+    ${sw("v3PcEdlOn", edl > 0, "Djupskuggning", "Mörkar punkter som ligger bakom sina grannar (som i Trimble Connect) så att former och kanter syns.")}
+    ${rng("v3PcEdl", "Styrka", 5, 100, 5, edl > 0 ? edl : 60, (edl > 0 ? edl : 60) + " %")}
+    ${sw("v3PcLod", P.pcLod !== false, "Adaptiv detalj vid rörelse", "Medan kameran rör sig ritas så många punkter som bildtiden tillåter – tätast nära kameran. Hela molnet när du stannar.")}
+    ${rng("v3PcBright", "Ljus", -50, 50, 5, l3pcPref("pcBright", 0), l3pcPref("pcBright", 0))}
+    ${rng("v3PcOpacity", "Täckning", 10, 100, 5, l3pcPref("pcOpacity", 100), l3pcPref("pcOpacity", 100) + " %", "Genomskinlighet – se modellen genom molnet")}
+    <div class="v3-pcs-r v3-pcs-g" title="Visa bara ett skikt av molnet – t.ex. ta bort taket eller marken"><span>Höjdfilter</span><output>${zAt(lo)}–${zAt(hi)} m</output><span class="v3-pc-z"><input type="range" id="v3PcZlo" min="0" max="100" step="1" value="${lo}" /><input type="range" id="v3PcZhi" min="0" max="100" step="1" value="${hi}" /></span></div>
+    <button type="button" class="v3-link" id="v3PcReset">Återställ visningen</button></div>`;
 }
 /* Menyn ⋯ på ett moln. */
 function l3pcMoreMenu(btn, id) {
@@ -472,19 +476,20 @@ function l3pcBind(host) {
   live("v3PcEdl", "pcEdl", () => l3Render(), v => v + " %");
   live("v3PcOpacity", "pcOpacity", () => l3pcApplyAll(), v => v + " %");
   live("v3PcBright", "pcBright", end => end && l3pcRecolor(), v => v);
-  live("v3PcContrast", "pcContrast", end => end && l3pcRecolor(), v => v + " %");
   const zl = host.querySelector("#v3PcZlo"), zh = host.querySelector("#v3PcZhi");
   if (zl && zh) {
-    const c0 = l3pc.clouds[0], zAt = t => (c0.info.min[2] + (c0.info.max[2] - c0.info.min[2]) * t / 100 + (c0.dz || 0)).toFixed(1).replace(".", ",");
-    const z = () => { let lo = Number(zl.value), hi = Number(zh.value); if (lo > hi - 1) { if (document.activeElement === zl) lo = hi - 1; else hi = lo + 1; zl.value = lo; zh.value = hi; } l3SetPref("pcZlo", lo); l3SetPref("pcZhi", hi); out(zh, `${zAt(lo)}–${zAt(hi)} m`); l3pcApplyAll(); };
+    const c0 = l3pc.clouds[0], zAt = t => c0 ? (c0.info.min[2] + (c0.info.max[2] - c0.info.min[2]) * t / 100 + (c0.dz || 0)).toFixed(1).replace(".", ",") : String(t);
+    const z = () => { let lo = Number(zl.value), hi = Number(zh.value); if (lo > hi - 1) { if (document.activeElement === zl) lo = hi - 1; else hi = lo + 1; zl.value = lo; zh.value = hi; } l3SetPref("pcZlo", lo); l3SetPref("pcZhi", hi); const o = zh.closest(".v3-pcs-r").querySelector("output"); if (o) o.textContent = `${zAt(lo)}–${zAt(hi)} m`; l3pcApplyAll(); };
     zl.oninput = z; zh.oninput = z;
   }
-  const md = host.querySelector("#v3PcMode"); if (md) md.onchange = () => { l3SetPref("pcMode", md.value); l3pcRecolor(); l3LayersRender(); };
+  const md = host.querySelector("#v3PcMode"); if (md) md.onchange = () => { l3SetPref("pcMode", md.value); const c = host.querySelector("#v3PcColor"); if (c) c.classList.toggle("hidden", md.value !== "solid"); l3pcRecolor(); };
   const pc = host.querySelector("#v3PcColor"); if (pc) pc.oninput = () => { l3SetPref("pcColor", pc.value); l3pcRecolor(); };
-  const at = host.querySelector("#v3PcAtten"); if (at) at.onchange = () => { l3SetPref("pcAtten", !!at.value); l3pcApplyAll(); };
-  host.querySelectorAll("[data-pc-round]").forEach(b => { b.onclick = () => { l3SetPref("pcRound", !!b.dataset.pcRound); l3pcApplyAll(); l3LayersRender(); }; });
-  const vw = host.querySelector(".v3-pc-view"); if (vw) vw.ontoggle = () => l3SetPref("pcViewOpen", vw.open);
-  const rs = host.querySelector("#v3PcReset"); if (rs) rs.onclick = () => { ["pcSize", "pcEdl", "pcAtten", "pcRound", "pcBright", "pcContrast", "pcOpacity", "pcZlo", "pcZhi", "pcMode"].forEach(k => l3SetPref(k, null)); l3pcApplyAll(); l3pcRecolor(); l3LayersRender(); };
+  const sw = (id, fn) => { const el = host.querySelector("#" + id); if (el) el.onchange = () => fn(el.checked); };
+  sw("v3PcAtten", on => { l3SetPref("pcAtten", on); l3pcApplyAll(); });
+  sw("v3PcRound", on => { l3SetPref("pcRound", on); l3pcApplyAll(); });
+  sw("v3PcLod", on => { l3SetPref("pcLod", on); l3Render(); });
+  sw("v3PcEdlOn", on => { const r = host.querySelector("#v3PcEdl"); l3SetPref("pcEdl", on ? Number(r && r.value) || 60 : 0); l3Render(); });
+  const rs = host.querySelector("#v3PcReset"); if (rs) rs.onclick = () => { ["pcSize", "pcEdl", "pcAtten", "pcRound", "pcLod", "pcBright", "pcOpacity", "pcZlo", "pcZhi", "pcMode"].forEach(k => l3SetPref(k, null)); l3pcApplyAll(); l3pcRecolor(); l3Render(); };
   const fb = host.querySelector("#v3PcFile"); if (fb) fb.onclick = () => l3pcFromFile();
 }
 

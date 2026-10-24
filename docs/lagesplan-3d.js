@@ -529,7 +529,7 @@ function l3Init(box) {
   gizmo.addEventListener("change", l3Render);
   gizmo.addEventListener("dragging-changed", e => { orbit.enabled = !e.value; });
   gizmo.addEventListener("dragging-changed", ev => { if (typeof l3pcHold === "function") l3pcHold(!!ev.value); }); // punktmolnet gles medan objekt flyttas/vrids
-  gizmo.addEventListener("mouseDown", () => { if (gizmo.object && gizmo.object.userData.bmove) return; if (typeof placeSnapshot === "function") placeSnapshot(); l3.dragStart = l3GroupState(); });
+  gizmo.addEventListener("mouseDown", () => { if (gizmo.object && gizmo.object.userData.bmove) return; { const lp = gizmo.object && placements.find(x => x.id === gizmo.object.userData.placeId); if (lp && lp.locked && typeof l3LockWarn === "function") { l3LockWarn([lp]); gizmo.dragging = false; return; } } if (typeof placeSnapshot === "function") placeSnapshot(); l3.dragStart = l3GroupState(); });
   gizmo.addEventListener("objectChange", () => { if (gizmo.object && gizmo.object.userData.bmove) { if (typeof l3bmGizmoChange === "function") l3bmGizmoChange(); return; } l3FromGizmo(); });
   gizmo.addEventListener("mouseUp", l3DragEnd);
   // Vridning i samma handtag (Victor 2026-10-10: "Vrid kan ligga med som ett alternativ direkt i denna
@@ -1184,7 +1184,7 @@ function l3Paste(at) {
   placeSnapshot();
   const out = [];
   l3.clip.forEach(src => {
-    const c = JSON.parse(JSON.stringify(src));
+    const c = JSON.parse(JSON.stringify(src)); delete c.locked;
     Object.assign(c, { id: ghNewId(), created_at: new Date().toISOString(), by: settings.userName || null });
     delete c.ifc_at;
     c.name = placeNextName(src.name);
@@ -1207,8 +1207,9 @@ function l3DropSel() {
 }
 let l3NudgeAt = 0;
 function l3NudgeSel(dx, dy, dz, drot) {
-  const list = l3SelList();
+  let list = l3SelList();
   if (!list.length) return;
+  if (list.some(p => p.locked)) { l3LockWarn(list); list = list.filter(p => !p.locked); if (!list.length) return; }
   if (Date.now() - l3NudgeAt > 1200) placeSnapshot();
   l3NudgeAt = Date.now();
   // Vridning: kring markeringens mitt (ett objekt: kring sin egen insättningspunkt).
@@ -1319,7 +1320,7 @@ function l3RenderSide(liveOnly) {
   const mH = A && A.bbox ? Math.round((A.bbox.max[2] - A.bbox.min[2]) * placeScale(p) * 100) / 100 : "";
   const itemOpts = (typeof items !== "undefined" ? items : []).filter(r => r.start_date || r.object_name).slice(0, 3000);
   const col = p.color || lib.color || "#888888";
-  side.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:${col}"></i><input type="text" class="v3-name" data-v3f="name" value="${escHtml(p.name || "")}" title="Namn" /><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3Deselect" title="Avmarkera (Esc)">✕</button></div>
+  side.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:${col}"></i><input type="text" class="v3-name" data-v3f="name" value="${escHtml(p.name || "")}" title="Namn" /><button type="button" class="v3-side-lock ${p.locked ? "on" : ""}" id="v3SideLock" title="${p.locked ? "Låst på plats – tryck för att låsa upp" : "Lås objektet på plats"}">${typeof L3UI_ICO !== "undefined" ? (p.locked ? L3UI_ICO.lock : L3UI_ICO.unlock) : "🔒"}</button><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3Deselect" title="Avmarkera (Esc)">✕</button></div>
     <div class="v3-sub">${escHtml(lib.label || p.type)}${A && A.author ? ` · ${escHtml(A.author)}` : ""}${A && A.kind === "ifc" && !placeMeshCache.has(A.id) ? " · IFC (läses in…)" : ""}</div>
     <div class="v3-sec">Läge</div>
     <div class="v3-grid">${f("x", "X")}${f("y", "Y")}${f("zAbs", "Z underkant", "0.01", placeBaseZ(p))}${f("dz", "Över ytan")}${lib.fence ? "" : f("rot", "Vridning", "1", p.rot, "°")}</div>
@@ -1374,6 +1375,7 @@ function l3RenderSide(liveOnly) {
   side.querySelector("#v3SpCopy").onclick = () => l3OpenSpecial("copy");
   side.querySelector("#v3SpMove").onclick = () => l3OpenSpecial("move");
   side.querySelector("#v3Deselect").onclick = () => l3SelectIds([]);
+  { const lk = side.querySelector("#v3SideLock"); if (lk) lk.onclick = () => l3LockToggle(); }
 }
 /* Infokort för ett planerat objekt (låda) eller ett objekt i byggnaden. */
 function l3ShowHitInfo(h) {

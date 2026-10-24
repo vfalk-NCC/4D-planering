@@ -116,13 +116,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     page.on('dialog', d => d.accept('2,5'));
     const vis = await page.evaluate(async () => {
       const c = l3pc.clouds[0], m = c.mat, out = {};
-      const sec = document.querySelector('#v3PalLayers .v3-pc-view'); sec.open = true;
-      document.querySelector('#v3PalLayers [data-pc-round="1"]').click();
+      { const r = document.getElementById('v3PcRound'); r.checked = false; r.dispatchEvent(new Event('change')); r.checked = true; r.dispatchEvent(new Event('change')); }
       out.round = c.mat.userData.soft === true && !c.mat.map;
       const set = (id, v, ev = 'input') => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event(ev)); if (ev === 'input') e.dispatchEvent(new Event('change')); };
       set('v3PcOpacity', 50); out.op = m.transparent && Math.abs(m.opacity - 0.5) < 1e-6 && !m.depthWrite;
       set('v3PcZlo', 20); set('v3PcZhi', 70); out.clip = (m.clippingPlanes || []).length === 2 && l3.renderer.localClippingEnabled;
-      set('v3PcAtten', '1', 'change'); out.atten = m.sizeAttenuation === true && m.size < 1;
+      { const a = document.getElementById('v3PcAtten'); a.checked = true; a.dispatchEvent(new Event('change')); } out.atten = m.sizeAttenuation === true && m.size < 1;
       const a = () => Array.from(c.group.children[0].geometry.getAttribute('color').array.slice(0, 3)).join();
       set('v3PcMode', 'solid', 'change'); const solid = a();
       set('v3PcBright', 30); out.bright = a() !== solid && solid === '148,163,184';
@@ -135,7 +134,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       return out;
     });
     if (Object.values(vis).some(v => v !== true)) fail('Visning av punktmolnet: ' + JSON.stringify(vis));
-    await page.evaluate(() => { const c = l3pc.clouds[0]; c.dz = 0; c.src.dz = 0; l3pcPlace(c); l3pcRemember(c.src, true); document.querySelector('#v3PalLayers .v3-pc-view').open = true; });
+    await page.evaluate(() => { const c = l3pc.clouds[0]; c.dz = 0; c.src.dz = 0; l3pcPlace(c); l3pcRemember(c.src, true); });
     // Fästa mot punkter i molnet: mått (fästpunkt "pc"), rotationspunkt och koordinat.
     const snap = await page.evaluate(() => {
       const c = l3pc.clouds[0]; l3pcZoom(c.id); l3.camera.position.copy(l3.orbit.target).add(new THREE.Vector3(0, -0.01, 1).multiplyScalar(200)); l3.camera.lookAt(l3.orbit.target); l3.orbit.update(); l3.camera.updateMatrixWorld();

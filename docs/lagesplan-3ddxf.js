@@ -1,7 +1,7 @@
 /* 3D-vyn – redigera DXF (Victor 2026-10-10: "DXF-redigeringen där man ska kunna redigera och välja
    linjer, också rita in egna linjer" och "utveckla": hörnpunkter, vrida, texter).
 
-   Lager → 2D-lager och DXF → pennan vid en DXF startar redigeringen:
+   Lager → 2D-LAGER → pennan vid en DXF startar redigeringen:
    – Tryck på en linje eller text markerar den (Skift/Ctrl/Flera lägger till), markeringsfönster som för
      objekt (vänster -> höger: hela i rutan, höger -> vänster: allt som rutan nuddar).
    – Hörnpunkter: en markerad linjes hörn visas som lila punkter – dra i dem (fäster mot andra

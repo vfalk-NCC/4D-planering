@@ -24,6 +24,8 @@ const L3UI_ICO = {
   iso: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>',
   reset: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>',
   boom: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="6" height="6" rx="1.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
+  unlock: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></svg>',
   del: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>'
 };
 const L3UI_PRESETS = {
@@ -79,6 +81,7 @@ function l3UiInit(box) {
      <button type="button" data-cb="t:move" data-tip="Flytta">${L3UI_ICO.move.replace(/22/g, "18")}</button>
      <button type="button" data-cb="t:rotate" data-tip="Vrid">${L3UI_ICO.rotate.replace(/22/g, "18")}</button>
      <i></i>
+     <button type="button" data-cb="k:lock" data-tip="Lås på plats" id="v3CbLock">${L3UI_ICO.lock}</button>
      <button type="button" data-cb="c:dup" data-tip="Duplicera">${L3UI_ICO.dup}</button>
      <button type="button" data-cb="c:hide" data-tip="Dölj">${L3UI_ICO.hide}</button>
      <button type="button" data-cb="c:iso" data-tip="Visa bara dessa">${L3UI_ICO.iso}</button>
@@ -92,6 +95,7 @@ function l3UiInit(box) {
     const b = e.target.closest("[data-cb]"); if (!b) return; const [k, v] = b.dataset.cb.split(":");
     if (k === "t") { const t = box.querySelector(`[data-v3tool="${v}"]`); if (t) t.click(); }
     else if (k === "c") { const c = box.querySelector(`[data-v3cmd="${v}"]`); if (c) c.click(); }
+    else if (k === "k") l3LockToggle();
     else if (k === "x") { if (typeof l3xStart === "function") l3xStart(); }
     else if (k === "v") { const c = box.querySelector(`[data-v3view="${v}"]`); if (c) c.click(); }
   };
@@ -159,6 +163,31 @@ function l3UiTick() {
   const nP = l3.sel ? l3.sel.size : 0, nI = typeof l3bs !== "undefined" ? l3bs.sel.length : 0, n = nP + nI, show = n > 0 && l3UiGet().locked && !(typeof l3x !== "undefined" && l3x.on);
   bar.classList.toggle("hidden", !show); bar.dataset.ifc = nP ? "" : "1"; l3ui.box.classList.toggle("v3-has-sel", show);
   const c = bar.querySelector("#v3CbN"); if (c) c.textContent = n > 1 ? n + " valda" : "1 vald";
+  const lb = bar.querySelector("#v3CbLock"); if (lb) { const L = l3LockState(); lb.style.display = nP ? "" : "none"; lb.classList.toggle("on", L === 1); lb.dataset.tip = L === 1 ? "Lås upp" : "Lås på plats"; lb.innerHTML = L === 1 ? L3UI_ICO.lock : L3UI_ICO.unlock; }
+}
+/* ---------- Lås på plats (Victor 2026-10-24): ett låst etableringsobjekt går inte att flytta, vrida eller dra i handtag förrän det låsts upp ---------- */
+const l3LockList = () => (typeof l3SelList === "function" ? l3SelList() : []);
+function l3LockState() { const L = l3LockList(); return L.length && L.every(p => p.locked) ? 1 : L.some(p => p.locked) ? 2 : 0; }
+function l3LockToggle() {
+  const L = l3LockList(); if (!L.length) return;
+  const on = !(l3LockState() === 1); placeSnapshot();
+  L.forEach(p => { if (on) p.locked = true; else delete p.locked; placeTouch(p); });
+  l3Changed(); if (typeof l3RenderSide === "function") { const s = document.getElementById("v3Side"); if (s) s.dataset.id = ""; l3RenderSide(); }
+  l3UiTick(); if (typeof l3Render === "function") l3Render();
+  l3Toast(on ? (L.length === 1 ? `"${L[0].name}" är låst på sin plats.` : `${L.length} objekt låsta på sin plats.`) : "Upplåst – objektet kan flyttas igen.");
+}
+/* Försök att flytta något låst: en liten ruta med ett snabbt "Lås upp". Returnerar true om något i listan är låst. */
+function l3LockWarn(list) {
+  const locked = (list || l3LockList()).filter(p => p.locked); if (!locked.length) return false;
+  const host = document.getElementById("v3Canvas"); if (!host) return true;
+  let el = document.getElementById("v3LockWarn");
+  if (!el) { el = document.createElement("div"); el.id = "v3LockWarn"; el.className = "v3-lockwarn"; host.appendChild(el); el.addEventListener("pointerdown", e => e.stopPropagation()); }
+  el.innerHTML = `<span class="v3-lw-i">${L3UI_ICO.lock}</span><span><b>${locked.length === 1 ? escHtml(locked[0].name || "Objektet") : locked.length + " objekt"} är låst</b><em>Lås upp objektet innan du flyttar det.</em></span><button type="button" data-lw="1">Lås upp</button><button type="button" data-lw="x" class="v3-lw-x" title="Stäng">✕</button>`;
+  el.querySelector('[data-lw="1"]').onclick = () => { placeSnapshot(); locked.forEach(p => { delete p.locked; placeTouch(p); }); l3Changed(); el.classList.remove("show"); const s = document.getElementById("v3Side"); if (s) s.dataset.id = ""; l3RenderSide(); l3UiTick(); l3Toast("Upplåst – du kan flytta objektet nu."); };
+  el.querySelector('[data-lw="x"]').onclick = () => el.classList.remove("show");
+  el.classList.remove("show"); void el.offsetWidth; el.classList.add("show");
+  clearTimeout(l3LockWarn.t); l3LockWarn.t = setTimeout(() => el.classList.remove("show"), 4200);
+  return true;
 }
 
 /* ---------- Radialmenyn ---------- */

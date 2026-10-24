@@ -204,7 +204,7 @@ function l3SpPreview() {
   let n = 0;
   for (const fn of steps) for (const p of list) {
     if (++n > 300) break;
-    const c = JSON.parse(JSON.stringify(p)); fn(c);
+    const c = JSON.parse(JSON.stringify(p)); delete c.locked; fn(c);
     const g = l3PlacementGroup(c);
     g.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); o.material.transparent = true; o.material.opacity = 0.35; o.material.depthWrite = false; o.material.color = new THREE.Color(0x3b82f6); } });
     l3.groups.prev.add(g);
