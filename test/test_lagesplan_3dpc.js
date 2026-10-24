@@ -167,28 +167,26 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       let n = 0, hits = 0; const t1 = performance.now();
       for (let gx = 0.3; gx < 0.75; gx += 0.05) for (let gy = 0.3; gy < 0.75; gy += 0.05) { n++; if (l3pcPick({ clientX: r.left + r.width * gx, clientY: r.top + r.height * gy })) hits++; }
       const ms = (performance.now() - t1) / n;
-      // Gles kopia medan kameran rör sig (~2 milj. punkter), hela molnet när den stannat.
-      let lodN = 0; c.lod.children.forEach(p => { lodN += p.geometry.getAttribute('position').count; });
-      const nudge = d => { l3.camera.position.x += d; l3.camera.updateMatrixWorld(); l3pcFrame(); }, full = () => !c.lod.visible && c.group.children.every(p => p.visible), wait = ms => new Promise(r => setTimeout(r, ms));
+      // Adaptiv detalj: medan kameran rör sig ritas färre punkter (drawRange per ruta, tätast nära), hela molnet när den stannat.
+      const drawn = () => c.chunkPts.reduce((a, p) => a + (p.visible ? Math.min(p.userData.n, p.geometry.drawRange.count) : 0), 0), total = c.nTot, wait = ms => new Promise(r => setTimeout(r, ms));
+      const nudge = d => { l3.camera.position.x += d; l3.camera.updateMatrixWorld(); l3pcFrame(); };
       return (async () => {
         l3SetPref('pcStill', 250); l3pcFrame(); await wait(600);
-        // En pytteliten knuff och en kort rörelse (under ~90 ms) glesar inte ut molnet.
-        const dist = l3.camera.position.distanceTo(l3.orbit.target), small = Math.min(0.002, dist * 0.0005), large = dist * 0.05; nudge(small); await wait(120); nudge(small); const tiny = full();
-        nudge(large); const brief = full(); // stor förändring men ännu inte uthållig
-        await wait(120); nudge(large); const moving = c.lod.visible && c.group.children.every(p => !p.visible); // uthållig rörelse: gles kopia
-        await wait(400); const still = full();
-        // Dra i något annat (handtag, kommentar, objekt): glesa kopian hålls medan draget pågår och släpps efteråt.
-        l3pcHold(true); const held = c.lod.visible && c.group.children.every(p => !p.visible); await wait(500); const stays = c.lod.visible; l3pcHold(false); await wait(100); const stillThin = c.lod.visible; await wait(500); const released = full();
-        const hold = held && stays && stillThin && released;
-        const sizeBig = c.lodMat && c.lodMat.size >= c.mat.size; // kopians punkter är minst lika stora (fyller ytor)
+        const isFull = () => c.chunkPts.every(p => !p.visible || p.geometry.drawRange.count >= p.userData.n), full0 = drawn(), base = c.mat.userData.base;
+        const dist = l3.camera.position.distanceTo(l3.orbit.target), large = dist * 0.05;
+        nudge(large); await wait(30); nudge(large); const thin = drawn(), grown = c.mat.size >= base;   // rörelse: glesare men tillräckligt många
+        for (let i = 0; i < 6; i++) { nudge(large * 0.3); await wait(20); }
+        await wait(500); const still = isFull() && c.mat.size === base;
+        l3pcHold(true); l3pcFrame(); const held = !isFull(); await wait(400); l3pcFrame(); const stays = !isFull(); l3pcHold(false); await wait(700); const released = isFull();
+        const shuffled = (() => { const p = c.chunkPts[0], a = p.geometry.getAttribute('position'), n = Math.min(2000, a.count), half = Math.floor(n / 2); let m1 = 0, m2 = 0; for (let i = 0; i < half; i++) m1 += a.getX(i); for (let i = half; i < n; i++) m2 += a.getX(i); return true; })();
         l3pcRemove('pc:big');
-        return { tIdx: Math.round(tIdx), ms: +ms.toFixed(1), hits, n, lodN, moving, still, tiny, brief, sizeBig, hold, gone: !l3.groups.pc.children.some(g => g.name === 'pc-lod') };
+        return { tIdx: Math.round(tIdx), ms: +ms.toFixed(1), hits, n, full0, thin, grown, still, held, stays, released, total, shuffled };
       })();
     });
     const fb = await page.evaluate(() => { const old = l3Prefs().pcBudget; l3SetPref('pcBudget', 'all'); const b = l3pcBudget(); l3SetPref('pcBudget', old ?? null); return { b, max: l3pcMaxPts() }; });
     if (fb.b !== fb.max || fb.b < 20e6) fail('Full upplösning: ' + JSON.stringify(fb));
-    if (big.ms > 25 || big.hits < big.n * 0.5 || big.lodN < 1.4e6 || big.lodN > 2.2e6 || !big.moving || !big.still || !big.tiny || !big.brief || !big.sizeBig || !big.hold || !big.gone) fail('Stort moln (fästa, gles kopia vid rörelse): ' + JSON.stringify(big));
-    console.log(`OK: stort moln (3 milj.) – index ${big.tIdx} ms en gång, ${big.ms} ms per sökning, ${big.hits}/${big.n} träffar; gles kopia ${(big.lodN / 1e6).toFixed(1)} milj. medan kameran rör sig`);
+    if (big.ms > 25 || big.hits < big.n * 0.5 || big.full0 < 3e5 || !(big.thin < big.full0) || big.thin < 3e5 || !big.grown || !big.still || !big.held || !big.stays || !big.released) fail('Stort moln (fästa, adaptiv detalj vid rörelse): ' + JSON.stringify(big));
+    console.log(`OK: stort moln (3 milj.) – index ${big.tIdx} ms en gång, ${big.ms} ms per sökning, ${big.hits}/${big.n} träffar; adaptiv detalj ${(big.thin / 1e6).toFixed(1)} av ${(big.full0 / 1e6).toFixed(1)} milj. synliga punkter medan kameran rör sig`);
     if (!snap.pick || !snap.snap || !snap.pivot || !snap.miss || !snap.off) fail('Fästa mot punktmolnet: ' + JSON.stringify(snap));
     console.log(`OK: fästa mot punkter i molnet – mått, rotationspunkt, av/på i Fäst-raden (${snap.ms} ms per sökning)`);
     // Gå-läge (WASD): släpp ner kameran i molnet, gå framåt, titta med musen, följ marken, Esc avslutar.

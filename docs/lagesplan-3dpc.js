@@ -49,7 +49,7 @@ function l3pcDb() {
     q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
   });
 }
-const l3pcCacheKey = src => `${projectId}|${src.id}|${src.version || ""}|${l3pcBudget()}`;
+const l3pcCacheKey = src => `${projectId}|${src.id}|${src.version || ""}|${l3pcBudget()}|s2`;   // s2 = slumpad ordning i rutorna (detaljnivå med drawRange)
 async function l3pcCacheGet(src) {
   try {
     const db = await l3pcDb();
@@ -125,19 +125,18 @@ function l3pcColorsBase(c, ch) {
 function l3pcBuild(src, data) {
   if (!l3.groups.pc) { const g = new THREE.Group(); g.name = "pc"; l3.groups.pc = g; l3.scene.add(g); }
   const grp = new THREE.Group(), mat = new THREE.PointsMaterial({ size: l3pcSize(), sizeAttenuation: false, vertexColors: true });
-  const c = { id: src.id, name: src.name, src, info: data.info, chunks: data.chunks, group: grp, mat, visible: true, dz: Number(src.dz) || 0 };
+  const c = { id: src.id, name: src.name, src, info: data.info, chunks: data.chunks, group: grp, mat, visible: true, dz: Number(src.dz) || 0, chunkPts: [], nTot: data.chunks.reduce((a, ch) => a + ch.pos.length / 3, 0) };
   data.chunks.forEach(ch => {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(ch.pos, 3));
     g.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, ch), 3, true));
     g.computeBoundingSphere();
-    const p = new THREE.Points(g, mat);
+    const p = new THREE.Points(g, mat); p.userData.n = ch.pos.length / 3; c.chunkPts.push(p);
     p.userData.noHit = true; p.raycast = () => {}; // punkterna är inte ytor (mät/fäst)
     grp.add(p);
   });
   grp.userData.pc = c;
   l3.groups.pc.add(grp);
-  l3pcBuildLod(c);
   if (typeof l3RenderSnapBar === "function") l3RenderSnapBar(); // Fäst-raden får knappen Moln
   l3pc.clouds.push(c);
   l3pcPlace(c);
@@ -145,92 +144,64 @@ function l3pcBuild(src, data) {
   return c;
 }
 /* Molnet ligger i modellens koordinater (som IFC och DXF) – flyttas med 3D-vyns origo (och sin höjdjustering). */
-function l3pcPlace(c) { c.group.position.set(c.info.center[0] - l3.O[0], c.info.center[1] - l3.O[1], c.info.center[2] - l3.O[2] + (c.dz || 0)); if (c.lod) c.lod.position.copy(c.group.position); l3pcMatApply(c); }
-/* ---- Smidig navigering i stora moln (Victor 2026-10-12: "navigera bättre"): medan kameran rör sig ritas en
-   jämnt utglesad kopia (~2 milj. punkter per moln); när den stannat ritas hela molnet igen. Kopian är ~1/k av
-   minnet och följer färg, storlek och filter (samma material). -------------------------------------------- */
-const L3PC_LOD_PTS = 2e6;
-function l3pcBuildLod(c) {
-  const n = c.chunks.reduce((a, ch) => a + ch.pos.length / 3, 0);
-  if (n <= L3PC_LOD_PTS * 1.25) return;
-  const k = Math.ceil(n / L3PC_LOD_PTS), g = new THREE.Group();
-  g.name = "pc-lod"; g.visible = false; g.userData.noHit = true;
-  c.lodChunks = c.chunks.map(ch => {
-    const m = Math.floor(ch.pos.length / 3 / k), pos = new Float32Array(m * 3), rgb = ch.rgb ? new Uint8Array(m * 3) : null, inten = ch.inten ? new Uint8Array(m) : null;
-    // Slumpmässig förskjutning per steg så att inga rader/ränder syns i kopian.
-    let seed = 12345;
-    for (let j = 0; j < m; j++) {
-      seed = (seed * 1103515245 + 12345) >>> 0; const i = j * k + (seed % k);
-      pos[j * 3] = ch.pos[i * 3]; pos[j * 3 + 1] = ch.pos[i * 3 + 1]; pos[j * 3 + 2] = ch.pos[i * 3 + 2];
-      if (rgb) { rgb[j * 3] = ch.rgb[i * 3]; rgb[j * 3 + 1] = ch.rgb[i * 3 + 1]; rgb[j * 3 + 2] = ch.rgb[i * 3 + 2]; }
-      if (inten) inten[j] = ch.inten[i];
-    }
-    return { pos, rgb, inten };
-  });
-  c.lodChunks.forEach(ch => {
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(ch.pos, 3));
-    geo.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, ch), 3, true));
-    geo.computeBoundingSphere();
-    const p = new THREE.Points(geo, c.lodMat || (c.lodMat = c.mat.clone())); p.userData.noHit = true; p.raycast = () => {};
-    g.add(p);
-  });
-  c.lod = g; c.lodK = k;
-  l3pcLodMatApply(c);
-  l3.groups.pc.add(g);
-}
-/* Den utglesade kopian ritas med större punkter (Victor 2026-10-13: "glesar ut punktmolnet direkt man rör sig") så att
-   ytor fortfarande läses som ytor medan kameran rör sig – lika många punkter, bara fyllnaden ökar. */
-function l3pcLodMatApply(c) {
-  const L = c.lodMat; if (!L) return;
-  const m = c.mat, f = Math.min(2.4, 0.62 * Math.sqrt(c.lodK || 1));
-  L.onBeforeCompile = m.onBeforeCompile; L.customProgramCacheKey = m.customProgramCacheKey; L.userData.soft = m.userData.soft;
-  L.sizeAttenuation = m.sizeAttenuation; L.size = m.size * Math.max(1, f);
-  L.map = m.map; L.alphaTest = m.alphaTest; L.transparent = m.transparent; L.opacity = m.opacity; L.depthWrite = m.depthWrite; L.clippingPlanes = m.clippingPlanes;
-  L.needsUpdate = true;
-}
-let l3pcCam = null, l3pcStillT = 0, l3pcMoving = false, l3pcAnchor = null, l3pcSince = 0, l3pcHolds = 0;
-/* Hur länge kameran ska stå still innan hela molnet ritas igen (Victor 2026-10-13: "det hackar när den justerar hela
-   tiden" när man tittar runt bland detaljer): inställbart, normalt 0,45 s – korta pauser mellan rörelser växlar inte. */
-const l3pcStillMs = () => { const v = Number(l3Prefs().pcStill); return v >= 100 && v <= 5000 ? v : 450; };
-function l3pcRelease() { if (l3pcHolds > 0) return; l3pcSince = 0; l3pcAnchor = null; l3pcSetMoving(false); l3Render(); }
-/* Håll den glesa kopian medan något annat dras (handtag, kommentar, mått, foto, objekt): kameran står still men
-   molnet ska inte tynga flytten. Släpps när draget är slut (efter en kort stund). Anropas parvis: true … false. */
+function l3pcPlace(c) { c.group.position.set(c.info.center[0] - l3.O[0], c.info.center[1] - l3.O[1], c.info.center[2] - l3.O[2] + (c.dz || 0)); l3pcMatApply(c); }
+/* ---- Smidig navigering i stora moln (Victor 2026-10-24: "många andra punktmolnshanterare är mycket mer smooth"): ingen växling mellan
+   två kopior längre. Punkterna ligger slumpade i varje ruta, så att början av bufferten är ett jämnt urval – detaljnivån är då bara hur
+   många punkter som ritas (drawRange) per ruta. Varje bild: rutor utanför bilden hoppas över, resten får punkter efter hur stor yta de tar
+   på skärmen (nära = tätt, långt bort = glest) inom en punktbudget som styrs av den faktiska bildtiden (tung bild → färre punkter nästa,
+   lätt bild → fler). Står kameran still ritas allt. Punktstorleken växer med glesheten så att ytor hålls ihop. ------------------------ */
+let l3pcCam = null, l3pcStillT = 0, l3pcMoving = false, l3pcHolds = 0, l3pcLast = 0, l3pcBud = 0, l3pcSlow = false;
+/* Hur länge kameran ska stå still innan hela molnet ritas (normalt 0,3 s; inställbart). */
+const l3pcStillMs = () => { const v = Number(l3Prefs().pcStill); return v >= 100 && v <= 5000 ? v : 300; };
+let l3pcFrustum = null, l3pcPM = null, l3pcSph = null, l3pcV = null;   // skapas vid första ritningen (THREE laddas först med 3D-vyn)
+function l3pcRelease() { if (l3pcHolds > 0) return; l3pcSetMoving(false); l3Render(); }
+/* Håll det glesa läget medan något annat dras (handtag, kommentar, mått, foto, objekt). Anropas parvis: true … false. */
 function l3pcHold(on) {
-  if (!l3pc.clouds.some(c => c.lod && c.visible) || l3Prefs().pcLod === false) return;
+  if (!l3pc.clouds.some(c => c.visible) || l3Prefs().pcLod === false) return;
   if (on) { l3pcHolds++; clearTimeout(l3pcStillT); if (!l3pcMoving) l3pcSetMoving(true); l3Render(); }
-  else { l3pcHolds = Math.max(0, l3pcHolds - 1); if (!l3pcHolds) { clearTimeout(l3pcStillT); l3pcStillT = setTimeout(l3pcRelease, 250); } }
+  else { l3pcHolds = Math.max(0, l3pcHolds - 1); if (!l3pcHolds) { clearTimeout(l3pcStillT); l3pcStillT = setTimeout(l3pcRelease, 200); } }
 }
-function l3pcSetMoving(on) {
-  l3pcMoving = on;
-  l3pc.clouds.forEach(c => { if (!c.lod) return; c.lod.visible = on && c.visible; c.group.children.forEach(p => { p.visible = !on; }); });
-}
-/* Anropas före varje bild: rör sig kameran på riktigt? En liten knuff (en pytteliten flytt eller vridning) räknas inte:
-   det krävs en märkbar förändring mot där kameran stod stilla OCH att den håller i sig en kort stund (~90 ms) innan
-   den utglesade kopian tar över. Då ser man hela molnet vid små justeringar. */
+function l3pcSetMoving(on) { l3pcMoving = on; if (!on) l3pcLast = 0; }
+/* Anropas före varje bild: rör sig kameran? Då delas punktbudgeten ut; annars ritas allt. */
 function l3pcFrame() {
-  if (!l3pc.clouds.some(c => c.lod && c.visible) || l3Prefs().pcLod === false) { if (l3pcMoving) l3pcSetMoving(false); l3pcAnchor = null; return; }
+  const vis = l3pc.clouds.filter(c => c.visible);
+  if (!vis.length) { l3pcCam = null; return; }
   const cam = l3.camera; cam.updateMatrixWorld();
   const e = cam.matrixWorld.elements, key = e.map(v => v.toFixed(4)).join() + (cam.zoom || 1), now = performance.now();
-  const pos = new THREE.Vector3(e[12], e[13], e[14]), fwd = new THREE.Vector3(-e[8], -e[9], -e[10]), zoom = cam.zoom || 1;
-  if (!l3pcAnchor) l3pcAnchor = { pos, fwd, zoom };
-  if (l3pcCam !== null && key !== l3pcCam) {
-    const A = l3pcAnchor, dist = Math.max(1, pos.distanceTo(l3.orbit.target));
-    const big = pos.distanceTo(A.pos) > Math.max(0.03, dist * 0.008) || Math.acos(Math.min(1, Math.max(-1, fwd.dot(A.fwd)))) > 0.012 || Math.abs(zoom / A.zoom - 1) > 0.02;
-    if (l3pcMoving || big) {
-      if (!l3pcSince) l3pcSince = now;
-      if (!l3pcMoving && now - l3pcSince > 90) l3pcSetMoving(true);
-      clearTimeout(l3pcStillT);
-      l3pcStillT = setTimeout(l3pcRelease, l3pcStillMs());
-    }
-  } else if (l3pcCam !== null && !l3pcMoving) l3pcSince = 0;
+  if (l3pcCam !== null && key !== l3pcCam && l3Prefs().pcLod !== false) { if (!l3pcMoving) l3pcSetMoving(true); clearTimeout(l3pcStillT); l3pcStillT = setTimeout(l3pcRelease, l3pcStillMs()); }
   l3pcCam = key;
+  const total = vis.reduce((a, c) => a + c.nTot, 0);
+  if (!l3pcMoving || total < 5e5) { l3pcDraw(vis, null); l3pcLast = now; return; }
+  // Bildtiden mellan två bilder under rörelse styr budgeten (mål ≈ 60 bilder/s, tål 30).
+  if (!l3pcBud) l3pcBud = Math.min(total, 2.5e6);
+  if (l3pcLast) { const dt = now - l3pcLast; l3pcSlow = dt > 28; if (dt > 24) l3pcBud *= Math.max(0.6, 17 / dt); else if (dt < 19) l3pcBud *= 1.06; l3pcBud = Math.max(3e5, Math.min(total, l3pcBud)); }
+  l3pcLast = now;
+  l3pcDraw(vis, l3pcBud);
+}
+/* Delar ut budgeten (null = allt) på rutorna som syns. */
+function l3pcDraw(vis, budget) {
+  if (!l3pcFrustum) { l3pcFrustum = new THREE.Frustum(); l3pcPM = new THREE.Matrix4(); l3pcSph = new THREE.Sphere(); l3pcV = new THREE.Vector3(); }
+  const cam = l3.camera; l3pcPM.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); l3pcFrustum.setFromProjectionMatrix(l3pcPM);
+  const cp = cam.getWorldPosition(l3pcV).clone(), items = []; let sumA = 0;
+  vis.forEach(c => { c.group.updateWorldMatrix(true, false); c.chunkPts.forEach(p => {
+    const bs = p.geometry.boundingSphere; l3pcSph.copy(bs).applyMatrix4(c.group.matrixWorld);
+    const inside = l3pcFrustum.intersectsSphere(l3pcSph); p.visible = inside; if (!inside) return;
+    const n = p.userData.n, d = Math.max(l3pcSph.radius * 0.5, cp.distanceTo(l3pcSph.center)), A = (l3pcSph.radius * l3pcSph.radius) / (d * d);
+    items.push({ p, n, A, c }); sumA += A; }); });
+  const drawn = new Map(); vis.forEach(c => drawn.set(c, 0));
+  if (budget == null) items.forEach(it => { it.p.geometry.setDrawRange(0, it.n); drawn.set(it.c, drawn.get(it.c) + it.n); });
+  else { items.forEach(it => { it.k = Math.min(it.n, Math.floor(budget * it.A / Math.max(1e-12, sumA))); });
+    const used = items.reduce((a, it) => a + it.k, 0), open = items.filter(it => it.k < it.n), aOpen = open.reduce((a, it) => a + it.A, 0);   // det som blev över (små rutor tar inte sin del) går till resten
+    if (aOpen > 0) { const spare = Math.max(0, budget - used); open.forEach(it => { it.k = Math.min(it.n, it.k + Math.floor(spare * it.A / aOpen)); }); }
+    items.forEach(it => { const k = Math.min(it.n, Math.max(it.k, 2000)); it.p.geometry.setDrawRange(0, k); drawn.set(it.c, drawn.get(it.c) + k); }); }
+  // Punktstorleken följer glesheten: färre punkter → lite större, så att ytor inte faller sönder.
+  vis.forEach(c => { const base = c.mat.userData.base || c.mat.size, f = budget == null ? 1 : Math.min(2.2, Math.sqrt(c.nTot / Math.max(1, drawn.get(c) || 1)) * 0.75); c.mat.size = base * Math.max(1, f); });
 }
 /* ---- Djupskuggning (Eye-Dome Lighting, som i Trimble Connect/Potree): scenen ritas till en bildyta med djup och ett efterpass mörkar
    pixlar som ligger bakom sina grannar. Då får tätt packade punkter konturer och form i stället för en platt färgmatta. Bara när ett moln
    är tänt och styrkan (Djupskuggning i punktmolnspanelen) är över 0; annars ritas scenen direkt som förut. ---- */
 let l3pcE = null;
-const l3pcEdlOn = () => Number(l3pcPref("pcEdl", 60)) > 0 && l3pc.clouds.some(c => c.visible);
+const l3pcEdlOn = () => Number(l3pcPref("pcEdl", 60)) > 0 && l3pc.clouds.some(c => c.visible) && !(l3pcMoving && l3pcSlow);   // tung bild under rörelse: hoppa över efterpasset
 function l3pcEdlInit(r) {
   const size = r.getDrawingBufferSize(new THREE.Vector2());
   const rt = new THREE.WebGLRenderTarget(size.x, size.y, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, samples: r.capabilities.isWebGL2 ? 4 : 0 });
@@ -297,7 +268,7 @@ function l3pcMatApply(c) {
     l3.renderer.localClippingEnabled = true;
   } else m.clippingPlanes = null;
   m.needsUpdate = true;
-  l3pcLodMatApply(c);
+  c.mat.userData.base = c.mat.size;
 }
 function l3pcApplyAll() { l3pc.clouds.forEach(l3pcMatApply); l3Render(); }
 function l3pcRemove(id) {
@@ -306,18 +277,16 @@ function l3pcRemove(id) {
   const c = l3pc.clouds[i];
   c.group.children.forEach(p => p.geometry.dispose()); c.mat.dispose();
   if (c.group.parent) c.group.parent.remove(c.group);
-  if (c.lod) { c.lod.children.forEach(p => p.geometry.dispose()); if (c.lod.parent) c.lod.parent.remove(c.lod); }
   l3pc.clouds.splice(i, 1);
   l3Render();
 }
 function l3pcShow(id, on) {
   const c = l3pc.clouds.find(x => x.id === id); if (!c) return;
-  c.visible = on; c.group.visible = on; if (c.lod) c.lod.visible = on && l3pcMoving; l3pcRemember(c.src, on); l3Render();
+  c.visible = on; c.group.visible = on; l3pcRemember(c.src, on); l3Render();
 }
 function l3pcRecolor() {
   l3pc.clouds.forEach(c => {
     c.group.children.forEach((p, k) => { p.geometry.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, c.chunks[k]), 3, true)); });
-    if (c.lod) c.lod.children.forEach((p, k) => { p.geometry.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, c.lodChunks[k]), 3, true)); });
   });
   l3Render();
 }

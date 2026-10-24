@@ -362,7 +362,7 @@ function grid(r) {
   const { out } = r, n = out.n;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (let i = 0; i < n; i++) { const x = out.pos[i * 3], y = out.pos[i * 3 + 1]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
-  const G = n > 200000 ? 8 : n > 20000 ? 4 : 1, cw = Math.max(1e-6, (x1 - x0) / G), ch = Math.max(1e-6, (y1 - y0) / G);
+  const G = n > 3e6 ? 16 : n > 200000 ? 10 : n > 20000 ? 4 : 1, cw = Math.max(1e-6, (x1 - x0) / G), ch = Math.max(1e-6, (y1 - y0) / G);
   const cell = new Uint16Array(n), cnt = new Uint32Array(G * G);
   for (let i = 0; i < n; i++) {
     const cx = Math.min(G - 1, Math.floor((out.pos[i * 3] - x0) / cw)), cy = Math.min(G - 1, Math.floor((out.pos[i * 3 + 1] - y0) / ch));
@@ -377,6 +377,14 @@ function grid(r) {
     k.rgb[j * 3] = out.rgb[i * 3]; k.rgb[j * 3 + 1] = out.rgb[i * 3 + 1]; k.rgb[j * 3 + 2] = out.rgb[i * 3 + 2];
     k.inten[j] = out.int[i];
   }
+  // Slumpa ordningen inom varje ruta: då är varje början av bufferten ett jämnt urval av rutan och detaljnivån styrs med enbart drawRange
+  // (ingen extra kopia, inga hopp mellan nivåer) – som progressiv laddning i Potree/Trimble Connect.
+  let seed = 2463534242;
+  const rnd = () => { seed ^= seed << 13; seed >>>= 0; seed ^= seed >>> 17; seed ^= seed << 5; seed >>>= 0; return seed / 4294967296; };
+  chunks.forEach(k => { const m = k.inten.length;
+    for (let i = m - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); if (j === i) continue;
+      for (let a = 0; a < 3; a++) { let t = k.pos[i * 3 + a]; k.pos[i * 3 + a] = k.pos[j * 3 + a]; k.pos[j * 3 + a] = t; t = k.rgb[i * 3 + a]; k.rgb[i * 3 + a] = k.rgb[j * 3 + a]; k.rgb[j * 3 + a] = t; }
+      const t = k.inten[i]; k.inten[i] = k.inten[j]; k.inten[j] = t; } });
   return chunks.map(({ pos, rgb, inten }) => ({ pos, rgb, inten }));
 }
 
