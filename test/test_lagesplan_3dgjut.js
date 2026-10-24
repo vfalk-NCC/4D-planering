@@ -217,6 +217,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     document.querySelector('[data-bg="#cfe8ff"]').click(); const b = l3.scene.background.getHexString(); document.getElementById('v3BgReset').click(); return { a, saved, b, c: l3.scene.background.getHexString() }; });
   if (bgc.a !== '334155' || bgc.saved !== '#334155' || bgc.b !== 'cfe8ff' || bgc.c !== 'f7f8fa') fail('Bakgrundsfärg: ' + JSON.stringify(bgc));
   console.log('OK: bakgrundsfärg – färghjul, färdiga färger och standard');
+  // 20) 3D-modeller: visningsinställningar (kanter, täckning, enfärgad grå) i en rullgardin bredvid ＋
+  const mv = await page.evaluate(async () => { l3PalTab('layers'); await new Promise(r => setTimeout(r, 300)); l3LayersRender();
+    const gear = !!document.querySelector('#v3PalLayers [data-ldd="mdlset"]'), ids = ['v3MdlEdges', 'v3MdlAng', 'v3MdlCol', 'v3MdlOp', 'v3MdlGray', 'v3LayDetails', 'v3LayRebar', 'v3LayVoids'].every(i => !!document.getElementById(i));
+    const g = new THREE.BoxGeometry(2, 2, 2); g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 3).fill(0.8), 3));
+    const mesh = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true })); const m = { id: 'tst', name: 'tst', visible: true, tris: 12, O: l3.O, meshes: [mesh], ranges: [] }; l3b.models.push(m); l3.groups.bldg.add(mesh);
+    l3SetPref('mdlEdges', true); l3SetPref('mdlOp', 50); l3SetPref('mdlGray', true); l3bViewApply(true);
+    const r = { gear, ids, edges: !!mesh.userData.l3bEdges && mesh.userData.l3bEdges.geometry.attributes.position.count >= 24, op: mesh.material.transparent && Math.abs(mesh.material.opacity - 0.5) < 1e-6, gray: mesh.material.vertexColors === false };
+    ['mdlEdges', 'mdlOp', 'mdlGray'].forEach(k => l3SetPref(k, null)); l3bViewApply(true); r.back = mesh.material.opacity === 1 && mesh.material.vertexColors === true && !mesh.userData.l3bEdges;
+    l3b.models.splice(l3b.models.indexOf(m), 1); l3.groups.bldg.remove(mesh); return r; });
+  if (!Object.values(mv).every(Boolean)) fail('3D-modeller visning: ' + JSON.stringify(mv));
+  console.log('OK: 3D-modeller – kanter, täckning och enfärgad grå i en rullgardin (kugghjul vid ＋)');
   // 5) Sax- och bomlift: höjden styr geometrin (och går att ställa med reglage), höjdhandtag finns
   for (const t of ['sm:saxlift', 'sm:bomlift']) {
     const r = await page.evaluate(t => { const O = l3.O, q = placeNew(t, [O[0] + 30, O[1] + 30, 0]); placements.push(q); placeTouch(q); l3AddPlacementMesh(q); l3SelectIds([q.id]);

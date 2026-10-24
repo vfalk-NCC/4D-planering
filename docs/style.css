@@ -1335,3 +1335,7 @@ body.tab-design .plan-source { background: #f5f3ff; }
 
 .dm-box { display: flex; flex-direction: column; gap: 10px; } .dm-sec { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--border, #d1d5db); border-radius: 8px; }
 .dm-sec label, .dm-c { font-size: 12px; display: flex; align-items: center; gap: 6px; } .dm-t { width: 100%; font-size: 12px; border-collapse: collapse; } .dm-t td { padding: 2px 4px; border-bottom: 1px solid #e5e7eb; } .dm-t td:last-child { text-align: right; white-space: nowrap; }
+
+/* Rubriker med mjukt sken */
+.set-sec > summary { background: linear-gradient(135deg, rgba(37,99,235,.07), rgba(124,92,255,.03)); box-shadow: inset 0 0 0 1px rgba(37,99,235,.18), 0 3px 12px rgba(37,99,235,.10); border-radius: 10px; color: #1e3a8a; }
+.set-sec[open] > summary { border-bottom: 0; }

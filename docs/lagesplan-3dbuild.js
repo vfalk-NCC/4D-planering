@@ -251,7 +251,31 @@ async function l3bRestore() {
   if (todo.length) { l3Toast(fresh.length ? "En nyare version av byggnaden finns i Trimble Connect – den läses in och ersätter den visade." : "Byggnaden läses in…"); await l3bLoad(todo, { replace: true }); }
 }
 /* Bitarna ligger relativt O när de lästes; flytta dem om origo bytts (annan arbetsyta). */
-function l3bPosition() { l3b.models.forEach(m => m.meshes.forEach(x => x.position.set(m.O[0] - l3.O[0], m.O[1] - l3.O[1], m.O[2] - l3.O[2]))); if (typeof l3pc !== "undefined") l3pc.clouds.forEach(l3pcPlace); }
+function l3bPosition() { l3b.models.forEach(m => m.meshes.forEach(x => x.position.set(m.O[0] - l3.O[0], m.O[1] - l3.O[1], m.O[2] - l3.O[2]))); if (typeof l3pc !== "undefined") l3pc.clouds.forEach(l3pcPlace); l3bViewApply(); }
+/* Visning av IFC-modellerna (Lager → 3D-modeller → ⚙): kanter, täckning och enfärgad grå. Kanterna byggs bara för mindre modeller (≤ 1,2 milj. trianglar). */
+const L3B_EDGE_MAX = 1.2e6;
+function l3bViewApply(force) {
+  if (!l3 || !l3b.models.length) return;
+  const P = l3Prefs(), op = Number(P.mdlOp) || 100, gray = !!P.mdlGray, edges = !!P.mdlEdges, ang = Number(P.mdlEdgeAng) || 30, col = P.mdlEdgeCol || "#1e293b";
+  const sig = [op, gray, edges, ang, col, l3b.models.map(m => m.meshes.length + ":" + (m.visible ? 1 : 0)).join(",")].join("|");
+  if (!force && l3b.viewSig === sig) return; l3b.viewSig = sig;
+  let tris = 0; l3b.models.forEach(m => { tris += m.tris || 0; });
+  l3b.models.forEach(m => m.meshes.forEach(x => {
+    if (x.userData.bcopy || x.userData.l3bMain) return;
+    const mat = x.material; if (!mat || mat.isLineBasicMaterial) return;
+    if (mat.userData.l3bV == null) mat.userData.l3bV = { t: mat.transparent, o: mat.opacity, dw: mat.depthWrite, vc: mat.vertexColors };
+    const b = mat.userData.l3bV;
+    mat.transparent = op < 99 || b.t; mat.opacity = op < 99 ? Math.min(b.o, op / 100) : b.o; mat.depthWrite = op < 99 ? false : b.dw;
+    const vc = gray ? false : b.vc; if (mat.vertexColors !== vc) { mat.vertexColors = vc; mat.needsUpdate = true; } mat.color.set(gray ? 0xb8c0cc : 0xffffff);
+    // kanter
+    let ln = x.userData.l3bEdges;
+    if (ln && (force || ln.userData.ang !== ang)) { x.remove(ln); ln.geometry.dispose(); ln.material.dispose(); x.userData.l3bEdges = ln = null; }
+    if (edges && !ln && tris <= L3B_EDGE_MAX && x.geometry) { ln = new THREE.LineSegments(new THREE.EdgesGeometry(x.geometry, ang), new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: 0.55 })); ln.userData.ang = ang; ln.userData.noHit = true; ln.raycast = () => {}; x.add(ln); x.userData.l3bEdges = ln; }
+    if (ln) { ln.visible = edges; ln.material.color.set(col); }
+  }));
+  if (edges && tris > L3B_EDGE_MAX) l3Status(`Kanter ritas inte: modellerna är för stora (${(tris / 1e6).toFixed(1).replace(".", ",")} milj. trianglar, gräns ${(L3B_EDGE_MAX / 1e6).toFixed(1).replace(".", ",")}).`, true);
+  l3Render();
+}
 function l3bRebuild() { if (!l3b.models.length) return; l3b.models.forEach(m => m.meshes.forEach(x => { if (!x.parent) l3.groups.bldg.add(x); })); l3bPosition(); l3bRecolor(); }
 
 /* Cache i webbläsaren (IndexedDB) för lästa modeller, per modell och version (Victor 2026-10-09:
