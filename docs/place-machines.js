@@ -4,11 +4,11 @@
    x = framåt, y = vänster, z = upp. Laddas efter place-smart-objs.js (SM, smWheel, SMM, SMG, SMLIT, smF, smN, smFmt). */
 const MC_DK = "#1f2329", MC_STEEL = "#aab3bd", MC_CHR = "#d6dbe1", MC_AMB = "#f59e0b";
 /* Konvex profil [a, b] som sträcks längs x (axis "x": profilen är [y, z]) eller y (axis "y": profilen är [x, z]). rot = [rx, ry, rz]. */
-function mcExtrude(c, color, prof, v0, v1, axis, o, rot) {
+function mcExtrude(c, color, prof, v0, v1, axis, o, rot, at) {
   const n = prof.length, mk = (q, t) => axis === "y" ? [q[0], t, q[1]] : [t, q[0], q[1]], pts = [...prof.map(q => mk(q, v0)), ...prof.map(q => mk(q, v1))], faces = [];
   for (let i = 1; i < n - 1; i++) { faces.push([1, i + 1, i + 2]); faces.push([n + 1, n + i + 2, n + i + 1]); }
   for (let i = 0; i < n; i++) { const j = (i + 1) % n; faces.push([i + 1, j + 1, n + j + 1], [i + 1, n + j + 1, n + i + 1]); }
-  const g = { pts, faces }; if (TK.volume(g) < 0) g.faces = g.faces.map(f => [f[0], f[2], f[1]]); return TK.add(c.T(color, o), g, 0, 0, 0, rot);
+  const g = { pts, faces }; if (TK.volume(g) < 0) g.faces = g.faces.map(f => [f[0], f[2], f[1]]); return TK.add(c.T(color, o), g, at ? at[0] : 0, at ? at[1] : 0, at ? at[2] : 0, rot);
 }
 /* Band (larvfot): kropp, drivhjul bak, tomgångshjul fram, bärrullar, kedjeskor och kedjeklackar. */
 function mcTrack(c, x, y, L, W, H, shoe) {
@@ -264,4 +264,218 @@ Object.assign(SM, {
   valt: { group: "Maskiner", label: "Vält", color: "#facc15", L: 4.2, B: 2.2, H: 3, icon: "truck", build: mcRollerBuild,
     fields: [["typ", "Typ", ["Vibrovält (tandem)", "Markvält", "Gummihjulsvält"], "Vibrovält (tandem)"], ["bredd", "Valsbredd", [["1.2", "1,2 m"], ["1.4", "1,4 m"], ["1.7", "1,7 m"], ["2.1", "2,1 m"]], "1.4"], ["vibration", "Vibration", ["Av", "På"], "Av", { seg: true }]],
     groups: [["Maskin", ["typ", "bredd", "vibration"]]] },
+});
+
+/* ---- Minilastare (skid steer): lyftarmar bakåt, hjul eller band, redskap ---- */
+function mcSkidBuild(p, c) {
+  const col = p.color || "#f59e0b", tracks = smF(p, "chassi", "Hjul") === "Band", tool = smF(p, "redskap", "Skopa"), lift = smN(p, "lyft", 35) / 100, curl = smN(p, "skopa", 10) * Math.PI / 180;
+  if (tracks) { [-1, 1].forEach(sd => mcTrack(c, 0, sd * 0.78, 1.9, 0.38, 0.6)); c.box("#2c3138", 0, 0, 0.5, 1.8, 1.0, 0.4, null, 0.05, { rough: 0.7 }); } else { c.box("#2c3138", 0, 0, 0.55, 2.0, 1.45, 0.4, null, 0.05, { rough: 0.7 }); [-1, 1].forEach(sx => [-1, 1].forEach(sd => smWheel(c, sx * 0.72, sd * 0.88, 0.36, 0.3))); }
+  c.box(col, -0.55, 0, 1.05, 1.0, 1.55, 0.85, null, 0.14, { shin: 70 }); c.box("#111827", -1.06, 0, 1.0, 0.03, 0.9, 0.3, null, 0.01);                          // motorhuv
+  // hytt med öppet tak (ROPS) och lyftarmar på sidorna
+  [-1, 1].forEach(sx => [-1, 1].forEach(sd => c.rod(col, [sx * 0.4 + 0.1, sd * 0.55, 1.0], [sx * 0.4 + 0.1, sd * 0.55, 2.0], 0.035, 0.035, 8, SMM))); c.box(col, 0.1, 0, 2.02, 1.0, 1.2, 0.05, null, 0.02, { shin: 70 }); c.box("#1c2b3a", 0.52, 0, 1.55, 0.03, 1.1, 0.8, null, 0.01, SMG); c.box("#374151", 0.1, 0, 1.15, 0.4, 0.45, 0.25, null, 0.05, SMM); mcBeacon(c, 0.1, 0.0, 2.08);
+  const A = (-20 + lift * 75) * Math.PI / 180, piv = [-0.35, 1.7], La = 2.0, tp = [piv[0] + Math.cos(A) * La, piv[1] + Math.sin(A) * La];
+  [-1, 1].forEach(sd => { c.beam(col, [piv[0], sd * 0.78, piv[1]], [tp[0], sd * 0.78, tp[1]], 0.13, 0.28, { shin: 70 }); mcRodCyl(c, [0.2, sd * 0.68, 0.95], [piv[0] + Math.cos(A) * 1.0 + 0.3, sd * 0.68, piv[1] + Math.sin(A) * 1.0 - 0.1], 0.06); });
+  const psi = -curl, bw = 1.8, q = (uu, vv) => [tp[0] + Math.cos(psi) * uu - Math.sin(psi) * vv, tp[1] + Math.sin(psi) * uu + Math.cos(psi) * vv];
+  if (tool === "Skopa") mcExtrude(c, "#4b5563", [q(0, -0.1), q(0.3, -0.5), q(0.7, -0.55), q(0.95, -0.15), q(0.95, 0.15), q(0.3, 0.2)], -bw / 2, bw / 2, "y", { metal: 0.5, rough: 0.55 });
+  else if (tool === "Pallgafflar") { c.box("#4b5563", ...(() => { const r = q(0.05, 0.3); return [r[0], 0, r[1]]; })(), 0.1, bw, 1.0, null, 0.02, SMM); [-1, 1].forEach(sd => { const a = q(0.1, -0.2), b = q(1.2, -0.2); c.beam("#6b7280", [a[0], sd * 0.55, a[1]], [b[0], sd * 0.55, b[1]], 0.12, 0.06, SMM); }); }
+  else { const a = q(0.1, 0.0), b = q(0.9, -0.1); c.box("#4b5563", a[0], 0, a[1], 0.2, 1.3, 0.8, null, 0.03, SMM); c.cyl("#9ca3af", "z", b[0], 0, b[1], 0.55, 0.55, 0.9, 16, null, SMM); }                               // jordborr
+  mcLamp(c, 1.0, 0.45, 1.5, 0.25); mcLamp(c, 1.0, -0.45, 1.5, 0.25);
+  mcMachineCard(c, p, "Minilastare", [["Redskap", tool], ["Chassi", tracks ? "Band" : "Hjul"]], 3.2);
+}
+/* ---- Teleskoplastare: teleskopbom med vinkel och utskjut, gafflar/skopa/personkorg/vinsch, stödben ---- */
+function mcTeleBuild(p, c) {
+  const col = p.color || "#dc2626", tool = smF(p, "redskap", "Pallgafflar"), a = smN(p, "bom", 30) * Math.PI / 180, ext = smN(p, "utskjut", 30) / 100, stod = smF(p, "stod", "Nej") === "Ja", curl = smN(p, "redskapsvinkel", 0) * Math.PI / 180;
+  c.box("#2c3138", 0, 0, 0.85, 4.2, 1.5, 0.55, null, 0.08, { rough: 0.7 }); [-1, 1].forEach(sx => [-1, 1].forEach(sd => smWheel(c, sx * 1.5, sd * 1.05, 0.78, 0.5))); c.box(col, -0.9, 0.0, 1.55, 1.9, 1.35, 1.0, null, 0.12, { shin: 70 });
+  mcCab(c, 0.7, -0.55, 1.25, 1.2, 0.95, 1.55, col); c.rod("#374151", [-1.2, 0.5, 2.0], [-1.2, 0.5, 3.0], 0.05, 0.05, 8, SMM); mcBeacon(c, 0.7, -0.55, 2.85); mcLamp(c, 2.0, 0.6, 1.2, 0.25); mcLamp(c, 2.0, -0.6, 1.2, 0.25);
+  if (stod) [-1, 1].forEach(sd => [-1, 1].forEach(sx => { c.rod("#9ca3af", [sx * 1.5, sd * 0.9, 0.9], [sx * 1.6, sd * 1.5, 0.05], 0.06, 0.06, 8, SMM); c.box("#374151", sx * 1.6, sd * 1.5, 0.03, 0.4, 0.4, 0.05, null, 0.01, SMM); }));
+  const piv = [-1.2, 1.75], L0 = 3.3, L1 = L0 + ext * 3.3, d = [Math.cos(a), Math.sin(a)], mid = [piv[0] + d[0] * L0, piv[1] + d[1] * L0], tip = [piv[0] + d[0] * L1, piv[1] + d[1] * L1];
+  const T = (x, z, y = 0.45) => [x, y, z]; c.beam(col, T(piv[0], piv[1]), T(...mid), 0.42, 0.5, { shin: 70 }); c.beam("#e5e7eb", T(mid[0] - d[0] * 0.2, mid[1] - d[1] * 0.2), T(...tip), 0.34, 0.4, { shin: 70 }); c.cyl("#3b4047", "y", piv[0], 0.45, piv[1], 0.14, 0.14, 0.5, 12, null, SMM);
+  mcRodCyl(c, T(-0.4, 0.95), T(piv[0] + d[0] * 1.4, piv[1] + d[1] * 1.4 - 0.2), 0.09);
+  const psi = -curl - 0.05, q = (uu, vv) => [tip[0] + Math.cos(psi) * uu - Math.sin(psi) * vv, tip[1] + Math.sin(psi) * uu + Math.cos(psi) * vv]; const o = q(0, 0);
+  if (tool === "Pallgafflar") { const a0 = q(0.1, -0.5); c.box("#4b5563", ...T(a0[0], a0[1] + 0.4, 0.45), 0.1, 1.6, 0.9, null, 0.02, SMM); [-1, 1].forEach(sd => { const A0 = q(0.1, -0.55), B0 = q(1.4, -0.6); c.beam("#6b7280", T(A0[0], A0[1], 0.45 + sd * 0.55), T(B0[0], B0[1], 0.45 + sd * 0.55), 0.14, 0.07, SMM); }); }
+  else if (tool === "Skopa") mcExtrude(c, "#4b5563", [q(0.1, -0.5), q(0.5, -0.9), q(1.1, -0.85), q(1.4, -0.3), q(1.2, 0.2), q(0.4, 0.1)], -1.1 + 0.45, 1.1 + 0.45, "y", { metal: 0.5, rough: 0.55 });
+  else if (tool === "Personkorg") { const b0 = q(0.3, -1.3); c.box("#e5e7eb", b0[0] + 0.5, 0.45, b0[1], 1.4, 2.2, 0.1, null, 0.02, SMM); [-1, 1].forEach(sd => { c.beam("#f59e0b", T(b0[0] - 0.2, b0[1], 0.45 + sd * 1.1), T(b0[0] + 1.2, b0[1], 0.45 + sd * 1.1), 0.05, 0.05, SMM); c.beam("#f59e0b", T(b0[0] - 0.2, b0[1] + 1.1, 0.45 + sd * 1.1), T(b0[0] + 1.2, b0[1] + 1.1, 0.45 + sd * 1.1), 0.05, 0.05, SMM); [-0.2, 1.2].forEach(x => c.rod("#f59e0b", [b0[0] + x, 0.45 + sd * 1.1, b0[1]], [b0[0] + x, 0.45 + sd * 1.1, b0[1] + 1.1], 0.03, 0.03, 8, SMM)); }); }
+  else { c.box("#4b5563", o[0] + 0.05, 0.45, o[1] - 0.1, 0.3, 0.3, 0.4, null, 0.04, SMM); c.rod("#1f2937", T(o[0] + 0.1, o[1] - 0.2), T(o[0] + 0.1, o[1] - 2.4), 0.012, 0.012, 4, SMM); c.box("#f59e0b", o[0] + 0.1, 0.45, o[1] - 2.5, 0.2, 0.15, 0.25, null, 0.03); }       // vinschkrok
+  mcMachineCard(c, p, "Teleskoplastare", [["Redskap", tool], ["Utskjut", smFmt(L1, 1) + " m"], ["Stödben", stod ? "Utfällda" : "Inne"]], 4.3);
+}
+/* ---- Gaffeltruck: mast som höjs, gafflar, last (pall/betongelement) ---- */
+function mcTruckLiftBuild(p, c) {
+  const col = p.color || "#f59e0b", h = smN(p, "lyft", 40) / 100, load = smF(p, "last", "Pall"), mast = smN(p, "mast", 4.5), z = 0.15 + h * (mast - 1.4);
+  c.box(col, -0.35, 0, 0.75, 1.7, 1.15, 0.65, null, 0.12, { shin: 70 }); c.box("#2c3138", 0.55, 0, 0.55, 1.2, 1.1, 0.35, null, 0.05, { rough: 0.7 }); [-1, 1].forEach(sd => { smWheel(c, 0.7, sd * 0.55, 0.33, 0.28); smWheel(c, -0.9, sd * 0.42, 0.27, 0.22); });
+  [-1, 1].forEach(sx => [-1, 1].forEach(sd => c.rod("#374151", [sx * 0.35 - 0.15, sd * 0.5, 1.1], [sx * 0.35 - 0.15, sd * 0.5, 2.1], 0.03, 0.03, 8, SMM))); c.box("#374151", -0.15, 0, 2.12, 1.0, 1.1, 0.04, null, 0.02, SMM); c.box("#1f2937", -0.1, 0, 1.15, 0.5, 0.45, 0.2, null, 0.05, SMM); mcBeacon(c, -0.15, 0, 2.18); c.box("#f8fafc", -1.2, 0, 0.75, 0.04, 0.5, 0.3, null, 0.01, SMLIT);
+  [-1, 1].forEach(sd => { c.beam("#4b5563", [1.15, sd * 0.4, 0.1], [1.15, sd * 0.4, mast + 0.1], 0.12, 0.12, SMM); c.beam("#6b7280", [1.22, sd * 0.38, 0.1], [1.22, sd * 0.38, 0.1 + (mast - 0.5) * (0.5 + h * 0.5)], 0.1, 0.1, SMM); });
+  c.beam("#4b5563", [1.15, -0.4, mast + 0.1], [1.15, 0.4, mast + 0.1], 0.1, 0.1, SMM); c.box("#4b5563", 1.35, 0, z + 0.4, 0.08, 1.1, 0.8, null, 0.02, SMM); [-1, 1].forEach(sd => c.beam("#6b7280", [1.4, sd * 0.35, z + 0.03], [2.5, sd * 0.35, z + 0.03], 0.14, 0.06, SMM));
+  if (load === "Pall") { c.box("#c9a15f", 1.95, 0, z + 0.17, 1.2, 0.8, 0.14, null, 0.01, { rough: 0.9 }); c.box("#e5e7eb", 1.95, 0, z + 0.7, 1.1, 0.75, 0.9, null, 0.05, { rough: 0.8 }); c.box("#9ca3af", 1.95, 0, z + 0.7, 1.12, 0.77, 0.04, null, 0, SMM); }
+  else if (load === "Betongelement") c.box("#b8bcc2", 1.95, 0, z + 0.65, 1.9, 0.8, 0.9, null, 0.03, { rough: 1 });
+  c.box("#9ca3af", -1.2, 0, 1.0, 0.5, 1.0, 0.7, null, 0.1, SMM);
+  mcMachineCard(c, p, "Gaffeltruck", [["Lyfthöjd", smFmt(z + 0.1, 1) + " m"], ["Last", load]], mast + 1);
+}
+Object.assign(SM, {
+  minilastare: { group: "Maskiner", label: "Minilastare", color: "#f59e0b", L: 3.2, B: 1.9, H: 2.1, icon: "truck", build: mcSkidBuild,
+    fields: [["chassi", "Chassi", ["Hjul", "Band"], "Hjul", { seg: true }], ["redskap", "Redskap", ["Skopa", "Pallgafflar", "Jordborr"], "Skopa"], ["lyft", "Lyfthöjd", "range", 35, { min: 0, max: 100, step: 1, unit: "%" }], ["skopa", "Skopvinkel", "range", 10, { min: -30, max: 70, step: 1, unit: "°" }]],
+    groups: [["Maskin", ["chassi", "redskap"]], ["Position", ["lyft", "skopa"]]] },
+  teleskoplastare: { group: "Maskiner", label: "Teleskoplastare", color: "#dc2626", L: 5, B: 2.2, H: 2.6, icon: "crane", build: mcTeleBuild,
+    fields: [["redskap", "Redskap", ["Pallgafflar", "Skopa", "Personkorg", "Vinsch/krok"], "Pallgafflar"], ["bom", "Bomvinkel", "range", 30, { min: 0, max: 70, step: 1, unit: "°" }], ["utskjut", "Utskjut", "range", 30, { min: 0, max: 100, step: 1, unit: "%" }], ["redskapsvinkel", "Redskapets vinkel", "range", 0, { min: -30, max: 40, step: 1, unit: "°" }], ["stod", "Stödben", ["Nej", "Ja"], "Nej", { seg: true }]],
+    groups: [["Maskin", ["redskap", "stod"]], ["Position", ["bom", "utskjut", "redskapsvinkel"]]] },
+  gaffeltruck: { group: "Maskiner", label: "Gaffeltruck", color: "#f59e0b", L: 3.6, B: 1.3, H: 2.2, icon: "truck", build: mcTruckLiftBuild,
+    fields: [["mast", "Masthöjd", "range", 4.5, { min: 3, max: 7, step: 0.5, unit: "m" }], ["lyft", "Lyfthöjd", "range", 40, { min: 0, max: 100, step: 1, unit: "%" }], ["last", "Last", ["Ingen", "Pall", "Betongelement"], "Pall"]],
+    groups: [["Maskin", ["mast", "last"]], ["Position", ["lyft"]]] },
+});
+
+/* ---- Bandkran (gallerkran): gallerbom med vinkel och längd, kroklina, motvikt, band ---- */
+function mcCrawlerCraneBuild(p, c) {
+  const col = p.color || "#facc15", len = smN(p, "bomlangd", 36), a = smN(p, "bomvinkel", 65) * Math.PI / 180, sw = smN(p, "sving", 0) * Math.PI / 180, jib = smF(p, "spets", "Nej") === "Ja", cs = Math.cos(sw), sn = Math.sin(sw), R = [sw, 0, 0];
+  const u = (x, y, z) => [x * cs - y * sn, x * sn + y * cs, z];
+  [-1, 1].forEach(sd => mcTrack(c, 0, sd * 2.5, 7.0, 1.2, 1.5)); c.box("#2c3138", 0, 0, 1.0, 5.2, 4.6, 0.9, null, 0.1, { rough: 0.7 }); c.cyl("#3b4047", "z", 0, 0, 1.6, 1.9, 1.9, 0.3, 28, null, SMM);
+  const ub = (colr, x, y, z, sx, sy, sz, r, o) => c.box(colr, ...u(x, y, z), sx, sy, sz, R, r, o);
+  ub("#2c3138", 0, 0, 1.9, 6.0, 3.6, 0.3, 0.05, { rough: 0.75 }); ub(col, -1.8, 0, 2.7, 2.6, 3.3, 1.5, 0.25, { shin: 70 }); ub("#475569", -3.2, 0, 2.5, 1.6, 3.4, 1.2, 0.1, { metal: 0.3, rough: 0.7 });  // maskinhus + motvikt
+  ub(col, 0.6, -1.1, 2.9, 2.4, 1.3, 1.5, 0.12, { shin: 70 }); { const cp = u(1.9, 1.35, 2.05); mcCab(c, cp[0], cp[1], cp[2], 1.5, 1.2, 1.9, col, R); }
+  const bp = [1.6, 3.0], d = [Math.cos(a), Math.sin(a)], tip = [bp[0] + d[0] * len, bp[1] + d[1] * len], n = [-d[1], d[0]], wd = 1.3, T = (q, y) => u(q[0], y, q[1]);
+  // gallerbom: fyra hörnrör + tvärstag i sicksack – avtagande bredd
+  const sec = Math.max(4, Math.round(len / 2.2)), prof = k => { const t = k / sec, w = wd * (1 - 0.55 * t) * (t > 0.85 ? 0.7 : 1); return w; };
+  for (let k = 0; k <= sec; k++) { const t = k / sec, q = [bp[0] + d[0] * len * t, bp[1] + d[1] * len * t], w = prof(k) / 2; if (k > 0) { const pq = [bp[0] + d[0] * len * (k - 1) / sec, bp[1] + d[1] * len * (k - 1) / sec], pw = prof(k - 1) / 2;
+      [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sy, sz]) => c.rod("#e5e7eb", T([pq[0] + n[0] * pw * sz, pq[1] + n[1] * pw * sz], pw * sy), T([q[0] + n[0] * w * sz, q[1] + n[1] * w * sz], w * sy), 0.07, 0.07, 6, SMM));
+      c.rod(col, T([pq[0] + n[0] * pw, pq[1] + n[1] * pw], -pw), T([q[0] - n[0] * w, q[1] - n[1] * w], w), 0.035, 0.035, 5, SMM); c.rod(col, T([pq[0] - n[0] * pw, pq[1] - n[1] * pw], pw), T([q[0] + n[0] * w, q[1] + n[1] * w], -w), 0.035, 0.035, 5, SMM); }
+    [[-1, 1]].forEach(() => { c.rod("#cbd5e1", T([q[0] + n[0] * w, q[1] + n[1] * w], -w), T([q[0] - n[0] * w, q[1] - n[1] * w], w), 0.03, 0.03, 5, SMM); }); }
+  c.cyl("#3b4047", "y", ...T(bp, 0), 0.25, 0.25, 1.4, 12, R, SMM);
+  // mast bakåt (A-ram) och stag
+  const mast = [bp[0] - 1.2, bp[1] + 7.0]; [-1, 1].forEach(sy => { c.rod("#9ca3af", T([bp[0] - 0.9, bp[1] - 0.3], sy * 0.9), T(mast, sy * 0.35), 0.1, 0.07, 8, SMM); }); c.beam("#9ca3af", T(mast, -0.35), T(mast, 0.35), 0.2, 0.2, SMM);
+  c.rod("#6b7280", T(mast, 0), T(tip, 0), 0.03, 0.03, 4, SMM); c.rod("#6b7280", T([mast[0], mast[1]], 0), T([-3.2, 2.3], 0), 0.04, 0.04, 6, SMM);
+  const hook = [tip[0], Math.max(1.2, tip[1] - 9)]; c.rod("#1f2937", T(tip, 0), T(hook, 0), 0.025, 0.025, 5, SMM); c.box("#374151", ...T([hook[0], hook[1] - 0.3], 0), 0.5, 0.4, 0.6, R, 0.05, SMM); c.cyl("#f59e0b", "y", ...T([hook[0], hook[1] - 0.8], 0), 0.22, 0.22, 0.2, 10, R, SMM);
+  if (jib) { const jl = 9, a2 = a - 0.45, j2 = [tip[0] + Math.cos(a2) * jl, tip[1] + Math.sin(a2) * jl]; c.beam("#e5e7eb", T(tip, 0), T(j2, 0), 0.35, 0.35, SMM); }
+  mcMachineCard(c, p, "Bandkran", [["Bomlängd", smFmt(len, 0) + " m"], ["Bomvinkel", smFmt(a * 180 / Math.PI, 0) + "°"], ["Räckvidd", smFmt(Math.cos(a) * len + 1.6, 1) + " m"]], 4.5);
+}
+/* ---- Borrigg / pålmaskin: bandgående med hög mast, borr/auger, vinkel ---- */
+function mcDrillBuild(p, c) {
+  const col = p.color || "#2563eb", typ = smF(p, "typ", "Pålmaskin (CFA)"), mastH = smN(p, "mast", 18), tilt = smN(p, "lutning", 0) * Math.PI / 180, depth = smN(p, "borr", 40) / 100, sw = smN(p, "sving", 0) * Math.PI / 180, cs = Math.cos(sw), sn = Math.sin(sw), R = [sw, 0, 0], u = (x, y, z) => [x * cs - y * sn, x * sn + y * cs, z];
+  [-1, 1].forEach(sd => mcTrack(c, 0, sd * 1.7, 5.2, 0.9, 1.1)); c.box("#2c3138", 0, 0, 0.8, 4.2, 2.8, 0.7, null, 0.08, { rough: 0.7 }); c.cyl("#3b4047", "z", 0, 0, 1.2, 1.3, 1.3, 0.2, 24, null, SMM);
+  const ub = (colr, x, y, z, sx, sy, sz, r, o) => c.box(colr, ...u(x, y, z), sx, sy, sz, R, r, o);
+  ub("#2c3138", -0.2, 0, 1.45, 4.4, 2.8, 0.25, 0.04, { rough: 0.75 }); ub(col, -1.6, 0, 2.2, 1.8, 2.6, 1.3, 0.2, { shin: 70 }); ub("#475569", -2.8, 0, 2.0, 1.0, 2.6, 1.0, 0.1, { metal: 0.3, rough: 0.7 }); { const cp = u(0.7, 1.1, 1.55); mcCab(c, cp[0], cp[1], cp[2], 1.4, 1.1, 1.8, col, R); }
+  // mast (leader) på bom framför maskinen
+  const foot = [2.3, 1.7], top = [foot[0] + Math.sin(tilt) * mastH, foot[1] + Math.cos(tilt) * mastH], T = (q, y = 0) => u(q[0], y, q[1]);
+  [-1, 1].forEach(sy => c.beam("#cbd5e1", T(foot, sy * 0.35), T(top, sy * 0.35), 0.16, 0.2, SMM)); for (let k = 0; k <= mastH; k += 1.5) { const q = [foot[0] + Math.sin(tilt) * k, foot[1] + Math.cos(tilt) * k]; c.rod("#9ca3af", T(q, -0.35), T(q, 0.35), 0.03, 0.03, 5, SMM); }
+  c.rod(col, T([0.2, 1.8], 0), T([foot[0], foot[1] + 1.2], 0), 0.2, 0.2, 10, SMM); mcRodCyl(c, T([-0.4, 1.6], 0.5), T([foot[0] + Math.sin(tilt) * 4, foot[1] + Math.cos(tilt) * 4], 0.5), 0.12);
+  const dz = 0.9 + (mastH - 3.2) * (1 - depth), hd = [foot[0] + Math.sin(tilt) * dz, foot[1] + Math.cos(tilt) * dz]; c.box("#374151", ...T(hd, 0), 0.8, 0.9, 1.0, R, 0.06, SMM);                                      // roterande borrhuvud
+  const aug = (typ.startsWith("Pål") ? 0.3 : 0.12), bot = [foot[0] - Math.sin(tilt) * 3.5 + Math.sin(tilt) * 0, 0.0], endP = [foot[0] + Math.sin(tilt) * 0.2, 0.15];
+  if (typ.startsWith("Pål")) { c.rod("#9ca3af", T(hd, 0), T(endP, 0), aug, aug, 10, SMM); for (let k = 0; k < 9; k++) { const t = k / 9, q = [hd[0] + (endP[0] - hd[0]) * t, hd[1] + (endP[1] - hd[1]) * t]; c.cyl("#6b7280", "z", ...T(q, 0), aug * 1.5, aug * 1.5, 0.05, 10, R, SMM); } }
+  else { c.rod("#9ca3af", T(hd, 0), T(endP, 0), 0.09, 0.09, 8, SMM); c.cyl("#475569", "z", ...T([endP[0], 0.4], 0), 0.2, 0.28, 0.5, 12, R, SMM); }
+  mcBeacon(c, ...(() => { const q = u(0.7, 1.1, 3.5); return q; })());
+  mcMachineCard(c, p, typ, [["Masthöjd", smFmt(mastH, 0) + " m"], ["Lutning", smFmt(tilt * 180 / Math.PI, 0) + "°"], ["Borrdjup", smFmt(depth * (mastH - 3), 1) + " m"]], mastH + 1.5);
+}
+/* ---- Asfaltutläggare: lastbilsmatning, snigel och bom (screed) ---- */
+function mcPaverBuild(p, c) {
+  const col = p.color || "#facc15", W = smN(p, "bredd", 3.5);
+  [-1, 1].forEach(sd => mcTrack(c, 0.1, sd * 1.1, 3.4, 0.55, 0.75)); c.box("#2c3138", 0.1, 0, 0.7, 3.0, 2.0, 0.6, null, 0.08, { rough: 0.7 });
+  mcExtrude(c, "#374151", [[1.0, 1.0], [2.3, 1.0], [2.5, 1.5], [2.5, 2.4], [1.0, 2.0]], -1.45, 1.45, "y", { rough: 0.8 });                                                       // matarficka (hopper)
+  [-1, 1].forEach(sd => mcExtrude(c, "#4b5563", [[1.0, 1.0], [2.5, 1.5], [2.7, 2.7], [2.45, 2.7], [1.0, 2.0]], sd * 1.45 - 0.04, sd * 1.45 + 0.04, "y", { rough: 0.8 }));
+  c.box(col, -0.8, 0, 1.45, 1.8, 1.8, 0.9, null, 0.15, { shin: 70 }); c.box("#374151", -0.5, 0, 2.25, 1.3, 1.2, 0.07, null, 0.02, SMM); [-1, 1].forEach(sx => [-1, 1].forEach(sy => c.rod("#374151", [sx * 0.5 - 0.5, sy * 0.5, 1.9], [sx * 0.5 - 0.5, sy * 0.5, 3.2], 0.03, 0.03, 8, SMM))); c.box("#374151", -0.5, 0, 3.25, 1.4, 1.3, 0.06, null, 0.02, SMM); c.box("#374151", -0.7, 0, 1.95, 0.5, 0.45, 0.25, null, 0.05, SMM); mcBeacon(c, -0.5, 0, 3.3);
+  c.box("#4b5563", -1.9, 0, 0.55, 0.9, W, 0.55, null, 0.05, SMM); c.box("#111827", -2.4, 0, 0.3, 0.2, W, 0.14, null, 0.02);                                                  // snigelkåpa, bom (screed)
+  [-1, 1].forEach(sd => c.beam("#6b7280", [-0.2, sd * 1.0, 0.7], [-2.0, sd * (W / 2 - 0.2), 0.5], 0.14, 0.14, SMM)); c.cyl("#9ca3af", "x", -1.9, 0, 0.9, 0.2, 0.2, W * 0.9, 10, null, SMM);
+  mcMachineCard(c, p, "Asfaltutläggare", [["Läggbredd", smFmt(W, 1) + " m"]], 3.6);
+}
+/* ---- Traktorgrävare (hjulgående med lastare fram och grävarm bak) ---- */
+function mcBackhoeBuild(p, c) {
+  const col = p.color || "#f59e0b", a = smN(p, "bom", 30) * Math.PI / 180, d = smN(p, "stick", 110) * Math.PI / 180, tc = smN(p, "skopa", 20) * Math.PI / 180, lift = smN(p, "lyft", 15) / 100, stod = smF(p, "stod", "Utfällda") === "Utfällda";
+  c.box("#2c3138", 0, 0, 0.8, 3.8, 1.5, 0.6, null, 0.08, { rough: 0.7 }); smWheel(c, 1.35, 1.1, 0.7, 0.5); smWheel(c, 1.35, -1.1, 0.7, 0.5); smWheel(c, -1.1, 1.1, 0.55, 0.45); smWheel(c, -1.1, -1.1, 0.55, 0.45);
+  c.box(col, 0.6, 0, 1.5, 1.6, 1.4, 0.8, null, 0.15, { shin: 70 }); mcCab(c, -0.4, 0, 1.2, 1.5, 1.6, 1.8, col); mcBeacon(c, -0.4, 0, 3.0);
+  // frontlastare
+  const Pf = [1.4, 1.3], A = (-5 + lift * 70) * Math.PI / 180, tip = [Pf[0] + Math.cos(A) * 2.2 + 0.7, Pf[1] + Math.sin(A) * 2.2]; [-1, 1].forEach(sd => c.beam(col, [Pf[0], sd * 0.9, Pf[1]], [tip[0], sd * 0.9, tip[1]], 0.15, 0.3, { shin: 70 }));
+  const psi = -tc * 0.5 - 0.2, q = (uu, vv) => [tip[0] + Math.cos(psi) * uu - Math.sin(psi) * vv, tip[1] + Math.sin(psi) * uu + Math.cos(psi) * vv]; mcExtrude(c, "#4b5563", [q(0, -0.4), q(0.5, -0.8), q(1.0, -0.6), q(1.1, 0.3), q(0.3, 0.2)], -1.15, 1.15, "y", { metal: 0.5, rough: 0.55 });
+  // grävarm bak med utfällbara stödben
+  const bpv = [-2.0, 1.7], Lb = 3.4, Ls = 2.4, dir = ang => [Math.cos(ang), Math.sin(ang)], ba = Math.PI - a, P1 = [bpv[0] + Math.cos(ba) * Lb, bpv[1] + Math.sin(ba) * Lb], phi = ba + (Math.PI - d) * -1 + 0, P2 = [P1[0] + Math.cos(phi) * Ls, P1[1] + Math.sin(phi) * Ls];
+  c.box("#4b5563", -2.0, 0, 1.4, 0.7, 1.0, 1.2, null, 0.08, SMM); c.beam(col, [bpv[0], 0, bpv[1]], [(bpv[0] + P1[0]) / 2, 0, (bpv[1] + P1[1]) / 2 + 0.25], 0.32, 0.4, { shin: 70 }); c.beam(col, [(bpv[0] + P1[0]) / 2, 0, (bpv[1] + P1[1]) / 2 + 0.25], [P1[0], 0, P1[1]], 0.3, 0.34, { shin: 70 }); c.beam(col, [P1[0], 0, P1[1]], [P2[0], 0, P2[1]], 0.22, 0.28, { shin: 70 });
+  mcRodCyl(c, [-1.6, 0, 1.4], [P1[0] * 0.5 + bpv[0] * 0.5, 0, (bpv[1] + P1[1]) / 2 - 0.2], 0.07); const psi2 = phi - 0.9 - tc, q2 = (uu, vv) => [P2[0] + Math.cos(psi2) * uu - Math.sin(psi2) * vv, P2[1] + Math.sin(psi2) * uu + Math.cos(psi2) * vv];
+  mcExtrude(c, "#4b5563", [q2(0, -0.05), q2(0.3, -0.3), q2(0.6, -0.3), q2(0.65, 0.1), q2(0.3, 0.15)], -0.3, 0.3, "y", { metal: 0.5, rough: 0.55 });
+  [-1, 1].forEach(sd => { const sx = stod ? 1.9 : 1.1; c.beam("#6b7280", [-2.0, sd * 0.7, 0.9], [-2.0, sd * sx, 0.9], 0.2, 0.2, SMM); c.rod("#9ca3af", [-2.0, sd * sx, 0.9], [-2.0, sd * sx, stod ? 0.05 : 0.4], 0.07, 0.07, 8, SMM); if (stod) c.box("#374151", -2.0, sd * sx, 0.03, 0.5, 0.5, 0.05, null, 0.01, SMM); });
+  mcLamp(c, 2.1, 0.55, 1.5, 0.25); mcLamp(c, 2.1, -0.55, 1.5, 0.25);
+  mcMachineCard(c, p, "Traktorgrävare", [["Stödben", stod ? "Utfällda" : "Inne"]], 3.4);
+}
+/* ---- Bandschaktare (bulldozer) med blad och rippertand ---- */
+function mcDozerBuild(p, c) {
+  const col = p.color || "#facc15", bl = smN(p, "blad", 0) / 100, ang = smN(p, "bladvinkel", 0) * Math.PI / 180, rip = smF(p, "ripper", "Ja") === "Ja";
+  [-1, 1].forEach(sd => mcTrack(c, 0, sd * 1.15, 3.8, 0.65, 1.2)); c.box("#2c3138", 0, 0, 0.9, 3.2, 1.9, 0.7, null, 0.08, { rough: 0.7 });
+  c.box(col, 0.7, 0, 1.6, 2.0, 1.6, 0.9, null, 0.15, { shin: 70 }); c.box("#111827", 1.72, 0, 1.55, 0.03, 1.0, 0.35, null, 0.01); mcCab(c, -0.7, 0, 1.25, 1.5, 1.5, 1.8, col); mcBeacon(c, -0.7, 0, 3.05); c.rod("#374151", [1.2, 0.5, 2.0], [1.2, 0.5, 3.0], 0.05, 0.05, 8, SMM);
+  const z = 0.5 + bl * 0.8, bz = z + 0.55, yaw = ang; const cs = Math.cos(yaw), sn = Math.sin(yaw);
+  mcExtrude(c, col, [[-0.2, -0.45], [0.0, 0.45], [0.2, 0.5], [0.2, -0.45]], -1.95, 1.95, "y", { shin: 70 }, [yaw, 0, 0], [2.7, 0, z + 0.45]); [-1, 1].forEach(sd => c.beam("#6b7280", [1.4, sd * 1.0, 0.9], [2.55, sd * 1.0 + Math.sin(yaw) * sd * 0.2, z + 0.45], 0.22, 0.22, SMM));
+  c.beam("#9ca3af", [2.9 - Math.sin(yaw) * 1.95, -1.95 * Math.cos(yaw), z], [2.9 + Math.sin(yaw) * 1.95, 1.95 * Math.cos(yaw), z], 0.1, 0.1, SMM); void bz; void cs; void sn;
+  if (rip) { c.box("#4b5563", -2.3, 0, 1.0, 0.6, 1.8, 0.7, null, 0.06, SMM); [-0.6, 0, 0.6].forEach(y => c.beam("#6b7280", [-2.3, y, 1.1], [-2.8, y, 0.15], 0.15, 0.18, SMM)); }
+  mcMachineCard(c, p, "Bandschaktare", [["Blad", bl > 0.5 ? "Upplyft" : "Nere"], ["Ripper", rip ? "Ja" : "Nej"]], 3.4);
+}
+/* ---- Väghyvel (grader): lång ram, stort hyvelblad mellan axlarna ---- */
+function mcGraderBuild(p, c) {
+  const col = p.color || "#facc15", ba = smN(p, "bladvinkel", 25) * Math.PI / 180, bz = smN(p, "bladhojd", 30) / 100;
+  c.box("#2c3138", 0, 0, 1.3, 7.2, 0.7, 0.35, null, 0.05, { rough: 0.7 }); [-1, 1].forEach(sd => { smWheel(c, 2.8, sd * 1.05, 0.65, 0.45); [-0.0, -1.5].forEach(x => smWheel(c, -2.5 + x * 0 - (x ? 1.6 : 0), sd * 1.1, 0.7, 0.5)); });
+  c.box(col, -3.0, 0, 1.9, 2.0, 2.0, 1.1, null, 0.2, { shin: 70 }); mcCab(c, -2.4, 0, 1.6, 1.6, 1.8, 1.9, col); mcBeacon(c, -2.4, 0, 3.5); c.box(col, 2.6, 0, 1.55, 1.2, 0.7, 0.5, null, 0.1, { shin: 70 });
+  const cx = 0.1, cy = 0, z = 0.55 + bz * 0.5, L = 3.7; const a0 = [cx - Math.sin(ba) * L / 2, cy - Math.cos(ba) * L / 2], a1 = [cx + Math.sin(ba) * L / 2, cy + Math.cos(ba) * L / 2];
+  c.beam("#6b7280", [2.3, 0, 1.2], [cx, 0, z + 0.4], 0.12, 0.2, SMM); c.cyl("#3b4047", "z", cx, 0, z + 0.4, 0.65, 0.65, 0.12, 20, null, SMM);
+  c.beam("#374151", [a0[0], a0[1], z], [a1[0], a1[1], z], 0.45, 0.65, { metal: 0.6, rough: 0.5 }); c.beam("#9ca3af", [a0[0], a0[1], z - 0.3], [a1[0], a1[1], z - 0.3], 0.1, 0.12, SMM);
+  mcMachineCard(c, p, "Väghyvel", [["Bladvinkel", smFmt(ba * 180 / Math.PI, 0) + "°"]], 3.6);
+}
+Object.assign(SM, {
+  bandkran: { group: "Maskiner", label: "Bandkran", color: "#facc15", L: 8, B: 5, H: 4, icon: "crane", build: mcCrawlerCraneBuild,
+    fields: [["bomlangd", "Bomlängd", "range", 36, { min: 12, max: 70, step: 2, unit: "m" }], ["bomvinkel", "Bomvinkel", "range", 65, { min: 25, max: 85, step: 1, unit: "°" }], ["sving", "Sväng", "range", 0, { min: -180, max: 180, step: 5, unit: "°" }], ["spets", "Hjälpbom (jib)", ["Nej", "Ja"], "Nej", { seg: true }]],
+    groups: [["Kran", ["bomlangd", "spets"]], ["Position", ["bomvinkel", "sving"]]] },
+  borrigg: { group: "Maskiner", label: "Borrigg / pålmaskin", color: "#2563eb", L: 6, B: 3.4, H: 18, icon: "crane", build: mcDrillBuild,
+    fields: [["typ", "Typ", ["Pålmaskin (CFA)", "Borrigg (berg)"], "Pålmaskin (CFA)"], ["mast", "Masthöjd", "range", 18, { min: 8, max: 32, step: 1, unit: "m" }], ["borr", "Borrdjup", "range", 40, { min: 0, max: 100, step: 1, unit: "%" }], ["lutning", "Mastlutning", "range", 0, { min: -20, max: 20, step: 1, unit: "°" }], ["sving", "Sväng", "range", 0, { min: -180, max: 180, step: 5, unit: "°" }]],
+    groups: [["Maskin", ["typ", "mast"]], ["Position", ["borr", "lutning", "sving"]]] },
+  asfaltutlaggare: { group: "Maskiner", label: "Asfaltutläggare", color: "#facc15", L: 5, B: 3.5, H: 3.3, icon: "truck", build: mcPaverBuild, fields: [["bredd", "Läggbredd", "range", 3.5, { min: 2, max: 9, step: 0.1, unit: "m" }]], groups: [["Maskin", ["bredd"]]] },
+  traktorgravare: { group: "Maskiner", label: "Traktorgrävare", color: "#f59e0b", L: 6, B: 2.5, H: 3.2, icon: "crane", build: mcBackhoeBuild,
+    fields: [["bom", "Grävarm, bom", "range", 30, { min: -10, max: 70, step: 1, unit: "°" }], ["stick", "Grävarm, stick", "range", 110, { min: 50, max: 170, step: 1, unit: "°" }], ["skopa", "Grävskopa", "range", 20, { min: -30, max: 80, step: 1, unit: "°" }], ["lyft", "Frontskopa, lyft", "range", 15, { min: 0, max: 100, step: 1, unit: "%" }], ["stod", "Stödben", ["Utfällda", "Inne"], "Utfällda", { seg: true }]],
+    groups: [["Grävarm", ["bom", "stick", "skopa"]], ["Övrigt", ["lyft", "stod"]]] },
+  bandschaktare: { group: "Maskiner", label: "Bandschaktare", color: "#facc15", L: 5.5, B: 3.9, H: 3.2, icon: "truck", build: mcDozerBuild,
+    fields: [["blad", "Bladhöjd", "range", 0, { min: 0, max: 100, step: 1, unit: "%" }], ["bladvinkel", "Bladvinkel", "range", 0, { min: -25, max: 25, step: 1, unit: "°" }], ["ripper", "Ripper", ["Ja", "Nej"], "Ja", { seg: true }]], groups: [["Maskin", ["ripper"]], ["Position", ["blad", "bladvinkel"]]] },
+  vaghyvel: { group: "Maskiner", label: "Väghyvel", color: "#facc15", L: 9, B: 2.6, H: 3.5, icon: "truck", build: mcGraderBuild,
+    fields: [["bladvinkel", "Bladvinkel", "range", 25, { min: -45, max: 45, step: 1, unit: "°" }], ["bladhojd", "Bladhöjd", "range", 30, { min: 0, max: 100, step: 1, unit: "%" }]], groups: [["Position", ["bladvinkel", "bladhojd"]]] },
+});
+
+/* ---- Aggregat: elverk, kompressor, värmeaggregat och ljusmast på kärra ---- */
+function mcGenBuild(p, c) {
+  const typ = smF(p, "typ", "Elverk"), col = p.color || ({ Elverk: "#16a34a", Kompressor: "#f59e0b", Värmeaggregat: "#dc2626", Ljusmast: "#475569" }[typ] || "#16a34a"), kw = smN(p, "effekt", 60);
+  if (typ === "Ljusmast") {
+    const h = smN(p, "mast", 9), tilt = smN(p, "lutning", 0) * Math.PI / 180; c.box("#374151", 0, 0, 0.45, 2.6, 1.4, 0.35, null, 0.05, SMM); [-1, 1].forEach(sx => [-1, 1].forEach(sy => smWheel(c, sx * 0.9, sy * 0.78, 0.3, 0.2))); c.box(col, -0.5, 0, 0.9, 1.1, 1.1, 0.7, null, 0.08, { shin: 60 });
+    [-1, 1].forEach(sy => { c.rod("#9ca3af", [0.7, sy * 0.7, 0.55], [0.9, sy * 1.2, 0.05], 0.04, 0.04, 8, SMM); c.box("#374151", 0.9, sy * 1.2, 0.03, 0.3, 0.3, 0.05, null, 0.01, SMM); });
+    const top = [Math.sin(tilt) * h, 0, 0.9 + Math.cos(tilt) * h], seg = 4; for (let k = 0; k < seg; k++) { const t0 = k / seg, t1 = (k + 1) / seg, r = 0.09 - k * 0.012; c.rod(k % 2 ? "#cbd5e1" : "#9ca3af", [top[0] * t0, 0, 0.9 + (top[2] - 0.9) * t0], [top[0] * t1, 0, 0.9 + (top[2] - 0.9) * t1], r, r - 0.012, 10, SMM); }
+    c.beam("#374151", [top[0] - 0.9, 0, top[2]], [top[0] + 0.9, 0, top[2]], 0.12, 0.1, SMM); [-0.6, -0.2, 0.2, 0.6].forEach(dx => c.box("#fffbe6", top[0] + dx, 0.1, top[2] - 0.12, 0.28, 0.1, 0.22, null, 0.03, SMLIT));
+    mcMachineCard(c, p, "Ljusmast", [["Masthöjd", smFmt(h, 0) + " m"]], h + 2); return;
+  }
+  const L = typ === "Värmeaggregat" ? 2.4 : 3.2, B = typ === "Värmeaggregat" ? 1.2 : 1.4, H = typ === "Elverk" ? 1.6 : 1.5;
+  c.box("#2c3138", 0, 0, 0.35, L, B, 0.25, null, 0.04, { rough: 0.7 }); [-1, 1].forEach(sx => smWheel(c, sx * (L * 0.28), 0, 0.28, B + 0.15)); c.box("#9ca3af", L / 2 + 0.25, 0, 0.35, 0.7, 0.08, 0.06, null, 0.01, SMM); c.cyl("#9ca3af", "z", L / 2 + 0.6, 0, 0.3, 0.08, 0.08, 0.1, 8, null, SMM);
+  c.box(col, 0, 0, 0.5 + H / 2, L - 0.1, B - 0.05, H, null, 0.08, { shin: 60 }); for (let i = 0; i < 6; i++) c.box("#00000030", -L / 2 + 0.5 + i * 0.35, B / 2 + 0.005, 0.5 + H * 0.5, 0.05, 0.01, H * 0.5, null, 0);
+  c.box("#111827", L / 2 - 0.02, 0, 0.5 + H * 0.5, 0.03, B * 0.7, H * 0.6, null, 0.01); [0.3, 0.1, -0.1, -0.3].forEach(dy => c.cyl(dy === 0.3 ? "#dc2626" : "#374151", "x", L / 2 + 0.01, dy * B * 0.6, 0.5 + H * 0.75, 0.06, 0.06, 0.04, 10, null, SMM)); c.box("#f8fafc", L / 2 + 0.005, 0, 0.5 + H * 0.28, 0.01, B * 0.5, 0.2, null, 0, SMLIT);
+  c.cyl("#374151", "z", -L / 2 + 0.3, 0.3, 0.5 + H + 0.35, 0.07, 0.07, 0.7, 8, null, SMM); mcBeacon(c, 0, -0.35, 0.5 + H + 0.02);
+  if (typ === "Kompressor") { c.cyl("#9ca3af", "y", -0.3, 0, 0.5 + H + 0.25, 0.3, 0.3, B * 0.9, 16, null, SMM); c.cyl("#dc2626", "y", L / 2 - 0.1, B / 2 + 0.05, 0.5 + H * 0.4, 0.08, 0.08, 0.1, 10, null, SMLIT); }
+  if (typ === "Värmeaggregat") c.cyl("#9ca3af", "x", -L / 2 - 0.35, 0, 0.5 + H * 0.5, 0.2, 0.2, 0.7, 14, null, SMM);
+  mcMachineCard(c, p, typ, [typ === "Värmeaggregat" ? ["Effekt", kw + " kW"] : typ === "Elverk" ? ["Effekt", kw + " kVA"] : ["Kapacitet", kw * 10 + " l/min"]], 3);
+}
+/* ---- Mobilt krossverk / siktverk på band: matarficka, kross, transportband med vinkel ---- */
+function mcCrusherBuild(p, c) {
+  const typ = smF(p, "typ", "Backkross"), col = p.color || "#facc15", ba = smN(p, "band", 28) * Math.PI / 180, bl = smN(p, "bandlangd", 9);
+  [-1, 1].forEach(sd => mcTrack(c, 0, sd * 1.3, 5.4, 0.7, 0.95)); c.box("#2c3138", 0, 0, 1.0, 5.6, 2.6, 0.5, null, 0.06, { rough: 0.7 });
+  mcExtrude(c, "#4b5563", [[1.2, 1.5], [3.1, 1.5], [3.4, 3.2], [3.0, 3.6], [1.2, 3.0]], -1.4, 1.4, "y", { rough: 0.8 }); c.box(col, -0.7, 0, 2.4, 3.2, 2.6, 1.9, null, 0.15, { shin: 70 }); c.box("#2c3138", -2.2, 0, 1.8, 1.0, 2.4, 1.0, null, 0.08, SMM);
+  const a0 = [-2.4, 1.3], d = [Math.cos(ba) * -1, Math.sin(ba)], a1 = [a0[0] + d[0] * bl, a0[1] + d[1] * bl]; // transportbandet går bakåt/uppåt
+  c.beam("#374151", [a0[0], 0, a0[1]], [a1[0], 0, a1[1]], 0.9, 0.2, { rough: 0.8 }); c.beam("#1f2937", [a0[0], 0, a0[1] + 0.12], [a1[0], 0, a1[1] + 0.12], 0.7, 0.03, { rough: 0.9 });
+  [-1, 1].forEach(sd => { c.beam("#9ca3af", [a0[0], sd * 0.5, a0[1] + 0.05], [a1[0], sd * 0.5, a1[1] + 0.05], 0.04, 0.3, SMM); }); [0.15, 0.5, 0.85].forEach(t => c.rod("#9ca3af", [a0[0] + d[0] * bl * t, 0, a0[1] + d[1] * bl * t], [a0[0] + d[0] * bl * t, 0, 0.0], 0.05, 0.05, 8, SMM));
+  c.box("#a79a7e", a1[0] - 1.0, 0, 0.35, 2.2, 2.2, 0.7, null, 0.5, { rough: 1 });                                                                                                           // krossad hög
+  if (typ === "Siktverk") c.box("#475569", 0.3, 0, 3.6, 2.6, 2.0, 0.4, [0, 0.1, 0], 0.06, SMM); mcBeacon(c, -0.7, 0, 3.4);
+  mcMachineCard(c, p, typ === "Siktverk" ? "Mobilt siktverk" : "Mobilt krossverk", [["Bandlängd", smFmt(bl, 0) + " m"], ["Bandvinkel", smFmt(ba * 180 / Math.PI, 0) + "°"]], 4.5);
+}
+/* ---- Servicebil / pickup / skåpbil ---- */
+function mcVanBuild(p, c) {
+  const typ = smF(p, "typ", "Pickup"), col = p.color || "#e5e7eb", L = typ === "Skåpbil" ? 5.6 : 5.3;
+  c.box("#20242a", 0, 0, 0.55, L, 1.7, 0.25, null, 0.04, { rough: 0.7 }); [-1, 1].forEach(sx => [-1, 1].forEach(sd => smWheel(c, sx * L * 0.33, sd * 0.88, 0.38, 0.26)));
+  const cab = typ === "Skåpbil" ? [[-L / 2 + 0.05, 0.5], [L / 2, 0.5], [L / 2, 1.2], [L / 2 - 1.1, 1.95], [L / 2 - 1.6, 2.35], [-L / 2 + 0.05, 2.35]] : [[0.3, 0.55], [L / 2, 0.55], [L / 2, 1.15], [L / 2 - 0.9, 1.9], [0.9, 1.9], [0.3, 1.5]];
+  mcExtrude(c, col, cab, -0.95, 0.95, "y", { shin: 80 }); c.beam("#1c2b3a", [L / 2 - 0.05, 0, 1.15], [L / 2 - 0.85, 0, 1.85], 1.75, 0.03, SMG); [-1, 1].forEach(sd => c.box("#1c2b3a", L / 2 - 1.15, sd * 0.955, 1.5, 0.9, 0.02, 0.5, null, 0.02, SMG));
+  if (typ === "Pickup") { const fx0 = -L / 2 + 0.05, fx1 = 0.25; c.box("#374151", (fx0 + fx1) / 2, 0, 0.85, fx1 - fx0, 1.85, 0.1, null, 0.02, SMM); [-1, 1].forEach(sd => c.box(col, (fx0 + fx1) / 2, sd * 0.93, 1.1, fx1 - fx0, 0.05, 0.55, null, 0.01, { shin: 80 })); c.box(col, fx0, 0, 1.1, 0.05, 1.85, 0.55, null, 0.01, { shin: 80 }); c.box(col, fx1, 0, 1.1, 0.05, 1.85, 0.55, null, 0.01, { shin: 80 }); }
+  if (typ === "Skåpbil") c.box("#f59e0b", -L / 2 + 0.7, 0, 2.5, 0.8, 1.2, 0.08, null, 0.02);
+  mcLamp(c, L / 2 + 0.005, 0.65, 0.95, 0.3); mcLamp(c, L / 2 + 0.005, -0.65, 0.95, 0.3); mcBeacon(c, 0.8, 0, typ === "Skåpbil" ? 2.42 : 1.95);
+  mcMachineCard(c, p, typ, [["Typ", typ]], 3.2);
+}
+Object.assign(SM, {
+  aggregat: { group: "Maskiner", label: "Aggregat & ljusmast", color: "#16a34a", L: 3.2, B: 1.4, H: 2.3, icon: "truck", build: mcGenBuild,
+    fields: [["typ", "Typ", ["Elverk", "Kompressor", "Värmeaggregat", "Ljusmast"], "Elverk"], ["effekt", "Effekt/kapacitet", "range", 60, { min: 5, max: 400, step: 5, unit: "" }], ["mast", "Masthöjd (ljusmast)", "range", 9, { min: 4, max: 14, step: 0.5, unit: "m" }], ["lutning", "Mastlutning", "range", 0, { min: -20, max: 20, step: 1, unit: "°" }]],
+    groups: [["Maskin", ["typ", "effekt"]], ["Ljusmast", ["mast", "lutning"]]] },
+  krossverk: { group: "Maskiner", label: "Krossverk / siktverk", color: "#facc15", L: 6, B: 3, H: 4, icon: "truck", build: mcCrusherBuild,
+    fields: [["typ", "Typ", ["Backkross", "Siktverk"], "Backkross", { seg: true }], ["band", "Bandets vinkel", "range", 28, { min: 5, max: 40, step: 1, unit: "°" }], ["bandlangd", "Bandets längd", "range", 9, { min: 4, max: 16, step: 0.5, unit: "m" }]],
+    groups: [["Maskin", ["typ"]], ["Transportband", ["band", "bandlangd"]]] },
+  servicebil: { group: "Maskiner", label: "Servicebil / pickup", color: "#e5e7eb", L: 5.4, B: 1.9, H: 1.9, icon: "truck", build: mcVanBuild, fields: [["typ", "Typ", ["Pickup", "Skåpbil"], "Pickup", { seg: true }]], groups: [["Fordon", ["typ"]]] },
 });
