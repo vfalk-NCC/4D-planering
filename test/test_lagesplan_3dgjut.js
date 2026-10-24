@@ -192,6 +192,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const q = placeNew('sm:stalprofil', [O[0] + 1000, O[1] + 1000, 0]); q.f = { serie: 'HEA', dim: '300', langd: '6', antal: '1' }; const calc = SM.stalprofil.calc(q); out.hea300 = calc.find(r => r[0] === 'Vikt per meter')[1]; return out; });
   const badP = Object.entries(bd).filter(([k, v]) => k !== 'hea300' && (v.err || !v.parts)); if (Object.keys(bd).length < 8 || badP.length || !/^8[5-9],/.test(bd.hea300)) fail('Byggdelar: ' + JSON.stringify(bd));
   console.log('OK: byggdelar (' + (Object.keys(bd).length - 1) + ' typer) – HEA 300 väger ' + bd.hea300);
+  const mk2 = await page.evaluate(async () => { const O = l3.O, q = placeNew('sm:makadam', [O[0] + 1100, O[1] + 1100, 0]); q.L = 10; q.B = 10; placements.push(q); placeTouch(q); l3AddPlacementMesh(q); const f = placeNew('lada', [q.x + 1, q.y, 0]); f.L = 2; f.B = 2; f.H = 1; f.z = 0; placements.push(f); placeTouch(f); l3AddPlacementMesh(f); l3SelectIds([f.id]); await new Promise(r => setTimeout(r, 300));
+    const sg = () => { const s = placeParts(q).find(x => x.sign); return JSON.stringify(s && s.sign && s.sign.rows || ''); }; const r = { a: sg() };
+    const o = l3.gizmo.object; o.position.x += 12; l3.gizmo.dispatchEvent({ type: 'objectChange' }); l3.gizmo.dispatchEvent({ type: 'mouseUp' }); await new Promise(r2 => setTimeout(r2, 400)); r.b = sg();
+    const m = placeNew('lada', [q.x - 2, q.y, 0]); m.L = 0; m.B = 0; m.H = 1.5; m.R = 1; placements.push(m); placeTouch(m); l3AddPlacementMesh(m); r.cuts0 = mkShape(q).cuts.length; return r; });
+  if (!/96 m/.test(mk2.a) || !/100 m²/.test(mk2.b)) fail('Makadamens skylt ska följa när ett objekt dras in/ut: ' + JSON.stringify(mk2));
+  console.log('OK: makadamens skylt uppdateras när objekt dras in och ut');
   // Skyltar kan slås av för ett objekt eller för alla
   const sgo = await page.evaluate(() => { const O = l3.O, q = placeNew('sm:grav', [O[0] + 900, O[1] + 900, 0]), cw = placeNew('crew:', [O[0] + 910, O[1] + 910, 0]), has = o => placeParts(o).some(x => x.sign), r = { on: has(q) && has(cw) }; q.signOff = true; r.one = !has(q) && has(cw); q.signOff = false; l3SetPref('signsOff', true); r.all = !has(q) && !has(cw); l3SetPref('signsOff', null); r.back = has(q) && has(cw); return r; });
   if (!sgo.on || !sgo.one || !sgo.all || !sgo.back) fail('Skyltar av/på: ' + JSON.stringify(sgo));

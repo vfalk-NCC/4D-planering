@@ -1155,7 +1155,7 @@ function l3DragEnd() {
   if (s && !moved && Math.abs(s.z - g.position.z) < 1e-4 && Math.abs(s.r - g.rotation.z) < 1e-6) { placeUndoStack.pop(); return; } // bara ett klick på handtaget
   // Fäst mot ytan: efter en flytt i plan ställer sig objektet på det som ligger under det.
   if (moved && l3.gizmo.mode === "translate" && document.getElementById("v3Snap").checked && Math.abs(s.z - g.position.z) < 1e-4) l3DropToSurface(p, g);
-  placeTouch(p); l3Changed(); l3RenderSide();
+  placeTouch(p); if (typeof l3MkRefresh === "function") l3MkRefresh(p); l3Changed(); l3RenderSide();
 }
 /* Ställer objektet på ytan rakt under dess mitt (plan, planerade objekt, byggnaden eller annan etablering). */
 function l3DropToSurface(p, g) {
@@ -1180,6 +1180,7 @@ function l3DeleteSel() {
   placeSnapshot();
   const ids = new Set(list.map(p => p.id));
   placements = placements.filter(p => !ids.has(p.id));
+  if (typeof l3MkRefresh === "function") l3MkRefresh({});
   ids.forEach(id => { placeDeleted.add(id); placeDirty.delete(id); const g = l3.placeMeshes.get(id); if (g) { if (l3.gizmo.object === g) l3.gizmo.detach(); l3.groups.places.remove(g); } l3.placeMeshes.delete(id); });
   placeScheduleSave();
   l3SelectIds([]); l3Changed();

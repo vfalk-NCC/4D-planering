@@ -238,7 +238,8 @@ function smartSideHtml(p) {
     return `<label class="v3-field"><span>${esc(lab)}</span><input type="${type === "date" ? "date" : type === "time" ? "time" : "text"}" data-smf="${k}" ${type === "num" ? 'inputmode="decimal"' : ""} value="${esc(v)}" /></label>`; };
   const g = (t, a) => `<div class="v3-sec">${esc(t)}</div>${a}`;
   const fold = (t, inner) => { const key = d.label + "|" + t; return `<details class="v3-sm-fold" data-smfold="${esc(key)}" ${SM_FOLD_OPEN.has(key) ? "open" : ""}><summary>${esc(t)}</summary><div class="v3-sm-fold-b">${inner}</div></details>`; };
-  return (d.groups ? d.groups.map(([t, ks, how]) => { const inner = ks.map(k => d.fields.find(f => f[0] === k)).filter(Boolean).map(row).join(""); return how === "fold" ? fold(t, inner) : g(t, inner); }).join("")
+  const top = `<label class="v3-lay-sw-row v3-sm-signtop" title="Slå av/på skylten på det här objektet"><span>Visa skylt</span><span class="v3-lay-sw"><input type="checkbox" role="switch" data-sg="show" ${p.signOff === true ? "" : "checked"} /><i></i></span></label>`;
+  return top + (d.groups ? d.groups.map(([t, ks, how]) => { const inner = ks.map(k => d.fields.find(f => f[0] === k)).filter(Boolean).map(row).join(""); return how === "fold" ? fold(t, inner) : g(t, inner); }).join("")
     : `<div class="v3-sec">${esc(d.label)}</div>${d.fields.map(row).join("")}`) + smSignHtml(p) + smDateFieldsHtml(p);
 }
 const SM_FOLD_OPEN = new Set(); // alternativ-rullgardinerna som är öppna (överlever omritning av panelen)
