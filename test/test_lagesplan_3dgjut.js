@@ -229,6 +229,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       [['arrow', x], ['ring', r]].forEach(([k, h]) => { const b = new THREE.Box3().setFromObject(h), a = px(new THREE.Vector3(b.min.x, b.min.y, b.min.z)), bb = px(new THREE.Vector3(b.max.x, b.max.y, b.max.z)); out[k] = Math.round(Math.hypot(a[0] - bb[0], 1)); }); return out; };
     return { near: meas(8), far: meas(40), ortho: !!l3.camera.isOrthographicCamera }; });
   console.log('GIZSIZE', JSON.stringify(gsz));
+  const big = await page.evaluate(() => { const O = l3.O, q = placeNew('sm:virke', [O[0] + 2500, O[1] + 2500, 0]); q.f = Object.assign(q.f || {}, { bredd: '20', hojd: '20', dim: '45x45' }); try { const ps = placeParts(q); return ps.reduce((n, x) => n + (x.tris ? x.tris.pts.length : 0), 0); } catch (e) { return 'ERR ' + e.message; } });
+  if (typeof big === 'string') fail('Stora objekt får inte ge stack overflow: ' + big);
   const mk2 = await page.evaluate(async () => { const O = l3.O, q = placeNew('sm:makadam', [O[0] + 1100, O[1] + 1100, 0]); q.L = 10; q.B = 10; placements.push(q); placeTouch(q); l3AddPlacementMesh(q); const f = placeNew('lada', [q.x + 1, q.y, 0]); f.L = 2; f.B = 2; f.H = 1; f.z = 0; placements.push(f); placeTouch(f); l3AddPlacementMesh(f); l3SelectIds([f.id]); await new Promise(r => setTimeout(r, 300));
     const sg = () => { const s = placeParts(q).find(x => x.sign); return JSON.stringify(s && s.sign && s.sign.rows || ''); }; const r = { a: sg() };
     const o = l3.gizmo.object; o.position.x += 12; l3.gizmo.dispatchEvent({ type: 'objectChange' }); l3.gizmo.dispatchEvent({ type: 'mouseUp' }); await new Promise(r2 => setTimeout(r2, 400)); r.b = sg();

@@ -123,7 +123,8 @@ function smMakeCtx(p, z, col) {
       const g = { pts, faces: [[1, 3, 2], [1, 4, 3], [5, 6, 7], [5, 7, 8], [1, 2, 6], [1, 6, 5], [2, 3, 7], [2, 7, 6], [3, 4, 8], [3, 8, 7], [4, 1, 5], [4, 5, 8]] }; if (TK.volume(g) < 0) g.faces = g.faces.map(f => [f[0], f[2], f[1]]); return TK.add(ctx.T(color, o), g, 0, 0, 0); },
     card: s => smCard(ctx, ctx.withDate(s)), withDate: s => s,
     flush: () => { Ts.forEach(T => { if (!T.faces.length) return; const pts = T.loc.map(([a, b, zz]) => { const w = W(a, b); return [w[0], w[1], z + zz]; }), xs = pts.map(q => q[0]), ys = pts.map(q => q[1]), zs = pts.map(q => q[2]);
-      parts.push({ tris: { pts, faces: T.faces, sg: T.sg }, poly: [[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)], [Math.min(...xs), Math.max(...ys)]], z0: Math.min(...zs), z1: Math.max(...zs), role: T.role || "body", transp: T.transp || 0, color: T.color, unlit: !!T.unlit, deco: !!T.deco, mat: { shin: T.shin, metal: T.metal, rough: T.rough } }); }); Ts.clear(); return parts; } };
+      const mm = a => { let lo = Infinity, hi = -Infinity; for (let i = 0; i < a.length; i++) { const v = a[i]; if (v < lo) lo = v; if (v > hi) hi = v; } return [lo, hi]; }, [x0, x1] = mm(xs), [y0, y1] = mm(ys), [zl, zh] = mm(zs);   // ingen spridning av stora listor (stack overflow)
+      parts.push({ tris: { pts, faces: T.faces, sg: T.sg }, poly: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], z0: zl, z1: zh, role: T.role || "body", transp: T.transp || 0, color: T.color, unlit: !!T.unlit, deco: !!T.deco, mat: { shin: T.shin, metal: T.metal, rough: T.rough } }); }); Ts.clear(); return parts; } };
   return ctx;
 }
 function smartParts(p, z) {
