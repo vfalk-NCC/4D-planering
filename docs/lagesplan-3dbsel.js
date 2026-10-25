@@ -8,8 +8,10 @@
    Markeringen ritas som ett överlägg som delar punkterna med byggnadsbiten (inget kopieras) och följer
    med om biten flyttas. */
 
+/* Ett dolt objekt är dött: det går aldrig att markera (klick, ruta, lager, Markera alla) – dolt, utanför sin tid, släckt lager, släckt i montageordningen eller i filmens animering. */
+const l3bsDead = (mesh, ri) => { const u = mesh && mesh.userData.l3b; return !u || mesh.visible === false || !!((u.hidden && u.hidden.has(ri)) || (u.tempOff && u.tempOff.has(ri)) || (u.animOff && u.animOff.has(ri)) || (u.mtHide && u.mtHide.has(ri)) || (u.lyHide && u.lyHide.has(ri))); };
 const l3bs = { sel: [], ov: [] }; // sel: [{ mesh, ri, key }], ov: överläggen
-const L3BS_COL = 0x6d5efc;
+const L3BS_COL = 0xffc61a;
 
 /* Objektets triangelintervall i bitens ursprungliga indexlista (workern sparar det; äldre cache: sök). */
 function l3bsIdx(mesh, ri) {
@@ -108,8 +110,8 @@ function l3bsHalo(mesh, g) {
   const nor = new Float32Array(pos.count * 3);
   for (let i = 0; i < ia.length; i++) { const v = acc.get(kk[i]), l = Math.hypot(v[0], v[1], v[2]) || 1, o = ia[i] * 3; nor[o] = v[0] / l; nor[o + 1] = v[1] / l; nor[o + 2] = v[2] / l; }
   const hg = new THREE.BufferGeometry(); hg.setAttribute("position", pos); hg.setAttribute("normal", new THREE.BufferAttribute(nor, 3)); hg.setIndex(idx); hg.computeBoundingSphere();
-  const h = new THREE.Mesh(hg, L3_HALO_MAT()), m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp }));
-  [h, m].forEach(x => { x.userData.noHit = true; x.userData.bsel = true; x.userData.selHalo = true; x.userData.bselFill = true; x.raycast = () => {}; x.frustumCulled = false; mesh.add(x); l3bs.ov.push(x); }); h.renderOrder = 7; m.renderOrder = 6;
+  const h = new THREE.Mesh(hg, L3_HALO_MAT(0.006, 0.98)), h2 = new THREE.Mesh(hg, L3_HALO_MAT(0.02, 0.26)), m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp }));
+  [h, h2, m].forEach(x => { x.userData.noHit = true; x.userData.bsel = true; x.userData.selHalo = true; x.userData.bselFill = true; x.raycast = () => {}; x.frustumCulled = false; mesh.add(x); l3bs.ov.push(x); }); h.renderOrder = 7; h2.renderOrder = 7; m.renderOrder = 6;
 }
 function l3bsRebuild() {
   l3bsDropOverlays();
@@ -132,7 +134,7 @@ function l3bsRebuild() {
     g.setIndex(new THREE.BufferAttribute(idx, 1));
     g.computeBoundingSphere();
     const fill = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: L3BS_COL, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-    if (total <= 250000) { fill.material.opacity = 0.16; l3bsHalo(mesh, g); } else fill.material.opacity = 0.5;   // lätt ton + yttre glöd; mycket stora urval (hela lager) får bara en tydligare ton
+    if (total <= 250000) { fill.material.opacity = 0.34; l3bsHalo(mesh, g); } else fill.material.opacity = 0.55;   // lätt ton + yttre glöd; mycket stora urval (hela lager) får bara en tydligare ton
     fill.userData.bselFill = true;
     fill.userData.noHit = true; fill.userData.bsel = true; fill.raycast = () => {}; fill.renderOrder = 6; mesh.add(fill); l3bs.ov.push(fill);
     if (false && total <= L3BS_EDGE_MAX) work.push([mesh, ris]);   // alla kanter ritas inte längre: bara en yttre kontur (som för övriga objekt)
@@ -145,6 +147,7 @@ function l3bsRebuild() {
 }
 
 function l3bsSet(list, opts = {}) {
+  list = list.filter(e => !l3bsDead(e.mesh, e.ri));
   const want = new Map(list.map(e => [l3bsKey(e.mesh, e.ri), e]));
   l3bs.sel = [...want.entries()].map(([key, e]) => ({ mesh: e.mesh, ri: e.ri, key }));
   l3bsRebuild();
@@ -163,6 +166,7 @@ function l3bsFromHit(h) {
   let lo = 0, hi = R.length - 1, ri = -1;
   while (lo <= hi) { const mid = (lo + hi) >> 1; if (R[mid].start <= v) { ri = mid; lo = mid + 1; } else hi = mid - 1; }
   if (ri < 0 || v >= R[ri].start + R[ri].count) return null;
+  if (l3bsDead(h.object, ri)) return null;
   return { mesh: h.object, ri };
 }
 function l3bsTap(h, additive) {
@@ -229,7 +233,7 @@ function l3bsInRect(L, R, T, B, rect, cross = false) {
       let sx = null, sy = null, ok = null; // skärmpunkter för bitens hörn, räknas vid behov
       const proj = i => { v.set(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]).applyMatrix4(PM); sx[i] = (v.x + 1) / 2 * W; sy[i] = (1 - v.y) / 2 * H; ok[i] = v.z < 1 && v.z > -1 ? 1 : 2; };
       for (let i = 0; i < u.ranges.length && out.length < MAX; i++) {
-        if (u.hidden.has(i) || off.has(i)) continue;
+        if (u.hidden.has(i) || off.has(i) || l3bsDead(mesh, i)) continue;
         // Lådans hörn på skärmen.
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, behind = false;
         for (let k = 0; k < 8; k++) {
@@ -336,6 +340,7 @@ function l3bsRenderSide(side) {
     </div>
     ${typeof l3gSelHtml === "function" ? l3gSelHtml() : ""}
     ${l3bsPendingHtml(info)}
+    ${coupled.length && typeof l3ProgHtml === "function" ? l3ProgHtml(coupled.map(x => x.item)) : ""}
     ${one ? `<table class="v3-info-t">${one.item ? row("Aktivitet", one.item.activity) + row("Status", PHASE_LABELS[l3Phase(one.item)] || "") + row("Period", one.item.start_date ? `${one.item.start_date} – ${one.item.end_date || ""}` : "") : row("Planering", "Inte kopplad")}${typeof l3pFillSide === "function" ? "" : row("IFC-id", one.guid)}</table>${typeof l3pFillSide === "function" ? `<div id="v3BsProps" class="v3-props"></div>` : ""}`
       : `<div class="v3-bs-list">${info.slice(0, 60).map(x => `<div class="v3-bs-row" title="${esc(x.guid)}"><span>${esc(x.name)}</span>${x.item ? `<em>${esc(x.item.activity || "kopplad")}</em>` : ""}</div>`).join("")}${n > 60 ? `<div class="v3-pal-hint">… och ${n - 60} till</div>` : ""}</div>
       ${typeof l3pGroupBy === "function" ? `<button type="button" id="v3BsGroup" class="v3-link" title="Fliken Egenskaper: välj en egenskap och se alla värden">Gruppera efter egenskap…</button>` : ""}`}`;

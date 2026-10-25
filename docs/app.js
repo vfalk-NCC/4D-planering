@@ -466,6 +466,16 @@ async function lagesplanHandle(msg, reply, progress) {
       if (placeDirty.size || placeDeleted.size) await placeSaveNow();
       await place3dLoad({ fresh: true });
       reply(await placeIfcTextFor(msg.all ? placements.map(p => String(p.id)) : (Array.isArray(msg.ids) ? msg.ids.map(String) : [])));
+    } else if (msg.type === "setProgress") {   // framdrift satt i 3D-vyn: sparas som reglaget i aktivitetslistan (samma aktivitet och delposter)
+      const v = Math.max(0, Math.min(100, Math.round(Number(msg.progress) || 0))), ids = new Set((msg.ids || []).map(String));
+      const targets = items.filter(it => ids.has(String(it.id)));
+      if (!targets.length) throw new Error("Aktiviteten finns inte i planeringen");
+      const records = targets.map(t => ({ ...t, progress: v }));
+      applyOptimisticRecords(records); renderItemList();
+      const jobId = ++saveJobCounter;
+      saveJobs.set(jobId, { id: jobId, records, label: `Framdrift → ${v}% (från 3D-vyn, ${records.length === 1 ? (records[0].objectName || records[0].objectId) : records.length + " objekt"})`, status: "pending", error: null });
+      runSaveJob(jobId);
+      reply({ count: records.length, ids: records.map(r => r.id), progress: v });
     } else if (msg.type === "positions") {
       reply(await lagesplanPositions());
     } else if (msg.type === "select") {

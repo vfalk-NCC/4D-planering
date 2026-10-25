@@ -959,7 +959,7 @@ function l3PlaceAt(e) {
    (Victor 2026-10-13: markera fundament och pelare tillsammans och exportera). Vanligt klick: en sorts i taget. */
 function l3SelectIds(ids, opts = {}) {
   if (ids.length && typeof l3lay !== "undefined" && l3lay.glow && typeof l3lGlow === "function") l3lGlow(null); // modellens sken släcks när man markerar något
-  l3.sel = new Set(ids.filter(id => placements.some(p => p.id === id)));
+  l3.sel = new Set(ids.filter(id => placements.some(p => p.id === id) && !(l3.hidden && l3.hidden.has(id))));   // dolda objekt går inte att markera
   if (l3.sel.size && !opts.keepIfc && typeof l3bsClear === "function") l3bsClear();
   placeActiveId = l3.sel.size ? [...l3.sel][l3.sel.size - 1] : null;
   l3RefreshSel();
@@ -976,9 +976,10 @@ function l3Select(id) { l3SelectIds(id ? [id] : []); }
    visa dolda delar när jag markerar dom") – annars är det svårt att passa in t.ex. lyftkranar. Konturerna sitter på själva objektet och följer med handtagen. */
 const L3_SEL_COL = 0x6d5efc, L3_SEL_TINT = 0x2f5fe0;   // markering = bara sken på objektet (ingen ram/bounding box)
 /* Markering = en mjuk blå glöd runt objektets kontur (inverterat skal som skjuts ut längs normalerna). Objektet behåller sin egen färg. */
-const L3_HALO_MAT = () => new THREE.ShaderMaterial({ side: THREE.BackSide, transparent: true, depthWrite: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp, uniforms: { w: { value: 0.008 }, col: { value: new THREE.Color(0x3b8bff) } },
-  vertexShader: "uniform float w; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vec3 n = normalize(normalMatrix * normal); mv.xyz += n * (-mv.z) * w; gl_Position = projectionMatrix * mv; }",
-  fragmentShader: "uniform vec3 col; void main(){ gl_FragColor = vec4(col, 0.9); }" });
+const L3_SEL_EMI = 0x4d3b00, L3_SEL_YEL = 0xffc61a;   // markering: varm gul ton på ytan + gul glöd runt konturen (som i Trimble Connect/BIMvision: tydlig på både ljust och mörkt)
+const L3_HALO_MAT = (w = 0.007, a = 0.95) => new THREE.ShaderMaterial({ side: THREE.BackSide, transparent: true, depthWrite: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.NotEqualStencilFunc, stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp, uniforms: { w: { value: w }, a: { value: a }, col: { value: new THREE.Color(L3_SEL_YEL) } },
+  vertexShader: "uniform float w; void main(){ vec4 mv = modelViewMatrix * vec4(position,1.0); vec3 n = normalize(normalMatrix * normal); float d = (projectionMatrix[3][3] == 1.0) ? (2.14 / projectionMatrix[1][1]) : -mv.z; mv.xyz += n * d * w; gl_Position = projectionMatrix * mv; }"   /* bredden följer skärmen både i perspektiv och parallellprojektion */,
+  fragmentShader: "uniform vec3 col; uniform float a; void main(){ gl_FragColor = vec4(col, a); }" });
 function l3HaloGeo(geo) {
   if (geo.userData.halo) return geo.userData.halo;
   const pos = geo.getAttribute("position"), nor = geo.getAttribute("normal"); if (!pos || !nor || pos.count > 150000) return geo;
@@ -992,11 +993,11 @@ function l3SelDeco(g, on) {
   if (!g) return;
   const meshes = []; g.traverse(o => { if (o.isMesh && !o.userData.selHalo && !o.userData.selEdge) meshes.push(o); });
   meshes.forEach(o => {
-    if (o.material && o.material.emissive && !on) o.material.emissive.setHex(0x000000);
+    if (o.material && o.material.emissive) o.material.emissive.setHex(on && !o.userData.isSign && !(o.material.transparent && o.material.opacity < 0.5) ? L3_SEL_EMI : 0x000000);
     if (on && !o.userData.selHalo2 && !o.userData.isSign && !o.userData.noHalo && o.geometry && o.geometry.getAttribute("normal") && o.visible) {
       // Bara en yttre kontur runt hela objektet: delarna stämplar en mask (stencil) och glöden ritas bara utanför den.
-      const grp = new THREE.Group(), h = new THREE.Mesh(l3HaloGeo(o.geometry), L3_HALO_MAT()), m = new THREE.Mesh(o.geometry, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp }));
-      [h, m].forEach(x => { x.userData.selHalo = true; x.raycast = () => {}; x.frustumCulled = false; }); h.renderOrder = 7; m.renderOrder = 6; grp.add(m, h); grp.userData.selHalo = true;
+      const grp = new THREE.Group(), hg = l3HaloGeo(o.geometry), h = new THREE.Mesh(hg, L3_HALO_MAT(0.006, 0.98)), h2 = new THREE.Mesh(hg, L3_HALO_MAT(0.02, 0.26)), m = new THREE.Mesh(o.geometry, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp }));
+      [h, h2, m].forEach(x => { x.userData.selHalo = true; x.raycast = () => {}; x.frustumCulled = false; }); h.renderOrder = 7; h2.renderOrder = 7; m.renderOrder = 6; grp.add(m, h2, h); grp.userData.selHalo = true;
       o.add(grp); o.userData.selHalo2 = grp;
     } else if (!on && o.userData.selHalo2) { const h = o.userData.selHalo2; o.remove(h); h.traverse(x => { if (x.material) x.material.dispose(); }); delete o.userData.selHalo2; }
   });
@@ -1021,7 +1022,7 @@ function l3RefreshSel() {
 }
 function l3SetHover(id) {
   if (!l3 || l3.hoverId === id) return;
-  const set = (pid, on) => { const g = pid && l3.placeMeshes.get(pid); if (g) g.traverse(o => { if (o.isMesh && !o.userData.selEdge && o.material && o.material.emissive) o.material.emissive.setHex(on ? 0x3b3b1a : 0x000000); }); };
+  const set = (pid, on) => { const g = pid && l3.placeMeshes.get(pid); if (g) g.traverse(o => { if (o.isMesh && !o.userData.selEdge && o.material && o.material.emissive) o.material.emissive.setHex(on ? 0x3b3b1a : l3.sel.has(pid) ? L3_SEL_EMI : 0x000000); }); };
   set(l3.hoverId, false); l3.hoverId = id; set(id, true);
   l3.renderer.domElement.style.cursor = id ? "pointer" : "";
   l3Render();
@@ -1442,6 +1443,7 @@ function l3ShowHitInfo(h) {
   const el = document.getElementById("v3Info");
   el.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:${phaseColor(r ? ph : "ingen")}"></i><b>${escHtml((r && (r.object_name || r.activity)) || title || "Objekt")}</b><button type="button" class="v3-x" title="Stäng">✕</button></div>
     <table class="v3-info-t">${r ? row("Aktivitet", r.activity) + row("Område", r.area) + row("Entreprenör", r.contractor) + row("Status", PHASE_LABELS[ph] || ph) + row("Period", r.start_date ? `${r.start_date} – ${r.end_date || ""}` : "") + row("Framdrift", r.progress != null ? r.progress + " %" : "") : row("Status", "Inte kopplat till planeringen")}${extra.map(([k, v]) => row(k, v)).join("")}</table>
+    ${r && typeof l3ProgHtml === "function" ? l3ProgHtml([r]) : ""}
     ${r ? `<button type="button" class="v3-wide" id="v3InfoJump">Visa i 4D-planering</button>` : ""}`;
   el.classList.remove("hidden");
   el.querySelector(".v3-x").onclick = l3HideInfo;
