@@ -44,15 +44,18 @@ function siteIfcSign(doc, { center, z, w, hgt, rx, ry, color, label, lines, text
    ytor (3DFACE/MESH) blir trianglar. Ett element per CAD-lager, i lagrets färg som den visas i 3D-vyn. Högst SITE_IFC_CAD_MAX linjer totalt. ---- */
 const SITE_IFC_CAD_W = 0.03, SITE_IFC_CAD_MAX = 30000;
 const siteIfcCadList = () => (typeof cads === "function" ? cads().filter(r => !r.virtual && r.stats && r.stats.has3d && ls("cad:" + r.id).visible && cadGeom.has(r.id)) : []);
-function siteIfcCad(doc, elems) {
+/* Ett slutet triangelspår (4 punkter, första = sista) är en yta i en TIN/terrängmodell – den blir en triangel i IFC, inte tre stavar. */
+const siteIfcIsTri = a => a.length === 8 && a[0] === a[6] && a[1] === a[7];
+function siteIfcCad(doc, elems, only) {
   const E = doc.E, out = { recs: 0, segs: 0, faces: 0, cut: 0 };
-  const recs = siteIfcCadList(), total = recs.reduce((a, r) => a + cadGeom.get(r.id).groups.reduce((b, gr) => b + (gr.raw || []).reduce((c, a2) => c + Math.max(0, a2.length / 2 - 1), 0), 0), 0), every = Math.max(1, Math.ceil(total / SITE_IFC_CAD_MAX));
+  const recs = only || siteIfcCadList(), total = recs.reduce((a, r) => a + cadGeom.get(r.id).groups.reduce((b, gr) => b + (gr.raw || []).reduce((c, a2) => c + (siteIfcIsTri(a2) ? 0 : Math.max(0, a2.length / 2 - 1)), 0), 0), 0), every = Math.max(1, Math.ceil(total / SITE_IFC_CAD_MAX));
   recs.forEach(r => {
     const g = cadGeom.get(r.id), names = r.layers.map(l => l.name), zoff = -0 + (Number(r.z3) || 0), o = [Math.round(g.origin[0]), Math.round(g.origin[1]), 0]; let used = false;
     g.groups.forEach((gr, gi) => {
       if (!cadLayerOn(r, names[gr.l])) return;
       const pts = [], faces = [], vtx = (x, y, z) => { pts.push([x, y, z]); return pts.length; }; let nS = 0, nF = 0, k = 0;
       (gr.raw || []).forEach((a, pi) => { const zz = gr.z && gr.z[pi];
+        if (siteIfcIsTri(a)) { const i0 = pts.length + 1; for (let q = 0; q < 3; q++) vtx(g.origin[0] - o[0] + a[q * 2] / 1000, g.origin[1] - o[1] + a[q * 2 + 1] / 1000, (zz ? zz[q] / 1000 : 0) + zoff); faces.push([i0, i0 + 1, i0 + 2], [i0, i0 + 2, i0 + 1]); nF++; return; }   // båda sidor syns
         for (let j = 2; j < a.length; j += 2) { if ((k++ % every) !== 0) { out.cut++; continue; }
           const A = [g.origin[0] - o[0] + a[j - 2] / 1000, g.origin[1] - o[1] + a[j - 1] / 1000, (zz ? zz[j / 2 - 1] / 1000 : 0) + zoff], B = [g.origin[0] - o[0] + a[j] / 1000, g.origin[1] - o[1] + a[j + 1] / 1000, (zz ? zz[j / 2] / 1000 : 0) + zoff];
           const d = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], L = Math.hypot(...d); if (L < 0.01) continue; const u0 = d.map(v => v / L), ref = Math.abs(u0[2]) < 0.9 ? [0, 0, 1] : [1, 0, 0];
@@ -147,6 +150,17 @@ function buildSiteIfc() {
   });
   const cad = siteIfcCad(doc, elems);
   return { text: doc.finish(elems, `Lag och noteringar ${plan ? plan.name : ""} ${at}.ifc`), crews, notes, cad, z0, levelSet: typeof zoneCadTopZ === "function" && zoneCadTopZ() != null };
+}
+
+/* En enskild ritning (DXF/DWG) som IFC – från panelen i 3D-editorn. Tända lager tas med; slutna trianglar (TIN) blir ytor, övriga linjer solida stavar. */
+async function exportCadRecIfc(rec, fileName) {
+  if (typeof ensureCadGeoms === "function" && !cadGeom.has(rec.id)) await ensureCadGeoms([rec]);
+  if (!cadGeom.has(rec.id)) throw new Error("ritningens geometri kunde inte läsas");
+  const doc = ifcDoc("4D-planering – " + rec.name, "Ritning " + rec.name + " som IFC"), elems = [];
+  const out = siteIfcCad(doc, elems, [rec]);
+  if (!elems.length) throw new Error("inga tända lager med linjer eller ytor");
+  const name = (String(fileName || rec.name).replace(/[\\/:*?"<>|]/g, "-").trim() || "Ritning") + ".ifc", bytes = new TextEncoder().encode(doc.finish(elems, name));
+  return { name, bytes, out };
 }
 
 function exportSiteIfc() {

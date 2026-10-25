@@ -231,6 +231,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   console.log('GIZSIZE', JSON.stringify(gsz));
   const big = await page.evaluate(() => { const O = l3.O, q = placeNew('sm:virke', [O[0] + 2500, O[1] + 2500, 0]); q.f = Object.assign(q.f || {}, { bredd: '20', hojd: '20', dim: '45x45' }); try { const ps = placeParts(q); return ps.reduce((n, x) => n + (x.tris ? x.tris.pts.length : 0), 0); } catch (e) { return 'ERR ' + e.message; } });
   if (typeof big === 'string') fail('Stora objekt får inte ge stack overflow: ' + big);
+  const tin = await page.evaluate(async () => { const data = { v: 1, origin: [169000, 7456000], groups: [{ l: 0, c: "#f59e0b", p: [[0, 0, 5000, 0, 0, 5000, 0, 0], [5000, 0, 5000, 5000, 0, 5000, 5000, 0]], z: [[1000, 1200, 1500, 1000], [1200, 1300, 1500, 1200]] }, { l: 0, c: "#0f0", p: [[0, 0, 4000, 4000, 8000, 0]], z: [[0, 100, 200]] }] };
+    const rec = { id: 'tin-test', type: 'cad', name: 'TIN-test', layers: [{ name: 'TIN', color: '#f59e0b', n: 3 }], stats: { has3d: true }, z3: 0, colorMode: 'orig', color: '#1d4ed8' };
+    cadGeom.set(rec.id, buildCadGeom(data)); const r = await exportCadRecIfc(rec, 'TIN-test'); const txt = new TextDecoder().decode(r.bytes); return { faces: r.out.faces, segs: r.out.segs, tri: /IFCTRIANGULATEDFACESET/.test(txt), len: r.bytes.length }; });
+  if (tin.faces !== 2 || tin.segs !== 2 || !tin.tri) fail('Ritning som IFC: slutna trianglar ska bli ytor, övriga linjer stavar: ' + JSON.stringify(tin));
+  console.log('OK: ritning (TIN) exporteras som IFC – trianglar blir ytor, linjer solida stavar');
   const mk2 = await page.evaluate(async () => { const O = l3.O, q = placeNew('sm:makadam', [O[0] + 1100, O[1] + 1100, 0]); q.L = 10; q.B = 10; placements.push(q); placeTouch(q); l3AddPlacementMesh(q); const f = placeNew('lada', [q.x + 1, q.y, 0]); f.L = 2; f.B = 2; f.H = 1; f.z = 0; placements.push(f); placeTouch(f); l3AddPlacementMesh(f); l3SelectIds([f.id]); await new Promise(r => setTimeout(r, 300));
     const sg = () => { const s = placeParts(q).find(x => x.sign); return JSON.stringify(s && s.sign && s.sign.rows || ''); }; const r = { a: sg() };
     const o = l3.gizmo.object; o.position.x += 12; l3.gizmo.dispatchEvent({ type: 'objectChange' }); l3.gizmo.dispatchEvent({ type: 'mouseUp' }); await new Promise(r2 => setTimeout(r2, 400)); r.b = sg();

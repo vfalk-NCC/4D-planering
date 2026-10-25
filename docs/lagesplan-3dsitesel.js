@@ -133,7 +133,7 @@ function l3ssRenderSide(side) {
       <div class="v3-acts">
         <button type="button" class="v3-act" id="v3SsZoom">${I.focus}<span>Zooma</span></button>
         <button type="button" class="v3-act" id="v3SsHide">${I.eyeOff}<span>Dölj</span></button>
-        ${typeof l3dStart === "function" ? `<button type="button" class="v3-act" id="v3SsEdit" title="Redigera linjerna och texterna – sparas som en ny DXF i TC">${I.edit}<span>Redigera</span></button>` : ""}
+        <button type="button" class="v3-act" id="v3SsIfc" title="Exportera ritningen (tända lager) som IFC – ytor blir ytor, linjer blir solida stavar. Sparas i Trimble Connect och som nedladdning.">${I.upload || I.edit}<span>Exportera IFC</span></button>${typeof l3dStart === "function" ? `<button type="button" class="v3-act" id="v3SsEdit" title="Redigera linjerna och texterna – sparas som en ny DXF i TC">${I.edit}<span>Redigera</span></button>` : ""}
       </div>
       <table class="v3-info-t">${row("Fil", r.name + ".dxf")}${row("Lager", `${on} av ${r.layers.length} tända`)}${r.stats ? row("Innehåll", `${(r.stats.lines || 0).toLocaleString("sv-SE")} linjer${r.stats.texts ? `, ${r.stats.texts.toLocaleString("sv-SE")} texter` : ""}`) : ""}${typeof unitName === "function" && r.factor ? row("Enhet", unitName(r.factor)) : ""}${b ? row("Storlek", `${l3ssFmt(b.x1 - b.x0)} × ${l3ssFmt(b.y1 - b.y0)} m`) + row("Mitt (X / Y)", `${l3ssFmt((b.x0 + b.x1) / 2)} / ${l3ssFmt((b.y0 + b.y1) / 2)}`) : ""}${r.added_by || r.by ? row("Tillagd av", r.added_by || r.by) : ""}</table>
       <div class="v3-ss-op"><span>Synlighet</span><input type="range" id="v3SsOp" min="10" max="100" step="5" value="${Math.round(layerOpacity(key) * 100)}" /><b>${Math.round(layerOpacity(key) * 100)} %</b></div>
@@ -145,6 +145,19 @@ function l3ssRenderSide(side) {
     on2("v3SsClose", () => l3ssSelect(null));
     on2("v3SsZoom", () => { if (b) { const c = new THREE.Vector3((b.x0 + b.x1) / 2 - l3.O[0], (b.y0 + b.y1) / 2 - l3.O[1], l3sZ()); l3FlyTo(c, Math.max(10, Math.hypot(b.x1 - b.x0, b.y1 - b.y0) * 0.9)); } });
     on2("v3SsHide", () => { setLayersVisible([key], false); l3ssSelect(null); l3sRefresh(0); if (typeof l3LayersRender === "function") l3LayersRender(); });
+    on2("v3SsIfc", async () => {
+      const btn = side.querySelector("#v3SsIfc"), d = new Date(), p2 = n => String(n).padStart(2, "0"), stamp = `${String(d.getFullYear()).slice(2)}${p2(d.getMonth() + 1)}${p2(d.getDate())} ${p2(d.getHours())}${p2(d.getMinutes())}`;
+      const nm = await uiPrompt("Namn på IFC-filen (datum och klockslag läggs till så att inget skrivs över):", r.name); if (nm == null) return;
+      btn.disabled = true; const key2 = "ifc:" + r.id; busyProgress(key2, `Skapar IFC av ${r.name}`, 0.2);
+      try {
+        const res = await exportCadRecIfc(r, `${String(nm).trim() || r.name} ${stamp}`); busyProgress(key2, `Sparar ${res.name}`, 0.7);
+        downloadBlob(new Blob([res.bytes], { type: "application/x-step" }), res.name);
+        let tc = ""; if (window.opener && !window.opener.closed || window.STANDALONE) { try { const up = await askOpener("tcUpload", { folder: "Lägesplan", files: [new File([res.bytes], res.name, { type: "application/x-step" })] }, 10 * 60 * 1000); tc = ` och i Trimble Connect (${(up && up.folder) || "Lägesplan"})`; } catch (e) { tc = ` – men inte i Trimble Connect (${e.message})`; } }
+        const msg = `✓ ${res.name}: ${res.out.faces.toLocaleString("sv-SE")} ytor, ${res.out.segs.toLocaleString("sv-SE")} linjer som stavar${res.out.cut ? ` (${res.out.cut.toLocaleString("sv-SE")} uteslutna för att hålla filen lätt)` : ""} – sparad${tc || " som nedladdning"}.`;
+        l3Status(msg); l3Toast(msg);
+      } catch (e) { l3Status("Kunde inte exportera IFC: " + e.message, true); }
+      busyProgress(key2, "", null); btn.disabled = false;
+    });
     on2("v3SsEdit", () => { const id = r.id; l3ssSelect(null, true); l3dStart(id); });
     const setCol = patch => { const rec = cads().find(x => x.id === r.id) || r; Object.assign(rec, patch); l3ss.noGlow = rec.id; l3sRefresh(0); l3s.cad.forEach(o => { if (o.userData.cadId === rec.id) o.userData.l3ssCol = null; }); l3ssHighlight(); if (typeof scheduleCadRender === "function") scheduleCadRender(); clearTimeout(setCol.t); setCol.t = setTimeout(() => { if (typeof saveSiteItem === "function") saveSiteItem(rec, false, { record: false }).catch(e => l3Status("Kunde inte spara färgen: " + e.message, true)); }, 500); };
     side.querySelectorAll("[data-ssc]").forEach(b => { b.onclick = () => { setCol({ colorMode: b.dataset.ssc, color: side.querySelector("#v3SsCol").value }); side.querySelectorAll("[data-ssc]").forEach(x => x.classList.toggle("on", x === b)); }; });
