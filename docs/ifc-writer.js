@@ -138,9 +138,9 @@ function ifcDoc(projName, desc, appName = "4D-planering Lägesplan") {
     shape: (item, type) => E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${E(`IFCSHAPEREPRESENTATION(${body},'Body','${type}',(${item}))`)}))`),
     proxy: (name, desc, objType, pl, shape, tag) => E(`IFCBUILDINGELEMENTPROXY('${ifcGuid()}',$,${ifcStr(name)},${ifcStr(desc)},${ifcStr(objType)},${pl},${shape},${ifcStr(tag || "")},.NOTDEFINED.)`),
     // Egenskaper i "4D-planering" (tal som IFCREAL, annars text).
-    props(el, list) {
+    props(el, list, psetName) {
       const ps = list.map(([n, v]) => E(`IFCPROPERTYSINGLEVALUE(${ifcStr(n)},$,${typeof v === "number" ? `IFCREAL(${ifcNum(v)})` : `IFCLABEL(${ifcStr(v)})`},$)`));
-      const pset = E(`IFCPROPERTYSET('${ifcGuid()}',$,'4D-planering',$,(${ps.join(",")}))`);
+      const pset = E(`IFCPROPERTYSET('${ifcGuid()}',$,${ifcStr(psetName || "4D-planering")},$,(${ps.join(",")}))`);
       E(`IFCRELDEFINESBYPROPERTIES('${ifcGuid()}',$,$,$,(${el}),${pset})`);
     },
     finish(elems, fileName) {

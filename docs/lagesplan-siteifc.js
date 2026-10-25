@@ -70,7 +70,8 @@ function siteIfcCad(doc, elems, only) {
       const color = cadLayerColor(r, names[gr.l], gr.c) || "#64748b", pl = E(`IFCCARTESIANPOINTLIST3D((${pts.map(ifcPt).join(",")}))`), m = E(`IFCTRIANGULATEDFACESET(${pl},$,.F.,(${faces.map(q => `(${q.join(",")})`).join(",")}),$)`);
       E(`IFCSTYLEDITEM(${m},(${doc.style("cad-" + color, color, "Ritning")}),$)`);
       const el = doc.proxy(`${r.name} – ${names[gr.l]}`, "Ritning", "4D-ritning", doc.place(o), doc.shape(m, "Tessellation"), r.id);
-      elems.push(el); doc.props(el, [["Fil", r.name], ["CAD-lager", names[gr.l]], ["Linjer", nS], ["Ytor", nF], ["Höjd justerad", zoff ? `${zoff} m` : "nej"]]);
+      elems.push(el); doc.props(el, [["Lager", names[gr.l]], ["Fil", r.name], ["Lagerfärg", color]], "DXF");   // eget egenskapsset (UDA) med DXF:ens lagernamn – går att gruppera och färga på i Trimble Connect
+      doc.props(el, [["Fil", r.name], ["CAD-lager", names[gr.l]], ["Linjer", nS], ["Ytor", nF], ["Höjd justerad", zoff ? `${zoff} m` : "nej"]]);
       out.segs += nS; out.faces += nF; used = true; });
     if (used) out.recs++;
   });
