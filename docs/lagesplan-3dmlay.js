@@ -3,7 +3,7 @@
        Släckta lager och färger sparas per modellnamn (webbläsaren) och läggs på igen varje gång modellen läses in.
    2D: CAD-lagren i tända DXF/DWG (samma lager och färger som i lägesplanen – sparas med projektet) samt de övriga tända 2D-lagren och ritningen (PDF). */
 
-const l3ly = { open: new Set(), q: "", sig: "" };
+const l3ly = { st: new Map(), q: "", sig: "", sel: "" };   // st: nyckel → uttryckligen öppen (true) / hopfälld (false); utan val öppen om det bara finns en fil
 const l3lyP = k => { try { return l3Prefs()[k] || {}; } catch (e) { return {}; } };
 const l3lyHex = rgb => "#" + rgb.map(v => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
 /* Grupperna i en modell: Map(nyckel → { name, kind: "lay" | "cls", ris: [[mesh, ri], …] }). */
@@ -55,12 +55,12 @@ function l3lyHtml(eye, esc) {
     const grp = l3lyGroups(m), O = new Set(off[m.name] || []), C = col[m.name] || {}, anyLay = m._lyg && m._lyg.anyLay;
     const rows = [...grp.entries()].filter(([, g]) => !q || g.name.toLowerCase().includes(q) || m.name.toLowerCase().includes(q));
     if (!rows.length) return; n3 += rows.length;
-    const open = l3ly.open.has(m.name) || mods.length === 1 || !!q, nOff = rows.filter(([k]) => O.has(k)).length;
+    const open = !!q || (l3ly.st.has(m.name) ? l3ly.st.get(m.name) : mods.length === 1), nOff = rows.filter(([k]) => O.has(k)).length;
     h3 += `<div class="v3-ly-m"><button type="button" class="v3-ly-mh" data-lymopen="${esc(m.name)}" aria-expanded="${open}"><i>›</i><span class="v3-lr-n" title="${esc(m.name)}">${esc(m.name)}</span><em>${rows.length} ${anyLay ? "lager" : "klasser"}${nOff ? ` · ${nOff} släckta` : ""}</em></button>`;
     if (open) {
       h3 += `<div class="v3-ly-acts"><button type="button" data-lyall="${esc(m.name)}|1">Tänd alla</button><button type="button" data-lyall="${esc(m.name)}|0">Släck alla</button><button type="button" data-lyall="${esc(m.name)}|c">Återställ färger</button></div>`;
       if (!anyLay) h3 += `<div class="v3-pal-hint">Modellen har inga lager inlagda – objekten grupperas efter IFC-klass. (Modeller som lästes in före den här funktionen läses om vid nästa inläsning.)</div>`;
-      rows.forEach(([k, g]) => { const hid = O.has(k), c = C[k] || ""; h3 += `<div class="v3-lr v3-ly-r${hid ? " off" : ""}"><button type="button" class="v3-eye ${hid ? "" : "on"}" data-lyeye="${esc(m.name)}|${esc(k)}" title="${hid ? "Tänd" : "Släck"}">${eye(!hid)}</button><span class="v3-lr-n" title="${esc(g.name)}">${esc(g.name)}</span><em class="v3-lr-k">${g.ris.length}</em><label class="v3-ly-c${c ? " set" : ""}" title="Byt färg (dubbelklicka för ursprungsfärg)"><input type="color" value="${c || l3lyBase(g)}" data-lycol="${esc(m.name)}|${esc(k)}" /></label></div>`; });
+      rows.forEach(([k, g]) => { const hid = O.has(k), c = C[k] || ""; h3 += `<div class="v3-lr v3-ly-r${hid ? " off" : ""}${l3ly.sel === "3|" + m.name + "|" + k && typeof l3bs !== "undefined" && l3bs.sel.length ? " sel" : ""}"><button type="button" class="v3-eye ${hid ? "" : "on"}" data-lyeye="${esc(m.name)}|${esc(k)}" title="${hid ? "Tänd" : "Släck"}">${eye(!hid)}</button><span class="v3-lr-n v3-ly-pick" data-lysel="${esc(m.name)}|${esc(k)}" title="Tryck för att markera lagrets objekt i modellen">${esc(g.name)}</span><button type="button" class="v3-lr-zoom" data-lyzoom="${esc(m.name)}|${esc(k)}" title="Zooma till lagret">${L3_ICO.focus}</button><em class="v3-lr-k">${g.ris.length}</em><label class="v3-ly-c${c ? " set" : ""}" title="Byt färg (dubbelklicka för ursprungsfärg)"><input type="color" value="${c || l3lyBase(g)}" data-lycol="${esc(m.name)}|${esc(k)}" /></label></div>`; });
     }
     h3 += `</div>`;
   });
@@ -69,11 +69,11 @@ function l3lyHtml(eye, esc) {
   const recs = typeof cads === "function" ? cads().filter(r => !r.virtual && ls("cad:" + r.id).visible) : [];
   recs.forEach(r => {
     const rows = r.layers.filter(l => !q || l.name.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)); if (!rows.length) return; n2 += rows.length;
-    const open = l3ly.open.has("cad:" + r.id) || recs.length === 1 || !!q, nOff = rows.filter(l => !cadLayerOn(r, l.name)).length;
+    const open = !!q || (l3ly.st.has("cad:" + r.id) ? l3ly.st.get("cad:" + r.id) : recs.length === 1), nOff = rows.filter(l => !cadLayerOn(r, l.name)).length;
     h2 += `<div class="v3-ly-m"><button type="button" class="v3-ly-mh" data-lymopen="cad:${esc(r.id)}" aria-expanded="${open}"><i>›</i><span class="v3-lr-n" title="${esc(r.name)}">${esc(r.name)} <small>DXF</small></span><em>${rows.length} lager${nOff ? ` · ${nOff} släckta` : ""}</em></button>`;
     if (open) {
       h2 += `<div class="v3-ly-acts"><button type="button" data-lycadall="${esc(r.id)}|1">Tänd alla</button><button type="button" data-lycadall="${esc(r.id)}|0">Släck alla</button><button type="button" data-lycadall="${esc(r.id)}|c">Återställ färger</button></div>`;
-      rows.forEach(l => { const on = cadLayerOn(r, l.name), c = (typeof cadLayerColor === "function" ? cadLayerColor(r, l.name, l.color) : l.color) || "#000000", hex = /^#[0-9a-f]{6}$/i.test(c) ? c : "#000000"; h2 += `<div class="v3-lr v3-ly-r${on ? "" : " off"}"><button type="button" class="v3-eye ${on ? "on" : ""}" data-lycadeye="${esc(r.id)}|${esc(l.name)}" title="${on ? "Släck" : "Tänd"}">${eye(on)}</button><span class="v3-lr-n" title="${esc(l.name)}">${esc(l.name)}</span><em class="v3-lr-k">${l.n || ""}</em><label class="v3-ly-c" title="Byt färg"><input type="color" value="${hex}" data-lycadcol="${esc(r.id)}|${esc(l.name)}" /></label></div>`; });
+      rows.forEach(l => { const on = cadLayerOn(r, l.name), c = (typeof cadLayerColor === "function" ? cadLayerColor(r, l.name, l.color) : l.color) || "#000000", hex = /^#[0-9a-f]{6}$/i.test(c) ? c : "#000000"; h2 += `<div class="v3-lr v3-ly-r${on ? "" : " off"}${l3ly.sel === "2|" + r.id + "|" + l.name ? " sel" : ""}"><button type="button" class="v3-eye ${on ? "on" : ""}" data-lycadeye="${esc(r.id)}|${esc(l.name)}" title="${on ? "Släck" : "Tänd"}">${eye(on)}</button><span class="v3-lr-n v3-ly-pick" data-lycadsel="${esc(r.id)}|${esc(l.name)}" title="Tryck för att markera lagret i modellen">${esc(l.name)}</span><button type="button" class="v3-lr-zoom" data-lycadzoom="${esc(r.id)}|${esc(l.name)}" title="Zooma till lagret">${L3_ICO.focus}</button><em class="v3-lr-k">${l.n || ""}</em><label class="v3-ly-c" title="Byt färg"><input type="color" value="${hex}" data-lycadcol="${esc(r.id)}|${esc(l.name)}" /></label></div>`; });
     }
     h2 += `</div>`;
   });
@@ -89,7 +89,11 @@ function l3lyBase(g) { const [mesh, ri] = g.ris[0]; const r = mesh.userData.l3b.
 function l3lyBind(host) {
   const refresh = () => l3LayersRender();
   const q = host.querySelector("#v3LyQ"); if (q) q.oninput = () => { l3ly.q = q.value; clearTimeout(l3ly.t); l3ly.t = setTimeout(() => { refresh(); const n = document.getElementById("v3LyQ"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 200); };
-  host.querySelectorAll("[data-lymopen]").forEach(b => { b.onclick = () => { const k = b.dataset.lymopen; if (l3ly.open.has(k)) l3ly.open.delete(k); else l3ly.open.add(k); refresh(); }; });
+  host.querySelectorAll("[data-lymopen]").forEach(b => { b.onclick = () => { const k = b.dataset.lymopen, cur = b.getAttribute("aria-expanded") === "true"; l3ly.st.set(k, !cur); refresh(); }; });
+  host.querySelectorAll("[data-lysel]").forEach(b => { b.onclick = () => l3lySelect3d(b.dataset.lysel, false); });
+  host.querySelectorAll("[data-lyzoom]").forEach(b => { b.onclick = () => l3lySelect3d(b.dataset.lyzoom, true); });
+  host.querySelectorAll("[data-lycadsel]").forEach(b => { b.onclick = () => l3lySelectCad(b.dataset.lycadsel, false); });
+  host.querySelectorAll("[data-lycadzoom]").forEach(b => { b.onclick = () => l3lySelectCad(b.dataset.lycadzoom, true); });
   host.querySelectorAll("[data-lyeye]").forEach(b => { b.onclick = () => { const [m, k] = b.dataset.lyeye.split("|"), hid = b.classList.contains("on"); l3lyToggle(m, k, !hid); refresh(); }; });
   host.querySelectorAll("[data-lyall]").forEach(b => { b.onclick = () => { const [m, a] = b.dataset.lyall.split("|"), mod = l3lyModels().find(x => x.name === m); if (!mod) return; const keys = [...l3lyGroups(mod).keys()];
     if (a === "c") { const c = { ...l3lyP("lyCol") }; delete c[m]; l3SetPref("lyCol", Object.keys(c).length ? c : null); } else { const o = { ...l3lyP("lyOff") }; if (a === "1") delete o[m]; else o[m] = keys; l3SetPref("lyOff", Object.keys(o).length ? o : null); }
@@ -102,3 +106,40 @@ function l3lyBind(host) {
   host.querySelectorAll("[data-lycadcol]").forEach(i => { const [id, nm] = i.dataset.lycadcol.split("|"); let t = 0; i.oninput = () => { clearTimeout(t); t = setTimeout(async () => { await setCadColor(nm, i.value); l3sRefresh(0); }, 150); }; i.ondblclick = async () => { await setCadColor(nm, null); l3sRefresh(0); refresh(); }; });
   host.querySelectorAll("[data-lyother]").forEach(b => { b.onclick = () => { const k = b.dataset.lyother; if (k === "pdf") { const c = document.getElementById("v3ShowPlan"); if (c) { c.checked = false; c.dispatchEvent(new Event("change")); } } else { setLayersVisible([k], false); if (typeof saveLayerState === "function") saveLayerState(); l3sRefresh(0); } refresh(); }; });
 }
+
+/* ---- Markera ett lager i modellen och zooma till det (Victor 2026-10-25) ---- */
+function l3lySelect3d(ref, zoom) {
+  const [m, k] = ref.split("|"), mod = l3lyModels().find(x => x.name === m), g = mod && l3lyGroups(mod).get(k); if (!g) return;
+  const id = "3|" + m + "|" + k;
+  if (l3ly.sel === id && !zoom) { l3ly.sel = ""; l3lyHiCad(null); l3bsSet([]); l3LayersRender(); return; }
+  l3ly.sel = id; l3lyHiCad(null);
+  l3bsSet(g.ris.map(([mesh, ri]) => ({ mesh, ri })));
+  if (zoom) l3bsZoom();
+  l3LayersRender();
+}
+function l3lyCadObjs(id, layerName) {
+  const r = cads().find(x => x.id === id), g = r && cadGeom.get(id); if (!r || !g || typeof l3s === "undefined") return [];
+  const idx = r.layers.findIndex(l => l.name === layerName), out = [];
+  g.groups.forEach((gr, gi) => { if (gr.l !== idx) return; [r.id + "|" + gi, r.id + "|" + gi + "|f"].forEach(k => { const o = l3s.cad.get(k); if (o && o.visible) out.push(o); }); });
+  return out;
+}
+/* Lagret i ritningen lyser (orange) tills man väljer något annat. */
+const l3lyHi = { id: "", layer: "" };
+function l3lyHiCad(sel) { l3lyHi.id = sel ? sel.id : ""; l3lyHi.layer = sel ? sel.layer : ""; l3lyHiApply(); }
+function l3lyHiApply() {
+  if (typeof l3s === "undefined" || !l3s.cad) return;
+  const want = new Set(l3lyHi.id ? l3lyCadObjs(l3lyHi.id, l3lyHi.layer) : []);
+  l3s.cad.forEach(o => { if (want.has(o)) { if (o.userData.l3lyCol == null) o.userData.l3lyCol = o.material.color.getHex(); o.material.color.set(0xff7a00); } else if (o.userData.l3lyCol != null) { o.material.color.setHex(o.userData.l3lyCol); o.userData.l3lyCol = null; } });
+  if (typeof l3Render === "function") l3Render();
+}
+function l3lySelectCad(ref, zoom) {
+  const i = ref.indexOf("|"), id = ref.slice(0, i), nm = ref.slice(i + 1), key = "2|" + id + "|" + nm;
+  if (l3ly.sel === key && !zoom) { l3ly.sel = ""; l3lyHiCad(null); l3LayersRender(); return; }
+  if (typeof l3bsClear === "function") l3bsClear();
+  l3ly.sel = key; l3lyHiCad({ id, layer: nm });
+  if (zoom) { const box = new THREE.Box3(); l3lyCadObjs(id, nm).forEach(o => box.expandByObject(o)); if (!box.isEmpty()) l3FlyTo(box.getCenter(new THREE.Vector3()), Math.max(6, box.getSize(new THREE.Vector3()).length() * 1.1)); else l3Status("Lagret har inga synliga linjer att zooma till."); }
+  l3LayersRender();
+}
+(function () {   // linjerna byggs om vid färgbyte m.m. – markeringen läggs på igen
+  if (typeof l3ssHighlight === "function") { const f = l3ssHighlight; l3ssHighlight = function () { const r = f.apply(this, arguments); try { l3lyHiApply(); } catch (e) { /* bara visning */ } return r; }; }
+})();

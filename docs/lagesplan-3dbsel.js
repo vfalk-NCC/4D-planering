@@ -132,8 +132,7 @@ function l3bsRebuild() {
     g.setIndex(new THREE.BufferAttribute(idx, 1));
     g.computeBoundingSphere();
     const fill = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: L3BS_COL, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-    fill.material.opacity = 0.16;   // lätt ton; den tydliga markeringen är den yttre glöden nedan
-    l3bsHalo(mesh, g);
+    if (total <= 250000) { fill.material.opacity = 0.16; l3bsHalo(mesh, g); } else fill.material.opacity = 0.5;   // lätt ton + yttre glöd; mycket stora urval (hela lager) får bara en tydligare ton
     fill.userData.bselFill = true;
     fill.userData.noHit = true; fill.userData.bsel = true; fill.raycast = () => {}; fill.renderOrder = 6; mesh.add(fill); l3bs.ov.push(fill);
     if (false && total <= L3BS_EDGE_MAX) work.push([mesh, ris]);   // alla kanter ritas inte längre: bara en yttre kontur (som för övriga objekt)

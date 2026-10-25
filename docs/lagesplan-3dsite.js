@@ -111,7 +111,7 @@ async function l3sBuildCad() {
   const liveT = new Set();
   want.forEach(r => { if (typeof l3d !== "undefined" && l3d.rec && l3d.rec.id === r.id) return; const g = cadGeom.get(r.id); if (g) { l3sCadTexts(r, g, z + 0.005 + (Number(r.z3) || 0)); liveT.add(r.id); } }); // redigeras: egna texter
   l3s.text.forEach((t, id) => { t.meshes.forEach(m => { m.visible = liveT.has(id); }); });
-  if (typeof l3ssHighlight === "function" && l3ss.sel) l3ssHighlight(); else l3Render();
+  if (typeof l3ssHighlight === "function" && (l3ss.sel || (typeof l3lyHi !== "undefined" && l3lyHi.id))) l3ssHighlight(); else l3Render();
 }
 
 /* ---- DXF-texter ------------------------------------------------------------------------------- */
