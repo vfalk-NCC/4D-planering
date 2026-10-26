@@ -787,6 +787,36 @@ async function deletePlanFlow(target) {
   } catch (e) { alert("Kunde inte ta bort: " + e.message); return false; }
 }
 function setCalibMsg(t) { const m = $("calibMsg"); m.textContent = t || ""; m.classList.toggle("hidden", !t); if (t) openSec("calib"); }
+/* Vrid ritningen (Victor 2026-10-26: "punkterna hamnade rätt men ritningen behöver vridas 180°"). En importerad PDF kan stå upp och ner eller
+   på sidan; kalibreringen hanterar det (punkterna hamnar rätt) men ritningen visas som den ligger. plan.rot (grader medsols, steg om 90)
+   läggs som extra vridning på sidans vy – allt som sparats (zoner, kalibrering, objekt) ligger i PDF:ens egna koordinater och följer med,
+   och utskriften, 3D-bilden och PDF-exporten använder samma vy. */
+function planRotApply(pg, pl) {
+  if (pg.__planRot) return;
+  const orig = pg.getViewport.bind(pg), base = pg.rotate || 0;
+  pg.getViewport = (o = {}) => orig(o.rotation != null ? o : { ...o, rotation: (base + ((pl && pl.rot) || 0)) % 360 });
+  pg.__planRot = true;
+}
+/* Vinkeln (grader medsols, avrundad till 90) som får modellens norr att peka uppåt med den här kalibreringen. */
+function planRotSuggest(calib) {
+  const [m1, m2] = calib.model, [p1, p2] = calib.pdf;
+  const th = (Math.atan2(p2[1] - p1[1], p2[0] - p1[0]) - Math.atan2(m2[1] - m1[1], m2[0] - m1[0])) * 180 / Math.PI;
+  return ((Math.round(th / 90) * 90) % 360 + 360) % 360;
+}
+async function setPlanRotation(deg) {
+  if (!plan || !page) return;
+  plan.rot = ((Math.round(deg / 90) * 90) % 360 + 360) % 360;
+  if (!plan.rot) delete plan.rot;
+  try { localStorage.removeItem(northKey()); } catch (e) {}
+  view.rot = 0;
+  $("pdfHiCanvas").width = 0;
+  await renderPdf();
+  snapIndexFor = null; buildSnapIndex();
+  invalidatePositions();
+  renderOrtho(); if (typeof applyPdfOverlays === "function") applyPdfOverlays();
+  fitView(); renderZones(); schedulePlanSave();
+  setSaveStatus(plan.rot ? `↻ Ritningen visas vriden ${plan.rot}°` : "↻ Ritningen visas som den ligger i PDF:en");
+}
 function startCalib() {
   if (!plan || !viewport) return;
   if (!window.opener) { alert("Kalibreringen behöver 4D-planering öppen i Trimble Connect. Öppna lägesplanen via 🗺️-knappen där."); return; }
@@ -845,6 +875,12 @@ function finishCalib() {
   renderZones();
   schedulePlanSave();
   if (!positions.length) fetchPositions();
+  // Står ritningen upp och ner (eller på sidan) mot modellen? Då föreslås en vridning (punkterna är redan rätt).
+  const sug = planRotSuggest(plan.calib);
+  if (sug && typeof uiConfirm === "function") {
+    uiConfirm(`Kalibreringen visar att ritningen står ${sug}° vriden mot modellen (norr pekar inte uppåt i PDF:en).\n\nVrid ritningen ${sug}° så att den står rätt? Punkterna och allt du ritat följer med, och utskriften ritas också rättvänd.`, { ok: `Vrid ${sug}°` })
+      .then(ok => { if (ok) setPlanRotation(((plan.rot || 0) + sug) % 360); });
+  }
 }
 /* Uppdatera-knappen (bredvid nyckeln): läser om planeringen och, när
    4D-planering är öppen, objektens positioner från 3D – så nya kopplingar syns. */
@@ -1043,6 +1079,7 @@ async function openPlan(id) {
     busyProgress("plan", lbl, 0.75);
     pdfDoc = await pdfjsLib.getDocument({ data: pdfCache.get(id).slice(0) }).promise;
     page = await pdfDoc.getPage(Math.min(plan.page || 1, pdfDoc.numPages));
+    planRotApply(page, plan);   // ritningens egen vridning (plan.rot, 0/90/180/270) gäller överallt: skärm, utskrift, 3D, PDF-export
     busyProgress("plan", lbl, 0.85);
     $("pdfHiCanvas").width = 0;
     await renderPdf();
@@ -1958,6 +1995,7 @@ function bindUI() {
     renderZones(); openEditor(z.id); schedulePlanSave();
   };
   $("btnCalib").onclick = () => (calib ? cancelCalib() : startCalib());
+  if ($("btnRotPlan")) $("btnRotPlan").onclick = () => setPlanRotation((plan && plan.rot || 0) + 90);
   if ($("btnRefreshData")) $("btnRefreshData").onclick = refreshCoupled;
   if ($("objStyle")) {
     $("objStyle").value = objStyle();

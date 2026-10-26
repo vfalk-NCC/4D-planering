@@ -40,6 +40,21 @@ const bytes = fs.readFileSync(path.join(__dirname, 'fixtures', 'ocg-demo.pdf')).
     window.uiConfirm = async () => true;
   }, bytes);
   await page.waitForTimeout(600);
+  // 0) Vrid ritningen: en kalibrering som visar att ritningen står upp och ner föreslår 180°, och allt följer med
+  { const rot = await page.evaluate(async () => {
+      const A = plans[0]; A.calib = { model: [[0, 0, 0], [0, 100, 0]], pdf: [[300, 300], [300, 200]] };   // modellens norr = nedåt i PDF:en
+      const sug = planRotSuggest(A.calib), north0 = (() => { const a = mToPx([0, 0]), b = mToPx([0, 1]); return b[1] - a[1]; })();
+      await setPlanRotation(sug);
+      const a = mToPx([0, 0]), b = mToPx([0, 1]), north1 = b[1] - a[1];
+      const out = { sug, north0, north1, rot: plan.rot, w: viewport.width, back: null };
+      await setPlanRotation(0); const a2 = mToPx([0, 0]), b2 = mToPx([0, 1]); out.back = b2[1] - a2[1]; out.rot0 = plan.rot;
+      A.calib = { model: [[0, 0, 0], [100, 0, 0]], pdf: [[0, 0], [600, 0]] };
+      return out;
+    });
+    if (rot.sug !== 180 || !(rot.north0 > 0) || !(rot.north1 < 0) || rot.rot !== 180 || !(rot.back > 0) || rot.rot0 !== undefined) fail('Vrid ritningen 180°: ' + JSON.stringify(rot));
+    const r90 = await page.evaluate(async () => { const c = { model: [[0, 0, 0], [0, 100, 0]], pdf: [[0, 0], [100, 0]] }; plans[0].calib = c; const sug = planRotSuggest(c); await setPlanRotation(sug); const a = mToPx([0, 0]), b = mToPx([0, 1]); const r = { sug, dx: b[0] - a[0], dy: b[1] - a[1] }; await setPlanRotation(0); plans[0].calib = { model: [[0, 0, 0], [100, 0, 0]], pdf: [[0, 0], [600, 0]] }; return r; });
+    if (r90.sug !== 270 || !(r90.dy < 0) || Math.abs(r90.dx) > 1e-6 * 1 + 1e-3) fail('90°: norr ska peka uppåt efter vridningen: ' + JSON.stringify(r90));
+  }
   // 1) PDF:ens egna lager blir rader när PDF:en tänds
   await page.click('#layerList .layer-row[data-layer="pdfp:B"] .lr-vis'); await page.waitForTimeout(1500);
   const rows = await page.evaluate(() => ({ n: pdfOcgList(plans[1]).length, rows: [...document.querySelectorAll('#layerList .layer-row[data-layer^="pdfpl:B:"]')].map(r => r.querySelector('.ln').textContent.trim()), toggle: !!document.querySelector('#layerList .pdf-ocg-toggle') }));
