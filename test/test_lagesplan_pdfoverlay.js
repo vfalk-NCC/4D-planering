@@ -124,6 +124,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // Flytta ut ur mappen: stannar utanför (följer inte längre ritningens mapp).
   await page.evaluate(() => { const m = layerMeta(); m.folderOf['pdfp:B'] = ''; const i = siteItems.findIndex(x => x.id === META_ID); siteItems[i] = m; renderLayerPanel(); });
   if (await page.evaluate(() => document.querySelector('#layerList .layer-row[data-layer="pdfp:B"]').classList.contains('in-folder'))) fail('Ett PDF-lager som flyttats ut ur mappen ska stanna utanför');
+  // Ta bort en importerad PDF (annan plan än den öppna) via knappen i lagerraden
+  const dl = await page.evaluate(async () => { window.uiConfirm = async () => true; window.uiPrompt = async () => (plans.find(p => p.id === 'B') || {}).name; const n0 = plans.length, cur = plan.id; const row = document.querySelector('#layerList .layer-row[data-layer="pdfp:B"] .lr-delpdf'); if (!row) return { noBtn: true }; let al = null; window.alert = m => { al = m; }; window.ghWriteJSON = async (t, p, fn) => fn(plans.map(x => ({ ...x }))); window.ghDeleteBinary = () => {}; row.click(); await new Promise(r => setTimeout(r, 800)); return { al, st: document.getElementById('saveStatus') && document.getElementById('saveStatus').textContent, n0, n1: plans.length, same: plan && plan.id === cur, gone: !plans.some(p => p.id === 'B') }; });
+  if (dl.noBtn || dl.n1 !== dl.n0 - 1 || !dl.same || !dl.gone) fail('Ta bort importerad PDF: ' + JSON.stringify(dl));
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();
   console.log('OK: andra planers PDF:er som lager i ritningens mapp – rätt läge via kalibrering, Färg, släckt från början, vyer');

@@ -755,6 +755,33 @@ function updateCalibInfo() {
     : "Hämta positioner (📍) för att koppla objekten.");
 }
 
+/* Tar bort en importerad PDF (plan). target = planen; är det inte den öppna tas bara den och dess PDF-lager bort. */
+async function deletePlanFlow(target) {
+  if (!target) return false;
+  // En plan med zoner tas bara bort om man skriver dess namn (Victor 2026-10-07: svårt att radera zoner).
+  const nZones = (typeof zonesMainOf === "function" ? zonesMainOf(target).length : (target.zones || []).length) + ((target._zoneSet === "prefab" ? target.zones : target.zones_prefab) || []).length;
+  if (nZones) {
+    const t = await uiPrompt(`Ta bort lägesplanen "${target.name}"?\n\nPDF:en och planens ${nZones} zoner tas bort. Skriv planens namn för att bekräfta:`, "");
+    if (t === null) return false;
+    if (t.trim() !== String(target.name).trim()) { alert("Namnet stämde inte – planen togs inte bort."); return false; }
+  } else if (!await uiConfirm(`Ta bort lägesplanen "${target.name}"? (PDF:en tas bort.)`)) return false;
+  const gone = target, isCur = !!plan && plan.id === gone.id;
+  if (isCur && savePending === gone) { clearTimeout(saveTimer); savePending = null; } else await flushPlanSave();
+  try {
+    plans = (await ghWriteJSON(token, dataPath("status_plans.json"), arr => arr.filter(p => p.id !== gone.id), `Lägesplan: ta bort ${gone.name}`)).map(r => (typeof cleanPlanRecord === "function" ? cleanPlanRecord(r) : r));
+    ghDeleteBinary(token, gone.file_path, `Lägesplan: ta bort ${gone.name}`);
+    if (typeof pdfCache !== "undefined") pdfCache.delete(gone.id);
+    if (isCur) {
+      plan = null; viewport = null;
+      renderPlanSelect();
+      STAGE_CANVASES.forEach(id => { $(id).width = $(id).height = 0; });
+      $("empty").classList.remove("hidden");
+      if (plans[0]) await openPlan(plans[0].id); else renderZoneList();
+    } else { renderPlanSelect(); if (typeof applyLayerCss === "function") applyLayerCss(); if (typeof renderLayerPanel === "function") renderLayerPanel(); }
+    setSaveStatus(`🗑 PDF:en "${gone.name}" är borttagen.`);
+    return true;
+  } catch (e) { alert("Kunde inte ta bort: " + e.message); return false; }
+}
 function setCalibMsg(t) { const m = $("calibMsg"); m.textContent = t || ""; m.classList.toggle("hidden", !t); if (t) openSec("calib"); }
 function startCalib() {
   if (!plan || !viewport) return;
@@ -1891,27 +1918,7 @@ function bindUI() {
     const n = (await uiPrompt("Nytt namn på planen:", plan.name) || "").trim();
     if (n) { plan.name = n; renderPlanSelect(); schedulePlanSave(); }
   };
-  $("btnDeletePlan").onclick = async () => {
-    if (!plan) return;
-    // En plan med zoner tas bara bort om man skriver dess namn (Victor 2026-10-07: svårt att radera zoner).
-    const nZones = (typeof zonesMainOf === "function" ? zonesMainOf(plan).length : (plan.zones || []).length) + ((plan._zoneSet === "prefab" ? plan.zones : plan.zones_prefab) || []).length;
-    if (nZones) {
-      const t = await uiPrompt(`Ta bort lägesplanen "${plan.name}"?\n\nPDF:en och planens ${nZones} zoner tas bort. Skriv planens namn för att bekräfta:`, "");
-      if (t === null) return;
-      if (t.trim() !== String(plan.name).trim()) { alert("Namnet stämde inte – planen togs inte bort."); return; }
-    } else if (!await uiConfirm(`Ta bort lägesplanen "${plan.name}"? (PDF:en tas bort.)`)) return;
-    const gone = plan;
-    if (savePending === gone) { clearTimeout(saveTimer); savePending = null; } else await flushPlanSave();
-    try {
-      plans = (await ghWriteJSON(token, dataPath("status_plans.json"), arr => arr.filter(p => p.id !== gone.id), `Lägesplan: ta bort ${gone.name}`)).map(r => (typeof cleanPlanRecord === "function" ? cleanPlanRecord(r) : r));
-      ghDeleteBinary(token, gone.file_path, `Lägesplan: ta bort ${gone.name}`);
-      plan = null; viewport = null;
-      renderPlanSelect();
-      STAGE_CANVASES.forEach(id => { $(id).width = $(id).height = 0; });
-      $("empty").classList.remove("hidden");
-      if (plans[0]) openPlan(plans[0].id); else renderZoneList();
-    } catch (e) { alert("Kunde inte ta bort: " + e.message); }
-  };
+  $("btnDeletePlan").onclick = () => deletePlanFlow(plan);
   $("dateInput").onchange = () => { syncSliderFromDate(); onDateChanged(); };
   $("dateSlider").oninput = () => {
     const t = dateMin + (dateMax - dateMin) * Number($("dateSlider").value) / 100;

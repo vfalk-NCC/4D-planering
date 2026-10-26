@@ -122,7 +122,7 @@ function pdfOverlayRowHtml(p, opts) {
   const key = pdfOverlayKey(p), ready = pdfOverlayReady(p);
   ls(key, { visible: false });
   return layerRow(key, `<span class="pdfov-name" title="${escHtml(p.name || "")}${ready ? "" : " – planen (eller den öppna planen) är inte kalibrerad och kan inte läggas på rätt ställe"}">📄 ${escHtml(p.name || "Plan")}</span>${ready ? "" : " <small>ej kalibrerad</small>"}`,
-    { ...opts, extra: `<label class="blend"><input type="checkbox" class="lr-color"${pdfOverlayColor(key) ? " checked" : ""} /> Färg</label><label class="blend" title="Visa hela ritningen, även utanför den öppna planens kant"><input type="checkbox" class="lr-nocrop"${pdfOverlayNoCrop(key) ? " checked" : ""} /> Beskär inte</label>` });
+    { ...opts, extra: `<label class="blend"><input type="checkbox" class="lr-color"${pdfOverlayColor(key) ? " checked" : ""} /> Färg</label><button type="button" class="lr-delpdf" data-plan="${escHtml(p.id)}" title="Ta bort den importerade PDF:en (planen) helt">🗑 Ta bort</button><label class="blend" title="Visa hela ritningen, även utanför den öppna planens kant"><input type="checkbox" class="lr-nocrop"${pdfOverlayNoCrop(key) ? " checked" : ""} /> Beskär inte</label>` });
 }
 
 /* Full skärpa vid inzoomning (Victors önskemål 2026-10-05), som för den öppna planen: när zoomen
@@ -238,3 +238,8 @@ function pdfOverlaysForPrint() {
   return pdfOverlayPlans().filter(p => layerVisible(pdfOverlayKey(p)) && pdfOverlayReady(p))
     .map(p => ({ p, id: p.id, opacity: layerOpacity(pdfOverlayKey(p)), color: pdfOverlayColor(pdfOverlayKey(p)), noCrop: pdfOverlayNoCrop(pdfOverlayKey(p)) }));
 }
+
+document.addEventListener("click", async e => {
+  const b = e.target && e.target.closest && e.target.closest(".lr-delpdf"); if (!b) return;
+  e.stopPropagation(); const p = (typeof plans !== "undefined" ? plans : []).find(x => x.id === b.dataset.plan); if (p && typeof deletePlanFlow === "function") await deletePlanFlow(p);
+}, true);

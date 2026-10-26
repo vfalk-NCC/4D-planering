@@ -269,7 +269,7 @@ function l3sHtml(row, eye) {
       h += `<div class="v3-lr v3-lr-b"><button type="button" class="v3-eye ${on ? "on" : ""}" data-l3s-folder="${esc(e.folder.id)}">${eye(on)}</button><button type="button" class="v3-lr-fold" data-l3s-fold="${esc(e.folder.id)}" aria-expanded="${!shut}"><i>›</i>${esc(e.folder.name)} <em>${kids.length}</em></button></div>` + (shut ? "" : kids.map(k => keyRow(k, 1)).join(""));
     } else h += keyRow(e.key, 0);
   });
-  const pdfRow = l3 && l3.planMesh ? `<div class="v3-lr"><button type="button" class="v3-eye ${l3Prefs().plan !== false ? "on" : ""}" data-l3s-pdf="1" title="${l3Prefs().plan !== false ? "Släck" : "Tänd"}">${eye(l3Prefs().plan !== false)}</button><span class="v3-lr-n" title="Ritningen (PDF) som mark">Ritning (PDF)</span><button type="button" class="v3-lr-zoom" data-l3s-zoompdf="1" title="Zooma till ritningen">${L3_ICO.focus}</button></div>` : "";
+  const pdfRow = l3 && l3.planMesh ? `<div class="v3-lr"><button type="button" class="v3-eye ${l3Prefs().plan !== false ? "on" : ""}" data-l3s-pdf="1" title="${l3Prefs().plan !== false ? "Släck" : "Tänd"}">${eye(l3Prefs().plan !== false)}</button><span class="v3-lr-n" title="Ritningen (PDF) som mark">Ritning (PDF)</span><button type="button" class="v3-lr-zoom" data-l3s-zoompdf="1" title="Zooma till ritningen">${L3_ICO.focus}</button><button type="button" class="v3-lr-zoom v3-lr-del" data-l3s-pdfdel="1" title="Ta bort den importerade PDF:en (planen) helt">${L3_ICO.trash}</button></div>` : "";
   return { extra: "", body: `
     ${pdfRow}
     ${h ? `<div class="v3-pal-hint">Släckta när 3D öppnas – tänd det du vill se på marken. 2D-läget påverkas inte.</div>${h}` : `<div class="v3-pal-hint">Inga 2D-lager.</div>`}
@@ -287,6 +287,7 @@ function l3sBind(host) {
   host.querySelectorAll("[data-l3s-zoompdf]").forEach(b => { b.onclick = () => l3sZoomPdf(); });
   host.querySelectorAll("[data-l3s-pdf]").forEach(b => { b.onclick = () => { const c = document.getElementById("v3ShowPlan"); if (c) { c.checked = !c.checked; c.dispatchEvent(new Event("change")); } l3LayersRender(); }; });
   host.querySelectorAll("[data-l3s-del]").forEach(b => { b.onclick = async () => { const r = cads().find(x => x.id === b.dataset.l3sDel); if (!r) return; await deleteCad(r); l3sRefresh(0); l3LayersRender(); }; });
+  host.querySelectorAll("[data-l3s-pdfdel]").forEach(b => { b.onclick = async () => { const was = plan && plan.id; const ok = await deletePlanFlow(plan); if (!ok) return; if (typeof close3d === "function") close3d(); setSaveStatus("PDF:en är borttagen – 3D-vyn stängdes. Öppna eller importera en ny plan och starta 3D igen."); }; });
   host.querySelectorAll("[data-l3s-edit]").forEach(b => { b.onclick = () => l3dStart(b.dataset.l3sEdit); });
   host.querySelectorAll("[data-l3s-open]").forEach(b => { b.onclick = () => { const k = b.dataset.l3sOpen; if (l3s.open.has(k)) l3s.open.delete(k); else l3s.open.add(k); l3LayersRender(); }; });
   const cb = host.querySelector("#v3S2d"); if (cb) cb.onchange = () => { l3SetPref("ground2d", cb.checked); l3sRefresh(0); l3LayersRender(); };
