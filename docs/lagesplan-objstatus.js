@@ -55,6 +55,22 @@ async function objStatusUndo() {
   catch (e) { setSaveStatus("⚠ Kunde inte ångra: " + e.message); }
 }
 
+/* Egen färg på pricken (Victor 2026-10-26: "byta färg manuellt på punkterna"): sparas i planen per post (plan.dotColors) och går före statusfärgen. */
+const OBJ_DOT_PRESETS = ["#ef4444", "#f59e0b", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#a855f7", "#111827"];
+function objDotColor(o) {
+  const dc = plan && plan.dotColors; if (!dc || !o) return null;
+  const list = o.members && o.members.length ? o.members : [o.it]; const c = list.map(m => dc[m.id] || null);
+  return c.length && c.every(x => x && x === c[0]) ? c[0] : null;
+}
+function objSetDotColor(rows, hex) {
+  if (!plan) return; plan.dotColors = { ...(plan.dotColors || {}) };
+  rows.forEach(r => { if (hex) plan.dotColors[r.id] = hex; else delete plan.dotColors[r.id]; });
+  if (!Object.keys(plan.dotColors).length) delete plan.dotColors;
+  if (typeof renderZones === "function") renderZones();
+  if (typeof schedulePlanSave === "function") schedulePlanSave();
+  setSaveStatus(hex ? `Egen färg satt på ${rows.length} ${rows.length === 1 ? "prick" : "prickar"}.` : `Statusfärgen används igen på ${rows.length} ${rows.length === 1 ? "prick" : "prickar"}.`);
+}
+
 /* Menyraderna (läggs överst i högerklicksmenyn på en prick). */
 function objStatusMenuHtml(its, o = {}) {
   const fams = new Set(its.map(objFamKey)), famN = items.filter(x => fams.has(objFamKey(x))).length, many = !o.box && famN > its.length;
@@ -63,12 +79,19 @@ function objStatusMenuHtml(its, o = {}) {
   const col = k => dot(phaseColor(k));
   return `<div class="om-st"><div class="om-st-h">${o.box ? `${its.length} objekt i rutan – sätt status på alla` : `Status${ph ? ` nu: ${escHtml((PHASE_LABELS || {})[ph] || ph)}` : ""} · ${Math.round(Number(its[0].progress) || 0)} %`}</div>
     <div class="om-st-b"><button type="button" data-ost="ej">${col("planerad")}Ej påbörjad</button><button type="button" data-ost="pagaende">${col("pagaende")}Pågår</button><button type="button" data-ost="klar">${col("klar")}Klar</button><button type="button" data-ost="pausad">${col("pausad")}Pausad</button><button type="button" data-ost="pct">% …</button></div>
+    <div class="om-st-p"><span>Framdrift</span><input type="range" min="0" max="100" step="5" data-ost-sl value="${Math.round(Number(its[0].progress) || 0)}" /><b data-ost-v>${Math.round(Number(its[0].progress) || 0)} %</b></div>
+    <div class="om-st-c"><span>Färg</span>${OBJ_DOT_PRESETS.map(c => `<button type="button" class="om-sw" data-ost-col="${c}" style="background:${c}" title="Sätt egen färg"></button>`).join("")}<input type="color" data-ost-colpick value="${(plan && plan.dotColors && plan.dotColors[its[0].id]) || "#3b82f6"}" title="Egen färg" /><button type="button" class="om-sw-auto" data-ost-col="" title="Använd statusfärgen igen">Auto</button></div>
     ${many ? `<label class="om-st-s"><input type="checkbox" data-ost-all${objStatusScopeAll ? " checked" : ""}> Hela aktiviteten (${famN} objekt), inte bara ${its.length > 1 ? "de " + its.length + " här" : "det här"}</label>` : ""}
     ${objStatusUndoStack.length ? `<button type="button" data-ost="undo" class="om-st-u">↩ Ångra: ${escHtml(objStatusUndoStack[objStatusUndoStack.length - 1].label)}</button>` : ""}</div>`;
 }
 function objStatusBind(m, its, o = {}) {
   const close = () => m.classList.add("hidden");
   const all = m.querySelector("[data-ost-all]"); if (all) all.onchange = () => { objStatusScopeAll = all.checked; };
+  const rowsNow = () => { const fams = new Set(its.map(objFamKey)); return !o.box && objStatusScopeAll ? items.filter(x => fams.has(objFamKey(x))) : its; };
+  const sl = m.querySelector("[data-ost-sl]"), sv = m.querySelector("[data-ost-v]");
+  if (sl) { sl.oninput = () => { sv.textContent = sl.value + " %"; }; sl.onchange = async () => { close(); await objSetStatus(rowsNow(), "pct", Number(sl.value)); }; sl.onclick = e => e.stopPropagation(); }
+  m.querySelectorAll("[data-ost-col]").forEach(b => { b.onclick = () => { close(); objSetDotColor(rowsNow(), b.dataset.ostCol || null); }; });
+  const pick = m.querySelector("[data-ost-colpick]"); if (pick) { pick.onclick = e => e.stopPropagation(); pick.onchange = () => { close(); objSetDotColor(rowsNow(), pick.value); }; }
   m.querySelectorAll("[data-ost]").forEach(b => { b.onclick = async () => {
     const k = b.dataset.ost; close();
     if (k === "undo") return objStatusUndo();

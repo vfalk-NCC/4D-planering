@@ -658,7 +658,7 @@ function drawObjectLabels(ctx, objects, fontPx, scr) {
     if (!box) continue;
     placed.push(box);
     if (onScreen) objLabelBoxes.push({ box, ids: shown.map(x => x.it.id), text, act: String(o.it.activity || "").trim() });
-    const color = phaseColor(ph);
+    const color = (typeof objDotColor === "function" && objDotColor(o)) || phaseColor(ph);
     if (leader) {
       const tx = Math.max(box.x, Math.min(cx, box.x + box.w)), ty = Math.max(box.y, Math.min(cy, box.y + box.h));
       ctx.strokeStyle = color; ctx.lineWidth = Math.max(1, fs / 12);
@@ -691,7 +691,7 @@ function drawObjects(ctx, objects, fontPx) {
   ctx.lineWidth = 1;
   for (const o of objects) {
     const grouped = o.members && o.members.length > 1;
-    const color = phaseColor(grouped ? zonePhase(o.members, at) : computeItemPhase(o.it, at, warn) || fallbackPhase(o.it));
+    const color = (typeof objDotColor === "function" && objDotColor(o)) || phaseColor(grouped ? zonePhase(o.members, at) : computeItemPhase(o.it, at, warn) || fallbackPhase(o.it));
     // Flyttad markering: tunn streckad linje tillbaka till objektens läge.
     if (o.moved && o.origin) {
       const [ax, ay] = toPx(o.origin), [bx, by] = toPx(o.center);

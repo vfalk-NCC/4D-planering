@@ -95,6 +95,15 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
     if (!sIt.some(r => r.id === add.id && r.origin === 'manuell') || !sPos.some(p => p.id === add.id)) fail('Ny prick sparad i data: ' + JSON.stringify({ sIt: sIt.length, sPos: sPos.length }));
     await page.evaluate(() => objStatusUndo()); await page.waitForTimeout(300);
     if (JSON.parse(gh.get('projects/p1/plan_items.json')).some(r => r.id === add.id) || await page.evaluate(() => items.some(r => r.object_name === 'F20'))) fail('Ångra ska ta bort den nya pricken');
+    // Reglage för framdrift och egen färg i prickens meny
+    const mc = await page.evaluate(async () => {
+      positions = [{ id: 'i1', x: 6512330, y: 150100, z0: 0, z1: 2 }, { id: 'i2', x: 6512360, y: 150100, z0: 0, z1: 2 }]; invalidatePositions(); items.forEach(r => { r.status = 'planerad'; r.progress = 0; });
+      const m = document.createElement('div'); m.id = 'tmpMenu'; m.innerHTML = objStatusMenuHtml([items[0]]); document.body.appendChild(m); objStatusBind(m, [items[0]]);
+      const r = { has: !!m.querySelector('[data-ost-sl]') && !!m.querySelector('[data-ost-col]') };
+      const sl = m.querySelector('[data-ost-sl]'); sl.value = '65'; sl.dispatchEvent(new Event('input')); sl.dispatchEvent(new Event('change')); await new Promise(r2 => setTimeout(r2, 400)); r.p = items[0].progress;
+      const sw = m.querySelectorAll('[data-ost-col]')[3]; const col = sw.dataset.ostCol; sw.click(); r.col = (plan.dotColors || {})[items[0].id] === col; const sh = (objectShapesInPdf() || []).find(o => o.it.id === items[0].id); objSetDotColor(sh.members && sh.members.length ? sh.members : [sh.it], col); r.fn = objDotColor(sh) === col; objSetDotColor(sh.members && sh.members.length ? sh.members : [sh.it], null);
+      m.querySelector('.om-sw-auto').click(); r.cleared = !(plan.dotColors && plan.dotColors[items[0].id]); m.remove(); return r; });
+    if (!mc.has || mc.p !== 65 || !mc.col || mc.fn === false || !mc.cleared) fail('Framdriftsreglage/egen färg i prickens meny: ' + JSON.stringify(mc));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
   } finally { await browser.close(); server.close(); }
