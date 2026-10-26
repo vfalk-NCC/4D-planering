@@ -104,6 +104,29 @@ const bytes = fs.readFileSync(path.join(__dirname, 'fixtures', 'ocg-demo.pdf')).
   await page.evaluate(async id => { const o = siteItems.find(x => x.id === id); await saveSiteItem({ ...o, pts: o.pts.map(p => [p[0] + 10, p[1]]) }, false, { prev: o }); }, where.id);
   const after = await page.evaluate(id => siteItems.find(x => x.id === id).pts[0][0], where.id);
   if (Math.abs(after - where.pts0[0] - 10) > 1e-6) fail('Flytt sparas: ' + after);
+  // Flytta objektet bara i utskriftslayouten (✥ Flytta objekt): planen rörs inte
+  { const r = await page.evaluate(async id => {
+      await openPrint(); const A = pr.tpl.elements.find(e => e.type === 'map'); A.layers = { follow: true }; A.scale = 1000; A.center = [50, 25]; A.moves = undefined;
+      const o = siteItems.find(x => x.id === id), c = o.pts.reduce((a, p) => [a[0] + p[0] / 4, a[1] + p[1] / 4], [0, 0]);
+      // musen (layoutenheter) som motsvarar objektets mitt, med flytten applicerad
+      const { k } = pageDims(), ppm = pxPerMeter(), f = k * A.scale / 1000 * ppm, c0 = mToPx(A.center), cs = mToPx(c);
+      const mx = A.x + A.w / 2 + (cs[0] - c0[0]) / f, my = A.y + A.h / 2 + (cs[1] - c0[1]) / f;
+      pr.objMode = true; setSel([A.id]);
+      const hit = prObjAt(A, mx, my);
+      pr.drag = null; const grabbed = prObjDown(A, mx, my, {});
+      const d = pr.drag; prObjMove(d, mx + 10 / k, my); // 10 layoutenheter åt höger
+      const mv = A.moves && A.moves[id], planPts = siteItems.find(x => x.id === id).pts[0].slice();
+      const moved = prSiteList(A).find(x => x.id === id).pts[0];
+      prMouseUp();
+      const hit2 = prObjAt(A, mx + 10 / k, my);
+      return { hit: hit && hit.id === id, grabbed, mv, planSame: planPts[0] === o.pts[0][0], moved: moved[0] - planPts[0], expect: 10 * f / ppm, hit2: hit2 && hit2.id === id, undo: pr.undo.length > 0 };
+    }, where.id);
+    if (!r.hit || !r.grabbed || !r.mv || !r.planSame || Math.abs(r.moved - r.expect) > 0.05 || !r.hit2 || !r.undo) fail('Flytta objekt i utskriftslayouten: ' + JSON.stringify(r));
+    // Ritas flyttat: förhandsvisningen skiljer sig från den ofyttade
+    const diff = await page.evaluate(async () => { const A = pr.tpl.elements.find(e => e.type === 'map'); const moved = await renderMapCanvasNow(A, 100, 80, 400, 320, { preview: true }); const m0 = A.moves; delete A.moves; const base = await renderMapCanvasNow(A, 100, 80, 400, 320, { preview: true }); A.moves = m0;
+      const a = moved.getContext('2d').getImageData(0, 0, 400, 320).data, b = base.getContext('2d').getImageData(0, 0, 400, 320).data; let n = 0; for (let i = 0; i < a.length; i += 4) if (a[i] !== b[i] || a[i + 1] !== b[i + 1]) n++; return n; });
+    if (!(diff > 50)) fail('Flytten syns i ritningen: ' + diff);
+  }
   // Utskriftslayouten: ritningen med objekten ritas utan fel
   await page.evaluate(async () => { await openPrint(); const A = pr.tpl.elements.find(e => e.type === 'map'); A.layers = { follow: true }; await renderMapCanvasNow(A, 100, 80, 400, 320, { preview: true }); });
   if (errors.length) fail('sidfel: ' + errors.slice(0, 3));

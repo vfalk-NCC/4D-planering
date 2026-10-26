@@ -474,7 +474,7 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
     prog("Ritar zoner, objekt och DXF…");
     // Det som ritas direkt ur lagerläget (DXF-plan, PDF-lager, zoner, objekt, etablering) – synkront,
     // på en egen kopia eftersom PDF-lagren tänder och släcker tillfälligt.
-    withLayerState(JSON.parse(JSON.stringify(st)), () => {
+    withLayerState(JSON.parse(JSON.stringify(st)), () => prWithMoves(el, () => {
       // PDF-export: CAD ritas som vektorer i PDF:en (skarpa linjer), så här
       // bara zoner/etablering i ett eget genomskinligt lager ovanpå.
       if (opts.vectorCad) P.cadPlan = typeof cadVectorPlan === "function" ? cadVectorPlan() : [];
@@ -511,7 +511,7 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
         }
       }
       renderFilmOverlay(P, { cad: !opts.vectorCad && !cadCanvas, zones: true, site: true, vec: P.overlayVec, vecUnder: P.overlayVecUnder });
-    });
+    }));
     if (!opts.vectorCad) { if (cadCanvas) ctx.drawImage(cadCanvas, 0, 0); ctx.drawImage(P.overlay, 0, 0); }
   } finally { cadPrintOpts = null; }
   return opts.vectorCad ? { base: out, overlay: P.overlay, cad: P.cadPlan || [], P } : out;
@@ -548,7 +548,7 @@ function mapProgressSet(id, f, label) {
   if (!mapProgressRaf) mapProgressRaf = requestAnimationFrame(() => { mapProgressRaf = 0; if (pr) drawPrintPage(); });
 }
 function mapPreview(el, wPx, hPx) {
-  const key = JSON.stringify([el.scale, el.center, el.w, el.h, Math.round(wPx), $("dateInput").value, pr && pr.tpl.format, vpLayersKey(el), el.cadLw || 1, el.cadTextMin ?? 1]);
+  const key = JSON.stringify([el.scale, el.center, el.w, el.h, Math.round(wPx), $("dateInput").value, pr && pr.tpl.format, vpLayersKey(el), el.cadLw || 1, el.cadTextMin ?? 1, el.moves || null]);
   const hit = mapPreviews.get(el.id);
   if ((!hit || hit.key !== key) && mapPending.get(el.id) !== key) {
     mapPending.set(el.id, key);
@@ -1165,7 +1165,7 @@ function prCmdPos(e) {
 function localStorageGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
 const selEls = () => pr ? pr.tpl.elements.filter(e => pr.sels.includes(e.id)) : [];
 const primary = () => pr && pr.sels.length === 1 ? pr.tpl.elements.find(e => e.id === pr.sels[0]) : null;
-function setSel(ids) { pr.sels = ids; if (!primary() || primary().type !== "map") pr.panMode = false; }
+function setSel(ids) { pr.sels = ids; if (!primary() || primary().type !== "map") { pr.panMode = false; pr.objMode = false; } }
 
 let prSpace = false; // Mellanslag nedtryckt: dra flyttar vyn i layouten
 async function openPrint() {
@@ -1250,12 +1250,12 @@ function drawPrintPage() {
   const sels = selEls(), one = primary();
   sels.forEach(sel => {
     const b = elBox(sel);
-    ctx.strokeStyle = pr.panMode && sel.type === "map" ? "#16a34a" : "#0b5fff"; ctx.lineWidth = 1.5 * dpr; ctx.setLineDash([5 * dpr, 3 * dpr]);
+    ctx.strokeStyle = (pr.panMode || pr.objMode) && sel.type === "map" ? "#16a34a" : "#0b5fff"; ctx.lineWidth = 1.5 * dpr; ctx.setLineDash([5 * dpr, 3 * dpr]);
     ctx.strokeRect(b.x * k * u, b.y * k * u, b.w * k * u, b.h * k * u); ctx.setLineDash([]);
   });
   // Låst: ett litet lås i hörnet i stället för handtag.
   if (one && one.locked) { const b = elBox(one); ctx.font = `${12 * dpr}px Arial`; ctx.textAlign = "right"; ctx.textBaseline = "top"; ctx.fillText("🔒", (b.x + b.w) * k * u - 2 * dpr, b.y * k * u + 2 * dpr); }
-  else if (one && !(pr.panMode && one.type === "map")) handlePts(one, k, u).forEach(([hx, hy]) => { ctx.fillStyle = "#fff"; ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 1.5 * dpr; ctx.fillRect(hx - 5 * dpr, hy - 5 * dpr, 10 * dpr, 10 * dpr); ctx.strokeRect(hx - 5 * dpr, hy - 5 * dpr, 10 * dpr, 10 * dpr); });
+  else if (one && !((pr.panMode || pr.objMode) && one.type === "map")) handlePts(one, k, u).forEach(([hx, hy]) => { ctx.fillStyle = "#fff"; ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 1.5 * dpr; ctx.fillRect(hx - 5 * dpr, hy - 5 * dpr, 10 * dpr, 10 * dpr); ctx.strokeRect(hx - 5 * dpr, hy - 5 * dpr, 10 * dpr, 10 * dpr); });
   // Markeringsruta
   if (pr.drag && pr.drag.kind === "band") {
     const d = pr.drag, x0 = Math.min(d.start[0], d.cur[0]), y0 = Math.min(d.start[1], d.cur[1]);
@@ -1317,6 +1317,10 @@ function prMouseDown(e) {
     pushUndo();
     pr.drag = { kind: "pan", el: one, start: [mx, my], center: one.center.slice() };
     return;
+  }
+  // Flytta objekt i ritningen (lagesplan-printobj.js): bara i den här layouten, planen rörs inte
+  if (one && one.type === "map" && pr.objMode && !one.locked && mx >= one.x && mx <= one.x + one.w && my >= one.y && my <= one.y + one.h) {
+    if (typeof prObjDown === "function" && prObjDown(one, mx, my, e)) return;
   }
   // Handtag på ett ensamt markerat element
   if (one && !one.locked) {
@@ -1389,6 +1393,8 @@ function prMouseMove(e) {
       // Pratbubblans spets står still på bladet när rutan ändras.
       if (d.el.type === "callout") { d.el.tx = (o.x + (Number(o.tx) || 0)) - d.el.x; d.el.ty = (o.y + (Number(o.ty) || 0)) - d.el.y; }
     }
+  } else if (d.kind === "objmove") {
+    prObjMove(d, mx, my);
   } else if (d.kind === "pan") {
     const { k } = pageDims();
     const dxMm = (mx - d.start[0]) * k, dyMm = (my - d.start[1]) * k;
@@ -1398,7 +1404,7 @@ function prMouseMove(e) {
   }
   pr.dirty = true;
   drawPrintPage();
-  if (d.kind !== "pan") renderPrintProps(true);
+  if (d.kind !== "pan" && d.kind !== "objmove") renderPrintProps(true);
 }
 function bandSelect(d) {
   const x0 = Math.min(d.start[0], d.cur[0]), x1 = Math.max(d.start[0], d.cur[0]), y0 = Math.min(d.start[1], d.cur[1]), y1 = Math.max(d.start[1], d.cur[1]);
@@ -1407,7 +1413,7 @@ function bandSelect(d) {
 }
 function prMouseUp() {
   if (!pr || !pr.drag) return;
-  if (pr.drag.kind === "move" && !pr.drag.moved) pr.undo.pop();
+  if ((pr.drag.kind === "move" || pr.drag.kind === "objmove") && !pr.drag.moved) pr.undo.pop();
   pr.drag = null; pr.guides = [];
   setSel(pr.sels);
   renderPrintPanel(); drawPrintPage();
@@ -1479,6 +1485,7 @@ function prKey(e) {
   if (mod && k === "-") { stop(); const c = $("prCanvas"); prZoomAt(1 / 1.25, c.width / 2, c.height / 2); return; }
   if (mod && k === "0") { stop(); pr.zoom = 1; pr.vx = pr.vy = 0; drawPrintPage(); updatePrZoomUi(); return; }
   if (!pr.sels.length) return;
+  if ((e.key === "Delete" || e.key === "Backspace") && pr.objMode && typeof prObjResetSel === "function" && prObjResetSel()) { stop(); return; }
   if (e.key === "Delete" || e.key === "Backspace") { stop(); if (selEls().some(x => x.locked)) { setPrintStatus("🔒 Låsta element tas inte bort – lås upp dem först."); return; } deleteSel(); return; }
   const step = e.shiftKey ? 10 : 1;
   const mv = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
@@ -1658,6 +1665,7 @@ function renderPrintProps(onlyPos) {
       ${typeof cads === "function" && cads().length ? `<div class="pr-grid4"><div style="grid-column:span 2;"><label>DXF-linjer</label><select data-f="cadLw" data-num="1" title="Linjetjockleken för DXF-ritningarna i den här ritningen">${[[0.4, "Mycket tunna"], [0.7, "Tunna"], [1, "Som på skärmen"], [1.6, "Tjocka"], [2.5, "Mycket tjocka"], [4, "Extra tjocka"]].map(([v, l]) => `<option value="${v}"${(Number(el.cadLw) || 1) === v ? " selected" : ""}>${l}</option>`).join("")}</select></div>
         <div style="grid-column:span 2;"><label>DXF-texter</label><select data-f="cadTextMin" data-num="1" title="Små texter förstoras till minst den här höjden på papperet så att de syns">${[[0, "Som ritningen"], [1, "Minst 1 mm"], [1.5, "Minst 1,5 mm"], [2, "Minst 2 mm"], [3, "Minst 3 mm"], [-1, "Dölj texterna"]].map(([v, l]) => `<option value="${v}"${(el.cadTextMin == null ? 1 : Number(el.cadTextMin)) === v ? " selected" : ""}>${l}</option>`).join("")}</select></div></div>` : ""}
       <div class="row split" style="margin-top:8px;"><button id="prPan" class="${pr.panMode ? "active" : ""}" title="${el.locked ? "Låst – lås upp för att flytta utsnittet" : "Dra i ritningen för att flytta utsnittet, scrolla för att byta skala"}"${el.locked ? " disabled" : ""}>✋ Panorera</button><button id="prFromView" title="Samma utsnitt som på skärmen"${el.locked ? " disabled" : ""}>⤢ Skärmens utsnitt</button></div>
+      <div class="row split" style="margin-top:6px;"><button id="prObjMove" class="${pr.objMode ? "active" : ""}" title="${el.locked ? "Låst – lås upp för att flytta objekt" : "Dra i objekten i ritningen (textrutor, skyltar, etablering …) för att placera dem som du vill ha dem på det här bladet. Planen och andra blad påverkas inte."}"${el.locked ? " disabled" : ""}>✥ Flytta objekt</button>${el.moves && Object.keys(el.moves).length ? `<button id="prObjReset" title="Lägg tillbaka alla objekt som flyttats i den här ritningen">↺ Återställ ${Object.keys(el.moves).length} flyttade</button>` : ""}</div>
       ${chk("border", "Ram runt ritningen")}
       <label class="check"><input type="checkbox" id="prLblShow"${lb.show ? " checked" : ""} /> <b>Visa namn &amp; skala</b></label>
       <div class="pr-grid4"><div style="grid-column:span 4;"><label>Vyns namn</label><input type="text" id="prLblName" value="${escHtml(lb.name || "")}" placeholder="t.ex. Översikt etablering" /></div>
@@ -1809,7 +1817,9 @@ function renderPrintProps(onlyPos) {
     });
   });
   on("prImgReset", () => { pushUndo(); const before = cropOf(el); ["cropL", "cropR", "cropT", "cropB"].forEach(k => delete el[k]); el.knockout = false; applyCropResize(el, before); renderPrintProps(); drawPrintPage(); });
-  on("prPan", () => { pr.panMode = !pr.panMode; renderPrintProps(); drawPrintPage(); });
+  on("prPan", () => { pr.panMode = !pr.panMode; if (pr.panMode) pr.objMode = false; renderPrintProps(); drawPrintPage(); });
+  on("prObjMove", () => { pr.objMode = !pr.objMode; if (pr.objMode) pr.panMode = false; renderPrintProps(); drawPrintPage(); if (pr.objMode) setPrintStatus("Dra i ett objekt i ritningen för att flytta det – bara på det här bladet. Alt = fritt, Delete återställer det markerade objektet."); });
+  on("prObjReset", () => { pushUndo(); delete el.moves; mapPreviews.delete(el.id); renderPrintProps(); drawPrintPage(); });
   on("prFromView", () => { pushUndo(); el.center = viewCenterModel(); el.scale = fitScale(el.w, el.h, pr.tpl.format); renderPrintPanel(); drawPrintPage(); });
   box.querySelectorAll("[data-tset]").forEach(b => { b.onclick = () => { pushUndo(); el[b.dataset.tset] = b.dataset.v; renderPrintProps(); drawPrintPage(); }; });
   box.querySelectorAll("[data-arrow]").forEach(b => { b.onclick = () => { pushUndo(); el.style = b.dataset.arrow; el.lw = ARROW_STYLES[el.style].lw; renderPrintProps(); drawPrintPage(); }; });
