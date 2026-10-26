@@ -427,7 +427,18 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
   // DXF i den här ritningen: linjetjocklek och minsta texthöjd på papperet (Victors önskemål 2026-10-06).
   const tm = el.cadTextMin == null ? 1 : Number(el.cadTextMin);
   cadPrintOpts = { lw: Number(el.cadLw) || 1, minTextMm: tm > 0 ? tm : null, hideText: tm < 0, pxPerMm: pxW / wMm };
+  // Förhandsvisningen sparar bottenlagret (ortofoto, PDF, PDF-lager) – tänd/släck av prickar, zoner och DXF ritar bara om
+  // det som ligger ovanpå, så det går snabbt (Victor 2026-10-26).
+  const baseKey = opts.preview && !opts.vectorPdf && !opts.vectorCad ? JSON.stringify([plan.id, P.W, P.H, P.S, P.x0, P.y0, L.orthos.map(x => [x.o.id, x.op]), L.pdfVis, L.pdfOp, L.pdfMultiply,
+    L.overlays.map(o => [o.id, o.opacity, o.color, o.noCrop]), $("grayPdf") && $("grayPdf").checked, $("showOriginal") && $("showOriginal").checked]) : null;
+  const baseHit = baseKey && mapBase.get(el.id);
+  const baseCached = !!(baseHit && baseHit.key === baseKey);
   try {
+    if (baseCached) {
+      ctx.drawImage(baseHit.canvas, 0, 0);
+      P.pdfInfo = { visible: L.pdfVis, opacity: L.pdfOp, multiply: L.orthos.length > 0 && L.pdfMultiply };
+      P.pdfOverlays = L.overlays;
+    } else {
     for (const { o, op } of L.orthos) {
       try {
         prog(`Ortofoto ${o.name || ""}`.trim());
@@ -455,6 +466,8 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
       prog(`PDF ${o.p.name || ""}`.trim());
       try { await drawPdfOverlayForExport(ctx, o.p, P, o); } catch (e) { console.warn("PDF-lager i utskriften", e); }
       done++;
+    }
+    if (baseKey) { const bc = newCanvas(pxW, pxH); bc.getContext("2d").drawImage(out, 0, 0); mapBase.set(el.id, { key: baseKey, canvas: bc }); }
     }
     prog("Ritar zoner, objekt och DXF…");
     // Det som ritas direkt ur lagerläget (DXF-plan, PDF-lager, zoner, objekt, etablering) – synkront,
@@ -490,6 +503,7 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
   } finally { cadPrintOpts = null; }
   return opts.vectorCad ? { base: out, overlay: P.overlay, cad: P.cadPlan || [], P } : out;
 }
+const mapBase = new Map(); // el.id -> { key, canvas }: förhandsvisningens bottenlager (ortofoto + PDF)
 const mapPreviews = new Map(); // el.id -> { key, canvas }
 const mapPending = new Map();
 let mapProgressRaf = 0;
@@ -1145,7 +1159,7 @@ async function openPrint() {
   let tpl = tpls.find(t => t.id === localStorageGet("lagesplan-printtpl")) || tpls[0];
   if (!tpl) tpl = defaultTemplate();
   pr = { tpl: migrateTpl(JSON.parse(JSON.stringify(tpl))), saved: !!tpls.find(t => t.id === tpl.id), sels: [], dirty: false, undo: [], redo: [], drag: null, panMode: false, guides: [], fmtAsk: null };
-  mapPreviews.clear(); mapPending.clear();
+  mapPreviews.clear(); mapPending.clear(); mapBase.clear();
   $("printModal").classList.remove("hidden");
   renderPrintPanel();
   prCmdLog(`Utskriftslayout öppnad – mall "${pr.tpl.name || "Ny mall"}", ${pr.tpl.format}.`);
@@ -1550,7 +1564,7 @@ function applyFormat(to, keepView) {
   const kOld = PRINT_FORMATS[pr.tpl.format].w, kNew = PRINT_FORMATS[to].w;
   if (keepView) pr.tpl.elements.filter(e => e.type === "map").forEach(e => { e.scale = nearestScale(e.scale * kOld / kNew); });
   pr.tpl.format = to; pr.fmtAsk = null;
-  mapPreviews.clear(); mapPending.clear();
+  mapPreviews.clear(); mapPending.clear(); mapBase.clear();
   renderPrintPanel(); drawPrintPage();
 }
 function northThumb(style, color) {
