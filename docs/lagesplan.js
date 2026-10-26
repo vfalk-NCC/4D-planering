@@ -747,9 +747,10 @@ function updateCalibInfo() {
   if (!plan.calib) { el.textContent = "Inte kalibrerad ännu – börja med Kalibrera mot 3D: klicka två punkter på ritningen och samma två i modellen."; return; }
   const [m1, m2] = plan.calib.model, [p1, p2] = plan.calib.pdf;
   const scale = Math.hypot(m2[0] - m1[0], m2[1] - m1[1]) * 1000 / (Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) * 25.4 / 72);
+  const rotDeg = (() => { const mx = m2[0] - m1[0], my = m2[1] - m1[1], px = p2[0] - p1[0], py = p2[1] - p1[1]; return Math.round((Math.atan2(py, px) - Math.atan2(my, mx)) * 1800 / Math.PI) / 10; })();   // ritningens vridning mot modellen (rotationen ingår i kalibreringen)
   const pos = positionsInPdf();
   const inZone = pos ? [...pos.values()].filter(pt => (plan.zones || []).some(z => (z.polys || []).some(poly => pointInPoly(pt, poly)))).length : 0;
-  el.textContent = `✓ Kalibrerad (skala ≈ 1:${Math.round(scale)}). ` + (positions.length
+  el.textContent = `✓ Kalibrerad (skala ≈ 1:${Math.round(scale)}, vriden ${((rotDeg % 360) + 360) % 360 > 180 ? ((rotDeg % 360) + 360) % 360 - 360 : ((rotDeg % 360) + 360) % 360}° mot modellen). ` + (positions.length
     ? `${positions.length} objekt har position, ${pos ? pos.size : 0} på vald nivå, ${inZone} ligger i en zon.`
     : "Hämta positioner (📍) för att koppla objekten.");
 }
