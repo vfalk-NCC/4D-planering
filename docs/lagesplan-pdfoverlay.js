@@ -69,7 +69,7 @@ const pdfOvBusy = new Map(); // key -> löpnummer (en nyare ritning avbryter en 
 async function renderPdfOverlay(p) {
   const key = pdfOverlayKey(p), c = pdfOverlayCanvas(key), pc = $("pdfCanvas");
   if (!pdfOverlayReady(p) || !viewport || !pc.width) { c.width = 0; return; }
-  const stamp = `${plan.id}:${pc.width}x${pc.height}:${JSON.stringify(p.calib)}:${JSON.stringify(plan.calib)}:${pdfOverlayNoCrop(key)}`;
+  const stamp = `${plan.id}:${pc.width}x${pc.height}:${JSON.stringify(p.calib)}:${JSON.stringify(plan.calib)}:${pdfOverlayNoCrop(key)}:${pdfOverlayColor(key) ? 1 : 0}`;   // Färg på = även Bluebeam/Acrobat-markeringar (rutor, text, höjdpunkter) ritas med
   if (c.dataset.stamp === stamp && c.width) return;
   const seq = (pdfOvBusy.get(key) || 0) + 1; pdfOvBusy.set(key, seq);
   try {
@@ -81,7 +81,7 @@ async function renderPdfOverlay(p) {
     const vb = pg.getViewport({ scale: s });
     const tmp = document.createElement("canvas"); tmp.width = Math.round(vb.width); tmp.height = Math.round(vb.height);
     const tctx = tmp.getContext("2d"); tctx.fillStyle = "#fff"; tctx.fillRect(0, 0, tmp.width, tmp.height);
-    await pg.render({ canvasContext: tctx, viewport: vb, annotationMode: pdfjsLib.AnnotationMode.DISABLE }).promise;
+    await pg.render({ canvasContext: tctx, viewport: vb, annotationMode: pdfOverlayColor(key) ? pdfjsLib.AnnotationMode.ENABLE : pdfjsLib.AnnotationMode.DISABLE }).promise;
     if (pdfOvBusy.get(key) !== seq) return;
     const [bx0, by0, bx1, by1] = pdfOverlayBounds(p, pg, toStage), bw = bx1 - bx0, bh = by1 - by0;
     const q = Math.min(1, 8000 / Math.max(bw, bh)); // canvas-px per stage-px (tak för mycket stora ytor)
@@ -183,7 +183,7 @@ async function renderOverlayHi(p, seq) {
     const tmpB = document.createElement("canvas"); tmpB.width = rw; tmpB.height = rh;
     const bctx = tmpB.getContext("2d"); bctx.fillStyle = "#fff"; bctx.fillRect(0, 0, rw, rh);
     const prev = pdfOvHiTasks.get(key); if (prev) { try { prev.cancel(); } catch (e) {} }
-    const task = pg.render({ canvasContext: bctx, viewport: part, annotationMode: pdfjsLib.AnnotationMode.DISABLE });
+    const task = pg.render({ canvasContext: bctx, viewport: part, annotationMode: pdfOverlayColor(key) ? pdfjsLib.AnnotationMode.ENABLE : pdfjsLib.AnnotationMode.DISABLE });
     pdfOvHiTasks.set(key, task);
     try { await task.promise; } catch (e) { return; } // avbruten av en nyare
     if (seq !== pdfOvHiSeq || !layerVisible(key)) return;
@@ -223,7 +223,7 @@ async function drawPdfOverlayForExport(ctx, p, P, o = null) {
   const part = pg.getViewport({ scale: sB, offsetX: -rx0, offsetY: -ry0 });
   const tmp = document.createElement("canvas"); tmp.width = rw; tmp.height = rh;
   const tctx = tmp.getContext("2d"); tctx.fillStyle = "#fff"; tctx.fillRect(0, 0, rw, rh);
-  await pg.render({ canvasContext: tctx, viewport: part, annotationMode: pdfjsLib.AnnotationMode.DISABLE }).promise;
+  await pg.render({ canvasContext: tctx, viewport: part, annotationMode: (o ? o.color : pdfOverlayColor(key)) ? pdfjsLib.AnnotationMode.ENABLE : pdfjsLib.AnnotationMode.DISABLE }).promise;
   ctx.save();
   if (!(o ? o.noCrop : pdfOverlayNoCrop(key))) { ctx.beginPath(); ctx.rect(-P.x0 * P.S, -P.y0 * P.S, pc.width * P.S, pc.height * P.S); ctx.clip(); }
   ctx.globalAlpha = o ? o.opacity : layerOpacity(key);
