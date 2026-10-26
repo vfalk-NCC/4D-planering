@@ -45,11 +45,38 @@ function pdfOverlayCanvas(key) {
   return c;
 }
 /* Sidan i en annan plans PDF (hämtas och tolkas en gång). */
-const pdfOvPages = new Map(); // plan-id -> { file, page }
+const pdfOvPages = new Map(); // plan-id -> { file, page, doc }
+/* PDF:ens egna lager (optional content / OCG): t.ex. en APD-plan som exporterats med lager. plan-id -> [{ id, name, on }].
+   Varje lager blir en egen rad under PDF-raden (nyckel pdfpl:<plan-id>:<lager-id>) och styr hur sidan ritas. */
+const pdfOvOcgs = new Map();
+const pdfOcgKey = (p, id) => `pdfpl:${p.id}:${id}`;
+function pdfOcgList(p) { return pdfOvOcgs.get(p.id) || []; }
+async function pdfOverlayReadOcgs(p, doc) {
+  let list = [];
+  try {
+    const cfg = await doc.getOptionalContentConfig(), ids = [];
+    const walk = a => (a || []).forEach(x => { if (Array.isArray(x)) walk(x); else if (x && typeof x === "object" && x.order) walk(x.order); else if (typeof x === "string") ids.push(x); });
+    walk(cfg.getOrder && cfg.getOrder());
+    list = [...new Set(ids)].map(id => { const g = cfg.getGroup(id); return g ? { id, name: g.name || id, on: cfg.isVisible({ type: "OCG", id }) } : null; }).filter(Boolean);
+  } catch (e) { /* utan lagerstöd: som förut */ }
+  const had = pdfOvOcgs.has(p.id);
+  pdfOvOcgs.set(p.id, list);
+  list.forEach(g => ls(pdfOcgKey(p, g.id), { visible: g.on }));
+  if (!had && list.length && typeof renderLayerPanel === "function") setTimeout(renderLayerPanel, 0);
+}
+/* Lagerläget som render() ska använda: bara de lager som är tända (utan lager i PDF:en: inget). st = lagerläge (utskriften har en kopia). */
+function pdfOverlayOcgPromise(p, doc, st = null) {
+  const list = pdfOcgList(p);
+  if (!list.length || !doc) return undefined;
+  return doc.getOptionalContentConfig().then(cfg => { list.forEach(g => { const v = (st ? st[pdfOcgKey(p, g.id)] : layerState[pdfOcgKey(p, g.id)]); cfg.setVisibility(g.id, v ? v.visible !== false : g.on); }); return cfg; });
+}
+const pdfOcgStamp = p => pdfOcgList(p).map(g => (layerState[pdfOcgKey(p, g.id)] || { visible: g.on }).visible === false ? 0 : 1).join("");
+const pdfOcgOff = (p, st) => pdfOcgList(p).some(g => (st[pdfOcgKey(p, g.id)] || { visible: g.on }).visible === false);
 async function pdfOverlayPage(p) {
   const c = pdfOvPages.get(p.id);
   if (c && c.file === p.file_path && c.no === (p.page || 1)) return c.page;
   const key = "ov:" + p.id, lbl = `Hämtar PDF-lagret ${p.name || ""}`.trim();
+  let doc = null;
   try {
     if (!pdfCache.has(p.id)) {
       busyProgress(key, lbl, 0);
@@ -58,10 +85,11 @@ async function pdfOverlayPage(p) {
       URL.revokeObjectURL(url);
     }
     busyProgress(key, lbl, 0.9);
-    const doc = await pdfjsLib.getDocument({ data: pdfCache.get(p.id).slice(0) }).promise;
+    doc = await pdfjsLib.getDocument({ data: pdfCache.get(p.id).slice(0) }).promise;
     var page = await doc.getPage(Math.min(p.page || 1, doc.numPages));
   } finally { busyProgress(key, "", null); }
-  pdfOvPages.set(p.id, { file: p.file_path, no: p.page || 1, page });
+  pdfOvPages.set(p.id, { file: p.file_path, no: p.page || 1, page, doc });
+  await pdfOverlayReadOcgs(p, doc);
   return page;
 }
 const pdfOvToStage = p => affMul(viewport.transform, affMul(calibAffine(plan.calib), affInv(calibAffine(p.calib))));
@@ -69,7 +97,7 @@ const pdfOvBusy = new Map(); // key -> löpnummer (en nyare ritning avbryter en 
 async function renderPdfOverlay(p) {
   const key = pdfOverlayKey(p), c = pdfOverlayCanvas(key), pc = $("pdfCanvas");
   if (!pdfOverlayReady(p) || !viewport || !pc.width) { c.width = 0; return; }
-  const stamp = `${plan.id}:${pc.width}x${pc.height}:${JSON.stringify(p.calib)}:${JSON.stringify(plan.calib)}:${pdfOverlayNoCrop(key)}:${pdfOverlayColor(key) ? 1 : 0}`;   // Färg på = även Bluebeam/Acrobat-markeringar (rutor, text, höjdpunkter) ritas med
+  const stamp = `${plan.id}:${pc.width}x${pc.height}:${JSON.stringify(p.calib)}:${JSON.stringify(plan.calib)}:${pdfOverlayNoCrop(key)}:${pdfOverlayColor(key) ? 1 : 0}:${pdfOcgStamp(p)}`;   // Färg på = även Bluebeam/Acrobat-markeringar (rutor, text, höjdpunkter) ritas med
   if (c.dataset.stamp === stamp && c.width) return;
   const seq = (pdfOvBusy.get(key) || 0) + 1; pdfOvBusy.set(key, seq);
   try {
@@ -81,7 +109,7 @@ async function renderPdfOverlay(p) {
     const vb = pg.getViewport({ scale: s });
     const tmp = document.createElement("canvas"); tmp.width = Math.round(vb.width); tmp.height = Math.round(vb.height);
     const tctx = tmp.getContext("2d"); tctx.fillStyle = "#fff"; tctx.fillRect(0, 0, tmp.width, tmp.height);
-    await pg.render({ canvasContext: tctx, viewport: vb, annotationMode: pdfOverlayColor(key) ? pdfjsLib.AnnotationMode.ENABLE : pdfjsLib.AnnotationMode.DISABLE }).promise;
+    await pg.render({ canvasContext: tctx, viewport: vb, annotationMode: pdfOverlayColor(key) ? pdfjsLib.AnnotationMode.ENABLE : pdfjsLib.AnnotationMode.DISABLE, optionalContentConfigPromise: pdfOverlayOcgPromise(p, (pdfOvPages.get(p.id) || {}).doc) }).promise;
     if (pdfOvBusy.get(key) !== seq) return;
     const [bx0, by0, bx1, by1] = pdfOverlayBounds(p, pg, toStage), bw = bx1 - bx0, bh = by1 - by0;
     const q = Math.min(1, 8000 / Math.max(bw, bh)); // canvas-px per stage-px (tak för mycket stora ytor)
@@ -119,11 +147,21 @@ function applyPdfOverlays() {
 }
 /* Lagerraden för en annan plans PDF. */
 function pdfOverlayRowHtml(p, opts) {
-  const key = pdfOverlayKey(p), ready = pdfOverlayReady(p);
+  const key = pdfOverlayKey(p), ready = pdfOverlayReady(p), ocgs = pdfOcgList(p), open = layerState["pdfopen:" + p.id] === true;
   ls(key, { visible: false });
-  return layerRow(key, `<span class="pdfov-name" title="${escHtml(p.name || "")}${ready ? "" : " – planen (eller den öppna planen) är inte kalibrerad och kan inte läggas på rätt ställe"}">📄 ${escHtml(p.name || "Plan")}</span>${ready ? "" : " <small>ej kalibrerad</small>"}`,
-    { ...opts, extra: `<label class="blend"><input type="checkbox" class="lr-color"${pdfOverlayColor(key) ? " checked" : ""} /> Färg</label><button type="button" class="lr-delpdf" data-plan="${escHtml(p.id)}" title="Ta bort den importerade PDF:en (planen) helt">🗑 Ta bort</button><label class="blend" title="Visa hela ritningen, även utanför den öppna planens kant"><input type="checkbox" class="lr-nocrop"${pdfOverlayNoCrop(key) ? " checked" : ""} /> Beskär inte</label>` });
+  const parent = layerRow(key, `${ocgs.length ? `<button type="button" class="cad-toggle pdf-ocg-toggle" data-plan="${escHtml(p.id)}" title="Visa PDF:ens egna lager">${open ? "▾" : "▸"}</button>` : ""}<span class="pdfov-name" title="${escHtml(p.name || "")}${ready ? "" : " – planen (eller den öppna planen) är inte kalibrerad och kan inte läggas på rätt ställe"}">📄 ${escHtml(p.name || "Plan")}</span>${ocgs.length ? ` <small>${ocgs.length} lager</small>` : ""}${ready ? "" : " <small>ej kalibrerad</small>"}`,
+    { ...opts, extra: `<label class="blend"><input type="checkbox" class="lr-color"${pdfOverlayColor(key) ? " checked" : ""} /> Färg</label><button type="button" class="lr-delpdf" data-plan="${escHtml(p.id)}" title="Ta bort den importerade PDF:en (planen) helt">🗑 Ta bort</button><label class="blend" title="Visa hela ritningen, även utanför den öppna planens kant"><input type="checkbox" class="lr-nocrop"${pdfOverlayNoCrop(key) ? " checked" : ""} /> Beskär inte</label>${ready && ocgs.length ? `<button type="button" class="lr-pdfobj" data-plan="${escHtml(p.id)}" title="Gör texter, textrutor, skyltar och ritade former i PDF:en till egna objekt i användarlager – som du kan markera, flytta och ta bort, och som följer med i utskriftslayouten">✂ Gör objekten redigerbara</button>` : ""}` });
+  const kids = ocgs.map(g => layerRow(pdfOcgKey(p, g.id), escHtml(g.name.replace(/\s*:\s*[A-Za-z0-9-]+\s*-\s*\d+:\d+.*$/, "") || g.name), { noOpacity: true, sub: true, cadSub: true, inFolder: opts.inFolder, hidden: opts.hidden || !open }));
+  return parent + kids.join("");
 }
+document.addEventListener("click", e => {
+  const t = e.target && e.target.closest && e.target.closest(".pdf-ocg-toggle"); if (!t) return;
+  e.stopPropagation(); const k = "pdfopen:" + t.dataset.plan; layerState[k] = layerState[k] !== true; saveLayerState(); renderLayerPanel();
+}, true);
+document.addEventListener("click", e => {
+  const b = e.target && e.target.closest && e.target.closest(".lr-pdfobj"); if (!b) return;
+  e.stopPropagation(); const p = (typeof plans !== "undefined" ? plans : []).find(x => x.id === b.dataset.plan); if (p && typeof pdfObjImport === "function") pdfObjImport(p);
+}, true);
 
 /* Full skärpa vid inzoomning (Victors önskemål 2026-10-05), som för den öppna planen: när zoomen
    stannat ritas den synliga delen av varje tänt PDF-lager om i skärmens upplösning. Fungerar även
@@ -183,7 +221,7 @@ async function renderOverlayHi(p, seq) {
     const tmpB = document.createElement("canvas"); tmpB.width = rw; tmpB.height = rh;
     const bctx = tmpB.getContext("2d"); bctx.fillStyle = "#fff"; bctx.fillRect(0, 0, rw, rh);
     const prev = pdfOvHiTasks.get(key); if (prev) { try { prev.cancel(); } catch (e) {} }
-    const task = pg.render({ canvasContext: bctx, viewport: part, annotationMode: pdfOverlayColor(key) ? pdfjsLib.AnnotationMode.ENABLE : pdfjsLib.AnnotationMode.DISABLE });
+    const task = pg.render({ canvasContext: bctx, viewport: part, annotationMode: pdfOverlayColor(key) ? pdfjsLib.AnnotationMode.ENABLE : pdfjsLib.AnnotationMode.DISABLE, optionalContentConfigPromise: pdfOverlayOcgPromise(p, (pdfOvPages.get(p.id) || {}).doc) });
     pdfOvHiTasks.set(key, task);
     try { await task.promise; } catch (e) { return; } // avbruten av en nyare
     if (seq !== pdfOvHiSeq || !layerVisible(key)) return;
@@ -223,7 +261,7 @@ async function drawPdfOverlayForExport(ctx, p, P, o = null) {
   const part = pg.getViewport({ scale: sB, offsetX: -rx0, offsetY: -ry0 });
   const tmp = document.createElement("canvas"); tmp.width = rw; tmp.height = rh;
   const tctx = tmp.getContext("2d"); tctx.fillStyle = "#fff"; tctx.fillRect(0, 0, rw, rh);
-  await pg.render({ canvasContext: tctx, viewport: part, annotationMode: (o ? o.color : pdfOverlayColor(key)) ? pdfjsLib.AnnotationMode.ENABLE : pdfjsLib.AnnotationMode.DISABLE }).promise;
+  await pg.render({ canvasContext: tctx, viewport: part, annotationMode: (o ? o.color : pdfOverlayColor(key)) ? pdfjsLib.AnnotationMode.ENABLE : pdfjsLib.AnnotationMode.DISABLE, optionalContentConfigPromise: pdfOverlayOcgPromise(p, (pdfOvPages.get(p.id) || {}).doc, o ? o.st : null) }).promise;
   ctx.save();
   if (!(o ? o.noCrop : pdfOverlayNoCrop(key))) { ctx.beginPath(); ctx.rect(-P.x0 * P.S, -P.y0 * P.S, pc.width * P.S, pc.height * P.S); ctx.clip(); }
   ctx.globalAlpha = o ? o.opacity : layerOpacity(key);
@@ -236,7 +274,8 @@ async function drawPdfOverlayForExport(ctx, p, P, o = null) {
 /* De tända PDF-lagren just nu (anropas medan ritningsytans lagerval är aktivt). */
 function pdfOverlaysForPrint() {
   return pdfOverlayPlans().filter(p => layerVisible(pdfOverlayKey(p)) && pdfOverlayReady(p))
-    .map(p => ({ p, id: p.id, opacity: layerOpacity(pdfOverlayKey(p)), color: pdfOverlayColor(pdfOverlayKey(p)), noCrop: pdfOverlayNoCrop(pdfOverlayKey(p)) }));
+    .map(p => ({ p, id: p.id, opacity: layerOpacity(pdfOverlayKey(p)), color: pdfOverlayColor(pdfOverlayKey(p)), noCrop: pdfOverlayNoCrop(pdfOverlayKey(p)),
+      st: Object.fromEntries(pdfOcgList(p).map(g => [pdfOcgKey(p, g.id), { visible: ls(pdfOcgKey(p, g.id)).visible }])), ocgOff: pdfOcgOff(p, layerState) }));
 }
 
 document.addEventListener("click", async e => {

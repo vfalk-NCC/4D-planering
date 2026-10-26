@@ -24,6 +24,7 @@
 const PAKO_URL = "https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js";
 const ORTHO_MAX_PX = 6144;   // längsta sida på den nedskalade bilden som sparas i 4D-data
 const SITE_KINDS = {
+  pdfobj:  { label: "PDF-objekt",  icon: "📄", clicks: -2 }, // ur en importerad PDF (lagesplan-pdfobj.js) – skapas inte med verktyg
   note:    { label: "Notering",    icon: "💬", clicks: 2 },
   crane:   { label: "Kran",        icon: "🏗", clicks: 1 },
   shed:    { label: "Bod",         icon: "🏠", clicks: 2 },
@@ -1151,6 +1152,7 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
   ctx.setLineDash([]);
   if ((x.type === "crew" || x.type === "delivery" || x.type === "lift") && typeof drawDailyItem === "function") { drawDailyItem(ctx, x, fontPx, ppm, selected); return; }
   if ((x.type === "wxday" || x.type === "wxweek") && typeof drawWxBox === "function") { drawWxBox(ctx, x, fontPx, selected); return; }
+  if (x.type === "pdfobj" && typeof pdfObjDraw === "function") { pdfObjDraw(ctx, x, fontPx, ppm, selected); return; }
   if (x.type === "symbol" && typeof drawVehicleSymbol === "function" && drawVehicleSymbol(ctx, x, fontPx, ppm, selected)) return;
   if (x.type === "note") {
     const [a, t] = x.pts.map(mToPx);
@@ -1307,6 +1309,7 @@ function drawSitePreview(ctx, fontPx, ppm) {
 function siteHandles(x, fontPx, ppm) {
   const off = (fontPx * 2.2) / ppm; // rotationshandtagets avstånd i meter
   if (x.type === "note") return [{ kind: "vertex", i: 0, m: x.pts[0] }, { kind: "vertex", i: 1, m: x.pts[1] }];
+  if (x.type === "pdfobj") { const ys = x.pts.map(p => p[1]); return [{ kind: "rotate", m: [centroidOf(x.pts)[0], Math.min(...ys) - off] }]; } // flytta: dra i objektet; vrid: handtaget
   if (x.type === "sketch" || x.type === "crew" || x.type === "lift" || x.type === "wxday" || x.type === "wxweek") return []; // frihand/lag/lyft: dra i dem för att flytta
   if (x.type === "delivery") { // fordon har fasta mått: bara vrid
     const g = rectGeom(x), off2 = (fontPx * 2.2) / ppm;
@@ -1718,6 +1721,8 @@ function siteAt(pdfPt) {
       if (distToSeg(p, e1, e2) < tol + fontPx * 0.5) return x;
     } else if (isRect(x) || x.type === "barrier") {
       if (pointInPoly(m, sitePoints(x))) return x;
+    } else if (x.type === "pdfobj") {
+      if (pointInPoly(m, x.pts)) return x;
     } else if (x.type === "fence" || x.type === "route" || x.type === "sketch") {
       const P = x.pts.map(mToPx);
       for (let i = 1; i < P.length; i++) if (distToSeg(p, P[i - 1], P[i]) < tol) return x;

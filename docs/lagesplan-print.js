@@ -430,7 +430,7 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
   // Förhandsvisningen sparar bottenlagret (ortofoto, PDF, PDF-lager) – tänd/släck av prickar, zoner och DXF ritar bara om
   // det som ligger ovanpå, så det går snabbt (Victor 2026-10-26).
   const baseKey = opts.preview && !opts.vectorPdf && !opts.vectorCad ? JSON.stringify([plan.id, P.W, P.H, P.S, P.x0, P.y0, L.orthos.map(x => [x.o.id, x.op]), L.pdfVis, L.pdfOp, L.pdfMultiply,
-    L.overlays.map(o => [o.id, o.opacity, o.color, o.noCrop]), $("grayPdf") && $("grayPdf").checked, $("showOriginal") && $("showOriginal").checked]) : null;
+    L.overlays.map(o => [o.id, o.opacity, o.color, o.noCrop, o.st]), $("grayPdf") && $("grayPdf").checked, $("showOriginal") && $("showOriginal").checked]) : null;
   const baseHit = baseKey && mapBase.get(el.id);
   const baseCached = !!(baseHit && baseHit.key === baseKey);
   let cadCanvas = null;
@@ -462,7 +462,8 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
     }
     // De andra PDF-lagren (andra arbetsytors ritningar och PDF-underlag) ovanpå Bas-ritningen.
     P.pdfOverlays = L.overlays;
-    if (!opts.vectorPdf) for (const o of P.pdfOverlays) {
+    for (const o of P.pdfOverlays) {
+      if (opts.vectorPdf && !o.ocgOff) continue;   // vektor-PDF bäddar in PDF-lagret – utom när några av dess egna lager är släckta (då ritas det som bild)
       opts.status && opts.status(`PDF-lagret ${o.p.name || ""}`);
       prog(`PDF ${o.p.name || ""}`.trim());
       try { await drawPdfOverlayForExport(ctx, o.p, P, o); } catch (e) { console.warn("PDF-lager i utskriften", e); }
@@ -1961,7 +1962,7 @@ async function exportPrintPdf() {
           vecOver(vec);
           const f0 = w / mc.P.W, S0 = mc.P.S * f0;
           if (mc.P.pdfInfo && mc.P.pdfInfo.visible) vecAddPlan(vec, [x, y, w, h], [S0, 0, 0, S0, x - mc.P.x0 * S0, y - mc.P.y0 * S0], mc.P.pdfInfo.opacity, mc.P.pdfInfo.multiply);
-          (mc.P.pdfOverlays || []).forEach(o => vecAddPlan(vec, [x, y, w, h], [S0, 0, 0, S0, x - mc.P.x0 * S0, y - mc.P.y0 * S0], o.opacity, true, o));
+          (mc.P.pdfOverlays || []).filter(o => !o.ocgOff).forEach(o => vecAddPlan(vec, [x, y, w, h], [S0, 0, 0, S0, x - mc.P.x0 * S0, y - mc.P.y0 * S0], o.opacity, true, o));
         }
         if (mc.cad.length) {
           // DXF som vektorer: stage-px -> mm på sidan.
