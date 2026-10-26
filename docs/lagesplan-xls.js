@@ -132,7 +132,7 @@ function drawXls(ctx, fontPx) {
   ctx.save();
   const fill = xlsFilled();
   for (const o of list) {
-    const color = phaseColor(xlsPhase(o.it)), [x, y] = toPx(o.pt);
+    const color = (plan && plan.dotColors && plan.dotColors[o.it.id]) || phaseColor(xlsPhase(o.it)), [x, y] = toPx(o.pt);
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
     if (fill) {
       // Fylld prick i statusfärgen med vit kant och en tunn mörk ytterkant (syns på både ljust och mörkt underlag).
@@ -175,7 +175,9 @@ function xlsOpenMenu(list, e) {
   const famRows = xlsObjects().filter(o => xlsFamKey(o.it) === fk).map(o => o.it);
   const one = its.length === 1 ? `${xlsObjName(it) || "objektet"}${xlsObjName(it) !== xlsFamName(it) ? " – " + xlsFamName(it) : ""}` : `${its.length} objekt här`;
   const cut = s => (s.length > 34 ? s.slice(0, 33) + "…" : s);
+  const so = { pool: xls.items || [], famKey: xlsFamKey, file: xlsPath("plan_items.json"), comments: xlsPath("plan_item_comments.json") };   // status, framdrift, färg och kommentar som på PP-prickarna
   m.innerHTML = `<div style="font-size:11px;opacity:.7;padding:4px 10px 2px;">📊 Excel-planeringen</div>`
+    + (typeof objStatusMenuHtml === "function" ? objStatusMenuHtml(its, so) : "")
     + `<button type="button" data-x="obj">Släck ${escHtml(cut(one))}</button>`
     + (famRows.length > its.length ? `<button type="button" data-x="fam">Släck hela aktiviteten ${escHtml(cut(xlsFamLabel(famRows)))} (${famRows.length} objekt)</button>` : "")
     + `<button type="button" data-x="area">Släck området ${escHtml(cut(area))}</button>`;
@@ -183,7 +185,8 @@ function xlsOpenMenu(list, e) {
   m.style.top = Math.min(e.clientY, window.innerHeight - 120) + "px";
   m.classList.remove("hidden");
   const on = (k, keys, msg) => { const b = m.querySelector(`[data-x="${k}"]`); if (b) b.onclick = () => { m.classList.add("hidden"); xlsSetHidden(keys, true); if (typeof setSaveStatus === "function") setSaveStatus(`📊 Släckt: ${msg}. Tänd igen under Lager → Excel-planeringen.`); }; };
+  if (typeof objStatusBind === "function") objStatusBind(m, its, so);
   on("obj", its.map(x => "i:" + x.id), one);
-  on("fam", [fk], xlsFamLabel(famRows));
+  on("fam", [fk], famRows.length ? xlsFamLabel(famRows) : one);
   on("area", ["a:" + area], area);
 }

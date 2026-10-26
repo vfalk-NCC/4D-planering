@@ -110,6 +110,31 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       m.querySelector('[data-ost-ki]').value = 'Betongen levereras sent'; m.querySelector('[data-ost-kb]').click(); await new Promise(r2 => setTimeout(r2, 500)); r.shown = /Betongen levereras sent/.test(m.querySelector('[data-ost-kl]').textContent); m.remove(); return r; });
     const cs = JSON.parse(gh.get('projects/p1/plan_item_comments.json') || '[]');
     if (!kom.box || !kom.shown || !cs.some(c => c.body === 'Betongen levereras sent' && c.plan_item_id === 'i1')) fail('Kommentar på prick: ' + JSON.stringify({ kom, cs }));
+    // Riktig högerklick på en prick (contextmenu-händelse på ritytan) ska öppna menyn med status, framdrift, färg och kommentar
+    const rc = await page.evaluate(async () => {
+      positions = [{ id: 'i1', x: 6512330, y: 150100, z0: 0, z1: 2 }, { id: 'i2', x: 6512360, y: 150100, z0: 0, z1: 2 }]; invalidatePositions(); items.forEach(r => { r.status = 'planerad'; r.progress = 0; }); renderZones();
+      const sh = (objectShapesInPdf() || [])[0]; if (!sh) return { noshape: true };
+      const [sx, sy] = toPx(sh.center), vr = $('viewport').getBoundingClientRect(), sc = stageToScreen([sx, sy]);
+      const ev = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: vr.left + sc[0], clientY: vr.top + sc[1], button: 2 });
+      $('viewport').dispatchEvent(ev); const m = $('labelMenu');
+      return { prevented: ev.defaultPrevented, menu: !!m && !m.classList.contains('hidden'), sl: !!(m && m.querySelector('[data-ost-sl]')), col: !!(m && m.querySelector('[data-ost-col]')), kom: !!(m && m.querySelector('[data-ost-ki]')), hits: objectsAt(toPdf(sh.center)).length };
+    });
+    if (!rc.menu || !rc.sl || !rc.col || !rc.kom) fail('Högerklick på prick ska öppna menyn: ' + JSON.stringify(rc));
+    // Med riktig mus (nedtryck + släpp + contextmenu) i stället för en syntetisk händelse
+    await page.evaluate(() => { const m = $('labelMenu'); if (m) m.classList.add('hidden'); });
+    const pt = await page.evaluate(() => { const sh = (objectShapesInPdf() || [])[0], [sx, sy] = toPx(sh.center), vr = $('viewport').getBoundingClientRect(), sc = stageToScreen([sx, sy]); return { x: vr.left + sc[0], y: vr.top + sc[1], inView: sc[0] > 0 && sc[1] > 0 && sc[0] < vr.width && sc[1] < vr.height, scale: view.scale, rs: renderScale, minPx: objMinPx }; });
+    await page.mouse.click(pt.x, pt.y, { button: 'right' }); await page.waitForTimeout(300);
+    const rc2 = await page.evaluate(() => { const m = $('labelMenu'); return { menu: !!m && !m.classList.contains('hidden'), sl: !!(m && m.querySelector('[data-ost-sl]')), rect: m ? m.getBoundingClientRect().toJSON() : null }; });
+    if (!rc2.menu || !rc2.sl) fail('Riktig högerklick på prick ska öppna menyn: ' + JSON.stringify({ pt, rc2 }));
+
+    // Excel-planeringens ringar (PP-lägesplanen): samma meny med framdrift, färg och kommentar, sparar i Excel-planens egen plan_items.json
+    const xr = await page.evaluate(async () => {
+      const it = items[0]; xls.items = items; xls.positions = []; const list = [{ it, pt: [10, 10] }];
+      xlsOpenMenu(list, { clientX: 20, clientY: 20 }); const m = $('labelMenu'); const r = { sl: !!m.querySelector('[data-ost-sl]'), col: !!m.querySelector('[data-ost-col]'), kom: !!m.querySelector('[data-ost-ki]'), hide: !!m.querySelector('[data-x="obj"]') };
+      const sl = m.querySelector('[data-ost-sl]'); sl.value = '30'; sl.dispatchEvent(new Event('change')); await new Promise(r2 => setTimeout(r2, 400)); r.p = it.progress; m.classList.add('hidden'); return r;
+    });
+    const xs = JSON.parse(gh.get('projects/p1/plan_items.json')).find(r => r.id === 'i1');
+    if (!xr.sl || !xr.col || !xr.kom || !xr.hide || xr.p !== 30 || !xs || xs.progress !== 30) fail('Excel-ringarnas meny: ' + JSON.stringify({ xr, xs: xs && xs.progress }));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
   } finally { await browser.close(); server.close(); }

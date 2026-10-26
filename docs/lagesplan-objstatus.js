@@ -23,7 +23,7 @@ function objStatusPatch(state, pct, day) {
 const OBJ_STATE_LABEL = { klar: "Klar", pagaende: "Pågår", pausad: "Pausad", ej: "Ej påbörjad", pct: "Framdrift" };
 
 /* Sätter status på raderna (lokalt direkt, sedan till 4D-data). Returnerar antal rader. */
-async function objSetStatus(rows, state, pct) {
+async function objSetStatus(rows, state, pct, file) {   // file: annan plan_items.json (Excel-planeringen i PP-lägesplanen)
   if (!rows.length) return 0;
   const d = (typeof curDay === "function" ? curDay() : ($("dateInput") && $("dateInput").value) || todayIso()), today = todayIso(), day = d < today ? d : today;
   const patch = objStatusPatch(state, pct, day), ids = new Set(rows.map(r => r.id));
@@ -34,12 +34,12 @@ async function objSetStatus(rows, state, pct) {
   objStatusUndoStack.push({ label, undo: async () => {
     rows.forEach(r => Object.assign(r, before.get(r.id)));
     if (typeof renderZones === "function") renderZones();
-    await ghWriteJSON(token, dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`);
+    await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`);
   } });
   if (typeof renderZones === "function") renderZones();
   setSaveStatus(`Sparar: ${label} …`);
   try {
-    await ghWriteJSON(token, dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => ids.has(r.id) ? patch(r) : r), `Lägesplan: ${label}`);
+    await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => ids.has(r.id) ? patch(r) : r), `Lägesplan: ${label}`);
     setSaveStatus(`✓ ${label}. Uppdatera (↻) i 4D-planering för att se det där.`);
   } catch (e) {
     rows.forEach(r => Object.assign(r, before.get(r.id))); objStatusUndoStack.pop();
@@ -73,7 +73,7 @@ function objSetDotColor(rows, hex) {
 
 /* Menyraderna (läggs överst i högerklicksmenyn på en prick). */
 function objStatusMenuHtml(its, o = {}) {
-  const fams = new Set(its.map(objFamKey)), famN = items.filter(x => fams.has(objFamKey(x))).length, many = !o.box && famN > its.length;
+  const fk = o.famKey || objFamKey, pool = o.pool || items, fams = new Set(its.map(fk)), famN = pool.filter(x => fams.has(fk(x))).length, many = !o.box && famN > its.length;
   const ph = typeof computeItemPhase === "function" ? computeItemPhase(its[0], $("dateInput").value || todayIso(), Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7) : null;
   const dot = c => `<i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c};margin-right:6px;"></i>`;
   const col = k => dot(phaseColor(k));
@@ -90,7 +90,7 @@ function objStatusBind(m, its, o = {}) {
   const all = m.querySelector("[data-ost-all]"); if (all) all.onchange = () => { objStatusScopeAll = all.checked; };
   const kl = m.querySelector("[data-ost-kl]"), ki = m.querySelector("[data-ost-ki]"), kb = m.querySelector("[data-ost-kb]");
   if (kl && !o.box) {   // kommentarer (samma fil som 4D-planeringens kommentarer: syns där också)
-    const cpath = () => dataPath("plan_item_comments.json"), it0 = its[0];
+    const cpath = () => o.comments || dataPath("plan_item_comments.json"), it0 = its[0];
     const show = rows => { const mine = rows.filter(c => c.plan_item_id === it0.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)); kl.innerHTML = mine.length ? mine.slice(-3).map(c => `<div class="om-kc"><b>${escHtml(c.author || "")}</b> <small>${escHtml(String(c.created_at || "").slice(0, 10))}</small><br>${escHtml(c.body || "")}</div>`).join("") + (mine.length > 3 ? `<small>+ ${mine.length - 3} äldre i 4D-planeringen</small>` : "") : "<i>Inga kommentarer än.</i>"; };
     Promise.resolve().then(() => ghReadJSON(token, cpath())).then(r => show(Array.isArray(r) ? r : [])).catch(() => { kl.innerHTML = "<i>Kunde inte läsa kommentarerna.</i>"; });
     const post = async () => {
@@ -102,15 +102,16 @@ function objStatusBind(m, its, o = {}) {
     };
     kb.onclick = e => { e.stopPropagation(); post(); }; ki.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") post(); }; ki.onclick = e => e.stopPropagation();
   }
-  const rowsNow = () => { const fams = new Set(its.map(objFamKey)); return !o.box && objStatusScopeAll ? items.filter(x => fams.has(objFamKey(x))) : its; };
+  const fk = o.famKey || objFamKey, pool = o.pool || items;
+  const rowsNow = () => { const fams = new Set(its.map(fk)); return !o.box && objStatusScopeAll ? pool.filter(x => fams.has(fk(x))) : its; };
   const sl = m.querySelector("[data-ost-sl]"), sv = m.querySelector("[data-ost-v]");
-  if (sl) { sl.oninput = () => { sv.textContent = sl.value + " %"; }; sl.onchange = async () => { close(); await objSetStatus(rowsNow(), "pct", Number(sl.value)); }; sl.onclick = e => e.stopPropagation(); }
+  if (sl) { sl.oninput = () => { sv.textContent = sl.value + " %"; }; sl.onchange = async () => { close(); await objSetStatus(rowsNow(), "pct", Number(sl.value), o.file); }; sl.onclick = e => e.stopPropagation(); }
   m.querySelectorAll("[data-ost-col]").forEach(b => { b.onclick = () => { close(); objSetDotColor(rowsNow(), b.dataset.ostCol || null); }; });
   const pick = m.querySelector("[data-ost-colpick]"); if (pick) { pick.onclick = e => e.stopPropagation(); pick.onchange = () => { close(); objSetDotColor(rowsNow(), pick.value); }; }
   m.querySelectorAll("[data-ost]").forEach(b => { b.onclick = async () => {
     const k = b.dataset.ost; close();
     if (k === "undo") return objStatusUndo();
-    const fams = new Set(its.map(objFamKey)), rows = !o.box && objStatusScopeAll ? items.filter(x => fams.has(objFamKey(x))) : its;
+    const rows = rowsNow();
     let pct = null;
     if (k === "pct" || k === "pagaende") {
       const a = await uiPrompt(k === "pct" ? "Framdrift i procent (0–100):" : "Hur många procent är klart? (1–99)", String(Math.round(Number(its[0].progress) || (k === "pagaende" ? 50 : 0))));
@@ -118,7 +119,7 @@ function objStatusBind(m, its, o = {}) {
       pct = Number(String(a).replace(",", ".").replace("%", ""));
       if (!isFinite(pct)) { setSaveStatus("Ogiltig procentsats."); return; }
     }
-    await objSetStatus(rows, k === "pagaende" && pct === null ? "pagaende" : k, pct);
+    await objSetStatus(rows, k === "pagaende" && pct === null ? "pagaende" : k, pct, o.file);
   }; });
 }
 
