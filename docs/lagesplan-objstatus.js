@@ -55,6 +55,19 @@ async function objStatusUndo() {
   catch (e) { setSaveStatus("⚠ Kunde inte ångra: " + e.message); }
 }
 
+/* Byter namn (aktivitet eller prickens namn) på raderna – direkt i planen och sparat i 4D-data; kan ångras. */
+async function objRename(rows, field, value, file) {
+  if (!rows.length) return 0; const ids = new Set(rows.map(r => r.id)), before = new Map(rows.map(r => [r.id, { ...r }])), now = new Date().toISOString();
+  rows.forEach(r => { r[field] = value; r.updated_at = now; });
+  const label = `${field === "activity" ? "Aktivitet" : "Prick"} → ${value}${rows.length > 1 ? ` (${rows.length} objekt)` : ""}`;
+  objStatusUndoStack.push({ label, undo: async () => { rows.forEach(r => Object.assign(r, before.get(r.id))); if (typeof renderZones === "function") renderZones(); await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`); } });
+  if (typeof renderZones === "function") renderZones(); if (typeof renderLayerPanel === "function") renderLayerPanel();
+  setSaveStatus(`Sparar: ${label} …`);
+  try { await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => ids.has(r.id) ? { ...r, [field]: value, updated_at: now } : r), `Lägesplan: ${label}`); setSaveStatus(`✓ ${label}. Uppdatera (↻) i 4D-planering för att se det där.`); }
+  catch (e) { rows.forEach(r => Object.assign(r, before.get(r.id))); objStatusUndoStack.pop(); if (typeof renderZones === "function") renderZones(); setSaveStatus("⚠ Kunde inte byta namn: " + e.message); return 0; }
+  return rows.length;
+}
+
 /* Egen färg på pricken (Victor 2026-10-26: "byta färg manuellt på punkterna"): sparas i planen per post (plan.dotColors) och går före statusfärgen. */
 const OBJ_DOT_PRESETS = ["#ef4444", "#f59e0b", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#a855f7", "#111827"];
 function objDotColor(o) {
@@ -81,6 +94,7 @@ function objStatusMenuHtml(its, o = {}) {
     <div class="om-st-b"><button type="button" data-ost="ej">${col("planerad")}Ej påbörjad</button><button type="button" data-ost="pagaende">${col("pagaende")}Pågår</button><button type="button" data-ost="klar">${col("klar")}Klar</button><button type="button" data-ost="pausad">${col("pausad")}Pausad</button><button type="button" data-ost="pct">% …</button></div>
     <div class="om-st-p"><span>Framdrift</span><input type="range" min="0" max="100" step="5" data-ost-sl value="${Math.round(Number(its[0].progress) || 0)}" /><b data-ost-v>${Math.round(Number(its[0].progress) || 0)} %</b></div>
     <div class="om-st-c"><span>Färg</span>${OBJ_DOT_PRESETS.map(c => `<button type="button" class="om-sw" data-ost-col="${c}" style="background:${c}" title="Sätt egen färg"></button>`).join("")}<input type="color" data-ost-colpick value="${(plan && plan.dotColors && plan.dotColors[its[0].id]) || "#3b82f6"}" title="Egen färg" /><button type="button" class="om-sw-auto" data-ost-col="" title="Använd statusfärgen igen">Auto</button></div>
+    ${o.box ? "" : `<div class="om-st-n"><button type="button" data-ost-rn="act" title="Byt namn på hela aktiviteten – alla objekt i den följer med">✎ Byt namn på aktiviteten</button><button type="button" data-ost-rn="obj" title="Byt namn på bara den här pricken">✎ Byt namn på pricken</button></div>`}
     ${o.box ? "" : `<div class="om-st-k"><div class="om-st-kl" data-ost-kl><i>Kommentarer läses…</i></div><div class="om-st-kw"><input type="text" data-ost-ki placeholder="Skriv en kommentar på ${escHtml(its[0].object_name || its[0].activity || "objektet")}…" maxlength="500" /><button type="button" data-ost-kb>Lägg till</button></div></div>`}
     ${many ? `<label class="om-st-s"><input type="checkbox" data-ost-all${objStatusScopeAll ? " checked" : ""}> Hela aktiviteten (${famN} objekt), inte bara ${its.length > 1 ? "de " + its.length + " här" : "det här"}</label>` : ""}
     ${objStatusUndoStack.length ? `<button type="button" data-ost="undo" class="om-st-u">↩ Ångra: ${escHtml(objStatusUndoStack[objStatusUndoStack.length - 1].label)}</button>` : ""}</div>`;
@@ -88,10 +102,16 @@ function objStatusMenuHtml(its, o = {}) {
 function objStatusBind(m, its, o = {}) {
   const close = () => m.classList.add("hidden");
   const all = m.querySelector("[data-ost-all]"); if (all) all.onchange = () => { objStatusScopeAll = all.checked; };
+  m.querySelectorAll("[data-ost-rn]").forEach(b => { b.onclick = async e => { e.stopPropagation(); const kind = b.dataset.ostRn, it0 = its[0]; close();
+    const cur = kind === "act" ? (it0.activity || "") : (it0.object_name || ""), n = (await uiPrompt(kind === "act" ? "Nytt namn på aktiviteten (gäller alla objekt i den):" : "Nytt namn på pricken:", cur) || "").trim();
+    if (!n || n === cur) return; await objRename(kind === "act" ? (() => { const f2 = new Set([fkOf(it0)]); const pl = o.pool || items; return pl.filter(x => f2.has(fkOf(x))); })() : [it0], kind === "act" ? "activity" : "object_name", n, o.file); }; });
   const kl = m.querySelector("[data-ost-kl]"), ki = m.querySelector("[data-ost-ki]"), kb = m.querySelector("[data-ost-kb]");
   if (kl && !o.box) {   // kommentarer (samma fil som 4D-planeringens kommentarer: syns där också)
     const cpath = () => o.comments || dataPath("plan_item_comments.json"), it0 = its[0];
-    const show = rows => { const mine = rows.filter(c => c.plan_item_id === it0.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)); kl.innerHTML = mine.length ? mine.slice(-3).map(c => `<div class="om-kc"><b>${escHtml(c.author || "")}</b> <small>${escHtml(String(c.created_at || "").slice(0, 10))}</small><br>${escHtml(c.body || "")}</div>`).join("") + (mine.length > 3 ? `<small>+ ${mine.length - 3} äldre i 4D-planeringen</small>` : "") : "<i>Inga kommentarer än.</i>"; };
+    const show = rows => { const mine = rows.filter(c => c.plan_item_id === it0.id).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)); kl.innerHTML = mine.length ? mine.slice(-3).map(c => `<div class="om-kc"><button type="button" class="om-kd" data-ost-kd="${escHtml(c.id)}" title="Ta bort kommentaren">✕</button><b>${escHtml(c.author || "")}</b> <small>${escHtml(String(c.created_at || "").slice(0, 10))}</small><br>${escHtml(c.body || "")}</div>`).join("") + (mine.length > 3 ? `<small>+ ${mine.length - 3} äldre i 4D-planeringen</small>` : "") : "<i>Inga kommentarer än.</i>";
+      kl.querySelectorAll("[data-ost-kd]").forEach(b => { b.onclick = async e => { e.stopPropagation(); if (!await uiConfirm("Ta bort kommentaren?")) return; const id = b.dataset.ostKd;
+        try { const after = await ghWriteJSON(token, cpath(), arr => { const cur = Array.isArray(arr) ? arr : [], gone = new Set([id]); let grew = true; while (grew) { grew = false; cur.forEach(c => { if (c.parent_comment_id && gone.has(c.parent_comment_id) && !gone.has(c.id)) { gone.add(c.id); grew = true; } }); } return cur.filter(c => !gone.has(c.id)); }, "Lägesplan: ta bort kommentar"); show(Array.isArray(after) ? after : []); setSaveStatus("Kommentaren är borttagen."); }
+        catch (er) { setSaveStatus("⚠ Kunde inte ta bort kommentaren: " + er.message); } }; }); };
     Promise.resolve().then(() => ghReadJSON(token, cpath())).then(r => show(Array.isArray(r) ? r : [])).catch(() => { kl.innerHTML = "<i>Kunde inte läsa kommentarerna.</i>"; });
     const post = async () => {
       const body = (ki.value || "").trim(); if (!body) return; kb.disabled = true;
@@ -102,7 +122,7 @@ function objStatusBind(m, its, o = {}) {
     };
     kb.onclick = e => { e.stopPropagation(); post(); }; ki.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") post(); }; ki.onclick = e => e.stopPropagation();
   }
-  const fk = o.famKey || objFamKey, pool = o.pool || items;
+  const fk = o.famKey || objFamKey, pool = o.pool || items, fkOf = fk;
   const rowsNow = () => { const fams = new Set(its.map(fk)); return !o.box && objStatusScopeAll ? pool.filter(x => fams.has(fk(x))) : its; };
   const sl = m.querySelector("[data-ost-sl]"), sv = m.querySelector("[data-ost-v]");
   if (sl) { sl.oninput = () => { sv.textContent = sl.value + " %"; }; sl.onchange = async () => { close(); await objSetStatus(rowsNow(), "pct", Number(sl.value), o.file); }; sl.onclick = e => e.stopPropagation(); }

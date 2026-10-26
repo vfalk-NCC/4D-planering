@@ -135,6 +135,14 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
     });
     const xs = JSON.parse(gh.get('projects/p1/plan_items.json')).find(r => r.id === 'i1');
     if (!xr.sl || !xr.col || !xr.kom || !xr.hide || xr.p !== 30 || !xs || xs.progress !== 30) fail('Excel-ringarnas meny: ' + JSON.stringify({ xr, xs: xs && xs.progress }));
+    // Ta bort kommentar och byt namn på aktiviteten/pricken
+    const rn = await page.evaluate(async () => {
+      window.uiConfirm = async () => true; window.uiPrompt = async () => 'Nytt aktivitetsnamn';
+      const m = document.createElement('div'); m.id = 'tmpMenu3'; m.innerHTML = objStatusMenuHtml([items[0]]); document.body.appendChild(m); objStatusBind(m, [items[0]]); await new Promise(r => setTimeout(r, 400));
+      const r = { kd: m.querySelectorAll('[data-ost-kd]').length }; const kd = m.querySelector('[data-ost-kd]'); if (kd) { kd.click(); await new Promise(r2 => setTimeout(r2, 500)); r.kdAfter = m.querySelectorAll('[data-ost-kd]').length; }
+      m.querySelector('[data-ost-rn="act"]').click(); await new Promise(r2 => setTimeout(r2, 500)); r.act = items[0].activity; m.remove(); return r; });
+    const sv = JSON.parse(gh.get('projects/p1/plan_items.json')).find(r => r.id === 'i1'), cs2 = JSON.parse(gh.get('projects/p1/plan_item_comments.json') || '[]');
+    if (!(rn.kd >= 1) || rn.kdAfter !== rn.kd - 1 || rn.act !== 'Nytt aktivitetsnamn' || !sv || sv.activity !== 'Nytt aktivitetsnamn' || cs2.some(c => c.body === 'Betongen levereras sent')) fail('Ta bort kommentar / byt namn: ' + JSON.stringify({ rn, sv: sv && sv.activity, cs2: cs2.length }));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
   } finally { await browser.close(); server.close(); }
