@@ -158,6 +158,20 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       m.querySelector('[data-ost-rn="vis"]').click(); await new Promise(r => setTimeout(r, 300)); const r = { lbl: objLabelText(items[0]), same: JSON.stringify(items.map(x => [x.id, x.object_name, x.activity])) === before, saved: !!(plan.dotNames && plan.dotNames[items[0].id]) };
       objSetVisualName([items[0]], ''); r.back = objLabelText(items[0]) !== 'Pelare P7'; m.remove(); return r; });
     if (vn.lbl !== 'Pelare P7' || !vn.same || !vn.saved || !vn.back) fail('Visuellt namn: ' + JSON.stringify(vn));
+    // Ny aktivitet direkt i planen: okopplad, går att dra fritt
+    const na = await page.evaluate(async () => {
+      window.objNewActForm = async () => ({ activity: 'Armering platta J', name: 'J-platta', area: 'Hall', contractor: 'UE', start: '2026-10-27', end: '2026-11-02' });
+      const n0 = items.length; await objNewActivity(modelToPdf(6512345, 150100)); const row = items[items.length - 1];
+      return { added: items.length === n0 + 1, id: row.id, free: objIsFree(row), obj: row.object_id, model: row.model_id, grp: row.group_id === row.id, pos: positions.some(p => p.id === row.id && p.manual) };
+    });
+    const naSaved = JSON.parse(gh.get('projects/p1/plan_items.json')).find(r => r.id === na.id), naPos = JSON.parse(gh.get('projects/p1/plan_item_positions.json') || '[]').find(p => p.id === na.id);
+    if (!na.added || !na.free || !na.pos || na.model !== null || !/^manuell-/.test(na.obj) || !naSaved || naSaved.activity !== 'Armering platta J' || !naPos) fail('Ny aktivitet: ' + JSON.stringify({ na, naSaved: !!naSaved, naPos: !!naPos }));
+    const pt2 = await page.evaluate((id) => { const sh = (objectShapesInPdf() || []).find(o => o.it.id === id); if (!sh) return null; const [sx, sy] = toPx(sh.center), vr = $('viewport').getBoundingClientRect(), sc = stageToScreen([sx, sy]); return { x: vr.left + sc[0], y: vr.top + sc[1], cx: sh.center[0], cy: sh.center[1] }; }, na.id);
+    if (!pt2) fail('Den nya aktivitetens prick syns inte i planen: ' + JSON.stringify(await page.evaluate((id) => ({ pos: !!(positionsInPdf() && positionsInPdf().has(id)), vis: visibleItems().some(i => i.id === id), hid: isObjHidden(items.find(i => i.id === id)), n: (objectShapesInPdf() || []).length, grp: objGroupOn() }), na.id)));
+    await page.mouse.move(pt2.x, pt2.y); await page.mouse.down(); await page.mouse.move(pt2.x + 25, pt2.y + 10, { steps: 4 }); await page.mouse.up(); await page.waitForTimeout(500);
+    const mv = await page.evaluate((id) => { const sh = (objectShapesInPdf() || []).find(o => o.it.id === id); return sh ? sh.center : null; }, na.id);
+    const mp = JSON.parse(gh.get('projects/p1/plan_item_positions.json') || '[]').find(p => p.id === na.id);
+    if (!mv || Math.hypot(mv[0] - pt2.cx, mv[1] - pt2.cy) < 1 || !mp) fail('Den fria aktiviteten ska gå att dra: ' + JSON.stringify({ pt2, mv, mp }));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
   } finally { await browser.close(); server.close(); }

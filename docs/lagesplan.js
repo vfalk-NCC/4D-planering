@@ -543,6 +543,7 @@ function objectTipHtml(o) {
     it.contractor ? `Entreprenör: ${escHtml(it.contractor)}` : "",
     zone ? `Zon: ${escHtml(zone.code)}` : "",
     o.members && o.members.length > 1 ? `${o.members.length} objekt: ${escHtml(o.members.slice(0, 6).map(m => m.object_name || m.object_id).join(", "))}${o.members.length > 6 ? " …" : ""}` : "",
+    typeof objIsFree === "function" && objIsFree(it) ? "✋ Egen aktivitet – dra pricken för att flytta den. Koppla den till ett objekt i 3D när den ligger rätt." : "",
     o.moved ? "📍 Flyttad markering (klicka för att låsa upp eller återställa)" : ""
   ];
   return rows.filter(Boolean).join("<br>");
@@ -1617,7 +1618,7 @@ function bindViewport() {
     if (d.draw) { finishDraw(d.start, stagePoint(e)); return; }
     if (d.hideBox) { hideObjectsInBox(d.start, stagePoint(e)); return; }
     if (d.statusBox) { objStatusBox(d.start, stagePoint(e), e); return; }
-    if (d.addDot) { if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) < 6) objAddDot(toPdf(d.start)); return; }
+    if (d.addDot) { if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) < 6) (objTool === "newact" && typeof objNewActivity === "function" ? objNewActivity : objAddDot)(toPdf(d.start)); return; }
     if (!d.moved && calib && calib.waitPdf && e.target.closest && e.target.closest("#viewport")) {
       calib.waitPdf = false;
       calib.pdf.push(toPdf(stagePoint(e)));

@@ -44,8 +44,10 @@ function openObjMarkPop(o) {
 }
 /* Mousedown på planen (från lagesplan.js): dra en upplåst prick. */
 function objMarkPointerDown(e) {
-  if (!objMarkUnlocked.size || e.button !== 0 || !plan || !plan.calib) return false;
-  const o = objectsAt(toPdf(stagePoint(e))).find(x => objMarkUnlocked.has(x.fam));
+  if (e.button !== 0 || !plan || !plan.calib) return false;
+  const anyFree = typeof objIsFree === "function" && items.some(objIsFree);   // egna aktiviteter (okopplade) går alltid att dra
+  if (!objMarkUnlocked.size && !anyFree) return false;
+  const o = objectsAt(toPdf(stagePoint(e))).find(x => objMarkUnlocked.has(x.fam) || (anyFree && (x.members || [x.it]).length === 1 && objIsFree(x.it)));
   if (!o) return false;
   e.preventDefault();
   objMarkDrag = { o, sx: e.clientX, sy: e.clientY, moved: false, start: stagePoint(e), c0: toPx(o.center) };
@@ -67,7 +69,8 @@ window.addEventListener("mouseup", () => {
   const d = objMarkDrag;
   if (!d) return;
   objMarkDrag = null;
-  if (!d.moved) { openObjMarkPop(d.o); return; }
+  if (!d.moved) { if (!(typeof objIsFree === "function" && objIsFree(d.o.it) && !objMarkUnlocked.has(d.o.fam))) openObjMarkPop(d.o); return; }
+  if (typeof objIsFree === "function" && objIsFree(d.o.it) && !objMarkUnlocked.has(d.o.fam)) { objSaveFreePos(d.o.it, d.pos); return; }
   const pos = { ...objMarks(), [d.o.fam]: [Math.round(d.pos[0] * 1000) / 1000, Math.round(d.pos[1] * 1000) / 1000] };
   saveObjMarks(pos);
   setSaveStatus("📍 Markeringen flyttad – lås den med 🔒 när du är klar (Ctrl+Z ångrar).");
