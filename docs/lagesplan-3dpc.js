@@ -310,7 +310,8 @@ function l3pcPickZ() {
    pixlar som ligger bakom sina grannar. Då får tätt packade punkter konturer och form i stället för en platt färgmatta. Bara när ett moln
    är tänt och styrkan (Djupskuggning i punktmolnspanelen) är över 0; annars ritas scenen direkt som förut. ---- */
 let l3pcE = null;
-const l3pcEdlOn = () => Number(l3pcPref("pcEdl", 60)) > 0 && l3pc.clouds.some(c => c.visible) && !(l3pcMoving && l3pcSlow);   // tung bild under rörelse: hoppa över efterpasset
+const l3pcEdlStr = () => Math.max(l3pc.clouds.some(c => c.visible) ? Number(l3pcPref("pcEdl", 60)) || 0 : 0, Number(l3Prefs().sceneEdl) || 0);   // moln tänt: molnets styrka; Djupskuggning i Visa-menyn gäller hela scenen (även utan moln)
+const l3pcEdlOn = () => l3pcEdlStr() > 0 && !(l3pcMoving && l3pcSlow);   // tung bild under rörelse: hoppa över efterpasset
 function l3pcEdlInit(r) {
   const size = r.getDrawingBufferSize(new THREE.Vector2());
   const rt = new THREE.WebGLRenderTarget(size.x, size.y, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, samples: r.capabilities.isWebGL2 ? 4 : 0 });
@@ -337,10 +338,10 @@ function l3pcRenderScene() {
     const size = r.getDrawingBufferSize(new THREE.Vector2());
     if (!l3pcE) l3pcE = l3pcEdlInit(r);
     if (l3pcE.w !== size.x || l3pcE.h !== size.y) { l3pcE.rt.setSize(size.x, size.y); l3pcE.w = size.x; l3pcE.h = size.y; l3pcE.mat.uniforms.px.value.set(1 / size.x, 1 / size.y); }
-    const cam = l3.camera, u = l3pcE.mat.uniforms; u.near.value = cam.near; u.far.value = cam.far; u.ortho.value = cam.isOrthographicCamera ? 1 : 0; u.str.value = Number(l3pcPref("pcEdl", 60)) / 100;
+    const cam = l3.camera, u = l3pcE.mat.uniforms; u.near.value = cam.near; u.far.value = cam.far; u.ortho.value = cam.isOrthographicCamera ? 1 : 0; u.str.value = l3pcEdlStr() / 100;
     r.setRenderTarget(l3pcE.rt); r.clear(); r.render(l3.scene, cam); r.setRenderTarget(null); r.clear();
     r.render(l3pcE.sc, l3pcE.cam);
-  } catch (e) { r.setRenderTarget(null); l3pcE = null; l3Prefs().pcEdl = 0; r.render(l3.scene, l3.camera); }
+  } catch (e) { r.setRenderTarget(null); l3pcE = null; l3Prefs().pcEdl = 0; l3Prefs().sceneEdl = 0; r.render(l3.scene, l3.camera); }
 }
 /* Rund punkt: en liten cirkel som mask (alphaTest) – lika billig som fyrkanten. */
 let l3pcDisc = null;

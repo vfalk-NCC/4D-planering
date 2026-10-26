@@ -287,6 +287,9 @@ function l3Dom() {
           <div class="v3-bgrow"><input type="color" id="v3BgCol" value="${/^#[0-9a-f]{6}$/i.test(P.bgColor || "") ? P.bgColor : "#f7f8fa"}" title="Bakgrundsfärg (överkant vid gradient) – tryck för färghjulet" /><input type="color" id="v3BgCol2" class="${P.bgGrad ? "" : "hidden"}" value="${/^#[0-9a-f]{6}$/i.test(P.bgColor2 || "") ? P.bgColor2 : "#dfe7ef"}" title="Nederkant av gradienten" /><span class="v3-bgsw">${[["#f7f8fa", "Ljus"], ["#e2e8f0", "Grå"], ["#94a3b8", "Mellan"], ["#334155", "Mörk"], ["#0b1220", "Svart"], ["#cfe8ff", "Himmel"]].map(([c, t]) => `<button type="button" data-bg="${c}" title="${t}" style="background:${c}"></button>`).join("")}</span><button type="button" class="v3-link" id="v3BgReset">Standard</button></div>
           <label class="v3-lay-sw-row" title="Färgövergång uppifrån och ned, som i Tekla"><span>Gradient (som i Tekla)</span><span class="v3-lay-sw"><input type="checkbox" role="switch" id="v3BgGrad" ${P.bgGrad ? "checked" : ""} /><i></i></span></label>
           <div class="v3-bgrow v3-bggr ${P.bgGrad ? "" : "hidden"}" id="v3BgGrRow"><span class="v3-bgsw">${[["#6d8bb0", "#dfe7ef", "Tekla"], ["#7fb2e5", "#eaf3fb", "Himmel"], ["#cbd5e1", "#f8fafc", "Ljusgrå"], ["#0b1220", "#3b4a63", "Natt"], ["#1e293b", "#94a3b8", "Skiffer"], ["#e0d2b4", "#faf6ec", "Sand"]].map(([a, b, t]) => `<button type="button" data-bgg="${a},${b}" title="${t}" style="background:linear-gradient(${a},${b})"></button>`).join("")}</span></div>
+          <div class="v3-pop-l">Djup</div>
+          <label class="v3-lay-sw-row" title="Mörkar ytor som ligger bakom sina grannar (som i Trimble Connect) så att kanter och former syns – även utan punktmoln"><span>Djupskuggning</span><span class="v3-lay-sw"><input type="checkbox" role="switch" id="v3SceneEdl" ${Number(P.sceneEdl) > 0 ? "checked" : ""} /><i></i></span></label>
+          <label class="v3-field v3-sm-range ${Number(P.sceneEdl) > 0 ? "" : "hidden"}" id="v3SceneEdlRow"><span>Styrka <b id="v3SceneEdlV">${Number(P.sceneEdl) > 0 ? P.sceneEdl : 50} %</b></span><input type="range" min="5" max="100" step="5" id="v3SceneEdlR" value="${Number(P.sceneEdl) > 0 ? P.sceneEdl : 50}" /></label>
           <label class="v3-chk"><input type="checkbox" id="v3PalChk" ${P.pal ? "checked" : ""} /> Panelen till vänster</label>
           <div class="v3-pop-l">Mus</div>
           <div class="v3-segs">${[["tekla", "Som i Tekla"], ["standard", "Standard"]].map(([k, l]) => `<button type="button" data-v3mouse="${k}" class="${(P.mouse || "tekla") === k ? "on" : ""}">${l}</button>`).join("")}</div>
@@ -400,6 +403,9 @@ function l3Dom() {
     $3("v3BgCol2").oninput = e => { l3SetPref("bgColor2", e.target.value); l3ApplyBg(); };
     document.querySelectorAll("[data-bg]").forEach(b => { b.onclick = () => bg(b.dataset.bg); });
     document.querySelectorAll("[data-bgg]").forEach(b => { b.onclick = () => { const [a, c2] = b.dataset.bgg.split(","); l3SetPref("bgGrad", true); l3SetPref("bgColor", a); l3SetPref("bgColor2", c2); $3("v3BgCol").value = a; $3("v3BgCol2").value = c2; const g = $3("v3BgGrad"); if (g) g.checked = true; col2(); l3ApplyBg(); }; });
+    { const sw = $3("v3SceneEdl"), rg = $3("v3SceneEdlR"), row = $3("v3SceneEdlRow"), val = $3("v3SceneEdlV");
+      sw.onchange = () => { l3SetPref("sceneEdl", sw.checked ? Number(rg.value) || 50 : 0); row.classList.toggle("hidden", !sw.checked); l3Render(); };
+      rg.oninput = () => { val.textContent = rg.value + " %"; if (sw.checked) { l3SetPref("sceneEdl", Number(rg.value)); l3Render(); } }; }
     $3("v3BgGrad").onchange = e => { l3SetPref("bgGrad", e.target.checked); col2(); l3ApplyBg(); };
     $3("v3BgReset").onclick = () => { l3SetPref("bgGrad", null); l3SetPref("bgColor2", null); const g = $3("v3BgGrad"); if (g) g.checked = false; col2(); bg(null); };
   }

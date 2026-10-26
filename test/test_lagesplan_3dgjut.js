@@ -252,6 +252,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     sl.value = '75'; sl.dispatchEvent(new Event('input', { bubbles: true })); r.saveShown = !host.querySelector('.v3-prog-b').classList.contains('hidden'); host.querySelector('.v3-prog-save').click(); await new Promise(r2 => setTimeout(r2, 200)); askOpener = old; r.sent = sent.map(x => x[0] + ':' + x[1].progress); r.local = it.progress; host.remove(); items.splice(items.indexOf(it), 1); return r; });
   if (!prg.shown || !prg.hiddenAtStart || !prg.saveShown || prg.sent[0] !== 'setProgress:75' || prg.local !== 75) fail('Framdrift i sidomenyn: ' + JSON.stringify(prg));
   console.log('OK: framdrift kan sättas i 3D-vyns sidomeny och skickas till 4D-planeringen');
+  const edl = await page.evaluate(async () => { const r = { cloud: l3pc.clouds.some(c => c.visible) }; l3SetPref('sceneEdl', 60); l3Render(); await new Promise(r2 => setTimeout(r2, 300)); r.on = l3pcEdlOn(); r.made = !!l3pcE; r.kept = Number(l3Prefs().sceneEdl) === 60; r.sw = !!document.getElementById('v3SceneEdl'); return r; });
+  if (edl.cloud || !edl.on || !edl.made || !edl.kept || !edl.sw) fail('Djupskuggning utan punktmoln: ' + JSON.stringify(edl));
+  console.log('OK: djupskuggning fungerar i hela 3D-vyn även utan punktmoln');
+  await page.evaluate(() => { l3SetPref('sceneEdl', 0); l3Render(); });
   const mk2 = await page.evaluate(async () => { const O = l3.O, q = placeNew('sm:makadam', [O[0] + 1100, O[1] + 1100, 0]); q.L = 10; q.B = 10; placements.push(q); placeTouch(q); l3AddPlacementMesh(q); const f = placeNew('lada', [q.x + 1, q.y, 0]); f.L = 2; f.B = 2; f.H = 1; f.z = 0; placements.push(f); placeTouch(f); l3AddPlacementMesh(f); l3SelectIds([f.id]); await new Promise(r => setTimeout(r, 300));
     const sg = () => { const s = placeParts(q).find(x => x.sign); return JSON.stringify(s && s.sign && s.sign.rows || ''); }; const r = { a: sg() };
     const o = l3.gizmo.object; o.position.x += 12; l3.gizmo.dispatchEvent({ type: 'objectChange' }); l3.gizmo.dispatchEvent({ type: 'mouseUp' }); await new Promise(r2 => setTimeout(r2, 400)); r.b = sg();
