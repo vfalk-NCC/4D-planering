@@ -280,6 +280,12 @@ function renderFilmOverlay(P, o) {
     if (o.vec && o.site) drawSiteLayers(ctx, fontPx);
     if (objects) { top.save(); top.globalAlpha = layerOpacity("objects"); drawObjects(top, objects, fontPx); drawObjectLabels(top, objects, fontPx); top.restore(); }
     if (!o.vec && o.site) drawSiteLayers(ctx, fontPx);
+    // Excel-planeringens prickar (lagesplan-xls.js) – samma som på skärmen, med sina namn.
+    if (typeof drawXls === "function") {
+      top.save(); top.globalAlpha = layerOpacity("xls"); drawXls(top, fontPx);
+      if (typeof xlsLabelObjects === "function" && typeof drawObjectLabels === "function") { const xo = xlsLabelObjects(); if (xo.length) drawObjectLabels(top, xo, fontPx); }
+      top.restore();
+    }
     badges.forEach(([pt, text, color, hollow, zs]) => drawBadge(top, pt, text, color, fontPx, hollow, zs));
   } else if (o.site) drawSiteLayers(ctx, fontPx);
 }

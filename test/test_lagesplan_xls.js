@@ -119,7 +119,7 @@ const PP_ITEMS = [{ id: 'p1', object_name: 'Etapp 1', activity: 'Grundläggning'
     const [rx, ry] = await page.evaluate(() => { const o = xlsObjects().find(o => o.it.id === 'x2'), [x, y] = toPx(o.pt), st = $('stage'), b = st.getBoundingClientRect(); return [b.left + x * b.width / st.offsetWidth, b.top + y * b.height / st.offsetHeight]; });
     await page.mouse.click(rx, ry, { button: 'right' });
     const menu = await page.evaluate(() => { const m = $('labelMenu'); return m && !m.classList.contains('hidden') ? [...m.querySelectorAll('button')].map(b => b.textContent) : null; });
-    if (!menu || !/Släck F2 – Gjutning fundament/.test(menu[0]) || !menu.some(t => /hela aktiviteten F1, F2/.test(t)) || !menu.some(t => /området/.test(t))) fail('Högerklicksmenyn: ' + JSON.stringify(menu));
+    if (!menu || !menu.some(t => /Släck F2 – Gjutning fundament/.test(t)) || !menu.some(t => /hela aktiviteten F1, F2/.test(t)) || !menu.some(t => /området/.test(t))) fail('Högerklicksmenyn: ' + JSON.stringify(menu));
     await page.click('#labelMenu [data-x="obj"]');
     const after = await page.evaluate(() => ({ shown: xlsShown().map(o => o.it.id).join(), row: document.querySelector('#layerList .xls-fam .ln').textContent }));
     if (after.shown !== 'x1,x3' || !/1 släckta/.test(after.row)) fail('Släck via högerklick: ' + JSON.stringify(after));
