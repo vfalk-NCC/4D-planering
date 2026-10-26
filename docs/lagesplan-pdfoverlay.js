@@ -89,7 +89,7 @@ async function renderPdfOverlay(p) {
     Object.assign(c.style, { left: `${bx0}px`, top: `${by0}px`, width: `${bw}px`, height: `${bh}px` });
     const ctx = c.getContext("2d");
     ctx.setTransform(...affMul([q, 0, 0, q, -bx0 * q, -by0 * q], affMul(toStage, affInv(vb.transform))));
-    ctx.drawImage(tmp, 0, 0);
+    if (tmp.width && tmp.height) ctx.drawImage(tmp, 0, 0);
     c.dataset.stamp = stamp;
     scheduleOverlayHi();
   } catch (e) {
@@ -191,7 +191,7 @@ async function renderOverlayHi(p, seq) {
     h.width = cw; h.height = ch;
     const hctx = h.getContext("2d");
     hctx.setTransform(...affMul([s, 0, 0, s, -x0 * s, -y0 * s], affMul(toStage, affInv(part.transform))));
-    hctx.drawImage(tmpB, 0, 0);
+    if (tmpB.width && tmpB.height) hctx.drawImage(tmpB, 0, 0);
     Object.assign(h.style, { left: `${x0}px`, top: `${y0}px`, width: `${x1 - x0}px`, height: `${y1 - y0}px`,
       display: lo.style.display, opacity: lo.style.opacity, filter: lo.style.filter, mixBlendMode: "multiply" });
     lo.style.visibility = "hidden"; // den skarpa täcker det synliga – dölj den grövre (annars dubbelt mörk)
@@ -230,7 +230,7 @@ async function drawPdfOverlayForExport(ctx, p, P, o = null) {
   ctx.globalCompositeOperation = "multiply";
   if (!(o ? o.color : pdfOverlayColor(key))) ctx.filter = "grayscale(1)";
   ctx.setTransform(...affMul(toCanvas, affInv(part.transform)));
-  ctx.drawImage(tmp, 0, 0);
+  if (tmp.width && tmp.height) ctx.drawImage(tmp, 0, 0);
   ctx.restore();
 }
 /* De tända PDF-lagren just nu (anropas medan ritningsytans lagerval är aktivt). */

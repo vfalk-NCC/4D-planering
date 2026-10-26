@@ -1093,7 +1093,7 @@ async function renderPdfHi() {
   const seq = ++hiSeq;
   if (!page || !viewport || !pc.width) { hc.width = 0; return; }
   let s = view.scale * (window.devicePixelRatio || 1);
-  if (s <= 1.05) { hc.width = 0; pc.style.visibility = ""; return; }
+  if (!(s > 1.05)) { hc.width = 0; pc.style.visibility = ""; return; }   // även NaN (dold eller nollstor vy)
   const vr = $("viewport").getBoundingClientRect();
   const vb = visibleStageBox();
   const x0 = Math.max(0, vb[0]), y0 = Math.max(0, vb[1]);
@@ -1102,6 +1102,7 @@ async function renderPdfHi() {
   const maxPx = lowMemDevice ? 4e6 : 30e6;
   if ((x1 - x0) * (y1 - y0) * s * s > maxPx) s = Math.sqrt(maxPx / ((x1 - x0) * (y1 - y0)));
   const cw = Math.ceil((x1 - x0) * s), ch = Math.ceil((y1 - y0) * s);
+  if (!(cw > 0 && ch > 0 && isFinite(cw) && isFinite(ch))) { hc.width = 0; pc.style.visibility = ""; return; }
   const tmp = document.createElement("canvas");
   tmp.width = cw; tmp.height = ch;
   const tctx = tmp.getContext("2d");
@@ -1112,8 +1113,9 @@ async function renderPdfHi() {
     annotationMode: $("showOriginal").checked ? pdfjsLib.AnnotationMode.ENABLE : pdfjsLib.AnnotationMode.DISABLE });
   try { await hiTask.promise; } catch (e) { return; } // avbruten av en nyare
   if (seq !== hiSeq) return;
+  if (!tmp.width || !tmp.height) { hc.width = 0; pc.style.visibility = ""; return; }   // tmp kan ha blivit nollstor (för stor yta eller dold vy)
   hc.width = cw; hc.height = ch;
-  hc.getContext("2d").drawImage(tmp, 0, 0);
+  try { hc.getContext("2d").drawImage(tmp, 0, 0); } catch (e) { hc.width = 0; pc.style.visibility = ""; return; }
   Object.assign(hc.style, { left: `${x0}px`, top: `${y0}px`, width: `${x1 - x0}px`, height: `${y1 - y0}px`,
     filter: pc.style.filter, opacity: pc.style.opacity, mixBlendMode: pc.style.mixBlendMode, display: pc.style.display });
   // Täcker hela det synliga området - dölj den grövre ritningen under.
