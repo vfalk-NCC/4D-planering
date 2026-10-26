@@ -476,6 +476,17 @@ async function lagesplanHandle(msg, reply, progress) {
       saveJobs.set(jobId, { id: jobId, records, label: `Framdrift → ${v}% (från 3D-vyn, ${records.length === 1 ? (records[0].objectName || records[0].objectId) : records.length + " objekt"})`, status: "pending", error: null });
       runSaveJob(jobId);
       reply({ count: records.length, ids: records.map(r => r.id), progress: v });
+    } else if (msg.type === "setDates") {   // datum ändrade i 3D-vyn: sparas som i aktivitetsformuläret (hela aktiviteten, samma delposter)
+      const ids = new Set((msg.ids || []).map(String)), targets = items.filter(it => ids.has(String(it.id)));
+      if (!targets.length) throw new Error("Aktiviteten finns inte i planeringen");
+      const okDate = d => !d || /^\d{4}-\d{2}-\d{2}$/.test(String(d)); if (!okDate(msg.start) || !okDate(msg.end)) throw new Error("Ogiltigt datum");
+      if (msg.start && msg.end && msg.end < msg.start) throw new Error("Slutdatumet ligger före startdatumet");
+      const records = targets.map(t => ({ ...t, startDate: msg.start || t.startDate, endDate: msg.end || t.endDate }));
+      applyOptimisticRecords(records); renderItemList();
+      const jobId = ++saveJobCounter;
+      saveJobs.set(jobId, { id: jobId, records, label: `Datum ${msg.start || "?"} → ${msg.end || "?"} (från 3D-vyn)`, status: "pending", error: null });
+      runSaveJob(jobId);
+      reply({ count: records.length, ids: records.map(r => r.id) });
     } else if (msg.type === "positions") {
       reply(await lagesplanPositions());
     } else if (msg.type === "select") {

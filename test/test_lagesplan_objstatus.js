@@ -174,6 +174,13 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
     if (!mv || Math.hypot(mv[0] - pt2.cx, mv[1] - pt2.cy) < 1 || !mp) fail('Den fria aktiviteten ska gå att dra: ' + JSON.stringify({ pt2, mv, mp }));
     const rec = await page.evaluate(() => { localStorage.removeItem('lagesplan-senastefarger'); objSetDotColor([items[0]], '#8f939a'); const m = document.createElement('div'); m.innerHTML = objStatusMenuHtml([items[0]]); const r = { n: m.querySelectorAll('.om-sw-recent').length, c: (m.querySelector('.om-sw-recent') || {}).dataset && m.querySelector('.om-sw-recent').dataset.ostCol }; objSetDotColor([items[0]], null); return r; });
     if (rec.n !== 1 || rec.c !== '#8f939a') fail('Senast använda färg som snabbval: ' + JSON.stringify(rec));
+    // Datum på aktiviteten i prickmenyn
+    const dt = await page.evaluate(async () => {
+      const m = document.createElement('div'); m.innerHTML = objStatusMenuHtml([items[0]]); document.body.appendChild(m); objStatusBind(m, [items[0]]);
+      const d0 = m.querySelector('[data-ost-d0]'), d1 = m.querySelector('[data-ost-d1]'), ds = m.querySelector('[data-ost-ds]'); const r = { has: !!d0 && !!d1, hid: ds.classList.contains('hidden') };
+      d0.value = '2026-10-03'; d0.dispatchEvent(new Event('input')); d1.value = '2026-10-20'; d1.dispatchEvent(new Event('input')); r.shown = !ds.classList.contains('hidden'); ds.click(); await new Promise(r2 => setTimeout(r2, 500)); r.s = items[0].start_date; r.e = items[0].end_date; m.remove(); return r; });
+    const dsv = JSON.parse(gh.get('projects/p1/plan_items.json')).find(r => r.id === 'i1');
+    if (!dt.has || !dt.hid || !dt.shown || dt.s !== '2026-10-03' || dt.e !== '2026-10-20' || !dsv || dsv.start_date !== '2026-10-03' || dsv.end_date !== '2026-10-20') fail('Datum i prickmenyn: ' + JSON.stringify({ dt, dsv: dsv && [dsv.start_date, dsv.end_date] }));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
   } finally { await browser.close(); server.close(); }

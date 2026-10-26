@@ -64,6 +64,21 @@ function objNotifyPlan(file) {
   objNotifyT = setTimeout(() => { if (typeof askOpener !== "function" || !(window.opener && !window.opener.closed)) return; const src = file && /\/pp\//.test(file) ? "pp" : file ? "excel" : (typeof planSource !== "undefined" ? planSource : "excel"); askOpener("planChanged", { source: src }, 20000).catch(() => {}); }, 600);
 }
 
+/* Ändrar aktivitetens planerade datum (start/slut) på raderna – sparas i tidplanen, Gantten läser om; kan ångras. */
+async function objSetDates(rows, start, end, file) {
+  if (!rows.length) return 0; if (start && end && end < start) { setSaveStatus("⚠ Slutdatumet kan inte ligga före startdatumet."); return 0; }
+  const ids = new Set(rows.map(r => r.id)), before = new Map(rows.map(r => [r.id, { ...r }])), now = new Date().toISOString();
+  const patch = r => ({ ...r, start_date: start || r.start_date || null, end_date: end || r.end_date || null, updated_at: now });
+  rows.forEach(r => Object.assign(r, patch(r)));
+  const label = `Datum ${start || "?"} → ${end || "?"}${rows.length > 1 ? ` (${rows.length} objekt)` : ""}`;
+  objStatusUndoStack.push({ label, undo: async () => { rows.forEach(r => Object.assign(r, before.get(r.id))); if (typeof invalidateVisible === "function") invalidateVisible(); if (typeof renderZones === "function") renderZones(); await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`); objNotifyPlan(file); } });
+  if (typeof invalidateVisible === "function") invalidateVisible(); if (typeof renderZones === "function") renderZones();
+  setSaveStatus(`Sparar: ${label} …`);
+  try { await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => ids.has(r.id) ? patch(r) : r), `Lägesplan: ${label}`); setSaveStatus(`✓ ${label}. Gantten i 4D-planering läser om.`); objNotifyPlan(file); }
+  catch (e) { rows.forEach(r => Object.assign(r, before.get(r.id))); objStatusUndoStack.pop(); if (typeof invalidateVisible === "function") invalidateVisible(); if (typeof renderZones === "function") renderZones(); setSaveStatus("⚠ Kunde inte spara datumen: " + e.message); return 0; }
+  return rows.length;
+}
+
 /* Visuellt namn (bara här): sparas i planen (plan.dotNames), rör ingen tidplan eller Gantt. */
 function objSetVisualName(rows, name) {
   if (!plan) return; plan.dotNames = { ...(plan.dotNames || {}) };
@@ -116,6 +131,7 @@ function objStatusMenuHtml(its, o = {}) {
   return `<div class="om-st"><div class="om-st-h">${o.box ? `${its.length} objekt i rutan – sätt status på alla` : `Status${ph ? ` nu: ${escHtml((PHASE_LABELS || {})[ph] || ph)}` : ""} · ${Math.round(Number(its[0].progress) || 0)} %`}</div>
     <div class="om-st-b"><button type="button" data-ost="ej">${col("planerad")}Ej påbörjad</button><button type="button" data-ost="pagaende">${col("pagaende")}Pågår</button><button type="button" data-ost="klar">${col("klar")}Klar</button><button type="button" data-ost="pausad">${col("pausad")}Pausad</button><button type="button" data-ost="pct">% …</button></div>
     <div class="om-st-p"><span>Framdrift</span><input type="range" min="0" max="100" step="5" data-ost-sl value="${Math.round(Number(its[0].progress) || 0)}" /><b data-ost-v>${Math.round(Number(its[0].progress) || 0)} %</b></div>
+    <div class="om-st-d"><span>Datum</span><input type="date" data-ost-d0 value="${escHtml(String(its[0].start_date || "").slice(0, 10))}" /><em>→</em><input type="date" data-ost-d1 value="${escHtml(String(its[0].end_date || "").slice(0, 10))}" /><button type="button" data-ost-ds class="hidden">Spara</button></div>
     <div class="om-st-c"><span>Färg</span>${OBJ_DOT_PRESETS.map(c => `<button type="button" class="om-sw" data-ost-col="${c}" style="background:${c}" title="Sätt egen färg"></button>`).join("")}${objRecentColors().filter(c => !OBJ_DOT_PRESETS.includes(c.toLowerCase())).map(c => `<button type="button" class="om-sw om-sw-recent" data-ost-col="${c}" style="background:${c}" title="Senast använd färg ${c}"></button>`).join("")}<input type="color" data-ost-colpick value="${(plan && plan.dotColors && plan.dotColors[its[0].id]) || "#3b82f6"}" title="Egen färg" /><button type="button" class="om-sw-auto" data-ost-col="" title="Använd statusfärgen igen">Auto</button></div>
     ${o.box ? "" : `<div class="om-st-n"><button type="button" data-ost-rn="act" title="Byt namn på hela aktiviteten – alla objekt i den följer med">✎ Byt namn på aktiviteten</button><button type="button" data-ost-rn="obj" title="Byt namn på bara den här pricken">✎ Byt namn på pricken</button><button type="button" data-ost-rn="vis" title="Ett namn som bara syns i lägesplanen – rör ingen tidplan eller Gantt">👁 Visuellt namn (bara här)</button></div>`}
     ${o.box ? "" : `<div class="om-st-k"><div class="om-st-kl" data-ost-kl><i>Kommentarer läses…</i></div><div class="om-st-kw"><input type="text" data-ost-ki placeholder="Skriv en kommentar på ${escHtml(its[0].object_name || its[0].activity || "objektet")}…" maxlength="500" /><button type="button" data-ost-kb>Lägg till</button></div></div>`}
@@ -148,6 +164,9 @@ function objStatusBind(m, its, o = {}) {
   }
   const fk = o.famKey || objFamKey, pool = o.pool || items, fkOf = fk;
   const rowsNow = () => { const fams = new Set(its.map(fk)); return !o.box && objStatusScopeAll ? pool.filter(x => fams.has(fk(x))) : its; };
+  { const d0 = m.querySelector("[data-ost-d0]"), d1 = m.querySelector("[data-ost-d1]"), ds = m.querySelector("[data-ost-ds]");
+    if (d0 && d1 && ds) { const s0 = d0.value, s1 = d1.value, chg = () => ds.classList.toggle("hidden", d0.value === s0 && d1.value === s1); [d0, d1].forEach(x => { x.oninput = chg; x.onchange = chg; x.onclick = e => e.stopPropagation(); });
+      ds.onclick = async e => { e.stopPropagation(); if (d1.value && d0.value && d1.value < d0.value) { setSaveStatus("⚠ Slutdatumet kan inte ligga före startdatumet."); return; } close(); await objSetDates(rowsNow(), d0.value || null, d1.value || null, o.file); }; } }
   const sl = m.querySelector("[data-ost-sl]"), sv = m.querySelector("[data-ost-v]");
   if (sl) { sl.oninput = () => { sv.textContent = sl.value + " %"; }; sl.onchange = async () => { close(); await objSetStatus(rowsNow(), "pct", Number(sl.value), o.file); }; sl.onclick = e => e.stopPropagation(); }
   m.querySelectorAll("[data-ost-col]").forEach(b => { b.onclick = () => { close(); objSetDotColor(rowsNow(), b.dataset.ostCol || null); }; });
