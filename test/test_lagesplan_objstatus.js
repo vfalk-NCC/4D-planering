@@ -172,6 +172,8 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
     const mv = await page.evaluate((id) => { const sh = (objectShapesInPdf() || []).find(o => o.it.id === id); return sh ? sh.center : null; }, na.id);
     const mp = JSON.parse(gh.get('projects/p1/plan_item_positions.json') || '[]').find(p => p.id === na.id);
     if (!mv || Math.hypot(mv[0] - pt2.cx, mv[1] - pt2.cy) < 1 || !mp) fail('Den fria aktiviteten ska gå att dra: ' + JSON.stringify({ pt2, mv, mp }));
+    const rec = await page.evaluate(() => { localStorage.removeItem('lagesplan-senastefarger'); objSetDotColor([items[0]], '#8f939a'); const m = document.createElement('div'); m.innerHTML = objStatusMenuHtml([items[0]]); const r = { n: m.querySelectorAll('.om-sw-recent').length, c: (m.querySelector('.om-sw-recent') || {}).dataset && m.querySelector('.om-sw-recent').dataset.ostCol }; objSetDotColor([items[0]], null); return r; });
+    if (rec.n !== 1 || rec.c !== '#8f939a') fail('Senast använda färg som snabbval: ' + JSON.stringify(rec));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
   } finally { await browser.close(); server.close(); }

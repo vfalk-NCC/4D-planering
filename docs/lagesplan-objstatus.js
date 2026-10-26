@@ -88,6 +88,10 @@ async function objRename(rows, field, value, file) {
 
 /* Egen färg på pricken (Victor 2026-10-26: "byta färg manuellt på punkterna"): sparas i planen per post (plan.dotColors) och går före statusfärgen. */
 const OBJ_DOT_PRESETS = ["#ef4444", "#f59e0b", "#eab308", "#22c55e", "#06b6d4", "#3b82f6", "#a855f7", "#111827"];
+/* Senast använda egna färger (visas som prickar i menyn för snabbval; sparas i webbläsaren, högst 6). */
+const OBJ_RECENT_KEY = "lagesplan-senastefarger";
+function objRecentColors() { try { const a = JSON.parse(localStorage.getItem(OBJ_RECENT_KEY) || "[]"); return Array.isArray(a) ? a.filter(c => /^#[0-9a-f]{6}$/i.test(c)).slice(0, 6) : []; } catch (e) { return []; } }
+function objPushRecent(hex) { if (!/^#[0-9a-f]{6}$/i.test(hex || "")) return; const h = hex.toLowerCase(); try { localStorage.setItem(OBJ_RECENT_KEY, JSON.stringify([h, ...objRecentColors().filter(c => c.toLowerCase() !== h)].slice(0, 6))); } catch (e) { /* utan lagring */ } }
 function objDotColor(o) {
   const dc = plan && plan.dotColors; if (!dc || !o) return null;
   const list = o.members && o.members.length ? o.members : [o.it]; const c = list.map(m => dc[m.id] || null);
@@ -96,6 +100,7 @@ function objDotColor(o) {
 function objSetDotColor(rows, hex) {
   if (!plan) return; plan.dotColors = { ...(plan.dotColors || {}) };
   rows.forEach(r => { if (hex) plan.dotColors[r.id] = hex; else delete plan.dotColors[r.id]; });
+  if (hex) objPushRecent(hex);
   if (!Object.keys(plan.dotColors).length) delete plan.dotColors;
   if (typeof renderZones === "function") renderZones();
   if (typeof schedulePlanSave === "function") schedulePlanSave();
@@ -111,7 +116,7 @@ function objStatusMenuHtml(its, o = {}) {
   return `<div class="om-st"><div class="om-st-h">${o.box ? `${its.length} objekt i rutan – sätt status på alla` : `Status${ph ? ` nu: ${escHtml((PHASE_LABELS || {})[ph] || ph)}` : ""} · ${Math.round(Number(its[0].progress) || 0)} %`}</div>
     <div class="om-st-b"><button type="button" data-ost="ej">${col("planerad")}Ej påbörjad</button><button type="button" data-ost="pagaende">${col("pagaende")}Pågår</button><button type="button" data-ost="klar">${col("klar")}Klar</button><button type="button" data-ost="pausad">${col("pausad")}Pausad</button><button type="button" data-ost="pct">% …</button></div>
     <div class="om-st-p"><span>Framdrift</span><input type="range" min="0" max="100" step="5" data-ost-sl value="${Math.round(Number(its[0].progress) || 0)}" /><b data-ost-v>${Math.round(Number(its[0].progress) || 0)} %</b></div>
-    <div class="om-st-c"><span>Färg</span>${OBJ_DOT_PRESETS.map(c => `<button type="button" class="om-sw" data-ost-col="${c}" style="background:${c}" title="Sätt egen färg"></button>`).join("")}<input type="color" data-ost-colpick value="${(plan && plan.dotColors && plan.dotColors[its[0].id]) || "#3b82f6"}" title="Egen färg" /><button type="button" class="om-sw-auto" data-ost-col="" title="Använd statusfärgen igen">Auto</button></div>
+    <div class="om-st-c"><span>Färg</span>${OBJ_DOT_PRESETS.map(c => `<button type="button" class="om-sw" data-ost-col="${c}" style="background:${c}" title="Sätt egen färg"></button>`).join("")}${objRecentColors().filter(c => !OBJ_DOT_PRESETS.includes(c.toLowerCase())).map(c => `<button type="button" class="om-sw om-sw-recent" data-ost-col="${c}" style="background:${c}" title="Senast använd färg ${c}"></button>`).join("")}<input type="color" data-ost-colpick value="${(plan && plan.dotColors && plan.dotColors[its[0].id]) || "#3b82f6"}" title="Egen färg" /><button type="button" class="om-sw-auto" data-ost-col="" title="Använd statusfärgen igen">Auto</button></div>
     ${o.box ? "" : `<div class="om-st-n"><button type="button" data-ost-rn="act" title="Byt namn på hela aktiviteten – alla objekt i den följer med">✎ Byt namn på aktiviteten</button><button type="button" data-ost-rn="obj" title="Byt namn på bara den här pricken">✎ Byt namn på pricken</button><button type="button" data-ost-rn="vis" title="Ett namn som bara syns i lägesplanen – rör ingen tidplan eller Gantt">👁 Visuellt namn (bara här)</button></div>`}
     ${o.box ? "" : `<div class="om-st-k"><div class="om-st-kl" data-ost-kl><i>Kommentarer läses…</i></div><div class="om-st-kw"><input type="text" data-ost-ki placeholder="Skriv en kommentar på ${escHtml(its[0].object_name || its[0].activity || "objektet")}…" maxlength="500" /><button type="button" data-ost-kb>Lägg till</button></div></div>`}
     ${many ? `<label class="om-st-s"><input type="checkbox" data-ost-all${objStatusScopeAll ? " checked" : ""}> Hela aktiviteten (${famN} objekt), inte bara ${its.length > 1 ? "de " + its.length + " här" : "det här"}</label>` : ""}
