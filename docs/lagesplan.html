@@ -2518,6 +2518,16 @@
   #view3d #v3PpColor.on { background: var(--grad, #2f7bff); color: #fff; border-color: transparent; }
   #view3d .v3-lr-zoom { width: 24px; height: 24px; padding: 0; display: inline-grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #64748b; flex: 0 0 auto; cursor: pointer; }
   #view3d .v3-ly-pick { cursor: pointer; } #view3d .v3-ly-pick:hover { color: #2f7bff; } #view3d .v3-ly-r.sel { background: rgba(47,123,255,.10); box-shadow: inset 2px 0 0 #2f7bff; border-radius: 8px; }
+  .v3-start { position: fixed; inset: 0; z-index: 99999; display: grid; place-items: center; padding: 16px; background: radial-gradient(1200px 700px at 50% 30%, rgba(47,123,255,.22), rgba(15,23,42,.62)); backdrop-filter: blur(10px); opacity: 0; transition: opacity .22s ease; }
+  .v3-start.in { opacity: 1; } .v3-start.out { opacity: 0; }
+  .v3-start-c { width: min(720px, 100%); padding: 26px 26px 20px; border-radius: 28px; background: rgba(255,255,255,.96); box-shadow: 0 30px 80px rgba(2,6,23,.45); transform: translateY(10px) scale(.985); transition: transform .25s ease; } .v3-start.in .v3-start-c { transform: none; }
+  .v3-start-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 18px; } .v3-start-h b { font-size: 22px; color: #0f172a; letter-spacing: -.01em; } .v3-start-h span { font-size: 13px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #v3Start .v3-start-t { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; } @media (max-width: 560px) { .v3-start-t { grid-template-columns: 1fr; } }
+  #v3Start .v3-start-b { display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 8px; width: 100%; height: auto; min-height: 190px; white-space: normal; padding: 20px 20px 18px; border: 1.5px solid #e2e8f0; border-radius: 22px; background: linear-gradient(180deg, #fff, #f8fafc); color: #1e293b; text-align: left; cursor: pointer; font: inherit; transition: transform .15s, box-shadow .15s, border-color .15s; }
+  #v3Start .v3-start-b svg { display: block; flex: 0 0 auto; width: 64px; height: 64px; color: #2f7bff; } #v3Start .v3-start-b b { display: block; font-size: 18px; color: #0f172a; } #v3Start .v3-start-b span { display: block; font-size: 13px; line-height: 1.45; color: #64748b; white-space: normal; }
+  #v3Start .v3-start-b:hover:not(.off), #v3Start .v3-start-b:focus-visible { transform: translateY(-3px); border-color: #2f7bff; box-shadow: 0 14px 34px rgba(47,123,255,.25); outline: none; } .v3-start-b.off { opacity: .55; cursor: not-allowed; }
+  .v3-start-k { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 13px; color: #475569; cursor: pointer; } .v3-start-k input { width: 16px; height: 16px; accent-color: #2f7bff; }
+  .v3-start-n { position: fixed; left: 14px; top: 14px; z-index: 99998; padding: 8px 12px; border-radius: 12px; background: rgba(15,23,42,.9); color: #fff; font-size: 12.5px; box-shadow: 0 8px 24px rgba(2,6,23,.35); opacity: 0; transform: translateY(-6px); transition: opacity .3s, transform .3s; } .v3-start-n.in { opacity: 1; transform: none; } .v3-start-n button { margin-left: 4px; padding: 2px 8px; border: 0; border-radius: 8px; background: #2f7bff; color: #fff; cursor: pointer; font-size: 12px; }
   #view3d .v3-prog { margin: 8px 0 4px; padding: 10px 12px 10px; border: 1px solid #e2e8f0; border-radius: 14px; background: #f8fafc; }
   #view3d .v3-prog-h { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: #475569; font-weight: 600; } #view3d .v3-prog-h span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } #view3d .v3-prog-v { color: #1d4ed8; flex: 0 0 auto; }
   #view3d .v3-prog-sl { width: 100%; margin: 8px 0 2px; accent-color: #f59e0b; }
@@ -4132,6 +4142,7 @@ details.sec[open] > summary { border-bottom: 0; margin: 0 -2px 10px; }
 <script src="lagesplan-3dframe.js?v=20261024195545"></script>
 <script src="lagesplan-3dgzx.js?v=20261024195545"></script>
 <script src="lagesplan-3dprog.js?v=20261024195545"></script>
+<script src="lagesplan-startchoice.js?v=20261024195545"></script>
 <script src="lagesplan-keys.js?v=20261024195545"></script>
 <script src="standalone.js?v=20261024195545"></script>
 </body>

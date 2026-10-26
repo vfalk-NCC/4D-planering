@@ -225,6 +225,7 @@ async function init() {
   else $("empty").classList.remove("hidden"); // först nu vet vi att det inte finns någon arbetsyta
   // 3D-vyn direkt (?view=3d): laddningsskärmen ligger kvar tills den är öppen (lagesplan-3d.js).
   if (new URLSearchParams(location.search).get("view") !== "3d" || !first) bootHide();
+  if (typeof startChoice === "function" && first && !new URLSearchParams(location.search).get("view")) startChoice(first);   // frågar 2D eller 3D (lagesplan-startchoice.js)
   // Länk till en aktivitet (?item=…, t.ex. "Visa på kartan" i Excel): öppna på den.
   if (typeof focusItemFromUrl === "function") await focusItemFromUrl();
 }

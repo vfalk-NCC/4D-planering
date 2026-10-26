@@ -143,6 +143,14 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       m.querySelector('[data-ost-rn="act"]').click(); await new Promise(r2 => setTimeout(r2, 500)); r.act = items[0].activity; m.remove(); return r; });
     const sv = JSON.parse(gh.get('projects/p1/plan_items.json')).find(r => r.id === 'i1'), cs2 = JSON.parse(gh.get('projects/p1/plan_item_comments.json') || '[]');
     if (!(rn.kd >= 1) || rn.kdAfter !== rn.kd - 1 || rn.act !== 'Nytt aktivitetsnamn' || !sv || sv.activity !== 'Nytt aktivitetsnamn' || cs2.some(c => c.body === 'Betongen levereras sent')) fail('Ta bort kommentar / byt namn: ' + JSON.stringify({ rn, sv: sv && sv.activity, cs2: cs2.length }));
+    // Startval: fråga 2D eller 3D när lägesplanen öppnas
+    if (process.env.SCSHOT) await page.exposeFunction('__SCSHOT', async () => { await page.waitForTimeout(400); await page.screenshot({ path: process.env.SCSHOT }); });
+    const sc = await page.evaluate(async () => {
+      history.replaceState(null, '', '?project=p1&start=visa'); localStorage.removeItem('lagesplan-startval'); const r = {};
+      startChoice(plan); await new Promise(r2 => setTimeout(r2, 150)); if (window.__SCSHOT) await window.__SCSHOT(); const el = document.getElementById('v3Start'); r.shown = !!el; r.tiles = el ? el.querySelectorAll('[data-sc]').length : 0; r.has3d = !!(plan && plan.calib);
+      el.querySelector('#v3StartK').checked = true; el.querySelector('[data-sc="2d"]').click(); await new Promise(r2 => setTimeout(r2, 400)); r.closed = !document.getElementById('v3Start'); r.saved = localStorage.getItem('lagesplan-startval');
+      startChoice(plan); await new Promise(r2 => setTimeout(r2, 100)); r.noAsk = !document.getElementById('v3Start'); r.note = !!document.querySelector('.v3-start-n'); localStorage.removeItem('lagesplan-startval'); document.querySelectorAll('.v3-start-n').forEach(n => n.remove()); return r; });
+    if (!sc.shown || sc.tiles !== 2 || !sc.closed || sc.saved !== '2d' || !sc.noAsk || !sc.note) fail('Startval 2D/3D: ' + JSON.stringify(sc));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
   } finally { await browser.close(); server.close(); }
