@@ -104,6 +104,12 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       const sw = m.querySelectorAll('[data-ost-col]')[3]; const col = sw.dataset.ostCol; sw.click(); r.col = (plan.dotColors || {})[items[0].id] === col; const sh = (objectShapesInPdf() || []).find(o => o.it.id === items[0].id); objSetDotColor(sh.members && sh.members.length ? sh.members : [sh.it], col); r.fn = objDotColor(sh) === col; objSetDotColor(sh.members && sh.members.length ? sh.members : [sh.it], null);
       m.querySelector('.om-sw-auto').click(); r.cleared = !(plan.dotColors && plan.dotColors[items[0].id]); m.remove(); return r; });
     if (!mc.has || mc.p !== 65 || !mc.col || mc.fn === false || !mc.cleared) fail('Framdriftsreglage/egen färg i prickens meny: ' + JSON.stringify(mc));
+    const kom = await page.evaluate(async () => {
+      const m = document.createElement('div'); m.id = 'tmpMenu2'; m.innerHTML = objStatusMenuHtml([items[0]]); document.body.appendChild(m); objStatusBind(m, [items[0]]);
+      await new Promise(r => setTimeout(r, 300)); const r = { box: !!m.querySelector('[data-ost-ki]') };
+      m.querySelector('[data-ost-ki]').value = 'Betongen levereras sent'; m.querySelector('[data-ost-kb]').click(); await new Promise(r2 => setTimeout(r2, 500)); r.shown = /Betongen levereras sent/.test(m.querySelector('[data-ost-kl]').textContent); m.remove(); return r; });
+    const cs = JSON.parse(gh.get('projects/p1/plan_item_comments.json') || '[]');
+    if (!kom.box || !kom.shown || !cs.some(c => c.body === 'Betongen levereras sent' && c.plan_item_id === 'i1')) fail('Kommentar på prick: ' + JSON.stringify({ kom, cs }));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
   } finally { await browser.close(); server.close(); }
