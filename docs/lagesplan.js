@@ -221,11 +221,13 @@ async function init() {
   const last = (() => { try { return localStorage.getItem("lagesplan-last-" + projectId); } catch (e) { return null; } })();
   const first = plans.find(p => p.id === last) || plans[0];
   bootSet(first ? `Öppnar ${first.name || "arbetsytan"}…` : "Klart", 0.7);
+  // Frågan 2D eller 3D kommer direkt, före något tungt laddas (lagesplan-startchoice.js).
+  const startPick = first && typeof startChoice === "function" && !new URLSearchParams(location.search).get("view") ? await startChoice(first) : "";
   if (first) await openPlan(first.id);
   else $("empty").classList.remove("hidden"); // först nu vet vi att det inte finns någon arbetsyta
   // 3D-vyn direkt (?view=3d): laddningsskärmen ligger kvar tills den är öppen (lagesplan-3d.js).
   if (new URLSearchParams(location.search).get("view") !== "3d" || !first) bootHide();
-  if (typeof startChoice === "function" && first && !new URLSearchParams(location.search).get("view")) startChoice(first);   // frågar 2D eller 3D (lagesplan-startchoice.js)
+  if (startPick === "3d" && typeof open3d === "function") Promise.resolve(open3d()).catch(() => {});
   // Länk till en aktivitet (?item=…, t.ex. "Visa på kartan" i Excel): öppna på den.
   if (typeof focusItemFromUrl === "function") await focusItemFromUrl();
 }

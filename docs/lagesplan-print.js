@@ -433,6 +433,7 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
     L.overlays.map(o => [o.id, o.opacity, o.color, o.noCrop]), $("grayPdf") && $("grayPdf").checked, $("showOriginal") && $("showOriginal").checked]) : null;
   const baseHit = baseKey && mapBase.get(el.id);
   const baseCached = !!(baseHit && baseHit.key === baseKey);
+  let cadCanvas = null;
   try {
     if (baseCached) {
       ctx.drawImage(baseHit.canvas, 0, 0);
@@ -497,12 +498,25 @@ async function renderMapCanvasNow(el, wMm, hMm, pxW, pxH, opts = {}) {
       }
       P.overlay = newCanvas(pxW, pxH);
       P.overlayVec = vecRec(); P.overlayVecUnder = vecRec();
-      renderFilmOverlay(P, { cad: !opts.vectorCad, zones: true, site: true, vec: P.overlayVec, vecUnder: P.overlayVecUnder });
+      // DXF-ritningarna sparas i ett eget lager i förhandsvisningen, så tänd/släck av prickar och zoner inte ritar om dem.
+      if (baseKey && L.cads.length) {
+        const ck = JSON.stringify([baseKey, cadPrintOpts, L.cads.map(r => [r, layerOpacity("cad:" + r.id), cadLayerStateKey(r)])]);
+        const ch = mapCad.get(el.id);
+        if (ch && ch.key === ck) cadCanvas = ch.canvas;
+        else {
+          cadCanvas = newCanvas(pxW, pxH);
+          if (typeof drawCad === "function") drawCad(cadCanvas.getContext("2d"), [P.S, 0, 0, P.S, -P.x0 * P.S, -P.y0 * P.S], P.W / FILM_W);
+          mapCad.set(el.id, { key: ck, canvas: cadCanvas });
+        }
+      }
+      renderFilmOverlay(P, { cad: !opts.vectorCad && !cadCanvas, zones: true, site: true, vec: P.overlayVec, vecUnder: P.overlayVecUnder });
     });
-    if (!opts.vectorCad) ctx.drawImage(P.overlay, 0, 0);
+    if (!opts.vectorCad) { if (cadCanvas) ctx.drawImage(cadCanvas, 0, 0); ctx.drawImage(P.overlay, 0, 0); }
   } finally { cadPrintOpts = null; }
   return opts.vectorCad ? { base: out, overlay: P.overlay, cad: P.cadPlan || [], P } : out;
 }
+const mapCad = new Map(); // el.id -> { key, canvas }: förhandsvisningens DXF-lager
+const cadLayerStateKey = r => JSON.stringify([(typeof layerMeta === "function" ? layerMeta().cadColors : null), (typeof cadColorPreview !== "undefined" ? cadColorPreview : null)]) + JSON.stringify(Object.keys(layerState).filter(k => k.startsWith("cadl:" + r.id + ":")).map(k => [k, layerState[k]]));
 const mapBase = new Map(); // el.id -> { key, canvas }: förhandsvisningens bottenlager (ortofoto + PDF)
 const mapPreviews = new Map(); // el.id -> { key, canvas }
 const mapPending = new Map();
@@ -1159,7 +1173,7 @@ async function openPrint() {
   let tpl = tpls.find(t => t.id === localStorageGet("lagesplan-printtpl")) || tpls[0];
   if (!tpl) tpl = defaultTemplate();
   pr = { tpl: migrateTpl(JSON.parse(JSON.stringify(tpl))), saved: !!tpls.find(t => t.id === tpl.id), sels: [], dirty: false, undo: [], redo: [], drag: null, panMode: false, guides: [], fmtAsk: null };
-  mapPreviews.clear(); mapPending.clear(); mapBase.clear();
+  mapPreviews.clear(); mapPending.clear(); mapBase.clear(); mapCad.clear();
   $("printModal").classList.remove("hidden");
   renderPrintPanel();
   prCmdLog(`Utskriftslayout öppnad – mall "${pr.tpl.name || "Ny mall"}", ${pr.tpl.format}.`);
@@ -1564,7 +1578,7 @@ function applyFormat(to, keepView) {
   const kOld = PRINT_FORMATS[pr.tpl.format].w, kNew = PRINT_FORMATS[to].w;
   if (keepView) pr.tpl.elements.filter(e => e.type === "map").forEach(e => { e.scale = nearestScale(e.scale * kOld / kNew); });
   pr.tpl.format = to; pr.fmtAsk = null;
-  mapPreviews.clear(); mapPending.clear(); mapBase.clear();
+  mapPreviews.clear(); mapPending.clear(); mapBase.clear(); mapCad.clear();
   renderPrintPanel(); drawPrintPage();
 }
 function northThumb(style, color) {

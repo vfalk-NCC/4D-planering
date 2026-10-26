@@ -4,16 +4,20 @@
 const L3SC_KEY = "lagesplan-startval";
 const l3scGet = () => { try { return localStorage.getItem(L3SC_KEY) || ""; } catch (e) { return ""; } };
 const l3scSet = v => { try { if (v) localStorage.setItem(L3SC_KEY, v); else localStorage.removeItem(L3SC_KEY); } catch (e) { /* utan lagring */ } };
+/* Returnerar ett löfte med valet ("2d" / "3d" / "" = ingen fråga) – anropas INNAN arbetsytan öppnas, så frågan kommer direkt
+   utan att något laddas i bakgrunden (Victor 2026-10-26). Den som anropar öppnar 3D-editorn om svaret är "3d". */
 function startChoice(first) {
+  return new Promise(resolve => startChoiceAsk(first, resolve));
+}
+function startChoiceAsk(first, resolve) {
   const q = new URLSearchParams(location.search);
   if (q.get("start") === "fraga") l3scSet("");
-  if (navigator.webdriver && q.get("start") !== "visa") return;   // automatiska tester frågas inte (?start=visa tvingar fram frågan)
-  if (!first || q.get("view") || q.get("item") || window.STANDALONE || window.__STANDALONE || /[?&]fristaende=1/.test(location.search)) return;
-  const can3d = !!(typeof plan !== "undefined" && plan && plan.calib), remembered = l3scGet();
-  const go3d = () => { if (typeof open3d === "function") Promise.resolve(open3d()).catch(() => {}); };
-  if (remembered === "3d" && can3d) { go3d(); l3scNote("3D-editorn (ditt val)"); return; }
-  if (remembered === "2d") { l3scNote("2D-lägesplanen (ditt val)"); return; }
-  if (document.getElementById("v3Start")) return;
+  if (navigator.webdriver && q.get("start") !== "visa") return resolve("");   // automatiska tester frågas inte (?start=visa tvingar fram frågan)
+  if (!first || q.get("view") || q.get("item") || window.STANDALONE || window.__STANDALONE || /[?&]fristaende=1/.test(location.search)) return resolve("");
+  const can3d = !!(first && first.calib), remembered = l3scGet();
+  if (remembered === "3d" && can3d) { l3scNote("3D-editorn (ditt val)"); return resolve("3d"); }
+  if (remembered === "2d") { l3scNote("2D-lägesplanen (ditt val)"); return resolve("2d"); }
+  if (document.getElementById("v3Start")) return resolve("");
   const el = document.createElement("div"); el.id = "v3Start"; el.className = "v3-start"; el.setAttribute("role", "dialog"); el.setAttribute("aria-label", "Öppna lägesplanen");
   el.innerHTML = `<div class="v3-start-c"><div class="v3-start-h"><b>Öppna lägesplanen</b><span>${typeof escHtml === "function" ? escHtml(first.name || "") : ""}</span></div>
     <div class="v3-start-t">
@@ -22,7 +26,7 @@ function startChoice(first) {
     </div>
     <label class="v3-start-k"><input type="checkbox" id="v3StartK" /> Kom ihåg mitt val</label></div>`;
   document.body.appendChild(el);
-  const pick = v => { const keep = el.querySelector("#v3StartK").checked; if (keep) l3scSet(v); el.classList.add("out"); setTimeout(() => el.remove(), 220); document.removeEventListener("keydown", key, true); if (v === "3d") go3d(); };
+  const pick = v => { const keep = el.querySelector("#v3StartK").checked; if (keep) l3scSet(v); el.classList.add("out"); setTimeout(() => el.remove(), 220); document.removeEventListener("keydown", key, true); resolve(v); };
   const key = e => { if (e.key === "Escape") { e.stopPropagation(); pick("2d"); } else if (e.key === "1") pick("2d"); else if (e.key === "2" && can3d) pick("3d"); };
   document.addEventListener("keydown", key, true);
   el.querySelectorAll("[data-sc]").forEach(b => { b.onclick = () => pick(b.dataset.sc); });
@@ -32,6 +36,6 @@ function startChoice(first) {
 /* Liten ruta när valet är sparat: visar vad som öppnades och ger "Ändra". */
 function l3scNote(txt) {
   const n = document.createElement("div"); n.className = "v3-start-n"; n.innerHTML = `Startar i ${txt} · <button type="button">Ändra</button>`;
-  n.querySelector("button").onclick = () => { l3scSet(""); n.remove(); startChoice(typeof plan !== "undefined" ? plan : null); };
+  n.querySelector("button").onclick = () => { l3scSet(""); n.remove(); startChoice(typeof plan !== "undefined" ? plan : null).then(v => { if (v === "3d" && typeof open3d === "function") Promise.resolve(open3d()).catch(() => {}); }); };
   document.body.appendChild(n); setTimeout(() => n.classList.add("in"), 20); setTimeout(() => { n.classList.remove("in"); setTimeout(() => n.remove(), 400); }, 6000);
 }
