@@ -267,7 +267,7 @@ function renderPpOptions() {
       <div class="pp-groups">${pp.groups.map(g => `<label class="check pp-chip" title="${fmt(g.start)} – ${fmt(g.end)}"><input type="checkbox" data-ppg="${g.id}"${groupOn(g) ? " checked" : ""} /> ${escapeHtml(g.name)} <span class="hint">${g.count} st · ${fmt(g.start).slice(-4)}${fmt(g.end).slice(-4) !== fmt(g.start).slice(-4) ? "–" + fmt(g.end).slice(-4) : ""}</span></label>`).join("")}</div>
     </div></div>
     <div id="ppInPlan" class="pp-inplan"></div>
-    <details class="pp-areas-box" id="ppAreasBox"><summary><span class="pp-n">${UI_PLUS}</span> <b>Områden</b> <span class="hint" id="ppAreasSum"></span></summary>
+    <details class="pp-areas-box" id="ppAreasBox"><summary><span class="pp-n">${typeof UI_PLUS !== "undefined" ? UI_PLUS : "＋"}</span> <b>Områden</b> <span class="hint" id="ppAreasSum"></span></summary>
       <div class="pp-areas-tools"><button type="button" class="link-btn" id="ppAreasAll">Välj alla</button> · <button type="button" class="link-btn" id="ppAreasNone">Välj inga</button> <span class="hint">Som i Powerproject: fäll ut raderna och kryssa de du vill ta in – allt under en rad följer med.</span></div>
       <div id="ppAreas" class="pp-areas"></div>
     </details>
