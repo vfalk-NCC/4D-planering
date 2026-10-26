@@ -151,6 +151,13 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       el.querySelector('#v3StartK').checked = true; el.querySelector('[data-sc="2d"]').click(); await new Promise(r2 => setTimeout(r2, 400)); r.closed = !document.getElementById('v3Start'); r.saved = localStorage.getItem('lagesplan-startval');
       startChoice(plan); await new Promise(r2 => setTimeout(r2, 100)); r.noAsk = !document.getElementById('v3Start'); r.note = !!document.querySelector('.v3-start-n'); localStorage.removeItem('lagesplan-startval'); document.querySelectorAll('.v3-start-n').forEach(n => n.remove()); return r; });
     if (!sc.shown || sc.tiles !== 2 || !sc.closed || sc.saved !== '2d' || !sc.noAsk || !sc.note) fail('Startval 2D/3D: ' + JSON.stringify(sc));
+    // Visuellt namn: bara i lägesplanen, rör inte tidplanen
+    const vn = await page.evaluate(async () => {
+      window.uiPrompt = async () => 'Pelare P7'; const before = JSON.stringify(items.map(r => [r.id, r.object_name, r.activity]));
+      const m = document.createElement('div'); m.innerHTML = objStatusMenuHtml([items[0]]); document.body.appendChild(m); objStatusBind(m, [items[0]]);
+      m.querySelector('[data-ost-rn="vis"]').click(); await new Promise(r => setTimeout(r, 300)); const r = { lbl: objLabelText(items[0]), same: JSON.stringify(items.map(x => [x.id, x.object_name, x.activity])) === before, saved: !!(plan.dotNames && plan.dotNames[items[0].id]) };
+      objSetVisualName([items[0]], ''); r.back = objLabelText(items[0]) !== 'Pelare P7'; m.remove(); return r; });
+    if (vn.lbl !== 'Pelare P7' || !vn.same || !vn.saved || !vn.back) fail('Visuellt namn: ' + JSON.stringify(vn));
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('ALLA TESTER OK');
   } finally { await browser.close(); server.close(); }

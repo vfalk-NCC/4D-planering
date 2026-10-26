@@ -34,13 +34,13 @@ async function objSetStatus(rows, state, pct, file) {   // file: annan plan_item
   objStatusUndoStack.push({ label, undo: async () => {
     rows.forEach(r => Object.assign(r, before.get(r.id)));
     if (typeof renderZones === "function") renderZones();
-    await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`);
+    await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`); objNotifyPlan(file);
   } });
   if (typeof renderZones === "function") renderZones();
   setSaveStatus(`Sparar: ${label} …`);
   try {
     await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => ids.has(r.id) ? patch(r) : r), `Lägesplan: ${label}`);
-    setSaveStatus(`✓ ${label}. Uppdatera (↻) i 4D-planering för att se det där.`);
+    setSaveStatus(`✓ ${label}. Gantten i 4D-planering läser om.`); objNotifyPlan(file);
   } catch (e) {
     rows.forEach(r => Object.assign(r, before.get(r.id))); objStatusUndoStack.pop();
     if (typeof renderZones === "function") renderZones();
@@ -55,15 +55,31 @@ async function objStatusUndo() {
   catch (e) { setSaveStatus("⚠ Kunde inte ångra: " + e.message); }
 }
 
+/* Säger till 4D-planeringen (Gantten) att läsa om tidplanen direkt, så att status, framdrift och namn syns där utan att man uppdaterar för hand. */
+let objNotifyT = 0;
+function objNotifyPlan(file) {
+  clearTimeout(objNotifyT);
+  objNotifyT = setTimeout(() => { if (typeof askOpener !== "function" || !(window.opener && !window.opener.closed)) return; const src = file && /\/pp\//.test(file) ? "pp" : file ? "excel" : (typeof planSource !== "undefined" ? planSource : "excel"); askOpener("planChanged", { source: src }, 20000).catch(() => {}); }, 600);
+}
+
+/* Visuellt namn (bara här): sparas i planen (plan.dotNames), rör ingen tidplan eller Gantt. */
+function objSetVisualName(rows, name) {
+  if (!plan) return; plan.dotNames = { ...(plan.dotNames || {}) };
+  rows.forEach(r => { if (name) plan.dotNames[r.id] = name; else delete plan.dotNames[r.id]; });
+  if (!Object.keys(plan.dotNames).length) delete plan.dotNames;
+  if (typeof renderZones === "function") renderZones(); if (typeof schedulePlanSave === "function") schedulePlanSave();
+  setSaveStatus(name ? `Visuellt namn "${name}" satt – bara i lägesplanen, tidplanen är orörd.` : "Det visuella namnet är borttaget.");
+}
+
 /* Byter namn (aktivitet eller prickens namn) på raderna – direkt i planen och sparat i 4D-data; kan ångras. */
 async function objRename(rows, field, value, file) {
   if (!rows.length) return 0; const ids = new Set(rows.map(r => r.id)), before = new Map(rows.map(r => [r.id, { ...r }])), now = new Date().toISOString();
   rows.forEach(r => { r[field] = value; r.updated_at = now; });
   const label = `${field === "activity" ? "Aktivitet" : "Prick"} → ${value}${rows.length > 1 ? ` (${rows.length} objekt)` : ""}`;
-  objStatusUndoStack.push({ label, undo: async () => { rows.forEach(r => Object.assign(r, before.get(r.id))); if (typeof renderZones === "function") renderZones(); await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`); } });
+  objStatusUndoStack.push({ label, undo: async () => { rows.forEach(r => Object.assign(r, before.get(r.id))); if (typeof renderZones === "function") renderZones(); await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`); objNotifyPlan(file); } });
   if (typeof renderZones === "function") renderZones(); if (typeof renderLayerPanel === "function") renderLayerPanel();
   setSaveStatus(`Sparar: ${label} …`);
-  try { await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => ids.has(r.id) ? { ...r, [field]: value, updated_at: now } : r), `Lägesplan: ${label}`); setSaveStatus(`✓ ${label}. Uppdatera (↻) i 4D-planering för att se det där.`); }
+  try { await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => ids.has(r.id) ? { ...r, [field]: value, updated_at: now } : r), `Lägesplan: ${label}`); setSaveStatus(`✓ ${label}. Gantten i 4D-planering läser om.`); objNotifyPlan(file); }
   catch (e) { rows.forEach(r => Object.assign(r, before.get(r.id))); objStatusUndoStack.pop(); if (typeof renderZones === "function") renderZones(); setSaveStatus("⚠ Kunde inte byta namn: " + e.message); return 0; }
   return rows.length;
 }
@@ -94,7 +110,7 @@ function objStatusMenuHtml(its, o = {}) {
     <div class="om-st-b"><button type="button" data-ost="ej">${col("planerad")}Ej påbörjad</button><button type="button" data-ost="pagaende">${col("pagaende")}Pågår</button><button type="button" data-ost="klar">${col("klar")}Klar</button><button type="button" data-ost="pausad">${col("pausad")}Pausad</button><button type="button" data-ost="pct">% …</button></div>
     <div class="om-st-p"><span>Framdrift</span><input type="range" min="0" max="100" step="5" data-ost-sl value="${Math.round(Number(its[0].progress) || 0)}" /><b data-ost-v>${Math.round(Number(its[0].progress) || 0)} %</b></div>
     <div class="om-st-c"><span>Färg</span>${OBJ_DOT_PRESETS.map(c => `<button type="button" class="om-sw" data-ost-col="${c}" style="background:${c}" title="Sätt egen färg"></button>`).join("")}<input type="color" data-ost-colpick value="${(plan && plan.dotColors && plan.dotColors[its[0].id]) || "#3b82f6"}" title="Egen färg" /><button type="button" class="om-sw-auto" data-ost-col="" title="Använd statusfärgen igen">Auto</button></div>
-    ${o.box ? "" : `<div class="om-st-n"><button type="button" data-ost-rn="act" title="Byt namn på hela aktiviteten – alla objekt i den följer med">✎ Byt namn på aktiviteten</button><button type="button" data-ost-rn="obj" title="Byt namn på bara den här pricken">✎ Byt namn på pricken</button></div>`}
+    ${o.box ? "" : `<div class="om-st-n"><button type="button" data-ost-rn="act" title="Byt namn på hela aktiviteten – alla objekt i den följer med">✎ Byt namn på aktiviteten</button><button type="button" data-ost-rn="obj" title="Byt namn på bara den här pricken">✎ Byt namn på pricken</button><button type="button" data-ost-rn="vis" title="Ett namn som bara syns i lägesplanen – rör ingen tidplan eller Gantt">👁 Visuellt namn (bara här)</button></div>`}
     ${o.box ? "" : `<div class="om-st-k"><div class="om-st-kl" data-ost-kl><i>Kommentarer läses…</i></div><div class="om-st-kw"><input type="text" data-ost-ki placeholder="Skriv en kommentar på ${escHtml(its[0].object_name || its[0].activity || "objektet")}…" maxlength="500" /><button type="button" data-ost-kb>Lägg till</button></div></div>`}
     ${many ? `<label class="om-st-s"><input type="checkbox" data-ost-all${objStatusScopeAll ? " checked" : ""}> Hela aktiviteten (${famN} objekt), inte bara ${its.length > 1 ? "de " + its.length + " här" : "det här"}</label>` : ""}
     ${objStatusUndoStack.length ? `<button type="button" data-ost="undo" class="om-st-u">↩ Ångra: ${escHtml(objStatusUndoStack[objStatusUndoStack.length - 1].label)}</button>` : ""}</div>`;
@@ -103,6 +119,7 @@ function objStatusBind(m, its, o = {}) {
   const close = () => m.classList.add("hidden");
   const all = m.querySelector("[data-ost-all]"); if (all) all.onchange = () => { objStatusScopeAll = all.checked; };
   m.querySelectorAll("[data-ost-rn]").forEach(b => { b.onclick = async e => { e.stopPropagation(); const kind = b.dataset.ostRn, it0 = its[0]; close();
+    if (kind === "vis") { const cur = (plan && plan.dotNames && plan.dotNames[it0.id]) || "", n = await uiPrompt("Visuellt namn på pricken (syns bara i lägesplanen, tomt = ta bort):", cur || it0.object_name || it0.activity || ""); if (n === null || n === undefined) return; objSetVisualName(its, String(n).trim() === String(it0.object_name || it0.activity || "").trim() ? "" : String(n).trim()); return; }
     const cur = kind === "act" ? (it0.activity || "") : (it0.object_name || ""), n = (await uiPrompt(kind === "act" ? "Nytt namn på aktiviteten (gäller alla objekt i den):" : "Nytt namn på pricken:", cur) || "").trim();
     if (!n || n === cur) return; await objRename(kind === "act" ? (() => { const f2 = new Set([fkOf(it0)]); const pl = o.pool || items; return pl.filter(x => f2.has(fkOf(x))); })() : [it0], kind === "act" ? "activity" : "object_name", n, o.file); }; });
   const kl = m.querySelector("[data-ost-kl]"), ki = m.querySelector("[data-ost-ki]"), kb = m.querySelector("[data-ost-kb]");

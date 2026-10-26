@@ -535,7 +535,7 @@ function objectTipHtml(o) {
   const zone = ((plan && plan.zones) || []).find(z => (z.polys || []).some(poly => pointInPoly(o.center, poly)));
   const progress = it.status === "klar" ? 100 : (Number(it.progress) || 0);
   const rows = [
-    `<b>${escHtml(it.object_name || it.activity || it.object_id)}</b>`,
+    `<b>${escHtml((plan && plan.dotNames && plan.dotNames[it.id]) || it.object_name || it.activity || it.object_id)}</b>`,
     [it.area, it.activity].filter(Boolean).map(escHtml).join(" · "),
     `<span style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${phaseColor(ph)};margin-right:5px;"></span>${escHtml(PHASE_LABELS[ph] || ph)} · ${progress} % klart`,
     it.start_date ? `Plan: ${escHtml(it.start_date)} → ${escHtml(it.end_date || "?")}` : "Inga planerade datum",
@@ -589,7 +589,7 @@ function updateHiddenLabelsBtn() {
 }
 let objLabelBoxes = []; // senast ritade namnetiketter på skärmen: { box, ids, text, act }
 function objLabelText(it) {
-  const t = String(it.object_name || it.activity || "").trim();
+  const t = String((plan && plan.dotNames && plan.dotNames[it.id]) || it.object_name || it.activity || "").trim();   // visuellt namn (bara i lägesplanen) går före
   return t.length > 18 ? t.slice(0, 17) + "…" : t;
 }
 /* scr (skärmen): { map: pdf-punkt -> skärm-px, fs, r } – namnen ritas då på
