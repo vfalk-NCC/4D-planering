@@ -265,6 +265,23 @@ function p3dSetCutDepth(el, off) {
   el.view = v; delete el.viewRef;
   p3d.cache.delete(el.id); p3d.pend.delete(el.id); pr.dirty = true; drawPrintPage();
 }
+/* Spara vyn från layouten (som i 3D-editorns Vyer, delas i projektet): uppdatera en befintlig eller spara som ny. */
+async function p3dSaveView(el, mode) {
+  const live = p3d.live && p3d.live.el === el, cur = live ? l3MakeView("x") : p3dResolve(el);
+  if (!cur) { uiAlert("Det finns ingen vy att spara ännu."); return; }
+  const existing = live ? p3d.live.chosen : (el.viewRef || (cur.name && p3dSaved().some(x => x.name === cur.name) ? cur.name : ""));
+  let name = existing;
+  if (mode === "new" || !name) {
+    name = await uiPrompt("Namn på den sparade vyn (visas i 3D-editorns Vyer):", existing ? existing + " 2" : "Utskriftsvy");
+    name = String(name || "").trim(); if (!name) return;
+  }
+  const list = p3dSaved().slice(), v = { ...JSON.parse(JSON.stringify(cur)), name }, i = list.findIndex(x => x.name.toLowerCase() === name.toLowerCase());
+  if (i >= 0) list[i] = v; else list.push(v);
+  l3StoreViews(list.slice(-60)); if (typeof l3RenderSavedViews === "function") l3RenderSavedViews();
+  if (live) p3d.live.chosen = name; else { el.view = JSON.parse(JSON.stringify(v)); el.viewRef = name; p3d.cache.delete(el.id); p3d.pend.delete(el.id); }
+  pr.dirty = true; renderPrintProps();
+  l3Status(i >= 0 ? `Vyn "${name}" uppdaterad.` : `Vyn "${name}" sparad – finns i 3D-editorns Vyer.`);
+}
 /* Panelen i sidomenyn medan vyn är levande + reglaget Snittdjup (visas även utan levande vy när vyn har ett snitt). */
 function p3dCutHtml(el, v) {
   const live = p3d.live && p3d.live.el === el;
@@ -280,6 +297,7 @@ function p3dLiveHtml(el) {
   const views = p3dSaved(), L = p3d.live, ortho = l3.camera.isOrthographicCamera;
   return `<div class="p3d-livepanel"><b>Redigerar vyn live</b><div class="hint">Snurra och zooma direkt i bilden (som i 3D-editorn). Bubblor, datum och skala syns som på bladet.</div>
     <div class="row" style="gap:6px;margin-top:6px;"><button type="button" id="prV3Done" class="primary" style="flex:1;">✓ Klar</button><button type="button" id="prV3Cancel">Avbryt</button></div>
+    <div class="row" style="gap:6px;margin-top:8px;">${L.chosen ? `<button type="button" id="prV3SaveUp" style="flex:1;" title="Skriver över den sparade vyn med det du ser nu (3D-editorn och andra layouter som följer vyn får den också)">Uppdatera vyn "${escHtml(L.chosen)}"</button>` : ""}<button type="button" id="prV3SaveNew" style="flex:1;" title="Sparar det du ser nu som en ny vy i 3D-editorns Vyer">Spara som ny vy…</button></div>
     <label style="margin-top:8px;">Utgå från sparad vy</label>
     <select id="prV3LiveSel"><option value="">– nuvarande kamera –</option>${views.map(x => `<option value="${escHtml(x.name)}"${x.name === L.chosen ? " selected" : ""}>${escHtml(x.name)}</option>`).join("")}</select>
     ${L.chosen ? `<label class="check"><input type="checkbox" id="prV3Follow" checked /> Följ vyn (uppdateras när den sparas om i 3D)</label>` : ""}
@@ -297,6 +315,7 @@ function p3dPropsHtml(el, chk) {
   if (p3d.live && p3d.live.el === el) return p3dLiveHtml(el) + p3dPropsHtmlMore(el, chk, views, v, ref);
   return `<button id="prV3Pick" class="block primary" style="margin-top:8px;"${el.locked ? " disabled" : ""} title="Aktiverar vyn direkt i layouten – snurra och zooma i bilden">🎥 Ställ in vyn</button>
     ${v ? p3dCutHtml(el, v) : ""}
+    ${v ? `<div class="row" style="gap:6px;margin-top:8px;"><button type="button" id="prV3SaveNew" style="flex:1;" title="Sparar vyn som den ser ut i layouten som en vy i 3D-editorns Vyer">Spara vyn i 3D-editorn…</button></div>` : ""}
     ${p3dPropsHtmlMore(el, chk, views, v, ref)}`;
 }
 function p3dPropsHtmlMore(el, chk, views, v, ref) {
@@ -324,6 +343,8 @@ function p3dPropsBind(el) {
   const g = id => document.getElementById(id);
   document.querySelectorAll("#prProps [data-bf]").forEach(c => { c.onchange = () => { pushUndo(); el.bubF = { ...(el.bubF || {}), [c.dataset.bf]: c.checked }; p3d.cache.delete(el.id); p3d.pend.delete(el.id); drawPrintPage(); }; });
   if (g("prV3Pick")) g("prV3Pick").onclick = () => p3dPick(el);
+  if (g("prV3SaveUp")) g("prV3SaveUp").onclick = () => p3dSaveView(el, "up");
+  if (g("prV3SaveNew")) g("prV3SaveNew").onclick = () => p3dSaveView(el, "new");
   if (g("prV3Done")) g("prV3Done").onclick = () => p3dLiveEnd(true);
   if (g("prV3Cancel")) g("prV3Cancel").onclick = () => p3dLiveEnd(false);
   if (g("prV3Face")) g("prV3Face").onclick = () => (p3dFace ? p3dLiveFaceStop() : p3dLiveFace());

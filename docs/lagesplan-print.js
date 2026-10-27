@@ -1665,7 +1665,16 @@ function renderPrintProps(onlyPos) {
       <div class="row" style="gap:14px;">${chk("bold", "<b>Fetstil</b>")}${chk("italic", "<i>Kursiv</i>")}</div><div class="hint">Marginal i mm från rutans kant. Radavstånd i × teckenhöjden.</div>`;
   if (el.type === "text") html += textOpts(10, `${color("color", "Färg")}${color("fill", "Bakgrund", true)}${color("border", "Ram", true)}<div></div>`);
   if (el.type === "callout") html += textOpts(9, `${color("color", "Text")}${color("fill", "Fyllning", true)}${color("stroke", "Kant", true)}${num("lw", "Tjocklek", "0.05")}`)
-    + `<div class="pr-grid4">${num("radius", "Hörn mm", "0.5")}</div><div class="hint">Dra i handtaget i spetsen för att peka ut något. Spetsen står kvar när bubblan ändrar storlek.</div>`;
+    + `<div class="pr-grid4">${num("radius", "Hörn mm", "0.5")}</div>` + (() => {
+      const leader = el.bmode === "leader", tails = { classic: "Klassisk", slim: "Smal", wide: "Bred", curved: "Böjd" }, st = el.astyle || "modern", sh = el.ashape || "straight";
+      const sbtn = ([k, v]) => `<button type="button" data-bastyle="${k}" class="${st === k ? "on" : ""}" title="${v.label}"><img src="${arrowThumb(k, sh, el.acolor || el.stroke)}" alt="" /><span>${v.label}</span></button>`;
+      return `<label>Pekare</label><div class="seg pr-seg"><button type="button" data-bmode="tail" class="${leader ? "" : "on"}">Spets</button><button type="button" data-bmode="leader" class="${leader ? "on" : ""}">Ledlinje (pil)</button></div>`
+        + (leader ? `<label>Pilstil</label><div class="pr-north pr-arrows">${Object.entries(ARROW_STYLES).map(sbtn).join("")}</div>
+          <label>Form</label><div class="pr-north pr-arrows pr-ashape">${Object.entries(ARROW_SHAPES).map(([k, n]) => `<button type="button" data-bashape="${k}" class="${sh === k ? "on" : ""}" title="${n}"><img src="${arrowThumb(st, k, el.acolor || el.stroke)}" alt="" /><span>${n}</span></button>`).join("")}</div>
+          <div class="pr-grid4">${color("acolor", "Pilfärg", true)}${num("alw", "Pil mm", "0.1")}</div>`
+          : `<label>Spetsens form</label><div class="seg pr-seg">${Object.entries(tails).map(([k, n]) => `<button type="button" data-btail="${k}" class="${(el.tail || "classic") === k ? "on" : ""}">${n}</button>`).join("")}</div>`)
+        + `${chk("shadow", "Skugga")}<div class="hint">Dra i handtaget i spetsen för att peka ut något. Pekaren står kvar när bubblan ändrar storlek.</div>`;
+    })();
   if (el.type === "view3d" && typeof p3dPropsHtml === "function") html += p3dPropsHtml(el, chk);
   if (el.type === "image") html += `<button id="prPickImg" class="block" style="margin-top:8px;">🖼 ${el.path ? "Byt bild…" : "Välj bild…"}</button><div class="hint">PNG, JPG eller SVG – t.ex. företagets logga eller skyltar. Bilden sparas i projektet. Proportionerna behålls (Shift = fritt).</div>
       ${el.path ? `<label style="margin-top:8px;">Beskär (% av bilden)</label><button type="button" id="prImgCrop" class="block" title="Dra i handtagen på bilden för att beskära">✂ Beskär med musen…</button><div class="pr-grid4">${num("cropL", "Vänster", "1")}${num("cropR", "Höger", "1")}${num("cropT", "Över", "1")}${num("cropB", "Under", "1")}</div>
@@ -1844,6 +1853,10 @@ function renderPrintProps(onlyPos) {
   on("prFromView", () => { pushUndo(); el.center = viewCenterModel(); el.scale = fitScale(el.w, el.h, pr.tpl.format); renderPrintPanel(); drawPrintPage(); });
   box.querySelectorAll("[data-tset]").forEach(b => { b.onclick = () => { pushUndo(); el[b.dataset.tset] = b.dataset.v; renderPrintProps(); drawPrintPage(); }; });
   box.querySelectorAll("[data-arrow]").forEach(b => { b.onclick = () => { pushUndo(); el.style = b.dataset.arrow; el.lw = ARROW_STYLES[el.style].lw; renderPrintProps(); drawPrintPage(); }; });
+  box.querySelectorAll("[data-bmode]").forEach(b => { b.onclick = () => { pushUndo(); el.bmode = b.dataset.bmode; renderPrintProps(); drawPrintPage(); }; });
+  box.querySelectorAll("[data-btail]").forEach(b => { b.onclick = () => { pushUndo(); el.tail = b.dataset.btail; renderPrintProps(); drawPrintPage(); }; });
+  box.querySelectorAll("[data-bastyle]").forEach(b => { b.onclick = () => { pushUndo(); el.astyle = b.dataset.bastyle; delete el.alw; renderPrintProps(); drawPrintPage(); }; });
+  box.querySelectorAll("[data-bashape]").forEach(b => { b.onclick = () => { pushUndo(); el.ashape = b.dataset.bashape; renderPrintProps(); drawPrintPage(); }; });
   box.querySelectorAll("[data-ashape]").forEach(b => { b.onclick = () => { pushUndo(); el.shape = b.dataset.ashape; renderPrintProps(); drawPrintPage(); }; });
   box.querySelectorAll("[data-north]").forEach(b => { b.onclick = () => { pushUndo(); el.style = b.dataset.north; renderPrintProps(); drawPrintPage(); }; });
   if (el.type === "map") {
@@ -2054,6 +2067,9 @@ async function exportPrintPdf() {
       } else if (el.type === "callout") {
         pdfCalloutShape(doc, el, k);
         pdfTextBlock(doc, el, x, y, w, h, tpl, k, 9);
+        { const ld = typeof calloutLeader === "function" ? calloutLeader(el) : null;   // ledlinjen (pil) rastreras i 300 dpi som Pil-elementet
+          if (ld) { const b = arrowBounds(ld), uu = 300 / 25.4, c = newCanvas(Math.max(1, Math.ceil(b.w * k * uu)), Math.max(1, Math.ceil(b.h * k * uu))), cx = c.getContext("2d");
+            cx.translate(-b.x * k * uu, -b.y * k * uu); drawElement(cx, ld, tpl, uu, k); doc.addImage(c.toDataURL("image/png"), "PNG", b.x * k, b.y * k, b.w * k, b.h * k, undefined, "FAST"); } }
       } else if (el.type === "ellipse") {
         if (!el.stroke && !el.fill) continue;
         const dash = prDashMm(el), cx = x + w / 2, cy = y + h / 2;

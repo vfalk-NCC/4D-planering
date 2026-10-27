@@ -174,6 +174,20 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return out;
   });
   if (!p.live || !p.inWrap || !p.modalOpen || !p.canvasIn || !p.panel || Math.abs(p.ratio - p.want) > 0.05 || p.after.live || !p.after.canvasBack || !p.after.view) fail('Ställ in vyn (levande): ' + JSON.stringify(p));
+  // Pratbubblor: spetsform + ledlinje (pil), spara vyn från layouten
+  { const c = await page.evaluate(async () => {
+      const mk = o => ({ id: 'cb' + Math.random(), type: 'callout', x: 20, y: 20, w: 50, h: 18, tx: 80, ty: 50, radius: 2, fill: '#fff', stroke: '#1f2937', lw: 0.35, text: 'Hej', ...o });
+      const n = o => calloutOutline(mk(o)).length, out = { classic: n({}), curved: n({ tail: 'curved' }), none: n({ bmode: 'leader' }) };
+      out.ld = !!calloutLeader(mk({ bmode: 'leader', astyle: 'block' })); out.noLd = !calloutLeader(mk({}));
+      const cv = document.createElement('canvas'); cv.width = 400; cv.height = 300; const ctx = cv.getContext('2d');
+      ['classic', 'slim', 'wide', 'curved'].forEach(t => drawCalloutShape(ctx, mk({ tail: t, shadow: true }), 4));
+      drawCalloutShape(ctx, mk({ bmode: 'leader', astyle: 'gradient', ashape: 'arc' }), 4);
+      const el = pr.tpl.elements.find(e => e.type === 'view3d'); el.view = JSON.parse(JSON.stringify(el.view || p3dSaved()[0])); delete el.viewRef; el.view.name = 'x';
+      uiPrompt = async () => 'Från layouten'; await p3dSaveView(el, 'new');
+      out.saved = p3dSaved().some(v => v.name === 'Från layouten'); out.ref = el.viewRef;
+      return out;
+    });
+    if (!(c.curved > c.classic) || c.none >= c.classic || !c.ld || !c.noLd || !c.saved || c.ref !== 'Från layouten') fail('Pratbubblor/spara vy: ' + JSON.stringify(c)); console.log('pratbubblor+spara vy OK', JSON.stringify(c)); }
   if (errors.filter(e => !/allow-same-origin/.test(e)).length) fail('sidfel: ' + errors.slice(0, 3).join(' | '));
   console.log('OK test_lagesplan_print3d – sparad vy som bild på bladet, kameran orörd, ställ in vyn med ram, PDF-bild');
   await browser.close(); server.close();
