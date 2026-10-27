@@ -1606,6 +1606,7 @@ function l3Key(e) {
   if (mod && k === "a") { e.preventDefault(); l3SelectIds(placements.filter(p => { const g = l3.placeMeshes.get(p.id); return g && g.visible; }).map(p => p.id)); return; }
   if (mod && k === "p") { e.preventDefault(); l3TogglePlan(); return; }
   if (e.key === "F2" && !mod) { e.preventDefault(); l3LogToggle(); return; }
+  if (e.key === "Escape" && document.getElementById("v3TintPop")) { document.getElementById("v3TintPop").remove(); return; } // färgrutan
   if (e.key === "Escape" && typeof l3k !== "undefined" && (l3k.open || l3k.draft)) { l3kClose(); return; } // kommentarens popup
   if (e.key === "Escape" && typeof l3ss !== "undefined" && l3ss.sel) { l3ssSelect(null); return; } // markerad DXF/PDF
   // Delete tar bort markerade mått (Victor 2026-10-10) – låsta står kvar.

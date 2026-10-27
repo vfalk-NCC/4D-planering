@@ -102,3 +102,45 @@ function l3tintOpen(anchor) {
   const esc = ev => { if (ev.key === "Escape") { ev.stopPropagation(); close(); } };
   setTimeout(() => { document.addEventListener("pointerdown", close, true); document.addEventListener("keydown", esc, true); }, 0);
 }
+
+/* ---- Färgburken i snabbfältet (Victor 2026-10-27): färg och opacitet för det markerade – etableringsobjekt (sparas på objektet)
+   och/eller byggnadsobjekt i IFC-modellerna (bara sessionen, som färgrutan i högerpanelen). ---- */
+function l3paintOpen(anchor) {
+  const exist = document.getElementById("v3TintPop"); if (exist) { exist.remove(); return; }
+  const P = typeof l3SelList === "function" ? l3SelList().filter(p => !(placeLib(p.type) || {}).isModel) : [], nI = typeof l3bs !== "undefined" ? l3bs.sel.length : 0;
+  if (!P.length && !nI) { if (typeof l3Status === "function") l3Status("Markera något att färga först.", true); return; }
+  if (!P.length) { l3tintOpen(anchor); return; }
+  const host = l3.renderer.domElement.parentElement ? document.getElementById("v3Canvas") : null; if (!host) return;
+  const pop = document.createElement("div"); pop.id = "v3TintPop"; pop.className = "v3-pop v3-tintpop";
+  const colOf = p => String(p.color || (placeLib(p.type) || {}).color || "#94a3b8"), opOf = p => Number(p.opacity) || 1;
+  const apply = (patch, snap) => {
+    if (snap !== false) placeSnapshot();
+    P.forEach(p => { if ("color" in patch) { if (patch.color) p.color = patch.color; else delete p.color; } if ("alpha" in patch) { if (patch.alpha >= 1) delete p.opacity; else p.opacity = patch.alpha; } placeTouch(p); l3RebuildOne(p); });
+    if (nI) { const o = {}; if ("color" in patch) o.color = patch.color; if ("alpha" in patch) o.alpha = patch.alpha; l3tApply(o, "färg"); }
+    l3Changed(); if (typeof l3Render === "function") l3Render();
+  };
+  const draw = () => {
+    const c0 = colOf(P[0]).toLowerCase(), same = P.every(p => colOf(p).toLowerCase() === c0), a = P.every(p => opOf(p) === opOf(P[0])) ? opOf(P[0]) : null, n = P.length + nI;
+    pop.innerHTML = `<div class="v3-tint-h"><b>Färg ${n > 1 ? `för ${n} objekt` : ""}</b><em>${nI ? "etablering sparas, byggnaden bara sessionen" : "sparas på objektet"}</em></div>
+      <div class="v3-tint-cols">${L3T_COLORS.map(c => `<button type="button" data-tc="${c}" class="${same && c0 === c ? "on" : ""}" style="background:${c}" title="${c}"></button>`).join("")}<label class="v3-tint-own" title="Egen färg"><input type="color" id="v3PaintOwn" value="${/^#[0-9a-f]{6}$/i.test(c0) ? c0 : "#94a3b8"}" /></label></div>
+      <label class="v3-tint-op"><span>Opacitet</span><input type="range" id="v3PaintOp" min="0.05" max="1" step="0.05" value="${a == null ? 1 : a}" /><b id="v3PaintOpV">${a == null ? "blandat" : Math.round(a * 100) + " %"}</b></label>
+      <div class="v3-tint-acts"><button type="button" id="v3PaintClr">Återställ markerade</button></div>`;
+    pop.querySelectorAll("[data-tc]").forEach(b => { b.onclick = () => { apply({ color: b.dataset.tc }); draw(); }; });
+    const own = pop.querySelector("#v3PaintOwn"); let snapped = false;
+    own.oninput = () => { apply({ color: own.value }, !snapped); snapped = true; };
+    own.onchange = () => { snapped = false; draw(); };
+    const op = pop.querySelector("#v3PaintOp"), opv = pop.querySelector("#v3PaintOpV"); let snapA = false;
+    op.oninput = () => { opv.textContent = Math.round(op.value * 100) + " %"; apply({ alpha: Number(op.value) }, !snapA); snapA = true; };
+    op.onchange = () => { snapA = false; draw(); };
+    pop.querySelector("#v3PaintClr").onclick = () => { apply({ color: null, alpha: 1 }); draw(); };
+  };
+  draw();
+  ["pointerdown", "click", "keydown", "wheel"].forEach(t => pop.addEventListener(t, e => e.stopPropagation()));
+  host.appendChild(pop);
+  const hr = host.getBoundingClientRect(), ar = anchor.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(hr.width - pop.offsetWidth - 8, ar.left - hr.left + ar.width / 2 - pop.offsetWidth / 2)) + "px";
+  pop.style.top = Math.max(8, ar.top - hr.top - pop.offsetHeight - 8) + "px";   // ovanför fältet
+  const close = ev => { if (ev && (pop.contains(ev.target) || (ev.target.closest && ev.target.closest('[data-cb="p:paint"]')))) return; pop.remove(); document.removeEventListener("pointerdown", close, true); window.removeEventListener("keydown", esc, true); };
+  const esc = ev => { if (ev.key === "Escape") { ev.stopPropagation(); close(); } };
+  setTimeout(() => { document.addEventListener("pointerdown", close, true); window.addEventListener("keydown", esc, true); }, 0);
+}

@@ -83,6 +83,7 @@ function l3UiInit(box) {
      <i></i>
      <button type="button" data-cb="k:lock" data-tip="Lås på plats" id="v3CbLock">${L3UI_ICO.lock}</button>
      <button type="button" data-cb="c:dup" data-tip="Duplicera">${L3UI_ICO.dup}</button>
+     <button type="button" data-cb="p:paint" data-tip="Färg och opacitet"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11 10.5 2.5 3 10l8.5 8.5a2 2 0 0 0 2.8 0L19 13.8a2 2 0 0 0 0-2.8z"/><path d="M3 10h16"/><path d="M21 15s2 2.3 2 3.5a2 2 0 0 1-4 0C19 17.300 21 15 21 15z"/></svg></button>
      <button type="button" data-cb="c:hide" data-tip="Dölj">${L3UI_ICO.hide}</button>
      <button type="button" data-cb="c:iso" data-tip="Visa bara dessa">${L3UI_ICO.iso}</button>
      <button type="button" data-cb="x:open" data-tip="Spränga isär">${L3UI_ICO.boom}</button>
@@ -96,6 +97,7 @@ function l3UiInit(box) {
     if (k === "t") { const t = box.querySelector(`[data-v3tool="${v}"]`); if (t) t.click(); }
     else if (k === "c") { const c = box.querySelector(`[data-v3cmd="${v}"]`); if (c) c.click(); }
     else if (k === "k") l3LockToggle();
+    else if (k === "p") { if (typeof l3paintOpen === "function") l3paintOpen(b); }
     else if (k === "x") { if (typeof l3xStart === "function") l3xStart(); }
     else if (k === "v") { const c = box.querySelector(`[data-v3view="${v}"]`); if (c) c.click(); }
   };

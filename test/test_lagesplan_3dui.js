@@ -82,6 +82,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (await page.isVisible('#v3CtxBar')) fail('Snabbfältet ska vara dolt utan markering');
   await page.evaluate(() => l3SelectIds([placements[0].id])); await sleep(700);
   if (!(await page.isVisible('#v3CtxBar')) || !/1 vald/.test(await page.textContent('#v3CbN'))) fail('Snabbfältet ska visas vid markering');
+  // Färgburken: färg + opacitet på markerat etableringsobjekt
+  await page.click('#v3CtxBar [data-cb="p:paint"]'); await page.waitForSelector('#v3TintPop');
+  await page.click('#v3TintPop [data-tc="#ef4444"]');
+  await page.$eval('#v3PaintOp', i => { i.value = '0.5'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); });
+  const pt = await page.evaluate(() => { const p = l3SelList()[0]; return { c: p.color, o: p.opacity }; });
+  if (pt.c !== '#ef4444' || pt.o !== 0.5) fail('Färgburken: ' + JSON.stringify(pt));
+  await page.click('#v3PaintClr'); await sleep(50); await page.keyboard.press('Escape'); await sleep(100);
+  if (await page.$('#v3TintPop')) fail('Färgrutan ska stängas med Esc ' + await page.evaluate(() => document.querySelectorAll('#v3TintPop').length + ' ' + (document.activeElement && document.activeElement.tagName)));
   await page.click('#v3CtxBar [data-cb="c:dup"]'); await sleep(300);
   if (await page.evaluate(() => placements.length) !== n0 + 1) fail('Duplicera i snabbfältet');
   await page.evaluate(() => { l3Undo(); l3SelectIds([]); }); await sleep(600);
