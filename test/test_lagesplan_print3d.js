@@ -62,6 +62,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.objMesh && l3.placeMeshes.size === 1, null, { timeout: 15000 });
   await page.waitForTimeout(300);
   const sleep = ms => page.waitForTimeout(ms);
+  if (process.env.SHOT) await page.exposeFunction('__IMG', async d => require('fs').writeFileSync(process.env.SHOT + '-bub.png', Buffer.from(d.split(',')[1], 'base64')));
   if (process.env.SHOT) await page.exposeFunction('__SHOT', async n => { await page.screenshot({ path: process.env.SHOT + '-' + n + '.png' }); });
   // 3D-vy i utskriftslayouten: en sparad vy i 3D-editorn blir en bild på bladet
   const r = await page.evaluate(async () => {
@@ -115,6 +116,31 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       return out;
     });
     if (!sc.hasInput || sc.after !== 500 || Math.abs(sc.zoom - 100 * 1000 / (500 * sc.hmm)) > 1e-6 || sc.persp !== null || sc.before !== Math.round(100 * 1000 / sc.hmm)) fail('Skala på 3D-vyn: ' + JSON.stringify(sc)); }
+  // Bubblor med framdrift: renderas utan fel; Rikta mot yta: vyn blir parallell mot ytan och ett snitt läggs i den
+  { const b = await page.evaluate(async () => {
+      placements.forEach(p => { p.itemId = 'i1'; }); const el = pr.tpl.elements.find(e => e.type === 'view3d'); el.bub = 'all'; el.bubMax = 10; el.view = (() => { const v = JSON.parse(JSON.stringify(p3dResolve(el))); return v; })();
+      const c = await p3dRender(p3dResolve(el), 400, 280, p3dOpts(el)); const c0 = await p3dRender(p3dResolve(el), 400, 280, p3dOpts({ ...el, bub: '' }));
+      const diff = (a, b2) => { const x = a.getContext('2d').getImageData(0, 0, 400, 280).data, y = b2.getContext('2d').getImageData(0, 0, 400, 280).data; let n = 0; for (let i = 0; i < x.length; i += 4) if (x[i] !== y[i] || x[i + 1] !== y[i + 1]) n++; return n; };
+      if (window.__IMG) await window.__IMG(c.toDataURL('image/png'));
+      return { ok: !!c && !!c0, diff: diff(c, c0), anchors: (typeof l3bub !== 'undefined' && l3bub.anchors || []).length, key: p3dKey(el, p3dResolve(el), 400, 280) !== p3dKey({ ...el, bub: '' }, p3dResolve(el), 400, 280) };
+    });
+    if (!b.ok || !b.key || !(b.diff > 100)) fail('Bubblor i 3D-vyn: ' + JSON.stringify(b)); console.log('bubblor', JSON.stringify(b)); }
+  { const f = await page.evaluate(async () => {
+      const el = pr.tpl.elements.find(e => e.type === 'view3d'); delete el.viewRef;
+      p3dPick(el); await new Promise(r => setTimeout(r, 1500));
+      document.getElementById('p3dFace').click();
+      const dom = l3.renderer.domElement, r = dom.getBoundingClientRect(); let hit = false;
+      for (let gy = 0.3; gy <= 0.8 && !hit; gy += 0.05) for (let gx = 0.3; gx <= 0.7 && !hit; gx += 0.04) {
+        if (!document.getElementById('p3dFace').classList.contains('on')) document.getElementById('p3dFace').click();
+        dom.dispatchEvent(new PointerEvent('pointerdown', { clientX: r.left + r.width * gx, clientY: r.top + r.height * gy, bubbles: true, cancelable: true, pointerId: 1 }));
+        hit = (l3.clips || []).some(c => c.p3d);
+      }
+      const c = (l3.clips || []).find(c => c.p3d), cam = l3.camera, dir = cam.position.clone().sub(l3.orbit.target).normalize();
+      const out = { hit, ortho: cam.isOrthographicCamera, par: c ? Math.abs(dir.dot(c.plane.normal)) : 0 };
+      document.getElementById('p3dCancel').click(); await new Promise(r2 => setTimeout(r2, 300));
+      return out;
+    });
+    if (!f.hit) console.log('OBS: ingen yta träffades i testscenen (rutnätet)'); else if (!f.ortho || f.par < 0.99) fail('Rikta mot yta: ' + JSON.stringify(f)); else console.log('rikta mot yta OK', JSON.stringify(f)); }
   // Ställ in vyn: 3D visas med ram, Använd vyn sparar kameran i elementet
   const p = await page.evaluate(async () => {
     const el = pr.tpl.elements.find(e => e.type === 'view3d'); delete el.viewRef;

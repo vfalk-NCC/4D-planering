@@ -21,9 +21,10 @@ function p3dResolve(el) {
   if (el.viewRef) { const v = p3dSaved().find(x => x.name === el.viewRef); if (v) return v; }
   return el.view || null;
 }
+const p3dOpts = (el, hMm) => ({ white: el.bg3d === "white", bub: el.bub || "", bubMax: el.bubMax, bubSize: el.bubSize, hMm: hMm || p3dHmm(el) });
 function p3dKey(el, v, W, H) {
   if (!v) return "";
-  return JSON.stringify([v.p, v.t, v.ortho, v.zoom, v.clips, v.meas, v.hid && [(v.hid.guids || []).length, (v.hid.place || []).length, (v.hid.objs || []).length], v.clouds, el.bg3d || "", W, H]);
+  return JSON.stringify([v.p, v.t, v.ortho, v.zoom, v.clips, v.meas, v.hid && [(v.hid.guids || []).length, (v.hid.place || []).length, (v.hid.objs || []).length], v.clouds, el.bg3d || "", el.bub || "", el.bubMax || 0, el.bubSize || 100, el.bub ? ((typeof $ === "function" && $("dateInput")) ? $("dateInput").value : "") : "", W, H]);
 }
 
 /* Skala (parallellprojektion): bladets mm per modellmeter. Synlig höjd i modellen = L3_ORTHO_H / zoom; elementets höjd på papperet = el.h × k mm.
@@ -62,6 +63,13 @@ function p3dRenderNow(view, W, H, o = {}) {
     if (typeof l3pcRenderScene === "function") l3pcRenderScene(); else R.render(l3.scene, cam);
     out = document.createElement("canvas"); out.width = W; out.height = H;
     out.getContext("2d").drawImage(R.domElement, 0, 0, W, H);
+    // Bubblor med framdrift (3D-editorns egna): urval efter datum, samma innehåll som i 3D-vyn och filmen. Storleken följer bladet (texthöjd ca 2,6 mm).
+    if (o.bub && typeof l3fxBubbles === "function") {
+      const P = l3Prefs(), old = [P.bubScope, P.bubMax]; P.bubScope = o.bub; P.bubMax = o.bubMax || 15;
+      try { const mmH = o.hMm || 100; l3fxBubbles(out.getContext("2d"), W, H, (H / mmH) * 2.6 / 16.25 * ((o.bubSize || 100) / 100)); }
+      catch (e) { console.warn("Bubblor i 3D-vyn", e); }
+      finally { P.bubScope = old[0]; P.bubMax = old[1]; }
+    }
   } catch (e) { console.warn("3D-vy i utskriften", e); out = null; }
   finally {
     l3.scene.background = bg0;
@@ -86,7 +94,7 @@ function p3dPreview(el, wPx, hPx) {
     clearTimeout(p3dPreview.t && p3dPreview.t[el.id]);
     (p3dPreview.t = p3dPreview.t || {})[el.id] = setTimeout(async () => {
       if (typeof pr === "undefined" || !pr) return;
-      const c = await p3dRender(v, W, H, { white: el.bg3d === "white" });
+      const c = await p3dRender(v, W, H, p3dOpts(el));
       if (p3d.pend.get(el.id) === key) { p3d.pend.delete(el.id); if (c) p3d.cache.set(el.id, { key, canvas: c }); }
       if (typeof pr !== "undefined" && pr) drawPrintPage();
     }, 200);
@@ -98,7 +106,7 @@ async function p3dForPdf(el, wMm, hMm) {
   const v = p3dResolve(el); if (!v) return null;
   if (!p3dReady()) await p3dWarm();
   const px = Math.min(3600, Math.round(Math.max(wMm, hMm) / 25.4 * 250)), k = px / Math.max(wMm, hMm);
-  return p3dRender(v, Math.max(64, Math.round(wMm * k)), Math.max(48, Math.round(hMm * k)), { white: el.bg3d === "white" });
+  return p3dRender(v, Math.max(64, Math.round(wMm * k)), Math.max(48, Math.round(hMm * k)), p3dOpts(el, hMm));
 }
 /* Läser in 3D-scenen (modeller m.m.) utan att lämna layouten: 3D-editorn öppnas och stängs direkt. */
 function p3dWarm() {
@@ -137,13 +145,13 @@ async function p3dPick(el) {
     const views = p3dSaved(), curRef = el.viewRef && views.some(v => v.name === el.viewRef) ? el.viewRef : "";
     bar.innerHTML = `<b>3D-vy till utskriften</b><span class="p3d-hint">Snurra och zooma – det som syns i ramen hamnar på bladet</span><span class="p3d-scale" id="p3dScale" title="Skalan på bladet (parallellprojektion)"></span><label class="p3d-setscale" title="Ställ in skalan (parallellprojektion)">Skala 1: <input type="number" id="p3dScaleIn" min="1" step="1" style="width:76px"></label>
       <label>Utgå från vy <select id="p3dSel"><option value="">– nuvarande kamera –</option>${views.map(v => `<option value="${escHtml(v.name)}"${v.name === curRef ? " selected" : ""}>${escHtml(v.name)}</option>`).join("")}</select></label>
-      <label class="p3d-follow" title="Bladet uppdateras när vyn sparas om i 3D-editorn"><input type="checkbox" id="p3dFollow"${el.viewRef ? " checked" : ""}> Följ vyn</label>
+      <button type="button" id="p3dFace" title="Klicka på en yta i modellen – vyn riktas vinkelrätt mot den (parallellprojektion), t.ex. för en sektionsvy">⟂ Rikta mot yta</button><label class="p3d-follow" title="Lägger ett snitt i ytan så att det som är framför den tas bort (sektionsvy)"><input type="checkbox" id="p3dCut" checked> Snitt i ytan</label><label class="p3d-setscale" title="Flytta snittet framåt (−) eller bakåt (+) från ytan">Snittdjup <input id="p3dCutOff" type="number" step="0.1" value="0" style="width:62px"> m</label><label class="p3d-follow" title="Bladet uppdateras när vyn sparas om i 3D-editorn"><input type="checkbox" id="p3dFollow"${el.viewRef ? " checked" : ""}> Följ vyn</label>
       <span class="p3d-sp"></span><button type="button" id="p3dCancel">Avbryt</button><button type="button" id="p3dOk" class="primary">✓ Använd vyn</button>`;
     document.body.appendChild(bar);
     let chosen = curRef;
     const same = (a, b) => a && b && a.every((v, i) => Math.abs(v - b[i]) < 0.05);
     const finish = ok => {
-      clearInterval(tm); document.removeEventListener("keydown", key, true); window.removeEventListener("resize", fit);
+      clearInterval(tm); stopFace(); document.removeEventListener("keydown", key, true); window.removeEventListener("resize", fit);
       if (ok) {
         const v = l3MakeView(chosen || "Utskriftsvy"), ref = chosen ? p3dSaved().find(x => x.name === chosen) : null;
         el.view = v;
@@ -161,6 +169,25 @@ async function p3dPick(el) {
     const upd = () => { const sp = bar.querySelector("#p3dScale"), inp = bar.querySelector("#p3dScaleIn"); if (!sp) return; if (l3.camera.isOrthographicCamera) { const n = p3dScaleOfZoom(l3.camera.zoom, el); sp.textContent = `Skala 1:${n}`; if (document.activeElement !== inp) inp.value = n; inp.disabled = false; } else { sp.textContent = "Perspektiv – ingen skala"; inp.value = ""; inp.disabled = true; } };
     const tm = setInterval(upd, 250); upd();
     bar.querySelector("#p3dScaleIn").onchange = e => { const n = Number(e.target.value); if (n > 0 && l3.camera.isOrthographicCamera) { l3.camera.zoom = p3dZoomOfScale(n, el); l3.camera.updateProjectionMatrix(); l3.orbit.update(); l3Render(); upd(); } };
+    // Rikta vyn parallellt mot en yta (och lägg ett snitt i den): klicka på ytan i 3D.
+    const dom = l3.renderer.domElement;
+    const stopFace = () => { dom.removeEventListener("pointerdown", onFace, true); dom.style.cursor = ""; const b = bar.querySelector("#p3dFace"); if (b) b.classList.remove("on"); };
+    const onFace = ev => {
+      ev.preventDefault(); ev.stopImmediatePropagation(); stopFace();
+      const h = l3Ray(ev, l3Surfaces())[0];
+      if (!h || !h.face) { l3Status("Ingen yta där – klicka på en yta i modellen."); return; }
+      const n = h.face.normal.clone().transformDirection(h.object.matrixWorld).normalize();
+      if (n.dot(l3.camera.position.clone().sub(h.point)) < 0) n.negate();
+      if (!l3.camera.isOrthographicCamera) l3SetProjection(true);
+      l3.camera.up.set(Math.abs(n.z) > 0.9 ? 0 : 0, Math.abs(n.z) > 0.9 ? 1 : 0, Math.abs(n.z) > 0.9 ? 0 : 1);   // lodrät yta: z uppåt; vågrät: norr uppåt
+      l3FlyTo(h.point.clone(), 40, n, 0, true); l3.orbit.update();
+      l3.clips = (l3.clips || []).filter(c => !c.p3d);
+      if (bar.querySelector("#p3dCut").checked) { l3AddClip(n.clone().negate(), h.point.clone()); const c = l3.clips[l3.clips.length - 1]; if (c) { c.p3d = true; c.label = "Sektionsvy"; const off = Number(bar.querySelector("#p3dCutOff").value) || 0; if (off) l3cSet(l3.clips.length - 1, off); } }
+      l3ApplyClips(); l3Render(); upd();
+      l3Status("Vyn är riktad vinkelrätt mot ytan" + (bar.querySelector("#p3dCut").checked ? " med snitt i ytan." : "."));
+    };
+    bar.querySelector("#p3dFace").onclick = e => { e.stopPropagation(); l3StopFly(); dom.style.cursor = "crosshair"; e.currentTarget.classList.add("on"); dom.addEventListener("pointerdown", onFace, true); l3Status("Klicka på en yta i modellen – vyn riktas vinkelrätt mot den."); };
+    bar.querySelector("#p3dCutOff").onchange = e => { const i = (l3.clips || []).findIndex(c => c.p3d); if (i >= 0) { l3cSet(i, Number(e.target.value) || 0); l3Render(); } };
     const key = e => { if (e.key === "Escape") { e.stopPropagation(); finish(false); } };
     document.addEventListener("keydown", key, true);
     bar.querySelector("#p3dCancel").onclick = () => finish(false);
@@ -184,6 +211,9 @@ function p3dPropsHtml(el, chk) {
     ${v && v.ortho ? `<label style="margin-top:8px;">Skala</label><div class="row" style="flex-wrap:nowrap;gap:6px;"><span>1 :</span><input type="number" id="prV3Scale" min="1" step="1" value="${p3dScaleOf(el) || ""}" style="width:90px;"${el.locked ? " disabled" : ""} title="Skalan på det som syns i bilden (vid bladets format). Ändrar zoomen i vyn." /><select id="prV3ScaleSel" title="Vanliga skalor"><option value="">Välj…</option>${(typeof PRINT_SCALES !== "undefined" ? PRINT_SCALES : [50, 100, 200, 500, 1000]).map(n => `<option value="${n}">1:${n}</option>`).join("")}</select></div>
       ${chk("showScale", "Visa skalan på bilden")}`
       : `<div class="hint" style="margin-top:8px;">Skala: perspektivvyer har ingen skala. Välj parallellprojektion (ortho) i 3D-editorn för att kunna ställa in och läsa skalan.</div>`}
+    <label style="margin-top:8px;">Bubblor med framdrift</label>
+    <select data-f="bub" title="Aktivitetsbubblor (namn, datum, framdrift) vid objekten, som i 3D-editorn. Urvalet följer datumet i lägesplanen."><option value=""${el.bub ? "" : " selected"}>Inga</option><option value="active"${el.bub === "active" ? " selected" : ""}>Aktiva vid datumet</option><option value="all"${el.bub === "all" ? " selected" : ""}>Alla aktiviteter</option></select>
+    ${el.bub ? `<div class="pr-grid4"><div style="grid-column:span 2;"><label>Högst antal</label><input type="number" min="1" max="100" data-f="bubMax" data-num="1" value="${el.bubMax || 15}" /></div><div style="grid-column:span 2;"><label>Storlek %</label><input type="number" min="40" max="300" step="10" data-f="bubSize" data-num="1" value="${el.bubSize || 100}" /></div></div>` : ""}
     <label style="margin-top:6px;">Bakgrund</label>
     <select data-f="bg3d"><option value=""${el.bg3d ? "" : " selected"}>Som i 3D-editorn</option><option value="white"${el.bg3d === "white" ? " selected" : ""}>Vit</option></select>
     ${chk("border", "Ram runt bilden")}
@@ -207,7 +237,7 @@ function p3dPropsBind(el) {
   if (g("prV3Scale")) g("prV3Scale").onchange = e => setScale(e.target.value);
   if (g("prV3ScaleSel")) g("prV3ScaleSel").onchange = e => setScale(e.target.value);
   if (g("prV3Follow")) g("prV3Follow").onchange = e => { if (!e.target.checked) { pushUndo(); const v = p3dResolve(el); if (v) el.view = JSON.parse(JSON.stringify(v)); delete el.viewRef; renderPrintProps(); drawPrintPage(); } };
-  document.querySelectorAll('#prProps [data-f="bg3d"]').forEach(s => s.addEventListener("change", () => { p3d.cache.delete(el.id); p3d.pend.delete(el.id); drawPrintPage(); }));
+  document.querySelectorAll('#prProps [data-f="bg3d"], #prProps [data-f="bub"], #prProps [data-f="bubMax"], #prProps [data-f="bubSize"]').forEach(s => s.addEventListener("change", () => { p3d.cache.delete(el.id); p3d.pend.delete(el.id); if (s.dataset.f === "bub") renderPrintProps(true); drawPrintPage(); }));
 }
 /* Ritar elementet (anropas från drawElement). */
 function p3dDraw(ctx, el, X, Y, W, H, k, u, opts) {
