@@ -67,7 +67,9 @@ function l3BvhInit() {
   if (!window.MeshBVHLib || !window.THREE || THREE.BufferGeometry.prototype.computeBoundsTree) return;
   THREE.BufferGeometry.prototype.computeBoundsTree = MeshBVHLib.computeBoundsTree;
   THREE.BufferGeometry.prototype.disposeBoundsTree = MeshBVHLib.disposeBoundsTree;
-  THREE.Mesh.prototype.raycast = MeshBVHLib.acceleratedRaycast;
+  const accel = MeshBVHLib.acceleratedRaycast;
+  // Träffar använder alltid den fulla indexlistan (den förenklade bilden gäller bara medan kameran rör sig).
+  THREE.Mesh.prototype.raycast = function (rc, hits) { if (this.userData.l3b && this.userData.l3b.lodOn && typeof l3lodRestoreMesh === "function") { l3lodRestoreMesh(this); if (typeof l3lod !== "undefined") l3lod.level = -1; if (typeof l3Render === "function") l3Render(); } return accel.call(this, rc, hits); };
 }
 /* Indexen byggs en bit i taget när sidan är ledig, så att inläsningen inte hackar. */
 const l3BvhQueue = [];
@@ -81,11 +83,17 @@ function l3BvhSchedule(mesh) {
   l3BvhBusy = true;
   const idle = window.requestIdleCallback || (f => setTimeout(() => f({ timeRemaining: () => 12 }), 16));
   const step = dl => {
+    // Ett indexbygge tar 0,1–1 s och går inte att avbryta: det väntar tills kameran stått stilla en stund (inget hack under rörelse).
+    if (typeof l3CamLast !== "undefined" && (l3CamLast.moving || performance.now() - (l3CamLast.lastMove || 0) < 600)) { setTimeout(() => idle(step), 300); return; }
+    const later = [];
     while (l3BvhQueue.length && (!dl || dl.timeRemaining() > 4)) {
       const m = l3BvhQueue.shift();
-      try { if (m.parent && m.geometry && m.geometry.index && !m.geometry.boundsTree) m.geometry.computeBoundsTree({ maxLeafTris: 16 }); } catch (e) { console.warn("BVH", e); }
+      // Biten ligger inte i scenen ännu (modellen byggs i omgångar): försök igen om en stund.
+      if (!m.parent && (m.userData.bvhTry = (m.userData.bvhTry || 0) + 1) < 80) { later.push(m); continue; }
+      try { if (typeof l3lodRestoreMesh === "function") l3lodRestoreMesh(m); if (m.parent && m.geometry && m.geometry.index && !m.geometry.boundsTree) m.geometry.computeBoundsTree({ maxLeafTris: 16 }); } catch (e) { console.warn("BVH", e); }
       if (!dl) break;
     }
+    if (later.length) { l3BvhQueue.push(...later); setTimeout(() => idle(step), 250); return; }
     if (l3BvhQueue.length) idle(step); else l3BvhBusy = false;
   };
   idle(step);
@@ -524,7 +532,8 @@ function l3HelpHtml() {
 function l3Init(box) {
   if (typeof l3cShader === "function") l3cShader(); // snittkanterna (innan något ritas)
   const host = box.querySelector("#v3Canvas");
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  // powerPreference: på bärbara med två grafikkort väljer webbläsaren annars oftast det inbyggda – det kraftiga kortet ger flera gånger fler bilder/s.
+  const renderer = new THREE.WebGLRenderer({ antialias: l3Prefs().aa !== false, powerPreference: "high-performance" });
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   host.insertBefore(renderer.domElement, host.firstChild);
   const scene = new THREE.Scene();
@@ -642,18 +651,34 @@ function l3Resize() {
 let l3Raf = 0;
 /* Lägre upplösning medan kameran rör sig (rotera, panorera, zooma, flyga) när scenen är tung – full skärpa
    200 ms efter att rörelsen slutat. Ger jämn rotation även med flera miljoner trianglar. */
-const l3CamLast = { m: null, hiT: 0 };
+const l3CamLast = { m: null, hiT: 0, moving: false };
+/* Upplösningen under rörelse följer bildtiden (Victor 2026-10-27: "gör appen så smooth som möjligt"): går det trögt sänks
+   den stegvis (ned till 35 %), går det bra höjs den igen. Tillsammans med den förenklade bilden (lagesplan-3dlod.js). */
 function l3AdaptRes() {
   const cam = l3.camera, r = l3.renderer, base = l3.basePR || (l3.basePR = r.getPixelRatio());
   const key = cam.matrixWorld.elements.join(",") + (cam.isOrthographicCamera ? cam.zoom : "");
   const moved = l3CamLast.m !== null && l3CamLast.m !== key;
   l3CamLast.m = key;
   if (!moved) return;
-  const tris = typeof l3b !== "undefined" ? l3b.models.reduce((a, m) => a + (m.visible ? m.tris : 0), 0) : 0;
-  const low = Math.max(0.6, Math.min(1, base) * (tris > 1.5e6 ? 0.7 : tris > 4e5 ? 0.85 : 1));
-  if (low < base - 0.01 && r.getPixelRatio() !== low) r.setPixelRatio(low);
+  l3CamLast.lastMove = performance.now();
+  const now = performance.now(), tris = typeof l3b !== "undefined" ? l3b.models.reduce((a, m) => a + (m.visible ? m.tris : 0), 0) : 0, L = typeof l3lod !== "undefined" ? l3lod : { ema: 16, f: 1, last: 0 };
+  if (!l3CamLast.moving) { l3CamLast.moving = true; L.last = 0; L.f = Math.min(1, tris > 3e6 ? 0.6 : tris > 1.5e6 ? 0.7 : tris > 4e5 ? 0.85 : 1); }
+  if (L.last) {
+    const dt = now - L.last;
+    if (dt < 300) { L.ema = L.ema * 0.7 + dt * 0.3; if (L.ema > 26) L.f = Math.max(0.35, L.f * 0.9); else if (L.ema < 19 && L.f < 1) L.f = Math.min(1, L.f * 1.05); }
+  }
+  L.last = now;
+  const low = Math.max(0.35, Math.min(1, base) * L.f);
+  if (low < base - 0.01 && Math.abs(r.getPixelRatio() - low) > 0.04) r.setPixelRatio(low);
+  if (typeof l3lodPick === "function") l3lodApply(l3lodPick());
   clearTimeout(l3CamLast.hiT);
-  l3CamLast.hiT = setTimeout(() => { if (l3 && r.getPixelRatio() !== base) { r.setPixelRatio(base); l3Render(); } }, 200);
+  l3CamLast.hiT = setTimeout(() => {
+    if (!l3) return;
+    l3CamLast.moving = false;
+    if (typeof l3lodApply === "function") { l3lodApply(-1); if (typeof l3lodWarm === "function") l3lodWarm(); }
+    if (r.getPixelRatio() !== base) r.setPixelRatio(base);
+    l3Render();
+  }, 220);
 }
 /* Bakgrunden: en färg, eller en gradient uppifrån och ned (bakgrundsbild som fyller vyn). */
 function l3ApplyBg(scene, rend) {
@@ -1045,7 +1070,9 @@ function l3Hover(e) {
     if (ev.buttons || l3.gizmo.dragging || (l3.gizmoR && l3.gizmoR.dragging) || l3.moving) return;
     if (l3.tool === "select" && !l3.addType) l3SetHover(l3PlaceAt(ev)); else l3SetHover(null);
     // Koordinaten under markören (verktygen visar fästpunkten själva).
-    const h = l3.lastSnap && l3.tool !== "select" ? { point: l3.lastSnap } : (typeof l3pcNearer === "function" ? l3pcNearer(ev, l3Ray(ev, l3Surfaces())[0]) : l3Ray(ev, l3Surfaces())[0]);
+    // Koordinaten visas inte för stora bitar vars träffindex ännu byggs (utan index provas alla trianglar – det hackade vid musrörelse).
+    const surf = l3Surfaces().filter(o => !(o.userData.l3b && o.geometry && o.geometry.index && !o.geometry.boundsTree && o.geometry.index.count > 90000));
+    const h = l3.lastSnap && l3.tool !== "select" ? { point: l3.lastSnap } : (typeof l3pcNearer === "function" ? l3pcNearer(ev, l3Ray(ev, surf)[0]) : l3Ray(ev, surf)[0]);
     const c = document.getElementById("v3Coord");
     if (h && c) {
       l3.lastPoint = h.point.clone();
@@ -1479,26 +1506,39 @@ function l3OpenModels() {
 }
 
 /* Namn ovanför etableringen (högst 80, de närmaste). */
+/* Etiketterna återanvänder sina element och ändrar bara läge/text när det behövs (ritades förut om som HTML varje bild). */
+const l3LabelPool = { nodes: [], sz: null };
 function l3RenderLabels() {
   const host = document.getElementById("v3Labels");
   if (!host || !l3) return;
   if (typeof l3bubRender === "function") { try { l3bubRender(); } catch (e) { console.warn("Bubblor", e); } }
-  if (!l3Prefs().labels || !l3.placeMeshes.size) { host.innerHTML = ""; return; }
-  const r = l3.renderer.domElement.getBoundingClientRect(), cam = l3.camera.position;
-  const list = placements.map(p => {
-    const g = l3.placeMeshes.get(p.id); if (!g || !g.visible || l3.groups.places.visible === false) return null; // dolda (H/I) och släckta placerade objekt har ingen etikett
+  const pool = l3LabelPool;
+  const hideFrom = n => { for (let k = n; k < pool.nodes.length; k++) { const e = pool.nodes[k]; if (e.style.display !== "none") { e.style.display = "none"; e.className = "v3-label-x"; e.textContent = ""; e._t = ""; } } };
+  if (!l3Prefs().labels || !l3.placeMeshes.size) { hideFrom(0); return; }
+  const sz = l3.renderer.getSize(l3LabelPool.sz || (l3LabelPool.sz = new THREE.Vector2())), W = sz.x, H = sz.y, cam = l3.camera.position, vis = l3.groups.places.visible !== false;
+  const list = [];
+  if (vis) placements.forEach(p => {
+    const g = l3.placeMeshes.get(p.id); if (!g || !g.visible) return; // dolda (H/I) och släckta placerade objekt har ingen etikett
     const v = new THREE.Vector3(g.position.x, g.position.y, g.position.z + l3PlaceHeight(p) + 0.6);
-    return { p, v, d: v.distanceTo(cam) };
-  }).filter(Boolean).sort((a, b) => a.d - b.d).slice(0, 80);
-  let html = "";
-  list.forEach(({ p, v }) => {
-    const q = v.clone().project(l3.camera);
-    if (q.z > 1 || q.x < -1.1 || q.x > 1.1 || q.y < -1.1 || q.y > 1.1) return;
-    const x = (q.x + 1) / 2 * r.width, y = (1 - q.y) / 2 * r.height;
-    const g = l3.placeMeshes.get(p.id);
-    html += `<div class="v3-label ${l3.sel.has(p.id) ? "on" : ""} ${g && g.userData.off4d ? "off" : ""}" style="left:${x.toFixed(0)}px;top:${y.toFixed(0)}px">${escHtml(p.name || "")}</div>`;
+    list.push({ p, v, g, d: v.distanceToSquared(cam) });
   });
-  host.innerHTML = html;
+  list.sort((a, b) => a.d - b.d); if (list.length > 80) list.length = 80;
+  let n = 0;
+  for (const { p, v, g } of list) {
+    v.project(l3.camera);
+    if (v.z > 1 || v.x < -1.1 || v.x > 1.1 || v.y < -1.1 || v.y > 1.1) continue;
+    const x = Math.round((v.x + 1) / 2 * W), y = Math.round((1 - v.y) / 2 * H);
+    let el = pool.nodes[n]; if (!el) { el = document.createElement("div"); host.appendChild(el); pool.nodes.push(el); }
+    if (el.parentNode !== host) host.appendChild(el);
+    const cls = "v3-label" + (l3.sel.has(p.id) ? " on" : "") + (g.userData.off4d ? " off" : ""), txt = p.name || "";
+    if (el.className !== cls) el.className = cls;
+    if (el._t !== txt) { el.textContent = txt; el._t = txt; }
+    const pos = x + "px," + y + "px";
+    if (el._p !== pos) { el._p = pos; el.style.left = x + "px"; el.style.top = y + "px"; }
+    if (el.style.display === "none") el.style.display = "";
+    n++;
+  }
+  hideFrom(n);
 }
 /* "Z 12,350 – 14,950 (överkant)": underkant och överkant i modellens koordinater. */
 function l3ZText(p) {

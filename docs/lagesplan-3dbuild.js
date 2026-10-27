@@ -82,7 +82,7 @@ async function l3bLoad(list, opts = {}) {
       const cached = opts.noCache ? null : await l3bCacheGet(w);
       if (cached) {
         const tC1 = Date.now();
-        const m = l3bFromCache(cached);
+        const m = await l3bFromCache(cached);
         // Var tiden går ur cachen (Victor 2026-10-10: modellen tog ~7 s att visa trots cachen).
         times.push(`${cached.name || w.name}: ur webbläsarens cache – läsning ${((tC1 - tC0) / 1000).toFixed(1)} s, uppbyggnad ${((Date.now() - tC1) / 1000).toFixed(1)} s`);
         // Äldre poster saknar normaler: spara om en gång med dem, så går det fortare nästa gång.
@@ -199,6 +199,7 @@ async function l3bLoad(list, opts = {}) {
   if (typeof l3LayersRender === "function") l3LayersRender();
   if (typeof l3phOn === "function" && l3phOn()) l3phBuild(); // fotona utan GPS-höjd står på byggnaden
   l3Render();
+  if (typeof l3lodWarm === "function") setTimeout(l3lodWarm, 2500); // förenklade indexlistor räknas i bakgrunden
   return { missing };
 }
 function l3bRemove(id) {
@@ -331,15 +332,18 @@ function l3bNrm8(g) {
    modellens egna färger, så att cachen inte behöver läsas om från Trimble Connect. */
 const L3B_OLDMIX = [0.875, 0.894, 0.918];
 function l3bUnmix(a) { for (let i = 0; i < a.length; i++) a[i] = Math.min(1, Math.max(0, (a[i] - L3B_OLDMIX[i % 3] * 0.45) / 0.55)); return a; }
-function l3bFromCache(rec) {
+/* Bitarna byggs i omgångar med andrum emellan (sidan svarar medan en stor modell kommer fram ur cachen). */
+async function l3bFromCache(rec) {
   if (rec.colV !== 2) rec.chunks.forEach(c => { l3bUnmix(c.col); c.ranges.forEach(r => { if (r.base) r.base = l3bUnmix(r.base.slice()); }); });
   const byGuid = new Map((items || []).filter(r => r.object_id).map(r => [String(r.object_id), r.id]));
   const out = { meshes: [], ranges: [], tris: rec.tris || 0, O: rec.O, capped: false };
-  rec.chunks.forEach(c => {
+  let t0 = performance.now();
+  for (const c of rec.chunks) {
     const ranges = c.ranges.map(r => ({ ...r, itemId: r.guid ? byGuid.get(r.guid) || null : null }));
     const m = l3bMeshFromArrays(c.pos, c.col, c.idx, ranges, out, c.nrm || null); // posten är redan en egen kopia
-    out.meshes.push(m); out.ranges.push(...ranges);
-  });
+    out.meshes.push(m); for (const r of ranges) out.ranges.push(r);
+    if (performance.now() - t0 > 14) { await new Promise(r => setTimeout(r, 0)); t0 = performance.now(); }
+  }
   return out;
 }
 
@@ -663,6 +667,7 @@ function l3bSliceIdx(mesh, pick) {
 }
 function l3bApplyHidden(mesh) {
   const u = mesh.userData.l3b, src = u.origIdx;
+  if (typeof l3lodInvalidate === "function") l3lodInvalidate(mesh); // förenklade indexlistor räknas om
   let idx = src;
   // tempOff: temporära utanför sin tid; animOff: filmens animering (lagesplan-3dfilmfx.js) ritar objektet själv; mtHide: släckta i Montageordningen.
   const off = new Set([...(u.tempOff || []), ...(u.animOff || [])]), alpha = new Map([...(u.gAlpha || []), ...(u.alpha || [])]), mt = new Set([...(u.mtHide || []), ...(u.lyHide || [])]);

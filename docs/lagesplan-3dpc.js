@@ -333,7 +333,9 @@ function l3pcEdlInit(r) {
 }
 function l3pcRenderScene() {
   const r = l3.renderer;
-  if (!l3pcEdlOn()) { r.render(l3.scene, l3.camera); return; }
+  // Skuggningen av ytor (extra bildpass) pausas medan kameran rör sig och bildtiden är dålig – den kommer tillbaka när kameran stannat.
+  const slow = typeof l3CamLast !== "undefined" && l3CamLast.moving && typeof l3lod !== "undefined" && l3lod.ema > 28 && !l3pc.clouds.some(c => c.visible);
+  if (!l3pcEdlOn() || slow) { r.render(l3.scene, l3.camera); return; }
   try {
     const size = r.getDrawingBufferSize(new THREE.Vector2());
     if (!l3pcE) l3pcE = l3pcEdlInit(r);

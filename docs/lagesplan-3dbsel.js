@@ -17,10 +17,18 @@ const L3BS_COL = 0xffc61a;
 function l3bsIdx(mesh, ri) {
   const u = mesh.userData.l3b, r = u.ranges[ri];
   if (r.idxStart != null && r.idxCount != null) return [r.idxStart, r.idxCount];
-  const src = u.origIdx, lo = r.start, hi = r.start + r.count;
-  let s = -1, e = -1;
-  for (let i = 0; i + 2 < src.length; i += 3) { const v = src[i]; if (v >= lo && v < hi) { if (s < 0) s = i; e = i + 3; } else if (s >= 0) break; }
-  r.idxStart = Math.max(0, s); r.idxCount = s < 0 ? 0 : e - s;
+  // Saknas indexpositionerna (äldre kopior) räknas alla objekt i biten ut i ett enda svep – förut en genomsökning per objekt (tiotusentals objekt = minuter).
+  const src = u.origIdx, R = u.ranges, order = R.map((_, k) => k).sort((a, b) => R[a].start - R[b].start), starts = order.map(k => R[k].start);
+  const first = new Int32Array(R.length).fill(-1), last = new Int32Array(R.length).fill(-1);
+  for (let i = 0; i + 2 < src.length; i += 3) {
+    const v = src[i]; let lo = 0, hi = starts.length - 1, at = -1;
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (starts[mid] <= v) { at = mid; lo = mid + 1; } else hi = mid - 1; }
+    const k = at >= 0 ? order[at] : -1;
+    if (k < 0 || v >= R[k].start + R[k].count) continue;
+    if (first[k] < 0) first[k] = i;
+    last[k] = i + 3;
+  }
+  R.forEach((q, k) => { q.idxStart = first[k] < 0 ? 0 : first[k]; q.idxCount = first[k] < 0 ? 0 : last[k] - first[k]; });
   return [r.idxStart, r.idxCount];
 }
 function l3bsKey(mesh, ri) { const r = mesh.userData.l3b.ranges[ri]; return (mesh.userData.l3b.model && mesh.userData.l3b.model.id || "") + "|" + (r.guid || `${mesh.uuid}:${ri}`); }
@@ -150,6 +158,7 @@ function l3bsSet(list, opts = {}) {
   list = list.filter(e => !l3bsDead(e.mesh, e.ri));
   const want = new Map(list.map(e => [l3bsKey(e.mesh, e.ri), e]));
   l3bs.sel = [...want.entries()].map(([key, e]) => ({ mesh: e.mesh, ri: e.ri, key }));
+  l3bs.ver = (l3bs.ver || 0) + 1;
   l3bsRebuild();
   if (l3bs.sel.length && l3.sel && l3.sel.size && !opts.keepPlaces) l3SelectIds([]); // en sorts markering i taget
   if (typeof l3RenderSide === "function") l3RenderSide();

@@ -463,6 +463,8 @@ function l3VTap(e) {
 function l3DrawTriad() {
   const el = l3 && l3.triadEl;
   if (!el) return;
+  const cq = l3.camera.quaternion, qk = cq.x.toFixed(3) + cq.y.toFixed(3) + cq.z.toFixed(3) + cq.w.toFixed(3);
+  if (el._qk === qk) return; el._qk = qk;   // ritas bara om när kameran vridits
   const q = l3.camera.quaternion.clone().invert(), S = 26, c = 36;
   const ax = [["X", 0xdc2626, [1, 0, 0]], ["Y", 0x16a34a, [0, 1, 0]], ["Z", 0x2563eb, [0, 0, 1]]].map(([n, col, v]) => {
     const p = new THREE.Vector3(...v).applyQuaternion(q);
