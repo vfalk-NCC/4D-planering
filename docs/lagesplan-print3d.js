@@ -25,7 +25,7 @@ const p3dDate = el => el.date || ((typeof $ === "function" && $("dateInput")) ? 
 const p3dOpts = (el, hMm) => ({ date: el.date || "", white: el.bg3d === "white", bub: el.bub || "", bubMax: el.bubMax, bubSize: el.bubSize, hMm: hMm || p3dHmm(el) });
 function p3dKey(el, v, W, H) {
   if (!v) return "";
-  return JSON.stringify([v.p, v.t, v.ortho, v.zoom, v.clips, v.meas, v.hid && [(v.hid.guids || []).length, (v.hid.place || []).length, (v.hid.objs || []).length], v.clouds, el.bg3d || "", el.bub || "", el.bubMax || 0, el.bubSize || 100, p3dDate(el), W, H]);
+  return JSON.stringify([v.p, v.t, v.ortho, v.zoom, v.clips, v.meas, v.models, v.hid && [(v.hid.guids || []).length, (v.hid.place || []).length, (v.hid.objs || []).length], v.clouds, el.bg3d || "", el.bub || "", el.bubMax || 0, el.bubSize || 100, p3dDate(el), W, H]);
 }
 
 /* Skala (parallellprojektion): bladets mm per modellmeter. Synlig höjd i modellen = L3_ORTHO_H / zoom; elementets höjd på papperet = el.h × k mm.

@@ -534,6 +534,7 @@ function l3ViewState() {
   if (typeof l3pc !== "undefined") st.clouds = l3pc.clouds.map(c => [c.id, !!c.visible]);
   const g = [];
   if (typeof l3b !== "undefined") l3b.models.forEach(m => m.meshes.forEach(x => { const u = x.userData.l3b; if (u && u.hidden) u.hidden.forEach(ri => { const r = u.ranges[ri]; if (r && r.guid) g.push(r.guid); }); }));
+  if (typeof l3b !== "undefined") st.models = l3b.models.map(m => [m.id, m.visible !== false]);
   st.hid = { place: [...(l3.hidden || [])], objs: [...(l3.hiddenObjs || [])], guids: g.slice(0, 20000) };
   return st;
 }
@@ -542,6 +543,11 @@ function l3ViewApplyState(v) {
   if (typeof v.kHidden === "boolean" && typeof l3k !== "undefined" && l3k.hidden !== v.kHidden) { l3kToggle(); }
   if (typeof v.photos === "boolean" && typeof l3phOn === "function" && l3phOn() !== v.photos) l3phToggle(v.photos);
   if (Array.isArray(v.clouds) && typeof l3pc !== "undefined") v.clouds.forEach(([id, on]) => { const c = l3pc.clouds.find(x => x.id === id); if (c && c.visible !== on) l3pcShow(id, on); });
+  if (Array.isArray(v.models) && typeof l3b !== "undefined") {   // vilka IFC-modeller (från Trimble Connect) som syns i vyn
+    let ch = false;
+    v.models.forEach(([id, on]) => { const m = l3b.models.find(x => x.id === id); if (m && (m.visible !== false) !== !!on) { m.visible = !!on; m.meshes.forEach(x => { x.visible = !!on; }); ch = true; } });
+    if (ch && typeof l3LayersRender === "function") l3LayersRender();
+  }
   if (v.hid && typeof l3VisApply === "function") {
     const want = new Set(v.hid.guids || []), meshes = typeof l3b !== "undefined" ? l3b.models.flatMap(m => m.meshes.map(x => { const u = x.userData.l3b; return [x, u ? Uint32Array.from(u.ranges.map((r, i) => (r.guid && want.has(r.guid) ? i : -1)).filter(i => i >= 0)) : []]; })) : [];
     l3VisApply({ hidden: v.hid.place || [], hiddenObjs: v.hid.objs || [], isolated: false, bldg: l3.groups.bldg.visible, obj: l3.objMesh ? l3.objMesh.visible : true, meshes });
