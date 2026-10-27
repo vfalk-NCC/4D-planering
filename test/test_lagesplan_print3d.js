@@ -104,6 +104,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!r.canvas || !(r.content > 200)) fail('3D-vy: bilden ska visa modellen: ' + JSON.stringify(r));
   if (r.camAfter !== r.camBefore || r.orthoAfter !== true) fail('3D-kameran ska vara som innan renderingen: ' + JSON.stringify(r));
   if (r.white !== '255,255,255,255' || !r.preview || !r.pdf) fail('3D-vy: vit bakgrund, förhandsvisning och PDF-bild: ' + JSON.stringify(r));
+  // Skala: parallellprojektion – skalan kan läsas och ställas in
+  { const sc = await page.evaluate(async () => {
+      const el = pr.tpl.elements.find(e => e.type === 'view3d'); const base = JSON.parse(JSON.stringify(p3dResolve(el))); base.ortho = true; base.zoom = 1; el.view = base; delete el.viewRef; setSel([el.id]); renderPrintProps();
+      const out = { before: p3dScaleOf(el), hmm: p3dHmm(el) };
+      const inp = document.getElementById('prV3Scale'); out.hasInput = !!inp; inp.value = '500'; inp.dispatchEvent(new Event('change'));
+      out.after = p3dScaleOf(el); out.zoom = el.view.zoom;
+      el.showScale = true; const c = document.createElement('canvas'); c.width = 300; c.height = 200; const ctx = c.getContext('2d'); p3dDraw(ctx, el, 0, 0, 300, 200, 1, 1, { v3Canvas: c }); out.label = true;
+      const persp = JSON.parse(JSON.stringify(el.view)); persp.ortho = false; el.view = persp; out.persp = p3dScaleOf(el);
+      return out;
+    });
+    if (!sc.hasInput || sc.after !== 500 || Math.abs(sc.zoom - 100 * 1000 / (500 * sc.hmm)) > 1e-6 || sc.persp !== null || sc.before !== Math.round(100 * 1000 / sc.hmm)) fail('Skala på 3D-vyn: ' + JSON.stringify(sc)); }
   // Ställ in vyn: 3D visas med ram, Använd vyn sparar kameran i elementet
   const p = await page.evaluate(async () => {
     const el = pr.tpl.elements.find(e => e.type === 'view3d'); delete el.viewRef;

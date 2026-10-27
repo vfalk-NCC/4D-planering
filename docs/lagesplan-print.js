@@ -811,7 +811,7 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
     }
     case "north": {
       ctx.translate(X + W / 2, Y + H / 2); ctx.rotate(northAngle(mapFor(el, tpl)));
-      drawNorthStyle(ctx, el.style || "rose4", Math.min(W, H) / 2, el.color);
+      drawNorthStyle(ctx, el.style || "rose4", Math.min(Math.abs(W), Math.abs(H)) / 2, el.color);
       break;
     }
     case "scalebar": {
@@ -1233,6 +1233,7 @@ function prOffPage(el) {
 }
 function drawPrintPage() {
   if (!pr) return;
+  if ($("printModal").classList.contains("p3d-away") || $("printModal").classList.contains("hidden")) return;   // layouten är dold (3D-vyn ställs in): ritar inte med noll/negativ yta
   prCmdProgress();
   const L = layoutPreview(), { c, u, ox, oy, dpr } = L;
   pr.L = L;
@@ -2012,6 +2013,7 @@ async function exportPrintPdf() {
         if (mc.overlay) inLayer([EL], () => overlayPdf(mc.overlay, mc.P.overlayVecUnder, mc.P.overlayVec));
         (mc.P.layerOverlays || []).forEach(o => inLayer([EL, o.name], () => overlayPdf(o.canvas, o.vecUnder, o.vec)));
         const mapOc = ocOpen(EL);
+        if (el.showScale && typeof p3dScaleOf === "function") { const n = p3dScaleOf(el); if (n) { doc.setFontSize(8 * k); doc.setFont("helvetica", "bold"); const txt = `Skala 1:${n}`, bw = doc.getTextWidth(txt) + 2.4 * k, bh = 4.6 * k; doc.setFillColor(255, 255, 255); doc.rect(Math.min(x, x + w), Math.max(y, y + h) - bh, bw, bh, "F"); doc.setTextColor(0); doc.text(txt, Math.min(x, x + w) + 1.2 * k, Math.max(y, y + h) - bh / 2, { baseline: "middle" }); } }
         if (el.border !== false) { doc.setDrawColor(0); doc.setLineWidth(0.35 * k); doc.rect(x, y, w, h); }
         if (el.label && el.label.show) {
           const s = (el.label.size || 9) * k, al = el.label.align || "left";

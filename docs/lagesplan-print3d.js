@@ -26,6 +26,14 @@ function p3dKey(el, v, W, H) {
   return JSON.stringify([v.p, v.t, v.ortho, v.zoom, v.clips, v.meas, v.hid && [(v.hid.guids || []).length, (v.hid.place || []).length, (v.hid.objs || []).length], v.clouds, el.bg3d || "", W, H]);
 }
 
+/* Skala (parallellprojektion): bladets mm per modellmeter. Synlig höjd i modellen = L3_ORTHO_H / zoom; elementets höjd på papperet = el.h × k mm.
+   Perspektiv har ingen entydig skala. */
+const p3dHmm = el => Math.abs(el.h) * (typeof pageDims === "function" ? pageDims().k : 1);
+const p3dScaleOfZoom = (zoom, el) => (zoom > 0 && p3dHmm(el) > 0 ? Math.round(L3_ORTHO_H / zoom * 1000 / p3dHmm(el)) : null);
+const p3dZoomOfScale = (n, el) => L3_ORTHO_H * 1000 / (n * p3dHmm(el));
+function p3dScaleOf(el) { const v = p3dResolve(el); return v && v.ortho ? p3dScaleOfZoom(v.zoom || 1, el) : null; }
+const p3dNiceScale = n => (typeof nearestScale === "function" ? nearestScale(n) : n);
+
 /* En vy direkt (utan flygning) – samma som l3GoView i 3D-editorn. ms > 0 flyger dit. */
 function p3dApplyView(v, ms = 0) {
   const O = l3.O, S = a => new THREE.Vector3(a[0] - O[0], a[1] - O[1], a[2] - O[2]);
@@ -127,7 +135,7 @@ async function p3dPick(el) {
     fit(); window.addEventListener("resize", fit);
     const bar = document.createElement("div"); bar.id = "p3dBar"; bar.className = "p3d-bar";
     const views = p3dSaved(), curRef = el.viewRef && views.some(v => v.name === el.viewRef) ? el.viewRef : "";
-    bar.innerHTML = `<b>3D-vy till utskriften</b><span class="p3d-hint">Snurra och zooma – det som syns i ramen hamnar på bladet</span>
+    bar.innerHTML = `<b>3D-vy till utskriften</b><span class="p3d-hint">Snurra och zooma – det som syns i ramen hamnar på bladet</span><span class="p3d-scale" id="p3dScale" title="Skalan på bladet (parallellprojektion)"></span><label class="p3d-setscale" title="Ställ in skalan (parallellprojektion)">Skala 1: <input type="number" id="p3dScaleIn" min="1" step="1" style="width:76px"></label>
       <label>Utgå från vy <select id="p3dSel"><option value="">– nuvarande kamera –</option>${views.map(v => `<option value="${escHtml(v.name)}"${v.name === curRef ? " selected" : ""}>${escHtml(v.name)}</option>`).join("")}</select></label>
       <label class="p3d-follow" title="Bladet uppdateras när vyn sparas om i 3D-editorn"><input type="checkbox" id="p3dFollow"${el.viewRef ? " checked" : ""}> Följ vyn</label>
       <span class="p3d-sp"></span><button type="button" id="p3dCancel">Avbryt</button><button type="button" id="p3dOk" class="primary">✓ Använd vyn</button>`;
@@ -135,7 +143,7 @@ async function p3dPick(el) {
     let chosen = curRef;
     const same = (a, b) => a && b && a.every((v, i) => Math.abs(v - b[i]) < 0.05);
     const finish = ok => {
-      document.removeEventListener("keydown", key, true); window.removeEventListener("resize", fit);
+      clearInterval(tm); document.removeEventListener("keydown", key, true); window.removeEventListener("resize", fit);
       if (ok) {
         const v = l3MakeView(chosen || "Utskriftsvy"), ref = chosen ? p3dSaved().find(x => x.name === chosen) : null;
         el.view = v;
@@ -149,6 +157,10 @@ async function p3dPick(el) {
       modal.classList.remove("p3d-away");
       if (typeof renderPrintProps === "function") renderPrintProps(); drawPrintPage();
     };
+    // Skalan läses av medan man zoomar och kan skrivas in (parallellprojektion).
+    const upd = () => { const sp = bar.querySelector("#p3dScale"), inp = bar.querySelector("#p3dScaleIn"); if (!sp) return; if (l3.camera.isOrthographicCamera) { const n = p3dScaleOfZoom(l3.camera.zoom, el); sp.textContent = `Skala 1:${n}`; if (document.activeElement !== inp) inp.value = n; inp.disabled = false; } else { sp.textContent = "Perspektiv – ingen skala"; inp.value = ""; inp.disabled = true; } };
+    const tm = setInterval(upd, 250); upd();
+    bar.querySelector("#p3dScaleIn").onchange = e => { const n = Number(e.target.value); if (n > 0 && l3.camera.isOrthographicCamera) { l3.camera.zoom = p3dZoomOfScale(n, el); l3.camera.updateProjectionMatrix(); l3.orbit.update(); l3Render(); upd(); } };
     const key = e => { if (e.key === "Escape") { e.stopPropagation(); finish(false); } };
     document.addEventListener("keydown", key, true);
     bar.querySelector("#p3dCancel").onclick = () => finish(false);
@@ -169,6 +181,9 @@ function p3dPropsHtml(el, chk) {
     <label style="margin-top:8px;">Sparad vy från 3D-editorn</label>
     <select id="prV3Saved"${views.length ? "" : " disabled"}><option value="">${views.length ? "– egen vy –" : "Inga sparade vyer i 3D-editorn"}</option>${views.map(x => `<option value="${escHtml(x.name)}"${x.name === ref ? " selected" : ""}>${escHtml(x.name)}</option>`).join("")}</select>
     ${ref ? `<label class="check"><input type="checkbox" id="prV3Follow" checked /> Följ vyn (uppdateras när den sparas om i 3D)</label>` : ""}
+    ${v && v.ortho ? `<label style="margin-top:8px;">Skala</label><div class="row" style="flex-wrap:nowrap;gap:6px;"><span>1 :</span><input type="number" id="prV3Scale" min="1" step="1" value="${p3dScaleOf(el) || ""}" style="width:90px;"${el.locked ? " disabled" : ""} title="Skalan på det som syns i bilden (vid bladets format). Ändrar zoomen i vyn." /><select id="prV3ScaleSel" title="Vanliga skalor"><option value="">Välj…</option>${(typeof PRINT_SCALES !== "undefined" ? PRINT_SCALES : [50, 100, 200, 500, 1000]).map(n => `<option value="${n}">1:${n}</option>`).join("")}</select></div>
+      ${chk("showScale", "Visa skalan på bilden")}`
+      : `<div class="hint" style="margin-top:8px;">Skala: perspektivvyer har ingen skala. Välj parallellprojektion (ortho) i 3D-editorn för att kunna ställa in och läsa skalan.</div>`}
     <label style="margin-top:6px;">Bakgrund</label>
     <select data-f="bg3d"><option value=""${el.bg3d ? "" : " selected"}>Som i 3D-editorn</option><option value="white"${el.bg3d === "white" ? " selected" : ""}>Vit</option></select>
     ${chk("border", "Ram runt bilden")}
@@ -183,6 +198,14 @@ function p3dPropsBind(el) {
     if (name) { const v = p3dSaved().find(x => x.name === name); if (v) { el.view = JSON.parse(JSON.stringify(v)); el.viewRef = name; } } else delete el.viewRef;
     p3d.cache.delete(el.id); p3d.pend.delete(el.id); renderPrintProps(); drawPrintPage();
   };
+  const setScale = n => {
+    n = Math.round(Number(n)); if (!(n > 0)) return;
+    const v = p3dResolve(el); if (!v || !v.ortho) return;
+    pushUndo(); const c = JSON.parse(JSON.stringify(v)); c.zoom = p3dZoomOfScale(n, el); el.view = c; delete el.viewRef;
+    p3d.cache.delete(el.id); p3d.pend.delete(el.id); renderPrintProps(true); drawPrintPage();
+  };
+  if (g("prV3Scale")) g("prV3Scale").onchange = e => setScale(e.target.value);
+  if (g("prV3ScaleSel")) g("prV3ScaleSel").onchange = e => setScale(e.target.value);
   if (g("prV3Follow")) g("prV3Follow").onchange = e => { if (!e.target.checked) { pushUndo(); const v = p3dResolve(el); if (v) el.view = JSON.parse(JSON.stringify(v)); delete el.viewRef; renderPrintProps(); drawPrintPage(); } };
   document.querySelectorAll('#prProps [data-f="bg3d"]').forEach(s => s.addEventListener("change", () => { p3d.cache.delete(el.id); p3d.pend.delete(el.id); drawPrintPage(); }));
 }
@@ -196,5 +219,12 @@ function p3dDraw(ctx, el, X, Y, W, H, k, u, opts) {
     const txt = !p3dResolve(el) ? "3D-vy – välj en vy i egenskaperna" : !p3dReady() ? "3D-vy – läs in 3D-modellerna i egenskaperna" : "3D-vyn ritas …";
     ctx.fillText(txt, X + W / 2, Y + H / 2);
   }
+  if (el.showScale) { const n = p3dScaleOf(el); if (n) p3dScaleLabel(ctx, `Skala 1:${n}`, X, Y + H, k * u); }
   if (el.border !== false) { ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, 0.35 * k * u); ctx.strokeRect(X, Y, W, H); }
+}
+/* "Skala 1:N" i bildens nedre vänstra hörn. */
+function p3dScaleLabel(ctx, txt, X, Ybottom, ku) {
+  const fs = 3 * ku, pad = 1.2 * ku; ctx.save(); ctx.font = `bold ${fs}px Helvetica, Arial`; const w = ctx.measureText(txt).width + pad * 2;
+  ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fillRect(X, Ybottom - fs - pad * 2, w, fs + pad * 2);
+  ctx.fillStyle = "#000"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(txt, X + pad, Ybottom - (fs + pad * 2) / 2); ctx.restore();
 }
