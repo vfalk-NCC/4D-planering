@@ -141,6 +141,7 @@ async function open3d() {
     if (!l3) l3Init(box);
     else if (l3.planId !== plan.id) { const [m1] = plan.calib.model; l3.O = [m1[0], m1[1], m1[2] || 0]; }
     l3.planId = plan.id;
+    if (typeof l3vLoad === "function") l3vLoad(true);   // projektets delade sparade vyer
     l3SaveState("ok");
     // Marken (ritningen) byggs samtidigt som etableringen hämtas.
     t = performance.now();

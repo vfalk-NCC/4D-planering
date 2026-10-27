@@ -93,7 +93,12 @@ function pxPerMeter() {
 // ---------------------------------------------------------------------
 // Lagerstatus (per webbläsare)
 // ---------------------------------------------------------------------
+/* Första gången (inget sparat lagerläge här): bara ritningen och 3D-objekten är tända – importerade modeller (DXF/DWG) och ortofoton börjar släckta och
+   tänds allteftersom de behövs (Victor 2026-10-27). Så fort något ändras sparas läget och gäller sedan; nya importer tänds som förut. */
+let layerFirstRun = false;
+const FIRST_RUN_OFF = /^(cad:|ortho:)/;
 function loadLayerState() {
+  try { layerFirstRun = localStorage.getItem(LAYER_KEY()) === null; } catch (e) { layerFirstRun = false; }
   try { layerState = JSON.parse(localStorage.getItem(LAYER_KEY()) || "{}") || {}; } catch (e) { layerState = {}; }
   // iPhone/iPad: allt utom ritningen, zonerna, objekten och fotona släckt vid varje öppning (lagesplan.js, lowMemDevice).
   if (typeof lowMemDevice !== "undefined" && lowMemDevice) Object.entries(layerState).forEach(([k, v]) => { if (v && typeof v === "object" && "visible" in v && !phoneKeep(k)) v.visible = false; });
@@ -102,7 +107,7 @@ const PHONE_KEEP = new Set(["pdf", "zones", "objects", "photos"]);
 const phoneKeep = k => PHONE_KEEP.has(k) || k.startsWith("cadl:"); // lagren inuti en DXF behåller sitt läge
 function saveLayerState() { try { localStorage.setItem(LAYER_KEY(), JSON.stringify(layerState)); } catch (e) {} }
 function ls(key, def = {}) {
-  if (!layerState[key]) layerState[key] = { visible: def.visible !== false && !(typeof lowMemDevice !== "undefined" && lowMemDevice && !phoneKeep(key)), opacity: def.opacity ?? 100 };
+  if (!layerState[key]) layerState[key] = { visible: def.visible !== false && !(layerFirstRun && FIRST_RUN_OFF.test(key)) && !(typeof lowMemDevice !== "undefined" && lowMemDevice && !phoneKeep(key)), opacity: def.opacity ?? 100 };
   return layerState[key];
 }
 function layerVisible(key) { return ls(key).visible; }

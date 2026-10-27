@@ -15,6 +15,7 @@
 const p3d = { cache: new Map(), queue: Promise.resolve(), pend: new Map(), picking: null, warm: null };
 const p3dReady = () => typeof l3 !== "undefined" && !!l3 && !!l3.renderer;
 const p3dSaved = () => (typeof l3SavedViews === "function" ? l3SavedViews() : []);
+let p3dViewsAsked = false;   // projektets delade vyer läses första gången egenskaperna visas
 /* Vyn som elementet visar: den sparade vyn med samma namn om elementet följer en, annars elementets egen kopia. */
 function p3dResolve(el) {
   if (el.viewRef) { const v = p3dSaved().find(x => x.name === el.viewRef); if (v) return v; }
@@ -162,6 +163,7 @@ async function p3dPick(el) {
 
 /* ---- Egenskaper i layouten ---------------------------------------------------------------------------------------------------------- */
 function p3dPropsHtml(el, chk) {
+  if (!p3dViewsAsked && typeof l3vLoad === "function") { p3dViewsAsked = true; l3vLoad().then(() => { if (typeof pr !== "undefined" && pr && typeof renderPrintProps === "function") renderPrintProps(true); }); }
   const views = p3dSaved(), v = p3dResolve(el), ref = el.viewRef && views.some(x => x.name === el.viewRef) ? el.viewRef : "";
   return `<button id="prV3Pick" class="block primary" style="margin-top:8px;"${el.locked ? " disabled" : ""} title="Öppnar 3D-editorn med en ram i bildens format – snurra, zooma och tryck Använd vyn">🎥 Ställ in vyn…</button>
     <label style="margin-top:8px;">Sparad vy från 3D-editorn</label>

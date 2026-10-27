@@ -100,6 +100,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return out;
   });
   if (!r.created || !r.hasSel || r.ref !== 'Översikt' || r.viewOrtho !== false) fail('3D-vy: skapa och välj sparad vy: ' + JSON.stringify(r));
+  { await page.waitForTimeout(500); const sv = getStore('saved_views_3d.json'); if (!sv || !sv.some(v => v.name === 'Översikt')) fail('Sparade vyer delas i projektet (saved_views_3d.json): ' + JSON.stringify(sv)); }
   if (!r.canvas || !(r.content > 200)) fail('3D-vy: bilden ska visa modellen: ' + JSON.stringify(r));
   if (r.camAfter !== r.camBefore || r.orthoAfter !== true) fail('3D-kameran ska vara som innan renderingen: ' + JSON.stringify(r));
   if (r.white !== '255,255,255,255' || !r.preview || !r.pdf) fail('3D-vy: vit bakgrund, förhandsvisning och PDF-bild: ' + JSON.stringify(r));

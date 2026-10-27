@@ -353,7 +353,7 @@ function qrMatrix(text, ec) {
 function drawQrModules(ctx, m, ox, oy, cell, style, color) {
   const n = m.length, finder = (r, c) => (r < 7 && c < 7) || (r < 7 && c >= n - 7) || (r >= n - 7 && c < 7);
   ctx.fillStyle = color || "#000";
-  const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+  const rr = (x, y, w, h, r) => { r = Math.max(0, r); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
   const soft = style === "rounded" || style === "dots";
   m.forEach((row, r) => row.forEach((d, c) => {
     if (!d || (soft && finder(r, c))) return;
@@ -856,7 +856,7 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
 const QR_CARD_DEFAULTS = { frameColor: "#1f3b73", title: "AKTUELL TIDPLAN", subtitle: "Skanna för detaljer", footer: "Öppna i mobilen eller iPad", phone: true };
 function drawQrCard(ctx, el, tpl, X, Y, W, H) {
   const o = { ...QR_CARD_DEFAULTS, ...el };
-  const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+  const rr = (x, y, w, h, r) => { r = Math.max(0, r); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
   const fit = (text, maxW, fs, weight) => { ctx.font = `${weight} ${fs}px Helvetica, Arial, sans-serif`; const w = ctx.measureText(text).width; return w > maxW ? fs * maxW / w : fs; };
   const p = W * 0.07;
   ctx.fillStyle = o.frameColor || "#1f3b73"; rr(X, Y, W, H, W * 0.045); ctx.fill();
@@ -1011,8 +1011,8 @@ function titleLogoSource(el) {
 }
 function drawTitleCard(ctx, el, tpl, X, Y, W, H, pt) {
   const rows = titleRows(el, tpl), col = el.color || "#1f3b73", fs = pt(el.size || 7);
-  const r = Math.min(W, H) * 0.03, lw = Math.max(1, fs * 0.12);
-  const rr = (x, y, w, h, rad) => { ctx.beginPath(); ctx.moveTo(x + rad, y); ctx.arcTo(x + w, y, x + w, y + h, rad); ctx.arcTo(x + w, y + h, x, y + h, rad); ctx.arcTo(x, y + h, x, y, rad); ctx.arcTo(x, y, x + w, y, rad); ctx.closePath(); };
+  const r = Math.min(Math.abs(W), Math.abs(H)) * 0.03, lw = Math.max(1, fs * 0.12);
+  const rr = (x, y, w, h, rad) => { rad = Math.max(0, rad); ctx.beginPath(); ctx.moveTo(x + rad, y); ctx.arcTo(x + w, y, x + w, y + h, rad); ctx.arcTo(x + w, y + h, x, y + h, rad); ctx.arcTo(x, y + h, x, y, rad); ctx.arcTo(x, y, x + w, y, rad); ctx.closePath(); };
   ctx.save();
   rr(X, Y, W, H, r); ctx.fillStyle = "#ffffff"; ctx.fill(); ctx.clip();
   const pad = fs * 0.7;

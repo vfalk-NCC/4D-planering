@@ -476,8 +476,34 @@ function l3DrawTriad() {
 // Sparas i webbläsaren (inställningarna för 3D-vyn), i modellens koordinater.
 // ---------------------------------------------------------------------
 function l3ViewKey() { return typeof projectId !== "undefined" && projectId ? String(projectId) : "_"; }
-function l3SavedViews() { return ((l3Prefs().views || {})[l3ViewKey()] || []).filter(v => v && v.t && v.p); }
-function l3StoreViews(list) { const all = { ...(l3Prefs().views || {}) }; all[l3ViewKey()] = list; l3SetPref("views", all); }
+/* Sparade vyer delas i projektet (Victor 2026-10-27: "så att alla kommer åt dom"): projects/<id>/saved_views_3d.json i 4D-data. Webbläsarens egna
+   (äldre) vyer flyttas dit första gången och finns kvar lokalt som reserv. Senaste sparning gäller (hela listan skrivs). */
+let l3vShared = null, l3vLoading = null;
+const l3vPath = () => `projects/${encodeURIComponent(l3ViewKey())}/saved_views_3d.json`;
+const l3vLocal = () => ((l3Prefs().views || {})[l3ViewKey()] || []).filter(v => v && v.t && v.p);
+function l3vLoad(force) {
+  if (l3vShared && !force) return Promise.resolve(l3vShared);
+  if (l3vLoading) return l3vLoading;
+  if (typeof token === "undefined" || !token || typeof ghReadJSON !== "function") return Promise.resolve(l3vLocal());
+  l3vLoading = (async () => {
+    try {
+      const remote = (await ghReadJSON(token, l3vPath())).filter(v => v && v.t && v.p), have = new Set(remote.map(v => String(v.name).toLowerCase()));
+      const onlyLocal = l3vLocal().filter(v => !have.has(String(v.name).toLowerCase()));
+      l3vShared = [...remote, ...onlyLocal].slice(-60);
+      if (onlyLocal.length) ghWriteJSON(token, l3vPath(), () => l3vShared, "3D: sparade vyer (flyttade från webbläsaren)").catch(e => console.warn("Kunde inte dela vyerna", e));
+    } catch (e) { console.warn("Sparade vyer: kunde inte läsas från projektet", e); l3vShared = null; return l3vLocal(); }
+    finally { l3vLoading = null; }
+    if (typeof l3RenderSavedViews === "function") l3RenderSavedViews();
+    return l3vShared;
+  })();
+  return l3vLoading;
+}
+function l3SavedViews() { return (l3vShared || l3vLocal()).filter(v => v && v.t && v.p); }
+function l3StoreViews(list) {
+  const all = { ...(l3Prefs().views || {}) }; all[l3ViewKey()] = list; l3SetPref("views", all);   // reserv i webbläsaren
+  l3vShared = list.slice();
+  if (typeof token !== "undefined" && token && typeof ghWriteJSON === "function") ghWriteJSON(token, l3vPath(), () => list, "3D: sparade vyer").catch(e => { console.warn("Kunde inte spara vyerna i projektet", e); if (typeof l3Status === "function") l3Status("Vyn sparades bara i den här webbläsaren (kunde inte nå projektet).", true); });
+}
 function l3MakeView(name) {
   const O = l3.O, cam = l3.camera, W = v => [0, 1, 2].map(i => Math.round((v.getComponent(i) + O[i]) * 1000) / 1000);
   return {
