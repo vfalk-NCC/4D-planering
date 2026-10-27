@@ -149,6 +149,12 @@ function l3plRenderTab() {
         : `<label class="v3-pl-crow" title="Vilken planering de kopplade IFC-objekten färgas efter. Båda: Powerproject först, Excel där objektet bara är kopplat i Excel-planeringen."><span>3D-färger</span><select id="v3PlColorSrc">${[["both", "Båda"], ["pp", "Powerproject"], ["excel", "Excel"]].map(([v, t]) => `<option value="${v}" ${l3plColorSrc() === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>`}
       <label class="v3-pl-crow" title="En tydlig bubbla vid varje aktivitets objekt med namn, datum, framdrift, område och aktivitet – samma som i 4D-dashboarden."><span>Info-bubblor</span><span class="v3-pl-ctl"><input type="checkbox" id="v3PlBub" ${l3Prefs().bubOn ? "checked" : ""} /> <select id="v3PlBubScope" title="Vilka som får bubbla">${[["auto", "Pågående + markerade"], ["marked", "Bara markerade"], ["active", "Pågående och försenade"], ["all", "Alla"]].map(([v, t]) => `<option value="${v}" ${(l3Prefs().bubScope || "auto") === v ? "selected" : ""}>${t}</option>`).join("")}</select></span></label>
       <label class="v3-pl-crow" title="Framdriften i bubblorna: räknas fram efter datum och aktivitetens längd (som Pågår nu i filmen), eller så som den står i tidplanen."><span>Framdrift</span><select id="v3PlBubProg">${[["calc", "Räknas efter datum"], ["plan", "Från tidplanen"]].map(([v, t]) => `<option value="${v}" ${(l3Prefs().bubProg || "calc") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      <details class="v3-pl-bubopt"><summary>Bubblor: vad som visas…</summary><div class="v3-pl-bubf">${(typeof L3BUB_FIELDS !== "undefined" ? L3BUB_FIELDS : []).map(([k, t]) => `<label class="v3-pl-chk"><input type="checkbox" data-bubf="${k}" ${l3bubCfg().f[k] ? "checked" : ""} /> ${t}</label>`).join("")}
+        <label class="v3-pl-chk" title="Ledlinjen från bubblan till objektet"><input type="checkbox" id="v3PlBubLine" ${l3bubCfg().line ? "checked" : ""} /> Ledlinje</label>
+        <label class="v3-pl-chk" title="Alla bubblor i samma grå färg i stället för statusfärg"><input type="checkbox" id="v3PlBubNeutral" ${l3bubCfg().neutral ? "checked" : ""} /> Neutral färg</label></div>
+        <label class="v3-pl-crow"><span>Högst antal</span><input type="number" id="v3PlBubMax" min="1" max="100" value="${l3bubCfg().max}" style="width:64px" /></label>
+        <div class="v3-pal-hint">Tips: på varje bubbla finns ✎ (egen anteckning), ☆ (visa alltid) och ✕ (släck). Anteckningarna delas i projektet.</div>
+        ${typeof l3boOffCount === "function" && l3boOffCount() ? `<button type="button" class="v3-wide" id="v3PlBubShow">Visa alla ${l3boOffCount()} släckta bubblor</button>` : ""}</details>
       <label class="v3-pl-crow" title="Det som inte startat visas i kommande-färgen (annars dolt). Gäller 3D-läget Tid – samma val som i tidsraden."><span>Kommande</span><span class="v3-pl-ctl"><input type="checkbox" id="v3PlFuture" ${typeof l3gmCfg === "function" && l3gmCfg().future ? "checked" : ""} /> Visa</span></label>
       <label class="v3-pl-crow" title="Objekt vars aktivitet pågår (eller är försenad) vid valt datum får en tydlig gul kontur – utan att du behöver markera något."><span>Pågående objekt</span><span class="v3-pl-ctl"><input type="checkbox" id="v3PlActive" ${l3Prefs().actOutline ? "checked" : ""} /> Gul kontur</span></label>
     `;
@@ -162,6 +168,11 @@ function l3plRenderTab() {
   on("v3PlDock", () => l3plDockToggle());
   on("v3PlBub", e => { l3SetPref("bubOn", !!e.target.checked); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }, "onchange");
   on("v3PlBubScope", e => { l3SetPref("bubScope", e.target.value); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }, "onchange");
+  host.querySelectorAll("[data-bubf]").forEach(c => { c.onchange = () => { l3SetPref("bubFields", { ...(l3Prefs().bubFields || {}), [c.dataset.bubf]: c.checked }); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }; });
+  on("v3PlBubLine", e => { l3SetPref("bubLine", !!e.target.checked); l3bub.sig = ""; l3Render(); }, "onchange");
+  on("v3PlBubNeutral", e => { l3SetPref("bubNeutral", !!e.target.checked); l3bub.sig = ""; l3Render(); }, "onchange");
+  on("v3PlBubMax", e => { l3SetPref("bubMax", Math.max(1, Math.min(100, Number(e.target.value) || 15))); l3bub.sig = ""; l3Render(); }, "onchange");
+  on("v3PlBubShow", () => { l3boShowAll(); l3plRenderTab(); });
   on("v3PlBubProg", e => { l3SetPref("bubProg", e.target.value); if (typeof l3RenderLabels === "function") l3RenderLabels(); l3Render(); }, "onchange");
   on("v3PlFuture", e => { l3gmSet("future", e.target.checked); if (typeof l3gmApply === "function") l3gmApply(true); if (typeof l3gmSync === "function") l3gmSync(); }, "onchange");
   on("v3PlActive", e => { l3SetPref("actOutline", !!e.target.checked); if (typeof l3actRebuild === "function") l3actRebuild(); }, "onchange");

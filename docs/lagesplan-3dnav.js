@@ -683,7 +683,7 @@ function l3MoreRender() {
 /* ---- Startvy (Victor 2026-10-14): exakt det som är ikryssat och inställt när man sparar läggs tillbaka varje gång 3D-editorn öppnas ----
    Kamera, snitt och vad som syns (som en sparad vy) + visningsval (ritning, objekt, bubblor …), 3D-läget (Alla/Tid …), datum,
    tidplan (Powerproject/Excel), färger och färgskala, film- och Gantt-inställningar, vänsterflik och om Gantten är öppen. */
-const L3_START_PREFS = ["plan", "objs", "labels", "legend", "pal", "bubOn", "bubScope", "bubMax", "bubProg", "bubFields", "actOutline", "ortho"];
+const L3_START_PREFS = ["plan", "objs", "labels", "legend", "pal", "bubOn", "bubScope", "bubMax", "bubProg", "bubFields", "bubLine", "bubNeutral", "actOutline", "ortho"];
 const L3_START_PLAN_SKIP = ["films", "keys"]; // sparade filmer och kameranycklar är egna listor
 function l3StartGet() { const m = l3Prefs().startView || {}; return m[l3ViewKey()] || null; }
 function l3StartSnapshot() {

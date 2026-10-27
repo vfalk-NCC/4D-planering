@@ -253,7 +253,7 @@ function l3fxDraw(ctx, W, H, iso, ft, fx, caption, pearls) {
    framdrift som räknas fram efter datum – ritade i bilden med ledlinje till objektet. Kameran är den som ritar bilden (samma bildförhållande). */
 function l3fxBubbles(ctx, W, H, s) {
   if (typeof l3bubRebuild !== "function" || !l3 || !l3.camera) return;
-  const cfg = l3bubCfg(); l3bubRebuild(cfg.scope === "all" ? "all" : "active");
+  const cfg = l3bubCfg(); l3bubRebuild(cfg.scope === "all" || cfg.scope === "marked" ? cfg.scope : "active");
   const k = 1.25 * s, CW = 200 * k, cam = l3.camera.position;
   const vis = l3bub.anchors.map(a => { const q = a.v.clone().project(l3.camera); return { a, q, d: a.v.distanceTo(cam) }; })
     .filter(o => o.q.z < 1 && o.q.x > -1 && o.q.x < 1 && o.q.y > -1 && o.q.y < 1).sort((x, y) => x.d - y.d).slice(0, cfg.max);
@@ -266,16 +266,21 @@ function l3fxBubbles(ctx, W, H, s) {
     if (L.date) lines.push({ t: L.date, f: `500 ${11 * k}px system-ui, sans-serif`, c: "#64748b" });
     if (L.area) lines.push({ t: L.area, f: `500 ${11 * k}px system-ui, sans-serif`, c: "#475569" });
     if (L.activity) lines.push({ t: L.activity, f: `500 ${11 * k}px system-ui, sans-serif`, c: "#475569" });
+    if (L.resource) lines.push({ t: L.resource, f: `500 ${11 * k}px system-ui, sans-serif`, c: "#475569" });
+    if (L.status) lines.push({ t: L.status, f: `500 ${11 * k}px system-ui, sans-serif`, c: "#475569" });
+    if (L.note) lines.push({ t: L.note, f: `italic 500 ${11 * k}px system-ui, sans-serif`, c: "#0f172a" });
     const lh = 16 * k, h = 12 * k + lines.length * lh + (L.progress !== null ? 16 * k : 0);
     const cands = []; for (let j = 0; j < 6; j++) for (const dx of [0, 0.62 * CW, -0.62 * CW, 1.24 * CW, -1.24 * CW]) cands.push([dx, -(26 * k + j * (h + 6 * k))]);
     let pos = cands[0];
     for (const c of cands) { const cx = ax + c[0], by = ay + c[1]; if (!placed.some(p => Math.abs(p.x - cx) < CW + 6 * k && p.y - p.h - 4 * k < by && by - h - 4 * k < p.y)) { pos = c; break; } }
     const cx = Math.max(CW / 2 + 6 * k, Math.min(W - CW / 2 - 6 * k, ax + pos[0])), by = Math.max(h + 6 * k, ay + pos[1]);
     placed.push({ x: cx, y: by, h });
-    const ph = l3Phase(a.row), col = phaseColor(ph), tipX = Math.max(cx - CW / 2 + 12 * k, Math.min(cx + CW / 2 - 12 * k, ax));
+    const ph = l3Phase(a.row), col = cfg.neutral ? "#475569" : phaseColor(ph), tipX = Math.max(cx - CW / 2 + 12 * k, Math.min(cx + CW / 2 - 12 * k, ax));
     ctx.lineCap = "round";
-    ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 5 * k; ctx.beginPath(); ctx.moveTo(tipX, by); ctx.lineTo(ax, ay); ctx.stroke();
-    ctx.strokeStyle = col; ctx.lineWidth = 2.4 * k; ctx.beginPath(); ctx.moveTo(tipX, by); ctx.lineTo(ax, ay); ctx.stroke();
+    if (cfg.line) {
+      ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 5 * k; ctx.beginPath(); ctx.moveTo(tipX, by); ctx.lineTo(ax, ay); ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = 2.4 * k; ctx.beginPath(); ctx.moveTo(tipX, by); ctx.lineTo(ax, ay); ctx.stroke();
+    }
     ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ax, ay, 6.5 * k, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = col; ctx.beginPath(); ctx.arc(ax, ay, 4.3 * k, 0, Math.PI * 2); ctx.fill();
     const x0 = cx - CW / 2, y0 = by - h;
     ctx.shadowColor = "rgba(15,23,42,.35)"; ctx.shadowBlur = 10 * k; ctx.shadowOffsetY = 2 * k; ctx.fillStyle = "rgba(255,255,255,.96)"; rr(x0, y0, CW, h, 8 * k); ctx.fill(); ctx.shadowColor = "transparent";

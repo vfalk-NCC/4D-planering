@@ -22,10 +22,10 @@ function p3dResolve(el) {
   return el.view || null;
 }
 const p3dDate = el => el.date || ((typeof $ === "function" && $("dateInput")) ? $("dateInput").value : "");
-const p3dOpts = (el, hMm) => ({ date: el.date || "", white: el.bg3d === "white", bub: el.bub || "", bubMax: el.bubMax, bubSize: el.bubSize, hMm: hMm || p3dHmm(el) });
+const p3dOpts = (el, hMm) => ({ date: el.date || "", white: el.bg3d === "white", bub: el.bub || "", bubF: el.bubF, bubNoLine: !!el.bubNoLine, bubNeutral: !!el.bubNeutral, bubMax: el.bubMax, bubSize: el.bubSize, hMm: hMm || p3dHmm(el) });
 function p3dKey(el, v, W, H) {
   if (!v) return "";
-  return JSON.stringify([v.p, v.t, v.ortho, v.zoom, v.clips, v.meas, v.models, v.hid && [(v.hid.guids || []).length, (v.hid.place || []).length, (v.hid.objs || []).length], v.clouds, el.bg3d || "", el.bub || "", el.bubMax || 0, el.bubSize || 100, p3dDate(el), W, H]);
+  return JSON.stringify([v.p, v.t, v.ortho, v.zoom, v.clips, v.meas, v.models, v.hid && [(v.hid.guids || []).length, (v.hid.place || []).length, (v.hid.objs || []).length], v.clouds, el.bg3d || "", el.bub || "", JSON.stringify(el.bubF || ""), el.bubNoLine, el.bubNeutral, typeof l3bo !== "undefined" && l3bo.list ? l3bo.list.length + ":" + l3bo.list.map(x => (x.note || "").length + (x.off ? "o" : "") + (x.on ? "p" : "")).join("") : 0, el.bubMax || 0, el.bubSize || 100, p3dDate(el), W, H]);
 }
 
 /* Skala (parallellprojektion): bladets mm per modellmeter. Synlig höjd i modellen = L3_ORTHO_H / zoom; elementets höjd på papperet = el.h × k mm.
@@ -72,10 +72,11 @@ function p3dRenderNow(view, W, H, o = {}) {
     out.getContext("2d").drawImage(R.domElement, 0, 0, W, H);
     // Bubblor med framdrift (3D-editorns egna): urval efter datum, samma innehåll som i 3D-vyn och filmen. Storleken följer bladet (texthöjd ca 2,6 mm).
     if (o.bub && typeof l3fxBubbles === "function") {
-      const P = l3Prefs(), old = [P.bubScope, P.bubMax]; P.bubScope = o.bub; P.bubMax = o.bubMax || 15;
+      const P = l3Prefs(), old = [P.bubScope, P.bubMax, P.bubFields, P.bubLine, P.bubNeutral]; P.bubScope = o.bub; P.bubMax = o.bubMax || 15;
+      if (o.bubF) P.bubFields = { ...(P.bubFields || {}), ...o.bubF }; P.bubLine = !o.bubNoLine; P.bubNeutral = !!o.bubNeutral;
       try { const mmH = o.hMm || 100; l3fxBubbles(out.getContext("2d"), W, H, (H / mmH) * 2.6 / 16.25 * ((o.bubSize || 100) / 100)); }
       catch (e) { console.warn("Bubblor i 3D-vyn", e); }
-      finally { P.bubScope = old[0]; P.bubMax = old[1]; }
+      finally { P.bubScope = old[0]; P.bubMax = old[1]; P.bubFields = old[2]; P.bubLine = old[3]; P.bubNeutral = old[4]; }
     }
   } catch (e) { console.warn("3D-vy i utskriften", e); out = null; }
   finally {
@@ -223,8 +224,9 @@ function p3dPropsHtml(el, chk) {
     <div class="row" style="flex-wrap:nowrap;gap:6px;"><select id="prV3DateMode"><option value=""${el.date ? "" : " selected"}>Som i lägesplanen</option><option value="own"${el.date ? " selected" : ""}>Eget datum</option></select>${el.date ? `<input type="date" id="prV3Date" value="${escHtml(el.date)}" />` : ""}</div>
     <label class="check"><input type="checkbox" data-f="showDate"${el.showDate ? " checked" : ""} /> Visa datum på bilden</label>
     <label style="margin-top:8px;">Bubblor med framdrift</label>
-    <select data-f="bub" title="Aktivitetsbubblor (namn, datum, framdrift) vid objekten, som i 3D-editorn. Urvalet följer datumet i lägesplanen."><option value=""${el.bub ? "" : " selected"}>Inga</option><option value="active"${el.bub === "active" ? " selected" : ""}>Aktiva vid datumet</option><option value="all"${el.bub === "all" ? " selected" : ""}>Alla aktiviteter</option></select>
-    ${el.bub ? `<div class="pr-grid4"><div style="grid-column:span 2;"><label>Högst antal</label><input type="number" min="1" max="100" data-f="bubMax" data-num="1" value="${el.bubMax || 15}" /></div><div style="grid-column:span 2;"><label>Storlek %</label><input type="number" min="40" max="300" step="10" data-f="bubSize" data-num="1" value="${el.bubSize || 100}" /></div></div>` : ""}
+    <select data-f="bub" title="Aktivitetsbubblor (namn, datum, framdrift) vid objekten, som i 3D-editorn. Urvalet följer datumet i lägesplanen."><option value=""${el.bub ? "" : " selected"}>Inga</option><option value="active"${el.bub === "active" ? " selected" : ""}>Aktiva vid datumet</option><option value="marked"${el.bub === "marked" ? " selected" : ""}>Bara låsta (☆) och markerade</option><option value="all"${el.bub === "all" ? " selected" : ""}>Alla aktiviteter</option></select>
+    ${el.bub ? `<details style="margin-top:6px;"><summary>Vad ska visas i bubblan?</summary>${(typeof L3BUB_FIELDS !== "undefined" ? L3BUB_FIELDS : []).map(([k, t]) => { const cf = typeof l3bubCfg === "function" ? l3bubCfg().f : {}; const on = el.bubF && k in el.bubF ? el.bubF[k] : cf[k]; return `<label class="check"><input type="checkbox" data-bf="${k}"${on ? " checked" : ""} /> ${t}</label>`; }).join("")}<label class="check"><input type="checkbox" data-f="bubNoLine"${el.bubNoLine ? " checked" : ""} /> Utan ledlinje</label><label class="check"><input type="checkbox" data-f="bubNeutral"${el.bubNeutral ? " checked" : ""} /> Neutral färg</label><div class="hint">Egna anteckningar, ☆ (visa alltid) och ✕ (släck) sätts direkt på bubblorna i 3D-editorn.</div></details>
+    <div class="pr-grid4"><div style="grid-column:span 2;"><label>Högst antal</label><input type="number" min="1" max="100" data-f="bubMax" data-num="1" value="${el.bubMax || 15}" /></div><div style="grid-column:span 2;"><label>Storlek %</label><input type="number" min="40" max="300" step="10" data-f="bubSize" data-num="1" value="${el.bubSize || 100}" /></div></div>` : ""}
     <label style="margin-top:6px;">Bakgrund</label>
     <select data-f="bg3d"><option value=""${el.bg3d ? "" : " selected"}>Som i 3D-editorn</option><option value="white"${el.bg3d === "white" ? " selected" : ""}>Vit</option></select>
     ${chk("border", "Ram runt bilden")}
@@ -232,6 +234,7 @@ function p3dPropsHtml(el, chk) {
 }
 function p3dPropsBind(el) {
   const g = id => document.getElementById(id);
+  document.querySelectorAll("#prProps [data-bf]").forEach(c => { c.onchange = () => { pushUndo(); el.bubF = { ...(el.bubF || {}), [c.dataset.bf]: c.checked }; p3d.cache.delete(el.id); p3d.pend.delete(el.id); drawPrintPage(); }; });
   if (g("prV3Pick")) g("prV3Pick").onclick = () => p3dPick(el);
   if (g("prV3Warm")) g("prV3Warm").onclick = async e => { e.preventDefault(); await p3dWarm(); drawPrintPage(); renderPrintProps(); };
   if (g("prV3Saved")) g("prV3Saved").onchange = e => {
@@ -250,7 +253,7 @@ function p3dPropsBind(el) {
   if (g("prV3Scale")) g("prV3Scale").onchange = e => setScale(e.target.value);
   if (g("prV3ScaleSel")) g("prV3ScaleSel").onchange = e => setScale(e.target.value);
   if (g("prV3Follow")) g("prV3Follow").onchange = e => { if (!e.target.checked) { pushUndo(); const v = p3dResolve(el); if (v) el.view = JSON.parse(JSON.stringify(v)); delete el.viewRef; renderPrintProps(); drawPrintPage(); } };
-  document.querySelectorAll('#prProps [data-f="showDate"], #prProps [data-f="showScale"], #prProps [data-f="bg3d"], #prProps [data-f="bub"], #prProps [data-f="bubMax"], #prProps [data-f="bubSize"]').forEach(s => s.addEventListener("change", () => { p3d.cache.delete(el.id); p3d.pend.delete(el.id); if (s.dataset.f === "bub") renderPrintProps(true); drawPrintPage(); }));
+  document.querySelectorAll('#prProps [data-f="showDate"], #prProps [data-f="showScale"], #prProps [data-f="bg3d"], #prProps [data-f="bub"], #prProps [data-f="bubMax"], #prProps [data-f="bubSize"], #prProps [data-f="bubNoLine"], #prProps [data-f="bubNeutral"]').forEach(s => s.addEventListener("change", () => { p3d.cache.delete(el.id); p3d.pend.delete(el.id); if (s.dataset.f === "bub") renderPrintProps(true); drawPrintPage(); }));
 }
 /* Ritar elementet (anropas från drawElement). */
 function p3dDraw(ctx, el, X, Y, W, H, k, u, opts) {
