@@ -131,6 +131,12 @@ const IFC = ["ISO-10303-21;", "HEADER;", "FILE_DESCRIPTION((''),'2;1');", "FILE_
   const col2 = await page.evaluate(() => { const mesh = l3b.models[0].meshes[0], c = mesh.geometry.getAttribute('color'), r = mesh.userData.l3b.ranges[0]; return [c.getX(r.start), r.base[0]]; });
   if (Math.abs(col2[0] - col2[1]) > 1e-6) fail('Sluta färga ska återställa färgerna: ' + col2);
 
+  // Filtrera: bocka värdet 2, visa bara dem, sedan visa alla igen.
+  await page.check('#v3PalProps [data-pck="0"]');
+  await page.click('#v3PpOnly');
+  const iso = await page.evaluate(() => l3b.models[0].meshes.flatMap(m => { const u = m.userData.l3b; return u.ranges.map((r, i) => (u.hidden.has(i) ? '-' : '+') + r.name); }).sort().join(','));
+  if (!/\+Balk B2/.test(iso) || !/\+Pelare/.test(iso) || !/-Balk B1/.test(iso)) fail('Visa bara valda: ' + iso);
+  await page.evaluate(() => l3VisApply({ hidden: [], hiddenObjs: [], isolated: false, bldg: true, obj: true, meshes: l3b.models.flatMap(m => m.meshes.map(x => [x, new Uint32Array(0)])) }));
   // Alla egenskaper i fliken: Allmänt (attribut) och grupperna med antal.
   await page.click('#v3PpBack');
   await page.waitForSelector('#v3PalProps [data-pkey]');

@@ -237,6 +237,8 @@ function l3pRenderTab() {
   const esc = escHtml, { list, missing } = l3p.keys, t = qi.value.trim().toLowerCase();
   const closed = l3pClosed();
   let h = missing.length ? `<button type="button" class="v3-wide" id="v3PpLoad" title="Originalfilerna hämtas från Trimble Connect en gång och sparas i webbläsaren">Läs egenskaper i ${missing.length} ${missing.length === 1 ? "modell" : "modeller"} till (hämtar från TC)</button>` : "";
+  const quick = list.filter(x => /^location_phase$/i.test(x[2] || ""));
+  if (quick.length && !t) h += `<div class="v3-pal-hint">Snabbfilter</div>` + quick.map(x => `<button type="button" class="v3-wide" data-pkey="${esc(x[0])}" title="Filtrera på ${esc(x[2])} (${esc(x[1])})">Filtrera på ${esc(x[2])}</button>`).join("");
   const groups = new Map([["", typeof l3g !== "undefined" && l3g.list.length ? [["g:4d", "", "Mina grupper", l3g.list.reduce((a, g) => a + (g.guids || []).length, 0)]] : []]]);
   list.forEach(x => { const g = x[1] || ""; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(x); });
   groups.forEach((rows, g) => {
@@ -273,7 +275,7 @@ async function l3pGroupBy(key, opts = {}) {
   const gcol = key === "g:4d" ? new Map(l3g.list.map(g => [g.name, g.color])) : null;
   const own = (l3Prefs().propColors || {})[key] || {};
   list.forEach(x => { x.color = own[x.v] || (x.v === "\u0000" ? "#cbd5e1" : gcol && gcol.has(x.v) ? gcol.get(x.v) : ci < L3P_COLORS.length ? L3P_COLORS[ci++] : "#94a3b8"); });
-  l3p.group = { key, list }; l3p.vq = "";
+  l3p.group = { key, list }; l3p.vq = ""; l3p.chk = new Set();
   if (l3p.colorBy) l3pColorOn(); // färgerna följer med till den nya egenskapen
   l3pRenderTab();
   return l3p.group;
@@ -284,13 +286,21 @@ function l3pRenderValues(body) {
   body.innerHTML = `<div class="v3-pp-head"><button type="button" class="v3-pp-back" id="v3PpBack" title="Tillbaka till alla egenskaper">‹</button><b title="${esc(l3pKeyLabel(g.key))}">${esc(l3pKeyLabel(g.key))}</b></div>
     <div class="v3-pal-hint">${g.list.length} ${g.list.length === 1 ? "värde" : "värden"} · ${total.toLocaleString("sv-SE")} objekt. Tryck på ett värde för att markera objekten (Skift lägger till).</div>
     <div class="v3-grp-acts v3-pp-acts"><button type="button" id="v3PpColor" class="${l3p.colorBy ? "on" : ""}" title="Färga alla objekt efter värdet">${l3p.colorBy ? "Sluta färga" : "Färga efter värde"}</button></div>
+    <div class="v3-grp-acts v3-pp-acts"><button type="button" id="v3PpOnly" title="Bocka värden nedan och visa bara dem (Visa alla – U – visar resten igen)">Visa bara valda</button><button type="button" id="v3PpHide" title="Dölj objekten med de valda värdena">Dölj valda</button><button type="button" id="v3PpAll" title="Bocka alla / inga">Alla/inga</button></div>
     ${g.list.length > 5 ? `<input type="search" class="v3-pp-q" id="v3PpVq" placeholder="Sök värde, t.ex. HEA160…" value="${esc(l3p.vq || "")}" />` : ""}
-    <div class="v3-pp-vals">${g.list.map((x, i) => `<div class="v3-pp-v" data-pvq="${esc(String(x.v === "\u0000" ? "(saknas)" : x.v === "" ? "(tomt)" : x.v).toLowerCase())}"><label class="v3-gr-col" title="Välj färg för ${esc(x.v === "\u0000" ? "(saknas)" : x.v || "(tomt)")}"><input type="color" data-pvc="${i}" value="${esc(x.color)}" /><i style="background:${x.color}"></i></label><button type="button" class="v3-pp-vb" data-pv="${i}" title="${esc(x.v === "\u0000" ? "Objekt som saknar egenskapen" : x.v || "(tomt)")} – tryck för att markera"><span class="${x.v === "\u0000" || x.v === "" ? "dim" : ""}">${esc(x.v === "\u0000" ? "(saknas)" : x.v === "" ? "(tomt)" : x.v)}</span><em>${x.n.toLocaleString("sv-SE")}</em></button></div>`).join("")}</div>`;
+    <div class="v3-pp-vals">${g.list.map((x, i) => `<div class="v3-pp-v" data-pvq="${esc(String(x.v === "\u0000" ? "(saknas)" : x.v === "" ? "(tomt)" : x.v).toLowerCase())}"><input type="checkbox" class="v3-pp-chk" data-pck="${i}" title="Välj värdet för filtrering" ${(l3p.chk || new Set()).has(i) ? "checked" : ""} /><label class="v3-gr-col" title="Välj färg för ${esc(x.v === "\u0000" ? "(saknas)" : x.v || "(tomt)")}"><input type="color" data-pvc="${i}" value="${esc(x.color)}" /><i style="background:${x.color}"></i></label><button type="button" class="v3-pp-vb" data-pv="${i}" title="${esc(x.v === "\u0000" ? "Objekt som saknar egenskapen" : x.v || "(tomt)")} – tryck för att markera"><span class="${x.v === "\u0000" || x.v === "" ? "dim" : ""}">${esc(x.v === "\u0000" ? "(saknas)" : x.v === "" ? "(tomt)" : x.v)}</span><em>${x.n.toLocaleString("sv-SE")}</em></button></div>`).join("")}</div>`;
   body.querySelector("#v3PpBack").onclick = () => { l3p.group = null; l3p.vq = ""; l3pRenderTab(); };
   // Sök bland värdena (Victor 2026-10-10: "jag söker på HEA160 så vill jag bara se dom").
   const vq = body.querySelector("#v3PpVq");
   const filt = () => { const t = (l3p.vq || "").trim().toLowerCase(); let n = 0; body.querySelectorAll("[data-pvq]").forEach(r => { const hit = !t || r.dataset.pvq.includes(t); r.style.display = hit ? "" : "none"; if (hit) n++; }); const h = body.querySelector("#v3PpVn"); if (h) h.textContent = t ? `${n} av ${g.list.length} värden matchar` : ""; };
   if (vq) { vq.insertAdjacentHTML("afterend", `<div class="v3-pal-hint" id="v3PpVn"></div>`); vq.oninput = () => { l3p.vq = vq.value; filt(); }; filt(); }
+  if (!l3p.chk) l3p.chk = new Set();
+  body.querySelectorAll("[data-pck]").forEach(c => { c.onchange = () => { const i = Number(c.dataset.pck); if (c.checked) l3p.chk.add(i); else l3p.chk.delete(i); }; });
+  const chosen = () => { const items = [...l3p.chk].map(i => g.list[i]).filter(Boolean); if (!items.length) l3Status("Bocka först ett eller flera värden.", true); return items; };
+  const pick = items => { const ents = []; items.forEach(x => x.parts.forEach(([m, guids]) => { const map = l3pEnts(m); guids.forEach(gu => (map.get(gu) || []).forEach(e => ents.push(e))); })); l3bsSet(ents); return ents.length; };
+  body.querySelector("#v3PpOnly").onclick = () => { const it = chosen(); if (it.length && pick(it) && typeof l3bsIsolate === "function") l3bsIsolate(); };
+  body.querySelector("#v3PpHide").onclick = () => { const it = chosen(); if (it.length && pick(it) && typeof l3bsHide === "function") l3bsHide(); };
+  body.querySelector("#v3PpAll").onclick = () => { if (l3p.chk.size === g.list.length) l3p.chk.clear(); else g.list.forEach((_, i) => l3p.chk.add(i)); l3pRenderTab(); };
   body.querySelector("#v3PpColor").onclick = () => { if (l3p.colorBy) l3pColorOff(); else l3pColorOn(); l3pRenderTab(); };
   body.querySelectorAll("[data-pv]").forEach(b => { b.onclick = e => l3pSelectValue(g.list[Number(b.dataset.pv)], e.shiftKey || e.ctrlKey || e.metaKey); });
   // Egen färg per värde (Victor 2026-10-10): sparas per egenskap, och för Mina grupper på gruppen.
