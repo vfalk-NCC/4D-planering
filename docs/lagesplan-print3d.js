@@ -57,6 +57,7 @@ function p3dSetDate(iso) {
 /* Bilden: W×H px. o.white = vit bakgrund. Returnerar en canvas (eller null om 3D inte är inläst). */
 function p3dRenderNow(view, W, H, o = {}) {
   if (!p3dReady() || !view || p3d.live) return null;   // renderaren används av den levande vyn
+  if (typeof l3lodApply === "function") l3lodApply(-1);   // utskriftsbilden ritas alltid med alla objekt
   const R = l3.renderer, pr0 = R.getPixelRatio(), cur = l3MakeView("_nu"), bg0 = l3.scene.background, date0 = $("dateInput").value;
   let out = null;
   try {

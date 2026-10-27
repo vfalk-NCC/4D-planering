@@ -101,6 +101,7 @@ function l3lodRestoreAll() { l3lodApply(-1); }
 /* Vilken nivå som passar zoomen: objekt under ca 3 bildpunkter ritas inte medan kameran rör sig. */
 function l3lodPick() {
   if (!l3lodOn() || l3lodTris() < L3LOD_MIN_TRIS) return -1;
+  if (typeof l3pl !== "undefined" && l3pl.rec) return -1;   // filminspelning: alla bilder ritas fullt
   const r = l3.renderer, cam = l3.camera, H = r.getDrawingBufferSize(new THREE.Vector2()).y || 800;
   let ppm;
   if (cam.isOrthographicCamera) ppm = H / Math.max(1e-6, (cam.top - cam.bottom) / (cam.zoom || 1));
