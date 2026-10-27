@@ -16,6 +16,7 @@ const SNAP_PX = 7; // snäpp-avstånd i skärmpixlar
 const ELEMENT_TYPES = {
   text: { label: "Text", icon: "🔤" },
   image: { label: "Bild", icon: "🖼" },
+  view3d: { label: "3D-vy", icon: "🧊" },
   map: { label: "Ritning", icon: "🗺" },
   legend: { label: "Förklaring", icon: "📋" },
   scalebar: { label: "Skalstock", icon: "📏" },
@@ -32,6 +33,7 @@ const ELEMENT_TYPES = {
 };
 /* Enhetliga linjeikoner (verktygsraden och panelens rubrik). */
 const PR_ICONS = Object.fromEntries(Object.entries({
+  view3d: '<path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.7z"/><path d="M3.3 7 12 12l8.7-5M12 22V12"/>',
   text: '<path d="M5 7V5h14v2M12 5v14M9 19h6"/>',
   callout: '<path d="M5 4h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/><path d="M8 9h8M8 12h5"/>',
   map: '<path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20z"/><path d="M9 4v13.5M15 6.5V20"/>',
@@ -768,6 +770,10 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
       if (el.stroke) { ctx.strokeStyle = el.stroke; ctx.lineWidth = Math.max(0.5, (el.lw || 0.35) * k * u); if (dash) { ctx.setLineDash(dash.map(v => v * k * u)); if (el.dash === "dotted") ctx.lineCap = "round"; } path(); ctx.stroke(); ctx.setLineDash([]); }
       break;
     }
+    case "view3d": { // lagesplan-print3d.js
+      if (typeof p3dDraw === "function") p3dDraw(ctx, el, X, Y, W, H, k, u, opts);
+      break;
+    }
     case "image": {
       const im = el.path ? printImage(el.path) : null;
       if (im) {
@@ -1492,7 +1498,7 @@ function prKey(e) {
   if (mv) { stop(); if (selEls().some(x => x.locked)) return; pushUndo(); selEls().forEach(el => { el.x += mv[0]; el.y += mv[1]; }); renderPrintProps(true); drawPrintPage(); }
 }
 
-const PR_TYPE_NAMES = { text: "textruta", callout: "pratbubbla", map: "ritning", image: "bild", legend: "förklaring", table: "tabell", section: "sektion", title: "ritningshuvud", scalebar: "skalstock", north: "norrpil", qr: "QR-kod", rect: "ruta", ellipse: "ellips", line: "linje", arrow: "pil" };
+const PR_TYPE_NAMES = { view3d: "3D-vy", text: "textruta", callout: "pratbubbla", map: "ritning", image: "bild", legend: "förklaring", table: "tabell", section: "sektion", title: "ritningshuvud", scalebar: "skalstock", north: "norrpil", qr: "QR-kod", rect: "ruta", ellipse: "ellips", line: "linje", arrow: "pil" };
 function addEl(type) {
   const cx = PAGE_A3[0] / 2, cy = PAGE_A3[1] / 2;
   const firstMap = pr.tpl.elements.find(e => e.type === "map");
@@ -1500,6 +1506,7 @@ function addEl(type) {
   const extra = {
     text: { text: "Ny text", size: 10, bold: false, align: "left", color: "#000000", w: 60, h: 14 },
     image: { path: null, ar: 1, w: 40, h: 40 },
+    view3d: { w: 140, h: 100, border: true, view: null },
     legend: { title: "FÖRKLARINGAR", cols: 2, size: 7, phases: true, site: true, cad: false, extra: "", w: 120, h: 50 },
     scalebar: { w: 70, h: 16, mapId: firstMap && firstMap.id },
     north: { w: 20, h: 20, style: "rose4", color: "#000000", mapId: firstMap && firstMap.id },
@@ -1516,6 +1523,7 @@ function addEl(type) {
   pushUndo();
   const el = type === "map" ? { ...newMapEl(cx - 100, cy - 70, 200, 140, pr.tpl.format), label: { show: true, name: "Ny vy", size: 9, align: "left" } } : { ...base, ...extra };
   el.x = Math.max(0, Math.min(PAGE_A3[0] - el.w, cx - el.w / 2)); el.y = Math.max(0, Math.min(PAGE_A3[1] - Math.max(el.h, 1), cy - el.h / 2));
+  if (type === "view3d" && typeof p3dReady === "function" && p3dReady() && typeof l3MakeView === "function") { try { el.view = l3MakeView("Utskriftsvy"); } catch (e) { /* ingen vy ännu */ } }   // börjar där 3D-kameran står
   pr.tpl.elements.push(el);
   setSel([el.id]);
   prCmdLog(`Lade till ${PR_TYPE_NAMES[type] || type}.`);
@@ -1647,6 +1655,7 @@ function renderPrintProps(onlyPos) {
   if (el.type === "text") html += textOpts(10, `${color("color", "Färg")}${color("fill", "Bakgrund", true)}${color("border", "Ram", true)}<div></div>`);
   if (el.type === "callout") html += textOpts(9, `${color("color", "Text")}${color("fill", "Fyllning", true)}${color("stroke", "Kant", true)}${num("lw", "Tjocklek", "0.05")}`)
     + `<div class="pr-grid4">${num("radius", "Hörn mm", "0.5")}</div><div class="hint">Dra i handtaget i spetsen för att peka ut något. Spetsen står kvar när bubblan ändrar storlek.</div>`;
+  if (el.type === "view3d" && typeof p3dPropsHtml === "function") html += p3dPropsHtml(el, chk);
   if (el.type === "image") html += `<button id="prPickImg" class="block" style="margin-top:8px;">🖼 ${el.path ? "Byt bild…" : "Välj bild…"}</button><div class="hint">PNG, JPG eller SVG – t.ex. företagets logga eller skyltar. Bilden sparas i projektet. Proportionerna behålls (Shift = fritt).</div>
       ${el.path ? `<label style="margin-top:8px;">Beskär (% av bilden)</label><button type="button" id="prImgCrop" class="block" title="Dra i handtagen på bilden för att beskära">✂ Beskär med musen…</button><div class="pr-grid4">${num("cropL", "Vänster", "1")}${num("cropR", "Höger", "1")}${num("cropT", "Över", "1")}${num("cropB", "Under", "1")}</div>
       ${chk("knockout", "Gör vit bakgrund genomskinlig")}
@@ -1770,6 +1779,7 @@ function renderPrintProps(onlyPos) {
   on("prDown", () => orderSel("bottom"));
   on("prDel", deleteSel);
   on("prPickImg", () => $("prImgInput").click());
+  if (el.type === "view3d" && typeof p3dPropsBind === "function") p3dPropsBind(el);
   on("prLock", () => { pushUndo(); el.locked = !el.locked; if (el.locked && pr.panMode) pr.panMode = false; renderPrintPanel(); drawPrintPage(); });
   // Förklaringens rader.
   box.querySelectorAll(".pr-leg-row").forEach(row => {
@@ -2010,6 +2020,11 @@ async function exportPrintPdf() {
           doc.setFont("helvetica", "normal"); doc.setFontSize(s * 0.85); doc.text(`Skala 1:${el.scale}`, tx, ty, { baseline: "top", align: al });
         }
         ocClose(mapOc);
+      } else if (el.type === "view3d") {
+        setPrintStatus("Ritar 3D-vyn i hög upplösning…");
+        const c = typeof p3dForPdf === "function" ? await p3dForPdf(el, Math.abs(w), Math.abs(h)) : null;
+        if (c) doc.addImage(c.toDataURL("image/jpeg", 0.92), "JPEG", Math.min(x, x + w), Math.min(y, y + h), Math.abs(w), Math.abs(h), undefined, "FAST");
+        if (el.border !== false) { doc.setDrawColor(0); doc.setLineWidth(0.35 * k); doc.rect(x, y, w, h); }
       } else if (el.type === "image") {
         const im = el.path ? printImage(el.path) || await printImgs.get(el.path) : null;
         if (!im) continue;
