@@ -141,6 +141,23 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       return out;
     });
     if (!f.hit) console.log('OBS: ingen yta träffades i testscenen (rutnätet)'); else if (!f.ortho || f.par < 0.99) fail('Rikta mot yta: ' + JSON.stringify(f)); else console.log('rikta mot yta OK', JSON.stringify(f)); }
+  // Eget datum per 3D-vy + datum/skala i bildtexten; skalstock och norrpil kopplade till 3D-vyn
+  { const d = await page.evaluate(async () => {
+      const el = pr.tpl.elements.find(e => e.type === 'view3d'); el.bub = ''; const v = JSON.parse(JSON.stringify(p3dResolve(el))); v.ortho = true; v.zoom = 1; el.view = v; delete el.viewRef;
+      const d0 = $('dateInput').value; el.date = '2020-01-15'; el.showDate = true; el.showScale = true;
+      const cA = await p3dRender(p3dResolve(el), 300, 200, p3dOpts(el)), back = $('dateInput').value;
+      el.date = '2030-06-01'; const cB = await p3dRender(p3dResolve(el), 300, 200, p3dOpts(el));
+      const px = c => { const x = c.getContext('2d').getImageData(0, 0, 300, 200).data; let n = 0; for (let i = 0; i < x.length; i += 4) n += x[i] * 3 + x[i + 1] * 2 + x[i + 2]; return n; };
+      const cap = p3dCaption(el), k1 = p3dKey(el, p3dResolve(el), 300, 200), k2 = p3dKey({ ...el, date: '2020-01-15' }, p3dResolve(el), 300, 200);
+      // skalstock + norrpil kopplade till 3D-vyn
+      const sb = { id: 'sbx', type: 'scalebar', x: 10, y: 10, w: 60, h: 14, mapId: el.id }, nr = { id: 'nrx', type: 'north', x: 80, y: 10, w: 20, h: 20, style: 'rose4', mapId: el.id };
+      pr.tpl.elements.push(sb, nr);
+      const ref = refFor(sb, pr.tpl), ang = p3dNorthAngle(el);
+      const c = document.createElement('canvas'); c.width = 400; c.height = 200; drawElement(c.getContext('2d'), sb, pr.tpl, 4, 1); drawElement(c.getContext('2d'), nr, pr.tpl, 4, 1);
+      pr.tpl.elements = pr.tpl.elements.filter(e => e.id !== 'sbx' && e.id !== 'nrx');
+      return { restored: back === d0, different: px(cA) !== px(cB), cap, keyDiff: k1 !== k2, ref: ref && ref.id === el.id, ang: Math.round(ang * 100) / 100, scale: p3dScaleOf(el) };
+    });
+    if (!d.restored || !d.keyDiff || d.cap.length !== 2 || !/^Skala 1:\d+$/.test(d.cap[1]) || !d.ref || !(typeof d.ang === 'number')) fail('Datum/bildtext/skalstock/norrpil på 3D-vyn: ' + JSON.stringify(d)); console.log('datum+skalstock OK', JSON.stringify(d)); }
   // Ställ in vyn: 3D visas med ram, Använd vyn sparar kameran i elementet
   const p = await page.evaluate(async () => {
     const el = pr.tpl.elements.find(e => e.type === 'view3d'); delete el.viewRef;

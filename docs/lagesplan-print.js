@@ -225,6 +225,11 @@ function fitScale(wA3, hA3, format) {
 }
 const nearestScale = n => PRINT_SCALES.reduce((a, b) => Math.abs(Math.log(b / n)) < Math.abs(Math.log(a / n)) ? b : a);
 /* Ritningen som skalstock/norrpil/{skala} hör till. */
+/* Det en skalstock/norrpil hör till: en ritning eller (parallellprojektion) en 3D-vy. */
+function refFor(el, tpl) {
+  const refs = tpl.elements.filter(e => e.type === "map" || e.type === "view3d");
+  return refs.find(m => m.id === el.mapId) || mapFor(el, tpl);
+}
 function mapFor(el, tpl) {
   const maps = tpl.elements.filter(e => e.type === "map");
   return maps.find(m => m.id === el.mapId) || maps[0] || null;
@@ -810,12 +815,13 @@ function drawElement(ctx, el, tpl, u, k, opts = {}) {
       break;
     }
     case "north": {
-      ctx.translate(X + W / 2, Y + H / 2); ctx.rotate(northAngle(mapFor(el, tpl)));
+      ctx.translate(X + W / 2, Y + H / 2); { const t = refFor(el, tpl); ctx.rotate(t && t.type === "view3d" && typeof p3dNorthAngle === "function" ? p3dNorthAngle(t) : northAngle(t)); }
       drawNorthStyle(ctx, el.style || "rose4", Math.min(Math.abs(W), Math.abs(H)) / 2, el.color);
       break;
     }
     case "scalebar": {
-      const N = (mapFor(el, tpl) || {}).scale || 1000;
+      const ref = refFor(el, tpl), N = ref && ref.type === "view3d" ? (typeof p3dScaleOf === "function" ? p3dScaleOf(ref) : null) : ((ref || {}).scale || 1000);
+      if (!N) { ctx.font = `${Math.min(H * 0.25, pt(7))}px Helvetica, Arial`; ctx.fillStyle = "#000"; ctx.textBaseline = "middle"; ctx.textAlign = "left"; ctx.fillText("Perspektiv – ingen skala", X, Y + H / 2); break; }
       const mmPerM = 1000 / N; // mm på bladet per meter
       const maxM = (el.w * k * 0.92) / mmPerM;
       const pow = Math.pow(10, Math.floor(Math.log10(maxM)));
@@ -1639,7 +1645,8 @@ function renderPrintProps(onlyPos) {
     return `<div><label title="${escHtml(label)}">${label}</label><div class="pr-colw"><input type="color" data-f="${f}" value="${escHtml(el[f] || (none ? "#ffffff" : def))}" class="pr-color${empty ? " empty" : ""}" title="${empty ? "Ingen – klicka för att välja färg" : "Välj färg"}" />${none ? `<button type="button" class="icon ghost pr-nocolor${empty ? " on" : ""}" data-f="${f}" title="Ingen färg">∅</button>` : ""}</div></div>`;
   };
   const maps = pr.tpl.elements.filter(e => e.type === "map");
-  const mapSel = () => maps.length > 1 ? `<label>Hör till ritning</label><select data-f="mapId">${maps.map((m, i) => `<option value="${escHtml(m.id)}"${(mapFor(el, pr.tpl) || {}).id === m.id ? " selected" : ""}>${escHtml(m.label && m.label.name || "Ritning " + (i + 1))} (1:${m.scale})</option>`).join("")}</select>` : "";
+  const refs = pr.tpl.elements.filter(e => e.type === "map" || e.type === "view3d");
+  const mapSel = () => refs.length > 1 ? `<label>Hör till ritning / 3D-vy</label><select data-f="mapId">${refs.map((m, i) => { const is3 = m.type === "view3d", sc = is3 ? (typeof p3dScaleOf === "function" ? p3dScaleOf(m) : null) : m.scale; return `<option value="${escHtml(m.id)}"${(refFor(el, pr.tpl) || {}).id === m.id ? " selected" : ""}>${is3 ? "3D-vy " + (refs.filter(r => r.type === "view3d").indexOf(m) + 1) : escHtml(m.label && m.label.name || "Ritning " + (i + 1))}${sc ? ` (1:${sc})` : is3 ? " (perspektiv)" : ""}</option>`; }).join("")}</select>` : "";
   let html = `<div class="row"><b class="pr-elhead">${PR_ICONS[el.type] || t.icon} ${t.label}</b><span class="grow"></span>
       <button class="icon ghost" id="prDup" title="Duplicera (Ctrl+D)">⧉</button>
       <button class="icon ghost" id="prUp" title="Lägg överst">⤒</button>
@@ -2013,7 +2020,7 @@ async function exportPrintPdf() {
         if (mc.overlay) inLayer([EL], () => overlayPdf(mc.overlay, mc.P.overlayVecUnder, mc.P.overlayVec));
         (mc.P.layerOverlays || []).forEach(o => inLayer([EL, o.name], () => overlayPdf(o.canvas, o.vecUnder, o.vec)));
         const mapOc = ocOpen(EL);
-        if (el.showScale && typeof p3dScaleOf === "function") { const n = p3dScaleOf(el); if (n) { doc.setFontSize(8 * k); doc.setFont("helvetica", "bold"); const txt = `Skala 1:${n}`, bw = doc.getTextWidth(txt) + 2.4 * k, bh = 4.6 * k; doc.setFillColor(255, 255, 255); doc.rect(Math.min(x, x + w), Math.max(y, y + h) - bh, bw, bh, "F"); doc.setTextColor(0); doc.text(txt, Math.min(x, x + w) + 1.2 * k, Math.max(y, y + h) - bh / 2, { baseline: "middle" }); } }
+        if (typeof p3dCaption === "function") { const cap = p3dCaption(el); if (cap.length) { doc.setFontSize(8 * k); doc.setFont("helvetica", "bold"); const bw = Math.max(...cap.map(t => doc.getTextWidth(t))) + 2.4 * k, lh = 3.4 * k, bh = cap.length * lh + 1.2 * k, x0 = Math.min(x, x + w), y1 = Math.max(y, y + h); doc.setFillColor(255, 255, 255); doc.rect(x0, y1 - bh, bw, bh, "F"); doc.setTextColor(0); cap.forEach((t, n) => doc.text(t, x0 + 1.2 * k, y1 - bh + 0.6 * k + n * lh + lh / 2, { baseline: "middle" })); } }
         if (el.border !== false) { doc.setDrawColor(0); doc.setLineWidth(0.35 * k); doc.rect(x, y, w, h); }
         if (el.label && el.label.show) {
           const s = (el.label.size || 9) * k, al = el.label.align || "left";

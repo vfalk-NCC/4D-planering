@@ -21,10 +21,11 @@ function p3dResolve(el) {
   if (el.viewRef) { const v = p3dSaved().find(x => x.name === el.viewRef); if (v) return v; }
   return el.view || null;
 }
-const p3dOpts = (el, hMm) => ({ white: el.bg3d === "white", bub: el.bub || "", bubMax: el.bubMax, bubSize: el.bubSize, hMm: hMm || p3dHmm(el) });
+const p3dDate = el => el.date || ((typeof $ === "function" && $("dateInput")) ? $("dateInput").value : "");
+const p3dOpts = (el, hMm) => ({ date: el.date || "", white: el.bg3d === "white", bub: el.bub || "", bubMax: el.bubMax, bubSize: el.bubSize, hMm: hMm || p3dHmm(el) });
 function p3dKey(el, v, W, H) {
   if (!v) return "";
-  return JSON.stringify([v.p, v.t, v.ortho, v.zoom, v.clips, v.meas, v.hid && [(v.hid.guids || []).length, (v.hid.place || []).length, (v.hid.objs || []).length], v.clouds, el.bg3d || "", el.bub || "", el.bubMax || 0, el.bubSize || 100, el.bub ? ((typeof $ === "function" && $("dateInput")) ? $("dateInput").value : "") : "", W, H]);
+  return JSON.stringify([v.p, v.t, v.ortho, v.zoom, v.clips, v.meas, v.hid && [(v.hid.guids || []).length, (v.hid.place || []).length, (v.hid.objs || []).length], v.clouds, el.bg3d || "", el.bub || "", el.bubMax || 0, el.bubSize || 100, p3dDate(el), W, H]);
 }
 
 /* Skala (parallellprojektion): bladets mm per modellmeter. Synlig höjd i modellen = L3_ORTHO_H / zoom; elementets höjd på papperet = el.h × k mm.
@@ -48,12 +49,18 @@ function p3dApplyView(v, ms = 0) {
   l3FlyTo(T, dist, dir, ms);
 }
 
+/* Datumet 3D-scenen visar (statusfärger på objekten, etablering, bubblor). Ändrar bara datumfältet – inget annat i lägesplanen rörs. */
+function p3dSetDate(iso) {
+  $("dateInput").value = iso;
+  l3BuildObjects(); if (typeof l3bRecolor === "function") l3bRecolor(); if (typeof l3Etab4dAll === "function") l3Etab4dAll(); if (typeof l3StorageBuild === "function") l3StorageBuild();
+}
 /* Bilden: W×H px. o.white = vit bakgrund. Returnerar en canvas (eller null om 3D inte är inläst). */
 function p3dRenderNow(view, W, H, o = {}) {
   if (!p3dReady() || !view) return null;
-  const R = l3.renderer, pr0 = R.getPixelRatio(), cur = l3MakeView("_nu"), bg0 = l3.scene.background;
+  const R = l3.renderer, pr0 = R.getPixelRatio(), cur = l3MakeView("_nu"), bg0 = l3.scene.background, date0 = $("dateInput").value;
   let out = null;
   try {
+    if (o.date && o.date !== date0) p3dSetDate(o.date);   // eget datum: statusfärger, etablering och bubblor räknas för det datumet
     p3dApplyView(view, 0);
     R.setPixelRatio(1); R.setSize(W, H, false);
     const cam = l3.camera;
@@ -73,6 +80,7 @@ function p3dRenderNow(view, W, H, o = {}) {
   } catch (e) { console.warn("3D-vy i utskriften", e); out = null; }
   finally {
     l3.scene.background = bg0;
+    if (o.date && o.date !== date0) { try { p3dSetDate(date0); } catch (e) { /* */ } }
     try { p3dApplyView(cur, 0); } catch (e) { /* kameran står kvar */ }
     R.setPixelRatio(pr0); l3Resize(); if (typeof l3Render === "function") l3Render();
   }
@@ -211,6 +219,9 @@ function p3dPropsHtml(el, chk) {
     ${v && v.ortho ? `<label style="margin-top:8px;">Skala</label><div class="row" style="flex-wrap:nowrap;gap:6px;"><span>1 :</span><input type="number" id="prV3Scale" min="1" step="1" value="${p3dScaleOf(el) || ""}" style="width:90px;"${el.locked ? " disabled" : ""} title="Skalan på det som syns i bilden (vid bladets format). Ändrar zoomen i vyn." /><select id="prV3ScaleSel" title="Vanliga skalor"><option value="">Välj…</option>${(typeof PRINT_SCALES !== "undefined" ? PRINT_SCALES : [50, 100, 200, 500, 1000]).map(n => `<option value="${n}">1:${n}</option>`).join("")}</select></div>
       ${chk("showScale", "Visa skalan på bilden")}`
       : `<div class="hint" style="margin-top:8px;">Skala: perspektivvyer har ingen skala. Välj parallellprojektion (ortho) i 3D-editorn för att kunna ställa in och läsa skalan.</div>`}
+    <label style="margin-top:8px;">Datum</label>
+    <div class="row" style="flex-wrap:nowrap;gap:6px;"><select id="prV3DateMode"><option value=""${el.date ? "" : " selected"}>Som i lägesplanen</option><option value="own"${el.date ? " selected" : ""}>Eget datum</option></select>${el.date ? `<input type="date" id="prV3Date" value="${escHtml(el.date)}" />` : ""}</div>
+    <label class="check"><input type="checkbox" data-f="showDate"${el.showDate ? " checked" : ""} /> Visa datum på bilden</label>
     <label style="margin-top:8px;">Bubblor med framdrift</label>
     <select data-f="bub" title="Aktivitetsbubblor (namn, datum, framdrift) vid objekten, som i 3D-editorn. Urvalet följer datumet i lägesplanen."><option value=""${el.bub ? "" : " selected"}>Inga</option><option value="active"${el.bub === "active" ? " selected" : ""}>Aktiva vid datumet</option><option value="all"${el.bub === "all" ? " selected" : ""}>Alla aktiviteter</option></select>
     ${el.bub ? `<div class="pr-grid4"><div style="grid-column:span 2;"><label>Högst antal</label><input type="number" min="1" max="100" data-f="bubMax" data-num="1" value="${el.bubMax || 15}" /></div><div style="grid-column:span 2;"><label>Storlek %</label><input type="number" min="40" max="300" step="10" data-f="bubSize" data-num="1" value="${el.bubSize || 100}" /></div></div>` : ""}
@@ -228,6 +239,8 @@ function p3dPropsBind(el) {
     if (name) { const v = p3dSaved().find(x => x.name === name); if (v) { el.view = JSON.parse(JSON.stringify(v)); el.viewRef = name; } } else delete el.viewRef;
     p3d.cache.delete(el.id); p3d.pend.delete(el.id); renderPrintProps(); drawPrintPage();
   };
+  if (g("prV3DateMode")) g("prV3DateMode").onchange = e => { pushUndo(); if (e.target.value === "own") el.date = p3dDate(el) || ""; else delete el.date; p3d.cache.delete(el.id); p3d.pend.delete(el.id); renderPrintProps(true); drawPrintPage(); };
+  if (g("prV3Date")) g("prV3Date").onchange = e => { if (!e.target.value) return; pushUndo(); el.date = e.target.value; p3d.cache.delete(el.id); p3d.pend.delete(el.id); drawPrintPage(); };
   const setScale = n => {
     n = Math.round(Number(n)); if (!(n > 0)) return;
     const v = p3dResolve(el); if (!v || !v.ortho) return;
@@ -237,7 +250,7 @@ function p3dPropsBind(el) {
   if (g("prV3Scale")) g("prV3Scale").onchange = e => setScale(e.target.value);
   if (g("prV3ScaleSel")) g("prV3ScaleSel").onchange = e => setScale(e.target.value);
   if (g("prV3Follow")) g("prV3Follow").onchange = e => { if (!e.target.checked) { pushUndo(); const v = p3dResolve(el); if (v) el.view = JSON.parse(JSON.stringify(v)); delete el.viewRef; renderPrintProps(); drawPrintPage(); } };
-  document.querySelectorAll('#prProps [data-f="bg3d"], #prProps [data-f="bub"], #prProps [data-f="bubMax"], #prProps [data-f="bubSize"]').forEach(s => s.addEventListener("change", () => { p3d.cache.delete(el.id); p3d.pend.delete(el.id); if (s.dataset.f === "bub") renderPrintProps(true); drawPrintPage(); }));
+  document.querySelectorAll('#prProps [data-f="showDate"], #prProps [data-f="showScale"], #prProps [data-f="bg3d"], #prProps [data-f="bub"], #prProps [data-f="bubMax"], #prProps [data-f="bubSize"]').forEach(s => s.addEventListener("change", () => { p3d.cache.delete(el.id); p3d.pend.delete(el.id); if (s.dataset.f === "bub") renderPrintProps(true); drawPrintPage(); }));
 }
 /* Ritar elementet (anropas från drawElement). */
 function p3dDraw(ctx, el, X, Y, W, H, k, u, opts) {
@@ -249,12 +262,34 @@ function p3dDraw(ctx, el, X, Y, W, H, k, u, opts) {
     const txt = !p3dResolve(el) ? "3D-vy – välj en vy i egenskaperna" : !p3dReady() ? "3D-vy – läs in 3D-modellerna i egenskaperna" : "3D-vyn ritas …";
     ctx.fillText(txt, X + W / 2, Y + H / 2);
   }
-  if (el.showScale) { const n = p3dScaleOf(el); if (n) p3dScaleLabel(ctx, `Skala 1:${n}`, X, Y + H, k * u); }
+  { const cap = p3dCaption(el); if (cap.length) p3dScaleLabel(ctx, cap, X, Y + H, k * u); }
   if (el.border !== false) { ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, 0.35 * k * u); ctx.strokeRect(X, Y, W, H); }
 }
-/* "Skala 1:N" i bildens nedre vänstra hörn. */
-function p3dScaleLabel(ctx, txt, X, Ybottom, ku) {
-  const fs = 3 * ku, pad = 1.2 * ku; ctx.save(); ctx.font = `bold ${fs}px Helvetica, Arial`; const w = ctx.measureText(txt).width + pad * 2;
-  ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fillRect(X, Ybottom - fs - pad * 2, w, fs + pad * 2);
-  ctx.fillStyle = "#000"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(txt, X + pad, Ybottom - (fs + pad * 2) / 2); ctx.restore();
+/* Text i bildens nedre vänstra hörn: datum (om valt) och skala (om vald och parallellprojektion). */
+function p3dDateText(iso) {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00"); if (isNaN(d)) return iso;
+  const wk = typeof isoWeek === "function" ? `v.${isoWeek(d)} · ` : "";
+  return wk + d.toLocaleDateString("sv-SE", { day: "numeric", month: "short", year: "numeric" });
+}
+function p3dCaption(el) {
+  const out = [];
+  if (el.showDate) { const t = p3dDateText(p3dDate(el)); if (t) out.push(t); }
+  if (el.showScale) { const n = p3dScaleOf(el); if (n) out.push(`Skala 1:${n}`); }
+  return out;
+}
+function p3dScaleLabel(ctx, lines, X, Ybottom, ku) {
+  const fs = 3 * ku, pad = 1.2 * ku, gap = fs * 0.25; ctx.save(); ctx.font = `bold ${fs}px Helvetica, Arial`;
+  const w = Math.max(...lines.map(t => ctx.measureText(t).width)) + pad * 2, h = lines.length * fs + (lines.length - 1) * gap + pad * 2;
+  ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fillRect(X, Ybottom - h, w, h);
+  ctx.fillStyle = "#000"; ctx.textAlign = "left"; ctx.textBaseline = "top"; lines.forEach((t, i) => ctx.fillText(t, X + pad, Ybottom - h + pad + i * (fs + gap))); ctx.restore();
+}
+/* Var norr pekar i bilden (radianer medsols från "uppåt") – för norrpilen. */
+function p3dNorthAngle(el) {
+  const v = p3dResolve(el); if (!v || typeof THREE === "undefined") return 0;
+  const dir = new THREE.Vector3(v.t[0] - v.p[0], v.t[1] - v.p[1], v.t[2] - v.p[2]).normalize();
+  const up = Math.abs(dir.z) > 0.99 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
+  const right = new THREE.Vector3().crossVectors(dir, up).normalize(), upc = new THREE.Vector3().crossVectors(right, dir).normalize(), n = new THREE.Vector3(0, 1, 0);
+  const sx = n.dot(right), sy = n.dot(upc);
+  return Math.hypot(sx, sy) < 1e-3 ? 0 : Math.atan2(sx, sy);
 }
