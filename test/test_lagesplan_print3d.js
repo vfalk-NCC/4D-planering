@@ -128,19 +128,23 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   { const f = await page.evaluate(async () => {
       const el = pr.tpl.elements.find(e => e.type === 'view3d'); delete el.viewRef;
       p3dPick(el); await new Promise(r => setTimeout(r, 1500));
-      document.getElementById('p3dFace').click();
+      if (!document.getElementById('prV3Face')) return { diag: { live: !!p3d.live, sels: pr.sels, props: ['prV3Pick','prV3Done','prV3Saved','prV3Face'].map(i => i + ':' + !!document.getElementById(i)).join(), cut: typeof p3dLiveHtml } };
+      document.getElementById('prV3Face').click();
       const dom = l3.renderer.domElement, r = dom.getBoundingClientRect(); let hit = false;
       for (let gy = 0.3; gy <= 0.8 && !hit; gy += 0.05) for (let gx = 0.3; gx <= 0.7 && !hit; gx += 0.04) {
-        if (!document.getElementById('p3dFace').classList.contains('on')) document.getElementById('p3dFace').click();
+        if (!document.getElementById('prV3Face').classList.contains('on')) document.getElementById('prV3Face').click();
         dom.dispatchEvent(new PointerEvent('pointerdown', { clientX: r.left + r.width * gx, clientY: r.top + r.height * gy, bubbles: true, cancelable: true, pointerId: 1 }));
         hit = (l3.clips || []).some(c => c.p3d);
       }
       const c = (l3.clips || []).find(c => c.p3d), cam = l3.camera, dir = cam.position.clone().sub(l3.orbit.target).normalize();
       const out = { hit, ortho: cam.isOrthographicCamera, par: c ? Math.abs(dir.dot(c.plane.normal)) : 0 };
-      document.getElementById('p3dCancel').click(); await new Promise(r2 => setTimeout(r2, 300));
+      // Snittdjup: reglaget flyttar snittet
+      if (c) { const r2 = document.getElementById('prV3CutR'); out.hasCut = !!r2; if (r2) { r2.value = '2'; r2.dispatchEvent(new Event('input')); out.off = c.off; } }
+      document.getElementById('prV3Cancel').click(); await new Promise(r2 => setTimeout(r2, 300));
       return out;
     });
-    if (!f.hit) console.log('OBS: ingen yta träffades i testscenen (rutnätet)'); else if (!f.ortho || f.par < 0.99) fail('Rikta mot yta: ' + JSON.stringify(f)); else console.log('rikta mot yta OK', JSON.stringify(f)); }
+    if (f.diag) fail('diag ' + JSON.stringify(f.diag));
+    if (!f.hit) console.log('OBS: ingen yta träffades i testscenen (rutnätet)'); else if (!f.ortho || f.par < 0.99 || !f.hasCut || f.off !== 2) fail('Rikta mot yta: ' + JSON.stringify(f)); else console.log('rikta mot yta OK', JSON.stringify(f)); }
   // Eget datum per 3D-vy + datum/skala i bildtexten; skalstock och norrpil kopplade till 3D-vyn
   { const d = await page.evaluate(async () => {
       const el = pr.tpl.elements.find(e => e.type === 'view3d'); el.bub = ''; const v = JSON.parse(JSON.stringify(p3dResolve(el))); v.ortho = true; v.zoom = 1; el.view = v; delete el.viewRef;
@@ -158,17 +162,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       return { restored: back === d0, different: px(cA) !== px(cB), cap, keyDiff: k1 !== k2, ref: ref && ref.id === el.id, ang: Math.round(ang * 100) / 100, scale: p3dScaleOf(el) };
     });
     if (!d.restored || !d.keyDiff || d.cap.length !== 2 || !/^Skala 1:\d+$/.test(d.cap[1]) || !d.ref || !(typeof d.ang === 'number')) fail('Datum/bildtext/skalstock/norrpil på 3D-vyn: ' + JSON.stringify(d)); console.log('datum+skalstock OK', JSON.stringify(d)); }
-  // Ställ in vyn: 3D visas med ram, Använd vyn sparar kameran i elementet
+  // Ställ in vyn: levande vy ovanpå elementet i layouten, Klar sparar kameran i elementet
   const p = await page.evaluate(async () => {
     const el = pr.tpl.elements.find(e => e.type === 'view3d'); delete el.viewRef;
-    const done = p3dPick(el); await new Promise(r => setTimeout(r, 1500)); if (window.__SHOT) await window.__SHOT('pick');
-    const out = { bar: !!document.getElementById('p3dBar'), away: document.getElementById('printModal').classList.contains('p3d-away'), w: document.getElementById('v3Canvas').clientWidth, h: document.getElementById('v3Canvas').clientHeight };
-    out.ratio = Math.round(out.w / out.h * 100) / 100; out.want = Math.round(el.w / el.h * 100) / 100;
-    document.getElementById('p3dOk').click(); await new Promise(r => setTimeout(r, 500));
-    out.after = { bar: !!document.getElementById('p3dBar'), away: document.getElementById('printModal').classList.contains('p3d-away'), view: !!el.view, ref: el.viewRef };
+    p3dPick(el); await new Promise(r => setTimeout(r, 1500)); if (window.__SHOT) await window.__SHOT('pick');
+    const box = document.querySelector('.p3d-live'), b = box && box.getBoundingClientRect(), cv = l3.renderer.domElement;
+    const out = { live: !!box, inWrap: !!box && document.getElementById('prCanvasWrap').contains(box), modalOpen: !document.getElementById('printModal').classList.contains('hidden'), w: b && b.width, h: b && b.height, canvasIn: !!box && box.contains(cv), panel: !!document.getElementById('prV3Done') };
+    out.ratio = Math.round(b.width / b.height * 100) / 100; out.want = Math.round(el.w / el.h * 100) / 100;
+    document.getElementById('prV3Done').click(); await new Promise(r => setTimeout(r, 500));
+    out.after = { live: !!document.querySelector('.p3d-live'), canvasBack: !!document.getElementById('v3Canvas').contains(cv), view: !!el.view, ref: el.viewRef };
     return out;
   });
-  if (!p.bar || !p.away || Math.abs(p.ratio - p.want) > 0.05 || p.after.bar || p.after.away || !p.after.view) fail('Ställ in vyn: ' + JSON.stringify(p));
+  if (!p.live || !p.inWrap || !p.modalOpen || !p.canvasIn || !p.panel || Math.abs(p.ratio - p.want) > 0.05 || p.after.live || !p.after.canvasBack || !p.after.view) fail('Ställ in vyn (levande): ' + JSON.stringify(p));
   if (errors.filter(e => !/allow-same-origin/.test(e)).length) fail('sidfel: ' + errors.slice(0, 3).join(' | '));
   console.log('OK test_lagesplan_print3d – sparad vy som bild på bladet, kameran orörd, ställ in vyn med ram, PDF-bild');
   await browser.close(); server.close();

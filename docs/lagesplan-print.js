@@ -1212,6 +1212,7 @@ function migrateTpl(t) {
 }
 async function closePrint() {
   if (pr && pr.dirty && !await uiConfirm("Mallen har osparade ändringar. Stänga ändå?")) return;
+  if (typeof p3d !== "undefined" && p3d.live) p3dLiveEnd(false);
   prLayersDetach();
   pr = null; $("printModal").classList.add("hidden");
   // Förhandsbilderna (ritningar, ortofoto/PDF-bottenlager, DXF, 3D-vyer) släpps när layouten stängs – annars ligger de kvar i minnet.

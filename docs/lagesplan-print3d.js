@@ -56,7 +56,7 @@ function p3dSetDate(iso) {
 }
 /* Bilden: W×H px. o.white = vit bakgrund. Returnerar en canvas (eller null om 3D inte är inläst). */
 function p3dRenderNow(view, W, H, o = {}) {
-  if (!p3dReady() || !view) return null;
+  if (!p3dReady() || !view || p3d.live) return null;   // renderaren används av den levande vyn
   const R = l3.renderer, pr0 = R.getPixelRatio(), cur = l3MakeView("_nu"), bg0 = l3.scene.background, date0 = $("dateInput").value;
   let out = null;
   try {
@@ -71,13 +71,7 @@ function p3dRenderNow(view, W, H, o = {}) {
     out = document.createElement("canvas"); out.width = W; out.height = H;
     out.getContext("2d").drawImage(R.domElement, 0, 0, W, H);
     // Bubblor med framdrift (3D-editorns egna): urval efter datum, samma innehåll som i 3D-vyn och filmen. Storleken följer bladet (texthöjd ca 2,6 mm).
-    if (o.bub && typeof l3fxBubbles === "function") {
-      const P = l3Prefs(), old = [P.bubScope, P.bubMax, P.bubFields, P.bubLine, P.bubNeutral]; P.bubScope = o.bub; P.bubMax = o.bubMax || 15;
-      if (o.bubF) P.bubFields = { ...(P.bubFields || {}), ...o.bubF }; P.bubLine = !o.bubNoLine; P.bubNeutral = !!o.bubNeutral;
-      try { const mmH = o.hMm || 100; l3fxBubbles(out.getContext("2d"), W, H, (H / mmH) * 2.6 / 16.25 * ((o.bubSize || 100) / 100)); }
-      catch (e) { console.warn("Bubblor i 3D-vyn", e); }
-      finally { P.bubScope = old[0]; P.bubMax = old[1]; P.bubFields = old[2]; P.bubLine = old[3]; P.bubNeutral = old[4]; }
-    }
+    p3dDrawBubbles(out.getContext("2d"), W, H, o);
   } catch (e) { console.warn("3D-vy i utskriften", e); out = null; }
   finally {
     l3.scene.background = bg0;
@@ -112,6 +106,7 @@ function p3dPreview(el, wPx, hPx) {
 }
 /* Skarp bild till PDF:en. */
 async function p3dForPdf(el, wMm, hMm) {
+  if (p3d.live) p3dLiveEnd(true);   // renderaren ska vara tillbaka i 3D-editorn
   const v = p3dResolve(el); if (!v) return null;
   if (!p3dReady()) await p3dWarm();
   const px = Math.min(3600, Math.round(Math.max(wMm, hMm) / 25.4 * 250)), k = px / Math.max(wMm, hMm);
@@ -130,96 +125,189 @@ function p3dWarm() {
 }
 
 /* ---- Ställ in vyn: 3D-editorn med en ram i elementets bildförhållande ------------------------------------------------------------------- */
+/* ---- Levande vy i layouten (Victor 2026-10-27: "låt den aktivera viewporten i stället för att öppna ett nytt fönster så att jag ser
+   exakt hur det kommer se ut i utskriftslayouten") ---------------------------------------------------------------------------
+   3D-editorns renderare flyttas till en ruta precis ovanpå 3D-vy-elementet i layouten. Där snurrar, zoomar och panorerar man direkt;
+   bubblor, datum/skala och ram ritas ovanpå som på bladet. Inställningarna (skala, rikta mot yta, snittdjup, sparad vy) ligger i
+   sidomenyn. Klar sparar kameran i elementet (Esc eller klick utanför rutan gör detsamma), Avbryt kastar ändringarna. */
+const p3dCutOf = v => { const cl = (v && v.clips) || []; const i = cl.findIndex(c => c.label === "Sektionsvy"); return i >= 0 ? i : cl.length ? 0 : -1; };
+function p3dDrawBubbles(ctx, W, H, o) {
+  if (!o.bub || typeof l3fxBubbles !== "function") return;
+  const P = l3Prefs(), old = [P.bubScope, P.bubMax, P.bubFields, P.bubLine, P.bubNeutral]; P.bubScope = o.bub; P.bubMax = o.bubMax || 15;
+  if (o.bubF) P.bubFields = { ...(P.bubFields || {}), ...o.bubF }; P.bubLine = !o.bubNoLine; P.bubNeutral = !!o.bubNeutral;
+  try { const mmH = o.hMm || 100; l3fxBubbles(ctx, W, H, (H / mmH) * 2.6 / 16.25 * ((o.bubSize || 100) / 100)); }
+  catch (e) { console.warn("Bubblor i 3D-vyn", e); }
+  finally { P.bubScope = old[0]; P.bubMax = old[1]; P.bubFields = old[2]; P.bubLine = old[3]; P.bubNeutral = old[4]; }
+}
 async function p3dPick(el) {
-  if (p3d.picking) return;
+  if (p3d.live) { if (p3d.live.el === el) return; p3dLiveEnd(true); }
   if (!plan || !plan.calib) { uiAlert("Arbetsytan måste vara kalibrerad mot 3D-modellen för att 3D-vyn ska fungera."); return; }
-  const modal = $("printModal"); modal.classList.add("p3d-away");
-  p3d.picking = { el };
-  try {
-    if (!p3dReady()) await open3d();
-    else { const box = $("view3d"); box.classList.remove("hidden"); document.body.classList.add("v3-open"); if (typeof l3sEnter === "function") l3sEnter(); }
-    if (!p3dReady()) throw new Error("3D-vyn kunde inte öppnas");
-    const saved = p3dResolve(el);
-    if (saved) p3dApplyView(saved, 0);
-    const host = document.getElementById("v3Canvas"), keep = host.style.cssText, parent = host.parentElement;
-    const asp = Math.abs(el.w) / Math.max(1, Math.abs(el.h));
-    const fit = () => {
-      const r = parent.getBoundingClientRect(), mw = r.width * 0.86, mh = r.height * 0.8;
-      let w = mw, h = w / asp; if (h > mh) { h = mh; w = h * asp; }
-      host.style.cssText = `${keep};position:absolute;left:50%;top:52%;transform:translate(-50%,-50%);width:${Math.round(w)}px;height:${Math.round(h)}px;right:auto;bottom:auto;outline:2px dashed #38bdf8;outline-offset:3px;box-shadow:0 0 0 9999px rgba(15,23,42,.5);z-index:2;`;
-      l3Resize(); l3Render();
-    };
-    fit(); window.addEventListener("resize", fit);
-    const bar = document.createElement("div"); bar.id = "p3dBar"; bar.className = "p3d-bar";
-    const views = p3dSaved(), curRef = el.viewRef && views.some(v => v.name === el.viewRef) ? el.viewRef : "";
-    bar.innerHTML = `<b>3D-vy till utskriften</b><span class="p3d-hint">Snurra och zooma – det som syns i ramen hamnar på bladet</span><span class="p3d-scale" id="p3dScale" title="Skalan på bladet (parallellprojektion)"></span><label class="p3d-setscale" title="Ställ in skalan (parallellprojektion)">Skala 1: <input type="number" id="p3dScaleIn" min="1" step="1" style="width:76px"></label>
-      <label>Utgå från vy <select id="p3dSel"><option value="">– nuvarande kamera –</option>${views.map(v => `<option value="${escHtml(v.name)}"${v.name === curRef ? " selected" : ""}>${escHtml(v.name)}</option>`).join("")}</select></label>
-      <button type="button" id="p3dFace" title="Klicka på en yta i modellen – vyn riktas vinkelrätt mot den (parallellprojektion), t.ex. för en sektionsvy">⟂ Rikta mot yta</button><label class="p3d-follow" title="Lägger ett snitt i ytan så att det som är framför den tas bort (sektionsvy)"><input type="checkbox" id="p3dCut" checked> Snitt i ytan</label><label class="p3d-setscale" title="Flytta snittet framåt (−) eller bakåt (+) från ytan">Snittdjup <input id="p3dCutOff" type="number" step="0.1" value="0" style="width:62px"> m</label><label class="p3d-follow" title="Bladet uppdateras när vyn sparas om i 3D-editorn"><input type="checkbox" id="p3dFollow"${el.viewRef ? " checked" : ""}> Följ vyn</label>
-      <span class="p3d-sp"></span><button type="button" id="p3dCancel">Avbryt</button><button type="button" id="p3dOk" class="primary">✓ Använd vyn</button>`;
-    document.body.appendChild(bar);
-    let chosen = curRef;
-    const same = (a, b) => a && b && a.every((v, i) => Math.abs(v - b[i]) < 0.05);
-    const finish = ok => {
-      clearInterval(tm); stopFace(); document.removeEventListener("keydown", key, true); window.removeEventListener("resize", fit);
-      if (ok) {
-        const v = l3MakeView(chosen || "Utskriftsvy"), ref = chosen ? p3dSaved().find(x => x.name === chosen) : null;
-        el.view = v;
-        // "Följ vyn" gäller bara om kameran inte ändrats efter att vyn valdes.
-        el.viewRef = ref && $("p3dFollow").checked && same(v.p, ref.p) && same(v.t, ref.t) ? chosen : undefined;
-        if (!el.viewRef) delete el.viewRef;
-        p3d.cache.delete(el.id); p3d.pend.delete(el.id); pr.dirty = true;
-      }
-      bar.remove(); host.style.cssText = keep; p3d.picking = null;
-      if (typeof close3d === "function") close3d();
-      modal.classList.remove("p3d-away");
-      if (typeof renderPrintProps === "function") renderPrintProps(); drawPrintPage();
-    };
-    // Skalan läses av medan man zoomar och kan skrivas in (parallellprojektion).
-    const upd = () => { const sp = bar.querySelector("#p3dScale"), inp = bar.querySelector("#p3dScaleIn"); if (!sp) return; if (l3.camera.isOrthographicCamera) { const n = p3dScaleOfZoom(l3.camera.zoom, el); sp.textContent = `Skala 1:${n}`; if (document.activeElement !== inp) inp.value = n; inp.disabled = false; } else { sp.textContent = "Perspektiv – ingen skala"; inp.value = ""; inp.disabled = true; } };
-    const tm = setInterval(upd, 250); upd();
-    bar.querySelector("#p3dScaleIn").onchange = e => { const n = Number(e.target.value); if (n > 0 && l3.camera.isOrthographicCamera) { l3.camera.zoom = p3dZoomOfScale(n, el); l3.camera.updateProjectionMatrix(); l3.orbit.update(); l3Render(); upd(); } };
-    // Rikta vyn parallellt mot en yta (och lägg ett snitt i den): klicka på ytan i 3D.
-    const dom = l3.renderer.domElement;
-    const stopFace = () => { dom.removeEventListener("pointerdown", onFace, true); dom.style.cursor = ""; const b = bar.querySelector("#p3dFace"); if (b) b.classList.remove("on"); };
-    const onFace = ev => {
-      ev.preventDefault(); ev.stopImmediatePropagation(); stopFace();
-      const h = l3Ray(ev, l3Surfaces())[0];
-      if (!h || !h.face) { l3Status("Ingen yta där – klicka på en yta i modellen."); return; }
-      const n = h.face.normal.clone().transformDirection(h.object.matrixWorld).normalize();
-      if (n.dot(l3.camera.position.clone().sub(h.point)) < 0) n.negate();
-      if (!l3.camera.isOrthographicCamera) l3SetProjection(true);
-      l3.camera.up.set(Math.abs(n.z) > 0.9 ? 0 : 0, Math.abs(n.z) > 0.9 ? 1 : 0, Math.abs(n.z) > 0.9 ? 0 : 1);   // lodrät yta: z uppåt; vågrät: norr uppåt
-      l3FlyTo(h.point.clone(), 40, n, 0, true); l3.orbit.update();
-      l3.clips = (l3.clips || []).filter(c => !c.p3d);
-      if (bar.querySelector("#p3dCut").checked) { l3AddClip(n.clone().negate(), h.point.clone()); const c = l3.clips[l3.clips.length - 1]; if (c) { c.p3d = true; c.label = "Sektionsvy"; const off = Number(bar.querySelector("#p3dCutOff").value) || 0; if (off) l3cSet(l3.clips.length - 1, off); } }
-      l3ApplyClips(); l3Render(); upd();
-      l3Status("Vyn är riktad vinkelrätt mot ytan" + (bar.querySelector("#p3dCut").checked ? " med snitt i ytan." : "."));
-    };
-    bar.querySelector("#p3dFace").onclick = e => { e.stopPropagation(); l3StopFly(); dom.style.cursor = "crosshair"; e.currentTarget.classList.add("on"); dom.addEventListener("pointerdown", onFace, true); l3Status("Klicka på en yta i modellen – vyn riktas vinkelrätt mot den."); };
-    bar.querySelector("#p3dCutOff").onchange = e => { const i = (l3.clips || []).findIndex(c => c.p3d); if (i >= 0) { l3cSet(i, Number(e.target.value) || 0); l3Render(); } };
-    const key = e => { if (e.key === "Escape") { e.stopPropagation(); finish(false); } };
-    document.addEventListener("keydown", key, true);
-    bar.querySelector("#p3dCancel").onclick = () => finish(false);
-    bar.querySelector("#p3dOk").onclick = () => finish(true);
-    bar.querySelector("#p3dSel").onchange = e => { chosen = e.target.value; const v = views.find(x => x.name === chosen); if (v) p3dApplyView(v, 450); };
-  } catch (e) {
-    console.error(e); p3d.picking = null; modal.classList.remove("p3d-away");
-    const b = document.getElementById("p3dBar"); if (b) b.remove();
-    uiAlert("Kunde inte öppna 3D-vyn: " + (e && e.message ? e.message : e));
+  if (!p3dReady()) await p3dWarm();
+  if (!p3dReady()) { uiAlert("3D-vyn kunde inte läsas in."); return; }
+  if (typeof l3vLoad === "function") { try { await l3vLoad(); } catch (e) { /* lokala vyer räcker */ } }
+  const wrap = $("prCanvasWrap"), dom = l3.renderer.domElement;
+  const live = { el, prev: { view: l3MakeView("_nu"), bg: l3.scene.background, date: $("dateInput").value, parent: dom.parentNode, next: dom.nextSibling }, sig: "", w: 0, h: 0 };
+  const saved = p3dResolve(el);
+  if (saved) p3dApplyView(saved, 0);
+  if (el.date) p3dSetDate(el.date);
+  if (el.bg3d === "white") l3.scene.background = new THREE.Color(0xffffff);
+  const box = document.createElement("div"); box.className = "p3d-live";
+  const ov = document.createElement("canvas"); ov.className = "p3d-live-ov";
+  box.appendChild(dom); box.appendChild(ov); wrap.appendChild(box);
+  live.box = box; live.ov = ov; live.chosen = el.viewRef && p3dSaved().some(v => v.name === el.viewRef) ? el.viewRef : "";
+  ["wheel", "pointerdown", "mousedown", "dblclick", "contextmenu", "touchstart"].forEach(t => box.addEventListener(t, e => e.stopPropagation()));
+  live.outside = ev => { if (!box.contains(ev.target)) p3dLiveEnd(true); };
+  $("prCanvas").addEventListener("pointerdown", live.outside, true);
+  live.key = e => { if (e.key === "Escape") { e.stopPropagation(); p3dLiveEnd(true); } };
+  document.addEventListener("keydown", live.key, true);
+  l3.liveHost = box;
+  live.tm = setInterval(p3dLiveTick, 200);
+  p3d.live = live;
+  pr.dirty = true;
+  if (typeof setSel === "function" && !(typeof selEls === "function" && selEls().includes(el))) setSel([el.id]);
+  renderPrintProps(); drawPrintPage();
+  l3Status("Snurra och zooma direkt i bilden – Klar (eller klick utanför) sparar vyn.");
+}
+/* Ruta och storlek följer elementet (anropas från p3dDraw varje gång layouten ritas om). */
+function p3dLiveLayout(el, X, Y, W, H) {
+  const L = p3d.live; if (!L || L.el !== el || !pr.L) return;
+  const c = pr.L.c, dpr = pr.L.dpr, b = L.box;
+  const l = c.offsetLeft + (pr.L.ox + X) / dpr, t = c.offsetTop + (pr.L.oy + Y) / dpr, w = W / dpr, h = H / dpr;
+  b.style.cssText = `position:absolute;left:${l.toFixed(1)}px;top:${t.toFixed(1)}px;width:${w.toFixed(1)}px;height:${h.toFixed(1)}px;z-index:5;overflow:hidden;background:#fff;`;
+  if (Math.abs(w - L.w) > 0.5 || Math.abs(h - L.h) > 0.5) { L.w = w; L.h = h; l3Resize(); l3Render(); L.sig = ""; }
+}
+/* Bubblor, bildtext och ram ovanpå bilden – ritas om när kameran, datumet eller något i bubblorna ändras. */
+function p3dLiveOverlay() {
+  const L = p3d.live; if (!L || !L.w) return;
+  const el = L.el, dpr = Math.min(2, window.devicePixelRatio || 1), Wp = Math.round(L.w * dpr), Hp = Math.round(L.h * dpr), ov = L.ov;
+  if (ov.width !== Wp || ov.height !== Hp) { ov.width = Wp; ov.height = Hp; }
+  ov.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;";
+  const ctx = ov.getContext("2d"); ctx.clearRect(0, 0, Wp, Hp);
+  p3dDrawBubbles(ctx, Wp, Hp, p3dOpts(el, p3dHmm(el)));
+  const cap = p3dCaption(el); if (cap.length) p3dScaleLabel(ctx, cap, 0, Hp, Hp / Math.max(1e-6, Math.abs(el.h)));
+  if (el.border !== false) { ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, 0.35 * Hp / Math.max(1e-6, Math.abs(el.h))); ctx.strokeRect(0, 0, Wp, Hp); }
+}
+function p3dLiveTick() {
+  const L = p3d.live; if (!L) return;
+  const cam = l3.camera, sig = [cam.position.toArray().map(v => v.toFixed(2)), cam.zoom, L.w, L.h, (l3.clips || []).map(c => c.off).join(), JSON.stringify([L.el.date, L.el.showDate, L.el.showScale, L.el.bub, L.el.bubF, L.el.bubMax, L.el.bubSize, L.el.bubNoLine, L.el.bubNeutral, L.el.border])].join("|");
+  if (sig !== L.sig) { L.sig = sig; p3dLiveOverlay(); }
+  const sp = document.getElementById("p3dScale"), inp = document.getElementById("prV3Scale");
+  if (inp && cam.isOrthographicCamera && document.activeElement !== inp) { const n = p3dScaleOfZoom(cam.zoom, L.el); if (n && String(n) !== inp.value) inp.value = n; }
+  if (sp) sp.textContent = cam.isOrthographicCamera ? `Skala 1:${p3dScaleOfZoom(cam.zoom, L.el)}` : "Perspektiv – ingen skala";
+}
+/* Datum/bakgrund/bubblor har ändrats i sidomenyn medan vyn är levande. */
+function p3dLiveRefresh() {
+  const L = p3d.live; if (!L) return;
+  if (L.el.date) p3dSetDate(L.el.date); else if ($("dateInput").value !== L.prev.date) p3dSetDate(L.prev.date);
+  l3.scene.background = L.el.bg3d === "white" ? new THREE.Color(0xffffff) : L.prev.bg;
+  L.sig = ""; l3Render(); p3dLiveTick();
+}
+function p3dLiveEnd(ok) {
+  const L = p3d.live; if (!L) return;
+  const el = L.el, same = (a, b) => a && b && a.every((v, i) => Math.abs(v - b[i]) < 0.05);
+  clearInterval(L.tm); p3dLiveFaceStop();
+  $("prCanvas").removeEventListener("pointerdown", L.outside, true); document.removeEventListener("keydown", L.key, true);
+  if (ok) {
+    const v = l3MakeView(L.chosen || "Utskriftsvy"), ref = L.chosen ? p3dSaved().find(x => x.name === L.chosen) : null, fo = document.getElementById("prV3Follow");
+    el.view = v;
+    el.viewRef = ref && (!fo || fo.checked) && same(v.p, ref.p) && same(v.t, ref.t) ? L.chosen : undefined;   // "Följ vyn" gäller bara om kameran inte ändrats efter att vyn valdes
+    if (!el.viewRef) delete el.viewRef;
+    p3d.cache.delete(el.id); p3d.pend.delete(el.id); pr.dirty = true;
   }
+  // Renderaren tillbaka till 3D-editorn och scenen som den var.
+  l3.liveHost = null; L.prev.parent.insertBefore(l3.renderer.domElement, L.prev.next && L.prev.next.parentNode === L.prev.parent ? L.prev.next : L.prev.parent.firstChild);
+  l3.scene.background = L.prev.bg;
+  if ($("dateInput").value !== L.prev.date) p3dSetDate(L.prev.date);
+  try { p3dApplyView(L.prev.view, 0); } catch (e) { /* kameran står kvar */ }
+  L.box.remove(); p3d.live = null;
+  if (typeof l3Resize === "function") l3Resize();
+  if (typeof renderPrintProps === "function" && pr) renderPrintProps();
+  if (pr) drawPrintPage();
+}
+let p3dFace = null;
+function p3dLiveFaceStop() { if (!p3dFace) return; p3dFace.dom.removeEventListener("pointerdown", p3dFace.fn, true); p3dFace.dom.style.cursor = ""; const b = document.getElementById("prV3Face"); if (b) b.classList.remove("on"); p3dFace = null; }
+/* Rikta vyn parallellt mot en yta (och lägg ett snitt i den): klicka på ytan i bilden. */
+function p3dLiveFace() {
+  const L = p3d.live; if (!L) return;
+  const dom = l3.renderer.domElement;
+  l3StopFly(); dom.style.cursor = "crosshair";
+  const b = document.getElementById("prV3Face"); if (b) b.classList.add("on");
+  const fn = ev => {
+    ev.preventDefault(); ev.stopImmediatePropagation(); p3dLiveFaceStop();
+    const h = l3Ray(ev, l3Surfaces())[0];
+    if (!h || !h.face) { l3Status("Ingen yta där – klicka på en yta i modellen."); return; }
+    const n = h.face.normal.clone().transformDirection(h.object.matrixWorld).normalize();
+    if (n.dot(l3.camera.position.clone().sub(h.point)) < 0) n.negate();
+    if (!l3.camera.isOrthographicCamera) l3SetProjection(true);
+    const vert = Math.abs(n.z) > 0.9;
+    l3.camera.up.set(0, vert ? 1 : 0, vert ? 0 : 1);   // lodrät yta: z uppåt; vågrät: norr uppåt
+    l3FlyTo(h.point.clone(), 40, n, 0, true); l3.orbit.update();
+    l3.clips = (l3.clips || []).filter(c => !c.p3d);
+    const cut = document.getElementById("prV3CutOn");
+    if (!cut || cut.checked) { l3AddClip(n.clone().negate(), h.point.clone()); const c = l3.clips[l3.clips.length - 1]; if (c) { c.p3d = true; c.label = "Sektionsvy"; } }
+    l3ApplyClips(); l3Render(); L.sig = ""; renderPrintProps();
+    l3Status("Vyn är riktad vinkelrätt mot ytan" + (!cut || cut.checked ? " med snitt i ytan – ställ djupet med reglaget Snittdjup." : "."));
+  };
+  dom.addEventListener("pointerdown", fn, true);
+  p3dFace = { dom, fn };
+  l3Status("Klicka på en yta i bilden – vyn riktas vinkelrätt mot den.");
+}
+/* Snittdjup (m) för vyn: i den levande vyn flyttas snittet direkt, annars ändras elementets vy. */
+function p3dSetCutDepth(el, off) {
+  if (p3d.live && p3d.live.el === el) {
+    let i = (l3.clips || []).findIndex(c => c.label === "Sektionsvy"); if (i < 0 && (l3.clips || []).length) i = 0;
+    if (i >= 0) { l3cSet(i, off); p3d.live.sig = ""; }
+    return;
+  }
+  const v0 = p3dResolve(el); const ci = p3dCutOf(v0); if (ci < 0) return;
+  const v = JSON.parse(JSON.stringify(v0)), c = v.clips[ci], d = off - (Number(c.off) || 0);
+  c.p = c.p.map((x, k) => x + c.n[k] * d); c.off = off;
+  el.view = v; delete el.viewRef;
+  p3d.cache.delete(el.id); p3d.pend.delete(el.id); pr.dirty = true; drawPrintPage();
+}
+/* Panelen i sidomenyn medan vyn är levande + reglaget Snittdjup (visas även utan levande vy när vyn har ett snitt). */
+function p3dCutHtml(el, v) {
+  const live = p3d.live && p3d.live.el === el;
+  let off = 0, has = false;
+  if (live) { const i = (l3.clips || []).findIndex(c => c.label === "Sektionsvy"); const c = l3.clips[i >= 0 ? i : 0]; if (c) { has = true; off = Number(c.off) || 0; } }
+  else { const ci = p3dCutOf(v); if (ci >= 0) { has = true; off = Number(v.clips[ci].off) || 0; } }
+  if (!has) return live ? `<div class="hint">Inget snitt i vyn ännu – använd ⟂ Rikta mot yta (med Snitt i ytan) eller lägg ett snitt i 3D-editorn.</div>` : "";
+  const sp = Math.max(10, Math.ceil(Math.abs(off) * 2));
+  return `<label style="margin-top:8px;">Snittdjup (m) – flytta snittet framåt/bakåt</label>
+    <div class="row" style="flex-wrap:nowrap;gap:6px;"><input type="range" id="prV3CutR" min="${-sp}" max="${sp}" step="0.05" value="${off}" style="flex:1;min-width:0;" /><input type="number" id="prV3CutN" step="0.1" value="${Math.round(off * 100) / 100}" style="width:72px;" /></div>`;
+}
+function p3dLiveHtml(el) {
+  const views = p3dSaved(), L = p3d.live, ortho = l3.camera.isOrthographicCamera;
+  return `<div class="p3d-livepanel"><b>Redigerar vyn live</b><div class="hint">Snurra och zooma direkt i bilden (som i 3D-editorn). Bubblor, datum och skala syns som på bladet.</div>
+    <div class="row" style="gap:6px;margin-top:6px;"><button type="button" id="prV3Done" class="primary" style="flex:1;">✓ Klar</button><button type="button" id="prV3Cancel">Avbryt</button></div>
+    <label style="margin-top:8px;">Utgå från sparad vy</label>
+    <select id="prV3LiveSel"><option value="">– nuvarande kamera –</option>${views.map(x => `<option value="${escHtml(x.name)}"${x.name === L.chosen ? " selected" : ""}>${escHtml(x.name)}</option>`).join("")}</select>
+    ${L.chosen ? `<label class="check"><input type="checkbox" id="prV3Follow" checked /> Följ vyn (uppdateras när den sparas om i 3D)</label>` : ""}
+    <div class="row" style="gap:6px;margin-top:8px;flex-wrap:nowrap;"><span id="p3dScale" class="hint" style="white-space:nowrap;"></span></div>
+    ${ortho ? `<label style="margin-top:6px;">Skala 1 :</label><div class="row" style="flex-wrap:nowrap;gap:6px;"><input type="number" id="prV3Scale" min="1" step="1" value="${p3dScaleOfZoom(l3.camera.zoom, el) || ""}" style="width:90px;" /><select id="prV3ScaleSel"><option value="">Välj…</option>${(typeof PRINT_SCALES !== "undefined" ? PRINT_SCALES : [50, 100, 200, 500, 1000]).map(n => `<option value="${n}">1:${n}</option>`).join("")}</select></div>` : ""}
+    <div class="row" style="gap:6px;margin-top:8px;"><button type="button" id="prV3Proj">${ortho ? "Perspektiv" : "Parallell (ortho)"}</button><button type="button" id="prV3Face" title="Klicka på en yta i bilden – vyn riktas vinkelrätt mot den (parallellprojektion), t.ex. för en sektionsvy">⟂ Rikta mot yta</button></div>
+    <label class="check"><input type="checkbox" id="prV3CutOn" checked /> Snitt i ytan vid Rikta mot yta</label>
+    ${p3dCutHtml(el, null)}</div>`;
 }
 
 /* ---- Egenskaper i layouten ---------------------------------------------------------------------------------------------------------- */
 function p3dPropsHtml(el, chk) {
-  if (!p3dViewsAsked && typeof l3vLoad === "function") { p3dViewsAsked = true; l3vLoad().then(() => { if (typeof pr !== "undefined" && pr && typeof renderPrintProps === "function") renderPrintProps(true); }); }
+  if (!p3dViewsAsked && typeof l3vLoad === "function") { p3dViewsAsked = true; l3vLoad().then(() => { if (typeof pr !== "undefined" && pr && typeof renderPrintProps === "function") renderPrintProps(); }); }
   const views = p3dSaved(), v = p3dResolve(el), ref = el.viewRef && views.some(x => x.name === el.viewRef) ? el.viewRef : "";
-  return `<button id="prV3Pick" class="block primary" style="margin-top:8px;"${el.locked ? " disabled" : ""} title="Öppnar 3D-editorn med en ram i bildens format – snurra, zooma och tryck Använd vyn">🎥 Ställ in vyn…</button>
-    <label style="margin-top:8px;">Sparad vy från 3D-editorn</label>
+  if (p3d.live && p3d.live.el === el) return p3dLiveHtml(el) + p3dPropsHtmlMore(el, chk, views, v, ref);
+  return `<button id="prV3Pick" class="block primary" style="margin-top:8px;"${el.locked ? " disabled" : ""} title="Aktiverar vyn direkt i layouten – snurra och zooma i bilden">🎥 Ställ in vyn</button>
+    ${v ? p3dCutHtml(el, v) : ""}
+    ${p3dPropsHtmlMore(el, chk, views, v, ref)}`;
+}
+function p3dPropsHtmlMore(el, chk, views, v, ref) {
+  const live = p3d.live && p3d.live.el === el;
+  return `${live ? "" : `<label style="margin-top:8px;">Sparad vy från 3D-editorn</label>
     <select id="prV3Saved"${views.length ? "" : " disabled"}><option value="">${views.length ? "– egen vy –" : "Inga sparade vyer i 3D-editorn"}</option>${views.map(x => `<option value="${escHtml(x.name)}"${x.name === ref ? " selected" : ""}>${escHtml(x.name)}</option>`).join("")}</select>
     ${ref ? `<label class="check"><input type="checkbox" id="prV3Follow" checked /> Följ vyn (uppdateras när den sparas om i 3D)</label>` : ""}
     ${v && v.ortho ? `<label style="margin-top:8px;">Skala</label><div class="row" style="flex-wrap:nowrap;gap:6px;"><span>1 :</span><input type="number" id="prV3Scale" min="1" step="1" value="${p3dScaleOf(el) || ""}" style="width:90px;"${el.locked ? " disabled" : ""} title="Skalan på det som syns i bilden (vid bladets format). Ändrar zoomen i vyn." /><select id="prV3ScaleSel" title="Vanliga skalor"><option value="">Välj…</option>${(typeof PRINT_SCALES !== "undefined" ? PRINT_SCALES : [50, 100, 200, 500, 1000]).map(n => `<option value="${n}">1:${n}</option>`).join("")}</select></div>
       ${chk("showScale", "Visa skalan på bilden")}`
-      : `<div class="hint" style="margin-top:8px;">Skala: perspektivvyer har ingen skala. Välj parallellprojektion (ortho) i 3D-editorn för att kunna ställa in och läsa skalan.</div>`}
+      : `<div class="hint" style="margin-top:8px;">Skala: perspektivvyer har ingen skala. Välj parallellprojektion (ortho) i 3D-editorn för att kunna ställa in och läsa skalan.</div>`}`}
+    ${live ? chk("showScale", "Visa skalan på bilden") : ""}
     <label style="margin-top:8px;">Datum</label>
     <div class="row" style="flex-wrap:nowrap;gap:6px;"><select id="prV3DateMode"><option value=""${el.date ? "" : " selected"}>Som i lägesplanen</option><option value="own"${el.date ? " selected" : ""}>Eget datum</option></select>${el.date ? `<input type="date" id="prV3Date" value="${escHtml(el.date)}" />` : ""}</div>
     <label class="check"><input type="checkbox" data-f="showDate"${el.showDate ? " checked" : ""} /> Visa datum på bilden</label>
@@ -236,27 +324,43 @@ function p3dPropsBind(el) {
   const g = id => document.getElementById(id);
   document.querySelectorAll("#prProps [data-bf]").forEach(c => { c.onchange = () => { pushUndo(); el.bubF = { ...(el.bubF || {}), [c.dataset.bf]: c.checked }; p3d.cache.delete(el.id); p3d.pend.delete(el.id); drawPrintPage(); }; });
   if (g("prV3Pick")) g("prV3Pick").onclick = () => p3dPick(el);
+  if (g("prV3Done")) g("prV3Done").onclick = () => p3dLiveEnd(true);
+  if (g("prV3Cancel")) g("prV3Cancel").onclick = () => p3dLiveEnd(false);
+  if (g("prV3Face")) g("prV3Face").onclick = () => (p3dFace ? p3dLiveFaceStop() : p3dLiveFace());
+  if (g("prV3Proj")) g("prV3Proj").onclick = () => { l3SetProjection(!l3.camera.isOrthographicCamera); l3Render(); p3d.live.sig = ""; renderPrintProps(); };
+  if (g("prV3LiveSel")) g("prV3LiveSel").onchange = e => { const L = p3d.live; L.chosen = e.target.value; const v = p3dSaved().find(x => x.name === L.chosen); if (v) p3dApplyView(v, 450); setTimeout(() => { if (p3d.live) { p3d.live.sig = ""; renderPrintProps(); } }, 500); };
+  const cutR = g("prV3CutR"), cutN = g("prV3CutN");
+  if (cutR && cutN) {
+    const set = v => { const n = Number(v); if (!Number.isFinite(n)) return; p3dSetCutDepth(el, n); };
+    cutR.oninput = () => { cutN.value = Math.round(Number(cutR.value) * 100) / 100; set(cutR.value); };
+    cutN.onchange = () => { const n = Number(cutN.value) || 0; if (Math.abs(n) > Number(cutR.max)) { cutR.max = Math.ceil(Math.abs(n) * 2); cutR.min = -cutR.max; } cutR.value = n; set(n); };
+    cutR.onchange = () => { if (!(p3d.live && p3d.live.el === el)) { pushUndo(); } };
+  }
   if (g("prV3Warm")) g("prV3Warm").onclick = async e => { e.preventDefault(); await p3dWarm(); drawPrintPage(); renderPrintProps(); };
   if (g("prV3Saved")) g("prV3Saved").onchange = e => {
     const name = e.target.value; pushUndo();
     if (name) { const v = p3dSaved().find(x => x.name === name); if (v) { el.view = JSON.parse(JSON.stringify(v)); el.viewRef = name; } } else delete el.viewRef;
     p3d.cache.delete(el.id); p3d.pend.delete(el.id); renderPrintProps(); drawPrintPage();
   };
-  if (g("prV3DateMode")) g("prV3DateMode").onchange = e => { pushUndo(); if (e.target.value === "own") el.date = p3dDate(el) || ""; else delete el.date; p3d.cache.delete(el.id); p3d.pend.delete(el.id); renderPrintProps(true); drawPrintPage(); };
-  if (g("prV3Date")) g("prV3Date").onchange = e => { if (!e.target.value) return; pushUndo(); el.date = e.target.value; p3d.cache.delete(el.id); p3d.pend.delete(el.id); drawPrintPage(); };
+  if (g("prV3DateMode")) g("prV3DateMode").onchange = e => { pushUndo(); if (e.target.value === "own") el.date = p3dDate(el) || ""; else delete el.date; p3d.cache.delete(el.id); p3d.pend.delete(el.id); if (p3d.live) p3dLiveRefresh(); renderPrintProps(); drawPrintPage(); };
+  if (g("prV3Date")) g("prV3Date").onchange = e => { if (!e.target.value) return; pushUndo(); el.date = e.target.value; p3d.cache.delete(el.id); p3d.pend.delete(el.id); if (p3d.live) p3dLiveRefresh(); drawPrintPage(); };
   const setScale = n => {
     n = Math.round(Number(n)); if (!(n > 0)) return;
+    if (p3d.live && p3d.live.el === el) { if (l3.camera.isOrthographicCamera) { l3.camera.zoom = p3dZoomOfScale(n, el); l3.camera.updateProjectionMatrix(); l3.orbit.update(); l3Render(); p3d.live.sig = ""; } return; }
     const v = p3dResolve(el); if (!v || !v.ortho) return;
     pushUndo(); const c = JSON.parse(JSON.stringify(v)); c.zoom = p3dZoomOfScale(n, el); el.view = c; delete el.viewRef;
-    p3d.cache.delete(el.id); p3d.pend.delete(el.id); renderPrintProps(true); drawPrintPage();
+    p3d.cache.delete(el.id); p3d.pend.delete(el.id); renderPrintProps(); drawPrintPage();
   };
   if (g("prV3Scale")) g("prV3Scale").onchange = e => setScale(e.target.value);
   if (g("prV3ScaleSel")) g("prV3ScaleSel").onchange = e => setScale(e.target.value);
-  if (g("prV3Follow")) g("prV3Follow").onchange = e => { if (!e.target.checked) { pushUndo(); const v = p3dResolve(el); if (v) el.view = JSON.parse(JSON.stringify(v)); delete el.viewRef; renderPrintProps(); drawPrintPage(); } };
-  document.querySelectorAll('#prProps [data-f="showDate"], #prProps [data-f="showScale"], #prProps [data-f="bg3d"], #prProps [data-f="bub"], #prProps [data-f="bubMax"], #prProps [data-f="bubSize"], #prProps [data-f="bubNoLine"], #prProps [data-f="bubNeutral"]').forEach(s => s.addEventListener("change", () => { p3d.cache.delete(el.id); p3d.pend.delete(el.id); if (s.dataset.f === "bub") renderPrintProps(true); drawPrintPage(); }));
+  if (g("prV3Follow") && !p3d.live) g("prV3Follow").onchange = e => { if (!e.target.checked) { pushUndo(); const v = p3dResolve(el); if (v) el.view = JSON.parse(JSON.stringify(v)); delete el.viewRef; renderPrintProps(); drawPrintPage(); } };
+  document.querySelectorAll('#prProps [data-f="showDate"], #prProps [data-f="showScale"], #prProps [data-f="bg3d"], #prProps [data-f="bub"], #prProps [data-f="bubMax"], #prProps [data-f="bubSize"], #prProps [data-f="bubNoLine"], #prProps [data-f="bubNeutral"]').forEach(s => s.addEventListener("change", () => { p3d.cache.delete(el.id); p3d.pend.delete(el.id); if (s.dataset.f === "bub") renderPrintProps(); if (p3d.live) p3dLiveRefresh(); drawPrintPage(); }));
 }
 /* Ritar elementet (anropas från drawElement). */
 function p3dDraw(ctx, el, X, Y, W, H, k, u, opts) {
+  if (p3d.live && p3d.live.el === el && opts.editor) {   // den levande vyn ligger ovanpå
+    ctx.fillStyle = "#e8eef6"; ctx.fillRect(X, Y, W, H); p3dLiveLayout(el, X, Y, W, H); return;
+  }
   const c = opts.v3Canvas || (opts.editor ? p3dPreview(el, W, H) : (p3d.cache.get(el.id) || {}).canvas);
   if (c) ctx.drawImage(c, X, Y, W, H);
   else {

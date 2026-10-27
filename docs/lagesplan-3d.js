@@ -632,7 +632,7 @@ function l3SyncDate() {
 function l3Resize() {
   if (!l3) return;
   if (typeof l3BarFit === "function") l3BarFit();
-  const host = document.getElementById("v3Canvas"), w = host.clientWidth || 800, h = host.clientHeight || 600;
+  const host = l3.liveHost || document.getElementById("v3Canvas"), w = host.clientWidth || 800, h = host.clientHeight || 600;
   l3.renderer.setSize(w, h);
   const cam = l3.camera;
   if (cam.isOrthographicCamera) { const H = cam.top - cam.bottom; cam.left = -H * w / h / 2; cam.right = H * w / h / 2; }
