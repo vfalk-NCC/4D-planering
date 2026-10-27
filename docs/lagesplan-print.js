@@ -1180,7 +1180,7 @@ async function openPrint() {
   let tpl = tpls.find(t => t.id === localStorageGet("lagesplan-printtpl")) || tpls[0];
   if (!tpl) tpl = defaultTemplate();
   pr = { tpl: migrateTpl(JSON.parse(JSON.stringify(tpl))), saved: !!tpls.find(t => t.id === tpl.id), sels: [], dirty: false, undo: [], redo: [], drag: null, panMode: false, guides: [], fmtAsk: null };
-  mapPreviews.clear(); mapPending.clear(); mapBase.clear(); mapCad.clear();
+  mapPreviews.clear(); mapPending.clear(); mapBase.clear(); mapCad.clear(); if (typeof p3d !== "undefined") { p3d.cache.clear(); p3d.pend.clear(); }
   $("printModal").classList.remove("hidden");
   renderPrintPanel();
   prCmdLog(`Utskriftslayout öppnad – mall "${pr.tpl.name || "Ny mall"}", ${pr.tpl.format}.`);
@@ -1208,6 +1208,8 @@ async function closePrint() {
   if (pr && pr.dirty && !await uiConfirm("Mallen har osparade ändringar. Stänga ändå?")) return;
   prLayersDetach();
   pr = null; $("printModal").classList.add("hidden");
+  // Förhandsbilderna (ritningar, ortofoto/PDF-bottenlager, DXF, 3D-vyer) släpps när layouten stängs – annars ligger de kvar i minnet.
+  mapPreviews.clear(); mapPending.clear(); mapBase.clear(); mapCad.clear(); if (typeof p3d !== "undefined") { p3d.cache.clear(); p3d.pend.clear(); }
 }
 function pageDims() { const f = PRINT_FORMATS[pr.tpl.format]; return { W: f.w, H: f.h, k: f.w / PAGE_A3[0] }; }
 function layoutPreview() {
@@ -1594,7 +1596,7 @@ function applyFormat(to, keepView) {
   const kOld = PRINT_FORMATS[pr.tpl.format].w, kNew = PRINT_FORMATS[to].w;
   if (keepView) pr.tpl.elements.filter(e => e.type === "map").forEach(e => { e.scale = nearestScale(e.scale * kOld / kNew); });
   pr.tpl.format = to; pr.fmtAsk = null;
-  mapPreviews.clear(); mapPending.clear(); mapBase.clear(); mapCad.clear();
+  mapPreviews.clear(); mapPending.clear(); mapBase.clear(); mapCad.clear(); if (typeof p3d !== "undefined") { p3d.cache.clear(); p3d.pend.clear(); }
   renderPrintPanel(); drawPrintPage();
 }
 function northThumb(style, color) {

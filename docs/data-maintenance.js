@@ -79,6 +79,20 @@ async function dmDeleteBackups(drop, onProgress) {
   return { removed: gone.size, failed };
 }
 
+/* Automatisk gallring (Victor 2026-10-27: "se till att det inte i bakgrunden sparas massa onödiga filer"): efter varje ny säkerhetskopia
+   rensas de gamla bort i bakgrunden – de 8 senaste, en per månad och alla manuella behålls (samma regler som rensningen nedan). Tyst; fel
+   stoppar inget. Körs bara när det finns fler än 10, så den vanliga importen får inget extra jobb. */
+async function dmAutoPruneBackups() {
+  try {
+    const idx = await ghReadJSON(settings.githubToken, backupIndexPath());
+    if (!Array.isArray(idx) || idx.length <= 10) return;
+    const plan = await dmBackupPlan(8, true, true);
+    if (!plan.drop.length) return;
+    const r = await dmDeleteBackups(plan.drop);
+    console.info(`Säkerhetskopior: ${r.removed} gamla rensades automatiskt (${dmMB(plan.bytes)})${r.failed ? `, ${r.failed} gick inte` : ""}.`);
+  } catch (e) { console.warn("Automatisk gallring av säkerhetskopior misslyckades", e); }
+}
+
 /* ---- Historik ----------------------------------------------------------------------------------------------------------------------------------- */
 const dmWeek = iso => { const d = new Date(String(iso).slice(0, 10) + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7)); const y = Date.UTC(d.getUTCFullYear(), 0, 1); return d.getUTCFullYear() + "-" + Math.ceil(((d - y) / 864e5 + 1) / 7); };
 /* Ren funktion: rader som ska finnas kvar. Första och sista raden per objekt, allt nyare än cutoff, och för äldre rader den sista per vecka. */

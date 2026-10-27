@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-27 13:40";
+const APP_VERSION = "2026-10-27 14:05";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -5485,6 +5485,7 @@ async function createBackup(reason) {
   await ghWriteJSON(settings.githubToken, backupIndexPath(),
     arr => [...arr, { id, path, created_at: record.created_at, reason, by: record.by, counts }],
     `Säkerhetskopia: ${reason}`);
+  if (typeof dmAutoPruneBackups === "function") setTimeout(dmAutoPruneBackups, 2000);   // gamla kopior gallras i bakgrunden (data-maintenance.js)
   return record;
 }
 
