@@ -718,10 +718,11 @@ function l3bApplyAlpha(mesh) {
     if (!idx) { const on = new Uint8Array(n); ris.forEach(ri => { const r = u.ranges[ri]; on.fill(1, r.start, r.start + r.count); }); idx = []; for (let i = 0; i + 2 < src.length; i += 3) if (on[src[i]]) idx.push(src[i], src[i + 1], src[i + 2]); }
     if (!idx.length) return;
     const g = new THREE.BufferGeometry();
-    ["position", "color", "normal"].forEach(k => { const at = mesh.geometry.getAttribute(k); if (at) g.setAttribute(k, at); });
+    ["position", "color", "normal", "aTex"].forEach(k => { const at = mesh.geometry.getAttribute(k); if (at) g.setAttribute(k, at); });
     g.setIndex(n > 65535 ? new THREE.Uint32BufferAttribute(idx, 1) : new THREE.Uint16BufferAttribute(idx, 1));
     g.computeBoundingSphere();
     const gm = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: a, depthWrite: false, side: THREE.DoubleSide }));
+    if (g.getAttribute("aTex") && typeof l3texPatch === "function") l3texPatch(gm.material); // genomskinliga delar behåller texturen
     gm.userData.l3b = u; gm.userData.l3bMain = mesh; gm.userData.surface = true; gm.userData.kind = "bldg"; gm.renderOrder = 3;
     mesh.add(gm); u.ghosts.push(gm);
   });

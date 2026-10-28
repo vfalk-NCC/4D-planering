@@ -812,6 +812,7 @@ function l3PlacementGroup(p) {
     let c = new THREE.Color(color);
     if (tint && !(transp > 0)) { const hs = {}, hp = {}; tint.getHSL(hs); c.getHSL(hp); if (hp.l > 0.16 && hp.l < 0.92 && !(hp.s < 0.08 && (hp.l < 0.3 || hp.l > 0.8))) c.setHSL(hs.h, hs.s, hp.l); }   // färgväljaren färgar hela objektet men behåller delarnas ljushet (däck, glas och vitt står kvar)
     const mat = new THREE.MeshLambertMaterial({ color: c, transparent: transp > 0 || op < 1, opacity: (1 - (transp || 0)) * op, depthWrite: !(transp > 0.5 || op < 0.6), side: THREE.DoubleSide });
+    if (p.tex && !(transp > 0) && typeof l3texPlaced === "function") l3texPlaced(mat, p.tex); // textur (Victor 2026-10-28)
     const m = new THREE.Mesh(geo, mat); m.userData.placeId = p.id; m.userData.mat0 = { t: mat.transparent, o: mat.opacity, d: mat.depthWrite }; grp.add(m); return m;
   };
   const prism = (poly, z0, z1) => {

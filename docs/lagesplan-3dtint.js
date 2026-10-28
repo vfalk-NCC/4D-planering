@@ -90,6 +90,7 @@ function l3tintOpen(anchor) {
     op.onchange = () => { cancelAnimationFrame(raf); l3tApply({ alpha: Number(op.value) }, "opacitet", snapA); snapA = null; draw(); };
     pop.querySelector("#v3TintClr").onclick = () => { l3tApply({ color: null, alpha: 1 }, "återställ färg"); draw(); };
     pop.querySelector("#v3TintAll").onclick = () => { l3tResetAll(); draw(); };
+    if (typeof l3texSection === "function") l3texSection(pop, { P: [], ifc: () => l3bs.sel });
   };
   draw();
   ["pointerdown", "click", "keydown", "wheel"].forEach(t => pop.addEventListener(t, e => e.stopPropagation()));
@@ -133,6 +134,7 @@ function l3paintOpen(anchor) {
     op.oninput = () => { opv.textContent = Math.round(op.value * 100) + " %"; apply({ alpha: Number(op.value) }, !snapA); snapA = true; };
     op.onchange = () => { snapA = false; draw(); };
     pop.querySelector("#v3PaintClr").onclick = () => { apply({ color: null, alpha: 1 }); draw(); };
+    if (typeof l3texSection === "function") l3texSection(pop, { P, ifc: () => (typeof l3bs !== "undefined" ? l3bs.sel : []) });
   };
   draw();
   ["pointerdown", "click", "keydown", "wheel"].forEach(t => pop.addEventListener(t, e => e.stopPropagation()));
