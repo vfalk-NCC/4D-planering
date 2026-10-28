@@ -721,6 +721,17 @@ function l3SmartMeasure(e) {
     if (!h2 || h2.distance < 0.03) return;
     const mm = l3mAdd("dist", [P.clone(), h2.point.clone()], `${f(h2.distance + 0.01)} m`, [obj, null]); mm.note = `${lbl} till närmaste objekt`; mm.showNote = true;
   });
+  // Sidled längs ytan (Victor 2026-10-28: "mätningen enligt blå pilen"): fri sträcka åt höger och vänster (längs den vågräta riktningen i ytan)
+  // och rakt ut från ytan, till närmaste andra objekt. Höger/vänster följer skärmen.
+  if (!horiz) {
+    const cr = new THREE.Vector3(1, 0, 0).applyQuaternion(l3.camera.quaternion), ur = u.dot(cr) >= 0 ? u : u.clone().negate(), lt = ur.clone().negate();
+    const nOut = n.dot(l3.camera.position.clone().sub(P)) >= 0 ? n.clone() : n.clone().negate();
+    [["Höger", ur], ["Vänster", lt], ["Ut från ytan", nOut]].forEach(([lbl, dir]) => {
+      const from = P.clone().addScaledVector(nOut, lbl === "Ut från ytan" ? 0.01 : -0.01), h2 = l3SmartRay(from, dir.clone().normalize(), g);   // sidled: strax innanför ytan, så att grannen i samma plan träffas
+      if (!h2 || h2.distance < 0.03) return;
+      const mm = l3mAdd("dist", [P.clone(), h2.point.clone()], `${f(h2.distance + 0.01)} m`, [obj, null]); mm.note = `${lbl} till närmaste objekt`; mm.showNote = true;
+    });
+  }
   m3.dims = [W, H, D].map(x => Math.round(x * 1000) / 1000); m3.note = `${f(W)} × ${f(H)} × ${f(D)} m`; m3.showNote = true; m3.how = how;
   l3mDraw(); if (typeof l3mRenderBar === "function") l3mRenderBar();
   l3Status(`Smart mått på ${nm}: ${wl.toLowerCase()} ${f(W)} m · ${hl.toLowerCase()} ${f(H)} m · djup ${f(D)} m · volym ${l3Fmt(vol, 3)} m³ (${how}). Kryssa bort ett mått med × efter måttet. Tryck på nästa objekt.`);

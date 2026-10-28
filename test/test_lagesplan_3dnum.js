@@ -113,6 +113,21 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.mouse.down(); await page.mouse.up(); await page.waitForTimeout(300);
   if (!(await page.$('#v3Num input')) || await page.textContent('#v3Num span') !== 'Vrid') fail('Klick på ringen ska öppna vridrutan ' + JSON.stringify(await page.evaluate(() => ({ t: l3numTarget(), ro: !!l3.gizmoR.object, ra: l3.gizmoR.axis, go: !!l3.gizmo.object, tool: l3.tool, el: document.elementFromPoint(window.__x || 0, 0) && 1 }))));
   await page.keyboard.press('Escape');
+  // Smart mått: sidled mått (blå pil) åt höger/vänster till närmaste andra objekt
+  { const sm = await page.evaluate(async () => {
+      const O = l3.O, mk = (id, dx) => { const p = { id, type: 'container', name: id, x: O[0] + 200 + dx, y: O[1] + 200, z: 0, L: 6.06, B: 2.44, H: 2.59, R: 0, rot: 0 }; placements.push(p); const g = l3AddPlacementMesh(p); g.updateMatrixWorld(true); return [p, g]; };
+      const [p1, g1] = mk('smA', 0), [p2, g2] = mk('smB', 10);
+      const bb = new THREE.Box3().setFromObject(g1), c = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3());
+      l3StopFly(); l3.camera.position.set(c.x + 5, bb.min.y - 22, c.z + 1); l3.orbit.target.set(c.x + 5, c.y, c.z); l3.orbit.update(); l3.camera.updateMatrixWorld(); l3Render();
+      const q = l3ToScreen(new THREE.Vector3(c.x, bb.min.y, c.z)), r = l3.renderer.domElement.getBoundingClientRect();
+      const n0 = l3m.list.length; l3SmartMeasure({ clientX: r.left + q.x, clientY: r.top + q.y, button: 0 }); const added = l3m.list.slice(n0);
+      const right = added.find(m => /^Höger till/.test(m.note || '')), left = added.find(m => /^Vänster till/.test(m.note || ''));
+      const out = { right: right && right.text, left: !!left, notes: added.map(m => m.note), sz: sz.x };
+      l3m.list.splice(n0); l3mDraw(); placements.splice(placements.indexOf(p1), 1); placements.splice(placements.indexOf(p2), 1); [[p1, g1], [p2, g2]].forEach(([p, g]) => { l3.groups.places.remove(g); l3.placeMeshes.delete(p.id); });
+      return out;
+    });
+    const gap = parseFloat(String(sm.right || '').replace(',', '.'));
+    if (!(gap > 3 && gap < 12)) fail('Smart mått åt höger: ' + JSON.stringify(sm)); console.log('smart mått sidled OK', JSON.stringify(sm)); }
   if (errors.filter(e => !/allow-same-origin/.test(e)).length) fail('sidfel: ' + errors.slice(0, 3).join(' | '));
   console.log('OK test_lagesplan_3dnum – exakt flytt och vridning med tangentbordet (6,43 m längs X, 32,3°, i planet)');
   await browser.close(); server.close();
