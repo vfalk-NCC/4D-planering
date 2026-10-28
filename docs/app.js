@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-28 08:04";
+const APP_VERSION = "2026-10-28 08:55";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -1339,7 +1339,11 @@ function setCoupleModeBanner(text) {
 
 /** Vilken annan post ett 3D-objekt redan är kopplat till (null om inget). */
 function coupledElsewhere(obj) {
-  return items.find(it => it.modelId === obj.modelId && String(it.objectId) === String(obj.objectId)) || null;
+  // Ett objekt får ligga i flera aktiviteter (Victor 2026-10-28: ställningen monteras på en aktivitet och rivs på en annan): finns objektet i den aktivitet
+  // som kopplas just nu returneras den raden (då hoppas objektet över), annars den första raden i någon annan aktivitet (bara för info).
+  const all = items.filter(it => it.modelId === obj.modelId && String(it.objectId) === String(obj.objectId));
+  if (typeof pendingCoupleItem !== "undefined" && pendingCoupleItem) { const mine = all.find(it => inSameActivity(pendingCoupleItem, it)); if (mine) return mine; }
+  return all[0] || null;
 }
 /** Hoppas objektet över? Vid koppling till en delaktivitet får objekt som
  * redan hör till samma aktivitet vara med (delaktiviteten läggs till på dem). */
@@ -1347,7 +1351,8 @@ function coupleBlocked(obj) {
   const other = coupledElsewhere(obj);
   if (!other) return false;
   if (typeof pendingCoupleSub !== "undefined" && pendingCoupleSub && pendingCoupleItem && inSameActivity(pendingCoupleItem, other)) return false;
-  return true;
+  // Hoppas bara över om objektet redan hör till DEN HÄR aktiviteten – en annan aktivitet hindrar inte (objektet får flera aktiviteter).
+  return !!(pendingCoupleItem && inSameActivity(pendingCoupleItem, other));
 }
 
 function renderCoupleMode() {
@@ -1364,9 +1369,9 @@ function renderCoupleMode() {
     const other = coupledElsewhere(o);
     const blocked = coupleBlocked(o);
     const note = other
-      ? (!blocked ? "hör redan till aktiviteten – delaktiviteten läggs till"
-        : other.id === item.id || (other.objectName === item.objectName && other.activity === item.activity && other.area === item.area)
-          ? "redan kopplad till den här aktiviteten" : `redan kopplad till "${other.objectName || other.id}" – hoppas över`)
+      ? (blocked ? "redan kopplad till den här aktiviteten – hoppas över"
+        : (typeof pendingCoupleSub !== "undefined" && pendingCoupleSub && inSameActivity(item, other)) ? "hör redan till aktiviteten – delaktiviteten läggs till"
+          : `kopplad till "${other.objectName || other.activity || other.id}" sedan förut – kopplas även hit`)
       : "";
     return `<li class="${blocked ? "skipped" : ""}">
       <span class="couple-obj-name">${escapeHtml(o.name || o.objectId)}</span>${note ? ` <span class="hint">${escapeHtml(note)}</span>` : ""}
@@ -3088,9 +3093,14 @@ async function applyTimelineColors() {
 
   // Temporära objekt (t.ex. en mobilkran) utanför sin tid får en egen grupp: dolda eller svaga.
   const empty = () => ({ planerad: [], pagaende: [], forsenad: [], klar: [], pausad: [], tempoff: [], tempon: [] });
+  // Ett objekt i flera aktiviteter (montage → rivning) får en gemensam fas (samma regel som zonerna): försenad före pågår/delvis klar före planerad; allt klart = klar.
+  const multi = new Map();
+  items.forEach(it => { if (it.modelId && it.objectId != null && it.temporary !== true && it.demolition !== true) { const k = it.modelId + "|" + it.objectId; (multi.get(k) || multi.set(k, []).get(k)).push(it); } });
   for (const it of items) {
-    const phase = computeItemPhase(it, selectedDate, warningDays, true); // tidslinjen: verkligt datum spelar ingen roll
+    let phase = computeItemPhase(it, selectedDate, warningDays, true); // tidslinjen: verkligt datum spelar ingen roll
     if (!phase) continue;
+    const grp = it.modelId && it.objectId != null ? multi.get(it.modelId + "|" + it.objectId) : null;
+    if (grp && grp.length > 1 && typeof zonePhase === "function" && !(it.doneColor || Number.isFinite(it.doneOpacity))) phase = zonePhase(grp, selectedDate) || phase;
     byModel[it.modelId] = byModel[it.modelId] || empty();
     // Temporära inom sin tid behåller sin riktiga färg (Victor 2026-10-12) – ingen statusfärg.
     // Egen färg/opacitet efter slut (dashboarden) ligger överst i hierarkin: klara objekt får den i stället för statusfärgen.
@@ -5985,8 +5995,10 @@ async function saveItems(records) {
   const { data, sha } = await ghGetFileKnown(settings.githubToken, path);
   const before = Array.isArray(data) ? data : [];
   const beforeByKey = new Map(before.map(r => [`${r.project_id}::${r.object_id}`, r]));
+  const beforeById = new Map(before.map(r => [r.id, r]));
   const incoming = records.map(toRow).map(row => {
-    const existing = beforeByKey.get(`${row.project_id}::${row.object_id}`);
+    // Raden med samma id först: ett objekt kan ligga i flera aktiviteter (montage → rivning) och då är objekt-id:t inte unikt.
+    const existing = (row.id && beforeById.get(row.id)) || beforeByKey.get(`${row.project_id}::${row.object_id}`);
     // source_key/group_id följer inte med från t.ex. den generiska Excel-
     // importen - behåll radens befintliga istället för att nollställa dem.
     return existing
@@ -6001,7 +6013,8 @@ async function saveItems(records) {
       (arr) => {
         let next = arr.slice();
         incoming.forEach(row => {
-          const idx = next.findIndex(r => r.project_id === row.project_id && r.object_id === row.object_id);
+          let idx = row.id ? next.findIndex(r => r.id === row.id) : -1;
+          if (idx < 0) idx = next.findIndex(r => r.project_id === row.project_id && r.object_id === row.object_id);
           // Mot filens aktuella rad (kan ha ändrats av någon annan sedan "before").
           if (idx >= 0) { const cur = next[idx]; next[idx] = { ...cur, ...row, id: cur.id, source_key: row.source_key || cur.source_key || null, group_id: row.group_id || cur.group_id || null }; }
           else next.push(row);

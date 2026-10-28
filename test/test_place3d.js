@@ -256,6 +256,13 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   if (rep.error || (await page.evaluate(() => placements.some(p => p.id === 'fran3d')))) fail('Blocket ska inte läsa in det som gjorts i 3D-editorn: ' + JSON.stringify(rep));
   if (await page.locator('.place-row', { hasText: 'Från 3D' }).count()) fail('Listan ska inte visa objekt från 3D-vyn');
   if ((await page.evaluate(() => window.__markups.size)) !== 0) fail('Inga linjer ska ritas i Trimble Connect');
+  // Ett objekt i flera aktiviteter (montage → rivning): att spara den ena får inte skriva över den andra
+  { const rows = get('plan_items.json'); const mk = (id, g, act, st) => ({ ...base, id, group_id: g, model_id: 'm1', object_id: 'GUID-X', object_name: act, activity: act, start_date: st, end_date: st });
+    put('plan_items.json', [...rows, mk('dupA', 'gA', 'Ställningsmontage', '2026-11-01'), mk('dupB', 'gB', 'Rivning pelare', '2026-12-01')]);
+    await page.evaluate(async () => { const row = { project_id: 'test-project', area: 'Sektionsfickor', contractor: 'NCC', status: 'planerad', progress: 0, depends_on: [], id: 'dupB', group_id: 'gB', model_id: 'm1', object_id: 'GUID-X', object_name: 'Rivning pelare', activity: 'Rivning pelare', start_date: '2027-01-15', end_date: '2027-01-20' }; await saveItems([fromRow(row)]); });
+    await wait(300);
+    const after = get('plan_items.json').filter(r => r.object_id === 'GUID-X'), A = after.find(r => r.id === 'dupA'), B = after.find(r => r.id === 'dupB');
+    if (after.length !== 2 || !A || !B || A.start_date !== '2026-11-01' || A.activity !== 'Ställningsmontage' || B.start_date !== '2027-01-15') fail('Flera aktiviteter på samma objekt: ' + JSON.stringify(after.map(r => [r.id, r.activity, r.start_date]))); }
   // Exportera markerade från 3D-editorn: 4D-planering läser in placeringarna från datalagret först (annars "Inget att spara")
   { const ext2 = get('plan_placements.json'); ext2.push({ id: 'stall1', type: 'stallning', name: 'Ställning 1', x: 9, y: 9, z: 0, L: 10, B: 0.75, H: 10, rot: 0, dz: 0 }); put('plan_placements.json', ext2);
     const ex = await page.evaluate(() => new Promise(res => {
