@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-28 07:14";
+const APP_VERSION = "2026-10-28 07:25";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -458,13 +458,13 @@ async function lagesplanHandle(msg, reply, progress) {
     } else if (msg.type === "placeSaveIfc") {
       if (typeof placeSaveIfc !== "function") throw new Error("Placera i 3D finns inte i den här versionen av 4D-planering.");
       if (placeDirty.size || placeDeleted.size) await placeSaveNow();
-      await place3dLoad({ fresh: true });
+      await place3dLoad({ fresh: true, editor: true });   // blocket i 4D-planering läser annars inte in det som placerats i 3D-editorn → "Inget att spara"
       const r = await placeSaveIfc({ ...(Array.isArray(msg.ids) && msg.ids.length ? { ids: msg.ids.map(String) } : {}), ...(msg.fileName ? { fileName: String(msg.fileName) } : {}) });
       reply(r || { n: 0 });
     } else if (msg.type === "placeIfcText") {
       if (typeof placeIfcTextFor !== "function") throw new Error("Placera i 3D finns inte i den här versionen av 4D-planering.");
       if (placeDirty.size || placeDeleted.size) await placeSaveNow();
-      await place3dLoad({ fresh: true });
+      await place3dLoad({ fresh: true, editor: true });
       reply(await placeIfcTextFor(msg.all ? placements.map(p => String(p.id)) : (Array.isArray(msg.ids) ? msg.ids.map(String) : [])));
     } else if (msg.type === "setProgress") {   // framdrift satt i 3D-vyn: sparas som reglaget i aktivitetslistan (samma aktivitet och delposter)
       const v = Math.max(0, Math.min(100, Math.round(Number(msg.progress) || 0))), ids = new Set((msg.ids || []).map(String));
