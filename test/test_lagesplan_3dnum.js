@@ -128,6 +128,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     });
     const gap = parseFloat(String(sm.right || '').replace(',', '.'));
     if (!(gap > 3 && gap < 12)) fail('Smart mått åt höger: ' + JSON.stringify(sm)); console.log('smart mått sidled OK', JSON.stringify(sm)); }
+  // Flera markerade: handtagets riktning (Objekt-rymd) utgår från det första markerade objektet
+  { const r = await page.evaluate(async () => {
+      const [a, b] = placements.filter(p => !(placeLib(p.type) || {}).fence); a.rot = 30; b.rot = 70; l3RebuildOne(a); l3RebuildOne(b);
+      l3SelectIds([b.id, a.id]); await new Promise(r => setTimeout(r, 150)); const first = l3gx.pivot && Math.round(l3gx.pivot.rotation.z * 180 / Math.PI);
+      l3SelectIds([a.id, b.id]); await new Promise(r => setTimeout(r, 150)); const second = l3gx.pivot && Math.round(l3gx.pivot.rotation.z * 180 / Math.PI);
+      return { first, second, multi: l3.gizmo.object === l3gx.pivot };
+    });
+    if (!r.multi || r.first !== 70 || r.second !== 30) fail('Flera markerade: pivot ska följa första objektets vridning: ' + JSON.stringify(r)); console.log('flera markerade OK', JSON.stringify(r)); }
   if (errors.filter(e => !/allow-same-origin/.test(e)).length) fail('sidfel: ' + errors.slice(0, 3).join(' | '));
   console.log('OK test_lagesplan_3dnum – exakt flytt och vridning med tangentbordet (6,43 m längs X, 32,3°, i planet)');
   await browser.close(); server.close();

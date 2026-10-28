@@ -20,7 +20,7 @@ function l3numTarget() {
   return null;
 }
 function l3numDir(axis) {
-  const o = l3.gizmo.object, r = l3gz.space === "local" && o && !o.userData.multi ? o.rotation.z : 0, c = Math.cos(r), s = Math.sin(r);
+  const o = l3.gizmo.object, r = l3gz.space === "local" && o ? o.rotation.z : 0, c = Math.cos(r), s = Math.sin(r);
   return axis === "X" ? [c, s, 0] : axis === "Y" ? [-s, c, 0] : [0, 0, 1];
 }
 const l3numParse = t => { const n = Number(String(t).trim().replace(",", ".").replace(/[−–]/g, "-")); return Number.isFinite(n) ? n : null; };

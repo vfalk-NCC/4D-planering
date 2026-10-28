@@ -15,7 +15,9 @@ function l3gxPlacePivot() {
   if (!l3gx.pivot) { l3gx.pivot = new THREE.Object3D(); l3gx.pivot.userData.multi = true; l3.scene.add(l3gx.pivot); }
   const P = l3gx.pivot, n = list.length, O = l3.O;
   P.position.set(list.reduce((s, p) => s + p.x, 0) / n - O[0], list.reduce((s, p) => s + p.y, 0) / n - O[1], Math.min(...list.map(p => (Number(p.z) || 0) + (Number(p.dz) || 0))) - O[2]);
-  P.rotation.set(0, 0, 0); P.updateMatrixWorld(true); l3gx.last = { x: P.position.x, y: P.position.y, z: P.position.z, r: 0 };
+  // Objekt-rymden och riktningslåset utgår från det FÖRSTA markerade objektet (Victor 2026-10-28: "flyttverktyget visar fel riktning ibland"): mittpunktsobjektet får dess vridning.
+  const firstId = [...l3.sel][0], fp = placements.find(p => p.id === firstId && list.includes(p)) || list[0], r0 = (Number(fp.rot) || 0) * Math.PI / 180;
+  P.rotation.set(0, 0, r0); P.updateMatrixWorld(true); l3gx.last = { x: P.position.x, y: P.position.y, z: P.position.z, r: r0 };
   return true;
 }
 function l3gxAttach() {
