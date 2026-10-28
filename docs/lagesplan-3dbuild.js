@@ -570,7 +570,8 @@ async function l3bParse(bytes, placement, maxTris) {
   return out;
 }
 /* Statusfärg för kopplade objekt vid datumet i lägesplanen. */
-function l3bRecolor() {
+/* opts.async: färgningen görs bit för bit med andrum emellan och returnerar ett löfte (opts.onProg(0–1), opts.cancelled() avbryter) – för tidsreglaget. */
+function l3bRecolor(opts) {
   if (typeof l3actSchedule === "function") l3actSchedule();
   if (!l3 || !l3b.models.length) return;
   const byId = new Map((items || []).map(r => [r.id, r]));
@@ -589,7 +590,7 @@ function l3bRecolor() {
   }
   const at = $("dateInput").value || todayIso();
   if (typeof l3gmBegin === "function") l3gmBegin();
-  l3b.models.forEach(m => m.meshes.forEach(x => {
+  const doOne = (m, x) => {
     const col = x.geometry.getAttribute("color"), d = col.array, u = x.userData.l3b, K = d instanceof Uint8Array ? 255 : 1; // byte eller tal 0–1
     const off = new Set(), gA = new Map();
     u.ranges.forEach((r, ri) => {
@@ -614,9 +615,23 @@ function l3bRecolor() {
     const was = u.tempOff || new Set(), wasA = u.gAlpha || new Map();
     const aSame = gA.size === wasA.size && [...gA].every(([i, v]) => wasA.get(i) === v);
     if (off.size !== was.size || [...off].some(i => !was.has(i)) || !aSame) { u.tempOff = off; u.gAlpha = gA; l3bApplyHidden(x); }
-  }));
-  if (typeof l3gmEnd === "function") l3gmEnd();
-  if (typeof l3fsAnimPreview === "function") { try { l3fsAnimPreview(); } catch (e) { console.warn("Animering", e); } } // objektens animering följer datumet även utanför filmen
+  };
+  const finish = () => {
+    if (typeof l3gmEnd === "function") l3gmEnd();
+    if (typeof l3fsAnimPreview === "function") { try { l3fsAnimPreview(); } catch (e) { console.warn("Animering", e); } } // objektens animering följer datumet även utanför filmen
+  };
+  const all = []; l3b.models.forEach(m => m.meshes.forEach(x => all.push([m, x])));
+  if (!opts || !opts.async) { all.forEach(([m, x]) => doOne(m, x)); finish(); return; }
+  return (async () => {
+    let t0 = performance.now();
+    for (let i = 0; i < all.length; i++) {
+      if (opts.cancelled && opts.cancelled()) { finish(); return false; }
+      doOne(all[i][0], all[i][1]);
+      if (opts.onProg) opts.onProg((i + 1) / all.length);
+      if (performance.now() - t0 > 10) { await new Promise(r => setTimeout(r, 0)); t0 = performance.now(); }
+    }
+    finish(); return true;
+  })();
 }
 /* Varför färgas inte allt? Aktiviteter med kopplat objekt (object_id) som inte finns i 3D-vyn – grupperade per område – och möjliga orsaker.
    (Victor 2026-10-19: "jag ser inte sektionsfickornas framdrift i 3D-editorn trots att jag ser den i TC".) */

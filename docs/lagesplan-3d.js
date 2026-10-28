@@ -369,7 +369,9 @@ function l3Dom() {
   $3("v3Snap").onchange = () => l3SetPref("snap", $3("v3Snap").checked);
   /* Reglaget i fotraden (Victor 2026-10-14: "en slider längst ner … som alltid är tillgänglig"): tidplanens spann, annars ±90 dagar. */
   { const sl = $3("v3DSlider"); let raf = 0;
-    sl.oninput = () => { const r = l3DateRange(), d = l3DateAdd(r[0], Number(sl.value)); $3("v3Date").value = d; cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { if (typeof l3plSetDay === "function") l3plSetDay(d); else { $("dateInput").value = d; } if (typeof l3gmSync === "function" && typeof l3gm !== "undefined" && l3gm.mode === "time") { l3gmApply(true); l3gmSync(); } l3Render(); }); };
+    sl.oninput = () => { const r = l3DateRange(), d = l3DateAdd(r[0], Number(sl.value)); $3("v3Date").value = d; cancelAnimationFrame(raf); raf = requestAnimationFrame(() => { const after = () => { if (typeof l3gmSync === "function" && typeof l3gm !== "undefined" && l3gm.mode === "time") { l3gmApply(true); l3gmSync(); } l3Render(); };
+      if (typeof l3DaySync === "function") { if ($("dateInput").value !== d) { $("dateInput").value = d; l3DaySync(after); } return; }
+      if (typeof l3plSetDay === "function") l3plSetDay(d); else { $("dateInput").value = d; } after(); }); };
     sl.onchange = () => { $("dateInput").dispatchEvent(new Event("change")); };
     const step = n => { $("dateInput").value = l3DateAdd($("dateInput").value || todayIso(), n); $("dateInput").dispatchEvent(new Event("change")); };
     $3("v3DPrev").onclick = () => step(-1); $3("v3DNext").onclick = () => step(1); }
@@ -622,7 +624,7 @@ function l3Init(box) {
     if (!l3 || !b || b.classList.contains("hidden")) return;
     const d = $("dateInput").value;
     l3SyncDate();
-    if (d !== l3.date) { l3BuildObjects(); if (typeof l3bRecolor === "function") l3bRecolor(); l3Etab4dAll(); if (typeof l3StorageBuild === "function") l3StorageBuild(); }
+    if (d !== l3.date) { if (typeof l3DaySync === "function") l3DaySync(); else { l3BuildObjects(); if (typeof l3bRecolor === "function") l3bRecolor(); l3Etab4dAll(); if (typeof l3StorageBuild === "function") l3StorageBuild(); } }
   }, 700);
 }
 const l3DateAdd = (iso, n) => { const d = new Date(String(iso).slice(0, 10) + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
