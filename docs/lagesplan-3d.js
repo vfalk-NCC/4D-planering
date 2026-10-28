@@ -1722,8 +1722,8 @@ async function l3SaveIfc() {
     const dflt = one ? one.name : ids.length ? `Etablering urval ${ids.length} objekt` : "Etablering " + (typeof projectName !== "undefined" && projectName ? projectName : "");
     const fileName = await uiPrompt(ids.length ? "Namn på IFC-filen med det markerade (datum och klockslag läggs till):" : "Namn på IFC-filen (datum och klockslag läggs till så att inget skrivs över):", dflt, { ok: "Spara i Trimble Connect" });
     if (fileName == null) { l3Status("Sparandet avbröts."); b.disabled = false; return; }
-    const r = await askOpener("placeSaveIfc", ids.length ? { ids, fileName: String(fileName).trim() } : { fileName: String(fileName).trim() }, 0);
-    const msg = r && r.n ? `✓ ${r.n} objekt sparade som IFC i Trimble Connect${r.files ? ` (${r.files.join(", ")})` : ""}.` : "Inget att spara.";
+    const r = await askOpener("placeSaveIfc", ids.length ? { ids, fileName: String(fileName).trim(), placementData: ids.map(id => JSON.parse(JSON.stringify(placements.find(p => p.id === id)))) } : { fileName: String(fileName).trim() }, 0);
+    const msg = r && r.n ? `✓ ${r.n} objekt sparade som IFC i Trimble Connect${r.files ? ` (${r.files.join(", ")})` : ""}.` : "Inget att spara." + (r && r.why ? ` (${r.why})` : r && r.n === undefined ? " (4D-planering svarade inte som väntat – ladda om tillägget i Trimble Connect så att det får den senaste versionen)" : "");
     l3Status(msg); l3Toast(msg);
   } catch (e) { l3Status("Kunde inte spara som IFC: " + e.message, true); }
   b.disabled = false;

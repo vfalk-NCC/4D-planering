@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-28 07:38";
+const APP_VERSION = "2026-10-28 07:42";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -458,13 +458,19 @@ async function lagesplanHandle(msg, reply, progress) {
     } else if (msg.type === "placeSaveIfc") {
       if (typeof placeSaveIfc !== "function") throw new Error("Placera i 3D finns inte i den här versionen av 4D-planering.");
       if (placeDirty.size || placeDeleted.size) await placeSaveNow();
-      await place3dLoad({ fresh: true, editor: true });   // blocket i 4D-planering läser annars inte in det som placerats i 3D-editorn → "Inget att spara"
-      const r = await placeSaveIfc({ ...(Array.isArray(msg.ids) && msg.ids.length ? { ids: msg.ids.map(String) } : {}), ...(msg.fileName ? { fileName: String(msg.fileName) } : {}) });
-      reply(r || { n: 0 });
+      try { await place3dLoad({ fresh: true, editor: true }); } catch (e) { console.warn("Kunde inte läsa placeringarna", e); }   // blocket i 4D-planering läser annars inte in det som placerats i 3D-editorn → "Inget att spara"
+      // 3D-editorn skickar med de markerade placeringarna själv: de gäller även om datalagret hunnit släpa eller inte gick att läsa.
+      const given = (Array.isArray(msg.placementData) ? msg.placementData : []).filter(g => g && g.id);
+      given.forEach(g => { const i = placements.findIndex(p => p.id === g.id); if (i >= 0) placements[i] = g; else placements.push(g); });
+      const r0 = await placeSaveIfc({ ...(Array.isArray(msg.ids) && msg.ids.length ? { ids: msg.ids.map(String) } : {}), ...(msg.fileName ? { fileName: String(msg.fileName) } : {}) });
+      const wantIds = Array.isArray(msg.ids) ? msg.ids.map(String) : [], foundN = wantIds.filter(id => placements.some(p => String(p.id) === id)).length;
+      const appVer = ((document.querySelector('script[src*="app.js"]') || {}).src || '').split('?v=')[1] || 'okänd';
+      reply(r0 || { n: 0, ver: appVer, why: wantIds.length ? `4D-planering hittade ${foundN} av ${wantIds.length} markerade placeringar (${placements.length} inlästa)${foundN ? " men ingen av dem har någon form att spara" : ""}, 4D-planering version ${appVer}` : `4D-planering har ${placements.length} placeringar men ingen av dem kunde sparas, version ${appVer}` });
     } else if (msg.type === "placeIfcText") {
       if (typeof placeIfcTextFor !== "function") throw new Error("Placera i 3D finns inte i den här versionen av 4D-planering.");
       if (placeDirty.size || placeDeleted.size) await placeSaveNow();
-      await place3dLoad({ fresh: true, editor: true });
+      try { await place3dLoad({ fresh: true, editor: true }); } catch (e) { console.warn("Kunde inte läsa placeringarna", e); }
+      (Array.isArray(msg.placementData) ? msg.placementData : []).filter(g => g && g.id).forEach(g => { const i = placements.findIndex(p => p.id === g.id); if (i >= 0) placements[i] = g; else placements.push(g); });
       reply(await placeIfcTextFor(msg.all ? placements.map(p => String(p.id)) : (Array.isArray(msg.ids) ? msg.ids.map(String) : [])));
     } else if (msg.type === "setProgress") {   // framdrift satt i 3D-vyn: sparas som reglaget i aktivitetslistan (samma aktivitet och delposter)
       const v = Math.max(0, Math.min(100, Math.round(Number(msg.progress) || 0))), ids = new Set((msg.ids || []).map(String));

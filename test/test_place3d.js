@@ -265,6 +265,17 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
     await wait(500);
     const r78 = ex.result || ex.reply || ex;
     if (ex.error || !(Number(r78.n) >= 2)) fail('Exportera markerade från 3D-editorn ska hitta objekten som placerats där: ' + JSON.stringify(ex)); }
+    // Placeringarna följer med meddelandet (även om datalagret inte har dem ännu)
+    const ex2 = await page.evaluate(() => new Promise(res => {
+      window.addEventListener('message', e => { if (e.data && e.data.lagesplanReply && e.data.reqId === 79) res(e.data); });
+      window.postMessage({ lagesplan: true, type: 'placeSaveIfc', reqId: 79, ids: ['inline1'], fileName: 'Inline', placementData: [{ id: 'inline1', type: 'container', name: 'Inline', x: 7, y: 7, z: 0, L: 6, B: 2.4, H: 2.6, rot: 0, dz: 0 }] }, location.origin);
+    }));
+    if (!(Number(ex2.n) >= 1)) fail('Placeringar som följer med meddelandet ska exporteras: ' + JSON.stringify(ex2));
+    const ex3 = await page.evaluate(() => new Promise(res => {
+      window.addEventListener('message', e => { if (e.data && e.data.lagesplanReply && e.data.reqId === 80) res(e.data); });
+      window.postMessage({ lagesplan: true, type: 'placeSaveIfc', reqId: 80, ids: ['finnsinte'], fileName: 'X' }, location.origin);
+    }));
+    if (ex3.n || !/hittade 0 av 1/.test(ex3.why || '')) fail('Orsaken ska redovisas när inget hittas: ' + JSON.stringify(ex3));
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   // Eget namn på filen (rutorna under Spara-knappen; överlever omritning av panelen).
   await page.check('#placeNameOn'); await page.fill('#placeNameTxt', 'Min etablering: v3');

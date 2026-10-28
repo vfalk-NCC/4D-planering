@@ -447,7 +447,7 @@ async function l3ExportSelected() {
   const done = [], fail = [];
   let graft = null, pending = pids.slice();
   if (nIfc && pids.length) { // etableringsobjekten som IFC-text, att lägga in i IFC-filen
-    try { l3Status("Förbereder etableringsobjekten…"); if (typeof placeSaveNow === "function") await placeSaveNow(); const r = await askOpener("placeIfcText", { ids: pids }, 120000); graft = r && r.text ? r.text : null; if (!graft) l3Status("Etableringsobjekten har ingen form att lägga in i filen – de sparas separat.", true); }
+    try { l3Status("Förbereder etableringsobjekten…"); if (typeof placeSaveNow === "function") await placeSaveNow(); const r = await askOpener("placeIfcText", { ids: pids, placementData: pids.map(id => JSON.parse(JSON.stringify(placements.find(p => p.id === id)))).filter(Boolean) }, 120000); graft = r && r.text ? r.text : null; if (!graft) l3Status("Etableringsobjekten har ingen form att lägga in i filen – de sparas separat.", true); }
     catch (e) { fail.push("Etableringsobjekten kunde inte förberedas för en gemensam fil: " + e.message); }
   }
   if (nIfc) {
@@ -464,8 +464,8 @@ async function l3ExportSelected() {
       if (typeof placeSaveNow === "function") await placeSaveNow();
       const fileName = await uiPrompt("Namn på IFC-filen med etableringsobjekten (datum och klockslag läggs till):", "Etablering urval " + pending.length + " objekt", { ok: "Exportera" });
       if (fileName == null) throw new Error("exporten avbröts (inget namn angavs).");
-      const r = await askOpener("placeSaveIfc", { ids: pending, fileName: String(fileName).trim() }, 0);
-      if (r && r.n) (r.files || [r.name]).filter(Boolean).forEach(x => done.push(x)); else fail.push("Etableringsobjekten: ingenting att spara (saknar form).");
+      const r = await askOpener("placeSaveIfc", { ids: pending, fileName: String(fileName).trim(), placementData: pending.map(id => JSON.parse(JSON.stringify(placements.find(p => p.id === id)))).filter(Boolean) }, 0);
+      if (r && r.n) (r.files || [r.name]).filter(Boolean).forEach(x => done.push(x)); else fail.push("Etableringsobjekten: ingenting att spara" + (r && r.why ? ` (${r.why})` : " (saknar form)") + ".");
     } catch (e) { fail.push("Etableringsobjekten: " + e.message); }
   }
   const msg = done.length ? `✓ Exporterat som nya IFC-filer i Trimble Connect: ${done.join(", ")}.${fail.length ? ` Men: ${fail.join(" ")}` : ""}` : `Kunde inte exportera. ${fail.join(" ")}`;
