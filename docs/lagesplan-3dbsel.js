@@ -118,7 +118,7 @@ function l3bsHalo(mesh, g) {
   const nor = new Float32Array(pos.count * 3);
   for (let i = 0; i < ia.length; i++) { const v = acc.get(kk[i]), l = Math.hypot(v[0], v[1], v[2]) || 1, o = ia[i] * 3; nor[o] = v[0] / l; nor[o + 1] = v[1] / l; nor[o + 2] = v[2] / l; }
   const hg = new THREE.BufferGeometry(); hg.setAttribute("position", pos); hg.setAttribute("normal", new THREE.BufferAttribute(nor, 3)); hg.setIndex(idx); hg.computeBoundingSphere();
-  const h = new THREE.Mesh(hg, L3_HALO_MAT(0.006, 0.98)), h2 = new THREE.Mesh(hg, L3_HALO_MAT(0.02, 0.26)), m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp }));
+  const h = new THREE.Mesh(hg, L3_HALO_MAT(0.0042 * l3HaloK(l3bs.sel.length), 0.95)), h2 = new THREE.Mesh(hg, L3_HALO_MAT(0.012 * l3HaloK(l3bs.sel.length), 0.2)), m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp }));
   [h, h2, m].forEach(x => { x.userData.noHit = true; x.userData.bsel = true; x.userData.selHalo = true; x.userData.bselFill = true; x.raycast = () => {}; x.frustumCulled = false; mesh.add(x); l3bs.ov.push(x); }); h.renderOrder = 7; h2.renderOrder = 7; m.renderOrder = 6;
 }
 function l3bsRebuild() {

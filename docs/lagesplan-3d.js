@@ -1021,6 +1021,8 @@ function l3HaloGeo(geo) {
   const h = new THREE.BufferGeometry(); h.setAttribute("position", pos); h.setAttribute("normal", new THREE.BufferAttribute(arr, 3)); if (geo.index) h.setIndex(geo.index);
   geo.userData.halo = h; return h;
 }
+/* Konturens bredd (Victor 2026-10-28: "många objekt – konturen blir väldigt mycket"): tunnare än förut, och ju fler delar/objekt desto tunnare. */
+const l3HaloK = n => Math.max(0.5, 1 - 0.1 * Math.log2(Math.max(1, n) / 3));
 function l3SelDeco(g, on) {
   if (!g) return;
   const meshes = []; g.traverse(o => { if (o.isMesh && !o.userData.selHalo && !o.userData.selEdge) meshes.push(o); });
@@ -1028,7 +1030,7 @@ function l3SelDeco(g, on) {
     if (o.material && o.material.emissive) o.material.emissive.setHex(on && !o.userData.isSign && !(o.material.transparent && o.material.opacity < 0.5) ? L3_SEL_EMI : 0x000000);
     if (on && !o.userData.selHalo2 && !o.userData.isSign && !o.userData.noHalo && o.geometry && o.geometry.getAttribute("normal") && o.visible) {
       // Bara en yttre kontur runt hela objektet: delarna stämplar en mask (stencil) och glöden ritas bara utanför den.
-      const grp = new THREE.Group(), hg = l3HaloGeo(o.geometry), h = new THREE.Mesh(hg, L3_HALO_MAT(0.006, 0.98)), h2 = new THREE.Mesh(hg, L3_HALO_MAT(0.02, 0.26)), m = new THREE.Mesh(o.geometry, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp }));
+      const grp = new THREE.Group(), hg = l3HaloGeo(o.geometry), h = new THREE.Mesh(hg, L3_HALO_MAT(0.0042 * l3HaloK(meshes.length), 0.95)), h2 = new THREE.Mesh(hg, L3_HALO_MAT(0.012 * l3HaloK(meshes.length), 0.2)), m = new THREE.Mesh(o.geometry, new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, depthTest: false, stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp }));
       [h, h2, m].forEach(x => { x.userData.selHalo = true; x.raycast = () => {}; x.frustumCulled = false; }); h.renderOrder = 7; h2.renderOrder = 7; m.renderOrder = 6; grp.add(m, h2, h); grp.userData.selHalo = true;
       o.add(grp); o.userData.selHalo2 = grp;
     } else if (!on && o.userData.selHalo2) { const h = o.userData.selHalo2; o.remove(h); h.traverse(x => { if (x.material) x.material.dispose(); }); delete o.userData.selHalo2; }
