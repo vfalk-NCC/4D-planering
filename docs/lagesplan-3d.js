@@ -673,10 +673,12 @@ function l3AdaptRes() {
   const low = Math.max(0.35, Math.min(1, base) * L.f);
   if (low < base - 0.01 && Math.abs(r.getPixelRatio() - low) > 0.04) r.setPixelRatio(low);
   if (typeof l3lodPick === "function") l3lodApply(l3lodPick());
+  if (typeof l3texSync === "function") l3texSync(true);
   clearTimeout(l3CamLast.hiT);
   l3CamLast.hiT = setTimeout(() => {
     if (!l3) return;
     l3CamLast.moving = false;
+    if (typeof l3texSync === "function") l3texSync(false);
     if (typeof l3lodApply === "function") { l3lodApply(-1); if (typeof l3lodWarm === "function") l3lodWarm(); }
     if (r.getPixelRatio() !== base) r.setPixelRatio(base);
     l3Render();

@@ -94,6 +94,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.screenshot({ path: '/tmp/tex2.png' });
   await page.keyboard.press('Escape'); await page.evaluate(() => l3SelectIds([])); await page.waitForTimeout(400);
   console.log('OK: etableringsobjekt – välj, skala, egen bild, ingen');
+  { const t = await page.evaluate(() => { const o = {}; l3SetPref('tex', false); l3texSync(false); o.off = l3tex.on.value; l3SetPref('tex', true); l3texSync(false); o.on = l3tex.on.value; o.sw = typeof l3Prefs().tex; return o; });
+    if (t.off !== 0 || t.on !== 1) fail('Texturbrytaren (Prestanda): ' + JSON.stringify(t)); console.log('OK: texturer av/på (Prestanda)'); }
   await page.waitForTimeout(500);
   await page.screenshot({ path: '/tmp/tex1.png', clip: { x: 0, y: 0, width: 1300, height: 850 } });
   if (errors.length) fail('sidfel: ' + errors.slice(0, 3).join(' | '));

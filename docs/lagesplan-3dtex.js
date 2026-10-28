@@ -8,7 +8,13 @@
      övriga bitar ritas precis som förut. */
 
 const L3TEX_N = 256, L3TEX_LAYERS = 16, L3TEX_LIBN = 8;
-const l3tex = { arr: null, user: [], thumbs: {}, ready: false };
+const l3tex = { arr: null, user: [], thumbs: {}, ready: false, on: { value: 1 } }; // on: delad uniform – 0 = texturerna ritas inte (av, eller medan kameran rör sig i en stor scen)
+const l3texOn = () => !(typeof l3Prefs === "function" && l3Prefs().tex === false);
+/* Anropas när kameran rör sig/stannar och när valet ändras. */
+function l3texSync(moving) {
+  const v = l3texOn() && !(moving && typeof l3lodTris === "function" && l3lodTris() >= L3LOD_MIN_TRIS) ? 1 : 0;
+  if (l3tex.on.value !== v) { l3tex.on.value = v; return true; } return false;
+}
 
 function l3texHash(x, y, s) { let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(s, 1442695041)) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; }
 /* Jämn värdebrus som går runt (px × py rutor över 0–1), så att texturen kan läggas sida vid sida utan synliga skarvar. */
@@ -113,12 +119,12 @@ function l3texPatch(mat, uni) {
   const uTx = { value: new THREE.Vector3(uni ? uni[0] : 0, uni ? uni[1] : 1, uni ? uni[2] : 1) };
   mat.userData.l3tex = { uTx };
   mat.onBeforeCompile = sh => {
-    sh.uniforms.uTexA = { value: l3texArray() }; sh.uniforms.uTx = uTx;
+    sh.uniforms.uTexA = { value: l3texArray() }; sh.uniforms.uTx = uTx; sh.uniforms.uTexOn = l3tex.on;
     sh.vertexShader = (attr ? "attribute vec3 aTex;\n" : "") + "uniform vec3 uTx;\nvarying vec3 vTxP; varying vec3 vTxN; varying vec3 vTx;\n" +
       sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n vTxP = position; vTxN = normal; vTx = " + (attr ? "aTex" : "uTx") + ";");
-    sh.fragmentShader = "uniform highp sampler2DArray uTexA;\nvarying vec3 vTxP; varying vec3 vTxN; varying vec3 vTx;\n" +
+    sh.fragmentShader = "uniform highp sampler2DArray uTexA; uniform float uTexOn;\nvarying vec3 vTxP; varying vec3 vTxN; varying vec3 vTx;\n" +
       sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
-      if (vTx.x > 0.5) {
+      if (vTx.x > 0.5 && uTexOn > 0.5) {
         vec3 bw = pow(abs(normalize(vTxN)), vec3(6.0)); bw /= (bw.x + bw.y + bw.z);
         float L = vTx.x - 1.0, sc = 1.0 / max(vTx.y, 0.05);
         vec3 tx = texture(uTexA, vec3(vTxP.yz * sc, L)).rgb * bw.x + texture(uTexA, vec3(vTxP.xz * sc, L)).rgb * bw.y + texture(uTexA, vec3(vTxP.xy * sc, L)).rgb * bw.z;
