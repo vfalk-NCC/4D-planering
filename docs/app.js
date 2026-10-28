@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-10-28 09:20";
+const APP_VERSION = "2026-10-28 16:17";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -3105,6 +3105,7 @@ async function applyTimelineColors() {
     // Temporära inom sin tid behåller sin riktiga färg (Victor 2026-10-12) – ingen statusfärg.
     // Egen färg/opacitet efter slut (dashboarden) ligger överst i hierarkin: klara objekt får den i stället för statusfärgen.
     let gk = isTempOffAt(it, selectedDate) ? "tempoff" : it.temporary === true ? "tempon" : phase;
+    if (gk === "tempon" && (/^#[0-9a-f]{6}$/i.test(it.tempColor || "") || Number.isFinite(it.tempOpacity))) gk = `tempon|${/^#[0-9a-f]{6}$/i.test(it.tempColor || "") ? it.tempColor : ""}|${Number.isFinite(it.tempOpacity) ? it.tempOpacity : ""}`; // egen färg/opacitet medan temporär (dashboarden)
     if (gk === "klar" && (/^#[0-9a-f]{6}$/i.test(it.doneColor || "") || Number.isFinite(it.doneOpacity))) gk = `klar|${/^#[0-9a-f]{6}$/i.test(it.doneColor || "") ? it.doneColor : ""}|${Number.isFinite(it.doneOpacity) ? it.doneOpacity : ""}`;
     (byModel[it.modelId][gk] = byModel[it.modelId][gk] || []).push(it.objectId);
   }
@@ -3117,6 +3118,7 @@ async function applyTimelineColors() {
     const group = byModel[modelId];
     for (const phase of Object.keys(group)) {
       if (phase === "tempon") { await colorResetGroup(modelId, group[phase]); continue; }
+      if (phase.startsWith("tempon|")) { const [, hx, op] = phase.split("|"); await colorGroup(modelId, group[phase], hx || colors.pagaende, op === "" ? 1 : Math.max(0, Math.min(100, Number(op))) / 100); continue; }
       if (phase.startsWith("klar|")) { const [, hx, op] = phase.split("|"); await colorGroup(modelId, group[phase], hx || colors.klar, op === "" ? opacities.klar : Math.max(0, Math.min(100, Number(op))) / 100); continue; }
       await colorGroup(modelId, group[phase], colors[phase], opacities[phase]);
     }
@@ -4205,6 +4207,8 @@ async function commitPlanImport(diff) {
       bubbleOff: existing ? existing.bubbleOff : undefined,
       demolition: existing ? existing.demolition : undefined,
       doneColor: existing ? existing.doneColor : null,
+      tempColor: existing ? existing.tempColor : null,
+      tempOpacity: existing ? existing.tempOpacity : null,
       doneOpacity: existing ? existing.doneOpacity : null,
     });
     if (Array.isArray(p.dependsOnKeys)) depKeysById.set(id, p.dependsOnKeys);
@@ -5758,6 +5762,8 @@ function toRow(it) {
     // Egen färg/opacitet efter slut (sätts i dashboarden) – bevaras så att en sparning här inte tappar den.
     ...(it.doneColor ? { done_color: it.doneColor } : {}),
     ...(Number.isFinite(it.doneOpacity) ? { done_opacity: it.doneOpacity } : {}),
+    ...(it.tempColor ? { temp_color: it.tempColor } : {}),
+    ...(Number.isFinite(it.tempOpacity) ? { temp_opacity: it.tempOpacity } : {}),
     // Följer en annan aktivitet (sätts i dashboarden) – bevaras så att en sparning här inte tappar länken.
     ...(it.follows ? { follows: it.follows } : {}),
     updated_at: new Date().toISOString()
@@ -5819,6 +5825,8 @@ function fromRowStored(row) {
     bubbleOff: typeof row.bubble_off === "boolean" ? row.bubble_off : undefined,
     demolition: typeof row.demolition === "boolean" ? row.demolition : undefined,
     doneColor: row.done_color || null,
+    tempColor: /^#[0-9a-f]{6}$/i.test(String(row.temp_color || "")) ? row.temp_color : null,
+    tempOpacity: row.temp_opacity !== undefined && row.temp_opacity !== null && row.temp_opacity !== "" && Number.isFinite(Number(row.temp_opacity)) ? Number(row.temp_opacity) : null,
     follows: row.follows && typeof row.follows === "object" && !Array.isArray(row.follows) && (row.follows.id || row.follows.key) ? row.follows : null,
     doneOpacity: row.done_opacity !== undefined && row.done_opacity !== null && row.done_opacity !== "" && Number.isFinite(Number(row.done_opacity)) ? Number(row.done_opacity) : null,
     updatedAt: row.updated_at
