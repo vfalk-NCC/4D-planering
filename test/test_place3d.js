@@ -256,6 +256,15 @@ put('plan_item_activities.json', []); put('plan_item_comments.json', []);
   if (rep.error || (await page.evaluate(() => placements.some(p => p.id === 'fran3d')))) fail('Blocket ska inte läsa in det som gjorts i 3D-editorn: ' + JSON.stringify(rep));
   if (await page.locator('.place-row', { hasText: 'Från 3D' }).count()) fail('Listan ska inte visa objekt från 3D-vyn');
   if ((await page.evaluate(() => window.__markups.size)) !== 0) fail('Inga linjer ska ritas i Trimble Connect');
+  // Exportera markerade från 3D-editorn: 4D-planering läser in placeringarna från datalagret först (annars "Inget att spara")
+  { const ext2 = get('plan_placements.json'); ext2.push({ id: 'stall1', type: 'stallning', name: 'Ställning 1', x: 9, y: 9, z: 0, L: 10, B: 0.75, H: 10, rot: 0, dz: 0 }); put('plan_placements.json', ext2);
+    const ex = await page.evaluate(() => new Promise(res => {
+      window.addEventListener('message', e => { if (e.data && e.data.lagesplanReply && e.data.reqId === 78) res(e.data); });
+      window.postMessage({ lagesplan: true, type: 'placeSaveIfc', reqId: 78, ids: ['fran3d', 'stall1'], fileName: 'Urval' }, location.origin);
+    }));
+    await wait(500);
+    const r78 = ex.result || ex.reply || ex;
+    if (ex.error || !(Number(r78.n) >= 2)) fail('Exportera markerade från 3D-editorn ska hitta objekten som placerats där: ' + JSON.stringify(ex)); }
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   // Eget namn på filen (rutorna under Spara-knappen; överlever omritning av panelen).
   await page.check('#placeNameOn'); await page.fill('#placeNameTxt', 'Min etablering: v3');
