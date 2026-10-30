@@ -61,7 +61,7 @@ function l3texArray() {
   const tx = new THREE.DataArrayTexture(data, N, N, L3TEX_LAYERS);
   tx.format = THREE.RGBAFormat; tx.type = THREE.UnsignedByteType; tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
   tx.minFilter = THREE.LinearMipmapLinearFilter; tx.magFilter = THREE.LinearFilter; tx.generateMipmaps = true; tx.anisotropy = 4; tx.needsUpdate = true;
-  l3tex.arr = tx; return tx;
+  l3tex.arr = tx; setTimeout(() => l3tex.user.filter(r => !r.ready).forEach(l3texLoadRec), 0); return tx;
 }
 function l3texThumb(id) {
   if (l3tex.thumbs[id]) return l3tex.thumbs[id];
@@ -76,20 +76,26 @@ function l3texThumb(id) {
 /* Egna bilder: 256 px kvadrat, sparas i webbläsaren (och på etableringsobjektet som använder dem). */
 function l3texUserLoad() { try { const a = JSON.parse(localStorage.getItem("l3-user-tex") || "[]"); if (Array.isArray(a)) a.forEach(t => { if (t && t.id && t.data) l3texRegisterUser(t.id, t.name, t.data, true); }); } catch (e) { /* ingen lagring */ } }
 function l3texUserSave() { try { localStorage.setItem("l3-user-tex", JSON.stringify(l3tex.user.map(t => ({ id: t.id, name: t.name, data: t.data })))); } catch (e) { /* full lagring: bilden finns kvar i sessionen */ } }
+/* Egen bild → lagret i bildstapeln. Körs först när THREE finns (3D-vyn läser in biblioteken efter sidan); annars väntar bilden och tas upp när stapeln skapas. */
+function l3texLoadRec(rec) {
+  if (typeof THREE === "undefined") return;
+  const img = new Image();
+  img.onload = () => {
+    if (typeof THREE === "undefined") return;
+    const N = L3TEX_N, cv = document.createElement("canvas"); cv.width = cv.height = N;
+    const cx = cv.getContext("2d"), s = Math.min(img.width, img.height); cx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, N, N);
+    const px = cx.getImageData(0, 0, N, N).data, arr = l3texArray(); arr.image.data.set(px, rec.layer * N * N * 4); arr.needsUpdate = true;
+    delete l3tex.thumbs[rec.id]; rec.ready = true; if (typeof l3Render === "function") l3Render();
+    if (typeof l3texRefreshUi === "function" && l3texRefreshUi) l3texRefreshUi();
+  };
+  img.src = rec.data;
+}
 function l3texRegisterUser(id, name, dataUrl, quiet) {
   const ex = l3tex.user.find(t => t.id === id); if (ex) return ex.layer;
   if (l3tex.user.length >= L3TEX_LAYERS - L3TEX_LIBN) return -1;
   const layer = L3TEX_LIBN + l3tex.user.length, rec = { id, name: name || "Egen bild", data: dataUrl, layer };
   l3tex.user.push(rec);
-  const img = new Image();
-  img.onload = () => {
-    const N = L3TEX_N, cv = document.createElement("canvas"); cv.width = cv.height = N;
-    const cx = cv.getContext("2d"), s = Math.min(img.width, img.height); cx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, N, N);
-    const px = cx.getImageData(0, 0, N, N).data, arr = l3texArray(); arr.image.data.set(px, layer * N * N * 4); arr.needsUpdate = true;
-    delete l3tex.thumbs[id]; rec.ready = true; if (typeof l3Render === "function") l3Render();
-    if (typeof l3texRefreshUi === "function") l3texRefreshUi();
-  };
-  img.src = dataUrl;
+  l3texLoadRec(rec);
   if (!quiet) l3texUserSave();
   return layer;
 }
