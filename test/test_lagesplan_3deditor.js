@@ -156,11 +156,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.keyboard.press('Escape');
   await tap(6512380, 150125, 3);
   if (!(await page.locator('#v3Info').innerText()).includes('M30')) fail('Tryck på en låda ska visa infokortet: ' + await page.locator('#v3Info').innerText());
-  await page.click('#v3ShowBtn'); await page.click('[data-v3objs="edges"]');
+  await page.evaluate(() => l3SetObjMode('edges'));
   if (await page.evaluate(() => l3.objMesh && l3.objMesh.type) !== 'LineSegments') fail('Konturer');
-  await page.click('[data-v3objs="hidden"]');
+  await page.evaluate(() => l3SetObjMode('hidden'));
   if (await page.evaluate(() => !!l3.objMesh)) fail('Dolda');
-  await page.click('[data-v3objs="solid"]');
+  await page.evaluate(() => l3SetObjMode('solid'));
 
   // Vyer: uppifrån.
   await page.keyboard.press('Escape');

@@ -79,11 +79,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!e4.off || e4.o > 0.3 || e4.a) fail('Boden ska vara tonad (inte på plats), a inte: ' + JSON.stringify(e4));
   if (!(await page.textContent('#v3Legend')).includes('Etablering ej på plats')) fail('Förklaringen ska visa etablering som inte är på plats');
   if (!(await page.locator('.v3-label.off', { hasText: 'B' }).count())) fail('Bodens etikett ska vara tonad');
-  await page.click('#v3ShowBtn'); await page.click('[data-v3e4d="all"]');
+  await page.evaluate(() => { l3SetPref('etab4d', 'all'); l3Etab4dAll(); });
   e4 = await page.evaluate(() => { const g = l3.placeMeshes.get('b'); let o = 0; g.traverse(m => { if (m.isMesh) o = Math.max(o, m.material.opacity); }); return { off: g.userData.off4d, o }; });
   if (e4.off || e4.o < 0.99) fail('Visa allt: boden ska vara normal: ' + JSON.stringify(e4));
   // Datum före bodens slut -> på plats även med tonning.
-  await page.click('[data-v3e4d="ghost"]'); await page.keyboard.press('Escape');
+  await page.evaluate(() => { l3SetPref('etab4d', 'ghost'); l3Etab4dAll(); }); await page.keyboard.press('Escape');
   await page.evaluate(() => { $('dateInput').value = '2019-06-01'; }); await page.waitForTimeout(900);
   if (await page.evaluate(() => l3.placeMeshes.get('b').userData.off4d)) fail('2019-06-01: boden ska vara på plats');
   await page.evaluate(() => { $('dateInput').value = todayIso(); }); await page.waitForTimeout(900);

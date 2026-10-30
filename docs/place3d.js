@@ -15,7 +15,7 @@ const PLACE_MAX_LINES = 300; // tak för förhandsvisningen
 const PLACE_LIB = {
   bod:       { group: "Etablering", label: "Bod",        L: 8.4,  B: 3,    H: 2.7,  color: "#f59e0b" },
   container: { group: "Etablering", label: "Container",  L: 6.06, B: 2.44, H: 2.59, color: "#2563eb" },
-  upplag:    { group: "Etablering", label: "Upplag",     L: 10,   B: 5,    H: 0.3,  color: "#a16207" },
+  upplag:    { group: "Etablering", label: "Upplag",     L: 10,   B: 5,    H: 1.3,  color: "#a16207" },
   stallning: { group: "Etablering", label: "Ställning",  L: 10,   B: 0.75, H: 10,   color: "#eab308", smart: true, smartKey: "stallning" },
   lada:      { group: "Etablering", label: "Egen låda",  L: 2,    B: 2,    H: 2,    color: "#7c3aed" },
   tornkran:  { group: "Maskiner",   label: "Tornkran",   L: 1.6,  B: 1.6,  H: 40,   R: 50, color: "#facc15" },
@@ -119,6 +119,7 @@ function placeParts(p, ringN = 48) {
     }
     return parts;
   }
+  if (typeof detParts === "function") { const dp = detParts(p, z, ringN); if (dp) return dp; }   // detaljerade grundobjekt (place-detail.js)
   const body = { poly: placeRect(p, -L / 2, L / 2, -B / 2, B / 2), z0: z, z1: z + H, role: "body", transp: tr };
   const R = Number(p.R) || 0;
   if (p.type === "tornkran") {
