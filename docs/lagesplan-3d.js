@@ -115,7 +115,7 @@ function l3PdfToModel(px, py) {
 // Inställningar (per webbläsare)
 // ---------------------------------------------------------------------
 const L3_PREFS_KEY = "lagesplan-3d-prefs";
-const L3_PREFS_DEFAULT = { plan: true, objs: "solid", labels: true, legend: true, snap: true, step: "0.5", pal: true, mouse: "tekla", ortho: false, autoRot: true, actOutline: false, bubOn: false, bubScope: "auto", bubMax: 30 };
+const L3_PREFS_DEFAULT = { plan: true, objs: "hidden", labels: true, legend: true, snap: true, step: "0.5", pal: true, mouse: "tekla", ortho: false, autoRot: true, actOutline: false, bubOn: false, bubScope: "auto", bubMax: 30 };
 function l3Prefs() {
   if (l3 && l3.prefs) return l3.prefs;
   try { return { ...L3_PREFS_DEFAULT, ...JSON.parse(localStorage.getItem(L3_PREFS_KEY) || "{}") }; } catch (e) { return { ...L3_PREFS_DEFAULT }; }
