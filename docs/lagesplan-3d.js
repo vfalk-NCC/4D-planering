@@ -1425,6 +1425,7 @@ function l3RenderSide(liveOnly) {
     ${lib.fence ? "" : `<div class="v3-handles"><span>Handtag</span><button type="button" data-v3mode="translate" title="Pilar för att flytta (W)">↔ Flytta</button><button type="button" data-v3mode="rotate" title="Ring för att vrida (E)">⟳ Vrid</button></div>`}
     ${lib.crew && typeof crewSideHtml === "function" ? crewSideHtml(p) : ""}${lib.smart && typeof smartSideHtml === "function" ? smartSideHtml(p) : ""}
     ${typeof detSideHtml === "function" ? detSideHtml(p) : ""}
+    ${typeof l3edSideHtml === "function" ? l3edSideHtml(p) : ""}
     ${lib.mod && typeof modSideHtml === "function" ? modSideHtml(p) : ""}
     ${lib.mod || (lib.smart && typeof smDef === "function" && (smDef(p) || {}).noDims) ? "" : `<div class="v3-sec">Mått</div>
     <div class="v3-grid">${lib.isModel ? (A && A.kind === "mesh" ? f("mH", "Höjd", "0.1", mH) : `<div class="v3-sub">${typeof placeModelDims === "function" ? escHtml(placeModelDims(p)) : ""}</div>`) : lib.fence ? f("H", "Höjd") : f("L", "Längd") + f("B", "Bredd") + f("H", "Höjd")}
@@ -1470,6 +1471,7 @@ function l3RenderSide(liveOnly) {
       if (k === "itemId" || k === "color") { side.dataset.id = ""; l3RenderSide(); }
     };
   });
+  if (typeof l3edSideBind === "function") l3edSideBind(side, p);
   if (typeof detSideBind === "function") detSideBind(side, p, () => { side.dataset.id = ""; l3RenderSide(); });
   if (lib.smart && typeof smartBindSide === "function") smartBindSide(side, p, () => { l3RebuildOne(p); l3Changed(); side.dataset.id = ""; l3RenderSide(); });
   if (lib.crew && typeof crewBindSide === "function") crewBindSide(side, p, () => { l3RebuildOne(p); l3Changed(); side.dataset.id = ""; const act = document.activeElement; l3RenderSide(); });
@@ -1713,7 +1715,8 @@ function l3Key(e) {
 /* Sparat i plan_placements.json (place3d.js sparar efter en kort paus) -> berätta för 4D-planering. */
 let l3NotifyTimer = 0;
 function l3Changed() {
-  if (typeof l3MkRefresh === "function") l3MkRefresh({ type: "ändrat" });   // raderat, ångrat, kopierat: makadamens avdrag och skylt räknas om
+  if (typeof l3MkRefresh === "function") l3MkRefresh({ type: "ändrat" });
+  if (typeof l3edRefresh === "function") l3edRefresh();   // raderat, ångrat, kopierat: makadamens avdrag och skylt räknas om
   clearTimeout(l3NotifyTimer);
   l3SaveState("saving");
   l3NotifyTimer = setTimeout(async () => {
