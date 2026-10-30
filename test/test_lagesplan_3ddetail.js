@@ -47,11 +47,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const b = placeNew('bod', [O[0] + 5, O[1] + 5, 0]); r.h1 = z1(placeParts(b)); b.bod = { floors: 2 }; r.h2 = z1(placeParts(b)); const t2 = tris(placeParts(b)); b.bod = { floors: 2, doors: false }; r.noDoor = tris(placeParts(b)) < t2;
     b.sign = true; r.sign = placeParts(b).some(q => q.sign); b.signOff = true; r.signOff = !placeParts(b).some(q => q.sign); b.signOff = false; b.sign = false; r.noSign = !placeParts(b).some(q => q.sign);
     const k = placeNew('mobilkran', [O[0] + 30, O[1], 0]); r.k0 = z1(placeParts(k)); k.mk = { mode: 'ut', ang: 55, ext: 0.7 }; r.k1 = z1(placeParts(k)); k.mk = { mode: 'ut', ang: 55, ext: 0 }; r.k2 = z1(placeParts(k));
+    const rch = q => { const pt = placeParts(q).find(x => x.role === 'reach'); return pt ? Math.round(Math.hypot(pt.poly[0][0] - pt.poly[Math.floor(pt.poly.length / 2)][0], pt.poly[0][1] - pt.poly[Math.floor(pt.poly.length / 2)][1]) / 2 * 10) / 10 : 0; };
+    k.mk = { mode: 'ut', ang: 50, ext: 0 }; r.rc0 = rch(k); k.mk = { mode: 'ut', ang: 50, ext: 1 }; r.rc1 = rch(k); k.mk = { mode: 'ut', ang: 80, ext: 1 }; r.rc2 = rch(k);
     const l = placeNew('lada', [O[0], O[1] + 20, 0]); l.sign = true; r.lada = placeParts(l).some(q => q.sign);
     return r;
   });
   console.log(JSON.stringify(o));
-  ok(o.h2 > o.h1 * 1.6, 'Två våningar är högre: ' + JSON.stringify(o)); ok(o.noDoor, 'Dörrar av ger färre delar'); ok(o.sign && o.signOff && o.noSign, 'Skylt av/på'); ok(o.k1 > o.k0 + 3 && o.k1 > o.k2, 'Utskjutet läge: bommen är högre och längre'); ok(o.lada, 'Egen låda kan ha skylt');
+  ok(o.h2 > o.h1 * 1.6, 'Två våningar är högre: ' + JSON.stringify(o)); ok(o.noDoor, 'Dörrar av ger färre delar'); ok(o.sign && o.signOff && o.noSign, 'Skylt av/på'); ok(o.k1 > o.k0 + 3 && o.k1 > o.k2, 'Utskjutet läge: bommen är högre och längre'); ok(o.rc1 > o.rc0 + 3 && o.rc2 < o.rc1, 'Arbetsradien följer bomutskjut och vinkel: ' + [o.rc0, o.rc1, o.rc2]); ok(o.lada, 'Egen låda kan ha skylt');
   ok(!errors.length, 'JS-fel: ' + errors.join('|'));
   console.log('OK: bod i två våningar, dörrar av/på, skyltar på alla objekt, mobilkran utskjutet läge');
   await browser.close(); server.close();
