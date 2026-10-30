@@ -147,7 +147,7 @@ function smartParts(p, z) {
     if (arrows) for (let s = 1.5; s < len - 0.8; s += 3) { const o = at(s), q = Math.min(w * 0.7, 0.5), z0 = o.z + h; parts.push({ poly: [[o.x + o.ux * q, o.y + o.uy * q], [o.x - o.ux * q * 0.6 + o.uy * q, o.y - o.uy * q * 0.6 - o.ux * q], [o.x - o.ux * q * 0.2, o.y - o.uy * q * 0.2], [o.x - o.ux * q * 0.6 - o.uy * q, o.y - o.uy * q * 0.6 + o.ux * q]], z0, z1: z0 + 0.02, role: "body", deco: true, transp: 0, color: "#ffffff" }); }
     else if (w > 0.8) { const dash = Math.min(w * 0.06, 0.12); for (let s = 0.5; s < len - 1; s += 3) { const a0 = at(s), a1 = at(Math.min(len, s + 1.5)), z0 = a0.z + h; parts.push({ poly: [[a0.x + a0.uy * dash, a0.y - a0.ux * dash], [a1.x + a1.uy * dash, a1.y - a1.ux * dash], [a1.x - a1.uy * dash, a1.y + a1.ux * dash], [a0.x - a0.uy * dash, a0.y + a0.ux * dash]], z0, z1: z0 + 0.02, role: "body", deco: true, transp: 0, color: "#fde047" }); } }
   };
-  d.build(p, ctx); ctx.flush(); return parts;
+  d.build(p, ctx); ctx.flush(); return typeof detFixFloating === "function" ? detFixFloating(parts, ctx.z) : parts;   // flytande delar kopplas ihop (place-detail.js)
 }
 function smartProps(p) {
   const d = smDef(p); if (!d) return []; const out = [["Objekttyp", d.label], ["Gäller datum", smDateText(p)]];

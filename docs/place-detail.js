@@ -17,7 +17,7 @@ function detParts(p, z, ringN) {
   if (!DET_TYPES.has(p.type) || typeof smMakeCtx !== "function" || typeof TK === "undefined") return null;
   const lib = placeLib(p.type) || {}, col = p.color || lib.color || "#888888", c = smMakeCtx(p, z, col);
   try { DET[p.type](p, c, col, ringN || 48); detSign(p, c); c.flush(); } catch (e) { console.warn("Detaljerat objekt", p.type, e); return null; }
-  return c.parts;
+  return detFixFloating(c.parts, c.z);
 }
 const DET = {};
 
@@ -292,4 +292,39 @@ function detLegacy(p, z) {
     if (p.type === "barriar") { q.L = Number(p.L) || 4; q.H = Number(p.H) || 0.8; if (!(q.B > 0)) q.B = 0.6; if (!p.color || p.color === "#9ca3af") q.color = undefined; } else if (!p.color || p.color === "#16a34a") q.color = undefined;
     const r = smartParts(q, z); return r && r.length ? r : null;
   } catch (e) { console.warn("Äldre staket/barriär", e); return null; }
+}
+
+/* ---- Flytande delar (Victor 2026-10-30: "objekt i luften"): delar som inte rör resten av objektet får en liten stödstång mot närmaste del.
+   Gäller alla smarta objekt och maskiner (och framtida). Delarna delas i sammanhängande stycken, stycken som överlappar (inom 4 cm) bildar grupper, och
+   grupper som inte når marken (och inte hänger ihop med en som gör det) kopplas ihop med närmaste grupp om avståndet är högst 0,6 m. ---- */
+function detFixFloating(parts, z) {
+  try {
+    let nt = 0; parts.forEach(pt => { if (pt.tris) nt += pt.tris.faces.length; }); if (nt > 400000 || typeof TK === "undefined") return parts;
+    const comps = [];
+    parts.forEach((pt, pi) => {
+      if (!pt.tris || pt.sign || pt.card || pt.unlit || pt.role === "reach" || pt.bridge) return;
+      const tris = pt.tris, n = tris.pts.length, par = Array.from({ length: n }, (_, i) => i), f = a => { while (par[a] !== a) { par[a] = par[par[a]]; a = par[a]; } return a; };
+      tris.faces.forEach(q => { par[f(q[1] - 1)] = f(q[0] - 1); par[f(q[2] - 1)] = f(q[0] - 1); });
+      const m = new Map(); tris.faces.forEach(q => { const r = f(q[0] - 1); (m.get(r) || m.set(r, new Set()).get(r)).add(q[0] - 1).add(q[1] - 1).add(q[2] - 1); });
+      m.forEach(set => { const b = [1e9, 1e9, 1e9, -1e9, -1e9, -1e9]; set.forEach(i => { const q = tris.pts[i]; for (let k = 0; k < 3; k++) { if (q[k] < b[k]) b[k] = q[k]; if (q[k] > b[k + 3]) b[k + 3] = q[k]; } }); comps.push({ b, col: pt.color }); });
+    });
+    const N = comps.length; if (N < 3) return parts;
+    const par = Array.from({ length: N }, (_, i) => i), f = a => { while (par[a] !== a) { par[a] = par[par[a]]; a = par[a]; } return a; }, T = 0.04, idx = comps.map((c, i) => i).sort((a, b) => comps[a].b[0] - comps[b].b[0]);
+    for (let i = 0; i < N; i++) { const A = comps[idx[i]].b; for (let j = i + 1; j < N; j++) { const B = comps[idx[j]].b; if (B[0] > A[3] + T) break; if (A[1] <= B[4] + T && B[1] <= A[4] + T && A[2] <= B[5] + T && B[2] <= A[5] + T) par[f(idx[i])] = f(idx[j]); } }
+    const cl = new Map(); comps.forEach((c, i) => { const r = f(i), g = cl.get(r) || { b: [1e9, 1e9, 1e9, -1e9, -1e9, -1e9], cols: new Map(), ids: [] }; for (let k = 0; k < 3; k++) { g.b[k] = Math.min(g.b[k], c.b[k]); g.b[k + 3] = Math.max(g.b[k + 3], c.b[k + 3]); } g.ids.push(i); g.cols.set(c.col, (g.cols.get(c.col) || 0) + 1); cl.set(r, g); });
+    const groups = [...cl.values()]; if (groups.length < 2) return parts;
+    const zlow = Math.min(...groups.map(g => g.b[2])), ground = groups.filter(g => g.b[2] <= Math.max(z + 0.3, zlow + 0.3)); if (!ground.length) return parts;
+    const gap = (A, B) => { const p = [0, 0, 0], q = [0, 0, 0]; for (let k = 0; k < 3; k++) { if (A[k + 3] < B[k]) { p[k] = A[k + 3]; q[k] = B[k]; } else if (B[k + 3] < A[k]) { p[k] = A[k]; q[k] = B[k + 3]; } else { const lo = Math.max(A[k], B[k]), hi = Math.min(A[k + 3], B[k + 3]); p[k] = q[k] = (lo + hi) / 2; } } return { d: Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]), p, q }; };
+    const connected = new Set(ground), todo = groups.filter(g => !connected.has(g)).sort((a, b) => a.b[2] - b.b[2]); let guard = 0;
+    while (todo.length && guard++ < 60) {
+      let best = null; todo.forEach(g => connected.forEach(h => { if (best && gap(g.b, h.b).d > best.r.d + 5) return; g.ids.forEach(i => { h.ids.forEach(j => { const r = gap(comps[i].b, comps[j].b); if (!best || r.d < best.r.d) best = { g, h, r }; }); }); })); if (!best) break;
+      todo.splice(todo.indexOf(best.g), 1);
+      if (best.r.d > 0.6) continue;
+      const col = [...best.g.cols.entries()].sort((a, b) => b[1] - a[1])[0][0], thick = best.r.d < 0.04 ? 0.02 : 0.025, a = best.r.p, b = best.r.q, tiny = best.r.d < 1e-3;
+      const r1 = TK.rod(tiny ? [a[0], a[1], a[2] - 0.03] : a, tiny ? [b[0], b[1], b[2] + 0.03] : b, thick, thick, 6), xs = r1.pts.map(q => q[0]), ys = r1.pts.map(q => q[1]), zs = r1.pts.map(q => q[2]);
+      parts.push({ tris: { pts: r1.pts, faces: r1.faces }, poly: [[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)], [Math.min(...xs), Math.max(...ys)]], z0: Math.min(...zs), z1: Math.max(...zs), role: "body", transp: 0, color: col, bridge: true });
+      best.g.ids.forEach(i => best.h.ids.push(i)); for (let k = 0; k < 3; k++) { best.h.b[k] = Math.min(best.h.b[k], best.g.b[k]); best.h.b[k + 3] = Math.max(best.h.b[k + 3], best.g.b[k + 3]); } connected.add(best.g);
+    }
+    return parts;
+  } catch (e) { console.warn("Flytande delar", e); return parts; }
 }
