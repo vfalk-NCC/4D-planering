@@ -162,7 +162,7 @@ function l3cOwn(rotQ) {
   return { g: wrap, update: () => {}, cfg: { eye: Math.max(0.8, sz.z * 0.85), camD: Math.max(5, big * 2.6), camUp: Math.max(1, sz.z * 0.5), speedMul: Math.max(1, Math.min(6, big / 3)), turn: 3, radius: Math.max(0.3, Math.max(sz.x, sz.y) * 0.5), step: 0.4, vehicle: true } };
 }
 function l3cBuild(kind, rotQ) {
-  const f = { human: l3cHuman, crane: l3vCrane, excavator: l3vExcavator, truck: l3cTruck, loader: l3cLoader }[kind];
+  const f = { human: l3cHuman, crane: l3vCrane, excavator: l3vExcavator, truck: l3vTruck, loader: l3vLoader }[kind];
   let r;
   if (kind === "own") { const o = l3cOwn(rotQ); if (o) r = { ...o, kind }; else { kind = "human"; r = { ...l3cHuman(), cfg: L3C_CFG.human, kind }; } }
   else if (kind === "glb") { const o = typeof l3glbBuild === "function" ? l3glbBuild(rotQ) : null; if (o) r = { ...o, cfg: L3C_CFG.glb, kind }; else { kind = "human"; r = { ...l3cHuman(), cfg: L3C_CFG.human, kind }; } }

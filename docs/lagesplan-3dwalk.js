@@ -98,7 +98,7 @@ function l3wAvatarUpdate() {
   const g = l3w.av.g, P = l3w.p, cf = l3w.cfg, follow = l3wFollow(), ft = follow && l3w.gz != null ? l3w.gz + l3w.jz : P.z - l3w.eye;
   g.position.set(P.x, P.y, ft); g.rotation.z = l3w.heading + (l3w.kind === "own" ? 0 : 0);
   const sc = cf.vehicle ? 1 : Math.max(0.5, Math.min(2, l3w.eye / 1.7)); g.scale.set(sc, sc, sc);
-  { const st = { moving: l3w.moving, phase: l3w.phase, speed: l3w.curV, crouch: l3w.crouch, jz: l3w.jz, work: l3w.work, t: l3w.t, travel: l3w.travel, ctl: l3w.ctl, util: l3w.util || 0, showRadius: l3w.showRadius && l3w.workOn }; l3w.av.update(st); l3w.info = st.info || null; if (typeof l3liftTick === "function") l3liftTick(); }
+  { const st = { moving: l3w.moving, phase: l3w.phase, speed: l3w.curV, crouch: l3w.crouch, jz: l3w.jz, work: l3w.work, t: l3w.t, travel: l3w.travel, ctl: l3w.ctl, ctlT: l3w.ctlT, dt: l3w.dt || 0.016, steer: l3w.steerV || 0, rev: !!l3w.rev, brake: l3w.brakeT > 0 || !!l3w.rev, autoDig: !!(l3w.auto && l3w.kind === "loader" && l3w.autoS === 1), util: l3w.util || 0, showRadius: l3w.showRadius && l3w.workOn }; l3w.av.update(st); l3w.info = st.info || null; if (typeof l3liftTick === "function") l3liftTick(); }
 }
 function l3wAvatarRemove() {
   const g = l3w.avatar; l3w.avatar = null; l3w.av = null; if (!g) return;
@@ -155,12 +155,12 @@ function l3wLoop() {
     if (l3w.on) l3w.raf = requestAnimationFrame(step);
   };
   const frame = t => {
-    const dt = Math.min(0.1, (t - l3w.last) / 1000); l3w.last = t;
+    const dt = Math.min(0.1, (t - l3w.last) / 1000); l3w.last = t; l3w.dt = dt;
     const K = l3w.keys, cam = l3.camera, cfg = l3w.cfg || L3C_CFG.human, veh = !!cfg.vehicle, third = l3w.person === "third";
     if (!third) l3w.p.copy(cam.position);
     const P = l3w.p; let moved = false; l3w.moving = false; l3w.t += dt;
     // Piltangenterna vrider (90°/s) och tittar upp/ner.
-    const jl = l3w.jl, arrowsCtl = veh && l3w.workOn && (l3w.kind === "crane" || l3w.kind === "excavator"), turn = (arrowsCtl ? 0 : (K.has("arrowleft") ? 1 : 0) - (K.has("arrowright") ? 1 : 0)) - jl.x * 1.6, look = (arrowsCtl ? 0 : (K.has("arrowup") ? 1 : 0) - (K.has("arrowdown") ? 1 : 0)) - jl.y * 1.0;
+    const jl = l3w.jl, arrowsCtl = veh && l3w.workOn && l3wRig(l3w.kind), turn = (arrowsCtl ? 0 : (K.has("arrowleft") ? 1 : 0) - (K.has("arrowright") ? 1 : 0)) - jl.x * 1.6, look = (arrowsCtl ? 0 : (K.has("arrowup") ? 1 : 0) - (K.has("arrowdown") ? 1 : 0)) - jl.y * 1.0;
     if (turn) { l3w.yaw += turn * dt * Math.PI / 2; moved = true; }
     if (look) { l3w.pitch = Math.max(-1.5, Math.min(1.5, l3w.pitch + look * dt * Math.PI / 4)); moved = true; }
     const f = (K.has("w") ? 1 : 0) - (K.has("s") ? 1 : 0) - l3w.jm.y, sd = (K.has("d") ? 1 : 0) - (K.has("a") ? 1 : 0) + l3w.jm.x, up = (K.has("e") ? 1 : 0) - (K.has("q") ? 1 : 0);
@@ -174,6 +174,7 @@ function l3wLoop() {
     // Kameran följer efter bakom när man styr (men släpper taget en stund efter att man själv tittat runt). Första person: gå relativt blicken som förut.
     const turnIn = third ? Math.max(-1, Math.min(1, (K.has("d") ? 1 : 0) - (K.has("a") ? 1 : 0) + l3w.jm.x)) : 0, now = performance.now(), wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
     if (turn || look || l3w.drag) l3w.lastLook = now;
+    { const sv = third && veh ? -turnIn * (f < 0 ? -1 : 1) : 0; l3w.steerV = (l3w.steerV || 0) + (sv - (l3w.steerV || 0)) * Math.min(1, dt * 5); l3w.rev = third && veh && f < 0; if (l3w.prevF && !f) l3w.brakeT = 0.6; l3w.prevF = f; if (l3w.brakeT > 0) { l3w.brakeT -= dt; moved = true; } if (Math.abs(sv - l3w.steerV) > 0.01) moved = true; }
     const doMove = mv0 => { const mv = mv0, dist = mv.length(); if (dist > 1e-7) { l3w.moving = true; l3w.curV = dist / Math.max(dt, 1e-3); l3w.phase += dist * 2.6; l3w.travel += dist * (f < 0 && veh ? -1 : 1); l3wMoveSolid(P, mv, cfg.radius); } };
     if (third && (f || turnIn)) {
       if (l3w.kind === "crane" && l3w.ctl && l3w.ctl.out > 0.02) { if (now - l3w.warnT > 2500) { l3w.warnT = now; l3Status("Mobilkranen står på stödben – ta in dem och bommen (X) innan du kör.", true); } }
@@ -219,7 +220,8 @@ function l3wLoop() {
 
 function l3wCommentStart() { if (typeof l3kNew !== "function") return; l3w.cmtPick = true; l3.renderer.domElement.style.cursor = "crosshair"; l3Status("Kommentar: tryck på det du vill kommentera (Esc avbryter)."); l3wHud(true); }
 /* ---- Kranpanel och reglage för mobilkran och grävmaskin ---------------------------------------------------------------------------------- */
-const L3W_CTL0 = { crane: { out: 0, ang: 0.05, ext: 0, slew: 0, hook: 3 }, excavator: { slew: 0, boom: 0.45, stick: 1.2, bucket: 0.8 } };
+const L3W_CTL0 = { crane: { out: 0, ang: 0.05, ext: 0, slew: 0, hook: 3 }, excavator: { slew: 0, boom: 0.45, stick: 1.2, bucket: 0.8 }, truck: { tip: 0, gate: 0, load: 0.7, mat: 0 }, loader: { arm: 0, bucket: 0.15, fill: 0, mat: 0 } };
+const l3wRig = k => k === "crane" || k === "excavator" || k === "truck" || k === "loader"; // fordon med reglagepanel och arbetsläge
 function l3wCtlReset() { const d = L3W_CTL0[l3w.kind]; l3w.ctl = d ? { ...d } : null; l3w.ctlT = d ? { ...d } : null; l3w.auto = false; l3w.rested = false; }
 const l3wClamp = (v, r) => Math.max(r[0], Math.min(r[1], v));
 function l3wCtlStep(dt, K) {
@@ -232,6 +234,8 @@ function l3wCtlStep(dt, K) {
     const folded = c.ang < 0.12 && c.ext < 0.02, wantOut = (T.out > 0.5 || !folded) ? 1 : 0; // stödbenen kan inte tas in med bommen uppe
     const ang = c.out < 0.98 ? Math.min(T.ang, 0.1) : T.ang, ext = c.out < 0.98 ? 0 : T.ext;
     c.out = mv(c.out, wantOut, 0.35); c.ang = mv(c.ang, ang, 0.5); c.ext = mv(c.ext, ext, 0.2); const ps = c.slew; c.slew = mv(c.slew, c.out > 0.98 || T.slew === 0 ? T.slew : c.slew, 0.7); c.slewV = (c.slew - ps) / Math.max(dt, 1e-3); c.hook = mv(c.hook, T.hook, 4);
+  } else if (l3w.kind === "truck" || l3w.kind === "loader") {
+    l3v2CtlStep(l3w.kind, dt, K, mv, { kx, ky, kp, kh });
   } else if (l3w.kind === "excavator") {
     if (l3w.auto) { l3w.autoT += dt; const p = l3w.autoT * 0.9; T.slew = 0.8 * Math.sin(p * 0.5); T.boom = 0.45 + 0.35 * Math.sin(p); T.stick = 1.25 + 0.7 * Math.sin(p + 1.1); T.bucket = 0.9 + 0.8 * Math.sin(p + 2.2); }
     else if (active && (kx || ky || kp || kh)) { T.slew -= kx * 0.8 * dt; T.boom += ky * 0.7 * dt; T.stick += kp * 0.9 * dt; T.bucket += kh * 1.2 * dt; }
@@ -243,9 +247,11 @@ function l3wCtlStep(dt, K) {
 const L3W_CTLF = {
   crane: [["slew", "Sväng", -180, 180, 1, "°"], ["ang", "Bomvinkel", 2, 80, 1, "°"], ["ext", "Utskjut", 0, 100, 1, "%"], ["hook", "Lina", 1, 65, 0.1, "m"]],
   excavator: [["slew", "Sväng", -180, 180, 1, "°"], ["boom", "Bom", -9, 57, 1, "°"], ["stick", "Skaft", 20, 132, 1, "°"], ["bucket", "Skopa", -20, 103, 1, "°"]],
+  truck: [["tip", "Flaktipp", 0, 56, 1, "°"], ["gate", "Baklucka", 0, 100, 1, "%"], ["load", "Last", 0, 100, 1, "%"]],
+  loader: [["arm", "Lyftarmar", 0, 69, 1, "°"], ["bucket", "Skopa", -49, 34, 1, "°"], ["fill", "Skopfyllnad", 0, 100, 1, "%"]],
 };
-const L3W_TO = { slew: v => v * Math.PI / 180, ang: v => v * Math.PI / 180, ext: v => v / 100, hook: v => v, boom: v => v * Math.PI / 180, stick: v => v * Math.PI / 180, bucket: v => v * Math.PI / 180 };
-const L3W_FROM = { slew: v => v * 180 / Math.PI, ang: v => v * 180 / Math.PI, ext: v => v * 100, hook: v => v, boom: v => v * 180 / Math.PI, stick: v => v * 180 / Math.PI, bucket: v => v * 180 / Math.PI };
+const L3W_TO = { slew: v => v * Math.PI / 180, ang: v => v * Math.PI / 180, ext: v => v / 100, hook: v => v, boom: v => v * Math.PI / 180, stick: v => v * Math.PI / 180, bucket: v => v * Math.PI / 180, tip: v => v * Math.PI / 180, gate: v => v / 100, load: v => v / 100, arm: v => v * Math.PI / 180, fill: v => v / 100 };
+const L3W_FROM = { slew: v => v * 180 / Math.PI, ang: v => v * 180 / Math.PI, ext: v => v * 100, hook: v => v, boom: v => v * 180 / Math.PI, stick: v => v * 180 / Math.PI, bucket: v => v * 180 / Math.PI, tip: v => v * 180 / Math.PI, gate: v => v * 100, load: v => v * 100, arm: v => v * 180 / Math.PI, fill: v => v * 100 };
 /* Kranens mått som går att skriva in: bomlängd, radie och lyfthöjd (löses ut till utskjut och bomvinkel). Bomlängd = 19,4 + 41,4 · utskjut (m); största radie 60 m. */
 function l3wCraneSolve(kind, val) {
   const T = l3w.ctlT, c = l3w.ctl, L = 19.4 + 41.4 * c.ext; if (!(val >= 0)) return;
@@ -254,21 +260,22 @@ function l3wCraneSolve(kind, val) {
   else if (kind === "hgt") T.ang = l3wClamp(Math.asin(Math.max(-1, Math.min(1, (val - 3.2) / L))), [0.03, 1.4]);
 }
 function l3wCtlPanel() {
-  const on = l3w.on && l3w.workOn && (l3w.kind === "crane" || l3w.kind === "excavator"); let p = l3w.ctlEl;
+  const on = l3w.on && l3w.workOn && l3wRig(l3w.kind); let p = l3w.ctlEl;
   if (!on || !l3w.ctlT) { if (p) p.classList.add("hidden"); return; }
   if (!p) {
     p = document.createElement("div"); p.className = "v3-ctl"; l3w.ctlEl = p; document.getElementById("v3Canvas").appendChild(p);
     ["pointerdown", "pointerup", "wheel", "click", "dblclick", "contextmenu", "keydown", "keyup"].forEach(t => p.addEventListener(t, e => e.stopPropagation()));
     p.addEventListener("input", e => { const t = e.target, k = t.dataset.c; if (!k || !l3w.ctlT) return; l3w.auto = false; l3w.ctlT[k] = L3W_TO[k](Number(t.value)); l3wApply(); });
     p.addEventListener("change", e => { const t = e.target, k = t.dataset.n; if (!k || !l3w.ctlT) return; const v = Number(String(t.value).replace(",", ".")); if (!isFinite(v)) { l3wCtlRefresh(true); return; } l3w.auto = false; if (L3W_TO[k]) { const f = (L3W_CTLF[l3w.kind] || []).find(x => x[0] === k); l3w.ctlT[k] = L3W_TO[k](f ? Math.max(f[2], Math.min(f[3], v)) : v); } else l3wCraneSolve(k, v); l3wApply(); l3wCtlRefresh(true); });
-    p.addEventListener("click", e => { const b = e.target.closest("[data-cb]"); if (!b) return; const k = b.dataset.cb; if (k === "out") { l3w.ctlT.out = l3w.ctlT.out > 0.5 ? 0 : 1; if (l3w.ctlT.out) { l3w.ctlT.ang = Math.max(l3w.ctlT.ang, 1.0); l3w.ctlT.ext = Math.max(l3w.ctlT.ext, 0.35); } else { l3w.ctlT.ang = 0.05; l3w.ctlT.ext = 0; l3w.ctlT.slew = 0; l3w.ctlT.hook = 3; } } else if (k === "auto") { l3w.auto = !l3w.auto; l3w.autoT = 0; } else if (k === "rad") { l3w.showRadius = !l3w.showRadius; l3SetPref("walkRadius", l3w.showRadius); } else if (k === "grab") { l3liftGrab(); l3wCtlPanel(); return; } else if (k === "rec") { l3liftRecToggle(); return; } else if (k === "play") { l3liftPlay(); return; } else if (k === "clrrec") { l3lift.recd = null; l3liftTraceClear(); l3Render(); l3wCtlRefresh(true); return; } else if (k === "yl") { l3liftYaw(Math.PI / 12); return; } else if (k === "yr") { l3liftYaw(-Math.PI / 12); return; } else if (k === "lock") { l3wLock(); return; } l3wCtlPanel(); l3wApply(); });
+    p.addEventListener("click", e => { const b = e.target.closest("[data-cb]"); if (!b) return; const k = b.dataset.cb; if (typeof l3v2Click === "function" && l3v2Click(k)) { l3wCtlRefresh(true); return; } if (k === "out") { l3w.ctlT.out = l3w.ctlT.out > 0.5 ? 0 : 1; if (l3w.ctlT.out) { l3w.ctlT.ang = Math.max(l3w.ctlT.ang, 1.0); l3w.ctlT.ext = Math.max(l3w.ctlT.ext, 0.35); } else { l3w.ctlT.ang = 0.05; l3w.ctlT.ext = 0; l3w.ctlT.slew = 0; l3w.ctlT.hook = 3; } } else if (k === "auto") { l3w.auto = !l3w.auto; l3w.autoT = 0; l3w.autoS = 0; } else if (k === "rad") { l3w.showRadius = !l3w.showRadius; l3SetPref("walkRadius", l3w.showRadius); } else if (k === "grab") { l3liftGrab(); l3wCtlPanel(); return; } else if (k === "rec") { l3liftRecToggle(); return; } else if (k === "play") { l3liftPlay(); return; } else if (k === "clrrec") { l3lift.recd = null; l3liftTraceClear(); l3Render(); l3wCtlRefresh(true); return; } else if (k === "yl") { l3liftYaw(Math.PI / 12); return; } else if (k === "yr") { l3liftYaw(-Math.PI / 12); return; } else if (k === "lock") { l3wLock(); return; } l3wCtlPanel(); l3wApply(); });
     p.addEventListener("change", e => { if (typeof l3liftPanelChange === "function") l3liftPanelChange(e); });
     p.addEventListener("change", e => { if (e.target.dataset.cb === "rad") { l3w.showRadius = e.target.checked; l3SetPref("walkRadius", l3w.showRadius); l3wApply(); } });
   }
-  p.classList.remove("hidden"); const T = l3w.ctlT, sl = ([k, lab, min, max, step, unit]) => `<label><span>${lab}</span><input type="range" data-c="${k}" min="${min}" max="${max}" step="${step}" value="${L3W_FROM[k](T[k])}"><span class="v3-num"><input type="number" data-n="${k}" min="${min}" max="${max}" step="${step}"><i>${unit}</i></span></label>`;
-  const num = (k, lab, unit) => `<label class="v3-ctl-n"><span>${lab}</span><span class="v3-num"><input type="number" data-n="${k}" step="0.1" min="0"><i>${unit}</i></span></label>`;
+  p.classList.remove("hidden"); const T = l3w.ctlT, sl = ([k, lab, min, max, step, unit]) => `<label><span>${lab}</span><input type="range" data-c="${k}" min="${min}" max="${max}" step="${step}" value="${L3W_FROM[k](T[k])}"><span class="v3-ctl-num"><input type="number" data-n="${k}" min="${min}" max="${max}" step="${step}"><i>${unit}</i></span></label>`;
+  const num = (k, lab, unit) => `<label class="v3-ctl-n"><span>${lab}</span><span class="v3-ctl-num"><input type="number" data-n="${k}" step="0.1" min="0"><i>${unit}</i></span></label>`;
   const sliders = L3W_CTLF[l3w.kind].map(sl).join("");
-  if (l3w.kind === "crane") p.innerHTML = `<b>Kranpanel · Mobilkran</b><button type="button" data-cb="out" class="${T.out > 0.5 ? "on" : ""}" title="Fäller ut stödbenen och reser bommen (X). Bommen måste vara nere för att ta in dem igen.">${T.out > 0.5 ? "Ta in stödben och bom" : "Fäll ut stödben och res bom"}</button>${sliders}<div class="v3-ctl-g"><small>Skriv in ett mått så räknas bomvinkel och utskjut ut:</small>${num("len", "Bomlängd", "m")}${num("rad", "Radie", "m")}${num("hgt", "Lyfthöjd", "m")}</div><div class="v3-ctl-load"><label class="v3-ctl-n"><span>Lastens vikt</span><span class="v3-num"><input type="number" data-ld="w" step="0.1" min="0"><i>t</i></span></label><div id="v3CtlUtil"></div><details><summary>Kranmodell och lastdiagram</summary><select data-ld="model" title="Välj kranklass – eller Egen för att skriva in kranens riktiga lastdiagram">${(typeof L3L_MODELS !== "undefined" ? L3L_MODELS : []).map(m => `<option value="${m.id}">${m.name}</option>`).join("")}<option value="own">Egen (skriv in)</option></select><textarea data-ld="chart" rows="8" spellcheck="false" title="En rad per punkt: radie:ton"></textarea><small>Diagrammen för klasserna är typiska exempel, inte tillverkarens. Välj Egen och skriv en rad per punkt (radie:ton) för kranens riktiga diagram.</small></details><div class="v3-ctl-lift"><button type="button" data-cb="rec" title="Spela in kranens rörelser och när du hakar i / sätter ner objekt">⏺ Spela in</button><button type="button" data-cb="play" title="Spelar upp den inspelade rörelsen: objekten sätts tillbaka och lyfts igen">▶ Spela upp</button><button type="button" data-cb="clrrec" title="Ta bort inspelning och bana">🗑</button></div></div><div class="v3-ctl-lift"><button type="button" data-cb="grab" title="Sänk kroken ner mot ett objekt i modellen (eller markera objekt först) och haka i det. Tryck igen för att sätta ner det (H)">${l3lift.s ? "⏬ Sätt ner lasten (H)" : "🪝 Haka i objekt (H)"}</button><button type="button" data-cb="yl" title="Vrid lasten (,)">↺</button><button type="button" data-cb="yr" title="Vrid lasten (.)">↻</button></div><div class="v3-ctl-r" id="v3CtlInfo"></div><label class="v3-chk"><input type="checkbox" data-cb="rad" ${l3w.showRadius ? "checked" : ""}> Visa radie på marken</label><button type="button" data-cb="lock" title="Låser kranen i det här läget och lämnar körningen – du kan sedan flyga runt, titta i plan och valfri vy och exportera den som IFC">📌 Lås här och flyg runt</button><small>Pilar: sväng och bomvinkel · + / −: utskjut · [ ]: lina</small>`;
+  if (l3w.kind === "crane") p.innerHTML = `<b>Kranpanel · Mobilkran</b><button type="button" data-cb="out" class="${T.out > 0.5 ? "on" : ""}" title="Fäller ut stödbenen och reser bommen (X). Bommen måste vara nere för att ta in dem igen.">${T.out > 0.5 ? "Ta in stödben och bom" : "Fäll ut stödben och res bom"}</button>${sliders}<div class="v3-ctl-g"><small>Skriv in ett mått så räknas bomvinkel och utskjut ut:</small>${num("len", "Bomlängd", "m")}${num("rad", "Radie", "m")}${num("hgt", "Lyfthöjd", "m")}</div><div class="v3-ctl-load"><label class="v3-ctl-n"><span>Lastens vikt</span><span class="v3-ctl-num"><input type="number" data-ld="w" step="0.1" min="0"><i>t</i></span></label><div id="v3CtlUtil"></div><details><summary>Kranmodell och lastdiagram</summary><select data-ld="model" title="Välj kranklass – eller Egen för att skriva in kranens riktiga lastdiagram">${(typeof L3L_MODELS !== "undefined" ? L3L_MODELS : []).map(m => `<option value="${m.id}">${m.name}</option>`).join("")}<option value="own">Egen (skriv in)</option></select><textarea data-ld="chart" rows="8" spellcheck="false" title="En rad per punkt: radie:ton"></textarea><small>Diagrammen för klasserna är typiska exempel, inte tillverkarens. Välj Egen och skriv en rad per punkt (radie:ton) för kranens riktiga diagram.</small></details><div class="v3-ctl-lift"><button type="button" data-cb="rec" title="Spela in kranens rörelser och när du hakar i / sätter ner objekt">⏺ Spela in</button><button type="button" data-cb="play" title="Spelar upp den inspelade rörelsen: objekten sätts tillbaka och lyfts igen">▶ Spela upp</button><button type="button" data-cb="clrrec" title="Ta bort inspelning och bana">🗑</button></div></div><div class="v3-ctl-lift"><button type="button" data-cb="grab" title="Sänk kroken ner mot ett objekt i modellen (eller markera objekt först) och haka i det. Tryck igen för att sätta ner det (H)">${l3lift.s ? "⏬ Sätt ner lasten (H)" : "🪝 Haka i objekt (H)"}</button><button type="button" data-cb="yl" title="Vrid lasten (,)">↺</button><button type="button" data-cb="yr" title="Vrid lasten (.)">↻</button></div><div class="v3-ctl-r" id="v3CtlInfo"></div><label class="v3-chk"><input type="checkbox" data-cb="rad" ${l3w.showRadius ? "checked" : ""}> Visa radie på marken</label><button type="button" data-cb="lock" title="Låser kranen i det här läget och lämnar körningen – du kan sedan flyga runt, titta i plan och valfri vy och exportera den som IFC">📌 Lås här och flyg runt</button><small>Pilar: sväng och bomvinkel · + / −: utskjut · [ ]: lina</small>`;
+  else if (l3w.kind === "truck" || l3w.kind === "loader") p.innerHTML = l3v2PanelHtml(l3w.kind, sliders, T);
   else p.innerHTML = `<b>Reglage · Grävmaskin</b><button type="button" data-cb="auto" class="${l3w.auto ? "on" : ""}">${l3w.auto ? "Stoppa grävning" : "Gräv automatiskt"}</button>${sliders}<div class="v3-ctl-r" id="v3CtlInfo"></div><label class="v3-chk"><input type="checkbox" data-cb="rad" ${l3w.showRadius ? "checked" : ""}> Visa räckvidd på marken</label><button type="button" data-cb="lock" title="Låser maskinen i det här läget och lämnar körningen – sedan kan du flyga runt och exportera den som IFC">📌 Lås här och flyg runt</button><small>Pilar: sväng och bom · + / −: skaft · [ ]: skopa</small>`;
   l3wCtlRefresh(true);
 }
@@ -277,7 +284,7 @@ function l3wCtlRefresh(force) {
   const T = l3w.ctlT, c = l3w.ctl, put = (sel, v) => { const i = p.querySelector(sel); if (i && document.activeElement !== i) i.value = v; };
   (L3W_CTLF[l3w.kind] || []).forEach(([k, , , , step]) => { put(`[data-c="${k}"]`, L3W_FROM[k](T[k])); const v = L3W_FROM[k](c[k]); put(`[data-n="${k}"]`, step < 1 ? v.toFixed(1) : Math.round(v)); });
   if (l3w.kind === "crane") { const get = lab => { const x = (l3w.info || []).find(q => q[0] === lab); return x ? parseFloat(String(x[1]).replace(",", ".")) : ""; }; put('[data-n="len"]', get("Bomlängd")); put('[data-n="rad"]', get("Radie")); put('[data-n="hgt"]', get("Lyfthöjd (bomspets)")); if (typeof l3liftPanelRefresh === "function") { l3liftPanelRefresh(p); const ta = p.querySelector('[data-ld="chart"]'); if (ta && !ta.value && document.activeElement !== ta) ta.value = (() => { try { return l3Prefs().craneChart || L3L_DEF; } catch (e) { return L3L_DEF; } })(); } const gb = p.querySelector('[data-cb="grab"]'); if (gb) gb.textContent = l3lift.s ? "⏬ Sätt ner lasten (H)" : "🪝 Haka i objekt (H)"; const b = p.querySelector('[data-cb="out"]'); if (b) { b.classList.toggle("on", T.out > 0.5); b.textContent = T.out > 0.5 ? "Ta in stödben och bom" : "Fäll ut stödben och res bom"; } }
-  else { const b = p.querySelector('[data-cb="auto"]'); if (b) { b.classList.toggle("on", l3w.auto); b.textContent = l3w.auto ? "Stoppa grävning" : "Gräv automatiskt"; } }
+  else { const b = p.querySelector('[data-cb="auto"]'); if (b) { const al = L3V2_AUTO[l3w.kind] || ["Gräv automatiskt", "Stoppa grävning"]; b.classList.toggle("on", l3w.auto); b.textContent = l3w.auto ? al[1] : al[0]; } }
   const inf = p.querySelector("#v3CtlInfo"); if (inf && l3w.info) inf.innerHTML = l3w.info.map(([a, b]) => `<div><span>${a}</span><b>${b}</b></div>`).join("");
 }
 /* ---- Lås fordonet och flyg runt (Victor 2026-10-22) ---------------------------------------------------------------------------------------- */
@@ -286,7 +293,7 @@ function l3wLock() {
   if (typeof l3lift !== "undefined" && l3lift.s) { l3Status("Sätt ner lasten först (H).", true); return; }
   if (!l3w.on || !l3w.av) { l3Status("Det finns inget fordon att låsa – välj en figur i 3:e person först.", true); return; }
   l3wApply(); const g = l3w.av.g, P = l3w.p.clone(), title = (L3C_KINDS.find(x => x[0] === l3w.kind) || ["", "Fordon"])[1];
-  l3w.lockN = (l3w.lockN || 0) + 1; const item = { id: "lv" + Date.now().toString(36), kind: l3w.kind, title, name: `${title} ${l3w.lockN}`, g, ctl: l3w.ctl ? { ...l3w.ctl } : null, info: (l3w.info || []).map(x => x.slice()), pos: P, gz: l3w.gz, heading: l3w.heading, eye: l3w.eye, own: l3w.ownRot, showRadius: !!(l3w.showRadius && l3w.workOn) };
+  l3w.lockN = (l3w.lockN || 0) + 1; const item = { id: "lv" + Date.now().toString(36), kind: l3w.kind, title, name: `${title} ${l3w.lockN}`, g, ctl: l3w.ctl ? { ...l3w.ctl } : null, info: (l3w.info || []).map(x => x.slice()), pos: P, gz: l3w.gz, heading: l3w.heading, eye: l3w.eye, own: l3w.ownRot, showRadius: !!(l3w.showRadius && l3w.workOn) && (l3w.kind === "crane" || l3w.kind === "excavator") };
   g.userData.locked = item.id; l3w.locked.push(item); l3w.avatar = null; l3w.av = null;
   const target = g.position.clone(); l3wExit(true); l3wLockPanel();
   l3FlyTo(target, Math.max(14, (item.kind === "crane" ? 45 : 14)), new THREE.Vector3(0.6, -1, 0.9), 700);
@@ -300,7 +307,7 @@ function l3wLockRemove(id, keepGroup) {
 function l3wLockResume(id) {
   const it = l3wLockRemove(id); if (!it) return; l3SetPref("walkKind", it.kind); l3SetPref("walkPerson", "third");
   const P = it.pos; l3wEnter(new THREE.Vector3(P.x, P.y, it.gz != null ? it.gz : P.z - it.eye));
-  l3w.heading = it.heading; l3w.yaw = it.heading; if (it.ctl) { l3w.ctl = { ...it.ctl }; l3w.ctlT = { ...it.ctl }; } l3w.workOn = !!(it.ctl && (it.ctl.out > 0.02 || it.kind === "excavator")); l3wHud(true); l3wCtlPanel(); l3wApply();
+  l3w.heading = it.heading; l3w.yaw = it.heading; if (it.ctl) { l3w.ctl = { ...it.ctl }; l3w.ctlT = { ...it.ctl }; } l3w.workOn = !!(it.ctl && (it.ctl.out > 0.02 || it.kind === "excavator" || it.kind === "truck" || it.kind === "loader")); l3wHud(true); l3wCtlPanel(); l3wApply();
 }
 function l3wLockPanel() {
   let p = l3w.lockEl; const host = document.getElementById("v3Canvas");
