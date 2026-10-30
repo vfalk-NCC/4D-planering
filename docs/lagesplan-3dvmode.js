@@ -52,7 +52,7 @@ function l3vmStd(o, on) {
     const mk = m => {
       const n = new THREE.MeshStandardMaterial({ color: m.color, vertexColors: m.vertexColors, transparent: m.transparent, opacity: m.opacity, side: m.side, depthWrite: m.depthWrite, roughness: 0.62, metalness: 0.06, envMapIntensity: 0.7, emissive: m.emissive, emissiveIntensity: m.emissiveIntensity, polygonOffset: m.polygonOffset, polygonOffsetFactor: m.polygonOffsetFactor, polygonOffsetUnits: m.polygonOffsetUnits, clippingPlanes: m.clippingPlanes, clipShadows: m.clipShadows });
       n.userData = { ...m.userData, vm: undefined, l3tex: undefined, vmFrom: m };
-      if (m.userData.l3tex && typeof l3texPatch === "function") { const t = m.userData.l3tex; l3texPatch(n, t.attr ? undefined : [t.uTx.value.x, t.uTx.value.y, t.uTx.value.z]); }
+      if (m.userData.l3tex && typeof l3texPatch === "function") { const t = m.userData.l3tex; l3texPatch(n, t.attr ? undefined : [t.uTx.value.x, t.uTx.value.y, t.uTx.value.z, t.uTx2.value.x, t.uTx2.value.y, t.uTx2.value.z, t.uTx2.value.w, t.uTx3 ? t.uTx3.value : 0]); }
       return n;
     };
     o.userData.vmLam = o.material; o.material = o.userData.vmStd = Array.isArray(o.material) ? o.material.map(mk) : mk(o.material);
@@ -87,7 +87,7 @@ function l3vmShadows(on) {
     const c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3()), R = Math.min(2500, Math.max(10, sz.length() * 0.6));
     if (sun) {
       if (!l3vm.sunWas) l3vm.sunWas = { pos: sun.position.clone(), target: sun.target.position.clone() };
-      const dir = new THREE.Vector3(-0.5, -0.8, 1.2).normalize();
+      const dir = (l3vm.sunDir ? l3vm.sunDir.clone() : new THREE.Vector3(-0.5, -0.8, 1.2)).normalize();   // solstudien (lagesplan-3dsun.js) styr riktningen
       sun.position.copy(c).addScaledVector(dir, R * 2); sun.target.position.copy(c); if (!sun.target.parent) l3.scene.add(sun.target); sun.target.updateMatrixWorld();
       sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
       const cam = sun.shadow.camera; cam.left = -R; cam.right = R; cam.top = R; cam.bottom = -R; cam.near = 0.5; cam.far = R * 5; cam.updateProjectionMatrix();

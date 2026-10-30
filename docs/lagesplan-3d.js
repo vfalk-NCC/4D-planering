@@ -27,6 +27,7 @@ const L3_ICO = (() => {
     measure: s('<path d="M3 17l14-14 4 4-14 14z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/>'),
     undo: s('<path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>'),
     redo: s('<path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>'),
+    sun: s('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/>'),
     fit: s('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
     camera: s('<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>'),
     cube: s('<path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>'),
@@ -252,6 +253,7 @@ function l3Dom() {
       </div>
       <button type="button" id="v3ClipBtn" class="v3-ghost" title="Snitt: tryck på en yta där modellen ska skäras">${I.scissors}<span>Snitt</span></button>
       <button type="button" id="v3AnBtn" class="v3-ghost" title="Analys: mängdning, lutning, massegenskaper, fria avstånd, jämför modeller, smart markering, tidslinje">${I.fit}<span>Analys</span></button>
+      <button type="button" id="v3SunBtn" class="v3-ghost" title="Solstudie: solens läge och skuggor för valt datum och klockslag, solbana, skuggbilder och soltimmar">${I.sun}<span>Sol</span></button>
       <button type="button" id="v3PhotoBtn" class="v3-ghost" title="Lägg till foto: placeras enligt fotots GPS, annars trycker du där det är taget">${I.camera}<span>Foto</span></button>
       <span class="v3-grow"></span>
       <button type="button" id="v3LaunchBtn" class="v3-ghost v3-launchbtn" title="Snabbsök kommando (Ctrl+K)">${I.search}<span>Sök kommando</span><kbd>Ctrl+K</kbd></button>
@@ -393,6 +395,7 @@ function l3Dom() {
   if (typeof l3LayersInit === "function") l3LayersInit(); // Lager-fliken och breddbara paneler
   box.querySelectorAll("[data-v3cmd]").forEach(b => { b.onclick = () => { l3HideMenus(); ({ cspec: () => l3OpenSpecial("copy"), mspec: () => l3OpenSpecial("move"), dup: l3DuplicateSel, copy: l3CopySel, paste: () => l3Paste(), drop: l3DropSel, del: l3DeleteSel, all: () => l3SelectIds(placements.filter(p => !l3.hidden.has(p.id)).map(p => p.id)), similar: l3SelectSimilar, hide: l3HideSel, iso: l3Isolate, showall: l3ShowAll, clash: l3OpenClash })[b.dataset.v3cmd](); }; });
   $3("v3PhotoBtn").onclick = () => { if (typeof l3phAdd === "function") l3phAdd(); };
+  $3("v3SunBtn").onclick = () => { const pn = document.getElementById("v3AnPanel"); if (pn && pn.dataset.kind === "sun") { l3sunOff(); pn.remove(); } else l3sunStart(); };
   $3("v3AnBtn").onclick = () => { if (document.getElementById("v3AnPanel")) l3anClose(); else l3anOpen(); };
   $3("v3ClipBtn").onclick = () => { if (l3.clips && l3.clips.length) l3RenderClipDlg(); l3StartClip(); };
   $3("v3LaunchBtn").onclick = e => { e.stopPropagation(); l3OpenLaunch(); };

@@ -229,3 +229,52 @@ function detSideBind(side, p, redraw) {
   });
   if (p.sign === true && typeof smSignBind === "function") smSignBind(side, p, redraw);
 }
+
+/* ---- Uppgraderade smarta objekt: Leverans, Eltavla, Brandsläckare, Första hjälpen (övriga smarta objekt var redan detaljerade) ---- */
+(function () {
+  if (typeof SM === "undefined" || typeof TK === "undefined") return;
+  if (SM.leverans) SM.leverans.build = (p, c) => {
+    const L = p.L / 2, B = p.B / 2, st = smF(p, "status", "Beställd"), sc = SM_ST[st] || "#f59e0b", H = Math.max(0.5, p.H), n = Math.max(1, Math.round(p.L / 1.2)), pw = p.L / n, top = 0.16 + H;
+    for (let i = 0; i < n; i++) {
+      const x = -L + pw * (i + 0.5);
+      [-1, 0, 1].forEach(s => c.box("#a16f3a", x, s * (B - 0.1), 0.07, pw - 0.04, 0.12, 0.12, null, 0.015)); c.box("#b8844a", x, 0, 0.14, pw - 0.02, p.B, 0.05, null, 0.01);   // pall
+      for (let b = 0; b < 4; b++) c.box("#9a6b36", x, -B + 0.12 + b * (p.B - 0.24) / 3, 0.1, pw - 0.02, 0.02, 0.01, null, 0, DET_D);
+      const layers = Math.max(2, Math.round(H / 0.2)), lh = (H - 0.04) / layers;
+      for (let l = 0; l < layers; l++) c.box(sc, x, 0, 0.17 + l * lh + lh / 2, pw - 0.14, p.B - 0.14, lh - 0.012, null, 0.012, { shin: 40 });                      // gods i lager
+      [-0.3, 0.3].forEach(a => c.box("#e5e7eb", x + a * (pw - 0.14) / 2, 0, 0.17 + H / 2, 0.035, p.B - 0.1, H - 0.02, null, 0.008));                                       // sträckband
+      [[-1, -1], [-1, 1], [1, -1], [1, 1]].forEach(([a, b]) => c.box("#374151", x + a * (pw / 2 - 0.08), b * (B - 0.08), 0.17 + H / 2, 0.05, 0.05, H, null, 0.006));      // hörnskydd
+      c.box("#e5e7eb", x, 0, top + 0.012, pw - 0.1, p.B - 0.1, 0.025, null, 0.008, { transp: 0.35 });                                                                      // plastfolie
+    }
+    c.box("#f3f4f6", L - 0.35, -B - 0.002, 0.16 + H * 0.6, 0.34, 0.01, 0.22, null, 0, SMLIT);
+    c.card({ title: "Leverans: " + st, icon: "truck", color: sc, rows: [["Innehåll", smF(p, "innehall")], ["Leverantör", smF(p, "lev")], ["Datum", smF(p, "datum")]], b0: -(B + 0.3) });
+  };
+  if (SM.eltavla) SM.eltavla.build = (p, c) => {
+    const L = p.L / 2, B = p.B / 2, H = Math.max(1, p.H);
+    c.box("#374151", 0, 0, 0.05, p.L + 0.1, p.B + 0.1, 0.1, null, 0.02); [-1, 1].forEach(s => c.box("#4b5563", s * (L - 0.1), 0, 0.2, 0.08, p.B, 0.2, null, 0.02));         // sockel + ben
+    c.box("#facc15", 0, 0, 0.1 + (H - 0.1) / 2, p.L, p.B, H - 0.1, null, 0.03, { shin: 60 }); c.box("#ca8a04", 0, 0, H + 0.03, p.L + 0.06, p.B + 0.06, 0.06, [0, 0.04, 0], 0.02);   // skåp + tak
+    c.box("#eab308", 0, -B - 0.012, 0.1 + (H - 0.1) / 2, p.L - 0.08, 0.025, H - 0.22, null, 0.01);                                                                         // dörr
+    [-1, 1].forEach(s => { [0.4, H / 2, H - 0.3].forEach(z => c.cyl("#6b7280", "z", s * (L - 0.04), -B - 0.01, z, 0.015, 0.015, 0.12, 6, null, DET_M)); });                    // gångjärn
+    c.cyl("#9ca3af", "y", L - 0.14, -B - 0.045, H / 2, 0.025, 0.025, 0.04, 8, null, DET_M); c.box("#9ca3af", L - 0.14, -B - 0.07, H / 2, 0.02, 0.02, 0.14, null, 0.004, DET_M);   // lås + vred
+    for (let i = 0; i < 6; i++) c.box("#a16207", -L * 0.45 + i * 0.0, -B - 0.026, H * 0.2 + i * 0.045, p.L * 0.5, 0.01, 0.018, null, 0, DET_D);                               // ventilationsgaller
+    c.box("#facc15", -L * 0.2, -B - 0.03, H * 0.72, 0.34, 0.01, 0.34, null, 0, SMLIT); c.prism("#111827", [[-0.12, -B - 0.036], [0.12, -B - 0.036], [0, -B - 0.036]], H * 0.72 - 0.12, H * 0.72 - 0.11); c.box("#111827", -L * 0.2, -B - 0.036, H * 0.72, 0.05, 0.004, 0.18, null, 0, SMLIT);   // varningsskylt
+    c.box("#e5e7eb", L * 0.2, -B - 0.03, H * 0.7, 0.26, 0.012, 0.18, null, 0.004, { shin: 80 });                                                                            // mätarfönster
+    [-0.18, 0, 0.18].forEach((a, i) => { c.cyl("#1f2937", "y", a * L / 0.45 * 0.5, B + 0.14, 0.3 + i * 0.0, 0.05, 0.05, 0.28, 10, null, DET_M); c.rod("#111827", [a * L / 0.45 * 0.5, B + 0.03, 0.3], [a * L / 0.45 * 0.5 + 0.1, B + 0.5, 0.05], 0.02, 0.02, 6); });   // uttag + kablar
+    if (smF(p, "grp")) smText(c, smF(p, "grp"), 0.14, 0, H * 0.4, -B - 0.034, "#111827", true);
+  };
+  if (SM.slackare) SM.slackare.build = (p, c) => {
+    c.cyl("#6b7280", "z", 0, 0.08, 0.85, 0.035, 0.035, 1.7, 8, null, DET_M); c.box("#dc2626", 0, 0, 1.95, 0.55, 0.03, 0.55, null, 0.02, SMLIT); c.box("#ffffff", 0, -0.02, 1.95, 0.44, 0.01, 0.44, null, 0.01, SMLIT);
+    c.box("#dc2626", 0, -0.1, 1.9, 0.1, 0.01, 0.28, null, 0, SMLIT); c.box("#dc2626", 0, -0.1, 1.95, 0.28, 0.01, 0.1, null, 0, SMLIT);
+    c.box("#4b5563", 0, 0.0, 1.0, 0.2, 0.06, 0.05, null, 0.01, DET_M); c.box("#4b5563", 0, 0.0, 1.35, 0.2, 0.06, 0.05, null, 0.01, DET_M);                                      // konsol
+    c.lathe("#dc2626", [[0, 0], [0.085, 0.01], [0.09, 0.05], [0.09, 0.42], [0.07, 0.5], [0.03, 0.54], [0, 0.54]], 0, -0.06, 0.92, 18, null, { shin: 90, metal: 0.4 });         // behållare
+    c.cyl("#1f2937", "z", 0, -0.06, 1.5, 0.03, 0.03, 0.06, 10); c.box("#111827", 0.04, -0.06, 1.55, 0.14, 0.03, 0.03, null, 0.01); c.box("#9ca3af", -0.04, -0.06, 1.52, 0.1, 0.02, 0.02, [0, 0, 0.3], 0.004, DET_M);   // ventil + handtag
+    c.cyl("#e5e7eb", "y", 0.06, -0.15, 1.44, 0.03, 0.03, 0.03, 12, null, { shin: 100 }); c.rod("#111827", [0.06, -0.06, 1.48], [0.14, -0.1, 1.0], 0.012, 0.012, 6); c.sph("#111827", 0.14, -0.1, 0.98, 0.02, 0.02, 0.03, 6, 4);   // manometer + slang
+    c.box("#ffffff", 0, -0.152, 1.1, 0.1, 0.004, 0.14, null, 0, SMLIT); c.box("#dc2626", 0, -0.154, 1.1, 0.06, 0.004, 0.06, null, 0, SMLIT);
+  };
+  if (SM.forstahjalp) SM.forstahjalp.build = (p, c) => {
+    c.cyl("#6b7280", "z", 0, 0.08, 0.85, 0.035, 0.035, 1.7, 8, null, DET_M); c.box("#16a34a", 0, 0, 1.45, 0.62, 0.16, 0.5, null, 0.05, { shin: 50 }); c.box("#15803d", 0, 0, 1.72, 0.64, 0.17, 0.05, null, 0.02);
+    c.box("#0f7a35", 0, -0.082, 1.45, 0.6, 0.004, 0.46, null, 0, DET_D); c.box("#e5e7eb", 0, -0.084, 1.45, 0.005, 0.003, 0.44, null, 0, DET_D);                                       // dörrspalt
+    c.box("#ffffff", -0.15, -0.088, 1.5, 0.22, 0.012, 0.06, null, 0.003, SMLIT); c.box("#ffffff", -0.15, -0.088, 1.5, 0.06, 0.012, 0.22, null, 0.003, SMLIT);                       // kors
+    c.box("#d1d5db", 0.24, -0.09, 1.43, 0.04, 0.025, 0.1, null, 0.006, DET_M); c.box("#f8fafc", 0.12, -0.086, 1.25, 0.24, 0.006, 0.05, null, 0.002, SMLIT);                       // handtag + etikett
+    c.box("#4b5563", 0, 0.1, 1.18, 0.5, 0.05, 0.03, null, 0.008, DET_M);                                                                                                         // konsol
+  };
+})();

@@ -40,7 +40,7 @@ function l3lookApplyPending() {
         const rec = r.guid && l3look.map.get(r.guid); if (!rec) return;
         if (rec.c) { if (!u.tint) u.tint = new Map(); const c = new THREE.Color(rec.c); u.tint.set(ri, [c.r, c.g, c.b]); any = true; }
         if (rec.a && rec.a < 1) { if (!u.alpha) u.alpha = new Map(); u.alpha.set(ri, rec.a); any = true; }
-        if (rec.t && rec.t.id && typeof l3texWrite === "function") { l3texWrite(x, ri, { id: rec.t.id, s: Number(rec.t.s) || 1, k: rec.t.k == null ? 1 : Number(rec.t.k), r: Number(rec.t.r) || 0, ox: Number(rec.t.ox) || 0, oy: Number(rec.t.oy) || 0, b: rec.t.b == null ? 1 : Number(rec.t.b) }); any = true; }
+        if (rec.t && rec.t.id && typeof l3texWrite === "function") { l3texWrite(x, ri, { id: rec.t.id, s: Number(rec.t.s) || 1, k: rec.t.k == null ? 1 : Number(rec.t.k), r: Number(rec.t.r) || 0, ox: Number(rec.t.ox) || 0, oy: Number(rec.t.oy) || 0, b: rec.t.b == null ? 1 : Number(rec.t.b), h: Number(rec.t.h) || 0 }); any = true; }
       });
       if (any) touched.push(x);
     });
@@ -64,7 +64,7 @@ async function l3lookFlush() {
       if (!want.has(r.guid)) return;
       const c = u.tint && u.tint.get(ri), a = u.alpha && u.alpha.get(ri), t = u.tex && u.tex.get(ri);
       if (!c && !(a && a < 1) && !t) return;
-      const rec = { guid: r.guid }; if (c) rec.c = l3tHex(c); if (a && a < 1) rec.a = a; if (t) { rec.t = { id: t.id, s: t.s, k: t.k }; ['r', 'ox', 'oy', 'b'].forEach(q => { if (t[q]) rec.t[q] = t[q]; }); if (/^u/.test(t.id) && !L3TEX_LIB.some(l => l.id === t.id)) needTex.add(t.id); }
+      const rec = { guid: r.guid }; if (c) rec.c = l3tHex(c); if (a && a < 1) rec.a = a; if (t) { rec.t = { id: t.id, s: t.s, k: t.k }; ['r', 'ox', 'oy', 'b', 'h'].forEach(q => { if (t[q]) rec.t[q] = t[q]; }); if (/^u/.test(t.id) && !L3TEX_LIB.some(l => l.id === t.id)) needTex.add(t.id); }
       state.set(r.guid, rec);
     });
   }));

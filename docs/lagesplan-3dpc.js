@@ -230,7 +230,7 @@ function l3pcDraw(vis, budget) {
   if (!l3pcFrustum) { l3pcFrustum = new THREE.Frustum(); l3pcPM = new THREE.Matrix4(); l3pcSph = new THREE.Sphere(); l3pcV = new THREE.Vector3(); }
   const cam = l3.camera; l3pcPM.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse); l3pcFrustum.setFromProjectionMatrix(l3pcPM);
   const cp = cam.getWorldPosition(l3pcV).clone(), items = []; let sumA = 0;
-  vis.forEach(c => { c.group.updateWorldMatrix(true, false); c.chunkPts.forEach(p => {
+  vis.forEach(c => { c.group.updateWorldMatrix(true, false); (c.chunkPts || []).forEach(p => {
     const bs = p.geometry.boundingSphere; l3pcSph.copy(bs).applyMatrix4(c.group.matrixWorld);
     const inside = l3pcFrustum.intersectsSphere(l3pcSph); p.visible = inside; if (!inside) return;
     const n = p.userData.n, d = Math.max(l3pcSph.radius * 0.5, cp.distanceTo(l3pcSph.center)), A = (l3pcSph.radius * l3pcSph.radius) / (d * d);

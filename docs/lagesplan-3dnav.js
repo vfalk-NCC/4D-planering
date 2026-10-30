@@ -658,7 +658,7 @@ function l3BarFit() {
   more.style.display = "";
   // Ordningen de göms i (det som används minst först). Tillbaka, Välj, Flytta och Ångra står alltid kvar.
   const q = sel => bar.querySelector(sel);
-  const order = ["#v3SaveIfc", "#v3HelpBtn", "#v3ViewsBtn", "#v3Fit", "#v3PhotoBtn", "#v3ClipBtn", "#v3EditBtn", "#v3ShowBtn", '[data-v3tool="align"]', "#v3Multi", '[data-v3tool="rotate"]', "#v3Redo", '[data-v3tool="measure"]'].map(q).filter(b => b && b.offsetWidth);
+  const order = ["#v3SaveIfc", "#v3HelpBtn", "#v3SunBtn", "#v3AnBtn", "#v3ViewsBtn", "#v3Fit", "#v3PhotoBtn", "#v3ClipBtn", "#v3EditBtn", "#v3ShowBtn", '[data-v3tool="align"]', "#v3Multi", '[data-v3tool="rotate"]', "#v3Redo", '[data-v3tool="measure"]', '[data-v3tool="draw"]', '[data-v3tool="model"]'].map(q).filter(b => b && b.offsetWidth);
   const hidden = [];
   for (const b of order) {
     if (bar.scrollWidth <= bar.clientWidth + 1) break;
