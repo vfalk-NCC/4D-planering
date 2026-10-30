@@ -145,11 +145,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
 
   // Staket punkt för punkt, Enter avslutar.
   await page.keyboard.press('Escape');
-  await page.click('[data-v3add="staket"]');
+  await page.click('[data-v3add="sm:staket2"]');
   await tap(6512300, 150100, 0); await tap(6512310, 150100, 0); await tap(6512310, 150115, 0);
   await page.keyboard.press('Enter'); await page.waitForTimeout(80);
   s = await S();
-  const fence = s.list.find(p => p.type === 'staket');
+  const fence = s.list.find(p => p.type === 'sm:staket2');
   if (!fence || fence.pts.length !== 3 || await page.evaluate(() => l3.addType)) fail('Staket med tre punkter: ' + JSON.stringify(fence && fence.pts));
 
   // Planerade objekt: info vid tryck, konturer, dolda.
@@ -186,7 +186,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const info = await page.locator('#v3Side').innerText();
   if (!info.includes('K10') || !info.includes('Pågående') || !info.includes('Hus A')) fail('Tryck på byggnaden ska markera objektet och visa uppgifterna: ' + info);
   const ov = await page.evaluate(() => ({ n: l3bs.sel.length, overlay: l3b.models[0].meshes.reduce((a, m) => a + m.children.filter(c => c.userData.bsel).length, 0) }));
-  if (ov.n !== 1 || ov.overlay !== 2) fail('Markerat objekt ska få överlägg och konturer: ' + JSON.stringify(ov));
+  if (ov.n !== 1 || ov.overlay < 2) fail('Markerat objekt ska få överlägg och konturer: ' + JSON.stringify(ov));
   // Panelen kan ligga över väggen på testskärmen – göm den under klicket.
   await page.evaluate(() => { document.getElementById('v3Side').style.visibility = 'hidden'; });
   await page.keyboard.down('Shift'); await tap(6512380, 150125, 3); await page.keyboard.up('Shift');

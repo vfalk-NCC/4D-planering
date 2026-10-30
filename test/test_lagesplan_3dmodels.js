@@ -157,6 +157,12 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   // 3D-biblioteket (Victor 2026-10-10): kategorierna är mappar – dra objekt mellan dem, tänd/släck per mapp.
   const mid = await page.evaluate(() => placements[0].type);
   const drag = async (from, to) => {
+    // Biblioteket är långt: bara källans grupp hålls öppen, så att objektet och målmappen syns samtidigt.
+    for (const g of await page.$$eval('#v3Lib [data-v3grp]', els => els.map(e => e.dataset.v3grp))) {
+      const open = await page.evaluate(([g, from]) => { const h = document.querySelector(`#v3Lib [data-v3grp="${g}"]`), row = h && (h.closest('[data-lfid]') || h), items = row && row.nextElementSibling; const hasSrc = !!(items && items.querySelector && items.querySelector(from.replace('#v3Lib ', ''))); return { want: hasSrc, closed: (l3Prefs().palClosed || []).includes(g) }; }, [g, from]);
+      if (open.want === open.closed) await page.click(`#v3Lib [data-v3grp="${g}"]`);
+    }
+    await page.locator(from).scrollIntoViewIfNeeded();
     const a = await page.locator(from).boundingBox(), b = await page.locator(to).boundingBox();
     await page.mouse.move(a.x + 20, a.y + a.height / 2); await page.mouse.down();
     await page.mouse.move(a.x + 40, a.y + a.height / 2 + 10, { steps: 3 }); await page.mouse.move(b.x + 30, b.y + b.height / 2, { steps: 6 }); await page.mouse.up();
@@ -167,6 +173,7 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   await page.waitForTimeout(200);
   const lf = JSON.parse(store.get('projects/p1/plan_libfolders.json').content);
   if (!lf.some(x => x.t === mid && x.f === 'g:Maskiner')) fail('Mappvalet ska sparas i plan_libfolders.json: ' + JSON.stringify(lf));
+  await page.evaluate(() => { if ((l3Prefs().palClosed || []).includes('g:Maskiner')) document.querySelector('#v3Lib [data-v3grp="g:Maskiner"]').click(); });
   if (!(await page.$(`#v3Lib [data-lfid="g:Maskiner"] + .v3-pal-items [data-v3add="${mid}"]`))) fail('Modellen ska visas i Maskiner');
   // Ny mapp genom att släppa på ＋ Ny mapp.
   page.once('dialog', d => d.accept('Mina kranar'));
@@ -180,9 +187,12 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   // Mappen tas bort – objekten går tillbaka till sina vanliga mappar.
   const fid = await page.evaluate(() => l3lib.folders.find(f => f.name === 'Mina kranar').id);
   page.once('dialog', d => d.accept());
+  await page.locator(`#v3Lib [data-lfid="${fid}"]`).scrollIntoViewIfNeeded(); await page.hover(`#v3Lib [data-lfid="${fid}"]`);   // knappen syns bara när man pekar på mappen
   await page.click(`#v3Lib [data-lfdel="${fid}"]`);
   await page.waitForFunction(() => l3libFolderOf('tornkran') === 'g:Maskiner' && !l3lib.folders.some(f => f.name === 'Mina kranar'), null, { timeout: 5000 }).catch(() => fail('Borttagen mapp: objekten ska tillbaka'));
   // En modell som används kan inte tas bort ur biblioteket – de placerade objekten markeras.
+  for (const g of await page.$$eval('#v3Lib [data-v3grp]', els => els.map(e => e.dataset.v3grp))) if (await page.evaluate(g => (l3Prefs().palClosed || []).includes(g), g)) await page.click(`#v3Lib [data-v3grp="${g}"]`);   // dragen fäller ihop grupper
+  await page.locator(`#v3Lib [data-v3libdel="${mid.slice(6)}"]`).scrollIntoViewIfNeeded(); await page.hover(`#v3Lib [data-v3libdel="${mid.slice(6)}"]`).catch(() => {});
   await page.click(`#v3Lib [data-v3libdel="${mid.slice(6)}"]`);
   if (!(await page.evaluate(() => placeAssets.length === 1 && l3.sel.has(placements[0].id)))) fail('En använd modell ska inte tas bort');
   await page.evaluate(() => l3SelectIds([]));
@@ -306,7 +316,7 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   // Läst i en egen tråd och sparad i webbläsarens cache (samma version öppnas direkt nästa gång).
   const wc = await page.evaluate(async () => { for (let i = 0; i < 40; i++) { const r = await l3bCacheGet({ fileId: 'F2', version: 'v1' }); if (r) return { workers: window.__workers, chunks: r.chunks.length, tris: r.tris }; await new Promise(res => setTimeout(res, 100)); } return { workers: window.__workers }; });
   if (!wc.workers || !wc.chunks || !wc.tris) fail('IFC:n ska läsas i en egen tråd och sparas i cachen: ' + JSON.stringify(wc));
-  const fromCache = await page.evaluate(async () => { const rec = await l3bCacheGet({ fileId: 'F2', version: 'v1' }); const m = l3bFromCache(rec); const n = m.meshes[0].geometry.getAttribute('normal'); return { meshes: m.meshes.length, tris: m.tris, ranges: m.ranges.length, nrm: rec.chunks.every(c => c.nrm instanceof Int8Array), int8: n.array instanceof Int8Array && n.normalized }; });
+  const fromCache = await page.evaluate(async () => { const rec = await l3bCacheGet({ fileId: 'F2', version: 'v1' }); const m = await l3bFromCache(rec); const n = m.meshes[0].geometry.getAttribute('normal'); return { meshes: m.meshes.length, tris: m.tris, ranges: m.ranges.length, nrm: rec.chunks.every(c => c.nrm instanceof Int8Array), int8: n.array instanceof Int8Array && n.normalized }; });
   if (!fromCache.meshes || !fromCache.ranges || !fromCache.nrm || !fromCache.int8) fail('Cachen ska ge tillbaka modellen: ' + JSON.stringify(fromCache));
   // Nästa öppning: modellen som var tänd visas direkt ur cachen (ingen ny hämtning) ...
   const re1 = await page.evaluate(async () => {

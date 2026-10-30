@@ -153,7 +153,7 @@ function l3RenderLib() {
       <label class="v3-lay-sw v3-lf-sw" title="${placed.length ? `${on ? "Släck" : "Tänd"} mappens ${placed.length} placerade objekt i 3D` : "Inga placerade objekt i mappen"}"><input type="checkbox" role="switch" data-lfvis="${esc(f.id)}" ${on || !placed.length ? "checked" : ""} ${placed.length ? "" : "disabled"} aria-label="Tänd/släck mappens placerade objekt" /><i></i></label>
     </div>` + (open ? `<div class="v3-pal-items">` + (list.map(it => `<div class="v3-li"><button type="button" data-v3add="${esc(it.k)}" class="${l3 && l3.addType === it.k ? "on" : ""}" title="${esc(it.label)} – tryck och sedan i 3D. Dra till en annan mapp för att flytta."><i style="background:${it.color}"></i><span>${esc(it.label)}</span></button>${it.own ? `<button type="button" class="v3-li-x" data-v3libdel="${esc(it.a.id)}" title="Ta bort ur biblioteket (inget i Trimble Connect tas bort)">${I.trash}</button>` : ""}</div>`).join("") || `<div class="v3-pal-hint">Dra objekt hit.</div>`) + `</div>` : "");
   }).join("");
-  el.innerHTML = (html || `<div class="v3-pal-hint">Inget matchar "${esc(q)}".</div>`) + `<button type="button" class="v3-lf-new" id="v3LibNew" title="Ny mapp i biblioteket – dra sedan objekt dit">＋ Ny mapp</button>`;
+  el.innerHTML = `<button type="button" class="v3-lf-new" id="v3LibNew" title="Ny mapp i biblioteket – dra sedan objekt dit">＋ Ny mapp</button>` + (html || `<div class="v3-pal-hint">Inget matchar "${esc(q)}".</div>`);
   el.querySelectorAll("[data-v3grp]").forEach(b => { b.onclick = () => {
     const g = b.dataset.v3grp, set = new Set(l3Prefs().palClosed || L3LIB_CLOSED0);
     if (b.getAttribute("aria-expanded") === "true") set.add(g); else set.delete(g);

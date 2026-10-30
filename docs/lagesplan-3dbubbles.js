@@ -83,7 +83,7 @@ function l3bubRebuild(scopeOverride) {
 }
 function l3bubSig() {
   const cfg = l3bubCfg(), p = l3Prefs();
-  return [$("dateInput").value, [...l3.sel].join(","), typeof l3bs !== "undefined" ? (l3bs.ver || 0) + ":" + l3bs.sel.length : 0,   items.length, placements.length, typeof l3b !== "undefined" ? l3b.models.length + ":" + l3b.models.reduce((a, m) => a + (m.visible ? 1 : 0), 0) : 0, cfg.scope, cfg.max, p.bubOn, p.bubProg, JSON.stringify(p.bubFields || ""), (l3bo.list || []).length, l3bo.list ? l3bo.list.map(x => (x.note || "").length + (x.off ? "o" : "") + (x.on ? "p" : "")).join("") : "", l3.placeMeshes ? l3.placeMeshes.size : 0].join("|");
+  return [$("dateInput").value, [...l3.sel].join(","), typeof l3bs !== "undefined" ? (l3bs.ver || 0) + ":" + l3bs.sel.map(e => e.key).join(",") : 0,   items.length, placements.length, typeof l3b !== "undefined" ? l3b.models.length + ":" + l3b.models.reduce((a, m) => a + (m.visible ? 1 : 0), 0) : 0, cfg.scope, cfg.max, p.bubOn, p.bubProg, JSON.stringify(p.bubFields || ""), (l3bo.list || []).length, l3bo.list ? l3bo.list.map(x => (x.note || "").length + (x.off ? "o" : "") + (x.on ? "p" : "")).join("") : "", l3.placeMeshes ? l3.placeMeshes.size : 0].join("|");
 }
 /* Framdrift i bubblan (val i Övrigt): "calc" = räknas fram efter datum, linjärt över aktivitetens längd (0 % vid start, 100 % vid slut – som Pågår nu i filmen)
    så att siffran rör sig när man drar i tidslinjen; "plan" = framdriften som står i tidplanen. */

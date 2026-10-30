@@ -782,7 +782,7 @@ const PP = [
     console.log('OK: info-bubblor i 3D-editorn – namn, datum, framdrift, område, aktivitet; urval; av');
     // Bubblorna som val i filmens grafik: ritas i filmbilden (canvas) med kort och ledlinje.
     const fb = await page.evaluate(() => {
-      l3plSet('film', { ...l3plPrefs().film, fxBubbles: true }); const o = l3fxOpts().bub;
+      l3SetPref('bubScope', 'all'); l3plSet('film', { ...l3plPrefs().film, fxBubbles: true }); const o = l3fxOpts().bub;
       const cv = document.createElement('canvas'); cv.width = 1280; cv.height = 720; const ctx = cv.getContext('2d');
       l3fxBubbles(ctx, 1280, 720, 720 / 1080); const d = ctx.getImageData(0, 0, 1280, 720).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
       l3plRenderTab(); const chip = !!document.getElementById('v3FlFxBub'); l3plSet('film', { ...l3plPrefs().film, fxBubbles: false });
@@ -855,7 +855,7 @@ const PP = [
         l3gmSetMode('off', true); l3plSetDay('2026-10-20'); l3SetPref('bubOn', false); l3SetPref('bubProg', 'calc'); l3plSet('film', { ...l3plPrefs().film, sec: 7 }); settings.statusColors.pagaende = '#000000';
         l3.camera.position.set(1, 2, 3); l3.orbit.update();
         window.__l3StartPrefs = false; window.__l3StartApplied = false;
-        l3StartApplyPrefs(); await l3StartApply(); await new Promise(r => setTimeout(r, 900));
+        l3StartApplyPrefs(); await l3StartApply(); await new Promise(r => setTimeout(r, 2500));
         const camNow = l3.camera.position.toArray().map(v => Math.round(v * 100) / 100);
         const r = { saved, date: $('dateInput').value, mode: l3gm.mode, bub: l3Prefs().bubOn, prog: l3Prefs().bubProg, sec: l3plPrefs().film.sec, col: settings.statusColors.pagaende, camSaved, camNow, views: l3SavedViews().filter(v => v.name === 'Startvy').length };
         l3StartClear(); r.cleared = !l3StartGet(); return r;

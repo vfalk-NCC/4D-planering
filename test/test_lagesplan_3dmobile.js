@@ -178,6 +178,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
         await tapEl('#v3More');
         const rows = await page.evaluate(() => [...document.querySelectorAll('#v3MorePop button')].map(b => b.textContent));
         if (!(await page.isVisible('#v3MorePop')) || rows.length !== (await page.evaluate(() => l3.barHidden.length))) fail('⋯ Mer ska lista det som inte får plats: ' + rows);
+        await page.locator(`#v3MorePop button:nth-child(${i + 1})`).evaluate(e => e.scrollIntoView({ block: 'nearest' })); await page.waitForTimeout(100);   // menyn scrollar när den är högre än skärmen
         await tapEl(`#v3MorePop button:nth-child(${i + 1})`);
       }
       const m = await page.evaluate(id => { const e = document.getElementById(id), r = e.getBoundingClientRect(); return { open: !e.classList.contains('hidden'), l: r.left, r: r.right, sw: e.scrollWidth, cw: e.clientWidth }; }, pop);
@@ -195,7 +196,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!((await dist()) < dd0 * 0.7)) fail('Dubbeltryck ska zooma in: ' + dd0 + ' -> ' + await dist());
 
   // --- Flytta med exakt mått via 123-knappen (inget tangentbord).
-  await top(); await page.evaluate(() => l3SelectIds([])); // arket nedtill skulle täcka punkten
+  await top(); await page.evaluate(() => { l3SelectIds([]); l3bsClear(); l3HideInfo(); }); // arket och infokortet skulle täcka punkten
   await page.evaluate(() => l3SetTool('move')); await page.waitForTimeout(150);
   if (!(await page.isVisible('.v3-touchbar')) || await page.isVisible('.v3-touchbar [data-tb="num"]')) fail('Avbryt ska synas, Mått först efter baspunkten');
   [x, y] = await at(6512318, 150109.6, 2);

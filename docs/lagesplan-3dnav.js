@@ -556,7 +556,7 @@ function l3ViewApplyState(v) {
   }
 }
 function l3GoView(i) {
-  const v = l3SavedViews()[i];
+  const v = i && typeof i === "object" ? i : l3SavedViews()[i];
   if (!v) return;
   const O = l3.O, S = a => new THREE.Vector3(a[0] - O[0], a[1] - O[1], a[2] - O[2]);
   l3StopFly();
@@ -721,10 +721,7 @@ async function l3StartApply() {
     if (s.dock && typeof l3plDockToggle === "function" && !l3pl.dock) l3plDockToggle(true);
     if (typeof l3plRenderTab === "function") l3plRenderTab();
     // Kamera, snitt och synlighet som en sparad vy (utan att lägga den i listan).
-    const list = (l3Prefs().views || {})[l3ViewKey()] || [], v = { ...s.v, name: "Startvy" };
-    const all = { ...(l3Prefs().views || {}) }; all[l3ViewKey()] = [...list, v]; l3.prefs = { ...l3Prefs(), views: all };
-    const idx = l3SavedViews().length - 1; l3GoView(idx);
-    all[l3ViewKey()] = list; l3.prefs = { ...l3Prefs(), views: all }; // tillfälliga vyn bort igen (sparas aldrig)
+    l3GoView({ ...s.v, name: "Startvy" }); // vyn läses in direkt, den läggs aldrig i listan
     if (typeof l3gmApply === "function") l3gmApply(true);
     l3Status("Startvyn är inläst.");
   } catch (e) { console.warn("Startvyn", e); }
