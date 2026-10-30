@@ -664,6 +664,7 @@ const l3CamLast = { m: null, hiT: 0, moving: false };
    den stegvis (ned till 35 %), går det bra höjs den igen. Tillsammans med den förenklade bilden (lagesplan-3dlod.js). */
 function l3AdaptRes() {
   const cam = l3.camera, r = l3.renderer, base = l3.basePR || (l3.basePR = r.getPixelRatio());
+  if (l3Prefs().fullQ) { if (r.getPixelRatio() !== base) r.setPixelRatio(base); return; }   // full kvalitet hela tiden (Victor 2026-10-30)
   const key = cam.matrixWorld.elements.join(",") + (cam.isOrthographicCamera ? cam.zoom : "");
   const moved = l3CamLast.m !== null && l3CamLast.m !== key;
   l3CamLast.m = key;

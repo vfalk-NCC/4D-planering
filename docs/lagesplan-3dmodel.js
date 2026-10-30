@@ -60,7 +60,7 @@ function l3dwFaceAt(e) {
   if (!h) return null;
   const O = l3.O, ray = l3MouseRay(e), ro = [ray.origin.x + O[0], ray.origin.y + O[1], ray.origin.z + O[2]], rd = [ray.direction.x, ray.direction.y, ray.direction.z];
   const pid = l3PlaceIdOf(h.object), p = pid ? placements.find(x => x.id === pid) : null;
-  if (p && p.m && p.m.k !== "curve") {
+  if (p && p.m && p.m.k !== "curve" && p.m.k !== "mesh") {
     const pk = modPick(p, l3dwToLocal(p, ro), l3dwToLocal(p, rd, true)); if (!pk) return null;
     const f = pk.face; let pl = l3dwPlaneFromLocal(p, pk.pl), loops = f.kind === "wall" ? [f.poly3.map(q => MG.to2(pl, l3dwFromLocal(p, q)))] : f.loops;
     // normalen: kroppens sidor pekar utåt, ytor mot kameran

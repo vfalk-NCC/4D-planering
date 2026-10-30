@@ -12,7 +12,7 @@ const MOD_IFC = [["IFCBUILDINGELEMENTPROXY", "Övrigt (proxy)"], ["IFCWALL", "V�
 const MOD_LABEL = { "mod:yta": "Yta", "mod:kropp": "Kropp", "mod:linje": "Linje" };
 const modIsType = t => String(t || "").startsWith("mod:");
 const modRev = () => Math.random().toString(36).slice(2, 8);
-const modType = m => (m.k === "solid" ? "mod:kropp" : m.k === "face" ? "mod:yta" : "mod:linje");
+const modType = m => (m.k === "solid" || m.k === "mesh" ? "mod:kropp" : m.k === "face" ? "mod:yta" : "mod:linje");
 function modLib(type) { return { group: "Modellering", label: MOD_LABEL[type] || "Ritat objekt", color: type === "mod:linje" ? "#334155" : "#a8b3c4", mod: true, hidden: true, L: 0, B: 0, H: 0, title: "Ritad geometri" }; }
 const modIfcEntity = p => ((MOD_IFC.find(x => x[0] === (p.m && p.m.ifc)) || MOD_IFC[0])[0]);
 
@@ -23,6 +23,7 @@ function modLocalMesh(p) {
   const key = p.id + "|" + m.rev; let c = modCache.get(key); if (c) return c;
   try {
     if (m.k === "curve") c = MG.tube(m.pts || [], Number(m.w) || 0.03, !!m.closed);
+    else if (m.k === "mesh") c = { pts: m.pts || [], faces: m.faces || [] };
     else if (m.k === "face") c = MG.faceMesh(m.pl, m.loops);
     else if (m.k === "solid") c = Math.abs(m.d) < 1e-4 ? MG.faceMesh(m.pl, m.loops) : MG.solidMesh(m.pl, m.loops, m.d);
   } catch (e) { console.warn("Ritat objekt", e); c = null; }
@@ -44,6 +45,7 @@ function modEditorExtras(p, grp) {
   const m = p.m; if (!m) return;
   const segs = [], add = (a, b) => segs.push(a[0], a[1], a[2], b[0], b[1], b[2]);
   if (m.k === "curve") { const P = m.pts || []; for (let i = 1; i < P.length; i++) add(P[i - 1], P[i]); if (m.closed && P.length > 2) add(P[P.length - 1], P[0]); }
+  else if (m.k === "mesh") modMeshEdges(m).forEach(([a, b]) => add(a, b));
   else {
     const n = MG.normal(m.pl), off = m.k === "solid" ? MG.mul(n, m.d) : null;
     m.loops.forEach(L => L.forEach((q, i) => { const r = L[(i + 1) % L.length], a = MG.to3(m.pl, q), b = MG.to3(m.pl, r); add(a, b); if (off) { add(MG.add(a, off), MG.add(b, off)); add(a, MG.add(a, off)); } }));
@@ -55,6 +57,19 @@ function modEditorExtras(p, grp) {
   if (m.k === "face") grp.traverse(o => { if (o.isMesh && o.material) { o.material.polygonOffset = true; o.material.polygonOffsetFactor = -2; o.material.polygonOffsetUnits = -2; } }); // ytor på en annan yta ska inte flimra
 }
 
+/* Kanter på ett allmänt nät: öppna kanter och skarpa vinklar (över 25°). */
+function modMeshEdges(m) {
+  const P = m.pts || [], F = m.faces || [], E = new Map(), out = [];
+  const nrm = f => { const a = P[f[0] - 1], b = P[f[1] - 1], c = P[f[2] - 1], n = MG.cross(MG.sub(b, a), MG.sub(c, a)), l = MG.len(n) || 1; return MG.mul(n, 1 / l); };
+  F.forEach(f => { const n = nrm(f); for (let i = 0; i < 3; i++) { const a = f[i], b = f[(i + 1) % 3], k = a < b ? a + "_" + b : b + "_" + a, e = E.get(k); if (e) e.n2 = n; else E.set(k, { a, b, n1: n, n2: null }); } });
+  E.forEach(e => { if (!e.n2 || MG.dot(e.n1, e.n2) < 0.906) out.push([P[e.a - 1], P[e.b - 1]]); });
+  return out;
+}
+/* Volym (m³, med tecken – negativt = vänt nät) och yta (m²) för ett nät. */
+function modMeshStats(pts, faces) {
+  let v = 0, a = 0; faces.forEach(f => { const p = pts[f[0] - 1], q = pts[f[1] - 1], r = pts[f[2] - 1]; if (!p || !q || !r) return; v += MG.dot(p, MG.cross(q, r)) / 6; a += MG.len(MG.cross(MG.sub(q, p), MG.sub(r, p))) / 2; });
+  return { volume: v, area: a };
+}
 /* ---- Skapa, ändra ---- */
 /* Nytt objekt ur en modell m (lokala koordinater runt anchor, absoluta). */
 function modCreate(m, anchor, opts = {}) {
@@ -76,6 +91,7 @@ function modEdit(p, fn, opts = {}) {
 /* Mått på objektet (m, m², m³). */
 function modDims(p) {
   const m = p.m; if (!m) return {};
+  if (m.k === "mesh") { const st = modMeshStats(m.pts || [], m.faces || []); return { area: st.area, perimeter: 0, volume: Math.abs(st.volume), surface: st.area }; }
   if (m.k === "curve") { let s = 0; const P = m.pts || []; for (let i = 1; i < P.length; i++) s += MG.dist(P[i - 1], P[i]); if (m.closed && P.length > 2) s += MG.dist(P[P.length - 1], P[0]); return { length: s }; }
   const outer = Math.abs(MG.area2(m.loops[0])), holes = m.loops.slice(1).reduce((a, L) => a + Math.abs(MG.area2(L)), 0), area = outer - holes;
   const per = m.loops.reduce((a, L) => a + L.reduce((s, q, i) => { const r = L[(i + 1) % L.length]; return s + Math.hypot(r[0] - q[0], r[1] - q[1]); }, 0), 0);
@@ -85,7 +101,7 @@ function modDims(p) {
 }
 /* Ytor i objektets lokala system för träff och Push/Pull: [{ id, pl, loop3 (lokala 3D-punkter), kind }]. */
 function modFaces(p) {
-  const m = p.m; if (!m || m.k === "curve") return [];
+  const m = p.m; if (!m || m.k === "curve" || m.k === "mesh") return [];
   const n = MG.normal(m.pl), out = [];
   if (m.k === "face") return [{ id: "face", pl: m.pl, loops: m.loops, kind: "face" }];
   const d = m.d, off = MG.mul(n, d), sgn = d >= 0 ? 1 : -1;
@@ -115,10 +131,10 @@ function modPick(p, ro, rd) {
 /* ---- Egenskapspanelen ---- */
 function modSideHtml(p) {
   const m = p.m; if (!m) return "";
-  const d = modDims(p), f1 = v => (Math.round(v * 1000) / 1000).toString().replace(".", ","), kind = m.k === "solid" ? "Kropp" : m.k === "face" ? "Yta" : "Linje";
+  const d = modDims(p), f1 = v => (Math.round(v * 1000) / 1000).toString().replace(".", ","), kind = m.k === "solid" ? "Kropp" : m.k === "mesh" ? "Nät" : m.k === "face" ? "Yta" : "Linje";
   const rows = m.k === "curve" ? `<div class="v3-sub">Längd ${f1(d.length)} m · ${(m.pts || []).length} punkter${m.closed ? " · sluten" : ""}</div>`
     : `<div class="v3-sub">Yta ${f1(d.area)} m² · omkrets ${f1(d.perimeter)} m${m.k === "solid" ? ` · volym ${f1(d.volume)} m³` : ""}</div>`;
-  const dist = m.k === "curve" ? "" : `<div class="v3-grid"><label><span>${m.k === "solid" ? "Höjd (Push/Pull)" : "Dra ut till kropp"}</span><div class="v3-in"><input type="text" inputmode="decimal" data-modd value="${m.k === "solid" ? String(m.d).replace(".", ",") : ""}" placeholder="${m.k === "solid" ? "" : "t.ex. 1,2"}" /><em>m</em></div></label></div>`;
+  const dist = m.k === "curve" || m.k === "mesh" ? "" : `<div class="v3-grid"><label><span>${m.k === "solid" ? "Höjd (Push/Pull)" : "Dra ut till kropp"}</span><div class="v3-in"><input type="text" inputmode="decimal" data-modd value="${m.k === "solid" ? String(m.d).replace(".", ",") : ""}" placeholder="${m.k === "solid" ? "" : "t.ex. 1,2"}" /><em>m</em></div></label></div>`;
   const ifc = m.k === "curve" ? "" : `<label class="v3-field"><span>IFC-klass</span><select data-modifc>${MOD_IFC.map(([k, l]) => `<option value="${k}" ${k === (m.ifc || MOD_IFC[0][0]) ? "selected" : ""}>${l}</option>`).join("")}</select></label>`;
   return `<div class="v3-sec">${kind} (ritad)</div>${rows}${dist}${ifc}<div class="v3-btns"><button type="button" data-modact="pp" title="Dra ut ytan eller ändra höjden med musen (P)">Push/Pull</button><button type="button" data-modact="off" title="Parallell kontur med valt avstånd (F)">Offset</button><button type="button" data-modact="dxf" title="Exportera markerade ritade objekt som DXF">DXF</button></div>`;
 }
@@ -134,6 +150,7 @@ function modSideBind(side, p) {
 }
 function modProps(p) {
   const m = p.m, d = modDims(p), r = v => placeR3(v || 0), out = [["Typ", MOD_LABEL[p.type] || "Ritat objekt"], ["Namn", p.name || ""], ["Vridning grader", Number(p.rot) || 0]];
+  if (m.k === "mesh") { out.push(["Yta m²", r(d.area)], ["Volym m³", r(d.volume)]); out.push(["IFC-klass", (MOD_IFC.find(x => x[0] === m.ifc) || MOD_IFC[0])[1]]); return out; }
   if (m.k === "curve") out.push(["Längd m", r(d.length)]); else { out.push(["Yta m²", r(d.area)], ["Omkrets m", r(d.perimeter)]); if (m.k === "solid") out.push(["Höjd m", r(Math.abs(m.d))], ["Volym m³", r(d.volume)]); }
   out.push(["IFC-klass", (MOD_IFC.find(x => x[0] === m.ifc) || MOD_IFC[0])[1]]);
   return out;

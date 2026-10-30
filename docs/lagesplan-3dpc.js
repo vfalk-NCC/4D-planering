@@ -204,7 +204,7 @@ let l3pcFrustum = null, l3pcPM = null, l3pcSph = null, l3pcV = null;   // skapas
 function l3pcRelease() { if (l3pcHolds > 0) return; l3pcSetMoving(false); l3Render(); }
 /* Håll det glesa läget medan något annat dras (handtag, kommentar, mått, foto, objekt). Anropas parvis: true … false. */
 function l3pcHold(on) {
-  if (!l3pc.clouds.some(c => c.visible) || l3Prefs().pcLod === false) return;
+  if (!l3pc.clouds.some(c => c.visible) || l3Prefs().pcLod === false || l3Prefs().fullQ) return;
   if (on) { l3pcHolds++; clearTimeout(l3pcStillT); if (!l3pcMoving) l3pcSetMoving(true); l3Render(); }
   else { l3pcHolds = Math.max(0, l3pcHolds - 1); if (!l3pcHolds) { clearTimeout(l3pcStillT); l3pcStillT = setTimeout(l3pcRelease, 200); } }
 }
@@ -215,7 +215,7 @@ function l3pcFrame() {
   if (!vis.length) { l3pcCam = null; return; }
   const cam = l3.camera; cam.updateMatrixWorld();
   const e = cam.matrixWorld.elements, key = e.map(v => v.toFixed(4)).join() + (cam.zoom || 1), now = performance.now();
-  if (l3pcCam !== null && key !== l3pcCam && l3Prefs().pcLod !== false) { if (!l3pcMoving) l3pcSetMoving(true); clearTimeout(l3pcStillT); l3pcStillT = setTimeout(l3pcRelease, l3pcStillMs()); }
+  if (l3pcCam !== null && key !== l3pcCam && l3Prefs().pcLod !== false && !l3Prefs().fullQ) { if (!l3pcMoving) l3pcSetMoving(true); clearTimeout(l3pcStillT); l3pcStillT = setTimeout(l3pcRelease, l3pcStillMs()); }
   l3pcCam = key;
   const total = vis.reduce((a, c) => a + c.nTot, 0);
   if (!l3pcMoving || total < 5e5) { l3pcDraw(vis, null); l3pcLast = now; return; }

@@ -174,6 +174,7 @@ function l3LayersRender() {
     <label class="v3-pcs-r v3-pcs-g" title="Genomskinlighet för alla modeller – se igenom byggnaden"><span>Täckning</span><output>${P.mdlOp || 100} %</output><input type="range" id="v3MdlOp" min="10" max="100" step="5" value="${P.mdlOp || 100}" /></label>
     ${chk("v3MdlGray", !!P.mdlGray, "Enfärgad grå", "ritningsfärger av", "Modellerna i en enda grå ton – bra när punktmoln, kartor eller färgade objekt ska synas tydligt.")}
     <div class="v3-set-h">Prestanda</div>
+    ${chk("v3PerfFull", !!P.fullQ, "Full kvalitet under rörelse", "ingen sänkt upplösning, inga dolda detaljer", "Slår av alla förenklingar medan kameran rör sig: lägre upplösning, dolda små objekt och glesare punktmoln. Bilden är alltid lika skarp men kan bli segare i tunga modeller.")}
     ${chk("v3PerfLod", P.lod !== false, "Förenklad bild vid rörelse", "små objekt göms medan du snurrar", "I stora modeller ritas bara objekt som är större än några bildpunkter medan kameran rör sig – allt syns igen en stund efter att du släppt. Inget ändras i modellen. Slå av om du vill se allt hela tiden (tyngre).")}
     ${chk("v3PerfTex", P.tex !== false, "Texturer", "av = snabbare", "Visar texturer på objekt. I stora modeller göms de medan kameran rör sig och syns igen när du släpper. Av ritar bara färgerna.")}
     ${chk("v3PerfAA", P.aa !== false, "Kantutjämning", "av = snabbare (gäller nästa gång 3D öppnas)", "Jämnare kanter kostar grafikkortet mycket i stora modeller. Av ger tydligt fler bilder per sekund; ändringen gäller nästa gång 3D-vyn öppnas.")}
@@ -259,6 +260,7 @@ function l3LayersRender() {
   if (typeof l3lyBind === "function") l3lyBind(host);
   const op = host.querySelector('[data-l3l-op="plan"]');
   if (op) op.oninput = () => { l3SetPref("planOp", Number(op.value)); l3lApplyPlanOp(); l3Render(); };
+  const pf = host.querySelector("#v3PerfFull"); if (pf) pf.onchange = () => { l3SetPref("fullQ", pf.checked); if (pf.checked && typeof l3lodApply === "function") l3lodApply(-1); l3Render(); l3Status(pf.checked ? "Full kvalitet under rörelse är på – inga förenklingar." : "Adaptiv kvalitet vid rörelse är på."); };
   const pl = host.querySelector("#v3PerfLod"); if (pl) pl.onchange = () => { l3SetPref("lod", pl.checked); if (!pl.checked && typeof l3lodApply === "function") { l3lodApply(-1); l3Render(); } l3Status(pl.checked ? "Förenklad bild vid rörelse är på." : "Förenklad bild vid rörelse är av."); };
   const pt = host.querySelector("#v3PerfTex"); if (pt) pt.onchange = () => { l3SetPref("tex", pt.checked); if (typeof l3texSync === "function") l3texSync(false); l3Render(); l3Status(pt.checked ? "Texturer är på." : "Texturer är av – bara färgerna ritas."); };
   const pa = host.querySelector("#v3PerfAA"); if (pa) pa.onchange = () => { l3SetPref("aa", pa.checked); l3Status(`Kantutjämning ${pa.checked ? "på" : "av"} – gäller nästa gång 3D-vyn öppnas (ladda om sidan).`); };
