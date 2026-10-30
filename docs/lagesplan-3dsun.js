@@ -90,6 +90,7 @@ function l3sunDraw() {
   if (typeof l3mPlaceLabels === "function") l3mPlaceLabels();
 }
 function l3sunOff() {
+  if (l3sun.pm) { l3.scene.remove(l3sun.pm); l3sun.pm = null; } l3sun.probe = null; l3sun.objs = null;
   l3sunStop(); if (l3sun.grp) { l3Clear(l3sun.grp); l3.scene.remove(l3sun.grp); l3sun.grp = null; } (l3sun.labs || []).forEach(e => e.remove()); l3sun.labs = []; if (typeof l3m !== "undefined") [...l3m.labels.keys()].filter(k => k.startsWith("sun-")).forEach(k => l3m.labels.delete(k));
   l3vm.sunDir = null; const sun = typeof l3vmSun === "function" ? l3vmSun() : null; if (sun) { sun.color.set(0xffffff); sun.intensity = 0.62; }
   if (l3sun.res && l3sun.res.mesh) { l3.scene.remove(l3sun.res.mesh); l3sun.res = null; }
@@ -98,23 +99,113 @@ function l3sunOff() {
 }
 function l3sunStop() { if (l3sun.play) { clearInterval(l3sun.play); l3sun.play = 0; } }
 
+/* ---- Soltimmar: gemensamma delar ---- */
+function l3sunOcc() { const occ = []; ["bldg", "places"].forEach(k => { if (l3.groups[k]) l3.groups[k].traverse(o => { if (o.isMesh && !o.userData.noHit && o.visible && !o.userData.vmGround) occ.push(o); }); }); return occ; }
+/* Solens lägen under dagen (var step:e minut medan solen är över horisonten). */
+function l3sunSteps(dateIso, step = 20) { const [lat, lon] = l3sunPlace(), out = []; for (let m = 0; m < 1440; m += step) { const P = l3sunPos(dateIso, m, lat, lon); if (P.el > 2) out.push({ m, d: l3sunDir(P.el, P.az) }); } return out; }
+/* Timmar med direkt sol i en punkt (scenens koordinater). n = ytans normal (annars uppåt): sidor som vetter från solen får ingen. */
+function l3sunProbeAt(P, n, dateIso, occ, step = 10) {
+  const steps = l3sunSteps(dateIso || l3sun.date, step), up = new THREE.Vector3(0, 0, 1), N = (n || up).clone().normalize(), o = P.clone().addScaledVector(N, 0.06);
+  const rc = new THREE.Raycaster(); rc.firstHitOnly = true; rc.far = 500; occ = occ || l3sunOcc();
+  const strip = steps.map(s => { if (N.dot(s.d) <= 0.02) return 0; if (!occ.length) return 1; rc.set(o, s.d); return rc.intersectObjects(occ, false).length ? 0 : 1; });
+  return { h: strip.reduce((a, b) => a + b, 0) * step / 60, strip, steps, step };
+}
+/* Ytans normal i punkten man pekat på: strålen från kameran, annars rakt upp. */
+function l3sunNormalAt(P, occ) {
+  const cam = l3.camera.position, d = P.clone().sub(cam), dist = d.length(); if (dist < 1e-6) return new THREE.Vector3(0, 0, 1);
+  const rc = new THREE.Raycaster(cam, d.normalize(), 0, dist + 1); const h = rc.intersectObjects(occ, false)[0];
+  if (h && h.face && Math.abs(h.distance - dist) < 0.6) { const n = h.face.normal.clone().transformDirection(h.object.matrixWorld); if (n.dot(d) > 0) n.negate(); return n; }
+  return new THREE.Vector3(0, 0, 1);
+}
+const l3sunF1 = v => (Math.round(v * 10) / 10).toString().replace(".", ",");
+const l3sunStrip = r => `<div class="v3-sn-strip" title="Sol (gult) och skugga (blått) över dygnet">${r.steps.length ? (() => { const cells = new Array(Math.round(1440 / r.step)).fill(-1); r.steps.forEach((s, i) => { cells[Math.round(s.m / r.step)] = r.strip[i]; }); return cells.map(c => `<i class="${c < 0 ? "n" : c ? "s" : "k"}"></i>`).join(""); })() : ""}</div><div class="v3-sn-hrs"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>`;
+
+/* Tryck på en punkt eller yta: timmar med sol den dagen, dygnsbild och de fyra årstiderna. */
+function l3sunProbe() {
+  if (typeof l3DlgPick !== "function") return;
+  l3DlgPick(1, ["Tryck på punkten eller ytan du vill veta solen för"], pts => {
+    const A = pts[0], P = new THREE.Vector3(A.x - l3.O[0], A.y - l3.O[1], A.z - l3.O[2]), occ = l3sunOcc(), n = l3sunNormalAt(P, occ), y = (l3sun.date || l3sunToday()).slice(0, 4);
+    const day = l3sunProbeAt(P, n, l3sun.date, occ), seas = [["Vår", `${y}-03-20`], ["Midsommar", `${y}-06-21`], ["Höst", `${y}-09-22`], ["Vinter", `${y}-12-21`]].map(([t, d]) => [t, l3sunProbeAt(P, n, d, occ, 20).h]);
+    const dir = Math.abs(n.z) > 0.85 ? (n.z > 0 ? "vågrät yta uppåt" : "undersida") : "lodrät yta mot " + ["N", "NO", "O", "SO", "S", "SV", "V", "NV"][Math.round(((l3sunDeg(Math.atan2(n.x, n.y)) + 360) % 360) / 45) % 8];
+    l3sun.probe = { day, seas, dir, P: P.clone() };
+    l3sunProbeMark(P);
+    l3sunOpen();
+  });
+}
+function l3sunProbeMark(P) {
+  if (l3sun.pm) { l3.scene.remove(l3sun.pm); l3sun.pm = null; }   // egen post i scenen: solbågens grupp töms vid varje klockslag
+  if (!P) { l3Render(); return; } const m = l3sunSphere(0xef4444, 0.5); m.position.copy(P); m.material.depthTest = false; m.renderOrder = 9; l3.scene.add(m); l3sun.pm = m; l3Render();
+}
+function l3sunProbeHtml() {
+  const r = l3sun.probe; if (!r) return "";
+  return `<div class="v3-an-box"><div class="v3-an-kv"><span>Punkt (${r.dir})</span><b>${l3sunF1(r.day.h)} h sol</b></div>${l3sunStrip(r.day)}<div class="v3-sn-seas">${r.seas.map(([t, h]) => `<span>${t}<b>${l3sunF1(h)} h</b></span>`).join("")}</div><button type="button" data-sn="poff">Ta bort punkten</button></div>`;
+}
+
+/* Sol per objekt: medeltimmar direkt sol på varje objekts överdel (9 provpunkter), sorterat – mest skuggiga först. */
+async function l3sunObjects() {
+  const occ = l3sunOcc(), rows = [], box = new THREE.Box3(); l3sun.busy = "Räknar objekt…"; l3sunOpen(); await new Promise(r => setTimeout(r, 20));
+  const list = [...l3.placeMeshes.entries()].filter(([, g]) => g && g.visible).slice(0, 80); let k = 0;
+  for (const [id, g] of list) {
+    box.setFromObject(g); if (box.isEmpty()) continue; const pl = placements.find(p => p.id === id); if (!pl) continue;
+    const pts = []; for (const fx of [0.2, 0.5, 0.8]) for (const fy of [0.2, 0.5, 0.8]) pts.push(new THREE.Vector3(box.min.x + (box.max.x - box.min.x) * fx, box.min.y + (box.max.y - box.min.y) * fy, box.max.z + 0.05));
+    const hs = pts.map(P => l3sunProbeAt(P, null, l3sun.date, occ, 20).h), mean = hs.reduce((a, b) => a + b, 0) / hs.length;
+    rows.push({ id, name: pl.name || pl.type, h: mean, min: Math.min(...hs), max: Math.max(...hs) });
+    if (++k % 3 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+  rows.sort((a, b) => a.h - b.h); l3sun.objs = { rows, date: l3sun.date }; l3sun.busy = ""; l3sunOpen();
+}
+function l3sunObjsHtml() {
+  const r = l3sun.objs; if (!r) return ""; const mx = Math.max(1, ...r.rows.map(x => x.max));
+  return `<div class="v3-an-box"><div class="v3-an-kv"><span>Sol per objekt ${r.date}</span><b>${r.rows.length} st</b></div>${r.rows.length ? `<div class="v3-sn-list">${r.rows.slice(0, 14).map(x => `<div title="Minst ${l3sunF1(x.min)} h · mest ${l3sunF1(x.max)} h på överdelen"><span>${escHtml(x.name)}</span><i style="width:${Math.round(x.h / mx * 100)}%"></i><b>${l3sunF1(x.h)} h</b></div>`).join("")}</div>${r.rows.length > 14 ? `<div class="v3-vp-t">…och ${r.rows.length - 14} till (hela listan i CSV).</div>` : ""}` : `<div class="v3-vp-t">Inga placerade objekt att räkna på.</div>`}<div class="v3-an-r"><button type="button" data-sn="ocsv">Spara som CSV</button><button type="button" data-sn="ooff">Ta bort</button></div></div>`;
+}
+function l3sunCsv() {
+  const r = l3sun.objs; if (!r) return; const q = v => `"${String(v).replace(/"/g, '""')}"`;
+  const txt = "\ufeffObjekt;Medel timmar sol;Minst;Mest;Datum\n" + r.rows.map(x => [q(x.name), x.h.toFixed(1).replace(".", ","), x.min.toFixed(1).replace(".", ","), x.max.toFixed(1).replace(".", ","), r.date].join(";")).join("\n");
+  const url = URL.createObjectURL(new Blob([txt], { type: "text/csv;charset=utf-8" })), a = document.createElement("a"); a.href = url; a.download = `Sol per objekt ${r.date}.csv`; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/* Dagen som video: solen från uppgång till nedgång, klockslag och datum i bilden. Sparas som WebM. */
+async function l3sunFilm(opts = {}) {
+  if (typeof MediaRecorder === "undefined") { l3Toast("Webbläsaren kan inte spela in video."); return null; }
+  const [lat, lon] = l3sunPlace(), rs = l3sunRiseSet(l3sun.date, lat, lon), a = rs.rise != null ? rs.rise : 360, b = rs.set != null ? rs.set : 1080, saved = l3sun.min, frames = opts.frames || 150, fps = 25;
+  l3sunStop(); const R = l3.renderer, src = R.domElement, W = Math.min(1280, src.width), H = Math.round(W * src.height / src.width), cv = document.createElement("canvas"); cv.width = W; cv.height = H; const cx = cv.getContext("2d");
+  const mime = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find(t => MediaRecorder.isTypeSupported(t)) || "";
+  const rec = new MediaRecorder(cv.captureStream(fps), mime ? { mimeType: mime, videoBitsPerSecond: 6e6 } : {}), chunks = []; rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  const stopped = new Promise(res => { rec.onstop = res; }); l3sun.filming = true; l3.hudHide = true; rec.start();
+  try {
+    for (let i = 0; i < frames; i++) {
+      l3sun.min = a + (b - a) * i / Math.max(1, frames - 1); l3sunApply({ noDraw: true });
+      if (typeof l3pcRenderScene === "function") l3pcRenderScene(); else R.render(l3.scene, l3.camera);
+      cx.drawImage(src, 0, 0, W, H);
+      const P = l3sun.cur, label = `${l3sun.date}  kl ${l3sunHm(Math.round(l3sun.min))}`, fs = Math.max(14, Math.round(W / 60));
+      cx.fillStyle = "rgba(15,23,42,.75)"; cx.fillRect(14, 14, fs * 13.5, fs * 2.6); cx.fillStyle = "#fff"; cx.font = `600 ${fs}px system-ui, sans-serif`; cx.fillText(label, 14 + fs * 0.7, 14 + fs * 1.15); cx.fillStyle = "#fde68a"; cx.font = `${Math.round(fs * 0.8)}px system-ui, sans-serif`; cx.fillText(`Solhöjd ${Math.round(P.el)}° · riktning ${Math.round(P.az)}°`, 14 + fs * 0.7, 14 + fs * 2.1);
+      if (i % 10 === 0) l3Status(`Spelar in dagen… ${Math.round(i / frames * 100)} %`);
+      await new Promise(r => setTimeout(r, 1000 / fps));
+    }
+  } finally { rec.stop(); }
+  await stopped; l3.hudHide = false; l3sun.filming = false; l3sun.min = saved; l3sunApply(); l3Status("");
+  const blob = new Blob(chunks, { type: (mime || "video/webm").split(";")[0] });
+  if (!opts.noDownload) { const url = URL.createObjectURL(blob), el = document.createElement("a"); el.href = url; el.download = `Solstudie ${l3sun.date}.webm`; document.body.appendChild(el); el.click(); el.remove(); setTimeout(() => URL.revokeObjectURL(url), 8000); l3Toast("Filmen över dagen är nedladdad."); }
+  return blob;
+}
+
 /* ---- Soltimmar på marken ---- */
 async function l3sunHours() {
   const [lat, lon] = l3sunPlace(), t = l3.orbit.target, span = l3sun.span || 80, O = l3.O;
-  const occ = []; ["bldg", "places"].forEach(k => { if (l3.groups[k]) l3.groups[k].traverse(o => { if (o.isMesh && !o.userData.noHit && o.visible && !o.userData.vmGround) occ.push(o); }); });
+  const occ = l3sunOcc();
   const bb = new THREE.Box3(); ["bldg", "places"].forEach(k => { if (l3.groups[k]) bb.expandByObject(l3.groups[k]); });
   const z0 = (typeof l3GroundZ === "function" ? l3GroundZ() : (bb.isEmpty() ? 0 : bb.min.z)) + 0.05;
   const steps = []; for (let m = 0; m < 1440; m += 20) { const P = l3sunPos(l3sun.date, m, lat, lon); if (P.el > 2) steps.push({ m, d: l3sunDir(P.el, P.az) }); }
   if (!steps.length) { l3Status("Solen går inte upp det här datumet på platsen.", true); return; }
   let cell = [1, 2, 4, 5, 8].find(v => (span / v) ** 2 * steps.length <= 70000) || 8; const n = Math.max(2, Math.floor(span / cell)), x0 = t.x - span / 2, y0 = t.y - span / 2;
   l3sun.busy = "Räknar soltimmar…"; l3sunOpen(); await new Promise(r => setTimeout(r, 20));
-  const rc = new THREE.Raycaster(); rc.firstHitOnly = true; const H = new Float32Array(n * n), pos = [], col = []; let done = 0, mx = 0;
+  const rc = new THREE.Raycaster(); rc.firstHitOnly = true; const H = new Float32Array(n * n), pos = [], col = []; let done = 0, mx = 0, sum = 0, good = 0;
   const hasOcc = occ.length > 0;
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
       const o = new THREE.Vector3(x0 + (i + 0.5) * cell, y0 + (j + 0.5) * cell, z0); let sunny = 0;
       for (const s of steps) { if (!hasOcc) { sunny++; continue; } rc.set(o, s.d); rc.far = 400; if (!rc.intersectObjects(occ, false).length) sunny++; }
-      H[j * n + i] = sunny * 20 / 60; mx = Math.max(mx, H[j * n + i]);
+      H[j * n + i] = sunny * 20 / 60; mx = Math.max(mx, H[j * n + i]); sum += H[j * n + i]; if (H[j * n + i] >= 6) good++;
     }
     if (++done % 4 === 0) await new Promise(r => setTimeout(r, 0));
   }
@@ -124,7 +215,7 @@ async function l3sunHours() {
   if (l3sun.res && l3sun.res.mesh) l3.scene.remove(l3sun.res.mesh);
   const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
   const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })); mesh.renderOrder = 6; mesh.userData.noHit = true; mesh.userData.noVm = true; mesh.raycast = () => {};
-  l3.scene.add(mesh); l3sun.res = { mesh, cnt, cell, max: mx, span, tot: n * n * cell * cell }; l3sun.busy = ""; l3Render(); l3sunOpen(); void O;
+  l3.scene.add(mesh); l3sun.res = { mesh, cnt, cell, max: mx, span, tot: n * n * cell * cell, mean: sum / (n * n), good: good / (n * n) }; l3sun.busy = ""; l3Render(); l3sunOpen(); void O;
 }
 
 /* ---- Skuggbild: flera klockslag/årstider i en bild ---- */
@@ -170,7 +261,8 @@ function l3sunOpen() {
     <div class="v3-vq-set"><label class="v3-vq-sw"><span>Solbanan i modellen</span><input type="checkbox" data-sn="path" ${l3sun.path ? "checked" : ""}><b></b></label><label class="v3-vq-sw"><span>Skuggor</span><input type="checkbox" data-sn="shade" ${l3sun.shade ? "checked" : ""}><b></b></label>
       <label class="v3-an-r" style="gap:8px"><span style="color:#64748b">Skuggkvalitet</span><select data-sn="q">${L3SUN_Q.map(([v, t]) => `<option value="${v}" ${v === l3sun.q ? "selected" : ""}>${t}</option>`).join("")}</select></label></div>
     <div class="v3-an-r"><button type="button" data-sn="play">${l3sun.play ? "⏸ Stoppa" : "▶ Spela upp dagen"}</button><button type="button" data-sn="sheet" title="Fyra klockslag i en bild (09, 12, 15, 18)">Skuggbild: dagen</button><button type="button" data-sn="year" title="Fyra årstider kl 12 i en bild">Skuggbild: året</button></div>
-    <div class="v3-an-r"><button type="button" data-sn="hours" title="Hur många timmar marken runt vyn får direkt sol under dagen">${l3sun.busy || "☀ Soltimmar på marken"}</button><select data-sn="span">${[[40, "40 × 40 m"], [80, "80 × 80 m"], [160, "160 × 160 m"]].map(([v, t]) => `<option value="${v}" ${v === (l3sun.span || 80) ? "selected" : ""}>${t}</option>`).join("")}</select>${r ? `<button type="button" data-sn="hoff">Ta bort</button>` : ""}</div>${r ? `<div class="v3-an-legs">${legend}</div><div class="v3-vp-t">Rutor ${r.cell} m · mest sol ${f1(r.max)} h. Räknat mellan soluppgång och solnedgång, byggnader och objekt skuggar.</div>` : ""}
+    <div class="v3-an-r"><button type="button" data-sn="hours" title="Hur många timmar marken runt vyn får direkt sol under dagen">${l3sun.busy || "☀ Soltimmar på marken"}</button><select data-sn="span">${[[40, "40 × 40 m"], [80, "80 × 80 m"], [160, "160 × 160 m"]].map(([v, t]) => `<option value="${v}" ${v === (l3sun.span || 80) ? "selected" : ""}>${t}</option>`).join("")}</select>${r ? `<button type="button" data-sn="hoff">Ta bort</button>` : ""}</div>${r ? `<div class="v3-an-legs">${legend}</div><div class="v3-an-kv"><span>Medel på marken</span><b>${f1(r.mean)} h</b></div><div class="v3-an-kv"><span>Yta med minst 6 h sol</span><b>${Math.round(r.good * 100)} %</b></div><div class="v3-vp-t">Rutor ${r.cell} m · mest sol ${f1(r.max)} h. Räknat mellan soluppgång och solnedgång, byggnader och objekt skuggar.</div>` : ""}
+    <div class="v3-an-r"><button type="button" data-sn="probe" title="Tryck på en punkt eller yta i modellen – timmar med sol, dygnsbild och årstider">🎯 Sol i en punkt</button><button type="button" data-sn="objs" title="Medeltimmar sol på varje placerat objekts överdel, mest skuggiga först">Sol per objekt</button><button type="button" data-sn="film" title="Solens gång från uppgång till nedgång som video (WebM)">🎬 Film: dagen</button></div>${l3sunProbeHtml()}${l3sunObjsHtml()}
     <div class="v3-an-r"><button type="button" data-sn="img" data-w="1920">Rendera bild 1920 px</button><button type="button" data-sn="img" data-w="3840">4K</button></div>`;
   l3anPanelSun("Solstudie", html, el => {
     const q = k => el.querySelector(`[data-sn="${k}"]`);
@@ -184,6 +276,9 @@ function l3sunOpen() {
     q("sheet").onclick = () => l3sunSheet("day"); q("year").onclick = () => l3sunSheet("year");
     q("hours").onclick = () => l3sunHours(); q("span").onchange = e => { l3sun.span = Number(e.target.value); };
     const ho = q("hoff"); if (ho) ho.onclick = () => { if (l3sun.res && l3sun.res.mesh) l3.scene.remove(l3sun.res.mesh); l3sun.res = null; l3Render(); l3sunOpen(); };
+    q("probe").onclick = () => l3sunProbe(); q("objs").onclick = () => l3sunObjects(); q("film").onclick = () => l3sunFilm();
+    const po = q("poff"); if (po) po.onclick = () => { l3sun.probe = null; l3sunProbeMark(null); l3sunOpen(); };
+    const oc = q("ocsv"); if (oc) oc.onclick = () => l3sunCsv(); const oo = q("ooff"); if (oo) oo.onclick = () => { l3sun.objs = null; l3sunOpen(); };
     el.querySelectorAll('[data-sn="img"]').forEach(b => { b.onclick = () => l3sunRender(Number(b.dataset.w)); });
   });
 }

@@ -592,7 +592,8 @@ function l3bRecolor(opts) {
   const at = $("dateInput").value || todayIso();
   if (typeof l3gmBegin === "function") l3gmBegin();
   const doOne = (m, x) => {
-    const col = x.geometry.getAttribute("color"), d = col.array, u = x.userData.l3b, K = d instanceof Uint8Array ? 255 : 1; // byte eller tal 0–1
+    const col = x.geometry.getAttribute("color"); if (!col || !x.userData.l3b) return; // delar utan färg/IFC-uppgifter (t.ex. 2D-lager) har inget att färga
+    const d = col.array, u = x.userData.l3b, K = d instanceof Uint8Array ? 255 : 1; // byte eller tal 0–1
     const off = new Set(), gA = new Map();
     u.ranges.forEach((r, ri) => {
       // Slås upp på nytt varje gång: kopplad efter att modellen lästes, eller planeringen har lästs om.
@@ -621,7 +622,7 @@ function l3bRecolor(opts) {
     if (typeof l3gmEnd === "function") l3gmEnd();
     if (typeof l3fsAnimPreview === "function") { try { l3fsAnimPreview(); } catch (e) { console.warn("Animering", e); } } // objektens animering följer datumet även utanför filmen
   };
-  const all = []; l3b.models.forEach(m => m.meshes.forEach(x => all.push([m, x])));
+  const all = []; l3b.models.forEach(m => (m.meshes || []).forEach(x => all.push([m, x])));
   if (!opts || !opts.async) { all.forEach(([m, x]) => doOne(m, x)); finish(); return; }
   return (async () => {
     let t0 = performance.now();

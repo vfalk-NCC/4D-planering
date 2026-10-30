@@ -157,7 +157,7 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
   await page.evaluate(() => { l3StopFly(); const c = new THREE.Vector3(6512355 - l3.O[0], 150122 - l3.O[1], 0); l3.camera.position.set(c.x, c.y - 0.01, 40); l3.orbit.target.copy(c); l3.orbit.update(); l3.renderer.render(l3.scene, l3.camera); });
   const cv2 = await page.locator('#v3Canvas canvas').boundingBox();
   await page.mouse.click(cv2.x + cv2.width / 2, cv2.y + cv2.height / 2, { button: 'right' }); await page.waitForTimeout(150);
-  await page.click('#v3Ctx [data-ctx="comment"]');
+  await page.click('#v3Ctx [data-ctx="comment"], #v3Pop button:has-text("Kommentar här")');   // på en byggnadsdel visas den allmänna menyn (#v3Pop)
   await page.waitForSelector('#v3CPop #v3CText');
   const meta = await page.textContent('#v3CPop .v3-cpop-meta');
   const today = new Date().toLocaleDateString('sv-SE', { day: 'numeric', month: 'short', year: 'numeric' });

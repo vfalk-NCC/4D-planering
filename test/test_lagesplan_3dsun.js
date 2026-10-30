@@ -53,6 +53,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     r.mode = l3vm.mode; r.dir = l3vm.sunDir && [l3vm.sunDir.x, l3vm.sunDir.y, l3vm.sunDir.z].map(v => Math.round(v * 100) / 100); const sun = l3vmSun(); r.shadow = !!sun.castShadow; r.panel = !!document.querySelector('#v3AnPanel[data-kind="sun"]');
     l3sun.min = 60; l3sunApply(); r.nightShadow = !l3vmSun().castShadow;
     l3sun.min = 12 * 60 + 49; l3sun.span = 40; await l3sunHours(); r.hours = l3sun.res && [Math.round(l3sun.res.max * 10) / 10, Math.round(l3sun.res.cnt.reduce((a, c) => a + c, 0))];
+    r.mean = l3sun.res && l3sun.res.mean > 0 && l3sun.res.good >= 0;
+    // sol i en punkt / per objekt / film
+    const occ = l3sunOcc(), bx = new THREE.Box3().setFromObject(l3.placeMeshes.get(b.id)), cxy = [(bx.min.x + bx.max.x) / 2, (bx.min.y + bx.max.y) / 2];
+    const roof = new THREE.Vector3(cxy[0], cxy[1], bx.max.z + 0.05), northFace = new THREE.Vector3(bx.max.x, cxy[1], (bx.min.z + bx.max.z) / 2);
+    r.roofSum = l3sunProbeAt(roof, null, '2026-06-21', occ, 20).h; r.roofWin = l3sunProbeAt(roof, null, '2026-12-21', occ, 20).h;
+    r.northWin = l3sunProbeAt(northFace, new THREE.Vector3(1, 0, 0), '2026-12-21', occ, 20).h; r.southWin = l3sunProbeAt(new THREE.Vector3(bx.min.x, cxy[1], (bx.min.z + bx.max.z) / 2), new THREE.Vector3(-1, 0, 0), '2026-12-21', occ, 20).h;
+    r.normal = l3sunNormalAt(roof, occ).z;
+    l3sun.probe = { day: l3sunProbeAt(roof, null, '2026-06-21', occ), seas: [['Vår', 5]], dir: 'vågrät yta uppåt', P: roof }; l3sunOpen(); r.probeUi = !!document.querySelector('.v3-sn-strip') && !!document.querySelector('.v3-sn-seas');
+    await l3sunObjects(); r.objs = l3sun.objs.rows.length; r.objsUi = !!document.querySelector('.v3-sn-list');
+    const blob = await l3sunFilm({ frames: 8, noDownload: true }); r.film = blob && blob.size; r.filmDone = !l3sun.filming && !l3.hudHide;
     l3sunOff(); r.off = l3vm.sunDir === null;
     return r;
   });
@@ -62,6 +72,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(o.tz[0] === 2 && o.tz[1] === 1 && o.rise >= 3 && o.rise <= 4 && o.set >= 21 && o.set <= 22, 'Tid/tidzon/uppgång: ' + JSON.stringify([o.tz, o.rise, o.set]));
   ok(o.mode === 'real' && o.dir && o.dir[2] > 0.7 && o.shadow && o.panel && o.nightShadow, 'Solstudien styr skuggorna: ' + JSON.stringify([o.mode, o.dir, o.shadow]));
   ok(o.hours && o.hours[0] > 10 && o.hours[1] > 1000 && o.off, 'Soltimmar: ' + JSON.stringify(o.hours));
+  ok(o.mean, 'Soltimmar: medel och andel med minst 6 h');
+  ok(o.roofSum > 10 && o.roofWin > 1 && o.roofSum > o.roofWin, 'Sol på taket sommar/vinter: ' + JSON.stringify([o.roofSum, o.roofWin]));
+  ok(o.northWin === 0 && o.southWin > 0 && o.normal > 0.9, 'Norrfasad får ingen sol på vintern, sydfasad får: ' + JSON.stringify([o.northWin, o.southWin, o.normal]));
+  ok(o.probeUi && o.objs >= 1 && o.objsUi, 'Panelen visar punkt och sol per objekt: ' + JSON.stringify([o.probeUi, o.objs, o.objsUi]));
+  ok(o.film > 1000 && o.filmDone, 'Dagsfilmen ger en videofil: ' + JSON.stringify([o.film, o.filmDone]));
   ok(!errors.length, 'JS-fel: ' + errors.join('|'));
   console.log('OK: solstudie – solläge, tidszon, skuggor, soltimmar');
   await browser.close(); server.close();
