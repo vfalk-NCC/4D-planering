@@ -33,6 +33,7 @@ function l3tRestore(snap) {
     meshes.add(s.mesh);
   });
   l3tRefresh(meshes);
+  if (typeof l3lookTouch === "function") l3lookTouch(snap);
 }
 function l3tRefresh(meshes, alphaChanged = true) {
   if (typeof l3bRecolor === "function") l3bRecolor();
@@ -53,6 +54,7 @@ function l3tApply(patch, undoLabel, snapBefore) {
     meshes.add(e.mesh);
   });
   l3tRefresh(meshes, "alpha" in patch);
+  if (typeof l3lookTouch === "function") l3lookTouch(sel);
   if (undoLabel && typeof l3VPush === "function") { const after = l3tSnap(sel); l3VPush(() => l3tRestore(before), () => l3tRestore(after), undoLabel); }
 }
 /* Alla tillfälliga färger och opaciteter borta (alla modeller). */
@@ -61,7 +63,8 @@ function l3tResetAll() {
   l3b.models.forEach(m => m.meshes.forEach(x => { const u = x.userData.l3b; const keys = new Set([...(u.tint ? u.tint.keys() : []), ...(u.alpha ? u.alpha.keys() : [])]); keys.forEach(ri => snap.push({ mesh: x, ri, t: u.tint && u.tint.get(ri) || null, a: u.alpha && u.alpha.get(ri) || null })); if (keys.size) { u.tint = new Map(); u.alpha = new Map(); meshes.add(x); } }));
   if (!snap.length) return;
   l3tRefresh(meshes);
-  if (typeof l3VPush === "function") l3VPush(() => l3tRestore(snap), () => { snap.forEach(s => { const u = s.mesh.userData.l3b; u.tint.delete(s.ri); u.alpha.delete(s.ri); }); l3tRefresh(new Set(snap.map(s => s.mesh))); }, "återställ färger");
+  if (typeof l3lookTouch === "function") l3lookTouch(snap);
+  if (typeof l3VPush === "function") l3VPush(() => l3tRestore(snap), () => { snap.forEach(s => { const u = s.mesh.userData.l3b; u.tint.delete(s.ri); u.alpha.delete(s.ri); }); l3tRefresh(new Set(snap.map(s => s.mesh))); if (typeof l3lookTouch === "function") l3lookTouch(snap); }, "återställ färger");
   l3Status(`${snap.length} objekt har sina vanliga färger igen.`);
 }
 function l3tCount() { let n = 0; l3b.models.forEach(m => m.meshes.forEach(x => { const u = x.userData.l3b; n += new Set([...(u.tint ? u.tint.keys() : []), ...(u.alpha ? u.alpha.keys() : [])]).size; })); return n; }
@@ -74,7 +77,7 @@ function l3tintOpen(anchor) {
   pop = document.createElement("div"); pop.id = "v3TintPop"; pop.className = "v3-pop v3-tintpop";
   const draw = () => {
     const tc = l3tintOf(l3bs.sel), a = l3tAlphaOf(l3bs.sel), n = l3bs.sel.length, all = l3tCount();
-    pop.innerHTML = `<div class="v3-tint-h"><b>Färg ${n > 1 ? `för ${n} objekt` : ""}</b><em>bara den här sessionen</em></div>
+    pop.innerHTML = `<div class="v3-tint-h"><b>Färg ${n > 1 ? `för ${n} objekt` : ""}</b><em>sparas i projektet</em></div>
       <div class="v3-tint-cols">${L3T_COLORS.map(c => `<button type="button" data-tc="${c}" class="${tc && tc.css === c ? "on" : ""}" style="background:${c}" title="${c}"></button>`).join("")}<label class="v3-tint-own" title="Egen färg"><input type="color" id="v3TintOwn" value="${tc ? tc.css : "#6d5efc"}" />＋</label></div>
       <label class="v3-tint-op"><span>Opacitet</span><input type="range" id="v3TintOp" min="0.05" max="1" step="0.05" value="${a == null ? 1 : a}" /><b id="v3TintOpV">${a == null ? "blandat" : Math.round(a * 100) + " %"}</b></label>
       <div class="v3-tint-acts"><button type="button" id="v3TintClr" ${tc || l3bs.sel.some(e => { const u = e.mesh.userData.l3b; return (u.tint && u.tint.has(e.ri)) || (u.alpha && u.alpha.has(e.ri)); }) ? "" : "disabled"}>Återställ markerade</button><button type="button" id="v3TintAll" ${all ? "" : "disabled"}>Återställ alla${all ? ` (${all})` : ""}</button></div>`;
@@ -122,7 +125,7 @@ function l3paintOpen(anchor) {
   };
   const draw = () => {
     const c0 = colOf(P[0]).toLowerCase(), same = P.every(p => colOf(p).toLowerCase() === c0), a = P.every(p => opOf(p) === opOf(P[0])) ? opOf(P[0]) : null, n = P.length + nI;
-    pop.innerHTML = `<div class="v3-tint-h"><b>Färg ${n > 1 ? `för ${n} objekt` : ""}</b><em>${nI ? "etablering sparas, byggnaden bara sessionen" : "sparas på objektet"}</em></div>
+    pop.innerHTML = `<div class="v3-tint-h"><b>Färg ${n > 1 ? `för ${n} objekt` : ""}</b><em>${nI ? "etablering och byggnad sparas i projektet" : "sparas på objektet"}</em></div>
       <div class="v3-tint-cols">${L3T_COLORS.map(c => `<button type="button" data-tc="${c}" class="${same && c0 === c ? "on" : ""}" style="background:${c}" title="${c}"></button>`).join("")}<label class="v3-tint-own" title="Egen färg"><input type="color" id="v3PaintOwn" value="${/^#[0-9a-f]{6}$/i.test(c0) ? c0 : "#94a3b8"}" /></label></div>
       <label class="v3-tint-op"><span>Opacitet</span><input type="range" id="v3PaintOp" min="0.05" max="1" step="0.05" value="${a == null ? 1 : a}" /><b id="v3PaintOpV">${a == null ? "blandat" : Math.round(a * 100) + " %"}</b></label>
       <div class="v3-tint-acts"><button type="button" id="v3PaintClr">Återställ markerade</button></div>`;

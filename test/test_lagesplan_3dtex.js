@@ -67,6 +67,25 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return out;
   });
   console.log(JSON.stringify(r));
+  // Utseendet sparas i projektet och läggs på igen när modellen läses in på nytt.
+  await page.evaluate(() => { const mesh = l3b.models[0].meshes[0]; l3bs.sel = [{ mesh, ri: 2 }]; l3tApply({ color: '#ff0000', alpha: 0.6 }, 'färg'); l3texApplyIfc(l3bs.sel, { id: 'gras', s: 2, k: 0.7 }, 'textur'); });
+  await page.waitForTimeout(2600);
+  const lookKey = [...gh.keys()].find(k => /ifc_looks\.json$/.test(k)); if (!lookKey) fail('ifc_looks.json ska skrivas: ' + [...gh.keys()].join());
+  const lk = JSON.parse(gh.get(lookKey)); const rec = lk.find(x => x.guid === 'g2');
+  if (!rec || rec.c !== '#ff0000' || rec.a !== 0.6 || !rec.t || rec.t.id !== 'gras' || rec.t.s !== 2) fail('Posten i ifc_looks.json: ' + JSON.stringify(lk));
+  const re = await page.evaluate(async () => {
+    l3b.models.forEach(m => m.meshes.forEach(x => l3.groups.bldg.remove(x))); l3b.models.length = 0; l3look.map = null; l3look.loading = false;
+    const cube = [[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]], tri = [0,2,1,0,3,2,4,5,6,4,6,7,0,1,5,0,5,4,1,2,6,1,6,5,2,3,7,2,7,6,3,0,4,3,4,7];
+    const n = 3, pos = new Float32Array(n * 24), col = new Uint8Array(n * 24), idx = new Uint32Array(n * 36), ranges = [];
+    for (let b = 0; b < n; b++) { for (let v = 0; v < 8; v++) { const o = (b * 8 + v) * 3; pos[o] = b * 3 + cube[v][0] * 2; pos[o + 1] = cube[v][1] * 2; pos[o + 2] = cube[v][2] * 2; col[o] = col[o + 1] = col[o + 2] = 200; } for (let t = 0; t < 36; t++) idx[b * 36 + t] = b * 8 + tri[t]; ranges.push({ start: b * 8, count: 8, idxStart: b * 36, idxCount: 36, guid: 'g' + b, name: 'O' + b, cls: 'IFCBEAM', base: [0.8, 0.8, 0.8] }); }
+    const m = { id: 'tx2', name: 'T', visible: true, meshes: [], ranges, tris: n * 12, O: [0, 0, 0], src: { id: 'tx2', version: 'v1' } };
+    const mesh = l3bMeshFromArrays(pos, col, idx, ranges, m, null); m.meshes.push(mesh); l3.groups.bldg.add(mesh); l3b.models.push(m); l3bPosition();
+    l3bRecolor(); await new Promise(r => setTimeout(r, 1200)); l3bRecolor(); await new Promise(r => setTimeout(r, 300));
+    const u = mesh.userData.l3b, t = u.tex && u.tex.get(2), at = mesh.geometry.getAttribute('aTex');
+    return { tint: !!(u.tint && u.tint.has(2)), alpha: u.alpha && u.alpha.get(2), tex: t && t.id, other: !!(u.tint && u.tint.has(0)), aTex: at ? Array.from(at.array.slice(48, 51)) : null };
+  });
+  if (!re.tint || re.alpha !== 0.6 || re.tex !== 'gras' || re.other || !re.aTex || re.aTex[0] !== 5) fail('Sparat utseende läggs på igen: ' + JSON.stringify(re));
+  console.log('OK: IFC-utseende sparas i projektet och läggs på igen', JSON.stringify(re));
   // Etableringsobjekt: välj textur i färgrutan.
   const pid = await page.evaluate(() => {
     const ce = new THREE.Box3().setFromObject(l3b.models[0].meshes[0]).getCenter(new THREE.Vector3());

@@ -3,7 +3,7 @@
    – Ett färdigt bibliotek (betong, tegel, trä, rutad plåt, gräs, asfalt, grus, puts) som ritas upp i koden, och egna bilder.
    – Texturen läggs på från alla håll (triplanar) med skala i meter – därför behövs inga UV-koordinater, och den fungerar på
      både IFC-objekt och de objekt som placeras i editorn. Texturerna ligger i en gemensam bildstapel (16 lager × 256 px).
-   – Etableringsobjekt: sparas på objektet (p.tex) tillsammans med övriga placeringar. IFC-objekt: bara sessionen, som färgen.
+   – Etableringsobjekt: sparas på objektet (p.tex) tillsammans med övriga placeringar. IFC-objekt: i projektets ifc_looks.json (lagesplan-3dlook.js).
    – IFC-bitar får ett extra attribut per hörn (aTex = lager+1, skala, blandning) först när något i biten får en textur;
      övriga bitar ritas precis som förut. */
 
@@ -150,7 +150,7 @@ function l3texEnsureMesh(mesh) {
   return at;
 }
 function l3texSnap(sel) { return sel.map(e => { const u = e.mesh.userData.l3b; return { mesh: e.mesh, ri: e.ri, t: u.tex && u.tex.get(e.ri) ? { ...u.tex.get(e.ri) } : null }; }); }
-function l3texRestoreIfc(snap) { const ms = new Set(); snap.forEach(s => { l3texWrite(s.mesh, s.ri, s.t); ms.add(s.mesh); }); ms.forEach(m => l3bApplyAlpha(m)); l3Render(); }
+function l3texRestoreIfc(snap) { const ms = new Set(); snap.forEach(s => { l3texWrite(s.mesh, s.ri, s.t); ms.add(s.mesh); }); ms.forEach(m => l3bApplyAlpha(m)); if (typeof l3lookTouch === "function") l3lookTouch(snap); l3Render(); }
 function l3texWrite(mesh, ri, spec) {
   const u = mesh.userData.l3b, r = u.ranges[ri]; if (!r) return;
   if (!u.tex) u.tex = new Map();
@@ -166,6 +166,7 @@ function l3texApplyIfc(sel, spec, label) {
   const before = l3texSnap(sel), ms = new Set();
   sel.forEach(e => { l3texWrite(e.mesh, e.ri, spec ? { ...spec } : null); ms.add(e.mesh); });
   ms.forEach(m => l3bApplyAlpha(m)); // de genomskinliga delarna delar hörnen och ska få samma textur
+  if (typeof l3lookTouch === "function") l3lookTouch(sel);
   if (label && typeof l3VPush === "function") { const after = l3texSnap(sel); l3VPush(() => l3texRestoreIfc(before), () => l3texRestoreIfc(after), label); }
   l3Render();
 }
@@ -183,7 +184,7 @@ function l3texSection(pop, ctx) {
   box = document.createElement("div"); box.className = "v3-tex"; pop.appendChild(box);
   const draw = () => {
     const c = cur(), id = c && c !== "mixed" ? c.id : "", s = c && c !== "mixed" ? c.s : 1, k = c && c !== "mixed" ? c.k : 1;
-    box.innerHTML = `<div class="v3-tint-h"><b>Textur</b><em>${P.length ? "etablering sparas, byggnaden bara sessionen" : "bara den här sessionen"}</em></div>
+    box.innerHTML = `<div class="v3-tint-h"><b>Textur</b><em>${P.length ? "etablering och byggnad sparas i projektet" : "sparas i projektet"}</em></div>
       <div class="v3-tex-grid"><button type="button" data-tx="" class="${!c ? "on" : ""}" title="Ingen textur">∅</button>${[...L3TEX_LIB, ...l3tex.user].map(t => `<button type="button" data-tx="${t.id}" class="${id === t.id ? "on" : ""}" title="${t.name}" style="background-image:url(${l3texThumb(t.id)})"></button>`).join("")}<label class="v3-tex-up" title="Egen bild (kvadratiskt utsnitt, 256 px)">＋<input type="file" accept="image/*" hidden /></label></div>
       <label class="v3-tint-op"><span>Skala (m)</span><input type="range" class="v3-tex-s" min="0.1" max="8" step="0.1" value="${s}" ${c && c !== "mixed" ? "" : "disabled"} /><b class="v3-tex-sv">${Number(s).toFixed(1)}</b></label>
       <label class="v3-tint-op"><span>Blandning</span><input type="range" class="v3-tex-k" min="0" max="1" step="0.05" value="${k}" ${c && c !== "mixed" ? "" : "disabled"} /><b class="v3-tex-kv">${Math.round(k * 100)} %</b></label>`;

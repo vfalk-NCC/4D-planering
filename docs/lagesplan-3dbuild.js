@@ -572,6 +572,7 @@ async function l3bParse(bytes, placement, maxTris) {
 /* Statusfärg för kopplade objekt vid datumet i lägesplanen. */
 /* opts.async: färgningen görs bit för bit med andrum emellan och returnerar ett löfte (opts.onProg(0–1), opts.cancelled() avbryter) – för tidsreglaget. */
 function l3bRecolor(opts) {
+  if (typeof l3lookApplyPending === "function") l3lookApplyPending(); // sparat utseende (färg/opacitet/textur) läggs på nyinlästa modeller
   if (typeof l3actSchedule === "function") l3actSchedule();
   if (!l3 || !l3b.models.length) return;
   const byId = new Map((items || []).map(r => [r.id, r]));

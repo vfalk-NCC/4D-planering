@@ -334,7 +334,7 @@ function l3bsRenderSide(side) {
   const act = (id, ico, label, title, cls = "") => `<button type="button" id="${id}" class="v3-act ${cls}" title="${esc(title)}">${ico}<span>${label}</span></button>`;
   side.dataset.id = "bsel:" + l3bs.sel.map(e => e.key).join(",");
   const tc = typeof l3tintOf === "function" ? l3tintOf(l3bs.sel) : null;
-  side.innerHTML = `<div class="v3-side-h"><button type="button" class="v3-chip v3-tintbtn ${tc ? "set" : ""}" id="v3BsTint" style="background:${tc ? tc.css : "#6d5efc"}" title="Tillfällig färg och genomskinlighet för de markerade (bara den här sessionen)"></button><b title="${esc(one ? one.name : "")}">${one ? esc(one.name) : `${n} objekt markerade`}</b><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3BsClose" title="Avmarkera (Esc)">✕</button></div>
+  side.innerHTML = `<div class="v3-side-h"><button type="button" class="v3-chip v3-tintbtn ${tc ? "set" : ""}" id="v3BsTint" style="background:${tc ? tc.css : "#6d5efc"}" title="Färg, genomskinlighet och textur för de markerade (sparas i projektet)"></button><b title="${esc(one ? one.name : "")}">${one ? esc(one.name) : `${n} objekt markerade`}</b><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3BsClose" title="Avmarkera (Esc)">✕</button></div>
     <div class="v3-sub">${one ? esc(one.model) : esc([...new Set(info.map(x => x.model))].join(", "))}</div>
     <div class="v3-acts">
       ${act("v3BsZoom", I.focus, "Zooma", "Zooma till de markerade")}
