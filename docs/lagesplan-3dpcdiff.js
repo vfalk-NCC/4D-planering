@@ -59,7 +59,7 @@ function l3dfTri(g, a, b, c) {
   const cs = g.cell, x0 = Math.min(a[0], b[0], c[0]), x1 = Math.max(a[0], b[0], c[0]), y0 = Math.min(a[1], b[1], c[1]), y1 = Math.max(a[1], b[1], c[1]);
   let ix0 = Math.floor((x0 - g.x0) / cs), ix1 = Math.floor((x1 - g.x0) / cs), iy0 = Math.floor((y0 - g.y0) / cs), iy1 = Math.floor((y1 - g.y0) / cs); if (ix1 < 0 || iy1 < 0 || ix0 >= g.nx || iy0 >= g.ny) return;
   ix0 = Math.max(0, ix0); iy0 = Math.max(0, iy0); ix1 = Math.min(g.nx - 1, ix1); iy1 = Math.min(g.ny - 1, iy1);
-  const put = (k, z) => { const o = g.z[k]; if (!(o >= z)) g.z[k] = z; };
+  const put = (k, z) => { const o = g.z[k]; if (g.lowest ? !(o <= z) : !(o >= z)) g.z[k] = z; };   // lowest: undersidan (lägsta höjden per ruta)
   const det = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
   if (ix0 === ix1 && iy0 === iy1 || Math.abs(det) < 1e-12) { put(iy0 * g.nx + ix0, Math.max(a[2], b[2], c[2])); return; }
   for (let iy = iy0; iy <= iy1; iy++) for (let ix = ix0; ix <= ix1; ix++) {
@@ -203,7 +203,7 @@ function l3dfSettingsHtml() {
     ${sel("v3DfTol", L3DF_TOL.map(v => [v, "± " + String(v).replace(".", ",") + " m"]), tol, "Tolerans", "Skillnader mindre än så visas grått")}
     <div class="v3-pcs-r"><button type="button" class="v3-wide" id="v3DfRun" data-keep="1" title="Räknar ut skillnaden och färgar molnet">Kör analys</button><button type="button" class="v3-link" id="v3DfOff" data-keep="1">Stäng av</button></div>
     <div class="v3-pal-hint">Blått = molnet ligger lägre än referensen (schakt), rött = högre (fyllning). Fyllning och schakt i m³ visas i teckenförklaringen.</div>
-    <button type="button" class="v3-wide" id="v3DfVol" data-keep="1" title="Peka ut punkter runt t.ex. en schaktgrop eller en hög – volymen räknas ut mot ett plan, en nivå eller referensen">Mät volym i ett område…</button>
+    <button type="button" class="v3-wide" id="v3DfVol" data-keep="1" title="Mät → Volym: tryck ut området och mät mot punktmoln, modell, plan, nivå eller en yta du klickar ut">Mät volym (Mät → Volym)…</button>
   </div></details>`;
 }
 function l3dfBind(host) {
@@ -212,5 +212,5 @@ function l3dfBind(host) {
   { const el = g("v3DfTol"); if (el) el.addEventListener("change", () => { if (l3df.R) l3pcRecolor(); }); }
   { const b = g("v3DfRun"); if (b) b.onclick = e => { e.stopPropagation(); const m = b.closest(".v3-ldd-m"); if (m) m.classList.add("hidden"); l3dfRun().catch(err => { l3df.busy = ""; l3Status("Differentialanalysen misslyckades: " + err.message, true); }); }; }
   { const b = g("v3DfOff"); if (b) b.onclick = e => { e.stopPropagation(); l3dfOff(); }; }
-  { const b = g("v3DfVol"); if (b) b.onclick = e => { e.stopPropagation(); const m = b.closest(".v3-ldd-m"); if (m) m.classList.add("hidden"); l3dfVolStart(); }; }
+  { const b = g("v3DfVol"); if (b) b.onclick = e => { e.stopPropagation(); const m = b.closest(".v3-ldd-m"); if (m) m.classList.add("hidden"); l3SetPref("measure", "volume"); l3SetTool("measure"); }; }
 }

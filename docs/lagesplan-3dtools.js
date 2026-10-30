@@ -51,7 +51,7 @@ function l3RenderSnapBar() {
   const cm = bar.querySelector("#v3CopyMode"); if (cm) cm.onchange = () => { l3t.copyMode = cm.checked; l3Status(cm.checked ? "Kopierar: punkten du trycker härnäst får en kopia." : "Flyttar."); };
   bar.querySelectorAll("[data-mmode]").forEach(x => { x.onclick = () => { l3SetPref("measure", x.dataset.mmode); l3ToolCancel(); l3RenderSnapBar(); l3Status(L3_MEAS_START[x.dataset.mmode]); }; });
 }
-const L3_MEAS_START = { smart: "Smart mått: tryck på ett objekt – bredd, höjd och volym sätts ut direkt (på en vågrät yta: längd och bredd).", point: "Mät punkt: tryck på en punkt – X, Y och Z visas och ligger kvar.", volume: "Mät volym: tryck basytans hörn (som Yta), avsluta med Enter eller första punkten – sedan höjden: skriv den eller tryck på en plan yta i modellen.", dist: "Mät avstånd: tryck på första punkten.", poly: "Mät polylinje: tryck punkt för punkt längs vägen. Avsluta med Enter, dubbeltryck eller tryck på sista punkten igen.", angle: "Mät vinkel: tryck på första punkten, sedan hörnet (vinkelns spets) och sist den andra punkten.", area: "Mät yta: tryck hörnen i tur och ordning. Avsluta med Enter eller tryck på första punkten igen." };
+const L3_MEAS_START = { smart: "Smart mått: tryck på ett objekt – bredd, höjd och volym sätts ut direkt (på en vågrät yta: längd och bredd).", point: "Mät punkt: tryck på en punkt – X, Y och Z visas och ligger kvar.", volume: "Mät volym: tryck ut området (hörnen i tur och ordning), avsluta med Enter eller första punkten. Sedan väljer du vad som ska mätas mot vad – punktmoln, modell, plan eller en yta du klickar ut.", dist: "Mät avstånd: tryck på första punkten.", poly: "Mät polylinje: tryck punkt för punkt längs vägen. Avsluta med Enter, dubbeltryck eller tryck på sista punkten igen.", angle: "Mät vinkel: tryck på första punkten, sedan hörnet (vinkelns spets) och sist den andra punkten.", area: "Mät yta: tryck hörnen i tur och ordning. Avsluta med Enter eller tryck på första punkten igen." };
 let l3t = { step: 0, lock: null, vcb: "", last: null };
 let l3HoverRaf = 0;
 
@@ -490,6 +490,7 @@ function l3SnapAngle(deg, s) {
 /* Tryck med ett verktyg. true = hanterat. */
 function l3ToolTap(e) {
   if (typeof l3dToolTap === "function" && l3dToolTap(e)) return true; // DXF-redigering: Flytta/Vrid gäller linjerna
+  if (typeof l3volTap === "function" && l3volTap(e)) return true; // Volym: nivå från en punkt / panelen är öppen
   const t = l3.tool, st = l3t.step;
   // Volym: höjden från en yta i modellen (efter att basytan ritats).
   if (t === "measure" && l3t.volPick) { const s = l3Snap(e); if (s) l3VolFinish(l3t.volPick, s.point.z - l3t.volPick.z0, true); return true; }
@@ -608,7 +609,9 @@ function l3PolyArea(pts) {
    volymen eller att jag kan klicka i modellen på en plan yta som den ska mäta till"). Basytan ritas som
    en yta; sedan frågar en ruta efter höjden (skriv den) – eller tryck på en yta, då blir höjden skillnaden
    mot basytans medelhöjd. Volymen = basytan i plan × höjden (en lodrät prisma). */
-function l3VolBase() {
+function l3VolBase() { if (typeof l3volStart === "function") l3volStart(); else l3VolBaseOld(); } // ny volym mot yta (lagesplan-3dvol.js)
+/* Enkel höjdvolym: basytan × en höjd som skrivs eller tas från en yta (prisma). Nås från volympanelen. */
+function l3VolBaseOld() {
   const mp = l3t.mp || [];
   if (mp.length < 3) { l3Status("Basytan behöver minst tre hörn."); return; }
   const z0 = mp.reduce((s, p) => s + p.z, 0) / mp.length, area = l3PolyArea(mp).area;

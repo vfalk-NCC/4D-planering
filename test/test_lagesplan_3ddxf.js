@@ -338,7 +338,7 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     if (pt.kind !== 'point' || !/^X 6\s?512\s?34[12](,\d+)? m \| Y 150\s?12[78](,\d+)? m \| Z /.test(pt.text.replace(/\u00a0/g, ' ')) || !/\bpt\b/.test(pt.lbl)) fail('Punkt-mått: ' + JSON.stringify(pt));
     await page.evaluate(() => { l3mRemove(l3m.list[l3m.list.length - 1].id); l3SetPref('measure', 'volume'); l3RenderSnapBar(); });
     await click(6512341, 150127); await click(6512345, 150127); await click(6512345, 150130); await click(6512341, 150130);
-    await page.keyboard.press('Enter'); await page.waitForSelector('#v3VolDlg');
+    await page.keyboard.press('Enter'); await page.waitForSelector('#v3VolPanel [data-vb="prism"]'); await page.click('#v3VolPanel [data-vb="prism"]'); await page.waitForSelector('#v3VolDlg');
     await page.fill('#v3VolH', '2'); await page.click('#v3VolOk'); await page.waitForTimeout(150);
     const vo = await page.evaluate(() => { const m = l3m.list[l3m.list.length - 1]; return { kind: m.kind, h: m.h, text: m.text, rows: l3mInfo(m).rows.map(r => r[0]) }; });
     if (process.env.SHOTV) { await page.evaluate(() => { l3SetTool('select'); const m = l3m.list[l3m.list.length - 1], c = new THREE.Vector3(6512343 - l3.O[0], 150128.5 - l3.O[1], m.pts[0][2] - l3.O[2] + 1); l3StopFly(); l3.orbit.target.copy(c); l3.camera.position.copy(c).add(new THREE.Vector3(6, -9, 6)); l3.orbit.update(); l3mDraw(); l3Render(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOTV }); }
