@@ -1421,6 +1421,7 @@ function l3RenderSide(liveOnly) {
     <div class="v3-sub v3-ztop" title="Modellens koordinater: SWEREF 99 20 15 och modellens höjdsystem">${l3ZText(p)}</div>
     ${lib.fence ? "" : `<div class="v3-handles"><span>Handtag</span><button type="button" data-v3mode="translate" title="Pilar för att flytta (W)">↔ Flytta</button><button type="button" data-v3mode="rotate" title="Ring för att vrida (E)">⟳ Vrid</button></div>`}
     ${lib.crew && typeof crewSideHtml === "function" ? crewSideHtml(p) : ""}${lib.smart && typeof smartSideHtml === "function" ? smartSideHtml(p) : ""}
+    ${typeof detSideHtml === "function" ? detSideHtml(p) : ""}
     ${lib.mod && typeof modSideHtml === "function" ? modSideHtml(p) : ""}
     ${lib.mod || (lib.smart && typeof smDef === "function" && (smDef(p) || {}).noDims) ? "" : `<div class="v3-sec">Mått</div>
     <div class="v3-grid">${lib.isModel ? (A && A.kind === "mesh" ? f("mH", "Höjd", "0.1", mH) : `<div class="v3-sub">${typeof placeModelDims === "function" ? escHtml(placeModelDims(p)) : ""}</div>`) : lib.fence ? f("H", "Höjd") : f("L", "Längd") + f("B", "Bredd") + f("H", "Höjd")}
@@ -1466,6 +1467,7 @@ function l3RenderSide(liveOnly) {
       if (k === "itemId" || k === "color") { side.dataset.id = ""; l3RenderSide(); }
     };
   });
+  if (typeof detSideBind === "function") detSideBind(side, p, () => { side.dataset.id = ""; l3RenderSide(); });
   if (lib.smart && typeof smartBindSide === "function") smartBindSide(side, p, () => { l3RebuildOne(p); l3Changed(); side.dataset.id = ""; l3RenderSide(); });
   if (lib.crew && typeof crewBindSide === "function") crewBindSide(side, p, () => { l3RebuildOne(p); l3Changed(); side.dataset.id = ""; const act = document.activeElement; l3RenderSide(); });
   side.querySelectorAll("[data-v3mode]").forEach(b => { b.classList.toggle("on", b.dataset.v3mode === l3.gizmo.mode); b.onclick = () => l3Mode(b.dataset.v3mode); });

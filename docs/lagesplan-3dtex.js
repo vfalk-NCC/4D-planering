@@ -115,19 +115,20 @@ function l3texAddFile(file) {
 function l3texPatch(mat, uni) {
   if (!mat) return;
   const attr = !uni;
-  if (mat.userData.l3tex) { if (uni) mat.userData.l3tex.uTx.value.set(uni[0], uni[1], uni[2]); return; }
-  const uTx = { value: new THREE.Vector3(uni ? uni[0] : 0, uni ? uni[1] : 1, uni ? uni[2] : 1) };
-  mat.userData.l3tex = { uTx, attr };
+  if (mat.userData.l3tex) { if (uni) { mat.userData.l3tex.uTx.value.set(uni[0], uni[1], uni[2]); mat.userData.l3tex.uTx2.value.set(uni[3] || 0, uni[4] || 0, uni[5] || 0, uni[6] == null ? 1 : uni[6]); } return; }
+  const uTx = { value: new THREE.Vector3(uni ? uni[0] : 0, uni ? uni[1] : 1, uni ? uni[2] : 1) }, uTx2 = { value: new THREE.Vector4(uni ? uni[3] || 0 : 0, uni ? uni[4] || 0 : 0, uni ? uni[5] || 0 : 0, uni && uni[6] != null ? uni[6] : 1) };
+  mat.userData.l3tex = { uTx, uTx2, attr };
   mat.onBeforeCompile = sh => {
-    sh.uniforms.uTexA = { value: l3texArray() }; sh.uniforms.uTx = uTx; sh.uniforms.uTexOn = l3tex.on;
-    sh.vertexShader = (attr ? "attribute vec3 aTex;\n" : "") + "uniform vec3 uTx;\nvarying vec3 vTxP; varying vec3 vTxN; varying vec3 vTx;\n" +
-      sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n vTxP = position; vTxN = normal; vTx = " + (attr ? "aTex" : "uTx") + ";");
-    sh.fragmentShader = "uniform highp sampler2DArray uTexA; uniform float uTexOn;\nvarying vec3 vTxP; varying vec3 vTxN; varying vec3 vTx;\n" +
+    sh.uniforms.uTexA = { value: l3texArray() }; sh.uniforms.uTx = uTx; sh.uniforms.uTx2 = uTx2; sh.uniforms.uTexOn = l3tex.on;
+    sh.vertexShader = (attr ? "attribute vec3 aTex; attribute vec4 aTex2;\n" : "") + "uniform vec3 uTx; uniform vec4 uTx2;\nvarying vec3 vTxP; varying vec3 vTxN; varying vec3 vTx; varying vec4 vTx2;\n" +
+      sh.vertexShader.replace("#include <begin_vertex>", "#include <begin_vertex>\n vTxP = position; vTxN = normal; vTx = " + (attr ? "aTex" : "uTx") + "; vTx2 = " + (attr ? "aTex2" : "uTx2") + ";");
+    sh.fragmentShader = "uniform highp sampler2DArray uTexA; uniform float uTexOn;\nvarying vec3 vTxP; varying vec3 vTxN; varying vec3 vTx; varying vec4 vTx2;\nvec2 l3txUv(vec2 c, float sc){ float a = radians(vTx2.x), cs = cos(a), sn = sin(a); c += vTx2.yz; return vec2(cs * c.x - sn * c.y, sn * c.x + cs * c.y) * sc; }\n" +
       sh.fragmentShader.replace("#include <color_fragment>", `#include <color_fragment>
       if (vTx.x > 0.5 && uTexOn > 0.5) {
         vec3 bw = pow(abs(normalize(vTxN)), vec3(6.0)); bw /= (bw.x + bw.y + bw.z);
         float L = vTx.x - 1.0, sc = 1.0 / max(vTx.y, 0.05);
-        vec3 tx = texture(uTexA, vec3(vTxP.yz * sc, L)).rgb * bw.x + texture(uTexA, vec3(vTxP.xz * sc, L)).rgb * bw.y + texture(uTexA, vec3(vTxP.xy * sc, L)).rgb * bw.z;
+        vec3 tx = texture(uTexA, vec3(l3txUv(vTxP.yz, sc), L)).rgb * bw.x + texture(uTexA, vec3(l3txUv(vTxP.xz, sc), L)).rgb * bw.y + texture(uTexA, vec3(l3txUv(vTxP.xy, sc), L)).rgb * bw.z;
+        tx = clamp(tx * (vTx2.w > 0.0 ? vTx2.w : 1.0), 0.0, 1.0);
         diffuseColor.rgb = mix(diffuseColor.rgb, tx, vTx.z);
       }`);
   };
@@ -139,12 +140,13 @@ function l3texPlaced(mat, tex) {
   if (!tex || !tex.id) return;
   if (tex.img && !l3texInfo(tex.id)) l3texRegisterUser(tex.id, tex.name, tex.img, true);
   const layer = l3texLayerOf(tex.id); if (layer < 0) return;
-  l3texPatch(mat, [layer + 1, Math.max(0.05, Number(tex.s) || 1), Math.max(0, Math.min(1, tex.k == null ? 1 : Number(tex.k)))]);
+  l3texPatch(mat, [layer + 1, Math.max(0.05, Number(tex.s) || 1), Math.max(0, Math.min(1, tex.k == null ? 1 : Number(tex.k))), Number(tex.r) || 0, Number(tex.ox) || 0, Number(tex.oy) || 0, tex.b == null ? 1 : Number(tex.b)]);
 }
 /* IFC-bitar: attributet aTex skapas först när något i biten får en textur. */
 function l3texEnsureMesh(mesh) {
   const g = mesh.geometry; let at = g.getAttribute("aTex");
   if (!at) { at = new THREE.BufferAttribute(new Float32Array(g.getAttribute("position").count * 3), 3); g.setAttribute("aTex", at); }
+  if (!g.getAttribute("aTex2")) { const a2 = new Float32Array(g.getAttribute("position").count * 4); for (let i = 3; i < a2.length; i += 4) a2[i] = 1; g.setAttribute("aTex2", new THREE.BufferAttribute(a2, 4)); }
   const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
   mats.forEach(m => l3texPatch(m));
   return at;
@@ -157,8 +159,9 @@ function l3texWrite(mesh, ri, spec) {
   if (spec) u.tex.set(ri, spec); else u.tex.delete(ri);
   if (!spec && !mesh.geometry.getAttribute("aTex")) return;
   const at = l3texEnsureMesh(mesh), a = at.array, layer = spec ? l3texLayerOf(spec.id) : -1, v0 = layer >= 0 ? layer + 1 : 0, s = spec ? spec.s : 1, k = spec ? spec.k : 1;
-  for (let i = r.start; i < r.start + r.count; i++) { a[i * 3] = v0; a[i * 3 + 1] = s; a[i * 3 + 2] = k; }
-  at.needsUpdate = true;
+  const a2at = mesh.geometry.getAttribute("aTex2"), a2 = a2at.array, rr = spec ? Number(spec.r) || 0 : 0, ox = spec ? Number(spec.ox) || 0 : 0, oy = spec ? Number(spec.oy) || 0 : 0, bb = spec && spec.b != null ? Number(spec.b) : 1;
+  for (let i = r.start; i < r.start + r.count; i++) { a[i * 3] = v0; a[i * 3 + 1] = s; a[i * 3 + 2] = k; a2[i * 4] = rr; a2[i * 4 + 1] = ox; a2[i * 4 + 2] = oy; a2[i * 4 + 3] = bb; }
+  at.needsUpdate = true; a2at.needsUpdate = true;
 }
 /* Texturen på de markerade IFC-objekten (spec = { id, s, k } eller null = ingen). */
 function l3texApplyIfc(sel, spec, label) {
@@ -187,8 +190,13 @@ function l3texSection(pop, ctx) {
     box.innerHTML = `<div class="v3-tint-h"><b>Textur</b><em>${P.length ? "etablering och byggnad sparas i projektet" : "sparas i projektet"}</em></div>
       <div class="v3-tex-grid"><button type="button" data-tx="" class="${!c ? "on" : ""}" title="Ingen textur">∅</button>${[...L3TEX_LIB, ...l3tex.user].map(t => `<button type="button" data-tx="${t.id}" class="${id === t.id ? "on" : ""}" title="${t.name}" style="background-image:url(${l3texThumb(t.id)})"></button>`).join("")}<label class="v3-tex-up" title="Egen bild (kvadratiskt utsnitt, 256 px)">＋<input type="file" accept="image/*" hidden /></label></div>
       <label class="v3-tint-op"><span>Skala (m)</span><input type="range" class="v3-tex-s" min="0.1" max="8" step="0.1" value="${s}" ${c && c !== "mixed" ? "" : "disabled"} /><b class="v3-tex-sv">${Number(s).toFixed(1)}</b></label>
-      <label class="v3-tint-op"><span>Blandning</span><input type="range" class="v3-tex-k" min="0" max="1" step="0.05" value="${k}" ${c && c !== "mixed" ? "" : "disabled"} /><b class="v3-tex-kv">${Math.round(k * 100)} %</b></label>`;
-    const spec = id2 => ({ id: id2, s: Number(box.querySelector(".v3-tex-s").value) || 1, k: Number(box.querySelector(".v3-tex-k").value) });
+      <label class="v3-tint-op"><span>Rotation</span><input type="range" class="v3-tex-r" min="0" max="355" step="5" value="${c && c !== "mixed" ? c.r || 0 : 0}" ${c && c !== "mixed" ? "" : "disabled"} /><b class="v3-tex-rv">${c && c !== "mixed" ? Math.round(c.r || 0) : 0}°</b><button type="button" class="v3-tex-r90" title="Vrid 90° (t.ex. liggande/stående trä eller tegel)" ${c && c !== "mixed" ? "" : "disabled"}>↻ 90°</button></label>
+      <label class="v3-tint-op"><span>Förskjut X</span><input type="range" class="v3-tex-ox" min="-2" max="2" step="0.05" value="${c && c !== "mixed" ? c.ox || 0 : 0}" ${c && c !== "mixed" ? "" : "disabled"} /><b class="v3-tex-oxv">${c && c !== "mixed" ? Number(c.ox || 0).toFixed(2) : "0.00"}</b></label>
+      <label class="v3-tint-op"><span>Förskjut Y</span><input type="range" class="v3-tex-oy" min="-2" max="2" step="0.05" value="${c && c !== "mixed" ? c.oy || 0 : 0}" ${c && c !== "mixed" ? "" : "disabled"} /><b class="v3-tex-oyv">${c && c !== "mixed" ? Number(c.oy || 0).toFixed(2) : "0.00"}</b></label>
+      <label class="v3-tint-op"><span>Ljusstyrka</span><input type="range" class="v3-tex-b" min="0.4" max="1.6" step="0.05" value="${c && c !== "mixed" && c.b != null ? c.b : 1}" ${c && c !== "mixed" ? "" : "disabled"} /><b class="v3-tex-bv">${c && c !== "mixed" && c.b != null ? Math.round(c.b * 100) : 100} %</b></label>
+      <label class="v3-tint-op"><span>Blandning</span><input type="range" class="v3-tex-k" min="0" max="1" step="0.05" value="${k}" ${c && c !== "mixed" ? "" : "disabled"} /><b class="v3-tex-kv">${Math.round(k * 100)} %</b></label>
+      <div class="v3-tex-reset"><button type="button" class="v3-wide v3-tex-rs" ${c && c !== "mixed" ? "" : "disabled"} title="Tillbaka till originalet: skala 1 m, ingen rotation eller förskjutning, full blandning och ljusstyrka">↺ Återställ textur</button></div>`;
+    const q2 = n => Number(box.querySelector(".v3-tex-" + n).value), spec = id2 => ({ id: id2, s: q2("s") || 1, k: q2("k"), r: q2("r"), ox: q2("ox"), oy: q2("oy"), b: q2("b") });
     let snapped = false;
     const set = (sp, snap = true) => {
       if (P.length) {
@@ -203,6 +211,9 @@ function l3texSection(pop, ctx) {
     const s1 = box.querySelector(".v3-tex-s"), k1 = box.querySelector(".v3-tex-k");
     s1.oninput = () => { box.querySelector(".v3-tex-sv").textContent = Number(s1.value).toFixed(1); set(spec(id), !snapped); snapped = true; };
     k1.oninput = () => { box.querySelector(".v3-tex-kv").textContent = Math.round(k1.value * 100) + " %"; set(spec(id), !snapped); snapped = true; };
+    [["r", "rv", v => Math.round(v) + "°"], ["ox", "oxv", v => Number(v).toFixed(2)], ["oy", "oyv", v => Number(v).toFixed(2)], ["b", "bv", v => Math.round(v * 100) + " %"]].forEach(([n, o, f]) => { const el = box.querySelector(".v3-tex-" + n); el.oninput = () => { box.querySelector(".v3-tex-" + o).textContent = f(el.value); set(spec(id), !snapped); snapped = true; }; el.onchange = () => { snapped = false; }; });
+    const rs = box.querySelector(".v3-tex-rs"); if (rs) rs.onclick = () => { set({ id, s: 1, k: 1, r: 0, ox: 0, oy: 0, b: 1 }); draw(); };
+    const r90 = box.querySelector(".v3-tex-r90"); if (r90) r90.onclick = () => { const r = box.querySelector(".v3-tex-r"); r.value = (Number(r.value) + 90) % 360; box.querySelector(".v3-tex-rv").textContent = r.value + "°"; set(spec(id)); };
     s1.onchange = k1.onchange = () => { snapped = false; };
     const up = box.querySelector(".v3-tex-up input");
     up.onchange = async () => { const f = up.files && up.files[0]; if (!f) return; const nid = await l3texAddFile(f); if (!nid) { if (typeof l3Status === "function") l3Status("Kunde inte läsa bilden (eller så är de 8 platserna för egna bilder fulla).", true); return; } set(spec(nid)); draw(); };

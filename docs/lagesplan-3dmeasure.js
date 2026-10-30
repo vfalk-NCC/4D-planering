@@ -681,6 +681,14 @@ function l3SmartGeom(h) {
     if (!r || h.face.a >= r.start + r.count) return null;
     lo = r.start; hi = r.start + r.count; idx = u.origIdx || idx; name = r.name || "";
   }
+  const pid = !u && typeof l3PlaceIdOf === "function" ? l3PlaceIdOf(mesh) : null, grp = pid && l3.placeMeshes.get(pid);
+  if (grp) { // etableringsobjekt byggt av flera delar (en yta per färg): alla delarna räknas som ett objekt
+    const V = [], tris = []; grp.updateMatrixWorld(true);
+    grp.traverse(o => { if (!o.isMesh || o.userData.noHit || o.userData.isSign || !o.geometry || !o.geometry.getAttribute("position")) return; const ps = o.geometry.getAttribute("position"), ix = o.geometry.index ? o.geometry.index.array : null, b = V.length;
+      for (let i = 0; i < ps.count; i++) V.push(new THREE.Vector3().fromBufferAttribute(ps, i).applyMatrix4(o.matrixWorld));
+      if (ix) for (let i = 0; i + 2 < ix.length; i += 3) tris.push([ix[i] + b, ix[i + 1] + b, ix[i + 2] + b]); else for (let i = 0; i + 2 < ps.count; i += 3) tris.push([b + i, b + i + 1, b + i + 2]); });
+    return { V, tris, name: "", mesh, lo: 0, hi: 0, placeId: pid };
+  }
   mesh.updateMatrixWorld(true);
   const M = mesh.matrixWorld, V = new Array(hi - lo);
   for (let i = lo; i < hi; i++) V[i - lo] = new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(M);
@@ -695,6 +703,7 @@ function l3SmartRay(from, dir, g) {
   return rc.intersectObjects(targets, true).find(h => {
     const o = h.object.userData && h.object.userData.l3bMain ? h.object.userData.l3bMain : h.object;
     if (!h.object.visible || h.object.userData.noHit || h.object.type === "LineSegments" || h.object.type === "Line" || (typeof l3VisibleChain === "function" && !l3VisibleChain(h.object)) || (typeof l3NotClipped === "function" && !l3NotClipped(h.point))) return false;
+    if (g.placeId && typeof l3PlaceIdOf === "function" && l3PlaceIdOf(h.object) === g.placeId) return false; // objektet självt (alla delar)
     if (o === g.mesh && (!h.face || (h.face.a >= g.lo && h.face.a < g.hi))) return false; // objektet självt
     return true;
   }) || null;
@@ -705,9 +714,13 @@ function l3SmartMeasure(e) {
   const g = l3SmartGeom(h); if (!g || g.V.length < 3) { l3Status("Smart mått: det går inte att läsa objektets form.", true); return; }
   const P = h.point.clone(), n = h.face.normal.clone().transformDirection(h.object.userData.l3bMain ? h.object.userData.l3bMain.matrixWorld : h.object.matrixWorld).normalize();
   if (h.object.userData.l3bMain === undefined) { /* vanligt nät: normalen i världen */ }
+  if (g.placeId) { // detaljerat objekt: träffen kan ligga på en ribba eller en fas – måtten gäller objektets egen sida (närmaste axel)
+    const pl = placements.find(x => x.id === g.placeId), rot = ((pl && Number(pl.rot)) || 0) * Math.PI / 180, ax = [new THREE.Vector3(Math.cos(rot), Math.sin(rot), 0), new THREE.Vector3(-Math.sin(rot), Math.cos(rot), 0), new THREE.Vector3(0, 0, 1)];
+    let bd = 0, bn = null; ax.forEach(a => { const d = n.dot(a); if (Math.abs(d) > Math.abs(bd)) { bd = d; bn = a.clone().multiplyScalar(Math.sign(d) || 1); } }); if (bn) n.copy(bn);
+  }
   const Z = new THREE.Vector3(0, 0, 1), horiz = Math.abs(n.z) > 0.95;
   // Hörn på just den sidan man tryckte på (inom 1,5 cm från ytan): sidans egen utsträckning.
-  let side = g.V.filter(v => Math.abs(v.clone().sub(P).dot(n)) < 0.015); if (side.length < 3) side = g.V;
+  let side = g.V.filter(v => Math.abs(v.clone().sub(P).dot(n)) < 0.015); if (side.length < 3) side = g.V; if (g.placeId) side = g.V; // flerdelat etableringsobjekt: hela objektets mått (detaljer som ribbor ska inte styra)
   let u, v;
   if (!horiz) { v = Z.clone().addScaledVector(n, -Z.dot(n)).normalize(); u = new THREE.Vector3().crossVectors(v, n).normalize(); }
   else { // vågrät yta: rätvinkliga axlar med minsta låda, u = den långa sidan

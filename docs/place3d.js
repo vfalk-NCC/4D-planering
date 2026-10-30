@@ -128,7 +128,7 @@ function placeParts(p, ringN = 48) {
     return parts;
   }
   if (p.type === "mobilkran" && R > 0) return [body, { poly: placeCircle(p, R, ringN), z0: z, z1: z + 0.05, role: "reach", transp: 0.8 }];
-  return [body];
+  return typeof detSignParts === "function" ? detSignParts(p, z, [body]) : [body];
 }
 
 /* Linjer till förhandsvisningen. full = trådmodell (aktivt objekt), annars bara fotavtrycket. */

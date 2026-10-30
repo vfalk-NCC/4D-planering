@@ -30,7 +30,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // GitHub: bara etableringens filer finns.
   const store = new Map(); let n = 0;
   store.set('projects/p1/plan_placements.json', { content: JSON.stringify([
-    { id: 'c1', type: 'container', name: 'Container 1', x: 6512320, y: 150110, z: 0, L: 6, B: 2, H: 2, rot: 0, dz: 0, color: '#2563eb' },
+    { id: 'c1', type: 'lada', name: 'Container 1', x: 6512320, y: 150110, z: 0, L: 6, B: 2, H: 2, rot: 0, dz: 0, color: '#2563eb' },
     { id: 'm1', type: 'model:ifc1', name: 'Pall 1', x: 6512330, y: 150140, z: 0, rot: 0, dz: 0, scale: 1, color: '#64748b' }]), sha: 's0' });
   // IFC-modell med geometri bredvid (två färger, 1×2×3 m).
   const box = (x0, x1, y0, y1, z0, z1) => { const p = []; for (const z of [z0, z1]) for (const [x, y] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) p.push(x * 1000, y * 1000, z * 1000); return p; };

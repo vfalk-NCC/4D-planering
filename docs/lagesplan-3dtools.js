@@ -184,6 +184,8 @@ function l3EdgeSnap(e, S, hits, mx, my, exclude) {
     if (o.userData.l3b && typeof l3bsFromHit === "function") { const x = l3bsFromHit(h); if (!x) return; ri = x.ri; o = x.mesh; }
     const k = o.uuid + ":" + ri;
     if (seen.has(k)) return; seen.add(k); cand.push([o, ri]);
+    const pid = ri == null && typeof l3PlaceIdOf === "function" ? l3PlaceIdOf(o) : null, grp = pid && l3.placeMeshes.get(pid); // detaljerat objekt (flera delar): alla delarnas kanter, så att yttersta hörnet finns med
+    if (grp) grp.traverse(m => { if (m.isMesh && !m.userData.noHit && !m.userData.isSign && m !== o) { const k2 = m.uuid + ":null"; if (!seen.has(k2)) { seen.add(k2); cand.push([m, null]); } } });
   };
   hits.slice(0, 3).forEach(add);
   [[-9, 0], [9, 0], [0, -9], [0, 9]].forEach(([dx, dy]) => { const hs = l3Ray({ clientX: e.clientX + dx, clientY: e.clientY + dy }, l3Surfaces(exclude)); add(hs[0]); });
