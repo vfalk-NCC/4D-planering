@@ -251,6 +251,7 @@ function l3Dom() {
         </div>
       </div>
       <button type="button" id="v3ClipBtn" class="v3-ghost" title="Snitt: tryck på en yta där modellen ska skäras">${I.scissors}<span>Snitt</span></button>
+      <button type="button" id="v3AnBtn" class="v3-ghost" title="Analys: mängdning, lutning, massegenskaper, fria avstånd, jämför modeller, smart markering, tidslinje">${I.fit}<span>Analys</span></button>
       <button type="button" id="v3PhotoBtn" class="v3-ghost" title="Lägg till foto: placeras enligt fotots GPS, annars trycker du där det är taget">${I.camera}<span>Foto</span></button>
       <span class="v3-grow"></span>
       <button type="button" id="v3LaunchBtn" class="v3-ghost v3-launchbtn" title="Snabbsök kommando (Ctrl+K)">${I.search}<span>Sök kommando</span><kbd>Ctrl+K</kbd></button>
@@ -395,6 +396,7 @@ function l3Dom() {
   if (typeof l3LayersInit === "function") l3LayersInit(); // Lager-fliken och breddbara paneler
   box.querySelectorAll("[data-v3cmd]").forEach(b => { b.onclick = () => { l3HideMenus(); ({ cspec: () => l3OpenSpecial("copy"), mspec: () => l3OpenSpecial("move"), dup: l3DuplicateSel, copy: l3CopySel, paste: () => l3Paste(), drop: l3DropSel, del: l3DeleteSel, all: () => l3SelectIds(placements.filter(p => !l3.hidden.has(p.id)).map(p => p.id)), similar: l3SelectSimilar, hide: l3HideSel, iso: l3Isolate, showall: l3ShowAll, clash: l3OpenClash })[b.dataset.v3cmd](); }; });
   $3("v3PhotoBtn").onclick = () => { if (typeof l3phAdd === "function") l3phAdd(); };
+  $3("v3AnBtn").onclick = () => { if (document.getElementById("v3AnPanel")) l3anClose(); else l3anOpen(); };
   $3("v3ClipBtn").onclick = () => { if (l3.clips && l3.clips.length) l3RenderClipDlg(); l3StartClip(); };
   $3("v3LaunchBtn").onclick = e => { e.stopPropagation(); l3OpenLaunch(); };
   box.querySelectorAll("[data-v3view]").forEach(b => { b.onclick = () => { l3HideMenus(); const v = b.dataset.v3view; if (v === "plan") l3TogglePlan(); else if (v === "center") l3StartV(); else if (v === "walk") l3wStart(); else if (v === "mont") l3mtToggle(true); else l3View(v); }; });

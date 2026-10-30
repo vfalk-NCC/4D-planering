@@ -72,11 +72,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (Math.abs(q.cut - 50) > 2 || q.fill > 1) fail('Moln mot modell: schakt ≈ 50 m³: ' + JSON.stringify(q));
   // Modell mot nivå 0: platta 2 m hög → fyllning 200 m³. Nivå 3 → schakt 100 m³.
   await setSel('a', 'md:vm'); await setSel('b', 'level');
-  await page.fill('input[data-vz="b"]', '0'); await page.dispatchEvent('input[data-vz="b"]', 'change'); await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 });
+  await page.fill('input[data-vz="b"]', '0'); await page.dispatchEvent('input[data-vz="b"]', 'change'); await page.waitForTimeout(1500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 });
   q = await page.evaluate(() => ({ cut: l3vol.cur.res.cut, fill: l3vol.cur.res.fill, z: l3vol.cur.spec.b.z, bz: l3vol.cur.pts[0][2] }));
   if (Math.abs(q.fill - 200) > 3 || q.cut > 1) fail('Modell mot nivå 0 (relativt ' + q.z + '): fyllning ≈ 200 m³ (z0 ' + q.bz + '): ' + JSON.stringify(q));
-  await page.fill('input[data-vz="b"]', String(lo[2] + 3 + 0)); await page.dispatchEvent('input[data-vz="b"]', 'change'); await page.waitForTimeout(500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 });
-  q = await page.evaluate(() => ({ cut: l3vol.cur.res.cut, fill: l3vol.cur.res.fill }));
+  await page.fill('input[data-vz="b"]', String(lo[2] + 3 + 0)); await page.dispatchEvent('input[data-vz="b"]', 'change'); await page.waitForTimeout(1500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 });
+  q = await page.evaluate(() => ({ cut: l3vol.cur.res.cut, fill: l3vol.cur.res.fill, b: l3vol.cur.spec.b, v: document.querySelector('input[data-vz="b"]') && document.querySelector('input[data-vz="b"]').value }));
   if (Math.abs(q.cut - 100) > 3 || q.fill > 1) fail('Modell mot nivå +3: schakt ≈ 100 m³: ' + JSON.stringify(q));
   console.log('OK: volymer mot moln, modell och nivå', JSON.stringify(q));
   await page.screenshot({ path: '/tmp/vol1.png' });
