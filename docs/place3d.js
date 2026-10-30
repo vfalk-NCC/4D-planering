@@ -27,6 +27,7 @@ const PLACE_LIB = {
 /* Biblioteksposten för en typ – även egna modeller ("model:<id>", se place-models.js). */
 function placeLib(type) {
   if (PLACE_LIB[type]) return PLACE_LIB[type];
+  if (String(type || "").startsWith("mod:") && typeof modLib === "function") return modLib(type); // ritad geometri (lagesplan-3dmod.js)
   if (String(type || "").startsWith("crew:") && typeof crewLib === "function") return crewLib(type);
   if (String(type || "").startsWith("sm:") && typeof smartLib === "function") return smartLib(type);
   if (String(type || "").startsWith("model:")) {
@@ -96,6 +97,7 @@ function placeParts(p, ringN = 48) {
   const z = (Number(p.z) || 0) + (Number(p.dz) || 0), H = Math.max(0.01, Number(p.H) || 0);
   const L = Math.max(0.01, Number(p.L) || 0), B = Math.max(0.01, Number(p.B) || 0), lib = placeLib(p.type) || {};
   const tr = Number(lib.transp) || 0;
+  if (lib.mod && typeof modParts === "function") return modParts(p, z);
   if (lib.crew && typeof crewParts === "function") return crewParts(p, z);
   if (lib.smart && typeof smartParts === "function") return smartParts(p, z);
   if (lib.isModel) {
@@ -471,7 +473,7 @@ function buildPlacementsIfc(projName, only) {
         return m;
       });
       if (!meshes.length) return null;
-      const el = E(`IFCBUILDINGELEMENTPROXY('${placeGuid(p.id, salt)}',$,${ifcStr(name)},${ifcStr("Placerad i 4D-planering")},${ifcStr(lib.label)},${doc.place(o)},${doc.shape(meshes.join(","), "Tessellation")},${ifcStr(p.id)},.NOTDEFINED.)`);
+      const el = E(`${lib.mod && typeof modIfcEntity === "function" ? modIfcEntity(p) : "IFCBUILDINGELEMENTPROXY"}('${placeGuid(p.id, salt)}',$,${ifcStr(name)},${ifcStr("Placerad i 4D-planering")},${ifcStr(lib.label)},${doc.place(o)},${doc.shape(meshes.join(","), "Tessellation")},${ifcStr(p.id)},.NOTDEFINED.)`);
       elems.push(el);
       return el;
     };
@@ -484,6 +486,7 @@ function buildPlacementsIfc(projName, only) {
       p = { ...p, H: (b.max[2] - b.min[2]) * k };
     } else if (lib.smart) props.push(...smartProps(p), ["Längd m", placeR3(Number(p.L) || 0)], ["Bredd m", placeR3(Number(p.B) || 0)], ["Vridning grader", Number(p.rot) || 0]);
     else if (lib.crew) props.push(["Entreprenör", lib.contractor || ""], ["Antal personer (YA)", Number(p.count) || 1], ["Gäller datum", typeof smDateText === "function" ? smDateText(p) : ""], ["Område", typeof crewArea === "function" ? crewArea(p) : ""], ["Aktivitet på skylten", typeof crewActivity === "function" ? crewActivity(p) : ""], ["Kommentar", p.comment || ""], ["Vridning grader", Number(p.rot) || 0]);
+    else if (lib.mod && typeof modProps === "function") props.push(...modProps(p));
     else if (!lib.fence) props.push(["Längd m", placeR3(Number(p.L) || 0)], ["Bredd m", placeR3(Number(p.B) || 0)], ["Vridning grader", Number(p.rot) || 0]);
     else props.push(["Längd m", placeR3(parts.reduce((s, pt) => s + Math.hypot(pt.poly[1][0] - pt.poly[0][0], pt.poly[1][1] - pt.poly[0][1]), 0))]);
     props.push(["Höjd m", placeR3(Number(p.H) || 0)]);

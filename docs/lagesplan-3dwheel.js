@@ -3,7 +3,7 @@
    Varje val klickar på den vanliga knappen (samma funktion som i verktygsraden). */
 const L3WH = [
   ["select", "↖", "Välj", '[data-v3tool="select"]'], ["move", "✥", "Flytta", '[data-v3tool="move"]'], ["rotate", "⟳", "Vrid", '[data-v3tool="rotate"]'], ["align", "⇥", "Rikta", '[data-v3tool="align"]'],
-  ["measure", "📏", "Mät", '[data-v3tool="measure"]'], ["multi", "▣", "Flera", "#v3Multi"], ["clip", "✂", "Snitt", "#v3ClipBtn"], ["photo", "📷", "Foto", "#v3PhotoBtn"],
+  ["measure", "📏", "Mät", '[data-v3tool="measure"]'], ["draw", "✎", "Rita", '[data-v3tool="draw"]'], ["model", "⬡", "Modellera", '[data-v3tool="model"]'], ["multi", "▣", "Flera", "#v3Multi"], ["clip", "✂", "Snitt", "#v3ClipBtn"], ["photo", "📷", "Foto", "#v3PhotoBtn"],
   ["walk", "🚶", "Gå runt", '[data-v3view="walk"]'], ["mont", "🏗", "Montage", '[data-v3view="mont"]'], ["top", "⬒", "Uppifrån", '[data-v3view="top"]'], ["undo", "↶", "Ångra", "#v3Undo"],
 ];
 const l3wh = { el: null, x: 0, y: 0, pick: null, mx: 0, my: 0, click: false };

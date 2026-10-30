@@ -43,8 +43,9 @@ function l3RenderSnapBar() {
     pop.innerHTML = `<div class="v3-pop-l">Fäst mot</div>` + rows.map(([k, label, title]) => `<button type="button" data-snapk="${k}" class="v3-snaprow ${s[k] ? "on" : ""}" title="${title}" role="switch" aria-checked="${!!s[k]}"><span>${label}</span><i></i></button>${k === "grid" ? `<label class="v3-snapstep">Steg <select id="v3GridStep" title="Rutnätets steg">${[0.1, 0.5, 1, 2, 5, 10].map(v => `<option value="${v}" ${Number(s.gstep) === v ? "selected" : ""}>${String(v).replace(".", ",")} m</option>`).join("")}</select></label>` : ""}`).join("");
   }
   const tool = (l3.tool === "move" ? `<label class="v3-chk" title="Kopiera i stället för att flytta (tryck Ctrl)"><input type="checkbox" id="v3CopyMode" ${l3t.copyMode ? "checked" : ""} /> Kopia</label>` : "")
+    + (l3.tool === "draw" || l3.tool === "model" ? l3dwBarHtml() : "")
     + (l3.tool === "measure" ? `<div class="v3-segs">${[["smart", "Smart"], ["point", "Punkt"], ["dist", "Avstånd"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : "");
-  bar.innerHTML = tool; bar.style.display = tool ? "" : "none"; host.style.setProperty("--v3-tb", tool ? Math.round(bar.offsetHeight + 8) + "px" : "0px"); // Originalvy/Layout-banner ligger under mätfältet
+  bar.innerHTML = tool; if (typeof l3dwBarBind === "function") l3dwBarBind(bar); bar.style.display = tool ? "" : "none"; host.style.setProperty("--v3-tb", tool ? Math.round(bar.offsetHeight + 8) + "px" : "0px"); // Originalvy/Layout-banner ligger under mätfältet
   if (typeof l3mBindBar === "function") l3mBindBar(bar); if (tool) requestAnimationFrame(() => host.style.setProperty("--v3-tb", Math.round(bar.offsetHeight + 8) + "px"));
   if (pop) pop.querySelectorAll("[data-snapk]").forEach(x => { x.onclick = () => l3ToggleSnap(x.dataset.snapk); });
   if (pop) pop.querySelector("#v3GridStep").onchange = e => { const v = { ...l3Snaps(), gstep: Number(e.target.value) }; l3SetPref("snaps", v); };
@@ -86,9 +87,12 @@ const L3_TOOL_START = {
   rotate: "Vrid: tryck på vridpunkten (markera objektet först, eller tryck på det).",
   align: "Rikta: tryck på första punkten på objektets kant.",
   measure: "Mät: tryck på första punkten (fäster mot hörn och kanter).",
+  draw: "Rita: välj figur i fältet ovan, tryck första punkten. Skriv mått och Enter, Esc avbryter.",
+  model: "Modellera: välj Push/Pull eller Offset och tryck på en yta.",
   select: "",
 };
 function l3SetTool(t) {
+  if (typeof l3dwSwitch === "function") l3dwSwitch(t);
   l3ToolCancel();
   // Ett påbörjat snitt (saxen) avbryts när man byter verktyg (Victor 2026-10-10: "låg kvar fast jag bytte till flytta").
   if (l3.clipPick) { l3.clipPick = false; l3.renderer.domElement.style.cursor = ""; }
@@ -398,6 +402,7 @@ function l3ToolTargets(s, e) {
 // ---------------------------------------------------------------------
 function l3ToolHover(e) {
   l3Clear(l3.groups.tmp);
+  if (typeof l3dwOn === "function" && l3dwOn() && l3dwHover(e)) { l3Render(); return; } // Rita / Modellera
   if (typeof l3dToolHover === "function" && l3dToolHover(e)) { l3Render(); return; }
   const t = l3.tool, st = l3t.step;
   if (l3.addType || l3.vPick || l3.clipPick) { l3ShowMarker(l3Snap(e)); l3Render(); return; }
@@ -491,6 +496,7 @@ function l3SnapAngle(deg, s) {
 function l3ToolTap(e) {
   if (typeof l3dToolTap === "function" && l3dToolTap(e)) return true; // DXF-redigering: Flytta/Vrid gäller linjerna
   if (typeof l3volTap === "function" && l3volTap(e)) return true; // Volym: nivå från en punkt / panelen är öppen
+  if (typeof l3dwOn === "function" && l3dwOn() && l3dwTap(e)) return true; // Rita / Modellera
   const t = l3.tool, st = l3t.step;
   // Volym: höjden från en yta i modellen (efter att basytan ritats).
   if (t === "measure" && l3t.volPick) { const s = l3Snap(e); if (s) l3VolFinish(l3t.volPick, s.point.z - l3t.volPick.z0, true); return true; }
@@ -787,7 +793,7 @@ function l3ToolKey(e) {
     if (l3.tool !== "select") { l3SetTool("select"); return true; }
     return false;
   }
-  const map = { m: "move", q: "rotate", a: "align", t: "measure", " ": "select" };
+  const map = { m: "move", q: "rotate", a: "align", t: "measure", d: "draw", x: "model", " ": "select" };
   if (map[k.toLowerCase()] && !typing) { l3SetTool(map[k.toLowerCase()]); e.preventDefault(); return true; }
   return false;
 }

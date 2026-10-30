@@ -34,7 +34,7 @@ function l3HandleDefs(p) {
     }
     return out.concat(l3SbHandles(p));
   }
-  if (lib.isModel) return [];
+  if (lib.isModel || lib.mod) return [];
   const t = (Number(p.rot) || 0) * Math.PI / 180, u = new THREE.Vector3(Math.cos(t), Math.sin(t), 0), v = new THREE.Vector3(-Math.sin(t), Math.cos(t), 0);
   const L = Number(p.L) || 0, B = Number(p.B) || 0, H = Number(p.H) || 0;
   const c = new THREE.Vector3(p.x - O[0], p.y - O[1], z0), mid = c.clone().add(new THREE.Vector3(0, 0, H / 2));

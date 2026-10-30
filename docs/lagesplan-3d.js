@@ -43,6 +43,8 @@ const L3_ICO = (() => {
     focus: s('<circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>'),
     scissors: s('<circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12"/>'),
     search: s('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>'),
+    pen: s('<path d="M4 19l6-9 4 5 6-10"/><circle cx="4" cy="19" r="1.6"/><circle cx="20" cy="5" r="1.6"/>'),
+    model: s('<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/><path d="M12 3v5" stroke-dasharray="2 2"/>'),
     edit: s('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
     building: s('<path d="M4 21V5l8-3 8 3v16"/><path d="M9 21v-5h6v5M8 8h2M14 8h2M8 12h2M14 12h2"/>'),
   };
@@ -218,6 +220,8 @@ function l3Dom() {
         ${tool("rotate", I.rotate, "Vrid", "Q", "Vrid: vridpunkt, utgångsriktning, ny riktning. Fäster var 15:e grad – skriv en vinkel och Enter")}
         ${tool("align", I.align, "Rikta", "A", "Rikta kant mot kant: två punkter på objektets kant, sedan två på kanten det ska ligga mot")}
         ${tool("measure", I.measure, "Mät", "T", "Mät avstånd mellan två punkter (fäster mot hörn och kanter)")}
+        ${tool("draw", I.pen, "Rita", "D", "Rita linjer, rektanglar, cirklar, bågar och polygoner direkt i 3D – skriv mått och Enter")}
+        ${tool("model", I.model, "Modellera", "X", "Push/Pull och Offset på ritade ytor och på ytor i modellen")}
         <button type="button" id="v3Multi" class="v3-multi" aria-pressed="false" title="Markera flera: varje tryck lägger till eller tar bort objekt (samma som Skift/Ctrl)">${I.multi}<span>Flera</span></button>
       </div>
       <div class="v3-seg">
@@ -854,6 +858,7 @@ function l3PlacementGroup(p) {
     if ((lib.crew || lib.smart) && typeof smEditorBuild === "function") { // bemanningen och de smarta objekten: PBR-material och texturskyltar (place-smart.js)
       smEditorBuild(p, grp, placeParts(local, 48));
     } else placeParts(local, 48).forEach(pt => { const m = add(pt.tris ? crewTrisGeometry(pt.tris, [0, 0, 0]) : prism(pt.poly, pt.z0, pt.z1), pt.color || p.color || lib.color || "#888888", pt.transp || 0); if (pt.role === "reach") m.userData.noHit = true; }); // räckvidden går inte att träffa (fästa, ställa på, markera)
+    if (lib.mod && typeof modEditorExtras === "function") modEditorExtras(p, grp); // konturer och linjer för ritad geometri
     if (lib.fence && (p.pts || []).length === 1) add(prism([[-0.05, -0.05], [0.05, -0.05], [0.05, 0.05], [-0.05, 0.05]], 0, Number(p.H) || 2), p.color || lib.color, 0);
   }
   grp.position.set(p.x - l3.O[0], p.y - l3.O[1], z - l3.O[2]);
@@ -1416,7 +1421,8 @@ function l3RenderSide(liveOnly) {
     <div class="v3-sub v3-ztop" title="Modellens koordinater: SWEREF 99 20 15 och modellens höjdsystem">${l3ZText(p)}</div>
     ${lib.fence ? "" : `<div class="v3-handles"><span>Handtag</span><button type="button" data-v3mode="translate" title="Pilar för att flytta (W)">↔ Flytta</button><button type="button" data-v3mode="rotate" title="Ring för att vrida (E)">⟳ Vrid</button></div>`}
     ${lib.crew && typeof crewSideHtml === "function" ? crewSideHtml(p) : ""}${lib.smart && typeof smartSideHtml === "function" ? smartSideHtml(p) : ""}
-    ${lib.smart && typeof smDef === "function" && (smDef(p) || {}).noDims ? "" : `<div class="v3-sec">Mått</div>
+    ${lib.mod && typeof modSideHtml === "function" ? modSideHtml(p) : ""}
+    ${lib.mod || (lib.smart && typeof smDef === "function" && (smDef(p) || {}).noDims) ? "" : `<div class="v3-sec">Mått</div>
     <div class="v3-grid">${lib.isModel ? (A && A.kind === "mesh" ? f("mH", "Höjd", "0.1", mH) : `<div class="v3-sub">${typeof placeModelDims === "function" ? escHtml(placeModelDims(p)) : ""}</div>`) : lib.fence ? f("H", "Höjd") : f("L", "Längd") + f("B", "Bredd") + f("H", "Höjd")}
       ${lib.R ? f("R", "Räckvidd", "1") : ""}</div>`}
     ${!lib.isModel ? `<div class="v3-sec">Utseende</div><div class="v3-look"><label class="v3-look-c"><span>Färg</span><input type="color" data-v3f="color" value="${col}" /></label>
@@ -1464,6 +1470,7 @@ function l3RenderSide(liveOnly) {
   if (lib.crew && typeof crewBindSide === "function") crewBindSide(side, p, () => { l3RebuildOne(p); l3Changed(); side.dataset.id = ""; const act = document.activeElement; l3RenderSide(); });
   side.querySelectorAll("[data-v3mode]").forEach(b => { b.classList.toggle("on", b.dataset.v3mode === l3.gizmo.mode); b.onclick = () => l3Mode(b.dataset.v3mode); });
   if (typeof l3rpBind === "function") l3rpBind(side, [p]);
+  if (lib.mod && typeof modSideBind === "function") modSideBind(side, p);
   side.querySelector("#v3Drop").onclick = l3DropSel;
   side.querySelector("#v3Copy").onclick = l3DuplicateSel;
   side.querySelector("#v3Focus").onclick = () => l3View("sel");
@@ -1673,6 +1680,7 @@ function l3Key(e) {
   // Delete raderar markerade kopior av modellobjekt (Victor 2026-10-12).
   if ((e.key === "Delete" || e.key === "Backspace") && !l3.sel.size && typeof l3bs !== "undefined" && l3bs.sel.length && typeof l3bmCopyDelete === "function" && !(typeof l3bm !== "undefined" && l3bm.session)) { e.preventDefault(); l3bmCopyDelete(); return; }
   if (mod && k === "b" && l3PalToggle) { e.preventDefault(); l3PalToggle(); return; } // visa/dölj vänstermenyn
+  if (typeof l3dwKey === "function" && l3dwKey(e)) return; // Rita / Modellera
   if (typeof l3dKey === "function" && l3dKey(e)) return; // DXF-redigering
   if (typeof l3DialogKey === "function" && l3DialogKey(e)) return;
   if (l3.vPick && e.key === "Escape") { l3.vPick = false; l3.renderer.domElement.style.cursor = ""; l3Status(""); return; }
