@@ -107,6 +107,7 @@ function placeParts(p, ringN = 48) {
     const k = placeScale(p), b = a.bbox;
     return [{ poly: placeRect(p, b.min[0] * k, b.max[0] * k, b.min[1] * k, b.max[1] * k), z0: z + b.min[2] * k, z1: z + b.max[2] * k, role: "body", transp: 0 }];
   }
+  if ((p.type === "staket" || p.type === "barriar") && typeof detLegacy === "function") { const dp = detLegacy(p, z); if (dp) return dp; }   // gamla Staket och Barriär ritas som de smarta (place-detail.js)
   if (lib.fence) {
     const P = p.pts || [];
     const parts = [];

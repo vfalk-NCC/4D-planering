@@ -278,3 +278,13 @@ function detSideBind(side, p, redraw) {
     c.box("#4b5563", 0, 0.1, 1.18, 0.5, 0.05, 0.03, null, 0.008, DET_M);                                                                                                         // konsol
   };
 })();
+
+/* Gamla Staket och Barriär (dolda i biblioteket men kvar i äldre projekt) ritas som de smarta varianterna: stolpar, nät och fotplattor respektive betongprofil med reflexer. */
+function detLegacy(p, z) {
+  if (typeof smartParts !== "function" || typeof SM === "undefined") return null;
+  try {
+    const q = { ...p, type: p.type === "staket" ? "sm:staket2" : "sm:barriar2", f: p.f || {} };
+    if (p.type === "barriar") { q.L = Number(p.L) || 4; q.H = Number(p.H) || 0.8; if (!(q.B > 0)) q.B = 0.6; if (!p.color || p.color === "#9ca3af") q.color = undefined; } else if (!p.color || p.color === "#16a34a") q.color = undefined;
+    const r = smartParts(q, z); return r && r.length ? r : null;
+  } catch (e) { console.warn("Äldre staket/barriär", e); return null; }
+}
