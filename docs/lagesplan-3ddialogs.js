@@ -270,6 +270,7 @@ function l3RenderMultiSide(side, list) {
   side.dataset.id = "multi:" + list.map(p => p.id).join(",");
   side.innerHTML = `<div class="v3-side-h"><b>${list.length} objekt markerade</b><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3Deselect" title="Avmarkera (Esc)">✕</button></div>
     <div class="v3-sub">${escHtml([...new Set(list.map(p => (placeLib(p.type) || {}).label || p.type))].join(", "))}</div>
+    ${typeof l3rpHtml === "function" ? l3rpHtml(list) : ""}
     <div class="v3-sec">Egenskaper – kryssa i det som ska ändras</div>
     <div class="v3-me-list">${fields.map(row).join("")}</div>
     <div class="v3-me-act"><button type="button" class="v3-primary" id="v3MeApply">Ändra</button><button type="button" id="v3MeAll" title="Kryssa i/ur alla">Alla</button></div>
@@ -282,6 +283,7 @@ function l3RenderMultiSide(side, list) {
     inp.oninput = on; inp.onchange = on;
   });
   side.querySelector("#v3MeAll").onclick = () => { const cbs = [...side.querySelectorAll("[data-mec]")], all = cbs.every(c => c.checked); cbs.forEach(c => { c.checked = !all; }); };
+  if (typeof l3rpBind === "function") l3rpBind(side, list);
   side.querySelector("#v3MeApply").onclick = () => {
     const ch = [...side.querySelectorAll("[data-mec]")].filter(c => c.checked).map(c => c.dataset.mec);
     if (!ch.length) { l3Status("Kryssa i de fält som ska ändras."); return; }

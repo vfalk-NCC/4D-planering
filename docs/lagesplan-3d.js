@@ -1410,6 +1410,7 @@ function l3RenderSide(liveOnly) {
   const col = p.color || lib.color || "#888888";
   side.innerHTML = `<div class="v3-side-h"><i class="v3-chip" style="background:${col}"></i><input type="text" class="v3-name" data-v3f="name" value="${escHtml(p.name || "")}" title="Namn" /><button type="button" class="v3-side-lock ${p.locked ? "on" : ""}" id="v3SideLock" title="${p.locked ? "Låst på plats – tryck för att låsa upp" : "Lås objektet på plats"}">${typeof L3UI_ICO !== "undefined" ? (p.locked ? L3UI_ICO.lock : L3UI_ICO.unlock) : "🔒"}</button><button type="button" class="v3-side-min" title="Fäll ihop/ut panelen">▾</button><button type="button" class="v3-x" id="v3Deselect" title="Avmarkera (Esc)">✕</button></div>
     <div class="v3-sub">${escHtml(lib.label || p.type)}${A && A.author ? ` · ${escHtml(A.author)}` : ""}${A && A.kind === "ifc" && !placeMeshCache.has(A.id) ? " · IFC (läses in…)" : ""}</div>
+    ${typeof l3rpHtml === "function" ? l3rpHtml([p]) : ""}
     <div class="v3-sec">Läge</div>
     <div class="v3-grid">${f("x", "X")}${f("y", "Y")}${f("zAbs", "Z underkant", "0.01", placeBaseZ(p))}${f("dz", "Över ytan")}${lib.fence ? "" : f("rot", "Vridning", "1", p.rot, "°")}</div>
     <div class="v3-sub v3-ztop" title="Modellens koordinater: SWEREF 99 20 15 och modellens höjdsystem">${l3ZText(p)}</div>
@@ -1462,6 +1463,7 @@ function l3RenderSide(liveOnly) {
   if (lib.smart && typeof smartBindSide === "function") smartBindSide(side, p, () => { l3RebuildOne(p); l3Changed(); side.dataset.id = ""; l3RenderSide(); });
   if (lib.crew && typeof crewBindSide === "function") crewBindSide(side, p, () => { l3RebuildOne(p); l3Changed(); side.dataset.id = ""; const act = document.activeElement; l3RenderSide(); });
   side.querySelectorAll("[data-v3mode]").forEach(b => { b.classList.toggle("on", b.dataset.v3mode === l3.gizmo.mode); b.onclick = () => l3Mode(b.dataset.v3mode); });
+  if (typeof l3rpBind === "function") l3rpBind(side, [p]);
   side.querySelector("#v3Drop").onclick = l3DropSel;
   side.querySelector("#v3Copy").onclick = l3DuplicateSel;
   side.querySelector("#v3Focus").onclick = () => l3View("sel");
