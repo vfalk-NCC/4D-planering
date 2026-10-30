@@ -80,18 +80,22 @@ function l3dwLineParam(e, o, n) {
 
 /* ---- Hover och tryck för Modellera ---- */
 function l3dwModelHover(e, m) {
+  if (typeof L3DX_MODES !== "undefined" && L3DX_MODES.has(m)) return l3dxHover(e, m);
   if (m === "pushpull") return l3dwPPHover(e);
   if (m === "offset") return l3dwOffHover(e);
   return true;
 }
 function l3dwModelTap(e, m) {
+  if (typeof L3DX_MODES !== "undefined" && L3DX_MODES.has(m)) return l3dxTap(e, m);
   if (m === "pushpull") return l3dwPPTap(e);
   if (m === "offset") return l3dwOffTap(e);
   return true;
 }
 function l3dwModelEnter(typed) {
   const op = l3dw.op; if (!op) return;
+  if (String(op.type).startsWith("x")) return l3dxEnter();
   if (!typed.length || !Number.isFinite(typed[0])) { l3dw.vcb = ""; return; }
+  if (String(op.type).startsWith("x")) return;
   if (op.type === "pp") l3dwPPCommit(typed[0]); else if (op.type === "off") l3dwOffCommit(typed[0] * (op.side || 1));
 }
 function l3dwModelRefresh() { if (l3dw.ev) l3dwModelHover(l3dw.ev, l3dwMode()); }
@@ -237,7 +241,7 @@ function l3dwBarHtml() {
   const unit = `<button type="button" class="v3-dwunit" data-dwunit title="Enhet för siffror utan enhet (skriv mm, cm eller m efter siffran för att välja själv)">${l3dwPref("unit")}</button>`;
   const sides = m === "polygon" ? `<label class="v3-dwsides" title="Antal sidor"><input type="number" min="3" max="64" value="${l3dwPref("sides")}" data-dwsides /> sidor</label>` : "";
   const exp = `<button type="button" data-dwexp title="Exportera alla ritade objekt som DXF">DXF</button>`;
-  return `<div class="v3-segs v3-dwmodes">${segs}</div>${planes}${sides}${unit}${exp}`;
+  return `<div class="v3-segs v3-dwmodes">${segs}</div>${planes}${sides}${unit}${exp}${typeof l3dxBarHtml === "function" ? l3dxBarHtml() : ""}`;
 }
 function l3dwBarBind(bar) {
   if (!l3dwOn()) return;
@@ -246,5 +250,6 @@ function l3dwBarBind(bar) {
   const u = bar.querySelector("[data-dwunit]"); if (u) u.onclick = () => { l3dwSet("unit", l3dwPref("unit") === "mm" ? "m" : "mm"); l3RenderSnapBar(); };
   const s = bar.querySelector("[data-dwsides]"); if (s) { s.onchange = () => { l3dwSet("sides", Math.max(3, Math.min(64, Number(s.value) || 6))); l3dwHint(); }; s.onkeydown = ev => ev.stopPropagation(); }
   const x = bar.querySelector("[data-dwexp]"); if (x) x.onclick = () => modExportDxf(null);
+  if (typeof l3dxBarBind === "function") l3dxBarBind(bar);
   if (l3dwMode() === "free") l3dwFreeInit();
 }

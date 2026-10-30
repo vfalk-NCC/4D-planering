@@ -91,7 +91,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // Egen yta: klicka ut en sluttande yta (0 m i söder, 4 m i norr) och mät modellens ovansida (2 m) mot den → schakt ≈ 50, fyllning ≈ 50.
   await page.evaluate(lo => { const m = l3m.list.find(x => x.kind === 'cutfill'); l3volEdit(m); }, lo);
   await page.waitForSelector('#v3VolPanel [data-vb="surf"]');
-  await page.click('#v3VolPanel [data-vb="surf"]');
+  await page.click('#v3VolPanel .v3-vq-more summary'); await page.click('#v3VolPanel [data-vb="surf"]');
   await page.evaluate(lo => { const O = l3.O; l3t.mp = [[8, 8, 0], [18, 8, 0], [18, 18, 4], [8, 18, 4]].map(([x, y, z]) => new THREE.Vector3(lo[0] + x - O[0], lo[1] + y - O[1], lo[2] + z - O[2])); l3t.mpObjs = []; l3VolBase(); }, lo);
   await page.waitForFunction(() => l3vol.cur && l3vol.cur.spec.b.k === 'surf' && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 }); await page.waitForTimeout(400);
   q = await page.evaluate(() => ({ cut: l3vol.cur.res.cut, fill: l3vol.cur.res.fill, label: l3volLabel(l3vol.cur, l3vol.cur.spec.b), id: l3vol.cur.id }));

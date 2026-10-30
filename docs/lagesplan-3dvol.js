@@ -335,31 +335,39 @@ function l3volPanel() {
   if (!el) { el = document.createElement("div"); el.id = "v3VolPanel"; el.className = "v3-vp"; host.appendChild(el); ["pointerdown", "wheel", "contextmenu", "dblclick", "click", "keydown", "keyup"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); }
   const esc = typeof escHtml === "function" ? escHtml : s => String(s), srcs = l3volSources(c), r = c.res, n = c.pts.length, area = l3volArea(c.pts);
   const opt = (s, v) => `<option value="${esc(s.k)}" ${v === s.k ? "selected" : ""}>${esc(s.label)}</option>`;
-  const side = (key, sp) => { const o = srcs.find(x => x.k === sp.k); return o && o.sided ? `<select data-vs="${key}" title="Vilken sida av modellen som mäts"><option value="top" ${sp.side !== "bottom" ? "selected" : ""}>Ovansida</option><option value="bottom" ${sp.side === "bottom" ? "selected" : ""}>Undersida</option></select>` : sp.k === "level" ? `<input type="text" inputmode="decimal" data-vz="${key}" value="${Number.isFinite(sp.z) ? String(sp.z).replace(".", ",") : ""}" placeholder="hörnens medel" title="Höjd (m) – lämna tomt för hörnens medelhöjd"><button type="button" data-vpick="${key}" title="Tryck på en punkt i modellen – dess höjd blir nivån">Välj i modellen</button>` : ""; };
-  const row = (key, label, sp, hint) => `<div class="v3-vp-r"><span title="${esc(hint)}">${label}</span><select data-vk="${key}">${srcs.map(s => opt(s, sp.k)).join("")}</select>${side(key, sp)}</div>`;
+  const side = (key, sp) => { const o = srcs.find(x => x.k === sp.k); return o && o.sided ? `<select class="sm" data-vs="${key}" title="Vilken sida av modellen som mäts"><option value="top" ${sp.side !== "bottom" ? "selected" : ""}>Ovansida</option><option value="bottom" ${sp.side === "bottom" ? "selected" : ""}>Undersida</option></select>` : sp.k === "level" ? `<input class="sm" type="text" inputmode="decimal" data-vz="${key}" value="${Number.isFinite(sp.z) ? String(sp.z).replace(".", ",") : ""}" placeholder="medel" title="Höjd (m) – tomt = hörnens medelhöjd"><button type="button" class="ic" data-vpick="${key}" title="Tryck på en punkt i modellen – dess höjd blir nivån">⌖</button>` : ""; };
+  const row = (key, label, sp, hint) => `<div class="v3-vq-r"><div class="v3-vq-l" title="${esc(hint)}"><i class="${key}"></i>${label}</div><div class="v3-vq-in"><select data-vk="${key}">${srcs.map(s => opt(s, sp.k)).join("")}</select>${side(key, sp)}</div></div>`;
+  const cellTxt = Number(c.spec.cell) > 0 ? String(c.spec.cell).replace(".", ",") + " m" : "Auto" + (r ? " (" + String(r.cell).replace(".", ",") + " m)" : "");
+  const trTxt = r && r.tris ? ` (${r.tris.toLocaleString("sv-SE").replace(/[  ]/g, " ")} tr.)` : "";
   const res = r ? `<div class="v3-vp-res">
       <div class="cut"><i></i><span>Schakt</span><b>−${l3volM3(r.cut)}</b></div><div class="fill"><i></i><span>Fyllning</span><b>+${l3volM3(r.fill)}</b></div>
-      <div class="net"><span>Netto</span><b>${l3volSg(r.net, "+")}</b><em>${Math.round(r.net) > 0 ? "överskott" : Math.round(r.net) < 0 ? "underskott" : "balans"}</em></div>
+      <div class="net"><span>Netto · ${Math.round(r.net) > 0 ? "överskott" : Math.round(r.net) < 0 ? "underskott" : "balans"}</span><b>${l3volSg(r.net, "+")}</b></div>
       <div class="sub"><span>Yta i plan</span><b>${l3Fmt(area, 1)} m²</b></div>
     </div>
-    <div class="v3-vp-t">Schakt = ytan som mäts ligger <b>lägre</b> än "Mot". Fyllning = <b>högre</b>. Rutstorlek ${String(r.cell).replace(".", ",")} m · ${l3Fmt(r.mx, 2)} m över / ${l3Fmt(-r.mn, 2)} m under${r.areaMiss > 0.5 ? ` · <span class="warn">${l3Fmt(r.areaMiss, 1)} m² saknar höjd och räknas inte</span>` : ""}</div>` : c.err ? `<div class="v3-vp-e">${esc(c.err)}</div>` : `<div class="v3-vp-t">${c.busy || "Välj vad som ska mätas mot vad."}</div>`;
+    ${r.areaMiss > 0.5 ? `<div class="v3-vq-note">⚠ ${l3Fmt(r.areaMiss, 1)} m² saknar höjd och räknas inte</div>` : ""}
+    <div class="v3-vp-t">Schakt = ytan som mäts ligger <b>lägre</b> än "Mot", fyllning = <b>högre</b>. Störst skillnad ${l3Fmt(r.mx, 2)} m över / ${l3Fmt(-r.mn, 2)} m under.</div>` : c.err ? `<div class="v3-vp-e">${esc(c.err)}</div>` : `<div class="v3-vp-t">${c.busy || "Välj vad som ska mätas mot vad."}</div>`;
+  const noSrc = !srcs.some(s => /^(pc|md|cad):/.test(s.k));
+  el.classList.toggle("col", !!l3Prefs().vpCol);
   const ae = document.activeElement;
   if (el.innerHTML && ae && ae.dataset && ae.dataset.vc !== undefined && el.contains(ae)) { // slidern dras – bara resultatet byts, annars avbryts draget
-    const box = el.querySelector("[data-vres]"); if (box) box.innerHTML = res; const lab = el.querySelector("[data-vcl]"); if (lab && r && !(Number(c.spec.cell) > 0)) lab.textContent = `Auto (${String(r.cell).replace(".", ",")} m)`;
-    const wl = el.querySelector("[data-vwire]"); if (wl && wl.parentNode) wl.parentNode.lastChild.textContent = ` Visa triangulering${r && r.tris ? ` (${r.tris.toLocaleString("sv-SE").replace(/[\u00a0\u202f]/g, " ")} tr.)` : ""}`; return;
+    const box = el.querySelector("[data-vres]"); if (box) box.innerHTML = res; const lab = el.querySelector("[data-vcl]"); if (lab) lab.textContent = cellTxt;
+    const wl = el.querySelector("[data-vtri]"); if (wl) wl.textContent = trTxt; return;
   }
-  const noSrc = !srcs.some(s => /^(pc|md|cad):/.test(s.k));
-  el.innerHTML = `<div class="v3-vp-h"><b>Volym</b><span>${l3Fmt(area, 1)} m² · ${n} hörn</span><button type="button" data-vb="x" title="Stäng (Esc)">✕</button></div>
+  const sw = (key, on, label, tip) => `<label class="v3-vq-sw" title="${esc(tip)}"><span>${label}<em data-vtri-${key}></em></span><input type="checkbox" data-${key} ${on ? "checked" : ""}><b></b></label>`;
+  el.innerHTML = `<div class="v3-vp-h"><button type="button" data-vb="col" class="tg" title="Fäll ihop / fäll ut">${l3Prefs().vpCol ? "▸" : "▾"}</button><b>Volym</b><span>${r && l3Prefs().vpCol ? `Netto ${l3volSg(r.net, "+")}` : `${l3Fmt(area, 1)} m² · ${n} hörn`}</span><button type="button" data-vb="undo" title="Ta bort områdets sista hörn" ${n > 3 ? "" : "disabled"}>↶ Ångra punkt</button><button type="button" data-vb="restart" title="Rita området från början">⟲ Börja om</button><button type="button" data-vb="x" title="Stäng (Esc)">✕</button></div>
     ${noSrc ? `<div class="v3-vp-t warn">Tänd ett punktmoln eller en 3D-modell (Lager) om något ska mätas mot ytan. Plan och nivå går att använda utan.</div>` : ""}
-    ${row("a", "Yta som mäts", c.spec.a, "Den yta vars volym mot den andra mäts, t.ex. punktmolnet över schaktgropen")}
-    ${row("b", "Mot", c.spec.b, "Jämförelseytan: en modell, ett annat punktmoln, ett plan, en nivå eller en yta du klickat ut")}
-    <div class="v3-vp-l"><button type="button" data-vb="swap" title="Byt plats på ytorna – schakt blir fyllning och tvärtom">⇅ Byt</button><button type="button" data-vb="surf" title="Tryck ut hörnen på en egen yta (t.ex. projekterad botten eller släntkant) – hörnens höjder bestämmer ytan">Klicka ut egen yta…</button><button type="button" data-vb="redraw" title="Rita om området">Rita om området</button><button type="button" data-vb="prism" title="Enkel volym: områdets yta × en höjd du skriver, eller höjden upp till en yta du trycker på">Enkel höjdvolym…</button>
-      <label class="v3-vp-chk" title="Noggrannhet: rutstorlek för ytan. Mindre ruta = fler trianglar och mer detalj. Räknas om direkt när du drar."><span>Noggrannhet</span><input type="range" min="0" max="${L3VOL_STEPS.length}" step="1" value="${Math.max(0, L3VOL_STEPS.indexOf(Number(c.spec.cell)) + 1)}" data-vc><em data-vcl>${Number(c.spec.cell) > 0 ? String(c.spec.cell).replace(".", ",") + " m" : "Auto" + (r ? " (" + String(r.cell).replace(".", ",") + " m)" : "")}</em></label>
-      <label class="v3-vp-chk" title="Visa trianglarna som ytan och volymen är byggda av"><input type="checkbox" data-vwire ${l3Prefs().volWire ? "checked" : ""}> Visa triangulering${r && r.tris ? ` (${r.tris.toLocaleString("sv-SE").replace(/[\u00a0\u202f]/g, " ")} tr.)` : ""}</label></div>
+    <div class="v3-vq-src">${row("a", "Yta som mäts", c.spec.a, "Den yta vars volym mot den andra mäts, t.ex. punktmolnet över schaktgropen")}<button type="button" class="v3-vq-swap" data-vb="swap" title="Byt plats på ytorna – schakt blir fyllning och tvärtom">⇅</button>${row("b", "Mot", c.spec.b, "Jämförelseytan: en modell, ett annat punktmoln, ett plan, en nivå eller en yta du klickat ut")}</div>
     <div data-vres>${res}</div>
-    <div class="v3-vp-b"><button type="button" class="primary" data-vb="save" ${r ? "" : "disabled"}>${c.id ? "Uppdatera måttet" : "Spara som mått"}</button><button type="button" data-vb="ifc" ${r ? "" : "disabled"} title="Området, schakt- och fyllningskropparna som 3D-objekt i en IFC-fil (Trimble Connect eller nedladdning)">Exportera IFC</button><button type="button" data-vb="copy" ${r ? "" : "disabled"}>Kopiera</button>
-      <label class="v3-vp-chk" title="Skylt med volymtexten i IFC-filen (volymerna ligger alltid som egenskaper)"><input type="checkbox" data-vtext ${l3Prefs().volExpText !== false ? "checked" : ""}> Volymtext i IFC</label>
-      <label class="v3-vp-chk" title="Hur genomskinliga kropparna är"><span>Syns</span><input type="range" min="0.15" max="1" step="0.05" value="${Number(l3Prefs().volOpacity) || 0.62}" data-vop></label></div>`;
+    <div class="v3-vq-set">
+      <div class="v3-vq-sl" title="Rutstorlek för ytan. Mindre ruta = fler trianglar och mer detalj. Räknas om direkt när du drar."><span>Noggrannhet</span><input type="range" min="0" max="${L3VOL_STEPS.length}" step="1" value="${Math.max(0, L3VOL_STEPS.indexOf(Number(c.spec.cell)) + 1)}" data-vc><em data-vcl>${cellTxt}</em></div>
+      ${sw("vwire", !!l3Prefs().volWire, "Visa triangulering", "Visa trianglarna som ytan och volymen är byggda av").replace("data-vtri-vwire", "data-vtri")}
+      ${sw("vtext", l3Prefs().volExpText !== false, "Volymtext i IFC", "Skylt med volymtexten i IFC-filen (volymerna ligger alltid som egenskaper)")}
+      <div class="v3-vq-sl" title="Hur genomskinliga kropparna är"><span>Syns</span><input type="range" min="0.15" max="1" step="0.05" value="${Number(l3Prefs().volOpacity) || 0.62}" data-vop><em></em></div>
+    </div>
+    <div class="v3-vq-foot"><button type="button" class="primary" data-vb="save" ${r ? "" : "disabled"}>${c.id ? "Uppdatera måttet" : "Spara som mått"}</button><button type="button" data-vb="ifc" ${r ? "" : "disabled"} title="Området, schakt- och fyllningskropparna som 3D-objekt i en IFC-fil (Trimble Connect eller nedladdning)">Exportera IFC</button>
+      <details class="v3-vq-more"><summary title="Fler val">⋯</summary><div><button type="button" data-vb="copy" disabled>Kopiera resultatet</button><button type="button" data-vb="surf" title="Tryck ut hörnen på en egen yta (t.ex. projekterad botten eller släntkant) – hörnens höjder bestämmer ytan">Klicka ut egen yta…</button><button type="button" data-vb="redraw" title="Rita om området">Rita om området</button><button type="button" data-vb="prism" title="Enkel volym: områdets yta × en höjd du skriver, eller höjden upp till en yta du trycker på">Enkel höjdvolym…</button></div></details></div>`;
+  const tl = el.querySelector("[data-vtri]"); if (tl) tl.textContent = trTxt;
+  { const cp = el.querySelector('[data-vb="copy"]'); if (cp && r) cp.disabled = false; }
   const q = s => el.querySelector(s), qa = s => el.querySelectorAll(s);
   qa("select[data-vk]").forEach(s => { s.onchange = () => { const k = s.dataset.vk, sp = c.spec[k]; sp.k = s.value; l3volPanel(); l3volSchedule(); }; });
   qa("select[data-vs]").forEach(s => { s.onchange = () => { c.spec[s.dataset.vs].side = s.value; l3volSchedule(); }; });
@@ -369,10 +377,13 @@ function l3volPanel() {
   const wi = q("input[data-vwire]"); if (wi) wi.onchange = () => { l3SetPref("volWire", wi.checked); l3volDraw(); l3mDraw(); };
   const on = (k, fn) => qa(`[data-vb="${k}"]`).forEach(b => { b.onclick = fn; });
   on("x", l3volAskClose);
+  on("col", () => { l3SetPref("vpCol", !l3Prefs().vpCol); l3volPanel(); });
   on("swap", () => { const t = c.spec.a; c.spec.a = c.spec.b; c.spec.b = t; l3volPanel(); l3volSchedule(0); });
   on("surf", () => { l3vol.capture = "surf"; l3t.mp = null; l3Busy(true); l3Status("Tryck ut hörnen på ytan (varje punkts höjd räknas). Enter eller första punkten avslutar, Esc avbryter."); });
   on("redraw", () => { const was = c; l3volClose(true); l3vol.redo = was; l3t.mp = null; l3Status("Tryck ut området igen."); });
   on("prism", () => { const O = l3.O; l3t.mp = c.pts.map(p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2])); l3t.mpObjs = c.objs || []; l3volClose(true); l3VolBaseOld(); });
+  on("restart", () => { const was = c; l3volClose(true); l3vol.redo = was; l3t.mp = null; l3Busy(true); l3Status("Tryck ut området från början (Enter avslutar)."); });
+  on("undo", () => { if (c.pts.length <= 3) return; c.pts = c.pts.slice(0, -1); c.saved = false; l3volPanel(); l3volSchedule(0); });
   on("save", () => { l3volSave(); });
   on("copy", () => { const t = `${l3volText(c.res)} · netto ${l3volSg(c.res.net, "+")} · yta ${l3Fmt(area, 1)} m² · ${l3volLabel(c, c.spec.a)} mot ${l3volLabel(c, c.spec.b)}`; try { navigator.clipboard.writeText(t).then(() => l3Toast("Kopierat."), () => l3Status("Kunde inte kopiera.", true)); } catch (e) { l3Status("Kunde inte kopiera.", true); } });
   on("ifc", async function () { const b = this; b.disabled = true; try { const m = l3volSave(); if (m) await l3mExportIfc([m.id]); } catch (e) { /* statusraden */ } });

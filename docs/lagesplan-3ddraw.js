@@ -19,7 +19,7 @@ const l3dwPref = (k, d) => { const v = (l3Prefs().dw || {})[k]; return v == null
 const l3dwSet = (k, v) => { l3SetPref("dw", { ...(l3Prefs().dw || {}), [k]: v }); };
 const l3dwOn = () => !!l3 && (l3.tool === "draw" || l3.tool === "model");
 const l3dwMode = () => { const t = l3.tool, m = l3dwPref(t); return (L3DW_MODES[t] || []).some(x => x[0] === m) ? m : L3DW_DEF[t]; };
-const L3DW_IMPL = new Set(["line", "rect", "circle", "arc", "polygon", "poly", "poly3d", "free", "pushpull", "offset"]);
+const L3DW_IMPL = new Set(["line", "rect", "circle", "arc", "polygon", "poly", "poly3d", "free", "pushpull", "offset", "erase", "paint", "scale", "mirror", "follow", "intersect"]);
 const l3dwS = p => new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]);       // absolut → scen
 const l3dwA = v => [v.x + l3.O[0], v.y + l3.O[1], v.z + l3.O[2]];                          // scen → absolut
 const l3dwFmt = v => { const a = Math.abs(v); return (v < 0 ? "−" : "") + (a < 1 ? Math.round(a * 1000) + " mm" : (Math.round(a * 1000) / 1000).toString().replace(".", ",") + " m"); };
@@ -54,6 +54,12 @@ function l3dwHint(extra) {
     arc: n === 0 ? "Båge: tryck startpunkten." : n === 1 ? "Tryck slutpunkten." : "Flytta för bågens bukt och tryck – eller skriv radien och Enter.",
     free: "Frihand: håll nere musknappen och rita. Släpp för att avsluta.",
     pushpull: l3dw.op ? "Dra och tryck, eller skriv avståndet (t.ex. 1200) och Enter. Esc avbryter." : "Push/Pull: tryck på en yta och dra ut den.",
+    erase: "Radera: tryck på ett objekt – det tas bort (IFC-objekt rörs inte).",
+    paint: "Måla: välj färg i verktygsfältet och tryck på objekt.",
+    scale: l3dw.op ? "Dra för faktorn och tryck – eller skriv den (1,5 eller 150 för 150 %) och Enter." : "Skala: tryck på ett ritat objekt (skalas kring ankarpunkten).",
+    mirror: l3dw.op ? "Flytta spegelplanet och tryck. Välj axel i verktygsfältet." : "Spegla: tryck på ett ritat objekt, välj axel (X/Y/Z) i verktygsfältet.",
+    follow: l3dw.op ? "Tryck nu på banan: en linje eller en ytas kant." : "Följ banan: tryck på profilen (en yta).",
+    intersect: l3dw.op ? "Tryck på det andra objektet." : "Skär ytor: tryck på två ritade ytor eller kroppar – skärningslinjerna blir linjer.",
     offset: l3dw.op ? "Flytta för avståndet och tryck – eller skriv det och Enter." : "Offset: tryck på en yta.",
   };
   h.textContent = extra || T[m] || ""; h.style.display = h.textContent ? "" : "none";
