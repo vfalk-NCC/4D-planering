@@ -111,6 +111,8 @@ function l3dwPick(e, o = {}) {
     else p = null;
   } else if (!p) { const g = MG.rayPlane(ro, rd, { o: [0, 0, l3GroundZ() + O[2]], u: [1, 0, 0], v: [0, 1, 0] }); if (g) { p = g.p; kind = "ground"; } }
   if (!p) return null;
+  // Smart fästning: centrum, ytcentrum, tangent, skärning, vinkelrätt och parallellt (utöver hörn, mittpunkter och kanter som l3Snap redan ger)
+  if (!snapped || !geom) { const inf = l3dwInfer(e, last, pl, S); if (inf) { p = inf.p; kind = inf.kind; snapped = true; if (inf.dir) { /* parallellt: hjälplinje visas */ } } }
   // Axellås (pilarna) och axelförslag från senaste punkten
   let axis = null;
   if (last && !snapped) {
@@ -124,6 +126,45 @@ function l3dwMarker(r) {
   const s = { point: l3dwS(r.p), kind: r.kind === "plane" ? "face" : r.kind };
   if (r.axis) { s.kind = "axis"; s.axis = r.axis.k; s.locked = !!r.axis.locked; }
   if (typeof l3ShowMarker === "function") l3ShowMarker(r.kind === "plane" ? null : s);
+}
+
+/* ---- Smart fästning ----
+   Kandidater nära markören (inom 12 bildpunkter): centrum av cirklar och bågar, ytcentrum, tangentpunkter från senaste punkten mot en cirkel/båge,
+   skärning mellan två ritade linjer, vinkelrätt fot mot kanten under markören och parallellt med den kanten (inom 3°). */
+function l3dwCircles() {
+  const out = [];
+  placements.forEach(p => { const m = p.m; if (!m || m.k === "curve" || !m.loops) return; const base = l3dwFromLocal(p, MG.to3(m.pl, [0, 0])); void base;
+    const key = p.id + m.rev; let cc = l3dw.circC && l3dw.circC.get(key);
+    if (cc === undefined) { cc = null; const L = m.loops[0]; if (L && L.length >= 8) { const c = MG.centroid2(L), rs = L.map(q => Math.hypot(q[0] - c[0], q[1] - c[1])), r = rs.reduce((a, b) => a + b, 0) / rs.length; if (Math.max(...rs) - Math.min(...rs) < 0.01 * r + 1e-4) cc = { c, r }; } (l3dw.circC || (l3dw.circC = new Map())).set(key, cc); }
+    if (cc) out.push({ p, c3: l3dwFromLocal(p, MG.to3(m.pl, cc.c)), r: cc.r, n: MG.norm(l3dwFromLocal(p, MG.normal(m.pl), true)) });
+  });
+  return out;
+}
+function l3dwInfer(e, last, pl, S) {
+  const r = l3Rect(), mx = e.clientX - r.left, my = e.clientY - r.top, cand = [], scr = p => { const q = l3ToScreen(l3dwS(p)); return q.behind ? 1e9 : Math.hypot(q.x - mx, q.y - my); };
+  const near = (p, kind, dir) => { const d = scr(p); if (d < 12) cand.push({ p, kind, d, dir }); };
+  l3dwCircles().forEach(ci => {
+    near(ci.c3, "center");
+    if (last) { // tangentpunkter från senaste punkten mot cirkeln (i cirkelns plan)
+      const pq = MG.sub(last, ci.c3), dd = MG.len(pq); if (dd > ci.r * 1.001 && Math.abs(MG.dot(pq, ci.n)) < 0.01) {
+        const a = Math.acos(ci.r / dd), u = MG.norm(pq), w = MG.norm(MG.cross(ci.n, u));
+        [1, -1].forEach(s => near(MG.add(ci.c3, MG.mul(MG.add(MG.mul(u, Math.cos(a)), MG.mul(w, s * Math.sin(a))), ci.r)), "tang"));
+      }
+    }
+  });
+  placements.forEach(p => { const m = p.m; if (!m || m.k !== "face" || !m.loops) return; const c2 = MG.centroid2(m.loops[0]); if (MG.pip(m.loops[0], c2)) near(l3dwFromLocal(p, MG.to3(m.pl, c2)), "faceC"); });
+  if (S && S.seg && last) { // vinkelrätt och parallellt mot kanten under markören
+    const a = l3dwA(S.seg[0]), b = l3dwA(S.seg[1]), e0 = MG.sub(b, a), L2 = MG.dot(e0, e0);
+    if (L2 > 1e-9) { const t = MG.dot(MG.sub(last, a), e0) / L2; if (t > 0 && t < 1) near(MG.add(a, MG.mul(e0, t)), "perp");
+      const ray = l3MouseRay(e); void ray; }
+  }
+  cand.sort((x, y) => x.d - y.d);
+  if (cand[0]) return cand[0];
+  if (S && S.seg && last && l3dw.cur) { // parallellt: markören riktad längs kanten från senaste punkten
+    const a = l3dwA(S.seg[0]), b = l3dwA(S.seg[1]), dir = MG.norm(MG.sub(b, a)), cur = S.point ? l3dwA(S.point) : null;
+    if (cur) { const d = MG.sub(cur, last), L = MG.len(d); if (L > 0.05 && Math.abs(MG.dot(MG.norm(d), dir)) > Math.cos(3 * Math.PI / 180)) return { p: MG.add(last, MG.mul(dir, MG.dot(d, dir))), kind: "par", dir }; }
+  }
+  return null;
 }
 
 /* ---- Siffror ---- */

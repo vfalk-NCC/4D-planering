@@ -311,7 +311,7 @@ function l3pcPickZ() {
    är tänt och styrkan (Djupskuggning i punktmolnspanelen) är över 0; annars ritas scenen direkt som förut. ---- */
 let l3pcE = null;
 const l3pcEdlStr = () => Math.max(l3pc.clouds.some(c => c.visible) ? Number(l3pcPref("pcEdl", 60)) || 0 : 0, Number(l3Prefs().sceneEdl) || 0);   // moln tänt: molnets styrka; Djupskuggning i Visa-menyn gäller hela scenen (även utan moln)
-const l3pcEdlOn = () => l3pcEdlStr() > 0 && !(l3pcMoving && l3pcSlow);   // tung bild under rörelse: hoppa över efterpasset
+const l3pcEdlOn = () => l3pcEdlStr() > 0;   // alltid på när den är tänd (Victor 2026-10-30: att den släcks under rotation/zoom sinkar grafiken och flimrar)
 function l3pcEdlInit(r) {
   const size = r.getDrawingBufferSize(new THREE.Vector2());
   const rt = new THREE.WebGLRenderTarget(size.x, size.y, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, samples: r.capabilities.isWebGL2 ? 4 : 0 });
@@ -333,9 +333,7 @@ function l3pcEdlInit(r) {
 }
 function l3pcRenderScene() {
   const r = l3.renderer;
-  // Skuggningen av ytor (extra bildpass) pausas medan kameran rör sig och bildtiden är dålig – den kommer tillbaka när kameran stannat.
-  const slow = typeof l3CamLast !== "undefined" && l3CamLast.moving && typeof l3lod !== "undefined" && l3lod.ema > 28 && !l3pc.clouds.some(c => c.visible);
-  if (!l3pcEdlOn() || slow) { r.render(l3.scene, l3.camera); return; }
+  if (!l3pcEdlOn()) { r.render(l3.scene, l3.camera); return; }
   try {
     const size = r.getDrawingBufferSize(new THREE.Vector2());
     if (!l3pcE) l3pcE = l3pcEdlInit(r);

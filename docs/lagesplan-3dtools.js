@@ -10,7 +10,7 @@
    Ändringarna går via place3d.js (placeShift/placeRotateAbout, ångra, sparning). */
 
 const L3_AX = { x: { v: [1, 0, 0], col: "#dc2626", name: "på röd axel" }, y: { v: [0, 1, 0], col: "#16a34a", name: "på grön axel" }, z: { v: [0, 0, 1], col: "#2563eb", name: "på blå axel" } };
-const L3_SNAP = { perp: ["Vinkelrätt (kortaste vägen)", "#ea580c"], deg5: ["5°", "#7c3aed"], end: ["Ändpunkt", "#16a34a"], mid: ["Mittpunkt", "#06b6d4"], edge: ["På kant", "#dc2626"], face: ["På yta", "#2563eb"], ground: ["På marken", "#64748b"], grid: ["Rutnät", "#a855f7"], pc: ["Punkt i molnet", "#0891b2"] };
+const L3_SNAP = { center: ["Centrum", "#0d9488"], faceC: ["Ytcentrum", "#0d9488"], par: ["Parallellt", "#7c3aed"], tang: ["Tangent", "#ea580c"], inter: ["Skärning", "#16a34a"], perp: ["Vinkelrätt (kortaste vägen)", "#ea580c"], deg5: ["5°", "#7c3aed"], end: ["Ändpunkt", "#16a34a"], mid: ["Mittpunkt", "#06b6d4"], edge: ["På kant", "#dc2626"], face: ["På yta", "#2563eb"], ground: ["På marken", "#64748b"], grid: ["Rutnät", "#a855f7"], pc: ["Punkt i molnet", "#0891b2"] };
 /* Fästlägen (som Teklas fästverktygsrad): hörn, mittpunkter, kanter, axlar, orto, rutnät. */
 const L3_SNAP_DEF = { end: true, mid: true, edge: true, perp: true, axis: true, ortho: false, grid: false, gstep: 1, pc: true };
 function l3Snaps() { return { ...L3_SNAP_DEF, ...(l3Prefs().snaps || {}) }; }

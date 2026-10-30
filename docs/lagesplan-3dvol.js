@@ -16,7 +16,7 @@
 const l3vol = { cur: null, geoms: new WeakMap(), cache: new Map(), capture: null, pending: new Set(), failed: new WeakSet(), seq: 0, timer: 0, kbd: null };
 const L3VOL_RAMP = { cut: ["#bfdbfe", "#60a5fa", "#2563eb", "#1e3a8a"], fill: ["#fecaca", "#f87171", "#dc2626", "#7f1d1d"] };
 const L3VOL_COL = { cut: "#2563eb", fill: "#dc2626" };
-const l3volM3 = v => Math.round(v).toLocaleString("sv-SE") + " m³";
+const l3volM3 = v => Math.round(v).toLocaleString("sv-SE").replace(/[\u00a0\u202f]/g, " ") + " m³";
 const l3volSg = (v, s) => { const r = Math.round(v); return (r < 0 ? "−" : r > 0 ? s : "") + l3volM3(Math.abs(r)); };
 const l3volTick = () => new Promise(r => setTimeout(r, 16));
 const l3volOk = z => z === z && Math.abs(z) < 1e9;
@@ -66,8 +66,8 @@ function l3volDensity(cur) {
   return best;
 }
 function l3volCellFor(bd, area, userCell, density) {
-  const auto = Math.min(5, Math.max(0.1, Math.sqrt(area / 20000))), nice = [0.1, 0.2, 0.25, 0.5, 1, 2, 5].find(v => v >= auto) || 5;
-  const floor = Math.sqrt(area / 40000);   // aldrig mer än ca 40 000 rutor i området (ritning och IFC-fil)
+  const auto = Math.min(5, Math.max(0.1, Math.sqrt(area / 30000))), nice = [0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5].find(v => v >= auto) || 5;
+  const floor = Math.sqrt(area / 160000);   // aldrig mer än ca 160 000 rutor (320 000 trianglar) i området
   const sparse = density > 0 ? [0.1, 0.2, 0.25, 0.5, 1, 2, 5, 10].find(v => v >= 2 / Math.sqrt(density)) || 10 : 0;   // minst ca fyra punkter per ruta
   return Math.max(userCell > 0 ? userCell : Math.max(nice, sparse), floor, 0.05);
 }
@@ -92,31 +92,47 @@ function l3volRamp(kind, t) {
   const R = L3VOL_RAMP[kind], x = Math.max(0, Math.min(1, t)) * (R.length - 1), i = Math.min(R.length - 2, Math.floor(x)), c = new THREE.Color(R[i]).lerp(new THREE.Color(R[i + 1]), x - i);
   return [c.r, c.g, c.b];
 }
-/* En kropp av de rutor som ingår (mem): ovansidan och undersidan följer höjderna i rutnätets hörn, väggar där grannen inte ingår. */
-function l3volSolid(g, nodeA, nodeB, mem, kind, org, tmax) {
-  const W = g.nx + 1, top = new Int32Array(W * (g.ny + 1)).fill(-1), bot = new Int32Array(W * (g.ny + 1)).fill(-1), pos = [], col = [], idx = [];
-  const vert = (n, isTop) => {
-    const arr = isTop ? top : bot; if (arr[n] >= 0) return arr[n];
-    const a = nodeA[n], b = nodeB[n], hi = Math.max(a, b), lo = Math.min(a, b), i = n % W, j = (n - i) / W, z = isTop ? hi : lo, c = l3volRamp(kind, (hi - lo) / tmax);
-    pos.push(g.x0 + i * g.cell - org[0], g.y0 + j * g.cell - org[1], z - org[2]); col.push(c[0], c[1], c[2]); return (arr[n] = pos.length / 3 - 1);
-  };
-  const at = (i, j) => i >= 0 && j >= 0 && i < g.nx && j < g.ny && mem[j * g.nx + i] === 1;
-  const wall = (n1, n2, ox, oy) => { // väggen mellan två hörn (ovan + under), vänd utåt
-    const a = vert(n1, true), b = vert(n2, true), c = vert(n2, false), d = vert(n1, false);
-    const nrm = (p, q, r) => { const ux = pos[q * 3] - pos[p * 3], uy = pos[q * 3 + 1] - pos[p * 3 + 1], uz = pos[q * 3 + 2] - pos[p * 3 + 2], vx = pos[r * 3] - pos[p * 3], vy = pos[r * 3 + 1] - pos[p * 3 + 1], vz = pos[r * 3 + 2] - pos[p * 3 + 2]; return [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx]; };
-    const n = nrm(a, b, c), dot = n[0] * ox + n[1] * oy;
-    if (dot >= 0) idx.push(a, b, c, a, c, d); else idx.push(a, c, b, a, d, c);
-  };
-  let cells = 0;
-  for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) {
-    if (!at(i, j)) continue; cells++;
-    const n00 = j * W + i, n10 = n00 + 1, n01 = n00 + W, n11 = n01 + 1;
-    idx.push(vert(n00, true), vert(n10, true), vert(n11, true), vert(n00, true), vert(n11, true), vert(n01, true));
-    idx.push(vert(n00, false), vert(n11, false), vert(n10, false), vert(n00, false), vert(n01, false), vert(n11, false));
-    if (!at(i - 1, j)) wall(n00, n01, -1, 0); if (!at(i + 1, j)) wall(n10, n11, 1, 0);
-    if (!at(i, j - 1)) wall(n00, n10, 0, -1); if (!at(i, j + 1)) wall(n01, n11, 0, 1);
+/* Ytan byggs som trianglar: rutnätets hörn får höjder (medel av grannrutorna), varje ruta delas i två trianglar, trianglar vid områdets kant
+   klipps exakt mot polygonen (polygon-clipping) och trianglar som korsar nollnivån delas där ytorna skär varandra. Volymen är summan av
+   prismorna (yta × medeltjocklek) – exakt för de trianglar som ritas, inte en trappa av rutor. */
+const L3VOL_STEPS = [0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 5];
+/* Triangel (x,y,a,b ×3) delad där d = a−b byter tecken: delarna med tecknet sg (+1 fyllning, −1 schakt) som trianglar [x,y,a,b ×3]. */
+function l3volSplit(v, sg) {
+  let poly = v.map(p => ({ x: p[0], y: p[1], a: p[2], b: p[3], d: sg * (p[2] - p[3]) })), out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i + 1) % poly.length];
+    if (p.d >= 0) out.push(p);
+    if ((p.d > 0 && q.d < 0) || (p.d < 0 && q.d > 0)) { const t = p.d / (p.d - q.d); out.push({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t, a: p.a + (q.a - p.a) * t, b: p.b + (q.b - p.b) * t, d: 0 }); }
   }
-  return cells ? { pos: new Float32Array(pos), col: new Float32Array(col), idx: new Uint32Array(idx), cells } : null;
+  const res = []; for (let i = 1; i + 1 < out.length; i++) res.push([out[0], out[i], out[i + 1]].map(p => [p.x, p.y, p.a, p.b]));
+  return res;
+}
+/* Triangellistan (x,y,hi,lo ×3 per triangel) → nät med ovan- och undersida, väggar där kroppen tar slut, färg efter tjocklek och trianglarnas kanter. */
+function l3volMesh(tris, kind, org, tmax) {
+  if (!tris.length) return null;
+  const map = new Map(), pos = [], col = [], idx = [], wire = [], edges = new Map();
+  const paint = (hi, lo) => l3volRamp(kind, (hi - lo) / tmax);
+  const vert = (x, y, hi, lo) => {
+    const k = Math.round(x * 1000) + "," + Math.round(y * 1000); let e = map.get(k);
+    if (!e) { const c = paint(hi, lo); pos.push(x - org[0], y - org[1], hi - org[2]); col.push(c[0], c[1], c[2]); const t = pos.length / 3 - 1; pos.push(x - org[0], y - org[1], lo - org[2]); col.push(c[0], c[1], c[2]); e = [t, t + 1, x, y, hi, lo]; map.set(k, e); }
+    return e;
+  };
+  tris.forEach(t => {
+    const v = [vert(t[0], t[1], t[2], t[3]), vert(t[4], t[5], t[6], t[7]), vert(t[8], t[9], t[10], t[11])];
+    idx.push(v[0][0], v[1][0], v[2][0], v[0][1], v[2][1], v[1][1]);
+    for (let i = 0; i < 3; i++) {
+      const p = v[i], q = v[(i + 1) % 3], k = p[0] < q[0] ? p[0] + "_" + q[0] : q[0] + "_" + p[0], e = edges.get(k);
+      if (e) e.n++; else { edges.set(k, { n: 1, p, q }); wire.push(p[2] - org[0], p[3] - org[1], p[4] - org[2], q[2] - org[0], q[3] - org[1], q[4] - org[2]); }
+    }
+  });
+  edges.forEach(e => { // yttre kanter → vägg (egna hörn så att ljuset blir skarpt)
+    if (e.n !== 1) return; const { p, q } = e; if (p[4] - p[5] < 1e-4 && q[4] - q[5] < 1e-4) return;
+    const c = pos.length / 3, add = (r, hi) => { const cc = paint(r[4], r[5]); pos.push(r[2] - org[0], r[3] - org[1], (hi ? r[4] : r[5]) - org[2]); col.push(cc[0], cc[1], cc[2]); };
+    add(p, true); add(q, true); add(q, false); add(p, false);
+    // Kanten p→q går i trianglarnas varv (moturs sedd uppifrån) → utsidan är till höger.
+    idx.push(c + 3, c + 2, c + 1, c + 3, c + 1, c);
+  });
+  return { pos: new Float32Array(pos), col: new Float32Array(col), idx: new Uint32Array(idx), wire: new Float32Array(wire), tris: tris.length, cells: tris.length };
 }
 /* Hela uträkningen för det som står i panelen / det sparade måttet. */
 async function l3volCompute(cur, alive) {
@@ -124,29 +140,66 @@ async function l3volCompute(cur, alive) {
   const gA = await l3volHeights(cur, cur.spec.a, bd, cell); if (!alive()) return null;
   const gB = await l3volHeights(cur, cur.spec.b, bd, cell); if (!alive()) return null;
   if (!gA || !gB) return { err: "Kunde inte läsa ytan – är punktmolnet eller modellen tänd och inläst?" };
-  const frac = l3volFrac(P, gA), n = gA.nx * gA.ny, ca = cell * cell, eps = 0.002;
-  let fill = 0, cut = 0, aIn = 0, aMiss = 0, mn = Infinity, mx = -Infinity, cF = 0, cC = 0;
-  const memF = new Uint8Array(n), memC = new Uint8Array(n), nodeA = new Float32Array((gA.nx + 1) * (gA.ny + 1)).fill(NaN), nodeB = new Float32Array(nodeA.length).fill(NaN), nA = new Uint8Array(nodeA.length), W = gA.nx + 1;
-  const sumA = new Float64Array(nodeA.length), sumB = new Float64Array(nodeA.length);
-  let tmax = 0.05, fx = 0, fy = 0, fzz = 0, cx = 0, cy = 0, cz = 0;
-  for (let j = 0; j < gA.ny; j++) for (let i = 0; i < gA.nx; i++) {
-    const c = j * gA.nx + i, f = frac[c]; if (!f) continue;
-    const a = gA.z[c], b = gB.z[c]; if (!l3volOk(a) || !l3volOk(b)) { aMiss += f * ca; continue; }
-    const d = a - b; aIn += f * ca; mn = Math.min(mn, d); mx = Math.max(mx, d);
-    if (d > eps) fill += d * f * ca; else if (d < -eps) cut -= d * f * ca;
-    if (f >= 0.5) {
-      const nd = [j * W + i, j * W + i + 1, (j + 1) * W + i, (j + 1) * W + i + 1]; nd.forEach(k => { sumA[k] += a; sumB[k] += b; nA[k]++; });
-      const x = gA.x0 + (i + 0.5) * cell, y = gA.y0 + (j + 0.5) * cell;
-      if (d > eps) { memF[c] = 1; cF++; fx += x; fy += y; fzz += a; } else if (d < -eps) { memC[c] = 1; cC++; cx += x; cy += y; cz += b; }
-      tmax = Math.max(tmax, Math.abs(d));
-    }
+  const nx = gA.nx, ny = gA.ny, W = nx + 1, NN = W * (ny + 1), eps = 0.002, ca = cell * cell;
+  const sA = new Float64Array(NN), sB = new Float64Array(NN), cnt = new Uint8Array(NN), ok = new Uint8Array(nx * ny);
+  let aMiss = 0, mn = Infinity, mx = -Infinity;
+  for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+    const c = j * nx + i, a = gA.z[c], b = gB.z[c]; if (!l3volOk(a) || !l3volOk(b)) continue; ok[c] = 1;
+    [j * W + i, j * W + i + 1, (j + 1) * W + i, (j + 1) * W + i + 1].forEach(k => { sA[k] += a; sB[k] += b; cnt[k]++; });
   }
-  for (let k = 0; k < nodeA.length; k++) if (nA[k]) { nodeA[k] = sumA[k] / nA[k]; nodeB[k] = sumB[k] / nA[k]; }
+  const nA = new Float32Array(NN).fill(NaN), nB = new Float32Array(NN).fill(NaN);
+  for (let k = 0; k < NN; k++) if (cnt[k]) { nA[k] = sA[k] / cnt[k]; nB[k] = sB[k] / cnt[k]; if (Math.abs(nA[k] - nB[k]) < eps) nB[k] = nA[k]; }
+  await l3volTick(); if (!alive()) return null;
+  // Rutor som polygonens kanter går genom klipps; övriga är hela eller utanför.
+  const edgeCell = new Uint8Array(nx * ny), mark = (x, y) => { const i = Math.floor((x - gA.x0) / cell), j = Math.floor((y - gA.y0) / cell); if (i >= 0 && j >= 0 && i < nx && j < ny) edgeCell[j * nx + i] = 1; };
+  for (let e = 0; e < P.length; e++) { const p = P[e], q = P[(e + 1) % P.length], L = Math.hypot(q[0] - p[0], q[1] - p[1]), n = Math.max(1, Math.ceil(L / (cell / 4))); for (let s = 0; s <= n; s++) mark(p[0] + (q[0] - p[0]) * s / n, p[1] + (q[1] - p[1]) * s / n); }
+  const inN = new Int8Array(NN).fill(-1), inside = (i, j) => { const k = j * W + i; if (inN[k] < 0) inN[k] = l3volInside(P, gA.x0 + i * cell, gA.y0 + j * cell) ? 1 : 0; return inN[k]; };
+  const clipPoly = [[...P.map(p => [p[0], p[1]]), [P[0][0], P[0][1]]]], hasClip = typeof polygonClipping !== "undefined";
+  const lists = { cut: [], fill: [] }, tot = { cut: 0, fill: 0 }, cen = { cut: [0, 0, 0, 0], fill: [0, 0, 0, 0] };
+  let aIn = 0, tmax = 0.05;
+  const area2 = v => ((v[1][0] - v[0][0]) * (v[2][1] - v[0][1]) - (v[2][0] - v[0][0]) * (v[1][1] - v[0][1])) / 2;
+  const emit = v => { // v: [x,y,a,b]×3, moturs
+    aIn += Math.abs(area2(v));
+    for (const sg of [1, -1]) for (const t of l3volSplit(v, sg)) {
+      const ar = area2(t); if (ar < 1e-9) continue; const dm = t.reduce((s, p) => s + Math.abs(p[2] - p[3]), 0) / 3, vol = ar * dm, kd = sg > 0 ? "fill" : "cut";
+      tot[kd] += vol; const c = cen[kd]; c[0] += vol; c[1] += vol * (t[0][0] + t[1][0] + t[2][0]) / 3; c[2] += vol * (t[0][1] + t[1][1] + t[2][1]) / 3; c[3] += vol * (sg > 0 ? t[0][2] + t[1][2] + t[2][2] : t[0][3] + t[1][3] + t[2][3]) / 3;
+      mn = Math.min(mn, ...t.map(p => p[2] - p[3])); mx = Math.max(mx, ...t.map(p => p[2] - p[3]));
+      const row = []; t.forEach(p => { row.push(p[0], p[1], Math.max(p[2], p[3]), Math.min(p[2], p[3])); tmax = Math.max(tmax, Math.abs(p[2] - p[3])); }); lists[kd].push(row);
+    }
+  };
+  const tri3 = (i, j, tp) => tp.map(([di, dj]) => { const k = (j + dj) * W + i + di; return [gA.x0 + (i + di) * cell, gA.y0 + (j + dj) * cell, nA[k], nB[k]]; });
+  let work = 0;
+  for (let j = 0; j < ny; j++) {
+    for (let i = 0; i < nx; i++) {
+      const c = j * nx + i; if (!ok[c]) { if (edgeCell[c] || (inside(i, j) && inside(i + 1, j + 1))) { const x = gA.x0 + (i + .5) * cell, y = gA.y0 + (j + .5) * cell; if (l3volInside(P, x, y)) aMiss += ca; } continue; }
+      const cin = inside(i, j) + inside(i + 1, j) + inside(i, j + 1) + inside(i + 1, j + 1);
+      if (!edgeCell[c] && cin === 0) continue;
+      const parts = [tri3(i, j, [[0, 0], [1, 0], [1, 1]]), tri3(i, j, [[0, 0], [1, 1], [0, 1]])];
+      if (!edgeCell[c] && cin === 4) { parts.forEach(emit); continue; }
+      parts.forEach(v => {
+        if (!hasClip) { if (l3volInside(P, (v[0][0] + v[1][0] + v[2][0]) / 3, (v[0][1] + v[1][1] + v[2][1]) / 3)) emit(v); return; }
+        const sub = (x, y) => { // värdena i (x,y) ur triangelns plan
+          const d = (v[1][1] - v[2][1]) * (v[0][0] - v[2][0]) + (v[2][0] - v[1][0]) * (v[0][1] - v[2][1]), l1 = ((v[1][1] - v[2][1]) * (x - v[2][0]) + (v[2][0] - v[1][0]) * (y - v[2][1])) / d, l2 = ((v[2][1] - v[0][1]) * (x - v[2][0]) + (v[0][0] - v[2][0]) * (y - v[2][1])) / d, l3 = 1 - l1 - l2;
+          return [x, y, l1 * v[0][2] + l2 * v[1][2] + l3 * v[2][2], l1 * v[0][3] + l2 * v[1][3] + l3 * v[2][3]];
+        };
+        let R; try { R = polygonClipping.intersection([[[...v.map(p => [p[0], p[1]]), [v[0][0], v[0][1]]]]], clipPoly); } catch (e) { return; }
+        R.forEach(pg => {
+          const ring = pg[0].slice(0, -1).map(p => sub(p[0], p[1])); if (ring.length < 3) return;
+          if (ring.length === 3 && pg.length === 1) { const t = area2(ring) < 0 ? [ring[0], ring[2], ring[1]] : ring; emit(t); return; }
+          const outer = ring.map(p => new THREE.Vector2(p[0], p[1])), holes = pg.slice(1).map(h => h.slice(0, -1).map(p => new THREE.Vector2(p[0], p[1])));
+          const all = ring.concat(...holes.map(h => h.map(p => sub(p.x, p.y))));
+          THREE.ShapeUtils.triangulateShape(outer, holes).forEach(f => { const t = [all[f[0]], all[f[1]], all[f[2]]]; emit(area2(t) < 0 ? [t[0], t[2], t[1]] : t); });
+        });
+      });
+    }
+    if (++work % 40 === 0) { await l3volTick(); if (!alive()) return null; }
+  }
   const org = P[0].slice(), solids = {};
-  if (cC) solids.cut = l3volSolid(gA, nodeA, nodeB, memC, "cut", org, tmax);
-  if (cF) solids.fill = l3volSolid(gA, nodeA, nodeB, memF, "fill", org, tmax);
-  const res = { fill, cut, net: fill - cut, area, areaIn: aIn, areaMiss: aMiss, cell, mn: aIn ? mn : 0, mx: aIn ? mx : 0, cellsCut: cC, cellsFill: cF, tmax };
-  return { res, geom: { o: org, cut: solids.cut || null, fill: solids.fill || null, cutAt: cC ? [cx / cC, cy / cC, cz / cC] : null, fillAt: cF ? [fx / cF, fy / cF, fzz / cF] : null } };
+  ["cut", "fill"].forEach(k => { if (tot[k] > 1e-6) solids[k] = l3volMesh(lists[k], k, org, tmax); });
+  const at = k => { const c = cen[k]; return c[0] > 0 ? [c[1] / c[0], c[2] / c[0], c[3] / c[0]] : null; };
+  const cut = tot.cut, fill = tot.fill, tris = (solids.cut ? solids.cut.tris : 0) + (solids.fill ? solids.fill.tris : 0);
+  const res = { fill, cut, net: fill - cut, area, areaIn: aIn, areaMiss: aMiss, cell, mn: aIn ? mn : 0, mx: aIn ? mx : 0, cellsCut: solids.cut ? solids.cut.tris : 0, cellsFill: solids.fill ? solids.fill.tris : 0, tris, tmax, at: new Date().toISOString(), srcA: l3volLabel(cur, cur.spec.a), srcB: l3volLabel(cur, cur.spec.b) };
+  return { res, geom: { o: org, cut: solids.cut || null, fill: solids.fill || null, cutAt: at("cut"), fillAt: at("fill") } };
 }
 const l3volText = res => `Schakt −${l3volM3(res.cut)} · Fyllning +${l3volM3(res.fill)}`;
 
@@ -163,6 +216,7 @@ function l3volDrawInto(grp, host, m, P, G, own) {
     if (!s.nrm) { geo.computeVertexNormals(); s.nrm = geo.getAttribute("normal").array; s.edges = new THREE.EdgesGeometry(geo, 35).getAttribute("position").array; } else geo.setAttribute("normal", new THREE.BufferAttribute(s.nrm, 3));
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: Number(l3Prefs().volOpacity) || 0.62, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     const mesh = new THREE.Mesh(geo, mat); mesh.position.set(G.o[0] - O[0], G.o[1] - O[1], G.o[2] - O[2]); mesh.renderOrder = 8; mesh.userData.noHit = true; mesh.raycast = () => {}; grp.add(mesh);
+    if (l3Prefs().volWire && s.wire && s.wire.length) { const wg = new THREE.BufferGeometry(); wg.setAttribute("position", new THREE.BufferAttribute(s.wire, 3)); const wl = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x0f172a, transparent: true, opacity: 0.7, depthTest: false })); wl.position.copy(mesh.position); wl.renderOrder = 10; wl.userData.noHit = true; wl.raycast = () => {}; grp.add(wl); }
     const egeo = new THREE.BufferGeometry(); egeo.setAttribute("position", new THREE.BufferAttribute(s.edges, 3));
     const eg = new THREE.LineSegments(egeo, new THREE.LineBasicMaterial({ color: L3VOL_COL[kind], transparent: true, opacity: 0.55 })); eg.position.copy(mesh.position); eg.renderOrder = 9; eg.userData.noHit = true; eg.raycast = () => {}; grp.add(eg);
   });
@@ -289,14 +343,20 @@ function l3volPanel() {
       <div class="sub"><span>Yta i plan</span><b>${l3Fmt(area, 1)} m²</b></div>
     </div>
     <div class="v3-vp-t">Schakt = ytan som mäts ligger <b>lägre</b> än "Mot". Fyllning = <b>högre</b>. Rutstorlek ${String(r.cell).replace(".", ",")} m · ${l3Fmt(r.mx, 2)} m över / ${l3Fmt(-r.mn, 2)} m under${r.areaMiss > 0.5 ? ` · <span class="warn">${l3Fmt(r.areaMiss, 1)} m² saknar höjd och räknas inte</span>` : ""}</div>` : c.err ? `<div class="v3-vp-e">${esc(c.err)}</div>` : `<div class="v3-vp-t">${c.busy || "Välj vad som ska mätas mot vad."}</div>`;
+  const ae = document.activeElement;
+  if (el.innerHTML && ae && ae.dataset && ae.dataset.vc !== undefined && el.contains(ae)) { // slidern dras – bara resultatet byts, annars avbryts draget
+    const box = el.querySelector("[data-vres]"); if (box) box.innerHTML = res; const lab = el.querySelector("[data-vcl]"); if (lab && r && !(Number(c.spec.cell) > 0)) lab.textContent = `Auto (${String(r.cell).replace(".", ",")} m)`;
+    const wl = el.querySelector("[data-vwire]"); if (wl && wl.parentNode) wl.parentNode.lastChild.textContent = ` Visa triangulering${r && r.tris ? ` (${r.tris.toLocaleString("sv-SE").replace(/[\u00a0\u202f]/g, " ")} tr.)` : ""}`; return;
+  }
   const noSrc = !srcs.some(s => /^(pc|md|cad):/.test(s.k));
   el.innerHTML = `<div class="v3-vp-h"><b>Volym</b><span>${l3Fmt(area, 1)} m² · ${n} hörn</span><button type="button" data-vb="x" title="Stäng (Esc)">✕</button></div>
     ${noSrc ? `<div class="v3-vp-t warn">Tänd ett punktmoln eller en 3D-modell (Lager) om något ska mätas mot ytan. Plan och nivå går att använda utan.</div>` : ""}
     ${row("a", "Yta som mäts", c.spec.a, "Den yta vars volym mot den andra mäts, t.ex. punktmolnet över schaktgropen")}
     ${row("b", "Mot", c.spec.b, "Jämförelseytan: en modell, ett annat punktmoln, ett plan, en nivå eller en yta du klickat ut")}
     <div class="v3-vp-l"><button type="button" data-vb="swap" title="Byt plats på ytorna – schakt blir fyllning och tvärtom">⇅ Byt</button><button type="button" data-vb="surf" title="Tryck ut hörnen på en egen yta (t.ex. projekterad botten eller släntkant) – hörnens höjder bestämmer ytan">Klicka ut egen yta…</button><button type="button" data-vb="redraw" title="Rita om området">Rita om området</button><button type="button" data-vb="prism" title="Enkel volym: områdets yta × en höjd du skriver, eller höjden upp till en yta du trycker på">Enkel höjdvolym…</button>
-      <label class="v3-vp-chk" title="Rutstorlek för uträkningen – mindre ruta ger mer detalj men tar längre tid"><span>Rutor</span><select data-vc>${[[0, "Auto"], [0.1, "0,1 m"], [0.25, "0,25 m"], [0.5, "0,5 m"], [1, "1 m"], [2, "2 m"], [5, "5 m"]].map(([v, l]) => `<option value="${v}" ${Number(c.spec.cell) === v ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>
-    ${res}
+      <label class="v3-vp-chk" title="Noggrannhet: rutstorlek för ytan. Mindre ruta = fler trianglar och mer detalj. Räknas om direkt när du drar."><span>Noggrannhet</span><input type="range" min="0" max="${L3VOL_STEPS.length}" step="1" value="${Math.max(0, L3VOL_STEPS.indexOf(Number(c.spec.cell)) + 1)}" data-vc><em data-vcl>${Number(c.spec.cell) > 0 ? String(c.spec.cell).replace(".", ",") + " m" : "Auto" + (r ? " (" + String(r.cell).replace(".", ",") + " m)" : "")}</em></label>
+      <label class="v3-vp-chk" title="Visa trianglarna som ytan och volymen är byggda av"><input type="checkbox" data-vwire ${l3Prefs().volWire ? "checked" : ""}> Visa triangulering${r && r.tris ? ` (${r.tris.toLocaleString("sv-SE").replace(/[\u00a0\u202f]/g, " ")} tr.)` : ""}</label></div>
+    <div data-vres>${res}</div>
     <div class="v3-vp-b"><button type="button" class="primary" data-vb="save" ${r ? "" : "disabled"}>${c.id ? "Uppdatera måttet" : "Spara som mått"}</button><button type="button" data-vb="ifc" ${r ? "" : "disabled"} title="Området, schakt- och fyllningskropparna som 3D-objekt i en IFC-fil (Trimble Connect eller nedladdning)">Exportera IFC</button><button type="button" data-vb="copy" ${r ? "" : "disabled"}>Kopiera</button>
       <label class="v3-vp-chk" title="Skylt med volymtexten i IFC-filen (volymerna ligger alltid som egenskaper)"><input type="checkbox" data-vtext ${l3Prefs().volExpText !== false ? "checked" : ""}> Volymtext i IFC</label>
       <label class="v3-vp-chk" title="Hur genomskinliga kropparna är"><span>Syns</span><input type="range" min="0.15" max="1" step="0.05" value="${Number(l3Prefs().volOpacity) || 0.62}" data-vop></label></div>`;
@@ -305,7 +365,8 @@ function l3volPanel() {
   qa("select[data-vs]").forEach(s => { s.onchange = () => { c.spec[s.dataset.vs].side = s.value; l3volSchedule(); }; });
   qa("input[data-vz]").forEach(i => { i.onchange = () => { const v = Number(String(i.value).replace(/\s/g, "").replace(",", ".")); c.spec[i.dataset.vz].z = i.value.trim() === "" || !Number.isFinite(v) ? null : v; l3volSchedule(); }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
   qa("[data-vpick]").forEach(b => { b.onclick = () => { l3vol.capture = "level"; l3Status("Tryck på en punkt i modellen – dess höjd blir nivån. Esc avbryter."); }; });
-  const cs = q("select[data-vc]"); if (cs) cs.onchange = () => { c.spec.cell = Number(cs.value) || 0; l3volSchedule(); };
+  const cs = q("input[data-vc]"); if (cs) { const lab = q("[data-vcl]"); cs.oninput = () => { const v = L3VOL_STEPS[Number(cs.value) - 1] || 0; lab.textContent = v ? String(v).replace(".", ",") + " m" : "Auto"; c.spec.cell = v; l3volSchedule(220); }; }
+  const wi = q("input[data-vwire]"); if (wi) wi.onchange = () => { l3SetPref("volWire", wi.checked); l3volDraw(); l3mDraw(); };
   const on = (k, fn) => qa(`[data-vb="${k}"]`).forEach(b => { b.onclick = fn; });
   on("x", l3volAskClose);
   on("swap", () => { const t = c.spec.a; c.spec.a = c.spec.b; c.spec.b = t; l3volPanel(); l3volSchedule(0); });
