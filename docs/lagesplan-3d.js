@@ -286,12 +286,6 @@ function l3Dom() {
         <button type="button" id="v3ShowBtn" class="v3-ghost" title="Vad som visas">${I.eye}<span>Visa</span></button>
         <div class="v3-pop v3-show hidden" id="v3Show">
           ${typeof l3vmHtml === "function" ? l3vmHtml() : ""}
-          <label class="v3-chk"><input type="checkbox" id="v3ShowPlan" ${P.plan ? "checked" : ""} /> Ritningen (PDF) som mark</label>
-          <label class="v3-pop-row v3-planop" title="Ritningens täckning i 3D">Täckning <input type="range" id="v3PlanOp" min="10" max="100" step="5" value="${P.planOp || 100}" /></label>
-          <div class="v3-pop-l">Planerade objekt (lådor)</div>
-          <div class="v3-segs" id="v3ObjMode">${[["solid", "Lådor"], ["ghost", "Genomskinliga"], ["edges", "Konturer"], ["hidden", "Dolda"]].map(([k, l]) => `<button type="button" data-v3objs="${k}" class="${P.objs === k ? "on" : ""}">${l}</button>`).join("")}</div>
-          <div class="v3-pop-l">Etablering på datumet</div>
-          <div class="v3-segs" id="v3Etab4d">${[["ghost", "Tona det som inte finns"], ["all", "Visa allt"]].map(([k, l]) => `<button type="button" data-v3e4d="${k}" class="${(P.etab4d || "ghost") === k ? "on" : ""}">${l}</button>`).join("")}</div>
           <div class="v3-pop-l">Byggnad</div>
           <div id="v3BldgBox"><button type="button" id="v3BldgBtn" class="v3-wide">${I.building} Visa byggnaden från Trimble Connect…</button></div>
           <div class="v3-pop-l">Övrigt</div>
@@ -310,6 +304,9 @@ function l3Dom() {
           <div class="v3-segs">${[["tekla", "Som i Tekla"], ["standard", "Standard"]].map(([k, l]) => `<button type="button" data-v3mouse="${k}" class="${(P.mouse || "tekla") === k ? "on" : ""}">${l}</button>`).join("")}</div>
           <label class="v3-chk" title="Som Teklas automatiska rotationscentrum: vyn roteras kring punkten där du trycker ner"><input type="checkbox" id="v3AutoRot" ${P.autoRot !== false ? "checked" : ""} /> Rotera kring punkten under markören</label>
           <div class="v3-pop-hint" id="v3MouseHint"></div>
+          <div class="v3-pop-l">Ritning</div>
+          <label class="v3-chk"><input type="checkbox" id="v3ShowPlan" ${P.plan ? "checked" : ""} /> Ritningen (PDF) som mark</label>
+          <label class="v3-pop-row v3-planop" title="Ritningens täckning i 3D">Täckning <input type="range" id="v3PlanOp" min="10" max="100" step="5" value="${P.planOp || 100}" /></label>
         </div>
       </div>
       <button type="button" id="v3HelpBtn" class="v3-ghost" title="Hjälp och kortkommandon (?)">${I.help}<span>Hjälp</span></button>
