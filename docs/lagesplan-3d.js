@@ -856,7 +856,7 @@ function l3PlacementGroup(p) {
     }
   } else {
     // Biblioteksobjekt: delarna räknade för en kopia i origo (ovriden), staket relativt första punkten.
-    const local = { ...p, x: 0, y: 0, z: 0, dz: 0, rot: 0 };
+    const local = { ...p, x: 0, y: 0, z: 0, dz: 0, rot: 0 }; Object.defineProperty(local, "__src", { value: p, enumerable: false });   // objektets riktiga läge (makadamens avdrag räknas mot det)
     if (p.pts) local.pts = p.pts.map(q => [q[0] - p.x, q[1] - p.y, (q[2] || 0) - (Number(p.z) || 0)]);
     if ((lib.crew || lib.smart) && typeof smEditorBuild === "function") { // bemanningen och de smarta objekten: PBR-material och texturskyltar (place-smart.js)
       smEditorBuild(p, grp, placeParts(local, 48));
@@ -910,7 +910,7 @@ function l3RebuildOne(p) {
   l3Render();
   if (typeof l3MkRefresh === "function") l3MkRefresh(p); // makadamen räknar om avdragen när ett objekt i den flyttas
 }
-function l3AddPlacementMesh(p) { const g = l3PlacementGroup(p); l3.groups.places.add(g); l3.placeMeshes.set(p.id, g); l3RenderObjList(); return g; }
+function l3AddPlacementMesh(p) { const g = l3PlacementGroup(p); l3.groups.places.add(g); l3.placeMeshes.set(p.id, g); l3RenderObjList(); if (typeof l3MkRefresh === "function") l3MkRefresh(p); return g; }   // makadamens avdrag och skylt följer med när ett objekt läggs i den
 
 // ---------------------------------------------------------------------
 // Kamera: översikt, vyer, fokus (mjuka övergångar)
@@ -1713,6 +1713,7 @@ function l3Key(e) {
 /* Sparat i plan_placements.json (place3d.js sparar efter en kort paus) -> berätta för 4D-planering. */
 let l3NotifyTimer = 0;
 function l3Changed() {
+  if (typeof l3MkRefresh === "function") l3MkRefresh({ type: "ändrat" });   // raderat, ångrat, kopierat: makadamens avdrag och skylt räknas om
   clearTimeout(l3NotifyTimer);
   l3SaveState("saving");
   l3NotifyTimer = setTimeout(async () => {

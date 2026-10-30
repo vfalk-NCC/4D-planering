@@ -332,7 +332,7 @@ function smSignMesh(p, sp) {
   const { cv, m } = smSignCanvas(sp), tex = new THREE.CanvasTexture(cv); tex.anisotropy = 8; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.encoding = THREE.sRGBEncoding;
   const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.FrontSide, depthWrite: false, toneMapped: false }), w = sp.w + 2 * m, h = sp.h + 2 * m, mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
   const X = new THREE.Vector3(sp.ax, sp.ay, 0).normalize(), Yv = sp.flat ? new THREE.Vector3(-X.y, X.x, 0) : new THREE.Vector3(0, 0, 1), Zv = new THREE.Vector3().crossVectors(X, Yv); mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Yv, Zv));
-  mesh.position.set(sp.cx, sp.cy, sp.flat ? sp.z : sp.z + sp.zb + sp.h / 2); mesh.renderOrder = 4; mesh.userData.placeId = p.id; mesh.userData.mat0 = { t: true, o: 1, d: false }; mesh.userData.isSign = true; mesh.userData.flat = !!sp.flat; return mesh;
+  mesh.position.set(sp.cx, sp.cy, sp.flat ? sp.z : sp.z + sp.zb + sp.h / 2); mesh.renderOrder = 4; mesh.userData.placeId = p.id; mesh.userData.mat0 = { t: true, o: 1, d: false }; mesh.userData.isSign = true; mesh.userData.signSpec = sp; mesh.userData.flat = !!sp.flat; return mesh;
 }
 /* Gruppen för en bemanning/ett smart objekt i 3D-editorn (anropas av l3PlacementGroup). */
 function smEditorBuild(p, grp, parts) {

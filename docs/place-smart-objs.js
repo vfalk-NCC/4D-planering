@@ -179,7 +179,7 @@ function mkCuts(p, poly, base, th) {
 /* Makadamen minus avdragen: { outer/holes via polygon-clipping, area, gross, cuts }. */
 function mkShape(p) {
   const poly = mkPoly(p); if (!poly) return null; const th = Math.max(0.05, Number(p.H) || 0.3), base = mkBase(p), ring = r => r.map(q => [q[0], q[1]]), area = r => { let a = 0; for (let i = 0; i < r.length; i++) { const A = r[i], B = r[(i + 1) % r.length]; a += A[0] * B[1] - B[0] * A[1]; } return Math.abs(a) / 2; };
-  const gross = area(poly), use = smF(p, "avdrag", "Ja") !== "Nej" && typeof polygonClipping !== "undefined", cuts = use ? mkCuts(p, poly, base, th) : []; let mp = [[ring(poly)]];
+  const gross = area(poly), use = smF(p, "avdrag", "Ja") !== "Nej" && typeof polygonClipping !== "undefined", cuts = use ? mkCuts(p.__src || p, poly, p.__src ? mkBase(p.__src) : base, th) : []; let mp = [[ring(poly)]];
   if (cuts.length) { try { mp = polygonClipping.difference([ring(poly)], ...cuts.map(c => [ring(c.poly)])); } catch (e) { mp = [[ring(poly)]]; } }
   const closed = r => (r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]) ? r.slice(0, -1) : r; let net = 0; mp.forEach(pg => pg.forEach((r, i) => { const rr = closed(r); net += (i ? -1 : 1) * area(rr); }));
   return { poly, th, base, gross, net: Math.max(0, net), mp, cuts, cutArea: Math.max(0, gross - net) };
