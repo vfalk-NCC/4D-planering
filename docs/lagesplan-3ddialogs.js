@@ -512,6 +512,7 @@ function l3Commands() {
     ["Vy från öster", "", () => l3View("e")], ["Vy från väster", "", () => l3View("w")], ["Zoom selected – zooma till markerat", "F", l3ZoomSelected, () => !l3SelBox().isEmpty()],
     ["Plan ↔ 3D", "Ctrl+P", l3TogglePlan], ["Montageordning (planera, spela upp, exportera HTML)", "", () => l3mtToggle(true)], ["Parallell projektion av/på", "", () => l3SetProjection(!l3IsOrtho())], ["Rotationscentrum", "V", l3StartV],
     ["Visa byggnaden från Trimble Connect…", "", () => { document.getElementById("v3ShowBtn").click(); l3bOpenDialog(); }],
+    ["Visningsläge: Skuggad", "", () => l3vmSet("shaded")], ["Visningsläge: Tråd (wireframe)", "", () => l3vmSet("wire")], ["Visningsläge: X-Ray", "", () => l3vmSet("xray")], ["Visningsläge: Realistisk", "", () => l3vmSet("real")],
     ["Planerade objekt: lådor", "", () => l3SetObjMode("solid")], ["Planerade objekt: genomskinliga", "", () => l3SetObjMode("ghost")], ["Planerade objekt: konturer", "", () => l3SetObjMode("edges")], ["Planerade objekt: dolda", "", () => l3SetObjMode("hidden")],
     ["Fäst mot hörn av/på", "", () => l3ToggleSnap("end")], ["Fäst mot mittpunkter av/på", "", () => l3ToggleSnap("mid")], ["Fäst mot kanter av/på", "", () => l3ToggleSnap("edge")],
     ["Fäst mot axlar av/på", "", () => l3ToggleSnap("axis")], ["Orto av/på", "O", () => l3ToggleSnap("ortho")], ["Rutnät av/på", "G", () => l3ToggleSnap("grid")],

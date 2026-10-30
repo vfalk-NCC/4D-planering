@@ -117,7 +117,7 @@ function l3texPatch(mat, uni) {
   const attr = !uni;
   if (mat.userData.l3tex) { if (uni) mat.userData.l3tex.uTx.value.set(uni[0], uni[1], uni[2]); return; }
   const uTx = { value: new THREE.Vector3(uni ? uni[0] : 0, uni ? uni[1] : 1, uni ? uni[2] : 1) };
-  mat.userData.l3tex = { uTx };
+  mat.userData.l3tex = { uTx, attr };
   mat.onBeforeCompile = sh => {
     sh.uniforms.uTexA = { value: l3texArray() }; sh.uniforms.uTx = uTx; sh.uniforms.uTexOn = l3tex.on;
     sh.vertexShader = (attr ? "attribute vec3 aTex;\n" : "") + "uniform vec3 uTx;\nvarying vec3 vTxP; varying vec3 vTxN; varying vec3 vTx;\n" +

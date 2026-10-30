@@ -280,6 +280,7 @@ function l3Dom() {
       <div class="v3-dd">
         <button type="button" id="v3ShowBtn" class="v3-ghost" title="Vad som visas">${I.eye}<span>Visa</span></button>
         <div class="v3-pop v3-show hidden" id="v3Show">
+          ${typeof l3vmHtml === "function" ? l3vmHtml() : ""}
           <label class="v3-chk"><input type="checkbox" id="v3ShowPlan" ${P.plan ? "checked" : ""} /> Ritningen (PDF) som mark</label>
           <label class="v3-pop-row v3-planop" title="Ritningens täckning i 3D">Täckning <input type="range" id="v3PlanOp" min="10" max="100" step="5" value="${P.planOp || 100}" /></label>
           <div class="v3-pop-l">Planerade objekt (lådor)</div>
@@ -401,6 +402,7 @@ function l3Dom() {
   $3("v3PlanOp").oninput = e => { l3SetPref("planOp", Number(e.target.value)); if (typeof l3lApplyPlanOp === "function") l3lApplyPlanOp(); l3Render(); };
   $3("v3ShowPlan").onchange = e => { l3SetPref("plan", e.target.checked); if (l3.planMesh) l3.planMesh.visible = e.target.checked; if (typeof l3LayersRender === "function") l3LayersRender(); l3Render(); };
   box.querySelectorAll("[data-v3e4d]").forEach(b => { b.onclick = () => { l3SetPref("etab4d", b.dataset.v3e4d); box.querySelectorAll("[data-v3e4d]").forEach(x => x.classList.toggle("on", x === b)); l3Etab4dAll(); }; });
+  box.querySelectorAll("[data-v3vm]").forEach(b => { b.onclick = () => { if (typeof l3vmSet === "function") l3vmSet(b.dataset.v3vm); }; });
   box.querySelectorAll("[data-v3objs]").forEach(b => { b.onclick = () => { l3SetPref("objs", b.dataset.v3objs); box.querySelectorAll("[data-v3objs]").forEach(x => x.classList.toggle("on", x === b)); l3BuildObjects(); l3Render(); }; });
   $3("v3LabelsChk").onchange = e => { l3SetPref("labels", e.target.checked); l3Render(); };
   $3("v3LayCsv").onclick = () => l3ExportCsv();
@@ -697,6 +699,7 @@ function l3Render() {
   l3Raf = requestAnimationFrame(() => {
     l3Raf = 0;
     l3.groups.sel.children.forEach(h => h.update && h.update());
+    if (typeof l3vmFrame === "function") l3vmFrame(); // visningsläge (tråd, X-Ray, realistisk)
     l3AdaptRes();
     if (typeof l3pcFrame === "function") l3pcFrame(); // punktmolnen: lättare variant medan kameran rör sig
     if (typeof l3pcRenderScene === "function") l3pcRenderScene(); else l3.renderer.render(l3.scene, l3.camera);
