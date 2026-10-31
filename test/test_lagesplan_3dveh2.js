@@ -84,6 +84,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return { fill: l3w.ctl.fill, v0, v1: l3pile.list.length ? l3pile.list.reduce((a, b) => a + b.vol, 0) : 0 };
   });
   ok(take.fill > 0.2 && take.v1 < take.v0, 'Skopan ska fyllas ur högen när den kröks in: ' + JSON.stringify(take));
+  // reglagepanelen och gå-rutan går att fälla ihop (valet sparas)
+  const col = await page.evaluate(() => { const p = document.querySelector('.v3-ctl'), h = document.querySelector('.v3-walk'), vis = e => [...e.children].filter(c => getComputedStyle(c).display !== 'none').length, h0 = p.getBoundingClientRect().height, w0 = vis(h); p.querySelector('[data-cb="col"]').click(); h.querySelector('[data-w="col"]').click(); return { h0, h1: p.getBoundingClientRect().height, w0, w1: vis(h), pc: l3Prefs().walkCtlCol, hc: l3Prefs().walkHudCol, lab: getComputedStyle(p.querySelector('label span')).color }; });
+  ok(col.h1 < col.h0 / 4 && col.w1 < col.w0 / 2 && col.pc === true && col.hc === true, 'Panelerna ska kunna fällas ihop: ' + JSON.stringify(col));
+  await page.evaluate(() => { document.querySelector('.v3-ctl [data-cb="col"]').click(); document.querySelector('.v3-walk [data-w="col"]').click(); });
   // lås lastbilen i sitt läge och exportera som IFC (inga trasiga delar)
   const lk = await page.evaluate(async () => { l3wSetKind('truck'); l3wWork(); l3w.ctl.tip = 0.6; l3w.ctlT.tip = 0.6; l3wApply(); window.__vehKeep = true; l3wLock(); const it = l3w.locked[0]; const ifc = it ? await l3vIfcExport(it, false) : null; return { locked: l3w.locked.length, tris: ifc && ifc.tris, head: ifc && ifc.text && ifc.text.slice(0, 13) }; });
   ok(lk.locked === 1 && lk.tris > 3000 && lk.head === 'ISO-10303-21;', 'Låst lastbil ska kunna exporteras som IFC: ' + JSON.stringify(lk));
