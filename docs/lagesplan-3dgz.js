@@ -41,14 +41,36 @@ function l3GzGuide() {
   const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([p0, p1]), new THREE.LineDashedMaterial({ color: l3gz.lock != null ? 0xf59e0b : 0x6d5efc, dashSize: 0.6, gapSize: 0.5, transparent: true, opacity: 0.55, depthTest: false }));
   line.computeLineDistances(); line.renderOrder = 8; line.userData.noHit = true; line.raycast = () => {}; l3.scene.add(line); l3gz.guide = line;
 }
+/* Objektets egen riktning (radianer). Har objektet en vridning är det den. Annars (t.ex. en ritad kropp där vinkeln ligger i själva geometrin) är det den
+   långa sidan på det minsta rektangel-omslaget runt fotavtrycket – så att "Objekt" följer det man ser och inte bara 0°. */
+function l3GzObjAngle(o) {
+  if (!o) return 0;
+  if (Math.abs(o.rotation.z) > 1e-6) return o.rotation.z;
+  const key = o.children.length + ":" + (o.userData.gzKey || 0); if (o.userData.gzAngKey === key) return o.userData.gzAng || 0;
+  const P = []; o.updateMatrixWorld(true); const v = new THREE.Vector3();
+  o.traverse(m => { if (!m.isMesh || m.userData.isSign || m.userData.noHit && !m.userData.placeId || m.userData.shadow || !m.geometry || !m.geometry.attributes.position) return; const pos = m.geometry.attributes.position, st = Math.max(1, Math.floor(pos.count / 3000)); for (let i = 0; i < pos.count; i += st) { v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld); P.push([v.x, v.y]); } });
+  let ang = 0;
+  if (P.length >= 3) {
+    P.sort((a, b) => a[0] - b[0] || a[1] - b[1]); const cr = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]), lo = [], up = [];
+    for (const p of P) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); } for (let i = P.length - 1; i >= 0; i--) { const p = P[i]; while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+    const H = lo.slice(0, -1).concat(up.slice(0, -1)); let best = null;
+    for (let i = 0; i < H.length; i++) {
+      const a = H[i], b = H[(i + 1) % H.length], t = Math.atan2(b[1] - a[1], b[0] - a[0]), c = Math.cos(t), s2 = Math.sin(t); let x0 = 1e18, x1 = -1e18, y0 = 1e18, y1 = -1e18;
+      H.forEach(q => { const x = q[0] * c + q[1] * s2, y = -q[0] * s2 + q[1] * c; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); });
+      const w = x1 - x0, h = y1 - y0; if (!best || w * h < best.area - 1e-9) best = { area: w * h, t: w >= h ? t : t + Math.PI / 2 };
+    }
+    if (best) { ang = best.t % Math.PI; if (ang > Math.PI / 2) ang -= Math.PI; if (ang <= -Math.PI / 2) ang += Math.PI; if (Math.abs(ang) < 0.0035) ang = 0; }
+  }
+  o.userData.gzAngKey = key; o.userData.gzAng = ang; return ang;
+}
 /* Aktiv riktning [x, y, z] för hjälplinje och exakt förflyttning: låst vinkel, vald axel eller objektets egen riktning. */
 function l3GzDir() {
   if (l3gz.lock != null) { const t = l3gz.lock * Math.PI / 180; return [Math.cos(t), Math.sin(t), 0]; }
   if (l3gz.axis === "x" || l3gz.axis === "y" || l3gz.axis === "z") {
-    const o = l3.gizmo.object, rot = l3gz.space === "local" && o ? o.rotation.z : 0, c = Math.cos(rot), s = Math.sin(rot);
+    const o = l3.gizmo.object, rot = l3gz.space === "local" && o ? l3GzObjAngle(o) : 0, c = Math.cos(rot), s = Math.sin(rot);
     return l3gz.axis === "x" ? [c, s, 0] : l3gz.axis === "y" ? [-s, c, 0] : [0, 0, 1];
   }
-  if (l3gz.space === "local" && l3.gizmo.object) { const r = l3.gizmo.object.rotation.z; return [Math.cos(r), Math.sin(r), 0]; }
+  if (l3gz.space === "local" && l3.gizmo.object) { const r = l3GzObjAngle(l3.gizmo.object); return [Math.cos(r), Math.sin(r), 0]; }
   return null;
 }
 function l3GzLabel() {
@@ -129,7 +151,7 @@ function l3GzSet(k, v) {
 function l3GzAct(k) {
   const o = l3.gizmo.object;
   if (k === "d0") l3GzLock(0); else if (k === "d45") l3GzLock(45); else if (k === "d90") l3GzLock(90); else if (k === "doff") l3GzLock(null);
-  else if (k === "dobj") l3GzLock(o ? Math.round(((o.rotation.z * 180 / Math.PI) % 360 + 360) % 360 * 10) / 10 : 0);
+  else if (k === "dobj") l3GzLock(o ? Math.round(((l3GzObjAngle(o) * 180 / Math.PI) % 360 + 360) % 360 * 10) / 10 : 0);
   else if (k === "close") { l3gz.open = false; l3GzPopHtml(); }
   else if (k === "reset") { l3gz.axis = "free"; l3gz.lock = null; l3gz.space = "world"; l3gz.dist = 0; l3gz.ang = 0; ["gzDist", "gzAng", "gzSpace"].forEach(x => l3SetPref(x, null)); l3GzApply(); l3GzPopHtml(); }
   else if (k === "mv+" || k === "mv-") {
