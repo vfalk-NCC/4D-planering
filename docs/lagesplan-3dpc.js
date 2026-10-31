@@ -187,6 +187,7 @@ function l3pcBuild(src, data) {
   l3pc.clouds.push(c);
   setTimeout(l3pcLegend, 0);
   l3pcPlace(c);
+  if (typeof l3pcEdApplyOnLoad === "function") l3pcEdApplyOnLoad(c); // redigeringar (borttagna punkter) läggs på igen
   l3pcIndexIdle(c); // för att fästa mot punkterna
   return c;
 }
@@ -571,12 +572,13 @@ function l3pcMoreMenu(btn, id) {
   const c = l3pc.clouds.find(x => x.id === id); if (!c) return;
   const m = document.createElement("div"); m.className = "v3-pc-menu v3-ldd-m";
   const others = l3pc.clouds.some(x => x.id !== id && x.visible);
-  m.innerHTML = `<button type="button" data-a="zoom">Zooma till molnet</button><button type="button" data-a="solo" ${l3pc.clouds.length < 2 ? "disabled" : ""}>${others || l3pc.clouds.length < 2 ? "Visa bara detta moln" : "Tänd alla moln"}</button><button type="button" data-a="dz">Höjdjustering…${c.dz ? ` (${String(c.dz).replace(".", ",")} m)` : ""}</button><button type="button" data-a="reload" title="Med inställningen Punkter per moln som gäller nu (t.ex. full upplösning)">Läs in igen</button><button type="button" data-a="info">Om molnet</button><hr /><button type="button" data-a="del" class="bad">Ta bort ur listan</button>`;
+  m.innerHTML = `<button type="button" data-a="zoom">Zooma till molnet</button><button type="button" data-a="solo" ${l3pc.clouds.length < 2 ? "disabled" : ""}>${others || l3pc.clouds.length < 2 ? "Visa bara detta moln" : "Tänd alla moln"}</button><button type="button" data-a="edit">✎ Redigera punkter…</button><button type="button" data-a="dz">Höjdjustering…${c.dz ? ` (${String(c.dz).replace(".", ",")} m)` : ""}</button><button type="button" data-a="reload" title="Med inställningen Punkter per moln som gäller nu (t.ex. full upplösning)">Läs in igen</button><button type="button" data-a="info">Om molnet</button><hr /><button type="button" data-a="del" class="bad">Ta bort ur listan</button>`;
   btn.closest(".v3-lr").after(m);
   m.onclick = e => {
     const a = e.target.closest("[data-a]"); if (!a) return; m.remove();
     if (a.dataset.a === "zoom") l3pcZoom(id);
     else if (a.dataset.a === "solo") l3pcSolo(id);
+    else if (a.dataset.a === "edit") l3peStart(id);
     else if (a.dataset.a === "dz") l3pcSetDz(id);
     else if (a.dataset.a === "del") l3pcForget(id);
     else if (a.dataset.a === "reload") {

@@ -239,8 +239,9 @@ function l3volRecompute(m) { l3volInvalidate(m); return l3volEnsure(m); }
 function l3volIfcParts(m) {
   const G = l3vol.geoms.get(m); if (!G) return [];
   const out = [];
+  const only = l3vol.ifcPart === "cut" || l3vol.ifcPart === "fill" ? l3vol.ifcPart : null;   // Victor: schakt för sig, fyllning för sig eller båda
   [["cut", "Schakt", m.vol.res.cut, "−"], ["fill", "Fyllning", m.vol.res.fill, "+"]].forEach(([k, name, vol, sg]) => {
-    const s = G[k]; if (!s) return; const pts = [], tris = [];
+    const s = G[k]; if (!s || (only && only !== k)) return; const pts = [], tris = [];
     for (let i = 0; i < s.pos.length; i += 3) pts.push({ x: s.pos[i], y: s.pos[i + 1], z: s.pos[i + 2] });
     for (let i = 0; i < s.idx.length; i += 3) tris.push([s.idx[i] + 1, s.idx[i + 1] + 1, s.idx[i + 2] + 1]);
     out.push({ kind: k, label: `${name} ${sg}${l3volM3(vol)}`, vol, g: { pts, tris } });
@@ -409,7 +410,7 @@ function l3volPanel() {
       ${sw("vtext", l3Prefs().volExpText !== false, "Volymtext i IFC", "Skylt med volymtexten i IFC-filen (volymerna ligger alltid som egenskaper)")}
       <div class="v3-vq-sl" title="Hur genomskinliga kropparna är"><span>Syns</span><input type="range" min="0.15" max="1" step="0.05" value="${Number(l3Prefs().volOpacity) || 0.62}" data-vop><em></em></div>
     </div>
-    <div class="v3-vq-foot"><button type="button" class="primary" data-vb="save" ${r ? "" : "disabled"}>${c.id ? "Uppdatera måttet" : "Spara som mått"}</button><button type="button" data-vb="ifc" ${r ? "" : "disabled"} title="Området, schakt- och fyllningskropparna som 3D-objekt i en IFC-fil (Trimble Connect eller nedladdning)">Exportera IFC</button>
+    <div class="v3-vq-foot"><button type="button" class="primary" data-vb="save" ${r ? "" : "disabled"}>${c.id ? "Uppdatera måttet" : "Spara som mått"}</button><select class="sm" data-vifc title="Vad som tas med i IFC-filen"><option value="both" ${l3vol.ifcPart !== "cut" && l3vol.ifcPart !== "fill" ? "selected" : ""}>Schakt + fyllning</option><option value="cut" ${l3vol.ifcPart === "cut" ? "selected" : ""}>Bara schakt</option><option value="fill" ${l3vol.ifcPart === "fill" ? "selected" : ""}>Bara fyllning</option></select><button type="button" data-vb="ifc" ${r ? "" : "disabled"} title="Området, schakt- och fyllningskropparna som 3D-objekt i en IFC-fil (Trimble Connect eller nedladdning)">Exportera IFC</button>
       <button type="button" data-vb="solid" title="Gör området och den valda ytan (t.ex. inskannat berg i punktmolnet) till en sluten kropp – botten under lägsta punkten, väggar runt området. Då går den att skära mot med Skär ytor." ${c.spec.a && c.spec.a.k !== "level" ? "" : "disabled"}>▣ Solid av ytan</button>
       <button type="button" data-vb="solidvol" title="Gör själva volymen – schaktkroppen (blå) och/eller fyllningen (röd) mellan den uppmätta ytan och \"Mot\" – till en sluten kropp som går att skära mot med Skär ytor." ${r ? "" : "disabled"}>▣ Solid av volymen</button>
       <details class="v3-vq-more"><summary title="Fler val">⋯</summary><div><button type="button" data-vb="copy" disabled>Kopiera resultatet</button><button type="button" data-vb="surf" title="Tryck ut hörnen på en egen yta (t.ex. projekterad botten eller släntkant) – hörnens höjder bestämmer ytan">Klicka ut egen yta…</button><button type="button" data-vb="redraw" title="Rita om området">Rita om området</button><button type="button" data-vb="prism" title="Enkel volym: områdets yta × en höjd du skriver, eller höjden upp till en yta du trycker på">Enkel höjdvolym…</button></div></details></div>`;
@@ -434,6 +435,7 @@ function l3volPanel() {
   on("save", () => { l3volSave(); });
   on("solid", () => { l3volSolid(); });
   on("solidvol", () => { l3volSolidVol(); });
+  const vifc = el.querySelector("[data-vifc]"); if (vifc) vifc.onchange = () => { l3vol.ifcPart = vifc.value; };
   on("copy", () => { const t = `${l3volText(c.res)} · netto ${l3volSg(c.res.net, "+")} · yta ${l3Fmt(area, 1)} m² · ${l3volLabel(c, c.spec.a)} mot ${l3volLabel(c, c.spec.b)}`; try { navigator.clipboard.writeText(t).then(() => l3Toast("Kopierat."), () => l3Status("Kunde inte kopiera.", true)); } catch (e) { l3Status("Kunde inte kopiera.", true); } });
   on("ifc", async function () { const b = this; b.disabled = true; try { const m = l3volSave(); if (m) await l3mExportIfc([m.id]); } catch (e) { /* statusraden */ } });
   const tx = q("input[data-vtext]"); if (tx) tx.onchange = () => l3SetPref("volExpText", tx.checked);
