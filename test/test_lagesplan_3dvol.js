@@ -100,6 +100,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const svol = await page.evaluate(() => { const n0 = placements.length; l3volSolidVol(); const m = placements.filter(p => p.m && p.m.k === 'mesh' && /^Schaktvolym/.test(p.name))[0]; return { n: placements.length - n0, vol: m ? modMeshStats(m.m.pts, m.m.faces).volume : null, cut: l3vol.cur.res.cut }; });
   if (!svol.vol || Math.abs(svol.vol - svol.cut) > Math.max(2, svol.cut * 0.1)) fail("Solid av volymen ska ha schaktets volym: " + JSON.stringify(svol));
   console.log('OK: solid av volymen (' + svol.vol.toFixed(0) + ' m³ ≈ schakt ' + svol.cut.toFixed(0) + ' m³)');
+  if (process.env.SHOT) { await page.setViewportSize({ width: 470, height: 900 }); await page.waitForTimeout(500); await page.evaluate(() => { const d = document.querySelector('.v3-vq-out'); if (d) d.open = true; }); await page.screenshot({ path: process.env.SHOT }); const sw = await page.evaluate(() => { const e = document.getElementById('v3VolPanel'); return { sw: e.scrollWidth, cw: e.clientWidth }; }); console.log('PANEL', JSON.stringify(sw)); await page.setViewportSize({ width: 1300, height: 850 }); }
   // Modell mot nivå 0: platta 2 m hög → fyllning 200 m³. Nivå 3 → schakt 100 m³.
   await setSel('a', 'md:vm'); await setSel('b', 'level');
   await page.fill('input[data-vz="b"]', '0'); await page.dispatchEvent('input[data-vz="b"]', 'change'); await page.waitForTimeout(1500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 });
