@@ -1665,6 +1665,7 @@ function l3Key(e) {
   e.stopImmediatePropagation();
   if (typeof l3peKey === "function" && l3peKey(e)) return; // redigera punktmoln (Esc, Enter, Ctrl+Z, Delete)
   if (typeof l3pfKey === "function" && l3pfKey(e)) return; // profilvyn (F fullskärm, Esc, 0)
+  if (typeof l3spKey === "function" && l3spKey(e)) return; // ritningspanelen (Esc avbryter höjdhämtning)
   if (typeof l3wKey === "function" && l3wKey(e)) return; // gå-läget (WASD) har tangenterna
   if (e.key === " " && typeof l3pl !== "undefined" && l3pl.rec && !e.repeat) { e.preventDefault(); l3plPause(); return; } // filmen: mellanslag pausar
   if (typeof l3HandleKey === "function" && l3HandleKey(e)) return; // drag i ett handtag pågår

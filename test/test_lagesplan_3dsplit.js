@@ -75,6 +75,28 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const rMv = await page.evaluate(() => { const r = document.getElementById('v3Sp').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, pref: l3Prefs().spRect }; });
   if (Math.abs(rMv.x - (rSW.x - 60)) > 3 || !rMv.pref || rMv.pref.w < 200) fail('Flytta med rubriken / spara: ' + JSON.stringify({ rSW, rMv }));
   console.log('OK: ritningspanelen – storlek och plats med hörnen och rubriken', JSON.stringify({ r0, rNW, rSE, rMv }));
+  // Prestanda: ritningen ritas inte om när bara kameran rör sig, och bilden finns i cache när panelen öppnas igen
+  const perf = await page.evaluate(async () => {
+    const out = {}; l3spClose(); const t0 = performance.now(); await l3spOpen(); out.reopenMs = performance.now() - t0; out.cached = !!(l3sp.cache && l3sp.cache.size);
+    l3sp.follow = false; l3spDraw(); const bk = l3sp.baseKey; let baseDraws = 0; const bcg = l3sp.bc.getContext('2d'), od = bcg.drawImage.bind(bcg); bcg.drawImage = (...a) => { baseDraws++; return od(...a); };
+    const cam = l3.camera, t1 = performance.now(); for (let i = 0; i < 60; i++) { cam.position.x += 0.4; cam.updateMatrixWorld(); l3spDraw(); } out.msPerFrame = (performance.now() - t1) / 60; out.baseDraws = baseDraws; out.sameBase = bk === l3sp.baseKey;
+    out.levels = (l3sp.pyr || []).length; return out;
+  });
+  if (!perf.cached || perf.baseDraws !== 0 || !perf.sameBase) fail('Ritningen ska inte ritas om när bara kameran rör sig: ' + JSON.stringify(perf));
+  if (perf.msPerFrame > 12) fail('Markeringarna ska ritas snabbt (< 12 ms): ' + JSON.stringify(perf));
+  console.log('OK: ritningspanelen är optimerad (cache, två lager, bildpyramid)', JSON.stringify(perf));
+  // Höjdkalibrering: höjden hämtas från ritningens kalibrering och kan ställas in, hämtas från 3D eller nålen, och ångras
+  const zc = await page.evaluate(async () => {
+    const o = {}; l3spClose(); await l3spOpen(); const inp = document.getElementById('spZ'); o.start = inp.value; o.calib0 = plan.calib.model[0][2];
+    inp.value = '12,5'; inp.dispatchEvent(new Event('change')); o.z1 = plan.calib.model.map(p => p[2]); o.shown = inp.value;
+    document.getElementById('spZp').click(); o.zPlus = plan.calib.model[0][2]; document.getElementById('spZm').click(); o.zMinus = plan.calib.model[0][2];
+    const p0 = l3spToScr; l3sp.pin = [plan.calib.model[0][0] + 5, plan.calib.model[0][1] + 5, 7.25]; document.getElementById('spZpin').click(); o.pinZ = plan.calib.model[0][2];
+    o.planMeshZ = l3.planMesh ? l3.planMesh.geometry.getAttribute('position').getZ(0) + l3.O[2] : null; await new Promise(r => setTimeout(r, 300)); o.planMeshZ2 = l3.planMesh ? l3.planMesh.geometry.getAttribute('position').getZ(0) + l3.O[2] : null;
+    document.getElementById('spZundo').click(); o.undo = plan.calib.model[0][2]; o.saved = !!plan._calibSet; return o;
+  });
+  if (zc.z1[0] !== 12.5 || zc.z1[1] !== 12.5 || zc.zPlus !== 12.6 || zc.zMinus !== 12.5 || zc.pinZ !== 7.25) fail('Höjdkalibrering: ' + JSON.stringify(zc));
+  if (zc.undo !== 12.5 || !zc.saved || Math.abs(zc.planMeshZ2 - 7.25) > 0.01) fail('Ångra höjd / ritningen i 3D följer: ' + JSON.stringify(zc));
+  console.log('OK: höjdkalibrering i ritningspanelen', JSON.stringify(zc));
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
   await browser.close(); server.close();
 })().catch(e => { console.error(e); process.exit(1); });
