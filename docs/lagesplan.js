@@ -267,7 +267,7 @@ function renderBusy() {
   if (bootBusy()) { const p = busyJobs.get("plan"); if (p && p.f >= 0) bootSet(p.label, 0.7 + 0.28 * p.f); el.classList.add("hidden"); return; }
   if (!j) { el.classList.add("hidden"); el.innerHTML = ""; return; }
   const pct = j.f >= 0 ? Math.max(1, Math.min(100, Math.round(j.f * 100))) : null;
-  el.innerHTML = `<span class="busy-t">${uiEsc(j.label)}${pct != null ? ` – ${pct} %` : ""}${jobs.length > 1 ? ` <em>(+${jobs.length - 1})</em>` : ""}</span>` +
+  el.innerHTML = `<span class="busy-t"><i class="busy-ring${pct == null ? " ind" : ""}" style="--p:${pct == null ? 0 : pct}"></i>${uiEsc(j.label)}${pct != null ? ` – ${pct} %` : ""}${jobs.length > 1 ? ` <em>(+${jobs.length - 1})</em>` : ""}</span>` +
     (j.f === undefined ? "" : `<i class="busy-bar${pct == null ? " ind" : ""}"><b style="width:${pct == null ? 35 : pct}%"></b></i>`);
   el.classList.remove("hidden");
 }

@@ -116,8 +116,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const st = await page.evaluate(async () => {
     const o = {}; l3spClose(); await l3spOpen(); l3spFollow(true); await new Promise(r => setTimeout(r, 200)); const v = l3sp.view, r = l3sp.cv.getBoundingClientRect();
     const v0 = { tx: v.tx, ty: v.ty, k: v.k }; l3sp.followHold = performance.now() + 3500; l3spGoTo(...l3spFromScr(r.width * 0.8, r.height * 0.3)); await new Promise(rr => setTimeout(rr, 700)); o.clickDx = Math.hypot(v.tx - v0.tx, v.ty - v0.ty);
-    l3sp.followHold = 0; const [cx, cy] = l3spToScr(l3.camera.position.x + l3.O[0], l3.camera.position.y + l3.O[1]); o.camOff0 = Math.hypot(cx - r.width / 2, cy - r.height / 2);
-    l3sp.cv.dispatchEvent(new WheelEvent('wheel', { deltaY: -240, clientX: r.left + 10, clientY: r.top + 10, bubbles: true, cancelable: true })); const [c2x, c2y] = l3spToScr(l3.camera.position.x + l3.O[0], l3.camera.position.y + l3.O[1]); o.zoomed = v.k > v0.k; o.camAfterZoom = Math.hypot(c2x - r.width / 2, c2y - r.height / 2);
+    l3sp.followHold = 0; const [cx, cy] = l3spToScr(l3.camera.position.x + l3.O[0], l3.camera.position.y + l3.O[1]); o.camOff0 = Math.hypot(cx - l3sp.cv.clientWidth / 2, cy - l3sp.cv.clientHeight / 2);
+    l3sp.cv.dispatchEvent(new WheelEvent('wheel', { deltaY: -240, clientX: r.left + 10, clientY: r.top + 10, bubbles: true, cancelable: true })); const [c2x, c2y] = l3spToScr(l3.camera.position.x + l3.O[0], l3.camera.position.y + l3.O[1]); o.zoomed = v.k > v0.k; o.camAfterZoom = Math.hypot(c2x - l3sp.cv.clientWidth / 2, c2y - l3sp.cv.clientHeight / 2);
     return o;
   });
   if (st.clickDx > 20) fail('Klick i panelen ska inte hoppa bilden: ' + JSON.stringify(st));

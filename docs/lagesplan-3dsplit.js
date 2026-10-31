@@ -73,7 +73,9 @@ async function l3spLoad() {
   } catch (e) { if (f) f.textContent = "Kunde inte visa ritningen: " + (e && e.message || e); } finally { l3sp.busy = false; }
 }
 function l3spFollow(on) { l3sp.follow = !!on; const b = document.getElementById("spFollow"); if (b) b.classList.toggle("on", l3sp.follow); l3sp.followCatch = l3sp.follow; l3sp.key = ""; }
-function l3spFit() { const cv = l3sp.cv, im = l3sp.img; if (!cv || !im) return; const r = cv.getBoundingClientRect(), k = Math.min(r.width / im.width, r.height / im.height) || 1; l3sp.view = { k, tx: (r.width - im.width * k) / 2, ty: (r.height - im.height * k) / 2 }; }
+/* Panelens mått i layout-pixlar (inte påverkade av ingångsanimationens skalning) och dess läge på skärmen. */
+function l3spBox(cv) { const r = cv.getBoundingClientRect(); return { left: r.left, top: r.top, width: cv.clientWidth || r.width, height: cv.clientHeight || r.height }; }
+function l3spFit() { const cv = l3sp.cv, im = l3sp.img; if (!cv || !im) return; const r = l3spBox(cv), k = Math.min(r.width / im.width, r.height / im.height) || 1; l3sp.view = { k, tx: (r.width - im.width * k) / 2, ty: (r.height - im.height * k) / 2 }; }
 /* Modell (m) ↔ bildpunkt i den renderade ritningen ↔ skärmpunkt i panelen. */
 function l3spToImg(x, y) { const [px, py] = l3spAff(l3sp.aff, x, y), q = l3sp.vp.convertToViewportPoint(px, py); return q; }
 function l3spFromImg(ix, iy) { const [px, py] = l3sp.vp.convertToPdfPoint(ix, iy), m = affInv(l3sp.aff); return l3spAff(m, px, py); }
@@ -82,7 +84,7 @@ const l3spFromScr = (sx, sy) => { const v = l3sp.view; return l3spFromImg((sx - 
 function l3spBind() {
   const cv = l3sp.cv; let moved = 0;
   cv.addEventListener("wheel", e => {
-    e.preventDefault(); e.stopPropagation(); const r = cv.getBoundingClientRect(), v = l3sp.view, dy = Math.max(-120, Math.min(120, e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY)), f = Math.exp(-dy * 0.0016), nk = Math.min(60, Math.max(0.02, v.k * f));
+    e.preventDefault(); e.stopPropagation(); const r = l3spBox(cv), v = l3sp.view, dy = Math.max(-120, Math.min(120, e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY)), f = Math.exp(-dy * 0.0016), nk = Math.min(60, Math.max(0.02, v.k * f));
     // med Följ på zoomar den runt kameran (mitten) – annars runt musen; Följ pausar en kort stund så att den inte drar tillbaka bilden
     const x = l3sp.follow ? r.width / 2 : e.clientX - r.left, y = l3sp.follow ? r.height / 2 : e.clientY - r.top; if (l3sp.follow) { const [cx, cy] = l3spToScr(l3.camera.position.x + l3.O[0], l3.camera.position.y + l3.O[1]); v.tx += x - cx; v.ty += y - cy; }
     v.tx = x - (x - v.tx) * nk / v.k; v.ty = y - (y - v.ty) * nk / v.k; v.k = nk; l3sp.followHold = performance.now() + 500; l3sp.key = "";
@@ -101,6 +103,7 @@ function l3spGround(x, y) {
   return z != null ? z : zp != null ? zp : 0;
 }
 function l3spGoTo(x, y) {
+  if (typeof l3moOK === "function" && l3moOK()) (l3sp.rip = l3sp.rip || []).push({ x, y, t: performance.now() });   // ring där man tryckte
   const z = l3spGround(x, y); l3sp.pin = [x, y, z]; l3spPinDraw();
   const T = new THREE.Vector3(x - l3.O[0], y - l3.O[1], z - l3.O[2]), dist = Math.max(3, l3.camera.position.distanceTo(l3.orbit.target));
   if (typeof l3FlyTo === "function") l3FlyTo(T, dist, null, 450); else { l3.orbit.target.copy(T); l3.orbit.update(); }
@@ -162,11 +165,13 @@ function l3spLoop() {
   const now = performance.now(); if (now - (l3sp.lastDraw || 0) < 33) return;
   const cam = l3.camera; cam.updateMatrixWorld(); const E = cam.matrixWorld.elements, P = l3sp.camE || (l3sp.camE = new Float32Array(16)); let moved = l3sp.key === "" || l3sp.ovDirty;
   if (!moved) for (let i = 0; i < 16; i++) if (Math.abs(E[i] - P[i]) > 1e-5) { moved = true; break; }
+  if (moved && typeof l3moOK === "function" && l3moOK()) { const tr = l3sp.trail = l3sp.trail || [], cx = cam.position.x + l3.O[0], cy = cam.position.y + l3.O[1], last = tr[tr.length - 1]; if (!last || Math.hypot(cx - last.x, cy - last.y) > 0.25) { tr.push({ x: cx, y: cy, t: now }); if (tr.length > 400) tr.shift(); } }
+  if (!moved && ((l3sp.rip && l3sp.rip.length) || (l3sp.trail && l3sp.trail.length && now - l3sp.trail[l3sp.trail.length - 1].t < 6500))) moved = true;   // ringen och spåret tonar ut
   const selN = l3.sel ? l3.sel.size : 0; if (selN !== l3sp.selN) { moved = true; l3sp.selN = selN; }
   if (!moved) return; for (let i = 0; i < 16; i++) P[i] = E[i]; l3sp.key = "ok"; l3sp.ovDirty = false; l3sp.lastDraw = now; l3spDraw();
 }
 function l3spDraw() {
-  const cv = l3sp.cv, bc = l3sp.bc, im = l3sp.img; if (!cv || !bc || !im || !l3sp.aff) return; const r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1), bw = Math.round(r.width * dpr), bh = Math.round(r.height * dpr);
+  const cv = l3sp.cv, bc = l3sp.bc, im = l3sp.img; if (!cv || !bc || !im || !l3sp.aff) return; const r = l3spBox(cv), dpr = Math.min(2, window.devicePixelRatio || 1), bw = Math.round(r.width * dpr), bh = Math.round(r.height * dpr);
   let sized = false; if (cv.width !== bw || cv.height !== bh) { cv.width = bw; cv.height = bh; bc.width = bw; bc.height = bh; sized = true; if (!l3sp.fitted) { l3sp.fitted = true; l3spFit(); } }
   const O = l3.O, cam = l3.camera;
   // Följ: kameran hålls nära mitten med mjuk glidning (död zon, så att bilden inte hoppar vid små rörelser eller när man klickar)
@@ -184,6 +189,9 @@ function l3spDraw() {
     }
   }
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
+  // kamerans spår (tonar ut efter några sekunder) och ringar där man tryckt
+  { const now = performance.now(), tr = l3sp.trail; if (tr && tr.length > 1) { while (tr.length && now - tr[0].t > 6500) tr.shift(); g.lineCap = "round"; g.lineJoin = "round"; for (let i = 1; i < tr.length; i++) { const a = 1 - (now - tr[i].t) / 6500; if (a <= 0) continue; const p0 = l3spToScr(tr[i - 1].x, tr[i - 1].y), p1 = l3spToScr(tr[i].x, tr[i].y); g.strokeStyle = `rgba(37,99,235,${(a * 0.7).toFixed(3)})`; g.lineWidth = 1 + 2.5 * a; g.beginPath(); g.moveTo(p0[0], p0[1]); g.lineTo(p1[0], p1[1]); g.stroke(); } }
+    const rp = l3sp.rip; if (rp && rp.length) { l3sp.rip = rp.filter(q => now - q.t < 1000); l3sp.rip.forEach(q => { const t = (now - q.t) / 1000, [x, y] = l3spToScr(q.x, q.y); [0, 0.18].forEach(dl => { const u = Math.max(0, Math.min(1, (t - dl) / (1 - dl))); if (u <= 0) return; g.strokeStyle = `rgba(220,38,38,${(0.75 * (1 - u)).toFixed(3)})`; g.lineWidth = 2.5 * (1 - u) + 0.5; g.beginPath(); g.arc(x, y, 6 + u * 34, 0, 6.2832); g.stroke(); }); }); } }
   // markerade etableringsobjekt
   if (l3.sel && l3.sel.size) placements.forEach(p => { if (!l3.sel.has(p.id)) return; const [x, y] = l3spToScr(p.x, p.y); g.fillStyle = "rgba(245,158,11,.35)"; g.strokeStyle = "#f59e0b"; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 9, 0, 6.2832); g.fill(); g.stroke(); if (p.name) { g.fillStyle = "#92400e"; g.font = "600 11px system-ui"; g.fillText(p.name, x + 12, y + 4); } });
   const mark = (pt, col, kind) => { if (!pt) return; const [x, y] = l3spToScr(pt[0], pt[1]); g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); if (kind === "cross") { g.moveTo(x - 8, y); g.lineTo(x + 8, y); g.moveTo(x, y - 8); g.lineTo(x, y + 8); } else if (kind === "pin") { g.arc(x, y, 7, 0, 6.2832); g.moveTo(x, y - 7); g.lineTo(x, y - 22); } g.stroke(); };

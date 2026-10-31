@@ -159,7 +159,7 @@ function l3bsSet(list, opts = {}) {
   const want = new Map(list.map(e => [l3bsKey(e.mesh, e.ri), e]));
   l3bs.sel = [...want.entries()].map(([key, e]) => ({ mesh: e.mesh, ri: e.ri, key }));
   l3bs.ver = (l3bs.ver || 0) + 1;
-  l3bsRebuild();
+  l3bsRebuild(); if (l3bs.sel.length && typeof l3moSelPop === "function") l3moSelPop();
   if (l3bs.sel.length && l3.sel && l3.sel.size && !opts.keepPlaces) l3SelectIds([]); // en sorts markering i taget
   if (typeof l3RenderSide === "function") l3RenderSide();
   if (typeof l3gRenderTab === "function") l3gRenderTab(); // Grupper: knapparna för de markerade

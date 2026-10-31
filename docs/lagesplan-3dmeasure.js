@@ -41,6 +41,7 @@ function l3mAdd(kind, pts, text, objs) {
   // Nya mått syns alltid – även om de andra är dolda (Victor 2026-10-10).
   l3mDraw();
   l3mRenderBar();
+  if (typeof l3moMeasure === "function") l3moMeasure(m);   // ljuspunkten ritar ut måttet
   return m;
 }
 /* Måttlinjen kan dras ut från fästpunkterna (Victor 2026-10-10: "dra måttet uppåt eller nedåt i samma

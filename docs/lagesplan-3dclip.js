@@ -102,6 +102,7 @@ function l3cSet(i, off) {
 }
 /* Planet som en tonad yta med kant medan man drar. */
 function l3cShowPlane(c) {
+  const firstShow = !l3c.plane;
   if (l3c.plane) { l3.scene.remove(l3c.plane); l3c.plane.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); l3c.plane = null; }
   if (!c) return;
   const b = new THREE.Box3();
@@ -117,7 +118,8 @@ function l3cShowPlane(c) {
   grp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), c.plane.normal.clone().normalize());
   [quad, edge].forEach(o => { o.renderOrder = 7; o.raycast = () => {}; o.userData.noHit = true; });
   grp.position.add(c.plane.normal.clone().multiplyScalar(0.01)); // en centimeter på den sida som syns – klipps inte bort
-  l3.scene.add(grp); l3c.plane = grp;
+  l3.scene.add(grp); l3c.plane = grp; grp.userData.size = size;
+  if (firstShow && typeof l3moClipSweep === "function") l3moClipSweep(grp, size, c.plane.normal);   // ljust svep när man börjar dra
 }
 
 /* Högerklick på saxen (Victor 2026-10-10: "så ska jag kunna välja att ta bort den"). */

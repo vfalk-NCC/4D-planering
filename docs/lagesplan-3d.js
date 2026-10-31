@@ -116,12 +116,14 @@ function l3PdfToModel(px, py) {
 // Inställningar (per webbläsare)
 // ---------------------------------------------------------------------
 const L3_PREFS_KEY = "lagesplan-3d-prefs";
-const L3_PREFS_DEFAULT = { plan: true, objs: "hidden", labels: true, legend: true, snap: true, step: "0.5", pal: true, mouse: "tekla", ortho: false, autoRot: true, actOutline: false, bubOn: false, bubScope: "auto", bubMax: 30 };
+const L3_PREFS_DEFAULT = { anim: true, plan: true, objs: "hidden", labels: true, legend: true, snap: true, step: "0.5", pal: true, mouse: "tekla", ortho: false, autoRot: true, actOutline: false, bubOn: false, bubScope: "auto", bubMax: 30 };
 if (typeof lowMemDevice !== "undefined" && lowMemDevice) L3_PREFS_DEFAULT.signsOff = true; // iPhone/iPad: skyltarna (en bild per objekt) är släckta från början – tänds med Skyltar i menyn
 function l3Prefs() {
   if (l3 && l3.prefs) return l3.prefs;
   try { return { ...L3_PREFS_DEFAULT, ...JSON.parse(localStorage.getItem(L3_PREFS_KEY) || "{}") }; } catch (e) { return { ...L3_PREFS_DEFAULT }; }
 }
+/* Animationer av/på: CSS-rörelserna (paneler, toasts, laddning) följer klassen v3-noanim på sidan. */
+function l3AnimClass() { const off = (typeof l3moOK === "function" ? !l3moOK() : false); document.body.classList.toggle("v3-noanim", off); }
 function l3SetPref(k, v) {
   const p = l3Prefs(); p[k] = v; if (l3) l3.prefs = p;
   try { localStorage.setItem(L3_PREFS_KEY, JSON.stringify(p)); } catch (e) { /* privat läge */ }
@@ -131,6 +133,7 @@ function l3SetPref(k, v) {
 // Öppna / stänga
 // ---------------------------------------------------------------------
 async function open3d() {
+  l3AnimClass();
   if (!plan) { alert("Välj en arbetsyta först."); return; }
   if (!plan.calib) { alert("Arbetsytan behöver kalibreras mot 3D-modellen först (Zoner → Kalibrera mot 3D). Annars vet 3D-vyn inte var planen ligger."); return; }
   if (token) settings.githubToken = token; // 3D-biblioteket och modellerna: alltid den aktiva token (en gammal sparad gav 401)
@@ -273,6 +276,7 @@ function l3Dom() {
           <button type="button" data-v3view="sel">Zooma till markerat (F)</button>
           <hr/>
           <button type="button" data-v3view="plan">Plan ↔ 3D <kbd>Ctrl+P</kbd></button>
+          <label class="v3-chk v3-pop-row" title="Små rörelser vid markering, mått, snitt och paneler. Stängs av automatiskt med Minska rörelser i systemet."><input type="checkbox" id="v3Anim" ${P.anim !== false ? "checked" : ""} /> Animationer</label>
           <label class="v3-chk v3-pop-row"><input type="checkbox" id="v3Ortho" ${P.ortho ? "checked" : ""} /> Parallell projektion</label>
           <button type="button" data-v3view="center">Rotationscentrum… <kbd>V</kbd></button>
           <button type="button" data-v3view="walk" title="Släpp ner kameran i ögonhöjd och gå runt med W/A/S/D">Gå runt (WASD)…</button>
@@ -404,6 +408,7 @@ function l3Dom() {
   $3("v3LaunchBtn").onclick = e => { e.stopPropagation(); l3OpenLaunch(); };
   box.querySelectorAll("[data-v3view]").forEach(b => { b.onclick = () => { l3HideMenus(); const v = b.dataset.v3view; if (v === "plan") l3TogglePlan(); else if (v === "center") l3StartV(); else if (v === "walk") l3wStart(); else if (v === "mont") l3mtToggle(true); else l3View(v); }; });
   $3("v3Ortho").onchange = e => { l3SetProjection(e.target.checked); };
+  $3("v3Anim").onchange = e => { l3SetPref("anim", e.target.checked); l3AnimClass(); };
   const mouseHint = () => { const a = l3Prefs().autoRot !== false ? " kring punkten under markören" : " kring rotationscentrum (V)"; $3("v3MouseHint").textContent = l3Prefs().mouse === "standard" ? `Vänster = rotera${a}, Ctrl + vänster = markeringsfönster, höger/mitten = panorera, hjul = zooma mot markören. Skift + vänster = panorera.` : `Vänster = markera (dra en ruta), mitten = panorera, Ctrl + mitten = rotera${a}, hjul = zooma mot markören, höger = meny.`; };
   $3("v3AutoRot").onchange = e => { l3SetPref("autoRot", e.target.checked); mouseHint(); };
   box.querySelectorAll("[data-v3mouse]").forEach(b => { b.onclick = () => { l3SetPref("mouse", b.dataset.v3mouse); box.querySelectorAll("[data-v3mouse]").forEach(x => x.classList.toggle("on", x === b)); if (l3) l3ApplyMouse(); mouseHint(); if (typeof l3NavHelp === "function") l3NavHelp(); }; });
