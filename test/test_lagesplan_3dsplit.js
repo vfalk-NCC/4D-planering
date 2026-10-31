@@ -155,6 +155,23 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!og.opts.some(x => /^ortho:orth1\|Flygfoto test/.test(x)) || !og.opts.some(x => x.startsWith('ortho:*'))) fail('Ortofoton som val: ' + JSON.stringify(og));
   if (!og.drewOrtho || og.dx > 0.6 || og.dy > 0.6 || !/Flygfoto test/.test(og.note)) fail('Ortofotot ritas med världsfilen: ' + JSON.stringify(og));
   console.log('OK: mina ortofoton finns som underlag i minimapen', JSON.stringify(og));
+  // Pekskärm: nyp för att zooma, två fingrar panorerar, ett finger panorerar, dubbeltryck zoomar in, ＋/− i rubriken
+  const tc = await page.evaluate(async () => {
+    const o = {}; l3spClose(); await l3spOpen(); l3spFollow(false); const cv = l3sp.cv, R = cv.getBoundingClientRect(), v = l3sp.view, wait = ms => new Promise(r => setTimeout(r, ms));
+    const ev = (type, id, x, y) => cv.dispatchEvent(new PointerEvent(type, { pointerId: id, pointerType: 'touch', isPrimary: id === 1, clientX: R.left + x, clientY: R.top + y, bubbles: true, cancelable: true }));
+    const cx = R.width / 2, cy = R.height / 2, k0 = v.k; const keep = l3spFromScr(cx, cy);
+    ev('pointerdown', 1, cx - 30, cy); ev('pointerdown', 2, cx + 30, cy); ev('pointermove', 1, cx - 70, cy); ev('pointermove', 2, cx + 70, cy);   // isär: ×~2,3
+    o.pinchK = v.k / k0; const after = l3spFromScr(cx, cy); o.pinchKeep = Math.hypot(after[0] - keep[0], after[1] - keep[1]);   // punkten mitt emellan fingrarna ligger kvar
+    ev('pointermove', 1, cx - 70, cy + 20); ev('pointermove', 2, cx + 70, cy + 20); o.twoPan = Math.abs(l3sp.view.ty - v.ty) < 1e-9; ev('pointerup', 2, cx + 70, cy + 20); ev('pointerup', 1, cx - 70, cy + 20);
+    const k1 = v.k; ev('pointerdown', 3, cx, cy); ev('pointermove', 3, cx + 40, cy + 10); const tx1 = v.tx; ev('pointerup', 3, cx + 40, cy + 10); o.onePan = tx1; o.followOff = !l3sp.follow;
+    const k2 = v.k; ev('pointerdown', 4, 50, 50); ev('pointerup', 4, 50, 50); await wait(60); ev('pointerdown', 5, 51, 51); ev('pointerup', 5, 51, 51); o.dbl = v.k / k2;   // dubbeltryck
+    await wait(500); const k3 = v.k; document.getElementById('spZin').click(); o.btnIn = v.k / k3; document.getElementById('spZout').click(); o.btnOut = v.k / k3;
+    ev('pointerdown', 6, 80, 60); ev('pointerup', 6, 80, 60); await wait(500); o.tapGo = !!l3sp.pin;   // enkeltryck flyger dit (efter väntan på ev. dubbeltryck)
+    return o;
+  });
+  if (!(tc.pinchK > 1.8 && tc.pinchK < 2.8) || tc.pinchKeep > 0.01 || !tc.twoPan) fail('Nyp-zoom på pekskärm: ' + JSON.stringify(tc));
+  if (!tc.followOff || !(tc.dbl > 2) || !(tc.btnIn > 1.5) || !(tc.btnOut < 1.1) || !tc.tapGo) fail('Pekskärm: panorera/dubbeltryck/knappar/tryck: ' + JSON.stringify(tc));
+  console.log('OK: pekskärm – nyp-zoom, panorering, dubbeltryck, ＋/− och tryck', JSON.stringify(tc));
   if (process.env.SHOT) { await page.evaluate(async () => { l3SetPref('spMap', 'esri'); document.getElementById('spMapSrc').value = 'esri'; document.getElementById('spMapSrc').dispatchEvent(new Event('change')); const c = plan.calib.model[0]; l3spGoTo(c[0] + 25, c[1] + 12); }); await page.waitForTimeout(1300); await page.screenshot({ path: process.env.SHOT }); }
   await browser.close(); server.close();
 })().catch(e => { console.error(e); process.exit(1); });
