@@ -355,6 +355,7 @@ function l3volPanel() {
   }
   const sw = (key, on, label, tip) => `<label class="v3-vq-sw" title="${esc(tip)}"><span>${label}<em data-vtri-${key}></em></span><input type="checkbox" data-${key} ${on ? "checked" : ""}><b></b></label>`;
   el.innerHTML = `<div class="v3-vp-h"><button type="button" data-vb="col" class="tg" title="Fäll ihop / fäll ut">${l3Prefs().vpCol ? "▸" : "▾"}</button><b>Volym</b><span>${r && l3Prefs().vpCol ? `Netto ${l3volSg(r.net, "+")}` : `${l3Fmt(area, 1)} m² · ${n} hörn`}</span><button type="button" data-vb="undo" title="Ta bort områdets sista hörn" ${n > 3 ? "" : "disabled"}>↶ Ångra punkt</button><button type="button" data-vb="restart" title="Rita området från början">⟲ Börja om</button><button type="button" data-vb="x" title="Stäng (Esc)">✕</button></div>
+    <div class="v3-vp-t" data-vhint>Dra i hörnpunkterna (orange ringar) för att flytta dem – volymen räknas om när du släpper. Ctrl+Z ångrar.</div>
     ${noSrc ? `<div class="v3-vp-t warn">Tänd ett punktmoln eller en 3D-modell (Lager) om något ska mätas mot ytan. Plan och nivå går att använda utan.</div>` : ""}
     <div class="v3-vq-src">${row("a", "Yta som mäts", c.spec.a, "Den yta vars volym mot den andra mäts, t.ex. punktmolnet över schaktgropen")}<button type="button" class="v3-vq-swap" data-vb="swap" title="Byt plats på ytorna – schakt blir fyllning och tvärtom">⇅</button>${row("b", "Mot", c.spec.b, "Jämförelseytan: en modell, ett annat punktmoln, ett plan, en nivå eller en yta du klickat ut")}</div>
     <div data-vres>${res}</div>

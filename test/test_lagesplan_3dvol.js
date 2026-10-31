@@ -65,6 +65,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.waitForSelector('#v3VolPanel'); await page.waitForFunction(() => l3vol.cur && l3vol.cur.res, null, { timeout: 15000 });
   const d = await page.evaluate(() => ({ a: l3vol.cur.spec.a.k, b: l3vol.cur.spec.b.k, res: l3vol.cur.res, solids: !!(l3vol.cur.geom && (l3vol.cur.geom.cut || l3vol.cur.geom.fill)) }));
   console.log('default', JSON.stringify({ a: d.a, b: d.b, fill: d.res.fill, cut: d.res.cut, area: d.res.area, cell: d.res.cell }));
+  // Hörnen går att dra i efter utplaceringen: handtagen visas, hörnet flyttas med musen och volymen räknas om.
+  const hd = await page.evaluate(() => [...document.querySelectorAll('.v3-mhandle')].filter(b => b.style.display !== 'none').map(b => { const r = b.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }));
+  if (hd.length !== 4) fail('Fyra hörnhandtag ska synas när volympanelen är öppen: ' + JSON.stringify(hd));
+  const p0 = await page.evaluate(() => ({ pts: l3vol.cur.pts.map(p => p.slice()), area: l3volArea(l3vol.cur.pts), net: l3vol.cur.res.net }));
+  await page.mouse.move(hd[0][0], hd[0][1]); await page.mouse.down(); await page.mouse.move(hd[0][0] + 25, hd[0][1] + 25, { steps: 6 }); await page.mouse.up();
+  await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 }); await page.waitForTimeout(400);
+  const p1 = await page.evaluate(() => ({ pts: l3vol.cur.pts.map(p => p.slice()), area: l3volArea(l3vol.cur.pts), res: !!l3vol.cur.res }));
+  if (JSON.stringify(p1.pts[0]) === JSON.stringify(p0.pts[0]) || JSON.stringify(p1.pts.slice(1)) !== JSON.stringify(p0.pts.slice(1)) || Math.abs(p1.area - p0.area) < 0.05 || !p1.res) fail('Hörnet ska ha flyttats och volymen räknats om: ' + JSON.stringify({ p0: p0.pts[0], p1: p1.pts[0], a0: p0.area, a1: p1.area }));
+  await page.evaluate(() => l3Undo()); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 });
+  const p2 = await page.evaluate(() => ({ pts: l3vol.cur.pts.map(p => p.slice()), area: l3volArea(l3vol.cur.pts) }));
+  if (JSON.stringify(p2.pts) !== JSON.stringify(p0.pts)) fail('Ctrl+Z ska flytta tillbaka hörnet: ' + JSON.stringify({ p0: p0.pts[0], p2: p2.pts[0] }));
+  console.log('OK: volymens hörn går att dra i efter utplaceringen (area ' + p0.area.toFixed(1) + ' → ' + p1.area.toFixed(1) + ' m², ångra återställer)');
   // Moln (platå 1,5 över underkanten) mot modellens ovansida (2,0): molnet ligger 0,5 m LÄGRE → schakt 10*10*0,5 = 50 m³.
   const setSel = async (key, v) => { await page.selectOption(`select[data-vk="${key}"]`, v); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 }); await page.waitForTimeout(350); };
   await setSel('a', 'pc:pcA'); await setSel('b', 'md:vm');

@@ -155,6 +155,8 @@ function l3mPlaceLabels() {
    (hörn, kanter, ytor, DXF); Skift = var 5:e grad från grannpunkten. Måttet räknas om; Ctrl+Z ångrar. */
 const l3mH = { els: [], drag: null };
 function l3mActive() {
+  // Pågående volym (panelen öppen): hörnen kan dras i efteråt och volymen räknas om (Victor 2026-10-31)
+  if (typeof l3vol !== "undefined" && l3vol.cur && !l3vol.capture && l3vol.cur.pts && l3vol.cur.pts.length) return l3vol.cur;
   if (!l3 || !l3m.sel || l3m.sel.size !== 1 || (l3.tool && l3.tool !== "select")) return null;
   const m = l3m.list.find(x => l3m.sel.has(x.id));
   return m && !m.locked && !m.hid && (typeof l3aOn !== "function" || l3aOn(m)) ? m : null;
@@ -202,7 +204,8 @@ function l3mHDown(e, i) {
     if (!s) return;
     moved = true;
     m.pts[i] = [s.point.x + l3.O[0], s.point.y + l3.O[1], s.point.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000);
-    l3mRecalc(m); l3mDraw(); l3StatusLive(`${L3M_KIND[m.kind] || "Mått"} ${m.text}`);
+    const live = m === l3vol.cur; if (live) { m.geom = null; m.res = null; }   // gamla kroppar visas inte medan hörnet dras
+    l3mRecalc(m); l3mDraw(); l3StatusLive(live ? "Flyttar hörnet – volymen räknas om när du släpper" : `${L3M_KIND[m.kind] || "Mått"} ${m.text}`);
   };
   const up = ev => {
     window.removeEventListener("pointermove", mv, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("pointercancel", up, true);
@@ -210,6 +213,11 @@ function l3mHDown(e, i) {
     if (!moved || JSON.stringify(m.pts) === JSON.stringify(was.pts)) { l3mDraw(); return; }
     if (typeof l3mObjAt === "function") { m.objs = (m.objs || []).slice(); m.objs[i] = l3mObjAt(ev); }
     const now = { pts: m.pts.map(p => p.slice()), text: m.text, objs: (m.objs || []).slice() };
+    if (m === l3vol.cur) {   // pågående volym: ångra/gör om flyttar tillbaka hörnet och räknar om
+      const setV = st => { if (l3vol.cur !== m) return; m.pts = st.pts.map(p => p.slice()); m.objs = st.objs.slice(); m.geom = null; m.res = null; l3volSchedule(0); };
+      if (typeof l3VPush === "function") l3VPush(() => setV(was), () => setV(now), "flytta volymens hörn");
+      l3volSchedule(0); l3Status("Hörnet flyttat – volymen räknas om (Ctrl+Z ångrar)."); return;
+    }
     const set = st => { m.pts = st.pts.map(p => p.slice()); m.text = st.text; m.objs = st.objs.slice(); l3mChanged(m); };
     if (typeof l3VPush === "function") l3VPush(() => set(was), () => set(now), "flytta måttets punkt");
     l3mChanged(m);
