@@ -335,25 +335,33 @@ async function dwgToDxfText(buf) {
 
 /* Flera filer i taget: läses och laddas upp en i taget. */
 async function addDxfFiles(files, opts = {}) {
-  const list = files.filter(f => /\.(dxf|dwg)$/i.test(f.name));
-  const skipped = files.length - list.length;
-  if (!list.length) { alert("Välj en eller flera DXF- eller DWG-filer (DWG är experimentellt)."); return; }
+  const comp = f => /\.(dbf|prj|shx|cpg|qix|sbn|sbx)$/i.test(f.name);   // Shapefilens följeslagare läses tillsammans med .shp
+  const list = files.filter(f => /\.(dxf|dwg)$/i.test(f.name) || (typeof cadvIsVector === "function" && cadvIsVector(f.name)));
+  const skipped = files.filter(f => !list.includes(f) && !comp(f)).length;
+  if (!list.length) { alert("Välj en eller flera filer: DXF, DWG (experimentellt), GeoJSON, KML, GPX, Shapefile (.shp med .dbf/.prj eller en .zip), SVG, CSV/TXT/XYZ med koordinater eller LandXML."); return; }
   if (!plan || !plan.calib) { alert("Kalibrera planen mot 3D (📐) först – CAD-ritningen placeras via modellens koordinater."); return; }
   const done = [];
   for (let i = 0; i < list.length; i++) {
     cadBatch = list.length > 1 ? `${i + 1}/${list.length} ` : "";
-    if (await addDxfFile(list[i], opts)) done.push(list[i].name);
+    if (await addDxfFile(list[i], opts, files)) done.push(list[i].name);
   }
   cadBatch = "";
   if (list.length > 1 || skipped) setSaveStatus(`📐 ${done.length} av ${list.length} DXF-filer inlagda${skipped ? ` (${skipped} filer var inte DXF och hoppades över)` : ""}.`);
 }
 let cadBatch = "";
-async function addDxfFile(file, opts = {}) {
+async function addDxfFile(file, opts = {}, siblings = []) {
   if (!plan || !plan.calib) { alert("Kalibrera planen mot 3D (📐) först – CAD-ritningen placeras via modellens koordinater."); return false; }
   setBusy(`${cadBatch}Läser ${file.name}…`);
   try {
     let buf = await file.arrayBuffer();
     if (/\.dwg$/i.test(file.name)) { setBusy(`${cadBatch}Läser DWG ${file.name} (experimentellt)…`); try { buf = new TextEncoder().encode(await dwgToDxfText(buf)).buffer; } catch (e) { throw new Error("DWG: " + e.message + " Spara annars som DXF i CAD-programmet."); } }
+    if (!/\.(dxf|dwg)$/i.test(file.name) && typeof cadvConvert === "function") {   // GeoJSON, KML, GPX, Shapefile, SVG, CSV, LandXML … görs om till DXF
+      setBusy(`${cadBatch}Läser ${file.name}…`);
+      const r = await cadvConvert(file, siblings, { anchor: plan.calib.model[0] });
+      buf = new TextEncoder().encode(r.dxf).buffer;
+      const info = [r.zone ? `koordinatsystem ${r.zone.name}` : r.crs && r.crs.kind === "local" ? "utan koordinater" : "", ...(r.notes || [])].filter(Boolean).join(" · ");
+      if (info && typeof setSaveStatus === "function") setSaveStatus(`📐 ${file.name}: ${info}.`);
+    }
     if (new TextDecoder().decode(buf.slice(0, 22)).startsWith("AutoCAD Binary DXF")) throw new Error("Binär DXF stöds inte – spara som ASCII-DXF.");
     await new Promise(r => setTimeout(r, 20));
     const dxf = parseDxf(decodeDxfText(buf));
