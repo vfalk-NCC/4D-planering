@@ -195,6 +195,7 @@ async function open3d() {
   l3Resize(); l3Render();
 }
 function close3d() {
+  if (typeof l3spClose === "function" && typeof l3sp !== "undefined" && l3sp.open) l3spToggle(false);
   if (typeof l3w !== "undefined" && l3w.on) l3wExit(true);
   document.body.classList.remove("v3-open");
   if (typeof l3sLeave === "function") l3sLeave(); // 2D-lagren som de var i 2D

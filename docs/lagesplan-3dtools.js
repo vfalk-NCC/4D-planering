@@ -22,6 +22,7 @@ function l3ToggleSnap(k) {
 function l3RenderSnapBar() {
   const host = document.getElementById("v3Canvas");
   if (!host || !l3) return;
+  if (typeof l3spSync === "function") l3spSync();   // knappen för ritningspanelen
   let bar = document.getElementById("v3SnapBar");
   if (!bar) { bar = document.createElement("div"); bar.id = "v3SnapBar"; bar.className = "v3-snapbar"; host.appendChild(bar); bar.onclick = e => e.stopPropagation(); }
   const s = l3Snaps(), m = l3Prefs().measure || "dist";

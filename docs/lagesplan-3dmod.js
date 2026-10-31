@@ -133,6 +133,7 @@ function modSideHtml(p) {
   const m = p.m; if (!m) return "";
   const d = modDims(p), f1 = v => (Math.round(v * 1000) / 1000).toString().replace(".", ","), kind = m.k === "solid" ? "Kropp" : m.k === "mesh" ? "Nät" : m.k === "face" ? "Yta" : "Linje";
   const rows = m.k === "curve" ? `<div class="v3-sub">Längd ${f1(d.length)} m · ${(m.pts || []).length} punkter${m.closed ? " · sluten" : ""}</div>`
+    : m.k === "mesh" ? `<div class="v3-sub">Yta ${f1(d.area)} m² · <b>volym ${f1(d.volume)} m³</b>${m.closed ? " · sluten kropp" : " · öppet nät (volymen är bara ungefärlig)"} · ${(m.faces || []).length.toLocaleString("sv-SE")} trianglar</div>`
     : `<div class="v3-sub">Yta ${f1(d.area)} m² · omkrets ${f1(d.perimeter)} m${m.k === "solid" ? ` · volym ${f1(d.volume)} m³` : ""}</div>`;
   const dist = m.k === "curve" || m.k === "mesh" ? "" : `<div class="v3-grid"><label><span>${m.k === "solid" ? "Höjd (Push/Pull)" : "Dra ut till kropp"}</span><div class="v3-in"><input type="text" inputmode="decimal" data-modd value="${m.k === "solid" ? String(m.d).replace(".", ",") : ""}" placeholder="${m.k === "solid" ? "" : "t.ex. 1,2"}" /><em>m</em></div></label></div>`;
   const ifc = m.k === "curve" ? "" : `<label class="v3-field"><span>IFC-klass</span><select data-modifc>${MOD_IFC.map(([k, l]) => `<option value="${k}" ${k === (m.ifc || MOD_IFC[0][0]) ? "selected" : ""}>${l}</option>`).join("")}</select></label>`;

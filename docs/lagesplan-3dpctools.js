@@ -2,12 +2,12 @@
    Redigera (ring/rektangel), filter (brus, utglesning, höjd, mark/över mark), profil/snitt, differentialanalys (jämför moln/datum, färgkarta
    för skillnad), volym (mät, tabell med CSV, släntkropp med bermer). Filtren är redigeringar som sparas och läggs på igen (se lagesplan-3dpcedit.js). */
 const l3pt = { open: false, el: null, btn: null, cid: null, picking: 0, ptsA: null, prof: null, line: null, kb: null };
-const L3PT_CSS = `#v3PcToolBtn{position:absolute;left:12px;bottom:60px;z-index:21;width:40px;height:40px;border-radius:12px;border:1px solid rgba(0,0,0,.14);background:var(--v3-panel,#fff);box-shadow:0 4px 14px rgba(0,0,0,.18);font-size:19px;cursor:pointer}
-#v3PcTools{position:absolute;left:12px;bottom:108px;z-index:22;width:min(340px,calc(100% - 24px));max-height:calc(100% - 150px);overflow:auto;background:var(--v3-panel,#fff);color:inherit;border:1px solid rgba(0,0,0,.12);border-radius:14px;box-shadow:0 10px 32px rgba(0,0,0,.22);font:13px system-ui,sans-serif;padding:8px 10px}
+const L3PT_CSS = `#v3PcToolBtn{font-size:18px}#v3PcToolBtn.on{background:#2563eb!important;color:#fff!important}
+#v3PcTools{position:absolute;right:64px;bottom:12px;z-index:23;width:min(340px,calc(100% - 80px));max-height:calc(100% - 100px);overflow:auto;background:var(--v3-panel,#fff);color:inherit;border:1px solid rgba(0,0,0,.12);border-radius:14px;box-shadow:0 10px 32px rgba(0,0,0,.22);font:13px system-ui,sans-serif;padding:8px 10px}
 #v3PcTools h4{margin:2px 0 6px;font-size:13px;display:flex;justify-content:space-between;align-items:center}#v3PcTools details{border-top:1px solid rgba(0,0,0,.08);padding:6px 0}#v3PcTools summary{cursor:pointer;font-weight:600;padding:2px 0}
 #v3PcTools .r{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}#v3PcTools label.f{display:flex;gap:6px;align-items:center;justify-content:space-between;margin:5px 0}#v3PcTools label.f input,#v3PcTools label.f select{width:96px;padding:4px 6px;border:1px solid rgba(0,0,0,.18);border-radius:7px;font:inherit}
 #v3PcTools button{border:1px solid rgba(0,0,0,.15);background:#fff;border-radius:9px;padding:6px 10px;font:inherit;cursor:pointer}#v3PcTools button.p{background:#2563eb;color:#fff;border-color:#2563eb}#v3PcTools button.bad{background:#dc2626;color:#fff;border-color:#dc2626}#v3PcTools .t{opacity:.7;font-size:12px}
-#v3PcProf{position:absolute;right:12px;bottom:60px;z-index:22;width:min(680px,calc(100% - 24px));background:var(--v3-panel,#fff);border:1px solid rgba(0,0,0,.12);border-radius:14px;box-shadow:0 10px 32px rgba(0,0,0,.22);padding:8px 10px;font:12px system-ui,sans-serif}
+#v3PcProf{position:absolute;right:64px;bottom:12px;z-index:22;width:min(680px,calc(100% - 80px));background:var(--v3-panel,#fff);border:1px solid rgba(0,0,0,.12);border-radius:14px;box-shadow:0 10px 32px rgba(0,0,0,.22);padding:8px 10px;font:12px system-ui,sans-serif}
 #v3PcProf canvas{width:100%;height:230px;display:block;background:#f8fafc;border-radius:8px}#v3PcProf .r{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}#v3PcProf button{border:1px solid rgba(0,0,0,.15);background:#fff;border-radius:8px;padding:4px 9px;font:inherit;cursor:pointer}`;
 const l3ptEsc = s => (typeof escHtml === "function" ? escHtml(String(s)) : String(s));
 const l3ptCloud = () => l3pc.clouds.find(c => c.id === l3pt.cid) || l3pc.clouds.find(c => c.visible) || l3pc.clouds[0] || null;
@@ -18,8 +18,8 @@ function l3ptSync() {
   if (!document.getElementById("v3PcToolCss")) { const st = document.createElement("style"); st.id = "v3PcToolCss"; st.textContent = L3PT_CSS; document.head.appendChild(st); }
   const has = typeof l3pc !== "undefined" && l3pc.clouds.length > 0;
   if (has && !document.getElementById("v3PcToolBtn")) {
-    const b = document.createElement("button"); b.id = "v3PcToolBtn"; b.type = "button"; b.title = "Punktmolnsverktyg: redigera, filter, profil, differens, volym"; b.textContent = "☁"; host.appendChild(b); l3pt.btn = b;
-    ["pointerdown", "click", "dblclick", "wheel"].forEach(t => b.addEventListener(t, e => e.stopPropagation())); b.onclick = () => l3ptToggle();
+    const b = document.createElement("button"); b.id = "v3PcToolBtn"; b.type = "button"; b.className = "v3-qv-b"; b.title = "Punktmolnsverktyg: redigera, filter, profil, differens, volym"; b.textContent = "☁"; const qv = host.querySelector(".v3-qv"); if (qv) qv.insertBefore(b, qv.firstChild); else { b.style.cssText = "position:absolute;right:12px;bottom:60px;z-index:21"; host.appendChild(b); } l3pt.btn = b;
+    ["pointerdown", "click", "dblclick", "wheel"].forEach(t => b.addEventListener(t, e => e.stopPropagation())); b.onclick = () => l3ptToggle(); b.addEventListener('click', () => b.classList.toggle('on', l3pt.open));
   } else if (!has) { const b = document.getElementById("v3PcToolBtn"); if (b) b.remove(); l3ptClose(); }
 }
 function l3ptToggle(on) { const want = on == null ? !l3pt.open : on; if (want) l3ptOpen(); else l3ptClose(); }
