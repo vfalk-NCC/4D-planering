@@ -56,10 +56,22 @@ function mcTire(c, x, y, r, w, rim, nofender) {
   if (!nofender && r >= 0.5) { const s = y >= 0 ? 1 : -1, R2 = r * 1.16; for (let k = 0; k < 7; k++) { const a0 = (18 + k * 24) * Math.PI / 180, a1 = (18 + (k + 1) * 24) * Math.PI / 180; c.beam("#2c3138", [x + Math.cos(a0) * R2, y + s * 0.03, r + Math.sin(a0) * R2], [x + Math.cos(a1) * R2, y + s * 0.03, r + Math.sin(a1) * R2], w * 1.18, 0.035, { rough: 0.7 }); } }
 }
 /* Detaljer på lastbilens framdel och sidor: stötfångare, grill, trappsteg, stänkskydd, positionsljus. */
+/* Delad lastbilshytt: vindruta, sidorutor, speglar, lampor och takspoiler – allt inom hyttprofilen. */
+function mcCabGlass(c) {
+  c.beam("#1c2b3a", [4.34, 0, 2.67], [3.93, 0, 3.08], 2.3, 0.03, SMG);
+  [-1, 1].forEach(sd => {
+    const y0 = sd > 0 ? 1.245 : -1.265; mcExtrude(c, "#1c2b3a", [[4.15, 2.3], [4.15, 2.7], [4.0, 2.9], [3.7, 3.17], [2.9, 3.17], [2.9, 2.3]], y0, y0 + 0.02, "y", SMG);
+    c.box("#0b1118", 3.2, sd * 1.255, 2.3, 0.012, 0.012, 1.3, null, 0); c.rod("#374151", [4.0, sd * 1.25, 2.85], [3.9, sd * 1.42, 2.85], 0.015, 0.015, 5, SMM); c.box("#111827", 3.9, sd * 1.44, 2.85, 0.05, 0.1, 0.4, null, 0.02);
+    mcLamp(c, 4.41, sd * 0.85, 1.55, 0.35);
+  });
+  c.box("#111827", 4.41, 0, 1.2, 0.02, 1.6, 0.4, null, 0.02);
+  mcExtrude(c, "#e5e7eb", [[2.62, 3.5], [3.3, 3.5], [3.0, 3.85], [2.62, 3.95]], -0.95, 0.95, "y", { rough: 0.5 }); mcBeacon(c, 3.1, 0, 3.86);
+}
 function mcTruckDetails(c, xa) {
   c.box("#2c3138", 4.5, 0, 0.62, 0.18, 2.45, 0.34, null, 0.05, { rough: 0.7 }); c.box("#e5e7eb", 4.46, 0, 0.64, 0.02, 1.6, 0.1, null, 0.01, SMLIT);
   for (let k = 0; k < 5; k++) c.box("#0f1215", 4.43, 0, 1.55 + k * 0.14, 0.03, 1.0, 0.07, null, 0.01, SMM);
-  [-1, 1].forEach(sd => { c.box("#2c3138", 3.55, sd * 1.2, 0.62, 0.5, 0.18, 0.05, null, 0.01, SMM); c.box("#2c3138", 3.55, sd * 1.2, 0.98, 0.5, 0.18, 0.05, null, 0.01, SMM); for (let k = 0; k < 5; k++) c.box("#f59e0b", 3.1 + k * 0.28, sd * 0.55, 3.53, 0.08, 0.12, 0.05, null, 0.01, SMLIT); });
+  [-1, 1].forEach(sd => { c.box("#2c3138", 3.55, sd * 1.2, 0.62, 0.5, 0.18, 0.05, null, 0.01, SMM); c.box("#2c3138", 3.55, sd * 1.2, 0.98, 0.5, 0.18, 0.05, null, 0.01, SMM); });
+  for (let k = 0; k < 5; k++) c.box("#f59e0b", 3.22, (k - 2) * 0.3, 3.52, 0.07, 0.14, 0.04, null, 0.01, SMLIT);
   xa.slice(1).forEach(x => [-1, 1].forEach(sd => c.box("#111827", x - 0.7, sd * 1.35, 0.32, 0.03, 0.55, 0.45, null, 0.01, { rough: 0.9 })));
 }
 const mcBeacon = (c, x, y, z) => { c.cyl("#374151", "z", x, y, z, 0.07, 0.07, 0.04, 10, null, SMM); c.cyl(MC_AMB, "z", x, y, z + 0.08, 0.06, 0.06, 0.1, 10, null, SMLIT); };
@@ -189,9 +201,7 @@ function mcTruckBuild(p, c) {
   [xa[0] - 0.8, xa[1] ? xa[1] + 1.6 : xa[0] - 2].forEach(x => c.cyl("#9aa4ae", "y", x, 1.1, 0.7, 0.28, 0.28, 0.75, 12, null, SMM));                                                       // bränsletankar
   // hytt (profil sträckt över bredden) med vindruta, lampor och speglar
   const cabP = [[2.9, 1.0], [4.3, 1.0], [4.4, 1.4], [4.4, 2.6], [3.9, 3.1], [3.3, 3.5], [2.7, 3.5], [2.6, 3.0], [2.6, 1.3]];
-  mcTruckDetails(c, xa); mcExtrude(c, col, cabP, -1.25, 1.25, "y", { shin: 80 }); c.beam("#1c2b3a", [4.36, 0, 2.55], [3.9, 0, 3.08], 2.3, 0.04, SMG); [-1, 1].forEach(sd => c.box("#1c2b3a", 3.5, sd * 1.255, 2.45, 0.9, 0.02, 0.7, null, 0.02, SMG));
-  c.box("#111827", 4.41, 0, 1.2, 0.02, 1.6, 0.4, null, 0.02); [-1, 1].forEach(sd => { mcLamp(c, 4.41, sd * 0.85, 1.55, 0.35); c.box("#111827", 3.9, sd * 1.4, 2.9, 0.05, 0.12, 0.45, null, 0.02); });
-  c.box("#e5e7eb", 3.45, 0, 3.7, 0.9, 1.9, 0.18, null, 0.05, { rough: 0.5 }); mcBeacon(c, 3.0, 0, 3.78);
+  mcTruckDetails(c, xa); mcExtrude(c, col, cabP, -1.25, 1.25, "y", { shin: 80 }); mcCabGlass(c);
   c.cyl("#374151", "z", 2.7, 1.2, 2.2, 0.06, 0.06, 1.9, 8, null, SMM);                                                                                                                   // stående avgasrör
   // överbyggnad per typ
   const bx0 = tail + 0.1, bx1 = 2.55, L = bx1 - bx0, z0 = 1.0;
@@ -236,8 +246,7 @@ function mcTruckBase(c, ax, col, WR = 0.52) {
   const WW = 0.32, xa = Array.from({ length: ax }, (_, i) => (i === 0 ? 3.4 : 3.4 - 3.6 - (i - 1) * 1.35)), tail = xa[xa.length - 1] - 1.3;
   c.box("#20242a", (3.9 + tail) / 2, 0, 0.85, 3.9 - tail, 0.9, 0.22, null, 0.03, { rough: 0.7 }); xa.forEach((x, i) => { [-1, 1].forEach(sd => { mcTire(c, x, sd * 1.15, WR, WW); if (i > 0) mcTire(c, x, sd * 1.55, WR, WW); }); c.cyl("#3b4047", "y", x, 0, WR, 0.07, 0.07, 2.2, 8, null, SMM); });
   const cabP = [[2.9, 1.0], [4.3, 1.0], [4.4, 1.4], [4.4, 2.6], [3.9, 3.1], [3.3, 3.5], [2.7, 3.5], [2.6, 3.0], [2.6, 1.3]];
-  mcTruckDetails(c, xa); mcExtrude(c, col, cabP, -1.25, 1.25, "y", { shin: 80 }); c.beam("#1c2b3a", [4.36, 0, 2.55], [3.9, 0, 3.08], 2.3, 0.04, SMG); [-1, 1].forEach(sd => c.box("#1c2b3a", 3.5, sd * 1.255, 2.45, 0.9, 0.02, 0.7, null, 0.02, SMG));
-  c.box("#111827", 4.41, 0, 1.2, 0.02, 1.6, 0.4, null, 0.02); [-1, 1].forEach(sd => { mcLamp(c, 4.41, sd * 0.85, 1.55, 0.35); c.box("#111827", 3.9, sd * 1.4, 2.9, 0.05, 0.12, 0.45, null, 0.02); }); c.box("#e5e7eb", 3.45, 0, 3.7, 0.9, 1.9, 0.18, null, 0.05, { rough: 0.5 }); mcBeacon(c, 3.0, 0, 3.78);
+  mcTruckDetails(c, xa); mcExtrude(c, col, cabP, -1.25, 1.25, "y", { shin: 80 }); mcCabGlass(c);
   return { xa, tail };
 }
 /* ---- Betongbil (mixer): lutande trumma med skruvband, rutschkana, vattentank ---- */
@@ -528,11 +537,21 @@ function mcVanBuild(p, c) {
   c.box("#20242a", 0, 0, 0.58, L - 0.2, 1.5, 0.22, null, 0.04, { rough: 0.7 }); c.box("#1a1d22", 0, 0, 0.42, L - 0.8, 1.6, 0.14, null, 0.03);
   [-1, 1].forEach(sx => [-1, 1].forEach(sd => { mcTire(c, sx * L * 0.33, sd * 0.88, 0.38, 0.26); }));
   // kaross: motorhuv, hytt (egen hyttbyggare), flak eller skåp
-  c.box(col, HL - 0.55, 0, 0.88, 1.1, 1.8, 0.5, null, 0.1, { shin: 80 }); c.box(col, HL - 0.55, 0, 1.18, 1.0, 1.7, 0.12, null, 0.04, { shin: 80 });
+  if (!van) { c.box(col, HL - 0.55, 0, 0.88, 1.1, 1.8, 0.5, null, 0.1, { shin: 80 }); c.box(col, HL - 0.55, 0, 1.18, 1.0, 1.7, 0.12, null, 0.04, { shin: 80 }); }
   if (van) {
-    mcExtrude(c, col, [[-HL + 0.05, 0.5], [HL - 1.0, 0.5], [HL - 1.1, 1.2], [HL - 1.55, 1.9], [HL - 2.1, 2.35], [-HL + 0.05, 2.35]], -0.93, 0.93, "y", { shin: 80 });
-    c.beam("#1c2b3a", [HL - 1.2, 0, 1.25], [HL - 1.6, 0, 1.85], 1.7, 0.03, SMG); [-1, 1].forEach(sd => { c.box("#1c2b3a", HL - 1.55, sd * 0.945, 1.55, 0.8, 0.02, 0.5, null, 0.02, SMG); c.box("#0f172a", HL - 2.2, sd * 0.945, 1.4, 0.015, 0.015, 1.2, null, 0); });
-    c.box("#f59e0b", -HL + 0.7, 0, 2.4, 0.8, 1.2, 0.08, null, 0.02);
+    // en sammanhängande sidoprofil (motorhuv → vindruta → tak → bak) så att inget sticker ut
+    mcExtrude(c, col, [[-HL + 0.05, 0.5], [HL, 0.5], [HL, 0.95], [HL - 0.3, 1.12], [HL - 1.0, 1.15], [HL - 1.7, 1.95], [HL - 2.0, 2.3], [HL - 2.3, 2.35], [-HL + 0.05, 2.35]], -0.93, 0.93, "y", { shin: 80 });
+    c.beam("#1c2b3a", [HL - 1.03, 0, 1.19], [HL - 1.68, 0, 1.93], 1.66, 0.02, SMG);
+    [-1, 1].forEach(sd => {
+      const y0 = sd > 0 ? 0.922 : -0.942, y1 = y0 + 0.02;
+      mcExtrude(c, "#1c2b3a", [[HL - 1.25, 1.36], [HL - 1.66, 1.84], [HL - 2.0, 1.84], [HL - 2.0, 1.36]], y0, y1, "y", SMG);
+      c.box("#0f172a", -0.2, sd * 0.935, 1.45, 0.015, 0.015, 1.7, null, 0); c.box("#0f172a", HL - 2.08, sd * 0.935, 1.35, 0.015, 0.015, 1.9, null, 0);
+      c.box("#dc2626", -HL + 0.04, sd * 0.78, 0.78, 0.03, 0.14, 0.22, null, 0.01, SMLIT);
+      c.box("#9ca3af", -HL + 0.04, sd * 0.2, 1.4, 0.015, 0.015, 1.7, null, 0);
+    });
+    c.box("#9ca3af", -HL + 0.04, 0, 1.25, 0.02, 0.05, 0.12, null, 0.01, SMM);
+    [-1, 1].forEach(sd => c.box("#6b7280", -HL + 1.5, sd * 0.6, 2.4, 2.4, 0.04, 0.05, null, 0, SMM));
+    [0, 0.8, 1.6, 2.4].forEach(dx => c.box("#6b7280", -HL + 0.3 + dx, 0, 2.4, 0.05, 1.3, 0.05, null, 0, SMM));
   } else {
     mcCab(c, 0.7, 0, 0.62, 1.7, 1.78, 1.3, col);
     const fx0 = -HL + 0.05, fx1 = -0.2; c.box("#374151", (fx0 + fx1) / 2, 0, 0.85, fx1 - fx0, 1.8, 0.08, null, 0.02, SMM);                                          // flakets golv
