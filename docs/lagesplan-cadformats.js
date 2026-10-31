@@ -43,7 +43,7 @@ function cadvXform(crs, sample) {
   const [sx, sy] = sample || [0, 0];
   if (!crs) {
     if (Math.abs(sx) <= 180 && Math.abs(sy) <= 90 && (Math.abs(sx) > 1 || Math.abs(sy) > 1)) crs = { kind: "geo" };
-    else if (sx > 150000 && sx < 900000 && sy > 6e6 && sy < 7.8e6) crs = { kind: "zone", zone: cadvZoneByName("SWEREF 99 TM"), guessed: true };
+    else if (sx > 270000 && sx < 900000 && sy > 6e6 && sy < 7.8e6) crs = { kind: "zone", zone: cadvZoneByName("SWEREF 99 TM"), guessed: true };
     else crs = { kind: "local" };
   }
   if (crs.kind === "unsupported") throw new Error(`Koordinatsystemet ${crs.name} stöds inte – exportera i SWEREF 99 eller WGS84.`);

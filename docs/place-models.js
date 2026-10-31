@@ -21,7 +21,7 @@ const placeIfcCache = new Map();   // asset-id -> IFC-text
 let pmState = { open: false, tab: "sketchfab", q: "", results: [], next: null, busy: false, msg: "", bad: false, me: null, pending: null,
   tcStack: [], tcItems: null, tcProject: "",
   host: "placeModelBrowser", onAdded: null, onClose: null }; // host/onAdded/onClose: lägesplanens 3D-editor visar panelen i en egen ruta
-const PM_TC_EXT = /\.(ifc|ifczip|glb|gltf|dae|obj|zip|kmz)$/i;
+const PM_TC_EXT = /\.(ifc|ifczip|glb|gltf|dae|obj|zip|kmz|stl|ply|3ds|fbx|3dm|stp|step|igs|iges|brep|xml|landxml|tif|tiff)$/i;
 
 const pmAssetsPath = () => `projects/${encodeURIComponent(projectId)}/plan_models.json`;
 async function placeAssetsLoad(opts = {}) {
@@ -527,6 +527,7 @@ const PM_SKP_MSG = "SketchUp-filer (.skp) kan inte läsas direkt. Välj Collada 
 /* GLB, glTF-zip, Collada (.dae / .zip / .kmz) eller OBJ -> mesh-resultat. name = filnamnet (för formatet). */
 async function pmModelFromBuffer(buf, name = "") {
   if (/\.skp$/i.test(name)) throw new Error(PM_SKP_MSG);
+  if (typeof pmxTry === "function") { const x = await pmxTry(buf, name); if (x) return x; }   // STL, PLY, 3DS, FBX, 3DM, STEP/IGES/BREP, LandXML, GeoTIFF (place-formats.js)
   const sig = buf.byteLength >= 4 ? new DataView(buf).getUint32(0, true) : 0;
   if (sig === 0x46546C67) { const { json, bin } = glbSplit(buf); return pmGltfToMesh(json, bin, async () => null); }
   if (sig === 0x04034b50) {
@@ -542,13 +543,15 @@ async function pmModelFromBuffer(buf, name = "") {
     const obj = find(/\.obj$/i);
     if (obj) return pmObjToMesh(new TextDecoder().decode(await files.get(obj)()), pmZipResolver(files, obj));
     if (find(/\.skp$/i)) throw new Error(PM_SKP_MSG);
-    throw new Error("Zip-filen innehåller ingen modell (.glb, .gltf, .dae eller .obj).");
+    const other = typeof PMX_EXT !== "undefined" ? find(PMX_EXT) : null;
+    if (other) return pmModelFromBuffer(await files.get(other)(), other);
+    throw new Error("Zip-filen innehåller ingen modell (.glb, .gltf, .dae, .obj, .stl, .fbx, .step …).");
   }
   const head = new TextDecoder().decode(buf.slice(0, 2000));
   if (/<COLLADA/i.test(head) || /\.dae$/i.test(name)) return pmDaeToMesh(new TextDecoder().decode(buf), null);
   if (/\.obj$/i.test(name) || /^\s*(#.*\n\s*)*(v|o|g|mtllib)\s/m.test(head)) return pmObjToMesh(new TextDecoder().decode(buf), null);
   if (/^\s*\{/.test(head) && /"asset"/.test(head)) return pmGltfToMesh(JSON.parse(new TextDecoder().decode(buf)), null, async () => null);
-  throw new Error("Okänt filformat – använd .ifc, .glb, .gltf, .dae, .obj eller en .zip/.kmz med någon av dem.");
+  throw new Error("Okänt filformat – använd .ifc, .glb, .gltf, .dae, .obj, .stl, .ply, .3ds, .fbx, .3dm, .step/.stp, .iges, LandXML, GeoTIFF eller en .zip/.kmz med någon av dem.");
 }
 
 // ---------------------------------------------------------------------
@@ -698,7 +701,7 @@ async function pmSaveAsset(pd, scale) {
     await ghUploadBinary(settings.githubToken, meshPath, new File([JSON.stringify(pd.mesh)], `${id}.mesh.json`), `Geometri för modellen ${pd.name}`);
   }
   const a = { id, name: pd.name, kind: pd.kind, meshPath, source: pd.source, uid: pd.uid || null, url: pd.url || null, author: pd.author || null, license: pd.license || null,
-    bbox: pd.bbox, tris: pd.tris || null, factor: pd.factor || null, offset: pd.offset || null, scale: pd.kind === "mesh" ? scale || 1 : 1,
+    bbox: pd.bbox, geo: pd.geo || null, tris: pd.tris || null, factor: pd.factor || null, offset: pd.offset || null, scale: pd.kind === "mesh" ? scale || 1 : 1,
     path, size: body.length, dl_size: pd.dlSize || null, outline: pd.mesh ? pmOutline(pd.mesh, pd.bbox) : null, created_at: new Date().toISOString(), by: settings.userName || null };
   await ghWriteJSON(settings.githubToken, pmAssetsPath(), arr => [...(arr || []).filter(x => x.id !== id), a], `Modell till Placera i 3D: ${pd.name}`);
   placeAssets.push(a);
@@ -707,7 +710,7 @@ async function pmSaveAsset(pd, scale) {
   return a;
 }
 async function pmFromFile(file) {
-  const name = file.name.replace(/\.(ifc|glb|gltf|zip|kmz|dae|obj)$/i, "");
+  const name = file.name.replace(/\.(ifc|glb|gltf|zip|kmz|dae|obj|stl|ply|3ds|fbx|3dm|stp|step|igs|iges|brep|brp|xml|landxml|tif|tiff)$/i, "");
   if (/\.skp$/i.test(file.name)) throw new Error(PM_SKP_MSG);
   if (/\.ifc$/i.test(file.name)) {
     if (file.size > PM_MAX_IFC) throw new Error(`IFC-filen är för stor (${Math.round(file.size / 1048576)} MB, max ${PM_MAX_IFC / 1048576} MB).`);
@@ -918,7 +921,7 @@ function renderPmBrowser() {
     body = `<div class="pm-confirm">
       <label>Namn – så sparas modellen i biblioteket och i Trimble Connect<input type="text" id="pmName" value="${esc(pmDatedName(pd.name))}" title="Dagens datum (ÅÅMMDD) och modellens namn – ändra om du vill" /></label>
       <div class="hint">${pd.kind === "ifc" ? `IFC-fil${pd.dlSize ? ` (${pmBytes(pd.dlSize)})` : ""} · ${pd.mesh ? "" : "ungefär "}${d(0)} × ${d(1)} × ${d(2)} m · ${pmFmt(pd.products)} objekt${pd.tris ? ` · ${pmFmt(pd.tris)} trianglar` : ""}${pd.geoErr ? ` · geometrin kunde inte läsas (${esc(pd.geoErr)}) – visas som låda` : ""}${pd.offset && pd.offset.some(v => v) ? " · filen ligger långt från origo – dess mitt placeras i punkten" : ""}`
-        : `${pd.dlSize ? `${pmBytes(pd.dlSize)} · ` : ""}${pmFmt(pd.tris)} trianglar · ${d(0)} × ${d(1)} × ${d(2)} m i filen${pd.author ? ` · av ${esc(pd.author)}` : ""}${pd.license ? ` · ${esc(pd.license)}` : ""}`}</div>
+        : `${pd.dlSize ? `${pmBytes(pd.dlSize)} · ` : ""}${pmFmt(pd.tris)} trianglar · ${d(0)} × ${d(1)} × ${d(2)} m i filen${pd.author ? ` · av ${esc(pd.author)}` : ""}${pd.license ? ` · ${esc(pd.license)}` : ""}${pd.note ? ` · ${esc(pd.note)}` : ""}${pd.geo ? " · har egna koordinater – placeras på sin riktiga plats" : ""}`}</div>
       ${pd.kind === "mesh" ? `<label>Höjd i verkligheten (m)<input type="number" step="0.1" id="pmHeight" value="${d(2)}" title="Modeller från nätet har ofta fel skala – ange hur hög den ska vara" /></label>` : ""}
       <div class="row"><button type="button" id="pmAccept" class="primary">Spara och placera</button><button type="button" id="pmReject">Avbryt</button></div>
     </div>`;
@@ -935,8 +938,8 @@ function renderPmBrowser() {
     body = pmTcHtml(esc);
   } else {
     body = `<div class="pm-drop" id="pmDrop">
-        <b>Släpp en fil här</b> eller <label class="pm-pick">välj fil<input type="file" id="pmFile" accept=".ifc,.glb,.gltf,.dae,.obj,.zip,.kmz,.skp" /></label>
-        <div class="hint">IFC, GLB/glTF, Collada (.dae), OBJ – eller en .zip/.kmz med modell och texturer.</div>
+        <b>Släpp en fil här</b> eller <label class="pm-pick">välj fil<input type="file" id="pmFile" accept=".ifc,.glb,.gltf,.dae,.obj,.zip,.kmz,.stl,.ply,.3ds,.fbx,.3dm,.stp,.step,.igs,.iges,.brep,.xml,.landxml,.tif,.tiff,.skp" /></label>
+        <div class="hint">IFC, GLB/glTF, Collada (.dae), OBJ, STL, PLY, 3DS, FBX, Rhino (.3dm), STEP/IGES/BREP, LandXML-terräng och GeoTIFF-höjdmodell – eller en .zip/.kmz med modell och texturer. Terräng och modeller i riktiga koordinater placeras på sin plats.</div>
       </div>
       <ul class="pm-sites hint">
         <li><a href="https://3dwarehouse.sketchup.com" target="_blank" rel="noopener">3D Warehouse</a> – välj <b>Collada</b> eller <b>glTF</b> vid nedladdning (inte .skp).</li>
@@ -986,6 +989,7 @@ function renderPmBrowser() {
     pmRun("Sparar modellen i projektet…", async () => {
       const a = await pmSaveAsset(p, Math.round(scale * 10000) / 10000);
       pmState.pending = null; pmState.open = false;
+      if (a.geo && typeof pmPlaceGeo === "function" && pmPlaceGeo(a)) { renderPlacePanel(); return; }   // egna koordinater: direkt på rätt plats
       if (pmState.onAdded) { pmState.onAdded(a); return; }
       renderPlacePanel();
       placeStart(`model:${a.id}`);
