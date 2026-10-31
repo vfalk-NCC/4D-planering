@@ -4,7 +4,7 @@ const DOCS = path.join(__dirname, '..', 'docs');
 const PORT = 9088;
 const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DISABLE: 0, ENABLE: 1 },
   getDocument: () => ({ promise: Promise.resolve({ numPages: 1, getPage: async () => {
-    const vp = (s, ox = 0, oy = 0) => ({ width: 1000 * s, height: 500 * s, transform: [s, 0, 0, -s, ox, 500 * s + oy],
+    const vp = (s, ox = 0, oy = 0) => ({ scale: s, width: 1000 * s, height: 500 * s, transform: [s, 0, 0, -s, ox, 500 * s + oy],
       convertToViewportPoint: (x, y) => [x * s + ox, (500 - y) * s + oy], convertToPdfPoint: (x, y) => [(x - ox) / s, 500 - (y - oy) / s] });
     return { view: [0, 0, 1000, 500], getViewport: ({ scale, offsetX, offsetY }) => vp(scale, offsetX || 0, offsetY || 0), render: ({ canvasContext: c, viewport: v }) => {
       c.fillStyle = '#ffffff'; c.fillRect(0, 0, v.width, v.height); return { promise: Promise.resolve(), cancel() {} };
@@ -126,6 +126,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.mouse.move(cb[0], cb[1]); await page.mouse.down(); await page.mouse.move(cb[0] + 30, cb[1] + 10); await page.mouse.move(cb[0] + 60, cb[1] + 20); await page.mouse.up();
   const fo = await page.evaluate(() => l3sp.follow); if (fo) fail('Panorering ska stänga av Följ');
   console.log('OK: ritningspanelen hoppar inte (klick, zoom, panorering)', JSON.stringify(st));
+  // Skarp PDF: när vyn står still ritas det som syns om direkt ur PDF:en i skärmens upplösning
+  const dt = await page.evaluate(async () => {
+    const o = {}; l3spClose(); await l3spOpen(); l3spFollow(false); const n0 = l3sp.dtRenders || 0; const r = l3sp.cv.getBoundingClientRect();
+    l3sp.cv.dispatchEvent(new WheelEvent('wheel', { deltaY: -600, clientX: r.left + 50, clientY: r.top + 50, bubbles: true, cancelable: true })); await new Promise(rr => setTimeout(rr, 120)); o.hiddenWhileMoving = l3sp.dt.style.visibility !== 'visible';
+    await new Promise(rr => setTimeout(rr, 700)); o.renders = (l3sp.dtRenders || 0) - n0; o.visible = l3sp.dt.style.visibility === 'visible'; o.key = !!l3sp.dtKey; o.sizeOk = l3sp.dt.width === l3sp.cv.width && l3sp.dt.height === l3sp.cv.height;
+    l3SetPref('spMap', 'esri'); const sel = document.getElementById('spMapSrc'); sel.value = 'esri'; sel.dispatchEvent(new Event('change')); await new Promise(rr => setTimeout(rr, 900)); o.mapBlend = l3sp.dt.style.mixBlendMode; o.noPdfBase = !!l3sp.baseNoPdf; l3SetPref('spMap', ''); return o;
+  });
+  if (!dt.hiddenWhileMoving || dt.renders < 1 || !dt.visible || !dt.key || !dt.sizeOk) fail('Skarp PDF: ' + JSON.stringify(dt));
+  if (dt.mapBlend !== 'multiply' || !dt.noPdfBase) fail('Skarp PDF över ortofoto: ' + JSON.stringify(dt));
+  console.log('OK: skarp PDF i skärmens upplösning (över ortofoto: multiplicerad, utan dubbla linjer)', JSON.stringify(dt));
   if (process.env.SHOT) { await page.evaluate(async () => { l3SetPref('spMap', 'esri'); document.getElementById('spMapSrc').value = 'esri'; document.getElementById('spMapSrc').dispatchEvent(new Event('change')); const c = plan.calib.model[0]; l3spGoTo(c[0] + 25, c[1] + 12); }); await page.waitForTimeout(1300); await page.screenshot({ path: process.env.SHOT }); }
   await browser.close(); server.close();
 })().catch(e => { console.error(e); process.exit(1); });
