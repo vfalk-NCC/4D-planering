@@ -48,7 +48,7 @@ function l3wEnter(P) {
   l3.orbit.enabled = false;
   l3w.p = new THREE.Vector3(P.x, P.y, P.z + l3w.eye); l3w.bz = l3w.p.z; l3w.heading = l3w.yaw;
   l3.camera.position.copy(l3w.p);
-  document.body.classList.add("v3-walking");
+  document.body.classList.add("v3-walking"); if (l3wCompact()) { document.body.classList.add("v3-walkfs"); l3Resize(); setTimeout(() => { if (l3w.on) { l3Resize(); l3wApply(); } }, 120); }
   l3wHud(true); l3wApply();
   l3Status("Gå runt: W/A/S/D går, dra med musen för att titta, Q ner, E upp, Skift springer, M mäter, hjulet ändrar farten. Esc avslutar.");
   l3wLoop();
@@ -65,7 +65,7 @@ function l3wExit(quiet) {
   l3.orbit.target.copy(l3.camera.position).addScaledVector(d, 8);
   l3.orbit.enabled = true; l3.orbit.update();
   if (l3w.wasOrtho) { l3w.wasOrtho = false; }
-  document.body.classList.remove("v3-walking");
+  document.body.classList.remove("v3-walking", "v3-walkfs"); l3Resize();
   l3wHud(false); l3Render();
   if (!quiet) l3Status("Gå-läget är avslutat.");
 }

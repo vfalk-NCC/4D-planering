@@ -48,6 +48,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   let a = await info(); console.log(JSON.stringify(a));
   ok(a.hudCol && a.hud && a.hud.h < a.cv[1] * 0.25 && a.hud.r <= a.cv[0] && a.hud.x >= 0, 'Gå-rutan ska starta ihopfälld och rymmas på telefonen: ' + JSON.stringify(a));
   ok(a.ctlCol && a.ctl && a.ctl.h < 80 && a.ctl.r <= a.cv[0], 'Reglagepanelen ska starta ihopfälld: ' + JSON.stringify(a));
+  const fsv = await page.evaluate(() => { const c = document.getElementById('v3Canvas').getBoundingClientRect(), vis = s => { const e = document.querySelector(s); return !!e && e.offsetParent !== null; }; return { cls: document.body.classList.contains('v3-walkfs'), c: [Math.round(c.width), Math.round(c.height)], w: [innerWidth, innerHeight], bar: vis('#view3d .v3-bar'), foot: vis('#view3d .v3-foot'), jb: [...document.querySelectorAll('.v3-jbtns button')].filter(b => b.offsetParent).map(b => b.dataset.jb) }; });
+  ok(fsv.cls && fsv.c[0] === fsv.w[0] && fsv.c[1] === fsv.w[1] && !fsv.bar && !fsv.foot, 'Gå-läget på telefon ska fylla hela skärmen utan verktygsrader: ' + JSON.stringify(fsv));
+  ok(fsv.jb.every(j => ['jump', 'run', 'crouch'].includes(j)), 'Bara Hopp/Spring/Huka som små knappar vid rattarna: ' + JSON.stringify(fsv.jb));
+  await page.evaluate(() => l3wExit(true)); await page.waitForTimeout(200);
+  ok(await page.evaluate(() => !document.body.classList.contains('v3-walkfs') && document.querySelector('#view3d .v3-bar').offsetParent !== null), 'Verktygsraderna ska komma tillbaka när man lämnar gå-läget');
+  await page.evaluate(() => { l3wEnter(new THREE.Vector3(0, 0, 0)); l3wSetKind('loader'); l3wWork(); l3wCtlPanel(); }); await page.waitForTimeout(300);
   ok(a.kbd === 0 && !a.fs && a.joy, 'Ingen tangentlista eller helskärmsknapp på telefon, joysticks på: ' + JSON.stringify(a));
   // utfälld ska rymmas och scrolla i stället för att täcka skärmen
   await page.evaluate(() => { document.querySelector('.v3-walk [data-w="col"]').click(); document.querySelector('.v3-ctl [data-cb="col"]').click(); }); await page.waitForTimeout(200);
