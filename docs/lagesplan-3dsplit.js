@@ -4,11 +4,13 @@
    • Tryck på ritningen: en nål sätts ut i 3D (stolpe + ring) och kameran flyger dit med samma vinkel.
    • Valfri kalibrerad ritning (arbetsytorna) – zooma med hjulet, dra för att panorera. Följ kameran håller den i mitten.
    Ritningen läggs på modellens XY via ritningens kalibrering, precis som lagret i 3D (calibAffine). */
+/* Storlek och plats: dra i något av de fyra hörnen eller i rubrikraden (Victor 2026-10-31: "dra i hörnen så jag kan ställa storlek själv"). Sparas i webbläsaren. */
+const l3spRect = () => { const r = l3Prefs().spRect; return r && r.w > 100 && r.h > 100 ? r : null; };
 const l3sp = { open: false, planId: null, img: null, vp: null, aff: null, view: { k: 1, tx: 0, ty: 0 }, pin: null, hover: null, follow: true, size: 1, el: null, cv: null, raf: 0, key: "", pinObj: null, drag: null, busy: false, hoverT: 0 };
 const L3SP_CSS = `#v3SpBtn{font-size:17px}#v3SpBtn.on{background:#2563eb!important;color:#fff!important}
 #v3Sp{position:absolute;right:64px;bottom:12px;z-index:22;display:flex;flex-direction:column;background:var(--v3-panel,#fff);border:1px solid rgba(0,0,0,.14);border-radius:14px;box-shadow:0 10px 32px rgba(0,0,0,.24);overflow:hidden;font:12px system-ui,sans-serif;color:inherit}
 #v3Sp .h{display:flex;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid rgba(0,0,0,.08);flex-wrap:wrap}#v3Sp select{max-width:190px;padding:3px 6px;border:1px solid rgba(0,0,0,.18);border-radius:7px;font:inherit}
-#v3Sp button{border:1px solid rgba(0,0,0,.15);background:#fff;border-radius:8px;padding:3px 8px;font:inherit;cursor:pointer}#v3Sp button.on{background:#2563eb;color:#fff;border-color:#2563eb}#v3Sp canvas{flex:1;width:100%;min-height:0;display:block;background:#e5e7eb;touch-action:none;cursor:crosshair}#v3Sp .f{padding:4px 8px;opacity:.7}`;
+#v3Sp button{border:1px solid rgba(0,0,0,.15);background:#fff;border-radius:8px;padding:3px 8px;font:inherit;cursor:pointer}#v3Sp button.on{background:#2563eb;color:#fff;border-color:#2563eb}#v3Sp canvas{flex:1;width:100%;min-height:0;display:block;background:#e5e7eb;touch-action:none;cursor:crosshair}#v3Sp .f{padding:4px 8px;opacity:.7}#v3Sp .h{cursor:move}#v3Sp .h button,#v3Sp .h select{cursor:pointer}#v3Sp .rz{position:absolute;width:18px;height:18px;z-index:5;touch-action:none}#v3Sp .rz::after{content:"";position:absolute;width:9px;height:9px;border:2px solid rgba(37,99,235,.65);opacity:0;transition:opacity .15s}#v3Sp:hover .rz::after{opacity:1}#v3Sp .rz[data-c=nw]{left:0;top:0;cursor:nwse-resize}#v3Sp .rz[data-c=nw]::after{left:3px;top:3px;border-right:0;border-bottom:0}#v3Sp .rz[data-c=ne]{right:0;top:0;cursor:nesw-resize}#v3Sp .rz[data-c=ne]::after{right:3px;top:3px;border-left:0;border-bottom:0}#v3Sp .rz[data-c=sw]{left:0;bottom:0;cursor:nesw-resize}#v3Sp .rz[data-c=sw]::after{left:3px;bottom:3px;border-right:0;border-top:0}#v3Sp .rz[data-c=se]{right:0;bottom:0;cursor:nwse-resize}#v3Sp .rz[data-c=se]::after{right:3px;bottom:3px;border-left:0;border-top:0}`;
 const l3spPlans = () => (typeof plans !== "undefined" ? plans : []).filter(p => p && (p.id === (plan && plan.id) ? plan.calib : p.calib));
 const l3spCalib = p => (plan && p.id === plan.id ? plan.calib : p.calib);
 const l3spAff = (m, x, y) => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
@@ -26,15 +28,33 @@ async function l3spOpen() {
   l3sp.open = true; let el = document.getElementById("v3Sp"); if (el) el.remove();
   el = document.createElement("div"); el.id = "v3Sp"; host.appendChild(el); l3sp.el = el; l3spSize();
   ["pointerdown", "wheel", "dblclick", "contextmenu", "keydown"].forEach(t => el.addEventListener(t, e => e.stopPropagation()));
-  el.innerHTML = `<div class="h"><select id="spPlan">${list.map(p => `<option value="${p.id}" ${p.id === l3sp.planId ? "selected" : ""}>${typeof escHtml === "function" ? escHtml(p.name || "Ritning") : p.name}</option>`).join("")}</select><button type="button" id="spFollow" class="${l3sp.follow ? "on" : ""}" title="Håll kameran i mitten av ritningen">Följ</button><button type="button" id="spFit" title="Hela ritningen">Hela</button><button type="button" id="spSize" title="Panelens storlek">⤢</button><button type="button" id="spPin" title="Ta bort nålen i 3D">Nål ✕</button><span style="flex:1"></span><button type="button" id="spX">✕</button></div><canvas id="spCv"></canvas><div class="f" id="spF">Tryck på ritningen för att flyga dit i 3D. Hjul zoomar, dra panorerar.</div>`;
+  el.innerHTML = `<i class="rz" data-c="nw"></i><i class="rz" data-c="ne"></i><i class="rz" data-c="sw"></i><i class="rz" data-c="se"></i><div class="h"><select id="spPlan">${list.map(p => `<option value="${p.id}" ${p.id === l3sp.planId ? "selected" : ""}>${typeof escHtml === "function" ? escHtml(p.name || "Ritning") : p.name}</option>`).join("")}</select><button type="button" id="spFollow" class="${l3sp.follow ? "on" : ""}" title="Håll kameran i mitten av ritningen">Följ</button><button type="button" id="spFit" title="Hela ritningen">Hela</button><button type="button" id="spSize" title="Panelens storlek">⤢</button><button type="button" id="spPin" title="Ta bort nålen i 3D">Nål ✕</button><span style="flex:1"></span><button type="button" id="spX">✕</button></div><canvas id="spCv"></canvas><div class="f" id="spF">Tryck på ritningen för att flyga dit i 3D. Hjul zoomar, dra panorerar.</div>`;
   l3sp.cv = el.querySelector("#spCv");
   el.querySelector("#spPlan").onchange = e => { l3sp.planId = e.target.value; l3spLoad(); }; el.querySelector("#spFollow").onclick = e => { l3sp.follow = !l3sp.follow; e.target.classList.toggle("on", l3sp.follow); l3sp.key = ""; };
-  el.querySelector("#spFit").onclick = () => { l3spFit(); l3sp.key = ""; }; el.querySelector("#spSize").onclick = () => { l3sp.size = (l3sp.size % 3) + 1; l3spSize(); l3spFit(); l3sp.key = ""; };
+  el.querySelector("#spFit").onclick = () => { l3spFit(); l3sp.key = ""; }; el.querySelector("#spSize").onclick = () => { l3SetPref("spRect", null); Object.assign(el.style, { left: "", top: "", right: "64px", bottom: "12px" }); l3sp.size = (l3sp.size % 3) + 1; l3spSize(); l3spFit(); l3sp.key = ""; };
   el.querySelector("#spPin").onclick = () => l3spPinClear(); el.querySelector("#spX").onclick = () => l3spToggle(false);
-  l3spBind(); window.addEventListener("pointermove", l3spHover, true); await l3spLoad(); l3spLoop();
+  l3spBind(); l3spDragBind(); window.addEventListener("pointermove", l3spHover, true); await l3spLoad(); l3spLoop();
 }
-function l3spClose() { l3sp.open = false; cancelAnimationFrame(l3sp.raf); window.removeEventListener("pointermove", l3spHover, true); const e = document.getElementById("v3Sp"); if (e) e.remove(); l3sp.el = l3sp.cv = null; l3spPinClear(); }
-function l3spSize() { if (!l3sp.el) return; const s = [[34, 46], [46, 62], [62, 82]][l3sp.size - 1] || [46, 62]; l3sp.el.style.width = `min(${s[0]}%, calc(100% - 24px))`; l3sp.el.style.height = `${s[1]}%`; }
+function l3spClose() { l3sp.open = false; if (l3sp.onWin) window.removeEventListener("resize", l3sp.onWin); cancelAnimationFrame(l3sp.raf); window.removeEventListener("pointermove", l3spHover, true); const e = document.getElementById("v3Sp"); if (e) e.remove(); l3sp.el = l3sp.cv = null; l3spPinClear(); }
+function l3spApplyRect(r) { const el = l3sp.el, host = document.getElementById("v3Canvas"); if (!el || !host) return; const H = host.getBoundingClientRect(), w = Math.min(Math.max(240, r.w), H.width - 8), h = Math.min(Math.max(190, r.h), H.height - 8), x = Math.min(Math.max(4, r.x), H.width - w - 4), y = Math.min(Math.max(4, r.y), H.height - h - 4); Object.assign(el.style, { left: x + "px", top: y + "px", width: w + "px", height: h + "px", right: "auto", bottom: "auto" }); return { x, y, w, h }; }
+function l3spDragBind() {
+  const el = l3sp.el, host = document.getElementById("v3Canvas"); let st = null;
+  const begin = (e, mode) => { const R = el.getBoundingClientRect(), H = host.getBoundingClientRect(); st = { mode, sx: e.clientX, sy: e.clientY, r: { x: R.left - H.left, y: R.top - H.top, w: R.width, h: R.height }, H }; e.preventDefault(); e.stopPropagation(); };
+  el.addEventListener("pointerdown", e => {
+    const rz = e.target.closest(".rz"); if (rz) { begin(e, rz.dataset.c); rz.setPointerCapture(e.pointerId); return; }
+    const h = e.target.closest(".h"); if (h && !e.target.closest("button,select,input,label")) { begin(e, "move"); h.setPointerCapture(e.pointerId); }
+  });
+  el.addEventListener("pointermove", e => {
+    if (!st) return; const dx = e.clientX - st.sx, dy = e.clientY - st.sy, r = { ...st.r }, m = st.mode, MINW = 240, MINH = 190;
+    if (m === "move") { r.x += dx; r.y += dy; }
+    else { if (m.includes("e")) r.w = Math.max(MINW, st.r.w + dx); if (m.includes("s")) r.h = Math.max(MINH, st.r.h + dy); if (m.includes("w")) { r.w = Math.max(MINW, st.r.w - dx); r.x = st.r.x + st.r.w - r.w; } if (m.includes("n")) { r.h = Math.max(MINH, st.r.h - dy); r.y = st.r.y + st.r.h - r.h; } }
+    st.cur = l3spApplyRect(r); l3sp.key = ""; if (m !== "move") { if (!l3sp.fitDone) l3sp.fitDone = true; }
+  });
+  const end = () => { if (!st) return; const c = st.cur; st = null; if (c) { l3SetPref("spRect", c); l3sp.key = ""; } };
+  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+  window.addEventListener("resize", l3sp.onWin = () => { const r = l3spRect(); if (l3sp.el && r) l3spApplyRect(r); });
+}
+function l3spSize() { if (!l3sp.el) return; const sr = l3spRect(); if (sr) { l3spApplyRect(sr); return; } const s = [[34, 46], [46, 62], [62, 82]][l3sp.size - 1] || [46, 62]; l3sp.el.style.width = `min(${s[0]}%, calc(100% - 24px))`; l3sp.el.style.height = `${s[1]}%`; }
 async function l3spLoad() {
   const p = l3spPlans().find(x => x.id === l3sp.planId); if (!p || l3sp.busy) return; l3sp.busy = true; const f = document.getElementById("spF"); if (f) f.textContent = "Hämtar ritningen…";
   try {

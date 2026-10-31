@@ -62,6 +62,19 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const after = await page.evaluate(() => ({ pin: l3sp.pin, tx: l3.orbit.target.x + l3.O[0], ty: l3.orbit.target.y + l3.O[1], ex: window.__exp[0], ey: window.__exp[1] }));
   if (!after.pin || Math.hypot(after.pin[0] - after.ex, after.pin[1] - after.ey) > 0.6 || Math.hypot(after.tx - after.ex, after.ty - after.ey) > 0.6) fail('Musklick på ritningen: ' + JSON.stringify(after));
   console.log('OK: ritningspanel – kamera/ritning synkade, nål och flygning vid klick', JSON.stringify({ ...r, click: after.pin }));
+  // Dra i hörnen och rubriken: ställ storlek och plats själv
+  const rz = async (corner, dx, dy) => { const b = await page.evaluate(c => { const r = document.querySelector('#v3Sp .rz[data-c="' + c + '"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }, corner); await page.mouse.move(b[0], b[1]); await page.mouse.down(); await page.mouse.move(b[0] + dx / 2, b[1] + dy / 2); await page.mouse.move(b[0] + dx, b[1] + dy); await page.mouse.up(); return page.evaluate(() => { const r = document.getElementById('v3Sp').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }); };
+  const r0 = await page.evaluate(() => { const r = document.getElementById('v3Sp').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+  const rNW = await rz('nw', -120, -90);          // upp till vänster: större
+  if (!(rNW.w > r0.w + 100 && rNW.h > r0.h + 70 && Math.abs(rNW.x + rNW.w - (r0.x + r0.w)) < 3)) fail('Hörn uppe till vänster: ' + JSON.stringify({ r0, rNW }));
+  const rSE = await rz('se', -80, -60);           // nere till höger: mindre, vänstra övre hörnet står kvar
+  if (!(rSE.w < rNW.w - 60 && rSE.h < rNW.h - 40 && Math.abs(rSE.x - rNW.x) < 3 && Math.abs(rSE.y - rNW.y) < 3)) fail('Hörn nere till höger: ' + JSON.stringify({ rNW, rSE }));
+  const rNE = await rz('ne', 40, 30); const rSW = await rz('sw', 30, 20);
+  if (rNE.w < 240 || rSW.h < 190) fail('Minimistorlek: ' + JSON.stringify({ rNE, rSW }));
+  const mv = await page.evaluate(() => { const r = document.querySelector('#v3Sp .h').getBoundingClientRect(); return [r.left + 8, r.top + 8]; }); await page.mouse.move(mv[0], mv[1]); await page.mouse.down(); await page.mouse.move(mv[0] - 60, mv[1] - 40); await page.mouse.up();
+  const rMv = await page.evaluate(() => { const r = document.getElementById('v3Sp').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, pref: l3Prefs().spRect }; });
+  if (Math.abs(rMv.x - (rSW.x - 60)) > 3 || !rMv.pref || rMv.pref.w < 200) fail('Flytta med rubriken / spara: ' + JSON.stringify({ rSW, rMv }));
+  console.log('OK: ritningspanelen – storlek och plats med hörnen och rubriken', JSON.stringify({ r0, rNW, rSE, rMv }));
   if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
   await browser.close(); server.close();
 })().catch(e => { console.error(e); process.exit(1); });
