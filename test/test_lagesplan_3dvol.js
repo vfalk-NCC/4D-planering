@@ -96,6 +96,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!sol.vol || sol.vol < sol.area * 0.5 || sol.tris < 20) fail('Solid av ytan ska bli en kropp: ' + JSON.stringify(sol));
   if (!(sol.bv1 != null && sol.bv1 < sol.bv0 - 1)) fail('Lådan ska kapas av solidens volym: ' + JSON.stringify(sol));
   console.log('OK: solid av punktmolnet (' + sol.vol.toFixed(0) + ' m³, ' + sol.tris + ' trianglar) och skär ytor mot den (' + sol.bv0.toFixed(1) + ' → ' + sol.bv1.toFixed(1) + ' m³)');
+  // Solid av volymen: schaktkroppen (blå) blir en egen sluten kropp med samma volym som måttet.
+  const svol = await page.evaluate(() => { const n0 = placements.length; l3volSolidVol(); const m = placements.filter(p => p.m && p.m.k === 'mesh' && /^Schaktvolym/.test(p.name))[0]; return { n: placements.length - n0, vol: m ? modMeshStats(m.m.pts, m.m.faces).volume : null, cut: l3vol.cur.res.cut }; });
+  if (!svol.vol || Math.abs(svol.vol - svol.cut) > Math.max(2, svol.cut * 0.1)) fail("Solid av volymen ska ha schaktets volym: " + JSON.stringify(svol));
+  console.log('OK: solid av volymen (' + svol.vol.toFixed(0) + ' m³ ≈ schakt ' + svol.cut.toFixed(0) + ' m³)');
   // Modell mot nivå 0: platta 2 m hög → fyllning 200 m³. Nivå 3 → schakt 100 m³.
   await setSel('a', 'md:vm'); await setSel('b', 'level');
   await page.fill('input[data-vz="b"]', '0'); await page.dispatchEvent('input[data-vz="b"]', 'change'); await page.waitForTimeout(1500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 });
