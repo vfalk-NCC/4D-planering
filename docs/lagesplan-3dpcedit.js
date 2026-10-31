@@ -15,6 +15,55 @@ const l3peInPoly = (poly, bb, x, y) => {
   let ins = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) { const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1]; if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) ins = !ins; }
   return ins;
 };
+/* Ring/rektangel: tar bort punkter vars skärmposition (med den sparade kameramatrisen) ligger inom/utanför ringen. */
+function l3pePolyRun(c, e, P, keep, n) {
+  const m = e.pm, cx = c.info.center[0] - e.O[0], cy = c.info.center[1] - e.O[1], cz = c.info.center[2] + (e.dz || 0) - e.O[2], poly = e.poly, rm = e.mode === "out" ? 0 : 1; let rem = 0;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; poly.forEach(q => { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }); const bb = [x0, y0, x1, y1];
+  for (let i = 0; i < n; i++) {
+    if (!keep[i]) continue;
+    const x = P[i * 3] + cx, y = P[i * 3 + 1] + cy, z = P[i * 3 + 2] + cz, w = m[3] * x + m[7] * y + m[11] * z + m[15];
+    const inside = w > 1e-9 && l3peInPoly(poly, bb, (m[0] * x + m[4] * y + m[8] * z + m[12]) / w, (m[1] * x + m[5] * y + m[9] * z + m[13]) / w);
+    if (inside === !!rm) { keep[i] = 0; rem++; }
+  }
+  return rem;
+}
+/* Filter som bara beror på punkterna (inte på kameran): höjd, utglesning, brus, mark/över mark. Parametrarna sparas i redigeringen. */
+function l3peFilterRun(c, e, P, keep, n) {
+  let rem = 0; const zc = c.info.center[2] + (e.dz || 0);
+  if (e.t === "z") {          // höjdfilter i m ö.h.: ta bort över / under / mellan
+    for (let i = 0; i < n; i++) { if (!keep[i]) continue; const z = P[i * 3 + 2] + zc, hit = e.mode === "above" ? z > e.z0 : e.mode === "below" ? z < e.z0 : z >= e.z0 && z <= e.z1; if (hit) { keep[i] = 0; rem++; } }
+    return rem;
+  }
+  let x0 = Infinity, y0 = Infinity, z0 = Infinity; for (let i = 0; i < n; i++) { if (P[i * 3] < x0) x0 = P[i * 3]; if (P[i * 3 + 1] < y0) y0 = P[i * 3 + 1]; if (P[i * 3 + 2] < z0) z0 = P[i * 3 + 2]; }
+  if (e.t === "thin") {       // utglesning: en punkt per kub med sidan e.s
+    const s = Math.max(0.005, e.s), seen = new Set();
+    for (let i = 0; i < n; i++) { if (!keep[i]) continue; const k = Math.floor((P[i * 3] - x0) / s) + Math.floor((P[i * 3 + 1] - y0) / s) * 1e5 + Math.floor((P[i * 3 + 2] - z0) / s) * 1e10; if (seen.has(k)) { keep[i] = 0; rem++; } else seen.add(k); }
+    return rem;
+  }
+  if (e.t === "noise") {      // brusfilter: ta bort punkter med färre än e.k grannar inom e.r
+    const r = Math.max(0.01, e.r), r2 = r * r, grid = new Map(), kk = (a, b, d) => a + b * 1e5 + d * 1e10, ix = new Int32Array(n), iy = new Int32Array(n), iz = new Int32Array(n);
+    for (let i = 0; i < n; i++) { if (!keep[i]) continue; ix[i] = Math.floor((P[i * 3] - x0) / r); iy[i] = Math.floor((P[i * 3 + 1] - y0) / r); iz[i] = Math.floor((P[i * 3 + 2] - z0) / r); const k = kk(ix[i], iy[i], iz[i]); let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(i); }
+    const drop = [];
+    for (let i = 0; i < n; i++) {
+      if (!keep[i]) continue; let cntN = 0; const px = P[i * 3], py = P[i * 3 + 1], pz = P[i * 3 + 2];
+      for (let a = -1; a <= 1 && cntN < e.k; a++) for (let b = -1; b <= 1 && cntN < e.k; b++) for (let d = -1; d <= 1 && cntN < e.k; d++) {
+        const cell = grid.get(kk(ix[i] + a, iy[i] + b, iz[i] + d)); if (!cell) continue;
+        for (let q = 0; q < cell.length; q++) { const j = cell[q]; if (j === i) continue; const dx = P[j * 3] - px, dy = P[j * 3 + 1] - py, dz = P[j * 3 + 2] - pz; if (dx * dx + dy * dy + dz * dz <= r2 && ++cntN >= e.k) break; }
+      }
+      if (cntN < e.k) drop.push(i);
+    }
+    drop.forEach(i => { keep[i] = 0; rem++; }); return rem;
+  }
+  if (e.t === "ground") {     // mark / över mark: lägsta punkten i varje ruta är marken; det som ligger mer än e.h över är vegetation, fordon, personer …
+    const g = Math.max(0.1, e.g), low = new Map(), kk = (a, b) => a + b * 1e5;
+    for (let i = 0; i < n; i++) { if (!keep[i]) continue; const k = kk(Math.floor((P[i * 3] - x0) / g), Math.floor((P[i * 3 + 1] - y0) / g)), z = P[i * 3 + 2], v = low.get(k); if (v === undefined || z < v) low.set(k, z); }
+    for (let i = 0; i < n; i++) { if (!keep[i]) continue; const above = P[i * 3 + 2] - low.get(kk(Math.floor((P[i * 3] - x0) / g), Math.floor((P[i * 3 + 1] - y0) / g))) > e.h; if (e.mode === "ground" ? above : !above) { keep[i] = 0; rem++; } }
+    return rem;
+  }
+  return 0;
+}
+/* Lägg till ett filter (utan ring) och räkna om. */
+function l3peAddFilter(c, spec) { const before = c.nTot; (c.edits = c.edits || []).push({ ...spec, dz: c.dz || 0 }); const left = l3peApply(c); l3peSave(c); return { before, left, removed: before - left }; }
 /* Läggs på molnets original: alla redigeringar i ordning. Returnerar antal punkter kvar. */
 function l3peApply(c) {
   if (!c.orig) c.orig = c.chunks.map(ch => ({ pos: ch.pos, rgb: ch.rgb, inten: ch.inten }));
@@ -23,16 +72,7 @@ function l3peApply(c) {
     const o = c.orig[k], n = o.pos.length / 3; let keep = null, cnt = n;
     if (ed.length) {
       keep = new Uint8Array(n).fill(1); cnt = n;
-      ed.forEach(e => {
-        const m = e.pm, cx = c.info.center[0] - e.O[0], cy = c.info.center[1] - e.O[1], cz = c.info.center[2] + (e.dz || 0) - e.O[2], poly = e.poly, rm = e.mode === "out" ? 0 : 1;
-        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; poly.forEach(q => { if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0]; if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1]; }); const bb = [x0, y0, x1, y1], P = o.pos;
-        for (let i = 0; i < n; i++) {
-          if (!keep[i]) continue;
-          const x = P[i * 3] + cx, y = P[i * 3 + 1] + cy, z = P[i * 3 + 2] + cz, w = m[3] * x + m[7] * y + m[11] * z + m[15];
-          const inside = w > 1e-9 && l3peInPoly(poly, bb, (m[0] * x + m[4] * y + m[8] * z + m[12]) / w, (m[1] * x + m[5] * y + m[9] * z + m[13]) / w);
-          if (inside === !!rm) { keep[i] = 0; cnt--; }
-        }
-      });
+      ed.forEach(e => { if (e.t) cnt -= l3peFilterRun(c, e, o.pos, keep, n); else cnt -= l3pePolyRun(c, e, o.pos, keep, n); });
     }
     if (!keep || cnt === n) { ch.pos = o.pos; ch.rgb = o.rgb; ch.inten = o.inten; }
     else {

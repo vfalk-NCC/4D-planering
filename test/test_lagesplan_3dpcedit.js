@@ -80,5 +80,43 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const after = await page.evaluate(() => ({ n: window.__c.nTot, was: window.__n, edits: window.__c.edits.length }));
   if (!(after.n < after.was) || after.edits < 1) fail('Ring med musen + Ta bort innanför: ' + JSON.stringify(after));
   console.log('OK: ring med musen och knappen Ta bort innanför', JSON.stringify(after)); await page.evaluate(() => l3peStop());
+  // ---- Filter: höjd, utglesning, brus, mark/över mark ----
+  const f = await page.evaluate(() => {
+    const O = l3.O, c0 = l3pcBuild({ id: 'pcF', name: 'Filter' }, { info: { center: [O[0], O[1], O[2]], min: [0, 0, 0], max: [1, 1, 5], format: 'test', n: 0, total: 0 }, chunks: [(() => {
+      const P = []; for (let y = 0; y < 10; y += 0.5) for (let x = 0; x < 10; x += 0.5) P.push(x, y, 0);          // 400 marktpunkter z = 0
+      for (let i = 0; i < 20; i++) P.push(4.5 + (i % 5) * 0.1, 4.5 + Math.floor(i / 5) * 0.1, 1.0 + (i % 3) * 0.1);   // 20 punkter 1 m över (en buske)
+      P.push(100, 100, 9, -100, -100, 9);                                                                              // 2 enstaka brus
+      return { pos: new Float32Array(P), inten: new Uint8Array(P.length / 3) }; })()] });
+    const n0 = c0.nTot, r = {}; r.n0 = n0;
+    r.noise = l3peAddFilter(c0, { t: 'noise', r: 1, k: 3 }).removed; l3peUndo(c0);
+    r.ground = l3peAddFilter(c0, { t: 'ground', mode: 'ground', g: 2, h: 0.3 }).removed; l3peUndo(c0);
+    r.zab = l3peAddFilter(c0, { t: 'z', mode: 'above', z0: O[2] + 0.5 }).removed; l3peUndo(c0);
+    r.thin = l3peAddFilter(c0, { t: 'thin', s: 2 }).removed; r.left = c0.nTot; l3peReset(c0);
+    r.back = c0.nTot; return r;
+  });
+  if (f.noise !== 2) fail('Brusfilter ska ta bort de två enstaka punkterna: ' + JSON.stringify(f));
+  if (f.ground < 20 || f.ground > 24) fail('Mark/över mark ska ta bort busken (≈20-22): ' + JSON.stringify(f));
+  if (f.zab < 20) fail('Höjdfilter över nivå: ' + JSON.stringify(f));
+  if (!(f.left < f.n0 / 4 && f.left > 0) || f.back !== f.n0) fail('Utglesning/återställ: ' + JSON.stringify(f));
+  console.log('OK: filter (brus, mark/över mark, höjd, utglesning)', JSON.stringify(f));
+  // ---- Profil, volymtabell och släntkropp ----
+  const pr = await page.evaluate(() => {
+    const out = {}; const prof = l3ptProfile([0, 0, 0], [10, 0, 0], 1);   // moln pcF ligger runt scen-origo (mitt = O) → [0,10] längs x
+    out.series = prof.series.map(s => s.n); out.L = prof.L;
+    const csv = l3ptCsvBuild(); out.csvRows = csv.rows.length; out.csvHead = csv.text.split('\r\n')[0].replace('\ufeff', '').slice(0, 30);
+    // släntkropp: kvadrat 10 x 10, lutning 1:1, höjd 2 utåt → stympad pyramid ≈ 290,7 m³
+    const S = l3ptSlopeSolid([[0, 0], [10, 0], [10, 10], [0, 10]], 0, l3ptSlopeRings(1, 2, 0, 5, true));
+    out.slope = S ? modMeshStats(S.pts, S.faces).volume : null;
+    const B = l3ptSlopeSolid([[0, 0], [10, 0], [10, 10], [0, 10]], 0, l3ptSlopeRings(1, 4, 2, 2, true)); out.berm = B ? B.nr : 0;
+    return out;
+  });
+  if (!pr.series.length || !(pr.series[0] > 0)) fail('Profilen ska hitta punkter: ' + JSON.stringify(pr));
+  if (!pr.slope || Math.abs(pr.slope - 290.67) > 2) fail('Släntkroppens volym ska bli ≈ 290,7 m³: ' + JSON.stringify(pr));
+  if (pr.berm < 4) fail('Berm ska ge fler ringar: ' + JSON.stringify(pr));
+  console.log('OK: profil, volymtabell och släntkropp', JSON.stringify(pr));
+  // Menyn
+  await page.evaluate(() => l3ptOpen()); const ui = await page.evaluate(() => ({ btn: !!document.getElementById('v3PcToolBtn'), panel: !!document.getElementById('v3PcTools'), secs: document.querySelectorAll('#v3PcTools details').length }));
+  if (!ui.btn || !ui.panel || ui.secs < 5) fail('Verktygsmenyn: ' + JSON.stringify(ui)); console.log('OK: punktmolnens verktygsmeny', JSON.stringify(ui));
+  if (process.env.SHOT) { await page.evaluate(() => { l3ptProfShow([0, 0, 0], [10, 0, 0], 1); l3ptOpen(); document.querySelector('#v3PcTools details[data-k="fi"]').open = true; }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOT }); }
   await browser.close(); server.close();
 })().catch(e => { console.error(e); process.exit(1); });

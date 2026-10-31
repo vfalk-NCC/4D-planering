@@ -187,6 +187,7 @@ function l3pcBuild(src, data) {
   l3pc.clouds.push(c);
   setTimeout(l3pcLegend, 0);
   l3pcPlace(c);
+  if (typeof l3ptSync === "function") l3ptSync();
   if (typeof l3pcEdApplyOnLoad === "function") l3pcEdApplyOnLoad(c); // redigeringar (borttagna punkter) läggs på igen
   l3pcIndexIdle(c); // för att fästa mot punkterna
   return c;
@@ -392,6 +393,7 @@ function l3pcRemove(id) {
   c.chunkPts.forEach(p => p.geometry.dispose()); c.mat.dispose();
   if (c.group.parent) c.group.parent.remove(c.group);
   l3pc.clouds.splice(i, 1);
+  if (typeof l3ptSync === "function") l3ptSync();
   l3Render();
 }
 function l3pcShow(id, on) {
