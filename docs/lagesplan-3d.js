@@ -117,6 +117,7 @@ function l3PdfToModel(px, py) {
 // ---------------------------------------------------------------------
 const L3_PREFS_KEY = "lagesplan-3d-prefs";
 const L3_PREFS_DEFAULT = { plan: true, objs: "hidden", labels: true, legend: true, snap: true, step: "0.5", pal: true, mouse: "tekla", ortho: false, autoRot: true, actOutline: false, bubOn: false, bubScope: "auto", bubMax: 30 };
+if (typeof lowMemDevice !== "undefined" && lowMemDevice) L3_PREFS_DEFAULT.signsOff = true; // iPhone/iPad: skyltarna (en bild per objekt) är släckta från början – tänds med Skyltar i menyn
 function l3Prefs() {
   if (l3 && l3.prefs) return l3.prefs;
   try { return { ...L3_PREFS_DEFAULT, ...JSON.parse(localStorage.getItem(L3_PREFS_KEY) || "{}") }; } catch (e) { return { ...L3_PREFS_DEFAULT }; }

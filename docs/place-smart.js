@@ -304,7 +304,8 @@ const SM_ICONS = {
 function smRoundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 /* Skylten som bild: rundat kort med mjuk skugga, färgat huvud med ikon, stor siffra, etiketter och värden i riktig typografi, framdriftsstapel. Mått och rader = samma som geometrin. */
 function smSignCanvas(sp) {
-  const m = 0.1, ppm = Math.min(300, 2048 / (sp.w + 2 * m), 2048 / (sp.h + 2 * m)), cw = Math.round((sp.w + 2 * m) * ppm), ch = Math.round((sp.h + 2 * m) * ppm), cv = document.createElement("canvas"); cv.width = cw; cv.height = ch;
+  // en skylt per objekt: för stor bild × många objekt tog slut på minnet på iPhone, därför låg upplösning (lägre på telefon)
+  const m = 0.1, ppm = Math.min(typeof lowMemDevice !== "undefined" && lowMemDevice ? 90 : 170, 2048 / (sp.w + 2 * m), 2048 / (sp.h + 2 * m)), cw = Math.round((sp.w + 2 * m) * ppm), ch = Math.round((sp.h + 2 * m) * ppm), cv = document.createElement("canvas"); cv.width = cw; cv.height = ch;
   const c = cv.getContext("2d"), FONT = '"Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif', X = a => (a + sp.w / 2 + m) * ppm, Yz = z => (sp.zb + sp.h - z + m) * ppm, R = 0.07 * ppm;
   c.save(); c.shadowColor = "rgba(15,23,42,.38)"; c.shadowBlur = 0.07 * ppm; c.shadowOffsetY = 0.025 * ppm; c.fillStyle = "#fff"; smRoundRect(c, m * ppm, m * ppm, sp.w * ppm, sp.h * ppm, R); c.fill(); c.restore();
   c.save(); smRoundRect(c, m * ppm, m * ppm, sp.w * ppm, sp.h * ppm, R); c.clip();
@@ -329,7 +330,7 @@ function smSignCanvas(sp) {
   return { cv, m };
 }
 function smSignMesh(p, sp) {
-  const { cv, m } = smSignCanvas(sp), tex = new THREE.CanvasTexture(cv); tex.anisotropy = 8; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.encoding = THREE.sRGBEncoding;
+  const { cv, m } = smSignCanvas(sp), tex = new THREE.CanvasTexture(cv), lo = typeof lowMemDevice !== "undefined" && lowMemDevice; tex.anisotropy = lo ? 1 : 4; tex.minFilter = lo ? THREE.LinearFilter : THREE.LinearMipmapLinearFilter; tex.generateMipmaps = !lo; tex.encoding = THREE.sRGBEncoding;
   const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.FrontSide, depthWrite: false, toneMapped: false }), w = sp.w + 2 * m, h = sp.h + 2 * m, mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
   const X = new THREE.Vector3(sp.ax, sp.ay, 0).normalize(), Yv = sp.flat ? new THREE.Vector3(-X.y, X.x, 0) : new THREE.Vector3(0, 0, 1), Zv = new THREE.Vector3().crossVectors(X, Yv); mesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(X, Yv, Zv));
   mesh.position.set(sp.cx, sp.cy, sp.flat ? sp.z : sp.z + sp.zb + sp.h / 2); mesh.renderOrder = 4; mesh.userData.placeId = p.id; mesh.userData.mat0 = { t: true, o: 1, d: false }; mesh.userData.isSign = true; mesh.userData.signSpec = sp; mesh.userData.flat = !!sp.flat; return mesh;
