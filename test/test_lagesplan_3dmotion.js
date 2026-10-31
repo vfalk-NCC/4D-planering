@@ -52,7 +52,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     // 6: markering – syntetiskt överlägg (fyllning + glödkant)
     const fill = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.34 })); fill.userData.bselFill = true;
     const halo = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.ShaderMaterial({ uniforms: { w: { value: 0.0042 }, a: { value: 0.95 } } })); l3.scene.add(fill, halo); l3bs.sel = [{}]; l3bs.ov = [fill, halo];
-    l3moSelPop(); await wait(120); o.haloMid = halo.material.uniforms.w.value; o.fillMid = fill.material.opacity; await wait(700); o.haloEnd = halo.material.uniforms.w.value; o.fillEnd = fill.material.opacity; o.aEnd = halo.material.uniforms.a.value; l3.scene.remove(fill, halo); l3bs.sel = []; l3bs.ov = [];
+    l3moSelPop(); o.haloMid = 0; o.fillMid = 0.34; for (let i = 0; i < 18; i++) { await wait(30); o.haloMid = Math.max(o.haloMid, halo.material.uniforms.w.value); if (Math.abs(fill.material.opacity - 0.34) > Math.abs(o.fillMid - 0.34)) o.fillMid = fill.material.opacity; } await wait(300); o.haloEnd = halo.material.uniforms.w.value; o.fillEnd = fill.material.opacity; o.aEnd = halo.material.uniforms.a.value; l3.scene.remove(fill, halo); l3bs.sel = []; l3bs.ov = [];
     // 8: snitt – svep
     l3cShowPlane({ plane: new THREE.Plane(new THREE.Vector3(1, 0, 0), 0) }); o.sweep = !!l3mo.sweepObj; await wait(1000); o.sweepGone = !l3mo.sweepObj; l3cShowPlane(null);
     // 5: minimap
