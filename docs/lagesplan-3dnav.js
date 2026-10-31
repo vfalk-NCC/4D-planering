@@ -595,14 +595,13 @@ function l3QvRender() {
       const b = e.target.closest("button"); if (!b) return;
       if (b.dataset.qv === "toggle") { box.classList.toggle("open"); return; }
       if (b.dataset.qvgo != null) { box.classList.remove("open"); l3GoView(+b.dataset.qvgo); return; }
-      if (b.dataset.qvstd) { box.classList.remove("open"); l3View(b.dataset.qvstd); return; }
       if (b.dataset.qv === "save") { box.classList.remove("open"); if (typeof uiPrompt === "function") uiPrompt("Namn på vyn", "").then(n => { if (n != null) l3SaveView(n); }); else l3SaveView(""); }
     });
     document.addEventListener("pointerdown", e => { if (box.classList.contains("open") && !box.contains(e.target)) box.classList.remove("open"); }, true);
   }
   box.hidden = !l3QvOn();
-  const list = l3SavedViews(), std = [["iso", "Översikt"], ["top", "Plan"], ["n", "N"], ["s", "S"], ["e", "Ö"], ["w", "V"]];
-  box.innerHTML = `<div class="v3-qv-p"><div class="v3-qv-std">${std.map(([k, n]) => `<button type="button" data-qvstd="${k}">${n}</button>`).join("")}</div>${list.length ? list.map((v, i) => `<button type="button" class="v3-qv-v" data-qvgo="${i}">${escHtml(v.name)}</button>`).join("") : `<div class="v3-qv-none">Inga sparade vyer än.</div>`}<button type="button" class="v3-qv-s" data-qv="save">＋ Spara vyn här</button></div><button type="button" class="v3-qv-b" data-qv="toggle" aria-label="Sparade vyer" title="Sparade vyer"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>${list.length ? `<i>${list.length}</i>` : ""}</button>`;
+  const list = l3SavedViews();
+  box.innerHTML = `<div class="v3-qv-p">${list.length ? list.map((v, i) => `<button type="button" class="v3-qv-v" data-qvgo="${i}">${escHtml(v.name)}</button>`).join("") : `<div class="v3-qv-none">Inga sparade vyer än.</div>`}<button type="button" class="v3-qv-s" data-qv="save">＋ Spara vyn här</button></div><button type="button" class="v3-qv-b" data-qv="toggle" aria-label="Sparade vyer" title="Sparade vyer"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>${list.length ? `<i>${list.length}</i>` : ""}</button>`;
 }
 window.addEventListener("resize", () => { const b = document.getElementById("v3Qv"); if (b) b.hidden = !l3QvOn(); });
 
