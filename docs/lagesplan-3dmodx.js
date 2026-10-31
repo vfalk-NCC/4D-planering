@@ -3,8 +3,8 @@
    Radera (E): tryck på ett ritat objekt (eller etableringsobjekt) så tas det bort. IFC-objekt i byggnaden rörs aldrig.
    Måla (B): tryck på ett objekt med vald färg. Skala (S): tryck på ett ritat objekt, dra eller skriv faktorn (1,5 eller 150 = 150 %).
    Spegla (X): välj axel, tryck på objektet, tryck var spegelplanet ska ligga (Behåll original = kopia). Följ banan (O): tryck på en yta
-   (profilen) och sedan på en linje eller en ytas kant (banan) – profilen dras längs banan till ett nät. Skär ytor (I): tryck på två
-   ritade objekt – skärningslinjerna blir linjeobjekt. Slå ihop / Dela upp: flera ritade objekt blir ett nät (kan delas upp igen); en kropp
+   (profilen) och sedan på en linje eller en ytas kant (banan) – profilen dras längs banan till ett nät. Skär ytor (I): som "cut by part" – tryck på kroppen som ska kapas och sedan på ett objekt som ligger i den: skärobjektets
+   volym skärs bort (flera skärobjekt i rad, Esc avslutar). Är det bara ytor blir skärningslinjerna linjeobjekt. Slå ihop / Dela upp: flera ritade objekt blir ett nät (kan delas upp igen); en kropp
    delas upp i sina ytor. Kontrollera: söker ogiltig geometri (korsande konturer, dubbletter, öppna nät) och kan reparera det enkla.
    Upprepa: nästa Push/Pull, Offset eller Skala använder senaste måttet direkt. Allt är ett steg i Ångra. */
 
@@ -78,7 +78,7 @@ function l3dxHover(e, m) {
     if (!op) { const F = l3dwFaceAt(e); l3dw.hov = F; if (F) { l3dwHighlight(F, "#2563eb"); l3ShowMarker({ point: l3dwS(F.pt), kind: "face" }); } else l3ShowMarker(null); return true; }
     const o = l3dxObjAt(e); op.path = o && o.p.m && (o.p.m.k === "curve" || o.p.m.k === "face") && o.p !== op.F.p ? o.p : null; l3dwHighlight(op.F, "#2563eb"); if (op.path) l3dxOutline(op.path, "#16a34a"); return true;
   }
-  if (m === "intersect") { const o = l3dxObjAt(e); l3dw.hov = o; if (op && op.a) l3dxOutline(op.a, "#2563eb"); if (o && l3dxModOnly(o.p) && o.p.m.k !== "curve") l3dxOutline(o.p, "#f59e0b"); return true; }
+  if (m === "intersect") { const o = l3dxObjAt(e); l3dw.hov = o; if (op && op.a) l3dxOutline(op.a, "#2563eb"); if (o && (!op || o.p !== op.a) && !(l3dxModOnly(o.p) && o.p.m.k === "curve") && (op || l3dxModOnly(o.p))) l3dxOutline(o.p, op && l3dxIsBody(op.a) ? "#dc2626" : "#f59e0b"); return true; }
   return true;
 }
 function l3dxScaleFactor(e, op) {
@@ -124,9 +124,16 @@ function l3dxTap(e, m) {
     if (!op.path) { l3Status("Tryck på en linje eller en yta som ska vara banan.", true); return true; }
     return l3dxFollowCommit(op); }
   if (m === "intersect") {
-    const o = l3dxObjAt(e); if (!o || !l3dxModOnly(o.p) || o.p.m.k === "curve" || o.p.m.k === "mesh") { l3Status("Tryck på ritade ytor eller kroppar.", true); return true; }
-    if (!op) { l3dw.op = { type: "xint", a: o.p }; l3dwHint("Tryck på det andra objektet."); l3dwHover(e); return true; }
-    if (o.p === op.a) return true; return l3dxIntersectCommit(op.a, o.p); }
+    const o = l3dxObjAt(e);
+    if (!op) {
+      if (!o || !l3dxModOnly(o.p) || o.p.m.k === "curve") { l3Status("Tryck på den ritade kropp eller yta som ska kapas.", true); return true; }
+      l3dw.op = { type: "xint", a: o.p }; l3dwHint(l3dxIsBody(o.p) ? "Tryck på objektet som ligger i den – dess volym skärs bort (Esc avslutar)." : "Tryck på det andra objektet."); l3dwHover(e); return true;
+    }
+    if (!o || o.p === op.a) return true;
+    if (l3dxIsBody(op.a) && l3dxIsSolidLike(o.p)) { l3dxCutCommit(op.a, o.p).catch(err => { console.warn("Skär", err); l3Status("Kunde inte skära: " + (err && err.message || err), true); }); return true; }
+    if (o.p.m && o.p.m.k !== "curve" && o.p.m.k !== "mesh" && op.a.m.k !== "mesh") return l3dxIntersectCommit(op.a, o.p);
+    l3Status("Skärobjektet måste vara en slutna kropp (ritad kropp eller ett objekt med volym).", true); return true;
+  }
   return true;
 }
 function l3dxEnter() {
@@ -224,6 +231,50 @@ function l3dxIntersectCommit(a, b) {
   const use = segs.slice(0, 300); placeSnapshot(); const ids = [];
   use.forEach(s => { const c = modCreate({ k: "curve", pts: [[0, 0, 0], MG.round3(MG.sub(s[1], s[0]))], closed: false }, s[0].map(MG.r3), { name: "Skärning", color: "#dc2626", snapshot: false }); ids.push(c.id); });
   l3SelectIds(ids); l3Changed(); l3Status(`${use.length} skärningslinjer skapade${segs.length > use.length ? ` (av ${segs.length})` : ""}. Ctrl+Z ångrar.`); return true;
+}
+
+/* ---- Skär bort volym (cut by part) --------------------------------------------------------------------------------------------------------- */
+const l3dxIsBody = p => !!(p && p.m && (p.m.k === "solid" || (p.m.k === "mesh" && p.m.closed !== false)));
+const l3dxIsSolidLike = p => !!(p && ((p.m && p.m.k !== "curve" && p.m.k !== "face") || (!p.m && l3.placeMeshes.get(p.id))));
+let l3dxMf = null;
+async function l3dxManifold() {
+  if (l3dxMf) return l3dxMf;
+  const mod = await import("./vendor/formats/manifold.js"), wasm = await mod.default({ locateFile: f => new URL("vendor/formats/" + f, document.baseURI).href });
+  if (wasm.setup) wasm.setup(); l3dxMf = wasm; return wasm;
+}
+/* Kroppens trianglar i meter relativt A0 (absoluta koordinater minus origo, så att talen är små), sammansvetsade och utåtvända. */
+function l3dxSolidOf(p, A0) {
+  let pts = [], tri = [];
+  if (p.m && p.m.k !== "curve" && p.m.k !== "face") { const c = modLocalMesh(p); if (!c) return null; pts = c.pts.map(q => MG.sub(l3dwFromLocal(p, q), A0)); tri = c.faces.map(f => [f[0] - 1, f[1] - 1, f[2] - 1]); }   // ritade nät har 1-baserade index
+  else {
+    const g = l3.placeMeshes.get(p.id); if (!g) return null; g.updateMatrixWorld(true); const v = new THREE.Vector3();
+    g.traverse(o => { if (!o.isMesh || o.userData.isSign || o.userData.shadow || !o.geometry || !o.geometry.attributes.position) return; const pos = o.geometry.attributes.position, base = pts.length, idx = o.geometry.index;
+      for (let i = 0; i < pos.count; i++) { v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld); pts.push([v.x + l3.O[0] - A0[0], v.y + l3.O[1] - A0[1], v.z + l3.O[2] - A0[2]]); }
+      const n = idx ? idx.count : pos.count; for (let i = 0; i + 2 < n; i += 3) tri.push(idx ? [base + idx.getX(i), base + idx.getX(i + 1), base + idx.getX(i + 2)] : [base + i, base + i + 1, base + i + 2]); });
+  }
+  const key = q => q.map(c => Math.round(c * 1e4)).join(","), map = new Map(), P = [], remap = pts.map(q => { const k = key(q); if (!map.has(k)) { map.set(k, P.length); P.push(q); } return map.get(k); });
+  const T = []; tri.forEach(t => { const a = remap[t[0]], b = remap[t[1]], c = remap[t[2]]; if (a !== b && b !== c && a !== c) T.push([a, b, c]); });
+  let vol = 0; T.forEach(([a, b, c]) => { vol += MG.dot(P[a], MG.cross(P[b], P[c])) / 6; }); if (vol < 0) T.forEach(t => { const x = t[1]; t[1] = t[2]; t[2] = x; });
+  return { P, T, vol: Math.abs(vol) };
+}
+async function l3dxCutCommit(a, b) {
+  const A0 = [a.x, a.y, (Number(a.z) || 0) + (Number(a.dz) || 0)], SA = l3dxSolidOf(a, A0), SB = l3dxSolidOf(b, A0);
+  if (!SA || !SB || SA.T.length < 4 || SB.T.length < 4) { l3Status("Objekten saknar volym att skära med.", true); return; }
+  l3Status("Skär…"); const W = await l3dxManifold(), mk = S => new W.Manifold(new W.Mesh({ numProp: 3, vertProperties: new Float32Array(S.P.flat()), triVerts: new Uint32Array(S.T.flat()) }));
+  let MA, MB; try { MA = mk(SA); } catch (e) { l3Status("Kroppen som ska kapas är inte sluten (tät) – den går inte att skära.", true); return; }
+  try { MB = mk(SB); } catch (e) { MA.delete(); l3Status("Skärobjektet är inte slutet (tätt) – välj en kropp med volym.", true); return; }
+  const R = MA.subtract(MB), v0 = MA.volume(), v1 = R.isEmpty() ? 0 : R.volume();
+  try {
+    if (R.isEmpty()) { l3Status("Skärobjektet tar bort hela kroppen – inget ändrades.", true); return; }
+    if (Math.abs(v0 - v1) < 1e-6 * Math.max(1, v0)) { l3Status("Objekten överlappar inte – inget skars bort.", true); return; }
+    const mesh = R.getMesh(), np = mesh.numProp, vp = mesh.vertProperties, tv = mesh.triVerts, pts = [], faces = [];
+    for (let i = 0; i < vp.length; i += np) pts.push(MG.round3([vp[i], vp[i + 1], vp[i + 2]]));
+    for (let i = 0; i < tv.length; i += 3) faces.push([tv[i] + 1, tv[i + 1] + 1, tv[i + 2] + 1]);
+    placeSnapshot(); const keep = { name: a.name, color: a.color, itemId: a.itemId, dz: a.dz }; l3dxRemove([a.id]);
+    const made = modCreate({ k: "mesh", pts, faces, closed: true }, A0, { name: keep.name, color: keep.color, snapshot: false }); if (keep.itemId) made.itemId = keep.itemId;
+    l3SelectIds([made.id]); l3Changed(); l3dw.op = { type: "xint", a: made }; l3dwHint("Skuret är gjort. Tryck på nästa objekt att skära med (Esc avslutar).");
+    l3Status(`${l3Fmt(v0 - v1, 2)} m³ skars bort (${l3Fmt(v0, 2)} → ${l3Fmt(v1, 2)} m³). Skärobjektet ligger kvar – radera det om du inte behöver det. Ctrl+Z ångrar.`);
+  } finally { [MA, MB, R].forEach(m => { try { m.delete(); } catch (e) { /* */ } }); }
 }
 
 /* ---- Slå ihop / dela upp ---- */

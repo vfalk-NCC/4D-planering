@@ -59,7 +59,7 @@ function l3dwHint(extra) {
     scale: l3dw.op ? "Dra för faktorn och tryck – eller skriv den (1,5 eller 150 för 150 %) och Enter." : "Skala: tryck på ett ritat objekt (skalas kring ankarpunkten).",
     mirror: l3dw.op ? "Flytta spegelplanet och tryck. Välj axel i verktygsfältet." : "Spegla: tryck på ett ritat objekt, välj axel (X/Y/Z) i verktygsfältet.",
     follow: l3dw.op ? "Tryck nu på banan: en linje eller en ytas kant." : "Följ banan: tryck på profilen (en yta).",
-    intersect: l3dw.op ? "Tryck på det andra objektet." : "Skär ytor: tryck på två ritade ytor eller kroppar – skärningslinjerna blir linjer.",
+    intersect: l3dw.op ? "Tryck på objektet som ligger i kroppen – dess volym skärs bort (Esc avslutar)." : "Skär ytor: tryck på kroppen som ska kapas, sedan på objektet som skär bort sin volym. Två ytor ger skärningslinjer.",
     offset: l3dw.op ? "Flytta för avståndet och tryck – eller skriv det och Enter." : "Offset: tryck på en yta.",
   };
   h.textContent = extra || T[m] || ""; h.style.display = h.textContent ? "" : "none";
