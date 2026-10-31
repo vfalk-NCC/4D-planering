@@ -136,6 +136,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!dt.hiddenWhileMoving || dt.renders < 1 || !dt.visible || !dt.key || !dt.sizeOk) fail('Skarp PDF: ' + JSON.stringify(dt));
   if (dt.mapBlend !== 'multiply' || !dt.noPdfBase) fail('Skarp PDF över ortofoto: ' + JSON.stringify(dt));
   console.log('OK: skarp PDF i skärmens upplösning (över ortofoto: multiplicerad, utan dubbla linjer)', JSON.stringify(dt));
+  // Telefon: panelen ska rymmas i bredd (ingen kapning/sidscroll)
+  await page.setViewportSize({ width: 430, height: 900 }); await page.waitForTimeout(400);
+  const ph = await page.evaluate(async () => { l3spClose(); l3SetPref('spRect', null); await l3spOpen(); await new Promise(r => setTimeout(r, 300)); const el = document.getElementById('v3Sp'), r = el.getBoundingClientRect(), host = document.getElementById('v3Canvas').getBoundingClientRect(); const bad = [...el.querySelectorAll('button,select,input')].filter(c => { const q = c.getBoundingClientRect(); return q.width > 0 && (q.right > r.right + 1 || q.left < r.left - 1); }).length; return { w: r.width, host: host.width, inside: r.left >= host.left - 1 && r.right <= host.right + 1, sw: el.scrollWidth, cw: el.clientWidth, bad }; });
+  if (!ph.inside || ph.bad > 0 || ph.sw > ph.cw + 1) fail('Panelen på telefon: ' + JSON.stringify(ph));
+  console.log('OK: ritningspanelen rymms på telefon', JSON.stringify(ph)); await page.setViewportSize({ width: 1300, height: 850 });
   if (process.env.SHOT) { await page.evaluate(async () => { l3SetPref('spMap', 'esri'); document.getElementById('spMapSrc').value = 'esri'; document.getElementById('spMapSrc').dispatchEvent(new Event('change')); const c = plan.calib.model[0]; l3spGoTo(c[0] + 25, c[1] + 12); }); await page.waitForTimeout(1300); await page.screenshot({ path: process.env.SHOT }); }
   await browser.close(); server.close();
 })().catch(e => { console.error(e); process.exit(1); });
