@@ -26,7 +26,10 @@ function l3sunLatLon(N, E, cm = 20.25, fe = 150000) {
 /* Platsen: ur vyns mittpunkt (om den ser ut som SWEREF 99 20 15), annars sparad eller Stockholm. */
 function l3sunPlace() {
   if (l3sun.lat != null && l3sun.lon != null) return [l3sun.lat, l3sun.lon];
-  try { const t = l3.orbit.target, N = t.x + l3.O[0], E = t.y + l3.O[1]; if (N > 6e6 && N < 7.7e6 && E > 0 && E < 400000) { const r = l3sunLatLon(N, E); if (r[0] > 54 && r[0] < 70 && r[1] > 9 && r[1] < 26) return r; } } catch (e) { /* */ }
+  try { // modellens koordinater är x = öst, y = norr (som DXF och kartan); testdata har ibland tvärtom – båda ordningarna prövas
+    const t = l3.orbit.target, a = t.x + l3.O[0], b = t.y + l3.O[1];
+    for (const [N, E] of [[b, a], [a, b]]) if (N > 6e6 && N < 7.7e6 && E > 0 && E < 400000) { const r = l3sunLatLon(N, E); if (r[0] > 54 && r[0] < 70 && r[1] > 9 && r[1] < 26) return r; }
+  } catch (e) { /* */ }
   return [59.33, 18.07];
 }
 /* Klockslagets UTC-förskjutning i Sverige (timmar) för ett datum. */

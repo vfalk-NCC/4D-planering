@@ -583,8 +583,8 @@ function l3RenderSavedViews() {
 }
 
 /* ---- Snabbknapp för sparade vyer (mobil) --------------------------------------------------------------------------------------------------
-   En liten knapp nere till höger i bilden. Trycker man fälls en lista upp med de sparade vyerna (och standardvyerna) – ett tryck går dit. */
-const l3QvOn = () => { try { return matchMedia("(pointer: coarse)").matches || innerWidth < 760; } catch (e) { return false; } };
+   En liten knapp nere till höger i bilden. Trycker man fälls en lista upp med de sparade vyerna – ett tryck går dit. Finns på både dator och mobil. */
+const l3QvOn = () => true; // på både dator och mobil
 function l3QvRender() {
   const cv = document.getElementById("v3Canvas"); if (!cv) return;
   let box = document.getElementById("v3Qv");
