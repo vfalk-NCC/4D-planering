@@ -248,12 +248,21 @@ function l3spKey(e) { if (l3sp.zPick && e.key === "Escape") { e.preventDefault()
    Ritningen multipliceras ovanpå så att dess vita bakgrund släpper igenom fotot. */
 const l3spMapSrc = () => { const v = l3Prefs().spMap; return typeof v === "string" ? v : ""; };
 const l3spPdfOp = () => { const v = Number(l3Prefs().spPdfOp); return v >= 15 && v <= 100 ? v : 85; };
+/* Ortofotona som är uppladdade i projektet (Lager → Ortofoto) som egna val, nyast sist, plus "alla tända" som i lagerlistan. */
+const l3spOrthoList = () => (typeof orthosByDate === "function" ? orthosByDate() : []);
+function l3spOrthoOptions(sel) {
+  sel.querySelectorAll("optgroup").forEach(g => g.remove()); const list = l3spOrthoList(); if (!list.length) return; const esc = typeof escHtml === "function" ? escHtml : String;
+  const g = document.createElement("optgroup"); g.label = "Mina ortofoton";
+  g.innerHTML = `<option value="ortho:*">Tända ortofoton (som i lagerlistan)</option>` + list.map(o => `<option value="ortho:${esc(o.id)}">${esc(o.name || "Ortofoto")}${(typeof orthoDate === "function" ? orthoDate(o) : o.date) ? " · " + esc(typeof orthoDate === "function" ? orthoDate(o) : o.date) : ""}</option>`).join("");
+  sel.insertBefore(g, sel.options[1] || null);
+}
 function l3spMapBind() {
-  const el = l3sp.el, sel = el.querySelector("#spMapSrc"), op = el.querySelector("#spPdfOp"); if (!sel) return; sel.value = l3spMapSrc(); op.value = l3spPdfOp();
+  const el = l3sp.el, sel = el.querySelector("#spMapSrc"), op = el.querySelector("#spPdfOp"); if (!sel) return; l3spOrthoOptions(sel); sel.value = l3spMapSrc(); if (sel.value !== l3spMapSrc()) sel.value = ""; op.value = l3spPdfOp();
+  sel.addEventListener("pointerdown", () => { const v = sel.value; l3spOrthoOptions(sel); sel.value = v; });   // nya ortofoton dyker upp utan att panelen öppnas om
   sel.onchange = () => { l3SetPref("spMap", sel.value); l3sp.mapRev = (l3sp.mapRev || 0) + 1; l3sp.key = ""; l3spMapNote(); if (sel.value === "custom" && !l3Prefs().mapUrl) l3Status("Egen adress: skriv in en XYZ-adress under Kartan i 3D-vyns inställningar (kugghjulet).", true); };
   op.oninput = () => { l3SetPref("spPdfOp", Number(op.value)); l3sp.key = ""; }; l3spMapNote();
 }
-function l3spMapNote() { const f = document.getElementById("spF"); if (!f) return; const s = l3spMapSrc(), a = s && typeof L3MAP_SRC !== "undefined" && L3MAP_SRC[s] ? L3MAP_SRC[s][2] : ""; f.textContent = a ? "Underlag: " + a : "Tryck på ritningen för att flyga dit i 3D. Hjul zoomar, dra panorerar."; }
+function l3spMapNote() { const f = document.getElementById("spF"); if (!f) return; const s = l3spMapSrc(); if (s.startsWith("ortho:")) { const os = l3spOrthoSel(s); f.textContent = os.length ? "Underlag: " + os.map(o => o.name || "ortofoto").join(", ") : "Inga tända ortofoton – tänd dem under Lager."; return; } const a = s && typeof L3MAP_SRC !== "undefined" && L3MAP_SRC[s] ? L3MAP_SRC[s][2] : ""; f.textContent = a ? "Underlag: " + a : "Tryck på ritningen för att flyga dit i 3D. Hjul zoomar, dra panorerar."; }
 function l3spTile(src, tpl, z, x, y) {
   const key = src + "|" + z + "/" + x + "/" + y; l3sp.tiles = l3sp.tiles || new Map(); l3sp.tq = l3sp.tq || 0; const c = l3sp.tiles.get(key);
   if (c !== undefined) return c && c !== "p" ? c : null; if (l3sp.tq >= 12) return null;
@@ -262,8 +271,33 @@ function l3spTile(src, tpl, z, x, y) {
   return null;
 }
 /* Ritar plattorna som täcker panelen. Returnerar true om något underlag ritades (eller väntar på plattor). */
+function l3spOrthoSel(src) { const list = l3spOrthoList(); return src === "ortho:*" ? list.filter(o => typeof ls === "function" && ls("ortho:" + o.id).visible) : list.filter(o => "ortho:" + o.id === src); }
+/* Projektets egna ortofoton (världsfil: bildpixel → modell). Översiktsbilden, och i full upplösning de rutor som syns när man zoomar in. */
+function l3spOrthoDraw(b, r, dpr, src) {
+  const list = l3spOrthoSel(src); b.fillStyle = "#cbd5e1"; b.fillRect(0, 0, r.width, r.height); if (!list.length) return true;
+  const redraw = () => { clearTimeout(l3sp.mapT); l3sp.mapT = setTimeout(() => { l3sp.mapRev = (l3sp.mapRev || 0) + 1; l3sp.key = ""; }, 60); };
+  const mat = w => { const f = (u, v) => l3spToScr(w.A * (u - 0.5) + w.B * (v - 0.5) + w.C, w.D * (u - 0.5) + w.E * (v - 0.5) + w.F), p0 = f(0, 0), p1 = f(1, 0), p2 = f(0, 1); return [p1[0] - p0[0], p1[1] - p0[1], p2[0] - p0[0], p2[1] - p0[1], p0[0], p0[1]]; };
+  list.forEach(o => {
+    const im = typeof orthoImages !== "undefined" ? orthoImages.get(o.id) : null;
+    if (!im) { if (typeof ensureOrthoImage === "function" && !o._spLoading) { o._spLoading = true; ensureOrthoImage(o).then(redraw).catch(() => {}).finally(() => { o._spLoading = false; }); } return; }
+    const m = mat(o.world), D = (a, c, d, e, f, g) => b.setTransform(dpr * a, dpr * c, dpr * d, dpr * e, dpr * f, dpr * g); b.save(); b.globalAlpha = typeof layerOpacity === "function" ? layerOpacity("ortho:" + o.id) : 1; b.imageSmoothingQuality = "high";
+    D(m[0], m[1], m[2], m[3], m[4], m[5]); b.drawImage(im, 0, 0);
+    if (o.tiles && Math.hypot(m[0], m[1]) > 1.25 && typeof loadTile === "function" && typeof tileCache !== "undefined") {   // inzoomat: rutorna i full upplösning
+      const t = o.tiles, mf = mat(t.world), inv = (() => { const det = mf[0] * mf[3] - mf[1] * mf[2]; return [mf[3] / det, -mf[1] / det, -mf[2] / det, mf[0] / det, (mf[2] * mf[5] - mf[3] * mf[4]) / det, (mf[1] * mf[4] - mf[0] * mf[5]) / det]; })();
+      const cs = [[0, 0], [r.width, 0], [0, r.height], [r.width, r.height]].map(([x, y]) => [inv[0] * x + inv[2] * y + inv[4], inv[1] * x + inv[3] * y + inv[5]]);
+      const u0 = Math.max(0, Math.min(...cs.map(q => q[0]))), u1 = Math.min(t.width, Math.max(...cs.map(q => q[0]))), v0 = Math.max(0, Math.min(...cs.map(q => q[1]))), v1 = Math.min(t.height, Math.max(...cs.map(q => q[1])));
+      for (let ty = Math.floor(v0 / t.size); ty <= Math.min(t.rows - 1, Math.floor(v1 / t.size)); ty++) for (let tx = Math.floor(u0 / t.size); tx <= Math.min(t.cols - 1, Math.floor(u1 / t.size)); tx++) {
+        const path = `${t.prefix}t_${tx}_${ty}.webp`; let e = tileCache.get(path); if (!e) { loadTile(path); e = tileCache.get(path); } const img = e && e.img; if (e) e.used = Date.now();
+        if (!img) { if (e && e.promise && !e.spHook) { e.spHook = true; e.promise.then(redraw).catch(() => {}); } continue; }
+        D(mf[0], mf[1], mf[2], mf[3], mf[0] * tx * t.size + mf[2] * ty * t.size + mf[4], mf[1] * tx * t.size + mf[3] * ty * t.size + mf[5]); b.drawImage(img, 0, 0);
+      }
+    }
+    b.restore();
+  });
+  b.setTransform(dpr, 0, 0, dpr, 0, 0); return true;
+}
 function l3spMapDraw(b, r, dpr) {
-  const src = l3spMapSrc(); if (!src || typeof geodeticToGrid !== "function" || typeof l3mapModelToGeo !== "function" || !l3sp.aff) return false;
+  const src = l3spMapSrc(); if (src.startsWith("ortho:")) return l3spOrthoDraw(b, r, dpr, src); if (!src || typeof geodeticToGrid !== "function" || typeof l3mapModelToGeo !== "function" || !l3sp.aff) return false;
   const zone = l3mapZone(), tpl = src === "custom" ? l3mapP("mapUrl", "") : (L3MAP_SRC[src] || [])[1], maxZ = src === "custom" ? 20 : (L3MAP_SRC[src] || [0, 0, 0, 19])[3]; if (!zone || !tpl) return false;
   b.fillStyle = "#cbd5e1"; b.fillRect(0, 0, r.width, r.height);
   const cs = [[0, 0], [r.width, 0], [r.width, r.height], [0, r.height]].map(([sx, sy]) => { const [x, y] = l3spFromScr(sx, sy); return l3mapModelToGeo(x, y, zone); });

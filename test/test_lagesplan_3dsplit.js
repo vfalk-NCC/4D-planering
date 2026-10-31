@@ -141,6 +141,20 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const ph = await page.evaluate(async () => { l3spClose(); l3SetPref('spRect', null); await l3spOpen(); await new Promise(r => setTimeout(r, 300)); const el = document.getElementById('v3Sp'), r = el.getBoundingClientRect(), host = document.getElementById('v3Canvas').getBoundingClientRect(); const bad = [...el.querySelectorAll('button,select,input')].filter(c => { const q = c.getBoundingClientRect(); return q.width > 0 && (q.right > r.right + 1 || q.left < r.left - 1); }).length; return { w: r.width, host: host.width, inside: r.left >= host.left - 1 && r.right <= host.right + 1, sw: el.scrollWidth, cw: el.clientWidth, bad }; });
   if (!ph.inside || ph.bad > 0 || ph.sw > ph.cw + 1) fail('Panelen på telefon: ' + JSON.stringify(ph));
   console.log('OK: ritningspanelen rymms på telefon', JSON.stringify(ph)); await page.setViewportSize({ width: 1300, height: 850 });
+  // Mina ortofoton (uppladdade i projektet) som underlag
+  const og = await page.evaluate(async () => {
+    const o = {}, id = 'orth1', W = 200, H = 100, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); g.fillStyle = '#3f6212'; g.fillRect(0, 0, W, H);
+    const m = plan.calib.model[0]; siteItems.push({ id, type: 'ortho', name: 'Flygfoto test', date: '2026-10-01', width: W, height: H, world: { A: 0.5, B: 0, C: m[0] - 2, D: 0, E: -0.5, F: m[1] + 60 }, created_at: '2026-10-01' }); orthoImages.set(id, c);
+    l3spClose(); await l3spOpen(); const sel = document.getElementById('spMapSrc'); o.opts = [...sel.querySelectorAll('optgroup option')].map(x => x.value + '|' + x.textContent);
+    sel.value = 'ortho:' + id; sel.dispatchEvent(new Event('change')); l3spFit(); const bc = l3sp.bc.getContext('2d'); let draws = 0, tf = null; const od = bc.drawImage.bind(bc); bc.drawImage = (...a) => { draws++; if (a[0] === c) tf = bc.getTransform(); return od(...a); };
+    l3sp.key = ''; l3sp.baseKey = ''; l3spDraw(); o.draws = draws; o.drewOrtho = !!tf; o.note = document.getElementById('spF').textContent;
+    // hörnet (0,0) i bilden ska hamna där modellpunkten (C-0.25, F+0.25) ligger på skärmen
+    if (tf) { const dpr = Math.min(2, window.devicePixelRatio || 1), [sx, sy] = l3spToScr(m[0] - 2 - 0.25, m[1] + 60 + 0.25); o.dx = Math.abs(tf.e / dpr - sx); o.dy = Math.abs(tf.f / dpr - sy); }
+    l3SetPref('spMap', ''); siteItems.pop(); return o;
+  });
+  if (!og.opts.some(x => /^ortho:orth1\|Flygfoto test/.test(x)) || !og.opts.some(x => x.startsWith('ortho:*'))) fail('Ortofoton som val: ' + JSON.stringify(og));
+  if (!og.drewOrtho || og.dx > 0.6 || og.dy > 0.6 || !/Flygfoto test/.test(og.note)) fail('Ortofotot ritas med världsfilen: ' + JSON.stringify(og));
+  console.log('OK: mina ortofoton finns som underlag i minimapen', JSON.stringify(og));
   if (process.env.SHOT) { await page.evaluate(async () => { l3SetPref('spMap', 'esri'); document.getElementById('spMapSrc').value = 'esri'; document.getElementById('spMapSrc').dispatchEvent(new Event('change')); const c = plan.calib.model[0]; l3spGoTo(c[0] + 25, c[1] + 12); }); await page.waitForTimeout(1300); await page.screenshot({ path: process.env.SHOT }); }
   await browser.close(); server.close();
 })().catch(e => { console.error(e); process.exit(1); });
