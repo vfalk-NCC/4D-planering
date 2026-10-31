@@ -324,7 +324,7 @@ function l3Dom() {
           <label class="v3-lib-sw v3-lib-sw2" title="Släck eller tänd skyltarna på alla objekt (staket, maskiner, bemanning …) – skyltarna kan också släckas för ett objekt åt gången"><span class="v3-lib-sw-t"><b>Skyltar</b><em id="v3SignSwT">${P.signsOff === true ? "Släckta" : "Visas"}</em></span><input type="checkbox" id="v3SignSw" role="switch" ${P.signsOff === true ? "" : "checked"} /><i class="v3-lib-sw-k"></i></label>
           <input type="search" id="v3PalSearch" placeholder="Sök…" />
           <div id="v3Lib"></div>
-          <button type="button" id="v3GetModel" class="v3-wide" title="Hämta en 3D-modell från Sketchfab, projektets mappar i Trimble Connect eller en fil – den hamnar under Egna modeller">＋ Hämta modell…</button>
+          <button type="button" id="v3GetModel" class="v3-wide" title="Importera en 3D-modell: fil (IFC, OBJ, GLB/glTF, FBX, STL, STEP och fler), Sketchfab eller projektets mappar i Trimble Connect – den hamnar under Egna modeller">＋ Importera modell…</button>
           <button type="button" class="v3-link v3-lay-csv" id="v3LayCsv" title="Lista över etableringen som öppnas i Excel (namn, typ, mått, läge, 4D)">Exportera etableringen (Excel)</button>
           <div class="v3-pal-hint">Tryck på ett objekt här och sedan där det ska stå. Staket, vägar och fria former: tryck punkt för punkt och avsluta med Enter.</div>
         </div>
@@ -1522,8 +1522,8 @@ function l3HideInfo() { const el = document.getElementById("v3Info"); if (el) el
    panel som i Placera i 3D (place-models.js) – Sketchfab, projektets mappar i Trimble Connect eller
    en fil. Modellen sparas i projektets bibliotek (Egna modeller) och läggs sedan till med ett tryck. */
 function l3OpenModels() {
-  if (typeof pmOpenIn !== "function") { l3Status("Hämta modell finns inte i den här versionen."); return; }
-  const d = l3Dlg("v3Models", "Hämta modell", `<div id="v3ModelBrowser" class="pm-browser"></div>`, {});
+  if (typeof pmOpenIn !== "function") { l3Status("Importera modell finns inte i den här versionen."); return; }
+  const d = l3Dlg("v3Models", "Importera modell", `<div id="v3ModelBrowser" class="pm-browser"></div>`, {});
   d._onClose = () => { if (pmState.host === "v3ModelBrowser") { pmState.open = false; pmState.host = "placeModelBrowser"; pmState.onAdded = pmState.onClose = null; } };
   pmOpenIn("v3ModelBrowser", a => {
     l3DlgClose("v3Models");

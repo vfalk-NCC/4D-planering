@@ -82,6 +82,20 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await setSel('a', 'pc:pcA'); await setSel('b', 'md:vm');
   let q = await page.evaluate(() => ({ cut: l3vol.cur.res.cut, fill: l3vol.cur.res.fill, net: l3vol.cur.res.net }));
   if (Math.abs(q.cut - 50) > 2 || q.fill > 1) fail('Moln mot modell: schakt ≈ 50 m³: ' + JSON.stringify(q));
+  // Solid av punktmolnet: området × molnets yta blir en sluten kropp som går att skära mot (Skär ytor).
+  const sol = await page.evaluate(async () => {
+    const n0 = placements.length; await l3volSolid();
+    const made = placements.find(p => p.m && p.m.k === 'mesh' && /Solid av/.test(p.name)); if (!made) return { n: placements.length - n0, status: document.getElementById('v3Status').textContent };
+    const vol = modMeshStats(made.m.pts, made.m.faces).volume, O = l3.O;
+    // en låda som sticker ned i solid: skär bort solidens volym ur lådan
+    const pl = MG.planeFrom([0, 0, 1], [0, 0, 0]), box = modCreate({ k: 'solid', pl, loops: [MG.rect2([0, 0], [4, 4])], d: 8 }, [made.x + 3, made.y + 3, (Number(made.z) || 0) - 1.0]);
+    const bv0 = modDims(box).volume; await l3dxCutCommit(box, made);
+    const res = placements.find(p => p.m && p.m.k === 'mesh' && p.id !== made.id && p.id !== box.id && !/Solid av/.test(p.name));
+    return { vol, tris: made.m.faces.length, bv0, bv1: res ? modMeshStats(res.m.pts, res.m.faces).volume : null, area: l3volArea(l3vol.cur.pts) };
+  });
+  if (!sol.vol || sol.vol < sol.area * 0.5 || sol.tris < 20) fail('Solid av ytan ska bli en kropp: ' + JSON.stringify(sol));
+  if (!(sol.bv1 != null && sol.bv1 < sol.bv0 - 1)) fail('Lådan ska kapas av solidens volym: ' + JSON.stringify(sol));
+  console.log('OK: solid av punktmolnet (' + sol.vol.toFixed(0) + ' m³, ' + sol.tris + ' trianglar) och skär ytor mot den (' + sol.bv0.toFixed(1) + ' → ' + sol.bv1.toFixed(1) + ' m³)');
   // Modell mot nivå 0: platta 2 m hög → fyllning 200 m³. Nivå 3 → schakt 100 m³.
   await setSel('a', 'md:vm'); await setSel('b', 'level');
   await page.fill('input[data-vz="b"]', '0'); await page.dispatchEvent('input[data-vz="b"]', 'change'); await page.waitForTimeout(1500); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 });

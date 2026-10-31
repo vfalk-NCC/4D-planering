@@ -87,6 +87,13 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   const tabs = await page.$$eval('#v3Models [data-pmtab]', b => b.map(x => x.textContent));
   if (await page.isHidden('#v3Models') || tabs.join('|') !== 'Sketchfab|Trimble Connect|Från fil') fail('Hämta modell ska öppnas med Sketchfab, Trimble Connect och Från fil: ' + tabs);
 
+  // Rubriken heter Importera modell och fliken Från fil listar alla format som stöds.
+  { const ttl = await page.$eval('#v3Models .pm-head b', e => e.textContent), btn = await page.$eval('#v3GetModel', e => e.textContent);
+    await page.click('#v3Models [data-pmtab="file"]').catch(() => {}); await page.waitForTimeout(150);
+    const fm = await page.$$eval('#v3Models .pm-fmts b', b => b.map(x => x.textContent));
+    for (const f of ['IFC', 'OBJ', 'GLB', 'glTF', 'DAE', 'FBX', 'STL', 'PLY', '3DS', 'STEP', 'IGES', '3DM', 'LandXML', 'GeoTIFF']) if (!fm.includes(f)) fail('Formatlistan saknar ' + f + ': ' + fm.join(','));
+    if (ttl !== 'Importera modell' || !/Importera modell/.test(btn)) fail('Rubrik/knapp ska heta Importera modell: ' + ttl + ' / ' + btn);
+    await page.click('#v3Models [data-pmtab="sketchfab"]'); await page.waitForTimeout(150); }
   // Sketchfab: sök visar kort.
   await page.fill('#pmQuery', 'kran'); await page.press('#pmQuery', 'Enter');
   await page.waitForSelector('#v3Models .pm-card', { timeout: 5000 });
@@ -644,7 +651,7 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   await page.keyboard.press('Escape'); await page.waitForTimeout(150);
   if (!(await page.isHidden('#v3Models'))) fail('Esc ska stänga Hämta modell');
   // Snabbsök (Ctrl+K) har kommandot.
-  if (!(await page.evaluate(() => l3Commands().some(c => /Hämta modell/.test(c.label))))) fail('Snabbsök ska ha Hämta modell');
+  if (!(await page.evaluate(() => l3Commands().some(c => /Importera modell/.test(c.label))))) fail('Snabbsök ska ha Hämta modell');
 
   // Samma modell två gånger (annat id, samma namn) läses inte in – dubbla ytor flimrar.
   const dup = await page.evaluate(async () => { const m = l3b.models.find(x => x.visible && x.name); if (!m) return { skip: true }; const n0 = l3b.models.length; await l3bLoad([{ id: 'dubblett', fileId: 'X9', name: m.name.toUpperCase(), version: 'v1' }]); return { n0, n1: l3b.models.length }; });

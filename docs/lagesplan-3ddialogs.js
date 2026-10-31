@@ -524,7 +524,7 @@ function l3Commands() {
   C.push(["Spara vy…", "", () => { document.getElementById("v3ViewsBtn").click(); setTimeout(() => document.getElementById("v3SvName").focus(), 0); }]);
   l3SavedViews().forEach((v, i) => C.push([`Gå till vy: ${v.name}`, "", () => l3GoView(i)]));
   Object.entries(PLACE_LIB).forEach(([k, l]) => C.push([`Lägg till: ${l.label}`, "", () => { l3SetTool("select"); l3.addType = k; l3.fenceId = null; l3RenderLib(); l3Status(l.fence ? "Staket: tryck första punkten." : "Tryck där objektet ska stå."); }]));
-  C.push(["Hämta modell (Sketchfab, Trimble Connect, fil)…", "", () => l3OpenModels()]);
+  C.push(["Importera modell (fil, Sketchfab, Trimble Connect)…", "", () => l3OpenModels()]);
   if (typeof l3ph !== "undefined") C.push(["Foton i 3D: visa/dölj", "", () => l3phToggle()], ["Lägg till foto…", "", () => l3phAdd()]);
   if (typeof l3k !== "undefined") { C.push(["Kommentarer: visa/dölj", "", () => l3kToggle()], ["Kommentarer (listan)", "", () => l3PalTab("comments")]); l3k.list.forEach((c, i) => C.push([`Kommentar ${i + 1}: ${String(c.text).slice(0, 40)}`, "", () => { const p = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]); l3FlyTo(p, 15); l3k.hidden = false; l3kOpen(c); }])); }
   (typeof placeAssets !== "undefined" ? placeAssets : []).forEach(a => C.push([`Lägg till: ${a.name}`, "", () => { l3SetTool("select"); l3.addType = `model:${a.id}`; l3RenderLib(); l3Status("Tryck där objektet ska stå."); }]));

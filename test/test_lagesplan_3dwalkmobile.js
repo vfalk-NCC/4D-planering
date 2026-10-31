@@ -51,6 +51,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const names = [...box.querySelectorAll('.v3-qv-v')].map(x => x.textContent); box.querySelector('[data-qvgo="0"]').click(); await new Promise(res => setTimeout(res, 900));
     return { vis, closed, open, above: r.bottom <= b.top + 2, names, moved: l3.camera.position.distanceTo(p0) > 5, closedAfter: !box.classList.contains('open') };
   });
+  const tr = await page.evaluate(async () => {
+    const box = document.getElementById('v3Qv'), out = { def: l3ViewMs() };
+    box.querySelector('[data-qv="toggle"]').click(); box.querySelector('[data-qvsec="0"]').click(); out.zero = l3ViewMs(); out.zeroOn = document.querySelector('[data-qvsec="0"]').classList.contains('on');
+    l3.camera.position.set(l3.camera.position.x + 30, l3.camera.position.y, l3.camera.position.z + 5); l3.orbit.update(); const p0 = l3.camera.position.clone(); document.querySelector('[data-qvgo="0"]').click(); out.instant = l3.camera.position.distanceTo(p0) > 5;
+    document.getElementById('v3Qv').querySelector('[data-qv="toggle"]').click(); const inp = document.querySelector('[data-qvsecin]'); inp.value = '2.5'; inp.dispatchEvent(new Event('change', { bubbles: true })); out.custom = l3ViewMs();
+    document.getElementById('v3Qv').classList.remove('open'); l3SetPref('viewSec', 0.45); l3QvRender(); return out;
+  });
+  ok(tr.def === 450 && tr.zero === 0 && tr.zeroOn && tr.instant && tr.custom === 2500, 'Övergångstid för vyerna (Direkt = omedelbart, valfritt antal sekunder): ' + JSON.stringify(tr));
   ok(qv.vis && qv.closed && qv.open && qv.above && qv.names[0] === 'Test A' && qv.moved && qv.closedAfter, 'Snabbknappen för sparade vyer: ' + JSON.stringify(qv));
   await page.evaluate(() => { l3SetPref('walkPerson', 'third'); l3wEnter(new THREE.Vector3(0, 0, 0)); l3wSetKind('loader'); l3wWork(); l3wCtlPanel(); });
   await page.waitForTimeout(400);

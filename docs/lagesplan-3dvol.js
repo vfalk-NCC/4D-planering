@@ -321,6 +321,33 @@ function l3volSave() {
   l3Toast(`Volymen sparad som mått: ${l3volText(c.res)}.`);
   return m;
 }
+/* Solid av ytan (Victor 2026-10-31: "skapa meshmodeller av punktmolnen … cut by object mot inskannat berg måste jag få en solid att klippa mot"):
+   området (hörnen) × vald yta (punktmoln, modell, DXF …) blir en sluten kropp – ytan överst, en plan botten under lägsta punkten (extra marginal
+   nedåt) och lodräta väggar runt området. Kroppen läggs som ett ritat nät (mesh) som Skär ytor (I), mått och IFC-export kan använda. */
+async function l3volSolid() {
+  const c = l3vol.cur; if (!c) return; const margin = Math.max(0, Number(l3Prefs().volSolidMargin) || 1), LIMIT = 150000;
+  const lvl = z => ({ ...c, spec: { ...c.spec, b: { k: "level", side: "top", z } } });
+  c.busy = "Bygger solid…"; l3volPanel();
+  try {
+    const r1 = await l3volCompute(lvl(-10000), () => true);   // långt under: hela ytan blir en kropp – ger lägsta höjden
+    if (!r1 || r1.err || !r1.geom || !r1.geom.fill) { l3Status(r1 && r1.err ? r1.err : "Ytan saknar höjder i området – tänd punktmolnet eller modellen och välj den som \"Yta som mäts\".", true); return; }
+    let zmin = Infinity; const s1 = r1.geom.fill, zo = r1.geom.o[2]; for (let i = 2; i < s1.pos.length; i += 3) { const z = s1.pos[i] + zo; if (z > -9000 && z < zmin) zmin = z; }
+    const zb = Math.round((zmin - margin) * 1000) / 1000; let r2 = null, cell = Number(c.spec.cell) || 0;
+    for (let k = 0; k < 6; k++) {
+      const cur = lvl(zb); cur.spec.cell = cell; r2 = await l3volCompute(cur, () => true);
+      if (!r2 || r2.err || !r2.geom.fill) { l3Status(r2 && r2.err ? r2.err : "Kunde inte bygga solid.", true); return; }
+      if (r2.geom.fill.idx.length / 3 <= LIMIT) break; cell = Math.round(((r2.res.cell || 1) * 1.6) * 100) / 100;   // för tung: grövre rutor
+    }
+    const G = r2.geom, S = G.fill, o = G.o, pts = [], faces = [];
+    for (let i = 0; i < S.pos.length; i += 3) pts.push([Math.round(S.pos[i] * 1000) / 1000, Math.round(S.pos[i + 1] * 1000) / 1000, Math.round(S.pos[i + 2] * 1000) / 1000]);
+    for (let i = 0; i < S.idx.length; i += 3) faces.push([S.idx[i] + 1, S.idx[i + 1] + 1, S.idx[i + 2] + 1]);
+    const lab = l3volLabel(c, c.spec.a).replace(/\s*\(.*\)\s*$/, "").trim() || "ytan", name = "Solid av " + lab;
+    placeSnapshot(); const made = modCreate({ k: "mesh", pts, faces, closed: true }, [o[0], o[1], o[2]], { name, color: "#8b8f97", snapshot: false });
+    l3SelectIds([made.id]); l3Changed();
+    l3Status(`Solid skapad: ${l3volM3(r2.res.fill)} (${(faces.length).toLocaleString("sv-SE")} trianglar, botten ${zb.toFixed(2).replace(".", ",")} m). Använd den med Skär ytor (I) – tryck på det som ska kapas, sedan på solidens yta. Ctrl+Z ångrar.`);
+  } catch (err) { console.warn("Solid", err); l3Status("Kunde inte skapa solid: " + (err && err.message || err), true); }
+  finally { if (l3vol.cur === c) { c.busy = ""; l3volPanel(); } }
+}
 /* Ändra ett sparat mått: panelen öppnas med dess inställningar. */
 function l3volEdit(m) {
   if (!m.vol) return;
@@ -366,6 +393,7 @@ function l3volPanel() {
       <div class="v3-vq-sl" title="Hur genomskinliga kropparna är"><span>Syns</span><input type="range" min="0.15" max="1" step="0.05" value="${Number(l3Prefs().volOpacity) || 0.62}" data-vop><em></em></div>
     </div>
     <div class="v3-vq-foot"><button type="button" class="primary" data-vb="save" ${r ? "" : "disabled"}>${c.id ? "Uppdatera måttet" : "Spara som mått"}</button><button type="button" data-vb="ifc" ${r ? "" : "disabled"} title="Området, schakt- och fyllningskropparna som 3D-objekt i en IFC-fil (Trimble Connect eller nedladdning)">Exportera IFC</button>
+      <button type="button" data-vb="solid" title="Gör området och den valda ytan (t.ex. inskannat berg i punktmolnet) till en sluten kropp – botten under lägsta punkten, väggar runt området. Då går den att skära mot med Skär ytor." ${c.spec.a && c.spec.a.k !== "level" ? "" : "disabled"}>▣ Solid av ytan</button>
       <details class="v3-vq-more"><summary title="Fler val">⋯</summary><div><button type="button" data-vb="copy" disabled>Kopiera resultatet</button><button type="button" data-vb="surf" title="Tryck ut hörnen på en egen yta (t.ex. projekterad botten eller släntkant) – hörnens höjder bestämmer ytan">Klicka ut egen yta…</button><button type="button" data-vb="redraw" title="Rita om området">Rita om området</button><button type="button" data-vb="prism" title="Enkel volym: områdets yta × en höjd du skriver, eller höjden upp till en yta du trycker på">Enkel höjdvolym…</button></div></details></div>`;
   const tl = el.querySelector("[data-vtri]"); if (tl) tl.textContent = trTxt;
   { const cp = el.querySelector('[data-vb="copy"]'); if (cp && r) cp.disabled = false; }
@@ -386,6 +414,7 @@ function l3volPanel() {
   on("restart", () => { const was = c; l3volClose(true); l3vol.redo = was; l3t.mp = null; l3Busy(true); l3Status("Tryck ut området från början (Enter avslutar)."); });
   on("undo", () => { if (c.pts.length <= 3) return; c.pts = c.pts.slice(0, -1); c.saved = false; l3volPanel(); l3volSchedule(0); });
   on("save", () => { l3volSave(); });
+  on("solid", () => { l3volSolid(); });
   on("copy", () => { const t = `${l3volText(c.res)} · netto ${l3volSg(c.res.net, "+")} · yta ${l3Fmt(area, 1)} m² · ${l3volLabel(c, c.spec.a)} mot ${l3volLabel(c, c.spec.b)}`; try { navigator.clipboard.writeText(t).then(() => l3Toast("Kopierat."), () => l3Status("Kunde inte kopiera.", true)); } catch (e) { l3Status("Kunde inte kopiera.", true); } });
   on("ifc", async function () { const b = this; b.disabled = true; try { const m = l3volSave(); if (m) await l3mExportIfc([m.id]); } catch (e) { /* statusraden */ } });
   const tx = q("input[data-vtext]"); if (tx) tx.onchange = () => l3SetPref("volExpText", tx.checked);

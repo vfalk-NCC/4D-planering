@@ -11,6 +11,14 @@
    (nya filer – inget befintligt skrivs över). Sketchfab-nyckeln sparas bara i den här webbläsaren. */
 
 const SF_API = "https://api.sketchfab.com/v3";
+/* Format som "Importera modell" läser (visas som lista i fliken Fil). [grupp, [[ändelse, förklaring], …]] */
+const PM_FORMATS = [
+  ["Byggnad", [["IFC", "Byggnadsmodell (BIM)"], ["IFCZIP", "Packad IFC"]]],
+  ["Mesh", [["OBJ", "Wavefront OBJ (med .mtl)"], ["GLB", "Binär glTF"], ["glTF", "glTF med textur"], ["DAE", "Collada"], ["FBX", "Autodesk FBX"], ["3DS", "3D Studio"], ["STL", "Utskrift/CAD, även i millimeter"], ["PLY", "Nät med färger"]]],
+  ["CAD", [["STEP", ".step / .stp"], ["IGES", ".iges / .igs"], ["BREP", "Open CASCADE"], ["3DM", "Rhino"]]],
+  ["Terräng", [["LandXML", "Terrängyta (TIN)"], ["GeoTIFF", "Höjdmodell (DEM)"]]],
+  ["Paket", [["ZIP", "Modell + texturer"], ["KMZ", "Google Earth/3D Warehouse"]]],
+];
 const SF_TOKEN_KEY = "4dplan-sketchfab-token";
 const PM_MAX_TRIS = 200000;
 const PM_MAX_DOWNLOAD = 80 * 1048576, PM_MAX_IFC = 40 * 1048576;
@@ -830,7 +838,7 @@ async function sfImport(uid) {
 }
 
 // ---------------------------------------------------------------------
-// Panelen "Hämta modell"
+// Panelen "Importera modell"
 // ---------------------------------------------------------------------
 function placeBrowserToggle(open) {
   pmState.open = open === undefined ? !pmState.open : !!open;
@@ -939,7 +947,8 @@ function renderPmBrowser() {
   } else {
     body = `<div class="pm-drop" id="pmDrop">
         <b>Släpp en fil här</b> eller <label class="pm-pick">välj fil<input type="file" id="pmFile" accept=".ifc,.glb,.gltf,.dae,.obj,.zip,.kmz,.stl,.ply,.3ds,.fbx,.3dm,.stp,.step,.igs,.iges,.brep,.xml,.landxml,.tif,.tiff,.skp" /></label>
-        <div class="hint">IFC, GLB/glTF, Collada (.dae), OBJ, STL, PLY, 3DS, FBX, Rhino (.3dm), STEP/IGES/BREP, LandXML-terräng och GeoTIFF-höjdmodell – eller en .zip/.kmz med modell och texturer. Terräng och modeller i riktiga koordinater placeras på sin plats.</div>
+        <div class="pm-fmts" aria-label="Format som stöds">${(typeof PM_FORMATS !== "undefined" ? PM_FORMATS : []).map(([g, list]) => `<div class="pm-fg"><span>${esc(g)}</span>${list.map(([e, t]) => `<b title="${esc(t)}">${esc(e)}</b>`).join("")}</div>`).join("")}</div>
+        <div class="hint">Alla formaten ovan stöds. Terräng och modeller i riktiga koordinater (SWEREF) placeras på sin plats. En .zip/.kmz med modell och texturer fungerar också. Kartor och ritningar (DXF, GeoJSON, Shapefile …) läggs in under Lager → CAD.</div>
       </div>
       <ul class="pm-sites hint">
         <li><a href="https://3dwarehouse.sketchup.com" target="_blank" rel="noopener">3D Warehouse</a> – välj <b>Collada</b> eller <b>glTF</b> vid nedladdning (inte .skp).</li>
@@ -949,7 +958,7 @@ function renderPmBrowser() {
   }
   const lib = placeAssets.length ? `<details class="pm-lib"><summary>Biblioteket (${placeAssets.length})</summary>${placeAssets.map(a =>
     `<div class="pm-libr"><span>${esc(a.name)}</span><span class="hint">${a.kind === "ifc" ? "IFC" : `${pmFmt(a.tris)} tri`}${a.dl_size || a.size ? ` · ${pmBytes(a.dl_size || a.size)}` : ""}${a.author ? ` · ${esc(a.author)}` : ""}${a.license ? ` · ${esc(a.license)}` : ""}</span></div>`).join("")}</details>` : "";
-  box.innerHTML = `<div class="pm-head"><b>Hämta modell</b>
+  box.innerHTML = `<div class="pm-head"><b>Importera modell</b>
       <span class="pm-tabs"><button type="button" data-pmtab="sketchfab" class="${pmState.tab === "sketchfab" ? "active" : ""}">Sketchfab</button><button type="button" data-pmtab="tc" class="${pmState.tab === "tc" ? "active" : ""}">Trimble Connect</button><button type="button" data-pmtab="file" class="${pmState.tab === "file" ? "active" : ""}">Från fil</button></span>
       <button type="button" id="pmClose" title="Stäng">✕</button></div>
     ${body}
