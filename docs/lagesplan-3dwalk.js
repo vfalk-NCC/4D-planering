@@ -341,6 +341,7 @@ function l3wJoyShow(on) {
   if (!j) {
     j = document.createElement("div"); j.className = "v3-joys"; l3w.joyEl = j; document.getElementById("v3Canvas").appendChild(j);
     j.innerHTML = `<div class="v3-joy l" data-j="m"><i></i><span>GÅ</span></div><div class="v3-joy r" data-j="l"><i></i><span>TITTA</span></div>
+      <div class="v3-ud" title="Upp och ner (E / Q)"><button type="button" data-ud="e" aria-label="Upp"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"/></svg></button><button type="button" data-ud="q" aria-label="Ner"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button></div>
       <div class="v3-jbtns"><button type="button" data-jb="ghost">Spöke</button><button type="button" data-jb="jump">Hopp</button><button type="button" data-jb="run">Spring</button><button type="button" data-jb="crouch">Huka</button><button type="button" data-jb="work">Arbeta</button></div>`;
     j.addEventListener("pointerdown", e => e.stopPropagation());
     j.querySelectorAll(".v3-joy").forEach(el => {
@@ -350,10 +351,11 @@ function l3wJoyShow(on) {
       const end = e => { if (el._id !== e.pointerId) return; el._id = null; el.firstElementChild.style.transform = ""; (el.dataset.j === "m" ? l3w.jm : l3w.jl).x = 0; (el.dataset.j === "m" ? l3w.jm : l3w.jl).y = 0; };
       el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
     });
+    j.querySelectorAll("[data-ud]").forEach(b => { const k = b.dataset.ud, on = e => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch (x) { /* ok */ } l3w.keys.add(k); b.classList.add("on"); }, off = () => { l3w.keys.delete(k); b.classList.remove("on"); }; b.addEventListener("pointerdown", on); ["pointerup", "pointercancel", "lostpointercapture"].forEach(t => b.addEventListener(t, off)); });
     j.querySelectorAll("[data-jb]").forEach(b => b.addEventListener("click", () => { const k = b.dataset.jb; if (k === "jump") l3wJump(); else if (k === "work") l3wWork(); else if (k === "run") { l3w.run = !l3w.run; } else if (k === "crouch") { l3w.crouchTog = !l3w.crouchTog; l3w.settled = false; } else if (k === "ghost") l3wSetGhost(!l3w.ghost); l3wJoyShow(true); }));
   }
   j.classList.remove("hidden");
-  { const veh = !!(l3w.cfg && l3w.cfg.vehicle); j.querySelector('[data-jb="jump"]').hidden = veh; j.querySelector('[data-jb="crouch"]').hidden = veh; j.querySelector('[data-jb="work"]').hidden = !veh; j.querySelector('[data-jb="work"]').classList.toggle("on", l3w.workOn); }
+  { const veh = !!(l3w.cfg && l3w.cfg.vehicle); j.querySelector('.v3-ud').hidden = veh; j.querySelector('[data-jb="jump"]').hidden = veh; j.querySelector('[data-jb="crouch"]').hidden = veh; j.querySelector('[data-jb="work"]').hidden = !veh; j.querySelector('[data-jb="work"]').classList.toggle("on", l3w.workOn); }
   j.querySelector('[data-jb="run"]').classList.toggle("on", l3w.run); j.querySelector('[data-jb="crouch"]').classList.toggle("on", l3w.crouchTog); j.querySelector('[data-jb="ghost"]').classList.toggle("on", l3w.ghost);
 }
 
