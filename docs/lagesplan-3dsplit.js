@@ -28,12 +28,12 @@ async function l3spOpen() {
   l3sp.open = true; let el = document.getElementById("v3Sp"); if (el) el.remove();
   el = document.createElement("div"); el.id = "v3Sp"; host.appendChild(el); l3sp.el = el; l3spSize();
   ["pointerdown", "wheel", "dblclick", "contextmenu", "keydown"].forEach(t => el.addEventListener(t, e => e.stopPropagation()));
-  el.innerHTML = `<i class="rz" data-c="nw"></i><i class="rz" data-c="ne"></i><i class="rz" data-c="sw"></i><i class="rz" data-c="se"></i><div class="h"><select id="spPlan">${list.map(p => `<option value="${p.id}" ${p.id === l3sp.planId ? "selected" : ""}>${typeof escHtml === "function" ? escHtml(p.name || "Ritning") : p.name}</option>`).join("")}</select><button type="button" id="spFollow" class="${l3sp.follow ? "on" : ""}" title="Håll kameran i mitten av ritningen">Följ</button><button type="button" id="spFit" title="Hela ritningen">Hela</button><button type="button" id="spSize" title="Panelens storlek">⤢</button><button type="button" id="spPin" title="Ta bort nålen i 3D">Nål ✕</button><span style="flex:1"></span><button type="button" id="spX">✕</button></div><div class="z" id="spZrow"><span title="Höjden ritningen ligger på i modellen (m ö.h.)"><b>Höjd</b></span><button type="button" id="spZm" title="Sänk 0,1 m (Skift: 1 m)">−</button><input type="text" id="spZ" inputmode="decimal" title="Skriv höjd och tryck Enter"><button type="button" id="spZp" title="Höj 0,1 m (Skift: 1 m)">+</button><span class="t">m ö.h.</span><button type="button" id="spZpick" title="Tryck på en yta i 3D – ritningen får ytans höjd">Hämta från 3D</button><button type="button" id="spZpin" title="Använd nålens höjd">Nål</button><button type="button" id="spZundo" title="Ångra höjdändringen" disabled>↶</button><label title="Visa ritningen som en genomskinlig yta i 3D på den höjd den har – justera tills den ligger rätt mot modellen"><input type="checkbox" id="spZshow"> Visa i 3D</label></div><div class="cw"><canvas id="spBc"></canvas><canvas id="spCv"></canvas></div><div class="f" id="spF">Tryck på ritningen för att flyga dit i 3D. Hjul zoomar, dra panorerar.</div>`;
+  el.innerHTML = `<i class="rz" data-c="nw"></i><i class="rz" data-c="ne"></i><i class="rz" data-c="sw"></i><i class="rz" data-c="se"></i><div class="h"><select id="spPlan">${list.map(p => `<option value="${p.id}" ${p.id === l3sp.planId ? "selected" : ""}>${typeof escHtml === "function" ? escHtml(p.name || "Ritning") : p.name}</option>`).join("")}</select><button type="button" id="spFollow" class="${l3sp.follow ? "on" : ""}" title="Håll kameran i mitten av ritningen">Följ</button><button type="button" id="spFit" title="Hela ritningen">Hela</button><button type="button" id="spSize" title="Panelens storlek">⤢</button><button type="button" id="spPin" title="Ta bort nålen i 3D">Nål ✕</button><span style="flex:1"></span><button type="button" id="spX">✕</button></div><div class="z" id="spZrow"><span title="Höjden ritningen ligger på i modellen (m ö.h.)"><b>Höjd</b></span><button type="button" id="spZm" title="Sänk 0,1 m (Skift: 1 m)">−</button><input type="text" id="spZ" inputmode="decimal" title="Skriv höjd och tryck Enter"><button type="button" id="spZp" title="Höj 0,1 m (Skift: 1 m)">+</button><span class="t">m ö.h.</span><button type="button" id="spZpick" title="Tryck på en yta i 3D – ritningen får ytans höjd">Hämta från 3D</button><button type="button" id="spZpin" title="Använd nålens höjd">Nål</button><button type="button" id="spZundo" title="Ångra höjdändringen" disabled>↶</button><label title="Visa ritningen som en genomskinlig yta i 3D på den höjd den har – justera tills den ligger rätt mot modellen"><input type="checkbox" id="spZshow"> Visa i 3D</label></div><div class="z" id="spMapRow"><span title="Karta eller ortofoto under ritningen – samma källor som bakgrundskartan i 3D"><b>Underlag</b></span><select id="spMapSrc"><option value="">Inget</option><option value="esri">Ortofoto (Esri)</option><option value="eox">Satellit (Sentinel-2)</option><option value="osm">Karta (OSM)</option><option value="custom">Egen adress (XYZ)</option></select><label title="Hur tydlig ritningen är över underlaget"><span class="t">Ritning</span><input type="range" id="spPdfOp" min="15" max="100" step="5" style="width:90px"></label></div><div class="cw"><canvas id="spBc"></canvas><canvas id="spCv"></canvas></div><div class="f" id="spF">Tryck på ritningen för att flyga dit i 3D. Hjul zoomar, dra panorerar.</div>`;
   l3sp.cv = el.querySelector("#spCv"); l3sp.bc = el.querySelector("#spBc"); l3sp.baseKey = "";
-  el.querySelector("#spPlan").onchange = e => { l3sp.planId = e.target.value; l3spLoad(); }; el.querySelector("#spFollow").onclick = e => { l3sp.follow = !l3sp.follow; e.target.classList.toggle("on", l3sp.follow); l3sp.key = ""; };
+  el.querySelector("#spPlan").onchange = e => { l3sp.planId = e.target.value; l3spLoad(); }; el.querySelector("#spFollow").onclick = () => l3spFollow(!l3sp.follow);
   el.querySelector("#spFit").onclick = () => { l3spFit(); l3sp.key = ""; }; el.querySelector("#spSize").onclick = () => { l3SetPref("spRect", null); Object.assign(el.style, { left: "", top: "", right: "64px", bottom: "12px" }); l3sp.size = (l3sp.size % 3) + 1; l3spSize(); l3spFit(); l3sp.key = ""; };
   el.querySelector("#spPin").onclick = () => l3spPinClear(); el.querySelector("#spX").onclick = () => l3spToggle(false);
-  l3spBind(); l3spDragBind(); l3spZBind(); window.addEventListener("pointermove", l3spHover, true); await l3spLoad(); l3spLoop();
+  l3spBind(); l3spDragBind(); l3spZBind(); l3spMapBind(); window.addEventListener("pointermove", l3spHover, true); await l3spLoad(); l3spLoop();
 }
 function l3spClose() { l3sp.open = false; l3spZClearMesh(); l3spZPickStop(); clearTimeout(l3sp.hoverW); if (l3sp.onWin) window.removeEventListener("resize", l3sp.onWin); cancelAnimationFrame(l3sp.raf); window.removeEventListener("pointermove", l3spHover, true); const e = document.getElementById("v3Sp"); if (e) e.remove(); l3sp.el = l3sp.cv = null; l3spPinClear(); }
 function l3spApplyRect(r) { const el = l3sp.el, host = document.getElementById("v3Canvas"); if (!el || !host) return; const H = host.getBoundingClientRect(), w = Math.min(Math.max(240, r.w), H.width - 8), h = Math.min(Math.max(190, r.h), H.height - 8), x = Math.min(Math.max(4, r.x), H.width - w - 4), y = Math.min(Math.max(4, r.y), H.height - h - 4); Object.assign(el.style, { left: x + "px", top: y + "px", width: w + "px", height: h + "px", right: "auto", bottom: "auto" }); return { x, y, w, h }; }
@@ -72,6 +72,7 @@ async function l3spLoad() {
     Object.assign(l3sp, { img: cv, vp, pyr, aff, baseKey: "" }); l3spFit(); l3spZSync(); l3sp.key = ""; if (f) f.textContent = "Tryck på ritningen för att flyga dit i 3D. Hjul zoomar, dra panorerar.";
   } catch (e) { if (f) f.textContent = "Kunde inte visa ritningen: " + (e && e.message || e); } finally { l3sp.busy = false; }
 }
+function l3spFollow(on) { l3sp.follow = !!on; const b = document.getElementById("spFollow"); if (b) b.classList.toggle("on", l3sp.follow); l3sp.followCatch = l3sp.follow; l3sp.key = ""; }
 function l3spFit() { const cv = l3sp.cv, im = l3sp.img; if (!cv || !im) return; const r = cv.getBoundingClientRect(), k = Math.min(r.width / im.width, r.height / im.height) || 1; l3sp.view = { k, tx: (r.width - im.width * k) / 2, ty: (r.height - im.height * k) / 2 }; }
 /* Modell (m) ↔ bildpunkt i den renderade ritningen ↔ skärmpunkt i panelen. */
 function l3spToImg(x, y) { const [px, py] = l3spAff(l3sp.aff, x, y), q = l3sp.vp.convertToViewportPoint(px, py); return q; }
@@ -80,17 +81,24 @@ const l3spToScr = (x, y) => { const q = l3spToImg(x, y), v = l3sp.view; return [
 const l3spFromScr = (sx, sy) => { const v = l3sp.view; return l3spFromImg((sx - v.tx) / v.k, (sy - v.ty) / v.k); };
 function l3spBind() {
   const cv = l3sp.cv; let moved = 0;
-  cv.addEventListener("wheel", e => { e.preventDefault(); e.stopPropagation(); const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, v = l3sp.view, f = Math.exp(-e.deltaY * 0.0015), nk = Math.min(60, Math.max(0.02, v.k * f)); v.tx = x - (x - v.tx) * nk / v.k; v.ty = y - (y - v.ty) * nk / v.k; v.k = nk; l3sp.key = ""; }, { passive: false });
+  cv.addEventListener("wheel", e => {
+    e.preventDefault(); e.stopPropagation(); const r = cv.getBoundingClientRect(), v = l3sp.view, dy = Math.max(-120, Math.min(120, e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY)), f = Math.exp(-dy * 0.0016), nk = Math.min(60, Math.max(0.02, v.k * f));
+    // med Följ på zoomar den runt kameran (mitten) – annars runt musen; Följ pausar en kort stund så att den inte drar tillbaka bilden
+    const x = l3sp.follow ? r.width / 2 : e.clientX - r.left, y = l3sp.follow ? r.height / 2 : e.clientY - r.top; if (l3sp.follow) { const [cx, cy] = l3spToScr(l3.camera.position.x + l3.O[0], l3.camera.position.y + l3.O[1]); v.tx += x - cx; v.ty += y - cy; }
+    v.tx = x - (x - v.tx) * nk / v.k; v.ty = y - (y - v.ty) * nk / v.k; v.k = nk; l3sp.followHold = performance.now() + 500; l3sp.key = "";
+  }, { passive: false });
   cv.addEventListener("pointerdown", e => { e.stopPropagation(); cv.setPointerCapture(e.pointerId); l3sp.drag = { x: e.clientX, y: e.clientY, tx: l3sp.view.tx, ty: l3sp.view.ty }; moved = 0; });
-  cv.addEventListener("pointermove", e => { const d = l3sp.drag; if (!d) return; const dx = e.clientX - d.x, dy = e.clientY - d.y; moved = Math.max(moved, Math.hypot(dx, dy)); if (moved > 4) { l3sp.view.tx = d.tx + dx; l3sp.view.ty = d.ty + dy; l3sp.key = ""; } });
-  cv.addEventListener("pointerup", e => { const d = l3sp.drag; l3sp.drag = null; if (!d || moved > 4) return; const r = cv.getBoundingClientRect(), [x, y] = l3spFromScr(e.clientX - r.left, e.clientY - r.top); l3spGoTo(x, y); });
+  cv.addEventListener("pointermove", e => { const d = l3sp.drag; if (!d) return; const dx = e.clientX - d.x, dy = e.clientY - d.y; moved = Math.max(moved, Math.hypot(dx, dy)); if (moved > 4) { if (l3sp.follow) l3spFollow(false); l3sp.view.tx = d.tx + dx; l3sp.view.ty = d.ty + dy; l3sp.key = ""; } });
+  cv.addEventListener("pointerup", e => { const d = l3sp.drag; l3sp.drag = null; if (!d || moved > 4) return; const r = cv.getBoundingClientRect(), [x, y] = l3spFromScr(e.clientX - r.left, e.clientY - r.top); l3sp.followHold = performance.now() + 3500; l3spGoTo(x, y); });
 }
 /* Markhöjden under (x,y): rakt nedifrån ovan mot ytorna, annars ritningens nivå. */
 function l3spGround(x, y) {
-  const O = l3.O, rc = new THREE.Raycaster(new THREE.Vector3(x - O[0], y - O[1], 5000), new THREE.Vector3(0, 0, -1)); let z = null;
-  try { const hit = rc.intersectObjects(l3Surfaces(), true).filter(h => h.object.visible && !h.object.userData.noHit && h.object.type !== "Line" && h.object.type !== "LineSegments")[0]; if (hit) z = hit.point.z + O[2]; } catch (e) { /* ingen träff */ }
-  if (z == null) { const p = l3spPlans().find(q => q.id === l3sp.planId), c = p && l3spCalib(p); z = c && c.model && c.model[0] ? Number(c.model[0][2]) || 0 : 0; }
-  return z;
+  const O = l3.O, p = l3spPlans().find(q => q.id === l3sp.planId), c = p && l3spCalib(p), zp = c && c.model && c.model[0] ? Number(c.model[0][2]) || 0 : null;
+  const rc = new THREE.Raycaster(new THREE.Vector3(x - O[0], y - O[1], 5000), new THREE.Vector3(0, 0, -1)); let z = null;
+  // Ytan närmast ritningens höjd (inte taket ovanför): den högsta träffen som ligger högst 3 m över ritningen – annars flyger kameran upp på taket
+  try { const hits = rc.intersectObjects(l3Surfaces(), true).filter(h => h.object.visible && !h.object.userData.noHit && h.object.type !== "Line" && h.object.type !== "LineSegments").map(h => h.point.z + O[2]);
+    const ok = zp == null ? hits.slice(0, 1) : hits.filter(h => h <= zp + 3).sort((a, b) => b - a).slice(0, 1); if (ok.length) z = ok[0]; } catch (e) { /* ingen träff */ }
+  return z != null ? z : zp != null ? zp : 0;
 }
 function l3spGoTo(x, y) {
   const z = l3spGround(x, y); l3sp.pin = [x, y, z]; l3spPinDraw();
@@ -98,13 +106,43 @@ function l3spGoTo(x, y) {
   if (typeof l3FlyTo === "function") l3FlyTo(T, dist, null, 450); else { l3.orbit.target.copy(T); l3.orbit.update(); }
   l3Status(`Ritningen → 3D: ${x.toFixed(1).replace(".", ",")} / ${y.toFixed(1).replace(".", ",")}, höjd ${z.toFixed(2).replace(".", ",")} m. Nålen tas bort med Nål ✕.`); l3sp.key = "";
 }
+/* Nålen i 3D (Victor 2026-10-31: "snyggare i modellen med animationer ungefär som flyttverktyget"): en röd nål med skugga och glans som faller ner och landar,
+   ringar som pulserar ut från marken en stund, en etikett med höjden som tonas in, och en storlek som följer avståndet så att den alltid syns lika stor. Den syns
+   genom modellen med svagare färg. Animationen går bara några sekunder – sedan står nålen still (ingen onödig rendering). */
+function l3spPinMake(p) {
+  const O = l3.O, g = new THREE.Group(), body = new THREE.Group(), ghost = new THREE.Group(), rings = [], RED = 0xef4444, DARK = 0xb91c1c;
+  const mat = (col, op, depth) => new THREE.MeshBasicMaterial({ color: col, transparent: op < 1 || !depth, opacity: op, depthTest: depth, depthWrite: false, side: THREE.DoubleSide });
+  const part = (geo, col, op, depth, z, ro) => { const m = new THREE.Mesh(geo, mat(col, op, depth)); m.position.z = z; m.renderOrder = ro; m.userData.noHit = true; m.raycast = () => {}; return m; };
+  const cone = new THREE.ConeGeometry(0.3, 1.15, 28); cone.rotateX(-Math.PI / 2); const ball = new THREE.SphereGeometry(0.52, 28, 20), hi = new THREE.SphereGeometry(0.13, 12, 10);
+  [[body, true, 1], [ghost, false, 0.3]].forEach(([grp, depth, op]) => { grp.add(part(cone, RED, op, depth, 0.575, depth ? 41 : 40), part(ball, RED, op, depth, 1.62, depth ? 41 : 40)); });
+  const shine = part(hi, 0xffffff, 0.9, true, 1.82, 42); shine.position.x = -0.2; shine.position.y = -0.22; body.add(shine);
+  const base = part(new THREE.CircleGeometry(0.42, 32), DARK, 0.28, false, 0.015, 38); g.add(base);
+  for (let i = 0; i < 3; i++) { const r = part(new THREE.RingGeometry(0.46, 0.56, 48), RED, 0.6, false, 0.02, 39); r.visible = i === 0; rings.push(r); g.add(r); }
+  // etikett
+  const cv = document.createElement("canvas"); cv.width = 320; cv.height = 96; const c = cv.getContext("2d");
+  c.fillStyle = "rgba(15,23,42,.88)"; c.beginPath(); c.roundRect ? c.roundRect(4, 4, 312, 88, 20) : c.rect(4, 4, 312, 88); c.fill(); c.fillStyle = "#fff"; c.font = "700 34px system-ui, sans-serif"; c.textAlign = "center";
+  c.fillText(String(Math.round(p[2] * 100) / 100).replace(".", ",") + " m ö.h.", 160, 44); c.font = "500 22px system-ui, sans-serif"; c.fillStyle = "#cbd5e1"; c.fillText(Math.round(p[0] * 10) / 10 + " / " + Math.round(p[1] * 10) / 10, 160, 76);
+  const tex = new THREE.CanvasTexture(cv), lab = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false, opacity: 0 })); lab.scale.set(3.2, 0.96, 1); lab.position.z = 3.1; lab.renderOrder = 45; lab.userData.noHit = true; lab.raycast = () => {};
+  g.add(body, ghost, lab); g.position.set(p[0] - O[0], p[1] - O[1], p[2] - O[2]); g.userData.noHit = true; g.userData.pin = { body, ghost, rings, lab, base };
+  return g;
+}
+const l3spEase = t => { const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };   // easeOutBack: faller ner och studsar till
+function l3spPinScale() { const g = l3sp.pinObj; if (!g) return; const cam = l3.camera, d = cam.isOrthographicCamera ? 0.5 * (cam.top - cam.bottom) / (cam.zoom || 1) * 1.6 : cam.position.distanceTo(g.position); g.scale.setScalar(Math.max(0.05, d * 0.034)); }
+function l3spPinAnimate(t0) {
+  const g = l3sp.pinObj; if (!g) return; const U = g.userData.pin, t = performance.now() - t0, drop = Math.min(1, t / 520), e = l3spEase(drop);
+  U.body.position.z = (1 - e) * 7; U.ghost.position.z = U.body.position.z; const sq = t > 520 && t < 760 ? 1 - 0.14 * Math.sin((t - 520) / 240 * Math.PI) : 1; U.body.scale.set(1 / Math.sqrt(sq), 1 / Math.sqrt(sq), sq); U.ghost.scale.copy(U.body.scale);
+  U.lab.material.opacity = Math.max(0, Math.min(1, (t - 420) / 320)); U.base.material.opacity = 0.28 * Math.min(1, t / 520);
+  U.rings.forEach((r, i) => { const ph = ((t - 480 - i * 420) / 1500); if (t < 480 || t > 4300 || ph < 0) { r.visible = t > 4300 && i === 0; if (r.visible) { r.scale.setScalar(1); r.material.opacity = 0.5; } return; } const q = ph % 1; r.visible = true; r.scale.setScalar(1 + q * 3.6); r.material.opacity = (1 - q) * 0.6; });
+  l3spPinScale(); l3Render(); if (t < 4400) l3sp.pinRaf = requestAnimationFrame(() => l3spPinAnimate(t0)); else { l3sp.pinRaf = 0; U.rings.forEach((r, i) => { r.visible = i === 0; }); U.rings[0].scale.setScalar(1); U.rings[0].material.opacity = 0.5; l3Render(); }
+}
 function l3spPinDraw() {
-  l3spPinClear(true); const p = l3sp.pin; if (!p) return; const O = l3.O, g = new THREE.Group(), mat = new THREE.LineBasicMaterial({ color: 0xdc2626, depthTest: false });
-  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 25)]), mat), ring = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(Array.from({ length: 48 }, (_, i) => new THREE.Vector3(Math.cos(i / 48 * 6.2832) * 1.2, Math.sin(i / 48 * 6.2832) * 1.2, 0))), mat);
-  [line, ring].forEach(o => { o.renderOrder = 40; o.userData.noHit = true; o.raycast = () => {}; g.add(o); }); g.position.set(p[0] - O[0], p[1] - O[1], p[2] - O[2]); l3.scene.add(g); l3sp.pinObj = g; l3Render();
+  l3spPinClear(true); const p = l3sp.pin; if (!p) return; const g = l3spPinMake(p); l3.scene.add(g); l3sp.pinObj = g; l3spPinScale();
+  l3sp.pinOn = () => { l3spPinScale(); }; try { l3.orbit.addEventListener("change", l3sp.pinOn); } catch (e) { /* */ }
+  cancelAnimationFrame(l3sp.pinRaf); l3spPinAnimate(performance.now());
 }
 function l3spPinClear(keepPin) {
-  if (l3sp.pinObj) { l3.scene.remove(l3sp.pinObj); l3sp.pinObj.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); l3sp.pinObj = null; if (typeof l3Render === "function") l3Render(); }
+  cancelAnimationFrame(l3sp.pinRaf); l3sp.pinRaf = 0; if (l3sp.pinOn) { try { l3.orbit.removeEventListener("change", l3sp.pinOn); } catch (e) { /* */ } l3sp.pinOn = null; }
+  if (l3sp.pinObj) { l3.scene.remove(l3sp.pinObj); l3sp.pinObj.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); l3sp.pinObj = null; if (typeof l3Render === "function") l3Render(); }
   if (!keepPin) { l3sp.pin = null; l3sp.key = ""; }
 }
 /* Musen i 3D → kors på ritningen (högst 10 gånger per sekund). */
@@ -131,12 +169,16 @@ function l3spDraw() {
   const cv = l3sp.cv, bc = l3sp.bc, im = l3sp.img; if (!cv || !bc || !im || !l3sp.aff) return; const r = cv.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1), bw = Math.round(r.width * dpr), bh = Math.round(r.height * dpr);
   let sized = false; if (cv.width !== bw || cv.height !== bh) { cv.width = bw; cv.height = bh; bc.width = bw; bc.height = bh; sized = true; if (!l3sp.fitted) { l3sp.fitted = true; l3spFit(); } }
   const O = l3.O, cam = l3.camera;
-  if (l3sp.follow && !l3sp.drag) { const [cx, cy] = l3spToScr(cam.position.x + O[0], cam.position.y + O[1]), v = l3sp.view; v.tx += r.width / 2 - cx; v.ty += r.height / 2 - cy; }
-  const v = l3sp.view, bk = [v.k.toFixed(5), v.tx.toFixed(1), v.ty.toFixed(1), bw, bh, l3sp.planId, im.width].join("|");
+  // Följ: kameran hålls nära mitten med mjuk glidning (död zon, så att bilden inte hoppar vid små rörelser eller när man klickar)
+  if (l3sp.follow && !l3sp.drag && performance.now() > (l3sp.followHold || 0)) { const [cx, cy] = l3spToScr(cam.position.x + O[0], cam.position.y + O[1]), v = l3sp.view, dx = r.width / 2 - cx, dy = r.height / 2 - cy, dist = Math.hypot(dx, dy), lim = Math.min(r.width, r.height) * 0.16;
+    if (dist > lim || (l3sp.followCatch && dist > 1.5)) { l3sp.followCatch = dist > 1.5; const f = dist > lim * 3 ? 0.35 : 0.16; v.tx += dx * f; v.ty += dy * f; l3sp.ovDirty = true; } else l3sp.followCatch = false; }
+  const v = l3sp.view, bk = [v.k.toFixed(5), v.tx.toFixed(1), v.ty.toFixed(1), bw, bh, l3sp.planId, im.width, l3spMapSrc(), l3spPdfOp(), l3sp.mapRev || 0].join("|");
   if (sized || bk !== l3sp.baseKey) {            // ritningen
     l3sp.baseKey = bk; const b = bc.getContext("2d"); b.setTransform(dpr, 0, 0, dpr, 0, 0); b.clearRect(0, 0, r.width, r.height);
     const lv = (l3sp.pyr || [{ cv: im, f: 1 }]).reduce((best, L) => (L.f <= 1 / Math.max(v.k, 1e-6) * 1.0001 ? L : best), l3sp.pyr ? l3sp.pyr[0] : { cv: im, f: 1 });   // största f som ändå inte skalar ner mer än 1:1
-    b.imageSmoothingEnabled = true; b.imageSmoothingQuality = lv.f > 1 || v.k < 1 ? "medium" : "low"; b.drawImage(lv.cv, v.tx, v.ty, im.width * v.k, im.height * v.k);
+    const mapOn = l3spMapDraw(b, r, dpr);   // ortofoto/karta under ritningen
+    b.setTransform(dpr, 0, 0, dpr, 0, 0); b.globalCompositeOperation = mapOn ? "multiply" : "source-over"; b.globalAlpha = mapOn ? l3spPdfOp() / 100 : 1;   // multiplicera: ritningens vita blir genomskinligt
+    b.imageSmoothingEnabled = true; b.imageSmoothingQuality = lv.f > 1 || v.k < 1 ? "medium" : "low"; b.drawImage(lv.cv, v.tx, v.ty, im.width * v.k, im.height * v.k); b.globalCompositeOperation = "source-over"; b.globalAlpha = 1;
   }
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
   // markerade etableringsobjekt
@@ -196,3 +238,42 @@ function l3spZMesh() {
 }
 /* Tangenter från l3Key: Esc avbryter "Hämta från 3D". */
 function l3spKey(e) { if (l3sp.zPick && e.key === "Escape") { e.preventDefault(); e.stopPropagation(); l3spZPickStop(); l3Status("Avbrutet."); return true; } return false; }
+
+/* ---- Ortofoto/karta under ritningen (Victor 2026-10-31: "kan jag också få se orthofotona i minimapen?") ----------------------------------
+   Samma plattkällor som bakgrundskartan i 3D (Esri-ortofoto, Sentinel-2, OSM eller egen XYZ-adress, t.ex. Lantmäteriets ortofoto med nyckel).
+   Plattorna är Web Mercator; varje platta ritas som en affin avbildning (lat/lon → SWEREF → ritningens bild → skärm), vilket är exakt nog på byggplatsens storlek.
+   Ritningen multipliceras ovanpå så att dess vita bakgrund släpper igenom fotot. */
+const l3spMapSrc = () => { const v = l3Prefs().spMap; return typeof v === "string" ? v : ""; };
+const l3spPdfOp = () => { const v = Number(l3Prefs().spPdfOp); return v >= 15 && v <= 100 ? v : 85; };
+function l3spMapBind() {
+  const el = l3sp.el, sel = el.querySelector("#spMapSrc"), op = el.querySelector("#spPdfOp"); if (!sel) return; sel.value = l3spMapSrc(); op.value = l3spPdfOp();
+  sel.onchange = () => { l3SetPref("spMap", sel.value); l3sp.mapRev = (l3sp.mapRev || 0) + 1; l3sp.key = ""; l3spMapNote(); if (sel.value === "custom" && !l3Prefs().mapUrl) l3Status("Egen adress: skriv in en XYZ-adress under Kartan i 3D-vyns inställningar (kugghjulet).", true); };
+  op.oninput = () => { l3SetPref("spPdfOp", Number(op.value)); l3sp.key = ""; }; l3spMapNote();
+}
+function l3spMapNote() { const f = document.getElementById("spF"); if (!f) return; const s = l3spMapSrc(), a = s && typeof L3MAP_SRC !== "undefined" && L3MAP_SRC[s] ? L3MAP_SRC[s][2] : ""; f.textContent = a ? "Underlag: " + a : "Tryck på ritningen för att flyga dit i 3D. Hjul zoomar, dra panorerar."; }
+function l3spTile(src, tpl, z, x, y) {
+  const key = src + "|" + z + "/" + x + "/" + y; l3sp.tiles = l3sp.tiles || new Map(); l3sp.tq = l3sp.tq || 0; const c = l3sp.tiles.get(key);
+  if (c !== undefined) return c && c !== "p" ? c : null; if (l3sp.tq >= 8) return null;
+  l3sp.tiles.set(key, "p"); l3sp.tq++;
+  l3mapImg(tpl.replace("{z}", z).replace("{x}", x).replace("{y}", y)).then(im => { l3sp.tq--; l3sp.tiles.set(key, im || false); if (l3sp.tiles.size > 260) { const k = l3sp.tiles.keys().next().value; l3sp.tiles.delete(k); } if (im && l3sp.open) { clearTimeout(l3sp.mapT); l3sp.mapT = setTimeout(() => { l3sp.mapRev = (l3sp.mapRev || 0) + 1; l3sp.key = ""; }, 60); } });
+  return null;
+}
+/* Ritar plattorna som täcker panelen. Returnerar true om något underlag ritades (eller väntar på plattor). */
+function l3spMapDraw(b, r, dpr) {
+  const src = l3spMapSrc(); if (!src || typeof geodeticToGrid !== "function" || typeof l3mapModelToGeo !== "function" || !l3sp.aff) return false;
+  const zone = l3mapZone(), tpl = src === "custom" ? l3mapP("mapUrl", "") : (L3MAP_SRC[src] || [])[1], maxZ = src === "custom" ? 20 : (L3MAP_SRC[src] || [0, 0, 0, 19])[3]; if (!zone || !tpl) return false;
+  b.fillStyle = "#cbd5e1"; b.fillRect(0, 0, r.width, r.height);
+  const cs = [[0, 0], [r.width, 0], [r.width, r.height], [0, r.height]].map(([sx, sy]) => { const [x, y] = l3spFromScr(sx, sy); return l3mapModelToGeo(x, y, zone); });
+  const lats = cs.map(c => c[0]), lons = cs.map(c => c[1]), la0 = Math.min(...lats), la1 = Math.max(...lats), lo0 = Math.min(...lons), lo1 = Math.max(...lons); if (![la0, la1, lo0, lo1].every(Number.isFinite)) return false;
+  const [ax, ay] = l3spFromScr(0, 0), [cx2, cy2] = l3spFromScr(100, 0), mpp = Math.hypot(cx2 - ax, cy2 - ay) / 100 || 1;
+  let z = Math.max(3, Math.min(maxZ, Math.ceil(Math.log2(156543.03 * Math.cos((la0 + la1) / 2 * Math.PI / 180) / mpp / Math.max(1, dpr * 0.75))))), tx0, tx1, ty0, ty1;
+  for (; z > 3; z--) { tx0 = Math.floor(l3mapTx(lo0, z)); tx1 = Math.floor(l3mapTx(lo1, z)); ty0 = Math.floor(l3mapTy(la1, z)); ty1 = Math.floor(l3mapTy(la0, z)); if ((tx1 - tx0 + 1) * (ty1 - ty0 + 1) <= 64) break; }
+  tx0 = Math.floor(l3mapTx(lo0, z)); tx1 = Math.floor(l3mapTx(lo1, z)); ty0 = Math.floor(l3mapTy(la1, z)); ty1 = Math.floor(l3mapTy(la0, z));
+  const S = (lat, lon) => { const [mx, my] = l3mapGeoToModel(lat, lon, zone); return l3spToScr(mx, my); };
+  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) {
+    const im = l3spTile(src, tpl, z, tx, ty); if (!im) continue;
+    const tl = S(l3mapLat(ty, z), l3mapLon(tx, z)), tr = S(l3mapLat(ty, z), l3mapLon(tx + 1, z)), bl = S(l3mapLat(ty + 1, z), l3mapLon(tx, z)), W = im.width || 256, H = im.height || 256;
+    b.setTransform(dpr * (tr[0] - tl[0]) / W, dpr * (tr[1] - tl[1]) / W, dpr * (bl[0] - tl[0]) / H, dpr * (bl[1] - tl[1]) / H, dpr * tl[0], dpr * tl[1]); b.drawImage(im, 0, 0);
+  }
+  b.setTransform(dpr, 0, 0, dpr, 0, 0); return true;
+}

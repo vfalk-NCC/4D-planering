@@ -97,6 +97,35 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (zc.z1[0] !== 12.5 || zc.z1[1] !== 12.5 || zc.zPlus !== 12.6 || zc.zMinus !== 12.5 || zc.pinZ !== 7.25) fail('Höjdkalibrering: ' + JSON.stringify(zc));
   if (zc.undo !== 12.5 || !zc.saved || Math.abs(zc.planMeshZ2 - 7.25) > 0.01) fail('Ångra höjd / ritningen i 3D följer: ' + JSON.stringify(zc));
   console.log('OK: höjdkalibrering i ritningspanelen', JSON.stringify(zc));
-  if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT });
+  // Nålen: animation (faller ner), ringar, etikett, konstant skärmstorlek; ortofoto under ritningen
+  const pn = await page.evaluate(async () => {
+    const o = {}; l3spClose(); await l3spOpen(); l3sp.follow = false; l3spGoTo(plan.calib.model[0][0] + 10, plan.calib.model[0][1] + 10);
+    const U = l3sp.pinObj.userData.pin; o.parts = !!(U.body && U.ghost && U.rings.length === 3 && U.lab); o.z0 = U.body.position.z; await new Promise(r => setTimeout(r, 900)); o.z1 = U.body.position.z; o.lab = U.lab.material.opacity;
+    await new Promise(r => setTimeout(r, 1200)); o.ringVis = U.rings.filter(r => r.visible).length; const s1 = l3sp.pinObj.scale.x; l3.camera.position.multiplyScalar(2); l3.camera.updateMatrixWorld(); l3.orbit.dispatchEvent({ type: 'change' }); o.scaleGrew = l3sp.pinObj.scale.x > s1 * 1.5;
+    await new Promise(r => setTimeout(r, 3300)); o.settled = !l3sp.pinRaf; o.ringsEnd = U.rings.filter(r => r.visible).length;
+    // ortofoto: stubba plattorna
+    let asked = 0; window.l3mapImg = async url => { asked++; const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d'); g.fillStyle = '#556b2f'; g.fillRect(0, 0, 256, 256); return c; };
+    const bc = l3sp.bc.getContext('2d'); let draws = 0; const od = bc.drawImage.bind(bc); bc.drawImage = (...a) => { draws++; return od(...a); };
+    l3SetPref('spMap', 'esri'); const sel = document.getElementById('spMapSrc'); sel.value = 'esri'; sel.dispatchEvent(new Event('change')); l3spFit(); l3sp.key = ''; l3spDraw(); await new Promise(r => setTimeout(r, 400)); l3sp.key = ''; l3spDraw();
+    o.asked = asked; o.tileDraws = draws; o.note = document.getElementById('spF').textContent; l3SetPref('spMap', ''); return o;
+  });
+  if (!pn.parts || pn.z0 < 3 || pn.z1 > 0.3 || pn.lab < 0.9 || pn.ringVis < 1 || !pn.scaleGrew || !pn.settled || pn.ringsEnd !== 1) fail('Nålen (animation, etikett, skala): ' + JSON.stringify(pn));
+  if (pn.asked < 1 || pn.tileDraws < 2 || !/Esri/.test(pn.note)) fail('Ortofoto i ritningspanelen: ' + JSON.stringify(pn));
+  console.log('OK: nålen animeras och ortofoto ritas under ritningen', JSON.stringify(pn));
+  // Inget hopp: klick ändrar inte ritningens läge, zoom med Följ håller kameran i mitten, panorering stänger av Följ
+  const st = await page.evaluate(async () => {
+    const o = {}; l3spClose(); await l3spOpen(); l3spFollow(true); await new Promise(r => setTimeout(r, 200)); const v = l3sp.view, r = l3sp.cv.getBoundingClientRect();
+    const v0 = { tx: v.tx, ty: v.ty, k: v.k }; l3sp.followHold = performance.now() + 3500; l3spGoTo(...l3spFromScr(r.width * 0.8, r.height * 0.3)); await new Promise(rr => setTimeout(rr, 700)); o.clickDx = Math.hypot(v.tx - v0.tx, v.ty - v0.ty);
+    l3sp.followHold = 0; const [cx, cy] = l3spToScr(l3.camera.position.x + l3.O[0], l3.camera.position.y + l3.O[1]); o.camOff0 = Math.hypot(cx - r.width / 2, cy - r.height / 2);
+    l3sp.cv.dispatchEvent(new WheelEvent('wheel', { deltaY: -240, clientX: r.left + 10, clientY: r.top + 10, bubbles: true, cancelable: true })); const [c2x, c2y] = l3spToScr(l3.camera.position.x + l3.O[0], l3.camera.position.y + l3.O[1]); o.zoomed = v.k > v0.k; o.camAfterZoom = Math.hypot(c2x - r.width / 2, c2y - r.height / 2);
+    return o;
+  });
+  if (st.clickDx > 20) fail('Klick i panelen ska inte hoppa bilden: ' + JSON.stringify(st));
+  if (!st.zoomed || st.camAfterZoom > 4) fail('Zoom med Följ ska hålla kameran i mitten: ' + JSON.stringify(st));
+  const cb = await page.evaluate(() => { const r = l3sp.cv.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+  await page.mouse.move(cb[0], cb[1]); await page.mouse.down(); await page.mouse.move(cb[0] + 30, cb[1] + 10); await page.mouse.move(cb[0] + 60, cb[1] + 20); await page.mouse.up();
+  const fo = await page.evaluate(() => l3sp.follow); if (fo) fail('Panorering ska stänga av Följ');
+  console.log('OK: ritningspanelen hoppar inte (klick, zoom, panorering)', JSON.stringify(st));
+  if (process.env.SHOT) { await page.evaluate(async () => { l3SetPref('spMap', 'esri'); document.getElementById('spMapSrc').value = 'esri'; document.getElementById('spMapSrc').dispatchEvent(new Event('change')); const c = plan.calib.model[0]; l3spGoTo(c[0] + 25, c[1] + 12); }); await page.waitForTimeout(1300); await page.screenshot({ path: process.env.SHOT }); }
   await browser.close(); server.close();
 })().catch(e => { console.error(e); process.exit(1); });
