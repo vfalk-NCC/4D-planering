@@ -6,9 +6,7 @@ const L3PT_CSS = `#v3PcToolBtn{font-size:18px}#v3PcToolBtn.on{background:#2563eb
 #v3PcTools{position:absolute;right:64px;bottom:12px;z-index:23;width:min(340px,calc(100% - 80px));max-height:calc(100% - 100px);overflow:auto;background:var(--v3-panel,#fff);color:inherit;border:1px solid rgba(0,0,0,.12);border-radius:14px;box-shadow:0 10px 32px rgba(0,0,0,.22);font:13px system-ui,sans-serif;padding:8px 10px}
 #v3PcTools h4{margin:2px 0 6px;font-size:13px;display:flex;justify-content:space-between;align-items:center}#v3PcTools details{border-top:1px solid rgba(0,0,0,.08);padding:6px 0}#v3PcTools summary{cursor:pointer;font-weight:600;padding:2px 0}
 #v3PcTools .r{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}#v3PcTools label.f{display:flex;gap:6px;align-items:center;justify-content:space-between;margin:5px 0}#v3PcTools label.f input,#v3PcTools label.f select{width:96px;padding:4px 6px;border:1px solid rgba(0,0,0,.18);border-radius:7px;font:inherit}
-#v3PcTools button{border:1px solid rgba(0,0,0,.15);background:#fff;border-radius:9px;padding:6px 10px;font:inherit;cursor:pointer}#v3PcTools button.p{background:#2563eb;color:#fff;border-color:#2563eb}#v3PcTools button.bad{background:#dc2626;color:#fff;border-color:#dc2626}#v3PcTools .t{opacity:.7;font-size:12px}
-#v3PcProf{position:absolute;right:64px;bottom:12px;z-index:22;width:min(680px,calc(100% - 80px));background:var(--v3-panel,#fff);border:1px solid rgba(0,0,0,.12);border-radius:14px;box-shadow:0 10px 32px rgba(0,0,0,.22);padding:8px 10px;font:12px system-ui,sans-serif}
-#v3PcProf canvas{width:100%;height:230px;display:block;background:#f8fafc;border-radius:8px}#v3PcProf .r{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}#v3PcProf button{border:1px solid rgba(0,0,0,.15);background:#fff;border-radius:8px;padding:4px 9px;font:inherit;cursor:pointer}`;
+#v3PcTools button{border:1px solid rgba(0,0,0,.15);background:#fff;border-radius:9px;padding:6px 10px;font:inherit;cursor:pointer}#v3PcTools button.p{background:#2563eb;color:#fff;border-color:#2563eb}#v3PcTools button.bad{background:#dc2626;color:#fff;border-color:#dc2626}#v3PcTools .t{opacity:.7;font-size:12px}`;
 const l3ptEsc = s => (typeof escHtml === "function" ? escHtml(String(s)) : String(s));
 const l3ptCloud = () => l3pc.clouds.find(c => c.id === l3pt.cid) || l3pc.clouds.find(c => c.visible) || l3pc.clouds[0] || null;
 const l3ptNum = (id, d) => { const el = document.getElementById(id), v = el ? Number(String(el.value).replace(",", ".")) : NaN; return Number.isFinite(v) ? v : d; };
@@ -90,10 +88,13 @@ function l3ptProfile(A, B, w, maxPts = 8000) {
       if (Math.max(A[0], B[0]) + w < x0 - 1 || Math.min(A[0], B[0]) - w > x1 + 1 || Math.max(A[1], B[1]) + w < y0 - 1 || Math.min(A[1], B[1]) - w > y1 + 1) return;
       for (let i = 0; i < n; i++) {
         const x = P[i * 3] + g.x - A[0], y = P[i * 3 + 1] + g.y - A[1], t = x * ux + y * uy; if (t < 0 || t > L) continue; const s = -x * uy + y * ux; if (s < -w || s > w) continue;
-        list.push([t, s, P[i * 3 + 2] + g.z + O[2]]);
+        list.push(t, s, P[i * 3 + 2] + g.z + O[2]);
       }
     });
-    const step = Math.max(1, Math.ceil(list.length / maxPts)); out.push({ id: c.id, name: c.name, n: list.length, pts: step > 1 ? list.filter((_, i) => i % step === 0) : list });
+    const n = list.length / 3, cap = 400000, step = Math.max(1, Math.ceil(n / cap)), m = Math.ceil(n / step), T = new Float32Array(m), Z = new Float32Array(m), S = new Float32Array(m);
+    for (let i = 0, k = 0; i < n; i += step, k++) { T[k] = list[i * 3]; S[k] = list[i * 3 + 1]; Z[k] = list[i * 3 + 2]; }
+    const ds = Math.max(1, Math.ceil(m / maxPts)), pts = []; for (let i = 0; i < m; i += ds) pts.push([T[i], S[i], Z[i]]);
+    out.push({ id: c.id, name: c.name, n, t: T, s: S, z: Z, pts });
   });
   return { L, series: out };
 }
@@ -113,37 +114,10 @@ function l3ptPick(e) {
   if (!l3pt.ptsA) { l3pt.ptsA = p; l3Status("Profil: tryck på punkt B."); return; }
   const A = l3pt.ptsA, w = l3ptNum("ptPw", 0.5); l3ptPickStop(); l3ptProfShow(A, p, w);
 }
-function l3ptProfShow(A, B, w) {
-  l3ptProfClear(); const prof = l3ptProfile(A, B, w); l3pt.prof = { A, B, w, data: prof, zex: 1 };
-  const grp = new THREE.Group(), geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(A[0], A[1], A[2]), new THREE.Vector3(B[0], B[1], B[2])]);
-  const ln = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xdc2626, depthTest: false })); ln.renderOrder = 30; grp.add(ln); l3.scene.add(grp); l3pt.line = grp; l3Render();
-  const host = document.getElementById("v3Canvas"); let el = document.getElementById("v3PcProf"); if (el) el.remove(); el = document.createElement("div"); el.id = "v3PcProf"; host.appendChild(el);
-  ["pointerdown", "wheel", "click", "dblclick"].forEach(t => el.addEventListener(t, e => e.stopPropagation()));
-  el.innerHTML = `<div class="r"><b>Profil</b><span>Längd ${prof.L.toFixed(1).replace(".", ",")} m · bredd ±${String(w).replace(".", ",")} m</span><span id="ptProfInfo"></span><span style="flex:1"></span><label>Höjdöverdrift <select id="ptProfEx"><option>1</option><option>2</option><option>5</option><option>10</option></select>×</label><button type="button" id="ptProfCsv">CSV</button><button type="button" id="ptProfX">✕</button></div><canvas id="ptProfCv" width="1300" height="460"></canvas>
-    <div class="r">${prof.series.map((s, i) => `<span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${L3PT_COL[i % L3PT_COL.length]};margin-right:4px"></i>${l3ptEsc(s.name)} (${s.n.toLocaleString("sv-SE")} p)</span>`).join("")}</div>`;
-  el.querySelector("#ptProfX").onclick = () => l3ptProfClear(); el.querySelector("#ptProfEx").onchange = e => { l3pt.prof.zex = Number(e.target.value) || 1; l3ptProfDraw(); }; el.querySelector("#ptProfCsv").onclick = () => l3ptProfCsv();
-  const cv = el.querySelector("#ptProfCv"); cv.onpointermove = e => { const r = cv.getBoundingClientRect(), f = l3pt.prof && l3pt.prof.map; if (!f) return; const x = (e.clientX - r.left) / r.width * cv.width, t = (x - f.x0) / f.sx; el.querySelector("#ptProfInfo").textContent = t >= 0 && t <= prof.L ? `Avstånd ${t.toFixed(1).replace(".", ",")} m` : ""; };
-  l3ptProfDraw(); const nTot = prof.series.reduce((a, s) => a + s.n, 0); if (!nTot) l3Status("Inga punkter inom profilens bredd – öka bredden eller välj linjen över molnet.", true); else l3ptRender();
-}
-const L3PT_COL = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2"];
-function l3ptProfDraw() {
-  const P = l3pt.prof, cv = document.getElementById("ptProfCv"); if (!P || !cv) return; const g = cv.getContext("2d"), W = cv.width, H = cv.height, m = { l: 70, r: 14, t: 14, b: 34 };
-  g.clearRect(0, 0, W, H); let zmin = Infinity, zmax = -Infinity; P.data.series.forEach(s => s.pts.forEach(q => { if (q[2] < zmin) zmin = q[2]; if (q[2] > zmax) zmax = q[2]; }));
-  if (!isFinite(zmin)) { g.fillStyle = "#64748b"; g.font = "26px system-ui"; g.fillText("Inga punkter längs linjen", 90, H / 2); return; }
-  const span = Math.max(0.5, zmax - zmin), mid = (zmax + zmin) / 2, Lm = P.data.L, plotW = W - m.l - m.r, plotH = H - m.t - m.b, sx = plotW / Lm, vis = Math.max(span, plotW / sx / (P.zex || 1) * (plotH / plotW)) ;
-  const zlo = mid - vis / 2 - 0.1, sz = plotH / (vis + 0.2); P.map = { x0: m.l, sx };
-  g.strokeStyle = "#e2e8f0"; g.fillStyle = "#475569"; g.font = "22px system-ui"; g.lineWidth = 1;
-  for (let i = 0; i <= 5; i++) { const y = m.t + plotH - (i / 5) * plotH, v = zlo + (i / 5) * (vis + 0.2); g.beginPath(); g.moveTo(m.l, y); g.lineTo(W - m.r, y); g.stroke(); g.fillText(v.toFixed(2).replace(".", ","), 4, y + 7); }
-  for (let i = 0; i <= 5; i++) { const x = m.l + (i / 5) * plotW; g.fillText((Lm * i / 5).toFixed(Lm > 20 ? 0 : 1).replace(".", ",") + " m", x - 22, H - 8); }
-  P.data.series.forEach((s, k) => { g.fillStyle = L3PT_COL[k % L3PT_COL.length]; s.pts.forEach(q => { g.fillRect(m.l + q[0] * sx - 1.5, m.t + plotH - (q[2] - zlo) * sz - 1.5, 3, 3); }); });
-}
-function l3ptProfClear() {
-  l3pt.prof = null; const e = document.getElementById("v3PcProf"); if (e) e.remove();
-  if (l3pt.line) { l3.scene.remove(l3pt.line); l3pt.line.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); l3pt.line = null; l3Render(); }
-}
+function l3ptProfShow(A, B, w) { return l3pfShow(A, B, w); }
+function l3ptProfClear() { if (typeof l3pfClear === "function") l3pfClear(); }
 function l3ptCsvText(rows, head) { const f = v => typeof v === "number" ? String(Math.round(v * 1000) / 1000).replace(".", ",") : `"${String(v == null ? "" : v).replace(/"/g, '""')}"`; return "﻿" + [head, ...rows].map(r => r.map(f).join(";")).join("\r\n"); }
 function l3ptDownload(name, text) { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); }
-function l3ptProfCsv() { const P = l3pt.prof; if (!P) return; const rows = []; P.data.series.forEach(s => s.pts.forEach(q => rows.push([s.name, q[0], q[1], q[2]]))); l3ptDownload("profil.csv", l3ptCsvText(rows, ["Moln", "Avstånd (m)", "Sida (m)", "Höjd (m ö.h.)"])); }
 
 /* ---- Volymtabell: alla sparade volymmått (en per etapp/zon) med summa ------------------------------------------------ */
 function l3ptVolRows() {

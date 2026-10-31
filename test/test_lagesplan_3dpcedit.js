@@ -114,9 +114,38 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!pr.slope || Math.abs(pr.slope - 290.67) > 2) fail('Släntkroppens volym ska bli ≈ 290,7 m³: ' + JSON.stringify(pr));
   if (pr.berm < 4) fail('Berm ska ge fler ringar: ' + JSON.stringify(pr));
   console.log('OK: profil, volymtabell och släntkropp', JSON.stringify(pr));
+  // ---- Profilvyn: ytlinje, jämförelse, zoom, fullskärm och DXF ----
+  const pf = await page.evaluate(async () => {
+    const out = {}, O = l3.O;
+    // två plana moln med 0,5 m höjdskillnad längs x: pcA z = c+0, pcB z = c+0,5 (A ligger lägre → schakt)
+    l3pc.clouds.slice().forEach(c => l3pcRemove(c.id));
+    const mk = (id, name, dz) => { const P = []; for (let y = -2; y <= 2; y += 0.25) for (let x = -10; x <= 10; x += 0.25) P.push(x, y, dz); return l3pcBuild({ id, name }, { info: { center: [O[0], O[1], O[2]], min: [0, 0, 0], max: [1, 1, 1], format: 't', n: 0, total: 0 }, chunks: [{ pos: new Float32Array(P), inten: new Uint8Array(P.length / 3) }] }); };
+    mk('qa', 'Moln A', 0); mk('qb', 'Moln B', 0.5);
+    l3pfShow([-10, 0, 0], [10, 0, 0], 1);
+    out.series = l3pf.data.series.length; out.lines = l3pf.lines.map(l => l.v.filter(v => v != null).length);
+    out.cut = l3pf.diff && l3pf.diff.cut; out.fill = l3pf.diff && l3pf.diff.fill; out.cover = l3pf.diff && l3pf.diff.cover;
+    out.zA = l3pfAt(l3pf.lines[0], 5); out.zB = l3pfAt(l3pf.lines[1], 5);
+    // zoom med hjulet (Skift = bara längd)
+    const v0 = { ...l3pf.view }, cv = l3pf.cv, r = cv.getBoundingClientRect();
+    cv.dispatchEvent(new WheelEvent('wheel', { deltaY: -300, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, shiftKey: true, bubbles: true, cancelable: true }));
+    out.zoomX = (l3pf.view.x1 - l3pf.view.x0) < (v0.x1 - v0.x0) - 0.5; out.zKept = Math.abs((l3pf.view.z1 - l3pf.view.z0) - (v0.z1 - v0.z0)) < 1e-6;
+    l3pfFit(); out.fit = Math.abs(l3pf.view.x1 - 20) < 0.01;
+    l3pfFs(); out.fs = l3pf.el.classList.contains('fs'); await new Promise(r => setTimeout(r, 120)); out.fsW = l3pf.el.getBoundingClientRect().width; l3pfFs(); out.fsOff = !l3pf.el.classList.contains('fs');
+    const dxf = l3pfDxfText(false), dxf3 = l3pfDxfText(true);
+    out.dxfOk = dxf.startsWith('0\nSECTION') && dxf.trim().endsWith('EOF') && (dxf.match(/POLYLINE/g) || []).length >= 4; out.dxfLayers = (dxf.match(/PROFIL_Moln_A/g) || []).length > 0; out.dxfCut = /PROFIL_SCHAKT/.test(dxf);
+    out.dxf3 = /POLYLINE\n8\nPROFIL_Moln_A\n66\n1\n70\n8/.test(dxf3.replace(/\r/g, '')); const m = dxf3.match(/VERTEX\n8\nPROFIL_Moln_A\n10\n([\d.]+)\n20\n([\d.]+)/); out.x3 = m ? Number(m[1]) : null; out.ox = O[0];
+    out.dec = JSON.stringify(Number(String(0.5).replace(',', '.')));
+    return out;
+  });
+  if (pf.series !== 2 || pf.lines.some(n => n < 50)) fail('Profil: två ytlinjer: ' + JSON.stringify(pf));
+  if (Math.abs(pf.zB - pf.zA - 0.5) > 0.02) fail('Profil: höjdskillnad 0,5 m: ' + JSON.stringify(pf));
+  if (Math.abs(pf.cut - 10) > 0.8 || pf.fill > 0.05) fail('Profil: tvärsnittsarea schakt ≈ 20 m × 0,5 m = 10 m²: ' + JSON.stringify(pf));
+  if (!pf.zoomX || !pf.zKept || !pf.fit || !pf.fs || !pf.fsOff || pf.fsW < 800) fail('Profil: zoom/hela/fullskärm: ' + JSON.stringify(pf));
+  if (!pf.dxfOk || !pf.dxfLayers || !pf.dxfCut || !pf.dxf3 || pf.x3 == null) fail('Profil: DXF: ' + JSON.stringify(pf));
+  console.log('OK: profilvy – ytlinjer, skillnad 10 m², zoom, fullskärm, DXF (profil + 3D)', JSON.stringify(pf));
   // Menyn
   await page.evaluate(() => l3ptOpen()); const ui = await page.evaluate(() => ({ btn: !!document.getElementById('v3PcToolBtn'), panel: !!document.getElementById('v3PcTools'), secs: document.querySelectorAll('#v3PcTools details').length }));
   if (!ui.btn || !ui.panel || ui.secs < 5) fail('Verktygsmenyn: ' + JSON.stringify(ui)); console.log('OK: punktmolnens verktygsmeny', JSON.stringify(ui));
-  if (process.env.SHOT) { await page.evaluate(() => { l3ptProfShow([0, 0, 0], [10, 0, 0], 1); l3ptOpen(); document.querySelector('#v3PcTools details[data-k="fi"]').open = true; }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOT }); }
+  if (process.env.SHOT) { await page.evaluate(() => { l3ptProfShow([-10, 0, 0], [10, 0, 0], 1); l3pfFs(); l3pf.hover = 4; l3pfDraw(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOT }); }
   await browser.close(); server.close();
 })().catch(e => { console.error(e); process.exit(1); });
