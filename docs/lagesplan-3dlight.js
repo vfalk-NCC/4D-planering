@@ -10,7 +10,7 @@
 
 // Delar om 4 MB (Victor 2026-10-12: "401 Bad credentials" på första delen med 20 MB – läsningen före och övriga
 // sparningar gick med samma token, så GitHub avvisade det stora anropet; 20 MB blir ~27 MB som base64).
-const L3LT_PART = 4e6, L3LT_MAX = 300e6;
+const L3LT_PART = 4e6, L3LT_MAX = 300e6, L3LT_PHONE_TRIS = 3e6;
 const l3ltPath = () => `projects/${encodeURIComponent(projectId)}/mobil3d.json`;
 const l3ltKey = w => (w.fileId ? "f:" + w.fileId : String(w.id || ""));
 // Samma token som resten av lägesplanen (den aktiva) – en äldre sparad i inställningarna gav "401 Bad credentials" (Victor 2026-10-12).
@@ -102,14 +102,17 @@ async function l3ltLoad(w, onProgress) {
     const url = await ghReadBinaryUrl(l3ltTok(), e.parts[k], f => onProgress && onProgress((k + f) / e.parts.length * 0.8));
     try { bufs.push(new Uint8Array(await (await fetch(url)).arrayBuffer())); } finally { URL.revokeObjectURL(url); }
   }
-  const all = new Uint8Array(bufs.reduce((a, b) => a + b.length, 0)); let o = 0; bufs.forEach(b => { all.set(b, o); o += b.length; });
-  const raw = await l3ltGunzip(all), dv = new DataView(raw);
+  let all = new Uint8Array(bufs.reduce((a, b) => a + b.length, 0)); let o = 0; bufs.forEach(b => { all.set(b, o); o += b.length; }); bufs.length = 0;
+  let raw = await l3ltGunzip(all); all = null; // det packade släpps direkt – på iPhone är minnet det som tar slut
+  const dv = new DataView(raw);
   if (dv.getUint32(0, true) !== 0x4c33444c) throw new Error("Okänt format på den lätta kopian.");
   const hl = dv.getUint32(4, true), head = JSON.parse(new TextDecoder().decode(new Uint8Array(raw, 8, hl)));
   const base = 8 + hl + ((4 - (8 + hl) % 4) % 4);
   const byGuid = new Map((items || []).filter(r => r.object_id).map(r => [String(r.object_id), r.id]));
   const out = { meshes: [], ranges: [], tris: 0, O: head.O, capped: false, light: true };
-  head.chunks.forEach((c, ci) => {
+  const cap = typeof lowMemDevice !== "undefined" && lowMemDevice ? L3LT_PHONE_TRIS : Infinity; // tak för trianglar på iPhone/iPad (flikens minne)
+  for (let ci = 0; ci < head.chunks.length; ci++) {
+    const c = head.chunks[ci]; if (out.tris + c.ni / 3 > cap) { out.capped = out.cappedLight = true; continue; }
     const q = new Uint16Array(raw, base + c.pos, c.n * 3), pos = new Float32Array(c.n * 3);
     for (let i = 0; i < pos.length; i += 3) for (let a = 0; a < 3; a++) pos[i + a] = c.mn[a] + q[i + a] / 65535 * c.sz[a];
     const nrm = c.nrm >= 0 ? new Int8Array(raw.slice(base + c.nrm, base + c.nrm + c.n * 3)) : null;
@@ -119,7 +122,8 @@ async function l3ltLoad(w, onProgress) {
     const m = l3bMeshFromArrays(pos, col, idx, ranges, out, nrm);
     out.meshes.push(m); out.ranges.push(...ranges); out.tris += c.ni / 3;
     if (onProgress) onProgress(0.8 + 0.2 * (ci + 1) / head.chunks.length);
-  });
+  }
+  raw = null;
   out.name = head.name;
   return out;
 }

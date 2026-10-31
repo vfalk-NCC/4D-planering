@@ -108,7 +108,8 @@ async function l3bLoad(list, opts = {}) {
           total += lt.tris;
           lt.meshes.forEach(x => l3.groups.bldg.add(x));
           l3b.models.push(lt); l3bPosition(); l3bRemember(w, true);
-          l3bCachePut(w, lt);
+          if (!(typeof lowMemDevice !== "undefined" && lowMemDevice)) l3bCachePut(w, lt); // på iPhone/iPad dubblas modellen annars i minnet när den skrivs till webbläsarens lagring
+          if (lt.cappedLight) l3Status(`${lt.name || "Modellen"} är större än vad iPhone/iPad orkar – de första ${(lt.tris / 1e6).toFixed(1).replace(".", ",")} milj. trianglarna visas (annars stänger Safari sidan).`, true);
           times.push(`${lt.name}: lätt kopia för mobilen (${(lt.tris / 1e6).toFixed(1).replace(".", ",")} milj. trianglar)`);
           busyProgress("bldg", lbl, part(0, 1));
           continue;

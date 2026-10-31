@@ -79,6 +79,7 @@ const l3BvhQueue = [];
 let l3BvhBusy = false;
 function l3BvhSchedule(mesh) {
   if (!mesh || !mesh.geometry || !THREE.BufferGeometry.prototype.computeBoundsTree) return;
+  if (typeof lowMemDevice !== "undefined" && lowMemDevice && mesh.userData && mesh.userData.l3b) return; // iPhone/iPad: rumsligt index tar för mycket minne (träffar går ändå, bit för bit)
   if (mesh.geometry.boundsTree) mesh.geometry.disposeBoundsTree();
   if (typeof l3mtBvhDefer === "function" && l3mtBvhDefer(mesh)) return; // Montageordningen: det rumsliga indexet byggs först när uppspelningen/reglaget stannat
   if (!l3BvhQueue.includes(mesh)) l3BvhQueue.push(mesh);
@@ -543,8 +544,9 @@ function l3Init(box) {
   if (typeof l3cShader === "function") l3cShader(); // snittkanterna (innan något ritas)
   const host = box.querySelector("#v3Canvas");
   // powerPreference: på bärbara med två grafikkort väljer webbläsaren annars oftast det inbyggda – det kraftiga kortet ger flera gånger fler bilder/s.
-  const renderer = new THREE.WebGLRenderer({ antialias: l3Prefs().aa !== false, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  const phone = typeof lowMemDevice !== "undefined" && lowMemDevice; // iPhone/iPad: ingen kantutjämning och lägre upplösning (annars tar GPU-minnet slut)
+  const renderer = new THREE.WebGLRenderer({ antialias: phone ? l3Prefs().aa === true : l3Prefs().aa !== false, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(phone ? 1.5 : 2, window.devicePixelRatio || 1));
   host.insertBefore(renderer.domElement, host.firstChild);
   const scene = new THREE.Scene();
   // Neutral, nästan vit bakgrund och ljus som i Trimble Connect (Victor 2026-10-10: "min vy känns nästan

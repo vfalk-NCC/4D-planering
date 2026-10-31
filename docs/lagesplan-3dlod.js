@@ -85,6 +85,7 @@ function l3lodApply(level) {
 let l3lodWarmBusy = false;
 function l3lodWarm() {
   if (l3lodWarmBusy || !l3lodOn() || l3lodTris() < L3LOD_MIN_TRIS) return;
+  if (typeof lowMemDevice !== "undefined" && lowMemDevice) return; // iPhone/iPad: de förenklade indexlistorna dubblar minnet
   const todo = [];
   l3lodMeshes().forEach(m => { const u = m.userData.l3b; for (let lv = 0; lv < L3LOD_THR.length; lv++) if (!u.lod || u.lod[lv] === undefined) todo.push([m, lv]); });
   if (!todo.length) return;
