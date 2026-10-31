@@ -43,6 +43,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const cv = document.getElementById('v3Canvas').getBoundingClientRect(), r = sel => { const e = document.querySelector(sel); if (!e || e.classList.contains('hidden') || !e.offsetParent) return null; const b = e.getBoundingClientRect(); return { x: Math.round(b.x - cv.x), y: Math.round(b.y - cv.y), w: Math.round(b.width), h: Math.round(b.height), r: Math.round(b.right - cv.x), b: Math.round(b.bottom - cv.y) }; };
     return { cv: [Math.round(cv.width), Math.round(cv.height)], hud: r('.v3-walk'), ctl: r('.v3-ctl'), hudCol: !!(document.querySelector('.v3-walk') || { classList: { contains: () => false } }).classList.contains('col'), ctlCol: !!(document.querySelector('.v3-ctl') || { classList: { contains: () => false } }).classList.contains('col'), kbd: document.querySelectorAll('.v3-walk kbd').length, fs: !!document.querySelector('.v3-walk [data-w="fs"]'), joy: !!document.querySelector('.v3-joys:not(.hidden)') };
   });
+  // snabbknapp för sparade vyer: fäller upp en lista, ett tryck går till vyn
+  const qv = await page.evaluate(async () => {
+    l3SaveView('Test A'); l3.camera.position.set(l3.camera.position.x + 40, l3.camera.position.y + 40, l3.camera.position.z + 20); l3.orbit.update();
+    const box = document.getElementById('v3Qv'), vis = !!box && !box.hidden && box.offsetParent !== null, closed = getComputedStyle(box.querySelector('.v3-qv-p')).display === 'none', p0 = l3.camera.position.clone();
+    box.querySelector('[data-qv="toggle"]').click(); const open = getComputedStyle(box.querySelector('.v3-qv-p')).display !== 'none', r = box.querySelector('.v3-qv-p').getBoundingClientRect(), b = box.querySelector('.v3-qv-b').getBoundingClientRect();
+    const names = [...box.querySelectorAll('.v3-qv-v')].map(x => x.textContent); box.querySelector('[data-qvgo="0"]').click(); await new Promise(res => setTimeout(res, 900));
+    return { vis, closed, open, above: r.bottom <= b.top + 2, names, moved: l3.camera.position.distanceTo(p0) > 5, closedAfter: !box.classList.contains('open') };
+  });
+  ok(qv.vis && qv.closed && qv.open && qv.above && qv.names[0] === 'Test A' && qv.moved && qv.closedAfter, 'Snabbknappen för sparade vyer: ' + JSON.stringify(qv));
   await page.evaluate(() => { l3SetPref('walkPerson', 'third'); l3wEnter(new THREE.Vector3(0, 0, 0)); l3wSetKind('loader'); l3wWork(); l3wCtlPanel(); });
   await page.waitForTimeout(400);
   let a = await info(); console.log(JSON.stringify(a));

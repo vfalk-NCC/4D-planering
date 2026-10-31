@@ -579,7 +579,32 @@ function l3RenderSavedViews() {
   host.innerHTML = list.length ? list.map((v, i) => `<div class="v3-sv"><button type="button" data-svgo="${i}" title="Gå till vyn${v.meas ? " – kameran, snitt, mått, kommentarer, foton och dolda objekt som när vyn sparades" : ""}">${escHtml(v.name)}${v.clips && v.clips.length ? ` <em>· ${v.clips.length} snitt</em>` : ""}${v.meas && v.meas.length ? ` <em>· ${v.meas.length} mått</em>` : ""}</button><button type="button" class="v3-sv-x" data-svdel="${i}" title="Ta bort vyn">✕</button></div>`).join("") : `<div class="v3-pop-hint">Inga sparade vyer än.</div>`;
   host.querySelectorAll("[data-svgo]").forEach(b => { b.onclick = () => { l3HideMenus(); l3GoView(+b.dataset.svgo); }; });
   host.querySelectorAll("[data-svdel]").forEach(b => { b.onclick = e => { e.stopPropagation(); l3DelView(+b.dataset.svdel); }; });
+  l3QvRender();
 }
+
+/* ---- Snabbknapp för sparade vyer (mobil) --------------------------------------------------------------------------------------------------
+   En liten knapp nere till höger i bilden. Trycker man fälls en lista upp med de sparade vyerna (och standardvyerna) – ett tryck går dit. */
+const l3QvOn = () => { try { return matchMedia("(pointer: coarse)").matches || innerWidth < 760; } catch (e) { return false; } };
+function l3QvRender() {
+  const cv = document.getElementById("v3Canvas"); if (!cv) return;
+  let box = document.getElementById("v3Qv");
+  if (!box) {
+    box = document.createElement("div"); box.id = "v3Qv"; box.className = "v3-qv"; cv.appendChild(box);
+    ["pointerdown", "pointerup", "wheel", "click", "dblclick", "contextmenu"].forEach(t => box.addEventListener(t, e => e.stopPropagation()));
+    box.addEventListener("click", e => {
+      const b = e.target.closest("button"); if (!b) return;
+      if (b.dataset.qv === "toggle") { box.classList.toggle("open"); return; }
+      if (b.dataset.qvgo != null) { box.classList.remove("open"); l3GoView(+b.dataset.qvgo); return; }
+      if (b.dataset.qvstd) { box.classList.remove("open"); l3View(b.dataset.qvstd); return; }
+      if (b.dataset.qv === "save") { box.classList.remove("open"); if (typeof uiPrompt === "function") uiPrompt("Namn på vyn", "").then(n => { if (n != null) l3SaveView(n); }); else l3SaveView(""); }
+    });
+    document.addEventListener("pointerdown", e => { if (box.classList.contains("open") && !box.contains(e.target)) box.classList.remove("open"); }, true);
+  }
+  box.hidden = !l3QvOn();
+  const list = l3SavedViews(), std = [["iso", "Översikt"], ["top", "Plan"], ["n", "N"], ["s", "S"], ["e", "Ö"], ["w", "V"]];
+  box.innerHTML = `<div class="v3-qv-p"><div class="v3-qv-std">${std.map(([k, n]) => `<button type="button" data-qvstd="${k}">${n}</button>`).join("")}</div>${list.length ? list.map((v, i) => `<button type="button" class="v3-qv-v" data-qvgo="${i}">${escHtml(v.name)}</button>`).join("") : `<div class="v3-qv-none">Inga sparade vyer än.</div>`}<button type="button" class="v3-qv-s" data-qv="save">＋ Spara vyn här</button></div><button type="button" class="v3-qv-b" data-qv="toggle" aria-label="Sparade vyer" title="Sparade vyer"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>${list.length ? `<i>${list.length}</i>` : ""}</button>`;
+}
+window.addEventListener("resize", () => { const b = document.getElementById("v3Qv"); if (b) b.hidden = !l3QvOn(); });
 
 // ---------------------------------------------------------------------
 // iPad/iPhone: knappar för det som annars kräver tangentbordet (Esc, Enter, skriva ett mått)
