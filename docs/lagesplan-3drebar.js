@@ -13,6 +13,7 @@ const L3RB_TYPES = { platta: "Platta", sula: "Sula/plint", vagg: "Vägg", balk: 
 const L3RB_SCH0 = { platta: 100, sula: 70, vagg: 80, balk: 170, pelare: 200 };
 const L3RB_COVER = { "Inomhus, torr (XC1)": 20, "Utomhus, fuktig (XC3/XC4)": 35, "Mot mark (XC2)": 40, "Aggressiv miljö (XD/XS/XF)": 50 };
 const L3RB_COL = { 6: "#64748b", 8: "#0ea5e9", 10: "#22c55e", 12: "#f59e0b", 16: "#ef4444", 20: "#a855f7", 25: "#14b8a6", 32: "#ec4899" };
+const L3RB_ALPHA_ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const l3rbKgm = d => 0.00617 * d * d;           // kg per meter stång (d i mm)
 const l3rbR = v => Math.round(v * 1000) / 1000;
 const l3rbF = (v, d = 1) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString("sv-SE", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -66,11 +67,12 @@ const l3rbParamsDefault = type => ({ cover: 35, exposure: "Utomhus, fuktig (XC3/
 /* Stång som rak linje (u0..u1) i riktning dir ("u"|"v"|"w") med läge (a, b) i de andra två koordinaterna; delas vid maxLen med överlapp (skarv 50·Ø). */
 function l3rbStraight(out, d, dir, a, b, from, to, maxLen, mark) {
   const lap = 0.05 * d, len = to - from; if (len <= 0.02) return; const pieces = []; if (len <= maxLen) pieces.push([from, to]); else { let s = from; while (s < to - 1e-6) { const e = Math.min(to, s + maxLen); pieces.push([s, e]); if (e >= to) break; s = e - lap; } }
-  pieces.forEach(([s, e]) => { const P = dir === "u" ? [[s, a, b], [e, a, b]] : dir === "v" ? [[a, s, b], [a, e, b]] : [[a, b, s], [a, b, e]]; out.push({ d, shape: "rak", closed: false, pts: P, len: e - s, dir, mark }); });
+  pieces.forEach(([s, e]) => { const P = dir === "u" ? [[s, a, b], [e, a, b]] : dir === "v" ? [[a, s, b], [a, e, b]] : [[a, b, s], [a, b, e]]; out.push({ d, shape: "rak", code: "R", dims: "A" + Math.round((e - s) * 1000), closed: false, pts: P, len: e - s, dir, mark }); });
 }
 function l3rbStirrup(out, d, u, v0, v1, w0, w1, mark, dirAxis) {   // bygel i planet vinkelrätt mot axeln dirAxis ("u" = i v–w-planet vid läget u; "w" = i u–v-planet vid höjden u)
   const hook = 2 * Math.max(10 * d / 1000, 0.1); let P; if (dirAxis === "u") P = [[u, v0, w0], [u, v1, w0], [u, v1, w1], [u, v0, w1]]; else P = [[v0, w0, u], [v1, w0, u], [v1, w1, u], [v0, w1, u]];
-  const len = 2 * ((v1 - v0) + (w1 - w0)) + hook; out.push({ d, shape: "bygel", closed: true, pts: P, len, dir: dirAxis, mark });
+  const A = Math.round((v1 - v0) * 1000), Bm = Math.round((w1 - w0) * 1000), info = typeof l3rbShapeInfo === "function" ? l3rbShapeInfo("B", { A, B: Bm }, d) : null;
+  const len = info ? info.cut : 2 * ((v1 - v0) + (w1 - w0)) + hook; out.push({ d, shape: "bygel", code: "B", dims: `A${A} B${Bm}`, closed: true, pts: P, len, dir: dirAxis, mark });
 }
 const l3rbSpread = (from, to, cc) => { const n = Math.max(1, Math.floor((to - from) / cc) + 1), out = []; const used = (n - 1) * cc, off = (to - from - used) / 2; for (let i = 0; i < n; i++) out.push(from + off + i * cc); return out; };
 function l3rbGenerate(type, o, P) {
@@ -102,7 +104,7 @@ function l3rbGenerate(type, o, P) {
 }
 /* Lista: staplar av samma Ø, form, längd (cm) och läge-grupp (mark) får ett postnummer. */
 function l3rbSummary(bars) {
-  const G = new Map(); bars.forEach(b => { const key = [b.d, b.shape, Math.round(b.len * 100), b.mark].join("|"); let g = G.get(key); if (!g) { g = { d: b.d, shape: b.shape, len: b.len, mark: b.mark, n: 0 }; G.set(key, g); } g.n++; });
+  const G = new Map(); bars.forEach(b => { const key = [b.d, b.code || b.shape, b.dims || "", Math.round(b.len * 100), b.mark].join("|"); let g = G.get(key); if (!g) { g = { d: b.d, shape: b.shape, code: b.code, dims: b.dims, len: b.len, mark: b.mark, n: 0 }; G.set(key, g); } g.n++; });
   const rows = [...G.values()].sort((a, b) => b.d - a.d || a.mark.localeCompare(b.mark) || b.len - a.len).map((g, i) => ({ pos: i + 1, ...g, tot: g.n * g.len, kg: g.n * g.len * l3rbKgm(g.d) }));
   return { rows, kg: rows.reduce((a, r) => a + r.kg, 0), length: rows.reduce((a, r) => a + r.tot, 0), n: bars.length };
 }
@@ -110,7 +112,7 @@ const l3rbVolume = o => o.L * o.B * o.H;
 function l3rbSchablon(type) { const E = (l3Prefs().rbExp || []).filter(e => e.type === type); const own = l3Prefs().rbSch || {}; if (E.length) return { v: E.reduce((a, e) => a + e.kgm3, 0) / E.length, src: `medel av ${E.length} uttag` }; return { v: Number(own[type]) || L3RB_SCH0[type], src: own[type] ? "egen schablon" : "exempelvärde" }; }
 /* ---- Lokal → världskoordinater ------------------------------------------------------------------------------------------------- */
 function l3rbWorld(o, u, v, w) { const c = Math.cos(o.yaw), s = Math.sin(o.yaw), du = u - o.L / 2, dv = v - o.B / 2; return [o.cx + du * c - dv * s, o.cy + du * s + dv * c, o.z0 + w]; }
-function l3rbSetBars(set) { return set.kind === "manual" ? set.bars : (set._bars || (set._bars = l3rbGenerate(set.type, set.obb, set.params))); }
+function l3rbSetBars(set) { if (set.kind === "manual") return (set.groups && set.groups.length && typeof l3rbExpandGroup === "function") ? [...(set.bars || []), ...set.groups.flatMap(l3rbExpandGroup)] : (set.bars || []); return set._bars || (set._bars = l3rbGenerate(set.type, set.obb, set.params)); }
 function l3rbSetWorld(set) { const o = set.obb; return l3rbSetBars(set).map(b => ({ ...b, w: b.pts.map(p => set.kind === "manual" && b.abs ? p : l3rbWorld(o, p[0], p[1], p[2])) })); }
 
 /* ---- 3D: stavar som rör (eller linjer vid mycket stora mängder) ---------------------------------------------------------------- */
@@ -137,9 +139,11 @@ function l3rbTubes(world, O) {
   });
   return g;
 }
-function l3rbDraw() {
-  if (!l3 || !l3.scene) return; if (!l3rb.group || l3rb.group.parent !== l3.scene) { l3rb.group = new THREE.Group(); l3rb.group.name = "rebar"; l3rb.group.userData.noHit = true; l3.scene.add(l3rb.group); }
-  while (l3rb.group.children.length) { const c = l3rb.group.children.pop(); c.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+function l3rbDraw(onlyId) {
+  if (!l3 || !l3.scene) return; if (!l3rb.group || l3rb.group.parent !== l3.scene) { l3rb.group = new THREE.Group(); l3rb.group.name = "rebar"; l3rb.group.userData.noHit = true; l3.scene.add(l3rb.group); onlyId = null; }
+  const drop = c => { c.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); l3rb.group.remove(c); };
+  if (onlyId) { const old = l3rb.group.children.find(c => c.userData.setId === onlyId); if (old) drop(old); const set = l3rb.sets.find(s => s.id === onlyId); if (set && !set.hide) { const g = l3rbTubes(l3rbSetWorld(set), l3.O); g.userData.setId = set.id; l3rb.group.add(g); } l3Render(); return; }
+  while (l3rb.group.children.length) drop(l3rb.group.children[0]);
   l3rb.sets.forEach(set => { if (set.hide) return; const g = l3rbTubes(l3rbSetWorld(set), l3.O); g.userData.setId = set.id; l3rb.group.add(g); });
   l3Render();
 }
@@ -177,7 +181,7 @@ function l3rbManualSet(base) {
   s = { id: l3rbNewId(), kind: "manual", name: base ? `Manuell: ${base.name}`.slice(0, 80) : "Manuell armering", type: base ? base.type : "platta", obb: base ? base.obb : { cx: 0, cy: 0, yaw: 0, L: 1, B: 1, z0: 0, H: 1 }, params: {}, bars: [], el: base ? base.el : {}, created_at: new Date().toISOString() }; l3rb.sets.push(s); l3rb.active = s.id; return s;
 }
 function l3rbLen(pts, closed) { let s = 0; for (let i = 1; i < pts.length; i++) s += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]); if (closed && pts.length > 2) s += Math.hypot(pts[0][0] - pts[pts.length - 1][0], pts[0][1] - pts[pts.length - 1][1], pts[0][2] - pts[pts.length - 1][2]); return s; }
-function l3rbAddBar(set, d, pts, closed) { const n = set.bars.length + 1; set.bars.push({ d, shape: closed ? "bygel" : pts.length > 2 ? "böj" : "rak", closed: !!closed, abs: true, pts: pts.map(p => p.map(l3rbR)), len: l3rbLen(pts, closed) + (closed ? 2 * Math.max(10 * d / 1000, 0.1) : 0), mark: "M" }); l3rbDraw(); l3rbSave(); l3rbRender(); }
+function l3rbAddBar(set, d, pts, closed) { const n = set.bars.length + 1; const segs = []; for (let i = 1; i < pts.length; i++) segs.push(Math.round(Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]) * 1000)); set.bars.push({ d, shape: closed ? "bygel" : pts.length > 2 ? "böj" : "rak", code: pts.length > 2 ? "FRI" : "R", dims: segs.slice(0, 12).map((v, i) => L3RB_ALPHA_[i] + v).join(" "), closed: !!closed, abs: true, pts: pts.map(p => p.map(l3rbR)), len: l3rbLen(pts, closed) + (closed ? 2 * Math.max(10 * d / 1000, 0.1) : 0), mark: "M" }); l3rbDraw(); l3rbSave(); l3rbRender(); }
 /* Serie: kopierar senaste staven n gånger med c/c vinkelrätt mot staven i planet (eller lodrätt). */
 function l3rbSeries(set, n, ccMm, vertical) {
   const last = set.bars[set.bars.length - 1]; if (!last) return false; const P = last.pts, a = P[0], b = P[Math.min(1, P.length - 1)]; let dx, dy, dz = 0;
@@ -188,7 +192,7 @@ function l3rbSeries(set, n, ccMm, vertical) {
 /* Bygel runt elementet (i sektionen vinkelrätt mot långsidan) – för manuell armering. */
 function l3rbStirrupsAround(set, d, ccMm, coverMm) {
   const o = set.obb, c = coverMm / 1000, dd = d / 1000, out = []; l3rbSpread(c, o.L - c, ccMm / 1000).forEach(u => l3rbStirrup(out, d, u, c + dd / 2, o.B - c - dd / 2, c + dd / 2, o.H - c - dd / 2, "M", "u"));
-  out.forEach(b => set.bars.push({ d: b.d, shape: "bygel", closed: true, abs: true, len: b.len, mark: "M", pts: b.pts.map(p => l3rbWorld(o, p[0], p[1], p[2]).map(l3rbR)) })); l3rbDraw(); l3rbSave(); l3rbRender();
+  out.forEach(b => set.bars.push({ d: b.d, shape: "bygel", code: b.code, dims: b.dims, closed: true, abs: true, len: b.len, mark: "M", pts: b.pts.map(p => l3rbWorld(o, p[0], p[1], p[2]).map(l3rbR)) })); l3rbDraw(); l3rbSave(); l3rbRender();
 }
 
 /* ---- Panelen ------------------------------------------------------------------------------------------------------------------------- */
@@ -202,10 +206,10 @@ const L3RB_CSS = `#v3Rb{position:absolute;left:12px;top:12px;z-index:23;width:mi
 function l3rbToggle(on) { const want = on == null ? !l3rb.el : on; if (want) l3rbOpen(); else l3rbClose(); }
 async function l3rbOpen() {
   const host = document.getElementById("v3Canvas"); if (!host) return; if (!document.getElementById("v3RbCss")) { const st = document.createElement("style"); st.id = "v3RbCss"; st.textContent = L3RB_CSS; document.head.appendChild(st); }
-  let el = document.getElementById("v3Rb"); if (!el) { el = document.createElement("div"); el.id = "v3Rb"; host.appendChild(el); l3rb.el = el; ["pointerdown", "wheel", "dblclick", "contextmenu", "keydown", "keyup"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); el.addEventListener("click", l3rbClick); el.addEventListener("change", l3rbChange); }
+  let el = document.getElementById("v3Rb"); if (!el) { el = document.createElement("div"); el.id = "v3Rb"; host.appendChild(el); l3rb.el = el; ["pointerdown", "wheel", "dblclick", "contextmenu", "keydown", "keyup"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); el.addEventListener("click", l3rbClick); el.addEventListener("change", l3rbChange); if (typeof l3rb2Click === "function") { el.addEventListener("click", l3rb2Click); el.addEventListener("change", l3rb2Change); window.addEventListener("pointerdown", l3rbHandleDown, true); } }
   l3rb.sel = l3rbSelection(); l3rbRender(); await l3rbLoad(); l3rbRender();
 }
-function l3rbClose() { l3rbDrawStop(true); const e = document.getElementById("v3Rb"); if (e) e.remove(); l3rb.el = null; }
+function l3rbClose() { l3rbDrawStop(true); if (typeof l3rbHandleDown === "function") window.removeEventListener("pointerdown", l3rbHandleDown, true); if (typeof l3rbClearHandles === "function") l3rbClearHandles(); const e = document.getElementById("v3Rb"); if (e) e.remove(); l3rb.el = null; }
 const l3rbGet = (id, d) => { const e = document.getElementById(id), v = e ? Number(String(e.value).replace(",", ".")) : NaN; return Number.isFinite(v) ? v : d; };
 function l3rbParamFields(type, P) {
   const F = (id, lab, v, unit = "") => `<label class="f"><span>${lab}</span><input id="rb_${id}" type="text" inputmode="decimal" value="${l3rbF(v, 0).replace(/\s/g, "")}"> ${unit}</label>`; const row = [];
@@ -233,7 +237,7 @@ function l3rbRender() {
     <div class="r"><label class="f" style="margin:0"><span>Verkligt uttag</span><input id="rb_act" type="text" inputmode="decimal" placeholder="kg"></label><button type="button" data-rb="exp" title="Lägg verkligt uttag (kg/m³) i erfarenheten – schablonen blir medel av uttagen">Spara som erfarenhet</button></div>
     <div class="r">${act.kind === "auto" ? `<button type="button" data-rb="freeze" title="Frys stavarna så att de går att ändra för hand">Gör manuell</button><button type="button" data-rb="regen" title="Räkna om med inställningarna ovan">Räkna om</button>` : ""}<button type="button" data-rb="zoom">Zooma</button></div>`;
   }
-  const tab = sum ? `<table><tr><th>Pos</th><th>Ø</th><th>Form</th><th>Ant</th><th>Längd m</th><th>Σ m</th><th>kg</th></tr>${sum.rows.slice(0, 60).map(r => `<tr><td>${r.pos}</td><td>${r.d}</td><td>${r.shape}</td><td>${r.n}</td><td>${l3rbF(r.len, 2)}</td><td>${l3rbF(r.tot, 1)}</td><td>${l3rbF(r.kg, 1)}</td></tr>`).join("")}</table>${sum.rows.length > 60 ? `<div class="t">+ ${sum.rows.length - 60} rader i exporten</div>` : ""}` : `<div class="t">Välj ett set för att se listan.</div>`;
+  const tab = sum ? `<table><tr><th>Pos</th><th>Ø</th><th>Form</th><th>Mått mm</th><th>Ant</th><th>Längd m</th><th>Σ m</th><th>kg</th></tr>${sum.rows.slice(0, 60).map(r => `<tr><td>${r.pos}</td><td>${r.d}</td><td>${l3rbEsc(r.code || r.shape)}</td><td style="text-align:left">${l3rbEsc(r.dims || "")}</td><td>${r.n}</td><td>${l3rbF(r.len, 2)}</td><td>${l3rbF(r.tot, 1)}</td><td>${l3rbF(r.kg, 1)}</td></tr>`).join("")}</table>${sum.rows.length > 60 ? `<div class="t">+ ${sum.rows.length - 60} rader i exporten</div>` : ""}` : `<div class="t">Välj ett set för att se listan.</div>`;
   const schRows = Object.keys(L3RB_TYPES).map(k => `<label class="f"><span>${L3RB_TYPES[k]}</span><input data-rbsch="${k}" type="text" inputmode="decimal" value="${l3rbF((l3Prefs().rbSch || {})[k] || L3RB_SCH0[k], 0).replace(/\s/g, "")}"> kg/m³</label>`).join("");
   el.innerHTML = `<h4>🧱 Armering <span class="badge">EXPERIMENTELL</span><button type="button" class="x" data-rb="close" title="Stäng">✕</button></h4>
   <div class="warn">Autoarmeringen är ett <b>förslag enligt enkla regler</b> för mängder, planering och visualisering – <b>inte dimensionerad</b>. Konstruktörens handlingar gäller alltid.</div>
@@ -242,15 +246,17 @@ function l3rbRender() {
     <label class="f"><span>Elementtyp</span><select id="rb_type">${Object.keys(L3RB_TYPES).map(k => `<option value="${k}" ${k === type ? "selected" : ""}>${L3RB_TYPES[k]}</option>`).join("")}</select></label>
     <label class="f"><span>Miljö (täckskikt)</span><select id="rb_exp" style="width:190px">${Object.keys(L3RB_COVER).map(k => `<option ${k === (P.exposure || "Utomhus, fuktig (XC3/XC4)") ? "selected" : ""}>${k}</option>`).join("")}</select></label><div class="t">Täckskikt ${L3RB_COVER[P.exposure] || P.cover} mm – kontrollera mot handlingarna.</div>
     ${l3rbParamFields(type, P)}<div class="r"><button type="button" class="p" data-rb="gen" ${l3rb.sel.length ? "" : "disabled"}>Generera autoarmering</button></div><div class="t" id="rb_msg">${l3rbEsc(l3rb.msg || "")}</div>${l3rb.fail ? `<div class="r"><button type="button" data-rb="manual-from-fail">Fortsätt manuellt</button><span class="t">Skapar en tom manuell armering för elementet.</span></div>` : ""}</details>
-  <details data-k="mn" ${keep("mn")}><summary>Manuell armering</summary><div class="t">Rita stavar i 3D, kopiera i serie, eller lägg bygel runt elementet.</div>
+  ${typeof l3rb2Html === "function" ? l3rb2Html(act) : ""}
+  <details data-k="mn" ${keep("mn")}><summary>Manuell armering (enkel)</summary><div class="t">Rita stavar i 3D, kopiera i serie, eller lägg bygel runt elementet.</div>
     <label class="f"><span>Diameter Ø</span><select id="rb_md">${[8, 10, 12, 16, 20, 25, 32].map(d => `<option ${d === l3rb.cur.d ? "selected" : ""}>${d}</option>`).join("")}</select> mm</label>
     <div class="r"><button type="button" data-rb="draw" class="${l3rb.draw ? "on" : ""}">${l3rb.draw ? "Klar (Enter)" : "Rita stav i 3D"}</button><button type="button" data-rb="undobar" ${act && act.kind === "manual" && act.bars.length ? "" : "disabled"}>Ta bort sista</button><button type="button" data-rb="newman">Ny manuell set</button></div>
     <label class="f"><span>Serie: antal</span><input id="rb_sn" type="text" inputmode="numeric" value="10"></label><label class="f"><span>Serie: c/c</span><input id="rb_scc" type="text" inputmode="decimal" value="${l3rb.cur.cc}"> mm</label><label class="f"><span>Lodrätt</span><input id="rb_sv" type="checkbox" style="width:auto"></label>
     <div class="r"><button type="button" data-rb="series" ${act && act.kind === "manual" && act.bars.length ? "" : "disabled"}>Kopiera senaste staven</button><button type="button" data-rb="stirr" ${act ? "" : "disabled"} title="Bygel längs elementets långsida med c/c ovan">Bygel runt elementet</button></div></details>
   <details data-k="st" ${keep("st")}><summary>Set (${l3rb.sets.length})</summary>${sets}${det}</details>
-  <details data-k="li" ${keep("li")}><summary>Lista och export</summary>${tab}<div class="r"><button type="button" data-rb="csv" ${sum ? "" : "disabled"}>Mängdlista (CSV)</button><button type="button" data-rb="dxf" ${l3rb.sets.length ? "" : "disabled"}>DXF (3D-linjer)</button></div></details>
-  <details data-k="sc" ${keep("sc")}><summary>Schablon och erfarenhet</summary><div class="t">Exempelvärden – ersätt med era egna. Verkliga uttag du sparar ersätter schablonen (medelvärde).</div>${schRows}<div class="r t">${(l3Prefs().rbExp || []).length} sparade uttag <button type="button" data-rb="expclr" ${(l3Prefs().rbExp || []).length ? "" : "disabled"}>Rensa</button></div></details>`;
+  <details data-k="li" ${keep("li")}><summary>Lista och export</summary>${tab}<div class="r"><button type="button" data-rb="csv" ${sum ? "" : "disabled"}>Mängdlista (CSV)</button><button type="button" data-rb="dxf" ${l3rb.sets.length ? "" : "disabled"}>DXF (3D-linjer)</button><button type="button" data-rb2="ifc" ${l3rb.sets.length ? "" : "disabled"} title="IfcReinforcingBar med svepta cirkelprofiler – sparas i Trimble Connect eller hämtas">IFC (armering)</button><button type="button" data-rb2="html" ${l3rb.sets.length ? "" : "disabled"} title="Förteckning med skisser – öppna och skriv ut som PDF">Förteckning (HTML/PDF)</button></div></details>
+  <details data-k="sc" ${keep("sc")}><summary>Schablon och erfarenhet</summary><div class="t">Exempelvärden – ersätt med era egna. Verkliga uttag du sparar ersätter schablonen (medelvärde).</div>${schRows}<div class="r t">${(l3Prefs().rbExp || []).length} sparade uttag <button type="button" data-rb="expclr" ${(l3Prefs().rbExp || []).length ? "" : "disabled"}>Rensa</button></div></details>`; l3rbAfterRender();
 }
+function l3rbAfterRender() { if (typeof l3rbHandles === "function") { if (l3rb.gActive) l3rbHandles(); else l3rbClearHandles(); } }
 function l3rbChange(e) {
   const t = e.target; if (t.id === "rb_type") { l3rb.type = t.value; l3rb.P = null; l3rbRender(); } else if (t.id === "rb_exp") { l3rb.P = l3rbReadParams(l3rb.type || "platta"); l3rb.P.__t = l3rb.type || "platta"; l3rbRender(); }
   else if (t.id === "rb_md") l3rb.cur.d = Number(t.value) || 12; else if (t.id === "rb_scc") l3rb.cur.cc = Math.max(10, Number(String(t.value).replace(",", ".")) || 150);
@@ -312,8 +318,8 @@ const l3rbAsc = s => String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ
 function l3rbDl(name, blob) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800); }
 const l3rbStamp = () => { const d = new Date(), p = x => String(x).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} kl ${p(d.getHours())}.${p(d.getMinutes())}`; };
 function l3rbCsvText(sets) {
-  const f = v => typeof v === "number" ? String(Math.round(v * 1000) / 1000).replace(".", ",") : `"${String(v == null ? "" : v).replace(/"/g, '""')}"`, rows = [["Armeringsförslag (experimentell, ej dimensionerad)"], [], ["Set", "Pos", "Ø mm", "Form", "Antal", "Längd m", "Σ längd m", "Vikt kg"]];
-  let kg = 0; sets.forEach(s => { const sm = l3rbSummary(l3rbSetBars(s)); sm.rows.forEach(r => rows.push([s.name, r.pos, r.d, r.shape, r.n, r.len, r.tot, r.kg])); kg += sm.kg; rows.push([s.name + " – summa", "", "", "", sm.n, "", sm.length, sm.kg], []); }); rows.push(["TOTALT", "", "", "", "", "", "", kg]);
+  const f = v => typeof v === "number" ? String(Math.round(v * 1000) / 1000).replace(".", ",") : `"${String(v == null ? "" : v).replace(/"/g, '""')}"`, rows = [["Armeringsförslag (experimentell, ej dimensionerad)"], [], ["Set", "Pos", "Ø mm", "Form", "Mått mm", "Antal", "Utv. längd m", "Σ längd m", "Vikt kg"]];
+  let kg = 0; sets.forEach(s => { const sm = l3rbSummary(l3rbSetBars(s)); sm.rows.forEach(r => rows.push([s.name, r.pos, r.d, r.code || r.shape, r.dims || "", r.n, r.len, r.tot, r.kg])); kg += sm.kg; rows.push([s.name + " – summa", "", "", "", "", sm.n, "", sm.length, sm.kg], []); }); rows.push(["TOTALT", "", "", "", "", "", "", "", kg]);
   return "﻿" + rows.map(r => r.map(f).join(";")).join("\r\n");
 }
 function l3rbCsv(set) { const sets = set ? [set] : l3rb.sets; l3rbDl(`Armering ${l3rbStamp()}.csv`, new Blob([l3rbCsvText(l3rb.sets.length > 1 ? l3rb.sets.filter(s => !s.hide) : sets)], { type: "text/csv;charset=utf-8" })); l3Toast("Mängdlistan (CSV) nedladdad."); }
