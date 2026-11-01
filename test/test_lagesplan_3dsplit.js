@@ -105,10 +105,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     await wait(900); const idx = cl.chunks[0].cells && cl.chunks[0].cells.length; o.indexed = !!idx; l3spGoTo(qx, qy); const p2 = l3sp.pin.slice(); o.d2 = exp ? Math.hypot(p2[0] - qx, p2[1] - qy, p2[2] - exp[2]) : 999;
     // en punkt långt från molnet: ingen fäst
     l3spGoTo(info.center[0] + 200, info.center[1] + 200); o.far = !l3sp.pinSnap;
+    // IFC: en låda ovanför punkten – höjden hämtas ur modellens översida, läget är kvar
+    { const w = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 2), new THREE.MeshBasicMaterial()); w.position.set(qx - l3.O[0], qy - l3.O[1], 151 - l3.O[2]); w.updateMatrixWorld(true); l3.scene.add(w); l3b.models.push({ id: 'ifcsnap', visible: true, meshes: [w], tris: 0 }); l3spGoTo(qx, qy); const pi = l3sp.pin.slice(); o.ifc = !!l3sp.pinSnap && Math.abs(pi[2] - 152) < 0.05 && Math.hypot(pi[0] - qx, pi[1] - qy) < 1e-6; o.ifcZ = pi[2]; l3b.models.pop(); l3.scene.remove(w); }
     // av
     l3SetPref('spSnapPc', false); l3spGoTo(qx, qy); o.off = !l3sp.pinSnap && Math.abs(l3sp.pin[0] - qx) < 1e-6; l3SetPref('spSnapPc', true); l3pcRemove('snapA'); return o;
   });
-  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
+  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off || !sn.ifc) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
   console.log('OK: klick i minimapen fäster nålen i punktmolnet (plan + höjd, med och utan rutindex, av/på)', JSON.stringify(sn));
   // Höjdkalibrering: höjden hämtas från ritningens kalibrering och kan ställas in, hämtas från 3D eller nålen, och ångras
   const zc = await page.evaluate(async () => {
