@@ -509,7 +509,7 @@ function l3Commands() {
     ["Ta bort markerade", "Delete", l3DeleteSel, sel], ["Ställ på ytan", "", l3DropSel, sel], ["Markera alla", "Ctrl+A", () => l3SelectIds(placements.filter(p => !l3.hidden.has(p.id)).map(p => p.id))],
     ["Markera alla av samma typ", "", l3SelectSimilar, sel], ["Avmarkera", "Esc", () => l3SelectIds([])],
     ["Dölj markerade", "H", l3HideSel, sel], ["Visa bara markerade", "I", l3Isolate, sel], ["Visa alla", "U", l3ShowAll],
-    ["Kollisionskontroll…", "", l3OpenClash], ["Snitt…", "", l3StartClip], ["Vågrätt snitt", "", l3ClipHorizontal], ["Ta bort alla snitt", "", l3ClearClips, () => l3.clips.length > 0],
+    ["Armering (experimentell)…", "", () => l3rbToggle(true)], ["Kollisionskontroll…", "", l3OpenClash], ["Snitt…", "", l3StartClip], ["Vågrätt snitt", "", l3ClipHorizontal], ["Ta bort alla snitt", "", l3ClearClips, () => l3.clips.length > 0],
     ["Översikt (visa allt)", "Home", () => l3Frame(true)], ["Vy uppifrån", "", () => l3View("top")], ["Vy från norr", "", () => l3View("n")], ["Vy från söder", "", () => l3View("s")],
     ["Vy från öster", "", () => l3View("e")], ["Vy från väster", "", () => l3View("w")], ["Zoom selected – zooma till markerat", "F", l3ZoomSelected, () => !l3SelBox().isEmpty()],
     ["Plan ↔ 3D", "Ctrl+P", l3TogglePlan], ["Montageordning (planera, spela upp, exportera HTML)", "", () => l3mtToggle(true)], ["Parallell projektion av/på", "", () => l3SetProjection(!l3IsOrtho())], ["Rotationscentrum", "V", l3StartV],

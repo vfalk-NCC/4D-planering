@@ -276,6 +276,7 @@ function l3Dom() {
           <button type="button" data-v3view="sel">Zooma till markerat (F)</button>
           <hr/>
           <button type="button" data-v3view="plan">Plan ↔ 3D <kbd>Ctrl+P</kbd></button>
+          <button type="button" id="v3RebarBtn" class="v3-pop-row" style="text-align:left" title="Armeringsförslag och manuell armering – experimentell funktion">🧱 Armering (experimentell)…</button>
           <label class="v3-chk v3-pop-row" title="Små rörelser vid markering, mått, snitt och paneler. Stängs av automatiskt med Minska rörelser i systemet."><input type="checkbox" id="v3Anim" ${P.anim !== false ? "checked" : ""} /> Animationer</label>
           <label class="v3-chk v3-pop-row"><input type="checkbox" id="v3Ortho" ${P.ortho ? "checked" : ""} /> Parallell projektion</label>
           <button type="button" data-v3view="center">Rotationscentrum… <kbd>V</kbd></button>
@@ -408,6 +409,7 @@ function l3Dom() {
   $3("v3LaunchBtn").onclick = e => { e.stopPropagation(); l3OpenLaunch(); };
   box.querySelectorAll("[data-v3view]").forEach(b => { b.onclick = () => { l3HideMenus(); const v = b.dataset.v3view; if (v === "plan") l3TogglePlan(); else if (v === "center") l3StartV(); else if (v === "walk") l3wStart(); else if (v === "mont") l3mtToggle(true); else l3View(v); }; });
   $3("v3Ortho").onchange = e => { l3SetProjection(e.target.checked); };
+  $3("v3RebarBtn").onclick = () => { l3HideMenus(); if (typeof l3rbToggle === "function") l3rbToggle(true); };
   $3("v3Anim").onchange = e => { l3SetPref("anim", e.target.checked); l3AnimClass(); };
   const mouseHint = () => { const a = l3Prefs().autoRot !== false ? " kring punkten under markören" : " kring rotationscentrum (V)"; $3("v3MouseHint").textContent = l3Prefs().mouse === "standard" ? `Vänster = rotera${a}, Ctrl + vänster = markeringsfönster, höger/mitten = panorera, hjul = zooma mot markören. Skift + vänster = panorera.` : `Vänster = markera (dra en ruta), mitten = panorera, Ctrl + mitten = rotera${a}, hjul = zooma mot markören, höger = meny.`; };
   $3("v3AutoRot").onchange = e => { l3SetPref("autoRot", e.target.checked); mouseHint(); };
@@ -1671,6 +1673,7 @@ function l3Key(e) {
   if (typeof l3peKey === "function" && l3peKey(e)) return; // redigera punktmoln (Esc, Enter, Ctrl+Z, Delete)
   if (typeof l3pfKey === "function" && l3pfKey(e)) return; // profilvyn (F fullskärm, Esc, 0)
   if (typeof l3spKey === "function" && l3spKey(e)) return; // ritningspanelen (Esc avbryter höjdhämtning)
+  if (typeof l3rbKey === "function" && l3rbKey(e)) return; // armering: rita stav (Enter, Esc, Backspace)
   if (typeof l3wKey === "function" && l3wKey(e)) return; // gå-läget (WASD) har tangenterna
   if (e.key === " " && typeof l3pl !== "undefined" && l3pl.rec && !e.repeat) { e.preventDefault(); l3plPause(); return; } // filmen: mellanslag pausar
   if (typeof l3HandleKey === "function" && l3HandleKey(e)) return; // drag i ett handtag pågår
