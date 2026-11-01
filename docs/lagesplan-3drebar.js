@@ -53,17 +53,43 @@ function l3rbSelection() {
   if (typeof l3bs !== "undefined" && l3bs.sel.length) l3bs.sel.slice(0, 40).forEach(e => {
     const P = e.mesh.geometry.getAttribute("position").array, r = e.mesh.userData.l3b.ranges[e.ri], pts = []; e.mesh.updateMatrixWorld(true); const step = Math.max(1, Math.floor(r.count / 4000));
     for (let i = r.start; i < r.start + r.count; i += step) { v.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]).applyMatrix4(e.mesh.matrixWorld); pts.push([v.x + O[0], v.y + O[1], v.z + O[2]]); }
-    out.push({ name: r.name || "IFC-objekt", cls: r.cls || r.ifcClass || "", guid: r.guid || "", src: "ifc", pts });
+    const tris = []; try { if (typeof l3bsIdx === "function" && e.mesh.userData.l3b.origIdx) { const [st, cnt] = l3bsIdx(e.mesh, e.ri), I = e.mesh.userData.l3b.origIdx, nT = Math.floor(cnt / 3), stepT = Math.max(1, Math.ceil(nT / 30000)); for (let t = 0; t < nT; t += stepT) for (let k = 0; k < 3; k++) { const vi = I[st + t * 3 + k]; v.set(P[vi * 3], P[vi * 3 + 1], P[vi * 3 + 2]).applyMatrix4(e.mesh.matrixWorld); tris.push(v.x + O[0], v.y + O[1], v.z + O[2]); } } } catch (err) { /* utan trianglar: inga öppningar */ }
+    out.push({ name: r.name || "IFC-objekt", cls: r.cls || r.ifcClass || "", guid: r.guid || "", src: "ifc", pts, tris });
   });
   if (!out.length && l3.sel && l3.sel.size) [...l3.sel].slice(0, 20).forEach(id => {
     const p = placements.find(q => q.id === id), g = l3.placeMeshes.get(id); if (!p || !g) return; const pts = []; g.updateMatrixWorld(true);
-    g.traverse(o => { if (!o.isMesh || !o.visible || !o.geometry || o.userData.noHit) return; const a = o.geometry.getAttribute("position"); if (!a) return; const step = Math.max(1, Math.floor(a.count / 3000)); for (let i = 0; i < a.count; i += step) { v.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld); pts.push([v.x + O[0], v.y + O[1], v.z + O[2]]); } });
-    out.push({ name: p.name || "Objekt", cls: p.m ? "" : "", guid: "", src: "place", pid: id, pts });
+    const tris = []; g.traverse(o => { if (!o.isMesh || !o.visible || !o.geometry || o.userData.noHit) return; const a = o.geometry.getAttribute("position"); if (!a) return; const step = Math.max(1, Math.floor(a.count / 3000)); for (let i = 0; i < a.count; i += step) { v.fromBufferAttribute(a, i).applyMatrix4(o.matrixWorld); pts.push([v.x + O[0], v.y + O[1], v.z + O[2]]); }
+      const I = o.geometry.index, nT = I ? Math.floor(I.count / 3) : Math.floor(a.count / 3), sT = Math.max(1, Math.ceil(nT / 20000)); for (let t = 0; t < nT; t += sT) for (let k = 0; k < 3; k++) { const vi = I ? I.getX(t * 3 + k) : t * 3 + k; v.fromBufferAttribute(a, vi).applyMatrix4(o.matrixWorld); tris.push(v.x + O[0], v.y + O[1], v.z + O[2]); } });
+    out.push({ name: p.name || "Objekt", cls: p.m ? "" : "", guid: "", src: "place", pid: id, pts, tris });
   });
   return out;
 }
+
+/* Öppningar ur elementets form: trianglarna rastreras (plattor: planet, väggar: väggens sida). Rutor som ingen triangel täcker och som inte hänger ihop med kanten är hål;
+   väggar får även hål som når ned till golvet (dörrar). Returnerar rektanglar i elementets koordinater: plattor { u0, u1, v0, v1 }, väggar { u0, u1, w0, w1 }. */
+function l3rbOpenings(sel, o, type) {
+  if (!sel || !sel.tris || sel.tris.length < 9 || !o || (type !== "platta" && type !== "sula" && type !== "vagg")) return [];
+  const wall = type === "vagg", W = o.L, Hh = wall ? o.H : o.B, cs = Math.max(0.04, Math.min(0.25, Math.max(W, Hh) / 220)), nx = Math.max(2, Math.ceil(W / cs)), ny = Math.max(2, Math.ceil(Hh / cs)), grid = new Uint8Array(nx * ny), T = sel.tris;
+  for (let t = 0; t + 8 < T.length; t += 9) {
+    const q = [0, 1, 2].map(k => { const l = l3rbToLocal(o, [T[t + k * 3], T[t + k * 3 + 1], T[t + k * 3 + 2]]); return [l[0], wall ? l[2] : l[1]]; });
+    const x0 = Math.max(0, Math.floor(Math.min(q[0][0], q[1][0], q[2][0]) / cs)), x1 = Math.min(nx - 1, Math.floor(Math.max(q[0][0], q[1][0], q[2][0]) / cs)), y0 = Math.max(0, Math.floor(Math.min(q[0][1], q[1][1], q[2][1]) / cs)), y1 = Math.min(ny - 1, Math.floor(Math.max(q[0][1], q[1][1], q[2][1]) / cs));
+    const den = (q[1][1] - q[2][1]) * (q[0][0] - q[2][0]) + (q[2][0] - q[1][0]) * (q[0][1] - q[2][1]); if (Math.abs(den) < 1e-12) continue;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) { const px = (x + 0.5) * cs, py = (y + 0.5) * cs, a = ((q[1][1] - q[2][1]) * (px - q[2][0]) + (q[2][0] - q[1][0]) * (py - q[2][1])) / den, b = ((q[2][1] - q[0][1]) * (px - q[2][0]) + (q[0][0] - q[2][0]) * (py - q[2][1])) / den, c = 1 - a - b, e = -1e-6; if (a >= e && b >= e && c >= e) grid[y * nx + x] = 1; }
+  }
+  const seen = new Uint8Array(nx * ny), st = []; const seed = (x, y) => { const i = y * nx + x; if (!grid[i] && !seen[i]) { seen[i] = 1; st.push(i); } };
+  for (let x = 0; x < nx; x++) { seed(x, ny - 1); if (!wall) seed(x, 0); } for (let y = 0; y < ny; y++) { seed(0, y); seed(nx - 1, y); }
+  while (st.length) { const i = st.pop(), x = i % nx, y = (i / nx) | 0; [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < nx && Y < ny) seed(X, Y); }); }
+  const out = [], comp = new Uint8Array(nx * ny);
+  for (let i0 = 0; i0 < nx * ny; i0++) {
+    if (grid[i0] || seen[i0] || comp[i0]) continue; let x0 = nx, x1 = 0, y0 = ny, y1 = 0, n = 0; const s2 = [i0]; comp[i0] = 1;
+    while (s2.length) { const i = s2.pop(), x = i % nx, y = (i / nx) | 0; n++; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dy]) => { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < nx && Y < ny) { const j = Y * nx + X; if (!grid[j] && !seen[j] && !comp[j]) { comp[j] = 1; s2.push(j); } } }); }
+    const a0 = x0 * cs, a1 = (x1 + 1) * cs, b0 = y0 * cs, b1 = (y1 + 1) * cs; if ((a1 - a0) * (b1 - b0) < 0.04 || n * cs * cs > 0.6 * W * Hh) continue;
+    out.push(wall ? { u0: l3rbR(a0), u1: l3rbR(a1), w0: l3rbR(b0), w1: l3rbR(b1) } : { u0: l3rbR(a0), u1: l3rbR(a1), v0: l3rbR(b0), v1: l3rbR(b1) });
+  }
+  return out.slice(0, 40);
+}
 /* ---- Autoarmering ----------------------------------------------------------------------------------------------------------------- */
-const l3rbParamsDefault = type => ({ cover: 35, exposure: "Utomhus, fuktig (XC3/XC4)", dMain: 12, ccMain: 150, dTop: 12, ccTop: 150, top: type === "platta", dVert: 12, ccVert: 200, dHor: 10, ccHor: 200, dLong: 20, nBot: 3, nTop: 2, dStirr: 10, ccStirr: 200, dCol: 20, nCol: 8, dColSt: 10, ccColSt: 250, maxLen: 12, edge: type === "platta" || type === "sula" || type === "vagg", dEdge: 10, ccEdge: 200, legEdge: 500, edgeBar: type !== "vagg" });
+const l3rbParamsDefault = type => ({ cover: 35, exposure: "Utomhus, fuktig (XC3/XC4)", dMain: 12, ccMain: 150, dTop: 12, ccTop: 150, top: type === "platta", dVert: 12, ccVert: 200, dHor: 10, ccHor: 200, dLong: 20, nBot: 3, nTop: 2, dStirr: 10, ccStirr: 200, dCol: 20, nCol: 8, dColSt: 10, ccColSt: 250, maxLen: 12, edge: type === "platta" || type === "sula" || type === "vagg", dEdge: 10, ccEdge: 200, legEdge: 500, edgeBar: type !== "vagg", openings: true, cornerBars: type === "platta", doubleNet: true, thick: 0.4, support: false, dense: true, sideBars: true });
 /* Stång som rak linje (u0..u1) i riktning dir ("u"|"v"|"w") med läge (a, b) i de andra två koordinaterna; delas vid maxLen med överlapp (skarv 50·Ø). */
 function l3rbStraight(out, d, dir, a, b, from, to, maxLen, mark) {
   const lap = 0.05 * d, len = to - from; if (len <= 0.02) return; const pieces = []; if (len <= maxLen) pieces.push([from, to]); else { let s = from; while (s < to - 1e-6) { const e = Math.min(to, s + maxLen); pieces.push([s, e]); if (e >= to) break; s = e - lap; } }
@@ -75,44 +101,80 @@ function l3rbStirrup(out, d, u, v0, v1, w0, w1, mark, dirAxis) {   // bygel i pl
   const len = info ? info.cut : 2 * ((v1 - v0) + (w1 - w0)) + hook; out.push({ d, shape: "bygel", code: "B", dims: `A${A} B${Bm}`, closed: true, pts: P, len, dir: dirAxis, mark });
 }
 const l3rbSpread = (from, to, cc) => { const n = Math.max(1, Math.floor((to - from) / cc) + 1), out = []; const used = (n - 1) * cc, off = (to - from - used) / 2; for (let i = 0; i < n; i++) out.push(from + off + i * cc); return out; };
-function l3rbGenerate(type, o, P) {
-  const bars = [], c = P.cover / 1000, ML = P.maxLen, L = o.L, B = o.B, H = o.H; if (L < 0.1 || B < 0.05 || H < 0.05) return bars;
+function l3rbGenerate(type, o, P, holes) {
+  const bars = [], c = P.cover / 1000, ML = P.maxLen, L = o.L, B = o.B, H = o.H; if (L < 0.1 || B < 0.05 || H < 0.05) return bars; holes = (P.openings === false ? [] : holes) || [];
+  const m = c;   // marginal runt öppningar: stängerna kapas c från öppningens kant
+  /* Stång längs dir med läge (a, b) – kapas där öppningar ligger i vägen. */
+  const cuts = (dir, a, b) => { const out = []; holes.forEach(h => { if (type === "vagg") { if (dir === "u" && b >= h.w0 - m && b <= h.w1 + m) out.push([h.u0 - m, h.u1 + m]); else if (dir === "w" && a >= h.u0 - m && a <= h.u1 + m) out.push([h.w0 - m, h.w1 + m]); } else { if (dir === "u" && a >= h.v0 - m && a <= h.v1 + m) out.push([h.u0 - m, h.u1 + m]); else if (dir === "v" && a >= h.u0 - m && a <= h.u1 + m) out.push([h.v0 - m, h.v1 + m]); } }); return out.sort((x, y) => x[0] - y[0]); };
+  const str = (d, dir, a, b, from, to, mark) => { const cs = cuts(dir, a, b); let s0 = from; cs.forEach(([lo, hi]) => { if (hi <= s0) return; if (lo > s0) { if (lo - s0 >= 0.25) l3rbStraight(bars, d, dir, a, b, s0, Math.min(lo, to), ML, mark); } s0 = Math.max(s0, hi); }); if (to - s0 >= 0.25) l3rbStraight(bars, d, dir, a, b, s0, to, ML, mark); };
+  const addU = (pts, dims, mark = "K") => { const info = typeof l3rbShapeInfo === "function" ? l3rbShapeInfo("U", dims, P.dEdge) : null; bars.push({ d: P.dEdge, shape: "kant-U", code: "U", dims: `A${dims.A} B${dims.B} C${dims.C}`, closed: false, pts, len: info ? info.cut : l3rbPolyLen3(pts), mark }); };
+  const free = (d, pts, mark, code = "FRI") => { const segs = []; for (let i = 1; i < pts.length; i++) segs.push(Math.round(Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]) * 1000)); bars.push({ d, shape: "rak", code: pts.length > 2 ? code : "R", dims: segs.map((v, i) => "ABCDEFGH"[i] + v).join(" "), closed: false, pts, len: l3rbPolyLen3(pts), mark }); };
   if (type === "platta" || type === "sula") {
-    const dm = P.dMain / 1000, ccm = P.ccMain / 1000;
+    const dm = P.dMain / 1000, ccm = P.ccMain / 1000, thick = (P.doubleNet !== false) && H >= (P.thick || 0.4);
     const wB1 = c + dm / 2, wB2 = c + dm + dm / 2;
-    l3rbSpread(c + dm / 2, B - c - dm / 2, ccm).forEach(v => l3rbStraight(bars, P.dMain, "u", v, wB1, c, L - c, ML, "N1"));
-    l3rbSpread(c + dm / 2, L - c - dm / 2, ccm).forEach(u => l3rbStraight(bars, P.dMain, "v", u, wB2, c, B - c, ML, "N2"));
+    l3rbSpread(c + dm / 2, B - c - dm / 2, ccm).forEach(v => str(P.dMain, "u", v, wB1, c, L - c, "N1"));
+    l3rbSpread(c + dm / 2, L - c - dm / 2, ccm).forEach(u => str(P.dMain, "v", u, wB2, c, B - c, "N2"));
+    if (thick) { const w3 = c + 2 * dm + dm / 2, w4 = c + 3 * dm + dm / 2; l3rbSpread(c + dm / 2 + ccm / 2, B - c - dm / 2, ccm).forEach(v => str(P.dMain, "u", v, w3, c, L - c, "N3")); l3rbSpread(c + dm / 2 + ccm / 2, L - c - dm / 2, ccm).forEach(u => str(P.dMain, "v", u, w4, c, B - c, "N4")); }
     if (P.top) { const dt = P.dTop / 1000, cct = P.ccTop / 1000, wT1 = H - c - dt / 2, wT2 = H - c - dt - dt / 2;
-      l3rbSpread(c + dt / 2, L - c - dt / 2, cct).forEach(u => l3rbStraight(bars, P.dTop, "v", u, wT1, c, B - c, ML, "Ö1"));
-      l3rbSpread(c + dt / 2, B - c - dt / 2, cct).forEach(v => l3rbStraight(bars, P.dTop, "u", v, wT2, c, L - c, ML, "Ö2")); }
+      l3rbSpread(c + dt / 2, L - c - dt / 2, cct).forEach(u => str(P.dTop, "v", u, wT1, c, B - c, "Ö1"));
+      l3rbSpread(c + dt / 2, B - c - dt / 2, cct).forEach(v => str(P.dTop, "u", v, wT2, c, L - c, "Ö2"));
+      if (thick) { const wT3 = H - c - 2 * dt - dt / 2, wT4 = H - c - 3 * dt - dt / 2; l3rbSpread(c + dt / 2 + cct / 2, L - c - dt / 2, cct).forEach(u => str(P.dTop, "v", u, wT3, c, B - c, "Ö3")); l3rbSpread(c + dt / 2 + cct / 2, B - c - dt / 2, cct).forEach(v => str(P.dTop, "u", v, wT4, c, L - c, "Ö4")); }
+      // upplagsförstärkning: extra överkantsstänger över upplag längs kortsidorna (antagande: upplag vid u = 0 och u = L)
+      if (P.support) { const ext = Math.max(1.0, 0.25 * L), wS = wT2 - dt; l3rbSpread(c + dt / 2 + cct / 2, B - c - dt / 2, cct).forEach(v => { str(P.dTop, "u", v, wS, c, Math.min(ext, L / 2), "Ö5"); str(P.dTop, "u", v, wS, Math.max(L - ext, L / 2), L - c, "Ö5"); }); }
+      // hörnstänger: snedställda överkantsstänger i plattans hörn (två per hörn)
+      if (P.cornerBars && Math.min(L, B) > 1.6) { const k = 0.55, wC = wT2 - dt * 1.5; [[0, 0, 1, 1], [L, 0, -1, 1], [L, B, -1, -1], [0, B, 1, -1]].forEach(([cu, cv, su, sv]) => [0, 1].forEach(i => { const o2 = 0.5 + i * 0.1, cx = cu + su * o2, cy = cv + sv * o2, tx = -sv * Math.SQRT1_2, ty = su * Math.SQRT1_2; free(P.dTop, [[cx - tx * k, cy - ty * k, wC], [cx + tx * k, cy + ty * k, wC]], "HK", "R"); })); }
+    }
   } else if (type === "vagg") {
     const dh = P.dHor / 1000, dv = P.dVert / 1000, cch = P.ccHor / 1000, ccv = P.ccVert / 1000;
     [[c + dh / 2, c + dh + dv / 2, "A"], [B - c - dh / 2, B - c - dh - dv / 2, "B"]].forEach(([vh, vv, f]) => {
-      l3rbSpread(c + dh / 2, H - c - dh / 2, cch).forEach(w => l3rbStraight(bars, P.dHor, "u", vh, w, c, L - c, ML, "H" + f));
-      l3rbSpread(c + dv / 2, L - c - dv / 2, ccv).forEach(u => l3rbStraight(bars, P.dVert, "w", u, vv, c, H - c, ML, "V" + f)); });
+      l3rbSpread(c + dh / 2, H - c - dh / 2, cch).forEach(w => str(P.dHor, "u", vh, w, c, L - c, "H" + f));
+      l3rbSpread(c + dv / 2, L - c - dv / 2, ccv).forEach(u => str(P.dVert, "w", u, vv, c, H - c, "V" + f)); });
   } else if (type === "balk") {
     const dl = P.dLong / 1000, ds = P.dStirr / 1000, e = c + ds + dl / 2, row = (n, w, mk) => { const vs = n <= 1 ? [B / 2] : Array.from({ length: n }, (_, i) => e + (B - 2 * e) * i / (n - 1)); vs.forEach(v => l3rbStraight(bars, P.dLong, "u", v, w, c, L - c, ML, mk)); };
-    row(P.nBot, e, "L"); row(P.nTop, H - e, "T"); l3rbSpread(c, L - c, P.ccStirr / 1000).forEach(u => l3rbStirrup(bars, P.dStirr, u, c + ds / 2, B - c - ds / 2, c + ds / 2, H - c - ds / 2, "S", "u"));
+    row(P.nBot, e, "L"); row(P.nTop, H - e, "T");
+    // sidoarmering i höga balkar (h > 0,7 m): Ø10 var 250–300 mm på båda sidor
+    if (H > 0.7 && P.sideBars !== false) { const ws = l3rbSpread(e + 0.15, H - e - 0.15, 0.3).filter(w => w > e + 0.1 && w < H - e - 0.1); ws.forEach(w => { [c + ds + 0.005, B - c - ds - 0.005].forEach(v => l3rbStraight(bars, 10, "u", v, w, c, L - c, ML, "SB")); }); }
+    const ccs = P.ccStirr / 1000, dense = Math.min(Math.max(H, 0.5), L / 3), pos = [];   // tätare bygel (halva c/c) närmast upplagen
+    l3rbSpread(c, L - c, ccs).forEach(u => pos.push(u)); if (P.dense !== false) { const extra = []; for (let u = c + ccs / 2; u < dense; u += ccs / 2) { extra.push(u); extra.push(L - u); } extra.forEach(u => { if (!pos.some(q => Math.abs(q - u) < ccs / 4)) pos.push(u); }); }
+    pos.sort((x, y) => x - y).forEach(u => l3rbStirrup(bars, P.dStirr, u, c + ds / 2, B - c - ds / 2, c + ds / 2, H - c - ds / 2, "S", "u"));
   } else if (type === "pelare") {
     const dc = P.dCol / 1000, dss = P.dColSt / 1000, e = c + dss + dc / 2, n = P.nCol, pos = [];
     const corners = [[e, e], [L - e, e], [L - e, B - e], [e, B - e]]; corners.forEach(q => pos.push(q));
     const extra = Math.max(0, n - 4); for (let i = 0; i < extra; i++) { const t = (i + 1) / (Math.ceil(extra / 2) + 1); if (i % 2 === 0) pos.push([e + (L - 2 * e) * t, e]); else pos.push([e + (L - 2 * e) * t, B - e]); }
     pos.forEach(q => l3rbStraight(bars, P.dCol, "w", q[0], q[1], c, H - c, ML, "P"));
-    l3rbSpread(c, H - c, P.ccColSt / 1000).forEach(w => l3rbStirrup(bars, P.dColSt, w, c + dss / 2, L - c - dss / 2, c + dss / 2, B - c - dss / 2, "S", "w"));
+    const ccw = P.ccColSt / 1000, zone = Math.min(Math.max(L, B, 0.5), H / 3), ws = l3rbSpread(c, H - c, ccw); if (P.dense !== false) { for (let w = c + ccw / 2; w < zone; w += ccw / 2) { [w, H - w].forEach(x => { if (!ws.some(q => Math.abs(q - x) < ccw / 4)) ws.push(x); }); } }
+    ws.sort((x, y) => x - y).forEach(w => l3rbStirrup(bars, P.dColSt, w, c + dss / 2, L - c - dss / 2, c + dss / 2, B - c - dss / 2, "S", "w"));
   }
-
   // Kantarmering: U-stänger runt kanterna (plattor/sulor: alla fyra kanter, väggar: ändarna) med valfria kantstänger inuti
   if (P.edge && (type === "platta" || type === "sula" || type === "vagg")) {
-    const de = P.dEdge / 1000, leg = P.legEdge / 1000, cce = P.ccEdge / 1000, e0 = c + de / 2, add = (pts, dims) => { const info = typeof l3rbShapeInfo === "function" ? l3rbShapeInfo("U", dims, P.dEdge) : null, len = info ? info.cut : l3rbPolyLen3(pts); bars.push({ d: P.dEdge, shape: "kant-U", code: "U", dims: `A${dims.A} B${dims.B} C${dims.C}`, closed: false, pts, len, mark: "K" }); };
-    if (type === "vagg") {   // U i planet vid vägg-ändarna, jämnt fördelade i höjd
-      const v1 = e0, v2 = B - e0, web = Math.round((v2 - v1) * 1000), lg = Math.min(leg, L / 3);
-      l3rbSpread(c + de / 2, H - c - de / 2, cce).forEach(w => { add([[e0 + lg, v1, w], [e0, v1, w], [e0, v2, w], [e0 + lg, v2, w]], { A: Math.round(lg * 1000), B: web, C: Math.round(lg * 1000) }); add([[L - e0 - lg, v1, w], [L - e0, v1, w], [L - e0, v2, w], [L - e0 - lg, v2, w]], { A: Math.round(lg * 1000), B: web, C: Math.round(lg * 1000) }); });
-    } else {         // U i sektion vid plattans fyra kanter
-      const w1 = e0 + (type === "sula" ? 0 : 0), w2 = H - e0, web = Math.round((w2 - w1) * 1000), lgU = Math.min(leg, L / 3), lgV = Math.min(leg, B / 3), inset = Math.max(c + 0.1, cce / 2);
-      l3rbSpread(inset, L - inset, cce).forEach(u => { add([[u, e0 + lgV, w1], [u, e0, w1], [u, e0, w2], [u, e0 + lgV, w2]], { A: Math.round(lgV * 1000), B: web, C: Math.round(lgV * 1000) }); add([[u, B - e0 - lgV, w1], [u, B - e0, w1], [u, B - e0, w2], [u, B - e0 - lgV, w2]], { A: Math.round(lgV * 1000), B: web, C: Math.round(lgV * 1000) }); });
-      l3rbSpread(inset, B - inset, cce).forEach(v => { add([[e0 + lgU, v, w1], [e0, v, w1], [e0, v, w2], [e0 + lgU, v, w2]], { A: Math.round(lgU * 1000), B: web, C: Math.round(lgU * 1000) }); add([[L - e0 - lgU, v, w1], [L - e0, v, w1], [L - e0, v, w2], [L - e0 - lgU, v, w2]], { A: Math.round(lgU * 1000), B: web, C: Math.round(lgU * 1000) }); });
-      if (P.edgeBar) { const eb = e0 + de / 2 + 0.01; [[eb, "u", w1 + de / 2 + 0.005], [eb, "u", w2 - de / 2 - 0.005]].forEach(([v0, dir, w]) => { l3rbStraight(bars, P.dEdge, "u", v0, w, c, L - c, ML, "K2"); l3rbStraight(bars, P.dEdge, "u", B - v0, w, c, L - c, ML, "K2"); l3rbStraight(bars, P.dEdge, "v", v0, w, c, B - c, ML, "K2"); l3rbStraight(bars, P.dEdge, "v", L - v0, w, c, B - c, ML, "K2"); }); }
+    const de = P.dEdge / 1000, leg = P.legEdge / 1000, cce = P.ccEdge / 1000, e0 = c + de / 2;
+    if (type === "vagg") {
+      const v1 = e0, v2 = B - e0, web = Math.round((v2 - v1) * 1000), lg = Math.min(leg, L / 3), d3 = { A: Math.round(lg * 1000), B: web, C: Math.round(lg * 1000) };
+      l3rbSpread(c + de / 2, H - c - de / 2, cce).forEach(w => { if (!holes.some(h => w >= h.w0 - m && w <= h.w1 + m && (h.u0 < lg + m || h.u1 > L - lg - m))) { addU([[e0 + lg, v1, w], [e0, v1, w], [e0, v2, w], [e0 + lg, v2, w]], d3); addU([[L - e0 - lg, v1, w], [L - e0, v1, w], [L - e0, v2, w], [L - e0 - lg, v2, w]], d3); } else { addU([[e0 + lg, v1, w], [e0, v1, w], [e0, v2, w], [e0 + lg, v2, w]], d3); addU([[L - e0 - lg, v1, w], [L - e0, v1, w], [L - e0, v2, w], [L - e0 - lg, v2, w]], d3); } });
+    } else {
+      const w1 = e0, w2 = H - e0, web = Math.round((w2 - w1) * 1000), lgU = Math.min(leg, L / 3), lgV = Math.min(leg, B / 3), inset = Math.max(c + 0.1, cce / 2), dV = { A: Math.round(lgV * 1000), B: web, C: Math.round(lgV * 1000) }, dU = { A: Math.round(lgU * 1000), B: web, C: Math.round(lgU * 1000) };
+      l3rbSpread(inset, L - inset, cce).forEach(u => { addU([[u, e0 + lgV, w1], [u, e0, w1], [u, e0, w2], [u, e0 + lgV, w2]], dV); addU([[u, B - e0 - lgV, w1], [u, B - e0, w1], [u, B - e0, w2], [u, B - e0 - lgV, w2]], dV); });
+      l3rbSpread(inset, B - inset, cce).forEach(v => { addU([[e0 + lgU, v, w1], [e0, v, w1], [e0, v, w2], [e0 + lgU, v, w2]], dU); addU([[L - e0 - lgU, v, w1], [L - e0, v, w1], [L - e0, v, w2], [L - e0 - lgU, v, w2]], dU); });
+      if (P.edgeBar) { const eb = e0 + de / 2 + 0.01; [w1 + de / 2 + 0.005, w2 - de / 2 - 0.005].forEach(w => { l3rbStraight(bars, P.dEdge, "u", eb, w, c, L - c, ML, "K2"); l3rbStraight(bars, P.dEdge, "u", B - eb, w, c, L - c, ML, "K2"); l3rbStraight(bars, P.dEdge, "v", eb, w, c, B - c, ML, "K2"); l3rbStraight(bars, P.dEdge, "v", L - eb, w, c, B - c, ML, "K2"); }); }
     }
+  }
+  // Öppningar: kantarmering runt hålet, snedstänger i hörnen och förlängda kantstänger (hålens läge kommer ur elementets form)
+  if (holes.length && (type === "platta" || type === "sula")) {
+    const de = P.dEdge / 1000, leg = P.legEdge / 1000, cce = P.ccEdge / 1000, e0 = c + de / 2, w1 = e0, w2 = H - e0, web = Math.round((w2 - w1) * 1000), dd = { A: Math.round(leg * 1000), B: web, C: Math.round(leg * 1000) }, dm = P.dMain / 1000, ext = 0.4;
+    holes.forEach(h => {
+      const lenV = h.v1 - h.v0, lenU = h.u1 - h.u0;
+      l3rbSpread(h.v0 + 0.05, h.v1 - 0.05, cce).forEach(v => { addU([[h.u0 - e0 - leg, v, w1], [h.u0 - e0, v, w1], [h.u0 - e0, v, w2], [h.u0 - e0 - leg, v, w2]], dd, "OK"); addU([[h.u1 + e0 + leg, v, w1], [h.u1 + e0, v, w1], [h.u1 + e0, v, w2], [h.u1 + e0 + leg, v, w2]], dd, "OK"); });
+      l3rbSpread(h.u0 + 0.05, h.u1 - 0.05, cce).forEach(u => { addU([[u, h.v0 - e0 - leg, w1], [u, h.v0 - e0, w1], [u, h.v0 - e0, w2], [u, h.v0 - e0 - leg, w2]], dd, "OK"); addU([[u, h.v1 + e0 + leg, w1], [u, h.v1 + e0, w1], [u, h.v1 + e0, w2], [u, h.v1 + e0 + leg, w2]], dd, "OK"); });
+      [[h.u0, h.v0, -1, -1], [h.u1, h.v0, 1, -1], [h.u1, h.v1, 1, 1], [h.u0, h.v1, -1, 1]].forEach(([cu, cv, su, sv]) => [c + dm * 1.5, H - c - dm * 1.5].forEach(w => [0, 1].forEach(i => { const o2 = 0.12 + i * 0.08, cx = cu + su * o2, cy = cv + sv * o2, tx = -sv * Math.SQRT1_2, ty = su * Math.SQRT1_2, k = 0.5; free(P.dMain, [[cx - tx * k, cy - ty * k, w], [cx + tx * k, cy + ty * k, w]], "OS", "R"); })));
+      [h.v0 - e0 - de, h.v1 + e0 + de].forEach(v => [c + dm * 1.5, H - c - dm * 1.5].forEach(w => l3rbStraight(bars, P.dMain, "u", v, w, Math.max(c, h.u0 - ext), Math.min(L - c, h.u1 + ext), ML, "OF")));
+      [h.u0 - e0 - de, h.u1 + e0 + de].forEach(u => [c + dm * 1.5, H - c - dm * 1.5].forEach(w => l3rbStraight(bars, P.dMain, "v", u, w, Math.max(c, h.v0 - ext), Math.min(B - c, h.v1 + ext), ML, "OF")));
+    });
+  }
+  if (holes.length && type === "vagg") {   // dörr-/fönsteröppningar: snedstänger i hörnen och förlängda kantstänger på båda sidor
+    const dh = P.dHor / 1000, dv = P.dVert / 1000, ext = 0.5;
+    holes.forEach(h => { [c + dh + dv + 0.01, B - c - dh - dv - 0.01].forEach(v => { [[h.u0, h.w0, -1, -1], [h.u1, h.w0, 1, -1], [h.u1, h.w1, 1, 1], [h.u0, h.w1, -1, 1]].forEach(([cu, cw, su, sw]) => { if (cw < 0.05 && sw < 0) return; const o2 = 0.12, cx = cu + su * o2, cz = cw + sw * o2, tx = -sw * Math.SQRT1_2, tz = su * Math.SQRT1_2, k = 0.45; free(P.dHor, [[cx - tx * k, v, cz - tz * k], [cx + tx * k, v, cz + tz * k]], "OS", "R"); });
+        [h.w1 + c + dh].forEach(w => l3rbStraight(bars, P.dHor, "u", v, w, Math.max(c, h.u0 - ext), Math.min(L - c, h.u1 + ext), ML, "OF")); if (h.w0 > 0.3) l3rbStraight(bars, P.dHor, "u", v, h.w0 - c - dh, Math.max(c, h.u0 - ext), Math.min(L - c, h.u1 + ext), ML, "OF");
+        [h.u0 - c - dv, h.u1 + c + dv].forEach(u => l3rbStraight(bars, P.dVert, "w", u, v, Math.max(c, h.w0 - ext), Math.min(H - c, h.w1 + ext), ML, "OF")); }); });
   }
   return bars;
 }
@@ -127,7 +189,7 @@ const l3rbVolume = o => o.L * o.B * o.H;
 function l3rbSchablon(type) { const E = (l3Prefs().rbExp || []).filter(e => e.type === type); const own = l3Prefs().rbSch || {}; if (E.length) return { v: E.reduce((a, e) => a + e.kgm3, 0) / E.length, src: `medel av ${E.length} uttag` }; return { v: Number(own[type]) || L3RB_SCH0[type], src: own[type] ? "egen schablon" : "exempelvärde" }; }
 /* ---- Lokal → världskoordinater ------------------------------------------------------------------------------------------------- */
 function l3rbWorld(o, u, v, w) { const c = Math.cos(o.yaw), s = Math.sin(o.yaw), du = u - o.L / 2, dv = v - o.B / 2; return [o.cx + du * c - dv * s, o.cy + du * s + dv * c, o.z0 + w]; }
-function l3rbSetBars(set) { if (set.kind === "manual") return (set.groups && set.groups.length && typeof l3rbExpandGroup === "function") ? [...(set.bars || []), ...set.groups.flatMap(l3rbExpandGroup)] : (set.bars || []); return set._bars || (set._bars = l3rbGenerate(set.type, set.obb, set.params)); }
+function l3rbSetBars(set) { if (set.kind === "manual") return (set.groups && set.groups.length && typeof l3rbExpandGroup === "function") ? [...(set.bars || []), ...set.groups.flatMap(l3rbExpandGroup)] : (set.bars || []); return set._bars || (set._bars = l3rbGenerate(set.type, set.obb, set.params, set.holes)); }
 function l3rbSetWorld(set) { const o = set.obb; return l3rbSetBars(set).map(b => ({ ...b, w: b.pts.map(p => set.kind === "manual" && b.abs ? p : l3rbWorld(o, p[0], p[1], p[2])) })); }
 
 /* ---- 3D: stavar som rör (eller linjer vid mycket stora mängder) ---------------------------------------------------------------- */
@@ -180,7 +242,8 @@ function l3rbFromSelection(sel, overrideType, params) {
   const o = l3rbObb(sel.pts); if (!o) return { err: `Kunde inte läsa formen på "${sel.name}" (för få punkter).` };
   if (o.L < 0.15 || o.B < 0.05 || o.H < 0.05) return { err: `"${sel.name}" är för litet eller platt för att armeras automatiskt (${l3rbF(o.L, 2)}×${l3rbF(o.B, 2)}×${l3rbF(o.H, 2)} m).`, obb: o };
   const type = overrideType || l3rbGuess(sel.cls, o), P = { ...l3rbParamsDefault(type), ...(params || {}) };
-  const set = { id: l3rbNewId(), kind: "auto", name: `${L3RB_TYPES[type]}: ${sel.name}`.slice(0, 80), type, obb: o, params: P, el: { name: sel.name, cls: sel.cls || "", guid: sel.guid || "" }, created_at: new Date().toISOString() };
+  const holes = P.openings === false ? [] : l3rbOpenings(sel, o, type);
+  const set = { id: l3rbNewId(), kind: "auto", name: `${L3RB_TYPES[type]}: ${sel.name}`.slice(0, 80), type, obb: o, params: P, holes, el: { name: sel.name, cls: sel.cls || "", guid: sel.guid || "" }, created_at: new Date().toISOString() };
   const bars = l3rbSetBars(set); if (!bars.length) return { err: `Inga stavar kunde skapas för "${sel.name}" – prova en annan elementtyp eller gå över till manuell armering.`, obb: o, type };
   if (bars.length > 40000) return { err: `Mer än 40 000 stavar (${bars.length.toLocaleString("sv-SE")}) – öka centrumavståndet eller armera i delar.`, obb: o, type };
   return { set };
@@ -234,11 +297,16 @@ function l3rbParamFields(type, P) {
   if (type === "pelare") row.push(F("dCol", "Huvudstål Ø", P.dCol, "mm"), F("nCol", "Antal stänger", P.nCol), F("dColSt", "Bygel Ø", P.dColSt, "mm"), F("ccColSt", "Bygel c/c", P.ccColSt, "mm"));
   if (type === "platta" || type === "sula" || type === "vagg") row.push(`<label class="f"><span>Kantarmering (U-stänger)</span><input id="rb_edge" type="checkbox" ${P.edge ? "checked" : ""} style="width:auto"></label>`, F("dEdge", "Kant Ø", P.dEdge, "mm"), F("ccEdge", "Kant c/c", P.ccEdge, "mm"), F("legEdge", "Kant benlängd", P.legEdge, "mm"));
   if (type === "platta" || type === "sula") row.push(`<label class="f"><span>Kantstänger i U:et</span><input id="rb_edgeBar" type="checkbox" ${P.edgeBar ? "checked" : ""} style="width:auto"></label>`);
+  const CB = (id, lab, on, tip) => `<label class="f" title="${tip}"><span>${lab}</span><input id="rb_${id}" type="checkbox" ${on ? "checked" : ""} style="width:auto"></label>`;
+  if (type === "platta" || type === "sula" || type === "vagg") row.push(CB("openings", "Öppningar (läses ur formen)", P.openings !== false, "Hål i elementet hittas ur IFC-geometrin: stänger kapas och kantarmering, snedstänger och förstärkningsstänger läggs runt hålet"));
+  if (type === "platta") row.push(CB("cornerBars", "Hörnstänger (snedställda)", !!P.cornerBars, "Två snedställda överkantsstänger i plattans fyra hörn"), CB("doubleNet", "Dubbla nät vid tjock platta (≥ 0,4 m)", P.doubleNet !== false, "Extra nät under och över när plattan är minst 0,4 m tjock"), CB("support", "Upplagsförstärkning (kortsidor)", !!P.support, "Extra överkantsstänger över upplag – antar upplag längs de två kortsidorna"));
+  if (type === "balk") row.push(CB("sideBars", "Sidoarmering (h > 0,7 m)", P.sideBars !== false, "Ø10 var 300 mm på båda sidorna i höga balkar"), CB("dense", "Tätare bygel vid upplag", P.dense !== false, "Halva c/c närmast ändarna"));
+  if (type === "pelare") row.push(CB("dense", "Tätare bygel vid ändarna", P.dense !== false, "Halva c/c närmast ändarna"));
   return row.join("") + F("maxLen", "Längsta stång", P.maxLen, "m");
 }
 function l3rbReadParams(type) {
   const P = l3rbParamsDefault(type), g = (k, d) => l3rbGet("rb_" + k, d), ex = document.getElementById("rb_exp"); P.exposure = ex ? ex.value : P.exposure; P.cover = L3RB_COVER[P.exposure] || P.cover;
-  ["dMain", "ccMain", "dTop", "ccTop", "dHor", "ccHor", "dVert", "ccVert", "dLong", "nBot", "nTop", "dStirr", "ccStirr", "dCol", "nCol", "dColSt", "ccColSt", "maxLen", "dEdge", "ccEdge", "legEdge"].forEach(k => { P[k] = g(k, P[k]); }); const tp = document.getElementById("rb_top"); if (tp) P.top = tp.checked; const eg = document.getElementById("rb_edge"); if (eg) P.edge = eg.checked; const eb = document.getElementById("rb_edgeBar"); if (eb) P.edgeBar = eb.checked; return P;
+  ["dMain", "ccMain", "dTop", "ccTop", "dHor", "ccHor", "dVert", "ccVert", "dLong", "nBot", "nTop", "dStirr", "ccStirr", "dCol", "nCol", "dColSt", "ccColSt", "maxLen", "dEdge", "ccEdge", "legEdge"].forEach(k => { P[k] = g(k, P[k]); }); const tp = document.getElementById("rb_top"); if (tp) P.top = tp.checked; const eg = document.getElementById("rb_edge"); if (eg) P.edge = eg.checked; const eb = document.getElementById("rb_edgeBar"); if (eb) P.edgeBar = eb.checked; ["openings", "cornerBars", "doubleNet", "support", "sideBars", "dense"].forEach(k => { const e = document.getElementById("rb_" + k); if (e) P[k] = e.checked; }); return P;
 }
 function l3rbRender() {
   const el = l3rb.el; if (!el) return; const open = new Set([...el.querySelectorAll("details[open]")].map(d => d.dataset.k)), keep = k => (open.size ? open.has(k) : k === "au") ? "open" : "";

@@ -62,19 +62,23 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const after = await page.evaluate(() => ({ pin: l3sp.pin, tx: l3.orbit.target.x + l3.O[0], ty: l3.orbit.target.y + l3.O[1], ex: window.__exp[0], ey: window.__exp[1] }));
   if (!after.pin || Math.hypot(after.pin[0] - after.ex, after.pin[1] - after.ey) > 0.6 || Math.hypot(after.tx - after.ex, after.ty - after.ey) > 0.6) fail('Musklick på ritningen: ' + JSON.stringify(after));
   console.log('OK: ritningspanel – kamera/ritning synkade, nål och flygning vid klick', JSON.stringify({ ...r, click: after.pin }));
-  // Dra i hörnen och rubriken: ställ storlek och plats själv
-  const rz = async (corner, dx, dy) => { const b = await page.evaluate(c => { const r = document.querySelector('#v3Sp .rz[data-c="' + c + '"]').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }, corner); await page.mouse.move(b[0], b[1]); await page.mouse.down(); await page.mouse.move(b[0] + dx / 2, b[1] + dy / 2); await page.mouse.move(b[0] + dx, b[1] + dy); await page.mouse.up(); return page.evaluate(() => { const r = document.getElementById('v3Sp').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }); };
-  const r0 = await page.evaluate(() => { const r = document.getElementById('v3Sp').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
-  const rNW = await rz('nw', -120, -90);          // upp till vänster: större
-  if (!(rNW.w > r0.w + 100 && rNW.h > r0.h + 70 && Math.abs(rNW.x + rNW.w - (r0.x + r0.w)) < 3)) fail('Hörn uppe till vänster: ' + JSON.stringify({ r0, rNW }));
-  const rSE = await rz('se', -80, -60);           // nere till höger: mindre, vänstra övre hörnet står kvar
-  if (!(rSE.w < rNW.w - 60 && rSE.h < rNW.h - 40 && Math.abs(rSE.x - rNW.x) < 3 && Math.abs(rSE.y - rNW.y) < 3)) fail('Hörn nere till höger: ' + JSON.stringify({ rNW, rSE }));
-  const rNE = await rz('ne', 40, 30); const rSW = await rz('sw', 30, 20);
-  if (rNE.w < 240 || rSW.h < 190) fail('Minimistorlek: ' + JSON.stringify({ rNE, rSW }));
-  const mv = await page.evaluate(() => { const r = document.querySelector('#v3Sp .h').getBoundingClientRect(); return [r.left + 8, r.top + 8]; }); await page.mouse.move(mv[0], mv[1]); await page.mouse.down(); await page.mouse.move(mv[0] - 60, mv[1] - 40); await page.mouse.up();
-  const rMv = await page.evaluate(() => { const r = document.getElementById('v3Sp').getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, pref: l3Prefs().spRect }; });
-  if (Math.abs(rMv.x - (rSW.x - 60)) > 3 || !rMv.pref || rMv.pref.w < 200) fail('Flytta med rubriken / spara: ' + JSON.stringify({ rSW, rMv }));
-  console.log('OK: ritningspanelen – storlek och plats med hörnen och rubriken', JSON.stringify({ r0, rNW, rSE, rMv }));
+  // Fast fönster under 3D-vyn: 3D-bilden krymper (renderaren och kameran får nytt mått) i stället för att täckas, och höjden dras med listen
+  const dk = await page.evaluate(async () => {
+    const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)); l3spClose(); await wait(100); const cvEl = document.getElementById('v3Canvas'), h0 = cvEl.clientHeight, asp0 = l3.camera.aspect;
+    await l3spOpen(); await wait(250); const sp = document.getElementById('v3Sp'), col = sp.parentElement; o.col = col.classList.contains('v3-col') && col.contains(cvEl) && cvEl.nextElementSibling === sp;
+    o.shrunk = cvEl.clientHeight < h0 - 100; o.rendH = l3.renderer.domElement.clientHeight === cvEl.clientHeight || Math.abs(l3.renderer.getSize(new THREE.Vector2()).y - cvEl.clientHeight) < 2; o.aspect = l3.camera.aspect > asp0 + 0.1;
+    o.noOverlap = sp.getBoundingClientRect().top >= cvEl.getBoundingClientRect().bottom - 1; o.fullW = Math.abs(sp.getBoundingClientRect().width - cvEl.getBoundingClientRect().width) < 2;
+    o.h1 = sp.getBoundingClientRect().height; o.h0 = h0; o.noCorners = !sp.querySelector('.rz'); return o;
+  });
+  if (!dk.col || !dk.shrunk || !dk.rendH || !dk.aspect || !dk.noOverlap || !dk.fullW || !dk.noCorners) fail('Fast minimap under 3D-vyn: ' + JSON.stringify(dk));
+  const sb = await page.evaluate(() => { const r = document.getElementById('spSplit').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; });
+  await page.mouse.move(sb[0], sb[1]); await page.mouse.down(); await page.mouse.move(sb[0], sb[1] - 40, { steps: 4 }); await page.mouse.move(sb[0], sb[1] - 120, { steps: 4 }); await page.mouse.up(); await page.waitForTimeout(200);
+  const dk2 = await page.evaluate(() => ({ h: document.getElementById('v3Sp').getBoundingClientRect().height, pref: l3Prefs().spH, cvH: document.getElementById('v3Canvas').clientHeight, rend: l3.renderer.getSize(new THREE.Vector2()).y }));
+  if (!(dk2.h > dk.h1 + 80) || !(dk2.pref > 0.4) || Math.abs(dk2.rend - dk2.cvH) > 2) fail('Dra höjden med listen: ' + JSON.stringify({ dk, dk2 }));
+  const dk3 = await page.evaluate(async () => { l3spClose(); await new Promise(r => setTimeout(r, 200)); const c = document.getElementById('v3Canvas'); return { h: c.clientHeight, rend: l3.renderer.getSize(new THREE.Vector2()).y, gone: !document.getElementById('v3Sp') }; });
+  if (!dk3.gone || Math.abs(dk3.h - dk.h0) > 2 || Math.abs(dk3.rend - dk3.h) > 2) fail('3D-vyn får full höjd igen när minimapen stängs: ' + JSON.stringify({ dk, dk3 }));
+  console.log('OK: minimapen är ett fast fönster under 3D-vyn (3D-vyn krymper, höjden dras, full höjd igen vid stängning)', JSON.stringify({ dk, dk2, dk3 }));
+  await page.evaluate(() => l3SetPref('spH', 0.4));
   // Prestanda: ritningen ritas inte om när bara kameran rör sig, och bilden finns i cache när panelen öppnas igen
   const perf = await page.evaluate(async () => {
     const out = {}; l3spClose(); const t0 = performance.now(); await l3spOpen(); out.reopenMs = performance.now() - t0; out.cached = !!(l3sp.cache && l3sp.cache.size);
@@ -138,7 +142,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   console.log('OK: skarp PDF i skärmens upplösning (över ortofoto: multiplicerad, utan dubbla linjer)', JSON.stringify(dt));
   // Telefon: panelen ska rymmas i bredd (ingen kapning/sidscroll)
   await page.setViewportSize({ width: 430, height: 900 }); await page.waitForTimeout(400);
-  const ph = await page.evaluate(async () => { l3spClose(); l3SetPref('spRect', null); await l3spOpen(); await new Promise(r => setTimeout(r, 300)); const el = document.getElementById('v3Sp'), r = el.getBoundingClientRect(), host = document.getElementById('v3Canvas').getBoundingClientRect(); const bad = [...el.querySelectorAll('button,select,input')].filter(c => { const q = c.getBoundingClientRect(); return q.width > 0 && (q.right > r.right + 1 || q.left < r.left - 1); }).length; return { w: r.width, host: host.width, inside: r.left >= host.left - 1 && r.right <= host.right + 1, sw: el.scrollWidth, cw: el.clientWidth, bad }; });
+  const ph = await page.evaluate(async () => { l3spClose(); await l3spOpen(); await new Promise(r => setTimeout(r, 300)); const el = document.getElementById('v3Sp'), r = el.getBoundingClientRect(), host = el.parentElement.getBoundingClientRect(); const bad = [...el.querySelectorAll('button,select,input')].filter(c => { const q = c.getBoundingClientRect(); return q.width > 0 && (q.right > r.right + 1 || q.left < r.left - 1); }).length; return { w: r.width, host: host.width, inside: r.left >= host.left - 1 && r.right <= host.right + 1, sw: el.scrollWidth, cw: el.clientWidth, bad }; });
   if (!ph.inside || ph.bad > 0 || ph.sw > ph.cw + 1) fail('Panelen på telefon: ' + JSON.stringify(ph));
   console.log('OK: ritningspanelen rymms på telefon', JSON.stringify(ph)); await page.setViewportSize({ width: 1300, height: 850 });
   // Mina ortofoton (uppladdade i projektet) som underlag

@@ -108,6 +108,36 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (K.edgeU < 60 || K.edgeBars < 8 || K.offEdge !== 0 || K.code !== 'U' || !K.cutOk || K.outside || K.wallEdge < 20 || !K.kgmOn) fail('Kantarmering: ' + JSON.stringify(K));
   console.log('OK: autoarmering – kantarmering (U-stänger och kantstänger) för platta och vägg, av/på', JSON.stringify(K));
+  // Öppningar ur formen, tjock platta, hörnstänger, upplag, balk/pelare
+  const Q = await page.evaluate(() => {
+    const o = {}, O = l3.O; const quad = (a, b, c, d) => [a, b, c, a, c, d];
+    // platta 10 x 4 x 0,25 med hål 1 x 1 m (u 3..4, v 1,5..2,5) – ovan- och undersida som ring av trianglar
+    const X = [0, 3, 4, 10], Y = [0, 1.5, 2.5, 4], pos = [], idx = []; const vid = (i, j, z) => (z ? 16 : 0) + j * 4 + i; [0, 1].forEach(z => Y.forEach(y => X.forEach(x => pos.push(x, y, z * 0.25 + 1))));
+    for (const z of [0, 1]) for (let j = 0; j < 3; j++) for (let i = 0; i < 3; i++) { if (i === 1 && j === 1) continue; idx.push(...quad(vid(i, j, z), vid(i + 1, j, z), vid(i + 1, j + 1, z), vid(i, j + 1, z))); }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial()); mesh.userData.l3b = { ranges: [{ start: 0, count: 32, idxStart: 0, idxCount: idx.length, name: 'Platta med hål', cls: 'IFCSLAB' }], origIdx: new Uint32Array(idx) }; l3.scene.add(mesh);
+    mesh.position.set(0, 0, 0); l3bs.sel = [{ mesh, ri: 0, key: 'h' }]; const sel = l3rbSelection()[0]; o.tris = sel.tris.length / 9;
+    const ob = l3rbObb(sel.pts), holes = l3rbOpenings(sel, ob, 'platta'); o.holes = holes.length; const h = holes[0] || {}; o.hole = [h.u0, h.u1, h.v0, h.v1].map(v => Math.round(v * 10) / 10);
+    const r = l3rbFromSelection(sel, 'platta', {}); const bars = l3rbSetBars(r.set); o.setHoles = r.set.holes.length;
+    // inga nätstänger genom hålet (c-marginal), men öppningsarmering finns
+    const hh = r.set.holes[0]; let through = 0; l3rbSetWorld(r.set).forEach(b => { if (!/^(N|Ö)\d$/.test(b.mark)) return; const q = b.w.map(p => l3rbToLocal(r.set.obb, p)); for (let i = 1; i < q.length; i++) { const mu = (q[i][0] + q[i - 1][0]) / 2, mv = (q[i][1] + q[i - 1][1]) / 2; if (mu > hh.u0 + 0.01 && mu < hh.u1 - 0.01 && mv > hh.v0 + 0.01 && mv < hh.v1 - 0.01) through++; if (q[i][0] > hh.u0 + 0.01 && q[i][0] < hh.u1 - 0.01 && q[i][1] > hh.v0 + 0.01 && q[i][1] < hh.v1 - 0.01) through++; } }); o.through = through;
+    const m = {}; bars.forEach(b => { m[b.mark] = (m[b.mark] || 0) + 1; }); o.marks = m;
+    const none = l3rbFromSelection(sel, 'platta', { openings: false }); o.noOpen = (none.set.holes || []).length;
+    // tjock platta, hörn, upplag
+    const base = { cx: 0, cy: 0, yaw: 0, z0: 0, L: 10, B: 4, H: 0.25 }, cnt = (obb, type, P, mk) => l3rbGenerate(type, obb, { ...l3rbParamsDefault(type), ...P }, []).filter(b => mk.includes(b.mark)).length;
+    o.thin = cnt(base, 'platta', {}, ['N3', 'N4', 'Ö3', 'Ö4']); o.thick = cnt({ ...base, H: 0.6 }, 'platta', {}, ['N3', 'N4', 'Ö3', 'Ö4']); o.thickOff = cnt({ ...base, H: 0.6 }, 'platta', { doubleNet: false }, ['N3', 'N4', 'Ö3', 'Ö4']);
+    o.corner = cnt(base, 'platta', { cornerBars: true }, ['HK']); o.cornerOff = cnt(base, 'platta', { cornerBars: false }, ['HK']); o.support = cnt(base, 'platta', { support: true }, ['Ö5']); o.supportOff = cnt(base, 'platta', {}, ['Ö5']);
+    const beam = { cx: 0, cy: 0, yaw: 0, z0: 0, L: 6, B: 0.3, H: 0.9 }; o.dense = cnt(beam, 'balk', { dense: true }, ['S']); o.denseOff = cnt(beam, 'balk', { dense: false }, ['S']); o.side = cnt(beam, 'balk', {}, ['SB']); o.sideLow = cnt({ ...beam, H: 0.5 }, 'balk', {}, ['SB']);
+    const col = { cx: 0, cy: 0, yaw: 0, z0: 0, L: 0.4, B: 0.4, H: 3 }; o.colDense = cnt(col, 'pelare', { dense: true }, ['S']); o.colDenseOff = cnt(col, 'pelare', { dense: false }, ['S']);
+    // vägg med dörr
+    const wall = { cx: 0, cy: 0, yaw: 0, z0: 0, L: 6, B: 0.25, H: 3 }; const wb = l3rbGenerate('vagg', wall, l3rbParamsDefault('vagg'), [{ u0: 2.5, u1: 3.5, w0: 0, w1: 2.1 }]); const wm = {}; wb.forEach(b => { wm[b.mark] = (wm[b.mark] || 0) + 1; }); o.wall = wm; const wb0 = l3rbGenerate('vagg', wall, l3rbParamsDefault('vagg'), []); o.wallFewer = wb.filter(b => /^(H|V)/.test(b.mark)).length < wb0.filter(b => /^(H|V)/.test(b.mark)).length + 40;
+    l3.scene.remove(mesh); l3bs.sel = []; return o;
+  });
+  if (Q.holes !== 1 || Math.abs(Q.hole[0] - 3) > 0.15 || Math.abs(Q.hole[1] - 4) > 0.15 || Math.abs(Q.hole[2] - 1.5) > 0.15 || Math.abs(Q.hole[3] - 2.5) > 0.15 || Q.setHoles !== 1 || Q.noOpen !== 0) fail('Öppningar ur formen: ' + JSON.stringify(Q));
+  if (Q.through !== 0 || !(Q.marks.OK >= 16) || !(Q.marks.OS >= 16) || !(Q.marks.OF >= 8)) fail('Armering runt öppningen / inga stänger genom hålet: ' + JSON.stringify(Q));
+  if (Q.thin !== 0 || !(Q.thick > 50) || Q.thickOff !== 0 || Q.corner !== 8 || Q.cornerOff !== 0 || !(Q.support > 20) || Q.supportOff !== 0) fail('Tjock platta/hörn/upplag: ' + JSON.stringify(Q));
+  if (!(Q.dense > Q.denseOff) || !(Q.side >= 4) || Q.sideLow !== 0 || !(Q.colDense > Q.colDenseOff)) fail('Balk/pelare: ' + JSON.stringify(Q));
+  if (!(Q.wall.OF >= 6) || !(Q.wall.OS >= 4) || !Q.wallFewer) fail('Vägg med dörr: ' + JSON.stringify(Q));
+  console.log('OK: autoarmering – öppningar ur formen, hörnstänger, upplag, dubbla nät, tätare bygel, sidoarmering, väggöppningar', JSON.stringify(Q));
   // 5. export
   const X = await page.evaluate(() => {
     const o = {}; const set = l3rb.sets.find(s => s.id === l3rb.active); const g = set.groups[0]; g.shape = 'B'; g.dims = { A: 250, B: 450 }; g.d = 10; g.tilt = 0; g.dist = { mode: 'cc', cc: 200, n: 1, len: 2, dir: 'n' }; l3rbTouch(set);
