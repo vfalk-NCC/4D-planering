@@ -123,7 +123,7 @@ function l3rbHandleDown(e) {
   const { set, g } = l3rbActiveGroup(); if (!g) return; e.stopImmediatePropagation(); e.preventDefault(); const h = hits[0].object.userData.h, F = l3rbFrame(g), V = l3rbDistVec(g, F), start = { kind: h.kind, g, set, h, origin0: g.origin.slice(), dims0: { ...g.dims }, len0: (g.dist && g.dist.len) || 0 };
   if (h.kind === "origin") { start.z = g.origin[2] - l3.O[2]; } else if (h.kind === "dist") { start.P0 = l3rbV3(g.origin); start.D = new THREE.Vector3(...V).normalize(); start.t0 = l3rbLineParam(ray, start.P0, start.D); }
   else if (h.kind === "vert") { const prev = h.prev, cur = l3rbShapeInfo(g.shape, g.dims, g.d).sharp[h.i], dx = cur[0] - prev[0], dy = cur[1] - prev[1], L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L; const dir = [F.ex[0] * ux + F.ey[0] * uy, F.ex[1] * ux + F.ey[1] * uy, F.ex[2] * ux + F.ey[2] * uy]; start.D = new THREE.Vector3(...dir).normalize(); start.P0 = l3rbV3([g.origin[0] + F.ex[0] * cur[0] + F.ey[0] * cur[1], g.origin[1] + F.ex[1] * cur[0] + F.ey[1] * cur[1], g.origin[2] + F.ex[2] * cur[0] + F.ey[2] * cur[1]]); start.t0 = l3rbLineParam(ray, start.P0, start.D); }
-  l3rb.hd = start; l3.orbit.enabled = false; window.addEventListener("pointermove", l3rbHandleMove, true); window.addEventListener("pointerup", l3rbHandleUp, true); window.addEventListener("pointercancel", l3rbHandleUp, true);
+  l3rbHist(); l3rb.hd = start; l3.orbit.enabled = false; window.addEventListener("pointermove", l3rbHandleMove, true); window.addEventListener("pointerup", l3rbHandleUp, true); window.addEventListener("pointercancel", l3rbHandleUp, true);
 }
 function l3rbHandleMove(e) {
   const d = l3rb.hd; if (!d) return; e.stopImmediatePropagation(); const ray = l3rbRay(e), g = d.g;
@@ -221,7 +221,7 @@ function l3rb2Click(e) {
   if (a === "shape") { l3rb.shape = b.dataset.id; l3rb.shapeDims = null; return l3rbRender(); }
   if (a === "place") return l3rbPlaceGroup();
   if (a === "gpick") { l3rb.gActive = b.closest("[data-gid]").dataset.gid; l3rbHandles(); return l3rbRender(); }
-  if (a === "gdel" && set && g) { set.groups = set.groups.filter(x => x !== g); l3rb.gActive = null; l3rbClearHandles(); l3rbTouch(set); return l3rbRender(); }
+  if (a === "gdel" && set && g) { l3rbHist(); set.groups = set.groups.filter(x => x !== g); l3rb.gActive = null; l3rbClearHandles(); l3rbTouch(set); return l3rbRender(); }
   if (a === "dup" && set && g) { const c = JSON.parse(JSON.stringify(g)); c.id = l3rbNewId(); const F = l3rbFrame(g), V = l3rbDistVec(g, F), off = 0.3; c.origin = c.origin.map((v, i) => l3rbR(v + (i === 2 ? 0 : (F.side[i] || 0) * off))); set.groups.push(c); l3rb.gActive = c.id; l3rbTouch(set); return l3rbRender(); }
   if (a === "fit" && set && g) { const m = l3rbFitGroup(g, set.obb); l3rbTouch(set); l3Status(m.length ? `Passade in ${m.join(" och ")} mot täckskiktet.` : "Stavgruppen ligger inte parallellt med elementets kanter – justera Riktning/Plan lutning först."); return l3rbRender(); }
   if (a === "ednew") { l3rb.ed = { name: "Egen form", segs: [{ len: 600, turn: 90 }, { len: 300, turn: 0 }] }; return l3rbRender(); }
@@ -274,3 +274,104 @@ function l3rbHtmlText(sets) {
   return `<!doctype html><html lang="sv"><meta charset="utf-8"><title>Armeringsförteckning</title><style>body{font:12px system-ui,sans-serif;margin:24px;color:#0f172a}h1{font-size:18px;margin:0}.w{background:#fffbeb;border:1px solid #fde68a;color:#92400e;padding:8px 10px;border-radius:8px;margin:10px 0}table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid #e2e8f0;padding:4px 6px;text-align:right}th:nth-child(-n+4),td:nth-child(-n+4){text-align:left}tr.set td{background:#f1f5f9;font-weight:700;text-align:left}tr.sum td{font-weight:700}svg{color:#0f172a}</style><h1>Armeringsförteckning</h1><div>${l3rbEsc(proj)} · ${dt}</div><div class="w"><b>Experimentell.</b> Armeringen är ett förslag enligt enkla regler – inte dimensionerad. Konstruktörens handlingar gäller. Mått: skärning mitt stång (mm). Böjdorn 4·Ø (Ø ≤ 16) / 7·Ø.</div><table><tr><th>Pos</th><th>Skiss</th><th>Form</th><th>Mått mm</th><th>Ø</th><th>Antal</th><th>Längd m</th><th>Σ m</th><th>kg</th></tr>${rows.join("")}<tr class="sum"><td colspan="8">TOTALT</td><td>${l3rbF(kgTot, 1)}</td></tr></table></html>`;
 }
 function l3rbExportHtml() { const sets = l3rb.sets.filter(s => !s.hide); if (!sets.length) { l3Status("Det finns ingen armering att skriva ut.", true); return; } l3rbDl(`Armeringsförteckning ${l3rbStamp()}.html`, new Blob([l3rbHtmlText(sets)], { type: "text/html;charset=utf-8" })); l3Toast("Armeringsförteckningen (HTML) nedladdad – öppna den och skriv ut som PDF."); }
+
+/* ---- Markera i 3D, ta bort, flytta och ångra (Victor 2026-11-01: "jag måste kunna markera armeringen och ta bort och justera") ------------- */
+l3rb.hist = []; l3rb.pick = null;
+function l3rbHist() { try { l3rb.hist.push(JSON.stringify(l3rb.sets, (k, v) => (k[0] === "_" ? undefined : v))); if (l3rb.hist.length > 40) l3rb.hist.shift(); } catch (e) { /* */ } }
+function l3rbUndo() {
+  const s = l3rb.hist.pop(); if (!s) { l3Status("Inget att ångra i armeringen."); return false; }
+  l3rb.sets = JSON.parse(s); if (!l3rb.sets.some(x => x.id === l3rb.active)) l3rb.active = null; l3rb.gActive = null; l3rb.pick = null; l3rbClearHandles(); l3rbHlClear(); l3rbDraw(); l3rbSave(); l3rbRender(); l3Status("Ångrade senaste armeringsändringen."); return true;
+}
+const l3rbPickSet = () => l3rb.pick && l3rb.sets.find(s => s.id === l3rb.pick.setId);
+function l3rbHlClear() { if (l3rb.hl) { l3.scene.remove(l3rb.hl); l3rb.hl.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); l3rb.hl = null; } }
+function l3rbHlDraw() {
+  l3rbHlClear(); const p = l3rb.pick, set = l3rbPickSet(); if (!p || !set) { l3Render(); return; }
+  const W = l3rbSetWorld(set), nb = (set.bars || []).length; let sel;
+  if (p.gid) sel = W.filter(b => b.grp === p.gid); else if (set.kind === "manual") sel = W[p.bi] ? [W[p.bi]] : []; else { const h = W[p.bi]; sel = h ? W.filter(b => b.mark === h.mark && b.d === h.d).slice(0, 2500) : []; }
+  if (!sel.length) { l3Render(); return; }
+  const g = l3rbTubes(sel.map(b => ({ ...b, d: b.d + 8 })), l3.O); g.traverse(o => { if (o.material) { o.material.color.set(0xf97316); o.material.depthTest = false; o.material.transparent = true; o.material.opacity = 0.85; o.renderOrder = 65; } });
+  g.userData.noHit = true; l3.scene.add(g); l3rb.hl = g; l3Render();
+}
+function l3rbSetPick(p) {
+  l3rb.pick = p; if (p) { l3rb.active = p.setId; l3rb.gActive = p.gid || null; if (p.gid) l3rbHandles(); else l3rbClearHandles(); } l3rbHlDraw(); l3rbRender();
+}
+/* Närmaste stav under pekaren (i bildpunkter). Returnerar { setId, gid?, bi } eller null. */
+function l3rbPickAt(cx, cy) {
+  const r = l3.renderer.domElement.getBoundingClientRect(), cam = l3.camera, v = new THREE.Vector3(), tol = 10; let best = null;
+  const proj = w => { v.set(w[0] - l3.O[0], w[1] - l3.O[1], w[2] - l3.O[2]).project(cam); return [(v.x + 1) / 2 * r.width + r.left, (1 - v.y) / 2 * r.height + r.top, v.z]; };
+  for (const set of l3rb.sets) {
+    if (set.hide) continue; const W = l3rbSetWorld(set);
+    for (let bi = 0; bi < W.length; bi++) {
+      const b = W[bi], P = b.w.map(proj), n = P.length, m = b.closed ? n : n - 1;
+      for (let i = 0; i < m; i++) {
+        const A = P[i], B = P[(i + 1) % n]; if (A[2] > 1 && B[2] > 1) continue;
+        const dx = B[0] - A[0], dy = B[1] - A[1], L2 = dx * dx + dy * dy, t = L2 > 1e-6 ? Math.max(0, Math.min(1, ((cx - A[0]) * dx + (cy - A[1]) * dy) / L2)) : 0, d = Math.hypot(cx - (A[0] + dx * t), cy - (A[1] + dy * t));
+        if (d <= tol) { const z = A[2] + (B[2] - A[2]) * t, sc = d + z * 4; if (!best || sc < best.sc) best = { sc, setId: set.id, gid: b.grp || null, bi }; }
+      }
+    }
+  }
+  return best && { setId: best.setId, gid: best.gid, bi: best.bi };
+}
+let l3rbPd = null;
+function l3rbPickDown(e) {
+  if (!l3rb.el || e.button !== 0 || e.target !== l3.renderer.domElement || l3rb.draw || l3rb.hd) return;
+  l3rbPd = { x: e.clientX, y: e.clientY, t: performance.now() };
+  const up = u => { window.removeEventListener("pointerup", up, true); const d = l3rbPd; l3rbPd = null; if (!d || Math.hypot(u.clientX - d.x, u.clientY - d.y) > 5 || performance.now() - d.t > 600 || l3rb.hd) return; const h = l3rbPickAt(u.clientX, u.clientY); if (h) l3rbSetPick(h); else if (l3rb.pick) l3rbSetPick(null); };
+  window.addEventListener("pointerup", up, true);
+}
+/* Vad är markerat? */
+function l3rbPickInfo() {
+  const p = l3rb.pick, set = l3rbPickSet(); if (!p || !set) return null;
+  if (p.gid) { const g = (set.groups || []).find(x => x.id === p.gid); return g ? { kind: "group", set, g } : null; }
+  if (set.kind === "manual") { const b = (set.bars || [])[p.bi]; return b ? { kind: "bar", set, b } : null; }
+  const b = l3rbSetBars(set)[p.bi]; return b ? { kind: "auto", set, b } : null;
+}
+function l3rbPickDelete() {
+  const I = l3rbPickInfo(); if (!I) return false;
+  if (I.kind === "auto") { l3Toast("Autoarmerade stavar går inte att ta bort en och en.", "Gör manuell", () => { l3rbHist(); l3rbFreeze(I.set); l3rbSetPick(null); l3Status("Setet är nu manuellt – markera en stav och tryck Delete."); }, 9000); return true; }
+  l3rbHist();
+  if (I.kind === "group") { I.set.groups = I.set.groups.filter(x => x !== I.g); l3rb.gActive = null; l3rbClearHandles(); } else I.set.bars.splice(l3rb.pick.bi, 1);
+  l3rb.pick = null; l3rbHlClear(); l3rbTouch(I.set); l3rbRender(); l3Status("Armeringen borttagen – Ctrl+Z ångrar."); return true;
+}
+function l3rbPickMove(dx, dy, dz, mm) {
+  const I = l3rbPickInfo(); if (!I || I.kind === "auto") return false; const f = new THREE.Vector3(); l3.camera.getWorldDirection(f); f.z = 0; if (f.lengthSq() < 1e-6) f.set(0, 1, 0); f.normalize();
+  const r = { x: f.y, y: -f.x }, s = mm / 1000, d = [(r.x * dx + f.x * dy) * s, (r.y * dx + f.y * dy) * s, dz * s];
+  const now = performance.now(); if (!l3rb.mvT || now - l3rb.mvT > 1200) l3rbHist(); l3rb.mvT = now;
+  if (I.kind === "group") I.g.origin = I.g.origin.map((v, i) => l3rbR(v + d[i])); else I.b.pts = I.b.pts.map(p => p.map((v, i) => l3rbR(v + d[i])));
+  l3rbTouch(I.set); l3rbHlDraw(); return true;
+}
+function l3rbPickDia(dm) {
+  const I = l3rbPickInfo(); if (!I || I.kind === "auto") return; l3rbHist(); if (I.kind === "group") I.g.d = dm; else I.b.d = dm; l3rbTouch(I.set); l3rbHlDraw(); l3rbRender();
+}
+/* Tangenter (anropas ur l3Key via l3rbKey): Delete/Backspace tar bort, pilar flyttar, PageUp/Down höjd, Esc släpper, Ctrl+Z ångrar. */
+function l3rbKey2(e) {
+  if (!l3rb.el || l3rb.draw) return false; const tg = e.target && e.target.tagName; if (tg === "INPUT" || tg === "SELECT" || tg === "TEXTAREA") return false;
+  const k = e.key, mod = e.ctrlKey || e.metaKey;
+  if (mod && (k === "z" || k === "Z") && !e.shiftKey && l3rb.hist.length) { e.preventDefault(); l3rbUndo(); return true; }
+  if (!l3rb.pick) return false;
+  if (k === "Delete" || k === "Backspace") { e.preventDefault(); return l3rbPickDelete(); }
+  if (k === "Escape") { e.preventDefault(); l3rbSetPick(null); return true; }
+  const base = l3rb.step || 10, mm = e.shiftKey ? base * 10 : e.altKey ? 1 : base, M = { ArrowLeft: [-1, 0, 0], ArrowRight: [1, 0, 0], ArrowUp: [0, 1, 0], ArrowDown: [0, -1, 0], PageUp: [0, 0, 1], PageDown: [0, 0, -1] }[k];
+  if (M) { e.preventDefault(); return l3rbPickMove(M[0], M[1], M[2], mm); }
+  return false;
+}
+function l3rbPickHtml() {
+  const I = l3rbPickInfo(); if (!I) return `<div class="t">Klicka på en armeringsstav i 3D för att markera den – Delete tar bort, pilar flyttar.${l3rb.hist.length ? ` <button type="button" data-rb2="pundo">Ångra</button>` : ""}</div>`;
+  const nm = I.kind === "group" ? `Stavgrupp: ${(l3rbShapeDef(I.g.shape) || {}).name || I.g.shape} Ø${I.g.d} ×${l3rbGroupCount(I.g)}` : I.kind === "bar" ? `Stav Ø${I.b.d}` : `Autoarmering: ${I.b.mark || ""} Ø${I.b.d}`;
+  const dsel = I.kind === "auto" ? "" : `<select data-rb2="pdia" title="Diameter">${[6, 8, 10, 12, 16, 20, 25, 32].map(v => `<option ${v === (I.kind === "group" ? I.g.d : I.b.d) ? "selected" : ""}>${v}</option>`).join("")}</select>`;
+  const mv = I.kind === "auto" ? `<button type="button" data-rb2="pfreeze" title="Frys setet så att stavarna går att ändra en och en">Gör manuell</button>` : `<span class="mv"><button type="button" data-rb2="pmv" data-m="-1,0,0">◀</button><button type="button" data-rb2="pmv" data-m="1,0,0">▶</button><button type="button" data-rb2="pmv" data-m="0,1,0">▲</button><button type="button" data-rb2="pmv" data-m="0,-1,0">▼</button><button type="button" data-rb2="pmv" data-m="0,0,1">⤒</button><button type="button" data-rb2="pmv" data-m="0,0,-1">⤓</button></span> <input id="rb_step" type="text" inputmode="numeric" value="${l3rb.step || 10}" style="width:44px" title="Steg i mm"> mm`;
+  return `<div class="kpi" style="display:block;border:1px solid #f97316;background:#fff7ed;border-radius:8px;padding:6px 8px;margin:6px 0"><b style="color:#c2410c">Markerat: ${l3rbEsc(nm)}</b><div class="r" style="margin-top:4px">${mv}</div><div class="r">${dsel}<button type="button" data-rb2="pdel" class="bad">Ta bort (Delete)</button>${l3rb.hist.length ? `<button type="button" data-rb2="pundo">Ångra (Ctrl+Z)</button>` : ""}<button type="button" data-rb2="pesc">Släpp</button></div></div>`;
+}
+const l3rb2ClickBase = l3rb2Click;
+l3rb2Click = function (e) {
+  const b = e.target.closest("[data-rb2]"); if (b && !b.disabled) {
+    const a = b.dataset.rb2;
+    if (a === "pdel") { l3rbPickDelete(); return; } if (a === "pundo") { l3rbUndo(); return; } if (a === "pesc") { l3rbSetPick(null); return; }
+    if (a === "pfreeze") { const I = l3rbPickInfo(); if (I) { l3rbHist(); l3rbFreeze(I.set); l3rbSetPick(null); } return; }
+    if (a === "pmv") { const st = document.getElementById("rb_step"), n = Math.max(1, Math.min(2000, Number(String(st && st.value).replace(",", ".")) || 10)); l3rb.step = n; const m = b.dataset.m.split(",").map(Number); l3rbPickMove(m[0], m[1], m[2], n); l3rbRender(); return; }
+    if (a === "pdia") return;
+  }
+  if (typeof l3rb2ClickBase === "function") return l3rb2ClickBase(e);
+};
+const l3rb2ChangeBase = l3rb2Change;
+l3rb2Change = function (e) { const t = e.target; if (t.dataset && t.dataset.rb2 === "pdia") { l3rbPickDia(Number(t.value)); return; } return l3rb2ChangeBase(e); };

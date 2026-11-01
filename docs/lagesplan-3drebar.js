@@ -284,10 +284,10 @@ const L3RB_CSS = `#v3Rb{position:absolute;left:12px;top:12px;z-index:23;width:mi
 function l3rbToggle(on) { const want = on == null ? !l3rb.el : on; if (want) l3rbOpen(); else l3rbClose(); }
 async function l3rbOpen() {
   const host = document.getElementById("v3Canvas"); if (!host) return; if (!document.getElementById("v3RbCss")) { const st = document.createElement("style"); st.id = "v3RbCss"; st.textContent = L3RB_CSS; document.head.appendChild(st); }
-  let el = document.getElementById("v3Rb"); if (!el) { el = document.createElement("div"); el.id = "v3Rb"; host.appendChild(el); l3rb.el = el; ["pointerdown", "wheel", "dblclick", "contextmenu", "keydown", "keyup"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); el.addEventListener("click", l3rbClick); el.addEventListener("change", l3rbChange); if (typeof l3rb2Click === "function") { el.addEventListener("click", l3rb2Click); el.addEventListener("change", l3rb2Change); window.addEventListener("pointerdown", l3rbHandleDown, true); } }
+  let el = document.getElementById("v3Rb"); if (!el) { el = document.createElement("div"); el.id = "v3Rb"; host.appendChild(el); l3rb.el = el; ["pointerdown", "wheel", "dblclick", "contextmenu", "keydown", "keyup"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); el.addEventListener("click", l3rbClick); el.addEventListener("change", l3rbChange); if (typeof l3rb2Click === "function") { el.addEventListener("click", l3rb2Click); el.addEventListener("change", l3rb2Change); window.addEventListener("pointerdown", l3rbHandleDown, true); window.addEventListener("pointerdown", l3rbPickDown, true); } }
   l3rb.sel = l3rbSelection(); l3rbRender(); await l3rbLoad(); l3rbRender();
 }
-function l3rbClose() { l3rbDrawStop(true); if (typeof l3rbHandleDown === "function") window.removeEventListener("pointerdown", l3rbHandleDown, true); if (typeof l3rbClearHandles === "function") l3rbClearHandles(); const e = document.getElementById("v3Rb"); if (e) e.remove(); l3rb.el = null; }
+function l3rbClose() { l3rbDrawStop(true); if (typeof l3rbHandleDown === "function") window.removeEventListener("pointerdown", l3rbHandleDown, true); window.removeEventListener("pointerdown", l3rbPickDown, true); if (typeof l3rbHlClear === "function") { l3rb.pick = null; l3rbHlClear(); } if (typeof l3rbClearHandles === "function") l3rbClearHandles(); const e = document.getElementById("v3Rb"); if (e) e.remove(); l3rb.el = null; }
 const l3rbGet = (id, d) => { const e = document.getElementById(id), v = e ? Number(String(e.value).replace(",", ".")) : NaN; return Number.isFinite(v) ? v : d; };
 function l3rbParamFields(type, P) {
   const F = (id, lab, v, unit = "") => `<label class="f"><span>${lab}</span><input id="rb_${id}" type="text" inputmode="decimal" value="${l3rbF(v, 0).replace(/\s/g, "")}"> ${unit}</label>`; const row = [];
@@ -326,7 +326,7 @@ function l3rbRender() {
   const schRows = Object.keys(L3RB_TYPES).map(k => `<label class="f"><span>${L3RB_TYPES[k]}</span><input data-rbsch="${k}" type="text" inputmode="decimal" value="${l3rbF((l3Prefs().rbSch || {})[k] || L3RB_SCH0[k], 0).replace(/\s/g, "")}"> kg/m³</label>`).join("");
   el.innerHTML = `<h4>🧱 Armering <span class="badge">EXPERIMENTELL</span><button type="button" class="x" data-rb="close" title="Stäng">✕</button></h4>
   <div class="warn">Autoarmeringen är ett <b>förslag enligt enkla regler</b> för mängder, planering och visualisering – <b>inte dimensionerad</b>. Konstruktörens handlingar gäller alltid.</div>
-  <div>${selTxt}</div><div class="r"><button type="button" class="p" data-rb="use">Använd markering</button><span class="t">${l3rb.sel.length} markerat</span></div>
+  <div>${selTxt}</div><div class="r"><button type="button" class="p" data-rb="use">Använd markering</button><span class="t">${l3rb.sel.length} markerat</span></div>${typeof l3rbPickHtml === "function" ? l3rbPickHtml() : ""}
   <details data-k="au" ${keep("au")}><summary>Autoarmering</summary>
     <label class="f"><span>Elementtyp</span><select id="rb_type">${Object.keys(L3RB_TYPES).map(k => `<option value="${k}" ${k === type ? "selected" : ""}>${L3RB_TYPES[k]}</option>`).join("")}</select></label>
     <label class="f"><span>Miljö (täckskikt)</span><select id="rb_exp" style="width:190px">${Object.keys(L3RB_COVER).map(k => `<option ${k === (P.exposure || "Utomhus, fuktig (XC3/XC4)") ? "selected" : ""}>${k}</option>`).join("")}</select></label><div class="t">Täckskikt ${L3RB_COVER[P.exposure] || P.cover} mm – kontrollera mot handlingarna.</div>
@@ -361,7 +361,7 @@ function l3rbClick(e) {
   if (a === "gen") return l3rbGenerateAll();
   if (a === "manual-from-fail") { const f = l3rb.fail; if (!f) return; const o = f.r.obb || l3rbObb(f.sel.pts) || { cx: 0, cy: 0, yaw: 0, L: 1, B: 1, z0: 0, H: 1 }; const s = { id: l3rbNewId(), kind: "manual", name: `Manuell: ${f.sel.name}`.slice(0, 80), type: f.r.type || "platta", obb: o, params: {}, bars: [], el: { name: f.sel.name, cls: f.sel.cls || "" }, created_at: new Date().toISOString() }; l3rb.sets.push(s); l3rb.active = s.id; l3rb.fail = null; l3rb.msg = "Manuell armering skapad – rita stavar eller lägg bygel."; l3rbSave(); return l3rbRender(); }
   if (a === "pick" && set) { l3rb.active = set.id; return l3rbRender(); }
-  if (a === "del" && set) { l3rb.sets = l3rb.sets.filter(s => s !== set); if (l3rb.active === set.id) l3rb.active = null; l3rbDraw(); l3rbSave(); return l3rbRender(); }
+  if (a === "del" && set) { l3rbHist(); l3rb.sets = l3rb.sets.filter(s => s !== set); if (l3rb.active === set.id) l3rb.active = null; l3rbDraw(); l3rbSave(); return l3rbRender(); }
   if (a === "freeze" && set) return l3rbFreeze(set);
   if (a === "regen" && set && set.kind === "auto") { const P = l3rbReadParams(set.type); return l3rbRegen(set, P, null); }
   if (a === "zoom" && set) { const o = set.obb, c = new THREE.Vector3(o.cx - l3.O[0], o.cy - l3.O[1], o.z0 + o.H / 2 - l3.O[2]); if (typeof l3FlyTo === "function") l3FlyTo(c, Math.max(4, Math.hypot(o.L, o.B, o.H) * 1.6), null, 500); return; }
@@ -396,6 +396,7 @@ function l3rbPick(e) {
   D.pts.push(l3rbSnap(hit)); l3rbTmp(D.pts);
 }
 function l3rbKey(e) {
+  if (!l3rb.draw && typeof l3rbKey2 === "function" && l3rbKey2(e)) return true;
   if (!l3rb.draw) return false; if (e.key === "Enter") { e.preventDefault(); e.stopPropagation(); l3rbDrawStop(false); return true; } if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); l3rbDrawStop(true); return true; } if (e.key === "Backspace") { e.preventDefault(); l3rb.draw.pts.pop(); l3rbTmp(l3rb.draw.pts); return true; } return false;
 }
 /* ---- Export ---------------------------------------------------------------------------------------------------------------------------- */
