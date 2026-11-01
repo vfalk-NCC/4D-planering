@@ -58,7 +58,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!r.cleared) fail('Nålen ska kunna tas bort: ' + JSON.stringify(r));
   // riktig musklick på ritningen
   const click = await page.evaluate(() => { const b = l3sp.cv.getBoundingClientRect(); l3sp.follow = false; l3spFit(); const sx = b.width * 0.62, sy = b.height * 0.4, [mx, my] = l3spFromScr(sx, sy); window.__exp = [mx, my]; return { x: b.left + sx, y: b.top + sy }; });
-  await page.mouse.click(click.x, click.y); await page.waitForTimeout(700);
+  await page.mouse.click(click.x, click.y); await page.waitForTimeout(120);
+  const tfx = await page.evaluate(() => { const f = document.querySelector('#v3Sp .tapfx'); return f ? { n: f.children.length, anim: getComputedStyle(f.querySelector('.d')).animationName, w: parseFloat(f.style.left) > 0 } : null; });
+  if (!tfx || tfx.n !== 3 || tfx.anim !== 'spTapD' || !tfx.w) fail('Tryckanimation i minimapen: ' + JSON.stringify(tfx));
+  await page.waitForTimeout(1000);
+  if (await page.evaluate(() => !!document.querySelector('#v3Sp .tapfx'))) fail('Tryckanimationen ska städa efter sig');
+  await page.waitForTimeout(0);
   const after = await page.evaluate(() => ({ pin: l3sp.pin, tx: l3.orbit.target.x + l3.O[0], ty: l3.orbit.target.y + l3.O[1], ex: window.__exp[0], ey: window.__exp[1] }));
   if (!after.pin || Math.hypot(after.pin[0] - after.ex, after.pin[1] - after.ey) > 0.6 || Math.hypot(after.tx - after.ex, after.ty - after.ey) > 0.6) fail('Musklick på ritningen: ' + JSON.stringify(after));
   console.log('OK: ritningspanel – kamera/ritning synkade, nål och flygning vid klick', JSON.stringify({ ...r, click: after.pin }));
