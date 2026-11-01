@@ -285,7 +285,7 @@ function l3Dom() {
           <hr/>
           <div class="v3-pop-l">Sparade vyer</div>
           <div id="v3SavedViews"></div>
-          <div class="v3-sv-new"><input type="text" id="v3SvName" placeholder="Namn, t.ex. Infart" maxlength="40" /><button type="button" id="v3SvSave" title="Spara kameran, projektionen och snitten">Spara vy</button></div>
+          <div class="v3-sv-new"><input type="text" id="v3SvName" placeholder="Namn, t.ex. Infart" maxlength="40" /><button type="button" id="v3SvSave" title="Direktspar – sparar med senast valda delar">Spara vy</button><button type="button" id="v3SvOpt" title="Välj vad som ska sparas: snitt, mått, modeller, punktmoln, datum…">Val…</button></div>
           <hr/>
           <div class="v3-pop-l">Startvy</div>
           <div class="v3-sv-new"><button type="button" id="v3SvStart" title="Sparar exakt det du ser och har ikryssat nu: kamera, snitt, vad som syns, datum, 3D-läge, tidplan, färger, bubblor, film och Gantt – och lägger tillbaka det varje gång 3D-editorn öppnas">Spara som startvy</button><button type="button" id="v3SvStartClr" title="Ta bort startvyn">Ta bort</button></div>
@@ -396,6 +396,7 @@ function l3Dom() {
   dd("v3ViewsBtn", "v3Views");
   const svSave = () => { const inp = $3("v3SvName"); l3SaveView(inp.value); inp.value = ""; };
   $3("v3SvSave").onclick = svSave;
+  $3("v3SvOpt").onclick = () => { const inp = $3("v3SvName"); l3HideMenus(); l3SaveViewAsk(inp.value).then(r => { if (r) inp.value = ""; }); };
   $3("v3SvStart").onclick = () => l3StartSave(); $3("v3SvStartClr").onclick = () => l3StartClear(); l3StartInfo();
   $3("v3ObjCsv").onclick = () => l3ExportCsv();
   $3("v3SvName").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); svSave(); } else if (e.key === "Escape") { e.preventDefault(); e.target.blur(); l3HideMenus(); } };
