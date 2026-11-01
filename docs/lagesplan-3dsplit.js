@@ -175,13 +175,13 @@ function l3spTapFx(px, py, snap) {
   cw.classList.remove("tapp"); void cw.offsetWidth; cw.classList.add("tapp"); setTimeout(() => { fx.remove(); cw.classList.remove("tapp"); }, 900);
 }
 function l3spGoTo(x, y) {
-  let snap = null; if (l3spSnapPcOn() && l3sp.cv) { const a = l3spFromScr(0, 0), b = l3spFromScr(1, 0), mpp = Math.hypot(b[0] - a[0], b[1] - a[1]) || 0.05; snap = l3spCloudSnap(x, y, Math.min(5, Math.max(0.15, 12 * mpp))); if (snap) { x = snap[0]; y = snap[1]; } }
+  let snap = null; if (l3spSnapPcOn() && l3sp.cv) { const a = l3spFromScr(0, 0), b = l3spFromScr(1, 0), mpp = Math.hypot(b[0] - a[0], b[1] - a[1]) || 0.05; snap = l3spCloudSnap(x, y, Math.min(1, Math.max(0.1, 6 * mpp))); }
   if (typeof l3moOK === "function" && l3moOK()) (l3sp.rip = l3sp.rip || []).push({ x, y, t: performance.now() });   // ring där man tryckte
   const z = snap ? snap[2] : l3spGround(x, y); l3sp.pin = [x, y, z]; l3spPinDraw();
   const T = new THREE.Vector3(x - l3.O[0], y - l3.O[1], z - l3.O[2]), dist = Math.max(3, l3.camera.position.distanceTo(l3.orbit.target));
   if (typeof l3FlyTo === "function") l3FlyTo(T, dist, null, 450); else { l3.orbit.target.copy(T); l3.orbit.update(); }
   l3Status(`Ritningen → 3D${snap ? " (fäst i punktmolnet)" : ""}: ${x.toFixed(1).replace(".", ",")} / ${y.toFixed(1).replace(".", ",")}, höjd ${z.toFixed(2).replace(".", ",")} m. Nålen tas bort med Nål ✕.`); l3sp.key = ""; l3sp.pinSnap = !!snap;
-  if (snap && l3sp.cv) { const [sx, sy] = l3spToScr(x, y), fx = l3sp.cv.parentElement && l3sp.cv.parentElement.querySelector(".tapfx:last-child"); if (fx) { fx.classList.add("snap"); fx.style.transition = "left .25s, top .25s"; fx.style.left = sx + "px"; fx.style.top = sy + "px"; } }
+  if (snap && l3sp.cv) { const fx = l3sp.cv.parentElement && l3sp.cv.parentElement.querySelector(".tapfx:last-child"); if (fx) fx.classList.add("snap"); }
 }
 /* Nålen i 3D (Victor 2026-10-31: "snyggare i modellen med animationer ungefär som flyttverktyget"): en röd nål med skugga och glans som faller ner och landar,
    ringar som pulserar ut från marken en stund, en etikett med höjden som tonas in, och en storlek som följer avståndet så att den alltid syns lika stor. Den syns
