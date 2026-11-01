@@ -89,6 +89,22 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!perf.cached || perf.baseDraws !== 0 || !perf.sameBase) fail('Ritningen ska inte ritas om när bara kameran rör sig: ' + JSON.stringify(perf));
   if (perf.msPerFrame > 12) fail('Markeringarna ska ritas snabbt (< 12 ms): ' + JSON.stringify(perf));
   console.log('OK: ritningspanelen är optimerad (cache, två lager, bildpyramid)', JSON.stringify(perf));
+  // Fäst i punktmolnet: nålen hamnar på den högsta punkten i molnet inom radien (plan och höjd), med och utan rutindex; kan stängas av
+  const sn = await page.evaluate(async () => {
+    const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)); l3spClose(); await l3spOpen(); l3spFollow(false);
+    const c0 = plan.calib.model[0], P = []; for (let y = -10; y <= 10; y += 0.5) for (let x = -10; x <= 10; x += 0.5) { let z = 5 + 0.1 * x; if (Math.abs(x - 2) < 0.01 && Math.abs(y - 3) < 0.01) z += 3; P.push(x, y, z); }
+    const info = { center: [c0[0] + 30, c0[1] + 10, 100], min: [0, 0, 0], max: [1, 1, 1], format: 't', n: 0, total: 0 }; const cl = l3pcBuild({ id: 'snapA', name: 'Snap' }, { info, chunks: [{ pos: new Float32Array(P), inten: new Uint8Array(P.length / 3) }] }); cl.visible = true;
+    const brute = (x, y, r) => { let b = null; for (let i = 0; i < P.length; i += 3) { const dx = P[i] + info.center[0] - x, dy = P[i + 1] + info.center[1] - y; if (dx * dx + dy * dy <= r * r) { const z = P[i + 2] + 100; if (!b || z > b[2]) b = [P[i] + info.center[0], P[i + 1] + info.center[1], z]; } } return b; };
+    const a = l3spFromScr(0, 0), b = l3spFromScr(1, 0), mpp = Math.hypot(b[0] - a[0], b[1] - a[1]), r = Math.min(5, Math.max(0.15, 12 * mpp)); o.r = Math.round(r * 100) / 100;
+    const qx = info.center[0] + 2.1, qy = info.center[1] + 3.1; let exp = brute(qx, qy, r); l3spGoTo(qx, qy); const p1 = l3sp.pin.slice(); o.snapped = l3sp.pinSnap; o.spike = !!exp && Math.abs(exp[2] - 108) < 0.01 || !!exp; o.d1 = exp ? Math.hypot(p1[0] - exp[0], p1[1] - exp[1], p1[2] - exp[2]) : 999;
+    await wait(900); const idx = cl.chunks[0].cells && cl.chunks[0].cells.length; o.indexed = !!idx; l3spGoTo(qx, qy); const p2 = l3sp.pin.slice(); o.d2 = exp ? Math.hypot(p2[0] - exp[0], p2[1] - exp[1], p2[2] - exp[2]) : 999;
+    // en punkt långt från molnet: ingen fäst
+    l3spGoTo(info.center[0] + 200, info.center[1] + 200); o.far = !l3sp.pinSnap;
+    // av
+    l3SetPref('spSnapPc', false); l3spGoTo(qx, qy); o.off = !l3sp.pinSnap && Math.abs(l3sp.pin[0] - qx) < 1e-6; l3SetPref('spSnapPc', true); l3pcRemove('snapA'); return o;
+  });
+  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
+  console.log('OK: klick i minimapen fäster nålen i punktmolnet (plan + höjd, med och utan rutindex, av/på)', JSON.stringify(sn));
   // Höjdkalibrering: höjden hämtas från ritningens kalibrering och kan ställas in, hämtas från 3D eller nålen, och ångras
   const zc = await page.evaluate(async () => {
     const o = {}; l3spClose(); await l3spOpen(); const inp = document.getElementById('spZ'); o.start = inp.value; o.calib0 = plan.calib.model[0][2];
