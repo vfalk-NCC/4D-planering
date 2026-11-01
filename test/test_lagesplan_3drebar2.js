@@ -97,6 +97,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.mouse.move(vp[0], vp[1]); await page.mouse.down(); await page.mouse.move(vp[0] + 0.1 * ppm, vp[1] + 0.05 * ppm, { steps: 4 }); await page.mouse.move(vp[0] + 0.3 * ppm, vp[1] + 0.15 * ppm, { steps: 4 }); await page.mouse.up(); await page.waitForTimeout(100); const after = (await state()).A;
   if (verts < 1 || Math.abs(after - before) < 50) fail('Dra formens hörn ändrar måttet: ' + JSON.stringify({ verts, before, after }));
   console.log('OK: armering v2 – handtag: insättningspunkt (fäster mot täckskikt), fördelning och formens hörn', JSON.stringify({ moved1, moved2, d0, d1, verts, before, after }));
+  // Kantarmering (auto): U-stänger runt plattans kanter + kantstänger, ligger inom elementet, kan stängas av
+  const K = await page.evaluate(() => {
+    const o = {}; const sel = l3rb.sel[0], on = l3rbFromSelection(sel, 'platta', { edge: true }), off = l3rbFromSelection(sel, 'platta', { edge: false }); const bars = l3rbSetBars(on.set), edge = bars.filter(b => b.mark === 'K'), eb = bars.filter(b => b.mark === 'K2');
+    o.edgeU = edge.length; o.edgeBars = eb.length; o.offEdge = l3rbSetBars(off.set).filter(b => b.mark === 'K' || b.mark === 'K2').length; o.code = edge[0].code; o.dims = edge[0].dims; o.len = Math.round(edge[0].len * 1000) / 1000;
+    const exp = l3rbShapeInfo('U', { A: 500, B: 0, C: 500 }, 10); o.cutOk = edge[0].len > 1.0 && edge[0].len < 1.3;
+    let out = 0; l3rbSetWorld(on.set).forEach(b => b.w.forEach(p => { const q = l3rbToLocal(on.set.obb, p); if (q[0] < -0.001 || q[0] > on.set.obb.L + 0.001 || q[1] < -0.001 || q[1] > on.set.obb.B + 0.001 || q[2] < -0.001 || q[2] > on.set.obb.H + 0.001) out++; })); o.outside = out;
+    o.wallEdge = l3rbGenerate('vagg', { cx: 0, cy: 0, yaw: 0, z0: 0, L: 6, B: 0.25, H: 3 }, l3rbParamsDefault('vagg')).filter(b => b.mark === 'K').length; o.kgmOn = l3rbSummary(bars).kg > l3rbSummary(l3rbSetBars(off.set)).kg;
+    document.getElementById('rb_type').value = 'platta'; return o;
+  });
+  if (K.edgeU < 60 || K.edgeBars < 8 || K.offEdge !== 0 || K.code !== 'U' || !K.cutOk || K.outside || K.wallEdge < 20 || !K.kgmOn) fail('Kantarmering: ' + JSON.stringify(K));
+  console.log('OK: autoarmering – kantarmering (U-stänger och kantstänger) för platta och vägg, av/på', JSON.stringify(K));
   // 5. export
   const X = await page.evaluate(() => {
     const o = {}; const set = l3rb.sets.find(s => s.id === l3rb.active); const g = set.groups[0]; g.shape = 'B'; g.dims = { A: 250, B: 450 }; g.d = 10; g.tilt = 0; g.dist = { mode: 'cc', cc: 200, n: 1, len: 2, dir: 'n' }; l3rbTouch(set);

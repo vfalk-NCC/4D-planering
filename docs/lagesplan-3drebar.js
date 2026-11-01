@@ -63,7 +63,7 @@ function l3rbSelection() {
   return out;
 }
 /* ---- Autoarmering ----------------------------------------------------------------------------------------------------------------- */
-const l3rbParamsDefault = type => ({ cover: 35, exposure: "Utomhus, fuktig (XC3/XC4)", dMain: 12, ccMain: 150, dTop: 12, ccTop: 150, top: type === "platta", dVert: 12, ccVert: 200, dHor: 10, ccHor: 200, dLong: 20, nBot: 3, nTop: 2, dStirr: 10, ccStirr: 200, dCol: 20, nCol: 8, dColSt: 10, ccColSt: 250, maxLen: 12 });
+const l3rbParamsDefault = type => ({ cover: 35, exposure: "Utomhus, fuktig (XC3/XC4)", dMain: 12, ccMain: 150, dTop: 12, ccTop: 150, top: type === "platta", dVert: 12, ccVert: 200, dHor: 10, ccHor: 200, dLong: 20, nBot: 3, nTop: 2, dStirr: 10, ccStirr: 200, dCol: 20, nCol: 8, dColSt: 10, ccColSt: 250, maxLen: 12, edge: type === "platta" || type === "sula" || type === "vagg", dEdge: 10, ccEdge: 200, legEdge: 500, edgeBar: type !== "vagg" });
 /* Stång som rak linje (u0..u1) i riktning dir ("u"|"v"|"w") med läge (a, b) i de andra två koordinaterna; delas vid maxLen med överlapp (skarv 50·Ø). */
 function l3rbStraight(out, d, dir, a, b, from, to, maxLen, mark) {
   const lap = 0.05 * d, len = to - from; if (len <= 0.02) return; const pieces = []; if (len <= maxLen) pieces.push([from, to]); else { let s = from; while (s < to - 1e-6) { const e = Math.min(to, s + maxLen); pieces.push([s, e]); if (e >= to) break; s = e - lap; } }
@@ -100,8 +100,23 @@ function l3rbGenerate(type, o, P) {
     pos.forEach(q => l3rbStraight(bars, P.dCol, "w", q[0], q[1], c, H - c, ML, "P"));
     l3rbSpread(c, H - c, P.ccColSt / 1000).forEach(w => l3rbStirrup(bars, P.dColSt, w, c + dss / 2, L - c - dss / 2, c + dss / 2, B - c - dss / 2, "S", "w"));
   }
+
+  // Kantarmering: U-stänger runt kanterna (plattor/sulor: alla fyra kanter, väggar: ändarna) med valfria kantstänger inuti
+  if (P.edge && (type === "platta" || type === "sula" || type === "vagg")) {
+    const de = P.dEdge / 1000, leg = P.legEdge / 1000, cce = P.ccEdge / 1000, e0 = c + de / 2, add = (pts, dims) => { const info = typeof l3rbShapeInfo === "function" ? l3rbShapeInfo("U", dims, P.dEdge) : null, len = info ? info.cut : l3rbPolyLen3(pts); bars.push({ d: P.dEdge, shape: "kant-U", code: "U", dims: `A${dims.A} B${dims.B} C${dims.C}`, closed: false, pts, len, mark: "K" }); };
+    if (type === "vagg") {   // U i planet vid vägg-ändarna, jämnt fördelade i höjd
+      const v1 = e0, v2 = B - e0, web = Math.round((v2 - v1) * 1000), lg = Math.min(leg, L / 3);
+      l3rbSpread(c + de / 2, H - c - de / 2, cce).forEach(w => { add([[e0 + lg, v1, w], [e0, v1, w], [e0, v2, w], [e0 + lg, v2, w]], { A: Math.round(lg * 1000), B: web, C: Math.round(lg * 1000) }); add([[L - e0 - lg, v1, w], [L - e0, v1, w], [L - e0, v2, w], [L - e0 - lg, v2, w]], { A: Math.round(lg * 1000), B: web, C: Math.round(lg * 1000) }); });
+    } else {         // U i sektion vid plattans fyra kanter
+      const w1 = e0 + (type === "sula" ? 0 : 0), w2 = H - e0, web = Math.round((w2 - w1) * 1000), lgU = Math.min(leg, L / 3), lgV = Math.min(leg, B / 3), inset = Math.max(c + 0.1, cce / 2);
+      l3rbSpread(inset, L - inset, cce).forEach(u => { add([[u, e0 + lgV, w1], [u, e0, w1], [u, e0, w2], [u, e0 + lgV, w2]], { A: Math.round(lgV * 1000), B: web, C: Math.round(lgV * 1000) }); add([[u, B - e0 - lgV, w1], [u, B - e0, w1], [u, B - e0, w2], [u, B - e0 - lgV, w2]], { A: Math.round(lgV * 1000), B: web, C: Math.round(lgV * 1000) }); });
+      l3rbSpread(inset, B - inset, cce).forEach(v => { add([[e0 + lgU, v, w1], [e0, v, w1], [e0, v, w2], [e0 + lgU, v, w2]], { A: Math.round(lgU * 1000), B: web, C: Math.round(lgU * 1000) }); add([[L - e0 - lgU, v, w1], [L - e0, v, w1], [L - e0, v, w2], [L - e0 - lgU, v, w2]], { A: Math.round(lgU * 1000), B: web, C: Math.round(lgU * 1000) }); });
+      if (P.edgeBar) { const eb = e0 + de / 2 + 0.01; [[eb, "u", w1 + de / 2 + 0.005], [eb, "u", w2 - de / 2 - 0.005]].forEach(([v0, dir, w]) => { l3rbStraight(bars, P.dEdge, "u", v0, w, c, L - c, ML, "K2"); l3rbStraight(bars, P.dEdge, "u", B - v0, w, c, L - c, ML, "K2"); l3rbStraight(bars, P.dEdge, "v", v0, w, c, B - c, ML, "K2"); l3rbStraight(bars, P.dEdge, "v", L - v0, w, c, B - c, ML, "K2"); }); }
+    }
+  }
   return bars;
 }
+const l3rbPolyLen3 = P => { let s = 0; for (let i = 1; i < P.length; i++) s += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1], P[i][2] - P[i - 1][2]); return s; };
 /* Lista: staplar av samma Ø, form, längd (cm) och läge-grupp (mark) får ett postnummer. */
 function l3rbSummary(bars) {
   const G = new Map(); bars.forEach(b => { const key = [b.d, b.code || b.shape, b.dims || "", Math.round(b.len * 100), b.mark].join("|"); let g = G.get(key); if (!g) { g = { d: b.d, shape: b.shape, code: b.code, dims: b.dims, len: b.len, mark: b.mark, n: 0 }; G.set(key, g); } g.n++; });
@@ -217,11 +232,13 @@ function l3rbParamFields(type, P) {
   if (type === "vagg") row.push(F("dHor", "Liggande Ø", P.dHor, "mm"), F("ccHor", "c/c liggande", P.ccHor, "mm"), F("dVert", "Stående Ø", P.dVert, "mm"), F("ccVert", "c/c stående", P.ccVert, "mm"));
   if (type === "balk") row.push(F("dLong", "Huvudstål Ø", P.dLong, "mm"), F("nBot", "Antal underkant", P.nBot), F("nTop", "Antal överkant", P.nTop), F("dStirr", "Bygel Ø", P.dStirr, "mm"), F("ccStirr", "Bygel c/c", P.ccStirr, "mm"));
   if (type === "pelare") row.push(F("dCol", "Huvudstål Ø", P.dCol, "mm"), F("nCol", "Antal stänger", P.nCol), F("dColSt", "Bygel Ø", P.dColSt, "mm"), F("ccColSt", "Bygel c/c", P.ccColSt, "mm"));
+  if (type === "platta" || type === "sula" || type === "vagg") row.push(`<label class="f"><span>Kantarmering (U-stänger)</span><input id="rb_edge" type="checkbox" ${P.edge ? "checked" : ""} style="width:auto"></label>`, F("dEdge", "Kant Ø", P.dEdge, "mm"), F("ccEdge", "Kant c/c", P.ccEdge, "mm"), F("legEdge", "Kant benlängd", P.legEdge, "mm"));
+  if (type === "platta" || type === "sula") row.push(`<label class="f"><span>Kantstänger i U:et</span><input id="rb_edgeBar" type="checkbox" ${P.edgeBar ? "checked" : ""} style="width:auto"></label>`);
   return row.join("") + F("maxLen", "Längsta stång", P.maxLen, "m");
 }
 function l3rbReadParams(type) {
   const P = l3rbParamsDefault(type), g = (k, d) => l3rbGet("rb_" + k, d), ex = document.getElementById("rb_exp"); P.exposure = ex ? ex.value : P.exposure; P.cover = L3RB_COVER[P.exposure] || P.cover;
-  ["dMain", "ccMain", "dTop", "ccTop", "dHor", "ccHor", "dVert", "ccVert", "dLong", "nBot", "nTop", "dStirr", "ccStirr", "dCol", "nCol", "dColSt", "ccColSt", "maxLen"].forEach(k => { P[k] = g(k, P[k]); }); const tp = document.getElementById("rb_top"); if (tp) P.top = tp.checked; return P;
+  ["dMain", "ccMain", "dTop", "ccTop", "dHor", "ccHor", "dVert", "ccVert", "dLong", "nBot", "nTop", "dStirr", "ccStirr", "dCol", "nCol", "dColSt", "ccColSt", "maxLen", "dEdge", "ccEdge", "legEdge"].forEach(k => { P[k] = g(k, P[k]); }); const tp = document.getElementById("rb_top"); if (tp) P.top = tp.checked; const eg = document.getElementById("rb_edge"); if (eg) P.edge = eg.checked; const eb = document.getElementById("rb_edgeBar"); if (eb) P.edgeBar = eb.checked; return P;
 }
 function l3rbRender() {
   const el = l3rb.el; if (!el) return; const open = new Set([...el.querySelectorAll("details[open]")].map(d => d.dataset.k)), keep = k => (open.size ? open.has(k) : k === "au") ? "open" : "";
