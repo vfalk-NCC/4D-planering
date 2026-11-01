@@ -65,7 +65,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // Fast fönster under 3D-vyn: 3D-bilden krymper (renderaren och kameran får nytt mått) i stället för att täckas, och höjden dras med listen
   const dk = await page.evaluate(async () => {
     const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)); l3spClose(); await wait(100); const cvEl = document.getElementById('v3Canvas'), h0 = cvEl.clientHeight, asp0 = l3.camera.aspect;
-    await l3spOpen(); await wait(250); const sp = document.getElementById('v3Sp'), col = sp.parentElement; o.col = col.id === 'view3d' && col.lastElementChild === sp && sp.getBoundingClientRect().top >= cvEl.getBoundingClientRect().bottom && Math.abs(sp.getBoundingClientRect().bottom - col.getBoundingClientRect().bottom) < 14;
+    await l3spOpen(); await wait(250); const sp = document.getElementById('v3Sp'), col = sp.parentElement; o.col = col.id === 'view3d' && sp.nextElementSibling && sp.nextElementSibling.classList.contains('v3-foot') && sp.getBoundingClientRect().top >= cvEl.getBoundingClientRect().bottom && sp.getBoundingClientRect().bottom <= sp.nextElementSibling.getBoundingClientRect().top + 1;
     o.shrunk = cvEl.clientHeight < h0 - 100; o.rendH = l3.renderer.domElement.clientHeight === cvEl.clientHeight || Math.abs(l3.renderer.getSize(new THREE.Vector2()).y - cvEl.clientHeight) < 2; o.aspect = l3.camera.aspect > asp0 + 0.1;
     o.noOverlap = sp.getBoundingClientRect().top >= cvEl.getBoundingClientRect().bottom - 1; o.fullW = sp.getBoundingClientRect().width >= cvEl.getBoundingClientRect().width - 2 && sp.getBoundingClientRect().right <= col.getBoundingClientRect().right;
     o.h1 = sp.getBoundingClientRect().height; o.h0 = h0; o.noCorners = !sp.querySelector('.rz'); return o;
