@@ -18,7 +18,7 @@ const L3PF_CSS = `#v3PcProf .rz{position:absolute;left:0;top:0;width:24px;height
 function l3pfRamp(f) { f = Math.max(0, Math.min(1, f)); const st = [[0, 49, 99, 200], [0.25, 40, 170, 200], [0.5, 70, 180, 90], [0.75, 240, 210, 60], [1, 215, 50, 40]]; for (let i = 1; i < st.length; i++) if (f <= st[i][0]) { const a = st[i - 1], b = st[i], k = (f - a[0]) / (b[0] - a[0]); return `rgb(${Math.round(a[1] + (b[1] - a[1]) * k)},${Math.round(a[2] + (b[2] - a[2]) * k)},${Math.round(a[3] + (b[3] - a[3]) * k)})`; } return "rgb(215,50,40)"; }
 /* Höjdintervall för kurvor/band: valt värde, annars lagom av synligt höjdspann. */
 const l3pfCint = V => l3pf.cint > 0 ? l3pf.cint : l3pfNice(V.z1 - V.z0, 8);
-function l3pfZRange() { const D = l3pf.data; let lo = Infinity, hi = -Infinity; D.series.forEach((s, i) => { if (l3pf.hide.has(s.id)) return; const ln = l3pf.lines[i]; ln.v.forEach(v => { if (v != null) { if (v < lo) lo = v; if (v > hi) hi = v; } }); }); return isFinite(lo) ? [lo, hi] : [0, 1]; }
+function l3pfZRange() { const D = l3pf.data; if (!D || !l3pf.lines) return [0, 1]; let lo = Infinity, hi = -Infinity; D.series.forEach((s, i) => { if (l3pf.hide.has(s.id)) return; const ln = l3pf.lines[i]; ln.v.forEach(v => { if (v != null) { if (v < lo) lo = v; if (v > hi) hi = v; } }); }); return isFinite(lo) ? [lo, hi] : [0, 1]; }
 const L3PF_IFC = ["#334155", "#7c2d12", "#14532d", "#581c87", "#164e63", "#713f12"];
 /* Närmaste AutoCAD-färgnummer (ACI) till en hex-färg – DXF R12 har inga RGB-färger. */
 const L3PF_ACITAB = [[1, 255, 0, 0], [2, 255, 255, 0], [3, 0, 255, 0], [4, 0, 255, 255], [5, 0, 0, 255], [6, 255, 0, 255], [7, 0, 0, 0], [8, 128, 128, 128], [9, 192, 192, 192], [30, 255, 127, 0], [40, 255, 191, 0], [92, 0, 127, 0], [140, 0, 127, 255], [200, 127, 0, 255], [250, 51, 51, 51]];
@@ -174,6 +174,7 @@ function l3pfBind() {
 }
 /* Visningsområdet: hela profilen med lite luft; med höjdöverdrift (eller 1:1) styr förhållandet höjdspannet. */
 function l3pfFit() {
+  if (!l3pf.data || !l3pf.lines) return;
   const D = l3pf.data, vis = D.series.filter(s => !l3pf.hide.has(s.id) && s.n); let lo = Infinity, hi = -Infinity;
   vis.forEach(s => { for (let i = 0; i < s.z.length; i += 3) { if (s.z[i] < lo) lo = s.z[i]; if (s.z[i] > hi) hi = s.z[i]; } });
   if (l3pf.ifcOn) l3pf.ifc.forEach(m => { if (l3pf.hide.has("ifc:" + m.id)) return; for (let k = 1; k < m.segs.length; k += 2) { if (m.segs[k] < lo) lo = m.segs[k]; if (m.segs[k] > hi) hi = m.segs[k]; } });

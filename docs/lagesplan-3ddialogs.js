@@ -402,7 +402,7 @@ function l3RenderClipDlg() {
       <input type="range" min="${-l3ClipSpan(c.off)}" max="${l3ClipSpan(c.off)}" step="any" value="${c.off}" data-clipoff="${i}" title="Flytta snittet (±${l3ClipSpan(c.off)} m – skriv in ett värde för längre)" />
       <input type="text" inputmode="decimal" value="${l3ClipFmt(c.off)}" data-clipnum="${i}" title="Förskjutning (m)" />
       <button type="button" data-clipflip="${i}" title="Vänd – visa andra sidan">⇄</button><button type="button" data-clipdel="${i}" title="Ta bort">✕</button></div>`).join("")}</div>
-    <div class="v3-dlg-foot"><button type="button" id="v3ClipNew">Nytt snitt…</button><button type="button" id="v3ClipH">Vågrätt snitt</button><button type="button" id="v3ClipClear" class="v3-danger">Ta bort alla</button></div>`,
+    <div class="v3-dlg-foot"><button type="button" id="v3ClipNew">Nytt snitt…</button><button type="button" id="v3ClipH">Vågrätt snitt</button><label class="v3-chk" title="Röd linje längs terrängen där snittet skär punktmolnet"><input type="checkbox" id="v3ClipLine" ${l3Prefs().clipLine !== false ? "checked" : ""}> Snittlinje</label><button type="button" id="v3ClipClear" class="v3-danger">Ta bort alla</button></div>`,
     { onClose: () => {} });
   const set = (i, v) => { const c = l3.clips[i]; c.off = v; c.plane.constant = c.base - v; const rg = d.querySelector(`[data-clipoff="${i}"]`), sp = l3ClipSpan(v); if (Math.abs(v) > +rg.max) { rg.min = -sp; rg.max = sp; } rg.value = v; const nb = d.querySelector(`[data-clipnum="${i}"]`); if (document.activeElement !== nb) nb.value = l3ClipFmt(v); l3Render(); };
   d.querySelectorAll("[data-clipoff]").forEach(r => { r.oninput = () => set(+r.dataset.clipoff, Number(r.value)); });
@@ -412,6 +412,7 @@ function l3RenderClipDlg() {
   d.querySelector("#v3ClipNew").onclick = l3StartClip;
   d.querySelector("#v3ClipH").onclick = l3ClipHorizontal;
   d.querySelector("#v3ClipClear").onclick = l3ClearClips;
+  d.querySelector("#v3ClipLine").onchange = e => { l3SetPref("clipLine", e.target.checked); if (typeof l3slClear === "function" && !e.target.checked) { l3slClear(); l3sl.key = ""; } l3Render(); };
 }
 /* Vågrätt snitt: allt ovanför tas bort, på höjden för det markerade (eller vyns mittpunkt) + 1,5 m. */
 function l3ClipHorizontal() {
