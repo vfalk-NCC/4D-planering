@@ -258,7 +258,7 @@ async function objAddDot(pdfPt) {
   }
   const row = { ...base, id: ghNewId(), object_name: name, progress: 0, status: "planerad", origin: "manuell", updated_at: new Date().toISOString() };
   const tp = tpl ? positions.find(p => p.id === tpl.id) : null, zg = Number(plan.calib.model[0][2]) || 0;
-  const pr = { id: row.id, x: Math.round(mx * 1000) / 1000, y: Math.round(my * 1000) / 1000, z0: tp ? tp.z0 : zg, z1: tp ? tp.z1 : zg };
+  const pr = { id: row.id, x: Math.round(mx * 1000) / 1000, y: Math.round(my * 1000) / 1000, z0: tp ? tp.z0 : zg, z1: tp ? tp.z1 : zg, manual: true };
   items.push(row); positions.push(pr); objInvalidate(); renderZones();
   const undo = async () => {
     const i = items.indexOf(row); if (i >= 0) items.splice(i, 1); const j = positions.indexOf(pr); if (j >= 0) positions.splice(j, 1);
@@ -281,7 +281,7 @@ async function objAddDot(pdfPt) {
 /* ---------- Ny aktivitet direkt i lägesplanen (Victor 2026-10-26) ----------
    En okopplad aktivitet (som "＋ Ny aktivitet" i 4D-planering: model_id null, object_id "manuell-…") med en egen prick som kan dras fritt i planen
    tills den kopplas till ett objekt i 3D-modellen (Koppla i 3D-editorn eller i 4D-planering – då tar aktiviteten objektets läge). */
-const objIsFree = it => !!it && (!!it.free || (it.origin === "manuell" && !it.model_id && /^manuell-/.test(String(it.object_id || ""))));
+const objIsFree = it => !!it && (!!it.free || (it.origin === "manuell" && !it.model_id));   // egna prickar (Ny prick, Ny aktivitet, fristående) går att flytta fritt
 function objNewActForm(def) {
   return new Promise(res => {
     const el = document.createElement("div"); el.className = "na-modal";

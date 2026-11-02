@@ -88,8 +88,9 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
       window.uiPrompt = async () => 'F20';
       const n = items.length; await objAddDot(modelToPdf(6512340, 150100));
       const r = items[items.length - 1];
-      return { added: items.length === n + 1, name: r.object_name, act: r.activity, grp: r.group_id, st: r.status, pos: positions.some(p => p.id === r.id), id: r.id };
+      return { added: items.length === n + 1, name: r.object_name, act: r.activity, grp: r.group_id, st: r.status, pos: positions.some(p => p.id === r.id), id: r.id, movable: objIsFree(r) && positions.find(p => p.id === r.id).manual === true };
     });
+    if (!add.movable) fail('Ny prick ska gå att flytta: ' + JSON.stringify(add));
     if (!add.added || add.name !== 'F20' || add.act !== 'Pålning' || add.grp !== 'g1' || add.st !== 'planerad' || !add.pos) fail('Ny prick: ' + JSON.stringify(add));
     const sIt = JSON.parse(gh.get('projects/p1/plan_items.json')), sPos = JSON.parse(gh.get('projects/p1/plan_item_positions.json') || '[]');
     if (!sIt.some(r => r.id === add.id && r.origin === 'manuell') || !sPos.some(p => p.id === add.id)) fail('Ny prick sparad i data: ' + JSON.stringify({ sIt: sIt.length, sPos: sPos.length }));
