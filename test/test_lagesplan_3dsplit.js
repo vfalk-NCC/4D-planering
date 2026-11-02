@@ -123,10 +123,13 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     { const cw = document.querySelector('#v3Sp .cw'); o.clip = getComputedStyle(cw).overflow === 'hidden'; }
     // Skift = ortho/5°-steg på profillinjen
     { const A = [100, 200], q = l3spProfSnap(A, [A[0] + 30, A[1] + 1.2], true), ang = Math.atan2(q[1] - A[1], q[0] - A[0]) * 180 / Math.PI, q2 = l3spProfSnap(A, [A[0] + 30, A[1] + 7], true), a2 = Math.atan2(q2[1] - A[1], q2[0] - A[0]) * 180 / Math.PI, free = l3spProfSnap(A, [A[0] + 30, A[1] + 1.2], false); o.shOrtho = Math.abs(ang) < 1e-6; o.sh5 = Math.abs(a2 - 15) < 1e-6; o.shLen = Math.abs(Math.hypot(q2[0] - A[0], q2[1] - A[1]) - Math.hypot(30, 7)) < 1e-6; o.shFree = free[1] === A[1] + 1.2; }
+    // rullgardinsmenyer och hårkorset kan släckas
+    { const b = document.querySelector('[data-dd="v"]'); b.click(); const dd = b.parentElement, m = dd.querySelector('.m'); o.ddOpen = dd.classList.contains('open') && getComputedStyle(m).display !== 'none' && !!m.querySelector('#spCross') && !!m.querySelector('#spMapSrc'); const cr = document.getElementById('spCross'); o.crossOn = cr.checked; cr.checked = false; cr.dispatchEvent(new Event('change')); o.crossPref = l3Prefs().spCross === false; document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })); o.ddClose = !dd.classList.contains('open'); l3SetPref('spCross', true);
+      o.fewButtons = document.querySelectorAll('#v3Sp .hd > button, #v3Sp .hd > select').length <= 8; }
     // av
     l3SetPref('spSnapPc', false); l3spGoTo(qx, qy); o.off = !l3sp.pinSnap && Math.abs(l3sp.pin[0] - qx) < 1e-6; l3SetPref('spSnapPc', true); l3pcRemove('snapA'); return o;
   });
-  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off || !sn.ifc || !sn.zoff || !sn.dt0 || !sn.dtKeep || !sn.dtBack || !sn.profBtn || !sn.picking || !sn.hasA || !sn.prof || !sn.sbs || !sn.narrower || !sn.canvasW || !sn.back || !sn.clip || !sn.shOrtho || !sn.sh5 || !sn.shLen || !sn.shFree) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
+  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off || !sn.ifc || !sn.zoff || !sn.dt0 || !sn.dtKeep || !sn.dtBack || !sn.profBtn || !sn.picking || !sn.hasA || !sn.prof || !sn.sbs || !sn.narrower || !sn.canvasW || !sn.back || !sn.clip || !sn.shOrtho || !sn.sh5 || !sn.shLen || !sn.shFree || !sn.ddOpen || !sn.crossOn || !sn.crossPref || !sn.ddClose || !sn.fewButtons) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
   console.log('OK: klick i minimapen fäster nålen i punktmolnet (plan + höjd, med och utan rutindex, av/på)', JSON.stringify(sn));
   // Höjdkalibrering: höjden hämtas från ritningens kalibrering och kan ställas in, hämtas från 3D eller nålen, och ångras
   const zc = await page.evaluate(async () => {
