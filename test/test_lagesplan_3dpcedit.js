@@ -146,6 +146,33 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // Menyn
   await page.evaluate(() => l3ptOpen()); const ui = await page.evaluate(() => ({ btn: !!document.getElementById('v3PcToolBtn'), panel: !!document.getElementById('v3PcTools'), secs: document.querySelectorAll('#v3PcTools details').length }));
   if (!ui.btn || !ui.panel || ui.secs < 5) fail('Verktygsmenyn: ' + JSON.stringify(ui)); console.log('OK: punktmolnens verktygsmeny', JSON.stringify(ui));
+  // profil: färgval, IFC-genomskärning, nivå, referens och hovervärden (Victor 2026-11-02)
+  const pf2 = await page.evaluate(async () => {
+    const o = {}, O = l3.O; l3pfClear();
+    // en IFC-liknande låda 4 x 4 x 2 m runt x=0..4, y -2..2, z 0.3..2.3 (icke-indexerad triangelsoppa med ranges)
+    const bx = new THREE.BoxGeometry(4, 4, 2).toNonIndexed(); bx.translate(2, 0, 1.3); const mesh = new THREE.Mesh(bx, new THREE.MeshBasicMaterial()); mesh.userData.l3b = { ranges: [{ start: 0, count: bx.getAttribute('position').count, name: 'Lada', guid: 'gx' }], hidden: new Set(), model: { id: 'ifcX' } };
+    l3.scene.add(mesh); l3b.models.push({ id: 'ifcX', name: 'Testmodell.ifc', visible: true, meshes: [mesh], tris: 12 });
+    l3pfShow([-10, 0, 0], [10, 0, 0], 1);
+    o.ifc = l3pf.ifc.length === 1 && l3pf.ifc[0].segs.length >= 8; const S = l3pf.ifc[0] ? l3pf.ifc[0].segs : []; let tmin = 1e9, tmax = -1e9, zmin = 1e9, zmax = -1e9; for (let k = 0; k < S.length; k += 2) { if (k % 4 === 0 || true) { tmin = Math.min(tmin, S[k]); tmax = Math.max(tmax, S[k]); } } for (let k = 1; k < S.length; k += 2) { zmin = Math.min(zmin, S[k]); zmax = Math.max(zmax, S[k]); }
+    o.ifcT = [Math.round(tmin * 10) / 10, Math.round(tmax * 10) / 10]; o.ifcZ = [Math.round((zmin - O[2]) * 10) / 10, Math.round((zmax - O[2]) * 10) / 10];
+    // legenden har färgval för moln och IFC
+    o.colInputs = l3pf.el.querySelectorAll('[data-pf-col]').length;
+    const c0 = l3pf.el.querySelector('[data-pf-col]'); c0.value = '#ff0000'; c0.dispatchEvent(new Event('input', { bubbles: true })); o.col = l3pf.data.series[0].color === '#ff0000' && l3pf.data.series[0].aci === 1 && l3Prefs().pfCol[l3pf.data.series[0].id] === '#ff0000';
+    // färgen kommer ihåg när profilen öppnas igen
+    l3pfShow([-10, 0, 0], [10, 0, 0], 1); o.colKept = l3pf.data.series[0].color === '#ff0000';
+    // nivå + mätning
+    const lv = l3pf.el.querySelector('[data-pf="lvl"]'); lv.value = '0,25'; lv.dispatchEvent(new Event('change', { bubbles: true })); o.lvl = l3pf.level === 0.25 && /Mot nivå/.test(l3pf.el.textContent);
+    const cv = l3pf.cv, r = cv.getBoundingClientRect(), g = l3pfGeom(), px = r.left + g.l + g.w * 0.3, py = r.top + g.t + g.h * 0.5;
+    cv.dispatchEvent(new PointerEvent('pointermove', { clientX: px, clientY: py, bubbles: true, pointerId: 1 })); o.hz = typeof l3pf.hz === 'number' && l3pf.hover != null;
+    cv.dispatchEvent(new PointerEvent('pointerdown', { clientX: px, clientY: py, button: 0, bubbles: true, pointerId: 1 })); cv.dispatchEvent(new PointerEvent('pointerup', { clientX: px, clientY: py, button: 0, bubbles: true, pointerId: 1 })); o.ref = !!l3pf.ref;
+    const px2 = r.left + g.l + g.w * 0.6; cv.dispatchEvent(new PointerEvent('pointermove', { clientX: px2, clientY: py, bubbles: true, pointerId: 1 })); let err = null; try { l3pfDraw(); } catch (e) { err = String(e); } o.draw = !err; o.drawErr = err;
+    const dxf = l3pfDxfText(false), dxf3 = l3pfDxfText(true); o.dxf = /PROFIL_IFC_Testmodell_ifc/.test(dxf) && /PROFIL_SKALA/.test(dxf) && /PROFIL_NIVA/.test(dxf); o.dxf3 = /PROFIL_IFC_Testmodell_ifc/.test(dxf3); o.map = /PROFIL_KARTA_PROFIL/.test(dxf) && /PROFIL_KARTA_MOLN/.test(dxf) && /PROFIL_KARTA_IFC/.test(dxf) && /Var profilen ar tagen/.test(dxf); o.meta = l3pfMeta().filter(t => /Punktmoln: /.test(t)).length === 2 && l3pfMeta().some(t => /Jämförelse: /.test(t)) && l3pfMeta().some(t => /Testmodell/.test(t)); o.info = /PROFIL_INFO/.test(dxf); { const cc = document.createElement('canvas'); cc.width = cc.height = 300; l3pfSituation(cc.getContext('2d'), 0, 0, 300); const d = cc.getContext('2d').getImageData(0, 0, 300, 300).data; let purple = 0; for (let i = 0; i < d.length; i += 4) if (d[i] > 100 && d[i] < 140 && d[i + 1] < 90 && d[i + 2] > 200) purple++; o.sit = purple > 100; o.sitPurple = purple; }
+    l3b.models.pop(); l3.scene.remove(mesh); l3pfClear(); l3SetPref('pfCol', {}); return o;
+  });
+  if (!pf2.ifc || !(Math.abs(pf2.ifcT[0] - 10) < 0.1 && Math.abs(pf2.ifcT[1] - 14) < 0.1) || !pf2.colInputs || !pf2.col || !pf2.colKept || !pf2.lvl || !pf2.hz || !pf2.ref || !pf2.draw || !pf2.dxf || !pf2.dxf3 || !pf2.map || !pf2.meta || !pf2.info || !pf2.sit) fail('Profil: färg, IFC-genomskärning, nivå, referens, DXF: ' + JSON.stringify(pf2));
+  console.log('OK: profil – färgval, IFC-genomskärning, nivålinje, referens/hover, DXF med skala', JSON.stringify(pf2));
+  if (process.env.PNGSHOT) { const data = await page.evaluate(async () => { const O = l3.O; const bx = new THREE.BoxGeometry(4, 4, 2).toNonIndexed(); bx.translate(2, 0, 1.3); const mesh = new THREE.Mesh(bx, new THREE.MeshBasicMaterial()); mesh.userData.l3b = { ranges: [{ start: 0, count: bx.getAttribute('position').count, name: 'Lada', guid: 'gx' }], hidden: new Set(), model: { id: 'ifcX' } }; l3.scene.add(mesh); l3b.models.push({ id: 'ifcX', name: 'Testmodell.ifc', visible: true, meshes: [mesh], tris: 12 }); l3pfShow([-10, 0, 0], [10, 0, 0], 1); l3pf.level = 0.25; l3pf.hover = 12; l3pf.hz = 1.2; l3pf.ref = { t: 4, z: 0.2 };
+    const el = document.createElement('canvas'); const orig = l3pfDownload; let url = null; window.l3pfDownload = (n, b) => { url = b; }; l3pfDraw(); l3pfPng(); await new Promise(r => setTimeout(r, 600)); window.l3pfDownload = orig; if (!url) return null; const buf = await url.arrayBuffer(); return Array.from(new Uint8Array(buf)).map(b => String.fromCharCode(b)).join(''); }); if (data) require('fs').writeFileSync(process.env.PNGSHOT, Buffer.from(data, 'binary')); await page.evaluate(() => { l3pfDraw(); }); await page.screenshot({ path: process.env.PNGSHOT + '.view.png' }); }
   if (process.env.SHOT) { await page.evaluate(() => { l3ptProfShow([-10, 0, 0], [10, 0, 0], 1); l3pfFs(); l3pf.hover = 4; l3pfDraw(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOT }); }
   await browser.close(); server.close();
 })().catch(e => { console.error(e); process.exit(1); });
