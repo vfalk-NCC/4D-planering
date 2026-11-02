@@ -70,9 +70,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // Fast fönster under 3D-vyn: 3D-bilden krymper (renderaren och kameran får nytt mått) i stället för att täckas, och höjden dras med listen
   const dk = await page.evaluate(async () => {
     const o = {}, wait = ms => new Promise(r => setTimeout(r, ms)); l3spClose(); await wait(100); const cvEl = document.getElementById('v3Canvas'), h0 = cvEl.clientHeight, asp0 = l3.camera.aspect;
-    await l3spOpen(); await wait(250); const sp = document.getElementById('v3Sp'), col = sp.parentElement; o.col = col.id === 'view3d' && sp.nextElementSibling && sp.nextElementSibling.classList.contains('v3-foot') && sp.getBoundingClientRect().top >= cvEl.getBoundingClientRect().bottom && sp.getBoundingClientRect().bottom <= sp.nextElementSibling.getBoundingClientRect().top + 1;
+    await l3spOpen(); await wait(250); const sp = document.getElementById('v3Sp'), col = sp.parentElement; o.col = col.classList.contains('v3-col') && col.contains(cvEl) && cvEl.nextElementSibling === sp && sp.getBoundingClientRect().left >= document.querySelector('.v3-main').getBoundingClientRect().left + 100;
     o.shrunk = cvEl.clientHeight < h0 - 100; o.rendH = l3.renderer.domElement.clientHeight === cvEl.clientHeight || Math.abs(l3.renderer.getSize(new THREE.Vector2()).y - cvEl.clientHeight) < 2; o.aspect = l3.camera.aspect > asp0 + 0.1;
-    o.noOverlap = sp.getBoundingClientRect().top >= cvEl.getBoundingClientRect().bottom - 1; o.fullW = sp.getBoundingClientRect().width >= cvEl.getBoundingClientRect().width - 2 && sp.getBoundingClientRect().right <= col.getBoundingClientRect().right;
+    o.noOverlap = sp.getBoundingClientRect().top >= cvEl.getBoundingClientRect().bottom - 1; o.fullW = Math.abs(sp.getBoundingClientRect().width - cvEl.getBoundingClientRect().width) < 2;
     o.h1 = sp.getBoundingClientRect().height; o.h0 = h0; o.noCorners = !sp.querySelector('.rz'); return o;
   });
   if (!dk.col || !dk.shrunk || !dk.rendH || !dk.aspect || !dk.noOverlap || !dk.fullW || !dk.noCorners) fail('Fast minimap under 3D-vyn: ' + JSON.stringify(dk));
@@ -107,10 +107,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3spGoTo(info.center[0] + 200, info.center[1] + 200); o.far = !l3sp.pinSnap;
     // IFC: en låda ovanför punkten – höjden hämtas ur modellens översida, läget är kvar
     { const w = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 2), new THREE.MeshBasicMaterial()); w.position.set(qx - l3.O[0], qy - l3.O[1], 151 - l3.O[2]); w.updateMatrixWorld(true); l3.scene.add(w); l3b.models.push({ id: 'ifcsnap', visible: true, meshes: [w], tris: 0 }); l3spGoTo(qx, qy); const pi = l3sp.pin.slice(); o.ifc = !!l3sp.pinSnap && Math.abs(pi[2] - 152) < 0.05 && Math.hypot(pi[0] - qx, pi[1] - qy) < 1e-6; o.ifcZ = pi[2]; l3b.models.pop(); l3.scene.remove(w); }
+    // Visa i 3D på/av: den aktiva ritningens yta ska släckas igen
+    { if (!l3.planMesh) { l3.planMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial()); l3.planMesh.visible = false; l3.scene.add(l3.planMesh); } const cb = document.getElementById('spZshow'); l3sp.planId = plan.id; const was = l3.planMesh.visible; cb.checked = true; cb.dispatchEvent(new Event('change')); const on = l3.planMesh.visible; cb.checked = false; cb.dispatchEvent(new Event('change')); o.zoff = on && l3.planMesh.visible === was; }
     // av
     l3SetPref('spSnapPc', false); l3spGoTo(qx, qy); o.off = !l3sp.pinSnap && Math.abs(l3sp.pin[0] - qx) < 1e-6; l3SetPref('spSnapPc', true); l3pcRemove('snapA'); return o;
   });
-  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off || !sn.ifc) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
+  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off || !sn.ifc || !sn.zoff) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
   console.log('OK: klick i minimapen fäster nålen i punktmolnet (plan + höjd, med och utan rutindex, av/på)', JSON.stringify(sn));
   // Höjdkalibrering: höjden hämtas från ritningens kalibrering och kan ställas in, hämtas från 3D eller nålen, och ångras
   const zc = await page.evaluate(async () => {
