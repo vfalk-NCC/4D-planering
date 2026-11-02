@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D-EDITORN – Officiell trailer</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:"Helvetica Neue",Arial,sans-serif;color:#e8f1ff}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;background:radial-gradient(ellipse at 50% 40%,#0b1b33 0%,#02060d 70%);z-index:5;text-align:center;padding:24px;box-sizing:border-box;transition:opacity .8s}
+  #start h1{margin:0;font-weight:200;letter-spacing:.5em;font-size:clamp(26px,6vw,64px);text-indent:.5em}
+  #start p{margin:0;opacity:.6;letter-spacing:.3em;font-size:clamp(10px,1.6vw,14px);text-transform:uppercase}
+  #start .b{display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+  button{font:inherit;color:#e8f1ff;background:transparent;border:1px solid #4ea3ff;padding:14px 28px;letter-spacing:.25em;text-transform:uppercase;font-size:13px;cursor:pointer;transition:.2s}
+  button:hover,button:focus-visible{background:#4ea3ff;color:#001022;box-shadow:0 0 30px #4ea3ff88;outline:none}
+  button.q{border-color:#ffffff33;opacity:.7}
+  #hud{position:fixed;right:14px;bottom:10px;z-index:4;font-size:11px;letter-spacing:.2em;opacity:.35;text-transform:uppercase;transition:opacity .3s}
+  #hud:hover{opacity:.9}
+  #hud b{cursor:pointer;margin-left:14px;font-weight:400}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="start">
+  <p>Ett Trimble Connect-tillägg presenterar</p>
+  <h1>3D-EDITORN</h1>
+  <p>Officiell trailer · 62 sekunder</p>
+  <div class="b"><button id="go">▶ Spela med ljud</button><button id="go2" class="q">Utan ljud</button></div>
+  <p style="font-size:10px;opacity:.35">Mellanslag = paus · R = börja om · M = ljud · F = helskärm</p>
+</div>
+<div id="hud"><span id="tc">0:00</span><b id="bM">ljud</b><b id="bR">om</b><b id="bF">helskärm</b></div>
+<script>
+"use strict";
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+const oc = document.createElement("canvas"), o = oc.getContext("2d");           // scenen
+const sm = document.createElement("canvas"), s = sm.getContext("2d");           // liten kopia = bloom
+const gr = document.createElement("canvas"); gr.width = gr.height = 256; const g = gr.getContext("2d");   // filmkorn
+let W = 0, H = 0, F = 1;
+function resize() {
+  const d = Math.min(devicePixelRatio || 1, 1.5); W = cv.width = oc.width = Math.round(innerWidth * d); H = cv.height = oc.height = Math.round(innerHeight * d);
+  sm.width = Math.max(2, W >> 3); sm.height = Math.max(2, H >> 3); F = Math.min(W, H * 1.6) * 0.95;
+}
+addEventListener("resize", resize); resize();
+
+/* ---------- hjälpare ---------- */
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v)), lerp = (a, b, t) => a + (b - a) * t;
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); }, easeOut = t => 1 - Math.pow(1 - clamp(t), 3);
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const fmt = n => Math.round(n).toLocaleString("sv-SE");
+
+/* ---------- världen: terräng, byggnader ---------- */
+const N = 112, SZ = 60, TER = [];
+const hgt = (x, y) => 2.4 * Math.sin(x * 0.11) * Math.cos(y * 0.09) + 0.9 * Math.sin(x * 0.33 + y * 0.21) * 0.5 + 0.35 * Math.sin(y * 0.5 + x * 0.17) - 2.6 * Math.exp(-((x - 7) ** 2 + (y + 5) ** 2) / 70);
+for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) { const x = (i / (N - 1) - 0.5) * SZ + (rnd() - 0.5) * 0.3, y = (j / (N - 1) - 0.5) * SZ + (rnd() - 0.5) * 0.3; TER.push({ x, y, z: hgt(x, y) + (rnd() - 0.5) * 0.12, r: Math.hypot(x, y) }); }
+const BLD = [[-11, -7, 12, 8, 9, 2], [6, 7, 8, 8, 14, 7], [15, -11, 10, 6, 6, 12], [-19, 9, 6, 6, 11, 16], [0, -17, 16, 5, 5, 20], [21, 13, 7, 7, 18, 26], [-2, 1, 6, 6, 24, 31]].map(([x, y, w, d, h, st]) => ({ x, y, w, d, h, st, z0: hgt(x, y) - 0.3 }));
+const dust = Array.from({ length: 160 }, () => ({ x: rnd(), y: rnd(), z: rnd(), s: 0.2 + rnd() }));
+
+/* ---------- kamera ---------- */
+const KEY = [[0, 0.5, 0.55, 105, 0], [6, 0.6, 0.5, 86, 0], [15, 1.2, 0.42, 72, 2], [24, 1.9, 0.62, 76, 0], [33, 2.6, 0.78, 68, 0], [41, 3.2, 0.38, 60, 3], [44, 4.0, 0.2, 44, 4], [48, 4.6, 0.3, 54, 3], [55, 5.2, 0.35, 68, 3], [62, 5.6, 0.4, 84, 2]];
+function camAt(t) { let i = 0; while (i < KEY.length - 2 && t > KEY[i + 1][0]) i++; const a = KEY[i], b = KEY[i + 1], k = ease(seg(t, a[0], b[0])); return { yaw: lerp(a[1], b[1], k) + Math.sin(t * 0.5) * 0.02, pit: lerp(a[2], b[2], k), dist: lerp(a[3], b[3], k), tz: lerp(a[4], b[4], k) }; }
+let C = null;
+function setCam(c) {
+  const cp = Math.cos(c.pit), px = c.dist * cp * Math.cos(c.yaw), py = c.dist * cp * Math.sin(c.yaw), pz = c.tz + c.dist * Math.sin(c.pit), L = Math.hypot(px, py, pz - c.tz);
+  const f = [-px / L, -py / L, -(pz - c.tz) / L]; let r = [f[1], -f[0], 0]; const rl = Math.hypot(r[0], r[1]); r = [r[0] / rl, r[1] / rl, 0];
+  const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]]; C = { p: [px, py, pz], f, r, u };
+}
+const P = [0, 0, 0];
+function pr(x, y, z) { const q = C, dx = x - q.p[0], dy = y - q.p[1], dz = z - q.p[2], cz = dx * q.f[0] + dy * q.f[1] + dz * q.f[2]; if (cz < 0.5) return null; P[0] = W / 2 + (dx * q.r[0] + dy * q.r[1] + dz * q.r[2]) / cz * F; P[1] = H / 2 - (dx * q.u[0] + dy * q.u[1] + dz * q.u[2]) / cz * F; P[2] = cz; return P; }
+
+/* ---------- scenschema ---------- */
+const CAP = [
+  [1.0, 5.2, "DET FINNS EN PLATS", "där bygget redan står klart – innan första spaden."],
+  [7.0, 14.0, "PUNKTMOLN", "Miljontals punkter. Din verklighet, helt exakt."],
+  [16.0, 23.2, "IFC-MODELLER", "Hela bygget. Vecka för vecka. I samma scen."],
+  [25.0, 32.2, "KLIPP EXAKT DÄR DU PEKAR", "Profil, snitt och höjder – på sekunden."],
+  [34.0, 40.2, "SCHAKT & FYLLNING", "Se varje kubikmeter innan maskinerna startar."],
+];
+const MONT = [[41.2, "MÄT"], [42.4, "RITA"], [43.6, "KLIPP"], [44.8, "BERÄKNA"], [46.0, "EXPORTERA"]];
+const BOUND = [6, 15, 24, 33, 41, 48];
+
+/* ---------- rendering ---------- */
+const PAL = { h: ["#0b3d91", "#1565c0", "#1e88e5", "#29b6f6", "#4dd0e1", "#80deea", "#b2ebf2", "#e0f7fa", "#ffffff", "#ffffff"], v: ["#1e6bff", "#2f86ff", "#5a6b86", "#ff7a3d", "#ff3d3d"] };
+function text(str, x, y, size, a, sp, align, font) {
+  o.save(); o.globalAlpha = clamp(a); o.fillStyle = "#e8f1ff"; o.font = `${font || 200} ${size}px "Helvetica Neue",Arial,sans-serif`; o.textBaseline = "middle";
+  let ws = [...str].map(ch => o.measureText(ch).width + sp), tot = ws.reduce((p, c) => p + c, 0) - sp;
+  if (tot > W * 0.9) { const k = W * 0.9 / tot; size *= k; sp *= k; o.font = `${font || 200} ${size}px "Helvetica Neue",Arial,sans-serif`; ws = [...str].map(ch => o.measureText(ch).width + sp); tot = ws.reduce((p, c) => p + c, 0) - sp; } let cx = align === "l" ? x : x - tot / 2;
+  o.shadowColor = "#4ea3ff"; o.shadowBlur = size * 0.5; [...str].forEach((ch, i) => { o.fillText(ch, cx, y); cx += ws[i]; }); o.restore();
+}
+function box(b, p, col, a) {
+  const hh = b.h * p, z0 = b.z0, z1 = z0 + hh, x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, y0 = b.y - b.d / 2, y1 = b.y + b.d / 2, V = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], pts = [];
+  for (const zz of [z0, z1]) for (const [x, y] of V) { const q = pr(x, y, zz); pts.push(q ? [q[0], q[1]] : null); }
+  const E = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+  if (pts[4] && pts[5] && pts[6] && pts[7]) { o.fillStyle = `rgba(90,170,255,${0.12 * a})`; o.beginPath(); o.moveTo(...pts[4]); o.lineTo(...pts[5]); o.lineTo(...pts[6]); o.lineTo(...pts[7]); o.fill(); }
+  for (const [w, al] of [[5, 0.12], [2, 0.9]]) { o.lineWidth = w; o.strokeStyle = col; o.globalAlpha = al * a; o.beginPath(); for (const [i, j] of E) if (pts[i] && pts[j]) { o.moveTo(...pts[i]); o.lineTo(...pts[j]); } o.stroke(); } o.globalAlpha = 1;
+}
+function render(t) {
+  o.setTransform(1, 0, 0, 1, 0, 0); o.globalCompositeOperation = "source-over"; o.fillStyle = "#02060d"; o.fillRect(0, 0, W, H);
+  const bg = o.createRadialGradient(W / 2, H * 0.55, 0, W / 2, H * 0.55, Math.max(W, H) * 0.7); bg.addColorStop(0, "#0a1a30"); bg.addColorStop(1, "#02060d"); o.fillStyle = bg; o.fillRect(0, 0, W, H);
+  setCam(camAt(t));
+  o.globalCompositeOperation = "lighter";
+  // damm / partiklar
+  for (const d of dust) { const x = ((d.x + t * 0.01 * d.s) % 1) * W, y = ((d.y - t * 0.006 * d.s + 1) % 1) * H, a = (0.15 + 0.35 * Math.sin(t * d.s * 2 + d.z * 9) ** 2) * (t < 6 ? 1 : 0.5); o.fillStyle = `rgba(150,200,255,${a})`; const r = (1 + d.z * 2) * (W / 1400 + 0.6); o.fillRect(x, y, r, r); }
+  const scan = t < 6 ? 0 : easeOut(seg(t, 6.2, 12.5)) * 60, isV = t >= 33 && t < 41, week = t < 15 ? 0 : t < 24 ? lerp(1, 40, ease(seg(t, 15.5, 23))) : 40;
+  // klippning (profil)
+  const A = [-26, -9], Bp = [26, 7], dl = Math.hypot(Bp[0] - A[0], Bp[1] - A[1]), nx = -(Bp[1] - A[1]) / dl, ny = (Bp[0] - A[0]) / dl, clipping = t >= 24.3 && t < 33.5, s0 = t < 24.3 ? 99 : t < 33 ? lerp(34, 0, easeOut(seg(t, 24.6, 29))) : lerp(0, 34, ease(seg(t, 33, 33.5)));
+  const level = lerp(0.6, -0.9, ease(seg(t, 34.2, 39)));
+  const buckets = PAL.h.map(() => []), vb = PAL.v.map(() => []), fl = [];
+  for (const p of TER) {
+    if (p.r > scan) continue;
+    if (clipping) { const sd = (p.x - A[0]) * nx + (p.y - A[1]) * ny; if (sd > s0 + 0.45) continue; if (Math.abs(sd - s0) < 0.45) { fl.push(p); continue; } }
+    const q = pr(p.x, p.y, p.z); if (!q) continue; const sz = clamp(F * 0.035 / q[2], 1, 3.2) * (W / 1300 + 0.5);
+    if (isV) { const dz = p.z - level, k = dz > 0.9 ? 0 : dz > 0.25 ? 1 : dz > -0.25 ? 2 : dz > -0.9 ? 3 : 4; vb[k].push(q[0], q[1], sz); }
+    else { const k = clamp(Math.floor((p.z + 4) / 9 * 10), 0, 9); buckets[k].push(q[0], q[1], sz); if (scan < 59 && Math.abs(p.r - scan) < 0.9) fl.push(p); }
+  }
+  const BA = isV ? vb : buckets, CO = isV ? PAL.v : PAL.h;
+  BA.forEach((arr, k) => { o.fillStyle = CO[k]; o.globalAlpha = 0.85; o.beginPath(); for (let i = 0; i < arr.length; i += 3) o.rect(arr[i], arr[i + 1], arr[i + 2], arr[i + 2]); o.fill(); });
+  o.fillStyle = "#ffffff"; for (const p of fl) { const q = pr(p.x, p.y, p.z); if (q) { const r = clamp(F * 0.06 / q[2], 1.5, 5) * (W / 1300 + 0.5); o.globalAlpha = 0.9; o.fillRect(q[0] - r / 2, q[1] - r / 2, r, r); } } o.globalAlpha = 1;
+  // volymplan
+  if (t >= 33 && t < 41.3) { const a = ease(seg(t, 33.2, 34.5)) * (1 - ease(seg(t, 40.4, 41.2))); o.strokeStyle = "#7fd0ff"; o.lineWidth = 1; o.globalAlpha = 0.5 * a; o.beginPath(); for (let i = -6; i <= 6; i++) { const u = i * 5; let q1 = pr(u, -30, level), x1, y1; if (q1) { x1 = q1[0]; y1 = q1[1]; const q2 = pr(u, 30, level); if (q2) { o.moveTo(x1, y1); o.lineTo(q2[0], q2[1]); } } q1 = pr(-30, u, level); if (q1) { x1 = q1[0]; y1 = q1[1]; const q2 = pr(30, u, level); if (q2) { o.moveTo(x1, y1); o.lineTo(q2[0], q2[1]); } } } o.stroke(); o.globalAlpha = 1; }
+  // byggnader
+  if (t >= 15) for (const b of BLD) { const p = easeOut(clamp((week - b.st) / 7)); if (p <= 0.001) continue; if (clipping && ((b.x - A[0]) * nx + (b.y - A[1]) * ny) > s0 + 1) continue; box(b, p, "#7fd0ff", t > 41 ? 0.7 : 1); }
+  // profillinjen
+  if (t >= 24 && t < 34) {
+    const a = ease(seg(t, 24, 24.8)) * (1 - ease(seg(t, 32.6, 33.6))), q1 = pr(A[0], A[1], hgt(A[0], A[1]) + 0.3), x1 = q1 && q1[0], y1 = q1 && q1[1], q2 = pr(Bp[0], Bp[1], hgt(Bp[0], Bp[1]) + 0.3);
+    if (q1 && q2) { const x2 = q2[0], y2 = q2[1]; for (const [w, al, col] of [[16, 0.08, "#ffd54a"], [8, 0.2, "#ffd54a"], [3, 1, "#fff6c9"]]) { o.lineWidth = w; o.strokeStyle = col; o.globalAlpha = al * a; o.lineCap = "round"; o.beginPath(); o.moveTo(x1, y1); o.lineTo(x2, y2); o.stroke(); } o.globalAlpha = a; o.fillStyle = "#fff"; for (const [x, y] of [[x1, y1], [x2, y2]]) { o.beginPath(); o.arc(x, y, 6 * (W / 1300 + 0.5), 0, 6.3); o.fill(); } }
+    const m = ease(seg(t, 28.5, 32)), mx = lerp(A[0], Bp[0], m), my = lerp(A[1], Bp[1], m), qm = pr(mx, my, hgt(mx, my) + 0.6);
+    if (qm) { const r = (9 + 3 * Math.sin(t * 9)) * (W / 1300 + 0.5), gg = o.createRadialGradient(qm[0], qm[1], 0, qm[0], qm[1], r * 2.5); gg.addColorStop(0, "rgba(255,255,255,.9)"); gg.addColorStop(1, "rgba(255,200,60,0)"); o.fillStyle = gg; o.globalAlpha = a; o.beginPath(); o.arc(qm[0], qm[1], r * 2.5, 0, 6.3); o.fill(); }
+    o.globalAlpha = 1;
+    // profildiagram
+    const pw = Math.min(W * 0.34, 520 * W / 1300 + 160), ph = pw * 0.36, px0 = W - pw - W * 0.05, py0 = H - ph - H * 0.17, pa = ease(seg(t, 26.5, 28)) * (1 - ease(seg(t, 32.6, 33.6)));
+    o.globalCompositeOperation = "source-over"; o.globalAlpha = 0.78 * pa; o.fillStyle = "#06101f"; o.fillRect(px0, py0, pw, ph); o.strokeStyle = "#4ea3ff"; o.lineWidth = 1; o.globalAlpha = 0.9 * pa; o.strokeRect(px0, py0, pw, ph);
+    o.globalAlpha = 0.18 * pa; o.beginPath(); for (let i = 1; i < 6; i++) { o.moveTo(px0 + pw * i / 6, py0); o.lineTo(px0 + pw * i / 6, py0 + ph); } for (let i = 1; i < 4; i++) { o.moveTo(px0, py0 + ph * i / 4); o.lineTo(px0 + pw, py0 + ph * i / 4); } o.stroke();
+    const prog = ease(seg(t, 27, 31)); o.globalAlpha = pa; o.strokeStyle = "#ffd54a"; o.lineWidth = 2.2; o.shadowColor = "#ffd54a"; o.shadowBlur = 10; o.beginPath(); const K = 120; for (let i = 0; i <= K * prog; i++) { const u = i / K, x = lerp(A[0], Bp[0], u), y = lerp(A[1], Bp[1], u), yy = py0 + ph * (0.85 - (hgt(x, y) + 4) / 9 * 0.8); i ? o.lineTo(px0 + pw * u, yy) : o.moveTo(px0 + pw * u, yy); } o.stroke(); o.shadowBlur = 0;
+    o.fillStyle = "#cfe6ff"; o.font = `${Math.max(10, ph * 0.075)}px monospace`; o.fillText("PROFIL A–B  ·  " + fmt(dl) + " m", px0 + 8, py0 + 16); o.fillText("+" + (hgt(mx, my) + 41.3).toFixed(2) + " m ö.h.", px0 + pw - ph * 0.85, py0 + 16);
+    o.globalAlpha = 1; o.globalCompositeOperation = "lighter";
+  }
+  o.globalCompositeOperation = "source-over";
+  // HUD-siffror
+  const hud = (str, x, y, a) => { o.save(); o.globalAlpha = clamp(a) * 0.8; o.fillStyle = "#9fd0ff"; o.font = `${Math.round(H * 0.017 + 6)}px monospace`; o.fillText(str, x, y); o.restore(); }, bx = W * 0.05, by = H * 0.17;
+  if (t >= 6.5 && t < 41) hud("PUNKTER  " + fmt(48213907 * easeOut(seg(t, 6.2, 12.5))), bx, by, ease(seg(t, 6.5, 8)) * (1 - ease(seg(t, 40, 41))));
+  if (t >= 16 && t < 41) hud("VECKA  " + String(Math.round(week)).padStart(2, "0") + " / 40", bx, by + H * 0.035, ease(seg(t, 16, 17)) * (1 - ease(seg(t, 40, 41))));
+  if (isV) { let cut = 0, fill = 0; const cell = (SZ / (N - 1)) ** 2; for (const p of TER) { const d = p.z - level; if (d > 0) cut += d * cell; else fill -= d * cell; } const fa = 1 - ease(seg(t, 40, 41)); hud("SCHAKT      " + fmt(cut) + " m³", bx, by + H * 0.07, ease(seg(t, 34.5, 35.5)) * fa); hud("FYLLNING    " + fmt(fill) + " m³", bx, by + H * 0.105, ease(seg(t, 34.7, 35.7)) * fa); }
+  // texter
+  const fs = Math.max(18, Math.min(W / 17, H / 8));
+  for (const [a, b, h, sub] of CAP) { if (t < a || t > b) continue; const k = ease(seg(t, a, a + 0.9)) * (1 - ease(seg(t, b - 0.8, b))); text(h, W / 2, H * 0.80 + (1 - ease(seg(t, a, a + 1.4))) * 10, fs * (a < 6 ? 0.8 : 1), k, fs * (0.5 - 0.1 * seg(t, a, b)), "c", 200); text(sub, W / 2, H * 0.80 + fs * 0.95, fs * 0.36, k * 0.75, fs * 0.05, "c", 300); }
+  for (let i = 0; i < MONT.length; i++) { const [a, w] = MONT[i], b = a + 1.2; if (t < a || t > b) continue; const k = seg(t, a, a + 0.12) * (1 - seg(t, b - 0.18, b)), z = 1 + 0.25 * seg(t, a, b); text(w, W / 2, H * 0.5, fs * 1.9 * z, k, fs * 0.5, "c", 700); }
+  if (t > 48.4) title(t);
+  // övergångar: blixt
+  let flash = 0; for (const b of BOUND) { const d = t - b; if (d >= 0 && d < 0.5) flash = Math.max(flash, (1 - d / 0.5) * (b === 48 ? 0.9 : 0.35)); }
+  if (flash > 0) { o.fillStyle = `rgba(190,225,255,${flash})`; o.fillRect(0, 0, W, H); }
+}
+function title(t) {
+  const k = ease(seg(t, 48.4, 50)), fs = Math.min(W / 9, H / 4.2);
+  o.fillStyle = `rgba(2,6,13,${0.78 * k})`; o.fillRect(0, 0, W, H);
+  const sweep = seg(t, 49.5, 52.5) * 1.6 - 0.3; o.save(); o.globalCompositeOperation = "lighter";
+  const gx = o.createLinearGradient(W * (sweep - 0.12), 0, W * (sweep + 0.12), 0); gx.addColorStop(0, "rgba(120,190,255,0)"); gx.addColorStop(0.5, "rgba(190,230,255,.28)"); gx.addColorStop(1, "rgba(120,190,255,0)"); o.fillStyle = gx; o.fillRect(0, H * 0.3, W, H * 0.22); o.restore();
+  const y = H * 0.42; text("3D-EDITORN", W / 2, y, fs, ease(seg(t, 49, 50.5)), fs * (0.55 - 0.3 * ease(seg(t, 49, 54))), "c", 200);
+  text("DIN BYGGPLATS I TRE DIMENSIONER  ·  OCH EN TILL: TIDEN", W / 2, y + fs * 0.75, fs * 0.15, ease(seg(t, 51.5, 53)), fs * 0.07, "c", 300);
+  text("KOMMER TILL ETT BYGGE NÄRA DIG", W / 2, y + fs * 1.15, fs * 0.13, ease(seg(t, 53.5, 54.5)) * (1 - ease(seg(t, 54.8, 55.5))), fs * 0.08, "c", 300);
+  const rows = [["I HUVUDROLLEN", "Punktmolnet"], ["MEDVERKANDE", "IFC-modellerna · Profillinjen · Saxen"], ["MUSIK", "Skrivet i en webbläsare"], ["IDÉ OCH PRODUKTION", "Victor Falk"], ["REGI & KOD", "Claude"]];
+  rows.forEach(([a, b], i) => { const st = 55.5 + i * 0.9, k2 = ease(seg(t, st, st + 0.8)) * (1 - ease(seg(t, 60.6, 61.8))); text(a, W / 2, H * 0.665 + i * fs * 0.16, fs * 0.075, k2 * 0.55, fs * 0.04, "c", 300); text(b, W / 2, H * 0.665 + i * fs * 0.16 + fs * 0.085, fs * 0.095, k2, fs * 0.03, "c", 400); });
+  text("TILLÅTEN FRÅN ALLA ÅLDRAR – MEN MEST FÖR DEM MED MASSOR AV PUNKTER", W / 2, H * 0.915, fs * 0.075, ease(seg(t, 58.5, 59.5)) * (1 - ease(seg(t, 61.4, 62))) * 0.6, fs * 0.03, "c", 300);
+}
+
+/* ---------- efterbehandling ---------- */
+let gseed = 0;
+function present(t) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = "source-over"; ctx.globalAlpha = 1; ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+  const bar = H * (0.5 - 0.5 * (W / H > 2.39 ? 1 : (W / 2.39) / H));   // 2,39:1-bildformat
+  ctx.save(); ctx.beginPath(); ctx.rect(0, bar, W, H - bar * 2); ctx.clip();
+  let glitch = 0; for (const b of BOUND) { const d = Math.abs(t - b); if (d < 0.22) glitch = 1 - d / 0.22; }
+  if (glitch > 0) { const n = 14; for (let i = 0; i < n; i++) { const y0 = Math.floor(H / n * i), dx = Math.sin(i * 12.9 + t * 80) * 0.5 * glitch * W * 0.06; ctx.drawImage(oc, 0, y0, W, H / n + 1, dx, y0, W, H / n + 1); } }
+  else ctx.drawImage(oc, 0, 0);
+  // bloom (nedskalad kopia ritad additivt)
+  s.globalCompositeOperation = "source-over"; s.drawImage(oc, 0, 0, sm.width, sm.height); ctx.globalCompositeOperation = "lighter"; ctx.imageSmoothingEnabled = true; ctx.globalAlpha = 0.9; ctx.drawImage(sm, 0, 0, W, H); ctx.globalAlpha = 0.5; ctx.drawImage(sm, -W * 0.01, -H * 0.01, W * 1.02, H * 1.02);
+  if (glitch > 0) { ctx.globalAlpha = 0.5 * glitch; ctx.drawImage(oc, W * 0.012 * glitch, 0); }   // kromatiskt skift
+  ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
+  const v = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.25, W / 2, H / 2, Math.max(W, H) * 0.75); v.addColorStop(0, "rgba(0,0,0,0)"); v.addColorStop(1, "rgba(0,0,0,.72)"); ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+  // filmkorn + flimmer
+  if (((gseed++) & 1) === 0) { const id = g.createImageData(256, 256), d = id.data; for (let i = 0; i < d.length; i += 4) { const n = 120 + Math.random() * 135; d[i] = d[i + 1] = d[i + 2] = n; d[i + 3] = 26; } g.putImageData(id, 0, 0); }
+  ctx.globalCompositeOperation = "overlay"; ctx.fillStyle = ctx.createPattern(gr, "repeat"); ctx.translate(Math.random() * 256, Math.random() * 256); ctx.fillRect(-256, -256, W + 256, H + 256); ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalCompositeOperation = "source-over"; ctx.fillStyle = `rgba(0,0,0,${0.03 * Math.random()})`; ctx.fillRect(0, 0, W, H);
+  const fade = Math.max(1 - seg(t, 0, 1.2), seg(t, 61.2, 62)); if (fade > 0) { ctx.fillStyle = `rgba(0,0,0,${fade})`; ctx.fillRect(0, 0, W, H); }
+  ctx.restore();
+}
+
+/* ---------- ljud (WebAudio, syntetiserat) ---------- */
+let ac = null, master = null, muted = false;
+function noiseBuf() { const b = ac.createBuffer(1, ac.sampleRate * 3, ac.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; return b; }
+function audioStart() {
+  ac = new (window.AudioContext || window.webkitAudioContext)(); master = ac.createGain(); master.gain.value = muted ? 0 : 0.8; master.connect(ac.destination); const t0 = ac.currentTime + 0.1, nb = noiseBuf();
+  const env = (gn, t, a, d, pk) => { gn.gain.setValueAtTime(0.0001, t); gn.gain.exponentialRampToValueAtTime(pk, t + a); gn.gain.exponentialRampToValueAtTime(0.0001, t + a + d); };
+  const lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.setValueAtTime(140, t0); lp.frequency.exponentialRampToValueAtTime(1400, t0 + 48); lp.frequency.exponentialRampToValueAtTime(300, t0 + 62);
+  const dg = ac.createGain(); dg.gain.setValueAtTime(0.0001, t0); dg.gain.exponentialRampToValueAtTime(0.22, t0 + 5); dg.gain.setValueAtTime(0.22, t0 + 58); dg.gain.exponentialRampToValueAtTime(0.0001, t0 + 62); lp.connect(dg); dg.connect(master);
+  [55, 55.4, 82.4, 110.3].forEach(f => { const os = ac.createOscillator(); os.type = "sawtooth"; os.frequency.value = f; os.connect(lp); os.start(t0); os.stop(t0 + 62.5); });
+  for (let b = 6; b < 48; b += 0.5) { const o2 = ac.createOscillator(), gn = ac.createGain(); o2.type = "sine"; o2.frequency.setValueAtTime(110, t0 + b); o2.frequency.exponentialRampToValueAtTime(48, t0 + b + 0.18); o2.connect(gn); gn.connect(master); env(gn, t0 + b, 0.01, 0.2, b < 41 ? 0.25 : 0.4); o2.start(t0 + b); o2.stop(t0 + b + 0.3); }
+  const sc = [220, 261.6, 329.6, 392, 440, 523.3, 659.3, 784];
+  for (let i = 56; i < 192; i++) { const b = i / 4; if (b > 33 && b < 41 && i % 2) continue; const f = sc[(i * 3) % sc.length] * (b > 41 ? 2 : 1), o2 = ac.createOscillator(), gn = ac.createGain(); o2.type = "triangle"; o2.frequency.value = f; o2.connect(gn); gn.connect(master); env(gn, t0 + b, 0.005, 0.18, 0.035 + 0.05 * seg(b, 14, 41)); o2.start(t0 + b); o2.stop(t0 + b + 0.3); }
+  BOUND.forEach(b => {
+    const n = ac.createBufferSource(); n.buffer = nb; const bp = ac.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 1.4; bp.frequency.setValueAtTime(300, t0 + b - 2); bp.frequency.exponentialRampToValueAtTime(7000, t0 + b);
+    const gn = ac.createGain(); gn.gain.setValueAtTime(0.0001, t0 + b - 2); gn.gain.exponentialRampToValueAtTime(0.35, t0 + b - 0.02); gn.gain.exponentialRampToValueAtTime(0.0001, t0 + b + 0.7); n.connect(bp); bp.connect(gn); gn.connect(master); n.start(t0 + b - 2); n.stop(t0 + b + 0.8);
+    const o2 = ac.createOscillator(), g2 = ac.createGain(); o2.type = "sine"; o2.frequency.setValueAtTime(90, t0 + b); o2.frequency.exponentialRampToValueAtTime(26, t0 + b + 1.2); o2.connect(g2); g2.connect(master); env(g2, t0 + b, 0.01, 1.4, b === 48 ? 1 : 0.6); o2.start(t0 + b); o2.stop(t0 + b + 1.6);
+  });
+  [110, 164.8, 220, 277.2, 329.6, 440].forEach(f => { const o2 = ac.createOscillator(), gn = ac.createGain(), fl = ac.createBiquadFilter(); fl.type = "lowpass"; fl.frequency.value = 2600; o2.type = "sawtooth"; o2.frequency.value = f; o2.connect(fl); fl.connect(gn); gn.connect(master); env(gn, t0 + 48, 0.08, 9, 0.07); o2.start(t0 + 48); o2.stop(t0 + 58); });
+}
+
+/* ---------- uppspelning ---------- */
+const TOTAL = 62; let T = 0, last = 0, playing = false, ended = false;
+function frame(now) {
+  requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (playing && !ended) { T += dt; if (T >= TOTAL) { T = TOTAL; ended = true; } }
+  const t = clamp(T, 0, TOTAL); render(t); present(t);
+  document.getElementById("tc").textContent = `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+}
+function begin(sound) {
+  muted = !sound; const st = document.getElementById("start"); st.style.opacity = 0; setTimeout(() => st.style.display = "none", 800);
+  T = 0; ended = false; playing = true; if (ac) { try { ac.close(); } catch (e) { /* redan stängd */ } ac = null; } try { audioStart(); } catch (e) { console.warn("Ljud", e); }
+}
+function restart() { begin(!muted); }
+function pause() { playing = !playing; if (ac) { playing ? ac.resume() : ac.suspend(); } }
+function mute() { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.8; }
+function fsT() { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); }
+document.getElementById("go").onclick = () => begin(true); document.getElementById("go2").onclick = () => begin(false);
+document.getElementById("bM").onclick = mute; document.getElementById("bR").onclick = restart; document.getElementById("bF").onclick = fsT;
+addEventListener("keydown", e => { if (e.key === " ") { e.preventDefault(); pause(); } else if (e.key === "r" || e.key === "R") restart(); else if (e.key === "m" || e.key === "M") mute(); else if (e.key === "f" || e.key === "F") fsT(); });
+requestAnimationFrame(t => { last = t; frame(t); });
+/* förhandsgranskning: ?t=30 hoppar till en tidpunkt, utan ljud */
+{ const q = new URLSearchParams(location.search).get("t"); if (q != null) { T = Number(q) || 0; playing = false; document.getElementById("start").style.display = "none"; } }
+</script>
+</body>
+</html>
