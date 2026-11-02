@@ -247,24 +247,83 @@ function l3pfDraw(ctxOverride, size) {
   }
 }
 /* ---- 3D: linje, band och en markör som följer musen ------------------------------------------------------------------- */
+/* Profillinjen i 3D: kraftig röd linje med glöd som behåller samma tjocklek på skärmen, tydliga ändpunkter A/B och en stor, lysande markör som följer musen i diagrammet.
+   Linjen går att dra i sidled i 3D (se l3pfDragDown) – profilen räknas om medan du drar. */
+function l3pfGlowTex(inner, outer, ring) {
+  const c = document.createElement("canvas"); c.width = c.height = 128; const g = c.getContext("2d"), grd = g.createRadialGradient(64, 64, 4, 64, 64, 62);
+  grd.addColorStop(0, outer); grd.addColorStop(0.28, outer); grd.addColorStop(0.5, outer.replace(/[\d.]+\)$/, "0.35)")); grd.addColorStop(1, outer.replace(/[\d.]+\)$/, "0)")); g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
+  g.beginPath(); g.arc(64, 64, 26, 0, 6.2832); g.fillStyle = inner; g.fill(); g.lineWidth = 7; g.strokeStyle = ring; g.stroke(); const t = new THREE.CanvasTexture(c); if ("encoding" in t) t.encoding = THREE.sRGBEncoding; return t;
+}
 function l3pf3d() {
   const A = l3pf.A, B = l3pf.B, z = (A[2] + B[2]) / 2, w = l3pf.w, dx = B[0] - A[0], dy = B[1] - A[1], L = Math.hypot(dx, dy) || 1, nx = -dy / L * w, ny = dx / L * w, V = (x, y, zz) => new THREE.Vector3(x, y, zz);
-  const grp = new THREE.Group(), lm = new THREE.LineBasicMaterial({ color: 0xdc2626, depthTest: false }), ln = new THREE.Line(new THREE.BufferGeometry().setFromPoints([V(A[0], A[1], A[2]), V(B[0], B[1], B[2])]), lm); ln.renderOrder = 30;
-  const band = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([V(A[0] + nx, A[1] + ny, z), V(B[0] + nx, B[1] + ny, z), V(B[0] - nx, B[1] - ny, z), V(A[0] - nx, A[1] - ny, z)]), new THREE.LineBasicMaterial({ color: 0xdc2626, transparent: true, opacity: 0.45, depthTest: false })); band.renderOrder = 29;
-  const mk = new THREE.Points(new THREE.BufferGeometry().setFromPoints([V(0, 0, 0)]), new THREE.PointsMaterial({ color: 0x0f172a, size: 11, sizeAttenuation: false, depthTest: false })); mk.renderOrder = 31; mk.visible = false;
-  [ln, band, mk].forEach(o => { o.userData.noHit = true; o.raycast = () => {}; grp.add(o); }); l3.scene.add(grp); l3pf.grp = grp; l3pf.mark = mk; l3Render();
+  const grp = new THREE.Group(), unit = new THREE.CylinderGeometry(1, 1, 1, 14, 1, true); unit.rotateZ(Math.PI / 2);
+  const core = new THREE.Mesh(unit, new THREE.MeshBasicMaterial({ color: 0xff1f4b, depthTest: false })), glow = new THREE.Mesh(unit.clone(), new THREE.MeshBasicMaterial({ color: 0xff5c7c, transparent: true, opacity: 0.3, depthTest: false })), glow2 = new THREE.Mesh(unit.clone(), new THREE.MeshBasicMaterial({ color: 0xff9db0, transparent: true, opacity: 0.16, depthTest: false }));
+  core.renderOrder = 32; glow.renderOrder = 30; glow2.renderOrder = 29;
+  const band = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints([V(A[0] + nx, A[1] + ny, z), V(B[0] + nx, B[1] + ny, z), V(B[0] - nx, B[1] - ny, z), V(A[0] - nx, A[1] - ny, z)]), new THREE.LineBasicMaterial({ color: 0xff3d63, transparent: true, opacity: 0.7, depthTest: false })); band.renderOrder = 28;
+  const dots = new THREE.Points(new THREE.BufferGeometry().setFromPoints([V(A[0], A[1], A[2]), V(B[0], B[1], B[2])]), new THREE.PointsMaterial({ map: l3pfGlowTex("#ffffff", "rgba(255,31,75,0.9)", "#ff1f4b"), size: 30, sizeAttenuation: false, transparent: true, depthTest: false })); dots.renderOrder = 33;
+  const mk = new THREE.Points(new THREE.BufferGeometry().setFromPoints([V(0, 0, 0)]), new THREE.PointsMaterial({ map: l3pfGlowTex("#ffe14d", "rgba(255,200,0,0.95)", "#111827"), size: 56, sizeAttenuation: false, transparent: true, depthTest: false })); mk.renderOrder = 34; mk.visible = false;
+  [core, glow, glow2, band, dots, mk].forEach(o => { o.userData.noHit = true; o.raycast = () => {}; grp.add(o); });
+  l3pf.lineParts = [core, glow, glow2]; l3pf.dots = dots; l3pf.band = band; l3.scene.add(grp); l3pf.grp = grp; l3pf.mark = mk; l3pfLinePlace(); l3pfOrbitHook(); l3Render();
 }
+/* Placerar och skalar linjens rör efter avståndet till kameran (samma tjocklek på skärmen). */
+function l3pfLinePlace() {
+  if (!l3pf.lineParts || !l3pf.A) return; const A = l3pf.A, B = l3pf.B, a = new THREE.Vector3(A[0], A[1], A[2]), b = new THREE.Vector3(B[0], B[1], B[2]), mid = a.clone().add(b).multiplyScalar(0.5), dir = b.clone().sub(a), len = dir.length() || 1, q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir.clone().normalize());
+  const cam = l3.camera, d = cam.isOrthographicCamera ? (cam.top - cam.bottom) / (cam.zoom || 1) * 0.8 : cam.position.distanceTo(mid), hot = l3pf.lineHot ? 1.6 : 1;
+  [[0, 0.0032], [1, 0.0075], [2, 0.014]].forEach(([k, f]) => { const m = l3pf.lineParts[k]; m.position.copy(mid); m.quaternion.copy(q); m.scale.set(len, d * f * hot, d * f * hot); });
+}
+let l3pfOrbitOn = false;
+function l3pfOrbitHook() { if (l3pfOrbitOn || !l3.orbit) return; l3pfOrbitOn = true; l3.orbit.addEventListener("change", () => { if (l3pf.lineParts) l3pfLinePlace(); });
+  const hoverFn = e => { if (!l3pf.A || l3pf.dragLine) return; const hot = !l3pfBusyTool() && l3pfLineDist(e) <= 11; if (hot !== !!l3pf.lineHot) { l3pf.lineHot = hot; l3.renderer.domElement.style.cursor = hot ? "grab" : ""; l3pfLinePlace(); l3Render(); } }; ["pointermove", "mousemove"].forEach(t => window.addEventListener(t, e => { if (e.target === l3.renderer.domElement) hoverFn(e); }, true)); }
 function l3pfMark() {
-  const mk = l3pf.mark; if (!mk) return; if (l3pf.hover == null) { if (mk.visible) { mk.visible = false; l3Render(); } return; }
+  const mk = l3pf.mark; if (!mk || !l3pf.data || !l3pf.lines) return; if (l3pf.hover == null) { if (mk.visible) { mk.visible = false; l3Render(); } return; }
   const A = l3pf.A, B = l3pf.B, L = l3pf.data.L, t = l3pf.hover / L, i = l3pf.lines.findIndex((l, k) => !l3pf.hide.has(l3pf.data.series[k].id) && l3pfAt(l, l3pf.hover) != null), z = i >= 0 ? l3pfAt(l3pf.lines[i], l3pf.hover) - l3.O[2] : (A[2] + B[2]) / 2;
   mk.position.set(A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, z); mk.visible = true; l3Render();
 }
+/* ---- Dra profillinjen i sidled i 3D (Victor 2026-11-02) ------------------------------------------------------------------------ */
+function l3pfLineDist(e) {
+  if (!l3pf.A || !l3.renderer) return Infinity; const r = l3Rect(), mx = e.clientX - r.left, my = e.clientY - r.top, A = l3pf.A, B = l3pf.B, sa = l3ToScreen(new THREE.Vector3(A[0], A[1], A[2])), sb = l3ToScreen(new THREE.Vector3(B[0], B[1], B[2]));
+  if (sa.behind && sb.behind) return Infinity; const ax = sb.x - sa.x, ay = sb.y - sa.y, l2 = ax * ax + ay * ay || 1, t = Math.max(0, Math.min(1, ((mx - sa.x) * ax + (my - sa.y) * ay) / l2)); return Math.hypot(sa.x + ax * t - mx, sa.y + ay * t - my);
+}
+const l3pfBusyTool = () => (l3.tool && l3.tool !== "select") || (typeof l3cl !== "undefined" && l3cl.mode) || (typeof l3rb !== "undefined" && (l3rb.draw || l3rb.hd)) || (typeof l3sp !== "undefined" && l3sp.profPick) || (typeof l3pt !== "undefined" && l3pt.picking);
+function l3pfDragDown(e) {
+  if (!l3pf.A || !l3pf.data || e.button !== 0 || e.target !== l3.renderer.domElement || l3pfBusyTool() || l3pfLineDist(e) > 11) return;
+  e.stopImmediatePropagation(); e.preventDefault(); const A0 = l3pf.A.slice(), B0 = l3pf.B.slice(), L = l3pf.data.L, nx = -(B0[1] - A0[1]) / L, ny = (B0[0] - A0[0]) / L, zz = (A0[2] + B0[2]) / 2, pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -zz), p = new THREE.Vector3();
+  const sOf = ev => { const ray = l3MouseRay(ev); return ray.intersectPlane(pl, p) ? (p.x - A0[0]) * nx + (p.y - A0[1]) * ny : null; }; const s0 = sOf(e); if (s0 == null) return;
+  l3pf.dragLine = { A0, B0, nx, ny, s0, key0: l3pfAnnKey(), last: 0, dur: 0, busy: false }; l3pf.lineHot = true; l3.orbit.enabled = false; l3.renderer.domElement.style.cursor = "grabbing"; l3pfLinePlace(); l3Render();
+  window.addEventListener("pointermove", l3pfDragMove, true); window.addEventListener("pointerup", l3pfDragUp, true); window.addEventListener("pointercancel", l3pfDragUp, true);
+}
+function l3pfDragMove(e) {
+  const d = l3pf.dragLine; if (!d) return; e.stopImmediatePropagation(); const pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -(d.A0[2] + d.B0[2]) / 2), p = new THREE.Vector3(), ray = l3MouseRay(e); if (!ray.intersectPlane(pl, p)) return;
+  let sh = (p.x - d.A0[0]) * d.nx + (p.y - d.A0[1]) * d.ny - d.s0; if (!e.altKey) sh = Math.round(sh * 10) / 10;   // hela 10 cm; Alt = fritt
+  l3pf.A = [d.A0[0] + d.nx * sh, d.A0[1] + d.ny * sh, d.A0[2]]; l3pf.B = [d.B0[0] + d.nx * sh, d.B0[1] + d.ny * sh, d.B0[2]]; d.sh = sh;
+  const pa = new THREE.Vector3(...l3pf.A), pb = new THREE.Vector3(...l3pf.B), z = (pa.z + pb.z) / 2, w = l3pf.w, L = l3pf.data.L, nx = -(pb.y - pa.y) / L * w, ny = (pb.x - pa.x) / L * w, pos = l3pf.band.geometry.getAttribute("position");
+  [[pa.x + nx, pa.y + ny], [pb.x + nx, pb.y + ny], [pb.x - nx, pb.y - ny], [pa.x - nx, pa.y - ny]].forEach(([x, y], k) => pos.setXYZ(k, x, y, z)); pos.needsUpdate = true;
+  const dp = l3pf.dots.geometry.getAttribute("position"); dp.setXYZ(0, pa.x, pa.y, pa.z); dp.setXYZ(1, pb.x, pb.y, pb.z); dp.needsUpdate = true; l3pfLinePlace(); l3Render();
+  const now = performance.now(); if (!d.busy && now - d.last > Math.max(160, d.dur * 2.5)) { d.busy = true; d.last = now; setTimeout(() => { const t0 = performance.now(); try { l3pfRecomputeLive(false); } finally { d.dur = performance.now() - t0; d.busy = false; } }, 0); }
+  l3Status(`Profilen flyttad ${l3pfF(sh, 1)} m i sidled (Alt = fritt, släpp för att räkna klart).`);
+}
+function l3pfDragUp() {
+  window.removeEventListener("pointermove", l3pfDragMove, true); window.removeEventListener("pointerup", l3pfDragUp, true); window.removeEventListener("pointercancel", l3pfDragUp, true);
+  const d = l3pf.dragLine; l3pf.dragLine = null; l3pf.lineHot = false; l3.orbit.enabled = true; l3.renderer.domElement.style.cursor = ""; if (!d) return;
+  l3pfRecomputeLive(true);
+  // markeringarna hör till profilens läge: gammal nyckel tas bort, ny sparas
+  { const all = { ...((l3Prefs().pfAnn) || {}) }; delete all[d.key0]; l3SetPref("pfAnn", all); } l3pfAnnSave();
+  l3pfLinePlace(); l3Render(); l3Status("Profilen flyttad – den är uträknad på nytt längs den nya linjen.");
+}
+/* Räknar om profilen längs den nya linjen. full = även IFC-genomskärningen, legend och vyn. */
+function l3pfRecomputeLive(full) {
+  const old = l3pf.data, A = l3pf.A, B = l3pf.B; if (!old) return; const nd = l3ptProfile(A, B, l3pf.w), col = new Map(old.series.map(s => [s.id, [s.color, s.aci]]));
+  nd.series.forEach((s, i) => { const c = col.get(s.id); s.color = c ? c[0] : L3PF_COL[i % L3PF_COL.length]; s.aci = c ? c[1] : L3PF_ACI[i % L3PF_ACI.length]; }); l3pf.data = nd; l3pfCompute();
+  if (full) { const oc = new Map(l3pf.ifc.map(m => [m.id, m.color])); try { l3pf.ifc = l3pfIfcSection(A, B); } catch (e) { l3pf.ifc = []; } l3pf.ifc.forEach((m, i) => { m.color = oc.get(m.id) || L3PF_IFC[i % L3PF_IFC.length]; }); l3pf.ref = null; l3pfUI(); l3pfFit(); l3pfAnn3d(); }
+  l3pfInfo(); l3pfDraw();
+}
+window.addEventListener("pointerdown", l3pfDragDown, true);
 function l3pfClear(keepData) {
   if (l3pf.ro) { l3pf.ro.disconnect(); l3pf.ro = null; } if (document.fullscreenElement && l3pf.el && document.fullscreenElement === l3pf.el) document.exitFullscreen().catch(() => {});
   const e = document.getElementById("v3PcProf"); if (e) e.remove(); l3pf.el = l3pf.cv = null; l3pf.fs = false;
-  if (l3pf.grp) { l3.scene.remove(l3pf.grp); l3pf.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); l3pf.grp = l3pf.mark = null; l3Render(); }
+  if (l3pf.grp) { l3.scene.remove(l3pf.grp); l3pf.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); l3pf.grp = l3pf.mark = null; l3pf.lineParts = l3pf.dots = l3pf.band = null; l3Render(); }
   if (l3pf.annGrp) { l3.scene.remove(l3pf.annGrp); l3pf.annGrp.traverse(o => { if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } if (o.geometry) o.geometry.dispose(); }); l3pf.annGrp = null; l3Render(); }
-  if (!keepData) { l3pf.data = null; if (typeof l3pt !== "undefined") l3pt.prof = null; }
+  if (!keepData) { l3pf.data = null; l3pf.A = l3pf.B = null; if (typeof l3pt !== "undefined") l3pt.prof = null; }
 }
 function l3pfFs() {
   const el = l3pf.el; if (!el) return; l3pf.fs = !l3pf.fs; el.classList.toggle("fs", l3pf.fs); const b = el.querySelector('[data-pf="fs"]'); if (b) b.classList.toggle("on", l3pf.fs);
@@ -346,8 +405,8 @@ function l3pfAnn3d() {
   if (l3pf.annGrp) { l3.scene.remove(l3pf.annGrp); l3pf.annGrp.traverse(o => { if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } if (o.geometry) o.geometry.dispose(); }); l3pf.annGrp = null; }
   if (!l3pf.A || !l3pf.data || !l3pf.ann || !l3pf.ann.length) { l3Render(); return; } const A = l3pf.A, B = l3pf.B, L = l3pf.data.L, grp = new THREE.Group();
   l3pf.ann.forEach(a => { const tm = a.t1 != null ? (a.t + a.t1) / 2 : a.t, z = a.z != null ? a.z : l3pfSurfZ(tm); if (z == null) return; const txt = a.k === "spot" ? l3pfPlus(z) : (a.text || "Kommentar"), cv = document.createElement("canvas"), c = cv.getContext("2d"); c.font = "700 34px system-ui"; const w = Math.ceil(c.measureText(txt).width) + 30; cv.width = w; cv.height = 56; c.font = "700 34px system-ui"; c.fillStyle = a.k === "spot" ? "#0f172a" : "#fef3c7"; c.strokeStyle = a.k === "spot" ? "#fff" : "#d97706"; c.lineWidth = 4; c.beginPath(); if (c.roundRect) c.roundRect(3, 3, w - 6, 50, 14); else c.rect(3, 3, w - 6, 50); c.fill(); c.stroke(); c.fillStyle = a.k === "spot" ? "#fff" : "#7c2d12"; c.fillText(txt, 15, 40);
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false, sizeAttenuation: false })); sp.scale.set(0.05 * w / 56, 0.05, 1); sp.position.set(A[0] + (B[0] - A[0]) * tm / L, A[1] + (B[1] - A[1]) * tm / L, z - l3.O[2] + 1.2); sp.renderOrder = 33; sp.userData.noHit = true; sp.raycast = () => {}; grp.add(sp);
-    const pt = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(sp.position.x, sp.position.y, z - l3.O[2])]), new THREE.PointsMaterial({ color: a.k === "spot" ? 0xdc2626 : 0xd97706, size: 10, sizeAttenuation: false, depthTest: false })); pt.renderOrder = 33; pt.raycast = () => {}; grp.add(pt); });
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false, sizeAttenuation: false })); sp.scale.set(0.026 * w / 56, 0.026, 1); sp.position.set(A[0] + (B[0] - A[0]) * tm / L, A[1] + (B[1] - A[1]) * tm / L, z - l3.O[2] + 0.6); sp.renderOrder = 33; sp.userData.noHit = true; sp.raycast = () => {}; grp.add(sp);
+    const pt = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(sp.position.x, sp.position.y, z - l3.O[2])]), new THREE.PointsMaterial({ color: a.k === "spot" ? 0xdc2626 : 0xd97706, size: 7, sizeAttenuation: false, depthTest: false })); pt.renderOrder = 33; pt.raycast = () => {}; grp.add(pt); });
   l3.scene.add(grp); l3pf.annGrp = grp; l3Render();
 }
 /* ---- Export ------------------------------------------------------------------------------------------------------------- */
