@@ -245,7 +245,10 @@ function l3volIfcParts(m) {
     const s = G[k]; if (!s || (only && only !== k)) return; const pts = [], tris = [];
     for (let i = 0; i < s.pos.length; i += 3) pts.push({ x: s.pos[i], y: s.pos[i + 1], z: s.pos[i + 2] });
     for (let i = 0; i < s.idx.length; i += 3) tris.push([s.idx[i] + 1, s.idx[i + 1] + 1, s.idx[i + 2] + 1]);
-    out.push({ kind: k, label: `${name} ${sg}${l3volM3(vol)}`, vol, g: { pts, tris } });
+    // Orientering utåt: tecknad volym ska vara positiv (annars räknar Trimble Connect 0 m³ för kroppen) – vänd alla trianglar annars.
+    let sv = 0; tris.forEach(([ia, ib, ic]) => { const A = pts[ia - 1], B = pts[ib - 1], C = pts[ic - 1]; sv += (A.x * (B.y * C.z - B.z * C.y) - A.y * (B.x * C.z - B.z * C.x) + A.z * (B.x * C.y - B.y * C.x)) / 6; });
+    if (sv < 0) tris.forEach(t => { const x = t[1]; t[1] = t[2]; t[2] = x; });
+    out.push({ kind: k, label: `${name} ${sg}${l3volM3(vol)}`, vol, meshVol: Math.abs(sv), area: m.vol.res && m.vol.res.area, g: { pts, tris } });
   });
   return out;
 }

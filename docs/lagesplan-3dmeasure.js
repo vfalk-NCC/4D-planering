@@ -583,7 +583,7 @@ function l3mIfcBuild(list, withNotes) {
     const path = (m.kind === "point" || m.kind === "objvol") ? [] : l3mFillet(way.map(rel), m.kind === "area" || m.kind === "volume" || m.kind === "cutfill", L3M_IFC.bend);
     const tri = (g, st) => { if (!g.pts.length) return null; const pl = E(`IFCCARTESIANPOINTLIST3D((${g.pts.map(v => ifcPt([v.x, v.y, v.z])).join(",")}))`), fs = E(`IFCTRIANGULATEDFACESET(${pl},$,.T.,(${g.tris.map(t => `(${t.join(",")})`).join(",")}),$)`); E(`IFCSTYLEDITEM(${fs},(${st}),$)`); return fs; };
     const meshItems = [];
-    const own = m.kind === "volume" && /^#[0-9a-f]{6}$/i.test(m.color || ""), mRed = own ? stOf(m.color) : red, mFill = own ? stOf(m.color, true) : fillSt;
+    const own = m.kind === "volume" && /^#[0-9a-f]{6}$/i.test(m.color || ""), mRed = own ? stOf(m.color) : red, mFill = own ? stOf(m.color) : stOf("#3b82f6");   // volymkroppen är tät (genomskinlighet ställer man in i Trimble Connect)
     if (path.length >= 2) { const t = tri(l3mSweep(path, L3M_IFC.r), mRed); if (t) meshItems.push(t); }
     // Utdragen polylinje: hjälplinjer även från mellanpunkterna upp till kedjan.
     if (offd) for (let i = 1; i < P.length - 1; i++) { const t = tri(l3mSweep([rel(P[i]), rel(DP[i])].map(v => new THREE.Vector3(v[0], v[1], v[2])), L3M_IFC.r * 0.6), red); if (t) meshItems.push(t); }
@@ -605,7 +605,8 @@ function l3mIfcBuild(list, withNotes) {
     const inf = l3mInfo(m), name = `Mått ${nr}: ${m.text}${withNotes && m.note ? " – " + m.note : ""}`;
     const showBoard = m.kind !== "cutfill" || l3Prefs().volExpText !== false; // volymtext (skylt) är ett val för volym mot yta
     // Schakt och fyllning som egna 3D-objekt (stängda kroppar) med volymen som egenskap.
-    if (m.kind === "cutfill" && typeof l3volIfcParts === "function") l3volIfcParts(m).forEach(pt => { const t = tri(pt.g, stOf(L3VOL_COL[pt.kind], true)); if (!t) return; const e2 = doc.proxy(`Mått ${nr}: ${pt.label}`.slice(0, 120), "", pt.kind === "cut" ? "4D-volym-schakt" : "4D-volym-fyllning", doc.place(o), doc.shape(t, "Tessellation"), m.id); doc.props(e2, [["Typ", pt.kind === "cut" ? "Volym – schakt" : "Volym – fyllning"], ["Volym (m³)", String(Math.round(pt.vol * 100) / 100)], ...inf.rows.map(([k, v]) => [k, String(v).replace(/\n/g, ", ")]), ["Arbetsyta", plan ? plan.name || "" : ""]]); elems.push(e2); });
+    if (m.kind === "cutfill" && typeof l3volIfcParts === "function") l3volIfcParts(m).forEach(pt => { const t = tri(pt.g, stOf(L3VOL_COL[pt.kind])); if (!t) return; const e2 = doc.proxy(`Mått ${nr}: ${pt.label}`.slice(0, 120), "", pt.kind === "cut" ? "4D-volym-schakt" : "4D-volym-fyllning", doc.place(o), doc.shape(t, "Tessellation"), m.id); doc.props(e2, [["Typ", pt.kind === "cut" ? "Volym – schakt" : "Volym – fyllning"], ["Volym (m³)", String(Math.round(pt.vol * 100) / 100)], ...inf.rows.map(([k, v]) => [k, String(v).replace(/\n/g, ", ")]), ["Arbetsyta", plan ? plan.name || "" : ""]]);
+      doc.quantities(e2, { vol: [["NetVolume", Math.round(pt.vol * 1000) / 1000], ["GrossVolume", Math.round(pt.vol * 1000) / 1000]], area: pt.area ? [["NetFootprintArea", Math.round(pt.area * 100) / 100]] : [] }); elems.push(e2); });
     // Skylten med måttet (och kommentaren) – vit platta strax ovanför mitten, 3D-text på båda sidor.
     const raw = withNotes && m.note ? (typeof wrapText === "function" ? wrapText(m.note, 30) : m.note).split("\n").filter(Boolean).slice(0, 3) : [];
     const vr = m.kind === "cutfill" && m.vol && m.vol.res, ftxt = n => Math.round(n).toLocaleString("sv-SE").replace(/[\u00a0\u202f\s]+/g, " ") + " m3";
@@ -627,6 +628,7 @@ function l3mIfcBuild(list, withNotes) {
     elems.push(el);
     doc.props(el, [["Typ", L3M_KIND[m.kind] || m.kind], ["Värde", m.text], ...(withNotes ? [["Kommentar", m.note || ""]] : []), ["Nummer", nr],
       ...inf.rows.filter(([k]) => k !== "Status").map(([k, v]) => [k, String(v).replace(/\n/g, ", ")]), ["Arbetsyta", plan ? plan.name || "" : ""]]);
+    if (m.kind === "volume" && typeof l3PolyArea === "function") { const ar = Math.abs(l3PolyArea(P.map(p => new THREE.Vector3(p[0], p[1], p[2]))).area), vv = ar * Math.abs(Number(m.h) || 0); doc.quantities(el, { vol: [["NetVolume", Math.round(vv * 1000) / 1000], ["GrossVolume", Math.round(vv * 1000) / 1000]], area: [["NetFootprintArea", Math.round(ar * 100) / 100]] }); }   // volymen syns i Trimble Connects sidomeny
     if (showBoard) {
     const axes = (p, rx, ry, nx, ny) => E(`IFCLOCALPLACEMENT(${doc.sitePl},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt(p)})`)},${dir([nx, ny, 0])},${dir([rx, ry, 0])})`)})`);
     const board = E(`IFCEXTRUDEDAREASOLID(${E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,$,${ifcNum(W)},${ifcNum(H)})`)},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, 0, -L3M_IFC.T / 2])})`)},$,$)`)},${dir([0, 0, 1])},${ifcNum(L3M_IFC.T)})`);

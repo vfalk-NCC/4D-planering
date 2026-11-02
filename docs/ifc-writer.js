@@ -118,7 +118,8 @@ function ifcDoc(projName, desc, appName = "4D-planering Lägesplan") {
   const ctx = E(`IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,${ax},$)`);
   const body = E(`IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,${ctx},$,.MODEL_VIEW.,$)`);
   const uL = E("IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)"), uA = E("IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.)");
-  const units = E(`IFCUNITASSIGNMENT((${uL},${uA}))`);
+  const uAr = E("IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.)"), uV = E("IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.)");
+  const units = E(`IFCUNITASSIGNMENT((${uL},${uAr},${uV},${uA}))`);
   const project = E(`IFCPROJECT('${ifcGuid()}',$,${ifcStr(projName)},${ifcStr(desc)},$,$,$,(${ctx}),${units})`);
   const sitePl = E(`IFCLOCALPLACEMENT($,${ax})`);
   const site = E(`IFCSITE('${ifcGuid()}',$,'4D-planering',$,$,${sitePl},$,$,.ELEMENT.,$,$,$,$,$)`);
@@ -142,6 +143,12 @@ function ifcDoc(projName, desc, appName = "4D-planering Lägesplan") {
       const ps = list.map(([n, v]) => E(`IFCPROPERTYSINGLEVALUE(${ifcStr(n)},$,${typeof v === "number" ? `IFCREAL(${ifcNum(v)})` : `IFCLABEL(${ifcStr(v)})`},$)`));
       const pset = E(`IFCPROPERTYSET('${ifcGuid()}',$,${ifcStr(psetName || "4D-planering")},$,(${ps.join(",")}))`);
       E(`IFCRELDEFINESBYPROPERTIES('${ifcGuid()}',$,$,$,(${el}),${pset})`);
+    },
+    // Mängder (Qto) – syns i Trimble Connects sidomeny som t.ex. NetVolume; vol = [["NetVolume", m³], …], area = [["NetFootprintArea", m²]]
+    quantities(el, o, qtoName) {
+      const q = [...(o.vol || []).map(([n, v]) => E(`IFCQUANTITYVOLUME(${ifcStr(n)},$,$,${ifcNum(v)},$)`)), ...(o.area || []).map(([n, v]) => E(`IFCQUANTITYAREA(${ifcStr(n)},$,$,${ifcNum(v)},$)`)), ...(o.len || []).map(([n, v]) => E(`IFCQUANTITYLENGTH(${ifcStr(n)},$,$,${ifcNum(v)},$)`))];
+      if (!q.length) return; const eq = E(`IFCELEMENTQUANTITY('${ifcGuid()}',$,${ifcStr(qtoName || "Qto_BuildingElementProxyQuantities")},$,$,(${q.join(",")}))`);
+      E(`IFCRELDEFINESBYPROPERTIES('${ifcGuid()}',$,$,$,(${el}),${eq})`);
     },
     finish(elems, fileName) {
       E(`IFCRELCONTAINEDINSPATIALSTRUCTURE('${ifcGuid()}',$,$,$,(${elems.join(",")}),${site})`);
