@@ -351,20 +351,20 @@ async function l3volSolid() {
 }
 /* Solid av volymen (Victor 2026-10-31, bild: "jag vill ju ha solid av ytan som nummer 1 pekar på" = den blå schaktkroppen mellan den uppmätta ytan och "Mot"):
    schakt- och fyllningskropparna som redan visas i förhandsvisningen görs till slutna ritade kroppar (en per sort) som kan skäras mot, mätas och exporteras. */
-function l3volSolidVol() {
+function l3volSolidVol(part) {
   const c = l3vol.cur; if (!c || !c.geom) { l3Status("Ingen volym att göra solid av ännu – vänta tills måttet räknats klart.", true); return; }
   const G = c.geom, o = G.o, base = l3volLabel(c, c.spec.a).replace(/\s*\(.*\)\s*$/, "").trim() || "ytan", made = [];
   placeSnapshot();
-  [["cut", "Schakt", "#3b82f6"], ["fill", "Fyllning", "#ef4444"]].forEach(([k, nm, col]) => {
+  [["cut", "Schakt", "#3b82f6"], ["fill", "Fyllning", "#ef4444"]].filter(([k]) => !part || part === k).forEach(([k, nm, col]) => {
     const S = G[k]; if (!S || !S.idx || S.idx.length < 12) return;
     const pts = [], faces = [];
     for (let i = 0; i < S.pos.length; i += 3) pts.push([Math.round(S.pos[i] * 1000) / 1000, Math.round(S.pos[i + 1] * 1000) / 1000, Math.round(S.pos[i + 2] * 1000) / 1000]);
     for (let i = 0; i < S.idx.length; i += 3) faces.push([S.idx[i] + 1, S.idx[i + 1] + 1, S.idx[i + 2] + 1]);
     made.push(modCreate({ k: "mesh", pts, faces, closed: true }, [o[0], o[1], o[2]], { name: nm + "volym – " + base, color: col, snapshot: false }));
   });
-  if (!made.length) { l3Status("Volymen är tom – det finns varken schakt eller fyllning att göra solid av.", true); return; }
+  if (!made.length) { l3Status(part === "cut" ? "Det finns inget schakt att göra solid av." : part === "fill" ? "Det finns ingen fyllning att göra solid av." : "Volymen är tom – det finns varken schakt eller fyllning att göra solid av.", true); return; }
   l3SelectIds(made.map(m => m.id)); l3Changed();
-  l3Status(`Solid skapad av volymen (${made.length === 2 ? "schakt + fyllning" : (G.cut && G.cut.idx && G.cut.idx.length ? "schakt" : "fyllning")}). Använd den med Skär ytor (I). Ctrl+Z ångrar.`);
+  l3Status(`Solid skapad av ${part === "cut" ? "schakten" : part === "fill" ? "fyllningen" : made.length === 2 ? "schakten och fyllningen" : "volymen"}. Använd den med Skär ytor (I). Ctrl+Z ångrar.`);
 }
 /* Ändra ett sparat mått: panelen öppnas med dess inställningar. */
 function l3volEdit(m) {
@@ -417,7 +417,8 @@ function l3volPanel() {
       <div class="v3-vq-seg" role="group" title="Vad som tas med i IFC-filen"><button type="button" data-vifcv="both" class="${(l3vol.ifcPart || "both") === "both" ? "on" : ""}">Schakt + fyllning</button><button type="button" data-vifcv="cut" class="${(l3vol.ifcPart || "both") === "cut" ? "on" : ""}">Schakt</button><button type="button" data-vifcv="fill" class="${(l3vol.ifcPart || "both") === "fill" ? "on" : ""}">Fyllning</button></div>
       <div class="v3-vq-grid"><button type="button" data-vb="ifc" ${r ? "" : "disabled"} title="Området, schakt- och fyllningskropparna som 3D-objekt i en IFC-fil (Trimble Connect eller nedladdning)"><b>⤓</b> Exportera IFC</button>
         <button type="button" data-vb="solid" title="Gör området och den valda ytan (t.ex. inskannat berg i punktmolnet) till en sluten kropp – botten under lägsta punkten, väggar runt området. Då går den att skära mot med Skär ytor." ${c.spec.a && c.spec.a.k !== "level" ? "" : "disabled"}><b>▣</b> Solid av ytan</button>
-        <button type="button" class="wide" data-vb="solidvol" title="Gör själva volymen – schaktkroppen (blå) och/eller fyllningen (röd) mellan den uppmätta ytan och &quot;Mot&quot; – till en sluten kropp som går att skära mot med Skär ytor." ${r ? "" : "disabled"}><b>▣</b> Solid av volymen</button></div>
+        <button type="button" data-vb="solidcut" title="Gör schaktet (blå kropp) mellan den uppmätta ytan och &quot;Mot&quot; till en sluten solid som går att skära mot med Skär ytor." ${r && r.cut >= 0.5 ? "" : "disabled"}><b>▣</b> Solid av schakten</button>
+        <button type="button" data-vb="solidfill" title="Gör fyllningen (röd kropp) mellan den uppmätta ytan och &quot;Mot&quot; till en sluten solid som går att skära mot med Skär ytor." ${r && r.fill >= 0.5 ? "" : "disabled"}><b>▣</b> Solid av fyllningen</button></div>
     </details>
     <div class="v3-vq-foot"><button type="button" class="primary" data-vb="save" ${r ? "" : "disabled"}>${c.id ? "Uppdatera måttet" : "Spara som mått"}</button>
       <details class="v3-vq-more"><summary title="Fler val">⋯</summary><div><button type="button" data-vb="copy" disabled>Kopiera resultatet</button><button type="button" data-vb="surf" title="Tryck ut hörnen på en egen yta (t.ex. projekterad botten eller släntkant) – hörnens höjder bestämmer ytan">Klicka ut egen yta…</button><button type="button" data-vb="redraw" title="Rita om området">Rita om området</button><button type="button" data-vb="prism" title="Enkel volym: områdets yta × en höjd du skriver, eller höjden upp till en yta du trycker på">Enkel höjdvolym…</button></div></details></div>`;
@@ -441,7 +442,7 @@ function l3volPanel() {
   on("undo", () => { if (c.pts.length <= 3) return; c.pts = c.pts.slice(0, -1); c.saved = false; l3volPanel(); l3volSchedule(0); });
   on("save", () => { l3volSave(); });
   on("solid", () => { l3volSolid(); });
-  on("solidvol", () => { l3volSolidVol(); });
+  on("solidcut", () => { l3volSolidVol("cut"); }); on("solidfill", () => { l3volSolidVol("fill"); });
   el.querySelectorAll("[data-vifcv]").forEach(b => { b.onclick = () => { l3vol.ifcPart = b.dataset.vifcv; el.querySelectorAll("[data-vifcv]").forEach(x => x.classList.toggle("on", x === b)); }; });
   { const od = el.querySelector(".v3-vq-out:not(.v3-vq-setd)"); if (od) od.addEventListener("toggle", () => l3SetPref("vpOut", od.open)); const sd = el.querySelector(".v3-vq-setd"); if (sd) sd.addEventListener("toggle", () => l3SetPref("vpSet", sd.open)); }
   qa("input[data-vest]").forEach(i => { i.onchange = () => { const v = Number(String(i.value).replace(/\s/g, "").replace(",", ".")); if (Number.isFinite(v) && v >= 0) l3SetPref(i.dataset.vest, v); l3volPanel(); }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });

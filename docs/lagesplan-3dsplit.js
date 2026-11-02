@@ -298,16 +298,17 @@ function l3spDraw() {
   // Följ: kameran hålls nära mitten med mjuk glidning (död zon, så att bilden inte hoppar vid små rörelser eller när man klickar)
   if (l3sp.follow && !l3sp.drag && performance.now() > (l3sp.followHold || 0)) { const [cx, cy] = l3spToScr(cam.position.x + O[0], cam.position.y + O[1]), v = l3sp.view, dx = r.width / 2 - cx, dy = r.height / 2 - cy, dist = Math.hypot(dx, dy), lim = Math.min(r.width, r.height) * 0.16;
     if (dist > lim || (l3sp.followCatch && dist > 1.5)) { l3sp.followCatch = dist > 1.5; const f = dist > lim * 3 ? 0.35 : 0.16; v.tx += dx * f; v.ty += dy * f; l3sp.ovDirty = true; } else l3sp.followCatch = false; }
-  const v = l3sp.view, bk = [v.k.toFixed(5), v.tx.toFixed(1), v.ty.toFixed(1), bw, bh, l3sp.planId, im.width, l3spMapSrc(), l3spPdfOp(), l3sp.mapRev || 0].join("|");
+  const v = l3sp.view, bk = [v.k.toFixed(5), v.tx.toFixed(1), v.ty.toFixed(1), bw, bh, l3sp.planId, im.width, l3spMapSrc(), l3spPdfOp(), l3sp.mapRev || 0, typeof l3cnRev === "function" ? l3cnRev() : 0].join("|");
   if (sized || bk !== l3sp.baseKey) {            // ritningen
     l3sp.baseKey = bk; const b = bc.getContext("2d"); b.setTransform(dpr, 0, 0, dpr, 0, 0); b.clearRect(0, 0, r.width, r.height);
     const lv = (l3sp.pyr || [{ cv: im, f: 1 }]).reduce((best, L) => (L.f <= 1 / Math.max(v.k, 1e-6) * 1.0001 ? L : best), l3sp.pyr ? l3sp.pyr[0] : { cv: im, f: 1 });   // största f som ändå inte skalar ner mer än 1:1
-    const mapOn = l3spMapDraw(b, r, dpr), vkey = [v.k.toFixed(5), v.tx.toFixed(1), v.ty.toFixed(1), bw, bh, l3sp.planId].join("|"), skipPdf = mapOn && l3sp.baseNoPdf === vkey;   // ortofoto/karta under ritningen
+    const mapOn = l3spMapDraw(b, r, dpr) || (typeof l3cnRev === "function" && l3cnRev() > 0), vkey = [v.k.toFixed(5), v.tx.toFixed(1), v.ty.toFixed(1), bw, bh, l3sp.planId].join("|"), skipPdf = mapOn && l3sp.baseNoPdf === vkey;   // ortofoto/karta under ritningen
     if (!skipPdf) {   // (när den skarpa PDF:en ligger över fotot ritas den grova inte – annars blir linjerna dubbla)
       b.setTransform(dpr, 0, 0, dpr, 0, 0); b.globalCompositeOperation = mapOn ? "multiply" : "source-over"; b.globalAlpha = mapOn ? l3spPdfOp() / 100 : 1;   // multiplicera: ritningens vita blir genomskinligt
       b.imageSmoothingEnabled = true; b.imageSmoothingQuality = lv.f > 1 || v.k < 1 ? "medium" : "low"; b.drawImage(lv.cv, v.tx, v.ty, im.width * v.k, im.height * v.k); b.globalCompositeOperation = "source-over"; b.globalAlpha = 1;
       l3sp.baseNoPdf = null; l3spDetailSchedule(bw, bh, dpr, mapOn);
     }
+    if (typeof l3cnDrawMap === "function") { b.setTransform(dpr, 0, 0, dpr, 0, 0); l3cnDrawMap(b, r); }
   }
   const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
   // kamerans spår (tonar ut efter några sekunder) och ringar där man tryckt

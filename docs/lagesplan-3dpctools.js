@@ -45,6 +45,7 @@ function l3ptRender() {
     <div class="r"><button type="button" data-pt="zabove">Över nivå</button><button type="button" data-pt="zbelow">Under nivå</button><button type="button" data-pt="zbetween">Mellan</button></div>
     <div class="t"><b>Mark / över mark</b> – lägsta punkten i varje ruta är marken. Tar bort växtlighet, fordon och personer.</div>${F("ptGg", "Rutstorlek (m)", "0,5")}${F("ptGh", "Höjd över mark (m)", "0,3")}
     <div class="r"><button type="button" data-pt="gabove">Ta bort över mark</button><button type="button" data-pt="gground">Ta bort marken</button></div></details>
+  <details data-k="cn" ${keep("cn")}><summary>Höjdkurvor och höjdfärg</summary>${typeof l3cnHtml === "function" ? l3cnHtml() : ""}</details>
   <details data-k="pr" ${keep("pr")}><summary>Profil / snitt</summary><div class="t">Tryck ut två punkter i vyn. Alla tända moln ritas i samma snitt – så syns skillnaden mellan två ytor.</div>${F("ptPw", "Bredd ± (m)", "0,5")}<div class="r"><button type="button" class="p" data-pt="profile">Rita profil</button><button type="button" data-pt="profclr" ${l3pt.prof ? "" : "disabled"}>Ta bort</button></div></details>
   <details data-k="df" ${keep("df")}><summary>Jämför moln / datum (differens)</summary>${typeof l3dfSettingsHtml === "function" ? l3dfSettingsHtml().replace(/^<details[^>]*>.*?<div class="v3-sm-fold-b">/s, "<div>").replace(/<\/div><\/details>$/, "</div>") : ""}</details>
   <details data-k="vo" ${keep("vo")}><summary>Volym</summary><div class="r"><button type="button" class="p" data-pt="vol">Mät volym…</button><button type="button" data-pt="csv">Volymtabell (CSV)</button></div>
@@ -52,6 +53,7 @@ function l3ptRender() {
     <label class="f"><span>Riktning</span><select id="ptSd"><option value="out">Utåt (schakt)</option><option value="in">Inåt (fyllning)</option></select></label><div class="r"><button type="button" data-pt="slope">Skapa släntkropp</button></div></details>`;
   const sel = el.querySelector("#ptCloud"); if (sel) sel.onchange = () => { l3pt.cid = sel.value; l3ptRender(); };
   if (typeof l3dfBind === "function") l3dfBind(el);
+  if (typeof l3cnBind === "function") l3cnBind(el);
 }
 function l3ptEdit(spec, what) {
   const c = l3ptCloud(); if (!c) return; l3Busy && l3Busy(true);
