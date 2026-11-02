@@ -1,0 +1,340 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fältguiden – 4D-lägesplan och 3D-editorn</title>
+<style>
+  :root{--ink:#0f1b2d;--mut:#5b6b82;--ac:#1f6fe0;--ac2:#0aa66e;--warn:#d9480f;--bg:#fff;--soft:#f2f6fc;--line:#d9e3f1}
+  @media (prefers-color-scheme:dark){:root:not([data-print]){--ink:#e8eef8;--mut:#9fb1c9;--bg:#0b1422;--soft:#111e33;--line:#233553}}
+  *{box-sizing:border-box}
+  html{font-family:Georgia,"Iowan Old Style","Times New Roman",serif;color:var(--ink);background:var(--bg);line-height:1.62;font-size:17px}
+  body{margin:0}
+  .wrap{max-width:760px;margin:0 auto;padding:0 22px 80px}
+  h1,h2,h3,.sans{font-family:"Helvetica Neue",Arial,sans-serif}
+  .cover{min-height:92vh;display:flex;flex-direction:column;justify-content:center;padding:60px 22px;background:radial-gradient(ellipse at 30% 20%,#17407a 0%,#0a1a33 55%,#050b14 100%);color:#fff;text-align:left}
+  .cover .in{max-width:760px;margin:0 auto;width:100%}
+  .cover small{letter-spacing:.3em;text-transform:uppercase;opacity:.65;font-family:Arial,sans-serif;font-size:12px}
+  .cover h1{font-size:clamp(40px,8vw,72px);line-height:1.02;margin:.35em 0 .25em;font-weight:200;letter-spacing:.02em}
+  .cover p{font-size:20px;max-width:560px;opacity:.85;margin:0}
+  .cover .meta{margin-top:50px;font:13px Arial,sans-serif;opacity:.55}
+  h2{font-size:30px;line-height:1.15;margin:2.2em 0 .4em;font-weight:600;letter-spacing:-.01em;border-top:3px solid var(--ac);padding-top:.7em}
+  h2 .n{display:block;font-size:13px;letter-spacing:.25em;text-transform:uppercase;color:var(--ac);font-weight:700;margin-bottom:.4em}
+  h3{font-size:19px;margin:1.6em 0 .2em;font-weight:700}
+  p{margin:.7em 0}
+  .lead{font-size:20px;color:var(--mut);line-height:1.5}
+  .tip,.idea,.warn,.quest{border-radius:12px;padding:14px 18px;margin:1.3em 0;font-size:16px;line-height:1.55;font-family:"Helvetica Neue",Arial,sans-serif;break-inside:avoid}
+  .tip{background:var(--soft);border-left:5px solid var(--ac)}
+  .idea{background:#effaf5;border-left:5px solid var(--ac2);color:#0b3a2a}
+  .quest{background:#fff6e8;border-left:5px solid #e9a100;color:#4a3300}
+  .warn{background:#fff0ea;border-left:5px solid var(--warn);color:#5a1d05}
+  @media (prefers-color-scheme:dark){:root:not([data-print]) .idea{background:#0d2a21;color:#bfeede}:root:not([data-print]) .quest{background:#2d2308;color:#f3dfa8}:root:not([data-print]) .warn{background:#2f1a12;color:#f5cbb9}}
+  .tip b:first-child,.idea b:first-child,.quest b:first-child,.warn b:first-child{display:block;font-size:12px;letter-spacing:.18em;text-transform:uppercase;margin-bottom:3px;opacity:.8}
+  ul{padding-left:1.2em}li{margin:.3em 0}
+  kbd{font:600 .8em Menlo,Consolas,monospace;background:var(--soft);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;white-space:nowrap}
+  .toc{columns:2;column-gap:30px;font-family:Arial,sans-serif;font-size:15px;margin:1.5em 0}
+  .toc a{display:block;color:var(--ink);text-decoration:none;padding:3px 0;break-inside:avoid}
+  .toc a span{color:var(--ac);font-weight:700;display:inline-block;width:2em}
+  table{border-collapse:collapse;width:100%;font:14.5px Arial,sans-serif;margin:1em 0}
+  th,td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;vertical-align:top}
+  th{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
+  .flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:1em 0;font:14px Arial,sans-serif}
+  .flow span{background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:6px 14px}
+  .flow i{color:var(--ac);font-style:normal;font-weight:700}
+  .pull{font-size:24px;line-height:1.35;font-style:italic;border-left:4px solid var(--ac);padding:2px 0 2px 18px;margin:1.6em 0;color:var(--ink)}
+  @media (max-width:640px){.toc{columns:1}h2{font-size:26px}html{font-size:16.5px}}
+  @media print{
+    html{font-size:11pt}:root{--bg:#fff}.cover{min-height:auto;height:250mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    h2{break-before:page;margin-top:0}.cover+.wrap h2:first-of-type{break-before:auto}
+    .tip,.idea,.warn,.quest{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .wrap{max-width:none;padding:0}
+    a{color:inherit;text-decoration:none}
+  }
+  @page{size:A4;margin:16mm 16mm 18mm}
+</style>
+</head>
+<body>
+<header class="cover"><div class="in">
+  <small>Fältguide · november 2026</small>
+  <h1>Från tidplan<br>till tredje dimensionen</h1>
+  <p>Allt som 4D-lägesplanen och 3D-editorn kan – berättat som en resa, med knep, idéer och uppdrag att prova när du landat.</p>
+  <div class="meta">Skriven för läsning offline · ca 25 minuters läsning · svenska</div>
+</div></header>
+
+<main class="wrap">
+
+<h2 id="innehall" style="border-top:0;margin-top:1.6em"><span class="n">Innehåll</span>Så här läser du den här guiden</h2>
+<p class="lead">Du behöver inte läsa i ordning. Varje kapitel går att läsa för sig – men om du börjar från början får du en berättelse: hur en rad i en tidplan blir en lastbil som rullar in på en byggplats du kan gå runt i.</p>
+<div class="toc">
+  <a href="#k1"><span>1</span>Den stora idén</a>
+  <a href="#k2"><span>2</span>Kopplingen: tid möter plats</a>
+  <a href="#k3"><span>3</span>Lägesplanen i 2D</a>
+  <a href="#k4"><span>4</span>Underlag: allt du kan ladda in</a>
+  <a href="#k5"><span>5</span>Att röra sig i 3D</a>
+  <a href="#k6"><span>6</span>Etablera och modellera</a>
+  <a href="#k7"><span>7</span>Tiden i 3D: 4D på riktigt</a>
+  <a href="#k8"><span>8</span>Mäta, räkna och granska</a>
+  <a href="#k9"><span>9</span>Punktmoln, profil och snitt</a>
+  <a href="#k10"><span>10</span>Minikartan</a>
+  <a href="#k11"><span>11</span>Skriva ut, exportera, dela</a>
+  <a href="#k12"><span>12</span>På bygget: mobil och GPS</a>
+  <a href="#k13"><span>13</span>Fyra arbetssätt som funkar</a>
+  <a href="#k14"><span>14</span>Fusklapp</a>
+  <a href="#k15"><span>15</span>Uppdrag till nästa arbetsdag</a>
+</div>
+<div class="tip"><b>Symboler</b>Blå ruta = tips. Grön ruta = idé som kanske inte är uppenbar. Gul ruta = uppdrag att prova. Röd ruta = fallgrop.</div>
+
+<!-- 1 -->
+<h2 id="k1"><span class="n">Kapitel 1</span>Den stora idén</h2>
+<p class="lead">En tidplan säger <i>när</i>. En ritning säger <i>var</i>. Problemet på varje bygge är att de två lever i olika världar – och att det är du som står i mitten och ska få dem att stämma.</p>
+<p>Verktyget är byggt på ett enkelt påstående: om varje aktivitet i planeringen vet var den ligger, kan hela byggplatsen visas för vilken dag som helst. Inte som en statisk bild, utan som ett läge som går att vrida, mäta i och skriva ut.</p>
+<div class="flow"><span>Tidplan (Excel / Powerproject)</span><i>→</i><span>4D-planering</span><i>→</i><span>Lägesplan 2D</span><i>→</i><span>3D-editor</span><i>→</i><span>PDF, IFC, film, HTML</span></div>
+<p>Systemet har tre rum, och det är värt att hålla isär dem:</p>
+<ul>
+<li><b>4D-planeringen</b> är dashboarden. Här importeras tidplanen, aktiviteterna kopplas till objekt och status följs upp.</li>
+<li><b>Lägesplanen</b> är den platta ritningen med prickar, zoner och objekt. Den svarar på frågan <i>vad ligger var, just den här dagen?</i></li>
+<li><b>3D-editorn</b> är samma värld i rymden: byggnader, punktmoln, kranar, snitt, profiler, volymer och tid.</li>
+</ul>
+<p class="pull">Allt sparas i projektet. Det du gör i ett rum syns i de andra.</p>
+<div class="idea"><b>Idé</b>Tänk dig lägesplanen som <i>kartan</i> och 3D-editorn som <i>kameran</i>. Kartan är bäst för att bestämma. Kameran är bäst för att övertyga – en entreprenör förstår en kran i 3D på två sekunder, men behöver tio minuter med en 2D-ritning.</div>
+
+<!-- 2 -->
+<h2 id="k2"><span class="n">Kapitel 2</span>Kopplingen: tid möter plats</h2>
+<p class="lead">Allt börjar med att planeringen kommer in. Resten är att tala om för varje aktivitet var i världen den hör hemma.</p>
+<h3>Importera planeringen</h3>
+<p>Du kan läsa in planen från en fil, direkt från Excel eller från Powerproject (<kbd>.pp</kbd>). Systemet förstår WBS-nivåer, aktivitetsnamn, datum och – om du använder det – ett <b>4D-ID</b> som fungerar som en nyckel mellan tidplanen och modellen. Har du ändrat i Powerproject? Importera igen: aktiviteter som redan är kopplade behåller sin koppling.</p>
+<h3>Koppla till 3D</h3>
+<p>Markera objekt i 3D, välj aktivitet, klart. Objektet får aktivitetens datum, och från och med nu vet det själv om det är <i>planerat</i>, <i>pågående</i>, <i>klart</i> eller <i>försenat</i>. Färgerna följer med hela vägen: i 3D, i lägesplanen, i utskriften.</p>
+<div class="tip"><b>Tips</b>Skriv inte aktivitetsnamn för hand om du kan undvika det. Använd 4D-ID i modellen och i planen – då går kopplingen att göra i bulk, och den överlever när någon byter namn i tidplanen.</div>
+<h3>Zoner och WBS</h3>
+<p>Zoner är ytor du ritar i lägesplanen – en etapp, ett gjutområde, en uppställningsplats. Zonerna kan ha WBS-nivåer och exporteras till Excel, så att planeringen och platsen pratar samma språk. Raderingsskyddet gör att en zon som är kopplad till aktiviteter inte försvinner av misstag.</p>
+<h3>Aktivitet utan modell</h3>
+<p>Alla aktiviteter har inte ett IFC-objekt. Då skapar du en <b>fristående prick</b> i lägesplanen – en markering som inte hänger på tidplanen – eller en ny aktivitet som exporteras tillbaka till Powerproject. Så blir även tillfälliga saker som en inhägnad, en skyddsplåt eller en leverans synliga.</p>
+<div class="warn"><b>Fallgrop</b>Är en aktivitet kopplad till ett objekt som saknar datum i planen blir det gråa spöken i vyn. Det är inte en bugg – det är en påminnelse om att något fattas.</div>
+
+<!-- 3 -->
+<h2 id="k3"><span class="n">Kapitel 3</span>Lägesplanen i 2D</h2>
+<p class="lead">Den platta ritningen är fortfarande den snabbaste vägen till ett beslut. Därför har den fått fler funktioner än man tror.</p>
+<ul>
+<li><b>Flera planer</b> per projekt – olika våningar, etapper, skeden. Planen är en PDF som kalibreras mot verkliga koordinater en gång.</li>
+<li><b>Prickar och objekt</b> med symbol, status, ansvarig och datum. Du kan flytta själva <i>markeringspunkten</i> separat från objektet, så att prickens ankare hamnar exakt där du vill.</li>
+<li><b>Dagsplanering</b> med underentreprenörer: vem gör vad, var, den här veckan. Med <b>väder</b> i samma vy – för det är sällan en tidsfråga som stoppar en betongleverans, utan en vindbyge.</li>
+<li><b>Sparade vyer</b>: zooma och vrid till ett läge, spara det, hoppa tillbaka med ett klick.</li>
+<li><b>Ortofoton över tid</b>: lägg in flygfoton från olika datum och bläddra mellan dem som en film. Byggplatsens historia på tio sekunder.</li>
+<li><b>IFC i 2D</b>: modellen som snitt eller lager i planen, med filter – släck det du inte behöver.</li>
+<li><b>Objekt ur PDF</b>: har du en PDF med inbäddade objekt kan du hämta ut dem som egna prickar i stället för att rita om dem.</li>
+<li><b>Länk till aktivitet</b>: varje aktivitet kan få en webbadress. Skicka den till en arbetsledare, och lägesplanen öppnas exakt där aktiviteten finns.</li>
+</ul>
+<div class="idea"><b>Idé</b>Länken är kraftfullare än den ser ut. Lägg den i en kalenderinbjudan eller ett SMS: ”Du ska ställa upp lyftet här”. Mottagaren behöver inget konto för att se platsen.</div>
+
+<!-- 4 -->
+<h2 id="k4"><span class="n">Kapitel 4</span>Underlag: allt du kan ladda in</h2>
+<p class="lead">3D-editorn är ett mötesrum för filer som aldrig brukar träffas.</p>
+<table>
+<tr><th>Underlag</th><th>Vad du får</th></tr>
+<tr><td><b>PDF-ritning</b></td><td>Läggs som en yta på marken. Ritningen ritas om i skärmens upplösning när du zoomar in – tunna linjer förblir skarpa, även på mobilen. Vektor-PDF kan också ges lager.</td></tr>
+<tr><td><b>DXF / DWG</b></td><td>Linjer och ytor som lager i 3D. DXF kan redigeras: välj, flytta, ta bort.</td></tr>
+<tr><td><b>IFC-modeller</b></td><td>Direkt från Trimble Connect. Placeras med flytt och vridning. Färg, genomskinlighet och textur sparas per objekt i projektet. Egenskaper och Qto-mängder går att läsa.</td></tr>
+<tr><td><b>Punktmoln (LAZ/LAS)</b></td><td>Miljontals punkter, utglesade smart så att mobilen orkar. Färg efter höjd, intensitet eller RGB.</td></tr>
+<tr><td><b>Bakgrundskarta</b></td><td>Höjder och koordinater i SWEREF – skanningar från området som underlag bakom allt.</td></tr>
+<tr><td><b>Foton med GPS</b></td><td>Fotomarkörer som hamnar på rätt plats i både 2D och 3D.</td></tr>
+<tr><td><b>Egna objekt</b></td><td>Ritade volymer, Sketchfab-modeller och fordon från det inbyggda 3D-biblioteket.</td></tr>
+</table>
+<div class="tip"><b>Tips</b>Är bilden mjuk i 3D? Zooma in och vänta en halv sekund. Då ritas den synliga delen av PDF:en om i full skärmupplösning. Det gäller även på telefon (max 3 072 px för att spara minne).</div>
+
+<!-- 5 -->
+<h2 id="k5"><span class="n">Kapitel 5</span>Att röra sig i 3D</h2>
+<p class="lead">Navigeringen är gjord för den som arbetat i Tekla: mus-och-tangentbord-vana ska räcka.</p>
+<h3>Grunderna</h3>
+<ul>
+<li><b>Rotera, zooma, panorera</b> – med musen, med pekskärm eller med verktygshjulet som ligger under tummen.</li>
+<li><b>Markera</b> som i Tekla: klick, Ctrl för flera, Skift för intervall. Det markerade lyser med en mjuk gul glöd.</li>
+<li><b>Högerklick överallt</b>: på objekt, i menyer och på mått – med de val som är relevanta just där.</li>
+<li><b>Ångra</b> (<kbd>Ctrl</kbd>+<kbd>Z</kbd>) fungerar för flytt, mått, borttagningar och ändringar.</li>
+</ul>
+<h3>Visningslägen</h3>
+<p><b>Wireframe</b> för att se in i konstruktioner, <b>Shaded</b> för ren form, <b>X-Ray</b> för att se igenom allt och <b>Realistisk</b> för belysning och material. Växla mitt i en rörelse – kameran står kvar.</p>
+<h3>Saxen: snitt genom allt</h3>
+<p>Välj saxen, klicka på en yta, och scenen klipps av ett plan. Dra i reglaget (±100 m, eller skriv in ett värde), vänd sida med ⇄, lägg flera snitt – upp till sex. Vågrätta snitt tar bort allt ovanför. Och där ett lodrätt snitt skär punktmolnet ritas en röd, glödande <b>snittlinje</b> längs terrängen.</p>
+<h3>Gå-läget</h3>
+<p>Släpp ner kameran i ögonhöjd och <i>gå runt</i> på platsen. Skärmen blir en förstapersonsvy; på telefon får du joystick. Vill du se platsen ur en maskins perspektiv kan du byta till tredje person och vara en figur, en <b>mobilkran</b> (som kan fällas ut så du ser radien), en <b>grävmaskin</b>, en <b>hjullastare</b> eller en <b>lastbil</b>. Maskinerna är detaljerade och har arbetsrörelser.</p>
+<div class="idea"><b>Idé</b>Använd gå-läget som en riskgenomgång. Ställ dig där lastbilen ska svänga in och se vad föraren ser. Det som är en obekväm krok i 2D är ofta en blind vinkel i 3D.</div>
+<h3>Sol och ljus</h3>
+<p>Solstudien räknar soltimmar per yta och spelar upp dagen som film. Bra för att veta var ett uppställningsområde ligger i skugga klockan tio – och var snön ligger kvar i mars.</p>
+
+<!-- 6 -->
+<h2 id="k6"><span class="n">Kapitel 6</span>Etablera och modellera</h2>
+<p class="lead">Här blir byggplatsen verklig: bodar, kranar, stängsel, ställningar.</p>
+<ul>
+<li><b>3D-biblioteket</b> har etablering i mappar (bodar, containrar, avfall, toaletter, belysning, eltavlor, stomme). Dra in, släpp, vrid. Objekten <i>snappar</i> mot underlag, kanter och höjder.</li>
+<li><b>Rita och modellera</b>: linje, rektangel, cirkel, båge, polygon, polylinje, frihand, Push/Pull, Offset, Follow Me, Scale, Mirror, Intersect – med arbetsplan och fästning, som man är van från skissprogram.</li>
+<li><b>Redigera objekt</b>: öppna ett bibliotek-objekt, justera det, spara som nytt.</li>
+<li><b>Smart Replace</b>: byt ut ett objekt mot ett annat och behåll position, rotation och egenskaper. Byt en bod mot en annan utan att placera om.</li>
+<li><b>Grupper</b> av IFC-objekt och Trimbles <b>Organizer</b>-indelning som flik.</li>
+<li><b>Hjälplinjer</b> (construction lines): lägg stödlinjer att snappa mot, som i Tekla. Rör aldrig modellen, exporteras aldrig.</li>
+<li><b>Armering</b>: markera, flytta, ta bort och trycka med pilar – för den som vill visa armeringsföljd i 3D.</li>
+<li><b>Gjutetapper</b>: skär bort formens underkant mot en ojämn bergyta med frihandsritning.</li>
+</ul>
+<div class="tip"><b>Tips</b>Egna färger, genomskinlighet och texturer på IFC-objekt sparas. Gör du en vägg halvtransparent för att se kranen bakom den finns den kvar när du laddar om.</div>
+
+<!-- 7 -->
+<h2 id="k7"><span class="n">Kapitel 7</span>Tiden i 3D: 4D på riktigt</h2>
+<p class="lead">Här blir den fjärde dimensionen något du kan dra i.</p>
+<h3>Tidsreglaget</h3>
+<p>Dra i reglaget så byggs byggnaden upp eller rivs ner. Varje objekt ritas efter sin fas: planerad, pågående, klar, försenad. Medan kopplingen uppdateras visar en förloppsstapel vad som händer.</p>
+<h3>Gantt i 3D-fönstret</h3>
+<p>Fliken 4D-planering har tavlan, Gantten och listan – i 3D-editorn. Klicka på en rad: objekten lyser upp. Dra ett streck i 3D: raden hittas i listan. <b>Markera pågående</b> pulserar de objekt som byggs den valda dagen.</p>
+<h3>Info-bubblor</h3>
+<p>En tydlig bubbla vid varje pågående aktivitet med samma information som i Gantten – vem, vad, när, status. Bra för en skärmdump i veckomötet.</p>
+<h3>Film</h3>
+<p>Tidslinjen längst ner i 3D-vyn är en filmredigerare: lägg kameraklipp, spela upp, exportera. Grafiken har en liten klocka med datum i hörnet och en grafik för aktuell aktivitet.</p>
+<h3>Montageordning och kranlyft</h3>
+<p>Montageordningen byggs direkt i editorn: välj prefabpelare, balkar och element i den ordning de monteras. <b>Mobilkranen</b> tar tag i objekten och <i>lyfter</i> dem på plats. Resultatet kan exporteras som en HTML med riktig 3D-geometri – en ordentlig förklaring för en montör som inte vill läsa tabeller.</p>
+<h3>Spränga</h3>
+<p>Markera objekt, tryck <b>Spränga</b> – och de flyger isär i en animation. Perfekt för att förklara hur ett sammansatt element hänger ihop.</p>
+<div class="idea"><b>Idé</b>Ta tre bilder: veckan före, veckan nu, veckan efter. Lägg bredvid varandra i en utgåva (se kapitel 11). Den som tittar förstår <i>riktningen</i> utan att du säger något.</div>
+
+<!-- 8 -->
+<h2 id="k8"><span class="n">Kapitel 8</span>Mäta, räkna och granska</h2>
+<ul>
+<li><b>Mäta</b> (<kbd>M</kbd>): avstånd, vinkel, yta, polylinje och punktkoordinater. Måttet kan dras ut från fästpunkterna som en måttkedja, få kommentar och läggas i mappar. Sparat i projektet så andra ser det.</li>
+<li><b>Volym</b>: rita ett område, ange höjd – få volymen som en kropp. Mellan hörnen finns ett <b>plus</b>: klicka för att lägga till fler punkter i efterhand. Visa bara <i>schakt</i> eller bara <i>fyllning</i> – den andra släcks.</li>
+<li><b>Volym mot yta</b>: jämför punktmoln mot punktmoln, mot IFC eller mot en DWG/DXF-ritning. Du får schakt och fyllning med färgade punkter.</li>
+<li><b>Exportera volym till IFC</b> som ett riktigt volymobjekt, med mängder (Qto) – så att volymen syns i Trimble Connects egenskapspanel, inte bara som en klump.</li>
+<li><b>Analys</b>: mängdning, jämför modeller, lutning, massegenskaper, fria avstånd, smart markering, tidslinje.</li>
+<li><b>Kollisionskontroll</b> i stil med Teklas Clash Check Manager: hitta var modellerna går i varandra.</li>
+</ul>
+<div class="tip"><b>Tips</b>Lägg ett kort namn på volymerna (”Schakt grund A”). I listan ser du då summor och kan exportera de markerade eller alla på en gång.</div>
+
+<!-- 9 -->
+<h2 id="k9"><span class="n">Kapitel 9</span>Punktmoln, profil och snitt</h2>
+<p class="lead">Kapitlet för den som vill mäta terrängen på riktigt.</p>
+<h3>Molnverktygen (☁)</h3>
+<p>Filter för brus, mark och höjd; utglesning; färg efter höjd; redigering där du tar bort punkter; höjdkurvor; jämförelse mellan två skanningar.</p>
+<h3>Profilen</h3>
+<p>Klicka punkt A och B – profilen genom alla tända moln ritas direkt, med varje moln i egen färg. Efter det är det mest hela verktygslådan:</p>
+<ul>
+<li><b>Hovra</b> för exakta höjder, bredder och lutning. Klicka för en referenspunkt och se avstånd och höjdskillnad därifrån.</li>
+<li><b>IFC i genomskärning</b>, med <i>fyllda</i> snitt i modellens egen färg.</li>
+<li><b>Höjdfärg</b> och <b>höjdkurvor</b> med valbart intervall.</li>
+<li><b>Nivålinje</b> (t.ex. schaktbotten) med schakt och fyllning i m² mot nivån.</li>
+<li><b>Plushöjder</b> och <b>kommentarer</b> som snappar mot modell eller moln, eller dras som yta.</li>
+<li><b>Jämför</b> två ytor: skillnadsarean blir schakt och fyllning.</li>
+<li><b>Export</b>: DXF med höjdskala, CSV och PNG – och en bild med en liten situationskarta nere i hörnet som visar var profilen tagits, plus vilka moln och modeller som jämförts.</li>
+</ul>
+<h3>Profilen i 3D-vyn</h3>
+<p>Linjen lyser i 3D med glöd och en stor markör som följer musen i profilfönstret. <b>Dra linjen i sidled</b> – eller en av ändpunkterna A och B för sig – och profilen räknas om medan du drar. <kbd>Skift</kbd> låser vinkeln i 5°-steg, <kbd>Alt</kbd> ger fri placering.</p>
+<h3>Klipp längs profilen</h3>
+<p>En switch i profilfönstret klipper hela 3D-scenen exakt längs linjen, som saxen. Vänd sida, eller välj en <b>skiva</b> ±bredd. Planet följer med när du drar profillinjen.</p>
+<h3>Spara profilsnitt</h3>
+<p>Spara snittet bland måtten: längd, bredd och position sparas i projektet. Klicka på det senare så öppnas profilen igen. Du kan skriva kommentar på det, som på vilket mått som helst.</p>
+<div class="idea"><b>Idé</b>Spara ett profilsnitt varje vecka på samma ställe (en skredkant, ett schakt, ett bergsparti). Efter ett par månader har du en tidslinje över hur marken ändrats – med exakta siffror.</div>
+<p>Det flytande profilfönstret kan göras större eller mindre genom att dra i övre vänstra hörnet, och storleken minns.</p>
+
+<!-- 10 -->
+<h2 id="k10"><span class="n">Kapitel 10</span>Minikartan</h2>
+<p class="lead">Under 3D-vyn ligger en 2D-karta som följer med.</p>
+<ul>
+<li><b>Tryck i kartan</b> – och nålen hamnar där du tryckte, i både plan och höjd. Den snappar mot punktmolnet och IFC-modellerna, och kameran flyger dit.</li>
+<li><b>Hårkorset</b> visar var 3D-kameran tittar. Av/på, röd glöd, tydlig riktningsmarkering.</li>
+<li><b>Profil direkt i kartan</b>: sätt A och B i kartan, håll <kbd>Skift</kbd> för 5°-steg (ortho).</li>
+<li><b>Följ-läge, dockning, enrads-menyer</b>: kartan får så mycket plats som möjligt och menyerna ligger i rullgardiner.</li>
+<li>Skarp PDF även här – ritas om från vektorerna när du stannat.</li>
+</ul>
+<div class="tip"><b>Tips</b>På iPad är minikartan det snabbaste sättet att flytta sig i en stor modell. Tryck, flyg, tryck, flyg.</div>
+
+<!-- 11 -->
+<h2 id="k11"><span class="n">Kapitel 11</span>Skriva ut, exportera, dela</h2>
+<h3>Utskrift</h3>
+<p>Layouten byggs som en sida: karta, teckenförklaring, tabeller, 3D-bilder, snitt, objektlistor, formgivning. Lägg den som <b>mall</b> för projektet. Varje vecka sparar du en <b>utgåva</b>: ett daterat, namngivet ögonblick med anteckning och vem som sparade det. Det du skickade ut vecka 45 går alltid att öppna igen, exakt som det såg ut. Du kan låta varje PDF automatiskt bli en utgåva.</p>
+<div class="idea"><b>Idé</b>Utgåvor är din försäkring. När någon frågar ”visade ni inte det här i oktober?” öppnar du Utgåva 41 och svaret finns där.</div>
+<h3>Vad kan exporteras?</h3>
+<table>
+<tr><th>Format</th><th>Passar för</th></tr>
+<tr><td>PDF</td><td>Utskick, anslag, möten.</td></tr>
+<tr><td>IFC</td><td>Etableringar, mått, volymer och UE-lag in i Trimble Connect.</td></tr>
+<tr><td>DXF</td><td>Profiler och ritningar till CAD, med höjdskala.</td></tr>
+<tr><td>Excel / Powerproject</td><td>Zoner, nya aktiviteter, planering tillbaka till tidplanen.</td></tr>
+<tr><td>Film</td><td>4D-förloppet som video.</td></tr>
+<tr><td>Fristående HTML</td><td>Lägesplan och 3D i en enda fil som kan öppnas offline, utan konto.</td></tr>
+</table>
+<div class="tip"><b>Tips</b>Den fristående HTML-filen är underskattad: maila den till en beställare som inte har tillgång till Trimble. Den öppnas i vilken webbläsare som helst.</div>
+
+<!-- 12 -->
+<h2 id="k12"><span class="n">Kapitel 12</span>På bygget: mobil och GPS</h2>
+<ul>
+<li><b>Min position</b> i realtid som en prick i lägesplanen – du ser var du står i förhållande till kranen.</li>
+<li><b>Foton med GPS</b>: ta bilden, den hamnar på rätt plats i 2D och 3D.</li>
+<li><b>Lätt läge</b> för telefon och iPad: lättare modeller, skyltar av från början, förenklad bild medan du rör kameran.</li>
+<li><b>Gå-läge på telefon</b> med joystick och kompakta paneler som börjar ihopfällda.</li>
+<li><b>Sparas automatiskt</b> i projektets lagring. Du ser ”✓ Sparat” nere till höger, och andra ser dina ändringar vid nästa laddning.</li>
+</ul>
+<div class="warn"><b>Fallgrop</b>Ladda om sidan helt när en ny version släppts – annars kan telefonen visa en gammal kopia av koden. Stäng fliken och öppna den igen.</div>
+
+<!-- 13 -->
+<h2 id="k13"><span class="n">Kapitel 13</span>Fyra arbetssätt som funkar</h2>
+<h3>A. Måndagsmötet på tio minuter</h3>
+<ol>
+<li>Öppna lägesplanen, välj veckans datum.</li>
+<li>Tänd Markera pågående i 3D.</li>
+<li>Spara en vy per område.</li>
+<li>Skapa PDF, spara som utgåva ”Vecka NN”.</li>
+</ol>
+<h3>B. Från ny skanning till massor</h3>
+<ol>
+<li>Ladda in punktmolnet. Filtrera brus och markera marken.</li>
+<li>Rita volymområdet. Välj nivå.</li>
+<li>Läs av schakt och fyllning. Exportera som IFC.</li>
+<li>Lägg tre profilsnitt över kritiska partier och spara dem bland måtten.</li>
+</ol>
+<h3>C. Kranlyft som alla förstår</h3>
+<ol>
+<li>Placera mobilkranen från biblioteket. Fäll ut den och se radien.</li>
+<li>Välj elementen i monteringsordning.</li>
+<li>Spela upp lyften. Spränga hjälper för sammansatta delar.</li>
+<li>Exportera HTML med 3D och skicka till montageledaren.</li>
+</ol>
+<h3>D. Platsbesök med telefonen</h3>
+<ol>
+<li>Aktivera Min position.</li>
+<li>Gå runt i verkligheten. Ta GPS-foton på avvikelser.</li>
+<li>Skriv kommentar på objekt direkt i 3D (högerklick).</li>
+<li>På kontoret finns allt redan i projektet.</li>
+</ol>
+
+<!-- 14 -->
+<h2 id="k14"><span class="n">Kapitel 14</span>Fusklapp</h2>
+<table>
+<tr><th>Gör</th><th>Så</th></tr>
+<tr><td>Vinkel i 5°-steg</td><td>Håll <kbd>Skift</kbd> (mät, profil i minikartan, ändpunkt av profil)</td></tr>
+<tr><td>Fri placering utan steg</td><td>Håll <kbd>Alt</kbd> när du drar profillinjen</td></tr>
+<tr><td>Flera objekt</td><td><kbd>Ctrl</kbd>+klick, intervall med <kbd>Skift</kbd>+klick</td></tr>
+<tr><td>Mät</td><td><kbd>M</kbd></td></tr>
+<tr><td>Ångra</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td></tr>
+<tr><td>Profil: fullskärm / stäng / hela</td><td><kbd>F</kbd> / <kbd>Esc</kbd> / <kbd>0</kbd></td></tr>
+<tr><td>Zooma i profilen</td><td>Hjul; <kbd>Skift</kbd>+hjul = längd; <kbd>Ctrl</kbd>+hjul = höjd</td></tr>
+<tr><td>Snittlinje av/på</td><td>Snittfönstret → Snittlinje</td></tr>
+<tr><td>Flytta profilen</td><td>Dra linjen i 3D (sidled) eller ändpunkterna A / B</td></tr>
+<tr><td>Ändra storlek på profilfönstret</td><td>Dra i övre vänstra hörnet; dubbelklick återställer</td></tr>
+</table>
+
+<!-- 15 -->
+<h2 id="k15"><span class="n">Kapitel 15</span>Uppdrag till nästa arbetsdag</h2>
+<p class="lead">När du landat: tio små uppdrag, ordnade från fem minuter till en eftermiddag.</p>
+<div class="quest"><b>Uppdrag 1 · 5 minuter</b>Spara tre vyer av samma plats: översikt, detalj och från kranens håll. Döp dem så att någon annan förstår dem.</div>
+<div class="quest"><b>Uppdrag 2 · 10 minuter</b>Dra en profil över det brantaste partiet på området. Slå på <i>Klipp längs profilen</i> och ta en skärmdump. Spara snittet bland måtten.</div>
+<div class="quest"><b>Uppdrag 3 · 10 minuter</b>Rita en volym över en schaktgrop, lägg till ett extra hörn med plus-knappen och exportera som IFC. Titta på egenskaperna i Trimble Connect.</div>
+<div class="quest"><b>Uppdrag 4 · 15 minuter</b>Skapa en fristående prick för något som inte finns i tidplanen (en leverans, en tillfällig plåt). Fundera på vem som ska se den.</div>
+<div class="quest"><b>Uppdrag 5 · 15 minuter</b>Gå runt i gå-läget på din egen byggplats. Skriv upp tre saker du inte hade sett i 2D.</div>
+<div class="quest"><b>Uppdrag 6 · 20 minuter</b>Ta en utgåva av utskriften med namn och anteckning. Öppna den igen en vecka senare och se vad som ändrats.</div>
+<div class="quest"><b>Uppdrag 7 · 30 minuter</b>Bygg en montageordning för fem element och spela upp lyften med mobilkranen.</div>
+<div class="quest"><b>Uppdrag 8 · 30 minuter</b>Gör en 4D-film där tiden löper över en månad, med dina bästa tre kameravinklar.</div>
+<div class="quest"><b>Uppdrag 9 · 1 timme</b>Importera om tidplanen från Powerproject och kontrollera att kopplingarna överlevde. Skriv ner det som inte gjorde det.</div>
+<div class="quest"><b>Uppdrag 10 · en eftermiddag</b>Visa verktyget för en kollega som aldrig sett det. Räkna hur många minuter det tar innan hen ber om en egen inloggning.</div>
+
+<h3>Till sist</h3>
+<p>Verktyget är byggt av en byggare, för byggare – nästan varje funktion i den här guiden finns för att någon på en riktig plats sa ”kan vi inte få det att…”. Det är fortfarande hur det utvecklas. Har du en idé efter flygresan: skriv ner den medan du minns den.</p>
+<p class="sans" style="color:var(--mut);font-size:13px;margin-top:3em">Fältguiden · november 2026 · Beskriver funktioner i 4D-lägesplanen och 3D-editorn. Namn och placering av knappar kan skilja sig något i din version.</p>
+</main>
+</body>
+</html>
