@@ -1580,7 +1580,7 @@ function renderPrintPanel() {
   const list = pr.saved ? tpls : [pr.tpl, ...tpls];
   $("prTpl").innerHTML = list.map(t => `<option value="${escHtml(t.id)}"${t.id === pr.tpl.id ? " selected" : ""}>${escHtml(t.id === pr.tpl.id ? pr.tpl.name : t.name)}${t.id === pr.tpl.id && pr.dirty ? " *" : ""}</option>`).join("");
   $("prSave").classList.toggle("primary", pr.dirty || !pr.saved);
-  $("prSave").textContent = pr.dirty || !pr.saved ? "💾 Spara mall *" : "💾 Sparad";
+  $("prSave").textContent = pr.dirty || !pr.saved ? "💾 Spara layout *" : "💾 Sparad";
   document.querySelectorAll("#prFormat button").forEach(b => b.classList.toggle("on", b.dataset.f === pr.tpl.format));
   $("prFrame").checked = !!(pr.tpl.frame && pr.tpl.frame.on);
   $("prUndo").disabled = !pr.undo.length; $("prRedo").disabled = !pr.redo.length;
@@ -1777,7 +1777,7 @@ function renderPrintProps(onlyPos) {
       el[f] = i.type === "checkbox" ? i.checked : i.dataset.num ? Number(String(i.value).replace(",", ".")) || 0 : i.value;
       if (i.type === "color") { i.classList.remove("empty"); const nb = i.parentNode.querySelector(".pr-nocolor"); if (nb) nb.classList.remove("on"); }
       pr.dirty = true;
-      $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara mall *";
+      $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara layout *";
       if (f === "color" && el.type === "north") { renderPrintProps(); }
       // Beskärning ändrar bildens proportioner: rutan följer med (bredden behålls).
       if (cropBefore) { applyCropResize(el, cropBefore); ["x", "y", "w", "h"].forEach(k => { const n = document.querySelector(`#prProps [data-f="${k}"]`); if (n) n.value = el[k]; }); }
@@ -1804,7 +1804,7 @@ function renderPrintProps(onlyPos) {
   // Förklaringens rader.
   box.querySelectorAll(".pr-leg-row").forEach(row => {
     const key = row.dataset.lk, q = c => row.querySelector(c);
-    const edit = (fn, rerender) => { pushUndo(); fn(); pr.dirty = true; $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara mall *"; if (rerender) renderPrintProps(); drawPrintPage(); };
+    const edit = (fn, rerender) => { pushUndo(); fn(); pr.dirty = true; $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara layout *"; if (rerender) renderPrintProps(); drawPrintPage(); };
     q(".pl-vis").onchange = () => edit(() => { el.legHide = { ...(el.legHide || {}) }; if (q(".pl-vis").checked) delete el.legHide[key]; else el.legHide[key] = true; row.classList.toggle("off", !q(".pl-vis").checked); });
     const c = q(".pl-col"); if (c) c.onchange = () => edit(() => { el.legColor = { ...(el.legColor || {}), [key]: c.value }; });
     q(".pl-txt").onchange = () => edit(() => { const v = q(".pl-txt").value.trim(); el.legText = { ...(el.legText || {}) }; if (v && v !== q(".pl-txt").placeholder) el.legText[key] = v; else delete el.legText[key]; });
@@ -1815,7 +1815,7 @@ function renderPrintProps(onlyPos) {
   const tbRows = () => [...box.querySelectorAll(".pr-tb-row")].map(row => [...row.querySelectorAll(".pr-tb-cell")].map(c => [c.querySelector(".tb-l").value.trim(), c.querySelector(".tb-v").value]));
   const tbSave = (rows, rerender) => {
     el.rows = rows.map(cs => cs.map(([l, v]) => (l ? `${l}: ${v}` : v).replace(/\|/g, "/")).join(" | ")).join("\n");
-    pr.dirty = true; $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara mall *";
+    pr.dirty = true; $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara layout *";
     if (rerender) renderPrintProps(); drawPrintPage();
   };
   box.querySelectorAll(".pr-tb-row").forEach(row => {
@@ -1842,7 +1842,7 @@ function renderPrintProps(onlyPos) {
       const before = cropOf(el);
       [["cropL", c.l], ["cropR", c.r], ["cropT", c.t], ["cropB", c.b]].forEach(([k, v]) => { if (v) el[k] = v; else delete el[k]; });
       applyCropResize(el, before);
-      $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara mall *";
+      $("prSave").classList.add("primary"); $("prSave").textContent = "💾 Spara layout *";
       renderPrintProps(); drawPrintPage();
     });
   });
@@ -1898,7 +1898,7 @@ async function saveTemplate() {
   await saveSiteItem(t, false, { record: false });
   pr.saved = true; pr.dirty = false;
   try { localStorage.setItem("lagesplan-printtpl", t.id); } catch (e) {}
-  setPrintStatus(`✓ Mallen "${t.name}" sparad.`);
+  setPrintStatus(`✓ Layouten "${t.name}" sparad (mallen uppdaterad). Veckans utskick sparas som utgåva under Utgåvor.`);
   renderPrintPanel();
 }
 async function switchTemplate(id) {
