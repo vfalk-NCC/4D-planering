@@ -205,11 +205,12 @@ async function ghPutFile(token, path, contentB64, sha, message) {
     branch: GH_BRANCH,
   };
   if (sha) body.sha = sha;
-  const res = await fetch(ghContentsUrl(path), {
-    method: "PUT",
-    headers: { ...ghHeaders(token), "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const bodyStr = JSON.stringify(body);
+  const doPut = () => fetch(ghContentsUrl(path), { method: "PUT", headers: { ...ghHeaders(token), "Content-Type": "application/json" }, body: bodyStr });
+  let res = await doPut();
+  // 401 från GitHub på en skrivning med en token som annars fungerar: ett nytt försök efter en kort paus (Victor 2026-11-02, "401 Bad credentials" vid säkerhetskopia).
+  let first401 = null;
+  if (res.status === 401) { first401 = res.headers.get("x-github-request-id"); await new Promise(r => setTimeout(r, 1500)); res = await doPut(); }
   if (res.status === 409) {
     const err = new Error("Skrivkrock (409) mot " + path);
     err.conflict = true;
@@ -262,7 +263,9 @@ async function ghPutFile(token, path, contentB64, sha, message) {
       throw err;
     }
 
-    throw new Error(`GitHub PUT ${path} misslyckades: ${res.status} ${detail}`);
+    // Felsökningsuppgifter (ingen hemlig information): token-längd/prefix, anropets storlek, GitHubs anrops-id och vilka rättigheter GitHub säger krävs.
+    const diag = `[token ${token ? String(token).length + " tecken, " + String(token).slice(0, 11) + "…" : "SAKNAS"}, anrop ${Math.round(bodyStr.length / 1024)} kB, id ${res.headers.get("x-github-request-id") || "?"}${first401 ? "/" + first401 : ""}, kräver ${res.headers.get("x-accepted-github-permissions") || "?"}${res.status === 401 ? ", nytt försök misslyckades" : ""}]`;
+    throw new Error(`GitHub PUT ${path} misslyckades: ${res.status} ${detail} ${diag}`);
   }
   return res.json();
 }
