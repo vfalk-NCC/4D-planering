@@ -126,6 +126,8 @@ const l3GroundZ = () => (plan.calib.model[0][2] || 0) - l3.O[2];
 /* Fästpunkt under markören: hörn/kantmitt/kant på den träffade triangeln, annars ytan eller marken. */
 function l3Snap(e, exclude) {
   const s = l3SnapRaw(e, exclude), S = l3Snaps();
+  const cl = typeof l3clSnap === "function" ? l3clSnap(e, s) : null;   // hjälplinjer (construction lines) fäster före rutnät och ytor
+  if (cl) return cl;
   if (s && S.grid && (s.kind === "face" || s.kind === "ground")) {
     const g = Number(S.gstep) || 1, R = (v, o) => Math.round((v + o) / g) * g - o;
     return { ...s, point: new THREE.Vector3(R(s.point.x, l3.O[0]), R(s.point.y, l3.O[1]), s.point.z), kind: "grid" };

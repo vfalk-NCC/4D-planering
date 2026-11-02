@@ -210,8 +210,9 @@ function l3volDrawInto(grp, host, m, P, G, own) {
   const col = sel ? 0xf59e0b : 0xffffff;
   for (let i = 0; i < P.length; i++) { line(P[i], P[(i + 1) % P.length], 0x111827, 1); line(P[i], P[(i + 1) % P.length], col, 0.9); }
   if (!G) return;
+  const foc = m.id === "vol-live" ? l3vol.focus : null;
   ["cut", "fill"].forEach(kind => {
-    const s = G[kind]; if (!s) return;
+    if (foc && foc !== kind) return; const s = G[kind]; if (!s) return;
     const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(s.pos, 3)); geo.setAttribute("color", new THREE.BufferAttribute(s.col, 3)); geo.setIndex(new THREE.BufferAttribute(s.idx, 1));
     if (!s.nrm) { geo.computeVertexNormals(); s.nrm = geo.getAttribute("normal").array; s.edges = new THREE.EdgesGeometry(geo, 35).getAttribute("position").array; } else geo.setAttribute("normal", new THREE.BufferAttribute(s.nrm, 3));
     const mat = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: Number(l3Prefs().volOpacity) || 0.62, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
@@ -222,8 +223,8 @@ function l3volDrawInto(grp, host, m, P, G, own) {
   });
   if (!host) return;
   const mk = (id, txt, at, cls) => { const el = document.createElement("div"); el.className = "v3-meas v3-meas-keep v3-vlab " + cls; el.textContent = txt; host.appendChild(el); el._at = new THREE.Vector3(at[0] - O[0], at[1] - O[1], at[2] - O[2] + 0.4); l3m.labels.set(m.id + ":" + id, el); };
-  if (G.cutAt && m.vol && m.vol.res) mk("cut", `Schakt −${l3volM3(m.vol.res.cut)}`, G.cutAt, "cut");
-  if (G.fillAt && m.vol && m.vol.res) mk("fill", `Fyllning +${l3volM3(m.vol.res.fill)}`, G.fillAt, "fill");
+  if (G.cutAt && m.vol && m.vol.res && (!foc || foc === "cut")) mk("cut", `Schakt −${l3volM3(m.vol.res.cut)}`, G.cutAt, "cut");
+  if (G.fillAt && m.vol && m.vol.res && (!foc || foc === "fill")) mk("fill", `Fyllning +${l3volM3(m.vol.res.fill)}`, G.fillAt, "fill");
 }
 /* Sparat mått som saknar kroppar (nyss inläst): räkna i bakgrunden när källorna finns. */
 function l3volEnsure(m) {
@@ -275,7 +276,7 @@ function l3volTap(e) {
   l3Status("Volympanelen är öppen – spara eller stäng den först (Esc) för att mäta ett nytt område.", true); return true;
 }
 function l3volOpen(cur) {
-  l3volClose(true); l3vol.cur = cur; l3vol.seq++;
+  l3volClose(true); l3vol.cur = cur; l3vol.seq++; l3vol.focus = null;
   if (!l3vol.kbd) { l3vol.kbd = e => { if (e.key === "Escape" && l3vol.cur && !l3vol.capture && !/INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || "")) { e.stopPropagation(); l3volAskClose(); } else if (e.key === "Escape" && l3vol.capture) { e.stopPropagation(); l3vol.capture = null; l3t.mp = null; l3Busy(false); l3Clear(l3.groups.tmp); l3volPanel(); l3Status("Avbrutet."); } }; window.addEventListener("keydown", l3vol.kbd, true); }
   l3volPanel(); l3volDraw(); l3volSchedule(0);
 }
@@ -377,7 +378,7 @@ function l3volPanel() {
   const c = l3vol.cur; if (!c) return;
   const host = document.getElementById("v3Canvas"); if (!host) return;
   let el = document.getElementById("v3VolPanel");
-  if (!el) { el = document.createElement("div"); el.id = "v3VolPanel"; el.className = "v3-vp"; host.appendChild(el); ["pointerdown", "wheel", "contextmenu", "dblclick", "click", "keydown", "keyup"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); }
+  if (!el) { el = document.createElement("div"); el.id = "v3VolPanel"; el.className = "v3-vp"; host.appendChild(el); ["pointerdown", "wheel", "contextmenu", "dblclick", "click", "keydown", "keyup"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); el.addEventListener("click", e => { const b = e.target.closest("[data-vf]"); if (!b || !l3vol.cur) return; const k = b.dataset.vf; l3vol.focus = l3vol.focus === k ? null : k; l3volPanel(); l3volDraw(); l3Status(l3vol.focus ? (k === "cut" ? "Visar bara schaktet – tryck på Schakt igen för att visa båda." : "Visar bara fyllningen – tryck på Fyllning igen för att visa båda.") : "Visar både schakt och fyllning."); }); }
   const esc = typeof escHtml === "function" ? escHtml : s => String(s), srcs = l3volSources(c), r = c.res, n = c.pts.length, area = l3volArea(c.pts);
   const opt = (s, v) => `<option value="${esc(s.k)}" ${v === s.k ? "selected" : ""}>${esc(s.label)}</option>`;
   const side = (key, sp) => { const o = srcs.find(x => x.k === sp.k); return o && o.sided ? `<select class="sm" data-vs="${key}" title="Vilken sida av modellen som mäts"><option value="top" ${sp.side !== "bottom" ? "selected" : ""}>Ovansida</option><option value="bottom" ${sp.side === "bottom" ? "selected" : ""}>Undersida</option></select>` : sp.k === "level" ? `<input class="sm" type="text" inputmode="decimal" data-vz="${key}" value="${Number.isFinite(sp.z) ? String(sp.z).replace(".", ",") : ""}" placeholder="medel" title="Höjd (m) – tomt = hörnens medelhöjd"><button type="button" class="ic" data-vpick="${key}" title="Tryck på en punkt i modellen – dess höjd blir nivån">⌖</button>` : ""; };
@@ -389,7 +390,7 @@ function l3volPanel() {
   const res = r ? (() => { const tot = r.cut + r.fill, cp = tot > 0.5 ? Math.max(4, Math.min(96, r.cut / tot * 100)) : 50, netR = Math.round(r.net), word = netR > 0 ? "Överskott – ytan ligger högre än \"Mot\"" : netR < 0 ? "Underskott – ytan ligger lägre än \"Mot\"" : "I balans";
     return `<div class="v3-vp-hero ${netR > 0 ? "pos" : netR < 0 ? "neg" : ""}"><div class="net"><span>Netto</span><b>${l3volSg(r.net, "+")}</b><em>${word}</em></div>
       <div class="bar" title="Fördelning mellan schakt (blå) och fyllning (röd)"><i class="cut" style="flex:${cp}"></i><i class="fill" style="flex:${100 - cp}"></i></div>
-      <div class="cf"><div class="cut"><span>Schakt</span><b>${r.cut >= 0.5 ? "−" + l3volM3(r.cut) : "–"}</b><em>${r.cut >= 0.5 ? tons(r.cut) + " · " + lass(r.cut) : "inget schakt"}</em></div><div class="fill"><span>Fyllning</span><b>${r.fill >= 0.5 ? "+" + l3volM3(r.fill) : "–"}</b><em>${r.fill >= 0.5 ? tons(r.fill) + " · " + lass(r.fill) : "ingen fyllning"}</em></div></div>
+      <div class="cf" title="Tryck för att bara visa schakt eller bara fyllning i 3D – tryck igen för att visa båda"><button type="button" data-vf="cut" class="cut ${l3vol.focus === "cut" ? "sel" : l3vol.focus ? "dim" : ""}"><span>Schakt${l3vol.focus === "cut" ? " · visas ensamt" : ""}</span><b>${r.cut >= 0.5 ? "−" + l3volM3(r.cut) : "–"}</b><em>${r.cut >= 0.5 ? tons(r.cut) + " · " + lass(r.cut) : "inget schakt"}</em></button><button type="button" data-vf="fill" class="fill ${l3vol.focus === "fill" ? "sel" : l3vol.focus ? "dim" : ""}"><span>Fyllning${l3vol.focus === "fill" ? " · visas ensamt" : ""}</span><b>${r.fill >= 0.5 ? "+" + l3volM3(r.fill) : "–"}</b><em>${r.fill >= 0.5 ? tons(r.fill) + " · " + lass(r.fill) : "ingen fyllning"}</em></button></div>
       <div class="chips"><span title="Områdets yta i plan"><i>▭</i>${l3Fmt(area, 1)} m²</span><span title="Största avvikelsen över respektive under \"Mot\""><i>↕</i>+${l3Fmt(Math.max(0, r.mx), 2)} / −${l3Fmt(Math.max(0, -r.mn), 2)} m</span><span title="Medelskillnad över området"><i>⌀</i>${l3Fmt(area > 0 ? r.net / area : 0, 2)} m i snitt</span></div></div>
     ${r.areaMiss > 0.5 ? `<div class="v3-vq-note">⚠ ${l3Fmt(r.areaMiss, 1)} m² saknar höjd och räknas inte</div>` : ""}`; })() : c.err ? `<div class="v3-vp-e">${esc(c.err)}</div>` : `<div class="v3-vp-t"><span class="v3-vp-spin"></span> ${c.busy || "Välj vad som ska mätas mot vad."}</div>`;
   const noSrc = !srcs.some(s => /^(pc|md|cad):/.test(s.k));
