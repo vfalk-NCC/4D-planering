@@ -314,11 +314,15 @@ function l3spDraw() {
     const cross = () => { g.beginPath(); g.moveTo(0, hy); g.lineTo(r.width, hy); g.moveTo(hx, 0); g.lineTo(hx, r.height); g.stroke(); };
     g.strokeStyle = "rgba(255,255,255,.95)"; g.lineWidth = 4.5; cross();                                  // vit kant så att den syns mot både mörkt och ljust
     g.shadowColor = "rgba(255,0,0,.95)"; g.shadowBlur = 12; g.strokeStyle = "#ff1111"; g.lineWidth = 2; cross(); cross();   // opak röd linje med glöd
-    g.shadowBlur = 14; g.lineWidth = 3; g.strokeStyle = "#ff1111"; g.strokeRect(hx - 7, hy - 7, 14, 14); g.shadowBlur = 0; g.fillStyle = "#ff1111"; g.fillRect(hx - 1.5, hy - 1.5, 3, 3); g.restore(); }   // röda hårkorset över hela minimapen (som i AutoCAD) mark(l3sp.pin, "#dc2626", "pin");
-  // bestående puls där nålen står: mjuka ringar som sprider sig + glöd (statisk ring vid "Minska rörelser")
+    g.shadowBlur = 14; g.lineWidth = 3; g.strokeStyle = "#ff1111"; g.strokeRect(hx - 7, hy - 7, 14, 14); g.shadowBlur = 0; g.fillStyle = "#ff1111"; g.fillRect(hx - 1.5, hy - 1.5, 3, 3); g.restore(); }   // röda hårkorset över hela minimapen (som i AutoCAD)   // bestående puls där nålen står: mjuka ringar som sprider sig + glöd (statisk ring vid "Minska rörelser")
   if (l3sp.pin) { const [px, py] = l3spToScr(l3sp.pin[0], l3sp.pin[1]), col = l3sp.pinSnap ? "22,163,74" : "220,38,38", anim = typeof l3moOK !== "function" || l3moOK(), T = (performance.now() % 2000) / 2000;
     g.save(); if (anim) { [0, 0.5].forEach(o2 => { const u = (T + o2) % 1, rr = 8 + 30 * u; g.strokeStyle = `rgba(${col},${(0.75 * (1 - u)).toFixed(3)})`; g.lineWidth = 2.5 * (1 - u) + 0.8; g.beginPath(); g.arc(px, py, rr, 0, 6.2832); g.stroke(); }); const gl = g.createRadialGradient(px, py, 0, px, py, 20); gl.addColorStop(0, `rgba(${col},${(0.28 + 0.14 * Math.sin(T * 6.2832)).toFixed(3)})`); gl.addColorStop(1, `rgba(${col},0)`); g.fillStyle = gl; g.beginPath(); g.arc(px, py, 20, 0, 6.2832); g.fill(); } else { g.strokeStyle = `rgba(${col},.7)`; g.lineWidth = 2; g.beginPath(); g.arc(px, py, 14, 0, 6.2832); g.stroke(); }
-    g.fillStyle = "#fff"; g.beginPath(); g.arc(px, py, 5.5, 0, 6.2832); g.fill(); g.fillStyle = `rgb(${col})`; g.beginPath(); g.arc(px, py, 4, 0, 6.2832); g.fill(); g.restore(); }
+    // kartnål (spetsen på punkten): klarröd/grön med vit kant, glöd och vit prick
+    const hr = 13, hd2 = 31, hc = py - hd2, aT = Math.acos(hr / hd2), A1 = Math.PI / 2 - aT, A2 = Math.PI / 2 + aT; g.lineJoin = "round";
+    const body = () => { g.beginPath(); g.moveTo(px, py); g.lineTo(px + hr * Math.cos(A1), hc + hr * Math.sin(A1)); g.arc(px, hc, hr, A1, A2, true); g.closePath(); };
+    body(); g.strokeStyle = "#fff"; g.lineWidth = 5; g.stroke();
+    g.shadowColor = `rgba(${col},.9)`; g.shadowBlur = 14; body(); g.fillStyle = l3sp.pinSnap ? "#16a34a" : "#ff1a1a"; g.fill(); g.shadowBlur = 0;
+    g.fillStyle = "#fff"; g.beginPath(); g.arc(px, hc, 5, 0, 6.2832); g.fill(); g.restore(); }
   const [cx, cy] = l3spToScr(cam.position.x + O[0], cam.position.y + O[1]), d = new THREE.Vector3(); cam.getWorldDirection(d);
   const [tx, ty] = l3spToScr(cam.position.x + O[0] + d.x, cam.position.y + O[1] + d.y), ang = Math.atan2(ty - cy, tx - cx), horiz = Math.hypot(d.x, d.y) > 0.12;
   if (horiz && !cam.isOrthographicCamera) { const fov = 2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(cam.fov) / 2) * (cam.aspect || 1)), R = 70; g.fillStyle = "rgba(37,99,235,.22)"; g.strokeStyle = "#2563eb"; g.lineWidth = 1.5; g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, R, ang - fov / 2, ang + fov / 2); g.closePath(); g.fill(); g.stroke(); }
