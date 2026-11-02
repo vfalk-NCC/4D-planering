@@ -384,13 +384,14 @@ function l3volPanel() {
   const row = (key, label, sp, hint) => `<div class="v3-vq-r"><div class="v3-vq-l" title="${esc(hint)}"><i class="${key}"></i>${label}</div><div class="v3-vq-in"><select data-vk="${key}">${srcs.map(s => opt(s, sp.k)).join("")}</select>${side(key, sp)}</div></div>`;
   const cellTxt = Number(c.spec.cell) > 0 ? String(c.spec.cell).replace(".", ",") + " m" : "Auto" + (r ? " (" + String(r.cell).replace(".", ",") + " m)" : "");
   const trTxt = r && r.tris ? ` (${r.tris.toLocaleString("sv-SE").replace(/[  ]/g, " ")} tr.)` : "";
-  const res = r ? `<div class="v3-vp-res">
-      <div class="cut"><i></i><span>Schakt</span><b>−${l3volM3(r.cut)}</b></div><div class="fill"><i></i><span>Fyllning</span><b>+${l3volM3(r.fill)}</b></div>
-      <div class="net"><span>Netto · ${Math.round(r.net) > 0 ? "överskott" : Math.round(r.net) < 0 ? "underskott" : "balans"}</span><b>${l3volSg(r.net, "+")}</b></div>
-      <div class="sub"><span>Yta i plan</span><b>${l3Fmt(area, 1)} m²</b></div>
-    </div>
-    ${r.areaMiss > 0.5 ? `<div class="v3-vq-note">⚠ ${l3Fmt(r.areaMiss, 1)} m² saknar höjd och räknas inte</div>` : ""}
-    <div class="v3-vp-t">Schakt = ytan som mäts ligger <b>lägre</b> än "Mot", fyllning = <b>högre</b>. Störst skillnad ${l3Fmt(r.mx, 2)} m över / ${l3Fmt(-r.mn, 2)} m under.</div>` : c.err ? `<div class="v3-vp-e">${esc(c.err)}</div>` : `<div class="v3-vp-t">${c.busy || "Välj vad som ska mätas mot vad."}</div>`;
+  const P = l3Prefs(), dens = Number(P.volDens) > 0 ? Number(P.volDens) : 1.8, swell = Number.isFinite(Number(P.volSwell)) && P.volSwell !== undefined ? Number(P.volSwell) : 25, load = Number(P.volLoad) > 0 ? Number(P.volLoad) : 10;
+  const tons = v => Math.round(v * dens).toLocaleString("sv-SE").replace(/[\u00a0\u202f]/g, " ") + " ton", lass = v => Math.max(0, Math.ceil(v * (1 + swell / 100) / load)).toLocaleString("sv-SE") + " lass";
+  const res = r ? (() => { const tot = r.cut + r.fill, cp = tot > 0.5 ? Math.max(4, Math.min(96, r.cut / tot * 100)) : 50, netR = Math.round(r.net), word = netR > 0 ? "Överskott – ytan ligger högre än \"Mot\"" : netR < 0 ? "Underskott – ytan ligger lägre än \"Mot\"" : "I balans";
+    return `<div class="v3-vp-hero ${netR > 0 ? "pos" : netR < 0 ? "neg" : ""}"><div class="net"><span>Netto</span><b>${l3volSg(r.net, "+")}</b><em>${word}</em></div>
+      <div class="bar" title="Fördelning mellan schakt (blå) och fyllning (röd)"><i class="cut" style="flex:${cp}"></i><i class="fill" style="flex:${100 - cp}"></i></div>
+      <div class="cf"><div class="cut"><span>Schakt</span><b>${r.cut >= 0.5 ? "−" + l3volM3(r.cut) : "–"}</b><em>${r.cut >= 0.5 ? tons(r.cut) + " · " + lass(r.cut) : "inget schakt"}</em></div><div class="fill"><span>Fyllning</span><b>${r.fill >= 0.5 ? "+" + l3volM3(r.fill) : "–"}</b><em>${r.fill >= 0.5 ? tons(r.fill) + " · " + lass(r.fill) : "ingen fyllning"}</em></div></div>
+      <div class="chips"><span title="Områdets yta i plan"><i>▭</i>${l3Fmt(area, 1)} m²</span><span title="Största avvikelsen över respektive under \"Mot\""><i>↕</i>+${l3Fmt(Math.max(0, r.mx), 2)} / −${l3Fmt(Math.max(0, -r.mn), 2)} m</span><span title="Medelskillnad över området"><i>⌀</i>${l3Fmt(area > 0 ? r.net / area : 0, 2)} m i snitt</span></div></div>
+    ${r.areaMiss > 0.5 ? `<div class="v3-vq-note">⚠ ${l3Fmt(r.areaMiss, 1)} m² saknar höjd och räknas inte</div>` : ""}`; })() : c.err ? `<div class="v3-vp-e">${esc(c.err)}</div>` : `<div class="v3-vp-t"><span class="v3-vp-spin"></span> ${c.busy || "Välj vad som ska mätas mot vad."}</div>`;
   const noSrc = !srcs.some(s => /^(pc|md|cad):/.test(s.k));
   el.classList.toggle("col", !!l3Prefs().vpCol);
   const ae = document.activeElement;
@@ -400,16 +401,18 @@ function l3volPanel() {
   }
   const sw = (key, on, label, tip) => `<label class="v3-vq-sw" title="${esc(tip)}"><span>${label}<em data-vtri-${key}></em></span><input type="checkbox" data-${key} ${on ? "checked" : ""}><b></b></label>`;
   el.innerHTML = `<div class="v3-vp-h"><button type="button" data-vb="col" class="tg" title="Fäll ihop / fäll ut">${l3Prefs().vpCol ? "▸" : "▾"}</button><b>Volym</b><span>${r && l3Prefs().vpCol ? `Netto ${l3volSg(r.net, "+")}` : `${l3Fmt(area, 1)} m² · ${n} hörn`}</span><button type="button" data-vb="undo" title="Ångra punkt – tar bort områdets sista hörn" ${n > 3 ? "" : "disabled"}>↶</button><button type="button" data-vb="restart" title="Börja om – rita området från början">⟲</button><button type="button" data-vb="x" title="Stäng (Esc)">✕</button></div>
-    <div class="v3-vp-t" data-vhint>Dra i hörnpunkterna (orange ringar) för att flytta dem – volymen räknas om när du släpper. Ctrl+Z ångrar.</div>
+    <div class="v3-vp-tip" data-vhint><b>Dra</b> en ring för att flytta ett hörn · <b>+</b> mellan ringarna lägger till en punkt · Ctrl+Z ångrar</div>
     ${noSrc ? `<div class="v3-vp-t warn">Tänd ett punktmoln eller en 3D-modell (Lager) om något ska mätas mot ytan. Plan och nivå går att använda utan.</div>` : ""}
     <div class="v3-vq-src">${row("a", "Yta som mäts", c.spec.a, "Den yta vars volym mot den andra mäts, t.ex. punktmolnet över schaktgropen")}<button type="button" class="v3-vq-swap" data-vb="swap" title="Byt plats på ytorna – schakt blir fyllning och tvärtom">⇅</button>${row("b", "Mot", c.spec.b, "Jämförelseytan: en modell, ett annat punktmoln, ett plan, en nivå eller en yta du klickat ut")}</div>
     <div data-vres>${res}</div>
-    <div class="v3-vq-set">
+    <details class="v3-vq-out v3-vq-setd" ${l3Prefs().vpSet ? "open" : ""}><summary>Inställningar</summary><div class="v3-vq-set">
       <div class="v3-vq-sl" title="Rutstorlek för ytan. Mindre ruta = fler trianglar och mer detalj. Räknas om direkt när du drar."><span>Noggrannhet</span><input type="range" min="0" max="${L3VOL_STEPS.length}" step="1" value="${Math.max(0, L3VOL_STEPS.indexOf(Number(c.spec.cell)) + 1)}" data-vc><em data-vcl>${cellTxt}</em></div>
       ${sw("vwire", !!l3Prefs().volWire, "Visa triangulering", "Visa trianglarna som ytan och volymen är byggda av").replace("data-vtri-vwire", "data-vtri")}
       ${sw("vtext", l3Prefs().volExpText !== false, "Volymtext i IFC", "Skylt med volymtexten i IFC-filen (volymerna ligger alltid som egenskaper)")}
       <div class="v3-vq-sl" title="Hur genomskinliga kropparna är"><span>Syns</span><input type="range" min="0.15" max="1" step="0.05" value="${Number(l3Prefs().volOpacity) || 0.62}" data-vop><em></em></div>
-    </div>
+    
+      <div class="v3-vq-est" title="Används för uppskattning av massa (ton) och antal lastbilslass. Ändra efter jordart och lastbil."><span>Uppskattning</span><label>Densitet <input type="text" inputmode="decimal" data-vest="volDens" value="${String(dens).replace(".", ",")}"> t/m³</label><label>Svällning <input type="text" inputmode="decimal" data-vest="volSwell" value="${String(swell).replace(".", ",")}"> %</label><label>Lass <input type="text" inputmode="decimal" data-vest="volLoad" value="${String(load).replace(".", ",")}"> m³</label></div>
+    </div></details>
     <details class="v3-vq-out" ${l3Prefs().vpOut ? "open" : ""}><summary>Exportera &amp; skapa kropp</summary>
       <div class="v3-vq-seg" role="group" title="Vad som tas med i IFC-filen"><button type="button" data-vifcv="both" class="${(l3vol.ifcPart || "both") === "both" ? "on" : ""}">Schakt + fyllning</button><button type="button" data-vifcv="cut" class="${(l3vol.ifcPart || "both") === "cut" ? "on" : ""}">Schakt</button><button type="button" data-vifcv="fill" class="${(l3vol.ifcPart || "both") === "fill" ? "on" : ""}">Fyllning</button></div>
       <div class="v3-vq-grid"><button type="button" data-vb="ifc" ${r ? "" : "disabled"} title="Området, schakt- och fyllningskropparna som 3D-objekt i en IFC-fil (Trimble Connect eller nedladdning)"><b>⤓</b> Exportera IFC</button>
@@ -440,7 +443,8 @@ function l3volPanel() {
   on("solid", () => { l3volSolid(); });
   on("solidvol", () => { l3volSolidVol(); });
   el.querySelectorAll("[data-vifcv]").forEach(b => { b.onclick = () => { l3vol.ifcPart = b.dataset.vifcv; el.querySelectorAll("[data-vifcv]").forEach(x => x.classList.toggle("on", x === b)); }; });
-  { const od = el.querySelector(".v3-vq-out"); if (od) od.addEventListener("toggle", () => l3SetPref("vpOut", od.open)); }
+  { const od = el.querySelector(".v3-vq-out:not(.v3-vq-setd)"); if (od) od.addEventListener("toggle", () => l3SetPref("vpOut", od.open)); const sd = el.querySelector(".v3-vq-setd"); if (sd) sd.addEventListener("toggle", () => l3SetPref("vpSet", sd.open)); }
+  qa("input[data-vest]").forEach(i => { i.onchange = () => { const v = Number(String(i.value).replace(/\s/g, "").replace(",", ".")); if (Number.isFinite(v) && v >= 0) l3SetPref(i.dataset.vest, v); l3volPanel(); }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
   on("copy", () => { const t = `${l3volText(c.res)} · netto ${l3volSg(c.res.net, "+")} · yta ${l3Fmt(area, 1)} m² · ${l3volLabel(c, c.spec.a)} mot ${l3volLabel(c, c.spec.b)}`; try { navigator.clipboard.writeText(t).then(() => l3Toast("Kopierat."), () => l3Status("Kunde inte kopiera.", true)); } catch (e) { l3Status("Kunde inte kopiera.", true); } });
   on("ifc", async function () { const b = this; b.disabled = true; try { const m = l3volSave(); if (m) await l3mExportIfc([m.id]); } catch (e) { /* statusraden */ } });
   const tx = q("input[data-vtext]"); if (tx) tx.onchange = () => l3SetPref("volExpText", tx.checked);

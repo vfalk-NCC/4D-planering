@@ -64,6 +64,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(lo => { l3SetPref('measure', 'volume'); l3SetTool('measure'); const O = l3.O; l3t.mp = [[8, 8], [18, 8], [18, 18], [8, 18]].map(([x, y]) => new THREE.Vector3(lo[0] + x - O[0], lo[1] + y - O[1], lo[2] + 2 - O[2])); l3t.mpObjs = []; l3VolBase(); }, lo);
   await page.waitForSelector('#v3VolPanel'); await page.waitForFunction(() => l3vol.cur && l3vol.cur.res, null, { timeout: 15000 });
   const d = await page.evaluate(() => ({ a: l3vol.cur.spec.a.k, b: l3vol.cur.spec.b.k, res: l3vol.cur.res, solids: !!(l3vol.cur.geom && (l3vol.cur.geom.cut || l3vol.cur.geom.fill)) }));
+  if (process.env.SHOT) { await page.waitForTimeout(500); await page.screenshot({ path: process.env.SHOT }); }
   console.log('default', JSON.stringify({ a: d.a, b: d.b, fill: d.res.fill, cut: d.res.cut, area: d.res.area, cell: d.res.cell }));
   // Hörnen går att dra i efter utplaceringen: handtagen visas, hörnet flyttas med musen och volymen räknas om.
   const hd = await page.evaluate(() => [...document.querySelectorAll('.v3-mhandle')].filter(b => b.style.display !== 'none').map(b => { const r = b.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }));
@@ -77,6 +78,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const p2 = await page.evaluate(() => ({ pts: l3vol.cur.pts.map(p => p.slice()), area: l3volArea(l3vol.cur.pts) }));
   if (JSON.stringify(p2.pts) !== JSON.stringify(p0.pts)) fail('Ctrl+Z ska flytta tillbaka hörnet: ' + JSON.stringify({ p0: p0.pts[0], p2: p2.pts[0] }));
   console.log('OK: volymens hörn går att dra i efter utplaceringen (area ' + p0.area.toFixed(1) + ' → ' + p1.area.toFixed(1) + ' m², ångra återställer)');
+  // Plus mellan hörnen: lägg till en punkt i efterhand (Victor 2026-11-02)
+  const pl = await page.evaluate(() => [...document.querySelectorAll('.v3-mplus')].filter(b => b.style.display !== 'none').map(b => { const r = b.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }));
+  if (pl.length < 3) fail('Plus-handtag mellan hörnen ska synas: ' + JSON.stringify(pl));
+  const n0 = await page.evaluate(() => l3vol.cur.pts.length); const a0 = await page.evaluate(() => l3volArea(l3vol.cur.pts));
+  await page.mouse.move(pl[0][0], pl[0][1]); await page.mouse.down(); await page.mouse.move(pl[0][0] + 14, pl[0][1] - 18, { steps: 5 }); await page.mouse.up();
+  await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 }); await page.waitForTimeout(300);
+  const pa = await page.evaluate(() => ({ n: l3vol.cur.pts.length, area: l3volArea(l3vol.cur.pts), h: document.querySelectorAll('.v3-mhandle').length }));
+  if (pa.n !== n0 + 1 || Math.abs(pa.area - a0) < 0.05) fail('En punkt ska ha lagts till och flyttats: ' + JSON.stringify({ n0, pa, a0 }));
+  await page.evaluate(() => l3Undo()); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 });
+  const pu = await page.evaluate(() => l3vol.cur.pts.length); if (pu !== n0) fail('Ctrl+Z ska ta bort den tillagda punkten: ' + pu);
+  console.log('OK: plus mellan hörnen lägger till en punkt (' + n0 + ' → ' + pa.n + ' hörn, ångra tar bort den)');
   // Moln (platå 1,5 över underkanten) mot modellens ovansida (2,0): molnet ligger 0,5 m LÄGRE → schakt 10*10*0,5 = 50 m³.
   const setSel = async (key, v) => { await page.selectOption(`select[data-vk="${key}"]`, v); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 }); await page.waitForTimeout(350); };
   await setSel('a', 'pc:pcA'); await setSel('b', 'md:vm');

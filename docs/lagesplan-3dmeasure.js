@@ -154,7 +154,9 @@ function l3mPlaceLabels() {
 /* ---- Ändpunkterna (Victor 2026-10-10: "dra ändpunkterna på måtten jag har satt ut") ------------------
    För ett ensamt markerat, olåst mått: ett handtag på varje punkt. Dra = punkten fäster som när man mäter
    (hörn, kanter, ytor, DXF); Skift = var 5:e grad från grannpunkten. Måttet räknas om; Ctrl+Z ångrar. */
-const l3mH = { els: [], drag: null };
+const l3mH = { els: [], plus: [], drag: null, insWas: null };
+/* Mittpunkter (+): lägg till fler hörn i efterhand på områdesmått, volymer och linjer (Victor 2026-11-02). Slutna: area, volym, utjämning; öppna: sträcka. */
+function l3mPlusKind(m) { if (!m) return null; if (m === (typeof l3vol !== "undefined" ? l3vol.cur : null)) return "closed"; return ({ cutfill: "closed", area: "closed", volume: "closed", poly: "open" })[m.kind] || null; }
 function l3mActive() {
   // Pågående volym (panelen öppen): hörnen kan dras i efteråt och volymen räknas om (Victor 2026-10-31)
   if (typeof l3vol !== "undefined" && l3vol.cur && !l3vol.capture && l3vol.cur.pts && l3vol.cur.pts.length) return l3vol.cur;
@@ -163,8 +165,12 @@ function l3mActive() {
   return m && !m.locked && !m.hid && (typeof l3aOn !== "function" || l3aOn(m)) ? m : null;
 }
 function l3mHandlesPlace() {
-  const m = l3mActive(), n = m ? m.pts.length : 0;
-  if (!m && !l3mH.els.length) return;
+  const m = l3mActive(), n = m ? m.pts.length : 0, pk = l3mPlusKind(m), np = pk ? (pk === "closed" ? n : n - 1) : 0;
+  if (!m && !l3mH.els.length && !l3mH.plus.length) return;
+  { const host2 = l3.renderer.domElement.parentElement; while (l3mH.plus.length > np) l3mH.plus.pop().remove();
+    while (l3mH.plus.length < np) { const i = l3mH.plus.length, b = document.createElement("button"); b.type = "button"; b.className = "v3-mplus"; b.textContent = "+"; b.title = "Lägg till en punkt här – dra den dit du vill"; b.onpointerdown = e => l3mPlusDown(e, i); b.onclick = e => e.stopPropagation(); host2.appendChild(b); l3mH.plus.push(b); }
+    if (m) for (let i = 0; i < np; i++) { const a = m.pts[i], c = m.pts[(i + 1) % n], qa = l3ToScreen(new THREE.Vector3(a[0] - l3.O[0], a[1] - l3.O[1], a[2] - l3.O[2])), qc = l3ToScreen(new THREE.Vector3(c[0] - l3.O[0], c[1] - l3.O[1], c[2] - l3.O[2])), mid = l3ToScreen(new THREE.Vector3((a[0] + c[0]) / 2 - l3.O[0], (a[1] + c[1]) / 2 - l3.O[1], (a[2] + c[2]) / 2 - l3.O[2])), el = l3mH.plus[i], far = Math.hypot(qa.x - qc.x, qa.y - qc.y) > 34;
+      el.style.display = (qa.behind || qc.behind || mid.behind || !far || l3mH.drag) ? "none" : "block"; el.style.left = mid.x + "px"; el.style.top = mid.y + "px"; } }
   const host = l3.renderer.domElement.parentElement;
   while (l3mH.els.length > n) l3mH.els.pop().remove();
   while (l3mH.els.length < n) {
@@ -180,6 +186,14 @@ function l3mHandlesPlace() {
     el.classList.toggle("drag", !!(l3mH.drag && l3mH.drag.i === i));
   });
 }
+function l3mPlusDown(e, i) {
+  const m = l3mActive(); if (!m || e.button !== 0) return; const n = m.pts.length; e.preventDefault(); e.stopPropagation();
+  const a = m.pts[i], c = m.pts[(i + 1) % n]; l3mH.insWas = { pts: m.pts.map(p => p.slice()), text: m.text, objs: (m.objs || []).slice() };
+  const mid = [0, 1, 2].map(k => Math.round(((a[k] + c[k]) / 2) * 1000) / 1000);
+  m.pts.splice(i + 1, 0, mid); m.objs = (m.objs || []).slice(); if (m.objs.length) m.objs.splice(i + 1, 0, null);
+  if (m === l3vol.cur) { m.geom = null; m.res = null; }
+  l3mRecalc(m); l3mDraw(); l3mHDown(e, i + 1);
+}
 /* Värdet ur punkterna (efter att en punkt flyttats). */
 function l3mRecalc(m) {
   const P = m.pts.map(p => new THREE.Vector3(p[0], p[1], p[2]));
@@ -194,7 +208,7 @@ function l3mRecalc(m) {
 function l3mHDown(e, i) {
   const m = l3mActive(); if (!m || e.button !== 0) return;
   e.preventDefault(); e.stopPropagation();
-  const was = { pts: m.pts.map(p => p.slice()), text: m.text, objs: (m.objs || []).slice() };
+  const ins = !!l3mH.insWas, was = l3mH.insWas || { pts: m.pts.map(p => p.slice()), text: m.text, objs: (m.objs || []).slice() }; l3mH.insWas = null;
   l3mH.drag = { i };
   let moved = false;
   const mv = ev => {
@@ -211,16 +225,16 @@ function l3mHDown(e, i) {
   const up = ev => {
     window.removeEventListener("pointermove", mv, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("pointercancel", up, true);
     l3mH.drag = null; if (typeof l3ShowMarker === "function") l3ShowMarker(null);
-    if (!moved || JSON.stringify(m.pts) === JSON.stringify(was.pts)) { l3mDraw(); return; }
+    if (!ins && (!moved || JSON.stringify(m.pts) === JSON.stringify(was.pts))) { l3mDraw(); return; }
     if (typeof l3mObjAt === "function") { m.objs = (m.objs || []).slice(); m.objs[i] = l3mObjAt(ev); }
     const now = { pts: m.pts.map(p => p.slice()), text: m.text, objs: (m.objs || []).slice() };
     if (m === l3vol.cur) {   // pågående volym: ångra/gör om flyttar tillbaka hörnet och räknar om
       const setV = st => { if (l3vol.cur !== m) return; m.pts = st.pts.map(p => p.slice()); m.objs = st.objs.slice(); m.geom = null; m.res = null; l3volSchedule(0); };
       if (typeof l3VPush === "function") l3VPush(() => setV(was), () => setV(now), "flytta volymens hörn");
-      l3volSchedule(0); l3Status("Hörnet flyttat – volymen räknas om (Ctrl+Z ångrar)."); return;
+      l3volSchedule(0); l3Status(ins ? "Punkt tillagd – volymen räknas om (Ctrl+Z ångrar)." : "Hörnet flyttat – volymen räknas om (Ctrl+Z ångrar)."); return;
     }
     const set = st => { m.pts = st.pts.map(p => p.slice()); m.text = st.text; m.objs = st.objs.slice(); l3mChanged(m); };
-    if (typeof l3VPush === "function") l3VPush(() => set(was), () => set(now), "flytta måttets punkt");
+    if (typeof l3VPush === "function") l3VPush(() => set(was), () => set(now), ins ? "lägg till punkt" : "flytta måttets punkt");
     l3mChanged(m);
     l3Status(`${L3M_KIND[m.kind] || "Måttet"} är nu ${m.text} (Ctrl+Z ångrar).`);
   };
