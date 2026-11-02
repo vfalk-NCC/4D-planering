@@ -111,10 +111,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     { if (!l3.planMesh) { l3.planMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial()); l3.planMesh.visible = false; l3.scene.add(l3.planMesh); } const cb = document.getElementById('spZshow'); l3sp.planId = plan.id; const was = l3.planMesh.visible; cb.checked = true; cb.dispatchEvent(new Event('change')); const on = l3.planMesh.visible; cb.checked = false; cb.dispatchEvent(new Event('change')); o.zoff = on && l3.planMesh.visible === was; }
     // smidig panorering: den skarpa bilden ligger kvar (flyttas med CSS) tills nya är klar
     { l3spFollow(false); l3spFit(); l3sp.key = ''; l3spDraw(); await wait(700); const dt = l3sp.dt; o.dt0 = dt.style.visibility === 'visible'; l3sp.view.tx += 40; l3sp.key = ''; l3spDraw(); o.dtKeep = dt.style.visibility === 'visible' && /translate\(/.test(dt.style.transform); await wait(900); o.dtBack = dt.style.visibility === 'visible' && dt.style.transform === ''; }
+    // profil ur minimapen: A och B i ritningen → profil genom molnet
+    { const info2 = { center: [c0[0] + 30, c0[1] + 10, 100], min: [0, 0, 0], max: [1, 1, 1], format: 't', n: 0, total: 0 }; const cl2 = l3pcBuild({ id: 'profA', name: 'Prof' }, { info: info2, chunks: [{ pos: new Float32Array(P), inten: new Uint8Array(P.length / 3) }] }); cl2.visible = true;
+      const pb = document.getElementById('spProf'); o.profBtn = !!pb; pb.click(); o.picking = l3sp.profPick === true; const ax = info2.center[0] - 8, ay = info2.center[1], bx = info2.center[0] + 8;
+      l3spProfPoint(ax, ay); o.hasA = !!l3sp.profA; l3spProfPoint(bx, ay); o.prof = !l3sp.profPick && !!l3pf.data && l3pf.data.series.length >= 1 && Math.abs(l3pf.data.L - 16) < 0.5; l3spDraw(); o.profLen = l3pf.data && l3pf.data.L; l3pfClear(); l3pcRemove('profA'); }
     // av
     l3SetPref('spSnapPc', false); l3spGoTo(qx, qy); o.off = !l3sp.pinSnap && Math.abs(l3sp.pin[0] - qx) < 1e-6; l3SetPref('spSnapPc', true); l3pcRemove('snapA'); return o;
   });
-  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off || !sn.ifc || !sn.zoff || !sn.dt0 || !sn.dtKeep || !sn.dtBack) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
+  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off || !sn.ifc || !sn.zoff || !sn.dt0 || !sn.dtKeep || !sn.dtBack || !sn.profBtn || !sn.picking || !sn.hasA || !sn.prof) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
   console.log('OK: klick i minimapen fäster nålen i punktmolnet (plan + höjd, med och utan rutindex, av/på)', JSON.stringify(sn));
   // Höjdkalibrering: höjden hämtas från ritningens kalibrering och kan ställas in, hämtas från 3D eller nålen, och ångras
   const zc = await page.evaluate(async () => {
