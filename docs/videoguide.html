@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3D-editorn – videoguide</title>
+<style>
+  :root{--bg:#050b14;--ac:#4ea3ff;--tx:#e8f1ff}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--tx);font-family:"Helvetica Neue",Arial,sans-serif;overflow:hidden}
+  #wrap{position:fixed;inset:0 0 56px 0;display:flex;align-items:center;justify-content:center}
+  canvas{max-width:100%;max-height:100%;aspect-ratio:1280/800;background:#000;box-shadow:0 0 60px #0008}
+  #bar{position:fixed;left:0;right:0;bottom:0;height:56px;display:flex;align-items:center;gap:8px;padding:0 12px;background:#0a1626;border-top:1px solid #16304f;box-sizing:border-box;z-index:3}
+  #bar button{background:#12263f;color:var(--tx);border:1px solid #1f3e63;border-radius:8px;height:34px;min-width:34px;padding:0 10px;font:inherit;font-size:13px;cursor:pointer}
+  #bar button:hover,#bar button:focus-visible{background:var(--ac);color:#001022;outline:none}
+  #bar button.on{background:#1d4f86;border-color:var(--ac)}
+  #seek{flex:1;position:relative;height:34px;cursor:pointer;min-width:80px}
+  #seek i{position:absolute;top:15px;left:0;right:0;height:4px;background:#1b3252;border-radius:2px}
+  #seek b{position:absolute;top:15px;left:0;height:4px;background:var(--ac);border-radius:2px;width:0}
+  #seek s{position:absolute;top:8px;width:2px;height:18px;background:#2b4d7a;margin-left:-1px}
+  #tc{font-variant-numeric:tabular-nums;font-size:12px;opacity:.7;min-width:78px;text-align:center}
+  #chs{display:flex;gap:4px;flex-wrap:nowrap;overflow-x:auto;max-width:42vw}
+  #chs button{padding:0 8px;min-width:30px}
+  #start{position:fixed;inset:0;z-index:5;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:radial-gradient(ellipse at 50% 35%,#0d2240,#050b14 70%);text-align:center;padding:24px;box-sizing:border-box}
+  #start h1{margin:0;font-weight:300;font-size:clamp(26px,5vw,52px);letter-spacing:.08em}
+  #start p{margin:0;opacity:.65;max-width:560px;line-height:1.5}
+  #start .b{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+  #start button{font:inherit;background:transparent;color:var(--tx);border:1px solid var(--ac);padding:14px 26px;font-size:15px;cursor:pointer;border-radius:8px}
+  #start button:hover,#start button:focus-visible{background:var(--ac);color:#001022;outline:none}
+  @media (max-width:760px){#chs{display:none}}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="c" width="1280" height="800"></canvas></div>
+<div id="bar">
+  <button id="bp" title="Spela / pausa (mellanslag)">⏸</button>
+  <span id="tc">0:00 / 0:00</span>
+  <div id="seek" title="Hoppa i filmen"><i></i><b></b></div>
+  <div id="chs"></div>
+  <button id="bs" title="Hastighet">1×</button>
+  <button id="bv" title="Berättarröst (V)">🔊 Röst</button>
+  <button id="bf" title="Helskärm (F)">⛶</button>
+</div>
+<div id="start">
+  <h1>Så använder du 3D-editorn</h1>
+  <p>En videoguide i nio steg: från att öppna 3D-vyn och lägga in underlag, till snitt, profil, schakt och fyllning, minikarta och utskrift. Du kan hoppa mellan kapitlen när du vill.</p>
+  <div class="b"><button id="g1">▶ Spela med berättarröst</button><button id="g2">Spela utan ljud</button></div>
+  <p style="font-size:12px;opacity:.4">Mellanslag = paus · ←/→ = 5 s · 1–9 = kapitel · V = röst · F = helskärm</p>
+</div>
+<script>
+"use strict";
+const cv = document.getElementById("c"), X = cv.getContext("2d"), VW0 = 1280, VH0 = 800;
+const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v)), lerp = (a, b, t) => a + (b - a) * t, seg = (t, a, b) => clamp((t - a) / (b - a));
+const ease = t => { t = clamp(t); return t * t * (3 - 2 * t); }, easeOut = t => 1 - Math.pow(1 - clamp(t), 3);
+const fmt = n => Math.round(n).toLocaleString("sv-SE");
+
+/* ================= Kapitel ================= */
+const CH = [
+  { n: "Öppna 3D-vyn", t0: 6, t1: 20, menu: -1, narr: "Börja i lägesplanen. Tryck på knappen 3D uppe till höger, så öppnas 3D-editorn med din byggplats.", steps: [[0, "Lägesplanen är din startpunkt"], [5.5, "Tryck på 3D-knappen"], [8, "3D-editorn öppnas"]] },
+  { n: "Lägg in underlag", t0: 20, t1: 36, menu: 0, narr: "Öppna menyn Underlag och dra in dina filer. En PDF-ritning läggs ut på marken, en IFC-modell reser sig, och ett punktmoln visar verkligheten.", steps: [[0, "Öppna Underlag"], [3, "Dra in PDF-ritningen"], [6.5, "Dra in IFC-modellen"], [10, "Dra in punktmolnet"]] },
+  { n: "Navigera", t0: 36, t1: 50, menu: -1, narr: "Håll vänster musknapp för att rotera. Hjulet zoomar, och Skift plus dra panorerar. Vill du känna platsen på riktigt, tryck Gå runt och promenera i modellen.", steps: [[0, "Rotera: dra med vänster knapp"], [4.5, "Zooma: mushjulet"], [8, "Panorera: Skift + dra"], [11, "Gå runt: känn platsen"]] },
+  { n: "Placera objekt", t0: 50, t1: 66, menu: 1, narr: "Välj Objekt, plocka en tornkran eller bod och klicka där den ska stå. Objekten snappar mot underlaget, och du flyttar dem med musen.", steps: [[0, "Öppna Objekt"], [2.5, "Välj Tornkran"], [5, "Klicka där den ska stå"], [9, "Placera en bod"], [12, "Dra för att flytta – den snappar"]] },
+  { n: "Snitt med saxen", t0: 66, t1: 80, menu: 3, narr: "Med saxen lägger du ett snitt genom hela scenen. Klicka på en yta, dra i reglaget för att flytta snittet, och vänd sida med pilknappen.", steps: [[0, "Välj Snitt (saxen)"], [3, "Klicka på en yta"], [5, "Dra i reglaget"], [11, "Vänd sida med ⇄"]] },
+  { n: "Profil och klipp", t0: 80, t1: 100, menu: 4, narr: "Under Punktmoln väljer du Profil. Klicka ut punkt A och B, så ritas höjdprofilen. Slå på reglaget Klipp längs profilen för att klippa scenen exakt längs linjen. Du kan dra ändpunkterna och lägga plushöjder.", steps: [[0, "Punktmoln → Profil"], [3, "Klicka A och B"], [8, "Slå på ”Klipp längs profilen”"], [13, "Dra ändpunkten B"], [16, "Plushöjd: klicka i profilen"]] },
+  { n: "Schakt och fyllning", t0: 100, t1: 116, menu: 2, narr: "Under Mät väljer du Volym. Klicka ut området, lägg till fler hörn med plus-knapparna, och se schakt och fyllning mot din nivå. Exportera volymen som IFC.", steps: [[0, "Mät → Volym"], [3, "Klicka ut hörnen"], [7, "Plus = fler hörn"], [10, "Se schakt och fyllning"], [13, "Exportera som IFC"]] },
+  { n: "Minikarta och vyer", t0: 116, t1: 130, menu: 6, narr: "Minikartan visar var du är. Tryck i kartan så hamnar en markering på exakt den platsen i 3D. Spara dina bästa vinklar som vyer och hoppa tillbaka med ett klick.", steps: [[0, "Tryck i minikartan"], [4, "Markeringen visas i 3D"], [7, "Spara vyn"], [11, "Hoppa tillbaka med ett klick"]] },
+  { n: "Skriv ut och utgåvor", t0: 130, t1: 144, menu: 7, narr: "Under Skriv ut sätter du ihop layouten. Spara veckans läge som en utgåva med namn och anteckning, och skapa PDF:en. Då kan du alltid gå tillbaka till exakt det som skickades ut.", steps: [[0, "Öppna Skriv ut"], [3, "Spara utgåva…"], [8, "Namnge: Vecka 45"], [10.5, "Skapa PDF"]] },
+];
+const TOTAL = 150;
+const MENU = ["Underlag", "Objekt", "Mät", "Snitt ✂", "Punktmoln ☁", "Tidplan", "Vyer", "Skriv ut"];
+
+/* ================= 3D-värld ================= */
+const SZ = 50, N = 50, hgt = (x, y) => 2 * Math.sin(x * 0.12) * Math.cos(y * 0.1) + 0.7 * Math.sin(x * 0.33 + y * 0.21) * 0.5 - 2.2 * Math.exp(-((x - 7) ** 2 + (y + 5) ** 2) / 60);
+const TER = []; for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) { const x = (i / (N - 1) - 0.5) * SZ, y = (j / (N - 1) - 0.5) * SZ; TER.push({ x, y, z: hgt(x, y), r: Math.hypot(x, y) }); }
+const BLD = [[-8, -6, 10, 7, 8, 0], [8, 6, 8, 8, 12, 0.25], [14, -10, 9, 6, 5, 0.5]].map(([x, y, w, d, h, o]) => ({ x, y, w, d, h, o, z0: hgt(x, y) - 0.2 }));
+const KEY = [[0, 0.6, 0.5, 90, 0, 0, 0], [36, 0.6, 0.5, 86, 0, 0, 0], [41, 1.6, 0.45, 86, 0, 0, 0], [44, 1.6, 0.45, 56, 0, 0, 0], [46, 1.6, 0.45, 56, 0, 0, 0], [49, 1.6, 0.45, 56, -8, 5, 0], [50.6, 1.2, 0.5, 64, 0, 0, 0], [66, 1.2, 0.55, 64, 0, 0, 0], [70, 1.9, 0.5, 66, 0, 0, 0], [80, 1.9, 0.5, 66, 0, 0, 0], [84, 2.0, 0.85, 62, 0, 0, 0], [100, 2.0, 0.85, 62, 0, 0, 0], [104, 2.6, 0.7, 60, 0, -6, 0], [116, 2.6, 0.7, 60, 0, -6, 0], [120, 3.2, 0.5, 66, 0, 0, 0], [127, 3.2, 0.5, 66, 0, 0, 0], [129.5, 4.2, 0.5, 66, 0, 0, 0], [150, 4.6, 0.5, 90, 0, 0, 0]];
+let C = null, VX = 200, VY = 40, VW = 1080, VH = 580, FOC = 640;
+function setCam(t) {
+  let i = 0; while (i < KEY.length - 2 && t > KEY[i + 1][0]) i++; const a = KEY[i], b = KEY[i + 1], k = ease(seg(t, a[0], b[0])), L = j => lerp(a[j], b[j], k);
+  const yaw = L(1), pit = L(2), d = L(3), tx = L(4), ty = L(5), tz = L(6), cp = Math.cos(pit), px = tx + d * cp * Math.cos(yaw), py = ty + d * cp * Math.sin(yaw), pz = tz + d * Math.sin(pit), l = Math.hypot(px - tx, py - ty, pz - tz), f = [(tx - px) / l, (ty - py) / l, (tz - pz) / l];
+  let r = [f[1], -f[0], 0]; const rl = Math.hypot(r[0], r[1]); r = [r[0] / rl, r[1] / rl, 0]; const u = [r[1] * f[2] - r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1] - r[1] * f[0]]; C = { p: [px, py, pz], f, r, u };
+}
+const Q = [0, 0, 0];
+function pr(x, y, z) { const dx = x - C.p[0], dy = y - C.p[1], dz = z - C.p[2], cz = dx * C.f[0] + dy * C.f[1] + dz * C.f[2]; if (cz < 0.5) return null; Q[0] = VX + VW / 2 + (dx * C.r[0] + dy * C.r[1] + dz * C.r[2]) / cz * FOC; Q[1] = VY + VH / 2 - (dx * C.u[0] + dy * C.u[1] + dz * C.u[2]) / cz * FOC; Q[2] = cz; return Q; }
+const pt2 = (x, y, z) => { const q = pr(x, y, z); return q ? [q[0], q[1]] : null; };
+
+/* ================= Ritprimitiver ================= */
+function rr(x, y, w, h, r) { X.beginPath(); X.moveTo(x + r, y); X.arcTo(x + w, y, x + w, y + h, r); X.arcTo(x + w, y + h, x, y + h, r); X.arcTo(x, y + h, x, y, r); X.arcTo(x, y, x + w, y, r); X.closePath(); }
+function T(s, x, y, size, col, al, w) { X.font = `${w || 400} ${size}px "Helvetica Neue",Arial,sans-serif`; X.fillStyle = col || "#e8f1ff"; X.textAlign = al || "left"; X.textBaseline = "middle"; X.fillText(s, x, y); }
+function btn(x, y, w, h, label, on, a) { X.save(); X.globalAlpha = a == null ? 1 : a; rr(x, y, w, h, 7); X.fillStyle = on ? "#2a6fbf" : "#14263f"; X.fill(); X.strokeStyle = on ? "#7fc0ff" : "#26466f"; X.lineWidth = 1.2; X.stroke(); T(label, x + w / 2, y + h / 2 + 1, 14, "#e8f1ff", "center"); X.restore(); }
+function panel(x, y, w, h, title, a) { X.save(); X.globalAlpha = a == null ? 1 : a; rr(x, y, w, h, 10); X.fillStyle = "rgba(8,18,32,.94)"; X.fill(); X.strokeStyle = "#2b5084"; X.lineWidth = 1.2; X.stroke(); if (title) { T(title, x + 14, y + 20, 14, "#9fd0ff", "left", 600); X.fillStyle = "#1f3e63"; X.fillRect(x + 10, y + 36, w - 20, 1); } X.restore(); }
+function ring(x, y, r, col, a) { X.save(); X.globalAlpha = a; X.strokeStyle = col; X.lineWidth = 3; X.shadowColor = col; X.shadowBlur = 14; X.beginPath(); X.arc(x, y, r, 0, 6.3); X.stroke(); X.restore(); }
+
+/* ================= Tilldela scenens delar ================= */
+const PAL = ["#0b3d91", "#1565c0", "#1e88e5", "#29b6f6", "#4dd0e1", "#80deea", "#b2ebf2", "#e0f7fa"];
+function inPoly(x, y, P) { let c = false; for (let i = 0, j = P.length - 1; i < P.length; j = i++) if ((P[i][1] > y) !== (P[j][1] > y) && x < (P[j][0] - P[i][0]) * (y - P[i][1]) / (P[j][1] - P[i][1]) + P[i][0]) c = !c; return c; }
+const VOLP = [[-2, -8.5], [9, -8], [9.2, 1.5], [-2, 1]], LEVEL = -0.3;
+function volNums(n) { let cut = 0, fill = 0; const st = 0.25; for (let x = -2; x <= 9.2; x += st) for (let y = -8.5; y <= 1.5; y += st) if (inPoly(x, y, VOLP)) { const d = hgt(x, y) - LEVEL; if (d > 0) cut += d * st * st; else fill -= d * st * st; } return [cut * n, fill * n]; }
+const PA = [-20, -8], PB0 = [20, 6];
+function profB(t) { const k = ease(seg(t, 93, 95.5)); return [PB0[0], lerp(PB0[1], 14, k)]; }
+
+/* ================= Scenen (3D-vyn) ================= */
+function scene(t) {
+  X.save(); X.beginPath(); X.rect(VX, VY, VW, VH); X.clip();
+  const bg = X.createLinearGradient(0, VY, 0, VY + VH); bg.addColorStop(0, "#0c1a2e"); bg.addColorStop(1, "#050b14"); X.fillStyle = bg; X.fillRect(VX, VY, VW, VH);
+  setCam(t);
+  const ptsP = easeOut(seg(t, 32.2, 35.6)) * 40, pdfP = ease(seg(t, 25, 26.2)), ifcP = t < 28.5 ? 0 : ease(seg(t, 28.5, 31)), cranes = easeOut(seg(t, 58, 60.5)), cabins = easeOut(seg(t, 61, 62.5));
+  // snitt
+  const a5 = t - 66; let cx = 99; if (a5 >= 3 && a5 < 13) cx = lerp(30, -4, ease(seg(a5, 3, 11))); else if (a5 >= 13 && a5 < 14.2) cx = lerp(-4, 40, ease((a5 - 13) / 1.2));
+  const Bn = profB(t), dl = Math.hypot(Bn[0] - PA[0], Bn[1] - PA[1]), nx = -(Bn[1] - PA[1]) / dl, ny = (Bn[0] - PA[0]) / dl; let ps = 99;
+  if (t >= 89 && t < 99.5) ps = t < 99 ? lerp(30, 0, ease(seg(t, 89, 92))) : lerp(0, 30, ease(seg(t, 99, 99.5)));
+  const sideOf = (x, y) => (x - PA[0]) * nx + (y - PA[1]) * ny, hidden = (x, y) => x > cx || sideOf(x, y) > ps;
+  // PDF-ritning
+  if (pdfP > 0.01) { const c = [[-22, -18], [22, -18], [22, 18], [-22, 18]].map(([x, y]) => pt2(x, y, 0.05)); if (c.every(Boolean)) { X.save(); X.globalAlpha = 0.5 * pdfP; X.fillStyle = "#cfe3ff"; X.beginPath(); c.forEach((p, i) => i ? X.lineTo(...p) : X.moveTo(...p)); X.closePath(); X.fill(); X.globalAlpha = 0.9 * pdfP; X.strokeStyle = "#2a5a9a"; X.lineWidth = 1.4; X.beginPath(); for (let i = -5; i <= 5; i++) { const a = pt2(i * 4, -18, 0.06), b = pt2(i * 4, 18, 0.06), cc = pt2(-22, i * 3.4, 0.06), d = pt2(22, i * 3.4, 0.06); if (a && b) { X.moveTo(...a); X.lineTo(...b); } if (cc && d) { X.moveTo(...cc); X.lineTo(...d); } } X.stroke(); X.restore(); } }
+  // punkter
+  const bk = PAL.map(() => []), vb = [[], [], []]; const vol = t >= 100 && t < 118 ? ease(seg(t, 104.5, 105.5)) : 0, volOn = vol > 0.01 && t >= 106 - 1;
+  for (const p of TER) { if (p.r > ptsP) continue; if (hidden(p.x, p.y)) continue; const q = pr(p.x, p.y, p.z); if (!q) continue; const s = clamp(FOC * 0.05 / q[2], 1.4, 3.4); if (volOn && inPoly(p.x, p.y, VOLP)) { vb[p.z - LEVEL > 0.15 ? 0 : p.z - LEVEL < -0.15 ? 1 : 2].push(q[0], q[1], s * 1.4); continue; } bk[clamp(Math.floor((p.z + 3) / 6.5 * 8), 0, 7)].push(q[0], q[1], s); }
+  X.globalAlpha = 0.95; bk.forEach((arr, k) => { X.fillStyle = PAL[k]; X.beginPath(); for (let i = 0; i < arr.length; i += 3) X.rect(arr[i], arr[i + 1], arr[i + 2], arr[i + 2]); X.fill(); }); ["#1e6bff", "#ff4d3d", "#c9d6ea"].forEach((c, k) => { X.fillStyle = c; X.beginPath(); for (let i = 0; i < vb[k].length; i += 3) X.rect(vb[k][i], vb[k][i + 1], vb[k][i + 2], vb[k][i + 2]); X.fill(); }); X.globalAlpha = 1;
+  if (ptsP > 0.5 && ptsP < 39) { X.fillStyle = "#fff"; for (const p of TER) if (Math.abs(p.r - ptsP) < 0.6 && !hidden(p.x, p.y)) { const q = pr(p.x, p.y, p.z); if (q) X.fillRect(q[0] - 2, q[1] - 2, 4, 4); } }
+  // IFC
+  const edges = [[0, 1], [1, 2], [2, 3], [3, 0], [4, 5], [5, 6], [6, 7], [7, 4], [0, 4], [1, 5], [2, 6], [3, 7]];
+  const drawBox = (x, y, w, d, z0, h, col, fill) => { const x0 = x - w / 2, x1 = x + w / 2, y0 = y - d / 2, y1 = y + d / 2, V = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], pp = []; for (const zz of [z0, z0 + h]) for (const [a, b] of V) pp.push(pt2(a, b, zz)); if (fill && pp[4] && pp[5] && pp[6] && pp[7]) { X.fillStyle = fill; X.beginPath(); X.moveTo(...pp[4]); X.lineTo(...pp[5]); X.lineTo(...pp[6]); X.lineTo(...pp[7]); X.fill(); } X.strokeStyle = col; X.lineWidth = 2; X.beginPath(); for (const [i, j] of edges) if (pp[i] && pp[j]) { X.moveTo(...pp[i]); X.lineTo(...pp[j]); } X.stroke(); };
+  for (const b of BLD) { const p = ease(seg(ifcP, b.o, b.o + 0.75)); if (p > 0.01 && !hidden(b.x, b.y)) drawBox(b.x, b.y, b.w, b.d, b.z0, b.h * p, "#7fd0ff", "rgba(110,190,255,.16)"); }
+  // kran + bodar
+  if (cranes > 0.01 && !hidden(-14, 12)) { const bx = -14, by = 12, z0 = hgt(bx, by), top = z0 + 20 * cranes, ang = t * 0.25, jx = bx + Math.cos(ang) * 14 * cranes, jy = by + Math.sin(ang) * 14 * cranes, cxx = bx - Math.cos(ang) * 5 * cranes, cyy = by - Math.sin(ang) * 5 * cranes, a = pt2(bx, by, z0), b = pt2(bx, by, top), j = pt2(jx, jy, top), cc = pt2(cxx, cyy, top), h = pt2(jx, jy, top - 6 * cranes); X.save(); X.strokeStyle = "#ffcb2e"; X.lineWidth = 3; X.shadowColor = "#ffcb2e"; X.shadowBlur = 8; X.beginPath(); if (a && b) { X.moveTo(...a); X.lineTo(...b); } if (b && j) { X.moveTo(...b); X.lineTo(...j); } if (b && cc) { X.moveTo(...b); X.lineTo(...cc); } X.stroke(); X.lineWidth = 1; if (j && h) { X.beginPath(); X.moveTo(...j); X.lineTo(...h); X.stroke(); } X.restore(); }
+  if (cabins > 0.01) for (const [x, y] of [[12, -1], [15, -1], [18, -1]]) if (!hidden(x, y)) drawBox(x, y, 2.6, 2.4, hgt(x, y), 2.4 * cabins, "#ffcb2e", "rgba(255,203,46,.18)");
+  // markering vid placering/snap (kapitel 4)
+  if (t >= 62.5 && t < 64.4) { const k = seg(t, 62.5, 64.4), x = lerp(12, 15, k), q = pt2(x, 8, hgt(x, 8)); if (q) { drawBox(x, 8, 2.6, 2.4, hgt(x, 8), 2.4, "#ffe58a", "rgba(255,230,140,.25)"); } }
+  // saxens snittplan
+  if (a5 >= 3 && a5 < 13.8) { const c = [[cx, -25, -4], [cx, 25, -4], [cx, 25, 16], [cx, -25, 16]].map(p => pt2(...p)); if (c.every(Boolean)) { X.fillStyle = "rgba(255,120,80,.12)"; X.beginPath(); c.forEach((p, i) => i ? X.lineTo(...p) : X.moveTo(...p)); X.fill(); X.strokeStyle = "#ff8a5c"; X.lineWidth = 2; X.stroke(); } }
+  // profillinjen
+  if (t >= 84.5 && t < 100.4) { const a = ease(seg(t, 84.5, 85.2)), A0 = pt2(PA[0], PA[1], hgt(PA[0], PA[1]) + 0.4), B1 = pt2(Bn[0], Bn[1], hgt(Bn[0], Bn[1]) + 0.4); if (A0 && B1) { X.save(); X.lineCap = "round"; for (const [w, al, c] of [[18, 0.1, "#ffd54a"], [9, 0.25, "#ffd54a"], [3.5, 1, "#fff6c9"]]) { X.globalAlpha = al * a; X.strokeStyle = c; X.lineWidth = w; X.beginPath(); X.moveTo(...A0); X.lineTo(...B1); X.stroke(); } X.globalAlpha = a; X.fillStyle = "#fff"; for (const p of [A0, B1]) { X.beginPath(); X.arc(p[0], p[1], 8, 0, 6.3); X.fill(); } X.fillStyle = "#001022"; T("A", A0[0], A0[1] + 1, 11, "#001022", "center", 700); T("B", B1[0], B1[1] + 1, 11, "#001022", "center", 700); X.restore(); } }
+  // volym: polygon + plus
+  if (t >= 102 && t < 117) { const n = Math.min(4, Math.floor((t - 103) / 0.9)), extra = t >= 107.2 ? 1 : 0, P = VOLP.slice(0, n).map(([x, y]) => pt2(x, y, hgt(x, y) + 0.1)); if (n >= 1 && P.every(Boolean)) { X.save(); X.strokeStyle = "#ffa84d"; X.lineWidth = 3; X.shadowColor = "#ffa84d"; X.shadowBlur = 10; X.beginPath(); P.forEach((p, i) => i ? X.lineTo(...p) : X.moveTo(...p)); if (n === 4) X.closePath(); X.stroke(); X.shadowBlur = 0; P.forEach(p => { X.fillStyle = "#fff"; X.fillRect(p[0] - 5, p[1] - 5, 10, 10); }); if (n === 4) { const pl = t >= 107 ? 1 : 0; for (let i = 0; i < 4; i++) { const a = VOLP[i], b = VOLP[(i + 1) % 4], m = pt2((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, hgt((a[0] + b[0]) / 2, (a[1] + b[1]) / 2) + 0.1); if (!m || !pl) continue; X.fillStyle = "#16c172"; X.beginPath(); X.arc(m[0], m[1], 10, 0, 6.3); X.fill(); X.fillStyle = "#fff"; X.fillRect(m[0] - 5, m[1] - 1.5, 10, 3); X.fillRect(m[0] - 1.5, m[1] - 5, 3, 10); } } X.restore(); } }
+  // markering (nål) från minikartan
+  if (t >= 120.4 && t < 128) { const k = easeOut(seg(t, 120.4, 121.1)), q = pt2(-6, 10, hgt(-6, 10)); if (q) { const y = q[1] - (1 - k) * 80; X.save(); X.shadowColor = "#ff2d55"; X.shadowBlur = 24; X.fillStyle = "#ff2d55"; X.beginPath(); X.arc(q[0], y - 30, 14, 0, 6.3); X.fill(); X.beginPath(); X.moveTo(q[0] - 9, y - 22); X.lineTo(q[0] + 9, y - 22); X.lineTo(q[0], y); X.fill(); X.fillStyle = "#fff"; X.beginPath(); X.arc(q[0], y - 30, 5, 0, 6.3); X.fill(); X.restore(); ring(q[0], q[1], 10 + ((t * 24) % 22), "#ff2d55", 0.7 * k); } }
+  X.restore();
+}
+
+/* ================= Lägesplanen 2D (kapitel 1) ================= */
+function plan2d(t) {
+  X.save(); X.beginPath(); X.rect(VX, VY, VW, VH); X.clip(); X.fillStyle = "#e9eef5"; X.fillRect(VX, VY, VW, VH); X.fillStyle = "#cfd9e6"; for (let i = 0; i < 18; i++) X.fillRect(VX + 40 + i * 58, VY, 1, VH); for (let i = 0; i < 10; i++) X.fillRect(VX, VY + 30 + i * 58, VW, 1);
+  X.fillStyle = "#b8c7da"; X.fillRect(VX + 140, VY + 120, 320, 160); X.fillRect(VX + 560, VY + 220, 240, 220); X.fillStyle = "#9eb2c9"; X.fillRect(VX + 150, VY + 130, 300, 140); X.fillRect(VX + 570, VY + 230, 220, 200);
+  const dots = [[260, 190, "#2a8f4d"], [380, 250, "#e0a100"], [620, 300, "#2a6fbf"], [720, 360, "#2a8f4d"], [820, 190, "#c0392b"]]; dots.forEach(([x, y, c]) => { X.fillStyle = c; X.beginPath(); X.arc(VX + x, VY + y, 11, 0, 6.3); X.fill(); X.strokeStyle = "#fff"; X.lineWidth = 3; X.stroke(); });
+  T("Lägesplan – etapp 2", VX + 24, VY + 30, 20, "#24405f", "left", 600); X.restore();
+}
+
+/* ================= Gränssnittet ================= */
+function chrome(t, ci) {
+  X.fillStyle = "#060d18"; X.fillRect(0, 0, VW0, 680); X.fillStyle = "#0b1626"; X.fillRect(0, 0, VW0, 40); X.fillStyle = "#13253d"; X.fillRect(0, 39, VW0, 1);
+  T("Lägesplan", 16, 21, 15, "#cfe6ff", "left", 600); T("· Byggetablering etapp 2", 100, 21, 13, "#6f8cb0");
+  const in3d = !(t < CH[0].t0 + 7.2);
+  btn(1210, 6, 58, 28, "3D", in3d || (t > CH[0].t0 + 5.4), 1);
+  // vänstermeny
+  X.fillStyle = "#0a1626"; X.fillRect(0, 40, 200, 640);
+  const act = in3d ? (ci >= 0 ? CH[ci].menu : -1) : -1;
+  MENU.forEach((m, i) => { const y = 54 + i * 46, on = act === i; if (on) { X.save(); X.shadowColor = "#4ea3ff"; X.shadowBlur = 16; rr(12, y, 176, 36, 8); X.fillStyle = "#1c4a80"; X.fill(); X.restore(); } else { rr(12, y, 176, 36, 8); X.fillStyle = "#101f35"; X.fill(); } T(m, 28, y + 19, 15, on ? "#fff" : "#9fbbdd"); });
+  if (in3d && t >= CH[0].t0 + 7.2) { X.save(); X.globalAlpha = 0.55; X.fillStyle = "#4ea3ff"; X.fillRect(200, 40, 1, 580); X.restore(); }
+  // sidfot
+  X.fillStyle = "#0a1626"; X.fillRect(200, 620, VW0 - 200, 60); X.fillStyle = "#13253d"; X.fillRect(200, 620, VW0 - 200, 1); T("Följ-läge · Snap på · Enhet: m", 216, 650, 13, "#6f8cb0");
+}
+function overlays(t, ci, u) {
+  const in3d = t >= CH[0].t0 + 7.2; if (!in3d) return;
+  // minikarta (visas från kapitel 8)
+  const showMap = t >= 116 - 0.6 && t < 130.2, mA = ease(seg(t, 115.4, 116.6)) * (1 - ease(seg(t, 129.6, 130.2)));
+  if (mA > 0.01) { X.save(); X.globalAlpha = mA; panel(216, 428, 270, 182, "Minikarta"); X.fillStyle = "#0b1a2e"; X.fillRect(226, 470, 250, 130); X.fillStyle = "#1e4f86"; [[250, 490, 60, 36], [380, 520, 50, 40], [330, 560, 70, 24]].forEach(r => X.fillRect(...r)); X.fillStyle = "#4dd0e1"; for (let i = 0; i < 90; i++) X.fillRect(232 + (i * 53) % 238, 474 + (i * 31) % 120, 2, 2); X.restore(); const k = t - 119; if (k > 0 && k < 5) ring(300, 520, 8 + (k * 40 % 34), "#ff2d55", 0.8 * (1 - (k * 40 % 34) / 34)); if (t >= 120) { X.save(); X.fillStyle = "#ff2d55"; X.beginPath(); X.arc(300, 520, 6, 0, 6.3); X.fill(); X.restore(); } }
+  // gå-pill (kapitel 3)
+  if (ci === 2 && u > 10.5) { const a = ease(seg(u, 10.5, 11.3)); X.save(); X.globalAlpha = a; rr(1100, 576, 168, 34, 17); X.fillStyle = "#16a34a"; X.fill(); T("⚙ Gå runt", 1184, 594, 14, "#fff", "center", 600); X.restore(); ring(1184, 593, 28 + (t * 20 % 12), "#7dffb0", 0.7 * a); }
+  // musrad (kapitel 3)
+  if (ci === 2) { const rows = [["Rotera", "vänster knapp + dra", 0, 4.5], ["Zooma", "mushjulet", 4.5, 8], ["Panorera", "Skift + dra", 8, 11]]; panel(930, 56, 330, 128, "Mus"); rows.forEach(([a, b, s0, s1], i) => { const on = u >= s0 && u < s1; T((on ? "▶ " : "· ") + a, 948, 96 + i * 30, 15, on ? "#fff" : "#7da0cc", "left", on ? 700 : 400); T(b, 1060, 96 + i * 30, 13, on ? "#cfe6ff" : "#5f7ca3"); }); }
+  // Underlag: filkorg (kapitel 2)
+  if (ci === 1) { const pa = ease(seg(u, 1.5, 2.5)) * (1 - ease(seg(u, 13.5, 14.8))); X.save(); X.globalAlpha = pa; panel(216, 56, 620, 78, "Dra in filer"); X.restore(); const files = [["plan.pdf", "#e74c3c", 3, 5], ["hus.ifc", "#2ecc71", 6.5, 8.5], ["terräng.laz", "#3498db", 10, 12]]; files.forEach(([n, c, pk, dp], i) => { const hx = 240 + i * 190, hy = 98; if (u < dp - 0.001 && pa > 0.01) { let x = hx, y = hy; if (u >= pk) { const q = cur(t); x = q[0]; y = q[1] + 6; } X.save(); X.globalAlpha = pa; rr(x - 2, y - 17, 160, 34, 8); X.fillStyle = "#14263f"; X.fill(); X.strokeStyle = c; X.lineWidth = 2; X.stroke(); T("📄 " + n, x + 12, y + 1, 14, "#e8f1ff"); X.restore(); } if (u >= dp && u < dp + 1.6) { ring(VX + VW / 2 + 20, 340, 20 + (u - dp) * 60, c, 0.8 * (1 - (u - dp) / 1.6)); } }); }
+  // Objekt: lista (kapitel 4)
+  if (ci === 3) { const pa = ease(seg(u, 0.8, 1.4)) * (1 - ease(seg(u, 5, 5.6))) + ease(seg(u, 7.2, 7.8)) * (1 - ease(seg(u, 9.4, 9.9))); if (pa > 0.01) { panel(208, 54, 200, 190, "Objekt", clamp(pa)); ["Tornkran", "Bodar", "Stängsel", "Maskiner", "Skyltar"].forEach((n, i) => { const on = (i === 0 && u < 5.5) || (i === 1 && u >= 7); T(n, 228, 88 + i * 30, 15, on ? "#fff" : "#9fbbdd", "left", on ? 700 : 400); if (on) { rr(216, 74 + i * 30, 184, 28, 6); X.strokeStyle = "#4ea3ff"; X.lineWidth = 1.4; X.globalAlpha = clamp(pa); X.stroke(); X.globalAlpha = 1; } }); } if (u > 11 && u < 14) { X.save(); rr(930, 56, 330, 40, 10); X.fillStyle = "rgba(8,18,32,.94)"; X.fill(); T("🧲 Snappar mot underlaget", 950, 77, 15, "#7dffb0", "left", 600); X.restore(); } }
+  // Snitt: reglagepanel (kapitel 5)
+  if (ci === 4 && u > 3.3) { const a = ease(seg(u, 3.3, 4.2)) * (1 - ease(seg(u, 13, 13.8))); X.save(); X.globalAlpha = a; panel(930, 56, 332, 130, "Snitt"); T("Snitt 1 · Lodrätt", 946, 62 + 40, 14, "#cfe6ff"); X.fillStyle = "#1b3252"; X.fillRect(946, 138, 220, 5); const k = ease(seg(u, 5, 11)); X.fillStyle = "#4ea3ff"; X.fillRect(946, 138, 220 * k, 5); X.beginPath(); X.arc(946 + 220 * k, 140.5, 9, 0, 6.3); X.fillStyle = "#fff"; X.fill(); btn(1182, 124, 36, 32, "⇄", u >= 11 && u < 13); btn(1222, 124, 30, 32, "✕", false); X.restore(); }
+  // Profilpanel (kapitel 6)
+  if (t >= 86.4 && t < 100.5) profilePanel(t);
+  // Volympanel (kapitel 7)
+  if (t >= 103.8 && t < 117) { const a = ease(seg(t, 103.8, 104.8)) * (1 - ease(seg(t, 116, 116.8))), [cut, fill] = volNums(1), k = ease(seg(t, 108.6, 111)); X.save(); X.globalAlpha = a; panel(930, 56, 332, 290, "Volym · Schakt / fyllning"); T("Nivå " + (LEVEL < 0 ? "−" : "+") + Math.abs(LEVEL).toFixed(2).replace(".", ",") + " m ö.h.", 946, 108, 14, "#cfe6ff"); rr(946, 122, 300, 54, 10); X.fillStyle = "rgba(30,107,255,.16)"; X.fill(); X.strokeStyle = "#1e6bff"; X.stroke(); T("SCHAKT", 960, 138, 12, "#7fb0ff", "left", 700); T(fmt(cut * k) + " m³", 960, 160, 22, "#fff", "left", 600); rr(946, 186, 300, 54, 10); X.fillStyle = "rgba(255,77,61,.14)"; X.fill(); X.strokeStyle = "#ff4d3d"; X.stroke(); T("FYLLNING", 960, 202, 12, "#ff9a8f", "left", 700); T(fmt(fill * k) + " m³", 960, 224, 22, "#fff", "left", 600); btn(946, 252, 140, 32, "Visa bara schakt", false); btn(1096, 252, 150, 32, "Visa bara fyllning", false); btn(946, 294, 300, 36, "Exportera som IFC (volymobjekt)", t >= 113.6); X.restore(); }
+  // Vyer (kapitel 8)
+  if (t >= 123.4 && t < 130.2) { const a = ease(seg(t, 123.4, 124.2)) * (1 - ease(seg(t, 129.6, 130.2))); X.save(); X.globalAlpha = a; panel(208, 54, 230, 150, "Vyer"); btn(220, 96, 206, 30, "＋ Spara aktuell vy", t >= 124.6 && t < 126); if (t >= 126) { rr(220, 136, 206, 30, 8); X.fillStyle = "#14263f"; X.fill(); X.strokeStyle = t >= 128 ? "#7dffb0" : "#26466f"; X.stroke(); T("Vy 1 – Etapp 2 från norr", 232, 152, 13, "#e8f1ff"); } X.restore(); }
+  // Utskrift (kapitel 9)
+  if (ci === 8) printUi(t, u);
+}
+function profilePanel(t) {
+  const a = ease(seg(t, 86.4, 87.4)) * (1 - ease(seg(t, 99.6, 100.4))), x = 560, y = 330, w = 700, h = 282, B = profB(t), L = Math.hypot(B[0] - PA[0], B[1] - PA[1]); X.save(); X.globalAlpha = a; panel(x, y, w, h, null);
+  T("Profil", x + 16, y + 20, 15, "#fff", "left", 700); T(`Längd ${L.toFixed(1).replace(".", ",")} m · bredd ±1,00 m`, x + 80, y + 20, 13, "#8fb3df");
+  btn(x + w - 238, y + 8, 56, 26, "Hela", false); btn(x + w - 176, y + 8, 56, 26, "1:1", false); btn(x + w - 114, y + 8, 100, 26, "▽ Plushöjd", t >= 96.5, 1);
+  // reglage
+  const sw = t >= 89 && t < 99.4, k = ease(seg(t, 89, 89.5)); rr(x + 16, y + 44, 40, 20, 10); X.fillStyle = sw ? "#16a34a" : "#6b7f99"; X.fill(); X.beginPath(); X.arc(x + 26 + 20 * (sw ? k : 0), y + 54, 8, 0, 6.3); X.fillStyle = "#fff"; X.fill(); T("Klipp längs profilen", x + 66, y + 55, 14, sw ? "#fff" : "#9fbbdd", "left", sw ? 700 : 400); if (sw) { btn(x + 236, y + 42, 34, 24, "⇄", false); }
+  if (sw) { ring(x + 36, y + 54, 22 + (t * 18 % 10), "#7dffb0", 0.5 * (1 - ease(seg(t, 91, 93)))); }
+  const gx = x + 20, gy = y + 80, gw = w - 40, gh = h - 100; X.fillStyle = "#050d1a"; X.fillRect(gx, gy, gw, gh); X.strokeStyle = "#16304f"; X.lineWidth = 1; X.beginPath(); for (let i = 1; i < 8; i++) { X.moveTo(gx + gw * i / 8, gy); X.lineTo(gx + gw * i / 8, gy + gh); } for (let i = 1; i < 5; i++) { X.moveTo(gx, gy + gh * i / 5); X.lineTo(gx + gw, gy + gh * i / 5); } X.stroke();
+  const prog = ease(seg(t, 86.6, 89)); X.save(); X.strokeStyle = "#ffd54a"; X.lineWidth = 3; X.shadowColor = "#ffd54a"; X.shadowBlur = 10; X.beginPath(); const K = 100; for (let i = 0; i <= K * prog; i++) { const u2 = i / K, xx = lerp(PA[0], B[0], u2), yy = lerp(PA[1], B[1], u2), py = gy + gh * (0.8 - (hgt(xx, yy) + 3) / 7 * 0.7); i ? X.lineTo(gx + gw * u2, py) : X.moveTo(gx + gw * u2, py); } X.stroke(); X.restore();
+  // plushöjd
+  if (t >= 97.6) { const u2 = 0.58, xx = lerp(PA[0], B[0], u2), yy = lerp(PA[1], B[1], u2), py = gy + gh * (0.8 - (hgt(xx, yy) + 3) / 7 * 0.7), k2 = ease(seg(t, 97.6, 98.4)); X.globalAlpha = a * k2; X.fillStyle = "#fff"; X.beginPath(); X.moveTo(gx + gw * u2, py); X.lineTo(gx + gw * u2 - 7, py - 14); X.lineTo(gx + gw * u2 + 7, py - 14); X.fill(); T("+" + (hgt(xx, yy) + 40).toFixed(2).replace(".", ",") + " m", gx + gw * u2, py - 26, 14, "#fff", "center", 700); }
+  X.restore();
+}
+function printUi(t, u) {
+  const a = ease(seg(u, 0.3, 1.2)), x = 230, y = 56, w = 700, h = 540; X.save(); X.globalAlpha = a; X.fillStyle = "#0b1626"; X.fillRect(VX, VY, VW, VH); rr(x, y, w, h, 8); X.fillStyle = "#dfe7f1"; X.fill(); rr(x + 30, y + 24, w - 60, h - 48, 4); X.fillStyle = "#fff"; X.fill(); X.fillStyle = "#cdd9e8"; X.fillRect(x + 48, y + 46, w - 250, 300); X.fillStyle = "#4ea3ff"; for (let i = 0; i < 40; i++) X.fillRect(x + 60 + (i * 47) % (w - 280), y + 60 + (i * 29) % 270, 3, 3); T("Karta · Lägesplan etapp 2", x + 60, y + 372, 14, "#24405f", "left", 700); X.fillStyle = "#e6edf6"; X.fillRect(x + w - 190, y + 46, 130, 300); T("Teckenförklaring", x + w - 180, y + 66, 12, "#24405f", "left", 700); X.fillStyle = "#e6edf6"; X.fillRect(x + 48, y + h - 140, w - 96, 90); T("Etableringsplan – vecka 45", x + 62, y + h - 112, 16, "#24405f", "left", 700); T("Skala 1:500 · A3 liggande", x + 62, y + h - 86, 12, "#5a7192"); X.restore();
+  // utgåvepanel
+  const pa = ease(seg(u, 2.2, 3)); X.save(); X.globalAlpha = pa; panel(944, 56, 322, 420, "Utgåvor"); btn(960, 98, 290, 32, "📌 Spara utgåva…", u >= 3 && u < 4.2); if (u >= 4.4) { rr(960, 142, 290, 90, 8); X.fillStyle = "#0e1c31"; X.fill(); X.strokeStyle = "#2b5084"; X.stroke(); const nm = "Vecka 45".slice(0, Math.floor(clamp((u - 8) / 1.4) * 8)); T(nm || "Namn …", 974, 162, 14, nm ? "#fff" : "#6f8cb0"); const nt = "Flyttade kranen mot norr".slice(0, Math.floor(clamp((u - 8.6) / 1.4) * 24)); T(nt || "Anteckning …", 974, 192, 13, nt ? "#cfe6ff" : "#6f8cb0"); btn(974, 202, 130, 24, "Spara utgåva", u >= 10 && u < 10.6); } if (u >= 10.6) { rr(960, 244, 290, 64, 8); X.fillStyle = "#12263f"; X.fill(); T("Vecka 45", 974, 262, 14, "#fff", "left", 700); T("Utg. 1 · 2026-11-02 · Victor", 974, 284, 12, "#8fb3df"); } btn(960, 420, 290, 38, "Skapa PDF", u >= 11.4); if (u >= 11.8) { X.fillStyle = "#1b3252"; X.fillRect(960, 466, 290, 6); X.fillStyle = "#16a34a"; X.fillRect(960, 466, 290 * ease(seg(u, 11.8, 13.6)), 6); } X.restore();
+}
+
+/* ================= Markören ================= */
+const W3 = (x, y, z) => ({ w: [x, y, z === undefined ? hgt(x, y) : z] });
+const CUR = [
+  [0, 740, 420], [3, 900, 300], [5.2 + 6, 1239, 20],   // placeholder, ersätts nedan
+];
+const KF = [];  // absoluta tider
+function K(t, x, y, c) { KF.push({ t, x, y, c: !!c }); } function KW(t, x, y, z, c) { KF.push({ t, w: [x, y, z === undefined ? hgt(x, y) : z], c: !!c }); }
+// 1
+K(6, 600, 380); K(9, 900, 300); K(11, 1239, 20); K(11.6, 1239, 20, 1); K(15, 1100, 300);
+// 2
+K(20, 1100, 300); K(21.2, 100, 77); K(21.8, 100, 77, 1); K(23, 330, 118); K(23.2, 330, 118); K(25, 700, 350, 0); K(26.2, 700, 350); K(26.5, 440, 118); K(26.7, 440, 118); K(28.5, 740, 360); K(29.6, 740, 360); K(30, 640, 118); K(30.2, 640, 118); K(32, 760, 340); K(33, 760, 340); K(36, 760, 340);
+// 3
+K(36, 760, 340); K(37, 600, 360); K(40, 960, 340); K(41, 960, 340); K(42.5, 700, 330); K(44, 700, 330); K(46, 700, 330); K(47, 800, 380); K(49, 600, 300); K(50, 600, 300);
+K(46.5, 780, 350); K(47.5, 780, 350);
+// placeholder; sorteras
+// 4
+K(50, 600, 300); K(51.2, 100, 124); K(51.8, 100, 124, 1); K(52.5, 260, 90); K(53.5, 262, 92, 1); K(55, 500, 380); K(56.8, 520, 390); K(57.4, 520, 390, 1); K(59, 520, 390); K(60.4, 520, 390); K(61.5, 280, 124); K(62, 282, 124, 1); K(63, 560, 480); K(64, 700, 500); K(66, 700, 500);
+// 5
+K(66, 700, 500); K(66.8, 100, 217); K(67.6, 100, 217, 1); K(69.2, 520, 330); K(69.5, 520, 330, 1); K(71, 960, 150); K(77, 1120, 114); K(77.8, 1120, 114); K(78.2, 1118, 112); K(79, 1118, 112); K(80, 1118, 112);
+// 6
+K(80, 1118, 112); K(80.8, 100, 262); K(81.6, 100, 262, 1); K(83, 400, 400);
+// profil: A- och B-klick följer världspunkter
+KW(84, -20, -8, undefined, 0); KW(84.8, -20, -8, undefined, 1); KW(85.5, 20, 6, undefined, 0); KW(86.3, 20, 6, undefined, 1); K(87.5, 800, 450); K(88.8, 640, 385); K(89.2, 640, 385, 1); K(91, 900, 480); K(93, 900, 480);
+K(93.1, 0, 0); KF.pop(); KW(93.1, 20, 6, undefined, 0); KW(95.6, 20, 14, undefined, 0); K(96.4, 1090, 360); K(97.4, 960, 420); K(97.8, 960, 420, 1); K(100, 960, 420);
+// 7
+K(100, 960, 420); K(100.7, 100, 170); K(101.5, 100, 170, 1); K(102.4, 100, 170);
+VOLP.forEach(([x, y], i) => { KW(103 + i * 0.9, x, y, undefined, 0); KW(103.5 + i * 0.9, x, y, undefined, 1); });
+KW(107.5, (VOLP[0][0] + VOLP[1][0]) / 2, (VOLP[0][1] + VOLP[1][1]) / 2, undefined, 0); KW(108, (VOLP[0][0] + VOLP[1][0]) / 2, (VOLP[0][1] + VOLP[1][1]) / 2, undefined, 1); K(111, 1090, 268); K(113.2, 1096, 312); K(113.8, 1096, 312, 1); K(116, 1096, 312);
+// 8
+K(116, 1096, 312); K(118, 300, 520); K(119, 300, 520); K(119.4, 300, 520, 1); K(121, 300, 520); K(122.6, 100, 354); K(123.2, 100, 354, 1); K(124.4, 320, 111); K(124.8, 320, 111, 1); K(126.4, 320, 151); K(126.8, 320, 151, 1); K(129, 320, 151); K(130, 320, 151);
+// 9
+K(130, 320, 151); K(131, 100, 400); K(131.6, 100, 400, 1); K(133.2, 1100, 113); K(133.6, 1100, 113, 1); K(137.8, 1020, 160); K(138.2, 1020, 160); K(140.2, 1020, 210); K(140.6, 1020, 214, 1); K(141.6, 1100, 438); K(141.9, 1100, 438, 1); K(144, 1100, 438); K(150, 1100, 438);
+KF.sort((a, b) => a.t - b.t);
+function cur(t) {
+  let i = 0; while (i < KF.length - 1 && KF[i + 1].t <= t) i++; const a = KF[i], b = KF[Math.min(i + 1, KF.length - 1)], pos = k => { if (k.w) { const q = pr(...k.w); return q ? [q[0], q[1]] : [VX + VW / 2, VY + VH / 2]; } return [k.x, k.y]; }, pa = pos(a), pb = pos(b), k = a === b ? 0 : ease(seg(t, a.t, b.t)); return [lerp(pa[0], pb[0], k), lerp(pa[1], pb[1], k)];
+}
+function cursor(t) {
+  const p = cur(t); let cl = 0; for (const k of KF) if (k.c && t >= k.t && t < k.t + 0.55) cl = 1 - (t - k.t) / 0.55;
+  if (cl > 0) { X.save(); X.globalAlpha = cl * 0.8; X.strokeStyle = "#7fd0ff"; X.lineWidth = 3; X.beginPath(); X.arc(p[0], p[1], 8 + (1 - cl) * 34, 0, 6.3); X.stroke(); X.restore(); }
+  X.save(); X.translate(p[0], p[1]); X.scale(cl > 0.5 ? 0.88 : 1, cl > 0.5 ? 0.88 : 1); X.shadowColor = "#000"; X.shadowBlur = 8; X.fillStyle = "#fff"; X.strokeStyle = "#000"; X.lineWidth = 1.4; X.beginPath(); X.moveTo(0, 0); X.lineTo(0, 22); X.lineTo(5.5, 17); X.lineTo(10, 27); X.lineTo(14, 25); X.lineTo(9.6, 15.4); X.lineTo(16, 15); X.closePath(); X.fill(); X.stroke(); X.restore();
+}
+
+/* ================= Bildtext och kapitelnavigering ================= */
+function caption(t, ci) {
+  X.fillStyle = "#04080f"; X.fillRect(0, 680, VW0, 120); X.fillStyle = "#13253d"; X.fillRect(0, 680, VW0, 1);
+  if (ci < 0) return; const c = CH[ci], u = t - c.t0;
+  rr(24, 700, 52, 52, 12); X.fillStyle = "#1d4f86"; X.fill(); T(String(ci + 1), 50, 727, 28, "#fff", "center", 700);
+  T(c.n, 94, 715, 24, "#fff", "left", 600); T(`Kapitel ${ci + 1} av ${CH.length}`, 94, 742, 13, "#6f8cb0");
+  // steg
+  let sx = 380; const cur2 = c.steps.reduce((p, s, i) => u >= s[0] ? i : p, 0);
+  c.steps.forEach((s, i) => { const on = i === cur2, done = i < cur2, w = Math.min(190, (VW0 - 400) / c.steps.length - 10); rr(sx, 706, w, 52, 10); X.fillStyle = on ? "#1c4a80" : "#0c1a2e"; X.fill(); X.strokeStyle = on ? "#7fc0ff" : "#1b3252"; X.lineWidth = 1.5; X.stroke(); T(String(i + 1), sx + 14, 722, 12, on ? "#fff" : done ? "#4ade80" : "#6f8cb0", "left", 700); X.font = "13px Arial"; wrap(s[1], sx + 14, 738, w - 24, 15, on ? "#fff" : done ? "#9be7b4" : "#7da0cc"); sx += w + 10; });
+  // kapitelförlopp
+  X.fillStyle = "#13253d"; X.fillRect(0, 794, VW0, 6); X.fillStyle = "#4ea3ff"; X.fillRect(0, 794, VW0 * clamp(u / (c.t1 - c.t0)), 6);
+}
+function wrap(s, x, y, mw, lh, col) { X.fillStyle = col; X.textAlign = "left"; X.textBaseline = "middle"; X.font = '13px "Helvetica Neue",Arial,sans-serif'; const ws = s.split(" "); let l = "", yy = y, n = 0; for (const w of ws) { const tt = l ? l + " " + w : w; if (X.measureText(tt).width > mw && l) { X.fillText(l, x, yy); yy += lh; l = w; n++; } else l = tt; } X.fillText(l, x, yy); }
+function titleCard(t, intro) {
+  X.fillStyle = "#050b14"; X.fillRect(0, 0, VW0, VH0); const g = X.createRadialGradient(640, 330, 0, 640, 330, 700); g.addColorStop(0, "#0e2a50"); g.addColorStop(1, "#050b14"); X.fillStyle = g; X.fillRect(0, 0, VW0, VH0);
+  const a = intro ? ease(seg(t, 0.4, 1.4)) * (1 - ease(seg(t, 5, 5.9))) : ease(seg(t, 144.4, 145.4));
+  X.save(); X.globalAlpha = a; X.shadowColor = "#4ea3ff"; X.shadowBlur = 30;
+  if (intro) { T("3D-EDITORN", 640, 300, 84, "#fff", "center", 200); X.shadowBlur = 0; T("VIDEOGUIDE · NIO STEG FRÅN NOLL TILL FÄRDIG ETABLERINGSPLAN", 640, 380, 18, "#9fd0ff", "center"); const labels = CH.map((c, i) => `${i + 1} ${c.n}`); labels.forEach((l, i) => T(l, 640, 440 + i * 24 - 0, 15, "#6f8cb0", "center")); }
+  else { T("Nu kör vi!", 640, 300, 84, "#fff", "center", 200); X.shadowBlur = 0; T("Börja med att öppna 3D-vyn och dra in ditt första underlag.", 640, 380, 20, "#9fd0ff", "center"); T("Illustrerad guide – knappar och ordning kan skilja något i din version.", 640, 440, 14, "#6f8cb0", "center"); }
+  X.restore();
+}
+
+/* ================= Huvudloop ================= */
+function chapterAt(t) { for (let i = 0; i < CH.length; i++) if (t >= CH[i].t0 && t < CH[i].t1) return i; return -1; }
+function draw(t) {
+  X.setTransform(1, 0, 0, 1, 0, 0); X.clearRect(0, 0, VW0, VH0);
+  if (t < 6 || t >= 144) { titleCard(t, t < 6); if (t >= 144 || t < 6) { const f = t < 6 ? 1 - seg(t, 5.2, 6) : seg(t, 144, 144.6); } return; }
+  const ci = chapterAt(t), u = ci >= 0 ? t - CH[ci].t0 : 0;
+  chrome(t, ci); if (t < CH[0].t0 + 7.2) { plan2d(t); const f = ease(seg(t, CH[0].t0 + 7.2, CH[0].t0 + 8.2)); } else { scene(t); }
+  if (t >= CH[0].t0 + 7.2 && t < CH[0].t0 + 8.4) { X.fillStyle = `rgba(78,163,255,${0.5 * (1 - seg(t, CH[0].t0 + 7.2, CH[0].t0 + 8.4))})`; X.fillRect(VX, VY, VW, VH); }
+  overlays(t, ci, u); cursor(t); caption(t, ci);
+  const fi = Math.min(seg(t, 6, 6.8), 1 - seg(t, 143.2, 144)); if (fi < 1) { X.fillStyle = `rgba(5,11,20,${1 - fi})`; X.fillRect(0, 0, VW0, VH0); }
+}
+
+/* ================= Spelare ================= */
+let T0 = 0, playing = false, speed = 1, voice = true, last = 0, spokenCh = -2;
+const $ = id => document.getElementById(id), speeds = [0.75, 1, 1.5, 2];
+function speak(ci) {
+  if (!voice || !("speechSynthesis" in window)) return; try { speechSynthesis.cancel(); if (ci < 0) return; const u = new SpeechSynthesisUtterance(CH[ci].narr); u.lang = "sv-SE"; u.rate = 1.02 * Math.min(speed, 1.4); const v = speechSynthesis.getVoices().find(x => /^sv/i.test(x.lang)); if (v) u.voice = v; speechSynthesis.speak(u); } catch (e) { /* ingen röst */ }
+}
+function seek(t, resume) { T0 = clamp(t, 0, TOTAL); spokenCh = -2; if ("speechSynthesis" in window) try { speechSynthesis.cancel(); } catch (e) { /* */ } if (resume) setPlay(true); }
+function setPlay(p) { playing = p; $("bp").textContent = p ? "⏸" : "▶"; if (!p && "speechSynthesis" in window) try { speechSynthesis.cancel(); } catch (e) { /* */ } else spokenCh = -2; }
+function fit() { /* canvas skalas av CSS */ }
+function frame(now) {
+  requestAnimationFrame(frame); const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (playing) { T0 += dt * speed; if (T0 >= TOTAL) { T0 = TOTAL; setPlay(false); } const ci = chapterAt(T0); if (ci !== spokenCh) { spokenCh = ci; speak(ci); } }
+  draw(T0); const m = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`; $("tc").textContent = `${m(T0)} / ${m(TOTAL)}`; document.querySelector("#seek b").style.width = (T0 / TOTAL * 100) + "%";
+  document.querySelectorAll("#chs button").forEach((b, i) => b.classList.toggle("on", chapterAt(T0) === i));
+}
+CH.forEach((c, i) => { const b = document.createElement("button"); b.textContent = i + 1; b.title = `${i + 1}. ${c.n}`; b.onclick = () => seek(c.t0 - 0.0, true); $("chs").appendChild(b); const s = document.createElement("s"); s.style.left = (c.t0 / TOTAL * 100) + "%"; $("seek").appendChild(s); });
+$("seek").onclick = e => { const r = $("seek").getBoundingClientRect(); seek((e.clientX - r.left) / r.width * TOTAL, true); };
+$("bp").onclick = () => setPlay(!playing); $("bs").onclick = () => { speed = speeds[(speeds.indexOf(speed) + 1) % speeds.length]; $("bs").textContent = speed + "×"; };
+$("bv").onclick = () => { voice = !voice; $("bv").classList.toggle("on", voice); $("bv").textContent = voice ? "🔊 Röst" : "🔇 Röst"; if (!voice && "speechSynthesis" in window) try { speechSynthesis.cancel(); } catch (e) { /* */ } else spokenCh = -2; };
+$("bf").onclick = () => { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); };
+function go(v) { voice = v; $("bv").classList.toggle("on", v); $("bv").textContent = v ? "🔊 Röst" : "🔇 Röst"; $("start").style.display = "none"; seek(0, true); }
+$("g1").onclick = () => go(true); $("g2").onclick = () => go(false);
+addEventListener("keydown", e => { if (e.key === " ") { e.preventDefault(); setPlay(!playing); } else if (e.key === "ArrowRight") seek(T0 + 5); else if (e.key === "ArrowLeft") seek(T0 - 5); else if (/^[1-9]$/.test(e.key)) seek(CH[+e.key - 1].t0, true); else if (e.key === "v" || e.key === "V") $("bv").click(); else if (e.key === "f" || e.key === "F") $("bf").click(); });
+{ const q = new URLSearchParams(location.search).get("t"); if (q != null) { T0 = Number(q) || 0; $("start").style.display = "none"; } }
+$("bv").classList.add("on"); requestAnimationFrame(t => { last = t; frame(t); });
+</script>
+</body>
+</html>
