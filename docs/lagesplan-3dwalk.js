@@ -467,7 +467,7 @@ function l3wHud(show) {
   h.querySelector('[data-w="ghost"]').onclick = () => l3wSetGhost(!l3w.ghost); h.querySelector('[data-w="cmt"]').onclick = () => l3wCommentStart();
   h.querySelector('[data-w="joy"]').onclick = () => { l3w.joy = !l3w.joy; l3SetPref("walkJoy", l3w.joy); l3wJoyShow(l3w.joy); l3wHud(true); };
   l3wJoyShow(l3w.joy);
-  { const cb = h.querySelector('[data-w="col"]'), set = on => { h.classList.toggle("col", on); cb.textContent = on ? "▸" : "▾"; }; set(l3Prefs().walkHudCol == null ? compact : !!l3Prefs().walkHudCol); cb.onclick = () => { const on = !h.classList.contains("col"); l3SetPref("walkHudCol", on); set(on); }; }
+  { const cb = h.querySelector('[data-w="col"]'), set = on => { h.classList.toggle("col", on); cb.textContent = on ? "⚙ Gå runt" : "▾"; cb.title = on ? "Visa Gå runt-menyn" : "Fäll ihop till en liten knapp (full bild)"; }; set(l3Prefs().walkHudCol == null ? compact : !!l3Prefs().walkHudCol); cb.onclick = () => { const on = !h.classList.contains("col"); l3SetPref("walkHudCol", on); set(on); }; }
   h.querySelector('[data-w="slow"]').onclick = () => { l3w.speed = Math.max(0.2, l3w.speed / 1.5); l3wHudUpdate(); };
   h.querySelector('[data-w="fast"]').onclick = () => { l3w.speed = Math.min(40, l3w.speed * 1.5); l3wHudUpdate(); };
   h.querySelector("#v3WalkFollow").onchange = e => { l3SetPref("walkFollow", e.target.checked); l3w.settled = false; l3w.gz = null; };

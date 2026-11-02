@@ -47,7 +47,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const qv = await page.evaluate(async () => {
     l3SaveView('Test A'); l3.camera.position.set(l3.camera.position.x + 40, l3.camera.position.y + 40, l3.camera.position.z + 20); l3.orbit.update();
     const box = document.getElementById('v3Qv'), vis = !!box && !box.hidden && box.offsetParent !== null, closed = getComputedStyle(box.querySelector('.v3-qv-p')).display === 'none', p0 = l3.camera.position.clone();
-    box.querySelector('[data-qv="toggle"]').click(); const open = getComputedStyle(box.querySelector('.v3-qv-p')).display !== 'none', r = box.querySelector('.v3-qv-p').getBoundingClientRect(), b = box.querySelector('.v3-qv-b').getBoundingClientRect();
+    box.querySelector('[data-qv="toggle"]').click(); await new Promise(res => setTimeout(res, 500)); const open = getComputedStyle(box.querySelector('.v3-qv-p')).display !== 'none', r = box.querySelector('.v3-qv-p').getBoundingClientRect(), b = box.querySelector('[data-qv="toggle"]').getBoundingClientRect();
     const names = [...box.querySelectorAll('.v3-qv-v')].map(x => x.textContent); box.querySelector('[data-qvgo="0"]').click(); await new Promise(res => setTimeout(res, 900));
     return { vis, closed, open, above: r.bottom <= b.top + 2, names, moved: l3.camera.position.distanceTo(p0) > 5, closedAfter: !box.classList.contains('open') };
   });
