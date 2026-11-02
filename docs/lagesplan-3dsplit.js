@@ -135,7 +135,7 @@ function l3spBind() {
     else if (ptrs.size === 2) { l3sp.drag = null; moved = 99; const [mx, my, d] = mid(), r = l3spBox(cv); pinch = { d0: d, k0: l3sp.view.k, mx0: mx - r.left, my0: my - r.top, tx0: l3sp.view.tx, ty0: l3sp.view.ty }; if (l3sp.follow) l3spFollow(false); }
   });
   cv.addEventListener("pointermove", e => {
-    if (l3sp.profPick && l3sp.profA) { const r0 = l3spBox(cv); l3sp.profH = l3spFromScr(e.clientX - r0.left, e.clientY - r0.top); l3sp.ovDirty = true; }
+    if (l3sp.profPick && l3sp.profA) { const r0 = l3spBox(cv); l3sp.profH = l3spProfSnap(l3sp.profA, l3spFromScr(e.clientX - r0.left, e.clientY - r0.top), e.shiftKey); l3sp.profShift = e.shiftKey; l3sp.ovDirty = true; }
     if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pinch && ptrs.size >= 2) { const [mx, my, d] = mid(), r = l3spBox(cv), v = l3sp.view, nk = Math.min(60, Math.max(0.02, pinch.k0 * d / pinch.d0)), cx = mx - r.left, cy = my - r.top;
       v.tx = cx - (pinch.mx0 - pinch.tx0) / pinch.k0 * nk; v.ty = cy - (pinch.my0 - pinch.ty0) / pinch.k0 * nk; v.k = nk; l3sp.key = ""; return; }
@@ -147,7 +147,7 @@ function l3spBind() {
     if (pinch && ptrs.size < 2) { pinch = null; const q = [...ptrs.values()][0]; l3sp.drag = q ? { x: q.x, y: q.y, tx: l3sp.view.tx, ty: l3sp.view.ty } : null; moved = 99; return; }   // fingret som blev kvar fortsätter panorera
     const d = l3sp.drag; l3sp.drag = null; if (!d || moved > 4 || e.type === "pointercancel") return;
     const r = l3spBox(cv), px = e.clientX - r.left, py = e.clientY - r.top, now = performance.now();
-    if (l3sp.profPick) { l3spTapFx(px, py, false); l3spProfPoint(...l3spFromScr(px, py)); return; }   // profil: tryck punkt A och B
+    if (l3sp.profPick) { l3spTapFx(px, py, false); l3spProfPoint(...l3spProfSnap(l3sp.profA, l3spFromScr(px, py), e.shiftKey)); return; }   // profil: tryck punkt A och B
     if (e.pointerType !== "mouse" && lastTap && now - lastTap.t < 320 && Math.hypot(px - lastTap.x, py - lastTap.y) < 28) { lastTap = null; const v = l3sp.view, nk = Math.min(60, v.k * 2.2); if (l3sp.follow) l3spFollow(false); v.tx = px - (px - v.tx) * nk / v.k; v.ty = py - (py - v.ty) * nk / v.k; v.k = nk; l3sp.key = ""; return; }   // dubbeltryck: zooma in
     lastTap = { x: px, y: py, t: now }; const [x, y] = l3spFromScr(px, py); l3spTapFx(px, py, l3spSnapPcOn()); l3sp.followHold = performance.now() + 3500; setTimeout(() => { if (lastTap && lastTap.t === now) { lastTap = null; requestAnimationFrame(() => setTimeout(() => l3spGoTo(x, y), 0)); } }, e.pointerType === "mouse" ? 0 : 330);   // enkeltryck flyger dit (väntar in ett eventuellt dubbeltryck på pekskärm)
   };
@@ -187,10 +187,12 @@ function l3spCloudSnap(x, y, r) {
 }
 /* Profil ur minimapen (Victor 2026-11-02): tryck punkt A och B i ritningen – profilen genom de tända punktmolnen visas som i punktmolnsverktyget. */
 function l3spProfZ(x, y) { const c = typeof l3pc !== "undefined" ? l3spCloudSnap(x, y, 0.6) : null; return c ? c[2] : l3spGround(x, y); }
+/* Shift: linjen låses till 5°-steg (0°, 90° m.fl. = ortho) från punkt A; längden behålls. */
+function l3spProfSnap(A, p, shift) { if (!shift || !A) return p; const dx = p[0] - A[0], dy = p[1] - A[1], L = Math.hypot(dx, dy); if (L < 1e-9) return p; const st = Math.PI / 36, a = Math.round(Math.atan2(dy, dx) / st) * st; return [A[0] + Math.cos(a) * L, A[1] + Math.sin(a) * L]; }
 function l3spProfStart() {
   if (typeof l3pfShow !== "function" || typeof l3pc === "undefined" || !l3pc.clouds.some(c => c.visible)) { l3Status("Profilen behöver ett tänt punktmoln (Lager → Punktmoln).", true); return; }
   if (typeof l3ptPickStop === "function") l3ptPickStop(); if (typeof l3pfClear === "function") l3pfClear(); l3spFollow(false); l3sp.profPick = true; l3sp.profA = null; l3sp.profH = null; l3sp.ovDirty = true;
-  const b = document.getElementById("spProf"); if (b) b.classList.add("on"); l3Status("Profil: tryck punkt A i ritningen (Esc avbryter)."); if (l3sp.cv) l3sp.cv.style.cursor = "crosshair";
+  const b = document.getElementById("spProf"); if (b) b.classList.add("on"); l3Status("Profil: tryck punkt A i ritningen. Håll Skift för ortho (5°-steg). Esc avbryter."); if (l3sp.cv) l3sp.cv.style.cursor = "crosshair";
 }
 function l3spProfStop() { l3sp.profPick = false; l3sp.profA = null; l3sp.profH = null; l3sp.ovDirty = true; const b = document.getElementById("spProf"); if (b) b.classList.remove("on"); if (l3sp.cv) l3sp.cv.style.cursor = ""; }
 function l3spProfPoint(x, y) {
@@ -304,7 +306,7 @@ function l3spDraw() {
     const rp = l3sp.rip; if (rp && rp.length) { l3sp.rip = rp.filter(q => now - q.t < 1000); l3sp.rip.forEach(q => { const t = (now - q.t) / 1000, [x, y] = l3spToScr(q.x, q.y); [0, 0.18].forEach(dl => { const u = Math.max(0, Math.min(1, (t - dl) / (1 - dl))); if (u <= 0) return; g.strokeStyle = `rgba(220,38,38,${(0.75 * (1 - u)).toFixed(3)})`; g.lineWidth = 2.5 * (1 - u) + 0.5; g.beginPath(); g.arc(x, y, 6 + u * 34, 0, 6.2832); g.stroke(); }); }); } }
   // profillinjen (A–B) – pågående val eller visad profil
   { let A = null, B = null; if (l3sp.profPick && l3sp.profA) { A = l3sp.profA; B = l3sp.profH; } else if (typeof l3pf !== "undefined" && l3pf.data && l3pf.A && l3pf.B) { A = [l3pf.A[0] + O[0], l3pf.A[1] + O[1]]; B = [l3pf.B[0] + O[0], l3pf.B[1] + O[1]]; }
-    if (A) { const [ax, ay] = l3spToScr(A[0], A[1]); g.save(); g.strokeStyle = "#7c3aed"; g.fillStyle = "#7c3aed"; g.lineWidth = 2.5; g.setLineDash([7, 5]); if (B) { const [bx, by] = l3spToScr(B[0], B[1]); g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke(); g.setLineDash([]); g.beginPath(); g.arc(bx, by, 5, 0, 6.2832); g.fill(); g.font = "700 11px system-ui"; g.fillText("B", bx + 8, by - 6); } g.setLineDash([]); g.beginPath(); g.arc(ax, ay, 5, 0, 6.2832); g.fill(); g.font = "700 11px system-ui"; g.fillText("A", ax + 8, ay - 6); g.restore(); } }
+    if (A) { const [ax, ay] = l3spToScr(A[0], A[1]); g.save(); g.strokeStyle = "#7c3aed"; g.fillStyle = "#7c3aed"; g.lineWidth = 2.5; g.setLineDash([7, 5]); if (B) { const [bx, by] = l3spToScr(B[0], B[1]); g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke(); g.setLineDash([]); g.beginPath(); g.arc(bx, by, 5, 0, 6.2832); g.fill(); g.font = "700 11px system-ui"; g.fillText("B", bx + 8, by - 6); if (l3sp.profPick) { const ang = (Math.round(Math.atan2(B[1] - A[1], B[0] - A[0]) * 1800 / Math.PI) / 10), len = Math.hypot(B[0] - A[0], B[1] - A[1]); g.fillStyle = "rgba(15,23,42,.85)"; g.font = "600 11px system-ui"; const tx = `${String(len.toFixed(1)).replace(".", ",")} m · ${String(ang).replace(".", ",")}°${l3sp.profShift ? " (Skift: 5°)" : ""}`, w = g.measureText(tx).width + 10; g.fillRect(bx + 10, by + 6, w, 17); g.fillStyle = "#fff"; g.fillText(tx, bx + 15, by + 18.5); } } g.setLineDash([]); g.beginPath(); g.arc(ax, ay, 5, 0, 6.2832); g.fill(); g.font = "700 11px system-ui"; g.fillText("A", ax + 8, ay - 6); g.restore(); } }
   // markerade etableringsobjekt
   if (l3.sel && l3.sel.size) placements.forEach(p => { if (!l3.sel.has(p.id)) return; const [x, y] = l3spToScr(p.x, p.y); g.fillStyle = "rgba(245,158,11,.35)"; g.strokeStyle = "#f59e0b"; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 9, 0, 6.2832); g.fill(); g.stroke(); if (p.name) { g.fillStyle = "#92400e"; g.font = "600 11px system-ui"; g.fillText(p.name, x + 12, y + 4); } });
   const mark = (pt, col, kind) => { if (!pt) return; const [x, y] = l3spToScr(pt[0], pt[1]); g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); if (kind === "cross") { g.moveTo(x - 8, y); g.lineTo(x + 8, y); g.moveTo(x, y - 8); g.lineTo(x, y + 8); } else if (kind === "pin") { g.arc(x, y, 7, 0, 6.2832); g.moveTo(x, y - 7); g.lineTo(x, y - 22); } g.stroke(); };
