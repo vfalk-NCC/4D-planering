@@ -115,10 +115,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     { const info2 = { center: [c0[0] + 30, c0[1] + 10, 100], min: [0, 0, 0], max: [1, 1, 1], format: 't', n: 0, total: 0 }; const cl2 = l3pcBuild({ id: 'profA', name: 'Prof' }, { info: info2, chunks: [{ pos: new Float32Array(P), inten: new Uint8Array(P.length / 3) }] }); cl2.visible = true;
       const pb = document.getElementById('spProf'); o.profBtn = !!pb; pb.click(); o.picking = l3sp.profPick === true; const ax = info2.center[0] - 8, ay = info2.center[1], bx = info2.center[0] + 8;
       l3spProfPoint(ax, ay); o.hasA = !!l3sp.profA; l3spProfPoint(bx, ay); o.prof = !l3sp.profPick && !!l3pf.data && l3pf.data.series.length >= 1 && Math.abs(l3pf.data.L - 16) < 0.5; l3spDraw(); o.profLen = l3pf.data && l3pf.data.L; l3pfClear(); l3pcRemove('profA'); }
+    // bredvid varandra med flyttbar mitt
+    { l3SetPref('spLay', 'h'); l3spClose(); await l3spOpen(); await wait(300); const sp = document.getElementById('v3Sp'), cvE = document.getElementById('v3Canvas'), R1 = sp.getBoundingClientRect(), R2 = cvE.getBoundingClientRect(); o.sbs = sp.parentElement.classList.contains('sbs') && R1.left >= R2.right - 1 && Math.abs(R1.top - R2.top) < 12 && R1.height > 200;
+      const w0 = R1.width, hd = document.getElementById('spSplit').getBoundingClientRect(); const mx = hd.left + hd.width / 2, my = hd.top + hd.height / 2; await window.__dragSplit?.(mx, my); o.w0 = w0; l3SetPref('spW', 0.35); l3spSize(); await wait(150); o.narrower = sp.getBoundingClientRect().width < w0 - 40; o.canvasW = cvE.getBoundingClientRect().width > R2.width + 40;
+      document.getElementById('spLay').click(); await wait(200); o.back = !sp.parentElement.classList.contains('sbs') && sp.getBoundingClientRect().top >= cvE.getBoundingClientRect().bottom - 1; l3SetPref('spLay', 'v'); }
     // av
     l3SetPref('spSnapPc', false); l3spGoTo(qx, qy); o.off = !l3sp.pinSnap && Math.abs(l3sp.pin[0] - qx) < 1e-6; l3SetPref('spSnapPc', true); l3pcRemove('snapA'); return o;
   });
-  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off || !sn.ifc || !sn.zoff || !sn.dt0 || !sn.dtKeep || !sn.dtBack || !sn.profBtn || !sn.picking || !sn.hasA || !sn.prof) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
+  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off || !sn.ifc || !sn.zoff || !sn.dt0 || !sn.dtKeep || !sn.dtBack || !sn.profBtn || !sn.picking || !sn.hasA || !sn.prof || !sn.sbs || !sn.narrower || !sn.canvasW || !sn.back) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
   console.log('OK: klick i minimapen fäster nålen i punktmolnet (plan + höjd, med och utan rutindex, av/på)', JSON.stringify(sn));
   // Höjdkalibrering: höjden hämtas från ritningens kalibrering och kan ställas in, hämtas från 3D eller nålen, och ångras
   const zc = await page.evaluate(async () => {
@@ -192,7 +196,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   console.log('OK: mina ortofoton finns som underlag i minimapen', JSON.stringify(og));
   // Pekskärm: nyp för att zooma, två fingrar panorerar, ett finger panorerar, dubbeltryck zoomar in, ＋/− i rubriken
   const tc = await page.evaluate(async () => {
-    const o = {}; l3spClose(); await l3spOpen(); l3spFollow(false); const cv = l3sp.cv, R = cv.getBoundingClientRect(), v = l3sp.view, wait = ms => new Promise(r => setTimeout(r, ms));
+    const o = {}; l3spClose(); await l3spOpen(); l3spFollow(false); await new Promise(r => setTimeout(r, 400)); const cv = l3sp.cv, R = cv.getBoundingClientRect(), v = l3sp.view, wait = ms => new Promise(r => setTimeout(r, ms));
     const ev = (type, id, x, y) => cv.dispatchEvent(new PointerEvent(type, { pointerId: id, pointerType: 'touch', isPrimary: id === 1, clientX: R.left + x, clientY: R.top + y, bubbles: true, cancelable: true }));
     const cx = R.width / 2, cy = R.height / 2, k0 = v.k; const keep = l3spFromScr(cx, cy);
     ev('pointerdown', 1, cx - 30, cy); ev('pointerdown', 2, cx + 30, cy); ev('pointermove', 1, cx - 70, cy); ev('pointermove', 2, cx + 70, cy);   // isär: ×~2,3
