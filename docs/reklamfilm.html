@@ -159,7 +159,7 @@ function title(t) {
   text("DIN BYGGPLATS I TRE DIMENSIONER  ·  OCH EN TILL: TIDEN", W / 2, y + fs * 0.75, fs * 0.15, ease(seg(t, 51.5, 53)), fs * 0.07, "c", 300);
   text("KOMMER TILL ETT BYGGE NÄRA DIG", W / 2, y + fs * 1.15, fs * 0.13, ease(seg(t, 53.5, 54.5)) * (1 - ease(seg(t, 54.8, 55.5))), fs * 0.08, "c", 300);
   const rows = [["I HUVUDROLLEN", "Punktmolnet"], ["MEDVERKANDE", "IFC-modellerna · Profillinjen · Saxen"], ["MUSIK", "Skrivet i en webbläsare"], ["IDÉ OCH PRODUKTION", "Victor Falk"], ["REGI & KOD", "Claude"]];
-  rows.forEach(([a, b], i) => { const st = 55.5 + i * 0.9, k2 = ease(seg(t, st, st + 0.8)) * (1 - ease(seg(t, 60.6, 61.8))); text(a, W / 2, H * 0.665 + i * fs * 0.16, fs * 0.075, k2 * 0.55, fs * 0.04, "c", 300); text(b, W / 2, H * 0.665 + i * fs * 0.16 + fs * 0.085, fs * 0.095, k2, fs * 0.03, "c", 400); });
+  rows.forEach(([a, b], i) => { const st = 55.3 + i * 1.1, k2 = ease(seg(t, st, st + 0.3)) * (1 - ease(seg(t, st + 0.85, st + 1.1))), yy = H * 0.68; text(a, W / 2, yy, fs * 0.075, k2 * 0.6, fs * 0.04, "c", 300); text(b, W / 2, yy + fs * 0.16, fs * 0.12, k2, fs * 0.03, "c", 400); });
   text("TILLÅTEN FRÅN ALLA ÅLDRAR – MEN MEST FÖR DEM MED MASSOR AV PUNKTER", W / 2, H * 0.915, fs * 0.075, ease(seg(t, 58.5, 59.5)) * (1 - ease(seg(t, 61.4, 62))) * 0.6, fs * 0.03, "c", 300);
 }
 
