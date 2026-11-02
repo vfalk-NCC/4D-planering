@@ -740,14 +740,16 @@ async function l3BuildPlan() {
   const z = (plan.calib.model[0][2] || 0) - l3.O[2];
   if (!page) { const g = new THREE.GridHelper(200, 40, 0x94a3b8, 0xcbd5e1); g.rotateX(Math.PI / 2); g.position.z = z; l3.groups.plan.add(g); return; }
   const v1 = page.getViewport({ scale: 1 });
-  const s = Math.min((typeof lowMemDevice !== "undefined" && lowMemDevice ? 2048 : 4096) / Math.max(v1.width, v1.height), 4);
+  const lowMem = typeof lowMemDevice !== "undefined" && lowMemDevice, maxT = (l3.renderer && l3.renderer.capabilities && l3.renderer.capabilities.maxTextureSize) || 4096;
+  const LONG = lowMem ? 2048 : Math.min(maxT, Number(l3Prefs().planRes) || 8192);   // basbilden: upp till 8192 px (skärpt 2026-11-02, "högre upplösning på pdferna"); mobil 2048
+  const s = Math.min(LONG / Math.max(v1.width, v1.height), 12);
   const vp = page.getViewport({ scale: s });
   const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
   const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
   // Ritningen är redan ritad i 2D (~5000 px): skala ner den i stället för att rita PDF:en en gång till –
   // det var det som tog flera sekunder när lägesplanen öppnades direkt i 3D (Victor 2026-10-10).
   const pc = typeof $ === "function" && $("pdfCanvas");
-  if (pc && pc.width > 0 && pc.height > 0 && Math.abs(pc.width / pc.height - cv.width / cv.height) < 0.01) ctx.drawImage(pc, 0, 0, cv.width, cv.height);
+  if (pc && pc.width >= cv.width * 0.9 && pc.height > 0 && Math.abs(pc.width / pc.height - cv.width / cv.height) < 0.01) ctx.drawImage(pc, 0, 0, cv.width, cv.height);
   else await page.render({ canvasContext: ctx, viewport: vp }).promise;
   const corners = [[0, cv.height], [cv.width, cv.height], [cv.width, 0], [0, 0]];
   const pos = [], uv = [];
@@ -759,13 +761,46 @@ async function l3BuildPlan() {
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
   g.setIndex([0, 1, 2, 0, 2, 3]); g.computeVertexNormals();
-  const tex = new THREE.CanvasTexture(cv); tex.anisotropy = 8;
+  const tex = new THREE.CanvasTexture(cv); tex.anisotropy = (l3.renderer && l3.renderer.capabilities.getMaxAnisotropy && l3.renderer.capabilities.getMaxAnisotropy()) || 8;
   if ("encoding" in tex) tex.encoding = THREE.sRGBEncoding;
   const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
   m.userData.surface = true; m.userData.kind = "plan";
   l3.planMesh = m; l3.groups.plan.add(m);
   m.visible = l3Prefs().plan;
   if (typeof l3lApplyPlanOp === "function") l3lApplyPlanOp();
+  l3pd.have = null; if (!l3pd.on && l3.orbit) { l3pd.on = true; l3.orbit.addEventListener("change", l3pdSchedule); } l3pdSchedule();
+}
+/* Skarp ritning där man tittar (Victor 2026-11-02): när man zoomat in ritas den synliga delen av PDF:en på nytt i skärmens upplösning och läggs som en bild ovanpå (följer kameran när den flyttas och ritas om när man stannat). */
+const l3pd = { t: 0, on: false, have: null, task: null, busy: false };
+function l3pdSchedule() { clearTimeout(l3pd.t); l3pd.t = setTimeout(l3pdRender, 380); }
+async function l3pdRender() {
+  const pm = l3.planMesh, lowMem = typeof lowMemDevice !== "undefined" && lowMemDevice; if (!pm || !pm.visible || !page || lowMem || !l3.renderer || l3pd.busy || !plan || !plan.calib) return;
+  const cam = l3.camera, zP = (plan.calib.model[0][2] || 0) - l3.O[2], pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -zP), rc = new THREE.Raycaster(), hit = [], v = new THREE.Vector3();
+  cam.updateMatrixWorld(); for (const [nx, ny] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { rc.setFromCamera(new THREE.Vector2(nx, ny), cam); if (!rc.ray.intersectPlane(pl, v)) { hide(); return; } hit.push(v.clone()); }
+  function hide() { const d = pm.userData.detail; if (d) { d.visible = false; l3Render(); } }
+  const dirz = cam.getWorldDirection(new THREE.Vector3()).z; if (dirz > -0.3) { hide(); return; }   // för låg vinkel: basbilden räcker
+  let x0 = Math.min(...hit.map(h => h.x)), x1 = Math.max(...hit.map(h => h.x)), y0 = Math.min(...hit.map(h => h.y)), y1 = Math.max(...hit.map(h => h.y));
+  // sidans rutan i PDF-punkter
+  const O = l3.O, toPdf = (sx, sy) => modelToPdf(sx + O[0], sy + O[1]), pts = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([a, b]) => toPdf(a, b)), view = page.view || [0, 0, 1000, 1000];
+  let px0 = Math.max(view[0], Math.min(...pts.map(q => q[0]))), px1 = Math.min(view[2], Math.max(...pts.map(q => q[0]))), py0 = Math.max(view[1], Math.min(...pts.map(q => q[1]))), py1 = Math.min(view[3], Math.max(...pts.map(q => q[1])));
+  if (!(px1 - px0 > 1) || !(py1 - py0 > 1)) { hide(); return; }
+  const padx = (px1 - px0) * 0.12, pady = (py1 - py0) * 0.12; px0 = Math.max(view[0], px0 - padx); px1 = Math.min(view[2], px1 + padx); py0 = Math.max(view[1], py0 - pady); py1 = Math.min(view[3], py1 + pady);
+  const dpr = Math.min(2, l3.renderer.getPixelRatio()), maxT = Math.min(8192, (l3.renderer.capabilities && l3.renderer.capabilities.maxTextureSize) || 4096), el = l3.renderer.domElement, screenLong = Math.max(el.clientWidth, el.clientHeight) * dpr * 1.25;
+  const regW = px1 - px0, regH = py1 - py0, long = Math.max(regW, regH), want = Math.min(maxT, Math.max(512, screenLong * Math.max(regW, regH) / long)), sc = Math.min(40, want / long);
+  const base = pm.material.map && pm.material.map.image ? pm.material.map.image.width / Math.max(1, (page.view[2] - page.view[0])) : 1;   // basbildens bildpunkter per PDF-punkt
+  if (sc < base * 1.35) { hide(); return; }   // basbilden är redan tillräckligt skarp
+  const h = l3pd.have, inside = h && x0 >= h.x0 && x1 <= h.x1 && y0 >= h.y0 && y1 <= h.y1 && sc <= h.sc * 1.5 && sc >= h.sc / 4 && pm.userData.detail && pm.userData.detail.visible !== false; if (inside) return;
+  l3pd.busy = true; try {
+    const vp0 = page.getViewport({ scale: sc }), a = vp0.convertToViewportPoint(px0, py1), b = vp0.convertToViewportPoint(px1, py0), vx0 = Math.min(a[0], b[0]), vy0 = Math.min(a[1], b[1]), W = Math.max(8, Math.round(Math.abs(b[0] - a[0]))), H = Math.max(8, Math.round(Math.abs(b[1] - a[1])));
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
+    const vp = page.getViewport({ scale: sc, offsetX: -vx0, offsetY: -vy0 }); const task = page.render({ canvasContext: ctx, viewport: vp }); l3pd.task = task; try { await task.promise; } catch (e) { return; } if (l3pd.task !== task || l3.planMesh !== pm) return;
+    const pos = [], uv = []; [[0, H], [W, H], [W, 0], [0, 0]].forEach(([cx, cy]) => { const [ppx, ppy] = vp.convertToPdfPoint(cx, cy), [mx, my] = l3PdfToModel(ppx, ppy); pos.push(mx - O[0], my - O[1], zP); uv.push(cx / W, 1 - cy / H); });
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); g.setIndex([0, 1, 2, 0, 2, 3]); g.computeVertexNormals();
+    const tex = new THREE.CanvasTexture(cv); tex.anisotropy = (l3.renderer.capabilities.getMaxAnisotropy && l3.renderer.capabilities.getMaxAnisotropy()) || 8; if ("encoding" in tex) tex.encoding = THREE.sRGBEncoding;
+    const old = pm.userData.detail; if (old) { pm.remove(old); old.geometry.dispose(); if (old.material.map) old.material.map.dispose(); old.material.dispose(); }
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1, transparent: pm.material.transparent, opacity: pm.material.opacity })); m.userData.noHit = true; m.raycast = () => {}; m.renderOrder = 1; pm.add(m); pm.userData.detail = m;
+    const xs = [], ys = []; for (let k = 0; k < 4; k++) { xs.push(pos[k * 3]); ys.push(pos[k * 3 + 1]); } l3pd.have = { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), sc }; l3Render();
+  } finally { l3pd.busy = false; }
 }
 
 /* Status (fas) för en planeringsrad vid datumet i lägesplanen. */
