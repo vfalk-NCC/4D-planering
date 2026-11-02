@@ -119,10 +119,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     { l3SetPref('spLay', 'h'); l3spClose(); await l3spOpen(); await wait(300); const sp = document.getElementById('v3Sp'), cvE = document.getElementById('v3Canvas'), R1 = sp.getBoundingClientRect(), R2 = cvE.getBoundingClientRect(); o.sbs = sp.parentElement.classList.contains('sbs') && R1.left >= R2.right - 1 && Math.abs(R1.top - R2.top) < 12 && R1.height > 200;
       const w0 = R1.width, hd = document.getElementById('spSplit').getBoundingClientRect(); const mx = hd.left + hd.width / 2, my = hd.top + hd.height / 2; await window.__dragSplit?.(mx, my); o.w0 = w0; l3SetPref('spW', 0.35); l3spSize(); await wait(150); o.narrower = sp.getBoundingClientRect().width < w0 - 40; o.canvasW = cvE.getBoundingClientRect().width > R2.width + 40;
       document.getElementById('spLay').click(); await wait(200); o.back = !sp.parentElement.classList.contains('sbs') && sp.getBoundingClientRect().top >= cvE.getBoundingClientRect().bottom - 1; l3SetPref('spLay', 'v'); }
+    // följ-läget: den skarpa bilden (CSS-flyttad) får aldrig sticka ut över 3D-vyn
+    { const cw = document.querySelector('#v3Sp .cw'); o.clip = getComputedStyle(cw).overflow === 'hidden'; }
     // av
     l3SetPref('spSnapPc', false); l3spGoTo(qx, qy); o.off = !l3sp.pinSnap && Math.abs(l3sp.pin[0] - qx) < 1e-6; l3SetPref('spSnapPc', true); l3pcRemove('snapA'); return o;
   });
-  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off || !sn.ifc || !sn.zoff || !sn.dt0 || !sn.dtKeep || !sn.dtBack || !sn.profBtn || !sn.picking || !sn.hasA || !sn.prof || !sn.sbs || !sn.narrower || !sn.canvasW || !sn.back) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
+  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off || !sn.ifc || !sn.zoff || !sn.dt0 || !sn.dtKeep || !sn.dtBack || !sn.profBtn || !sn.picking || !sn.hasA || !sn.prof || !sn.sbs || !sn.narrower || !sn.canvasW || !sn.back || !sn.clip) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
   console.log('OK: klick i minimapen fäster nålen i punktmolnet (plan + höjd, med och utan rutindex, av/på)', JSON.stringify(sn));
   // Höjdkalibrering: höjden hämtas från ritningens kalibrering och kan ställas in, hämtas från 3D eller nålen, och ångras
   const zc = await page.evaluate(async () => {
