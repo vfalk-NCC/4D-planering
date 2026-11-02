@@ -5,7 +5,7 @@
    • Musen i diagrammet visar höjderna och skillnaden, och en markör följer med längs linjen i 3D.
    • Export: DXF (profilen i längd/höjd, med rutnät, text och skillnadsytor), DXF (3D-linjer i modellens koordinater), CSV, PNG. */
 const l3pf = { A: null, B: null, w: 0.5, data: null, el: null, cv: null, mode: "median", show: "line", bw: 0, hide: new Set(), cmp: null, diffOn: true, view: null, ex: 0, fs: false, hover: null, drag: null, grp: null, mark: null, lines: null, diff: null, raf: 0 };
-l3pf.ifc = []; l3pf.ifcOn = true; l3pf.ref = null; l3pf.level = null; l3pf.hz = null;
+l3pf.ifc = []; l3pf.ifcOn = true; l3pf.ifcFill = true; l3pf.ann = []; l3pf.tool = null; l3pf.ref = null; l3pf.level = null; l3pf.hz = null;
 const L3PF_COL = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2"], L3PF_ACI = [5, 1, 3, 30, 6, 4];
 const L3PF_CSS = `#v3PcProf{position:absolute;right:64px;bottom:12px;z-index:22;width:min(760px,calc(100% - 80px));height:min(420px,70%);display:flex;flex-direction:column;background:var(--v3-panel,#fff);border:1px solid rgba(0,0,0,.12);border-radius:14px;box-shadow:0 10px 32px rgba(0,0,0,.22);padding:8px 10px;font:12px system-ui,sans-serif;color:#0f172a}
 #v3PcProf.fs{position:absolute;inset:0;right:0;bottom:0;width:auto;height:auto;z-index:45;border-radius:0}#v3PcProf label{display:inline-flex;gap:4px;align-items:center}#v3PcProf .r{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:3px 0}#v3PcProf canvas{flex:1;min-height:120px;width:100%;display:block;background:#f8fafc;border-radius:8px;cursor:crosshair;touch-action:none}
@@ -16,22 +16,34 @@ const L3PF_IFC = ["#334155", "#7c2d12", "#14532d", "#581c87", "#164e63", "#713f1
 /* Närmaste AutoCAD-färgnummer (ACI) till en hex-färg – DXF R12 har inga RGB-färger. */
 const L3PF_ACITAB = [[1, 255, 0, 0], [2, 255, 255, 0], [3, 0, 255, 0], [4, 0, 255, 255], [5, 0, 0, 255], [6, 255, 0, 255], [7, 0, 0, 0], [8, 128, 128, 128], [9, 192, 192, 192], [30, 255, 127, 0], [40, 255, 191, 0], [92, 0, 127, 0], [140, 0, 127, 255], [200, 127, 0, 255], [250, 51, 51, 51]];
 function l3pfAci(hex) { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex || ""); if (!m) return 7; const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16); let best = 7, bd = Infinity; L3PF_ACITAB.forEach(([a, R_, G, B_]) => { const d = (r - R_) ** 2 + (g - G) ** 2 + (b - B_) ** 2; if (d < bd) { bd = d; best = a; } }); return best; }
-/* IFC-genomskärning (Victor 2026-11-02): de tända IFC-modellerna skärs av det lodräta planet genom A–B. Resultat per modell: linjesegment [t0, z0, t1, z1, …] (avstånd längs, höjd m ö.h.). */
+/* IFC-genomskärning (Victor 2026-11-02): de tända IFC-modellerna skärs av det lodräta planet genom A–B. Resultat per modell: linjesegment [t0, z0, t1, z1, …] (avstånd längs, höjd m ö.h.) och per objekt sammanlänkade konturer
+   (slutna = fyllbara i objektets egen färg, "Fyllda IFC-snitt i modellens färg"). */
+function l3pfChain(segs) {
+  const n = segs.length / 4, key = (t, z) => Math.round(t * 400) + "," + Math.round(z * 400), map = new Map(), used = new Uint8Array(n), polys = [];
+  const add = (k, i) => { let l = map.get(k); if (!l) map.set(k, l = []); l.push(i); };
+  for (let i = 0; i < n; i++) { add(key(segs[i * 4], segs[i * 4 + 1]), i); add(key(segs[i * 4 + 2], segs[i * 4 + 3]), i); }
+  const walk = (pts, atEnd) => { for (;;) { const e = atEnd ? pts[pts.length - 1] : pts[0], k = key(e[0], e[1]), l = map.get(k); let c = -1; if (l) for (const j of l) if (!used[j]) { c = j; break; } if (c < 0) return; used[c] = 1; const sk = key(segs[c * 4], segs[c * 4 + 1]), o = sk === k ? [segs[c * 4 + 2], segs[c * 4 + 3]] : [segs[c * 4], segs[c * 4 + 1]]; if (atEnd) pts.push(o); else pts.unshift(o); if (pts.length > 20000) return; } };
+  for (let i = 0; i < n; i++) { if (used[i]) continue; used[i] = 1; const pts = [[segs[i * 4], segs[i * 4 + 1]], [segs[i * 4 + 2], segs[i * 4 + 3]]]; walk(pts, true); walk(pts, false); const f = pts[0], l = pts[pts.length - 1]; polys.push({ pts, closed: pts.length > 3 && key(f[0], f[1]) === key(l[0], l[1]) }); }
+  return polys;
+}
 function l3pfIfcSection(A, B) {
   if (typeof l3b === "undefined") return []; const dx = B[0] - A[0], dy = B[1] - A[1], L = Math.hypot(dx, dy) || 1e-9, ux = dx / L, uy = dy / L, nx = -uy, ny = ux, O2 = l3.O[2], out = [], CAP = 400000;
-  const v0 = new THREE.Vector3(), v1 = new THREE.Vector3(), v2 = new THREE.Vector3();
-  l3b.models.forEach(m => { if (m.visible === false) return; const segs = [];
-    m.meshes.forEach(x => { if (x.visible === false || !x.geometry) return; const pos = x.geometry.getAttribute("position"), u = x.userData.l3b; if (!pos || !u) return; x.updateMatrixWorld(true); const M = x.matrixWorld, P = pos.array;
-      for (let ri = 0; ri < u.ranges.length; ri++) { if (typeof l3bsDead === "function" && l3bsDead(x, ri)) continue; const r = u.ranges[ri];
+  const v0 = new THREE.Vector3(), v1 = new THREE.Vector3(), v2 = new THREE.Vector3(), hex = (r, g, b) => "#" + [r, g, b].map(c => Math.max(0, Math.min(255, Math.round(c))).toString(16).padStart(2, "0")).join("");
+  l3b.models.forEach(m => { if (m.visible === false) return; const all = [], objs = []; let total = 0;
+    m.meshes.forEach(x => { if (x.visible === false || !x.geometry) return; const pos = x.geometry.getAttribute("position"), col = x.geometry.getAttribute("color"), u = x.userData.l3b; if (!pos || !u) return; x.updateMatrixWorld(true); const M = x.matrixWorld, P = pos.array, C = col ? col.array : null, byteCol = C && (C instanceof Uint8Array || C instanceof Uint8ClampedArray);
+      for (let ri = 0; ri < u.ranges.length; ri++) { if (typeof l3bsDead === "function" && l3bsDead(x, ri)) continue; const r = u.ranges[ri], segs = []; let color = null;
         for (let i = r.start; i + 2 < r.start + r.count; i += 3) {
           v0.set(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]).applyMatrix4(M); v1.set(P[i * 3 + 3], P[i * 3 + 4], P[i * 3 + 5]).applyMatrix4(M); v2.set(P[i * 3 + 6], P[i * 3 + 7], P[i * 3 + 8]).applyMatrix4(M);
           const d0 = (v0.x - A[0]) * nx + (v0.y - A[1]) * ny, d1 = (v1.x - A[0]) * nx + (v1.y - A[1]) * ny, d2 = (v2.x - A[0]) * nx + (v2.y - A[1]) * ny;
           if ((d0 > 0 && d1 > 0 && d2 > 0) || (d0 < 0 && d1 < 0 && d2 < 0)) continue; const pts = [];
           const edge = (a, da, b, db) => { if ((da > 0) === (db > 0) || da === db) return; const k = da / (da - db), px = a.x + (b.x - a.x) * k, py = a.y + (b.y - a.y) * k, pz = a.z + (b.z - a.z) * k; pts.push((px - A[0]) * ux + (py - A[1]) * uy, pz + O2); };
           edge(v0, d0, v1, d1); edge(v1, d1, v2, d2); edge(v2, d2, v0, d0); if (pts.length < 4) continue;
-          const t0 = pts[0], t1 = pts[2]; if ((t0 < 0 && t1 < 0) || (t0 > L && t1 > L)) continue; segs.push(t0, pts[1], t1, pts[3]); if (segs.length > CAP * 4) return;
-        } } });
-    if (segs.length) out.push({ id: m.id, name: m.name || String(m.id), segs: Float32Array.from(segs) }); });
+          const t0 = pts[0], t1 = pts[2]; if ((t0 < 0 && t1 < 0) || (t0 > L && t1 > L)) continue; segs.push(t0, pts[1], t1, pts[3]);
+          if (!color && C) { const k = byteCol ? 1 : 255; color = hex(C[i * 3] * k, C[i * 3 + 1] * k, C[i * 3 + 2] * k); }
+        }
+        if (segs.length) { objs.push({ color: color || "#94a3b8", polys: segs.length / 4 <= 6000 ? l3pfChain(Float32Array.from(segs)) : null, segs: Float32Array.from(segs), name: r.name || "" }); for (let q = 0; q < segs.length; q++) all.push(segs[q]); total += segs.length / 4; if (total > CAP) return; }
+      } });
+    if (all.length) out.push({ id: m.id, name: m.name || String(m.id), segs: Float32Array.from(all), objs }); });
   return out;
 }
 const l3pfF = (v, d = 2) => (Math.round(v * 10 ** d) / 10 ** d).toFixed(d).replace(".", ",");
@@ -76,7 +88,7 @@ function l3pfShow(A, B, w) {
   if (!document.getElementById("v3PcProfCss")) { const st = document.createElement("style"); st.id = "v3PcProfCss"; st.textContent = L3PF_CSS; document.head.appendChild(st); }
   const host = document.getElementById("v3Canvas"); let el = document.getElementById("v3PcProf"); if (el) el.remove(); el = document.createElement("div"); el.id = "v3PcProf"; host.appendChild(el); l3pf.el = el;
   ["pointerdown", "click", "dblclick", "wheel", "contextmenu", "keydown"].forEach(t => el.addEventListener(t, e => e.stopPropagation()));
-  l3pf3d(); l3pfUI(); l3pfFit(); l3pfDraw();
+  l3pf3d(); l3pfAnnLoad(); l3pfAnn3d(); l3pfUI(); l3pfFit(); l3pfDraw();
   if (!D.series.some(s => s.n)) l3Status("Inga punkter inom profilens bredd – öka bredden eller dra linjen över molnet.", true);
   if (typeof l3ptRender === "function") l3ptRender();
 }
@@ -85,7 +97,7 @@ function l3pfUI() {
   el.innerHTML = `<div class="r"><b>Profil</b><span>Längd ${l3pfF(D.L, 1)} m · bredd ±${l3pfF(l3pf.w, 2)} m</span><span style="flex:1"></span>
     <button type="button" data-pf="fit" title="Zooma till hela profilen (dubbelklick)">Hela</button><button type="button" data-pf="one" class="${l3pf.ex === 1 ? "on" : ""}" title="Sant 1:1-förhållande mellan längd och höjd">1:1</button>
     <label title="Höjdöverdrift">Höjd ×<select data-pf="ex">${[0, 1, 2, 5, 10, 20].map(v => opt(v, v ? v + "×" : "Auto", l3pf.ex)).join("")}</select></label>
-    <button type="button" data-pf="fs" title="Fullskärm (F)">⛶</button><button type="button" data-pf="x" title="Stäng">✕</button></div>
+    <button type="button" data-pf="tspot" class="${l3pf.tool === "spot" ? "on" : ""}" title="Klicka ut plushöjder i profilen (Alt = fri höjd)">▽ Plushöjd</button><button type="button" data-pf="tnote" class="${l3pf.tool === "note" ? "on" : ""}" title="Lägg en kommentar: klicka för en punkt eller dra över ett område – t.ex. fundament">💬 Kommentar</button><button type="button" data-pf="tclr" title="Ta bort alla plushöjder och kommentarer">Rensa</button><button type="button" data-pf="fs" title="Fullskärm (F)">⛶</button><button type="button" data-pf="x" title="Stäng">✕</button></div>
   <div class="r"><label>Yta <select data-pf="mode">${opt("median", "Median", l3pf.mode)}${opt("mean", "Medel", l3pf.mode)}${opt("max", "Övre (topp)", l3pf.mode)}${opt("min", "Nedre (mark)", l3pf.mode)}</select></label>
     <label>Visa <select data-pf="show">${opt("line", "Linje", l3pf.show)}${opt("pts", "Punkter", l3pf.show)}${opt("both", "Båda", l3pf.show)}</select></label>
     <label title="Rutbredd längs profilen för ytlinjen (m)">Ruta <input type="text" data-pf="bw" value="${l3pf.bw ? l3pfF(l3pf.bw, 2) : ""}" placeholder="auto"></label>
@@ -94,6 +106,7 @@ function l3pfUI() {
   <div class="r" data-pf-leg>${D.series.map((s, i) => `<span class="lgw"><input type="color" data-pf-col="${esc(s.id)}" value="${s.color}" title="Välj färg för molnet"><span class="lg ${l3pf.hide.has(s.id) ? "off" : ""}" data-pf-lg="${esc(s.id)}" title="Tryck för att visa/dölja">${esc(s.name)} (${s.n.toLocaleString("sv-SE")} p)</span></span>`).join("")}
     ${l3pf.ifc.map(m => `<span class="lgw"><input type="color" data-pf-col="ifc:${esc(m.id)}" value="${m.color}" title="Färg på IFC-genomskärningen"><span class="lg ${l3pf.hide.has("ifc:" + m.id) ? "off" : ""}" data-pf-lg="ifc:${esc(m.id)}" title="IFC-modellens genomskärning – tryck för att visa/dölja">▭ ${esc(m.name)}</span></span>`).join("")}
     ${D.series.length >= 2 ? `<span style="flex:1"></span><label>Jämför <select data-pf="ca">${D.series.map(s => opt(s.id, esc(s.name), l3pf.cmp && l3pf.cmp[0])).join("")}</select> mot <select data-pf="cb">${D.series.map(s => opt(s.id, esc(s.name), l3pf.cmp && l3pf.cmp[1])).join("")}</select></label><label class="lg"><input type="checkbox" data-pf="dif" ${l3pf.diffOn ? "checked" : ""}> Skillnad</label>` : ""}
+    ${l3pf.ifc.length ? `<label class="lg" title="Fyll de slutna IFC-snitten i objektens egen färg"><input type="checkbox" data-pf="fill" ${l3pf.ifcFill ? "checked" : ""}> Fyll IFC</label>` : ""}
     <label title="Rita en vågrät nivålinje (m ö.h.) – t.ex. schaktbotten. Schakt och fyllning mot nivån visas nedan."><span>Nivå</span> <input type="text" data-pf="lvl" value="${l3pf.level == null ? "" : l3pfF(l3pf.level, 2)}" placeholder="m ö.h."></label></div>
   <canvas></canvas><div class="r" data-pf-info></div>`;
   l3pf.cv = el.querySelector("canvas"); l3pfInfo(); l3pfBind();
@@ -113,7 +126,7 @@ function l3pfBind() {
     if (lg) { const id = lg.dataset.pfLg; l3pf.hide.has(id) ? l3pf.hide.delete(id) : l3pf.hide.add(id); lg.classList.toggle("off", l3pf.hide.has(id)); l3pfDraw(); return; }
     if (!b || b.tagName === "SELECT" || b.tagName === "INPUT") return; const a = b.dataset.pf;
     if (a === "dd") { b.parentNode.classList.toggle("open"); return; } el.querySelectorAll(".dd.open").forEach(d => d.classList.remove("open"));
-    if (a === "fit") { l3pfFit(); l3pfDraw(); } else if (a === "one") { l3pf.ex = l3pf.ex === 1 ? 0 : 1; l3pfUI(); l3pfFit(); l3pfDraw(); } else if (a === "fs") l3pfFs(); else if (a === "x") l3pfClear();
+    if (a === "fit") { l3pfFit(); l3pfDraw(); } else if (a === "one") { l3pf.ex = l3pf.ex === 1 ? 0 : 1; l3pfUI(); l3pfFit(); l3pfDraw(); } else if (a === "tspot" || a === "tnote") l3pfTool(a.slice(1)); else if (a === "tclr") { if (l3pf.ann.length && typeof uiConfirm === "function") uiConfirm(`Ta bort alla ${l3pf.ann.length} markeringar i profilen?`, { ok: "Ta bort alla" }).then(ok => { if (ok) { l3pf.ann = []; l3pfAnnSave(); l3pfDraw(); } }); } else if (a === "fs") l3pfFs(); else if (a === "x") l3pfClear();
     else if (a === "dxf") l3pfDxf(false); else if (a === "dxf3") l3pfDxf(true); else if (a === "csv") l3pfCsv(); else if (a === "png") l3pfPng();
   };
   el.onchange = e => {
@@ -121,7 +134,7 @@ function l3pfBind() {
     if (a === "mode") { l3pf.mode = t.value; l3pfCompute(); l3pfInfo(); l3pfDraw(); } else if (a === "show") { l3pf.show = t.value; l3pfDraw(); }
     else if (a === "ex") { l3pf.ex = Number(t.value) || 0; l3pfFit(); l3pfDraw(); } else if (a === "bw") { const v = Number(String(t.value).replace(",", ".")); l3pf.bw = v > 0.005 ? v : 0; l3pfCompute(); l3pfInfo(); l3pfDraw(); }
     else if (a === "w") { const v = Number(String(t.value).replace(",", ".")); if (v > 0.01) l3pfShow(l3pf.A, l3pf.B, v); } else if (a === "ca" || a === "cb") { const x = el.querySelector('[data-pf="ca"]').value, y = el.querySelector('[data-pf="cb"]').value; l3pf.cmp = [x, y]; l3pfCompute(); l3pfInfo(); l3pfDraw(); }
-    else if (a === "dif") { l3pf.diffOn = t.checked; l3pfDraw(); } else if (a === "lvl") { const v = Number(String(t.value).replace(",", ".")); l3pf.level = t.value.trim() === "" || !isFinite(v) ? null : v; l3pfInfo(); l3pfDraw(); }
+    else if (a === "dif") { l3pf.diffOn = t.checked; l3pfDraw(); } else if (a === "fill") { l3pf.ifcFill = t.checked; l3pfDraw(); } else if (a === "lvl") { const v = Number(String(t.value).replace(",", ".")); l3pf.level = t.value.trim() === "" || !isFinite(v) ? null : v; l3pfInfo(); l3pfDraw(); }
   };
   el.addEventListener("input", e => { const c = e.target.closest && e.target.closest("[data-pf-col]"); if (!c) return; const id = c.dataset.pfCol, hex = c.value, st = (l3Prefs().pfCol) || {}; st[id] = hex; l3SetPref("pfCol", { ...st });
     if (id.startsWith("ifc:")) { const m = l3pf.ifc.find(x => "ifc:" + x.id === id); if (m) m.color = hex; } else { const s2 = l3pf.data.series.find(x => x.id === id); if (s2) { s2.color = hex; s2.aci = l3pfAci(hex); } } l3pfDraw(); });
@@ -134,14 +147,19 @@ function l3pfBind() {
     if (zx && zz && l3pf.ex > 0) l3pfKeepRatio(V);
     l3pfDraw();
   }, { passive: false });
-  cv.addEventListener("pointerdown", e => { if (e.button !== 0 && e.button !== 1) return; cv.setPointerCapture(e.pointerId); l3pf.drag = { x: e.clientX, y: e.clientY, v: { ...l3pf.view } }; moved = 0; });
+  cv.addEventListener("pointerdown", e => { if (e.button !== 0 && e.button !== 1) return; cv.setPointerCapture(e.pointerId); if (l3pf.tool === "note" && e.button === 0 && l3pf.hover != null) { l3pf.noteDrag = { t0: l3pf.hover, x: e.clientX }; moved = 0; return; } l3pf.drag = { x: e.clientX, y: e.clientY, v: { ...l3pf.view } }; moved = 0; });
   cv.addEventListener("pointermove", e => {
     const r = cv.getBoundingClientRect(), g = l3pfGeom(), d = l3pf.drag;
     if (d) { const dx = e.clientX - d.x, dy = e.clientY - d.y; moved = Math.max(moved, Math.hypot(dx, dy)); if (moved > 3) { const V = l3pf.view, sx = (d.v.x1 - d.v.x0) / g.w, sz = (d.v.z1 - d.v.z0) / g.h; V.x0 = d.v.x0 - dx * sx; V.x1 = d.v.x1 - dx * sx; V.z0 = d.v.z0 + dy * sz; V.z1 = d.v.z1 + dy * sz; } }
-    const V = l3pf.view; const t = V.x0 + (e.clientX - r.left - g.l) / g.w * (V.x1 - V.x0); l3pf.hover = t >= 0 && t <= l3pf.data.L && e.clientX - r.left >= g.l ? t : null; l3pf.hz = V.z0 + (g.t + g.h - (e.clientY - r.top)) / g.h * (V.z1 - V.z0); l3pfMark(); l3pfDraw();
+    const V = l3pf.view; const t = V.x0 + (e.clientX - r.left - g.l) / g.w * (V.x1 - V.x0); l3pf.hover = t >= 0 && t <= l3pf.data.L && e.clientX - r.left >= g.l ? t : null; l3pf.hz = V.z0 + (g.t + g.h - (e.clientY - r.top)) / g.h * (V.z1 - V.z0); if (l3pf.noteDrag) { moved = Math.max(moved, Math.abs(e.clientX - l3pf.noteDrag.x)); l3pf.noteDrag.t1 = l3pf.hover; } l3pfMark(); l3pfDraw();
   });
   cv.addEventListener("pointerleave", () => { l3pf.hover = null; l3pfMark(); l3pfDraw(); });
-  cv.addEventListener("pointerup", e => { l3pf.drag = null; if (moved <= 3 && l3pf.hover != null && e.button === 0) { const near = l3pf.ref && Math.abs(l3pf.ref.t - l3pf.hover) < (l3pf.view.x1 - l3pf.view.x0) * 0.01; l3pf.ref = near ? null : { t: l3pf.hover, z: l3pfSurfZ(l3pf.hover) ?? l3pf.hz }; l3pfDraw(); } }); cv.addEventListener("dblclick", () => { l3pfFit(); l3pfDraw(); });
+  cv.addEventListener("pointerup", e => { l3pf.drag = null;
+    if (l3pf.noteDrag) { const d = l3pf.noteDrag; l3pf.noteDrag = null; l3pfAnnNote(d.t0, moved > 6 && d.t1 != null && Math.abs(d.t1 - d.t0) > 0.05 ? d.t1 : null); return; }
+    if (moved <= 3 && e.button === 0) { const r0 = cv.getBoundingClientRect(), px = e.clientX - r0.left, py = e.clientY - r0.top;
+      if (l3pf.tool === "spot" && l3pf.hover != null) { const z = e.altKey ? l3pf.hz : (l3pfSurfZ(l3pf.hover) ?? l3pf.hz); l3pfAnnAdd({ k: "spot", t: l3pf.hover, z }); return; }
+      if (!l3pf.tool) { const h = l3pfAnnHit(px, py); if (h) { l3pfAnnEdit(h); return; } } }
+    if (!l3pf.tool && moved <= 3 && l3pf.hover != null && e.button === 0) { const near = l3pf.ref && Math.abs(l3pf.ref.t - l3pf.hover) < (l3pf.view.x1 - l3pf.view.x0) * 0.01; l3pf.ref = near ? null : { t: l3pf.hover, z: l3pfSurfZ(l3pf.hover) ?? l3pf.hz }; l3pfDraw(); } }); cv.addEventListener("dblclick", () => { l3pfFit(); l3pfDraw(); });
   if (window.ResizeObserver) { l3pf.ro = new ResizeObserver(() => l3pfDraw()); l3pf.ro.observe(cv); }
 }
 /* Visningsområdet: hela profilen med lite luft; med höjdöverdrift (eller 1:1) styr förhållandet höjdspannet. */
@@ -171,8 +189,10 @@ function l3pfDraw(ctxOverride, size) {
   const D = l3pf.data, vis = i => !l3pf.hide.has(D.series[i].id);
   // skillnadsyta
   const df = l3pf.diff; if (df && l3pf.diffOn && l3pf.cmp) { const ids = D.series.map(s => s.id), A = l3pf.lines[ids.indexOf(l3pf.cmp[0])], B = l3pf.lines[ids.indexOf(l3pf.cmp[1])]; if (vis(ids.indexOf(l3pf.cmp[0])) && vis(ids.indexOf(l3pf.cmp[1]))) for (let b = 0; b < A.v.length; b++) { if (df.dz[b] == null) continue; const x0 = X(b * A.bw), x1 = X((b + 1) * A.bw); g.fillStyle = df.dz[b] < 0 ? "rgba(37,99,235,.28)" : "rgba(220,38,38,.28)"; g.fillRect(x0, Math.min(Y(A.v[b]), Y(B.v[b])), Math.max(1, x1 - x0 + 0.5), Math.abs(Y(A.v[b]) - Y(B.v[b])) || 1); } }
-  // IFC-genomskärning (tunna konturer)
-  if (l3pf.ifcOn) l3pf.ifc.forEach(m => { if (l3pf.hide.has("ifc:" + m.id)) return; g.strokeStyle = m.color; g.lineWidth = 1.3; g.beginPath(); const S = m.segs; for (let k = 0; k < S.length; k += 4) { g.moveTo(X(S[k]), Y(S[k + 1])); g.lineTo(X(S[k + 2]), Y(S[k + 3])); } g.stroke(); });
+  // IFC-genomskärning: slutna konturer fylls i objektets egen färg (eller den färg du valt för modellen), konturen ritas ovanpå
+  if (l3pf.ifcOn) l3pf.ifc.forEach(m => { if (l3pf.hide.has("ifc:" + m.id)) return; const uc = ((typeof l3Prefs === "function" && l3Prefs().pfCol) || {})["ifc:" + m.id];
+    if (l3pf.ifcFill) m.objs.forEach(o => { if (!o.polys) return; const cl = o.polys.filter(p => p.closed); if (!cl.length) return; g.beginPath(); cl.forEach(p => { p.pts.forEach((q, k) => { if (k) g.lineTo(X(q[0]), Y(q[1])); else g.moveTo(X(q[0]), Y(q[1])); }); g.closePath(); }); g.globalAlpha = 0.85; g.fillStyle = uc || o.color; g.fill("evenodd"); g.globalAlpha = 1; });
+    g.strokeStyle = l3pf.ifcFill ? "rgba(15,23,42,.8)" : m.color; g.lineWidth = l3pf.ifcFill ? 1.1 : 1.3; g.beginPath(); const S = m.segs; for (let k = 0; k < S.length; k += 4) { g.moveTo(X(S[k]), Y(S[k + 1])); g.lineTo(X(S[k + 2]), Y(S[k + 3])); } g.stroke(); });
   // nivålinje
   if (l3pf.level != null) { const y = Y(l3pf.level); g.save(); g.strokeStyle = "#ea580c"; g.lineWidth = 1.6; g.setLineDash([8, 5]); g.beginPath(); g.moveTo(gm.l, y); g.lineTo(gm.l + gm.w, y); g.stroke(); g.restore(); g.fillStyle = "#ea580c"; g.font = "700 11px system-ui"; g.textAlign = "left"; g.fillText("Nivå " + l3pfF(l3pf.level, 2) + " m", gm.l + 6, y - 5); }
   // punkter och linjer
@@ -188,6 +208,7 @@ function l3pfDraw(ctxOverride, size) {
     const x = X(l3pf.hover); g.lineWidth = 1.2; g.strokeStyle = "rgba(15,23,42,.75)"; g.setLineDash([5, 3]); g.beginPath(); g.moveTo(x, gm.t); g.lineTo(x, gm.t + gm.h); if (l3pf.hz != null) { g.moveTo(gm.l, Y(l3pf.hz)); g.lineTo(gm.l + gm.w, Y(l3pf.hz)); } g.stroke(); g.setLineDash([]);
     D.series.forEach((s, i) => { if (!vis(i)) return; const z = l3pfAt(l3pf.lines[i], l3pf.hover); if (z != null) { g.fillStyle = "#fff"; g.beginPath(); g.arc(x, Y(z), 6, 0, 6.2832); g.fill(); g.fillStyle = s.color; g.beginPath(); g.arc(x, Y(z), 4.2, 0, 6.2832); g.fill(); } });
   }
+  l3pfAnnDraw(g, gm, X, Y, !!ctxOverride);
   g.restore();
   // axlar
   g.fillStyle = "#475569"; g.font = "11px system-ui"; g.textAlign = "right";
@@ -230,6 +251,7 @@ function l3pfClear(keepData) {
   if (l3pf.ro) { l3pf.ro.disconnect(); l3pf.ro = null; } if (document.fullscreenElement && l3pf.el && document.fullscreenElement === l3pf.el) document.exitFullscreen().catch(() => {});
   const e = document.getElementById("v3PcProf"); if (e) e.remove(); l3pf.el = l3pf.cv = null; l3pf.fs = false;
   if (l3pf.grp) { l3.scene.remove(l3pf.grp); l3pf.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); }); l3pf.grp = l3pf.mark = null; l3Render(); }
+  if (l3pf.annGrp) { l3.scene.remove(l3pf.annGrp); l3pf.annGrp.traverse(o => { if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } if (o.geometry) o.geometry.dispose(); }); l3pf.annGrp = null; l3Render(); }
   if (!keepData) { l3pf.data = null; if (typeof l3pt !== "undefined") l3pt.prof = null; }
 }
 function l3pfFs() {
@@ -245,6 +267,56 @@ function l3pfKey(e) {
   if (k === "f" && l3pf.fs) { e.preventDefault(); l3pfFs(); return true; } if (k === "0" && l3pf.fs) { e.preventDefault(); l3pfFit(); l3pfDraw(); return true; }
   return false;
 }
+/* ---- Plushöjder och kommentarer (Victor 2026-11-02): klicka ut höjder och lägg kommentarer/områden direkt i profilen -------------------------------- */
+const l3pfAnnKey = () => { const O = l3.O, A = l3pf.A, B = l3pf.B; return [A[0] + O[0], A[1] + O[1], B[0] + O[0], B[1] + O[1]].map(v => Math.round(v * 10) / 10).join("_"); };
+function l3pfAnnLoad() { const all = (typeof l3Prefs === "function" && l3Prefs().pfAnn) || {}; l3pf.ann = JSON.parse(JSON.stringify(all[l3pfAnnKey()] || [])); }
+function l3pfAnnSave() { const all = { ...((l3Prefs().pfAnn) || {}) }; if (l3pf.ann.length) all[l3pfAnnKey()] = l3pf.ann; else delete all[l3pfAnnKey()]; const ks = Object.keys(all); if (ks.length > 40) delete all[ks[0]]; l3SetPref("pfAnn", all); l3pfAnn3d(); }
+const l3pfPlus = z => (z >= 0 ? "+" : "−") + l3pfF(Math.abs(z), 2);
+function l3pfAnnAdd(a) { a.id = "an" + Math.random().toString(36).slice(2, 8); l3pf.ann.push(a); l3pfAnnSave(); l3pfDraw(); return a; }
+/* Ritar markeringarna i diagrammet. Sparar träffytor för klick när det inte är en export. */
+function l3pfAnnDraw(g, gm, X, Y, exporting) {
+  const rr = (x, y, w, h, r) => { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); };
+  if (!exporting) l3pf.annBoxes = []; let row = 0; g.font = "700 12px system-ui"; g.textAlign = "left";
+  l3pf.ann.forEach(a => {
+    const x = X(a.t), zs = a.z != null ? a.z : l3pfSurfZ(a.t), y = zs != null ? Y(zs) : gm.t + gm.h / 2;
+    if (a.k === "spot") {
+      const tx = l3pfPlus(a.z), w = g.measureText(tx).width + 14, ly = Math.max(gm.t + 22, y - 36), lx = Math.min(Math.max(x - w / 2, gm.l + 2), gm.l + gm.w - w - 2);
+      g.strokeStyle = "#0f172a"; g.lineWidth = 1.4; g.beginPath(); g.moveTo(x, y - 9); g.lineTo(x, ly + 8); g.stroke();
+      rr(lx, ly - 10, w, 20, 6); g.fillStyle = "#0f172a"; g.fill(); g.strokeStyle = "#fff"; g.lineWidth = 1.5; g.stroke(); g.fillStyle = "#fff"; g.fillText(tx, lx + 7, ly + 4.5);
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x - 6.5, y - 11); g.lineTo(x + 6.5, y - 11); g.closePath(); g.fillStyle = "#dc2626"; g.fill(); g.strokeStyle = "#fff"; g.lineWidth = 1.8; g.stroke();
+      if (!exporting) l3pf.annBoxes.push({ id: a.id, x0: Math.min(lx, x - 8), y0: ly - 10, x1: Math.max(lx + w, x + 8), y1: y + 2 });
+    } else {
+      const col = "#d97706", txt = a.text || "Kommentar", w = g.measureText(txt).width + 16, ly = gm.t + 18 + (row++ % 3) * 25;
+      if (a.t1 != null) {
+        const x1 = X(a.t1), xa = Math.min(x, x1), xb = Math.max(x, x1); g.fillStyle = "rgba(245,158,11,.14)"; g.fillRect(xa, gm.t, xb - xa, gm.h); g.strokeStyle = col; g.lineWidth = 1.4; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(xa, gm.t); g.lineTo(xa, gm.t + gm.h); g.moveTo(xb, gm.t); g.lineTo(xb, gm.t + gm.h); g.stroke(); g.setLineDash([]);
+        const lx = Math.min(Math.max((xa + xb) / 2 - w / 2, gm.l + 2), gm.l + gm.w - w - 2); rr(lx, ly - 11, w, 22, 7); g.fillStyle = "#fef3c7"; g.fill(); g.strokeStyle = col; g.lineWidth = 1.5; g.stroke(); g.fillStyle = "#7c2d12"; g.fillText(txt, lx + 8, ly + 4.5);
+        if (!exporting) l3pf.annBoxes.push({ id: a.id, x0: lx, y0: ly - 11, x1: lx + w, y1: ly + 11 });
+      } else {
+        const lx = Math.min(Math.max(x - 10, gm.l + 2), gm.l + gm.w - w - 2); g.strokeStyle = col; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, y); g.lineTo(x, ly + 11); g.stroke();
+        rr(lx, ly - 11, w, 22, 7); g.fillStyle = "#fef3c7"; g.fill(); g.strokeStyle = col; g.lineWidth = 1.5; g.stroke(); g.fillStyle = "#7c2d12"; g.fillText(txt, lx + 8, ly + 4.5);
+        g.beginPath(); g.arc(x, y, 6, 0, 6.2832); g.fillStyle = col; g.fill(); g.strokeStyle = "#fff"; g.lineWidth = 2; g.stroke();
+        if (!exporting) l3pf.annBoxes.push({ id: a.id, x0: Math.min(lx, x - 8), y0: ly - 11, x1: Math.max(lx + w, x + 8), y1: y + 8 });
+      }
+    }
+  });
+}
+function l3pfAnnHit(px, py) { const b = (l3pf.annBoxes || []).slice().reverse().find(q => px >= q.x0 - 3 && px <= q.x1 + 3 && py >= q.y0 - 3 && py <= q.y1 + 3); return b ? l3pf.ann.find(a => a.id === b.id) : null; }
+async function l3pfAnnEdit(a) {
+  if (a.k === "note") { if (typeof uiPrompt !== "function") return; const t = await uiPrompt("Kommentar (tomt = ta bort)", a.text || ""); if (t == null) return; if (!String(t).trim()) l3pf.ann = l3pf.ann.filter(x => x !== a); else a.text = String(t).trim(); }
+  else { if (typeof uiConfirm !== "function" || !(await uiConfirm(`Ta bort plushöjden ${l3pfPlus(a.z)}?`, { ok: "Ta bort" }))) return; l3pf.ann = l3pf.ann.filter(x => x !== a); }
+  l3pfAnnSave(); l3pfDraw();
+}
+async function l3pfAnnNote(t0, t1) { if (typeof uiPrompt !== "function") return; const t = await uiPrompt(t1 != null ? "Kommentar för området (t.ex. Fundament F12)" : "Kommentar (t.ex. Fundament F12)", ""); if (t == null || !String(t).trim()) return; const a = { k: "note", t: t0, text: String(t).trim() }; if (t1 != null) { a.t = Math.min(t0, t1); a.t1 = Math.max(t0, t1); } else a.z = l3pfSurfZ(t0); l3pfAnnAdd(a); }
+function l3pfTool(t) { l3pf.tool = l3pf.tool === t ? null : t; const el = l3pf.el; if (el) el.querySelectorAll("[data-pf=tspot],[data-pf=tnote]").forEach(b => b.classList.toggle("on", l3pf.tool === b.dataset.pf.slice(1))); if (l3pf.cv) l3pf.cv.style.cursor = l3pf.tool ? "copy" : "crosshair"; l3Status(l3pf.tool === "spot" ? "Plushöjd: klicka i profilen (Alt = fri höjd i stället för ytan)." : l3pf.tool === "note" ? "Kommentar: klicka för en punkt eller dra över ett område." : "Verktyg av."); }
+/* Etiketter i 3D längs linjen (plushöjder och kommentarer) */
+function l3pfAnn3d() {
+  if (l3pf.annGrp) { l3.scene.remove(l3pf.annGrp); l3pf.annGrp.traverse(o => { if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } if (o.geometry) o.geometry.dispose(); }); l3pf.annGrp = null; }
+  if (!l3pf.A || !l3pf.data || !l3pf.ann || !l3pf.ann.length) { l3Render(); return; } const A = l3pf.A, B = l3pf.B, L = l3pf.data.L, grp = new THREE.Group();
+  l3pf.ann.forEach(a => { const tm = a.t1 != null ? (a.t + a.t1) / 2 : a.t, z = a.z != null ? a.z : l3pfSurfZ(tm); if (z == null) return; const txt = a.k === "spot" ? l3pfPlus(z) : (a.text || "Kommentar"), cv = document.createElement("canvas"), c = cv.getContext("2d"); c.font = "700 34px system-ui"; const w = Math.ceil(c.measureText(txt).width) + 30; cv.width = w; cv.height = 56; c.font = "700 34px system-ui"; c.fillStyle = a.k === "spot" ? "#0f172a" : "#fef3c7"; c.strokeStyle = a.k === "spot" ? "#fff" : "#d97706"; c.lineWidth = 4; c.beginPath(); if (c.roundRect) c.roundRect(3, 3, w - 6, 50, 14); else c.rect(3, 3, w - 6, 50); c.fill(); c.stroke(); c.fillStyle = a.k === "spot" ? "#fff" : "#7c2d12"; c.fillText(txt, 15, 40);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthTest: false, sizeAttenuation: false })); sp.scale.set(0.05 * w / 56, 0.05, 1); sp.position.set(A[0] + (B[0] - A[0]) * tm / L, A[1] + (B[1] - A[1]) * tm / L, z - l3.O[2] + 1.2); sp.renderOrder = 33; sp.userData.noHit = true; sp.raycast = () => {}; grp.add(sp);
+    const pt = new THREE.Points(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(sp.position.x, sp.position.y, z - l3.O[2])]), new THREE.PointsMaterial({ color: a.k === "spot" ? 0xdc2626 : 0xd97706, size: 10, sizeAttenuation: false, depthTest: false })); pt.renderOrder = 33; pt.raycast = () => {}; grp.add(pt); });
+  l3.scene.add(grp); l3pf.annGrp = grp; l3Render();
+}
 /* ---- Export ------------------------------------------------------------------------------------------------------------- */
 /* Vad profilen bygger på: moln, modeller, jämförelse – och var den är tagen (situationskarta). Används i PNG, DXF och CSV (Victor 2026-11-02). */
 function l3pfMeta() {
@@ -256,6 +328,7 @@ function l3pfMeta() {
   if (l3pf.cmp && l3pf.diff) lines.push(`Jämförelse: ${D.series[ids.indexOf(l3pf.cmp[0])].name} mot ${D.series[ids.indexOf(l3pf.cmp[1])].name} – schakt ${l3pfF(l3pf.diff.cut, 2)} m², fyllning ${l3pfF(l3pf.diff.fill, 2)} m²`);
   if (l3pf.ifcOn && l3pf.ifc.length) lines.push(`IFC-modeller i genomskärningen: ${l3pf.ifc.filter(m => !l3pf.hide.has("ifc:" + m.id)).map(m => m.name).join(", ") || "–"}`);
   if (l3pf.level != null) lines.push(`Nivålinje ${l3pfF(l3pf.level, 2)} m ö.h.`);
+  { const sp = l3pf.ann.filter(a => a.k === "spot"), nt = l3pf.ann.filter(a => a.k === "note"); if (sp.length) lines.push(`Plushöjder: ${sp.slice(0, 12).map(a => l3pfPlus(a.z) + " (" + l3pfF(a.t, 1) + " m)").join(", ")}${sp.length > 12 ? " …" : ""}`); nt.slice(0, 8).forEach(a => lines.push(`Kommentar: ${a.text} (${l3pfF(a.t, 1)}${a.t1 != null ? "–" + l3pfF(a.t1, 1) : ""} m)`)); }
   const d = new Date(); lines.push(`Skapad ${d.toLocaleDateString("sv-SE")} ${d.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" })}`);
   return lines;
 }
@@ -296,8 +369,9 @@ function l3pfDxfText(kind3d) {
   const A = l3pf.A, B = l3pf.B, ox = A[0] + l3.O[0], oy = A[1] + l3.O[1], L = D.L, ux = (B[0] - A[0]) / L, uy = (B[1] - A[1]) / L, M = (t, z) => [ox + ux * t, oy + uy * t, z];
   if (kind3d) {
     line("PROFILLINJE", M(0, 0), M(L, 0));
-    if (l3pf.ifcOn) l3pf.ifc.forEach(m => { if (l3pf.hide.has("ifc:" + m.id)) return; const nm = lay("PROFIL_IFC_" + l3pfLayer(m.name), l3pfAci(m.color)), S = m.segs; for (let k = 0; k < S.length; k += 4) line(nm, M(S[k], S[k + 1]), M(S[k + 2], S[k + 3])); });
+    if (l3pf.ifcOn) l3pf.ifc.forEach(m => { if (l3pf.hide.has("ifc:" + m.id)) return; const nm = lay("PROFIL_IFC_" + l3pfLayer(m.name), l3pfAci(m.color)); m.objs.forEach(o => { if (o.polys) o.polys.forEach(q => { if (q.pts.length > 1) pl(nm, q.pts.map(c => M(c[0], c[1])), q.closed, true); }); else { const S = o.segs; for (let k = 0; k < S.length; k += 4) line(nm, M(S[k], S[k + 1]), M(S[k + 2], S[k + 3])); } }); });
     if (l3pf.level != null) line(lay("PROFIL_NIVA", 30), M(0, l3pf.level), M(L, l3pf.level));
+    l3pf.ann.forEach(a => { const tm = a.t1 != null ? (a.t + a.t1) / 2 : a.t, z = a.z != null ? a.z : (l3pfSurfZ(tm) ?? 0), lyr = a.k === "spot" ? lay("PROFIL_PLUSHOJD", 1) : lay("PROFIL_KOMMENTAR", 30), P0 = M(tm, z), P1 = M(tm, z + 1.5); line(lyr, P0, P1); body.push("0", "TEXT", "8", lyr, "10", num(P1[0]), "20", num(P1[1]), "30", num(P1[2]), "40", "0.4", "1", l3pfAsc(a.k === "spot" ? (z >= 0 ? "+" : "-") + l3pfF(Math.abs(z), 2) : a.text)); if (a.t1 != null) { line(lyr, M(a.t, z), M(a.t, z + 1.5)); line(lyr, M(a.t1, z), M(a.t1, z + 1.5)); } });
     D.series.forEach((s, i) => { if (l3pf.hide.has(s.id)) return; const ln = l3pf.lines[i], lay_ = lay("PROFIL_" + l3pfLayer(s.name), s.aci); let seg = []; const flush = () => { if (seg.length > 1) pl(lay_, seg, false, true); seg = []; }; ln.v.forEach((v, b) => { if (v == null) flush(); else seg.push(M(ln.t(b), v)); }); flush(); });
   } else {
     const all = []; D.series.forEach((s, i) => { if (!l3pf.hide.has(s.id)) l3pf.lines[i].v.forEach(v => { if (v != null) all.push(v); }); }); const zlo = Math.floor(Math.min(...all, 0) / 1) * 1, zhi = Math.ceil(Math.max(...all, 1)), zs = l3pfNice(zhi - zlo, 8), th = Math.max(0.15, (zhi - zlo) / 60);
@@ -307,7 +381,7 @@ function l3pfDxfText(kind3d) {
     // höjdskala (streck + siffror) på båda sidor, ifylld IFC-genomskärning och nivålinje
     for (let z = Math.ceil(zlo / zs) * zs; z <= zhi + 1e-9; z += zs) { line("PROFIL_SKALA", [-th * 0.9, z], [0, z]); line("PROFIL_SKALA", [L, z], [L + th * 0.9, z]); text("PROFIL_TEXT", [L + th * 1.2, z - th / 2], th, l3pfF(z, 2)); for (let k = 1; k < 5; k++) { const zz = z + zs * k / 5; if (zz < zhi) { line("PROFIL_SKALA", [-th * 0.45, zz], [0, zz]); line("PROFIL_SKALA", [L, zz], [L + th * 0.45, zz]); } } }
     for (let t = 0; t <= L + 1e-9; t += xs) line("PROFIL_SKALA", [t, zlo - th * 0.9], [t, zlo]); lay("PROFIL_SKALA", 7);
-    if (l3pf.ifcOn) l3pf.ifc.forEach(m => { if (l3pf.hide.has("ifc:" + m.id)) return; const nm = lay("PROFIL_IFC_" + l3pfLayer(m.name), l3pfAci(m.color)), S = m.segs; for (let k = 0; k < S.length; k += 4) line(nm, [S[k], S[k + 1]], [S[k + 2], S[k + 3]]); });
+    if (l3pf.ifcOn) l3pf.ifc.forEach(m => { if (l3pf.hide.has("ifc:" + m.id)) return; const nm = lay("PROFIL_IFC_" + l3pfLayer(m.name), l3pfAci(m.color)); m.objs.forEach(o => { if (o.polys) o.polys.forEach(q => { if (q.pts.length > 1) pl(nm, q.pts, q.closed, false); }); else { const S = o.segs; for (let k = 0; k < S.length; k += 4) line(nm, [S[k], S[k + 1]], [S[k + 2], S[k + 3]]); } }); });
     if (l3pf.level != null) { line(lay("PROFIL_NIVA", 30), [0, l3pf.level], [L, l3pf.level]); text("PROFIL_TEXT", [L * 0.01, l3pf.level + th * 0.3], th, "Niva " + l3pfF(l3pf.level, 2)); }
     // underlag (moln, modeller, jämförelse) under profilen och en situationskarta nere till höger: var profilen är tagen
     { const meta = l3pfMeta(), boxes = l3pfBoxes(), S = Math.max(L * 0.22, 20), sx0 = L - S, sy1 = zlo - th * 5, sy0 = sy1 - S, wa = [ox, oy], wb = [ox + ux * L, oy + uy * L];
@@ -317,6 +391,8 @@ function l3pfDxfText(kind3d) {
       pl(lay("PROFIL_KARTA", 8), [[sx0, sy0], [L, sy0], [L, sy1], [sx0, sy1]], true, false);
       boxes.forEach(b => { const p0 = Q(b.x0, b.y0), p1 = Q(b.x1, b.y1); pl(lay(b.kind === "moln" ? "PROFIL_KARTA_MOLN" : "PROFIL_KARTA_IFC", b.kind === "moln" ? 5 : 8), [p0, [p1[0], p0[1]], p1, [p0[0], p1[1]]], true, false); });
       const qa = Q(wa[0], wa[1]), qb = Q(wb[0], wb[1]); line(lay("PROFIL_KARTA_PROFIL", 6), qa, qb); text("PROFIL_KARTA_PROFIL", [qa[0] + th * 0.3, qa[1] + th * 0.3], th, "A"); text("PROFIL_KARTA_PROFIL", [qb[0] + th * 0.3, qb[1] + th * 0.3], th, "B"); text("PROFIL_INFO", [sx0, sy1 + th * 0.4], th * 0.8, "Var profilen ar tagen"); }
+    l3pf.ann.forEach((a, k) => { if (a.k === "spot") { pl(lay("PROFIL_PLUSHOJD", 1), [[a.t, a.z], [a.t - th * 0.5, a.z + th], [a.t + th * 0.5, a.z + th]], true, false); line("PROFIL_PLUSHOJD", [a.t, a.z + th], [a.t, a.z + th * 3]); text("PROFIL_PLUSHOJD", [a.t + th * 0.4, a.z + th * 3], th, (a.z >= 0 ? "+" : "-") + l3pfF(Math.abs(a.z), 2)); }
+      else { const top = zhi - th * (2 + (k % 3) * 2); lay("PROFIL_KOMMENTAR", 30); if (a.t1 != null) { pl("PROFIL_KOMMENTAR", [[a.t, zlo], [a.t1, zlo], [a.t1, zhi], [a.t, zhi]], true, false); text("PROFIL_KOMMENTAR", [a.t + th * 0.4, top], th, a.text); } else { const zz = a.z != null ? a.z : zlo; line("PROFIL_KOMMENTAR", [a.t, zz], [a.t, top]); text("PROFIL_KOMMENTAR", [a.t + th * 0.4, top], th, a.text); } } });
     pl("PROFIL_RAM", [[0, zlo], [L, zlo], [L, zhi], [0, zhi]], true, false); lay("PROFIL_RAM", 8); lay("PROFIL_RUTNAT", 9); lay("PROFIL_TEXT", 7);
     D.series.forEach((s, i) => { if (l3pf.hide.has(s.id)) return; const ln = l3pf.lines[i], name = lay("PROFIL_" + l3pfLayer(s.name), s.aci); let seg = []; const flush = () => { if (seg.length > 1) pl(name, seg, false, false); seg = []; }; ln.v.forEach((v, b) => { if (v == null) flush(); else seg.push([ln.t(b), v]); }); flush(); text("PROFIL_TEXT", [L * 0.01, zhi - th * (2.2 + i * 1.6)], th, s.name); });
     // skillnadsytor som slutna polygoner per sammanhängande område + areatext
@@ -336,14 +412,15 @@ const l3pfStamp = () => { const d = new Date(), p = x => String(x).padStart(2, "
 function l3pfDxf(three) { if (!l3pf.data) return; l3pfDownload(`Profil${three ? " 3D" : ""} ${l3pfStamp()}.dxf`, new Blob([l3pfDxfText(three)], { type: "application/dxf" })); l3Toast(three ? "Profilen som 3D-linjer i modellens koordinater (DXF) nedladdad." : "Profilen som DXF (längd/höjd) nedladdad."); }
 function l3pfCsv() {
   const D = l3pf.data, rows = []; D.series.forEach((s, i) => { const ln = l3pf.lines[i]; ln.v.forEach((v, b) => { if (v != null) rows.push([s.name, "Ytlinje", ln.t(b), 0, v]); }); s.pts.forEach(q => rows.push([s.name, "Punkt", q[0], q[1], q[2]])); });
+  l3pf.ann.forEach(a => rows.push([a.k === "spot" ? "Plushöjd" : "Kommentar: " + a.text, a.k === "spot" ? "Plushöjd" : "Kommentar", a.t, a.t1 != null ? a.t1 : 0, a.z != null ? a.z : (l3pfSurfZ(a.t) ?? "")]));
   const meta = l3pfMeta().map(t => '"' + t.replace(/"/g, '""') + '"').join("\r\n"), body = l3ptCsvText(rows, ["Moln", "Typ", "Avstånd (m)", "Sida (m)", "Höjd (m ö.h.)"]); l3pfDownload(`Profil ${l3pfStamp()}.csv`, new Blob(["\uFEFF" + meta + "\r\n\r\n" + body.replace(/^\uFEFF/, "")], { type: "text/csv;charset=utf-8" }));
 }
 function l3pfPng() {
-  const el = document.createElement("canvas"), W = 1800, H = 900, FH = 380, S = 340; el.width = W; el.height = H + FH; const g = el.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, W, H + FH);
+  const meta0 = l3pfMeta(), el = document.createElement("canvas"), W = 1800, H = 900, FH = Math.max(380, 70 + meta0.length * 31 + 20), S = 340; el.width = W; el.height = H + FH; const g = el.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, W, H + FH);
   const keep = l3pf.hover; l3pf.hover = null; l3pfDraw(g, [W, H]); l3pf.hover = keep;
   // underkant: vad profilen bygger på (vänster) och situationskarta (höger)
   g.fillStyle = "#e2e8f0"; g.fillRect(0, H, W, 2); g.textAlign = "left"; let yy = H + 38; g.fillStyle = "#0f172a"; g.font = "700 24px system-ui"; g.fillText("Profil – underlag", 30, yy); yy += 12;
   const ids = l3pf.data.series.map(s => s.id), sw = (col, y) => { g.fillStyle = col; g.fillRect(30, y - 15, 14, 14); };
-  l3pfMeta().forEach(t => { yy += 31; g.font = "20px system-ui"; g.fillStyle = "#334155"; const sr = l3pf.data.series.find(q => t.startsWith("Punktmoln: " + q.name)); if (sr) { sw(sr.color, yy); g.fillText(t, 54, yy); } else g.fillText(t, 30, yy); });
+  meta0.forEach(t => { yy += 31; g.font = "20px system-ui"; g.fillStyle = "#334155"; const sr = l3pf.data.series.find(q => t.startsWith("Punktmoln: " + q.name)); if (sr) { sw(sr.color, yy); g.fillText(t, 54, yy); } else g.fillText(t, 30, yy); });
   l3pfSituation(g, W - S - 30, H + 20, S); el.toBlob(b => b && l3pfDownload(`Profil ${l3pfStamp()}.png`, b));
 }

@@ -171,7 +171,33 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (!pf2.ifc || !(Math.abs(pf2.ifcT[0] - 10) < 0.1 && Math.abs(pf2.ifcT[1] - 14) < 0.1) || !pf2.colInputs || !pf2.col || !pf2.colKept || !pf2.lvl || !pf2.hz || !pf2.ref || !pf2.draw || !pf2.dxf || !pf2.dxf3 || !pf2.map || !pf2.meta || !pf2.info || !pf2.sit) fail('Profil: färg, IFC-genomskärning, nivå, referens, DXF: ' + JSON.stringify(pf2));
   console.log('OK: profil – färgval, IFC-genomskärning, nivålinje, referens/hover, DXF med skala', JSON.stringify(pf2));
-  if (process.env.PNGSHOT) { const data = await page.evaluate(async () => { const O = l3.O; const bx = new THREE.BoxGeometry(4, 4, 2).toNonIndexed(); bx.translate(2, 0, 1.3); const mesh = new THREE.Mesh(bx, new THREE.MeshBasicMaterial()); mesh.userData.l3b = { ranges: [{ start: 0, count: bx.getAttribute('position').count, name: 'Lada', guid: 'gx' }], hidden: new Set(), model: { id: 'ifcX' } }; l3.scene.add(mesh); l3b.models.push({ id: 'ifcX', name: 'Testmodell.ifc', visible: true, meshes: [mesh], tris: 12 }); l3pfShow([-10, 0, 0], [10, 0, 0], 1); l3pf.level = 0.25; l3pf.hover = 12; l3pf.hz = 1.2; l3pf.ref = { t: 4, z: 0.2 };
+  // plushöjder, kommentarer och fyllda IFC-snitt i objektets färg
+  const pf3 = await page.evaluate(async () => {
+    const o = {}; l3pfClear(); l3SetPref('pfAnn', {});
+    const bx = new THREE.BoxGeometry(4, 4, 2).toNonIndexed(); bx.translate(2, 0, 1.3); const nv = bx.getAttribute('position').count, col = new Float32Array(nv * 3); for (let i = 0; i < nv; i++) { col[i * 3] = 1; col[i * 3 + 1] = 0.5; col[i * 3 + 2] = 0; } bx.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const mesh = new THREE.Mesh(bx, new THREE.MeshBasicMaterial({ vertexColors: true })); mesh.userData.l3b = { ranges: [{ start: 0, count: nv, name: 'Fundament', guid: 'gf' }], hidden: new Set(), model: { id: 'ifcF' } }; l3.scene.add(mesh); l3b.models.push({ id: 'ifcF', name: 'Fund.ifc', visible: true, meshes: [mesh], tris: 12 });
+    l3pfShow([-10, 0, 0], [10, 0, 0], 1);
+    const ob = l3pf.ifc[0] && l3pf.ifc[0].objs[0]; o.fillCol = !!ob && ob.color === '#ff8000'; o.closed = !!ob && !!ob.polys && ob.polys.some(p => p.closed && p.pts.length >= 5);
+    // klicka ut en plushöjd med verktyget
+    l3pfTool('spot'); o.toolOn = l3pf.tool === 'spot' && l3pf.el.querySelector('[data-pf=tspot]').classList.contains('on');
+    const cv = l3pf.cv, r = cv.getBoundingClientRect(), g = l3pfGeom(), px = r.left + g.l + g.w * 0.25, py = r.top + g.t + g.h * 0.4;
+    cv.dispatchEvent(new PointerEvent('pointermove', { clientX: px, clientY: py, bubbles: true, pointerId: 1 })); cv.dispatchEvent(new PointerEvent('pointerdown', { clientX: px, clientY: py, button: 0, bubbles: true, pointerId: 1 })); cv.dispatchEvent(new PointerEvent('pointerup', { clientX: px, clientY: py, button: 0, bubbles: true, pointerId: 1 }));
+    o.spot = l3pf.ann.length === 1 && l3pf.ann[0].k === 'spot' && Math.abs(l3pf.ann[0].z - 0) < 0.01; o.plus = l3pfPlus(0.5) === '+0,50' && l3pfPlus(-0.25) === '\u22120,25';
+    l3pfTool('spot'); o.toolOff = l3pf.tool === null;
+    // kommentar (område) och punkt
+    l3pfAnnAdd({ k: 'note', t: 10, t1: 14, text: 'Fundament F12' }); l3pfAnnAdd({ k: 'note', t: 3, z: 0, text: 'Pelare' });
+    l3pfDraw(); o.boxes = l3pf.annBoxes.length === 3; o.hit = !!l3pfAnnHit(l3pf.annBoxes[1].x0 + 3, l3pf.annBoxes[1].y0 + 3);
+    // sparas per profil och kommer tillbaka
+    l3pfShow([-10, 0, 0], [10, 0, 0], 1); o.kept = l3pf.ann.length === 3 && l3pf.ann.some(a => a.text === 'Fundament F12' && a.t1 === 14);
+    const dxf = l3pfDxfText(false), dxf3 = l3pfDxfText(true); o.dxf = /PROFIL_PLUSHOJD/.test(dxf) && /PROFIL_KOMMENTAR/.test(dxf) && /Fundament F12/.test(dxf) && /PROFIL_PLUSHOJD/.test(dxf3);
+    o.meta = l3pfMeta().some(t => /Plushöjder: /.test(t)) && l3pfMeta().some(t => /Kommentar: Fundament F12/.test(t)); o.sprites = !!l3pf.annGrp && l3pf.annGrp.children.length === 6;
+    // exportbilden ska inte spara träffytor
+    const n0 = l3pf.annBoxes.length; l3pfDraw(document.createElement('canvas').getContext('2d'), [900, 450]); o.noBoxChange = l3pf.annBoxes.length === n0;
+    l3pf.ann = []; l3pfAnnSave(); l3b.models.pop(); l3.scene.remove(mesh); l3pfClear(); return o;
+  });
+  if (!pf3.fillCol || !pf3.closed || !pf3.toolOn || !pf3.spot || !pf3.plus || !pf3.toolOff || !pf3.boxes || !pf3.hit || !pf3.kept || !pf3.dxf || !pf3.meta || !pf3.sprites || !pf3.noBoxChange) fail('Profil: plushöjder, kommentarer, fyllda IFC-snitt: ' + JSON.stringify(pf3));
+  console.log('OK: profil – plushöjder, kommentarer (punkt/område), sparas per profil, DXF/CSV/3D, fyllda IFC-snitt i objektets färg', JSON.stringify(pf3));
+  if (process.env.PNGSHOT) { const data = await page.evaluate(async () => { const O = l3.O; const bx = new THREE.BoxGeometry(4, 4, 2).toNonIndexed(); bx.translate(2, 0, 1.3); { const nv = bx.getAttribute('position').count, col = new Float32Array(nv * 3); for (let i = 0; i < nv; i++) { col[i * 3] = 0.9; col[i * 3 + 1] = 0.55; col[i * 3 + 2] = 0.2; } bx.setAttribute('color', new THREE.BufferAttribute(col, 3)); } const mesh = new THREE.Mesh(bx, new THREE.MeshBasicMaterial()); mesh.userData.l3b = { ranges: [{ start: 0, count: bx.getAttribute('position').count, name: 'Lada', guid: 'gx' }], hidden: new Set(), model: { id: 'ifcX' } }; l3.scene.add(mesh); l3b.models.push({ id: 'ifcX', name: 'Testmodell.ifc', visible: true, meshes: [mesh], tris: 12 }); l3pfShow([-10, 0, 0], [10, 0, 0], 1); l3pf.level = 0.25; l3pf.hover = 12; l3pf.hz = 1.2; l3pf.ref = { t: 4, z: 0.2 }; l3pf.ann = [{ id: 'a1', k: 'spot', t: 5, z: 0.5 }, { id: 'a2', k: 'note', t: 10, t1: 14, text: 'Fundament F12' }, { id: 'a3', k: 'note', t: 17, z: 0, text: 'Pelare P3' }];
     const el = document.createElement('canvas'); const orig = l3pfDownload; let url = null; window.l3pfDownload = (n, b) => { url = b; }; l3pfDraw(); l3pfPng(); await new Promise(r => setTimeout(r, 600)); window.l3pfDownload = orig; if (!url) return null; const buf = await url.arrayBuffer(); return Array.from(new Uint8Array(buf)).map(b => String.fromCharCode(b)).join(''); }); if (data) require('fs').writeFileSync(process.env.PNGSHOT, Buffer.from(data, 'binary')); await page.evaluate(() => { l3pfDraw(); }); await page.screenshot({ path: process.env.PNGSHOT + '.view.png' }); }
   if (process.env.SHOT) { await page.evaluate(() => { l3ptProfShow([-10, 0, 0], [10, 0, 0], 1); l3pfFs(); l3pf.hover = 4; l3pfDraw(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOT }); }
   await browser.close(); server.close();
