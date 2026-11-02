@@ -772,11 +772,11 @@ async function l3BuildPlan() {
   if (typeof l3lApplyPlanOp === "function") l3lApplyPlanOp();
   l3pd.have = null; if (!l3pd.on && l3.orbit) { l3pd.on = true; l3.orbit.addEventListener("change", l3pdSchedule); } l3pdSchedule();
 }
-/* Skarp ritning där man tittar (Victor 2026-11-02): när man zoomat in ritas den synliga delen av PDF:en på nytt i skärmens upplösning och läggs som en bild ovanpå (följer kameran när den flyttas och ritas om när man stannat). */
+/* Skarp ritning där man tittar (Victor 2026-11-02; även på mobil, med max 3 072 px, eftersom basbilden där bara är 2 048 px): när man zoomat in ritas den synliga delen av PDF:en på nytt i skärmens upplösning och läggs som en bild ovanpå (följer kameran när den flyttas och ritas om när man stannat). */
 const l3pd = { t: 0, on: false, have: null, task: null, busy: false };
 function l3pdSchedule() { clearTimeout(l3pd.t); l3pd.t = setTimeout(l3pdRender, 380); }
 async function l3pdRender() {
-  const pm = l3.planMesh, lowMem = typeof lowMemDevice !== "undefined" && lowMemDevice; if (!pm || !pm.visible || !page || lowMem || !l3.renderer || l3pd.busy || !plan || !plan.calib) return;
+  const pm = l3.planMesh, lowMem = typeof lowMemDevice !== "undefined" && lowMemDevice; if (!pm || !pm.visible || !page || !l3.renderer || l3pd.busy || !plan || !plan.calib) return;
   const cam = l3.camera, zP = (plan.calib.model[0][2] || 0) - l3.O[2], pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -zP), rc = new THREE.Raycaster(), hit = [], v = new THREE.Vector3();
   cam.updateMatrixWorld(); for (const [nx, ny] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { rc.setFromCamera(new THREE.Vector2(nx, ny), cam); if (!rc.ray.intersectPlane(pl, v)) { hide(); return; } hit.push(v.clone()); }
   function hide() { const d = pm.userData.detail; if (d) { d.visible = false; l3Render(); } }
@@ -787,7 +787,7 @@ async function l3pdRender() {
   let px0 = Math.max(view[0], Math.min(...pts.map(q => q[0]))), px1 = Math.min(view[2], Math.max(...pts.map(q => q[0]))), py0 = Math.max(view[1], Math.min(...pts.map(q => q[1]))), py1 = Math.min(view[3], Math.max(...pts.map(q => q[1])));
   if (!(px1 - px0 > 1) || !(py1 - py0 > 1)) { hide(); return; }
   const padx = (px1 - px0) * 0.12, pady = (py1 - py0) * 0.12; px0 = Math.max(view[0], px0 - padx); px1 = Math.min(view[2], px1 + padx); py0 = Math.max(view[1], py0 - pady); py1 = Math.min(view[3], py1 + pady);
-  const dpr = Math.min(2, l3.renderer.getPixelRatio()), maxT = Math.min(8192, (l3.renderer.capabilities && l3.renderer.capabilities.maxTextureSize) || 4096), el = l3.renderer.domElement, screenLong = Math.max(el.clientWidth, el.clientHeight) * dpr * 1.25;
+  const dpr = Math.min(2, l3.renderer.getPixelRatio()), maxT = Math.min(lowMem ? 3072 : 8192, (l3.renderer.capabilities && l3.renderer.capabilities.maxTextureSize) || 4096), el = l3.renderer.domElement, screenLong = Math.max(el.clientWidth, el.clientHeight) * dpr * 1.25;
   const regW = px1 - px0, regH = py1 - py0, long = Math.max(regW, regH), want = Math.min(maxT, Math.max(512, screenLong * Math.max(regW, regH) / long)), sc = Math.min(40, want / long);
   const base = pm.material.map && pm.material.map.image ? pm.material.map.image.width / Math.max(1, (page.view[2] - page.view[0])) : 1;   // basbildens bildpunkter per PDF-punkt
   if (sc < base * 1.35) { hide(); return; }   // basbilden är redan tillräckligt skarp
