@@ -390,6 +390,7 @@ function l3mInfo(m) {
       ["Höjd", `${f(Math.min(...zs))} – ${f(Math.max(...zs))} m (medel ${f(zs.reduce((s2, z) => s2 + z, 0) / zs.length)})`]);
     sub = `omkrets ${f(per, 2)} m · ${P.length} hörn${Math.abs(real - plan) > plan * 0.01 ? ` · lutande ${f(real, 2)} m²` : ""}`;
   }
+  if (m.kind === "profile" && P.length >= 2) { const hz = Math.hypot(P[1].x - P[0].x, P[1].y - P[0].y); rows.push(["Profillängd", `${f(hz, 1)} m`], ["Bredd", `±${f(Number(m.w) || 0.5, 2)} m`], ["Höjd A / B", `${f(P[0].z, 2)} / ${f(P[1].z, 2)} m`]); sub = `längd ${f(hz, 1)} m · bredd ±${f(Number(m.w) || 0.5, 2)} m · klicka för att öppna`; }
   if (m.kind === "cutfill" && typeof l3volInfoRows === "function") { rows.push(...l3volInfoRows(m)); sub = m.vol && m.vol.res ? `nettot ${m.vol.res.net >= 0 ? "+" : "−"}${Math.round(Math.abs(m.vol.res.net)).toLocaleString("sv-SE")} m³ · ${l3Fmt(m.vol.res.area, 0)} m²` : "räknas…"; }
   const names = (m.objs || []).map(o => (o && o.name) || "");
   const objTxt = names.some(Boolean) ? (m.kind === "dist" ? `${names[0] || "?"} → ${names[1] || "?"}` : [...new Set(names.filter(Boolean))].join(", ")) : "";
@@ -398,7 +399,7 @@ function l3mInfo(m) {
   rows.push(["Mätt av", `${m.by || "–"} · ${m.at ? new Date(m.at).toLocaleString("sv-SE", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}`], ["Status", m.saved ? "Sparad i projektet" : "Inte sparad"]);
   return { sub, objTxt, rows };
 }
-const L3M_KIND = { point: "Punkt", dist: "Avstånd", poly: "Polylinje", angle: "Vinkel", area: "Yta", volume: "Volym", objvol: "Objektvolym", cutfill: "Volym mot yta" };
+const L3M_KIND = { point: "Punkt", dist: "Avstånd", poly: "Polylinje", angle: "Vinkel", area: "Yta", volume: "Volym", objvol: "Objektvolym", cutfill: "Volym mot yta", profile: "Profil" };
 /* Punkten mitt längs en polylinje (för etiketten). pts: [x, y, z] eller THREE.Vector3. */
 function l3mPathMid(pts) {
   const V = pts.map(p => (p.isVector3 ? p : new THREE.Vector3(p[0], p[1], p[2])));
@@ -462,6 +463,7 @@ function l3mBindTab(host) {
     if (e.shiftKey && l3m.anchor && ids.includes(l3m.anchor)) { const a = ids.indexOf(l3m.anchor), z = ids.indexOf(m.id); if (!(e.ctrlKey || e.metaKey)) l3m.sel.clear(); ids.slice(Math.min(a, z), Math.max(a, z) + 1).forEach(id => l3m.sel.add(id)); l3kRenderTab(); l3mDraw(); return; }
     if (e.ctrlKey || e.metaKey) { l3m.sel.has(m.id) ? l3m.sel.delete(m.id) : l3m.sel.add(m.id); l3m.anchor = m.id; l3kRenderTab(); l3mDraw(); return; }
     l3m.sel.clear(); l3m.sel.add(m.id); l3m.anchor = m.id; l3kRenderTab(); l3mDraw();
+    if (m.kind === "profile" && typeof l3pfOpenSaved === "function") { l3pfOpenSaved(m); return; }
     if (m.hid) { m.hid = false; l3mDraw(); } const b3 = new THREE.Box3(); m.pts.forEach(p => b3.expandByPoint(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2]))); l3FlyTo(b3.getCenter(new THREE.Vector3()), Math.max(6, b3.getSize(new THREE.Vector3()).length() * 1.6)); }; });
   on("#v3MeasSave", () => l3mSave());
   on("#v3MeasLockAll", () => l3mLock(l3m.list, true));
