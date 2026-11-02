@@ -109,10 +109,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     { const w = new THREE.Mesh(new THREE.BoxGeometry(4, 4, 2), new THREE.MeshBasicMaterial()); w.position.set(qx - l3.O[0], qy - l3.O[1], 151 - l3.O[2]); w.updateMatrixWorld(true); l3.scene.add(w); l3b.models.push({ id: 'ifcsnap', visible: true, meshes: [w], tris: 0 }); l3spGoTo(qx, qy); const pi = l3sp.pin.slice(); o.ifc = !!l3sp.pinSnap && Math.abs(pi[2] - 152) < 0.05 && Math.hypot(pi[0] - qx, pi[1] - qy) < 1e-6; o.ifcZ = pi[2]; l3b.models.pop(); l3.scene.remove(w); }
     // Visa i 3D på/av: den aktiva ritningens yta ska släckas igen
     { if (!l3.planMesh) { l3.planMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial()); l3.planMesh.visible = false; l3.scene.add(l3.planMesh); } const cb = document.getElementById('spZshow'); l3sp.planId = plan.id; const was = l3.planMesh.visible; cb.checked = true; cb.dispatchEvent(new Event('change')); const on = l3.planMesh.visible; cb.checked = false; cb.dispatchEvent(new Event('change')); o.zoff = on && l3.planMesh.visible === was; }
+    // smidig panorering: den skarpa bilden ligger kvar (flyttas med CSS) tills nya är klar
+    { l3spFollow(false); l3spFit(); l3sp.key = ''; l3spDraw(); await wait(700); const dt = l3sp.dt; o.dt0 = dt.style.visibility === 'visible'; l3sp.view.tx += 40; l3sp.key = ''; l3spDraw(); o.dtKeep = dt.style.visibility === 'visible' && /translate\(/.test(dt.style.transform); await wait(900); o.dtBack = dt.style.visibility === 'visible' && dt.style.transform === ''; }
     // av
     l3SetPref('spSnapPc', false); l3spGoTo(qx, qy); o.off = !l3sp.pinSnap && Math.abs(l3sp.pin[0] - qx) < 1e-6; l3SetPref('spSnapPc', true); l3pcRemove('snapA'); return o;
   });
-  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off || !sn.ifc || !sn.zoff) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
+  if (!sn.snapped || sn.d1 > 0.01 || sn.d2 > 0.01 || !sn.indexed || !sn.far || !sn.off || !sn.ifc || !sn.zoff || !sn.dt0 || !sn.dtKeep || !sn.dtBack) fail('Fäst i punktmolnet: ' + JSON.stringify(sn));
   console.log('OK: klick i minimapen fäster nålen i punktmolnet (plan + höjd, med och utan rutindex, av/på)', JSON.stringify(sn));
   // Höjdkalibrering: höjden hämtas från ritningens kalibrering och kan ställas in, hämtas från 3D eller nålen, och ångras
   const zc = await page.evaluate(async () => {

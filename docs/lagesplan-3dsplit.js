@@ -19,7 +19,7 @@ const L3SP_CSS = `#v3SpBtn{font-size:17px}#v3SpBtn.on{background:#2563eb!importa
 #v3Sp .tapfx.snap .d{background:#16a34a;box-shadow:0 0 0 3px #fff,0 2px 8px rgba(22,163,74,.55)}#v3Sp .tapfx.snap .r{border-color:#16a34a}
 @keyframes spTapD{0%{transform:translate(-50%,-50%) scale(.2);opacity:0}25%{transform:translate(-50%,-50%) scale(1.5);opacity:1}55%{transform:translate(-50%,-50%) scale(1);opacity:1}100%{transform:translate(-50%,-50%) scale(1);opacity:0}}
 @keyframes spTapR{0%{transform:translate(-50%,-50%) scale(.15);opacity:.95}100%{transform:translate(-50%,-50%) scale(1.5);opacity:0}}
-#v3Sp .cw.tapp canvas#spCv{animation:spCwP .32s ease-out}@keyframes spCwP{0%{filter:brightness(1)}30%{filter:brightness(1.06)}100%{filter:brightness(1)}}
+
 body.v3-noanim #v3Sp .tapfx{display:none}
 #v3Sp .sph{position:absolute;left:0;right:0;top:-6px;height:12px;cursor:ns-resize;z-index:6;touch-action:none}#v3Sp .sph::after{content:"";position:absolute;left:50%;top:4px;width:46px;height:4px;margin-left:-23px;border-radius:2px;background:rgba(100,116,139,.5)}#v3Sp .sph:hover::after{background:#2563eb}
 #v3Sp .h{cursor:default}body.v3-splitting{user-select:none}body.v3-walkfs #v3Sp{display:none!important}`;
@@ -96,7 +96,7 @@ async function l3spLoad() {
     await pg.render({ canvasContext: ctx, viewport: vp }).promise;
     const aff = calibAffine(l3spCalib(p)), pyr = l3spPyramid(cv); l3sp.cache.set(p.id, { pg, img: cv, vp, pyr, aff, sig: calSig, file: p.file_path || "", page: plan && p.id === plan.id ? page : null });
     if (l3sp.cache.size > 3) l3sp.cache.delete(l3sp.cache.keys().next().value);
-    Object.assign(l3sp, { pg, img: cv, vp, pyr, aff, baseKey: "", dtKey: "" }); l3spFit(); l3spZSync(); l3sp.key = ""; if (f) f.textContent = "Tryck på ritningen för att flyga dit i 3D. Hjul zoomar, dra panorerar.";
+    Object.assign(l3sp, { pg, img: cv, vp, pyr, aff, baseKey: "", dtKey: "", dtView: null }); if (l3sp.dt) { l3sp.dt.style.visibility = "hidden"; l3sp.dt.style.transform = ""; } l3spFit(); l3spZSync(); l3sp.key = ""; if (f) f.textContent = "Tryck på ritningen för att flyga dit i 3D. Hjul zoomar, dra panorerar.";
   } catch (e) { if (f) f.textContent = "Kunde inte visa ritningen: " + (e && e.message || e); } finally { l3sp.busy = false; }
 }
 function l3spFollow(on) { l3sp.follow = !!on; const b = document.getElementById("spFollow"); if (b) b.classList.toggle("on", l3sp.follow); l3sp.followCatch = l3sp.follow; l3sp.key = ""; }
@@ -139,7 +139,7 @@ function l3spBind() {
     const d = l3sp.drag; l3sp.drag = null; if (!d || moved > 4 || e.type === "pointercancel") return;
     const r = l3spBox(cv), px = e.clientX - r.left, py = e.clientY - r.top, now = performance.now();
     if (e.pointerType !== "mouse" && lastTap && now - lastTap.t < 320 && Math.hypot(px - lastTap.x, py - lastTap.y) < 28) { lastTap = null; const v = l3sp.view, nk = Math.min(60, v.k * 2.2); if (l3sp.follow) l3spFollow(false); v.tx = px - (px - v.tx) * nk / v.k; v.ty = py - (py - v.ty) * nk / v.k; v.k = nk; l3sp.key = ""; return; }   // dubbeltryck: zooma in
-    lastTap = { x: px, y: py, t: now }; const [x, y] = l3spFromScr(px, py); l3spTapFx(px, py, l3spSnapPcOn()); l3sp.followHold = performance.now() + 3500; setTimeout(() => { if (lastTap && lastTap.t === now) { lastTap = null; l3spGoTo(x, y); } }, e.pointerType === "mouse" ? 0 : 330);   // enkeltryck flyger dit (väntar in ett eventuellt dubbeltryck på pekskärm)
+    lastTap = { x: px, y: py, t: now }; const [x, y] = l3spFromScr(px, py); l3spTapFx(px, py, l3spSnapPcOn()); l3sp.followHold = performance.now() + 3500; setTimeout(() => { if (lastTap && lastTap.t === now) { lastTap = null; requestAnimationFrame(() => setTimeout(() => l3spGoTo(x, y), 0)); } }, e.pointerType === "mouse" ? 0 : 330);   // enkeltryck flyger dit (väntar in ett eventuellt dubbeltryck på pekskärm)
   };
   cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
   cv.addEventListener("dblclick", e => { e.preventDefault(); }); ["gesturestart", "gesturechange"].forEach(t => cv.addEventListener(t, e => e.preventDefault()));   // Safari: sidans egen nyp-zoom ska inte ta över
@@ -179,7 +179,7 @@ function l3spCloudSnap(x, y, r) {
 function l3spTapFx(px, py, snap) {
   if (typeof l3moOK === "function" && !l3moOK()) return; const cw = l3sp.cv && l3sp.cv.parentElement; if (!cw) return;
   const fx = document.createElement("div"); fx.className = "tapfx" + (snap ? " snap" : ""); fx.style.left = px + "px"; fx.style.top = py + "px"; fx.innerHTML = '<i class="r"></i><i class="r r2"></i><i class="d"></i>'; cw.appendChild(fx);
-  cw.classList.remove("tapp"); void cw.offsetWidth; cw.classList.add("tapp"); setTimeout(() => { fx.remove(); cw.classList.remove("tapp"); }, 900);
+  setTimeout(() => fx.remove(), 900);
 }
 function l3spGoTo(x, y) {
   let snap = null; if (l3spSnapPcOn() && l3sp.cv) { const a = l3spFromScr(0, 0), b = l3spFromScr(1, 0), mpp = Math.hypot(b[0] - a[0], b[1] - a[1]) || 0.05; snap = typeof l3pc !== "undefined" ? l3spCloudSnap(x, y, Math.min(1, Math.max(0.1, 6 * mpp))) : null; const zi = l3spIfcSnap(x, y); if (zi != null && (!snap || zi > snap[2])) snap = [x, y, zi, "ifc"]; }
@@ -413,20 +413,24 @@ function l3spMapDraw(b, r, dpr) {
    över den grova bilden. Pågående ritning avbryts när vyn ändras. */
 function l3spDetailSchedule(bw, bh, dpr, mapOn) {
   const dt = l3sp.dt; if (!dt || !l3sp.pg) return; clearTimeout(l3sp.dtT); if (l3sp.dtTask) { try { l3sp.dtTask.cancel(); } catch (e) { /* */ } l3sp.dtTask = null; }
-  if (l3sp.dtKey) { l3sp.dtKey = ""; dt.style.visibility = "hidden"; }       // det grova visas under tiden
-  l3sp.dtT = setTimeout(() => l3spDetail(bw, bh, dpr, mapOn), 170);
+  l3sp.dtKey = "";
+  const dv = l3sp.dtView, v = l3sp.view;   // den skarpa bilden följer med (flyttas/skalas med CSS) tills den nya är klar – inget blinkande, ingen omritning per bildruta
+  if (dv && (dv.bw !== bw || dv.bh !== bh || dv.pid !== l3sp.planId)) { dt.style.visibility = "hidden"; dt.style.transform = ""; l3sp.dtView = null; }
+  else if (dv && dt.style.visibility === "visible") { const f = v.k / dv.k; if (f > 0.55 && f < 1.8) { dt.style.transformOrigin = "0 0"; dt.style.transform = `translate(${(v.tx - dv.tx * f).toFixed(2)}px,${(v.ty - dv.ty * f).toFixed(2)}px) scale(${f.toFixed(5)})`; } else { dt.style.visibility = "hidden"; dt.style.transform = ""; } }
+  l3sp.dtT = setTimeout(() => l3spDetail(bw, bh, dpr, mapOn), 220);
 }
 async function l3spDetail(bw, bh, dpr, mapOn) {
   const dt = l3sp.dt, pg = l3sp.pg, im = l3sp.img; if (!dt || !pg || !im || !l3sp.open) return; const v = l3sp.view, key = [v.k.toFixed(5), v.tx.toFixed(1), v.ty.toFixed(1), bw, bh, l3sp.planId].join("|");
   const vpScale = l3sp.vp.scale || 1, s2 = vpScale * v.k * dpr; if (!(s2 > 0)) return;
-  if (dt.width !== bw || dt.height !== bh) { dt.width = bw; dt.height = bh; }
-  const c = dt.getContext("2d"); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, bw, bh);
+  const off = l3sp.dtOff || (l3sp.dtOff = document.createElement("canvas")); if (off.width !== bw || off.height !== bh) { off.width = bw; off.height = bh; }
+  const c = off.getContext("2d"); c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, bw, bh);
   const x0 = v.tx * dpr, y0 = v.ty * dpr, w = im.width * v.k * dpr, h = im.height * v.k * dpr; c.fillStyle = "#fff"; c.fillRect(Math.max(0, x0), Math.max(0, y0), Math.max(0, Math.min(bw, x0 + w) - Math.max(0, x0)), Math.max(0, Math.min(bh, y0 + h) - Math.max(0, y0)));
   let task; try { task = pg.render({ canvasContext: c, viewport: pg.getViewport({ scale: s2, offsetX: x0, offsetY: y0 }) }); } catch (e) { return; }
   l3sp.dtTask = task; l3sp.dtRenders = (l3sp.dtRenders || 0) + 1;
   try { await task.promise; } catch (e) { return; }                         // avbruten: en nyare vy tar över
   if (l3sp.dtTask !== task || !l3sp.open) return; l3sp.dtTask = null;
   const cur = [l3sp.view.k.toFixed(5), l3sp.view.tx.toFixed(1), l3sp.view.ty.toFixed(1), bw, bh, l3sp.planId].join("|"); if (cur !== key) return;   // vyn hann ändras
+  if (dt.width !== bw || dt.height !== bh) { dt.width = bw; dt.height = bh; } { const d2 = dt.getContext("2d"); d2.setTransform(1, 0, 0, 1, 0, 0); d2.clearRect(0, 0, bw, bh); d2.drawImage(off, 0, 0); } dt.style.transform = ""; l3sp.dtView = { k: v.k, tx: v.tx, ty: v.ty, bw, bh, pid: l3sp.planId };
   dt.style.mixBlendMode = mapOn ? "multiply" : "normal"; dt.style.opacity = mapOn ? String(l3spPdfOp() / 100) : "1"; dt.style.visibility = "visible"; l3sp.dtKey = key;
   if (mapOn) { l3sp.baseNoPdf = key; l3sp.baseKey = ""; l3sp.key = ""; }   // fotot ritas om utan den grova ritningen
 }
