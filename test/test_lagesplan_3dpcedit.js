@@ -223,6 +223,19 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // Dragmolnet lutar 0,1 m/m i y: efter ~2 m i sidled ska höjden vara ≈ +0,2 m och linjen ligga ≈ y = 2 (nedåt/uppåt beroende på normalen)
   if (!hot || Math.abs(Math.abs(g1.A[1]) - 2) > 0.3 || Math.abs(g1.A[1] - g1.B[1]) > 1e-6 || !g1.orbit || g1.drag || Math.abs(g1.L - 20) > 0.01 || Math.abs(Math.abs(g1.z) - 0.2) > 0.12) fail('Dra profillinjen i sidled: ' + JSON.stringify({ hot, g1 }));
   console.log('OK: profillinjen i 3D – glöd, stor markör, dras i sidled och räknas om', JSON.stringify({ hot, A: g1.A.map(v => Math.round(v * 100) / 100), z: Math.round(g1.z * 1000) / 1000 }));
+  // Dra ändpunkterna A och B var för sig (Victor 2026-11-02)
+  const e0 = await page.evaluate(() => { l3pfClear(); l3pc.clouds.slice().forEach(c => l3pcRemove(c.id)); const O = l3.O;
+    const P = []; for (let y = -8; y <= 8; y += 0.25) for (let x = -12; x <= 12; x += 0.25) P.push(x, y, 0.1 * y); l3pcBuild({ id: 'e1', name: 'Ändmoln' }, { info: { center: [O[0], O[1], O[2]], min: [0, 0, 0], max: [1, 1, 1], format: 't', n: 0, total: 0 }, chunks: [{ pos: new Float32Array(P), inten: new Uint8Array(P.length / 3) }] });
+    l3pfShow([-10, 0, 0], [10, 0, 0], 1); l3.orbit.target.set(0, 0, 0); l3.camera.position.set(0, -0.01, 40); l3.camera.lookAt(l3.orbit.target); l3.orbit.update(); l3.camera.updateMatrixWorld(true); l3.orbit.dispatchEvent({ type: 'change' });
+    const q = v => { const s2 = l3ToScreen(new THREE.Vector3(...v)), r = l3.renderer.domElement.getBoundingClientRect(); return [r.left + s2.x, r.top + s2.y]; };
+    document.querySelectorAll('#v3Canvas > *').forEach(n => { if (n.tagName !== 'CANVAS') n.style.pointerEvents = 'none'; }); return { b: q([10, 0, 0]), to: q([10, 5, 0]) }; });
+  await page.mouse.move(e0.b[0] - 20, e0.b[1] + 30); await page.mouse.move(e0.b[0], e0.b[1], { steps: 3 }); await page.waitForTimeout(100);
+  const cur = await page.evaluate(() => l3.renderer.domElement.style.cursor);
+  await page.mouse.down(); await page.mouse.move((e0.b[0] + e0.to[0]) / 2, (e0.b[1] + e0.to[1]) / 2, { steps: 4 }); await page.mouse.move(e0.to[0], e0.to[1], { steps: 4 }); await page.waitForTimeout(450); await page.mouse.up(); await page.waitForTimeout(300);
+  const e1 = await page.evaluate(() => ({ A: l3pf.A.slice(), B: l3pf.B.slice(), L: l3pf.data.L, orbit: l3.orbit.enabled }));
+  if (cur !== 'move' || Math.abs(e1.A[0] + 10) > 1e-6 || Math.abs(e1.A[1]) > 1e-6 || Math.abs(e1.B[1] - 5) > 0.3 || Math.abs(e1.L - Math.hypot(20, e1.B[1])) > 0.05 || !e1.orbit) fail('Dra ändpunkt B: ' + JSON.stringify({ cur, e1 }));
+  console.log('OK: ändpunkterna A/B kan dras var för sig', JSON.stringify({ B: e1.B.map(v => Math.round(v * 100) / 100), L: Math.round(e1.L * 100) / 100 }));
+  await page.evaluate(() => { l3pfClear(); l3pc.clouds.slice().forEach(c => l3pcRemove(c.id)); const O = l3.O; const P = []; for (let y = -6; y <= 6; y += 0.25) for (let x = -10; x <= 10; x += 0.25) P.push(x, y, 0.1 * y); l3pcBuild({ id: 'e2', name: 'Moln2' }, { info: { center: [O[0], O[1], O[2]], min: [0, 0, 0], max: [1, 1, 1], format: 't', n: 0, total: 0 }, chunks: [{ pos: new Float32Array(P), inten: new Uint8Array(P.length / 3) }] }); l3pfShow([-10, 0, 0], [10, 0, 0], 1); });
   // Klipp längs profilen: av/på-reglage, lodrätt plan genom A–B som följer linjen (Victor 2026-11-02)
   const cp = await page.evaluate(() => {
     const out = {}; const sw = l3pf.el.querySelector('[data-pf="clip"]'); out.sw = !!sw && !sw.checked; sw.checked = true; sw.dispatchEvent(new Event('change', { bubbles: true }));

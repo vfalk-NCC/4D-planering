@@ -274,7 +274,7 @@ function l3pfLinePlace() {
 }
 let l3pfOrbitOn = false;
 function l3pfOrbitHook() { if (l3pfOrbitOn || !l3.orbit) return; l3pfOrbitOn = true; l3.orbit.addEventListener("change", () => { if (l3pf.lineParts) l3pfLinePlace(); });
-  const hoverFn = e => { if (!l3pf.A || l3pf.dragLine) return; const hot = !l3pfBusyTool() && l3pfLineDist(e) <= 11; if (hot !== !!l3pf.lineHot) { l3pf.lineHot = hot; l3.renderer.domElement.style.cursor = hot ? "grab" : ""; l3pfLinePlace(); l3Render(); } }; ["pointermove", "mousemove"].forEach(t => window.addEventListener(t, e => { if (e.target === l3.renderer.domElement) hoverFn(e); }, true)); }
+  const hoverFn = e => { if (!l3pf.A || l3pf.dragLine) return; const m = l3pfBusyTool() ? null : l3pfHitMode(e), hot = !!m; if (m !== (l3pf.hitMode || null)) { l3pf.hitMode = m; l3pf.lineHot = hot; l3.renderer.domElement.style.cursor = m === "A" || m === "B" ? "move" : hot ? "grab" : ""; l3pfLinePlace(); l3Render(); } }; ["pointermove", "mousemove"].forEach(t => window.addEventListener(t, e => { if (e.target === l3.renderer.domElement) hoverFn(e); }, true)); }
 function l3pfMark() {
   const mk = l3pf.mark; if (!mk || !l3pf.data || !l3pf.lines) return; if (l3pf.hover == null) { if (mk.visible) { mk.visible = false; l3Render(); } return; }
   const A = l3pf.A, B = l3pf.B, L = l3pf.data.L, t = l3pf.hover / L, i = l3pf.lines.findIndex((l, k) => !l3pf.hide.has(l3pf.data.series[k].id) && l3pfAt(l, l3pf.hover) != null), z = i >= 0 ? l3pfAt(l3pf.lines[i], l3pf.hover) - l3.O[2] : (A[2] + B[2]) / 2;
@@ -285,31 +285,44 @@ function l3pfLineDist(e) {
   if (!l3pf.A || !l3.renderer) return Infinity; const r = l3Rect(), mx = e.clientX - r.left, my = e.clientY - r.top, A = l3pf.A, B = l3pf.B, sa = l3ToScreen(new THREE.Vector3(A[0], A[1], A[2])), sb = l3ToScreen(new THREE.Vector3(B[0], B[1], B[2]));
   if (sa.behind && sb.behind) return Infinity; const ax = sb.x - sa.x, ay = sb.y - sa.y, l2 = ax * ax + ay * ay || 1, t = Math.max(0, Math.min(1, ((mx - sa.x) * ax + (my - sa.y) * ay) / l2)); return Math.hypot(sa.x + ax * t - mx, sa.y + ay * t - my);
 }
+/* Vad ligger under pekaren: en ändpunkt (A/B, 14 px), själva linjen (11 px) eller inget. */
+function l3pfHitMode(e) {
+  if (!l3pf.A || !l3.renderer) return null; const r = l3Rect(), mx = e.clientX - r.left, my = e.clientY - r.top, sa = l3ToScreen(new THREE.Vector3(...l3pf.A)), sb = l3ToScreen(new THREE.Vector3(...l3pf.B));
+  const da = sa.behind ? Infinity : Math.hypot(sa.x - mx, sa.y - my), db = sb.behind ? Infinity : Math.hypot(sb.x - mx, sb.y - my);
+  if (Math.min(da, db) <= 14) return da <= db ? "A" : "B"; return l3pfLineDist(e) <= 11 ? "line" : null;
+}
 const l3pfBusyTool = () => (l3.tool && l3.tool !== "select") || (typeof l3cl !== "undefined" && l3cl.mode) || (typeof l3rb !== "undefined" && (l3rb.draw || l3rb.hd)) || (typeof l3sp !== "undefined" && l3sp.profPick) || (typeof l3pt !== "undefined" && l3pt.picking);
 function l3pfDragDown(e) {
-  if (!l3pf.A || !l3pf.data || e.button !== 0 || e.target !== l3.renderer.domElement || l3pfBusyTool() || l3pfLineDist(e) > 11) return;
+  if (!l3pf.A || !l3pf.data || e.button !== 0 || e.target !== l3.renderer.domElement || l3pfBusyTool()) return; const hm = l3pfHitMode(e); if (!hm) return;
   e.stopImmediatePropagation(); e.preventDefault(); const A0 = l3pf.A.slice(), B0 = l3pf.B.slice(), L = l3pf.data.L, nx = -(B0[1] - A0[1]) / L, ny = (B0[0] - A0[0]) / L, zz = (A0[2] + B0[2]) / 2, pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -zz), p = new THREE.Vector3();
+  if (hm === "A" || hm === "B") { l3pf.dragLine = { end: hm, A0, B0, key0: l3pfAnnKey(), last: 0, dur: 0, busy: false }; l3pf.lineHot = true; l3.orbit.enabled = false; l3.renderer.domElement.style.cursor = "move"; l3pfLinePlace(); l3Render(); window.addEventListener("pointermove", l3pfDragMove, true); window.addEventListener("pointerup", l3pfDragUp, true); window.addEventListener("pointercancel", l3pfDragUp, true); return; }
   const sOf = ev => { const ray = l3MouseRay(ev); return ray.intersectPlane(pl, p) ? (p.x - A0[0]) * nx + (p.y - A0[1]) * ny : null; }; const s0 = sOf(e); if (s0 == null) return;
   l3pf.dragLine = { A0, B0, nx, ny, s0, key0: l3pfAnnKey(), last: 0, dur: 0, busy: false }; l3pf.lineHot = true; l3.orbit.enabled = false; l3.renderer.domElement.style.cursor = "grabbing"; l3pfLinePlace(); l3Render();
   window.addEventListener("pointermove", l3pfDragMove, true); window.addEventListener("pointerup", l3pfDragUp, true); window.addEventListener("pointercancel", l3pfDragUp, true);
 }
 function l3pfDragMove(e) {
-  const d = l3pf.dragLine; if (!d) return; e.stopImmediatePropagation(); const pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -(d.A0[2] + d.B0[2]) / 2), p = new THREE.Vector3(), ray = l3MouseRay(e); if (!ray.intersectPlane(pl, p)) return;
-  let sh = (p.x - d.A0[0]) * d.nx + (p.y - d.A0[1]) * d.ny - d.s0; if (!e.altKey) sh = Math.round(sh * 10) / 10;   // hela 10 cm; Alt = fritt
-  l3pf.A = [d.A0[0] + d.nx * sh, d.A0[1] + d.ny * sh, d.A0[2]]; l3pf.B = [d.B0[0] + d.nx * sh, d.B0[1] + d.ny * sh, d.B0[2]]; d.sh = sh;
-  const pa = new THREE.Vector3(...l3pf.A), pb = new THREE.Vector3(...l3pf.B), z = (pa.z + pb.z) / 2, w = l3pf.w, L = l3pf.data.L, nx = -(pb.y - pa.y) / L * w, ny = (pb.x - pa.x) / L * w, pos = l3pf.band.geometry.getAttribute("position");
+  const d = l3pf.dragLine; if (!d) return; e.stopImmediatePropagation(); const end = d.end, zz = end ? (end === "A" ? d.A0[2] : d.B0[2]) : (d.A0[2] + d.B0[2]) / 2, pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -zz), p = new THREE.Vector3(), ray = l3MouseRay(e); if (!ray.intersectPlane(pl, p)) return; let sh = 0;
+  if (end) {   // en ändpunkt åt gången: 10 cm-steg (Alt = fritt), Skift = ortho i 5°-steg från den andra änden
+    const O = end === "A" ? d.B0 : d.A0; let x = p.x, y = p.y;
+    if (e.shiftKey) { const dx = x - O[0], dy = y - O[1], r = Math.hypot(dx, dy), ang = Math.round(Math.atan2(dy, dx) / (Math.PI / 36)) * (Math.PI / 36); x = O[0] + Math.cos(ang) * r; y = O[1] + Math.sin(ang) * r; }
+    if (!e.altKey) { x = Math.round(x * 10) / 10; y = Math.round(y * 10) / 10; } if (Math.hypot(x - O[0], y - O[1]) < 0.5) return;
+    if (end === "A") { l3pf.A = [x, y, d.A0[2]]; l3pf.B = d.B0.slice(); } else { l3pf.B = [x, y, d.B0[2]]; l3pf.A = d.A0.slice(); }
+  } else {
+  sh = (p.x - d.A0[0]) * d.nx + (p.y - d.A0[1]) * d.ny - d.s0; if (!e.altKey) sh = Math.round(sh * 10) / 10;   // hela 10 cm; Alt = fritt
+  l3pf.A = [d.A0[0] + d.nx * sh, d.A0[1] + d.ny * sh, d.A0[2]]; l3pf.B = [d.B0[0] + d.nx * sh, d.B0[1] + d.ny * sh, d.B0[2]]; d.sh = sh; }
+  const pa = new THREE.Vector3(...l3pf.A), pb = new THREE.Vector3(...l3pf.B), z = (pa.z + pb.z) / 2, w = l3pf.w, L = Math.hypot(pb.x - pa.x, pb.y - pa.y), nx = -(pb.y - pa.y) / L * w, ny = (pb.x - pa.x) / L * w, pos = l3pf.band.geometry.getAttribute("position");
   [[pa.x + nx, pa.y + ny], [pb.x + nx, pb.y + ny], [pb.x - nx, pb.y - ny], [pa.x - nx, pa.y - ny]].forEach(([x, y], k) => pos.setXYZ(k, x, y, z)); pos.needsUpdate = true;
   const dp = l3pf.dots.geometry.getAttribute("position"); dp.setXYZ(0, pa.x, pa.y, pa.z); dp.setXYZ(1, pb.x, pb.y, pb.z); dp.needsUpdate = true; l3pfClipFollow(); l3pfLinePlace(); l3Render();
   const now = performance.now(); if (!d.busy && now - d.last > Math.max(160, d.dur * 2.5)) { d.busy = true; d.last = now; setTimeout(() => { const t0 = performance.now(); try { l3pfRecomputeLive(false); } finally { d.dur = performance.now() - t0; d.busy = false; } }, 0); }
-  l3Status(`Profilen flyttad ${l3pfF(sh, 1)} m i sidled (Alt = fritt, släpp för att räkna klart).`);
+  l3Status(end ? `Punkt ${end} flyttad – längd ${l3pfF(L, 1)} m (Skift = ortho 5°, Alt = fritt, släpp för att räkna klart).` : `Profilen flyttad ${l3pfF(sh, 1)} m i sidled (Alt = fritt, släpp för att räkna klart).`);
 }
 function l3pfDragUp() {
   window.removeEventListener("pointermove", l3pfDragMove, true); window.removeEventListener("pointerup", l3pfDragUp, true); window.removeEventListener("pointercancel", l3pfDragUp, true);
-  const d = l3pf.dragLine; l3pf.dragLine = null; l3pf.lineHot = false; l3.orbit.enabled = true; l3.renderer.domElement.style.cursor = ""; if (!d) return;
+  const d = l3pf.dragLine; l3pf.dragLine = null; l3pf.lineHot = false; l3pf.hitMode = null; l3.orbit.enabled = true; l3.renderer.domElement.style.cursor = ""; if (!d) return;
   l3pfRecomputeLive(true);
   // markeringarna hör till profilens läge: gammal nyckel tas bort, ny sparas
   { const all = { ...((l3Prefs().pfAnn) || {}) }; delete all[d.key0]; l3SetPref("pfAnn", all); } l3pfAnnSave();
-  l3pfClipFollow(); l3pfLinePlace(); l3Render(); l3Status("Profilen flyttad – den är uträknad på nytt längs den nya linjen.");
+  l3pfClipFollow(); l3pfLinePlace(); l3Render(); l3Status(d.end ? `Punkt ${d.end} flyttad – profilen är uträknad på nytt (längd ${l3pfF(l3pf.data.L, 1)} m).` : "Profilen flyttad – den är uträknad på nytt längs den nya linjen.");
 }
 /* Räknar om profilen längs den nya linjen. full = även IFC-genomskärningen, legend och vyn. */
 function l3pfRecomputeLive(full) {
