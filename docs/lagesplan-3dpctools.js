@@ -98,7 +98,18 @@ function l3ptProfile(A, B, w, maxPts = 8000) {
     const ds = Math.max(1, Math.ceil(m / maxPts)), pts = []; for (let i = 0; i < m; i += ds) pts.push([T[i], S[i], Z[i]]);
     out.push({ id: c.id, name: c.name, n, t: T, s: S, z: Z, pts });
   });
+  if (!out.length) { const sf = l3ptSurfaceSeries(A, B, L, ux, uy); if (sf) out.push(sf); }   // inget tänt moln: översta ytan i de tända modellerna/underlagen (Victor 2026-11-02)
   return { L, series: out };
+}
+/* Profil utan punktmoln: strålar rakt nedifrån längs linjen mot det som syns (IFC-modeller, byggnader, ritade ytor – inte själva ritningsplanet). */
+function l3ptSurfaceSeries(A, B, L, ux, uy) {
+  const O = l3.O, pl = l3.planMesh, objs = [...l3Surfaces().filter(o => o && o !== pl && !(pl && o.parent === pl)), ...((typeof l3b !== "undefined" && l3b.models) ? l3b.models.filter(m => m.visible !== false).flatMap(m => m.meshes.filter(q => q.visible)) : [])];
+  if (!objs.length) return null; const N = Math.max(40, Math.min(320, Math.round(L / 0.5))), T = [], Z = [], rc = new THREE.Raycaster(), dir = new THREE.Vector3(0, 0, -1);
+  for (let k = 0; k <= N; k++) { const t = L * k / N; rc.set(new THREE.Vector3(A[0] + ux * t, A[1] + uy * t, 5000 - O[2]), dir); let z = null;
+    try { const hits = rc.intersectObjects(objs, true); for (const h of hits) { if (!h.object.visible || h.object.userData.noHit || h.object.type === "Line" || h.object.type === "LineSegments" || h.object.type === "Points") continue; z = h.point.z + O[2]; break; } } catch (e) { z = null; }
+    if (z != null) { T.push(t); Z.push(z); } }
+  if (T.length < 2) return null; const n = T.length;
+  return { id: "surf", name: "Modellernas översida", n, t: Float32Array.from(T), s: new Float32Array(n), z: Float32Array.from(Z), pts: T.map((t, i) => [t, 0, Z[i]]), surf: true };
 }
 function l3ptPickStart() {
   l3ptProfClear(); l3pt.picking = 1; l3pt.ptsA = null; l3Status("Profil: tryck på punkt A i molnet (Esc avbryter)."); l3pt.kb = e => { if (e.key === "Escape") l3ptPickStop(); };

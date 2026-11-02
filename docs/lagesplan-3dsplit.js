@@ -199,7 +199,7 @@ function l3spProfZ(x, y) { const c = typeof l3pc !== "undefined" ? l3spCloudSnap
 /* Shift: linjen låses till 5°-steg (0°, 90° m.fl. = ortho) från punkt A; längden behålls. */
 function l3spProfSnap(A, p, shift) { if (!shift || !A) return p; const dx = p[0] - A[0], dy = p[1] - A[1], L = Math.hypot(dx, dy); if (L < 1e-9) return p; const st = Math.PI / 36, a = Math.round(Math.atan2(dy, dx) / st) * st; return [A[0] + Math.cos(a) * L, A[1] + Math.sin(a) * L]; }
 function l3spProfStart() {
-  if (typeof l3pfShow !== "function" || typeof l3pc === "undefined" || !l3pc.clouds.some(c => c.visible)) { l3Status("Profilen behöver ett tänt punktmoln (Lager → Punktmoln).", true); return; }
+  if (typeof l3pfShow !== "function") return;   // fungerar även utan tänt punktmoln: då används översidan av de tända modellerna
   if (typeof l3ptPickStop === "function") l3ptPickStop(); if (typeof l3pfClear === "function") l3pfClear(); l3spFollow(false); l3sp.profPick = true; l3sp.profA = null; l3sp.profH = null; l3sp.ovDirty = true;
   const b = document.getElementById("spProf"); if (b) b.classList.add("on"); l3Status("Profil: tryck punkt A i ritningen. Håll Skift för ortho (5°-steg). Esc avbryter."); if (l3sp.cv) l3sp.cv.style.cursor = "crosshair";
 }

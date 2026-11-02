@@ -96,7 +96,7 @@ function l3pfShow(A, B, w) {
   const host = document.getElementById("v3Canvas"); let el = document.getElementById("v3PcProf"); if (el) el.remove(); el = document.createElement("div"); el.id = "v3PcProf"; host.appendChild(el); l3pf.el = el;
   ["pointerdown", "click", "dblclick", "wheel", "contextmenu", "keydown"].forEach(t => el.addEventListener(t, e => e.stopPropagation()));
   l3pf3d(); l3pfAnnLoad(); l3pfAnn3d(); l3pfClipFollow(); l3pfSizeApply(); l3pfUI(); l3pfFit(); l3pfDraw();
-  if (!D.series.some(s => s.n)) l3Status("Inga punkter inom profilens bredd – öka bredden eller dra linjen över molnet.", true);
+  if (!D.series.some(s => s.n)) l3Status("Inget att visa längs linjen – öka bredden, tänd ett punktmoln eller en modell, eller dra linjen över dem.", true);
   if (typeof l3ptRender === "function") l3ptRender();
 }
 function l3pfUI() {
