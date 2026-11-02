@@ -24,6 +24,25 @@ function objStatusPatch(state, pct, day) {
 }
 const OBJ_STATE_LABEL = { klar: "Klar", pagaende: "Pågår", pausad: "Pausad", ej: "Ej påbörjad", pct: "Framdrift" };
 
+/* Fristående prickar (Victor 2026-11-02): ligger i egna filer (plan_free_items.json / plan_free_positions.json) som tidplanen och 4D-planeringen aldrig läser.
+   Alla vanliga skrivningar (status, framdrift, datum, namn, läge) går mot plan_items.json / plan_item_positions.json; är det fristående rader i planen skrivs samma ändring till de egna filerna
+   (funktionen som ändrar raderna matchar på id, så den rör bara de fristående raderna där). */
+const objFreeFile = path => path === dataPath("plan_items.json") ? "plan_free_items.json" : path === dataPath("plan_item_positions.json") ? "plan_free_positions.json" : null;
+async function objGhWrite(tk, path, fn, msg) {
+  const ff = objFreeFile(path), hasFree = ff && (ff === "plan_free_items.json" ? items.some(i => i.free) : positions.some(p => p.free));
+  const r = await ghWriteJSON(tk, path, fn, msg); if (hasFree) await ghWriteJSON(tk, dataPath(ff), fn, msg + " (fristående)"); return r;
+}
+/* Läser de fristående prickarna och lägger dem i items/positions (märkta free:true). Anropas efter varje inläsning av planen. */
+async function objLoadFree() {
+  try {
+    const [fi, fp] = await Promise.all([ghReadJSON(token, dataPath("plan_free_items.json")).catch(() => []), ghReadJSON(token, dataPath("plan_free_positions.json")).catch(() => [])]);
+    const have = new Set(items.map(i => i.id)), hp = new Set(positions.map(p => p.id));
+    (Array.isArray(fi) ? fi : []).forEach(r => { if (!have.has(r.id)) items.push({ ...r, free: true }); });
+    (Array.isArray(fp) ? fp : []).forEach(r => { if (!hp.has(r.id)) positions.push({ ...r, free: true, manual: true }); });
+    if (typeof objInvalidate === "function") objInvalidate();
+  } catch (e) { console.warn("Fristående prickar kunde inte läsas", e); }
+}
+const objFreeMode = () => { try { return localStorage.getItem("lagesplan-fripricks") === "1"; } catch (e) { return false; } };
 /* Sätter status på raderna (lokalt direkt, sedan till 4D-data). Returnerar antal rader. */
 async function objSetStatus(rows, state, pct, file) {   // file: annan plan_items.json (Excel-planeringen i PP-lägesplanen)
   if (!rows.length) return 0;
@@ -36,12 +55,12 @@ async function objSetStatus(rows, state, pct, file) {   // file: annan plan_item
   objStatusUndoStack.push({ label, undo: async () => {
     rows.forEach(r => Object.assign(r, before.get(r.id)));
     if (typeof renderZones === "function") renderZones();
-    await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`); objNotifyPlan(file);
+    await objGhWrite(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`); objNotifyPlan(file);
   } });
   if (typeof renderZones === "function") renderZones();
   setSaveStatus(`Sparar: ${label} …`);
   try {
-    await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => ids.has(r.id) ? patch(r) : r), `Lägesplan: ${label}`);
+    await objGhWrite(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => ids.has(r.id) ? patch(r) : r), `Lägesplan: ${label}`);
     setSaveStatus(`✓ ${label}. Gantten i 4D-planering läser om.`); objNotifyPlan(file);
   } catch (e) {
     rows.forEach(r => Object.assign(r, before.get(r.id))); objStatusUndoStack.pop();
@@ -71,10 +90,10 @@ async function objSetDates(rows, start, end, file) {
   const patch = r => ({ ...r, start_date: start || r.start_date || null, end_date: end || r.end_date || null, updated_at: now });
   rows.forEach(r => Object.assign(r, patch(r)));
   const label = `Datum ${start || "?"} → ${end || "?"}${rows.length > 1 ? ` (${rows.length} objekt)` : ""}`;
-  objStatusUndoStack.push({ label, undo: async () => { rows.forEach(r => Object.assign(r, before.get(r.id))); if (typeof invalidateVisible === "function") invalidateVisible(); if (typeof renderZones === "function") renderZones(); await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`); objNotifyPlan(file); } });
+  objStatusUndoStack.push({ label, undo: async () => { rows.forEach(r => Object.assign(r, before.get(r.id))); if (typeof invalidateVisible === "function") invalidateVisible(); if (typeof renderZones === "function") renderZones(); await objGhWrite(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`); objNotifyPlan(file); } });
   if (typeof invalidateVisible === "function") invalidateVisible(); if (typeof renderZones === "function") renderZones();
   setSaveStatus(`Sparar: ${label} …`);
-  try { await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => ids.has(r.id) ? patch(r) : r), `Lägesplan: ${label}`); setSaveStatus(`✓ ${label}. Gantten i 4D-planering läser om.`); objNotifyPlan(file); }
+  try { await objGhWrite(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => ids.has(r.id) ? patch(r) : r), `Lägesplan: ${label}`); setSaveStatus(`✓ ${label}. Gantten i 4D-planering läser om.`); objNotifyPlan(file); }
   catch (e) { rows.forEach(r => Object.assign(r, before.get(r.id))); objStatusUndoStack.pop(); if (typeof invalidateVisible === "function") invalidateVisible(); if (typeof renderZones === "function") renderZones(); setSaveStatus("⚠ Kunde inte spara datumen: " + e.message); return 0; }
   return rows.length;
 }
@@ -93,10 +112,10 @@ async function objRename(rows, field, value, file) {
   if (!rows.length) return 0; const ids = new Set(rows.map(r => r.id)), before = new Map(rows.map(r => [r.id, { ...r }])), now = new Date().toISOString();
   rows.forEach(r => { r[field] = value; r.updated_at = now; });
   const label = `${field === "activity" ? "Aktivitet" : "Prick"} → ${value}${rows.length > 1 ? ` (${rows.length} objekt)` : ""}`;
-  objStatusUndoStack.push({ label, undo: async () => { rows.forEach(r => Object.assign(r, before.get(r.id))); if (typeof renderZones === "function") renderZones(); await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`); objNotifyPlan(file); } });
+  objStatusUndoStack.push({ label, undo: async () => { rows.forEach(r => Object.assign(r, before.get(r.id))); if (typeof renderZones === "function") renderZones(); await objGhWrite(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => before.has(r.id) ? { ...before.get(r.id) } : r), `Lägesplan: ångra ${label}`); objNotifyPlan(file); } });
   if (typeof renderZones === "function") renderZones(); if (typeof renderLayerPanel === "function") renderLayerPanel();
   setSaveStatus(`Sparar: ${label} …`);
-  try { await ghWriteJSON(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => ids.has(r.id) ? { ...r, [field]: value, updated_at: now } : r), `Lägesplan: ${label}`); setSaveStatus(`✓ ${label}. Gantten i 4D-planering läser om.`); objNotifyPlan(file); }
+  try { await objGhWrite(token, file || dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).map(r => ids.has(r.id) ? { ...r, [field]: value, updated_at: now } : r), `Lägesplan: ${label}`); setSaveStatus(`✓ ${label}. Gantten i 4D-planering läser om.`); objNotifyPlan(file); }
   catch (e) { rows.forEach(r => Object.assign(r, before.get(r.id))); objStatusUndoStack.pop(); if (typeof renderZones === "function") renderZones(); setSaveStatus("⚠ Kunde inte byta namn: " + e.message); return 0; }
   return rows.length;
 }
@@ -136,6 +155,7 @@ function objStatusMenuHtml(its, o = {}) {
     ${o.box ? "" : `<div class="om-st-n"><button type="button" data-ost-rn="act" title="Byt namn på hela aktiviteten – alla objekt i den följer med">✎ Byt namn på aktiviteten</button><button type="button" data-ost-rn="obj" title="Byt namn på bara den här pricken">✎ Byt namn på pricken</button><button type="button" data-ost-rn="vis" title="Ett namn som bara syns i lägesplanen – rör ingen tidplan eller Gantt">👁 Visuellt namn (bara här)</button></div>`}
     ${o.box ? "" : `<div class="om-st-k"><div class="om-st-kl" data-ost-kl><i>Kommentarer läses…</i></div><div class="om-st-kw"><input type="text" data-ost-ki placeholder="Skriv en kommentar på ${escHtml(its[0].object_name || its[0].activity || "objektet")}…" maxlength="500" /><button type="button" data-ost-kb>Lägg till</button></div></div>`}
     ${many ? `<label class="om-st-s"><input type="checkbox" data-ost-all${objStatusScopeAll ? " checked" : ""}> Hela aktiviteten (${famN} objekt), inte bara ${its.length > 1 ? "de " + its.length + " här" : "det här"}</label>` : ""}
+    ${its.every(x => x.free) ? `<button type="button" data-ost="delfree" class="om-st-u" title="Tar bort pricken – den ligger bara i lägesplanen">🗑 Ta bort fristående prick</button>` : ""}
     ${objStatusUndoStack.length ? `<button type="button" data-ost="undo" class="om-st-u">↩ Ångra: ${escHtml(objStatusUndoStack[objStatusUndoStack.length - 1].label)}</button>` : ""}</div>`;
 }
 function objStatusBind(m, its, o = {}) {
@@ -174,6 +194,7 @@ function objStatusBind(m, its, o = {}) {
   m.querySelectorAll("[data-ost]").forEach(b => { b.onclick = async () => {
     const k = b.dataset.ost; close();
     if (k === "undo") return objStatusUndo();
+    if (k === "delfree") { const rm = its.filter(x => x.free); if (!rm.length || !(await uiConfirm(`Ta bort ${rm.length === 1 ? "den fristående pricken" : rm.length + " fristående prickar"}?`, { ok: "Ta bort" }))) return; await objDeleteFree(rm); return; }
     const rows = rowsNow();
     let pct = null;
     if (k === "pct" || k === "pagaende") {
@@ -186,6 +207,15 @@ function objStatusBind(m, its, o = {}) {
   }; });
 }
 
+/* Tar bort fristående prickar (bara ur de egna filerna). */
+async function objDeleteFree(rows) {
+  const ids = new Set(rows.map(r => r.id)), saved = rows.map(r => ({ row: { ...r }, pos: positions.find(p => p.id === r.id) ? { ...positions.find(p => p.id === r.id) } : null }));
+  items = items.filter(i => !ids.has(i.id)); positions = positions.filter(p => !ids.has(p.id)); objInvalidate(); renderZones();
+  const strip = o => { const { free, ...q } = o; return { ...q, free: true }; };
+  objStatusUndoStack.push({ label: `borttagen fristående prick`, undo: async () => { saved.forEach(sv => { items.push(sv.row); if (sv.pos) positions.push(sv.pos); }); objInvalidate(); renderZones(); await ghWriteJSON(token, dataPath("plan_free_items.json"), arr => [...(Array.isArray(arr) ? arr : []).filter(r => !ids.has(r.id)), ...saved.map(sv => strip(sv.row))], "Lägesplan: ångra borttagning av fristående prick"); await ghWriteJSON(token, dataPath("plan_free_positions.json"), arr => [...(Array.isArray(arr) ? arr : []).filter(r => !ids.has(r.id)), ...saved.filter(sv => sv.pos).map(sv => strip(sv.pos))], "Lägesplan: ångra borttagning av fristående position"); } });
+  try { await ghWriteJSON(token, dataPath("plan_free_items.json"), arr => (Array.isArray(arr) ? arr : []).filter(r => !ids.has(r.id)), "Lägesplan: ta bort fristående prick"); await ghWriteJSON(token, dataPath("plan_free_positions.json"), arr => (Array.isArray(arr) ? arr : []).filter(r => !ids.has(r.id)), "Lägesplan: ta bort fristående position"); setSaveStatus("✓ Fristående prick borttagen (Ångra finns i menyn)."); }
+  catch (e) { setSaveStatus("⚠ Kunde inte ta bort pricken: " + e.message); }
+}
 /* ---------- Dra en ruta och sätt status på alla prickar i den ---------- */
 let objTool = null;                           // null | "status" | "add"
 function objToolSet(t) {
@@ -212,6 +242,7 @@ function objStatusBox(a, b, e) {
 /* ---------- Lägg till en ny prick ---------- */
 async function objAddDot(pdfPt) {
   if (!plan || !plan.calib) return;
+  if (objFreeMode()) return objNewActivity(pdfPt, { free: true });   // "Fristående" ikryssad: samma formulär som Ny aktivitet, men raden hamnar utanför tidplanen
   const name = ((await uiPrompt("Namn på den nya pricken (t.ex. F18):")) || "").trim();
   if (!name) return;
   const [mx, my] = pdfToModel(pdfPt), pos = positionsInPdf();
@@ -250,45 +281,47 @@ async function objAddDot(pdfPt) {
 /* ---------- Ny aktivitet direkt i lägesplanen (Victor 2026-10-26) ----------
    En okopplad aktivitet (som "＋ Ny aktivitet" i 4D-planering: model_id null, object_id "manuell-…") med en egen prick som kan dras fritt i planen
    tills den kopplas till ett objekt i 3D-modellen (Koppla i 3D-editorn eller i 4D-planering – då tar aktiviteten objektets läge). */
-const objIsFree = it => !!it && it.origin === "manuell" && !it.model_id && /^manuell-/.test(String(it.object_id || ""));
+const objIsFree = it => !!it && (!!it.free || (it.origin === "manuell" && !it.model_id && /^manuell-/.test(String(it.object_id || ""))));
 function objNewActForm(def) {
   return new Promise(res => {
     const el = document.createElement("div"); el.className = "na-modal";
     const f = (k, lab, type, v, ph) => `<label><span>${lab}</span><input type="${type}" data-na="${k}" value="${escHtml(v || "")}" placeholder="${escHtml(ph || "")}" /></label>`;
-    el.innerHTML = `<div class="na-card" role="dialog" aria-label="Ny aktivitet"><h3>Ny aktivitet</h3><p>Pricken hamnar där du klickade och går att dra fritt i planen tills du kopplar den till ett objekt i modellen.</p>
+    el.innerHTML = `<div class="na-card" role="dialog" aria-label="Ny aktivitet"><h3>Ny aktivitet</h3><p data-na-p>Pricken hamnar där du klickade och går att dra fritt i planen tills du kopplar den till ett objekt i modellen.</p>
+      <label class="na-free" title="Fristående prickar ligger bara i lägesplanen – de syns inte i tidplanen eller 4D-planeringen och påverkar dem aldrig."><input type="checkbox" data-na="free" ${def.free ? "checked" : ""}> <b>Fristående</b> – påverkar inte tidplanen</label>
       ${f("activity", "Aktivitet *", "text", "", "t.ex. Armering platta J")}${f("name", "Prickens namn", "text", "", "tomt = aktivitetens namn")}${f("area", "Område", "text", def.area)}${f("contractor", "Entreprenör", "text", def.contractor)}
       <div class="na-row">${f("start", "Start", "date", def.start)}${f("end", "Slut", "date", def.end)}</div>
       <div class="na-btns"><button type="button" data-na-x>Avbryt</button><button type="button" class="primary" data-na-ok>Skapa</button></div></div>`;
     document.body.appendChild(el);
     const v = k => (el.querySelector(`[data-na="${k}"]`).value || "").trim(), close = r => { document.removeEventListener("keydown", key, true); el.remove(); res(r); };
-    const ok = () => { if (!v("activity")) { el.querySelector('[data-na="activity"]').focus(); return; } close({ activity: v("activity"), name: v("name"), area: v("area"), contractor: v("contractor"), start: v("start") || def.start, end: v("end") || def.end }); };
+    const ok = () => { if (!v("activity")) { el.querySelector('[data-na="activity"]').focus(); return; } close({ activity: v("activity"), name: v("name"), area: v("area"), contractor: v("contractor"), start: v("start") || def.start, end: v("end") || def.end, free: !!el.querySelector('[data-na="free"]').checked }); };
     const key = e => { if (e.key === "Escape") { e.stopPropagation(); close(null); } else if (e.key === "Enter" && e.target.tagName === "INPUT") { e.stopPropagation(); ok(); } };
     document.addEventListener("keydown", key, true);
     el.querySelector("[data-na-ok]").onclick = ok; el.querySelector("[data-na-x]").onclick = () => close(null); el.addEventListener("mousedown", e => { if (e.target === el) close(null); });
     setTimeout(() => el.querySelector('[data-na="activity"]').focus(), 30);
   });
 }
-async function objNewActivity(pdfPt) {
+async function objNewActivity(pdfPt, opt = {}) {
   if (!plan || !plan.calib) { setSaveStatus("Kalibrera planen mot 3D först – pricken placeras via modellens koordinater."); return; }
   const today = todayIso(), pos = positionsInPdf();
   let near = null, best = Infinity; if (pos) items.forEach(it => { const p = pos.get(it.id); if (!p) return; const d = Math.hypot(p[0] - pdfPt[0], p[1] - pdfPt[1]); if (d < best) { best = d; near = it; } });
-  const r = await objNewActForm({ area: near && near.area || "", contractor: near && near.contractor || "", start: today, end: typeof addDaysIso === "function" ? addDaysIso(today, 7) : today }); if (!r) return;
+  const r = await objNewActForm({ area: near && near.area || "", contractor: near && near.contractor || "", start: today, end: typeof addDaysIso === "function" ? addDaysIso(today, 7) : today, free: !!opt.free || objFreeMode() }); if (!r) return;
+  const FREE = !!r.free, IF = FREE ? "plan_free_items.json" : "plan_items.json", PF = FREE ? "plan_free_positions.json" : "plan_item_positions.json";
   const id = ghNewId(), [mx, my] = pdfToModel(pdfPt), zg = Number(plan.calib.model[0][2]) || 0;
-  const row = { id, project_id: projectId, model_id: null, object_id: `manuell-${id}`, object_name: r.name || r.activity, activity: r.activity, area: r.area || null, contractor: r.contractor || null, element_type: null, status: "planerad", start_date: r.start || null, end_date: r.end || null, actual_start_date: null, actual_end_date: null, progress: 0, depends_on: [], group_id: id, origin: "manuell", updated_at: new Date().toISOString() };
-  const pr = { id, x: Math.round(mx * 1000) / 1000, y: Math.round(my * 1000) / 1000, z0: zg, z1: zg, manual: true };
+  const row = { id, project_id: projectId, model_id: null, object_id: `${FREE ? "fri" : "manuell"}-${id}`, object_name: r.name || r.activity, activity: r.activity, area: r.area || null, contractor: r.contractor || null, element_type: null, status: "planerad", start_date: r.start || null, end_date: r.end || null, actual_start_date: null, actual_end_date: null, progress: 0, depends_on: [], group_id: id, origin: FREE ? "fri" : "manuell", free: FREE || undefined, updated_at: new Date().toISOString() };
+  const pr = { id, x: Math.round(mx * 1000) / 1000, y: Math.round(my * 1000) / 1000, z0: zg, z1: zg, manual: true, free: FREE || undefined };
   items.push(row); positions.push(pr); objInvalidate(); renderZones();
   const undo = async () => {
     const i = items.indexOf(row); if (i >= 0) items.splice(i, 1); const j = positions.indexOf(pr); if (j >= 0) positions.splice(j, 1);
     objInvalidate(); renderZones();
-    await ghWriteJSON(token, dataPath("plan_items.json"), arr => (Array.isArray(arr) ? arr : []).filter(x => x.id !== id), `Lägesplan: ångra ny aktivitet ${r.activity}`);
-    await ghWriteJSON(token, dataPath("plan_item_positions.json"), arr => (Array.isArray(arr) ? arr : []).filter(x => x.id !== id), `Lägesplan: ångra position ${r.activity}`); objNotifyPlan(dataPath("plan_items.json"));
+    await ghWriteJSON(token, dataPath(IF), arr => (Array.isArray(arr) ? arr : []).filter(x => x.id !== id), `Lägesplan: ångra ny aktivitet ${r.activity}`);
+    await ghWriteJSON(token, dataPath(PF), arr => (Array.isArray(arr) ? arr : []).filter(x => x.id !== id), `Lägesplan: ångra position ${r.activity}`); (FREE || objNotifyPlan(dataPath(IF)));
   };
   objStatusUndoStack.push({ label: `ny aktivitet ${r.activity}`, undo });
   setSaveStatus(`Sparar ny aktivitet ${r.activity} …`);
   try {
-    await ghWriteJSON(token, dataPath("plan_items.json"), arr => [...(Array.isArray(arr) ? arr : []).filter(x => x.id !== id), row], `Lägesplan: ny aktivitet ${r.activity}`);
-    await ghWriteJSON(token, dataPath("plan_item_positions.json"), arr => [...(Array.isArray(arr) ? arr : []).filter(x => x.id !== id), pr], `Lägesplan: position ${r.activity}`);
-    setSaveStatus(`✓ Aktiviteten "${r.activity}" skapad. Dra pricken dit du vill; koppla den till ett objekt i 3D när du är redo.`); objNotifyPlan(dataPath("plan_items.json"));
+    await ghWriteJSON(token, dataPath(IF), arr => [...(Array.isArray(arr) ? arr : []).filter(x => x.id !== id), (({ free, ...q }) => FREE ? { ...q, free: true } : q)(row)], `Lägesplan: ny aktivitet ${r.activity}`);
+    await ghWriteJSON(token, dataPath(PF), arr => [...(Array.isArray(arr) ? arr : []).filter(x => x.id !== id), (({ free, ...q }) => FREE ? { ...q, free: true } : q)(pr)], `Lägesplan: position ${r.activity}`);
+    setSaveStatus(FREE ? `✓ Fristående prick "${r.name || r.activity}" skapad – den ligger bara i lägesplanen och påverkar inte tidplanen. Dra den dit du vill.` : `✓ Aktiviteten "${r.activity}" skapad. Dra pricken dit du vill; koppla den till ett objekt i 3D när du är redo.`); (FREE || objNotifyPlan(dataPath(IF)));
   } catch (e) {
     objStatusUndoStack.pop(); const i = items.indexOf(row); if (i >= 0) items.splice(i, 1); const j = positions.indexOf(pr); if (j >= 0) positions.splice(j, 1);
     objInvalidate(); renderZones(); setSaveStatus("⚠ Kunde inte spara aktiviteten: " + e.message);
@@ -299,12 +332,13 @@ async function objSaveFreePos(it, model) {
   const pr = positions.find(p => p.id === it.id); if (!pr) return;
   const before = { x: pr.x, y: pr.y }; pr.x = Math.round(model[0] * 1000) / 1000; pr.y = Math.round(model[1] * 1000) / 1000; pr.manual = true;
   objInvalidate(); renderZones();
-  objStatusUndoStack.push({ label: `flytt av ${it.object_name || it.activity}`, undo: async () => { pr.x = before.x; pr.y = before.y; objInvalidate(); renderZones(); await ghWriteJSON(token, dataPath("plan_item_positions.json"), arr => (Array.isArray(arr) ? arr : []).map(p => p.id === it.id ? { ...p, x: before.x, y: before.y } : p), "Lägesplan: ångra flytt"); } });
-  try { await ghWriteJSON(token, dataPath("plan_item_positions.json"), arr => (Array.isArray(arr) ? arr : []).map(p => p.id === it.id ? { ...p, x: pr.x, y: pr.y, manual: true } : p), `Lägesplan: flytta ${it.object_name || it.activity}`); setSaveStatus("📍 Aktiviteten flyttad – koppla den till ett objekt i 3D när den ligger rätt (Ctrl+Z ångrar)."); }
+  objStatusUndoStack.push({ label: `flytt av ${it.object_name || it.activity}`, undo: async () => { pr.x = before.x; pr.y = before.y; objInvalidate(); renderZones(); await objGhWrite(token, dataPath("plan_item_positions.json"), arr => (Array.isArray(arr) ? arr : []).map(p => p.id === it.id ? { ...p, x: before.x, y: before.y } : p), "Lägesplan: ångra flytt"); } });
+  try { await objGhWrite(token, dataPath("plan_item_positions.json"), arr => (Array.isArray(arr) ? arr : []).map(p => p.id === it.id ? { ...p, x: pr.x, y: pr.y, manual: true } : p), `Lägesplan: flytta ${it.object_name || it.activity}`); setSaveStatus("📍 Aktiviteten flyttad – koppla den till ett objekt i 3D när den ligger rätt (Ctrl+Z ångrar)."); }
   catch (e) { pr.x = before.x; pr.y = before.y; objStatusUndoStack.pop(); objInvalidate(); renderZones(); setSaveStatus("⚠ Kunde inte spara läget: " + e.message); }
 }
 function objToolBind() {
   const sb = $("btnObjStatusBox"), ab = $("btnObjAddDot"), na = $("btnObjNewAct"); if (!sb || !ab) return;
+  { const fc = $("chkObjFree"); if (fc) { fc.checked = objFreeMode(); fc.onchange = () => { try { localStorage.setItem("lagesplan-fripricks", fc.checked ? "1" : "0"); } catch (e) { /* utan lagring */ } setSaveStatus(fc.checked ? "Nya prickar blir fristående – de ligger bara i lägesplanen och påverkar inte tidplanen." : "Nya prickar kopplas till tidplanen som förut."); }; } }
   sb.onclick = () => objToolSet("status"); ab.onclick = () => objToolSet("add"); if (na) na.onclick = () => objToolSet("newact");
   window.addEventListener("keydown", e => { if (e.key === "Escape" && objTool) objToolSet(objTool); });
 }

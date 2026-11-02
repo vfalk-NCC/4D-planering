@@ -203,6 +203,7 @@ async function init() {
     [items, plans, positions, subActs] = await Promise.all([step(ghReadJSON(token, dataPath("plan_items.json"))), step(ghReadJSON(token, dataPath("status_plans.json"))),
       step(ghReadJSON(token, dataPath("plan_item_positions.json")).catch(() => [])), step(ghReadJSON(token, dataPath("plan_item_activities.json")).catch(() => []))]);
     subCoupledCache = null;
+    if (typeof objLoadFree === "function") await objLoadFree();   // fristående prickar (egna filer, utanför tidplanen)
     // Tillfälliga fält som äldre versioner sparat (zonernas _status) tas bort, och basen för
     // sammanslagning vid sparning sätts (lagesplan-merge.js).
     if (typeof cleanPlanRecord === "function") plans = plans.map(cleanPlanRecord);
@@ -892,6 +893,7 @@ async function refreshCoupled() {
     setBusy("Hämtar planeringen…");
     const [its, pos, acts] = await Promise.all([ghReadJSON(token, dataPath("plan_items.json")), ghReadJSON(token, dataPath("plan_item_positions.json")).catch(() => positions), ghReadJSON(token, dataPath("plan_item_activities.json")).catch(() => subActs)]);
     items = its; positions = pos; subActs = acts; subCoupledCache = null;
+    if (typeof objLoadFree === "function") await objLoadFree();
     if (typeof xls !== "undefined") { xls.items = null; xls.positions = null; xls.posPdf = null; } // Excel-planeringen läses om
     if (typeof invalidateVisible === "function") invalidateVisible(); else invalidatePositions();
     if (typeof populateFilterOptions === "function") populateFilterOptions();

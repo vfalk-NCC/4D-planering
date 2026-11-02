@@ -95,6 +95,23 @@ const PAKO = `window.pako = { gzip: s => new TextEncoder().encode(String(s)), un
     if (!sIt.some(r => r.id === add.id && r.origin === 'manuell') || !sPos.some(p => p.id === add.id)) fail('Ny prick sparad i data: ' + JSON.stringify({ sIt: sIt.length, sPos: sPos.length }));
     await page.evaluate(() => objStatusUndo()); await page.waitForTimeout(300);
     if (JSON.parse(gh.get('projects/p1/plan_items.json')).some(r => r.id === add.id) || await page.evaluate(() => items.some(r => r.object_name === 'F20'))) fail('Ångra ska ta bort den nya pricken');
+    // Fristående prick: egna filer, påverkar inte tidplanen (Victor 2026-11-02)
+    const fr = await page.evaluate(async () => {
+      localStorage.setItem('lagesplan-fripricks', '1'); window.objNewActForm = async d => ({ activity: 'Egen kontroll', name: 'FRI1', area: 'Norra', contractor: 'NCC', start: '2026-11-02', end: '2026-11-09', free: true });
+      const n = items.length, nPos = positions.length; await objAddDot(modelToPdf(6512345, 150105)); localStorage.removeItem('lagesplan-fripricks');
+      const r = items.find(x => x.object_name === 'FRI1'); if (!r) return { added: false };
+      await objSetStatus([r], 'klar', null); const afterSt = { st: r.status, free: r.free };
+      return { added: items.length === n + 1, free: r.free === true, oid: r.object_id, pos: positions.some(p => p.id === r.id && p.free), id: r.id, afterSt, drag: objIsFree(r) };
+    });
+    if (!fr.added || !fr.free || !/^fri-/.test(fr.oid) || !fr.pos || !fr.drag || fr.afterSt.st !== 'klar') fail('Fristående prick: ' + JSON.stringify(fr));
+    const freeItems = JSON.parse(gh.get('projects/p1/plan_free_items.json') || '[]'), freePos = JSON.parse(gh.get('projects/p1/plan_free_positions.json') || '[]'), mainItems = JSON.parse(gh.get('projects/p1/plan_items.json')), mainPos = JSON.parse(gh.get('projects/p1/plan_item_positions.json') || '[]');
+    if (!freeItems.some(r => r.id === fr.id && r.status === 'klar' && r.free) || !freePos.some(p => p.id === fr.id) || mainItems.some(r => r.id === fr.id) || mainPos.some(p => p.id === fr.id)) fail('Fristående prick ska ligga i egna filer och inte i tidplanen: ' + JSON.stringify({ fi: freeItems.length, fp: freePos.length, mi: mainItems.some(r => r.id === fr.id) }));
+    // inläsning igen och borttagning
+    const rl = await page.evaluate(async () => { const id = items.find(x => x.object_name === 'FRI1').id; items = items.filter(x => x.id !== id); positions = positions.filter(p => p.id !== id); await objLoadFree(); const back = items.find(x => x.id === id); return { back: !!back && back.free === true && back.status === 'klar' }; });
+    if (!rl.back) fail('Fristående prick ska läsas in igen: ' + JSON.stringify(rl));
+    await page.evaluate(async () => { const r = items.find(x => x.object_name === 'FRI1'); await objDeleteFree([r]); });
+    if (JSON.parse(gh.get('projects/p1/plan_free_items.json') || '[]').some(r => r.id === fr.id) || await page.evaluate(() => items.some(x => x.object_name === 'FRI1'))) fail('Fristående prick ska kunna tas bort');
+    console.log('OK: fristående prickar – egna filer, status, inläsning, borttagning');
     // Reglage för framdrift och egen färg i prickens meny
     const mc = await page.evaluate(async () => {
       positions = [{ id: 'i1', x: 6512330, y: 150100, z0: 0, z1: 2 }, { id: 'i2', x: 6512360, y: 150100, z0: 0, z1: 2 }]; invalidatePositions(); items.forEach(r => { r.status = 'planerad'; r.progress = 0; });
