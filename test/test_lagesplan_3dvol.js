@@ -66,6 +66,20 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const d = await page.evaluate(() => ({ a: l3vol.cur.spec.a.k, b: l3vol.cur.spec.b.k, res: l3vol.cur.res, solids: !!(l3vol.cur.geom && (l3vol.cur.geom.cut || l3vol.cur.geom.fill)) }));
   if (process.env.SHOT) { await page.waitForTimeout(500); await page.screenshot({ path: process.env.SHOT }); }
   console.log('default', JSON.stringify({ a: d.a, b: d.b, fill: d.res.fill, cut: d.res.cut, area: d.res.area, cell: d.res.cell }));
+  // TIN: triangulering direkt från punkterna (Victor 2026-11-03)
+  const dl0 = await page.evaluate(() => { const T = l3volDelaunay(Float64Array.from([0, 4, 4, 0, 2, 1, 3.5, 0.5]), Float64Array.from([0, 0, 4, 4, 2, 3, 1, 2.5])); return Array.from(T); });
+  if (dl0.length / 3 !== 10) fail('Delaunay ger rimligt antal trianglar: ' + dl0.length / 3);
+  const dl1 = await page.evaluate(() => { let seed = 5; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647; const n = 1500, X = new Float64Array(n), Y = new Float64Array(n); for (let i = 0; i < n; i++) { X[i] = rnd() * 100; Y[i] = rnd() * 60; }
+    const T = l3volDelaunay(X, Y); let bad = 0, ccw = 0, area = 0; for (let t = 0; t < T.length; t += 3) { const a = T[t], b = T[t + 1], c = T[t + 2], o = (X[b] - X[a]) * (Y[c] - Y[a]) - (Y[b] - Y[a]) * (X[c] - X[a]); if (o > 0) ccw++; area += o / 2;
+      if (t % 30 === 0) { const ax = X[a], ay = Y[a], bx = X[b], by = Y[b], cx = X[c], cy = Y[c], d = 2 * (ax * (by - cy) + bx * (cy - ay) + cx * (ay - by)), ux = ((ax * ax + ay * ay) * (by - cy) + (bx * bx + by * by) * (cy - ay) + (cx * cx + cy * cy) * (ay - by)) / d, uy = ((ax * ax + ay * ay) * (cx - bx) + (bx * bx + by * by) * (ax - cx) + (cx * cx + cy * cy) * (bx - ax)) / d, r2 = (ax - ux) ** 2 + (ay - uy) ** 2; for (let i = 0; i < n; i++) if (i !== a && i !== b && i !== c && (X[i] - ux) ** 2 + (Y[i] - uy) ** 2 < r2 - 1e-6) { bad++; break; } } }
+    return { tris: T.length / 3, ccw, bad, area: Math.round(area) }; });
+  if (dl1.bad || dl1.ccw !== dl1.tris || dl1.tris < 2600 || dl1.area < 4500 || dl1.area > 6000) fail('Delaunay: tomma cirklar, moturs, täckning: ' + JSON.stringify(dl1));
+  const tn = await page.evaluate(async () => { const c = l3vol.cur, g = { fill: c.res.fill, cut: c.res.cut }; c.spec.a = { k: 'pc:pcA', side: 'top' }; c.spec.tin = false; l3volSchedule(0); await new Promise(r => setTimeout(r, 1800)); const grid = { fill: c.res.fill, cut: c.res.cut, tris: c.res.tris };
+    c.spec.tin = true; l3volSchedule(0); await new Promise(r => setTimeout(r, 3500)); return { g0: g, grid, tin: { fill: c.res.fill, cut: c.res.cut, tris: c.res.tris, info: c.res.tin, miss: c.res.areaMiss }, geom: !!(c.geom && (c.geom.cut || c.geom.fill)), sw: !!document.querySelector('input[data-vtin]') && !document.querySelector('input[data-vtin]').disabled }; });
+  const tot = x => x.fill + x.cut;
+  if (!tn.tin.info || !tn.geom || !tn.sw || Math.abs(tot(tn.tin) - tot(tn.grid)) > Math.max(2, tot(tn.grid) * 0.04) || tn.tin.miss > 1) fail('TIN ger samma volym som rutnätet för en jämn yta: ' + JSON.stringify(tn));
+  console.log('OK: TIN (Delaunay från punkterna) – oberoende kontroll av nätet och volym som rutnätet', JSON.stringify({ dl1, grid: tn.grid, tin: tn.tin }));
+  await page.evaluate(() => { l3vol.cur.spec.tin = false; l3volSchedule(0); }); await page.waitForFunction(() => l3vol.cur && !l3vol.cur.busy && l3vol.cur.res, null, { timeout: 15000 }); await page.waitForTimeout(300);
   // Hörnen går att dra i efter utplaceringen: handtagen visas, hörnet flyttas med musen och volymen räknas om.
   const hd = await page.evaluate(() => [...document.querySelectorAll('.v3-mhandle')].filter(b => b.style.display !== 'none').map(b => { const r = b.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }));
   if (hd.length !== 4) fail('Fyra hörnhandtag ska synas när volympanelen är öppen: ' + JSON.stringify(hd));

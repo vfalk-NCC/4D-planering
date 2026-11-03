@@ -53,7 +53,7 @@ function l3volDefaults(cur) {
   let a = "plane", b = "plane";
   if (clouds.length) { a = "pc:" + clouds[0].id; b = clouds[1] ? "pc:" + clouds[1].id : models.length ? "md:" + models[0].id : "plane"; }
   else if (models.length) { a = "md:" + models[0].id; b = "plane"; }
-  return { a: { k: a, side: "top" }, b: { k: b, side: "top", z: null }, cell: 0 };
+  return { a: { k: a, side: "top" }, b: { k: b, side: "top", z: null }, cell: 0, tin: false };
 }
 const l3volLabel = (cur, s) => { const o = l3volSources(cur).find(x => x.k === s.k); return o ? o.label + (o.sided ? (s.side === "bottom" ? " (undersida)" : " (ovansida)") : s.k === "level" ? ` ${Number.isFinite(s.z) ? l3Fmt(s.z, 2) : "(hörnens medel)"} m` : "") : s.k; };
 
@@ -87,6 +87,60 @@ async function l3volHeights(cur, src, bd, cell) {
   return g;
 }
 
+/* ---- TIN: triangulering direkt från punkterna (Victor 2026-11-03: "triangulering … från punkterna, så att det följer bergkonturer") ---------------------------------
+   I stället för ett rutnät görs punktmolnets punkter (utglesade till ett medelvärde per liten ruta) till ett Delaunay-nät. Trianglarnas hörn är verkliga punkter, så ytan
+   följer berget och kanter i stället för att jämnas ut till ett regelbundet rutnät. Volymen räknas på de klippta trianglarna med samma metod som annars. */
+function l3volDelaunay(X, Y) {   // X,Y: lokala koordinater → Int32Array med trianglar (moturs), hörn = index i X/Y
+  const n = X.length; if (n < 3) return new Int32Array(0);
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity; for (let i = 0; i < n; i++) { if (X[i] < x0) x0 = X[i]; if (X[i] > x1) x1 = X[i]; if (Y[i] < y0) y0 = Y[i]; if (Y[i] > y1) y1 = Y[i]; }
+  const dm = Math.max(x1 - x0, y1 - y0, 1e-6), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, PX = new Float64Array(n + 3), PY = new Float64Array(n + 3);
+  for (let i = 0; i < n; i++) { PX[i] = X[i] - cx; PY[i] = Y[i] - cy; }
+  PX[n] = -20 * dm; PY[n] = -dm; PX[n + 1] = 20 * dm; PY[n + 1] = -dm; PX[n + 2] = 0; PY[n + 2] = 20 * dm;
+  const orient = (a, b, px, py) => (PX[b] - PX[a]) * (py - PY[a]) - (PY[b] - PY[a]) * (px - PX[a]);
+  const inCirc = (t, px, py) => { const a = tv[3 * t], b = tv[3 * t + 1], c = tv[3 * t + 2], ax = PX[a] - px, ay = PY[a] - py, bx = PX[b] - px, by = PY[b] - py, cx2 = PX[c] - px, cy2 = PY[c] - py;
+    return (ax * ax + ay * ay) * (bx * cy2 - cx2 * by) - (bx * bx + by * by) * (ax * cy2 - cx2 * ay) + (cx2 * cx2 + cy2 * cy2) * (ax * by - bx * ay) > 1e-12 * dm * dm * dm * dm; };
+  const tv = [n, n + 1, n + 2], tn = [-1, -1, -1], alive = [1], stamp = [0], stampNo = [0], free = []; let epoch = 0, last = 0;
+  // Punkterna i snirkelordning så att vandringen mellan insättningarna blir kort.
+  const R = Math.max(1, Math.round(Math.sqrt(n / 2))), ord = new Int32Array(n); for (let i = 0; i < n; i++) ord[i] = i;
+  const keyOf = new Float64Array(n);
+  for (let i = 0; i < n; i++) { const r = Math.max(0, Math.min(R - 1, Math.floor(((Y[i] - y0) / dm) * R))), c = (X[i] - x0) / dm; keyOf[i] = r * 4 + (r & 1 ? 1 - c : c); }
+  ord.sort((a, b) => keyOf[a] - keyOf[b]);
+  for (let q = 0; q < n; q++) {
+    const p = ord[q], px = PX[p], py = PY[p]; let t = alive[last] ? last : alive.indexOf(1), steps = 0, found = false;
+    while (steps++ < 4 * n + 64) { let moved = false; for (let e = 0; e < 3; e++) { const a = tv[3 * t + e], b = tv[3 * t + (e + 1) % 3]; if (orient(a, b, px, py) < 0) { const nb = tn[3 * t + e]; if (nb < 0) break; t = nb; moved = true; break; } } if (!moved) { found = true; break; } }
+    if (!found) { t = -1; for (let k = 0; k < alive.length; k++) if (alive[k]) { const a = tv[3 * k], b = tv[3 * k + 1], c = tv[3 * k + 2]; if (orient(a, b, px, py) >= 0 && orient(b, c, px, py) >= 0 && orient(c, a, px, py) >= 0) { t = k; break; } } if (t < 0) continue; }
+    epoch++; const bad = [t], bnd = []; stamp[t] = epoch;
+    for (let h = 0; h < bad.length; h++) { const u = bad[h]; for (let e = 0; e < 3; e++) { const nb = tn[3 * u + e];
+      if (nb >= 0 && stamp[nb] === epoch) continue;
+      if (nb >= 0 && stampNo[nb] !== epoch && inCirc(nb, px, py)) { stamp[nb] = epoch; bad.push(nb); continue; }
+      if (nb >= 0) stampNo[nb] = epoch;
+      let k = -1; if (nb >= 0) for (let m = 0; m < 3; m++) if (tn[3 * nb + m] === u) { k = m; break; }
+      bnd.push([tv[3 * u + e], tv[3 * u + (e + 1) % 3], nb, k]); } }
+    const st = new Map(), en = new Map(), ids = [];
+    for (const [a, b, nb, k] of bnd) { const id = free.length ? free.pop() : tv.length / 3; if (id * 3 >= tv.length) { tv.push(0, 0, 0); tn.push(-1, -1, -1); alive.push(0); stamp.push(0); stampNo.push(0); }
+      tv[3 * id] = a; tv[3 * id + 1] = b; tv[3 * id + 2] = p; tn[3 * id] = nb; tn[3 * id + 1] = -1; tn[3 * id + 2] = -1; alive[id] = 1; if (nb >= 0 && k >= 0) tn[3 * nb + k] = id; st.set(a, id); en.set(b, id); ids.push([id, a, b]); }
+    for (const [id, a, b] of ids) { const s1 = st.get(b), s2 = en.get(a); tn[3 * id + 1] = s1 === undefined ? -1 : s1; tn[3 * id + 2] = s2 === undefined ? -1 : s2; last = id; }
+    for (const u of bad) { alive[u] = 0; free.push(u); }
+  }
+  const out = []; for (let k = 0; k < alive.length; k++) if (alive[k]) { const a = tv[3 * k], b = tv[3 * k + 1], c = tv[3 * k + 2]; if (a < n && b < n && c < n) out.push(a, b, c); }
+  return Int32Array.from(out);
+}
+/* Medelpunkt per liten ruta ur punktmolnet inom området (utglesning) → hörnen till nätet. Höjder i m ö.h. */
+function l3volTinPoints(cur, src, bd, sp) {
+  const c = l3pc.clouds.find(x => "pc:" + x.id === src.k); if (!c || !c.chunks) return null;
+  const cx = c.info.center[0], cy = c.info.center[1], cz = c.info.center[2] + (c.dz || 0), m = sp * 2, x0 = bd.x0 - m, y0 = bd.y0 - m, x1 = bd.x1 + m, y1 = bd.y1 + m, nx = Math.max(1, Math.ceil((x1 - x0) / sp)), ny = Math.max(1, Math.ceil((y1 - y0) / sp));
+  if (nx * ny > 12e6) return null; const sum = new Float64Array(nx * ny * 3), cnt = new Uint32Array(nx * ny), stride = Math.max(1, Math.floor(c.nTot / 2e7));
+  c.chunks.forEach(ch => { const p = ch.pos, mm = p.length / 3; for (let i = 0; i < mm; i += stride) { const x = p[i * 3] + cx, y = p[i * 3 + 1] + cy; if (x < x0 || x >= x1 || y < y0 || y >= y1) continue;
+    const k = Math.floor((y - y0) / sp) * nx + Math.floor((x - x0) / sp); sum[k * 3] += x; sum[k * 3 + 1] += y; sum[k * 3 + 2] += p[i * 3 + 2] + cz; cnt[k]++; } });
+  const X = [], Y = [], Z = []; for (let k = 0; k < cnt.length; k++) if (cnt[k]) { X.push(sum[k * 3] / cnt[k]); Y.push(sum[k * 3 + 1] / cnt[k]); Z.push(sum[k * 3 + 2] / cnt[k]); }
+  return X.length >= 3 ? { X: Float64Array.from(X), Y: Float64Array.from(Y), Z: Float64Array.from(Z) } : null;
+}
+/* Höjd ur ett rutnät i (x,y): bilinjärt mellan rutmitterna, annars närmaste giltiga ruta. null = saknas. */
+function l3volGridZ(g, x, y) {
+  const fx = (x - g.x0) / g.cell - 0.5, fy = (y - g.y0) / g.cell - 0.5, i = Math.floor(fx), j = Math.floor(fy), tx = fx - i, ty = fy - j; let sw = 0, sz = 0;
+  for (let dj = 0; dj < 2; dj++) for (let di = 0; di < 2; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= g.nx || jj >= g.ny) continue; const z = g.z[jj * g.nx + ii]; if (!l3volOk(z)) continue; const w = (di ? tx : 1 - tx) * (dj ? ty : 1 - ty); sw += w; sz += w * z; }
+  return sw > 1e-6 ? sz / sw : null;
+}
 /* ---- Räkna och bygg kropparna ---- */
 function l3volRamp(kind, t) {
   const R = L3VOL_RAMP[kind], x = Math.max(0, Math.min(1, t)) * (R.length - 1), i = Math.min(R.length - 2, Math.floor(x)), c = new THREE.Color(R[i]).lerp(new THREE.Color(R[i + 1]), x - i);
@@ -168,29 +222,51 @@ async function l3volCompute(cur, alive) {
     }
   };
   const tri3 = (i, j, tp) => tp.map(([di, dj]) => { const k = (j + dj) * W + i + di; return [gA.x0 + (i + di) * cell, gA.y0 + (j + dj) * cell, nA[k], nB[k]]; });
+  const clipEmit = v => {
+    if (!hasClip) { if (l3volInside(P, (v[0][0] + v[1][0] + v[2][0]) / 3, (v[0][1] + v[1][1] + v[2][1]) / 3)) emit(v); return; }
+    const sub = (x, y) => { // värdena i (x,y) ur triangelns plan
+      const d = (v[1][1] - v[2][1]) * (v[0][0] - v[2][0]) + (v[2][0] - v[1][0]) * (v[0][1] - v[2][1]), l1 = ((v[1][1] - v[2][1]) * (x - v[2][0]) + (v[2][0] - v[1][0]) * (y - v[2][1])) / d, l2 = ((v[2][1] - v[0][1]) * (x - v[2][0]) + (v[0][0] - v[2][0]) * (y - v[2][1])) / d, l3 = 1 - l1 - l2;
+      return [x, y, l1 * v[0][2] + l2 * v[1][2] + l3 * v[2][2], l1 * v[0][3] + l2 * v[1][3] + l3 * v[2][3]];
+    };
+    let R; try { R = polygonClipping.intersection([[[...v.map(p => [p[0], p[1]]), [v[0][0], v[0][1]]]]], clipPoly); } catch (e) { return; }
+    R.forEach(pg => {
+      const ring = pg[0].slice(0, -1).map(p => sub(p[0], p[1])); if (ring.length < 3) return;
+      if (ring.length === 3 && pg.length === 1) { const t = area2(ring) < 0 ? [ring[0], ring[2], ring[1]] : ring; emit(t); return; }
+      const outer = ring.map(p => new THREE.Vector2(p[0], p[1])), holes = pg.slice(1).map(h => h.slice(0, -1).map(p => new THREE.Vector2(p[0], p[1])));
+      const all = ring.concat(...holes.map(h => h.map(p => sub(p.x, p.y))));
+      THREE.ShapeUtils.triangulateShape(outer, holes).forEach(f => { const t = [all[f[0]], all[f[1]], all[f[2]]]; emit(area2(t) < 0 ? [t[0], t[2], t[1]] : t); });
+    });
+  };
+  const tinA = !!cur.spec.tin && cur.spec.a.k.startsWith("pc:"), tinB = !tinA && !!cur.spec.tin && cur.spec.b.k.startsWith("pc:"), tinMode = tinA || tinB;
+  let tinInfo = null;
+  if (tinMode) {
+    const src = tinA ? cur.spec.a : cur.spec.b, sp = Math.max(0.05, Math.sqrt(area / 80000), Number(cur.spec.cell) > 0 ? Number(cur.spec.cell) * 0.5 : 0), pts = l3volTinPoints(cur, src, bd, sp);
+    if (!pts) return { err: "Kunde inte bygga triangelnätet – tänd och läs in punktmolnet inom området." };
+    await l3volTick(); if (!alive()) return null;
+    const X = Float64Array.from(pts.X, v => v - bd.x0), Y = Float64Array.from(pts.Y, v => v - bd.y0), T = l3volDelaunay(X, Y); await l3volTick(); if (!alive()) return null;
+    const gO = tinA ? gB : gA; let used = 0, work2 = 0;
+    const inPoly = (x, y) => l3volInside(P, x, y);
+    for (let t = 0; t < T.length; t += 3) {
+      const ia = T[t], ib = T[t + 1], ic = T[t + 2], xs = [pts.X[ia], pts.X[ib], pts.X[ic]], ys = [pts.Y[ia], pts.Y[ib], pts.Y[ic]];
+      if (Math.max(...xs) < bd.x0 || Math.min(...xs) > bd.x1 || Math.max(...ys) < bd.y0 || Math.min(...ys) > bd.y1) continue;
+      const zt = [pts.Z[ia], pts.Z[ib], pts.Z[ic]], zo = [0, 1, 2].map(k => l3volGridZ(gO, xs[k], ys[k])); if (zo.some(z => z == null)) continue;
+      let v = [0, 1, 2].map(k => tinA ? [xs[k], ys[k], zt[k], zo[k]] : [xs[k], ys[k], zo[k], zt[k]]); if (area2(v) < 0) v = [v[0], v[2], v[1]]; if (Math.abs(area2(v)) < 1e-9) continue;
+      const nIn = (inPoly(xs[0], ys[0]) ? 1 : 0) + (inPoly(xs[1], ys[1]) ? 1 : 0) + (inPoly(xs[2], ys[2]) ? 1 : 0);
+      let whole = nIn === 3; if (whole) { const A0 = v[0], B0 = v[1], C0 = v[2]; for (const q of P) { const d1 = (B0[0] - A0[0]) * (q[1] - A0[1]) - (B0[1] - A0[1]) * (q[0] - A0[0]), d2 = (C0[0] - B0[0]) * (q[1] - B0[1]) - (C0[1] - B0[1]) * (q[0] - B0[0]), d3 = (A0[0] - C0[0]) * (q[1] - C0[1]) - (A0[1] - C0[1]) * (q[0] - C0[0]); if (d1 > 0 && d2 > 0 && d3 > 0) { whole = false; break; } } }
+      if (whole) emit(v); else clipEmit(v); used++;
+      if (++work2 % 300 === 0) { await l3volTick(); if (!alive()) return null; }
+    }
+    tinInfo = { points: pts.X.length, tris: used, spacing: sp };
+  }
   let work = 0;
-  for (let j = 0; j < ny; j++) {
+  for (let j = 0; !tinMode && j < ny; j++) {
     for (let i = 0; i < nx; i++) {
       const c = j * nx + i; if (!ok[c]) { if (edgeCell[c] || (inside(i, j) && inside(i + 1, j + 1))) { const x = gA.x0 + (i + .5) * cell, y = gA.y0 + (j + .5) * cell; if (l3volInside(P, x, y)) aMiss += ca; } continue; }
       const cin = inside(i, j) + inside(i + 1, j) + inside(i, j + 1) + inside(i + 1, j + 1);
       if (!edgeCell[c] && cin === 0) continue;
       const parts = [tri3(i, j, [[0, 0], [1, 0], [1, 1]]), tri3(i, j, [[0, 0], [1, 1], [0, 1]])];
       if (!edgeCell[c] && cin === 4) { parts.forEach(emit); continue; }
-      parts.forEach(v => {
-        if (!hasClip) { if (l3volInside(P, (v[0][0] + v[1][0] + v[2][0]) / 3, (v[0][1] + v[1][1] + v[2][1]) / 3)) emit(v); return; }
-        const sub = (x, y) => { // värdena i (x,y) ur triangelns plan
-          const d = (v[1][1] - v[2][1]) * (v[0][0] - v[2][0]) + (v[2][0] - v[1][0]) * (v[0][1] - v[2][1]), l1 = ((v[1][1] - v[2][1]) * (x - v[2][0]) + (v[2][0] - v[1][0]) * (y - v[2][1])) / d, l2 = ((v[2][1] - v[0][1]) * (x - v[2][0]) + (v[0][0] - v[2][0]) * (y - v[2][1])) / d, l3 = 1 - l1 - l2;
-          return [x, y, l1 * v[0][2] + l2 * v[1][2] + l3 * v[2][2], l1 * v[0][3] + l2 * v[1][3] + l3 * v[2][3]];
-        };
-        let R; try { R = polygonClipping.intersection([[[...v.map(p => [p[0], p[1]]), [v[0][0], v[0][1]]]]], clipPoly); } catch (e) { return; }
-        R.forEach(pg => {
-          const ring = pg[0].slice(0, -1).map(p => sub(p[0], p[1])); if (ring.length < 3) return;
-          if (ring.length === 3 && pg.length === 1) { const t = area2(ring) < 0 ? [ring[0], ring[2], ring[1]] : ring; emit(t); return; }
-          const outer = ring.map(p => new THREE.Vector2(p[0], p[1])), holes = pg.slice(1).map(h => h.slice(0, -1).map(p => new THREE.Vector2(p[0], p[1])));
-          const all = ring.concat(...holes.map(h => h.map(p => sub(p.x, p.y))));
-          THREE.ShapeUtils.triangulateShape(outer, holes).forEach(f => { const t = [all[f[0]], all[f[1]], all[f[2]]]; emit(area2(t) < 0 ? [t[0], t[2], t[1]] : t); });
-        });
-      });
+      parts.forEach(clipEmit);
     }
     if (++work % 40 === 0) { await l3volTick(); if (!alive()) return null; }
   }
@@ -198,7 +274,8 @@ async function l3volCompute(cur, alive) {
   ["cut", "fill"].forEach(k => { if (tot[k] > 1e-6) solids[k] = l3volMesh(lists[k], k, org, tmax); });
   const at = k => { const c = cen[k]; return c[0] > 0 ? [c[1] / c[0], c[2] / c[0], c[3] / c[0]] : null; };
   const cut = tot.cut, fill = tot.fill, tris = (solids.cut ? solids.cut.tris : 0) + (solids.fill ? solids.fill.tris : 0);
-  const res = { fill, cut, net: fill - cut, area, areaIn: aIn, areaMiss: aMiss, cell, mn: aIn ? mn : 0, mx: aIn ? mx : 0, cellsCut: solids.cut ? solids.cut.tris : 0, cellsFill: solids.fill ? solids.fill.tris : 0, tris, tmax, at: new Date().toISOString(), srcA: l3volLabel(cur, cur.spec.a), srcB: l3volLabel(cur, cur.spec.b) };
+  if (tinMode) aMiss = Math.max(0, area - aIn);
+  const res = { fill, cut, net: fill - cut, area, areaIn: aIn, areaMiss: aMiss, cell, mn: aIn ? mn : 0, mx: aIn ? mx : 0, cellsCut: solids.cut ? solids.cut.tris : 0, cellsFill: solids.fill ? solids.fill.tris : 0, tris, tmax, at: new Date().toISOString(), srcA: l3volLabel(cur, cur.spec.a), srcB: l3volLabel(cur, cur.spec.b), tin: tinInfo };
   return { res, geom: { o: org, cut: solids.cut || null, fill: solids.fill || null, cutAt: at("cut"), fillAt: at("fill") } };
 }
 const l3volText = res => `Schakt −${l3volM3(res.cut)} · Fyllning +${l3volM3(res.fill)}`;
@@ -387,7 +464,7 @@ function l3volPanel() {
   const side = (key, sp) => { const o = srcs.find(x => x.k === sp.k); return o && o.sided ? `<select class="sm" data-vs="${key}" title="Vilken sida av modellen som mäts"><option value="top" ${sp.side !== "bottom" ? "selected" : ""}>Ovansida</option><option value="bottom" ${sp.side === "bottom" ? "selected" : ""}>Undersida</option></select>` : sp.k === "level" ? `<input class="sm" type="text" inputmode="decimal" data-vz="${key}" value="${Number.isFinite(sp.z) ? String(sp.z).replace(".", ",") : ""}" placeholder="medel" title="Höjd (m) – tomt = hörnens medelhöjd"><button type="button" class="ic" data-vpick="${key}" title="Tryck på en punkt i modellen – dess höjd blir nivån">⌖</button>` : ""; };
   const row = (key, label, sp, hint) => `<div class="v3-vq-r"><div class="v3-vq-l" title="${esc(hint)}"><i class="${key}"></i>${label}</div><div class="v3-vq-in"><select data-vk="${key}">${srcs.map(s => opt(s, sp.k)).join("")}</select>${side(key, sp)}</div></div>`;
   const cellTxt = Number(c.spec.cell) > 0 ? String(c.spec.cell).replace(".", ",") + " m" : "Auto" + (r ? " (" + String(r.cell).replace(".", ",") + " m)" : "");
-  const trTxt = r && r.tris ? ` (${r.tris.toLocaleString("sv-SE").replace(/[  ]/g, " ")} tr.)` : "";
+  const trTxt = r && r.tris ? ` (${r.tris.toLocaleString("sv-SE")} tr.${r.tin ? " · TIN från " + r.tin.points.toLocaleString("sv-SE") + " punkter" : ""})` : "";
   const P = l3Prefs(), dens = Number(P.volDens) > 0 ? Number(P.volDens) : 1.8, swell = Number.isFinite(Number(P.volSwell)) && P.volSwell !== undefined ? Number(P.volSwell) : 25, load = Number(P.volLoad) > 0 ? Number(P.volLoad) : 10;
   const tons = v => Math.round(v * dens).toLocaleString("sv-SE").replace(/[\u00a0\u202f]/g, " ") + " ton", lass = v => Math.max(0, Math.ceil(v * (1 + swell / 100) / load)).toLocaleString("sv-SE") + " lass";
   const res = r ? (() => { const tot = r.cut + r.fill, cp = tot > 0.5 ? Math.max(4, Math.min(96, r.cut / tot * 100)) : 50, netR = Math.round(r.net), word = netR > 0 ? "Överskott – ytan ligger högre än \"Mot\"" : netR < 0 ? "Underskott – ytan ligger lägre än \"Mot\"" : "I balans";
@@ -411,6 +488,7 @@ function l3volPanel() {
     <div data-vres>${res}</div>
     <details class="v3-vq-out v3-vq-setd" ${l3Prefs().vpSet ? "open" : ""}><summary>Inställningar</summary><div class="v3-vq-set">
       <div class="v3-vq-sl" title="Rutstorlek för ytan. Mindre ruta = fler trianglar och mer detalj. Räknas om direkt när du drar."><span>Noggrannhet</span><input type="range" min="0" max="${L3VOL_STEPS.length}" step="1" value="${Math.max(0, L3VOL_STEPS.indexOf(Number(c.spec.cell)) + 1)}" data-vc><em data-vcl>${cellTxt}</em></div>
+      ${sw("vtin", !!c.spec.tin, "Triangulera från punkterna (TIN)", "Bygg ytan som ett triangelnät direkt av punktmolnets punkter i stället för ett regelbundet rutnät – följer bergkonturer och kanter. Kräver att ytan som mäts (eller ytan Mot) är ett punktmoln.").replace("data-vtin ", `data-vtin ${/^pc:/.test(c.spec.a.k) || /^pc:/.test(c.spec.b.k) ? "" : "disabled"} `).replace("data-vtri-vtin", "data-vtintri")}
       ${sw("vwire", !!l3Prefs().volWire, "Visa triangulering", "Visa trianglarna som ytan och volymen är byggda av").replace("data-vtri-vwire", "data-vtri")}
       ${sw("vtext", l3Prefs().volExpText !== false, "Volymtext i IFC", "Skylt med volymtexten i IFC-filen (volymerna ligger alltid som egenskaper)")}
       <div class="v3-vq-sl" title="Hur genomskinliga kropparna är"><span>Syns</span><input type="range" min="0.15" max="1" step="0.05" value="${Number(l3Prefs().volOpacity) || 0.62}" data-vop><em></em></div>
@@ -434,6 +512,7 @@ function l3volPanel() {
   qa("input[data-vz]").forEach(i => { i.onchange = () => { const v = Number(String(i.value).replace(/\s/g, "").replace(",", ".")); c.spec[i.dataset.vz].z = i.value.trim() === "" || !Number.isFinite(v) ? null : v; l3volSchedule(); }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
   qa("[data-vpick]").forEach(b => { b.onclick = () => { l3vol.capture = "level"; l3Status("Tryck på en punkt i modellen – dess höjd blir nivån. Esc avbryter."); }; });
   const cs = q("input[data-vc]"); if (cs) { const lab = q("[data-vcl]"); cs.oninput = () => { const v = L3VOL_STEPS[Number(cs.value) - 1] || 0; lab.textContent = v ? String(v).replace(".", ",") + " m" : "Auto"; c.spec.cell = v; l3volSchedule(220); }; }
+  const ti = q("input[data-vtin]"); if (ti) ti.onchange = () => { c.spec.tin = ti.checked; c.saved = false; l3volSchedule(0); };
   const wi = q("input[data-vwire]"); if (wi) wi.onchange = () => { l3SetPref("volWire", wi.checked); l3volDraw(); l3mDraw(); };
   const on = (k, fn) => qa(`[data-vb="${k}"]`).forEach(b => { b.onclick = fn; });
   on("x", l3volAskClose);
