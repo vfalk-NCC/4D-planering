@@ -289,10 +289,12 @@ function l3pcZLabels() {
     c.chunks.forEach(ch => { const pos = ch.pos; for (let i = 0; i < pos.length / 3; i += stride) { const k = zi(pos[i * 3 + 2] + cz), q = cen[k]; if (!q) continue; const d = (pos[i * 3] - q[0]) ** 2 + (pos[i * 3 + 1] - q[1]) ** 2; if (d < best[k].d) best[k] = { d, x: pos[i * 3], y: pos[i * 3 + 1], z: pos[i * 3 + 2] }; } });
     const grp = new THREE.Group(); grp.name = "pcZLabels";
     zones.forEach((z, k) => { const b = best[k]; if (!isFinite(b.d)) return; const lo = z.lo === -Infinity ? c.info.min[2] + (c.dz || 0) : z.lo, hi = z.hi === Infinity ? c.info.max[2] + (c.dz || 0) : z.hi;
-      const txt = Zs.gradient ? l3pcF(b.z + cz) + " m" : `${l3pcF(lo)} – ${l3pcF(hi)} m`, cv = document.createElement("canvas"), g = cv.getContext("2d"), fs = 30; g.font = `700 ${fs}px sans-serif`; const w = Math.ceil(g.measureText(txt).width) + 22; cv.width = w; cv.height = fs + 18;
-      g.font = `700 ${fs}px sans-serif`; g.textBaseline = "middle"; g.fillStyle = "rgba(255,255,255,.92)"; g.beginPath(); g.roundRect ? g.roundRect(1, 1, w - 2, cv.height - 2, 10) : g.rect(1, 1, w - 2, cv.height - 2); g.fill(); g.lineWidth = 5; g.strokeStyle = z.col; g.stroke(); g.fillStyle = "#0f172a"; g.fillText(txt, 11, cv.height / 2 + 1);
-      const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter; const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, sizeAttenuation: false, transparent: true }));
-      sp.scale.set(0.036 * w / cv.height * 1.0, 0.036, 1); sp.position.set(b.x, b.y, b.z + 0.2); sp.renderOrder = 30; sp.userData.noHit = true; sp.raycast = () => {}; grp.add(sp); });
+      const txt = Zs.gradient ? l3pcF(b.z + cz) + " m" : `${l3pcF(lo)} – ${l3pcF(hi)} m`, cv = document.createElement("canvas"), g = cv.getContext("2d"), fs = 28; g.font = `600 ${fs}px system-ui, sans-serif`; const w = Math.ceil(g.measureText(txt).width) + 28; cv.width = w; cv.height = fs + 16;
+      g.font = `600 ${fs}px system-ui, sans-serif`; g.textBaseline = "middle"; g.textAlign = "center"; const hh = cv.height - 6;
+      g.shadowColor = "rgba(15,23,42,.35)"; g.shadowBlur = 6; g.shadowOffsetY = 2; g.fillStyle = "rgba(255,255,255,.88)"; g.beginPath(); g.roundRect ? g.roundRect(3, 2, w - 6, hh, hh / 2) : g.rect(3, 2, w - 6, hh); g.fill(); g.shadowColor = "transparent";
+      g.lineWidth = 3.5; g.strokeStyle = z.col; g.stroke(); g.lineJoin = "round"; g.lineWidth = 5; g.strokeStyle = "rgba(255,255,255,.9)"; g.strokeText(txt, w / 2, hh / 2 + 1); g.fillStyle = "#12305f"; g.fillText(txt, w / 2, hh / 2 + 1);
+      const tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter; tex.anisotropy = 8; const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, depthWrite: false, sizeAttenuation: false, transparent: true }));
+      sp.scale.set(0.028 * w / cv.height, 0.028, 1); sp.position.set(b.x, b.y, b.z + 0.2); sp.renderOrder = 30; sp.userData.noHit = true; sp.raycast = () => {}; grp.add(sp); });
     c.group.add(grp); c.zlab = grp; });
 }
 /* Välj nollnivån (Z0) genom att trycka på en punkt i molnet eller på en yta i modellen. */
