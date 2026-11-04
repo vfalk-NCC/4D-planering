@@ -3,16 +3,51 @@
    • Kurvor med valfritt intervall (kraftig linje var N:e), färgade efter höjd eller mörka, med höjdsiffror på de kraftiga.
    • Färgyta (hypsometrisk tint) lagd på molnets yta i 3D och under kurvorna i minimapen.
    • Export till DXF som 3D-polylinjer med höjd (lager per intervall) och text. */
-const l3cn = { on: false, int: 0, major: 5, tint: true, tintOp: 0.38, in3d: true, inMap: true, colorLines: true, labels: true, mode: "max", grid: null, segs: null, rev: 0, busy: false, group: null, cell: 0, info: "" };
+const l3cn = { on: false, int: 0, major: 5, tint: true, tintOp: 0.38, in3d: true, inMap: true, colorLines: true, labels: true, smooth: 2, mode: "max", grid: null, segs: null, rev: 0, busy: false, group: null, cell: 0, info: "" };
 const l3cnPrefs = () => (typeof l3Prefs === "function" && l3Prefs().cn) || {};
-function l3cnLoad() { const p = l3cnPrefs(); ["on", "int", "major", "tint", "tintOp", "in3d", "inMap", "colorLines", "labels", "mode"].forEach(k => { if (p[k] !== undefined) l3cn[k] = p[k]; }); }
-function l3cnSave() { const o = {}; ["on", "int", "major", "tint", "tintOp", "in3d", "inMap", "colorLines", "labels", "mode"].forEach(k => { o[k] = l3cn[k]; }); l3SetPref("cn", o); }
+function l3cnLoad() { const p = l3cnPrefs(); ["on", "int", "major", "tint", "tintOp", "in3d", "inMap", "colorLines", "labels", "smooth", "mode"].forEach(k => { if (p[k] !== undefined) l3cn[k] = p[k]; }); }
+function l3cnSave() { const o = {}; ["on", "int", "major", "tint", "tintOp", "in3d", "inMap", "colorLines", "labels", "smooth", "mode"].forEach(k => { o[k] = l3cn[k]; }); l3SetPref("cn", o); }
 l3cnLoad();
 const l3cnRev = () => (l3cn.on && l3cn.inMap ? l3cn.rev : 0);
 /* Höjdfärg: blå → turkos → grön → gul → röd */
 function l3cnRamp(f) { f = Math.max(0, Math.min(1, f)); const st = [[0, 49, 99, 200], [0.25, 40, 170, 200], [0.5, 70, 180, 90], [0.75, 240, 210, 60], [1, 215, 50, 40]]; for (let i = 1; i < st.length; i++) if (f <= st[i][0]) { const a = st[i - 1], b = st[i], k = (f - a[0]) / (b[0] - a[0]); return [a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k, a[3] + (b[3] - a[3]) * k]; } return [215, 50, 40]; }
 const l3cnNiceStep = span => { const raw = span / 14, p = 10 ** Math.floor(Math.log10(raw)), f = raw / p; return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * p; };
 
+/* Jämna kurvor (Victor 2026-11-04: "linjerna snyggare/mer smooth och inte lika hackiga"): höjdrutnätet jämnas först (några lätta medelvärdespass som inte sprider sig in i tomma rutor),
+   därefter länkas kurvans delsträckor ihop till sammanhängande linjer som rundas av med Chaikin-skärning. Steg 0 = rå marching squares. */
+const L3CN_BLUR = [0, 1, 3, 6], L3CN_CHAIKIN = [0, 1, 1, 2];
+function l3cnBlur(z, nx, ny, passes) {
+  let a = z; for (let p = 0; p < passes; p++) { const b = a.slice();
+    for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) { const k = i + j * nx; if (a[k] !== a[k]) continue; let s = a[k] * 4, w = 4;
+      for (const [di, dj, wt] of [[-1, 0, 2], [1, 0, 2], [0, -1, 2], [0, 1, 2], [-1, -1, 1], [1, -1, 1], [-1, 1, 1], [1, 1, 1]]) { const v = a[k + di + dj * nx]; if (v === v) { s += v * wt; w += wt; } }
+      b[k] = s / w; }
+    a = b; }
+  return a;
+}
+/* Segment (x0,y0,x1,y1,L)-lista → sammanlänkade linjer → Chaikin → nya segment. */
+function l3cnSmoothSegs(arr, cell, iters) {
+  const n = arr.length / 5; if (!n || !iters) return arr; const q = cell * 1e-3, key = (x, y, L) => Math.round(x / q) + "," + Math.round(y / q) + "," + L, ends = new Map(), used = new Uint8Array(n);
+  const add = (k, i, e) => { let l = ends.get(k); if (!l) ends.set(k, l = []); l.push(i * 2 + e); };
+  for (let i = 0; i < n; i++) { const o = i * 5; add(key(arr[o], arr[o + 1], arr[o + 4]), i, 0); add(key(arr[o + 2], arr[o + 3], arr[o + 4]), i, 1); }
+  const next = (k, from) => { const l = ends.get(k); if (!l) return -1; for (const c of l) { const i = c >> 1; if (!used[i] && i !== from) return c; } return -1; };
+  const lines = [];
+  for (let s0 = 0; s0 < n; s0++) {
+    if (used[s0]) continue; used[s0] = 1; const o = s0 * 5, L = arr[o + 4]; const pts = [arr[o], arr[o + 1], arr[o + 2], arr[o + 3]]; let kTail = key(arr[o + 2], arr[o + 3], L), kHead = key(arr[o], arr[o + 1], L);
+    for (let side = 0; side < 2; side++) { let cur = -1;
+      for (;;) { const k = side === 0 ? kTail : kHead, c = next(k, cur); if (c < 0) break; const i = c >> 1, e = c & 1, oo = i * 5; used[i] = 1; cur = i;
+        const fx = e === 0 ? arr[oo + 2] : arr[oo], fy = e === 0 ? arr[oo + 3] : arr[oo + 1];   // andra änden
+        if (side === 0) { pts.push(fx, fy); kTail = key(fx, fy, L); } else { pts.unshift(fx, fy); kHead = key(fx, fy, L); } } }
+    lines.push({ L, pts, closed: kHead === kTail && pts.length >= 8 });
+  }
+  const out = [];
+  lines.forEach(ln => { let P = ln.pts; if (ln.closed) P = P.slice(0, P.length - 2);
+    for (let it = 0; it < iters && P.length >= 6; it++) { const m = P.length / 2, R = []; const cnt = ln.closed ? m : m - 1;
+      if (!ln.closed) R.push(P[0], P[1]);
+      for (let i = 0; i < cnt; i++) { const a = i, b = (i + 1) % m, ax = P[a * 2], ay = P[a * 2 + 1], bx = P[b * 2], by = P[b * 2 + 1]; R.push(0.75 * ax + 0.25 * bx, 0.75 * ay + 0.25 * by, 0.25 * ax + 0.75 * bx, 0.25 * ay + 0.75 * by); }
+      if (!ln.closed) R.push(P[P.length - 2], P[P.length - 1]); P = R; }
+    const m = P.length / 2; for (let i = 1; i < m; i++) out.push(P[i * 2 - 2], P[i * 2 - 1], P[i * 2], P[i * 2 + 1], ln.L); if (ln.closed && m > 2) out.push(P[m * 2 - 2], P[m * 2 - 1], P[0], P[1], ln.L); });
+  return Float32Array.from(out);
+}
 /* ---- Grid ------------------------------------------------------------------------------------------------------------ */
 function l3cnBuildGrid() {
   const O = l3.O, clouds = (typeof l3pc !== "undefined" ? l3pc.clouds : []).filter(c => c.visible); if (!clouds.length) return null;
@@ -28,6 +63,7 @@ function l3cnBuildGrid() {
   // fyll små hål (grannmedelvärde) och jämna lätt
   for (let pass = 0; pass < 4; pass++) { const nz = z.slice(); for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) { const k = i + j * nx; if (z[k] === z[k]) continue; let s = 0, m = 0; for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const v = z[k + di + dj * nx]; if (v === v) { s += v; m++; } } if (m >= 3) nz[k] = s / m; } z.set(nz); }
   const sm = z.slice(); for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) { const k = i + j * nx; if (z[k] !== z[k]) continue; let s = z[k] * 4, w = 4; for (const [di, dj, wt] of [[-1, 0, 2], [1, 0, 2], [0, -1, 2], [0, 1, 2], [-1, -1, 1], [1, -1, 1], [-1, 1, 1], [1, 1, 1]]) { const v = z[k + di + dj * nx]; if (v === v) { s += v * wt; w += wt; } } sm[k] = s / w; }
+  const smo = L3CN_BLUR[Math.max(0, Math.min(3, Number(l3cn.smooth) | 0))]; if (smo) { const bl = l3cnBlur(sm, nx, ny, smo); sm.set(bl); }
   let zmin = Infinity, zmax = -Infinity; for (let k = 0; k < sm.length; k++) { const v = sm[k]; if (v === v) { if (v < zmin) zmin = v; if (v > zmax) zmax = v; } }
   if (!isFinite(zmin)) return null; return { x0: x0 + O[0], y0: y0 + O[1], cell, nx, ny, z: sm, zmin, zmax };
 }
@@ -50,7 +86,8 @@ function l3cnTrace(G, int) {
 function l3cnCompute(quiet) {
   if (typeof l3pc === "undefined" || !l3pc.clouds.some(c => c.visible)) { l3cnClear(); l3cn.info = "Tänd ett punktmoln (Lager → Punktmoln)."; return; }
   const t0 = performance.now(); const G = l3cnBuildGrid(); if (!G) { l3cn.info = "Inga höjder att räkna kurvor på."; return; }
-  const int = l3cn.int > 0 ? l3cn.int : l3cnNiceStep(G.zmax - G.zmin); let S = l3cnTrace(G, int), guard = 0; while ((S.minor.length + S.major.length) / 5 > 260000 && guard++ < 3) S = l3cnTrace(G, int * 2 ** guard);
+  const int = l3cn.int > 0 ? l3cn.int : l3cnNiceStep(G.zmax - G.zmin); let S = l3cnTrace(G, int), guard = 0; const sIt = L3CN_CHAIKIN[Math.max(0, Math.min(3, Number(l3cn.smooth) | 0))], cap = sIt ? 260000 / 2 ** sIt : 260000; while ((S.minor.length + S.major.length) / 5 > cap && guard++ < 3) S = l3cnTrace(G, int * 2 ** guard);
+  if (sIt) { S.minor = l3cnSmoothSegs(S.minor, G.cell, sIt); S.major = l3cnSmoothSegs(S.major, G.cell, sIt); }
   l3cn.grid = G; l3cn.segs = S; l3cn.rev++; l3cnPaintTint(); l3cn.info = `${S.levels.length} nivåer, intervall ${String(S.step).replace(".", ",")} m · ${((S.minor.length + S.major.length) / 5).toLocaleString("sv-SE")} linjestycken · ruta ${String(Math.round(G.cell * 100) / 100).replace(".", ",")} m · ${Math.round(performance.now() - t0)} ms`;
   l3cnDraw3d(); l3cnMapRefresh(); if (!quiet) l3Status("Höjdkurvor: " + l3cn.info);
 }
@@ -125,6 +162,7 @@ function l3cnHtml() {
   <label class="f"><span>Kraftig var</span><select data-cn="major">${[2, 4, 5, 10].map(v => `<option value="${v}" ${Number(l3cn.major) === v ? "selected" : ""}>${v}:e kurva</option>`).join("")}</select></label>
   <label class="f"><span>Yta</span><select data-cn="mode"><option value="max" ${l3cn.mode === "max" ? "selected" : ""}>Övre (topp)</option><option value="mean" ${l3cn.mode === "mean" ? "selected" : ""}>Medel</option><option value="min" ${l3cn.mode === "min" ? "selected" : ""}>Nedre (mark)</option></select></label>
   ${ck("colorLines", "Färg på linjerna", "Linjerna får höjdfärg (blått lågt → rött högt) – annars mörka")}${ck("tint", "Färgyta", "Genomskinlig höjdfärg över ytan")}
+  <label class="f" title="Hur mjukt kurvorna rundas av: Av = rå, Kraftig = mycket jämna"><span>Jämnhet</span><select data-cn="smooth">${[[0, "Av"], [1, "Lätt"], [2, "Normal"], [3, "Kraftig"]].map(([v, l]) => `<option value="${v}" ${(Number(l3cn.smooth) | 0) === v ? "selected" : ""}>${l}</option>`).join("")}</select></label>
   <label class="f"><span>Färgytans styrka</span><input type="range" min="0.1" max="0.9" step="0.05" data-cn="tintOp" value="${l3cn.tintOp}" style="width:110px"></label>
   ${ck("labels", "Höjdsiffror", "Siffror på de kraftiga kurvorna")}${ck("in3d", "Visa i 3D-vyn", "")}${ck("inMap", "Visa i minimapen", "")}
   <div class="r"><button type="button" data-cnb="dxf" ${l3cn.segs ? "" : "disabled"}>Exportera DXF (3D-polylinjer)</button></div><div class="t" data-cninfo>${l3ptEsc ? l3ptEsc(l3cn.info || "") : l3cn.info}</div>`;
@@ -133,6 +171,6 @@ function l3cnBind(el) {
   if (el._cnBound) return; el._cnBound = true;
   el.addEventListener("click", e => { const b = e.target.closest("[data-cnb]"); if (!b) return; const a = b.dataset.cnb; if (a === "calc") { l3cn.on = true; l3cnSave(); l3Busy && l3Busy(true); setTimeout(() => { try { l3cnCompute(); } finally { l3Busy && l3Busy(false); if (typeof l3ptRender === "function") l3ptRender(); } }, 20); } else if (a === "off") { l3cn.on = false; l3cnSave(); l3cnClear(); l3cnDraw3d(); if (typeof l3ptRender === "function") l3ptRender(); } else if (a === "dxf") l3cnDxf(); });
   el.addEventListener("change", e => { const t = e.target.closest("[data-cn]"); if (!t) return; const k = t.dataset.cn, v = t.type === "checkbox" ? t.checked : t.type === "range" ? Number(t.value) : (k === "mode" ? t.value : Number(t.value)); l3cn[k] = v; l3cnSave();
-    if (["int", "major", "mode"].includes(k)) { if (l3cn.on) { l3Busy && l3Busy(true); setTimeout(() => { try { l3cnCompute(true); } finally { l3Busy && l3Busy(false); if (typeof l3ptRender === "function") l3ptRender(); } }, 20); } } else { l3cnDraw3d(); l3cnMapRefresh(); } });
+    if (["int", "major", "mode", "smooth"].includes(k)) { if (l3cn.on) { l3Busy && l3Busy(true); setTimeout(() => { try { l3cnCompute(true); } finally { l3Busy && l3Busy(false); if (typeof l3ptRender === "function") l3ptRender(); } }, 20); } } else { l3cnDraw3d(); l3cnMapRefresh(); } });
   el.addEventListener("input", e => { const t = e.target.closest('[data-cn="tintOp"]'); if (!t) return; l3cn.tintOp = Number(t.value); l3cnDraw3d(); l3cnMapRefresh(); });
 }
