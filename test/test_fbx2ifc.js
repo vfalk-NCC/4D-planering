@@ -21,7 +21,14 @@ const MIME = { '.html': 'text/html', '.js': 'application/javascript', '.css': 't
   const r2 = await page.evaluate(() => document.getElementById('res').textContent);
   if (!/Inga trianglar/.test(r2)) fail('Besked när allt hoppas över: ' + r2);
   await page.evaluate(() => { document.getElementById('min').value = '2.5'; document.getElementById('zip').checked = false; }); await page.click('#go'); await page.waitForFunction(() => (document.querySelector('#res a') || {}).download === 'modell.ifc', null, { timeout: 20000 });
-  console.log('OK: FBX/OBJ → IFC-omvandlaren (fbx2ifc.html): 20 delar blir 1 delad geometri, packas som .ifczip, småprylar kan hoppas över', JSON.stringify(r));
+  // 3D-DWF (Navisworks Simulate): läses i en tråd, huvudgrupper att välja, IFC med delad geometri
+  fs.writeFileSync('/tmp/claude-0/-home-user-4D-planering/867d5061-8c43-5fe8-9725-74ef03d6c450/scratchpad/modell.dwf', require('./_dwfsample')());
+  await page.reload(); await page.setInputFiles('#pick', '/tmp/claude-0/-home-user-4D-planering/867d5061-8c43-5fe8-9725-74ef03d6c450/scratchpad/modell.dwf');
+  await page.waitForFunction(() => !document.getElementById('dwfCard').hidden && document.querySelectorAll('#dwfBody ul.f li').length >= 0 && /delar/.test(document.getElementById('files').textContent), null, { timeout: 30000 });
+  await page.click('#go'); await page.waitForSelector('#res a', { timeout: 30000 });
+  const rd = await page.evaluate(async () => { const a = document.querySelector('#res a'), buf = new Uint8Array(await (await fetch(a.href)).arrayBuffer()); const z = fflate.unzipSync(buf), txt = new TextDecoder().decode(z[Object.keys(z)[0]]); return { link: a.textContent, proxies: (txt.match(/IFCBUILDINGELEMENTPROXY\(/g) || []).length, name: /Skruv & mutter|Skruv &amp; mutter/.test(txt), faceSets: (txt.match(/IFCTRIANGULATEDFACESET\(/g) || []).length, files: document.getElementById('files').textContent }; });
+  if (!/modell\.ifczip/.test(rd.link) || rd.proxies !== 2 || !rd.name) fail('DWF → IFC: ' + JSON.stringify(rd));
+  console.log('OK: FBX/OBJ/DWF → IFC-omvandlaren (fbx2ifc.html): 20 delar blir 1 delad geometri, packas som .ifczip, småprylar kan hoppas över', JSON.stringify(r));
   if (errors.length) fail('sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

@@ -30,11 +30,12 @@
 </head>
 <body>
 <main>
-  <h1>FBX → IFC</h1>
-  <p class="lead">Gör om FBX (t.ex. exporterad ur Navisworks), OBJ eller GLB till en kompakt IFC-fil – direkt i webbläsaren. Filerna laddas inte upp någonstans.</p>
-  <div class="drop" id="drop" tabindex="0" role="button"><b>Släpp filerna här</b><small>FBX · OBJ · GLB/glTF – eller klicka för att välja</small></div>
-  <input type="file" id="pick" accept=".fbx,.obj,.glb,.gltf" multiple hidden>
+  <h1>FBX / DWF → IFC</h1>
+  <p class="lead">Gör om FBX (t.ex. exporterad ur Navisworks), OBJ, GLB eller 3D-DWF till en kompakt IFC-fil – direkt i webbläsaren. Filerna laddas inte upp någonstans.</p>
+  <div class="drop" id="drop" tabindex="0" role="button"><b>Släpp filerna här</b><small>FBX · OBJ · GLB/glTF · DWF (3D) – eller klicka för att välja</small></div>
+  <input type="file" id="pick" accept=".fbx,.obj,.glb,.gltf,.dwf" multiple hidden>
   <div class="card"><h2>Filer</h2><ul class="f" id="files"><li><em>Inga filer valda än.</em></li></ul></div>
+  <div class="card" id="dwfCard" hidden><h2>DWF – välj vad som ska med</h2><div id="dwfBody"></div></div>
   <div class="card"><h2>Inställningar</h2>
     <div class="row">
       <label>Enhet i filen<select id="unit"><option value="0">Auto (mm om modellen är väldigt stor)</option><option value="1">Meter</option><option value="0.01">Centimeter</option><option value="0.001">Millimeter</option></select></label>
@@ -52,23 +53,49 @@
   <button class="go" id="go" disabled>Gör om till IFC</button>
   <div class="card" id="out" hidden><h2 id="outT">Arbetar…</h2><div class="bar"><i id="bar"></i></div><div id="msg" class="hint"></div><div class="stats" id="stats"></div><div id="res"></div></div>
 </main>
-<script src="vendor/three/three.min.js?v=20261104202330"></script>
-<script src="vendor/three/fflate.min.js?v=20261104202330"></script>
-<script src="vendor/three/FBXLoader.js?v=20261104202330"></script>
-<script src="vendor/three/OBJLoader.js?v=20261104202330"></script>
-<script src="vendor/three/GLTFLoader.js?v=20261104202330"></script>
-<script src="ifc-writer.js?v=20261104202330"></script>
-<script src="ifc-mesh.js?v=20261104202330"></script>
+<script src="vendor/three/three.min.js?v=20261104203527"></script>
+<script src="vendor/three/fflate.min.js?v=20261104203527"></script>
+<script src="vendor/three/FBXLoader.js?v=20261104203527"></script>
+<script src="vendor/three/OBJLoader.js?v=20261104203527"></script>
+<script src="vendor/three/GLTFLoader.js?v=20261104203527"></script>
+<script src="ifc-writer.js?v=20261104203527"></script>
+<script>var l3Status = function () {}, busyProgress = function (k, t, f) { if (window.__dwfProg) window.__dwfProg(t, f); };</script>
+<script src="lagesplan-3ddwf.js?v=20261104203527"></script>
+<script src="ifc-mesh.js?v=20261104203527"></script>
 <script>
 "use strict";
 const $ = id => document.getElementById(id), files = [], tick = () => new Promise(r => setTimeout(r, 0));
 const fmtMB = n => (n / 1e6).toFixed(n < 1e7 ? 1 : 0).replace(".", ",") + " MB", fmtN = n => Math.round(n).toLocaleString("sv-SE");
-function add(list) { for (const f of list) if (/\.(fbx|obj|glb|gltf)$/i.test(f.name) && !files.some(x => x.name === f.name && x.size === f.size)) files.push(f); render(); }
-function render() { $("files").innerHTML = files.length ? files.map((f, i) => `<li><span>${f.name.replace(/[<>&]/g, "")}</span><span><em>${fmtMB(f.size)}</em> <a href="#" data-i="${i}">ta bort</a></span></li>`).join("") : "<li><em>Inga filer valda än.</em></li>"; $("go").disabled = !files.length; $("files").querySelectorAll("a").forEach(a => { a.onclick = e => { e.preventDefault(); files.splice(+a.dataset.i, 1); render(); }; }); }
+function add(list) { for (const f of list) if (/\.(fbx|obj|glb|gltf|dwf)$/i.test(f.name) && !files.some(x => x.name === f.name && x.size === f.size)) { files.push(f); if (/\.dwf$/i.test(f.name)) dwfLoad(f); } render(); }
+function render() { $("files").innerHTML = files.length ? files.map((f, i) => `<li><span>${f.name.replace(/[<>&]/g, "")}</span><span><em>${f.dwfState ? f.dwfState + " · " : ""}${fmtMB(f.size)}</em> <a href="#" data-i="${i}">ta bort</a></span></li>`).join("") : "<li><em>Inga filer valda än.</em></li>"; $("go").disabled = !files.length; $("files").querySelectorAll("a").forEach(a => { a.onclick = e => { e.preventDefault(); files.splice(+a.dataset.i, 1); render(); }; }); }
 const drop = $("drop"); drop.onclick = () => $("pick").click(); drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") $("pick").click(); };
 $("pick").onchange = () => { add([...$("pick").files]); $("pick").value = ""; };
 ["dragenter", "dragover"].forEach(t => document.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach(t => document.addEventListener(t, e => { e.preventDefault(); if (t === "drop") add([...e.dataTransfer.files]); if (t === "drop" || !e.relatedTarget) drop.classList.remove("over"); }));
+
+/* ---- DWF: läses i en egen tråd, sedan väljer man vilka huvudgrupper som ska med ---- */
+function dwfGroups(d) { let n = d.root; while (n.kids.size === 1 && !n.own.length) n = [...n.kids.values()][0]; return { top: n, groups: [...n.kids.values()] }; }
+async function dwfLoad(f) {
+  f.dwfState = "läser…"; render();
+  window.__dwfProg = (t, p) => { f.dwfState = t + (p != null ? " " + Math.round(p * 100) + " %" : ""); render(); };
+  try {
+    const buf = await f.arrayBuffer(), r = await l3dwfParseInWorker(buf, f.name); if (!r.parts.length) throw new Error("Inga 3D-delar i filen (2D-DWF stöds inte).");
+    f.dwf = l3dwfPrep(r); f.dwfState = `${fmtN(r.parts.length)} delar, ${fmtN(f.dwf.tris)} trianglar`; l3dwfSetOn(f.dwf.root, false); l3dwfAutoFill(f.dwf, f.dwf.root, 1500000);
+  } catch (e) { f.dwfState = "fel: " + (e.message || e); }
+  window.__dwfProg = null; render(); dwfRender();
+}
+function dwfRender() {
+  const fs = files.filter(f => f.dwf); $("dwfCard").hidden = !fs.length; if (!fs.length) return;
+  $("dwfBody").innerHTML = fs.map((f, fi) => { const d = f.dwf, { groups } = dwfGroups(d), tot = l3dwfCount(d, d.root);
+    return `<p class="hint" style="margin:0 0 8px"><b>${f.name.replace(/[<>&]/g, "")}</b>: ${fmtN(tot.sel)} av ${fmtN(tot.all)} trianglar valda (${fmtN(tot.ps)} delar). Förvalet tar ${fmtN(1500000)} trianglar; en stor IFC-fil blir tung att öppna.</p>
+    <p style="margin:0 0 8px"><button type="button" data-dw="${fi}:all">Välj allt</button> <button type="button" data-dw="${fi}:none">Välj inget</button> <button type="button" data-dw="${fi}:fill">Förval (1,5 milj.)</button></p>
+    <ul class="f">` + groups.map((g, gi) => { const c = l3dwfCount(d, g); return `<li><label class="chk"><input type="checkbox" data-dg="${fi}:${gi}" ${c.sel === c.all && c.all ? "checked" : ""}> ${String(g.name).replace(/[<>&]/g, "")}</label><span><em>${fmtN(c.sel)} / ${fmtN(c.all)} tri.</em></span></li>`; }).join("") + "</ul>"; }).join("");
+}
+$("dwfBody").addEventListener("click", e => {
+  const b = e.target.closest("[data-dw]"); if (!b) return; const [fi, a] = b.dataset.dw.split(":"), d = files.filter(f => f.dwf)[+fi].dwf;
+  if (a === "all") l3dwfSetOn(d.root, true); else if (a === "none") l3dwfSetOn(d.root, false); else { l3dwfSetOn(d.root, false); l3dwfAutoFill(d, d.root, 1500000); } dwfRender();
+});
+$("dwfBody").addEventListener("change", e => { const c = e.target.closest("[data-dg]"); if (!c) return; const [fi, gi] = c.dataset.dg.split(":").map(Number), d = files.filter(f => f.dwf)[fi].dwf; l3dwfSetOn(dwfGroups(d).groups[gi], c.checked); dwfRender(); });
 async function parse(file) {
   const ext = file.name.split(".").pop().toLowerCase(), buf = await file.arrayBuffer();
   if (ext === "fbx") return new THREE.FBXLoader().parse(buf, "");
@@ -94,10 +121,14 @@ $("go").onclick = async () => {
     for (let fi = 0; fi < files.length; fi++) {
       const f = files[fi], base = f.name.replace(/\.[^.]+$/, ""), pre = files.length > 1 ? `(${fi + 1} av ${files.length}) ` : "";
       $("msg").textContent = `${pre}Läser ${f.name} (${fmtMB(f.size)})…`; bar(0.02); await tick();
-      const root = await parse(f); $("msg").textContent = `${pre}Samlar delar…`; bar(0.2); await tick();
-      const { list, unit } = items(root, f, o); const tris0 = list.reduce((s, x) => s + (x.idx ? x.idx.length : x.pos.length / 3) / 3, 0);
+      let list, unit;
+      if (/\.dwf$/i.test(f.name) && !f.dwf) throw new Error(`${f.name} läses fortfarande eller kunde inte läsas (${f.dwfState || "okänt fel"}).`);
+      if (f.dwf) {   // 3D-DWF: valda delar i filens egna koordinater (meter)
+        if (f.dwf.minSize !== undefined) f.dwf.minSize = minSize; const d = f.dwf, sel = l3dwfSelected(d); if (!sel.length) throw new Error(`Inga delar valda i ${f.name}.`);
+        $("msg").textContent = `${pre}Samlar ${fmtN(sel.length)} delar…`; bar(0.2); await tick(); list = await l3dwfIfcList(d, sel, [o.ox, o.oy, o.oz]); unit = d.unit;
+      } else { const root = await parse(f); $("msg").textContent = `${pre}Samlar delar…`; bar(0.2); await tick(); ({ list, unit } = items(root, f, o)); } const tris0 = list.reduce((s, x) => s + (x.idx ? x.idx.length : x.pos.length / 3) / 3, 0);
       $("msg").textContent = `${pre}${fmtN(list.length)} delar, ${fmtN(tris0)} trianglar – bygger IFC…`;
-      let r = await ifcFromMeshes(list, { projName: base, desc: "Från " + f.name, source: f.name, fileName: base + ".ifc", decimals: dec, minSize, onProgress: p => { bar(0.25 + 0.7 * p); } });
+      let r = await ifcFromMeshes(list, { projName: base, desc: "Från " + f.name, source: f.name, fileName: base + ".ifc", decimals: dec, minSize: f.dwf ? 0 : minSize, onProgress: p => { bar(0.25 + 0.7 * p); } });
       if (!r) throw new Error(`Inga trianglar att skriva i ${f.name}.`);
       let bytes = new TextEncoder().encode(r.text), name = base + ".ifc", type = "application/x-step"; const raw = bytes.length;
       if (zip) { bytes = ifcZipBytes(r.text, name); name = base + ".ifczip"; type = "application/zip"; }

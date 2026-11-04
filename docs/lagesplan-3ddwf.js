@@ -135,16 +135,21 @@ async function l3dwfShow3d(d, sel, name) {
 }
 
 /* ---------- spara som IFC ---------- */
-async function l3dwfToIfc(d, sel, name) {
-  l3Status("Bygger IFC av DWF-urvalet…");
-  const U = d.unit, list = [];
+/* Valda delar -> lista för ifcFromMeshes (världskoordinater i meter, filens koordinater). Används också av fbx2ifc.html. */
+async function l3dwfIfcList(d, sel, off) {
+  const U = d.unit, list = [], ox = (off && off[0]) || 0, oy = (off && off[1]) || 0, oz = (off && off[2]) || 0;
   for (let k = 0; k < sel.length; k++) {
     const p = d.r.parts[sel[k]], g = d.r.geoms[p.geom], e = p.m, pa = g.pos, n = pa.length / 3, pos = new Float64Array(n * 3);
-    for (let i = 0; i < n; i++) { const x = pa[i * 3], y = pa[i * 3 + 1], z = pa[i * 3 + 2]; pos[i * 3] = (e[0] * x + e[4] * y + e[8] * z + e[12]) * U; pos[i * 3 + 1] = (e[1] * x + e[5] * y + e[9] * z + e[13]) * U; pos[i * 3 + 2] = (e[2] * x + e[6] * y + e[10] * z + e[14]) * U; }
+    for (let i = 0; i < n; i++) { const x = pa[i * 3], y = pa[i * 3 + 1], z = pa[i * 3 + 2]; pos[i * 3] = (e[0] * x + e[4] * y + e[8] * z + e[12]) * U + ox; pos[i * 3 + 1] = (e[1] * x + e[5] * y + e[9] * z + e[13]) * U + oy; pos[i * 3 + 2] = (e[2] * x + e[6] * y + e[10] * z + e[14]) * U + oz; }
     const col = p.color ? "#" + ((1 << 24) | (p.color[0] << 16) | (p.color[1] << 8) | p.color[2]).toString(16).slice(1) : "#b0b8c4";
     list.push({ name: p.name || "Del", path: l3dwfClean(p.path), pos, idx: g.idx, color: col, opacity: 0 });
     if ((k & 255) === 0) await new Promise(r => setTimeout(r, 0));
   }
+  return list;
+}
+async function l3dwfToIfc(d, sel, name) {
+  l3Status("Bygger IFC av DWF-urvalet…");
+  const list = await l3dwfIfcList(d, sel);
   const dt = new Date(), p2 = x => String(x).padStart(2, "0"), base = name.replace(/\.[^.]+$/, "");
   const fn = `${base} – urval ${dt.getFullYear()}-${p2(dt.getMonth() + 1)}-${p2(dt.getDate())} kl ${p2(dt.getHours())}.${p2(dt.getMinutes())}.ifc`.replace(/[\\/:*?"<>|]/g, "-");
   const r = await ifcFromMeshes(list, { projName: base, desc: "DWF-urval från " + name, source: name, fileName: fn, minSize: 0, onProgress: f => { if (typeof busyProgress === "function") busyProgress("msifc", `Bygger IFC (${Math.round(f * 100)} %)`, f); } });
