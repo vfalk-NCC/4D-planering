@@ -315,6 +315,17 @@ function l3bRebuild() { if (!l3b.models.length) return; l3b.models.forEach(m => 
    stora bygg-IFC:er). Bara geometri och objektens GUID/namn sparas; kopplingen till planeringen räknas
    om vid öppning. Högst tre modeller sparas – den äldsta tas bort. Fel här stoppar aldrig inläsningen. */
 // Sex modeller (Victor 2026-10-10: stål- och byggmodell på 130–150 MB vardera ska inte tränga ut varandra).
+/* Rensa bara 3D-vyns lagrade data i webbläsaren (modell-, punktmolns- och egenskapscache + sparade modelllistor) – inställningar,
+   inloggning och projektdata rörs inte (Victor 2026-11-04: hänger sig i Edge men inte i Chrome, "vill inte tömma cachen"). Länk: lagesplan.html?project=…&reset3d=1 */
+const L3_CACHE_DBS = ["lagesplan-ifc-cache", "lagesplan-pc-cache", "lagesplan-ifc-raw", "4dplan-glb"];
+async function l3ResetCaches(withPrefs) {
+  const res = { dbs: 0, keys: 0 };
+  if (withPrefs) { try { localStorage.removeItem("lagesplan-3d-prefs"); res.keys++; } catch (e) { /* */ } }   // även 3D-inställningarna (?reset3d=prefs)
+  try { const rm = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (/^(lagesplan-bldg-|lagesplan-boot-)/.test(k)) rm.push(k); } rm.forEach(k => { localStorage.removeItem(k); res.keys++; }); } catch (e) { /* privat läge */ }
+  await Promise.all(L3_CACHE_DBS.map(n => new Promise(ok => { try { const q = indexedDB.deleteDatabase(n); q.onsuccess = () => { res.dbs++; ok(); }; q.onerror = q.onblocked = () => ok(); setTimeout(ok, 4000); } catch (e) { ok(); } })));
+  return res;
+}
+(function () { try { if (/[?&]reset3d=(1|prefs)\b/.test(location.search)) { window.__l3Reset = l3ResetCaches(/reset3d=prefs/.test(location.search)).then(r => { try { history.replaceState(null, "", location.href.replace(/([?&])reset3d=(1|prefs)&?/, "$1").replace(/[?&]$/, "")); } catch (e) { /* */ } return r; }); } } catch (e) { /* */ } })();
 const L3B_DB = "lagesplan-ifc-cache", L3B_STORE = "models", L3B_KEEP = 6;
 function l3bDb() {
   return new Promise((res, rej) => {
