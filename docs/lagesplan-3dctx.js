@@ -54,6 +54,11 @@ function l3CtxAlt(x, y, e) {
     l3Pop(x, y, [["Markera ritningen (PDF)", () => { l3ssSelect({ kind: "pdf" }); l3ssFlash({ kind: "pdf" }); }], ["Zooma hit", () => l3sZoomPdf()], null, ...comment, null, ["Släck ritningen", () => { const c = document.getElementById("v3ShowPlan"); if (c) { c.checked = false; c.dispatchEvent(new Event("change")); } }]], "Ritning (PDF)");
     return true;
   }
+  // 5) bar mark när ritningen är släckt: kommentar och möjlighet att visa ritningen
+  if (l3.planMesh && !l3.planMesh.visible && l3Ray(e, [l3.planMesh])[0]) {
+    l3Pop(x, y, [...comment, comment.length ? null : undefined, ["Visa ritningen (PDF) som mark", () => { const c = document.getElementById("v3ShowPlan"); if (c) { c.checked = true; c.dispatchEvent(new Event("change")); } }]].filter(v => v !== undefined), "Marken");
+    return true;
+  }
   return false;
 }
 
