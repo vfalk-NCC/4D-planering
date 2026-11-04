@@ -46,6 +46,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const out = {};
     out.geojson = await geo(F('a.geojson', JSON.stringify({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: { name: 'Ledning' }, geometry: { type: 'LineString', coordinates: [[lon, lat], [lon2, lat2]] } }, { type: 'Feature', properties: { name: 'Hus' }, geometry: { type: 'Polygon', coordinates: [[[lon, lat], [lon2, lat], [lon2, lat2], [lon, lat]]] } }] })));
     out.kml = await geo(F('a.kml', `<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><Folder><name>Grävning</name><Placemark><name>A</name><LineString><coordinates>${lon},${lat},0 ${lon2},${lat2},0</coordinates></LineString></Placemark></Folder></Document></kml>`));
+    { // KMZ = zip med doc.kml
+      const kml = `<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><Folder><name>KmzLager</name><Placemark><name>A</name><LineString><coordinates>${lon},${lat},0 ${lon2},${lat2},0</coordinates></LineString></Placemark></Folder></Document></kml>`;
+      const bytes = new TextEncoder().encode(kml), name = new TextEncoder().encode('doc.kml');
+      const crcT = new Uint32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+      let crc = ~0; for (const b of bytes) crc = crcT[(crc ^ b) & 255] ^ (crc >>> 8); crc = ~crc >>> 0;
+      const lh = new DataView(new ArrayBuffer(30)); lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint32(14, crc, true); lh.setUint32(18, bytes.length, true); lh.setUint32(22, bytes.length, true); lh.setUint16(26, name.length, true);
+      const cd = new DataView(new ArrayBuffer(46)); cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint32(16, crc, true); cd.setUint32(20, bytes.length, true); cd.setUint32(24, bytes.length, true); cd.setUint16(28, name.length, true);
+      const off = 30 + name.length + bytes.length, eo = new DataView(new ArrayBuffer(22)); eo.setUint32(0, 0x06054b50, true); eo.setUint16(8, 1, true); eo.setUint16(10, 1, true); eo.setUint32(12, 46 + name.length, true); eo.setUint32(16, off, true);
+      out.kmzVec = cadvIsVector('a.kmz');
+      out.kmz = await geo(new File([lh, name, bytes, cd, name, eo], 'a.kmz'));
+    }
     out.gpx = await geo(F('a.gpx', `<gpx><trk><trkseg><trkpt lat="${lat}" lon="${lon}"><ele>5</ele></trkpt><trkpt lat="${lat2}" lon="${lon2}"><ele>6</ele></trkpt></trkseg></trk></gpx>`));
     // Shapefile i SWEREF 99 TM (.prj) – ska läggas om till zonen 20 15
     const [N1, E1] = geodeticToGrid(lat, lon, tm), [N2, E2] = geodeticToGrid(lat2, lon2, tm);
@@ -65,6 +76,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const e = R.expect;
   ok(R.geojson.first && near(R.geojson.first[0], e.E1) && near(R.geojson.first[1], e.N1), 'GeoJSON (WGS84) ska bli SWEREF 99 20 15: ' + JSON.stringify(R.geojson.first));
   ok(R.geojson.layers.length >= 1 && R.geojson.n >= 2, 'GeoJSON: linje och yta: ' + JSON.stringify(R.geojson.layers));
+  ok(R.kmzVec && R.kmz.first && R.kmz.layers.includes('KmzLager'), 'KMZ: ' + JSON.stringify([R.kmzVec, R.kmz.first, R.kmz.layers]));
   ok(R.kml.first && near(R.kml.first[0], e.E1) && near(R.kml.first[1], e.N1) && R.kml.layers.includes('Grävning'), 'KML: ' + JSON.stringify([R.kml.first, R.kml.layers]));
   ok(R.gpx.first && near(R.gpx.first[0], e.E1) && near(R.gpx.first[1], e.N1), 'GPX: ' + JSON.stringify(R.gpx.first));
   ok(R.shp.first && near(R.shp.first[0], e.E1, 0.1) && near(R.shp.first[1], e.N1, 0.1) && R.shpFiles, 'Shapefile i SWEREF 99 TM ska läggas om till zonen 20 15 (med attribut): ' + JSON.stringify(R.shp.first));

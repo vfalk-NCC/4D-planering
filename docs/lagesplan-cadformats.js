@@ -5,7 +5,7 @@
    – Koordinatsystem: .prj/EPSG när det finns (SWEREF 99 TM/lokala zoner, WGS84, Web Mercator), annars gissas det ur talen. */
 
 const CADV_EXT = /\.(geojson|json|kml|gpx|shp|svg|csv|txt|xyz|pts|xml|landxml)$/i;
-const CADV_ZIP = /\.zip$/i;
+const CADV_ZIP = /\.(zip|kmz)$/i;
 const cadvIsVector = n => CADV_EXT.test(n) || CADV_ZIP.test(n);
 const cadvNum = v => { const n = Number(String(v).replace(",", ".")); return Number.isFinite(n) ? n : NaN; };
 
@@ -296,7 +296,7 @@ async function cadvConvert(file, siblings, ctx) {
   const name = file.name, ext = (name.match(/\.([^.]+)$/) || [])[1].toLowerCase(), base = name.replace(/\.[^.]+$/, "");
   const sib = e => (siblings || []).find(f => f !== file && f.name.toLowerCase() === (base + "." + e).toLowerCase());
   let doc;
-  if (ext === "zip") {
+  if (ext === "zip" || ext === "kmz") {
     if (typeof pmUnzip !== "function") throw new Error("Zip kan inte läsas här.");
     const files = await pmUnzip(await file.arrayBuffer()), keys = [...files.keys()].filter(k => !/(^|\/)__MACOSX\//.test(k)), get = async k => (k ? await files.get(k)() : null);
     const shp = keys.find(k => /\.shp$/i.test(k));

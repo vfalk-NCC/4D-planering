@@ -367,6 +367,10 @@ async function l3bFromCache(rec) {
    (web-ifc tar då över om ifc-lite inte klarar filen). */
 const l3bEngine = () => (typeof l3Prefs === "function" && l3Prefs().ifcEngine === "lite" ? "lite" : "webifc");
 async function l3bParseAny(bytes, placement, maxTris, onProgress, onMeshes) {
+  { // .ifczip (zip med en IFC-fil) packas upp innan läsning, oavsett varifrån bytes kommer
+    const u = bytes instanceof ArrayBuffer ? new Uint8Array(bytes, 0, Math.min(4, bytes.byteLength)) : bytes;
+    if (u && u[0] === 0x50 && u[1] === 0x4b && typeof ifcSubsetUnzip === "function") { const raw = await ifcSubsetUnzip(bytes instanceof ArrayBuffer ? new Uint8Array(bytes) : bytes); bytes = raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength); }
+  }
   if (typeof Worker === "function" && !window.__l3NoWorker) {
     const keep = bytes instanceof ArrayBuffer ? bytes : new Uint8Array(bytes).slice().buffer; // originalet till ett andra försök
     if (l3bEngine() === "lite") {
