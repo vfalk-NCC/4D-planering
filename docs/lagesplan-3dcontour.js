@@ -71,11 +71,18 @@ function l3cnBuildGrid() {
 function l3cnTrace(G, int) {
   const { x0, y0, cell, nx, ny, z } = G, minor = [], major = [], levels = [], step = int, start = Math.ceil(G.zmin / step) * step, mj = Math.max(1, Math.round(l3cn.major));
   for (let L = start, n = 0; L <= G.zmax && n < 600; L += step, n++) levels.push(Math.round(L / step * 1000) / 1000 * step);
-  levels.forEach(L => {
-    const isMajor = Math.abs(Math.round(L / step) % mj) === 0, out = isMajor ? major : minor;
-    for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
-      const k = i + j * nx, a = z[k], b = z[k + 1], c = z[k + 1 + nx], d = z[k + nx]; if (a !== a || b !== b || c !== c || d !== d) continue;
-      const mn = Math.min(a, b, c, d), mx = Math.max(a, b, c, d); if (L < mn || L > mx) continue;
+  // Varje ruta läggs bara i de nivåer den faktiskt korsar (förut gicks hela rutnätet igenom för varje nivå – minuter i stora moln).
+  const per = levels.map(() => []), L0 = levels[0];
+  if (levels.length) for (let j = 0; j < ny - 1; j++) for (let i = 0; i < nx - 1; i++) {
+    const k = i + j * nx, a = z[k], b = z[k + 1], c = z[k + 1 + nx], d = z[k + nx]; if (a !== a || b !== b || c !== c || d !== d) continue;
+    const mn = Math.min(a, b, c, d), mx = Math.max(a, b, c, d); if (mn === mx) continue;
+    let l0 = Math.max(0, Math.floor((mn - L0) / step - 1e-6)), l1 = Math.min(levels.length - 1, Math.ceil((mx - L0) / step + 1e-6));
+    for (let li = l0; li <= l1; li++) { const L = levels[li]; if (L >= mn && L <= mx) per[li].push(k); }
+  }
+  levels.forEach((L, li) => {
+    const isMajor = Math.abs(Math.round(L / step) % mj) === 0, out = isMajor ? major : minor, list = per[li];
+    for (let q = 0; q < list.length; q++) {
+      const k = list[q], i = k % nx, j = (k - i) / nx, a = z[k], b = z[k + 1], c = z[k + 1 + nx], d = z[k + nx];
       const pts = [], e = (v1, v2, xa, ya, xb, yb) => { if ((v1 < L) !== (v2 < L)) { const t = (L - v1) / (v2 - v1); pts.push(x0 + (xa + (xb - xa) * t) * cell, y0 + (ya + (yb - ya) * t) * cell); } };
       e(a, b, i, j, i + 1, j); e(b, c, i + 1, j, i + 1, j + 1); e(d, c, i, j + 1, i + 1, j + 1); e(a, d, i, j, i, j + 1);
       if (pts.length >= 4) out.push(pts[0], pts[1], pts[2], pts[3], L); if (pts.length === 8) out.push(pts[4], pts[5], pts[6], pts[7], L);
@@ -86,7 +93,8 @@ function l3cnTrace(G, int) {
 function l3cnCompute(quiet) {
   if (typeof l3pc === "undefined" || !l3pc.clouds.some(c => c.visible)) { l3cnClear(); l3cn.info = "Tänd ett punktmoln (Lager → Punktmoln)."; return; }
   const t0 = performance.now(); const G = l3cnBuildGrid(); if (!G) { l3cn.info = "Inga höjder att räkna kurvor på."; return; }
-  const int = l3cn.int > 0 ? l3cn.int : l3cnNiceStep(G.zmax - G.zmin); let S = l3cnTrace(G, int), guard = 0; const sIt = L3CN_CHAIKIN[Math.max(0, Math.min(3, Number(l3cn.smooth) | 0))], cap = sIt ? 260000 / 2 ** sIt : 260000; while ((S.minor.length + S.major.length) / 5 > cap && guard++ < 3) S = l3cnTrace(G, int * 2 ** guard);
+  const int = l3cn.int > 0 ? l3cn.int : l3cnNiceStep(G.zmax - G.zmin); let S = l3cnTrace(G, int), guard = 0; while ((S.minor.length + S.major.length) / 5 > 260000 && guard++ < 3) S = l3cnTrace(G, int * 2 ** guard);
+  let sIt = L3CN_CHAIKIN[Math.max(0, Math.min(3, Number(l3cn.smooth) | 0))]; const raw = (S.minor.length + S.major.length) / 5; while (sIt > 0 && raw * 2 ** sIt > 520000) sIt--;   // rundningen får inte göra linjerna för många
   if (sIt) { S.minor = l3cnSmoothSegs(S.minor, G.cell, sIt); S.major = l3cnSmoothSegs(S.major, G.cell, sIt); }
   l3cn.grid = G; l3cn.segs = S; l3cn.rev++; l3cnPaintTint(); l3cn.info = `${S.levels.length} nivåer, intervall ${String(S.step).replace(".", ",")} m · ${((S.minor.length + S.major.length) / 5).toLocaleString("sv-SE")} linjestycken · ruta ${String(Math.round(G.cell * 100) / 100).replace(".", ",")} m · ${Math.round(performance.now() - t0)} ms`;
   l3cnDraw3d(); l3cnMapRefresh(); if (!quiet) l3Status("Höjdkurvor: " + l3cn.info);
