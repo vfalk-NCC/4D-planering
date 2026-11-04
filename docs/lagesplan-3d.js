@@ -719,6 +719,7 @@ function l3Render() {
   if (!l3 || l3Raf) return;
   l3Raf = requestAnimationFrame(() => {
     l3Raf = 0;
+    if (l3.planMesh && l3.planMesh.visible && l3.planMesh.userData.lowres && !l3.planUp && l3Prefs().plan) { l3.planUp = true; l3BuildPlan().catch(() => {}).finally(() => { l3.planUp = false; l3Render(); }); }   // ritningen tänd: skarp bild
     l3.groups.sel.children.forEach(h => h.update && h.update());
     if (typeof l3vmFrame === "function") l3vmFrame(); // visningsläge (tråd, X-Ray, realistisk)
     l3AdaptRes();
@@ -743,7 +744,8 @@ async function l3BuildPlan() {
   if (!page) { const g = new THREE.GridHelper(200, 40, 0x94a3b8, 0xcbd5e1); g.rotateX(Math.PI / 2); g.position.z = z; l3.groups.plan.add(g); return; }
   const v1 = page.getViewport({ scale: 1 });
   const lowMem = typeof lowMemDevice !== "undefined" && lowMemDevice, maxT = (l3.renderer && l3.renderer.capabilities && l3.renderer.capabilities.maxTextureSize) || 4096;
-  const LONG = lowMem ? 2048 : Math.min(maxT, Number(l3Prefs().planRes) || 8192);   // basbilden: upp till 8192 px (skärpt 2026-11-02, "högre upplösning på pdferna"); mobil 2048
+  const planOn = !!l3Prefs().plan;   // släckt ritning: bara en liten bild (ritningen fungerar som osynlig mark) – sparar minne och tid
+  const LONG = lowMem ? 2048 : !planOn ? 1024 : Math.min(maxT, Number(l3Prefs().planRes) || 8192);   // basbilden: upp till 8192 px (skärpt 2026-11-02, "högre upplösning på pdferna"); mobil 2048
   const s = Math.min(LONG / Math.max(v1.width, v1.height), 12);
   const vp = page.getViewport({ scale: s });
   const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
@@ -766,7 +768,7 @@ async function l3BuildPlan() {
   const tex = new THREE.CanvasTexture(cv); tex.anisotropy = (l3.renderer && l3.renderer.capabilities.getMaxAnisotropy && l3.renderer.capabilities.getMaxAnisotropy()) || 8;
   if ("encoding" in tex) tex.encoding = THREE.sRGBEncoding;
   const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }));
-  m.userData.surface = true; m.userData.kind = "plan";
+  m.userData.surface = true; m.userData.kind = "plan"; m.userData.lowres = !planOn && !lowMem;
   l3.planMesh = m; l3.groups.plan.add(m);
   m.visible = l3Prefs().plan;
   if (typeof l3lApplyPlanOp === "function") l3lApplyPlanOp();

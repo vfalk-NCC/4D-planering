@@ -239,9 +239,32 @@ function l3bForget(id) {
   l3bRemove(id);
 }
 /* Vid öppning: direkt ur cachen, sedan i bakgrunden – finns en nyare version i TC läses den och ersätter den visade. */
+/* Startskydd (Victor 2026-11-04: "hänger sig, jag måste komma åt min 3D-editor"): hann den förra starten inte bli klar (fönstret frös eller stängdes under
+   inläsningen) läses inga modeller in automatiskt nästa gång. De står kvar släckta under Lager och tänds en i taget. */
+const l3bBootKey = () => `lagesplan-boot-${projectId}`;
+let l3bBootChecked = false;
+function l3bBootGuard(list) {
+  if (l3bBootChecked) return true; l3bBootChecked = true;
+  let prev = null; try { prev = Number(localStorage.getItem(l3bBootKey())) || 0; } catch (e) { /* privat läge */ }
+  const done = () => { try { localStorage.removeItem(l3bBootKey()); } catch (e) { /* */ } };
+  if (prev && Date.now() - prev < 6 * 3600e3) {
+    done();
+    list.forEach(w => { try { l3bRemember(w, false); } catch (e) { /* */ } });
+    if (typeof l3Toast === "function") l3Toast(`Förra starten av 3D-vyn blev aldrig klar – ${list.length === 1 ? "modellen är släckt" : "de " + list.length + " modellerna är släckta"} så att du kommer åt editorn. Tänd dem en i taget under Lager → 3D-modeller (börja med de minsta).`, null, null, 25000);
+    if (typeof l3Status === "function") l3Status("Startskydd: modellerna är släckta efter en start som inte blev klar. Tänd dem under Lager.", true);
+    if (typeof l3LayersRender === "function") setTimeout(l3LayersRender, 50);
+    return false;
+  }
+  try { localStorage.setItem(l3bBootKey(), String(Date.now())); } catch (e) { /* */ }
+  // Fönstret räknas som friskt först när det svarat jämnt i ett tiotal sekunder efter inläsningen.
+  let ok = 0, last = performance.now();
+  const iv = setInterval(() => { const n = performance.now(); ok = n - last < 2500 ? ok + 1 : 0; last = n; if (ok >= 8 && !(l3b && l3b.busy)) { clearInterval(iv); done(); } }, 1000);
+  return true;
+}
 async function l3bRestore() {
   const list = l3bRemembered().map(({ on, ...w }) => w);
   if (!list.length || !l3) return;
+  if (!l3bBootGuard(list)) return;
   // iPhone/iPad: modellerna läses inte in av sig själva (minnet) – de står släckta under Lager och tänds för hand.
   if (typeof lowMemDevice !== "undefined" && lowMemDevice) { l3Status(`iPhone/iPad: ${list.length === 1 ? "modellen är släckt" : `de ${list.length} modellerna är släckta`} för att 3D-vyn ska orka öppna – tänd under Lager.`); if (typeof l3LayersRender === "function") l3LayersRender(); return; }
   const r = await l3bLoad(list, { cacheOnly: true });
