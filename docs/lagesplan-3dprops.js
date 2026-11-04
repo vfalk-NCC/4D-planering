@@ -184,7 +184,7 @@ async function l3pFillSide(side, ent) {
 }
 
 /* ---- Gruppera (fliken Egenskaper) --------------------------------------------------------------- */
-const L3P_ATTR = { "a:cls": "IFC-klass", "a:type": "Typ", "a:storey": "Våning", "a:material": "Material", "a:name": "Namn", "a:objtype": "Objekttyp", "a:tag": "Tag" };
+const L3P_ATTR = { "a:cls": "IFC-klass", "a:type": "Typ", "a:storey": "Våning", "a:material": "Material", "a:name": "Namn", "a:objtype": "Objekttyp", "a:tag": "Tag", "a:asm": "Assembly (Tekla)" };
 function l3pKeyLabel(k) { if (k === "g:4d") return "Mina grupper"; if (L3P_ATTR[k]) return L3P_ATTR[k]; const [ps, pn] = k.slice(2).split(SEPK); return `${pn} (${ps})`; }
 const l3pModels = () => l3b.models.filter(m => m.visible);
 async function l3pOpenAll(download) {
@@ -237,6 +237,7 @@ function l3pRenderTab() {
   const esc = escHtml, { list, missing } = l3p.keys, t = qi.value.trim().toLowerCase();
   const closed = l3pClosed();
   let h = missing.length ? `<button type="button" class="v3-wide" id="v3PpLoad" title="Originalfilerna hämtas från Trimble Connect en gång och sparas i webbläsaren">Läs egenskaper i ${missing.length} ${missing.length === 1 ? "modell" : "modeller"} till (hämtar från TC)</button>` : "";
+  if (!t) h += `<div class="v3-pp-asm"><div class="v3-pal-hint">Assemblies (Tekla)</div>${(() => { const c = list.filter(x => /assembl|cast.?unit|montage|sammanst/i.test((x[1] || "") + " " + (x[2] || ""))); return c.length ? `<div class="v3-pal-hint" style="margin:2px 0">Assembly-metadata i filen (välj för att markera per värde):</div>` + c.slice(0, 12).map(x => `<button type="button" class="v3-wide" data-pkey="${esc(x[0])}" title="Gruppera efter den här egenskapen – tryck på ett värde för att markera hela assemblyn">${esc((x[1] ? x[1] + " › " : "") + (x[2] || L3P_ATTR[x[0]] || x[0]))} <em>${x[3].toLocaleString("sv-SE")}</em></button>`).join("") : `<div class="v3-pal-hint" style="margin:2px 0">Ingen egenskap med assembly/cast unit hittades – assemblies läses ur IfcElementAssembly.</div>`; })()}<button type="button" class="v3-wide" id="v3AsmAll" title="Markerar alla delar som ingår i en assembly (IfcElementAssembly) – lösa delar markeras inte">Markera alla assemblies</button><label class="v3-pp-ck"><input type="checkbox" id="v3AsmClick" ${l3Prefs().asmClick ? "checked" : ""}> Klick markerar hela assemblyn</label></div>`;
   const quick = list.filter(x => /^location_phase$/i.test(x[2] || ""));
   if (quick.length && !t) h += `<div class="v3-pal-hint">Snabbfilter</div>` + quick.map(x => `<button type="button" class="v3-wide" data-pkey="${esc(x[0])}" title="Filtrera på ${esc(x[2])} (${esc(x[1])})">Filtrera på ${esc(x[2])}</button>`).join("");
   const groups = new Map([["", typeof l3g !== "undefined" && l3g.list.length ? [["g:4d", "", "Mina grupper", l3g.list.reduce((a, g) => a + (g.guids || []).length, 0)]] : []]]);
@@ -253,6 +254,7 @@ function l3pRenderTab() {
   qi.oninput = () => l3pRenderTab();
   body.querySelectorAll("details.v3-ps").forEach(dt => { dt.ontoggle = () => { if (t) return; const c = l3pClosed(); if (dt.open) c.delete(dt.dataset.sec); else c.add(dt.dataset.sec); l3SetPref("propsClosed", [...c].slice(-300)); }; });
   body.querySelectorAll("[data-pkey]").forEach(b => { b.onclick = () => l3pGroupBy(b.dataset.pkey); });
+  { const ab = body.querySelector("#v3AsmAll"); if (ab) ab.onclick = () => l3pAsmAll().catch(e => l3Status(e.message, true)); const ac = body.querySelector("#v3AsmClick"); if (ac) ac.onchange = () => { l3SetPref("asmClick", ac.checked); l3Status(ac.checked ? "Klick markerar nu hela assemblyn (kräver att egenskaperna är inlästa)." : "Klick markerar en del i taget."); }; }
   const ld = body.querySelector("#v3PpLoad");
   if (ld) ld.onclick = async () => { ld.disabled = true; try { await l3pLoadKeys(true); } catch (e) { l3Status(e.message, true); } l3pRenderTab(); };
 }
@@ -328,6 +330,37 @@ function l3pSelectValue(x, additive) {
   l3bsSet(list); // ritar panelen och vyn
   l3Status(`${ents.length.toLocaleString("sv-SE")} objekt markerade: ${l3pKeyLabel(l3p.group.key)} = ${x.v === "\u0000" ? "(saknas)" : x.v || "(tomt)"}.`);
 }
+
+
+/* ---- Assemblies (Tekla) ------------------------------------------------------------------------------------------------
+   Markera bara det som är modellerat som assemblies: "Markera alla assemblies" tar alla delar som ingår i en IfcElementAssembly,
+   och med "Klick markerar hela assemblyn" ger ett klick på en del hela stålgruppen den ingår i (Victor 2026-11-04). */
+function l3pEntFor(m, guid) { return l3pEnts(m).get(guid) || []; }
+async function l3pAsmSelect(m, guid, additive) {
+  const st = await l3pOpen(m, { local: true }).catch(() => null);
+  if (!st) { l3Toast("Egenskaperna behöver läsas in först (Egenskaper → Läs egenskaper), sedan kan hela assemblyn markeras."); return false; }
+  const r = await l3pCall(st, { op: "asmOf", guid });
+  if (!r) { l3Status("Det objektet ingår inte i någon assembly.", true); return false; }
+  const ents = []; r.guids.forEach(g => l3pEntFor(m, g).forEach(e => ents.push({ mesh: e.mesh, ri: e.ri })));
+  l3bsSet(additive ? [...l3bs.sel.map(e => ({ mesh: e.mesh, ri: e.ri })), ...ents] : ents, { keepPlaces: additive });
+  l3Status(`Assembly ${r.name || ""}: ${ents.length.toLocaleString("sv-SE")} delar markerade.`);
+  return true;
+}
+async function l3pAsmAll() {
+  const { out, missing } = await l3pOpenAll(false), ents = []; let n = 0;
+  if (missing.length && !out.length) { l3Toast("Egenskaperna behöver läsas in först (knappen Läs egenskaper högst upp i fliken)."); return; }
+  for (const [m, st] of out) { const r = await l3pCall(st, { op: "asmAll" }); n += r.n; r.guids.forEach(g => l3pEntFor(m, g).forEach(e => ents.push({ mesh: e.mesh, ri: e.ri }))); }
+  if (!ents.length) { l3Status("Inga assemblies hittades (IfcElementAssembly) i de inlästa modellerna.", true); return; }
+  l3bsSet(ents); l3Status(`${n.toLocaleString("sv-SE")} assemblies, ${ents.length.toLocaleString("sv-SE")} delar markerade.`);
+}
+(function () { // klick på en del → hela assemblyn (när rutan är ikryssad)
+  if (typeof l3bsTap !== "function") return; const orig = l3bsTap;
+  l3bsTap = function (h, additive) {
+    const r = orig.apply(this, arguments);
+    if (r && l3Prefs().asmClick) { try { const e = l3bsFromHit(h), g = e && e.mesh.userData.l3b.ranges[e.ri].guid, m = e && e.mesh.userData.l3b.model; if (g && m) l3pAsmSelect(m, g, additive).catch(() => {}); } catch (er) { /* bara en genväg */ } }
+    return r;
+  };
+})();
 
 /* ---- Färga efter värde -------------------------------------------------------------------------- */
 function l3pColorOn() {

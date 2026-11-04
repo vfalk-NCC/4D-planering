@@ -215,6 +215,7 @@ function attrValue(oid, k) {
     case "a:tag": return s(e.a[7]);
     case "a:type": { const t = ent(objType.get(oid)); return t ? s(t.a[2]) || t.t : ""; }
     case "a:storey": return storeyOf(oid);
+    case "a:asm": { asmInit(); const t = asmTop(oid); return t ? asmName(t) : null; }
     case "a:material": return [...new Set(matNames(objMat.get(oid) || (objType.has(oid) ? (objMat.get(objType.get(oid)) || 0) : 0)))].join(", ");
   }
   return "";
@@ -235,6 +236,37 @@ function valueOf(oid, key) {
     }
   }
   return null;
+}
+
+/* ---- Assemblies (Tekla: IfcElementAssembly med delarna i IfcRelAggregates) ---------------------------------------------- */
+let aggKids = null, idGuid = null;
+function asmInit() {
+  if (aggKids) return;
+  aggKids = new Map(); aggPar.forEach((p, c) => { const a = aggKids.get(p); if (a) a.push(c); else aggKids.set(p, [c]); });
+  idGuid = new Map(); guidId.forEach((id, g) => idGuid.set(id, g));
+}
+const isAsm = id => { const e = ent(id); return !!e && e.t === "IFCELEMENTASSEMBLY"; };
+/* Översta assemblyn som objektet ingår i (eller är) – 0 om objektet inte ligger i någon. */
+function asmTop(oid) {
+  let top = isAsm(oid) ? oid : 0, p = oid, g = 0;
+  while (aggPar.has(p) && g++ < 40) { p = aggPar.get(p); if (isAsm(p)) top = p; }
+  return top;
+}
+function asmName(top) { const e = ent(top); if (!e) return ""; const s = x => (typeof x === "string" ? x : ""); return s(e.a[2]) || s(e.a[7]) || idGuid && idGuid.get(top) || ""; }
+/* Alla objekt i modellen (som finns i scenen) under en assembly, inklusive underassemblies. */
+function asmMembers(top) {
+  asmInit(); const inScene = new Set(scene), out = [], st = [top], seen = new Set();
+  while (st.length) { const id = st.pop(); if (seen.has(id)) continue; seen.add(id); const g = idGuid.get(id); if (g && inScene.has(g)) out.push(g); (aggKids.get(id) || []).forEach(k => st.push(k)); }
+  return out;
+}
+function asmOf(guid) {
+  asmInit(); const oid = guidId.get(guid); if (!oid) return null; const top = asmTop(oid); if (!top) return null;
+  return { top: idGuid.get(top) || "", name: asmName(top), guids: asmMembers(top) };
+}
+function asmAll() {
+  asmInit(); const tops = new Set(), guids = [];
+  scene.forEach(g => { const oid = guidId.get(g); if (!oid) return; const t = asmTop(oid); if (t) { tops.add(t); guids.push(g); } });
+  return { n: tops.size, guids };
 }
 
 /* ---- Frågor ------------------------------------------------------------------------------------- */
@@ -297,7 +329,7 @@ function keys(onProg) {
     if (i % 2000 === 0) onProg(i / ids.length);
   });
   const out = [];
-  [["a:cls"], ["a:type"], ["a:storey"], ["a:material"], ["a:name"], ["a:objtype"], ["a:tag"]].forEach(([k]) => out.push([k, "", "", ids.filter(Boolean).length]));
+  [["a:cls"], ["a:type"], ["a:asm"], ["a:storey"], ["a:material"], ["a:name"], ["a:objtype"], ["a:tag"]].forEach(([k]) => out.push([k, "", "", ids.filter(Boolean).length]));
   [...cnt].sort((a, b) => a[0].localeCompare(b[0], "sv", { numeric: true })).forEach(([k, n]) => { const [ps, pn] = k.slice(2).split(SEP); out.push([k, ps, pn, n]); });
   keysCache = out;
   return out;
@@ -327,6 +359,8 @@ self.onmessage = async ev => {
     else if (op === "props") ok = props(ev.data.guid);
     else if (op === "keys") ok = keys(prog);
     else if (op === "values") ok = values(ev.data.key, prog);
+    else if (op === "asmOf") ok = asmOf(ev.data.guid);
+    else if (op === "asmAll") ok = asmAll();
     self.postMessage({ id, ok });
   } catch (e) { self.postMessage({ id, error: e && e.message || String(e) }); }
 };
