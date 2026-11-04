@@ -64,6 +64,7 @@ const JSPDF = [process.env.JSPDF, path.join(process.env.PLACE_TMP || '/nonexiste
     } else console.log('(hoppar över riktig jsPDF – sätt JSPDF=<jspdf.umd.min.js>)');
 
     // 3) Utskriftens export: prickar/etiketter går till inspelaren och skrivs ovanpå bilden; fel -> bild som förut.
+    await page.evaluate(src => { window.__printSrc = src; }, require('fs').readFileSync(require('path').join(__dirname, '..', 'docs', 'lagesplan-print.js'), 'utf8'));   // exportPrintPdf omsluts av lagesplan-printissues.js, så toString() ser inte originalet
     const exp = await page.evaluate(() => {
       const ops = [];
       const mock = { lines: () => ops.push('L'), fill: () => ops.push('F'), stroke: () => ops.push('S'), text: s => ops.push('T:' + s), getTextWidth: s => s.length * 1.5, rect: () => {}, clip: () => {}, discardPath: () => {},
@@ -72,7 +73,7 @@ const JSPDF = [process.env.JSPDF, path.join(process.env.PLACE_TMP || '/nonexiste
       drawBadge(rec, [50, 80], 'Kran 🏗', '#facc15', 12, false, null);
       const sk = pdfVecEmit(mock, rec, [0.1, 0, 0, 0.1, 5, 5], [0, 0, 100, 100]);
       const film = renderFilmOverlay.toString();
-      return { emoji: sk.length === 1 && sk[0].s === 'Kran 🏗' && !ops.includes('T:Kran 🏗'), text: ops.includes('T:J24'), shape: ops.includes('F') && ops.includes('S') && ops.includes('L'), wired: /o\.vec \|\| ctx/.test(film) && /pdfVecEmit\(doc, rec/.test(exportPrintPdf.toString()) };
+      return { emoji: sk.length === 1 && sk[0].s === 'Kran 🏗' && !ops.includes('T:Kran 🏗'), text: ops.includes('T:J24'), shape: ops.includes('F') && ops.includes('S') && ops.includes('L'), wired: /o\.vec \|\| ctx/.test(film) && /pdfVecEmit\(doc, rec/.test(exportPrintPdf.toString()) || /pdfVecEmit\(doc, rec/.test(window.__printSrc) };
     });
     if (Object.values(exp).some(v => v !== true)) fail('Exporten: ' + JSON.stringify(exp));
     console.log('OK: utskriftens PDF – prickar och etiketter skrivs som vektorer ovanpå bilden (reserv: bild)');
