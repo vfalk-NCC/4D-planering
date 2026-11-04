@@ -75,6 +75,7 @@ put('plan_markups.json', [{ id: 'mk', itemId: 'a2', shape: 'line', pts: [[0, 0, 
   const fail = m => { throw new Error(m); };
   const idList = () => get('plan_items.json').map(r => r.id);
   const ids = () => idList().sort().join(',');
+  const menuClick = async (r, act) => { await r.locator('[data-action="row-menu"]').click(); await r.locator(`[data-action="${act}"]`).click(); };
   const backups = () => (get('backups/index.json') || []).length;
   const row = name => page.locator('#itemList .item-row:not(.group-member)', { hasText: name }).first();
   await page.goto(`http://localhost:${PORT}/index.html`, { waitUntil: 'networkidle' });
@@ -82,17 +83,17 @@ put('plan_markups.json', [{ id: 'mk', itemId: 'a2', shape: 'line', pts: [[0, 0, 
 
   // 1) Radera aktivitet: två frågor
   answers = [true, false];
-  await row('Pelare B').locator('[data-action="delete"]').click(); await page.waitForTimeout(400);
+  await menuClick(row('Pelare B'), 'delete'); await page.waitForTimeout(400);
   if (asked.length !== 2 || !asked[1].includes('helt säker')) fail('radering ska kräva två frågor, fick ' + JSON.stringify(asked));
   if (!idList().includes('b')) fail('nej på andra frågan ska avbryta raderingen');
   answers = [true, true]; asked.length = 0;
-  await row('Pelare B').locator('[data-action="delete"]').click(); await page.waitForTimeout(1200);
+  await menuClick(row('Pelare B'), 'delete'); await page.waitForTimeout(1200);
   if (idList().includes('b')) fail('två ja ska radera aktiviteten');
   if (backups() !== 1) fail('en säkerhetskopia ska tas innan aktiviteten raderas, fick ' + backups());
   console.log('OK: en aktivitet raderas bara efter två frågor, och en säkerhetskopia tas först');
 
   // 2) ✂: ta bort ett av två objekt – aktiviteten finns kvar
-  await row('Gjutning plan 2').locator('[data-action="remove-objs"]').click(); await page.waitForTimeout(400);
+  await menuClick(row('Gjutning plan 2'), 'remove-objs'); await page.waitForTimeout(400);
   if (!(await page.isVisible('#removeObjDialog'))) fail('✂ ska öppna dialogen');
   if ((await page.locator('#removeObjList input').count()) !== 2) fail('dialogen ska lista aktivitetens två objekt');
   await page.evaluate(() => { window.__sel = [{ modelId: 'm1', objectRuntimeIds: [10] }]; });
@@ -105,7 +106,7 @@ put('plan_markups.json', [{ id: 'mk', itemId: 'a2', shape: 'line', pts: [[0, 0, 
   console.log('OK: ✂ tar bort valda objekt ur aktiviteten (lista eller markering i 3D)');
 
   // 3) ✂ på sista objektet: aktiviteten blir kvar som ej kopplad
-  await row('Gjutning plan 2').locator('[data-action="remove-objs"]').click(); await page.waitForTimeout(400);
+  await menuClick(row('Gjutning plan 2'), 'remove-objs'); await page.waitForTimeout(400);
   await page.click('#btnRemoveObjAll'); await page.click('#btnRemoveObjOk'); await page.waitForTimeout(1200);
   const a2 = get('plan_items.json').find(r => r.id === 'a2');
   if (!a2 || a2.model_id !== null || !a2.object_id.startsWith('excel-')) fail('sista objektet ska bli en okopplad aktivitet, fick ' + JSON.stringify(a2));

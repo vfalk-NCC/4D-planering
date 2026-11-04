@@ -439,7 +439,7 @@ function l3pfAnnHit(px, py) { const b = (l3pf.annBoxes || []).slice().reverse().
 function l3pfAsk(label, def, o = {}) {
   return new Promise(res => {
     const el = l3pf.el; if (!el) return res(null); const old = el.querySelector(".pfask"); if (old) old.remove();
-    const b = document.createElement("div"); b.className = "pfask", p = l3pf.lastPt || { x: 120, y: 90 };
+    const b = document.createElement("div"); b.className = "pfask"; const p = l3pf.lastPt || { x: 120, y: 90 };
     b.style.left = Math.max(8, Math.min(p.x - 20, el.clientWidth - 290)) + "px"; b.style.top = Math.max(8, Math.min(p.y + 14, el.clientHeight - 140)) + "px";
     b.innerHTML = `<div class="q">${label}</div>${o.confirm ? "" : `<input type="text" maxlength="80" value="${String(def || "").replace(/"/g, "&quot;")}" placeholder="Skriv här…">`}<div class="bt"><button type="button" class="p" data-ok>${o.confirm ? "Ta bort" : "OK"}</button>${o.del ? '<button type="button" data-del>Ta bort</button>' : ""}<button type="button" data-no>Avbryt</button></div>`;
     ["pointerdown", "pointerup", "click", "wheel", "keydown", "keyup", "dblclick"].forEach(t => b.addEventListener(t, e => e.stopPropagation()));

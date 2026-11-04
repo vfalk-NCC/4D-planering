@@ -198,7 +198,7 @@ function crewBindSide(side, p, redraw) {
   { const cur = (placeLib(p.type) || {}).contractor || ""; if (typeof smComboBind === "function") {
       smComboBind(q("act"), () => smActItems(cur), it => apply(() => { p.actKey = it.v; p.actName = it.t; p.actArea = String((it.a && it.a.area) || "").split(" / ").pop(); }), null);
       smComboBind(q("area"), () => smAreaItems(), it => apply(() => { p.area = it.t; }), v => { p.area = v.slice(0, 60); live(); }); }
-    const cl = side.querySelector('[data-crew="actclear"]'); if (cl) cl.onclick = () => apply(() => { p.actKey = p.actName = p.actArea = null; p.itemId = p.itemId; }); }
+    const cl = side.querySelector('[data-crew="actclear"]'); if (cl) cl.onclick = () => apply(() => { p.actKey = p.actName = p.actArea = null; }); }
   if (typeof smDateBind === "function") smDateBind(side, p, redraw);
   { const sp = q("spread"), sv = q("spreadv"); let snap = false; sp.onpointerdown = () => { if (!snap) { placeSnapshot(); snap = true; } };
     sp.oninput = () => { p.spread = Number(sp.value); p.pos = null; if (sv) sv.textContent = smFmtD(p.spread); live(); }; sp.onchange = () => { snap = false; crewSync(p); placeTouch(p); redraw(); }; }

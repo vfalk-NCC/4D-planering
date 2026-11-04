@@ -21,6 +21,7 @@
 // opacitet sparas per webbläsare (localStorage).
 // ---------------------------------------------------------------------
 
+let labelBoxes = new Map();   // rutor för etiketter i översta duken (sätts om i drawSiteLayers)
 const PAKO_URL = "https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js";
 const ORTHO_MAX_PX = 6144;   // längsta sida på den nedskalade bilden som sparas i 4D-data
 const SITE_KINDS = {

@@ -524,11 +524,6 @@ function objectsAt(pdfPt) {
   }
   return hits.sort((a, b) => a.area - b.area).map(h => h.o);
 }
-function polyArea(poly) {
-  let a = 0;
-  poly.forEach((p, i) => { const q = poly[(i + 1) % poly.length]; a += p[0] * q[1] - q[0] * p[1]; });
-  return a / 2;
-}
 const escHtml = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 function objectTipHtml(o) {

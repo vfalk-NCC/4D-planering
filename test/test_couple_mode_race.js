@@ -19,8 +19,8 @@ const put = (f, c) => store.set(`projects/${PID}/${f}`, { content: JSON.stringif
 const get = f => { const e = store.get(`projects/${PID}/${f}`); return e ? JSON.parse(e.content) : null; };
 const base = { project_id: PID, area: 'Hus A', contractor: 'NCC', status: 'pagaende', progress: 20, depends_on: [], start_date: '2026-06-01', end_date: '2026-06-12' };
 put('plan_items.json', [
-  { ...base, id: 'c10', model_id: 'm1', object_id: '30', object_name: 'C10', activity: 'Fundament' },
-  { ...base, id: 'c11', model_id: null, object_id: 'excel-c11', object_name: 'C11', activity: 'Fundament', source_key: 'S11' },
+  { ...base, id: 'c10', model_id: 'm1', object_id: '30', object_name: 'C10', activity: 'Fundament', group_id: 'g1' },
+  { ...base, id: 'c11', model_id: null, object_id: 'excel-c11', object_name: 'C11', activity: 'Fundament', source_key: 'S11', group_id: 'g1' },
 ]);
 put('plan_item_activities.json', []);
 put('plan_item_comments.json', []);
@@ -90,7 +90,7 @@ put('plan_item_comments.json', []);
   const reselect = await page.evaluate(() => window.__setSel.slice(1).filter(c => c.mode === 'set').map(c => c.s.modelObjectIds.flatMap(m => m.objectRuntimeIds)));
   if (reselect.some(ids => ids.includes(30))) fail('Ett objekt som hoppas över (kopplat till C10) ska inte markeras om, fick ' + JSON.stringify(reselect));
   const note = await page.innerText('#coupleModeList');
-  if ((note.match(/redan kopplad till "C10"/g) || []).length !== 1) fail('"redan kopplad till C10" ska stå en gång, fick ' + note);
+  if ((note.match(/redan kopplad till den här aktiviteten/g) || []).length !== 1) fail("\"redan kopplad till den här aktiviteten\" ska stå en gång, fick " + note);
   if ((await page.innerText('#btnSaveCoupleMode')).trim() !== 'Spara (1)') fail('Spara ska gälla 1 objekt');
   console.log('OK: täta markeringshändelser ger inga dubbletter, och redan kopplade objekt markeras inte om');
 
