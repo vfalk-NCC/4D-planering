@@ -445,7 +445,10 @@ async function l3phNext() {
 }
 function l3phPickTap(e) {
   const f = l3.phPick;
-  const hit = l3Ray(e, l3Surfaces())[0];
+  let hit = l3Ray(e, l3Surfaces())[0];
+  if (!hit && typeof plan !== "undefined" && plan && plan.calib) {   // ritningen är släckt: marknivån enligt kalibreringen
+    const zP = (plan.calib.model[0][2] || 0) - l3.O[2], p = new THREE.Vector3(); if (l3MouseRay(e).intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -zP), p)) hit = { point: p };
+  }
   if (!hit) { l3Status("Tryck på marken eller ett objekt där fotot är taget.", true); return; }
   l3.phPick = null;
   const t = document.getElementById("v3Toast"); if (t) t.classList.add("hidden");
