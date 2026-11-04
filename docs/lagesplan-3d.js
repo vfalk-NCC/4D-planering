@@ -745,7 +745,7 @@ async function l3BuildPlan() {
   const v1 = page.getViewport({ scale: 1 });
   const lowMem = typeof lowMemDevice !== "undefined" && lowMemDevice, maxT = (l3.renderer && l3.renderer.capabilities && l3.renderer.capabilities.maxTextureSize) || 4096;
   const planOn = !!l3Prefs().plan;   // släckt ritning: bara en liten bild (ritningen fungerar som osynlig mark) – sparar minne och tid
-  const LONG = lowMem ? 2048 : !planOn ? 1024 : Math.min(maxT, Number(l3Prefs().planRes) || 8192);   // basbilden: upp till 8192 px (skärpt 2026-11-02, "högre upplösning på pdferna"); mobil 2048
+  const LONG = lowMem ? 2048 : !planOn ? 1024 : Math.min(maxT, Number(l3Prefs().planRes) || 4096);   // basbilden: upp till 8192 px (skärpt 2026-11-02, "högre upplösning på pdferna"); mobil 2048
   const s = Math.min(LONG / Math.max(v1.width, v1.height), 12);
   const vp = page.getViewport({ scale: s });
   const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
@@ -778,6 +778,7 @@ async function l3BuildPlan() {
 const l3pd = { t: 0, on: false, have: null, task: null, busy: false };
 function l3pdSchedule() { clearTimeout(l3pd.t); l3pd.t = setTimeout(l3pdRender, 380); }
 async function l3pdRender() {
+  if (l3Prefs().pdDetailOff) return;   // en tung ritning gjorde fönstret segt förut: skarp detaljritning är då avstängd
   const pm = l3.planMesh, lowMem = typeof lowMemDevice !== "undefined" && lowMemDevice; if (!pm || !pm.visible || !page || !l3.renderer || l3pd.busy || !plan || !plan.calib) return;
   const cam = l3.camera, zP = (plan.calib.model[0][2] || 0) - l3.O[2], pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -zP), rc = new THREE.Raycaster(), hit = [], v = new THREE.Vector3();
   cam.updateMatrixWorld(); for (const [nx, ny] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) { rc.setFromCamera(new THREE.Vector2(nx, ny), cam); if (!rc.ray.intersectPlane(pl, v)) { hide(); return; } hit.push(v.clone()); }
@@ -789,7 +790,7 @@ async function l3pdRender() {
   let px0 = Math.max(view[0], Math.min(...pts.map(q => q[0]))), px1 = Math.min(view[2], Math.max(...pts.map(q => q[0]))), py0 = Math.max(view[1], Math.min(...pts.map(q => q[1]))), py1 = Math.min(view[3], Math.max(...pts.map(q => q[1])));
   if (!(px1 - px0 > 1) || !(py1 - py0 > 1)) { hide(); return; }
   const padx = (px1 - px0) * 0.12, pady = (py1 - py0) * 0.12; px0 = Math.max(view[0], px0 - padx); px1 = Math.min(view[2], px1 + padx); py0 = Math.max(view[1], py0 - pady); py1 = Math.min(view[3], py1 + pady);
-  const dpr = Math.min(2, l3.renderer.getPixelRatio()), maxT = Math.min(lowMem ? 3072 : 8192, (l3.renderer.capabilities && l3.renderer.capabilities.maxTextureSize) || 4096), el = l3.renderer.domElement, screenLong = Math.max(el.clientWidth, el.clientHeight) * dpr * 1.25;
+  const dpr = Math.min(2, l3.renderer.getPixelRatio()), maxT = Math.min(lowMem ? 3072 : 4096, (l3.renderer.capabilities && l3.renderer.capabilities.maxTextureSize) || 4096), el = l3.renderer.domElement, screenLong = Math.max(el.clientWidth, el.clientHeight) * dpr * 1.25;
   const regW = px1 - px0, regH = py1 - py0, long = Math.max(regW, regH), want = Math.min(maxT, Math.max(512, screenLong * Math.max(regW, regH) / long)), sc = Math.min(40, want / long);
   const base = pm.material.map && pm.material.map.image ? pm.material.map.image.width / Math.max(1, (page.view[2] - page.view[0])) : 1;   // basbildens bildpunkter per PDF-punkt
   if (sc < base * 1.35) { hide(); return; }   // basbilden är redan tillräckligt skarp
@@ -797,7 +798,7 @@ async function l3pdRender() {
   l3pd.busy = true; try {
     const vp0 = page.getViewport({ scale: sc }), a = vp0.convertToViewportPoint(px0, py1), b = vp0.convertToViewportPoint(px1, py0), vx0 = Math.min(a[0], b[0]), vy0 = Math.min(a[1], b[1]), W = Math.max(8, Math.round(Math.abs(b[0] - a[0]))), H = Math.max(8, Math.round(Math.abs(b[1] - a[1])));
     const cv = document.createElement("canvas"); cv.width = W; cv.height = H; const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H);
-    const vp = page.getViewport({ scale: sc, offsetX: -vx0, offsetY: -vy0 }); const task = page.render({ canvasContext: ctx, viewport: vp }); l3pd.task = task; try { await task.promise; } catch (e) { return; } if (l3pd.task !== task || l3.planMesh !== pm) return;
+    const vp = page.getViewport({ scale: sc, offsetX: -vx0, offsetY: -vy0 }); const tR0 = performance.now(), task = page.render({ canvasContext: ctx, viewport: vp }); l3pd.task = task; try { await task.promise; if (performance.now() - tR0 > 2500) { l3SetPref("pdDetailOff", true); l3Toast("Ritningen är tung att rita om – den skarpa detaljritningen vid inzoomning är avstängd.", null, null, 15000); } } catch (e) { return; } if (l3pd.task !== task || l3.planMesh !== pm) return;
     const pos = [], uv = []; [[0, H], [W, H], [W, 0], [0, 0]].forEach(([cx, cy]) => { const [ppx, ppy] = vp.convertToPdfPoint(cx, cy), [mx, my] = l3PdfToModel(ppx, ppy); pos.push(mx - O[0], my - O[1], zP); uv.push(cx / W, 1 - cy / H); });
     const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2)); g.setIndex([0, 1, 2, 0, 2, 3]); g.computeVertexNormals();
     const tex = new THREE.CanvasTexture(cv); tex.anisotropy = (l3.renderer.capabilities.getMaxAnisotropy && l3.renderer.capabilities.getMaxAnisotropy()) || 8; if ("encoding" in tex) tex.encoding = THREE.sRGBEncoding;
