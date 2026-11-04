@@ -19,9 +19,9 @@ const L3PC_EXT = /\.(las|laz|xyz|pts|txt|ply|e57)$/i;
 const L3PC_DB = "lagesplan-pc-cache", L3PC_STORE = "clouds", L3PC_KEEP = 4;
 const l3pcKey = () => `lagesplan-pc-${projectId}`;
 /* Punktbudget. "all" = full upplösning (Victor 2026-10-12: "ladda in punktmolnen i dess fulla upplösning"), med ett
-   tak efter datorns minne så att fliken inte kraschar: ~16 byte per punkt i minnet och lika mycket i grafikkortet. */
-const l3pcMaxPts = () => { const gb = (typeof navigator !== "undefined" && navigator.deviceMemory) || 8; return Math.round(Math.max(20e6, Math.min(250e6, gb * 1e9 / 45))); };
-const l3pcBudget = () => { const v = l3Prefs().pcBudget; if (v === "all") return l3pcMaxPts(); const b = Number(v); return b > 0 ? b : (typeof lowMemDevice !== "undefined" && lowMemDevice ? 1.5e6 : 6e6); };
+   tak (högst 60 milj. punkter – över det hängde sig fliken i Edge, Victor 2026-11-04 – och efter datorns minne) så att fliken inte kraschar: ~16 byte per punkt i minnet och lika mycket i grafikkortet. */
+const l3pcMaxPts = () => { const gb = (typeof navigator !== "undefined" && navigator.deviceMemory) || 8; return Math.round(Math.max(20e6, Math.min(60e6, gb * 1e9 / 45))); };
+const l3pcBudget = () => { const v = l3Prefs().pcBudget; if (v === "all") return l3pcMaxPts(); const b = Number(v); return b > 0 ? Math.min(b, l3pcMaxPts()) : (typeof lowMemDevice !== "undefined" && lowMemDevice ? 1.5e6 : 6e6); };
 const l3pcSize = () => Number(l3Prefs().pcSize) || 2.5;
 const l3pcMode = () => l3Prefs().pcMode || "auto";
 const l3pcPref = (k, d) => { const v = l3Prefs()[k]; return v == null || v === "" ? d : v; };
