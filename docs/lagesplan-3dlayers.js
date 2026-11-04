@@ -131,7 +131,7 @@ function l3LayersRender() {
       : (noTc ? "" : `<div class="v3-pal-hint">Inga modeller är hämtade än. Lägg till med ＋ ovan.</div>`);
     // Utan kontakt med Trimble Connect (iPhone/iPad – lägesplanen öppnas i Safari, utan 4D-planering): de modeller
     // som datorn sparat som lätt kopia i datalagret (Victor 2026-10-11: "Nej får ingen kontakt").
-    if (noTc && typeof l3ltList === "function") {
+    if (false && noTc && typeof l3ltList === "function") {
       if (!l3lay.ltAsked) { l3lay.ltAsked = true; l3ltList(true).then(() => l3LayersRender()).catch(() => {}); }
       const have = new Set([...l3b.models.map(m => m.id), ...(typeof l3bRememberedAll === "function" ? l3bRememberedAll() : []).map(w => w.id)]);
       const lt = ((typeof l3lt !== "undefined" && l3lt.list) || []).filter(e => e && e.key && !have.has(e.key));
@@ -152,8 +152,6 @@ function l3LayersRender() {
   const setH = `<div class="v3-set-g"><div class="v3-set-h">Prestanda</div>`
     + fld("Trianglar", sel("v3LayCap", [["", `Auto (${(l3bAutoTris() / 1e6).toFixed(0)} milj.)`], ...L3B_CAPS.map(c => [String(c), `${c} milj.`])], P.triCap || ""), "Högsta antal trianglar för alla modeller tillsammans. Högre visar mer av stora modeller men kräver mer minne – för högt kan få fliken att stängas på en dator med lite minne. Gäller modeller som läses in efter att du ändrat.")
     + fld("Punkter per moln", sel("v3LayPcBudget", [["", `Auto (${typeof lowMemDevice !== "undefined" && lowMemDevice ? "1,5" : "6"} milj.)`], ["1000000", "1 milj."], ["3000000", "3 milj."], ["6000000", "6 milj."], ["10000000", "10 milj."], ["20000000", "20 milj."], ["50000000", "50 milj."], ["100000000", "100 milj."], ["all", "Full upplösning"]], P.pcBudget || ""), "Högsta antal punkter per punktmoln. Hela molnet visas alltid – glesare med en lägre siffra. Full upplösning läser varje punkt (upp till vad datorns minne klarar); medan du rör vyn ritas en glesare kopia så att det går lätt. Gäller moln som läses in efter att du ändrat.")
-    + `</div><div class="v3-set-g"><div class="v3-set-h">Mobil</div>`
-    + chk("v3LayLight", P.mobileCopy !== false, "Lätt kopia för iPhone/iPad", "", "När datorn läst in en modell sparas en lätt kopia av geometrin (utan egenskaper) i datalagret – inte i Trimble Connect. iPhone/iPad läser den i stället för IFC-filen.")
     + `</div>`;
   const mhPre = mh;
   if (P.laySort === "tree" && !l3lay.root && noTc) mh += `<div class="v3-pal-hint">Lägesplanen har ingen kontakt med Trimble Connect här. På iPhone/iPad öppnas den i Safari, utan 4D-planering, så mapparna går bara att bläddra i på datorn. Modellerna som är sparade för mobilen finns under Hämtade 3D-modeller.</div>`;

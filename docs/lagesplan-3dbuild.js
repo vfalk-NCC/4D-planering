@@ -93,7 +93,6 @@ async function l3bLoad(list, opts = {}) {
         m.meshes.forEach(x => l3.groups.bldg.add(x));
         l3b.models.push(m); l3bPosition(); l3bRemember(w, true);
         busyProgress("bldg", lbl, part(0, 1));
-        if (typeof l3ltEnsure === "function") setTimeout(() => l3ltEnsure(w, m).catch(() => {}), 3000); // lätt kopia för mobilen
         continue;
       }
       if (opts.cacheOnly) { missing.push(w); continue; }
@@ -178,7 +177,6 @@ async function l3bLoad(list, opts = {}) {
       m.id = w.id; m.name = r.name || w.name; m.visible = true; m.src = w;
       total += m.tris;
       if (!m.capped) l3bCachePut(w, m); // i bakgrunden
-      if (!m.capped && typeof l3ltEnsure === "function") setTimeout(() => l3ltEnsure(w, m).catch(() => {}), 3000); // lätt kopia för mobilen
       m.meshes.forEach(x => l3.groups.bldg.add(x));
       l3b.models.push(m);
       l3bPosition(); l3bRemember(w, true);

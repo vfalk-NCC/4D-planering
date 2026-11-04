@@ -10,14 +10,14 @@
 
 // Delar om 4 MB (Victor 2026-10-12: "401 Bad credentials" på första delen med 20 MB – läsningen före och övriga
 // sparningar gick med samma token, så GitHub avvisade det stora anropet; 20 MB blir ~27 MB som base64).
-const L3LT_PART = 4e6, L3LT_MAX = 300e6, L3LT_PHONE_TRIS = 3e6;
+const L3LT_AUTO_MAX_TRIS = 300000, L3LT_PART = 4e6, L3LT_MAX = 300e6, L3LT_PHONE_TRIS = 3e6;
 const l3ltPath = () => `projects/${encodeURIComponent(projectId)}/mobil3d.json`;
 const l3ltKey = w => (w.fileId ? "f:" + w.fileId : String(w.id || ""));
 // Samma token som resten av lägesplanen (den aktiva) – en äldre sparad i inställningarna gav "401 Bad credentials" (Victor 2026-10-12).
 const l3ltTok = () => (typeof token !== "undefined" && token) || (typeof settings !== "undefined" && settings.githubToken) || null;
 const l3lt = { list: null, pid: null, saving: new Set() };
 const l3ltOn = () => !(typeof l3Prefs === "function" && l3Prefs().mobileCopy === false);
-const l3ltUse = () => (typeof l3IsTouch === "function" && l3IsTouch()) || !!window.__l3UseLight;
+const l3ltUse = () => false;   // lätta kopior är borttagna (Victor 2026-11-04) – alla läser IFC-filerna
 
 async function l3ltList(fresh) {
   if (l3lt.pid !== projectId) { l3lt.pid = projectId; l3lt.list = null; }
@@ -59,7 +59,10 @@ async function l3ltGunzip(buf) { return new Response(new Blob([buf]).stream().pi
 
 /* ---- Spara (datorn) ------------------------------------------------------------------------------- */
 async function l3ltEnsure(w, m) {
+  return;   // sparar inga lätta kopior längre: packningen frös fönstret efter varje inläsning
   if (!l3ltOn() || l3ltUse() || !w || !w.version || !m || m.capped || !m.meshes.length || typeof CompressionStream !== "function") return;
+  // Stora modeller packas inte automatiskt: packningen körs på huvudtråden och frös fönstret några sekunder efter varje inläsning (Victor 2026-11-04, "låser sig på exakt samma sätt varje gång").
+  if ((m.tris || 0) > L3LT_AUTO_MAX_TRIS || (typeof l3b !== "undefined" && l3b.models.reduce((a, x) => a + (x.visible ? x.tris || 0 : 0), 0) > 1.2e6)) return;
   const key = l3ltKey(w);
   if (l3lt.saving.has(key)) return;
   const list = await l3ltList();

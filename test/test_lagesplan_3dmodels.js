@@ -229,19 +229,8 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   await page.waitForFunction(() => l3b.models.some(m => m.id === 'f:F2' && m.visible), null, { timeout: 30000 });
   await page.waitForTimeout(200);
   if (!(await page.evaluate(() => document.querySelector('#v3PalLayers [data-l3l-file="F2"]').classList.contains('on')))) fail('Ögat ska visa att modellen är tänd');
-  // Lätt kopia för mobilen (Victor 2026-10-11): datorn sparar den i datalagret (inte i TC); mobilen läser den i stället för IFC:n.
-  await page.waitForFunction(() => window.__lt || (l3lt.list && l3lt.list.some(x => x.key === 'f:F2')), null, { timeout: 20000 }).catch(() => fail('Den lätta kopian ska sparas: ' + [...store.keys()].join(', ')));
-  const ltEntry = JSON.parse(store.get('projects/p1/mobil3d.json').content).find(x => x.key === 'f:F2');
-  if (!ltEntry || !ltEntry.parts.length || !ltEntry.parts.every(p => store.has(p) && /^projects\/p1\/mobil3d\//.test(p))) fail('Kopian ska ligga i datalagret: ' + JSON.stringify(ltEntry));
-  const lt = await page.evaluate(async () => {
-    const m = l3b.models.find(x => x.id === 'f:F2'), n0 = window.__calls.filter(c => c[0] === 'tcFile').length;
-    const out = await l3ltLoad(m.src);
-    const sum = o => o.ranges.map(r => r.name + ':' + r.count).sort().join('|');
-    const bb = o => { const b = new THREE.Box3(); o.meshes.forEach(x => { x.geometry.computeBoundingBox(); b.union(x.geometry.boundingBox); }); return b.min.toArray().concat(b.max.toArray()).map(v => Math.round(v * 100) / 100); };
-    const r = { same: sum(out) === sum(m), tris: [out.tris, m.tris], bb: [bb(out), bb(m)], tc: window.__calls.filter(c => c[0] === 'tcFile').length - n0, nrm: out.meshes.every(x => x.geometry.getAttribute('normal').array instanceof Int8Array) };
-    out.meshes.forEach(x => x.geometry.dispose()); return r;
-  });
-  if (!lt.same || lt.tris[0] !== lt.tris[1] || JSON.stringify(lt.bb[0]) !== JSON.stringify(lt.bb[1]) || lt.tc || !lt.nrm) fail('Mobilen ska läsa samma modell ur den lätta kopian, utan TC: ' + JSON.stringify(lt));
+  // (Lätta kopior för mobilen är borttagna 2026-11-04.)
+  await page.evaluate(() => { if (typeof l3ltEnsure === 'function') return l3ltEnsure({ fileId: 'F2', version: 'v2' }, l3b.models.find(m => m.id === 'f:F2')); }); if (store.has('projects/p1/mobil3d.json')) fail('Inga lätta kopior ska sparas längre');
 
   // Normalerna kommer färdiga från tråden (Int8) och pekar som ytorna; färgerna är modellens egna.
   const nq = await page.evaluate(() => { let ok = 0, bad = 0, int8 = true; l3b.models.find(m => m.id === 'f:F2').meshes.forEach(x => { const g = x.geometry, P = g.getAttribute('position'), N = g.getAttribute('normal'), I = g.index.array; int8 = int8 && N.array instanceof Int8Array; for (let t = 0; t < I.length; t += 3) { const a = new THREE.Vector3().fromBufferAttribute(P, I[t]), b = new THREE.Vector3().fromBufferAttribute(P, I[t + 1]), c = new THREE.Vector3().fromBufferAttribute(P, I[t + 2]); const f = b.sub(a).cross(c.sub(a)).normalize(), n = new THREE.Vector3().fromBufferAttribute(N, I[t]).normalize(); if (f.dot(n) > 0.95) ok++; else bad++; } }); return { ok, bad, int8 }; });

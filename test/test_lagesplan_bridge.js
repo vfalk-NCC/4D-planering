@@ -80,15 +80,8 @@ window.addEventListener('message', e => {
     await solo.waitForTimeout(300);
     const txt = await solo.evaluate(() => document.getElementById('v3PalLayers').textContent);
     if (/Kunde inte läsa mapparna|inte öppen/.test(txt) || !/ingen kontakt med Trimble Connect/.test(txt)) fail('Mappfliken utan 4D-planering: ' + txt.slice(0, 300));
-    // Hämtade 3D-modeller: de som datorn sparat för mobilen, ingen TC-knapp, inga fel; tryck läser den lätta kopian.
-    await solo.evaluate(() => { l3SetPref('laySort', 'list'); l3LayersRender(); window.__lt = []; l3bLoad = async list => { window.__lt.push(list); return { missing: [] }; }; });
-    await solo.waitForSelector('#v3PalLayers [data-l3l-lt="f:F1"]', { timeout: 5000 });
-    const lst = await solo.evaluate(() => ({ t: document.getElementById('v3PalLayers').textContent, tc: !!document.getElementById('v3LayTcOn') }));
-    if (lst.tc || /inte öppen|Kunde inte/.test(lst.t) || !/Sparade för mobilen/.test(lst.t) || !/Stomme\.ifc/.test(lst.t)) fail('Hämtade 3D-modeller utan TC: ' + JSON.stringify(lst).slice(0, 400));
-    await solo.click('#v3PalLayers [data-l3l-lt="f:F1"]'); await solo.waitForTimeout(200);
-    const w = await solo.evaluate(() => window.__lt[0] && window.__lt[0][0]);
-    if (!w || w.id !== 'f:F1' || w.fileId !== 'F1' || w.version !== 'v7') fail('Tryck ska läsa den lätta kopian: ' + JSON.stringify(w));
-    console.log('OK: utan 4D-planering – mappfliken förklarar, Hämtade 3D-modeller visar de som är sparade för mobilen, inga fel');
+    { const t = await solo.evaluate(() => document.getElementById('v3PalLayers').textContent); if (/Sparade för mobilen/.test(t) || /Lätt kopia för iPhone/.test(t)) fail('Lätta kopior är borttagna ur Lager'); }
+    console.log('OK: utan 4D-planering – mappfliken förklarar, inga lätta kopior kvar, inga fel');
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   } finally { await browser.close(); server.close(); }
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
