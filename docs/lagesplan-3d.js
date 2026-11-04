@@ -1039,7 +1039,7 @@ function l3Ray(e, targets) {
   ray.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), l3.camera);
   // Med rumsligt index räcker närmaste träff per bit (utom med snitt, där den närmaste kan vara bortskuren).
   const cl = l3.renderer.clippingPlanes; ray.firstHitOnly = !(cl && cl.length);
-  return ray.intersectObjects(targets, true).filter(h => h.object.visible && !h.object.userData.noHit && h.object.type !== "LineSegments" && h.object.type !== "Line" && l3VisibleChain(h.object) && l3NotClipped(h.point));
+  return ray.intersectObjects(targets, true).filter(h => (h.object.visible || h.object === l3.planMesh) && !h.object.userData.noHit && h.object.type !== "LineSegments" && h.object.type !== "Line" && (h.object === l3.planMesh || l3VisibleChain(h.object)) && l3NotClipped(h.point))   // marknivån (ritningens plan) går att träffa även när ritningen är släckt;
 }
 /* Bortskuret av ett snittplan (syns inte -> ska inte gå att träffa). */
 function l3NotClipped(p) { const cl = l3 && l3.renderer.clippingPlanes; return !cl || !cl.length || cl.every(pl => pl.distanceToPoint(p) >= -1e-6); }
@@ -1139,7 +1139,8 @@ function l3Hover(e) {
     // Koordinaten under markören (verktygen visar fästpunkten själva).
     // Koordinaten visas inte för stora bitar vars träffindex ännu byggs (utan index provas alla trianglar – det hackade vid musrörelse).
     const surf = l3Surfaces().filter(o => !(o.userData.l3b && o.geometry && o.geometry.index && !o.geometry.boundsTree && o.geometry.index.count > 90000));
-    const h = l3.lastSnap && l3.tool !== "select" ? { point: l3.lastSnap } : (typeof l3pcNearer === "function" ? l3pcNearer(ev, l3Ray(ev, surf)[0]) : l3Ray(ev, surf)[0]);
+    let h = l3.lastSnap && l3.tool !== "select" ? { point: l3.lastSnap } : (typeof l3pcNearer === "function" ? l3pcNearer(ev, l3Ray(ev, surf)[0]) : l3Ray(ev, surf)[0]);
+    if (!h && typeof plan !== "undefined" && plan && plan.calib && typeof l3GroundZ === "function") { const gp = new THREE.Vector3(); if (l3MouseRay(ev).intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -l3GroundZ()), gp)) h = { point: gp }; }   // ritningen släckt: marknivån enligt kalibreringen
     const c = document.getElementById("v3Coord");
     if (h && c) {
       l3.lastPoint = h.point.clone();
