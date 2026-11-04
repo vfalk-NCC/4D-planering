@@ -58,7 +58,7 @@ function l3bShow(id, on) {
 async function l3bLoad(list, opts = {}) {
   if (l3b.busy) return { missing: list };
   l3b.busy = true;
-  const first = !l3b.models.length, missing = [], times = [];
+  const first = !l3b.models.length, missing = [], times = [], noTc = [];
   let total = l3b.models.reduce((s, m) => s + m.tris, 0), skippedAll = 0;
   try {
     for (let i = 0; i < list.length; i++) {
@@ -137,6 +137,10 @@ async function l3bLoad(list, opts = {}) {
       try {
         if (local && local.blob) { clearInterval(tick); r = { bytes: await local.blob.arrayBuffer(), placement: w.fileId ? null : local.placement || null, name: w.name, local: true }; }
         else r = w.fileId ? { ...(await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, dl)), name: w.name, placement: null } : await askOpener("ifcModelData", { modelId: w.id }, 0, dl);
+      } catch (er) {
+        // Utan 4D-planering/Trimble Connect (fönstret öppnades direkt, eller 4D-planering stängdes) går just den här modellen inte att hämta – de övriga läses in som vanligt.
+        if (/inte öppen|kräver Trimble Connect/.test(String(er && er.message))) { clearInterval(tick); missing.push(w); noTc.push(w.name || "modellen"); continue; }
+        throw er;
       }
       finally { clearInterval(tick); }
       // IFC-fil ur en mapp: TC:s placering (flytt/vridning) hämtas från samma modell om den är tänd i TC, plus egen justering (Placera…).
@@ -191,6 +195,7 @@ async function l3bLoad(list, opts = {}) {
     const n = l3b.models.reduce((s, m) => s + m.ranges.filter(r => r.itemId).length, 0);
     // Var tiden gick (hämtning från TC respektive läsning) och vad som hoppades över.
     const extra = [times.join(" · "), skippedAll ? `${skippedAll.toLocaleString("sv-SE")} objekt visas inte (${l3bDetails() ? "armering" : "armering, installationer och andra detaljer"}) – Lager → Avancerat` : ""].filter(Boolean).join(". ");
+    if (noTc.length) l3Toast(`${noTc.length === 1 ? noTc[0] + " kunde" : noTc.length + " modeller kunde"} inte hämtas: lägesplanen har ingen kontakt med Trimble Connect. Öppna den via 🗺️-knappen i 4D-planering (i Trimble Connect) och låt 4D-planering vara öppen – eller öppna IFC-filen från datorn (Lager → IFC från datorn…).`, null, null, 14000);
     if (l3b.models.length) l3Status(`Byggnaden visas (${l3b.models.length} ${l3b.models.length === 1 ? "modell" : "modeller"}, ${(total / 1000).toFixed(0)}k trianglar). ${n} objekt är kopplade och färgas efter status.${extra ? " " + extra + "." : ""}`);
     if (first && l3b.models.length) l3Frame(true);
     { const cr = l3bCouplingText(); if (cr) { console.info("Koppling:", l3bCouplingReport()); if (typeof l3Toast === "function") l3Toast(cr + "."); } }
