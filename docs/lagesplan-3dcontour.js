@@ -94,7 +94,7 @@ function l3cnCompute(quiet) {
   if (typeof l3pc === "undefined" || !l3pc.clouds.some(c => c.visible)) { l3cnClear(); l3cn.info = "Tänd ett punktmoln (Lager → Punktmoln)."; return; }
   const t0 = performance.now(); const G = l3cnBuildGrid(); if (!G) { l3cn.info = "Inga höjder att räkna kurvor på."; return; }
   const int = l3cn.int > 0 ? l3cn.int : l3cnNiceStep(G.zmax - G.zmin); let S = l3cnTrace(G, int), guard = 0; while ((S.minor.length + S.major.length) / 5 > 260000 && guard++ < 3) S = l3cnTrace(G, int * 2 ** guard);
-  let sIt = L3CN_CHAIKIN[Math.max(0, Math.min(3, Number(l3cn.smooth) | 0))]; const raw = (S.minor.length + S.major.length) / 5; while (sIt > 0 && raw * 2 ** sIt > 520000) sIt--;   // rundningen får inte göra linjerna för många
+  let sIt = L3CN_CHAIKIN[Math.max(0, Math.min(3, Number(l3cn.smooth) | 0))]; const raw = (S.minor.length + S.major.length) / 5; while (sIt > 0 && raw * 2 ** sIt > 1100000) sIt--;   // rundningen får inte göra linjerna för många
   if (sIt) { S.minor = l3cnSmoothSegs(S.minor, G.cell, sIt); S.major = l3cnSmoothSegs(S.major, G.cell, sIt); }
   l3cn.grid = G; l3cn.segs = S; l3cn.rev++; l3cnPaintTint(); l3cn.info = `${S.levels.length} nivåer, intervall ${String(S.step).replace(".", ",")} m · ${((S.minor.length + S.major.length) / 5).toLocaleString("sv-SE")} linjestycken · ruta ${String(Math.round(G.cell * 100) / 100).replace(".", ",")} m · ${Math.round(performance.now() - t0)} ms`;
   l3cnDraw3d(); l3cnMapRefresh(); if (!quiet) l3Status("Höjdkurvor: " + l3cn.info);
