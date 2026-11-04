@@ -64,7 +64,7 @@ function l3msTreeHtml(m, o, depth) {
 function l3msFind(m, id) { let r = null; m.root.traverse(o => { if (!r && o.uuid === id) r = o; }); return r; }
 function l3msHtml() {
   if (!l3ms.models.length) return "";
-  return `<div class="v3-lsub v3-msub"><div class="v3-lsub-h"><span class="v3-lsub-t"><i>›</i>Mesh-modeller <em>${l3ms.models.length}</em></span><button type="button" class="v3-ic" data-msadd="1" title="Läs in FBX, OBJ eller GLB från datorn (eller släpp filerna i 3D-fönstret)">＋</button></div><div class="v3-lsub-b">${l3ms.models.map(m => {
+  return `<div class="v3-lsub v3-msub"><div class="v3-lsub-h"><span class="v3-lsub-t"><i>›</i>Mesh-modeller <em>${l3ms.models.length}</em></span><a class="v3-ic" href="fbx2ifc.html" target="_blank" rel="noopener" title="Omvandla FBX/OBJ/GLB direkt till en kompakt IFC (.ifczip) – i en egen flik, för stora filer" style="text-decoration:none;display:inline-grid;place-items:center">⇄</a><button type="button" class="v3-ic" data-msadd="1" title="Läs in FBX, OBJ eller GLB från datorn (eller släpp filerna i 3D-fönstret)">＋</button></div><div class="v3-lsub-b">${l3ms.models.map(m => {
     const tools = m.open ? `<div class="v3-msm-set"><label title="Enhet i filen. Navisworks exporterar ofta i millimeter">Enhet <select data-msunit="${m.id}">${[[0, "Auto"], [1, "meter"], [0.01, "cm"], [0.001, "mm"]].map(([v, l]) => `<option value="${v}" ${(v === 0 ? !m.unitSet : m.unitSet && m.unit === v) ? "selected" : ""}>${l}</option>`).join("")}</select></label><label title="Y upp (glTF/OBJ) eller Z upp (som Revit/Navisworks)"><input type="checkbox" data-msyup="${m.id}" ${m.yup ? "checked" : ""}> Y är upp</label><button type="button" data-msplace="${m.id}" title="Placera modellen mitt i vyn">Till vyns mitt</button><button type="button" data-msplaceW="${m.id}" title="Placera enligt koordinaterna i filen">Filens koordinater</button></div>
       <div class="v3-msn-tree">${l3msTreeHtml(m, m.root, 0)}</div>
       <div class="v3-msm-act"><button type="button" data-msexp="${m.id}" title="De markerade delarna (Ctrl/Skift+klick i trädet), annars hela modellen, som IFC-objekt med namn och färg – till Trimble Connect eller som nedladdning">Exportera ${m.sel.size ? m.sel.size + " valda" : "allt"} som IFC…</button><button type="button" data-mszoom="${m.id}">Zooma</button>${m.sel.size ? `<button type="button" data-mshide="${m.id}">Släck valda</button><button type="button" data-msonly="${m.id}">Bara valda</button><button type="button" data-msall="${m.id}">Visa alla</button>` : ""}</div>` : "";
@@ -103,33 +103,28 @@ function l3msBind(host) {
 }
 /* ---- IFC ---- */
 function l3msColor(mesh) { const mt = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material, c = mt && mt.color ? mt.color : new THREE.Color(0.7, 0.7, 0.7); return { hex: "#" + c.getHexString(), op: mt && mt.transparent ? 1 - (mt.opacity == null ? 1 : mt.opacity) : 0 }; }
-function l3msIfcBuild(m, nodes) {
-  const doc = ifcDoc(m.name.replace(/\.[^.]+$/, ""), "Mesh-modell från " + m.name), elems = [], O = l3.O; let tris = 0, n = 0;
-  const meshes = []; (nodes && nodes.length ? nodes : [m.root]).forEach(r => r.traverse(o => { if (o.isMesh && o.visible !== false && !meshes.includes(o)) meshes.push(o); }));
-  meshes.forEach(o => {
-    const g = o.geometry, pos = g.getAttribute("position"); if (!pos) return; o.updateMatrixWorld(true); const idx = g.index ? g.index.array : null, cnt = idx ? idx.length : pos.count, v = new THREE.Vector3(), pts = [], tri = [], map = new Map();
-    const P = i => { let k = map.get(i); if (k) return k; v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld); pts.push({ x: v.x + O[0], y: v.y + O[1], z: v.z + O[2] }); k = pts.length; map.set(i, k); return k; };
-    for (let i = 0; i + 2 < cnt; i += 3) tri.push([P(idx ? idx[i] : i), P(idx ? idx[i + 1] : i + 1), P(idx ? idx[i + 2] : i + 2)]);
-    if (!tri.length) return; tris += tri.length; n++;
-    const col = l3msColor(o), style = doc.style("c" + col.hex + col.op, col.hex, "Färg " + col.hex, col.op);
-    const pl3 = doc.E(`IFCCARTESIANPOINTLIST3D((${pts.map(p => `(${ifcNum(p.x)},${ifcNum(p.y)},${ifcNum(p.z)})`).join(",")}))`), mesh = doc.E(`IFCTRIANGULATEDFACESET(${pl3},$,.T.,(${tri.map(t => `(${t.join(",")})`).join(",")}),$)`);
-    doc.E(`IFCSTYLEDITEM(${mesh},(${style}),$)`);
-    const path = []; let p = o; while (p && p !== m.root && p !== m.wrap) { if (p.name) path.unshift(p.name); p = p.parent; }
-    const el = doc.proxy(o.name || path[path.length - 1] || "Del", path.slice(0, -1).join(" / "), "Mesh", doc.sitePl, doc.shape(mesh, "Tessellation"), "");
-    doc.props(el, [["Källfil", m.name], ["Sökväg", path.join(" / ")]], "Mesh-modell"); elems.push(el);
-  });
-  if (!elems.length) return null;
+async function l3msIfcBuild(m, nodes, o = {}) {
+  const O = l3.O, meshes = []; (nodes && nodes.length ? nodes : [m.root]).forEach(r => r.traverse(x => { if (x.isMesh && x.visible !== false && !meshes.includes(x)) meshes.push(x); }));
+  const list = meshes.map(x => {
+    const g = x.geometry, pa = g.getAttribute("position"); if (!pa) return null; x.updateMatrixWorld(true); const e = x.matrixWorld.elements, n = pa.count, pos = new Float64Array(n * 3);
+    for (let i = 0; i < n; i++) { const px = pa.getX(i), py = pa.getY(i), pz = pa.getZ(i); pos[i * 3] = e[0] * px + e[4] * py + e[8] * pz + e[12] + O[0]; pos[i * 3 + 1] = e[1] * px + e[5] * py + e[9] * pz + e[13] + O[1]; pos[i * 3 + 2] = e[2] * px + e[6] * py + e[10] * pz + e[14] + O[2]; }
+    const col = l3msColor(x), path = []; let p = x; while (p && p !== m.root && p !== m.wrap) { if (p.name) path.unshift(p.name); p = p.parent; }
+    return { name: x.name || path[path.length - 1] || "Del", path, pos, idx: g.index ? g.index.array : null, color: col.hex, opacity: col.op };
+  }).filter(Boolean);
   const d = new Date(), p2 = x => String(x).padStart(2, "0"), base = m.name.replace(/\.[^.]+$/, ""), fn0 = `${base}${nodes && nodes.length ? " – urval" : ""} ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} kl ${p2(d.getHours())}.${p2(d.getMinutes())}.ifc`.replace(/[\\/:*?"<>|]/g, "-"), fn = typeof tcUniqueName === "function" ? tcUniqueName(fn0) : fn0;
-  return { text: doc.finish(elems, fn), fileName: fn, n, tris };
+  const r = await ifcFromMeshes(list, { projName: base, desc: "Mesh-modell från " + m.name, source: m.name, fileName: fn, minSize: o.minSize || 0, onProgress: f => busyProgress("msifc", `Bygger IFC (${Math.round(f * 100)} %)`, f) });
+  busyProgress("msifc", "", null); if (!r) return null; return { text: r.text, fileName: r.fileName, n: r.stats.parts, tris: r.stats.tris, stats: r.stats };
 }
 async function l3msExportIfc(m) {
-  const nodes = [...m.sel].map(i => l3msFind(m, i)).filter(Boolean), r = l3msIfcBuild(m, nodes);
+  const nodes = [...m.sel].map(i => l3msFind(m, i)).filter(Boolean); l3Status("Bygger IFC…");
+  const r = await l3msIfcBuild(m, nodes);
   if (!r) { l3Status("Inget att exportera – inga synliga delar i urvalet.", true); return null; }
-  if (r.tris > 3e6 && !confirm(`${r.tris.toLocaleString("sv-SE")} trianglar blir en stor IFC-fil. Fortsätta?`)) return null;
-  const file = new File([new TextEncoder().encode(r.text)], r.fileName, { type: "application/x-step" });
+  let bytes = new TextEncoder().encode(r.text), name = r.fileName, type = "application/x-step"; const raw = bytes.length;
+  if (raw > 6e6) { try { await l3msScript("vendor/three/fflate.min.js", () => typeof fflate !== "undefined"); bytes = ifcZipBytes(r.text, name); name = name.replace(/\.ifc$/i, ".ifczip"); type = "application/zip"; } catch (e) { console.warn("Kunde inte packa", e); } }
+  const file = new File([bytes], name, { type }), mb = v => (v / 1e6).toFixed(1).replace(".", ","), info = `${r.n} delar, ${r.stats.reused ? r.stats.reused + " delar delar geometri, " : ""}${mb(bytes.length)} MB${bytes.length < raw ? ` (packad från ${mb(raw)} MB)` : ""}`;
   try {
-    if (!window.opener || window.opener.closed || typeof askOpener !== "function") { const url = URL.createObjectURL(file), a = document.createElement("a"); a.href = url; a.download = r.fileName; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000); l3Toast(`${r.n} delar hämtade som IFC (${r.fileName}).`, null, null, 9000); return r; }
-    const up = await askOpener("tcUpload", { folder: "Lägesplan", files: [file] }, 10 * 60 * 1000); l3Toast(`${r.n} delar sparade som IFC i Trimble Connect: ${r.fileName}${up && up.folder ? ` (${up.folder})` : ""}.`, null, null, 9000); return r;
+    if (!window.opener || window.opener.closed || typeof askOpener !== "function") { const url = URL.createObjectURL(file), a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000); l3Toast(`IFC hämtad: ${name} – ${info}.`, null, null, 10000); return r; }
+    const up = await askOpener("tcUpload", { folder: "Lägesplan", files: [file] }, 10 * 60 * 1000); l3Toast(`Sparat i Trimble Connect: ${name} – ${info}${up && up.folder ? ` (${up.folder})` : ""}.`, null, null, 10000); return r;
   } catch (e) { l3Status("Kunde inte spara IFC-filen: " + e.message, true); throw e; }
 }
 /* Hook: lägg gruppen sist i 3D-modeller efter att Lager ritats. */

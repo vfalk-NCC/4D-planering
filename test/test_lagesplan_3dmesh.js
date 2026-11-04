@@ -54,11 +54,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     out.ui = { sub: !!document.querySelector('.v3-msub'), nodes: [...document.querySelectorAll('.v3-msn-n')].map(x => x.textContent).join(','), exp: !!document.querySelector('[data-msexp]') };
     // välj Pelare med Ctrl+klick och bygg IFC
     const row = [...document.querySelectorAll('.v3-msn')].find(x => x.textContent.includes('Pelare')); row.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true })); await new Promise(r => setTimeout(r, 100));
-    out.sel = m.sel.size; const nodes = [...m.sel].map(i => l3msFind(m, i)); const ifc = l3msIfcBuild(m, nodes);
+    out.sel = m.sel.size; const nodes = [...m.sel].map(i => l3msFind(m, i)); const ifc = await l3msIfcBuild(m, nodes);
     out.ifc = { n: ifc.n, tris: ifc.tris, faceSets: (ifc.text.match(/IFCTRIANGULATEDFACESET/g) || []).length, pelare: /Pelare/.test(ifc.text), balk: /Balk/.test(ifc.text), world: /\(65\d{5}|\(\d{4,}\./.test(ifc.text) };
-    const all = l3msIfcBuild(m, []); out.all = all.n;
+    const all = await l3msIfcBuild(m, []); out.all = all.n;
     // släck Balk → bara Pelare i allt-export
-    m.root.traverse(o => { if (o.name === 'Balk') o.visible = false; }); out.hidden = l3msIfcBuild(m, []).n;
+    m.root.traverse(o => { if (o.name === 'Balk') o.visible = false; }); out.hidden = (await l3msIfcBuild(m, [])).n;
     // enhet meter ändrar storleken
     m.unit = 1; m.unitSet = true; l3msApply(m); out.size1 = Math.round(new THREE.Box3().setFromObject(m.wrap).getSize(new THREE.Vector3()).x);
     // FBX (ASCII)
@@ -120,6 +120,20 @@ Connections:  {
     askOpener = keep; return out; });
   if (sk.err || sk.missing !== 2 || sk.busy || sk.remembered !== 'false,false' || sk.restored !== 0 || !/hoppade/.test(sk.toast)) fail('Hämtning som misslyckas hoppas över: ' + JSON.stringify(sk));
   console.log('OK: modell som inte går att hämta hoppas över, de andra läses in, och den provas inte om vid nästa start', JSON.stringify(sk));
+  // Kompakt IFC: delade punkter, lokala koordinater, delad geometri – och filen går att läsa tillbaka
+  const rt = await page.evaluate(async () => {
+    const mkCube = (x, y, z, s, n0) => { const V = [[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]], T = [[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7]], pos = []; T.forEach(t => t.forEach(i => pos.push(x + V[i][0] * s, y + V[i][1] * s, z + V[i][2] * s))); return { name: n0, path: ['Grupp', n0], pos: Float64Array.from(pos), idx: null, color: '#aa3300', opacity: 0 }; };
+    const list = []; for (let i = 0; i < 100; i++) list.push(mkCube(6512300 + (i % 10) * 3, 150100 + Math.floor(i / 10) * 3, 20, 1, 'Fäste ' + i)); list.push(mkCube(6512400, 150200, 20, 5, 'Stor'));
+    const r = await ifcFromMeshes(list, { projName: 'T', source: 't.fbx', fileName: 't.ifc' });
+    // jämför med "naiv" skrivning: absoluta koordinater, ingen delning (ungefär som förut)
+    const naive = list.reduce((s, it) => s + it.pos.length / 3 * 36 + 200, 0);
+    const zip = ifcZipBytes(r.text, 't.ifc');
+    let parsed = null, perr = null; try { parsed = await l3bParseAny(new TextEncoder().encode(r.text).buffer, null, 1e9, () => {}, () => {}); } catch (e) { perr = String(e.message || e); }
+    return { parts: r.stats.parts, reused: r.stats.reused, unique: r.stats.uniqueGeoms, tris: r.stats.tris, chars: r.text.length, naive, zip: zip.length, faceSets: (r.text.match(/IFCTRIANGULATEDFACESET/g) || []).length, parsedTris: parsed && parsed.tris, perr, local: /IFCCARTESIANPOINT\(\(65\d{5}/.test(r.text) };
+  });
+  if (rt.parts !== 101 || rt.reused !== 99 || rt.unique !== 2 || rt.tris !== 1212 || rt.faceSets !== 2 || rt.chars > rt.naive * 0.5 || rt.zip > rt.chars * 0.3) fail('Kompakt IFC (delad geometri, lokala koordinater, zip): ' + JSON.stringify(rt));
+  if (rt.perr || !(rt.parsedTris >= 1200)) fail('Den kompakta IFC:n ska gå att läsa tillbaka: ' + JSON.stringify(rt));
+  console.log('OK: kompakt IFC – 101 delar blir 2 geometrier, ca ' + Math.round(rt.chars / 1000) + ' tkn (naivt ' + Math.round(rt.naive / 1000) + ' tkn), zip ' + Math.round(rt.zip / 1000) + ' kB, läses tillbaka', JSON.stringify(rt));
   console.log('OK: mesh-modeller – OBJ och FBX in, modellträd, enhet/placering, valda delar som IFC, släpp-klassning', JSON.stringify({ obj: r.obj, ifc: r.ifc, fbx: r.fbx }));
   if (process.env.SHOT) { await page.evaluate(async () => { const m = await l3msLoadFile(new File(['o Pelare\nv 0 0 0\nv 10000 0 0\nv 10000 10000 0\nv 0 10000 0\nf 1 2 3 4\no Balk\nv 0 0 5000\nv 10000 0 5000\nv 10000 10000 5000\nf 5 6 7\n'], 'Hus_A.obj')); l3LayersRender(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOT }); }
   const real = errors.filter(e => !/allow-same-origin/.test(e)); if (real.length) fail('sidfel: ' + real.slice(0, 3).join(' | '));

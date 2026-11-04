@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FBX till IFC</title>
+<style>
+  :root{--ink:#0f1b2d;--mut:#64748b;--ac:#2f7bff;--line:#dbe6f5;--bg:#f4f8fd;--ok:#16a34a}
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:var(--bg)}
+  main{max-width:760px;margin:0 auto;padding:28px 18px 60px}
+  h1{font-size:28px;margin:0 0 4px;letter-spacing:-.01em} p.lead{color:var(--mut);margin:0 0 22px}
+  .drop{border:2px dashed #9db8e6;border-radius:18px;background:#fff;padding:34px 18px;text-align:center;transition:.15s;cursor:pointer}
+  .drop.over{background:#eaf2ff;border-color:var(--ac)} .drop b{display:block;font-size:18px;margin-bottom:4px}
+  .drop small{color:var(--mut)}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:16px 0}
+  .card h2{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:#50627d;margin:0 0 10px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px 18px} @media(max-width:560px){.row{grid-template-columns:1fr}}
+  label{display:flex;flex-direction:column;gap:3px;font-size:13px;color:#33465f} label.chk{flex-direction:row;align-items:center;gap:8px}
+  select,input[type=text],input[type=number]{height:34px;border:1px solid #c8d6ea;border-radius:9px;padding:0 10px;font:inherit;background:#fff}
+  .hint{font-size:12px;color:var(--mut)}
+  button.go{height:44px;padding:0 22px;border:0;border-radius:12px;background:var(--ac);color:#fff;font:600 15px system-ui;cursor:pointer;box-shadow:0 6px 18px rgba(47,123,255,.3)}
+  button.go:disabled{background:#b9c8de;box-shadow:none;cursor:default}
+  .bar{height:8px;border-radius:5px;background:#e3ecf8;overflow:hidden;margin:10px 0} .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#2f7bff,#7c5cff);transition:width .15s}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:8px} .stats div{background:#f2f7fe;border-radius:10px;padding:8px 10px;font-size:12px;color:#50627d} .stats b{display:block;font-size:17px;color:var(--ink)}
+  .err{color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:10px 12px;margin-top:10px;white-space:pre-wrap}
+  .ok a{display:inline-block;margin-top:8px;padding:10px 16px;background:var(--ok);color:#fff;border-radius:10px;text-decoration:none;font-weight:600}
+  ul.f{margin:8px 0 0;padding:0;list-style:none} ul.f li{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #eef3fa;font-size:13px} ul.f em{color:var(--mut);font-style:normal}
+</style>
+</head>
+<body>
+<main>
+  <h1>FBX → IFC</h1>
+  <p class="lead">Gör om FBX (t.ex. exporterad ur Navisworks), OBJ eller GLB till en kompakt IFC-fil – direkt i webbläsaren. Filerna laddas inte upp någonstans.</p>
+  <div class="drop" id="drop" tabindex="0" role="button"><b>Släpp filerna här</b><small>FBX · OBJ · GLB/glTF – eller klicka för att välja</small></div>
+  <input type="file" id="pick" accept=".fbx,.obj,.glb,.gltf" multiple hidden>
+  <div class="card"><h2>Filer</h2><ul class="f" id="files"><li><em>Inga filer valda än.</em></li></ul></div>
+  <div class="card"><h2>Inställningar</h2>
+    <div class="row">
+      <label>Enhet i filen<select id="unit"><option value="0">Auto (mm om modellen är väldigt stor)</option><option value="1">Meter</option><option value="0.01">Centimeter</option><option value="0.001">Millimeter</option></select></label>
+      <label>Upp-axel<select id="up"><option value="z">Z är upp (Revit, Navisworks, IFC)</option><option value="y">Y är upp (glTF, OBJ)</option></select></label>
+      <label>Hoppa över delar mindre än (m)<input type="number" id="min" value="0" min="0" step="0.01"><span class="hint">0 = ta med allt. 0,05 hoppar över skruvar och småprylar.</span></label>
+      <label>Decimaler i koordinater<select id="dec"><option value="3" selected>3 (millimeter)</option><option value="2">2 (centimeter)</option><option value="1">1 (decimeter)</option></select></label>
+      <label>Flytta modellen (m) – X<input type="number" id="ox" value="0" step="any"></label>
+      <label>Flytta modellen (m) – Y<input type="number" id="oy" value="0" step="any"></label>
+      <label>Flytta modellen (m) – Z<input type="number" id="oz" value="0" step="any"></label>
+      <label class="chk"><input type="checkbox" id="inst" checked> Dela geometri mellan likadana delar<span class="hint" style="margin-left:6px">sparar mest plats</span></label>
+      <label class="chk"><input type="checkbox" id="zip" checked> Packa som .ifczip (ca 10 gånger mindre)</label>
+    </div>
+    <p class="hint" style="margin:10px 0 0">FBX-filen läses in i minnet, så mycket stora filer (över ca 1,5 GB) går inte i webbläsaren. Exportera i så fall ur Navisworks i delar (t.ex. per disciplin eller våning).</p>
+  </div>
+  <button class="go" id="go" disabled>Gör om till IFC</button>
+  <div class="card" id="out" hidden><h2 id="outT">Arbetar…</h2><div class="bar"><i id="bar"></i></div><div id="msg" class="hint"></div><div class="stats" id="stats"></div><div id="res"></div></div>
+</main>
+<script src="vendor/three/three.min.js?v=20261104144606"></script>
+<script src="vendor/three/fflate.min.js?v=20261104144606"></script>
+<script src="vendor/three/FBXLoader.js?v=20261104144606"></script>
+<script src="vendor/three/OBJLoader.js?v=20261104144606"></script>
+<script src="vendor/three/GLTFLoader.js?v=20261104144606"></script>
+<script src="ifc-writer.js?v=20261104144606"></script>
+<script src="ifc-mesh.js?v=20261104144606"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id), files = [], tick = () => new Promise(r => setTimeout(r, 0));
+const fmtMB = n => (n / 1e6).toFixed(n < 1e7 ? 1 : 0).replace(".", ",") + " MB", fmtN = n => Math.round(n).toLocaleString("sv-SE");
+function add(list) { for (const f of list) if (/\.(fbx|obj|glb|gltf)$/i.test(f.name) && !files.some(x => x.name === f.name && x.size === f.size)) files.push(f); render(); }
+function render() { $("files").innerHTML = files.length ? files.map((f, i) => `<li><span>${f.name.replace(/[<>&]/g, "")}</span><span><em>${fmtMB(f.size)}</em> <a href="#" data-i="${i}">ta bort</a></span></li>`).join("") : "<li><em>Inga filer valda än.</em></li>"; $("go").disabled = !files.length; $("files").querySelectorAll("a").forEach(a => { a.onclick = e => { e.preventDefault(); files.splice(+a.dataset.i, 1); render(); }; }); }
+const drop = $("drop"); drop.onclick = () => $("pick").click(); drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") $("pick").click(); };
+$("pick").onchange = () => { add([...$("pick").files]); $("pick").value = ""; };
+["dragenter", "dragover"].forEach(t => document.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => document.addEventListener(t, e => { e.preventDefault(); if (t === "drop") add([...e.dataTransfer.files]); if (t === "drop" || !e.relatedTarget) drop.classList.remove("over"); }));
+async function parse(file) {
+  const ext = file.name.split(".").pop().toLowerCase(), buf = await file.arrayBuffer();
+  if (ext === "fbx") return new THREE.FBXLoader().parse(buf, "");
+  if (ext === "obj") return new THREE.OBJLoader().parse(new TextDecoder().decode(buf));
+  return (await new Promise((res, rej) => new THREE.GLTFLoader().parse(buf, "", res, rej))).scene;
+}
+function items(root, file, o) {
+  const wrap = new THREE.Group(); wrap.add(root); wrap.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(root), sz = bb.getSize(new THREE.Vector3());
+  const unit = o.unit || (Math.max(sz.x, sz.y, sz.z) > 5000 ? 0.001 : 1); wrap.scale.setScalar(unit); if (o.yup) wrap.rotation.x = Math.PI / 2; wrap.updateMatrixWorld(true);
+  const out = []; root.traverse(m => {
+    if (!m.isMesh || !m.geometry || m.visible === false) return; const g = m.geometry, pa = g.getAttribute("position"); if (!pa) return; const e = m.matrixWorld.elements, n = pa.count, pos = new Float64Array(n * 3);
+    for (let i = 0; i < n; i++) { const px = pa.getX(i), py = pa.getY(i), pz = pa.getZ(i); pos[i * 3] = e[0] * px + e[4] * py + e[8] * pz + e[12] + o.ox; pos[i * 3 + 1] = e[1] * px + e[5] * py + e[9] * pz + e[13] + o.oy; pos[i * 3 + 2] = e[2] * px + e[6] * py + e[10] * pz + e[14] + o.oz; }
+    const mt = Array.isArray(m.material) ? m.material[0] : m.material, c = mt && mt.color ? mt.color : new THREE.Color(0.7, 0.7, 0.7), path = []; let p = m; while (p && p !== root && p !== wrap) { if (p.name) path.unshift(p.name); p = p.parent; }
+    out.push({ name: m.name || path[path.length - 1] || "Del", path, pos, idx: g.index ? g.index.array : null, color: "#" + c.getHexString(), opacity: mt && mt.transparent ? 1 - (mt.opacity == null ? 1 : mt.opacity) : 0 });
+  });
+  return { list: out, unit };
+}
+$("go").onclick = async () => {
+  const o = { unit: Number($("unit").value), yup: $("up").value === "y", ox: +$("ox").value || 0, oy: +$("oy").value || 0, oz: +$("oz").value || 0 }, minSize = +$("min").value || 0, dec = +$("dec").value, zip = $("zip").checked, inst = $("inst").checked;
+  $("go").disabled = true; $("out").hidden = false; $("res").innerHTML = ""; $("stats").innerHTML = ""; $("outT").textContent = "Arbetar…"; const bar = f => { $("bar").style.width = Math.round(f * 100) + "%"; };
+  const results = [];
+  try {
+    for (let fi = 0; fi < files.length; fi++) {
+      const f = files[fi], base = f.name.replace(/\.[^.]+$/, ""), pre = files.length > 1 ? `(${fi + 1} av ${files.length}) ` : "";
+      $("msg").textContent = `${pre}Läser ${f.name} (${fmtMB(f.size)})…`; bar(0.02); await tick();
+      const root = await parse(f); $("msg").textContent = `${pre}Samlar delar…`; bar(0.2); await tick();
+      const { list, unit } = items(root, f, o); const tris0 = list.reduce((s, x) => s + (x.idx ? x.idx.length : x.pos.length / 3) / 3, 0);
+      $("msg").textContent = `${pre}${fmtN(list.length)} delar, ${fmtN(tris0)} trianglar – bygger IFC…`;
+      let r = await ifcFromMeshes(list, { projName: base, desc: "Från " + f.name, source: f.name, fileName: base + ".ifc", decimals: dec, minSize, onProgress: p => { bar(0.25 + 0.7 * p); } });
+      if (!r) throw new Error(`Inga trianglar att skriva i ${f.name}.`);
+      let bytes = new TextEncoder().encode(r.text), name = base + ".ifc", type = "application/x-step"; const raw = bytes.length;
+      if (zip) { bytes = ifcZipBytes(r.text, name); name = base + ".ifczip"; type = "application/zip"; }
+      const url = URL.createObjectURL(new Blob([bytes], { type })); results.push({ name, url, size: bytes.length, raw, stats: r.stats, unit, tris0 }); list.length = 0; r = null; await tick();
+    }
+    bar(1); $("outT").textContent = "Klart"; $("msg").textContent = "";
+    const s = results.reduce((a, r) => ({ parts: a.parts + r.stats.parts, tris: a.tris + r.stats.tris, reused: a.reused + r.stats.reused, size: a.size + r.size, raw: a.raw + r.raw, skipped: a.skipped + r.stats.skipped, tris0: a.tris0 + r.tris0 }), { parts: 0, tris: 0, reused: 0, size: 0, raw: 0, skipped: 0, tris0: 0 });
+    $("stats").innerHTML = [["Delar", fmtN(s.parts)], ["Trianglar", fmtN(s.tris)], ["Delar med delad form", fmtN(s.reused)], ["Överhoppade småprylar", fmtN(s.skipped)], ["IFC-text", fmtMB(s.raw)], ["Filstorlek", fmtMB(s.size)]].map(([k, v]) => `<div>${k}<b>${v}</b></div>`).join("");
+    $("res").className = "ok"; $("res").innerHTML = results.map(r => `<a href="${r.url}" download="${r.name}">Hämta ${r.name} (${fmtMB(r.size)})</a>`).join(" ");
+  } catch (e) { console.error(e); $("outT").textContent = "Det gick inte"; $("msg").textContent = ""; $("res").innerHTML = `<div class="err">${String(e.message || e).replace(/[<>&]/g, "")}\n\nTips: är filen mycket stor, exportera den i delar ur Navisworks. Kontrollera också att det är en vanlig FBX (inte en äldre version).</div>`; }
+  $("go").disabled = !files.length;
+};
+</script>
+</body>
+</html>
