@@ -57,6 +57,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3RebuildOne(p); await new Promise(r => setTimeout(r, 300));
     const g = l3.placeMeshes.get(p.id); let tris = 0, meshes = 0; g.traverse(o => { if (o.isMesh) { meshes++; tris += (o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3; } });
     const bb = new THREE.Box3().setFromObject(g); out.meshes = meshes; out.tris = Math.round(tris); out.h = Math.round((bb.max.z - bb.min.z) * 10) / 10; out.len = Math.round((bb.max.x - bb.min.x) * 10) / 10;
+    // spegelvänd: knappen i objektpanelen flyttar ställningen till andra sidan
+    const side0 = smF(p, 'sida'); const box0 = new THREE.Box3().setFromObject(l3.placeMeshes.get(p.id)); l3SelectIds([p.id]); await new Promise(r => setTimeout(r, 400));
+    const btn = document.querySelector('[data-smact="spegla"]'); out.btn = !!btn; if (btn) btn.click(); await new Promise(r => setTimeout(r, 500));
+    const box1 = new THREE.Box3().setFromObject(l3.placeMeshes.get(p.id)); out.mirror = { before: side0, after: smF(p, 'sida'), dy: Math.round((box1.getCenter(new THREE.Vector3()).y - box0.getCenter(new THREE.Vector3()).y) * 10) / 10 };
+    out.parts = []; g.traverse(o => { if (o.isMesh) out.parts.push([(o.material && o.material.color ? '#' + o.material.color.getHexString() : '?'), Math.round((o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3)]); });
     out.calc = stallningFriCalc(p).slice(0, 4).map(r => r.join('=')).join(' | ');
     out.fields = SM.stallningfri.fields.map(f => f[0]).join(',');
     return out;
@@ -68,6 +73,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(R.n >= 6, 'Markhöjd i varje fack'); ok(R.z[0] < -2 && R.z[R.z.length - 1] > 2 && R.z.every((v, i) => i === 0 || v >= R.z[i - 1] - 0.05), 'Höjderna ska följa slänten');
   ok(R.meshes >= 1 && R.tris > 500, 'Ställningen ska ritas'); ok(R.h > 12 && R.h < 20, 'Höjden = markens höjdskillnad + höjd över högsta punkten'); ok(R.len >= 15, 'Längd');
   ok(/Längd=1[5-7]/.test(R.calc), 'Beräknat');
+  ok(R.btn && R.mirror.before === 'Vänster' && R.mirror.after === 'Höger' && R.mirror.dy < -0.2, 'Spegelvänd: ' + JSON.stringify(R.mirror));
   if (errors.length) fail('Fel: ' + errors.join('|'));
   console.log('OK: ställning som följer berget – markhöjd ur punktmolnet i varje fack, plattformar i jämna nivåer');
   await browser.close(); server.close();

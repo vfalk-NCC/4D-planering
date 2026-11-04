@@ -231,6 +231,7 @@ function smartSideHtml(p) {
     const v = smF(p, k, def == null ? "" : def); o = o || {};
     if (type === "dims") { const fi = (k, lab) => `<label><span>${esc(lab)}</span><div class="v3-in"><input type="text" inputmode="decimal" data-v3f="${k}" value="${p[k] == null ? "" : String(p[k]).replace(".", ",")}" /><em>m</em></div></label>`; return `<div class="v3-grid">${String(def).includes("L") ? fi("L", "Längd") + fi("B", "Bredd") : ""}${fi("H", String(def).includes("L") ? "Tjocklek" : "Tjocklek (höjd)")}</div>`; }
     if (type === "gjprof") { const has = !!(typeof gjutProfGet === "function" && gjutProfGet(p)); return `<div class="v3-field v3-gj-prof"><span>${esc(lab)}</span><div class="v3-gj-btns"><button type="button" data-gjdraw="1" class="v3-wide">${has ? "Rita om med frihand" : "Rita med frihand"}</button>${has ? `<button type="button" data-gjclear="1" class="v3-wide">Rensa</button>` : ""}</div><small>${has ? "Botten följer din linje." : "Rita längs sidan i modellen – formen skärs efter linjen (t.ex. mot berg)."}</small></div>`; }
+    if (type === "action") return `<div class="v3-field"><button type="button" class="v3-wide" data-smact="${esc(k)}" title="${esc(o.tip || "")}">${esc(lab)}</button></div>`;   // knapp som kör d.act[k](p)
     if (type === "calc") { const rows = typeof d.calc === "function" ? d.calc(p) : []; return `<div class="v3-sm-calc"><div class="v3-sm-calc-h">${esc(lab)}</div>${rows.map(([a, b2]) => `<div><span>${esc(a)}</span><b>${esc(b2)}</b></div>`).join("")}</div>`; }
     if (type === "range") { const n = o.dim ? (Number(p[k]) || Number(def) || 0) : smN(p, k, Number(def) || 0), u = o.unit || ""; return `<label class="v3-field v3-sm-range"><span>${esc(lab)} <b data-smv="${k}">${esc(smFmt(n, 2))} ${esc(u)}</b></span><input type="range" ${o.dim ? "data-smd" : "data-smf"}="${k}" min="${o.min}" max="${o.max}" step="${o.step || 1}" value="${n}" data-u="${esc(u)}" /></label>`; }
     const list = Array.isArray(type) ? type : type === "kran" ? SM_KRAN() : null;
@@ -250,6 +251,7 @@ function smartBindSide(side, p, redraw) {
   const d = smDef(p); if (!d) return;
   smDateBind(side, p, redraw); smSignBind(side, p, redraw);
   const live = (k, v) => { p.f = p.f || {}; p.f[k] = v; };
+  side.querySelectorAll("[data-smact]").forEach(b => { b.onclick = () => { const f = d.act && d.act[b.dataset.smact]; if (!f) return; placeSnapshot(); const msg = f(p); placeTouch(p); if (typeof l3RebuildOne === "function") l3RebuildOne(p); if (typeof l3Changed === "function") l3Changed(); redraw(); if (msg && typeof l3Status === "function") l3Status(msg); }; });
   side.querySelectorAll("[data-gjdraw]").forEach(b => { b.onclick = () => { if (typeof l3gpStart === "function") l3gpStart(p); }; });
   side.querySelectorAll("[data-gjclear]").forEach(b => { b.onclick = () => { if (typeof l3gpClear === "function") l3gpClear(p); }; });
   side.querySelectorAll("[data-smseg]").forEach(g => g.querySelectorAll("button").forEach(b => { b.onclick = () => { placeSnapshot(); live(g.dataset.smseg, b.dataset.v); placeTouch(p); redraw(); }; }));

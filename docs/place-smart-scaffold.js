@@ -25,14 +25,14 @@ function stallningFriBuild(p, c) {
   const P = (p.pts || []).map(q => [q[0] - (Number(p.x) || 0), q[1] - (Number(p.y) || 0), (q[2] || 0) + (Number(p.dz) || 0) - c.z, q[3] == null ? null : q[3] + (Number(p.dz) || 0) - c.z]); if (P.length < 2) return;
   const B = Math.max(0.6, Number(p.B) || 0.75), fack = Math.max(0.7, smN(p, "fack", 2.57)), vh = Math.max(1, smN(p, "vh", 2)), Ht = Math.max(1, Number(p.H) || 6), sida = smF(p, "sida", "Vänster") === "Höger" ? -1 : 1, acc = p.color || "#eab308";
   const STE = "#c9d0d8", STE2 = "#aeb7c1", DECK = "#b4bcc6", EDGE = "#6b7684", skydd = smF(p, "skydd", "Nät"), diag = smF(p, "diag", "Ja") !== "Nej", stege = smF(p, "stege", "Ja") !== "Nej", spark = smF(p, "spark", "Ja") !== "Nej";
-  const S = stallningFriStations(P, fack, B, sida); if (!S) return; const { st, nb } = S, rod = (a, b, r, col) => c.rod(col || STE, a, b, r, r, 6, SMM);
+  const S = stallningFriStations(P, fack, B, sida); if (!S) return; const { st, nb } = S, rod = (a, b, r, col) => c.rod(col || STE, a, b, r, r, r < 0.016 ? 4 : 5, SMM);
   const gmax = Math.max(...st.map(q => Math.max(q.zi, q.zo))), gmin = Math.min(...st.map(q => Math.min(q.zi, q.zo))), top = gmax + Ht, nl = Math.max(1, Math.floor((top - gmin - 0.3) / vh));
   const lev = []; for (let k = 0; k <= nl; k++) lev.push(top - k * vh);   // plattformsnivåer uppifrån och ned
   let nStd = 0, nDeck = 0, nLed = 0, nStd2 = 0;
   const topRail = top + 1.05;
   // stolpar: fotplatta + ställbar fot på markhöjden, rör upp till räckeshöjd, rosetter vid varje nivå som ligger över marken
-  st.forEach(q => [[q.x, q.y, q.zi], [q.ox, q.oy, q.zo]].forEach(([x, y, g]) => { nStd++; c.rod(STE, [x, y, g + 0.1], [x, y, topRail], 0.024, 0.024, 8, SMM); c.box("#6b7280", x, y, g + 0.005, 0.16, 0.16, 0.01, null, 0.004, SMM); c.cyl("#dc2626", "z", x, y, g + 0.06, 0.018, 0.018, 0.12, 8, null, SMM);
-    lev.forEach(z => { if (z > g + 0.25) c.cyl("#9aa4b0", "z", x, y, z, 0.058, 0.058, 0.01, 12, null, SMM); }); }));
+  st.forEach(q => [[q.x, q.y, q.zi], [q.ox, q.oy, q.zo]].forEach(([x, y, g]) => { nStd++; c.rod(STE, [x, y, g + 0.1], [x, y, topRail], 0.024, 0.024, 6, SMM); c.box("#6b7280", x, y, g + 0.005, 0.16, 0.16, 0.01, null, 0, SMM); c.cyl("#dc2626", "z", x, y, g + 0.06, 0.018, 0.018, 0.12, 8, null, SMM);
+    lev.forEach(z => { if (z > g + 0.25) c.cyl("#9aa4b0", "z", x, y, z, 0.058, 0.058, 0.01, 8, null, SMM); }); }));
   for (let j = 0; j < nb; j++) {
     const a = st[j], b = st[j + 1], ang = Math.atan2(b.y - a.y, b.x - a.x), len = Math.hypot(b.x - a.x, b.y - a.y), gA = Math.max(a.zi, b.zi, a.zo, b.zo), gI = Math.min(a.zi, b.zi), gO = Math.min(a.zo, b.zo);
     const mx = (a.x + b.x + a.ox + b.ox) / 4, my = (a.y + b.y + a.oy + b.oy) / 4, wy = Math.hypot((a.ox - a.x + b.ox - b.x) / 2, (a.oy - a.y + b.oy - b.y) / 2);
@@ -42,9 +42,9 @@ function stallningFriBuild(p, c) {
       if (j === nb - 1 && z > b.zi + 0.25 && z > b.zo + 0.25) rod([b.x, b.y, z], [b.ox, b.oy, z], 0.02, STE2);
       if (j === 0 && z > a.zi + 0.25 && z > a.zo + 0.25) rod([a.x, a.y, z], [a.ox, a.oy, z], 0.02, STE2);
       if (z >= gA + 0.1) {   // plattformen ligger över marken i hela facket
-        nDeck++; c.box(DECK, mx, my, z + 0.045, len - 0.04, Math.max(0.3, wy - 0.1), 0.03, [ang, 0, 0], 0.006, { metal: 0.7, rough: 0.45 });
-        c.box(EDGE, (a.x + b.x) / 2, (a.y + b.y) / 2, z + 0.02, len - 0.02, 0.05, 0.08, [ang, 0, 0], 0.008, SMM); c.box(EDGE, (a.ox + b.ox) / 2, (a.oy + b.oy) / 2, z + 0.02, len - 0.02, 0.05, 0.08, [ang, 0, 0], 0.008, SMM);
-        if (spark) c.box("#c9a15f", (a.ox + b.ox) / 2, (a.oy + b.oy) / 2, z + 0.16, len - 0.04, 0.025, 0.15, [ang, 0, 0], 0.004, { rough: 0.9 });
+        nDeck++; c.box(DECK, mx, my, z + 0.045, len - 0.04, Math.max(0.3, wy - 0.1), 0.03, [ang, 0, 0], 0, { metal: 0.7, rough: 0.45 });
+        c.box(EDGE, (a.x + b.x) / 2, (a.y + b.y) / 2, z + 0.02, len - 0.02, 0.05, 0.08, [ang, 0, 0], 0, SMM); c.box(EDGE, (a.ox + b.ox) / 2, (a.oy + b.oy) / 2, z + 0.02, len - 0.02, 0.05, 0.08, [ang, 0, 0], 0, SMM);
+        if (spark) c.box("#c9a15f", (a.ox + b.ox) / 2, (a.oy + b.oy) / 2, z + 0.16, len - 0.04, 0.025, 0.15, [ang, 0, 0], 0, { rough: 0.9 });
         [0.5, 1.0].forEach((h, hi) => { rod([a.ox, a.oy, z + h], [b.ox, b.oy, z + h], 0.02, hi ? acc : STE); if (j === 0) rod([a.x, a.y, z + h], [a.ox, a.oy, z + h], 0.02, hi ? acc : STE); if (j === nb - 1) rod([b.x, b.y, z + h], [b.ox, b.oy, z + h], 0.02, hi ? acc : STE); });
       }
     });
@@ -78,7 +78,17 @@ function stallningFriFollow(p, zAt) {
       out.push([x, y, sample(x, y, zl), sample(x + nx * B, y + ny * B, zl)]); } }
   if (!found) return 0; p.pts = out.map(q => q.map(v => Math.round(v * 1000) / 1000)); return out.length;
 }
+/* Spegelvänd: ställningen flyttas till andra sidan av den klickade linjen (och markhöjden på yttre raden hämtas om ur punktmolnet). */
+function stallningFriMirror(p) {
+  p.f = p.f || {}; const was = smF(p, "sida", "Vänster"); p.f.sida = was === "Höger" ? "Vänster" : "Höger";
+  const pts = p.pts || [], B = Math.max(0.6, Number(p.B) || 0.75), sida = p.f.sida === "Höger" ? -1 : 1; let n = 0;
+  if (pts.length >= 2 && typeof l3slZ === "function") pts.forEach((q, i) => {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)], l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / l * sida, ny = (b[0] - a[0]) / l * sida;
+    const z = l3slZ(q[0] + nx * B, q[1] + ny * B, 0.8); if (z != null && isFinite(z)) { q[3] = Math.round(z * 1000) / 1000; n++; } else q[3] = q[2]; });
+  return `Ställningen står nu på ${p.f.sida.toLowerCase()} sida om linjen${n ? " (markhöjden vid yttre raden hämtad ur punktmolnet)" : ""}.`;
+}
 if (typeof SM !== "undefined") SM.stallningfri = { group: "Etablering", label: "Ställning (följer berget)", color: "#eab308", path: true, H: 6, B: 0.75, icon: "box", calc: stallningFriCalc, build: stallningFriBuild,
-  fields: [["H", "Höjd över högsta marken", "range", 6, { min: 1, max: 40, step: 0.5, unit: "m", dim: true }], ["B", "Bredd (djup)", "range", 0.75, { min: 0.6, max: 2, step: 0.05, unit: "m", dim: true }], ["sida", "Ställningen står", ["Vänster", "Höger"], "Vänster", { seg: true }], ["folj", "Följ markytan (punktmoln)", ["Ja", "Nej"], "Ja", { seg: true }],
+  fields: [["H", "Höjd över högsta marken", "range", 6, { min: 1, max: 40, step: 0.5, unit: "m", dim: true }], ["B", "Bredd (djup)", "range", 0.75, { min: 0.6, max: 2, step: 0.05, unit: "m", dim: true }], ["sida", "Ställningen står", ["Vänster", "Höger"], "Vänster", { seg: true }], ["spegla", "Spegelvänd (andra sidan av linjen)", "action", "", { tip: "Flyttar ställningen till andra sidan av den klickade linjen" }], ["folj", "Följ markytan (punktmoln)", ["Ja", "Nej"], "Ja", { seg: true }],
     ["fack", "Fackbredd", SM_SCF_FACK, "2.57"], ["vh", "Våningshöjd", SM_SCF_VH, "2"], ["skydd", "Skydd", ["Nät", "Inget"], "Nät", { seg: true }], ["stege", "Stege", ["Ja", "Nej"], "Ja", { seg: true }], ["diag", "Diagonalstag", ["Ja", "Nej"], "Ja", { seg: true }], ["spark", "Sparkplåt", ["Ja", "Nej"], "Ja", { seg: true }], ["_calc", "Beräknat", "calc"]],
-  groups: [["Mått", ["H", "B", "sida", "folj"]], ["Alternativ", ["fack", "vh", "skydd", "stege", "diag", "spark"], "fold"], ["Beräknat", ["_calc"]]] };
+  act: { spegla: stallningFriMirror },
+  groups: [["Mått", ["H", "B", "sida", "spegla", "folj"]], ["Alternativ", ["fack", "vh", "skydd", "stege", "diag", "spark"], "fold"], ["Beräknat", ["_calc"]]] };
