@@ -270,12 +270,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // Dra och släpp filer: sortering efter filtyp + överlägg
   const dr = await page.evaluate(async () => {
     const mk = (n, size) => { const f = new File(['x'], n); if (size) Object.defineProperty(f, 'size', { value: size }); return f; };
-    const C = l3drClassify([mk('a.ifc'), mk('b.LAZ'), mk('c.dxf'), mk('d.shp'), mk('d.dbf'), mk('e.pdf'), mk('f.png'), mk('f.pgw'), mk('g.xyz'), mk('h.csv', 1000), mk('i.csv', 50e6), mk('j.glb'), mk('k.geojson')]);
+    const C = l3drClassify([mk('a.ifc'), mk('b.LAZ'), mk('c.dxf'), mk('d.shp'), mk('d.dbf'), mk('e.pdf'), mk('f.png'), mk('f.pgw'), mk('g.xyz'), mk('h.csv', 1000), mk('i.csv', 50e6), mk('j.xyzq'), mk('k.geojson')]);
     const out = { ifc: C.ifc.length, pc: C.pc.map(f => f.name).join(), cad: C.cad.map(f => f.name).join(), pdf: C.pdf.length, img: C.img.length, wld: C.wld.length, bad: C.bad.map(f => f.name).join() };
-    const dt = new DataTransfer(); dt.items.add(mk('j.glb')); const v = document.getElementById('view3d'), ev = t => new DragEvent(t, { bubbles: true, cancelable: true, dataTransfer: dt });
+    const dt = new DataTransfer(); dt.items.add(mk('j.xyzq')); const v = document.getElementById('view3d'), ev = t => new DragEvent(t, { bubbles: true, cancelable: true, dataTransfer: dt });
     v.querySelector('canvas').dispatchEvent(ev('dragenter')); out.ov = !!document.getElementById('v3DropOv') && !document.getElementById('v3DropOv').classList.contains('hidden');
     v.querySelector('canvas').dispatchEvent(ev('drop')); await new Promise(r => setTimeout(r, 400)); out.ovGone = document.getElementById('v3DropOv').classList.contains('hidden'); return out; });
-  if (dr.ifc !== 1 || dr.pc !== 'b.LAZ,g.xyz,i.csv' || dr.cad !== 'c.dxf,d.shp,d.dbf,h.csv,k.geojson' || dr.pdf !== 1 || dr.img !== 1 || dr.wld !== 1 || dr.bad !== 'j.glb' || !dr.ov || !dr.ovGone) fail('Dra och släpp: ' + JSON.stringify(dr));
+  if (dr.ifc !== 1 || dr.pc !== 'b.LAZ,g.xyz,i.csv' || dr.cad !== 'c.dxf,d.shp,d.dbf,h.csv,k.geojson' || dr.pdf !== 1 || dr.img !== 1 || dr.wld !== 1 || dr.bad !== 'j.xyzq' || !dr.ov || !dr.ovGone) fail('Dra och släpp: ' + JSON.stringify(dr));
   console.log('OK: polylinjens delsträckor märks ut, och filer kan dras och släppas (sorteras efter typ)', JSON.stringify({ pl, dr }));
   // Snittlinjen följer terrängen (Victor 2026-11-02)
   const sl = await page.evaluate(async () => {
