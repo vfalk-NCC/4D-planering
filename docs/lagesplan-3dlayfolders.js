@@ -7,8 +7,8 @@ const L3LF_ATTRS = ["data-l3l-model", "data-l3l-rem", "data-l3l-lt", "data-pc-ey
 const l3lf = { menu: null };
 /* Flervalda rader (Victor 2026-11-04: "hålla inne ctrl för att välja flera modeller samtidigt i sidomenyn under Lager"): Ctrl/Cmd+klick lägger till eller tar bort en rad, Skift+klick väljer ett intervall.
    Tänd/släck på en vald rad gäller alla valda, och de kan dras eller flyttas till en mapp tillsammans. */
-const l3lyS = { sec: null, keys: new Set(), anchor: null };
-const l3lyKeys = sec => (l3lyS.sec === sec ? [...l3lyS.keys] : []);
+const l3lxS = { sec: null, keys: new Set(), anchor: null };
+const l3lxKeys = sec => (l3lxS.sec === sec ? [...l3lxS.keys] : []);
 const l3lfAll = () => { const v = l3Prefs().layFolders; return v && typeof v === "object" ? v : {}; };
 const l3lfList = sec => (l3lfAll()[sec] || []);
 function l3lfSave(sec, list) { const a = { ...l3lfAll(), [sec]: list }; l3SetPref("layFolders", a); }
@@ -47,9 +47,9 @@ function l3lfMenu(x, y, items) {
 }
 async function l3lfAsk(q, def) { return typeof uiPrompt === "function" ? ((await uiPrompt(q, def || "")) || "").trim() : (prompt(q, def || "") || "").trim(); }
 function l3lfMoveMenu(sec, key, x, y) {
-  const multi = l3lyS.sec === sec && l3lyS.keys.has(key) && l3lyS.keys.size > 1, target = multi ? [...l3lyS.keys] : key, cur = multi ? null : l3lfFolderOf(sec, key);
+  const multi = l3lxS.sec === sec && l3lxS.keys.has(key) && l3lxS.keys.size > 1, target = multi ? [...l3lxS.keys] : key, cur = multi ? null : l3lfFolderOf(sec, key);
   const items = l3lfList(sec).map(f => ({ label: f.name, on: cur && cur.id === f.id, fn: () => l3lfAssign(sec, target, f.id) }));
-  if (multi) items.unshift({ label: `${l3lyS.keys.size} valda – flytta till:`, fn: () => {} }, { sep: true });
+  if (multi) items.unshift({ label: `${l3lxS.keys.size} valda – flytta till:`, fn: () => {} }, { sep: true });
   if (items.length) items.push({ sep: true });
   items.push({ label: "Ny mapp…", fn: async () => { const n = await l3lfAsk("Namn på mappen:", ""); if (n) { const f = l3lfCreate(sec, n); if (f) l3lfAssign(sec, target, f.id); } } });
   if (cur || multi) items.push({ label: "Ta ur mappen", fn: () => l3lfAssign(sec, target, null) });
@@ -60,10 +60,10 @@ function l3lfApply() {
   const host = document.getElementById("v3PalLayers"); if (!host || host.classList.contains("hidden")) return; const q = ((typeof l3lay !== "undefined" && l3lay.q) || "").trim();
   Object.keys(L3LF_SECS).forEach(sec => {
     const sect = host.querySelector(`.v3-lsec[data-lsec="${sec}"]`); if (!sect) return;
-    l3lySelBind(sec, sect);
+    l3lxSelBind(sec, sect);
     const rows = [...sect.querySelectorAll(".v3-lsec-b .v3-lr")].filter(r => !r.closest(".v3-lyf") && r.querySelector(":scope > .v3-eye") && l3lfRowKey(r)); if (!rows.length && !l3lfList(sec).length) return;
     rows.forEach(r => { // dra + flytta-knapp
-      const key = l3lfRowKey(r); r.draggable = true; r.ondragstart = e => { const many = l3lyS.sec === sec && l3lyS.keys.has(key) && l3lyS.keys.size > 1 ? [...l3lyS.keys] : [key]; e.dataTransfer.setData("text/x-lrow", sec + "|" + many.join("\n")); e.dataTransfer.effectAllowed = "move"; r.classList.add("dragging"); }; r.ondragend = () => r.classList.remove("dragging");
+      const key = l3lfRowKey(r); r.draggable = true; r.ondragstart = e => { const many = l3lxS.sec === sec && l3lxS.keys.has(key) && l3lxS.keys.size > 1 ? [...l3lxS.keys] : [key]; e.dataTransfer.setData("text/x-lrow", sec + "|" + many.join("\n")); e.dataTransfer.effectAllowed = "move"; r.classList.add("dragging"); }; r.ondragend = () => r.classList.remove("dragging");
       r.oncontextmenu = e => { e.preventDefault(); e.stopPropagation(); l3lfMoveMenu(sec, key, e.clientX, e.clientY); };
       if (!r.querySelector(".v3-lyf-mv")) { const b = document.createElement("button"); b.type = "button"; b.className = "v3-lr-zoom v3-lyf-mv"; b.title = "Flytta till mapp"; b.innerHTML = L3LF_ICO; b.onclick = e => { e.stopPropagation(); const rc = b.getBoundingClientRect(); l3lfMoveMenu(sec, key, rc.left, rc.bottom); }; r.appendChild(b); }
     });
@@ -92,25 +92,25 @@ function l3lfApply() {
     if (!container._lfDrop) { container._lfDrop = true; container.addEventListener("dragover", e => { if (e.target.closest && e.target.closest(".v3-lyf")) return; if ([...e.dataTransfer.types].includes("text/x-lrow")) e.preventDefault(); });
       container.addEventListener("drop", e => { if (e.target.closest && e.target.closest(".v3-lyf")) return; const d = e.dataTransfer.getData("text/x-lrow"); if (!d) return; e.preventDefault(); const s2 = d.slice(0, d.indexOf("|")); if (s2 === sec) l3lfAssign(sec, d.slice(d.indexOf("|") + 1).split("\n"), null); }); }
   });
-  { const all = new Set([...host.querySelectorAll(".v3-lr")].map(l3lfRowKey).filter(Boolean)); [...l3lyS.keys].forEach(k => { if (!all.has(k)) l3lyS.keys.delete(k); }); l3lyPaint(); }
+  { const all = new Set([...host.querySelectorAll(".v3-lr")].map(l3lfRowKey).filter(Boolean)); [...l3lxS.keys].forEach(k => { if (!all.has(k)) l3lxS.keys.delete(k); }); l3lxPaint(); }
 }
 
 /* Tänd/släck en lista rader (nycklar) – raderna slås upp på nytt för varje klick eftersom listan kan ritas om emellan. */
-async function l3lySetEyes(keys, want) {
+async function l3lxSetEyes(keys, want) {
   const host = document.getElementById("v3PalLayers"); if (!host) return;
   for (const k of keys) { const b = host.querySelector(l3lfAttrSel(k)); if (b && b.classList.contains("on") !== want) { b._lyBatch = true; b.click(); await new Promise(r => setTimeout(r, 70)); } }
 }
-function l3lySelClear() { l3lyS.sec = null; l3lyS.keys.clear(); l3lyS.anchor = null; l3lyPaint(); }
-function l3lyPaint() {
+function l3lxSelClear() { l3lxS.sec = null; l3lxS.keys.clear(); l3lxS.anchor = null; l3lxPaint(); }
+function l3lxPaint() {
   const host = document.getElementById("v3PalLayers"); if (!host) return;
-  host.querySelectorAll(".v3-lr").forEach(r => { const k = l3lfRowKey(r), sec = (r.closest(".v3-lsec") || {}).dataset && r.closest(".v3-lsec").dataset.lsec; r.classList.toggle("v3-lysel", !!(k && sec === l3lyS.sec && l3lyS.keys.has(k))); });
-  let bar = host.querySelector(".v3-lysel-bar"); const n = l3lyS.keys.size;
+  host.querySelectorAll(".v3-lr").forEach(r => { const k = l3lfRowKey(r), sec = (r.closest(".v3-lsec") || {}).dataset && r.closest(".v3-lsec").dataset.lsec; r.classList.toggle("v3-lysel", !!(k && sec === l3lxS.sec && l3lxS.keys.has(k))); });
+  let bar = host.querySelector(".v3-lysel-bar"); const n = l3lxS.keys.size;
   if (n < 2) { if (bar) bar.remove(); return; }
   if (!bar) { bar = document.createElement("div"); bar.className = "v3-lysel-bar"; const top = host.querySelector(".v3-lay-top"); if (top) top.after(bar); else host.prepend(bar); }
   bar.innerHTML = `<b>${n} valda</b><button type="button" data-a="on">Tänd</button><button type="button" data-a="off">Släck</button><button type="button" data-a="folder">Flytta till mapp…</button><button type="button" data-a="clr" title="Avmarkera (Esc)">✕</button>`;
-  bar.onclick = e => { const b = e.target.closest("button"); if (!b) return; const keys = [...l3lyS.keys], sec = l3lyS.sec; if (b.dataset.a === "on") l3lySetEyes(keys, true); else if (b.dataset.a === "off") l3lySetEyes(keys, false); else if (b.dataset.a === "clr") l3lySelClear(); else { const rc = b.getBoundingClientRect(); l3lfMoveMenu(sec, keys[0], rc.left, rc.bottom); } };
+  bar.onclick = e => { const b = e.target.closest("button"); if (!b) return; const keys = [...l3lxS.keys], sec = l3lxS.sec; if (b.dataset.a === "on") l3lxSetEyes(keys, true); else if (b.dataset.a === "off") l3lxSetEyes(keys, false); else if (b.dataset.a === "clr") l3lxSelClear(); else { const rc = b.getBoundingClientRect(); l3lfMoveMenu(sec, keys[0], rc.left, rc.bottom); } };
 }
-function l3lySelBind(sec, sect) {
+function l3lxSelBind(sec, sect) {
   sect.querySelectorAll(".v3-lr").forEach(r => {
     const key = l3lfRowKey(r); if (!key || r._lySel) return; r._lySel = true;
     const eye = r.querySelector(":scope > .v3-eye");
@@ -118,19 +118,19 @@ function l3lySelBind(sec, sect) {
     r.addEventListener("click", e => {
       if (!(e.ctrlKey || e.metaKey || e.shiftKey) || e.target.closest(".v3-lyf-mv, .v3-lr-zoom, .v3-lr-save, input, select")) return;
       e.preventDefault(); e.stopImmediatePropagation();
-      if (l3lyS.sec !== sec) { l3lyS.sec = sec; l3lyS.keys.clear(); l3lyS.anchor = null; }
-      if (e.shiftKey && l3lyS.anchor) { const rows = [...sect.querySelectorAll(".v3-lr")].filter(x => l3lfRowKey(x) && x.style.display !== "none"), ks = rows.map(l3lfRowKey), a = ks.indexOf(l3lyS.anchor), b = ks.indexOf(key); if (a >= 0 && b >= 0) { if (!(e.ctrlKey || e.metaKey)) l3lyS.keys.clear(); ks.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(k => l3lyS.keys.add(k)); } }
-      else { if (l3lyS.keys.has(key)) l3lyS.keys.delete(key); else l3lyS.keys.add(key); l3lyS.anchor = key; }
-      l3lyPaint();
+      if (l3lxS.sec !== sec) { l3lxS.sec = sec; l3lxS.keys.clear(); l3lxS.anchor = null; }
+      if (e.shiftKey && l3lxS.anchor) { const rows = [...sect.querySelectorAll(".v3-lr")].filter(x => l3lfRowKey(x) && x.style.display !== "none"), ks = rows.map(l3lfRowKey), a = ks.indexOf(l3lxS.anchor), b = ks.indexOf(key); if (a >= 0 && b >= 0) { if (!(e.ctrlKey || e.metaKey)) l3lxS.keys.clear(); ks.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(k => l3lxS.keys.add(k)); } }
+      else { if (l3lxS.keys.has(key)) l3lxS.keys.delete(key); else l3lxS.keys.add(key); l3lxS.anchor = key; }
+      l3lxPaint();
     }, true);
     // tänd/släck på en vald rad gäller alla valda
     if (eye) eye.addEventListener("click", e => {
       if (eye._lyBatch) { eye._lyBatch = false; return; }
-      if (l3lyS.sec !== sec || !l3lyS.keys.has(key) || l3lyS.keys.size < 2 || e.ctrlKey || e.metaKey || e.shiftKey) return;
-      e.preventDefault(); e.stopImmediatePropagation(); const want = !eye.classList.contains("on"), keys = [...l3lyS.keys]; setTimeout(() => l3lySetEyes(keys, want), 0);   // efter klicket – click() inuti ett pågående klick gör inget
+      if (l3lxS.sec !== sec || !l3lxS.keys.has(key) || l3lxS.keys.size < 2 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      e.preventDefault(); e.stopImmediatePropagation(); const want = !eye.classList.contains("on"), keys = [...l3lxS.keys]; setTimeout(() => l3lxSetEyes(keys, want), 0);   // efter klicket – click() inuti ett pågående klick gör inget
     }, true);
   });
 }
-window.addEventListener("keydown", e => { if (e.key === "Escape" && l3lyS.keys.size) { const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return; l3lySelClear(); } });
+window.addEventListener("keydown", e => { if (e.key === "Escape" && l3lxS.keys.size) { const t = e.target; if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return; l3lxSelClear(); } });
 
 (function () { if (typeof l3LayersRender !== "function") return; const orig = l3LayersRender; l3LayersRender = function () { const r = orig.apply(this, arguments); try { l3lfApply(); } catch (e) { console.warn("Lagermappar", e); } return r; }; })();

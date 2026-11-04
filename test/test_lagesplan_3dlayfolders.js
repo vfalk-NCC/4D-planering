@@ -69,15 +69,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3lfCreate('models', 'Valda'); await new Promise(r => setTimeout(r, 80));
     const row = id => document.querySelector('[data-l3l-model="' + id + '"]').closest('.v3-lr'), click = (id, o) => row(id).querySelector('.v3-lr-n').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...o }));
     click('md0', { ctrlKey: true }); click('md2', { ctrlKey: true }); click('md3', { ctrlKey: true });
-    const out = { sel: l3lyS.keys.size, bar: !!document.querySelector('.v3-lysel-bar'), painted: document.querySelectorAll('.v3-lr.v3-lysel').length, glow: 0 };
+    const out = { sel: l3lxS.keys.size, bar: !!document.querySelector('.v3-lysel-bar'), painted: document.querySelectorAll('.v3-lr.v3-lysel').length, glow: 0 };
     // ctrl+klick på en rad släcker inte modellen
     out.vis0 = ['md0', 'md1', 'md2', 'md3'].map(id => l3b.models.find(m => m.id === id).visible).join();
     // släck på en vald rads öga: alla valda blir släckta
     window.__bs = []; { const o = l3bShow; l3bShow = function (id, on) { window.__bs.push(id + ':' + on); return o.apply(this, arguments); }; } out.eye0 = document.querySelector('[data-l3l-model="md0"]').className; document.querySelector('[data-l3l-model="md0"]').click(); await new Promise(r => setTimeout(r, 600)); out.bs = window.__bs.join(); out.eye0b = document.querySelector('[data-l3l-model="md0"]').className; out.vis1 = ['md0', 'md1', 'md2', 'md3'].map(id => l3b.models.find(m => m.id === id).visible).join();
     // flytta alla valda till en mapp
-    const f = l3lfList('models').find(x => x.name === 'Valda'); l3lfAssign('models', [...l3lyS.keys], f.id); await new Promise(r => setTimeout(r, 100)); out.inF = document.querySelectorAll('.v3-lyf[data-lf="' + f.id + '"] .v3-lr').length;
+    const f = l3lfList('models').find(x => x.name === 'Valda'); l3lfAssign('models', [...l3lxS.keys], f.id); await new Promise(r => setTimeout(r, 100)); out.inF = document.querySelectorAll('.v3-lyf[data-lf="' + f.id + '"] .v3-lr').length;
     // skift-klick = intervall, Esc avmarkerar
-    click('md1', { shiftKey: true }); out.range = l3lyS.keys.size; l3lySelClear(); out.cleared = l3lyS.keys.size;
+    click('md1', { shiftKey: true }); out.range = l3lxS.keys.size; l3lxSelClear(); out.cleared = l3lxS.keys.size;
     return out; });
   if (ms.sel !== 3 || !ms.bar || ms.painted !== 3 || ms.vis0 !== 'false,false,true,false' || ms.vis1 !== 'true,false,true,true' || ms.inF !== 3 || ms.cleared !== 0) fail('Ctrl+klick, flera valda: ' + JSON.stringify(ms));
   console.log('OK: Ctrl+klick väljer flera modeller – tänd/släck, flytta till mapp och skift-intervall gäller alla valda', JSON.stringify(ms));
