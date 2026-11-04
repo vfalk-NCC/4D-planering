@@ -116,6 +116,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   console.log('OK: profil, volymtabell och släntkropp', JSON.stringify(pr));
   // ---- Profilvyn: ytlinje, jämförelse, zoom, fullskärm och DXF ----
   // ---- Höjdkurvor och höjdfärg (Victor 2026-11-02) ----
+  // Trappsteg ska bort (Victor 2026-11-04): en trappstegslinje (90°-hörn) blir en jämn kurva utan skarpa brott
+  const sm = await page.evaluate(() => {
+    const turn = P => { let mx = 0; for (let i = 4; i < P.length; i += 2) { const a1 = Math.atan2(P[i - 1] - P[i - 3], P[i - 2] - P[i - 4]), a2 = Math.atan2(P[i + 1] - P[i - 1], P[i] - P[i - 2]); let d = Math.abs(a2 - a1); if (d > Math.PI) d = 2 * Math.PI - d; if (d > mx) mx = d; } return Math.round(mx * 180 / Math.PI); };
+    const raw = []; for (let k = 0; k < 14; k++) raw.push(k * 2, k * 2, k * 2 + 2, k * 2);   // trappa: 2 m åt öst, sedan 2 m åt norr
+    const stairs = []; for (let k = 0; k < 14; k++) { stairs.push(k * 2, k * 2); stairs.push(k * 2 + 2, k * 2); } stairs.push(28, 28);
+    const o = { raw: turn(stairs) }; [1, 2, 3].forEach(l => { o['l' + l] = turn(l3cnSmoothLine(stairs.slice(), false, 1, l)); });
+    const p = l3cnSmoothLine(stairs.slice(), false, 1, 2); o.ends = p[0] === 0 && p[1] === 0 && p[p.length - 2] === 28 && p[p.length - 1] === 28;
+    return o;
+  });
+  if (!(sm.raw >= 80 && sm.l2 < sm.raw / 3 && sm.l3 <= sm.l2 && sm.l1 < sm.raw && sm.ends)) fail('Utjämning av trappsteg: ' + JSON.stringify(sm));
   if (process.env.SHOT) await page.evaluate(() => { window.__shot = true; });
   const cn = await page.evaluate(async () => {
     const o = {}, O = l3.O; l3pc.clouds.slice().forEach(c => l3pcRemove(c.id));
@@ -139,6 +149,6 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (process.env.SHOT) { await page.screenshot({ path: process.env.SHOT }); console.log('shot'); await browser.close(); server.close(); return; }
   if (!(cn.levels >= 3) || cn.bad > 0 || !cn.grid || !cn.group || !cn.tint || !cn.dxf || !cn.dxfZ || !cn.html || !cn.map || !cn.cleared) fail('Höjdkurvor: ' + JSON.stringify(cn));
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
-  console.log('OK test_lagesplan_3dcontour', JSON.stringify(cn));
+  console.log('OK test_lagesplan_3dcontour', JSON.stringify(cn), JSON.stringify(sm));
   await browser.close(); server.close();
 })().catch(e => { console.error('FEL: ' + e.message); process.exit(1); });

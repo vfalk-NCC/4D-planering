@@ -24,6 +24,26 @@ function l3cnBlur(z, nx, ny, passes) {
     a = b; }
   return a;
 }
+
+/* Riktig utjämning av en kurva (Victor 2026-11-04, "såhär ritas dom ut" – trappsteg): linjen delas upp i jämna steg och punkterna jämnas ut flera varv
+   (varje punkt dras mot medelvärdet av sina grannar). Ändpunkter på öppna linjer ligger kvar. passes = styrka (L3CN_PASSES). */
+const L3CN_PASSES = [0, 4, 16, 48];
+function l3cnSmoothLine(P, closed, d, level) {
+  const passes = L3CN_PASSES[Math.max(0, Math.min(3, level | 0))], n = P.length / 2; if (!passes || n < 3) return P;
+  const R = [P[0], P[1]], cnt = closed ? n : n - 1; let carry = 0;
+  for (let i = 0; i < cnt; i++) { const b = (i + 1) % n, ax = P[i * 2], ay = P[i * 2 + 1], bx = P[b * 2], by = P[b * 2 + 1], len = Math.hypot(bx - ax, by - ay); if (len < 1e-9) continue;
+    let t = d - carry; while (t <= len) { R.push(ax + (bx - ax) * t / len, ay + (by - ay) * t / len); t += d; } carry = len - (t - d); }
+  if (!closed) R.push(P[P.length - 2], P[P.length - 1]);
+  let m = R.length / 2; if (m < 4) return P;
+  let a = Float64Array.from(R), b = new Float64Array(a.length);
+  for (let p = 0; p < passes; p++) {
+    for (let i = 0; i < m; i++) {
+      if (!closed && (i === 0 || i === m - 1)) { b[i * 2] = a[i * 2]; b[i * 2 + 1] = a[i * 2 + 1]; continue; }
+      const pi = i === 0 ? m - 1 : i - 1, ni = i === m - 1 ? 0 : i + 1;
+      b[i * 2] = 0.25 * a[pi * 2] + 0.5 * a[i * 2] + 0.25 * a[ni * 2]; b[i * 2 + 1] = 0.25 * a[pi * 2 + 1] + 0.5 * a[i * 2 + 1] + 0.25 * a[ni * 2 + 1]; }
+    const t = a; a = b; b = t; }
+  return Array.from(a);
+}
 /* Segment (x0,y0,x1,y1,L)-lista → sammanlänkade linjer → Chaikin → nya segment. */
 function l3cnSmoothSegs(arr, cell, iters) {
   const n = arr.length / 5; if (!n || !iters) return arr; const q = cell * 1e-3, key = (x, y, L) => Math.round(x / q) + "," + Math.round(y / q) + "," + L, ends = new Map(), used = new Uint8Array(n);
@@ -39,12 +59,10 @@ function l3cnSmoothSegs(arr, cell, iters) {
         if (side === 0) { pts.push(fx, fy); kTail = key(fx, fy, L); } else { pts.unshift(fx, fy); kHead = key(fx, fy, L); } } }
     lines.push({ L, pts, closed: kHead === kTail && pts.length >= 8 });
   }
-  const out = [];
+  const out = []; let total = 0; lines.forEach(ln => { for (let i = 2; i < ln.pts.length; i += 2) total += Math.hypot(ln.pts[i] - ln.pts[i - 2], ln.pts[i + 1] - ln.pts[i - 1]); });
+  const d = Math.max(cell * 0.5, total / 900000);   // punktavstånd efter omsampling (högst ca 900 000 linjestycken)
   lines.forEach(ln => { let P = ln.pts; if (ln.closed) P = P.slice(0, P.length - 2);
-    for (let it = 0; it < iters && P.length >= 6; it++) { const m = P.length / 2, R = []; const cnt = ln.closed ? m : m - 1;
-      if (!ln.closed) R.push(P[0], P[1]);
-      for (let i = 0; i < cnt; i++) { const a = i, b = (i + 1) % m, ax = P[a * 2], ay = P[a * 2 + 1], bx = P[b * 2], by = P[b * 2 + 1]; R.push(0.75 * ax + 0.25 * bx, 0.75 * ay + 0.25 * by, 0.25 * ax + 0.75 * bx, 0.25 * ay + 0.75 * by); }
-      if (!ln.closed) R.push(P[P.length - 2], P[P.length - 1]); P = R; }
+    P = l3cnSmoothLine(P, ln.closed, d, iters);
     const m = P.length / 2; for (let i = 1; i < m; i++) out.push(P[i * 2 - 2], P[i * 2 - 1], P[i * 2], P[i * 2 + 1], ln.L); if (ln.closed && m > 2) out.push(P[m * 2 - 2], P[m * 2 - 1], P[0], P[1], ln.L); });
   return Float32Array.from(out);
 }
@@ -94,7 +112,7 @@ function l3cnCompute(quiet) {
   if (typeof l3pc === "undefined" || !l3pc.clouds.some(c => c.visible)) { l3cnClear(); l3cn.info = "Tänd ett punktmoln (Lager → Punktmoln)."; return; }
   const t0 = performance.now(); const G = l3cnBuildGrid(); if (!G) { l3cn.info = "Inga höjder att räkna kurvor på."; return; }
   const int = l3cn.int > 0 ? l3cn.int : l3cnNiceStep(G.zmax - G.zmin); let S = l3cnTrace(G, int), guard = 0; while ((S.minor.length + S.major.length) / 5 > 260000 && guard++ < 3) S = l3cnTrace(G, int * 2 ** guard);
-  let sIt = L3CN_CHAIKIN[Math.max(0, Math.min(3, Number(l3cn.smooth) | 0))]; const raw = (S.minor.length + S.major.length) / 5; while (sIt > 0 && raw * 2 ** sIt > 1100000) sIt--;   // rundningen får inte göra linjerna för många
+  const sIt = Math.max(0, Math.min(3, Number(l3cn.smooth) | 0));   // 0 = rå, 1 = lätt, 2 = normal, 3 = kraftig (se l3cnSmoothLine)
   if (sIt) { S.minor = l3cnSmoothSegs(S.minor, G.cell, sIt); S.major = l3cnSmoothSegs(S.major, G.cell, sIt); }
   l3cn.grid = G; l3cn.segs = S; l3cn.rev++; l3cnPaintTint(); l3cn.info = `${S.levels.length} nivåer, intervall ${String(S.step).replace(".", ",")} m · ${((S.minor.length + S.major.length) / 5).toLocaleString("sv-SE")} linjestycken · ruta ${String(Math.round(G.cell * 100) / 100).replace(".", ",")} m · ${Math.round(performance.now() - t0)} ms`;
   l3cnDraw3d(); l3cnMapRefresh(); if (!quiet) l3Status("Höjdkurvor: " + l3cn.info);
