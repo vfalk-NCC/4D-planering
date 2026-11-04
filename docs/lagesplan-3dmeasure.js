@@ -120,6 +120,7 @@ function l3mDraw() {
     if (m.kind === "cutfill") { const G = l3vol.geoms.get(m); if (!G) l3volEnsure(m); l3volDrawInto(grp, host, m, P, G); }
     const pts = new THREE.Points(new THREE.BufferGeometry().setFromPoints(P), new THREE.PointsMaterial({ color: col, size: 6, sizeAttenuation: false, depthTest: false }));
     pts.renderOrder = 11; pts.userData.noHit = true; pts.raycast = () => {}; grp.add(pts);
+    if (m.kind === "poly" && P.length >= 3) l3mSegLabels(P, m.id + ":seg", m.saved);
     const at = (m.kind === "point" || m.kind === "objvol") ? P[0].clone() : m.kind === "volume" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length).add(new THREE.Vector3(0, 0, (Number(m.h) || 0) / 2)) : m.kind === "poly" ? l3mPathMid(D) : m.kind === "angle" ? P[1] : m.kind === "area" ? P.reduce((s, p) => s.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length) : D[0].clone().add(D[1]).multiplyScalar(0.5);
     if (m.kind === "cutfill") { const r0 = m.vol && m.vol.res, zt = Math.max(...P.map(p => p.z)) + (r0 ? r0.tmax : 0) + 1.2; at.copy(P.reduce((s2, p) => s2.add(p), new THREE.Vector3()).multiplyScalar(1 / P.length)); at.z = zt; } // samlad text ovanför kropparna
     const el = document.createElement("div");
@@ -141,6 +142,15 @@ function l3mDraw() {
   l3Render();
 }
 /* Etiketterna följer kameran (anropas när bilden ritas). */
+/* Polylinje: längden på varje delsträcka som en liten etikett mitt på linjen (Victor 2026-11-04: "skriver ut måttet på alla linjer 1, 2, 3 & 4"). pts = scenens koordinater. */
+function l3mSegLabels(pts, key, saved) {
+  const host = document.getElementById("v3Canvas"); if (!host || !pts || pts.length < 2) return;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], el = document.createElement("div"); el.className = "v3-meas v3-meas-keep v3-meas-seg" + (saved ? " saved" : "");
+    el.innerHTML = `<i>${i}</i>${l3Fmt(a.distanceTo(b), 2)} m`; host.appendChild(el); el._at = a.clone().lerp(b, 0.5); l3m.labels.set(key + ":" + i, el);
+  }
+}
+function l3mSegLabelsClear(prefix) { [...l3m.labels.keys()].filter(k => k.startsWith(prefix)).forEach(k => { const e = l3m.labels.get(k); if (e) e.remove(); l3m.labels.delete(k); }); }
 function l3mPlaceLabels() {
   if (!l3) return;
   // Handtagen städas även när det inte finns några etiketter kvar (efter att sista måttet raderats låg de kvar som orange prickar).

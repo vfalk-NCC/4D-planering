@@ -109,7 +109,7 @@ function l3SetTool(t) {
   l3RenderSnapBar();
   l3Render();
 }
-function l3ClearMeasure() { if (!l3) return; l3Clear(l3.groups.meas); l3.measLabel = null; if (l3t.measEl) l3t.measEl.style.display = "none"; l3Render(); }
+function l3ClearMeasure() { if (!l3) return; if (typeof l3mSegLabelsClear === "function") l3mSegLabelsClear("live:seg"); l3Clear(l3.groups.meas); l3.measLabel = null; if (l3t.measEl) l3t.measEl.style.display = "none"; l3Render(); }
 
 // ---------------------------------------------------------------------
 // Fästpunkter
@@ -447,6 +447,7 @@ function l3ToolHover(e) {
       if (l3Prefs().measure === "angle" && mp.length === 2) l3ShowVcb("Vinkel", l3Fmt(l3Angle3(mp[0], mp[1], s.point), 1) + "°");
       if ((l3Prefs().measure === "area" || l3Prefs().measure === "volume") && all.length >= 3) l3ShowVcb(l3Prefs().measure === "volume" ? "Basyta" : "Yta", l3Fmt(l3PolyArea(all).area) + " m²");
       if (l3Prefs().measure === "poly" && all.length >= 2) l3ShowVcb("Längd", l3Fmt(l3PathLen(all)) + " m");
+      if (typeof l3mSegLabelsClear === "function") { l3mSegLabelsClear("live:seg"); if (l3Prefs().measure === "poly" && all.length >= 3) { l3mSegLabels(all, "live:seg", false); l3mPlaceLabels(); } }
     }
   } else if (t === "measure") {
     const s = st === 1 ? l3Target(e, l3t.M1) : l3Snap(e);

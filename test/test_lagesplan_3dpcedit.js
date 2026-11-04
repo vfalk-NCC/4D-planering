@@ -262,6 +262,21 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (!cp.sw || !cp.on || !cp.exact || !cp.flipUi || !cp.flip || !cp.follow || !cp.slab || !cp.off || !cp.closed) fail('Klipp längs profilen: ' + JSON.stringify(cp));
   console.log('OK: klipp längs profilen – reglage, exakt plan genom A–B, vänd, skiva, följer linjen, av vid stäng', JSON.stringify(cp));
+  // Polylinje: längd på varje delsträcka (Victor 2026-11-04)
+  const pl = await page.evaluate(() => { l3m.list = []; const P = [[0, 0, 0], [3, 0, 0], [3, 4, 0], [3, 4, 12]].map(p => new THREE.Vector3(p[0], p[1], p[2])); const m = l3mAdd('poly', P, '19,0 m', []); l3mDraw();
+    const ks = [...l3m.labels.keys()].filter(k => k.startsWith(m.id + ':seg:')).sort(); return { ks: ks.length, txt: ks.map(k => l3m.labels.get(k).textContent) }; });
+  if (pl.ks !== 3 || pl.txt.join('|') !== '13 m|24 m|312 m') fail('Polylinjens delsträckor: ' + JSON.stringify(pl));
+  await page.evaluate(() => { l3m.list = []; l3mDraw(); });
+  // Dra och släpp filer: sortering efter filtyp + överlägg
+  const dr = await page.evaluate(async () => {
+    const mk = (n, size) => { const f = new File(['x'], n); if (size) Object.defineProperty(f, 'size', { value: size }); return f; };
+    const C = l3drClassify([mk('a.ifc'), mk('b.LAZ'), mk('c.dxf'), mk('d.shp'), mk('d.dbf'), mk('e.pdf'), mk('f.png'), mk('f.pgw'), mk('g.xyz'), mk('h.csv', 1000), mk('i.csv', 50e6), mk('j.glb'), mk('k.geojson')]);
+    const out = { ifc: C.ifc.length, pc: C.pc.map(f => f.name).join(), cad: C.cad.map(f => f.name).join(), pdf: C.pdf.length, img: C.img.length, wld: C.wld.length, bad: C.bad.map(f => f.name).join() };
+    const dt = new DataTransfer(); dt.items.add(mk('j.glb')); const v = document.getElementById('view3d'), ev = t => new DragEvent(t, { bubbles: true, cancelable: true, dataTransfer: dt });
+    v.querySelector('canvas').dispatchEvent(ev('dragenter')); out.ov = !!document.getElementById('v3DropOv') && !document.getElementById('v3DropOv').classList.contains('hidden');
+    v.querySelector('canvas').dispatchEvent(ev('drop')); await new Promise(r => setTimeout(r, 400)); out.ovGone = document.getElementById('v3DropOv').classList.contains('hidden'); return out; });
+  if (dr.ifc !== 1 || dr.pc !== 'b.LAZ,g.xyz,i.csv' || dr.cad !== 'c.dxf,d.shp,d.dbf,h.csv,k.geojson' || dr.pdf !== 1 || dr.img !== 1 || dr.wld !== 1 || dr.bad !== 'j.glb' || !dr.ov || !dr.ovGone) fail('Dra och släpp: ' + JSON.stringify(dr));
+  console.log('OK: polylinjens delsträckor märks ut, och filer kan dras och släppas (sorteras efter typ)', JSON.stringify({ pl, dr }));
   // Snittlinjen följer terrängen (Victor 2026-11-02)
   const sl = await page.evaluate(async () => {
     const out = {}; l3pfShow([-10, 0, 0], [10, 0, 0], 1); l3pfClipSet(true); await new Promise(r => setTimeout(r, 900)); out.built = !!l3sl.grp && l3sl.grp.children.length >= 2 && l3sl.grp.visible;
