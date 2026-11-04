@@ -58,42 +58,8 @@ async function l3ltGzip(blob) { return new Response(blob.stream().pipeThrough(ne
 async function l3ltGunzip(buf) { return new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer(); }
 
 /* ---- Spara (datorn) ------------------------------------------------------------------------------- */
-async function l3ltEnsure(w, m) {
-  return;   // sparar inga lätta kopior längre: packningen frös fönstret efter varje inläsning
-  if (!l3ltOn() || l3ltUse() || !w || !w.version || !m || m.capped || !m.meshes.length || typeof CompressionStream !== "function") return;
-  // Stora modeller packas inte automatiskt: packningen körs på huvudtråden och frös fönstret några sekunder efter varje inläsning (Victor 2026-11-04, "låser sig på exakt samma sätt varje gång").
-  if ((m.tris || 0) > L3LT_AUTO_MAX_TRIS || (typeof l3b !== "undefined" && l3b.models.reduce((a, x) => a + (x.visible ? x.tris || 0 : 0), 0) > 1.2e6)) return;
-  const key = l3ltKey(w);
-  if (l3lt.saving.has(key)) return;
-  const list = await l3ltList();
-  const cur = list.find(x => x.key === key);
-  if (cur && cur.version === w.version) return; // finns redan
-  l3lt.saving.add(key);
-  // En modell i taget (två modeller som sparas samtidigt krockar annars i datalagret).
-  const prev = l3lt.queue || Promise.resolve();
-  let release; l3lt.queue = new Promise(r => { release = r; });
-  await prev;
-  try {
-    l3StatusLive(`Sparar en lätt kopia av ${m.name} för mobilen…`);
-    const gz = new Uint8Array(await l3ltGzip(l3ltEncode(m)));
-    if (gz.length > L3LT_MAX) { l3Status(`${m.name}: den lätta kopian för mobilen blev för stor (${Math.round(gz.length / 1e6)} MB) och sparas inte.`, true); return; }
-    const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14), safe = key.replace(/[^\w-]/g, "_");
-    const parts = [];
-    for (let i = 0, k = 0; i < gz.length; i += L3LT_PART, k++) {
-      const path = `projects/${encodeURIComponent(projectId)}/mobil3d/${safe}-${stamp}-${k}.bin`;
-      await ghUploadBinary(l3ltTok(), path, new Blob([gz.subarray(i, Math.min(gz.length, i + L3LT_PART))]), `Lätt 3D-kopia för mobilen: ${m.name} (del ${k + 1})`);
-      parts.push(path);
-    }
-    const entry = { key, name: m.name, version: w.version, parts, bytes: gz.length, tris: m.tris, created_at: new Date().toISOString(), by: (typeof settings !== "undefined" && settings.userName) || null };
-    let old = null;
-    await ghWriteJSON(l3ltTok(), l3ltPath(), arr => { const a = Array.isArray(arr) ? arr : []; old = a.find(x => x.key === key) || null; return [...a.filter(x => x.key !== key), entry]; }, `Lätt 3D-kopia för mobilen: ${m.name}`);
-    l3lt.list = (l3lt.list || []).filter(x => x.key !== key).concat(entry);
-    // Den gamla versionens delar behövs inte längre (bara datalagret – inget i Trimble Connect).
-    if (old && old.parts) for (const p of old.parts) if (!parts.includes(p)) await ghDeleteBinary(l3ltTok(), p, "Ersatt lätt 3D-kopia");
-    l3Status(`Lätt kopia av ${m.name} sparad för mobilen (${(gz.length / 1e6).toFixed(1).replace(".", ",")} MB, ${parts.length} ${parts.length === 1 ? "del" : "delar"}) – iPhone/iPad läser den i stället för IFC-filen.`);
-  } catch (e) { console.warn("Lätt kopia för mobilen", e); l3Status(`Kunde inte spara den lätta kopian för mobilen: ${e.message}`, true); }
-  finally { l3lt.saving.delete(key); release(); }
-}
+/* Sparar inga lätta kopior längre (Victor 2026-11-04): packningen frös fönstret efter varje inläsning. Funktionen finns kvar så anropen i lagren fortsätter fungera. */
+async function l3ltEnsure() { return; }
 
 /* ---- Läsa (mobilen) ------------------------------------------------------------------------------- */
 async function l3ltLoad(w, onProgress) {
