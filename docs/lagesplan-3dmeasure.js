@@ -436,15 +436,15 @@ function l3mTabHtml() {
       <button type="button" id="v3MeasIfcSel" ${nSel ? "" : "disabled"} title="De markerade måtten (Ctrl+klick / Skift+klick) som 3D-objekt i en ny IFC-fil i Trimble Connect">${I.upload} Exportera markerade${nSel ? ` (${nSel})` : ""}</button>
       <button type="button" id="v3MeasIfc" title="Alla mått som 3D-objekt (linje, ändpunkter och skylt med måttet) i en ny IFC-fil i Trimble Connect">${I.upload} Exportera alla mått</button>
       <label class="v3-chk" title="Ta med måttens kommentarer på skyltarna i IFC:n"><input type="checkbox" id="v3MeasExpNotes" ${withNotes ? "checked" : ""} /> Med kommentarer</label>
-      ${nSel ? `<button type="button" id="v3MeasSelClr">Avmarkera</button>` : ""}
+      ${nSel ? `<button type="button" id="v3MeasSelClr" title="Avmarkera alla">Avmarkera</button>` : ""}
       <button type="button" id="v3MeasSave" ${uns ? "" : "disabled"} title="Spara de osparade måtten i projektet (finns kvar nästa gång och för andra)">${I.upload} Spara i projektet${uns ? ` (${uns})` : ""}</button>
       ${l3m.list.some(m => m.note) ? `<button type="button" id="v3MeasNotesOn" title="Visa kommentaren efter måttet i 3D för alla mått som har en kommentar">${I.eye} Visa alla måttkommentarer</button>
       <button type="button" id="v3MeasNotesOff" title="Visa bara måtten i 3D (kommentarerna finns kvar)">${I.eyeOff} Dölj alla måttkommentarer</button>` : ""}
       ${l3m.list.some(m => !m.locked) ? `<button type="button" id="v3MeasLockAll" title="Lås alla mått">${L3M_LOCK} Lås alla</button>` : ""}
       ${l3m.list.some(m => m.locked) ? `<button type="button" id="v3MeasUnlockAll" title="Lås upp alla mått">${L3M_UNLOCK} Lås upp alla</button>` : ""}
-      <button type="button" id="v3MeasHide">${l3mAllHidden() ? I.eye + " Visa måtten" : I.eyeOff + " Dölj måtten"}</button>
+      <button type="button" id="v3MeasHide" title="Dölj eller visa alla mått i 3D">${l3mAllHidden() ? I.eye + " Visa måtten" : I.eyeOff + " Dölj måtten"}</button>
       <button type="button" id="v3MeasCopyAll" title="Alla mått med detaljer som text (t.ex. till e-post eller Excel)">${I.copy || "⧉"} Kopiera alla</button>
-      <button type="button" id="v3MeasClr" ${uns ? "" : "disabled"}>${I.trash} Rensa osparade</button></div>` : ""}` : ""}</section>`;
+      <button type="button" id="v3MeasClr" title="Ta bort de mått som inte är sparade" ${uns ? "" : "disabled"}>${I.trash} Rensa osparade</button></div>` : ""}` : ""}</section>`;
 }
 function l3mCopyText(list) {
   return list.map(m => { const inf = l3mInfo(m); return `${L3M_KIND[m.kind] || ""} ${m.text}\n${inf.rows.map(([k, v]) => `  ${k}: ${String(v).replace(/\n/g, ", ")}`).join("\n")}`; }).join("\n\n");
