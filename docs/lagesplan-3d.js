@@ -1222,7 +1222,15 @@ function l3AddAt(e) {
   else { l3.addType = null; l3Status(`${p.name} tillagd. Dra i handtagen eller använd Flytta/Vrid för att justera.`); }
   l3RenderLib(); l3SelectIds([p.id]); l3Changed();
 }
-function l3EndAdd() { l3.addType = null; l3.fenceId = null; l3RenderLib(); }
+function l3EndAdd() {
+  const fp = l3.fenceId && placements.find(x => x.id === l3.fenceId);
+  if (fp && fp.type === "sm:stallningfri" && typeof stallningFriFollow === "function" && typeof smF === "function" && smF(fp, "folj", "Ja") !== "Nej" && (fp.pts || []).length >= 2) {   // ställning som följer berget: fyll i markhöjden i varje fack ur punktmolnet
+    placeSnapshot(); const n = stallningFriFollow(fp, (x, y) => (typeof l3slZ === "function" ? l3slZ(x, y, 0.8) : null));
+    if (n) { placeTouch(fp); l3RebuildOne(fp); l3Changed(); l3Status(`Ställningen följer markytan: ${n} punkter med höjd ur punktmolnet.`); }
+    else l3Toast("Ställningen använder höjderna där du klickade. Tänd ett punktmoln (Lager → Punktmoln) om den ska följa markytan mellan punkterna.");
+  }
+  l3.addType = null; l3.fenceId = null; l3RenderLib();
+}
 
 // ---------------------------------------------------------------------
 // Handtag
