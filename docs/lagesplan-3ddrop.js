@@ -5,7 +5,7 @@
      DXF, DWG, GeoJSON, KML, GPX, SHP (+ DBF/PRJ), ZIP, SVG, LandXML, små CSV/TXT/XYZ → CAD-/vektorlager på marken
      PDF                                → PDF-underlag på marken
      PNG/JPG + världsfil (.pgw/.jgw/.wld) → ortofoto
-     FBX, OBJ, GLB/glTF               → mesh-modell med modellträd (t.ex. FBX exporterad ur Navisworks) – kan exporteras vidare som IFC
+     FBX, OBJ, GLB/glTF, DWF (3D)     → mesh-modell med modellträd (t.ex. FBX exporterad ur Navisworks) – kan exporteras vidare som IFC
    Det som inte stöds listas i stället för att tyst försvinna. */
 const l3dr = { depth: 0, ov: null };
 const L3DR_IFC = /\.(ifc|ifczip)$/i, L3DR_PC = /\.(las|laz|ply|e57|xyz|pts)$/i, L3DR_TXT = /\.(csv|txt)$/i, L3DR_PDF = /\.pdf$/i, L3DR_IMG = /\.(png|jpe?g)$/i, L3DR_WLD = /\.(pgw|jgw|pngw|jpgw|wld)$/i, L3DR_CAD = /\.(dxf|dwg)$/i, L3DR_COMP = /\.(dbf|prj|shx|cpg|qix|sbn|sbx)$/i;
@@ -15,7 +15,7 @@ function l3drClassify(files) {
   files.forEach(f => {
     const n = f.name;
     if (L3DR_IFC.test(n)) out.ifc.push(f);
-    else if (/\.(fbx|obj|glb|gltf)$/i.test(n)) out.mesh.push(f);
+    else if (/\.(fbx|obj|glb|gltf|dwf)$/i.test(n)) out.mesh.push(f);
     else if (L3DR_PC.test(n) || (L3DR_TXT.test(n) && f.size > 25e6)) out.pc.push(f);
     else if (L3DR_CAD.test(n) || L3DR_COMP.test(n) || (typeof cadvIsVector === "function" && cadvIsVector(n)) || L3DR_TXT.test(n)) out.cad.push(f);
     else if (L3DR_PDF.test(n) || f.type === "application/pdf") out.pdf.push(f);

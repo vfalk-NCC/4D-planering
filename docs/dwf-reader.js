@@ -274,11 +274,13 @@ function dwfZipEntries(u8) {
   } };
 }
 function dwfParse(buf, opts = {}) {
+  const say = (t, f) => { if (opts.progress) opts.progress(t, f); };
   const f = typeof fflate !== "undefined" ? fflate : (typeof require === "function" ? require("./vendor/three/fflate.min.js") : null);
   if (!f) throw new Error("fflate saknas.");
   let u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
   let pk = -1; for (let i = 0; i < Math.min(u8.length - 4, 4096); i++) if (u8[i] === 0x50 && u8[i + 1] === 0x4b && u8[i + 2] === 3 && u8[i + 3] === 4) { pk = i; break; }
   if (pk < 0) throw new Error("Det här är inget DWF-paket (hittar ingen zip).");
+  say("Packar upp DWF-paketet", 0.05);
   const zip = dwfZipEntries(u8), key = [...zip.entries.keys()].filter(k => /\.(w3d|xml)$/i.test(k)), files = {};
   key.forEach(k => { Object.defineProperty(files, k, { get() { const v = zip.read(k, f); Object.defineProperty(files, k, { value: v }); return v; }, configurable: true, enumerable: true }); });
   const sizeOf = k => zip.entries.get(k).usize, w3dKey = key.find(k => /\.w3d$/i.test(k));
@@ -287,11 +289,15 @@ function dwfParse(buf, opts = {}) {
   const unit = desc ? ((new TextDecoder().decode(files[desc]).match(/<eModel:Units type="(\w+)"/) || [])[1] || "ft") : "ft";
   const w3d = files[w3dKey]; let z = -1;
   for (let i = 0; i < Math.min(w3d.length - 2, 4096); i++) if (w3d[i] === 0x5a && w3d[i + 1] === 0x78) { z = i + 1; break; }
+  say("Packar upp 3D-strömmen", 0.12);
   const stream = z >= 0 ? f.unzlibSync(w3d.subarray(z)) : w3d;
+  say("Läser ytorna (kan ta en halv minut)", 0.2);
   const walked = dwfWalk(stream);
+  say("Läser objektnamn", 0.7);
   let names = null; const xmlBig = key.filter(k => /\.xml$/i.test(k)).sort((a, b) => sizeOf(b) - sizeOf(a))[0];
   if (opts.names !== false && xmlBig && sizeOf(xmlBig) > 1000) { try { names = dwfNames(files[xmlBig]); } catch (e) { names = null; } }
   void defKey;
+  say("Bygger delarna", 0.92);
   const built = dwfBuild(walked, names, opts);
   built.unit = unit; built.name = opts.name || "DWF"; built.named = names ? names.size : 0;
   return built;

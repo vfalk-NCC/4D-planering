@@ -5,7 +5,7 @@
      • "Exportera valda som IFC" gör de markerade delarna till IFC-objekt (med namn och färg) – till Trimble Connect eller som nedladdning – så att man plockar ut precis det man behöver.
    Allt sker lokalt i webbläsaren; filerna laddas inte upp någonstans. */
 const l3ms = { models: [], seq: 0, loading: null };
-const L3MS_EXT = /\.(fbx|obj|glb|gltf)$/i;
+const L3MS_EXT = /\.(fbx|obj|glb|gltf)$/i;   // (.dwf hanteras av lagesplan-3ddwf.js)
 const l3msEsc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function l3msScript(src, test) { if (test()) return Promise.resolve(); return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("Kunde inte läsa " + src)); document.head.appendChild(s); }); }
 async function l3msLoaders(ext) {
@@ -37,16 +37,21 @@ function l3msApply(m) {
   else { w.position.set(-O[0], -O[1], -O[2]); m.placed = "koordinaterna i filen"; }
   w.updateMatrixWorld(true); l3Render();
 }
+function l3msAdd(name, root, ext, o = {}) {
+  const id = "ms" + (++l3ms.seq) + "-" + Date.now().toString(36), wrap = new THREE.Group(); wrap.add(root); wrap.name = name; l3msGroup().add(wrap);
+  root.traverse(x => { if (x.isMesh) { const ms = Array.isArray(x.material) ? x.material : [x.material]; ms.forEach(mt => { if (mt) { mt.side = THREE.DoubleSide; } }); x.userData.noHit = false; } });
+  const m = { id, name, ext, root, wrap, visible: true, unit: o.unit || 1, unitSet: !!o.unitSet, yup: ext === "gltf" || ext === "glb", place: null, open: true, sel: new Set(), shut: new Set(), tris: l3msTris(root) };
+  l3ms.models.push(m); l3msApply(m);
+  l3Toast(`${name}: ${m.tris.toLocaleString("sv-SE")} trianglar, placerad enligt ${m.placed}.${m.unit !== 1 ? ` Enhet: ${m.unit === 0.001 ? "mm" : m.unit === 0.3048 ? "fot" : m.unit}.` : ""}`);
+  l3msZoom(m); if (typeof l3LayersRender === "function") l3LayersRender(); return m;
+}
 async function l3msLoadFile(file) {
   if (!l3 || !l3.scene) { l3Status("Öppna 3D-vyn först.", true); return null; }
+  if (/\.dwf$/i.test(file.name)) return typeof l3dwfOpen === "function" ? l3dwfOpen(file) : null;   // 3D-DWF: väljer delar först (lagesplan-3ddwf.js)
   l3.busy = true; l3Status(`Läser ${file.name}…`);
   try {
-    const { root, ext } = await l3msParse(file), id = "ms" + (++l3ms.seq) + "-" + Date.now().toString(36), wrap = new THREE.Group(); wrap.add(root); wrap.name = file.name; l3msGroup().add(wrap);
-    root.traverse(o => { if (o.isMesh) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(mt => { if (mt) { mt.side = THREE.DoubleSide; } }); o.userData.noHit = false; } });
-    const m = { id, name: file.name, ext, root, wrap, visible: true, unit: 1, unitSet: false, yup: ext === "gltf" || ext === "glb", place: null, open: true, sel: new Set(), shut: new Set(), tris: l3msTris(root) };
-    l3ms.models.push(m); l3msApply(m);
-    l3Toast(`${file.name}: ${m.tris.toLocaleString("sv-SE")} trianglar, placerad enligt ${m.placed}.${m.unit !== 1 ? ` Enhet: ${m.unit === 0.001 ? "mm" : m.unit}.` : ""}`);
-    l3msZoom(m); if (typeof l3LayersRender === "function") l3LayersRender(); return m;
+    const { root, ext } = await l3msParse(file);
+    return l3msAdd(file.name, root, ext);
   } catch (e) { console.warn("Mesh-modell", e); l3Status(`Kunde inte läsa ${file.name}: ${e.message || e}`, true); return null; }
   finally { l3.busy = false; }
 }
@@ -71,7 +76,7 @@ function l3msHtml() {
     return `<div class="v3-msm"><div class="v3-lr"><button type="button" class="v3-eye ${m.visible ? "on" : ""}" data-msvis="${m.id}">${typeof l3lEye === "function" ? l3lEye(m.visible) : ""}</button><span class="v3-lr-n v3-msm-n" data-msopen="${m.id}" title="${l3msEsc(m.name)} – klicka för modellträdet">${l3msEsc(m.name)}</span><em class="v3-lr-k">${(m.tris / 1000).toFixed(m.tris < 10000 ? 1 : 0).replace(".", ",")}k</em><button type="button" class="v3-lr-zoom v3-lr-del" data-msdel="${m.id}" title="Ta bort ur vyn (filen på datorn rörs inte)">${typeof L3_ICO !== "undefined" ? L3_ICO.trash : "×"}</button></div>${tools}</div>`; }).join("")}</div></div>`;
 }
 let l3msInput = null;
-function l3msPick() { if (!l3msInput) { l3msInput = document.createElement("input"); l3msInput.type = "file"; l3msInput.multiple = true; l3msInput.accept = ".fbx,.obj,.glb,.gltf"; l3msInput.style.cssText = "position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"; document.body.appendChild(l3msInput); l3msInput.onchange = async () => { const fs = [...l3msInput.files]; l3msInput.value = ""; for (const f of fs) await l3msLoadFile(f); }; } l3msInput.click(); }
+function l3msPick() { if (!l3msInput) { l3msInput = document.createElement("input"); l3msInput.type = "file"; l3msInput.multiple = true; l3msInput.accept = ".fbx,.obj,.glb,.gltf,.dwf"; l3msInput.style.cssText = "position:absolute;width:1px;height:1px;opacity:0;pointer-events:none"; document.body.appendChild(l3msInput); l3msInput.onchange = async () => { const fs = [...l3msInput.files]; l3msInput.value = ""; for (const f of fs) await l3msLoadFile(f); }; } l3msInput.click(); }
 function l3msBind(host) {
   const M = id => l3ms.models.find(x => x.id === id), re = () => { l3Render(); l3LayersRender(); };
   host.querySelectorAll("[data-msadd]").forEach(b => { b.onclick = l3msPick; });
@@ -119,6 +124,9 @@ async function l3msExportIfc(m) {
   const nodes = [...m.sel].map(i => l3msFind(m, i)).filter(Boolean); l3Status("Bygger IFC…");
   const r = await l3msIfcBuild(m, nodes);
   if (!r) { l3Status("Inget att exportera – inga synliga delar i urvalet.", true); return null; }
+  return l3msDeliver(r);
+}
+async function l3msDeliver(r) {
   let bytes = new TextEncoder().encode(r.text), name = r.fileName, type = "application/x-step"; const raw = bytes.length;
   if (raw > 6e6) { try { await l3msScript("vendor/three/fflate.min.js", () => typeof fflate !== "undefined"); bytes = ifcZipBytes(r.text, name); name = name.replace(/\.ifc$/i, ".ifczip"); type = "application/zip"; } catch (e) { console.warn("Kunde inte packa", e); } }
   const file = new File([bytes], name, { type }), mb = v => (v / 1e6).toFixed(1).replace(".", ","), info = `${r.n} delar, ${r.stats.reused ? r.stats.reused + " delar delar geometri, " : ""}${mb(bytes.length)} MB${bytes.length < raw ? ` (packad från ${mb(raw)} MB)` : ""}`;
