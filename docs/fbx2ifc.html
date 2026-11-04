@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>FBX till IFC</title>
+<title>3D-modell till IFC</title>
 <style>
   :root{--ink:#0f1b2d;--mut:#64748b;--ac:#2f7bff;--line:#dbe6f5;--bg:#f4f8fd;--ok:#16a34a}
   *{box-sizing:border-box}
@@ -30,16 +30,16 @@
 </head>
 <body>
 <main>
-  <h1>FBX / DWF → IFC</h1>
-  <p class="lead">Gör om FBX (t.ex. exporterad ur Navisworks), OBJ, GLB eller 3D-DWF till en kompakt IFC-fil – direkt i webbläsaren. Filerna laddas inte upp någonstans.</p>
-  <div class="drop" id="drop" tabindex="0" role="button"><b>Släpp filerna här</b><small>FBX · OBJ · GLB/glTF · DWF (3D) – eller klicka för att välja</small></div>
-  <input type="file" id="pick" accept=".fbx,.obj,.glb,.gltf,.dwf" multiple hidden>
+  <h1>3D-modell → IFC</h1>
+  <p class="lead">Gör om 3D-modeller – FBX (t.ex. ur Navisworks), DWF (3D), OBJ, GLB/glTF, Collada, STL, PLY, 3DS, 3MF, STEP/IGES/BREP, Rhino 3DM, LandXML eller en zip/KMZ med någon av dem – till en kompakt IFC-fil – direkt i webbläsaren. Filerna laddas inte upp någonstans.</p>
+  <div class="drop" id="drop" tabindex="0" role="button"><b>Släpp filerna här</b><small>FBX · DWF · OBJ · GLB/glTF · DAE · STL · PLY · 3DS · 3MF · STEP/IGES/BREP · 3DM · LandXML · ZIP/KMZ – eller klicka för att välja</small></div>
+  <input type="file" id="pick" accept=".fbx,.obj,.glb,.gltf,.dwf,.dae,.stl,.ply,.3ds,.3mf,.stp,.step,.igs,.iges,.brep,.brp,.3dm,.xml,.landxml,.zip,.kmz" multiple hidden>
   <div class="card"><h2>Filer</h2><ul class="f" id="files"><li><em>Inga filer valda än.</em></li></ul></div>
   <div class="card" id="dwfCard" hidden><h2>DWF – välj vad som ska med</h2><div id="dwfBody"></div></div>
   <div class="card"><h2>Inställningar</h2>
     <div class="row">
       <label>Enhet i filen<select id="unit"><option value="0">Auto (mm om modellen är väldigt stor)</option><option value="1">Meter</option><option value="0.01">Centimeter</option><option value="0.001">Millimeter</option></select></label>
-      <label>Upp-axel<select id="up"><option value="z">Z är upp (Revit, Navisworks, IFC)</option><option value="y">Y är upp (glTF, OBJ)</option></select></label>
+      <label>Upp-axel<select id="up"><option value="auto">Automatiskt (Y för glTF/Collada, annars Z)</option><option value="z">Z är upp (Revit, Navisworks, IFC)</option><option value="y">Y är upp (glTF, vissa OBJ)</option></select></label>
       <label>Hoppa över delar mindre än (m)<input type="number" id="min" value="0" min="0" step="0.01"><span class="hint">0 = ta med allt. 0,05 hoppar över skruvar och småprylar.</span></label>
       <label>Decimaler i koordinater<select id="dec"><option value="3" selected>3 (millimeter)</option><option value="2">2 (centimeter)</option><option value="1">1 (decimeter)</option></select></label>
       <label>Flytta modellen (m) – X<input type="number" id="ox" value="0" step="any"></label>
@@ -53,20 +53,20 @@
   <button class="go" id="go" disabled>Gör om till IFC</button>
   <div class="card" id="out" hidden><h2 id="outT">Arbetar…</h2><div class="bar"><i id="bar"></i></div><div id="msg" class="hint"></div><div class="stats" id="stats"></div><div id="res"></div></div>
 </main>
-<script src="vendor/three/three.min.js?v=20261104204021"></script>
-<script src="vendor/three/fflate.min.js?v=20261104204021"></script>
-<script src="vendor/three/FBXLoader.js?v=20261104204021"></script>
-<script src="vendor/three/OBJLoader.js?v=20261104204021"></script>
-<script src="vendor/three/GLTFLoader.js?v=20261104204021"></script>
-<script src="ifc-writer.js?v=20261104204021"></script>
+<script src="vendor/three/three.min.js?v=20261104205834"></script>
+<script src="vendor/three/fflate.min.js?v=20261104205834"></script>
+<script src="vendor/three/FBXLoader.js?v=20261104205834"></script>
+<script src="vendor/three/OBJLoader.js?v=20261104205834"></script>
+<script src="vendor/three/GLTFLoader.js?v=20261104205834"></script>
+<script src="ifc-writer.js?v=20261104205834"></script>
 <script>var l3Status = function () {}, busyProgress = function (k, t, f) { if (window.__dwfProg) window.__dwfProg(t, f); };</script>
-<script src="lagesplan-3ddwf.js?v=20261104204021"></script>
-<script src="ifc-mesh.js?v=20261104204021"></script>
+<script src="lagesplan-3ddwf.js?v=20261104205834"></script>
+<script src="ifc-mesh.js?v=20261104205834"></script>
 <script>
 "use strict";
 const $ = id => document.getElementById(id), files = [], tick = () => new Promise(r => setTimeout(r, 0));
 const fmtMB = n => (n / 1e6).toFixed(n < 1e7 ? 1 : 0).replace(".", ",") + " MB", fmtN = n => Math.round(n).toLocaleString("sv-SE");
-function add(list) { for (const f of list) if (/\.(fbx|obj|glb|gltf|dwf)$/i.test(f.name) && !files.some(x => x.name === f.name && x.size === f.size)) { files.push(f); if (/\.dwf$/i.test(f.name)) dwfLoad(f); } render(); }
+function add(list) { for (const f of list) if (/\.(fbx|obj|glb|gltf|dwf|dae|stl|ply|3ds|3mf|stp|step|igs|iges|brep|brp|3dm|xml|landxml|zip|kmz)$/i.test(f.name) && !files.some(x => x.name === f.name && x.size === f.size)) { files.push(f); if (/\.dwf$/i.test(f.name)) dwfLoad(f); } render(); }
 function render() { $("files").innerHTML = files.length ? files.map((f, i) => `<li><span>${f.name.replace(/[<>&]/g, "")}</span><span><em>${f.dwfState ? f.dwfState + " · " : ""}${fmtMB(f.size)}</em> <a href="#" data-i="${i}">ta bort</a></span></li>`).join("") : "<li><em>Inga filer valda än.</em></li>"; $("go").disabled = !files.length; $("files").querySelectorAll("a").forEach(a => { a.onclick = e => { e.preventDefault(); files.splice(+a.dataset.i, 1); render(); }; }); }
 const drop = $("drop"); drop.onclick = () => $("pick").click(); drop.onkeydown = e => { if (e.key === "Enter" || e.key === " ") $("pick").click(); };
 $("pick").onchange = () => { add([...$("pick").files]); $("pick").value = ""; };
@@ -96,15 +96,80 @@ $("dwfBody").addEventListener("click", e => {
   if (a === "all") l3dwfSetOn(d.root, true); else if (a === "none") l3dwfSetOn(d.root, false); else { l3dwfSetOn(d.root, false); l3dwfAutoFill(d, d.root, 1500000); } dwfRender();
 });
 $("dwfBody").addEventListener("change", e => { const c = e.target.closest("[data-dg]"); if (!c) return; const [fi, gi] = c.dataset.dg.split(":").map(Number), d = files.filter(f => f.dwf)[fi].dwf; l3dwfSetOn(dwfGroups(d).groups[gi], c.checked); dwfRender(); });
-async function parse(file) {
-  const ext = file.name.split(".").pop().toLowerCase(), buf = await file.arrayBuffer();
+/* ---- Formaten: återanvänder samma bibliotek som 3D-editorn (vendor/three, vendor/formats), laddade först när de behövs ---- */
+const loaded = new Map();
+function script(src) { if (!loaded.has(src)) loaded.set(src, new Promise((ok, no) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = () => no(new Error("Kunde inte läsa in " + src)); document.head.appendChild(s); })); return loaded.get(src); }
+const MODEL_RE = /\.(fbx|obj|glb|gltf|dae|stl|ply|3ds|3mf|stp|step|igs|iges|brep|brp|3dm|xml|landxml)$/i;
+const mk = (geo, col, name) => { const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: col == null ? 0xbfbfbf : col })); m.name = name || "Del"; return m; };
+async function parseBuf(buf, name) {
+  const ext = name.split(".").pop().toLowerCase();
   if (ext === "fbx") return new THREE.FBXLoader().parse(buf, "");
   if (ext === "obj") return new THREE.OBJLoader().parse(new TextDecoder().decode(buf));
-  return (await new Promise((res, rej) => new THREE.GLTFLoader().parse(buf, "", res, rej))).scene;
+  if (ext === "glb" || ext === "gltf") return (await new Promise((res, rej) => new THREE.GLTFLoader().parse(buf, "", res, rej))).scene;
+  if (ext === "dae") { await script("vendor/three/ColladaLoader.js"); const c = new THREE.ColladaLoader().parse(new TextDecoder().decode(buf), ""); return c.scene; }
+  if (ext === "3mf") { await script("vendor/three/3MFLoader.js"); const r = new THREE.ThreeMFLoader().parse(buf), U = { micron: 1e-6, millimeter: 0.001, centimeter: 0.01, inch: 0.0254, foot: 0.3048, meter: 1 }; r.userData.unit = 0.001; try { const z = fflate.unzipSync(new Uint8Array(buf)), k = Object.keys(z).find(x => /\.model$/i.test(x)), u = k && /unit="(\w+)"/.exec(new TextDecoder().decode(z[k].subarray(0, 4000))); if (u && U[u[1]]) r.userData.unit = U[u[1]]; } catch (e) { /* mm som standard */ } return r; }
+  if (ext === "stl") { await script("vendor/formats/STLLoader.js"); const g = new THREE.STLLoader().parse(buf), r = new THREE.Group(), m = mk(g, 0xbfbfbf, name); r.add(m); return r; }
+  if (ext === "ply") { await script("vendor/formats/PLYLoader.js"); const g = new THREE.PLYLoader().parse(buf); if (!g.index) throw new Error(name + " är ett punktmoln utan ytor och kan inte göras om till IFC."); const m = mk(g, 0xbfbfbf, name); if (g.attributes.color) m.material.vertexColors = true; const r = new THREE.Group(); r.add(m); return r; }
+  if (ext === "3ds") { await script("vendor/formats/TDSLoader.js"); return new THREE.TDSLoader().parse(buf, ""); }
+  if (/^(stp|step|igs|iges|brep|brp)$/.test(ext)) return occt(buf, ext);
+  if (ext === "3dm") return rhino(buf);
+  if (ext === "xml" || ext === "landxml") return landXml(new TextDecoder().decode(buf), name);
+  throw new Error("Okänt format: ." + ext);
 }
+let occtLib = null;
+async function occt(buf, ext) {
+  if (!occtLib) { await script("vendor/formats/occt-import-js.js"); occtLib = await occtimportjs({ locateFile: f => "vendor/formats/" + f }); }
+  const kind = /^(igs|iges)$/.test(ext) ? "ReadIgesFile" : /^(brep|brp)$/.test(ext) ? "ReadBrepFile" : "ReadStepFile";
+  const res = occtLib[kind](new Uint8Array(buf), { linearUnit: "meter", linearDeflectionType: "bounding_box_ratio", linearDeflection: 0.0015, angularDeflection: 0.4 });
+  if (!res || !res.success || !res.meshes || !res.meshes.length) throw new Error("Filen kunde inte läsas som " + ext.toUpperCase() + " (är den en ASCII-fil?).");
+  const root = new THREE.Group(); let mx = 0;
+  res.meshes.forEach((m, i) => { const g = new THREE.BufferGeometry(), pa = Float32Array.from(m.attributes.position.array); g.setAttribute("position", new THREE.BufferAttribute(pa, 3)); g.setIndex(Array.from(m.index.array)); for (let k = 0; k < pa.length; k++) mx = Math.max(mx, Math.abs(pa[k]));
+    const c = m.color ? new THREE.Color(m.color[0], m.color[1], m.color[2]) : new THREE.Color(0.72, 0.74, 0.78); const me = mk(g, c.getHex(), m.name || "Kropp " + (i + 1)); root.add(me); });
+  root.userData.unit = mx > 3000 ? 0.001 : 1; return root;
+}
+let rhLib = null; const RH_UNIT = { 1: 1e-6, 2: 0.001, 3: 0.01, 4: 1, 5: 1000, 8: 0.0254, 9: 0.3048, 10: 1609.344 };
+async function rhino(buf) {
+  if (!rhLib) { await script("vendor/formats/rhino3dm.min.js"); rhLib = await rhino3dm({ locateFile: f => "vendor/formats/" + f }); }
+  const doc = rhLib.File3dm.fromByteArray(new Uint8Array(buf)); if (!doc) throw new Error("Filen kunde inte läsas som Rhino (.3dm).");
+  let unit = 1; try { unit = RH_UNIT[doc.settings().modelUnitSystem] || 1; } catch (e) { /* */ }
+  const objs = doc.objects(), layers = doc.layers(), root = new THREE.Group(), T = rhLib.ObjectType; let n = 0;
+  const add = (mesh, col, name) => { const V = mesh.vertices(), F = mesh.faces(), pos = new Float32Array(V.count * 3), ix = []; for (let i = 0; i < V.count; i++) { const v = V.get(i); pos.set(v, i * 3); } for (let i = 0; i < F.count; i++) { const f = F.get(i); ix.push(f[0], f[1], f[2]); if (f[3] !== f[2]) ix.push(f[0], f[2], f[3]); } if (!ix.length) return; const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setIndex(ix); root.add(mk(g, col, name)); n++; };
+  for (let i = 0; i < objs.count; i++) {
+    const ob = objs.get(i), geo = ob.geometry(), at = ob.attributes(); let col = 0xbfbfc7; const nm = (at.name || "") || ("Objekt " + (i + 1));
+    try { const L = layers.get(at.layerIndex), c = L && L.color; if (c) col = (c.r << 16) | (c.g << 8) | c.b; } catch (e) { /* */ }
+    try { if (at.colorSource === 1 && at.objectColor) col = (at.objectColor.r << 16) | (at.objectColor.g << 8) | at.objectColor.b; } catch (e) { /* */ }
+    const t = geo.objectType;
+    try { if (t === T.Mesh) add(geo, col, nm); else if (t === T.Brep || t === T.Extrusion || t === T.SubD || t === T.Surface) { let brep = geo; if (t === T.Extrusion) brep = geo.toBrep(true); else if (geo.toBrep) brep = geo.toBrep(); const ms = rhLib.Mesh.createFromBrep(brep); if (ms) (Array.isArray(ms) ? ms : [ms]).forEach(m => { if (m) add(m, col, nm); }); } } catch (e) { /* hoppas över */ }
+  }
+  if (!n) throw new Error("Rhino-filen innehåller inga nät eller kroppar.");
+  root.userData.unit = unit; return root;
+}
+/* LandXML: terrängytor (TIN). Punkter "N E Z" → x = öst, y = norr; meter. */
+function landXml(text, name) {
+  const doc = new DOMParser().parseFromString(text, "application/xml"); if (doc.querySelector("parsererror") || !/LandXML/i.test(text.slice(0, 3000))) throw new Error(name + " är ingen LandXML-fil.");
+  const root = new THREE.Group();
+  doc.querySelectorAll("Surface").forEach((s, si) => {
+    const ids = new Map(), pos = []; s.querySelectorAll("Pnts > P").forEach(p => { const v = p.textContent.trim().split(/\s+/).map(Number); if (v.length >= 3) { ids.set(p.getAttribute("id"), pos.length / 3); pos.push(v[1], v[0], v[2]); } });
+    const ix = []; s.querySelectorAll("Faces > F").forEach(f => { if (f.getAttribute("i") === "1") return; const v = f.textContent.trim().split(/\s+/).map(x => ids.get(x)); if (v.length >= 3 && v.every(x => x != null)) ix.push(v[0], v[1], v[2]); });
+    if (ix.length) { const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(ix); root.add(mk(g, 0x9aa88a, s.getAttribute("name") || "Terräng " + (si + 1))); }
+  });
+  if (!root.children.length) throw new Error("LandXML-filen innehåller inga terrängytor (TIN).");
+  root.userData.unit = 1; root.userData.up = "z"; return root;
+}
+async function parse(file) {
+  const name = file.name, ext = name.split(".").pop().toLowerCase(), buf = await file.arrayBuffer();
+  if (ext === "zip" || ext === "kmz") {   // zip/KMZ: alla modellfiler inuti, i en grupp per fil
+    const z = fflate.unzipSync(new Uint8Array(buf)), names = Object.keys(z).filter(k => MODEL_RE.test(k) && !/(^|\/)__MACOSX\//.test(k) && !/(^|\/)doc\.kml$/i.test(k)); if (!names.length) throw new Error("Zip-filen innehåller ingen modell (.glb, .dae, .obj, .fbx, .stl, .step …).");
+    const root = new THREE.Group(); let unit = null, up = null;
+    for (const k of names) { const u8 = z[k], r = await parseBuf(u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength), k), g = new THREE.Group(); g.name = k.split("/").pop(); g.add(r); root.add(g); if (unit == null && r.userData.unit) unit = r.userData.unit; if (!up) up = autoUp(k.split(".").pop().toLowerCase()); }
+    if (unit) root.userData.unit = unit; root.userData.up = up; return root;
+  }
+  const r = await parseBuf(buf, name); return r;
+}
+const autoUp = ext => /^(glb|gltf|dae)$/.test(ext) ? "y" : "z";
 function items(root, file, o) {
   const wrap = new THREE.Group(); wrap.add(root); wrap.updateMatrixWorld(true); const bb = new THREE.Box3().setFromObject(root), sz = bb.getSize(new THREE.Vector3());
-  const unit = o.unit || (Math.max(sz.x, sz.y, sz.z) > 5000 ? 0.001 : 1); wrap.scale.setScalar(unit); if (o.yup) wrap.rotation.x = Math.PI / 2; wrap.updateMatrixWorld(true);
+  const unit = o.unit || root.userData.unit || (Math.max(sz.x, sz.y, sz.z) > 5000 ? 0.001 : 1); wrap.scale.setScalar(unit); if (o.up === "y" || (o.up === "auto" && (root.userData.up || autoUp(file.name.split(".").pop().toLowerCase())) === "y")) wrap.rotation.x = Math.PI / 2; wrap.updateMatrixWorld(true);
   const out = []; root.traverse(m => {
     if (!m.isMesh || !m.geometry || m.visible === false) return; const g = m.geometry, pa = g.getAttribute("position"); if (!pa) return; const e = m.matrixWorld.elements, n = pa.count, pos = new Float64Array(n * 3);
     for (let i = 0; i < n; i++) { const px = pa.getX(i), py = pa.getY(i), pz = pa.getZ(i); pos[i * 3] = e[0] * px + e[4] * py + e[8] * pz + e[12] + o.ox; pos[i * 3 + 1] = e[1] * px + e[5] * py + e[9] * pz + e[13] + o.oy; pos[i * 3 + 2] = e[2] * px + e[6] * py + e[10] * pz + e[14] + o.oz; }
@@ -114,7 +179,7 @@ function items(root, file, o) {
   return { list: out, unit };
 }
 $("go").onclick = async () => {
-  const o = { unit: Number($("unit").value), yup: $("up").value === "y", ox: +$("ox").value || 0, oy: +$("oy").value || 0, oz: +$("oz").value || 0 }, minSize = +$("min").value || 0, dec = +$("dec").value, zip = $("zip").checked, inst = $("inst").checked;
+  const o = { unit: Number($("unit").value), up: $("up").value, ox: +$("ox").value || 0, oy: +$("oy").value || 0, oz: +$("oz").value || 0 }, minSize = +$("min").value || 0, dec = +$("dec").value, zip = $("zip").checked, inst = $("inst").checked;
   $("go").disabled = true; $("out").hidden = false; $("res").innerHTML = ""; $("stats").innerHTML = ""; $("outT").textContent = "Arbetar…"; const bar = f => { $("bar").style.width = Math.round(f * 100) + "%"; };
   const results = [];
   try {
