@@ -111,6 +111,15 @@ Connections:  {
   if (r.size1 !== 30000) fail('Enhet meter ger 30 000 m: ' + r.size1);
   if (!r.fbx.ok || r.fbx.tris !== 12 || !r.fbx.names.includes('Kolonn')) fail('FBX (ASCII) läses: ' + JSON.stringify(r.fbx));
   if (r.models !== 2 || r.afterRemove !== 1 || r.cls.mesh !== 3 || r.cls.bad !== 'd.nwd') fail('Ta bort + klassning: ' + JSON.stringify({ m: r.models, a: r.afterRemove, c: r.cls }));
+  // En modell som inte går att hämta hoppas över – de andra och startsekvensen fortsätter (Victor 2026-11-04)
+  const sk = await page.evaluate(async () => {
+    const keep = askOpener; askOpener = () => Promise.reject(new Error('4D-planering är inte öppen. Öppna lägesplanen via …')); const w1 = { id: 'f:zz1', fileId: 'zz1', name: 'Saknas.ifc', on: true, version: 'v1' }, w2 = { id: 'f:zz2', fileId: 'zz2', name: 'Saknas2.ifc', on: true, version: 'v1' };
+    let res, err = null; try { res = await l3bLoad([w1, w2]); } catch (e) { err = e.message; }
+    askOpener = () => new Promise(() => {}); const t0 = Date.now(); l3b.busy = false;
+    const out = { err, missing: res && res.missing && res.missing.length, busy: l3b.busy, remembered: l3bRememberedAll().filter(x => x.id === 'f:zz1' || x.id === 'f:zz2').map(x => x.on).join(), restored: l3bRemembered().filter(x => /zz/.test(x.id)).length, toast: (document.getElementById('v3Toast') || {}).textContent || '' };
+    askOpener = keep; return out; });
+  if (sk.err || sk.missing !== 2 || sk.busy || sk.remembered !== 'false,false' || sk.restored !== 0 || !/hoppade/.test(sk.toast)) fail('Hämtning som misslyckas hoppas över: ' + JSON.stringify(sk));
+  console.log('OK: modell som inte går att hämta hoppas över, de andra läses in, och den provas inte om vid nästa start', JSON.stringify(sk));
   console.log('OK: mesh-modeller – OBJ och FBX in, modellträd, enhet/placering, valda delar som IFC, släpp-klassning', JSON.stringify({ obj: r.obj, ifc: r.ifc, fbx: r.fbx }));
   if (process.env.SHOT) { await page.evaluate(async () => { const m = await l3msLoadFile(new File(['o Pelare\nv 0 0 0\nv 10000 0 0\nv 10000 10000 0\nv 0 10000 0\nf 1 2 3 4\no Balk\nv 0 0 5000\nv 10000 0 5000\nv 10000 10000 5000\nf 5 6 7\n'], 'Hus_A.obj')); l3LayersRender(); }); await page.waitForTimeout(400); await page.screenshot({ path: process.env.SHOT }); }
   const real = errors.filter(e => !/allow-same-origin/.test(e)); if (real.length) fail('sidfel: ' + real.slice(0, 3).join(' | '));

@@ -58,7 +58,7 @@ function l3bShow(id, on) {
 async function l3bLoad(list, opts = {}) {
   if (l3b.busy) return { missing: list };
   l3b.busy = true;
-  const first = !l3b.models.length, missing = [], times = [], noTc = [];
+  const first = !l3b.models.length, missing = [], times = [], skipped = [];
   let total = l3b.models.reduce((s, m) => s + m.tris, 0), skippedAll = 0;
   try {
     for (let i = 0; i < list.length; i++) {
@@ -123,8 +123,10 @@ async function l3bLoad(list, opts = {}) {
       // Hämtningens verkliga procent kommer från 4D-planering (0–55 % av modellens del av stapeln).
       // Statusraden visar hur många MB som hämtats (Victor 2026-10-10).
       let gotMb = 0;
+      let stallT = 0, stallRej = null; const stall = new Promise((_, rej) => { stallRej = rej; }); stall.catch(() => {});
+      const arm = () => { clearTimeout(stallT); stallT = setTimeout(() => stallRej(new Error("hämtningen stannade (ingen respons på 90 sekunder)")), 90000); };
       const dl = (f, got, tot) => {
-        clearInterval(tick);
+        arm(); clearInterval(tick);
         const mb = got ? l3bMb(got) + (tot ? ` av ${l3bMb(tot)}` : "") + " MB" : "";
         if (got) gotMb = got;
         busyProgress("bldg", mb ? `${lbl} – ${mb}` : lbl, part(0, 0.55 * f));
@@ -136,11 +138,14 @@ async function l3bLoad(list, opts = {}) {
       try { local = w.version && typeof l3pRawLocal === "function" ? await l3pRawLocal({ id: w.id, src: w }) : null; } catch (e) { local = null; }
       try {
         if (local && local.blob) { clearInterval(tick); r = { bytes: await local.blob.arrayBuffer(), placement: w.fileId ? null : local.placement || null, name: w.name, local: true }; }
-        else r = w.fileId ? { ...(await askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, dl)), name: w.name, placement: null } : await askOpener("ifcModelData", { modelId: w.id }, 0, dl);
+        else { arm(); r = await Promise.race([stall, w.fileId ? askOpener("tcFile", { fileId: w.fileId, name: w.name }, 0, dl).then(x => ({ ...x, name: w.name, placement: null })) : askOpener("ifcModelData", { modelId: w.id }, 0, dl)]); }
+        clearTimeout(stallT);
       } catch (er) {
+        clearTimeout(stallT);
         // Utan 4D-planering/Trimble Connect (fönstret öppnades direkt, eller 4D-planering stängdes) går just den här modellen inte att hämta – de övriga läses in som vanligt.
-        if (/inte öppen|kräver Trimble Connect/.test(String(er && er.message))) { clearInterval(tick); missing.push(w); noTc.push(w.name || "modellen"); continue; }
-        throw er;
+        // En modell som inte går att hämta ska aldrig stoppa de andra (Victor 2026-11-04): hoppa över den, kom ihåg den som släckt (den provas inte om vid nästa start) och gå vidare.
+        clearInterval(tick); missing.push(w); const why = String(er && er.message || er); skipped.push(`${w.name || "modellen"}: ${/inte öppen|kräver Trimble Connect/.test(why) ? "ingen kontakt med Trimble Connect" : why}`);
+        try { l3bRemember(w, false); } catch (e2) { /* */ } continue;
       }
       finally { clearInterval(tick); }
       // IFC-fil ur en mapp: TC:s placering (flytt/vridning) hämtas från samma modell om den är tänd i TC, plus egen justering (Placera…).
@@ -161,7 +166,7 @@ async function l3bLoad(list, opts = {}) {
       if (typeof l3pKeepRaw === "function" && !r.local) l3pKeepRaw(w, r.bytes, basePl); // för egenskaper, spara och exportera
       let m;
       try { m = await l3bParseAny(r.bytes, usePl, l3bMaxTris() - total, f => busyProgress("bldg", lblRead, part(0, 0.6 + 0.4 * f)), ms => { hideOld(); ms.forEach(x => l3.groups.bldg.add(x)); l3Render(); }); }
-      catch (err) { if (old) { old.meshes.forEach(x => { x.visible = true; }); old.visible = true; } throw err; } // den gamla syns igen
+      catch (err) { if (old) { old.meshes.forEach(x => { x.visible = true; }); old.visible = true; } missing.push(w); skipped.push(`${w.name || "modellen"}: kunde inte läsas (${String(err && err.message || err).slice(0, 120)})`); try { l3bRemember(w, false); } catch (e2) { /* */ } console.warn("Modell hoppades över", w.name, err); continue; } // den gamla syns igen
       busyProgress("bldg", `Läser ${r.name || w.name}`, part(0, 1));
       times.push(`${m.name || r.name || w.name}: ${r.local ? "ur webbläsarens kopia" : `hämtning ${(tDl / 1000).toFixed(1)} s`}, läsning ${((Date.now() - tRd0) / 1000).toFixed(1)} s${m.engine === "ifc-lite" ? " med ifc-lite" : m.parts > 1 ? ` (${m.parts} trådar)` : ""}${m.recovered ? `, ${m.recovered.toLocaleString("sv-SE")} objekt lästa med ifc-lite (web-ifc klarade dem inte)` : ""}`);
       skippedAll += m.skipped || 0;
@@ -195,7 +200,7 @@ async function l3bLoad(list, opts = {}) {
     const n = l3b.models.reduce((s, m) => s + m.ranges.filter(r => r.itemId).length, 0);
     // Var tiden gick (hämtning från TC respektive läsning) och vad som hoppades över.
     const extra = [times.join(" · "), skippedAll ? `${skippedAll.toLocaleString("sv-SE")} objekt visas inte (${l3bDetails() ? "armering" : "armering, installationer och andra detaljer"}) – Lager → Avancerat` : ""].filter(Boolean).join(". ");
-    if (noTc.length) l3Toast(`${noTc.length === 1 ? noTc[0] + " kunde" : noTc.length + " modeller kunde"} inte hämtas: lägesplanen har ingen kontakt med Trimble Connect. Öppna den via 🗺️-knappen i 4D-planering (i Trimble Connect) och låt 4D-planering vara öppen – eller öppna IFC-filen från datorn (Lager → IFC från datorn…).`, null, null, 14000);
+    if (skipped.length) { const msg = `${skipped.length === 1 ? "1 modell hoppades över" : skipped.length + " modeller hoppades över"} – resten lästes in. ${skipped.slice(0, 3).join(" · ")}${skipped.length > 3 ? " …" : ""} Tänd modellen i Lager för att försöka igen.`; l3Toast(msg, null, null, 16000); l3Status(msg, true); }
     if (l3b.models.length) l3Status(`Byggnaden visas (${l3b.models.length} ${l3b.models.length === 1 ? "modell" : "modeller"}, ${(total / 1000).toFixed(0)}k trianglar). ${n} objekt är kopplade och färgas efter status.${extra ? " " + extra + "." : ""}`);
     if (first && l3b.models.length) l3Frame(true);
     { const cr = l3bCouplingText(); if (cr) { console.info("Koppling:", l3bCouplingReport()); if (typeof l3Toast === "function") l3Toast(cr + "."); } }
