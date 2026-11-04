@@ -104,7 +104,8 @@ async function coupleObjectsToSub(item, sub, objs) {
   const withSub = (list, r) => list.some(x => subActivityKey(x) === subActivityKey(r)) ? list : [...list, r];
   const spanOf = list => { const d = list.flatMap(r => [r.start, r.end]).filter(Boolean).sort(); return [d[0] || null, d[d.length - 1] || null]; };
   objs.forEach(o => {
-    const existing = items.find(it => it.modelId === o.modelId && String(it.objectId) === String(o.objectId));
+    // Bara en rad i DEN HÄR aktiviteten räknas: objektets rad i en annan aktivitet ska inte få delaktiviteten (och byta datum) – objektet får en egen rad här.
+    const existing = items.find(it => it.modelId === o.modelId && String(it.objectId) === String(o.objectId) && inSameActivity(item, it));
     if (existing) {
       // Redan med i aktiviteten: lägg till delaktiviteten på objektet.
       const cur = activitiesByItemId.get(existing.id) || [];

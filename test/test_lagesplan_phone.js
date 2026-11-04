@@ -52,14 +52,14 @@ async function run(browser, phone) {
   await page.click('#btn3d');
   await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.renderer && typeof l3bLoad === 'function', null, { timeout: 15000 });
   await page.evaluate(() => { const f = l3bLoad; l3bLoad = async (list, o) => { window.__loads.push(list.map(w => w.id).join()); return { missing: list }; }; window.__l3bLoad0 = f; });
-  await page.evaluate(() => l3bRestore());
+  await page.evaluate(async () => { l3bRestore(); l3SetPref('plan', true); await l3BuildPlan(); });   // ritningen är släckt som standard (liten mark-bild): tänd den för att jämföra upplösning
   const s3 = await page.evaluate(() => ({ loads: window.__loads, tex: l3.planMesh && l3.planMesh.material.map.image.width, status: (document.getElementById('v3Status') || {}).textContent || '' }));
   if (phone) {
     if (s3.loads.length) fail('modellen ska inte läsas in av sig själv: ' + JSON.stringify(s3.loads));
     if (!(s3.tex <= 2048)) fail('marken i 3D i lägre upplösning: ' + s3.tex);
   } else {
     if (s3.loads[0] !== 'm1') fail('den sparade modellen ska läsas in som förut: ' + JSON.stringify(s3.loads));
-    if (s3.tex !== 4000) fail('marken i 3D i full upplösning: ' + s3.tex);
+    if (!(s3.tex >= 4000)) fail('marken i 3D i full upplösning: ' + s3.tex);
   }
   if (errors.length) fail('sidfel: ' + errors.join(' | '));
   await page.context().close();

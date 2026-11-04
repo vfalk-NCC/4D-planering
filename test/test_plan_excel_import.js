@@ -410,14 +410,14 @@ async function run() {
   await page.locator('#coupleModeList li', { hasText: 'ext-62' }).locator('button').click();
   await page.waitForTimeout(150);
   const saveLabel = await page.locator('#btnSaveCoupleMode').innerText();
-  if (!/Spara \(2\)/.test(saveLabel)) throw new Error('Förväntade "Spara (2)" (ext-62 borttagen, ext-55 redan kopplad), fick: ' + saveLabel);
+  if (!/Spara \(3\)/.test(saveLabel)) throw new Error('Förväntade "Spara (3)" (ext-62 borttagen, ext-55 i annan aktivitet kopplas även hit), fick: ' + saveLabel);
   await page.locator('#btnSaveCoupleMode').click();
   await page.waitForTimeout(600);
 
   savedItems = store.get(`projects/${PROJECT_ID}/plan_items.json`).content;
   const compoundRows = savedItems.filter(r => r.object_name === 'A1-A2');
   const coupledTo = compoundRows.map(r => r.object_id).sort();
-  if (JSON.stringify(coupledTo) !== JSON.stringify(['ext-61', 'ext-63'])) throw new Error('Förväntade A1-A2 kopplad till ext-61 och ext-63, fick: ' + JSON.stringify(coupledTo));
+  if (JSON.stringify(coupledTo) !== JSON.stringify(['ext-55', 'ext-61', 'ext-63'])) throw new Error('Förväntade A1-A2 kopplad till ext-55, ext-61 och ext-63, fick: ' + JSON.stringify(coupledTo));
   if (!compoundRows.every(r => r.source_key === compoundRows[0].source_key && r.activity === 'Extra arbete')) throw new Error('Kopiorna ska ha samma aktivitet och source_key');
   if (savedItems.find(r => r.object_name === 'Ställningsmontage').object_id !== 'ext-55') throw new Error('Ställningsmontage ska fortfarande vara kopplad till ext-55');
   console.log('OK: kopplingsläget samlar flera objekt, ✕ tar bort, redan kopplade hoppas över och allt sparas med Spara');
@@ -425,15 +425,15 @@ async function run() {
   if (!compoundRows[0].group_id || compoundRows[0].group_id !== compoundRows[1].group_id) throw new Error('Raderna för A1-A2 ska dela group_id, fick ' + JSON.stringify(compoundRows.map(r => r.group_id)));
   // En rad per aktivitet (inte en per objekt), utfällbar till objekten.
   const extraRows = page.locator('#itemList .item-row', { hasText: 'Extra arbete' });
-  if (await extraRows.count() !== 1) throw new Error('Förväntade EN rad för aktiviteten A1-A2 (två objekt), fick ' + await extraRows.count());
+  if (await extraRows.count() !== 1) throw new Error('Förväntade EN rad för aktiviteten A1-A2 (tre objekt), fick ' + await extraRows.count());
   const toggleText = await extraRows.locator('[data-action="toggle-members"]').innerText();
-  if (!/2 objekt/.test(toggleText)) throw new Error('Förväntade "⛓ 2 objekt ▸" på aktivitetsraden, fick: ' + toggleText);
+  if (!/3 objekt/.test(toggleText)) throw new Error('Förväntade "⛓ 3 objekt ▸" på aktivitetsraden, fick: ' + toggleText);
   await extraRows.locator('[data-action="toggle-members"]').click();
   await page.waitForTimeout(150);
   const memberRows = await page.locator('#itemList .item-row.group-member').count();
-  if (memberRows !== 2) throw new Error('Utfälld aktivitet ska visa 2 objektrader, fick ' + memberRows);
+  if (memberRows !== 3) throw new Error('Utfälld aktivitet ska visa 3 objektrader, fick ' + memberRows);
   await page.locator('#itemList .item-row.group-rep', { hasText: 'Extra arbete' }).locator('[data-action="toggle-members"]').click();
-  console.log('OK: en aktivitet med flera objekt visas som en rad med "⛓ 2 objekt", utfällbar till objekten');
+  console.log('OK: en aktivitet med flera objekt visas som en rad med "⛓ 3 objekt", utfällbar till objekten');
   await page.locator('#itemList .item-row', { hasText: 'Extra arbete' }).first().locator('[data-action="edit"]').click();
   await page.waitForTimeout(200);
   if (!(await page.locator('#fApplyGroupRow').isVisible())) throw new Error('Förväntade kryssrutan "Gäller alla objekt i aktiviteten" vid redigering');
@@ -442,7 +442,7 @@ async function run() {
   await page.waitForTimeout(700);
   savedItems = store.get(`projects/${PROJECT_ID}/plan_items.json`).content;
   const progs = savedItems.filter(r => r.object_name === 'A1-A2').map(r => r.progress);
-  if (JSON.stringify(progs) !== '[70,70]') throw new Error('Redigering ska uppdatera alla objekt i aktiviteten, fick ' + JSON.stringify(progs));
+  if (JSON.stringify(progs) !== '[70,70,70]') throw new Error('Redigering ska uppdatera alla objekt i aktiviteten, fick ' + JSON.stringify(progs));
   if (!savedItems.filter(r => r.object_name === 'A1-A2').every(r => r.source_key && r.object_id.startsWith('ext-'))) throw new Error('Redigeringen ska behålla source_key och 3D-kopplingarna');
   console.log('OK: raderna delar group_id, visas som en aktivitet och redigeras tillsammans');
 
@@ -495,7 +495,7 @@ async function run() {
   await page.locator('#btnConfirmPlanImport').click();
   await page.waitForTimeout(600);
   savedItems = store.get(`projects/${PROJECT_ID}/plan_items.json`).content;
-  if (savedItems.length !== 5) throw new Error('Förväntade 5 rader efter omimport (inga nya dubbletter), fick ' + savedItems.length);
+  if (savedItems.length !== 6) throw new Error('Förväntade 6 rader efter omimport (inga nya dubbletter), fick ' + savedItems.length);
   {
     const acts2 = store.get(`projects/${PROJECT_ID}/plan_item_activities.json`).content;
     const cp = savedItems.find(r => r.object_id === 'ext-81');
@@ -506,7 +506,7 @@ async function run() {
   const m30v1 = savedItems.find(r => r.object_name === 'M30' && r.object_id === 'ext-777');
   if (m30v1.end_date !== '2026-01-15') throw new Error('Förväntade M30 tillbaka till 2026-01-15, fick ' + m30v1.end_date);
   const compoundAfter = savedItems.filter(r => r.object_name === 'A1-A2').map(r => r.object_id).sort();
-  if (JSON.stringify(compoundAfter) !== JSON.stringify(['ext-61', 'ext-63'])) throw new Error('Omimport ska behålla båda kopplingarna för A1-A2, fick ' + JSON.stringify(compoundAfter));
+  if (JSON.stringify(compoundAfter) !== JSON.stringify(['ext-55', 'ext-61', 'ext-63'])) throw new Error('Omimport ska behålla alla tre kopplingarna för A1-A2, fick ' + JSON.stringify(compoundAfter));
   console.log('OK: omimport uppdaterar alla kopplade rader för en aktivitet och behåller kopplingarna');
 
   await browser.close();

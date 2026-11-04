@@ -91,14 +91,15 @@ put('plan_item_comments.json', []);
   if (!banner.includes('delaktiviteten "Gjutning"')) fail('bannern ska nämna delaktiviteten, fick ' + banner);
   await select([{ modelId: 'm1', objectRuntimeIds: [20, 10] }, { modelId: 'm2', objectRuntimeIds: [30] }]);
   const notes = await page.innerText('#coupleModeList');
-  if (!notes.includes('hör redan till aktiviteten') || !notes.includes('hoppas över')) fail('listan ska visa vad som händer med varje objekt, fick ' + notes);
-  if ((await page.innerText('#btnSaveCoupleMode')) !== 'Spara (2)') fail('två objekt ska kunna sparas (objekt i annan aktivitet hoppas över)');
+  if (!notes.includes('hör redan till aktiviteten') || !notes.includes('kopplas även hit')) fail('listan ska visa vad som händer med varje objekt, fick ' + notes);
+  if ((await page.innerText('#btnSaveCoupleMode')) !== 'Spara (3)') fail('tre objekt ska kunna sparas (objekt i annan aktivitet kopplas även hit)');
   await page.click('#btnSaveCoupleMode'); await page.waitForTimeout(900);
   const it20 = get('plan_items.json').find(r => r.object_id === '20');
   if (!it20 || it20.start_date !== '2026-06-11' || it20.end_date !== '2026-06-12' || it20.source_key !== 'S1') fail('nytt objekt ska få Gjutnings datum och höra till aktiviteten, fick ' + JSON.stringify(it20));
   if (actsOf(it20.id) !== 'Gjutning') fail('nytt objekt ska bara ha delaktiviteten Gjutning, fick ' + actsOf(it20.id));
   if (actsOf('v') !== 'Armering,Formning,Gjutning') fail('objekt som redan följer hela aktiviteten ska vara oförändrat');
-  if (get('plan_items.json').find(r => r.id === 'x').object_id !== '30' || actsOf('x')) fail('objekt i annan aktivitet ska inte röras');
+  if (get('plan_items.json').find(r => r.id === 'x').object_id !== '30' || actsOf('x')) fail('objektets rad i den andra aktiviteten ska inte röras: ' + JSON.stringify(get('plan_items.json').filter(r => r.object_id === '30').map(r => [r.id, r.start_date, r.source_key, actsOf(r.id)])));
+  if (get('plan_items.json').filter(r => r.object_id === '30').length !== 2) fail('objektet i annan aktivitet ska få en egen rad även i den här (flera aktiviteter per objekt)');
   console.log('OK: koppling till en delaktivitet ger nya objekt bara den delaktiviteten och dess datum; andra aktiviteters objekt hoppas över');
 
   // 3) Samma objekt till Formning: delaktiviteten läggs till och datumen breddas
@@ -109,7 +110,7 @@ put('plan_item_comments.json', []);
   if (actsOf(it20b.id) !== 'Formning,Gjutning' || it20b.start_date !== '2026-06-01' || it20b.end_date !== '2026-06-12') fail('Formning ska läggas till på objektet och datumen breddas, fick ' + actsOf(it20b.id) + ' ' + it20b.start_date + '–' + it20b.end_date);
   rows = await subRows();
   const cnt = name => (rows.find(r => r.includes(name)) || '').match(/(\d+) objekt/);
-  if (!cnt('Formning') || cnt('Formning')[1] !== '2' || cnt('Armering')[1] !== '1' || cnt('Gjutning')[1] !== '2') fail('antalet objekt per delaktivitet ska uppdateras, fick ' + JSON.stringify(rows));
+  if (!cnt('Formning') || cnt('Formning')[1] !== '2' || cnt('Armering')[1] !== '1' || cnt('Gjutning')[1] !== '3') fail('antalet objekt per delaktivitet ska uppdateras, fick ' + JSON.stringify(rows));
   console.log('OK: ett objekt kan kopplas till flera delaktiviteter i samma aktivitet');
   if (process.env.SHOT) await page.locator('#itemList').screenshot({ path: process.env.SHOT + '/subs.png' });
 
