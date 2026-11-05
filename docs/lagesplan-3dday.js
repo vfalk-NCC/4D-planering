@@ -175,11 +175,18 @@ function l3dayPtr(e, phase) {
   const t = l3day.tool; if (!t || !l3day.bar || e.button > 0 || e.shiftKey) return false;
   const cv = l3sp.cv, r = l3spBox(cv), sx = e.clientX - r.left, sy = e.clientY - r.top;
   if (phase === "down") { try { cv.setPointerCapture(e.pointerId); } catch (err) { /* */ } l3day.down = { sx, sy, t: performance.now() };
+    if (t === "sel") { const it = l3dayHit(sx, sy); if (it) { l3day.sel = it.id; l3day.mv = { id: it.id, w0: l3spFromScr(sx, sy), pts0: it.pts.map(q => q.slice()), moved: false }; l3dayBarSync(); l3sp.ovDirty = true; l3sp.key = ""; } }
     if (t === "pen" || t === "area") l3day.cur = { kind: t, pts: [l3spFromScr(sx, sy).map(l3dayR2)], last: [sx, sy] };
     return true; }
-  if (phase === "move") { if (!l3day.down) return true; const c = l3day.cur; if (c && Math.hypot(sx - c.last[0], sy - c.last[1]) > 3) { c.pts.push(l3spFromScr(sx, sy).map(l3dayR2)); c.last = [sx, sy]; l3sp.ovDirty = true; l3sp.key = ""; } return true; }
+  if (phase === "move") { if (!l3day.down) return true;
+    const mv = l3day.mv; if (mv && Math.hypot(sx - l3day.down.sx, sy - l3day.down.sy) > 4) { const it = l3day.items.find(x => x.id === mv.id), w = l3spFromScr(sx, sy); if (it) { const dx = w[0] - mv.w0[0], dy = w[1] - mv.w0[1]; it.pts = mv.pts0.map(q => [l3dayR2(q[0] + dx), l3dayR2(q[1] + dy)]); mv.moved = true; l3sp.ovDirty = true; l3sp.key = ""; } return true; } const c = l3day.cur; if (c && Math.hypot(sx - c.last[0], sy - c.last[1]) > 3) { c.pts.push(l3spFromScr(sx, sy).map(l3dayR2)); c.last = [sx, sy]; l3sp.ovDirty = true; l3sp.key = ""; } return true; }
   if (phase === "up") {
     const d = l3day.down; l3day.down = null; if (!d) return true;
+    if (t === "sel" && l3day.mv) { const mv = l3day.mv; l3day.mv = null; const it = l3day.items.find(x => x.id === mv.id);
+      if (it && mv.moved) { const was = mv.pts0, now = it.pts.map(q => q.slice()), hadOrig = it.orig; if (!it.orig) it.orig = was.map(q => q.slice());
+        if (typeof l3VPush === "function") l3VPush(() => { it.pts = was.map(q => q.slice()); if (!hadOrig) delete it.orig; l3dayChanged(); }, () => { it.pts = now.map(q => q.slice()); if (!it.orig) it.orig = was.map(q => q.slice()); l3dayChanged(); }, "flytta dagsplanering");
+        l3dayChanged(); l3Status("Flyttad – ↺ Läge lägger tillbaka den där den ritades."); return true; }
+      l3dayBuild(); l3dayBarSync(); return true; }
     if (t === "sel") { const it = l3dayHit(sx, sy); l3day.sel = it ? it.id : null; l3dayBuild(); l3dayBarSync(); l3sp.ovDirty = true; l3sp.key = ""; return true; }
     if (t === "pin") { l3dayAdd({ kind: "pin", pts: [l3spFromScr(sx, sy).map(l3dayR2)] }); return true; }
     const c = l3day.cur; l3day.cur = null;
@@ -264,13 +271,14 @@ function l3dayBarHtml() {
 <select id="dyShow" title="Vad som visas"><option value="day">Vald dag</option><option value="all">Alla dagar</option></select>
 <button type="button" id="dyCopyPrev" title="Kopiera föregående dags markeringar till den här dagen">⧉ Från igår</button>
 <span class="sep"></span><button type="button" id="dyList" title="Lista över markeringarna">☰ Lista</button><button type="button" id="dyTxt" title="Kopiera som text (morgonmötet)">📋 Text</button><button type="button" id="dyImg" title="Spara minimapen som bild">🖼 Bild</button>
-<button type="button" id="dyUndo" title="Ångra (Ctrl+Z)">↶</button><button type="button" id="dyClr" title="Ta bort dagens markeringar">🗑 Rensa</button>
+<button type="button" id="dyReset" title="Flytta tillbaka den valda markeringen dit den ritades (Välj → dra för att flytta)">↺ Läge</button><button type="button" id="dyUndo" title="Ångra (Ctrl+Z)">↶</button><button type="button" id="dyClr" title="Ta bort dagens markeringar">🗑 Rensa</button>
 <label title="Visa dagsplaneringen i 3D-vyn" style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="dy3d"> 3D</label>`;
 }
 function l3dayBarSync() {
   const b = l3day.bar; if (!b) return;
   b.querySelectorAll("[data-dytool]").forEach(x => x.classList.toggle("on", (x.dataset.dytool || null) === (l3day.tool || null) || (!x.dataset.dytool && !l3day.tool)));
   b.querySelector("#dyCat").value = l3day.cat; b.querySelector("#dyDay").value = l3day.day; b.querySelector("#dyShow").value = l3day.show; b.querySelector("#dy3d").checked = l3Prefs().dayShow3d !== false;
+  { const sel = l3day.items.find(x => x.id === l3day.sel), r = b.querySelector("#dyReset"); if (r) r.disabled = !(sel && sel.orig); }
   const cnt = l3dayList().length; b.querySelector("#dyClr").title = `Ta bort ${cnt} markeringar`;
   const lst = document.getElementById("spDayList"); if (lst) l3dayListFill(lst);
   const cv = l3sp.cv; if (cv) cv.style.cursor = l3day.tool === "sel" ? "pointer" : l3day.tool ? "crosshair" : "";
@@ -296,6 +304,9 @@ function l3dayOpenBar() {
   bar.querySelector("#dyList").onclick = () => { let b = document.getElementById("spDayList"); if (b) { b.remove(); return; } b = document.createElement("div"); b.className = "spday-list"; b.id = "spDayList"; el.querySelector(".cw").appendChild(b); l3dayListFill(b); };
   bar.querySelector("#dyTxt").onclick = () => l3dayCopyText(); bar.querySelector("#dyImg").onclick = () => l3daySaveImg();
   bar.querySelector("#dyUndo").onclick = () => { if (typeof l3Undo === "function") l3Undo(); };
+  bar.querySelector("#dyReset").onclick = () => { const it = l3day.items.find(x => x.id === l3day.sel); if (!it || !it.orig) return; const now = it.pts.map(q => q.slice()), orig = it.orig.map(q => q.slice());
+    if (typeof l3VPush === "function") l3VPush(() => { it.pts = now.map(q => q.slice()); it.orig = orig.map(q => q.slice()); l3dayChanged(); }, () => { it.pts = orig.map(q => q.slice()); delete it.orig; l3dayChanged(); }, "återställ läge");
+    it.pts = orig; delete it.orig; l3dayChanged(); l3Status("Markeringen är tillbaka där den ritades."); };
   bar.querySelector("#dyClr").onclick = () => l3dayClearDay();
   bar.querySelector("#dy3d").onchange = e => { l3SetPref("dayShow3d", e.target.checked); l3dayBuild(); };
   l3dayLoad().catch(e => console.warn(e)); l3dayBarSync();

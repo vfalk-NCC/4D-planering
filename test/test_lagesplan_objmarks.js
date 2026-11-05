@@ -22,7 +22,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   await require('./_dialogs').bridge(page); // appens egna dialogrutor
   require('./_reveal').autoReveal(page); // flikar och menyer (UI-översynen 2026-10-09)
   const errors = []; page.on('pageerror', e => errors.push(e.message));
-  await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); localStorage.setItem('lagesplan-field', '0'); });
+  await page.addInitScript(() => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('lagesplan-objmovefree', '0'); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't' })); localStorage.setItem('lagesplan-field', '0'); });
   await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: 'window.pdfjsLib = { GlobalWorkerOptions: {}, getDocument: () => ({ promise: Promise.reject(new Error("x")) }) };' }));
   await page.route('https://api.github.com/**', r => {
     const u = new URL(r.request().url());
@@ -94,10 +94,22 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   // 3b) Fri flytt: med "Flytta prickar fritt" dras en prick direkt, utan att låsas upp först. Antalet i prickarna kan släckas.
   await page.evaluate(f => { objMarkUnlocked.delete(f); const pos = { ...objMarks() }; delete pos[f]; return saveObjMarks(pos); }, fam); await page.waitForTimeout(200);
   await page.evaluate(() => { view.tx = 0; view.ty = 0; applyView(); });
+  if (!(await page.evaluate(() => { const k = localStorage.getItem('lagesplan-objmovefree'); localStorage.removeItem('lagesplan-objmovefree'); const d = objMoveFree(); localStorage.setItem('lagesplan-objmovefree', k); return d; }))) fail('Fri flytt ska vara på som standard');
   await page.check('#objMoveFree'); if (!(await page.evaluate(() => objMoveFree()))) fail('Fri flytt ska kunna slås på');
   await page.mouse.move(vb.x + 110, vb.y + 100); await page.mouse.down(); await page.mouse.move(vb.x + 190, vb.y + 150, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(300);
   sh = await page.evaluate(f => objectShapesInPdf().find(o => o.fam === f), fam);
   if (!sh.moved || Math.abs(sh.center[0] - 190) > 2) fail('Med fri flytt ska pricken följa draget direkt: ' + JSON.stringify(sh.center));
+  { const rb = await page.evaluate(() => ({ txt: document.getElementById('btnObjResetMoved').textContent, dis: document.getElementById('btnObjResetMoved').disabled })); if (rb.dis || !/\(1\)/.test(rb.txt)) fail('Återställ-knappen ska visa antalet flyttade prickar: ' + JSON.stringify(rb)); }
+  await page.mouse.click(vb.x + 190, vb.y + 150); await page.waitForTimeout(150);
+  if (!(await page.isVisible('#objMarkBar .om-reset')) || (await page.isVisible('#objMarkBar .om-unlock'))) fail('I fri flytt ska en flyttad prick visa ↺ Återställ (och inget lås)');
+  await page.click('#objMarkBar .om-reset'); await page.waitForTimeout(300);
+  sh = await page.evaluate(f => objectShapesInPdf().find(o => o.fam === f), fam);
+  if (sh.moved || Math.abs(sh.center[0] - 110) > 0.01) fail('↺ ska flytta tillbaka pricken: ' + JSON.stringify(sh.center));
+  await page.mouse.move(vb.x + 110, vb.y + 100); await page.mouse.down(); await page.mouse.move(vb.x + 190, vb.y + 150, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(300);
+  await page.evaluate(() => { window.confirm = () => true; }); await page.click('#btnObjResetMoved'); await page.waitForTimeout(300);
+  if (await page.evaluate(f => objectShapesInPdf().find(o => o.fam === f).moved, fam)) fail('Återställ alla ska lägga tillbaka alla flyttade prickar');
+  if (!(await page.evaluate(() => document.getElementById('btnObjResetMoved').disabled))) fail('Knappen ska vara avstängd när inget är flyttat');
+  await page.mouse.move(vb.x + 110, vb.y + 100); await page.mouse.down(); await page.mouse.move(vb.x + 190, vb.y + 150, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(300);
   await page.uncheck('#objMoveFree'); await page.evaluate(() => { view.tx = 0; view.ty = 0; applyView(); });
   await page.mouse.move(vb.x + 190, vb.y + 150); await page.mouse.down(); await page.mouse.move(vb.x + 260, vb.y + 220, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(150);
   if (Math.abs((await page.evaluate(f => objectShapesInPdf().find(o => o.fam === f).center[0], fam)) - 190) > 2) fail('Utan fri flytt ska pricken vara låst igen');

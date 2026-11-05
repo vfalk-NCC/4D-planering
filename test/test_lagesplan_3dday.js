@@ -84,6 +84,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.keyboard.press('Delete'); await page.waitForTimeout(80);
   s = await st(); if (s.n !== 2) fail('Delete ska ta bort den valda markeringen: ' + JSON.stringify(s));
   await page.click('#dyUndo'); await page.waitForTimeout(80); s = await st(); if (s.n !== 3) fail('Ångra ska ta tillbaka markeringen: ' + JSON.stringify(s));
+  // flytta en markering (Välj + dra) och ↺ Läge
+  const b0 = await page.evaluate(() => { const it = l3day.items[2]; return it.pts[0].slice(); });
+  { const [x, y] = at(0.3, 0.75); await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + 60, y - 30, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(100); }
+  const b1 = await page.evaluate(() => { const it = l3day.items[2]; return { p: it.pts[0].slice(), orig: it.orig && it.orig[0].slice(), dis: document.getElementById('dyReset').disabled }; });
+  if (Math.hypot(b1.p[0] - b0[0], b1.p[1] - b0[1]) < 3 || !b1.orig || b1.orig[0] !== b0[0] || b1.dis) fail('Välj + dra ska flytta markeringen och spara originalläget: ' + JSON.stringify({ b0, b1 }));
+  await page.click('#dyReset'); await page.waitForTimeout(100);
+  const b2 = await page.evaluate(() => { const it = l3day.items[2]; return { p: it.pts[0].slice(), orig: it.orig, dis: document.getElementById('dyReset').disabled }; });
+  if (b2.p[0] !== b0[0] || b2.p[1] !== b0[1] || b2.orig || !b2.dis) fail('↺ Läge ska lägga tillbaka markeringen: ' + JSON.stringify({ b0, b2 }));
+  console.log('OK: flytta markering med Välj + dra, ↺ Läge lägger tillbaka den');
   console.log('OK: välj, ändra text, Delete och ångra');
 
   // 6) Dagar: filter, kopiera från igår, alla dagar, lista, text

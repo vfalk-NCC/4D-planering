@@ -11,14 +11,16 @@ let objMarkDrag = null;
 /* Visa/dölj antalet i de samlade prickarna och fri flytt av prickar (Victor 2026-11-05: "släcka siffrorna i punkterna och justera insättningspunkten fritt"). Båda sparas i webbläsaren. */
 const OBJ_COUNT_KEY = "lagesplan-objcount", OBJ_MOVEFREE_KEY = "lagesplan-objmovefree";
 function objCountOn() { try { return localStorage.getItem(OBJ_COUNT_KEY) !== "0"; } catch (e) { return true; } }
-function objMoveFree() { try { return localStorage.getItem(OBJ_MOVEFREE_KEY) === "1"; } catch (e) { return false; } }
+function objMoveFree() { try { return localStorage.getItem(OBJ_MOVEFREE_KEY) !== "0"; } catch (e) { return true; } }   // på som standard: alla prickar kan dras direkt (Victor 2026-11-05)
+const objMovedCount = () => Object.keys(objMarks()).length;
+function objMarkBtnSync() { const b = $("btnObjResetMoved"); if (!b) return; const n = objMovedCount(); b.disabled = !n; b.textContent = n ? `↺ Återställ flyttade prickar (${n})` : "↺ Inga prickar är flyttade"; }
 
 function objMarks() { const r = (typeof siteItems !== "undefined" ? siteItems : []).find(x => x.id === OBJMARKS_ID); return (r && r.pos) || {}; }
 function objMarkPos(fam) { const p = objMarks()[fam]; return Array.isArray(p) && p.length === 2 ? p : null; }
 function saveObjMarks(pos, label) {
   const rec = { id: OBJMARKS_ID, type: "objmarks", pos, updated_at: new Date().toISOString() };
   invalidatePositions();
-  return saveSiteItem(rec);
+  const r = saveSiteItem(rec); setTimeout(objMarkBtnSync, 0); return r;
 }
 const famLabel = o => { const it = o.it; return `${it.activity || it.object_name || "Objekt"}${o.members && o.members.length > 1 ? ` (${o.members.length} objekt)` : it.activity && it.object_name ? ` – ${it.object_name}` : ""}`; };
 
@@ -26,13 +28,13 @@ const famLabel = o => { const it = o.it; return `${it.activity || it.object_name
    där rutan täckte närliggande prickar så att nästa klick inte nådde 3D). */
 function openObjMarkPop(o) {
   if (!o || !plan || !plan.calib) return;
-  const pop = $("objMarkBar"), unlocked = objMarkUnlocked.has(o.fam);
+  const pop = $("objMarkBar"), free = objMoveFree(), unlocked = free || objMarkUnlocked.has(o.fam);
   if (!pop) return;
   pop.innerHTML = `
     <span class="omb-name" title="${escHtml(famLabel(o))}">🔷 ${escHtml(famLabel(o))}</span>
-    <span class="muted omb-state">${unlocked ? "Upplåst – dra pricken" : o.moved ? "Flyttad, låst" : "Låst"}</span>
-    ${unlocked ? `<button type="button" class="om-lock primary">🔒 Lås</button>` : `<button type="button" class="om-unlock" title="Lås upp så att pricken kan dras">🔓 Lås upp och flytta</button>`}
-    ${o.moved ? `<button type="button" class="om-reset" title="Tillbaka till objektens läge (och låst)">↺ Återställ</button>` : ""}
+    <span class="muted omb-state">${free ? (o.moved ? "Flyttad – dra den dit du vill" : "Dra pricken dit du vill") : unlocked ? "Upplåst – dra pricken" : o.moved ? "Flyttad, låst" : "Låst"}</span>
+    ${free ? "" : unlocked ? `<button type="button" class="om-lock primary">🔒 Lås</button>` : `<button type="button" class="om-unlock" title="Lås upp så att pricken kan dras">🔓 Lås upp och flytta</button>`}
+    ${o.moved ? `<button type="button" class="om-reset" title="Flytta tillbaka pricken till objektens eget läge">↺ Återställ</button>` : ""}
     <button type="button" class="om-close icon ghost" title="Stäng">✕</button>`;
   pop.classList.remove("hidden");
   const q = c => pop.querySelector(c);
@@ -77,16 +79,17 @@ window.addEventListener("mouseup", () => {
   if (typeof objIsFree === "function" && objIsFree(d.o.it) && !objMarkUnlocked.has(d.o.fam)) { objSaveFreePos(d.o.it, d.pos); return; }
   const pos = { ...objMarks(), [d.o.fam]: [Math.round(d.pos[0] * 1000) / 1000, Math.round(d.pos[1] * 1000) / 1000] };
   saveObjMarks(pos);
-  setSaveStatus("📍 Markeringen flyttad – lås den med 🔒 när du är klar (Ctrl+Z ångrar).");
+  setSaveStatus(objMoveFree() ? "📍 Pricken är flyttad – klicka på den och tryck ↺ Återställ för att lägga tillbaka den (Ctrl+Z ångrar)." : "📍 Markeringen flyttad – lås den med 🔒 när du är klar (Ctrl+Z ångrar).");
 });
 document.addEventListener("DOMContentLoaded", () => {
   // Ångra/gör om och inläsning ändrar lägena: rita om prickarna.
   const ss = saveSiteItem;
   saveSiteItem = function (rec) { if (rec && rec.type === "objmarks") invalidatePositions(); return ss.apply(this, arguments); };
   const ls_ = loadSiteLayers;
-  loadSiteLayers = async function () { const r = await ls_.apply(this, arguments); invalidatePositions(); renderZones(); return r; };
+  loadSiteLayers = async function () { const r = await ls_.apply(this, arguments); invalidatePositions(); renderZones(); objMarkBtnSync(); return r; };
   const oc = $("objCount"); if (oc) { oc.checked = objCountOn(); oc.onchange = () => { try { localStorage.setItem(OBJ_COUNT_KEY, oc.checked ? "1" : "0"); } catch (e) {} renderZones(); }; }
-  const mf = $("objMoveFree"); if (mf) { mf.checked = objMoveFree(); mf.onchange = () => { try { localStorage.setItem(OBJ_MOVEFREE_KEY, mf.checked ? "1" : "0"); } catch (e) {} setSaveStatus(mf.checked ? "🔓 Prickarna kan dras fritt – dra en prick dit du vill." : "🔒 Prickarna är låsta igen."); }; }
+  const rb = $("btnObjResetMoved"); if (rb) { rb.onclick = () => { const n = objMovedCount(); if (!n || !confirm(`Flytta tillbaka alla ${n} flyttade prickar till objektens eget läge?`)) return; objMarkUnlocked.clear(); saveObjMarks({}); setSaveStatus(`↺ ${n} prickar är tillbaka på objektens läge – Ctrl+Z ångrar.`); }; setTimeout(objMarkBtnSync, 800); }
+  const mf = $("objMoveFree"); if (mf) { mf.checked = objMoveFree(); mf.onchange = () => { try { localStorage.setItem(OBJ_MOVEFREE_KEY, mf.checked ? "1" : "0"); } catch (e) {} setSaveStatus(mf.checked ? "🔓 Prickarna kan dras fritt – dra en prick dit du vill." : "🔒 Prickarna är låsta (lås upp en i taget genom att klicka på den)."); }; }
   const g = $("objGroup");
   if (g) {
     g.checked = objGroupOn();
