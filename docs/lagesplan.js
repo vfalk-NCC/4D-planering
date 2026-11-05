@@ -730,7 +730,7 @@ function drawObjects(ctx, objects, fontPx) {
     if (!big) {
       const [x, y] = toPx(o.center), rr = focus === true ? minPx * 2.2 : minPx;
       // Antalet objekt i en samlad markering.
-      if (grouped && rr >= 5) { ctx.save(); ctx.fillStyle = contrastText(color); ctx.font = `800 ${Math.max(6, rr * 0.95)}px "Segoe UI", Arial, sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(o.members.length), x, y + 0.5); ctx.restore(); }
+      if (grouped && rr >= 5 && (typeof objCountOn !== "function" || objCountOn())) { ctx.save(); ctx.fillStyle = contrastText(color); ctx.font = `800 ${Math.max(6, rr * 0.95)}px "Segoe UI", Arial, sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(String(o.members.length), x, y + 0.5); ctx.restore(); }
       // Upplåst för flytt: streckad blå ring.
       if (typeof objMarkUnlocked !== "undefined" && objMarkUnlocked.has(o.fam)) { ctx.save(); ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(1.5, rr / 4); ctx.setLineDash([rr * 0.5, rr * 0.35]); ctx.beginPath(); ctx.arc(x, y, rr * 1.55, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
     }

@@ -91,6 +91,21 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   if (!(await page.evaluate(f => objectShapesInPdf().find(o => o.fam === f).moved, fam))) fail('Ctrl+Z ska ångra återställningen');
   console.log('OK: ↺ återställer till objektens läge och låser, Ctrl+Z ångrar');
 
+  // 3b) Fri flytt: med "Flytta prickar fritt" dras en prick direkt, utan att låsas upp först. Antalet i prickarna kan släckas.
+  await page.evaluate(f => { objMarkUnlocked.delete(f); const pos = { ...objMarks() }; delete pos[f]; return saveObjMarks(pos); }, fam); await page.waitForTimeout(200);
+  await page.evaluate(() => { view.tx = 0; view.ty = 0; applyView(); });
+  await page.check('#objMoveFree'); if (!(await page.evaluate(() => objMoveFree()))) fail('Fri flytt ska kunna slås på');
+  await page.mouse.move(vb.x + 110, vb.y + 100); await page.mouse.down(); await page.mouse.move(vb.x + 190, vb.y + 150, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(300);
+  sh = await page.evaluate(f => objectShapesInPdf().find(o => o.fam === f), fam);
+  if (!sh.moved || Math.abs(sh.center[0] - 190) > 2) fail('Med fri flytt ska pricken följa draget direkt: ' + JSON.stringify(sh.center));
+  await page.uncheck('#objMoveFree'); await page.evaluate(() => { view.tx = 0; view.ty = 0; applyView(); });
+  await page.mouse.move(vb.x + 190, vb.y + 150); await page.mouse.down(); await page.mouse.move(vb.x + 260, vb.y + 220, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(150);
+  if (Math.abs((await page.evaluate(f => objectShapesInPdf().find(o => o.fam === f).center[0], fam)) - 190) > 2) fail('Utan fri flytt ska pricken vara låst igen');
+  await page.evaluate(() => { view.tx = 0; view.ty = 0; applyView(); });
+  const cnt = await page.evaluate(() => { const on = objCountOn(); document.getElementById('objCount').click(); const off = objCountOn(); document.getElementById('objCount').click(); return { on, off, back: objCountOn() }; });
+  if (!cnt.on || cnt.off || !cnt.back) fail('Antalet i prickarna ska kunna släckas och tändas: ' + JSON.stringify(cnt));
+  console.log('OK: fri flytt av prickar och av/på för antalet i prickarna');
+
   // 4) Skarpt vid inzoomning: lagren ritas i skärmens upplösning för det synliga området; export i grundupplösning.
   await page.evaluate(() => { const pc = $('pdfCanvas'); pc.width = 1000; pc.height = 800; });
   const zoomed = await page.evaluate(() => {

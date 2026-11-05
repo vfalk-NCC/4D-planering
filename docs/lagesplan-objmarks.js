@@ -8,6 +8,10 @@
 const OBJMARKS_ID = "objmarks";
 const objMarkUnlocked = new Set(); // aktiviteter (objFamKey) som är upplåsta – bara i den här sessionen
 let objMarkDrag = null;
+/* Visa/dölj antalet i de samlade prickarna och fri flytt av prickar (Victor 2026-11-05: "släcka siffrorna i punkterna och justera insättningspunkten fritt"). Båda sparas i webbläsaren. */
+const OBJ_COUNT_KEY = "lagesplan-objcount", OBJ_MOVEFREE_KEY = "lagesplan-objmovefree";
+function objCountOn() { try { return localStorage.getItem(OBJ_COUNT_KEY) !== "0"; } catch (e) { return true; } }
+function objMoveFree() { try { return localStorage.getItem(OBJ_MOVEFREE_KEY) === "1"; } catch (e) { return false; } }
 
 function objMarks() { const r = (typeof siteItems !== "undefined" ? siteItems : []).find(x => x.id === OBJMARKS_ID); return (r && r.pos) || {}; }
 function objMarkPos(fam) { const p = objMarks()[fam]; return Array.isArray(p) && p.length === 2 ? p : null; }
@@ -46,8 +50,8 @@ function openObjMarkPop(o) {
 function objMarkPointerDown(e) {
   if (e.button !== 0 || !plan || !plan.calib) return false;
   const anyFree = typeof objIsFree === "function" && items.some(objIsFree);   // egna aktiviteter (okopplade) går alltid att dra
-  if (!objMarkUnlocked.size && !anyFree) return false;
-  const o = objectsAt(toPdf(stagePoint(e))).find(x => objMarkUnlocked.has(x.fam) || (anyFree && (x.members || [x.it]).length === 1 && objIsFree(x.it)));
+  if (!objMarkUnlocked.size && !anyFree && !objMoveFree()) return false;
+  const o = objectsAt(toPdf(stagePoint(e))).find(x => objMoveFree() || objMarkUnlocked.has(x.fam) || (anyFree && (x.members || [x.it]).length === 1 && objIsFree(x.it)));
   if (!o) return false;
   e.preventDefault();
   objMarkDrag = { o, sx: e.clientX, sy: e.clientY, moved: false, start: stagePoint(e), c0: toPx(o.center) };
@@ -81,6 +85,8 @@ document.addEventListener("DOMContentLoaded", () => {
   saveSiteItem = function (rec) { if (rec && rec.type === "objmarks") invalidatePositions(); return ss.apply(this, arguments); };
   const ls_ = loadSiteLayers;
   loadSiteLayers = async function () { const r = await ls_.apply(this, arguments); invalidatePositions(); renderZones(); return r; };
+  const oc = $("objCount"); if (oc) { oc.checked = objCountOn(); oc.onchange = () => { try { localStorage.setItem(OBJ_COUNT_KEY, oc.checked ? "1" : "0"); } catch (e) {} renderZones(); }; }
+  const mf = $("objMoveFree"); if (mf) { mf.checked = objMoveFree(); mf.onchange = () => { try { localStorage.setItem(OBJ_MOVEFREE_KEY, mf.checked ? "1" : "0"); } catch (e) {} setSaveStatus(mf.checked ? "🔓 Prickarna kan dras fritt – dra en prick dit du vill." : "🔒 Prickarna är låsta igen."); }; }
   const g = $("objGroup");
   if (g) {
     g.checked = objGroupOn();
