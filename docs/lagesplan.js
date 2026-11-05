@@ -454,7 +454,8 @@ function objectShapesInPdf() {
   const hideSubs = !showSubObjects() ? subCoupledIds() : null;
   let list = visibleItems().filter(it => pos.has(it.id) && !(hideSubs && hideSubs.has(it.id)) && !isObjHidden(it)).map(it => {
     const p = byId.get(it.id);
-    const poly = Number.isFinite(p.x0)
+    const poly = Array.isArray(p.fp) && p.fp.length === 8 ? [0, 2, 4, 6].map(k => modelToPdf(p.fp[k], p.fp[k + 1]))
+      : Number.isFinite(p.x0)
       ? [[p.x0, p.y0], [p.x1, p.y0], [p.x1, p.y1], [p.x0, p.y1]].map(([x, y]) => modelToPdf(x, y))
       : null;
     return { it, members: [it], center: pos.get(it.id), origin: pos.get(it.id), poly, zc: (p.z0 + p.z1) / 2, fam: objFamKey(it) };
@@ -913,8 +914,9 @@ async function fetchPositions() {
     const fresh = new Map((r.positions || []).map(p => [p.id, p]));
     const round = v => Math.round(v * 1000) / 1000;
     const rows = [...fresh.values()].map(p => {
-      const r = { id: p.id, x: round(p.x), y: round(p.y), z0: round(p.z0), z1: round(p.z1) };
+      const old = positions.find(q => q.id === p.id), r = { id: p.id, x: round(p.x), y: round(p.y), z0: round(p.z0), z1: round(p.z1) };
       if (Number.isFinite(p.x0)) Object.assign(r, { x0: round(p.x0), x1: round(p.x1), y0: round(p.y0), y1: round(p.y1) });
+      if (old && old.fp) { r.fp = old.fp; r.ang = old.ang; }
       return r;
     });
     positions = [...positions.filter(p => !fresh.has(p.id)), ...rows];
