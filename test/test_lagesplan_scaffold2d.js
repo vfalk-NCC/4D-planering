@@ -51,6 +51,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (!made.fields.every(Boolean) || made.vals.join('|') !== '0,73|8|2,57' && made.vals.join('|') !== '0.73|8|2.57') fail('Popupen ska ha bredd, höjd och fack: ' + JSON.stringify(made));
   await page.fill('.sp-sh', '12'); await page.fill('.sp-sw', '1,0'); await page.fill('.sp-sf', '3');
+  const np0 = await page.evaluate(() => placements.length);
+  await page.click('.sp-to3d'); await page.waitForTimeout(200);
+  const p3 = await page.evaluate(() => { const p = placements[placements.length - 1]; return { n: placements.length, type: p.type, pts: p.pts.length, B: p.B, H: p.H, fack: p.f && p.f.fack, name: p.name, z: p.pts[0].slice(2), x: p.pts[2][0] }; });
+  if (p3.n !== np0 + 1 || p3.type !== 'sm:stallningfri' || p3.pts !== 3 || p3.B !== 1 || p3.H !== 12 || p3.fack !== '3.07' || !/Ställning/.test(p3.name) || p3.x !== 6512350) fail('3D-ställningen ska skapas av linjen med samma mått: ' + JSON.stringify(p3));
+  console.log('OK: 🧊 3D-ställning skapad av den ritade linjen', JSON.stringify(p3));
   await page.click('.sp-save');
   await page.waitForTimeout(300);
   let rec = await page.evaluate(() => siteItems.find(x => x.type === 'scaffold'));

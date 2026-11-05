@@ -1187,6 +1187,20 @@ function drawScaffold2D(ctx, x, st, ppm, dates, lock) {
   const mi = Math.floor((P.length - 1) / 2), m = P[mi], nn = P[mi + 1] || m;
   siteLabel(ctx, x, [(m[0] + nn[0]) / 2, (m[1] + nn[1]) / 2 - st.fs * 1.6], `🪜 ${x.name || "Ställning"}${lock}\n${fmtM(I.L)} m × ${fmtM(I.H)} m · ${I.bays} fack · ${I.lifts} vån`, st.fs, "#fff", "#111827", col, dates);
 }
+/* Den ritade ställningen i plan blir ett riktigt 3D-objekt (Etablering → Ställning som följer berget): samma linje, bredd, höjd och fack. Markhöjden hämtas ur det tända punktmolnet (annars ritningens nivå). */
+function scaffoldTo3d(rec) {
+  if (typeof placeNew !== "function" || typeof SM === "undefined" || !SM.stallningfri || !Array.isArray(rec.pts) || rec.pts.length < 2) { alert("3D-ställningen kan inte skapas – 3D-biblioteket är inte inläst."); return null; }
+  const z0 = (plan && plan.calib && plan.calib.model && plan.calib.model[0] && Number(plan.calib.model[0][2])) || 0;
+  if (typeof placeSnapshot === "function") placeSnapshot();
+  const p = placeNew("sm:stallningfri", [rec.pts[0][0], rec.pts[0][1], z0]);
+  p.name = rec.name || "Ställning"; p.pts = rec.pts.map(q => [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 1000) / 1000, z0, z0]); p.B = Math.max(0.6, Number(rec.w) || 0.75); p.H = Math.max(1, Number(rec.h) || 6);
+  p.f = p.f || {}; const fk = Number(rec.fack) || 2.57; p.f.fack = ["1.57", "2.07", "2.57", "3.07"].reduce((b, v) => Math.abs(v - fk) < Math.abs(b - fk) ? v : b, "2.57");
+  const day = ($("dateInput") || {}).value || ""; if (day && !p.start) { p.start = day; p.end = day; }
+  let n = 0; if (typeof stallningFriFollow === "function" && typeof l3slZ === "function") n = stallningFriFollow(p, (x, y) => l3slZ(x, y, 0.8));
+  placements.push(p); placeTouch(p);
+  if (typeof l3 !== "undefined" && l3 && typeof l3AddPlacementMesh === "function") { try { l3AddPlacementMesh(p); if (typeof l3Changed === "function") l3Changed(); } catch (e) { console.warn("3D-ställning", e); } }
+  return p;
+}
 function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
   const st = siteStyle(x, fontPx);
   const dates = datesText(x);
@@ -1807,7 +1821,8 @@ function openSitePop(rec, isNew) {
     : `<input type="text" class="sp-name" value="${escHtml(rec.name || "")}" placeholder="Namn: ${escHtml(symDef ? symDef.label : k.label)}" />`}
     ${rec.type === "crane" ? `<div class="row2"><div><label>Räckvidd (m)</label><input type="text" class="sp-radius" value="${escHtml(String(rec.radius ?? 40))}" /></div><div><label>Kapacitet (t)</label><input type="text" class="sp-cap" value="${escHtml(String(rec.capacity ?? ""))}" /></div></div>
       <label>Lyftkurva <span class="muted">(radie:ton, t.ex. 20:5, 30:3.5, 40:2)</span></label><input type="text" class="sp-chart" value="${escHtml(rec.chart || "")}" placeholder="20:5, 40:2" />` : ""}
-    ${rec.type === "scaffold" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-sw" value="${fmtIn(Number(rec.w) || 0.73)}" /></div><div><label>Höjd (m)</label><input type="text" class="sp-sh" value="${fmtIn(Number(rec.h) || 8)}" /></div><div><label>Fack (m)</label><input type="text" class="sp-sf" value="${fmtIn(Number(rec.fack) || 2.57)}" /></div></div>` : ""}
+    ${rec.type === "scaffold" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-sw" value="${fmtIn(Number(rec.w) || 0.73)}" /></div><div><label>Höjd (m)</label><input type="text" class="sp-sh" value="${fmtIn(Number(rec.h) || 8)}" /></div><div><label>Fack (m)</label><input type="text" class="sp-sf" value="${fmtIn(Number(rec.fack) || 2.57)}" /></div></div>
+      <button type="button" class="sp-to3d" style="margin-top:4px;" title="Skapar en riktig 3D-ställning (Etablering → Ställning följer berget) längs den ritade linjen med samma bredd, höjd och fack – markhöjden hämtas ur punktmolnet om det är tänt">🧊 Skapa 3D-ställning av linjen</button>` : ""}
     ${rec.type === "route" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-rw" value="${fmtIn(Number(rec.w) || 4)}" /></div><div><label>&nbsp;</label><label style="display:flex;gap:4px;align-items:center;margin:0;"><input type="checkbox" class="sp-two"${rec.twoWay ? " checked" : ""} style="width:auto;" /> Dubbelriktad</label></div></div>
       <button type="button" class="sp-reverse" style="margin-top:4px;">⇄ Vänd körriktning</button>` : ""}
     ${g ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-w" value="${fmtIn(g.w)}" /></div><div><label>Längd (m)</label><input type="text" class="sp-h" value="${fmtIn(g.h)}" /></div><div><label>Vinkel (°)</label><input type="text" class="sp-rot" value="${Math.round(g.rot * 180 / Math.PI)}" /></div></div>` : ""}
@@ -1831,7 +1846,8 @@ function openSitePop(rec, isNew) {
     <select class="sp-layer">${layers.map(l => `<option value="${escHtml(l)}"${l === layerOf(rec) ? " selected" : ""}>${escHtml(ulName(l))}</option>`).join("")}<option value="__new">＋ Nytt lager…</option></select>
     ${rec.type === "crane" ? `<div class="row2"><div><label>Räckvidd (m)</label><input type="text" class="sp-radius" value="${escHtml(String(rec.radius ?? 40))}" /></div><div><label>Kapacitet (t)</label><input type="text" class="sp-cap" value="${escHtml(String(rec.capacity ?? ""))}" /></div></div>
       <label>Lyftkurva <span class="muted">(radie:ton, t.ex. 20:5, 30:3.5, 40:2)</span></label><input type="text" class="sp-chart" value="${escHtml(rec.chart || "")}" placeholder="20:5, 40:2" />` : ""}
-    ${rec.type === "scaffold" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-sw" value="${fmtIn(Number(rec.w) || 0.73)}" /></div><div><label>Höjd (m)</label><input type="text" class="sp-sh" value="${fmtIn(Number(rec.h) || 8)}" /></div><div><label>Fack (m)</label><input type="text" class="sp-sf" value="${fmtIn(Number(rec.fack) || 2.57)}" /></div></div>` : ""}
+    ${rec.type === "scaffold" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-sw" value="${fmtIn(Number(rec.w) || 0.73)}" /></div><div><label>Höjd (m)</label><input type="text" class="sp-sh" value="${fmtIn(Number(rec.h) || 8)}" /></div><div><label>Fack (m)</label><input type="text" class="sp-sf" value="${fmtIn(Number(rec.fack) || 2.57)}" /></div></div>
+      <button type="button" class="sp-to3d" style="margin-top:4px;" title="Skapar en riktig 3D-ställning (Etablering → Ställning följer berget) längs den ritade linjen med samma bredd, höjd och fack – markhöjden hämtas ur punktmolnet om det är tänt">🧊 Skapa 3D-ställning av linjen</button>` : ""}
     ${rec.type === "route" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-rw" value="${fmtIn(Number(rec.w) || 4)}" /></div><div><label>&nbsp;</label><label style="display:flex;gap:4px;align-items:center;margin:0;"><input type="checkbox" class="sp-two"${rec.twoWay ? " checked" : ""} style="width:auto;" /> Dubbelriktad</label></div></div>
       <button type="button" class="sp-reverse" style="margin-top:4px;">⇄ Vänd körriktning</button>` : ""}
     ${g ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-w" value="${fmtIn(g.w)}" /></div><div><label>Längd (m)</label><input type="text" class="sp-h" value="${fmtIn(g.h)}" /></div><div><label>Vinkel (°)</label><input type="text" class="sp-rot" value="${Math.round(g.rot * 180 / Math.PI)}" /></div></div>` : ""}
@@ -1907,6 +1923,12 @@ function openSitePop(rec, isNew) {
     closeSitePop();
     selectedSiteId = next.id;
     saveSiteItem(next, false, { prev: isNew ? null : rec });
+  };
+  const to3 = pop.querySelector(".sp-to3d");
+  if (to3) to3.onclick = () => {
+    const num2 = (q, d) => { const v = parseFloat(String((pop.querySelector(q) || {}).value || "").replace(",", ".")); return isFinite(v) && v > 0 ? v : d; };
+    const made = scaffoldTo3d({ ...rec, w: num2(".sp-sw", rec.w || 0.73), h: num2(".sp-sh", rec.h || 8), fack: num2(".sp-sf", rec.fack || 2.57), name: ((pop.querySelector(".sp-name") || {}).value || "").trim() || rec.name || "Ställning" });
+    if (made) setSaveStatus(`🧊 3D-ställningen "${made.name}" är skapad (${made.pts.length} punkter) – den syns i 3D-vyn under Etablering och sparas med planen.`);
   };
   const rev = pop.querySelector(".sp-reverse");
   if (rev) rev.onclick = () => { rec.pts = rec.pts.slice().reverse(); renderZones(); rev.textContent = "⇄ Vänd körriktning ✓"; };
