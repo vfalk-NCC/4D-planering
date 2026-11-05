@@ -77,6 +77,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const hit = null;
   console.log('OK: ställning i plan – verktyg, mått och ritning i skala', JSON.stringify({ made: made.vals, inf, px, hit }));
   if (process.env.SLSHOT) { await page.evaluate(() => { document.getElementById('viewport') && 0; if (typeof renderAll === 'function') renderAll(); else if (typeof draw === 'function') draw(); }); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SLSHOT }); }
+  // Play/Pause vid datumreglaget (samma uppspelning som under Tid)
+  const pl = await page.evaluate(async () => {
+    const o = {}; const top = document.getElementById('btnPlayTop'); o.has = !!top && top.getBoundingClientRect().width > 0; o.t0 = top.textContent;
+    top.click(); o.t1 = top.textContent; o.main1 = document.getElementById('btnPlay').textContent; o.on = !!playTimer;
+    await new Promise(r => setTimeout(r, 1700)); top.click(); o.t2 = top.textContent; o.main2 = document.getElementById('btnPlay').textContent; o.off = !playTimer;
+    return o;
+  });
+  if (!pl.has || pl.t1 !== '⏸' || !/Pausa/.test(pl.main1) || !pl.on || pl.t2 !== '▶' || !/Spela upp/.test(pl.main2) || !pl.off) fail('Play/Pause vid datumreglaget: ' + JSON.stringify(pl));
+  console.log('OK: ▶/⏸ vid datumreglaget styr samma uppspelning', JSON.stringify(pl));
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_scaffold2d');
   await browser.close(); server.close();

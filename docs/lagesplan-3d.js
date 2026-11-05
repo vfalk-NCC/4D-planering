@@ -1640,6 +1640,7 @@ function l3PlaceHeight(p) {
   const lib = placeLib(p.type) || {};
   if (lib.isModel) { const b = lib.model && lib.model.bbox; return b ? b.max[2] * placeScale(p) : 2; }
   if (p.type === "tornkran") return (Number(p.H) || 0) + 1.8;
+  if (p.type === "sm:stallningfri") return Math.max(1, Number(p.H) || 1);   // H får vara negativ (-10…+20 över högsta marken)
   return Number(p.H) || 1;
 }
 

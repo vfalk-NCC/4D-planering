@@ -492,13 +492,15 @@ async function deleteOpenPhoto() {
 let playTimer = null, recording = false;
 function setDate(iso) { $("dateInput").value = iso; syncSliderFromDate(); onDateChanged(); }
 function stepDays() { return Number($("playStep").value) || 7; }
-function stopPlay() { clearInterval(playTimer); playTimer = null; $("btnPlay").textContent = "▶ Spela upp"; }
+/* Play/Pause finns både under fliken Tid och vid datumreglaget högst upp (Victor 2026-11-05). */
+function playLabel(on) { $("btnPlay").textContent = on ? "⏸ Pausa" : "▶ Spela upp"; const t = $("btnPlayTop"); if (t) { t.textContent = on ? "⏸" : "▶"; t.classList.toggle("on", !!on); t.setAttribute("aria-label", on ? "Pausa" : "Spela upp"); t.title = on ? "Pausa uppspelningen (mellanslag)" : "Spela upp tidslinjen från valt datum (mellanslag). Steglängden väljs under fliken Tid."; } }
+function stopPlay() { clearInterval(playTimer); playTimer = null; playLabel(false); }
 function togglePlay() {
   if (playTimer) { stopPlay(); return; }
   if (!plan) return;
   const end = isoOf(new Date(dateMax));
   if (($("dateInput").value || todayIso()) >= end) setDate(isoOf(new Date(dateMin)));
-  $("btnPlay").textContent = "⏸ Pausa";
+  playLabel(true);
   playTimer = setInterval(() => {
     const next = addDays($("dateInput").value || todayIso(), stepDays());
     if (next > end) { setDate(end); stopPlay(); return; }
@@ -728,6 +730,7 @@ function bindTools() {
   $("focusOn").onchange = () => { try { localStorage.setItem("lagesplan-focus", $("focusOn").checked ? "1" : "0"); } catch (e) {} renderZones(); };
   $("focusDays").onchange = () => renderZones();
   $("btnPlay").onclick = togglePlay;
+  if ($("btnPlayTop")) { $("btnPlayTop").onclick = togglePlay; playLabel(false); }
   $("btnRecVideo").onclick = recordVideo;
   $("btnRecZip").onclick = recordZip;
   $("btnPdfA3").onclick = exportPdfA3;

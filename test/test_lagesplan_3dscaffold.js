@@ -64,6 +64,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     out.parts = []; g.traverse(o => { if (o.isMesh) out.parts.push([(o.material && o.material.color ? '#' + o.material.color.getHexString() : '?'), Math.round((o.geometry.index ? o.geometry.index.count : o.geometry.attributes.position.count) / 3)]); });
     out.calc = stallningFriCalc(p).slice(0, 4).map(r => r.join('=')).join(' | ');
     out.fields = SM.stallningfri.fields.map(f => f[0]).join(',');
+    // Höjd över högsta marken: -10…+20 m (negativ = överkanten under markens högsta punkt)
+    const hf = SM.stallningfri.fields.find(f => f[0] === 'H'); out.range = [hf[4].min, hf[4].max];
+    const hOf = H => { p.H = H; l3RebuildOne(p); const gg = l3.placeMeshes.get(p.id); let nan = 0, n = 0; gg.traverse(o => { if (o.isMesh) { n++; const a = o.geometry.attributes.position.array; for (let i = 0; i < a.length; i++) if (!isFinite(a[i])) nan++; } }); const b = new THREE.Box3().setFromObject(gg); return { top: Math.round(b.max.z * 10) / 10, n, nan }; };
+    out.h6 = hOf(6); out.h0 = hOf(0); out.hneg = hOf(-6); out.hmin = hOf(-10); out.hmax = hOf(20); p.H = 6; l3RebuildOne(p);
     return out;
   });
   if (process.env.SHOT) { await page.evaluate(async () => { const p = placements[placements.length - 1]; l3SelectIds([]); const t = l3.orbit.target; t.set(0, 0, 4); l3.camera.position.set(-6, -26, 14); l3.camera.up.set(0, 0, 1); l3.camera.lookAt(t); l3.orbit.update(); l3Render(); await new Promise(r => setTimeout(r, 800)); }); await page.screenshot({ path: process.env.SHOT }); }
@@ -73,6 +77,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(R.n >= 6, 'Markhöjd i varje fack'); ok(R.z[0] < -2 && R.z[R.z.length - 1] > 2 && R.z.every((v, i) => i === 0 || v >= R.z[i - 1] - 0.05), 'Höjderna ska följa slänten');
   ok(R.meshes >= 1 && R.tris > 500, 'Ställningen ska ritas'); ok(R.h > 12 && R.h < 20, 'Höjden = markens höjdskillnad + höjd över högsta punkten'); ok(R.len >= 15, 'Längd');
   ok(/Längd=1[5-7]/.test(R.calc), 'Beräknat');
+  ok(R.range[0] === -10 && R.range[1] === 20, 'Reglaget Höjd över högsta marken ska gå från -10 till +20 m'); ok(R.hneg.top < R.h6.top - 5 && R.h0.top < R.h6.top && R.hmax.top > R.h6.top + 10, 'Höjden ska styra överkanten (även under marken)'); ok([R.h6, R.h0, R.hneg, R.hmin, R.hmax].every(x => x.nan === 0 && x.n >= 1), 'Inga trasiga ytor vid negativ höjd');
   ok(R.btn && R.mirror.before === 'Vänster' && R.mirror.after === 'Höger' && R.mirror.dy < -0.2, 'Spegelvänd: ' + JSON.stringify(R.mirror));
   if (errors.length) fail('Fel: ' + errors.join('|'));
   console.log('OK: ställning som följer berget – markhöjd ur punktmolnet i varje fack, plattformar i jämna nivåer');
