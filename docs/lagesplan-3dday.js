@@ -33,8 +33,8 @@ function l3dayCss() {
 #v3Sp .spday{display:flex;flex-wrap:wrap;gap:4px 6px;align-items:center;padding:5px 8px;border-bottom:1px solid rgba(0,0,0,.08);background:rgba(37,99,235,.06)}
 #v3Sp .spday input[type=text],#v3Sp .spday input[type=date],#v3Sp .spday input[type=number],#v3Sp .spday select{padding:3px 6px;border:1px solid rgba(0,0,0,.18);border-radius:7px;font:inherit;max-width:150px}
 #v3Sp .spday input[type=number]{width:54px}#v3Sp .spday .sep{width:1px;align-self:stretch;background:rgba(0,0,0,.14);margin:0 2px}
-#v3Sp .spday-list{position:absolute;left:8px;bottom:8px;z-index:6;max-height:60%;overflow:auto;background:#fff;border:1px solid rgba(0,0,0,.18);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);padding:6px;min-width:230px;font-size:12px}
-#v3Sp .spday-list .r{display:flex;gap:6px;align-items:center;padding:3px 4px;border-radius:6px;cursor:pointer}#v3Sp .spday-list .r:hover{background:rgba(37,99,235,.08)}#v3Sp .spday-list .r i{width:10px;height:10px;border-radius:50%;flex:none}#v3Sp .spday-list .r span{flex:1}`;
+#v3Sp .spday-list{position:absolute;left:8px;bottom:8px;z-index:6;max-height:calc(100% - 16px);overflow:auto;background:#fff;border:1px solid rgba(0,0,0,.18);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);padding:6px;min-width:230px;font-size:12px}
+#v3Sp .spday-list{width:290px;max-width:calc(100% - 16px)}#v3Sp .spday-list .r.on{background:rgba(37,99,235,.14);font-weight:700}#v3Sp .dyed{border-top:1px solid rgba(0,0,0,.12);margin-top:6px;padding-top:6px;display:flex;flex-direction:column;gap:5px}#v3Sp .dyed label{display:flex;flex-direction:column;gap:2px;font-size:11px;color:#475569}#v3Sp .dyed input,#v3Sp .dyed select,#v3Sp .dyed textarea{padding:3px 6px;border:1px solid rgba(0,0,0,.18);border-radius:7px;font:inherit;font-size:12px;color:#0f172a;width:100%;box-sizing:border-box;max-width:none!important}#v3Sp .dyed .g2{display:grid;grid-template-columns:1fr 1fr;gap:6px}#v3Sp .dyed .hd2{display:flex;align-items:center;gap:6px;font-size:12px}#v3Sp .dyed input[type=color]{height:28px;padding:1px}#v3Sp .spday-list .r{display:flex;gap:6px;align-items:center;padding:3px 4px;border-radius:6px;cursor:pointer}#v3Sp .spday-list .r:hover{background:rgba(37,99,235,.08)}#v3Sp .spday-list .r i{width:10px;height:10px;border-radius:50%;flex:none}#v3Sp .spday-list .r span{flex:1}`;
   document.head.appendChild(st);
 }
 
@@ -96,7 +96,8 @@ function l3dayLabelEl(it, nr, at) {
   const host = document.getElementById("v3Canvas"); if (!host) return;
   const el = document.createElement("div"); el.className = "v3-day" + (l3day.sel === it.id ? " sel" : ""); el.style.setProperty("--dc", l3dayCol(it));
   const extra = [it.act && it.text && it.text !== it.act ? it.act : "", it.crew ? `${it.crew} pers` : ""].filter(Boolean).join(" · ");
-  el.innerHTML = `<b>${nr}</b>${it.ueShort ? `<span style="background:${escHtml(it.ueCol || "#2563eb")};color:#fff;border-radius:4px;padding:0 5px;margin-right:5px;font-size:11px">${escHtml(it.ueShort)}</span>` : ""}${escHtml(it.text || it.act || (L3DAY_CATS[it.cat] || ["Markör"])[0])}${extra ? ` <span style="font-weight:500;opacity:.75">· ${escHtml(extra)}</span>` : ""}`;
+  el.innerHTML = `<b>${nr}</b>${it.ueShort ? `<span style="background:${escHtml(it.ueCol || "#2563eb")};color:#fff;border-radius:4px;padding:0 5px;margin-right:5px;font-size:11px">${escHtml(it.ueShort)}</span>` : ""}${escHtml(it.text || it.act || (L3DAY_CATS[it.cat] || ["Markör"])[0])}${extra ? ` <span style="font-weight:500;opacity:.75">· ${escHtml(extra)}</span>` : ""}${it.time ? ` <span style="font-weight:500;opacity:.75">· ${escHtml(it.time)}</span>` : ""}${it.info ? `<br><span style="font-weight:500;font-size:11px;opacity:.85;white-space:normal;display:inline-block;max-width:260px">${escHtml(String(it.info).slice(0, 90))}${String(it.info).length > 90 ? "…" : ""}</span>` : ""}`;
+  if (it.info) el.title = it.info;
   host.appendChild(el); el._at = at; el._id = it.id; l3day.labels.set(it.id, el);
 }
 function l3dayBuild() {
@@ -276,7 +277,7 @@ function l3dayText() {
   const head = `Dagsplanering ${l3day.show === "all" ? "(alla dagar)" : l3day.day}${plan ? " – " + plan.name : ""}`;
   return [head, ...L.map((it, i) => {
     const cat = (L3DAY_CATS[it.cat] || ["Info"])[0], m = it.kind === "area" ? `${Math.round(l3dayArea(it.pts))} m²` : it.kind === "pen" ? `${Math.round(l3dayPathLen(it.pts, false))} m` : "";
-    return `${l3day.items.indexOf(it) + 1}. ${it.ueShort ? "[" + it.ueShort + "] " : ""}${cat}${it.text ? ": " + it.text : ""}${it.crew ? ` (${it.crew} pers)` : ""}${m ? ` – ${m}` : ""}${l3day.show === "all" ? ` [${it.day}]` : ""}`;
+    return `${l3day.items.indexOf(it) + 1}. ${it.ueShort ? "[" + it.ueShort + "] " : ""}${cat}${it.text ? ": " + it.text : ""}${it.crew ? ` (${it.crew} pers)` : ""}${it.time ? ` ${it.time}` : ""}${m ? ` – ${m}` : ""}${it.info ? ` – ${String(it.info).replace(/\s+/g, " ")}` : ""}${l3day.show === "all" ? ` [${it.day}]` : ""}`;
   }), `Totalt ${L.reduce((s, it) => s + (it.crew || 0), 0)} personer angivna.`].join("\n");
 }
 async function l3dayCopyText() {
@@ -320,7 +321,8 @@ function l3dayIfcBuild(list) {
     const meas = it.kind === "area" ? `${Math.round(l3dayArea(it.pts))} m²` : it.kind === "pen" ? `${Math.round(l3dayPathLen(it.pts, false))} m` : "";
     const lines = [{ t: `${nr}. ${it.ueShort ? it.ueShort + (it.ueName ? " – " + it.ueName : "") : catName}`.slice(0, 60), h: L3DAY_IFC.h1, c: true },
       ...(it.act ? [{ t: String(it.act).slice(0, 60), h: L3DAY_IFC.h2 }] : []), ...(it.text && it.text !== it.act ? [{ t: String(it.text).slice(0, 60), h: L3DAY_IFC.h2 }] : []),
-      { t: [it.ueShort ? catName : "", it.crew ? `${it.crew} pers` : "", meas, it.actStart ? `${it.actStart.slice(5)} → ${it.actEnd.slice(5)}` : ""].filter(Boolean).join(" · ") || day, h: L3DAY_IFC.h2 * 0.85 }].filter(l => l.t);
+      ...(it.info ? String(it.info).replace(/\s+/g, " ").match(/.{1,44}(\s|$)/g).slice(0, 4).map(t => ({ t: t.trim(), h: L3DAY_IFC.h2 * 0.8 })) : []),
+      { t: [it.ueShort ? catName : "", it.crew ? `${it.crew} pers` : "", it.time || "", meas, it.actStart ? `${it.actStart.slice(5)} → ${it.actEnd.slice(5)}` : ""].filter(Boolean).join(" · ") || day, h: L3DAY_IFC.h2 * 0.85 }].filter(l => l.t);
     const W = Math.max(2, ...lines.map(l => W1(l.t, l.h))) + L3DAY_IFC.pad * 2, H = lines.reduce((a, l) => a + l.h * 1.4, 0) + L3DAY_IFC.pad * 1.4, up = it.kind === "pin" ? L3DAY_IFC.pole + 0.4 : 3 + H / 2;
     const center = [at[0], at[1], at[2] + up + (it.kind === "pin" ? H / 2 : 0)];
     if (it.kind !== "pin") { const lead = l3mSweep([V3(rel(at)), V3(rel([at[0], at[1], center[2] - H / 2]))], 0.04), lt = tri(lead, white); if (lt) meshItems.push(lt); }
@@ -328,7 +330,7 @@ function l3dayIfcBuild(list) {
     const nm = `Dagsplan ${nr}: ${it.ueShort ? it.ueShort + " " : ""}${it.text || it.act || catName}`.slice(0, 120);
     const el = doc.proxy(nm, catName, "4D-dagsplan", doc.place(o), E(`IFCPRODUCTDEFINITIONSHAPE($,$,(${reps.join(",")}))`), it.id); elems.push(el);
     doc.props(el, [["Typ", it.kind === "pin" ? "Markör" : it.kind === "area" ? "Område" : "Linje"], ["Kategori", catName], ["Dag", it.day || day], ["Text", it.text || ""], ["Entreprenör", it.ueName || it.ueShort || ""], ["Aktivitet (Gantt)", it.act || ""],
-      ["Aktivitet start", it.actStart || ""], ["Aktivitet slut", it.actEnd || ""], ["Område", it.area || ""], ["Personer", it.crew || 0], ["Mått", meas], ["Nummer", nr], ["Arbetsyta", plan ? plan.name || "" : ""]]);
+      ["Aktivitet start", it.actStart || ""], ["Aktivitet slut", it.actEnd || ""], ["Område", it.area || ""], ["Personer", it.crew || 0], ["Tid", it.time || ""], ["Info", it.info || ""], ["Mått", meas], ["Nummer", nr], ["Arbetsyta", plan ? plan.name || "" : ""]]);
     const board = E(`IFCEXTRUDEDAREASOLID(${E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,$,${ifcNum(W)},${ifcNum(H)})`)},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, 0, -L3DAY_IFC.T / 2])})`)},$,$)`)},${dir([0, 0, 1])},${ifcNum(L3DAY_IFC.T)})`); E(`IFCSTYLEDITEM(${board},(${white}),$)`);
     elems.push(doc.proxy(`${nm.slice(0, 100)} – skylt`, "Skylt", "4D-dagsplanskylt", axes(center, r[0], r[1], n[0], n[1]), doc.shape(board, "SweptSolid"), it.id));
     [[1, 1], [-1, -1]].forEach(([sr, sn]) => { const meshes = []; let y = H / 2 - L3DAY_IFC.pad * 0.7;
@@ -381,11 +383,45 @@ function l3dayBarSync() {
   const lst = document.getElementById("spDayList"); if (lst) l3dayListFill(lst);
   const cv = l3sp.cv; if (cv) cv.style.cursor = l3day.tool === "sel" ? "pointer" : l3day.tool ? "crosshair" : "";
 }
+/* Ändra uppgifter på en markering (med ångra). patch: { fält: värde | undefined (tas bort) }. */
+function l3dayPatch(id, patch) {
+  const it = l3day.items.find(x => x.id === id); if (!it) return;
+  const was = JSON.parse(JSON.stringify(it)), put = src => { Object.keys(it).forEach(k => delete it[k]); Object.assign(it, JSON.parse(JSON.stringify(src))); l3dayChanged(); };
+  Object.keys(patch).forEach(k => { if (patch[k] === undefined || patch[k] === "") delete it[k]; else it[k] = patch[k]; });
+  const now = JSON.parse(JSON.stringify(it));
+  if (JSON.stringify(was) === JSON.stringify(now)) return;
+  if (typeof l3VPush === "function") l3VPush(() => put(was), () => put(now), "ändra dagsplanering");
+  l3dayChanged();
+}
+/* Listan: tryck på en rad för att markera den – då visas en ruta där all info kan skrivas in och ändras (text, info, personer, tid, kategori, entreprenör, dag, färg). */
 function l3dayListFill(box) {
-  const L = l3dayList();
-  box.innerHTML = L.length ? L.map(it => `<div class="r" data-dyid="${it.id}"><i style="background:${l3dayCol(it)}"></i><span>${l3day.items.indexOf(it) + 1}. ${it.ueShort ? `<b>${escHtml(it.ueShort)}</b> ` : ""}${escHtml(it.text || (L3DAY_CATS[it.cat] || ["Info"])[0])}${it.crew ? ` · ${it.crew} pers` : ""}</span><button type="button" data-dydel="${it.id}" title="Ta bort">✕</button></div>`).join("") : `<div class="r">Inga markeringar för ${l3day.show === "all" ? "projektet" : l3day.day}.</div>`;
+  const ae = document.activeElement; if (ae && box.contains(ae) && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.closest(".dyed")) return;   // skriver just nu: rita inte om
+  const L = l3dayList(), sel = L.find(x => x.id === l3day.sel) || null, nr = it => l3day.items.indexOf(it) + 1;
+  const rows = L.length ? L.map(it => `<div class="r${sel === it ? " on" : ""}" data-dyid="${it.id}"><i style="background:${l3dayCol(it)}"></i><span>${nr(it)}. ${it.ueShort ? `<b>${escHtml(it.ueShort)}</b> ` : ""}${escHtml(it.text || (L3DAY_CATS[it.cat] || ["Info"])[0])}${it.crew ? ` · ${it.crew} pers` : ""}</span><button type="button" data-dydel="${it.id}" title="Ta bort">✕</button></div>`).join("") : `<div class="r">Inga markeringar för ${l3day.show === "all" ? "projektet" : l3day.day}.</div>`;
+  let ed = "";
+  if (sel) {
+    const U = l3dayUes(), eff = l3dayCol(sel), hex = /^#[0-9a-f]{6}$/i.test(eff) ? eff : "#2563eb", kind = sel.kind === "pin" ? "Markör" : sel.kind === "area" ? "Område" : "Linje", meas = sel.kind === "area" ? ` · ${Math.round(l3dayArea(sel.pts))} m²` : sel.kind === "pen" ? ` · ${Math.round(l3dayPathLen(sel.pts, false))} m` : "";
+    ed = `<div class="dyed"><div class="hd2"><b>${nr(sel)}. ${kind}${meas}</b><span style="flex:1"></span><button type="button" data-dyzoom title="Flyg dit i 3D">⌖ Visa</button></div>
+      <label>Text<input type="text" data-f="text" value="${escHtml(sel.text || "")}" placeholder="t.ex. Gjuter platta B"></label>
+      <label>Info<textarea data-f="info" rows="3" placeholder="Fri info: material, risker, kontakt, ordning …">${escHtml(sel.info || "")}</textarea></label>
+      <div class="g2"><label>Personer<input type="number" min="0" step="1" data-f="crew" value="${sel.crew || ""}"></label><label>Tid<input type="text" data-f="time" value="${escHtml(sel.time || "")}" placeholder="07:00–16:00"></label></div>
+      <div class="g2"><label>Kategori<select data-f="cat">${Object.entries(L3DAY_CATS).map(([k, v]) => `<option value="${k}"${sel.cat === k ? " selected" : ""}>${v[0]}</option>`).join("")}</select></label><label>Dag<input type="date" data-f="day" value="${escHtml(sel.day || "")}"></label></div>
+      <label>Entreprenör<select data-f="ue"><option value="">(ingen)</option>${U.map(u => `<option value="${escHtml(u.id)}"${sel.ue === u.id ? " selected" : ""}>${escHtml(ueShort(u))} – ${escHtml(u.name || "")}</option>`).join("")}</select></label>
+      <div class="g2"><label>Färg<input type="color" data-f="col" value="${hex}"></label><label>&nbsp;<button type="button" data-dyauto${sel.col ? "" : " disabled"}>Auto</button></label></div></div>`;
+  }
+  box.innerHTML = rows + ed;
   box.querySelectorAll("[data-dydel]").forEach(b => { b.onclick = e => { e.stopPropagation(); l3dayRemove(b.dataset.dydel); }; });
-  box.querySelectorAll("[data-dyid]").forEach(r => { r.onclick = () => { const it = l3day.items.find(x => x.id === r.dataset.dyid); if (!it) return; l3day.sel = it.id; const [x, y] = l3dayAnchor(it); if (typeof l3spGoTo === "function") l3spGoTo(x, y); l3dayBuild(); l3dayBarSync(); }; r.ondblclick = () => l3dayEdit(r.dataset.dyid); });
+  box.querySelectorAll("[data-dyid]").forEach(r => { r.onclick = () => { const it = l3day.items.find(x => x.id === r.dataset.dyid); if (!it) return; l3day.sel = it.id; l3dayBuild(); l3dayBarSync(); l3sp.ovDirty = true; l3sp.key = ""; }; r.ondblclick = () => { const it = l3day.items.find(x => x.id === r.dataset.dyid); if (it && typeof l3spGoTo === "function") { const [x, y] = l3dayAnchor(it); l3spGoTo(x, y); } }; });
+  if (!sel) return;
+  const z = box.querySelector("[data-dyzoom]"); if (z) z.onclick = () => { const [x, y] = l3dayAnchor(sel); if (typeof l3spGoTo === "function") l3spGoTo(x, y); };
+  const au = box.querySelector("[data-dyauto]"); if (au) au.onclick = () => l3dayPatch(sel.id, { col: undefined });
+  box.querySelectorAll("[data-f]").forEach(f => { f.addEventListener("keydown", e => { e.stopPropagation(); if (e.key === "Enter" && f.tagName !== "TEXTAREA") f.blur(); }); f.onchange = () => {
+    const k = f.dataset.f, v = f.value;
+    if (k === "crew") l3dayPatch(sel.id, { crew: Number(v) > 0 ? Number(v) : undefined });
+    else if (k === "ue") { const u = l3dayUes().find(q => q.id === v); l3dayPatch(sel.id, u ? { ue: u.id, ueShort: ueShort(u), ueName: u.name || "", ueCol: ueColor(u) } : { ue: undefined, ueShort: undefined, ueName: undefined, ueCol: undefined }); }
+    else if (k === "day") { if (v) l3dayPatch(sel.id, { day: v }); }
+    else l3dayPatch(sel.id, { [k]: String(v).trim() === "" ? undefined : v });
+  }; });
 }
 function l3dayOpenBar() {
   const el = l3sp.el; if (!el || l3day.bar) return;

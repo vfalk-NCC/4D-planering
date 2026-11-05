@@ -169,6 +169,26 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (ifc.n < 4 || (T.match(/4D-dagsplan'/g) || []).length < 4 || !/IFCBUILDINGELEMENTPROXY/.test(T) || !/742C/.test(T) || !/HAV/.test(T) || !/Entrepren/.test(T) || !/IFCTRIANGULATEDFACESET/.test(T) || !/IFCRECTANGLEPROFILEDEF/.test(T)) fail('IFC-filen ska ha skyltar med info: ' + JSON.stringify({ n: ifc.n, len: T.length, proxies: (T.match(/4D-dagsplan'/g) || []).length, bep: /IFCBUILDINGELEMENTPROXY/.test(T), act: /742C/.test(T), hav: /HAV/.test(T), ent: /Entrepren/.test(T), tri: /IFCTRIANGULATEDFACESET/.test(T), rect: /IFCRECTANGLEPROFILEDEF/.test(T), sample: (T.match(/IFCBUILDINGELEMENTPROXY[^;]{0,160}/) || [''])[0] }));
   if (process.env.PROF) { const L = T.split('\n').filter(l => /IFCCARTESIANPOINTLIST3D/.test(l)).map(l => l.length).sort((a, b) => b - a); console.log('PROF', T.length, L.length, L.slice(0, 8).join(','), L.reduce((a, b) => a + b, 0)); }
   console.log('OK: mushjulet panorerar, entreprenör och Gantt-aktivitet väljs, skyltar med info och IFC till Trimble Connect', JSON.stringify({ file: ifc.calls[0][2], n: ifc.n, kB: Math.round(T.length / 1000) }));
+  // 6c) Lista → markera en rad → skriv in info och redigera
+  await page.evaluate(() => { l3day.sel = null; }); await page.click('#dyList'); await page.waitForSelector('#spDayList .r');
+  const lastId = await page.evaluate(() => { const rows = [...document.querySelectorAll('#spDayList .r[data-dyid]')]; return rows[rows.length - 1].dataset.dyid; });
+  await page.click(`#spDayList .r[data-dyid="${lastId}"]`); await page.waitForSelector('#spDayList .dyed');
+  await page.fill('#spDayList [data-f="text"]', 'Gjutning platta C'); await page.press('#spDayList [data-f="text"]', 'Enter');
+  await page.fill('#spDayList [data-f="info"]', 'Betongpump från norr. Spärra vägen 06:30–09:00. Kontakt: Anna 070-123 45 67'); await page.evaluate(() => document.querySelector('#spDayList [data-f="info"]').blur());
+  await page.fill('#spDayList [data-f="crew"]', '9'); await page.press('#spDayList [data-f="crew"]', 'Enter');
+  await page.fill('#spDayList [data-f="time"]', '06:30–14:00'); await page.press('#spDayList [data-f="time"]', 'Enter');
+  await page.selectOption('#spDayList [data-f="cat"]', 'spar'); await page.selectOption('#spDayList [data-f="ue"]', 'ue-hav');
+  await page.evaluate(() => { const c = document.querySelector('#spDayList [data-f="col"]'); c.value = '#7c3aed'; c.dispatchEvent(new Event('change', { bubbles: true })); });
+  const ed = await page.evaluate(id => { const it = l3day.items.find(x => x.id === id); return { text: it.text, info: it.info, crew: it.crew, time: it.time, cat: it.cat, ue: it.ueShort, col: it.col, label: l3day.labels.get(id) && l3day.labels.get(id).textContent, still: !!document.querySelector('#spDayList .dyed') }; }, lastId);
+  if (ed.text !== 'Gjutning platta C' || !/Betongpump/.test(ed.info) || ed.crew !== 9 || ed.time !== '06:30–14:00' || ed.cat !== 'spar' || ed.ue !== 'HAV' || ed.col !== '#7c3aed' || !/Gjutning platta C/.test(ed.label) || !/Betongpump/.test(ed.label) || !ed.still) fail('Redigera markering i listan: ' + JSON.stringify(ed));
+  await page.click('[data-dyauto]'); if ((await page.evaluate(id => l3day.items.find(x => x.id === id).col, lastId)) !== undefined) fail('Auto i listan ska ta bort egen färg');
+  await page.evaluate(() => l3Undo()); await page.waitForTimeout(80);
+  if ((await page.evaluate(id => l3day.items.find(x => x.id === id).col, lastId)) !== '#7c3aed') fail('Ångra ska ta tillbaka färgen');
+  const txt2 = await page.evaluate(() => l3dayText()); if (!/Gjutning platta C \(9 pers\) 06:30–14:00/.test(txt2) || !/Betongpump/.test(txt2)) fail('Info och tid ska med i texten: ' + txt2);
+  const ifc2 = await page.evaluate(() => { const r = l3dayIfcBuild(l3dayList()); return { info: /Betongpump/.test(r.text) || /Betongp/.test(r.text), prop: /'Info'/.test(r.text) }; }); if (!ifc2.prop) fail('Info ska med som egenskap i IFC: ' + JSON.stringify(ifc2));
+  if (process.env.SLSHOT2) await page.screenshot({ path: process.env.SLSHOT2 });
+  await page.click('#dyList');
+  console.log('OK: markera en rad i listan och skriv in/redigera info, personer, tid, kategori, entreprenör och färg (med ångra)');
   // 7) 3D av/på och att allt sparas i projektet och läses tillbaka
   await page.selectOption('#dyShow', 'day'); await page.evaluate(() => { l3SetPref('dayShow3d', false); l3dayBuild(); });
   if ((await page.evaluate(() => l3day.group.visible)) !== false) fail('3D av ska dölja dagsplaneringen');
