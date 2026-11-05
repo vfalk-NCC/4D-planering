@@ -35,6 +35,7 @@ function openObjMarkPop(o) {
     <span class="muted omb-state">${free ? (o.moved ? "Flyttad – dra den dit du vill" : "Dra pricken dit du vill") : unlocked ? "Upplåst – dra pricken" : o.moved ? "Flyttad, låst" : "Låst"}</span>
     ${free ? "" : unlocked ? `<button type="button" class="om-lock primary">🔒 Lås</button>` : `<button type="button" class="om-unlock" title="Lås upp så att pricken kan dras">🔓 Lås upp och flytta</button>`}
     ${o.moved ? `<button type="button" class="om-reset" title="Flytta tillbaka pricken till objektens eget läge">↺ Återställ</button>` : ""}
+    ${objOriginMoved(o) ? `<button type="button" class="om-reset-orig" title="Flytta tillbaka objektets läge (den lilla mörka pricken) dit det låg från början">↺ Objektets läge</button>` : ""}
     <button type="button" class="om-close icon ghost" title="Stäng">✕</button>`;
   pop.classList.remove("hidden");
   const q = c => pop.querySelector(c);
@@ -42,17 +43,51 @@ function openObjMarkPop(o) {
   q(".om-close").onclick = close;
   const un = q(".om-unlock"); if (un) un.onclick = () => { objMarkUnlocked.add(o.fam); renderZones(); openObjMarkPop(o); setSaveStatus("🔓 Upplåst – dra pricken dit du vill."); };
   const lk = q(".om-lock"); if (lk) lk.onclick = () => { objMarkUnlocked.delete(o.fam); renderZones(); close(); setSaveStatus("🔒 Markeringen är låst."); };
+  const ro = q(".om-reset-orig"); if (ro) ro.onclick = () => { close(); objResetOrigin(o); };
   const rs = q(".om-reset"); if (rs) rs.onclick = () => {
     const pos = { ...objMarks() }; delete pos[o.fam];
     objMarkUnlocked.delete(o.fam);
     saveObjMarks(pos); close(); setSaveStatus("↺ Markeringen är tillbaka på objektens läge och låst – Ctrl+Z ångrar.");
   };
 }
+/* Objektets eget läge (den lilla mörka pricken i änden på den streckade linjen när en markering är flyttad) kan dras (Victor 2026-11-05: "jag vill kunna flytta denna punkten").
+   Skriver nytt x/y på objektets position (alla objekt i markeringen flyttas lika mycket) och sparar det ursprungliga läget (ox/oy) så att ↺ Objektets läge lägger tillbaka det. Ctrl+Z ångrar. */
+let objOriginDrag = null;
+const objMembersOf = o => (o.members && o.members.length ? o.members : [o.it]);
+function objOriginMoved(o) { return objMembersOf(o).some(m => { const p = positions.find(q => q.id === m.id); return p && p.ox != null; }); }
+function objOriginHit(e) {
+  const pt = stagePoint(e), r = Math.max(7, (typeof objMinPx === "number" ? objMinPx : 7) * 0.9);
+  for (const o of objectShapesInPdf() || []) { if (!o.moved || !o.origin) continue; const q = toPx(o.origin); if (Math.hypot(q[0] - pt[0], q[1] - pt[1]) <= r) return o; }
+  return null;
+}
+async function objWritePositions(rows, msg) { const by = new Map(rows.map(r => [r.id, r])); return objGhWrite(token, dataPath("plan_item_positions.json"), arr => (Array.isArray(arr) ? arr : []).map(p => by.has(p.id) ? { ...p, ...by.get(p.id) } : p), msg); }
+async function objMoveOrigin(o, pdf0, pdf1) {
+  const m0 = pdfToModel(pdf0), m1 = pdfToModel(pdf1), dx = Math.round((m1[0] - m0[0]) * 1000) / 1000, dy = Math.round((m1[1] - m0[1]) * 1000) / 1000;
+  const rows = objMembersOf(o).map(m => positions.find(q => q.id === m.id)).filter(Boolean); if (!rows.length || (!dx && !dy)) return;
+  const before = rows.map(r => ({ id: r.id, x: r.x, y: r.y, ox: r.ox, oy: r.oy, manual: r.manual })), r3 = v => Math.round(v * 1000) / 1000;
+  rows.forEach(r => { if (r.ox == null) { r.ox = r.x; r.oy = r.y; } r.x = r3(r.x + dx); r.y = r3(r.y + dy); r.manual = true; });
+  objInvalidate(); renderZones();
+  const after = rows.map(r => ({ id: r.id, x: r.x, y: r.y, ox: r.ox, oy: r.oy, manual: true }));
+  objStatusUndoStack.push({ label: "flytt av objektets läge", undo: async () => { rows.forEach((r, i) => { Object.assign(r, before[i]); if (before[i].ox === undefined) { delete r.ox; delete r.oy; } if (before[i].manual === undefined) delete r.manual; }); objInvalidate(); renderZones(); await objWritePositions(before, "Lägesplan: ångra flytt av objektets läge"); } });
+  try { await objWritePositions(after, `Lägesplan: flytta objektets läge (${rows.length} st)`); setSaveStatus("📍 Objektets läge flyttat – klicka på pricken och tryck ↺ Objektets läge för att lägga tillbaka det (Ctrl+Z ångrar)."); }
+  catch (e) { rows.forEach((r, i) => { Object.assign(r, before[i]); if (before[i].ox === undefined) { delete r.ox; delete r.oy; } }); objStatusUndoStack.pop(); objInvalidate(); renderZones(); setSaveStatus("⚠ Kunde inte spara läget: " + e.message); }
+}
+async function objResetOrigin(o) {
+  const rows = objMembersOf(o).map(m => positions.find(q => q.id === m.id)).filter(r => r && r.ox != null); if (!rows.length) return;
+  const before = rows.map(r => ({ id: r.id, x: r.x, y: r.y, ox: r.ox, oy: r.oy }));
+  rows.forEach(r => { r.x = r.ox; r.y = r.oy; delete r.ox; delete r.oy; });
+  objInvalidate(); renderZones();
+  const after = rows.map(r => ({ id: r.id, x: r.x, y: r.y, ox: null, oy: null }));
+  objStatusUndoStack.push({ label: "återställning av objektets läge", undo: async () => { rows.forEach((r, i) => Object.assign(r, before[i])); objInvalidate(); renderZones(); await objWritePositions(before, "Lägesplan: ångra återställning"); } });
+  try { await objWritePositions(after, "Lägesplan: återställ objektets läge"); setSaveStatus("↺ Objektets läge är tillbaka där det låg från början (Ctrl+Z ångrar)."); }
+  catch (e) { setSaveStatus("⚠ Kunde inte spara: " + e.message); }
+}
 /* Mousedown på planen (från lagesplan.js): dra en upplåst prick. */
 function objMarkPointerDown(e) {
   if (e.button !== 0 || !plan || !plan.calib) return false;
   const anyFree = typeof objIsFree === "function" && items.some(objIsFree);   // egna aktiviteter (okopplade) går alltid att dra
   if (!objMarkUnlocked.size && !anyFree && !objMoveFree()) return false;
+  if (objMoveFree() || objMarkUnlocked.size) { const oo = objOriginHit(e); if (oo) { e.preventDefault(); objOriginDrag = { o: oo, sx: e.clientX, sy: e.clientY, moved: false, start: stagePoint(e), c0: toPx(oo.origin), pdf0: oo.origin.slice() }; return true; } }
   const o = objectsAt(toPdf(stagePoint(e))).find(x => objMoveFree() || objMarkUnlocked.has(x.fam) || (anyFree && (x.members || [x.it]).length === 1 && objIsFree(x.it)));
   if (!o) return false;
   e.preventDefault();
@@ -60,6 +95,8 @@ function objMarkPointerDown(e) {
   return true;
 }
 window.addEventListener("mousemove", e => {
+  const od = objOriginDrag;
+  if (od) { if (!od.moved && Math.hypot(e.clientX - od.sx, e.clientY - od.sy) < 4) return; od.moved = true; const p = stagePoint(e); od.pdf = toPdf([od.c0[0] + p[0] - od.start[0], od.c0[1] + p[1] - od.start[1]]); od.o.origin = od.pdf; renderZonesSoon(); return; }
   const d = objMarkDrag;
   if (!d) return;
   if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 4) return;
@@ -72,6 +109,8 @@ window.addEventListener("mousemove", e => {
   renderZonesSoon();
 });
 window.addEventListener("mouseup", () => {
+  const od = objOriginDrag;
+  if (od) { objOriginDrag = null; if (!od.moved) { openObjMarkPop(od.o); return; } objMoveOrigin(od.o, od.pdf0, od.pdf); return; }
   const d = objMarkDrag;
   if (!d) return;
   objMarkDrag = null;

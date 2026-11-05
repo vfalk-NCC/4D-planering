@@ -118,6 +118,22 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   if (!cnt.on || cnt.off || !cnt.back) fail('Antalet i prickarna ska kunna släckas och tändas: ' + JSON.stringify(cnt));
   console.log('OK: fri flytt av prickar och av/på för antalet i prickarna');
 
+  // 3c) Objektets eget läge (den lilla mörka pricken när markeringen är flyttad) kan dras och återställas
+  await page.check('#objMoveFree'); await page.evaluate(() => { view.tx = 0; view.ty = 0; applyView(); });
+  const o0 = await page.evaluate(f => { const sh = objectShapesInPdf().find(o => o.fam === f); const ids = (sh.members || [sh.it]).map(m => m.id); const pr = positions.find(q => q.id === ids[0]); return { moved: sh.moved, origin: sh.origin.slice(), x: pr.x, y: pr.y }; }, fam);
+  if (!o0.moved) fail('Förutsättning: markeringen ska vara flyttad');
+  await page.mouse.move(vb.x + o0.origin[0], vb.y + o0.origin[1]); await page.mouse.down(); await page.mouse.move(vb.x + o0.origin[0] + 30, vb.y + o0.origin[1] + 20, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(400);
+  const o1 = await page.evaluate(f => { const sh = objectShapesInPdf().find(o => o.fam === f); const ids = (sh.members || [sh.it]).map(m => m.id); const pr = positions.find(q => q.id === ids[0]); return { origin: sh.origin.slice(), center: sh.center.slice(), x: pr.x, y: pr.y, ox: pr.ox, oy: pr.oy, manual: pr.manual }; }, fam);
+  if (Math.abs(o1.origin[0] - (o0.origin[0] + 30)) > 2 || Math.abs(o1.origin[1] - (o0.origin[1] + 20)) > 2 || o1.ox !== o0.x || o1.oy !== o0.y || !o1.manual || Math.abs(o1.center[0] - 190) > 2) fail('Objektets läge ska följa draget och originalet sparas (ox/oy), markeringen ligger kvar: ' + JSON.stringify({ o0, o1 }));
+  const savedPos = JSON.parse(store.get(`projects/${PID}/plan_item_positions.json`) || '[]').find(q => q.ox != null);
+  if (!savedPos) fail('Nytt läge ska sparas i plan_item_positions.json');
+  await page.mouse.click(vb.x + o1.center[0], vb.y + o1.center[1]); await page.waitForTimeout(200);
+  if (!(await page.isVisible('#objMarkBar .om-reset-orig'))) fail('↺ Objektets läge ska finnas i listen');
+  await page.click('#objMarkBar .om-reset-orig'); await page.waitForTimeout(400);
+  const o2 = await page.evaluate(f => { const sh = objectShapesInPdf().find(o => o.fam === f); const ids = (sh.members || [sh.it]).map(m => m.id); const pr = positions.find(q => q.id === ids[0]); return { origin: sh.origin.slice(), x: pr.x, ox: pr.ox }; }, fam);
+  if (o2.x !== o0.x || o2.ox != null || Math.abs(o2.origin[0] - o0.origin[0]) > 1) fail('↺ Objektets läge ska lägga tillbaka läget: ' + JSON.stringify({ o0, o2 }));
+  console.log('OK: objektets eget läge kan dras, sparas och återställas');
+
   // 4) Skarpt vid inzoomning: lagren ritas i skärmens upplösning för det synliga området; export i grundupplösning.
   await page.evaluate(() => { const pc = $('pdfCanvas'); pc.width = 1000; pc.height = 800; });
   const zoomed = await page.evaluate(() => {
