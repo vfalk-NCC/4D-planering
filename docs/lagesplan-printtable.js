@@ -29,6 +29,7 @@ function ptRows(el) {
           if (typeof isRect === "function" && isRect(x)) { const g = rectGeom(x); size = `${ptNum(g.w, 1)} × ${ptNum(g.h, 1)} m`; area = g.w * g.h; }
           else if (x.type === "crane") size = `R ${ptNum(typeof craneRadius === "function" ? craneRadius(x) : x.radius, 0)} m`;
           else if ((x.type === "fence" || x.type === "route") && x.pts) size = `${ptNum(polyLength(x.pts), 0)} m`;
+          else if (x.type === "scaffold" && x.pts) size = `${ptNum(polyLength(x.pts), 0)} m × ${ptNum(Number(x.h) || 8, 0)} m`;
           else if (x.type === "barrier" && x.pts) { area = polyAreaM(x.pts); size = `${ptNum(polyLength([...x.pts, x.pts[0]]), 0)} m omkrets`; }
           else if (x.type === "gate") size = `${ptNum(Number(x.w) || 5, 1)} m`;
         } catch (e) { /* utan mått */ }

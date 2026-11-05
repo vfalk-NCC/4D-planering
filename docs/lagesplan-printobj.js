@@ -40,7 +40,7 @@ function prObjAt(el, mx, my) {
     const vis = siteItems.filter(x => siteShown(x)).slice().reverse();
     for (const x of vis) {
       if (x.type === "pdfobj" || isRect(x) || x.type === "barrier") { if (pointInPoly(m, sitePoints(x))) return { id: x.id, name: x.name || (SITE_KINDS[x.type] || {}).label || x.type, model: m }; }
-      else if (x.type === "fence" || x.type === "route" || x.type === "sketch") { const P = x.pts; for (let i = 1; i < P.length; i++) if (prSegDist(m, P[i - 1], P[i]) < tol) return { id: x.id, name: x.name || (SITE_KINDS[x.type] || {}).label, model: m }; }
+      else if (x.type === "fence" || x.type === "route" || x.type === "sketch" || x.type === "scaffold") { const P = x.pts; for (let i = 1; i < P.length; i++) if (prSegDist(m, P[i - 1], P[i]) < tol) return { id: x.id, name: x.name || (SITE_KINDS[x.type] || {}).label, model: m }; }
       else if (x.type === "note") { const [a, t] = x.pts; if (Math.hypot(m[0] - t[0], m[1] - t[1]) < tol * 4 || prSegDist(m, a, t) < tol) return { id: x.id, name: x.name || "Notering", model: m }; }
       else if (x.pts && x.pts[0]) { const c = x.pts[0]; if (Math.hypot(m[0] - c[0], m[1] - c[1]) < tol * 4) return { id: x.id, name: x.name || (SITE_KINDS[x.type] || {}).label || x.type, model: m }; }
     }

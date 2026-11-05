@@ -34,6 +34,7 @@ const SITE_KINDS = {
   fence:   { label: "Stängsel",    icon: "〰", clicks: 0 },  // 0 = valfritt antal, dubbelklick avslutar
   barrier: { label: "Avspärrning", icon: "⛔", clicks: 0 },
   route:   { label: "Transportväg", icon: "➡", clicks: 0 },
+  scaffold: { label: "Ställning",  icon: "🪜", clicks: 0 },   // ritas längs fasaden (lagesplan-layers.js): bredd, höjd och fack styr utseendet
   symbol:  { label: "Symbol",      icon: "🧩", clicks: 1 },
   sketch:  { label: "Frihand",     icon: "✏️", clicks: -1 }, // ritas med drag (fingret/musen), sparas per drag
   // Dagsplanering (lagesplan-daily.js): gäller per dag (från–till), ett klick placerar.
@@ -943,6 +944,7 @@ function drawOrthoForExport(ctx, ox, oy, scale, blend) {
 const SITE_DEFAULT_COLOR = { crew: "#0f766e", delivery: "#475569", lift: "#d97706", sketch: "#e11d48", note: "#b45309", crane: "#d97706", shed: "#1d4ed8", storage: "#57534e", gate: "#16a34a", fence: "#374151", barrier: "#dc2626", route: "#2563eb", symbol: "#1d4ed8" };
 const SITE_DEFAULT_DASH = { crew: "solid", delivery: "solid", lift: "dashed", sketch: "solid", note: "solid", crane: "dashed", shed: "solid", storage: "solid", gate: "solid", fence: "dashed", barrier: "dashed", route: "solid", symbol: "solid" };
 const defaultColorOf = x => (x.type === "symbol" && SYMBOLS[x.sym] && SYMBOLS[x.sym].color) || SITE_DEFAULT_COLOR[x.type];
+SITE_DEFAULT_COLOR.scaffold = "#b45309"; SITE_DEFAULT_DASH.scaffold = "solid";
 const MONTHS_SV = ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
 
 function siteVisibleAtDate(x) {
@@ -1150,6 +1152,41 @@ function strokePath(ctx, P, closed, st) {
   ctx.strokeStyle = st.color; ctx.lineWidth = st.lw; ctx.lineCap = st.cap; ctx.setLineDash(st.dash); ctx.stroke(); ctx.setLineDash([]);
 }
 
+/* Ställning i plan (Victor 2026-11-05: "en snygg, smart illustration för ställningar där jag kan rita ut i plan"): ett band längs fasaden med bredd = ställningens bredd, stolpar
+   (prickar) i varje fackgräns på båda sidor, tvärstag, diagonaler växelvis och en tydlig kant. Längd, höjd, fack och antal våningar skrivs ut. Allt ritas i verklig skala. */
+function scaffoldInfo(x) {
+  const B = Math.max(0.3, Number(x.w) || 0.73), H = Math.max(1, Number(x.h) || 8), fack = Math.max(0.7, Number(x.fack) || 2.57), L = polyLength(x.pts);
+  let bays = 0; for (let i = 1; i < x.pts.length; i++) bays += Math.max(1, Math.round(Math.hypot(x.pts[i][0] - x.pts[i - 1][0], x.pts[i][1] - x.pts[i - 1][1]) / fack));
+  return { B, H, fack, L, bays, lifts: Math.max(1, Math.ceil(H / 2)), area: L * H };
+}
+function drawScaffold2D(ctx, x, st, ppm, dates, lock) {
+  const P = x.pts.map(mToPx), I = scaffoldInfo(x), wpx = Math.max(I.B * ppm, st.lw * 3), hw = wpx / 2, col = st.color;
+  ctx.save(); ctx.lineJoin = "miter"; ctx.lineCap = "butt";
+  // bandet (fyllning) och den mörka kanten
+  ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.strokeStyle = hexToRgba("#facc15", 0.55); ctx.lineWidth = wpx; ctx.stroke();
+  ctx.strokeStyle = hexToRgba(col, 0.85); ctx.lineWidth = Math.max(1, st.lw * 0.7);
+  for (let i = 1; i < P.length; i++) {
+    const a = P[i - 1], b = P[i], dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy); if (len < 0.5) continue;
+    const ux = dx / len, uy = dy / len, nx = -uy * hw, ny = ux * hw, n = Math.max(1, Math.round(len / (I.fack * ppm))), bay = len / n;
+    // långsidor
+    ctx.beginPath(); ctx.moveTo(a[0] + nx, a[1] + ny); ctx.lineTo(b[0] + nx, b[1] + ny); ctx.moveTo(a[0] - nx, a[1] - ny); ctx.lineTo(b[0] - nx, b[1] - ny); ctx.stroke();
+    // tvärstag och diagonaler per fack
+    ctx.lineWidth = Math.max(0.8, st.lw * 0.45);
+    for (let k = 0; k <= n; k++) { const cx = a[0] + ux * bay * k, cy = a[1] + uy * bay * k; ctx.beginPath(); ctx.moveTo(cx + nx, cy + ny); ctx.lineTo(cx - nx, cy - ny); ctx.stroke(); }
+    ctx.strokeStyle = hexToRgba(col, 0.45);
+    for (let k = 0; k < n; k++) { const c0 = [a[0] + ux * bay * k, a[1] + uy * bay * k], c1 = [c0[0] + ux * bay, c0[1] + uy * bay], f = k % 2 ? 1 : -1; ctx.beginPath(); ctx.moveTo(c0[0] + nx * f, c0[1] + ny * f); ctx.lineTo(c1[0] - nx * f, c1[1] - ny * f); ctx.stroke(); }
+    ctx.strokeStyle = hexToRgba(col, 0.85); ctx.lineWidth = Math.max(1, st.lw * 0.7);
+    // stolpar (rosetter): prickar i fackgränserna på båda sidor
+    const r = Math.max(1.3, Math.min(hw * 0.34, st.lw * 0.9));
+    ctx.fillStyle = "#1f2937";
+    for (let k = 0; k <= n; k++) { const cx = a[0] + ux * bay * k, cy = a[1] + uy * bay * k; [[nx, ny], [-nx, -ny]].forEach(([ox, oy]) => { ctx.beginPath(); ctx.arc(cx + ox, cy + oy, r, 0, Math.PI * 2); ctx.fill(); }); }
+  }
+  // gavlar: tjockare tvärlinje i ändarna
+  [[P[0], P[1]], [P[P.length - 1], P[P.length - 2]]].forEach(([e, f]) => { const dx = f[0] - e[0], dy = f[1] - e[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l * hw, ny = dx / l * hw; ctx.lineWidth = Math.max(2, st.lw * 1.4); ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(e[0] + nx, e[1] + ny); ctx.lineTo(e[0] - nx, e[1] - ny); ctx.stroke(); });
+  ctx.restore();
+  const mi = Math.floor((P.length - 1) / 2), m = P[mi], nn = P[mi + 1] || m;
+  siteLabel(ctx, x, [(m[0] + nn[0]) / 2, (m[1] + nn[1]) / 2 - st.fs * 1.6], `🪜 ${x.name || "Ställning"}${lock}\n${fmtM(I.L)} m × ${fmtM(I.H)} m · ${I.bays} fack · ${I.lifts} vån`, st.fs, "#fff", "#111827", col, dates);
+}
 function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
   const st = siteStyle(x, fontPx);
   const dates = datesText(x);
@@ -1267,6 +1304,8 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
     });
     const mi = Math.floor((P.length - 1) / 2), m = P[mi], n = P[mi + 1] || m;
     siteLabel(ctx, x, [(m[0] + n[0]) / 2, (m[1] + n[1]) / 2 - st.fs * 1.4], `➡ ${x.name || "Transportväg"} · ${fmtM(polyLength(x.pts))} m${x.twoWay ? " · dubbelriktad" : ""}${lock}${conflicts.length ? "\n⚠ korsar avspärrning" : ""}`, st.fs, conflicts.length ? "#fef2f2" : "#fff", conflicts.length ? "#b91c1c" : "#111827", conflicts.length ? "#dc2626" : st.color, dates);
+  } else if (x.type === "scaffold") {
+    drawScaffold2D(ctx, x, st, ppm, dates, lock);
   } else if (x.type === "barrier") {
     const P = x.pts.map(mToPx);
     ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
@@ -1278,7 +1317,7 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
   if (selected && x.type !== "note") {
     const P = sitePoints(x).map(mToPx);
     if (x.type === "crane") { const c = P[0], r = craneRadius(x) * ppm; ctx.beginPath(); ctx.arc(c[0], c[1], r, 0, Math.PI * 2); }
-    else { ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); if (x.type !== "fence" && x.type !== "gate" && x.type !== "route") ctx.closePath(); }
+    else { ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); if (x.type !== "fence" && x.type !== "gate" && x.type !== "route" && x.type !== "scaffold") ctx.closePath(); }
     ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = Math.max(1.5, fontPx / 10); ctx.setLineDash([fontPx / 2, fontPx / 3]); ctx.stroke(); ctx.setLineDash([]);
   }
 }
@@ -1437,7 +1476,7 @@ function snapPdf(pdfPt, e, excludeId) {
     const P = sitePoints(x).map(p => modelToPdf(p[0], p[1]));
     P.forEach(p => pts.push(p));
     for (let i = 1; i < P.length; i++) segs.push([P[i - 1], P[i]]);
-    if (x.type !== "fence" && x.type !== "route" && x.type !== "note" && P.length > 2) segs.push([P[P.length - 1], P[0]]);
+    if (x.type !== "fence" && x.type !== "route" && x.type !== "scaffold" && x.type !== "note" && P.length > 2) segs.push([P[P.length - 1], P[0]]);
   });
   ((plan && plan.zones) || []).forEach(z => (z.polys || []).forEach(poly => poly.forEach((p, i) => { pts.push(p); segs.push([p, poly[(i + 1) % poly.length]]); })));
   for (const idx of [snapIndex, typeof cadSnapIndex !== "undefined" ? cadSnapIndex : null]) {
@@ -1550,7 +1589,7 @@ function applySiteDrag(d, m) {
   }
   return w;
 }
-const MIN_PTS = { route: 2, fence: 2, barrier: 3 };
+const MIN_PTS = { route: 2, fence: 2, barrier: 3, scaffold: 2 };
 /* Dubbelklick på en punkt i en markerad väg/stängsel/avspärrning tar bort den. */
 function removeVertexAt(pdfPt) {
   const sel = selectedSiteId && siteItems.find(x => x.id === selectedSiteId && siteShown(x));
@@ -1614,6 +1653,7 @@ function updateSiteUi() {
     shed: ["Klicka första hörnet.", "Klicka motstående hörn."], storage: ["Klicka första hörnet.", "Klicka motstående hörn."],
     fence: ["Klicka punkter längs stängslet, dubbelklicka (eller Enter) för att avsluta."],
     route: ["Klicka punkter längs vägen i körriktningen, dubbelklicka (eller Enter) för att avsluta."],
+    scaffold: ["Klicka punkter längs fasaden där ställningen ska stå (ytterkant), dubbelklicka (eller Enter) för att avsluta."],
     symbol: ["Klicka var symbolen ska stå (rotera den sedan med ↻)."],
     barrier: ["Klicka hörnen, dubbelklicka (eller Enter) för att avsluta."],
     crew: ["Klicka (tryck) där laget ska jobba."], delivery: ["Klicka där fordonet ska stå – vrid det sedan med ↻."],
@@ -1633,7 +1673,7 @@ function finishSiteTool() {
   if (["wxday", "wxweek"].includes(siteTool.kind) && typeof finishWxTool === "function") { finishWxTool(); return; }
   const { kind, pts } = siteTool;
   finishSiteTool.sym = siteTool.sym;
-  const min = { fence: 2, barrier: 3, route: 2 }[kind];
+  const min = { fence: 2, barrier: 3, route: 2, scaffold: 2 }[kind];
   if (min && pts.length < min) { alert(`${SITE_KINDS[kind].label} behöver minst ${min} punkter.`); return; }
   stopSiteTool();
   const r3 = v => Math.round(v * 1000) / 1000;
@@ -1650,6 +1690,7 @@ function finishSiteTool() {
   if (kind === "crane") { rec.radius = 40; rec.capacity = ""; rec.name = `Kran ${siteItems.filter(x => x.type === "crane").length + 1}`; }
   if (kind === "gate") { rec.w = 5; rec.rot = 0; }
   if (kind === "route") { rec.w = 4; rec.twoWay = false; }
+  if (kind === "scaffold") { rec.w = 0.73; rec.h = 8; rec.fack = 2.57; rec.name = "Ställning"; }
   openSitePop(rec, true);
 }
 /* Frihand (Victors önskemål 2026-10-01, fältläge på iPad): med verktyget
@@ -1729,9 +1770,9 @@ function siteAt(pdfPt) {
       if (pointInPoly(m, sitePoints(x))) return x;
     } else if (x.type === "pdfobj") {
       if (pointInPoly(m, x.pts)) return x;
-    } else if (x.type === "fence" || x.type === "route" || x.type === "sketch") {
-      const P = x.pts.map(mToPx);
-      for (let i = 1; i < P.length; i++) if (distToSeg(p, P[i - 1], P[i]) < tol) return x;
+    } else if (x.type === "fence" || x.type === "route" || x.type === "sketch" || x.type === "scaffold") {
+      const P = x.pts.map(mToPx), tl = x.type === "scaffold" ? tol + (Number(x.w) || 0.73) * pxPerMeter() / 2 : tol;
+      for (let i = 1; i < P.length; i++) if (distToSeg(p, P[i - 1], P[i]) < tl) return x;
     }
   }
   return null;
@@ -1766,6 +1807,7 @@ function openSitePop(rec, isNew) {
     : `<input type="text" class="sp-name" value="${escHtml(rec.name || "")}" placeholder="Namn: ${escHtml(symDef ? symDef.label : k.label)}" />`}
     ${rec.type === "crane" ? `<div class="row2"><div><label>Räckvidd (m)</label><input type="text" class="sp-radius" value="${escHtml(String(rec.radius ?? 40))}" /></div><div><label>Kapacitet (t)</label><input type="text" class="sp-cap" value="${escHtml(String(rec.capacity ?? ""))}" /></div></div>
       <label>Lyftkurva <span class="muted">(radie:ton, t.ex. 20:5, 30:3.5, 40:2)</span></label><input type="text" class="sp-chart" value="${escHtml(rec.chart || "")}" placeholder="20:5, 40:2" />` : ""}
+    ${rec.type === "scaffold" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-sw" value="${fmtIn(Number(rec.w) || 0.73)}" /></div><div><label>Höjd (m)</label><input type="text" class="sp-sh" value="${fmtIn(Number(rec.h) || 8)}" /></div><div><label>Fack (m)</label><input type="text" class="sp-sf" value="${fmtIn(Number(rec.fack) || 2.57)}" /></div></div>` : ""}
     ${rec.type === "route" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-rw" value="${fmtIn(Number(rec.w) || 4)}" /></div><div><label>&nbsp;</label><label style="display:flex;gap:4px;align-items:center;margin:0;"><input type="checkbox" class="sp-two"${rec.twoWay ? " checked" : ""} style="width:auto;" /> Dubbelriktad</label></div></div>
       <button type="button" class="sp-reverse" style="margin-top:4px;">⇄ Vänd körriktning</button>` : ""}
     ${g ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-w" value="${fmtIn(g.w)}" /></div><div><label>Längd (m)</label><input type="text" class="sp-h" value="${fmtIn(g.h)}" /></div><div><label>Vinkel (°)</label><input type="text" class="sp-rot" value="${Math.round(g.rot * 180 / Math.PI)}" /></div></div>` : ""}
@@ -1789,6 +1831,7 @@ function openSitePop(rec, isNew) {
     <select class="sp-layer">${layers.map(l => `<option value="${escHtml(l)}"${l === layerOf(rec) ? " selected" : ""}>${escHtml(ulName(l))}</option>`).join("")}<option value="__new">＋ Nytt lager…</option></select>
     ${rec.type === "crane" ? `<div class="row2"><div><label>Räckvidd (m)</label><input type="text" class="sp-radius" value="${escHtml(String(rec.radius ?? 40))}" /></div><div><label>Kapacitet (t)</label><input type="text" class="sp-cap" value="${escHtml(String(rec.capacity ?? ""))}" /></div></div>
       <label>Lyftkurva <span class="muted">(radie:ton, t.ex. 20:5, 30:3.5, 40:2)</span></label><input type="text" class="sp-chart" value="${escHtml(rec.chart || "")}" placeholder="20:5, 40:2" />` : ""}
+    ${rec.type === "scaffold" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-sw" value="${fmtIn(Number(rec.w) || 0.73)}" /></div><div><label>Höjd (m)</label><input type="text" class="sp-sh" value="${fmtIn(Number(rec.h) || 8)}" /></div><div><label>Fack (m)</label><input type="text" class="sp-sf" value="${fmtIn(Number(rec.fack) || 2.57)}" /></div></div>` : ""}
     ${rec.type === "route" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-rw" value="${fmtIn(Number(rec.w) || 4)}" /></div><div><label>&nbsp;</label><label style="display:flex;gap:4px;align-items:center;margin:0;"><input type="checkbox" class="sp-two"${rec.twoWay ? " checked" : ""} style="width:auto;" /> Dubbelriktad</label></div></div>
       <button type="button" class="sp-reverse" style="margin-top:4px;">⇄ Vänd körriktning</button>` : ""}
     ${g ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-w" value="${fmtIn(g.w)}" /></div><div><label>Längd (m)</label><input type="text" class="sp-h" value="${fmtIn(g.h)}" /></div><div><label>Vinkel (°)</label><input type="text" class="sp-rot" value="${Math.round(g.rot * 180 / Math.PI)}" /></div></div>` : ""}
@@ -1856,6 +1899,7 @@ function openSitePop(rec, isNew) {
       next.chart = ch.length ? ch.map(c => `${c.r}:${c.t}`).join(", ") : "";
     }
     if (rec.type === "route") { next.w = Math.max(0.5, num(".sp-rw", 4)); next.twoWay = pop.querySelector(".sp-two").checked; }
+    if (rec.type === "scaffold") { next.w = Math.max(0.3, num(".sp-sw", 0.73)); next.h = Math.max(1, num(".sp-sh", 8)); next.fack = Math.max(0.7, num(".sp-sf", 2.57)); }
     if (g) { Object.assign(next, { cx: g.cx, cy: g.cy, w: Math.max(0.1, num(".sp-w", g.w)), h: Math.max(0.1, num(".sp-h", g.h)), rot: num(".sp-rot", 0) * Math.PI / 180 }); delete next.pts; }
     if (rec.type === "gate") { next.w = Math.max(0.1, num(".sp-gw", 5)); next.rot = num(".sp-grot", 0) * Math.PI / 180; }
     if (popPreview) siteItems[siteItems.findIndex(x => x.id === rec.id)] = popPreview.orig; // prev för ångra = originalet
