@@ -66,6 +66,27 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const w = await page.evaluate(async () => { const o = { a: items.find(x => x.id === 'a').progress, d: items.find(x => x.id === 'd').status, date: $('dateInput').value, banner: !!document.getElementById('wkBanner'), view: wk.view }; try { await ghWriteJSON(token, 'projects/p1/x.json', () => [], 'test'); o.writable = true; } catch (e) { o.writable = false; } return o; });
   if (w.a !== 80 || w.d !== 'klar' || w.date !== '2026-11-09' || w.banner || w.view || !w.writable) fail('Avsluta ska återställa planen och skrivningar: ' + JSON.stringify(w));
   console.log('OK: Visa är skrivskyddat och Avsluta återställer status, datum och skrivningar');
+  // 4b) IFC: prickar i veckans färg med egenskaper och kommentarer (de som fanns när veckobilden sparades)
+  gh.set('projects/p1/plan_item_comments.json', JSON.stringify([
+    { id: 'k1', plan_item_id: 'a', author: 'Anna', body: 'Armering klar, väntar på gjutning', created_at: '2026-11-02T08:00:00Z' },
+    { id: 'k2', plan_item_id: 'a', author: 'Bo', body: 'Sen kommentar efter veckobilden', created_at: '2099-01-01T08:00:00Z' }]));
+  await page.evaluate(async () => {
+    plans = [{ id: 'A', name: 'Plan 1', file_path: 'a.pdf', calib: { model: [[6512300, 150100, 0], [6512400, 150100, 0]], pdf: [[0, 0], [1000, 0]] }, zones: [] }];
+    pdfCache.set('A', new Uint8Array([1]).buffer);
+    positions = [{ id: 'a', x: 6512345, y: 150123, z0: 0, z1: 3 }, { id: 'b', x: 6512350, y: 150130, z0: 0, z1: 2 }, { id: 'c', x: 6512355, y: 150125, z0: 0, z1: 4 }, { id: 'd', x: 6512360, y: 150128, z0: 0, z1: 2 }];
+    renderPlanSelect(); await openPlan('A'); $('showObjects').checked = true; invalidateVisible(); invalidatePositions(); renderZones();
+    window.__dl = []; downloadBlob = (blob, name) => { window.__dl.push({ blob, name }); };
+  });
+  await page.click('[data-wk-ifc="2026-W45"]'); await page.waitForTimeout(800);
+  const ifc = await page.evaluate(async () => { const d = window.__dl[0]; return d ? { name: d.name, text: await d.blob.text(), prog: items.find(x => x.id === 'a').progress, view: !!wk.view } : null; });
+  if (!ifc || !/Veckobild/.test(ifc.name) || !/\.ifc$/.test(ifc.name)) fail('IFC-filen ska laddas ned med veckans namn: ' + JSON.stringify(ifc && ifc.name));
+  if (!/Armering klar, v/.test(ifc.text) || /Sen kommentar/.test(ifc.text)) fail('Kommentarer från veckan ska med, senare inte');
+  if (!/IFCEXTRUDEDAREASOLID/.test(ifc.text) || (ifc.text.match(/4D-markering/g) || []).length < 4) fail('Fyra prickar ska med som objekt');
+  if (!/Veckobild/.test(ifc.text) || ifc.prog !== 80 || ifc.view) fail('Exporten ska lämna planen som den var: ' + JSON.stringify({ prog: ifc.prog, view: ifc.view }));
+  // veckans status i filen: Pelare A1 var 40 % den veckan (nu 80 %)
+  if (!/40/.test(ifc.text.split('Framdrift')[1] || '')) fail('Veckans framdrift (40 %) ska stå i filen');
+  console.log('OK: veckobilden exporteras som IFC med prickar, status och kommentarer och lämnar planen orörd', JSON.stringify({ name: ifc.name, kB: Math.round(ifc.text.length / 1000) }));
+
   // 5) CSV, kurva, ta bort
   const csv = await page.evaluate(() => wkSeriesCsv()); if (!/2026-W45;2026-11-02;4;1;1;0;2;35/.test(csv) || !/2026-W46/.test(csv)) fail('CSV: ' + csv);
   if ((await page.evaluate(() => document.getElementById('wkSpark').style.display)) !== 'block') fail('Kurvan ska visas med två veckor');

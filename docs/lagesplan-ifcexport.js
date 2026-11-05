@@ -13,11 +13,12 @@ const IFC_TEXT_H = 0.8, IFC_TEXT_T = 0.5; // texthöjd (i plan), tjocklek (uppå
 function ifcReadDir() { const rr = dxfTextRotation() * Math.PI / 180; return { rx: Math.cos(rr), ry: Math.sin(rr) }; }
 
 /* Bygger IFC-filen för 3D-objekten. Returnerar { text, n } eller null om inga objekt syns. */
-function buildObjectsIfc() {
+function buildObjectsIfc(opts = {}) {
   const marks = objExportMarkers();
   if (!marks.length) return null;
   const at = $("dateInput").value || todayIso();
-  const doc = ifcDoc("4D-planering – " + (plan ? plan.name : ""), "3D-objekt från Lägesplan " + at), E = doc.E;
+  const doc = ifcDoc("4D-planering – " + (plan ? plan.name : ""), opts.title || ("3D-objekt från Lägesplan " + at)), E = doc.E;
+  const cmts = opts.comments || null;   // { plan_item_id: [{ author, body, created_at }] } – kommentarerna följer med som egenskaper och som text under namnet
   // Gemensam geometri: cylindern (samma för alla).
   const prof = E(`IFCCIRCLEPROFILEDEF(.AREA.,$,$,${ifcNum(IFC_CYL_R)})`);
   const zDir = E("IFCDIRECTION((0.,0.,1.))");
@@ -33,21 +34,29 @@ function buildObjectsIfc() {
     // Cylindern i statusfärg.
     const cyl = E(`IFCEXTRUDEDAREASOLID(${prof},$,${zDir},${ifcNum(IFC_CYL_H)})`);
     E(`IFCSTYLEDITEM(${cyl},(${doc.style(mk.ph, phaseColor(mk.ph), PHASE_LABELS[mk.ph] || mk.ph)}),$)`);
-    const it = mk.it, prog = it.status === "klar" ? 100 : (Number(it.progress) || 0);
+    const it = mk.it, cm = cmts ? mk.members.flatMap(m => cmts[m.id] || []).sort((a, b) => (a.created_at < b.created_at ? -1 : 1)) : [], prog = it.status === "klar" ? 100 : (Number(it.progress) || 0);
     const marker = doc.proxy(mk.name || it.object_name || "Objekt", PHASE_LABELS[mk.ph] || mk.ph, "4D-markering", pl, doc.shape(cyl, "SweptSolid"), it.id);
     elems.push(marker);
     // Egenskaperna (syns när man klickar på cylindern).
     doc.props(marker, [["Objekt", it.object_name || ""], ["Aktivitet", it.activity || ""], ["Status", PHASE_LABELS[mk.ph] || mk.ph],
       ["Framdrift %", prog], ["Start", it.start_date || ""], ["Slut", it.end_date || ""], ["Område", it.area || ""],
-      ["Entreprenör", it.contractor || ""], ["Zon", zoneOf(it)], ["Antal objekt", mk.members.length], ["Status per", at], ["4D-ID", it.id]]);
+      ["Entreprenör", it.contractor || ""], ["Zon", zoneOf(it)], ["Antal objekt", mk.members.length], ["Status per", at], ["4D-ID", it.id],
+      ...(opts.tag ? [["Veckobild", opts.tag]] : []), ...cm.slice(0, 8).map((c, k) => [`Kommentar ${k + 1}`, `${(c.created_at || "").slice(0, 10)} ${c.author || ""}: ${c.body || ""}`.trim()]), ...(cm.length ? [["Antal kommentarer", cm.length]] : [])]);
     // 3D-texten (Victors önskemål 2026-10-05): liggande så att den läses uppifrån i planvyn, vänd som
     // Lägesplans vy, bredvid cylindern (täcker den inte uppifrån), 0,5 m tjocka bokstäver uppåt
     // från samma nivå som cylinderns fot.
-    if (!mk.name) return;
-    const mesh = ifcTextSolid(doc, mk.name, { h: IFC_TEXT_H, t: IFC_TEXT_T, rx, ry, start: lay[i].da, across: lay[i].dc + IFC_TEXT_H / 2 });
-    if (mesh) elems.push(doc.proxy(`${mk.name} – text`, "Namn", "4D-text", pl, doc.shape(mesh, "Tessellation"), it.id));
+    if (mk.name) {
+      const mesh = ifcTextSolid(doc, mk.name, { h: IFC_TEXT_H, t: IFC_TEXT_T, rx, ry, start: lay[i].da, across: lay[i].dc + IFC_TEXT_H / 2 });
+      if (mesh) elems.push(doc.proxy(`${mk.name} – text`, "Namn", "4D-text", pl, doc.shape(mesh, "Tessellation"), it.id));
+    }
+    // Senaste kommentaren som liten text under namnet (hela texten finns som egenskap på pricken).
+    if (cm.length) {
+      const last = cm[cm.length - 1], txt = String(last.body || "").replace(/\s+/g, " ").trim().slice(0, 48) + (String(last.body || "").length > 48 ? "…" : ""), ch = IFC_TEXT_H * 0.7;
+      const m2 = txt && ifcTextSolid(doc, txt, { h: ch, t: IFC_TEXT_T * 0.6, rx, ry, start: lay[i].da, across: lay[i].dc - ch * 0.9, style: doc.style("kommentar", "#b45309", "Kommentar") });
+      if (m2) elems.push(doc.proxy(`${mk.name || it.object_name || "Objekt"} – kommentar`, "Kommentar", "4D-kommentar", pl, doc.shape(m2, "Tessellation"), it.id));
+    }
   });
-  return { text: doc.finish(elems, `3D-objekt ${plan ? plan.name : ""} ${at}.ifc`), n: marks.length };
+  return { text: doc.finish(elems, opts.fileName || `3D-objekt ${plan ? plan.name : ""} ${at}.ifc`), n: marks.length };
 }
 
 async function exportObjectsIfc() {

@@ -57,23 +57,53 @@ async function wkDelete(key) {
 async function wkRead(key) { const a = await ghReadJSON(token, wkPath(key + ".json")), s = a && a[0]; if (!s || !Array.isArray(s.rows)) throw new Error("Veckobilden kunde inte läsas."); return s; }
 
 /* ---- Visa (skrivskyddad) ---------------------------------------------------------------------------- */
-async function wkView(key) {
-  if (wk.view) wkEndView();
-  let s; try { s = await wkRead(key); } catch (e) { alert(e.message); return; }
+function wkApply(s) {
   const by = new Map(s.rows.map(r => [r[0], r])), stash = items.map(r => [r, { status: r.status, progress: r.progress, actual_start_date: r.actual_start_date, actual_end_date: r.actual_end_date }]);
-  wk.view = { key, stash, date0: $("dateInput").value, ghw: ghWriteJSON };
+  wk.view = { key: s.key, stash, date0: $("dateInput").value, ghw: ghWriteJSON };
   items.forEach(r => { const q = by.get(r.id); if (q) { r.status = WK_ST_BACK[q[1]] || "planerad"; r.progress = q[2]; r.actual_start_date = q[3] || null; r.actual_end_date = q[4] || null; } else { r.status = "planerad"; r.progress = 0; r.actual_start_date = null; r.actual_end_date = null; } });
   // alla skrivningar spärras tills man avslutar – ändringar under tiden hade annars sparat veckans status som nuläge
   ghWriteJSON = function () { return Promise.reject(new Error("Du tittar på en veckobild (skrivskyddad) – tryck Avsluta först.")); };
   if (s.date) { $("dateInput").value = s.date; if (typeof syncSliderFromDate === "function") syncSliderFromDate(); }
-  wkRefreshPlan(); wkBanner(s);
+  if (typeof invalidateVisible === "function") invalidateVisible();
 }
-function wkEndView() {
+function wkRestore() {
   const v = wk.view; if (!v) return; wk.view = null;
   ghWriteJSON = v.ghw;
   v.stash.forEach(([r, o]) => Object.assign(r, o));
   $("dateInput").value = v.date0; if (typeof syncSliderFromDate === "function") syncSliderFromDate();
-  wkRefreshPlan(); wkBanner(null);
+  if (typeof invalidateVisible === "function") invalidateVisible();
+}
+async function wkView(key) {
+  if (wk.view) wkEndView();
+  let s; try { s = await wkRead(key); } catch (e) { alert(e.message); return; }
+  wkApply(s); wkRefreshPlan(); wkBanner(s);
+}
+function wkEndView() { if (!wk.view) return; wkRestore(); wkRefreshPlan(); wkBanner(null); }
+/* Veckobilden som IFC (Victor 2026-11-05): prickarna i veckans statusfärg med egenskaper, namn och kommentarerna (de som fanns till och med veckans sparning) som egenskaper och text. */
+async function wkExportIfc(key) {
+  if (typeof buildObjectsIfc !== "function") { alert("IFC-exporten är inte inläst."); return; }
+  let s, cm = [];
+  try { s = await wkRead(key); } catch (e) { alert(e.message); return; }
+  try { const a = await ghReadJSON(token, dataPath("plan_item_comments.json")); cm = Array.isArray(a) ? a : []; } catch (e) { console.warn("Kommentarer", e); }
+  const upTo = String(s.saved_at || "9999"), cmts = {};
+  cm.filter(c => c && c.plan_item_id && String(c.created_at || "") <= upTo).forEach(c => { (cmts[c.plan_item_id] = cmts[c.plan_item_id] || []).push(c); });
+  const prev = wk.view, prevKey = prev && prev.key;
+  if (prev && prevKey !== key) wkRestore();
+  const temp = !wk.view; if (temp) wkApply(s);
+  let r, name;
+  try {
+    name = `Veckobild ${wkLabel(key).replace(/\s+/g, " ")} ${s.date || ""} ${plan ? plan.name : ""}.ifc`.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim();
+    r = buildObjectsIfc({ comments: cmts, tag: `${wkLabel(key)} (${s.date || ""})${s.note ? " – " + s.note : ""}`, title: `Veckobild ${wkLabel(key)} ${s.date || ""}${s.note ? " – " + s.note : ""}`, fileName: name });
+  } finally { if (temp) wkRestore(); if (prev && prevKey !== key) { /* den tidigare visningen avslutades av exporten */ wkBanner(null); } wkRefreshPlan(); }
+  if (!r) { alert("Inga prickar att exportera – kalibrera planen, hämta positioner och tänd objekten på planen."); return; }
+  const bytes = new TextEncoder().encode(r.text);
+  downloadBlob(new Blob([bytes], { type: "application/x-step" }), name);
+  const nC = Object.values(cmts).reduce((a, l) => a + l.length, 0);
+  setSaveStatus(`🧊 Veckobild ${wkLabel(key)}: ${r.n} prickar exporterade som IFC${nC ? ` (kommentarer från ${Object.keys(cmts).length} objekt)` : ""}.`);
+  const tc = $("cadExportToTc");
+  if (!tc || !tc.checked || !window.opener || window.opener.closed) return r;
+  try { const res = await askOpener("tcUpload", { folder: DXF_TC_FOLDER, files: [new File([bytes], name, { type: "application/x-step" })] }, 5 * 60 * 1000); setSaveStatus(`🧊 Veckobild ${wkLabel(key)} sparad i Trimble Connect (${res.folder || DXF_TC_FOLDER}).`); } catch (e) { setSaveStatus(`🧊 Nedladdad. ⚠ Kunde inte spara i Trimble Connect: ${e.message}`); }
+  return r;
 }
 function wkRefreshPlan() {
   if (typeof invalidateVisible === "function") invalidateVisible();
@@ -137,12 +167,13 @@ function wkRender() {
     <div id="wkList" style="margin-top:6px">${wk.list.length ? wk.list.map((m, i) => `<div class="wk-r" data-wk="${m.key}" style="border:1px solid rgba(100,116,139,.25);border-radius:10px;padding:6px 8px;margin-top:5px;${wk.view && wk.view.key === m.key ? "background:rgba(245,158,11,.14);border-color:#f59e0b" : ""}">
       <div style="display:flex;gap:6px;align-items:baseline"><b>${escHtml(wkLabel(m.key))}</b><span style="color:#64748b;font-size:11px">${escHtml(m.date || "")}</span><span style="margin-left:auto;font-weight:700">${m.avg} %</span></div>
       <div style="color:#64748b;font-size:11px">${m.klar} klara · ${m.pagar} pågår · ${m.planerad} ej påbörjade${m.by ? " · " + escHtml(m.by) : ""}${m.note ? `<br><i>${escHtml(m.note)}</i>` : ""}</div>
-      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px"><button type="button" data-wk-view="${m.key}" title="Visa planen som den såg ut den veckan (skrivskyddat)">👁 Visa</button>${wk.list[i + 1] ? `<button type="button" data-wk-prev="${m.key}|${wk.list[i + 1].key}" title="Vad har hänt sedan ${escHtml(wkLabel(wk.list[i + 1].key))}">Δ förra</button>` : ""}<button type="button" data-wk-now="${m.key}" title="Vad har hänt sedan den veckan">Δ nu</button><button type="button" data-wk-del="${m.key}" title="Ta bort" style="margin-left:auto">🗑</button></div></div>`).join("") : `<div class="hint">Inga veckobilder än. Spara den första ovan.</div>`}</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px"><button type="button" data-wk-view="${m.key}" title="Visa planen som den såg ut den veckan (skrivskyddat)">👁 Visa</button>${wk.list[i + 1] ? `<button type="button" data-wk-prev="${m.key}|${wk.list[i + 1].key}" title="Vad har hänt sedan ${escHtml(wkLabel(wk.list[i + 1].key))}">Δ förra</button>` : ""}<button type="button" data-wk-now="${m.key}" title="Vad har hänt sedan den veckan">Δ nu</button><button type="button" data-wk-ifc="${m.key}" title="Veckans prickar som IFC, med status, framdrift och kommentarer">🧊 IFC</button><button type="button" data-wk-del="${m.key}" title="Ta bort" style="margin-left:auto">🗑</button></div></div>`).join("") : `<div class="hint">Inga veckobilder än. Spara den första ovan.</div>`}</div>
     ${wk.list.length ? `<button type="button" class="block" id="wkCsv" style="margin-top:8px" title="Veckokurvan som tabell (öppnas i Excel)">⬇ Framdrift per vecka (CSV)</button>` : ""}`;
   host.querySelector("#wkSave").onclick = wkSave;
   host.querySelectorAll("[data-wk-view]").forEach(b => { b.onclick = () => wk.view && wk.view.key === b.dataset.wkView ? wkEndView() : wkView(b.dataset.wkView); if (wk.view && wk.view.key === b.dataset.wkView) b.textContent = "✕ Avsluta"; });
   host.querySelectorAll("[data-wk-prev]").forEach(b => { b.onclick = () => { const [a, p] = b.dataset.wkPrev.split("|"); wkCompare(p, a); }; });
   host.querySelectorAll("[data-wk-now]").forEach(b => { b.onclick = () => wkCompare(b.dataset.wkNow, "now"); });
+  host.querySelectorAll("[data-wk-ifc]").forEach(b => { b.onclick = async () => { b.disabled = true; try { await wkExportIfc(b.dataset.wkIfc); } finally { b.disabled = false; } }; });
   host.querySelectorAll("[data-wk-del]").forEach(b => { b.onclick = () => wkDelete(b.dataset.wkDel); });
   const c = host.querySelector("#wkCsv"); if (c) c.onclick = () => wkDownload("Framdrift per vecka.csv", wkSeriesCsv());
   wkSpark(host.querySelector("#wkSpark"));
