@@ -174,6 +174,7 @@ async function open3d() {
     if (typeof l3sEnter === "function") l3sEnter(); // 2D-lagren släckta i 3D (2D-läget sparas undan)
     if (typeof l3sRefresh === "function") l3sRefresh(0); // 2D-lagren och DXF
     if (typeof l3mLoad === "function") l3mLoad().catch(e => console.warn(e)); // sparade mått
+    if (typeof l3dayLoad === "function") l3dayLoad().catch(e => console.warn(e)); // dagsplanering
     if (typeof l3kLoad === "function") l3kLoad().catch(e => console.warn(e)); // kommentarer
     if (typeof l3aLoad === "function") l3aLoad().catch(e => console.warn(e)); // mappar för kommentarer och mått
     if (typeof l3phBuild === "function") l3phBuild(); // fotomarkörerna
@@ -728,6 +729,7 @@ function l3Render() {
     if (typeof l3pcRenderScene === "function") l3pcRenderScene(); else l3.renderer.render(l3.scene, l3.camera);
     if (typeof l3Piv !== "undefined" && l3Piv && l3Piv.on) l3PivMark(true); // rotationspunkten i samma bild
     if (typeof l3mPlaceLabels === "function") l3mPlaceLabels(); // måtten som ligger kvar
+    if (typeof l3dayPlace === "function") l3dayPlace(); // dagsplaneringens skyltar
     if (typeof l3cPlace === "function") l3cPlace(); // saxarna på snitten
     if (typeof l3kPlace === "function") l3kPlace(); // kommentarerna
     if (typeof l3phPlace === "function") l3phPlace(); // fotot som är öppet
@@ -1723,6 +1725,7 @@ function l3Key(e) {
   e.stopImmediatePropagation();
   if (typeof l3peKey === "function" && l3peKey(e)) return; // redigera punktmoln (Esc, Enter, Ctrl+Z, Delete)
   if (typeof l3pfKey === "function" && l3pfKey(e)) return; // profilvyn (F fullskärm, Esc, 0)
+  if (typeof l3dayKey === "function" && l3dayKey(e)) return; // dagsplaneringen (Delete, Esc)
   if (typeof l3spKey === "function" && l3spKey(e)) return; // ritningspanelen (Esc avbryter höjdhämtning)
   if (typeof l3clKey === "function" && l3clKey(e)) return; // hjälplinjer: Esc avbryter/avslutar
   if (typeof l3rbKey === "function" && l3rbKey(e)) return; // armering: rita stav (Enter, Esc, Backspace)

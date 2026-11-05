@@ -139,11 +139,12 @@ function l3spBind() {
   const loc = e => { const r = l3spBox(cv); return [e.clientX - r.left, e.clientY - r.top]; };
   const mid = () => { const q = [...ptrs.values()]; return [(q[0].x + q[1].x) / 2, (q[0].y + q[1].y) / 2, Math.hypot(q[0].x - q[1].x, q[0].y - q[1].y) || 1]; };
   cv.addEventListener("pointerdown", e => {
-    e.stopPropagation(); try { cv.setPointerCapture(e.pointerId); } catch (err) { /* */ } ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    e.stopPropagation(); if (typeof l3dayPtr === "function" && l3dayPtr(e, "down")) return; try { cv.setPointerCapture(e.pointerId); } catch (err) { /* */ } ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (ptrs.size === 1) { l3sp.drag = { x: e.clientX, y: e.clientY, tx: l3sp.view.tx, ty: l3sp.view.ty }; moved = 0; }
     else if (ptrs.size === 2) { l3sp.drag = null; moved = 99; const [mx, my, d] = mid(), r = l3spBox(cv); pinch = { d0: d, k0: l3sp.view.k, mx0: mx - r.left, my0: my - r.top, tx0: l3sp.view.tx, ty0: l3sp.view.ty }; if (l3sp.follow) l3spFollow(false); }
   });
   cv.addEventListener("pointermove", e => {
+    if (typeof l3dayPtr === "function" && l3dayPtr(e, "move")) return;
     if (l3sp.profPick && l3sp.profA) { const r0 = l3spBox(cv); l3sp.profH = l3spProfSnap(l3sp.profA, l3spFromScr(e.clientX - r0.left, e.clientY - r0.top), e.shiftKey); l3sp.profShift = e.shiftKey; l3sp.ovDirty = true; }
     if (ptrs.has(e.pointerId)) ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pinch && ptrs.size >= 2) { const [mx, my, d] = mid(), r = l3spBox(cv), v = l3sp.view, nk = Math.min(60, Math.max(0.02, pinch.k0 * d / pinch.d0)), cx = mx - r.left, cy = my - r.top;
@@ -152,6 +153,7 @@ function l3spBind() {
     if (moved > 4) { if (l3sp.follow) l3spFollow(false); l3sp.view.tx = d.tx + dx; l3sp.view.ty = d.ty + dy; l3sp.key = ""; }
   });
   const up = e => {
+    if (e.type === "pointerup" && typeof l3dayPtr === "function" && l3dayPtr(e, "up")) return;
     const had = ptrs.delete(e.pointerId); if (!had) return;
     if (pinch && ptrs.size < 2) { pinch = null; const q = [...ptrs.values()][0]; l3sp.drag = q ? { x: q.x, y: q.y, tx: l3sp.view.tx, ty: l3sp.view.ty } : null; moved = 99; return; }   // fingret som blev kvar fortsätter panorera
     const d = l3sp.drag; l3sp.drag = null; if (!d || moved > 4 || e.type === "pointercancel") return;
@@ -317,6 +319,7 @@ function l3spDraw() {
   // profillinjen (A–B) – pågående val eller visad profil
   { let A = null, B = null; if (l3sp.profPick && l3sp.profA) { A = l3sp.profA; B = l3sp.profH; } else if (typeof l3pf !== "undefined" && l3pf.data && l3pf.A && l3pf.B) { A = [l3pf.A[0] + O[0], l3pf.A[1] + O[1]]; B = [l3pf.B[0] + O[0], l3pf.B[1] + O[1]]; }
     if (A) { const [ax, ay] = l3spToScr(A[0], A[1]); g.save(); g.strokeStyle = "#7c3aed"; g.fillStyle = "#7c3aed"; g.lineWidth = 2.5; g.setLineDash([7, 5]); if (B) { const [bx, by] = l3spToScr(B[0], B[1]); g.beginPath(); g.moveTo(ax, ay); g.lineTo(bx, by); g.stroke(); g.setLineDash([]); g.beginPath(); g.arc(bx, by, 5, 0, 6.2832); g.fill(); g.font = "700 11px system-ui"; g.fillText("B", bx + 8, by - 6); if (l3sp.profPick) { const ang = (Math.round(Math.atan2(B[1] - A[1], B[0] - A[0]) * 1800 / Math.PI) / 10), len = Math.hypot(B[0] - A[0], B[1] - A[1]); g.fillStyle = "rgba(15,23,42,.85)"; g.font = "600 11px system-ui"; const tx = `${String(len.toFixed(1)).replace(".", ",")} m · ${String(ang).replace(".", ",")}°${l3sp.profShift ? " (Skift: 5°)" : ""}`, w = g.measureText(tx).width + 10; g.fillRect(bx + 10, by + 6, w, 17); g.fillStyle = "#fff"; g.fillText(tx, bx + 15, by + 18.5); } } g.setLineDash([]); g.beginPath(); g.arc(ax, ay, 5, 0, 6.2832); g.fill(); g.font = "700 11px system-ui"; g.fillText("A", ax + 8, ay - 6); g.restore(); } }
+  if (typeof l3dayDraw2D === "function") l3dayDraw2D(g);   // dagsplaneringen (lagesplan-3dday.js)
   // markerade etableringsobjekt
   if (l3.sel && l3.sel.size) placements.forEach(p => { if (!l3.sel.has(p.id)) return; const [x, y] = l3spToScr(p.x, p.y); g.fillStyle = "rgba(245,158,11,.35)"; g.strokeStyle = "#f59e0b"; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 9, 0, 6.2832); g.fill(); g.stroke(); if (p.name) { g.fillStyle = "#92400e"; g.font = "600 11px system-ui"; g.fillText(p.name, x + 12, y + 4); } });
   const mark = (pt, col, kind) => { if (!pt) return; const [x, y] = l3spToScr(pt[0], pt[1]); g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); if (kind === "cross") { g.moveTo(x - 8, y); g.lineTo(x + 8, y); g.moveTo(x, y - 8); g.lineTo(x, y + 8); } else if (kind === "pin") { g.arc(x, y, 7, 0, 6.2832); g.moveTo(x, y - 7); g.lineTo(x, y - 22); } g.stroke(); };
