@@ -50,41 +50,63 @@ function l3pcDb() {
   });
 }
 const l3pcCacheKey = src => `${projectId}|${src.id}|${src.version || ""}|${l3pcBudget()}|s2`;   // s2 = slumpad ordning i rutorna (detaljnivå med drawRange)
+const l3pcYield = () => new Promise(r => setTimeout(r, 0));
+/* Cachen sparas som en post per ruta + en liten huvudpost (skrivs sist, så en avbruten skrivning aldrig ger ett trasigt moln). Att klona hela molnet i ett
+   svep (tiotals miljoner punkter) frös fliken i flera sekunder – nu klonas en ruta åt gången med paus emellan (Victor 2026-11-05: "hänger sig vid import"). */
+const l3pcReq = r => new Promise(res => { r.onsuccess = () => res(r.result); r.onerror = () => res(undefined); });
 async function l3pcCacheGet(src) {
   try {
-    const db = await l3pcDb();
-    return await new Promise(res => { const t = db.transaction(L3PC_STORE).objectStore(L3PC_STORE).get(l3pcCacheKey(src)); t.onsuccess = () => res(t.result || null); t.onerror = () => res(null); });
+    const db = await l3pcDb(), key = l3pcCacheKey(src), st = () => db.transaction(L3PC_STORE).objectStore(L3PC_STORE);
+    const head = (await l3pcReq(st().get(key))) || null;
+    if (!head) return null;
+    if (head.chunks) return head;   // äldre format: allt i en post
+    if (!head.parts) return null;
+    const chunks = [];
+    for (let i = 0; i < head.parts; i++) { const ch = await l3pcReq(st().get(key + "#" + i)); if (!ch) return null; chunks.push(ch); if (i % 4 === 3) await l3pcYield(); }
+    return { type: "done", info: head.info, chunks };
   } catch (e) { return null; }
 }
 async function l3pcCachePut(src, data) {
   try {
-    const db = await l3pcDb(), st = db.transaction(L3PC_STORE, "readwrite").objectStore(L3PC_STORE);
-    st.put({ ...data, at: Date.now() }, l3pcCacheKey(src));
-    // Högst några moln sparade – de äldsta tas bort.
-    const keys = await new Promise(res => { const q = db.transaction(L3PC_STORE).objectStore(L3PC_STORE).getAllKeys(); q.onsuccess = () => res(q.result || []); q.onerror = () => res([]); });
+    const db = await l3pcDb(), key = l3pcCacheKey(src), rw = () => db.transaction(L3PC_STORE, "readwrite").objectStore(L3PC_STORE);
+    for (let i = 0; i < data.chunks.length; i++) { const ch = data.chunks[i]; await l3pcReq(rw().put({ pos: ch.pos, rgb: ch.rgb, inten: ch.inten }, key + "#" + i)); await l3pcYield(); }
+    await l3pcReq(rw().put({ info: data.info, parts: data.chunks.length, at: Date.now() }, key));
+    // Högst några moln sparade – de äldsta tas bort (huvudposter räknas, rutposterna följer med).
+    const keys = ((await l3pcReq(rw().getAllKeys())) || []).filter(k => !String(k).includes("#"));
     if (keys.length > L3PC_KEEP) {
-      const ages = await Promise.all(keys.map(k => new Promise(res => { const q = db.transaction(L3PC_STORE).objectStore(L3PC_STORE).get(k); q.onsuccess = () => res([k, (q.result && q.result.at) || 0]); q.onerror = () => res([k, 0]); })));
-      ages.sort((a, b) => a[1] - b[1]).slice(0, keys.length - L3PC_KEEP).forEach(([k]) => db.transaction(L3PC_STORE, "readwrite").objectStore(L3PC_STORE).delete(k));
+      const ages = [];
+      for (const k of keys) { const h = await l3pcReq(rw().get(k)); ages.push([k, (h && h.at) || 0]); }
+      for (const [k] of ages.sort((x, y) => x[1] - y[1]).slice(0, keys.length - L3PC_KEEP)) {
+        await l3pcReq(rw().delete(IDBKeyRange.bound(k + "#", k + "#\uffff")));
+        await l3pcReq(rw().delete(k));
+      }
     }
   } catch (e) { console.warn("Punktmolnets cache", e); }
 }
 
 /* ---- Läsning i bakgrunden ------------------------------------------------------------------------- */
-function l3pcParse(bytes, name, onProgress) {
+const L3PC_STALL_MS = 150000;   // ingen signal från läsaren på så här länge = den hänger sig
+function l3pcParse(bytes, name, onProgress, budget) {
   return new Promise((res, rej) => {
     const w = new Worker("pc-worker.js?v=1");
+    let heard = Date.now(), over = false;
+    const end = (fn, v) => { if (over) return; over = true; clearInterval(dog); l3pc.worker = null; l3pc.cancel = null; w.terminate(); fn(v); };
+    const dog = setInterval(() => { if (Date.now() - heard > (window.__l3pcStallMs || L3PC_STALL_MS)) end(rej, new Error("läsningen hängde sig (ingen signal på " + Math.round((window.__l3pcStallMs || L3PC_STALL_MS) / 1000) + " s) – försök med en lägre punktbudget under Lager → Inställningar → Punkter per moln")); }, 2000);
+    l3pc.worker = w; l3pc.cancel = () => end(rej, Object.assign(new Error("avbröts"), { cancelled: true }));
     w.onmessage = ev => {
-      const d = ev.data;
+      const d = ev.data; heard = Date.now();
       if (d.type === "progress") { if (onProgress) onProgress(d.f); return; }
-      w.terminate();
-      if (d.type === "done") res(d); else rej(new Error(d.message || "Kunde inte läsa punktmolnet."));
+      if (d.type === "done") end(res, d); else end(rej, new Error(d.message || "Kunde inte läsa punktmolnet."));
     };
-    w.onerror = e => { w.terminate(); rej(new Error(e.message || "Kunde inte läsa punktmolnet.")); };
+    w.onerror = e => end(rej, new Error(e.message || "Kunde inte läsa punktmolnet (för lite minne?)."));
+    const bud = budget || l3pcBudget();
     // En fil från datorn (Blob) läses av workern direkt från disken, bit för bit – ingen kopia i minnet.
-    if (typeof Blob !== "undefined" && bytes instanceof Blob) w.postMessage({ file: bytes, name, budget: l3pcBudget() });
-    else w.postMessage({ bytes, name, budget: l3pcBudget() }, [bytes]);
+    if (typeof Blob !== "undefined" && bytes instanceof Blob) w.postMessage({ file: bytes, name, budget: bud });
+    else w.postMessage({ bytes, name, budget: bud }, [bytes]);
   });
 }
+/* Punkter som får plats till för ett nytt moln: taket gäller alla inlästa moln tillsammans (varje moln för sig kunde tillsammans äta upp minnet). */
+const l3pcRoom = () => Math.max(1e6, l3pcMaxPts() - l3pc.clouds.reduce((a, c) => a + (c.nTot || 0), 0));
 
 /* ---- Visning --------------------------------------------------------------------------------------- */
 /* Färgskalor för höjd (Victor 2026-10-24): några färdiga, som i bra punktmolnsprogram – Turbo ("regnbåge"), Viridis, terräng, blå→röd, grått och "över/under"
@@ -168,21 +190,23 @@ function l3pcColorsBase(c, ch) {
   for (let i = 0; i < n; i++) { const q = lut[Math.max(0, Math.min(255, Math.round(l3pcZT(ch.pos[i * 3 + 2] + cz - Z.z0, Z) * 255)))]; out[i * 3] = q[0]; out[i * 3 + 1] = q[1]; out[i * 3 + 2] = q[2]; }
   return out;
 }
-function l3pcBuild(src, data) {
+function l3pcBuildInit(src, data) {
   if (!l3.groups.pc) { const g = new THREE.Group(); g.name = "pc"; l3.groups.pc = g; l3.scene.add(g); }
   const grp = new THREE.Group(), mat = new THREE.PointsMaterial({ size: l3pcSize(), sizeAttenuation: false, vertexColors: true });
-  const c = { id: src.id, name: src.name, src, info: data.info, chunks: data.chunks, group: grp, mat, visible: true, dz: Number(src.dz) || 0, chunkPts: [], nTot: data.chunks.reduce((a, ch) => a + ch.pos.length / 3, 0) };
-  data.chunks.forEach(ch => {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(ch.pos, 3));
-    g.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, ch), 3, true));
-    g.computeBoundingSphere();
-    const p = new THREE.Points(g, mat); p.userData.n = ch.pos.length / 3; c.chunkPts.push(p);
-    p.userData.noHit = true; p.raycast = () => {}; // punkterna är inte ytor (mät/fäst)
-    grp.add(p);
-  });
-  grp.userData.pc = c;
-  l3.groups.pc.add(grp);
+  return { id: src.id, name: src.name, src, info: data.info, chunks: data.chunks, group: grp, mat, visible: true, dz: Number(src.dz) || 0, chunkPts: [], nTot: data.chunks.reduce((a, ch) => a + ch.pos.length / 3, 0) };
+}
+function l3pcBuildChunk(c, ch) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(ch.pos, 3));
+  g.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, ch), 3, true));
+  g.computeBoundingSphere();
+  const p = new THREE.Points(g, c.mat); p.userData.n = ch.pos.length / 3; c.chunkPts.push(p);
+  p.userData.noHit = true; p.raycast = () => {}; // punkterna är inte ytor (mät/fäst)
+  c.group.add(p);
+}
+function l3pcBuildDone(c) {
+  c.group.userData.pc = c;
+  l3.groups.pc.add(c.group);
   if (typeof l3RenderSnapBar === "function") l3RenderSnapBar(); // Fäst-raden får knappen Moln
   l3pc.clouds.push(c);
   setTimeout(l3pcLegend, 0);
@@ -191,6 +215,21 @@ function l3pcBuild(src, data) {
   if (typeof l3pcEdApplyOnLoad === "function") l3pcEdApplyOnLoad(c); // redigeringar (borttagna punkter) läggs på igen
   l3pcIndexIdle(c); // för att fästa mot punkterna
   return c;
+}
+function l3pcBuild(src, data) {
+  const c = l3pcBuildInit(src, data);
+  data.chunks.forEach(ch => l3pcBuildChunk(c, ch));
+  return l3pcBuildDone(c);
+}
+/* Samma sak i delar med paus emellan (stora moln har hundratals rutor; omfärgning och buffertar i ett svep frös fliken). onP(0..1) för förloppet. */
+async function l3pcBuildSliced(src, data, onP) {
+  const c = l3pcBuildInit(src, data), n = data.chunks.length;
+  let t0 = performance.now();
+  for (let i = 0; i < n; i++) {
+    l3pcBuildChunk(c, data.chunks[i]);
+    if (performance.now() - t0 > 12) { if (onP) onP((i + 1) / n); await l3pcYield(); t0 = performance.now(); }
+  }
+  return l3pcBuildDone(c);
 }
 /* Molnet ligger i modellens koordinater (som IFC och DXF) – flyttas med 3D-vyns origo (och sin höjdjustering). */
 function l3pcPlace(c) { c.group.position.set(c.info.center[0] - l3.O[0], c.info.center[1] - l3.O[1], c.info.center[2] - l3.O[2] + (c.dz || 0)); l3pcMatApply(c); }
@@ -452,18 +491,19 @@ async function l3pcLoad(src, getBytes, opts = {}) {
       prog(src.local ? "öppnar filen" : "hämtar", 0);
       const bytes = await getBytes(f => prog(src.local ? "öppnar filen" : "hämtar", f * 0.5));
       prog("läser punkterna", 0.5);
-      data = await l3pcParse(bytes, src.name, f => prog("läser punkterna", 0.5 + f * 0.45));
-      prog("bygger 3D", 0.96);
+      data = await l3pcParse(bytes, src.name, f => prog("läser punkterna", 0.5 + f * 0.45), Math.min(l3pcBudget(), l3pcRoom()));
       how = data.info.format;
-      if ((src.version || src.local) && data.info.n <= 25e6) l3pcCachePut(src, data); // jättemoln sparas inte i webbläsaren (för stort)
     }
-    l3pcBuild(src, data);
+    prog("bygger 3D", 0.96);
+    await l3pcBuildSliced(src, data, f => prog("bygger 3D", 0.96 + f * 0.04));
+    // Cachen sparas efter att molnet syns, en ruta åt gången (jättemoln sparas inte i webbläsaren – för stort).
+    if (how !== "ur webbläsarens cache" && (src.version || src.local) && data.info.n <= 12e6) setTimeout(() => l3pcCachePut(src, data), 1200);
     l3pcRemember(src, true);
     const i = data.info;
     l3Status(`☁ ${src.name}: ${l3pcMil(i.n).replace(/ p$/, "")} punkter visas${i.total > i.n ? ` av ${l3pcMil(i.total).replace(/ p$/, "")} (${l3Prefs().pcBudget === "all" ? "taket för datorns minne" : "glesat jämnt – full upplösning: Lager → Inställningar → Punkter per moln"})` : " (full upplösning)"} – ${how}, ${((performance.now() - t0) / 1000).toFixed(1).replace(".", ",")} s.`);
     if (opts.zoom !== false && !opts.cacheOnly) l3pcZoom(src.id);
   } catch (e) {
-    l3Status(`Kunde inte visa punktmolnet ${src.name}: ${e.message}`, true);
+    if (e && e.cancelled) l3Status(`Inläsningen av ${src.name} avbröts.`); else l3Status(`Kunde inte visa punktmolnet ${src.name}: ${e.message}`, true);
   } finally {
     busyProgress(key, "", null);
     l3pc.busy = false; l3pc.loading = null;
@@ -535,7 +575,7 @@ function l3pcHtml(row, esc) {
     ? row(`data-pc-eye="${esc(c.id)}"`, c.visible, esc(name) + (c.dz ? ` <em title="Höjdjustering">${c.dz > 0 ? "+" : ""}${String(c.dz).replace(".", ",")} m</em>` : ""), `<em class="v3-lr-k" title="${esc(c.info.format)} · ${c.info.n.toLocaleString("sv-SE")} av ${c.info.total.toLocaleString("sv-SE")} punkter">${l3pcMil(c.info.n)}</em><span class="v3-lr-acts"><button type="button" class="v3-lr-zoom" data-pc-zoom="${esc(c.id)}" title="Zooma till molnet">${L3_ICO.focus}</button>${more(c.id)}${del(c.id)}</span>`)
     : row(`data-pc-rem="${esc(s.id)}"`, false, esc(name), `<span class="v3-lr-acts">${del(s.id)}</span>`)).join("");
   const L = l3pc.loading;
-  if (L) h += `<div class="v3-lr v3-pc-loading"><span class="pm-spin"></span><span class="v3-lr-n" title="${esc(L.name)}">${esc(L.name)}</span><span class="v3-pc-load" id="v3PcLoad"><span class="v3-pc-bar"><i style="width:${Math.max(2, Math.round(L.f * 100))}%"></i></span><em>${esc(L.phase)} ${Math.round(L.f * 100)} %</em></span></div>`;
+  if (L) h += `<div class="v3-lr v3-pc-loading"><span class="pm-spin"></span><span class="v3-lr-n" title="${esc(L.name)}">${esc(L.name)}</span><span class="v3-pc-load" id="v3PcLoad"><span class="v3-pc-bar"><i style="width:${Math.max(2, Math.round(L.f * 100))}%"></i></span><em>${esc(L.phase)} ${Math.round(L.f * 100)} %</em></span><button type="button" class="v3-lr-zoom" data-pc-cancel="1" title="Avbryt inläsningen">✕</button></div>`;
   if (!rows.length && !L) h += `<div class="v3-pal-hint">Inga punktmoln. Lägg till med ＋ ovan – från datorn eller ur en mapp i Trimble Connect.</div>`;
   return h;
 }
@@ -596,6 +636,7 @@ function l3pcMoreMenu(btn, id) {
 }
 function l3pcBind(host) {
   host.querySelectorAll("[data-pc-eye]").forEach(b => { b.onclick = () => { const c = l3pc.clouds.find(x => x.id === b.dataset.pcEye); if (c) { l3pcShow(c.id, !c.visible); l3LayersRender(); } }; });
+  host.querySelectorAll("[data-pc-cancel]").forEach(b => { b.onclick = () => { if (l3pc.cancel) l3pc.cancel(); }; });
   host.querySelectorAll("[data-pc-rem]").forEach(b => { b.onclick = () => l3pcLoadRemembered(b.dataset.pcRem); });
   host.querySelectorAll("[data-pc-zoom]").forEach(b => { b.onclick = () => l3pcZoom(b.dataset.pcZoom); });
   host.querySelectorAll("[data-pc-forget]").forEach(b => { b.onclick = () => l3pcForget(b.dataset.pcForget); });
