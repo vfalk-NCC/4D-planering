@@ -116,7 +116,7 @@ function l3dayBuild() {
   if (typeof l3 === "undefined" || !l3 || !l3.scene) return;
   if (!l3day.group) { const g = new THREE.Group(); g.name = "dayplan"; l3day.group = g; l3.scene.add(g); l3.groups.day = g; }
   l3dayClear();
-  const O = l3.O, grp = l3day.group, on = l3Prefs().dayShow3d !== false; grp.visible = on;
+  const O = l3.O, grp = l3day.group, on = !!l3day.bar && l3Prefs().dayShow3d !== false; grp.visible = on;   // bara när Dagsplan är på i minimapen (och 3D är ikryssat)
   if (!on) { l3Render(); return; }
   l3dayList().forEach((it, idx) => {
     const col = new THREE.Color(l3dayCol(it)), sel = l3day.sel === it.id, nr = l3day.items.indexOf(it) + 1;
@@ -161,6 +161,7 @@ function l3dayPlace() {
 
 /* ---- 2D på minimapen ------------------------------------------------------------------------------------ */
 function l3dayDraw2D(g) {
+  if (!l3day.bar) return;   // dagsplaneringen syns bara när den är på i minimapen
   const list = l3dayList(); if (!list.length && !l3day.cur && !l3day.poly) return;
   const draw = (it, cur) => {
     const col = cur ? "#f59e0b" : l3day.sel === it.id ? "#f59e0b" : l3dayCol(it), S = it.pts.map(p => l3spToScr(p[0], p[1]));
@@ -516,6 +517,7 @@ function l3dayCloseBar() {
   if (l3day.bar) { l3day.bar.remove(); l3day.bar = null; } const lst = document.getElementById("spDayList"); if (lst) lst.remove();
   l3day.tool = null; l3day.cur = null; l3day.down = null; l3day.poly = null; l3day.in3d = false; l3day.rect3 = null;
   if (l3sp.cv) l3sp.cv.style.cursor = "";
+  l3dayBuild(); if (typeof l3sp !== "undefined") { l3sp.ovDirty = true; l3sp.key = ""; }   // markeringarna döljs i 3D och på minimapen
 }
 function l3dayToggleBar() { if (l3day.bar) l3dayCloseBar(); else l3dayOpenBar(); const b = document.getElementById("spDayBtn"); if (b) b.classList.toggle("on", !!l3day.bar); }
 /* Minimapen skapas om vid varje öppning: lägg till knappen i Verktyg-menyn och städa raden när den stängs. */

@@ -232,6 +232,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   // 8) Rensa dagen, stäng raden
   await page.evaluate(() => { window.confirm = () => true; }); await page.click('#dyClr'); await page.waitForTimeout(100); s = await st(); if (s.n !== 3) fail('Rensa ska ta bort dagens markeringar: ' + JSON.stringify(s));
   await page.evaluate(() => l3spClose()); if (await page.evaluate(() => !!document.getElementById('spDay'))) fail('Raden ska försvinna när minimapen stängs');
+  { const off = await page.evaluate(() => ({ vis: l3day.group.visible, labels: l3day.labels.size, dom: document.querySelectorAll('.v3-day').length, items: l3day.items.length }));
+    if (off.vis || off.labels || off.dom || !off.items) fail('Dagsplaneringen ska döljas i 3D när den inte är på i minimapen (men sparas kvar): ' + JSON.stringify(off));
+    await page.evaluate(async () => { l3day.show = 'all'; await l3spOpen(); });
+    const still = await page.evaluate(() => ({ vis: l3day.group.visible, dom: document.querySelectorAll('.v3-day').length, bar: !!document.getElementById('spDay') })); if (still.vis || still.dom || still.bar) fail('Ny minimap = Dagsplan av = inget i 3D: ' + JSON.stringify(still));
+    await page.click('#v3Sp [data-dd="t"]'); await page.click('#spDayBtn'); await page.waitForSelector('#spDay'); await page.waitForTimeout(300);
+    const on = await page.evaluate(() => ({ vis: l3day.group.visible, dom: document.querySelectorAll('.v3-day').length })); if (!on.vis || !on.dom) fail('Dagsplan på = markeringarna syns i 3D: ' + JSON.stringify(on));
+    await page.evaluate(() => l3dayToggleBar()); const off2 = await page.evaluate(() => ({ vis: l3day.group.visible, dom: document.querySelectorAll('.v3-day').length })); if (off2.vis || off2.dom) fail('Dagsplan av igen = inget i 3D: ' + JSON.stringify(off2));
+    console.log('OK: dagsplaneringen syns bara i 3D och på minimapen när Dagsplan är påslaget'); }
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   console.log('OK test_lagesplan_3dday');
   await browser.close(); server.close();
