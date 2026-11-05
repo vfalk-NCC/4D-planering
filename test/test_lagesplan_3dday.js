@@ -67,8 +67,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.fill('#dyText', 'Lastbil 07:00'); await page.selectOption('#dyCat', 'transport'); await page.click('[data-dytool="pin"]');
   { const [x, y] = at(0.3, 0.75); await page.mouse.click(x, y); await page.waitForTimeout(80); }
   s = await st(); if (s.n !== 3 || s.kinds[2] !== 'pin' || s.labels !== 3) fail('Markör: ' + JSON.stringify(s));
-  const pin3 = await page.evaluate(() => { const o = l3.O, it = l3day.items[2]; return { lines: l3day.group.children.filter(c => c.isLine).length, labelText: [...l3day.labels.values()].map(e => e.textContent).join('|'), x: it.pts[0][0] > 6512000 }; });
-  if (pin3.lines < 1 || !/Lastbil 07:00/.test(pin3.labelText) || !pin3.x) fail('Markören ska vara en stolpe med skylt: ' + JSON.stringify(pin3));
+  const pin3 = await page.evaluate(() => { const o = l3.O, it = l3day.items[2]; return { lines: l3day.group.children.filter(c => c.userData.dayPin).length, opaque: l3day.group.children.filter(c => c.userData.dayPin).every(g => g.children.every(m => !m.material.transparent && m.material.opacity === 1)), small: l3day.group.children.filter(c => c.userData.dayPin).every(g => { const b = new THREE.Box3().setFromObject(g), v = b.getSize(new THREE.Vector3()); return Math.max(v.x, v.y) < 1.5 * g.scale.x + 0.6 && v.z < 3.5 * Math.max(1, g.scale.x); }), labelText: [...l3day.labels.values()].map(e => e.textContent).join('|'), x: it.pts[0][0] > 6512000 }; });
+  if (pin3.lines < 1 || !pin3.opaque || !pin3.small || !/Lastbil 07:00/.test(pin3.labelText) || !pin3.x) fail('Markören ska vara en stolpe med skylt: ' + JSON.stringify(pin3));
   // 4) Skyltarna följer kameran (placeras på skärmen)
   const place = await page.evaluate(() => { l3dayPlace(); return [...l3day.labels.values()].every(e => e.style.left && e.style.top); });
   if (!place) fail('Skyltarna ska placeras på skärmen');

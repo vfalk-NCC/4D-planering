@@ -120,13 +120,14 @@ function l3dayBuild() {
   if (!on) { l3Render(); return; }
   l3dayList().forEach((it, idx) => {
     const col = new THREE.Color(l3dayCol(it)), sel = l3day.sel === it.id, nr = l3day.items.indexOf(it) + 1;
-    const mat = new THREE.MeshBasicMaterial({ color: sel ? 0xf59e0b : col, side: THREE.DoubleSide, depthTest: false, transparent: true, opacity: 0.92 });
+    const mat = new THREE.MeshBasicMaterial({ color: sel ? 0xf59e0b : col, side: THREE.DoubleSide, depthTest: false, transparent: false });
     if (it.kind === "pin") {
-      const [x, y] = it.pts[0], z = l3dayZ(x, y) - O[2], H = 6;
-      const pole = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x - O[0], y - O[1], z), new THREE.Vector3(x - O[0], y - O[1], z + H)]), new THREE.LineBasicMaterial({ color: sel ? 0xf59e0b : col, depthTest: false })); pole.renderOrder = 12; pole.userData.noHit = true; pole.raycast = () => {}; grp.add(pole);
-      const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.8, 28), mat); ring.position.set(x - O[0], y - O[1], z + 0.1); ring.renderOrder = 12; ring.userData.noHit = true; ring.raycast = () => {}; grp.add(ring);
-      const cone = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.8, 14), mat); cone.rotation.x = Math.PI / 2; cone.position.set(x - O[0], y - O[1], z + 0.4); cone.renderOrder = 12; cone.userData.noHit = true; cone.raycast = () => {}; grp.add(cone);
-      l3dayLabelEl(it, nr, new THREE.Vector3(x - O[0], y - O[1], z + H));
+      // Markören: liten, helt ogenomskinlig (ring på marken, tunn stolpe och en kula överst) och som följer avståndet så att den aldrig blir jättestor (l3dayPlace skalar den).
+      const [x, y] = it.pts[0], z = l3dayZ(x, y) - O[2], H = 2.2, pc = sel ? 0xf59e0b : col;
+      const om = new THREE.MeshBasicMaterial({ color: pc, side: THREE.DoubleSide, depthTest: false }), pg = new THREE.Group(); pg.position.set(x - O[0], y - O[1], z); pg.userData.dayPin = { H }; pg.userData.noHit = true; pg.raycast = () => {};
+      const mk = (geo, pos, rot) => { const m = new THREE.Mesh(geo, om); if (pos) m.position.set(...pos); if (rot) m.rotation.x = rot; m.renderOrder = 12; m.userData.noHit = true; m.raycast = () => {}; pg.add(m); return m; };
+      mk(new THREE.RingGeometry(0.16, 0.26, 24), [0, 0, 0.05]); mk(new THREE.CylinderGeometry(0.025, 0.025, H, 6), [0, 0, H / 2], Math.PI / 2); mk(new THREE.SphereGeometry(0.13, 12, 8), [0, 0, H]);
+      grp.add(pg); l3dayLabelEl(it, nr, new THREE.Vector3(x - O[0], y - O[1], z + H + 0.2)); l3day.labels.get(it.id)._pin = pg;
       return;
     }
     const closed = it.kind === "area", P = l3dayDense(it.pts, closed), N = P.length; if (N < 2) return;
@@ -152,7 +153,10 @@ function l3dayBuild() {
 }
 function l3dayPlace() {
   if (typeof l3 === "undefined" || !l3 || !l3day.labels.size) return;
-  l3day.labels.forEach(el => { const q = l3ToScreen(el._at); el.style.display = q.behind ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px"; });
+  l3day.labels.forEach(el => {
+    const pg = el._pin;   // markörens storlek följer avståndet (aldrig större än en liten markering)
+    if (pg) { const cam = l3.camera, s = cam.isOrthographicCamera ? 1 : Math.min(3, Math.max(0.4, cam.position.distanceTo(pg.position) / 45)); if (Math.abs(pg.scale.x - s) > 0.01) pg.scale.setScalar(s); el._at.set(pg.position.x, pg.position.y, pg.position.z + (pg.userData.dayPin.H + 0.2) * s); }
+    const q = l3ToScreen(el._at); el.style.display = q.behind ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px"; });
 }
 
 /* ---- 2D på minimapen ------------------------------------------------------------------------------------ */
