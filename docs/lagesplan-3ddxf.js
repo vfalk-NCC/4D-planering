@@ -60,7 +60,7 @@ async function l3dEnd(force) {
   [l3d.mesh, l3d.selMesh, l3d.selPts, l3d.prev].forEach(o => { if (o) { if (o.parent) o.parent.remove(o); o.geometry.dispose(); o.material.dispose(); } });
   l3sDisposeMeshes(l3d.tmeshes); l3d.tmeshes = []; l3d.tbuilt = -1;
   l3d.mesh = l3d.selMesh = l3d.selPts = l3d.prev = null;
-  l3d.rec = null; l3d.ents = []; l3d.texts = []; l3d.sel = new Set(); l3d.dirty = false;
+  l3d.rec = null; l3d.ents = []; l3d.texts = []; l3d.sel = new Set(); l3d.dirty = false; l3d.trim = false;
   l3sRefresh(0);
   l3RenderSide();
   l3Render();
@@ -252,6 +252,7 @@ function l3dTap(e) {
     l3Status(`Rita linje: ${pts.length} punkter${pts.length > 1 ? `, ${l3dLen(pts).toFixed(2).replace(".", ",")} m` : ""}. Enter eller dubbelklick avslutar, Esc avbryter.`);
     return true;
   }
+  if (l3d.trim) { const en0 = l3dHit(e); if (!en0 || l3dIsText(en0)) { l3Status("Tryck på den del av en linje som ska bort."); return true; } const g0 = l3dGround(e, null); if (g0) l3dTrim(en0, g0.p); return true; }
   const en = l3dHit(e);
   // Alt + tryck på en markerad linje: ny hörnpunkt där.
   if (e.altKey && en && !l3dIsText(en) && l3d.sel.has(en.id)) { l3dInsertVertex(en, e); return true; }
@@ -289,6 +290,7 @@ function l3dRect(a) {
 }
 function l3dKey(e) {
   if (!l3d.rec) return false;
+  if (e.key === "Escape" && l3d.trim) { l3d.trim = false; l3RenderSide(); l3Status("Trimma avslutad."); return true; }
   if (e.key === "Escape" && l3dT.step) { l3dToolCancel(); l3Status("Avbrutet."); return true; }
   if (e.key === "Escape") { if (l3d.draw && l3d.draw.pts && l3d.draw.pts.length) { l3d.draw.pts = []; l3dPreview(null); l3Status("Linjen avbröts."); } else if (l3d.draw) l3dStopDraw(); else if (l3d.sel.size) { l3d.sel = new Set(); l3dRebuild(); l3RenderSide(); } else l3dEnd(); return true; }
   if (e.key === "Enter" && l3d.draw && l3d.draw.pts) { l3dFinishLine(); return true; }
@@ -304,6 +306,7 @@ function l3dKey(e) {
 /* ---- Rita linje och ny text -------------------------------------------------------------------- */
 function l3dLen(pts) { let s = 0; for (let i = 1; i < pts.length; i++) s += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return s; }
 function l3dStartDraw(text) {
+  l3d.trim = false;
   if (!l3d.rec) return;
   l3dStopDraw();
   l3d.draw = text ? { text: true } : { pts: [] };
@@ -414,6 +417,7 @@ async function l3dNewLayer() {
 
 /* ---- Panelen ------------------------------------------------------------------------------------ */
 function l3dRenderSide(side) {
+  if (typeof l3Sp !== "undefined" && l3Sp && typeof l3SpRefresh === "function") l3SpRefresh();   // Flytta/Kopiera special följer markeringen
   const esc = escHtml, I = L3_ICO, rec = l3d.rec, [nl, nt, what] = l3dSelCount(), n = nl + nt;
   const layers = [...rec.layers.map(l => l.name), ...l3d.newLayers.keys()];
   const opts = cur => layers.map(l => `<option value="${esc(l)}" ${l === cur ? "selected" : ""}>${esc(l)}</option>`).join("") + `<option value="__new">＋ Nytt lager…</option>`;
@@ -426,6 +430,7 @@ function l3dRenderSide(side) {
       <button type="button" class="v3-act ${l3d.draw ? "" : "on"}" id="v3DxSel" title="Välj linjer och texter: tryck, Skift lägger till, dra en ruta">${I.select}<span>Välj</span></button>
       <button type="button" class="v3-act ${l3d.draw && l3d.draw.pts ? "on" : ""}" id="v3DxDraw" title="Rita egna linjer punkt för punkt">${I.edit}<span>Rita linje</span></button>
       <button type="button" class="v3-act ${l3d.draw && l3d.draw.text ? "on" : ""}" id="v3DxText" title="Ny text där du trycker">T<span>Ny text</span></button>
+      <button type="button" class="v3-act ${l3d.trim ? "on" : ""}" id="v3DxTrim" title="Trimma: tryck på den del av en linje som ska bort – delen mellan närmaste skärningar tas bort (Esc avslutar)">✂<span>Trimma</span></button>
     </div>
     <label class="v3-dx-row">Nytt på lagret <select id="v3DxLayer">${opts(l3d.layer)}</select></label>
     ${n ? `<div class="v3-dx-sel"><b>${what} markerade</b>
@@ -446,6 +451,7 @@ function l3dRenderSide(side) {
   const num = (id, def = 0) => { const raw = String((side.querySelector("#" + id) || {}).value || "").trim(); if (!raw) return def; const v = Number(raw.replace(",", ".").replace(/\s/g, "")); return Number.isFinite(v) ? v : def; };
   on("v3DxEnd", "onclick", () => l3dEnd());
   on("v3DxSel", "onclick", () => l3dStopDraw());
+  on("v3DxTrim", "onclick", () => { l3d.trim = !l3d.trim; if (l3d.trim) { l3dStopDraw(); l3Status("Trimma: tryck på den del av en linje som ska bort – delen mellan närmaste skärningar. Esc avslutar."); } l3RenderSide(); });
   on("v3DxDraw", "onclick", () => (l3d.draw && l3d.draw.pts ? l3dStopDraw() : l3dStartDraw()));
   on("v3DxText", "onclick", () => (l3d.draw && l3d.draw.text ? l3dStopDraw() : l3dStartDraw(true)));
   on("v3DxLayer", "onchange", async e => { let v = e.target.value; if (v === "__new") v = await l3dNewLayer(); if (v) l3d.layer = v; l3RenderSide(); });
@@ -582,4 +588,48 @@ function l3dToolHover(e) {
   else if (l3dT.step === 1) l3dGhost(p => p, [l3dT.base, g.p]);
   else { const deg = l3dRotDeg(e, g.p); l3dGhost(l3dRot(l3dT.base, deg), [l3dT.base, g.p]); l3StatusLive(`Vrid ${deg}° – tryck för att vrida.`); }
   return true;
+}
+
+/* ---- Kopiera special / Flytta special i DXF-redigeringen (Victor 2026-11-05: "jag kan inte använda Flytta special på DXF:en när jag redigerar den i 3D") ----------------
+   Samma dialog som för etablering (lagesplan-3ddialogs.js): Linjär (dX/dY, antal), Rotation (punkt, vinkel, antal) och Spegling – här på de markerade linjerna och texterna. dZ gäller inte (DXF:en är platt).
+   Varje linje/text blir ett tillfälligt "objekt" som omvandlingarna körs på, och resultatet skrivs tillbaka med ångra (Ctrl+Z). */
+function l3dSpPseudo() {
+  return [...l3dSelEnts().map(e => ({ src: e, kind: "e", x: e.pts[0][0], y: e.pts[0][1], rot: 0, type: "__dxf", pts: e.pts.map(p => [p[0], p[1], 0]) })),
+    ...l3dSelTexts().map(t => ({ src: t, kind: "t", x: t.x, y: t.y, rot: t.rot || 0, type: "__dxf" }))];
+}
+function l3dSpCenter() {
+  const L = l3dSpPseudo(); if (!L.length) return null; const P = L.flatMap(q => q.pts ? q.pts : [[q.x, q.y]]), xs = P.map(p => p[0]), ys = P.map(p => p[1]);
+  return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, z: 0 };
+}
+const l3dSpClone = q => JSON.parse(JSON.stringify({ x: q.x, y: q.y, rot: q.rot, type: q.type, pts: q.pts }));
+function l3dSpPreview() {
+  const steps = l3SpSteps(), base = l3dSpPseudo(), pos = []; let n = 0;
+  steps.forEach(fn => base.forEach(q => { if (++n > 400) return; const c = l3dSpClone(q); fn(c); const P = c.pts ? c.pts : [[c.x, c.y]]; for (let i = 1; i < P.length; i++) pos.push(P[i - 1][0] - l3.O[0], P[i - 1][1] - l3.O[1], 0.06, P[i][0] - l3.O[0], P[i][1] - l3.O[1], 0.06); if (!c.pts) pos.push(c.x - l3.O[0] - 0.3, c.y - l3.O[1], 0.06, c.x - l3.O[0] + 0.3, c.y - l3.O[1], 0.06); }));
+  if (!pos.length) return;
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  const ls_ = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0xec4899, depthTest: false })); ls_.renderOrder = 20; ls_.userData.noHit = true; ls_.raycast = () => {}; l3.groups.prev.add(ls_); l3Render();
+}
+function l3dSpApply() {
+  const base = l3dSpPseudo(); if (!base.length) { l3Status("Markera först linjerna eller texterna (tryck eller dra en ruta).", true); return; }
+  const steps = l3SpSteps(), copy = l3Sp.mode === "copy", R = v => Math.round(v * 1000) / 1000;
+  const result = fn => base.map(q => { const c = l3dSpClone(q); fn(c); return c; });
+  if (!copy) {
+    const res = result(steps[0]), olds = base.map(q => q.kind === "e" ? q.src.pts.map(p => p.slice()) : { x: q.src.x, y: q.src.y, rot: q.src.rot }), hasT = base.some(q => q.kind === "t");
+    const set = which => base.forEach((q, i) => { if (q.kind === "e") q.src.pts = which ? res[i].pts.map(p => [R(p[0]), R(p[1])]) : olds[i].map(p => p.slice()); else { const o = which ? res[i] : olds[i]; q.src.x = o.x; q.src.y = o.y; q.src.rot = o.rot; } });
+    l3dOp("flytta special", () => set(true), () => set(false), hasT); l3Status(`${base.length} flyttade med Flytta special (Ctrl+Z ångrar).`); return;
+  }
+  const added = { e: [], t: [] };
+  steps.forEach(fn => result(fn).forEach((c, i) => { const q = base[i]; if (q.kind === "e") added.e.push({ id: l3d.next++, layer: q.src.layer, color: q.src.color, pts: c.pts.map(p => [R(p[0]), R(p[1])]), added: true }); else added.t.push({ ...q.src, id: "t" + l3d.next++, x: c.x, y: c.y, rot: c.rot, added: true }); }));
+  const all = new Set([...added.e, ...added.t]);
+  l3dOp("kopiera special", () => { l3d.ents.push(...added.e); l3d.texts.push(...added.t); }, () => { l3d.ents = l3d.ents.filter(e => !all.has(e)); l3d.texts = l3d.texts.filter(t => !all.has(t)); }, added.t.length > 0);
+  l3Status(`${added.e.length + added.t.length} kopior skapade med Kopiera special (Ctrl+Z ångrar).`);
+}
+
+/* ---- Trimma (Victor 2026-11-05) – geometrin i lagesplan-dxftrim.js ------------------------------------------------------------------------------------------------ */
+function l3dTrim(en, m) {
+  if (typeof dxfTrimCompute !== "function") return;
+  const r = dxfTrimCompute(l3d.ents.filter(x => !x.del && l3dLayerOn(x.layer)), en, m); if (!r.ok) { l3Status("✂ " + r.reason, true); return; }
+  const adds = r.pieces.map(pts => ({ id: l3d.next++, layer: en.layer, color: en.color, pts: pts.map(p => [Math.round(p[0] * 1e4) / 1e4, Math.round(p[1] * 1e4) / 1e4]), added: true })), was = l3d.sel.has(en.id);
+  l3dOp("trimma", () => { en.del = true; l3d.ents.push(...adds); l3d.sel.delete(en.id); }, () => { en.del = false; const a = new Set(adds); l3d.ents = l3d.ents.filter(x => !a.has(x)); if (was) l3d.sel.add(en.id); }, false);
+  l3Status(`✂ Trimmade bort ${String(Math.round(r.removedLen * 100) / 100).replace(".", ",")} m (Ctrl+Z ångrar).`);
 }

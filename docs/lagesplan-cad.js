@@ -563,7 +563,7 @@ function drawCad(ctx, stageToCanvas, pxScale = 1, only = null) {
   if (!plan || !plan.calib) return;
   const o0 = mToPx([0, 0]), ex = mToPx([1, 0]), ey = mToPx([0, 1]);
   const M = [ex[0] - o0[0], ex[1] - o0[1], ey[0] - o0[0], ey[1] - o0[1], o0[0], o0[1]]; // modell (m) -> stage-px
-  cads().filter(r => ls("cad:" + r.id).visible && cadGeom.has(r.id) && (!only || r.id === only)).forEach(r => {
+  cads().filter(r => ls("cad:" + r.id).visible && cadGeom.has(r.id) && (!only || r.id === only) && !(typeof cdeActive === "function" && cdeActive() === r.id)).forEach(r => {   // ritningen som redigeras ritas av lagesplan-cadedit.js
     const g = cadGeom.get(r.id);
     const G = mulAffine(stageToCanvas, mulAffine(M, [0.001, 0, 0, 0.001, g.origin[0], g.origin[1]]));
     const s = Math.hypot(G[0], G[1]);
@@ -868,6 +868,7 @@ async function updateCadSetting(patch) {
 }
 function bindCad() {
   $("btnAddDxf").onclick = () => $("dxfInput").click();
+  if ($("btnCadEdit")) $("btnCadEdit").onclick = () => { const id = $("cadSel").value; if (id && typeof cdeStart === "function") cdeStart(id).catch(e => alert("Kunde inte starta redigeringen: " + e.message)); };
   $("dxfInput").onchange = e => { const f = [...e.target.files]; e.target.value = ""; if (f.length) addDxfFiles(f); };
   $("cadSel").onchange = renderCadSettings;
   $("cadColorMode").onchange = e => updateCadSetting({ colorMode: e.target.value });

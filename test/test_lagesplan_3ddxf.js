@@ -181,6 +181,35 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     const ex = [P0[0][0] - (P0[2][1] - P0[0][1]), P0[0][1] + (P0[2][0] - P0[0][0])];
     if (Math.abs(Q[0][0] - P0[0][0]) > 1e-6 || Math.abs(Q[2][0] - ex[0]) > 1e-3 || Math.abs(Q[2][1] - ex[1]) > 1e-3) fail('Vrid-verktyget i DXF-redigeringen: ' + JSON.stringify({ P0, Q, ex }));
     await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+    // Flytta special / Kopiera special på de markerade linjerna (Victor 2026-11-05)
+    await page.evaluate(id => { l3d.sel = new Set([id]); l3dRebuild(); l3RenderSide(); }, L1);
+    await page.evaluate(() => { l3OpenSpecial('move'); Object.assign(l3Sp.v, { tab: 'lin', dx: 2, dy: 1, dz: 7, preview: true }); l3RenderSpecial(); });
+    const foot = await page.evaluate(() => document.querySelector('#v3Special .v3-dlg-sel').textContent); if (!/1 markerade/.test(foot)) fail('Flytta special ska räkna den markerade linjen: ' + foot);
+    const prevN = await page.evaluate(() => l3.groups.prev.children.length); if (!prevN) fail('Flytta special ska förhandsvisa i DXF-redigeringen');
+    const Ps0 = await pts(); await page.click('#v3SpGo'); await page.waitForTimeout(100);
+    let Qs = await pts(); if (Math.abs(Qs[0][0] - Ps0[0][0] - 2) > 1e-3 || Math.abs(Qs[0][1] - Ps0[0][1] - 1) > 1e-3 || Math.abs(Qs[2][0] - Ps0[2][0] - 2) > 1e-3) fail('Flytta special dX/dY: ' + JSON.stringify({ Ps0, Qs }));
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(100); if (JSON.stringify(await pts()) !== JSON.stringify(Ps0)) fail('Ctrl+Z efter Flytta special');
+    await page.evaluate(() => { Object.assign(l3Sp.v, { tab: 'rot', x0: '', y0: '', ang: 90, rn: 1 }); l3RenderSpecial(); }); await page.click('#v3SpGo'); await page.waitForTimeout(100);
+    Qs = await pts(); if (Math.abs(Qs[0][0] - 6512357.5) > 1e-2 || Math.abs(Qs[0][1] - 150117.5) > 1e-2) fail('Flytta special, rotation 90° runt mitten: ' + JSON.stringify(Qs));
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+    const nB = await page.evaluate(() => l3d.ents.filter(e => !e.del).length);
+    await page.evaluate(() => { l3OpenSpecial('copy'); Object.assign(l3Sp.v, { tab: 'lin', dx: 3, dy: 0, dz: 0, n: 2 }); l3RenderSpecial(); }); await page.click('#v3SpGo'); await page.waitForTimeout(100);
+    const nA = await page.evaluate(() => l3d.ents.filter(e => !e.del).length); if (nA !== nB + 2) fail('Kopiera special n=2 ska ge två nya linjer: ' + JSON.stringify({ nB, nA }));
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(100); if ((await page.evaluate(() => l3d.ents.filter(e => !e.del).length)) !== nB) fail('Ctrl+Z efter Kopiera special');
+    // Trimma: en korsande linje läggs till, trycket på den vänstra delen tar bort den fram till skärningen
+    const tr = await page.evaluate(id => {
+      const e = l3d.ents.find(x => x.id === id), A = e.pts[0], B = e.pts[1], mid = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2], n0 = l3d.ents.filter(x => !x.del).length;
+      l3d.ents.push({ id: l3d.next++, layer: e.layer, color: e.color, pts: [[mid[0], mid[1] - 2], [mid[0], mid[1] + 2]] });
+      const before = e.pts.length; l3dTrim(e, [A[0] + (mid[0] - A[0]) * 0.2, A[1] + (mid[1] - A[1]) * 0.2]);
+      const alive = l3d.ents.filter(x => !x.del), piece = alive.find(x => x !== e && x.added);
+      return { n0, n1: alive.length, before, gone: !!e.del, start: piece && piece.pts[0], mid, btn: !!document.getElementById('v3DxTrim') };
+    }, L1);
+    if (!tr.gone || !tr.btn || !tr.start || Math.hypot(tr.start[0] - tr.mid[0], tr.start[1] - tr.mid[1]) > 1e-6 || tr.n1 !== tr.n0 + 1) fail('Trimma i 3D-redigeringen: ' + JSON.stringify(tr));
+    await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
+    if ((await page.evaluate(id => l3d.ents.find(x => x.id === id).del, L1))) fail('Ctrl+Z efter Trimma ska ge tillbaka linjen');
+    await page.evaluate(id => { const x = l3d.ents[l3d.ents.length - 1]; if (x.id !== id) l3d.ents.pop(); }, L1);
+    await page.evaluate(() => l3DlgClose('v3Special'));
+    console.log('OK: Flytta special och Kopiera special fungerar på markerade DXF-linjer');
     await page.evaluate(() => l3SetTool('select'));
   }
   // Ny text: tryck på marken (svaret på frågan är 4D-RITAT), ändra text, höjd och vinkel.

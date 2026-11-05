@@ -88,8 +88,27 @@ const l3dayZ = (x, y) => {
     return typeof l3spGround === "function" ? l3spGround(x, y) : 0;
   } catch (e) { return 0; }
 };
-/* Läget för en markör/hörn: fäst i närmaste punkt i punktmolnet (som nålen i minimapen); finns inget punktmoln där ligger läget kvar och höjden hämtas ur IFC-modellen (l3dayZ). */
-function l3dayGrab(w) {
+/* Fäst mot 2D-grejor (Victor 2026-11-05: "snapp också på 2D-grejor"): hörn/ändpunkter och kanter i tända DXF-lager, zonernas hörn och etableringsobjektens punkter i lägesplanen (inom ca 10 px). */
+function l3day2dSnap(w) {
+  if (typeof plan === "undefined" || !plan || !plan.calib || typeof modelToPdf !== "function") return null;
+  const mpp = l3dayTolM(), tolM = 10 * mpp, P0 = modelToPdf(w[0], w[1]), ppm = Math.hypot(modelToPdf(w[0] + 1, w[1])[0] - P0[0], modelToPdf(w[0] + 1, w[1])[1] - P0[1]) || 1, r = tolM * ppm;
+  let best = null;   // { d, pdf, kind, rank }  (hörn går före kant: rank 0 / 1)
+  const put = (pdf, kind, d, rank) => { if (!best || rank < best.rank || (rank === best.rank && d < best.d)) best = { d, pdf, kind, rank }; };
+  const vtx = (q, kind) => { const d = Math.hypot(q[0] - P0[0], q[1] - P0[1]); if (d <= r) put(q, kind, d, 0); };
+  if (typeof cadSnapIndex !== "undefined" && cadSnapIndex && cadSnapIndex.grid) {
+    const cell = cadSnapIndex.cell, gx0 = Math.floor((P0[0] - r) / cell), gx1 = Math.floor((P0[0] + r) / cell), gy0 = Math.floor((P0[1] - r) / cell), gy1 = Math.floor((P0[1] + r) / cell), seen = new Set();
+    for (let ix = gx0; ix <= gx1; ix++) for (let iy = gy0; iy <= gy1; iy++) (cadSnapIndex.grid.get(ix + "," + iy) || []).forEach(sg => { if (seen.has(sg)) return; seen.add(sg); const [a, b] = sg; vtx(a, "DXF"); vtx(b, "DXF");
+      const dx = b[0] - a[0], dy = b[1] - a[1], L2 = dx * dx + dy * dy; if (!L2) return; const t = Math.max(0, Math.min(1, ((P0[0] - a[0]) * dx + (P0[1] - a[1]) * dy) / L2)), q = [a[0] + dx * t, a[1] + dy * t], d = Math.hypot(q[0] - P0[0], q[1] - P0[1]); if (d <= r * 0.6) put(q, "DXF", d, 1); });
+  }
+  (plan.zones || []).forEach(z => (z.polys || []).forEach(poly => poly.forEach(q => vtx(q, "zon"))));
+  if (typeof siteItems !== "undefined") siteItems.forEach(x => { if (x.type === "objmarks" || !x.pts) return; x.pts.forEach(q => { if (Array.isArray(q) && q.length === 2 && typeof q[0] === "number") vtx(modelToPdf(q[0], q[1]), "objekt"); }); });
+  if (!best) return null;
+  const m = pdfToModel(best.pdf); return { pt: [m[0], m[1]], kind: best.kind };
+}
+/* Läget för en markör/hörn: först 2D-grejor (hörn/kanter i DXF, zoner, objekt), sedan närmaste punkt i punktmolnet (som nålen i minimapen); finns inget punktmoln där ligger läget kvar och höjden hämtas ur IFC-modellen (l3dayZ). */
+function l3dayGrab(w, keepMark) {
+  const s2 = l3day2dSnap(w); if (s2) { l3day.snapMark = keepMark ? { pt: s2.pt, kind: s2.kind } : null; return s2.pt; }
+  if (!keepMark) l3day.snapMark = null;
   if (typeof l3spSnapPcOn !== "function" || !l3spSnapPcOn() || typeof l3pc === "undefined" || !l3pc.clouds.some(c => c.visible)) return w;
   const s = l3spCloudSnap(w[0], w[1], Math.min(1, Math.max(0.1, 6 * l3dayTolM())));
   return s ? [s[0], s[1]] : w;
@@ -161,7 +180,8 @@ function l3dayPlace() {
 
 /* ---- 2D på minimapen ------------------------------------------------------------------------------------ */
 function l3dayDraw2D(g) {
-  if (!l3day.bar) return;   // dagsplaneringen syns bara när den är på i minimapen
+  if (!l3day.bar) return;
+  if (l3day.snapMark && l3day.tool && ['pin', 'poly', 'polyarea'].includes(l3day.tool)) { const [x, y] = l3spToScr(l3day.snapMark.pt[0], l3day.snapMark.pt[1]); g.save(); g.strokeStyle = '#16a34a'; g.lineWidth = 2.5; g.beginPath(); g.rect(x - 7, y - 7, 14, 14); g.stroke(); g.fillStyle = '#16a34a'; g.font = '600 11px system-ui,sans-serif'; g.fillText(l3day.snapMark.kind, x + 10, y - 9); g.restore(); }   // dagsplaneringen syns bara när den är på i minimapen
   const list = l3dayList(); if (!list.length && !l3day.cur && !l3day.poly) return;
   const draw = (it, cur) => {
     const col = cur ? "#f59e0b" : l3day.sel === it.id ? "#f59e0b" : l3dayCol(it), S = it.pts.map(p => l3spToScr(p[0], p[1]));
@@ -209,6 +229,7 @@ function l3dayPolyFinish(cancel) {
 function l3dayPtr(e, phase) {
   const t = l3day.tool; if (!t || !l3day.bar || e.button > 0 || e.shiftKey) return false;
   if (e.buttons & 6) return false;   // höger- eller mellanknapp (mushjulet) nedtryckt: minimapens vanliga panorering, verktyget behålls
+  if (phase === "move" && (t === "pin" || t === "poly" || t === "polyarea")) { const r1 = l3spBox(l3sp.cv), s2 = l3day2dSnap(l3spFromScr(e.clientX - r1.left, e.clientY - r1.top)); const was = l3day.snapMark; l3day.snapMark = s2; if ((was && was.pt) !== (s2 && s2.pt)) { l3sp.ovDirty = true; l3sp.key = ""; } }
   if ((t === "poly" || t === "polyarea") && l3day.poly && phase === "move") { const r0 = l3spBox(l3sp.cv), pp = l3dayPolyPt(e, l3spFromScr(e.clientX - r0.left, e.clientY - r0.top)); l3day.poly.hover = pp; l3sp.ovDirty = true; l3sp.key = ""; }   // gummibandet följer musen
   if (phase !== "down" && !l3day.down) return false;   // ingen pågående ritning: rörelser och släpp går till minimapen
   const cv = l3sp.cv, r = l3spBox(cv), sx = e.clientX - r.left, sy = e.clientY - r.top;

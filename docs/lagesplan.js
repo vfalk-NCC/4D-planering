@@ -1287,6 +1287,7 @@ function renderZones() {
     if (zid) zoneLabelBoxes.push({ x: pt[0], y: pt[1], ...r, zid, li });
   });
   drawToolOverlays(tctx, fontPx);
+  if (typeof cdeDraw === "function") cdeDraw(tctx, fontPx);   // DXF-redigering (lagesplan-cadedit.js)
   if (typeof drawZoneOverlay === "function") drawZoneOverlay(tctx, fontPx);
   drawCalibMarks(tctx, fontPx);
   afterRenderTools();
@@ -1626,6 +1627,8 @@ function bindViewport() {
   vpEl.addEventListener("mousedown", e => {
     if (!viewport) return;
     if (drawMode) { drag = { draw: true, start: stagePoint(e) }; return; }
+    // Redigera DXF-linjer i planen (lagesplan-cadedit.js).
+    if (typeof cdePointerDown === "function" && cdePointerDown(e)) return;
     // Hörn på den markerade zonen (lagesplan-zones.js).
     if (typeof zonesPointerDown === "function" && zonesPointerDown(e)) return;
     // Upplåsta objektmarkeringar dras (lagesplan-objmarks.js).

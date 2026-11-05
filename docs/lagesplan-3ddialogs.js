@@ -97,7 +97,11 @@ function l3DlgPickTap(e) {
 // ---------------------------------------------------------------------
 const L3_SP_DEF = { tab: "lin", dx: 0, dy: 0, dz: 0, n: 1, x0: "", y0: "", z0: "", ang: 90, rdz: 0, rn: 1, mx0: "", my0: "", mang: 90, preview: true };
 let l3Sp = null; // { mode, v }
+/* I DXF-redigeringen (lagesplan-3ddxf.js) gäller Kopiera/Flytta special de markerade linjerna och texterna i stället för etableringsobjekt. */
+const l3SpDxf = () => typeof l3d !== "undefined" && !!l3d.rec;
+const l3SpSelN = () => (l3SpDxf() ? l3d.sel.size : l3.sel.size);
 function l3SelCenter() {
+  if (l3SpDxf() && typeof l3dSpCenter === "function") return l3dSpCenter();
   const list = l3SelList();
   if (!list.length) return null;
   return { x: list.reduce((s, p) => s + p.x, 0) / list.length, y: list.reduce((s, p) => s + p.y, 0) / list.length, z: list.reduce((s, p) => s + (Number(p.z) || 0) + (Number(p.dz) || 0), 0) / list.length };
@@ -106,7 +110,7 @@ function l3OpenSpecial(mode) {
   const v = { ...L3_SP_DEF, ...(l3Prefs().special || {}) };
   l3Sp = { mode, v };
   l3RenderSpecial();
-  if (!l3.sel.size) l3Status("Markera de objekt som ska " + (mode === "copy" ? "kopieras" : "flyttas") + " – dialogen kan vara öppen under tiden.");
+  if (!l3SpSelN()) l3Status("Markera de " + (l3SpDxf() ? "linjer och texter" : "objekt") + " som ska " + (mode === "copy" ? "kopieras" : "flyttas") + " – dialogen kan vara öppen under tiden.");
 }
 function l3RenderSpecial() {
   if (!l3Sp) return;
@@ -131,7 +135,7 @@ function l3RenderSpecial() {
     ${body}
     ${copy ? l3SpCountHtml(v) : ""}
     <label class="v3-chk"><input type="checkbox" id="v3SpPrev" ${v.preview ? "checked" : ""} /> Förhandsvisa</label>
-    <div class="v3-dlg-foot"><span class="v3-dlg-sel">${l3.sel.size ? `${l3.sel.size} markerade` : "Inget markerat"}</span>
+    <div class="v3-dlg-foot"><span class="v3-dlg-sel">${l3SpSelN() ? `${l3SpSelN()} markerade` : "Inget markerat"}</span>
       <button type="button" class="v3-primary" id="v3SpGo">${copy ? "Kopiera" : "Flytta"}</button><button type="button" id="v3SpClose">Stäng</button></div>`,
     { onClose: () => { l3Sp = null; l3.dlgPick = null; l3ClearPrev(); } });
   d.querySelectorAll("[data-sptab]").forEach(b => { b.onclick = () => { v.tab = b.dataset.sptab; l3SpSave(); l3RenderSpecial(); }; });
@@ -168,8 +172,14 @@ function l3SpCountHtml(v) {
 function l3SpCountInfo(d) {
   const el = d.querySelector("#v3SpInfo");
   if (!el || !l3Sp) return;
-  const v = l3Sp.v, n = Math.max(1, Math.min(200, Math.round(Number(v[v.tab === "rot" ? "rn" : "n"]) || 1))), m = l3.sel.size;
+  const v = l3Sp.v, n = Math.max(1, Math.min(200, Math.round(Number(v[v.tab === "rot" ? "rn" : "n"]) || 1))), m = l3SpSelN();
   el.textContent = m ? `= ${n * m} nya objekt` : "Markera objekt";
+}
+/* Markeringen ändrades medan dialogen är öppen (t.ex. i DXF-redigeringen): uppdatera räknare och förhandsvisning utan att rita om fälten. */
+function l3SpRefresh() {
+  if (!l3Sp) return; const d = document.getElementById("v3Special"); if (!d) return;
+  const sel = d.querySelector(".v3-dlg-sel"); if (sel) sel.textContent = l3SpSelN() ? `${l3SpSelN()} markerade` : "Inget markerat";
+  l3SpCountInfo(d); l3SpPreview();
 }
 function l3SpSave() { if (l3Sp) l3SetPref("special", { ...l3Sp.v }); }
 /* Spegling av en placering kring en lodrät linje genom (x0, y0) i vinkeln ang (grader). */
@@ -199,6 +209,7 @@ function l3SpSteps() {
 function l3ClearPrev() { if (l3 && l3.groups.prev) { l3Clear(l3.groups.prev); l3Render(); } }
 function l3SpPreview() {
   l3ClearPrev();
+  if (l3SpDxf() && typeof l3dSpPreview === "function") { if (l3Sp && l3Sp.v.preview && l3d.sel.size) l3dSpPreview(); return; }
   if (!l3Sp || !l3Sp.v.preview || !l3.sel.size) return;
   const steps = l3SpSteps(), list = l3SelList();
   let n = 0;
@@ -222,6 +233,7 @@ function l3SpPreview() {
 }
 function l3SpApply() {
   if (!l3Sp) return;
+  if (l3SpDxf() && typeof l3dSpApply === "function") { l3dSpApply(); return; }
   const list = l3SelList();
   if (!list.length) { l3Status("Markera först objekten (tryck eller dra en ruta).", true); return; }
   const steps = l3SpSteps(), copy = l3Sp.mode === "copy";

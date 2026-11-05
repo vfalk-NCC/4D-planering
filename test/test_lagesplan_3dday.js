@@ -119,6 +119,26 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (Math.abs(snapZ.zi - 20) > 0.05 || snapZ.zi <= snapZ.g0 + 1 || Math.abs(snapZ.far - snapZ.g0) > 5) fail('Höjden ska fästa mot IFC-modellen när punktmoln saknas: ' + JSON.stringify(snapZ));
   console.log('OK: markeringen snappar mot IFC-modellen när det inte finns något punktmoln', JSON.stringify(snapZ));
+  // Snapp mot 2D-grejor: hörn i en tänd DXF, zonhörn och objekt
+  await page.evaluate(() => {
+    const rec = { id: 'snapc', type: 'cad', name: 'Snapp', path: 'x', colorMode: 'orig', weight: 1, layers: [{ name: 'L', color: '#ff0000', n: 1 }], stats: { lines: 1, texts: 0, kb: 1 } };
+    siteItems.push(rec); ls('cad:snapc').visible = true;
+    cadGeom.set('snapc', buildCadGeom({ origin: [6512350, 150120], groups: [{ l: 0, c: '#ff0000', p: [[0, 0, 6000, 0, 6000, 4000]], t: [] }] })); buildCadSnap();
+    plan.zones = [{ id: 'zs', code: 'Z1', name: 'Snapp', polys: [[[900, 40], [960, 40], [960, 90], [900, 90]]] }];
+  });
+  await page.click('[data-dytool="pin"]');
+  { const sc = await page.evaluate(() => { const [x, y] = l3spToScr(6512356, 150124); return [x, y]; }); const [x, y] = [box.x + sc[0] + 3, box.y + sc[1] + 2];
+    await page.mouse.move(x - 5, y - 5); await page.mouse.move(x, y); await page.waitForTimeout(60);
+    const mark = await page.evaluate(() => l3day.snapMark && l3day.snapMark.kind);
+    await page.mouse.click(x, y); await page.waitForTimeout(100);
+    const sn = await page.evaluate(() => { const it = l3day.items[l3day.items.length - 1]; return { kind: it.kind, pt: it.pts[0] }; });
+    if (mark !== 'DXF' || sn.kind !== 'pin' || Math.abs(sn.pt[0] - 6512356) > 0.01 || Math.abs(sn.pt[1] - 150124) > 0.01) fail('Markören ska fästa i DXF-hörnet: ' + JSON.stringify({ mark, sn })); }
+  // zonhörn (pdf 900,40 → modell 6512390,150104)
+  { const zz = await page.evaluate(() => { const m = pdfToModel([900, 40]); const [x, y] = l3spToScr(m[0], m[1]); return { m, x, y }; });
+    await page.mouse.click(box.x + zz.x + 2, box.y + zz.y - 3); await page.waitForTimeout(100);
+    const sz = await page.evaluate(() => l3day.items[l3day.items.length - 1].pts[0]); if (Math.abs(sz[0] - zz.m[0]) > 0.01 || Math.abs(sz[1] - zz.m[1]) > 0.01) fail('Markören ska fästa i zonens hörn: ' + JSON.stringify({ sz, m: zz.m })); }
+  await page.evaluate(() => { const i = siteItems.findIndex(x => x.id === 'snapc'); if (i >= 0) siteItems.splice(i, 1); cadGeom.delete('snapc'); buildCadSnap(); plan.zones = []; });
+  console.log('OK: markeringen snappar mot 2D-grejor (DXF-hörn och zonhörn)');
   // 6a) Rektangel, polylinje och polygon
   await page.click('[data-dytool="rect"]');
   const n0 = await page.evaluate(() => l3day.items.length);
