@@ -247,6 +247,13 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     return { names: out.map(o => o.name), folder: out[0].folder, meshes, with: /fundament/i.test(t[0]), without: /fundament/i.test(t[1]), props: /'Lutning'/.test(t[0]) && /'Punkt 2'/.test(t[0]) };
   });
   if (mex.names.length !== 2 || mex.names[0] === mex.names[1] || !/^Mått Plan 1 \d{4}-\d\d-\d\d kl \d\d\.\d\d\.\d\d\.ifc$/.test(mex.names[0]) || mex.folder !== 'Lägesplan' || mex.meshes < 3 || !mex.with || mex.without || !mex.props) fail('Exportera måtten som IFC: ' + JSON.stringify(mex));
+  // Polylinjen i IFC: totalskylt + en skylt per delsträcka + rör och kulor/konor på varje punkt (Victor 2026-11-05: "bara skylten kom med").
+  const pol = await page.evaluate(() => {
+    const b = l3m.list[0], o = b.pts[0], m = { ...b, id: 'poly-test', kind: 'poly', pts: [[o[0], o[1], o[2]], [o[0] + 8, o[1], o[2]], [o[0] + 8, o[1] + 6, o[2] + 1], [o[0] + 20, o[1] + 6, o[2] + 1]], text: '20,92 m', off: 0, note: '' };
+    const t = l3mIfcBuild([{ m, nr: 7 }], false).text, cnt = re => (t.match(re) || []).length;
+    return { delm: cnt(/7: delm/g), tot: cnt(/7: 20,92 m/g), tess: cnt(/IFCTRIANGULATEDFACESET/g) };
+  });
+  if (pol.delm < 3 || pol.tot < 1 || pol.tess < 9) fail('Polylinjen i IFC ska ha totalskylt, tre delmått, rör, konor och kulor: ' + JSON.stringify(pol));
   if (process.env.SHOTX) {
     if (process.env.SHOTOFF) await page.evaluate(() => { window.__shotOff = true; });
     await page.evaluate(async () => {

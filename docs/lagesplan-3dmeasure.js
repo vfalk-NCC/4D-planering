@@ -548,6 +548,13 @@ function l3mSweep(path, r, seg = 10) {
   [[0, -1], [rings.length - 1, 1]].forEach(([ri, sgn]) => { pts.push(path[ri].clone()); const c = pts.length, R = rings[ri]; for (let k = 0; k < seg; k++) tris.push(sgn > 0 ? [c, R[k], R[(k + 1) % seg]] : [c, R[(k + 1) % seg], R[k]]); });
   return { pts, tris };
 }
+/* Liten kula (mätpunkten). */
+function l3mBall(p, r, seg = 10) {
+  const pts = [], tris = [], rows = Math.max(4, seg >> 1);
+  for (let i = 0; i <= rows; i++) { const ph = Math.PI * i / rows; for (let k = 0; k < seg; k++) { const a = 2 * Math.PI * k / seg; pts.push(new THREE.Vector3(p.x + r * Math.sin(ph) * Math.cos(a), p.y + r * Math.sin(ph) * Math.sin(a), p.z + r * Math.cos(ph))); } }
+  for (let i = 0; i < rows; i++) for (let k = 0; k < seg; k++) { const a = i * seg + k + 1, b = i * seg + (k + 1) % seg + 1, c = (i + 1) * seg + (k + 1) % seg + 1, d = (i + 1) * seg + k + 1; tris.push([a, b, c], [a, c, d]); }
+  return { pts, tris };
+}
 /* Upp-och-nedvänd kon med spetsen i punkten. */
 function l3mCone(p, h, r, seg = 16) {
   const pts = [new THREE.Vector3(p.x, p.y, p.z), new THREE.Vector3(p.x, p.y, p.z + h)], tris = [];
@@ -587,19 +594,23 @@ function l3mIfcBuild(list, withNotes) {
   list.forEach(({ m, nr }) => {
     const P = m.pts, o = P[0], rel = p => [p[0] - o[0], p[1] - o[1], p[2] - o[2]];
     const items = [];
+    // Linjer, konor och punkter skalas med måttets storlek: ett 20 m långt mått i ett stort punktmoln syntes annars inte alls (2 cm tunna rör).
+    const ext = Math.max(0.5, ...[0, 1, 2].map(k => Math.max(...P.map(p => p[k])) - Math.min(...P.map(p => p[k])))), sc = Math.min(8, Math.max(1, ext / 5));
+    const RT = L3M_IFC.r * sc, CH = L3M_IFC.cone.h * sc, CR = L3M_IFC.cone.r * sc;
     const DP = l3mDimPts(m);
     const segs = m.kind === "area" ? P.map((p, i) => [p, P[(i + 1) % P.length]]) : m.kind === "dist" && m.off ? [[P[0], DP[0]], [DP[0], DP[1]], [DP[1], P[1]]] : P.slice(1).map((p, i) => [P[i], p]);
     const offd = l3mCanOff(m) && m.off;
     // Måttlinjen/kedjan som ett rör med rundade brytningar, och en kon på varje mätpunkt.
     const way = offd ? [P[0], ...DP, P[P.length - 1]] : P;
-    const path = (m.kind === "point" || m.kind === "objvol") ? [] : l3mFillet(way.map(rel), m.kind === "area" || m.kind === "volume" || m.kind === "cutfill", L3M_IFC.bend);
+    const path = (m.kind === "point" || m.kind === "objvol") ? [] : l3mFillet(way.map(rel), m.kind === "area" || m.kind === "volume" || m.kind === "cutfill", L3M_IFC.bend * sc);
     const tri = (g, st) => { if (!g.pts.length) return null; const pl = E(`IFCCARTESIANPOINTLIST3D((${g.pts.map(v => ifcPt([v.x, v.y, v.z])).join(",")}))`), fs = E(`IFCTRIANGULATEDFACESET(${pl},$,.T.,(${g.tris.map(t => `(${t.join(",")})`).join(",")}),$)`); E(`IFCSTYLEDITEM(${fs},(${st}),$)`); return fs; };
     const meshItems = [];
     const own = m.kind === "volume" && /^#[0-9a-f]{6}$/i.test(m.color || ""), mRed = own ? stOf(m.color) : red, mFill = own ? stOf(m.color) : stOf("#3b82f6");   // volymkroppen är tät (genomskinlighet ställer man in i Trimble Connect)
-    if (path.length >= 2) { const t = tri(l3mSweep(path, L3M_IFC.r), mRed); if (t) meshItems.push(t); }
+    if (path.length >= 2) { const t = tri(l3mSweep(path, RT), mRed); if (t) meshItems.push(t); }
     // Utdragen polylinje: hjälplinjer även från mellanpunkterna upp till kedjan.
-    if (offd) for (let i = 1; i < P.length - 1; i++) { const t = tri(l3mSweep([rel(P[i]), rel(DP[i])].map(v => new THREE.Vector3(v[0], v[1], v[2])), L3M_IFC.r * 0.6), red); if (t) meshItems.push(t); }
-    P.forEach(p => { const v = rel(p), t = tri(l3mCone({ x: v[0], y: v[1], z: v[2] }, L3M_IFC.cone.h, L3M_IFC.cone.r), mRed); if (t) meshItems.push(t); });
+    if (offd) for (let i = 1; i < P.length - 1; i++) { const t = tri(l3mSweep([rel(P[i]), rel(DP[i])].map(v => new THREE.Vector3(v[0], v[1], v[2])), RT * 0.6), red); if (t) meshItems.push(t); }
+    P.forEach(p => { const v = rel(p), t = tri(l3mCone({ x: v[0], y: v[1], z: v[2] }, CH, CR), mRed); if (t) meshItems.push(t); });
+    P.forEach(p => { const v = rel(p), t = tri(l3mBall({ x: v[0], y: v[1], z: v[2] }, CR * 0.9), mRed); if (t) meshItems.push(t); });   // en kula på varje mätpunkt
     void segs; void dotAt;
     if (m.kind === "volume" && P.length >= 3) {
       // Volymen som en halvgenomskinlig prisma.
@@ -641,20 +652,27 @@ function l3mIfcBuild(list, withNotes) {
     doc.props(el, [["Typ", L3M_KIND[m.kind] || m.kind], ["Värde", m.text], ...(withNotes ? [["Kommentar", m.note || ""]] : []), ["Nummer", nr],
       ...inf.rows.filter(([k]) => k !== "Status").map(([k, v]) => [k, String(v).replace(/\n/g, ", ")]), ["Arbetsyta", plan ? plan.name || "" : ""]]);
     if (m.kind === "volume" && typeof l3PolyArea === "function") { const ar = Math.abs(l3PolyArea(P.map(p => new THREE.Vector3(p[0], p[1], p[2]))).area), vv = ar * Math.abs(Number(m.h) || 0); doc.quantities(el, { vol: [["NetVolume", Math.round(vv * 1000) / 1000], ["GrossVolume", Math.round(vv * 1000) / 1000]], area: [["NetFootprintArea", Math.round(ar * 100) / 100]] }); }   // volymen syns i Trimble Connects sidomeny
-    if (showBoard) {
+    // Skylt (platta + 3D-text på båda sidor) – används för totalmåttet och för varje delsträcka.
     const axes = (p, rx, ry, nx, ny) => E(`IFCLOCALPLACEMENT(${doc.sitePl},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt(p)})`)},${dir([nx, ny, 0])},${dir([rx, ry, 0])})`)})`);
-    const board = E(`IFCEXTRUDEDAREASOLID(${E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,$,${ifcNum(W)},${ifcNum(H)})`)},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, 0, -L3M_IFC.T / 2])})`)},$,$)`)},${dir([0, 0, 1])},${ifcNum(L3M_IFC.T)})`);
-    E(`IFCSTYLEDITEM(${board},(${white}),$)`);
-    const bEl = doc.proxy(`${name.slice(0, 100)} – skylt`, "Skylt", "4D-måttskylt", axes(center, r[0], r[1], n[0], n[1]), doc.shape(board, "SweptSolid"), m.id);
-    elems.push(bEl);
-    [[1, 1], [-1, -1]].forEach(([sr, sn]) => {
-      const meshes = [];
-      let y = H / 2 - L3M_IFC.pad * 0.7;
-      lines.forEach(({ t, h }, li) => { const msh = ifcTextSolid(doc, t, { h, t: L3M_IFC.tT, rx: 1, ry: 0, start: -W / 2 + L3M_IFC.pad, across: y - h / 2, style: li ? doc.textStyle : red }); if (msh) meshes.push(msh); y -= h * 1.4; });
-      if (!meshes.length) return;
-      const p = [center[0] + sn * n[0] * L3M_IFC.T / 2, center[1] + sn * n[1] * L3M_IFC.T / 2, center[2]];
-      elems.push(doc.proxy(`${name.slice(0, 100)} – text`, "Text", "4D-måtttext", axes(p, sr * r[0], sr * r[1], sn * n[0], sn * n[1]), doc.shape(meshes.join(","), "Tessellation"), m.id));
-    });
+    const mkBoard = (nm, ctr, lns, bw, bh, kind) => {
+      const board = E(`IFCEXTRUDEDAREASOLID(${E(`IFCRECTANGLEPROFILEDEF(.AREA.,$,$,${ifcNum(bw)},${ifcNum(bh)})`)},${E(`IFCAXIS2PLACEMENT3D(${E(`IFCCARTESIANPOINT(${ifcPt([0, 0, -L3M_IFC.T / 2])})`)},$,$)`)},${dir([0, 0, 1])},${ifcNum(L3M_IFC.T)})`);
+      E(`IFCSTYLEDITEM(${board},(${white}),$)`);
+      elems.push(doc.proxy(`${nm.slice(0, 100)} – ${kind}`, "Skylt", "4D-måttskylt", axes(ctr, r[0], r[1], n[0], n[1]), doc.shape(board, "SweptSolid"), m.id));
+      [[1, 1], [-1, -1]].forEach(([sr, sn]) => {
+        const meshes = [];
+        let y = bh / 2 - L3M_IFC.pad * 0.7;
+        lns.forEach(({ t, h }, li) => { const msh = ifcTextSolid(doc, t, { h, t: L3M_IFC.tT, rx: 1, ry: 0, start: -bw / 2 + L3M_IFC.pad, across: y - h / 2, style: li ? doc.textStyle : red }); if (msh) meshes.push(msh); y -= h * 1.4; });
+        if (!meshes.length) return;
+        const p = [ctr[0] + sn * n[0] * L3M_IFC.T / 2, ctr[1] + sn * n[1] * L3M_IFC.T / 2, ctr[2]];
+        elems.push(doc.proxy(`${nm.slice(0, 100)} – text`, "Text", "4D-måtttext", axes(p, sr * r[0], sr * r[1], sn * n[0], sn * n[1]), doc.shape(meshes.join(","), "Tessellation"), m.id));
+      });
+    };
+    if (showBoard) mkBoard(name, center, lines, W, H, "skylt");
+    // Delmåtten (polylinje): en liten skylt med längden på varje delsträcka, vid linjens mitt – som i 3D-vyn.
+    if (m.kind === "poly" && P.length >= 3) for (let i = 1; i < P.length; i++) {
+      const a2 = P[i - 1], b2 = P[i], len = Math.hypot(b2[0] - a2[0], b2[1] - a2[1], b2[2] - a2[2]), hs = L3M_IFC.h2 * Math.min(2.2, Math.sqrt(sc)) * 0.85;
+      const txt = `${i}: ${l3Fmt(len, 2)} m`, sl = [{ t: txt, h: hs }], sw = Math.max(0.5, W1(txt, hs)) + L3M_IFC.pad * 2, sh = hs * 1.4 + L3M_IFC.pad * 1.4;
+      mkBoard(`Mått ${nr}: delmått ${i}`, [(a2[0] + b2[0]) / 2, (a2[1] + b2[1]) / 2, (a2[2] + b2[2]) / 2 + L3M_IFC.lift * 0.5 * sc + sh / 2], sl, sw, sh, "delmått");
     }
   });
   const d2 = new Date(), p2 = x => String(x).padStart(2, "0");
