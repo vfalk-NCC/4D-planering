@@ -80,8 +80,20 @@ function l3dayChaikin(P, closed, n = 1) {
 const l3dayPathLen = (P, closed) => { let L = 0; for (let i = 1; i < P.length; i++) L += Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); if (closed && P.length > 2) L += Math.hypot(P[0][0] - P[P.length - 1][0], P[0][1] - P[P.length - 1][1]); return L; };
 function l3dayArea(P) { let a = 0; for (let i = 0; i < P.length; i++) { const q = P[(i + 1) % P.length]; a += P[i][0] * q[1] - q[0] * P[i][1]; } return Math.abs(a) / 2; }
 const l3dayAnchor = it => it.kind === "pin" ? it.pts[0] : it.kind === "area" ? [it.pts.reduce((s, p) => s + p[0], 0) / it.pts.length, it.pts.reduce((s, p) => s + p[1], 0) / it.pts.length] : it.pts[Math.floor(it.pts.length / 2)];
-/* Markens höjd: det som syns i punktmolnet, annars ytorna/ritningens nivå. Tål att 3D-vyn ännu inte har någon yta. */
-const l3dayZ = (x, y) => { try { return typeof l3spProfZ === "function" ? l3spProfZ(x, y) : 0; } catch (e) { return 0; } };
+/* Markens höjd: det som syns i punktmolnet; saknas punktmoln där snappar markeringen mot IFC-modellerna (översta ytan); annars ytorna/ritningens nivå (Victor 2026-11-05). */
+const l3dayZ = (x, y) => {
+  try {
+    if (typeof l3pc !== "undefined" && typeof l3spCloudSnap === "function" && l3pc.clouds.some(c => c.visible)) { const c = l3spCloudSnap(x, y, 0.6); if (c) return c[2]; }
+    if (typeof l3spIfcSnap === "function") { const zi = l3spIfcSnap(x, y); if (zi != null && isFinite(zi)) return zi; }
+    return typeof l3spGround === "function" ? l3spGround(x, y) : 0;
+  } catch (e) { return 0; }
+};
+/* Läget för en markör/hörn: fäst i närmaste punkt i punktmolnet (som nålen i minimapen); finns inget punktmoln där ligger läget kvar och höjden hämtas ur IFC-modellen (l3dayZ). */
+function l3dayGrab(w) {
+  if (typeof l3spSnapPcOn !== "function" || !l3spSnapPcOn() || typeof l3pc === "undefined" || !l3pc.clouds.some(c => c.visible)) return w;
+  const s = l3spCloudSnap(w[0], w[1], Math.min(1, Math.max(0.1, 6 * l3dayTolM())));
+  return s ? [s[0], s[1]] : w;
+}
 /* Linjen tätas så att bandet följer markens form (högst var 0,8 m, aldrig fler än 260 provpunkter). */
 function l3dayDense(P, closed) {
   const L = l3dayPathLen(P, closed), step = Math.max(0.8, L / 260), out = [], m = closed ? P.length : P.length - 1;
@@ -183,7 +195,7 @@ function l3dayHit(sx, sy) {
 }
 /* Rektangel (dragen är hörn mot hörn på skärmen) och polylinje/polygon (klick för klick; Skift = rak 5°-linje). */
 function l3dayRectPts(a, b) { return [[a[0], a[1]], [b[0], a[1]], [b[0], b[1]], [a[0], b[1]]].map(q => l3spFromScr(q[0], q[1]).map(l3dayR2)); }
-function l3dayPolyPt(e, w) { const P = l3day.poly, last = P && P.pts[P.pts.length - 1]; return (e.shiftKey && last ? l3spProfSnap(last, w, true) : w).map(l3dayR2); }
+function l3dayPolyPt(e, w) { const P = l3day.poly, last = P && P.pts[P.pts.length - 1]; return (e.shiftKey && last ? l3spProfSnap(last, w, true) : l3dayGrab(w)).map(l3dayR2); }
 function l3dayPolyFinish(cancel) {
   const P = l3day.poly; l3day.poly = null; l3sp.ovDirty = true; l3sp.key = ""; if (!P || cancel) { l3dayBarSync(); return false; }
   const need = P.kind === "polyarea" ? 3 : 2; if (P.pts.length < need) { l3dayBarSync(); return false; }
@@ -211,7 +223,7 @@ function l3dayPtr(e, phase) {
         l3dayChanged(); l3Status("Flyttad – ↺ Läge lägger tillbaka den där den ritades."); return true; }
       l3dayBuild(); l3dayBarSync(); return true; }
     if (t === "sel") { const it = l3dayHit(sx, sy); l3day.sel = it ? it.id : null; l3dayBuild(); l3dayBarSync(); l3sp.ovDirty = true; l3sp.key = ""; return true; }
-    if (t === "pin") { l3dayAdd({ kind: "pin", pts: [l3spFromScr(sx, sy).map(l3dayR2)] }); return true; }
+    if (t === "pin") { l3dayAdd({ kind: "pin", pts: [l3dayGrab(l3spFromScr(sx, sy)).map(l3dayR2)] }); return true; }
     if (t === "rect") { const c = l3day.cur; l3day.cur = null; l3sp.ovDirty = true; l3sp.key = ""; if (c && c.a && Math.hypot(sx - c.a[0], sy - c.a[1]) > 6 && Math.abs(sx - c.a[0]) > 3 && Math.abs(sy - c.a[1]) > 3) l3dayAdd({ kind: "area", pts: l3dayRectPts(c.a, [sx, sy]) }); return true; }
     if (t === "poly" || t === "polyarea") { if (Math.hypot(sx - d.sx, sy - d.sy) > 5) return true;   // drag räknas inte som klick
       const pp = l3dayPolyPt(e, l3spFromScr(sx, sy)), P = l3day.poly || (l3day.poly = { kind: t, pts: [], hover: null }), last = P.pts[P.pts.length - 1];
@@ -293,6 +305,36 @@ function l3daySaveImg() {
 }
 
 
+
+/* ---- Rita direkt i 3D (Victor 2026-11-05: "om jag markerar i 3D kommer det på minimapen") ------------------------------------------------------------------
+   Med verktyget 🖱 Rita i 3D på placerar ett klick i 3D-vyn en markör (📍), en punkt i polylinjen/polygonen eller ett hörn i rektangeln (två klick) på det som ligger under
+   muspekaren (fäst mot punktmoln/ytor som vanligt). Markeringarna är samma som i minimapen och syns där direkt; Enter/dubbelklick avslutar, Esc avbryter, Backspace tar bort sista punkten.
+   Att dra (rotera/panorera) i 3D fungerar som vanligt – bara ett klick utan drag ritar. */
+const L3DAY_3D_TOOLS = ["pin", "poly", "polyarea", "rect"];
+function l3day3dOn() { return !!(l3day.bar && l3day.in3d && L3DAY_3D_TOOLS.includes(l3day.tool)); }
+function l3day3dPoint(e) {
+  const s = typeof l3Snap === "function" ? l3Snap(e) : null, h = s ? { point: s.point } : l3Ray(e, l3Surfaces())[0];
+  return h ? [h.point.x + l3.O[0], h.point.y + l3.O[1]].map(l3dayR2) : null;
+}
+function l3dayBind3d() {
+  const host = l3.renderer.domElement.parentElement; if (!host || host.__day3d) return; host.__day3d = true;
+  let d0 = null;
+  host.addEventListener("pointerdown", e => { d0 = e.button === 0 ? { x: e.clientX, y: e.clientY } : null; }, true);
+  host.addEventListener("pointerup", e => {
+    const d = d0; d0 = null; if (!d || !l3day3dOn() || e.button !== 0 || e.target !== l3.renderer.domElement || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5) return;
+    const pt = l3day3dPoint(e); e.stopImmediatePropagation(); e.preventDefault(); l3day.swallowClick = true;
+    if (!pt) { l3Status("Klicka på marken, punktmolnet eller en modell för att placera markeringen.", true); return; }
+    const t = l3day.tool;
+    if (t === "pin") { l3dayAdd({ kind: "pin", pts: [pt] }); return; }
+    if (t === "rect") { const R = l3day.rect3 || (l3day.rect3 = { a: null }); if (!R.a) { R.a = pt; l3Status("Rektangel: klicka motstående hörn."); return; } const a = R.a; l3day.rect3 = null; if (Math.abs(pt[0] - a[0]) > 0.3 && Math.abs(pt[1] - a[1]) > 0.3) l3dayAdd({ kind: "area", pts: [[a[0], a[1]], [pt[0], a[1]], [pt[0], pt[1]], [a[0], pt[1]]] }); return; }
+    const P = l3day.poly || (l3day.poly = { kind: t, pts: [], hover: null }), last = P.pts[P.pts.length - 1];
+    if (!last || Math.hypot(pt[0] - last[0], pt[1] - last[1]) > 0.3) P.pts.push(pt);
+    l3sp && (l3sp.ovDirty = true); if (typeof l3sp !== "undefined") l3sp.key = ""; l3dayBarSync(); l3Status(`${t === "poly" ? "Polylinje" : "Polygon"}: ${P.pts.length} punkter – Enter eller dubbelklick avslutar.`);
+  }, true);
+  host.addEventListener("click", e => { if (l3day.swallowClick) { l3day.swallowClick = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  host.addEventListener("dblclick", e => { if (l3day.poly && l3day3dOn() && (l3day.tool === "poly" || l3day.tool === "polyarea")) { e.stopImmediatePropagation(); e.preventDefault(); l3dayPolyFinish(false); } }, true);
+}
+
 /* ---- Dagens skyltar som IFC (Victor 2026-11-05: "exportera skyltarna via minimapen dagligen till en IFC som går till TC") ---------------------------------------- */
 const L3DAY_IFC = { T: 0.08, tT: 0.03, pad: 0.25, h1: 0.62, h2: 0.46, pole: 6 };
 function l3dayIfcBuild(list) {
@@ -366,7 +408,7 @@ function l3dayBarHtml() {
 <button type="button" id="dyCopyPrev" title="Kopiera föregående dags markeringar till den här dagen">⧉ Från igår</button>
 <span class="sep"></span><button type="button" id="dyList" title="Lista över markeringarna">☰ Lista</button><button type="button" id="dyTxt" title="Kopiera som text (morgonmötet)">📋 Text</button><button type="button" id="dyImg" title="Spara minimapen som bild">🖼 Bild</button><button type="button" id="dyIfc" title="Dagens skyltar som IFC (3D-skyltar med info) – hämtas, och sparas i Trimble Connect när lägesplanen är öppnad därifrån">🧊 IFC → TC</button>
 <button type="button" id="dyReset" title="Flytta tillbaka den valda markeringen dit den ritades (Välj → dra för att flytta)">↺ Läge</button><button type="button" id="dyUndo" title="Ångra (Ctrl+Z)">↶</button><button type="button" id="dyClr" title="Ta bort dagens markeringar">🗑 Rensa</button>
-<label title="Visa dagsplaneringen i 3D-vyn" style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="dy3d"> 3D</label>`;
+<label title="Visa dagsplaneringen i 3D-vyn" style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="dy3d"> 3D</label><label title="Rita direkt i 3D-vyn: ett klick placerar markör, polylinje-/polygonpunkt eller rektangelhörn (verktygen 📍 ⟋ ⬠ ⬜) – syns på minimapen direkt" style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" id="dyIn3d"> 🖱 Rita i 3D</label>`;
 }
 function l3dayBarSync() {
   const b = l3day.bar; if (!b) return;
@@ -377,7 +419,7 @@ function l3dayBarSync() {
     const ak = (l3day.day || "") + "|" + A.map(a => a.name + a.start).join(",") + "|" + (l3pl && l3pl.rows ? l3pl.rows.length : 0); if (sa.dataset.k !== ak) { sa.dataset.k = ak; l3day.actList = A; sa.innerHTML = `<option value="">Aktivitet (Gantt)…</option>` + A.map((a, i) => `<option value="${i}">${escHtml((a.contractor ? a.contractor + " – " : "") + a.name)} (${escHtml(a.start.slice(5))} → ${escHtml(a.end.slice(5))})</option>`).join(""); }
     if (!A.length && typeof l3plLoad === "function" && typeof l3pl !== "undefined" && !l3pl.rows && !l3pl.loading) Promise.resolve(l3plLoad()).then(() => l3dayBarSync()).catch(() => {}); }
   { const sel = l3day.items.find(x => x.id === l3day.sel), c = b.querySelector("#dyColor"), au = b.querySelector("#dyColorAuto"); const shown = l3day.tool === "sel" && sel ? l3dayCol(sel) : (l3day.color || (l3day.ue && (l3dayUes().find(u => u.id === l3day.ue) || {}).color) || (L3DAY_CATS[l3day.cat] || L3DAY_CATS.info)[1]); if (c && /^#[0-9a-f]{6}$/i.test(shown)) c.value = shown.toLowerCase(); if (au) au.disabled = l3day.tool === "sel" && sel ? !sel.col : !l3day.color; }
-  b.querySelector("#dyCat").value = l3day.cat; b.querySelector("#dyDay").value = l3day.day; b.querySelector("#dyShow").value = l3day.show; b.querySelector("#dy3d").checked = l3Prefs().dayShow3d !== false;
+  b.querySelector("#dyCat").value = l3day.cat; b.querySelector("#dyDay").value = l3day.day; b.querySelector("#dyShow").value = l3day.show; b.querySelector("#dy3d").checked = l3Prefs().dayShow3d !== false; b.querySelector("#dyIn3d").checked = !!l3day.in3d;
   { const sel = l3day.items.find(x => x.id === l3day.sel), r = b.querySelector("#dyReset"); if (r) r.disabled = !(sel && sel.orig); }
   const cnt = l3dayList().length; b.querySelector("#dyClr").title = `Ta bort ${cnt} markeringar`;
   const lst = document.getElementById("spDayList"); if (lst) l3dayListFill(lst);
@@ -448,6 +490,7 @@ function l3dayOpenBar() {
     if (typeof l3VPush === "function") l3VPush(() => { it.pts = now.map(q => q.slice()); it.orig = orig.map(q => q.slice()); l3dayChanged(); }, () => { it.pts = orig.map(q => q.slice()); delete it.orig; l3dayChanged(); }, "återställ läge");
     it.pts = orig; delete it.orig; l3dayChanged(); l3Status("Markeringen är tillbaka där den ritades."); };
   bar.querySelector("#dyClr").onclick = () => l3dayClearDay();
+  bar.querySelector("#dyIn3d").onchange = e => { l3day.in3d = e.target.checked; if (l3day.in3d) { l3dayBind3d(); l3Status("Rita i 3D: välj 📍, ⟋, ⬠ eller ⬜ och klicka i 3D-vyn. Dra för att rotera som vanligt."); } else l3day.rect3 = null; };
   bar.querySelector("#dy3d").onchange = e => { l3SetPref("dayShow3d", e.target.checked); l3dayBuild(); };
   if (!l3sp.cv.__dayDbl) { l3sp.cv.__dayDbl = true; l3sp.cv.addEventListener("dblclick", e => { if (l3day.poly && (l3day.tool === "poly" || l3day.tool === "polyarea")) { e.preventDefault(); e.stopPropagation(); l3dayPolyFinish(false); } }, true); }
   if (!l3sp.cv.__dayMd) { l3sp.cv.__dayMd = true; l3sp.cv.addEventListener("mousedown", e => { if (e.button === 1) e.preventDefault(); }); l3sp.cv.addEventListener("auxclick", e => { if (e.button === 1) e.preventDefault(); }); }   // mushjulet: panorera utan webbläsarens autoscroll
@@ -467,7 +510,7 @@ function l3dayKey(e) {
 }
 function l3dayCloseBar() {
   if (l3day.bar) { l3day.bar.remove(); l3day.bar = null; } const lst = document.getElementById("spDayList"); if (lst) lst.remove();
-  l3day.tool = null; l3day.cur = null; l3day.down = null; l3day.poly = null;
+  l3day.tool = null; l3day.cur = null; l3day.down = null; l3day.poly = null; l3day.in3d = false; l3day.rect3 = null;
   if (l3sp.cv) l3sp.cv.style.cursor = "";
 }
 function l3dayToggleBar() { if (l3day.bar) l3dayCloseBar(); else l3dayOpenBar(); const b = document.getElementById("spDayBtn"); if (b) b.classList.toggle("on", !!l3day.bar); }

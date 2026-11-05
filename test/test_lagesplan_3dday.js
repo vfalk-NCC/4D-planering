@@ -108,6 +108,17 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!/Dagsplanering/.test(txt) || !/Gjuter platta B \(4 pers\)/.test(txt) || !/Totalt 8 personer/.test(txt)) fail('Texten till morgonmötet: ' + txt);
   console.log('OK: dagväljare, kopiera från igår, alla dagar, lista och text', JSON.stringify({ today }));
 
+  // Höjd/snapp: utan punktmoln snappar markeringen mot IFC-modellen (översta ytan), annars mot marken
+  const snapZ = await page.evaluate(() => {
+    const [x, y] = [plan.calib.model[0][0] + 25, plan.calib.model[0][1] + 15], g0 = l3dayZ(x, y);
+    const O = l3.O, m = new THREE.Mesh(new THREE.BoxGeometry(6, 6, 4), new THREE.MeshBasicMaterial()); m.position.set(x - O[0], y - O[1], 20 - O[2] - 2); l3.scene.add(m); m.updateMatrixWorld(true);
+    const b0 = l3b.models.length; l3b.models.push({ id: 'testifc', visible: true, meshes: [m] });
+    const zi = l3dayZ(x, y), far = l3dayZ(x + 40, y + 40);
+    l3b.models.pop(); l3.scene.remove(m);
+    return { g0, zi, far, ok: l3b.models.length === b0 };
+  });
+  if (Math.abs(snapZ.zi - 20) > 0.05 || snapZ.zi <= snapZ.g0 + 1 || Math.abs(snapZ.far - snapZ.g0) > 5) fail('Höjden ska fästa mot IFC-modellen när punktmoln saknas: ' + JSON.stringify(snapZ));
+  console.log('OK: markeringen snappar mot IFC-modellen när det inte finns något punktmoln', JSON.stringify(snapZ));
   // 6a) Rektangel, polylinje och polygon
   await page.click('[data-dytool="rect"]');
   const n0 = await page.evaluate(() => l3day.items.length);
@@ -169,6 +180,26 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (ifc.n < 4 || (T.match(/4D-dagsplan'/g) || []).length < 4 || !/IFCBUILDINGELEMENTPROXY/.test(T) || !/742C/.test(T) || !/HAV/.test(T) || !/Entrepren/.test(T) || !/IFCTRIANGULATEDFACESET/.test(T) || !/IFCRECTANGLEPROFILEDEF/.test(T)) fail('IFC-filen ska ha skyltar med info: ' + JSON.stringify({ n: ifc.n, len: T.length, proxies: (T.match(/4D-dagsplan'/g) || []).length, bep: /IFCBUILDINGELEMENTPROXY/.test(T), act: /742C/.test(T), hav: /HAV/.test(T), ent: /Entrepren/.test(T), tri: /IFCTRIANGULATEDFACESET/.test(T), rect: /IFCRECTANGLEPROFILEDEF/.test(T), sample: (T.match(/IFCBUILDINGELEMENTPROXY[^;]{0,160}/) || [''])[0] }));
   if (process.env.PROF) { const L = T.split('\n').filter(l => /IFCCARTESIANPOINTLIST3D/.test(l)).map(l => l.length).sort((a, b) => b - a); console.log('PROF', T.length, L.length, L.slice(0, 8).join(','), L.reduce((a, b) => a + b, 0)); }
   console.log('OK: mushjulet panorerar, entreprenör och Gantt-aktivitet väljs, skyltar med info och IFC till Trimble Connect', JSON.stringify({ file: ifc.calls[0][2], n: ifc.n, kB: Math.round(T.length / 1000) }));
+  // 6b2) Rita direkt i 3D: klicken placeras på marken och syns på minimapen
+  await page.evaluate(() => { const O = l3.O, g = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })); g.position.set(0, 0, 5 - O[2]); g.name = 'testmark'; l3.groups.bldg.add(g); g.updateMatrixWorld(true); l3.groups.bldg.visible = true; const cam = l3.camera; cam.position.set(0, -60, 90); l3.orbit.target.set(0, 0, 5 - O[2]); cam.lookAt(l3.orbit.target); cam.up.set(0, 0, 1); l3.orbit.update(); cam.updateMatrixWorld(true); l3.camera.updateProjectionMatrix(); });
+  await page.click('[data-dytool="pin"]'); await page.check('#dyIn3d');
+  const cvb = await page.evaluate(() => { const r = l3.renderer.domElement.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; });
+  const n3 = await page.evaluate(() => l3day.items.length);
+  await page.mouse.click(cvb.x + cvb.w * 0.5, cvb.y + cvb.h * 0.5); await page.waitForTimeout(150);
+  const p3 = await page.evaluate(() => { const it = l3day.items[l3day.items.length - 1]; return { n: l3day.items.length, kind: it.kind, pt: it.pts[0], sel: l3.sel ? l3.sel.size : 0, key: l3sp.key, dirty: l3sp.ovDirty }; });
+  if (p3.n !== n3 + 1 || p3.kind !== 'pin' || !(p3.pt[0] > 1000)) fail('Klick i 3D ska placera en markör: ' + JSON.stringify(p3));
+  // polylinje i 3D: tre klick + Enter
+  await page.click('[data-dytool="poly"]');
+  for (const [fx, fy] of [[0.35, 0.45], [0.5, 0.6], [0.65, 0.45]]) { await page.mouse.click(cvb.x + cvb.w * fx, cvb.y + cvb.h * fy); await page.waitForTimeout(80); }
+  const pv = await page.evaluate(() => ({ pts: l3day.poly ? l3day.poly.pts.length : 0 })); if (pv.pts !== 3) fail('Tre klick i 3D ska ge tre polylinjepunkter: ' + JSON.stringify(pv));
+  await page.keyboard.press('Enter'); await page.waitForTimeout(100);
+  const pl3 = await page.evaluate(() => { const it = l3day.items[l3day.items.length - 1]; return { kind: it.kind, pts: it.pts.length, n: l3day.items.length }; });
+  if (pl3.kind !== 'pen' || pl3.pts !== 3 || pl3.n !== n3 + 2) fail('Polylinje ritad i 3D: ' + JSON.stringify(pl3));
+  // och att det syns på minimapen: pennan ritas i 2D-lagret (punkterna ligger i minimapens vy)
+  const on2d = await page.evaluate(() => { const it = l3day.items[l3day.items.length - 1], [x, y] = l3spToScr(it.pts[1][0], it.pts[1][1]), r = l3spBox(l3sp.cv); l3spDraw(); return { inside: x > 0 && x < r.width && y > 0 && y < r.height }; });
+  await page.evaluate(() => { const g = l3.groups.bldg.children.find(o => o.name === 'testmark'); if (g) l3.groups.bldg.remove(g); });
+  await page.uncheck('#dyIn3d');
+  console.log('OK: markeringar ritade direkt i 3D hamnar i dagsplaneringen och på minimapen', JSON.stringify({ p3: p3.kind, pl3, on2d }));
   // 6c) Lista → markera en rad → skriv in info och redigera
   await page.evaluate(() => { l3day.sel = null; }); await page.click('#dyList'); await page.waitForSelector('#spDayList .r');
   const lastId = await page.evaluate(() => { const rows = [...document.querySelectorAll('#spDayList .r[data-dyid]')]; return rows[rows.length - 1].dataset.dyid; });
