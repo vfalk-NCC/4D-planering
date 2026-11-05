@@ -108,15 +108,76 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!/Dagsplanering/.test(txt) || !/Gjuter platta B \(4 pers\)/.test(txt) || !/Totalt 8 personer/.test(txt)) fail('Texten till morgonmötet: ' + txt);
   console.log('OK: dagväljare, kopiera från igår, alla dagar, lista och text', JSON.stringify({ today }));
 
+  // 6a) Rektangel, polylinje och polygon
+  await page.click('[data-dytool="rect"]');
+  const n0 = await page.evaluate(() => l3day.items.length);
+  await drag([[0.15, 0.2], [0.3, 0.35]]);
+  const rc = await page.evaluate(() => { const it = l3day.items[l3day.items.length - 1]; return { n: l3day.items.length, kind: it.kind, pts: it.pts.length, area: l3dayArea(it.pts) }; });
+  if (rc.n !== n0 + 1 || rc.kind !== 'area' || rc.pts !== 4 || !(rc.area > 20)) fail('Rektangel: ' + JSON.stringify(rc));
+  await page.click('[data-dytool="poly"]');
+  for (const [fx, fy] of [[0.4, 0.2], [0.5, 0.3], [0.45, 0.45], [0.6, 0.5]]) { const [x, y] = at(fx, fy); await page.mouse.click(x, y); await page.waitForTimeout(60); }
+  if ((await page.evaluate(() => l3day.poly && l3day.poly.pts.length)) !== 4) fail('Polylinjen ska samla klicken som punkter');
+  await page.keyboard.press('Enter'); await page.waitForTimeout(80);
+  const pl = await page.evaluate(() => { const it = l3day.items[l3day.items.length - 1]; return { n: l3day.items.length, kind: it.kind, pts: it.pts.length, straight: it.straight, poly: l3day.poly }; });
+  if (pl.n !== n0 + 2 || pl.kind !== 'pen' || pl.pts !== 4 || !pl.straight || pl.poly) fail('Polylinje (Enter avslutar, raka segment): ' + JSON.stringify(pl));
+  await page.click('[data-dytool="polyarea"]');
+  for (const [fx, fy] of [[0.7, 0.2], [0.85, 0.25], [0.8, 0.4]]) { const [x, y] = at(fx, fy); await page.mouse.click(x, y); await page.waitForTimeout(60); }
+  { const [x, y] = at(0.8, 0.4); await page.mouse.dblclick(x, y); await page.waitForTimeout(100); }
+  const pg = await page.evaluate(() => { const it = l3day.items[l3day.items.length - 1]; return { n: l3day.items.length, kind: it.kind, pts: it.pts.length, poly: l3day.poly }; });
+  if (pg.n !== n0 + 3 || pg.kind !== 'area' || pg.pts !== 3 || pg.poly) fail('Polygon (dubbelklick sluter ytan): ' + JSON.stringify(pg));
+  // Esc avbryter en pågående polylinje utan att spara
+  await page.click('[data-dytool="poly"]'); { const [x, y] = at(0.2, 0.7); await page.mouse.click(x, y); } await page.keyboard.press('Escape'); await page.waitForTimeout(60);
+  if ((await page.evaluate(() => l3day.items.length)) !== n0 + 3 || (await page.evaluate(() => !!l3day.poly))) fail('Esc ska avbryta polylinjen');
+  // byta färg: nästa markering och en vald markering
+  await page.click('[data-dytool="rect"]'); await page.evaluate(() => { const c = document.getElementById('dyColor'); c.value = '#ff00aa'; c.dispatchEvent(new Event('input', { bubbles: true })); });
+  await drag([[0.6, 0.7], [0.7, 0.8]]);
+  const cc = await page.evaluate(() => { l3day.sel = null; l3dayBuild(); const it = l3day.items[l3day.items.length - 1]; return { col: it.col, eff: l3dayCol(it), mesh: l3day.group.children.some(o => o.isMesh && o.material && o.material.color && Math.abs(o.material.color.getHex() - new THREE.Color('#ff00aa').getHex()) < 0x000203), cols: l3day.group.children.filter(o => o.isMesh).map(o => o.material.color.getHexString()).join(',') }; });
+  if (cc.col !== '#ff00aa' || cc.eff !== '#ff00aa' || !cc.mesh) fail('Egen färg på ny markering: ' + JSON.stringify(cc));
+  await page.click('#dyColorAuto'); await page.click('[data-dytool="sel"]');
+  { const [x, y] = at(0.65, 0.75); await page.mouse.click(x, y); await page.waitForTimeout(80); }
+  await page.evaluate(() => { const c = document.getElementById('dyColor'); c.value = '#16a34a'; c.dispatchEvent(new Event('input', { bubbles: true })); });
+  const c2 = await page.evaluate(() => { const it = l3day.items.find(x => x.id === l3day.sel); return { col: it && it.col, id: l3day.sel }; });
+  if (c2.col !== '#16a34a') fail('Färgen på en vald markering ska kunna bytas: ' + JSON.stringify(c2));
+  await page.click('#dyColorAuto'); if ((await page.evaluate(() => l3day.items.find(x => x.id === l3day.sel).col)) !== undefined) fail('Auto ska ta bort egen färg');
+  await page.evaluate(() => { l3day.color = null; });
+  console.log('OK: rektangel, polylinje och polygon', JSON.stringify({ rc, pl, pg }));
+  // 6b) Panorera med mushjulet (mellanknappen) utan att släppa verktyget; entreprenör och Gantt-aktivitet; skyltar som IFC till TC
+  await page.click('[data-dytool="pen"]');
+  const v0 = await page.evaluate(() => ({ tx: l3sp.view.tx, ty: l3sp.view.ty, n: l3day.items.length }));
+  { const [x, y] = at(0.5, 0.5); await page.mouse.move(x, y); await page.mouse.down({ button: 'middle' }); await page.mouse.move(x + 80, y + 40, { steps: 6 }); await page.mouse.up({ button: 'middle' }); await page.waitForTimeout(100); }
+  const v1 = await page.evaluate(() => ({ tx: l3sp.view.tx, ty: l3sp.view.ty, n: l3day.items.length, tool: l3day.tool, cur: !!l3day.cur }));
+  if (Math.hypot(v1.tx - v0.tx, v1.ty - v0.ty) < 30 || v1.n !== v0.n || v1.tool !== 'pen' || v1.cur) fail('Mushjulet ska panorera utan att verktyget släpps eller något ritas: ' + JSON.stringify({ v0, v1 }));
+  await page.evaluate(() => { l3sp.follow = false; l3spFit(); });
+  await page.evaluate(() => { siteItems.push({ id: 'ue-hav', type: 'ue', name: 'Havator', short: 'HAV', color: '#0e7490' }); const d = l3day.day; items = [{ id: 'g1', object_name: 'Stödmur', activity: 'Stödmur 742C', contractor: 'Havator', area: 'NSV', start_date: d, end_date: d, status: 'pagaende', progress: 10 }]; l3dayBarSync(); });
+  const opts = await page.evaluate(() => ({ ue: [...document.querySelectorAll('#dyUe option')].map(o => o.textContent), act: [...document.querySelectorAll('#dyAct option')].map(o => o.textContent) }));
+  if (!opts.ue.some(t => /HAV/.test(t)) || !opts.act.some(t => /Stödmur 742C/.test(t))) fail('Entreprenörer och dagens aktiviteter ska kunna väljas: ' + JSON.stringify(opts));
+  await page.selectOption('#dyAct', '0'); await page.waitForTimeout(50);
+  const fill = await page.evaluate(() => ({ text: document.getElementById('dyText').value, ue: document.getElementById('dyUe').value }));
+  if (fill.text !== 'Stödmur 742C' || fill.ue !== 'ue-hav') fail('Aktiviteten ska fylla i text och entreprenör: ' + JSON.stringify(fill));
+  await page.click('[data-dytool="pin"]'); await page.fill('#dyCrew', '6');
+  { const [x, y] = at(0.7, 0.6); await page.mouse.click(x, y); await page.waitForTimeout(100); }
+  const sgn = await page.evaluate(() => { const it = l3day.items[l3day.items.length - 1]; return { ue: it.ue, ueShort: it.ueShort, ueCol: it.ueCol, act: it.act, crew: it.crew, label: [...l3day.labels.values()].pop().textContent }; });
+  if (sgn.ueShort !== 'HAV' || sgn.ueCol !== '#0e7490' || sgn.act !== 'Stödmur 742C' || sgn.crew !== 6 || !/HAV/.test(sgn.label) || !/Stödmur 742C/.test(sgn.label)) fail('Skylten ska bära entreprenör, aktivitet och personer: ' + JSON.stringify(sgn));
+  const ifc = await page.evaluate(async () => {
+    const calls = []; Object.defineProperty(window, 'opener', { value: { closed: false }, configurable: true, writable: true });
+    const a0 = askOpener; askOpener = async (type, extra) => { calls.push([type, extra.folder, extra.files[0].name]); window.__ifcText = await extra.files[0].text(); return { folder: extra.folder }; };
+    const r = await l3dayExportIfc(); askOpener = a0;
+    return { calls, n: r && r.n, text: window.__ifcText || '' };
+  });
+  const T = ifc.text;
+  if (ifc.calls.length !== 1 || ifc.calls[0][0] !== 'tcUpload' || ifc.calls[0][1] !== 'Lägesplan' || !/^Dagsplan \d{4}-\d\d-\d\d/.test(ifc.calls[0][2]) || !/\.ifc$/.test(ifc.calls[0][2])) fail('IFC ska sparas i Trimble Connect, en fil per dag: ' + JSON.stringify(ifc.calls));
+  if (ifc.n < 4 || (T.match(/4D-dagsplan'/g) || []).length < 4 || !/IFCBUILDINGELEMENTPROXY/.test(T) || !/742C/.test(T) || !/HAV/.test(T) || !/Entrepren/.test(T) || !/IFCTRIANGULATEDFACESET/.test(T) || !/IFCRECTANGLEPROFILEDEF/.test(T)) fail('IFC-filen ska ha skyltar med info: ' + JSON.stringify({ n: ifc.n, len: T.length, proxies: (T.match(/4D-dagsplan'/g) || []).length, bep: /IFCBUILDINGELEMENTPROXY/.test(T), act: /742C/.test(T), hav: /HAV/.test(T), ent: /Entrepren/.test(T), tri: /IFCTRIANGULATEDFACESET/.test(T), rect: /IFCRECTANGLEPROFILEDEF/.test(T), sample: (T.match(/IFCBUILDINGELEMENTPROXY[^;]{0,160}/) || [''])[0] }));
+  if (process.env.PROF) { const L = T.split('\n').filter(l => /IFCCARTESIANPOINTLIST3D/.test(l)).map(l => l.length).sort((a, b) => b - a); console.log('PROF', T.length, L.length, L.slice(0, 8).join(','), L.reduce((a, b) => a + b, 0)); }
+  console.log('OK: mushjulet panorerar, entreprenör och Gantt-aktivitet väljs, skyltar med info och IFC till Trimble Connect', JSON.stringify({ file: ifc.calls[0][2], n: ifc.n, kB: Math.round(T.length / 1000) }));
   // 7) 3D av/på och att allt sparas i projektet och läses tillbaka
   await page.selectOption('#dyShow', 'day'); await page.evaluate(() => { l3SetPref('dayShow3d', false); l3dayBuild(); });
   if ((await page.evaluate(() => l3day.group.visible)) !== false) fail('3D av ska dölja dagsplaneringen');
   await page.evaluate(() => { l3SetPref('dayShow3d', true); l3dayBuild(); });
   await page.waitForTimeout(900);
   const saved = JSON.parse(gh.get('projects/p1/plan_dayplan.json') || '[]');
-  if (saved.length !== 6 || saved.some(x => x.plan !== 'A' || !x.pts.length)) fail('Dagsplaneringen ska sparas i projektet: ' + JSON.stringify(saved.map(x => [x.kind, x.day])));
+  const nAll = await page.evaluate(() => l3day.items.length); if (saved.length !== nAll || saved.some(x => x.plan !== 'A' || !x.pts.length)) fail('Dagsplaneringen ska sparas i projektet: ' + JSON.stringify(saved.map(x => [x.kind, x.day])));
   const back = await page.evaluate(async () => { l3day.items = []; l3day.loaded = false; await l3dayLoad(); return { n: l3day.items.length, v: l3dayList().length }; });
-  if (back.n !== 6) fail('Sparat ska läsas tillbaka: ' + JSON.stringify(back));
+  if (back.n !== nAll) fail('Sparat ska läsas tillbaka: ' + JSON.stringify(back));
   // 8) Rensa dagen, stäng raden
   await page.evaluate(() => { window.confirm = () => true; }); await page.click('#dyClr'); await page.waitForTimeout(100); s = await st(); if (s.n !== 3) fail('Rensa ska ta bort dagens markeringar: ' + JSON.stringify(s));
   await page.evaluate(() => l3spClose()); if (await page.evaluate(() => !!document.getElementById('spDay'))) fail('Raden ska försvinna när minimapen stängs');
