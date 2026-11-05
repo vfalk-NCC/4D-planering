@@ -208,6 +208,15 @@ const DXF = n => ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '8', n, '10', '6
     await page.keyboard.press('Control+z'); await page.waitForTimeout(100);
     if ((await page.evaluate(id => l3d.ents.find(x => x.id === id).del, L1))) fail('Ctrl+Z efter Trimma ska ge tillbaka linjen');
     await page.evaluate(id => { const x = l3d.ents[l3d.ents.length - 1]; if (x.id !== id) l3d.ents.pop(); }, L1);
+    // Extend i 3D-redigeringen
+    const exr = await page.evaluate(() => {
+      const mk = pts => { const e = { id: l3d.next++, layer: l3d.ents[0].layer, color: l3d.ents[0].color, pts, added: true }; l3d.ents.push(e); return e; };
+      const a = mk([[6512330, 150108], [6512332, 150108]]), b = mk([[6512335, 150105], [6512335, 150111]]);
+      l3dExtend(a, [6512331.9, 108 + 150000]);
+      const r = a.pts[1].slice(); l3Undo(); const r2 = a.pts[1].slice(); l3d.ents = l3d.ents.filter(x => x !== a && x !== b);
+      return { r, r2, btn: !!document.getElementById('v3DxExt') };
+    });
+    if (Math.abs(exr.r[0] - 6512335) > 1e-3 || exr.r2[0] !== 6512332 || !exr.btn) fail('Extend i 3D-redigeringen: ' + JSON.stringify(exr));
     await page.evaluate(() => l3DlgClose('v3Special'));
     console.log('OK: Flytta special och Kopiera special fungerar på markerade DXF-linjer');
     await page.evaluate(() => l3SetTool('select'));

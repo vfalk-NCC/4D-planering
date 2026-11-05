@@ -45,3 +45,25 @@ function dxfTrimCompute(ents, target, m) {
   cut.push(...mid);
   return { ok: true, pieces, cut, removedLen: (function () { let L = 0; for (let i = 1; i < mid.length; i++) L += Math.hypot(mid[i][0] - mid[i - 1][0], mid[i][1] - mid[i - 1][1]); return L; })() };
 }
+
+/* Extend (Victor 2026-11-05: "lägg till extend också"): som i AutoCAD – tryck på en linje nära den ände som ska förlängas; änden dras ut i sin egen riktning tills den når
+   närmaste andra linje (inom 1 000 m). dxfExtendCompute(ents, target, m) → { ok, end: "start"|"end", from, to, newPts, added } eller { ok:false, reason }. */
+function dxfExtendCompute(ents, target, m) {
+  const P = target.pts; if (!P || P.length < 2) return { ok: false, reason: "Linjen har för få punkter." };
+  const dS = Math.hypot(P[0][0] - m[0], P[0][1] - m[1]), dE = Math.hypot(P[P.length - 1][0] - m[0], P[P.length - 1][1] - m[1]), atEnd = dE <= dS;
+  const a = atEnd ? P[P.length - 1] : P[0], b = atEnd ? P[P.length - 2] : P[1], L = Math.hypot(a[0] - b[0], a[1] - b[1]);
+  if (!(L > 1e-9)) return { ok: false, reason: "Änden har ingen riktning." };
+  const ux = (a[0] - b[0]) / L, uy = (a[1] - b[1]) / L, far = [a[0] + ux * 1000, a[1] + uy * 1000];
+  let best = null;
+  ents.forEach(e => {
+    if (e.del || !e.pts || e.pts.length < 2) return;
+    for (let j = 1; j < e.pts.length; j++) {
+      if (e === target) { const own = atEnd ? j >= P.length - 1 : j <= 1; if (own) continue; }   // linjens egen ände räknas inte
+      const h = dxfSegX(a, far, e.pts[j - 1], e.pts[j]); if (!h || h.t * 1000 < 1e-6) continue;
+      const d = h.t * 1000; if (!best || d < best.d) best = { d, x: h.x, y: h.y };
+    }
+  });
+  if (!best) return { ok: false, reason: "Ingen linje ligger i förlängningen av änden." };
+  const to = [best.x, best.y], newPts = P.map(p => p.slice()); if (atEnd) newPts[newPts.length - 1] = to; else newPts[0] = to;
+  return { ok: true, end: atEnd ? "end" : "start", from: a.slice(), to, newPts, added: best.d };
+}

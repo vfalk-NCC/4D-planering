@@ -94,11 +94,19 @@ function cdeTrim(hit, m) {
   cdeOp2("trimmat", () => { hit.del = true; cde.ents.push(...adds); cde.sel.delete(hit.id); }, () => { hit.del = false; const a = new Set(adds); cde.ents = cde.ents.filter(e => !a.has(e)); if (was) cde.sel.add(hit.id); });
   setSaveStatus(`✂ Trimmade bort ${cdeFmt(r.removedLen)} m.`); return true;
 }
+/* Extend: tryck på en linje nära den ände som ska förlängas – den dras ut i sin riktning till närmaste andra linje. */
+function cdeExtend(hit, m) {
+  const r = dxfExtendCompute(cdeEnts(), hit, m); if (!r.ok) { setSaveStatus("⇥ " + r.reason); return false; }
+  const old = hit.pts.map(p => p.slice()), nw = r.newPts.map(p => [cdeR(p[0]), cdeR(p[1])]);
+  cdeOp2("förlängt till linje", () => { hit.pts = nw.map(p => p.slice()); }, () => { hit.pts = old.map(p => p.slice()); });
+  setSaveStatus(`⇥ Förlängde ${cdeFmt(r.added)} m till närmaste linje.`); return true;
+}
 /* ---- Pekare ---------------------------------------------------------------------------------------------------- */
 function cdePointerDown(e) {
   if (!cde.rec || e.button !== 0 || !plan || !plan.calib || !e.target.closest || !e.target.closest("#viewport") || e.target.closest("#cdeBar")) return false;
   const sp = stagePoint(e), m = cdeToModel(sp), tol = cdeTolM(), sel = cdeSelEnts();
   e.preventDefault();
+  if (cde.tool === "extend") { const h = cdeHit(m); if (h) cdeExtend(h, m); else setSaveStatus("⇥ Tryck på en linje nära den ände som ska förlängas."); cde.trimPrev = null; return true; }
   if (cde.tool === "trim") { const h = cdeHit(m); if (h) cdeTrim(h, m); else setSaveStatus("✂ Tryck på den del av en linje som ska bort."); cde.trimPrev = null; return true; }
   // hörnpunkt på en markerad linje
   if (sel.length && sel.length <= 6) for (const en of sel) for (let i = 0; i < en.pts.length; i++) { if (Math.hypot(en.pts[i][0] - m[0], en.pts[i][1] - m[1]) < tol * 1.2) { cde.drag = { kind: "grip", en, i, before: cdeSnap([en]), moved: false }; return true; } }
@@ -108,7 +116,7 @@ function cdePointerDown(e) {
   cde.drag = { kind: "box", a: sp, m0: m, add: e.shiftKey || e.ctrlKey || e.metaKey, moved: false, sx: e.clientX, sy: e.clientY }; return true;
 }
 window.addEventListener("mousemove", e => {
-  if (cde.rec && cde.tool === "trim" && !cde.drag && e.target && e.target.closest && e.target.closest("#viewport")) { const m = cdeToModel(stagePoint(e)), h = cdeHit(m), r = h ? dxfTrimCompute(cdeEnts(), h, m) : null, np = r && r.ok ? r.cut : null; if ((np ? 1 : 0) !== (cde.trimPrev ? 1 : 0) || np) { cde.trimPrev = np; renderZonesSoon(); } return; }
+  if (cde.rec && (cde.tool === "trim" || cde.tool === "extend") && !cde.drag && e.target && e.target.closest && e.target.closest("#viewport")) { const m = cdeToModel(stagePoint(e)), h = cdeHit(m), r = h ? (cde.tool === "trim" ? dxfTrimCompute(cdeEnts(), h, m) : dxfExtendCompute(cdeEnts(), h, m)) : null, np = r && r.ok ? (cde.tool === "trim" ? r.cut : [r.from, r.to]) : null; if ((np ? 1 : 0) !== (cde.trimPrev ? 1 : 0) || np) { cde.trimPrev = np; renderZonesSoon(); } return; }
   const d = cde.drag; if (!d || !cde.rec) return;
   if (!d.moved && Math.hypot(e.clientX - (d.sx != null ? d.sx : 0), e.clientY - (d.sy != null ? d.sy : 0)) < 3 && d.kind !== "grip") return;
   d.moved = true; const sp = stagePoint(e); let m = cdeToModel(sp);
@@ -159,7 +167,7 @@ function cdeDraw(ctx, fontPx) {
   if (sel.length && sel.length <= 6) sel.forEach(e => { e.pts.forEach(p => { const q = mToPx(p), r = Math.max(3, fontPx * 0.28); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#7c3aed"; ctx.lineWidth = Math.max(1.5, r / 3); ctx.beginPath(); ctx.rect(q[0] - r, q[1] - r, r * 2, r * 2); ctx.fill(); ctx.stroke(); });
     const a = mToPx(e.pts[0]), b = mToPx(e.pts[e.pts.length - 1]), mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2, txt = `${cdeFmt(cdeLen(e.pts))} m`; ctx.font = `700 ${fontPx}px "Segoe UI", Arial`; const w = ctx.measureText(txt).width + fontPx * 0.8;
     ctx.fillStyle = "#7c3aed"; ctx.fillRect(mx - w / 2, my - fontPx * 1.9, w, fontPx * 1.3); ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(txt, mx, my - fontPx * 1.25); });
-  if (cde.trimPrev) { ctx.save(); ctx.strokeStyle = "#dc2626"; ctx.lineWidth = Math.max(3, fontPx * 0.3); ctx.setLineDash([fontPx * 0.5, fontPx * 0.3]); ctx.beginPath(); cde.trimPrev.forEach((p, i) => { const q = mToPx(p); if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); }); ctx.stroke(); ctx.restore(); }
+  if (cde.trimPrev) { ctx.save(); ctx.strokeStyle = cde.tool === "extend" ? "#16a34a" : "#dc2626"; ctx.lineWidth = Math.max(3, fontPx * 0.3); ctx.setLineDash([fontPx * 0.5, fontPx * 0.3]); ctx.beginPath(); cde.trimPrev.forEach((p, i) => { const q = mToPx(p); if (i) ctx.lineTo(q[0], q[1]); else ctx.moveTo(q[0], q[1]); }); ctx.stroke(); ctx.restore(); }
   if (cde.box) { const a = cde.box.a, b = cde.box.b, cross = b[0] < a[0]; ctx.save(); ctx.setLineDash([8, 6]); ctx.lineWidth = 2; ctx.strokeStyle = cross ? "#16a34a" : "#2563eb"; ctx.fillStyle = cross ? "rgba(22,163,74,.1)" : "rgba(37,99,235,.1)"; ctx.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])); ctx.strokeRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.abs(b[0] - a[0]), Math.abs(b[1] - a[1])); ctx.restore(); }
 }
 /* ---- Verktygsrad och tangenter ------------------------------------------------------------------------------------- */
@@ -173,7 +181,7 @@ function cdeBar() {
     <span>±</span>${inp("cdeGrow", 52, "m")}${btn("cdeGrowGo", "Förläng/korta", "Lägg till (eller dra ifrån med minus) så många meter på varje markerad linje")}
     <span>dX</span>${inp("cdeDx", 52, "m")}<span>dY</span>${inp("cdeDy", 52, "m")}${btn("cdeMove", "Flytta", "Flytta de markerade (eller piltangenterna: 0,1 m, Skift 1 m, Ctrl 0,01 m)")}
     <span>Vrid</span>${inp("cdeRot", 46, "°")}${btn("cdeRotGo", "Vrid", "Vrid runt markeringens mitt (grader, moturs)")}
-    ${btn("cdeTrim", "✂ Trimma", "Trimma: tryck på den del av en linje som ska bort (mellan närmaste skärningar). Esc eller knappen igen avslutar verktyget.")}${btn("cdeDel", "Ta bort", "Delete")}${btn("cdeUndo", "↶", "Ångra (Ctrl+Z)")}${btn("cdeRedo", "↷", "Gör om (Ctrl+Y)")}
+    ${btn("cdeTrim", "✂ Trimma", "Trimma: tryck på den del av en linje som ska bort (mellan närmaste skärningar). Esc eller knappen igen avslutar verktyget.")}${btn("cdeExt", "⇥ Extend", "Extend: tryck på en linje nära den ände som ska förlängas – änden dras ut till närmaste andra linje. Esc eller knappen igen avslutar verktyget.")}${btn("cdeDel", "Ta bort", "Delete")}${btn("cdeUndo", "↶", "Ångra (Ctrl+Z)")}${btn("cdeRedo", "↷", "Gör om (Ctrl+Y)")}
     <button type="button" id="cdeSave" style="background:#2563eb;color:#fff;border:0;border-radius:7px;padding:4px 10px;font:inherit;cursor:pointer" title="Sparar en ny DXF (originalet ändras aldrig) och lägger den som nytt lager">Spara som ny DXF</button>${btn("cdeEnd", "Avsluta", "Avsluta redigeringen")}`;
   document.body.appendChild(b); cde.bar = b;
   const q = s => b.querySelector(s), num = s => { const v = parseFloat(String(q(s).value).replace(",", ".")); return isFinite(v) ? v : null; };
@@ -184,6 +192,7 @@ function cdeBar() {
   q("#cdeMove").onclick = () => { const dx = num("#cdeDx") || 0, dy = num("#cdeDy") || 0; if (dx || dy) cdeDoMove(dx, dy); };
   q("#cdeRotGo").onclick = () => { const v = num("#cdeRot"); if (v) cdeDoRotate(v); };
   q("#cdeTrim").onclick = () => { cde.tool = cde.tool === "trim" ? null : "trim"; cde.trimPrev = null; cdeBarSync(); renderZonesSoon(); };
+  q("#cdeExt").onclick = () => { cde.tool = cde.tool === "extend" ? null : "extend"; cde.trimPrev = null; cdeBarSync(); renderZonesSoon(); };
   q("#cdeDel").onclick = cdeDoDelete; q("#cdeUndo").onclick = cdeUndo; q("#cdeRedo").onclick = cdeRedo;
   q("#cdeSave").onclick = async () => { const bt = q("#cdeSave"); bt.disabled = true; try { await cdeSave(); } catch (e) { alert("Kunde inte spara: " + e.message); } if (bt.isConnected) bt.disabled = false; };
   q("#cdeEnd").onclick = () => cdeEnd();
@@ -194,7 +203,7 @@ function cdeBarSync() {
   info.textContent = !L.length ? `${cdeEnts().length} linjer – tryck på en linje eller dra en ruta` : L.length === 1 ? `1 linje · ${cdeFmt(cdeLen(L[0].pts))} m · ${L[0].pts.length} punkter · ${L[0].layer}` : `${L.length} linjer · totalt ${cdeFmt(L.reduce((a, e) => a + cdeLen(e.pts), 0))} m`;
   const len = b.querySelector("#cdeLen"); if (document.activeElement !== len) len.value = L.length === 1 ? cdeFmt(cdeLen(L[0].pts)) : "";
   b.querySelector("#cdeLen").disabled = L.length !== 1; [...b.querySelectorAll("#cdeLenGo,#cdeGrowGo,#cdeMove,#cdeRotGo,#cdeDel")].forEach(x => { x.disabled = !L.length; x.style.opacity = L.length ? 1 : .45; }); b.querySelector("#cdeLenGo").disabled = L.length !== 1;
-  { const t = b.querySelector("#cdeTrim"); if (t) { t.style.background = cde.tool === "trim" ? "#dc2626" : "#334155"; } const vp = document.getElementById("viewport"); if (vp) vp.style.cursor = cde.tool === "trim" ? "crosshair" : ""; }
+  { const t = b.querySelector("#cdeTrim"); if (t) { t.style.background = cde.tool === "trim" ? "#dc2626" : "#334155"; } { const x = b.querySelector("#cdeExt"); if (x) x.style.background = cde.tool === "extend" ? "#16a34a" : "#334155"; } const vp = document.getElementById("viewport"); if (vp) vp.style.cursor = cde.tool ? "crosshair" : ""; }
   b.querySelector("#cdeUndo").disabled = !cde.undo.length; b.querySelector("#cdeRedo").disabled = !cde.redo.length;
 }
 function cdeBindKeys() {

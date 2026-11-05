@@ -60,7 +60,7 @@ async function l3dEnd(force) {
   [l3d.mesh, l3d.selMesh, l3d.selPts, l3d.prev].forEach(o => { if (o) { if (o.parent) o.parent.remove(o); o.geometry.dispose(); o.material.dispose(); } });
   l3sDisposeMeshes(l3d.tmeshes); l3d.tmeshes = []; l3d.tbuilt = -1;
   l3d.mesh = l3d.selMesh = l3d.selPts = l3d.prev = null;
-  l3d.rec = null; l3d.ents = []; l3d.texts = []; l3d.sel = new Set(); l3d.dirty = false; l3d.trim = false;
+  l3d.rec = null; l3d.ents = []; l3d.texts = []; l3d.sel = new Set(); l3d.dirty = false; l3d.trim = false; l3d.extend = false;
   l3sRefresh(0);
   l3RenderSide();
   l3Render();
@@ -252,6 +252,7 @@ function l3dTap(e) {
     l3Status(`Rita linje: ${pts.length} punkter${pts.length > 1 ? `, ${l3dLen(pts).toFixed(2).replace(".", ",")} m` : ""}. Enter eller dubbelklick avslutar, Esc avbryter.`);
     return true;
   }
+  if (l3d.extend) { const en1 = l3dHit(e); if (!en1 || l3dIsText(en1)) { l3Status("Tryck på en linje nära den ände som ska förlängas."); return true; } const g1 = l3dGround(e, null); if (g1) l3dExtend(en1, g1.p); return true; }
   if (l3d.trim) { const en0 = l3dHit(e); if (!en0 || l3dIsText(en0)) { l3Status("Tryck på den del av en linje som ska bort."); return true; } const g0 = l3dGround(e, null); if (g0) l3dTrim(en0, g0.p); return true; }
   const en = l3dHit(e);
   // Alt + tryck på en markerad linje: ny hörnpunkt där.
@@ -290,7 +291,7 @@ function l3dRect(a) {
 }
 function l3dKey(e) {
   if (!l3d.rec) return false;
-  if (e.key === "Escape" && l3d.trim) { l3d.trim = false; l3RenderSide(); l3Status("Trimma avslutad."); return true; }
+  if (e.key === "Escape" && (l3d.trim || l3d.extend)) { l3d.trim = false; l3d.extend = false; l3RenderSide(); l3Status("Verktyget avslutat."); return true; }
   if (e.key === "Escape" && l3dT.step) { l3dToolCancel(); l3Status("Avbrutet."); return true; }
   if (e.key === "Escape") { if (l3d.draw && l3d.draw.pts && l3d.draw.pts.length) { l3d.draw.pts = []; l3dPreview(null); l3Status("Linjen avbröts."); } else if (l3d.draw) l3dStopDraw(); else if (l3d.sel.size) { l3d.sel = new Set(); l3dRebuild(); l3RenderSide(); } else l3dEnd(); return true; }
   if (e.key === "Enter" && l3d.draw && l3d.draw.pts) { l3dFinishLine(); return true; }
@@ -306,7 +307,7 @@ function l3dKey(e) {
 /* ---- Rita linje och ny text -------------------------------------------------------------------- */
 function l3dLen(pts) { let s = 0; for (let i = 1; i < pts.length; i++) s += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); return s; }
 function l3dStartDraw(text) {
-  l3d.trim = false;
+  l3d.trim = false; l3d.extend = false;
   if (!l3d.rec) return;
   l3dStopDraw();
   l3d.draw = text ? { text: true } : { pts: [] };
@@ -430,6 +431,7 @@ function l3dRenderSide(side) {
       <button type="button" class="v3-act ${l3d.draw ? "" : "on"}" id="v3DxSel" title="Välj linjer och texter: tryck, Skift lägger till, dra en ruta">${I.select}<span>Välj</span></button>
       <button type="button" class="v3-act ${l3d.draw && l3d.draw.pts ? "on" : ""}" id="v3DxDraw" title="Rita egna linjer punkt för punkt">${I.edit}<span>Rita linje</span></button>
       <button type="button" class="v3-act ${l3d.draw && l3d.draw.text ? "on" : ""}" id="v3DxText" title="Ny text där du trycker">T<span>Ny text</span></button>
+      <button type="button" class="v3-act ${l3d.extend ? "on" : ""}" id="v3DxExt" title="Extend: tryck på en linje nära den ände som ska förlängas – änden dras ut till närmaste andra linje (Esc avslutar)">⇥<span>Extend</span></button>
       <button type="button" class="v3-act ${l3d.trim ? "on" : ""}" id="v3DxTrim" title="Trimma: tryck på den del av en linje som ska bort – delen mellan närmaste skärningar tas bort (Esc avslutar)">✂<span>Trimma</span></button>
     </div>
     <label class="v3-dx-row">Nytt på lagret <select id="v3DxLayer">${opts(l3d.layer)}</select></label>
@@ -451,7 +453,8 @@ function l3dRenderSide(side) {
   const num = (id, def = 0) => { const raw = String((side.querySelector("#" + id) || {}).value || "").trim(); if (!raw) return def; const v = Number(raw.replace(",", ".").replace(/\s/g, "")); return Number.isFinite(v) ? v : def; };
   on("v3DxEnd", "onclick", () => l3dEnd());
   on("v3DxSel", "onclick", () => l3dStopDraw());
-  on("v3DxTrim", "onclick", () => { l3d.trim = !l3d.trim; if (l3d.trim) { l3dStopDraw(); l3Status("Trimma: tryck på den del av en linje som ska bort – delen mellan närmaste skärningar. Esc avslutar."); } l3RenderSide(); });
+  on("v3DxExt", "onclick", () => { l3d.extend = !l3d.extend; if (l3d.extend) { l3d.trim = false; l3dStopDraw(); l3Status("Extend: tryck på en linje nära den ände som ska förlängas. Esc avslutar."); } l3RenderSide(); });
+  on("v3DxTrim", "onclick", () => { l3d.trim = !l3d.trim; if (l3d.trim) l3d.extend = false; if (l3d.trim) { l3dStopDraw(); l3Status("Trimma: tryck på den del av en linje som ska bort – delen mellan närmaste skärningar. Esc avslutar."); } l3RenderSide(); });
   on("v3DxDraw", "onclick", () => (l3d.draw && l3d.draw.pts ? l3dStopDraw() : l3dStartDraw()));
   on("v3DxText", "onclick", () => (l3d.draw && l3d.draw.text ? l3dStopDraw() : l3dStartDraw(true)));
   on("v3DxLayer", "onchange", async e => { let v = e.target.value; if (v === "__new") v = await l3dNewLayer(); if (v) l3d.layer = v; l3RenderSide(); });
@@ -632,4 +635,12 @@ function l3dTrim(en, m) {
   const adds = r.pieces.map(pts => ({ id: l3d.next++, layer: en.layer, color: en.color, pts: pts.map(p => [Math.round(p[0] * 1e4) / 1e4, Math.round(p[1] * 1e4) / 1e4]), added: true })), was = l3d.sel.has(en.id);
   l3dOp("trimma", () => { en.del = true; l3d.ents.push(...adds); l3d.sel.delete(en.id); }, () => { en.del = false; const a = new Set(adds); l3d.ents = l3d.ents.filter(x => !a.has(x)); if (was) l3d.sel.add(en.id); }, false);
   l3Status(`✂ Trimmade bort ${String(Math.round(r.removedLen * 100) / 100).replace(".", ",")} m (Ctrl+Z ångrar).`);
+}
+
+function l3dExtend(en, m) {
+  if (typeof dxfExtendCompute !== "function") return;
+  const r = dxfExtendCompute(l3d.ents.filter(x => !x.del && l3dLayerOn(x.layer)), en, m); if (!r.ok) { l3Status("⇥ " + r.reason, true); return; }
+  const old = en.pts.map(p => p.slice()), nw = r.newPts.map(p => [Math.round(p[0] * 1e4) / 1e4, Math.round(p[1] * 1e4) / 1e4]);
+  l3dOp("förläng till linje", () => { en.pts = nw.map(p => p.slice()); }, () => { en.pts = old.map(p => p.slice()); }, false);
+  l3Status(`⇥ Förlängde ${String(Math.round(r.added * 100) / 100).replace(".", ",")} m till närmaste linje (Ctrl+Z ångrar).`);
 }

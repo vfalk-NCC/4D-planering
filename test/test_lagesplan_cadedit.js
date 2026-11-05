@@ -99,6 +99,21 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const tr3 = await page.evaluate(() => cde.ents.filter(e => !e.del).length); if (tr3 !== n0t + 1) fail('Ångra trimningen ska ge tillbaka linjerna: ' + tr3 + ' vs ' + (n0t + 1));
   await page.keyboard.press('Escape'); if (await page.evaluate(() => cde.tool)) fail('Esc ska avsluta trimverktyget');
   console.log('OK: trimma (förhandsvisning, bort fram till skärning, mellan skärningar, ångra)', JSON.stringify(tr2));
+  // 5c) Extend: dra ut en ände till närmaste linje
+  await page.evaluate(() => { cde.ents.push({ id: cde.next++, layer: 'AXLAR', color: '#ff0000', pts: [[6512340, 150110], [6512342, 150110]] }, { id: cde.next++, layer: 'AXLAR', color: '#ff0000', pts: [[6512346, 150107], [6512346, 150113]] }); cde.ver++; cde.tool = null; cdeBarSync(); });
+  await page.evaluate(() => { const p = mToPx([6512343, 150110]); view.scale = 1; view.tx = 473 - p[0]; view.ty = 425 - p[1]; applyView(); });
+  await page.click('#cdeExt'); const [ex1, ey1] = await scr(6512341.8, 150110);
+  await page.mouse.move(ex1, ey1); await page.waitForTimeout(80);
+  if (!(await page.evaluate(() => !!(cde.trimPrev && cde.trimPrev.length === 2)))) fail('Extend ska förhandsvisa förlängningen');
+  await page.mouse.click(ex1, ey1); await page.waitForTimeout(100);
+  const xt = await page.evaluate(() => { const e = cde.ents.find(x => !x.del && x.pts.length === 2 && Math.abs(x.pts[0][1] - 150110) < 1e-6 && x.pts[0][0] === 6512340); return e && e.pts[1].slice(); });
+  if (!xt || Math.abs(xt[0] - 6512346) > 1e-3 || Math.abs(xt[1] - 150110) > 1e-3) fail('Extend ska dra änden till närmaste linje (6512346): ' + JSON.stringify(xt));
+  await page.click('#cdeUndo'); const xu = await page.evaluate(() => cde.ents.find(x => !x.del && x.pts.length === 2 && x.pts[0][0] === 6512340 && Math.abs(x.pts[0][1] - 150110) < 1e-6).pts[1][0]); if (xu !== 6512342) fail('Ångra Extend: ' + xu);
+  const [ex2, ey2] = await scr(6512340.2, 150110); await page.mouse.click(ex2, ey2); await page.waitForTimeout(80);
+  const nx = await page.evaluate(() => cde.ents.find(x => !x.del && x.pts.length === 2 && Math.abs(x.pts[1][1] - 150110) < 1e-6 && x.pts[1][0] === 6512342).pts[0][0]); if (nx !== 6512340) fail('Start-änden har ingen linje att nå – ska vara oförändrad: ' + nx);
+  await page.keyboard.press('Escape'); await page.evaluate(() => { cde.ents = cde.ents.filter(e => !(e.pts.length === 2 && (e.pts[0][0] === 6512346 || (e.pts[0][0] === 6512340 && Math.abs(e.pts[0][1] - 150110) < 1e-6)))); cde.ver++; cde.undo = []; cde.redo = []; cdeRefresh(); });
+  await page.evaluate(() => { const p = mToPx([6512355, 150122]); view.scale = 1; view.tx = 473 - p[0]; view.ty = 425 - p[1]; applyView(); });
+  console.log('OK: extend (förhandsvisning, till närmaste linje, ångra, ingen linje = oförändrad)');
   // 6) Hörnpunkt: dra
   await page.evaluate(() => { cde.sel = new Set([cde.ents[0].id]); cdeRefresh(); });
   const ge = await page.evaluate(() => cde.ents[0].pts.map(p => p.slice())); const [g1, g2] = await scr(ge[2][0], ge[2][1]), [t1, t2] = await scr(ge[2][0] + 2, ge[2][1] + 1);
