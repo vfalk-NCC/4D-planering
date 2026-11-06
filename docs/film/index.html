@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>4D Construction Planning – Film</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:Inter,system-ui,sans-serif}
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#out{max-width:100vw;max-height:100vh;aspect-ratio:16/9;width:100%;height:auto;object-fit:contain;background:#000}
+#gl{position:absolute;left:-99999px}
+#ui{position:fixed;left:0;right:0;bottom:0;height:46px;display:flex;align-items:center;gap:14px;padding:0 22px;color:#cfd6e4;font:500 13px Inter,sans-serif;background:linear-gradient(transparent,rgba(0,0,0,.7));opacity:.0;transition:opacity .3s}
+body:hover #ui{opacity:1}
+#bar{flex:1;height:4px;background:#ffffff30;border-radius:3px;position:relative;cursor:pointer}#bar i{position:absolute;left:0;top:0;bottom:0;background:#4c8dff;border-radius:3px}
+button{background:none;border:0;color:#fff;font:600 14px Inter;cursor:pointer}
+#start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:#05070c;color:#fff;z-index:5;cursor:pointer}
+#start h1{font:300 34px Inter;letter-spacing:.32em;margin:0}#start p{margin:0;font:400 14px Inter;color:#8d98ad;letter-spacing:.12em}
+</style></head><body>
+<div id="start"><h1>4D CONSTRUCTION PLANNING</h1><p>CLICK TO PLAY · F = FULLSCREEN · SPACE = PAUSE · ← → = SEEK</p></div>
+<div id="stage"><canvas id="out" width="1920" height="1080"></canvas></div><canvas id="gl"></canvas>
+<div id="ui"><button id="pp">⏸</button><span id="tm">0:00</span><div id="bar"><i></i></div><button id="fs">⛶</button></div>
+<script src="../vendor/three/three.min.js"></script>
+<script src="film.js"></script>
+</body></html>
