@@ -414,8 +414,13 @@ async function ghWriteJSONAttempt(token, path, mutateFn, message, maxRetries, pr
     // en extra läsning. Vid krock (409) läses filen alltid om på riktigt.
     const known = attempt === 0 ? (ghFileCache.get(path) || preFetched) : null;
     const { data, sha } = known || await ghGetFile(token, path, { fresh: true });
+    // Skydd mot dataförlust (Victor 2026-11-09: mappar och sparade vyer försvann ur lagerlistan): finns filen (sha) men kunde inte tolkas som en lista får vi inte
+    // skriva "från noll" – då försvinner allt annat i filen. Och för lagerfilen stoppas en skrivning som skulle ta bort det mesta av innehållet på en gång.
+    if (sha && data != null && !Array.isArray(data)) throw new Error(`Skyddet stoppade sparningen: ${path} har ett oväntat innehåll och lämnades orörd.`);
+    if (sha && data == null && /site_layers\.json$/.test(path)) throw new Error(`Skyddet stoppade sparningen: ${path} finns men kunde inte läsas (tom eller ogiltig) – inget har ändrats. Ladda om och försök igen.`);
     const current = Array.isArray(data) ? data : [];
     const next = mutateFn(current.slice());
+    if (/site_layers\.json$/.test(path) && Array.isArray(next) && current.length - next.length >= 6 && next.length < current.length * 0.5) throw new Error(`Skyddet stoppade sparningen: ${path} skulle krympa från ${current.length} till ${next.length} poster. Inget har ändrats – ladda om sidan och försök igen (använd Återställ i lagerlistan om något saknas).`);
     try {
       // Kompakt JSON (ingen indentering) istället för JSON.stringify(next, null, 2)
       // - filerna (särskilt plan_items.json, som nu innehåller hundratals

@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-11-09 13:59";
+const APP_VERSION = "2026-11-09 16:12";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -5546,12 +5546,15 @@ async function renderBackupList() {
 }
 
 async function restoreBackup(path, when) {
-  if (!confirm(`Återställa projektets data till läget ${when}?\n\nAllt som gjorts efter det (kopplingar, ändringar, kommentarer) ersätts. En säkerhetskopia av nuvarande läge tas först, så det går att ångra.`)) return;
+  if (!confirm(`Återställa projektets data till läget ${when}?\n\nAllt som gjorts efter det (kopplingar, ändringar, kommentarer) ersätts. Lägesplanens lager, mappar, vyer och ortofoton rörs inte. En säkerhetskopia av nuvarande läge tas först, så det går att ångra.`)) return;
   if (!confirm("Är du helt säker? Klicka OK för att återställa.")) return;
   try {
     const data = await loadBackup(path);
     await createBackup(`Före återställning till ${when}`);
     for (const [name, content] of Object.entries(data.files)) {
+      // Lägesplanens lager (mappar, sparade vyer, utskriftsmallar, ortofoton, DXF-lager, ritade objekt) ligger i site_layers och återställs INTE här – de skulle annars gå tillbaka till läget
+      // då säkerhetskopian togs (Victor 2026-11-09: allt han lagt till i lägesplanen efter det försvann). Lager återställs i lägesplanen (Lager → ⟲ Återställ…).
+      if (name === "site_layers") continue;
       await ghWriteJSON(settings.githubToken, projectFilePath(name), () => content, `Återställ ${name} till ${when}`);
     }
     alert(`Återställt till ${when}.`);
