@@ -45,8 +45,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const R = await page.evaluate(async () => {
     const O = l3.O, ang = 30 * Math.PI / 180, mkBox = (cx, cy, z0, L, B, H, a, name) => { const pts = []; for (const [u, v] of [[-L / 2, -B / 2], [L / 2, -B / 2], [L / 2, B / 2], [-L / 2, B / 2]]) for (const z of [z0, z0 + H]) pts.push([cx + u * Math.cos(a) - v * Math.sin(a), cy + u * Math.sin(a) + v * Math.cos(a), z]); return { name, cls: 'IFCFOOTING', guid: 'g' + name, src: 'ifc', pts, tris: [] }; };
     const sel = [mkBox(O[0] + 5, O[1] + 3, 10, 3, 2, 1, ang, 'Fundament F1'), mkBox(O[0] + 12, O[1] + 3, 10, 2, 2, 0.5, 0, 'Fundament F2')];
-    const n0 = placements.length, made = l3formCreate(sel, 0.1); await new Promise(r => setTimeout(r, 1500));
-    const out = made.map(p => { const g = l3.placeMeshes.get(p.id); let meshes = 0; if (g) g.traverse(o => { if (o.isMesh) meshes++; }); return { type: p.type, L: p.L, B: p.B, H: p.H, rot: p.rot, x: Math.round((p.x - O[0]) * 100) / 100, y: Math.round((p.y - O[1]) * 100) / 100, z: p.z, name: p.name, arm: p.f && p.f.arm, meshes, dirty: placeDirty.has(p.id) }; });
+    const n0 = placements.length, made = l3formCreate(sel, 0.1); const dirt0 = new Set(made.filter(p => placeDirty.has(p.id)).map(p => p.id)); await new Promise(r => setTimeout(r, 600));
+    const out = made.map(p => { const g = l3.placeMeshes.get(p.id); let meshes = 0; if (g) g.traverse(o => { if (o.isMesh) meshes++; }); return { type: p.type, L: p.L, B: p.B, H: p.H, rot: p.rot, x: Math.round((p.x - O[0]) * 100) / 100, y: Math.round((p.y - O[1]) * 100) / 100, z: p.z, name: p.name, arm: p.f && p.f.arm, meshes, dirty: dirt0.has(p.id) }; });
     return { n: placements.length - n0, out, btn: typeof l3bsMakeForms === 'function' };
   });
   console.log(JSON.stringify(R));
