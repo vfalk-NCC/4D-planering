@@ -2,7 +2,7 @@
    Markera ett eller flera objekt i IFC-modellen → knappen "Gjutform" i markeringsrutan: för varje objekt räknas den minsta rätvinkliga rektangeln runt dess yta (roterad efter objektet),
    och en Gjutetapp (smart objekt: fyrsidig form med formvirke) läggs runt det, med objektets höjd och ett litet utstick. Formerna är vanliga 3D-objekt i etableringen: de kan flyttas, ändras
    (mått, vinkel, formvirke, armering) och sparas som IFC i Trimble Connect med "Spara som IFC i TC" (knappen i toasten gör det direkt). Originalobjekten i modellen rörs inte. */
-function l3formCreate(sel, margin = 0.1) {
+function l3formCreate(sel, margin = 0) {
   const made = [];
   sel.forEach(s => {
     const o = l3rbObb(s.pts); if (!o || !(o.L > 0.05) || !(o.B > 0.05)) return;
@@ -18,7 +18,7 @@ function l3formCreate(sel, margin = 0.1) {
 }
 async function l3bsMakeForms() {
   if (typeof l3rbSelection !== "function" || typeof l3bs === "undefined" || !l3bs.sel.length) { l3Status("Markera fundamenten i modellen först.", true); return []; }
-  let m = 0.1; if (typeof uiPrompt === "function") { const a = await uiPrompt(`Gjutform runt ${l3bs.sel.length} markerade objekt. Utstick från objektets kant (meter):`, "0,1"); if (a === null || a === undefined) return []; const v = parseFloat(String(a).replace(",", ".")); if (isFinite(v) && v >= 0 && v <= 3) m = v; }
+  let m = 0; if (typeof uiPrompt === "function") { const a = await uiPrompt(`Gjutform runt ${l3bs.sel.length} markerade objekt.\nUtstick utanför objektets kant (meter). 0 = formen ligger direkt mot betongen (du gjuter mot formen). Skriv ett värde bara om formen ska vara större än objektet:`, "0"); if (a === null || a === undefined) return []; const v = parseFloat(String(a).replace(",", ".")); if (isFinite(v) && v >= 0 && v <= 3) m = v; }
   const sel = l3rbSelection().filter(s => s.src === "ifc"); if (!sel.length) { l3Status("Inga objekt i IFC-modellen är markerade.", true); return []; }
   if (typeof placeSnapshot === "function") placeSnapshot();
   const made = l3formCreate(sel, m);
