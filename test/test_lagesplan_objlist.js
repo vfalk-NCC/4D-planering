@@ -49,7 +49,7 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   if (!(await tog.count())) fail('3D-Objekt ska gå att fälla ut');
   await tog.click(); await page.waitForTimeout(100);
   const names = await page.locator('.obj-item-row .ln').allInnerTexts();
-  if (names.length !== 3 || !names.some(n => /J1.*2 obj/.test(n)) || names.some(n => /Utanför/.test(n))) fail('En rad per aktivitet på planen: ' + JSON.stringify(names));
+  if (names.length !== 4 || !names.some(n => /J1.*2 obj/.test(n)) || !names.some(n => /Utanför.*ej på planen/.test(n))) fail('En rad per aktivitet, även de som inte ligger på planen: ' + JSON.stringify(names));
   console.log('OK: 3D-Objekt fälls ut med en rad per aktivitet (bara de som ligger på planen)');
 
   // 2) Klick markerar på planen; Ctrl-klick flera; markeringsraden.
