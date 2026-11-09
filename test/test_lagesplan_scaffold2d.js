@@ -75,6 +75,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (process.env.SLIMG) require('fs').writeFileSync(process.env.SLIMG, Buffer.from((await page.evaluate(() => window.__cvUrl)).split(',')[1], 'base64'));
   if (px.n < 2000 || px.dark < 40) fail('Ställningen ska ritas som band med stolpar: ' + JSON.stringify(px));
   const hit = null;
+  { const r = await page.evaluate(() => { const x = siteItems.find(q => q.type === 'scaffold'); const base = scaffoldInfo(x).lifts, o = scaffoldInfo({ ...x, lifts: 3 }).lifts, html = scaffoldFieldsHtml({ ...x, sDim: false }); return { base, o, vh: /sp-sl/.test(html) && /sp-sdim/.test(html), off: /class="sp-sdim"\s*\/>/.test(html) || !/sp-sdim"[^>]*checked/.test(html) }; });
+    if (r.o !== 3 || !r.vh || !r.off) fail('Våningar ska kunna anges och visningsvalen finnas i rutan: ' + JSON.stringify(r)); }
   console.log('OK: ställning i plan – verktyg, mått och ritning i skala', JSON.stringify({ made: made.vals, inf, px, hit }));
   if (process.env.SLSHOT) { await page.evaluate(() => { document.getElementById('viewport') && 0; if (typeof renderAll === 'function') renderAll(); else if (typeof draw === 'function') draw(); }); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SLSHOT }); }
   // Play/Pause vid datumreglaget (samma uppspelning som under Tid)

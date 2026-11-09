@@ -1157,35 +1157,48 @@ function strokePath(ctx, P, closed, st) {
 function scaffoldInfo(x) {
   const B = Math.max(0.3, Number(x.w) || 0.73), H = Math.max(1, Number(x.h) || 8), fack = Math.max(0.7, Number(x.fack) || 2.57), L = polyLength(x.pts);
   let bays = 0; for (let i = 1; i < x.pts.length; i++) bays += Math.max(1, Math.round(Math.hypot(x.pts[i][0] - x.pts[i - 1][0], x.pts[i][1] - x.pts[i - 1][1]) / fack));
-  return { B, H, fack, L, bays, lifts: Math.max(1, Math.ceil(H / 2)), area: L * H };
+  return { B, H, fack, L, bays, lifts: Number(x.lifts) > 0 ? Math.round(Number(x.lifts)) : Math.max(1, Math.ceil(H / 2)), area: L * H };
 }
 function drawScaffold2D(ctx, x, st, ppm, dates, lock) {
-  const P = x.pts.map(mToPx), I = scaffoldInfo(x), wpx = Math.max(I.B * ppm, st.lw * 3), hw = wpx / 2, col = st.color;
+  const P = x.pts.map(mToPx), I = scaffoldInfo(x), lw = Math.max(0.8, Math.min(st.lw, 2) * 0.55), wpx = Math.max(I.B * ppm, 4), hw = wpx / 2, col = st.color, posts = x.sPosts !== false;
   ctx.save(); ctx.lineJoin = "miter"; ctx.lineCap = "butt";
-  // bandet (fyllning) och den mörka kanten
-  ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.strokeStyle = hexToRgba("#facc15", 0.55); ctx.lineWidth = wpx; ctx.stroke();
-  ctx.strokeStyle = hexToRgba(col, 0.85); ctx.lineWidth = Math.max(1, st.lw * 0.7);
+  // bandet (lätt fyllning) och en tunn kant
+  ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.strokeStyle = hexToRgba("#facc15", 0.28); ctx.lineWidth = wpx; ctx.stroke();
+  ctx.strokeStyle = hexToRgba(col, 0.75); ctx.lineWidth = lw;
   for (let i = 1; i < P.length; i++) {
     const a = P[i - 1], b = P[i], dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy); if (len < 0.5) continue;
-    const ux = dx / len, uy = dy / len, nx = -uy * hw, ny = ux * hw, n = Math.max(1, Math.round(len / (I.fack * ppm))), bay = len / n;
+    const ux = dx / len, uy = dy / len, nx = -uy * hw, ny = ux * hw, n = Math.max(1, Math.round(len / (I.fack * ppm))), bay = len / n, dense = bay < 6;
     // långsidor
     ctx.beginPath(); ctx.moveTo(a[0] + nx, a[1] + ny); ctx.lineTo(b[0] + nx, b[1] + ny); ctx.moveTo(a[0] - nx, a[1] - ny); ctx.lineTo(b[0] - nx, b[1] - ny); ctx.stroke();
-    // tvärstag och diagonaler per fack
-    ctx.lineWidth = Math.max(0.8, st.lw * 0.45);
-    for (let k = 0; k <= n; k++) { const cx = a[0] + ux * bay * k, cy = a[1] + uy * bay * k; ctx.beginPath(); ctx.moveTo(cx + nx, cy + ny); ctx.lineTo(cx - nx, cy - ny); ctx.stroke(); }
-    ctx.strokeStyle = hexToRgba(col, 0.45);
-    for (let k = 0; k < n; k++) { const c0 = [a[0] + ux * bay * k, a[1] + uy * bay * k], c1 = [c0[0] + ux * bay, c0[1] + uy * bay], f = k % 2 ? 1 : -1; ctx.beginPath(); ctx.moveTo(c0[0] + nx * f, c0[1] + ny * f); ctx.lineTo(c1[0] - nx * f, c1[1] - ny * f); ctx.stroke(); }
-    ctx.strokeStyle = hexToRgba(col, 0.85); ctx.lineWidth = Math.max(1, st.lw * 0.7);
-    // stolpar (rosetter): prickar i fackgränserna på båda sidor
-    const r = Math.max(1.3, Math.min(hw * 0.34, st.lw * 0.9));
-    ctx.fillStyle = "#1f2937";
-    for (let k = 0; k <= n; k++) { const cx = a[0] + ux * bay * k, cy = a[1] + uy * bay * k; [[nx, ny], [-nx, -ny]].forEach(([ox, oy]) => { ctx.beginPath(); ctx.arc(cx + ox, cy + oy, r, 0, Math.PI * 2); ctx.fill(); }); }
+    // tvärstag och diagonaler per fack (utelämnas när facken blir för små att se)
+    if (!dense) {
+      ctx.lineWidth = lw * 0.6;
+      for (let k = 0; k <= n; k++) { const cx = a[0] + ux * bay * k, cy = a[1] + uy * bay * k; ctx.beginPath(); ctx.moveTo(cx + nx, cy + ny); ctx.lineTo(cx - nx, cy - ny); ctx.stroke(); }
+      ctx.strokeStyle = hexToRgba(col, 0.3);
+      for (let k = 0; k < n; k++) { const c0 = [a[0] + ux * bay * k, a[1] + uy * bay * k], c1 = [c0[0] + ux * bay, c0[1] + uy * bay], f = k % 2 ? 1 : -1; ctx.beginPath(); ctx.moveTo(c0[0] + nx * f, c0[1] + ny * f); ctx.lineTo(c1[0] - nx * f, c1[1] - ny * f); ctx.stroke(); }
+      ctx.strokeStyle = hexToRgba(col, 0.75); ctx.lineWidth = lw;
+    }
+    // stolpar: små prickar i fackgränserna (bara när det finns plats och de inte är avstängda)
+    if (posts && !dense) { const r = Math.max(0.9, Math.min(hw * 0.2, 1.8)); ctx.fillStyle = hexToRgba("#1f2937", 0.8); for (let k = 0; k <= n; k++) { const cx = a[0] + ux * bay * k, cy = a[1] + uy * bay * k; [[nx, ny], [-nx, -ny]].forEach(([ox, oy]) => { ctx.beginPath(); ctx.arc(cx + ox, cy + oy, r, 0, Math.PI * 2); ctx.fill(); }); } }
   }
-  // gavlar: tjockare tvärlinje i ändarna
-  [[P[0], P[1]], [P[P.length - 1], P[P.length - 2]]].forEach(([e, f]) => { const dx = f[0] - e[0], dy = f[1] - e[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l * hw, ny = dx / l * hw; ctx.lineWidth = Math.max(2, st.lw * 1.4); ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(e[0] + nx, e[1] + ny); ctx.lineTo(e[0] - nx, e[1] - ny); ctx.stroke(); });
+  // gavlar: tvärlinje i ändarna
+  [[P[0], P[1]], [P[P.length - 1], P[P.length - 2]]].forEach(([e, f]) => { const dx = f[0] - e[0], dy = f[1] - e[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l * hw, ny = dx / l * hw; ctx.lineWidth = lw * 1.4; ctx.strokeStyle = hexToRgba(col, 0.9); ctx.beginPath(); ctx.moveTo(e[0] + nx, e[1] + ny); ctx.lineTo(e[0] - nx, e[1] - ny); ctx.stroke(); });
   ctx.restore();
+  // etiketten: namn + valda mått (släck mått, fack, våningar i redigeringsrutan)
+  const parts = []; if (x.sDim !== false) parts.push(`${fmtM(I.L)} m × ${fmtM(I.H)} m`); if (x.sFack !== false) parts.push(`${I.bays} fack`); if (x.sLifts !== false) parts.push(`${I.lifts} vån`);
+  const nm = (x.name || "").trim(), head = nm ? `${nm}${lock}` : (lock || ""), text = [head, parts.join(" · ")].filter(Boolean).join("\n");
+  if (!text) return;
   const mi = Math.floor((P.length - 1) / 2), m = P[mi], nn = P[mi + 1] || m;
-  siteLabel(ctx, x, [(m[0] + nn[0]) / 2, (m[1] + nn[1]) / 2 - st.fs * 1.6], `🪜 ${x.name || "Ställning"}${lock}\n${fmtM(I.L)} m × ${fmtM(I.H)} m · ${I.bays} fack · ${I.lifts} vån`, st.fs, "#fff", "#111827", col, dates);
+  siteLabel(ctx, x, [(m[0] + nn[0]) / 2, (m[1] + nn[1]) / 2 - st.fs * 1.3], text, st.fs * 0.82, "#fff", "#111827", col, dates);
+}
+/* Ställningens fält i redigeringsrutan: mått, antal våningar och vad som ska synas på planen. */
+function scaffoldFieldsHtml(rec) {
+  const I = scaffoldInfo(rec), ck = (c, k, lab) => `<label class="sp-r"><span>${lab}</span><input type="checkbox" class="${c}"${rec[k] === false ? "" : " checked"} /></label>`;
+  return `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-sw" value="${fmtIn(Number(rec.w) || 0.73)}" /></div><div><label>Höjd (m)</label><input type="text" class="sp-sh" value="${fmtIn(Number(rec.h) || 8)}" /></div></div>
+    <div class="row2"><div><label>Fack (m)</label><input type="text" class="sp-sf" value="${fmtIn(Number(rec.fack) || 2.57)}" /></div><div><label>Våningar</label><input type="text" class="sp-sl" value="${Number(rec.lifts) > 0 ? Math.round(Number(rec.lifts)) : ""}" placeholder="auto (${Math.max(1, Math.ceil((Number(rec.h) || 8) / 2))})" /></div></div>
+    <div class="muted" style="font-size:12px;margin:2px 0;">Längd ${fmtM(I.L)} m · ${I.bays} fack · ${I.lifts} vån</div>
+    <label>Visa på planen</label><div class="sp-shows">${ck("sp-sdim", "sDim", "Mått")}${ck("sp-sfack", "sFack", "Fack")}${ck("sp-slifts", "sLifts", "Våningar")}${ck("sp-sposts", "sPosts", "Stolpar")}</div>
+    <button type="button" class="sp-to3d" style="margin-top:4px;" title="Skapar en riktig 3D-ställning (Etablering → Ställning följer berget) längs den ritade linjen med samma bredd, höjd och fack – markhöjden hämtas ur punktmolnet om det är tänt">🧊 Skapa 3D-ställning av linjen</button>`;
 }
 /* Den ritade ställningen i plan blir ett riktigt 3D-objekt (Etablering → Ställning som följer berget): samma linje, bredd, höjd och fack. Markhöjden hämtas ur det tända punktmolnet (annars ritningens nivå). */
 function scaffoldTo3d(rec) {
@@ -1821,8 +1834,7 @@ function openSitePop(rec, isNew) {
     : `<input type="text" class="sp-name" value="${escHtml(rec.name || "")}" placeholder="Namn: ${escHtml(symDef ? symDef.label : k.label)}" />`}
     ${rec.type === "crane" ? `<div class="row2"><div><label>Räckvidd (m)</label><input type="text" class="sp-radius" value="${escHtml(String(rec.radius ?? 40))}" /></div><div><label>Kapacitet (t)</label><input type="text" class="sp-cap" value="${escHtml(String(rec.capacity ?? ""))}" /></div></div>
       <label>Lyftkurva <span class="muted">(radie:ton, t.ex. 20:5, 30:3.5, 40:2)</span></label><input type="text" class="sp-chart" value="${escHtml(rec.chart || "")}" placeholder="20:5, 40:2" />` : ""}
-    ${rec.type === "scaffold" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-sw" value="${fmtIn(Number(rec.w) || 0.73)}" /></div><div><label>Höjd (m)</label><input type="text" class="sp-sh" value="${fmtIn(Number(rec.h) || 8)}" /></div><div><label>Fack (m)</label><input type="text" class="sp-sf" value="${fmtIn(Number(rec.fack) || 2.57)}" /></div></div>
-      <button type="button" class="sp-to3d" style="margin-top:4px;" title="Skapar en riktig 3D-ställning (Etablering → Ställning följer berget) längs den ritade linjen med samma bredd, höjd och fack – markhöjden hämtas ur punktmolnet om det är tänt">🧊 Skapa 3D-ställning av linjen</button>` : ""}
+    ${rec.type === "scaffold" ? scaffoldFieldsHtml(rec) : ""}
     ${rec.type === "route" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-rw" value="${fmtIn(Number(rec.w) || 4)}" /></div><div><label>&nbsp;</label><label style="display:flex;gap:4px;align-items:center;margin:0;"><input type="checkbox" class="sp-two"${rec.twoWay ? " checked" : ""} style="width:auto;" /> Dubbelriktad</label></div></div>
       <button type="button" class="sp-reverse" style="margin-top:4px;">⇄ Vänd körriktning</button>` : ""}
     ${g ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-w" value="${fmtIn(g.w)}" /></div><div><label>Längd (m)</label><input type="text" class="sp-h" value="${fmtIn(g.h)}" /></div><div><label>Vinkel (°)</label><input type="text" class="sp-rot" value="${Math.round(g.rot * 180 / Math.PI)}" /></div></div>` : ""}
@@ -1846,8 +1858,7 @@ function openSitePop(rec, isNew) {
     <select class="sp-layer">${layers.map(l => `<option value="${escHtml(l)}"${l === layerOf(rec) ? " selected" : ""}>${escHtml(ulName(l))}</option>`).join("")}<option value="__new">＋ Nytt lager…</option></select>
     ${rec.type === "crane" ? `<div class="row2"><div><label>Räckvidd (m)</label><input type="text" class="sp-radius" value="${escHtml(String(rec.radius ?? 40))}" /></div><div><label>Kapacitet (t)</label><input type="text" class="sp-cap" value="${escHtml(String(rec.capacity ?? ""))}" /></div></div>
       <label>Lyftkurva <span class="muted">(radie:ton, t.ex. 20:5, 30:3.5, 40:2)</span></label><input type="text" class="sp-chart" value="${escHtml(rec.chart || "")}" placeholder="20:5, 40:2" />` : ""}
-    ${rec.type === "scaffold" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-sw" value="${fmtIn(Number(rec.w) || 0.73)}" /></div><div><label>Höjd (m)</label><input type="text" class="sp-sh" value="${fmtIn(Number(rec.h) || 8)}" /></div><div><label>Fack (m)</label><input type="text" class="sp-sf" value="${fmtIn(Number(rec.fack) || 2.57)}" /></div></div>
-      <button type="button" class="sp-to3d" style="margin-top:4px;" title="Skapar en riktig 3D-ställning (Etablering → Ställning följer berget) längs den ritade linjen med samma bredd, höjd och fack – markhöjden hämtas ur punktmolnet om det är tänt">🧊 Skapa 3D-ställning av linjen</button>` : ""}
+    ${rec.type === "scaffold" ? scaffoldFieldsHtml(rec) : ""}
     ${rec.type === "route" ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-rw" value="${fmtIn(Number(rec.w) || 4)}" /></div><div><label>&nbsp;</label><label style="display:flex;gap:4px;align-items:center;margin:0;"><input type="checkbox" class="sp-two"${rec.twoWay ? " checked" : ""} style="width:auto;" /> Dubbelriktad</label></div></div>
       <button type="button" class="sp-reverse" style="margin-top:4px;">⇄ Vänd körriktning</button>` : ""}
     ${g ? `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-w" value="${fmtIn(g.w)}" /></div><div><label>Längd (m)</label><input type="text" class="sp-h" value="${fmtIn(g.h)}" /></div><div><label>Vinkel (°)</label><input type="text" class="sp-rot" value="${Math.round(g.rot * 180 / Math.PI)}" /></div></div>` : ""}
@@ -1890,6 +1901,8 @@ function openSitePop(rec, isNew) {
   };
   tsR.oninput = () => { tsT.value = tsR.value; preview({ textSize: tsValue() }); };
   tsT.oninput = () => { const v = num(".sp-ts", NaN); if (Number.isFinite(v)) { tsR.value = Math.max(40, Math.min(400, v)); preview({ textSize: tsValue() }); } };
+  const scaffoldFromPop = () => { const c = q => { const e = pop.querySelector(q); return !e || e.checked; }, l = Math.round(num(".sp-sl", 0)); return { w: Math.max(0.3, num(".sp-sw", 0.73)), h: Math.max(1, num(".sp-sh", 8)), fack: Math.max(0.7, num(".sp-sf", 2.57)), lifts: l > 0 ? l : undefined, sDim: c(".sp-sdim"), sFack: c(".sp-sfack"), sLifts: c(".sp-slifts"), sPosts: c(".sp-sposts") }; };
+  if (rec.type === "scaffold") pop.querySelectorAll(".sp-sw,.sp-sh,.sp-sf,.sp-sl,.sp-sdim,.sp-sfack,.sp-slifts,.sp-sposts").forEach(el => { el.oninput = el.onchange = () => { const v = scaffoldFromPop(); preview(v); const t = pop.querySelector(".muted.sp-info") ; }; });
   const lblReset = pop.querySelector(".sp-lblreset");
   if (lblReset) lblReset.onclick = () => { if (popPreview) popPreview.lblReset = true; preview({ lbl: null }); lblReset.disabled = true; lblReset.textContent = "↺ Texten återställd"; };
   pop.querySelector(".sp-save").onclick = async () => {
@@ -1915,7 +1928,7 @@ function openSitePop(rec, isNew) {
       next.chart = ch.length ? ch.map(c => `${c.r}:${c.t}`).join(", ") : "";
     }
     if (rec.type === "route") { next.w = Math.max(0.5, num(".sp-rw", 4)); next.twoWay = pop.querySelector(".sp-two").checked; }
-    if (rec.type === "scaffold") { next.w = Math.max(0.3, num(".sp-sw", 0.73)); next.h = Math.max(1, num(".sp-sh", 8)); next.fack = Math.max(0.7, num(".sp-sf", 2.57)); }
+    if (rec.type === "scaffold") { Object.assign(next, scaffoldFromPop()); }
     if (g) { Object.assign(next, { cx: g.cx, cy: g.cy, w: Math.max(0.1, num(".sp-w", g.w)), h: Math.max(0.1, num(".sp-h", g.h)), rot: num(".sp-rot", 0) * Math.PI / 180 }); delete next.pts; }
     if (rec.type === "gate") { next.w = Math.max(0.1, num(".sp-gw", 5)); next.rot = num(".sp-grot", 0) * Math.PI / 180; }
     if (popPreview) siteItems[siteItems.findIndex(x => x.id === rec.id)] = popPreview.orig; // prev för ångra = originalet
