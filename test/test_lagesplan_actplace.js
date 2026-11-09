@@ -67,6 +67,8 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   await page.evaluate(() => { ap.multi = true; });
   await page.mouse.click(vb.x + 600, vb.y + 500); await page.waitForTimeout(500);
   if ((await page.evaluate(() => apPlacedRows().length)) !== 2) fail('Båda aktiviteterna ska vara placerade');
+  { await page.evaluate(() => apRender()); const t = await page.locator('#apPanel .ap-pl').allInnerTexts();
+    if (!t.length || !t.every(x => /PM1/.test(x)) || !t.some(x => /Armering platta/.test(x))) fail('Placerade ska visa namn och område/uppgifter: ' + JSON.stringify(t)); }
   console.log('OK: okopplade aktiviteter placeras med klick i planen och sparas');
   // 3) Ångra: sista placeringen tas bort.
   await page.evaluate(() => objStatusUndo()); await page.waitForTimeout(400);
