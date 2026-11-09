@@ -1265,6 +1265,7 @@ function scaffoldFieldsHtml(rec) {
     <div class="sc-chips">${chip("sp-scallout", rec.sCallout !== false, "Visa callout", "Hela etikettrutan med namn och mått – släck den så syns bara ställningen (och måttkedjan)")}${chip("sp-sname", rec.sName !== false, "Namn / kommentar", "Texten du skrivit i namnrutan (t.ex. en kommentar) – släck för att bara visa måtten")}${chip("sp-sdim", rec.sDim !== false, "Längd × höjd", "Total längd och höjd i etiketten")}${chip("sp-sfack", rec.sFack !== false, "Fack", "Antal fack i etiketten")}${chip("sp-slifts", rec.sLifts !== false, "Våningar", "Antal våningar i etiketten")}${chip("sp-swrap", !!rec.sWrap, "Radbryt", "Varje mått på egen rad")}</div>
     <div class="sc-h">Ritning</div>
     <div class="sc-chips">${chip("sp-sposts", rec.sPosts !== false, "Stolpar", "Små prickar i fackgränserna")}</div>
+    <div class="muted" style="font-size:11.5px">Högerklicka på en punkt (handtag) för att ta bort den. Dra i + för att lägga till en ny.</div>
     <button type="button" class="sp-to3d sc-3d" title="Skapar en riktig 3D-ställning (Etablering → Ställning följer berget) längs den ritade linjen med samma bredd, höjd och fack – markhöjden hämtas ur punktmolnet om det är tänt">Skapa 3D-ställning av linjen</button>
   </div>`;
 }
@@ -2082,6 +2083,19 @@ function placeSitePop(pop, x, y) {
   if (pop.dataset.moved) { x = parseFloat(pop.style.left) || 8; y = parseFloat(pop.style.top) || 8; }
   pop.style.left = `${Math.max(8, Math.min(r.width - pop.offsetWidth - 8, x))}px`;
   pop.style.top = `${Math.max(8, Math.min(visH - pop.offsetHeight - 8, y))}px`;
+}
+/* Ta bort en insättningspunkt (hörn) på en linje/yta: högerklicka på punktens handtag när objektet är markerat. */
+function siteVertexRemove(e) {
+  const sel = selectedSiteId ? siteItems.find(x => x.id === selectedSiteId) : null;
+  if (!sel || !Array.isArray(sel.pts) || sel.locked || !plan || !plan.calib) return false;
+  const h = handleAt(sel, toPdf(stagePoint(e)));
+  if (!h || h.kind !== "vertex" || sel.type === "note") return false;
+  e.preventDefault();
+  const min = MIN_PTS[sel.type] || 2;
+  if (sel.pts.length <= min) { setSaveStatus(`En ${(SITE_KINDS[sel.type] || { label: "linje" }).label.toLowerCase()} behöver minst ${min} punkter – punkten går inte att ta bort.`); return true; }
+  const next = { ...sel, pts: sel.pts.filter((_, i) => i !== h.i), updated_at: new Date().toISOString() };
+  closeSitePop(); saveSiteItem(next, false, { prev: sel }); setSaveStatus(`Punkten borttagen (${next.pts.length} kvar). Ctrl+Z ångrar.`);
+  return true;
 }
 /* Dra rutan i dess överkant (rubriken) för att flytta den. */
 document.addEventListener("DOMContentLoaded", () => {

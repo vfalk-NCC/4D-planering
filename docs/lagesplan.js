@@ -1681,6 +1681,7 @@ function bindViewport() {
   // Högerklick på ett namn: dölj det (eller alla namn för samma aktivitet).
   vpEl.addEventListener("contextmenu", e => {
     if (!viewport) return;
+    if (typeof siteVertexRemove === "function" && siteVertexRemove(e)) return;   // högerklick på en punkt på markerad linje/yta tar bort punkten
     // Högerklick på en prick: släck objektet/aktiviteten.
     const ptObjs = objectsAt(toPdf(stagePoint(e)));
     if (ptObjs.length) { e.preventDefault(); openObjMenu(ptObjs.flatMap(o => o.members || [o.it]), e); return; }

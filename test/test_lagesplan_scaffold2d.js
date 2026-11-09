@@ -128,6 +128,21 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   { const r = await page.evaluate(() => { const x = { ...siteItems.find(q => q.type === 'scaffold'), name: 'Kommentar om ställningen', sDim: false, sFack: false, sLifts: false, sSeg: false }, run = o => { const cv = document.createElement('canvas'); cv.width = 1400; cv.height = 900; const ctx = cv.getContext('2d'), txt = []; const ft = ctx.fillText.bind(ctx); ctx.fillText = (t, ...a) => { txt.push(String(t)); return ft(t, ...a); }; const Q = o.pts.map(mToPx); ctx.translate(100 - Math.min(...Q.map(q => q[0])), 100 - Math.min(...Q.map(q => q[1]))); drawScaffold2D(ctx, o, siteStyle(o, 14), pxPerMeter(), '', ''); return txt.join('|'); }; return { on: run(x), off: run({ ...x, sName: false }), callout: run({ ...x, sDim: true, sCallout: false }) }; });
     if (r.callout !== '') fail('Callouten ska gå att släcka helt: ' + JSON.stringify(r));
     if (!/Kommentar om/.test(r.on) || /Kommentar om/.test(r.off) || r.off !== '') fail('Namn/kommentar ska gå att släcka från ställningen: ' + JSON.stringify(r)); }
+  { // Spara/Avbryt ska alltid synas i rutan (sticky), även när den scrollar
+    await page.setViewportSize({ width: 1300, height: 560 });
+    await page.evaluate(async () => { closeSitePop(); document.querySelector('[data-site="scaffold"]').click(); siteTool.pts = [[6512320, 150170], [6512340, 150170]]; finishSiteTool(); await new Promise(r => setTimeout(r, 300)); });
+    const v = await page.evaluate(() => { const b = document.querySelector('.sp-save').getBoundingClientRect(), p = document.getElementById('sitePop').getBoundingClientRect(); return { top: b.top, bottom: b.bottom, ph: window.innerHeight, pb: p.bottom }; });
+    if (v.bottom > v.ph + 1 || v.bottom > v.pb + 1 || v.top < 0) fail('Spara ska alltid synas i rutan även i ett lågt fönster: ' + JSON.stringify(v));
+    await page.click('.sp-cancel'); await page.setViewportSize({ width: 1300, height: 850 }); await page.waitForTimeout(200); }
+  { // Högerklick på en punkts handtag tar bort punkten (men inte under minsta antal)
+    const id = await page.evaluate(() => { const x = siteItems.find(q => q.type === 'scaffold' && q.pts.length === 3); closeSitePop(); selectedSiteId = x.id; const Q = mToPx(x.pts[1]); view.tx += 450 - stageToScreen(Q)[0]; view.ty += 400 - stageToScreen(Q)[1]; applyView(); renderZones(); return x.id; }); await page.waitForTimeout(200);
+    const at = async i => page.evaluate(([id, i]) => { const x = siteItems.find(q => q.id === id), h = siteHandles(x, 14, pxPerMeter()).find(z => z.kind === 'vertex' && z.i === i), s = stageToScreen(mToPx(h.m)), r = document.getElementById('viewport').getBoundingClientRect(); return { x: r.left + s[0], y: r.top + s[1] }; }, [id, i]);
+    let g = await at(1); await page.mouse.click(g.x, g.y, { button: 'right' }); await page.waitForTimeout(300);
+    const n1 = await page.evaluate(id => siteItems.find(q => q.id === id).pts.length, id);
+    if (n1 !== 2) fail('Högerklick på en punkt ska ta bort den: ' + n1);
+    g = await at(0); await page.mouse.click(g.x, g.y, { button: 'right' }); await page.waitForTimeout(300);
+    const n2 = await page.evaluate(id => siteItems.find(q => q.id === id).pts.length, id);
+    if (n2 !== 2) fail('En ställning behöver minst 2 punkter: ' + n2); }
   console.log('OK: ställning i plan – verktyg, mått och ritning i skala', JSON.stringify({ made: made.vals, inf, px, hit }));
   if (process.env.SLSHOT) { await page.evaluate(() => { document.getElementById('viewport') && 0; if (typeof renderAll === 'function') renderAll(); else if (typeof draw === 'function') draw(); }); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SLSHOT }); }
   // Play/Pause vid datumreglaget (samma uppspelning som under Tid)
