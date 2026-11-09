@@ -1186,18 +1186,18 @@ function drawScaffold2D(ctx, x, st, ppm, dates, lock) {
   ctx.restore();
   // etiketten: namn + valda mått (släck mått, fack, våningar i redigeringsrutan)
   const parts = []; if (x.sDim !== false) parts.push(`${fmtM(I.L)} m × ${fmtM(I.H)} m`); if (x.sFack !== false) parts.push(`${I.bays} fack`); if (x.sLifts !== false) parts.push(`${I.lifts} vån`);
-  const nm = (x.name || "").trim(), head = nm ? `${nm}${lock}` : (lock || ""), text = [head, parts.join(" · ")].filter(Boolean).join("\n");
+  const nm = (x.name || "").trim(), head = nm ? `${nm}${lock}` : (lock || ""), text = [head, parts.join(x.sWrap ? "\n" : " · ")].filter(Boolean).join("\n");
   if (!text) return;
   const mi = Math.floor((P.length - 1) / 2), m = P[mi], nn = P[mi + 1] || m;
-  siteLabel(ctx, x, [(m[0] + nn[0]) / 2, (m[1] + nn[1]) / 2 - st.fs * 1.3], text, st.fs * 0.82, "#fff", "#111827", col, dates);
+  siteLabel(ctx, x, [(m[0] + nn[0]) / 2, (m[1] + nn[1]) / 2 - st.fs * 1.3 * (1 + (text.split("\n").length - 2) * 0.4)], text, st.fs * 0.82, "#fff", "#111827", col, dates);
 }
 /* Ställningens fält i redigeringsrutan: mått, antal våningar och vad som ska synas på planen. */
 function scaffoldFieldsHtml(rec) {
-  const I = scaffoldInfo(rec), ck = (c, k, lab) => `<label class="sp-r"><span>${lab}</span><input type="checkbox" class="${c}"${rec[k] === false ? "" : " checked"} /></label>`;
+  const I = scaffoldInfo(rec), ck = (c, k, lab) => `<label class="sp-r"><span>${lab}</span><input type="checkbox" class="${c}"${(k === "sWrapOn" ? !!rec.sWrap : rec[k] !== false) ? " checked" : ""} /></label>`;
   return `<div class="row2"><div><label>Bredd (m)</label><input type="text" class="sp-sw" value="${fmtIn(Number(rec.w) || 0.73)}" /></div><div><label>Höjd (m)</label><input type="text" class="sp-sh" value="${fmtIn(Number(rec.h) || 8)}" /></div></div>
     <div class="row2"><div><label>Fack (m)</label><input type="text" class="sp-sf" value="${fmtIn(Number(rec.fack) || 2.57)}" /></div><div><label>Våningar</label><input type="text" class="sp-sl" value="${Number(rec.lifts) > 0 ? Math.round(Number(rec.lifts)) : ""}" placeholder="auto (${Math.max(1, Math.ceil((Number(rec.h) || 8) / 2))})" /></div></div>
     <div class="muted" style="font-size:12px;margin:2px 0;">Längd ${fmtM(I.L)} m · ${I.bays} fack · ${I.lifts} vån</div>
-    <label>Visa på planen</label><div class="sp-shows">${ck("sp-sdim", "sDim", "Mått")}${ck("sp-sfack", "sFack", "Fack")}${ck("sp-slifts", "sLifts", "Våningar")}${ck("sp-sposts", "sPosts", "Stolpar")}</div>
+    <label>Visa på planen</label><div class="sp-shows">${ck("sp-swrap", "sWrapOn", "Radbryt måtten")}${ck("sp-sdim", "sDim", "Mått")}${ck("sp-sfack", "sFack", "Fack")}${ck("sp-slifts", "sLifts", "Våningar")}${ck("sp-sposts", "sPosts", "Stolpar")}</div>
     <button type="button" class="sp-to3d" style="margin-top:4px;" title="Skapar en riktig 3D-ställning (Etablering → Ställning följer berget) längs den ritade linjen med samma bredd, höjd och fack – markhöjden hämtas ur punktmolnet om det är tänt">🧊 Skapa 3D-ställning av linjen</button>`;
 }
 /* Den ritade ställningen i plan blir ett riktigt 3D-objekt (Etablering → Ställning som följer berget): samma linje, bredd, höjd och fack. Markhöjden hämtas ur det tända punktmolnet (annars ritningens nivå). */
@@ -1206,7 +1206,7 @@ function scaffoldTo3d(rec) {
   const z0 = (plan && plan.calib && plan.calib.model && plan.calib.model[0] && Number(plan.calib.model[0][2])) || 0;
   if (typeof placeSnapshot === "function") placeSnapshot();
   const p = placeNew("sm:stallningfri", [rec.pts[0][0], rec.pts[0][1], z0]);
-  p.name = rec.name || "Ställning"; p.pts = rec.pts.map(q => [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 1000) / 1000, z0, z0]); p.B = Math.max(0.6, Number(rec.w) || 0.75); p.H = Math.max(1, Number(rec.h) || 6);
+  p.name = String(rec.name || "Ställning").replace(/\s*\n\s*/g, " "); p.pts = rec.pts.map(q => [Math.round(q[0] * 1000) / 1000, Math.round(q[1] * 1000) / 1000, z0, z0]); p.B = Math.max(0.6, Number(rec.w) || 0.75); p.H = Math.max(1, Number(rec.h) || 6);
   p.f = p.f || {}; const fk = Number(rec.fack) || 2.57; p.f.fack = ["1.57", "2.07", "2.57", "3.07"].reduce((b, v) => Math.abs(v - fk) < Math.abs(b - fk) ? v : b, "2.57");
   const day = ($("dateInput") || {}).value || ""; if (day && !p.start) { p.start = day; p.end = day; }
   let n = 0; if (typeof stallningFriFollow === "function" && typeof l3slZ === "function") n = stallningFriFollow(p, (x, y) => l3slZ(x, y, 0.8));
@@ -1831,6 +1831,7 @@ function openSitePop(rec, isNew) {
   if (phone) pop.innerHTML = `
     <div class="sp-nav"><button type="button" class="sp-cancel">Avbryt</button><b>${symDef ? symDef.icon + " " + escHtml(symDef.label) : `${k.icon} ${isNew ? "Ny" : ""} ${k.label.toLowerCase()}`}</b><button type="button" class="sp-save primary">Spara</button></div>
     ${rec.type === "note" ? `<textarea class="sp-text" rows="2" placeholder="Skriv en notering…">${escHtml(rec.text || "")}</textarea>`
+    : rec.type === "scaffold" ? `<textarea class="sp-name" rows="2" placeholder="Namn (Enter = ny rad)">${escHtml(rec.name || "")}</textarea>`
     : `<input type="text" class="sp-name" value="${escHtml(rec.name || "")}" placeholder="Namn: ${escHtml(symDef ? symDef.label : k.label)}" />`}
     ${rec.type === "crane" ? `<div class="row2"><div><label>Räckvidd (m)</label><input type="text" class="sp-radius" value="${escHtml(String(rec.radius ?? 40))}" /></div><div><label>Kapacitet (t)</label><input type="text" class="sp-cap" value="${escHtml(String(rec.capacity ?? ""))}" /></div></div>
       <label>Lyftkurva <span class="muted">(radie:ton, t.ex. 20:5, 30:3.5, 40:2)</span></label><input type="text" class="sp-chart" value="${escHtml(rec.chart || "")}" placeholder="20:5, 40:2" />` : ""}
@@ -1853,6 +1854,7 @@ function openSitePop(rec, isNew) {
     <b>${symDef ? symDef.icon + " " + escHtml(symDef.label) : `${k.icon} ${isNew ? "Ny" : ""} ${k.label.toLowerCase()}`}</b>
     ${rec.type === "note" ? `
       <label>Text</label><textarea class="sp-text">${escHtml(rec.text || "")}</textarea>`
+    : rec.type === "scaffold" ? `<label>Namn <span class="muted">(Enter = ny rad)</span></label><textarea class="sp-name" rows="2" placeholder="${escHtml(k.label)}">${escHtml(rec.name || "")}</textarea>`
     : `<label>Namn</label><input type="text" class="sp-name" value="${escHtml(rec.name || "")}" placeholder="${escHtml(symDef ? symDef.label : k.label)}" />`}
     <label>Lager</label>
     <select class="sp-layer">${layers.map(l => `<option value="${escHtml(l)}"${l === layerOf(rec) ? " selected" : ""}>${escHtml(ulName(l))}</option>`).join("")}<option value="__new">＋ Nytt lager…</option></select>
@@ -1901,8 +1903,8 @@ function openSitePop(rec, isNew) {
   };
   tsR.oninput = () => { tsT.value = tsR.value; preview({ textSize: tsValue() }); };
   tsT.oninput = () => { const v = num(".sp-ts", NaN); if (Number.isFinite(v)) { tsR.value = Math.max(40, Math.min(400, v)); preview({ textSize: tsValue() }); } };
-  const scaffoldFromPop = () => { const c = q => { const e = pop.querySelector(q); return !e || e.checked; }, l = Math.round(num(".sp-sl", 0)); return { w: Math.max(0.3, num(".sp-sw", 0.73)), h: Math.max(1, num(".sp-sh", 8)), fack: Math.max(0.7, num(".sp-sf", 2.57)), lifts: l > 0 ? l : undefined, sDim: c(".sp-sdim"), sFack: c(".sp-sfack"), sLifts: c(".sp-slifts"), sPosts: c(".sp-sposts") }; };
-  if (rec.type === "scaffold") pop.querySelectorAll(".sp-sw,.sp-sh,.sp-sf,.sp-sl,.sp-sdim,.sp-sfack,.sp-slifts,.sp-sposts").forEach(el => { el.oninput = el.onchange = () => { const v = scaffoldFromPop(); preview(v); const t = pop.querySelector(".muted.sp-info") ; }; });
+  const scaffoldFromPop = () => { const c = q => { const e = pop.querySelector(q); return !e || e.checked; }, l = Math.round(num(".sp-sl", 0)); return { w: Math.max(0.3, num(".sp-sw", 0.73)), h: Math.max(1, num(".sp-sh", 8)), fack: Math.max(0.7, num(".sp-sf", 2.57)), lifts: l > 0 ? l : undefined, sDim: c(".sp-sdim"), sFack: c(".sp-sfack"), sLifts: c(".sp-slifts"), sPosts: c(".sp-sposts"), sWrap: !!(pop.querySelector(".sp-swrap") || {}).checked }; };
+  if (rec.type === "scaffold") pop.querySelectorAll(".sp-sw,.sp-sh,.sp-sf,.sp-sl,.sp-sdim,.sp-sfack,.sp-slifts,.sp-sposts,.sp-swrap,.sp-name").forEach(el => { el.oninput = el.onchange = () => { const v = scaffoldFromPop(); v.name = (pop.querySelector(".sp-name") || {}).value || ""; preview(v); const t = pop.querySelector(".muted.sp-info") ; }; });
   const lblReset = pop.querySelector(".sp-lblreset");
   if (lblReset) lblReset.onclick = () => { if (popPreview) popPreview.lblReset = true; preview({ lbl: null }); lblReset.disabled = true; lblReset.textContent = "↺ Texten återställd"; };
   pop.querySelector(".sp-save").onclick = async () => {
