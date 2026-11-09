@@ -1165,21 +1165,33 @@ function drawScaffold2D(ctx, x, st, ppm, dates, lock) {
   // bandet (lätt fyllning) och en tunn kant
   ctx.beginPath(); P.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.strokeStyle = hexToRgba("#facc15", 0.28); ctx.lineWidth = wpx; ctx.stroke();
   ctx.strokeStyle = hexToRgba(col, 0.75); ctx.lineWidth = lw;
-  for (let i = 1; i < P.length; i++) {
-    const a = P[i - 1], b = P[i], dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy); if (len < 0.5) continue;
-    const ux = dx / len, uy = dy / len, nx = -uy * hw, ny = ux * hw, n = Math.max(1, Math.round(len / (I.fack * ppm))), bay = len / n, dense = bay < 6;
-    // långsidor
-    ctx.beginPath(); ctx.moveTo(a[0] + nx, a[1] + ny); ctx.lineTo(b[0] + nx, b[1] + ny); ctx.moveTo(a[0] - nx, a[1] - ny); ctx.lineTo(b[0] - nx, b[1] - ny); ctx.stroke();
-    // tvärstag och diagonaler per fack (utelämnas när facken blir för små att se)
+  // Hörn: långsidorna går som sammanhängande linjer med gering (miter) i varje knick, så att ytter- och innersidan möts rent;
+  // tvärstag och stolpar sitter i hörnets gering – inte dubbelt vid varje sträckas ände.
+  const nS = P.length - 1, seg = [];
+  for (let i = 1; i < P.length; i++) { const dx = P[i][0] - P[i - 1][0], dy = P[i][1] - P[i - 1][1], len = Math.hypot(dx, dy); seg.push(len < 0.5 ? null : { ux: dx / len, uy: dy / len, len }); }
+  const segAt = i => seg[i] || seg.find(Boolean) || { ux: 1, uy: 0, len: 1 };
+  const VL = [], VR = [];   // per knutpunkt: vänster/höger gerad punkt
+  for (let i = 0; i < P.length; i++) {
+    const s0 = i > 0 ? segAt(i - 1) : null, s1 = i < nS ? segAt(i) : null, sa = s0 || s1, sb = s1 || s0;
+    let nx = -(sa.uy + sb.uy), ny = sa.ux + sb.ux, nl = Math.hypot(nx, ny);
+    if (nl < 1e-6) { nx = -sa.uy; ny = sa.ux; nl = 1; }
+    nx /= nl; ny /= nl; const cos = Math.max(0.4, nx * -sa.uy + ny * sa.ux), m = hw / cos;
+    VL.push([P[i][0] + nx * m, P[i][1] + ny * m]); VR.push([P[i][0] - nx * m, P[i][1] - ny * m]);
+  }
+  ctx.beginPath(); VL.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke();
+  ctx.beginPath(); VR.forEach((q, i) => i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.stroke();
+  const r = Math.max(0.9, Math.min(hw * 0.2, 1.8)), post = q => { ctx.beginPath(); ctx.arc(q[0], q[1], r, 0, Math.PI * 2); ctx.fill(); };
+  for (let i = 0; i < nS; i++) {
+    const sg = seg[i]; if (!sg) continue; const a = P[i], { ux, uy, len } = sg, nx = -uy * hw, ny = ux * hw, n = Math.max(1, Math.round(len / (I.fack * ppm))), bay = len / n, dense = bay < 6;
+    const L = k => k === 0 ? VL[i] : k === n ? VL[i + 1] : [a[0] + ux * bay * k + nx, a[1] + uy * bay * k + ny], Rr = k => k === 0 ? VR[i] : k === n ? VR[i + 1] : [a[0] + ux * bay * k - nx, a[1] + uy * bay * k - ny];
     if (!dense) {
       ctx.lineWidth = lw * 0.6;
-      for (let k = 0; k <= n; k++) { const cx = a[0] + ux * bay * k, cy = a[1] + uy * bay * k; ctx.beginPath(); ctx.moveTo(cx + nx, cy + ny); ctx.lineTo(cx - nx, cy - ny); ctx.stroke(); }
+      for (let k = (i === 0 ? 0 : 1); k <= n; k++) { const q = L(k), w = Rr(k); ctx.beginPath(); ctx.moveTo(q[0], q[1]); ctx.lineTo(w[0], w[1]); ctx.stroke(); }
       ctx.strokeStyle = hexToRgba(col, 0.3);
-      for (let k = 0; k < n; k++) { const c0 = [a[0] + ux * bay * k, a[1] + uy * bay * k], c1 = [c0[0] + ux * bay, c0[1] + uy * bay], f = k % 2 ? 1 : -1; ctx.beginPath(); ctx.moveTo(c0[0] + nx * f, c0[1] + ny * f); ctx.lineTo(c1[0] - nx * f, c1[1] - ny * f); ctx.stroke(); }
+      for (let k = 0; k < n; k++) { const f = k % 2 ? 1 : -1, c0 = f > 0 ? L(k) : Rr(k), c1 = f > 0 ? Rr(k + 1) : L(k + 1); ctx.beginPath(); ctx.moveTo(c0[0], c0[1]); ctx.lineTo(c1[0], c1[1]); ctx.stroke(); }
       ctx.strokeStyle = hexToRgba(col, 0.75); ctx.lineWidth = lw;
+      if (posts) { ctx.fillStyle = hexToRgba("#1f2937", 0.8); for (let k = (i === 0 ? 0 : 1); k <= n; k++) { post(L(k)); post(Rr(k)); } }
     }
-    // stolpar: små prickar i fackgränserna (bara när det finns plats och de inte är avstängda)
-    if (posts && !dense) { const r = Math.max(0.9, Math.min(hw * 0.2, 1.8)); ctx.fillStyle = hexToRgba("#1f2937", 0.8); for (let k = 0; k <= n; k++) { const cx = a[0] + ux * bay * k, cy = a[1] + uy * bay * k; [[nx, ny], [-nx, -ny]].forEach(([ox, oy]) => { ctx.beginPath(); ctx.arc(cx + ox, cy + oy, r, 0, Math.PI * 2); ctx.fill(); }); } }
   }
   // gavlar: tvärlinje i ändarna
   [[P[0], P[1]], [P[P.length - 1], P[P.length - 2]]].forEach(([e, f]) => { const dx = f[0] - e[0], dy = f[1] - e[1], l = Math.hypot(dx, dy) || 1, nx = -dy / l * hw, ny = dx / l * hw; ctx.lineWidth = lw * 1.4; ctx.strokeStyle = hexToRgba(col, 0.9); ctx.beginPath(); ctx.moveTo(e[0] + nx, e[1] + ny); ctx.lineTo(e[0] - nx, e[1] - ny); ctx.stroke(); });
