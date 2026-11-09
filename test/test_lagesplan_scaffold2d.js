@@ -125,6 +125,9 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const pv = await page.evaluate(() => ({ w: document.querySelector('.sp-sw').value, f: document.querySelector('.sp-sf').value, posts: document.querySelector('.sp-sposts').checked }));
     if (pv.w !== '1,2' || pv.f !== '3,07' || pv.posts !== false) fail('Klistra in ska lägga mallen i rutan: ' + JSON.stringify(pv));
     await page.click('.sp-cancel'); await page.waitForTimeout(100); }
+  { const r = await page.evaluate(() => { const x = { ...siteItems.find(q => q.type === 'scaffold'), name: 'Kommentar om ställningen', sDim: false, sFack: false, sLifts: false, sSeg: false }, run = o => { const cv = document.createElement('canvas'); cv.width = 1400; cv.height = 900; const ctx = cv.getContext('2d'), txt = []; const ft = ctx.fillText.bind(ctx); ctx.fillText = (t, ...a) => { txt.push(String(t)); return ft(t, ...a); }; const Q = o.pts.map(mToPx); ctx.translate(100 - Math.min(...Q.map(q => q[0])), 100 - Math.min(...Q.map(q => q[1]))); drawScaffold2D(ctx, o, siteStyle(o, 14), pxPerMeter(), '', ''); return txt.join('|'); }; return { on: run(x), off: run({ ...x, sName: false }), callout: run({ ...x, sDim: true, sCallout: false }) }; });
+    if (r.callout !== '') fail('Callouten ska gå att släcka helt: ' + JSON.stringify(r));
+    if (!/Kommentar om/.test(r.on) || /Kommentar om/.test(r.off) || r.off !== '') fail('Namn/kommentar ska gå att släcka från ställningen: ' + JSON.stringify(r)); }
   console.log('OK: ställning i plan – verktyg, mått och ritning i skala', JSON.stringify({ made: made.vals, inf, px, hit }));
   if (process.env.SLSHOT) { await page.evaluate(() => { document.getElementById('viewport') && 0; if (typeof renderAll === 'function') renderAll(); else if (typeof draw === 'function') draw(); }); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SLSHOT }); }
   // Play/Pause vid datumreglaget (samma uppspelning som under Tid)

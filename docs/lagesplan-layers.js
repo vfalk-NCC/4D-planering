@@ -1220,15 +1220,15 @@ function drawScaffold2D(ctx, x, st, ppm, dates, lock) {
     ctx.restore();
   }
   const parts = []; if (x.sDim !== false) parts.push(segMode ? `Σ ${fmtM(I.L)} m × ${fmtM(I.H)} m` : `${fmtM(I.L)} m × ${fmtM(I.H)} m`); if (x.sFack !== false) parts.push(`${I.bays} fack${segMode ? " totalt" : ""}`); if (x.sLifts !== false) parts.push(`${I.lifts} vån`);
-  const nm = (x.name || "").trim(), head = nm ? `${nm}${lock}` : (lock || ""), text = [head, parts.join(x.sWrap ? "\n" : " · ")].filter(Boolean).join("\n");
-  if (!text) return;
+  const nm = x.sName === false ? "" : (x.name || "").trim(), head = nm ? `${nm}${lock}` : (lock || ""), text = [head, parts.join(x.sWrap ? "\n" : " · ")].filter(Boolean).join("\n");
+  if (!text || x.sCallout === false) return;   // callouten (etikettrutan) släckt: bara ritningen och måttkedjan syns
   const mi = Math.floor((P.length - 1) / 2), m = P[mi], nn = P[mi + 1] || m;
   siteLabel(ctx, x, [(m[0] + nn[0]) / 2, (m[1] + nn[1]) / 2 - st.fs * 1.3 * (1 + (text.split("\n").length - 2) * 0.4)], text, st.fs * 0.82, "#fff", "#111827", col, dates);
 }
 /* Kopiera egenskaper (Victor 2026-11-09): färg, linje, tjocklek, textstorlek, lager och typens egna inställningar (för ställning: bredd, höjd, fack, våningar och vad som visas)
    sparas som en mall. "Klistra in" lägger dem på ett annat objekt av samma typ, och med "Använd på nya" ritas nästa objekt av typen redan med dem. */
 const SITE_CLIP_KEY = "lagesplan-siteclip";
-const SITE_CLIP_KEYS = { common: ["color", "dash", "weight", "textSize", "layer"], scaffold: ["w", "h", "fack", "lifts", "sDim", "sFack", "sLifts", "sPosts", "sWrap", "sSeg", "sFackSeg"], route: ["w", "twoWay"], crane: ["radius", "capacity", "chart"] };
+const SITE_CLIP_KEYS = { common: ["color", "dash", "weight", "textSize", "layer"], scaffold: ["w", "h", "fack", "lifts", "sDim", "sFack", "sLifts", "sPosts", "sWrap", "sSeg", "sFackSeg", "sName", "sCallout"], route: ["w", "twoWay"], crane: ["radius", "capacity", "chart"] };
 const siteClipGet = () => { try { const c = JSON.parse(localStorage.getItem(SITE_CLIP_KEY) || "null"); return c && c.type && c.props ? c : null; } catch (e) { return null; } };
 const siteClipSet = c => { try { localStorage.setItem(SITE_CLIP_KEY, JSON.stringify(c)); } catch (e) { /* utan lagring */ } };
 function siteClipPick(rec) { const o = {}; [...SITE_CLIP_KEYS.common, ...(SITE_CLIP_KEYS[rec.type] || [])].forEach(k => { if (rec[k] !== undefined) o[k] = rec[k]; }); return o; }
@@ -1262,7 +1262,7 @@ function scaffoldFieldsHtml(rec) {
     <div class="sc-h">Måttkedja på planen</div>
     <div class="sc-chips">${chip("sp-sseg", scaffoldSegOn(rec), "Mått per sträcka", "Ett mått längs varje sträcka (ett U får tre mått) – oberoende av etiketten")}${chip("sp-sfackseg", rec.sFackSeg !== false && rec.sFack !== false, "Fack i måttet", "Skriv antal fack efter längden i måttkedjan")}</div>
     <div class="sc-h">Text på planen</div>
-    <div class="sc-chips">${chip("sp-sdim", rec.sDim !== false, "Längd × höjd", "Total längd och höjd i etiketten")}${chip("sp-sfack", rec.sFack !== false, "Fack", "Antal fack i etiketten")}${chip("sp-slifts", rec.sLifts !== false, "Våningar", "Antal våningar i etiketten")}${chip("sp-swrap", !!rec.sWrap, "Radbryt", "Varje mått på egen rad")}</div>
+    <div class="sc-chips">${chip("sp-scallout", rec.sCallout !== false, "Visa callout", "Hela etikettrutan med namn och mått – släck den så syns bara ställningen (och måttkedjan)")}${chip("sp-sname", rec.sName !== false, "Namn / kommentar", "Texten du skrivit i namnrutan (t.ex. en kommentar) – släck för att bara visa måtten")}${chip("sp-sdim", rec.sDim !== false, "Längd × höjd", "Total längd och höjd i etiketten")}${chip("sp-sfack", rec.sFack !== false, "Fack", "Antal fack i etiketten")}${chip("sp-slifts", rec.sLifts !== false, "Våningar", "Antal våningar i etiketten")}${chip("sp-swrap", !!rec.sWrap, "Radbryt", "Varje mått på egen rad")}</div>
     <div class="sc-h">Ritning</div>
     <div class="sc-chips">${chip("sp-sposts", rec.sPosts !== false, "Stolpar", "Små prickar i fackgränserna")}</div>
     <button type="button" class="sp-to3d sc-3d" title="Skapar en riktig 3D-ställning (Etablering → Ställning följer berget) längs den ritade linjen med samma bredd, höjd och fack – markhöjden hämtas ur punktmolnet om det är tänt">Skapa 3D-ställning av linjen</button>
@@ -1991,7 +1991,7 @@ function openSitePop(rec, isNew) {
       const c = siteClipGet(); if (!c || c.type !== rec.type) return; const p = c.props;
       setv(".sp-color", p.color); setv(".sp-dash", p.dash); setv(".sp-weight", p.weight); if (p.textSize) { setv(".sp-ts", Math.round(p.textSize * 100)); }
       if (p.layer && pop.querySelector(`.sp-layer option[value="${CSS.escape(p.layer)}"]`)) setv(".sp-layer", p.layer);
-      if (rec.type === "scaffold") { setv(".sp-sw", fmtIn(p.w)); setv(".sp-sh", fmtIn(p.h)); setv(".sp-sf", fmtIn(p.fack)); setv(".sp-sl", p.lifts ? Math.round(p.lifts) : ""); setv(".sp-sdim", p.sDim !== false); setv(".sp-sfack", p.sFack !== false); setv(".sp-slifts", p.sLifts !== false); setv(".sp-sposts", p.sPosts !== false); setv(".sp-swrap", !!p.sWrap); setv(".sp-sseg", !!p.sSeg); setv(".sp-sfackseg", p.sFackSeg !== false); }
+      if (rec.type === "scaffold") { setv(".sp-sw", fmtIn(p.w)); setv(".sp-sh", fmtIn(p.h)); setv(".sp-sf", fmtIn(p.fack)); setv(".sp-sl", p.lifts ? Math.round(p.lifts) : ""); setv(".sp-sdim", p.sDim !== false); setv(".sp-sfack", p.sFack !== false); setv(".sp-slifts", p.sLifts !== false); setv(".sp-sposts", p.sPosts !== false); setv(".sp-swrap", !!p.sWrap); setv(".sp-sseg", !!p.sSeg); setv(".sp-sfackseg", p.sFackSeg !== false); setv(".sp-sname", p.sName !== false); setv(".sp-scallout", p.sCallout !== false); }
       if (rec.type === "route") { setv(".sp-rw", fmtIn(p.w)); setv(".sp-two", !!p.twoWay); }
       if (rec.type === "crane") { setv(".sp-radius", p.radius); setv(".sp-cap", p.capacity); setv(".sp-chart", p.chart); }
       setSaveStatus("Egenskaperna inklistrade – tryck Spara.");
@@ -2013,8 +2013,8 @@ function openSitePop(rec, isNew) {
   };
   tsR.oninput = () => { tsT.value = tsR.value; preview({ textSize: tsValue() }); };
   tsT.oninput = () => { const v = num(".sp-ts", NaN); if (Number.isFinite(v)) { tsR.value = Math.max(40, Math.min(400, v)); preview({ textSize: tsValue() }); } };
-  const scaffoldFromPop = () => { const c = q => { const e = pop.querySelector(q); return !e || e.checked; }, l = Math.round(num(".sp-sl", 0)); return { w: Math.max(0.3, num(".sp-sw", 0.73)), h: Math.max(1, num(".sp-sh", 8)), fack: Math.max(0.7, num(".sp-sf", 2.57)), lifts: l > 0 ? l : undefined, sDim: c(".sp-sdim"), sFack: c(".sp-sfack"), sLifts: c(".sp-slifts"), sPosts: c(".sp-sposts"), sWrap: !!(pop.querySelector(".sp-swrap") || {}).checked, sSeg: !!(pop.querySelector(".sp-sseg") || {}).checked, sFackSeg: c(".sp-sfackseg") }; };
-  if (rec.type === "scaffold") pop.querySelectorAll(".sp-sw,.sp-sh,.sp-sf,.sp-sl,.sp-sdim,.sp-sfack,.sp-slifts,.sp-sposts,.sp-swrap,.sp-sseg,.sp-sfackseg,.sp-name").forEach(el => { el.oninput = el.onchange = () => { const v = scaffoldFromPop(); v.name = (pop.querySelector(".sp-name") || {}).value || ""; preview(v); const I2 = scaffoldInfo({ ...rec, ...v }), q = c => pop.querySelector(c); if (q(".sc-s-len")) { q(".sc-s-len").textContent = fmtM(I2.L) + " m längd"; q(".sc-s-bays").textContent = I2.bays + " fack"; q(".sc-s-lifts").textContent = I2.lifts + " vån"; } const ph = q(".sp-sl"); if (ph) ph.placeholder = `auto (${Math.max(1, Math.ceil(v.h / 2))})`; }; });
+  const scaffoldFromPop = () => { const c = q => { const e = pop.querySelector(q); return !e || e.checked; }, l = Math.round(num(".sp-sl", 0)); return { w: Math.max(0.3, num(".sp-sw", 0.73)), h: Math.max(1, num(".sp-sh", 8)), fack: Math.max(0.7, num(".sp-sf", 2.57)), lifts: l > 0 ? l : undefined, sDim: c(".sp-sdim"), sFack: c(".sp-sfack"), sLifts: c(".sp-slifts"), sPosts: c(".sp-sposts"), sWrap: !!(pop.querySelector(".sp-swrap") || {}).checked, sSeg: !!(pop.querySelector(".sp-sseg") || {}).checked, sFackSeg: c(".sp-sfackseg"), sName: c(".sp-sname"), sCallout: c(".sp-scallout") }; };
+  if (rec.type === "scaffold") pop.querySelectorAll(".sp-sw,.sp-sh,.sp-sf,.sp-sl,.sp-sdim,.sp-sfack,.sp-slifts,.sp-sposts,.sp-swrap,.sp-sseg,.sp-sfackseg,.sp-sname,.sp-scallout,.sp-name").forEach(el => { el.oninput = el.onchange = () => { const v = scaffoldFromPop(); v.name = (pop.querySelector(".sp-name") || {}).value || ""; preview(v); const I2 = scaffoldInfo({ ...rec, ...v }), q = c => pop.querySelector(c); if (q(".sc-s-len")) { q(".sc-s-len").textContent = fmtM(I2.L) + " m längd"; q(".sc-s-bays").textContent = I2.bays + " fack"; q(".sc-s-lifts").textContent = I2.lifts + " vån"; } const ph = q(".sp-sl"); if (ph) ph.placeholder = `auto (${Math.max(1, Math.ceil(v.h / 2))})`; }; });
   const lblReset = pop.querySelector(".sp-lblreset");
   if (lblReset) lblReset.onclick = () => { if (popPreview) popPreview.lblReset = true; preview({ lbl: null, lblAt: null }); lblReset.disabled = true; lblReset.textContent = "↺ Texten återställd"; };
   pop.querySelector(".sp-save").onclick = async () => {
