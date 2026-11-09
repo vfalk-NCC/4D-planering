@@ -10,29 +10,29 @@ const objFamSel = new Set(); // item-id:n som är markerade via listan (ringar p
 /* Aktiviteterna med objekt på planen: [{ key, rows, it, hidden (antal släckta) }]. */
 function objListFamilies() {
   if (typeof positionsInPdf !== "function" || !plan) return [];
-  const pos = positionsInPdf();
-  if (!pos || !pos.size) return [];
+  const pos = positionsInPdf() || new Map(), has = new Set(positions.map(p => p.id));
   const map = new Map();
   items.forEach(it => {
-    if (!pos.has(it.id)) return;
+    if (!pos.has(it.id) && has.has(it.id)) return;   // har position men ligger utanför filtret (nivå) – syns inte här
+    // utan position (inte placerad på planen): listas ändå, så att alla aktiviteter finns (okopplade kan placeras med 📌)
     const k = objFamKey(it);
     if (!map.has(k)) map.set(k, []);
     map.get(k).push(it);
   });
-  return [...map.entries()].map(([key, rows]) => ({ key, rows, it: rows[0], hidden: rows.filter(isObjHidden).length }))
+  return [...map.entries()].map(([key, rows]) => ({ key, rows, it: rows[0], hidden: rows.filter(isObjHidden).length, unplaced: rows.every(r => !pos.has(r.id)) }))
     .sort((a, b) => famName(a.it).localeCompare(famName(b.it), "sv", { numeric: true }) || String(a.it.area || "").localeCompare(String(b.it.area || ""), "sv"));
 }
 function objRowsHtml(fams, opts = {}) {
   const day = $("dateInput").value || todayIso();
   return fams.map(f => {
-    const off = f.hidden === f.rows.length, part = f.hidden && !off;
+    const off = f.hidden === f.rows.length, part = f.hidden && !off, canPlace = f.unplaced && f.rows.some(r => !r.model_id);
     const ph = zonePhase(f.rows, day);
     const key = "o:" + f.key;
     const title = [famName(f.it), f.it.area, f.it.contractor, `${f.rows.length} objekt`].filter(Boolean).join(" · ");
-    return `<div class="layer-row sub obj-item-row${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}${off ? " off" : ""}${itemSel.has(key) ? " sel" : ""}" data-item="${escHtml(key)}">
+    return `<div class="layer-row sub obj-item-row${f.unplaced ? " unplaced" : ""}${opts.inFolder ? " in-folder" : ""}${opts.hidden ? " hidden" : ""}${off ? " off" : ""}${itemSel.has(key) ? " sel" : ""}" data-item="${escHtml(key)}">
       <span class="oi-dot" style="background:${ph === "ingen" ? "#fff" : phaseColor(ph)}" title="${escHtml(PHASE_LABELS[ph] || "")}"></span>
-      <span class="ln" title="${escHtml(title)} – klicka för att markera på planen och i 3D">${escHtml(famName(f.it))}${f.it.area ? ` <small>${escHtml(f.it.area)}</small>` : ""}${f.rows.length > 1 ? ` <small>${f.rows.length} obj.</small>` : ""}${part ? ` <small>(${f.hidden} släckta)</small>` : ""}</span>
-      <button type="button" class="oi-3d" title="Markera i 3D">🎯</button>
+      <span class="ln" title="${escHtml(title)} – klicka för att markera på planen och i 3D">${escHtml(famName(f.it))}${f.it.area ? ` <small>${escHtml(f.it.area)}</small>` : ""}${f.rows.length > 1 ? ` <small>${f.rows.length} obj.</small>` : ""}${f.unplaced ? ` <small class="oi-unpl">ej på planen</small>` : ""}${part ? ` <small>(${f.hidden} släckta)</small>` : ""}</span>
+      ${canPlace ? `<button type="button" class="oi-3d oi-place" title="Aktiviteten har ingen prick – placera den i planen">📌</button>` : `<button type="button" class="oi-3d" title="Markera i 3D">🎯</button>`}
       <button type="button" class="oi-eye" title="${off ? "Tänd" : "Släck"} på planen">${off ? "🙈" : "👁"}</button>
     </div>`;
   }).join("");
@@ -104,7 +104,7 @@ function drawObjFamHighlight(ctx, fontPx) {
 function bindObjRows(el) {
   el.querySelectorAll(".obj-item-row").forEach(row => {
     const key = row.dataset.item.slice(2);
-    row.querySelector(".oi-3d").onclick = e => { e.stopPropagation(); showObjFams([key], true); };
+    row.querySelector(".oi-3d").onclick = e => { e.stopPropagation(); if (e.currentTarget.classList.contains("oi-place") && typeof apFocus === "function") apFocus(key); else showObjFams([key], true); };
     row.querySelector(".oi-eye").onclick = e => { e.stopPropagation(); hideObjFams([key], !row.classList.contains("off")); };
   });
 }

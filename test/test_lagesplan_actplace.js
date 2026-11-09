@@ -44,6 +44,8 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   // 1) Okopplade aktiviteter utan prick listas; kopplade och placerade gör det inte.
   const list = await page.evaluate(() => apUnplaced().map(f => f.name).sort());
   if (JSON.stringify(list) !== JSON.stringify(['Armering platta', 'Etablering kontor'])) fail('Listan ska visa de okopplade aktiviteterna utan prick: ' + JSON.stringify(list));
+  { const f = await page.evaluate(() => objListFamilies().map(q => [famName(q.it), q.unplaced]).sort()); const names = f.map(q => q[0]).join('|');
+    if (!f.some(q => q[0] === 'Armering platta' && q[1]) || !f.some(q => q[0] === 'J1' && !q[1])) fail('Lagerlistan ska visa både placerade och oplacerade aktiviteter: ' + names); }
   await page.click('#btnApPlace'); await page.waitForTimeout(200);
   if (!(await page.isVisible('#apPanel'))) fail('Panelen ska öppnas');
   // 2) Välj Armering platta och tryck i planen.

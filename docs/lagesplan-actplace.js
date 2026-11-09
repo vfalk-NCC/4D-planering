@@ -21,7 +21,7 @@ const apName = it => String(it.object_name || it.activity || "Aktivitet").trim()
 function apUnplaced() {
   const has = new Set(positions.map(p => p.id)), fams = new Map();
   (items || []).forEach(it => { if (it.model_id || has.has(it.id) || it.del || it.deleted) return; const k = apFam(it); if (!fams.has(k)) fams.set(k, { key: k, rows: [] }); fams.get(k).rows.push(it); });
-  return [...fams.values()].map(f => ({ ...f, name: String(f.rows[0].activity || apName(f.rows[0])), it: f.rows[0] })).sort((a, b) => String(a.it.start_date || "").localeCompare(String(b.it.start_date || "")) || a.name.localeCompare(b.name, "sv"));
+  return [...fams.values()].map(f => ({ ...f, name: famName(f.rows[0]), it: f.rows[0] })).sort((a, b) => String(a.it.start_date || "").localeCompare(String(b.it.start_date || "")) || a.name.localeCompare(b.name, "sv"));
 }
 function apPlacedRows() { const s = apPlacedSet(); return (items || []).filter(it => !it.model_id && s.has(it.id)); }
 const apGet = id => positions.find(p => p.id === id);
@@ -112,6 +112,9 @@ function apRender() {
   el.querySelectorAll(".ap-it").forEach(d => d.onclick = () => { ap.sel = shown[+d.dataset.i]; if (objTool !== "actplace") objToolSet("actplace"); apRender(); setSaveStatus(`📌 Tryck i planen där "${ap.sel.name}" ska ligga.`); });
   el.querySelectorAll(".ap-x").forEach(b => b.onclick = () => apRemove([...fams.values()][+b.dataset.r])); el.querySelector("#apExp").onclick = apExport; el.querySelector("#apLink").onclick = apCouple;
 }
+/* 📌 på en rad i lagerlistan: öppna panelen med just den aktiviteten vald. */
+function apFocus(key) { apPanel().classList.remove("hidden"); ap.q = ""; const f = apUnplaced().find(x => x.key === key); if (f) { ap.sel = f; if (objTool !== "actplace") objToolSet("actplace"); setSaveStatus(`📌 Tryck i planen där "${f.name}" ska ligga.`); } apRender(); }
 function apOpen() { apPanel().classList.remove("hidden"); ap.sel = ap.sel || apUnplaced()[0] || null; apRender(); }
 function apClose() { apPanel().classList.add("hidden"); if (objTool === "actplace") objToolSet("actplace"); }
+{ const st = document.createElement("style"); st.textContent = `.layer-row.unplaced .ln{opacity:.75;font-style:italic}.oi-unpl{color:#b45309;font-style:normal}`; document.head.appendChild(st); }
 (function bind() { const go = () => { const b = document.getElementById("btnApPlace"); if (b) b.onclick = () => (apPanel().classList.contains("hidden") ? apOpen() : apClose()); }; if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", go); else go(); })();
