@@ -45,7 +45,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const R = await page.evaluate(async () => {
     const O = l3.O, ang = 30 * Math.PI / 180, mkBox = (cx, cy, z0, L, B, H, a, name) => { const pts = []; for (const [u, v] of [[-L / 2, -B / 2], [L / 2, -B / 2], [L / 2, B / 2], [-L / 2, B / 2]]) for (const z of [z0, z0 + H]) pts.push([cx + u * Math.cos(a) - v * Math.sin(a), cy + u * Math.sin(a) + v * Math.cos(a), z]); return { name, cls: 'IFCFOOTING', guid: 'g' + name, src: 'ifc', pts, tris: [] }; };
     const sel = [mkBox(O[0] + 5, O[1] + 3, 10, 3, 2, 1, ang, 'Fundament F1'), mkBox(O[0] + 12, O[1] + 3, 10, 2, 2, 0.5, 0, 'Fundament F2')];
-    const n0 = placements.length, made = l3formCreate(sel, 0.1); await new Promise(r => setTimeout(r, 400));
+    const n0 = placements.length, made = l3formCreate(sel, 0.1); await new Promise(r => setTimeout(r, 1500));
     const out = made.map(p => { const g = l3.placeMeshes.get(p.id); let meshes = 0; if (g) g.traverse(o => { if (o.isMesh) meshes++; }); return { type: p.type, L: p.L, B: p.B, H: p.H, rot: p.rot, x: Math.round((p.x - O[0]) * 100) / 100, y: Math.round((p.y - O[1]) * 100) / 100, z: p.z, name: p.name, arm: p.f && p.f.arm, meshes, dirty: placeDirty.has(p.id) }; });
     return { n: placements.length - n0, out, btn: typeof l3bsMakeForms === 'function' };
   });
@@ -71,7 +71,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     ok2(A.sel === 1 && A.sel2 === 2, 'Klick på en rad markerar formen; Markera alla markerar alla');
     { const U = await page.evaluate(async () => { l3gf.only = null; const f = placements.filter(p => p.type === 'sm:gjutetapp'); l3SelectIds([f[0].id]); l3anOpen('form'); await new Promise(r => setTimeout(r, 100)); const el = document.getElementById('v3AnPanel'); el.querySelector('[data-gf-upd]').click(); await new Promise(r => setTimeout(r, 150)); const el2 = document.getElementById('v3AnPanel'), rows = el2.querySelectorAll('.an-tbl tr.rw').length, chip = !!el2.querySelector('.an-chip'), k = [...el2.querySelectorAll('.an-kpi')].map(x => x.innerText.replace(/\s+/g, ' '))[0]; el2.querySelector('[data-gf-allf]').click(); await new Promise(r => setTimeout(r, 100)); return { rows, chip, k, back: document.querySelectorAll('#v3AnPanel .an-tbl tr.rw').length }; });
       ok2(U.rows === 1 && U.chip && /^1 gjutformar/.test(U.k) && U.back === 2, 'Uppdatera med markerade ska räkna bara på de markerade formerna (och gå att återställa): ' + JSON.stringify(U)); }
-    { const C = await page.evaluate(() => { const p = placements.find(q => q.type === 'sm:gjutetapp'), c = (placeLib(p.type).calc(p) || []).find(r => r[0] === 'Formsida'); return c ? c[1] : null; });
+    { const C = await page.evaluate(() => { const p = placements.find(q => q.type === 'sm:gjutetapp'), d = SM.gjutetapp, c = (d.calc(p) || []).find(r => r[0] === 'Formsida'); return c ? c[1] : null; });
       ok2(C && /^10,8 m²/.test(C), 'Formens egen ruta ska visa formsida (omkrets × höjd): ' + C); }
     ok2(/^gjutformar\.csv\|Form;/.test(A.csv) && /Summa/.test(A.csv), 'CSV med summarad');
     if (process.env.ANIMG) { const el = await page.$('#v3AnPanel'); await el.screenshot({ path: process.env.ANIMG }); }
