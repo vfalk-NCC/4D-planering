@@ -89,6 +89,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   ok(o.slope && o.slope[2] <= 5 && o.slope[1] > 0, 'Lutning på platt moln: ' + JSON.stringify(o.slope));
   ok(o.tabs.every(Boolean), 'Alla flikar öppnas');
   ok(!errors.length, 'JS-fel: ' + errors.join(' | '));
+  { // Mängdning: sök, sortera, klicka markerar; summakort
+    const T = await page.evaluate(async () => { l3anOpen('take'); await l3anTakeRun(); await new Promise(r => setTimeout(r, 150)); const el = document.getElementById('v3AnPanel'); const rows = el.querySelectorAll('.an-tbl tr.rw').length, kp = el.querySelectorAll('.an-kpi').length; el.querySelector('.an-tbl tr.rw').click(); await new Promise(r => setTimeout(r, 100)); const sel = typeof l3bs !== 'undefined' ? l3bs.sel.length : 0; const q = el.querySelector('[data-an-q]'); q.value = 'zzzz'; q.dispatchEvent(new Event('input')); await new Promise(r => setTimeout(r, 100)); const none = !!document.querySelector('#v3AnPanel .an-empty'); q.value = ''; return { rows, kp, sel, none }; });
+    if (!T.rows || T.kp !== 3 || !T.sel || !T.none) fail('Mängdningen ska ha summakort, rader som markerar och sök: ' + JSON.stringify(T));
+    if (process.env.ANIMG) { await page.evaluate(() => { const q = document.querySelector('#v3AnPanel [data-an-q]'); if (q) { q.value = ''; q.dispatchEvent(new Event('input')); } }); await (await page.$('#v3AnPanel')).screenshot({ path: process.env.ANIMG }); } }
   console.log('OK: analys – mängdning, massa, smart markering, fria avstånd, jämför, lutning');
   await browser.close(); server.close();
 })().catch(e => { console.error(e); process.exit(1); });

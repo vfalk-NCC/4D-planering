@@ -50,11 +50,29 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return { n: placements.length - n0, out, btn: typeof l3bsMakeForms === 'function' };
   });
   console.log(JSON.stringify(R));
-  const [a, b] = R.out; const ok = (c, m) => { if (!c) fail(m + ' ' + JSON.stringify(R)); };
+  const [a, b] = R.out; const ok = (c, m) => { if (!c) fail(m + ' ' + JSON.stringify(R)); }, ok2 = (c, m) => { if (!c) fail(m); };
   ok(R.n === 2 && R.btn, 'Två gjutformar ska skapas');
   ok(a.type === 'sm:gjutetapp' && Math.abs(a.L - 3.2) < 0.05 && Math.abs(a.B - 2.2) < 0.05 && Math.abs(a.rot - 30) < 0.5 && a.H === 1 && Math.abs(a.x - 5) < 0.05 && Math.abs(a.y - 3) < 0.05 && a.z === 10, 'Formen ska ligga runt F1 (rotation 30°, utstick 0,1 m)');
   ok(Math.abs(b.L - 2.2) < 0.05 && Math.abs(b.B - 2.2) < 0.05 && Math.abs(b.rot) < 0.5 && b.H === 0.5, 'Formen runt F2');
   ok(/Gjutform Fundament F1/.test(a.name) && a.arm === 'Dölj' && a.meshes >= 1 && b.meshes >= 1 && a.dirty && b.dirty, 'Namn, ritad och markerad för sparning (Trimble Connect)');
+  { // Analys → Gjutformar: summor, tabell, vecka för vecka, markera, CSV
+    const A = await page.evaluate(async () => {
+      placements.filter(p => p.type === 'sm:gjutetapp').forEach((p, i) => { p.start = i ? '2026-11-17' : '2026-11-10'; p.end = p.start; });
+      l3anOpen('form'); await new Promise(r => setTimeout(r, 150));
+      const el = document.getElementById('v3AnPanel'), rows = [...el.querySelectorAll('.an-tbl tr.rw')].map(r => r.innerText.replace(/\s+/g, ' ')), kpis = [...el.querySelectorAll('.an-kpi')].map(k => k.innerText.replace(/\s+/g, ' ')), weeks = el.querySelectorAll('.an-wk').length, tabs = [...el.querySelectorAll('.v3-an-tabs button')].map(b => b.innerText.trim());
+      const vols = l3gfRows().map(r => r.vol); el.querySelector('.an-tbl tr.rw').click(); await new Promise(r => setTimeout(r, 150));
+      const sel = l3SelList ? l3SelList().length : -1; el.querySelector('[data-gf-sel]').click(); const sel2 = l3SelList().length;
+      let csv = ''; const o = l3anCsv; window.l3anCsv = (rows2, name) => { csv = name + '|' + rows2.map(r => r.join(';')).join('\n'); }; el.querySelector('[data-gf-csv]').click(); window.l3anCsv = o;
+      return { rows, kpis, weeks, tabs, vols, sel, sel2, csv };
+    });
+    console.log(JSON.stringify(A));
+    ok2(A.tabs.includes('Gjutformar') && A.rows.length === 2 && A.weeks === 2, 'Fliken Gjutformar ska visa två former och två veckor');
+    const vsum = A.vols[0] + A.vols[1]; ok2(A.kpis.some(k => /^2 gjutformar/.test(k)) && A.kpis.some(k => k.includes(String(Math.round(vsum * 10) / 10).replace('.', ','))), 'Summakorten ska visa antal och total betongvolym');
+    ok2(A.sel === 1 && A.sel2 === 2, 'Klick på en rad markerar formen; Markera alla markerar alla');
+    ok2(/^gjutformar\.csv\|Form;/.test(A.csv) && /Summa/.test(A.csv), 'CSV med summarad');
+    if (process.env.ANIMG) { const el = await page.$('#v3AnPanel'); await el.screenshot({ path: process.env.ANIMG }); }
+  }
+
   console.log('OK test_lagesplan_3dforms');
   await browser.close(); server.close();
 })().catch(e => { console.error('FEL:', e.message); process.exit(1); });

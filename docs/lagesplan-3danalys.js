@@ -11,7 +11,7 @@
    – Tidslinje: hur många aktiviteter och etableringsobjekt som är aktiva vecka för vecka – tryck för att hoppa dit. */
 
 const l3an = { tab: "take", clear: null, A: null, B: null, cmpA: "", cmpB: "", cmp: null, rho: 2400, gb: "cls" };
-const L3AN_TABS = [["take", "Mängdning"], ["slope", "Lutning"], ["mass", "Massegenskaper"], ["clear", "Fria avstånd"], ["cmp", "Jämför"], ["sel", "Smart markering"], ["time", "Tidslinje"]];
+const L3AN_TABS = [["take", "Mängdning"], ["form", "Gjutformar"], ["slope", "Lutning"], ["mass", "Massegenskaper"], ["clear", "Fria avstånd"], ["cmp", "Jämför"], ["sel", "Smart markering"], ["time", "Tidslinje"]];
 const l3anF = (v, d = 1) => Number(v).toLocaleString("sv-SE", { maximumFractionDigits: d, minimumFractionDigits: 0 }).replace(/[  ]/g, " ");
 const l3anTick = () => new Promise(r => setTimeout(r, 12));
 
@@ -33,8 +33,8 @@ const l3anLabels = () => l3an.labs || [];
 
 function l3anOpen(tab) {
   if (tab) l3an.tab = tab;
-  const t = l3an.tab, esc = escHtml, tabs = `<div class="v3-an-tabs">${L3AN_TABS.map(([k, l]) => `<button type="button" data-an-tab="${k}" class="${k === t ? "on" : ""}">${l}</button>`).join("")}</div>`;
-  const fn = { take: l3anTake, slope: l3anSlope, mass: l3anMass, clear: l3anClear, cmp: l3anCmp, sel: l3anSelUi, time: l3anTime }[t];
+  const t = l3an.tab, esc = escHtml, tabs = `<div class="v3-an-tabs">${L3AN_TABS.map(([k, l]) => `<button type="button" data-an-tab="${k}" class="${k === t ? "on" : ""}" title="${l}">${(typeof L3AN_ICO !== "undefined" && L3AN_ICO[k]) || ""}<span>${l}</span></button>`).join("")}</div>`;
+  const fn = { take: l3anTake, form: l3anForms, slope: l3anSlope, mass: l3anMass, clear: l3anClear, cmp: l3anCmp, sel: l3anSelUi, time: l3anTime }[t];
   const r = fn(esc), title = (L3AN_TABS.find(x => x[0] === t) || [])[1] || "Analys";
   l3anPanel("Analys · " + title, tabs + r.html, el => { el.querySelectorAll("[data-an-tab]").forEach(b => { b.onclick = () => { l3anClearDraw(); l3anOpen(b.dataset.anTab); }; }); if (r.bind) r.bind(el); });
 }
@@ -81,32 +81,7 @@ const l3anModels = () => (typeof l3b !== "undefined" ? l3b.models : []).filter(m
 const L3AN_CLS = { IFCWALL: "Vägg", IFCWALLSTANDARDCASE: "Vägg", IFCSLAB: "Platta", IFCCOLUMN: "Pelare", IFCBEAM: "Balk", IFCDOOR: "Dörr", IFCWINDOW: "Fönster", IFCROOF: "Tak", IFCSTAIR: "Trappa", IFCSTAIRFLIGHT: "Trapplöpning", IFCRAILING: "Räcke", IFCFOOTING: "Fundament", IFCPILE: "Pålar", IFCMEMBER: "Stång", IFCPLATE: "Skiva", IFCCOVERING: "Beklädnad", IFCFURNISHINGELEMENT: "Inredning", IFCBUILDINGELEMENTPROXY: "Övrigt (proxy)", IFCOPENINGELEMENT: "Öppning", IFCREINFORCINGBAR: "Armering", IFCFLOWSEGMENT: "Rör/kanal", IFCFLOWTERMINAL: "Don", IFCCURTAINWALL: "Fasad", IFCSITE: "Tomt" };
 const l3anClsName = c => L3AN_CLS[String(c || "").toUpperCase()] || (c ? String(c).replace(/^IFC/i, "") : "(saknar klass)");
 
-/* ---- 1. Mängdning ---- */
-function l3anTake(esc) {
-  const gb = l3an.gb;
-  const rows = l3an.takeRows, tot = rows ? rows.reduce((a, r) => ({ n: a.n + r.n, area: a.area + r.area, vol: a.vol + r.vol }), { n: 0, area: 0, vol: 0 }) : null;
-  const tbl = rows ? `<div class="v3-an-list"><table class="v3-an-t"><tr><th>${gb === "cls" ? "Klass" : gb === "model" ? "Modell" : "Namn"}</th><th>Antal</th><th>Yta m²</th><th>Volym m³</th></tr>${rows.map(r => `<tr><td>${esc(r.k)}</td><td>${r.n}</td><td>${l3anF(r.area)}</td><td>${l3anF(r.vol, 2)}</td></tr>`).join("")}<tr class="tot"><td>Summa</td><td>${tot.n}</td><td>${l3anF(tot.area)}</td><td>${l3anF(tot.vol, 2)}</td></tr></table></div><div class="v3-vp-t">Volymen räknas för slutna objekt; öppna ytor (t.ex. plåtar) ger bara yta. Dolda objekt ingår inte.</div>` : `<div class="v3-vp-t">${l3an.takeBusy || "Räknar antal, yta och volym för allt som är tänt."}</div>`;
-  return { html: `<div class="v3-an-r"><label>Gruppera på <select data-an-gb><option value="cls" ${gb === "cls" ? "selected" : ""}>IFC-klass</option><option value="model" ${gb === "model" ? "selected" : ""}>Modell</option><option value="name" ${gb === "name" ? "selected" : ""}>Namn</option></select></label></div>${tbl}<div class="v3-vq-foot"><button type="button" class="primary" data-an-go>Räkna</button><button type="button" data-an-csv ${rows ? "" : "disabled"}>Exportera CSV</button></div>`,
-    bind: el => { el.querySelector("[data-an-gb]").onchange = e => { l3an.gb = e.target.value; l3an.takeRows = null; l3anOpen(); }; el.querySelector("[data-an-go]").onclick = () => l3anTakeRun();
-      const c = el.querySelector("[data-an-csv]"); if (c) c.onclick = () => l3anCsv([[gb === "cls" ? "Klass" : gb === "model" ? "Modell" : "Namn", "Antal", "Yta m2", "Volym m3"], ...rows.map(r => [r.k, r.n, Math.round(r.area * 100) / 100, Math.round(r.vol * 1000) / 1000]), ["Summa", tot.n, Math.round(tot.area * 100) / 100, Math.round(tot.vol * 1000) / 1000]], "Mängdning.csv"); } };
-}
-async function l3anTakeRun() {
-  const groups = new Map(), add = (k, st) => { const g = groups.get(k) || { k, n: 0, area: 0, vol: 0 }; g.n++; g.area += st.area; g.vol += st.vol; groups.set(k, g); };
-  l3an.takeBusy = "Räknar…"; l3anOpen(); await l3anTick(); let work = 0;
-  for (const m of l3anModels().filter(m => m.visible)) for (const mesh of m.meshes) {
-    const u = mesh.userData.l3b; if (!u) continue;
-    for (let ri = 0; ri < u.ranges.length; ri++) {
-      if (u.hidden && u.hidden.has(ri)) continue; const r = u.ranges[ri]; const st = l3anStats(l3anRangeTris(mesh, ri, []));
-      add(l3an.gb === "cls" ? l3anClsName(r.cls) : l3an.gb === "model" ? (m.name || "Modell") : (r.name || "(namnlös)"), st);
-      if (++work % 400 === 0) await l3anTick();
-    }
-  }
-  placements.filter(p => !(placeLib(p.type) || {}).isModel && l3PlaceOnDate(p)).forEach(p => {
-    let st = { area: 0, vol: 0 }; if (p.m) { const d = modDims(p); st = { area: d.area || 0, vol: d.volume || 0 }; } else { const L = Number(p.L) || 0, B = Number(p.B) || 0, H = Number(p.H) || 0; st = { area: 2 * (L * B + L * H + B * H), vol: L * B * H }; }
-    add(l3an.gb === "cls" ? "Etablering: " + ((placeLib(p.type) || {}).label || p.type) : l3an.gb === "model" ? "Etablering" : (p.name || p.type), st);
-  });
-  l3an.takeRows = [...groups.values()].sort((a, b) => b.vol - a.vol || b.n - a.n); l3an.takeBusy = ""; l3anOpen();
-}
+/* ---- 1. Mängdning: se lagesplan-3danalys-ui.js (l3anTake, l3anTakeRun) ---- */
 
 /* ---- 2. Lutning ---- */
 const L3AN_SLOPE = [[2, "#22c55e", "0–2 %"], [5, "#a3e635", "2–5 %"], [10, "#facc15", "5–10 %"], [20, "#fb923c", "10–20 %"], [33.3, "#ef4444", "20–33 % (1:3)"], [Infinity, "#7e22ce", "över 33 %"]];
