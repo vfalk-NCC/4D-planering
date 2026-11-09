@@ -113,6 +113,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const over = (p, q) => p[0] < q[2] && p[2] > q[0] && p[1] < q[3] && p[3] > q[1];
   if (boxes.some((b, i) => boxes.some((q, j) => j > i && over(b, q)))) fail('Namnen ska inte överlappa: ' + JSON.stringify(lay.L));
   console.log('OK: namnen på tätt placerade objekt hamnar fritt från varandra');
+  // Prickarnas text som i vyn: visuellt namn går före, bortryckta namn utan text, avstängt = objektets namn.
+  const vn = await page.evaluate(() => {
+    plan.dotNames = { i1: 'Pelare K10 – nytt' }; invalidatePositions();
+    const on = objExportMarkers().map(m => m.name);
+    $('cadVisNames').checked = false; invalidatePositions(); const off = objExportMarkers().map(m => m.name);
+    $('cadVisNames').checked = true; invalidatePositions(); delete plan.dotNames;
+    return { on, off };
+  });
+  if (!vn.on.includes('Pelare K10 – nytt') || vn.off.includes('Pelare K10 – nytt') || !vn.off.includes('K10')) fail('Exporten ska följa det visuella namnet: ' + JSON.stringify(vn));
+  console.log('OK: prickarnas text i exporten följer namnet som syns i vyn');
   console.log('OK: 3D-objekten som DXF – meter, modellens koordinater, lager per status, fotavtryck och namn (å/ä/ö)');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();

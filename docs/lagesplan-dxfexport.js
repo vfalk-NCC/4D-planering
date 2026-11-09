@@ -36,6 +36,14 @@ const DXF_TEXT_H = 1.0; // texthöjd i meter
 function dxfItemName(it) {
   return dxfText(it.object_name) || dxfText(it.activity);
 }
+/* Namnet som det syns i vyn (Victors önskemål 2026-11-09): det visuella namnet (som skriver över aktiviteten, bara i lägesplanen) går före objektets
+   namn och aktiviteten; namn man tryckt bort i vyn exporteras utan text. Hela texten (utan ... som kortar på skärmen). */
+function exportVisibleName(it) {
+  const h = typeof hiddenLabels === "function" ? hiddenLabels() : { ids: [], acts: [] };
+  if (h.ids.includes(it.id) || h.acts.includes(String(it.activity || "").trim())) return "";
+  return dxfText((plan && plan.dotNames && plan.dotNames[it.id]) || it.object_name || it.activity);
+}
+const exportVisNames = () => { const c = $("cadVisNames"); return !c || c.checked; };
 
 /* Texternas vridning (grader, moturs i modellen) så att de läses vågrätt i den vy man har i
    Lägesplan just nu – med ritningens och vyns vridning (Victors önskemål 2026-10-05). */
@@ -67,7 +75,7 @@ function objExportMarkers() {
     let x = ps.reduce((a, p) => a + p.x, 0) / ps.length, y = ps.reduce((a, p) => a + p.y, 0) / ps.length;
     if (o.moved && typeof objMarkPos === "function") { const m = objMarkPos(o.fam); if (m) [x, y] = m; } // flyttad markering
     const zTop = Math.max(...ps.map(p => Number.isFinite(p.z1) ? p.z1 : p.z0 || 0));
-    const nm = dxfItemName(o.it);
+    const nm = exportVisNames() ? exportVisibleName(o.it) : dxfItemName(o.it);
     out.push({ x, y, zTop, ph, members, it: o.it, name: nm && members.length > 1 ? `${nm} (${members.length})` : nm });
   });
   return out;
@@ -241,6 +249,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const b = $("btnObjDxf");
   if (b) b.onclick = exportObjectsDxf;
   // Valet "Spara även i Trimble Connect" (gäller alla CAD-exporter) sparas i webbläsaren, på från början.
+  const vn = $("cadVisNames");
+  if (vn) { try { vn.checked = localStorage.getItem("lagesplan-cadexport-visnames") !== "0"; } catch (e) {} vn.onchange = () => { try { localStorage.setItem("lagesplan-cadexport-visnames", vn.checked ? "1" : "0"); } catch (e) {} }; }
   const tc = $("cadExportToTc");
   if (tc) {
     try { tc.checked = localStorage.getItem("lagesplan-cadexport-tc") !== "0"; } catch (e) {}
