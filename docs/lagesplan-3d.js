@@ -29,6 +29,7 @@ const L3_ICO = (() => {
     redo: s('<path d="M15 14l5-5-5-5"/><path d="M20 9H9a5 5 0 0 0 0 10h3"/>'),
     sun: s('<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/>'),
     fit: s('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
+    analys: s('<path d="M4 20h16"/><rect x="5" y="11" width="3.4" height="9" rx=".8"/><rect x="10.3" y="5" width="3.4" height="15" rx=".8"/><rect x="15.6" y="14" width="3.4" height="6" rx=".8"/>'),
     camera: s('<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>'),
     cube: s('<path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/>'),
     eye: s('<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/>'),
@@ -259,7 +260,7 @@ function l3Dom() {
         </div>
       </div>
       <button type="button" id="v3ClipBtn" class="v3-ghost" title="Snitt: tryck på en yta där modellen ska skäras">${I.scissors}<span>Snitt</span></button>
-      <button type="button" id="v3AnBtn" class="v3-ghost" title="Analys: mängdning, lutning, massegenskaper, fria avstånd, jämför modeller, smart markering, tidslinje">${I.fit}<span>Analys</span></button>
+      <button type="button" id="v3AnBtn" class="v3-ghost" title="Analys: mängdning, lutning, massegenskaper, fria avstånd, jämför modeller, smart markering, tidslinje">${I.analys}<span>Analys</span></button>
       <button type="button" id="v3SunBtn" class="v3-ghost" title="Solstudie: solens läge och skuggor för valt datum och klockslag, solbana, skuggbilder och soltimmar">${I.sun}<span>Sol</span></button>
       <button type="button" id="v3PhotoBtn" class="v3-ghost" title="Lägg till foto: placeras enligt fotots GPS, annars trycker du där det är taget">${I.camera}<span>Foto</span></button>
       <span class="v3-grow"></span>
