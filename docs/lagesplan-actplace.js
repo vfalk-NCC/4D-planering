@@ -46,6 +46,17 @@ async function apRemove(fam) {
   try { await ghWriteJSON(token, dataPath("plan_item_positions.json"), arr => (Array.isArray(arr) ? arr : []).filter(r => !ids.has(r.id)), `Lägesplan: ta bort placering ${fam.name}`); setSaveStatus(`Placeringen av "${fam.name}" borttagen (Ctrl+Z ångrar).`); } catch (e) { setSaveStatus("⚠ Kunde inte spara: " + e.message); }
 }
 
+/* ---------- ta bort pricken från kartan ---------- */
+/* Rader vars prick går att ta bort: egna/fristående prickar och placerade/handritade positioner (inte positioner som kommer från 3D-modellen). */
+const objRemovable = rows => rows.filter(r => r.free || (!r.model_id && positions.some(p => p.id === r.id && (p.manual || p.placed))));
+async function objRemoveDots(key) {
+  const f = famsByKeys([key])[0]; if (!f) return; const rm = objRemovable(f.rows); if (!rm.length) return;
+  const free = rm.filter(r => r.free), rest = rm.filter(r => !r.free), nm = famName(f.it);
+  if (!(await uiConfirm(`Ta bort pricken för "${nm}" från kartan?${free.length ? "\n\nFristående prickar raderas helt." : "\n\nAktiviteten finns kvar i tidplanen och kan placeras igen med 📌."}`))) return;
+  if (free.length) await objDeleteFree(free);
+  if (rest.length) await apRemove({ rows: rest, name: nm });
+  renderLayerPanel(); setSaveStatus(`Pricken för "${nm}" borttagen från kartan (Ctrl+Z ångrar).`);
+}
 /* ---------- IFC ---------- */
 function apFileName() { return `${AP_FILE_PFX}${plan ? plan.name : ""}.ifc`.replace(/[\\/:*?"<>|]/g, "-"); }
 function apBuildIfc(rows) {

@@ -26,7 +26,7 @@ function objRowsHtml(fams, opts = {}) {
   if (opts.hidden) return "";   // hopfälld mapp: bygg inga rader (tusentals aktiviteter gör annars varje ritning långsam)
   const day = $("dateInput").value || todayIso();
   return fams.map(f => {
-    const off = f.hidden === f.rows.length, part = f.hidden && !off, canPlace = f.unplaced && f.rows.some(r => !r.model_id);
+    const off = f.hidden === f.rows.length, part = f.hidden && !off, canPlace = f.unplaced && f.rows.some(r => !r.model_id), canDel = typeof objRemovable === "function" && objRemovable(f.rows).length > 0;
     const ph = zonePhase(f.rows, day);
     const key = "o:" + f.key;
     const title = [famName(f.it), f.it.area, f.it.contractor, `${f.rows.length} objekt`].filter(Boolean).join(" · ");
@@ -34,6 +34,7 @@ function objRowsHtml(fams, opts = {}) {
       <span class="oi-dot" style="background:${ph === "ingen" ? "#fff" : phaseColor(ph)}" title="${escHtml(PHASE_LABELS[ph] || "")}"></span>
       <span class="ln" title="${escHtml(title)} – klicka för att markera på planen och i 3D">${escHtml(famName(f.it))}${f.it.area ? ` <small>${escHtml(f.it.area)}</small>` : ""}${f.rows.length > 1 ? ` <small>${f.rows.length} obj.</small>` : ""}${f.unplaced ? ` <small class="oi-unpl">ej på planen</small>` : ""}${part ? ` <small>(${f.hidden} släckta)</small>` : ""}</span>
       ${canPlace ? `<button type="button" class="oi-3d oi-place" title="Aktiviteten har ingen prick – placera den i planen">📌</button>` : `<button type="button" class="oi-3d" title="Markera i 3D">🎯</button>`}
+      ${canDel ? `<button type="button" class="oi-del" title="Ta bort pricken från kartan (om den buggar). Aktiviteten finns kvar i tidplanen.">🗑</button>` : `<span></span>`}
       <button type="button" class="oi-eye" title="${off ? "Tänd" : "Släck"} på planen">${off ? "🙈" : "👁"}</button>
     </div>`;
   }).join("");
@@ -106,6 +107,7 @@ function bindObjRows(el) {
   el.querySelectorAll(".obj-item-row").forEach(row => {
     const key = row.dataset.item.slice(2);
     row.querySelector(".oi-3d").onclick = e => { e.stopPropagation(); if (e.currentTarget.classList.contains("oi-place") && typeof apFocus === "function") apFocus(key); else showObjFams([key], true); };
+    const dl = row.querySelector(".oi-del"); if (dl) dl.onclick = e => { e.stopPropagation(); if (typeof objRemoveDots === "function") objRemoveDots(key); };
     row.querySelector(".oi-eye").onclick = e => { e.stopPropagation(); hideObjFams([key], !row.classList.contains("off")); };
   });
 }

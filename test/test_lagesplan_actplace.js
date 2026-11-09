@@ -88,6 +88,13 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   const cp = await page.evaluate(() => window.__calls.filter(c => c[0] === 'coupleObjects').map(c => [c[1].itemId, c[1].objs[0].modelId, c[1].objs[0].objectId]));
   if (cp.length !== 2 || cp.some(c => c[1] !== 'MODEL9') || !cp.some(c => c[0] === 'x' && c[2] === g1[0]) || !cp.some(c => c[0] === 'y' && c[2] === g1[2])) fail('Varje aktivitet ska kopplas till sin markör: ' + JSON.stringify(cp));
   console.log('OK: aktiviteterna kopplas till IFC-markörerna i TC-modellen', JSON.stringify(cp));
+  { const h = await page.evaluate(() => objRowsHtml(objListFamilies(), {})), rows = (h.match(/obj-item-row[^>]*>/g) || []).length, dels = (h.match(/class="oi-del"/g) || []).length;
+    if (dels !== 2 || rows < 3) fail('Placerade prickar ska ha 🗑 (men inte modellens): ' + dels + '/' + rows);
+    const key = await page.evaluate(() => apFam(items.find(i => i.id === 'y'))); await page.evaluate(k => objRemoveDots(k), key); await page.waitForTimeout(500);
+    const gone = await page.evaluate(() => !positions.some(p => p.id === 'y') && positions.some(p => p.id === 'x') && positions.some(p => p.id === 'a') && items.some(i => i.id === 'y'));
+    if (!gone) fail('🗑 ska ta bort pricken (positionen) men låta aktiviteten vara kvar');
+    if (JSON.parse(store.get(`projects/${PID}/plan_item_positions.json`)).some(r => r.id === 'y')) fail('Borttagningen ska sparas i projektet');
+    console.log('OK: 🗑 tar bort en placerad prick från kartan (aktiviteten finns kvar)'); }
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));
   await browser.close(); server.close(); console.log('OK test_lagesplan_actplace');
 })().catch(e => { console.error('FEL: ' + e.message); process.exit(1); });
