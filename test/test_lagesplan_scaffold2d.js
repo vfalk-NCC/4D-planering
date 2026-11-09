@@ -81,6 +81,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     if (!r.a || r.b) fail('Draghandtagen ska vara lika stora på skärmen oavsett zoom: ' + JSON.stringify(r)); }
   { const r = await page.evaluate(() => { const x = siteItems.find(q => q.type === 'scaffold'); const h = scaffoldFieldsHtml({ ...x, sWrap: true }); return { wrap: /sp-swrap"[^>]*checked/.test(h), noWrap: !/sp-swrap"[^>]*checked/.test(scaffoldFieldsHtml(x)) }; });
     if (!r.wrap || !r.noWrap) fail('Radbryt måtten ska finnas som val: ' + JSON.stringify(r)); }
+  { const r = await page.evaluate(() => { const x = siteItems.find(q => q.type === 'scaffold'), q = mToPx(x.pts[1]); labelBoxes.set(x.id, { x: q[0], y: q[1], w: 40, h: 20 }); const h = siteHandles(x, 14, pxPerMeter()).find(z => z.kind === 'label'); return { has: !!h, dx: h && Math.abs(h.m[0] - x.pts[1][0]), dy: h && Math.abs(h.m[1] - x.pts[1][1]) }; });
+    if (!r.has || r.dx > 0.05 || r.dy > 0.05) fail('Textens insättningspunkt ska finnas som handtag: ' + JSON.stringify(r)); }
   console.log('OK: ställning i plan – verktyg, mått och ritning i skala', JSON.stringify({ made: made.vals, inf, px, hit }));
   if (process.env.SLSHOT) { await page.evaluate(() => { document.getElementById('viewport') && 0; if (typeof renderAll === 'function') renderAll(); else if (typeof draw === 'function') draw(); }); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SLSHOT }); }
   // Play/Pause vid datumreglaget (samma uppspelning som under Tid)

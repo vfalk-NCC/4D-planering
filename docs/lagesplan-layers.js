@@ -1390,7 +1390,10 @@ function drawSitePreview(ctx, fontPx, ppm) {
 // Handtag: flytta, ändra form/storlek, rotera (efter att objektet placerats)
 // ---------------------------------------------------------------------
 /* Handtag i modellkoordinater: { kind, i?, m: [x, y] }. */
-function siteHandles(x, fontPx, ppm) {
+/* Textens insättningspunkt som handtag (mitten av etiketten, där den senast ritades): dra för att flytta texten. */
+function siteLabelHandle(x) { const b = labelBoxes.get(x.id); if (!b || !plan || !plan.calib) return []; return [{ kind: "label", m: pdfToModel(toPdf([b.x, b.y])) }]; }
+function siteHandles(x, fontPx, ppm) { return [...siteHandlesBase(x, fontPx, ppm), ...(x.type === "scaffold" || x.type === "fence" || x.type === "route" || x.type === "barrier" ? siteLabelHandle(x) : [])]; }
+function siteHandlesBase(x, fontPx, ppm) {
   const off = (34 / Math.max(0.05, view.scale)) / ppm; // rotationshandtagets avstånd i meter – lika stort på skärmen oavsett zoom
   if (x.type === "note") return [{ kind: "vertex", i: 0, m: x.pts[0] }, { kind: "vertex", i: 1, m: x.pts[1] }];
   if (x.type === "pdfobj") { const ys = x.pts.map(p => p[1]); return [{ kind: "rotate", m: [centroidOf(x.pts)[0], Math.min(...ys) - off] }]; } // flytta: dra i objektet; vrid: handtaget
@@ -1429,6 +1432,9 @@ function drawHandles(ctx, x, fontPx, ppm) {
       ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 1.5 * k; ctx.beginPath(); ctx.moveTo(c[0], c[1]); ctx.lineTo(px, py); ctx.stroke();
       ctx.beginPath(); ctx.arc(px, py, hs * 1.1, 0, Math.PI * 2); ctx.fillStyle = "#0b5fff"; ctx.fill();
       ctx.fillStyle = "#fff"; ctx.font = `700 ${hs * 1.6}px Arial`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("↻", px, py + k);
+    } else if (h.kind === "label") {
+      const r = hs * 1.05; ctx.beginPath(); ctx.moveTo(px, py - r); ctx.lineTo(px + r, py); ctx.lineTo(px, py + r); ctx.lineTo(px - r, py); ctx.closePath();
+      ctx.fillStyle = "#fff"; ctx.fill(); ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 2 * k; ctx.stroke();
     } else if (h.kind === "insert") {
       const r = hs * 0.8;
       ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fill();
