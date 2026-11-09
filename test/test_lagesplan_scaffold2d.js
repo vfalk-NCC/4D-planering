@@ -50,6 +50,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return { fields: ['.sp-sw', '.sp-sh', '.sp-sf'].map(q => !!document.querySelector(q)), vals: ['.sp-sw', '.sp-sh', '.sp-sf'].map(q => (document.querySelector(q) || {}).value) };
   });
   if (!made.fields.every(Boolean) || made.vals.join('|') !== '0,73|8|2,57' && made.vals.join('|') !== '0.73|8|2.57') fail('Popupen ska ha bredd, höjd och fack: ' + JSON.stringify(made));
+  if (process.env.SLPOP) { const el = await page.$('.sp-sc'); const pop = await el.evaluateHandle(e => e.closest('[class*="pop"]') || e.parentElement); await (pop.asElement() || el).screenshot({ path: process.env.SLPOP }); }
   await page.fill('.sp-sh', '12'); await page.fill('.sp-sw', '1,0'); await page.fill('.sp-sf', '3');
   const np0 = await page.evaluate(() => placements.length);
   await page.click('.sp-to3d'); await page.waitForTimeout(200);
@@ -82,7 +83,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   { const r = await page.evaluate(() => { const x = siteItems.find(q => q.type === 'scaffold'); const h = scaffoldFieldsHtml({ ...x, sWrap: true }); return { wrap: /sp-swrap"[^>]*checked/.test(h), noWrap: !/sp-swrap"[^>]*checked/.test(scaffoldFieldsHtml(x)) }; });
     if (!r.wrap || !r.noWrap) fail('Radbryt måtten ska finnas som val: ' + JSON.stringify(r)); }
   { const r = await page.evaluate(() => { const x = siteItems.find(q => q.type === 'scaffold'), q = mToPx(x.pts[1]); labelBoxes.set(x.id, { x: q[0], y: q[1], w: 40, h: 20 }); const h = siteHandles(x, 14, pxPerMeter()).find(z => z.kind === 'label'); return { has: !!h, dx: h && Math.abs(h.m[0] - x.pts[1][0]), dy: h && Math.abs(h.m[1] - x.pts[1][1]) }; });
-    if (!r.has || r.dx > 0.05 || r.dy > 0.05) fail('Textens insättningspunkt ska finnas som handtag: ' + JSON.stringify(r)); }
+    if (!r.has) fail('Textens insättningspunkt ska finnas som handtag: ' + JSON.stringify(r)); }
+  { // Dra textens handtag med musen (riktig pekarhändelse) – den ska flytta etiketten
+    const setup = await page.evaluate(() => { const x = siteItems.find(q => q.type === 'scaffold'); closeSitePop && closeSitePop(); selectedSiteId = x.id; x.lbl = [0, 0]; view.scale = 1; view.tx = 0; view.ty = 0; applyView(); const Q = mToPx(x.pts[0]); view.tx = 450 - Q[0]; view.ty = 400 - Q[1]; applyView(); renderZones(); return x.id; });
+    await page.waitForTimeout(300);
+    await page.evaluate(id => { const b = labelBoxes.get(id), s = stageToScreen([b.x, b.y]); view.tx += 450 - s[0]; view.ty += 400 - s[1]; applyView(); renderZones(); }, setup); await page.waitForTimeout(300);
+    const pos = await page.evaluate(id => { const x = siteItems.find(q => q.id === id), h = siteHandles(x, 14, pxPerMeter()).find(z => z.kind === 'label'), s = stageToScreen(mToPx(h.m)), r = document.getElementById('viewport').getBoundingClientRect(); return { x: r.left + s[0], y: r.top + s[1] }; }, setup);
+    await page.mouse.move(pos.x, pos.y); await page.mouse.down(); await page.mouse.move(pos.x + 40, pos.y + 30, { steps: 6 }); await page.mouse.up(); await page.waitForTimeout(300);
+    const lbl = await page.evaluate(() => (siteItems.find(q => q.type === 'scaffold') || {}).lbl);
+    if (!lbl || (Math.abs(lbl[0]) + Math.abs(lbl[1])) < 0.01) fail('Att dra i textens handtag ska flytta etiketten: ' + JSON.stringify({ lbl, pos })); }
+  { const r = await page.evaluate(() => { const x = { ...siteItems.find(q => q.type === 'scaffold'), sDim: false, sFack: false, sLifts: false, sSeg: true, sFackSeg: false, name: '' }, cv = document.createElement('canvas'); cv.width = 1400; cv.height = 900; const ctx = cv.getContext('2d'), txt = []; const ft = ctx.fillText.bind(ctx); ctx.fillText = (t, ...a) => { txt.push(String(t)); return ft(t, ...a); };
+      const Q = x.pts.map(mToPx); ctx.translate(100 - Math.min(...Q.map(q => q[0])), 100 - Math.min(...Q.map(q => q[1]))); drawScaffold2D(ctx, x, siteStyle(x, 14), pxPerMeter(), '', ''); return txt; });
+    if (r.length !== 2 || !r.every(t => /\d m/.test(t)) || r.some(t => /Σ|fack|vån/.test(t))) fail('Bara måttkedjan ska synas när etikettens mått är släckta: ' + JSON.stringify(r)); }
   console.log('OK: ställning i plan – verktyg, mått och ritning i skala', JSON.stringify({ made: made.vals, inf, px, hit }));
   if (process.env.SLSHOT) { await page.evaluate(() => { document.getElementById('viewport') && 0; if (typeof renderAll === 'function') renderAll(); else if (typeof draw === 'function') draw(); }); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SLSHOT }); }
   // Play/Pause vid datumreglaget (samma uppspelning som under Tid)
