@@ -1049,7 +1049,8 @@ function siteStyle(x, fontPx) {
 }
 
 /* Etableringstyper som ritas som riktiga vektorer i utskriftens PDF (inspelaren i lagesplan-pdfvec.js) i stället för i bilden – knivskarpa linjer och text. */
-const SITE_VEC_TYPES = new Set(["scaffold"]);
+const SITE_VEC_RASTER = new Set(["crew", "wxday", "wxweek", "pdfobj"]);   // använder övertoningar/bilder som vektorer inte kan återge – de ritas som bild
+const SITE_VEC_TYPES = { has: t => !SITE_VEC_RASTER.has(t) };   // alla typer: staket, vägar, ställningar, ytor, symboler, text … (det som inte går att skriva som vektor ritas som bild – se pdfVecEmit)
 function drawSiteLayers(ctx, fontPx, opt = {}) {   // opt.only / opt.skip: mängd av typer (utskriften delar upp bild och vektorer)
   if (ctx.canvas && ctx.canvas.id === "topCanvas") labelBoxes = new Map();
   if (!plan || !plan.calib) return;

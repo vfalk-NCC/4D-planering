@@ -21,16 +21,39 @@ const apName = it => String(it.object_name || it.activity || "Aktivitet").trim()
 function apUnplaced() {
   const has = new Set(positions.map(p => p.id)), fams = new Map();
   (items || []).forEach(it => { if (it.model_id || has.has(it.id) || it.del || it.deleted) return; const k = apFam(it); if (!fams.has(k)) fams.set(k, { key: k, rows: [] }); fams.get(k).rows.push(it); });
+  fams.forEach(f => { const p = apGet(f.rows[0].id), h = p ? apHeightOf(p) : { z: 0, src: "plan" }; f.zAuto = h.z.toFixed(2).replace(".", ","); f.zSrc = AP_SRC_TXT[h.src]; f.zFixed = p && p.zFixed ? String(p.z1).replace(".", ",") : ""; });
   return [...fams.values()].map(f => ({ ...f, name: famName(f.rows[0]), it: f.rows[0] })).sort((a, b) => String(a.it.start_date || "").localeCompare(String(b.it.start_date || "")) || a.name.localeCompare(b.name, "sv"));
 }
 function apPlacedRows() { const s = apPlacedSet(); return (items || []).filter(it => !it.model_id && s.has(it.id)); }
 const apGet = id => positions.find(p => p.id === id);
 
+/* ---------- höjd (m ö.h.) ----------
+   En placerad aktivitet har bara x och y från planen. Höjden bestäms i den här ordningen:
+   1) "fast": du har skrivit en höjd för aktiviteten (rutan i listan över placerade),
+   2) "3D": 3D-editorn är öppen – punktmolnets/modellens översta träff vid pricken (samma som ställningen som följer berget),
+   3) "grannar": de närmaste riktiga objekten (från 3D-modellen) – median av deras underkant inom 150 m,
+   4) "plan": ritningens kalibreringsnivå (sämst – markeras så att det syns). */
+function apGroundZ(x, y) {
+  if (typeof l3slZ === "function" && typeof l3 !== "undefined" && l3) { try { const z = l3slZ(x, y, 1.5); if (Number.isFinite(z)) return { z, src: "3D" }; } catch (e) { /* ingen 3D inläst */ } }
+  const ref = positions.filter(q => !q.manual && !q.placed && !q.free && Number.isFinite(q.z0) && Number.isFinite(q.x)).map(q => ({ d: Math.hypot(q.x - x, q.y - y), z: q.z0 })).filter(q => q.d <= 150).sort((a, b) => a.d - b.d).slice(0, 5);
+  if (ref.length >= 2) { const zs = ref.map(q => q.z).sort((a, b) => a - b); return { z: zs[Math.floor(zs.length / 2)], src: "grannar" }; }
+  return { z: Number(plan && plan.calib && plan.calib.model && plan.calib.model[0] && plan.calib.model[0][2]) || 0, src: "plan" };
+}
+const AP_SRC_TXT = { fast: "fast höjd", "3D": "ur 3D-modellen/punktmolnet", grannar: "uppskattad från närliggande objekt", plan: "ritningens nivå (osäker)" };
+function apHeightOf(p) { if (p.zFixed && Number.isFinite(p.z1)) return { z: p.z1, src: "fast" }; return apGroundZ(p.x, p.y); }
+async function apSetZ(fam, text) {
+  const t = String(text || "").trim().replace(",", "."), v = t === "" ? null : Number(t); if (t !== "" && !Number.isFinite(v)) { setSaveStatus("Höjden måste vara ett tal (m ö.h.)."); apRender(); return; }
+  const ids = new Set(fam.rows.map(r => r.id)), rows = positions.filter(q => ids.has(q.id));
+  rows.forEach(q => { if (v === null) { delete q.zFixed; } else { q.zFixed = true; q.z0 = v; q.z1 = v; } });
+  const patch = r => ids.has(r.id) ? (v === null ? (({ zFixed, ...q }) => q)(r) : { ...r, zFixed: true, z0: v, z1: v }) : r;
+  try { await ghWriteJSON(token, dataPath("plan_item_positions.json"), arr => (Array.isArray(arr) ? arr : []).map(patch), `Lägesplan: höjd för ${fam.name}`); setSaveStatus(v === null ? `Höjden för "${fam.name}" är automatisk igen.` : `Höjden för "${fam.name}" satt till ${v} m ö.h.`); } catch (e) { setSaveStatus("⚠ Kunde inte spara höjden: " + e.message); }
+  apRender();
+}
 /* ---------- placera ---------- */
 async function apPlaceAt(pdfPt) {
   if (!ap.sel) { setSaveStatus("📌 Välj först en aktivitet i listan (rutan uppe till höger)."); return; }
   if (!plan || !plan.calib) { setSaveStatus("Kalibrera planen mot 3D först – pricken placeras via modellens koordinater."); return; }
-  const fam = ap.sel, rows = fam.rows.slice(), [mx, my] = pdfToModel(pdfPt), zg = Number(plan.calib.model[0][2]) || 0, prs = rows.map(r => ({ id: r.id, x: Math.round(mx * 1000) / 1000, y: Math.round(my * 1000) / 1000, z0: zg, z1: zg, manual: true, placed: true }));
+  const fam = ap.sel, rows = fam.rows.slice(), [mx, my] = pdfToModel(pdfPt), zg = Number(plan.calib.model[0][2]) || 0, prs = rows.map(r => { const g = apGroundZ(mx, my); return { id: r.id, x: Math.round(mx * 1000) / 1000, y: Math.round(my * 1000) / 1000, z0: Math.round(g.z * 100) / 100, z1: Math.round(g.z * 100) / 100, manual: true, placed: true }; });
   prs.forEach(p => positions.push(p)); objInvalidate(); renderZones();
   const ids = new Set(rows.map(r => r.id)), nm = fam.name, order = apUnplaced();
   const undo = async () => { positions = positions.filter(p => !ids.has(p.id)); ap.sel = fam; objInvalidate(); renderZones(); apRender(); await ghWriteJSON(token, dataPath("plan_item_positions.json"), arr => (Array.isArray(arr) ? arr : []).filter(r => !ids.has(r.id)), `Lägesplan: ångra placering ${nm}`); };
@@ -61,27 +84,29 @@ async function objRemoveDots(key) {
 function apFileName() { return `${AP_FILE_PFX}${plan ? plan.name : ""}.ifc`.replace(/[\\/:*?"<>|]/g, "-"); }
 function apBuildIfc(rows) {
   const at = ($("dateInput") && $("dateInput").value) || todayIso(), warn = Number.isFinite(settings.warningDaysBeforeEnd) ? settings.warningDaysBeforeEnd : 7;
-  const doc = ifcDoc("4D-planering – " + (plan ? plan.name : ""), "Placerade aktiviteter " + at), E = doc.E, prof = E(`IFCCIRCLEPROFILEDEF(.AREA.,$,$,${ifcNum(0.6)})`), zDir = E("IFCDIRECTION((0.,0.,1.))"), { rx, ry } = ifcReadDir(), elems = [], seen = new Map();
+  const doc = ifcDoc("4D-planering – " + (plan ? plan.name : ""), "Placerade aktiviteter " + at), E = doc.E, prof = E(`IFCCIRCLEPROFILEDEF(.AREA.,$,$,${ifcNum(0.6)})`), zDir = E("IFCDIRECTION((0.,0.,1.))"), { rx, ry } = ifcReadDir(), elems = [], seen = new Map(), heights = [];
   rows.forEach(it => {
     const p = apGet(it.id); if (!p) return; const key = Math.round(p.x * 10) + "," + Math.round(p.y * 10), k = seen.get(key) || 0; seen.set(key, k + 1);
-    const ph = (computeItemPhase(it, at, warn) || fallbackPhase(it)), pl = doc.place([p.x + k * 1.6, p.y, (p.z1 || 0) + .1]), cyl = E(`IFCEXTRUDEDAREASOLID(${prof},$,${zDir},${ifcNum(1.2)})`);
+    const hz = apHeightOf(p), ph = (computeItemPhase(it, at, warn) || fallbackPhase(it)), pl = doc.place([p.x + k * 1.6, p.y, hz.z + .1]), cyl = E(`IFCEXTRUDEDAREASOLID(${prof},$,${zDir},${ifcNum(1.2)})`);
     E(`IFCSTYLEDITEM(${cyl},(${doc.style(ph, phaseColor(ph), PHASE_LABELS[ph] || ph)}),$)`);
     const name = apName(it), el = E(`IFCBUILDINGELEMENTPROXY('${apGuid(it.id)}',$,${ifcStr(name)},${ifcStr(PHASE_LABELS[ph] || ph)},${ifcStr("4D-aktivitet")},${pl},${doc.shape(cyl, "SweptSolid")},${ifcStr(it.id)},.NOTDEFINED.)`);
     elems.push(el);
-    doc.props(el, [["Aktivitet", it.activity || ""], ["Objekt", it.object_name || ""], ["Status", PHASE_LABELS[ph] || ph], ["Framdrift %", it.status === "klar" ? 100 : (Number(it.progress) || 0)], ["Start", it.start_date || ""], ["Slut", it.end_date || ""], ["Område", it.area || ""], ["Entreprenör", it.contractor || ""], ["4D-ID", it.id], ["Status per", at]]);
+    doc.props(el, [["Aktivitet", it.activity || ""], ["Objekt", it.object_name || ""], ["Status", PHASE_LABELS[ph] || ph], ["Framdrift %", it.status === "klar" ? 100 : (Number(it.progress) || 0)], ["Start", it.start_date || ""], ["Slut", it.end_date || ""], ["Område", it.area || ""], ["Entreprenör", it.contractor || ""], ["Höjd m ö.h.", Math.round(hz.z * 100) / 100], ["Höjdkälla", AP_SRC_TXT[hz.src]], ["4D-ID", it.id], ["Status per", at]]);
+    heights.push(hz.src);
     const mesh = ifcTextSolid(doc, name, { h: IFC_TEXT_H, t: IFC_TEXT_T, rx, ry, start: 1.1, across: IFC_TEXT_H / 2 });
     if (mesh) elems.push(doc.proxy(`${name} – text`, "Namn", "4D-text", pl, doc.shape(mesh, "Tessellation"), it.id));
   });
-  return { text: doc.finish(elems, apFileName()), n: rows.length };
+  return { text: doc.finish(elems, apFileName()), n: rows.length, heights };
 }
 const apOpener = () => !!(window.opener && !window.opener.closed);
 async function apExport() {
   const rows = apPlacedRows(); if (!rows.length) { setSaveStatus("📌 Inga placerade aktiviteter att exportera – placera några först."); return; }
-  const r = apBuildIfc(rows), name = apFileName(), bytes = new TextEncoder().encode(r.text);
+  const r = apBuildIfc(rows), name = apFileName(), bytes = new TextEncoder().encode(r.text), hc = {}; r.heights.forEach(h => { hc[h] = (hc[h] || 0) + 1; });
+  const hsum = Object.entries(hc).map(([k, n]) => `${n} ${AP_SRC_TXT[k]}`).join(", "), hwarn = hc.plan ? ` ⚠ ${hc.plan} saknar höjdunderlag – skriv höjden i listan eller öppna 3D-editorn med punktmoln/modell och exportera igen.` : "";
   downloadBlob(new Blob([bytes], { type: "application/x-step" }), name);
-  if (!apOpener()) { setSaveStatus(`🧊 ${r.n} aktiviteter nedladdade som IFC. ⚠ Inte sparad i Trimble Connect – öppna lägesplanen via 🗺️ i 4D-planering för det.`); return; }
+  if (!apOpener()) { setSaveStatus(`🧊 ${r.n} aktiviteter nedladdade som IFC (höjder: ${hsum}).${hwarn} ⚠ Inte sparad i Trimble Connect – öppna lägesplanen via 🗺️ i 4D-planering för det.`); return; }
   setSaveStatus(`🧊 ${r.n} aktiviteter nedladdade – sparar i Trimble Connect…`);
-  try { const res = await askOpener("tcUpload", { folder: DXF_TC_FOLDER, files: [new File([bytes], name, { type: "application/x-step" })] }, 5 * 60 * 1000); setSaveStatus(`🧊 ${r.n} aktiviteter sparade i Trimble Connect (${res.folder || DXF_TC_FOLDER}) som "${name}". Tänd filen i TC och tryck 🔗 Koppla till Gantt.`); }
+  try { const res = await askOpener("tcUpload", { folder: DXF_TC_FOLDER, files: [new File([bytes], name, { type: "application/x-step" })] }, 5 * 60 * 1000); setSaveStatus(`🧊 ${r.n} aktiviteter sparade i Trimble Connect (${res.folder || DXF_TC_FOLDER}) som "${name}". Höjder: ${hsum}.${hwarn} Tänd filen i TC och tryck 🔗 Koppla till Gantt.`); }
   catch (e) { setSaveStatus(`🧊 ${r.n} aktiviteter nedladdade. ⚠ Kunde inte spara i Trimble Connect: ${e.message}`); }
 }
 async function apCouple() {
@@ -105,7 +130,7 @@ function apPanel() {
   #apPanel.hidden{display:none}#apPanel h4{margin:0;padding:10px 12px;font-size:14px;display:flex;align-items:center;gap:6px;border-bottom:1px solid #e2e8f0}#apPanel h4 span{flex:1}
   #apPanel .ap-b{padding:8px 12px;overflow:auto;display:flex;flex-direction:column;gap:6px}#apPanel input[type=search]{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px}
   #apPanel .ap-it{padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;line-height:1.25}#apPanel .ap-it:hover{background:#f1f5f9}#apPanel .ap-it.on{background:#2563eb;color:#fff;border-color:#2563eb}#apPanel .ap-it small{opacity:.75;display:block}
-  #apPanel .ap-act{display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid #e2e8f0}#apPanel .ap-act button{flex:1;min-width:120px}#apPanel .ap-pl{display:flex;align-items:center;gap:6px;padding:3px 0}#apPanel .ap-pl span{flex:1;line-height:1.25}#apPanel .ap-pl small{display:block;opacity:.7}#apPanel .ap-pl{cursor:pointer;padding:5px 6px;border-radius:8px}#apPanel .ap-pl:hover{background:#f1f5f9}#apPanel .ap-x{border:0;background:none;cursor:pointer;color:#b91c1c}
+  #apPanel .ap-act{display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid #e2e8f0}#apPanel .ap-act button{flex:1;min-width:120px}#apPanel .ap-pl{display:flex;align-items:center;gap:6px;padding:3px 0}#apPanel .ap-pl span{flex:1;line-height:1.25}#apPanel .ap-pl small{display:block;opacity:.7}#apPanel .ap-pl{cursor:pointer;padding:5px 6px;border-radius:8px}#apPanel .ap-pl:hover{background:#f1f5f9}#apPanel .ap-z{width:64px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;text-align:right}#apPanel .ap-x{border:0;background:none;cursor:pointer;color:#b91c1c}
   #apPanel .ap-h{font-weight:600;margin-top:4px;color:#475569}#apPanel .ap-multi{display:flex;gap:6px;align-items:center;font-size:12px;color:#475569}`; document.head.appendChild(st);
   const el = document.createElement("div"); el.id = "apPanel"; el.className = "hidden"; document.body.appendChild(el); ap.panel = el; return el;
 }
@@ -117,12 +142,13 @@ function apRender() {
     <div class="ap-b"><div class="muted">${list.length ? `Välj en aktivitet utan 3D-koppling och tryck sedan i planen där pricken ska ligga.` : "Alla okopplade aktiviteter har redan en prick."}</div>
     <input type="search" placeholder="Sök aktivitet, område, entreprenör…" value="${escHtml(ap.q)}"><label class="ap-multi"><input type="checkbox" id="apMulti"${ap.multi ? " checked" : ""}> Placera flera i rad (nästa aktivitet väljs automatiskt)</label>
     ${shown.slice(0, 200).map((f, i) => `<div class="ap-it${ap.sel && ap.sel.key === f.key ? " on" : ""}" data-i="${i}"><b>${escHtml(f.name)}</b>${f.rows.length > 1 ? ` · ${f.rows.length} rader` : ""}<small>${escHtml([f.it.area, f.it.contractor, f.it.start_date ? f.it.start_date + " → " + (f.it.end_date || "") : ""].filter(Boolean).join(" · "))}</small></div>`).join("")}${shown.length > 200 ? `<div class="muted">… ${shown.length - 200} till – sök för att hitta fler.</div>` : ""}
-    ${fams.size ? `<div class="ap-h">Placerade (${placed.length})</div>${[...fams.values()].map((f, i) => `<div class="ap-pl" data-r="${i}" title="Klicka för att visa pricken på planen"><span><b>${escHtml(f.name)}</b>${f.rows.length > 1 ? ` · ${f.rows.length} rader` : ""}<small>${escHtml([f.it.activity && f.it.activity !== f.name ? f.it.activity : "", f.it.area, f.it.contractor, f.it.start_date ? f.it.start_date + " → " + (f.it.end_date || "") : ""].filter(Boolean).join(" · "))}</small></span><button type="button" class="ap-x" data-r="${i}" title="Ta bort pricken">✕</button></div>`).join("")}` : ""}</div>
+    ${fams.size ? `<div class="ap-h">Placerade (${placed.length})</div>${[...fams.values()].map((f, i) => `<div class="ap-pl" data-r="${i}" title="Klicka för att visa pricken på planen"><span><b>${escHtml(f.name)}</b>${f.rows.length > 1 ? ` · ${f.rows.length} rader` : ""}<small>${escHtml([f.it.activity && f.it.activity !== f.name ? f.it.activity : "", f.it.area, f.it.contractor, f.it.start_date ? f.it.start_date + " → " + (f.it.end_date || "") : ""].filter(Boolean).join(" · "))}</small></span><input class="ap-z" data-r="${i}" type="text" inputmode="decimal" placeholder="${escHtml(f.zAuto)}" value="${escHtml(f.zFixed)}" title="Höjd (m ö.h.) för markören i IFC-filen. Tomt = automatiskt (${escHtml(f.zSrc)})"><button type="button" class="ap-x" data-r="${i}" title="Ta bort pricken">✕</button></div>`).join("")}` : ""}</div>
     <div class="ap-act"><button type="button" id="apExp" ${placed.length ? "" : "disabled"} title="Skapar en IFC-fil med en markör per placerad aktivitet och sparar den i Trimble Connect">🧊 Exportera IFC till TC</button><button type="button" id="apLink" ${placed.length ? "" : "disabled"} title="Kopplar aktiviteterna till markörerna i den exporterade IFC-filen (filen måste vara tänd i TC)">🔗 Koppla till Gantt</button></div>`;
   el.querySelector(".ap-close").onclick = apClose; el.querySelector("#apMulti").onchange = e => { ap.multi = e.target.checked; }; el.querySelector("input").oninput = e => { ap.q = e.target.value; const pos = e.target.selectionStart; apRender(); const i2 = el.querySelector("input"); i2.focus(); i2.setSelectionRange(pos, pos); };
   el.querySelectorAll(".ap-it").forEach(d => d.onclick = () => { ap.sel = shown[+d.dataset.i]; if (objTool !== "actplace") objToolSet("actplace"); apRender(); setSaveStatus(`📌 Tryck i planen där "${ap.sel.name}" ska ligga.`); });
   el.querySelectorAll(".ap-x").forEach(b => b.onclick = e => { e.stopPropagation(); apRemove([...fams.values()][+b.dataset.r]); });
-  el.querySelectorAll(".ap-pl").forEach(d => d.onclick = () => apShow([...fams.values()][+d.dataset.r])); el.querySelector("#apExp").onclick = apExport; el.querySelector("#apLink").onclick = apCouple;
+  el.querySelectorAll(".ap-pl").forEach(d => d.onclick = () => apShow([...fams.values()][+d.dataset.r]));
+  el.querySelectorAll(".ap-z").forEach(i => { i.onclick = e => e.stopPropagation(); i.onchange = () => apSetZ([...fams.values()][+i.dataset.r], i.value); }); el.querySelector("#apExp").onclick = apExport; el.querySelector("#apLink").onclick = apCouple;
 }
 /* Klick på en placerad aktivitet: centrera planen på pricken och ringa in den. */
 function apShow(f) {

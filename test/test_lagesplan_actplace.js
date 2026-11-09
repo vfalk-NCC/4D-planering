@@ -78,9 +78,15 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   await page.evaluate(() => { window.__calls = []; window.opener = { closed: false }; window.downloadBlob = () => {}; askOpener = async (type, extra) => { window.__calls.push([type, extra]); if (type === 'tcUpload') { window.__ifc = await extra.files[0].text(); return { folder: 'X' }; } if (type === 'ifcModelsList') return { models: [{ id: 'MODEL9', name: apFileName() }] }; return {}; }; });
   const g1 = await page.evaluate(() => [apGuid('x'), apGuid('x'), apGuid('y')]);
   if (g1[0] !== g1[1] || g1[0] === g1[2] || !/^[0-3][0-9A-Za-z_$]{21}$/.test(g1[0])) fail('GUID ska vara fast per id och giltigt: ' + g1);
+  { // Höjd: grannar → uppskattad, fast höjd → exakt
+    const h = await page.evaluate(async () => { positions.push({ id: 'n1', x: 35, y: 30, z0: 412.6, z1: 414.5 }, { id: 'n2', x: 45, y: 28, z0: 412.8, z1: 414.5 }, { id: 'n3', x: 40, y: 38, z0: 412.4, z1: 414.5 }); const g = apGroundZ(40, 30); const fam = apPlacedRows().filter(r => r.id === 'x'); await apSetZ({ rows: fam, name: 'x' }, '415,5'); const f = apHeightOf(positions.find(p => p.id === 'x')); return { g, f }; });
+    if (h.g.src !== 'grannar' || Math.abs(h.g.z - 412.6) > 0.01) fail('Höjden ska uppskattas från närmaste objekt: ' + JSON.stringify(h.g));
+    if (h.f.src !== 'fast' || Math.abs(h.f.z - 415.5) > 0.001) fail('Fast höjd ska gälla: ' + JSON.stringify(h.f));
+    if (!JSON.parse(store.get(`projects/${PID}/plan_item_positions.json`)).some(r => r.id === 'x' && r.zFixed && r.z1 === 415.5)) fail('Den fasta höjden ska sparas i projektet'); }
   await page.evaluate(() => apExport()); await page.waitForTimeout(600);
   const ifc = await page.evaluate(() => window.__ifc || '');
   if (!ifc.includes(g1[0]) || !ifc.includes(g1[2]) || !ifc.includes('Armering platta') || !ifc.includes('IFCBUILDINGELEMENTPROXY')) fail('IFC-filen ska ha en markör per aktivitet med fast id: ' + ifc.length + ' ' + ifc.includes(g1[0]) + ifc.includes(g1[2]) + ifc.includes('Armering platta') + ' ' + await page.evaluate(() => JSON.stringify(window.__calls.map(c => c[0]))) + ' ' + ifc.slice(0, 80));
+  if (!/IFCCARTESIANPOINT\(\(40\.,30\.,415\.6\)\)/.test(ifc) || !/H\\X2\\00F6\\X0\\jdk/.test(ifc)) fail('IFC-markören ska ligga på rätt höjd (415,5 + 0,1) med höjdkälla: ' + (ifc.match(/IFCCARTESIANPOINT\(\([-0-9.]+,[-0-9.]+,41[0-9.]+\)\)/g) || []).slice(0, 4) + ' ' + ifc.includes('Höjdkälla'));
   if (!(await page.evaluate(() => window.__calls.some(c => c[0] === 'tcUpload' && /^Aktiviteter /.test(c[1].files[0].name))))) fail('Filen ska laddas upp till Trimble Connect');
   console.log('OK: IFC med en markör per aktivitet (fasta GUID) sparas i TC');
   // 5) Koppla till Gantt: coupleObjects per aktivitet med modellens id och markörens GUID.
