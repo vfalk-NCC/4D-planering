@@ -1048,20 +1048,23 @@ function siteStyle(x, fontPx) {
   return { color, lw, dash, cap: dashKind === "dotted" ? "round" : "butt", fs: fontPx * (Number(x.textSize) || 1) };
 }
 
-function drawSiteLayers(ctx, fontPx) {
+/* Etableringstyper som ritas som riktiga vektorer i utskriftens PDF (inspelaren i lagesplan-pdfvec.js) i stället för i bilden – knivskarpa linjer och text. */
+const SITE_VEC_TYPES = new Set(["scaffold"]);
+function drawSiteLayers(ctx, fontPx, opt = {}) {   // opt.only / opt.skip: mängd av typer (utskriften delar upp bild och vektorer)
   if (ctx.canvas && ctx.canvas.id === "topCanvas") labelBoxes = new Map();
   if (!plan || !plan.calib) return;
   const ppm = pxPerMeter();
   ctx.save();
   // Dagsplaneringen överst: leveranser, lyft och sist lagen (annars kan en avspärrnings text dölja ett lag).
   const ORDER = { delivery: 1, lift: 2, crew: 3, wxday: 4, wxweek: 4 };
-  const shown = siteItems.filter(siteShown).map((x, i) => [x, i]).sort((a, b) => ((ORDER[a[0].type] || 0) - (ORDER[b[0].type] || 0)) || a[1] - b[1]).map(a => a[0]);
+  const shown = siteItems.filter(x => siteShown(x) && (!opt.only || opt.only.has(x.type)) && !(opt.skip && opt.skip.has(x.type))).map((x, i) => [x, i]).sort((a, b) => ((ORDER[a[0].type] || 0) - (ORDER[b[0].type] || 0)) || a[1] - b[1]).map(a => a[0]);
   const barriers = shown.filter(x => x.type === "barrier");
   shown.forEach(x => {
     ctx.globalAlpha = layerOpacity("ul:" + layerOf(x));
     drawSiteItem(ctx, x, fontPx, ppm, x.id === selectedSiteId, barriers);
   });
   ctx.restore();
+  if (opt.only) return;   // vektorpassen: bara objekten
   const sel = selectedSiteId && siteItems.find(x => x.id === selectedSiteId && siteShown(x));
   if (sel && !sel.locked) drawHandles(ctx, sel, fontPx, ppm);
   if (siteTool && siteTool.pts.length) drawSitePreview(ctx, fontPx, ppm);

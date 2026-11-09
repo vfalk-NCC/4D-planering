@@ -277,7 +277,7 @@ function renderFilmOverlay(P, o) {
     const under = o.vecUnder || ctx, top = o.vec || ctx;
     [o.vecUnder, o.vec].forEach(v => v && v.setTransform(P.S, 0, 0, P.S, -P.x0 * P.S, -P.y0 * P.S));
     if (layerVisible("zones")) { under.save(); under.globalAlpha = layerOpacity("zones"); badges = drawZoneShapes(under, fontPx, objects, true); under.restore(); }
-    if (o.vec && o.site) drawSiteLayers(ctx, fontPx);
+    if (o.vec && o.site) drawSiteLayers(ctx, fontPx, { skip: SITE_VEC_TYPES });   // ställningar m.m. ritas som vektorer ovanpå (nedan)
     if (objects) { top.save(); top.globalAlpha = layerOpacity("objects"); drawObjects(top, objects, fontPx); drawObjectLabels(top, objects, fontPx); top.restore(); }
     if (!o.vec && o.site) drawSiteLayers(ctx, fontPx);
     // Excel-planeringens prickar (lagesplan-xls.js) – samma som på skärmen, med sina namn.
@@ -286,6 +286,7 @@ function renderFilmOverlay(P, o) {
       if (typeof xlsLabelObjects === "function" && typeof drawObjectLabels === "function") { const xo = xlsLabelObjects(); if (xo.length) drawObjectLabels(top, xo, fontPx); }
       top.restore();
     }
+    if (o.vec && o.site) { top.save(); drawSiteLayers(top, fontPx, { only: SITE_VEC_TYPES }); top.restore(); }
     badges.forEach(([pt, text, color, hollow, zs]) => drawBadge(top, pt, text, color, fontPx, hollow, zs));
   } else if (o.site) drawSiteLayers(ctx, fontPx);
 }
