@@ -105,6 +105,26 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     await page.mouse.move(g.x, g.y); await page.mouse.down(); await page.mouse.move(g.x + 25, g.y + 20, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(300);
     const r = await page.evaluate(id => { const x = siteItems.find(q => q.id === id); return { at: x.lblAt, lbl: x.lbl, bx: labelBoxes.get(id).x }; }, id);
     if (!r.at || Math.abs(r.bx - g.bx) > 2) fail('Att dra i fästets handtag ska flytta fästet men låta etiketten stå kvar: ' + JSON.stringify({ r, g })); }
+  { // Kopiera egenskaper: mallen sparas och nästa ställning ritas med den; Klistra in lägger den på ett annat objekt
+    await page.evaluate(() => { closeSitePop(); selectedSiteId = null; });
+    await page.evaluate(async () => { document.querySelector('[data-site="scaffold"]').click(); siteTool.pts = [[6512320, 150140], [6512340, 150140]]; finishSiteTool(); await new Promise(r => setTimeout(r, 200)); });
+    await page.fill('.sp-sw', '1,2'); await page.fill('.sp-sh', '15'); await page.fill('.sp-sf', '3,07'); await page.click('.sp-sposts + span'); await page.click('.sp-swrap + span');
+    await page.click('.sp-ccopy'); await page.waitForTimeout(100);
+    const clip = await page.evaluate(() => JSON.parse(localStorage.getItem('lagesplan-siteclip')));
+    if (!clip || clip.type !== 'scaffold' || clip.props.w !== 1.2 || clip.props.h !== 15 || clip.props.fack !== 3.07 || clip.props.sPosts !== false || clip.props.sWrap !== true || !clip.auto) fail('Kopiera ska spara mallen: ' + JSON.stringify(clip));
+    await page.click('.sp-cancel'); await page.waitForTimeout(100);
+    await page.evaluate(async () => { document.querySelector('[data-site="scaffold"]').click(); siteTool.pts = [[6512320, 150150], [6512340, 150150]]; finishSiteTool(); await new Promise(r => setTimeout(r, 200)); });
+    const nv = await page.evaluate(() => ({ w: document.querySelector('.sp-sw').value, h: document.querySelector('.sp-sh').value, posts: document.querySelector('.sp-sposts').checked, wrap: document.querySelector('.sp-swrap').checked }));
+    if (nv.w !== '1,2' || nv.h !== '15' || nv.posts !== false || nv.wrap !== true) fail('Nästa ställning ska ritas med de kopierade egenskaperna: ' + JSON.stringify(nv));
+    await page.click('.sp-cancel'); await page.waitForTimeout(100);
+    await page.evaluate(() => { const c = JSON.parse(localStorage.getItem('lagesplan-siteclip')); c.auto = false; localStorage.setItem('lagesplan-siteclip', JSON.stringify(c)); });
+    await page.evaluate(async () => { document.querySelector('[data-site="scaffold"]').click(); siteTool.pts = [[6512320, 150160], [6512340, 150160]]; finishSiteTool(); await new Promise(r => setTimeout(r, 200)); });
+    const dv = await page.evaluate(() => document.querySelector('.sp-sw').value);
+    if (dv === '1,2') fail('Utan "Använd på nya" ska nya ställningar få standardvärden');
+    await page.click('.sp-cpaste'); await page.waitForTimeout(100);
+    const pv = await page.evaluate(() => ({ w: document.querySelector('.sp-sw').value, f: document.querySelector('.sp-sf').value, posts: document.querySelector('.sp-sposts').checked }));
+    if (pv.w !== '1,2' || pv.f !== '3,07' || pv.posts !== false) fail('Klistra in ska lägga mallen i rutan: ' + JSON.stringify(pv));
+    await page.click('.sp-cancel'); await page.waitForTimeout(100); }
   console.log('OK: ställning i plan – verktyg, mått och ritning i skala', JSON.stringify({ made: made.vals, inf, px, hit }));
   if (process.env.SLSHOT) { await page.evaluate(() => { document.getElementById('viewport') && 0; if (typeof renderAll === 'function') renderAll(); else if (typeof draw === 'function') draw(); }); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SLSHOT }); }
   // Play/Pause vid datumreglaget (samma uppspelning som under Tid)

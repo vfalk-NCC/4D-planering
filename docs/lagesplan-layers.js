@@ -1225,6 +1225,15 @@ function drawScaffold2D(ctx, x, st, ppm, dates, lock) {
   const mi = Math.floor((P.length - 1) / 2), m = P[mi], nn = P[mi + 1] || m;
   siteLabel(ctx, x, [(m[0] + nn[0]) / 2, (m[1] + nn[1]) / 2 - st.fs * 1.3 * (1 + (text.split("\n").length - 2) * 0.4)], text, st.fs * 0.82, "#fff", "#111827", col, dates);
 }
+/* Kopiera egenskaper (Victor 2026-11-09): färg, linje, tjocklek, textstorlek, lager och typens egna inställningar (för ställning: bredd, höjd, fack, våningar och vad som visas)
+   sparas som en mall. "Klistra in" lägger dem på ett annat objekt av samma typ, och med "Använd på nya" ritas nästa objekt av typen redan med dem. */
+const SITE_CLIP_KEY = "lagesplan-siteclip";
+const SITE_CLIP_KEYS = { common: ["color", "dash", "weight", "textSize", "layer"], scaffold: ["w", "h", "fack", "lifts", "sDim", "sFack", "sLifts", "sPosts", "sWrap", "sSeg", "sFackSeg"], route: ["w", "twoWay"], crane: ["radius", "capacity", "chart"] };
+const siteClipGet = () => { try { const c = JSON.parse(localStorage.getItem(SITE_CLIP_KEY) || "null"); return c && c.type && c.props ? c : null; } catch (e) { return null; } };
+const siteClipSet = c => { try { localStorage.setItem(SITE_CLIP_KEY, JSON.stringify(c)); } catch (e) { /* utan lagring */ } };
+function siteClipPick(rec) { const o = {}; [...SITE_CLIP_KEYS.common, ...(SITE_CLIP_KEYS[rec.type] || [])].forEach(k => { if (rec[k] !== undefined) o[k] = rec[k]; }); return o; }
+/* Nya objekt: mallens egenskaper läggs på direkt om "Använd på nya" är på för typen. */
+function siteClipApplyNew(rec) { const c = siteClipGet(); if (!c || !c.auto || c.type !== rec.type) return; const p = { ...c.props }; delete p.layer; Object.assign(rec, p); if (c.props.layer && userLayers().includes(c.props.layer)) rec.layer = c.props.layer; }
 /* Måttkedjan (ett mått per sträcka): på som standard för ställningar med vinklar, annars valfritt. */
 const scaffoldSegOn = x => (x.sSeg !== undefined ? !!x.sSeg : (x.pts || []).length > 2);
 /* Ställningens fält i redigeringsrutan: mått, antal våningar och vad som ska synas på planen. */
@@ -1240,7 +1249,8 @@ const scaffoldSegOn = x => (x.sSeg !== undefined ? !!x.sSeg : (x.pts || []).leng
   .sp-sc .sc-chips{display:flex;flex-wrap:wrap;gap:6px}.sp-sc .sc-chip{position:relative;margin:0;cursor:pointer}
   .sp-sc .sc-chip input{position:absolute;opacity:0;width:0;height:0}.sp-sc .sc-chip span{display:inline-block;padding:5px 11px;border:1px solid #cbd5e1;border-radius:999px;font-size:12.5px;background:#fff;color:#334155;user-select:none}
   .sp-sc .sc-chip input:checked+span{background:#2563eb;border-color:#2563eb;color:#fff}.sp-sc .sc-chip input:focus-visible+span{outline:2px solid #93c5fd}
-  .sp-sc .sc-3d{width:100%}`;
+  .sp-sc .sc-3d{width:100%}
+  .sp-clip{margin:6px 0 8px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc}.sp-clip-h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px}.sp-clip-b{display:flex;gap:6px}.sp-clip-b button{flex:1}.sp-clip-a{display:flex;gap:6px;align-items:center;font-size:12px;color:#475569;margin:6px 0 0}`;
   document.head.appendChild(st);
 })();
 function scaffoldFieldsHtml(rec) {
@@ -1790,6 +1800,7 @@ function finishSiteTool() {
   if (kind === "gate") { rec.w = 5; rec.rot = 0; }
   if (kind === "route") { rec.w = 4; rec.twoWay = false; }
   if (kind === "scaffold") { rec.w = 0.73; rec.h = 8; rec.fack = 2.57; rec.name = "Ställning"; }
+  siteClipApplyNew(rec);
   openSitePop(rec, true);
 }
 /* Frihand (Victors önskemål 2026-10-01, fältläge på iPad): med verktyget
@@ -1960,6 +1971,33 @@ function openSitePop(rec, isNew) {
   placeSitePop(pop, sx + 16, sy + 16);
   if (typeof bindStoragePop === "function") bindStoragePop(pop, rec);
   // Bara nya objekt får markören i textfältet – ett klickat objekt ska kunna tas bort med Delete.
+  { // Kopiera/klistra in egenskaper
+    const clip = siteClipGet(), same = clip && clip.type === rec.type, box = document.createElement("div"); box.className = "sp-clip";
+    box.innerHTML = `<div class="sp-clip-h">Egenskaper</div><div class="sp-clip-b"><button type="button" class="sp-ccopy" title="Spara färg, linje, tjocklek, textstorlek och typens inställningar som mall">Kopiera</button><button type="button" class="sp-cpaste"${same ? "" : " disabled"} title="${same ? "Lägg mallens egenskaper på det här objektet" : "Kopiera först egenskaperna från ett annat objekt av samma typ"}">Klistra in</button></div>
+      <label class="sp-clip-a"><input type="checkbox" class="sp-cauto"${same && clip.auto ? " checked" : ""}${same ? "" : " disabled"}> Använd på nya ${escHtml(k.label.toLowerCase())}</label>`;
+    const head = pop.querySelector("b"); if (head && head.parentNode === pop) head.after(box); else pop.prepend(box);   // överst, under rubriken
+    const setv = (c, val) => { const e = pop.querySelector(c); if (!e || val === undefined || val === null) return; if (e.type === "checkbox") e.checked = !!val; else e.value = val; e.dispatchEvent(new Event("input", { bubbles: true })); e.dispatchEvent(new Event("change", { bubbles: true })); };
+    box.querySelector(".sp-ccopy").onclick = () => {
+      const v = c => { const e = pop.querySelector(c); return e ? e.value.trim() : undefined; }, p = siteClipPick(rec);
+      Object.assign(p, { color: v(".sp-color"), dash: v(".sp-dash"), weight: Number(v(".sp-weight")) || 1, textSize: tsValue(), layer: v(".sp-layer") === "__new" ? p.layer : v(".sp-layer") });
+      if (rec.type === "scaffold") Object.assign(p, scaffoldFromPop());
+      if (rec.type === "route") Object.assign(p, { w: Math.max(0.5, num(".sp-rw", 4)), twoWay: !!(pop.querySelector(".sp-two") || {}).checked });
+      if (rec.type === "crane") Object.assign(p, { radius: num(".sp-radius", 40), capacity: v(".sp-cap") || "", chart: v(".sp-chart") || "" });
+      Object.keys(p).forEach(kk => { if (p[kk] === undefined) delete p[kk]; });
+      siteClipSet({ type: rec.type, props: p, auto: true }); setSaveStatus(`Egenskaperna kopierade – nya ${k.label.toLowerCase()} ritas nu med dem (stäng av med "Använd på nya").`);
+      const pb = box.querySelector(".sp-cpaste"), ca = box.querySelector(".sp-cauto"); pb.disabled = false; ca.disabled = false; ca.checked = true; box.querySelector(".sp-ccopy").textContent = "Kopierat ✓";
+    };
+    box.querySelector(".sp-cpaste").onclick = () => {
+      const c = siteClipGet(); if (!c || c.type !== rec.type) return; const p = c.props;
+      setv(".sp-color", p.color); setv(".sp-dash", p.dash); setv(".sp-weight", p.weight); if (p.textSize) { setv(".sp-ts", Math.round(p.textSize * 100)); }
+      if (p.layer && pop.querySelector(`.sp-layer option[value="${CSS.escape(p.layer)}"]`)) setv(".sp-layer", p.layer);
+      if (rec.type === "scaffold") { setv(".sp-sw", fmtIn(p.w)); setv(".sp-sh", fmtIn(p.h)); setv(".sp-sf", fmtIn(p.fack)); setv(".sp-sl", p.lifts ? Math.round(p.lifts) : ""); setv(".sp-sdim", p.sDim !== false); setv(".sp-sfack", p.sFack !== false); setv(".sp-slifts", p.sLifts !== false); setv(".sp-sposts", p.sPosts !== false); setv(".sp-swrap", !!p.sWrap); setv(".sp-sseg", !!p.sSeg); setv(".sp-sfackseg", p.sFackSeg !== false); }
+      if (rec.type === "route") { setv(".sp-rw", fmtIn(p.w)); setv(".sp-two", !!p.twoWay); }
+      if (rec.type === "crane") { setv(".sp-radius", p.radius); setv(".sp-cap", p.capacity); setv(".sp-chart", p.chart); }
+      setSaveStatus("Egenskaperna inklistrade – tryck Spara.");
+    };
+    box.querySelector(".sp-cauto").onchange = e => { const c = siteClipGet(); if (c) { c.auto = e.target.checked; siteClipSet(c); } };
+  }
   const first = pop.querySelector(".sp-text, .sp-name"); if (first && isNew) first.focus();
   pop.querySelector(".sp-cancel").onclick = () => { closeSitePop(); if (isNew) renderZones(); };
   const num = (c, def) => { const el = pop.querySelector(c); const v = el ? Number(String(el.value).replace(",", ".")) : NaN; return Number.isFinite(v) ? v : def; };
