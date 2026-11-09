@@ -325,7 +325,7 @@ function drawWxBox(ctx, x, fontPx, selected) {
   ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
   ctx.save(); roundRect(ctx, bx, by, W, H, r); ctx.clip(); ctx.fillStyle = head; ctx.fillRect(bx, by, W, hh); ctx.restore();
   roundRect(ctx, bx, by, W, H, r); ctx.lineWidth = Math.max(1, fs * 0.07); ctx.strokeStyle = head; ctx.stroke();
-  ctx.font = F(700, 0.62); ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.fillText(x._wxHead + (x.locked ? " 🔒" : ""), bx + pad, by + hh / 2);
+  ctx.font = F(700, 0.62); ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.fillText(x._wxHead, bx + pad, by + hh / 2);
   ctx.textAlign = "right"; ctx.font = F(500, 0.52); ctx.fillText("SMHI", bx + W - pad, by + hh / 2);
   delete x._wxHead;
   body(bx, by);

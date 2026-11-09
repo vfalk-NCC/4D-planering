@@ -1288,7 +1288,7 @@ function drawSiteItem(ctx, x, fontPx, ppm, selected, barriers = []) {
   const st = siteStyle(x, fontPx);
   const dates = datesText(x);
   const k = SITE_KINDS[x.type];
-  const lock = x.locked ? " 🔒" : "";
+  const lock = "";   // hänglåset skrivs aldrig ut på planen eller i utskriften (Victor 2026-11-09)
   ctx.setLineDash([]);
   if ((x.type === "crew" || x.type === "delivery" || x.type === "lift") && typeof drawDailyItem === "function") { drawDailyItem(ctx, x, fontPx, ppm, selected); return; }
   if ((x.type === "wxday" || x.type === "wxweek") && typeof drawWxBox === "function") { drawWxBox(ctx, x, fontPx, selected); return; }

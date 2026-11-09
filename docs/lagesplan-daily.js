@@ -422,7 +422,7 @@ function drawVehicleSymbol(ctx, x, fontPx, ppm, selected) {
   const st = siteStyle(x, fontPx), g = rectGeom(x);
   drawVehicle(ctx, x.sym, g, x.color || V.color, { ppm, reach: selected && V.reach ? V.reach : 0 }); // räckvidden bara när fordonet är markerat
   if (selected) outlineRect(ctx, g, V.outrigger || 0, "#0b5fff", fontPx, true);
-  siteLabel(ctx, x, vehicleLabelPt(g, st.fs, V.outrigger || 0), `${V.icon} ${x.name || V.label}${x.locked ? " 🔒" : ""}`, st.fs, "rgba(255,255,255,.92)", "#111827", null, datesText(x));
+  siteLabel(ctx, x, vehicleLabelPt(g, st.fs, V.outrigger || 0), `${V.icon} ${x.name || V.label}`, st.fs, "rgba(255,255,255,.92)", "#111827", null, datesText(x));
   return true;
 }
 
@@ -498,7 +498,7 @@ function drawDelivery(ctx, x, fontPx, ppm, selected) {
   if (selected) outlineRect(ctx, g, (V.outrigger || 0) + 0.8, "#0b5fff", fontPx, true);
   const line1 = `${V.icon} ${x.time ? x.time + " " : ""}${x.what || V.label}`;
   const line2 = [x.what ? V.label : "", ue ? ueShort(ue) : ""].filter(Boolean).join(" · ");
-  siteLabel(ctx, x, vehicleLabelPt(g, st.fs, V.outrigger || 0), `${line1}${x.locked ? " 🔒" : ""}${line2 ? "\n" + line2 : ""}${bad ? "\n⚠ " + (iss.texts[0].length > 42 ? iss.texts[0].slice(0, 41) + "…" : iss.texts[0]) : ""}`, st.fs,
+  siteLabel(ctx, x, vehicleLabelPt(g, st.fs, V.outrigger || 0), `${line1}${line2 ? "\n" + line2 : ""}${bad ? "\n⚠ " + (iss.texts[0].length > 42 ? iss.texts[0].slice(0, 41) + "…" : iss.texts[0]) : ""}`, st.fs,
     bad && iss.sev === "krock" ? "#fef2f2" : "#fff", bad && iss.sev === "krock" ? "#b91c1c" : "#111827", bad ? SEV_COLOR[iss.sev] : (ue ? ueColor(ue) : V.color), x.from !== x.to ? datesText(x) : "");
 }
 function drawLift(ctx, x, fontPx, ppm, selected) {
