@@ -143,6 +143,27 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     g = await at(0); await page.mouse.click(g.x, g.y, { button: 'right' }); await page.waitForTimeout(300);
     const n2 = await page.evaluate(id => siteItems.find(q => q.id === id).pts.length, id);
     if (n2 !== 2) fail('En ställning behöver minst 2 punkter: ' + n2); }
+  { // Docka mot höger och pin
+    await page.evaluate(() => { localStorage.removeItem('lagesplan-sitepop'); closeSitePop(); });
+    const open = async y => page.evaluate(async y => { document.querySelector('[data-site="scaffold"]').click(); siteTool.pts = [[6512320, y], [6512340, y]]; finishSiteTool(); await new Promise(r => setTimeout(r, 300)); }, y);
+    await open(150180);
+    await page.click('.sp-dock'); await page.waitForTimeout(100);
+    const d1 = await page.evaluate(() => { const p = document.getElementById('sitePop').getBoundingClientRect(), v = document.getElementById('viewport').getBoundingClientRect(); return { gap: Math.round(v.right - p.right), top: Math.round(p.top - v.top), on: document.querySelector('.sp-dock').classList.contains('on') }; });
+    if (!d1.on || d1.gap > 10 || d1.top > 10) fail('Dockad ska rutan ligga mot höger kant: ' + JSON.stringify(d1));
+    await page.click('.sp-cancel'); await open(150190);
+    const d2 = await page.evaluate(() => { const p = document.getElementById('sitePop').getBoundingClientRect(), v = document.getElementById('viewport').getBoundingClientRect(); return Math.round(v.right - p.right); });
+    if (d2 > 10) fail('Dockningen ska gälla nästa gång rutan öppnas: ' + d2);
+    await page.click('.sp-dock'); await page.click('.sp-cancel');
+    // pin: dra rutan, lås, öppna på nytt – den ska ligga kvar (högt fönster så att rutan inte klämmer ihop positionen)
+    await page.setViewportSize({ width: 1300, height: 1300 }); await page.waitForTimeout(200);
+    await open(150200);
+    const hb = await page.evaluate(() => { const b = document.querySelector('#sitePop > b').getBoundingClientRect(); return { x: b.left + 30, y: b.top + 8 }; });
+    await page.mouse.move(hb.x, hb.y); await page.mouse.down(); await page.mouse.move(hb.x - 200, hb.y + 60, { steps: 5 }); await page.mouse.up();
+    await page.click('.sp-pin'); const p1 = await page.evaluate(() => [document.getElementById('sitePop').offsetLeft, document.getElementById('sitePop').offsetTop]);
+    await page.click('.sp-cancel'); await open(150210);
+    const p2 = await page.evaluate(() => [document.getElementById('sitePop').offsetLeft, document.getElementById('sitePop').offsetTop]);
+    if (Math.abs(p1[0] - p2[0]) > 2 || Math.abs(p1[1] - p2[1]) > 2) fail('Pinnad ruta ska öppnas på samma plats: ' + JSON.stringify({ p1, p2 }));
+    await page.click('.sp-pin'); await page.click('.sp-cancel'); await page.setViewportSize({ width: 1300, height: 850 }); }
   console.log('OK: ställning i plan – verktyg, mått och ritning i skala', JSON.stringify({ made: made.vals, inf, px, hit }));
   if (process.env.SLSHOT) { await page.evaluate(() => { document.getElementById('viewport') && 0; if (typeof renderAll === 'function') renderAll(); else if (typeof draw === 'function') draw(); }); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SLSHOT }); }
   // Play/Pause vid datumreglaget (samma uppspelning som under Tid)

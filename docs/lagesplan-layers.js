@@ -1249,6 +1249,7 @@ const scaffoldSegOn = x => (x.sSeg !== undefined ? !!x.sSeg : (x.pts || []).leng
   .sp-sc .sc-chips{display:flex;flex-wrap:wrap;gap:6px}.sp-sc .sc-chip{position:relative;margin:0;cursor:pointer}
   .sp-sc .sc-chip input{position:absolute;opacity:0;width:0;height:0}.sp-sc .sc-chip span{display:inline-block;padding:5px 11px;border:1px solid #cbd5e1;border-radius:999px;font-size:12.5px;background:#fff;color:#334155;user-select:none}
   .sp-sc .sc-chip input:checked+span{background:#2563eb;border-color:#2563eb;color:#fff}.sp-sc .sc-chip input:focus-visible+span{outline:2px solid #93c5fd}
+  .sp-tools{float:right;display:flex;gap:4px;margin-top:-2px}.sp-tools button{height:24px!important;width:26px;padding:0!important;border:1px solid #cbd5e1;background:#fff;border-radius:6px;display:grid;place-items:center;color:#475569;cursor:pointer}.sp-tools button.on{background:#2563eb;border-color:#2563eb;color:#fff}
   .sp-sc .sc-3d{width:100%}
   .sp-clip{margin:6px 0 8px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc}.sp-clip-h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#64748b;margin-bottom:6px}.sp-clip-b{display:flex;gap:6px}.sp-clip-b button{flex:1}.sp-clip-a{display:flex;gap:6px;align-items:center;font-size:12px;color:#475569;margin:6px 0 0}`;
   document.head.appendChild(st);
@@ -1969,6 +1970,7 @@ function openSitePop(rec, isNew) {
   const anchor = mToPx(isRect(rec) ? [rectGeom(rec).cx, rectGeom(rec).cy] : rec.pts[rec.pts.length - 1]);
   const r = $("viewport").getBoundingClientRect();
   const [sx, sy] = stageToScreen(anchor);
+  spopTools(pop);
   placeSitePop(pop, sx + 16, sy + 16);
   if (typeof bindStoragePop === "function") bindStoragePop(pop, rec);
   // Bara nya objekt får markören i textfältet – ett klickat objekt ska kunna tas bort med Delete.
@@ -2075,12 +2077,28 @@ function openSitePop(rec, isNew) {
 /* Placera redigeringsrutan vid (x, y) i planens koordinater (Victors önskemål
    2026-10-02): den ryms alltid i fönstret (scrollar om den är hög) och har
    den flyttats för hand ligger den kvar där. */
+/* Dockning och pin för redigeringsrutan (Victor 2026-11-09): ⇥ dockar den mot höger kant, 📍 låser den på sin plats (den öppnas alltid där). Sparas i webbläsaren. */
+const SPOP_KEY = "lagesplan-sitepop";
+const spopPrefs = () => { try { return JSON.parse(localStorage.getItem(SPOP_KEY) || "{}") || {}; } catch (e) { return {}; } };
+const spopSave = o => { try { localStorage.setItem(SPOP_KEY, JSON.stringify(o)); } catch (e) { /* utan lagring */ } };
+function spopSync(pop) { const pr = spopPrefs(), d = pop.querySelector(".sp-dock"), n = pop.querySelector(".sp-pin"); if (d) d.classList.toggle("on", pr.dock === "right"); if (n) n.classList.toggle("on", !!pr.pin); }
+function spopTools(pop) {
+  const hd = pop.querySelector("b"); if (!hd || hd.parentNode !== pop || pop.querySelector(".sp-tools")) return;
+  hd.insertAdjacentHTML("beforeend", `<span class="sp-tools"><button type="button" class="sp-dock" title="Docka rutan mot höger kant"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1.8" y="2.5" width="12.4" height="11" rx="1.5"/><path d="M10 2.5v11" /></svg></button><button type="button" class="sp-pin" title="Lås rutan på sin plats (den öppnas alltid här)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M9.5 1.8l4.7 4.7-2 .8-2.3 2.6.3 2.6-1 1-2.6-2.6-4 4 -.6-.6 4-4L3.4 7.7l1-1 2.6.3 2.6-2.3z"/></svg></button></span>`);
+  const dock = pop.querySelector(".sp-dock"), pin = pop.querySelector(".sp-pin");
+  dock.onclick = e => { e.stopPropagation(); const pr = spopPrefs(); pr.dock = pr.dock === "right" ? null : "right"; spopSave(pr); pop.dataset.moved = ""; placeSitePop(pop, pop.offsetLeft, pop.offsetTop); spopSync(pop); };
+  pin.onclick = e => { e.stopPropagation(); const pr = spopPrefs(); pr.pin = !pr.pin; if (pr.pin) pr.pos = [pop.offsetLeft, pop.offsetTop]; spopSave(pr); spopSync(pop); };
+  spopSync(pop);
+}
 function placeSitePop(pop, x, y) {
   const r = $("viewport").getBoundingClientRect();
   const visH = Math.max(120, Math.min(r.height, window.innerHeight - Math.max(0, r.top)));
   const field = document.body.classList.contains("field");
   pop.style.maxHeight = `${Math.max(120, visH - (field ? 150 : 16))}px`;
-  if (pop.dataset.moved) { x = parseFloat(pop.style.left) || 8; y = parseFloat(pop.style.top) || 8; }
+  const pr = pop.querySelector(".sp-tools") ? spopPrefs() : {};
+  if (pr.dock === "right") { x = r.width - pop.offsetWidth - 8; y = 8; }          // dockad mot höger kant
+  else if (pr.pin && pr.pos) { x = pr.pos[0]; y = pr.pos[1]; }                      // låst på sin plats
+  else if (pop.dataset.moved) { x = parseFloat(pop.style.left) || 8; y = parseFloat(pop.style.top) || 8; }
   pop.style.left = `${Math.max(8, Math.min(r.width - pop.offsetWidth - 8, x))}px`;
   pop.style.top = `${Math.max(8, Math.min(visH - pop.offsetHeight - 8, y))}px`;
 }
@@ -2112,8 +2130,9 @@ document.addEventListener("DOMContentLoaded", () => {
       pop.style.left = `${Math.max(-pop.offsetWidth + 60, Math.min(r.width - 60, l0 + ev.clientX - sx))}px`;
       pop.style.top = `${Math.max(0, Math.min(visH - 30, t0 + ev.clientY - sy))}px`;
       pop.dataset.moved = "1";
+      const pr = spopPrefs(); if (pr.dock) { pr.dock = null; spopSave(pr); spopSync(pop); }   // dras rutan lossnar den från kanten
     };
-    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    const up = () => { const pr = spopPrefs(); if (pr.pin && pop.dataset.moved) { pr.pos = [pop.offsetLeft, pop.offsetTop]; spopSave(pr); } window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   });
   window.addEventListener("resize", () => { if (!pop.classList.contains("hidden")) placeSitePop(pop, parseFloat(pop.style.left) || 8, parseFloat(pop.style.top) || 8); });
