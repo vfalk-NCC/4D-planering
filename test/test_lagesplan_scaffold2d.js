@@ -95,6 +95,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   { const r = await page.evaluate(() => { const x = { ...siteItems.find(q => q.type === 'scaffold'), sDim: false, sFack: false, sLifts: false, sSeg: true, sFackSeg: false, name: '' }, cv = document.createElement('canvas'); cv.width = 1400; cv.height = 900; const ctx = cv.getContext('2d'), txt = []; const ft = ctx.fillText.bind(ctx); ctx.fillText = (t, ...a) => { txt.push(String(t)); return ft(t, ...a); };
       const Q = x.pts.map(mToPx); ctx.translate(100 - Math.min(...Q.map(q => q[0])), 100 - Math.min(...Q.map(q => q[1]))); drawScaffold2D(ctx, x, siteStyle(x, 14), pxPerMeter(), '', ''); return txt; });
     if (r.length !== 2 || !r.every(t => /\d m/.test(t)) || r.some(t => /Σ|fack|vån/.test(t))) fail('Bara måttkedjan ska synas när etikettens mått är släckta: ' + JSON.stringify(r)); }
+  { // Fästet (pilens spets) har ett eget handtag: flyttas det ska etiketten stå kvar
+    const r = await page.evaluate(() => { const x = siteItems.find(q => q.type === 'scaffold'); x.lbl = [0, 0]; delete x.lblAt; renderZones(); const hs = siteHandles(x, 14, pxPerMeter()), a = hs.find(z => z.kind === 'lblAnchor'), b0 = { ...labelBoxes.get(x.id) };
+      const o = JSON.parse(JSON.stringify(x)), h = a, m = [h.m[0] + 3, h.m[1] - 2], ddx = m[0] - h.m[0], ddy = m[1] - h.m[1]; const w = { ...o, lblAt: m, lbl: [(o.lbl || [0, 0])[0] - ddx, (o.lbl || [0, 0])[1] - ddy] };
+      siteItems[siteItems.findIndex(q => q.id === x.id)] = w; renderZones(); const b1 = labelBoxes.get(x.id); return { has: !!a, dx: Math.abs(b1.x - b0.x), dy: Math.abs(b1.y - b0.y), anchored: !!w.lblAt }; });
+    if (!r.has || r.dx > 1 || r.dy > 1) fail('Fästet ska ha handtag och etiketten stå kvar när det flyttas: ' + JSON.stringify(r)); }
+  { const id = await page.evaluate(() => { const x = siteItems.find(q => q.type === 'scaffold'); delete x.lblAt; x.lbl = [0, 0]; selectedSiteId = x.id; renderZones(); return x.id; }); await page.waitForTimeout(200);
+    const g = await page.evaluate(id => { const x = siteItems.find(q => q.id === id), h = siteHandles(x, 14, pxPerMeter()).find(z => z.kind === 'lblAnchor'), s = stageToScreen(mToPx(h.m)), r = document.getElementById('viewport').getBoundingClientRect(); return { x: r.left + s[0], y: r.top + s[1], bx: labelBoxes.get(id).x }; }, id);
+    await page.mouse.move(g.x, g.y); await page.mouse.down(); await page.mouse.move(g.x + 25, g.y + 20, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(300);
+    const r = await page.evaluate(id => { const x = siteItems.find(q => q.id === id); return { at: x.lblAt, lbl: x.lbl, bx: labelBoxes.get(id).x }; }, id);
+    if (!r.at || Math.abs(r.bx - g.bx) > 2) fail('Att dra i fästets handtag ska flytta fästet men låta etiketten stå kvar: ' + JSON.stringify({ r, g })); }
   console.log('OK: ställning i plan – verktyg, mått och ritning i skala', JSON.stringify({ made: made.vals, inf, px, hit }));
   if (process.env.SLSHOT) { await page.evaluate(() => { document.getElementById('viewport') && 0; if (typeof renderAll === 'function') renderAll(); else if (typeof draw === 'function') draw(); }); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SLSHOT }); }
   // Play/Pause vid datumreglaget (samma uppspelning som under Tid)

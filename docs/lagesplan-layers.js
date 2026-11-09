@@ -1120,7 +1120,10 @@ function labelBox(ctx, x, y, text, fs, bg, fg, border, dates) {
   }
   return { w, h };
 }
+const labelAnchors = new Map();   // etikettens fäste på objektet (stage-px), för handtaget
 function siteLabel(ctx, x, def, text, fs, bg, fg, border, dates) {
+  if (x.lblAt && x.lblAt.length === 2) def = mToPx(x.lblAt);   // eget fäste (dragbart handtag)
+  if (x.id && ctx.canvas && ctx.canvas.id === "topCanvas") labelAnchors.set(x.id, def);
   let p = def;
   if (x.lbl && (x.lbl[0] || x.lbl[1])) {
     const o = mToPx([0, 0]), q = mToPx(x.lbl);
@@ -1434,7 +1437,7 @@ function drawSitePreview(ctx, fontPx, ppm) {
 // ---------------------------------------------------------------------
 /* Handtag i modellkoordinater: { kind, i?, m: [x, y] }. */
 /* Textens insättningspunkt som handtag (mitten av etiketten, där den senast ritades): dra för att flytta texten. */
-function siteLabelHandle(x) { const b = labelBoxes.get(x.id); if (!b || !plan || !plan.calib) return []; return [{ kind: "label", m: pdfToModel(toPdf([b.x + b.w / 2, b.y - b.h / 2])) }]; }   // i etikettens övre högra hörn – utanför texten
+function siteLabelHandle(x) { const b = labelBoxes.get(x.id), a = labelAnchors.get(x.id); if (!b || !plan || !plan.calib) return []; return [...(a ? [{ kind: "lblAnchor", m: pdfToModel(toPdf(a)) }] : []), { kind: "label", m: pdfToModel(toPdf([b.x + b.w / 2, b.y - b.h / 2])) }]; }   // i etikettens övre högra hörn – utanför texten
 function siteHandles(x, fontPx, ppm) { return [...siteHandlesBase(x, fontPx, ppm), ...(x.type === "scaffold" || x.type === "fence" || x.type === "route" || x.type === "barrier" ? siteLabelHandle(x) : [])]; }
 function siteHandlesBase(x, fontPx, ppm) {
   const off = (34 / Math.max(0.05, view.scale)) / ppm; // rotationshandtagets avstånd i meter – lika stort på skärmen oavsett zoom
@@ -1475,6 +1478,9 @@ function drawHandles(ctx, x, fontPx, ppm) {
       ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 1.5 * k; ctx.beginPath(); ctx.moveTo(c[0], c[1]); ctx.lineTo(px, py); ctx.stroke();
       ctx.beginPath(); ctx.arc(px, py, hs * 1.1, 0, Math.PI * 2); ctx.fillStyle = "#0b5fff"; ctx.fill();
       ctx.fillStyle = "#fff"; ctx.font = `700 ${hs * 1.6}px Arial`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("↻", px, py + k);
+    } else if (h.kind === "lblAnchor") {
+      const r = hs * 0.95; ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fillStyle = "#fff"; ctx.fill(); ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 2 * k; ctx.stroke();
+      ctx.beginPath(); ctx.arc(px, py, r * 0.38, 0, Math.PI * 2); ctx.fillStyle = "#0b5fff"; ctx.fill();   // fäste: pilens spets
     } else if (h.kind === "label") {
       const r = hs * 1.5; ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fillStyle = "#0b5fff"; ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2 * k; ctx.stroke();
       ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.6 * k; ctx.beginPath(); ctx.moveTo(px - r * 0.62, py); ctx.lineTo(px + r * 0.62, py); ctx.moveTo(px, py - r * 0.62); ctx.lineTo(px, py + r * 0.62); ctx.stroke();   // flytta-symbol
@@ -1642,6 +1648,11 @@ function applySiteDrag(d, m) {
   if (h.kind === "move") {
     if (isRect(o)) { const g = rectGeom(o); Object.assign(w, { cx: g.cx + dx, cy: g.cy + dy, w: g.w, h: g.h, rot: g.rot }); delete w.pts; }
     else w.pts = o.pts.map(p => [p[0] + dx, p[1] + dy]);
+    if (o.lblAt) w.lblAt = [o.lblAt[0] + dx, o.lblAt[1] + dy];   // fästet följer med objektet
+  } else if (h.kind === "lblAnchor") {
+    // Flytta fästet; etiketten står kvar (förskjutningen räknas om).
+    const a0 = h.m, l = o.lbl || [0, 0], ddx = m[0] - a0[0], ddy = m[1] - a0[1];
+    w.lblAt = [Math.round(m[0] * 100) / 100, Math.round(m[1] * 100) / 100]; w.lbl = [Math.round((l[0] - ddx) * 100) / 100, Math.round((l[1] - ddy) * 100) / 100];
   } else if (h.kind === "label") {
     const l = o.lbl || [0, 0];
     w.lbl = [Math.round((l[0] + dx) * 100) / 100, Math.round((l[1] + dy) * 100) / 100];
@@ -1967,14 +1978,14 @@ function openSitePop(rec, isNew) {
   const scaffoldFromPop = () => { const c = q => { const e = pop.querySelector(q); return !e || e.checked; }, l = Math.round(num(".sp-sl", 0)); return { w: Math.max(0.3, num(".sp-sw", 0.73)), h: Math.max(1, num(".sp-sh", 8)), fack: Math.max(0.7, num(".sp-sf", 2.57)), lifts: l > 0 ? l : undefined, sDim: c(".sp-sdim"), sFack: c(".sp-sfack"), sLifts: c(".sp-slifts"), sPosts: c(".sp-sposts"), sWrap: !!(pop.querySelector(".sp-swrap") || {}).checked, sSeg: !!(pop.querySelector(".sp-sseg") || {}).checked, sFackSeg: c(".sp-sfackseg") }; };
   if (rec.type === "scaffold") pop.querySelectorAll(".sp-sw,.sp-sh,.sp-sf,.sp-sl,.sp-sdim,.sp-sfack,.sp-slifts,.sp-sposts,.sp-swrap,.sp-sseg,.sp-sfackseg,.sp-name").forEach(el => { el.oninput = el.onchange = () => { const v = scaffoldFromPop(); v.name = (pop.querySelector(".sp-name") || {}).value || ""; preview(v); const I2 = scaffoldInfo({ ...rec, ...v }), q = c => pop.querySelector(c); if (q(".sc-s-len")) { q(".sc-s-len").textContent = fmtM(I2.L) + " m längd"; q(".sc-s-bays").textContent = I2.bays + " fack"; q(".sc-s-lifts").textContent = I2.lifts + " vån"; } const ph = q(".sp-sl"); if (ph) ph.placeholder = `auto (${Math.max(1, Math.ceil(v.h / 2))})`; }; });
   const lblReset = pop.querySelector(".sp-lblreset");
-  if (lblReset) lblReset.onclick = () => { if (popPreview) popPreview.lblReset = true; preview({ lbl: null }); lblReset.disabled = true; lblReset.textContent = "↺ Texten återställd"; };
+  if (lblReset) lblReset.onclick = () => { if (popPreview) popPreview.lblReset = true; preview({ lbl: null, lblAt: null }); lblReset.disabled = true; lblReset.textContent = "↺ Texten återställd"; };
   pop.querySelector(".sp-save").onclick = async () => {
     const v = c => { const el = pop.querySelector(c); return el ? el.value.trim() : undefined; };
     const next = { ...rec, from: v(".sp-from") || null, to: v(".sp-to") || null, updated_at: new Date().toISOString() };
     if (next.from && next.to && next.from > next.to) { alert("Från-datumet måste vara före till-datumet."); return; }
     next.color = v(".sp-color") === defaultColorOf(rec) ? null : v(".sp-color");
     next.dash = v(".sp-dash"); next.weight = Number(v(".sp-weight")); next.textSize = tsValue();
-    if (popPreview && popPreview.lblReset) next.lbl = null;
+    if (popPreview && popPreview.lblReset) { next.lbl = null; next.lblAt = null; }
     let layer = v(".sp-layer");
     if (layer === "__new") { layer = (await uiPrompt("Namn på det nya lagret:", "") || "").trim(); if (!layer) return; createLayer(layer); }
     next.layer = layer || defaultLayerOf(rec);
