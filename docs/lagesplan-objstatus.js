@@ -221,8 +221,8 @@ let objTool = null;                           // null | "status" | "add"
 function objToolSet(t) {
   objTool = objTool === t ? null : t;
   const vp = $("viewport"); if (vp) vp.classList.toggle("obj-tool", !!objTool);
-  [["status", "btnObjStatusBox"], ["add", "btnObjAddDot"], ["newact", "btnObjNewAct"]].forEach(([k, id]) => { const b = $(id); if (b) b.classList.toggle("on", objTool === k); });
-  setSaveStatus(objTool === "status" ? "Dra en ruta över prickarna och välj status. Esc avslutar." : objTool === "add" ? "Klicka där den nya pricken ska ligga. Esc avslutar." : objTool === "newact" ? "Klicka där den nya aktiviteten ska ligga – du får fylla i namn och datum. Esc avslutar." : "");
+  [["status", "btnObjStatusBox"], ["add", "btnObjAddDot"], ["newact", "btnObjNewAct"], ["actplace", "btnApPlace"]].forEach(([k, id]) => { const b = $(id); if (b) b.classList.toggle("on", objTool === k); });
+  setSaveStatus(objTool === "status" ? "Dra en ruta över prickarna och välj status. Esc avslutar." : objTool === "add" ? "Klicka där den nya pricken ska ligga. Esc avslutar." : objTool === "newact" ? "Klicka där den nya aktiviteten ska ligga – du får fylla i namn och datum. Esc avslutar." : objTool === "actplace" ? "Klicka i planen där den valda aktiviteten ska ligga. Esc avslutar." : "");
 }
 function objStatusBox(a, b, e) {
   const x0 = Math.min(a[0], b[0]), x1 = Math.max(a[0], b[0]), y0 = Math.min(a[1], b[1]), y1 = Math.max(a[1], b[1]);
@@ -281,7 +281,7 @@ async function objAddDot(pdfPt) {
 /* ---------- Ny aktivitet direkt i lägesplanen (Victor 2026-10-26) ----------
    En okopplad aktivitet (som "＋ Ny aktivitet" i 4D-planering: model_id null, object_id "manuell-…") med en egen prick som kan dras fritt i planen
    tills den kopplas till ett objekt i 3D-modellen (Koppla i 3D-editorn eller i 4D-planering – då tar aktiviteten objektets läge). */
-const objIsFree = it => !!it && (!!it.free || (it.origin === "manuell" && !it.model_id));   // egna prickar (Ny prick, Ny aktivitet, fristående) går att flytta fritt
+const objIsFree = it => !!it && (!!it.free || (it.origin === "manuell" && !it.model_id) || (typeof apIsPlaced === "function" && apIsPlaced(it)));   // egna prickar (Ny prick, Ny aktivitet, fristående) går att flytta fritt
 function objNewActForm(def) {
   return new Promise(res => {
     const el = document.createElement("div"); el.className = "na-modal";

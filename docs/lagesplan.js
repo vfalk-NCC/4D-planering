@@ -1662,7 +1662,7 @@ function bindViewport() {
     if (d.draw) { finishDraw(d.start, stagePoint(e)); return; }
     if (d.hideBox) { hideObjectsInBox(d.start, stagePoint(e)); return; }
     if (d.statusBox) { objStatusBox(d.start, stagePoint(e), e); return; }
-    if (d.addDot) { if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) < 6) (objTool === "newact" && typeof objNewActivity === "function" ? objNewActivity : objAddDot)(toPdf(d.start)); return; }
+    if (d.addDot) { if (Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) < 6) (objTool === "actplace" && typeof apPlaceAt === "function" ? apPlaceAt : objTool === "newact" && typeof objNewActivity === "function" ? objNewActivity : objAddDot)(toPdf(d.start)); return; }
     if (!d.moved && calib && calib.waitPdf && e.target.closest && e.target.closest("#viewport")) {
       calib.waitPdf = false;
       calib.pdf.push(toPdf(stagePoint(e)));
