@@ -1379,12 +1379,12 @@ function drawSitePreview(ctx, fontPx, ppm) {
 // ---------------------------------------------------------------------
 /* Handtag i modellkoordinater: { kind, i?, m: [x, y] }. */
 function siteHandles(x, fontPx, ppm) {
-  const off = (fontPx * 2.2) / ppm; // rotationshandtagets avstånd i meter
+  const off = (34 / Math.max(0.05, view.scale)) / ppm; // rotationshandtagets avstånd i meter – lika stort på skärmen oavsett zoom
   if (x.type === "note") return [{ kind: "vertex", i: 0, m: x.pts[0] }, { kind: "vertex", i: 1, m: x.pts[1] }];
   if (x.type === "pdfobj") { const ys = x.pts.map(p => p[1]); return [{ kind: "rotate", m: [centroidOf(x.pts)[0], Math.min(...ys) - off] }]; } // flytta: dra i objektet; vrid: handtaget
   if (x.type === "sketch" || x.type === "crew" || x.type === "lift" || x.type === "wxday" || x.type === "wxweek") return []; // frihand/lag/lyft: dra i dem för att flytta
   if (x.type === "delivery") { // fordon har fasta mått: bara vrid
-    const g = rectGeom(x), off2 = (fontPx * 2.2) / ppm;
+    const g = rectGeom(x), off2 = off;
     return [{ kind: "rotate", m: [g.cx - Math.sin(g.rot) * (g.h / 2 + off2), g.cy + Math.cos(g.rot) * (g.h / 2 + off2)] }];
   }
   if (x.type === "crane") { const [c] = x.pts; return [{ kind: "radius", m: [c[0] + craneRadius(x), c[1]] }]; }
@@ -1407,23 +1407,23 @@ function siteHandles(x, fontPx, ppm) {
   return [...x.pts.map((m, i) => ({ kind: "vertex", i, m })), ...mids, { kind: "rotate", m: [c[0], Math.min(...ys) - off] }];
 }
 function drawHandles(ctx, x, fontPx, ppm) {
-  const hs = Math.max(5, fontPx * 0.32);
+  const k = 1 / Math.max(0.05, view.scale), hs = 6 * k;   // handtagen är lika stora på skärmen oavsett zoom
   ctx.save();
   ctx.setLineDash([]);
   siteHandles(x, fontPx, ppm).forEach(h => {
     const [px, py] = mToPx(h.m);
     if (h.kind === "rotate") {
       const c = mToPx(isRect(x) ? [rectGeom(x).cx, rectGeom(x).cy] : centroidOf(x.pts));
-      ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(c[0], c[1]); ctx.lineTo(px, py); ctx.stroke();
+      ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 1.5 * k; ctx.beginPath(); ctx.moveTo(c[0], c[1]); ctx.lineTo(px, py); ctx.stroke();
       ctx.beginPath(); ctx.arc(px, py, hs * 1.1, 0, Math.PI * 2); ctx.fillStyle = "#0b5fff"; ctx.fill();
-      ctx.fillStyle = "#fff"; ctx.font = `700 ${hs * 1.6}px Arial`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("↻", px, py + 1);
+      ctx.fillStyle = "#fff"; ctx.font = `700 ${hs * 1.6}px Arial`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("↻", px, py + k);
     } else if (h.kind === "insert") {
       const r = hs * 0.8;
       ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,255,255,.85)"; ctx.fill();
-      ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 1.5 * k; ctx.stroke();
       ctx.beginPath(); ctx.moveTo(px - r * 0.55, py); ctx.lineTo(px + r * 0.55, py); ctx.moveTo(px, py - r * 0.55); ctx.lineTo(px, py + r * 0.55); ctx.stroke();
     } else {
-      ctx.fillStyle = "#fff"; ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 2;
+      ctx.fillStyle = "#fff"; ctx.strokeStyle = "#0b5fff"; ctx.lineWidth = 2 * k;
       ctx.fillRect(px - hs, py - hs, hs * 2, hs * 2); ctx.strokeRect(px - hs, py - hs, hs * 2, hs * 2);
     }
   });
@@ -1434,7 +1434,7 @@ let siteClickedId = null; // senast klickade objekt: i ytor kan texten dras för
 let siteDrag = null; // { orig, work, handle, startM, startPx, moved }
 function currentFontPx() { return planFontPx(); }
 function handleAt(x, pdfPt) {
-  const p = toPx(pdfPt), tol = Math.max(10, 9 / view.scale) + currentFontPx() * 0.2;
+  const p = toPx(pdfPt), tol = 11 / Math.max(0.05, view.scale);   // ca 11 skärmpixlar
   const hs = siteHandles(x, currentFontPx(), pxPerMeter());
   let best = null, bd = Infinity;
   hs.forEach(h => { const q = mToPx(h.m), d = Math.hypot(q[0] - p[0], q[1] - p[1]); if (d < tol && d < bd) { best = h; bd = d; } });

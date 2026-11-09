@@ -77,6 +77,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const hit = null;
   { const r = await page.evaluate(() => { const x = siteItems.find(q => q.type === 'scaffold'); const base = scaffoldInfo(x).lifts, o = scaffoldInfo({ ...x, lifts: 3 }).lifts, html = scaffoldFieldsHtml({ ...x, sDim: false }); return { base, o, vh: /sp-sl/.test(html) && /sp-sdim/.test(html), off: /class="sp-sdim"\s*\/>/.test(html) || !/sp-sdim"[^>]*checked/.test(html) }; });
     if (r.o !== 3 || !r.vh || !r.off) fail('Våningar ska kunna anges och visningsvalen finnas i rutan: ' + JSON.stringify(r)); }
+  { const r = await page.evaluate(() => { const x = siteItems.find(q => q.type === 'scaffold'), v = x.pts[0], pp = modelToPdf(v[0], v[1]), s0 = view.scale; const hit = sc => { view.scale = sc; const px = pxPerMeter(); return !!handleAt(x, [pp[0] + 8 / (renderScale || 1), pp[1]]); }; const a = hit(1), b = hit(8); view.scale = s0; return { a, b }; });
+    if (!r.a || r.b) fail('Draghandtagen ska vara lika stora på skärmen oavsett zoom: ' + JSON.stringify(r)); }
   console.log('OK: ställning i plan – verktyg, mått och ritning i skala', JSON.stringify({ made: made.vals, inf, px, hit }));
   if (process.env.SLSHOT) { await page.evaluate(() => { document.getElementById('viewport') && 0; if (typeof renderAll === 'function') renderAll(); else if (typeof draw === 'function') draw(); }); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SLSHOT }); }
   // Play/Pause vid datumreglaget (samma uppspelning som under Tid)
