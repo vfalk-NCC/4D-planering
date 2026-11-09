@@ -69,6 +69,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     ok2(A.tabs.includes('Gjutformar') && A.rows.length === 2 && A.weeks === 2, 'Fliken Gjutformar ska visa två former och två veckor');
     const vsum = A.vols[0] + A.vols[1]; ok2(A.kpis.some(k => /^2 gjutformar/.test(k)) && A.kpis.some(k => k.includes(String(Math.round(vsum * 10) / 10).replace('.', ','))), 'Summakorten ska visa antal och total betongvolym');
     ok2(A.sel === 1 && A.sel2 === 2, 'Klick på en rad markerar formen; Markera alla markerar alla');
+    { const U = await page.evaluate(async () => { l3gf.only = null; const f = placements.filter(p => p.type === 'sm:gjutetapp'); l3SelectIds([f[0].id]); l3anOpen('form'); await new Promise(r => setTimeout(r, 100)); const el = document.getElementById('v3AnPanel'); el.querySelector('[data-gf-upd]').click(); await new Promise(r => setTimeout(r, 150)); const el2 = document.getElementById('v3AnPanel'), rows = el2.querySelectorAll('.an-tbl tr.rw').length, chip = !!el2.querySelector('.an-chip'), k = [...el2.querySelectorAll('.an-kpi')].map(x => x.innerText.replace(/\s+/g, ' '))[0]; el2.querySelector('[data-gf-allf]').click(); await new Promise(r => setTimeout(r, 100)); return { rows, chip, k, back: document.querySelectorAll('#v3AnPanel .an-tbl tr.rw').length }; });
+      ok2(U.rows === 1 && U.chip && /^1 gjutformar/.test(U.k) && U.back === 2, 'Uppdatera med markerade ska räkna bara på de markerade formerna (och gå att återställa): ' + JSON.stringify(U)); }
     ok2(/^gjutformar\.csv\|Form;/.test(A.csv) && /Summa/.test(A.csv), 'CSV med summarad');
     if (process.env.ANIMG) { const el = await page.$('#v3AnPanel'); await el.screenshot({ path: process.env.ANIMG }); }
   }

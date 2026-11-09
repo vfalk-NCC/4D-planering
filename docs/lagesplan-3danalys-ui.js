@@ -33,6 +33,7 @@
   .an-weeks{display:flex;align-items:flex-end;gap:5px;height:92px;padding:6px 4px 0;border:1px solid #e2e8f0;border-radius:12px;background:#fbfdff;overflow-x:auto}
   .an-wk{flex:1 0 34px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:2px;height:100%;cursor:pointer}.an-wk i{display:block;width:100%;background:linear-gradient(180deg,#60a5fa,#2563eb);border-radius:5px 5px 0 0;min-height:3px}.an-wk span{font-size:10px;color:#64748b}.an-wk b{font-size:10px;color:#1d4ed8}
   #view3d .v3-an-r label.v3-vp-chk{flex-direction:row;flex:0 0 auto;align-items:center;gap:6px;font-size:12px;color:#475569}
+  .an-upd{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.an-upd .primary{padding:7px 12px;border:1px solid #2f6bff;border-radius:10px;background:#2f6bff;color:#fff;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}.an-chip{display:inline-flex;align-items:center;gap:6px;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:3px 4px 3px 10px;font-size:12px;font-weight:600}.an-chip button{border:0;background:#dbeafe;color:#1d4ed8;border-radius:999px;padding:2px 8px;cursor:pointer;font:inherit;font-size:11px}
   .an-wk:hover i{background:linear-gradient(180deg,#93c5fd,#1d4ed8)}`;
   document.head.appendChild(st);
 })();
@@ -106,10 +107,10 @@ async function l3anTakeRun() {
 }
 
 /* ---------- Gjutformar ---------- */
-const l3gf = { sort: { k: "start", dir: 1 }, q: "", cols: [], all: true };
+const l3gf = { sort: { k: "start", dir: 1 }, q: "", cols: [], all: true, only: null };   // only: Set med id på de former som räknas (markerade när du tryckte Uppdatera), annars alla
 const L3GF_TYPES = new Set(["sm:gjutetapp", "sm:gjutform"]);
 function l3gfRows() {
-  return placements.filter(p => L3GF_TYPES.has(p.type) && (l3gf.all || (typeof l3PlaceOnDate !== "function" || l3PlaceOnDate(p)))).map(p => {
+  return placements.filter(p => L3GF_TYPES.has(p.type) && (!l3gf.only || l3gf.only.has(p.id)) && (l3gf.all || (typeof l3PlaceOnDate !== "function" || l3PlaceOnDate(p)))).map(p => {
     let poly = null; try { poly = p.type === "sm:gjutform" ? gjutFreePoly(p) : gjutPoly(p); } catch (e) { poly = null; }
     if (!poly || poly.length < 3) return null; let st; try { st = gjutStats(p, poly); } catch (e) { return null; }
     const xs = poly.map(q => q[0]), ys = poly.map(q => q[1]), L = Math.max(...xs) - Math.min(...xs), B = Math.max(...ys) - Math.min(...ys);
@@ -125,7 +126,8 @@ function l3anForms(esc) {
   l3gf.cols = [{ k: "k", l: "Form" }, { k: "vol", l: "Betong m³", bar: true, f: v => l3anF(v, 2) }, { k: "side", l: "Formsida m²", f: v => l3anF(v, 1) }, { k: "bilar", l: "Bilar" }, { k: "start", l: "Gjuts", f: v => v ? esc(String(v).slice(5)) : "–" }]; l3gf.view = view;
   const weeks = new Map(); view.forEach(r => { const w = l3gfWeek(r.start), g = weeks.get(w) || { w, vol: 0, ids: [] }; g.vol += r.vol; g.ids.push(r.id); weeks.set(w, g); });
   const wl = [...weeks.values()].sort((a, b) => (a.w === "Utan datum") - (b.w === "Utan datum") || a.w.localeCompare(b.w)), wmax = Math.max(1e-9, ...wl.map(w => w.vol)); l3gf.weeks = wl;
-  return { html: `${l3anKpis([{ v: l3anF(view.length, 0), l: "gjutformar", hi: true }, { v: l3anF(tot.vol, 1), u: "m³", l: "betong", hi: true }, { v: l3anF(tot.bilar, 0), u: "st", l: "betongbilar" }, { v: l3anF(tot.side, 0), u: "m²", l: "formsida" }, { v: l3anF(tot.area, 0), u: "m²", l: "gjutyta" }, { v: tot.kg > 0 ? l3anF(tot.kg, 0) : "–", u: tot.kg > 0 ? "kg" : "", l: "armering" }])}
+  const upd = `<div class="an-upd"><button type="button" class="primary" data-gf-upd title="Markera formerna i modellen och tryck här – summorna räknas om för just dem">↻ Uppdatera med markerade</button>${l3gf.only ? `<span class="an-chip">Räknar på ${l3gf.only.size} markerade <button type="button" data-gf-allf title="Räkna på alla former igen">✕ alla</button></span>` : `<span class="an-note">Räknar på alla ${all.length} former. Markera några i modellen och tryck Uppdatera.</span>`}</div>`;
+  return { html: `${upd}${l3anKpis([{ v: l3anF(view.length, 0), l: "gjutformar", hi: true }, { v: l3anF(tot.vol, 1), u: "m³", l: "betong", hi: true }, { v: l3anF(tot.bilar, 0), u: "st", l: "betongbilar" }, { v: l3anF(tot.side, 0), u: "m²", l: "formsida" }, { v: l3anF(tot.area, 0), u: "m²", l: "gjutyta" }, { v: tot.kg > 0 ? l3anF(tot.kg, 0) : "–", u: tot.kg > 0 ? "kg" : "", l: "armering" }])}
     <div class="an-h">Betong per vecka (m³)</div><div class="an-weeks">${wl.map((w, i) => `<div class="an-wk" data-gf-wk="${i}" title="${esc(w.w)}: ${l3anF(w.vol, 1)} m³ · ${w.ids.length} former – tryck för att markera"><b>${l3anF(w.vol, w.vol < 10 ? 1 : 0)}</b><i style="height:${Math.max(4, Math.round(w.vol / wmax * 60))}px"></i><span>${esc(w.w === "Utan datum" ? "–" : w.w.replace(/^\d{4}-/, ""))}</span></div>`).join("")}</div>
     <div class="v3-an-r" style="align-items:center">${l3anSearch(l3gf.q, "Sök form…")}<label class="v3-vp-chk" title="Av: bara de former som gäller datumet i tidslinjen"><input type="checkbox" data-gf-all ${l3gf.all ? "checked" : ""}> Alla datum</label></div>
     ${l3anTable(l3gf.cols, view, l3gf.sort, { total: tot })}
@@ -134,6 +136,8 @@ function l3anForms(esc) {
     bind: el => {
       l3anBindTable(el, l3gf, () => l3anOpen(), i => { const r = l3gf.view[i]; if (!r) return; l3SelectIds([r.id]); const g = l3.placeMeshes && l3.placeMeshes.get(r.id); if (g) { const bb = new THREE.Box3().setFromObject(g); l3FlyTo(bb.getCenter(new THREE.Vector3()), Math.max(6, bb.getSize(new THREE.Vector3()).length() * 3)); } });
       el.querySelectorAll("[data-gf-wk]").forEach(b => { b.onclick = () => { const w = l3gf.weeks[+b.dataset.gfWk]; if (w) l3SelectIds(w.ids); }; });
+      el.querySelector("[data-gf-upd]").onclick = () => { const ids = (typeof l3SelList === "function" ? l3SelList() : []).filter(p => L3GF_TYPES.has(p.type)).map(p => p.id); if (!ids.length) { l3Status("Markera en eller flera gjutformar i modellen först, tryck sedan Uppdatera.", true); return; } l3gf.only = new Set(ids); l3anOpen(); };
+      const af = el.querySelector("[data-gf-allf]"); if (af) af.onclick = () => { l3gf.only = null; l3anOpen(); };
       el.querySelector("[data-gf-all]").onchange = e => { l3gf.all = e.target.checked; l3anOpen(); };
       el.querySelector("[data-gf-sel]").onclick = () => l3SelectIds(l3gf.view.map(r => r.id));
       el.querySelector("[data-gf-make]").onclick = () => { if (typeof l3bsMakeForms === "function" && typeof l3bs !== "undefined" && l3bs.sel.length) l3bsMakeForms().then(() => l3anOpen()); else l3Status("Markera fundamenten i modellen först, tryck sedan här.", true); };
