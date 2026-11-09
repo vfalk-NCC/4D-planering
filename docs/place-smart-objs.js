@@ -80,9 +80,10 @@ function gjutStats(p, poly) {
     layers.forEach(([d, sMM, z1, z2]) => [[ang, z1], [ang + Math.PI / 2, z2]].forEach(([a]) => gjutScan(poly, a, sMM / 1000, cover).forEach(([q0, q1]) => { kg += Math.hypot(q1[0] - q0[0], q1[1] - q0[1]) * d * d / 162; })));
     txt = layers.map(([d, sMM], li) => `${li ? "Övre" : "Undre"} Ø${d} c/c${sMM}`).join(" · ");
   }
-  return { H, area, per, vol, bilar, tim, claim, kg, txt, layers, prof, PC };
+  const hAvg = PC && area > 1e-9 ? PC.vol / area : H, side = per * hAvg;   // formsida: omkrets × (medel)höjd – följer bergets underkant när den är ritad
+  return { H, area, per, side, vol, bilar, tim, claim, kg, txt, layers, prof, PC };
 }
-const gjutCalc = (p, poly) => { const t = gjutStats(p, poly); return [["Yta", smFmt(t.area, 1) + " m²"], t.PC ? ["Tjocklek", smFmt(t.PC.tmin * 1000, 0) + "–" + smFmt(t.PC.tmax * 1000, 0) + " mm (följer berget)"] : ["Tjocklek", smFmt(t.H * 1000, 0) + " mm"], ["Volym", smFmt(t.vol, 1) + " m³"], ["Betongbilar", `ca ${t.bilar} st · ${smFmt(t.tim, 1)} h`], ...(t.txt ? [["Armering", smFmt(t.kg, 0) + " kg · " + smFmt(t.kg / Math.max(0.1, t.vol), 0) + " kg/m³"]] : []), ["Markanspråk", "ca " + smFmt(t.claim, 0) + " m² (med 1 m runt om)"]]; };
+const gjutCalc = (p, poly) => { const t = gjutStats(p, poly); return [["Yta", smFmt(t.area, 1) + " m²"], t.PC ? ["Tjocklek", smFmt(t.PC.tmin * 1000, 0) + "–" + smFmt(t.PC.tmax * 1000, 0) + " mm (följer berget)"] : ["Tjocklek", smFmt(t.H * 1000, 0) + " mm"], ["Volym", smFmt(t.vol, 1) + " m³"], ["Formsida", smFmt(t.side, 1) + " m² (omkrets " + smFmt(t.per, 1) + " m)"], ["Betongbilar", `ca ${t.bilar} st · ${smFmt(t.tim, 1)} h`], ...(t.txt ? [["Armering", smFmt(t.kg, 0) + " kg · " + smFmt(t.kg / Math.max(0.1, t.vol), 0) + " kg/m³"]] : []), ["Markanspråk", "ca " + smFmt(t.claim, 0) + " m² (med 1 m runt om)"]]; };
 /* Utskärningens hörn (lokalt, relativt mitten) för handtagen: [tecken, x, y] – L-form ett hörn, T- och U-form två. */
 function gjutCuts(p) {
   const L = p.L / 2, B = p.B / 2, f = smF(p, "form", "Rektangel"), cl = Math.max(0.5, Math.min(smN(p, "cutL", 4), p.L - 1)), cb = Math.max(0.5, Math.min(smN(p, "cutB", 3), p.B - 1)), corners = [];

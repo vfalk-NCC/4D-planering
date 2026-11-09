@@ -114,7 +114,7 @@ function l3gfRows() {
     let poly = null; try { poly = p.type === "sm:gjutform" ? gjutFreePoly(p) : gjutPoly(p); } catch (e) { poly = null; }
     if (!poly || poly.length < 3) return null; let st; try { st = gjutStats(p, poly); } catch (e) { return null; }
     const xs = poly.map(q => q[0]), ys = poly.map(q => q[1]), L = Math.max(...xs) - Math.min(...xs), B = Math.max(...ys) - Math.min(...ys);
-    return { id: p.id, k: p.name || "Gjutform", L, B, H: st.H, area: st.area, vol: st.vol, side: st.per * st.H, per: st.per, bilar: st.bilar, tim: st.tim, kg: st.kg, kval: (p.f && p.f.kval) || "C30/37", start: p.start || "", end: p.end || "", note: p.note || "" };
+    return { id: p.id, k: p.name || "Gjutform", L, B, H: st.H, area: st.area, vol: st.vol, side: st.side != null ? st.side : st.per * st.H, per: st.per, bilar: st.bilar, tim: st.tim, kg: st.kg, kval: (p.f && p.f.kval) || "C30/37", start: p.start || "", end: p.end || "", note: p.note || "" };
   }).filter(Boolean);
 }
 const l3gfWeek = iso => { if (!iso) return "Utan datum"; const d = new Date(iso + "T00:00:00Z"); if (isNaN(d)) return "Utan datum"; const dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow + 3); const y = d.getUTCFullYear(), j = new Date(Date.UTC(y, 0, 4)); return `${y}-v${String(1 + Math.round(((d - j) / 864e5 - 3 + ((j.getUTCDay() + 6) % 7)) / 7)).padStart(2, "0")}`; };
