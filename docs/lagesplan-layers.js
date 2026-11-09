@@ -1971,7 +1971,7 @@ function openSitePop(rec, isNew) {
   const r = $("viewport").getBoundingClientRect();
   const [sx, sy] = stageToScreen(anchor);
   spopTools(pop);
-  placeSitePop(pop, sx + 16, sy + 16);
+  placeSitePop(pop, sx + 16, sy + 16); pop.scrollTop = 0;
   if (typeof bindStoragePop === "function") bindStoragePop(pop, rec);
   // Bara nya objekt får markören i textfältet – ett klickat objekt ska kunna tas bort med Delete.
   { // Kopiera/klistra in egenskaper
@@ -2090,9 +2090,21 @@ function spopTools(pop) {
   pin.onclick = e => { e.stopPropagation(); const pr = spopPrefs(); pr.pin = !pr.pin; if (pr.pin) pr.pos = [pop.offsetLeft, pop.offsetTop]; spopSave(pr); spopSync(pop); };
   spopSync(pop);
 }
+/* Hur mycket av planens fönster som faktiskt syns på skärmen: fönstret kan sticka ner under aktivitetsfältet (Windows) eller ligga delvis utanför skärmen,
+   då är innerHeight större än det man ser. Skärmens arbetsyta (availHeight) och webbläsarens verktygsrader används för att hitta den synliga höjden. */
+function visibleViewportHeight(r) {
+  let h = Math.min(r.height, window.innerHeight - Math.max(0, r.top));
+  try {
+    if (window.visualViewport) h = Math.min(h, window.visualViewport.height - Math.max(0, r.top));
+    const chrome = Math.max(0, window.outerHeight - window.innerHeight), vTop = window.screenY + chrome + Math.max(0, r.top), bottom = (screen.availTop || 0) + screen.availHeight;
+    const seen = bottom - vTop;   // synlig höjd från viewportens överkant (efter r.top) till skärmens/arbetsytans nederkant
+    if (seen > 240 && seen < h) h = seen;
+  } catch (e) { /* okänd skärm – använd fönstrets höjd */ }
+  return Math.max(120, h);
+}
 function placeSitePop(pop, x, y) {
   const r = $("viewport").getBoundingClientRect();
-  const visH = Math.max(120, Math.min(r.height, window.innerHeight - Math.max(0, r.top)));
+  const visH = visibleViewportHeight(r);
   const field = document.body.classList.contains("field");
   pop.style.maxHeight = `${Math.max(120, visH - (field ? 150 : 16))}px`;
   const pr = pop.querySelector(".sp-tools") ? spopPrefs() : {};
@@ -2126,7 +2138,7 @@ document.addEventListener("DOMContentLoaded", () => {
     e.preventDefault();
     const sx = e.clientX, sy = e.clientY, l0 = pop.offsetLeft, t0 = pop.offsetTop;
     const move = ev => {
-      const r = $("viewport").getBoundingClientRect(), visH = Math.min(r.height, window.innerHeight - Math.max(0, r.top));
+      const r = $("viewport").getBoundingClientRect(), visH = visibleViewportHeight(r);
       pop.style.left = `${Math.max(-pop.offsetWidth + 60, Math.min(r.width - 60, l0 + ev.clientX - sx))}px`;
       pop.style.top = `${Math.max(0, Math.min(visH - 30, t0 + ev.clientY - sy))}px`;
       pop.dataset.moved = "1";

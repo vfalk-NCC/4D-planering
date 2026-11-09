@@ -164,6 +164,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const p2 = await page.evaluate(() => [document.getElementById('sitePop').offsetLeft, document.getElementById('sitePop').offsetTop]);
     if (Math.abs(p1[0] - p2[0]) > 2 || Math.abs(p1[1] - p2[1]) > 2) fail('Pinnad ruta ska öppnas på samma plats: ' + JSON.stringify({ p1, p2 }));
     await page.click('.sp-pin'); await page.click('.sp-cancel'); await page.setViewportSize({ width: 1300, height: 850 }); }
+  { // Fönstret sticker ner under skärmens arbetsyta (aktivitetsfältet): rutan ska ändå rymmas i den synliga delen
+    await page.evaluate(() => { Object.defineProperty(screen, 'availHeight', { value: 620, configurable: true }); Object.defineProperty(screen, 'availTop', { value: 0, configurable: true }); closeSitePop(); });
+    await page.evaluate(async () => { document.querySelector('[data-site="scaffold"]').click(); siteTool.pts = [[6512320, 150220], [6512340, 150220]]; finishSiteTool(); await new Promise(r => setTimeout(r, 300)); });
+    const v = await page.evaluate(() => { const b = document.querySelector('.sp-save').getBoundingClientRect(), p = document.getElementById('sitePop'); return { saveBottom: Math.round(b.bottom), top: Math.round(p.getBoundingClientRect().top), scroll: p.scrollTop }; });
+    if (v.saveBottom > 622 || v.scroll !== 0) fail('Rutan ska rymmas i den synliga delen av skärmen (arbetsytan): ' + JSON.stringify(v));
+    await page.click('.sp-cancel'); await page.evaluate(() => { delete screen.availHeight; delete screen.availTop; }); }
   console.log('OK: ställning i plan – verktyg, mått och ritning i skala', JSON.stringify({ made: made.vals, inf, px, hit }));
   if (process.env.SLSHOT) { await page.evaluate(() => { document.getElementById('viewport') && 0; if (typeof renderAll === 'function') renderAll(); else if (typeof draw === 'function') draw(); }); await page.waitForTimeout(300); await page.screenshot({ path: process.env.SLSHOT }); }
   // Play/Pause vid datumreglaget (samma uppspelning som under Tid)
