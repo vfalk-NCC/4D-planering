@@ -4,7 +4,7 @@
    2) 🧊 Exportera IFC: en markör per placerad aktivitet (namn som 3D-text, egenskaper) med ett fast IFC-id (härlett ur aktivitetens id – samma fil kan uppdateras utan att kopplingarna tappas).
    3) 🔗 Koppla till Gantt: när IFC-filen är tänd i Trimble Connect kopplas varje aktivitet till sin markör (samma anrop som "Koppla" i 3D-editorn) – därefter hänger Gantten ihop med modellen. */
 const AP_FILE_PFX = "Aktiviteter ";
-const ap = { sel: null, q: "", panel: null, busy: false };
+const ap = { sel: null, q: "", panel: null, busy: false, multi: false };   // multi: efter en placering väljs nästa aktivitet automatiskt
 /* IFC-GlobalId (22 tecken) härlett ur id:t – samma id ger alltid samma GUID. */
 function apGuid(id) {
   let h = [0x9e3779b9, 0x243f6a88, 0xb7e15162, 0xdeadbeef]; const s = "4d-aktivitet:" + id;
@@ -35,8 +35,8 @@ async function apPlaceAt(pdfPt) {
   const ids = new Set(rows.map(r => r.id)), nm = fam.name, order = apUnplaced();
   const undo = async () => { positions = positions.filter(p => !ids.has(p.id)); ap.sel = fam; objInvalidate(); renderZones(); apRender(); await ghWriteJSON(token, dataPath("plan_item_positions.json"), arr => (Array.isArray(arr) ? arr : []).filter(r => !ids.has(r.id)), `Lägesplan: ångra placering ${nm}`); };
   objStatusUndoStack.push({ label: `placering av ${nm}`, undo });
-  ap.sel = order[0] || null; apRender(); setSaveStatus(`📌 "${nm}" placerad (${rows.length} rad${rows.length > 1 ? "er" : ""}). Sparar …`);
-  try { await ghWriteJSON(token, dataPath("plan_item_positions.json"), arr => [...(Array.isArray(arr) ? arr : []).filter(r => !ids.has(r.id)), ...prs], `Lägesplan: placera aktivitet ${nm}`); setSaveStatus(`📌 "${nm}" placerad och sparad.${ap.sel ? " Välj plats för nästa: " + ap.sel.name : " Alla aktiviteter är placerade."}`); }
+  ap.sel = ap.multi ? (order[0] || null) : null; if (!ap.multi && typeof objTool !== "undefined" && objTool === "actplace") objToolSet("actplace"); apRender(); setSaveStatus(`📌 "${nm}" placerad (${rows.length} rad${rows.length > 1 ? "er" : ""}). Sparar …`);
+  try { await ghWriteJSON(token, dataPath("plan_item_positions.json"), arr => [...(Array.isArray(arr) ? arr : []).filter(r => !ids.has(r.id)), ...prs], `Lägesplan: placera aktivitet ${nm}`); setSaveStatus(`📌 "${nm}" placerad och sparad.${ap.sel ? " Välj plats för nästa: " + ap.sel.name : ""}`); }
   catch (e) { objStatusUndoStack.pop(); positions = positions.filter(p => !ids.has(p.id)); objInvalidate(); renderZones(); apRender(); setSaveStatus("⚠ Kunde inte spara placeringen: " + e.message); }
 }
 async function apRemove(fam) {
@@ -95,7 +95,7 @@ function apPanel() {
   #apPanel .ap-b{padding:8px 12px;overflow:auto;display:flex;flex-direction:column;gap:6px}#apPanel input[type=search]{width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px}
   #apPanel .ap-it{padding:6px 8px;border:1px solid #e2e8f0;border-radius:8px;cursor:pointer;line-height:1.25}#apPanel .ap-it:hover{background:#f1f5f9}#apPanel .ap-it.on{background:#2563eb;color:#fff;border-color:#2563eb}#apPanel .ap-it small{opacity:.75;display:block}
   #apPanel .ap-act{display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid #e2e8f0}#apPanel .ap-act button{flex:1;min-width:120px}#apPanel .ap-pl{display:flex;align-items:center;gap:6px;padding:3px 0}#apPanel .ap-pl span{flex:1}#apPanel .ap-x{border:0;background:none;cursor:pointer;color:#b91c1c}
-  #apPanel .ap-h{font-weight:600;margin-top:4px;color:#475569}`; document.head.appendChild(st);
+  #apPanel .ap-h{font-weight:600;margin-top:4px;color:#475569}#apPanel .ap-multi{display:flex;gap:6px;align-items:center;font-size:12px;color:#475569}`; document.head.appendChild(st);
   const el = document.createElement("div"); el.id = "apPanel"; el.className = "hidden"; document.body.appendChild(el); ap.panel = el; return el;
 }
 function apRender() {
@@ -104,11 +104,11 @@ function apRender() {
   placed.forEach(it => { const k = apFam(it); if (!fams.has(k)) fams.set(k, { key: k, rows: [], name: String(it.activity || apName(it)) }); fams.get(k).rows.push(it); });
   el.innerHTML = `<h4><span>📌 Placera aktiviteter</span><button type="button" class="ap-close" title="Stäng">✕</button></h4>
     <div class="ap-b"><div class="muted">${list.length ? `Välj en aktivitet utan 3D-koppling och tryck sedan i planen där pricken ska ligga.` : "Alla okopplade aktiviteter har redan en prick."}</div>
-    <input type="search" placeholder="Sök aktivitet, område, entreprenör…" value="${escHtml(ap.q)}">
+    <input type="search" placeholder="Sök aktivitet, område, entreprenör…" value="${escHtml(ap.q)}"><label class="ap-multi"><input type="checkbox" id="apMulti"${ap.multi ? " checked" : ""}> Placera flera i rad (nästa aktivitet väljs automatiskt)</label>
     ${shown.slice(0, 200).map((f, i) => `<div class="ap-it${ap.sel && ap.sel.key === f.key ? " on" : ""}" data-i="${i}"><b>${escHtml(f.name)}</b>${f.rows.length > 1 ? ` · ${f.rows.length} rader` : ""}<small>${escHtml([f.it.area, f.it.contractor, f.it.start_date ? f.it.start_date + " → " + (f.it.end_date || "") : ""].filter(Boolean).join(" · "))}</small></div>`).join("")}${shown.length > 200 ? `<div class="muted">… ${shown.length - 200} till – sök för att hitta fler.</div>` : ""}
     ${fams.size ? `<div class="ap-h">Placerade (${placed.length})</div>${[...fams.values()].map((f, i) => `<div class="ap-pl"><span>${escHtml(f.name)}${f.rows.length > 1 ? ` · ${f.rows.length}` : ""}</span><button type="button" class="ap-x" data-r="${i}" title="Ta bort pricken">✕</button></div>`).join("")}` : ""}</div>
     <div class="ap-act"><button type="button" id="apExp" ${placed.length ? "" : "disabled"} title="Skapar en IFC-fil med en markör per placerad aktivitet och sparar den i Trimble Connect">🧊 Exportera IFC till TC</button><button type="button" id="apLink" ${placed.length ? "" : "disabled"} title="Kopplar aktiviteterna till markörerna i den exporterade IFC-filen (filen måste vara tänd i TC)">🔗 Koppla till Gantt</button></div>`;
-  el.querySelector(".ap-close").onclick = apClose; el.querySelector("input").oninput = e => { ap.q = e.target.value; const pos = e.target.selectionStart; apRender(); const i2 = el.querySelector("input"); i2.focus(); i2.setSelectionRange(pos, pos); };
+  el.querySelector(".ap-close").onclick = apClose; el.querySelector("#apMulti").onchange = e => { ap.multi = e.target.checked; }; el.querySelector("input").oninput = e => { ap.q = e.target.value; const pos = e.target.selectionStart; apRender(); const i2 = el.querySelector("input"); i2.focus(); i2.setSelectionRange(pos, pos); };
   el.querySelectorAll(".ap-it").forEach(d => d.onclick = () => { ap.sel = shown[+d.dataset.i]; if (objTool !== "actplace") objToolSet("actplace"); apRender(); setSaveStatus(`📌 Tryck i planen där "${ap.sel.name}" ska ligga.`); });
   el.querySelectorAll(".ap-x").forEach(b => b.onclick = () => apRemove([...fams.values()][+b.dataset.r])); el.querySelector("#apExp").onclick = apExport; el.querySelector("#apLink").onclick = apCouple;
 }

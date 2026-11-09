@@ -1636,7 +1636,7 @@ function bindViewport() {
     // Upplåsta objektmarkeringar dras (lagesplan-objmarks.js).
     if (typeof objMarkPointerDown === "function" && objMarkPointerDown(e)) return;
     // Prickverktyg (lagesplan-objstatus.js): dra en ruta och sätt status, eller klicka för en ny prick.
-    if (typeof objTool !== "undefined" && objTool && e.button === 0 && plan && plan.calib) { e.preventDefault(); drag = objTool === "status" ? { statusBox: true, start: stagePoint(e) } : { addDot: true, start: stagePoint(e), x: e.clientX, y: e.clientY }; return; }
+    if (typeof objTool !== "undefined" && objTool && e.button === 0 && plan && plan.calib) { e.preventDefault(); drag = objTool === "status" ? { statusBox: true, start: stagePoint(e) } : { addDot: true, start: stagePoint(e), x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty, moved: false }; return; }   // drag = panorera (klick utan drag placerar)
     // Alt + dra: släck alla objekt inom rutan.
     if (e.altKey && e.button === 0 && plan && plan.calib) { e.preventDefault(); drag = { hideBox: true, start: stagePoint(e) }; return; }
     // Noteringar/etablering: flytta, ändra form och rotera (lagesplan-layers.js).

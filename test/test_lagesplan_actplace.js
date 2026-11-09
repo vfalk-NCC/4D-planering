@@ -57,7 +57,14 @@ const store = new Map([[`projects/${PID}/plan_items.json`, JSON.stringify(items)
   if (!JSON.parse(store.get(`projects/${PID}/plan_item_positions.json`)).some(r => r.id === 'x' && r.placed)) fail('Placeringen ska sparas i projektet');
   if (!(await page.evaluate(() => objectShapesInPdf().some(o => o.it.id === 'x')))) fail('Pricken ska synas i planen');
   if (!(await page.evaluate(() => objIsFree(items.find(i => i.id === 'x'))))) fail('Placerad prick ska gå att dra fritt');
-  // Nästa aktivitet väljs automatiskt – placera den också.
+  if ((await page.evaluate(() => objTool)) !== null || (await page.evaluate(() => ap.sel)) !== null) fail('Efter en placering ska verktyget avslutas (inget klick placerar fler av misstag)');
+  { // Drag med musen i verktygsläget ska panorera, inte förstöra vyn eller placera
+    await page.click('#apPanel .ap-it >> text=Etablering kontor'); await page.waitForTimeout(100);
+    const v0 = await page.evaluate(() => [view.tx, view.ty]);
+    await page.mouse.move(vb.x + 300, vb.y + 300); await page.mouse.down(); await page.mouse.move(vb.x + 360, vb.y + 340, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(200);
+    const v1 = await page.evaluate(() => [view.tx, view.ty, apPlacedRows().length]);
+    if (!v1.every(Number.isFinite) || Math.abs(v1[0] - v0[0] - 60) > 1 || Math.abs(v1[1] - v0[1] - 40) > 1 || v1[2] !== 1) fail('Drag i placeringsläget ska panorera (inte ge NaN eller placera): ' + JSON.stringify({ v0, v1 })); }
+  await page.evaluate(() => { ap.multi = true; });
   await page.mouse.click(vb.x + 600, vb.y + 500); await page.waitForTimeout(500);
   if ((await page.evaluate(() => apPlacedRows().length)) !== 2) fail('Båda aktiviteterna ska vara placerade');
   console.log('OK: okopplade aktiviteter placeras med klick i planen och sparas');

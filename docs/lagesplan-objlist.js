@@ -23,6 +23,7 @@ function objListFamilies() {
     .sort((a, b) => famName(a.it).localeCompare(famName(b.it), "sv", { numeric: true }) || String(a.it.area || "").localeCompare(String(b.it.area || ""), "sv"));
 }
 function objRowsHtml(fams, opts = {}) {
+  if (opts.hidden) return "";   // hopfälld mapp: bygg inga rader (tusentals aktiviteter gör annars varje ritning långsam)
   const day = $("dateInput").value || todayIso();
   return fams.map(f => {
     const off = f.hidden === f.rows.length, part = f.hidden && !off, canPlace = f.unplaced && f.rows.some(r => !r.model_id);
