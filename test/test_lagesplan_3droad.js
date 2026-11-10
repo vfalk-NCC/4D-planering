@@ -232,6 +232,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (process.env.SHOT3) { await page.waitForTimeout(500); await page.screenshot({ path: process.env.SHOT3 }); }
   if (Math.abs(ly.D - 0.7) > 1e-6 || ly.layers.length !== 3 || !ly.volOk || !ly.slopeFromTerrass || !ly.earthChanged || ly.sec[0] !== 3 || ly.sec[1] !== 0.7 || !ly.dxf || ly.objs.length !== 3 || !ly.closed) fail('Vägöverbyggnad: ' + JSON.stringify(ly));
   console.log('OK: vägöverbyggnad – lager med tjocklek, mängder per lager, terrassyta, schakt/fyllning till terrassen, objekt, sektion och DXF', JSON.stringify(ly));
+  // Menyerna i flikar: en flik i taget, kompakt sammanfattning alltid synlig.
+  const tb = await page.evaluate(async () => {
+    const vis = () => [...document.querySelectorAll('#v3RoadPanel [data-rtab]')].filter(e => !e.hidden).map(e => e.dataset.rtab), out = {};
+    out.def = vis(); document.querySelector('#v3RoadPanel [data-rt="over"]').click(); out.over = vis(); out.pref = l3Prefs().rdTab; out.mini = /Schakt/.test(document.querySelector('#v3RoadPanel [data-rmini]').textContent);
+    document.querySelector('#v3RoadPanel [data-rt="kor"]').click(); out.kor = vis(); out.veh = !!document.querySelector('#v3RoadPanel [data-rtab="kor"] select[data-rv]');
+    document.querySelector('#v3RoadPanel [data-rt="vag"]').click(); out.vag = vis(); out.tabs = document.querySelectorAll('#v3RoadPanel [data-rt]').length; out.h = Math.round(document.getElementById('v3RoadPanel').getBoundingClientRect().height);
+    return out; });
+  if (tb.over.join() !== 'over' || tb.kor.join() !== 'kor' || !tb.veh || tb.vag.join() !== 'vag' || tb.tabs !== 5 || tb.pref !== 'over' || !tb.mini) fail('Flikar i byggvägspanelen: ' + JSON.stringify(tb));
+  console.log('OK: byggvägspanelen har flikar (Väg, Punkter, Breddning, Överbyggnad, Kör) och en kompakt sammanfattning', JSON.stringify(tb));
+  if (process.env.SHOT4) { await page.evaluate(() => { l3SetPref('rdTab', 'over'); l3rPanel(); }); await page.screenshot({ path: process.env.SHOT4 }); }
   // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
   const hd = await page.evaluate(async () => {
     const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;
