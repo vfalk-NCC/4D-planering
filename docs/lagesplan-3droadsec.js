@@ -17,17 +17,17 @@ const l3rsNice = v => { const p = Math.pow(10, Math.floor(Math.log10(v))), f = v
 /* ---- Snittets geometri vid sträckan s ---- */
 function l3rsSection(c, s) {
   if (!c || !c.st || !c.ctx) return null;
-  const W = c.W, a = l3rAt(c.st, s), nx = -Math.sin(a.yaw), ny = Math.cos(a.yaw), gz = c.ctx.gz, spec = c.spec;
-  const g0 = gz(a.x, a.y), p = { x: a.x, y: a.y, z: a.z, nx, ny, g: g0 === null || g0 === undefined ? a.z : g0 };
+  const hw = l3rHW(c.spec, s), wl = hw.l, wr = hw.r, W = wl + wr, a = l3rAt(c.st, s), nx = -Math.sin(a.yaw), ny = Math.cos(a.yaw), gz = c.ctx.gz, spec = c.spec;
+  const g0 = gz(a.x, a.y), p = { x: a.x, y: a.y, z: a.z, nx, ny, wl, wr, g: g0 === null || g0 === undefined ? a.z : g0 };
   const SL = c.ctx.slope(p, 1), SR = c.ctx.slope(p, -1);   // vänster (+n) och höger (−n)
-  const ext = Math.min(W / 2 + (Number(spec.reach) || 25) + 3, W / 2 + Math.max(SL.d || 0, SR.d || 0) + 3), step = 0.25, ground = [];
+  const ext = Math.min(Math.max(wl, wr) + (Number(spec.reach) || 25) + 3, Math.max(wl + (SL.d || 0), wr + (SR.d || 0)) + 3), step = 0.25, ground = [];
   for (let t = -ext; t <= ext + 1e-9; t += step) { const z = gz(a.x + nx * t, a.y + ny * t); ground.push([t, z === null || z === undefined ? null : z]); }
   const kc = 1 / Math.max(0.2, spec.cutR), kf = 1 / Math.max(0.2, spec.fillR);
-  const des = t => { const at = Math.abs(t), S = t >= 0 ? SL : SR; if (at <= W / 2) return a.z; const d = at - W / 2; if (d > (S.d || 0) + 1e-6 || S.kind === "none") return null; return S.kind === "cut" ? a.z + d * kc : a.z - d * kf; };
+  const des = t => { const at = Math.abs(t), S = t >= 0 ? SL : SR, hh = t >= 0 ? wl : wr; if (at <= hh) return a.z; const d = at - hh; if (d > (S.d || 0) + 1e-6 || S.kind === "none") return null; return S.kind === "cut" ? a.z + d * kc : a.z - d * kf; };
   let cut = 0, fill = 0;
   for (let i = 0; i < ground.length - 1; i++) { const t = (ground[i][0] + ground[i + 1][0]) / 2, gm = ground[i][1] !== null && ground[i + 1][1] !== null ? (ground[i][1] + ground[i + 1][1]) / 2 : null, d = des(t); if (gm === null || d === null) continue; const dz = gm - d; if (dz > 0) cut += dz * step; else fill += -dz * step; }
-  const line = [[W / 2 + (SL.d || 0), SL.qz], [W / 2, a.z], [-W / 2, a.z], [-(W / 2 + (SR.d || 0)), SR.qz]].filter((q, i) => !(i === 0 && SL.kind === "none") && !(i === 3 && SR.kind === "none"));
-  return { s, x: a.x, y: a.y, nx, ny, z: a.z, gc: g0, W, SL, SR, ext, ground, des, line, cut, fill, kc, kf, spec };
+  const line = [[wl + (SL.d || 0), SL.qz], [wl, a.z], [-wr, a.z], [-(wr + (SR.d || 0)), SR.qz]].filter((q, i) => !(i === 0 && SL.kind === "none") && !(i === 3 && SR.kind === "none"));
+  return { s, x: a.x, y: a.y, nx, ny, z: a.z, gc: g0, W, wl, wr, SL, SR, ext, ground, des, line, cut, fill, kc, kf, spec };
 }
 /* Punktmolnets punkter i en tunn skiva (±0,35 m) runt snittet: [[tl, z], …] – tl = avstånd åt vänster (som i snittet). */
 function l3rsScatter(sec) {
@@ -73,15 +73,15 @@ function l3rsDrawSection() {
   ctx.strokeStyle = L3RS_COL.ground; ctx.lineWidth = 2; ctx.beginPath(); let pen = false; sec.ground.forEach(q => { if (q[1] === null) { pen = false; return; } if (!pen) { ctx.moveTo(X(q[0]), Y(q[1])); pen = true; } else ctx.lineTo(X(q[0]), Y(q[1])); }); ctx.stroke();
   // vägen och slänterna
   const seg = (a, b, col, lw) => { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(X(a[0]), Y(a[1])); ctx.lineTo(X(b[0]), Y(b[1])); ctx.stroke(); };
-  const Wh = sec.W / 2; ctx.fillStyle = "rgba(55,65,81,.18)"; ctx.fillRect(X(Wh), Y(sec.z), 2 * Wh * sc, 5);
-  if (sec.SL.kind !== "none") seg([Wh, sec.z], [Wh + sec.SL.d, sec.SL.qz], sec.SL.kind === "cut" ? L3RS_COL.cut : L3RS_COL.fill, 3);
-  if (sec.SR.kind !== "none") seg([-Wh, sec.z], [-Wh - sec.SR.d, sec.SR.qz], sec.SR.kind === "cut" ? L3RS_COL.cut : L3RS_COL.fill, 3);
-  seg([Wh, sec.z], [-Wh, sec.z], L3RS_COL.road, 4);
+  const Wl = sec.wl, Wr = sec.wr; ctx.fillStyle = "rgba(55,65,81,.18)"; ctx.fillRect(X(Wl), Y(sec.z), (Wl + Wr) * sc, 5);
+  if (sec.SL.kind !== "none") seg([Wl, sec.z], [Wl + sec.SL.d, sec.SL.qz], sec.SL.kind === "cut" ? L3RS_COL.cut : L3RS_COL.fill, 3);
+  if (sec.SR.kind !== "none") seg([-Wr, sec.z], [-Wr - sec.SR.d, sec.SR.qz], sec.SR.kind === "cut" ? L3RS_COL.cut : L3RS_COL.fill, 3);
+  seg([Wl, sec.z], [-Wr, sec.z], L3RS_COL.road, 4);
   // mått
   ctx.fillStyle = L3RS_COL.dim; ctx.strokeStyle = L3RS_COL.dim; ctx.lineWidth = 1; ctx.font = "12px system-ui"; ctx.textAlign = "center";
-  const yd = Y(sec.z) + 22; ctx.beginPath(); ctx.moveTo(X(Wh), yd); ctx.lineTo(X(-Wh), yd); ctx.moveTo(X(Wh), yd - 4); ctx.lineTo(X(Wh), yd + 4); ctx.moveTo(X(-Wh), yd - 4); ctx.lineTo(X(-Wh), yd + 4); ctx.stroke();
-  ctx.textBaseline = "top"; ctx.fillText(`${l3rFmt(sec.W, 2)} m`, X(0), yd + 4); ctx.textBaseline = "middle";
-  [[sec.SL, 1], [sec.SR, -1]].forEach(([S, sg]) => { if (S.kind === "none") return; const k = S.kind === "cut" ? sec.spec.cutR : sec.spec.fillR, mx = sg * (Wh + S.d / 2), my = sec.z + (S.qz - sec.z) / 2; ctx.fillStyle = S.kind === "cut" ? L3RS_COL.cut : L3RS_COL.fill; ctx.textAlign = "center"; ctx.fillText(`1:${l3rFmt(k, 2)}`, X(mx) + (sg > 0 ? -26 : 26), Y(my) + (S.kind === "cut" ? -12 : 12)); ctx.fillStyle = "#475569"; ctx.fillText(`${S.hit ? "" : "≥ "}${l3rFmt(S.d, 1)} m`, X(sg * (Wh + S.d)), Y(S.qz) - 12); });
+  const yd = Y(sec.z) + 22; ctx.beginPath(); ctx.moveTo(X(Wl), yd); ctx.lineTo(X(-Wr), yd); ctx.moveTo(X(Wl), yd - 4); ctx.lineTo(X(Wl), yd + 4); ctx.moveTo(X(-Wr), yd - 4); ctx.lineTo(X(-Wr), yd + 4); ctx.stroke();
+  ctx.textBaseline = "top"; ctx.fillText(`${l3rFmt(sec.W, 2)} m`, X((Wl - Wr) / 2), yd + 4); ctx.textBaseline = "middle";
+  [[sec.SL, 1], [sec.SR, -1]].forEach(([S, sg]) => { if (S.kind === "none") return; const k = S.kind === "cut" ? sec.spec.cutR : sec.spec.fillR, Wh = sg > 0 ? Wl : Wr, mx = sg * (Wh + S.d / 2), my = sec.z + (S.qz - sec.z) / 2; ctx.fillStyle = S.kind === "cut" ? L3RS_COL.cut : L3RS_COL.fill; ctx.textAlign = "center"; ctx.fillText(`1:${l3rFmt(k, 2)}`, X(mx) + (sg > 0 ? -26 : 26), Y(my) + (S.kind === "cut" ? -12 : 12)); ctx.fillStyle = "#475569"; ctx.fillText(`${S.hit ? "" : "≥ "}${l3rFmt(S.d, 1)} m`, X(sg * (Wh + S.d)), Y(S.qz) - 12); });
   { const above = sec.gc !== null && sec.gc !== undefined && sec.gc >= sec.z; ctx.textAlign = "left"; ctx.fillStyle = L3RS_COL.road; ctx.fillText(`Väg ${l3rFmt(sec.z, 2)}`, X(0) + 8, Y(sec.z) + (above ? 18 : -12));
     if (sec.gc !== null && sec.gc !== undefined) { ctx.fillStyle = L3RS_COL.ground; ctx.fillText(`Mark ${l3rFmt(sec.gc, 2)}`, X(0) + 8, Y(sec.gc) + (above ? -12 : 14)); } }
   // rubrik
@@ -97,6 +97,7 @@ function l3rsDrawProfile() {
   const gs = l3rsNice((zmax - zmin) / 3); for (let z = Math.ceil(zmin / gs) * gs; z <= zmax; z += gs) { ctx.beginPath(); ctx.moveTo(L, Y(z)); ctx.lineTo(w - R, Y(z)); ctx.stroke(); ctx.fillText(l3rFmt(z, gs < 1 ? 1 : 0), L - 6, Y(z)); }
   const line = (key, col, lw) => { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); st.forEach((p, i) => { i ? ctx.lineTo(X(p.s), Y(p[key])) : ctx.moveTo(X(p.s), Y(p[key])); }); ctx.stroke(); };
   ctx.beginPath(); st.forEach((p, i) => { i ? ctx.lineTo(X(p.s), Y(p.g)) : ctx.moveTo(X(p.s), Y(p.g)); }); for (let i = st.length - 1; i >= 0; i--) ctx.lineTo(X(st[i].s), Y(st[i].z)); ctx.closePath(); ctx.fillStyle = "rgba(100,116,139,.12)"; ctx.fill();
+  (c.spec.widen || []).forEach(z => { ctx.fillStyle = "rgba(245,158,11,.22)"; ctx.fillRect(X(Math.max(0, z.s0)), T, Math.max(2, X(Math.min(Ls, z.s1)) - X(Math.max(0, z.s0))), h - T - B); });   // breddningar
   line("g", L3RS_COL.ground, 1.6); line("z", "#16a34a", 2.4);
   ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"; ctx.fillStyle = "#64748b"; ctx.fillText("0", X(0), h - 3); ctx.fillText(`${l3rFmt(Ls, 0)} m`, X(Ls), h - 3);
   const x = X(Math.max(0, Math.min(Ls, l3rs.s))); ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, T - 2); ctx.lineTo(x, h - B + 2); ctx.stroke(); ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(x, T + 3, 4, 0, 7); ctx.fill();
@@ -110,7 +111,7 @@ function l3rsRedraw() {
 function l3rsDirty() { if (!l3rs.open) return; clearTimeout(l3rs.dirtyTimer); l3rs.scatKey = ""; l3rs.s = Math.min(l3rs.s, l3rsLen()); l3rs.dirtyTimer = setTimeout(l3rsRedraw, 30); }
 /* Snittlinjen i 3D-vyn. */
 function l3rsLine(grp, mk) {
-  if (!l3rs.open || !l3rs.sec) return; const sec = l3rs.sec, O = l3.O, e = sec.W / 2 + Math.max(sec.SL.d || 0, sec.SR.d || 0) + 2, z = sec.z + 0.3;
+  if (!l3rs.open || !l3rs.sec) return; const sec = l3rs.sec, O = l3.O, e = Math.max(sec.wl, sec.wr) + Math.max(sec.SL.d || 0, sec.SR.d || 0) + 2, z = sec.z + 0.3;
   const P = [-e, e].map(t => new THREE.Vector3(sec.x + sec.nx * t - O[0], sec.y + sec.ny * t - O[1], z - O[2]));
   const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(P), new THREE.LineBasicMaterial({ color: 0xef4444, depthTest: false })); l.renderOrder = 14; l.userData.noHit = true; l.raycast = () => {}; grp.add(l);
   void mk;
@@ -188,11 +189,11 @@ function l3rsDxf(interval, withProfile) {
     let run = []; const flush = () => { if (run.length > 1) pl("SEK-MARK", run, false); run = []; };
     sec.ground.forEach(q => { if (q[1] === null) flush(); else run.push([X(q[0]), Y(q[1])]); }); flush();
     // väg och slänter
-    pl("SEK-VAG", [[X(sec.W / 2), Y(sec.z)], [X(-sec.W / 2), Y(sec.z)]], false);
-    [[sec.SL, 1], [sec.SR, -1]].forEach(([S, sg]) => { if (S.kind === "none") return; pl(S.kind === "cut" ? "SEK-SLANT-SCHAKT" : "SEK-SLANT-FYLLNING", [[X(sg * sec.W / 2), Y(sec.z)], [X(sg * (sec.W / 2 + S.d)), Y(S.qz)]], false); tx("SEK-MATT", X(sg * (sec.W / 2 + S.d / 2)) + (sg > 0 ? -1.2 : 1.2), Y(sec.z + (S.qz - sec.z) / 2) + (S.kind === "cut" ? 0.7 : -1.1), 0.6, `1:${l3rFmt(S.kind === "cut" ? sec.spec.cutR : sec.spec.fillR, 2)}`, { mid: true }); tx("SEK-MATT", X(sg * (sec.W / 2 + S.d)), Y(S.qz) + 0.8, 0.5, `${l3rFmt(S.qz, 2)}`, { mid: true }); });
+    pl("SEK-VAG", [[X(sec.wl), Y(sec.z)], [X(-sec.wr), Y(sec.z)]], false);
+    [[sec.SL, 1], [sec.SR, -1]].forEach(([S, sg]) => { if (S.kind === "none") return; const hh = sg > 0 ? sec.wl : sec.wr; pl(S.kind === "cut" ? "SEK-SLANT-SCHAKT" : "SEK-SLANT-FYLLNING", [[X(sg * hh), Y(sec.z)], [X(sg * (hh + S.d)), Y(S.qz)]], false); tx("SEK-MATT", X(sg * (hh + S.d / 2)) + (sg > 0 ? -1.2 : 1.2), Y(sec.z + (S.qz - sec.z) / 2) + (S.kind === "cut" ? 0.7 : -1.1), 0.6, `1:${l3rFmt(S.kind === "cut" ? sec.spec.cutR : sec.spec.fillR, 2)}`, { mid: true }); tx("SEK-MATT", X(sg * (hh + S.d)), Y(S.qz) + 0.8, 0.5, `${l3rFmt(S.qz, 2)}`, { mid: true }); });
     // mått: bredd + nivåer vid vägkanterna och mitten
-    const yd = Y(sec.z) - 1.6; pl("SEK-MATT", [[X(sec.W / 2), yd], [X(-sec.W / 2), yd]], false); pl("SEK-MATT", [[X(sec.W / 2), yd - 0.3], [X(sec.W / 2), yd + 0.3]], false); pl("SEK-MATT", [[X(-sec.W / 2), yd - 0.3], [X(-sec.W / 2), yd + 0.3]], false);
-    tx("SEK-MATT", X(0), yd - 1.0, 0.7, `${l3rFmt(sec.W, 2)} m`, { mid: true });
+    const yd = Y(sec.z) - 1.6; pl("SEK-MATT", [[X(sec.wl), yd], [X(-sec.wr), yd]], false); pl("SEK-MATT", [[X(sec.wl), yd - 0.3], [X(sec.wl), yd + 0.3]], false); pl("SEK-MATT", [[X(-sec.wr), yd - 0.3], [X(-sec.wr), yd + 0.3]], false);
+    tx("SEK-MATT", X((sec.wl - sec.wr) / 2), yd - 1.0, 0.7, `${l3rFmt(sec.W, 2)} m`, { mid: true });
     if (sec.gc !== null && sec.gc !== undefined) tx("SEK-TEXT", X(0), Y(sec.gc) + (sec.gc >= sec.z ? 0.6 : -1.2), 0.5, `Mark ${l3rFmt(sec.gc, 2)}`, { mid: true });
     tx("SEK-TEXT", X(0), Y(sec.z) + 0.55, 0.5, `Väg ${l3rFmt(sec.z, 2)}`, { mid: true });
   });

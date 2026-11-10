@@ -16,6 +16,17 @@ const L3R_DEF = { width: 5, grade: 10, smooth: 20, step: 2, cutR: 1, fillR: 1.5,
 const l3rFmt = (v, d = 1) => (Math.round(v * Math.pow(10, d)) / Math.pow(10, d)).toString().replace(".", ",");
 const l3rOk = z => z === z && z !== null && Math.abs(z) < 1e9;
 const l3rM3 = v => Math.round(v).toLocaleString("sv-SE").replace(/[  ]/g, " ") + " m³";
+/* Lokal breddning (Victor 2026-11-10: "lokal breddning för ett stort fundament"): zoner { s0, s1, add, side, taper } längs vägen – vägen blir "add" m bredare mellan s0 och s1
+   (på båda sidor eller bara vänster/höger) och avtonas mjukt över "taper" m före och efter. Returnerar halva bredden åt vänster (l) och höger (r) vid sträckan s. */
+function l3rHW(spec, s) {
+  const W = Math.max(1, Number(spec.width) || 5); let l = W / 2, r = W / 2;
+  (spec.widen || []).forEach(z => {
+    const a = Number(z.add) || 0, s0 = Number(z.s0), s1 = Number(z.s1), tp = Math.max(0.5, Number(z.taper) || 0); if (!a || !(s1 >= s0)) return;
+    let f = s >= s0 && s <= s1 ? 1 : s < s0 ? Math.max(0, 1 - (s0 - s) / tp) : Math.max(0, 1 - (s - s1) / tp); f = f * f * (3 - 2 * f);   // mjuk avtoning
+    if (z.side !== "R") l += a * f; if (z.side !== "L") r += a * f;
+  });
+  return { l, r };
+}
 const l3rTick = () => new Promise(r => setTimeout(r, 16));
 
 /* Ytor att följa: de som finns i vyn (punktmoln, modeller, DXF) – samma lista som Volym mot yta. */
@@ -72,7 +83,7 @@ async function l3rCompute(cur, alive) {
   const W = Math.max(1, Number(spec.width) || 5), reach = Math.max(2, Number(spec.reach) || 25), step = Math.max(0.5, Number(spec.step) || 2);
   const st = l3rStations(cur.pts, step); if (st.length < 2) return { err: "Vägen är för kort." }; st.pts = cur.pts;
   if (!srcs.length) return { err: "Tänd ett punktmoln, en 3D-modell eller en DXF och välj den under \"Följer\"." };
-  const m = W / 2 + reach + 3, xs = st.map(p => p.x), ys = st.map(p => p.y);
+  const maxAdd = Math.max(0, ...(spec.widen || []).map(z => Number(z.add) || 0)), m = W / 2 + maxAdd + reach + 3, xs = st.map(p => p.x), ys = st.map(p => p.y);
   const bd = { x0: Math.min(...xs) - m, x1: Math.max(...xs) + m, y0: Math.min(...ys) - m, y1: Math.max(...ys) + m };
   const area = (bd.x1 - bd.x0) * (bd.y1 - bd.y0), cell = Math.max(0.25, Math.sqrt(area / 160000)), grids = [];
   for (const k of srcs) {
@@ -87,10 +98,10 @@ async function l3rCompute(cur, alive) {
   else for (let i = 0; i < st.length; i++) if (st[i].g === null) { let a = i - 1, b = i + 1; while (a >= 0 && st[a].g === null) a--; while (b < st.length && st[b].g === null) b++; st[i].g = a >= 0 && b < st.length ? st[a].g + (st[b].g - st[a].g) * (st[i].s - st[a].s) / (st[b].s - st[a].s) : a >= 0 ? st[a].g : st[b].g; }
   const zd = l3rProfile(st, spec), n = st.length;
   // Riktning och normal per station.
-  st.forEach((p, i) => { const a = st[Math.max(0, i - 1)], b = st[Math.min(n - 1, i + 1)], dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1; p.tx = dx / L; p.ty = dy / L; p.nx = -p.ty; p.ny = p.tx; p.z = zd[i]; });
+  st.forEach((p, i) => { const a = st[Math.max(0, i - 1)], b = st[Math.min(n - 1, i + 1)], dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1; p.tx = dx / L; p.ty = dy / L; p.nx = -p.ty; p.ny = p.tx; p.z = zd[i]; const h = l3rHW(spec, p.s); p.wl = h.l; p.wr = h.r; });
   // Släntkant: marsch utåt från vägkanten tills släntytan möter marken.
   const slope = (p, sg) => {
-    const ex = p.x + sg * p.nx * W / 2, ey = p.y + sg * p.ny * W / 2, ze = p.z, g0 = gz(ex, ey) ?? p.g;   // saknas marken vid kanten används mittlinjens markhöjd
+    const hw = sg > 0 ? p.wl : p.wr, ex = p.x + sg * p.nx * hw, ey = p.y + sg * p.ny * hw, ze = p.z, g0 = gz(ex, ey) ?? p.g;   // saknas marken vid kanten används mittlinjens markhöjd
     const kind = g0 > ze + 0.01 ? "cut" : "fill", k = kind === "cut" ? 1 / Math.max(0.2, spec.cutR) : 1 / Math.max(0.2, spec.fillR), dd = 0.25;
     if (Math.abs(g0 - ze) <= 0.01) return { ex, ey, ze, kind: "fill", d: 0, qx: ex, qy: ey, qz: ze, hit: true };
     let prevD = 0, prevDiff = g0 - ze, lastG = g0, holes = 0; void holes;   // diff = mark − släntyta (cut: >0 till dess släntytan nått marken)
@@ -108,10 +119,10 @@ async function l3rCompute(cur, alive) {
   // Tvärsnittsareor → volymer (medelareametoden).
   const dt = 0.5, area2 = p => { let cut = 0, fill = 0;
     for (const sg of [1, -1]) {
-      const S = sg > 0 ? p.L : p.R, k = S.kind === "cut" ? 1 / Math.max(0.2, spec.cutR) : 1 / Math.max(0.2, spec.fillR), tot = W / 2 + (S.d || 0);
+      const S = sg > 0 ? p.L : p.R, k = S.kind === "cut" ? 1 / Math.max(0.2, spec.cutR) : 1 / Math.max(0.2, spec.fillR), hw = sg > 0 ? p.wl : p.wr, tot = hw + (S.d || 0);
       for (let t = dt / 2; t < tot; t += dt) {
         const x = p.x + sg * p.nx * t, y = p.y + sg * p.ny * t, g = gz(x, y); if (g === null) continue;
-        const des = t <= W / 2 ? p.z : (S.kind === "cut" ? p.z + (t - W / 2) * k : p.z - (t - W / 2) * k), dz = g - des;
+        const des = t <= hw ? p.z : (S.kind === "cut" ? p.z + (t - hw) * k : p.z - (t - hw) * k), dz = g - des;
         if (dz > 0) cut += dz * dt; else fill += -dz * dt;
       }
     } return { cut, fill }; };
@@ -128,7 +139,7 @@ async function l3rCompute(cur, alive) {
   const tight = [];
   for (let i = 1; i < n - 1; i++) { const a = st[i - 1], b = st[i], c = st[i + 1], ab = Math.hypot(b.x - a.x, b.y - a.y), bc = Math.hypot(c.x - b.x, c.y - b.y), ca = Math.hypot(a.x - c.x, a.y - c.y), ar = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2; const R = ar > 1e-6 ? ab * bc * ca / (4 * ar) : Infinity; b.R = R; if (R < (Number(spec.minR) || 15)) tight.push({ i, R, x: b.x, y: b.y, z: b.z }); }
   const L2 = st[n - 1].s;
-  const res = { len: L2, len3, dz: st[n - 1].z - st[0].z, z0: st[0].z, z1: st[n - 1].z, maxG, avgG: nG ? sumG / nG : 0, cut: cutV, fill: fillV, net: cutV - fillV, slopeCut, slopeFill, roadArea: L2 * W, tight, maxCutDepth, maxFillDepth, unreached, cell, stations: n, miss };
+  const res = { len: L2, len3, dz: st[n - 1].z - st[0].z, z0: st[0].z, z1: st[n - 1].z, maxG, avgG: nG ? sumG / nG : 0, cut: cutV, fill: fillV, net: cutV - fillV, slopeCut, slopeFill, roadArea: st.reduce((a, p, i) => i ? a + (p.wl + p.wr + st[i - 1].wl + st[i - 1].wr) / 2 * (p.s - st[i - 1].s) : 0, 0), tight, maxCutDepth, maxFillDepth, unreached, cell, stations: n, miss };
   return { res, st, W, ctx: { gz, slope } };
 }
 
@@ -139,7 +150,7 @@ function l3rBuild(c) {
   const road = { pos: [], col: [], idx: [] }, cut = { pos: [], idx: [] }, fill = { pos: [], idx: [] };
   const crown = Number(spec.crown) || 0;
   for (let i = 0; i < n; i++) {
-    const p = st[i], l = [p.x + p.nx * W / 2 - org[0], p.y + p.ny * W / 2 - org[1], p.z - org[2]], r = [p.x - p.nx * W / 2 - org[0], p.y - p.ny * W / 2 - org[1], p.z - org[2]];
+    const p = st[i], l = [p.x + p.nx * p.wl - org[0], p.y + p.ny * p.wl - org[1], p.z - org[2]], r = [p.x - p.nx * p.wr - org[0], p.y - p.ny * p.wr - org[1], p.z - org[2]];
     const gr = i === 0 ? Math.abs(st[1].z - st[0].z) / (st[1].s - st[0].s || 1) : Math.abs(p.z - st[i - 1].z) / (p.s - st[i - 1].s || 1), cc = col(gr);
     road.pos.push(...l, ...r); road.col.push(...cc, ...cc);
     if (i) { const a = (i - 1) * 2; road.idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
@@ -193,7 +204,7 @@ function l3roadStart() {
   const pts = mp.map(p => [p.x + l3.O[0], p.y + l3.O[1], p.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000));
   l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp); if (typeof l3ClearMeasure === "function") l3ClearMeasure();
   const prev = l3road.last || {};
-  l3roadOpen({ pts, spec: { ...L3R_DEF, ...(prev.spec || {}), src: (prev.spec && prev.spec.src && prev.spec.src.length ? prev.spec.src : l3rDefaultSrc()) }, res: null, geom: null, st: null, busy: "", err: "" });
+  l3roadOpen({ pts, spec: { ...L3R_DEF, ...(prev.spec || {}), src: (prev.spec && prev.spec.src && prev.spec.src.length ? prev.spec.src : l3rDefaultSrc()), widen: [] }, res: null, geom: null, st: null, busy: "", err: "" });
 }
 function l3roadOpen(cur) {
   l3roadClose(true); l3road.cur = cur; l3road.seq++;
@@ -255,12 +266,16 @@ function l3rPanel() {
       ${spec.mode === "anchor" ? `<label class="v3-rd-n" style="grid-column:1/3" title="Punkten vars höjd är given. Dra i ringen för att ändra höjden."><span>Höjdpunkt</span><select data-ra style="flex:2;padding:3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit"><option value="-1" ${!(spec.anchor >= 0) ? "selected" : ""}>Högsta punkten du klickat</option>${c.pts.map((p, i) => `<option value="${i}" ${Number(spec.anchor) === i ? "selected" : ""}>Punkt ${i + 1} (${l3rFmt(p[2], 2)} m)</option>`).join("")}</select></label><label class="v3-rd-n" style="grid-column:1/3" title="Vägen går aldrig högre än höjdpunkten"><input type="checkbox" data-rc ${spec.cap !== false ? "checked" : ""} style="width:auto"><span>Aldrig över höjdpunkten</span></label>` : ""}
       <div class="v3-rd-seg" title="Höjdprofil"><button type="button" data-rm="anchor" class="${spec.mode === "anchor" ? "on" : ""}" title="En punkt på vägen har given höjd (som standard den högsta du klickat) – resten räknas därifrån med högsta lutning">Från höjdpunkt</button><button type="button" data-rm="terrain" class="${spec.mode === "terrain" ? "on" : ""}">Följ marken</button><button type="button" data-rm="straight" class="${spec.mode === "straight" ? "on" : ""}">Rak start → slut</button><button type="button" data-rm="pins" class="${spec.mode === "pins" ? "on" : ""}" title="Vägen går genom höjden i varje punkt du klickat ut (dra en ring för att ändra) – den högsta punkten blir vägens högsta">Genom mina punkter</button></div>
     </div>
+    <div class="v3-rd-w" title="Lokal breddning, t.ex. vid ett stort fundament: vägen blir bredare mellan två sträckor och avtonas mjukt"><div class="v3-rd-wh"><b>Breddningar</b><button type="button" data-rb="addw" title="Lägg till en breddning (vid snittet om tvärsektionen är öppen, annars mitt på vägen)">＋ Breddning</button></div>${(spec.widen || []).map((z, i) => `<div class="v3-rd-wr"><span>från</span><input type="number" data-rw="${i}:s0" value="${l3rFmt(z.s0, 1)}" step="1"><span>till</span><input type="number" data-rw="${i}:s1" value="${l3rFmt(z.s1, 1)}" step="1"><span>m  +</span><input type="number" data-rw="${i}:add" value="${z.add}" step="0.5" min="-10" max="30"><span>m</span><select data-rw="${i}:side"><option value="both" ${z.side !== "L" && z.side !== "R" ? "selected" : ""}>båda</option><option value="L" ${z.side === "L" ? "selected" : ""}>vänster</option><option value="R" ${z.side === "R" ? "selected" : ""}>höger</option></select><span title="Så långt före och efter avtonas breddningen">avtoning</span><input type="number" data-rw="${i}:taper" value="${z.taper}" step="1" min="1" max="100"><span>m</span><button type="button" data-rwx="${i}" title="Ta bort">✕</button></div>`).join("")}</div>
     <div class="v3-rd-drv" title="Lastbilen från Gå-läget kör vägen: nosen följer lutningen, den styr i kurvorna och går långsammare uppför"><button type="button" data-rb="drive" ${r ? "" : "disabled"}>${l3rDrv.on ? "⏸ Pausa" : l3rDrv.s > 0.5 ? "▶ Fortsätt" : "▶ Kör vägen"}</button><button type="button" data-rb="drvreset" title="Tillbaka till start">⏮</button><label title="Fart i km/h på plan väg"><input type="number" data-rk="speed" value="${spec.speed}" min="3" max="60" step="1"> km/h</label><label title="Kameran åker med lastbilen"><input type="checkbox" data-rf ${l3rDrv.follow ? "checked" : ""}> Följ</label><label title="Börja om när lastbilen kommit fram"><input type="checkbox" data-rl ${l3rDrv.loop ? "checked" : ""}> Loop</label><div data-rinfo class="v3-rd-info"></div></div>
     <div class="v3-vq-foot"><button type="button" class="primary" data-rb="make" ${r ? "" : "disabled"} title="Väg, schaktslänt och fyllningsslänt blir vanliga ytor (flytta, ändra, IFC, DXF)">Skapa objekt</button><button type="button" data-rb="undo" title="Ta bort sista punkten" ${c.pts.length > 2 ? "" : "disabled"}>↶</button><button type="button" data-rb="sect" ${r ? "" : "disabled"} title="Tvärsektion och längdprofil: se väg och slänter mot punktmolnet, färdas längs linjen och exportera som DXF">Tvärsektion</button><button type="button" data-rb="redraw" title="Rita om mittlinjen">Rita om</button><button type="button" data-rb="x">Stäng</button></div>`;
   const q = s => el.querySelector(s), qa = s => el.querySelectorAll(s), on = (k, fn) => qa(`[data-rb="${k}"]`).forEach(b => { b.onclick = fn; });
   qa("input[data-rk]").forEach(i => { i.oninput = () => { const v = Number(String(i.value).replace(",", ".")); if (Number.isFinite(v) && v >= Number(i.min) && v <= Number(i.max)) { spec[i.dataset.rk] = v; c.saved = false; l3rSchedule(350); } }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
   qa("input[data-rs]").forEach(i => { i.onchange = () => { const k = i.dataset.rs; spec.src = i.checked ? [...new Set([...spec.src, k])] : spec.src.filter(x => x !== k); l3rSchedule(0); }; });
   { const a = q("select[data-ra]"); if (a) a.onchange = () => { spec.anchor = Number(a.value); l3rSchedule(0); }; const cc = q("input[data-rc]"); if (cc) cc.onchange = () => { spec.cap = cc.checked; l3rSchedule(0); }; }
+  qa("input[data-rw],select[data-rw]").forEach(i => { const [k, key] = i.dataset.rw.split(":"), z = (spec.widen || [])[Number(k)]; const set = () => { if (!z) return; if (key === "side") z.side = i.value; else { const v = Number(String(i.value).replace(",", ".")); if (Number.isFinite(v)) z[key] = v; } c.saved = false; l3rSchedule(350); }; i.oninput = set; i.onchange = set; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
+  qa("[data-rwx]").forEach(b => { b.onclick = () => { spec.widen.splice(Number(b.dataset.rwx), 1); c.saved = false; l3rPanel(); l3rSchedule(0); }; });
+  on("addw", () => { const L = c.st ? c.st[c.st.length - 1].s : 40, mid = typeof l3rs !== "undefined" && l3rs.open ? l3rs.s : L / 2; (spec.widen = spec.widen || []).push({ s0: Math.max(0, Math.round(mid - 10)), s1: Math.min(Math.round(L), Math.round(mid + 10)), add: 4, side: "both", taper: 8 }); c.saved = false; l3rPanel(); l3rSchedule(0); });
   qa("[data-rm]").forEach(b => { b.onclick = () => { spec.mode = b.dataset.rm; l3rPanel(); l3rSchedule(0); }; });
   on("x", () => l3roadClose()); on("make", l3roadMake); on("drive", l3rDriveToggle); on("sect", () => { if (typeof l3rsOpen === "function") l3rsOpen(); }); on("drvreset", l3rDriveReset);
   { const f = q("input[data-rf]"); if (f) f.onchange = () => { l3rDrv.follow = f.checked; l3rDrv.prev = null; }; const l = q("input[data-rl]"); if (l) l.onchange = () => { l3rDrv.loop = l.checked; }; }
@@ -272,7 +287,7 @@ function l3rPanel() {
 /* Liten CSS för panelen (övrigt återanvänder Volym-panelens klasser). */
 (function l3rCss() {
   if (document.getElementById("v3RoadCss")) return; const s = document.createElement("style"); s.id = "v3RoadCss";
-  s.textContent = `#view3d #v3RoadPanel .v3-rd-g{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin:8px 0}#view3d #v3RoadPanel .v3-rd-n{display:flex;align-items:center;gap:4px;font-size:12px}#view3d #v3RoadPanel .v3-rd-n span{flex:1;color:#475569;font-weight:600}#view3d #v3RoadPanel .v3-rd-n input{width:58px;padding:3px 4px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-n em{width:16px;font-style:normal;color:#64748b}#view3d #v3RoadPanel .v3-rd-seg{grid-column:1/3;display:flex;gap:4px}#view3d #v3RoadPanel .v3-rd-seg button{flex:1;padding:5px 6px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit;font-size:12px}#view3d #v3RoadPanel .v3-rd-seg button.on{background:#2563eb;border-color:#2563eb;color:#fff}#view3d #v3RoadPanel .v3-rd-drv{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:8px 0;font-size:12px}#view3d #v3RoadPanel .v3-rd-drv button{padding:5px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit}#view3d #v3RoadPanel .v3-rd-drv input[type=number]{width:46px;padding:3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-info{flex-basis:100%;color:#475569}#view3d #v3RoadPanel .v3-rd-src{display:flex;flex-direction:column;gap:2px;margin:6px 0;font-size:12px;max-height:84px;overflow:auto}`;
+  s.textContent = `#view3d #v3RoadPanel .v3-rd-g{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin:8px 0}#view3d #v3RoadPanel .v3-rd-n{display:flex;align-items:center;gap:4px;font-size:12px}#view3d #v3RoadPanel .v3-rd-n span{flex:1;color:#475569;font-weight:600}#view3d #v3RoadPanel .v3-rd-n input{width:58px;padding:3px 4px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-n em{width:16px;font-style:normal;color:#64748b}#view3d #v3RoadPanel .v3-rd-seg{grid-column:1/3;display:flex;gap:4px}#view3d #v3RoadPanel .v3-rd-seg button{flex:1;padding:5px 6px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit;font-size:12px}#view3d #v3RoadPanel .v3-rd-seg button.on{background:#2563eb;border-color:#2563eb;color:#fff}#view3d #v3RoadPanel .v3-rd-drv{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:8px 0;font-size:12px}#view3d #v3RoadPanel .v3-rd-drv button{padding:5px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit}#view3d #v3RoadPanel .v3-rd-drv input[type=number]{width:46px;padding:3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-info{flex-basis:100%;color:#475569}#view3d #v3RoadPanel .v3-rd-w{margin:6px 0;font-size:12px}#view3d #v3RoadPanel .v3-rd-wh{display:flex;align-items:center;justify-content:space-between}#view3d #v3RoadPanel .v3-rd-wh button{padding:3px 8px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit}#view3d #v3RoadPanel .v3-rd-wr{display:flex;flex-wrap:wrap;align-items:center;gap:3px 4px;margin-top:4px;padding:4px 6px;background:#fff7ed;border-radius:8px}#view3d #v3RoadPanel .v3-rd-wr input{width:44px;padding:2px 3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-wr select{padding:2px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-wr button{margin-left:auto;border:0;background:none;cursor:pointer}#view3d #v3RoadPanel .v3-rd-src{display:flex;flex-direction:column;gap:2px;margin:6px 0;font-size:12px;max-height:84px;overflow:auto}`;
   document.head.appendChild(s);
 })();
 

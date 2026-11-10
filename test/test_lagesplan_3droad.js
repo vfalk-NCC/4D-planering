@@ -109,6 +109,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (process.env.SHOT2) { await page.evaluate(() => { l3rsOpen(); l3rsSet(33, false); }); await page.waitForTimeout(500); await page.screenshot({ path: process.env.SHOT2 }); await page.evaluate(() => l3rsClose()); }
   if (!sc.panel || !sc.cv || !sc.hasGround || sc.line < 3 || !sc.differ || !sc.dxf || !sc.closed) fail('Tvärsektion: ' + JSON.stringify(sc));
   console.log('OK: tvärsektion och längdprofil – mark, väg, slänter, areor, punkter i skivan, reglage och DXF med sektioner och profil', JSON.stringify(sc));
+  // Lokal breddning: bredare mellan två sträckor och avtonad; syns i snittet och i ytan.
+  const bw = await page.evaluate(async () => {
+    const c = l3road.cur; c.spec.mode = 'terrain'; c.spec.widen = []; l3rSchedule(0); for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (c.res && !c.busy) break; }
+    const area0 = c.res.roadArea; c.spec.widen = [{ s0: 20, s1: 35, add: 4, side: 'both', taper: 8 }]; l3rSchedule(0); await new Promise(r => setTimeout(r, 300));
+    for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (c.res && !c.busy && c.res.roadArea > area0 + 1) break; }
+    const mid = l3rsSection(c, 27), far = l3rsSection(c, 3), tap = l3rsSection(c, 16);
+    const out = { area0: Math.round(area0), area1: Math.round(c.res.roadArea), mid: [mid.wl, mid.wr], far: [far.wl, far.wr], tap: tap.wl, W: c.spec.width, stW: c.st.map(p => p.wl).filter(v => v > c.spec.width / 2 + 3.9).length };
+    c.spec.widen = [{ s0: 20, s1: 35, add: 3, side: 'L', taper: 5 }]; const one = l3rsSection(c, 27); out.one = [one.wl, one.wr]; c.spec.widen = []; l3rSchedule(0); return out; });
+  if (!(bw.area1 > bw.area0 + 20) || Math.abs(bw.mid[0] - (bw.W / 2 + 4)) > 0.01 || Math.abs(bw.mid[1] - (bw.W / 2 + 4)) > 0.01 || bw.far[0] !== bw.W / 2 || !(bw.tap > bw.W / 2 + 0.3 && bw.tap < bw.W / 2 + 3.8) || bw.one[0] !== bw.W / 2 + 3 || bw.one[1] !== bw.W / 2) fail('Breddning: ' + JSON.stringify(bw));
+  console.log('OK: lokal breddning – bredare mellan två sträckor på båda eller en sida, avtonas mjukt, ger större vägyta', JSON.stringify(bw));
   // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
   const hd = await page.evaluate(async () => {
     const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;
