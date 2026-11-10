@@ -204,7 +204,7 @@ function l3roadStart() {
   const pts = mp.map(p => [p.x + l3.O[0], p.y + l3.O[1], p.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000));
   l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp); if (typeof l3ClearMeasure === "function") l3ClearMeasure();
   const prev = l3road.last || {};
-  l3roadOpen({ pts, spec: { ...L3R_DEF, ...(prev.spec || {}), src: (prev.spec && prev.spec.src && prev.spec.src.length ? prev.spec.src : l3rDefaultSrc()), widen: [] }, res: null, geom: null, st: null, busy: "", err: "" });
+  l3roadOpen({ pts, spec: { ...L3R_DEF, ...(prev.spec || {}), src: (prev.spec && prev.spec.src && prev.spec.src.length ? prev.spec.src : l3rDefaultSrc()), widen: [], vehicle: (prev.spec && prev.spec.vehicle) || "truck" }, res: null, geom: null, st: null, busy: "", err: "" });
 }
 function l3roadOpen(cur) {
   l3roadClose(true); l3road.cur = cur; l3road.seq++;
@@ -267,8 +267,8 @@ function l3rPanel() {
       <div class="v3-rd-seg" title="Höjdprofil"><button type="button" data-rm="anchor" class="${spec.mode === "anchor" ? "on" : ""}" title="En punkt på vägen har given höjd (som standard den högsta du klickat) – resten räknas därifrån med högsta lutning">Från höjdpunkt</button><button type="button" data-rm="terrain" class="${spec.mode === "terrain" ? "on" : ""}">Följ marken</button><button type="button" data-rm="straight" class="${spec.mode === "straight" ? "on" : ""}">Rak start → slut</button><button type="button" data-rm="pins" class="${spec.mode === "pins" ? "on" : ""}" title="Vägen går genom höjden i varje punkt du klickat ut (dra en ring för att ändra) – den högsta punkten blir vägens högsta">Genom mina punkter</button></div>
     </div>
     <div class="v3-rd-w" title="Lokal breddning, t.ex. vid ett stort fundament: vägen blir bredare mellan två sträckor och avtonas mjukt"><div class="v3-rd-wh"><b>Breddningar</b><button type="button" data-rb="addw" title="Lägg till en breddning (vid snittet om tvärsektionen är öppen, annars mitt på vägen)">＋ Breddning</button></div>${(spec.widen || []).map((z, i) => `<div class="v3-rd-wr"><span>från</span><input type="number" data-rw="${i}:s0" value="${l3rFmt(z.s0, 1)}" step="1"><span>till</span><input type="number" data-rw="${i}:s1" value="${l3rFmt(z.s1, 1)}" step="1"><span>m  +</span><input type="number" data-rw="${i}:add" value="${z.add}" step="0.5" min="-10" max="30"><span>m</span><select data-rw="${i}:side"><option value="both" ${z.side !== "L" && z.side !== "R" ? "selected" : ""}>båda</option><option value="L" ${z.side === "L" ? "selected" : ""}>vänster</option><option value="R" ${z.side === "R" ? "selected" : ""}>höger</option></select><span title="Så långt före och efter avtonas breddningen">avtoning</span><input type="number" data-rw="${i}:taper" value="${z.taper}" step="1" min="1" max="100"><span>m</span><button type="button" data-rwx="${i}" title="Ta bort">✕</button></div>`).join("")}</div>
-    <div class="v3-rd-drv" title="Lastbilen från Gå-läget kör vägen: nosen följer lutningen, den styr i kurvorna och går långsammare uppför"><button type="button" data-rb="drive" ${r ? "" : "disabled"}>${l3rDrv.on ? "⏸ Pausa" : l3rDrv.s > 0.5 ? "▶ Fortsätt" : "▶ Kör vägen"}</button><button type="button" data-rb="drvreset" title="Tillbaka till start">⏮</button><label title="Fart i km/h på plan väg"><input type="number" data-rk="speed" value="${spec.speed}" min="3" max="60" step="1"> km/h</label><label title="Kameran åker med lastbilen"><input type="checkbox" data-rf ${l3rDrv.follow ? "checked" : ""}> Följ</label><label title="Börja om när lastbilen kommit fram"><input type="checkbox" data-rl ${l3rDrv.loop ? "checked" : ""}> Loop</label><div data-rinfo class="v3-rd-info"></div></div>
-    <div class="v3-vq-foot"><button type="button" class="primary" data-rb="make" ${r ? "" : "disabled"} title="Väg, schaktslänt och fyllningsslänt blir vanliga ytor (flytta, ändra, IFC, DXF)">Skapa objekt</button><button type="button" data-rb="undo" title="Ta bort sista punkten" ${c.pts.length > 2 ? "" : "disabled"}>↶</button><button type="button" data-rb="sect" ${r ? "" : "disabled"} title="Tvärsektion och längdprofil: se väg och slänter mot punktmolnet, färdas längs linjen och exportera som DXF">Tvärsektion</button><button type="button" data-rb="redraw" title="Rita om mittlinjen">Rita om</button><button type="button" data-rb="x">Stäng</button></div>`;
+    <div class="v3-rd-drv" title="Lastbilen från Gå-läget kör vägen: nosen följer lutningen, den styr i kurvorna och går långsammare uppför"><button type="button" data-rb="drive" ${r ? "" : "disabled"}>${l3rDrv.on ? "⏸ Pausa" : l3rDrv.s > 0.5 ? "▶ Fortsätt" : "▶ Kör vägen"}</button><button type="button" data-rb="drvreset" title="Tillbaka till start">⏮</button><select data-rv title="Fordon">${typeof L3RT_VEH !== "undefined" ? Object.entries(L3RT_VEH).map(([k, v]) => `<option value="${k}" ${(spec.vehicle || "truck") === k ? "selected" : ""}>${v.label}</option>`).join("") : ""}</select><label title="Fart i km/h på plan väg"><input type="number" data-rk="speed" value="${spec.speed}" min="3" max="60" step="1"> km/h</label><label title="Kameran åker med lastbilen"><input type="checkbox" data-rf ${l3rDrv.follow ? "checked" : ""}> Följ</label><label title="Börja om när lastbilen kommit fram"><input type="checkbox" data-rl ${l3rDrv.loop ? "checked" : ""}> Loop</label><div data-rinfo class="v3-rd-info"></div></div>
+    <div class="v3-vq-foot"><button type="button" class="primary" data-rb="make" ${r ? "" : "disabled"} title="Väg, schaktslänt och fyllningsslänt blir vanliga ytor (flytta, ändra, IFC, DXF)">Skapa objekt</button><button type="button" data-rb="undo" title="Ta bort sista punkten" ${c.pts.length > 2 ? "" : "disabled"}>↶</button><button type="button" data-rb="saveroute" ${r ? "" : "disabled"} title="Spara körvägen i projektet (Kommentarer och mått → Körvägar) för att simulera den och koppla den till tidplanen">💾 Spara körväg</button><button type="button" data-rb="sect" ${r ? "" : "disabled"} title="Tvärsektion och längdprofil: se väg och slänter mot punktmolnet, färdas längs linjen och exportera som DXF">Tvärsektion</button><button type="button" data-rb="redraw" title="Rita om mittlinjen">Rita om</button><button type="button" data-rb="x">Stäng</button></div>`;
   const q = s => el.querySelector(s), qa = s => el.querySelectorAll(s), on = (k, fn) => qa(`[data-rb="${k}"]`).forEach(b => { b.onclick = fn; });
   qa("input[data-rk]").forEach(i => { i.oninput = () => { const v = Number(String(i.value).replace(",", ".")); if (Number.isFinite(v) && v >= Number(i.min) && v <= Number(i.max)) { spec[i.dataset.rk] = v; c.saved = false; l3rSchedule(350); } }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
   qa("input[data-rs]").forEach(i => { i.onchange = () => { const k = i.dataset.rs; spec.src = i.checked ? [...new Set([...spec.src, k])] : spec.src.filter(x => x !== k); l3rSchedule(0); }; });
@@ -277,7 +277,8 @@ function l3rPanel() {
   qa("[data-rwx]").forEach(b => { b.onclick = () => { spec.widen.splice(Number(b.dataset.rwx), 1); c.saved = false; l3rPanel(); l3rSchedule(0); }; });
   on("addw", () => { const L = c.st ? c.st[c.st.length - 1].s : 40, mid = typeof l3rs !== "undefined" && l3rs.open ? l3rs.s : L / 2; (spec.widen = spec.widen || []).push({ s0: Math.max(0, Math.round(mid - 10)), s1: Math.min(Math.round(L), Math.round(mid + 10)), add: 4, side: "both", taper: 8 }); c.saved = false; l3rPanel(); l3rSchedule(0); });
   qa("[data-rm]").forEach(b => { b.onclick = () => { spec.mode = b.dataset.rm; l3rPanel(); l3rSchedule(0); }; });
-  on("x", () => l3roadClose()); on("make", l3roadMake); on("drive", l3rDriveToggle); on("sect", () => { if (typeof l3rsOpen === "function") l3rsOpen(); }); on("drvreset", l3rDriveReset);
+  on("x", () => l3roadClose()); on("make", l3roadMake); on("drive", l3rDriveToggle); on("saveroute", () => { if (typeof l3rtSaveRoad === "function") l3rtSaveRoad(c); });
+  { const v = q("select[data-rv]"); if (v) v.onchange = () => { spec.vehicle = v.value; l3rDriveEnsure(); if (!l3rDrv.raf) { l3rDriveStep(0); l3Render(); } }; } on("sect", () => { if (typeof l3rsOpen === "function") l3rsOpen(); }); on("drvreset", l3rDriveReset);
   { const f = q("input[data-rf]"); if (f) f.onchange = () => { l3rDrv.follow = f.checked; l3rDrv.prev = null; }; const l = q("input[data-rl]"); if (l) l.onchange = () => { l3rDrv.loop = l.checked; }; }
   on("undo", () => l3roadRemovePt(c.pts.length - 1));
   on("redraw", () => { l3roadClose(true); l3t.mp = null; l3Busy(true); l3t.mpObjs = []; l3Status("Tryck ut vägens mittlinje igen (Enter avslutar)."); });
@@ -311,7 +312,7 @@ document.addEventListener("contextmenu", e => {
    Samma lastbil som i Gå-läget. Den följer vägens höjdprofil (nos upp/ner efter lutningen), styr in i kurvorna, hjulen snurrar med färden och farten
    sjunker i uppförsbackar. "Följ" låter kameran åka med. Fungerar medan byggvägspanelen är öppen och följer vägen när den ändras. */
 const l3rDrv = { on: false, s: 0, travel: 0, raf: 0, last: 0, truck: null, grp: null, follow: true, loop: true, v: 0, t: 0, prev: null, steerV: 0 };
-const L3R_FRONT = 3.9, L3R_REAR = -2.1;   // framaxel och medel av bakaxlarna (m framför/bakom lastbilens origo)
+let L3R_FRONT = 3.9, L3R_REAR = -2.1;   // framaxel och medel av bakaxlarna (m framför/bakom lastbilens origo)
 function l3rAt(st, s) {
   const n = st.length; s = Math.max(0, Math.min(st[n - 1].s, s)); let k = 0; while (k < n - 2 && st[k + 1].s < s) k++;
   const a = st[k], b = st[k + 1], t = b.s > a.s ? (s - a.s) / (b.s - a.s) : 0;
@@ -319,24 +320,19 @@ function l3rAt(st, s) {
 }
 const l3rAng = d => { while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
 function l3rDriveEnsure() {
-  if (l3rDrv.truck) return true; if (typeof l3vTruck !== "function") { l3Status("Lastbilen finns inte i den här versionen.", true); return false; }
-  const t = l3vTruck(); l3rDrv.truck = t; const g = new THREE.Group(); g.name = "roadtruck"; g.add(t.g); l3.scene.add(g); l3rDrv.grp = g; return true;
+  const c = l3road.cur, kind = (c && c.spec.vehicle) || "truck", V = typeof l3rtVeh === "function" ? l3rtVeh(kind) : { f: 3.9, r: -2.1, make: () => l3vTruck() };
+  L3R_FRONT = V.f; L3R_REAR = V.r;
+  if (l3rDrv.truck && l3rDrv.kind === kind) return true;
+  if (l3rDrv.grp) { l3.scene.remove(l3rDrv.grp); l3rDrv.grp = null; l3rDrv.truck = null; }   // byte av fordon
+  let t; try { t = V.make(); } catch (e) { console.warn("Fordon", e); l3Status("Fordonet finns inte i den här versionen.", true); return false; }
+  l3rDrv.kind = kind; l3rDrv.truck = t; const g = new THREE.Group(); g.name = "roadtruck"; g.add(t.g); l3.scene.add(g); l3rDrv.grp = g; l3rDrv.ctl = null; return true;
 }
-/* Ett steg: flytta lastbilen dt sekunder längs vägen. Returnerar texten för avläsningen. */
+/* Ett steg: flytta fordonet dt sekunder längs vägen. Returnerar texten för avläsningen. */
 function l3rDriveStep(dt) {
   const c = l3road.cur, D = l3rDrv; if (!c || !c.st || c.st.length < 2 || !l3rDriveEnsure()) return "";
-  const st = c.st, L = st[st.length - 1].s, kmh = Math.max(3, Number(c.spec.speed) || 20);
-  const cur = l3rAt(st, D.s + (L3R_FRONT + L3R_REAR) / 2), up = Math.max(0, cur.g), v = kmh / 3.6 * Math.max(0.35, 1 - 3 * up);   // uppför: långsammare
-  D.v += (v - D.v) * Math.min(1, dt * 3); if (D.on) { D.s += D.v * dt; D.travel += D.v * dt; }
-  if (D.s > L - 0.5) { if (D.loop) { D.s = 0; D.prev = null; } else { D.s = L - 0.5; D.on = false; l3rDriveUi(); } }
-  const sF = D.s + L3R_FRONT, sR = D.s + L3R_REAR, F = l3rAt(st, sF), R = l3rAt(st, sR), d2 = Math.hypot(F.x - R.x, F.y - R.y);
-  const yaw = d2 > 0.5 ? Math.atan2(F.y - R.y, F.x - R.x) : l3rAt(st, D.s).yaw, pitch = Math.atan2(F.z - R.z, Math.max(0.5, d2));
-  const f = (L3R_FRONT - L3R_REAR) > 0 ? -L3R_REAR / (L3R_FRONT - L3R_REAR) : 0.5, O = l3.O;
-  const px = R.x + (F.x - R.x) * f - O[0], py = R.y + (F.y - R.y) * f - O[1], pz = R.z + (F.z - R.z) * f - O[2];
-  const g = l3rDrv.grp; g.position.set(px, py, pz); g.rotation.set(0, 0, 0); g.rotation.order = "ZYX"; g.rotation.z = yaw; g.rotation.y = -pitch;
-  // Styrning: kurvan en bit framför
-  const a1 = l3rAt(st, D.s + 1).yaw, a2 = l3rAt(st, D.s + 9).yaw, k = l3rAng(a2 - a1) / 8, steer = Math.max(-1, Math.min(1, Math.atan(6 * k) / 0.5));
-  l3rDrv.t += dt; l3rDrv.truck.update({ dt, t: l3rDrv.t, travel: D.travel, steer, brake: !D.on, rev: false, work: 0, ctl: { tip: 0, gate: 0, load: 0.7, mat: 0 } });
+  const st = c.st, L = st[st.length - 1].s, kind = c.spec.vehicle || "truck", r = l3rtPlace(D, st, kind, dt, Number(c.spec.speed) || 20, D.on, D.loop);
+  if (r.ended) { D.on = false; l3rDriveUi(); }
+  const [px, py, pz] = r.pos, cur = r.cur;
   if (D.follow && D.prev) { const dx = px - D.prev[0], dy = py - D.prev[1], dz = pz - D.prev[2]; l3.camera.position.x += dx; l3.camera.position.y += dy; l3.camera.position.z += dz; l3.orbit.target.x += dx; l3.orbit.target.y += dy; l3.orbit.target.z += dz; l3.orbit.update(); }
   D.prev = [px, py, pz];
   return `Fart ${l3rFmt(D.v * 3.6, 0)} km/h · lutning ${cur.g >= 0 ? "+" : "−"}${l3rFmt(Math.abs(cur.g) * 100, 1)} % · ${l3rFmt(Math.min(D.s, L), 0)} / ${l3rFmt(L, 0)} m`;

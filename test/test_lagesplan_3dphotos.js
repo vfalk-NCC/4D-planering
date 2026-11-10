@@ -101,7 +101,7 @@ const JPG = Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP/////////////////////
       l3SetPref('photoLbl', 'off'); l3phLabels(); const off = document.querySelectorAll('.v3-phl').length === 0;
       l3SetPref('photoLbl', 'all'); l3phLabels();
       l3PalTab('comments'); await new Promise(r => setTimeout(r, 400)); l3kRenderTab(); await new Promise(r => setTimeout(r, 200));
-      const sec = document.getElementById('v3PhSec'), rows = document.querySelectorAll('#v3PhSec [data-phgo]').length, last = document.querySelector('#v3PalComments').lastElementChild === sec || [...document.querySelectorAll('#v3PalComments section')].pop() === sec;
+      const sec = document.getElementById('v3PhSec'), rows = document.querySelectorAll('#v3PhSec [data-phgo]').length, last = [...document.querySelectorAll('#v3PalComments section')].filter(x => x.id !== 'v3RtSec').pop() === sec;   // Körvägar ligger efter Foton
       document.getElementById('v3PhHead').click(); const shut = !document.querySelector('#v3PhSec [data-phgo]'); document.getElementById('v3PhHead').click();
       return { txt, has, dateOnly, off, sec: !!sec, rows, last, shut, head: document.getElementById('v3PhHead').textContent };
     });

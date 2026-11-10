@@ -363,9 +363,11 @@ function l3kRenderTab() {
     ${l3k.list.length ? `<div class="v3-pal-hint">${open} öppna${done ? ` · ${done} klara` : ""} · högerklick i 3D → Kommentar här… skapar en ny.</div>` : ""}
     </div>
     ${typeof l3mTabHtml === "function" ? l3mTabHtml() : ""}
-    ${typeof l3phTabHtml === "function" ? l3phTabHtml() : ""}`;
+    ${typeof l3phTabHtml === "function" ? l3phTabHtml() : ""}
+    ${typeof l3rtTabHtml === "function" ? l3rtTabHtml() : ""}`;
   if (typeof l3mBindTab === "function") l3mBindTab(host);
   if (typeof l3phBindTab === "function") l3phBindTab(host);
+  if (typeof l3rtBindTab === "function") l3rtBindTab(host);
   if (typeof l3aBind === "function") l3aBind(host);
   const kh = host.querySelector("#v3KListHead"); if (kh) kh.onclick = () => { l3SetPref("kListShut", !l3Prefs().kListShut); l3kRenderTab(); };
   const q = host.querySelector("#v3KQ");
