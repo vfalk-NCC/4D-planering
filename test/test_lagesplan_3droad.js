@@ -63,6 +63,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return { open: !!l3road.cur, seg };
   });
   if (!tool.open || !tool.seg.includes('Byggväg')) fail('Verktyget Byggväg: ' + JSON.stringify(tool));
+  // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
+  const hd = await page.evaluate(async () => {
+    const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;
+    l3mPlusDown({ button: 0, preventDefault() {}, stopPropagation() {} }, 1); window.dispatchEvent(new PointerEvent('pointerup')); await new Promise(r => setTimeout(r, 200));
+    out.afterAdd = c.pts.length; out.ringsAdd = l3mH.els.length;
+    l3roadRemovePt(2); out.afterRemove = c.pts.length;
+    if (typeof l3Undo === 'function') { l3Undo(); out.afterUndo = c.pts.length; }
+    for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (c.res && !c.busy) break; }
+    out.res = !!c.res; return out;
+  });
+  if (hd.rings !== hd.n0 || hd.plus !== hd.n0 - 1 || hd.afterAdd !== hd.n0 + 1 || hd.ringsAdd !== hd.n0 + 1 || hd.afterRemove !== hd.n0 || (hd.afterUndo !== undefined && hd.afterUndo !== hd.n0 + 1) || !hd.res) fail('Handtag på byggvägen: ' + JSON.stringify(hd));
+  console.log('OK: byggvägens punkter har dragringar, + lägger till punkt, punkt kan tas bort och ångras', JSON.stringify(hd));
   // Lutningsgräns: 5 % ger en flackare väg (mer schakt/fyllning).
   const g5 = await page.evaluate(async () => { const c = l3road.cur; c.spec.grade = 5; l3rSchedule(0); for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (!c.busy && c.res && c.res.maxG < 0.0505) break; } return c.res.maxG; });
   if (g5 > 0.0505) fail('5 % gräns: ' + g5);

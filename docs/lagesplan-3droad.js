@@ -157,7 +157,7 @@ function l3rDraw() {
   if (c.st) line(c.st.map(p => new THREE.Vector3(p.x - O[0], p.y - O[1], p.z - O[2] + 0.12)), 0xffffff);
   else line(c.pts.map(p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2] + 0.12)), 0xffffff);
   if (c.res) c.res.tight.forEach(t => { const sp = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.5, (Number(c.spec.width) || 5) * 0.15), 12, 8), new THREE.MeshBasicMaterial({ color: 0xd946ef, depthTest: false })); sp.position.set(t.x - O[0], t.y - O[1], t.z - O[2] + 0.5); sp.renderOrder = 13; sp.userData.noHit = true; sp.raycast = () => {}; grp.add(sp); });
-  l3Render();
+  l3Render(); if (typeof l3mHandlesPlace === "function") l3mHandlesPlace();
 }
 function l3rSchedule(ms) {
   clearTimeout(l3road.timer);
@@ -191,7 +191,7 @@ function l3roadClose(keep) {
   const c = l3road.cur; if (c) l3road.last = { spec: JSON.parse(JSON.stringify(c.spec)) };
   clearTimeout(l3road.timer); l3road.seq++; l3road.cur = null;
   if (l3.groups.road) l3Clear(l3.groups.road);
-  if (!keep) { if (l3road.kbd) { window.removeEventListener("keydown", l3road.kbd, true); l3road.kbd = null; } l3Render(); }
+  if (!keep) { if (l3road.kbd) { window.removeEventListener("keydown", l3road.kbd, true); l3road.kbd = null; } l3Render(); if (typeof l3mHandlesPlace === "function") l3mHandlesPlace(); }
 }
 /* Tryck i 3D medan panelen är öppen: ignoreras (panelen avslutas med Esc). */
 function l3roadTap() {
@@ -228,7 +228,7 @@ function l3rPanel() {
   const ae = document.activeElement;
   if (el.innerHTML && ae && ae.dataset && ae.dataset.rk !== undefined && el.contains(ae)) { const box = el.querySelector("[data-rres]"); if (box) box.innerHTML = sum; return; }
   el.innerHTML = `<div class="v3-vp-h"><b>Byggväg</b><span>${l3rFmt(c.pts.reduce((s, p, i) => i ? s + Math.hypot(p[0] - c.pts[i - 1][0], p[1] - c.pts[i - 1][1]) : 0, 0), 0)} m · ${c.pts.length} punkter</span><button type="button" data-rb="x" title="Stäng (Esc)">✕</button></div>
-    <div class="v3-vp-tip">Vägen följer ytan, jämnas ut och begränsas till högsta lutning. Slänter dras från vägkanten ut till marken.</div>
+    <div class="v3-vp-tip"><b>Dra</b> en ring för att flytta en punkt · <b>+</b> mellan ringarna lägger till en punkt · högerklicka en ring tar bort den · Ctrl+Z ångrar</div>
     <div class="v3-rd-src" title="Vilka ytor vägen ska följa. Flera kan kombineras – den högsta gäller.">${srcs.length ? srcs.map(s => `<label><input type="checkbox" data-rs="${esc(s.k)}" ${spec.src.includes(s.k) ? "checked" : ""}> ${esc(s.label)}</label>`).join("") : `<div class="v3-vp-t warn">Tänd ett punktmoln, en 3D-modell eller en DXF (Lager) som vägen ska följa.</div>`}</div>
     <div data-rres>${sum}</div>
     <div class="v3-rd-g">
@@ -239,12 +239,13 @@ function l3rPanel() {
       ${num("reach", "Största släntbredd", "Så långt ut från vägkanten letar slänten efter marken", "m", 3, 100, 1)}${num("step", "Stationsavstånd", "Avstånd mellan tvärsnitten (mindre = mer detaljerat)", "m", 0.5, 10, 0.5)}
       <div class="v3-rd-seg" title="Höjdprofil"><button type="button" data-rm="terrain" class="${spec.mode !== "straight" ? "on" : ""}">Följ marken</button><button type="button" data-rm="straight" class="${spec.mode === "straight" ? "on" : ""}">Rak lutning start → slut</button></div>
     </div>
-    <div class="v3-vq-foot"><button type="button" class="primary" data-rb="make" ${r ? "" : "disabled"} title="Väg, schaktslänt och fyllningsslänt blir vanliga ytor (flytta, ändra, IFC, DXF)">Skapa objekt</button><button type="button" data-rb="redraw" title="Rita om mittlinjen">Rita om</button><button type="button" data-rb="x">Stäng</button></div>`;
+    <div class="v3-vq-foot"><button type="button" class="primary" data-rb="make" ${r ? "" : "disabled"} title="Väg, schaktslänt och fyllningsslänt blir vanliga ytor (flytta, ändra, IFC, DXF)">Skapa objekt</button><button type="button" data-rb="undo" title="Ta bort sista punkten" ${c.pts.length > 2 ? "" : "disabled"}>↶</button><button type="button" data-rb="redraw" title="Rita om mittlinjen">Rita om</button><button type="button" data-rb="x">Stäng</button></div>`;
   const q = s => el.querySelector(s), qa = s => el.querySelectorAll(s), on = (k, fn) => qa(`[data-rb="${k}"]`).forEach(b => { b.onclick = fn; });
   qa("input[data-rk]").forEach(i => { i.oninput = () => { const v = Number(String(i.value).replace(",", ".")); if (Number.isFinite(v) && v >= Number(i.min) && v <= Number(i.max)) { spec[i.dataset.rk] = v; c.saved = false; l3rSchedule(350); } }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
   qa("input[data-rs]").forEach(i => { i.onchange = () => { const k = i.dataset.rs; spec.src = i.checked ? [...new Set([...spec.src, k])] : spec.src.filter(x => x !== k); l3rSchedule(0); }; });
   qa("[data-rm]").forEach(b => { b.onclick = () => { spec.mode = b.dataset.rm; l3rPanel(); l3rSchedule(0); }; });
   on("x", () => l3roadClose()); on("make", l3roadMake);
+  on("undo", () => l3roadRemovePt(c.pts.length - 1));
   on("redraw", () => { l3roadClose(true); l3t.mp = null; l3Busy(true); l3t.mpObjs = []; l3Status("Tryck ut vägens mittlinje igen (Enter avslutar)."); });
   void q;
 }
@@ -255,3 +256,19 @@ function l3rPanel() {
   s.textContent = `#view3d #v3RoadPanel .v3-rd-g{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin:8px 0}#view3d #v3RoadPanel .v3-rd-n{display:flex;align-items:center;gap:4px;font-size:12px}#view3d #v3RoadPanel .v3-rd-n span{flex:1;color:#475569;font-weight:600}#view3d #v3RoadPanel .v3-rd-n input{width:58px;padding:3px 4px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-n em{width:16px;font-style:normal;color:#64748b}#view3d #v3RoadPanel .v3-rd-seg{grid-column:1/3;display:flex;gap:4px}#view3d #v3RoadPanel .v3-rd-seg button{flex:1;padding:5px 6px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit;font-size:12px}#view3d #v3RoadPanel .v3-rd-seg button.on{background:#2563eb;border-color:#2563eb;color:#fff}#view3d #v3RoadPanel .v3-rd-src{display:flex;flex-direction:column;gap:2px;margin:6px 0;font-size:12px;max-height:84px;overflow:auto}`;
   document.head.appendChild(s);
 })();
+
+/* Ta bort en punkt (högerklick på ringen, eller ↶ för den sista). Minst två punkter ska finnas kvar. */
+function l3roadRemovePt(i) {
+  const c = l3road.cur; if (!c || c.pts.length <= 2 || i < 0 || i >= c.pts.length) return;
+  const was = c.pts.map(p => p.slice());
+  c.pts.splice(i, 1); c.geom = null; c.st = null; c.saved = false;
+  const set = st => { if (l3road.cur !== c) return; c.pts = st.map(p => p.slice()); c.geom = null; c.st = null; l3rDraw(); l3rSchedule(0); };
+  const now = c.pts.map(p => p.slice());
+  if (typeof l3VPush === "function") l3VPush(() => set(was), () => set(now), "ta bort vägpunkt");
+  l3rDraw(); l3rSchedule(0); l3Status("Punkten borttagen – vägen räknas om (Ctrl+Z ångrar).");
+}
+document.addEventListener("contextmenu", e => {
+  if (!l3road.cur) return; const b = e.target.closest && e.target.closest(".v3-mhandle"); if (!b) return;
+  const i = typeof l3mH !== "undefined" ? l3mH.els.indexOf(b) : -1; if (i < 0) return;
+  e.preventDefault(); e.stopPropagation(); l3roadRemovePt(i);
+}, true);

@@ -166,10 +166,12 @@ function l3mPlaceLabels() {
    (hörn, kanter, ytor, DXF); Skift = var 5:e grad från grannpunkten. Måttet räknas om; Ctrl+Z ångrar. */
 const l3mH = { els: [], plus: [], drag: null, insWas: null };
 /* Mittpunkter (+): lägg till fler hörn i efterhand på områdesmått, volymer och linjer (Victor 2026-11-02). Slutna: area, volym, utjämning; öppna: sträcka. */
-function l3mPlusKind(m) { if (!m) return null; if (m === (typeof l3vol !== "undefined" ? l3vol.cur : null)) return "closed"; return ({ cutfill: "closed", area: "closed", volume: "closed", poly: "open" })[m.kind] || null; }
+function l3mPlusKind(m) { if (!m) return null; if (m === (typeof l3vol !== "undefined" ? l3vol.cur : null)) return "closed"; if (m === (typeof l3road !== "undefined" ? l3road.cur : null)) return "open"; return ({ cutfill: "closed", area: "closed", volume: "closed", poly: "open" })[m.kind] || null; }
 function l3mActive() {
   // Pågående volym (panelen öppen): hörnen kan dras i efteråt och volymen räknas om (Victor 2026-10-31)
   if (typeof l3vol !== "undefined" && l3vol.cur && !l3vol.capture && l3vol.cur.pts && l3vol.cur.pts.length) return l3vol.cur;
+  // Pågående byggväg (panelen öppen): mittlinjens punkter kan dras och fler läggas till med + (Victor 2026-11-10)
+  if (typeof l3road !== "undefined" && l3road.cur && l3road.cur.pts && l3road.cur.pts.length) return l3road.cur;
   if (!l3 || !l3m.sel || l3m.sel.size !== 1 || (l3.tool && l3.tool !== "select")) return null;
   const m = l3m.list.find(x => l3m.sel.has(x.id));
   return m && !m.locked && !m.hid && (typeof l3aOn !== "function" || l3aOn(m)) ? m : null;
@@ -202,6 +204,7 @@ function l3mPlusDown(e, i) {
   const mid = [0, 1, 2].map(k => Math.round(((a[k] + c[k]) / 2) * 1000) / 1000);
   m.pts.splice(i + 1, 0, mid); m.objs = (m.objs || []).slice(); if (m.objs.length) m.objs.splice(i + 1, 0, null);
   if (m === l3vol.cur) { m.geom = null; m.res = null; }
+  if (typeof l3road !== "undefined" && m === l3road.cur) { m.geom = null; m.st = null; }
   l3mRecalc(m); l3mDraw(); l3mHDown(e, i + 1);
 }
 /* Värdet ur punkterna (efter att en punkt flyttats). */
@@ -230,6 +233,7 @@ function l3mHDown(e, i) {
     moved = true;
     m.pts[i] = [s.point.x + l3.O[0], s.point.y + l3.O[1], s.point.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000);
     const live = m === l3vol.cur; if (live) { m.geom = null; m.res = null; }   // gamla kroppar visas inte medan hörnet dras
+    const road = typeof l3road !== "undefined" && m === l3road.cur; if (road) { m.geom = null; m.st = null; l3rDraw(); l3rSchedule(450); }   // vägen räknas om en stund efter att man stannat
     l3mRecalc(m); l3mDraw(); l3StatusLive(live ? "Flyttar hörnet – volymen räknas om när du släpper" : `${L3M_KIND[m.kind] || "Mått"} ${m.text}`);
   };
   const up = ev => {
@@ -238,6 +242,11 @@ function l3mHDown(e, i) {
     if (!ins && (!moved || JSON.stringify(m.pts) === JSON.stringify(was.pts))) { l3mDraw(); return; }
     if (typeof l3mObjAt === "function") { m.objs = (m.objs || []).slice(); m.objs[i] = l3mObjAt(ev); }
     const now = { pts: m.pts.map(p => p.slice()), text: m.text, objs: (m.objs || []).slice() };
+    if (typeof l3road !== "undefined" && m === l3road.cur) {   // pågående byggväg: ångra/gör om flyttar tillbaka punkten och räknar om
+      const setR = st => { if (l3road.cur !== m) return; m.pts = st.pts.map(p => p.slice()); m.geom = null; m.st = null; m.saved = false; l3rDraw(); l3rSchedule(0); l3mHandlesPlace(); };
+      if (typeof l3VPush === "function") l3VPush(() => setR(was), () => setR(now), ins ? "lägg till vägpunkt" : "flytta vägpunkt");
+      m.saved = false; l3rSchedule(0); l3Status(ins ? "Punkt tillagd – vägen räknas om (Ctrl+Z ångrar)." : "Punkten flyttad – vägen räknas om (Ctrl+Z ångrar)."); return;
+    }
     if (m === l3vol.cur) {   // pågående volym: ångra/gör om flyttar tillbaka hörnet och räknar om
       const setV = st => { if (l3vol.cur !== m) return; m.pts = st.pts.map(p => p.slice()); m.objs = st.objs.slice(); m.geom = null; m.res = null; l3volSchedule(0); };
       if (typeof l3VPush === "function") l3VPush(() => setV(was), () => setV(now), "flytta volymens hörn");
