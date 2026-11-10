@@ -51,8 +51,8 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!r.panel || !/Byggväg/.test(r.txt)) fail('Panelen ska visas: ' + r.txt);
   console.log('OK: byggvägen följer punktmolnet, lutningen begränsas till 10 %, slänter i schakt och fyllning med volymer', JSON.stringify(r.res));
   // Skapa objekt: tre ritade ytor (väg, schaktslänt, fyllningsslänt).
-  const made = await page.evaluate(async () => { const n0 = placements.length; l3roadMake(); return { add: placements.length - n0, names: placements.slice(n0).map(p => p.name), closed: !l3road.cur }; });
-  if (made.add !== 3 || !made.closed || !/Byggväg/.test(made.names[0])) fail('Skapa objekt: ' + JSON.stringify(made));
+  const made = await page.evaluate(async () => { const n0 = placements.length, hadBtn = !!document.querySelector('#v3RoadPanel [data-rb="ifc"]'); l3roadMake(); return { add: placements.length - n0, names: placements.slice(n0).map(p => p.name), closed: !l3road.cur, sel: l3.sel.size, hadBtn, sets: new Set(placements.slice(n0).map(p => p.set)).size }; });
+  if (made.add !== 3 || made.sel !== 3 || !made.hadBtn || made.sets !== 1 || !made.closed || !/Byggväg/.test(made.names[0])) fail('Skapa objekt: ' + JSON.stringify(made));
   console.log('OK: Skapa objekt ger väg + schaktslänt + fyllningsslänt som vanliga ytor', JSON.stringify(made.names));
   // Mät → Byggväg: mittlinjen via verktyget (Enter avslutar) öppnar panelen.
   const tool = await page.evaluate(async () => {
