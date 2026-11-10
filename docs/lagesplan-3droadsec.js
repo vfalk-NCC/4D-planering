@@ -17,7 +17,7 @@ const l3rsNice = v => { const p = Math.pow(10, Math.floor(Math.log10(v))), f = v
 /* ---- Snittets geometri vid sträckan s ---- */
 function l3rsSection(c, s) {
   if (!c || !c.st || !c.ctx) return null;
-  const hw = l3rHW(c.spec, s), wl = hw.l, wr = hw.r, W = wl + wr, a = l3rAt(c.st, s), nx = -Math.sin(a.yaw), ny = Math.cos(a.yaw), gz = c.ctx.gz, spec = c.spec;
+  const hw = l3rHW(c.spec, s, c.pts), wl = hw.l, wr = hw.r, W = wl + wr, a = l3rAt(c.st, s), nx = -Math.sin(a.yaw), ny = Math.cos(a.yaw), gz = c.ctx.gz, spec = c.spec;
   const g0 = gz(a.x, a.y), p = { x: a.x, y: a.y, z: a.z, nx, ny, wl, wr, g: g0 === null || g0 === undefined ? a.z : g0 };
   const SL = c.ctx.slope(p, 1), SR = c.ctx.slope(p, -1);   // vänster (+n) och höger (−n)
   const ext = Math.min(Math.max(wl, wr) + (Number(spec.reach) || 25) + 3, Math.max(wl + (SL.d || 0), wr + (SR.d || 0)) + 3), step = 0.25, ground = [];
@@ -97,7 +97,7 @@ function l3rsDrawProfile() {
   const gs = l3rsNice((zmax - zmin) / 3); for (let z = Math.ceil(zmin / gs) * gs; z <= zmax; z += gs) { ctx.beginPath(); ctx.moveTo(L, Y(z)); ctx.lineTo(w - R, Y(z)); ctx.stroke(); ctx.fillText(l3rFmt(z, gs < 1 ? 1 : 0), L - 6, Y(z)); }
   const line = (key, col, lw) => { ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath(); st.forEach((p, i) => { i ? ctx.lineTo(X(p.s), Y(p[key])) : ctx.moveTo(X(p.s), Y(p[key])); }); ctx.stroke(); };
   ctx.beginPath(); st.forEach((p, i) => { i ? ctx.lineTo(X(p.s), Y(p.g)) : ctx.moveTo(X(p.s), Y(p.g)); }); for (let i = st.length - 1; i >= 0; i--) ctx.lineTo(X(st[i].s), Y(st[i].z)); ctx.closePath(); ctx.fillStyle = "rgba(100,116,139,.12)"; ctx.fill();
-  (c.spec.widen || []).forEach(z => { ctx.fillStyle = "rgba(245,158,11,.22)"; ctx.fillRect(X(Math.max(0, z.s0)), T, Math.max(2, X(Math.min(Ls, z.s1)) - X(Math.max(0, z.s0))), h - T - B); });   // breddningar
+  (c.spec.widen || []).forEach(z => { if (z.kind === "obj") return; ctx.fillStyle = "rgba(245,158,11,.22)"; ctx.fillRect(X(Math.max(0, z.s0)), T, Math.max(2, X(Math.min(Ls, z.s1)) - X(Math.max(0, z.s0))), h - T - B); });   // breddningar
   line("g", L3RS_COL.ground, 1.6); line("z", "#16a34a", 2.4);
   ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"; ctx.fillStyle = "#64748b"; ctx.fillText("0", X(0), h - 3); ctx.fillText(`${l3rFmt(Ls, 0)} m`, X(Ls), h - 3);
   const x = X(Math.max(0, Math.min(Ls, l3rs.s))); ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, T - 2); ctx.lineTo(x, h - B + 2); ctx.stroke(); ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(x, T + 3, 4, 0, 7); ctx.fill();

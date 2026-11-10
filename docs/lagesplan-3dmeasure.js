@@ -160,6 +160,7 @@ function l3mPlaceLabels() {
     el.style.display = q.behind ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px";
     el.style.pointerEvents = l3.tool === "select" || !l3.tool ? "auto" : "none"; // med andra verktyg går trycket igenom
   });
+  if (typeof l3rwPlace === "function") l3rwPlace();
   l3mHandlesPlace();
 }
 /* ---- Ändpunkterna (Victor 2026-10-10: "dra ändpunkterna på måtten jag har satt ut") ------------------

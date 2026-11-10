@@ -18,14 +18,37 @@ const l3rOk = z => z === z && z !== null && Math.abs(z) < 1e9;
 const l3rM3 = v => Math.round(v).toLocaleString("sv-SE").replace(/[  ]/g, " ") + " m³";
 /* Lokal breddning (Victor 2026-11-10: "lokal breddning för ett stort fundament"): zoner { s0, s1, add, side, taper } längs vägen – vägen blir "add" m bredare mellan s0 och s1
    (på båda sidor eller bara vänster/höger) och avtonas mjukt över "taper" m före och efter. Returnerar halva bredden åt vänster (l) och höger (r) vid sträckan s. */
-function l3rHW(spec, s) {
+function l3rHW(spec, s, pts) {
   const W = Math.max(1, Number(spec.width) || 5); let l = W / 2, r = W / 2;
   (spec.widen || []).forEach(z => {
+    if (z.kind === "obj") return;
     const a = Number(z.add) || 0, s0 = Number(z.s0), s1 = Number(z.s1), tp = Math.max(0.5, Number(z.taper) || 0); if (!a || !(s1 >= s0)) return;
     let f = s >= s0 && s <= s1 ? 1 : s < s0 ? Math.max(0, 1 - (s0 - s) / tp) : Math.max(0, 1 - (s - s1) / tp); f = f * f * (3 - 2 * f);   // mjuk avtoning
     if (z.side !== "R") l += a * f; if (z.side !== "L") r += a * f;
   });
+  // Avancerat: breddning runt ett objekt – vägkanten följer objektets kontur + offset (rundad), på den sida objektet ligger.
+  if (pts && pts.length > 1) (spec.widen || []).forEach(z => {
+    if (z.kind !== "obj") return; const smp = l3rObjSamples(z, pts), off = Math.max(0, Number(z.offset) || 0);
+    for (const q of smp) { const ds = s - q[0]; if (Math.abs(ds) > off) continue; const w = Math.abs(q[1]) + Math.sqrt(Math.max(0, off * off - ds * ds)); if (q[1] > 0) l = Math.max(l, w); else r = Math.max(r, w); }
+  });
   return { l, r };
+}
+/* Närmaste punkt på linjen: { s: sträcka längs linjen, lat: avstånd åt vänster (negativt = höger) }. */
+function l3rProj(P, x, y) {
+  let best = null, acc = 0;
+  for (let i = 1; i < P.length; i++) {
+    const ax = P[i - 1][0], ay = P[i - 1][1], dx = P[i][0] - ax, dy = P[i][1] - ay, L = Math.hypot(dx, dy); if (L < 1e-9) continue;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (L * L))), px = ax + dx * t, py = ay + dy * t, d = Math.hypot(x - px, y - py);
+    if (!best || d < best.d) best = { d, s: acc + t * L, lat: ((x - px) * -dy + (y - py) * dx) / L }; acc += L;
+  }
+  return best || { d: 0, s: 0, lat: 0 };
+}
+/* Objektets kontur som punkter (var 0,5 m) → [[sträcka, sida]]; sparas på zonen tills konturen eller linjen ändras. */
+function l3rObjSamples(z, pts) {
+  const sig = JSON.stringify(z.pts) + "|" + JSON.stringify(pts.map(p => [p[0], p[1]])); if (z._c && z._c.sig === sig) return z._c.v;
+  const out = [], P = z.pts || [];
+  for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]), n = Math.max(1, Math.ceil(L / 0.5)); for (let k = 0; k < n; k++) { const q = l3rProj(pts, a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n); if (Math.abs(q.lat) <= 40) out.push([q.s, q.lat]); } }
+  z._c = { sig, v: out }; return out;
 }
 const l3rTick = () => new Promise(r => setTimeout(r, 16));
 
@@ -83,7 +106,7 @@ async function l3rCompute(cur, alive) {
   const W = Math.max(1, Number(spec.width) || 5), reach = Math.max(2, Number(spec.reach) || 25), step = Math.max(0.5, Number(spec.step) || 2);
   const st = l3rStations(cur.pts, step); if (st.length < 2) return { err: "Vägen är för kort." }; st.pts = cur.pts;
   if (!srcs.length) return { err: "Tänd ett punktmoln, en 3D-modell eller en DXF och välj den under \"Följer\"." };
-  const maxAdd = Math.max(0, ...(spec.widen || []).map(z => Number(z.add) || 0)), m = W / 2 + maxAdd + reach + 3, xs = st.map(p => p.x), ys = st.map(p => p.y);
+  const maxAdd = Math.max(0, ...(spec.widen || []).map(z => z.kind === "obj" ? Math.max(0, ...l3rObjSamples(z, cur.pts).map(q => Math.abs(q[1]))) + (Number(z.offset) || 0) - W / 2 : Number(z.add) || 0)), m = W / 2 + maxAdd + reach + 3, xs = st.map(p => p.x), ys = st.map(p => p.y);
   const bd = { x0: Math.min(...xs) - m, x1: Math.max(...xs) + m, y0: Math.min(...ys) - m, y1: Math.max(...ys) + m };
   const area = (bd.x1 - bd.x0) * (bd.y1 - bd.y0), cell = Math.max(0.25, Math.sqrt(area / 160000)), grids = [];
   for (const k of srcs) {
@@ -98,7 +121,7 @@ async function l3rCompute(cur, alive) {
   else for (let i = 0; i < st.length; i++) if (st[i].g === null) { let a = i - 1, b = i + 1; while (a >= 0 && st[a].g === null) a--; while (b < st.length && st[b].g === null) b++; st[i].g = a >= 0 && b < st.length ? st[a].g + (st[b].g - st[a].g) * (st[i].s - st[a].s) / (st[b].s - st[a].s) : a >= 0 ? st[a].g : st[b].g; }
   const zd = l3rProfile(st, spec), n = st.length;
   // Riktning och normal per station.
-  st.forEach((p, i) => { const a = st[Math.max(0, i - 1)], b = st[Math.min(n - 1, i + 1)], dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1; p.tx = dx / L; p.ty = dy / L; p.nx = -p.ty; p.ny = p.tx; p.z = zd[i]; const h = l3rHW(spec, p.s); p.wl = h.l; p.wr = h.r; });
+  st.forEach((p, i) => { const a = st[Math.max(0, i - 1)], b = st[Math.min(n - 1, i + 1)], dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1; p.tx = dx / L; p.ty = dy / L; p.nx = -p.ty; p.ny = p.tx; p.z = zd[i]; const h = l3rHW(spec, p.s, cur.pts); p.wl = h.l; p.wr = h.r; });
   // Släntkant: marsch utåt från vägkanten tills släntytan möter marken.
   const slope = (p, sg) => {
     const hw = sg > 0 ? p.wl : p.wr, ex = p.x + sg * p.nx * hw, ey = p.y + sg * p.ny * hw, ze = p.z, g0 = gz(ex, ey) ?? p.g;   // saknas marken vid kanten används mittlinjens markhöjd
@@ -181,7 +204,7 @@ function l3rDraw() {
   if (c.st) line(c.st.map(p => new THREE.Vector3(p.x - O[0], p.y - O[1], p.z - O[2] + 0.12)), 0xffffff);
   else line(c.pts.map(p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2] + 0.12)), 0xffffff);
   if (typeof l3rsLine === "function") l3rsLine(grp, line);
-  l3rMeters(grp, line);
+  l3rMeters(grp, line); l3rwPlace();
   if (c.res) c.res.tight.forEach(t => { const sp = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.5, (Number(c.spec.width) || 5) * 0.15), 12, 8), new THREE.MeshBasicMaterial({ color: 0xd946ef, depthTest: false })); sp.position.set(t.x - O[0], t.y - O[1], t.z - O[2] + 0.5); sp.renderOrder = 13; sp.userData.noHit = true; sp.raycast = () => {}; grp.add(sp); });
   l3Render(); if (typeof l3mHandlesPlace === "function") l3mHandlesPlace();
 }
@@ -204,6 +227,7 @@ function l3rMeters(grp, lineFn) {
   for (let s = 0; s <= L + 1e-6; s += dist) { const a = l3rPosAt(c, s); tick(a); mk("m" + s, `${Math.round(s)} m`, a, ""); }
   if (L - Math.floor(L / dist) * dist > dist * 0.25) { const a = l3rPosAt(c, L); tick(a); mk("end", `${l3rFmt(L, 0)} m`, a, "end"); }
   (c.spec.widen || []).forEach((z, i) => {
+    if (z.kind === "obj") { const P = (z.pts || []).map(q => new THREE.Vector3(q[0] - O[0], q[1] - O[1], (l3rPosAt(c, l3rProj(c.pts, q[0], q[1]).s).z) + 0.4 - O[2])); if (P.length > 2) { P.push(P[0].clone()); const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(P), new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false })); l.renderOrder = 14; l.userData.noHit = true; l.raycast = () => {}; grp.add(l); const m0 = z.pts.reduce((a, q) => [a[0] + q[0] / z.pts.length, a[1] + q[1] / z.pts.length], [0, 0]); mk("o" + i, `Runt objekt +${l3rFmt(Number(z.offset) || 0, 1)} m`, { x: m0[0], y: m0[1], z: l3rPosAt(c, l3rProj(c.pts, m0[0], m0[1]).s).z }, "w", 2.2); } return; }
     const s0 = Math.max(0, Number(z.s0)), s1 = Math.min(L, Number(z.s1)); if (!(s1 > s0)) return;
     const pts = []; for (let s = s0; s <= s1 + 1e-6; s += Math.max(0.5, (s1 - s0) / 40)) { const a = l3rPosAt(c, s); pts.push(new THREE.Vector3(a.x - O[0], a.y - O[1], a.z + 0.35 - O[2])); }
     const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false })); l.renderOrder = 14; l.userData.noHit = true; l.raycast = () => {}; grp.add(l);
@@ -226,6 +250,7 @@ function l3rSchedule(ms) {
 
 /* ---- Start, stängning, objekt ---- */
 function l3roadStart() {
+  if (l3road.capture) { l3rCaptureDone(); return; }
   const mp = l3t.mp || [];
   if (mp.length < 2) { l3Status("Vägen behöver minst två punkter.", true); return; }
   const pts = mp.map(p => [p.x + l3.O[0], p.y + l3.O[1], p.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000));
@@ -235,12 +260,13 @@ function l3roadStart() {
 }
 function l3roadOpen(cur) {
   l3roadClose(true); l3road.cur = cur; l3road.seq++;
-  if (!l3road.kbd) { l3road.kbd = e => { if (e.key === "Escape" && l3road.cur && !/INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || "")) { e.stopPropagation(); l3roadClose(); } }; window.addEventListener("keydown", l3road.kbd, true); }
+  if (!l3road.kbd) { l3road.kbd = e => { if (e.key === "Escape" && l3road.capture) { e.stopPropagation(); l3rCaptureCancel(); } else if (e.key === "Escape" && l3road.cur && !/INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || "")) { e.stopPropagation(); l3roadClose(); } }; window.addEventListener("keydown", l3road.kbd, true); }
   l3rPanel(); l3rDraw(); l3rSchedule(0);
 }
 function l3roadClose(keep) {
+  l3road.capture = null; if (typeof l3rwClear === "function") l3rwClear();
   const el = document.getElementById("v3RoadPanel"); if (el) el.remove(); if (!keep && typeof l3rsClose === "function") l3rsClose();
-  const c = l3road.cur; if (c) l3road.last = { spec: JSON.parse(JSON.stringify(c.spec)) };
+  const c = l3road.cur; if (c) l3road.last = { spec: JSON.parse(JSON.stringify(c.spec, (k, v) => k === "_c" ? undefined : v)) };
   clearTimeout(l3road.timer); l3road.seq++; l3road.cur = null; if (!keep) l3rDriveStop(true); else l3rDriveStop(false);
   if (l3.groups.road) l3Clear(l3.groups.road); if (typeof l3rLabelsClear === "function" && l3m) l3rLabelsClear();
   if (!keep) { if (l3road.kbd) { window.removeEventListener("keydown", l3road.kbd, true); l3road.kbd = null; } l3Render(); if (typeof l3mHandlesPlace === "function") l3mHandlesPlace(); }
@@ -248,6 +274,7 @@ function l3roadClose(keep) {
 /* Tryck i 3D medan panelen är öppen: ignoreras (panelen avslutas med Esc). */
 function l3roadTap() {
   if (!l3road.cur || l3.tool !== "measure" || l3Prefs().measure !== "road") return false;
+  if (l3road.capture) return false;   // objektets hörn samlas av vanliga mätverktyget
   l3Status("Byggvägen är öppen – skapa objekten eller stäng den (Esc) för att rita en ny väg.", true); return true;
 }
 /* Väg, schaktslänt och fyllningsslänt blir ritade ytor (ett steg i Ångra). */
@@ -293,7 +320,12 @@ function l3rPanel() {
       ${spec.mode === "anchor" ? `<label class="v3-rd-n" style="grid-column:1/3" title="Punkten vars höjd är given. Dra i ringen för att ändra höjden."><span>Höjdpunkt</span><select data-ra style="flex:2;padding:3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit"><option value="-1" ${!(spec.anchor >= 0) ? "selected" : ""}>Högsta punkten du klickat</option>${c.pts.map((p, i) => `<option value="${i}" ${Number(spec.anchor) === i ? "selected" : ""}>Punkt ${i + 1} (${l3rFmt(p[2], 2)} m)</option>`).join("")}</select></label><label class="v3-rd-n" style="grid-column:1/3" title="Vägen går aldrig högre än höjdpunkten"><input type="checkbox" data-rc ${spec.cap !== false ? "checked" : ""} style="width:auto"><span>Aldrig över höjdpunkten</span></label>` : ""}
       <div class="v3-rd-seg" title="Höjdprofil"><button type="button" data-rm="anchor" class="${spec.mode === "anchor" ? "on" : ""}" title="En punkt på vägen har given höjd (som standard den högsta du klickat) – resten räknas därifrån med högsta lutning">Från höjdpunkt</button><button type="button" data-rm="terrain" class="${spec.mode === "terrain" ? "on" : ""}">Följ marken</button><button type="button" data-rm="straight" class="${spec.mode === "straight" ? "on" : ""}">Rak start → slut</button><button type="button" data-rm="pins" class="${spec.mode === "pins" ? "on" : ""}" title="Vägen går genom höjden i varje punkt du klickat ut (dra en ring för att ändra) – den högsta punkten blir vägens högsta">Genom mina punkter</button></div>
     </div>
-    <div class="v3-rd-w" title="Lokal breddning, t.ex. vid ett stort fundament: vägen blir bredare mellan två sträckor och avtonas mjukt"><div class="v3-rd-wh"><b>Breddningar</b><button type="button" data-rb="addw" title="Lägg till en breddning (vid snittet om tvärsektionen är öppen, annars mitt på vägen)">＋ Breddning</button></div>${(spec.widen || []).map((z, i) => `<div class="v3-rd-wr"><span>från</span><input type="number" data-rw="${i}:s0" value="${l3rFmt(z.s0, 1)}" step="1"><span>till</span><input type="number" data-rw="${i}:s1" value="${l3rFmt(z.s1, 1)}" step="1"><span>m  +</span><input type="number" data-rw="${i}:add" value="${z.add}" step="0.5" min="-10" max="30"><span>m</span><select data-rw="${i}:side"><option value="both" ${z.side !== "L" && z.side !== "R" ? "selected" : ""}>båda</option><option value="L" ${z.side === "L" ? "selected" : ""}>vänster</option><option value="R" ${z.side === "R" ? "selected" : ""}>höger</option></select><span title="Så långt före och efter avtonas breddningen">avtoning</span><input type="number" data-rw="${i}:taper" value="${z.taper}" step="1" min="1" max="100"><span>m</span><button type="button" data-rwx="${i}" title="Ta bort">✕</button></div>`).join("")}</div>
+    <div class="v3-rd-w" title="Lokal breddning, t.ex. vid ett stort fundament: vägen blir bredare mellan två sträckor och avtonas mjukt"><div class="v3-rd-wh"><b>Breddningar</b><button type="button" data-rb="addw" title="Lägg till en breddning (vid snittet om tvärsektionen är öppen, annars mitt på vägen)">＋ Breddning</button></div>${(spec.widen || []).map((z, i) => z.kind === "obj" ? "" : `<div class="v3-rd-wr"><span>från</span><input type="number" data-rw="${i}:s0" value="${l3rFmt(z.s0, 1)}" step="1"><span>till</span><input type="number" data-rw="${i}:s1" value="${l3rFmt(z.s1, 1)}" step="1"><span>m  +</span><input type="number" data-rw="${i}:add" value="${z.add}" step="0.5" min="-10" max="30"><span>m</span><select data-rw="${i}:side"><option value="both" ${z.side !== "L" && z.side !== "R" ? "selected" : ""}>båda</option><option value="L" ${z.side === "L" ? "selected" : ""}>vänster</option><option value="R" ${z.side === "R" ? "selected" : ""}>höger</option></select><span title="Så långt före och efter avtonas breddningen">avtoning</span><input type="number" data-rw="${i}:taper" value="${z.taper}" step="1" min="1" max="100"><span>m</span><button type="button" data-rwx="${i}" title="Ta bort">✕</button></div>`).join("")}</div>
+    <details class="v3-rd-adv" ${l3Prefs().rdAdv ? "open" : ""} title="Avancerade breddningar: dra start och slut direkt på linjen, eller bredda runt ett objekt du pekar ut"><summary>Avancerat – breddning på linjen och runt objekt</summary>
+      <label class="v3-rd-n" title="Orange handtag på linjen vid varje breddnings start och slut – dra dem dit du vill"><input type="checkbox" data-radh ${l3Prefs().rdHandles ? "checked" : ""} style="width:auto"><span>Dragbara start/slut på linjen</span></label>
+      <div class="v3-rd-wh"><b>Runt objekt</b><button type="button" data-rb="addobj" title="Tryck ut objektets hörn i 3D (Enter eller första punkten avslutar). Vägkanten följer konturen + offset.">＋ Runt objekt…</button></div>
+      ${(spec.widen || []).map((z, i) => z.kind !== "obj" ? "" : `<div class="v3-rd-wr"><span><b>Objekt</b> (${(z.pts || []).length} punkter)</span><span>offset</span><input type="number" data-ro="${i}" value="${z.offset}" step="0.5" min="0" max="30"><span>m</span><button type="button" data-rore="${i}" title="Peka ut objektet igen" style="margin-left:6px">⟳ rita om</button><button type="button" data-rox="${i}" title="Ta bort">✕</button></div>`).join("")}
+    </details>
     <div class="v3-rd-drv" title="Lastbilen från Gå-läget kör vägen: nosen följer lutningen, den styr i kurvorna och går långsammare uppför"><button type="button" data-rb="drive" ${r ? "" : "disabled"}>${l3rDrv.on ? "⏸ Pausa" : l3rDrv.s > 0.5 ? "▶ Fortsätt" : "▶ Kör vägen"}</button><button type="button" data-rb="drvreset" title="Tillbaka till start">⏮</button><select data-rv title="Fordon">${typeof L3RT_VEH !== "undefined" ? Object.entries(L3RT_VEH).map(([k, v]) => `<option value="${k}" ${(spec.vehicle || "truck") === k ? "selected" : ""}>${v.label}</option>`).join("") : ""}</select><label title="Fart i km/h på plan väg"><input type="number" data-rk="speed" value="${spec.speed}" min="3" max="60" step="1"> km/h</label><label title="Kameran åker med lastbilen"><input type="checkbox" data-rf ${l3rDrv.follow ? "checked" : ""}> Följ</label><label title="Börja om när lastbilen kommit fram"><input type="checkbox" data-rl ${l3rDrv.loop ? "checked" : ""}> Loop</label><div data-rinfo class="v3-rd-info"></div></div>
     <div class="v3-vq-foot"><button type="button" class="primary" data-rb="make" ${r ? "" : "disabled"} title="Väg, schaktslänt och fyllningsslänt blir vanliga ytor (flytta, ändra, IFC, DXF)">Skapa objekt</button><button type="button" data-rb="undo" title="Ta bort sista punkten" ${c.pts.length > 2 ? "" : "disabled"}>↶</button><button type="button" data-rb="saveroute" ${r ? "" : "disabled"} title="Spara körvägen i projektet (Kommentarer och mått → Körvägar) för att simulera den och koppla den till tidplanen">💾 Spara körväg</button><button type="button" data-rb="sect" ${r ? "" : "disabled"} title="Tvärsektion och längdprofil: se väg och slänter mot punktmolnet, färdas längs linjen och exportera som DXF">Tvärsektion</button><button type="button" data-rb="redraw" title="Rita om mittlinjen">Rita om</button><button type="button" data-rb="x">Stäng</button></div>`;
   const q = s => el.querySelector(s), qa = s => el.querySelectorAll(s), on = (k, fn) => qa(`[data-rb="${k}"]`).forEach(b => { b.onclick = fn; });
@@ -301,6 +333,11 @@ function l3rPanel() {
   qa("input[data-rs]").forEach(i => { i.onchange = () => { const k = i.dataset.rs; spec.src = i.checked ? [...new Set([...spec.src, k])] : spec.src.filter(x => x !== k); l3rSchedule(0); }; });
   { const a = q("select[data-ra]"); if (a) a.onchange = () => { spec.anchor = Number(a.value); l3rSchedule(0); }; const cc = q("input[data-rc]"); if (cc) cc.onchange = () => { spec.cap = cc.checked; l3rSchedule(0); }; }
   qa("input[data-rw],select[data-rw]").forEach(i => { const [k, key] = i.dataset.rw.split(":"), z = (spec.widen || [])[Number(k)]; const set = () => { if (!z) return; if (key === "side") z.side = i.value; else { const v = Number(String(i.value).replace(",", ".")); if (Number.isFinite(v)) z[key] = v; } c.saved = false; l3rSchedule(350); }; i.oninput = set; i.onchange = set; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
+  { const d = q(".v3-rd-adv"); if (d) d.addEventListener("toggle", () => l3SetPref("rdAdv", d.open)); const hh = q("input[data-radh]"); if (hh) hh.onchange = () => { l3SetPref("rdHandles", hh.checked); l3rwPlace(); }; }
+  qa("input[data-ro]").forEach(i => { i.oninput = () => { const z = (spec.widen || [])[Number(i.dataset.ro)], v = Number(String(i.value).replace(",", ".")); if (z && Number.isFinite(v) && v >= 0) { z.offset = v; c.saved = false; l3rSchedule(300); } }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
+  qa("[data-rox]").forEach(b => { b.onclick = () => { spec.widen.splice(Number(b.dataset.rox), 1); c.saved = false; l3rPanel(); l3rSchedule(0); }; });
+  qa("[data-rore]").forEach(b => { b.onclick = () => l3rCaptureStart(Number(b.dataset.rore)); });
+  on("addobj", () => l3rCaptureStart(-1));
   qa("[data-rwx]").forEach(b => { b.onclick = () => { spec.widen.splice(Number(b.dataset.rwx), 1); c.saved = false; l3rPanel(); l3rSchedule(0); }; });
   on("addw", () => { const L = c.st ? c.st[c.st.length - 1].s : 40, mid = typeof l3rs !== "undefined" && l3rs.open ? l3rs.s : L / 2; (spec.widen = spec.widen || []).push({ s0: Math.max(0, Math.round(mid - 10)), s1: Math.min(Math.round(L), Math.round(mid + 10)), add: 4, side: "both", taper: 8 }); c.saved = false; l3rPanel(); l3rSchedule(0); });
   qa("[data-rm]").forEach(b => { b.onclick = () => { spec.mode = b.dataset.rm; l3rPanel(); l3rSchedule(0); }; });
@@ -315,7 +352,7 @@ function l3rPanel() {
 /* Liten CSS för panelen (övrigt återanvänder Volym-panelens klasser). */
 (function l3rCss() {
   if (document.getElementById("v3RoadCss")) return; const s = document.createElement("style"); s.id = "v3RoadCss";
-  s.textContent = `#view3d .v3-meas.v3-rlab{font-size:11px;padding:1px 6px;background:rgba(15,23,42,.82);color:#fff;transform:translate(-50%,-100%);pointer-events:none}#view3d .v3-meas.v3-rlab.end{background:#0f172a}#view3d .v3-meas.v3-rlab.w{background:#f59e0b;color:#1f2937;font-weight:600}#view3d #v3RoadPanel .v3-rd-g{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin:8px 0}#view3d #v3RoadPanel .v3-rd-n{display:flex;align-items:center;gap:4px;font-size:12px}#view3d #v3RoadPanel .v3-rd-n span{flex:1;color:#475569;font-weight:600}#view3d #v3RoadPanel .v3-rd-n input{width:58px;padding:3px 4px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-n em{width:16px;font-style:normal;color:#64748b}#view3d #v3RoadPanel .v3-rd-seg{grid-column:1/3;display:flex;gap:4px}#view3d #v3RoadPanel .v3-rd-seg button{flex:1;padding:5px 6px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit;font-size:12px}#view3d #v3RoadPanel .v3-rd-seg button.on{background:#2563eb;border-color:#2563eb;color:#fff}#view3d #v3RoadPanel .v3-rd-drv{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:8px 0;font-size:12px}#view3d #v3RoadPanel .v3-rd-drv button{padding:5px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit}#view3d #v3RoadPanel .v3-rd-drv input[type=number]{width:46px;padding:3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-info{flex-basis:100%;color:#475569}#view3d #v3RoadPanel .v3-rd-w{margin:6px 0;font-size:12px}#view3d #v3RoadPanel .v3-rd-wh{display:flex;align-items:center;justify-content:space-between}#view3d #v3RoadPanel .v3-rd-wh button{padding:3px 8px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit}#view3d #v3RoadPanel .v3-rd-wr{display:flex;flex-wrap:wrap;align-items:center;gap:3px 4px;margin-top:4px;padding:4px 6px;background:#fff7ed;border-radius:8px}#view3d #v3RoadPanel .v3-rd-wr input{width:44px;padding:2px 3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-wr select{padding:2px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-wr button{margin-left:auto;border:0;background:none;cursor:pointer}#view3d #v3RoadPanel .v3-rd-src{display:flex;flex-direction:column;gap:2px;margin:6px 0;font-size:12px;max-height:84px;overflow:auto}`;
+  s.textContent = `#view3d .v3-meas.v3-rlab{font-size:11px;padding:1px 6px;background:rgba(15,23,42,.82);color:#fff;transform:translate(-50%,-100%);pointer-events:none}#view3d .v3-meas.v3-rlab.end{background:#0f172a}#view3d .v3-meas.v3-rlab.w{background:#f59e0b;color:#1f2937;font-weight:600}#view3d .v3-rwh{position:absolute;z-index:8;transform:translate(-50%,-50%);width:22px;height:22px;padding:0;border:2px solid #fff;border-radius:6px;background:#f59e0b;color:#1f2937;font:700 13px system-ui;cursor:ew-resize;box-shadow:0 1px 6px rgba(0,0,0,.4)}#view3d #v3RoadPanel .v3-rd-adv{margin:6px 0;font-size:12px}#view3d #v3RoadPanel .v3-rd-adv summary{cursor:pointer;color:#475569;font-weight:600}#view3d #v3RoadPanel .v3-rd-g{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin:8px 0}#view3d #v3RoadPanel .v3-rd-n{display:flex;align-items:center;gap:4px;font-size:12px}#view3d #v3RoadPanel .v3-rd-n span{flex:1;color:#475569;font-weight:600}#view3d #v3RoadPanel .v3-rd-n input{width:58px;padding:3px 4px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-n em{width:16px;font-style:normal;color:#64748b}#view3d #v3RoadPanel .v3-rd-seg{grid-column:1/3;display:flex;gap:4px}#view3d #v3RoadPanel .v3-rd-seg button{flex:1;padding:5px 6px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit;font-size:12px}#view3d #v3RoadPanel .v3-rd-seg button.on{background:#2563eb;border-color:#2563eb;color:#fff}#view3d #v3RoadPanel .v3-rd-drv{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:8px 0;font-size:12px}#view3d #v3RoadPanel .v3-rd-drv button{padding:5px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit}#view3d #v3RoadPanel .v3-rd-drv input[type=number]{width:46px;padding:3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-info{flex-basis:100%;color:#475569}#view3d #v3RoadPanel .v3-rd-w{margin:6px 0;font-size:12px}#view3d #v3RoadPanel .v3-rd-wh{display:flex;align-items:center;justify-content:space-between}#view3d #v3RoadPanel .v3-rd-wh button{padding:3px 8px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit}#view3d #v3RoadPanel .v3-rd-wr{display:flex;flex-wrap:wrap;align-items:center;gap:3px 4px;margin-top:4px;padding:4px 6px;background:#fff7ed;border-radius:8px}#view3d #v3RoadPanel .v3-rd-wr input{width:44px;padding:2px 3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-wr select{padding:2px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-wr button{margin-left:auto;border:0;background:none;cursor:pointer}#view3d #v3RoadPanel .v3-rd-src{display:flex;flex-direction:column;gap:2px;margin:6px 0;font-size:12px;max-height:84px;overflow:auto}`;
   document.head.appendChild(s);
 })();
 
@@ -381,4 +418,60 @@ function l3rDriveReset() { const D = l3rDrv; D.s = 0; D.travel = 0; D.prev = nul
 function l3rDriveStop(remove) {
   const D = l3rDrv; D.on = false; cancelAnimationFrame(D.raf); D.raf = 0; D.last = 0; D.prev = null;
   if (remove && D.grp) { l3.scene.remove(D.grp); D.grp = null; D.truck = null; D.s = 0; D.travel = 0; D.v = 0; l3Render(); }
+}
+
+/* ---- Avancerat: peka ut objektet ---- */
+function l3rCaptureStart(idx) {
+  const c = l3road.cur; if (!c) return; l3road.capture = { idx }; l3t.mp = null; l3t.mpObjs = []; l3Busy(true);
+  l3Status("Tryck ut objektets hörn i 3D (varje punkt fäster mot ytor). Enter eller första punkten avslutar, Esc avbryter.");
+}
+function l3rCaptureDone() {
+  const c = l3road.cur, cap = l3road.capture, mp = l3t.mp || []; if (!c || !cap) return;
+  if (mp.length < 3) { l3Status("Objektet behöver minst tre punkter – fortsätt trycka ut hörnen.", true); return; }
+  const pts = mp.map(p => [l3rtR3(p.x + l3.O[0]), l3rtR3(p.y + l3.O[1])]);
+  const was = JSON.parse(JSON.stringify(c.spec.widen || [])); c.spec.widen = c.spec.widen || [];
+  if (cap.idx >= 0 && c.spec.widen[cap.idx]) { c.spec.widen[cap.idx].pts = pts; delete c.spec.widen[cap.idx]._c; } else c.spec.widen.push({ kind: "obj", pts, offset: 2 });
+  l3road.capture = null; l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp); if (typeof l3ClearMeasure === "function") l3ClearMeasure();
+  c.saved = false; const now = JSON.parse(JSON.stringify(c.spec.widen));
+  if (typeof l3VPush === "function") { const set = w => { if (l3road.cur !== c) return; c.spec.widen = JSON.parse(JSON.stringify(w)); l3rPanel(); l3rSchedule(0); }; l3VPush(() => set(was), () => set(now), "breddning runt objekt"); }
+  l3rPanel(); l3rSchedule(0); l3Status(`Vägen breddas runt objektet (offset ${l3rFmt(c.spec.widen[cap.idx >= 0 ? cap.idx : c.spec.widen.length - 1].offset, 1)} m) – ändra offset i panelen. Ctrl+Z ångrar.`);
+}
+function l3rCaptureCancel() { l3road.capture = null; l3t.mp = null; l3Busy(false); l3ShowVcb(null); if (l3.groups.tmp) l3Clear(l3.groups.tmp); if (typeof l3ClearMeasure === "function") l3ClearMeasure(); l3Status("Avbrutet."); }
+
+/* ---- Avancerat: dra breddningens start och slut på linjen ---- */
+const l3rw = { els: [], drag: null };
+function l3rwClear() { l3rw.els.forEach(e => e.remove()); l3rw.els = []; }
+function l3rwPlace() {
+  const c = l3road.cur, on = !!(c && l3Prefs().rdHandles), host = l3.renderer && l3.renderer.domElement.parentElement;
+  const zs = on ? (c.spec.widen || []).map((z, i) => [z, i]).filter(([z]) => z.kind !== "obj" && Number.isFinite(Number(z.s0)) && Number.isFinite(Number(z.s1))) : [];
+  const need = zs.length * 2; while (l3rw.els.length > need) l3rw.els.pop().remove();
+  while (l3rw.els.length < need) { const b = document.createElement("button"); b.type = "button"; b.className = "v3-rwh"; host.appendChild(b); l3rw.els.push(b); }
+  zs.forEach(([z, i], k) => [["s0", "start"], ["s1", "slut"]].forEach(([key, name], j) => {
+    const b = l3rw.els[k * 2 + j], a = l3rPosAt(c, Math.max(0, Math.min(l3rLen(c), Number(z[key])))), q = l3ToScreen(new THREE.Vector3(a.x - l3.O[0], a.y - l3.O[1], a.z + 0.4 - l3.O[2]));
+    b.dataset.rwz = i; b.dataset.rwk = key; b.title = `Dra – breddningens ${name} (${l3rFmt(Number(z[key]), 1)} m)`; b.textContent = key === "s0" ? "◂" : "▸"; b.style.display = q.behind ? "none" : "block"; b.style.left = q.x + "px"; b.style.top = q.y + "px";
+    b.onpointerdown = e => l3rwDown(e, i, key);
+  }));
+}
+const l3rLen = c => c.pts.reduce((a, p, i) => i ? a + Math.hypot(p[0] - c.pts[i - 1][0], p[1] - c.pts[i - 1][1]) : 0, 0);
+/* Sträckan på linjen närmast en punkt på skärmen (klientkoordinater). */
+function l3rwSAt(cx, cy) {
+  const c = l3road.cur, host = l3.renderer.domElement.parentElement, r = host.getBoundingClientRect(), mx = cx - r.left, my = cy - r.top, L = l3rLen(c); let best = 0, bd = Infinity;
+  for (let s = 0; s <= L + 1e-6; s += 0.5) { const a = l3rPosAt(c, s), q = l3ToScreen(new THREE.Vector3(a.x - l3.O[0], a.y - l3.O[1], a.z - l3.O[2])); if (q.behind) continue; const d = Math.hypot(q.x - mx, q.y - my); if (d < bd) { bd = d; best = s; } }
+  return best;
+}
+function l3rwMove(i, key, s) {
+  const c = l3road.cur, z = c && (c.spec.widen || [])[i]; if (!z) return; s = Math.round(Math.max(0, Math.min(l3rLen(c), s)) * 2) / 2;
+  if (key === "s0") z.s0 = Math.min(s, Number(z.s1)); else z.s1 = Math.max(s, Number(z.s0)); c.saved = false; l3rDraw(); l3rSchedule(250);
+}
+function l3rwDown(e, i, key) {
+  const c = l3road.cur; if (!c || e.button !== 0) return; e.preventDefault(); e.stopPropagation();
+  const was = JSON.parse(JSON.stringify(c.spec.widen || [])), z = c.spec.widen[i]; l3rw.drag = { i, key };
+  const mv = ev => { l3rwMove(i, key, l3rwSAt(ev.clientX, ev.clientY)); l3StatusLive(`Breddningens ${key === "s0" ? "start" : "slut"} ${l3rFmt(Number(z[key]), 1)} m`); };
+  const up = () => {
+    window.removeEventListener("pointermove", mv, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("pointercancel", up, true); l3rw.drag = null;
+    const now = JSON.parse(JSON.stringify(c.spec.widen || [])); if (JSON.stringify(now) === JSON.stringify(was)) return;
+    const set = w => { if (l3road.cur !== c) return; c.spec.widen = JSON.parse(JSON.stringify(w)); l3rPanel(); l3rDraw(); l3rSchedule(0); };
+    if (typeof l3VPush === "function") l3VPush(() => set(was), () => set(now), "flytta breddning"); l3rPanel(); l3rSchedule(0);
+  };
+  window.addEventListener("pointermove", mv, true); window.addEventListener("pointerup", up, true); window.addEventListener("pointercancel", up, true);
 }

@@ -60,7 +60,7 @@ function l3rtRemove(id) {
 /* Från byggvägspanelen: ny körväg, eller uppdatera den som redigeras. */
 function l3rtSaveRoad(c) {
   if (!c || !c.st || !c.res) { l3Status("Vänta tills vägen är räknad.", true); return null; }
-  const spec = JSON.parse(JSON.stringify(c.spec)), st = c.st.map(p => [l3rtR3(p.x), l3rtR3(p.y), l3rtR3(p.z), l3rtR3(p.s)]), res = { len: c.res.len, cut: c.res.cut, fill: c.res.fill, maxG: c.res.maxG };
+  const spec = JSON.parse(JSON.stringify(c.spec, (k, v) => k === "_c" ? undefined : v)), st = c.st.map(p => [l3rtR3(p.x), l3rtR3(p.y), l3rtR3(p.z), l3rtR3(p.s)]), res = { len: c.res.len, cut: c.res.cut, fill: c.res.fill, maxG: c.res.maxG };
   let r = c.routeId && l3rt.list.find(x => x.id === c.routeId);
   if (r) { Object.assign(r, { pts: c.pts.map(p => p.slice()), spec, st, res, vehicle: spec.vehicle || r.vehicle || "truck", speed: Number(spec.speed) || r.speed || 20 }); delete r._st; }
   else {

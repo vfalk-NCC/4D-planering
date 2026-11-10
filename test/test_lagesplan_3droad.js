@@ -144,6 +144,22 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const txt = ml.a.map(x => x[1]);
   if (!txt.includes('0 m') || !txt.includes('10 m') || !txt.includes('20 m') || !txt.some(t => /Bredd\. 20–35 m/.test(t)) || ml.nb !== ml.a.length || ml.nc >= ml.a.length) fail('Metertal på linjen: ' + JSON.stringify(ml));
   console.log('OK: metertal längs linjen och breddningens sträcka syns som etiketter (överlever omritning)', JSON.stringify(txt));
+  // Avancerat: breddning runt objekt (peka ut hörn + offset) och dragbara start/slut på linjen.
+  const ad = await page.evaluate(async () => {
+    const c = l3road.cur, O = l3.O; c.spec.mode = 'terrain'; c.spec.widen = []; const out = {};
+    // Pekar ut ett objekt på höger sida (negativt y) via samma väg som i verktyget: samla hörn, Enter.
+    l3rCaptureStart(-1); l3t.mp = [[6512325, 150128], [6512335, 150128], [6512335, 150126], [6512325, 150126]].map(p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], 0)); l3roadStart();
+    out.zone = (c.spec.widen[0] || {}).kind; out.cap = !!l3road.capture; c.spec.widen[0].offset = 2; l3rSchedule(0);
+    for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (c.res && !c.busy) break; }
+    const mid = l3rsSection(c, c.pts[0] ? 30 : 30), far = l3rsSection(c, 3), side = l3rsSection(c, 36); out.mid = [mid.wl, mid.wr]; out.far = [far.wl, far.wr]; out.edge = [side.wl, side.wr];
+    out.W2 = c.spec.width / 2; out.labels = [...l3m.labels.entries()].some(([k, e]) => k === 'road:o0' && /Runt objekt/.test(e.textContent));
+    // Dragbara handtag
+    c.spec.widen = [{ s0: 20, s1: 35, add: 3, side: 'both', taper: 5 }]; l3SetPref('rdHandles', true); l3rDraw(); l3rwPlace(); out.handles = l3rw.els.length;
+    const a = l3rPosAt(c, 40), q = l3ToScreen(new THREE.Vector3(a.x - O[0], a.y - O[1], a.z - O[2])), r0 = l3.renderer.domElement.parentElement.getBoundingClientRect();
+    out.sAt = Math.round(l3rwSAt(q.x + r0.left, q.y + r0.top)); l3rwMove(0, 's1', 44.26); out.s1 = c.spec.widen[0].s1; l3rwMove(0, 's0', 99); out.s0 = c.spec.widen[0].s0;
+    l3SetPref('rdHandles', false); l3rwPlace(); out.off = l3rw.els.length; return out; });
+  if (ad.zone !== 'obj' || ad.cap || !(ad.mid[1] > ad.W2 + 6) || ad.mid[1] > ad.W2 + 12 || ad.mid[0] !== ad.W2 || ad.far[1] !== ad.W2 || !(ad.edge[1] > ad.W2 + 2) || !ad.labels || ad.handles !== 2 || Math.abs(ad.sAt - 40) > 1 || ad.s1 !== 44.5 || ad.s0 !== 44.5 || ad.off !== 0) fail('Avancerad breddning: ' + JSON.stringify(ad));
+  console.log('OK: avancerat – breddning runt utpekat objekt (kontur + offset, bara på objektets sida) och dragbara start/slut på linjen', JSON.stringify(ad));
   // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
   const hd = await page.evaluate(async () => {
     const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;
