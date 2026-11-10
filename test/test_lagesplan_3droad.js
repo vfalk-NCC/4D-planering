@@ -172,6 +172,19 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (!vo.has || vo.err || !(Math.abs(vo.res.cut + vo.res.fill - 256 * 2) < 25)) fail('Volym mot ritat objekt: ' + JSON.stringify(vo));
   console.log('OK: Volym kan räkna mot ritade objekt (t.ex. byggväg) – punktmoln mot ritad platta ger rätt volym', JSON.stringify(vo.res));
+  // Volym mot byggvägen som helhet (väg + slänter) och mot markerade ritade objekt.
+  const vs = await page.evaluate(async () => {
+    const O = l3.O, x0 = 6512500, y0 = 150300, P = [];
+    for (let y = -5; y <= 25; y += 0.5) for (let x = -5; x <= 25; x += 0.5) P.push(x - 10, y - 10, 0);
+    l3pc.clouds.push({ id: 'pcS', name: 'Moln S', visible: false, dz: 0, nTot: P.length / 3, info: { center: [x0 + 10, y0 + 10, 98], min: [x0 - 5, y0 - 5, 98], max: [x0 + 25, y0 + 25, 98] }, chunks: [{ pos: new Float32Array(P) }] });
+    const mkp = (xa, name, set) => { const p = modCreate({ k: 'mesh', pts: [[0, 0, 0], [8, 0, 0], [8, 16, 0], [0, 16, 0]], faces: [[1, 2, 3], [1, 3, 4]], closed: false }, [x0 + xa, y0, 100], { name, color: '#9ca3af', snapshot: false }); if (set) p.set = set; return p; };
+    const a = mkp(2, 'Byggväg 16 m', 'S1'), b = mkp(10, 'Släntyta schakt', 'S1');   // två intilliggande delar: 2 × 128 m² på +2 m
+    const srcs = l3dfSources(), set = srcs.find(s => s.k === 'obs:S1'); l3.sel = new Set([a.id, b.id]); const sel = l3dfSources().find(s => s.k.startsWith('obm:'));
+    const calc = async key => { const cur = { pts: [[x0 + 1, y0 + 1, 99], [x0 + 19, y0 + 1, 99], [x0 + 19, y0 + 15, 99], [x0 + 1, y0 + 15, 99]], surf: null, spec: { a: { k: 'pc:pcS', side: 'top' }, b: { k: key, side: 'top', z: null }, cell: 0.5, tin: false } }; const r = await l3volCompute(cur, () => true); return r.res ? Math.round(r.res.cut + r.res.fill) : r.err; };
+    return { set: set && set.label, sel: sel && sel.label, vSet: await calc('obs:S1'), vSel: await calc(sel.k), vOne: await calc('ob:' + a.id) };
+  });
+  if (!/Ritad helhet: Byggväg 16 m \(2 delar\)/.test(vs.set || '') || !/Markerade ritade objekt \(2\)/.test(vs.sel || '') || !(vs.vSet > vs.vOne * 1.8) || Math.abs(vs.vSet - vs.vSel) > 5) fail('Volym mot helhet: ' + JSON.stringify(vs));
+  console.log('OK: byggväg + slänter kan väljas som en helhet (och markerade ritade objekt som en yta) i Volym', JSON.stringify(vs));
   // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
   const hd = await page.evaluate(async () => {
     const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;

@@ -89,14 +89,26 @@ function l3dfSources() {
   if (typeof l3b !== "undefined") l3b.models.forEach(m => { if (m.meshes && m.meshes.length) out.push({ k: "md:" + m.id, label: "3D-modell: " + m.name }); });
   if (typeof l3s !== "undefined" && l3s.cad && typeof cads === "function") cads().forEach(r => { let n = 0; l3s.cad.forEach(o => { if (o.userData.cadId === r.id && o.isMesh && o.geometry.getAttribute("position")) n++; }); if (n) out.push({ k: "cad:" + r.id, label: "3D-ritning: " + r.name }); });
   // Ritade objekt (Victor 2026-11-10: "räkna volym mot objekten jag har ritat – mot t.ex. punktmoln och byggväg"): ytor och kroppar du ritat/modellerat, t.ex. byggvägen och dess slänter.
-  if (typeof placements !== "undefined" && l3.placeMeshes) placements.forEach(p => { if (!p.m || !l3dfObjMeshes(p).length) return; out.push({ k: "ob:" + p.id, label: "Ritat objekt: " + (p.name || "objekt") }); });
+  if (typeof placements !== "undefined" && l3.placeMeshes) {
+    const sets = new Map(), ok = [];
+    placements.forEach(p => { if (!p.m || !l3dfObjMeshes(p).length) return; ok.push(p); if (p.set) (sets.get(p.set) || sets.set(p.set, []).get(p.set)).push(p); });
+    // Flera objekt som skapats tillsammans (byggväg + slänter) som en helhet, och de markerade ritade objekten som en yta (Victor 2026-11-10).
+    sets.forEach((ps, id) => { if (ps.length > 1) out.push({ k: "obs:" + id, label: `Ritad helhet: ${(ps.find(q => /Byggväg/.test(q.name || "")) || ps[0]).name} (${ps.length} delar)` }); });
+    const sel = [...(l3.sel || [])].filter(id => ok.some(p => p.id === id)); if (sel.length > 1) out.push({ k: "obm:" + sel.join(","), label: `Markerade ritade objekt (${sel.length})` });
+    ok.forEach(p => out.push({ k: "ob:" + p.id, label: "Ritat objekt: " + (p.name || "objekt") }));
+  }
   return out;
+}
+/* Ritade objekt bakom en yta-nyckel: ob:<id> ett objekt, obs:<mängd> alla som skapats tillsammans, obm:<id,id,…> en markering. */
+function l3dfObjOf(key) {
+  const i = key.indexOf(":"), kind = key.slice(0, i), id = key.slice(i + 1); if (typeof placements === "undefined") return [];
+  return kind === "ob" ? placements.filter(p => p.id === id) : kind === "obs" ? placements.filter(p => p.set === id) : kind === "obm" ? placements.filter(p => id.split(",").includes(p.id)) : [];
 }
 function l3dfObjMeshes(p) { const g = l3.placeMeshes && l3.placeMeshes.get(p.id), ms = []; if (g) g.traverse(o => { if (o.isMesh && o.geometry && o.geometry.getAttribute("position") && o.visible !== false && !(o.userData && o.userData.noIfc)) ms.push(o); }); return ms; }
 function l3dfBuild(key, g) {
   const [kind, ...rest] = key.split(":"), id = rest.join(":");
   if (kind === "pc") { const c = l3pc.clouds.find(x => x.id === id); if (!c) return null; l3dfFromCloud(c, g); return l3dfFill(g, 2); }
-  if (kind === "ob") { const p = placements.find(x => x.id === id); const ms = p ? l3dfObjMeshes(p) : []; if (!ms.length) return null; l3dfMeshes(g, ms); return l3dfFill(g, 1); }
+  if (kind === "ob" || kind === "obs" || kind === "obm") { const ms = l3dfObjOf(key).flatMap(l3dfObjMeshes); if (!ms.length) return null; l3dfMeshes(g, ms); return l3dfFill(g, 1); }
   if (kind === "md") { const m = l3b.models.find(x => x.id === id); if (!m) return null; l3dfMeshes(g, m.meshes); return l3dfFill(g, 1); }
   if (kind === "cad") { const ms = []; l3s.cad.forEach(o => { if (o.userData.cadId === id && o.isMesh) ms.push(o); }); if (!ms.length) return null; l3dfMeshes(g, ms); return l3dfFill(g, 1); }
   return null;

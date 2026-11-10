@@ -282,7 +282,8 @@ function l3roadMake() {
   const c = l3road.cur; if (!c || !c.geom) return;
   const G = c.geom, r3 = v => Math.round(v * 1000) / 1000, conv = S => { const pts = []; for (let i = 0; i < S.pos.length; i += 3) pts.push([r3(S.pos[i]), r3(S.pos[i + 1]), r3(S.pos[i + 2])]); const faces = []; for (let i = 0; i < S.idx.length; i += 3) faces.push([S.idx[i] + 1, S.idx[i + 1] + 1, S.idx[i + 2] + 1]); return { k: "mesh", pts, faces, closed: false }; };
   placeSnapshot(); const ids = [];
-  const add = (S, name, color) => { if (!S) return; const p = modCreate(conv(S), [G.org[0], G.org[1], G.org[2]], { name, color, snapshot: false }); ids.push(p.id); };
+  const setId = ghNewId().slice(0, 8);   // delarna hör ihop: kan väljas som en helhet i Volym
+  const add = (S, name, color) => { if (!S) return; const p = modCreate(conv(S), [G.org[0], G.org[1], G.org[2]], { name, color, snapshot: false }); p.set = setId; ids.push(p.id); };
   add(G.road, `Byggväg ${l3rFmt(c.res.len, 0)} m`, "#9ca3af"); add(G.cut, "Släntyta schakt", "#60a5fa"); add(G.fill, "Släntyta fyllning", "#f87171");
   c.saved = true; l3roadClose(); l3SelectIds(ids); l3Changed();
   l3Toast(`Byggväg skapad: ${l3rFmt(c.res.len, 0)} m, schakt ${l3rM3(c.res.cut)}, fyllning ${l3rM3(c.res.fill)}. Ctrl+Z ångrar.`);

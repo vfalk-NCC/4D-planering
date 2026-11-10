@@ -43,7 +43,7 @@ function l3volFrac(P, g) {
 
 /* ---- Källor ---- */
 function l3volSources(cur) {
-  const out = (typeof l3dfSources === "function" ? l3dfSources() : []).map(s => ({ k: s.k, label: s.label, sided: /^(md|cad|ob):/.test(s.k) }));
+  const out = (typeof l3dfSources === "function" ? l3dfSources() : []).map(s => ({ k: s.k, label: s.label, sided: /^(md|cad|ob[sm]?):/.test(s.k) }));
   out.push({ k: "plane", label: "Plan genom hörnen" }, { k: "level", label: "Vågrät nivå" });
   if (cur && cur.surf && cur.surf.length >= 3) out.push({ k: "surf", label: `Yta jag klickat ut (${cur.surf.length} hörn)` });
   return out;
@@ -73,7 +73,7 @@ function l3volCellFor(bd, area, userCell, density) {
 }
 async function l3volHeights(cur, src, bd, cell) {
   const dz = src.k.startsWith("pc:") ? (l3pc.clouds.find(c => "pc:" + c.id === src.k) || {}).dz || 0 : 0;
-  const key = [src.k, src.side || "", src.z == null ? "" : src.z, src.k === "plane" ? JSON.stringify(cur.pts) : "", src.k === "surf" ? JSON.stringify(cur.surf) : "", bd.x0.toFixed(2), bd.y0.toFixed(2), bd.x1.toFixed(2), bd.y1.toFixed(2), cell, dz, src.k.startsWith("ob:") ? (p => p ? [p.m && p.m.rev, p.x, p.y, p.z, p.rot, p.dz].join(",") : "")(placements.find(x => "ob:" + x.id === src.k)) : ""].join("|");
+  const key = [src.k, src.side || "", src.z == null ? "" : src.z, src.k === "plane" ? JSON.stringify(cur.pts) : "", src.k === "surf" ? JSON.stringify(cur.surf) : "", bd.x0.toFixed(2), bd.y0.toFixed(2), bd.x1.toFixed(2), bd.y1.toFixed(2), cell, dz, /^ob[sm]?:/.test(src.k) ? l3dfObjOf(src.k).map(p => [p.id, p.m && p.m.rev, p.x, p.y, p.z, p.rot, p.dz].join(",")).join(";") : ""].join("|");
   if (l3vol.cache.has(key)) return l3vol.cache.get(key);
   const g = l3dfGrid(bd, cell);
   if (src.k === "plane") { const pl = l3volPlane(cur.pts); for (let iy = 0; iy < g.ny; iy++) for (let ix = 0; ix < g.nx; ix++) g.z[iy * g.nx + ix] = pl.c + pl.a * (g.x0 + (ix + 0.5) * g.cell - pl.cx) + pl.b * (g.y0 + (iy + 0.5) * g.cell - pl.cy); }
@@ -473,7 +473,7 @@ function l3volPanel() {
       <div class="cf" title="Tryck för att bara visa schakt eller bara fyllning i 3D – tryck igen för att visa båda"><button type="button" data-vf="cut" class="cut ${l3vol.focus === "cut" ? "sel" : l3vol.focus ? "dim" : ""}"><span>Schakt${l3vol.focus === "cut" ? " · visas ensamt" : ""}</span><b>${r.cut >= 0.5 ? "−" + l3volM3(r.cut) : "–"}</b><em>${r.cut >= 0.5 ? tons(r.cut) + " · " + lass(r.cut) : "inget schakt"}</em></button><button type="button" data-vf="fill" class="fill ${l3vol.focus === "fill" ? "sel" : l3vol.focus ? "dim" : ""}"><span>Fyllning${l3vol.focus === "fill" ? " · visas ensamt" : ""}</span><b>${r.fill >= 0.5 ? "+" + l3volM3(r.fill) : "–"}</b><em>${r.fill >= 0.5 ? tons(r.fill) + " · " + lass(r.fill) : "ingen fyllning"}</em></button></div>
       <div class="chips"><span title="Områdets yta i plan"><i>▭</i>${l3Fmt(area, 1)} m²</span><span title="Största avvikelsen över respektive under \"Mot\""><i>↕</i>+${l3Fmt(Math.max(0, r.mx), 2)} / −${l3Fmt(Math.max(0, -r.mn), 2)} m</span><span title="Medelskillnad över området"><i>⌀</i>${l3Fmt(area > 0 ? r.net / area : 0, 2)} m i snitt</span></div></div>
     ${r.areaMiss > 0.5 ? `<div class="v3-vq-note">⚠ ${l3Fmt(r.areaMiss, 1)} m² saknar höjd och räknas inte</div>` : ""}`; })() : c.err ? `<div class="v3-vp-e">${esc(c.err)}</div>` : `<div class="v3-vp-t"><span class="v3-vp-spin"></span> ${c.busy || "Välj vad som ska mätas mot vad."}</div>`;
-  const noSrc = !srcs.some(s => /^(pc|md|cad|ob):/.test(s.k));
+  const noSrc = !srcs.some(s => /^(pc|md|cad|ob[sm]?):/.test(s.k));
   el.classList.toggle("col", !!l3Prefs().vpCol);
   const ae = document.activeElement;
   if (el.innerHTML && ae && ae.dataset && ae.dataset.vc !== undefined && el.contains(ae)) { // slidern dras – bara resultatet byts, annars avbryts draget
