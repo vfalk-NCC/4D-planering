@@ -88,7 +88,7 @@ async function l3pcCachePut(src, data) {
 const L3PC_STALL_MS = 150000;   // ingen signal från läsaren på så här länge = den hänger sig
 function l3pcParse(bytes, name, onProgress, budget) {
   return new Promise((res, rej) => {
-    const w = new Worker("pc-worker.js?v=1");
+    const w = new Worker("pc-worker.js?v=2");
     let heard = Date.now(), over = false;
     const end = (fn, v) => { if (over) return; over = true; clearInterval(dog); l3pc.worker = null; l3pc.cancel = null; w.terminate(); fn(v); };
     const dog = setInterval(() => { if (Date.now() - heard > (window.__l3pcStallMs || L3PC_STALL_MS)) end(rej, new Error("läsningen hängde sig (ingen signal på " + Math.round((window.__l3pcStallMs || L3PC_STALL_MS) / 1000) + " s) – försök med en lägre punktbudget under Lager → Inställningar → Punkter per moln")); }, 2000);
@@ -483,6 +483,8 @@ async function l3pcLoad(src, getBytes, opts = {}) {
   const prog = (phase, f) => { busyProgress(key, `${lbl} – ${phase}`, f); l3pcProgress(src, phase, f); };
   try {
     const t0 = performance.now();
+    const lodDone = async c => { if (!c) return false; l3pcRemember(src, true); const i = c.info; l3Status(`☁ ${src.name}: ${l3pcMil(i.total).replace(/ p$/, "")} punkter – översikt ${l3pcMil(i.n).replace(/ p$/, "")} i minnet, detaljer läses in efter behov (okträd som i Trimble Connect/Potree).`); if (opts.zoom !== false && !opts.cacheOnly) l3pcZoom(src.id); return true; };
+    if (typeof l3olOpenCached === "function" && await lodDone(await l3olOpenCached(src, prog))) return;
     let data = await l3pcCacheGet(src), how = "ur webbläsarens cache";
     if (data) prog("ur cachen", 0.9);
     if (!data) {
@@ -490,6 +492,7 @@ async function l3pcLoad(src, getBytes, opts = {}) {
       if (!getBytes) throw new Error("Filen finns inte kvar – välj den igen.");
       prog(src.local ? "öppnar filen" : "hämtar", 0);
       const bytes = await getBytes(f => prog(src.local ? "öppnar filen" : "hämtar", f * 0.5));
+      if (typeof l3olAfterBytes === "function" && await lodDone(await l3olAfterBytes(src, bytes, prog))) return;
       prog("läser punkterna", 0.5);
       data = await l3pcParse(bytes, src.name, f => prog("läser punkterna", 0.5 + f * 0.45), Math.min(l3pcBudget(), l3pcRoom()));
       how = data.info.format;

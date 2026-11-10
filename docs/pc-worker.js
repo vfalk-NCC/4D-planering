@@ -62,10 +62,10 @@ function lasLayout(fmt) {
   const rgbAt = { 2: 20, 3: 28, 5: 28, 7: 30, 8: 30, 10: 30 }[fmt];
   return { rgbAt: rgbAt === undefined ? -1 : rgbAt };
 }
-async function readLas(buf, budget, post) {
+async function readLas(buf, budget, post, sink) {
   const dv = new DataView(buf), h = lasHeader(dv), lay = lasLayout(h.format);
   const total = h.count, center = [0, 1, 2].map(a => (h.min[a] + h.max[a]) / 2);
-  const S = new Sampler(total, budget), out = new Store(Math.min(total, budget * 1.05));
+  const S = new Sampler(total, budget), out = sink || new Store(Math.min(total, budget * 1.05));
   // Färgen: 16 bitar i LAS, men många program skriver 0–255 – avgörs av de första punkterna.
   let shift = -1;
   const take = (pv, o) => {
@@ -213,11 +213,11 @@ async function lazChunks(file, h, chunkSize) {
   if (at !== tableAt) throw new Error("LAZ-filens blocktabell stämmer inte.");
   return out;
 }
-async function readLasFile(file, budget, post) {
+async function readLasFile(file, budget, post, sink) {
   const h0 = lasHeader(new DataView((await blobBytes(file, 0, 375)).buffer));
   const hb = await blobBytes(file, 0, h0.offset), dv = new DataView(hb.buffer), h = lasHeader(dv), lay = lasLayout(h.format);
   const total = h.count, center = [0, 1, 2].map(a => (h.min[a] + h.max[a]) / 2);
-  const S = new Sampler(total, budget), out = new Store(Math.min(total, budget * 1.05));
+  const S = new Sampler(total, budget), out = sink || new Store(Math.min(total, budget * 1.05));
   let shift = -1;
   const take = (pv, o) => {
     const x = pv.getInt32(o, true) * h.scale[0] + h.off[0] - center[0], y = pv.getInt32(o + 4, true) * h.scale[1] + h.off[1] - center[1], z = pv.getInt32(o + 8, true) * h.scale[2] + h.off[2] - center[2];
@@ -241,7 +241,7 @@ async function readLasFile(file, budget, post) {
       if (uid === "laszip encoded" && rid === 22204) {
         if (![2, 3].includes(dv.getUint16(at + 54, true))) {
           // Gammalt LASzip-format utan block: hela filen i minnet (går upp till ~1,9 GB).
-          if (file.size < 1.9e9) return readLas(await file.arrayBuffer(), budget, post);
+          if (file.size < 1.9e9) return readLas(await file.arrayBuffer(), budget, post, sink);
           throw new Error("Den här LAZ-filen är inte delad i block (gammalt LASzip-format) och kan bara läsas om den är under 1,9 GB. Spara om den med LASzip/CloudCompare så delas den i block.");
         }
         chunkSize = dv.getUint32(at + 54 + 12, true);
@@ -391,6 +391,11 @@ function grid(r) {
 onmessage = async ev => {
   const { name, budget, file } = ev.data;
   let bytes = ev.data.bytes;
+  if (ev.data.octree) {   // stora moln: bygg en okträdsfil (nivåer) på disken i stället för att glesa ut (se pc-octree.js)
+    try { importScripts("pc-octree.js?v=1"); const r = await octreeConvert(file, name, ev.data.octree, f => postMessage({ type: "progress", f })); postMessage({ type: "done", octree: r }); }
+    catch (e) { postMessage({ type: "error", message: (e && e.message) || String(e), quota: !!(e && (e.name === "QuotaExceededError" || /quota/i.test(e.message || ""))) }); }
+    return;
+  }
   let last = 0;
   const post = f => { const t = Date.now(); if (t - last > 150) { last = t; postMessage({ type: "progress", f }); } };
   try {
