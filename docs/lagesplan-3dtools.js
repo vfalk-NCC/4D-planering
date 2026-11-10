@@ -46,7 +46,7 @@ function l3RenderSnapBar() {
   }
   const tool = (l3.tool === "move" ? `<label class="v3-chk" title="Kopiera i stället för att flytta (tryck Ctrl)"><input type="checkbox" id="v3CopyMode" ${l3t.copyMode ? "checked" : ""} /> Kopia</label>` : "")
     + (l3.tool === "draw" || l3.tool === "model" ? l3dwBarHtml() : "")
-    + (l3.tool === "measure" ? `<div class="v3-segs">${[["smart", "Smart"], ["point", "Punkt"], ["dist", "Avstånd"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : "");
+    + (l3.tool === "measure" ? `<div class="v3-segs">${[["smart", "Smart"], ["point", "Punkt"], ["dist", "Avstånd"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"], ["road", "Byggväg"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : "");
   bar.innerHTML = tool; if (typeof l3dwBarBind === "function") l3dwBarBind(bar); bar.style.display = tool ? "" : "none"; host.style.setProperty("--v3-tb", tool ? Math.round(bar.offsetHeight + 8) + "px" : "0px"); // Originalvy/Layout-banner ligger under mätfältet
   if (typeof l3mBindBar === "function") l3mBindBar(bar); if (tool) requestAnimationFrame(() => host.style.setProperty("--v3-tb", Math.round(bar.offsetHeight + 8) + "px"));
   if (pop) pop.querySelectorAll("[data-snapk]").forEach(x => { x.onclick = () => l3ToggleSnap(x.dataset.snapk); });
@@ -502,6 +502,7 @@ function l3SnapAngle(deg, s) {
 /* Tryck med ett verktyg. true = hanterat. */
 function l3ToolTap(e) {
   if (typeof l3dToolTap === "function" && l3dToolTap(e)) return true; // DXF-redigering: Flytta/Vrid gäller linjerna
+  if (typeof l3roadTap === "function" && l3roadTap(e)) return true; // Byggväg: panelen är öppen
   if (typeof l3volTap === "function" && l3volTap(e)) return true; // Volym: nivå från en punkt / panelen är öppen
   if (typeof l3dwOn === "function" && l3dwOn() && l3dwTap(e)) return true; // Rita / Modellera
   const t = l3.tool, st = l3t.step;
@@ -525,7 +526,7 @@ function l3ToolTap(e) {
     // Yta: tryck på första punkten igen = klar.
     if ((mode === "area" || mode === "volume") && mp.length >= 3) { const a = l3ToScreen(mp[0]), b = l3ToScreen(s.point); if (Math.hypot(a.x - b.x, a.y - b.y) < 12) { mode === "volume" ? l3VolBase() : l3FinishArea(); return true; } }
     // Polylinje: tryck på sista punkten igen = klar.
-    if (mode === "poly" && mp.length >= 2) { const a = l3ToScreen(mp[mp.length - 1]), b = l3ToScreen(s.point); if (Math.hypot(a.x - b.x, a.y - b.y) < 12) { l3FinishPoly(); return true; } }
+    if ((mode === "poly" || mode === "road") && mp.length >= 2) { const a = l3ToScreen(mp[mp.length - 1]), b = l3ToScreen(s.point); if (Math.hypot(a.x - b.x, a.y - b.y) < 12) { mode === "road" ? l3roadStart() : l3FinishPoly(); return true; } }
     mp.push(s.point.clone()); l3Dot(s.point, 0xdc2626, l3.groups.meas);
     if (typeof l3mObjAt === "function") (l3t.mpObjs || (l3t.mpObjs = [])).push(l3mObjAt(e));
     if (mp.length > 1) l3TmpLine(mp[mp.length - 2], mp[mp.length - 1], "#dc2626", false, l3.groups.meas);
@@ -535,7 +536,7 @@ function l3ToolTap(e) {
       l3Status(`Vinkel ${l3Fmt(ang, 2)}° (vågrätt ${l3Fmt(l3Angle3(...mp.map(p => new THREE.Vector3(p.x, p.y, 0))), 2)}°). Tryck en ny punkt för att mäta igen.`);
       l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp);
       if (typeof l3mAdd === "function") { l3mAdd("angle", mp, `${l3Fmt(ang, 1)}°`, l3t.mpObjs); l3ClearMeasure(); } // ligger kvar
-    } else l3Status(mode === "angle" ? (mp.length === 1 ? "Tryck på vinkelns spets (hörnet)." : "Tryck på den andra punkten.") : mode === "poly" ? `${mp.length} punkter${mp.length > 1 ? `, ${l3Fmt(l3PathLen(mp))} m` : ""}. Fortsätt – avsluta med Enter eller tryck på sista punkten igen.` : `${mp.length} hörn. Fortsätt – avsluta med Enter eller tryck på första punkten.`);
+    } else l3Status(mode === "angle" ? (mp.length === 1 ? "Tryck på vinkelns spets (hörnet)." : "Tryck på den andra punkten.") : (mode === "poly" || mode === "road") ? `${mp.length} punkter${mp.length > 1 ? `, ${l3Fmt(l3PathLen(mp))} m` : ""}. Fortsätt – avsluta med Enter eller tryck på sista punkten igen.` : `${mp.length} hörn. Fortsätt – avsluta med Enter eller tryck på första punkten.`);
     l3Render();
     return true;
   }
@@ -755,6 +756,7 @@ function l3ToolKey(e) {
   }
   if (l3.tool === "move" && l3t.step === 0 && l3t.vcb && k === "Backspace") { l3t.vcb = l3t.vcb.slice(0, -1); l3ShowVcb("Kopior", ""); e.preventDefault(); return true; }
   if (l3.tool === "measure" && l3Prefs().measure === "area" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3FinishArea(); return true; }
+  if (l3.tool === "measure" && l3Prefs().measure === "road" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3roadStart(); return true; }
   if (l3.tool === "measure" && l3Prefs().measure === "poly" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3FinishPoly(); return true; }
   if (l3.tool === "measure" && l3Prefs().measure === "volume" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3VolBase(); return true; }
   if (typing && /^[0-9]$|^[.,;\- ]$/.test(k)) { l3t.vcb += k; l3ShowVcb(label, ""); e.preventDefault(); return true; }
