@@ -119,6 +119,23 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     c.spec.widen = [{ s0: 20, s1: 35, add: 3, side: 'L', taper: 5 }]; const one = l3rsSection(c, 27); out.one = [one.wl, one.wr]; c.spec.widen = []; l3rSchedule(0); return out; });
   if (!(bw.area1 > bw.area0 + 20) || Math.abs(bw.mid[0] - (bw.W / 2 + 4)) > 0.01 || Math.abs(bw.mid[1] - (bw.W / 2 + 4)) > 0.01 || bw.far[0] !== bw.W / 2 || !(bw.tap > bw.W / 2 + 0.3 && bw.tap < bw.W / 2 + 3.8) || bw.one[0] !== bw.W / 2 + 3 || bw.one[1] !== bw.W / 2) fail('Breddning: ' + JSON.stringify(bw));
   console.log('OK: lokal breddning – bredare mellan två sträckor på båda eller en sida, avtonas mjukt, ger större vägyta', JSON.stringify(bw));
+  // Slänter åt båda hållen: väg i skärning (marken högre på båda sidor) ska få schaktslänt på både vänster och höger sida.
+  const bs = await page.evaluate(async () => {
+    const c0 = [6512330, 150130, 100], P = [];
+    for (let y = -30; y <= 30; y += 0.5) for (let x = -35; x <= 35; x += 0.5) P.push(x, y, 0.1 * x + 0.0 * y);
+    l3pc.clouds.push({ id: 'pcB', name: 'Moln B', visible: false, dz: 0, nTot: P.length / 3, info: { center: c0, min: [c0[0] - 35, c0[1] - 30, 60], max: [c0[0] + 35, c0[1] + 30, 140] }, chunks: [{ pos: new Float32Array(P) }] });
+    const pts = [[6512300, 150130, 97 - 2.5], [6512330, 150136, 100 - 2.5], [6512360, 150130, 103 - 2.5]];
+    l3roadOpen({ pts, spec: { ...L3R_DEF, src: ['pc:pcB'], mode: 'pins', width: 4 }, res: null, geom: null, st: null, busy: '', err: '' });
+    const c = l3road.cur; for (let i = 0; i < 80 && !(c.res || c.err); i++) await new Promise(r => setTimeout(r, 150));
+    if (c.err) return { err: c.err };
+    const side = sd => c.st.filter(p => p[sd].kind === 'cut' && p[sd].d > 0.5).length, G = c.geom.cut, tris = G ? G.idx.length / 3 : 0;
+    // trianglarnas sida: normalen vinkelrätt mot färdriktningen – räkna trianglar med medelpunkt vänster respektive höger om mittlinjen
+    let left = 0, right = 0; if (G) for (let i = 0; i < G.idx.length; i += 3) { let cx = 0, cy = 0; for (let k = 0; k < 3; k++) { cx += G.pos[G.idx[i + k] * 3] + c.geom.org[0]; cy += G.pos[G.idx[i + k] * 3 + 1] + c.geom.org[1]; } cx /= 3; cy /= 3;
+      const near = c.st.reduce((b, q) => Math.hypot(q.x - cx, q.y - cy) < Math.hypot(b.x - cx, b.y - cy) ? q : b), side2 = (cx - near.x) * near.nx + (cy - near.y) * near.ny; if (side2 > 0) left++; else right++; }
+    return { L: side('L'), R: side('R'), n: c.st.length, tris, left, right };
+  });
+  if (bs.err || bs.L < bs.n * 0.8 || bs.R < bs.n * 0.8 || bs.left < 20 || bs.right < 20 || Math.abs(bs.left - bs.right) > bs.tris * 0.2) fail('Slänter åt båda hållen: ' + JSON.stringify(bs));
+  console.log('OK: slänter ritas åt både vänster och höger (väg i skärning)', JSON.stringify(bs));
   // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
   const hd = await page.evaluate(async () => {
     const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;
@@ -132,7 +149,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (hd.rings !== hd.n0 || hd.plus !== hd.n0 - 1 || hd.afterAdd !== hd.n0 + 1 || hd.ringsAdd !== hd.n0 + 1 || hd.afterRemove !== hd.n0 || (hd.afterUndo !== undefined && hd.afterUndo !== hd.n0 + 1) || !hd.res) fail('Handtag på byggvägen: ' + JSON.stringify(hd));
   console.log('OK: byggvägens punkter har dragringar, + lägger till punkt, punkt kan tas bort och ångras', JSON.stringify(hd));
   // Lutningsgräns: 5 % ger en flackare väg (mer schakt/fyllning).
-  const g5 = await page.evaluate(async () => { const c = l3road.cur; c.spec.grade = 5; l3rSchedule(0); for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (!c.busy && c.res && c.res.maxG < 0.0505) break; } return c.res.maxG; });
+  const g5 = await page.evaluate(async () => { const c = l3road.cur; c.spec.mode = 'terrain'; c.spec.grade = 5; l3rSchedule(0); for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (!c.busy && c.res && c.res.maxG < 0.0505) break; } return c.res.maxG; });
   if (g5 > 0.0505) fail('5 % gräns: ' + g5);
   console.log('OK: Mät → Byggväg öppnar panelen och högsta lutning kan ändras');
   if (errors.length) fail('Sidfel: ' + errors.join(' | '));

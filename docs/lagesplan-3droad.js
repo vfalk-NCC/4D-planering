@@ -137,7 +137,7 @@ async function l3rCompute(cur, alive) {
   st.forEach(p => { const dz = p.g - p.z; if (dz > 0) maxCutDepth = Math.max(maxCutDepth, dz); else maxFillDepth = Math.max(maxFillDepth, -dz); if (!p.L.hit || !p.R.hit) unreached++; });
   // Kurvradie (tre punkter i följd).
   const tight = [];
-  for (let i = 1; i < n - 1; i++) { const a = st[i - 1], b = st[i], c = st[i + 1], ab = Math.hypot(b.x - a.x, b.y - a.y), bc = Math.hypot(c.x - b.x, c.y - b.y), ca = Math.hypot(a.x - c.x, a.y - c.y), ar = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2; const R = ar > 1e-6 ? ab * bc * ca / (4 * ar) : Infinity; b.R = R; if (R < (Number(spec.minR) || 15)) tight.push({ i, R, x: b.x, y: b.y, z: b.z }); }
+  for (let i = 1; i < n - 1; i++) { const a = st[i - 1], b = st[i], c = st[i + 1], ab = Math.hypot(b.x - a.x, b.y - a.y), bc = Math.hypot(c.x - b.x, c.y - b.y), ca = Math.hypot(a.x - c.x, a.y - c.y), ar = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2; const R = ar > 1e-6 ? ab * bc * ca / (4 * ar) : Infinity; b.rad = R; if (R < (Number(spec.minR) || 15)) tight.push({ i, R, x: b.x, y: b.y, z: b.z }); }
   const L2 = st[n - 1].s;
   const res = { len: L2, len3, dz: st[n - 1].z - st[0].z, z0: st[0].z, z1: st[n - 1].z, maxG, avgG: nG ? sumG / nG : 0, cut: cutV, fill: fillV, net: cutV - fillV, slopeCut, slopeFill, roadArea: st.reduce((a, p, i) => i ? a + (p.wl + p.wr + st[i - 1].wl + st[i - 1].wr) / 2 * (p.s - st[i - 1].s) : 0, 0), tight, maxCutDepth, maxFillDepth, unreached, cell, stations: n, miss };
   return { res, st, W, ctx: { gz, slope } };
