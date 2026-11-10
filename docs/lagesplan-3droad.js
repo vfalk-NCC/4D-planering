@@ -77,7 +77,7 @@ async function l3rCompute(cur, alive) {
   const area = (bd.x1 - bd.x0) * (bd.y1 - bd.y0), cell = Math.max(0.25, Math.sqrt(area / 160000)), grids = [];
   for (const k of srcs) {
     const g = l3dfGrid(bd, cell), ok = l3dfBuild(k, g); await l3rTick(); if (!alive()) return null;
-    if (ok) grids.push(g);
+    if (ok) { if (typeof l3dfFill === "function") l3dfFill(g, 6); grids.push(g); }   // glesa punktmoln: fyll hål i marken så att slänten har något att möta
   }
   if (!grids.length) return { err: "Kunde inte läsa ytorna – är punktmolnet eller modellen tänd och inläst?" };
   const gz = (x, y) => { let best = null; for (const g of grids) { const z = l3volGridZ(g, x, y); if (z !== null && l3rOk(z) && (best === null || z > best)) best = z; } return best; };
@@ -90,14 +90,13 @@ async function l3rCompute(cur, alive) {
   st.forEach((p, i) => { const a = st[Math.max(0, i - 1)], b = st[Math.min(n - 1, i + 1)], dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1; p.tx = dx / L; p.ty = dy / L; p.nx = -p.ty; p.ny = p.tx; p.z = zd[i]; });
   // Släntkant: marsch utåt från vägkanten tills släntytan möter marken.
   const slope = (p, sg) => {
-    const ex = p.x + sg * p.nx * W / 2, ey = p.y + sg * p.ny * W / 2, ze = p.z - (spec.crown > 0 ? 0 : 0), g0 = gz(ex, ey);
-    if (g0 === null) return { ex, ey, ze, kind: "none", d: 0, qx: ex, qy: ey, qz: ze, hit: false };
+    const ex = p.x + sg * p.nx * W / 2, ey = p.y + sg * p.ny * W / 2, ze = p.z, g0 = gz(ex, ey) ?? p.g;   // saknas marken vid kanten används mittlinjens markhöjd
     const kind = g0 > ze + 0.01 ? "cut" : "fill", k = kind === "cut" ? 1 / Math.max(0.2, spec.cutR) : 1 / Math.max(0.2, spec.fillR), dd = 0.25;
     if (Math.abs(g0 - ze) <= 0.01) return { ex, ey, ze, kind: "fill", d: 0, qx: ex, qy: ey, qz: ze, hit: true };
-    let prevD = 0, prevDiff = g0 - ze;   // diff = mark − släntyta (cut: >0 till dess släntytan nått marken)
+    let prevD = 0, prevDiff = g0 - ze, lastG = g0, holes = 0; void holes;   // diff = mark − släntyta (cut: >0 till dess släntytan nått marken)
     for (let d = dd; d <= reach; d += dd) {
-      const qx = ex + sg * p.nx * d, qy = ey + sg * p.ny * d, zs = kind === "cut" ? ze + d * k : ze - d * k, g = gz(qx, qy);
-      if (g === null) return { ex, ey, ze, kind, d: prevD, qx: ex + sg * p.nx * prevD, qy: ey + sg * p.ny * prevD, qz: kind === "cut" ? ze + prevD * k : ze - prevD * k, hit: false };
+      const qx = ex + sg * p.nx * d, qy = ey + sg * p.ny * d, zs = kind === "cut" ? ze + d * k : ze - d * k, gRaw = gz(qx, qy);
+      const g = gRaw === null ? lastG : gRaw; if (gRaw === null) holes++; else lastG = gRaw;   // hål i ytan: fortsätt mot senast kända markhöjd
       const diff = g - zs;
       if (kind === "cut" ? diff <= 0 : diff >= 0) { const t = prevDiff / (prevDiff - diff || 1), dh = prevD + (d - prevD) * Math.max(0, Math.min(1, t)); return { ex, ey, ze, kind, d: dh, qx: ex + sg * p.nx * dh, qy: ey + sg * p.ny * dh, qz: kind === "cut" ? ze + dh * k : ze - dh * k, hit: true }; }
       prevD = d; prevDiff = diff;

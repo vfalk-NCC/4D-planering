@@ -84,6 +84,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const r = { maxZ: Math.max(...zs), top, off: Math.max(...at) }; c.spec.mode = 'terrain'; l3rSchedule(0); for (let i = 0; i < 60; i++) { await new Promise(r2 => setTimeout(r2, 150)); if (c.res && !c.busy) break; } return r; });
   if (Math.abs(pn.maxZ - pn.top) > 0.01 || pn.off > 0.6) fail('Genom mina punkter: ' + JSON.stringify(pn));
   console.log('OK: Genom mina punkter – vägen går genom klickpunkternas höjd, högsta punkten blir vägens högsta', JSON.stringify(pn));
+  // Glest punktmoln: marken saknas strax utanför vägen – slänten ska ändå ritas (hål fylls, senast kända markhöjd används).
+  const sp = await page.evaluate(async () => {
+    const c0 = [6512330, 150130, 100], P = [];
+    for (let y = -2.6; y <= 2.6; y += 0.5) for (let x = -35; x <= 35; x += 0.5) P.push(x, y, 0.1 * x);
+    l3pc.clouds.push({ id: 'pcH', name: 'Moln H', visible: false, dz: 0, nTot: P.length / 3, info: { center: c0, min: [c0[0] - 35, c0[1] - 3, 60], max: [c0[0] + 35, c0[1] + 3, 140] }, chunks: [{ pos: new Float32Array(P) }] });
+    const pts = [[6512300, 150130, 97], [6512360, 150130, 103]];
+    l3roadOpen({ pts, spec: { ...L3R_DEF, src: ['pc:pcH'], mode: 'terrain', width: 4, grade: 5 }, res: null, geom: null, st: null, busy: '', err: '' });
+    const c = l3road.cur; for (let i = 0; i < 80 && !(c.res || c.err); i++) await new Promise(r => setTimeout(r, 150));
+    return c.err ? { err: c.err } : { slopes: c.res.slopeCut + c.res.slopeFill, hasCut: !!c.geom.cut, hasFill: !!c.geom.fill };
+  });
+  if (sp.err || !(sp.slopes > 5)) fail('Slänt vid glest moln: ' + JSON.stringify(sp));
+  console.log('OK: slänten ritas även där punktmolnet saknar mark utanför vägen', JSON.stringify(sp));
   // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
   const hd = await page.evaluate(async () => {
     const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;
