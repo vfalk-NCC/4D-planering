@@ -63,6 +63,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return { open: !!l3road.cur, seg };
   });
   if (!tool.open || !tool.seg.includes('Byggväg')) fail('Verktyget Byggväg: ' + JSON.stringify(tool));
+  // Genom mina punkter: vägens höjd följer klickpunkternas höjd (högsta punkten blir vägens högsta).
+  const pn = await page.evaluate(async () => { const c = l3road.cur; c.spec.mode = 'pins'; l3rSchedule(0); for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (c.res && !c.busy && c.st && c.st.length) break; }
+    const zs = c.st.map(p => p.z), top = Math.max(...c.pts.map(p => p[2])), at = c.pts.map(p => { let b = 1e9, z = 0; c.st.forEach(q => { const d = Math.hypot(q.x - p[0], q.y - p[1]); if (d < b) { b = d; z = q.z; } }); return Math.abs(z - p[2]); });
+    const r = { maxZ: Math.max(...zs), top, off: Math.max(...at) }; c.spec.mode = 'terrain'; l3rSchedule(0); for (let i = 0; i < 60; i++) { await new Promise(r2 => setTimeout(r2, 150)); if (c.res && !c.busy) break; } return r; });
+  if (Math.abs(pn.maxZ - pn.top) > 0.01 || pn.off > 0.6) fail('Genom mina punkter: ' + JSON.stringify(pn));
+  console.log('OK: Genom mina punkter – vägen går genom klickpunkternas höjd, högsta punkten blir vägens högsta', JSON.stringify(pn));
   // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
   const hd = await page.evaluate(async () => {
     const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;

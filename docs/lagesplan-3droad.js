@@ -38,12 +38,17 @@ function l3rStations(P, step) {
     const t = seg[k + 1] > seg[k] ? (s - seg[k]) / (seg[k + 1] - seg[k]) : 0;
     out.push({ x: P[k][0] + (P[k + 1][0] - P[k][0]) * t, y: P[k][1] + (P[k + 1][1] - P[k][1]) * t, s, z0: P[k][2] + (P[k + 1][2] - P[k][2]) * t });
   }
-  return out;
+  out.seg = seg; return out;
 }
 /* Jämnar ut höjderna (glidande medel över "smooth" meter) och begränsar sedan lutningen framåt och bakåt. */
 function l3rProfile(st, spec) {
   const n = st.length, g = Math.max(0.5, Number(spec.grade) || 10) / 100, ds = i => st[i].s - st[i - 1].s;
   let z = st.map(p => p.g);
+  if (spec.mode === "pins" && st.seg && st.pts) {   // genom punkterna jag klickat ut: rak lutning mellan dem (högsta punkten blir vägens högsta)
+    const sg = st.seg, pz = st.pts.map(p => p[2]);
+    z = st.map(p => { let k = 0; while (k < sg.length - 2 && sg[k + 1] < p.s) k++; const t = sg[k + 1] > sg[k] ? Math.max(0, Math.min(1, (p.s - sg[k]) / (sg[k + 1] - sg[k]))) : 0; return pz[k] + (pz[k + 1] - pz[k]) * t; });
+    return z;
+  }
   if (spec.mode === "straight") { const a = z[0], b = z[n - 1], L = st[n - 1].s || 1; z = st.map(p => a + (b - a) * p.s / L); }
   else {
     const half = Math.max(0, Number(spec.smooth) || 0) / 2, sm = z.slice();
@@ -56,7 +61,7 @@ function l3rProfile(st, spec) {
 async function l3rCompute(cur, alive) {
   const spec = cur.spec, srcs = (spec.src || []).filter(k => l3rSources().some(s => s.k === k));
   const W = Math.max(1, Number(spec.width) || 5), reach = Math.max(2, Number(spec.reach) || 25), step = Math.max(0.5, Number(spec.step) || 2);
-  const st = l3rStations(cur.pts, step); if (st.length < 2) return { err: "Vägen är för kort." };
+  const st = l3rStations(cur.pts, step); if (st.length < 2) return { err: "Vägen är för kort." }; st.pts = cur.pts;
   if (!srcs.length) return { err: "Tänd ett punktmoln, en 3D-modell eller en DXF och välj den under \"Följer\"." };
   const m = W / 2 + reach + 3, xs = st.map(p => p.x), ys = st.map(p => p.y);
   const bd = { x0: Math.min(...xs) - m, x1: Math.max(...xs) + m, y0: Math.min(...ys) - m, y1: Math.max(...ys) + m };
@@ -221,6 +226,7 @@ function l3rPanel() {
       <div class="chips"><span title="Medellutning längs vägen"><i>∠</i>${l3rFmt(r.avgG * 100, 1)} % medel</span><span title="Största lutning – högst ${spec.grade} % är inställt"><i>⛰</i>${l3rFmt(r.maxG * 100, 1)} % störst</span><span title="Vägens yta i plan"><i>▭</i>${l3rFmt(r.roadArea, 0)} m²</span></div>
       <div class="cf"><button type="button" class="cut" style="cursor:default"><span>Schakt (inkl. slänter)</span><b>${l3rM3(r.cut)}</b></button><button type="button" class="fill" style="cursor:default"><span>Fyllning (inkl. slänter)</span><b>${l3rM3(r.fill)}</b></button></div>
       <div class="chips"><span title="Släntyta i schakt"><i style="color:#3b82f6">▲</i>${l3rFmt(r.slopeCut, 0)} m² schaktslänt</span><span title="Släntyta i fyllning"><i style="color:#ef4444">▼</i>${l3rFmt(r.slopeFill, 0)} m² fyllningsslänt</span><span title="Djupaste schakt / högsta fyllning i vägens mitt"><i>↕</i>−${l3rFmt(r.maxCutDepth, 1)} / +${l3rFmt(r.maxFillDepth, 1)} m</span></div></div>
+      ${spec.mode === "pins" && r.maxG > (Number(spec.grade) || 10) / 100 + 0.0005 ? `<div class="v3-vq-note">⚠ Lutningen mellan punkterna blir ${l3rFmt(r.maxG * 100, 1)} % – mer än ${spec.grade} %. Flytta punkterna eller lägg till fler med +.</div>` : ""}
       ${r.tight.length ? `<div class="v3-vq-note">⚠ ${r.tight.length} ${r.tight.length === 1 ? "plats" : "ställen"} med kurvradie under ${spec.minR} m (lila prickar) – minsta radie ${l3rFmt(Math.min(...r.tight.map(t => t.R)), 1)} m. Rita mjukare kurva eller sänk minsta radie.</div>` : ""}
       ${r.unreached ? `<div class="v3-vq-note">⚠ Slänten når inte marken inom ${spec.reach} m vid ${r.unreached} stationer – höj \"Största släntbredd\" eller kontrollera ytan.</div>` : ""}
       ${r.miss ? `<div class="v3-vq-note">⚠ ${r.miss} stationer låg utanför ytan – höjden är interpolerad från grannarna.</div>` : ""}`
@@ -237,7 +243,7 @@ function l3rPanel() {
       <label class="v3-rd-n" title="Schaktslänt: 1 lodrätt på så här många meter i sidled (1 = 45°, 0,5 = brant bergschakt)"><span>Schaktslänt 1:</span><input type="number" data-rk="cutR" value="${spec.cutR}" min="0.25" max="5" step="0.25"><em></em></label>
       <label class="v3-rd-n" title="Fyllningsslänt: 1 lodrätt på så här många meter i sidled (1,5 = vanlig fyllning)"><span>Fyllningsslänt 1:</span><input type="number" data-rk="fillR" value="${spec.fillR}" min="0.5" max="6" step="0.25"><em></em></label>
       ${num("reach", "Största släntbredd", "Så långt ut från vägkanten letar slänten efter marken", "m", 3, 100, 1)}${num("step", "Stationsavstånd", "Avstånd mellan tvärsnitten (mindre = mer detaljerat)", "m", 0.5, 10, 0.5)}
-      <div class="v3-rd-seg" title="Höjdprofil"><button type="button" data-rm="terrain" class="${spec.mode !== "straight" ? "on" : ""}">Följ marken</button><button type="button" data-rm="straight" class="${spec.mode === "straight" ? "on" : ""}">Rak lutning start → slut</button></div>
+      <div class="v3-rd-seg" title="Höjdprofil"><button type="button" data-rm="terrain" class="${spec.mode !== "straight" ? "on" : ""}">Följ marken</button><button type="button" data-rm="straight" class="${spec.mode === "straight" ? "on" : ""}">Rak start → slut</button><button type="button" data-rm="pins" class="${spec.mode === "pins" ? "on" : ""}" title="Vägen går genom höjden i varje punkt du klickat ut (dra en ring för att ändra) – den högsta punkten blir vägens högsta">Genom mina punkter</button></div>
     </div>
     <div class="v3-vq-foot"><button type="button" class="primary" data-rb="make" ${r ? "" : "disabled"} title="Väg, schaktslänt och fyllningsslänt blir vanliga ytor (flytta, ändra, IFC, DXF)">Skapa objekt</button><button type="button" data-rb="undo" title="Ta bort sista punkten" ${c.pts.length > 2 ? "" : "disabled"}>↶</button><button type="button" data-rb="redraw" title="Rita om mittlinjen">Rita om</button><button type="button" data-rb="x">Stäng</button></div>`;
   const q = s => el.querySelector(s), qa = s => el.querySelectorAll(s), on = (k, fn) => qa(`[data-rb="${k}"]`).forEach(b => { b.onclick = fn; });
