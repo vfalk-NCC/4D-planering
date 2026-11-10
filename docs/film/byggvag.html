@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Byggväg – film</title>
+<style>
+html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}
+#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#cv{max-width:100vw;max-height:100vh;aspect-ratio:16/9;width:100%;height:auto;background:#0b1220}
+#ui{position:fixed;left:0;right:0;bottom:0;height:46px;display:flex;align-items:center;gap:14px;padding:0 22px;color:#cfd6e4;font:500 13px Inter,system-ui,sans-serif;background:linear-gradient(transparent,rgba(0,0,0,.65));opacity:0;transition:opacity .25s}
+body:hover #ui,body.paused #ui{opacity:1}
+#bar{flex:1;height:5px;background:#ffffff30;border-radius:3px;position:relative;cursor:pointer}#bar i{position:absolute;left:0;top:0;bottom:0;background:#3b82f6;border-radius:3px}
+button{background:none;border:0;color:#fff;font:600 15px Inter,system-ui;cursor:pointer}
+#start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#05070c;color:#fff;z-index:5;cursor:pointer;text-align:center;padding:24px}
+#start h1{font:300 clamp(24px,4vw,40px) Inter,system-ui;letter-spacing:.3em;margin:0}#start p{margin:0;font:400 14px Inter,system-ui;color:#8d98ad;letter-spacing:.1em}
+#start b{display:inline-block;margin-top:8px;padding:12px 26px;border-radius:30px;background:#3b82f6;font:600 15px Inter,system-ui;letter-spacing:.06em}
+</style></head><body>
+<div id="start"><h1>BYGGVÄG</h1><p>Från punktmoln till projekterad väg – 75 sekunder</p><b>▶ SPELA</b><p style="font-size:12px">Mellanslag = paus · ← → = spola · F = helskärm</p></div>
+<div id="stage"><canvas id="cv" width="1920" height="1080"></canvas></div>
+<div id="ui"><button id="pp">⏸</button><span id="tm">0:00</span><div id="bar"><i></i></div><button id="fs">⛶</button></div>
+<script>
+(() => {
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d"), W = 1920, H = 1080;
+const C = { bg: "#0b1220", panel: "#111c30", line: "#223552", txt: "#e6edf7", mut: "#8d98ad", blue: "#3b82f6", cut: "#3b82f6", fill: "#ef4444", orange: "#f59e0b", green: "#22c55e", road: "#374151", ground: "#cbd5e1" };
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x)), lerp = (a, b, t) => a + (b - a) * t, ease = x => { x = clamp(x); return x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2; };
+const seg = (t, a, b) => clamp((t - a) / (b - a));   // 0..1 inom [a,b]
+const fmt = (v, d = 1) => (Math.round(v * 10 ** d) / 10 ** d).toString().replace(".", ",");
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+// ---- Scener: [start, slut, namn, rubrik, text]
+const SC = [
+  [0, 5, "intro"], [5, 15, "plan", "1 · Rita mittlinjen", "Mät → Byggväg: tryck ut vägens mittlinje direkt på punktmolnet. Punkterna fäster mot ytan."],
+  [15, 25, "prof", "2 · Höjdsätt från en höjdpunkt", "Den högsta punkten du klickat är vägens högsta. Resten följer marken – aldrig brantare än din högsta lutning."],
+  [25, 36, "sek", "3 · Slänter och tvärsektion", "Slänter åt båda hållen: schakt (blått) och fyllning (rött). Färdas längs linjen och se vägen mot punktmolnet."],
+  [36, 46, "bred", "4 · Lokal breddning", "Dra start och slut direkt på linjen, eller bredda runt ett objekt med offset. Metertalen visar var du står."],
+  [46, 54, "lager", "5 · Vägöverbyggnad", "Bärlager, förstärkningslager och skyddslager. Terrassytan, mängder per lager – schakt och fyllning till terrassen."],
+  [54, 63, "kor", "6 · Kör vägen", "Lastbil, hjullastare, grävmaskin eller mobilkran följer höjd och lutning, styr i kurvorna och går långsammare uppför."],
+  [63, 70, "tid", "7 · Körvägar kopplade till tidplanen", "Spara körvägen och koppla den till en aktivitet – fordonen kör bara de datumen när du drar datumreglaget."],
+  [70, 75, "ut", "8 · Skapa objekt och exportera"],
+];
+const DUR = 75;
+// ---- Gemensamt
+function chip(x, y, text, col = C.blue, size = 26) { ctx.font = `600 ${size}px Inter,system-ui`; const w = ctx.measureText(text).width + 36; ctx.fillStyle = col; rr(x, y, w, size + 22, (size + 22) / 2); ctx.fill(); ctx.fillStyle = "#fff"; ctx.textBaseline = "middle"; ctx.textAlign = "left"; ctx.fillText(text, x + 18, y + (size + 22) / 2 + 1); return w; }
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function wrap(text, x, y, maxW, lh, font, col) { ctx.font = font; ctx.fillStyle = col; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; const words = text.split(" "); let line = ""; words.forEach(w => { const t = line ? line + " " + w : w; if (ctx.measureText(t).width > maxW && line) { ctx.fillText(line, x, y); y += lh; line = w; } else line = t; }); ctx.fillText(line, x, y); return y; }
+function caption(sc, u) {
+  const a = ease(seg(u, 0, .08)) * (1 - ease(seg(u, .94, 1)));
+  ctx.save(); ctx.globalAlpha = a; ctx.translate(0, (1 - a) * 18);
+  ctx.fillStyle = "rgba(8,13,24,.9)"; rr(64, 828, 1792, 188, 22); ctx.fill();
+  ctx.fillStyle = C.blue; ctx.fillRect(64, 828, 8, 188);
+  ctx.font = "700 44px Inter,system-ui"; ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.fillText(sc[3], 104, 893);
+  if (sc[4]) wrap(sc[4], 104, 947, 1680, 40, "400 30px Inter,system-ui", "#b8c4d9");
+  ctx.restore();
+}
+function frame() { ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H); }
+// ---- Terräng i plan (punktmoln)
+const hillZ = (x, y) => 100 + 7 * Math.sin(x / 210) * Math.cos(y / 170) + 4 * Math.sin((x + y) / 90) + (x - 960) * 0.012;
+const turbo = t => { t = clamp(t); const r = Math.round(255 * clamp(Math.sin(Math.PI * (t * .85 + .05)) ** .6 * (t > .5 ? 1 : .35))), g = Math.round(255 * clamp(Math.sin(Math.PI * clamp(t * .9 + .02)) ** 1.1)), b = Math.round(255 * clamp(1 - t * 1.25)); return `rgb(${r},${g},${b})`; };
+function drawCloud(x0, y0, w, h, alpha = 1) {
+  ctx.save(); ctx.globalAlpha = alpha; rr(x0, y0, w, h, 18); ctx.clip();
+  ctx.fillStyle = "#0e1a2e"; ctx.fillRect(x0, y0, w, h);
+  for (let i = 0; i < 4200; i++) { const x = x0 + hash(i) * w, y = y0 + hash(i + 9999) * h, z = hillZ(x, y), t = (z - 90) / 22; ctx.fillStyle = turbo(t); ctx.fillRect(x, y, 3.4, 3.4); }
+  ctx.restore(); ctx.strokeStyle = C.line; ctx.lineWidth = 2; rr(x0, y0, w, h, 18); ctx.stroke();
+}
+// ---- Mittlinje (plan)
+const PATH = [[260, 600], [560, 470], [900, 520], [1260, 380], [1620, 430]];
+function pathPt(s) { let L = 0; const seg2 = []; for (let i = 1; i < PATH.length; i++) { const d = Math.hypot(PATH[i][0] - PATH[i - 1][0], PATH[i][1] - PATH[i - 1][1]); seg2.push(d); L += d; } let a = s * L; for (let i = 0; i < seg2.length; i++) { if (a <= seg2[i] || i === seg2.length - 1) { const t = clamp(a / seg2[i]); return [lerp(PATH[i][0], PATH[i + 1][0], t), lerp(PATH[i][1], PATH[i + 1][1], t), Math.atan2(PATH[i + 1][1] - PATH[i][1], PATH[i + 1][0] - PATH[i][0])]; } a -= seg2[i]; } return [...PATH[PATH.length - 1], 0]; }
+function ring(x, y, col = C.orange, sel = false, r = 14) { ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fillStyle = sel ? col : "#fff"; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = col; ctx.stroke(); }
+function cursor(x, y, press = 0) { ctx.save(); ctx.translate(x, y); ctx.scale(1 + press * -.08, 1 + press * -.08); ctx.fillStyle = "#fff"; ctx.strokeStyle = "#0b1220"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 34); ctx.lineTo(9, 26); ctx.lineTo(16, 42); ctx.lineTo(23, 39); ctx.lineTo(16, 24); ctx.lineTo(28, 24); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.restore(); }
+// ---- Scen: intro
+function sIntro(u) {
+  frame(); drawCloud(0, 0, W, H, .35 + .25 * Math.sin(u * 3));
+  const a = ease(seg(u, .05, .35)), b = ease(seg(u, .35, .7)); ctx.save();
+  ctx.globalAlpha = a; ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "alphabetic"; ctx.font = "800 150px Inter,system-ui"; ctx.fillText("Byggväg", W / 2, 520);
+  ctx.globalAlpha = b; ctx.font = "400 44px Inter,system-ui"; ctx.fillStyle = "#b8c4d9"; ctx.fillText("Från punktmoln till projekterad väg – med slänter, lager, körsimulering och tidplan", W / 2, 610);
+  ctx.globalAlpha = b; chip(W / 2 - 250, 670, "3D-editorn · Mät → Byggväg", C.blue, 28); ctx.restore();
+}
+// ---- Scen 1: rita mittlinjen
+function sPlan(u, sc) {
+  frame(); drawCloud(64, 64, 1792, 740);
+  const marks = [.08, .24, .42, .6, .78]; ctx.lineWidth = 6; ctx.lineJoin = "round";
+  let shown = 0; PATH.forEach((p, i) => { if (u > marks[i]) shown = i + 1; });
+  if (shown > 1) { ctx.strokeStyle = "#fff"; ctx.beginPath(); ctx.moveTo(...PATH[0]); for (let i = 1; i < shown; i++) ctx.lineTo(...PATH[i]); const k = i2 => i2; void k; ctx.stroke(); }
+  if (shown >= 1 && shown < PATH.length) { const a = PATH[shown - 1], b = PATH[shown], t = ease(seg(u, marks[shown - 1] + .01, marks[shown])); ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.setLineDash([12, 10]); ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(lerp(a[0], b[0], t), lerp(a[1], b[1], t)); ctx.stroke(); ctx.setLineDash([]); }
+  PATH.forEach((p, i) => { if (i < shown) { ring(p[0], p[1]); ctx.fillStyle = "#fff"; ctx.font = "600 24px Inter,system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.fillText(`${i + 1}`, p[0] + 20, p[1] - 18); } });
+  // muspekare
+  const tgt = Math.min(shown, PATH.length - 1), from = PATH[Math.max(0, tgt - 1)], to = PATH[tgt], t = ease(seg(u, marks[Math.max(0, tgt - 1)], marks[tgt]));
+  const cx = shown >= PATH.length ? to[0] : lerp(from[0], to[0], t), cy = shown >= PATH.length ? to[1] : lerp(from[1], to[1], t);
+  if (u < .9) cursor(cx + 10, cy + 6, Math.max(0, 1 - Math.abs(((u * 20) % 1) - 0)));
+  // verktygsrad
+  ctx.fillStyle = "rgba(15,23,42,.92)"; rr(560, 90, 800, 62, 31); ctx.fill(); ["Smart", "Punkt", "Avstånd", "Polylinje", "Vinkel", "Yta", "Volym"].forEach((l, i) => { ctx.fillStyle = "#8d98ad"; ctx.font = "500 22px Inter,system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(l, 586 + i * 98, 122); });
+  chip(1130, 98, "Byggväg", C.blue, 22);
+  if (u > .85) { ctx.globalAlpha = ease(seg(u, .85, .95)); chip(1380, 700, "Enter = klar · ring = dra · + = ny punkt", "#0f172a", 24); ctx.globalAlpha = 1; }
+  caption(sc, u);
+}
+// ---- Scen 2: längdprofil / höjdpunkt
+const gProf = s => 100 + 3.2 * Math.sin(s / 16) + 2 * Math.sin(s / 6.5 + 1) + s * 0.055;
+function sProf(u, sc) {
+  frame(); const X0 = 150, X1 = 1770, Y0 = 130, Y1 = 760, L = 120, zmin = 92, zmax = 118;
+  const X = s => lerp(X0, X1, s / L), Y = z => lerp(Y1, Y0, (z - zmin) / (zmax - zmin));
+  ctx.fillStyle = C.panel; rr(X0 - 70, Y0 - 50, X1 - X0 + 130, Y1 - Y0 + 100, 22); ctx.fill();
+  for (let z = 95; z <= 115; z += 5) { ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(X0, Y(z)); ctx.lineTo(X1, Y(z)); ctx.stroke(); ctx.fillStyle = C.mut; ctx.font = "20px Inter,system-ui"; ctx.textAlign = "right"; ctx.textBaseline = "middle"; ctx.fillText(z, X0 - 12, Y(z)); }
+  const reveal = ease(seg(u, .02, .3)) * L;
+  ctx.beginPath(); ctx.moveTo(X(0), Y1); for (let s = 0; s <= reveal; s += 1) ctx.lineTo(X(s), Y(gProf(s))); ctx.lineTo(X(reveal), Y1); ctx.closePath(); ctx.fillStyle = "rgba(148,163,184,.18)"; ctx.fill();
+  ctx.strokeStyle = C.ground; ctx.lineWidth = 4; ctx.beginPath(); for (let s = 0; s <= reveal; s += 1) s ? ctx.lineTo(X(s), Y(gProf(s))) : ctx.moveTo(X(s), Y(gProf(s))); ctx.stroke();
+  // höjdpunkt = högsta klickade (s = 96)
+  const sa = 96, za = gProf(sa) + 0.2, mk = ease(seg(u, .32, .45));
+  const design = [], g = .1; let zs = []; for (let s = 0; s <= L; s += 1) zs.push(gProf(s));
+  const sm = zs.map((_, i) => { let a = 0, c = 0; for (let j = Math.max(0, i - 8); j <= Math.min(L, i + 8); j++) { a += zs[j]; c++; } return a / c; });
+  const o = sm.slice(); const ai = sa; o[ai] = za; for (let i = ai + 1; i <= L; i++) o[i] = clamp(sm[i], o[i - 1] - g, o[i - 1] + g); for (let i = ai - 1; i >= 0; i--) o[i] = clamp(sm[i], o[i + 1] - g, o[i + 1] + g); for (let i = 0; i <= L; i++) o[i] = Math.min(o[i], za);
+  const dsh = ease(seg(u, .5, .85)) * L; ctx.strokeStyle = C.green; ctx.lineWidth = 7; ctx.beginPath(); for (let i = Math.round(sa); i >= Math.round(sa - dsh); i--) { i === Math.round(sa) ? ctx.moveTo(X(i), Y(o[i])) : ctx.lineTo(X(i), Y(o[i])); } ctx.stroke();
+  ctx.beginPath(); for (let i = Math.round(sa); i <= Math.min(L, Math.round(sa + dsh * .6)); i++) { i === Math.round(sa) ? ctx.moveTo(X(i), Y(o[i])) : ctx.lineTo(X(i), Y(o[i])); } ctx.stroke();
+  if (mk > 0) { ctx.globalAlpha = mk; ring(X(sa), Y(za), C.orange, true, 18); ctx.strokeStyle = C.orange; ctx.lineWidth = 3; ctx.setLineDash([8, 6]); ctx.beginPath(); ctx.moveTo(X(sa), Y(za)); ctx.lineTo(X(sa), Y1 + 24); ctx.stroke(); ctx.setLineDash([]); chip(X(sa) - 150, Y(za) - 86, "Höjdpunkt " + fmt(za, 2) + " m", C.orange, 24); ctx.globalAlpha = 1; }
+  const ch = ease(seg(u, .7, .8)); if (ch > 0) { ctx.globalAlpha = ch; chip(520, 150, "Högsta lutning 10 %", C.green, 26); chip(520, 220, "Aldrig över höjdpunkten", "#0f172a", 24); ctx.globalAlpha = 1; }
+  ctx.fillStyle = C.mut; ctx.font = "22px Inter,system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.fillText("Längdprofil (sträcka i m) · mark = grå · väg = grön", X0, Y1 + 38);
+  caption(sc, u);
+}
+// ---- Scen 3: tvärsektion
+function sSek(u, sc) {
+  frame(); const x0 = 120, y0 = 90, w = 1680, h = 660; ctx.fillStyle = C.panel; rr(x0, y0, w, h, 22); ctx.fill();
+  const s = lerp(8, 92, ease(seg(u, .12, .92))), cx = W / 2, zc = 330, sc2 = 92;   // px per m
+  const sl = -.36 * Math.cos(s / 24), base = .25 * Math.sin(s / 11);   // markens tvärfall och nivå (byter sida längs vägen)
+  const groundZ = t => base + sl * t + .22 * Math.sin(t * .55 + s / 9) + .06 * Math.sin(t * 2.3 + s);   // t = m åt höger
+  const Wr = 2.5, kc = 1, kf = 1.5, zr = 0;
+  const X = t => cx + t * sc2, Y = z => zc - z * sc2 + 30;
+  // rutnät
+  for (let z = -6; z <= 6; z += 2) { ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x0 + 20, Y(z)); ctx.lineTo(x0 + w - 20, Y(z)); ctx.stroke(); }
+  ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.moveTo(cx, y0 + 20); ctx.lineTo(cx, y0 + h - 20); ctx.stroke(); ctx.setLineDash([]);
+  ctx.save(); ctx.beginPath(); ctx.rect(x0 + 10, y0 + 70, w - 20, h - 70 - 135); ctx.clip();
+  // slänter + schakt/fyllning
+  const side = sg => { const g0 = groundZ(sg * Wr); const kind = g0 > zr ? "cut" : "fill", k = kind === "cut" ? 1 / kc : 1 / kf; let d = 0; for (d = 0; d < 9; d += .1) { const zs = kind === "cut" ? zr + d * k : zr - d * k; const g = groundZ(sg * (Wr + d)); if (kind === "cut" ? zs >= g : zs <= g) break; } return { kind, d }; };
+  const L = side(-1), R = side(1);
+  for (let t = -Wr - L.d; t < Wr + R.d; t += .1) { const des = Math.abs(t) <= Wr ? zr : (t > 0 ? (R.kind === "cut" ? zr + (t - Wr) / kc : zr - (t - Wr) / kf) : (L.kind === "cut" ? zr + (-t - Wr) / kc : zr - (-t - Wr) / kf)); const g = groundZ(t); ctx.fillStyle = g > des ? "rgba(59,130,246,.35)" : "rgba(239,68,68,.35)"; ctx.fillRect(X(t), Math.min(Y(g), Y(des)), .1 * sc2 + 1, Math.abs(Y(g) - Y(des))); }
+  // punkter i skivan
+  ctx.fillStyle = "#94a3b8"; for (let i = 0; i < 260; i++) { const t = (hash(i + Math.floor(s * 3)) - .5) * 17.6, z = groundZ(t) + (hash(i * 3 + 1) - .5) * .35; ctx.fillRect(X(t), Y(z), 3, 3); }
+  ctx.strokeStyle = "#fff"; ctx.lineWidth = 4; ctx.beginPath(); for (let t = -8.8; t <= 8.8; t += .1) t === -8.8 ? ctx.moveTo(X(t), Y(groundZ(t))) : ctx.lineTo(X(t), Y(groundZ(t))); ctx.stroke();
+  ctx.lineWidth = 6; ctx.strokeStyle = L.kind === "cut" ? C.cut : C.fill; ctx.beginPath(); ctx.moveTo(X(-Wr), Y(zr)); ctx.lineTo(X(-Wr - L.d), Y(L.kind === "cut" ? zr + L.d / kc : zr - L.d / kf)); ctx.stroke();
+  ctx.strokeStyle = R.kind === "cut" ? C.cut : C.fill; ctx.beginPath(); ctx.moveTo(X(Wr), Y(zr)); ctx.lineTo(X(Wr + R.d), Y(R.kind === "cut" ? zr + R.d / kc : zr - R.d / kf)); ctx.stroke();
+  ctx.strokeStyle = C.road; ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(X(-Wr), Y(zr)); ctx.lineTo(X(Wr), Y(zr)); ctx.stroke();
+  ctx.fillStyle = "rgba(11,18,32,.9)"; rr(cx - 56, Y(zr) - 84, 112, 38, 10); ctx.fill(); ctx.fillStyle = "#fbbf24"; ctx.font = "600 24px Inter,system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("5,00 m", cx, Y(zr) - 64); ctx.textBaseline = "top";
+  ctx.fillStyle = L.kind === "cut" ? C.cut : C.fill; ctx.fillText(`1:${L.kind === "cut" ? "1" : "1,5"}`, X(-Wr - L.d / 2) - 10, Y(zr) + (L.kind === "cut" ? -52 : 30)); ctx.fillStyle = R.kind === "cut" ? C.cut : C.fill; ctx.fillText(`1:${R.kind === "cut" ? "1" : "1,5"}`, X(Wr + R.d / 2) + 10, Y(zr) + (R.kind === "cut" ? -52 : 30));
+  ctx.restore();
+  // rubrik + areor
+  const km = Math.floor(s / 1000), rest = (s - km * 1000).toFixed(1).padStart(5, "0").replace(".", ",");
+  ctx.fillStyle = "#fff"; ctx.font = "700 34px Inter,system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.fillText(`Tvärsektion  Station ${km}+${rest}`, x0 + 36, y0 + 56);
+  let ac = 0, af = 0; for (let t = -Wr - L.d; t < Wr + R.d; t += .1) { const des = Math.abs(t) <= Wr ? zr : (t > 0 ? (R.kind === "cut" ? zr + (t - Wr) / kc : zr - (t - Wr) / kf) : (L.kind === "cut" ? zr + (-t - Wr) / kc : zr - (-t - Wr) / kf)); const dz = groundZ(t) - des; if (dz > 0) ac += dz * .1; else af -= dz * .1; }
+  ctx.font = "600 28px Inter,system-ui"; ctx.textAlign = "right"; ctx.fillStyle = C.cut; ctx.fillText(`Schakt ${fmt(ac, 1)} m²`, x0 + w - 300, y0 + 56); ctx.fillStyle = C.fill; ctx.fillText(`Fyllning ${fmt(af, 1)} m²`, x0 + w - 36, y0 + 56);
+  // längdprofilremsa med markör
+  ctx.fillStyle = "#0b1527"; rr(x0 + 24, y0 + h - 118, w - 48, 92, 14); ctx.fill(); ctx.strokeStyle = C.ground; ctx.lineWidth = 2; ctx.beginPath(); for (let q = 0; q <= 100; q++) { const px = x0 + 50 + q / 100 * (w - 100), py = y0 + h - 40 - (gProf(q * 1.2) - 96) * 2.6; q ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.stroke();
+  const mx = x0 + 50 + s / 100 * (w - 100); ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(mx, y0 + h - 112); ctx.lineTo(mx, y0 + h - 32); ctx.stroke(); ctx.fillStyle = "#ef4444"; ctx.beginPath(); ctx.arc(mx, y0 + h - 112, 7, 0, 7); ctx.fill();
+  chip(x0 + 40, y0 + h + 12 - 0, "▶  dra eller spela längs linjen", "#0f172a", 22); const dxf = ease(seg(u, .8, .92)); if (dxf > 0) { ctx.globalAlpha = dxf; chip(x0 + w - 360, y0 + h + 12, "Exportera DXF", C.blue, 22); ctx.globalAlpha = 1; }
+  caption(sc, u);
+}
+// ---- Scen 4: breddning i plan
+function sBred(u, sc) {
+  frame(); drawCloud(64, 64, 1792, 740, .55);
+  const L = 60, pw = s => { const x = lerp(160, 1760, s / L); return [x, 470 + 60 * Math.sin(s / 14) - s * .8]; };
+  const z0 = 24, z1 = 38; const mode = u < .5 ? 0 : 1;
+  const wid = s => { let w = 5; if (mode === 0 || u > .52) { const d = s < z0 ? z0 - s : s > z1 ? s - z1 : 0, f = clamp(1 - d / 8); w += 4 * f * f * (3 - 2 * f) * (mode === 0 ? ease(seg(u, .12, .3)) : 0); } if (mode === 1) { const q = ease(seg(u, .6, .78)); const ds = Math.abs(s - 30); w += q * 5.6 * Math.sqrt(Math.max(0, 1 - (ds / 9) ** 2)); } return w; };
+  const px = 14, tan = s => { const a = pw(s - .5), b = pw(s + .5); return Math.atan2(b[1] - a[1], b[0] - a[0]); };
+  // objekt (stort fundament) på vänster sida
+  ctx.save(); const obj = [[790, 520], [900, 500], [930, 560], [800, 580]]; ctx.fillStyle = "rgba(148,163,184,.9)"; ctx.beginPath(); obj.forEach((p, i) => i ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.closePath(); ctx.fill(); ctx.strokeStyle = "#e2e8f0"; ctx.lineWidth = 3; ctx.stroke(); ctx.restore();
+  // vägen
+  // vänster/höger kant som två polylinjer
+  const edge = sg => { const pts = []; for (let s = 0; s <= L; s += .5) { const p = pw(s), a = tan(s), w = wid(s) * px / 2; pts.push([p[0] - Math.sin(a) * w * sg, p[1] + Math.cos(a) * w * sg]); } return pts; };
+  const El = edge(1), Er = edge(-1); ctx.beginPath(); El.forEach((p, i) => i ? ctx.lineTo(...p) : ctx.moveTo(...p)); for (let i = Er.length - 1; i >= 0; i--) ctx.lineTo(...Er[i]); ctx.closePath(); ctx.fillStyle = "rgba(55,65,81,.95)"; ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = "#e5e7eb"; ctx.beginPath(); El.forEach((p, i) => i ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.stroke(); ctx.beginPath(); Er.forEach((p, i) => i ? ctx.lineTo(...p) : ctx.moveTo(...p)); ctx.stroke();
+  // metertal
+  ctx.font = "600 20px Inter,system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "bottom"; for (let s = 0; s <= L; s += 10) { const p = pw(s), a = tan(s); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; const w = wid(s) * px / 2 + 8; ctx.beginPath(); ctx.moveTo(p[0] + Math.sin(a) * w, p[1] - Math.cos(a) * w); ctx.lineTo(p[0] - Math.sin(a) * w, p[1] + Math.cos(a) * w); ctx.stroke(); ctx.fillStyle = "rgba(15,23,42,.85)"; const tw = 66; rr(p[0] - tw / 2, p[1] - w - 36, tw, 28, 8); ctx.fill(); ctx.fillStyle = "#fff"; ctx.textBaseline = "middle"; ctx.fillText(`${s} m`, p[0], p[1] - w - 22); }
+  // orange zon + handtag
+  if (mode === 0) {
+    const a = pw(z0), b = pw(z1), t = ease(seg(u, .08, .2)); ctx.strokeStyle = C.orange; ctx.lineWidth = 8; ctx.globalAlpha = t; ctx.beginPath(); for (let s = z0; s <= z1; s += .5) { const p = pw(s); s === z0 ? ctx.moveTo(p[0], p[1]) : ctx.lineTo(p[0], p[1]); } ctx.stroke();
+    const drag = u > .3 && u < .48 ? Math.sin(seg(u, .3, .48) * Math.PI * 2) * 3 : 0; [[z0, "◂"], [z1 + drag, "▸"]].forEach(([s, g]) => { const p = pw(s); ctx.fillStyle = C.orange; rr(p[0] - 15, p[1] - 15, 30, 30, 7); ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.stroke(); ctx.fillStyle = "#1f2937"; ctx.font = "700 20px Inter"; ctx.textBaseline = "middle"; ctx.fillText(g, p[0], p[1] + 1); });
+    ctx.globalAlpha = 1; const mid = pw((z0 + z1) / 2); chip(mid[0] - 150, mid[1] + 70, `Bredd. ${z0}–${z1} m  +4 m`, C.orange, 26);
+    if (u > .3 && u < .5) cursor(pw(z1 + drag)[0] + 8, pw(z1 + drag)[1] + 8, 1);
+    ctx.globalAlpha = ease(seg(u, .08, .2)); chip(90, 92, "Standard: skriv Från / Till / + m / sida / avtoning", "#0f172a", 24); ctx.globalAlpha = 1;
+  } else {
+    const q = ease(seg(u, .56, .64)); ctx.globalAlpha = q; chip(90, 92, "Avancerat: runt objekt – peka ut hörn + offset", C.blue, 24);
+    // offsetkontur
+    ctx.setLineDash([10, 8]); ctx.strokeStyle = C.orange; ctx.lineWidth = 5; ctx.beginPath(); ctx.roundRect ? ctx.roundRect(765, 470, 190, 135, 40) : ctx.rect(765, 470, 190, 135); ctx.stroke(); ctx.setLineDash([]);
+    obj.forEach((p, i) => { ctx.globalAlpha = ease(seg(u, .5 + i * .02, .56 + i * .02)); ring(p[0], p[1], C.orange, false, 10); }); ctx.globalAlpha = q; chip(700, 640, "Runt objekt  +2 m", C.orange, 26); ctx.globalAlpha = 1;
+  }
+  caption(sc, u);
+}
+// ---- Scen 5: lager
+function sLager(u, sc) {
+  frame(); const x0 = 120, y0 = 90, w = 1100, h = 660; ctx.fillStyle = C.panel; rr(x0, y0, w, h, 22); ctx.fill();
+  const layers = [["Bärlager makadam 0–32", .15, "#cbd5e1", 36], ["Förstärkningslager krossberg 0–90", .35, "#a8a29e", 85], ["Skyddslager", .2, "#a16207", 49]];
+  const cx = x0 + w / 2, top = y0 + 190, sc2 = 340, hw = 330; // 1 m = 90 px vågrätt, lager i m * 340 px lodrätt för synlighet
+  // mark
+  ctx.fillStyle = "#475569"; ctx.fillRect(x0 + 24, top + .7 * sc2 + 0, w - 48, 120); ctx.strokeStyle = "#fff"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(x0 + 24, top - 30 + .7 * sc2); ctx.stroke();
+  let z = top; layers.forEach((l, i) => { const t = ease(seg(u, .08 + i * .14, .26 + i * .14)); const hh = l[1] * sc2 * t; ctx.fillStyle = l[2]; ctx.fillRect(cx - hw, z, hw * 2, hh); ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 2; ctx.strokeRect(cx - hw, z, hw * 2, hh); if (t > .9) { ctx.fillStyle = "#0f172a"; ctx.font = "600 22px Inter,system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(`${l[0]}  ${fmt(l[1], 2)} m`, cx - hw + 14, z + hh / 2); } z += hh; });
+  const ter = ease(seg(u, .55, .7)); if (ter > 0) { ctx.globalAlpha = ter; ctx.setLineDash([12, 7]); ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(cx - hw - 60, top + .7 * sc2); ctx.lineTo(cx + hw + 60, top + .7 * sc2); ctx.stroke(); ctx.setLineDash([]); chip(cx + hw + 20, top + .7 * sc2 - 60, "Terrassyta −0,70 m", C.orange, 24); ctx.globalAlpha = 1; }
+  // vägyta
+  ctx.strokeStyle = "#e5e7eb"; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(cx - hw - 80, top); ctx.lineTo(cx + hw + 80, top); ctx.stroke(); ctx.fillStyle = "#fff"; ctx.font = "700 32px Inter,system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.fillText("Vägöverbyggnad  0,70 m", x0 + 36, y0 + 56);
+  // mängder
+  const px = 1280; ctx.fillStyle = C.panel; rr(px, y0, 520, h, 22); ctx.fill(); ctx.fillStyle = "#fff"; ctx.font = "700 30px Inter,system-ui"; ctx.fillText("Mängder per lager", px + 30, y0 + 56);
+  layers.forEach((l, i) => { const a = ease(seg(u, .5 + i * .1, .62 + i * .1)); ctx.globalAlpha = a; const yy = y0 + 110 + i * 120; ctx.fillStyle = l[2]; rr(px + 30, yy, 26, 26, 6); ctx.fill(); ctx.fillStyle = "#e6edf7"; ctx.font = "600 24px Inter,system-ui"; ctx.fillText(l[0].split(" ")[0] + " " + (l[0].split(" ")[1] || ""), px + 70, yy + 22); ctx.fillStyle = C.mut; ctx.font = "22px Inter,system-ui"; ctx.fillText(`${fmt(l[1], 2)} m · ${l[3]} m³ · 243 m²`, px + 70, yy + 58); }); ctx.globalAlpha = 1;
+  const f = ease(seg(u, .78, .92)); if (f > 0) { ctx.globalAlpha = f; chip(px + 30, y0 + h - 150, "Schakt/fyllning till terrassen", C.blue, 22); chip(px + 30, y0 + h - 84, "Lagerobjekt + DXF + IFC", "#0f172a", 22); ctx.globalAlpha = 1; }
+  caption(sc, u);
+}
+// ---- Fordon
+function vehicle(kind, x, y, ang, travel, sc3 = 1) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(ang); ctx.scale(sc3, sc3);
+  const wheel = (wx, r) => { ctx.save(); ctx.translate(wx, -r); ctx.rotate(travel / r); ctx.fillStyle = "#111827"; ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill(); ctx.strokeStyle = "#9ca3af"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-r * .6, 0); ctx.lineTo(r * .6, 0); ctx.moveTo(0, -r * .6); ctx.lineTo(0, r * .6); ctx.stroke(); ctx.restore(); };
+  if (kind === "truck") { wheel(-70, 24); wheel(-24, 24); wheel(70, 24); ctx.fillStyle = "#f26b1d"; rr(-96, -92, 120, 56, 6); ctx.fill(); ctx.fillStyle = "#eceff1"; rr(30, -86, 56, 50, 6); ctx.fill(); ctx.fillStyle = "#93c5fd"; ctx.fillRect(58, -78, 24, 22); ctx.fillStyle = "#2a2e34"; ctx.fillRect(-100, -40, 190, 10); }
+  else if (kind === "loader") { wheel(-34, 28); wheel(40, 28); ctx.fillStyle = "#f59e0b"; rr(-62, -78, 70, 42, 6); ctx.fill(); ctx.fillStyle = "#fbbf24"; rr(8, -86, 44, 50, 6); ctx.fill(); ctx.fillStyle = "#93c5fd"; ctx.fillRect(18, -78, 22, 20); ctx.strokeStyle = "#374151"; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(50, -50); ctx.lineTo(96, -46); ctx.stroke(); ctx.fillStyle = "#6b7280"; ctx.beginPath(); ctx.moveTo(90, -70); ctx.lineTo(118, -70); ctx.lineTo(112, -28); ctx.lineTo(90, -28); ctx.closePath(); ctx.fill(); }
+  else if (kind === "excavator") { ctx.fillStyle = "#374151"; rr(-70, -26, 140, 26, 13); ctx.fill(); ctx.fillStyle = "#f59e0b"; rr(-46, -76, 82, 48, 6); ctx.fill(); ctx.fillStyle = "#fbbf24"; rr(-10, -96, 42, 30, 6); ctx.fill(); ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 10; ctx.beginPath(); ctx.moveTo(30, -66); ctx.lineTo(80, -110); ctx.lineTo(120, -60); ctx.stroke(); ctx.fillStyle = "#6b7280"; ctx.beginPath(); ctx.moveTo(116, -60); ctx.lineTo(136, -44); ctx.lineTo(112, -36); ctx.closePath(); ctx.fill(); }
+  else { wheel(-70, 22); wheel(-36, 22); wheel(60, 22); wheel(94, 22); ctx.fillStyle = "#ef4444"; rr(-100, -60, 200, 28, 6); ctx.fill(); ctx.fillStyle = "#eceff1"; rr(40, -90, 58, 42, 6); ctx.fill(); ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 12; ctx.beginPath(); ctx.moveTo(-20, -60); ctx.lineTo(-150, -150); ctx.stroke(); ctx.strokeStyle = "#111"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-150, -150); ctx.lineTo(-150, -100); ctx.stroke(); }
+  ctx.restore();
+}
+// ---- Scen 6: kör vägen
+function sKor(u, sc) {
+  frame(); const x0 = 80, y1 = 700, L = 120; ctx.fillStyle = C.panel; rr(x0 - 20, 70, 1780, 700, 22); ctx.fill();
+  const X = s => x0 + 60 + s / L * 1600, Y = z => y1 - (z - 94) * 20;
+  ctx.fillStyle = "rgba(148,163,184,.2)"; ctx.beginPath(); ctx.moveTo(X(0), y1 + 40); for (let s = 0; s <= L; s += 1) ctx.lineTo(X(s), Y(gProf(s))); ctx.lineTo(X(L), y1 + 40); ctx.fill();
+  const sm = []; for (let i = 0; i <= L; i++) { let a = 0, c = 0; for (let j = Math.max(0, i - 9); j <= Math.min(L, i + 9); j++) { a += gProf(j); c++; } sm.push(a / c); }
+  for (let k = 0; k < 3; k++) { for (let i = 1; i <= L; i++) sm[i] = clamp(sm[i], sm[i - 1] - .1, sm[i - 1] + .1); for (let i = L - 1; i >= 0; i--) sm[i] = clamp(sm[i], sm[i + 1] - .1, sm[i + 1] + .1); }
+  const des = s => { const i = Math.max(0, Math.min(L - 1, Math.floor(s))), f = s - i; return lerp(sm[i], sm[Math.min(L, i + 1)], f); };
+  ctx.strokeStyle = "#cbd5e1"; ctx.lineWidth = 3; ctx.beginPath(); for (let s = 0; s <= L; s++) s ? ctx.lineTo(X(s), Y(gProf(s))) : ctx.moveTo(X(s), Y(gProf(s))); ctx.stroke();
+  ctx.strokeStyle = C.green; ctx.lineWidth = 8; ctx.beginPath(); for (let s = 0; s <= L; s++) s ? ctx.lineTo(X(s), Y(des(s))) : ctx.moveTo(X(s), Y(des(s))); ctx.stroke();
+  const kinds = ["truck", "loader", "excavator", "crane"], names = ["Lastbil", "Hjullastare", "Grävmaskin", "Mobilkran"], ki = Math.min(3, Math.floor(u * 4)), local = (u * 4) % 1;
+  const s = lerp(6, 108, ease(local)), z0 = des(s), z1 = des(s + 4), ang = -Math.atan2((z1 - z0) * 20, (X(s + 4) - X(s)));
+  vehicle(kinds[ki], X(s), Y(z0) - 8, ang, s * 40, 1.7);
+  const grade = (z1 - z0) / 4 * 100, kmh = 20 * Math.max(.35, 1 - 3 * Math.max(0, grade / 100));
+  // chips
+  names.forEach((n, i) => { chip(100 + i * 300, 100, n, i === ki ? C.blue : "#0f172a", 24); });
+  ctx.fillStyle = "#e6edf7"; ctx.font = "600 30px Inter,system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic"; ctx.fillText(`Fart ${Math.round(kmh)} km/h · lutning ${grade >= 0 ? "+" : "−"}${fmt(Math.abs(grade), 1)} % · ${Math.round(s)} / ${L} m`, 100, 240);
+  ctx.fillStyle = C.mut; ctx.font = "22px Inter,system-ui"; ctx.fillText("Hjulen snurrar, nosen följer lutningen, farten sjunker uppför", 100, 282);
+  caption(sc, u);
+}
+// ---- Scen 7: tidplan
+function sTid(u, sc) {
+  frame(); const x0 = 120, w = 1680; ctx.fillStyle = C.panel; rr(x0 - 40, 70, w + 80, 700, 22); ctx.fill();
+  // tidsaxel
+  const d0 = 0, d1 = 75, X = d => x0 + d / d1 * w; const months = [["Dec 2026", 0], ["Jan 2027", 31], ["Feb 2027", 62]]; ctx.font = "600 22px Inter,system-ui"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+  months.forEach(([m, d]) => { ctx.fillStyle = C.mut; ctx.fillText(m, X(d) + 6, 118); ctx.strokeStyle = C.line; ctx.beginPath(); ctx.moveTo(X(d), 100); ctx.lineTo(X(d), 440); ctx.stroke(); });
+  const a0 = 41, a1 = 52; ctx.fillStyle = "#6d28d9"; rr(X(a0), 160, X(a1) - X(a0), 54, 12); ctx.fill(); ctx.fillStyle = "#fff"; ctx.font = "600 19px Inter,system-ui"; ctx.fillText("Transport bergkross", X(a0) + 12, 187); ctx.fillStyle = "#b8c4d9"; ctx.font = "600 22px Inter,system-ui"; ctx.fillText("11–22 jan", X(a1) + 22, 187);
+  ctx.fillStyle = "#334155"; rr(X(8), 240, X(30) - X(8), 40, 10); ctx.fill(); ctx.fillStyle = "#cbd5e1"; ctx.fillText("Schakt linje J", X(8) + 14, 261); rr(X(56), 300, X(72) - X(56), 40, 10); ctx.fillStyle = "#334155"; ctx.fill(); ctx.fillStyle = "#cbd5e1"; ctx.fillText("Gjutning fundament", X(56) + 14, 321);
+  // datummarkör
+  const dd = lerp(8, 68, ease(seg(u, .06, .94))); ctx.strokeStyle = "#ef4444"; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(X(dd), 100); ctx.lineTo(X(dd), 440); ctx.stroke(); ctx.fillStyle = "#ef4444"; rr(X(dd) - 60, 70, 120, 32, 8); ctx.fill(); ctx.fillStyle = "#fff"; ctx.textAlign = "center"; const dn = Math.round(dd), lab = dn < 31 ? `${dn + 1} dec` : dn < 62 ? `${dn - 30} jan` : `${dn - 61} feb`; ctx.fillText(lab, X(dd), 87);
+  const on = dd >= a0 && dd <= a1;
+  // körvägsvy
+  ctx.fillStyle = "#0b1527"; rr(x0, 470, w, 270, 16); ctx.fill(); ctx.strokeStyle = on ? C.orange : "#475569"; ctx.lineWidth = on ? 6 : 3; ctx.setLineDash(on ? [] : [10, 8]); ctx.beginPath(); for (let i = 0; i <= 40; i++) { const t = i / 40, px = x0 + 60 + t * (w - 120), py = 640 - 120 * Math.sin(t * 3.2) * (.6 + .4 * t) - 10 * Math.sin(t * 14); i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); } ctx.stroke(); ctx.setLineDash([]);
+  if (on) for (let k = 0; k < 3; k++) { const t = ((u * 6 + k / 3) % 1), px = x0 + 60 + t * (w - 120), py = 640 - 120 * Math.sin(t * 3.2) * (.6 + .4 * t) - 10 * Math.sin(t * 14); vehicle("truck", px, py - 4, -.25 * (1 - t) + .1, t * 800, .5); }
+  ctx.textAlign = "left"; ctx.fillStyle = on ? C.orange : C.mut; ctx.font = "700 28px Inter,system-ui"; ctx.fillText(on ? "● Körväg aktiv – 3 lastbilar kör" : "Körvägen är släckt utanför aktivitetens datum", x0 + 24, 506);
+  caption(sc, u);
+}
+// ---- Utro / export
+function sUt(u, sc) {
+  frame(); const tiles = [["Byggväg", "#374151"], ["Schaktslänt", C.cut], ["Fyllningsslänt", C.fill], ["Lager", "#a8a29e"], ["Metertal 3D-text", "#111827"]];
+  tiles.forEach(([n, c], i) => { const a = ease(seg(u, .05 + i * .06, .2 + i * .06)); ctx.save(); ctx.globalAlpha = a; ctx.translate(0, (1 - a) * 30); ctx.fillStyle = c; rr(160 + i * 340, 250, 310, 150, 18); ctx.fill(); ctx.fillStyle = "#fff"; ctx.font = "700 30px Inter,system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(n, 160 + i * 340 + 155, 325); ctx.restore(); });
+  const b = ease(seg(u, .45, .7)); ctx.save(); ctx.globalAlpha = b; ctx.fillStyle = "#e6edf7"; ctx.font = "800 54px Inter,system-ui"; ctx.textAlign = "center"; ctx.fillText("Skapa objekt  →  IFC till Trimble Connect", W / 2, 560);
+  ctx.font = "400 34px Inter,system-ui"; ctx.fillStyle = "#b8c4d9"; ctx.fillText("Tvärsektioner som DXF  ·  körvägar sparade i projektet  ·  volym mot punktmoln och ritade objekt", W / 2, 630); ctx.restore();
+  const c2 = ease(seg(u, .7, .95)); ctx.save(); ctx.globalAlpha = c2; chip(W / 2 - 420, 720, "Byggväg – från punktmoln till projekterad väg", C.blue, 34); ctx.restore();
+}
+const FN = { intro: sIntro, plan: sPlan, prof: sProf, sek: sSek, bred: sBred, lager: sLager, kor: sKor, tid: sTid, ut: sUt };
+function render(t) {
+  t = clamp(t, 0, DUR); const sc = SC.find(s => t >= s[0] && t < s[1]) || SC[SC.length - 1]; const u = (t - sc[0]) / (sc[1] - sc[0]);
+  FN[sc[2]](u, sc); // scenerna ritar bakgrund själva
+  const fade = Math.min(ease(seg(t, 0, .6)), 1 - ease(seg(t, DUR - .8, DUR))); ctx.fillStyle = `rgba(5,7,12,${1 - fade})`; ctx.fillRect(0, 0, W, H);
+}
+// ---- Spelare
+let t = 0, playing = false, last = 0;
+const el = id => document.getElementById(id), fmtT = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+function ui() { el("bar").firstElementChild.style.width = (t / DUR * 100) + "%"; el("tm").textContent = `${fmtT(t)} / ${fmtT(DUR)}`; el("pp").textContent = playing ? "⏸" : "▶"; document.body.classList.toggle("paused", !playing); }
+function seek(x) { t = clamp(x, 0, DUR); render(t); ui(); }
+function loop(now) { if (playing) { const dt = Math.min(.1, (now - last) / 1000); last = now; t += dt; if (t >= DUR) { t = DUR; playing = false; } render(t); ui(); } requestAnimationFrame(loop); }
+function play() { if (t >= DUR) t = 0; playing = true; last = performance.now(); el("start").style.display = "none"; ui(); }
+el("start").onclick = play; el("pp").onclick = () => { playing ? (playing = false, ui()) : play(); };
+el("bar").onclick = e => { const r = el("bar").getBoundingClientRect(); seek((e.clientX - r.left) / r.width * DUR); };
+el("fs").onclick = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+addEventListener("keydown", e => { if (e.key === " ") { e.preventDefault(); playing ? (playing = false, ui()) : play(); } else if (e.key === "ArrowRight") seek(t + 5); else if (e.key === "ArrowLeft") seek(t - 5); else if (e.key === "f" || e.key === "F") el("fs").click(); });
+window.film = { seek, DUR, scenes: SC.map(s => s[0]) };
+render(0); ui(); requestAnimationFrame(loop);
+})();
+</script>
+</body></html>
