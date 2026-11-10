@@ -216,6 +216,22 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3Undo(); out.undo = Math.round((P()[2] - c.pts[1][2]) * 1000) / 1000; return out; });
   if (pm.xyz.join() !== '0.01,-0.01,0.1' || pm.z !== 123.456 || pm.along !== 1 || pm.acrossLeak > 0.01 || pm.right !== 1 || !pm.dz || !pm.panel || pm.keys !== 1) fail('Flytta punkt exakt: ' + JSON.stringify(pm));
   console.log('OK: flytta punkt exakt – steg i X/Y/Z och längs/tvärs/höjd, absoluta värden, Z till marken, piltangenter', JSON.stringify(pm));
+  // Vägöverbyggnad (lager): terrassyta, mängder per lager, schakt/fyllning till terrassen, objekt, sektion och DXF.
+  if (process.env.SHOT3) await page.evaluate(() => { window.__shot3 = true; });
+  const ly = await page.evaluate(async () => {
+    const c = l3road.cur, out = {}; c.spec.mode = 'terrain'; c.spec.widen = []; c.spec.layersOn = false; l3rSchedule(0); for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (c.res && !c.busy) break; }
+    const cut0 = c.res.cut + c.res.fill; c.spec.layersOn = true; c.spec.layers = JSON.parse(JSON.stringify(L3R_PRESETS.bygg[1])); l3rSchedule(0); await new Promise(r => setTimeout(r, 300)); for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (c.res && !c.busy && c.res.layers.length) break; }
+    const R = c.res, D = 0.15 + 0.35 + 0.2; out.D = R.D; out.layers = R.layers.map(l => [l.name.slice(0, 6), l.t, Math.round(l.vol), Math.round(l.area)]); out.volOk = Math.abs(R.layers[1].vol - R.layers[1].area * 0.35) < 0.5;
+    out.slopeFromTerrass = Math.abs(c.st[8].L.ze - (c.st[8].z - D)) < 1e-6; out.earthChanged = Math.round((R.cut + R.fill) - cut0) !== 0;
+    if (window.__shot3) { l3rsOpen(); l3rsSet(30, false); }
+    const sec = l3rsSection(c, 30); out.sec = [sec.layers.length, Math.round((sec.z - sec.zE) * 100) / 100]; const dx = l3rsDxf(10, false); out.dxf = !!dx && /SEK-LAGER-1/.test(dx.text) && /Terrass/.test(dx.text);
+    const n0 = placements.length; l3roadMake(); const mk = placements.slice(n0); out.objs = mk.filter(p => p.layerObj).map(p => [p.name.slice(0, 12), p.m.faces.length]); out.panel = true;
+    out.closed = mk.filter(p => p.layerObj).every(p => p.m.closed && p.m.pts.length === c.st.length * 4);
+    l3roadOpen({ pts: window.__pts, spec: { ...L3R_DEF, src: ['pc:pcR'], mode: 'terrain', grade: 10, width: 5 }, res: null, geom: null, st: null, busy: '', err: '' }); const c2 = l3road.cur; for (let i = 0; i < 80 && !(c2.res || c2.err); i++) await new Promise(r => setTimeout(r, 150));
+    return out; });
+  if (process.env.SHOT3) { await page.waitForTimeout(500); await page.screenshot({ path: process.env.SHOT3 }); }
+  if (Math.abs(ly.D - 0.7) > 1e-6 || ly.layers.length !== 3 || !ly.volOk || !ly.slopeFromTerrass || !ly.earthChanged || ly.sec[0] !== 3 || ly.sec[1] !== 0.7 || !ly.dxf || ly.objs.length !== 3 || !ly.closed) fail('Vägöverbyggnad: ' + JSON.stringify(ly));
+  console.log('OK: vägöverbyggnad – lager med tjocklek, mängder per lager, terrassyta, schakt/fyllning till terrassen, objekt, sektion och DXF', JSON.stringify(ly));
   // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
   const hd = await page.evaluate(async () => {
     const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;
