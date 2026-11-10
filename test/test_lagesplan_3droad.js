@@ -52,8 +52,16 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   console.log('OK: byggvägen följer punktmolnet, lutningen begränsas till 10 %, slänter i schakt och fyllning med volymer', JSON.stringify(r.res));
   // Skapa objekt: tre ritade ytor (väg, schaktslänt, fyllningsslänt).
   const made = await page.evaluate(async () => { const n0 = placements.length, hadBtn = !!document.querySelector('#v3RoadPanel [data-rb="ifc"]'); l3roadMake(); return { add: placements.length - n0, names: placements.slice(n0).map(p => p.name), closed: !l3road.cur, sel: l3.sel.size, hadBtn, sets: new Set(placements.slice(n0).map(p => p.set)).size }; });
-  if (made.add !== 3 || made.sel !== 3 || !made.hadBtn || made.sets !== 1 || !made.closed || !/Byggväg/.test(made.names[0])) fail('Skapa objekt: ' + JSON.stringify(made));
+  if (made.add !== 4 || made.sel !== 4 || !/Metertal/.test(made.names[0]) || !made.hadBtn || made.sets !== 1 || !made.closed || !made.names.some(n => /Byggväg/.test(n))) fail('Skapa objekt: ' + JSON.stringify(made));
   console.log('OK: Skapa objekt ger väg + schaktslänt + fyllningsslänt som vanliga ytor', JSON.stringify(made.names));
+  // Metertalen som 3D-text: ett nät med text och streck (tillval) – av = bara de tre ytorna.
+  const mt = await page.evaluate(async () => {
+    const mk = async on => { l3SetPref('rdIfcMeters', on); const pts = window.__pts; l3roadOpen({ pts, spec: { ...L3R_DEF, src: ['pc:pcR'], mode: 'terrain', grade: 10, width: 5 }, res: null, geom: null, st: null, busy: '', err: '' }); const c = l3road.cur; for (let i = 0; i < 80 && !(c.res || c.err); i++) await new Promise(r => setTimeout(r, 150)); const n0 = placements.length; l3roadMake(); return placements.slice(n0); };
+    const on = await mk(true), off = await mk(false), t = on.find(p => p.text);
+    return { on: on.length, off: off.length, name: t && t.name, pts: t && t.m.pts.length, faces: t && t.m.faces.length, flat: t && Math.max(...t.m.pts.map(q => q[2])) - Math.min(...t.m.pts.map(q => q[2])), vol: l3dfSources().some(s => /Metertal/.test(s.label)) };
+  });
+  if (mt.on !== 4 || mt.off !== 3 || !/^Metertal byggväg/.test(mt.name || '') || !(mt.pts > 300) || !(mt.faces > 300) || mt.vol) fail('Metertal som 3D-text: ' + JSON.stringify(mt));
+  console.log('OK: metertalen följer med som 3D-text (och streck) när rutan är ikryssad – av ger bara väg och slänter', JSON.stringify(mt));
   // Mät → Byggväg: mittlinjen via verktyget (Enter avslutar) öppnar panelen.
   const tool = await page.evaluate(async () => {
     l3SetPref('measure', 'road'); l3SetTool('measure');

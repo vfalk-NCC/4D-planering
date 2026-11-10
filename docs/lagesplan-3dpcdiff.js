@@ -91,7 +91,7 @@ function l3dfSources() {
   // Ritade objekt (Victor 2026-11-10: "räkna volym mot objekten jag har ritat – mot t.ex. punktmoln och byggväg"): ytor och kroppar du ritat/modellerat, t.ex. byggvägen och dess slänter.
   if (typeof placements !== "undefined" && l3.placeMeshes) {
     const sets = new Map(), ok = [];
-    placements.forEach(p => { if (!p.m || !l3dfObjMeshes(p).length) return; ok.push(p); if (p.set) (sets.get(p.set) || sets.set(p.set, []).get(p.set)).push(p); });
+    placements.forEach(p => { if (!p.m || p.text || !l3dfObjMeshes(p).length) return; ok.push(p); if (p.set) (sets.get(p.set) || sets.set(p.set, []).get(p.set)).push(p); });
     // Flera objekt som skapats tillsammans (byggväg + slänter) som en helhet, och de markerade ritade objekten som en yta (Victor 2026-11-10).
     sets.forEach((ps, id) => { if (ps.length > 1) out.push({ k: "obs:" + id, label: `Ritad helhet: ${(ps.find(q => /Byggväg/.test(q.name || "")) || ps[0]).name} (${ps.length} delar)` }); });
     const sel = [...(l3.sel || [])].filter(id => ok.some(p => p.id === id)); if (sel.length > 1) out.push({ k: "obm:" + sel.join(","), label: `Markerade ritade objekt (${sel.length})` });

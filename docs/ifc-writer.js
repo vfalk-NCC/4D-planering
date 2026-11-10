@@ -168,7 +168,7 @@ function ifcDoc(projName, desc, appName = "4D-planering Lägesplan") {
    från z = 0 (lokalt), läsriktning (rx, ry). start = var texten börjar längs läsriktningen (meter),
    eller null = centrerad; across = förskjutning tvärs (meter, mitten av texten). Returnerar
    IfcTriangulatedFaceSet-id, eller null. */
-function ifcTextSolid(doc, text, { h, t, rx, ry, start = null, style = null, across = 0 }) {
+function ifcTextGeom(text, { h, t, rx, ry, start = null, across = 0 }) {   // texten som punkter och trianglar (lokala meter, utan IFC) – även för ritade objekt
   const { strokes, width } = ifcTextStrokes(text);
   if (!strokes.length) return null;
   const s = h / 6, w = IFC_STROKE * h / 2, u0 = start == null ? -width / 2 : start / s, v0 = -3 + across / s;
@@ -235,6 +235,11 @@ function ifcTextSolid(doc, text, { h, t, rx, ry, start = null, style = null, acr
     ribbon(piece);
     disc(pl[0][0], pl[0][1]); disc(pl[pl.length - 1][0], pl[pl.length - 1][1]);
   });
+  return { pts, tris };
+}
+function ifcTextSolid(doc, text, { h, t, rx, ry, start = null, style = null, across = 0 }) {
+  const g = ifcTextGeom(text, { h, t, rx, ry, start, across }); if (!g) return null;
+  const { pts, tris } = g;
   const pl3 = doc.E(`IFCCARTESIANPOINTLIST3D((${pts.map(ifcPt).join(",")}))`);
   const mesh = doc.E(`IFCTRIANGULATEDFACESET(${pl3},$,.T.,(${tris.map(tr => `(${tr.join(",")})`).join(",")}),$)`);
   doc.E(`IFCSTYLEDITEM(${mesh},(${style || doc.textStyle}),$)`);
