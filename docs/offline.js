@@ -20,7 +20,7 @@
   const desktop = (() => { try { return /Electron/i.test(navigator.userAgent) || (window.matchMedia && (matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: minimal-ui)").matches)) || /[?&]offline=1/.test(location.search); } catch (e) { return false; } })();
   const netFail = e => isNet(e) && desktop;
   const offlineNow = () => typeof navigator !== "undefined" && navigator.onLine === false;
-  const state = { offline: false, pending: 0, conflicts: 0 };
+  const state = { offline: false, pending: 0, conflicts: 0 }, pendSet = new Set();   // vilka filer som har väntande ändringar (så att vanliga läsningar/skrivningar slipper vänta på IndexedDB)
   let box = null;
   function badge() {
     if (typeof document === "undefined" || !document.body) return;
@@ -28,12 +28,12 @@
     const parts = []; if (state.offline) parts.push("Offline – visar senast hämtade data"); if (state.pending) parts.push(`${state.pending} ändring${state.pending === 1 ? "" : "ar"} väntar på nätet`); if (state.conflicts) parts.push(`${state.conflicts} konflikt${state.conflicts === 1 ? "" : "er"} (filen ändrad av någon annan)`);
     box.style.display = parts.length ? "block" : "none"; box.textContent = parts.join(" · "); box.style.background = state.conflicts ? "#b91c1c" : "#b45309";
   }
-  async function refresh() { const p = await all(ST_PEND); state.pending = p.filter(x => !x.conflict).length; state.conflicts = p.filter(x => x.conflict).length; badge(); }
+  async function refresh() { const p = await all(ST_PEND); pendSet.clear(); p.forEach(x => pendSet.add(x.path)); state.pending = p.filter(x => !x.conflict).length; state.conflicts = p.filter(x => x.conflict).length; badge(); }
   const origGet = ghGetFile, origWrite = ghWriteJSON;
 
   // Läsning: spara lyckade, falla tillbaka på cachen om nätet saknas.
   ghGetFile = window.ghGetFile = async function (token, path, opts = {}) {
-    const pend = await get(ST_PEND, path);
+    const pend = pendSet.has(path) ? await get(ST_PEND, path) : null;
     if (pend && !pend.conflict && (offlineNow() || desktop && state.offline)) return { data: pend.data, sha: pend.baseSha };
     try {
       const r = await origGet(token, path, opts); state.offline = false; badge();
@@ -50,10 +50,10 @@
   // Skrivning: utan nät → väntekö.
   ghWriteJSON = window.ghWriteJSON = async function (token, path, mutateFn, message, maxRetries, preFetched) {
     const queue = async () => {
-      const pend = await get(ST_PEND, path), cached = pend && !pend.conflict ? { data: pend.data, sha: pend.baseSha } : await get(ST_FILES, path);
+      const pend = pendSet.has(path) ? await get(ST_PEND, path) : null, cached = pend && !pend.conflict ? { data: pend.data, sha: pend.baseSha } : await get(ST_FILES, path);
       if (!cached && !pend) throw new Error("Offline och filen har aldrig hämtats – kan inte spara nu.");
       const cur = Array.isArray(cached.data) ? cached.data : [], next = mutateFn(cur.slice());
-      await put(ST_PEND, { path, data: next, baseSha: cached.sha, message: message || "Offline-ändring", at: Date.now(), conflict: false });
+      await put(ST_PEND, { path, data: next, baseSha: cached.sha, message: message || "Offline-ändring", at: Date.now(), conflict: false }); pendSet.add(path);
       if (typeof ghFileCache !== "undefined") ghFileCache.set(path, { data: next, sha: cached.sha, own: true, at: Date.now() });
       state.offline = true; await refresh(); return next;
     };
