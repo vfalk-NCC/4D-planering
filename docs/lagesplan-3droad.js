@@ -129,7 +129,7 @@ async function l3rCompute(cur, alive) {
   for (let i = 1; i < n - 1; i++) { const a = st[i - 1], b = st[i], c = st[i + 1], ab = Math.hypot(b.x - a.x, b.y - a.y), bc = Math.hypot(c.x - b.x, c.y - b.y), ca = Math.hypot(a.x - c.x, a.y - c.y), ar = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2; const R = ar > 1e-6 ? ab * bc * ca / (4 * ar) : Infinity; b.R = R; if (R < (Number(spec.minR) || 15)) tight.push({ i, R, x: b.x, y: b.y, z: b.z }); }
   const L2 = st[n - 1].s;
   const res = { len: L2, len3, dz: st[n - 1].z - st[0].z, z0: st[0].z, z1: st[n - 1].z, maxG, avgG: nG ? sumG / nG : 0, cut: cutV, fill: fillV, net: cutV - fillV, slopeCut, slopeFill, roadArea: L2 * W, tight, maxCutDepth, maxFillDepth, unreached, cell, stations: n, miss };
-  return { res, st, W };
+  return { res, st, W, ctx: { gz, slope } };
 }
 
 /* ---- Geometri (relativt origo org) ---- */
@@ -169,6 +169,7 @@ function l3rDraw() {
   const line = (pts, color) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.95 })); l.renderOrder = 12; l.userData.noHit = true; l.raycast = () => {}; grp.add(l); };
   if (c.st) line(c.st.map(p => new THREE.Vector3(p.x - O[0], p.y - O[1], p.z - O[2] + 0.12)), 0xffffff);
   else line(c.pts.map(p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2] + 0.12)), 0xffffff);
+  if (typeof l3rsLine === "function") l3rsLine(grp, line);
   if (c.res) c.res.tight.forEach(t => { const sp = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.5, (Number(c.spec.width) || 5) * 0.15), 12, 8), new THREE.MeshBasicMaterial({ color: 0xd946ef, depthTest: false })); sp.position.set(t.x - O[0], t.y - O[1], t.z - O[2] + 0.5); sp.renderOrder = 13; sp.userData.noHit = true; sp.raycast = () => {}; grp.add(sp); });
   l3Render(); if (typeof l3mHandlesPlace === "function") l3mHandlesPlace();
 }
@@ -179,9 +180,9 @@ function l3rSchedule(ms) {
     try {
       const r = await l3rCompute(c, () => seq === l3road.seq && l3road.cur === c); if (seq !== l3road.seq || l3road.cur !== c) return;
       c.busy = ""; if (!r) return;
-      if (r.err) { c.err = r.err; c.res = null; c.geom = null; c.st = null; } else { c.res = r.res; c.st = r.st; c.W = r.W; c.geom = l3rBuild(c); c.saved = false; }
+      if (r.err) { c.err = r.err; c.res = null; c.geom = null; c.st = null; } else { c.res = r.res; c.st = r.st; c.W = r.W; c.ctx = r.ctx; c.geom = l3rBuild(c); c.saved = false; }
     } catch (err) { c.busy = ""; c.err = "Kunde inte räkna: " + (err && err.message ? err.message : err); console.warn("Byggväg", err); }
-    l3rPanel(); l3rDraw();
+    l3rPanel(); l3rDraw(); if (typeof l3rsDirty === "function") l3rsDirty();
   }, ms == null ? 200 : ms);
 }
 
@@ -200,7 +201,7 @@ function l3roadOpen(cur) {
   l3rPanel(); l3rDraw(); l3rSchedule(0);
 }
 function l3roadClose(keep) {
-  const el = document.getElementById("v3RoadPanel"); if (el) el.remove();
+  const el = document.getElementById("v3RoadPanel"); if (el) el.remove(); if (!keep && typeof l3rsClose === "function") l3rsClose();
   const c = l3road.cur; if (c) l3road.last = { spec: JSON.parse(JSON.stringify(c.spec)) };
   clearTimeout(l3road.timer); l3road.seq++; l3road.cur = null; if (!keep) l3rDriveStop(true); else l3rDriveStop(false);
   if (l3.groups.road) l3Clear(l3.groups.road);
@@ -255,13 +256,13 @@ function l3rPanel() {
       <div class="v3-rd-seg" title="Höjdprofil"><button type="button" data-rm="anchor" class="${spec.mode === "anchor" ? "on" : ""}" title="En punkt på vägen har given höjd (som standard den högsta du klickat) – resten räknas därifrån med högsta lutning">Från höjdpunkt</button><button type="button" data-rm="terrain" class="${spec.mode === "terrain" ? "on" : ""}">Följ marken</button><button type="button" data-rm="straight" class="${spec.mode === "straight" ? "on" : ""}">Rak start → slut</button><button type="button" data-rm="pins" class="${spec.mode === "pins" ? "on" : ""}" title="Vägen går genom höjden i varje punkt du klickat ut (dra en ring för att ändra) – den högsta punkten blir vägens högsta">Genom mina punkter</button></div>
     </div>
     <div class="v3-rd-drv" title="Lastbilen från Gå-läget kör vägen: nosen följer lutningen, den styr i kurvorna och går långsammare uppför"><button type="button" data-rb="drive" ${r ? "" : "disabled"}>${l3rDrv.on ? "⏸ Pausa" : l3rDrv.s > 0.5 ? "▶ Fortsätt" : "▶ Kör vägen"}</button><button type="button" data-rb="drvreset" title="Tillbaka till start">⏮</button><label title="Fart i km/h på plan väg"><input type="number" data-rk="speed" value="${spec.speed}" min="3" max="60" step="1"> km/h</label><label title="Kameran åker med lastbilen"><input type="checkbox" data-rf ${l3rDrv.follow ? "checked" : ""}> Följ</label><label title="Börja om när lastbilen kommit fram"><input type="checkbox" data-rl ${l3rDrv.loop ? "checked" : ""}> Loop</label><div data-rinfo class="v3-rd-info"></div></div>
-    <div class="v3-vq-foot"><button type="button" class="primary" data-rb="make" ${r ? "" : "disabled"} title="Väg, schaktslänt och fyllningsslänt blir vanliga ytor (flytta, ändra, IFC, DXF)">Skapa objekt</button><button type="button" data-rb="undo" title="Ta bort sista punkten" ${c.pts.length > 2 ? "" : "disabled"}>↶</button><button type="button" data-rb="redraw" title="Rita om mittlinjen">Rita om</button><button type="button" data-rb="x">Stäng</button></div>`;
+    <div class="v3-vq-foot"><button type="button" class="primary" data-rb="make" ${r ? "" : "disabled"} title="Väg, schaktslänt och fyllningsslänt blir vanliga ytor (flytta, ändra, IFC, DXF)">Skapa objekt</button><button type="button" data-rb="undo" title="Ta bort sista punkten" ${c.pts.length > 2 ? "" : "disabled"}>↶</button><button type="button" data-rb="sect" ${r ? "" : "disabled"} title="Tvärsektion och längdprofil: se väg och slänter mot punktmolnet, färdas längs linjen och exportera som DXF">Tvärsektion</button><button type="button" data-rb="redraw" title="Rita om mittlinjen">Rita om</button><button type="button" data-rb="x">Stäng</button></div>`;
   const q = s => el.querySelector(s), qa = s => el.querySelectorAll(s), on = (k, fn) => qa(`[data-rb="${k}"]`).forEach(b => { b.onclick = fn; });
   qa("input[data-rk]").forEach(i => { i.oninput = () => { const v = Number(String(i.value).replace(",", ".")); if (Number.isFinite(v) && v >= Number(i.min) && v <= Number(i.max)) { spec[i.dataset.rk] = v; c.saved = false; l3rSchedule(350); } }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
   qa("input[data-rs]").forEach(i => { i.onchange = () => { const k = i.dataset.rs; spec.src = i.checked ? [...new Set([...spec.src, k])] : spec.src.filter(x => x !== k); l3rSchedule(0); }; });
   { const a = q("select[data-ra]"); if (a) a.onchange = () => { spec.anchor = Number(a.value); l3rSchedule(0); }; const cc = q("input[data-rc]"); if (cc) cc.onchange = () => { spec.cap = cc.checked; l3rSchedule(0); }; }
   qa("[data-rm]").forEach(b => { b.onclick = () => { spec.mode = b.dataset.rm; l3rPanel(); l3rSchedule(0); }; });
-  on("x", () => l3roadClose()); on("make", l3roadMake); on("drive", l3rDriveToggle); on("drvreset", l3rDriveReset);
+  on("x", () => l3roadClose()); on("make", l3roadMake); on("drive", l3rDriveToggle); on("sect", () => { if (typeof l3rsOpen === "function") l3rsOpen(); }); on("drvreset", l3rDriveReset);
   { const f = q("input[data-rf]"); if (f) f.onchange = () => { l3rDrv.follow = f.checked; l3rDrv.prev = null; }; const l = q("input[data-rl]"); if (l) l.onchange = () => { l3rDrv.loop = l.checked; }; }
   on("undo", () => l3roadRemovePt(c.pts.length - 1));
   on("redraw", () => { l3roadClose(true); l3t.mp = null; l3Busy(true); l3t.mpObjs = []; l3Status("Tryck ut vägens mittlinje igen (Enter avslutar)."); });

@@ -96,6 +96,19 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (sp.err || !(sp.slopes > 5)) fail('Slänt vid glest moln: ' + JSON.stringify(sp));
   console.log('OK: slänten ritas även där punktmolnet saknar mark utanför vägen', JSON.stringify(sp));
+  // Tvärsektion och längdprofil: ritas, följer reglaget, exporterar DXF med sektioner och profil.
+  const sc = await page.evaluate(async () => {
+    const c = l3road.cur; c.spec.mode = 'terrain'; l3rSchedule(0); for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (c.res && !c.busy && c.st && c.ctx) break; }
+    l3rsOpen(); await new Promise(r => setTimeout(r, 400)); const out = { panel: !!document.getElementById('v3RoadSec'), cv: !!l3rs.cv && l3rs.cv.width > 50 };
+    out.dim = [l3rs.cv.clientWidth, l3rs.cv.clientHeight, l3rs.cv.width, l3rs.lp.clientWidth];
+    l3rsSet(30, false); const a = l3rs.sec; l3rsSet(45, false); const b = l3rs.sec;
+    out.s = [a.s, b.s]; out.hasGround = a.ground.filter(q => q[1] !== null).length > 20; out.line = a.line.length; out.scatter = (l3rs.scat || []).length; out.areas = [a.cut, a.fill].map(v => Math.round(v * 10) / 10);
+    out.differ = Math.abs(a.z - b.z) > 0.5 || Math.abs((a.gc || 0) - (b.gc || 0)) > 0.5;
+    const r = l3rsDxf(10, true); out.dxf = !!r && r.n >= 6 && /SEK-MARK/.test(r.text) && /SEK-SLANT/.test(r.text) && /PROFIL-VAG/.test(r.text) && /Tv.rsektion/.test(r.text) && /Station 0\+030/.test(r.text);
+    l3rsClose(); out.closed = !document.getElementById('v3RoadSec'); return out; });
+  if (process.env.SHOT2) { await page.evaluate(() => { l3rsOpen(); l3rsSet(33, false); }); await page.waitForTimeout(500); await page.screenshot({ path: process.env.SHOT2 }); await page.evaluate(() => l3rsClose()); }
+  if (!sc.panel || !sc.cv || !sc.hasGround || sc.line < 3 || !sc.differ || !sc.dxf || !sc.closed) fail('Tvärsektion: ' + JSON.stringify(sc));
+  console.log('OK: tvärsektion och längdprofil – mark, väg, slänter, areor, punkter i skivan, reglage och DXF med sektioner och profil', JSON.stringify(sc));
   // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
   const hd = await page.evaluate(async () => {
     const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;
