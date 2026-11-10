@@ -34,7 +34,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3pc.clouds.push({ id: 'pcR', name: 'Moln R', visible: false, dz: 0, nTot: P.length / 3, info: { center: c0, min: [c0[0] - 35, c0[1] - 30, 60], max: [c0[0] + 35, c0[1] + 30, 140] }, chunks: [{ pos: new Float32Array(P) }] });
     const pts = [[6512300, 150130, 100 + 0.2 * -30], [6512315, 150134, 100 + 0.2 * -15 + 0.3 * 4], [6512330, 150130, 100], [6512345, 150126, 100 + 3 - 1.2], [6512360, 150130, 106]].map(p => p.map(v => Math.round(v * 1000) / 1000));
     window.__pts = pts;
-    l3roadOpen({ pts, spec: { ...L3R_DEF, src: ['pc:pcR'], grade: 10, width: 5 }, res: null, geom: null, st: null, busy: '', err: '' });
+    l3roadOpen({ pts, spec: { ...L3R_DEF, src: ['pc:pcR'], grade: 10, width: 5, mode: 'terrain' }, res: null, geom: null, st: null, busy: '', err: '' });
     for (let i = 0; i < 80 && !(l3road.cur && (l3road.cur.res || l3road.cur.err)); i++) await new Promise(r => setTimeout(r, 150));
     const c = l3road.cur; if (!c) return { err: 'ingen väg' };
     if (c.err) return { err: c.err };
@@ -63,6 +63,21 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return { open: !!l3road.cur, seg };
   });
   if (!tool.open || !tool.seg.includes('Byggväg')) fail('Verktyget Byggväg: ' + JSON.stringify(tool));
+  // Höjdpunkt: som standard den högsta klickade punkten; vägen går aldrig över den och lutningen begränsas därifrån.
+  const an = await page.evaluate(async () => { const c = l3road.cur; c.spec.mode = 'anchor'; l3rSchedule(0); for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (c.res && !c.busy && c.st && c.st.length) break; } return { mode: c.spec.mode, top: Math.max(...c.pts.map(p => p[2])), maxZ: Math.max(...c.st.map(p => p.z)), maxG: c.res.maxG, grade: c.spec.grade }; });
+  if (an.mode !== 'anchor' || an.maxZ > an.top + 0.01 || an.maxG > an.grade / 100 + 0.0005) fail('Höjdpunkt: ' + JSON.stringify(an));
+  console.log('OK: Från höjdpunkt – högsta punkten du klickat är vägens högsta och lutningen begränsas därifrån', JSON.stringify(an));
+  // Lastbil som kör vägen: följer höjden och lutningen, kommer framåt, loop.
+  const dr = await page.evaluate(async () => {
+    const c = l3road.cur; l3rDriveReset(); l3rDriveToggle(); const out = { grp: !!l3rDrv.grp, on: l3rDrv.on };
+    l3rDrv.follow = false; let txt = ''; for (let i = 0; i < 20; i++) txt = l3rDriveStep(0.5);
+    const g = l3rDrv.grp, O = l3.O, p = g.position, near = c.st.reduce((b, q) => Math.min(b, Math.hypot(q.x - O[0] - p.x, q.y - O[1] - p.y)), 1e9);
+    out.s = l3rDrv.s; out.near = near; out.zOff = Math.abs(l3rAt(c.st, l3rDrv.s + 1.8).z - O[2] - p.z); out.pitchSign = Math.sign(-g.rotation.y); out.txt = txt; out.kids = g.children[0].children.length;
+    l3rDrv.s = c.st[c.st.length - 1].s; l3rDriveStep(0.2); out.loop = l3rDrv.s;
+    l3rDriveStop(true); out.removed = !l3rDrv.grp; return out;
+  });
+  if (!dr.grp || !dr.on || dr.s < 5 || dr.near > 1.5 || dr.zOff > 1.2 || dr.kids < 20 || !/km\/h/.test(dr.txt) || dr.loop > 1 || !dr.removed) fail('Lastbil: ' + JSON.stringify(dr));
+  console.log('OK: lastbilen kör vägen – följer höjd och lutning, avläsning, loop och städas bort', JSON.stringify(dr));
   // Genom mina punkter: vägens höjd följer klickpunkternas höjd (högsta punkten blir vägens högsta).
   const pn = await page.evaluate(async () => { const c = l3road.cur; c.spec.mode = 'pins'; l3rSchedule(0); for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (c.res && !c.busy && c.st && c.st.length) break; }
     const zs = c.st.map(p => p.z), top = Math.max(...c.pts.map(p => p[2])), at = c.pts.map(p => { let b = 1e9, z = 0; c.st.forEach(q => { const d = Math.hypot(q.x - p[0], q.y - p[1]); if (d < b) { b = d; z = q.z; } }); return Math.abs(z - p[2]); });
