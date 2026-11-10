@@ -283,7 +283,7 @@ async function ifcSubsetReadSelection() {
   return out;
 }
 /* Modellens fil i Trimble Connect (den version som visas) som bytes. */
-async function ifcSubsetDownload(spec, onProgress = null) {
+async function ifcSubsetDownload(spec, onProgress = null, asBlob = false) {
   const tokenVal = await tcAccessToken();
   const project = await API.project.getProject();
   const base = await tcApiBase(tokenVal, project);
@@ -307,6 +307,8 @@ async function ifcSubsetDownload(spec, onProgress = null) {
   if (!res.ok) throw new Error(`Kunde inte ladda ner modellfilen (${res.status}).`);
   // Med procent (stora modeller tar tid): läs svaret bit för bit.
   const total = Number(res.headers.get("Content-Length")) || 0;
+  // asBlob (punktmoln, ofta över 1 GB): filen lämnas som en Blob utan att packas ihop till en enda stor minnesbit – det frös fliken och minnet (Victor 2026-11-10).
+  if (asBlob) return onProgress && res.body && typeof ghReadBodyWithProgress === "function" ? ghReadBodyWithProgress(res, (f, got) => onProgress(f, got || 0, total)) : res.blob();
   if (onProgress && res.body && typeof ghReadBodyWithProgress === "function") return new Uint8Array(await (await ghReadBodyWithProgress(res, (f, got) => onProgress(f, got || 0, total))).arrayBuffer());
   return new Uint8Array(await res.arrayBuffer());
 }

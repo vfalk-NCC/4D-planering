@@ -528,7 +528,7 @@ function l3pcFromTc(fileId, name, f, parentId) {
   const src = { id: "pc:f:" + fileId, name, fileId, version: (f && (f.versionId || (f.modified ? String(f.modified) : ""))) || "", parentId: parentId || null };
   const on = l3pc.clouds.find(c => c.id === src.id);
   if (on) { l3pcShow(src.id, !on.visible); if (typeof l3LayersRender === "function") l3LayersRender(); return; }
-  return l3pcLoad(src, onP => askOpener("tcFile", { fileId, name }, 0, (fr, got, tot) => onP(tot ? got / tot : fr || 0)).then(r => r.bytes));
+  return l3pcLoad(src, onP => askOpener("tcFile", { fileId, name, blob: true }, 0, (fr, got, tot) => onP(tot ? got / tot : fr || 0)).then(r => r.blob || r.bytes));
 }
 /* Från datorn. */
 let l3pcInput = null;

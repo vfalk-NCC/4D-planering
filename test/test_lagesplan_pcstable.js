@@ -71,6 +71,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     });
     if (!/Okänt/.test(st.r) || !/hängde sig/.test(st.hang) || st.dt < 2400 || st.dt > 8000 || !st.can.cancelled || st.killed !== 2 || !st.cleared) fail('Hängskydd och avbryt: ' + JSON.stringify(st));
     console.log('OK: en läsare som hänger sig avbryts efter tidsgränsen, och inläsningen kan avbrytas av användaren');
+    // 4. Stora moln från Trimble Connect hämtas som Blob (ingen jättestor minnesbit) och läses av läsaren direkt.
+    const bl = await page.evaluate(async () => {
+      let asked = null; const orig = askOpener;
+      askOpener = async (type, extra) => { if (type === 'tcFile') { asked = extra; let t = ''; for (let i = 0; i < 300; i++) t += `${i % 20} ${Math.floor(i / 20)} ${(i % 7) / 2}\n`; return { blob: new Blob([t]) }; } return orig(type, extra); };
+      await l3pcFromTc('F-blob', 'blob.xyz', { versionId: 'v1' }); askOpener = orig;
+      return { asked, loaded: l3pc.clouds.some(c => c.id === 'pc:f:F-blob'), n: (l3pc.clouds.find(c => c.id === 'pc:f:F-blob') || {}).nTot };
+    });
+    if (!bl.asked || bl.asked.blob !== true || !bl.loaded || !(bl.n > 100)) fail('Moln som Blob: ' + JSON.stringify(bl));
+    console.log('OK: punktmoln från Trimble Connect hämtas som Blob och läses av läsaren utan en enda stor minnesbit');
     if (errors.length) fail('Sidfel: ' + errors.join(' | '));
     console.log('OK test_lagesplan_pcstable');
   } catch (e) { console.error('FEL:', e.message); process.exitCode = 1; }
