@@ -88,11 +88,15 @@ function l3dfSources() {
   l3pc.clouds.forEach(c => out.push({ k: "pc:" + c.id, label: "Punktmoln: " + c.name }));
   if (typeof l3b !== "undefined") l3b.models.forEach(m => { if (m.meshes && m.meshes.length) out.push({ k: "md:" + m.id, label: "3D-modell: " + m.name }); });
   if (typeof l3s !== "undefined" && l3s.cad && typeof cads === "function") cads().forEach(r => { let n = 0; l3s.cad.forEach(o => { if (o.userData.cadId === r.id && o.isMesh && o.geometry.getAttribute("position")) n++; }); if (n) out.push({ k: "cad:" + r.id, label: "3D-ritning: " + r.name }); });
+  // Ritade objekt (Victor 2026-11-10: "räkna volym mot objekten jag har ritat – mot t.ex. punktmoln och byggväg"): ytor och kroppar du ritat/modellerat, t.ex. byggvägen och dess slänter.
+  if (typeof placements !== "undefined" && l3.placeMeshes) placements.forEach(p => { if (!p.m || !l3dfObjMeshes(p).length) return; out.push({ k: "ob:" + p.id, label: "Ritat objekt: " + (p.name || "objekt") }); });
   return out;
 }
+function l3dfObjMeshes(p) { const g = l3.placeMeshes && l3.placeMeshes.get(p.id), ms = []; if (g) g.traverse(o => { if (o.isMesh && o.geometry && o.geometry.getAttribute("position") && o.visible !== false && !(o.userData && o.userData.noIfc)) ms.push(o); }); return ms; }
 function l3dfBuild(key, g) {
   const [kind, ...rest] = key.split(":"), id = rest.join(":");
   if (kind === "pc") { const c = l3pc.clouds.find(x => x.id === id); if (!c) return null; l3dfFromCloud(c, g); return l3dfFill(g, 2); }
+  if (kind === "ob") { const p = placements.find(x => x.id === id); const ms = p ? l3dfObjMeshes(p) : []; if (!ms.length) return null; l3dfMeshes(g, ms); return l3dfFill(g, 1); }
   if (kind === "md") { const m = l3b.models.find(x => x.id === id); if (!m) return null; l3dfMeshes(g, m.meshes); return l3dfFill(g, 1); }
   if (kind === "cad") { const ms = []; l3s.cad.forEach(o => { if (o.userData.cadId === id && o.isMesh) ms.push(o); }); if (!ms.length) return null; l3dfMeshes(g, ms); return l3dfFill(g, 1); }
   return null;

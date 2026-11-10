@@ -160,6 +160,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3SetPref('rdHandles', false); l3rwPlace(); out.off = l3rw.els.length; return out; });
   if (ad.zone !== 'obj' || ad.cap || !(ad.mid[1] > ad.W2 + 6) || ad.mid[1] > ad.W2 + 12 || ad.mid[0] !== ad.W2 || ad.far[1] !== ad.W2 || !(ad.edge[1] > ad.W2 + 2) || !ad.labels || ad.handles !== 2 || Math.abs(ad.sAt - 40) > 1 || ad.s1 !== 44.5 || ad.s0 !== 44.5 || ad.off !== 0) fail('Avancerad breddning: ' + JSON.stringify(ad));
   console.log('OK: avancerat – breddning runt utpekat objekt (kontur + offset, bara på objektets sida) och dragbara start/slut på linjen', JSON.stringify(ad));
+  // Volym mot ritade objekt: punktmoln (z = 98) mot en ritad platta (z = 100) på 20 × 20 m ≈ 800 m³.
+  const vo = await page.evaluate(async () => {
+    const O = l3.O, x0 = 6512400, y0 = 150200, P = [];
+    for (let y = -5; y <= 25; y += 0.5) for (let x = -5; x <= 25; x += 0.5) P.push(x - 10, y - 10, 0);
+    l3pc.clouds.push({ id: 'pcV', name: 'Moln V', visible: false, dz: 0, nTot: P.length / 3, info: { center: [x0 + 10, y0 + 10, 98], min: [x0 - 5, y0 - 5, 98], max: [x0 + 25, y0 + 25, 98] }, chunks: [{ pos: new Float32Array(P) }] });
+    const made = modCreate({ k: 'mesh', pts: [[0, 0, 0], [20, 0, 0], [20, 20, 0], [0, 20, 0]], faces: [[1, 2, 3], [1, 3, 4]], closed: false }, [x0, y0, 100], { name: 'Ritad platta', color: '#9ca3af', snapshot: false });
+    const srcs = l3dfSources().map(s => s.k + '|' + s.label), key = 'ob:' + made.id;
+    const cur = { pts: [[x0 + 2, y0 + 2, 99], [x0 + 18, y0 + 2, 99], [x0 + 18, y0 + 18, 99], [x0 + 2, y0 + 18, 99]], surf: null, spec: { a: { k: 'pc:pcV', side: 'top' }, b: { k: key, side: 'top', z: null }, cell: 0.5, tin: false } };
+    const r = await l3volCompute(cur, () => true); return { has: srcs.some(s => s.startsWith(key + '|Ritat objekt: Ritad platta')), err: r.err, res: r.res && { cut: r.res.cut, fill: r.res.fill, net: r.res.net } };
+  });
+  if (!vo.has || vo.err || !(Math.abs(vo.res.cut + vo.res.fill - 256 * 2) < 25)) fail('Volym mot ritat objekt: ' + JSON.stringify(vo));
+  console.log('OK: Volym kan räkna mot ritade objekt (t.ex. byggväg) – punktmoln mot ritad platta ger rätt volym', JSON.stringify(vo.res));
   // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
   const hd = await page.evaluate(async () => {
     const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;
