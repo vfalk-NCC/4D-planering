@@ -12,7 +12,7 @@
    Räknesättet: en höjdkarta (rutnät) per yta som i Volym mot yta (lagesplan-3dpcdiff.js). Volymen är summan av tvärsnittsareorna (marken mot vägen och slänterna) × stationsavståndet. */
 
 const l3road = { cur: null, seq: 0, timer: 0, kbd: null };
-const L3R_DEF = { width: 5, grade: 10, smooth: 20, step: 2, cutR: 1, fillR: 1.5, reach: 25, minR: 15, mode: "anchor", anchor: -1, cap: true, crown: 0, speed: 20 };
+const L3R_DEF = { width: 5, grade: 10, smooth: 20, step: 2, cutR: 1, fillR: 1.5, reach: 25, minR: 15, filletR: 30, mode: "anchor", anchor: -1, cap: true, crown: 0, speed: 20 };
 const l3rFmt = (v, d = 1) => (Math.round(v * Math.pow(10, d)) / Math.pow(10, d)).toString().replace(".", ",");
 const l3rOk = z => z === z && z !== null && Math.abs(z) < 1e9;
 const l3rM3 = v => Math.round(v).toLocaleString("sv-SE").replace(/[  ]/g, " ") + " m³";
@@ -70,16 +70,38 @@ function l3rDefaultSrc() {
 
 /* ---- Beräkning ---- */
 /* Mittlinjen delas upp med stationsavståndet; returnerar [{x, y, s}] (s = sträcka från start i plan). */
-function l3rStations(P, step) {
-  const seg = [0]; for (let i = 1; i < P.length; i++) seg.push(seg[i - 1] + Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]));
+/* Rundar hörnen i planen med riktiga cirkelbågar (Victor 2026-11-10: "snygga radier, inte massa trianglar"). R = önskad kurvradie (m);
+   den begränsas så att bågarna inte tar mer än halva sträckan till nästa punkt. Returnerar tätt punktlista [x,y,z] och s-läget för varje klickad punkt. */
+function l3rFillet(P, R) {
+  const n = P.length, out = [P[0].slice()], vs = [0]; R = Number(R) || 0;
+  const len = i => Math.hypot(P[i + 1][0] - P[i][0], P[i + 1][1] - P[i][1]), acc = (to = out.length - 1) => { let a = 0; for (let i = 1; i <= to; i++) a += Math.hypot(out[i][0] - out[i - 1][0], out[i][1] - out[i - 1][1]); return a; };
+  for (let i = 1; i < n - 1; i++) {
+    const ux = P[i - 1][0] - P[i][0], uy = P[i - 1][1] - P[i][1], vx = P[i + 1][0] - P[i][0], vy = P[i + 1][1] - P[i][1], lu = Math.hypot(ux, uy), lv = Math.hypot(vx, vy);
+    if (R <= 0 || lu < 1e-6 || lv < 1e-6) { out.push(P[i].slice()); vs.push(acc()); continue; }
+    const cu = [ux / lu, uy / lu], cv = [vx / lv, vy / lv], th = Math.acos(Math.max(-1, Math.min(1, cu[0] * cv[0] + cu[1] * cv[1]))), phi = Math.PI - th;
+    if (phi < 0.01 || th < 0.02) { out.push(P[i].slice()); vs.push(acc()); continue; }
+    const capU = (i - 1 === 0 ? 0.98 : 0.5) * lu, capV = (i + 1 === n - 1 ? 0.98 : 0.5) * lv;
+    let t = R * Math.tan(phi / 2); t = Math.min(t, capU, capV); const Re = t / Math.tan(phi / 2);
+    const A = [P[i][0] + cu[0] * t, P[i][1] + cu[1] * t, P[i][2] + (P[i - 1][2] - P[i][2]) * t / lu], B = [P[i][0] + cv[0] * t, P[i][1] + cv[1] * t, P[i][2] + (P[i + 1][2] - P[i][2]) * t / lv];
+    let bx = cu[0] + cv[0], by = cu[1] + cv[1]; const bl = Math.hypot(bx, by) || 1; bx /= bl; by /= bl; const d = Re / Math.sin(th / 2), C = [P[i][0] + bx * d, P[i][1] + by * d];
+    let a0 = Math.atan2(A[1] - C[1], A[0] - C[0]), a1 = Math.atan2(B[1] - C[1], B[0] - C[0]), da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+    const m = Math.max(6, Math.ceil(Math.abs(da) * Re / 0.75)); const iA = out.length; out.push(A);
+    for (let k = 1; k < m; k++) { const f = k / m, a = a0 + da * f; out.push([C[0] + Re * Math.cos(a), C[1] + Re * Math.sin(a), A[2] + (B[2] - A[2]) * f]); }
+    out.push(B); vs.push(acc(iA) + Math.abs(da) * Re / 2);
+  }
+  out.push(P[n - 1].slice()); vs.push(acc());
+  return { pts: out, vs };
+}
+function l3rStations(P, step, R) {
+  const F = l3rFillet(P, R), Q = F.pts, seg = [0]; for (let i = 1; i < Q.length; i++) seg.push(seg[i - 1] + Math.hypot(Q[i][0] - Q[i - 1][0], Q[i][1] - Q[i - 1][1]));
   const L = seg[seg.length - 1]; if (L < 0.5) return [];
   const n = Math.max(2, Math.round(L / step)), out = []; let k = 0;
   for (let i = 0; i <= n; i++) {
     const s = L * i / n; while (k < seg.length - 2 && seg[k + 1] < s) k++;
     const t = seg[k + 1] > seg[k] ? (s - seg[k]) / (seg[k + 1] - seg[k]) : 0;
-    out.push({ x: P[k][0] + (P[k + 1][0] - P[k][0]) * t, y: P[k][1] + (P[k + 1][1] - P[k][1]) * t, s, z0: P[k][2] + (P[k + 1][2] - P[k][2]) * t });
+    out.push({ x: Q[k][0] + (Q[k + 1][0] - Q[k][0]) * t, y: Q[k][1] + (Q[k + 1][1] - Q[k][1]) * t, s, z0: Q[k][2] + (Q[k + 1][2] - Q[k][2]) * t });
   }
-  out.seg = seg; return out;
+  out.seg = F.vs; return out;
 }
 /* Jämnar ut höjderna (glidande medel över "smooth" meter) och begränsar sedan lutningen framåt och bakåt. */
 function l3rProfile(st, spec) {
@@ -111,7 +133,7 @@ function l3rProfile(st, spec) {
 async function l3rCompute(cur, alive) {
   const spec = cur.spec, srcs = (spec.src || []).filter(k => l3rSources().some(s => s.k === k));
   const W = Math.max(1, Number(spec.width) || 5), reach = Math.max(2, Number(spec.reach) || 25), step = Math.max(0.5, Number(spec.step) || 2);
-  const st = l3rStations(cur.pts, step); if (st.length < 2) return { err: "Vägen är för kort." }; st.pts = cur.pts;
+  const st = l3rStations(cur.pts, step, spec.filletR); if (st.length < 2) return { err: "Vägen är för kort." }; st.pts = cur.pts;
   if (!srcs.length) return { err: "Tänd ett punktmoln, en 3D-modell eller en DXF och välj den under \"Följer\"." };
   const maxAdd = Math.max(0, ...(spec.widen || []).map(z => z.kind === "obj" ? Math.max(0, ...l3rObjSamples(z, cur.pts).map(q => Math.abs(q[1]))) + (Number(z.offset) || 0) - W / 2 : Number(z.add) || 0)), m = W / 2 + maxAdd + reach + 3, xs = st.map(p => p.x), ys = st.map(p => p.y);
   const bd = { x0: Math.min(...xs) - m, x1: Math.max(...xs) + m, y0: Math.min(...ys) - m, y1: Math.max(...ys) + m };
@@ -360,7 +382,7 @@ function l3rPanel() {
     <div data-rres>${sum}</div>
     <div class="v3-rd-g">
       ${num("width", "Vägbredd", "Körbanans bredd mellan släntfötterna", "m", 2, 30, 0.5)}${num("grade", "Högsta lutning", "Vägens lutning får aldrig bli högre än så (tung trafik: 8–10 %)", "%", 1, 30, 0.5)}
-      ${num("smooth", "Jämna ut över", "Längd som markens höjd jämnas ut över – större värde ger en mjukare väg som skär mer", "m", 0, 200, 5)}${num("minR", "Minsta radie", "Kurvor med mindre radie markeras (lastbil/dumper ca 12–20 m)", "m", 3, 100, 1)}
+      ${num("smooth", "Jämna ut över", "Längd som markens höjd jämnas ut över – större värde ger en mjukare väg som skär mer", "m", 0, 200, 5)}${num("filletR", "Kurvradie", "Hörnen rundas av med cirkelbågar med den här radien (0 = vassa hörn). Radien kan bli mindre där punkterna ligger tätt", "m", 0, 200, 5)}${num("minR", "Minsta radie", "Kurvor med mindre radie markeras (lastbil/dumper ca 12–20 m)", "m", 3, 100, 1)}
       <label class="v3-rd-n" title="Schaktslänt: 1 lodrätt på så här många meter i sidled (1 = 45°, 0,5 = brant bergschakt)"><span>Schaktslänt 1:</span><input type="number" data-rk="cutR" value="${spec.cutR}" min="0.25" max="5" step="0.25"><em></em></label>
       <label class="v3-rd-n" title="Fyllningsslänt: 1 lodrätt på så här många meter i sidled (1,5 = vanlig fyllning)"><span>Fyllningsslänt 1:</span><input type="number" data-rk="fillR" value="${spec.fillR}" min="0.5" max="6" step="0.25"><em></em></label>
       ${num("reach", "Största släntbredd", "Så långt ut från vägkanten letar slänten efter marken", "m", 3, 100, 1)}${num("step", "Stationsavstånd", "Avstånd mellan tvärsnitten (mindre = mer detaljerat)", "m", 0.5, 10, 0.5)}
