@@ -25,9 +25,9 @@ try {
   [IO.File]::WriteAllBytes($ico, $ms.ToArray())
 } catch { $ico = $null }
 
-function New-Shortcut($path, $target, $args, $icon) {
+function New-Shortcut($path, $target, $arguments, $icon) {
   $sh = New-Object -ComObject WScript.Shell; $s = $sh.CreateShortcut($path)
-  $s.TargetPath = $target; $s.Arguments = $args; $s.WorkingDirectory = $Dir; $s.Description = "4D-planering"
+  $s.TargetPath = $target; $s.Arguments = $arguments; $s.WorkingDirectory = $Dir; $s.Description = "4D-planering"
   if ($icon) { $s.IconLocation = $icon }
   $s.Save()
 }
@@ -47,12 +47,12 @@ if ($Mode -eq "electron") {
   $exe = Join-Path $ex "4D-planering.exe"
   New-Shortcut $Start $exe "" $ico; New-Shortcut $Desk $exe "" $ico
 } else {
-  $cands = @("$env:ProgramFiles (x86)\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe")
+  $cands = @("${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe", "$env:ProgramFiles\Google\Chrome\Application\chrome.exe", "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe", "$env:LOCALAPPDATA\Google\Chrome\Application\chrome.exe")
   $br = $cands | Where-Object { Test-Path $_ } | Select-Object -First 1
   if (-not $br) { throw "Hittade varken Edge eller Chrome. Kör med PLANERING_MODE=electron istället." }
   $prof = Join-Path $Dir "profil"
-  $args = "--app=$AppUrl --user-data-dir=`"$prof`" --no-first-run --no-default-browser-check --disable-features=Translate"
-  New-Shortcut $Start $br $args $ico; New-Shortcut $Desk $br $args $ico
+  $appArgs = "--app=$AppUrl --user-data-dir=`"$prof`" --no-first-run --no-default-browser-check --disable-features=Translate"
+  New-Shortcut $Start $br $appArgs $ico; New-Shortcut $Desk $br $appArgs $ico
 }
 Write-Host ""
 Write-Host "Klart! 4D-planering finns nu på skrivbordet och i Start-menyn ($Mode-läge)."
