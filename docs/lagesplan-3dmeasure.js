@@ -197,7 +197,7 @@ function l3mHandlesPlace() {
   m.pts.forEach((p, i) => {
     const q = l3ToScreen(new THREE.Vector3(p[0] - l3.O[0], p[1] - l3.O[1], p[2] - l3.O[2])), el = l3mH.els[i];
     el.style.display = q.behind ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px";
-    el.classList.toggle("drag", !!(l3mH.drag && l3mH.drag.i === i));
+    el.classList.toggle("drag", !!(l3mH.drag && l3mH.drag.i === i)); el.classList.toggle("sel", typeof l3road !== "undefined" && m === l3road.cur && l3road.sel === i);
   });
 }
 function l3mPlusDown(e, i) {
@@ -223,6 +223,7 @@ function l3mRecalc(m) {
 function l3mHDown(e, i) {
   const m = l3mActive(); if (!m || e.button !== 0) return;
   e.preventDefault(); e.stopPropagation();
+  if (typeof l3road !== "undefined" && m === l3road.cur) { l3road.sel = i; if (typeof l3rPtUi === "function") l3rPtUi(); }   // vald punkt för exakt flytt
   const ins = !!l3mH.insWas, was = l3mH.insWas || { pts: m.pts.map(p => p.slice()), text: m.text, objs: (m.objs || []).slice() }; l3mH.insWas = null;
   l3mH.drag = { i };
   let moved = false;

@@ -202,6 +202,20 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (!/\(3 delar\)/.test(lg.set || '') || !lg.one || lg.n !== 3) fail('Äldre helhet och enstaka markering: ' + JSON.stringify(lg));
   console.log('OK: äldre byggvägar grupperas som helhet och även en enstaka markering går att välja i Volym', JSON.stringify(lg));
+  // Flytta punkt exakt: steg i modellens X/Y/Z, längs/tvärs/höjd, absoluta värden, Z till marken, ångra.
+  const pm = await page.evaluate(async () => {
+    const c = l3road.cur; c.spec.mode = 'terrain'; l3road.sel = 1; const out = {}; const P = () => c.pts[1].slice(), p0 = P();
+    l3SetPref('rdPtMode', 'xyz'); l3SetPref('rdStep', 0.01); l3rNudge('x', 1, false); l3rNudge('y', -1, false); l3rNudge('z', 1, true); const p1 = P(); out.xyz = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]].map(v => Math.round(v * 1000) / 1000);
+    l3rSetPt(2, 123.456); out.z = P()[2]; l3rSetPt(0, p0[0]); l3rSetPt(1, p0[1]);
+    l3SetPref('rdPtMode', 'lat'); l3SetPref('rdStep', 1); const a = c.pts[0], b = c.pts[2], dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy), q0 = P(); l3rNudge('y', 1, false); const q1 = P();
+    out.along = Math.round(((q1[0] - q0[0]) * dx / L + (q1[1] - q0[1]) * dy / L) * 100) / 100; out.acrossLeak = Math.round(Math.abs((q1[0] - q0[0]) * -dy / L + (q1[1] - q0[1]) * dx / L) * 100) / 100;
+    l3rNudge('x', 1, false); const q2 = P(); out.right = Math.round(((q2[0] - q1[0]) * dy / L + (q2[1] - q1[1]) * -dx / L) * 100) / 100;
+    const zg = c.ctx.gz(P()[0], P()[1]); l3rSetPt(2, l3rtR3(zg)); out.dz = Math.abs(P()[2] - zg) < 0.001;
+    out.panel = !!document.querySelector('#v3RoadPanel [data-rpx]') && !!document.querySelector('#v3RoadPanel [data-rpn="z+"]');
+    out.keys = (() => { const z0 = P()[2]; window.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageUp', bubbles: true, cancelable: true })); return Math.round((P()[2] - z0) * 1000) / 1000; })();
+    l3Undo(); out.undo = Math.round((P()[2] - c.pts[1][2]) * 1000) / 1000; return out; });
+  if (pm.xyz.join() !== '0.01,-0.01,0.1' || pm.z !== 123.456 || pm.along !== 1 || pm.acrossLeak > 0.01 || pm.right !== 1 || !pm.dz || !pm.panel || pm.keys !== 1) fail('Flytta punkt exakt: ' + JSON.stringify(pm));
+  console.log('OK: flytta punkt exakt – steg i X/Y/Z och längs/tvärs/höjd, absoluta värden, Z till marken, piltangenter', JSON.stringify(pm));
   // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
   const hd = await page.evaluate(async () => {
     const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;
