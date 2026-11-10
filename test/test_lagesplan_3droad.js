@@ -193,6 +193,15 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (!/Ritad helhet: Byggväg 16 m \(2 delar\)/.test(vs.set || '') || !/Markerade ritade objekt \(2\)/.test(vs.sel || '') || !(vs.vSet > vs.vOne * 1.8) || Math.abs(vs.vSet - vs.vSel) > 5) fail('Volym mot helhet: ' + JSON.stringify(vs));
   console.log('OK: byggväg + slänter kan väljas som en helhet (och markerade ritade objekt som en yta) i Volym', JSON.stringify(vs));
+  // Äldre byggvägar utan märkning grupperas ändå som helhet (skapade inom några sekunder), och en markering på ett enda objekt går att välja.
+  const lg = await page.evaluate(async () => {
+    const t0 = Date.parse('2026-01-01T10:00:00Z'), mk = (name, dt) => { const p = modCreate({ k: 'mesh', pts: [[0, 0, 0], [4, 0, 0], [4, 4, 0], [0, 4, 0]], faces: [[1, 2, 3], [1, 3, 4]], closed: false }, [6512600, 150400, 100], { name, color: '#999', snapshot: false }); p.created_at = new Date(t0 + dt).toISOString(); delete p.set; return p; };
+    const a = mk('Byggväg 127 m', 0), b = mk('Släntyta schakt', 300), c = mk('Släntyta fyllning', 600), d = mk('Annan platta', 1200);
+    l3.sel = new Set([a.id]); const labels = l3dfSources().map(s => s.label), set = l3dfSources().find(s => /Ritad helhet: Byggväg 127 m/.test(s.label));
+    return { set: set && set.label, one: labels.some(l => /Markerade ritade objekt \(1\)/.test(l)), n: set && l3dfObjOf(set.k).length };
+  });
+  if (!/\(3 delar\)/.test(lg.set || '') || !lg.one || lg.n !== 3) fail('Äldre helhet och enstaka markering: ' + JSON.stringify(lg));
+  console.log('OK: äldre byggvägar grupperas som helhet och även en enstaka markering går att välja i Volym', JSON.stringify(lg));
   // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
   const hd = await page.evaluate(async () => {
     const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;

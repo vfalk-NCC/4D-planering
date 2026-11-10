@@ -356,12 +356,15 @@ function l3volTap(e) {
   l3Status("Volympanelen är öppen – spara eller stäng den först (Esc) för att mäta ett nytt område.", true); return true;
 }
 function l3volOpen(cur) {
-  l3volClose(true); l3vol.cur = cur; l3vol.seq++; l3vol.focus = null;
+  l3volClose(true); clearInterval(l3vol.selT); l3vol.selSig = l3volSelSig(); l3vol.selT = setInterval(() => { const sg = l3volSelSig(); if (sg === l3vol.selSig || !l3vol.cur) return; l3vol.selSig = sg; const ae = document.activeElement; if (ae && ae.closest && ae.closest("#v3VolPanel") && /SELECT|INPUT/.test(ae.tagName)) return; l3volPanel(); }, 500); l3vol.cur = cur; l3vol.seq++; l3vol.focus = null;
   if (!l3vol.kbd) { l3vol.kbd = e => { if (e.key === "Escape" && l3vol.cur && !l3vol.capture && !/INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || "")) { e.stopPropagation(); l3volAskClose(); } else if (e.key === "Escape" && l3vol.capture) { e.stopPropagation(); l3vol.capture = null; l3t.mp = null; l3Busy(false); l3Clear(l3.groups.tmp); l3volPanel(); l3Status("Avbrutet."); } }; window.addEventListener("keydown", l3vol.kbd, true); }
   l3volPanel(); l3volDraw(); l3volSchedule(0);
 }
 function l3volAskClose() { const c = l3vol.cur; if (c && c.res && !c.saved && !confirm("Stänga volymen utan att spara den som mått?")) return; l3volClose(); }
+/* Markeringen ändrades medan panelen är öppen: listan med ytor (Markerade ritade objekt) uppdateras. */
+const l3volSelSig = () => (typeof l3 !== "undefined" && l3 && l3.sel ? [...l3.sel].sort().join(",") : "") + "|" + (typeof placements !== "undefined" ? placements.length : 0);
 function l3volClose(keep) {
+  if (!keep) clearInterval(l3vol.selT);
   const el = document.getElementById("v3VolPanel"); if (el) el.remove();
   const c = l3vol.cur; if (c && c.hidWas) { const m = l3m.list.find(x => x.id === c.id); if (m) m.hid = false; }
   clearTimeout(l3vol.timer); l3vol.seq++; l3vol.cur = null; l3vol.capture = null;
