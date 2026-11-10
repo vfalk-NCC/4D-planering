@@ -137,6 +137,7 @@ function l3mDraw() {
     host.appendChild(el);
     l3m.labels.set(m.id, el); el._at = at;
   });
+  if (typeof l3road !== "undefined" && l3road.cur) l3rDraw(); // pågående byggväg: metertalen m.m. ritas om efter att etiketterna städats
   if (typeof l3vol !== "undefined" && l3vol.cur) l3volDraw(); // pågående volym (panelen öppen) ritas om efter att etiketterna städats
   l3mPlaceLabels();
   l3Render();

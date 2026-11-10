@@ -181,8 +181,35 @@ function l3rDraw() {
   if (c.st) line(c.st.map(p => new THREE.Vector3(p.x - O[0], p.y - O[1], p.z - O[2] + 0.12)), 0xffffff);
   else line(c.pts.map(p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2] + 0.12)), 0xffffff);
   if (typeof l3rsLine === "function") l3rsLine(grp, line);
+  l3rMeters(grp, line);
   if (c.res) c.res.tight.forEach(t => { const sp = new THREE.Mesh(new THREE.SphereGeometry(Math.max(0.5, (Number(c.spec.width) || 5) * 0.15), 12, 8), new THREE.MeshBasicMaterial({ color: 0xd946ef, depthTest: false })); sp.position.set(t.x - O[0], t.y - O[1], t.z - O[2] + 0.5); sp.renderOrder = 13; sp.userData.noHit = true; sp.raycast = () => {}; grp.add(sp); });
   l3Render(); if (typeof l3mHandlesPlace === "function") l3mHandlesPlace();
+}
+/* Metertal längs linjen (Victor 2026-11-10: "skriv ut på linjen vilka metertal jag är på, så jag ser var jag ska bredda"): ett streck och "20 m" var 5/10/20/50 m,
+   start och slut, samt breddningarna som orange stycken med "Bredd. 20–35 m". Samma sträckor som Från/Till och snittets station. */
+function l3rLabelsClear() { [...l3m.labels.keys()].filter(k => k.startsWith("road:")).forEach(k => { l3m.labels.get(k).remove(); l3m.labels.delete(k); }); }
+function l3rPosAt(c, s) {
+  if (c.st && c.st.length > 1) { const a = l3rAt(c.st, s); return { x: a.x, y: a.y, z: a.z, yaw: a.yaw }; }
+  const P = c.pts; let acc = 0;
+  for (let i = 1; i < P.length; i++) { const d = Math.hypot(P[i][0] - P[i - 1][0], P[i][1] - P[i - 1][1]); if (acc + d >= s || i === P.length - 1) { const t = d > 0 ? Math.max(0, Math.min(1, (s - acc) / d)) : 0; return { x: P[i - 1][0] + (P[i][0] - P[i - 1][0]) * t, y: P[i - 1][1] + (P[i][1] - P[i - 1][1]) * t, z: P[i - 1][2] + (P[i][2] - P[i - 1][2]) * t, yaw: Math.atan2(P[i][1] - P[i - 1][1], P[i][0] - P[i - 1][0]) }; } acc += d; }
+  return { x: P[0][0], y: P[0][1], z: P[0][2], yaw: 0 };
+}
+function l3rMeters(grp, lineFn) {
+  l3rLabelsClear(); const c = l3road.cur; if (!c || !c.pts || c.pts.length < 2 || !l3m || !l3m.labels) return;
+  const L = c.pts.reduce((a, p, i) => i ? a + Math.hypot(p[0] - c.pts[i - 1][0], p[1] - c.pts[i - 1][1]) : 0, 0), O = l3.O, host = l3.renderer.domElement.parentElement;
+  const dist = L <= 60 ? 5 : L <= 250 ? 10 : L <= 600 ? 20 : 50, hw = (Number(c.spec.width) || 5) / 2 + 0.6;
+  const mk = (id, txt, a, cls, dz) => { const el = document.createElement("div"); el.className = "v3-meas v3-meas-keep v3-rlab " + cls; el.textContent = txt; host.appendChild(el); el._at = new THREE.Vector3(a.x - O[0], a.y - O[1], a.z - O[2] + (dz || 0.6)); l3m.labels.set("road:" + id, el); };
+  const tick = a => { const nx = -Math.sin(a.yaw), ny = Math.cos(a.yaw), P = [new THREE.Vector3(a.x + nx * hw - O[0], a.y + ny * hw - O[1], a.z + 0.2 - O[2]), new THREE.Vector3(a.x - nx * hw - O[0], a.y - ny * hw - O[1], a.z + 0.2 - O[2])];
+    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(P), new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.9 })); l.renderOrder = 13; l.userData.noHit = true; l.raycast = () => {}; grp.add(l); };
+  for (let s = 0; s <= L + 1e-6; s += dist) { const a = l3rPosAt(c, s); tick(a); mk("m" + s, `${Math.round(s)} m`, a, ""); }
+  if (L - Math.floor(L / dist) * dist > dist * 0.25) { const a = l3rPosAt(c, L); tick(a); mk("end", `${l3rFmt(L, 0)} m`, a, "end"); }
+  (c.spec.widen || []).forEach((z, i) => {
+    const s0 = Math.max(0, Number(z.s0)), s1 = Math.min(L, Number(z.s1)); if (!(s1 > s0)) return;
+    const pts = []; for (let s = s0; s <= s1 + 1e-6; s += Math.max(0.5, (s1 - s0) / 40)) { const a = l3rPosAt(c, s); pts.push(new THREE.Vector3(a.x - O[0], a.y - O[1], a.z + 0.35 - O[2])); }
+    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false })); l.renderOrder = 14; l.userData.noHit = true; l.raycast = () => {}; grp.add(l);
+    mk("w" + i, `Bredd. ${l3rFmt(s0, 0)}–${l3rFmt(s1, 0)} m${z.side === "L" ? " (vänster)" : z.side === "R" ? " (höger)" : ""} +${l3rFmt(Number(z.add) || 0, 1)} m`, l3rPosAt(c, (s0 + s1) / 2), "w", 2.2);
+  });
+  void lineFn; if (typeof l3mPlaceLabels === "function") l3mPlaceLabels();
 }
 function l3rSchedule(ms) {
   clearTimeout(l3road.timer);
@@ -215,7 +242,7 @@ function l3roadClose(keep) {
   const el = document.getElementById("v3RoadPanel"); if (el) el.remove(); if (!keep && typeof l3rsClose === "function") l3rsClose();
   const c = l3road.cur; if (c) l3road.last = { spec: JSON.parse(JSON.stringify(c.spec)) };
   clearTimeout(l3road.timer); l3road.seq++; l3road.cur = null; if (!keep) l3rDriveStop(true); else l3rDriveStop(false);
-  if (l3.groups.road) l3Clear(l3.groups.road);
+  if (l3.groups.road) l3Clear(l3.groups.road); if (typeof l3rLabelsClear === "function" && l3m) l3rLabelsClear();
   if (!keep) { if (l3road.kbd) { window.removeEventListener("keydown", l3road.kbd, true); l3road.kbd = null; } l3Render(); if (typeof l3mHandlesPlace === "function") l3mHandlesPlace(); }
 }
 /* Tryck i 3D medan panelen är öppen: ignoreras (panelen avslutas med Esc). */
@@ -288,7 +315,7 @@ function l3rPanel() {
 /* Liten CSS för panelen (övrigt återanvänder Volym-panelens klasser). */
 (function l3rCss() {
   if (document.getElementById("v3RoadCss")) return; const s = document.createElement("style"); s.id = "v3RoadCss";
-  s.textContent = `#view3d #v3RoadPanel .v3-rd-g{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin:8px 0}#view3d #v3RoadPanel .v3-rd-n{display:flex;align-items:center;gap:4px;font-size:12px}#view3d #v3RoadPanel .v3-rd-n span{flex:1;color:#475569;font-weight:600}#view3d #v3RoadPanel .v3-rd-n input{width:58px;padding:3px 4px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-n em{width:16px;font-style:normal;color:#64748b}#view3d #v3RoadPanel .v3-rd-seg{grid-column:1/3;display:flex;gap:4px}#view3d #v3RoadPanel .v3-rd-seg button{flex:1;padding:5px 6px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit;font-size:12px}#view3d #v3RoadPanel .v3-rd-seg button.on{background:#2563eb;border-color:#2563eb;color:#fff}#view3d #v3RoadPanel .v3-rd-drv{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:8px 0;font-size:12px}#view3d #v3RoadPanel .v3-rd-drv button{padding:5px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit}#view3d #v3RoadPanel .v3-rd-drv input[type=number]{width:46px;padding:3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-info{flex-basis:100%;color:#475569}#view3d #v3RoadPanel .v3-rd-w{margin:6px 0;font-size:12px}#view3d #v3RoadPanel .v3-rd-wh{display:flex;align-items:center;justify-content:space-between}#view3d #v3RoadPanel .v3-rd-wh button{padding:3px 8px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit}#view3d #v3RoadPanel .v3-rd-wr{display:flex;flex-wrap:wrap;align-items:center;gap:3px 4px;margin-top:4px;padding:4px 6px;background:#fff7ed;border-radius:8px}#view3d #v3RoadPanel .v3-rd-wr input{width:44px;padding:2px 3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-wr select{padding:2px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-wr button{margin-left:auto;border:0;background:none;cursor:pointer}#view3d #v3RoadPanel .v3-rd-src{display:flex;flex-direction:column;gap:2px;margin:6px 0;font-size:12px;max-height:84px;overflow:auto}`;
+  s.textContent = `#view3d .v3-meas.v3-rlab{font-size:11px;padding:1px 6px;background:rgba(15,23,42,.82);color:#fff;transform:translate(-50%,-100%);pointer-events:none}#view3d .v3-meas.v3-rlab.end{background:#0f172a}#view3d .v3-meas.v3-rlab.w{background:#f59e0b;color:#1f2937;font-weight:600}#view3d #v3RoadPanel .v3-rd-g{display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;margin:8px 0}#view3d #v3RoadPanel .v3-rd-n{display:flex;align-items:center;gap:4px;font-size:12px}#view3d #v3RoadPanel .v3-rd-n span{flex:1;color:#475569;font-weight:600}#view3d #v3RoadPanel .v3-rd-n input{width:58px;padding:3px 4px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-n em{width:16px;font-style:normal;color:#64748b}#view3d #v3RoadPanel .v3-rd-seg{grid-column:1/3;display:flex;gap:4px}#view3d #v3RoadPanel .v3-rd-seg button{flex:1;padding:5px 6px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit;font-size:12px}#view3d #v3RoadPanel .v3-rd-seg button.on{background:#2563eb;border-color:#2563eb;color:#fff}#view3d #v3RoadPanel .v3-rd-drv{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:8px 0;font-size:12px}#view3d #v3RoadPanel .v3-rd-drv button{padding:5px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit}#view3d #v3RoadPanel .v3-rd-drv input[type=number]{width:46px;padding:3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-info{flex-basis:100%;color:#475569}#view3d #v3RoadPanel .v3-rd-w{margin:6px 0;font-size:12px}#view3d #v3RoadPanel .v3-rd-wh{display:flex;align-items:center;justify-content:space-between}#view3d #v3RoadPanel .v3-rd-wh button{padding:3px 8px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;cursor:pointer;font:inherit}#view3d #v3RoadPanel .v3-rd-wr{display:flex;flex-wrap:wrap;align-items:center;gap:3px 4px;margin-top:4px;padding:4px 6px;background:#fff7ed;border-radius:8px}#view3d #v3RoadPanel .v3-rd-wr input{width:44px;padding:2px 3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-wr select{padding:2px;border:1px solid #cbd5e1;border-radius:6px;font:inherit}#view3d #v3RoadPanel .v3-rd-wr button{margin-left:auto;border:0;background:none;cursor:pointer}#view3d #v3RoadPanel .v3-rd-src{display:flex;flex-direction:column;gap:2px;margin:6px 0;font-size:12px;max-height:84px;overflow:auto}`;
   document.head.appendChild(s);
 })();
 

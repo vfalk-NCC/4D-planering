@@ -136,6 +136,14 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   });
   if (bs.err || bs.L < bs.n * 0.8 || bs.R < bs.n * 0.8 || bs.left < 20 || bs.right < 20 || Math.abs(bs.left - bs.right) > bs.tris * 0.2) fail('Slänter åt båda hållen: ' + JSON.stringify(bs));
   console.log('OK: slänter ritas åt både vänster och höger (väg i skärning)', JSON.stringify(bs));
+  // Metertal längs linjen + breddningens sträcka som etikett.
+  const ml = await page.evaluate(async () => {
+    const c = l3road.cur; c.spec.widen = [{ s0: 20, s1: 35, add: 4, side: 'both', taper: 8 }]; l3rDraw(); const el = () => [...l3m.labels.entries()].filter(([k]) => k.startsWith('road:')).map(([k, e]) => [k, e.textContent]);
+    const a = el(); l3mDraw(); const b = el(); c.spec.widen = []; l3rDraw(); const cc = el(); return { a, nb: b.length, nc: cc.length };
+  });
+  const txt = ml.a.map(x => x[1]);
+  if (!txt.includes('0 m') || !txt.includes('10 m') || !txt.includes('20 m') || !txt.some(t => /Bredd\. 20–35 m/.test(t)) || ml.nb !== ml.a.length || ml.nc >= ml.a.length) fail('Metertal på linjen: ' + JSON.stringify(ml));
+  console.log('OK: metertal längs linjen och breddningens sträcka syns som etiketter (överlever omritning)', JSON.stringify(txt));
   // Handtag: en ring per punkt, + mellan ringarna, ta bort med högerklick/funktion, Ctrl+Z ångrar.
   const hd = await page.evaluate(async () => {
     const c = l3road.cur, n0 = c.pts.length, out = {}; l3mHandlesPlace(); out.rings = l3mH.els.length; out.plus = l3mH.plus.length; out.n0 = n0;
