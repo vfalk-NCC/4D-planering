@@ -12,7 +12,7 @@
    Räknesättet: en höjdkarta (rutnät) per yta som i Volym mot yta (lagesplan-3dpcdiff.js). Volymen är summan av tvärsnittsareorna (marken mot vägen och slänterna) × stationsavståndet. */
 
 const l3road = { cur: null, seq: 0, timer: 0, kbd: null };
-const L3R_DEF = { width: 5, grade: 10, smooth: 20, step: 2, cutR: 1, fillR: 1.5, reach: 25, minR: 15, filletR: 30, mode: "anchor", anchor: -1, cap: true, crown: 0, speed: 20 };
+const L3R_DEF = { width: 5, grade: 10, smooth: 20, step: 2, cutR: 1, fillR: 1.5, reach: 25, minR: 15, filletR: 30, mode: "anchor", anchor: -1, cap: true, crown: 0, speed: 20, fall: 2.5, fallMode: "crown", edgeK: 1.5, ditch: true, inK: 3, ditchBw: 0.5, ditchD: 0.3 };
 const l3rFmt = (v, d = 1) => (Math.round(v * Math.pow(10, d)) / Math.pow(10, d)).toString().replace(".", ",");
 const l3rOk = z => z === z && z !== null && Math.abs(z) < 1e9;
 const l3rM3 = v => Math.round(v).toLocaleString("sv-SE").replace(/[  ]/g, " ") + " m³";
@@ -54,9 +54,27 @@ function l3rObjSamples(z, pts) {
    färdiga yta. Schakt och fyllning räknas då till terrassytan (spec.layersEarth !== false) och lagren har egna mängder, ytor och objekt. */
 const L3R_PRESETS = {
   bygg: ["Byggväg (makadam)", [{ name: "Bärlager makadam 0–32", t: 0.15, color: "#cbd5e1" }, { name: "Förstärkningslager krossberg 0–90", t: 0.35, color: "#a8a29e" }, { name: "Skyddslager", t: 0.2, color: "#a16207" }]],
+  gata: ["Gata, huvudgata (typiskt kommunalt)", [{ name: "Slitlager asfalt", t: 0.04, color: "#1f2937" }, { name: "Bindlager asfalt", t: 0.05, color: "#374151" }, { name: "Bärlager obundet 0–32", t: 0.08, color: "#cbd5e1" }, { name: "Förstärkningslager krossat berg 0–90", t: 0.42, color: "#a8a29e" }]],
+  grus: ["Grusväg / skogsbilväg (typiskt)", [{ name: "Slitlager grus 0–16", t: 0.05, color: "#d6c9a8" }, { name: "Bärlager 0–32", t: 0.15, color: "#cbd5e1" }, { name: "Förstärkningslager 0–90", t: 0.3, color: "#a8a29e" }]],
   allman: ["Allmän väg (asfalt)", [{ name: "Slitlager asfalt", t: 0.04, color: "#1f2937" }, { name: "Bindlager asfalt", t: 0.05, color: "#374151" }, { name: "Bärlager obundet", t: 0.08, color: "#cbd5e1" }, { name: "Förstärkningslager", t: 0.4, color: "#a8a29e" }, { name: "Skyddslager", t: 0.3, color: "#a16207" }]],
 };
 const l3rLayerD = spec => spec.layersOn ? (spec.layers || []).reduce((a, l) => a + (Number(l.t) || 0), 0) : 0;
+/* Tvärsektionens form (Victor 2026-11-11: "tvärsektionerna ska se ut som en riktig vägsektion i Sverige"):
+   – Vägytan har tvärfall (spec.fall %, 2,5 % på asfalt – 3–4 % på grus): takprofil (högst i mitten), ensidigt åt vänster/höger eller plant (spec.fallMode).
+   – Överbyggnadens lager ligger parallellt med vägytan, och deras kanter lutar utåt nedåt (spec.edgeK = 1 lodrätt : k vågrätt, 1,5 är vanligt) – därför är nedersta lagret och terrassytan bredare än vägbanan.
+   – Terrassytan är underkanten av överbyggnaden. I schakt går INNERSLÄNTEN (1:inK, 1:3) från terrasskanten ner i diket (djup ditchD under terrassytan, botten ditchBw bred) och YTTERSLÄNTEN (1:cutR) upp till marken.
+     I fyllning går fyllningsslänten (1:fillR) från terrasskanten ned till marken. */
+function l3rFall(spec, t) {   // hur långt vägytan ligger under mittlinjens höjd vid sidoavståndet t (+ = vänster)
+  const q = Math.max(0, Number(spec.fall) || 0) / 100, m = spec.fallMode || "crown"; if (!q || m === "flat") return 0;
+  return m === "L" ? q * t : m === "R" ? -q * t : q * Math.abs(t);
+}
+const l3rK = spec => Math.max(0, spec.edgeK != null && spec.edgeK !== "" ? Number(spec.edgeK) || 0 : 1.5);
+function l3rProfZ(prof, d) { for (let i = 1; i < prof.length; i++) { const a = prof[i - 1], b = prof[i]; if (d <= b[0] + 1e-9) { const w = b[0] - a[0]; return w > 1e-9 ? a[1] + (b[1] - a[1]) * (d - a[0]) / w : b[1]; } } return prof[prof.length - 1][1]; }
+/* Konstruktionsnivån (terrassytan under vägen, släntens profil utanför) vid sidoavståndet tabs (≥ 0) på sidan sg (+1 vänster, −1 höger). */
+function l3rDesignZ(p, spec, sg, S, tabs) {
+  const hw = sg > 0 ? p.wl : p.wr, tE = hw + p.dE * l3rK(spec); if (tabs <= tE) return p.z - l3rFall(spec, sg * tabs) - p.dE;
+  const d = tabs - tE; if (!S || S.kind === "none" || d > (S.d || 0) + 1e-6) return null; return l3rProfZ(S.prof || [[0, S.ze], [S.d, S.qz]], d);
+}
 const l3rTick = () => new Promise(r => setTimeout(r, 16));
 
 /* Ytor att följa: de som finns i vyn (punktmoln, modeller, DXF) – samma lista som Volym mot yta. */
@@ -151,30 +169,33 @@ async function l3rCompute(cur, alive) {
   const zd = l3rProfile(st, spec), n = st.length;
   // Riktning och normal per station.
   st.forEach((p, i) => { const a = st[Math.max(0, i - 1)], b = st[Math.min(n - 1, i + 1)], dx = b.x - a.x, dy = b.y - a.y, L = Math.hypot(dx, dy) || 1; p.tx = dx / L; p.ty = dy / L; p.nx = -p.ty; p.ny = p.tx; p.z = zd[i]; const h = l3rHW(spec, p.s, cur.pts); p.wl = h.l; p.wr = h.r; p.dE = spec.layersEarth !== false ? l3rLayerD(spec) : 0; });
-  // Släntkant: marsch utåt från vägkanten tills släntytan möter marken.
+  // Släntkant: marsch utåt från terrasskanten tills släntytan (innerslänt, dike, ytterslänt) möter marken.
+  const kE = l3rK(spec), ditchOn = spec.ditch !== false, inK = Math.max(0.5, Number(spec.inK) || 3), dD = ditchOn ? Math.max(0.05, Number(spec.ditchD != null ? spec.ditchD : 0.3)) : 0, dBw = ditchOn ? Math.max(0, Number(spec.ditchBw != null ? spec.ditchBw : 0.5)) : 0;
   const slope = (p, sg) => {
-    const hw = sg > 0 ? p.wl : p.wr, ex = p.x + sg * p.nx * hw, ey = p.y + sg * p.ny * hw, ze = p.z - p.dE, g0 = gz(ex, ey) ?? p.g;   // saknas marken vid kanten används mittlinjens markhöjd
-    const kind = g0 > ze + 0.01 ? "cut" : "fill", k = kind === "cut" ? 1 / Math.max(0.2, spec.cutR) : 1 / Math.max(0.2, spec.fillR), dd = 0.25;
-    if (Math.abs(g0 - ze) <= 0.01) return { ex, ey, ze, kind: "fill", d: 0, qx: ex, qy: ey, qz: ze, hit: true };
-    let prevD = 0, prevDiff = g0 - ze, lastG = g0, holes = 0; void holes;   // diff = mark − släntyta (cut: >0 till dess släntytan nått marken)
+    const hw = sg > 0 ? p.wl : p.wr, tE = hw + p.dE * kE, ex = p.x + sg * p.nx * tE, ey = p.y + sg * p.ny * tE, ze = p.z - l3rFall(spec, sg * tE) - p.dE, g0 = gz(ex, ey) ?? p.g;   // saknas marken vid kanten används mittlinjens markhöjd
+    const kind = g0 > ze + 0.01 ? "cut" : "fill", kc = 1 / Math.max(0.2, spec.cutR), kf = 1 / Math.max(0.2, spec.fillR), dd = 0.25;
+    const d1 = kind === "cut" ? dD * inK : 0, d2 = d1 + (kind === "cut" ? dBw : 0), zb = ze - (kind === "cut" ? dD : 0);
+    const zs = d => kind === "fill" ? ze - d * kf : d <= d1 ? ze - (d1 > 0 ? d * dD / d1 : 0) : d <= d2 ? zb : zb + (d - d2) * kc;
+    const mk = (dh, hit) => { const prof = kind === "cut" ? [[0, ze], [Math.min(d1, dh), zs(Math.min(d1, dh))], [Math.min(d2, dh), zs(Math.min(d2, dh))], [dh, zs(dh)]] : [[0, ze], [dh, zs(dh)]]; return { ex, ey, ze, kind, d: dh, qx: ex + sg * p.nx * dh, qy: ey + sg * p.ny * dh, qz: zs(dh), hit, prof, d1, d2, zb }; };
+    if (Math.abs(g0 - ze) <= 0.01) return { ...mk(0, true), kind: "fill" };
+    let prevD = 0, prevDiff = g0 - ze, lastG = g0;   // diff = mark − släntyta (cut: >0 till dess släntytan nått marken)
     for (let d = dd; d <= reach; d += dd) {
-      const qx = ex + sg * p.nx * d, qy = ey + sg * p.ny * d, zs = kind === "cut" ? ze + d * k : ze - d * k, gRaw = gz(qx, qy);
-      const g = gRaw === null ? lastG : gRaw; if (gRaw === null) holes++; else lastG = gRaw;   // hål i ytan: fortsätt mot senast kända markhöjd
-      const diff = g - zs;
-      if (kind === "cut" ? diff <= 0 : diff >= 0) { const t = prevDiff / (prevDiff - diff || 1), dh = prevD + (d - prevD) * Math.max(0, Math.min(1, t)); return { ex, ey, ze, kind, d: dh, qx: ex + sg * p.nx * dh, qy: ey + sg * p.ny * dh, qz: kind === "cut" ? ze + dh * k : ze - dh * k, hit: true }; }
+      const qx = ex + sg * p.nx * d, qy = ey + sg * p.ny * d, zsd = zs(d), gRaw = gz(qx, qy), g = gRaw === null ? lastG : gRaw; if (gRaw !== null) lastG = gRaw;   // hål i ytan: fortsätt mot senast kända markhöjd
+      const diff = g - zsd;
+      if (kind === "cut" ? diff <= 0 : diff >= 0) { const t = prevDiff / (prevDiff - diff || 1), dh = prevD + (d - prevD) * Math.max(0, Math.min(1, t)); return mk(dh, true); }
       prevD = d; prevDiff = diff;
     }
-    return { ex, ey, ze, kind, d: reach, qx: ex + sg * p.nx * reach, qy: ey + sg * p.ny * reach, qz: kind === "cut" ? ze + reach * k : ze - reach * k, hit: false };
+    return mk(reach, false);
   };
   st.forEach(p => { p.L = slope(p, 1); p.R = slope(p, -1); });
   await l3rTick(); if (!alive()) return null;
-  // Tvärsnittsareor → volymer (medelareametoden).
+  // Tvärsnittsareor → volymer (medelareametoden) mot konstruktionsytan (terrassyta + innerslänt + dike + ytterslänt).
   const dt = 0.5, area2 = p => { let cut = 0, fill = 0;
     for (const sg of [1, -1]) {
-      const S = sg > 0 ? p.L : p.R, k = S.kind === "cut" ? 1 / Math.max(0.2, spec.cutR) : 1 / Math.max(0.2, spec.fillR), hw = sg > 0 ? p.wl : p.wr, tot = hw + (S.d || 0);
+      const S = sg > 0 ? p.L : p.R, hw = sg > 0 ? p.wl : p.wr, tot = hw + p.dE * kE + (S.d || 0);
       for (let t = dt / 2; t < tot; t += dt) {
         const x = p.x + sg * p.nx * t, y = p.y + sg * p.ny * t, g = gz(x, y); if (g === null) continue;
-        const zE = p.z - p.dE, des = t <= hw ? zE : (S.kind === "cut" ? zE + (t - hw) * k : zE - (t - hw) * k), dz = g - des;
+        const des = l3rDesignZ(p, spec, sg, S, t); if (des === null) continue; const dz = g - des;
         if (dz > 0) cut += dz * dt; else fill += -dz * dt;
       }
     } return { cut, fill }; };
@@ -184,45 +205,43 @@ async function l3rCompute(cur, alive) {
   for (let i = 1; i < n; i++) {
     const ds = st[i].s - st[i - 1].s, dz = st[i].z - st[i - 1].z, g = Math.abs(dz) / (ds || 1);
     cutV += (st[i].cut + st[i - 1].cut) / 2 * ds; fillV += (st[i].fill + st[i - 1].fill) / 2 * ds; len3 += Math.hypot(ds, dz); maxG = Math.max(maxG, g); sumG += g; nG++; segs.push(g);
-    ["L", "R"].forEach(sd => { const a = st[i - 1][sd], b = st[i][sd], w = (a.d + b.d) / 2, sl = Math.hypot(1, a.kind === "cut" ? 1 / Math.max(0.2, spec.cutR) : 1 / Math.max(0.2, spec.fillR)); if (a.kind === "cut") slopeCut += w * sl * ds; else if (a.kind === "fill") slopeFill += w * sl * ds; });
+    const pl = S => (S.prof || []).reduce((q, v, k, A) => (k ? q + Math.hypot(v[0] - A[k - 1][0], v[1] - A[k - 1][1]) : 0), 0); ["L", "R"].forEach(sd => { const a = st[i - 1][sd], b = st[i][sd], w = (pl(a) + pl(b)) / 2; if (a.kind === "cut") slopeCut += w * ds; else if (a.kind === "fill") slopeFill += w * ds; });
   }
   st.forEach(p => { const dz = p.g - p.z; if (dz > 0) maxCutDepth = Math.max(maxCutDepth, dz); else maxFillDepth = Math.max(maxFillDepth, -dz); if (!p.L.hit || !p.R.hit) unreached++; });
   // Kurvradie (tre punkter i följd).
   const tight = [];
   for (let i = 1; i < n - 1; i++) { const a = st[i - 1], b = st[i], c = st[i + 1], ab = Math.hypot(b.x - a.x, b.y - a.y), bc = Math.hypot(c.x - b.x, c.y - b.y), ca = Math.hypot(a.x - c.x, a.y - c.y), ar = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2; const R = ar > 1e-6 ? ab * bc * ca / (4 * ar) : Infinity; b.rad = R; if (R < (Number(spec.minR) || 15)) tight.push({ i, R, x: b.x, y: b.y, z: b.z }); }
   const L2 = st[n - 1].s;
-  const layers = spec.layersOn ? (spec.layers || []).map(l => { let vol = 0, area = 0; for (let i = 1; i < n; i++) { const ds = st[i].s - st[i - 1].s, w = (st[i].wl + st[i].wr + st[i - 1].wl + st[i - 1].wr) / 2; area += w * ds; vol += w * ds * (Number(l.t) || 0); } return { name: l.name, t: Number(l.t) || 0, vol, area, color: l.color }; }) : [];
+  const layers = spec.layersOn ? (() => { let h0 = 0; return (spec.layers || []).map(l => { const t = Number(l.t) || 0, h1 = h0 + t, kk = l3rK(spec); let vol = 0, area = 0; for (let i = 1; i < n; i++) { const ds = st[i].s - st[i - 1].s, w = (st[i].wl + st[i].wr + st[i - 1].wl + st[i - 1].wr) / 2; area += (w + 2 * kk * h0) * ds; vol += (w + kk * (h0 + h1)) * ds * t; } const o = { name: l.name, t, h0, vol, area, color: l.color }; h0 = h1; return o; }); })() : [];
   const res = { layers, D: l3rLayerD(spec), len: L2, len3, dz: st[n - 1].z - st[0].z, z0: st[0].z, z1: st[n - 1].z, maxG, avgG: nG ? sumG / nG : 0, cut: cutV, fill: fillV, net: cutV - fillV, slopeCut, slopeFill, roadArea: st.reduce((a, p, i) => i ? a + (p.wl + p.wr + st[i - 1].wl + st[i - 1].wr) / 2 * (p.s - st[i - 1].s) : 0, 0), tight, maxCutDepth, maxFillDepth, unreached, cell, stations: n, miss };
   return { res, st, W, ctx: { gz, slope } };
 }
 
 /* ---- Geometri (relativt origo org) ---- */
 function l3rBuild(c) {
-  const st = c.st, W = c.W, spec = c.spec, org = [st[0].x, st[0].y, st[0].z], n = st.length;
+  const st = c.st, spec = c.spec, org = [st[0].x, st[0].y, st[0].z], n = st.length;
   const g = Math.max(0.5, Number(spec.grade) || 10) / 100, col = gr => { const t = gr / g; return t < 0.5 ? [0.13, 0.77, 0.37] : t < 0.8 ? [0.96, 0.62, 0.04] : [0.94, 0.27, 0.27]; };
   const road = { pos: [], col: [], idx: [] }, cut = { pos: [], idx: [] }, fill = { pos: [], idx: [] };
-  const crown = Number(spec.crown) || 0;
-  for (let i = 0; i < n; i++) {
-    const p = st[i], l = [p.x + p.nx * p.wl - org[0], p.y + p.ny * p.wl - org[1], p.z - org[2]], r = [p.x - p.nx * p.wr - org[0], p.y - p.ny * p.wr - org[1], p.z - org[2]];
-    const gr = i === 0 ? Math.abs(st[1].z - st[0].z) / (st[1].s - st[0].s || 1) : Math.abs(p.z - st[i - 1].z) / (p.s - st[i - 1].s || 1), cc = col(gr);
-    road.pos.push(...l, ...r); road.col.push(...cc, ...cc);
-    if (i) { const a = (i - 1) * 2; road.idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+  const E = (p, sg, t, z) => [p.x + sg * p.nx * t - org[0], p.y + sg * p.ny * t - org[1], z - org[2]];
+  for (let i = 0; i < n; i++) {   // vägytan: vänster kant, mitt, höger kant (tvärfallet syns som en knäckt yta)
+    const p = st[i], gr = i === 0 ? Math.abs(st[1].z - st[0].z) / (st[1].s - st[0].s || 1) : Math.abs(p.z - st[i - 1].z) / (p.s - st[i - 1].s || 1), cc = col(gr);
+    road.pos.push(...E(p, 1, p.wl, p.z - l3rFall(spec, p.wl)), ...E(p, 1, 0, p.z), ...E(p, -1, p.wr, p.z - l3rFall(spec, -p.wr))); road.col.push(...cc, ...cc, ...cc);
+    if (i) { const a = (i - 1) * 3, b = i * 3; road.idx.push(a, b, a + 1, a + 1, b, b + 1, a + 1, b + 1, a + 2, a + 2, b + 1, b + 2); }
   }
-  [["L", 1], ["R", -1]].forEach(([sd, sg]) => {
+  [["L", 1], ["R", -1]].forEach(([sd, sg]) => {   // slänterna: innerslänt, dikesbotten och ytterslänt (eller fyllningsslänt) som band längs profilens delar
     for (let i = 1; i < n; i++) {
       const a = st[i - 1][sd], b = st[i][sd]; if (a.kind === "none" || b.kind === "none" || (a.d < 0.01 && b.d < 0.01)) continue;
-      const T = a.kind === "cut" ? cut : fill, base = T.pos.length / 3, P = q => [q.ex - org[0], q.ey - org[1], q.ze - org[2]], Q = q => [q.qx - org[0], q.qy - org[1], q.qz - org[2]];
-      T.pos.push(...P(a), ...Q(a), ...P(b), ...Q(b));
-      // Vägkanten vänster (sg > 0) ligger till vänster om färdriktningen: uppifrån moturs = (kant i, kant i+1, släntfot i+1 ...)
-      if (sg > 0) T.idx.push(base, base + 1, base + 3, base, base + 3, base + 2); else T.idx.push(base, base + 3, base + 1, base, base + 2, base + 3);
+      const T = a.kind === "cut" ? cut : fill, pa = a.prof, pb = b.prof, m = Math.min(pa.length, pb.length);
+      for (let k = 0; k + 1 < m; k++) {
+        if (Math.abs(pa[k + 1][0] - pa[k][0]) < 1e-4 && Math.abs(pb[k + 1][0] - pb[k][0]) < 1e-4 && Math.abs(pa[k + 1][1] - pa[k][1]) < 1e-4) continue;
+        const A0 = [a.ex + sg * st[i - 1].nx * pa[k][0] - org[0], a.ey + sg * st[i - 1].ny * pa[k][0] - org[1], pa[k][1] - org[2]], A1 = [a.ex + sg * st[i - 1].nx * pa[k + 1][0] - org[0], a.ey + sg * st[i - 1].ny * pa[k + 1][0] - org[1], pa[k + 1][1] - org[2]];
+        const B0 = [b.ex + sg * st[i].nx * pb[k][0] - org[0], b.ey + sg * st[i].ny * pb[k][0] - org[1], pb[k][1] - org[2]], B1 = [b.ex + sg * st[i].nx * pb[k + 1][0] - org[0], b.ey + sg * st[i].ny * pb[k + 1][0] - org[1], pb[k + 1][1] - org[2]];
+        const base = T.pos.length / 3; T.pos.push(...A0, ...A1, ...B0, ...B1);
+        if (sg > 0) T.idx.push(base, base + 1, base + 3, base, base + 3, base + 2); else T.idx.push(base, base + 3, base + 1, base, base + 2, base + 3);
+      }
     }
   });
-  // Överbyggnadens sidor (lodräta) från vägkanten ner till terrassytan, så att det inte blir ett glapp mellan vägen och släntens början
-  const wall = { pos: [], idx: [] }, D = spec.layersEarth !== false ? l3rLayerD(spec) : 0;
-  if (D > 0) for (let i = 1; i < n; i++) [["wl", 1], ["wr", -1]].forEach(([k, sg]) => { const a = st[i - 1], b = st[i], base = wall.pos.length / 3, E = (q, w, z) => [q.x + sg * q.nx * w - org[0], q.y + sg * q.ny * w - org[1], z - org[2]];
-    wall.pos.push(...E(a, a[k], a.z), ...E(a, a[k], a.z - D), ...E(b, b[k], b.z), ...E(b, b[k], b.z - D)); if (sg > 0) wall.idx.push(base, base + 1, base + 3, base, base + 3, base + 2); else wall.idx.push(base, base + 3, base + 1, base, base + 2, base + 3); });
-  void crown;
-  return { wall: wall.idx.length ? { pos: new Float32Array(wall.pos), idx: new Uint32Array(wall.idx) } : null, org, road: { pos: new Float32Array(road.pos), col: new Float32Array(road.col), idx: new Uint32Array(road.idx) }, cut: cut.idx.length ? { pos: new Float32Array(cut.pos), idx: new Uint32Array(cut.idx) } : null, fill: fill.idx.length ? { pos: new Float32Array(fill.pos), idx: new Uint32Array(fill.idx) } : null };
+  return { wall: null, org, road: { pos: new Float32Array(road.pos), col: new Float32Array(road.col), idx: new Uint32Array(road.idx) }, cut: cut.idx.length ? { pos: new Float32Array(cut.pos), idx: new Uint32Array(cut.idx) } : null, fill: fill.idx.length ? { pos: new Float32Array(fill.pos), idx: new Uint32Array(fill.idx) } : null };
 }
 function l3rDraw() {
   if (!l3.groups.road) { l3.groups.road = new THREE.Group(); l3.groups.road.name = "road"; l3.scene.add(l3.groups.road); }
@@ -232,7 +251,12 @@ function l3rDraw() {
     const geo = new THREE.BufferGeometry(); geo.setAttribute("position", new THREE.BufferAttribute(S.pos, 3)); if (vc) geo.setAttribute("color", new THREE.BufferAttribute(S.col, 3)); geo.setIndex(new THREE.BufferAttribute(S.idx, 1)); geo.computeVertexNormals();
     const mat = new THREE.MeshLambertMaterial({ vertexColors: !!vc, color: vc ? 0xffffff : col, transparent: op < 1, opacity: op, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
     const mesh = new THREE.Mesh(geo, mat); mesh.position.set(c.geom.org[0] - O[0], c.geom.org[1] - O[1], c.geom.org[2] - O[2]); mesh.renderOrder = 8; mesh.userData.noHit = true; mesh.raycast = () => {}; grp.add(mesh); return mesh; };
-  if (c.geom) { mk(c.geom.road, 0, true, 1); if (c.geom.cut) mk(c.geom.cut, 0x3b82f6, false, 0.85); if (c.geom.fill) mk(c.geom.fill, 0xef4444, false, 0.85); if (c.geom.wall) mk(c.geom.wall, 0x78716c, false, 0.9); }
+  if (c.geom) { mk(c.geom.road, 0, true, 1); if (c.geom.cut) mk(c.geom.cut, 0x3b82f6, false, 0.85); if (c.geom.fill) mk(c.geom.fill, 0xef4444, false, 0.85); 
+    // Överbyggnadens lager som riktiga solider (tvärfall, sluttande kanter) i lagrens egna färger
+    if (c.spec.layersOn && (c.spec.layers || []).length && c.st) (c.spec.layers).forEach((l, i) => { const M = l3rLayerMesh(c, c.geom, i); if (!M) return;
+      const geo = new THREE.BufferGeometry(), pos = []; M.pts.forEach(q => pos.push(q[0], q[1], q[2])); geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(M.faces.flatMap(f => [f[0] - 1, f[1] - 1, f[2] - 1])); geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: l.color || "#a8a29e", side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })); mesh.position.set(c.geom.org[0] - O[0], c.geom.org[1] - O[1], c.geom.org[2] - O[2]); mesh.renderOrder = 7; mesh.userData.noHit = true; mesh.raycast = () => {}; grp.add(mesh);
+      const ed = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 35), new THREE.LineBasicMaterial({ color: 0x334155, transparent: true, opacity: 0.55 })); ed.position.copy(mesh.position); ed.renderOrder = 9; ed.userData.noHit = true; ed.raycast = () => {}; grp.add(ed); }); }
   // Mittlinjen och trånga kurvor.
   const line = (pts, color) => { const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.95 })); l.renderOrder = 12; l.userData.noHit = true; l.raycast = () => {}; grp.add(l); };
   if (c.st) line(c.st.map(p => new THREE.Vector3(p.x - O[0], p.y - O[1], p.z - O[2] + 0.12)), 0xffffff);
@@ -327,13 +351,25 @@ function l3rMetersMesh(c, G) {
   });
   return pts.length ? { k: "mesh", pts, faces, closed: true } : null;
 }
-/* Ett lager i vägöverbyggnaden som sluten kropp (vägens bredd, tjocklek t, uppifrån ner efter lagrets plats). */
+/* Ett lager i vägöverbyggnaden som sluten solid: parallellt med vägytan (tvärfall), tjocklek t, och med sluttande kanter (1 lodrätt : edgeK vågrätt) – lagrets tvärsnitt är en sexhörning
+   (vänster kant, mitt, höger kant uppe och nere) som dras längs vägen. */
+function l3rLayerPoly(p, spec, h0, h1) {
+  const k = l3rK(spec), P = (sg, h) => { const t = (sg > 0 ? p.wl : p.wr) + h * k; return [sg * t, p.z - l3rFall(spec, sg * t) - h]; };
+  return [P(1, h0), [0, p.z - h0], P(-1, h0), P(-1, h1), [0, p.z - h1], P(1, h1)];   // [sida (+ vänster), nivå]
+}
 function l3rLayerMesh(c, G, idx) {
-  const st = c.st, org = G.org, L = c.spec.layers, pts = [], faces = [], r3 = v => Math.round(v * 1000) / 1000; let z0 = 0; for (let i = 0; i < idx; i++) z0 += Number(L[i].t) || 0; const t = Number(L[idx].t) || 0; if (t <= 0) return null;
-  st.forEach(p => { const E = (sg, w, z) => [r3(p.x + sg * p.nx * w - org[0]), r3(p.y + sg * p.ny * w - org[1]), r3(z - org[2])]; pts.push(E(1, p.wl, p.z - z0), E(-1, p.wr, p.z - z0), E(-1, p.wr, p.z - z0 - t), E(1, p.wl, p.z - z0 - t)); });   // TL, TR, BR, BL
-  for (let i = 0; i + 1 < st.length; i++) { const a = i * 4 + 1, b = (i + 1) * 4 + 1; const [TL, TR, BR, BL] = [0, 1, 2, 3];
-    faces.push([a + TL, a + TR, b + TR], [a + TL, b + TR, b + TL], [a + BL, b + BR, a + BR], [a + BL, b + BL, b + BR], [a + TL, b + TL, b + BL], [a + TL, b + BL, a + BL], [a + TR, b + BR, b + TR], [a + TR, a + BR, b + BR]); }
-  const e = (st.length - 1) * 4 + 1; faces.push([1, 4, 3], [1, 3, 2], [e, e + 1, e + 2], [e, e + 2, e + 3]);   // ändytor (början: nedåt/bakåt, slutet: framåt)
+  const st = c.st, spec = c.spec, org = G.org, L = spec.layers, pts = [], faces = [], r3 = v => Math.round(v * 1000) / 1000; let h0 = 0; for (let i = 0; i < idx; i++) h0 += Number(L[i].t) || 0; const t = Number(L[idx].t) || 0; if (t <= 0) return null;
+  st.forEach(p => { l3rLayerPoly(p, spec, h0, h0 + t).forEach(([lt, z]) => pts.push([r3(p.x + p.nx * lt - org[0]), r3(p.y + p.ny * lt - org[1]), r3(z - org[2])])); });
+  const m = 6;
+  for (let i = 0; i + 1 < st.length; i++) for (let j = 0; j < m; j++) { const j2 = (j + 1) % m, a = i * m + j + 1, b = i * m + j2 + 1, c2 = (i + 1) * m + j2 + 1, d = (i + 1) * m + j + 1; faces.push([a, b, c2], [a, c2, d]); }
+  const poly = l3rLayerPoly(st[0], spec, h0, h0 + t).map(q => new THREE.Vector2(q[0], q[1])); let tri = []; try { tri = THREE.ShapeUtils.triangulateShape(poly, []); } catch (e) { tri = [[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 5]]; }
+  const e0 = 0, e1 = (st.length - 1) * m; tri.forEach(f => { faces.push([e0 + f[0] + 1, e0 + f[2] + 1, e0 + f[1] + 1]); faces.push([e1 + f[0] + 1, e1 + f[1] + 1, e1 + f[2] + 1]); });
+  // Rätt riktning (utåt): varje yta vänds så att dess normal pekar bort från lagrets lokala mitt (tvärsnittets tyngdpunkt, för ändytorna grannstationens).
+  const nr = st.length, ringC = i => { const r = Math.max(0, Math.min(nr - 1, i)); return [0, 1, 2].map(k => { let a = 0; for (let j = 0; j < m; j++) a += pts[r * m + j][k]; return a / m; }); };
+  faces.forEach(f => { const a = pts[f[0] - 1], b = pts[f[1] - 1], c2 = pts[f[2] - 1], ri = f.map(v => Math.floor((v - 1) / m)), lo = Math.min(...ri), hi = Math.max(...ri);
+    const ref = lo === hi ? ringC(lo === 0 ? 1 : nr - 2) : (() => { const A = ringC(lo), B = ringC(hi); return [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2, (A[2] + B[2]) / 2]; })();
+    const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c2[0] - a[0], c2[1] - a[1], c2[2] - a[2]], nrm = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]], cen = [(a[0] + b[0] + c2[0]) / 3 - ref[0], (a[1] + b[1] + c2[1]) / 3 - ref[1], (a[2] + b[2] + c2[2]) / 3 - ref[2]];
+    if (nrm[0] * cen[0] + nrm[1] * cen[1] + nrm[2] * cen[2] < 0) { const q = f[1]; f[1] = f[2]; f[2] = q; } });
   return { k: "mesh", pts, faces, closed: true };
 }
 /* Väg, schaktslänt och fyllningsslänt blir ritade ytor (ett steg i Ångra). */
@@ -351,6 +387,46 @@ function l3roadMake() {
 }
 
 /* ---- Panel ---- */
+/* Förklarande figur: bokstäverna A–I hör ihop med inställningarna i panelen. */
+function l3rXsFigure() {
+  const ink = "#334155", col = { A: "#b45309", B: "#b45309", C: "#475569", D: "#475569", E: "#2563eb", F: "#2563eb", G: "#2563eb", H: "#dc2626", I: "#64748b" };
+  const L = (k, x, y) => `<circle cx="${x}" cy="${y}" r="7.5" fill="#fff" stroke="${col[k]}" stroke-width="1.4"/><text x="${x}" y="${y + 3.6}" text-anchor="middle" font-size="10" font-weight="700" fill="${col[k]}">${k}</text>`;
+  return `<svg class="v3-rd-fig" viewBox="0 0 470 178" role="img" aria-label="Tvärsektion med måttbokstäver" xmlns="http://www.w3.org/2000/svg">
+    <rect x="0" y="0" width="470" height="178" rx="10" fill="#f8fafc"/>
+    <path d="M0 62 L24 60 L77 113 L97 113 L139 99 L361 99 L443 140 L470 140 L470 178 L0 178 Z" fill="#e7e1d6"/>
+    <path d="M190 65 L250 60 L310 65 L316 71 L316 71 Z" fill="none"/>
+    <polygon points="190,65 250,60 310,65 308.5,71 250,66 191.5,71" fill="#1f2937"/>
+    <polygon points="191.5,71 250,66 308.5,71 304,81 250,76 196,81" fill="#cbd5e1" stroke="#64748b" stroke-width=".6"/>
+    <polygon points="196,81 250,76 304,81 286,99.5 250,96 214,99.5" fill="#a8a29e" stroke="#64748b" stroke-width=".6"/>
+    <polygon points="196,81 304,81 361,99 139,99" fill="none"/>
+    <path d="M190 65 L139 99 M310 65 L361 99" stroke="${ink}" stroke-width=".8" fill="none"/>
+    <path d="M139 99 L250 94 L361 99" stroke="#92400e" stroke-width="1.3" stroke-dasharray="5 3" fill="none"/>
+    <path d="M139 99 L97 113 L77 113 L24 60" stroke="#2563eb" stroke-width="2.4" fill="none" stroke-linejoin="round"/>
+    <path d="M361 99 L443 140" stroke="#dc2626" stroke-width="2.4" fill="none"/>
+    <path d="M0 62 L24 60 M443 140 L470 140" stroke="#6b7280" stroke-width="1.6"/>
+    <path d="M190 65 L250 60 L310 65" stroke="#111827" stroke-width="2.6" fill="none"/>
+    <path d="M250 50 L250 168" stroke="#94a3b8" stroke-width="1" stroke-dasharray="8 3 2 3"/><text x="250" y="46" text-anchor="middle" font-size="9" fill="#64748b" font-weight="700">C/L</text>
+    <path d="M190 40 L310 40 M190 36 L190 44 M310 36 L310 44" stroke="${col.A}" stroke-width="1.2"/><text x="250" y="31" text-anchor="middle" font-size="9.5" fill="${col.A}">Vägbana</text>
+    ${L("A", 250, 40)}
+    <path d="M205 56 L222 60" stroke="${col.B}" stroke-width="1.4" marker-end="url(#a)"/>
+    <text x="214" y="50" text-anchor="middle" font-size="8.5" fill="${col.B}">2,5 %</text>${L("B", 176, 52)}
+    <text x="250" y="90" text-anchor="middle" font-size="8.5" fill="#1f2937">överbyggnad</text>${L("C", 322, 79)}
+    ${L("D", 160, 78)}
+    <text x="250" y="110" text-anchor="middle" font-size="8.5" fill="#92400e">terrassyta</text>
+    ${L("E", 118, 96)}${L("F", 87, 128)}<text x="87" y="142" text-anchor="middle" font-size="8.5" fill="${col.F}">dike</text>${L("G", 38, 96)}
+    ${L("H", 418, 112)}<text x="410" y="128" text-anchor="middle" font-size="8.5" fill="${col.H}">fyllning</text>
+    <path d="M139 149 L24 149 M139 145 L139 153 M24 145 L24 153" stroke="${col.I}" stroke-width="1.2"/>${L("I", 82, 149)}<text x="82" y="167" text-anchor="middle" font-size="8.5" fill="${col.I}">största släntbredd</text>
+    <text x="330" y="160" text-anchor="middle" font-size="9" fill="#78716c">undergrund</text>
+    <defs><marker id="a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0 L8 4 L0 8 z" fill="${col.B}"/></marker></defs>
+  </svg>`;
+}
+(function l3rXsCss() {
+  if (typeof document === "undefined" || document.getElementById("v3RoadXsCss")) return; const st = document.createElement("style"); st.id = "v3RoadXsCss";
+  st.textContent = `#view3d .v3-rd-fig{width:100%;height:auto;display:block;margin:2px 0 6px;border:1px solid #e2e8f0;border-radius:10px}
+#view3d .v3-rd-gh{margin:8px 0 2px;font:700 11px system-ui,sans-serif;letter-spacing:.05em;text-transform:uppercase;color:#334155}#view3d .v3-rd-gh em{font-style:normal;font-weight:500;letter-spacing:0;text-transform:none;color:#94a3b8;margin-left:6px}
+#view3d .v3-rd-k{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1.4px solid #2f7bff;color:#2f7bff;font:700 10px system-ui;flex:0 0 16px;margin-right:4px}`;
+  document.head.appendChild(st);
+})();
 function l3rPanel() {
   const c = l3road.cur; if (!c) return;
   const host = document.getElementById("v3Canvas"); if (!host) return;
@@ -358,6 +434,7 @@ function l3rPanel() {
   if (!el) { el = document.createElement("div"); el.id = "v3RoadPanel"; el.className = "v3-vp"; host.appendChild(el); ["pointerdown", "wheel", "contextmenu", "dblclick", "click", "keydown", "keyup"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); }
   const esc = typeof escHtml === "function" ? escHtml : s => String(s), r = c.res, spec = c.spec, srcs = l3rSources();
   const num = (k, label, tip, unit, min, max, st) => `<label class="v3-rd-n" title="${esc(tip)}"><span>${label}</span><input type="number" data-rk="${k}" value="${spec[k]}" min="${min}" max="${max}" step="${st}"><em>${unit}</em></label>`;
+  const numK = (L, k, label, tip, unit, min, max, st) => `<label class="v3-rd-n" title="${esc(tip)}"><b class="v3-rd-k">${L}</b><span>${label}</span><input type="number" data-rk="${k}" value="${spec[k] != null ? spec[k] : ""}" min="${min}" max="${max}" step="${st}"><em>${unit}</em></label>`;
   const sum = r ? `<div class="v3-vp-hero ${r.net > 0 ? "neg" : r.net < 0 ? "pos" : ""}"><div class="net"><span>Väg</span><b>${l3rFmt(r.len, 0)} m</b><em>${r.dz >= 0 ? "stiger" : "sjunker"} ${l3rFmt(Math.abs(r.dz), 1)} m · ${l3rFmt(r.z0, 1)} → ${l3rFmt(r.z1, 1)} m</em></div>
       <div class="chips"><span title="Medellutning längs vägen"><i>∠</i>${l3rFmt(r.avgG * 100, 1)} % medel</span><span title="Största lutning – högst ${spec.grade} % är inställt"><i>⛰</i>${l3rFmt(r.maxG * 100, 1)} % störst</span><span title="Vägens yta i plan"><i>▭</i>${l3rFmt(r.roadArea, 0)} m²</span></div>
       <div class="cf"><button type="button" class="cut" style="cursor:default"><span>Schakt (inkl. slänter)</span><b>${l3rM3(r.cut)}</b></button><button type="button" class="fill" style="cursor:default"><span>Fyllning (inkl. slänter)</span><b>${l3rM3(r.fill)}</b></button></div>
@@ -380,12 +457,25 @@ function l3rPanel() {
     <div class="v3-rd-tab" data-rtab="vag" ${tab === "vag" ? "" : "hidden"}>
     <div class="v3-rd-src" title="Vilka ytor vägen ska följa. Flera kan kombineras – den högsta gäller.">${srcs.length ? srcs.map(s => `<label><input type="checkbox" data-rs="${esc(s.k)}" ${spec.src.includes(s.k) ? "checked" : ""}> ${esc(s.label)}</label>`).join("") : `<div class="v3-vp-t warn">Tänd ett punktmoln, en 3D-modell eller en DXF (Lager) som vägen ska följa.</div>`}</div>
     <div data-rres>${sum}</div>
+    ${l3rXsFigure()}
+    <div class="v3-rd-gh">Tvärsektionen <em>bokstäverna hör ihop med figuren</em></div>
     <div class="v3-rd-g">
-      ${num("width", "Vägbredd", "Körbanans bredd mellan släntfötterna", "m", 2, 30, 0.5)}${num("grade", "Högsta lutning", "Vägens lutning får aldrig bli högre än så (tung trafik: 8–10 %)", "%", 1, 30, 0.5)}
+      ${numK("A", "width", "Vägbana", "Vägbanans totala bredd: körbana + eventuella vägrenar (mäts mellan vägkanterna, överst på vägen)", "m", 2, 30, 0.5)}
+      ${numK("B", "fall", "Tvärfall", "Vägytans lutning i sidled så att vattnet rinner av: 2,5 % på asfalt, 3–4 % på grus/byggväg", "%", 0, 8, 0.5)}
+      <label class="v3-rd-n" style="grid-column:1/3" title="Takprofil = högst i mitten och lutar åt båda hållen (vanligast på rak väg). Ensidigt = hela vägen lutar åt ett håll (kurvor, enkelfil)"><b class="v3-rd-k">B</b><span>Fallriktning</span><select data-rk="fallMode" style="flex:1;min-width:0;max-width:170px;padding:3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit">${[["crown", "Takprofil (högst i mitten)"], ["L", "Ensidigt åt vänster"], ["R", "Ensidigt åt höger"], ["flat", "Plant (inget tvärfall)"]].map(([v, t]) => `<option value="${v}" ${(spec.fallMode || "crown") === v ? "selected" : ""}>${t}</option>`).join("")}</select></label>
+      ${numK("D", "edgeK", "Kantlutning 1:", "Överbyggnadens kanter lutar utåt nedåt: 1 lodrätt på så här många meter i sidled (1,5 är vanligt). Gör nedersta lagret och terrassytan bredare än vägbanan. Ställ in lagren under fliken Överbyggnad", "", 0, 5, 0.25)}
+      ${numK("E", "inK", "Innerslänt 1:", "Slänten från terrassytans kant ned i diket (bara i schakt). 1:3 är vanligt – flackare än 1:3 är trafiksäkrare", "", 0.5, 8, 0.25)}
+      <label class="v3-ga-tg" style="grid-column:1/3" title="Dike vid vägkanten i schakt (dräner terrassytan). Av = slänten går direkt från terrassytans kant"><input type="checkbox" data-rk="ditch" ${spec.ditch !== false ? "checked" : ""}><span><b class="v3-rd-k">F</b> Dike i schakt</span></label>
+      ${spec.ditch !== false ? numK("F", "ditchD", "Dikesdjup", "Hur långt dikesbotten ligger under terrassytan vid kanten (minst ca 0,3 m för att dränera överbyggnaden)", "m", 0.1, 2, 0.05) + numK("F", "ditchBw", "Dikesbotten", "Dikesbottnens bredd", "m", 0, 3, 0.1) : ""}
+      ${numK("G", "cutR", "Ytterslänt 1:", "Slänten från diket (eller kanten) upp till marken i schakt: 1 lodrätt på så här många meter i sidled (1 = 45°, 0,25 = brant bergschakt, 3 = flack jordslänt)", "", 0.25, 5, 0.25)}
+      ${numK("H", "fillR", "Fyllningsslänt 1:", "Slänten från terrassytans kant ned till marken i fyllning: 1 lodrätt på så här många meter i sidled (1,5–3 är vanligt)", "", 0.5, 6, 0.25)}
+      ${numK("I", "reach", "Största släntbredd", "Så långt ut från vägen letar slänten efter marken innan den ger upp", "m", 3, 100, 1)}
+    </div>
+    <div class="v3-rd-gh">Längs vägen <em>profil och plan</em></div>
+    <div class="v3-rd-g">
+      ${num("grade", "Högsta lutning", "Vägens lutning längs vägen får aldrig bli högre än så (tung trafik: 8–10 %)", "%", 1, 30, 0.5)}
       ${num("smooth", "Jämna ut över", "Längd som markens höjd jämnas ut över – större värde ger en mjukare väg som skär mer", "m", 0, 200, 5)}${num("filletR", "Kurvradie", "Hörnen rundas av med cirkelbågar med den här radien (0 = vassa hörn). Radien kan bli mindre där punkterna ligger tätt", "m", 0, 200, 5)}${num("minR", "Minsta radie", "Kurvor med mindre radie markeras (lastbil/dumper ca 12–20 m)", "m", 3, 100, 1)}
-      <label class="v3-rd-n" title="Schaktslänt: 1 lodrätt på så här många meter i sidled (1 = 45°, 0,5 = brant bergschakt)"><span>Schaktslänt 1:</span><input type="number" data-rk="cutR" value="${spec.cutR}" min="0.25" max="5" step="0.25"><em></em></label>
-      <label class="v3-rd-n" title="Fyllningsslänt: 1 lodrätt på så här många meter i sidled (1,5 = vanlig fyllning)"><span>Fyllningsslänt 1:</span><input type="number" data-rk="fillR" value="${spec.fillR}" min="0.5" max="6" step="0.25"><em></em></label>
-      ${num("reach", "Största släntbredd", "Så långt ut från vägkanten letar slänten efter marken", "m", 3, 100, 1)}${num("step", "Stationsavstånd", "Avstånd mellan tvärsnitten (mindre = mer detaljerat)", "m", 0.5, 10, 0.5)}
+      ${num("step", "Stationsavstånd", "Avstånd mellan tvärsnitten som räknas och ritas (mindre = mer detaljerat men långsammare)", "m", 0.5, 10, 0.5)}
       ${spec.mode === "anchor" ? `<label class="v3-rd-n" style="grid-column:1/3" title="Punkten vars höjd är given. Dra i ringen för att ändra höjden."><span>Höjdpunkt</span><select data-ra style="flex:2;padding:3px;border:1px solid #cbd5e1;border-radius:6px;font:inherit"><option value="-1" ${!(spec.anchor >= 0) ? "selected" : ""}>Högsta punkten du klickat</option>${c.pts.map((p, i) => `<option value="${i}" ${Number(spec.anchor) === i ? "selected" : ""}>Punkt ${i + 1} (${l3rFmt(p[2], 2)} m)</option>`).join("")}</select></label><label class="v3-rd-n" style="grid-column:1/3" title="Vägen går aldrig högre än höjdpunkten"><input type="checkbox" data-rc ${spec.cap !== false ? "checked" : ""} style="width:auto"><span>Aldrig över höjdpunkten</span></label>` : ""}
       <div class="v3-rd-seg" title="Höjdprofil"><button type="button" data-rm="anchor" class="${spec.mode === "anchor" ? "on" : ""}" title="En punkt på vägen har given höjd (som standard den högsta du klickat) – resten räknas därifrån med högsta lutning">Från höjdpunkt</button><button type="button" data-rm="terrain" class="${spec.mode === "terrain" ? "on" : ""}">Följ marken</button><button type="button" data-rm="straight" class="${spec.mode === "straight" ? "on" : ""}">Rak start → slut</button><button type="button" data-rm="pins" class="${spec.mode === "pins" ? "on" : ""}" title="Vägen går genom höjden i varje punkt du klickat ut (dra en ring för att ändra) – den högsta punkten blir vägens högsta">Genom mina punkter</button></div>
     </div>
@@ -425,6 +515,8 @@ function l3rPanel() {
   const q = s => el.querySelector(s), qa = s => el.querySelectorAll(s), on = (k, fn) => qa(`[data-rb="${k}"]`).forEach(b => { b.onclick = fn; });
   qa("[data-rt]").forEach(b => { b.onclick = () => { l3SetPref("rdTab", b.dataset.rt); l3rPanel(); }; });
   qa("input[data-rk]").forEach(i => { i.oninput = () => { const v = Number(String(i.value).replace(",", ".")); if (Number.isFinite(v) && v >= Number(i.min) && v <= Number(i.max)) { spec[i.dataset.rk] = v; c.saved = false; l3rSchedule(350); } }; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });
+  qa('input[data-rk][type="checkbox"]').forEach(i => { i.onchange = () => { spec[i.dataset.rk] = i.checked; c.saved = false; if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); l3rPanel(); l3rSchedule(0); }; });
+  qa("select[data-rk]").forEach(i => { i.onchange = () => { spec[i.dataset.rk] = i.value; c.saved = false; l3rSchedule(0); }; });
   qa("input[data-rs]").forEach(i => { i.onchange = () => { const k = i.dataset.rs; spec.src = i.checked ? [...new Set([...spec.src, k])] : spec.src.filter(x => x !== k); l3rSchedule(0); }; });
   { const a = q("select[data-ra]"); if (a) a.onchange = () => { spec.anchor = Number(a.value); l3rSchedule(0); }; const cc = q("input[data-rc]"); if (cc) cc.onchange = () => { spec.cap = cc.checked; l3rSchedule(0); }; }
   qa("input[data-rw],select[data-rw]").forEach(i => { const [k, key] = i.dataset.rw.split(":"), z = (spec.widen || [])[Number(k)]; const set = () => { if (!z) return; if (key === "side") z.side = i.value; else { const v = Number(String(i.value).replace(",", ".")); if (Number.isFinite(v)) z[key] = v; } c.saved = false; l3rSchedule(350); }; i.oninput = set; i.onchange = set; i.onkeydown = e => { e.stopPropagation(); if (e.key === "Enter") i.blur(); }; });

@@ -112,7 +112,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3rsSet(30, false); const a = l3rs.sec; l3rsSet(45, false); const b = l3rs.sec;
     out.s = [a.s, b.s]; out.hasGround = a.ground.filter(q => q[1] !== null).length > 20; out.line = a.line.length; out.scatter = (l3rs.scat || []).length; out.areas = [a.cut, a.fill].map(v => Math.round(v * 10) / 10);
     out.differ = Math.abs(a.z - b.z) > 0.5 || Math.abs((a.gc || 0) - (b.gc || 0)) > 0.5;
-    const r = l3rsDxf(10, true); out.dxf = !!r && r.n >= 6 && /SEK-MARK/.test(r.text) && /SEK-SLANT/.test(r.text) && /PROFIL-VAG/.test(r.text) && /Tv.rsektion/.test(r.text) && /Station 0\+030/.test(r.text);
+    const r = l3rsDxf(10, true); out.dxf = !!r && r.n >= 6 && /SEK-MARK/.test(r.text) && /SEK-SLANT/.test(r.text) && /PROFIL-VAG/.test(r.text) && /Tv.rsektion/.test(r.text) && /Km 0\+030/.test(r.text);
     l3rsClose(); out.closed = !document.getElementById('v3RoadSec'); return out; });
   if (process.env.SHOT2) { await page.evaluate(() => { l3rsOpen(); l3rsSet(33, false); }); await page.waitForTimeout(500); await page.screenshot({ path: process.env.SHOT2 }); await page.evaluate(() => l3rsClose()); }
   if (!sc.panel || !sc.cv || !sc.hasGround || sc.line < 3 || !sc.differ || !sc.dxf || !sc.closed) fail('Tvärsektion: ' + JSON.stringify(sc));
@@ -221,17 +221,37 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const ly = await page.evaluate(async () => {
     const c = l3road.cur, out = {}; c.spec.mode = 'terrain'; c.spec.widen = []; c.spec.layersOn = false; l3rSchedule(0); for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (c.res && !c.busy) break; }
     const cut0 = c.res.cut + c.res.fill; c.spec.layersOn = true; c.spec.layers = JSON.parse(JSON.stringify(L3R_PRESETS.bygg[1])); l3rSchedule(0); await new Promise(r => setTimeout(r, 300)); for (let i = 0; i < 60; i++) { await new Promise(r => setTimeout(r, 150)); if (c.res && !c.busy && c.res.layers.length) break; }
-    const R = c.res, D = 0.15 + 0.35 + 0.2; out.D = R.D; out.layers = R.layers.map(l => [l.name.slice(0, 6), l.t, Math.round(l.vol), Math.round(l.area)]); out.volOk = Math.abs(R.layers[1].vol - R.layers[1].area * 0.35) < 0.5;
-    out.slopeFromTerrass = Math.abs(c.st[8].L.ze - (c.st[8].z - D)) < 1e-6; out.earthChanged = Math.round((R.cut + R.fill) - cut0) !== 0;
+    const R = c.res, D = 0.15 + 0.35 + 0.2; out.D = R.D; out.layers = R.layers.map(l => [l.name.slice(0, 6), l.t, Math.round(l.vol), Math.round(l.area)]); out.volOk = R.layers[1].vol > R.layers[1].area * 0.35 * 0.999 && R.layers[1].vol < R.layers[1].area * 0.35 * 1.5;   // sluttande kanter gör lagret något bredare nedåt
+    { const p8 = c.st[8], tE = p8.wl + D * l3rK(c.spec); out.slopeFromTerrass = Math.abs(p8.L.ze - (p8.z - l3rFall(c.spec, tE) - D)) < 1e-6; } out.earthChanged = Math.round((R.cut + R.fill) - cut0) !== 0;
     if (window.__shot3) { l3rsOpen(); l3rsSet(30, false); }
     const sec = l3rsSection(c, 30); out.sec = [sec.layers.length, Math.round((sec.z - sec.zE) * 100) / 100]; const dx = l3rsDxf(10, false); out.dxf = !!dx && /SEK-LAGER-1/.test(dx.text) && /Terrass/.test(dx.text);
     const n0 = placements.length; l3roadMake(); const mk = placements.slice(n0); out.objs = mk.filter(p => p.layerObj).map(p => [p.name.slice(0, 12), p.m.faces.length]); out.panel = true;
-    out.closed = mk.filter(p => p.layerObj).every(p => p.m.closed && p.m.pts.length === c.st.length * 4);
+    out.closed = mk.filter(p => p.layerObj).every(p => p.m.closed && p.m.pts.length === c.st.length * 6);
     l3roadOpen({ pts: window.__pts, spec: { ...L3R_DEF, src: ['pc:pcR'], mode: 'terrain', grade: 10, width: 5 }, res: null, geom: null, st: null, busy: '', err: '' }); const c2 = l3road.cur; for (let i = 0; i < 80 && !(c2.res || c2.err); i++) await new Promise(r => setTimeout(r, 150));
     return out; });
   if (process.env.SHOT3) { await page.waitForTimeout(500); await page.screenshot({ path: process.env.SHOT3 }); }
   if (Math.abs(ly.D - 0.7) > 1e-6 || ly.layers.length !== 3 || !ly.volOk || !ly.slopeFromTerrass || !ly.earthChanged || ly.sec[0] !== 3 || ly.sec[1] !== 0.7 || !ly.dxf || ly.objs.length !== 3 || !ly.closed) fail('Vägöverbyggnad: ' + JSON.stringify(ly));
   console.log('OK: vägöverbyggnad – lager med tjocklek, mängder per lager, terrassyta, schakt/fyllning till terrassen, objekt, sektion och DXF', JSON.stringify(ly));
+  // Svensk tvärsektion: tvärfall, lager med sluttande kanter, terrassyta, dike med innerslänt/ytterslänt, ritning
+  const xs = await page.evaluate(async () => {
+    const out = {}; l3roadOpen({ pts: window.__pts, spec: { ...L3R_DEF, src: ['pc:pcR'], mode: 'terrain', grade: 10, width: 6, fall: 2.5, edgeK: 1.5, inK: 3, ditchD: 0.4, ditchBw: 0.6, cutR: 1, layersOn: true, layers: JSON.parse(JSON.stringify(L3R_PRESETS.gata[1])) }, res: null, geom: null, st: null, busy: '', err: '' });
+    const c = l3road.cur; for (let i = 0; i < 80 && !(c.res || c.err); i++) await new Promise(r => setTimeout(r, 150)); if (c.err) return { err: c.err };
+    const p = c.st[10], D = c.res.D, k = 1.5, tE = p.wl + D * k;
+    out.fall = [l3rFall(c.spec, 3), l3rFall(c.spec, -3), l3rFall({ ...c.spec, fallMode: 'L' }, 3), l3rFall({ ...c.spec, fallMode: 'R' }, 3), l3rFall({ ...c.spec, fallMode: 'flat' }, 3)];
+    const roadPos = c.geom.road.pos; out.roadEdgeDrop = Math.round((roadPos[2] - 0) * 0) + 0; const i0 = 10 * 3 * 3; out.drop = [roadPos[i0 + 2] - roadPos[i0 + 5], roadPos[i0 + 8] - roadPos[i0 + 5]].map(v => Math.round(v * 1000) / 1000);
+    const cutSide = [p.L, p.R].find(S => S.kind === 'cut'); out.cut = !!cutSide; if (cutSide) { out.prof = cutSide.prof.length; out.inner = Math.round(cutSide.prof[1][0] * 100) / 100; out.innerExp = Math.round(0.4 * 3 * 100) / 100; out.bottomW = Math.round((cutSide.prof[2][0] - cutSide.prof[1][0]) * 100) / 100; out.ditchZ = Math.round((cutSide.prof[0][1] - cutSide.prof[1][1]) * 100) / 100; }
+    const ze = p.L.ze; out.zeOk = Math.abs(ze - (p.z - l3rFall(c.spec, tE) - D)) < 1e-6;
+    const M = l3rLayerMesh(c, c.geom, 2); out.layerPts = M.pts.length === c.st.length * 6; out.layerClosed = M.closed;
+    const sec = l3rsSection(c, 30); out.lay = sec.lay.length; out.poly6 = sec.lay.every(l => l.poly.length === 6); out.terrW = Math.round((sec.tEl + sec.tEr) * 100) / 100; out.terrExp = Math.round((sec.wl + sec.wr + 2 * D * k) * 100) / 100;
+    // nedersta lagret är bredare än vägbanan (sluttande kant)
+    const lastPoly = sec.lay[sec.lay.length - 1].poly; out.bottomWider = Math.abs(lastPoly[3][0] - lastPoly[5][0]) > Math.abs(sec.lay[0].poly[0][0] - sec.lay[0].poly[2][0]) + 1;
+    l3rsOpen(); l3rsSet(30, false); out.near = l3rs.near !== false; l3rs.near = false; l3rsRedraw(); out.drawn = true; l3rs.near = undefined;
+    const g = c.geom; out.cutIdx = g.cut ? g.cut.idx.length : 0; out.panelFig = !!document.querySelector('#v3RoadPanel .v3-rd-fig') && document.querySelectorAll('#v3RoadPanel .v3-rd-k').length >= 8;
+    l3rsClose(); return out; });
+  console.log('tvärsektion:', JSON.stringify(xs));
+  if (xs.err || Math.abs(xs.fall[0] - 0.075) > 1e-9 || Math.abs(xs.fall[1] - 0.075) > 1e-9 || Math.abs(xs.fall[2] - 0.075) > 1e-9 || Math.abs(xs.fall[3] + 0.075) > 1e-9 || xs.fall[4] !== 0 || !xs.cut || xs.prof !== 4 || xs.inner !== xs.innerExp || xs.bottomW !== 0.6 || xs.ditchZ !== 0.4 || !xs.zeOk || !xs.layerPts || !xs.layerClosed || xs.lay !== 4 || !xs.poly6 || Math.abs(xs.terrW - xs.terrExp) > 0.01 || !xs.bottomWider || !xs.drawn || !xs.panelFig) fail('Svensk tvärsektion: ' + JSON.stringify(xs));
+  if (Math.abs(xs.drop[0] + 0.075) > 0.002 || Math.abs(xs.drop[1] + 0.075) > 0.002) fail('Tvärfall i vägytan (3 m halv bredd × 2,5 % = 7,5 cm lägre vid kanten än i mitten): ' + JSON.stringify(xs.drop));
+  console.log('OK: svensk tvärsektion – tvärfall, lager som sluttande solider, terrassyta, dike med innerslänt, ytterslänt, ritning och förklarande figur');
   // Menyerna i flikar: en flik i taget, kompakt sammanfattning alltid synlig.
   const tb = await page.evaluate(async () => {
     const vis = () => [...document.querySelectorAll('#v3RoadPanel [data-rtab]')].filter(e => !e.hidden).map(e => e.dataset.rtab), out = {};
