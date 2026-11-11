@@ -121,10 +121,10 @@ function l3kSignsBuild() {
     const base = new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]), lift = l3kLift(c);
     const cv = l3kCard(c, i + 1), tex = new THREE.CanvasTexture(cv); tex.anisotropy = 4;
     if ("encoding" in tex) tex.encoding = THREE.sRGBEncoding;
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, depthTest: false }));
     const w = 3.2; sp.scale.set(w, w * cv.height / cv.width, 1);
     sp.center.set(0.08, 0); sp.position.copy(base).add(new THREE.Vector3(0, 0, lift));
-    sp.userData.commentId = c.id; sp.renderOrder = 5;
+    sp.userData.commentId = c.id; sp.renderOrder = 1000;   // alltid överst – punktmoln och modeller ska inte skymma skylten (Victor 2026-11-11)
     const pole = new THREE.Line(new THREE.BufferGeometry().setFromPoints([base, base.clone().add(new THREE.Vector3(0, 0, lift))]), new THREE.LineBasicMaterial({ color: new THREE.Color(l3kCol(c)) }));
     pole.userData.noHit = true; pole.raycast = () => {}; pole.userData.commentId = c.id; pole.userData.kPart = "pole";
     const dot = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(l3kCol(c)) }));

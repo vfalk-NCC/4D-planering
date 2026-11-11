@@ -92,26 +92,39 @@ function l3bqMesh(tris) {
   return { k: "mesh", pts, faces, closed: l3bqClosed(faces.map(f => [f[0], f[1], f[2]])) };
 }
 /* Delar ett nät/en kropp i bitar. opts: { mode: "length" | "count", value }. Returnerar { pieces: [mesh…], axis, len } eller { err }. */
+/* Delar längs objektets längdriktning (n) och/eller tvärs (v, vinkelrätt i plan). Placerade snitt: opts.cuts (längs) och opts.cutsW (tvärs), avstånd från objektets ena kant.
+   Båda riktningarna ger ett rutnät av bitar: först delas objektet i remsor längs, därefter delas varje remsa tvärs. Enkelt läge: opts.dir "l" | "w" med mode/value. */
+const l3bqSVol = T => T.reduce((s, [A, B, C]) => s + (A[0] * (B[1] * C[2] - B[2] * C[1]) - A[1] * (B[0] * C[2] - B[2] * C[0]) + A[2] * (B[0] * C[1] - B[1] * C[0])) / 6, 0);
+function l3bqSlice(tris0, nrm, o, positions) {
+  const out = []; let rest = tris0, sg = l3bqSVol(tris0) < 0 ? -1 : 1;   // nät som är lindade inåt (negativ volym) behöver omvända lock
+  positions.forEach(pos => { const r = l3bqPlane(rest, nrm, o + pos), capLo = l3bqCap(r.seg, nrm, [nrm[0] * sg, nrm[1] * sg]), capHi = l3bqCap(r.seg, nrm, [-nrm[0] * sg, -nrm[1] * sg]); out.push([...r.lo, ...capLo]); rest = [...r.hi, ...capHi]; });
+  out.push(rest); return out;
+}
 function l3bqCut(p, opts) {
   const lm = typeof modLocalMesh === "function" ? modLocalMesh(p) : null; if (!lm || !lm.faces || !lm.faces.length) return { err: "Objektet har ingen yta att dela." };
   const P = lm.pts, tris = lm.faces.map(f => [P[f[0] - 1], P[f[1] - 1], P[f[2] - 1]]);
   let mx = 0, my = 0; P.forEach(q => { mx += q[0]; my += q[1]; }); mx /= P.length; my /= P.length;
   let sxx = 0, sxy = 0, syy = 0; P.forEach(q => { const a = q[0] - mx, b = q[1] - my; sxx += a * a; sxy += a * b; syy += b * b; });
-  const th = 0.5 * Math.atan2(2 * sxy, sxx - syy), n = [Math.cos(th), Math.sin(th)];
-  let t0 = Infinity, t1 = -Infinity; P.forEach(q => { const t = q[0] * n[0] + q[1] * n[1]; t0 = Math.min(t0, t); t1 = Math.max(t1, t); });
-  const len = t1 - t0; if (len < 0.05) return { err: "Objektet är för kort för att delas." };
-  const own = Array.isArray(opts.cuts) ? opts.cuts.map(Number).filter(d => d > 0.01 && d < len - 0.01).sort((a, b) => a - b) : null;
-  if (own && !own.length) return { err: "Placera minst ett snitt inne i objektet." };
-  const val = Number(opts.value) || 0; let N = own ? own.length + 1 : opts.mode === "count" ? Math.round(val) : Math.ceil(len / Math.max(0.05, val) - 1e-6);
-  if (!(N >= 2)) return { err: opts.mode === "count" ? "Ange minst 2 bitar." : `Objektet är ${len.toFixed(1).replace(".", ",")} m långt – bitlängden måste vara kortare.` };
-  if (N > 200) return { err: "Det blir över 200 bitar – ange en längre bitlängd." };
-  const step = opts.mode === "count" ? len / N : val, pieces = []; let rest = tris;
-  for (let k = 1; k < N; k++) {
-    const c = own ? t0 + own[k - 1] : t0 + step * k, r = l3bqPlane(rest, n, c), capLo = l3bqCap(r.seg, n, n), capHi = l3bqCap(r.seg, n, [-n[0], -n[1]]);
-    pieces.push(l3bqMesh([...r.lo, ...capLo])); rest = [...r.hi, ...capHi];
+  const th = 0.5 * Math.atan2(2 * sxy, sxx - syy), n = [Math.cos(th), Math.sin(th)], v = [-n[1], n[0]];
+  let t0 = Infinity, t1 = -Infinity, w0 = Infinity, w1 = -Infinity; P.forEach(q => { const t = q[0] * n[0] + q[1] * n[1], w = q[0] * v[0] + q[1] * v[1]; t0 = Math.min(t0, t); t1 = Math.max(t1, t); w0 = Math.min(w0, w); w1 = Math.max(w1, w); });
+  const len = t1 - t0, lenW = w1 - w0; if (len < 0.05 && lenW < 0.05) return { err: "Objektet är för litet för att delas." };
+  const clean = (arr, L) => (Array.isArray(arr) ? arr.map(Number).filter(d => d > 0.01 && d < L - 0.01).sort((a, b) => a - b) : null);
+  let posL, posW = [];
+  if (Array.isArray(opts.cuts) || Array.isArray(opts.cutsW)) {
+    posL = clean(opts.cuts, len) || []; posW = clean(opts.cutsW, lenW) || [];
+    if (!posL.length && !posW.length) return { err: "Placera minst ett snitt inne i objektet." };
+  } else {
+    const wide = opts.dir === "w", L = wide ? lenW : len; if (L < 0.05) return { err: "Objektet är för smalt för att delas åt det hållet." };
+    const val = Number(opts.value) || 0, N = opts.mode === "count" ? Math.round(val) : Math.ceil(L / Math.max(0.05, val) - 1e-6);
+    if (!(N >= 2)) return { err: opts.mode === "count" ? "Ange minst 2 bitar." : `Objektet är ${L.toFixed(1).replace(".", ",")} m ${wide ? "brett" : "långt"} – bitlängden måste vara kortare.` };
+    if (N > 200) return { err: "Det blir över 200 bitar – ange en längre bitlängd." };
+    const step = opts.mode === "count" ? L / N : val, pos = Array.from({ length: N - 1 }, (_, k) => step * (k + 1));
+    if (wide) { posL = []; posW = pos; } else posL = pos;
   }
-  pieces.push(l3bqMesh(rest));
-  return { pieces: pieces.filter(m => m.faces.length), axis: n, len };
+  if ((posL.length + 1) * (posW.length + 1) > 400) return { err: "Det blir över 400 bitar – placera färre snitt." };
+  const strips = posL.length ? l3bqSlice(tris, n, t0, posL) : [tris], pieces = [];
+  strips.forEach(st => { (posW.length ? l3bqSlice(st, v, w0, posW) : [st]).forEach(q => pieces.push(l3bqMesh(q))); });
+  return { pieces: pieces.filter(m => m.faces.length), axis: n, len, lenW, nL: posL.length + 1, nW: posW.length + 1 };
 }
 function l3bqRun(p, opts) {
   const r = l3bqCut(p, opts); if (r.err) { l3Status(r.err, true); return null; }
@@ -121,24 +134,25 @@ function l3bqRun(p, opts) {
     Object.keys(p).forEach(k => { if (!core.has(k)) q[k] = p[k]; }); made.push(q);
   });
   l3SelectIds([p.id]); l3DeleteSel(); l3SelectIds(made.map(q => q.id)); l3Changed();
-  l3Status(`${p.name || "Objektet"} (${r.len.toFixed(1).replace(".", ",")} m) delat i ${made.length} bitar. Ctrl+Z ångrar.`);
+  l3Status(`${p.name || "Objektet"} (${r.len.toFixed(1).replace(".", ",")} m) delat i ${made.length} bitar${r.nL > 1 && r.nW > 1 ? ` (${r.nL} längs × ${r.nW} tvärs)` : ""}. Ctrl+Z ångrar.`);
   return made;
 }
-const l3bqPref = { mode: "length", value: 6 };
+const l3bqPref = { mode: "length", value: 6, dir: "l" };
 function l3bqHtml(list) {
   if (!list || list.length !== 1 || !list[0].m || (list[0].m.k !== "mesh" && list[0].m.k !== "solid")) return "";
   return `<details class="v3-field v3-bqsplit" title="Dela objektet i bitar längs dess längdriktning – t.ex. en lång mur i gjutetapper"><summary><span>Dela i bitar…</span></summary>
     <label class="v3-field"><span>Dela efter</span><select data-bqmode><option value="length" ${l3bqPref.mode === "length" ? "selected" : ""}>Bitlängd (m)</option><option value="count" ${l3bqPref.mode === "count" ? "selected" : ""}>Antal bitar</option></select></label>
+    <label class="v3-field"><span>Riktning</span><select data-bqdir><option value="l" ${l3bqPref.dir !== "w" ? "selected" : ""}>Längs objektet</option><option value="w" ${l3bqPref.dir === "w" ? "selected" : ""}>Tvärs (andra ledden)</option></select></label>
     <label class="v3-field"><span>Värde</span><input type="number" data-bqval min="0.1" step="0.5" value="${l3bqPref.value}"></label>
     <button type="button" class="btn" data-bqgo>Dela</button>
     <button type="button" class="btn" data-bqplace title="Placera insättningspunkter där objektet ska delas – tryck på objektet, dra ringarna, ＋ lägger till fler">Placera snitt i 3D…</button></details>`;
 }
 function l3bqBind(side, list) {
-  const go = side.querySelector("[data-bqgo]"); if (!go) return; const m = side.querySelector("[data-bqmode]"), v = side.querySelector("[data-bqval]");
+  const go = side.querySelector("[data-bqgo]"); if (!go) return; const m = side.querySelector("[data-bqmode]"), v = side.querySelector("[data-bqval]"), dr = side.querySelector("[data-bqdir]"); if (dr) dr.onchange = () => { l3bqPref.dir = dr.value; };
   m.onchange = () => { l3bqPref.mode = m.value; if (m.value === "count" && l3bqPref.value < 2) { l3bqPref.value = 4; v.value = 4; } };
   v.onchange = () => { l3bqPref.value = Number(v.value) || l3bqPref.value; };
   const pl = side.querySelector("[data-bqplace]"); if (pl) pl.onclick = () => l3bqCutStart(list[0]);
-  go.onclick = () => { l3bqPref.mode = m.value; l3bqPref.value = Number(v.value) || 0; setTimeout(() => l3bqRun(list[0], l3bqPref), 20); };
+  go.onclick = () => { l3bqPref.mode = m.value; if (dr) l3bqPref.dir = dr.value; l3bqPref.value = Number(v.value) || 0; setTimeout(() => l3bqRun(list[0], l3bqPref), 20); };
 }
 
 /* ---- 3. Gjutform som följer formen (Victor 2026-11-11: "muren är bergsanpassad – kan vi bygga in en funktion i den automatiska formen som anpassar sig efter formen på muren?") ----
@@ -185,7 +199,10 @@ function l3bqFormMake(margin = 0, thick = 0.03) {
 /* ---- 4. Placera snitt i 3D (Victor 2026-11-11: "placera insättningspunkter där jag ska dela och plustecken om jag vill dela den i flera bitar – samma som för byggvägen") ----
    Dela i bitar → Placera snitt i 3D…: tryck på objektet där det ska delas (ett snitt = ett lodrätt plan som visas som en tonad skiva med en ring överst), dra ringarna längs objektet,
    ＋ mellan snitten lägger till ett till, ✕ tar bort, och i rutan går avstånden att skriva in (m från början). Dela-knappen delar vid exakt de snitten. Esc avbryter. */
-const l3bqS = { on: false, id: null, cuts: [], ax: null, rings: [], plus: [], grp: null, panel: null, down: null, key: null, drag: null };
+const l3bqS = { on: false, id: null, cuts: [], cutsW: [], dir: "l", ax: null, rings: [], plus: [], grp: null, panel: null, down: null, key: null, drag: null };
+/* Snitt åt två håll: "l" = längs objektet (cuts), "w" = tvärs (cutsW). Avstånd mäts från objektets ena kant åt respektive håll. */
+const l3bqSet = d => (d === "w" ? l3bqS.cutsW : l3bqS.cuts);
+const l3bqLenOf = (a, d) => (d === "w" ? a.w1 - a.w0 : a.len);
 function l3bqAxis(p) {
   const lm = modLocalMesh(p); if (!lm || !lm.pts || !lm.pts.length) return null; const P = lm.pts;
   let mx = 0, my = 0; P.forEach(q => { mx += q[0]; my += q[1]; }); mx /= P.length; my /= P.length;
@@ -201,21 +218,22 @@ function l3bqWorld(p, a, t, w, z) {
   return g.localToWorld(new THREE.Vector3(t * a.n[0] + w * a.v[0], t * a.n[1] + w * a.v[1], z));
 }
 function l3bqCutStart(p) {
-  if (!p || !p.m) return; l3bqCutEnd(true); const a = l3bqAxis(p); if (!a || a.len < 0.1) { l3Status("Objektet är för kort för att delas.", true); return; }
-  Object.assign(l3bqS, { on: true, id: p.id, cuts: [], ax: a }); const host = l3.renderer.domElement.parentElement, dom = l3.renderer.domElement;
+  if (!p || !p.m) return; l3bqCutEnd(true); const a = l3bqAxis(p); if (!a || (a.len < 0.1 && a.w1 - a.w0 < 0.1)) { l3Status("Objektet är för litet för att delas.", true); return; }
+  Object.assign(l3bqS, { on: true, id: p.id, cuts: [], cutsW: [], dir: "l", ax: a }); const dom = l3.renderer.domElement;
   l3bqPanel(); l3bqDraw();
-  l3Status("Snitt: tryck på objektet där det ska delas. Dra ringarna för att flytta, ＋ lägger till fler. Esc avbryter.");
+  l3Status("Snitt: välj riktning (Längs / Tvärs) och tryck på objektet där det ska delas. Dra ringarna för att flytta, ＋ lägger till fler. Esc avbryter.");
   l3bqS.down = e => {
     if (e.button !== 0 || e.target !== dom) return; const q = placements.find(x => x.id === l3bqS.id), g = q && l3.placeMeshes.get(q.id); if (!g) return;
     const ray = l3MouseRay(e), hit = new THREE.Raycaster(ray.origin, ray.direction).intersectObject(g, true)[0]; e.stopPropagation(); e.preventDefault(); if (!hit) { l3Status("Tryck på själva objektet.", true); return; }
-    const lp = g.worldToLocal(hit.point.clone()), t = lp.x * a.n[0] + lp.y * a.n[1] - a.t0; l3bqAdd(t);
+    const lp = g.worldToLocal(hit.point.clone()), d = l3bqS.dir; l3bqAdd(d === "w" ? lp.x * a.v[0] + lp.y * a.v[1] - a.w0 : lp.x * a.n[0] + lp.y * a.n[1] - a.t0, d);
   };
   l3bqS.key = e => { if (!l3bqS.on) return; if (e.key === "Escape") { e.stopPropagation(); l3bqCutEnd(); l3Status("Delningen avbröts."); } else if (e.key === "Enter") { e.stopPropagation(); l3bqCutGo(); } };
-  dom.addEventListener("pointerdown", l3bqS.down, true); window.addEventListener("keydown", l3bqS.key, true); void host;
+  dom.addEventListener("pointerdown", l3bqS.down, true); window.addEventListener("keydown", l3bqS.key, true);
 }
-function l3bqAdd(t) {
-  const a = l3bqS.ax; t = Math.max(0.02, Math.min(a.len - 0.02, t)); if (l3bqS.cuts.some(c => Math.abs(c - t) < 0.02)) return;
-  l3bqS.cuts.push(Math.round(t * 100) / 100); l3bqS.cuts.sort((x, y) => x - y); l3bqPanel(); l3bqDraw();
+function l3bqAdd(t, d) {
+  d = d || l3bqS.dir; const a = l3bqS.ax, L = l3bqLenOf(a, d), set = l3bqSet(d); if (L < 0.05) { l3Status("Objektet är för smalt för att delas åt det hållet.", true); return; }
+  t = Math.max(0.02, Math.min(L - 0.02, t)); if (set.some(c => Math.abs(c - t) < 0.02)) return;
+  set.push(Math.round(t * 100) / 100); set.sort((x, y) => x - y); l3bqPanel(); l3bqDraw();
 }
 function l3bqCutEnd(keepUi) {
   const dom = l3.renderer && l3.renderer.domElement; if (dom && l3bqS.down) dom.removeEventListener("pointerdown", l3bqS.down, true); if (l3bqS.key) window.removeEventListener("keydown", l3bqS.key, true);
@@ -224,55 +242,64 @@ function l3bqCutEnd(keepUi) {
   l3bqS.on = false; l3bqS.down = l3bqS.key = null; l3bqS.drag = null; if (!keepUi) l3Render();
 }
 function l3bqCutGo() {
-  const p = placements.find(x => x.id === l3bqS.id); const cuts = l3bqS.cuts.slice(); if (!p) { l3bqCutEnd(); return; }
-  if (!cuts.length) { l3Status("Placera minst ett snitt först (tryck på objektet eller ＋).", true); return; }
-  l3bqCutEnd(true); l3bqRun(p, { cuts });
+  const p = placements.find(x => x.id === l3bqS.id); const cuts = l3bqS.cuts.slice(), cutsW = l3bqS.cutsW.slice(); if (!p) { l3bqCutEnd(); return; }
+  if (!cuts.length && !cutsW.length) { l3Status("Placera minst ett snitt först (tryck på objektet eller ＋).", true); return; }
+  l3bqCutEnd(true); l3bqRun(p, { cuts, cutsW });
 }
 function l3bqPanel() {
   const host = document.getElementById("v3Canvas"); if (!host || !l3bqS.on) return; const p = placements.find(x => x.id === l3bqS.id), a = l3bqS.ax, E = typeof escHtml === "function" ? escHtml : s => s, f = v => (Math.round(v * 100) / 100).toString().replace(".", ",");
   let el = l3bqS.panel; if (!el) { el = document.createElement("div"); el.className = "v3-bqpanel"; el.style.cssText = "position:absolute;left:12px;top:12px;z-index:20;min-width:230px;max-width:300px;padding:10px 12px;border-radius:12px;background:#fff;box-shadow:0 8px 28px rgba(15,23,42,.28);font:12px system-ui,sans-serif;color:#0f172a"; ["pointerdown", "wheel", "click", "dblclick", "contextmenu", "keydown"].forEach(t => el.addEventListener(t, e => e.stopPropagation())); host.appendChild(el); l3bqS.panel = el; }
-  const rows = l3bqS.cuts.map((c, i) => `<div style="display:flex;gap:6px;align-items:center;margin:4px 0"><span style="width:56px">Snitt ${i + 1}</span><input type="text" data-bqc="${i}" value="${f(c)}" style="width:70px;padding:3px 6px;border:1px solid #d7dde6;border-radius:6px"> <span>m</span><button type="button" data-bqx="${i}" title="Ta bort snittet" style="margin-left:auto;border:0;background:none;cursor:pointer">✕</button></div>`).join("");
-  const parts = l3bqS.cuts.length + 1, seg = [0, ...l3bqS.cuts, a.len].map((v, i, A) => i ? v - A[i - 1] : 0).slice(1);
-  el.innerHTML = `<b>Dela ${E(p ? p.name || "objektet" : "objektet")}</b><div style="color:#64748b;margin:2px 0 6px">${f(a.len)} m långt · tryck på objektet för att sätta ett snitt</div>${rows || '<div style="color:#94a3b8;margin:6px 0">Inga snitt än.</div>'}
-    <div style="color:#475569;margin:6px 0">${parts} bitar${l3bqS.cuts.length ? ": " + seg.map(f).join(" · ") + " m" : ""}</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" data-bqa style="padding:4px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer">＋ Snitt</button><button type="button" data-bqeq style="padding:4px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer" title="Fördela snitten jämnt (lika långa bitar)">Jämnt</button><span style="flex:1"></span><button type="button" data-bqno style="padding:4px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer">Avbryt</button><button type="button" data-bqdo style="padding:4px 12px;border-radius:8px;border:0;background:#2563eb;color:#fff;cursor:pointer;font-weight:600">Dela</button></div>`;
-  el.querySelectorAll("[data-bqc]").forEach(i => { i.onchange = () => { const k = Number(i.dataset.bqc), v = Number(String(i.value).replace(",", ".")); if (v > 0.01 && v < a.len - 0.01) { l3bqS.cuts[k] = v; l3bqS.cuts.sort((x, y) => x - y); } l3bqPanel(); l3bqDraw(); }; });
-  el.querySelectorAll("[data-bqx]").forEach(b => { b.onclick = () => { l3bqS.cuts.splice(Number(b.dataset.bqx), 1); l3bqPanel(); l3bqDraw(); }; });
-  el.querySelector("[data-bqa]").onclick = () => { const A = [0, ...l3bqS.cuts, a.len]; let bi = 0; for (let i = 1; i < A.length; i++) if (A[i] - A[i - 1] > A[bi + 1] - A[bi]) bi = i - 1; l3bqAdd((A[bi] + A[bi + 1]) / 2); };
-  el.querySelector("[data-bqeq]").onclick = () => { const n = Math.max(2, l3bqS.cuts.length + 1); l3bqS.cuts = Array.from({ length: n - 1 }, (_, i) => Math.round(a.len * (i + 1) / n * 100) / 100); l3bqPanel(); l3bqDraw(); };
+  const d = l3bqS.dir, L = l3bqLenOf(a, d), set = l3bqSet(d), W = a.w1 - a.w0, btn = "padding:4px 10px;border-radius:8px;border:1px solid #cbd5e1;background:#fff;cursor:pointer", seg = on => `${btn};${on ? "background:#2563eb;color:#fff;border-color:#2563eb;font-weight:600" : ""}`;
+  const row = (dd, c, i) => `<div style="display:flex;gap:6px;align-items:center;margin:4px 0"><span style="width:64px">${dd === "w" ? "Tvärs" : "Längs"} ${i + 1}</span><input type="text" data-bqc="${dd}:${i}" value="${f(c)}" style="width:70px;padding:3px 6px;border:1px solid #d7dde6;border-radius:6px"> <span>m</span><button type="button" data-bqx="${dd}:${i}" title="Ta bort snittet" style="margin-left:auto;border:0;background:none;cursor:pointer">✕</button></div>`;
+  const rows = l3bqS.cuts.map((c, i) => row("l", c, i)).join("") + l3bqS.cutsW.map((c, i) => row("w", c, i)).join("");
+  const nL = l3bqS.cuts.length + 1, nW = l3bqS.cutsW.length + 1, seg1 = [0, ...set, L].map((v, i, A) => i ? v - A[i - 1] : 0).slice(1);
+  el.innerHTML = `<b>Dela ${E(p ? p.name || "objektet" : "objektet")}</b><div style="color:#64748b;margin:2px 0 6px">${f(a.len)} m långt · ${f(W)} m brett · tryck på objektet för att sätta ett snitt</div>
+    <div style="display:flex;gap:6px;margin:0 0 6px"><button type="button" data-bqdir="l" style="${seg(d === "l")}" title="Snitt vinkelrätt mot längdriktningen">Längs</button><button type="button" data-bqdir="w" style="${seg(d === "w")}" title="Snitt åt andra hållet – delar objektet på bredden">Tvärs</button></div>
+    ${rows || '<div style="color:#94a3b8;margin:6px 0">Inga snitt än.</div>'}
+    <div style="color:#475569;margin:6px 0">${nL * nW} bitar${nL > 1 && nW > 1 ? ` (${nL} längs × ${nW} tvärs)` : ""}${set.length ? ` · ${d === "w" ? "tvärs" : "längs"}: ${seg1.map(f).join(" · ")} m` : ""}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" data-bqa style="${btn}">＋ Snitt</button><button type="button" data-bqeq style="${btn}" title="Fördela snitten jämnt (lika stora bitar) åt valt håll">Jämnt</button><span style="flex:1"></span><button type="button" data-bqno style="${btn}">Avbryt</button><button type="button" data-bqdo style="padding:4px 12px;border-radius:8px;border:0;background:#2563eb;color:#fff;cursor:pointer;font-weight:600">Dela</button></div>`;
+  el.querySelectorAll("[data-bqdir]").forEach(b => { b.onclick = () => { l3bqS.dir = b.dataset.bqdir; l3bqPanel(); l3bqDraw(); }; });
+  el.querySelectorAll("[data-bqc]").forEach(i => { i.onchange = () => { const [dd, k] = i.dataset.bqc.split(":"), st = l3bqSet(dd), v = Number(String(i.value).replace(",", ".")); if (v > 0.01 && v < l3bqLenOf(a, dd) - 0.01) { st[Number(k)] = v; st.sort((x, y) => x - y); } l3bqPanel(); l3bqDraw(); }; });
+  el.querySelectorAll("[data-bqx]").forEach(b => { b.onclick = () => { const [dd, k] = b.dataset.bqx.split(":"); l3bqSet(dd).splice(Number(k), 1); l3bqPanel(); l3bqDraw(); }; });
+  el.querySelector("[data-bqa]").onclick = () => { const A = [0, ...set, L]; let bi = 0; for (let i = 1; i < A.length; i++) if (A[i] - A[i - 1] > A[bi + 1] - A[bi]) bi = i - 1; l3bqAdd((A[bi] + A[bi + 1]) / 2, d); };
+  el.querySelector("[data-bqeq]").onclick = () => { const n = Math.max(2, set.length + 1); const v = Array.from({ length: n - 1 }, (_, i) => Math.round(L * (i + 1) / n * 100) / 100); if (d === "w") l3bqS.cutsW = v; else l3bqS.cuts = v; l3bqPanel(); l3bqDraw(); };
   el.querySelector("[data-bqno]").onclick = () => { l3bqCutEnd(); l3Status("Delningen avbröts."); };
   el.querySelector("[data-bqdo]").onclick = l3bqCutGo;
 }
-/* Skivorna i 3D + ringar och plus (ringarna följer kameran – l3bqPlace anropas varje bild). */
+/* Skivorna i 3D + ringar och plus (ringarna följer kameran – l3bqPlace anropas varje bild). Ringarna: först alla "längs", sedan alla "tvärs". Plus gäller valt håll. */
+const l3bqEach = () => [...l3bqS.cuts.map((c, i) => ({ d: "l", i, c })), ...l3bqS.cutsW.map((c, i) => ({ d: "w", i, c }))];
 function l3bqDraw() {
   if (!l3bqS.on) return; const p = placements.find(x => x.id === l3bqS.id), a = l3bqS.ax; if (!p || !a) return;
   if (l3bqS.grp) { l3.scene.remove(l3bqS.grp); l3bqS.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
   const grp = new THREE.Group(); grp.name = "bqcuts"; l3.scene.add(grp); l3bqS.grp = grp;
-  const mat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }), pad = 0.15;
-  l3bqS.cuts.forEach(c => {
-    const t = a.t0 + c, P = [[a.w0 - pad, a.z0 - pad], [a.w1 + pad, a.z0 - pad], [a.w1 + pad, a.z1 + pad], [a.w0 - pad, a.z1 + pad]].map(([w, z]) => l3bqWorld(p, a, t, w, z)); if (P.some(x => !x)) return;
-    const g = new THREE.BufferGeometry().setFromPoints([P[0], P[1], P[2], P[0], P[2], P[3]]), m = new THREE.Mesh(g, mat); m.renderOrder = 30; m.raycast = () => {}; m.userData.noHit = true; grp.add(m);
-    const ln = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(P), new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false })); ln.renderOrder = 31; ln.raycast = () => {}; ln.userData.noHit = true; grp.add(ln);
+  const pad = 0.15, mats = { l: new THREE.MeshBasicMaterial({ color: 0xf59e0b, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }), w: new THREE.MeshBasicMaterial({ color: 0x06b6d4, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }) }, cols = { l: 0xf59e0b, w: 0x06b6d4 };
+  l3bqEach().forEach(({ d, c }) => {
+    const rect = d === "w" ? [[a.t0 - pad, a.w0 + c], [a.t1 + pad, a.w0 + c]] : [[a.t0 + c, a.w0 - pad], [a.t0 + c, a.w1 + pad]];   // (t,w) för skivans två kanter
+    const P = [[rect[0], a.z0 - pad], [rect[1], a.z0 - pad], [rect[1], a.z1 + pad], [rect[0], a.z1 + pad]].map(([tw, z]) => l3bqWorld(p, a, tw[0], tw[1], z)); if (P.some(x => !x)) return;
+    const g = new THREE.BufferGeometry().setFromPoints([P[0], P[1], P[2], P[0], P[2], P[3]]), m = new THREE.Mesh(g, mats[d]); m.renderOrder = 30; m.raycast = () => {}; m.userData.noHit = true; grp.add(m);
+    const ln = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(P), new THREE.LineBasicMaterial({ color: cols[d], depthTest: false })); ln.renderOrder = 31; ln.raycast = () => {}; ln.userData.noHit = true; grp.add(ln);
   });
-  const host = l3.renderer.domElement.parentElement;
-  while (l3bqS.rings.length > l3bqS.cuts.length) l3bqS.rings.pop().remove();
-  while (l3bqS.rings.length < l3bqS.cuts.length) { const i = l3bqS.rings.length, b = document.createElement("button"); b.type = "button"; b.className = "v3-mhandle"; b.title = "Dra för att flytta snittet"; b.onpointerdown = e => l3bqDragStart(e, i); b.onclick = e => e.stopPropagation(); host.appendChild(b); l3bqS.rings.push(b); }
-  const np = l3bqS.cuts.length + 1; while (l3bqS.plus.length > np) l3bqS.plus.pop().remove();
-  while (l3bqS.plus.length < np) { const i = l3bqS.plus.length, b = document.createElement("button"); b.type = "button"; b.className = "v3-mplus"; b.textContent = "+"; b.title = "Lägg till ett snitt här (delar biten i två)"; b.onpointerdown = e => e.stopPropagation(); b.onclick = e => { e.stopPropagation(); const A = [0, ...l3bqS.cuts, a.len]; l3bqAdd((A[i] + A[i + 1]) / 2); }; host.appendChild(b); l3bqS.plus.push(b); }
+  const host = l3.renderer.domElement.parentElement, all = l3bqEach();
+  while (l3bqS.rings.length > all.length) l3bqS.rings.pop().remove();
+  while (l3bqS.rings.length < all.length) { const k = l3bqS.rings.length, b = document.createElement("button"); b.type = "button"; b.className = "v3-mhandle"; b.title = "Dra för att flytta snittet"; b.onpointerdown = e => { const it = l3bqEach()[k]; if (it) l3bqDragStart(e, it.i, it.d); }; b.onclick = e => e.stopPropagation(); host.appendChild(b); l3bqS.rings.push(b); }
+  all.forEach((it, k) => { l3bqS.rings[k].style.borderColor = it.d === "w" ? "#06b6d4" : ""; });
+  const set = l3bqSet(l3bqS.dir), np = set.length + 1; while (l3bqS.plus.length > np) l3bqS.plus.pop().remove();
+  while (l3bqS.plus.length < np) { const i = l3bqS.plus.length, b = document.createElement("button"); b.type = "button"; b.className = "v3-mplus"; b.textContent = "+"; b.title = "Lägg till ett snitt här (delar biten i två)"; b.onpointerdown = e => e.stopPropagation(); b.onclick = e => { e.stopPropagation(); const d = l3bqS.dir, S = l3bqSet(d), A = [0, ...S, l3bqLenOf(l3bqS.ax, d)]; l3bqAdd((A[i] + A[i + 1]) / 2, d); }; host.appendChild(b); l3bqS.plus.push(b); }
   l3bqPlace(); l3Render();
 }
 function l3bqPlace() {
-  if (!l3bqS.on) return; const p = placements.find(x => x.id === l3bqS.id), a = l3bqS.ax; if (!p || !a) return; const zTop = a.z1 + 0.35, wc = (a.w0 + a.w1) / 2;
-  const put = (el, t) => { const w = l3bqWorld(p, a, a.t0 + t, wc, zTop); if (!w) { el.style.display = "none"; return; } const q = l3ToScreen(w); el.style.display = q.behind ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px"; };
-  l3bqS.rings.forEach((el, i) => put(el, l3bqS.cuts[i])); const A = [0, ...l3bqS.cuts, a.len]; l3bqS.plus.forEach((el, i) => { if (l3bqS.drag) el.style.display = "none"; else put(el, (A[i] + A[i + 1]) / 2); });
+  if (!l3bqS.on) return; const p = placements.find(x => x.id === l3bqS.id), a = l3bqS.ax; if (!p || !a) return; const zTop = a.z1 + 0.35, wc = (a.w0 + a.w1) / 2, tc = (a.t0 + a.t1) / 2;
+  const put = (el, d, c) => { const w = d === "w" ? l3bqWorld(p, a, tc, a.w0 + c, zTop) : l3bqWorld(p, a, a.t0 + c, wc, zTop); if (!w) { el.style.display = "none"; return; } const q = l3ToScreen(w); el.style.display = q.behind ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px"; };
+  l3bqEach().forEach((it, k) => { if (l3bqS.rings[k]) put(l3bqS.rings[k], it.d, it.c); });
+  const d = l3bqS.dir, A = [0, ...l3bqSet(d), l3bqLenOf(a, d)]; l3bqS.plus.forEach((el, i) => { if (l3bqS.drag) el.style.display = "none"; else put(el, d, (A[i] + A[i + 1]) / 2); });
 }
-function l3bqDragStart(e, i) {
-  if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); const p = placements.find(x => x.id === l3bqS.id), a = l3bqS.ax, g = p && l3.placeMeshes.get(p.id); if (!g) return;
-  l3bqS.drag = { i }; const zTop = a.z1 + 0.35;
+function l3bqDragStart(e, i, d) {
+  d = d || "l"; if (e.button !== 0) return; e.preventDefault(); e.stopPropagation(); const p = placements.find(x => x.id === l3bqS.id), a = l3bqS.ax, g = p && l3.placeMeshes.get(p.id); if (!g) return;
+  l3bqS.drag = { i, d }; const zTop = a.z1 + 0.35, set = l3bqSet(d), L = l3bqLenOf(a, d);
   const mv = ev => {
     const ray = l3MouseRay(ev), up = g.localToWorld(new THREE.Vector3(0, 0, zTop)), pl = new THREE.Plane(new THREE.Vector3(0, 0, 1), -up.z), hit = new THREE.Vector3(); if (!ray.intersectPlane(pl, hit)) return;
-    const lp = g.worldToLocal(hit.clone()), t = lp.x * a.n[0] + lp.y * a.n[1] - a.t0, lo = (i ? l3bqS.cuts[i - 1] : 0) + 0.02, hi = (i < l3bqS.cuts.length - 1 ? l3bqS.cuts[i + 1] : a.len) - 0.02;
-    l3bqS.cuts[i] = Math.round(Math.max(lo, Math.min(hi, t)) * 100) / 100; l3bqDraw();
+    const lp = g.worldToLocal(hit.clone()), t = d === "w" ? lp.x * a.v[0] + lp.y * a.v[1] - a.w0 : lp.x * a.n[0] + lp.y * a.n[1] - a.t0, lo = (i ? set[i - 1] : 0) + 0.02, hi = (i < set.length - 1 ? set[i + 1] : L) - 0.02;
+    set[i] = Math.round(Math.max(lo, Math.min(hi, t)) * 100) / 100; l3bqDraw();
   };
   const end = () => { window.removeEventListener("pointermove", mv, true); window.removeEventListener("pointerup", end, true); l3bqS.drag = null; l3bqPanel(); l3bqDraw(); };
   window.addEventListener("pointermove", mv, true); window.addEventListener("pointerup", end, true);

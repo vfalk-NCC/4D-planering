@@ -39,7 +39,7 @@ function l3CtxAlt(x, y, e) {
   if (pk && pk.cloud) {
     const c = pk.cloud, id = c.id;
     l3Pop(x, y, [["Zooma till molnet", () => l3pcZoom(id)], ["Visa bara detta moln", () => l3pcSolo(id), { disabled: l3pc.clouds.length < 2 }], ["Sätt nollnivå (Z0) här", () => { l3SetPref("pcZ0", Math.round((pk.point.z + l3.O[2]) * 100) / 100); l3SetPref("pcMode", "z"); l3pcRecolor(); }],
-      ["Justera höjd…", () => l3pcSetDz(id)], null, ...comment, null, ["Släck molnet", () => { l3pcShow(id, false); l3LayersRender(); }]], c.name);
+      ["Justera höjd…", () => l3pcSetDz(id)], null, ...(typeof l3kNew === "function" && pk.point ? [["Kommentar här…", () => l3kNew(pk.point.clone(), null)]] : comment), null, ["Släck molnet", () => { l3pcShow(id, false); l3LayersRender(); }]], c.name);
     return true;
   }
   // 3) ritning (DXF/DWG)
