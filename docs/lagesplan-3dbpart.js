@@ -200,7 +200,7 @@ function l3bqFormMake(margin = 0, thick = 0.03) {
 /* ---- 4. Placera snitt i 3D (Victor 2026-11-11: "placera insättningspunkter där jag ska dela och plustecken om jag vill dela den i flera bitar – samma som för byggvägen") ----
    Dela i bitar → Placera snitt i 3D…: tryck på objektet där det ska delas (ett snitt = ett lodrätt plan som visas som en tonad skiva med en ring överst), dra ringarna längs objektet,
    ＋ mellan snitten lägger till ett till, ✕ tar bort, och i rutan går avstånden att skriva in (m från början). Dela-knappen delar vid exakt de snitten. Esc avbryter. */
-const l3bqS = { on: false, id: null, cuts: [], cutsW: [], dir: "l", rot: 0, ax: null, rings: [], plus: [], grp: null, panel: null, down: null, key: null, drag: null };
+const l3bqS = { on: false, id: null, cuts: [], cutsW: [], dir: "l", rot: 0, pick: null, pp: [], ax: null, rings: [], plus: [], grp: null, panel: null, down: null, key: null, drag: null };
 /* Snitt åt två håll: "l" = längs objektet (cuts), "w" = tvärs (cutsW). Avstånd mäts från objektets ena kant åt respektive håll. */
 const l3bqSet = d => (d === "w" ? l3bqS.cutsW : l3bqS.cuts);
 const l3bqLenOf = (a, d) => (d === "w" ? a.w1 - a.w0 : a.len);
@@ -211,7 +211,7 @@ function l3bqAxis(p, rot) {
   const th = 0.5 * Math.atan2(2 * sxy, sxx - syy) + (Number(rot) || 0) * Math.PI / 180, n = [Math.cos(th), Math.sin(th)];
   let t0 = Infinity, t1 = -Infinity, z0 = Infinity, z1 = -Infinity, w0 = Infinity, w1 = -Infinity; const vx = -n[1], vy = n[0];
   P.forEach(q => { const t = q[0] * n[0] + q[1] * n[1], w = q[0] * vx + q[1] * vy; t0 = Math.min(t0, t); t1 = Math.max(t1, t); w0 = Math.min(w0, w); w1 = Math.max(w1, w); z0 = Math.min(z0, q[2]); z1 = Math.max(z1, q[2]); });
-  return { n, v: [vx, vy], t0, t1, len: t1 - t0, z0, z1, w0, w1, tc: mx * n[0] + my * n[1], wc: mx * vx + my * vy };
+  return { n, v: [vx, vy], th, th0: th - (Number(rot) || 0) * Math.PI / 180, t0, t1, len: t1 - t0, z0, z1, w0, w1, tc: mx * n[0] + my * n[1], wc: mx * vx + my * vy };
 }
 /* lokal punkt (t längs, w tvärs, z) → 3D-vyns koordinater via objektets grupp */
 function l3bqWorld(p, a, t, w, z) {
@@ -220,15 +220,16 @@ function l3bqWorld(p, a, t, w, z) {
 }
 function l3bqCutStart(p) {
   if (!p || !p.m) return; l3bqCutEnd(true); const a = l3bqAxis(p); if (!a || (a.len < 0.1 && a.w1 - a.w0 < 0.1)) { l3Status("Objektet är för litet för att delas.", true); return; }
-  Object.assign(l3bqS, { on: true, id: p.id, cuts: [], cutsW: [], dir: "l", rot: 0, ax: a }); const dom = l3.renderer.domElement;
+  Object.assign(l3bqS, { on: true, id: p.id, cuts: [], cutsW: [], dir: "l", rot: 0, pick: null, pp: [], ax: a }); const dom = l3.renderer.domElement;
   l3bqPanel(); l3bqDraw();
   l3Status("Snitt: välj riktning (Längs / Tvärs) och tryck på objektet där det ska delas. Dra ringarna för att flytta, ＋ lägger till fler. Esc avbryter.");
   l3bqS.down = e => {
     if (e.button !== 0 || e.target !== dom) return; const q = placements.find(x => x.id === l3bqS.id), g = q && l3.placeMeshes.get(q.id); if (!g) return;
     const ray = l3MouseRay(e), hit = new THREE.Raycaster(ray.origin, ray.direction).intersectObject(g, true)[0]; e.stopPropagation(); e.preventDefault(); if (!hit) { l3Status("Tryck på själva objektet.", true); return; }
+    if (l3bqS.pick) { l3bqPickAt(hit, g); return; }
     const lp = g.worldToLocal(hit.point.clone()), d = l3bqS.dir; l3bqAdd(d === "w" ? lp.x * a.v[0] + lp.y * a.v[1] - a.w0 : lp.x * a.n[0] + lp.y * a.n[1] - a.t0, d);
   };
-  l3bqS.key = e => { if (!l3bqS.on) return; if (e.key === "Escape") { e.stopPropagation(); l3bqCutEnd(); l3Status("Delningen avbröts."); } else if (e.key === "Enter") { e.stopPropagation(); l3bqCutGo(); } };
+  l3bqS.key = e => { if (!l3bqS.on) return; if (e.key === "Escape") { e.stopPropagation(); if (l3bqS.pick) { l3bqPick(null); l3Status("Riktningsvalet avbröts."); return; } l3bqCutEnd(); l3Status("Delningen avbröts."); } else if (e.key === "Enter") { e.stopPropagation(); l3bqCutGo(); } };
   dom.addEventListener("pointerdown", l3bqS.down, true); window.addEventListener("keydown", l3bqS.key, true);
 }
 /* Vrider delningsriktningen (grader). Snitten räknas om från objektets kant, så de nollställs. */
@@ -237,6 +238,31 @@ function l3bqRotate(deg, absolute) {
   const a = l3bqAxis(p, r); if (!a) return; const had = l3bqS.cuts.length + l3bqS.cutsW.length;
   l3bqS.rot = Math.round(r * 10) / 10; l3bqS.ax = a; l3bqS.cuts = []; l3bqS.cutsW = []; l3bqPanel(); l3bqDraw();
   if (had) l3Status("Riktningen ändrades – snitten är nollställda, placera dem igen.");
+}
+/* Klicka ut riktningen: "line" = två punkter på objektet, snittet går genom linjen (lodrätt) och alla snitt blir parallella med den.
+   "face" = klicka på en lodrät sida, snitten läggs parallellt med sidan. Vinkeln räknas i objektets egna koordinater. */
+function l3bqAimAngle(theta) {   // theta = riktningen på snittplanets normal (radianer, objektets lokala xy)
+  const p = placements.find(x => x.id === l3bqS.id); if (!p) return; const base = l3bqAxis(p, 0); if (!base) return;
+  l3bqRotate(theta * 180 / Math.PI - base.th0 * 180 / Math.PI, true);
+}
+function l3bqAimLine(a, b) {   // a, b = lokala punkter (x, y, …) på snittlinjen; returnerar false om linjen är för kort
+  const dx = b.x - a.x, dy = b.y - a.y; if (Math.hypot(dx, dy) < 0.03) return false;
+  l3bqAimAngle(Math.atan2(dy, dx) + Math.PI / 2);
+  const n = l3bqS.ax.n; l3bqAdd(a.x * n[0] + a.y * n[1] - l3bqS.ax.t0, "l"); return true;
+}
+function l3bqPick(mode) { l3bqS.pick = mode || null; l3bqS.pp = []; l3bqPanel(); l3bqDraw(); l3Status(mode === "line" ? "Snittlinje: tryck två punkter på objektet – snittet går genom dem. Esc avbryter." : mode === "face" ? "Tryck på en lodrät sida av objektet – snitten läggs parallellt med den. Esc avbryter." : ""); }
+function l3bqPickAt(hit, g) {
+  const lp = g.worldToLocal(hit.point.clone());
+  if (l3bqS.pick === "face") {
+    if (!hit.face) return; const nl = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).transformDirection(g.matrixWorld.clone().invert());
+    if (Math.hypot(nl.x, nl.y) < 0.3) { l3Status("Välj en lodrät sida av objektet.", true); return; }
+    l3bqS.pick = null; l3bqAimAngle(Math.atan2(nl.y, nl.x)); l3bqPanel(); l3Status("Riktningen är satt efter sidan – lägg snitten (tryck på objektet, ＋ eller Jämnt)."); return;
+  }
+  l3bqS.pp.push(lp);
+  if (l3bqS.pp.length === 1) { l3bqPanel(); l3bqDraw(); l3Status("Tryck den andra punkten på snittlinjen."); return; }
+  const [a, b] = l3bqS.pp; l3bqS.pick = null; l3bqS.pp = [];
+  if (!l3bqAimLine(a, b)) { l3Status("Punkterna ligger för nära varandra – försök igen.", true); l3bqPanel(); return; }
+  l3bqPanel(); l3bqDraw(); l3Status("Snittet är lagt längs linjen. Fler snitt blir parallella med det – tryck på objektet, ＋ eller Jämnt.");
 }
 function l3bqAdd(t, d) {
   d = d || l3bqS.dir; const a = l3bqS.ax, L = l3bqLenOf(a, d), set = l3bqSet(d); if (L < 0.05) { l3Status("Objektet är för smalt för att delas åt det hållet.", true); return; }
@@ -263,10 +289,12 @@ function l3bqPanel() {
   const nL = l3bqS.cuts.length + 1, nW = l3bqS.cutsW.length + 1, seg1 = [0, ...set, L].map((v, i, A) => i ? v - A[i - 1] : 0).slice(1);
   el.innerHTML = `<b>Dela ${E(p ? p.name || "objektet" : "objektet")}</b><div style="color:#64748b;margin:2px 0 6px">${f(a.len)} m långt · ${f(W)} m brett · tryck på objektet för att sätta ett snitt</div>
     <div style="display:flex;gap:6px;margin:0 0 6px"><button type="button" data-bqdir="l" style="${seg(d === "l")}" title="Snitt vinkelrätt mot längdriktningen">Längs</button><button type="button" data-bqdir="w" style="${seg(d === "w")}" title="Snitt åt andra hållet – delar objektet på bredden">Tvärs</button></div>
+    <div style="display:flex;gap:6px;margin:0 0 6px"><button type="button" data-bqpick="line" style="${seg(l3bqS.pick === "line")}" title="Tryck två punkter på objektet – snittet läggs genom dem">✎ Snittlinje (2 klick)</button><button type="button" data-bqpick="face" style="${seg(l3bqS.pick === "face")}" title="Tryck på en lodrät sida – snitten läggs parallellt med den">▭ Efter sida</button></div>
     <div style="display:flex;gap:4px;align-items:center;margin:0 0 6px" title="Vrid riktningen som objektet delas i – tills snittskivorna ligger åt rätt håll"><span style="color:#64748b">Vrid riktning</span><button type="button" data-bqrot="-15" style="${btn};padding:3px 7px" title="15° åt vänster">⟲</button><input type="text" data-bqrotv value="${f(l3bqS.rot)}" style="width:48px;padding:3px 6px;border:1px solid #d7dde6;border-radius:6px;text-align:right"><span>°</span><button type="button" data-bqrot="15" style="${btn};padding:3px 7px" title="15° åt höger">⟳</button><button type="button" data-bqrot="90" style="${btn};padding:3px 7px" title="Vänd 90° (längs blir tvärs)">90°</button></div>
     ${rows || '<div style="color:#94a3b8;margin:6px 0">Inga snitt än.</div>'}
     <div style="color:#475569;margin:6px 0">${nL * nW} bitar${nL > 1 && nW > 1 ? ` (${nL} längs × ${nW} tvärs)` : ""}${set.length ? ` · ${d === "w" ? "tvärs" : "längs"}: ${seg1.map(f).join(" · ")} m` : ""}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" data-bqa style="${btn}">＋ Snitt</button><button type="button" data-bqeq style="${btn}" title="Fördela snitten jämnt (lika stora bitar) åt valt håll">Jämnt</button><span style="flex:1"></span><button type="button" data-bqno style="${btn}">Avbryt</button><button type="button" data-bqdo style="padding:4px 12px;border-radius:8px;border:0;background:#2563eb;color:#fff;cursor:pointer;font-weight:600">Dela</button></div>`;
+  el.querySelectorAll("[data-bqpick]").forEach(b => { b.onclick = () => l3bqPick(l3bqS.pick === b.dataset.bqpick ? null : b.dataset.bqpick); });
   el.querySelectorAll("[data-bqrot]").forEach(b => { b.onclick = () => l3bqRotate(Number(b.dataset.bqrot)); });
   const rv = el.querySelector("[data-bqrotv]"); if (rv) rv.onchange = () => l3bqRotate(Number(String(rv.value).replace(",", ".")), true);
   el.querySelectorAll("[data-bqdir]").forEach(b => { b.onclick = () => { l3bqS.dir = b.dataset.bqdir; l3bqPanel(); l3bqDraw(); }; });
@@ -290,6 +318,7 @@ function l3bqDraw() {
     const g = new THREE.BufferGeometry().setFromPoints([P[0], P[1], P[2], P[0], P[2], P[3]]), m = new THREE.Mesh(g, mats[d]); m.renderOrder = 30; m.raycast = () => {}; m.userData.noHit = true; grp.add(m);
     const ln = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(P), new THREE.LineBasicMaterial({ color: cols[d], depthTest: false })); ln.renderOrder = 31; ln.raycast = () => {}; ln.userData.noHit = true; grp.add(ln);
   });
+  l3bqS.pp.forEach(q => { const w = g3 => g3; const wp = l3.placeMeshes.get(p.id); if (!wp) return; wp.updateWorldMatrix(true, false); const m = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), new THREE.MeshBasicMaterial({ color: 0xdc2626, depthTest: false })); m.position.copy(wp.localToWorld(q.clone())); m.renderOrder = 40; m.raycast = () => {}; m.userData.noHit = true; grp.add(m); void w; });
   const host = l3.renderer.domElement.parentElement, all = l3bqEach();
   while (l3bqS.rings.length > all.length) l3bqS.rings.pop().remove();
   while (l3bqS.rings.length < all.length) { const k = l3bqS.rings.length, b = document.createElement("button"); b.type = "button"; b.className = "v3-mhandle"; b.title = "Dra för att flytta snittet"; b.onpointerdown = e => { const it = l3bqEach()[k]; if (it) l3bqDragStart(e, it.i, it.d); }; b.onclick = e => e.stopPropagation(); host.appendChild(b); l3bqS.rings.push(b); }
