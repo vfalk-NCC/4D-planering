@@ -72,6 +72,22 @@ const serve = (root, port) => http.createServer((q, r) => fs.readFile(path.join(
     await page.evaluate(() => { window.__sel = []; const o = l3bsSet; window.l3bsSet = e => { window.__sel.push(e.length); }; });
     await fr.evaluate(() => selectActivityInModel({ id: 'p1', name: 'Gjutning pelare', members: [{ id: 'p1' }] }));
     await page.waitForTimeout(500);
+    // Kompakt som standard + hoppa till aktivitet vid markering i 3D + ändra storlek med hörnhandtag
+    const K = await page.evaluate(() => { const d = document.getElementById('v3PlanDock'); return { compactCls: d.classList.contains('v3-tg-compact'), h: d.offsetHeight, handles: d.querySelectorAll('.v3-tg-rs').length, seg: !!d.querySelector('.v3-tg-seg #v3GmSeg') }; });
+    const KI = await fr.evaluate(() => ({ compact: document.documentElement.classList.contains('embed-compact'), filter: getComputedStyle(document.getElementById('filterBar')).display }));
+    console.log(JSON.stringify([K, KI]));
+    if (!K.compactCls || !K.handles || !K.seg || !KI.compact || KI.filter !== 'none') fail('kompakt läge/handtag saknas: ' + JSON.stringify([K, KI]));
+    await page.evaluate(() => { l3bs.sel = [{ mesh: { userData: { l3b: { ranges: [{ guid: '3hZq3$Bq9Fxu8nZK0bW1aA' }] } } }, ri: 0 }]; l3tg.selOwn = 0; l3tgSelSync(); });
+    await fr.waitForFunction(() => typeof ganttModelSel !== 'undefined' && ganttModelSel.has('p3'), null, { timeout: 8000 }).catch(() => {});
+    const J = await fr.evaluate(() => ({ sel: [...ganttModelSel], start: ganttRangeStart, end: ganttRangeEnd, el: document.querySelectorAll('.model-sel').length }));
+    console.log(JSON.stringify(J));
+    if (!J.sel.includes('p3') || !(J.el > 0 || (J.start <= '2026-11-02' && J.end >= '2026-11-02'))) fail('Gantten hoppade inte till aktiviteten: ' + JSON.stringify(J));
+    const R0 = await page.evaluate(() => { const b = document.getElementById('v3PlanDock').getBoundingClientRect(); return { w: b.width, h: b.height }; });
+    const hdl = await page.evaluate(() => { const b = document.querySelector('#v3PlanDock .v3-tg-rs-nw').getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; });
+    await page.mouse.move(hdl.x, hdl.y); await page.mouse.down(); await page.mouse.move(hdl.x + 200, hdl.y - 60, { steps: 6 }); await page.mouse.up();
+    const R1 = await page.evaluate(() => { const d = document.getElementById('v3PlanDock'), b = d.getBoundingClientRect(); return { w: b.width, h: b.height, float: d.classList.contains('v3-tg-float'), rect: l3tgRect() }; });
+    console.log(JSON.stringify([R0, R1]));
+    if (!R1.float || !R1.rect || Math.abs(R1.w - (R0.w - 200)) > 6 || Math.abs(R1.h - (R0.h + 60)) > 6) fail('storleken gick inte att ändra med hörnhandtaget: ' + JSON.stringify([R0, R1]));
     console.log('OK: Gantten i 3D-editorn är dashboardens Gantt i en iframe och synkar åt båda hållen (ändring i Gantten, i 3D-editorn och externt)');
     if (errors.length) fail('sidfel: ' + errors.join(' | '));
   } finally { await browser.close(); s1.close(); s2.close(); }
