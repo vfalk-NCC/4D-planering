@@ -58,6 +58,8 @@ function l3plDockRender() {
   }
   d.classList.toggle("full", !!P.full);
   d.style.height = P.full ? "" : (P.dockH || 400) + "px";
+  if (typeof l3tgRender === "function" && l3tgOn()) { if (!l3pl.rows) l3plLoad(); l3tgRender(d, P); if (typeof l3fsOn === "function" && l3fsOn()) l3fsRender(); return; }   // TC-ganttens egen Gantt i en iframe (tc-gantt.js)
+  if (d.querySelector(":scope > .v3-tg-top")) { d.innerHTML = ""; d.style.display = ""; d.style.flexDirection = ""; }
   if (!l3pl.rows) { d.innerHTML = `<div class="v3-pal-hint" style="padding:12px"><span class="pm-spin"></span> Hämtar tidplanen…</div>`; l3plLoad(); return; }
   const sc0 = d.querySelector(".v3-pl-scroll"), keepScroll = sc0 ? [sc0.scrollLeft, sc0.scrollTop] : null;
   const E = escHtml, day = l3plDay();
