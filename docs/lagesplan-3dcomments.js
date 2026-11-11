@@ -244,7 +244,8 @@ function l3kActive() {
 /* Handtagen visas först när redigeringen av kommentaren öppnats (Victor 2026-10-13: "inte alltid se handtagen när jag
    markerat en kommentar") – ✎ i kommentarens ruta. Bara markerad/öppnad kommentar har inga handtag. */
 function l3kActive0() {
-  if (l3k.open && l3k.editMode && l3k.open !== l3k.draft && l3k.list.includes(l3k.open)) return l3k.open;
+  // Handtag på insättningspunkten (flytta) och skylten (höjd) så fort en kommentar är öppen – även en ny som ännu inte sparats (Victor 2026-11-11).
+  if (l3k.open && (l3k.list.includes(l3k.open) || l3k.open === l3k.draft)) return l3k.open;
   return null;
 }
 function l3kHandlesPlace() {
@@ -288,8 +289,11 @@ function l3kSameTarget(t, h) {
 /* Punkten under markören på kommentarens objekt, eller null. */
 function l3kSurfaceAt(ev, c) {
   const hits = typeof l3Ray === "function" ? l3Ray(ev, typeof l3Surfaces === "function" ? l3Surfaces() : [l3.scene]) : [];
-  const h = hits.find(x => l3kSameTarget(c.target, x));
-  return h ? h.point.clone() : null;
+  const pnt = c.target && c.target.kind === "point";   // fri punkt (mark, punktmoln): glider på valfri yta eller på punktmolnet
+  const h = hits.find(x => pnt || l3kSameTarget(c.target, x));
+  if (h) return h.point.clone();
+  const pk = pnt && typeof l3pcPick === "function" ? l3pcPick(ev) : null;
+  return pk && pk.point ? pk.point.clone() : null;
 }
 function l3kHDown(e, kind) {
   const c = l3kActive(); if (!c) return;
@@ -315,12 +319,14 @@ function l3kHDown(e, kind) {
       if (ev.shiftKey) lift = Math.round(lift * 10) / 10;
       c.lift = r3(Math.max(0.3, Math.min(200, lift)));
     }
-    l3kSignMove(c); l3Render();
+    try { l3kSignMove(c); } catch (er) { /* ny kommentar utan skylt än */ }
+    l3Render();
   };
   const up = () => {
     el.removeEventListener("pointermove", mv); el.removeEventListener("pointerup", up); el.removeEventListener("pointercancel", up);
     l3kH.drag = null; el.classList.remove("off");
     if (!d.moved) { l3Render(); return; }
+    if (c === l3k.draft) { l3Render(); return; }   // ny kommentar: läget följer med när den sparas
     if (c.pos.join() === d.pos0.join() && l3kLift(c) === d.lift0) { l3Status("Punkten står kvar – den kan bara flyttas på objektet den sitter på."); l3Render(); return; }
     const now = { pos: c.pos.slice(), lift: c.lift }, was = { pos: d.pos0, lift: d.lift0 };
     const apply = s => { c.pos = s.pos.slice(); if (kind === "z" || Number.isFinite(c.lift)) c.lift = s.lift; l3kDraw(); l3kWrite(c); };

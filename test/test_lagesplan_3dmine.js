@@ -52,12 +52,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3k.list.push({ id: 'k1', text: 'Test', pos: [1, 1, 1], at: new Date().toISOString(), by: 'V', replies: [] }); l3kRenderTab();
     const mv = document.querySelector('[data-kcmove="k1"]'); out.hasMove = !!mv; if (mv) { mv.click(); await new Promise(r => setTimeout(r, 300)); out.edit = !!l3k.editMode && l3k.open && l3k.open.id === 'k1'; }
     // kommentar på en punkt utan yta (t.ex. punktmoln) + IFC-export av alla
-    l3kClose && l3kClose(); l3kNew(new THREE.Vector3(2, 2, 2), null); out.ptDraft = !!(l3k.draft && l3k.draft.target && l3k.draft.target.kind === 'point');
+    l3kClose && l3kClose(); l3kNew(new THREE.Vector3(2, 2, 2), null); out.ptDraft = !!(l3k.draft && l3k.draft.target && l3k.draft.target.kind === 'point'); await new Promise(r => setTimeout(r, 200)); l3kHandlesPlace(); out.handles = !!l3kActive() && ['xy', 'z'].every(k => !!document.querySelector('.v3-khandle.' + k));
     const ifc = l3kIfcBuild(l3k.list.map((c, i) => ({ c, nr: i + 1 }))); out.ifc = !!(ifc && ifc.text && /IFC/.test(ifc.text));
     return out;
   });
   console.log(JSON.stringify(r));
-  if (!r.ptDraft || !r.ifc) fail('kommentar på punkt/IFC: ' + JSON.stringify(r));
+  if (!r.ptDraft || !r.ifc || !r.handles) fail('kommentar på punkt/IFC: ' + JSON.stringify(r));
   if (!r.hasMove || !r.edit) fail('flytta kommentar: ' + JSON.stringify(r));
   if (!r.sec || r.rows !== 3) fail('avsnittet saknas: ' + JSON.stringify(r));
   if (r.areaOf[0] !== 'Område Nord' || r.areaOf[1] !== 'Område Nord' || r.areaOf[2] || !r.groups.includes('Område Nord') || !r.groups.includes('Utan område')) fail('områden: ' + JSON.stringify(r));
