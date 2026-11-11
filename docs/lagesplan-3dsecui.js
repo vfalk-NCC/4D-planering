@@ -6,6 +6,13 @@ const l3suShut = () => new Set((typeof l3Prefs === "function" && l3Prefs().suShu
 function l3suApply() {
   l3su.raf = 0;
   const host = document.getElementById("v3PalPlan"); if (!host) return;
+  // 4D-koppling, Film, Övrigt: samma pill som Lager. Den gamla ＋/−-knappen finns kvar (dold) och sköter fällningen, så ingen funktion ändras.
+  host.querySelectorAll(".v3-panel-h:not(.v3-su-done)").forEach(h => {
+    const b = h.querySelector(":scope > b"), t = h.querySelector(":scope > .v3-panel-t"); if (!b || !t) return;
+    h.classList.add("v3-su-done", "v3-lg", "v3-lsec-h"); t.classList.add("v3-su-orig");
+    const nb = document.createElement("button"); nb.type = "button"; nb.className = "v3-lsec-t"; nb.setAttribute("aria-expanded", t.getAttribute("aria-expanded")); nb.innerHTML = `<i>›</i>${b.innerHTML}`;
+    nb.onclick = () => t.click(); b.replaceWith(nb);
+  });
   host.querySelectorAll(".v3-card > .v3-card-h").forEach(h => {
     if (h.children.length || !h.textContent.trim()) return;   // bara rena textrubriker
     const card = h.parentElement, title = h.textContent.trim(), shut = l3suShut().has(title);
