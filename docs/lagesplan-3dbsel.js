@@ -344,6 +344,8 @@ function l3bsRenderSide(side) {
       ${typeof l3bmStart === "function" ? act("v3BsCopy", I.copy, "Kopiera", "Kopiera de markerade och dra kopian dit den ska – sparas som en ny IFC-fil i Trimble Connect, originalet står kvar") : ""}
       ${typeof l3bmIsCopy === "function" && l3bs.sel.some(l3bmIsCopy) ? act("v3BsDel", I.trash || I.x || "", "Radera", "Radera de markerade kopiorna (Delete) – originalobjekten i IFC-filen raderas inte") : ""}
       ${typeof l3bsMakeForms === "function" ? act("v3BsForm", "▭", "Gjutform", "Skapa en fyrsidig gjutform (Gjutetapp) runt varje markerat objekt – syns som 3D-objekt och sparas i Trimble Connect med Spara som IFC i TC") : ""}
+      ${typeof l3bqMake === "function" ? act("v3BsEdit", "✎", "Redigera", "Gör de markerade IFC-objekten till redigerbara byggdelar (ritade objekt) – flytta, skala, skär, dela i bitar m.m. Kopior ersätts, original står kvar") : ""}
+      ${typeof l3bqFormMake === "function" ? act("v3BsFormFit", "▤", "Form efter formen", "Gjutform som följer objektets verkliga kontur – t.ex. en bergsanpassad mur: formskivor mot de lodräta ytorna, öppen under och över") : ""}
       ${typeof l3gaCouplePick === "function" ? act("v3BsCouple", L3GA_LINK, "Koppla", "Koppla de markerade till en aktivitet i 4D-planeringen (Powerproject) – du får se vad som sparas innan något ändras") : ""}
       ${typeof ifcSubset === "function" && typeof l3bmFetchIfc === "function" ? act("v3BsExport", I.upload, "IFC", `Exportera de ${n} markerade (med dina flyttar och grupper) som en egen IFC-fil i samma mapp i Trimble Connect – originalet rörs inte`) : ""}
       ${coupled.length ? act("v3BsJump", I.select, "4D", `Markera de ${coupled.length} kopplade aktiviteterna i 4D-planering och objekten i Trimble Connect`) : ""}
@@ -363,6 +365,8 @@ function l3bsRenderSide(side) {
   on("v3BsMove", () => l3bmStart());
   on("v3BsCopy", () => l3bmStart({ copy: true }));
   on("v3BsCouple", () => l3gaCouplePick());
+  on("v3BsEdit", () => l3bqMake());
+  on("v3BsFormFit", async () => { let m = 0; if (typeof uiPrompt === "function") { const a = await uiPrompt("Gjutform som följer formen.\nUtstick utanför objektets yta (meter). 0 = formen ligger direkt mot betongen.", "0"); if (a === null || a === undefined) return; m = Math.max(0, Number(String(a).replace(",", ".")) || 0); } l3bqFormMake(m); });
   on("v3BsForm", () => { l3bsMakeForms().catch(e => l3Status("Kunde inte skapa gjutformen: " + e.message, true)); });
   on("v3BsDel", () => l3bmCopyDelete());
   on("v3BsGroup", () => l3PalTab("props"));
