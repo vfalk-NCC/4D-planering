@@ -147,6 +147,8 @@ async function open3d() {
   if (typeof setSideHidden === "function" && !$("layout").classList.contains("side-hidden")) { setSideHidden(true); box.dataset.hidSide = "1"; }
   // iPhone/smal skärm: biblioteket börjar ihopfällt (öppnas med ＋ Lägg till) så att modellen syns.
   if (window.innerWidth < 700) { const pal = box.querySelector("#v3Pal"), po = box.querySelector("#v3PalOpen"); if (pal && po) { pal.classList.add("hidden"); po.classList.remove("hidden"); } }
+  // Tidslinjen börjar alltid på dagens datum när 3D-vyn startas (Victor 2026-11-11).
+  { const di = $("dateInput"), t0 = todayIso(); if (di && di.value !== t0) { di.value = t0; if (typeof syncSliderFromDate === "function") syncSliderFromDate(); if (typeof onDateChanged === "function") try { onDateChanged(); } catch (e) { /* 2D-vyn ritas om vid behov */ } } }
   l3SyncDate();
   l3Status("Laddar 3D…");
   const T0 = performance.now(), tm = {}, lap = (k, t) => { tm[k] = performance.now() - t; };

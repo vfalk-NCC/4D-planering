@@ -43,6 +43,7 @@ const PP = [
       open3d();
     });
     await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.renderer && typeof l3plRenderTab === 'function', null, { timeout: 15000 });
+    await page.evaluate(() => { $('dateInput').value = '2026-10-12'; l3SyncDate(); });   // 3D startar på dagens datum – testet vill ha ett fast datum
 
     // Fliken bredvid 3D-bibliotek.
     const tabs = await page.evaluate(() => [...document.querySelectorAll('[data-paltab]')].map(b => b.dataset.paltab));

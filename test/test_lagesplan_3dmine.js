@@ -22,8 +22,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.route('https://api.github.com/**', r => r.fulfill({ status: 404, body: '{}' }));
   await page.goto(`http://localhost:${PORT}/lagesplan.html?project=p1`); await page.waitForTimeout(900);
   await page.evaluate(async () => { plans = [{ id: 'A', name: 'Plan 1', file_path: 'a.pdf', calib: { model: [[6512300, 150100, 0], [6512400, 150100, 0]], pdf: [[0, 0], [1000, 0]] }, zones: [] }]; pdfCache.set('A', new Uint8Array([1]).buffer); items = []; positions = []; renderPlanSelect(); await openPlan('A'); });
+  await page.evaluate(() => { document.getElementById('dateInput').value = '2025-03-04'; });
   await page.click('#btn3d');
   await page.waitForFunction(() => typeof l3 !== 'undefined' && l3 && l3.renderer, null, { timeout: 15000 });
+  { const d = await page.evaluate(() => ({ v: document.getElementById('dateInput').value, t: todayIso(), s: (document.getElementById('v3Date') || {}).value })); if (d.v !== d.t || (d.s && d.s !== d.t)) fail('3D ska starta på dagens datum: ' + JSON.stringify(d)); }
   await page.evaluate(() => { l3SetTool && l3SetTool('select'); document.getElementById('v3Pal').classList.remove('hidden'); });
   const r = await page.evaluate(async () => {
     const out = {}; const mk = (n, x) => modCreate({ k: 'solid', pl: { o: [0, 0, 0], u: [1, 0, 0], v: [0, 1, 0], n: [0, 0, 1] }, loops: [[[0, 0], [1, 0], [1, 1], [0, 1]]], d: 1 }, [x, 0, 0], { name: n });
