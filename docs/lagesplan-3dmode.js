@@ -60,8 +60,17 @@ function l3gmScaleRgb(rows) {
   const t = S.t1 > S.t0 ? Math.max(0, Math.min(1, ((S.by === "end" ? Math.max(...ds) : Math.min(...ds)) - S.t0) / (S.t1 - S.t0))) : 0;
   return S.a.map((v, i) => v + (S.b[i] - v) * t);
 }
+/* Temporära objekt (Victor 2026-11-11): exakt den färg och opacitet som är inställd på aktiviteten (temp_color/temp_opacity) – i alla lägen och oavsett "Följ exakt framdrift". null = ingen egen inställning. */
+function l3gmTemp(rows) {
+  if (!rows.length || !rows.every(r => r.temporary === true)) return null;
+  const r = rows.find(x => /^#[0-9a-f]{6}$/i.test(String(x.temp_color || "")) || (x.temp_opacity != null && x.temp_opacity !== "" && Number.isFinite(Number(x.temp_opacity)))); if (!r) return null;
+  const hasC = /^#[0-9a-f]{6}$/i.test(String(r.temp_color || "")), op = r.temp_opacity != null && r.temp_opacity !== "" && Number.isFinite(Number(r.temp_opacity)) ? Math.max(0, Math.min(100, Number(r.temp_opacity))) : 100;
+  if (op <= 0) return { off: true };
+  return { off: false, rgb: hasC ? l3gmHex(r.temp_color).map(v => v / 255) : l3gmHex(phaseColor("pagaende")).map(v => v / 255), alpha: op >= 100 ? null : op / 100, phase: "temp" };
+}
 function l3gmRange(rows, at, ctx) {
   const m = l3gm.mode;
+  if (m !== "time") { const t0 = l3gmTemp(rows); if (t0 && m !== "hide") return t0; }
   if (m === "off") { const c = l3gm.scale && rows.length ? l3gmScaleRgb(rows) : null; return c ? { off: false, rgb: c, alpha: null, phase: "scale" } : null; }
   if (m === "isolate") return { off: !rows.length };
   if (m === "hide") return { off: rows.length > 0 };
@@ -70,7 +79,7 @@ function l3gmRange(rows, at, ctx) {
   if (m === "time" && l3gm.follow && !rows.some(r => l3gm.follow.has(r.id))) return { off: true };
   const C = l3gmCfg(), ph = rows.map(r => l3gmRowPhase(r, at, C.future)).filter(p => p !== "dold");
   if (!ph.length) return { off: true };
-  if (rows.every(r => r.temporary === true)) return { off: false, rgb: null, alpha: null, phase: "temp" }; // temporär mellan start och slut: modellens originalfärg, ingen status/puls
+  if (rows.every(r => r.temporary === true)) return l3gmTemp(rows) || { off: false, rgb: null, alpha: null, phase: "temp" }; // temporär mellan start och slut: modellens originalfärg, ingen status/puls
   const g = l3gmGroup(ph);
   if (g === "klar") {
     const dr = rows.find(r => /^#[0-9a-f]{6}$/i.test(String(r.done_color || "")) || (r.done_opacity != null && r.done_opacity !== "" && Number.isFinite(Number(r.done_opacity))));

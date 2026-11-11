@@ -88,6 +88,8 @@ const serve = (root, port) => http.createServer((q, r) => fs.readFile(path.join(
     const R1 = await page.evaluate(() => { const d = document.getElementById('v3PlanDock'), b = d.getBoundingClientRect(); return { w: b.width, h: b.height, float: d.classList.contains('v3-tg-float'), rect: l3tgRect() }; });
     console.log(JSON.stringify([R0, R1]));
     if (!R1.float || !R1.rect || Math.abs(R1.w - (R0.w - 200)) > 6 || Math.abs(R1.h - (R0.h + 60)) > 6) fail('storleken gick inte att ändra med hörnhandtaget: ' + JSON.stringify([R0, R1]));
+    const TT = await page.evaluate(() => { l3gm.mode = 'isolate'; const a = l3gmRange([{ temporary: true, temp_color: '#ff8800', temp_opacity: 40 }], '2026-11-11'), b = l3gmRange([{ temporary: true, temp_opacity: 0 }], '2026-11-11'), c = l3gmRange([{ temporary: false }], '2026-11-11'); l3gm.mode = 'off'; return { a, b, c }; });
+    if (!TT.a || Math.abs(TT.a.alpha - 0.4) > 0.001 || Math.round(TT.a.rgb[0] * 255) !== 255 || !TT.b.off || TT.c.alpha) fail('temporära objekt i 3D-editorn ska ha exakt inställd färg/opacitet: ' + JSON.stringify(TT));
     console.log('OK: Gantten i 3D-editorn är dashboardens Gantt i en iframe och synkar åt båda hållen (ändring i Gantten, i 3D-editorn och externt)');
     if (errors.length) fail('sidfel: ' + errors.join(' | '));
   } finally { await browser.close(); s1.close(); s2.close(); }
