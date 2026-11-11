@@ -99,7 +99,28 @@ function l3swDraw() {
     const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), new THREE.LineBasicMaterial({ color: 0x334155 })); e.userData.noHit = true; e.raycast = () => {}; g.add(e);
   });
   const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(c.pts.map(p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2] + 0.05))), new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false })); line.renderOrder = 12; line.userData.noHit = true; line.raycast = () => {}; g.add(line);
-  l3Render();
+  l3swHandles(); l3Render();
+}
+/* ---- Dragbara punkter (som byggvägen): ring på varje punkt, ＋ mitt på varje sträcka ---- */
+const l3swH = { rings: [], plus: [], drag: null };
+function l3swHandles() {
+  const c = l3sw.cur, host = l3.renderer.domElement.parentElement; if (!c) return; const n = c.pts.length;
+  while (l3swH.rings.length > n) l3swH.rings.pop().remove(); while (l3swH.plus.length > n - 1) l3swH.plus.pop().remove();
+  while (l3swH.rings.length < n) { const i = l3swH.rings.length, b = document.createElement("button"); b.type = "button"; b.className = "v3-mhandle"; b.title = "Dra för att flytta punkten (fäster mot punktmoln, modell och mark) · dubbelklick tar bort"; b.onpointerdown = e => l3swDown(e, i); b.ondblclick = e => { e.stopPropagation(); l3swRemove(i); }; b.onclick = e => e.stopPropagation(); host.appendChild(b); l3swH.rings.push(b); }
+  while (l3swH.plus.length < n - 1) { const i = l3swH.plus.length, b = document.createElement("button"); b.type = "button"; b.className = "v3-mplus"; b.textContent = "+"; b.title = "Lägg till en punkt här – dra den dit den ska"; b.onpointerdown = e => { e.stopPropagation(); e.preventDefault(); const a = c.pts[i], d = c.pts[i + 1]; c.pts.splice(i + 1, 0, [(a[0] + d[0]) / 2, (a[1] + d[1]) / 2, (a[2] + d[2]) / 2].map(v => Math.round(v * 1000) / 1000)); l3swDraw(); l3swPanel(); l3swDown(e, i + 1, true); }; b.onclick = e => e.stopPropagation(); host.appendChild(b); l3swH.plus.push(b); }
+  l3swPlace();
+}
+function l3swPlace() {
+  const c = l3sw.cur; if (!c) return; const O = l3.O, pos = p => l3ToScreen(new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2]));
+  l3swH.rings.forEach((el, i) => { const q = pos(c.pts[i]); el.style.display = q.behind ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px"; el.classList.toggle("drag", !!(l3swH.drag && l3swH.drag.i === i)); });
+  l3swH.plus.forEach((el, i) => { const a = c.pts[i], d = c.pts[i + 1]; if (!a || !d) return; const q = pos([(a[0] + d[0]) / 2, (a[1] + d[1]) / 2, (a[2] + d[2]) / 2]), qa = pos(a), qd = pos(d); el.style.display = (q.behind || l3swH.drag || Math.hypot(qa.x - qd.x, qa.y - qd.y) < 40) ? "none" : "block"; el.style.left = q.x + "px"; el.style.top = q.y + "px"; });
+}
+function l3swRemove(i) { const c = l3sw.cur; if (!c || c.pts.length <= 2) { l3Status("Muren behöver minst två punkter.", true); return; } c.pts.splice(i, 1); l3swDraw(); l3swPanel(); }
+function l3swDown(e, i, fresh) {
+  const c = l3sw.cur; if (!c || e.button !== 0) return; e.preventDefault(); e.stopPropagation(); l3swH.drag = { i }; let moved = false; const was = c.pts.map(p => p.slice());
+  const mv = ev => { const sn = typeof l3Snap === "function" ? l3Snap(ev) : null; if (typeof l3ShowMarker === "function") l3ShowMarker(sn); if (!sn) return; moved = true; c.pts[i] = [sn.point.x + l3.O[0], sn.point.y + l3.O[1], sn.point.z + l3.O[2]].map(v => Math.round(v * 1000) / 1000); l3swDraw(); l3StatusLive(`Flyttar punkt ${i + 1} – släpp där muren ska ligga`); };
+  const up = () => { window.removeEventListener("pointermove", mv, true); window.removeEventListener("pointerup", up, true); window.removeEventListener("pointercancel", up, true); l3swH.drag = null; if (typeof l3ShowMarker === "function") l3ShowMarker(null); if (!moved && !fresh) c.pts = was; l3swDraw(); l3swPanel(); };
+  window.addEventListener("pointermove", mv, true); window.addEventListener("pointerup", up, true); window.addEventListener("pointercancel", up, true);
 }
 /* ---- Panel ---- */
 function l3swPanel() {
@@ -126,7 +147,7 @@ function l3swPanel() {
       ${s.kind === "L" ? `<label class="v3-ga-tg" title="Varje element ligger vågrätt på en nivå (som i verkligheten) – av = elementet lutar med marken"><input type="checkbox" data-wkstep ${s.step ? "checked" : ""}><span>Trappa elementen</span></label>` : ""}
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button type="button" class="v3-primary" data-wb="make">Skapa stödmur</button><button type="button" data-wb="flip" title="Vänd jordsidan">⇄ Vänd</button><button type="button" data-wb="save" title="Spara de här måtten som en egen murtyp">Spara som murtyp…</button>${custom.length ? `<button type="button" data-wb="del" title="Ta bort den valda egna murtypen">Ta bort murtyp</button>` : ""}<button type="button" data-wb="imp" title="Hämta murtyper ur en CSV- eller JSON-fil med tillverkarens mått">Importera murtyper…</button></div>
-    <div class="v3-pal-hint" style="margin-top:6px">Standardmåtten är typiska – kontrollera mot tillverkarens produktblad innan du beställer eller bygger.</div>`;
+    <div class="v3-pal-hint" style="margin-top:6px">Dra i ringarna för att flytta fotlinjens punkter, ＋ lägger till en punkt, dubbelklick på en ring tar bort den. Standardmåtten är typiska – kontrollera mot tillverkarens produktblad innan du beställer eller bygger.</div>`;
   const q = sel => el.querySelector(sel), re = () => { l3swPanel(); l3swDraw(); };
   q('[data-wb="x"]').onclick = () => l3swClose();
   el.querySelectorAll("[data-wk]").forEach(i => { i.onchange = () => { const v = Number(String(i.value).replace(",", ".")); if (Number.isFinite(v)) { s[i.dataset.wk] = v; if (s.typ && /^(H|t|bt|tl|hl|len)$/.test(i.dataset.wk)) s.typ = ""; } re(); }; });
@@ -168,7 +189,7 @@ function l3swOpen(cur) {
 }
 function l3swClose(keep) {
   const el = document.getElementById("v3WallPanel"); if (el) el.remove(); const c = l3sw.cur; if (c) l3sw.last = JSON.parse(JSON.stringify(c.spec));
-  l3sw.cur = null; if (l3.groups.wall) l3Clear(l3.groups.wall); if (!keep) { if (l3sw.kbd) { window.removeEventListener("keydown", l3sw.kbd, true); l3sw.kbd = null; } l3Render(); }
+  l3sw.cur = null; l3swH.rings.forEach(e => e.remove()); l3swH.plus.forEach(e => e.remove()); l3swH.rings = []; l3swH.plus = []; if (l3.groups.wall) l3Clear(l3.groups.wall); if (!keep) { if (l3sw.kbd) { window.removeEventListener("keydown", l3sw.kbd, true); l3sw.kbd = null; } l3Render(); }
 }
 function l3swMake() {
   const c = l3sw.cur; if (!c) return; const r = c.res || l3swBuild(c.pts, c.spec); if (!r.parts || !r.parts.length) { l3Status(r.err || "Inget att skapa.", true); return; }

@@ -48,6 +48,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (r.made !== 5 || !r.ifc || r.ifcWall !== 5) fail('objekt/IFC för L-stöd: ' + JSON.stringify(r));
   if (r.nCast !== 1 || Math.abs(r.volCast - r.expCast) / r.expCast > 0.1 || r.castObj !== 1) fail('gjuten mur: ' + JSON.stringify(r));
   if (r.custom !== 4) fail('egen murtyp (1,0 m element på 4 m): ' + JSON.stringify(r));
+  // Dragbara punkter + plus (som byggvägen)
+  const D0 = await page.evaluate(() => { const V = (x, y, z) => new THREE.Vector3(x, y, z); l3SetPref('measure', 'wall'); l3t.mp = [V(5, 5, 0), V(11, 5, 0)]; l3swStart(); const c = new THREE.Vector3(8, 5, 0); l3.camera.position.set(c.x, c.y - 16, c.z + 14); l3.camera.lookAt(c); if (l3.controls) { l3.controls.target.copy(c); l3.controls.update(); } l3.camera.updateMatrixWorld(true); l3Render(); const tt = document.getElementById('v3Toast'); if (tt) tt.style.display = 'none'; return { rings: l3swH.rings.length, plus: l3swH.plus.length, pts: l3sw.cur.pts.map(p => p.slice()) }; });
+  await page.waitForTimeout(600);
+  console.log('punkter:', JSON.stringify(D0));
+  if (D0.rings !== 2 || D0.plus !== 1) fail('ringar/plus saknas: ' + JSON.stringify(D0));
+  const pl = await page.evaluate(() => { l3swPlace(); const b = l3swH.plus[0].getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2, shown: l3swH.plus[0].style.display }; });
+  await page.mouse.move(pl.x, pl.y); await page.mouse.down(); await page.mouse.move(pl.x, pl.y + 60, { steps: 6 }); await page.mouse.up();
+  const D1 = await page.evaluate(() => ({ n: l3sw.cur.pts.length, pts: l3sw.cur.pts.map(p => p.slice()), rings: l3swH.rings.length }));
+  console.log('efter plus+drag:', JSON.stringify(D1));
+  if (D1.n !== 3 || D1.rings !== 3 || Math.abs(D1.pts[1][1] - 5) < 0.3) fail('plus + dra lade inte till/flyttade punkten: ' + JSON.stringify([D0.pts, D1.pts]));
+  await page.evaluate(() => l3swRemove(1)); const D2 = await page.evaluate(() => ({ n: l3sw.cur.pts.length, rings: l3swH.rings.length })); if (D2.n !== 2 || D2.rings !== 2) fail('ta bort punkt: ' + JSON.stringify(D2));
+  await page.evaluate(() => l3swClose()); if (await page.evaluate(() => document.querySelectorAll('.v3-mhandle').length)) fail('ringar ska städas när muren stängs');
   console.log('OK: stödmur – L-stöd element för element, gjuten mur sammanhängande, volym stämmer, IFCWALL, egna murtyper');
   if (errors.length) fail('sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();
