@@ -523,7 +523,7 @@ const l3vHas = (v, k) => !Array.isArray(v.parts) || v.parts.includes(k);   // ä
 function l3MakeView(name, parts) {
   const O = l3.O, cam = l3.camera, W = v => [0, 1, 2].map(i => Math.round((v.getComponent(i) + O[i]) * 1000) / 1000);
   const has = k => !parts || parts.includes(k);
-  const v = { name, p: W(cam.position), t: W(l3.orbit.target), ortho: !!cam.isOrthographicCamera, zoom: cam.zoom };
+  const v = { name, p: W(cam.position), t: W(l3.orbit.target), ortho: !!cam.isOrthographicCamera, zoom: cam.zoom, at: new Date().toISOString() };
   if (parts) v.parts = parts.slice();
   if (has("clips")) v.clips = (l3.clips || []).map(c => { const pt = c.plane.coplanarPoint(new THREE.Vector3()); return { n: c.plane.normal.toArray(), p: W(pt), label: c.label, off: Math.round((Number(c.off) || 0) * 1000) / 1000, base: c.base, a: c.anchor ? W(c.anchor) : undefined }; });
   Object.assign(v, l3ViewState(parts));
@@ -536,7 +536,7 @@ function l3SaveView(name, parts) {
   if (!Array.isArray(parts)) parts = l3vParts();
   const v = l3MakeView(name, parts);
   const i = list.findIndex(x => x.name.toLowerCase() === name.toLowerCase());
-  if (i >= 0) list[i] = v; else list.push(v);
+  if (i >= 0) { v.at = list[i].at || null; v.upd = new Date().toISOString(); list[i] = v; } else list.push(v);   // skapad-datumet följer med när vyn uppdateras
   l3StoreViews(list.slice(-30));
   l3RenderSavedViews();
   l3Status(i >= 0 ? `Vyn "${name}" uppdaterad.` : `Vyn "${name}" sparad – finns under Vyer.`);
@@ -637,6 +637,20 @@ function l3RenderSavedViews() {
 
 /* ---- Snabbknapp för sparade vyer (mobil) --------------------------------------------------------------------------------------------------
    En liten knapp nere till höger i bilden. Trycker man fälls en lista upp med de sparade vyerna – ett tryck går dit. Finns på både dator och mobil. */
+/* Vylistan: datum och storlek (Victor 2026-11-11: "ändra storlek, ta bort och uppdatera vyer, och se vilket datum den skapades"). */
+function l3vDate(iso, long) { const d = new Date(iso); if (isNaN(d)) return ""; return d.toLocaleDateString("sv-SE", long ? { day: "numeric", month: "long", year: "numeric" } : { day: "numeric", month: "short", year: "numeric" }); }
+function l3QvSize(box) {
+  const pan = box.querySelector(".v3-qv-p"); if (!pan) return; const P = l3Prefs(), cv = document.getElementById("v3Canvas"), W = cv ? cv.clientWidth : innerWidth, H = cv ? cv.clientHeight : innerHeight;
+  const clampW = w => Math.max(200, Math.min(w, Math.max(200, W - 40))), clampH = h => Math.max(140, Math.min(h, Math.max(140, H - 90)));
+  if (Number(P.qvW) > 0) pan.style.width = clampW(Number(P.qvW)) + "px"; if (Number(P.qvH) > 0) pan.style.maxHeight = clampH(Number(P.qvH)) + "px";
+  const g = pan.querySelector(".v3-qv-grip"); if (!g) return;
+  g.onpointerdown = e => {
+    e.preventDefault(); e.stopPropagation(); g.setPointerCapture(e.pointerId); const r = pan.getBoundingClientRect(), x0 = e.clientX, y0 = e.clientY, w0 = r.width, h0 = r.height;
+    const mv = ev => { pan.style.width = clampW(w0 + (x0 - ev.clientX)) + "px"; pan.style.maxHeight = clampH(h0 + (y0 - ev.clientY)) + "px"; };
+    const up = () => { g.removeEventListener("pointermove", mv); g.removeEventListener("pointerup", up); g.removeEventListener("pointercancel", up); const b = pan.getBoundingClientRect(); l3SetPref("qvW", Math.round(b.width)); l3SetPref("qvH", Math.round(b.height)); };
+    g.addEventListener("pointermove", mv); g.addEventListener("pointerup", up); g.addEventListener("pointercancel", up);
+  };
+}
 const l3QvOn = () => true; // på både dator och mobil
 function l3QvRender() {
   const cv = document.getElementById("v3Canvas"); if (!cv) return;
@@ -648,6 +662,8 @@ function l3QvRender() {
       const b = e.target.closest("button"); if (!b) return;
       if (b.dataset.qv === "toggle") { box.classList.toggle("open"); return; }
       if (b.dataset.qvsec != null) { const v = Number(b.dataset.qvsec); l3SetPref("viewSec", v); l3QvRender(); box.classList.add("open"); return; }
+      if (b.dataset.qvupd != null) { const v = l3SavedViews()[+b.dataset.qvupd]; if (v) { l3SaveView(v.name, Array.isArray(v.parts) ? v.parts : undefined); l3QvRender(); box.classList.add("open"); } return; }
+      if (b.dataset.qvdel != null) { const i = +b.dataset.qvdel, v = l3SavedViews()[i]; if (!v) return; (typeof uiConfirm === "function" ? uiConfirm(`Ta bort vyn "${v.name}"?`, { ok: "Ta bort" }) : Promise.resolve(true)).then(ok => { if (ok) { l3DelView(i); box.classList.add("open"); } }); return; }
       if (b.dataset.qvgo != null) { box.classList.remove("open"); l3GoView(+b.dataset.qvgo); return; }
       if (b.dataset.qv === "saveopt") { box.classList.remove("open"); l3SaveViewAsk(""); return; }
       if (b.dataset.qv === "save") { box.classList.remove("open"); if (typeof uiPrompt === "function") uiPrompt("Namn på vyn", "").then(n => { if (n != null) l3SaveView(n); }); else l3SaveView(""); }
@@ -659,7 +675,8 @@ function l3QvRender() {
   box.hidden = !l3QvOn();
   const list = l3SavedViews();
   const sec = l3ViewMs() / 1000, secTxt = String(sec).replace(".", ",");
-  box.innerHTML = `<div class="v3-qv-p"><div class="v3-qv-sec" title="Hur många sekunder kameran tar på sig mellan vyerna – Direkt för omedelbart byte"><span>Övergång</span><button type="button" data-qvsec="0" class="${sec === 0 ? "on" : ""}">Direkt</button><button type="button" data-qvsec="1" class="${sec === 1 ? "on" : ""}">1 s</button><button type="button" data-qvsec="3" class="${sec === 3 ? "on" : ""}">3 s</button><input type="number" min="0" max="60" step="0.5" value="${secTxt.replace(",", ".")}" data-qvsecin aria-label="Sekunder"><em>s</em></div>${list.length ? list.map((v, i) => `<button type="button" class="v3-qv-v" data-qvgo="${i}">${escHtml(v.name)}</button>`).join("") : `<div class="v3-qv-none">Inga sparade vyer än.</div>`}<div class="v3-qv-sr"><button type="button" class="v3-qv-s" data-qv="save" title="Direktspar: sparar med senast valda delar">＋ Spara vyn här</button><button type="button" class="v3-qv-s v3-qv-so" data-qv="saveopt" title="Välj vad som ska sparas i vyn">Val…</button></div></div><button type="button" class="v3-qv-b" data-qv="toggle" aria-label="Sparade vyer" title="Sparade vyer"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>${list.length ? `<i>${list.length}</i>` : ""}</button>`;
+  box.innerHTML = `<div class="v3-qv-p"><i class="v3-qv-grip" title="Dra för att ändra storlek på listan" aria-hidden="true"></i><div class="v3-qv-sec" title="Hur många sekunder kameran tar på sig mellan vyerna – Direkt för omedelbart byte"><span>Övergång</span><button type="button" data-qvsec="0" class="${sec === 0 ? "on" : ""}">Direkt</button><button type="button" data-qvsec="1" class="${sec === 1 ? "on" : ""}">1 s</button><button type="button" data-qvsec="3" class="${sec === 3 ? "on" : ""}">3 s</button><input type="number" min="0" max="60" step="0.5" value="${secTxt.replace(",", ".")}" data-qvsecin aria-label="Sekunder"><em>s</em></div>${list.length ? list.map((v, i) => `<div class="v3-qv-r"><button type="button" class="v3-qv-v" data-qvgo="${i}" title="Gå till vyn${v.at ? " · skapad " + l3vDate(v.at, true) : ""}${v.upd ? " · uppdaterad " + l3vDate(v.upd, true) : ""}"><b>${escHtml(v.name)}</b>${v.at ? `<em>${l3vDate(v.at)}${v.upd ? " · uppd. " + l3vDate(v.upd) : ""}</em>` : ""}</button><button type="button" class="v3-qv-i" data-qvupd="${i}" title="Uppdatera vyn till det du ser nu (samma namn, samma sparade delar)" aria-label="Uppdatera ${escHtml(v.name)}">↻</button><button type="button" class="v3-qv-i v3-qv-x" data-qvdel="${i}" title="Ta bort vyn" aria-label="Ta bort ${escHtml(v.name)}">✕</button></div>`).join("") : `<div class="v3-qv-none">Inga sparade vyer än.</div>`}<div class="v3-qv-sr"><button type="button" class="v3-qv-s" data-qv="save" title="Direktspar: sparar med senast valda delar">＋ Spara vyn här</button><button type="button" class="v3-qv-s v3-qv-so" data-qv="saveopt" title="Välj vad som ska sparas i vyn">Val…</button></div></div><button type="button" class="v3-qv-b" data-qv="toggle" aria-label="Sparade vyer" title="Sparade vyer"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>${list.length ? `<i>${list.length}</i>` : ""}</button>`;
+  l3QvSize(box);
   if (typeof l3ptSync === "function") l3ptSync(); if (typeof l3spSync === "function") l3spSync();   // punktmolns- och ritningsknapparna ligger i samma kolumn, ovanför vy-knappen
 }
 window.addEventListener("resize", () => { const b = document.getElementById("v3Qv"); if (b) b.hidden = !l3QvOn(); });
