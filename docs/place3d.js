@@ -475,7 +475,8 @@ function buildPlacementsIfc(projName, only) {
         return m;
       });
       if (!meshes.length) return null;
-      const el = E(`${lib.mod && typeof modIfcEntity === "function" ? modIfcEntity(p) : "IFCBUILDINGELEMENTPROXY"}('${placeGuid(p.id, salt)}',$,${ifcStr(name)},${ifcStr("Placerad i 4D-planering")},${ifcStr(lib.label)},${doc.place(o)},${doc.shape(meshes.join(","), "Tessellation")},${ifcStr(p.id)},.NOTDEFINED.)`);
+      const ent = lib.mod && typeof modIfcEntity === "function" ? modIfcEntity(p) : "IFCBUILDINGELEMENTPROXY", pileT = ent === "IFCPILE" ? (/^(BORED|DRIVEN|JETGROUTING|COHESION|FRICTION|SUPPORT)$/.test(String(p.m && p.m.pile)) ? p.m.pile : "NOTDEFINED") : "NOTDEFINED";
+      const el = E(`${ent}('${placeGuid(p.id, salt)}',$,${ifcStr(name)},${ifcStr("Placerad i 4D-planering")},${ifcStr(lib.label)},${doc.place(o)},${doc.shape(meshes.join(","), "Tessellation")},${ifcStr(p.id)},.${pileT}.${ent === "IFCPILE" ? ",$" : ""})`);
       elems.push(el);
       return el;
     };

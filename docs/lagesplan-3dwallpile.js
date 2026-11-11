@@ -136,7 +136,7 @@ function l3swpBuild(pts, s) {
     const e = { h: +s.p_h, b: +s.p_b, tw: +s.p_tw, tf: +s.p_tf }, poly = l3swpIPoly(e.h, e.b, e.tw, e.tf), M = l3swpMerge();
     stations.forEach(st => { const f = frame(st); M.add(l3swpPrism(poly, null, zBot(f), zTop(f), f.pos, f.t, f.n)); });
     const g = M.get(), mass = (+s.p_kgm || 60) * len * stations.length;
-    parts.push({ name: `Berlinerspont ${s.sel} – ${stations.length} pelare c/c ${fmt(cc, 2)} m, L ${fmt(len, 1)} m`, mesh: { pts: g.pts, faces: g.faces }, vol: g.vol, len: L, ifc: "IFCCOLUMN", color: L3SWP_COL.steel, mass });
+    parts.push({ name: `Berlinerspont ${s.sel} – ${stations.length} pelare c/c ${fmt(cc, 2)} m, L ${fmt(len, 1)} m`, mesh: { pts: g.pts, faces: g.faces }, vol: g.vol, len: L, ifc: "IFCPILE", pile: "DRIVEN", color: L3SWP_COL.steel, mass });
     if (s.lag !== false) {
       const tp = Math.max(0.02, +s.tp || 0.075), D = Math.min(len, Math.max(0.3, +s.lagD || 4)), ML = l3swpMerge(), ov = 0.05;
       for (let k = 0; k + 1 < stations.length; k++) { const A = stations[k], B = stations[k + 1]; if (A.i !== B.i) continue; const fa = frame(A), fb = frame(B), span = B.d - A.d, a0 = e.b / 2 - ov, a1 = span - e.b / 2 + ov; if (a1 <= a0) continue;
@@ -155,15 +155,15 @@ function l3swpBuild(pts, s) {
     for (let i = 0; i + 1 < pts.length; i++) { const Ls = cum[i + 1] - cum[i]; if (Ls < 0.05) continue; const n = Math.max(1, Math.round(Ls / c)); for (let k = (stations.length ? 1 : 0); k <= n; k++) stations.push({ i, d: cum[i] + k * (Ls / n) }); }
     stations.forEach((st, k) => { const f = frame(st); (sec && k % 2 === 1 ? M1 : M0).add(l3swpPrism(poly, null, zBot(f), zTop(f), f.pos, f.t, f.n)); });
     const g0 = M0.get(), g1 = M1.get(), nm = sec ? "Sekantpålevägg" : "Tangentpålevägg";
-    parts.push({ name: `${nm} Ø ${fmt(D * 1000, 0)} – ${sec ? "primärpålar (oarmerade)" : stations.length + " pålar"}`, mesh: { pts: g0.pts, faces: g0.faces }, vol: g0.vol, len: L, ifc: "IFCCOLUMN", color: L3SWP_COL.conc, mass: g0.vol * L3SWP_CONC });
-    if (g1.n) parts.push({ name: `${nm} Ø ${fmt(D * 1000, 0)} c/c ${fmt(c * 1000, 0)} – sekundärpålar (armerade)`, mesh: { pts: g1.pts, faces: g1.faces }, vol: g1.vol, len: L, ifc: "IFCCOLUMN", color: "#9aa3ad", mass: g1.vol * L3SWP_CONC });
+    parts.push({ name: `${nm} Ø ${fmt(D * 1000, 0)} – ${sec ? "primärpålar (oarmerade)" : stations.length + " pålar"}`, mesh: { pts: g0.pts, faces: g0.faces }, vol: g0.vol, len: L, ifc: "IFCPILE", pile: "BORED", color: L3SWP_COL.conc, mass: g0.vol * L3SWP_CONC });
+    if (g1.n) parts.push({ name: `${nm} Ø ${fmt(D * 1000, 0)} c/c ${fmt(c * 1000, 0)} – sekundärpålar (armerade)`, mesh: { pts: g1.pts, faces: g1.faces }, vol: g1.vol, len: L, ifc: "IFCPILE", pile: "BORED", color: "#9aa3ad", mass: g1.vol * L3SWP_CONC });
   } else {
-    const M = l3swpMerge(); let poly, holes = null, taper = 0, nm, mat, col, ifcc = "IFCCOLUMN";
+    const M = l3swpMerge(); let poly, holes = null, taper = 0, nm, mat, col, ifcc = "IFCPILE";
     if (kind === "tube") { const D = +s.p_D || 0.17, tt = +s.p_tt || 0.005; poly = l3swpCircle(D / 2); holes = [l3swpCircle(Math.max(0.01, D / 2 - tt)).reverse()]; nm = `Stålrörspålar Ø ${fmt(D * 1000, 1)} × ${fmt(tt * 1000, 1)}`; mat = L3SWP_STEEL; col = L3SWP_COL.steel; }
     else if (kind === "conc") { const a = +s.p_a || 0.27, h = a / 2; poly = [[-h, -h], [h, -h], [h, h], [-h, h]]; nm = `Betongpålar ${fmt(a * 1000, 0)} × ${fmt(a * 1000, 0)}`; mat = L3SWP_CONC; col = L3SWP_COL.conc; }
     else { const d0 = +s.p_d0 || 0.18, d1 = +s.p_d1 || 0.12; poly = l3swpCircle(d0 / 2, 16); taper = d1 / d0; nm = `Träpålar topp Ø ${fmt(d0 * 1000, 0)} / spets Ø ${fmt(d1 * 1000, 0)}`; mat = L3SWP_TIMBER; col = L3SWP_COL.timber; }
     stations.forEach(st => { const f = frame(st); M.add(l3swpPrism(poly, holes, zBot(f), zTop(f), f.pos, f.t, f.n, taper || 0)); });
-    const g = M.get(); parts.push({ name: `${nm} – ${stations.length} pålar c/c ${fmt(cc, 2)} m, L ${fmt(len, 1)} m`, mesh: { pts: g.pts, faces: g.faces }, vol: g.vol, len: L, ifc: ifcc, color: col, mass: g.vol * mat });
+    const g = M.get(); parts.push({ name: `${nm} – ${stations.length} pålar c/c ${fmt(cc, 2)} m, L ${fmt(len, 1)} m`, mesh: { pts: g.pts, faces: g.faces }, vol: g.vol, len: L, ifc: ifcc, pile: "DRIVEN", color: col, mass: g.vol * mat });
   }
   return { parts, L, area: 0, piles: true };
 }

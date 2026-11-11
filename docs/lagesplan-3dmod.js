@@ -8,7 +8,7 @@
    – IFC: ytor och kroppar som trianglar (IfcTriangulatedFaceSet) i vald IFC-klass (vägg, platta, pelare, balk … eller proxy), linjer som tunna rör.
      Befintliga IFC-objekts GUID och egenskaper rörs aldrig: ritning och Push/Pull på dem skapar nya objekt. DXF: LINE och 3DFACE (modDxfText). */
 
-const MOD_IFC = [["IFCBUILDINGELEMENTPROXY", "Övrigt (proxy)"], ["IFCWALL", "Vägg"], ["IFCSLAB", "Platta"], ["IFCCOLUMN", "Pelare"], ["IFCBEAM", "Balk"], ["IFCFOOTING", "Fundament"], ["IFCMEMBER", "Stång"], ["IFCPLATE", "Skiva"], ["IFCCOVERING", "Beklädnad"], ["IFCRAILING", "Räcke"]];
+const MOD_IFC = [["IFCBUILDINGELEMENTPROXY", "Övrigt (proxy)"], ["IFCWALL", "Vägg"], ["IFCSLAB", "Platta"], ["IFCCOLUMN", "Pelare"], ["IFCBEAM", "Balk"], ["IFCFOOTING", "Fundament"], ["IFCMEMBER", "Stång"], ["IFCPILE", "Påle"], ["IFCPLATE", "Skiva"], ["IFCCOVERING", "Beklädnad"], ["IFCRAILING", "Räcke"]];
 const MOD_LABEL = { "mod:yta": "Yta", "mod:kropp": "Kropp", "mod:linje": "Linje" };
 const modIsType = t => String(t || "").startsWith("mod:");
 const modRev = () => Math.random().toString(36).slice(2, 8);

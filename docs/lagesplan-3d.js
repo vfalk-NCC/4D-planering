@@ -325,6 +325,7 @@ function l3Dom() {
         </div>
       </div>
       <button type="button" id="v3HelpBtn" class="v3-ghost" title="Hjälp och kortkommandon (?)">${I.help}<span>Hjälp</span></button>
+      <button type="button" id="v3DlIfc" class="v3-ghost" title="Ladda ner etableringen som IFC till datorn (utan Trimble Connect) – markerade objekt, annars allt"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"/></svg><span>IFC till datorn</span></button>
       <button type="button" id="v3SaveIfc" class="v3-primary" title="Etableringen som IFC i Trimble Connect (görs av 4D-planering)">${I.upload}<span>Spara som IFC i TC</span></button>
     </div>
     <div class="v3-main">
@@ -457,7 +458,7 @@ function l3Dom() {
   $3("v3ObjSearch").oninput = () => l3RenderObjList();
   box.querySelectorAll("[data-paltab]").forEach(b => { b.onclick = () => l3PalTab(b.dataset.paltab); });
   $3("v3BldgBtn").onclick = () => { if (typeof l3bOpenDialog === "function") l3bOpenDialog(); };
-  $3("v3SaveIfc").onclick = l3SaveIfc; $3("v3MontageBtn").onclick = () => exportMontage3d();
+  $3("v3SaveIfc").onclick = l3SaveIfc; $3("v3DlIfc").onclick = l3DownloadIfc; $3("v3MontageBtn").onclick = () => exportMontage3d();
   $3("v3HelpBtn").onclick = e => { e.stopPropagation(); const h = $3("v3Help"); const open = h.classList.contains("hidden"); l3HideMenus(); if (open) { h.innerHTML = l3HelpHtml(); h.classList.remove("hidden"); } };
   box.addEventListener("click", () => l3HideMenus());
   if (typeof l3UiInit === "function") l3UiInit(box); // UI-lyftet: lås, flyttbara paneler, vykub, snabbfält (lagesplan-3dui.js)
@@ -1116,6 +1117,7 @@ function l3SelDeco(g, on) {
 function l3SaveBtnLabel() {
   const b = document.getElementById("v3SaveIfc"), sp = b && b.querySelector("span"); if (!sp || !l3) return;
   const n = l3.sel ? l3.sel.size : 0; sp.textContent = n ? (n === 1 ? "Spara markerad som IFC" : `Spara ${n} markerade som IFC`) : "Spara som IFC i TC";
+  const d = document.getElementById("v3DlIfc"); if (d) d.querySelector("span").textContent = n ? "IFC markerade till datorn" : "IFC till datorn";
   b.title = n ? "Sparar bara det markerade som IFC i Trimble Connect. Ingen markering = allt." : "Hela etableringen som IFC i Trimble Connect (markera ett objekt för att spara bara det)";
 }
 function l3RefreshSel() {
@@ -1817,6 +1819,22 @@ function l3UndoBtns() {
   if (r) r.disabled = !(l3PlR() || l3VHist.r.length);
 }
 async function l3NotifyOpener() { try { await askOpener("placementsChanged", {}, 15000); } catch (e) { /* 4D-planering är inte öppen – filen är ändå sparad */ } }
+/* IFC direkt till datorn (Victor 2026-11-11): samma innehåll som "Spara som IFC i TC" men ingen uppladdning – filen laddas ner. Markerade objekt, annars hela etableringen. Egna IFC-modeller blir egna filer. */
+async function l3DownloadIfc() {
+  const b = document.getElementById("v3DlIfc"); if (b) b.disabled = true;
+  try {
+    const ids = [...l3.sel].filter(id => placements.some(p => p.id === id)), only = ids.length ? new Set(ids) : null, proj = typeof projectName !== "undefined" && projectName ? projectName : "";
+    if (typeof placeModelsPrepare === "function") { try { await placeModelsPrepare(); } catch (e) { /* GLB-modeller utan nät hoppas över */ } }
+    const r = buildPlacementsIfc(proj, only), stamp = placeStamp();
+    let extra = []; if (typeof placeModelIfcFiles === "function") { try { extra = await placeModelIfcFiles(stamp, only); } catch (e) { console.warn("Egna IFC-modeller kunde inte tas med", e); } }
+    if (!r && !extra.length) { l3Status("Det finns inga objekt att exportera – markera något eller placera objekt först.", true); return; }
+    const safe = s => String(s).replace(/[\\/:*?"<>|]/g, "-"), base = ids.length === 1 ? (placements.find(p => p.id === ids[0]).name || "Objekt") : ids.length ? `Etablering urval ${ids.length} objekt` : `Etablering ${proj || "4D-planering"}`;
+    const files = [...(r ? [new File([new TextEncoder().encode(r.text)], safe(`${base} ${stamp}.ifc`), { type: "application/x-step" })] : []), ...extra];
+    files.forEach(f => downloadBlob(f, f.name));
+    const n = (r ? r.n : 0) + extra.length, msg = `✓ ${n} objekt som IFC till datorn (${files.map(f => f.name).join(", ")}).`; l3Status(msg); l3Toast(msg);
+  } catch (e) { l3Status("Kunde inte skapa IFC-filen: " + e.message, true); }
+  if (b) b.disabled = false;
+}
 async function l3SaveIfc() {
   const b = document.getElementById("v3SaveIfc");
   b.disabled = true;

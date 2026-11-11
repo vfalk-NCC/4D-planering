@@ -32,7 +32,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     l3SetPref('measure', 'wall'); l3t.mp = [V(5, 5, 10), V(15, 5, 10)]; l3swStart(); l3sw.cur.spec.kind = 'sheet'; l3swpInit(l3sw.cur.spec, true); l3swPanel(); const sel = document.querySelector('[data-wpstd]'); sel.value = 'PU 28'; sel.dispatchEvent(new Event('change')); out.afterSel = l3sw.cur.spec.sel; out.pw = l3sw.cur.spec.p_b;
     // skapa och kolla IFC
     l3sw.cur.spec.kind = 'berlin'; l3swpInit(l3sw.cur.spec, true); l3swPanel(); l3swDraw(); const nb = placements.length; l3swMake(); const made = placements.slice(nb); out.made = made.map(p => ({ n: p.name, ifc: p.m.ifc, closed: p.m.closed, faces: p.m.faces.length }));
-    const ids = new Set(made.map(p => p.id)); const ifc = buildPlacementsIfc('T', ids); out.ifcCols = ifc ? (ifc.text.match(/IFCCOLUMN\(/g) || []).length : 0; out.ifcPlate = ifc ? (ifc.text.match(/IFCPLATE\(/g) || []).length : 0;
+    const ids = new Set(made.map(p => p.id)); const ifc = buildPlacementsIfc('T', ids); out.ifcCols = ifc ? (ifc.text.match(/IFCPILE\(/g) || []).length : 0; out.pileLine = ifc ? ((ifc.text.match(/IFCPILE\([^\n]*/) || [''])[0].slice(-40)) : ''; out.ifcPlate = ifc ? (ifc.text.match(/IFCPLATE\(/g) || []).length : 0;
     return out;
   });
   await page.evaluate(() => { const V = (x, y, z) => new THREE.Vector3(x, y, z); l3SetPref('measure', 'wall'); l3t.mp = [V(5, 5, 10), V(15, 5, 10), V(15, 11, 10)]; l3swStart(); l3sw.cur.spec.kind = 'berlin'; l3swpInit(l3sw.cur.spec, true); l3swPanel(); l3swDraw(); l3FlyTo(V(10, 7, 8), 22, V(-0.5, -1, 0.8), 0); });
@@ -41,7 +41,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   await page.evaluate(() => l3swClose());
   console.log(JSON.stringify(r).slice(0, 1800));
   const e = (k, c, m) => { if (!c) fail(`${k}: ${m} ${JSON.stringify(r[k])}`); };
-  e('berlin', r.berlin.n === 2 && r.berlin.vol > 0.1 && r.berlin.panel && r.berlin.ifc[0] === 'IFCCOLUMN' && r.berlin.ifc[1] === 'IFCPLATE', 'pelare + utfackning');
+  e('berlin', r.berlin.n === 2 && r.berlin.vol > 0.1 && r.berlin.panel && r.berlin.ifc[0] === 'IFCPILE' && r.berlin.ifc[1] === 'IFCPLATE', 'pelare + utfackning');
   e('sheetAZ', r.sheetAZ.n === 1 && r.sheetAZ.vol > 0.1 && r.sheetAZ.mass > 500 && r.sheetAZ.ifc[0] === 'IFCWALL', 'AZ spont');
   e('sheetPU', r.sheetPU.n === 1 && r.sheetPU.vol > 0.1, 'PU spont');
   e('bored', r.bored.n === 2 && r.bored.vol > 1, 'sekantpålar primär/sekundär');
@@ -52,6 +52,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   e('slits', r.slits.n === 1 && r.slits.vol > 5 && r.slits.ifc[0] === 'IFCWALL', 'slitsmur');
   if (r.afterSel !== 'PU 28' || r.pw !== 0.6) fail('katalogval: ' + JSON.stringify([r.afterSel, r.pw]));
   if (r.made.length !== 2 || !r.made.every(m => m.closed && m.faces > 10) || r.ifcCols < 1 || r.ifcPlate < 1) fail('skapa + IFC: ' + JSON.stringify([r.made, r.ifcCols, r.ifcPlate]));
+  if (!/\.DRIVEN\.,\$\);?$/.test(r.pileLine) && !/\.DRIVEN\.,\$\)/.test(r.pileLine)) fail('IFCPILE ska ha PredefinedType och ConstructionType: ' + r.pileLine);
+  // IFC till datorn (utan TC): markera de skapade objekten och ladda ner
+  await page.evaluate(() => { l3SelectIds(placements.slice(-2).map(p => p.id)); });
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 15000 }), page.click('#v3DlIfc')]);
+  const txt = require('fs').readFileSync(await dl.path(), 'utf8'); if (!/ISO-10303-21/.test(txt) || !/IFCPILE\(/.test(txt) || !/\.ifc$/i.test(dl.suggestedFilename())) fail('IFC till datorn: ' + dl.suggestedFilename() + ' ' + txt.slice(0, 80));
   console.log('OK: spont och pålning – Berlinerspont, Larssen AZ/PU, sekant/tangent, stålrör, betong, trä, slitsmur; IFC-klasser och massa');
   if (errors.length) fail('sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();

@@ -198,7 +198,7 @@ function l3swMake() {
   placeSnapshot(); const set = ghNewId().slice(0, 8), ids = []; let vol = 0, org = null, tons = 0;
   r.parts.forEach(pt => {
     let x0 = Infinity, y0 = Infinity, z0 = Infinity; pt.mesh.pts.forEach(q => { x0 = Math.min(x0, q[0]); y0 = Math.min(y0, q[1]); z0 = Math.min(z0, q[2]); });
-    const r3 = v => Math.round(v * 1000) / 1000, m = { k: "mesh", pts: pt.mesh.pts.map(q => [r3(q[0] - x0), r3(q[1] - y0), r3(q[2] - z0)]), faces: pt.mesh.faces.map(f => [f[0], f[1], f[2]]), closed: true, ifc: pt.ifc || "IFCWALL" };
+    const r3 = v => Math.round(v * 1000) / 1000, m = { k: "mesh", pts: pt.mesh.pts.map(q => [r3(q[0] - x0), r3(q[1] - y0), r3(q[2] - z0)]), faces: pt.mesh.faces.map(f => [f[0], f[1], f[2]]), closed: true, ifc: pt.ifc || "IFCWALL", ...(pt.pile ? { pile: pt.pile } : {}) };
     const p = modCreate(m, [x0, y0, z0], { name: pt.name, color: pt.color || c.spec.color || "#b8bcc2", snapshot: false }); p.set = set; p.note = `Volym ${l3swFmt(pt.vol, 2)} m³ · ca ${l3swFmt((pt.mass != null ? pt.mass : pt.vol * L3SW_DENS) / 1000, 2)} ton · längd ${l3swFmt(pt.len, 2)} m`; ids.push(p.id); vol += pt.vol; tons += (pt.mass != null ? pt.mass : pt.vol * L3SW_DENS) / 1000; org = org || [x0, y0, z0];
   });
   const kd = L3SW_KINDS[c.spec.kind], n = ids.length; l3swClose(); l3SelectIds(ids); l3Changed();
