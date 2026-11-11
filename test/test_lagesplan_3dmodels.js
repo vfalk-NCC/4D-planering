@@ -165,7 +165,7 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   const mid = await page.evaluate(() => placements[0].type);
   const drag = async (from, to) => {
     // Biblioteket är långt: bara källans grupp hålls öppen, så att objektet och målmappen syns samtidigt.
-    for (const g of await page.$$eval('#v3Lib [data-v3grp]', els => els.map(e => e.dataset.v3grp))) {
+    for (const g of (await page.$$eval('#v3Lib [data-v3grp]', els => els.map(e => e.dataset.v3grp))).filter(x => x !== '__lib')) {
       const open = await page.evaluate(([g, from]) => { const h = document.querySelector(`#v3Lib [data-v3grp="${g}"]`), row = h && (h.closest('[data-lfid]') || h), items = row && row.nextElementSibling; const hasSrc = !!(items && items.querySelector && items.querySelector(from.replace('#v3Lib ', ''))); return { want: hasSrc, closed: (l3Prefs().palClosed || []).includes(g) }; }, [g, from]);
       if (open.want === open.closed) await page.click(`#v3Lib [data-v3grp="${g}"]`);
     }

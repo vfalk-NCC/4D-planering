@@ -89,8 +89,8 @@ function l3mnRow(p, vis) {
 }
 function l3mnRender() {
   const host = document.getElementById("v3Lib"); if (!host || typeof l3 === "undefined" || !l3 || !l3.renderer) return;
-  let el = document.getElementById("v3Mine");
-  if (!el) { el = document.createElement("div"); el.id = "v3Mine"; host.parentElement.insertBefore(el, host); }
+  let el = host.querySelector(":scope > #v3Mine");   // ligger överst i #v3Lib så att rubrikerna får exakt samma utseende som övriga mappar
+  if (!el) { el = document.createElement("div"); el.id = "v3Mine"; host.prepend(el); }
   const { groups, total, shown } = l3mnGroups(), esc = escHtml, I = L3_ICO, shut = l3mnShut(), P = l3Prefs();
   if (!total && !(P.moAreas || []).length) { el.innerHTML = ""; el.classList.add("hidden"); return; }
   el.classList.remove("hidden");
@@ -99,16 +99,16 @@ function l3mnRender() {
   const gHtml = groups.map(g => {
     const open = !!q || !shut.has(g.key), vis = g.items.some(p => !l3mnHid(p.id));
     if (g.flat) return g.items.map(p => l3mnRow(p)).join("");
-    return `<div class="v3-mo-g ${g.area !== undefined ? "v3-mo-drop" : ""}" data-mog="${esc(g.key)}" ${g.area !== undefined ? `data-moarea="${esc(g.area)}"` : ""}>
-      <button type="button" class="v3-mo-gh" data-moshut="${esc(g.key)}" aria-expanded="${open}"><span>${esc(g.name)}</span><em>${g.items.length}</em></button>
-      ${g.items.length ? `<button type="button" class="v3-mo-ic" data-mosel="${esc(g.key)}" title="Markera alla i gruppen">${I.cursor || "▣"}</button>` : ""}
-      ${g.area ? `<button type="button" class="v3-mo-ic" data-moren="${esc(g.area)}" title="Byt namn på området">${I.edit}</button><button type="button" class="v3-mo-ic" data-model="${esc(g.area)}" title="Ta bort området (objekten behålls)">${I.trash}</button>` : ""}
+    return `<div class="v3-lf v3-mo-g ${g.area !== undefined ? "v3-mo-drop" : ""}" data-mog="${esc(g.key)}" ${g.area !== undefined ? `data-moarea="${esc(g.area)}"` : ""}>
+      <button type="button" class="v3-pal-g" data-moshut="${esc(g.key)}" aria-expanded="${open}"><span>${esc(g.name)}</span><em>${g.items.length}</em></button>
+      ${g.items.length ? `<button type="button" class="v3-lf-ic" data-mosel="${esc(g.key)}" title="Markera och flyg till alla i gruppen">${I.cursor || "▣"}</button>` : ""}
+      ${g.area ? `<button type="button" class="v3-lf-ic" data-moren="${esc(g.area)}" title="Byt namn på området">${I.edit}</button><button type="button" class="v3-lf-ic" data-model="${esc(g.area)}" title="Ta bort området (objekten behålls)">${I.trash}</button>` : ""}
       <label class="v3-lay-sw v3-lf-sw" title="${vis ? "Släck" : "Tänd"} ${g.items.length} objekt"><input type="checkbox" role="switch" data-movis="${esc(g.key)}" ${vis || !g.items.length ? "checked" : ""} ${g.items.length ? "" : "disabled"} /><i></i></label></div>`
       + (open ? `<div class="v3-mo-items">${g.items.map(p => l3mnRow(p)).join("") || `<div class="v3-pal-hint">Tomt – dra objekt hit.</div>`}</div>` : "");
   }).join("");
   const opt = (v, cur, t) => `<option value="${v}" ${cur === v ? "selected" : ""}>${t}</option>`;
-  el.innerHTML = `<div class="v3-mo-sec"><div class="v3-mo-h"><button type="button" class="v3-pal-g" id="v3MoHead" aria-expanded="${!secShut}"><span>Ritade objekt</span><em>${total}</em></button>
-      <button type="button" class="v3-mo-ic v3-mo-ic-on" id="v3MoNew" title="Nytt område">＋</button>
+  el.innerHTML = `<div class="v3-mo-sec"><div class="v3-lf"><button type="button" class="v3-pal-g" id="v3MoHead" aria-expanded="${!secShut}"><span>Ritade objekt</span><em>${total}</em></button>
+      <button type="button" class="v3-lf-ic v3-mo-plus" id="v3MoNew" title="Nytt område">＋</button>
       <label class="v3-lay-sw v3-lf-sw" title="${anyOn ? "Släck" : "Tänd"} alla ritade objekt"><input type="checkbox" role="switch" id="v3MoAllVis" ${anyOn || !total ? "checked" : ""} ${total ? "" : "disabled"} /><i></i></label></div>
     ${secShut ? "" : `<div class="v3-mo-tools"><input type="search" id="v3MoQ" placeholder="Sök ritade objekt…" value="${esc(q)}" />
       <select id="v3MoSort" title="Sortera">${opt("name", P.moSort || "name", "Namn")}${opt("type", P.moSort, "Typ")}${opt("new", P.moSort, "Nyast först")}${opt("old", P.moSort, "Äldst först")}${opt("act", P.moSort, "4D-aktivitet")}${opt("size", P.moSort, "Störst")}</select>
@@ -157,8 +157,9 @@ function l3mnBind(el, groups, selMine) {
   });
 }
 (() => {
+  const now = () => { try { l3mnRender(); } catch (e) { console.warn("Ritade objekt", e); } };
   const later = () => { if (l3mn.raf) return; l3mn.raf = requestAnimationFrame(() => { l3mn.raf = 0; try { l3mnRender(); } catch (e) { console.warn("Ritade objekt", e); } }); };
-  const wrap = n => { const f = window[n]; if (typeof f !== "function" || f.__mo) return; const w = function () { const r = f.apply(this, arguments); later(); return r; }; w.__mo = true; window[n] = w; };
+  const wrap = n => { const f = window[n]; if (typeof f !== "function" || f.__mo) return; const w = function () { const r = f.apply(this, arguments); if (n === "l3RenderLib") now(); else later(); return r; }; w.__mo = true; window[n] = w; };
   const go = () => { ["l3RenderLib", "l3Changed", "l3SelectIds", "l3UpdateHidden", "l3ShowAll"].forEach(wrap); };   // senare skript definierar funktionerna – vänta tills allt är inläst
   if (document.readyState === "complete") go(); else window.addEventListener("load", go);
 })();

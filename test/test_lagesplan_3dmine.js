@@ -30,7 +30,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const a = mk('Mur A', 0), b = mk('Mur B', 3), c = mk('Platta C', 6); l3Changed(); await new Promise(r => setTimeout(r, 300));
     out.sec = !!document.getElementById('v3Mine') && !document.getElementById('v3Mine').classList.contains('hidden'); out.rows = document.querySelectorAll('#v3Mine .v3-mo-r').length;
     l3mnSetArea([a.id, b.id], 'Område Nord'); await new Promise(r => setTimeout(r, 200));
-    out.areaOf = [a.area, b.area, c.area]; out.groups = [...document.querySelectorAll('#v3Mine .v3-mo-gh span')].map(e => e.textContent);
+    out.areaOf = [a.area, b.area, c.area]; out.groups = [...document.querySelectorAll('#v3Mine .v3-mo-g .v3-pal-g span')].map(e => e.textContent);
     // släck området
     const sw = document.querySelector('#v3Mine [data-movis="a:Område Nord"]'); sw.click(); await new Promise(r => setTimeout(r, 200));
     out.hid = [l3.hidden.has(a.id), l3.hidden.has(b.id), l3.hidden.has(c.id)]; out.vis = [a, b, c].map(p => l3.placeMeshes.get(p.id).visible);
