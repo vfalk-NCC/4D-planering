@@ -146,7 +146,7 @@ function l3RenderLib() {
     if (!all.length && f.fixed && f.id !== "g:Egna modeller") return "";
     const open = q || !closed.has(f.id) || list.some(it => l3 && l3.addType === it.k);
     const placed = l3libPlaced(f.id), on = placed.some(p => !(l3.hidden && l3.hidden.has(p.id)));
-    return `<div class="v3-lf" data-lfid="${esc(f.id)}">
+    return `<div class="v3-lf v3-pill" data-lfid="${esc(f.id)}">
       <button type="button" class="v3-pal-g" data-v3grp="${esc(f.id)}" aria-expanded="${!!open}"><span>${esc(f.name)}</span><em>${all.length}</em></button>
       <button type="button" class="v3-lf-ic" data-lfren="${esc(f.id)}" title="Byt namn">${I.edit}</button>
       ${f.fixed ? "" : `<button type="button" class="v3-lf-ic" data-lfdel="${esc(f.id)}" title="Ta bort mappen (objekten flyttas tillbaka)">${I.trash}</button>`}
@@ -155,7 +155,7 @@ function l3RenderLib() {
   }).join("");
   // Alla mappar ligger under ett eget avsnitt som kan fällas ihop med ett klick (Victor 2026-11-11).
   const libOpen = !!q || !closed.has("__lib");
-  el.innerHTML = `<div class="v3-lf v3-lf-all"><button type="button" class="v3-pal-g" data-v3grp="__lib" aria-expanded="${libOpen}" title="Fäll ihop eller ut alla biblioteksmappar"><span>Objektbibliotek</span><em>${items.length}</em></button></div>`
+  el.innerHTML = `<div class="v3-lf v3-lf-all v3-pill"><button type="button" class="v3-pal-g" data-v3grp="__lib" aria-expanded="${libOpen}" title="Fäll ihop eller ut alla biblioteksmappar"><span>Objektbibliotek</span><em>${items.length}</em></button></div>`
     + (libOpen ? `<button type="button" class="v3-lf-new" id="v3LibNew" title="Ny mapp i biblioteket – dra sedan objekt dit">＋ Ny mapp</button>` + (html || `<div class="v3-pal-hint">Inget matchar "${esc(q)}".</div>`) : "");
   el.querySelectorAll("[data-v3grp]").forEach(b => { b.onclick = () => {
     const g = b.dataset.v3grp, set = new Set(l3Prefs().palClosed || L3LIB_CLOSED0);

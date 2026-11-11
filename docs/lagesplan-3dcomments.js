@@ -233,6 +233,7 @@ function l3kClose() {
    Punkten glider på ytan av det objekt kommentaren skapades på och lämnar det aldrig (Victor 2026-10-10:
    "punkten ska alltid ha koppling mot 3d-objekten den är skapad på") – utanför objektet står den kvar. */
 const L3K_LIFT = 2.2;
+const L3K_MOVE = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l-3 3 3 3M9 5l3-3 3 3M15 19l-3 3-3-3M19 9l3 3-3 3M2 12h20M12 2v20"/></svg>';
 const l3kLift = c => (Number.isFinite(c.lift) ? c.lift : L3K_LIFT);
 const l3kH = { xy: null, z: null, drag: null };
 function l3kActive() {
@@ -357,6 +358,7 @@ function l3kRenderTab() {
         <label class="v3-kc-col" title="Byt färg"><input type="color" data-kccol="${esc(c.id)}" value="${esc(c.color || L3K_COLORS[0])}" /><i style="background:${l3kCol(c)}">${nr}</i></label>
         <button type="button" class="v3-kc-b" data-kcgo="${esc(c.id)}" title="Klick: zooma till kommentaren · Ctrl+klick: välj flera · Skift+klick: välj flera i rad"><b>${esc(String(c.text).slice(0, 160))}</b><em>${c.folder && typeof l3aFolderName === "function" && l3aFolderName(c.folder) ? `<span class="v3-fchip">${esc(l3aFolderName(c.folder))}</span>` : ""}${esc([c.target && c.target.name, c.by, new Date(c.at).toLocaleDateString("sv-SE", { day: "numeric", month: "short" }), (c.replies || []).length ? `${c.replies.length} svar` : ""].filter(Boolean).join(" · "))}</em></button>
         <button type="button" class="v3-ic" data-kcdone="${esc(c.id)}" title="${c.done ? "Öppna igen" : "Markera som klar"}">${c.done ? "↺" : "✓"}</button>
+        <button type="button" class="v3-ic" data-kcmove="${esc(c.id)}" title="Flytta kommentaren: dra punkten (flytta på ytan) och skylten (höjd) i 3D">${L3K_MOVE}</button>
         <button type="button" class="v3-ic" data-kcdel="${esc(c.id)}" title="Ta bort">${I.trash}</button>
       </div>`).join("") : `<div class="v3-pal-hint">${l3k.list.length ? "Ingen kommentar matchar." : "Inga kommentarer än. Högerklicka på ett objekt i 3D → Kommentar här…"}</div>`}</div>
     ${l3k.list.length ? `<div class="v3-grp-acts"><button type="button" id="v3KIfcSel" ${nSel ? "" : "disabled"} title="De markerade kommentarerna (Ctrl+klick / Skift+klick i listan) som 3D-skyltar i en ny IFC-fil i Trimble Connect">${I.upload} Exportera markerade${nSel ? ` (${nSel})` : ""}</button>${nSel ? `<button type="button" id="v3KSelClr" title="Avmarkera alla">Avmarkera</button>` : ""}<button type="button" id="v3KIfc" title="Alla kommentarer som syns i listan som riktiga 3D-skyltar (skylt, stolpe, 3D-text och egenskaper) i en ny IFC-fil i Trimble Connect – vända mot vyn du har nu">${I.upload} Exportera alla som 3D-skyltar</button></div>` : ""}
@@ -398,6 +400,7 @@ function l3kRenderTab() {
   }; });
   host.querySelectorAll("[data-kccol]").forEach(inp => { inp.onchange = async () => { const c = find(inp.dataset.kccol); if (!c) return; c.color = inp.value; l3kDraw(); if (l3k.open === c) l3kOpen(c); await l3kWrite(c); }; });
   host.querySelectorAll("[data-kcdone]").forEach(b => { b.onclick = async () => { const c = find(b.dataset.kcdone); if (!c) return; c.done = !c.done; l3kDraw(); if (l3k.open === c) l3kOpen(c); await l3kWrite(c); }; });
+  host.querySelectorAll("[data-kcmove]").forEach(b => { b.onclick = e => { e.stopPropagation(); const c = find(b.dataset.kcmove); if (!c) return; if (l3k.hidden) { l3k.hidden = false; l3kDraw(); } l3kOpen(c, true); if (typeof l3FlyTo === "function") l3FlyTo(new THREE.Vector3(c.pos[0] - l3.O[0], c.pos[1] - l3.O[1], c.pos[2] - l3.O[2]), 14); l3Status("Dra i handtagen vid kommentaren: punkten flyttas på ytan, skylten i höjdled."); }; });
   host.querySelectorAll("[data-kcdel]").forEach(b => { b.onclick = async () => { const c = find(b.dataset.kcdel); if (!c || !(await uiConfirm("Ta bort kommentaren och dess svar?"))) return; l3k.list = l3k.list.filter(x => x !== c); if (l3k.open === c) l3kClose(); l3kDraw(); await l3kWrite(c, true); }; });
 }
 

@@ -12,8 +12,10 @@ function l3ssApply(host) {
   L3SS.forEach(s => {
     const h = host.querySelector(s.head); if (!h || h.parentElement.classList.contains("v3-ss-row")) return;
     let on = true, n = 0; try { on = !!s.on(); n = s.count(); } catch (e) { return; }
-    const row = document.createElement("div"); row.className = "v3-ss-row"; h.parentElement.insertBefore(row, h); row.appendChild(h);
-    const lb = document.createElement("label"); lb.className = "v3-lay-sw v3-ss-sw"; lb.title = n ? `${on ? "Släck" : "Tänd"} alla ${s.name} i 3D` : `Inga ${s.name} än`;
+    // Samma pill som i Lager: rubrik, antal och switch ligger i en och samma ruta.
+    h.className = "v3-lsec-t"; const sp = h.querySelector("span"); if (sp) { const em = document.createElement("em"); em.className = "v3-lsec-n"; em.innerHTML = sp.innerHTML; sp.replaceWith(em); }
+    const row = document.createElement("div"); row.className = "v3-lg v3-lsec-h v3-ss-row"; h.parentElement.insertBefore(row, h); row.appendChild(h);
+    const lb = document.createElement("label"); lb.className = "v3-lay-sw"; lb.title = n ? `${on ? "Släck" : "Tänd"} alla ${s.name} i 3D` : `Inga ${s.name} än`;
     lb.innerHTML = `<input type="checkbox" role="switch" ${on || !n ? "checked" : ""} ${n ? "" : "disabled"} aria-label="Visa ${s.name} i 3D" /><i></i>`;
     lb.addEventListener("click", e => e.stopPropagation());
     lb.querySelector("input").onchange = e => { try { s.set(e.target.checked); } catch (er) { console.warn(er); } if (typeof l3kRenderTab === "function") l3kRenderTab(); if (typeof l3Render === "function") l3Render(); };

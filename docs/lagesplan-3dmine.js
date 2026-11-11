@@ -99,7 +99,7 @@ function l3mnRender() {
   const gHtml = groups.map(g => {
     const open = !!q || !shut.has(g.key), vis = g.items.some(p => !l3mnHid(p.id));
     if (g.flat) return g.items.map(p => l3mnRow(p)).join("");
-    return `<div class="v3-lf v3-mo-g ${g.area !== undefined ? "v3-mo-drop" : ""}" data-mog="${esc(g.key)}" ${g.area !== undefined ? `data-moarea="${esc(g.area)}"` : ""}>
+    return `<div class="v3-lf v3-pill v3-mo-g ${g.area !== undefined ? "v3-mo-drop" : ""}" data-mog="${esc(g.key)}" ${g.area !== undefined ? `data-moarea="${esc(g.area)}"` : ""}>
       <button type="button" class="v3-pal-g" data-moshut="${esc(g.key)}" aria-expanded="${open}"><span>${esc(g.name)}</span><em>${g.items.length}</em></button>
       ${g.items.length ? `<button type="button" class="v3-lf-ic" data-mosel="${esc(g.key)}" title="Markera och flyg till alla i gruppen">${I.cursor || "▣"}</button>` : ""}
       ${g.area ? `<button type="button" class="v3-lf-ic" data-moren="${esc(g.area)}" title="Byt namn på området">${I.edit}</button><button type="button" class="v3-lf-ic" data-model="${esc(g.area)}" title="Ta bort området (objekten behålls)">${I.trash}</button>` : ""}
@@ -107,7 +107,7 @@ function l3mnRender() {
       + (open ? `<div class="v3-mo-items">${g.items.map(p => l3mnRow(p)).join("") || `<div class="v3-pal-hint">Tomt – dra objekt hit.</div>`}</div>` : "");
   }).join("");
   const opt = (v, cur, t) => `<option value="${v}" ${cur === v ? "selected" : ""}>${t}</option>`;
-  el.innerHTML = `<div class="v3-mo-sec"><div class="v3-lf"><button type="button" class="v3-pal-g" id="v3MoHead" aria-expanded="${!secShut}"><span>Ritade objekt</span><em>${total}</em></button>
+  el.innerHTML = `<div class="v3-mo-sec"><div class="v3-lf v3-pill"><button type="button" class="v3-pal-g" id="v3MoHead" aria-expanded="${!secShut}"><span>Ritade objekt</span><em>${total}</em></button>
       <button type="button" class="v3-lf-ic v3-mo-plus" id="v3MoNew" title="Nytt område">＋</button>
       <label class="v3-lay-sw v3-lf-sw" title="${anyOn ? "Släck" : "Tänd"} alla ritade objekt"><input type="checkbox" role="switch" id="v3MoAllVis" ${anyOn || !total ? "checked" : ""} ${total ? "" : "disabled"} /><i></i></label></div>
     ${secShut ? "" : `<div class="v3-mo-tools"><input type="search" id="v3MoQ" placeholder="Sök ritade objekt…" value="${esc(q)}" />

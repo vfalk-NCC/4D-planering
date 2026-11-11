@@ -43,14 +43,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     // sektionsswitchar i Kommentarer & Mått
     l3SetPref('palTab', 'comments'); if (typeof l3SetPalTab === 'function') l3SetPalTab('comments'); else document.querySelector('[data-paltab="comments"]').click();
     await new Promise(r => setTimeout(r, 600)); if (typeof l3kRenderTab === 'function') l3kRenderTab();
-    out.sw = [...document.querySelectorAll('#v3PalComments .v3-ss-sw')].length;
+    out.sw = [...document.querySelectorAll('#v3PalComments .v3-ss-row .v3-lay-sw')].length;
     l3m.list.push({ id: 'm1', kind: 'dist', text: '5 m', pts: [], saved: true }); l3kRenderTab();
     out.mDisabled = false; const ms = document.querySelector('#v3MeasHead').parentElement.querySelector('input'); ms.click(); await new Promise(r => setTimeout(r, 200)); out.mHid = l3m.list.every(m => m.hid);
     document.querySelector('#v3KListHead').parentElement.querySelector('input').click(); await new Promise(r => setTimeout(r, 200)); out.kHid = l3k.hidden === true;
     document.querySelector('#v3PhHead').parentElement.querySelector('input').click(); await new Promise(r => setTimeout(r, 200)); out.pOff = !l3phOn() || l3phList().length === 0;
+    // kommentar: Flytta-knappen öppnar redigeringsläget med handtag
+    l3k.list.push({ id: 'k1', text: 'Test', pos: [1, 1, 1], at: new Date().toISOString(), by: 'V', replies: [] }); l3kRenderTab();
+    const mv = document.querySelector('[data-kcmove="k1"]'); out.hasMove = !!mv; if (mv) { mv.click(); await new Promise(r => setTimeout(r, 300)); out.edit = !!l3k.editMode && l3k.open && l3k.open.id === 'k1'; }
     return out;
   });
   console.log(JSON.stringify(r));
+  if (!r.hasMove || !r.edit) fail('flytta kommentar: ' + JSON.stringify(r));
   if (!r.sec || r.rows !== 3) fail('avsnittet saknas: ' + JSON.stringify(r));
   if (r.areaOf[0] !== 'Område Nord' || r.areaOf[1] !== 'Område Nord' || r.areaOf[2] || !r.groups.includes('Område Nord') || !r.groups.includes('Utan område')) fail('områden: ' + JSON.stringify(r));
   if (!(r.hid[0] && r.hid[1] && !r.hid[2]) || r.vis[0] || r.vis[1] || !r.vis[2]) fail('släck område: ' + JSON.stringify(r));
