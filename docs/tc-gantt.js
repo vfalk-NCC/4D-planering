@@ -17,7 +17,8 @@ const l3tgSrc = () => (l3Prefs().tcGanttSrc === "excel" ? "excel" : "pp");
 const l3tgOrigin = () => { try { return new URL(l3tgUrl(), location.href).origin; } catch (e) { return "*"; } };
 const l3tgPaths = () => { const b = `projects/${encodeURIComponent(projectId)}/${l3tgSrc() === "pp" ? "pp/" : ""}`; return [b + "plan_items.json", b + "plan_item_activities.json"]; };
 
-function l3tgSend(m) { try { if (l3tg.frame && l3tg.frame.contentWindow) l3tg.frame.contentWindow.postMessage(m, l3tgOrigin()); } catch (e) { /* ingen ram */ } }
+const l3tgPopupOn = () => !!(l3tg.popup && !l3tg.popup.closed);
+function l3tgSend(m) { try { if (l3tgPopupOn()) l3tg.popup.postMessage({ tgPopup: true, msg: m }, location.origin); else if (l3tg.frame && l3tg.frame.contentWindow) l3tg.frame.contentWindow.postMessage(m, l3tgOrigin()); } catch (e) { /* ingen ram */ } }
 function l3tgFrameMake() {
   const f = document.createElement("iframe"); f.className = "v3-tg-frame"; f.title = "Gantt (4D-dashboard)"; f.allow = "clipboard-write; fullscreen";
   f.src = l3tgUrl() + (l3tgUrl().includes("?") ? "&" : "?") + "embed=gantt";
@@ -35,7 +36,19 @@ function l3tgFailBanner() {
 }
 /* Ritar panelen: fältet ovanför (3D-lägen m.m.) görs om vid behov, iframen lever kvar så att Gantten inte laddas om. */
 const l3tgTools = () => !!l3plPrefs().tgTools;
+function l3tgRenderPopup(d, P) {
+  d.innerHTML = ""; const top = document.createElement("div"); top.className = "v3-tg-top"; d.appendChild(top); d.style.display = "flex"; d.style.flexDirection = "column"; d.style.height = "auto"; d.classList.remove("v3-tg-float", "full");
+  ["left", "top", "width"].forEach(k => { d.style[k] = ""; }); d.style.right = ""; d.style.bottom = "";
+  const acts = l3pl.rows ? l3plActs(P.split) : [];
+  top.innerHTML = `<div class="v3-pldock-bar v3-tg-strip"><b>4D-planering · TC-Gantten</b><span class="v3-tg-seg"></span><span class="hint" style="color:#475569">Gantten är öppen i ett eget fönster – synkad med 3D-editorn.</span><span class="v3-grow"></span>
+      <button type="button" class="v3-ga-ib" id="v3TgFocus" title="Visa Gantt-fönstret">Visa fönstret</button><button type="button" class="v3-ga-ib" id="v3TgBack" title="Stäng fönstret och ha Gantten här igen">Hämta tillbaka hit</button><button type="button" class="v3-ga-ib v3-ic" id="v3PlClose" title="Stäng" aria-label="Stäng">${L3GA_ICO.x}</button></div>
+    <div class="v3-tg-gm">${typeof l3gmBarHtml === "function" ? l3gmBarHtml(acts) : ""}</div>`;
+  const gm = top.querySelector(".v3-tg-gm"), row = gm.querySelector(".v3-gm-row"), seg = gm.querySelector("#v3GmSeg"); if (row && seg) { top.querySelector(".v3-tg-seg").appendChild(seg); row.remove(); }
+  top.querySelector("#v3TgFocus").onclick = () => { try { l3tg.popup.focus(); } catch (e) { /* ok */ } }; top.querySelector("#v3TgBack").onclick = () => l3tgPopBack(); top.querySelector("#v3PlClose").onclick = () => { l3tgPopBack(); l3plDockToggle(false); };
+  if (typeof l3gmBind === "function") l3gmBind(d); l3tgStart();
+}
 function l3tgRender(d, P) {
+  if (l3tgPopupOn()) { l3tgRenderPopup(d, P); return; }
   let top = d.querySelector(":scope > .v3-tg-top");
   if (!top || !l3tg.frame || l3tg.frame.parentNode !== d) { d.innerHTML = ""; top = document.createElement("div"); top.className = "v3-tg-top"; d.appendChild(top); d.appendChild(l3tg.frame && !l3tg.frame.parentNode ? l3tg.frame : l3tgFrameMake()); }
   d.style.display = "flex"; d.style.flexDirection = "column";
@@ -45,6 +58,7 @@ function l3tgRender(d, P) {
       <span class="v3-tg-seg"></span>
       <span class="v3-grow"></span>
       <button type="button" class="v3-ga-ib ${tools ? "on" : ""}" id="v3TgTools" aria-pressed="${tools}" title="${tools ? "Dölj filter, period och verktyg (mer plats åt tidslinjen)" : "Visa filter, period, färger och verktyg"}">${L3GA_ICO.sliders}<span>Verktyg</span></button>
+      <button type="button" class="v3-ga-ib" id="v3TgPop" title="Öppna Gantten i ett eget fönster (t.ex. på en andra skärm) – synkad med 3D-editorn">⧉</button>
       <button type="button" class="v3-ga-ib" id="v3TgReload" title="Läs om tidplanen">↻</button>
       <button type="button" class="v3-ga-ib" id="v3TgFull" title="${P.full ? "Tillbaka till panelen" : "Hela 3D-ytan"}">${P.full ? L3GA_ICO.shrink : L3GA_ICO.full}</button>
       <button type="button" class="v3-ga-ib" id="v3TgClassic" title="Byt till den inbyggda (äldre) Gantten">Äldre vy</button>
@@ -58,6 +72,7 @@ function l3tgRender(d, P) {
   const q = s => top.querySelector(s);
   top.querySelectorAll("[data-tgsrc]").forEach(b => { b.onclick = () => { if (l3tgSrc() === b.dataset.tgsrc) return; l3SetPref("tcGanttSrc", b.dataset.tgsrc); l3tgSend({ t: "init", ...l3tgInit() }); l3tgSig(); l3plDockRender(); }; });
   q("#v3TgTools").onclick = () => { l3plSet("tgTools", !l3tgTools()); l3plDockRender(); };
+  q("#v3TgPop").onclick = () => l3tgPopOut();
   q("#v3TgReload").onclick = () => l3tgReload(true);
   q("#v3TgFull").onclick = () => { l3plSet("full", !P.full); l3plDockRender(); };
   q("#v3TgClassic").onclick = () => { l3SetPref("tcGantt", false); l3tg.frame = null; d.innerHTML = ""; l3plDockRender(); };
@@ -131,11 +146,15 @@ async function l3tgPoll() {
 }
 function l3tgStart() { l3tgWrapSel(); if (!l3tg.timer) l3tg.timer = setInterval(l3tgPoll, 20000); }
 window.addEventListener("message", ev => {
+  if (ev.data && ev.data.tgPopup) { if (l3tg.popup && ev.source === l3tg.popup && ev.origin === location.origin) l3tgOnMsg(ev.data.msg || {}, true); return; }
   if (!l3tg.frame || ev.source !== l3tg.frame.contentWindow) return;
   const o = l3tgOrigin(); if (o !== "*" && ev.origin !== o) return;
-  const m = ev.data || {};
+  l3tgOnMsg(ev.data || {}, false);
+});
+function l3tgOnMsg(m, pop) {
+  if (m.t === "popupClosed") { l3tgPopBack(); return; }
   if (m.t === "ready") { l3tg.ready = true; l3tgSend({ t: "init", ...l3tgInit() }); }
-  else if (m.t === "loaded") { l3tg.loaded = true; l3tgSend({ t: "compact", on: !l3tgTools() }); l3tgSelSync(); clearTimeout(l3tg.wd); const f = document.querySelector("#v3PlanDock .v3-tg-fail"); if (f) f.remove(); l3tgSig(); }
+  else if (m.t === "loaded") { l3tg.loaded = true; l3tgSend({ t: "compact", on: pop ? false : !l3tgTools() }); l3tgSelSync(); clearTimeout(l3tg.wd); const f = document.querySelector("#v3PlanDock .v3-tg-fail"); if (f) f.remove(); l3tgSig(); }
   else if (m.t === "changed") { clearTimeout(l3tg.dt); l3tg.dt = setTimeout(async () => { l3pl.rows = null; await l3plLoad(true); if (typeof l3gmApply === "function") l3gmApply(true); l3tgSig(); }, 700); }
   else if (m.t === "select") {
     l3tg.selOwn = Date.now() + 1500;
@@ -144,6 +163,19 @@ window.addEventListener("message", ev => {
     if (ents.length) { l3bsSet(ents); if (typeof l3bsZoom === "function") l3bsZoom(); l3Status(`${m.name || "Aktivitet"}: ${ents.length} objekt markerade.`); }
     else l3Status(`${m.name || "Aktiviteten"}: objekten finns inte i de inlästa modellerna.`, true);
   }
-});
+}
+/* ---- Gantten i ett eget fönster (t.ex. på en andra skärm): samma Gantt, synkad med 3D-editorn via den här sidan (gantt-popup.html) ---- */
+function l3tgPopOut() {
+  if (l3tgPopupOn()) { l3tg.popup.focus(); return; }
+  const w = window.open("gantt-popup.html?u=" + encodeURIComponent(new URL(l3tgUrl(), location.href).href), "tc-gantt-popup", "popup=yes,width=1500,height=900");
+  if (!w) { l3Status("Webbläsaren blockerade det nya fönstret – tillåt popup-fönster för sidan och försök igen.", true); return; }
+  l3tg.popup = w; l3tg.loaded = false; if (l3tg.frame) { l3tg.frame.remove(); l3tg.frame = null; }
+  clearInterval(l3tg.pw); l3tg.pw = setInterval(() => { if (!l3tgPopupOn()) l3tgPopBack(); }, 1500);
+  l3plDockRender(); l3Status("Gantten är öppnad i ett eget fönster – den är synkad med 3D-editorn.");
+}
+function l3tgPopBack() {
+  clearInterval(l3tg.pw); if (!l3tg.popup) return; try { if (!l3tg.popup.closed) l3tg.popup.close(); } catch (e) { /* ok */ } l3tg.popup = null; l3tg.loaded = false;
+  const d = document.getElementById("v3PlanDock"); if (d) d.innerHTML = ""; if (l3pl.dock) l3plDockRender();
+}
 /* Sparar 3D-editorn något i tidplanen → Gantten läser om. */
-if (typeof ghWriteJSON === "function") { const w0 = ghWriteJSON; ghWriteJSON = window.ghWriteJSON = async function (...a) { const r = await w0.apply(this, a); if (/plan_item/.test(String(a[1] || "")) && l3tg.frame) { clearTimeout(l3tg.wt); l3tg.wt = setTimeout(() => { l3tgSend({ t: "refresh" }); l3tgSig(); }, 800); } return r; }; }
+if (typeof ghWriteJSON === "function") { const w0 = ghWriteJSON; ghWriteJSON = window.ghWriteJSON = async function (...a) { const r = await w0.apply(this, a); if (/plan_item/.test(String(a[1] || "")) && (l3tg.frame || l3tgPopupOn())) { clearTimeout(l3tg.wt); l3tg.wt = setTimeout(() => { l3tgSend({ t: "refresh" }); l3tgSig(); }, 800); } return r; }; }

@@ -26,9 +26,9 @@ const serve = (root, port) => http.createServer((q, r) => fs.readFile(path.join(
     await require('./_dialogs').bridge(page);
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.addInitScript(p2 => { localStorage.setItem('4dplan-unlocked', '1'); localStorage.setItem('4ddash-unlocked', '1'); localStorage.setItem('lagesplan-3d-prefs', JSON.stringify({ plan: { dock: true }, tcGanttUrl: `http://localhost:${p2}/index.html` })); localStorage.setItem('4dplan-settings', JSON.stringify({ githubToken: 't', userName: 'Victor' })); }, PORT2);
-    await page.route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS }));
-    await page.route(/components\.connect\.trimble\.com/, r => r.fulfill({ contentType: 'application/javascript', body: '' }));
-    await page.route('https://api.github.com/**', r => {
+    await page.context().route('https://cdnjs.cloudflare.com/**', r => r.fulfill({ contentType: 'application/javascript', body: PDFJS }));
+    await page.context().route(/components\.connect\.trimble\.com/, r => r.fulfill({ contentType: 'application/javascript', body: '' }));
+    await page.context().route('https://api.github.com/**', r => {
       const f = decodeURIComponent(new URL(r.request().url()).pathname.replace('/repos/vfalk-NCC/4D-data/contents/', ''));
       if (r.request().method() !== 'GET') { if (f === 'projects/p1/pp/plan_items.json') { try { const nw = JSON.parse(Buffer.from(JSON.parse(r.request().postData()).content, 'base64').toString()); PP.splice(0, PP.length, ...nw); } catch (e) { /* ignoreras */ } } SHA++; return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: { sha: 's' + SHA } }) }); }
       const data = { 'projects/p1/pp/plan_items.json': PP, 'projects/p1/pp/plan_item_activities.json': [] }[f];
@@ -88,6 +88,22 @@ const serve = (root, port) => http.createServer((q, r) => fs.readFile(path.join(
     const R1 = await page.evaluate(() => { const d = document.getElementById('v3PlanDock'), b = d.getBoundingClientRect(); return { w: b.width, h: b.height, float: d.classList.contains('v3-tg-float'), rect: l3tgRect() }; });
     console.log(JSON.stringify([R0, R1]));
     if (!R1.float || !R1.rect || Math.abs(R1.w - (R0.w - 200)) > 6 || Math.abs(R1.h - (R0.h + 60)) > 6) fail('storleken gick inte att ändra med hörnhandtaget: ' + JSON.stringify([R0, R1]));
+    // Gantten i eget fönster
+    const [popup] = await Promise.all([page.waitForEvent('popup', { timeout: 15000 }), page.evaluate(() => l3tgPopOut())]);
+    await page.waitForFunction(() => l3tg.loaded, null, { timeout: 40000 }).catch(() => {});
+    const PO = await page.evaluate(() => ({ on: l3tgPopupOn(), frame: !!document.querySelector('#v3PlanDock iframe'), back: !!document.getElementById('v3TgBack'), seg: !!document.querySelector('#v3PlanDock #v3GmSeg'), loaded: l3tg.loaded }));
+    console.log(JSON.stringify(PO));
+    if (!PO.on || PO.frame || !PO.back || !PO.seg || !PO.loaded) fail('popup-läget ritas fel: ' + JSON.stringify(PO));
+    const pf = popup.frames().find(f => f.url().includes('localhost:' + PORT2)); if (!pf) fail('popup saknar dashboard-iframe');
+    await pf.waitForFunction(() => typeof items !== 'undefined' && items.length >= 2, null, { timeout: 20000 }).catch(async e => { console.log('popup frame', pf.url(), await pf.evaluate(() => ({ t: typeof items, n: typeof items !== 'undefined' ? items.length : -1, embed: document.documentElement.className, pid: typeof projectId !== 'undefined' ? projectId : null, tok: typeof settings !== 'undefined' ? !!settings.githubToken : null })).catch(x => String(x))); throw e; });
+    await page.evaluate(() => ghWriteJSON(token, 'projects/p1/pp/plan_items.json', a => a.map(r => r.id === 'p3' ? { ...r, progress: 33 } : r), 'pop1'));
+    await pf.waitForFunction(() => items.some(x => String(x.id) === 'p3' && Number(x.progress) === 33), null, { timeout: 15000 }).catch(() => {});
+    if (Number(await pf.evaluate(() => (items.find(x => String(x.id) === 'p3') || {}).progress)) !== 33) fail('popup-Gantten läste inte om efter ändring i 3D-editorn');
+    await pf.evaluate(() => ghWriteJSON(settings.githubToken, 'projects/p1/pp/plan_items.json', a => a.map(r => r.id === 'p1' ? { ...r, progress: 12 } : r), 'pop2'));
+    await page.waitForFunction(() => (l3pl.rows || []).some(r => r.id === 'p1' && r.progress === 12), null, { timeout: 10000 }).catch(() => {});
+    if ((await page.evaluate(() => (l3pl.rows.find(r => r.id === 'p1') || {}).progress)) !== 12) fail('3D-editorn läste inte om efter ändring i popup-Gantten');
+    await popup.close(); await page.waitForFunction(() => !l3tgPopupOn() && !!document.querySelector('#v3PlanDock iframe'), null, { timeout: 8000 }).catch(() => {});
+    if (!(await page.evaluate(() => !l3tgPopupOn() && !!document.querySelector('#v3PlanDock iframe')))) fail('Gantten ska komma tillbaka i panelen när fönstret stängs');
     const TT = await page.evaluate(() => { l3gm.mode = 'isolate'; const a = l3gmRange([{ temporary: true, temp_color: '#ff8800', temp_opacity: 40 }], '2026-11-11'), b = l3gmRange([{ temporary: true, temp_opacity: 0 }], '2026-11-11'), c = l3gmRange([{ temporary: false }], '2026-11-11'); l3gm.mode = 'off'; return { a, b, c }; });
     if (!TT.a || Math.abs(TT.a.alpha - 0.4) > 0.001 || Math.round(TT.a.rgb[0] * 255) !== 255 || !TT.b.off || TT.c.alpha) fail('temporära objekt i 3D-editorn ska ha exakt inställd färg/opacitet: ' + JSON.stringify(TT));
     console.log('OK: Gantten i 3D-editorn är dashboardens Gantt i en iframe och synkar åt båda hållen (ändring i Gantten, i 3D-editorn och externt)');

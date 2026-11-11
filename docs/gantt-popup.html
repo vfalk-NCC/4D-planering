@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>4D-planering – Gantt</title>
+<style>html,body{margin:0;height:100%;background:#f4f7fc;font:14px system-ui,sans-serif}iframe{position:fixed;inset:0;width:100%;height:100%;border:0;background:#fff}#msg{position:fixed;inset:0;display:none;align-items:center;justify-content:center;text-align:center;color:#334155;padding:24px}</style></head>
+<body><iframe id="f" title="Gantt (4D-dashboard)" allow="clipboard-write; fullscreen"></iframe><div id="msg"></div>
+<script>
+/* Gantten i ett eget fönster (för t.ex. en andra skärm). Samma Gantt som i 3D-editorn (4D-dashboardens ?embed=gantt); den här sidan är bara en brygga:
+   meddelandena från Gantten skickas vidare till 3D-editorn (fönstret som öppnade den) och tvärtom. Token skickas bara till dashboardens egen adress. */
+(() => {
+  const q = new URLSearchParams(location.search), u = q.get("u") || "", f = document.getElementById("f"), msg = document.getElementById("msg");
+  let url = null; try { url = new URL(u, location.href); } catch (e) { /* ogiltig */ }
+  const local = /^(localhost|127\.0\.0\.1)$/.test(location.hostname), okHost = url && (url.origin === "https://vfalk-ncc.github.io" || (local && /^(localhost|127\.0\.0\.1)$/.test(url.hostname)));
+  const fail = t => { f.style.display = "none"; msg.style.display = "flex"; msg.textContent = t; };
+  if (!window.opener) return fail("Öppna Gantten från 3D-editorn (knappen Eget fönster) – den här sidan behöver 3D-editorn för att fungera.");
+  if (!okHost) return fail("Ogiltig adress till Gantten.");
+  const dashOrigin = url.origin; url.searchParams.set("embed", "gantt"); f.src = url.href;
+  window.addEventListener("message", ev => {
+    if (ev.source === f.contentWindow && ev.origin === dashOrigin) { try { window.opener.postMessage({ tgPopup: true, msg: ev.data }, location.origin); } catch (e) { /* editorn stängd */ } }
+    else if (ev.source === window.opener && ev.origin === location.origin && ev.data && ev.data.tgPopup) { try { f.contentWindow.postMessage(ev.data.msg, dashOrigin); } catch (e) { /* ingen ram */ } }
+  });
+  addEventListener("pagehide", () => { try { window.opener.postMessage({ tgPopup: true, msg: { t: "popupClosed" } }, location.origin); } catch (e) { /* */ } });
+})();
+</script></body></html>
