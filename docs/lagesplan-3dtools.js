@@ -46,15 +46,15 @@ function l3RenderSnapBar() {
   }
   const tool = (l3.tool === "move" ? `<label class="v3-chk" title="Kopiera i stället för att flytta (tryck Ctrl)"><input type="checkbox" id="v3CopyMode" ${l3t.copyMode ? "checked" : ""} /> Kopia</label>` : "")
     + (l3.tool === "draw" || l3.tool === "model" ? l3dwBarHtml() : "")
-    + (l3.tool === "measure" ? `<div class="v3-segs">${[["smart", "Smart"], ["point", "Punkt"], ["dist", "Avstånd"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"], ["road", "Byggväg"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : "");
+    + (l3.tool === "measure" ? `<div class="v3-segs">${[["smart", "Smart"], ["point", "Punkt"], ["dist", "Avstånd"], ["poly", "Polylinje"], ["angle", "Vinkel"], ["area", "Yta"], ["volume", "Volym"], ["road", "Byggväg"], ["wall", "Stödmur"]].map(([k, l]) => `<button type="button" data-mmode="${k}" class="${m === k ? "on" : ""}">${l}</button>`).join("")}</div>${typeof l3mBarHtml === "function" ? l3mBarHtml() : ""}` : "");
   bar.innerHTML = tool; if (typeof l3dwBarBind === "function") l3dwBarBind(bar); bar.style.display = tool ? "" : "none"; host.style.setProperty("--v3-tb", tool ? Math.round(bar.offsetHeight + 8) + "px" : "0px"); // Originalvy/Layout-banner ligger under mätfältet
   if (typeof l3mBindBar === "function") l3mBindBar(bar); if (tool) requestAnimationFrame(() => host.style.setProperty("--v3-tb", Math.round(bar.offsetHeight + 8) + "px"));
   if (pop) pop.querySelectorAll("[data-snapk]").forEach(x => { x.onclick = () => l3ToggleSnap(x.dataset.snapk); });
   if (pop) pop.querySelector("#v3GridStep").onchange = e => { const v = { ...l3Snaps(), gstep: Number(e.target.value) }; l3SetPref("snaps", v); };
   const cm = bar.querySelector("#v3CopyMode"); if (cm) cm.onchange = () => { l3t.copyMode = cm.checked; l3Status(cm.checked ? "Kopierar: punkten du trycker härnäst får en kopia." : "Flyttar."); };
-  bar.querySelectorAll("[data-mmode]").forEach(x => { x.onclick = () => { l3SetPref("measure", x.dataset.mmode); l3ToolCancel(); l3RenderSnapBar(); l3Status(L3_MEAS_START[x.dataset.mmode]); }; });
+  bar.querySelectorAll("[data-mmode]").forEach(x => { x.onclick = () => { l3SetPref("measure", x.dataset.mmode); if (x.dataset.mmode !== "wall" && typeof l3swClose === "function") l3swClose(); l3ToolCancel(); l3RenderSnapBar(); l3Status(L3_MEAS_START[x.dataset.mmode]); }; });
 }
-const L3_MEAS_START = { smart: "Smart mått: tryck på ett objekt – bredd, höjd och volym sätts ut direkt (på en vågrät yta: längd och bredd).", point: "Mät punkt: tryck på en punkt – X, Y och Z visas och ligger kvar.", volume: "Mät volym: tryck ut området (hörnen i tur och ordning), avsluta med Enter eller första punkten. Sedan väljer du vad som ska mätas mot vad – punktmoln, modell, plan eller en yta du klickar ut.", dist: "Mät avstånd: tryck på första punkten.", poly: "Mät polylinje: tryck punkt för punkt längs vägen. Avsluta med Enter, dubbeltryck eller tryck på sista punkten igen.", angle: "Mät vinkel: tryck på första punkten, sedan hörnet (vinkelns spets) och sist den andra punkten.", area: "Mät yta: tryck hörnen i tur och ordning. Avsluta med Enter eller tryck på första punkten igen." };
+const L3_MEAS_START = { wall: "Stödmur: tryck ut murens fotlinje (framkanten längst ner) punkt för punkt – punkterna fäster mot punktmoln, modell och mark. Avsluta med Enter eller tryck på sista punkten igen.", smart: "Smart mått: tryck på ett objekt – bredd, höjd och volym sätts ut direkt (på en vågrät yta: längd och bredd).", point: "Mät punkt: tryck på en punkt – X, Y och Z visas och ligger kvar.", volume: "Mät volym: tryck ut området (hörnen i tur och ordning), avsluta med Enter eller första punkten. Sedan väljer du vad som ska mätas mot vad – punktmoln, modell, plan eller en yta du klickar ut.", dist: "Mät avstånd: tryck på första punkten.", poly: "Mät polylinje: tryck punkt för punkt längs vägen. Avsluta med Enter, dubbeltryck eller tryck på sista punkten igen.", angle: "Mät vinkel: tryck på första punkten, sedan hörnet (vinkelns spets) och sist den andra punkten.", area: "Mät yta: tryck hörnen i tur och ordning. Avsluta med Enter eller tryck på första punkten igen." };
 let l3t = { step: 0, lock: null, vcb: "", last: null };
 let l3HoverRaf = 0;
 
@@ -503,6 +503,7 @@ function l3SnapAngle(deg, s) {
 function l3ToolTap(e) {
   if (typeof l3dToolTap === "function" && l3dToolTap(e)) return true; // DXF-redigering: Flytta/Vrid gäller linjerna
   if (typeof l3roadTap === "function" && l3roadTap(e)) return true; // Byggväg: panelen är öppen
+  if (typeof l3swTap === "function" && l3swTap(e)) return true; // Stödmur: panelen är öppen
   if (typeof l3volTap === "function" && l3volTap(e)) return true; // Volym: nivå från en punkt / panelen är öppen
   if (typeof l3dwOn === "function" && l3dwOn() && l3dwTap(e)) return true; // Rita / Modellera
   const t = l3.tool, st = l3t.step;
@@ -526,7 +527,7 @@ function l3ToolTap(e) {
     // Yta: tryck på första punkten igen = klar.
     if ((mode === "area" || mode === "volume") && mp.length >= 3) { const a = l3ToScreen(mp[0]), b = l3ToScreen(s.point); if (Math.hypot(a.x - b.x, a.y - b.y) < 12) { mode === "volume" ? l3VolBase() : l3FinishArea(); return true; } }
     // Polylinje: tryck på sista punkten igen = klar.
-    if ((mode === "poly" || mode === "road") && mp.length >= 2) { const a = l3ToScreen(mp[mp.length - 1]), b = l3ToScreen(s.point); if (Math.hypot(a.x - b.x, a.y - b.y) < 12) { mode === "road" ? l3roadStart() : l3FinishPoly(); return true; } }
+    if ((mode === "poly" || mode === "road" || mode === "wall") && mp.length >= 2) { const a = l3ToScreen(mp[mp.length - 1]), b = l3ToScreen(s.point); if (Math.hypot(a.x - b.x, a.y - b.y) < 12) { mode === "road" ? l3roadStart() : mode === "wall" ? l3swStart() : l3FinishPoly(); return true; } }
     mp.push(s.point.clone()); l3Dot(s.point, 0xdc2626, l3.groups.meas);
     if (typeof l3mObjAt === "function") (l3t.mpObjs || (l3t.mpObjs = [])).push(l3mObjAt(e));
     if (mp.length > 1) l3TmpLine(mp[mp.length - 2], mp[mp.length - 1], "#dc2626", false, l3.groups.meas);
@@ -536,7 +537,7 @@ function l3ToolTap(e) {
       l3Status(`Vinkel ${l3Fmt(ang, 2)}° (vågrätt ${l3Fmt(l3Angle3(...mp.map(p => new THREE.Vector3(p.x, p.y, 0))), 2)}°). Tryck en ny punkt för att mäta igen.`);
       l3t.mp = null; l3Busy(false); l3ShowVcb(null); l3Clear(l3.groups.tmp);
       if (typeof l3mAdd === "function") { l3mAdd("angle", mp, `${l3Fmt(ang, 1)}°`, l3t.mpObjs); l3ClearMeasure(); } // ligger kvar
-    } else l3Status(mode === "angle" ? (mp.length === 1 ? "Tryck på vinkelns spets (hörnet)." : "Tryck på den andra punkten.") : (mode === "poly" || mode === "road") ? `${mp.length} punkter${mp.length > 1 ? `, ${l3Fmt(l3PathLen(mp))} m` : ""}. Fortsätt – avsluta med Enter eller tryck på sista punkten igen.` : `${mp.length} hörn. Fortsätt – avsluta med Enter eller tryck på första punkten.`);
+    } else l3Status(mode === "angle" ? (mp.length === 1 ? "Tryck på vinkelns spets (hörnet)." : "Tryck på den andra punkten.") : (mode === "poly" || mode === "road" || mode === "wall") ? `${mp.length} punkter${mp.length > 1 ? `, ${l3Fmt(l3PathLen(mp))} m` : ""}. Fortsätt – avsluta med Enter eller tryck på sista punkten igen.` : `${mp.length} hörn. Fortsätt – avsluta med Enter eller tryck på första punkten.`);
     l3Render();
     return true;
   }
@@ -757,6 +758,7 @@ function l3ToolKey(e) {
   if (l3.tool === "move" && l3t.step === 0 && l3t.vcb && k === "Backspace") { l3t.vcb = l3t.vcb.slice(0, -1); l3ShowVcb("Kopior", ""); e.preventDefault(); return true; }
   if (l3.tool === "measure" && l3Prefs().measure === "area" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3FinishArea(); return true; }
   if (l3.tool === "measure" && l3Prefs().measure === "road" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3roadStart(); return true; }
+  if (l3.tool === "measure" && l3Prefs().measure === "wall" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3swStart(); return true; }
   if (l3.tool === "measure" && l3Prefs().measure === "poly" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3FinishPoly(); return true; }
   if (l3.tool === "measure" && l3Prefs().measure === "volume" && k === "Enter" && (l3t.mp || []).length) { e.preventDefault(); l3VolBase(); return true; }
   if (typing && /^[0-9]$|^[.,;\- ]$/.test(k)) { l3t.vcb += k; l3ShowVcb(label, ""); e.preventDefault(); return true; }
