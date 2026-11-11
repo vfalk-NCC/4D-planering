@@ -1828,7 +1828,10 @@ async function l3DownloadIfc() {
     const r = buildPlacementsIfc(proj, only), stamp = placeStamp();
     let extra = []; if (typeof placeModelIfcFiles === "function") { try { extra = await placeModelIfcFiles(stamp, only); } catch (e) { console.warn("Egna IFC-modeller kunde inte tas med", e); } }
     if (!r && !extra.length) { l3Status("Det finns inga objekt att exportera – markera något eller placera objekt först.", true); return; }
-    const safe = s => String(s).replace(/[\\/:*?"<>|]/g, "-"), base = ids.length === 1 ? (placements.find(p => p.id === ids[0]).name || "Objekt") : ids.length ? `Etablering urval ${ids.length} objekt` : `Etablering ${proj || "4D-planering"}`;
+    const safe = s => String(s).replace(/[\\/:*?"<>|]/g, "-"), dflt = ids.length === 1 ? (placements.find(p => p.id === ids[0]).name || "Objekt") : ids.length ? `Etablering urval ${ids.length} objekt` : `Etablering ${proj || "4D-planering"}`;
+    const given = await uiPrompt(ids.length ? "Namn på IFC-filen med det markerade (datum och klockslag läggs till):" : "Namn på IFC-filen (datum och klockslag läggs till):", dflt, { ok: "Ladda ner" });
+    if (given == null) { l3Status("Nedladdningen avbröts."); return; }
+    const base = String(given).replace(/\.ifc$/i, "").trim() || dflt;
     const files = [...(r ? [new File([new TextEncoder().encode(r.text)], safe(`${base} ${stamp}.ifc`), { type: "application/x-step" })] : []), ...extra];
     files.forEach(f => downloadBlob(f, f.name));
     const n = (r ? r.n : 0) + extra.length, msg = `✓ ${n} objekt som IFC till datorn (${files.map(f => f.name).join(", ")}).`; l3Status(msg); l3Toast(msg);
