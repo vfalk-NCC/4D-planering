@@ -52,9 +52,9 @@ function l3olMake(c, n, ch) {
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(ch.pos, 3)); g.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, ch), 3, true));
   g.boundingSphere = new THREE.Sphere(new THREE.Vector3(n.cx, n.cy, n.cz), n.r);
   const p = new THREE.Points(g, c.mat); p.userData.n = n.n; p.userData.noHit = true; p.raycast = () => {}; p.visible = false; c.group.add(p);
-  n.pts = p; n.rgb = ch.rgb; n.inten = ch.inten; n.state = 2; c.lod.res.add(n); c.lod.resPts += n.n;
+  ch.pts = p; n.cd = ch; n.pts = p; n.rgb = ch.rgb; n.inten = ch.inten; n.state = 2; c.lod.res.add(n); c.lod.resPts += n.n;
 }
-function l3olDrops(c, n) { if (!n.pts) return; c.group.remove(n.pts); n.pts.geometry.dispose(); n.pts = null; n.rgb = n.inten = null; n.state = 0; c.lod.res.delete(n); c.lod.resPts -= n.n; }
+function l3olDrops(c, n) { if (!n.pts) return; c.group.remove(n.pts); n.pts.geometry.dispose(); n.pts = null; n.cd = null; n.rgb = n.inten = null; n.state = 0; c.lod.res.delete(n); c.lod.resPts -= n.n; }
 function l3olDispose(c) { if (!c.lod) return; [...c.lod.res].forEach(n => l3olDrops(c, n)); c.lod.dead = true; }
 /* ---- Bygger molnet ur en öppnad okträdsfil ---- */
 async function l3olBuild(src, op, onP) {

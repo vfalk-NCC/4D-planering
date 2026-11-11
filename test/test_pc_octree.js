@@ -47,9 +47,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const b = await page.evaluate(async () => { const c = l3pc.clouds[0], L = c.lod; l3pcShow(c.id, true); const t = c.info.center; const cam = l3.camera; const cx = 130 + c.info.min[0] - t[0] + (t[0] - l3.O[0]), cy = 130 + c.info.min[1] - t[1] + (t[1] - l3.O[1]);
     const tgt = new THREE.Vector3(c.info.min[0] + 130 - l3.O[0], c.info.min[1] + 130 - l3.O[1], 10 - l3.O[2]); cam.position.set(tgt.x + 15, tgt.y - 15, tgt.z + 20); cam.lookAt(tgt); if (l3.controls) { l3.controls.target.copy(tgt); l3.controls.update(); }
     for (let i = 0; i < 40; i++) { l3Render(); await new Promise(r => setTimeout(r, 120)); if (L.res.size > 80 && !L.loading) break; }
-    const deep = [...L.res].filter(n => n.l >= 3).length; return { res: L.res.size, resPts: L.resPts, deep, sel: L.sel, selPts: L.selPts, vis: L.shown.length, maxBud: L.maxBud, hud: (document.getElementById('v3PcHud') || {}).textContent }; });
+    try { l3pcFrame(); } catch (e) { window.__err = e.message + ' ' + (e.stack || '').split('\n')[1]; } const deep = [...L.res].filter(n => n.l >= 3).length; return { res: L.res.size, resPts: L.resPts, deep, sel: L.sel, selPts: L.selPts, vis: L.shown.length, maxBud: L.maxBud, err: window.__err, hud: (document.getElementById('v3PcHud') || {}).textContent }; });
   console.log(JSON.stringify(b));
   if (!(b.deep > 0 && b.selPts > 0 && b.selPts <= b.maxBud * 1.1)) fail('detaljnoder lästes inte in: ' + JSON.stringify(b));
+  // Fästa mot punkterna i okträdsmolnet (översikt + detalj) – ska träffa en punkt nära strålen
+  const pk = await page.evaluate(async () => { const c = l3pc.clouds[0], L = c.lod; const r = l3.renderer.domElement.getBoundingClientRect(); let hit = 0, tot = 0, det = 0;
+    for (const f of [[0.5, 0.5], [0.45, 0.55], [0.55, 0.45], [0.5, 0.6]]) { tot++; const h = l3pcPick({ clientX: r.left + r.width * f[0], clientY: r.top + r.height * f[1] }, 14); if (h) { hit++; } }
+    const detailIdx = [...L.res].filter(n => !n.pinned && n.cd && n.cd.cells).length; const pinIdx = L.nodes.filter(n => n.pinned && n.cd && n.cd.cells).length;
+    // färger ska följa positionerna efter indexeringen: antal färger = antal punkter i varje ritad nod
+    const bad = [...L.res].filter(n => n.pts && n.pts.geometry.getAttribute('color').count !== n.pts.geometry.getAttribute('position').count).length;
+    return { hit, tot, detailIdx, pinIdx, bad }; });
+  console.log(JSON.stringify(pk));
+  if (pk.hit < 1 || pk.bad) fail('fäst mot okträdsmoln fungerar inte: ' + JSON.stringify(pk));
   // Ta bort molnet och öppna på nytt ur disken utan filen
   await page.evaluate(() => { const c = l3pc.clouds[0]; l3pcRemove(c.id); });
   const d = await page.evaluate(async () => { const s = l3pcRemembered()[0]; const { on, ...src } = s; const t0 = performance.now(); await l3pcLoad(src, null, { cacheOnly: true, zoom: false }); const c = l3pc.clouds[0]; return { ok: !!(c && c.lod), ms: Math.round(performance.now() - t0), total: c && c.info.total }; });

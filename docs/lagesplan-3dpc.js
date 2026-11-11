@@ -689,8 +689,10 @@ const l3pcSnapOn = () => l3Snaps().pc !== false;
 /* Index för att hitta punkter snabbt: varje ruta (kolumn) sorteras om i små celler (4×4 i plan × skikt i höjd,
    ~1000 punkter per cell) så att cellerna ligger i följd i samma arrayer – inget extra minne för punkterna.
    Byggs en gång per moln, ruta för ruta i bakgrunden när molnet visats (eller direkt vid första sökningen). */
-function l3pcIndexChunk(c, k) {
-  const ch = c.chunks[k], pos = ch.pos, n = pos.length / 3;
+function l3pcIndexChunk(c, k) { const ch = c.chunks[k]; l3pcIndexCh(c, ch, c.chunkPts[k] || ch.pts); }
+/* ch = { pos, rgb, inten }; p = rutans THREE.Points (så att grafikkortets kopia följer den nya ordningen). Okträdsnoder (lagesplan-3dpclod.js) indexeras på samma sätt. */
+function l3pcIndexCh(c, ch, p) {
+  const pos = ch.pos, n = pos.length / 3;
   if (!n) { ch.cells = []; return; }
   let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity;
   for (let i = 0; i < pos.length; i += 3) { const x = pos[i], y = pos[i + 1], z = pos[i + 2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z; }
@@ -719,7 +721,6 @@ function l3pcIndexChunk(c, k) {
   }
   ch.cells = cells;
   // Grafikkortets kopia följer den nya ordningen (positionerna och färgerna).
-  const p = c.chunkPts[k];
   if (p) { p.geometry.getAttribute("position").needsUpdate = true; p.geometry.setAttribute("color", new THREE.BufferAttribute(l3pcColors(c, ch), 3, true)); }
 }
 function l3pcIndex(c) { c.chunks.forEach((ch, k) => { if (!ch.cells) l3pcIndexChunk(c, k); }); }
@@ -755,13 +756,15 @@ function l3pcPickRay(O, D, kAng, kAbs) {
     const planes = [...gcl, ...(c.mat.clippingPlanes || [])];
     // Cellerna som strålen (med toleransen) passerar, närmast först.
     const cand = [];
-    c.chunkPts.forEach((p, k) => {
+    // Okträdsmoln: de noder som ritas just nu (översikt + detalj), annars rutorna.
+    const srcs = c.lod ? c.lod.shown.filter(n => n.pts && n.cd).map(n => ({ p: n.pts, ch: n.cd })) : c.chunkPts.map((p, k) => ({ p, ch: c.chunks[k] }));
+    srcs.forEach(({ p, ch }) => {
       const g = p.geometry; if (!g.boundingSphere) g.computeBoundingSphere();
       const bs = g.boundingSphere, wx = bs.center.x - o[0], wy = bs.center.y - o[1], wz = bs.center.z - o[2];
       const t0 = wx * dx + wy * dy + wz * dz, d2 = wx * wx + wy * wy + wz * wz - t0 * t0;
       const tolS = Math.max(0, t0 + bs.radius) * kAng + kOrtho;
       if (t0 < -bs.radius || d2 > (bs.radius + tolS) * (bs.radius + tolS)) return; // strålen missar rutan
-      const ch = c.chunks[k]; if (!ch.cells) l3pcIndexChunk(c, k);
+      if (!ch.cells) l3pcIndexCh(c, ch, p);
       ch.cells.forEach(cl => {
         // Strålen mot cellens låda (utökad med toleransen på lådans bortre avstånd).
         let tn = -Infinity, tf = Infinity;
