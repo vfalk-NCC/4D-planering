@@ -48,6 +48,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (r.made !== 5 || !r.ifc || r.ifcWall !== 5) fail('objekt/IFC för L-stöd: ' + JSON.stringify(r));
   if (r.nCast !== 1 || Math.abs(r.volCast - r.expCast) / r.expCast > 0.1 || r.castObj !== 1) fail('gjuten mur: ' + JSON.stringify(r));
   if (r.custom !== 4) fail('egen murtyp (1,0 m element på 4 m): ' + JSON.stringify(r));
+  // Trappa vid: höjdskillnad som krävs för ett nytt steg
+  const ST = await page.evaluate(() => { const V = (x, y, z) => new THREE.Vector3(x, y, z); const zs = spec => { const pts = [[5, 5, 10], [15, 5, 11]], r = l3swBuild(pts, { ...L3SW_DEF, ...spec }); return [...new Set(r.parts.map(p => Math.round(Math.min(...p.mesh.pts.map(q => q[2])) * 100) / 100))].length; };
+    return { each: zs({ step: true, stepMin: 0 }), half: zs({ step: true, stepMin: 0.5 }), big: zs({ step: true, stepMin: 5 }), slope: zs({ step: false }) }; });
+  console.log('trappning:', JSON.stringify(ST));
+  if (!(ST.each === 5 && ST.half < ST.each && ST.half >= 2 && ST.big === 1 && ST.slope === 5)) fail('Trappa vid (höjdskillnad): ' + JSON.stringify(ST));
   // Dragbara punkter + plus (som byggvägen)
   const D0 = await page.evaluate(() => { const V = (x, y, z) => new THREE.Vector3(x, y, z); l3SetPref('measure', 'wall'); l3t.mp = [V(5, 5, 0), V(11, 5, 0)]; l3swStart(); const c = new THREE.Vector3(8, 5, 0); l3.camera.position.set(c.x, c.y - 16, c.z + 14); l3.camera.lookAt(c); if (l3.controls) { l3.controls.target.copy(c); l3.controls.update(); } l3.camera.updateMatrixWorld(true); l3Render(); const tt = document.getElementById('v3Toast'); if (tt) tt.style.display = 'none'; return { rings: l3swH.rings.length, plus: l3swH.plus.length, pts: l3sw.cur.pts.map(p => p.slice()) }; });
   await page.waitForTimeout(600);

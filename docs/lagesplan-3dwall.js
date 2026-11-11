@@ -8,7 +8,7 @@
 
 const L3SW_KINDS = { L: "L-stöd (prefabelement)", cast: "Gjuten stödmur (konsol)", grav: "Gravitationsmur (trapets)", plain: "Enkel mur" };
 const l3sw = { cur: null, grp: null, kbd: null, last: null };
-const L3SW_DEF = { kind: "L", typ: "L:1.6", H: 1.6, tl: 0.25, t: 0.12, bt: 0.12, hl: 0.9, len: 2.0, t1: 0.25, t2: 0.4, bw: 1.2, tw: 0.4, fb: 0.2, soil: "L", embed: 0.3, step: true, joint: 0.01, color: "#b8bcc2" };
+const L3SW_DEF = { kind: "L", typ: "L:1.6", H: 1.6, tl: 0.25, t: 0.12, bt: 0.12, hl: 0.9, len: 2.0, t1: 0.25, t2: 0.4, bw: 1.2, tw: 0.4, fb: 0.2, soil: "L", embed: 0.3, step: true, stepMin: 0.2, joint: 0.01, color: "#b8bcc2" };
 const L3SW_DENS = 2400;
 const l3swFmt = (v, d = 2) => (Math.round(v * 10 ** d) / 10 ** d).toString().replace(".", ",");
 
@@ -74,9 +74,11 @@ function l3swBuild(pts, s) {
   if (s.kind === "L") {
     const le = Math.max(0.3, +s.len || 2), j = Math.max(0, +s.joint || 0); let count = 0; const plan = [];
     for (let i = 0; i + 1 < pts.length; i++) { const Ls = cum[i + 1] - cum[i]; if (Ls < 0.05) continue; const n = Math.max(1, Math.ceil(Ls / le - 1e-6)), ln = Ls / n; for (let e = 0; e < n; e++) plan.push({ i, a: e * ln, b: (e + 1) * ln - (e < n - 1 ? j : 0) }); }
+    let zPrev = null;   // trappning: ett nytt steg tas först när marken skiljer minst "stepMin" meter från förra elementets nivå
     plan.forEach((el, k) => {
       const A0 = pts[el.i], B0 = pts[el.i + 1], Ls = cum[el.i + 1] - cum[el.i], p = d => ({ x: A0[0] + (B0[0] - A0[0]) * d / Ls, y: A0[1] + (B0[1] - A0[1]) * d / Ls });
-      const za = zAt(cum[el.i] + el.a) - emb, zb = zAt(cum[el.i] + el.b) - emb, zl = s.step ? Math.round(Math.min(za, zb) * 100) / 100 : null, a = p(el.a), b = p(el.b);
+      const za = zAt(cum[el.i] + el.a) - emb, zb = zAt(cum[el.i] + el.b) - emb, need = Math.round(Math.min(za, zb) * 100) / 100, a = p(el.a), b = p(el.b); let zl = null;
+      if (s.step) { if (zPrev === null || Math.abs(need - zPrev) >= Math.max(0, +s.stepMin || 0) - 1e-9) zPrev = need; zl = zPrev; }
       const sw = l3swSweep(P, [{ ...a, z: zl != null ? zl : za }, { ...b, z: zl != null ? zl : zb }], soilSign, false);
       parts.push({ name: `${kindName} ${Hn} – element ${k + 1}/${plan.length}`, mesh: { pts: sw.pts, faces: sw.faces }, vol: sw.vol, len: el.b - el.a });
     });
@@ -144,7 +146,7 @@ function l3swPanel() {
       ${s.kind === "plain" ? num("t", "Tjocklek", "Murens tjocklek", "m", 0.01, 0.05, 2) : ""}
       ${num("embed", "Ingrävd fot", "Hur långt fotens underkant ligger under marken vid fotlinjen", "m", 0.05, 0, 3)}
       <label class="v3-rd-n" title="Vilken sida jorden ligger på sett i fotlinjens riktning (punkterna i den ordning du tryckte)"><span>Jord åt</span><select data-wksoil><option value="L" ${s.soil !== "R" ? "selected" : ""}>vänster</option><option value="R" ${s.soil === "R" ? "selected" : ""}>höger</option></select></label>
-      ${s.kind === "L" ? `<label class="v3-ga-tg" title="Varje element ligger vågrätt på en nivå (som i verkligheten) – av = elementet lutar med marken"><input type="checkbox" data-wkstep ${s.step ? "checked" : ""}><span>Trappa elementen</span></label>` : ""}
+      ${s.kind === "L" ? `<label class="v3-ga-tg" title="Varje element ligger vågrätt på en nivå (som i verkligheten) – av = elementet lutar med marken"><input type="checkbox" data-wkstep ${s.step ? "checked" : ""}><span>Trappa elementen</span></label>${s.step ? num("stepMin", "Trappa vid", "Höjdskillnad i marken som krävs för att nästa element ska ligga ett steg högre eller lägre. Mindre skillnader ligger kvar på samma nivå (0 = ett steg per element)", "m", 0.05, 0, 3) : ""}` : ""}
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button type="button" class="v3-primary" data-wb="make">Skapa stödmur</button><button type="button" data-wb="flip" title="Vänd jordsidan">⇄ Vänd</button><button type="button" data-wb="save" title="Spara de här måtten som en egen murtyp">Spara som murtyp…</button>${custom.length ? `<button type="button" data-wb="del" title="Ta bort den valda egna murtypen">Ta bort murtyp</button>` : ""}<button type="button" data-wb="imp" title="Hämta murtyper ur en CSV- eller JSON-fil med tillverkarens mått">Importera murtyper…</button></div>
     <div class="v3-pal-hint" style="margin-top:6px">Dra i ringarna för att flytta fotlinjens punkter, ＋ lägger till en punkt, dubbelklick på en ring tar bort den. Standardmåtten är typiska – kontrollera mot tillverkarens produktblad innan du beställer eller bygger.</div>`;
