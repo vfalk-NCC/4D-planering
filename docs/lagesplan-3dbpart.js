@@ -314,7 +314,7 @@ function l3bqPanel() {
   el.querySelectorAll("[data-bqc]").forEach(i => { i.onchange = () => { const [dd, k] = i.dataset.bqc.split(":"), st = l3bqSet(dd), v = Number(String(i.value).replace(",", ".")); if (v > 0.01 && v < l3bqLenOf(a, dd) - 0.01) { st[Number(k)] = v; st.sort((x, y) => x - y); } l3bqPanel(); l3bqDraw(); }; });
   el.querySelectorAll("[data-bqx]").forEach(b => { b.onclick = () => { const [dd, k] = b.dataset.bqx.split(":"); l3bqSet(dd).splice(Number(k), 1); l3bqPanel(); l3bqDraw(); }; });
   el.querySelector("[data-bqa]").onclick = () => { const A = [0, ...set, L]; let bi = 0; for (let i = 1; i < A.length; i++) if (A[i] - A[i - 1] > A[bi + 1] - A[bi]) bi = i - 1; l3bqAdd((A[bi] + A[bi + 1]) / 2, d); };
-  el.querySelector("[data-bqeq]").onclick = () => { const n = Math.max(2, set.length + 1); const v = Array.from({ length: n - 1 }, (_, i) => Math.round(L * (i + 1) / n * 100) / 100); if (d === "w") l3bqS.cutsW = v; else l3bqS.cuts = v; l3bqPanel(); l3bqDraw(); };
+  el.querySelector("[data-bqeq]").onclick = () => { const n = Math.max(2, set.length + 1); const v = Array.from({ length: n - 1 }, (_, i) => Math.round(L * (i + 1) / n * 100) / 100); if (d === "z") l3bqS.cutsZ = v; else if (d === "w") l3bqS.cutsW = v; else l3bqS.cuts = v; l3bqPanel(); l3bqDraw(); };
   el.querySelector("[data-bqno]").onclick = () => { l3bqCutEnd(); l3Status("Delningen avbröts."); };
   el.querySelector("[data-bqdo]").onclick = l3bqCutGo;
 }

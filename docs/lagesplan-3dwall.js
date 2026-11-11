@@ -97,7 +97,7 @@ function l3swDraw() {
   (r.parts || []).forEach(pt => {
     const geo = new THREE.BufferGeometry(), pos = [], idx = []; pt.mesh.pts.forEach(q => pos.push(q[0] - O[0], q[1] - O[1], q[2] - O[2])); pt.mesh.faces.forEach(f => idx.push(f[0] - 1, f[1] - 1, f[2] - 1));
     geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx); geo.computeVertexNormals();
-    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: c.spec.color || "#b8bcc2", side: THREE.DoubleSide, transparent: true, opacity: 0.92 })); m.renderOrder = 8; m.userData.noHit = true; m.raycast = () => {}; g.add(m);
+    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: pt.color || c.spec.color || "#b8bcc2", side: THREE.DoubleSide, transparent: true, opacity: 0.92 })); m.renderOrder = 8; m.userData.noHit = true; m.raycast = () => {}; g.add(m);
     const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), new THREE.LineBasicMaterial({ color: 0x334155 })); e.userData.noHit = true; e.raycast = () => {}; g.add(e);
   });
   const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(c.pts.map(p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2] + 0.05))), new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false })); line.renderOrder = 12; line.userData.noHit = true; line.raycast = () => {}; g.add(line);
@@ -195,13 +195,13 @@ function l3swClose(keep) {
 }
 function l3swMake() {
   const c = l3sw.cur; if (!c) return; const r = c.res || l3swBuild(c.pts, c.spec); if (!r.parts || !r.parts.length) { l3Status(r.err || "Inget att skapa.", true); return; }
-  placeSnapshot(); const set = ghNewId().slice(0, 8), ids = []; let vol = 0, org = null;
+  placeSnapshot(); const set = ghNewId().slice(0, 8), ids = []; let vol = 0, org = null, tons = 0;
   r.parts.forEach(pt => {
     let x0 = Infinity, y0 = Infinity, z0 = Infinity; pt.mesh.pts.forEach(q => { x0 = Math.min(x0, q[0]); y0 = Math.min(y0, q[1]); z0 = Math.min(z0, q[2]); });
-    const r3 = v => Math.round(v * 1000) / 1000, m = { k: "mesh", pts: pt.mesh.pts.map(q => [r3(q[0] - x0), r3(q[1] - y0), r3(q[2] - z0)]), faces: pt.mesh.faces.map(f => [f[0], f[1], f[2]]), closed: true, ifc: "IFCWALL" };
-    const p = modCreate(m, [x0, y0, z0], { name: pt.name, color: c.spec.color || "#b8bcc2", snapshot: false }); p.set = set; p.note = `Volym ${l3swFmt(pt.vol, 2)} m³ · ca ${l3swFmt(pt.vol * L3SW_DENS / 1000, 2)} ton · längd ${l3swFmt(pt.len, 2)} m`; ids.push(p.id); vol += pt.vol; org = org || [x0, y0, z0];
+    const r3 = v => Math.round(v * 1000) / 1000, m = { k: "mesh", pts: pt.mesh.pts.map(q => [r3(q[0] - x0), r3(q[1] - y0), r3(q[2] - z0)]), faces: pt.mesh.faces.map(f => [f[0], f[1], f[2]]), closed: true, ifc: pt.ifc || "IFCWALL" };
+    const p = modCreate(m, [x0, y0, z0], { name: pt.name, color: pt.color || c.spec.color || "#b8bcc2", snapshot: false }); p.set = set; p.note = `Volym ${l3swFmt(pt.vol, 2)} m³ · ca ${l3swFmt((pt.mass != null ? pt.mass : pt.vol * L3SW_DENS) / 1000, 2)} ton · längd ${l3swFmt(pt.len, 2)} m`; ids.push(p.id); vol += pt.vol; tons += (pt.mass != null ? pt.mass : pt.vol * L3SW_DENS) / 1000; org = org || [x0, y0, z0];
   });
   const kd = L3SW_KINDS[c.spec.kind], n = ids.length; l3swClose(); l3SelectIds(ids); l3Changed();
-  l3Toast(`Stödmur skapad: ${kd}, ${n} ${n === 1 ? "objekt" : "objekt"}, ${l3swFmt(vol, 2)} m³ (ca ${l3swFmt(vol * L3SW_DENS / 1000, 1)} ton). Ctrl+Z ångrar. Redigera, dela och exportera som IFC som vanligt.`);
+  l3Toast(`Skapad: ${kd}, ${n} ${n === 1 ? "objekt" : "objekt"}, ${l3swFmt(vol, 2)} m³ (ca ${l3swFmt(tons, 1)} ton). Ctrl+Z ångrar. Redigera, dela och exportera som IFC som vanligt.`);
 }
 function l3swTap() { if (!l3sw.cur || l3.tool !== "measure" || l3Prefs().measure !== "wall") return false; l3Status("Stödmuren är öppen – skapa den eller stäng den (Esc) för att placera en ny.", true); return true; }
