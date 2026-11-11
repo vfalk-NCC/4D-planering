@@ -87,6 +87,11 @@ if (STANDALONE) {
       files.forEach(f => { const a = document.createElement("a"); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); });
       return Promise.resolve({ uploaded: files.length, folder: "Hämtade filer (Hämtningar)", link: null });
     }
+    if (type === "placeUploadIfc") {   // ritade objekt som IFC: i fristående läge blir det en nedladdning
+      const nm = ((String(extra.fileName || "").replace(/\.ifc$/i, "").trim() || "Ritade objekt") + " " + new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", ".") + ".ifc").replace(/[\\/:*?"<>|]/g, "-");
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([String(extra.text || "")], { type: "application/x-step" })); a.download = nm; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+      return Promise.resolve({ n: Number(extra.n) || 0, name: nm, files: [nm] });
+    }
     return origAsk(type, extra, timeoutMs, onProgress);
   };
   tcSavedNote = (d, files) => { const names = (files || []).map(f => f && f.name).filter(Boolean); const t = `Sparad på datorn (Hämtningar): ${names.join(", ") || d.uploaded + " filer"}`; if (typeof l3Status === "function" && typeof l3 !== "undefined" && l3 && document.body.classList.contains("v3-open")) l3Status(t); else if (typeof setSaveStatus === "function") setSaveStatus(t); };

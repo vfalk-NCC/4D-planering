@@ -9,7 +9,7 @@
 // Uppdateras för hand till aktuellt klockslag/datum (Europa/Stockholm) varje
 // gång en ny version pushas till GitHub, så man kan se i appen när den
 // senast uppdaterades.
-const APP_VERSION = "2026-11-11 07:36";
+const APP_VERSION = "2026-11-11 08:18";
 
 let API = null;              // Workspace API-instans
 let projectId = null;        // Aktuellt Trimble Connect-projekt
@@ -467,6 +467,12 @@ async function lagesplanHandle(msg, reply, progress) {
       const wantIds = Array.isArray(msg.ids) ? msg.ids.map(String) : [], foundN = wantIds.filter(id => placements.some(p => String(p.id) === id)).length;
       const appVer = ((document.querySelector('script[src*="app.js"]') || {}).src || '').split('?v=')[1] || 'okänd';
       reply(r0 || { n: 0, ver: appVer, why: wantIds.length ? `4D-planering hittade ${foundN} av ${wantIds.length} markerade placeringar (${placements.length} inlästa)${foundN ? " men ingen av dem har någon form att spara" : ""}, 4D-planering version ${appVer}` : `4D-planering har ${placements.length} placeringar men ingen av dem kunde sparas, version ${appVer}` });
+    } else if (msg.type === "placeUploadIfc") {   // IFC-texten är byggd av 3D-editorn (ritade objekt, lagesplan-3dmodifc.js) – här laddas den bara upp
+      if (typeof tcUploadFiles !== "function" || typeof placeStamp !== "function") throw new Error("Placera i 3D finns inte i den här versionen av 4D-planering.");
+      const given = String(msg.fileName || "").replace(/\.ifc$/i, "").trim(), nm = (given ? `${given} ${placeStamp()}.ifc` : `Ritade objekt ${placeStamp()}.ifc`).replace(/[\\/:*?"<>|]/g, "-");
+      const file = new File([new TextEncoder().encode(String(msg.text || ""))], nm, { type: "application/x-step" });
+      await tcUploadFiles([file], PLACE_TC_FOLDER);
+      reply({ n: Number(msg.n) || 0, name: nm, files: [nm] });
     } else if (msg.type === "placeIfcText") {
       if (typeof placeIfcTextFor !== "function") throw new Error("Placera i 3D finns inte i den här versionen av 4D-planering.");
       if (placeDirty.size || placeDeleted.size) await placeSaveNow();

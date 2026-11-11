@@ -621,6 +621,17 @@ const OBJ = ['v 0 0 0', 'v 6 0 0', 'v 6 2.5 0', 'v 0 2.5 0', 'v 0 0 2.6', 'v 6 0
   });
   if (!dl.btn || dl.p0 !== 2 || !dl.gone || dl.p1 !== 1 || !dl.orig || !dl.back || dl.p2 !== 2 || dl.origDel !== false || !dl.origKept) fail('Radera kopior med Delete: ' + JSON.stringify(dl));
 
+  // Exportera en uppflyttad KOPIA som egen IFC (Victor 2026-11-11: "blir en tom IFC på 33 kb")
+  const ce = await page.evaluate(async () => {
+    window.__up = null; const m = l3b.models.find(x => x.id === 'f:F2');
+    let ent = null; m.meshes.forEach(mesh => mesh.userData.l3b.ranges.forEach((r, ri) => { if (r.guid === '1hZq3$Bq9Fxu8nZK0bW1aA' && !mesh.userData.bcopy) ent = { mesh, ri }; }));
+    l3bsSet([ent]); l3bmStart({ copy: true }); const side = document.getElementById('v3Side'); side.querySelector('[data-bm="dz"]').value = '5'; l3bmApplyFields(side); l3bmAccept();
+    const ng = l3bs.sel[0].mesh.userData.l3b.ranges[l3bs.sel[0].ri].guid;
+    let err = null, r = null; try { r = await l3bsExportIfc(); } catch (e) { err = e.message; }
+    return { ng, err, found: r && r[0] && r[0].found, missing: r && r[0] && r[0].missing, has: !!(window.__up && window.__up.text && window.__up.text.includes(ng)), len: window.__up ? window.__up.text.length : 0, n: window.__up ? (window.__up.text.match(/IFCBUILDINGELEMENT|IFCCOLUMN|IFCWALL|IFCBEAM|IFCSLAB/g) || []).length : 0 };
+  });
+  console.log('kopia-export:', JSON.stringify(ce));
+  if (ce.err || !ce.found || !ce.has) fail('Export av uppflyttad kopia ger tom IFC: ' + JSON.stringify(ce));
   // Zooma till modell i lagerhanteraren.
   const zm = await page.evaluate(() => { l3PalTab('layers'); l3SetPref('laySort', 'list'); l3LayersRender(); const b = document.querySelector('[data-l3l-zoom="f:F2"]'); if (!b) return null; const t0 = l3.orbit.target.clone(); b.click(); return true; });
   await page.waitForTimeout(700);
