@@ -58,7 +58,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const ifc = l3kIfcBuild(l3k.list.map((c, i) => ({ c, nr: i + 1 }))); out.ifc = !!(ifc && ifc.text && /IFC/.test(ifc.text));
     // vylistan: datum, uppdatera, ta bort, storlek
     l3SetPref('views', {}); l3SaveView('Vy A'); const at0 = l3SavedViews().find(v => v.name === 'Vy A').at; l3QvRender(); const box = document.getElementById('v3Qv'); box.classList.add('open');
-    out.vdate = !!box.querySelector('.v3-qv-r .v3-qv-v em') && !!at0;
+    out.vdate = !!box.querySelector('.v3-qv-r .v3-qv-v em') && !!at0; out.thumb = !!box.querySelector('.v3-qv-r img.v3-qv-th'); out.left = getComputedStyle(box.querySelector('.v3-qv-r .v3-qv-t b')).textAlign; out.imgKb = Math.round(((l3SavedViews()[0].img || '').length) / 1024);
     const old = '2026-01-02T10:00:00.000Z'; const lst = l3SavedViews(); lst[0].at = old; l3StoreViews(lst); l3QvRender();
     box.querySelector('[data-qvupd="0"]').click(); await new Promise(r => setTimeout(r, 200)); const v1 = l3SavedViews()[0]; out.upd = v1.at === old && !!v1.upd;
     const grip = box.querySelector('.v3-qv-grip'), gb = grip.getBoundingClientRect(); const w0 = box.querySelector('.v3-qv-p').getBoundingClientRect().width; out.w0 = w0; out.grip = !!grip;
@@ -66,7 +66,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return out;
   });
   console.log(JSON.stringify(r));
-  if (!r.vdate || !r.upd || !r.grip) fail('vylistan: ' + JSON.stringify(r));
+  if (!r.vdate || !r.upd || !r.grip || !r.thumb || !/left|start/.test(r.left) || r.imgKb > 20) fail('vylistan: ' + JSON.stringify(r));
   { const g = r.fixture; await page.mouse.move(g.x, g.y); await page.mouse.down(); await page.mouse.move(g.x - 80, g.y - 60, { steps: 4 }); await page.mouse.up();
     const w1 = await page.evaluate(() => document.querySelector('#v3Qv .v3-qv-p').getBoundingClientRect().width), pw = await page.evaluate(() => l3Prefs().qvW);
     if (!(w1 > r.w0 + 40) || !pw) fail('storlek på vylistan: ' + JSON.stringify({ w0: r.w0, w1, pw }));
