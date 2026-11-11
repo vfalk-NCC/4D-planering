@@ -75,6 +75,10 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   const r3 = await page.evaluate(() => { const p = placements.filter(q => /Bergsmur \d\/3/.test(q.name || ''))[0], v0 = Math.abs(modMeshStats(p.m.pts, p.m.faces).volume), a = (l3bqCutStart(p), l3bqS.ax); const L = a.len, W = a.w1 - a.w0; l3bqCutEnd(); const made = l3bqRun(p, { cuts: [L / 2], cutsW: [W / 2] }); const vs = (made || []).map(q => Math.abs(modMeshStats(q.m.pts, q.m.faces).volume)); const made2 = made && made[0] ? l3bqRun(made[0], { mode: 'count', value: 2, dir: 'w' }) : null; return { n: made ? made.length : 0, sum: vs.reduce((x, y) => x + y, 0), v0, n2: made2 ? made2.length : 0, W }; });
   console.log('två håll:', JSON.stringify(r3));
   if (r3.n < 3 || Math.abs(r3.sum - r3.v0) > 0.05 * Math.max(1, r3.v0)) fail('snitt åt båda hållen: ' + JSON.stringify(r3));
+  // vrid delningsriktningen: 90° byter längs och tvärs, volymen bevaras
+  const r4 = await page.evaluate(() => { const p = placements.filter(q => /Bergsmur \d\/3/.test(q.name || ''))[0]; l3bqCutStart(p); const L0 = l3bqS.ax.len; l3bqRotate(90); const L1 = l3bqS.ax.len, panel = !!document.querySelector('[data-bqrotv]'); l3bqCutEnd(); const v0 = Math.abs(modMeshStats(p.m.pts, p.m.faces).volume); const made = l3bqRun(p, { mode: 'count', value: 3, rot: 90 }); const sum = (made || []).reduce((a, q) => a + Math.abs(modMeshStats(q.m.pts, q.m.faces).volume), 0); return { L0, L1, panel, n: made ? made.length : 0, sum, v0 }; });
+  console.log('vridning:', JSON.stringify(r4));
+  if (!r4.panel || !(Math.abs(r4.L1 - r4.L0) > 0.2 * r4.L0) || r4.n !== 3 || Math.abs(r4.sum - r4.v0) > 0.05 * Math.max(1, r4.v0)) fail('vridning av delningsriktning: ' + JSON.stringify(r4));
   console.log('OK: IFC-objekt blir redigerbara, snitt placeras med klick/ringar/plus, delning ger rätt volym och gjutformen följer den bergsanpassade muren');
   if (errors.length) fail('sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();

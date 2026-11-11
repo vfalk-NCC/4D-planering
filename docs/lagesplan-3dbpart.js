@@ -105,7 +105,7 @@ function l3bqCut(p, opts) {
   const P = lm.pts, tris = lm.faces.map(f => [P[f[0] - 1], P[f[1] - 1], P[f[2] - 1]]);
   let mx = 0, my = 0; P.forEach(q => { mx += q[0]; my += q[1]; }); mx /= P.length; my /= P.length;
   let sxx = 0, sxy = 0, syy = 0; P.forEach(q => { const a = q[0] - mx, b = q[1] - my; sxx += a * a; sxy += a * b; syy += b * b; });
-  const th = 0.5 * Math.atan2(2 * sxy, sxx - syy), n = [Math.cos(th), Math.sin(th)], v = [-n[1], n[0]];
+  const th = 0.5 * Math.atan2(2 * sxy, sxx - syy) + (Number(opts.rot) || 0) * Math.PI / 180, n = [Math.cos(th), Math.sin(th)], v = [-n[1], n[0]];   // opts.rot = vridning av delningsriktningen (grader)
   let t0 = Infinity, t1 = -Infinity, w0 = Infinity, w1 = -Infinity; P.forEach(q => { const t = q[0] * n[0] + q[1] * n[1], w = q[0] * v[0] + q[1] * v[1]; t0 = Math.min(t0, t); t1 = Math.max(t1, t); w0 = Math.min(w0, w); w1 = Math.max(w1, w); });
   const len = t1 - t0, lenW = w1 - w0; if (len < 0.05 && lenW < 0.05) return { err: "Objektet är för litet för att delas." };
   const clean = (arr, L) => (Array.isArray(arr) ? arr.map(Number).filter(d => d > 0.01 && d < L - 0.01).sort((a, b) => a - b) : null);
@@ -137,22 +137,23 @@ function l3bqRun(p, opts) {
   l3Status(`${p.name || "Objektet"} (${r.len.toFixed(1).replace(".", ",")} m) delat i ${made.length} bitar${r.nL > 1 && r.nW > 1 ? ` (${r.nL} längs × ${r.nW} tvärs)` : ""}. Ctrl+Z ångrar.`);
   return made;
 }
-const l3bqPref = { mode: "length", value: 6, dir: "l" };
+const l3bqPref = { mode: "length", value: 6, dir: "l", rot: 0 };
 function l3bqHtml(list) {
   if (!list || list.length !== 1 || !list[0].m || (list[0].m.k !== "mesh" && list[0].m.k !== "solid")) return "";
   return `<details class="v3-field v3-bqsplit" title="Dela objektet i bitar längs dess längdriktning – t.ex. en lång mur i gjutetapper"><summary><span>Dela i bitar…</span></summary>
     <label class="v3-field"><span>Dela efter</span><select data-bqmode><option value="length" ${l3bqPref.mode === "length" ? "selected" : ""}>Bitlängd (m)</option><option value="count" ${l3bqPref.mode === "count" ? "selected" : ""}>Antal bitar</option></select></label>
     <label class="v3-field"><span>Riktning</span><select data-bqdir><option value="l" ${l3bqPref.dir !== "w" ? "selected" : ""}>Längs objektet</option><option value="w" ${l3bqPref.dir === "w" ? "selected" : ""}>Tvärs (andra ledden)</option></select></label>
+    <label class="v3-field" title="Vrid riktningen som objektet delas i (grader) – om bitarna blir fel ledd"><span>Vrid riktning (°)</span><input type="number" data-bqrotin min="0" max="179" step="5" value="${l3bqPref.rot || 0}"></label>
     <label class="v3-field"><span>Värde</span><input type="number" data-bqval min="0.1" step="0.5" value="${l3bqPref.value}"></label>
     <button type="button" class="btn" data-bqgo>Dela</button>
     <button type="button" class="btn" data-bqplace title="Placera insättningspunkter där objektet ska delas – tryck på objektet, dra ringarna, ＋ lägger till fler">Placera snitt i 3D…</button></details>`;
 }
 function l3bqBind(side, list) {
-  const go = side.querySelector("[data-bqgo]"); if (!go) return; const m = side.querySelector("[data-bqmode]"), v = side.querySelector("[data-bqval]"), dr = side.querySelector("[data-bqdir]"); if (dr) dr.onchange = () => { l3bqPref.dir = dr.value; };
+  const go = side.querySelector("[data-bqgo]"); if (!go) return; const m = side.querySelector("[data-bqmode]"), v = side.querySelector("[data-bqval]"), ro = side.querySelector("[data-bqrotin]"), dr = side.querySelector("[data-bqdir]"); if (ro) ro.onchange = () => { l3bqPref.rot = Number(ro.value) || 0; }; if (dr) dr.onchange = () => { l3bqPref.dir = dr.value; };
   m.onchange = () => { l3bqPref.mode = m.value; if (m.value === "count" && l3bqPref.value < 2) { l3bqPref.value = 4; v.value = 4; } };
   v.onchange = () => { l3bqPref.value = Number(v.value) || l3bqPref.value; };
   const pl = side.querySelector("[data-bqplace]"); if (pl) pl.onclick = () => l3bqCutStart(list[0]);
-  go.onclick = () => { l3bqPref.mode = m.value; if (dr) l3bqPref.dir = dr.value; l3bqPref.value = Number(v.value) || 0; setTimeout(() => l3bqRun(list[0], l3bqPref), 20); };
+  go.onclick = () => { l3bqPref.mode = m.value; if (dr) l3bqPref.dir = dr.value; if (ro) l3bqPref.rot = Number(ro.value) || 0; l3bqPref.value = Number(v.value) || 0; setTimeout(() => l3bqRun(list[0], l3bqPref), 20); };
 }
 
 /* ---- 3. Gjutform som följer formen (Victor 2026-11-11: "muren är bergsanpassad – kan vi bygga in en funktion i den automatiska formen som anpassar sig efter formen på muren?") ----
@@ -199,15 +200,15 @@ function l3bqFormMake(margin = 0, thick = 0.03) {
 /* ---- 4. Placera snitt i 3D (Victor 2026-11-11: "placera insättningspunkter där jag ska dela och plustecken om jag vill dela den i flera bitar – samma som för byggvägen") ----
    Dela i bitar → Placera snitt i 3D…: tryck på objektet där det ska delas (ett snitt = ett lodrätt plan som visas som en tonad skiva med en ring överst), dra ringarna längs objektet,
    ＋ mellan snitten lägger till ett till, ✕ tar bort, och i rutan går avstånden att skriva in (m från början). Dela-knappen delar vid exakt de snitten. Esc avbryter. */
-const l3bqS = { on: false, id: null, cuts: [], cutsW: [], dir: "l", ax: null, rings: [], plus: [], grp: null, panel: null, down: null, key: null, drag: null };
+const l3bqS = { on: false, id: null, cuts: [], cutsW: [], dir: "l", rot: 0, ax: null, rings: [], plus: [], grp: null, panel: null, down: null, key: null, drag: null };
 /* Snitt åt två håll: "l" = längs objektet (cuts), "w" = tvärs (cutsW). Avstånd mäts från objektets ena kant åt respektive håll. */
 const l3bqSet = d => (d === "w" ? l3bqS.cutsW : l3bqS.cuts);
 const l3bqLenOf = (a, d) => (d === "w" ? a.w1 - a.w0 : a.len);
-function l3bqAxis(p) {
+function l3bqAxis(p, rot) {
   const lm = modLocalMesh(p); if (!lm || !lm.pts || !lm.pts.length) return null; const P = lm.pts;
   let mx = 0, my = 0; P.forEach(q => { mx += q[0]; my += q[1]; }); mx /= P.length; my /= P.length;
   let sxx = 0, sxy = 0, syy = 0; P.forEach(q => { const a = q[0] - mx, b = q[1] - my; sxx += a * a; sxy += a * b; syy += b * b; });
-  const th = 0.5 * Math.atan2(2 * sxy, sxx - syy), n = [Math.cos(th), Math.sin(th)];
+  const th = 0.5 * Math.atan2(2 * sxy, sxx - syy) + (Number(rot) || 0) * Math.PI / 180, n = [Math.cos(th), Math.sin(th)];
   let t0 = Infinity, t1 = -Infinity, z0 = Infinity, z1 = -Infinity, w0 = Infinity, w1 = -Infinity; const vx = -n[1], vy = n[0];
   P.forEach(q => { const t = q[0] * n[0] + q[1] * n[1], w = q[0] * vx + q[1] * vy; t0 = Math.min(t0, t); t1 = Math.max(t1, t); w0 = Math.min(w0, w); w1 = Math.max(w1, w); z0 = Math.min(z0, q[2]); z1 = Math.max(z1, q[2]); });
   return { n, v: [vx, vy], t0, t1, len: t1 - t0, z0, z1, w0, w1, tc: mx * n[0] + my * n[1], wc: mx * vx + my * vy };
@@ -219,7 +220,7 @@ function l3bqWorld(p, a, t, w, z) {
 }
 function l3bqCutStart(p) {
   if (!p || !p.m) return; l3bqCutEnd(true); const a = l3bqAxis(p); if (!a || (a.len < 0.1 && a.w1 - a.w0 < 0.1)) { l3Status("Objektet är för litet för att delas.", true); return; }
-  Object.assign(l3bqS, { on: true, id: p.id, cuts: [], cutsW: [], dir: "l", ax: a }); const dom = l3.renderer.domElement;
+  Object.assign(l3bqS, { on: true, id: p.id, cuts: [], cutsW: [], dir: "l", rot: 0, ax: a }); const dom = l3.renderer.domElement;
   l3bqPanel(); l3bqDraw();
   l3Status("Snitt: välj riktning (Längs / Tvärs) och tryck på objektet där det ska delas. Dra ringarna för att flytta, ＋ lägger till fler. Esc avbryter.");
   l3bqS.down = e => {
@@ -229,6 +230,13 @@ function l3bqCutStart(p) {
   };
   l3bqS.key = e => { if (!l3bqS.on) return; if (e.key === "Escape") { e.stopPropagation(); l3bqCutEnd(); l3Status("Delningen avbröts."); } else if (e.key === "Enter") { e.stopPropagation(); l3bqCutGo(); } };
   dom.addEventListener("pointerdown", l3bqS.down, true); window.addEventListener("keydown", l3bqS.key, true);
+}
+/* Vrider delningsriktningen (grader). Snitten räknas om från objektets kant, så de nollställs. */
+function l3bqRotate(deg, absolute) {
+  const p = placements.find(x => x.id === l3bqS.id); if (!p) return; let r = absolute ? Number(deg) : l3bqS.rot + Number(deg); if (!Number.isFinite(r)) return; r = ((r % 180) + 180) % 180;
+  const a = l3bqAxis(p, r); if (!a) return; const had = l3bqS.cuts.length + l3bqS.cutsW.length;
+  l3bqS.rot = Math.round(r * 10) / 10; l3bqS.ax = a; l3bqS.cuts = []; l3bqS.cutsW = []; l3bqPanel(); l3bqDraw();
+  if (had) l3Status("Riktningen ändrades – snitten är nollställda, placera dem igen.");
 }
 function l3bqAdd(t, d) {
   d = d || l3bqS.dir; const a = l3bqS.ax, L = l3bqLenOf(a, d), set = l3bqSet(d); if (L < 0.05) { l3Status("Objektet är för smalt för att delas åt det hållet.", true); return; }
@@ -244,7 +252,7 @@ function l3bqCutEnd(keepUi) {
 function l3bqCutGo() {
   const p = placements.find(x => x.id === l3bqS.id); const cuts = l3bqS.cuts.slice(), cutsW = l3bqS.cutsW.slice(); if (!p) { l3bqCutEnd(); return; }
   if (!cuts.length && !cutsW.length) { l3Status("Placera minst ett snitt först (tryck på objektet eller ＋).", true); return; }
-  l3bqCutEnd(true); l3bqRun(p, { cuts, cutsW });
+  const rot = l3bqS.rot; l3bqCutEnd(true); l3bqRun(p, { cuts, cutsW, rot });
 }
 function l3bqPanel() {
   const host = document.getElementById("v3Canvas"); if (!host || !l3bqS.on) return; const p = placements.find(x => x.id === l3bqS.id), a = l3bqS.ax, E = typeof escHtml === "function" ? escHtml : s => s, f = v => (Math.round(v * 100) / 100).toString().replace(".", ",");
@@ -255,9 +263,12 @@ function l3bqPanel() {
   const nL = l3bqS.cuts.length + 1, nW = l3bqS.cutsW.length + 1, seg1 = [0, ...set, L].map((v, i, A) => i ? v - A[i - 1] : 0).slice(1);
   el.innerHTML = `<b>Dela ${E(p ? p.name || "objektet" : "objektet")}</b><div style="color:#64748b;margin:2px 0 6px">${f(a.len)} m långt · ${f(W)} m brett · tryck på objektet för att sätta ett snitt</div>
     <div style="display:flex;gap:6px;margin:0 0 6px"><button type="button" data-bqdir="l" style="${seg(d === "l")}" title="Snitt vinkelrätt mot längdriktningen">Längs</button><button type="button" data-bqdir="w" style="${seg(d === "w")}" title="Snitt åt andra hållet – delar objektet på bredden">Tvärs</button></div>
+    <div style="display:flex;gap:4px;align-items:center;margin:0 0 6px" title="Vrid riktningen som objektet delas i – tills snittskivorna ligger åt rätt håll"><span style="color:#64748b">Vrid riktning</span><button type="button" data-bqrot="-15" style="${btn};padding:3px 7px" title="15° åt vänster">⟲</button><input type="text" data-bqrotv value="${f(l3bqS.rot)}" style="width:48px;padding:3px 6px;border:1px solid #d7dde6;border-radius:6px;text-align:right"><span>°</span><button type="button" data-bqrot="15" style="${btn};padding:3px 7px" title="15° åt höger">⟳</button><button type="button" data-bqrot="90" style="${btn};padding:3px 7px" title="Vänd 90° (längs blir tvärs)">90°</button></div>
     ${rows || '<div style="color:#94a3b8;margin:6px 0">Inga snitt än.</div>'}
     <div style="color:#475569;margin:6px 0">${nL * nW} bitar${nL > 1 && nW > 1 ? ` (${nL} längs × ${nW} tvärs)` : ""}${set.length ? ` · ${d === "w" ? "tvärs" : "längs"}: ${seg1.map(f).join(" · ")} m` : ""}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" data-bqa style="${btn}">＋ Snitt</button><button type="button" data-bqeq style="${btn}" title="Fördela snitten jämnt (lika stora bitar) åt valt håll">Jämnt</button><span style="flex:1"></span><button type="button" data-bqno style="${btn}">Avbryt</button><button type="button" data-bqdo style="padding:4px 12px;border-radius:8px;border:0;background:#2563eb;color:#fff;cursor:pointer;font-weight:600">Dela</button></div>`;
+  el.querySelectorAll("[data-bqrot]").forEach(b => { b.onclick = () => l3bqRotate(Number(b.dataset.bqrot)); });
+  const rv = el.querySelector("[data-bqrotv]"); if (rv) rv.onchange = () => l3bqRotate(Number(String(rv.value).replace(",", ".")), true);
   el.querySelectorAll("[data-bqdir]").forEach(b => { b.onclick = () => { l3bqS.dir = b.dataset.bqdir; l3bqPanel(); l3bqDraw(); }; });
   el.querySelectorAll("[data-bqc]").forEach(i => { i.onchange = () => { const [dd, k] = i.dataset.bqc.split(":"), st = l3bqSet(dd), v = Number(String(i.value).replace(",", ".")); if (v > 0.01 && v < l3bqLenOf(a, dd) - 0.01) { st[Number(k)] = v; st.sort((x, y) => x - y); } l3bqPanel(); l3bqDraw(); }; });
   el.querySelectorAll("[data-bqx]").forEach(b => { b.onclick = () => { const [dd, k] = b.dataset.bqx.split(":"); l3bqSet(dd).splice(Number(k), 1); l3bqPanel(); l3bqDraw(); }; });
