@@ -855,11 +855,12 @@ const PP = [
         // Ändra allt, "öppna om" och kontrollera att startvyn lägger tillbaka det.
         l3gmSetMode('off', true); l3plSetDay('2026-10-20'); l3SetPref('bubOn', false); l3SetPref('bubProg', 'calc'); l3plSet('film', { ...l3plPrefs().film, sec: 7 }); settings.statusColors.pagaende = '#000000';
         l3.camera.position.set(1, 2, 3); l3.orbit.update();
+        l3SetPref('startToday', false);   // startvyns datum gäller bara när "Starta alltid på dagens datum" är av
         window.__l3StartPrefs = false; window.__l3StartApplied = false;
         l3StartApplyPrefs(); await l3StartApply(); await new Promise(r => setTimeout(r, 2500));
         const camNow = l3.camera.position.toArray().map(v => Math.round(v * 100) / 100);
         const r = { saved, date: $('dateInput').value, mode: l3gm.mode, bub: l3Prefs().bubOn, prog: l3Prefs().bubProg, sec: l3plPrefs().film.sec, col: settings.statusColors.pagaende, camSaved, camNow, views: l3SavedViews().filter(v => v.name === 'Startvy').length };
-        l3StartClear(); r.cleared = !l3StartGet(); return r;
+        l3SetPref('startToday', true); l3StartClear(); r.cleared = !l3StartGet(); return r;
       });
       if (!sv.saved || sv.date !== '2026-10-12' || sv.mode !== 'time' || !sv.bub || sv.prog !== 'plan' || sv.sec !== 41 || sv.col !== '#12ab34' || sv.views !== 0 || !sv.cleared || Math.abs(sv.camNow[0] - sv.camSaved[0]) > 1.5) fail('Startvy: ' + JSON.stringify(sv));
       console.log('OK: startvy – kamera, datum, 3D-läge, visningsval och färger läggs tillbaka (och kan tas bort)');

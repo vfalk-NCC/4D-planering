@@ -822,9 +822,10 @@ function l3StartApplyPrefs() {
 async function l3StartApply() {
   const s = l3StartGet(); if (!s || window.__l3StartApplied) return; window.__l3StartApplied = true;
   try {
-    if (s.date) { $("dateInput").value = s.date; $("dateInput").dispatchEvent(new Event("change")); if (typeof l3SyncDate === "function") l3SyncDate(); }
+    const keepDate = l3Prefs().startToday === false;   // "Starta alltid på dagens datum" (Visning) går före startlägets sparade datum
+    if (s.date && keepDate) { $("dateInput").value = s.date; $("dateInput").dispatchEvent(new Event("change")); if (typeof l3SyncDate === "function") l3SyncDate(); }
     if (typeof l3plLoad === "function" && typeof l3pl !== "undefined" && !l3pl.rows) { try { await l3plLoad(); } catch (e) { /* tidplanen saknas */ } }
-    if (s.mode && s.mode !== "off" && typeof l3gmSetMode === "function") { l3gmSetMode(s.mode, true); if (s.date && typeof l3plSetDay === "function") l3plSetDay(s.date); }
+    if (s.mode && s.mode !== "off" && typeof l3gmSetMode === "function") { l3gmSetMode(s.mode, true); if (s.date && keepDate && typeof l3plSetDay === "function") l3plSetDay(s.date); }
     if (s.tab && typeof l3PalTab === "function") l3PalTab(s.tab);
     if (s.dock && typeof l3plDockToggle === "function" && !l3pl.dock) l3plDockToggle(true);
     if (typeof l3plRenderTab === "function") l3plRenderTab();
