@@ -79,7 +79,7 @@ function l3gmRange(rows, at, ctx) {
   if (m === "time" && l3gm.follow && !rows.some(r => l3gm.follow.has(r.id))) return { off: true };
   const C = l3gmCfg(), ph = rows.map(r => l3gmRowPhase(r, at, C.future)).filter(p => p !== "dold");
   if (!ph.length) return { off: true };
-  if (C.origCol && m === "time") return { off: false, rgb: null, alpha: null, phase: "temp" }; // Tidslinje med originalfärg: byggt = modellens egen färg
+  if (C.origCol && m === "time") return { off: false, rgb: null, alpha: null, phase: "temp", orig: true }; // Tidslinje med originalfärg: byggt = modellens egen färg
   if (rows.every(r => r.temporary === true)) return l3gmTemp(rows) || { off: false, rgb: null, alpha: null, phase: "temp" }; // temporär mellan start och slut: modellens originalfärg, ingen status/puls
   const g = l3gmGroup(ph);
   if (g === "klar") {

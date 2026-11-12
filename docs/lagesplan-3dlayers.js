@@ -445,7 +445,7 @@ function l3lResizable(el, pref, side, min, max) {
     hd.classList.toggle("hidden", !shown);
     if (!shown) return;
     hd.style.top = `${el.offsetTop}px`; hd.style.height = `${el.offsetHeight}px`; hd.style.bottom = "auto";
-    hd.style.left = `${side === "right" ? el.offsetLeft - 3 : el.offsetLeft + el.offsetWidth - 3}px`; hd.style.right = "auto";
+    hd.style.left = `${side === "right" ? el.offsetLeft - 11 : el.offsetLeft + el.offsetWidth - 3}px`; hd.style.right = "auto";
   };
   new ResizeObserver(place).observe(el);
   new MutationObserver(place).observe(el, { attributes: true, attributeFilter: ["class", "style"] });

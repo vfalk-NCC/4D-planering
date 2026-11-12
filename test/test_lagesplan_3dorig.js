@@ -37,11 +37,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     click('tlProg'); out.off = l3gm.mode === 'off';
     click('bubClick'); out.clickOff = l3Prefs().bubClick === false;
     click('pulse'); out.pulse = l3gmCfg().pulse === true;
+    out.plan = !!sw('plan'); { const c = document.getElementById('v3ShowPlan'), was = c.checked; click('plan'); out.planToggle = c.checked !== was; }
     out.icon = !!document.querySelector('#v3Original svg circle');
     return out;
   });
   console.log(JSON.stringify(r));
-  if (r.rows !== 9 || !r.hasClick || !r.orig || !r.tlOrig || !r.tlProg || !r.off || !r.clickOff || !r.pulse || !r.icon) fail('Visning-dropdown: ' + JSON.stringify(r));
+  if (r.rows !== 10 || !r.plan || !r.planToggle || !r.hasClick || !r.orig || !r.tlOrig || !r.tlProg || !r.off || !r.clickOff || !r.pulse || !r.icon) fail('Visning-dropdown: ' + JSON.stringify(r));
   if (errors.length) fail('JS-fel: ' + errors.join(' | '));
   await browser.close(); server.close(); console.log('OK: Visning-dropdown');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

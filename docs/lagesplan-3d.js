@@ -320,7 +320,7 @@ function l3Dom() {
           <label class="v3-chk" title="Som Teklas automatiska rotationscentrum: vyn roteras kring punkten där du trycker ner"><input type="checkbox" id="v3AutoRot" ${P.autoRot !== false ? "checked" : ""} /> Rotera kring punkten under markören</label>
           <div class="v3-pop-hint" id="v3MouseHint"></div>
           <div class="v3-pop-l">Ritning</div>
-          <label class="v3-chk"><input type="checkbox" id="v3ShowPlan" ${P.plan ? "checked" : ""} /> Ritningen (PDF) som mark</label>
+          <label class="v3-chk" style="display:none"><input type="checkbox" id="v3ShowPlan" ${P.plan ? "checked" : ""} /> Ritningen (PDF) som mark</label>
           <label class="v3-pop-row v3-planop" title="Ritningens täckning i 3D">Täckning <input type="range" id="v3PlanOp" min="10" max="100" step="5" value="${P.planOp || 100}" /></label>
         </div>
       </div>

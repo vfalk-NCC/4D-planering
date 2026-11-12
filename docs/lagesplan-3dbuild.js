@@ -656,7 +656,7 @@ function l3bRecolor(opts) {
       const c = live.length ? new THREE.Color(phaseColor(live.length > 1 && typeof zonePhase === "function" ? zonePhase(live, at) : l3Phase(live[0]))) : null;
       const cb = !l3b.orig && typeof l3pColorFor === "function" ? l3pColorFor(m, r) : null; // Färga efter värde (Egenskaper)
       const tint = u.tint && u.tint.get(ri); // tillfällig färg (bara sessionen) går före allt
-      const rgb = tint || cb || (gm && gm.rgb) || (c ? [c.r, c.g, c.b] : r.base);
+      const rgb = tint || cb || (gm && gm.rgb) || (gm && gm.orig ? r.base : null) || (c ? [c.r, c.g, c.b] : r.base);
       const c0 = K === 255 ? Math.round(rgb[0] * 255) : rgb[0], c1 = K === 255 ? Math.round(rgb[1] * 255) : rgb[1], c2 = K === 255 ? Math.round(rgb[2] * 255) : rgb[2];
       for (let i = r.start; i < r.start + r.count; i++) { d[i * 3] = c0; d[i * 3 + 1] = c1; d[i * 3 + 2] = c2; }
     });
