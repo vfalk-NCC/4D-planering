@@ -42,11 +42,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
       const fut = l3gmRange([{ id: 'a', start_date: '2030-01-01', end_date: '2030-02-01', progress: 0 }], '2026-11-12', null), cur = l3gmRange([{ id: 'b', start_date: '2026-11-01', end_date: '2026-12-01', progress: 50 }], '2026-11-12', { mesh: 1, ri: 2 });
       out.ghost = !!fut && fut.alpha === 0.4 && fut.orig === true; out.act = l3gm.next.length === 1 && !!cur && cur.orig === true;
       l3gmSet('future', false); const hid = l3gmRange([{ id: 'a', start_date: '2030-01-01', end_date: '2030-02-01' }], '2026-11-12', null); out.hid = !!hid && hid.off === true; l3gm.mode = 'off'; l3gmSet('origCol', false); l3gmSet('future', false); }
+    out.startToday = !!sw('startToday') && sw('startToday').checked; click('startToday'); out.stOff = l3Prefs().startToday === false; click('startToday'); out.stOn = l3Prefs().startToday !== false;
     out.icon = !!document.querySelector('#v3Original svg circle');
     return out;
   });
   console.log(JSON.stringify(r));
-  if (r.rows !== 10 || !r.plan || !r.planToggle || !r.hasClick || !r.orig || !r.tlOrig || !r.tlProg || !r.off || !r.clickOff || !r.pulse || !r.icon || !r.ghost || !r.act || !r.hid) fail('Visning-dropdown: ' + JSON.stringify(r));
+  if (r.rows !== 11 || !r.plan || !r.planToggle || !r.hasClick || !r.orig || !r.tlOrig || !r.tlProg || !r.off || !r.clickOff || !r.pulse || !r.icon || !r.startToday || !r.stOff || !r.stOn || !r.ghost || !r.act || !r.hid) fail('Visning-dropdown: ' + JSON.stringify(r));
   if (errors.length) fail('JS-fel: ' + errors.join(' | '));
   await browser.close(); server.close(); console.log('OK: Visning-dropdown');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

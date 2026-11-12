@@ -117,7 +117,7 @@ function l3PdfToModel(px, py) {
 // Inställningar (per webbläsare)
 // ---------------------------------------------------------------------
 const L3_PREFS_KEY = "lagesplan-3d-prefs";
-const L3_PREFS_DEFAULT = { anim: true, plan: false, objs: "hidden", labels: true, legend: true, snap: true, step: "0.5", pal: true, mouse: "tekla", ortho: false, autoRot: true, actOutline: false, bubOn: false, bubClick: true, bubScope: "auto", bubMax: 30 };
+const L3_PREFS_DEFAULT = { anim: true, plan: false, objs: "hidden", labels: true, legend: true, snap: true, step: "0.5", pal: true, mouse: "tekla", ortho: false, autoRot: true, actOutline: false, bubOn: false, bubClick: true, startToday: true, bubScope: "auto", bubMax: 30 };
 if (typeof lowMemDevice !== "undefined" && lowMemDevice) L3_PREFS_DEFAULT.signsOff = true; // iPhone/iPad: skyltarna (en bild per objekt) är släckta från början – tänds med Skyltar i menyn
 function l3Prefs() {
   if (l3 && l3.prefs) return l3.prefs;
@@ -148,7 +148,7 @@ async function open3d() {
   // iPhone/smal skärm: biblioteket börjar ihopfällt (öppnas med ＋ Lägg till) så att modellen syns.
   if (window.innerWidth < 700) { const pal = box.querySelector("#v3Pal"), po = box.querySelector("#v3PalOpen"); if (pal && po) { pal.classList.add("hidden"); po.classList.remove("hidden"); } }
   // Tidslinjen börjar alltid på dagens datum när 3D-vyn startas (Victor 2026-11-11).
-  { const di = $("dateInput"), t0 = todayIso(); if (di && di.value !== t0) { di.value = t0; if (typeof syncSliderFromDate === "function") syncSliderFromDate(); if (typeof onDateChanged === "function") try { onDateChanged(); } catch (e) { /* 2D-vyn ritas om vid behov */ } } }
+  if (l3Prefs().startToday !== false) { const di = $("dateInput"), t0 = todayIso(); if (di && di.value !== t0) { di.value = t0; if (typeof syncSliderFromDate === "function") syncSliderFromDate(); if (typeof onDateChanged === "function") try { onDateChanged(); } catch (e) { /* 2D-vyn ritas om vid behov */ } } }
   l3SyncDate();
   l3Status("Laddar 3D…");
   const T0 = performance.now(), tm = {}, lap = (k, t) => { tm[k] = performance.now() - t; };
