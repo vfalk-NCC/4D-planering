@@ -76,7 +76,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
   if (!r.ptDraft || !r.ifc || !r.handles) fail('kommentar på punkt/IFC: ' + JSON.stringify(r));
   if (!r.hasMove || !r.edit) fail('flytta kommentar: ' + JSON.stringify(r));
   if (!r.sec || r.rows !== 3) fail('avsnittet saknas: ' + JSON.stringify(r));
-  if (r.areaOf[0] !== 'Område Nord' || r.areaOf[1] !== 'Område Nord' || r.areaOf[2] || !r.groups.includes('Område Nord') || !r.groups.includes('Utan område')) fail('områden: ' + JSON.stringify(r));
+  if (r.areaOf[0] !== 'Område Nord' || r.areaOf[1] !== 'Område Nord' || r.areaOf[2] || !r.groups.includes('Område Nord') || !r.groups.includes('Utan mapp')) fail('områden: ' + JSON.stringify(r));
   if (!(r.hid[0] && r.hid[1] && !r.hid[2]) || r.vis[0] || r.vis[1] || !r.vis[2]) fail('släck område: ' + JSON.stringify(r));
   if (!r.allHid || !r.allShown) fail('släck/tänd alla: ' + JSON.stringify(r));
   if (r.order.join() !== 'Mur B,Mur A,Platta C') fail('sortera nyast först: ' + JSON.stringify(r.order));
