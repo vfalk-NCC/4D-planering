@@ -10,13 +10,13 @@
    Ändringarna går via place3d.js (placeShift/placeRotateAbout, ångra, sparning). */
 
 const L3_AX = { x: { v: [1, 0, 0], col: "#dc2626", name: "på röd axel" }, y: { v: [0, 1, 0], col: "#16a34a", name: "på grön axel" }, z: { v: [0, 0, 1], col: "#2563eb", name: "på blå axel" } };
-const L3_SNAP = { center: ["Centrum", "#0d9488"], faceC: ["Ytcentrum", "#0d9488"], par: ["Parallellt", "#7c3aed"], tang: ["Tangent", "#ea580c"], inter: ["Skärning", "#16a34a"], perp: ["Vinkelrätt (kortaste vägen)", "#ea580c"], deg5: ["5°", "#7c3aed"], end: ["Ändpunkt", "#16a34a"], mid: ["Mittpunkt", "#06b6d4"], edge: ["På kant", "#dc2626"], face: ["På yta", "#2563eb"], ground: ["På marken", "#64748b"], grid: ["Rutnät", "#a855f7"], pc: ["Punkt i molnet", "#0891b2"] };
+const L3_SNAP = { center: ["Centrum", "#0d9488"], faceC: ["Ytcentrum", "#0d9488"], par: ["Parallellt", "#7c3aed"], tang: ["Tangent", "#ea580c"], inter: ["Skärning", "#16a34a"], perp: ["Vinkelrätt (kortaste vägen)", "#ea580c"], deg5: ["5°", "#7c3aed"], end: ["Ändpunkt", "#16a34a"], mid: ["Mittpunkt", "#06b6d4"], edge: ["På kant", "#dc2626"], face: ["På yta", "#2563eb"], ground: ["På marken", "#64748b"], grid: ["Rutnät", "#a855f7"], gridx: ["Rutnätskorsning", "#7c3aed"], gridl: ["På rutnätslinje", "#7c3aed"], pc: ["Punkt i molnet", "#0891b2"] };
 /* Fästlägen (som Teklas fästverktygsrad): hörn, mittpunkter, kanter, axlar, orto, rutnät. */
-const L3_SNAP_DEF = { end: true, mid: true, edge: true, perp: true, axis: true, ortho: false, grid: false, gstep: 1, pc: true };
+const L3_SNAP_DEF = { end: true, mid: true, edge: true, perp: true, axis: true, ortho: false, grid: false, gstep: 1, pc: true, gridx: true, gridl: true };
 function l3Snaps() { return { ...L3_SNAP_DEF, ...(l3Prefs().snaps || {}) }; }
 function l3ToggleSnap(k) {
   const s = l3Snaps(); s[k] = !s[k]; l3SetPref("snaps", s); l3RenderSnapBar();
-  const names = { end: "Fäst mot hörn", mid: "Fäst mot mittpunkter", edge: "Fäst mot kanter", perp: "Vinkelrätt (kortaste vägen)", axis: "Fäst mot axlar", ortho: "Orto", grid: `Rutnät (${String(s.gstep).replace(".", ",")} m)`, pc: "Fäst mot punkter i punktmolnen" };
+  const names = { gridx: "Fäst mot rutnätets korsningar", gridl: "Fäst längs rutnätets linjer", end: "Fäst mot hörn", mid: "Fäst mot mittpunkter", edge: "Fäst mot kanter", perp: "Vinkelrätt (kortaste vägen)", axis: "Fäst mot axlar", ortho: "Orto", grid: `Rutnät (${String(s.gstep).replace(".", ",")} m)`, pc: "Fäst mot punkter i punktmolnen" };
   l3Status(`${names[k]} ${s[k] ? "på" : "av"}.`);
 }
 function l3RenderSnapBar() {
@@ -29,6 +29,7 @@ function l3RenderSnapBar() {
   const s = l3Snaps(), m = l3Prefs().measure || "dist";
   // Fäst-menyn ligger i kommandoraden längst ner, bredvid "Fäst mot ytor" (Victor 2026-10-24); här uppe finns bara det verktygen behöver (Kopia, mätlägen).
   const rows = [["end", "Hörn", "Fäst mot hörn (ändpunkter)"], ["mid", "Mitt", "Fäst mot mittpunkter på kanter"], ["edge", "Kant", "Fäst mot närmaste punkt på en kant"], ["perp", "Vinkelrätt", "Vinkelrätt: på en kant fäster punkten där linjen från förra punkten möter kanten i rät vinkel – kortaste vägen över ett objekt"], ["axis", "Axlar", "Fäst mot röd/grön/blå axel från baspunkten"], ["ortho", "Orto", "Orto (O): bara i X-, Y- eller Z-led"], ["grid", "Rutnät", "Rutnät (G): fäst mot rutnätet på marken och ytor"]];
+  if (typeof l3gd !== "undefined" && l3gd.list.length) rows.push(["gridx", "Rutnät ✕", "Fäst mot rutnätets korsningar (axelkryss)"], ["gridl", "Rutnät ─", "Fäst längs rutnätets linjer"]);
   if (typeof l3pc !== "undefined" && l3pc.clouds.length) rows.push(["pc", "Punktmoln", "Fäst mot punkter i punktmolnen (mått, flytta, rotationspunkt)"]);
   const foot = document.querySelector("#view3d .v3-foot"), lab = document.getElementById("v3Snap");
   if (foot && lab && !document.getElementById("v3SnapBtn")) {
@@ -317,7 +318,7 @@ function l3ShowMarker(s) {
   l3.lastSnap = s ? s.point.clone() : null;
   if (!s) { m.style.display = "none"; return; }
   const q = l3ToScreen(s.point);
-  const [txt0, col] = s.kind === "axis" ? [L3_AX[s.axis].name + (s.locked ? " (låst)" : s.ortho ? " (orto)" : ""), L3_AX[s.axis].col] : s.kind === "deg5" ? [`${s.deg}° (Skift)`, "#7c3aed"] : (L3_SNAP[s.kind] || ["", "#111"]);
+  const [txt0, col] = s.kind === "axis" ? [L3_AX[s.axis].name + (s.locked ? " (låst)" : s.ortho ? " (orto)" : ""), L3_AX[s.axis].col] : s.kind === "deg5" ? [`${s.deg}° (Skift)`, "#7c3aed"] : (s.label ? [s.label, (L3_SNAP[s.kind] || ["", "#111"])[1]] : (L3_SNAP[s.kind] || ["", "#111"]));
   const txt = s.dxf ? `${txt0} (DXF)` : txt0;
   m.style.display = "block"; m.style.left = q.x + "px"; m.style.top = q.y + "px";
   m.style.setProperty("--c", col);

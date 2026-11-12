@@ -39,10 +39,18 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     out.saved = l3gd.list.length === 1 && (store['projects/' + encodeURIComponent(projectId) + '/plan_grids.json'] || []).length === 1;
     const g = l3gd.list[0]; g.vis = false; l3gdDraw(); out.hidden = l3gd.group.children.length === 0 && l3gd.items.length === 0; g.vis = true; l3gdDraw();
     l3gdZoom(g); await w(400); out.bub = [...document.querySelectorAll('.v3-gd-b')].filter(e => e.style.display !== 'none').length;
+    // Smarta funktioner: kantetiketter vid inzoomning, måttkedja, fäste mot korsningar/linjer, position vid pekaren
+    { const g2 = l3gd.list[0]; g2.dims = true; g2.sub = 2; l3gdDraw(); out.dims = l3gd.dims.length === 5; out.subMesh = l3gd.group.children[0].children.length === 2;
+      const mid = l3gdW(g2, [12, 6]); l3FlyTo(new THREE.Vector3(mid[0] - l3.O[0], mid[1] - l3.O[1], g2.z - l3.O[2]), 6, new THREE.Vector3(0, -0.01, 1), 0); await w(500); l3Render(); await w(300);
+      out.edge = [...document.querySelectorAll('.v3-gd-e')].filter(e => e.style.display !== 'none').length; out.dimsShown = [...document.querySelectorAll('.v3-gd-d')].filter(e => e.style.display !== 'none').length >= 0;
+      const r = l3Rect(), O = l3.O, w0 = l3gdW(g2, [16, 6]), q = l3ToScreen(new THREE.Vector3(w0[0] - O[0], w0[1] - O[1], g2.z - O[2] + 0.03)), ev = { clientX: r.left + q.x + 3, clientY: r.top + q.y + 2, buttons: 0 };
+      const sn = l3Snap(ev); out.snapX = !!sn && sn.kind === 'gridx' && /–/.test(sn.label || '');
+      const lw = l3gdW(g2, [8, 3]); const ql = l3ToScreen(new THREE.Vector3(lw[0] - O[0] + 0.05, lw[1] - O[1] + 0.05, g2.z - O[2] + 0.03)); const sl = l3Snap({ clientX: r.left + ql.x, clientY: r.top + ql.y, buttons: 0 }); out.snapL = !!sl && (sl.kind === 'gridl' || sl.kind === 'gridx');
+      l3gdHoverCalc(ev); out.hover = !!l3gd.hover && /–/.test(l3gd.hover.text); g2.dims = false; g2.sub = 0; l3gdDraw(); }
     return out;
   });
-  console.log(JSON.stringify(r));
+  console.log(JSON.stringify(r)); if (errors.length) fail('JS-fel: ' + errors.join(' | ').slice(0, 600));
   await page.screenshot({ path: '/tmp/claude-0/-home-user-4D-planering/867d5061-8c43-5fe8-9725-74ef03d6c450/scratchpad/grid.png' });
-  if (!r.parse || !r.bad || !r.abc || r.meshes !== 1 || r.items !== 14 || !r.lines || !r.saved || !r.hidden || r.bub < 4) fail('Rutnät: ' + JSON.stringify(r));
+  if (!r.parse || !r.bad || !r.abc || r.meshes !== 1 || r.items !== 14 || !r.lines || !r.saved || !r.hidden || r.bub < 4 || !r.dims || !r.subMesh || r.edge < 2 || !r.snapX || !r.snapL || !r.hover) fail('Rutnät: ' + JSON.stringify(r));
   await browser.close(); server.close(); console.log('OK: rutnät – avståndsspråk, etiketter, ritning, cirklar, tänd/släck och delad sparning');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
