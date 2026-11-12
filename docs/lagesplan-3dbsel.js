@@ -305,7 +305,7 @@ function l3bsHide0() {
   l3Render();
 }
 /* Visa bara de markerade: alla andra objekt i byggnaden döljs. */
-function l3bsIsolate() { return l3VisRecord("visa bara markerade", l3bsIsolate0); }
+function l3bsIsolate() { return typeof l3IsoRun === "function" ? l3IsoRun("visa bara markerade", l3bsIsolate0) : l3VisRecord("visa bara markerade", l3bsIsolate0); }
 function l3bsIsolate0() {
   const keep = new Map();
   l3bs.sel.forEach(e => { if (!keep.has(e.mesh)) keep.set(e.mesh, new Set()); keep.get(e.mesh).add(e.ri); });

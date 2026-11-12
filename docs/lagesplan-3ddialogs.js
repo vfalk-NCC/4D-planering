@@ -340,7 +340,27 @@ function l3HideSel0() {
   if (nIfc && typeof l3bsHide0 === "function") l3bsHide0(); // blandad markering: IFC-objekten döljs också
   l3Toast(`${n} objekt dolda.`, "Visa alla", l3ShowAll);
 }
-function l3Isolate() { return l3VisRecord("visa bara markerade", l3Isolate0); }
+/* Isolera med I och gå tillbaka med I igen (Victor 2026-11-12): läget före isoleringen sparas och återställs exakt (även det som var dolt sedan tidigare).
+   En liten ruta visar att isolering pågår (✕ eller I = tillbaka). Visa alla (U) avslutar också isoleringen. Ctrl+Z fungerar som förut. */
+let l3IsoPrev = null;
+const l3VisDiff = (a, b) => a.isolated !== b.isolated || a.hidden.length !== b.hidden.length || a.hiddenObjs.length !== b.hiddenObjs.length || a.bldg !== b.bldg || a.meshes.some(([x, h], i) => (b.meshes[i] || [])[1] && b.meshes[i][1].length !== h.length);
+function l3IsoPill(on) {
+  let p = document.getElementById("v3IsoPill");
+  if (!on) { if (p) p.remove(); return; }
+  if (!p) { p = document.createElement("div"); p.id = "v3IsoPill"; p.className = "v3-orig-pill v3-iso-pill"; document.getElementById("v3Canvas").appendChild(p); p.addEventListener("pointerdown", e => e.stopPropagation()); p.onclick = () => l3IsoBack(); }
+  p.innerHTML = `<span class="v3-ui-dot"></span><b>Isolerat</b><span class="v3-ui-sub">tryck I eller ✕ för att gå tillbaka</span><button type="button" aria-label="Tillbaka" title="Tillbaka till föregående läge (I)">✕</button>`;
+}
+function l3IsoBack() {
+  const prev = l3IsoPrev; l3IsoPrev = null; l3IsoPill(false); if (!prev) return;
+  l3VisRecord("tillbaka efter isolering", () => l3VisApply(prev)); l3Render(); l3Status("Tillbaka till läget före isoleringen.");
+}
+function l3IsoRun(label, fn) {
+  if (l3IsoPrev) { l3IsoBack(); return; }
+  const before = l3VisSnap(), r = l3VisRecord(label, fn);
+  if (l3VisDiff(before, l3VisSnap())) { l3IsoPrev = before; l3IsoPill(true); }
+  return r;
+}
+function l3Isolate() { return l3IsoRun("visa bara markerade", l3Isolate0); }
 function l3Isolate0() {
   if (!l3.sel.size && typeof l3bs !== "undefined" && l3bs.sel.length) { l3bsIsolate(); return; }
   if (!l3.sel.size) { l3Status("Markera det som ska visas (I = visa bara markerade)."); return; }
@@ -353,6 +373,7 @@ function l3Isolate0() {
 }
 function l3ShowAll() { return l3VisRecord("visa alla", l3ShowAll0); }
 function l3ShowAll0() {
+  l3IsoPrev = null; l3IsoPill(false);
   l3.hidden.clear(); l3.hiddenObjs.clear(); l3.isolated = false;
   l3.placeMeshes.forEach(g => { g.visible = true; });
   l3.groups.bldg.visible = true;
