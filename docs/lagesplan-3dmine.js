@@ -79,7 +79,7 @@ function l3mnSetArea(ids, area) {
   const list = placements.filter(p => ids.includes(p.id)); if (!list.length) return; area = String(area || "").trim().replace(/\/+/g, "/").replace(/^\/|\/$/g, "");
   placeSnapshot(); list.forEach(p => { if (area) p.area = area; else delete p.area; placeTouch(p); });
   if (area) l3mnRegAdd(area);
-  l3Changed(); l3mnRender(); l3Status(`${list.length} objekt ${area ? "flyttade till mappen " + area : "har tagits ur sina mappar"}.`);
+  l3Changed(); l3mnFlush(); l3mnRender(); l3Status(`${list.length} objekt ${area ? "flyttade till mappen " + area : "har tagits ur sina mappar"}.`);
 }
 function l3mnRegAdd(path) { if (!path || l3mn.reg.paths.includes(path)) return Promise.resolve(); return l3mnRegWrite(r => { if (!r.paths.includes(path)) r.paths.push(path); }, `Objektmappar: ${path}`); }
 async function l3mnNewArea(ids, parent) {
@@ -87,10 +87,12 @@ async function l3mnNewArea(ids, parent) {
   if (ids && ids.length) l3mnSetArea(ids, path); else await l3mnRegAdd(path); return path;
 }
 /* Byt namn på / flytta en mapp: alla sökvägar som börjar med den gamla ändras (objekt och projektets mappfil). */
+/* Sparar objektens mappval direkt (annars väntar det en stund) och säger till om det inte gick – så mappstrukturen och objekten inte kommer ur takt. */
+async function l3mnFlush() { try { if (typeof placeSaveNow === "function") await placeSaveNow(); } catch (e) { /* hanteras nedan */ } if (typeof placeDirty !== "undefined" && placeDirty.size && typeof l3Status === "function") l3Status("Objektens mappar kunde inte sparas i projektet än – försöker igen vid nästa ändring.", true); }
 async function l3mnRenamePrefix(oldP, newP) {
   if (!oldP || !newP || oldP === newP || l3mnUnder(newP, oldP)) return;
   const sw = x => (l3mnUnder(x, oldP) ? newP + x.slice(oldP.length) : x), hit = placements.filter(p => p.area && l3mnUnder(p.area, oldP));
-  if (hit.length) { placeSnapshot(); hit.forEach(p => { p.area = sw(p.area); placeTouch(p); }); l3Changed(); }
+  if (hit.length) { placeSnapshot(); hit.forEach(p => { p.area = sw(p.area); placeTouch(p); }); l3Changed(); await l3mnFlush(); }
   l3SetPref("moAreas", (l3Prefs().moAreas || []).map(sw)); l3SetPref("moShut", (l3Prefs().moShut || []).map(k => (k.startsWith("a:") && l3mnUnder(k.slice(2), oldP) ? "a:" + sw(k.slice(2)) : k)));
   await l3mnRegWrite(r => { r.paths = [...new Set([...r.paths.map(sw), newP])]; }, `Objektmappar: ${oldP} → ${newP}`); l3mnRender();
 }

@@ -90,6 +90,12 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const n0 = want(0), n1 = h().length > 1 ? want(1) : 0; clk(h()[0]); const a = l3.sel.size; if (h().length > 1) clk(h()[1], true); return { n0, n1, a, b: l3.sel.size, heads: h().length };
   });
   if (ms.a !== ms.n0 || (ms.heads > 1 && ms.b !== ms.n0 + ms.n1)) fail('mappklick markerar: ' + JSON.stringify(ms));
+  const nest = await page.evaluate(async () => {
+    const ids = placements.slice(0, 2).map(p => p.id); l3mnSetArea([ids[0]], 'Mapp X'); l3mnSetArea([ids[1]], 'Mapp Y'); await new Promise(r => setTimeout(r, 200));
+    await l3mnMoveArea('Mapp X', 'Mapp Y'); await new Promise(r => setTimeout(r, 200));
+    return { a: placements.find(p => p.id === ids[0]).area, b: placements.find(p => p.id === ids[1]).area, list: l3mnAreas().filter(x => /Mapp/.test(x)) };
+  });
+  if (nest.a !== 'Mapp Y/Mapp X' || nest.b !== 'Mapp Y' || nest.list.includes('Mapp X')) fail('mapp i mapp: ' + JSON.stringify(nest));
   console.log('OK: ritade objekt – eget avsnitt, områden, tänd/släck, sortering; switchar på kommentarer/mått/foton/körvägar');
   if (errors.length) fail('sidfel: ' + errors.join(' | '));
   await browser.close(); server.close();
