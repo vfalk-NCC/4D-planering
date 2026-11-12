@@ -34,6 +34,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const B = l3tx.last; out.tris = B.tris.length; out.size = [Math.round(B.w * 100) / 100, Math.round(B.hgt * 100) / 100];
     const n0 = placements.length; const p = l3txCommit(); out.made = !!p && placements.length === n0 + 1 && !!p.txt3d;
     const st = modMeshStats(p.m.pts, p.m.faces.map(f => [f[0], f[1], f[2]])); out.vol = Math.round(Math.abs(st.volume) * 1000) / 1000; out.closed = p.m.closed === true;
+    // flytthandtag före skapandet: dra i sidled och höjdled
+    { l3SelectIds([]); l3txOpen(); const dd = l3tx.d; dd.text = 'MOVE'; dd.x = 6512400; dd.y = 150100; dd.z = 100; l3txDraw(); l3txGizmo(true); out.gizmo = !!l3.gizmoT && l3.gizmoT.object === l3tx.proxy;
+      const O = l3.O; l3tx.proxy.position.set(6512403 - O[0], 150102 - O[1], 105 - O[2]); l3.gizmoT.dispatchEvent({ type: 'objectChange' });
+      out.moved = Math.abs(dd.x - 6512403) < 0.01 && Math.abs(dd.y - 150102) < 0.01 && Math.abs(dd.z - 105) < 0.01 && /X 6512403/.test(document.querySelector('.v3-tx-pos').textContent.replace(/\s/g, ' ').replace(',00', ''));
+      const pp = l3txCommit(); out.atPos = Math.abs(pp.x - 6512403) < 0.6 && Math.abs(pp.y - 150102) < 0.6 && Math.abs(pp.z - 105) < 0.1; out.gone = !l3.gizmoT.object; }
     // redigera efteråt: knapp i panelen, flyttat objekt behåller sitt nya läge, ny storlek, höjd-slider och vridhjul
     { l3SelectIds([p.id]); await w(500); const btn = document.querySelector('#v3Side [data-txedit]'); out.editBtn = !!btn; p.x += 5; placeTouch(p); l3RebuildOne(p); btn.click(); await w(400);
       out.editOpen = !!l3tx.editId && l3tx.d.text === 'F18 (2)' && Math.abs(l3tx.d.x - (6512330 + 5)) < 0.01; out.slider = !!document.querySelector('#v3TextDlg input[type=range][data-txf="h"]');
@@ -53,6 +58,6 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     return out;
   });
   console.log(JSON.stringify(r)); if (errors.length) { console.error('FAIL JS-fel', errors.join(' | ').slice(0, 400)); process.exit(1); }
-  if (!r.btn || !r.dlg || r.tris < 200 || !r.made || r.vol <= 0 || !r.closed || !r.ring || !r.ringClosed || !r.stand || !r.plate || !r.editBtn || !r.editOpen || !r.slider || !r.dial || !r.rot90 || !r.rot270 || !r.edited || !r.resized || !r.shown) { console.error('FAIL 3D-text: ' + JSON.stringify(r)); process.exit(1); }
+  if (!r.btn || !r.dlg || r.tris < 200 || !r.made || r.vol <= 0 || !r.closed || !r.ring || !r.ringClosed || !r.stand || !r.plate || !r.editBtn || !r.editOpen || !r.slider || !r.dial || !r.rot90 || !r.rot270 || !r.edited || !r.resized || !r.shown || !r.gizmo || !r.moved || !r.atPos || !r.gone) { console.error('FAIL 3D-text: ' + JSON.stringify(r)); process.exit(1); }
   await browser.close(); server.close(); console.log('OK: 3D-text – slutna kroppar med hål, liggande/stående, bakplatta');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });

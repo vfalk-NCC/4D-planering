@@ -78,11 +78,24 @@ function l3txWorld(d, tris) {
 function l3txDraw() {
   if (!l3 || !l3.scene) return; if (!l3tx.group) { l3tx.group = new THREE.Group(); l3tx.group.name = "text3d"; l3tx.group.userData.noHit = true; l3.scene.add(l3tx.group); }
   l3Clear(l3tx.group); const d = l3tx.d; if (!d) { l3Render(); return; }
-  const B = l3txBuild(d); l3tx.last = B; if (!B.tris.length) { l3Render(); return; }
+  const B = l3txBuild(d); l3tx.last = B; l3tx.base = { x: d.x, y: d.y, z: d.z }; if (l3tx.group) l3tx.group.position.set(0, 0, 0); if (l3.gizmoT && l3.gizmoT.object === l3tx.proxy && !l3.gizmoT.dragging) { const O = l3.O; l3tx.proxy.position.set(d.x - O[0], d.y - O[1], d.z - O[2]); } if (!B.tris.length) { l3Render(); return; }
   const W = l3txWorld(d, B.tris), O = l3.O, P = new Float32Array(W.length * 9); W.forEach((t, i) => t.forEach((p, k) => { P[i * 9 + k * 3] = p[0] - O[0]; P[i * 9 + k * 3 + 1] = p[1] - O[1]; P[i * 9 + k * 3 + 2] = p[2] - O[2]; }));
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(P, 3)); g.computeVertexNormals();
   const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: d.color, side: THREE.DoubleSide, transparent: true, opacity: 0.9 })); m.userData.noHit = true; m.raycast = () => {}; m.frustumCulled = false; l3tx.group.add(m); l3Render();
   const info = document.getElementById("v3TxInfo"); if (info) info.textContent = `${B.w.toFixed(2).replace(".", ",")} × ${B.hgt.toFixed(2).replace(".", ",")} m · ${B.tris.length.toLocaleString("sv-SE")} trianglar`;
+}
+/* Flytthandtag (pilar i X, Y och Z) medan texten ligger som förhandsvisning: dra den fritt i sidled och höjdled innan du skapar den. */
+function l3txGizmo(on) {
+  if (!l3 || !l3.scene || typeof THREE.TransformControls !== "function") return;
+  if (!l3.gizmoT) {
+    const g = new THREE.TransformControls(l3.camera, l3.renderer.domElement); g.setSpace("world"); g.setMode("translate"); g.size = 0.7; g.userData.noHit = true; l3.scene.add(g); l3.gizmoT = g; l3tx.proxy = new THREE.Object3D(); l3.scene.add(l3tx.proxy);
+    g.addEventListener("change", l3Render); g.addEventListener("dragging-changed", e => { l3.orbit.enabled = !e.value; if (typeof l3pcHold === "function") l3pcHold(!!e.value); if (!e.value && l3tx.d) l3txDraw(); });
+    g.addEventListener("objectChange", () => { const d = l3tx.d; if (!d) return; const O = l3.O, P = l3tx.proxy.position; d.x = Math.round((P.x + O[0]) * 100) / 100; d.y = Math.round((P.y + O[1]) * 100) / 100; d.z = Math.round((P.z + O[2]) * 100) / 100; if (l3tx.group && l3tx.base) l3tx.group.position.set(d.x - l3tx.base.x, d.y - l3tx.base.y, d.z - l3tx.base.z);
+      const dlg = document.getElementById("v3TextDlg"); if (dlg) { const st = dlg.querySelector(".v3-tx-pos"); if (st) st.textContent = `X ${d.x.toFixed(2).replace(".", ",")} · Y ${d.y.toFixed(2).replace(".", ",")} · Z ${d.z.toFixed(2).replace(".", ",")}`; } });
+  }
+  if (on && l3tx.d) { const O = l3.O; l3tx.proxy.position.set(l3tx.d.x - O[0], l3tx.d.y - O[1], l3tx.d.z - O[2]); l3.gizmoT.attach(l3tx.proxy); if (l3.gizmo.object) l3.gizmo.detach(); if (l3.gizmoR && l3.gizmoR.object) l3.gizmoR.detach(); }
+  else l3.gizmoT.detach();
+  l3Render();
 }
 function l3txSchedule() { clearTimeout(l3tx.timer); l3tx.timer = setTimeout(l3txDraw, 150); }
 function l3txOpen() {
@@ -94,7 +107,7 @@ function l3txOpen() {
     const g = l3.placeMeshes && l3.placeMeshes.get(sel.id); if (g) { g.visible = false; l3tx.hidden = sel.id; }   // originalet döljs medan förhandsvisningen visar ändringarna
   }
   else { const prev = l3Prefs().txLast; l3tx.d = { ...l3txDef(), ...(prev || {}) }; l3tx.editId = null; const c = l3.orbit && l3.orbit.target; if (c) { l3tx.d.x = Math.round((c.x + l3.O[0]) * 10) / 10; l3tx.d.y = Math.round((c.y + l3.O[1]) * 10) / 10; l3tx.d.z = Math.round((c.z + l3.O[2]) * 100) / 100; } }
-  l3tx.d.rot = (((Number(l3tx.d.rot) || 0) % 360) + 360) % 360; l3txRender(); l3txDraw();
+  l3tx.d.rot = (((Number(l3tx.d.rot) || 0) % 360) + 360) % 360; l3txRender(); l3txDraw(); l3txGizmo(true);
 }
 function l3txRender() {
   const d = l3tx.d, E = escHtml, fonts = l3txFontList(); if (!fonts.some(f => f[0] === d.font)) fonts.unshift([d.font, d.font]);
@@ -111,6 +124,7 @@ function l3txRender() {
     <div class="v3-tx-dialw"><svg class="v3-tx-dial" viewBox="0 0 100 100" width="84" height="84" title="Dra för att vrida (Skift = 15°-steg)"><circle cx="50" cy="50" r="44" class="r"/>${Array.from({ length: 24 }, (_, i) => { const a = i * 15 * Math.PI / 180, big = i % 6 === 0, r0 = big ? 34 : 39; return `<line x1="${50 + r0 * Math.cos(a)}" y1="${50 - r0 * Math.sin(a)}" x2="${50 + 44 * Math.cos(a)}" y2="${50 - 44 * Math.sin(a)}" class="${big ? "tk b" : "tk"}"/>`; }).join("")}<line class="nd" x1="50" y1="50" x2="50" y2="50"/><circle class="kn" r="6" cx="50" cy="50"/></svg><div class="v3-tx-dialr"><b data-txo="rot">0°</b><small>0° = längs X (öster), moturs</small></div></div>
     <div class="v3-gd-btns"><button type="button" data-txpick title="Tryck textens början och sedan en punkt längs raden">⌖ Två tryck</button><button type="button" data-txcam title="Vänd stående text mot kameran">⟲ Mot kameran</button></div>
     <label class="v3-chk"><input type="checkbox" data-txf="plate" ${d.plate ? "checked" : ""} /> Bakplatta (Contour plate)</label>${d.plate ? num("margin", "Marginal runt texten (m)", 0.05, 0) : ""}
+    <div class="v3-tx-pos" title="Dra i pilarna i bilden för att flytta texten i sidled (X, Y) och höjdled (Z)">X ${d.x.toFixed(2).replace(".", ",")} · Y ${d.y.toFixed(2).replace(".", ",")} · Z ${d.z.toFixed(2).replace(".", ",")}</div>
     <div class="v3-pi-sum" id="v3TxInfo">&nbsp;</div>
     <div class="v3-gd-btns end"><button type="button" data-txcancel>Avbryt</button><button type="button" class="v3-primary" data-txgo>${l3tx.editId ? "Uppdatera texten" : "Skapa text"}</button></div>`);
   l3txBind(dlg);
@@ -126,12 +140,12 @@ function l3txBind(dlg) {
   const dial = v => { if (!dialEl) return; const a = (Number(v) || 0) * Math.PI / 180, x = 50 + 36 * Math.cos(a), y = 50 - 36 * Math.sin(a); dialEl.querySelector(".nd").setAttribute("x2", x); dialEl.querySelector(".nd").setAttribute("y2", y); const kn = dialEl.querySelector(".kn"); kn.setAttribute("cx", x); kn.setAttribute("cy", y); const o = q('[data-txo="rot"]'); if (o) o.textContent = norm(v) + "°"; const inp = q('input[data-txf="rot"]'); if (inp && document.activeElement !== inp) inp.value = norm(v); };
   if (dialEl) { dial(d.rot); const setA = e => { const r = dialEl.getBoundingClientRect(); let a = Math.atan2(-(e.clientY - (r.top + r.height / 2)), e.clientX - (r.left + r.width / 2)) * 180 / Math.PI; if (e.shiftKey) a = Math.round(a / 15) * 15; d.rot = norm(a); dial(d.rot); l3txSchedule(); }; dialEl.onpointerdown = e => { e.preventDefault(); dialEl.setPointerCapture(e.pointerId); setA(e); const mv = ev => setA(ev), up = () => { dialEl.removeEventListener("pointermove", mv); dialEl.removeEventListener("pointerup", up); }; dialEl.addEventListener("pointermove", mv); dialEl.addEventListener("pointerup", up); }; }
   q("[data-txfile]").onclick = () => { const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".ttf,.otf,.woff,.woff2"; inp.onchange = async () => { const f = inp.files[0]; if (!f) return; try { const name = f.name.replace(/\.[^.]+$/, "").replace(/[^\w -]/g, ""), ff = new FontFace(name, await f.arrayBuffer()); await ff.load(); document.fonts.add(ff); (l3tx.custom = l3tx.custom || []).push(name); l3tx.fonts = null; d.font = name; l3txRender(); l3txDraw(); l3Status(`Typsnittet "${name}" är inläst.`); } catch (e) { l3Status("Kunde inte läsa typsnittet: " + e.message, true); } }; inp.click(); };
-  q("[data-txpick]").onclick = () => l3DlgPick(2, ["Tryck textens startpunkt.", "Tryck en punkt längs textraden."], ([a, b]) => { d.x = Math.round(a.x * 100) / 100; d.y = Math.round(a.y * 100) / 100; d.z = Math.round(a.z * 100) / 100; d.rot = Math.round(Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI * 10) / 10; l3txRender(); l3txDraw(); l3Status("Texten är placerad – justera och tryck Skapa text."); });
+  q("[data-txpick]").onclick = () => l3DlgPick(2, ["Tryck textens startpunkt.", "Tryck en punkt längs textraden."], ([a, b]) => { d.x = Math.round(a.x * 100) / 100; d.y = Math.round(a.y * 100) / 100; d.z = Math.round(a.z * 100) / 100; d.rot = Math.round(Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI * 10) / 10; l3txRender(); l3txDraw(); l3txGizmo(true); l3Status("Texten är placerad – justera och tryck Skapa text."); });
   q("[data-txcam]").onclick = () => { const c = l3.orbit.target, p = l3.camera.position; d.mode = "standing"; d.rot = Math.round(Math.atan2(p.x - c.x, -(p.y - c.y)) * 180 / Math.PI * 10) / 10; l3txRender(); l3txDraw(); };
   q("[data-txcancel]").onclick = () => l3txClose();
   q("[data-txgo]").onclick = () => l3txCommit();
 }
-function l3txClose() { if (l3tx.hidden) { const g = l3.placeMeshes && l3.placeMeshes.get(l3tx.hidden); if (g && !(l3.hidden && l3.hidden.has(l3tx.hidden))) g.visible = true; l3tx.hidden = null; } l3tx.d = null; l3tx.editId = null; if (l3tx.group) l3Clear(l3tx.group); l3DlgClose("v3TextDlg"); l3Render(); }
+function l3txClose() { l3txGizmo(false); if (l3tx.hidden) { const g = l3.placeMeshes && l3.placeMeshes.get(l3tx.hidden); if (g && !(l3.hidden && l3.hidden.has(l3tx.hidden))) g.visible = true; l3tx.hidden = null; } l3tx.d = null; l3tx.editId = null; if (l3tx.group) l3Clear(l3tx.group); l3DlgClose("v3TextDlg"); l3Render(); }
 function l3txCommit() {
   const d = l3tx.d, B = l3tx.last || l3txBuild(d); if (!B.tris.length) { l3Status("Skriv en text först.", true); return null; }
   const W = l3txWorld(d, B.tris); let x0 = Infinity, y0 = Infinity, z0 = Infinity; W.forEach(t => t.forEach(p => { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); z0 = Math.min(z0, p[2]); }));

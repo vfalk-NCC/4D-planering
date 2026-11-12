@@ -607,7 +607,7 @@ function l3Init(box) {
   // gång (lodräta plan) och den fria mittpunkten tas bort. Kvar: en pil = en riktning, den vågräta rutan
   // (bara sidled), ringen (bara vridning).
   ["YZ", "XZ", "XYZ"].forEach(n => ["gizmo", "picker", "helper"].forEach(k => { const G = gizmo._gizmo[k] && gizmo._gizmo[k].translate; if (G) G.children.filter(c => c.name === n).forEach(c => G.remove(c)); }));
-  const gBusy = () => !!(gizmo.dragging || (gizmo.object && gizmo.axis));
+  const gBusy = () => !!(gizmo.dragging || (gizmo.object && gizmo.axis) || (l3.gizmoT && l3.gizmoT.object && (l3.gizmoT.dragging || l3.gizmoT.axis)));   // även 3D-textens flytthandtag
   const rHover = ring.pointerHover.bind(ring), rDown = ring.pointerDown.bind(ring), gDown = gizmo.pointerDown.bind(gizmo);
   ring.pointerHover = p => { if (gBusy()) { if (!ring.dragging) ring.axis = null; return; } rHover(p); };
   ring.pointerDown = p => { if (gBusy()) return; rDown(p); };
@@ -633,7 +633,7 @@ function l3Init(box) {
   });
   el.addEventListener("pointerup", e => {
     clearTimeout(press);
-    if (!down || gizmo.dragging || (l3.gizmoR && l3.gizmoR.dragging) || down.longed) { down = null; return; }
+    if (!down || gizmo.dragging || (l3.gizmoR && l3.gizmoR.dragging) || (l3.gizmoT && l3.gizmoT.dragging) || down.longed) { down = null; return; }
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y); down = null;
     if (moved < 6 && e.button !== 2) { l3Tap(e); l3Render(); } // ritas om: pekskärmens knappar följer verktygets steg
   });
@@ -1150,7 +1150,7 @@ function l3Hover(e) {
     l3HoverRaf2 = 0;
     const ev = l3HoverEv; if (!ev || !l3) return;
     // Medan en knapp hålls nere (rotera, panorera, dra) räknas inga träffar – det var det som hackade.
-    if (ev.buttons || l3.gizmo.dragging || (l3.gizmoR && l3.gizmoR.dragging) || l3.moving) return;
+    if (ev.buttons || l3.gizmo.dragging || (l3.gizmoR && l3.gizmoR.dragging) || (l3.gizmoT && l3.gizmoT.dragging) || l3.moving) return;
     if (l3.tool === "select" && !l3.addType) l3SetHover(l3PlaceAt(ev)); else l3SetHover(null);
     // Koordinaten under markören (verktygen visar fästpunkten själva).
     // Koordinaten visas inte för stora bitar vars träffindex ännu byggs (utan index provas alla trianglar – det hackade vid musrörelse).
