@@ -101,7 +101,13 @@ function l3swDraw() {
     const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 25), new THREE.LineBasicMaterial({ color: 0x334155 })); e.userData.noHit = true; e.raycast = () => {}; g.add(e);
   });
   const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(c.pts.map(p => new THREE.Vector3(p[0] - O[0], p[1] - O[1], p[2] - O[2] + 0.05))), new THREE.LineBasicMaterial({ color: 0xf59e0b, depthTest: false })); line.renderOrder = 12; line.userData.noHit = true; line.raycast = () => {}; g.add(line);
-  l3swHandles(); l3Render();
+  l3swHandles(); l3swGizmo(); l3Render();
+}
+/* Flytthandtag (lagesplan-3dmovegz.js): flytta hela muren/pålraden i sidled och höjdled medan den förhandsvisas. */
+function l3swGizmo() {
+  const c = l3sw.cur; if (typeof l3mgShow !== "function") return; if (!c || !c.pts || !c.pts.length) { if (typeof l3mgHide === "function") l3mgHide("wall"); return; }
+  const n = c.pts.length, a = [0, 1, 2].map(k => c.pts.reduce((t, q) => t + q[k], 0) / n);
+  l3mgShow(a, { owner: "wall", move: (dx, dy, dz) => { c.pts.forEach(q => { q[0] += dx; q[1] += dy; q[2] += dz; }); l3swDraw(); }, end: () => l3swGizmo() });
 }
 /* ---- Dragbara punkter (som byggvägen): ring på varje punkt, ＋ mitt på varje sträcka ---- */
 const l3swH = { rings: [], plus: [], drag: null };
@@ -191,7 +197,7 @@ function l3swOpen(cur) {
 }
 function l3swClose(keep) {
   const el = document.getElementById("v3WallPanel"); if (el) el.remove(); const c = l3sw.cur; if (c) l3sw.last = JSON.parse(JSON.stringify(c.spec));
-  l3sw.cur = null; l3swH.rings.forEach(e => e.remove()); l3swH.plus.forEach(e => e.remove()); l3swH.rings = []; l3swH.plus = []; if (l3.groups.wall) l3Clear(l3.groups.wall); if (!keep) { if (l3sw.kbd) { window.removeEventListener("keydown", l3sw.kbd, true); l3sw.kbd = null; } l3Render(); }
+  if (typeof l3mgHide === "function") l3mgHide("wall"); l3sw.cur = null; l3swH.rings.forEach(e => e.remove()); l3swH.plus.forEach(e => e.remove()); l3swH.rings = []; l3swH.plus = []; if (l3.groups.wall) l3Clear(l3.groups.wall); if (!keep) { if (l3sw.kbd) { window.removeEventListener("keydown", l3sw.kbd, true); l3sw.kbd = null; } l3Render(); }
 }
 function l3swMake() {
   const c = l3sw.cur; if (!c) return; const r = c.res || l3swBuild(c.pts, c.spec); if (!r.parts || !r.parts.length) { l3Status(r.err || "Inget att skapa.", true); return; }

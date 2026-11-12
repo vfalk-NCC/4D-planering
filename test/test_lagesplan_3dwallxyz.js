@@ -43,9 +43,11 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     out.xy = cur && Math.abs(cur.res.pos[1][0] - 6512332.5) < 1e-6 && cur.res.pos[2][2] === 99.8;
     out.acts = !!document.querySelector('#v3WallPanel [data-swpt]') && !!document.querySelector('#v3WallPanel [data-swpp]');
     document.querySelector('#v3WallPanel [data-swpt]').click(); await w(300); out.tbl = document.querySelectorAll('#v3SwpTbl tbody tr').length === 3;
+    { const x0 = cur.pts[0][0], z0 = cur.pts[0][2]; out.wGz = !!l3.gizmoT && !!l3.gizmoT.object; if (out.wGz) { const g = l3.gizmoT.object; g.position.set(g.position.x + 3, g.position.y, g.position.z + 1.5); l3.gizmoT.dispatchEvent({ type: 'objectChange' }); }
+      out.wMoved = Math.abs(l3sw.cur.pts[0][0] - (x0 + 3)) < 1e-6 && Math.abs(l3sw.cur.pts[0][2] - (z0 + 1.5)) < 1e-6; out.wRes = !!l3sw.cur.res && l3sw.cur.res.pos && Math.abs(l3sw.cur.res.pos[0][0] - (x0 + 3)) < 1e-6; }
     return out;
   });
   console.log(JSON.stringify(r)); if (errors.length) { console.error('FAIL JS-fel', errors.join(' | ').slice(0, 400)); process.exit(1); }
-  if (!r.noGap || !r.pos || !r.parse || !r.entry || !/3 pålar/.test(r.sum) || !r.cur || !r.xy || !r.acts || !r.tbl) { console.error('FAIL Pålkoordinater: ' + JSON.stringify(r)); process.exit(1); }
+  if (!r.noGap || !r.pos || !r.parse || !r.entry || !/3 pålar/.test(r.sum) || !r.cur || !r.xy || !r.acts || !r.tbl || !r.wGz || !r.wMoved || !r.wRes) { console.error('FAIL Pålkoordinater: ' + JSON.stringify(r)); process.exit(1); }
   await browser.close(); server.close(); console.log('OK: utfackningen faller inte bort vid brytpunkter, tabell X Y Z och pålar i inklistrade koordinater');
 })().catch(e => { console.error('FAIL', e.message); process.exit(1); });
