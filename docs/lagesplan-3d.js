@@ -230,7 +230,7 @@ function l3Dom() {
         ${tool("move", I.move, "Flytta", "M", "Flytta punkt till punkt: tryck en punkt på objektet och sedan dit den ska. Fäster mot hörn, kantmitter och axlar – skriv ett avstånd och Enter")}
         ${tool("rotate", I.rotate, "Vrid", "Q", "Vrid: vridpunkt, utgångsriktning, ny riktning. Fäster var 15:e grad – skriv en vinkel och Enter")}
         ${tool("align", I.align, "Rikta", "A", "Rikta kant mot kant: två punkter på objektets kant, sedan två på kanten det ska ligga mot")}
-        ${tool("measure", I.measure, "Mät", "T", "Mät avstånd mellan två punkter (fäster mot hörn och kanter)")}
+        ${tool("measure", I.measure, "Mät", "T", "Mät avstånd mellan två punkter (fäster mot hörn och kanter). F = Snabbmått")}
         ${tool("draw", I.pen, "Rita", "D", "Rita linjer, rektanglar, cirklar, bågar och polygoner direkt i 3D – skriv mått och Enter")}
         ${tool("model", I.model, "Modellera", "X", "Push/Pull och Offset på ritade ytor och på ytor i modellen")}
         <button type="button" id="v3Multi" class="v3-multi" aria-pressed="false" title="Markera flera: varje tryck lägger till eller tar bort objekt (samma som Skift/Ctrl)">${I.multi}<span>Flera</span></button>
@@ -548,7 +548,7 @@ function l3HelpHtml() {
       ${T ? r("Mittenknapp dra", "Panorera") + r("Ctrl + mitten dra", "Rotera kring punkten under markören") + r("Vänster dra", "Markera med ruta") : r("Vänster dra", "Rotera kring punkten under markören") + r("Ctrl + vänster dra", "Markeringsfönster") + r("Höger dra", "Panorera")}
       ${r("Hjul", "Zooma mot markören")}${r("V + tryck", "Centrera vyn kring en punkt")}${r("Ctrl+P", "Plan ↔ 3D")}${r("Home", "Visa allt")}${r("F / dubbelklick", "Zooma till markerat")}${r("Axelkorset", "Vy uppifrån")}</table></div>
     <div><b>Markera</b><table>${r("Tryck", "Markera")}${r("Skift + tryck", "Lägg till")}${r("Ctrl + tryck", "Växla")}${r(T ? "Dra →" : "Ctrl + dra →", "Ruta: det som är helt inne") + r(T ? "Dra ←" : "Ctrl + dra ←", "Ruta: allt som rutan nuddar")}${r("Ctrl+A", "Markera alla")}${r("Esc", "Avmarkera / avbryt")}</table></div>
-    <div><b>Verktyg</b><table>${r("Mellanslag", "Välj")}${r("M", "Flytta punkt till punkt")}${r("Q", "Vrid")}${r("A", "Rikta kant mot kant")}${r("T", "Mät avstånd, vinkel, yta")}${r("Ctrl+K", "Snabbsök kommando")}</table></div>
+    <div><b>Verktyg</b><table>${r("Mellanslag", "Välj")}${r("M", "Flytta punkt till punkt")}${r("Q", "Vrid")}${r("A", "Rikta kant mot kant")}${r("F", "Snabbmått (Skift+F = zooma hit)")}${r("T", "Mät avstånd, vinkel, yta")}${r("Ctrl+K", "Snabbsök kommando")}</table></div>
     <div><b>Under Flytta / Vrid / Mät</b><table>${r("→ ← ↑", "Lås röd / grön / blå axel")}${r("↓", "Släpp axellåset")}${r("5,5 Enter", "Exakt avstånd eller vinkel")}${r("3;0;1,5 Enter", "Relativt dx;dy;dz")}${r("Ctrl", "Flytta ↔ kopiera")}${r("*5 / 5 Enter", "Efter en kopia: 5 i rad / 5 jämnt fördelade")}${r("O / G", "Orto / rutnät av-på")}</table></div>
     <div><b>Markerat</b><table>${r("Pilar", "Flytta ett steg (Skift = 10)")}${r("PgUp / PgDn", "Upp / ned")}${r(", .", "Vrid ett steg")}${r("Ctrl+C / Ctrl+V", "Kopiera / klistra in vid markören")}${r("Ctrl+D", "Duplicera")}${r("Delete", "Ta bort")}${r("H / I / U", "Dölj / visa bara markerade / visa alla")}${r("Ctrl+Z / Ctrl+Y", "Ångra / gör om")}</table></div>
     <div><b>Redigera-menyn</b><table>${r("Kopiera special", "Linjärt, runt en punkt eller speglat – med antal")}${r("Flytta special", "Exakt dX/dY/dZ, vrida, spegla")}${r("Egenskaper", "Flera markerade: kryssa i fälten och tryck Ändra")}${r("Snitt", "Tryck på en yta – flytta snittet med reglaget")}${r("Kollisionskontroll", "Krockar med varandra och byggnaden – i tid (4D)")}</table></div>
@@ -1413,7 +1413,7 @@ function l3OpenCtx(x, y, e) {
   const items = has ? [
     ["move", "Flytta punkt till punkt", "M"], ["rotate", "Vrid", "Q"], n === 1 ? ["align", "Rikta kant mot kant", "A"] : null,
     ["cspec", "Kopiera special…", ""], ["mspec", "Flytta special…", ""], null,
-    ["dup", "Duplicera", "Ctrl+D"], ["copy", "Kopiera", "Ctrl+C"], ["lock", typeof l3LockState === "function" && l3LockState() === 1 ? "Lås upp" : "Lås på plats", ""], ["drop", "Ställ på ytan", ""], ...(n > 1 ? [["union", "Sammanfoga markerade", ""]] : []), ["similar", "Markera alla av samma typ", ""], ["focus", "Zooma hit", "F"], null,
+    ["dup", "Duplicera", "Ctrl+D"], ["copy", "Kopiera", "Ctrl+C"], ["lock", typeof l3LockState === "function" && l3LockState() === 1 ? "Lås upp" : "Lås på plats", ""], ["drop", "Ställ på ytan", ""], ...(n > 1 ? [["union", "Sammanfoga markerade", ""]] : []), ["similar", "Markera alla av samma typ", ""], ["focus", "Zooma hit", "Skift+F"], null,
     ["hide", "Dölj", "H"], ["iso", "Visa bara markerade", "I"], null,
     ...expItem,
     ["del", n === 1 ? "Ta bort" : `Ta bort ${n} objekt`, "Del"],
@@ -1510,7 +1510,7 @@ function l3RenderSide(liveOnly) {
     <div class="v3-grid">${["start", "end"].map(k => `<label><span>${k === "start" ? "Start" : "Slut"}</span><input type="date" data-v3f="${k}" value="${p[k] || ""}" /></label>`).join("")}</div>
     <div class="v3-btns"><button type="button" id="v3Drop" title="Ställ objektet på ytan under det">${L3_ICO.down}Ställ på ytan</button>
       <button type="button" id="v3Copy" title="En kopia bredvid (Ctrl+D)">${L3_ICO.copy}Duplicera</button>
-      <button type="button" id="v3Focus" title="Zooma hit (F)">${L3_ICO.focus}Zooma</button>
+      <button type="button" id="v3Focus" title="Zooma hit (Skift+F)">${L3_ICO.focus}Zooma</button>
       <button type="button" id="v3Del" class="v3-danger" title="Ta bort (Delete) – kan ångras">${L3_ICO.trash}Ta bort</button>
       <button type="button" id="v3SpCopy" title="Kopiera i rad, runt en punkt eller speglat">Kopiera special</button>
       <button type="button" id="v3SpMove" title="Flytta exakt dX/dY/dZ, vrid kring en punkt eller spegla">Flytta special</button></div>`;
@@ -1780,7 +1780,11 @@ function l3Key(e) {
   if (e.key === "Escape") { l3HideMenus(); l3HideInfo(); if (l3.addType) { l3EndAdd(); l3Status(""); } else { l3SelectIds([]); if (typeof l3bsClear === "function") l3bsClear(); } return; }
   if (e.key === "Home") { e.preventDefault(); l3Frame(true); return; }
   if (e.key === "?") { document.getElementById("v3HelpBtn").click(); return; }
-  if (k === "f") { if (l3SelBox().isEmpty()) l3View("iso"); else l3ZoomSelected(); return; }
+  if (k === "f" && !mod) { // F = Snabbmått (Shift+F = zooma hit); F igen går tillbaka till Välj
+    if (e.shiftKey) { if (l3SelBox().isEmpty()) l3View("iso"); else l3ZoomSelected(); return; }
+    if (l3.tool === "measure" && l3Prefs().measure === "quick") { l3SetTool("select"); return; }
+    l3SetPref("measure", "quick"); l3SetTool("measure"); return;
+  }
   if (k === "v" && !mod) { l3StartV(); return; }
   if (k === "w") return l3Mode("translate");
   if (k === "e") return l3Mode("rotate");
