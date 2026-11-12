@@ -36,7 +36,7 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     const ctx = g => ({ mesh: { userData: { l3b: { ranges: [{ guid: g }] } } }, ri: 0 });
     // 1) Nollställt: inget valt, inget kopplat mot tidplanen
     await l3scLoad(true); out.empty = l3sc.mine.length === 0 && l3sc.sel.join('') === '' && l3sc.list === undefined;
-    await l3scOpen(); await w(600); const el0 = document.getElementById('v3Scen'); out.emptyUi = !!el0.querySelector('.sc-empty') && el0.querySelectorAll('figure').length === 0 && /Inga scenarier är valda/.test(el0.textContent); l3scClose(); await w(200);
+    await l3scOpen(); await w(600); const p0 = document.getElementById('v3ScPanel'); out.emptyUi = !!p0 && /Det börjar tomt och är inte kopplat mot tidplanen/.test(p0.textContent) && p0.querySelectorAll('.sc-a').length === 0 && l3sc.render === null; l3scClose(); await w(200);
     // 2) Egna scenarier utan tidplan
     const A = l3scNew('Reviderat kontrakt'), B = l3scNew('Nuvarande'); l3sc.mine = [A, B]; l3sc.sel = [A.id, B.id, '']; l3sc.cache = {};
     A.acts.push({ id: 'a1', name: 'Stomme', start: '2026-06-01', end: '2026-10-09', g: ['G2'], pl: [] }); B.acts.push({ id: 'b1', name: 'Stomme', start: '2026-06-15', end: '2026-11-27', g: ['G2'], pl: [] }, { id: 'b2', name: 'Förtjockarhuset', start: '2026-07-13', end: '2027-01-29', g: ['G3'], pl: [], color: '#a855f7' }); A._v = 1; B._v = 1;
@@ -57,22 +57,28 @@ const PDFJS = `window.pdfjsLib = { GlobalWorkerOptions: {}, AnnotationMode: { DI
     A.acts.push({ id: 'a2', name: 'Bod upp', start: '2026-03-01', end: '2026-12-01', g: [], pl: [pm.id] }); A._v++; l3sc.cache = {}; l3sc.sel = [A.id, B.id, '']; l3sc.date = '2026-08-01';
     let mat = null; l3.placeMeshes.get(pm.id).traverse(m => { if (m.isMesh && !mat) mat = m.material; }); const c0 = mat.color.getHex(), o0 = mat.opacity, undo = l3scPlacePatch(A.id, '2026-08-01'), c1h = mat.color.getHex(); undo(); out.place = c1h !== c0 && mat.color.getHex() === c0 && mat.opacity === o0;
     { const tl = {}, u2 = l3scPlacePatch(A.id, '2026-08-01', tl); u2(); out.placeTally = tl.pagaende === 1; B.acts.push({ id: 'b3', name: 'Bod upp', start: '2026-05-01', end: '2027-01-01', g: [], pl: [pm.id] }); B._v++; l3sc.cache = {}; l3sc.sel = [A.id, B.id, '']; const dl = {}, u3 = l3scPlacePatch('delta', '2026-08-01', dl); u3(); out.placeDelta = dl.d_late === 1 && l3scDiffRows().some(x => x.name === 'Bod upp'); B.acts.pop(); B._v++; l3sc.cache = {}; }
-    // 5) Överlägget och bygget
-    l3sc.mine = [A, B]; l3sc.sel = [A.id, B.id, '']; await l3scPersist(); await l3scOpen(); await w(900); const el = document.getElementById('v3Scen');
-    out.open = el.querySelectorAll('figure[data-k]').length >= 2 && !!el.querySelector('figure[data-k="delta"]') && /Reviderat kontrakt/.test(el.textContent) && /%/.test(el.querySelector('[data-pct="0"]').textContent);
-    const Ao = l3scById(A.id);
+    // 5) Panelen: välja, bygga och koppla – och jämföra
+    l3sc.mine = [A, B]; l3sc.sel = ['', '', '']; await l3scPersist(); await l3scOpen(); await w(600);
+    const pn = document.getElementById('v3ScPanel'); out.panelCls = !!pn && pn.classList.contains('v3-vp') && !!pn.querySelector('.v3-vp-h') && !!pn.querySelector('[data-s="sel"]') && l3sc.sel[0] === '' && l3sc.render === null;   // inget valt, ingenting kopplat
+    const selEl = pn.querySelector('[data-s="sel"]'); selEl.value = A.id; selEl.dispatchEvent(new Event('change')); await w(500); const Ao = l3scById(A.id);
+    out.chosen = l3sc.sel[0] === A.id && l3sc.render === 0 && document.querySelectorAll('#v3ScPanel .sc-a').length === 2;
+    document.querySelector('#v3ScPanel [data-s="add"]').click(); await w(150); out.add = Ao.acts.length === 3 && Ao.acts[2].start === l3scDay();
+    l3SelectIds([pm.id]); await w(700); out.selSync = !!document.querySelector('#v3ScPanel [data-s="addsel"]:not([disabled])');
+    document.querySelector('#v3ScPanel [data-s="addsel"]').click(); await w(150); const last = Ao.acts[Ao.acts.length - 1]; out.addsel = last.pl.includes(pm.id) && !Ao.acts.find(a => a.id === 'a2').pl.includes(pm.id);
+    document.querySelector('#v3ScPanel .sc-a:last-of-type [data-a="unlink"]').click(); await w(150); out.unlink = Ao.acts[Ao.acts.length - 1].pl.length === 0;
+    const nm = document.querySelector('#v3ScPanel .sc-a:last-of-type [data-a="name"]'); nm.value = 'Kran'; nm.dispatchEvent(new Event('change')); out.rename = Ao.acts[Ao.acts.length - 1].name === 'Kran';
+    document.querySelector('#v3ScPanel .sc-a:last-of-type [data-a="del"]').click(); await w(150); out.del = Ao.acts.length === 3;
+    const sr = document.querySelector('#v3ScPanel [data-s="src"]'); sr.value = 'main'; sr.dispatchEvent(new Event('change')); await w(150); out.srcSet = Ao.src === 'main'; Ao.src = ''; l3scTouch(Ao);
+    // appens datum styr visningen: byt datum, placerat objekt följer
+    $('dateInput').value = '2026-02-01'; await w(900); out.followsDate = l3sc.date === '2026-02-01';
+    // jämförelsen
+    document.querySelector('#v3ScPanel [data-s="cmp"]').click(); await w(400); const cmp = document.getElementById('v3ScCmp'); out.cmpOpen = !!cmp && cmp.classList.contains('v3-dlg') && cmp.querySelectorAll('select[data-c^=sel]').length === 3;
+    cmp.querySelector('[data-c="sel1"]').value = B.id; cmp.querySelector('[data-c="sel1"]').dispatchEvent(new Event('change')); await w(1200); out.cmpFigs = cmp.querySelectorAll('figure[data-k]').length >= 3 && /%/.test(cmp.querySelector('[data-pct="0"]').textContent);
     const cv = l3scCompose(); out.report = cv.width === 3300 && cv.height > 1500; const pdf = l3scPdfBytes(cv); out.pdf = String.fromCharCode(...pdf.slice(0, 8)) === '%PDF-1.4' && pdf.length > 8000;
-    out.bygg = !!el.querySelector('[data-sc-ed="0"]'); el.querySelector('[data-sc-ed="0"]').click(); await w(500); const ed = document.getElementById('v3ScEd'); out.edOpen = !!ed && el.style.display === 'none' && l3sc.render === 0 && ed.querySelectorAll('.act').length === 2;
-    ed.querySelector('[data-e="add"]').click(); await w(150); out.add = Ao.acts.length === 3 && Ao.acts[2].start === l3sc.date;
-    l3SelectIds([pm.id]); await w(700); out.selSync = !!document.querySelector('#v3ScEd [data-e="addsel"]:not([disabled])');
-    document.querySelector('#v3ScEd [data-e="addsel"]').click(); await w(150); const last = Ao.acts[Ao.acts.length - 1]; out.addsel = last.pl.includes(pm.id) && !Ao.acts.find(a => a.id === 'a2').pl.includes(pm.id);   // objektet flyttas till nya aktiviteten
-    document.querySelector('#v3ScEd .act:last-of-type [data-a="unlink"]').click(); await w(150); out.unlink = Ao.acts[Ao.acts.length - 1].pl.length === 0;
-    const nm = document.querySelector('#v3ScEd .act:last-of-type [data-a="name"]'); nm.value = 'Kran'; nm.dispatchEvent(new Event('change')); out.rename = Ao.acts[Ao.acts.length - 1].name === 'Kran';
-    document.querySelector('#v3ScEd .act:last-of-type [data-a="del"]').click(); await w(150); out.del = Ao.acts.length === 3;
-    document.querySelector('#v3ScEd [data-e="src"]').value = 'main'; document.querySelector('#v3ScEd [data-e="src"]').dispatchEvent(new Event('change')); await w(150); out.srcSet = Ao.src === 'main'; Ao.src = '';
-    document.getElementById('edDone').click(); await w(600); out.back = !document.getElementById('v3ScEd') && el.style.display !== 'none';
+    cmp.querySelector('[data-c="next"]').click(); await w(900); out.cmpDate = l3sc.date === '2026-02-08' && cmp.querySelector('[data-c="date"]').textContent === '2026-02-08';
+    l3DlgClose('v3ScCmp'); await w(400); out.cmpClosed = (!document.getElementById('v3ScCmp') || document.getElementById('v3ScCmp').classList.contains('hidden')) && l3sc.cmpOpen === false && l3sc.render === 0;
     await w(900); out.saved = writes.length >= 1 && stored.some(x => x.id === A.id && x.acts.length === 3);
-    l3scClose(); await w(300); out.closed = !document.getElementById('v3Scen') && l3sc.render === null && l3gm.mode === was;
+    l3scClose(); await w(300); out.closed = !document.getElementById('v3ScPanel') && l3sc.render === null && l3gm.mode === was;
     // 6) Ny session: allt sparat finns men inget är valt
     l3sc.sel = ['', '', '']; await l3scLoad(true); out.reload = l3sc.mine.length === 2 && l3sc.mine.find(x => x.id === A.id).acts.length === 3 && l3sc.sel.join('') === '';
     } catch (e) { out.ERR = e.message + ' @ ' + (e.stack || '').split('\n')[1]; }
